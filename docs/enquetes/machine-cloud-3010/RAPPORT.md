@@ -1292,3 +1292,85 @@ comptes ; aucun achat.
   - Le paquet 2.9.148 contient le portail (`createPortal(…, document.body)`) et les 5 traces.
   - Preuve d'identité : 708 scènes identiques pour les comptes ordinaires.
   - Suite complète 517 / 0 rouge.
+
+## 19. L'essai de connexion du 01/11 au soir (21:00 → 21:23) : 5 problèmes, corrigés à la racine (01/11, 21:30 → 22:40)
+Nico a connecté ses plateformes depuis l'app (iPhone, OTA 2.9.148). Sources lues : `usage_logs` (`cloud_connexion_*`),
+journal de l'orchestrateur, `cloud_connexions`, `cloud_coffre`, `profiles.extension_postes` (poste Cloud a958154e).
+
+### 19.1 Ce que disent les traces (heure de Paris)
+| Plateforme | Ouvertures | Ce qui s'est passé | Verdict |
+|---|---|---|---|
+| Vinted | 20:59:13 | « connecté » à 21:00:46 (95 s) ; à 21:26:46 la sonde de l'extension Cloud lit `/api/v2/users/current` → **200**, compte **250623918** (nelsonchatnoir, le même que son poste) | **vraiment connecté** |
+| Leboncoin | 21:00:54, 21:01:40, 21:02:53, 21:04:32, 21:05:41 | 1re et 3e fermées par « client parti » (28 s, 80 s : l'app quittée, la page fermée avec) ; « connecté » à 21:05:31 sur le seul cookie `__Secure-Login`, en pleine vérification du téléphone, fenêtre fermée 1,5 s après ; 21:05:44 : « connecté » en 3 s (cookie déjà là) | **faux** : jamais lu |
+| Beebs (Google) | 21:05:59, 21:12:21, 21:16:17 | refusés par NOTRE liste : `accounts.google.fr/accounts/SetSID` (21:14:34) puis `babytouch-782e4.firebaseapp.com/__/auth/handler` (21:15:35, 21:16:27) → la fenêtre Google fermée net, Beebs « Une erreur est survenue » | jamais connecté |
+| Depop | 21:17:18, 21:22:42 | 1re fermée 14 s après (« client parti ») ; 2e : cookie `access_token` 12 s après l'ouverture (Google déjà connecté dans le navigateur depuis l'essai Beebs), « connecté » ; Depop renvoie vers `/fr/` — REFUSÉ 3 fois par notre liste : c'est la page d'erreur que Nico a vue | **faux** : jamais lu |
+| eBay | — | l'écran Cloud lisait l'enveloppe `{ etat }` de `ebay-account` au lieu de `etat` : « à relier » pour tout compte, bouton « Relier eBay » (connexion eBay dans Safari) alors que l'API est reliée (`ebay_voie_api` vrai) | affichage faux |
+
+En plus : `cloud_connexions` refuse « depop » (contrainte à 3 plateformes) : les deux connexions Depop n'y ont aucune
+ligne, sans bruit.
+
+### 19.2 Les causes, et la règle corrigée
+1. **Faux « connecté »** — la règle était « cookies d'identité présents = connecté », à la sonde (toutes les 2 s) ET à
+   chaque sauvegarde du navigateur (10 min). Règle (Nico) : **connecté = le compte LU par le serveur**, dans la page de
+   connexion revenue sur le site de la plateforme (`plateformes.js`, `expressionLectureCompte`, les lectures que
+   l'extension fait déjà) :
+   - Vinted `/api/v2/users/current` (200 + identifiant) ;
+   - Leboncoin `api.leboncoin.fr/api/account/v2/members/me/account` (jeton `luat` de la page) ;
+   - Beebs : session Firebase de la page, non anonyme, vérifiée par Google (`identitytoolkit … accounts:lookup`) ;
+   - Depop `webapi.depop.com/presentation/api/v1/users/me/` (jeton de la page).
+   Hors du site (page Google, `auth.leboncoin.fr` pendant le téléphone) : rien n'est lu, la page dit « termine les
+   étapes demandées ». Une sauvegarde ordinaire ne fait plus que rafraîchir une connexion déjà connue (« non_verifiee »
+   sinon) ; seule une connexion connue revient du coffre ; une plateforme non connectée n'a plus aucune session dans le
+   profil (cookies échus, stockage de page effacé, l'appareil DataDome gardé).
+2. **La fenêtre fermée en pleine vérification** — deux causes : la fermeture automatique 1,5 s après le cookie, et la
+   page fermée dès que le téléphone se déconnecte (iOS coupe tout quand on quitte l'app pour lire le SMS ou le courriel).
+   Désormais : compte vérifié → « vérifié », la page RESTE ouverte (étape du téléphone à finir) jusqu'à « J'ai fini » ;
+   l'app quittée → la page attend 5 min (`REPRISE_MS`) et l'app la reprend au retour (`visibilitychange`), même page,
+   même étape (`cloud_connexion_reprise`).
+3. **Beebs avec Google** — ni fenêtre bloquée ni cookies tiers : notre propre liste de navigation refusait deux étapes de
+   la connexion Google. Permis désormais : `accounts.google.<pays>` (SetSID), les écrans de sécurité Google
+   (`gds.google.com/web/`), les seuls chemins `/__/auth/` des gestionnaires Firebase (Beebs, et toute plateforme sur
+   Firebase, pour Google, Apple, Facebook), et le **retour déclaré** : le `redirect_uri` qu'une page de connexion d'un
+   fournisseur porte (choisi par la plateforme, validé par le fournisseur) devient permis, chemin exact, pour ce
+   « Me connecter ». Après la vérification, une page refusée ne renvoie plus à la connexion (aucune boucle). Depop :
+   `/fr/` permis.
+4. **La touche effacer** — le rejeu efface (mesuré dans Chromium : keyDown Backspace → « bonjour mond »). C'est le
+   téléphone qui n'envoyait rien : le champ caché était VIDE, et iOS n'émet aucun événement pour effacer dans un champ
+   vide. Prouvé dans WebKit au format iPhone 13 : avant, « ab » puis 2 × effacer → seulement « a », « b » envoyés ; après,
+   les 2 effacements partent. Le champ garde un remplissage fixe (curseur au milieu), chaque saisie est annulée et
+   rejouée ; effacer un mot, à droite, jusqu'au début de la ligne, flèches, début, fin passent ; le serveur rejoue le
+   clavier dans une file (jamais deux frappes entrelacées).
+5. **eBay** — lu dans `etat` ; relié par l'API : « Relié par l'API eBay », aucun bouton ; pas relié : la connexion
+   officielle (`ebay-oauth-start`), jamais le navigateur. Et le navigateur Cloud intercepte TOUJOURS eBay (et Opla),
+   quelles que soient les plateformes permises : aucune page eBay n'y est joignable.
+
+### 19.3 Les 48 h
+Elles ne comptent qu'à partir de connexions vérifiées : chaque connexion vérifiée est notée (`connexion_verifiee`, journal
+de l'essai) ; le bilan part de la première après la dernière remise à zéro (`outils/endurance-remise.mjs`,
+`decompteEssai`) et donne l'heure de chaque plateforme. Rien d'avant la remise ne compte.
+
+### 19.4 Mis en production (heure de Paris)
+- **Code** : 6eb3802 (serveur-cloud 62/62, `selftest:cloud-me-connecter` 34, suite complète **517 / 0 rouge**, build
+  d'essai vert, aucune erreur de lint nouvelle). Poussé sur `main` par le terminal fill-and-sell-07 à la demande de Nico.
+- **22:27:31** orchestrateur arrêté proprement (navigateur fermé et sauvegardé).
+- **22:28** `scripts/reparations/20261101_cloud_faux_connectes_nico.sql` (sauvegarde `_backup_0111_cloud_faux_connectes`,
+  4 lignes ; inverse prêt) : lignes `leboncoin` et `depop` sorties du coffre de Nico, les 2 connexions Leboncoin
+  « connectee » de 21:05 → « abandonnee » (`non_verifiee_0111`). Relu : coffre = `vinted` + `fillsell`.
+- **22:28:26** orchestrateur **6eb3802** déployé (`deployer.sh`, copie Cloud de l'extension inchangée : 0.6.164-cloud,
+  BUILD_ID 2026-11-01T18:00:51Z+dd69fbb ; pare-feu des navigateurs rejoué). **22:28:33** navigateur rouvert :
+  `sessions_purgees` Leboncoin, Beebs, Depop — 57 cookies échus (appareil DataDome gardé), stockage de page effacé
+  (repli « page vierge » : la session du navigateur steel répond « Internal error » à `Storage.clearDataForOrigin`,
+  comme mesuré dans Chromium). Verrou : `permises = [vinted]`.
+- **22:28:49** remise à zéro de l'essai (`endurance-remise.mjs`) : bilan à zéro, aucune connexion vérifiée encore.
+- **22:35** OTA **2.9.149** sur production (build 2026-11-01T21:35:34Z+f4bb7c6, somme de contrôle compatible) ; relu
+  sur le canal. Contenu vérifié dans le paquet (remplissage du clavier, `cloud_connexion_reprise`, `cloud_connexion_verifiee`,
+  « Relié par l'API eBay », `etat ?? null`). Preuve d'identité : 708 scènes identiques pour les comptes ordinaires ;
+  4 échecs : les 3 connus de l'outil du 05/10 (ConditionsCloudModale, EncartCloudBientot, empreinte d'App.jsx) et le
+  périmètre (les 3 fichiers Cloud modifiés + `_shared/publication-programmee.js` de 552398e, ajout sans effet côté app,
+  déjà servi par le serveur et le web).
+- Poste de Nico : toujours sur ARRÊT (dernier signe 15:27:53). Poste Cloud vivant (22:35:32).
+- **Aucun essai réel** de ma part sur une plateforme : la lecture du compte se prouve à la reconnexion de Nico. Si une
+  lecture échoue alors qu'il est connecté, la page dit « Termine les étapes… » (jamais un faux « connecté ») et le
+  journal porte `connexion_compte_non_lu` {http, motif}.
+- **En attente du feu vert nommé de Nico** : `supabase/migrations/PROPOSITION_20261101_cloud_connexions_depop.sql.txt`
+  (Depop dans `cloud_connexions`).

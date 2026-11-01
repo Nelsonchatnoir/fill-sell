@@ -1,6 +1,52 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ 01/11/2026 19:35 — LE VRAI PRODUIT EN PLACE, ESSAI DE 48 H SUR LE COMPTE DE NICO (à lire EN PREMIER)
+## ⛔ 01/11/2026 22:40 — FAUX « CONNECTÉ » CORRIGÉS, ESSAI DE 48 H REMIS À ZÉRO (à lire EN PREMIER ; le bloc 19:35 reste valable pour le reste)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 19. Essai de connexion de Nico depuis l'app (21:00 → 21:23) :
+Leboncoin et Depop faussement « connectés » (cookie seul), Beebs + Google refusé par notre liste, effacer muet dans
+« Écrire », eBay « à relier » alors que l'API est reliée. Tout corrigé à la racine (6eb3802), OTA **2.9.149**.
+
+### La règle (Nico, 01/11) : « connecté » = le compte LU par le serveur
+- Cookies présents = seulement le déclencheur ; le serveur lit le compte dans la page de connexion revenue sur le site
+  (`serveur-cloud/src/plateformes.js`, `expressionLectureCompte`). Hors du site : rien n'est lu.
+- Compte lu → « vérifié », la page RESTE ouverte (étape du téléphone, code) jusqu'à « J'ai fini ».
+- L'app quittée (lire un SMS, un courriel) : la page attend 5 min (`REPRISE_MS`), l'app la reprend au retour.
+- Une sauvegarde ordinaire ne relève plus jamais une plateforme non vérifiée ; une plateforme non connectée n'a aucune
+  session dans le profil (purge à chaque ouverture du navigateur et à la fin d'un « Me connecter » raté).
+- eBay : uniquement l'API (« Relié par l'API eBay », aucun bouton) ; le navigateur Cloud intercepte toujours eBay et Opla.
+
+### État à 22:40
+- Orchestrateur **6eb3802** (déployé 22:28:26) ; navigateur rouvert 22:28:33 ; verrou `permises = [vinted]`.
+- Coffre de Nico : **Vinted seul** (+ session FillSell). Leboncoin et Depop remis à « non connecté » à 22:28
+  (`scripts/reparations/20261101_cloud_faux_connectes_nico.sql`, inverse `…_INVERSE.sql`, orchestrateur ARRÊTÉ pour
+  l'un comme pour l'autre). Vinted vraiment connecté : compte 250623918 lu par l'extension Cloud à 21:26:46 (200).
+- Essai de 48 h **remis à zéro à 22:28:49** (`outils/endurance-remise.mjs`) : il part de la première connexion
+  VÉRIFIÉE (`connexion_verifiee` dans `etat/endurance/mesures.jsonl`) ; chaque plateforme a son heure de départ.
+  Bilan : `docker compose exec -T orchestrateur node outils/endurance-bilan.mjs` (`debut_48h`, `fin_prevue`,
+  `plateformes_verifiees`).
+- Poste de Nico : ARRÊT (dernier signe 15:27:53). Aucun achat. Aucun essai réel de ma part sur une plateforme.
+
+### Ce que Nico refait (app à jour 2.9.149 : la quitter complètement puis la rouvrir)
+Réglages › Abonnement › FillSell Cloud › « Connecter mes plateformes », puis :
+1. **Vinted** « Me reconnecter » : rien à taper ; « compte vérifié » en quelques secondes → « J'ai fini ».
+2. **Leboncoin** : se connecter ; le SMS du téléphone peut se lire hors de l'app (revenir dans les 5 min) ; « compte
+   vérifié » ET plus rien à faire sur la page → « J'ai fini ».
+3. **Beebs** : « Continuer avec Google » jusqu'au bout ; retour sur Beebs ; « compte vérifié » → « J'ai fini ».
+4. **Depop** : se connecter ; « compte vérifié » → « J'ai fini ».
+5. **eBay** : rien ; la ligne doit dire « Relié par l'API eBay ».
+Si une page reste sur « Termine les étapes demandées par … » alors que tout est fini : le journal porte
+`connexion_compte_non_lu` {http, motif} — lire avant toute autre action.
+
+### À relire au retour (sans boucle)
+- `usage_logs` de Nico : `cloud_connexion_verifiee`, `cloud_connexion_reprise`, `cloud_connexion_fin`.
+- Journal de l'orchestrateur : `connexion_verifiee`, `connexion_compte_non_lu`, `connexion_retour_declare`,
+  `connexion_navigation_refusee`, `connexion_en_attente` / `connexion_reprise`, `sessions_purgees`.
+- En attente du feu vert nommé de Nico : `supabase/migrations/PROPOSITION_20261101_cloud_connexions_depop.sql.txt`
+  (Depop absent de la contrainte de `cloud_connexions` : ses connexions n'y laissent aucune ligne ; sans effet sur le
+  coffre ni sur les 48 h).
+- Google : depuis l'essai Beebs du 01/11, le profil Cloud de Nico garde sa session Google (pages de connexion seules
+  joignables) ; à effacer seulement sur sa demande.
+
+## 01/11/2026 19:35 — LE VRAI PRODUIT EN PLACE, ESSAI DE 48 H SUR LE COMPTE DE NICO (bloc précédent ; la suite est le bloc de 22:40 au-dessus)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 18. Décision de Nico (01/11) : toute la mise en place codée,
 l'essai de 48 h sur le vrai produit, son compte seul, son poste sur ARRÊT, rien pour les autres, aucun achat.
 
