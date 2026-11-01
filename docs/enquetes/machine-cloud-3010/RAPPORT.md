@@ -1026,3 +1026,151 @@ qui passe avec Steel loué. On garde tout le reste identique à l'essai du 01/11
     feu vert ;
   - **bloqué** → ce qui fait passer Steel loué, c'est sa machine ou sa furtivité non documentée. La voie « chez nous »
     est fermée, et la voie Steel loué porte un doute de maquillage.
+
+## 17. Essai steel-browser chez nous (01/11, 15:51 → 16:04) : Leboncoin FORMULAIRE, Beebs GLISSIÈRE — ça passe
+**Feu vert écrit de Nico (01/11)** : Hetzner Cloud cpx42 neuf, à l'heure, 0,40 € TTC au plus, supprimé juste après.
+steel-browser tel que publié, avec écran, injection d'empreinte coupée, aucun résolveur. IP 81.181.239.136, profil neuf,
+« Me connecter » de production. Leboncoin puis Beebs, arrêt au premier blocage. L'option de l'outil est à coder.
+
+**Outil.** `serveur-cloud/outils/essai-me-connecter-steel.mjs` reçoit `--instance=http://127.0.0.1:<port>` :
+- mêmes modes, contre notre steel-browser joint par un tunnel SSH, au lieu d'api.steel.dev ;
+- pas de clé ; extension montée sur le serveur (`api/extensions/fillsell`, comme `navigateur.js`) ;
+- session `{ proxyUrl, skipFingerprintInjection: true, headless: false, blockAds: false, extensions: ['fillsell'] }` ;
+  blockAds est mis à false parce que steel-browser bloque les publicités par défaut, ce que Steel loué ne fait pas ;
+- seule une adresse locale est acceptée.
+
+Lanceur hors dépôt : `fillsell-cloud-proto/essai-steel-oss-0111.mjs` (IP relue à l'API IPRoyal, proxy par l'entrée
+standard).
+
+**Serveur.**
+- Hetzner Cloud cpx42, n° 173977992, nbg1, Ubuntu 24.04, IPv4 2.31.84.215, créé à 15:51:13 (heure de Paris).
+- Installé : Docker 29.1.3, puis l'image `ghcr.io/steel-dev/steel-browser@sha256:b5bd99de…` (3,8 Go, 30 s). La copie
+  Cloud 0.6.164 a été copiée sur le serveur.
+- **Pare-feu Hetzner** n° 11943520 :
+  - entrée : SSH ; sortie : seulement TCP 81.181.239.136:12323 ;
+  - contrôlé : 1.1.1.1:443 fermé, 93.184.215.14:443 fermé, le proxy ouvert ;
+  - posé avant le démarrage du navigateur.
+- Conteneur lancé avec écran Xvfb 1920×1080 (l'image n'en démarre pas elle-même), `CHROME_HEADLESS=false`,
+  `SKIP_FINGERPRINT_INJECTION=true`, sans langue ni fuseau réglés.
+- Navigateur : **Chromium 156.0.8078.73 de Debian 12**, le même numéro que Steel loué (« Chrome/156.0.8078.73 »).
+
+**Écart demandé à Nico avant l'essai (sa réponse : « avec 3D, comme Steel loué »).**
+- Tel que publié, steel-browser démarre la 3D (WebGL) **coupée** : vérification sans réseau à 15:53, WebGL `null`,
+  rendu « disabled ». Steel loué, lui, a la 3D par SwiftShader.
+- Deux réglages de lancement rendent exactement la même 3D que Steel loué : `FILTER_CHROME_ARGS="--disable-gpu
+  --use-gl=swiftshader"` et `CHROME_ARGS="--use-angle=swiftshader --enable-unsafe-swiftshader"`.
+- Vérifié à 15:54 : WebGL « ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader
+  driver) », même nom que Steel loué. Le reste : extension présente, 1920×1080, UTC, en-US, 8 cœurs, `webdriver` false,
+  0 plugin.
+- Ce n'est pas du maquillage : le moteur dessine vraiment, aucune valeur n'est inventée.
+- Écarts restants avec Steel loué : fuseau UTC au lieu de New York, 8 cœurs au lieu de 6.
+
+**Poste de Nico** (sur ARRÊT par sa décision).
+- Relu à 16:02 : il s'est réveillé de 15:27:53 à 15:28:16 (sonde Vinted, messagerie Vinted, Leboncoin et Depop), puis
+  plus rien.
+- Pendant l'essai et jusqu'à 16:04:43 : 0 job, 0 relevé, 0 `usage_logs`. Le seul relevé de messagerie est celui d'eBay
+  à 15:47, venu de la tâche planifiée serveur.
+
+**Essai à blanc** (proxy mort, 16:01) : le parcours complet tourne.
+
+**L'essai** (16:03:11 → 16:04:13, session `steel-browser` locale, rendue).
+
+| Plateforme | Verdict | Détail |
+|---|---|---|
+| Leboncoin | **FORMULAIRE** (passe) | À 5 s, « Vérification de l'appareil » (cadre DataDome `interstitial`). À 12 et 25 s, « Connectez-vous ou créez votre compte leboncoin » ; cadres anti-fraude de Leboncoin chargés (`fsta.leboncoin.info`, `online-metrix.net`). 612 images en 25 s. |
+| Beebs | **GLISSIÈRE** (passe avec vérification) | `/fr/auth` : « Slide right to secure your access ». ID d1a81187-ceed-0a2c-f76f-c8d7001fb40d. Même page à 5, 12 et 25 s. |
+
+Images et bilan, hors dépôt : `fillsell-cloud-proto/essai-steel-oss-0111/variante-webgl/`.
+
+**Fin.**
+- 16:04 : conteneur et extension retirés, puis le serveur n° 173977992 supprimé, son IPv4 avec lui. Pare-feu
+  n° 11943520 supprimé.
+- Relu par l'API : il ne reste que `fillsell-cloud-1`.
+- **Coût réel** : ≈ 13 min, facturées 1 heure entamée : 0,1114 + 0,0008 = 0,1122 € HT, soit **0,13 € TTC**. IP déjà
+  payée.
+
+**Lecture.**
+- Le même Chromium de Debian, avec la même 3D logicielle, passe depuis une machine Hetzner neuve exactement comme Steel
+  loué.
+- Ni la machine de Steel ni sa « furtivité avancée » ne sont nécessaires. Ce qui bloquait le 30/10, c'était notre
+  environnement :
+  - Google Chrome, configuré et lancé à notre façon ;
+  - ou l'ancien steel-browser sans 3D ;
+  - brûlés par les 403.
+- Non prouvé : la durée (cookies, jobs, glissières répétées), et l'effet de la langue et du fuseau réels de
+  l'utilisateur : l'essai a tourné en UTC et en-US.
+
+### 17.1 Ancien serveur `fillsell-cloud-1` : modèle, prix, contenu (rien supprimé)
+- **Modèle** : Hetzner Cloud **cx43** (8 vCPU partagés, 16 Go, 160 Go de disque), Falkenstein (fsn1), n° 168804683,
+  créé le 05/10, IPv4 178.105.24.16 (+ IPv6).
+- **Prix** : 15,99 € HT + IPv4 0,50 € HT = **16,49 € HT, soit 19,79 € TTC par mois**.
+- Le type cx43 est **en rupture** à fsn1, nbg1 et hel1 (API, 15:30 et 16:10). Consigne de Nico : ne pas le supprimer et
+  proposer une réinstallation à neuf pour la production.
+- **Contenu relu** (lecture seule, 15:48) :
+
+  | Élément | Ailleurs ? |
+  |---|---|
+  | code déployé (`paquets/`, `deploiement/`, `extension*/`), images Docker | tout se reconstruit depuis le dépôt |
+  | `cle-extension-cloud.pem` | même clé que `fillsell-cloud-proto/extension-key.pem` (empreinte de la clé publique identique) |
+  | `.env` : SUPABASE_URL, clé de service, IPROYAL_* | empreintes identiques à Supabase ou à `secrets.env` |
+  | `.env` : `COFFRE_CLE` (v2) et `TICKETS_CLE` | **seulement sur ce serveur** |
+  | 27 captures des essais du 30/10 (`essais/`, 1,4 Mo) | **hors dépôt** ; leurs résultats sont écrits dans le rapport du lot D |
+  | profil Chrome du compte de Nico (213 Mo, connexions Vinted et Depop du 30/10) | **seulement ici** |
+
+  - Sans `COFFRE_CLE`, la seule ligne du coffre (session FillSell Cloud de Nico, clé v2) devient illisible ; elle se
+    refait quand le Cloud repart.
+  - `TICKETS_CLE` se régénère sans perte.
+- **Proposition (non faite, attend le feu vert)** : réinstaller le serveur à neuf par l'API Hetzner (`rebuild`,
+  Ubuntu 24.04, disque effacé). L'IP et le nom `cloud.fillsell.app` restent, aucun surcoût.
+  - Avant : copier les 27 captures dans `fillsell-cloud-proto/archives-ancien-serveur/`.
+  - Après : nouvelle `COFFRE_CLE`, ligne du coffre de Nico effacée par un script de réparation (sauvegarde + inverse).
+  - Il devient le premier serveur de production (palier 1 ci-dessous).
+
+### 17.2 Plan de serveurs stable, du 1er au 50e abonné Cloud (à faire seulement si l'endurance de 48 h passe)
+Règles :
+- catalogue normal seulement, lu le 01/11 vers 16:10 ;
+- coûts TTC sans récupération de TVA ; IP IPRoyal 4,64 € par abonné ;
+- ce qui reste = 14,40 € (Stripe) ou 10,50 € (Apple) − coût par abonné ;
+- capacité **estimée** à ≈ 1 Go de mémoire par navigateur (05/10 : 13 sur cx43). À mesurer pendant l'endurance de 48 h.
+
+| Abonnés | Serveurs | Utilisateurs par serveur | € TTC / mois | Coût par abonné (bas → haut du palier) | Reste Stripe | Reste Apple |
+|---|---|---|---|---|---|---|
+| 1 à 10 | cx43 existant, réinstallé | 10 | 19,79 | 24,43 (1) · 11,24 (3) · 8,60 (5) · **6,62 (10)** | − 10,03 → **+ 7,78** | − 13,93 → **+ 3,88** |
+| 11 à 16 | cx43 + 1 cpx32 (4 vCPU, 8 Go, **disponible**) | 10 + 6 | 62,98 | 10,37 (11) → 8,58 (16) | + 4,03 → + 5,82 | + 0,13 → + 1,92 |
+| 17 à 22 | cx43 + 2 cpx32 | 10 + 6 + 6 | 106,17 | 10,89 (17) → 9,47 (22) | + 3,51 → + 4,93 | − 0,39 → + 1,03 |
+| 23 à 50 | cx43 + **AX42** dédié (Ryzen 7 PRO 8700GE 8 c / 16 f, 64 Go, au catalogue) ; les cpx32 sont rendus | 10 + 40 | 138,59 + 58,80 une fois | 10,67 (23) · 9,26 (30) · 8,10 (40) · **7,41 (50)** | + 3,73 → + 6,99 | − 0,17 → + 3,09 |
+
+- **Seuils** : rentable dès 3 abonnés Stripe ou 4 Apple. Passé ce démarrage, seuls deux creux restent légèrement négatifs côté Apple, au
+  17e et au 23e abonné (− 0,39 € et − 0,17 €).
+- **Passage aux dédiés : au 23e abonné.** C'est le moment où un 3e cpx32 (149,36 €) coûterait plus que l'AX42 + cx43
+  (138,59 €).
+  - Il faut commander l'AX42 quelques jours avant (API Robot ; mise en service 58,80 € TTC une fois), puis l'installer
+    avec le même déploiement et le même pare-feu.
+  - **Migration** : seulement les ≤ 12 abonnés des cpx32 ; les 10 du cx43 restent.
+    - Pour chacun, la nuit : arrêt de son navigateur, copie de son profil (≈ 0,2 Go), redémarrage sur l'AX42 avec la
+      **même IP IPRoyal**. Coupure ≈ 2 min par abonné, sans reconnexion normalement.
+    - Risque : la machine vue change (nombre de cœurs). Leboncoin ou Beebs peuvent redemander une glissière, que
+      l'abonné passe dans « Me connecter » (notification).
+- **À construire avant le 11e abonné** : la répartition des comptes entre plusieurs serveurs.
+  - Le schéma note déjà le serveur de chaque compte (`cloud_postes.serveur`).
+  - Mais l'orchestrateur sert tous les comptes autorisés, et l'app ne connaît qu'une adresse (`cloud.fillsell.app`).
+- **Au-delà de 50** : un 2e AX42 (40 de plus) ; même migration, ou pas de migration si les nouveaux y vont directement.
+- Disponibilité :
+  - cx43 et cx53 en rupture : on garde l'existant, on n'en rachète pas ;
+  - cpx32 et cpx42 disponibles à fsn1, nbg1, hel1 ;
+  - AX42 au catalogue et commandable par l'API Robot, qui ne publie pas de stock.
+
+**Plan B si Hetzner manque de stock** (catalogue normal, France ; chaque nouvelle machine passe d'abord le même essai à
+0,40 €) :
+
+| Rôle | Offre | Prix lu le 01/11 | Disponibilité lue | Coût par abonné |
+|---|---|---|---|---|
+| petits paliers | **OVHcloud VPS-3** (6 vCores, 12 Go, 100 Go NVMe ; Gravelines, Strasbourg, Roubaix) | 12,24 € HT sans engagement → 14,69 € TTC | catalogue public (stock non publié pour les VPS) | ≈ 8 abonnés : 6,48 € |
+| dédié | **OVHcloud RISE-M** (Ryzen 9 9900X 12 c / 24 f, 64 Go DDR5, 2 × 512 Go NVMe) | 99,99 € HT/mois + 99,99 € HT d'installation → 119,99 € TTC + 119,99 € une fois | **Gravelines et Roubaix : « 1H-high »** (livrable en 1 h, stock élevé), API de disponibilité OVH | ≈ 50 abonnés : 7,04 € |
+| dédié, plus petit | OVHcloud RISE-S (Ryzen 7 9700X, 64 Go) | 64,99 € HT + 64,99 € HT → 77,99 € TTC | Gravelines « 1H-low » (peu de stock) | ≈ 40 : 6,59 € |
+
+- Les VPS d'OVH reviennent même moins cher que les cpx de Hetzner pour les petits paliers. Mais **rien n'y est essayé**
+  : la machine ne se voit pas derrière le proxy, mais son nombre de cœurs, si.
+- Conditions d'OVH à relire avant toute commande.
+- Écarté : Scaleway Instances (Paris), PRO2-S 8 vCPU / 32 Go à 163 € HT/mois, trop cher. Elastic Metal EM-A610R
+  (Ryzen 3600, 32 Go, 0,11 € HT/h) : stock illisible sans compte.

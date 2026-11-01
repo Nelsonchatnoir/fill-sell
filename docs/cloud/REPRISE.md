@@ -1,6 +1,57 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ 01/11/2026 15:45 — STEEL LOUÉ = ESSAIS SEULEMENT ; PROCHAIN ESSAI : steel-browser CHEZ NOUS (à lire EN PREMIER)
+## ⛔ 01/11/2026 16:10 — steel-browser CHEZ NOUS : ÇA PASSE (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 17 (essai, ancien serveur, plan de serveurs) ; page de
+décision : `DECISION-0111.md` § 0.
+
+### L'essai (feu vert écrit de Nico, 01/11)
+- **Machine** : Hetzner Cloud cpx42 neuf (n° 173977992, nbg1), créé à 15:51:13, **supprimé à 16:04** avec son pare-feu
+  (n° 11943520). Coût réel : **0,13 € TTC** (1 heure entamée).
+- **Navigateur** : steel-browser v0.5.4 publié (`ghcr.io/steel-dev/steel-browser@sha256:b5bd99de…`), Chromium
+  156.0.8078.73 de Debian, le même numéro que Steel loué.
+  - Avec écran (Xvfb), `SKIP_FINGERPRINT_INJECTION=true`, publicités non bloquées, aucun résolveur, ni langue ni fuseau
+    réglés (UTC, en-US).
+  - **3D logicielle activée comme Steel loué**, par deux réglages de lancement. Nico l'a choisi : publié tel quel, la
+    3D est coupée.
+- **Conditions** : pare-feu de sortie vers 81.181.239.136:12323 seulement (vérifié) ; profil neuf ; « Me connecter » de
+  production ; extension 0.6.164.
+- **Résultat** : **Leboncoin FORMULAIRE** ; **Beebs GLISSIÈRE** (ID d1a81187-ceed-0a2c-f76f-c8d7001fb40d).
+- **Outil** : `essai-me-connecter-steel.mjs --instance=http://127.0.0.1:<port>` (tunnel SSH) ; lanceur hors dépôt
+  `fillsell-cloud-proto/essai-steel-oss-0111.mjs` ; images dans `essai-steel-oss-0111/variante-webgl/`.
+- **Poste de Nico** : sur ARRÊT ; réveillé de 15:27:53 à 15:28:16 (sonde et messagerie), muet avant, pendant et après
+  l'essai (relu à 16:02 et 16:04).
+
+### Ancien serveur `fillsell-cloud-1` : GARDÉ (consigne de Nico : modèle en rupture)
+- **Modèle et prix** : Hetzner Cloud cx43 (8 vCPU, 16 Go, 160 Go, fsn1), 178.105.24.16, **19,79 € TTC/mois**
+  (15,99 + IPv4 0,50 € HT). Le cx43 est en rupture à fsn1, nbg1 et hel1 (relu à 16:09).
+- **Ce qu'il contient d'unique** :
+  - `COFFRE_CLE` v2 : elle ne protège que la ligne « fillsell » du coffre de Nico ;
+  - `TICKETS_CLE`, régénérable ;
+  - 27 captures des essais du 30/10 ;
+  - le profil Chrome de Nico.
+  Tout le reste est dans le dépôt, dans `secrets.env` ou dans Supabase (empreintes comparées).
+- **Proposé, attend le feu vert** : copier les captures hors dépôt, puis réinstaller à neuf (`rebuild` Ubuntu 24.04).
+  L'IP est gardée. Ensuite, nouvelle `COFFRE_CLE` et ligne du coffre de Nico effacée par un script de réparation.
+  Il devient le serveur de production des abonnés 1 à 10.
+
+### Plan de serveurs (§ 17.2), si l'endurance de 48 h passe
+- **1–10** : cx43 réinstallé, 6,62 € par abonné à 10.
+- **11–22** : + cpx32 (disponible) par tranche de 6.
+- **23–50** : cx43 + AX42 dédié, 7,41 € à 50, + 58,80 € une fois ; les cpx32 sont rendus et leurs abonnés migrés de
+  nuit (≈ 2 min de coupure, même IP).
+- Ce qui reste par abonné à 50 : **+ 6,99 € (Stripe), + 3,09 € (Apple)**.
+- **À construire avant le 11e abonné** : la répartition des comptes entre serveurs (un orchestrateur sert aujourd'hui
+  tout le monde, une seule adresse `cloud.fillsell.app`).
+- **Plan B (France)** : OVHcloud VPS-3 (6 vCores, 12 Go, 14,69 € TTC) pour les petits paliers ; OVHcloud RISE-M
+  (64 Go, 119,99 € TTC + 119,99 € une fois, Gravelines et Roubaix en stock « 1H-high ») en dédié. Rien n'y est essayé :
+  le même essai à 0,40 € d'abord.
+
+### Ce qui attend Nico
+1. Feu vert séparé : **endurance 48 h** (≈ 6,46 € TTC de cpx42, ou 0 € sur le cx43 réinstallé).
+2. Feu vert : réinstallation à neuf de `fillsell-cloud-1` (et copie des captures).
+3. Rien d'autre n'est acheté ni lancé. Steel loué : seulement pour des essais.
+
+## 01/11/2026 15:45 — STEEL LOUÉ = ESSAIS SEULEMENT (bloc précédent ; l’essai chez nous est fait, bloc de 16:10 au-dessus)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 16 ; page de décision mise à jour : `DECISION-0111.md`.
 Rien n'est acheté.
 

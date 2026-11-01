@@ -11,6 +11,10 @@
 //        plateforme jointe) — pour éprouver l'outil sur Steel
 //   node serveur-cloud/outils/essai-me-connecter-steel.mjs <sortie> < proxy      L'ESSAI (URL du proxy sur l'entrée
 //        standard : jamais en argument, jamais affichée)
+//   … --instance=http://127.0.0.1:13000   (01/11, feu vert de Nico) les mêmes modes contre NOTRE steel-browser (logiciel
+//        libre, auto-hébergé, joint par un tunnel SSH) au lieu d'api.steel.dev : pas de clé, l'extension est montée sur
+//        le serveur (api/extensions/fillsell, comme navigateur.js), session avec écran, injection d'empreinte coupée,
+//        publicités NON bloquées (steel-browser les bloque par défaut, pas Steel loué), aucun résolveur (il n'en a pas).
 //
 // Ce qui est celui de la production : la copie Cloud de l'extension, profil NEUF (aucun profil Steel chargé ni gardé),
 // et « Me connecter » de src/connexion.js piloté par CDP (format téléphone, images, un accusé par image comme l'app).
@@ -48,16 +52,19 @@ const envoyerExtension = process.argv.includes('--envoyer-extension');
 const verifier = process.argv.includes('--verifier');
 const aBlanc = process.argv.includes('--a-blanc');
 const seulement = process.argv.find((a) => a.startsWith('--seulement='))?.slice(12).split(',') ?? ['leboncoin', 'beebs'];
-const cle = process.env.STEEL_API_KEY ?? '';
-if (!sortie || !cle) { console.error('usage : STEEL_API_KEY=… node outils/essai-me-connecter-steel.mjs <sortie> [--envoyer-extension|--verifier|--a-blanc] < proxy'); process.exit(1); }
+const instance = process.argv.find((a) => a.startsWith('--instance='))?.slice(11).replace(/\/+$/, '') || null;
+const EXTENSION_INSTANCE = 'fillsell'; // le dossier monté sur le serveur, comme serveur-cloud/src/navigateur.js
+const cle = instance ? '' : (process.env.STEEL_API_KEY ?? '');
+if (instance && !/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(instance)) { console.error('--instance : seulement une adresse locale (tunnel SSH)'); process.exit(1); }
+if (!sortie || (!cle && !instance)) { console.error('usage : STEEL_API_KEY=… node outils/essai-me-connecter-steel.mjs <sortie> [--envoyer-extension|--verifier|--a-blanc] < proxy'); process.exit(1); }
 if (!existsSync(path.join(EXTENSION, 'manifest.json'))) { console.error('build/extension-cloud absent : node scripts/cloud/build-extension-cloud.mjs'); process.exit(1); }
 await mkdir(sortie, { recursive: true });
 
 /** Appel REST Steel ; l'erreur ne recopie jamais la clé. */
 async function steel(methode, chemin, corps) {
-  const r = await fetch(`${STEEL}${chemin}`, {
+  const r = await fetch(`${instance ? `${instance}/v1` : STEEL}${chemin}`, {
     method: methode,
-    headers: { 'steel-api-key': cle, ...(corps && !(corps instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { ...(instance ? {} : { 'steel-api-key': cle }), ...(corps && !(corps instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) },
     body: corps instanceof FormData ? corps : corps ? JSON.stringify(corps) : undefined,
   });
   const texte = await r.text();
@@ -65,6 +72,7 @@ async function steel(methode, chemin, corps) {
   return texte ? JSON.parse(texte) : {};
 }
 
+if (envoyerExtension && instance) { console.error('--instance : l\'extension est montée sur le serveur, rien à envoyer'); process.exit(1); }
 if (envoyerExtension) {
   const zip = new JSZip();
   const parcourir = async (dossier, prefixe) => {
@@ -95,11 +103,12 @@ const proxyUrl = verifier || aBlanc ? PROXY_MORT : await lireEntree();
 if (!verifier && !aBlanc && !/^http:\/\/[^@\s]+@\d+\.\d+\.\d+\.\d+:\d+$/.test(proxyUrl)) { console.error('proxy illisible sur l\'entrée standard'); process.exit(1); }
 const fichierExtension = path.join(sortie, 'extension-steel.json');
 const extensionSteel = existsSync(fichierExtension) ? JSON.parse(await readFile(fichierExtension, 'utf8')).id : null;
-if (!extensionSteel) { console.error('copie Cloud pas encore envoyée à Steel : --envoyer-extension d\'abord'); process.exit(1); }
+if (!extensionSteel && !instance) { console.error('copie Cloud pas encore envoyée à Steel : --envoyer-extension d\'abord'); process.exit(1); }
 const fichierBilan = path.join(sortie, verifier ? 'bilan-verification.json' : aBlanc ? 'bilan-a-blanc.json' : 'bilan.json');
 if (!verifier && !aBlanc && existsSync(fichierBilan)) { console.error(`essai déjà fait (${fichierBilan}) : un essai = une fois`); process.exit(1); }
 
-const bilan = { mode: verifier ? 'verification' : aBlanc ? 'a_blanc' : 'essai', debut: new Date().toISOString(), plateformes: {} };
+const bilan = { mode: verifier ? 'verification' : aBlanc ? 'a_blanc' : 'essai', moteur: instance ? 'steel-browser auto-hébergé' : 'steel.dev',
+  debut: new Date().toISOString(), plateformes: {} };
 let session = null;
 let cdp = null;
 
@@ -115,15 +124,18 @@ const EXPRESSION_VERIFICATION = `(() => {
 
 try {
   // 1. La session Steel : profil neuf (aucun profileId, rien gardé), déguisement coupé, aucun résolveur.
-  session = await steel('POST', '/sessions', {
-    timeout: SESSION_MS,
-    proxyUrl,
-    solveCaptcha: false,
-    stealthConfig: { skipFingerprintInjection: true },
-    extensionIds: [extensionSteel],
-  });
+  session = await steel('POST', '/sessions', instance
+    ? { proxyUrl, skipFingerprintInjection: true, headless: false, blockAds: false, extensions: [EXTENSION_INSTANCE] }
+    : {
+      timeout: SESSION_MS,
+      proxyUrl,
+      solveCaptcha: false,
+      stealthConfig: { skipFingerprintInjection: true },
+      extensionIds: [extensionSteel],
+    });
   bilan.session = { id: session.id, region: session.region ?? null, creee_le: session.createdAt ?? null };
-  cdp = await connecterCdp(`wss://connect.steel.dev?apiKey=${encodeURIComponent(cle)}&sessionId=${encodeURIComponent(session.id)}`, { delaiAppelMs: 90_000 });
+  cdp = await connecterCdp(instance ? `${instance.replace(/^http/, 'ws')}/`
+    : `wss://connect.steel.dev?apiKey=${encodeURIComponent(cle)}&sessionId=${encodeURIComponent(session.id)}`, { delaiAppelMs: 90_000 });
   const version = await cdp.send('Browser.getVersion').catch(() => null);
   bilan.navigateur = version?.product ?? null;
   // 2. L'extension Cloud doit être là AVANT toute page (sinon : arrêt, aucune plateforme ouverte).
@@ -197,7 +209,7 @@ try {
     if (seulement.includes('beebs')) await essayer('beebs');
   }
 } catch (e) {
-  bilan.erreur = String(e?.message ?? e).replaceAll(cle, '***').slice(0, 300);
+  bilan.erreur = (cle ? String(e?.message ?? e).replaceAll(cle, '***') : String(e?.message ?? e)).slice(0, 300);
 } finally {
   try { cdp?.fermer(); } catch { /* déjà parti */ }
   // La session est TOUJOURS rendue (facturée à la seconde) ; puis son compteur relu, preuve du coût.

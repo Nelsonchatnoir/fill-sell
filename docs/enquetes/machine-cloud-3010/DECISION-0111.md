@@ -1,4 +1,14 @@
-# Cloud — la décision, sur une page (01/11/2026, mise à jour de 15:40)
+# Cloud — la décision, sur une page (01/11/2026, mise à jour de 16:10)
+
+## 0. 16:10 — l'essai « steel-browser chez nous » PASSE (rapport § 17)
+- Serveur : Hetzner Cloud cpx42 neuf, steel-browser publié, avec écran, injection d'empreinte coupée, aucun résolveur,
+  3D logicielle comme Steel loué (choix de Nico), IP 81.181.239.136.
+- Résultat : **Leboncoin FORMULAIRE, Beebs GLISSIÈRE**, comme Steel loué. Coût réel 0,13 € TTC ; serveur supprimé.
+- La voie « chez nous » est ouverte : ≈ 6,62 € par abonné sur le cx43 existant, ≈ 7,41 € à 50 abonnés avec un AX42.
+  - Prochain pas : l'**endurance de 48 h** sur ton compte (feu vert séparé).
+  - Plan de serveurs du 1er au 50e abonné : rapport § 17.2.
+- L'ancien serveur (cx43, 19,79 € TTC/mois, modèle en rupture) est gardé. Réinstallation à neuf proposée (§ 17.1).
+- Les sections 1 à 5 ci-dessous datent de 15:40, avant l'essai.
 
 Base : rapport Cloud (`RAPPORT.md`, § 12 à 16) et rapport Mac mini (`docs/enquetes/mac-mini-3110/RAPPORT.md`). Rien n'est
 acheté.
