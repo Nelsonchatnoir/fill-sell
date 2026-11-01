@@ -340,6 +340,8 @@ const code = (t) => t.split('\n').filter((l) => { const s = l.trim(); return s &
     'src/cloud/achatCloud.js': () => true,          // vérifié à l'exécution ci-dessous (rien à la construction)
     'src/cloud/MeConnecterCloud.jsx': () => true,   // monté seulement derrière cloudConnexionVisible (App, ci-dessous)
     'src/cloud/connexion/clientConnexion.js': () => true, // utilisé par MeConnecterCloud seulement (ci-dessous)
+    // (01/11) Le bandeau « reconnecte-toi » : monté par App derrière cloudConnexionVisible seulement (vérifié ici).
+    'src/cloud/BandeauCloudReconnexion.jsx': () => /\{user&&cloudConnexionVisible\(user\.id\)&&\(\s*<BandeauCloudReconnexion /.test(lire('src/App.jsx')),
   };
   const fautifs = fichiers.filter((f) => reseau.test(code(lire(f))) && !(permis[f]?.(code(lire(f)))));
   verifier(fautifs.length === 0, 'src/cloud : tout appel réseau est dans un fichier à entrée gardée', fautifs.join(', '));
