@@ -155,3 +155,11 @@
   demande `FILLSELL_ETAT_COMPTE` (réponse `__fillsellCompte` : vivant, meme) ; seul `meme: false` prouve un autre compte.
 - Essai sur le poste de Nico avec un harnais (copie non livrée : `onInstalled` neutralisé, alarmes effacées) : la méthode
   pour reprouver ce cas — voir le rapport.
+
+## 01/11 après-midi — 0.6.164 : compte de travail délégué (délégation Leboncoin, Louis)
+- Une extension peut travailler pour un SECOND compte FillSell, Leboncoin seulement, quand le serveur le dit (`delegations`
+  au poll, délégation posée des deux côtés dans `beta_flags`) : session propre du compte délégué (`extension-session`,
+  `delegation_pour`) rangée sous `fillsell_session_delegue_<compte>`, jamais la session de l'extension ni la garde
+  anti-bascule ; cycle délégué sous le verrou de flux, après le cycle du compte ; tout s'écrit avec le jeton du compte
+  délégué. Un poste dont le compte délègue (`blocages.leboncoin.etat = "delegue"`) ne touche plus Leboncoin, même de
+  lui-même (sonde, relevé quotidien, pages d'annonce). Détail : `docs/regles/plateformes.md` § 01/11 après-midi.
