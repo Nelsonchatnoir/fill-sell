@@ -1,5 +1,55 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 01/11/2026 15:20 — ESSAI STEEL FAIT, DÉCISION À PRENDRE (à lire EN PREMIER)
+Détail : dépôt `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 15 ; la page de décision :
+`docs/enquetes/machine-cloud-3010/DECISION-0111.md`. Rien n'est acheté.
+
+### Verdict de l'essai Steel (15:07:01 → 15:08:06, un seul essai)
+- Conditions : session `30f8e35b` (région `iad`, 62 s, 0 crédit, rendue), copie Cloud 0.6.164 (HEAD e48cefb), profil
+  neuf, déguisement de Steel coupé, aucun résolveur, IP 3 81.181.239.136 (commande 87004978, fin le 29/11 à 21:00).
+- **Leboncoin : FORMULAIRE.** « Vérification de l'appareil » à 5 s, effacée seule ; formulaire à 12 et 25 s.
+- **Beebs : GLISSIÈRE.** ID e8e40fab-f085-827a-3451-ade3199d07e2.
+- Lecture : Linux en centre de données n'est pas condamné ; c'est NOTRE Chrome Linux de Hetzner qui est repéré (brûleurs
+  du 05/10 au 30/10). Un seul essai : la tenue dans la durée n'est pas prouvée.
+- Images et bilan : `fillsell-cloud-proto/essai-steel-3010/`. Le lanceur refuse un second essai (`bilan.json` existe).
+
+### Poste de Nico
+- Muet côté serveur : impossible dans ses règles (aucun drapeau par compte ; en créer un = redéployer get-pending-jobs
+  pour tout le parc ; l'extension lance aussi ses propres alarmes). Un geste : extension sur ARRÊT dans
+  `chrome://extensions`.
+- Vérifié en base : dernier signe 15:03:59, dernière écriture 15:04:05. Seul le relevé eBay de 15:07:06 a bougé, et il
+  vient de la tâche planifiée serveur `ebay-messagerie-20min` (API eBay).
+- **⚠ À la fin de la session, l'extension de Nico est encore sur ARRÊT** (« plus tard »). À la remise en MARCHE,
+  relire en base : `profiles.extension_last_seen_at` qui avance, jobs et messagerie qui reprennent. Requête :
+  dernier signe, jobs `processing`, `cross_post_jobs` (created/published/last_checked/vu_en_ligne),
+  `vinted_sync_runs`, `messagerie_releves.dernier_le`, `usage_logs` après l'heure de remise.
+
+### La décision (page DECISION-0111.md), en bref (TTC par utilisateur, face aux 20 €)
+- **Steel 24 h/24** : 69 à 83 € → exclu.
+- **Steel à la demande + ronde de 10 min** (liste des commandes Vinted et LBC, rythme de la veille de l'extension) :
+  ≈ 15,5 € en moyenne, 18 € pour 9 utilisateurs sur 10 ; 0 € de coût fixe. Ventes détectées 24 h/24. Il faut une
+  ronde de moins de 1 min 30 s.
+- **Mac mini** : licence macOS bloquante (§ 3.A, 2.I, 2.J).
+- **Windows + carte** (Hetzner 3093130, centron, Azure spot, AX42) : 9,7 à 15,6 € sans RDS, 20,6 à 26,6 € avec RDS
+  (lecture prudente) ; coût fixe 152 à 572 €/mois.
+- **Shadow** : 29,86 €, écarté par Nico.
+- **Recommandation : (a) Steel, à la demande, avec une ronde de 10 min.**
+  - Prochain essai : endurance de 48 h, compte de Nico seul : profil Steel persistant, connexion faite par Nico dans le
+    vrai écran « Me connecter » servi sur son PC, rondes de 10 min.
+  - Coût : **1,06 € TTC au plus** (0,99 $), ≈ 0,54 € attendu ; IP déjà payée ; aucun abonnement.
+  - À préparer d'abord : un outil local, l'enregistrement des sessions Steel coupé, les conditions de Steel lues.
+  - Repli : (d) pause ; (c) seulement après une réponse écrite de Hetzner ou de centron sur la RDS.
+- **En attente du feu vert écrit de Nico** sur la voie et sur l'essai. Rien n'est lancé.
+
+### État inchangé
+- Ancien serveur `fillsell-cloud-1` : orchestrateur arrêté. Aucun serveur loué. Shadow résilié par Nico
+  (renouvellement le 30/11).
+- IP : fixe 1 (fin le 04/11 à 13:57), fixe 2 et IP 3 (fin le 29/11), sans renouvellement ; solde IPRoyal 7,35 $ (relu
+  le 31/10).
+- Steel : copie Cloud 0.6.164 chez Steel (identifiant dnankhhfellobiobloopcjgkdioblpjd).
+
+---
+
 Mis à jour le **05/10/2026, 16:40** (terminal Cloud n° 3, Nico absent, GO
 écrit pour les six étapes). Remplace, pour la suite, le REPRISE du prototype
 (`C:\Users\nicol\fillsell-cloud-proto\REPRISE.md`, qui garde l'histoire du 26/09).

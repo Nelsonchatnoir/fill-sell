@@ -838,3 +838,54 @@ t'écrirai « muet » quand j'aurai coupé l'extension. D'ici là, rien sur Lebo
 **Piste Mac mini (demande de Nico, 31/10, 00:25)** : `docs/enquetes/mac-mini-3110/RAPPORT.md`. La licence macOS ferme
 la voie (location réservée à l'intégration continue ; « service bureau » interdit). Recommandation : pas d'essai avant
 une réponse écrite d'Apple ; décision à Nico.
+
+## 15. Essai Steel du 01/11/2026 : Leboncoin FORMULAIRE, Beebs GLISSIÈRE (pas de blocage)
+Ordre de Nico (01/11) : l'essai Steel préparé au § 14.1, un seul, puis la décision (page à part :
+`docs/enquetes/machine-cloud-3010/DECISION-0111.md`).
+
+**Poste de Nico muet : impossible côté serveur dans ses règles → un geste.**
+- Aucun drapeau par compte ne coupe tout. Ce qui existe ne coupe qu'une partie, avec des effets de bord :
+  - la file en pause (`file_pause`) retient seulement les publications et republications pas encore commencées ;
+  - le blocage Leboncoin (`blocage_acces`) enclenche ensuite un essai et une reprise prudente de 6 h (cadence) ;
+  - « je ne vends pas sur » (`plateformes_ecartees`) annule les demandes en file.
+- En créer un voudrait dire redéployer get-pending-jobs, qui sert tout le parc (« rien sur le parc »). L'extension lance
+  en plus d'elle-même ses alarmes : synchros du jour, lecture signalée toutes les 30 s.
+- Geste demandé à Nico : `chrome://extensions`, carte FillSell sur ARRÊT.
+- Avant l'essai, à 14:57, son poste travaillait (vu à 14:55:59 ; 26 annonces touchées et 5 relevés de messagerie en
+  30 min).
+- Muet vérifié en base :
+  - dernier signe à 15:03:59, dernière écriture du poste à 15:04:05 (fin d'un relevé de messagerie) ;
+  - relu à 15:06:52 : 0 job, 0 relevé, 0 messagerie, 0 `usage_logs` depuis 15:04:05 ;
+  - relu à 15:13:16 : rien d'autre que le relevé eBay de 15:07:06, venu de la tâche planifiée serveur
+    `ebay-messagerie-20min` (`7-59/20 * * * *`, API eBay), pas du poste.
+- Remise en service : Nico a répondu « plus tard ». Extension encore sur ARRÊT à la fin de la session (voir REPRISE).
+
+**Avant l'essai (aucune plateforme jointe).**
+- La copie Cloud a été refaite depuis HEAD e48cefb : 0.6.164, BUILD_ID `2026-11-01T13:55:48Z+e48cefb-cloud`. Elle a
+  remplacé chez Steel la 0.6.160 (`PUT`).
+- Vérification (proxy mort, session `3bc29ff3`, 2 s, 0 crédit) : extension présente, Chrome 156.0.8078.73,
+  SwiftShader, Linux x86_64, 1920×1080, America/New_York, en-US, `webdriver` false. Mêmes conditions qu'au 31/10.
+
+**L'essai** (session `30f8e35b`, région `iad`, 15:07:01 → 15:08:06, 62 s, 0 crédit, session rendue, 5,3 Mo de proxy).
+- Conditions : profil neuf, déguisement de Steel coupé, aucun résolveur, IP 3 81.181.239.136 (commande 87004978) ;
+  « Me connecter » de production, format téléphone, une ouverture par plateforme.
+
+| Plateforme | Verdict | Détail |
+|---|---|---|
+| Leboncoin | **FORMULAIRE** (passe) | À 5 s, « Vérification de l'appareil… » (cadre DataDome `interstitial`), qui s'efface seule. À 12 s et 25 s, « Connectez-vous ou créez votre compte leboncoin », champ e-mail, Apple, Google. 486 images transmises en 25 s. |
+| Beebs | **GLISSIÈRE** (passe avec vérification) | `/fr/auth` : « Verification Required — Slide right to secure your access » (en anglais : navigateur en-US). Même page à 5, 12 et 25 s. ID e8e40fab-f085-827a-3451-ade3199d07e2. |
+
+Images et bilan, hors dépôt : `fillsell-cloud-proto/essai-steel-3010/` (`essai-*.jpg`, `bilan.json`).
+
+**Lecture.**
+- Le navigateur Steel (Linux, sans carte graphique, aux États-Unis) passe là où notre Chrome Linux de Hetzner était
+  bloqué d'emblée, même sur une machine neuve avec une IP neuve (§ 7). Linux en centre de données n'est donc pas
+  condamné en soi : c'est notre environnement qui est repéré. Cause la plus probable : les visites des brûleurs (§ 7),
+  du 05/10 au 30/10, toutes sous la même empreinte.
+- Un seul essai ne sépare pas « empreinte grillée » de « configuration repérable ». Steel diffère aussi par sa version de
+  Chrome, son fuseau et sa langue.
+- Leboncoin est même plus ouvert que sur Windows à vraie carte (glissière sur le PC de Nico et sur Shadow).
+- Le « Me connecter » de production a piloté le Chrome de Steel sans changement : images, gestes, fermeture. La
+  connexion et la glissière en direct depuis l'app sont donc compatibles avec Steel.
+- Non prouvé : la tenue dans la durée (jobs réels, cookies gardés d'une session à l'autre, glissières à répétition), et
+  la connexion Beebs une fois la glissière passée.
