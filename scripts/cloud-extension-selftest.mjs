@@ -65,6 +65,21 @@ ok(!bg.includes('connexionCloudPresente'), 'la sonde de l’extension du parc (b
   ok(await verifier('vinted', [{ domain: 'vinted.fr', name: 'access_token_web', value: jwt({ sub: 7 }) }, { domain: 'vinted.fr', name: 'refresh_token_web', value: 'r' }]) === true, 'Vinted jeton + refresh : connectée');
   ok(await verifier('depop', [{ domain: 'depop.com', name: 'access_token', value: 't' }]) === true && await verifier('depop', []) === false, 'Depop : access_token présent / absent');
   ok(await verifier('ebay', []) === false, 'plateforme hors Cloud : jamais « connectée »');
+  // (02/11, 00:00) Chromium 156 : getAll ne rend pas un cookie posé SANS « Secure » depuis https (les jetons de Beebs) ;
+  // get({ url, name }) le rend. Beebs connectée n'était jamais vue : 14 visites refusées, sa republication jamais commencée.
+  const verifierCache = async (pf, visibles, parAdresse) => {
+    const chrome = { cookies: {
+      getAll: async ({ domain }) => visibles.filter((c) => c.domain === domain),
+      get: async ({ url, name }) => parAdresse.find((c) => url.includes(c.domain) && c.name === name) ?? null,
+    } };
+    const f = new Function('chrome', 'atob', `${SOURCE_CONNEXION_CLOUD}; return connexionCloudPresente;`)(chrome, (s) => Buffer.from(s, 'base64').toString('binary'));
+    return f(pf);
+  };
+  const jetonBeebs = { domain: 'www.beebs.app', name: 'access_token', value: jwt({ sub: 'u1', firebase: { sign_in_provider: 'google.com' } }) };
+  ok(await verifierCache('beebs', [{ domain: 'beebs.app', name: 'axeptio_cookies', value: 'x' }], [jetonBeebs]) === true,
+    'Beebs : le jeton invisible à getAll (sans « Secure ») est lu par son adresse → connectée');
+  ok(await verifierCache('beebs', [], []) === false, 'Beebs sans jeton nulle part : non connectée');
+  ok(await verifierCache('leboncoin', [], [{ domain: 'auth.leboncoin.fr', name: '__Secure-Login', value: 'a' }]) === true, 'Leboncoin : __Secure-Login de auth.leboncoin.fr lu par son adresse');
 }
 
 // (01/11) LE VERROU DES PLATEFORMES dans la copie Cloud : fetch, onglets et fenêtres ouverts par l'extension

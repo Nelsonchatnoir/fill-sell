@@ -46,22 +46,37 @@ const L = (a) => '[' + a.map((x) => JSON.stringify(x)).join(', ') + ']';
 // estConnectee (serveur-cloud/src/plateformes.js) : Vinted = jeton d'accès portant un utilisateur + refresh token ;
 // Leboncoin = __Secure-Login ; Beebs = jeton d'accès d'un utilisateur non invité ; Depop = access_token.
 // Exporté pour l'autotest, qui l'exécute sur des cookies fabriqués.
+// (02/11, 00:00) chrome.cookies.getAll ne rend PAS un cookie posé SANS « Secure » depuis une page https (Chromium 156,
+// cookies liés au schéma : secure faux, sourceScheme « Secure ») — c'est le cas des jetons de Beebs (access_token,
+// refresh_token). Beebs était dit « non connecté » par ce verrou alors que sa session était là : 14 visites refusées,
+// la republication Beebs de Nico jamais commencée (« lecture_impossible »). chrome.cookies.get({ url, name }) les rend :
+// chaque cookie de connexion se lit aussi par son adresse (www, le domaine, auth.).
 export const SOURCE_CONNEXION_CLOUD = `async function connexionCloudPresente(pf) {
   const domaine = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", beebs: "beebs.app", depop: "depop.com" }[pf];
   if (!domaine) return false;
   const cookies = await chrome.cookies.getAll({ domain: domaine }).catch(() => []);
-  const val = (nom) => String((cookies ?? []).find((c) => c.name === nom)?.value ?? "").trim();
+  const origines = ["https://www." + domaine + "/", "https://" + domaine + "/", "https://auth." + domaine + "/"];
+  const val = async (nom) => {
+    const c = (cookies ?? []).find((x) => x.name === nom);
+    if (c) return String(c.value ?? "").trim();
+    if (typeof chrome.cookies.get !== "function") return "";
+    for (const url of origines) {
+      const x = await chrome.cookies.get({ url, name: nom }).catch(() => null);
+      if (x && String(x.value ?? "").trim()) return String(x.value).trim();
+    }
+    return "";
+  };
   const jwt = (v) => { try { return JSON.parse(atob(String(v).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); } catch { return null; } };
-  if (pf === "vinted") return Boolean(jwt(val("access_token_web"))?.sub) && val("refresh_token_web").length > 0;
-  if (pf === "leboncoin") return val("__Secure-Login").length > 0;
+  if (pf === "vinted") return Boolean(jwt(await val("access_token_web"))?.sub) && (await val("refresh_token_web")).length > 0;
+  if (pf === "leboncoin") return (await val("__Secure-Login")).length > 0;
   if (pf === "beebs") {
-    const cl = jwt(val("access_token"));
+    const cl = jwt(await val("access_token"));
     if (!cl) return false;
     const role = String(cl.role ?? cl.type ?? cl.user_type ?? "").toLowerCase();
     const anonyme = [cl.provider_id, cl.firebase?.sign_in_provider].some((p) => String(p ?? "").toLowerCase() === "anonymous");
     return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !anonyme && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
   }
-  if (pf === "depop") return val("access_token").length > 0;
+  if (pf === "depop") return (await val("access_token")).length > 0;
   return false;
 }`;
 
