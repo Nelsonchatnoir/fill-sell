@@ -103,6 +103,7 @@ function poste({ ancienneRegle = false } = {}) {
     async function appliquerMajSiSansRisque() { return false; }
     async function envoyerTraceMajSiBesoin() {} async function verifierCopieDevSurDisque() {} async function verifierMiseAJourSiDue() {}
     async function traiterRelevesEnAttente() {} async function traiterCommandeSyncDistante() {}
+    function lancerCycleDelegue() {}   // (01/11, 0.6.164) le cycle des comptes délégués : hors du sujet de ce test
     function attendre(ms) { return new Promise((r) => setTimeout(r, ms)); }
     // Le cycle, réduit à ce qui compte ici : get-pending-jobs (3,3 s), les relances que le cycle peut demander (aux
     // mêmes sites que pollAndProcessJobsUnlocked), puis la maintenance — ou le verrou cédé aux demandes qui attendent.

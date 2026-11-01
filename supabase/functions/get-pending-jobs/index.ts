@@ -205,6 +205,7 @@ import { republicationFinie, champsRepublicationFinie } from "../_shared/republi
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
 import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive } from "../_shared/blocage-leboncoin.js";
 import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc, gardeVirtuelleLbc, lbcVirtuelAutorise } from "../_shared/poste-virtuel.js";
+import { executantLbcDeclare, nomExecutantLbc, comptesExecutesLbc, delegationLbcValide, etatLePlusPrudent, messageDelegationLbc, messageTacheDelegueeEnAttente, PLATEFORME_DELEGUEE } from "../_shared/delegation-leboncoin.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
@@ -622,6 +623,67 @@ serve(async (req) => {
     if (includeProcessing) statuses.push("processing");
     if (includeNeedsUser) statuses.push("needs_user");
 
+    // ══ (01/11, décision de Nico — Louis) DÉLÉGATION LEBONCOIN PAR COMPTE (_shared/delegation-leboncoin.js) ══════
+    // Trois cas, tous lus dans profiles.beta_flags (fermé en écriture au client), les DEUX côtés exigés :
+    //   · delegationLbc : ce poll vient du COMPTE DE TRAVAIL DÉLÉGUÉ que l'extension de l'exécutant (Amiral) ouvre pour
+    //     le propriétaire (louis-seller) — jeton du propriétaire, jeton de l'exécutant dans le corps comme preuve. Ne
+    //     reçoit que Leboncoin (tâches, relevés, connexion) ; sa pause Leboncoin suit aussi celle de l'exécutant ;
+    //   · proprietaireDelegue : ce poll vient d'un poste du propriétaire lui-même (sa machine virtuelle) — plus RIEN de
+    //     Leboncoin, et la réponse « blocages » coupe ses propres lectures Leboncoin ;
+    //   · delegationsExecutees : ce poll vient de l'exécutant — la réponse lui dit pour quels comptes ouvrir le compte
+    //     de travail. Sans ces clés (tous les autres comptes) : une lecture de plus, rien d'autre ne change.
+    let delegationLbc: { executant: string; nom: string | null } | null = null;
+    let proprietaireDelegue: { executant: string; nom: string | null } | null = null;
+    const delegationsExecutees: Array<{ compte: string; plateformes: string[] }> = [];
+    {
+      const adminD = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const flagsDe = async (id: string): Promise<Record<string, unknown> | null> => {
+        const { data, error } = await adminD.from("profiles").select("beta_flags").eq("id", id).maybeSingle();
+        if (error) throw error;
+        return ((data as { beta_flags?: Record<string, unknown> } | null)?.beta_flags ?? null) as Record<string, unknown> | null;
+      };
+      const jetonExecutant = typeof body?.delegation?.executant_jeton === "string" ? String(body.delegation.executant_jeton) : "";
+      if (jetonExecutant) {
+        // Un poll qui se DIT délégué et ne le prouve pas ne reçoit rien (jamais un repli sur la file entière).
+        let valide = false;
+        try {
+          const clientEx = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
+            { global: { headers: { Authorization: `Bearer ${jetonExecutant}` } } });
+          const { data: { user: ex } } = await clientEx.auth.getUser();
+          if (ex?.id) {
+            const flagsP = await flagsDe(user.id);
+            const flagsE = await flagsDe(ex.id);
+            if (delegationLbcValide({ proprietaire: user.id, flagsProprietaire: flagsP, executant: ex.id, flagsExecutant: flagsE })) {
+              delegationLbc = { executant: ex.id, nom: nomExecutantLbc(flagsP) };
+              valide = true;
+            }
+          }
+        } catch (_e) { valide = false; }
+        if (!valide) {
+          console.warn(`[get-pending-jobs] userId=${user.id} : poll délégué Leboncoin NON prouvé — rien n'est servi`);
+          return json({ jobs: [], sync_commands: [], sync_commands_annonces: [], connexion_commands: [], delegation_refusee: true });
+        }
+        console.log(`[get-pending-jobs] userId=${user.id} : poll du compte de travail délégué (Leboncoin, exécutant ${delegationLbc!.executant.slice(0, 8)})`);
+      } else {
+        try {
+          const flagsP = await flagsDe(user.id);
+          const executant = executantLbcDeclare(flagsP);
+          if (executant && delegationLbcValide({ proprietaire: user.id, flagsProprietaire: flagsP, executant, flagsExecutant: await flagsDe(executant) })) {
+            proprietaireDelegue = { executant, nom: nomExecutantLbc(flagsP) };
+          }
+          for (const compte of comptesExecutesLbc(flagsP)) {
+            if (delegationLbcValide({ proprietaire: compte, flagsProprietaire: await flagsDe(compte), executant: user.id, flagsExecutant: flagsP })) {
+              delegationsExecutees.push({ compte, plateformes: [PLATEFORME_DELEGUEE] });
+            }
+          }
+        } catch (e) {
+          // Lecture impossible : le passage se fait comme sans délégation (les autres gardes, dont la machine
+          // virtuelle, restent) ; l'exécutant ne reçoit simplement pas la liste ce passage-ci.
+          console.warn(`[get-pending-jobs] userId=${user.id} : délégation Leboncoin illisible (${String((e as Error)?.message ?? e)})`);
+        }
+      }
+    }
+
     // ── LES CRÉNEAUX, PAR PLATEFORME (2026-09-18) ──────────────────────────
     // Le module planifié est multiplateforme : Vinted, Leboncoin, Beebs, Opla
     // ont CHACUNE leur créneau, leurs jours et leur plafond. Un job Leboncoin
@@ -991,6 +1053,9 @@ serve(async (req) => {
           // (18/10, lot 6) Ce que le poste dit de lui (≥ 0.6.126) : sa boutique Vinted
           // ouverte (vinted_identite) et ses sessions (sessions_poste). Absent : rien.
           Object.assign(patchPoste, patchPosteDuPoll(body));
+          // (01/11) Le compte de travail délégué est un poste du propriétaire, marqué comme tel (carte de synchro,
+          // garde machine virtuelle : il tourne sur l'ordinateur de l'exécutant).
+          if (delegationLbc) (patchPoste as Record<string, unknown>).delegation = { executant: delegationLbc.executant, plateformes: [PLATEFORME_DELEGUEE] };
           const declare = posteAvecOpla || posteSansOpla;
           if (posteAvecOpla) patchPoste.opla_acces = true;
           else if (posteSansOpla) patchPoste.opla_acces = false;
@@ -1026,7 +1091,7 @@ serve(async (req) => {
           //    vivant du compte a l'accès, la preuve du compte ne dit rien de
           //    celui-ci : on ne la lui applique pas.
           const autrePosteAutorise = posteAvecAccesOpla(postes, { saufSession: sessionId, depuisMs: POSTE_TTL_MS });
-          if (!declare && !posteAvecOpla && !autrePosteAutorise) {
+          if (!declare && !posteAvecOpla && !autrePosteAutorise && !delegationLbc) {
             const derniere = Date.parse(String(avant.preuve_opla_cherchee_le ?? ""));
             if (!Number.isFinite(derniere) || Date.now() - derniere > 10 * 60_000) {
               patchPoste.preuve_opla_cherchee_le = patchPoste.le;
@@ -1045,7 +1110,7 @@ serve(async (req) => {
           // Un poste AVEC accès polle : les jobs parqués « Autoriser Opla » (par
           // un autre poste, ou par lui-même avant l'octroi) repartent pour lui —
           // au plus une relance par 10 min et par poste.
-          if (posteAvecOpla) {
+          if (posteAvecOpla && !delegationLbc) {
             const dernier = Date.parse(String(avant.rearme_le ?? ""));
             if (!Number.isFinite(dernier) || Date.now() - dernier > 10 * 60_000) {
               patchPoste.rearme_le = patchPoste.le;
@@ -1055,7 +1120,7 @@ serve(async (req) => {
           }
           // (11/10) Un poste AVEC accès Depop polle : les jobs « Autoriser Depop »
           // repartent pour lui — au plus une relance par 10 min et par poste.
-          if (posteAvecDepop) {
+          if (posteAvecDepop && !delegationLbc) {
             const dernierD = Date.parse(String(avant.rearme_depop_le ?? ""));
             if (!Number.isFinite(dernierD) || Date.now() - dernierD > 10 * 60_000) {
               patchPoste.rearme_depop_le = patchPoste.le;
@@ -1080,7 +1145,9 @@ serve(async (req) => {
       // n'était posé qu'au passage suivant, et jamais si Chrome se fermait
       // entre-temps (moiz12345678912, 04/10).
       if (version) await admin.rpc("noter_version_extension", { p_user_id: user.id, p_version: version });
-      await admin.from("profiles").update(patch).eq("id", user.id);
+      // (01/11) Le compte de travail délégué n'est pas « l'extension du compte » : ni sa présence, ni son build, ni sa
+      // mise à jour en attente ne remplacent ceux des postes du propriétaire (alertes « ordinateur éteint » intactes).
+      if (!delegationLbc) await admin.from("profiles").update(patch).eq("id", user.id);
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
 
     // 28/09 16:46 : appel périodique des ventes automatiques retiré après
@@ -1893,7 +1960,7 @@ serve(async (req) => {
     // déclencheurs « bouton_distant » / « app », les seuls que l'extension installée importe), puis lue juste dessous
     // dans ce même passage. Une fois par compte (la demande est la marque ; les gardes des RPC — cadence, déjà en
     // attente, version — empêchent tout doublon entre postes). coin_config.premiere_synchro_auto = 0 coupe tout.
-    if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing && !includeNeedsUser) {
+    if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing && !includeNeedsUser && !delegationLbc) {
       try {
         const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: cfgP } = await adminP.from("coin_config").select("key, value").in("key", ["premiere_synchro_auto", "premiere_synchro_auto_jours"]);
@@ -1924,7 +1991,9 @@ serve(async (req) => {
         }
       } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
     }
-    if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
+    // (01/11) Le compte de travail délégué ne fait que Leboncoin : jamais le dressing Vinted, ni les redemandes et
+    // reprises de relevés du compte (ses postes à lui s'en chargent, Leboncoin compris quand il est servi ci-dessous).
+    if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing && !delegationLbc) {
       try {
         // Marque en 'expired' les demandes trop vieilles AVANT de lire. Sans
         // cet appel, une demande jamais réclamée resterait 'queued' pour
@@ -1981,7 +2050,7 @@ serve(async (req) => {
     //      dressing) restent juges : un refus d'insertion = rien de posé.
     // Best-effort : jamais un point de panne.
     let relevesRedemandes = 0;
-    if (versionAuMoins(version, "0.6.42") && !includeProcessing && !includeNeedsUser) {
+    if (versionAuMoins(version, "0.6.42") && !includeProcessing && !includeNeedsUser && !delegationLbc) {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const depuis = new Date(Date.now() - 72 * 3600_000).toISOString();
@@ -2047,7 +2116,7 @@ serve(async (req) => {
     // déclarée ou déjà garnie dont le DERNIER relevé dit « absente » — 8 h
     // d'écart, 3 par 24 h au plus, jamais une plateforme écartée. La demande
     // posée part dans CE poll (lecture juste en dessous). Best-effort.
-    if (versionAuMoins(version, "0.6.42") && !includeProcessing && !includeNeedsUser) {
+    if (versionAuMoins(version, "0.6.42") && !includeProcessing && !includeNeedsUser && !delegationLbc) {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: repris } = await admin.rpc("reprendre_releves_absents", { p_user: user.id });
@@ -2075,12 +2144,17 @@ serve(async (req) => {
     if (versionAuMoins(version, "0.6.42") && !includeProcessing) {
       try {
         const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-        const { data: cmds } = await userClient
+        // (01/11) Délégation Leboncoin : le compte de travail délégué ne lit que les relevés Leboncoin, les postes du
+        // propriétaire jamais (ils restent en file pour le compte de travail).
+        let qCmds = userClient
           .from("vinted_sync_runs")
           .select("id, platform, queued_at, declencheur")
           .eq("kind", "annonces")
           .eq("status", "queued")
-          .gte("queued_at", ttl)
+          .gte("queued_at", ttl);
+        if (delegationLbc) qCmds = qCmds.eq("platform", PLATEFORME_DELEGUEE);
+        else if (proprietaireDelegue) qCmds = qCmds.neq("platform", PLATEFORME_DELEGUEE);
+        const { data: cmds } = await qCmds
           .order("queued_at", { ascending: true })
           .limit(4);
         const lues: Array<{ id: unknown; platform: unknown; queued_at: unknown; declencheur?: unknown }> = [];
@@ -2212,7 +2286,10 @@ serve(async (req) => {
             id: String(c.id),
             platform: String(c.platform),
             motif: String(c.declencheur ?? "").split(":")[1] || "connexion",
-          }));
+          }))
+          // (01/11) Délégation Leboncoin : « Me connecter » à Leboncoin s'ouvre chez l'exécutant (sa session), le reste
+          // chez les postes du propriétaire.
+          .filter((c) => delegationLbc ? c.platform === PLATEFORME_DELEGUEE : !(proprietaireDelegue && c.platform === PLATEFORME_DELEGUEE));
         if (connexionCommands.length) {
           console.log(`[get-pending-jobs] userId=${user.id} : ${connexionCommands.length} demande(s) de connexion servie(s) — ${connexionCommands.map((c) => `${c.platform}/${c.motif}`).join(", ")}`);
         }
@@ -2421,23 +2498,30 @@ serve(async (req) => {
         }
       } catch (_e) { /* jamais un point de panne */ }
     }
-    const lireFile = () => userClient
-      .from("cross_post_jobs")
-      .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error")
-      .in("status", statuses)
-      .eq("voie", "extension")
-      .order("created_at", { ascending: true });
+    // (01/11) Le compte de travail délégué ne lit que la file Leboncoin du propriétaire.
+    const lireFile = () => {
+      let q = userClient
+        .from("cross_post_jobs")
+        .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error")
+        .in("status", statuses)
+        .eq("voie", "extension");
+      if (delegationLbc) q = q.eq("platform", PLATEFORME_DELEGUEE);
+      return q.order("created_at", { ascending: true });
+    };
     // ── « DÉJÀ EN LIGNE », source Vinted (2026-09-08, décision Nico) ────────
     // inventaire.vinted_item_id (+ disparu_le, vinted_status) EMBARQUÉ sur ce
     // SELECT par la FK cross_post_jobs_inventaire_id_fkey : un lookup pkey par
     // ligne, aucune requête séparée. POPUP SEUL (include_needs_user) : le poll
     // de fond, toutes les 2 min, lit la file sans l'embed et ne paie rien.
-    const lireFileAvecArticle = () => userClient
-      .from("cross_post_jobs")
-      .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error, inventaire:inventaire_id(vinted_item_id, disparu_le, vinted_status)")
-      .in("status", statuses)
-      .eq("voie", "extension")
-      .order("created_at", { ascending: true });
+    const lireFileAvecArticle = () => {
+      let q = userClient
+        .from("cross_post_jobs")
+        .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error, inventaire:inventaire_id(vinted_item_id, disparu_le, vinted_status)")
+        .in("status", statuses)
+        .eq("voie", "extension");
+      if (delegationLbc) q = q.eq("platform", PLATEFORME_DELEGUEE);
+      return q.order("created_at", { ascending: true });
+    };
     let jobs: Awaited<ReturnType<typeof lireFile>>["data"] = null;
     let jobsErr: Awaited<ReturnType<typeof lireFile>>["error"] = null;
     if (includeNeedsUser) {
@@ -2472,6 +2556,17 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+    // ══ (01/11) DÉLÉGATION LEBONCOIN : CHAQUE POSTE NE VOIT QUE SA PART, DÈS LA LECTURE ══════════════════════════
+    // Le compte de travail délégué (ordinateur de l'exécutant) : Leboncoin seulement. Les postes du propriétaire (sa
+    // machine virtuelle) : tout sauf Leboncoin — ses tâches Leboncoin restent en file pour le compte de travail ; le
+    // message ne se pose que si ce dernier n'a pas été vu depuis 2 h (plus bas, avant la réservation).
+    let lbcLaissesAuDelegue: typeof out = [];
+    if (delegationLbc) {
+      out = out.filter((j) => String(j.platform) === PLATEFORME_DELEGUEE);
+    } else if (proprietaireDelegue) {
+      lbcLaissesAuDelegue = out.filter((j) => String(j.platform) === PLATEFORME_DELEGUEE);
+      if (lbcLaissesAuDelegue.length) out = out.filter((j) => String(j.platform) !== PLATEFORME_DELEGUEE);
+    }
 
     // ══ (31/10, finition du lot F) UN RETRAIT DE LA MÊME ANNONCE CLÔT LA REPUBLICATION EN ATTENTE ══════════
     // (_shared/republication-retrait.js) Vu chez Nico le 31/10 : retrait ciblé de l'annonce Beebs 34269931 ; sa
@@ -5244,6 +5339,8 @@ serve(async (req) => {
       const laisses: string[] = [];
       for (const pf of ["vinted", "leboncoin", "beebs", "opla", "depop"]) {
         if (!emmure(moi, pf, sessionId) || !out.some((j) => j.platform === pf)) continue;
+        // (01/11) Délégation Leboncoin : le compte de travail délégué est le seul poste du compte qui fasse Leboncoin.
+        if (pf === PLATEFORME_DELEGUEE && delegationLbc) continue;
         const autre = Object.entries(postesDuCompte).find(([sid, p]) => {
           if (sid === sessionId) return false;
           const le = Date.parse(String((p as Record<string, unknown>).le ?? ""));
@@ -13604,7 +13701,9 @@ serve(async (req) => {
     // (01/11, Louis) L'exception par compte « Leboncoin autorisé sur machine virtuelle » (beta_flags, _shared/poste-virtuel.js) :
     // lue avec le réglage ; lecture impossible → null → la garde machine virtuelle s'applique comme avant.
     let betaFlagsLbc: Record<string, unknown> | null = null;
-    if (!includeProcessing && !includeNeedsUser) {
+    // (01/11) Un poste du propriétaire d'une délégation Leboncoin ne fait plus rien de Leboncoin : la pause de son compte
+    // (et son essai) se jouent dans le poll du compte de travail délégué, jamais ici (bloc « délégation » plus bas).
+    if (!includeProcessing && !includeNeedsUser && !proprietaireDelegue) {
       try {
         const { data: profB } = await userClient.from("profiles").select("platform_settings, beta_flags").eq("id", user.id).maybeSingle();
         betaFlagsLbc = ((profB as { beta_flags?: Record<string, unknown> } | null)?.beta_flags ?? null) as Record<string, unknown> | null;
@@ -13698,6 +13797,90 @@ serve(async (req) => {
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] blocage Leboncoin illisible (${String((e as Error)?.message ?? e)}) — file servie telle quelle`);
+      }
+    }
+
+    // ══ (01/11, décision de Nico — Louis) DÉLÉGATION LEBONCOIN : LA PAUSE SUIT LA SESSION QUI TRAVAILLE ══════════
+    // (_shared/delegation-leboncoin.js) Le compte de travail délégué tourne sur la session Leboncoin de l'EXÉCUTANT :
+    // la pause sur refus de Leboncoin de l'exécutant (son blocage_acces, règle inchangée) retient aussi les tâches et
+    // relevés Leboncoin du propriétaire — en plus de la pause du propriétaire lui-même (bloc ci-dessus). Pause ou essai
+    // chez l'exécutant : rien ne part (son essai à lui décide) ; reprise prudente : une action au plus toutes les 10 min,
+    // comptée sur SA reprise (une session, un rythme). Lecture impossible : prudence, rien de Leboncoin ce passage.
+    if (!includeProcessing && !includeNeedsUser && delegationLbc) {
+      try {
+        const adminA = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: profA, error: errA } = await adminA.from("profiles").select("platform_settings").eq("id", delegationLbc.executant).maybeSingle();
+        if (errA) throw errA;
+        const ebA = etatBlocageLbc(((profA as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>) as
+          { etat: string; blocage: Record<string, unknown> | null; prete?: boolean };
+        if (ebA.etat !== "libre" && ebA.blocage) {
+          const lbcA = out.filter((j) => j.platform === PLATEFORME_DELEGUEE)
+            .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+          let gardeA: string | null = null;
+          if (ebA.etat === "reprise" && ebA.prete && lbcA.length) {
+            gardeA = String(lbcA[0].id);
+            await adminA.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
+              p_patch: { ...ebA.blocage, derniere_action_reprise: new Date().toISOString() }, p_user: delegationLbc.executant });
+          }
+          const retenusA = lbcA.filter((j) => String(j.id) !== gardeA);
+          if (retenusA.length) {
+            const idsA = new Set(retenusA.map((j) => String(j.id)));
+            out = out.filter((j) => !idsA.has(String(j.id)));
+            if (ebA.etat !== "reprise") {
+              const msgA = messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""));
+              let ecritsA = 0;
+              for (const j of retenusA) {
+                if (ecritsA >= 40 || j.error === msgA) continue;
+                const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+                if (j.error) pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error, "pending", "get-pending-jobs (Leboncoin restreint l'accès de la session de l'exécutant de la délégation)");
+                pfJ.attente_blocage_lbc = { depuis: ebA.blocage.depuis ?? null, pose_le: new Date().toISOString(), session_de: "executant" };
+                await adminA.from("cross_post_jobs").update({ error: msgA, platform_fields: pfAPersister(pfJ) }).eq("id", String(j.id)).eq("status", "pending");
+                ecritsA++;
+              }
+            }
+          }
+          if (!(ebA.etat === "reprise" && ebA.prete && !gardeA)) syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== PLATEFORME_DELEGUEE);
+          if (lecturesExtensionEnPause(ebA.etat)
+              && (!blocageLbcReponse || etatLePlusPrudent(String(blocageLbcReponse.etat ?? "libre"), ebA.etat) === ebA.etat)) {
+            blocageLbcReponse = { etat: ebA.etat, depuis: ebA.blocage.depuis ?? null, essai_apres: ebA.blocage.essai_apres ?? null,
+              message: messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? "")), session_de: "executant" };
+          }
+          console.log(`[get-pending-jobs] userId=${user.id} (délégation) : Leboncoin ${ebA.etat} chez l'exécutant ${delegationLbc.executant.slice(0, 8)} — ${retenusA.length} tâche(s) retenue(s)${gardeA ? `, 1 servie (${gardeA.slice(0, 8)})` : ""}`);
+        }
+      } catch (e) {
+        out = out.filter((j) => j.platform !== PLATEFORME_DELEGUEE);
+        syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== PLATEFORME_DELEGUEE);
+        console.warn(`[get-pending-jobs] userId=${user.id} (délégation) : pause de l'exécutant illisible (${String((e as Error)?.message ?? e)}) — rien de Leboncoin ce passage`);
+      }
+    }
+
+    // ══ (01/11) DÉLÉGATION LEBONCOIN : LES POSTES DU PROPRIÉTAIRE NE TOUCHENT PLUS JAMAIS LEBONCOIN ═══════════════
+    // Ses tâches Leboncoin ont été retirées de la file dès la lecture (plus haut) ; ses relevés et « Me connecter »
+    // Leboncoin restent en file pour le compte de travail. La réponse « blocages » coupe les lectures Leboncoin que
+    // l'extension lance d'elle-même (veille, ventes, liens ; et, dès la 0.6.164, sonde et relevé quotidien). Le message
+    // ne se pose sur ses tâches que si le compte de travail n'a pas été vu depuis 2 h (une fois, 40 au plus).
+    if (!includeProcessing && !includeNeedsUser && proprietaireDelegue) {
+      blocageLbcReponse = { etat: "delegue", depuis: null, message: messageDelegationLbc(proprietaireDelegue.nom) };
+      try {
+        const delegueVivant = Object.values(postesDuCompte).some((q) => {
+          const p = q as Record<string, unknown>;
+          return p.delegation != null && Date.now() - Date.parse(String(p.le ?? "")) < 2 * 3600_000;
+        });
+        if (lbcLaissesAuDelegue.length && !delegueVivant) {
+          const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const msgP = messageTacheDelegueeEnAttente(proprietaireDelegue.nom);
+          let ecritsP = 0;
+          for (const j of lbcLaissesAuDelegue) {
+            if (ecritsP >= 40 || j.error === msgP) continue;
+            const pfP = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            if (j.error) pfP.erreurs_archivees = archiverErreur(pfP.erreurs_archivees, j.error, "pending", "get-pending-jobs (délégation Leboncoin : la tâche attend le compte de travail)");
+            await adminP.from("cross_post_jobs").update({ error: msgP, platform_fields: pfAPersister(pfP) }).eq("id", String(j.id)).eq("status", "pending");
+            ecritsP++;
+          }
+        }
+        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : Leboncoin délégué (exécutant ${proprietaireDelegue.executant.slice(0, 8)}) — ${lbcLaissesAuDelegue.length} tâche(s) laissée(s) au compte de travail${delegueVivant ? "" : " (pas vu depuis 2 h : message posé)"}`);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] délégation (propriétaire) : ${String((e as Error)?.message ?? e)} — rien de Leboncoin servi quand même`);
       }
     }
 
@@ -14035,7 +14218,8 @@ serve(async (req) => {
     // et tout ce que l'écran demande attendait derrière (75 s et 97 s mesurées le 26/10). Illisible → pas de pause.
     // (26/10, Johan) Une relecture servie DEVANT (vérification avant redépôt) : rien de fond ne passe avant elle.
     let personnePublie = out.length > 0 || syncCommandsAnnonces.some((c) => c.devant);
-    if (!personnePublie && !includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
+    // (01/11) Jamais au compte de travail délégué : il ne fait que Leboncoin.
+    if (!personnePublie && !includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN) && !delegationLbc) {
       try {
         const { data: gestes } = await userClient.from("usage_logs").select("id").eq("user_id", user.id)
           .in("feature", FEATURES_PUBLICATION as unknown as string[])
@@ -14103,7 +14287,7 @@ serve(async (req) => {
     // pilote, en mesure). Lectures bornées : 200 annonces, deux lectures de fiches par identifiants. Illisible → rien servi.
     let lectureFondBeebs: Record<string, unknown> | null = null;
     if (!includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_BEEBS_VERSION_MIN)
-        && !syncCommandsAnnonces.some((c) => c.devant)) {
+        && !syncCommandsAnnonces.some((c) => c.devant) && !delegationLbc) {
       try {
         const maintenantLb = Date.now();
         const [cfgLb, profLb, refusLb, luesLb, pauseLb] = await Promise.all([
@@ -14172,6 +14356,10 @@ serve(async (req) => {
       // (30/10, urgence Louis) Leboncoin restreint l'accès du compte : l'extension (≥ 0.6.161) coupe AUSSI ses lectures
       // Leboncoin (veille des commandes, relevé des ventes, liens) tant que ce n'est pas « libre ». Absent = libre.
       ...(blocageLbcReponse ? { blocages: { leboncoin: blocageLbcReponse } } : {}),
+      // (01/11, délégation Leboncoin) Au poll de l'exécutant : les comptes pour lesquels ouvrir le compte de travail
+      // (extension ≥ 0.6.164). Absent pour tout autre compte. Au poll délégué : l'écho de ce qu'il est.
+      ...(delegationsExecutees.length ? { delegations: delegationsExecutees } : {}),
+      ...(delegationLbc ? { delegation: { compte: user.id, plateformes: [PLATEFORME_DELEGUEE] } } : {}),
       // (25/10) Le rattrapage des textes en arrière-plan (null : rien de servi à ce poll).
       lecture_fond: lectureFond,
       // (25/10 soir, 0.6.145) Beebs en arrière-plan : les photos lues sur la page de l'annonce (null : rien de servi).

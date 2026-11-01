@@ -10,7 +10,7 @@
 //      de pause) passent par gardeVirtuelleLbc ; plus aucun test nu du poste ; l'exception lue avec le réglage, absente
 //      si la lecture échoue ; le message « machine virtuelle » effacé des tâches du compte avec l'exception seulement ;
 //      la pause sur refus de Leboncoin (blocage_acces) n'est pas touchée ;
-//   C. --prod : l'exception posée sur louis-seller, et sur lui seul.
+//   C. --prod : (01/11 après-midi) l'exception retirée de louis-seller — plus aucun compte ne la porte.
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -81,8 +81,10 @@ if (process.argv.includes('--prod')) {
   const txt = String(res.stdout ?? '');
   let r = null;
   try { r = JSON.parse(txt.slice(txt.indexOf('{'))).rows?.[0]?.r; } catch { r = null; }
-  ok(r && JSON.stringify(r.comptes) === JSON.stringify(['louis-seller@ttfamily.fr']) && r.autres_valeurs === 0,
-    `PROD. exception posée sur louis-seller seul : ${JSON.stringify(r)}`);
+  // (01/11 après-midi, décision de Nico) L'exception est RETIRÉE de louis-seller : son Leboncoin passe par Amiral
+  // (délégation, selftest:delegation-leboncoin). La règle reste (garde par compte), plus aucun compte ne la porte.
+  ok(r && r.comptes == null && r.autres_valeurs === 0,
+    `PROD. plus aucun compte avec l'exception (retirée de louis-seller le 01/11, délégation à Amiral) : ${JSON.stringify(r)}`);
 }
 
 console.log(echecs ? `\n✗ ${echecs} échec(s) sur ${total}` : `\n✓ ${total} vérifications vertes`);

@@ -39,6 +39,8 @@ import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAcce
 // (18/10, lot 6) La boutique Vinted ouverte sur CE poste, lue par ses gardes ou prouvée après un dépôt.
 import { identiteVintedDesGardes } from "../_shared/poste-extension.ts";
 import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
+// (01/11, Louis — tout le parc) « Ta connexion est bonne » ne se dit que prouvé sur CE poste, après le mur.
+import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob } from "../_shared/session-prouvee.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
@@ -2665,32 +2667,36 @@ serve(async (req) => {
             // connecté à Vinted : get-pending-jobs ne sert plus la plateforme à
             // ce poste tant qu'un autre poste peut la prendre (mur_<pf>).
             let preuveBonne: string | null = null;
-            if (jrow.platform !== "ebay") {
+            // ══ (01/11, Louis — tout le parc) LA PREUVE EST CELLE DE CE POSTE, POSTÉRIEURE AU MUR (_shared/session-prouvee.js) ══
+            // Le 01/11, « ta connexion Leboncoin est bonne » a été dit quatre fois à louis-seller dont la session était
+            // morte (annonce montrée « vue acheteur » à son vendeur, identifiants refusés) : la preuve venait d'une sonde
+            // ou d'un relevé d'AVANT le mur. Désormais : une vue acheteur n'est jamais un refus passager ; la sonde compte
+            // si elle est de CE poste (ou du compte quand il n'a qu'un poste vivant), fraîche et postérieure au dernier
+            // mur vu par ce job ; un relevé réussi compte aux mêmes conditions (un seul poste vivant : c'est le sien).
+            const apresMurS = dernierMurDuJob(pfBase);
+            const vueAcheteurS = verdictVueAcheteur(brutVerdict, pfBody.last_diagnostic, (pfBodyS ?? {}).last_diagnostic);
+            if (jrow.platform !== "ebay" && !vueAcheteurS) {
               try {
                 const { data: profP } = await userClient
-                  .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+                  .from("profiles").select("extension_sessions, extension_postes").eq("id", user.id).maybeSingle();
                 const sP = (profP?.extension_sessions ?? null) as Record<string, unknown> | null;
-                const fraisSonde = (etat: Record<string, unknown> | null | undefined): boolean => {
-                  if (!etat || etat[jrow.platform] !== true) return false;
-                  const par = (etat.checked_at_par_plateforme ?? {}) as Record<string, unknown>;
-                  const t = Date.parse(String(par[jrow.platform] ?? etat.checked_at ?? ""));
-                  return Number.isFinite(t) && Date.now() - t < 30 * 60_000;
-                };
-                if (fraisSonde(sP)) preuveBonne = "sonde « connecté » (moins de 30 min)";
-                else if (sP && fraisSonde((sP.previous ?? null) as Record<string, unknown> | null)) {
-                  // Le relevé juste écrasé par le mur (« false » des extensions
-                  // ≤ 0.6.70) ou par la sonde d'un AUTRE profil Chrome (null) :
-                  // la preuve d'un poste connecté survit dans « previous ».
-                  preuveBonne = "sonde « connecté » juste avant ce mur (moins de 30 min)";
-                }
-                if (!preuveBonne) {
+                const postesP = postesVivants((profP as { extension_postes?: unknown } | null)?.extension_postes);
+                const autresVivants = Object.entries(postesP).filter(([sid, q]) => sid !== sessionIdPoste
+                  && Date.now() - Date.parse(String((q as Record<string, unknown>).le ?? "")) < 2 * 3600_000).length;
+                const sonde = sondeProuveSession({
+                  platform: jrow.platform, sessionsCompte: sP, poste: sessionIdPoste ? (postesP[sessionIdPoste] ?? null) : null,
+                  autresPostesVivants: autresVivants, apres: apresMurS,
+                });
+                if (sonde.bonne) preuveBonne = sonde.preuve;
+                if (!preuveBonne && autresVivants === 0) {
+                  const depuisRel = Math.max(Date.now() - 2 * 3600_000, Number.isFinite(apresMurS) ? apresMurS + 1 : 0);
                   const { data: rel } = await userClient.from("vinted_sync_runs")
                     .select("id, finished_at")
                     .eq("user_id", user.id).eq("platform", jrow.platform)
                     .in("kind", ["annonces", "dressing"]).eq("status", "done").gt("items_vus", 0)
-                    .gte("finished_at", new Date(Date.now() - 2 * 3600_000).toISOString())
+                    .gte("finished_at", new Date(depuisRel).toISOString())
                     .limit(1);
-                  if (Array.isArray(rel) && rel.length) preuveBonne = "relevé réussi (moins de 2 h)";
+                  if (Array.isArray(rel) && rel.length) preuveBonne = "relevé réussi après le dernier mur (moins de 2 h)";
                 }
               } catch (_e) { preuveBonne = null; }
             }
@@ -4175,9 +4181,21 @@ serve(async (req) => {
         let retoursEbayChoix: string | null = null;
         try {
           const { data: prof } = await userClient
-            .from("profiles").select(ebayRefusNommeAPoser ? "extension_sessions, platform_settings" : "extension_sessions").eq("id", user.id).maybeSingle();
+            .from("profiles").select(ebayRefusNommeAPoser ? "extension_sessions, extension_postes, platform_settings" : "extension_sessions, extension_postes").eq("id", user.id).maybeSingle();
           const s = (prof as { extension_sessions?: unknown } | null)?.extension_sessions;
-          if (s && typeof s === "object") sessionsSondees = s as Record<string, unknown>;
+          if (s && typeof s === "object") {
+            // (01/11, Louis — tout le parc) Un « connecté » ne sert à dire « ta connexion est bonne » que s'il est prouvé
+            // pour CE poste, maintenant, et pas contredit par une vue acheteur (_shared/session-prouvee.js) ; sinon il
+            // devient « inconnu » (jamais « déconnecté »). Les autres valeurs passent telles quelles.
+            const postesS = postesVivants((prof as { extension_postes?: unknown } | null)?.extension_postes);
+            const autresS = Object.entries(postesS).filter(([sid, q]) => sid !== sessionIdPoste
+              && Date.now() - Date.parse(String((q as Record<string, unknown>).le ?? "")) < 2 * 3600_000).length;
+            sessionsSondees = sessionsPourArbitrage({
+              platform: String(jPdr?.platform ?? ""), sessionsCompte: s as Record<string, unknown>,
+              poste: sessionIdPoste ? (postesS[sessionIdPoste] ?? null) : null, autresPostesVivants: autresS,
+              verdict: [typeof body.error === "string" ? body.error : "", (pfIn ?? {})["last_diagnostic"] ?? null],
+            }) as Record<string, unknown>;
+          }
           if (ebayRefusNommeAPoser) retoursEbayChoix = retoursChoisisDuCompte((prof as { platform_settings?: unknown } | null)?.platform_settings ?? null);
         } catch (_e) { /* la sonde est un renfort, jamais un prérequis */ }
         // (26/10 nuit, point 5) L'empreinte du texte Leboncoin SERVI (titre et description nettoyés, comme

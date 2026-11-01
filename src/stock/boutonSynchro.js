@@ -153,3 +153,35 @@ export function texteToutAJour(prochaine, maintenant = Date.now(), fr = true) {
   if (fr) return vers ? `Tout est à jour, prochaine synchro automatique ${vers}` : 'Tout est à jour';
   return vers ? `Everything is up to date, next automatic sync ${vers}` : 'Everything is up to date';
 }
+
+// ══ (01/11, décision de Nico — Louis) LA CARTE D'UN COMPTE QUI DÉLÈGUE LEBONCOIN ═══════════════════════════════════
+// louis-seller fait tout Leboncoin par son compte Amiral (supabase/functions/_shared/delegation-leboncoin.js) : ses
+// relevés Leboncoin sont faits par le compte de travail d'Amiral, souvent par un déclencheur automatique (cron,
+// veilleur, serveur) que la pastille ne montrait pas (règle du 05/10) → « — ». Pour CE compte seulement, la pastille
+// Leboncoin reprend le dernier relevé RÉUSSI quand elle n'a rien de mieux à dire, et une ligne sobre dit par où passe
+// Leboncoin et l'état réel lu sur l'ordinateur d'Amiral. Sans délégation (tous les autres comptes) : rien ne change.
+export const PHASES_SANS_CHIFFRE = Object.freeze(['jamais', 'echec', 'expire', 'absente']);
+
+/** La pastille Leboncoin d'un compte qui délègue prend-elle le dernier relevé réussi ? */
+export function pastilleLbcDeleguee({ delegation, phase }) {
+  return Boolean(delegation && delegation.dernierReleve && PHASES_SANS_CHIFFRE.includes(String(phase ?? '')));
+}
+
+/** La ligne de la carte : par où passe Leboncoin, et ce qu'on sait de l'ordinateur de l'exécutant. */
+export function texteDelegationLbc(delegation, maintenant = Date.now(), fr = true) {
+  if (!delegation) return null;
+  const nom = delegation.nom;
+  const qui = nom ? (fr ? `ton compte ${nom}` : `your ${nom} account`) : (fr ? 'ton autre compte FillSell' : 'your other FillSell account');
+  const base = fr ? `Leboncoin passe par ${qui}.` : `Leboncoin goes through ${qui}.`;
+  const vu = ms(delegation.posteVuLe);
+  if (!Number.isFinite(vu) || maintenant - vu > 2 * 3600_000) {
+    return { texte: fr
+      ? `${base} En attente de son ordinateur : l'extension FillSell (à jour) doit y être ouverte sur ${nom ? `le compte ${nom}` : 'ce compte'}.`
+      : `${base} Waiting for its computer: the FillSell extension (up to date) must be open there.`, ok: false };
+  }
+  const lu = ms(delegation.sessionLe);
+  if (delegation.sessionLbc === false && Number.isFinite(lu) && maintenant - lu < 3600_000) {
+    return { texte: fr ? `${base} Leboncoin n'est pas connecté sur son ordinateur.` : `${base} Leboncoin is not signed in on its computer.`, ok: false };
+  }
+  return { texte: base, ok: true };
+}

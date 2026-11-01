@@ -2629,6 +2629,18 @@ async function invalidateRejectedSession(session) {
 //    Sans session propre (copie relayée de dépannage) : pas de rejeu, comme avant.
 async function jetonFraisApres401(ancien) {
   try {
+    // (01/11, 0.6.164) Le jeton d'un compte délégué (Leboncoin) se rafraîchit dans SA clé, jamais dans celle de l'extension.
+    const subAncien = decodeJwtClaims(ancien).sub;
+    if (subAncien && delegationsServies.some((d) => d.compte === subAncien)) {
+      const cle = SESSION_DELEGUEE_KEY(subAncien);
+      const st = (await chrome.storage.local.get(cle))[cle];
+      if (!st?.access_token) return null;
+      const sD = await refreshIfNeeded(st, cle);
+      const neufD = sD?.access_token ?? null;
+      if (!neufD || neufD === ancien || decodeJwtClaims(neufD).sub !== subAncien) return null;
+      if (contexteDelegue?.compte === subAncien) contexteDelegue = { ...contexteDelegue, session: sD };
+      return neufD;
+    }
     const { SESSION_OWN } = FILLSELL_CONFIG.STORAGE_KEYS;
     const store = await chrome.storage.local.get(SESSION_OWN);
     if (!store[SESSION_OWN]?.access_token) return null;
@@ -3882,9 +3894,11 @@ function pollAndProcessJobs() {
     // suite — c'est lui qui emporte la demande (le serveur la sert devant la file, garde absolue comprise).
     // (29/10, lot B — boucle du poll) Une raison neuve seulement, au plancher de 20 s (un geste : 1,5 s) — armerRelanceApresCycle.
     armerRelanceApresCycle();
-    if (!cmd) { lancerRelevesAnnonces(); return; }
+    // (01/11, 0.6.164) Puis le cycle des comptes délégués (Leboncoin seulement), sous le même verrou, derrière.
+    const lancerRelevesPuisDelegues = () => { lancerRelevesAnnonces(); lancerCycleDelegue(); };
+    if (!cmd) { lancerRelevesPuisDelegues(); return; }
     traiterCommandeSyncDistante(cmd).catch((e) =>
-      console.error("[sync-dressing][distant]", e?.message ?? e)).finally(lancerRelevesAnnonces);
+      console.error("[sync-dressing][distant]", e?.message ?? e)).finally(lancerRelevesPuisDelegues);
   });
   pollEnAttenteDuVerrou = suite;
   return suite;
@@ -4445,6 +4459,7 @@ async function pollAndProcessJobsUnlocked() {
     chrome.storage.local.set({ fillsell_file_pause: fileEnPauseServeur }).catch(() => {});
     vintedPauseAntirobotServeur = rep.vinted_pause_antirobot === true;
     noterBlocageLbcServeur(rep.blocages?.leboncoin ?? null);   // (30/10, urgence Louis) absent = Leboncoin libre
+    noterDelegationsServies(rep.delegations);   // (01/11, 0.6.164) absent = aucun compte délégué : rien ne tourne
     noterRetenuesDeletedServeur(rep.retenues_deleted);   // (29/10, lot B 4.11) absent (serveur plus ancien) : liste vide
     // (25/10, 0.6.144) Le rattrapage des textes en arrière-plan : ce que le serveur ouvre à CE compte (liste, rythme,
     // plafonds). Absent (serveur plus ancien, compte pas encore ouvert) : aucune lecture de fond.
@@ -7329,7 +7344,8 @@ async function rendreOngletALaPersonne(job, motif) {
     if (w) cible = w.id;
   }
   await chrome.tabs.update(tabId, { active: true }).catch(() => {});
-  await chrome.storage.session.set({ [ATTENTE_PAIEMENT_LBC_KEY]: { jobId: String(job.id), tabId, windowId: cible, depuis: new Date().toISOString(), motif } }).catch(() => {});
+  // (01/11, 0.6.164) `compte` : le dépôt d'un compte délégué (Leboncoin de louis-seller fait chez Amiral) se conclut avec SA session.
+  await chrome.storage.session.set({ [ATTENTE_PAIEMENT_LBC_KEY]: { jobId: String(job.id), tabId, windowId: cible, depuis: new Date().toISOString(), motif, compte: contexteDelegue?.compte ?? null } }).catch(() => {});
   console.warn(`[background] Job ${job.id} : onglet Leboncoin ${tabId} rendu à la personne (fenêtre ${cible ?? "?"}) — « Valider et payer » lui appartient`);
 }
 // Le numéro de l'annonce sur la page de confirmation (lien « Voir mon annonce »), ou null.
@@ -7349,7 +7365,7 @@ async function conclureDepotPayeLbc(att, url) {
     const [res] = await chrome.scripting.executeScript({ target: { tabId: att.tabId }, func: sondeConfirmationLbc });
     sonde = res?.result ?? null;
   } catch (e) { console.warn("[background] sonde de confirmation Leboncoin :", String(e?.message ?? e)); }
-  const session = await getValidSession();
+  const session = await sessionDuCompte(att.compte);
   if (!session?.access_token) { console.warn("[background] dépôt payé : aucune session, rien d'écrit"); return; }
   const actuel = await jobStatusNow(session.access_token, att.jobId);
   if (actuel !== "needs_user") { console.warn(`[background] dépôt payé : le job ${att.jobId} est « ${actuel} », rien d'écrit`); return; }
@@ -7377,7 +7393,7 @@ async function conclureDepotPayeLbc(att, url) {
 }
 async function noterOngletPaiementFermeLbc(att) {
   await chrome.storage.session.remove(ATTENTE_PAIEMENT_LBC_KEY).catch(() => {});
-  const session = await getValidSession();
+  const session = await sessionDuCompte(att.compte);
   if (!session?.access_token) return;
   try {
     const r = await restRequest(`cross_post_jobs?id=eq.${encodeURIComponent(att.jobId)}&status=eq.needs_user&select=platform_fields`, session.access_token,
@@ -14557,6 +14573,8 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
   // (11/10) Sortie d'Opla : la session Opla n'est plus sondée (aucune requête
   // vers opla.co) — non mesurée, donc rien d'écrit pour elle.
   if (plateformes.includes("opla") && await oplaSortieActive()) plateformes = plateformes.filter((pf) => pf !== "opla");
+  // (01/11, 0.6.164) Le compte de ce poste délègue Leboncoin : la sonde ne touche plus leboncoin.fr ici.
+  if (plateformes.includes("leboncoin") && await leboncoinDelegueAilleurs()) plateformes = plateformes.filter((pf) => pf !== "leboncoin");
   // Throttle PERSISTÉ, par plateforme et à la cadence de CHAQUE plateforme
   // (cf. en-tête de SESSION_PROBE_INTERVALS_MS).
   // `forcer` : le bouton « Vérifier » du popup passe outre — c'est un geste
@@ -19122,11 +19140,14 @@ function statutFinReleveAnnonces({ absente = false, vues = 0, vide = null, erreu
   return "done";
 }
 
-async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId = null } = {}) {
+async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId = null, session: sessionFournie = null } = {}) {
   if (!RELEVE_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
   if (platform === "depop" && !runId && !(await depopAccesAccorde())) return { ok: false, reason: "depop_acces" };
+  // (01/11, 0.6.164) Le compte de ce poste délègue Leboncoin : il ne relève jamais Leboncoin lui-même (le compte de
+  // travail délégué, chez l'exécutant, passe `session`). Les relevés servis à ce poste n'en contiennent jamais.
+  if (platform === "leboncoin" && !sessionFournie && await leboncoinDelegueAilleurs()) return { ok: false, reason: "leboncoin_delegue" };
   if (releveEnCours) return { ok: false, reason: "deja_en_cours" };
-  const session = await getValidSession();
+  const session = sessionFournie ?? await getValidSession();
   if (!session?.access_token) return { ok: false, reason: "session" };
   const token = session.access_token;
   const userId = decodeJwtSub(token);
@@ -20195,13 +20216,15 @@ function tracerReleveVentes(token, userId, metadata) {
 }
 
 // ── L'ORCHESTRATION, UNE PLATEFORME À LA FOIS ───────────────────────────────
-async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
+async function lancerReleveVentes({ platform, declencheur = "cron", session: sessionFournie = null } = {}) {
   if (!VENTES_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
   if (platform === "depop" && !(await depopAccesAccorde())) return { ok: false, reason: "depop_acces" };
   if (platform === "opla" && await oplaSortieActive()) return { ok: false, reason: "opla_sortie" }; // (11/10) plus aucun relevé Opla
   if (platform === "leboncoin" && await leboncoinEnPause()) return { ok: false, reason: "blocage_leboncoin" }; // (30/10) accès restreint
+  // (01/11, 0.6.164) `session` : le compte de travail délégué (Leboncoin seulement), avec sa propre cadence.
+  if (sessionFournie && platform !== "leboncoin") return { ok: false, reason: "delegation_leboncoin_seulement" };
   if (releveVentesEnCours) return { ok: false, reason: "deja_en_cours" };
-  const session = await getValidSession();
+  const session = sessionFournie ?? await getValidSession();
   if (!session?.access_token) return { ok: false, reason: "session" };
   const token = session.access_token;
   const userId = decodeJwtSub(token);
@@ -20212,9 +20235,11 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
 
   releveVentesEnCours = true;
   const etat = await lireEtatVentes();
+  // (0.6.164) La cadence du compte délégué est la sienne (jamais celle du compte de l'extension, sur le même appareil).
+  const cleEtat = sessionFournie ? `${platform}@${userId}` : platform;
   try {
     if (declencheur === "cron") {
-      const t = Number(etat?.[platform]?.dernierAt);
+      const t = Number(etat?.[cleEtat]?.dernierAt);
       if (Number.isFinite(t) && Date.now() - t < VENTES_CADENCE_MS) return { ok: false, reason: "cadence" };
     }
     const connues = await refsVentesConnues(token, userId, platform);
@@ -20228,7 +20253,7 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
 
     if (!lecture?.ok && !(lecture?.rows?.length)) {
       console.warn(`[ventes][${platform}] rien relevé — ${lecture?.motif ?? "motif inconnu"}`);
-      etat[platform] = { ...(etat[platform] ?? {}), dernierAt: Date.now(), dernierMotif: lecture?.motif ?? null };
+      etat[cleEtat] = { ...(etat[cleEtat] ?? {}), dernierAt: Date.now(), dernierMotif: lecture?.motif ?? null };
       await ecrireEtatVentes(etat);
       tracerReleveVentes(token, userId, {
         plateforme: platform, declencheur, lues: 0, pages: lecture?.pages ?? null,
@@ -20325,7 +20350,7 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
       }
     }
 
-    etat[platform] = { ...(etat[platform] ?? {}), dernierAt: Date.now(), dernierMotif: lecture?.motif ?? null };
+    etat[cleEtat] = { ...(etat[cleEtat] ?? {}), dernierAt: Date.now(), dernierMotif: lecture?.motif ?? null };
     await ecrireEtatVentes(etat);
     tracerReleveVentes(token, userId, {
       plateforme: platform, declencheur, lues: lecture.rows?.length ?? 0, pages: lecture?.pages ?? null,
@@ -22274,7 +22299,7 @@ const ASPECT_SOURCE_POIDS = { server_400: 3, manual: 2, dom: 1 };
 async function enregistrerGrillesLbc(msg) {
   const grilles = Array.isArray(msg?.grilles) ? msg.grilles : [];
   if (!grilles.length) return;
-  const session = await getValidSession().catch(() => null);
+  const session = await sessionDuFlux().catch(() => null);   // (0.6.164) le compte de la tâche en cours (délégation Leboncoin)
   const userId = session?.access_token ? decodeJwtSub(session.access_token) : null;
   if (!userId) return;
   const lignes = grilles.slice(0, 12).map((g) => {
@@ -22790,6 +22815,248 @@ async function leboncoinEnPause() {
     return Boolean(b && b.etat && b.etat !== "libre");
   } catch { return false; }
 }
+// (01/11, 0.6.164) Le compte de CE poste délègue Leboncoin à un autre compte (get-pending-jobs : blocages.leboncoin
+// etat « delegue ») : ce poste ne touche plus JAMAIS Leboncoin, même pour ce qu'il lance de lui-même (sonde de session,
+// relevé quotidien, veilleur). Tous les autres états : comportement d'avant, à l'identique.
+async function leboncoinDelegueAilleurs() {
+  try {
+    const b = blocageLbcServeur ?? (await chrome.storage.local.get("fillsell_blocage_lbc"))?.fillsell_blocage_lbc ?? null;
+    return Boolean(b && b.etat === "delegue");
+  } catch { return false; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DÉLÉGATION LEBONCOIN (01/11, 0.6.164 — décision de Nico, Louis)
+// ══════════════════════════════════════════════════════════════════════════════
+// Louis a deux comptes FillSell sur UN compte Leboncoin. louis-seller travaille dans une machine virtuelle que
+// Leboncoin refuse ; toutes ses actions Leboncoin passent par l'extension d'Amiral, sur ce navigateur. Le serveur dit
+// au poll d'Amiral pour quels comptes travailler (rep.delegations, posé DES DEUX CÔTÉS côté serveur, jamais par l'app) ;
+// absent = rien de tout ceci ne tourne (tous les autres comptes). Pour chacun : une session PROPRE du compte délégué
+// (extension-session, delegation_pour — jamais de mot de passe), rangée à part (jamais la session de l'extension, jamais
+// la garde anti-bascule), et un cycle à lui, sous le verrou de flux, qui ne fait QUE Leboncoin : ses tâches (publication,
+// republication, retrait), ses relevés servis, son relevé quotidien, sa veille (une commande Leboncoin neuve vue par la
+// veille de ce navigateur) et son relevé des ventes. Tout s'écrit avec le jeton du compte délégué : ses données restent
+// les siennes (RLS, auth.uid(), quotas, « une annonce, un compte »). La session Leboncoin, elle, est celle de ce
+// navigateur : en pause ici (refus de Leboncoin), rien ne part pour personne.
+const DELEGATIONS_LBC_KEY = "fillsell_delegations_lbc";
+const SESSION_DELEGUEE_KEY = (compte) => `fillsell_session_delegue_${compte}`;
+const SESSION_DELEGUEE_ECHEC_MS = 10 * 60_000;
+const DELEGUE_CRON_ESSAI_MS = 60 * 60_000;     // le relevé quotidien du compte délégué est TENTÉ au plus une fois l'heure (sa cadence de 20 h fait foi)
+const UUID_DELEGUE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let delegationsServies = [];                    // [{ compte, plateformes }] — relu à chaque poll
+let contexteDelegue = null;                     // { compte, session } pendant le cycle délégué, sinon null
+let commandeLbcNeuveLe = 0;                     // une commande Leboncoin neuve vue par la veille de ce navigateur
+const veilleurDelegueFaitLe = new Map();        // compte → ms
+const cronDelegueTenteLe = new Map();           // compte → ms
+const sessionLbcRecopieeLe = new Map();         // compte → ms (la sonde recopiée)
+
+function noterDelegationsServies(liste) {
+  const neuves = (Array.isArray(liste) ? liste : [])
+    .filter((d) => d && UUID_DELEGUE_RE.test(String(d.compte ?? "")) && Array.isArray(d.plateformes) && d.plateformes.includes("leboncoin"))
+    .map((d) => ({ compte: String(d.compte).toLowerCase(), plateformes: ["leboncoin"] }))
+    .slice(0, 5);
+  // Une délégation retirée par le serveur : sa session part tout de suite.
+  for (const d of delegationsServies) {
+    if (!neuves.some((n) => n.compte === d.compte)) {
+      chrome.storage.local.remove([SESSION_DELEGUEE_KEY(d.compte), `${SESSION_DELEGUEE_KEY(d.compte)}_echec`]).catch(() => {});
+      console.log(`[delegation] Leboncoin de ${d.compte.slice(0, 8)} : délégation retirée par le serveur — session déléguée effacée`);
+    }
+  }
+  delegationsServies = neuves;
+  chrome.storage.local.set({ [DELEGATIONS_LBC_KEY]: neuves }).catch(() => {});
+}
+
+/** La session du flux en cours : celle du compte délégué pendant son cycle, sinon celle de l'extension. */
+async function sessionDuFlux() {
+  return contexteDelegue?.session ?? await getValidSession();
+}
+
+/** La session d'un compte donné : celle de l'extension si c'est le sien, sinon sa session déléguée (ou null). */
+async function sessionDuCompte(compte) {
+  const own = await getValidSession();
+  if (!compte || !own?.access_token || decodeJwtSub(own.access_token) === compte) return own;
+  if (contexteDelegue?.compte === compte) return contexteDelegue.session;
+  const cle = SESSION_DELEGUEE_KEY(compte);
+  const st = (await chrome.storage.local.get(cle).catch(() => ({})))[cle];
+  if (st?.access_token && decodeJwtSub(st.access_token) === compte) return refreshIfNeeded(st, cle);
+  return null;
+}
+
+async function sessionDeleguee(tokenOwn, compte) {
+  const cle = SESSION_DELEGUEE_KEY(compte);
+  const cleEchec = `${cle}_echec`;
+  const store = await chrome.storage.local.get([cle, cleEchec]).catch(() => ({}));
+  const st = store[cle];
+  if (st?.access_token && decodeJwtSub(st.access_token) === compte) {
+    const vivante = await refreshIfNeeded(st, cle);
+    if (vivante?.access_token) return vivante;
+  }
+  if (Date.now() - (Number(store[cleEchec]) || 0) < SESSION_DELEGUEE_ECHEC_MS) return null;
+  try {
+    const rep = await callEdgeFunction("extension-session", tokenOwn, { delegation_pour: compte });
+    if (!rep?.hashed_token || String(rep.compte ?? "").toLowerCase() !== compte) throw new Error("réponse inattendue");
+    const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/auth/v1/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
+      body: JSON.stringify({ type: "magiclink", token_hash: rep.hashed_token }),
+    });
+    if (!res.ok) throw new Error(`verify → HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data?.access_token || !data?.refresh_token) throw new Error("session incomplète");
+    if (decodeJwtSub(data.access_token) !== compte) throw new Error("session d'un autre compte");
+    const s = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.expires_at ?? Math.floor(Date.now() / 1000) + (data.expires_in ?? 3600),
+      compte,
+    };
+    await chrome.storage.local.set({ [cle]: s });
+    await chrome.storage.local.remove(cleEchec).catch(() => {});
+    console.log(`[delegation] Leboncoin de ${compte.slice(0, 8)} : session déléguée obtenue`);
+    return s;
+  } catch (e) {
+    await chrome.storage.local.set({ [cleEchec]: Date.now() }).catch(() => {});
+    console.warn(`[delegation] Leboncoin de ${compte.slice(0, 8)} : session déléguée impossible —`, String(e?.message ?? e));
+    return null;
+  }
+}
+
+/** La sonde Leboncoin de CE navigateur (la plus récente), recopiée au compte délégué : sa carte dit l'état réel. */
+async function recopierSessionLbcAuCompte(token) {
+  const d = dernierReleveSessions;
+  if (!d || Date.now() - d.at > 15 * 60_000) return;
+  const s = d.sessions ?? {};
+  if (!Object.prototype.hasOwnProperty.call(s, "leboncoin")) return;
+  const sub = decodeJwtSub(token);
+  if (!sub || (sessionLbcRecopieeLe.get(sub) ?? 0) >= d.at) return;
+  const le = new Date(d.at).toISOString();
+  await ecrireExtensionSessions(token, sub, {
+    leboncoin: s.leboncoin === true ? true : s.leboncoin === false ? false : null,
+    http: { leboncoin: s.http?.leboncoin ?? null },
+    checked_at: le,
+    checked_at_par_plateforme: { leboncoin: s.checked_at_par_plateforme?.leboncoin ?? le },
+    sondees: ["leboncoin"],
+  });
+  sessionLbcRecopieeLe.set(sub, d.at);
+}
+
+/** Ce que le compte de travail dit de son poste : la session Leboncoin de ce navigateur, rien d'autre. */
+function sessionsPosteDelegue(maintenant = Date.now()) {
+  const d = dernierReleveSessions;
+  if (!d || maintenant - d.at > 15 * 60_000) return {};
+  const v = d.sessions?.leboncoin;
+  return { sessions_poste: { lu_le: new Date(d.at).toISOString(), leboncoin: v === true ? true : v === false ? false : null,
+    vinted: null, beebs: null, depop: null, ebay: null } };
+}
+
+function lancerCycleDelegue() {
+  if (!delegationsServies.length) return;
+  withJobFlowLock("delegation-lbc", cycleDelegueLbc).catch((e) => console.error("[delegation]", e?.message ?? e));
+}
+
+async function cycleDelegueLbc() {
+  if (!delegationsServies.length) return;
+  const own = await getValidSession();
+  if (!own?.access_token) return;
+  // La session Leboncoin de CE navigateur est en pause (refus de Leboncoin, essai) : rien ne part, pour personne.
+  if (await leboncoinEnPause()) {
+    console.log("[delegation] Leboncoin en pause sur ce navigateur — aucun travail délégué ce cycle");
+    return;
+  }
+  for (const d of delegationsServies) {
+    const sD = await sessionDeleguee(own.access_token, d.compte);
+    if (!sD?.access_token) continue;
+    contexteDelegue = { compte: d.compte, session: sD };
+    try {
+      await cycleDelegueUnCompte(own, sD, d);
+    } catch (e) {
+      console.warn(`[delegation] Leboncoin de ${d.compte.slice(0, 8)} :`, String(e?.message ?? e));
+    } finally {
+      contexteDelegue = null;
+      travailEnCours = null;
+    }
+  }
+}
+
+async function cycleDelegueUnCompte(own, sD, d) {
+  const tokenD = sD.access_token;
+  let rep;
+  try {
+    rep = await callEdgeFunction("get-pending-jobs", tokenD, {
+      build: FILLSELL_BUILD_ID,
+      version: chrome.runtime.getManifest().version,
+      // Aucune capacité Opla / Depop : ce compte de travail ne fait que Leboncoin.
+      capacites: (await capacitesDeclarees()).filter((c) => !/opla|depop/i.test(String(c))),
+      ...sessionsPosteDelegue(),
+      delegation: { executant_jeton: own.access_token, plateformes: ["leboncoin"] },
+    });
+  } catch (e) {
+    console.warn(`[delegation] Leboncoin de ${d.compte.slice(0, 8)} : poll délégué impossible —`, String(e?.message ?? e));
+    if (e?.status === 401) await chrome.storage.local.remove(SESSION_DELEGUEE_KEY(d.compte)).catch(() => {});
+    return;
+  }
+  if (rep?.delegation_refusee) {
+    await chrome.storage.local.remove(SESSION_DELEGUEE_KEY(d.compte)).catch(() => {});
+    console.warn(`[delegation] Leboncoin de ${d.compte.slice(0, 8)} : délégation refusée par le serveur — rien fait`);
+    return;
+  }
+  if (rep?.extension_update_required) return;
+  // La pause de CE compte de travail (celle d'Amiral comprise, calculée par le serveur) : jamais rangée dans l'état de
+  // l'extension (blocageLbcServeur reste celui du compte de l'extension) ; elle ne retient que les lectures déléguées.
+  const pauseDeleguee = Boolean(rep?.blocages?.leboncoin?.etat && rep.blocages.leboncoin.etat !== "libre");
+  await recopierSessionLbcAuCompte(tokenD).catch(() => {});
+
+  const jobs = (Array.isArray(rep?.jobs) ? rep.jobs : []).filter((j) => j?.platform === "leboncoin");
+  if (jobs.length) console.log(`[delegation] Leboncoin de ${d.compte.slice(0, 8)} : ${jobs.length} tâche(s)`);
+  for (let i = 0; i < jobs.length; i++) {
+    const job = jobs[i];
+    const etapeDeleted = job.action === "republish" && job.platform_fields?.republish_step === "deleted";
+    if (!etapeDeleted && (await majPrete())) { majPlanifiee = true; break; }
+    if (i > 0 && !etapeDeleted) {
+      const engagee = job.action === "republish" && retraitEngageJob(job);
+      if ((job.action === "publish" || job.action === "republish") && !engagee) {
+        // La pause / la synchro du compte DÉLÉGUÉ, lues pour lui (jamais le cache de 20 s du compte de l'extension).
+        const r = await restRequest("rpc/file_etat_poste", tokenD, { method: "POST", body: "{}" }).catch(() => null);
+        const etatFile = { pause: r?.pause === true, synchro: r?.synchro_demandee === true };
+        if (etatFile.pause || etatFile.synchro) continue;
+      }
+    }
+    await demanderEveil(jobs.length - i, null).catch(() => {});
+    const outcome = await processJob(job, tokenD);
+    travailEnCours = null;
+    await reminimiserFenetreSiRestauree().catch(() => {});
+    // Un dépôt attend « Valider et payer » : les autres publications Leboncoin attendent leur tour.
+    if (outcome?.garderOnglet === true) break;
+    if (i < jobs.length - 1) await sleep(jobDelayMs());
+  }
+  if (majPlanifiee) return;
+
+  // Ses relevés Leboncoin SERVIS (app, serveur, redemandes — et l'essai de levée de pause : le serveur décide ce
+  // qu'il sert), puis ce que l'extension lance d'elle-même (veille, relevé quotidien, ventes), jamais en pause.
+  const releves = (Array.isArray(rep?.sync_commands_annonces) ? rep.sync_commands_annonces : [])
+    .filter((c) => c?.platform === "leboncoin" && c?.id);
+  for (const cmd of releves) {
+    const r = await lancerRelevePlateforme({ platform: "leboncoin", declencheur: "bouton_distant", runId: cmd.id, session: sD })
+      .catch((e) => ({ ok: false, reason: String(e?.message ?? e) }));
+    console.log(`[delegation][releve] Leboncoin de ${d.compte.slice(0, 8)} : relevé ${String(cmd.id).slice(0, 8)} → ${r?.ok ? "fait" : (r?.reason ?? "?")}`);
+  }
+  if (pauseDeleguee) return;
+  if (commandeLbcNeuveLe > (veilleurDelegueFaitLe.get(d.compte) ?? 0)) {
+    veilleurDelegueFaitLe.set(d.compte, Date.now());
+    const r = await lancerRelevePlateforme({ platform: "leboncoin", declencheur: "veilleur", session: sD })
+      .catch((e) => ({ ok: false, reason: String(e?.message ?? e) }));
+    console.log(`[delegation][veille] Leboncoin de ${d.compte.slice(0, 8)} : commande neuve vue → relevé ${r?.ok ? "fait" : (r?.reason ?? "?")}`);
+  }
+  // La détection de vente par annonce (comme le cycle de l'extension), sur ses seules annonces Leboncoin.
+  await checkPublishedListings(sD, { plateforme: "leboncoin" }).catch((e) => console.warn("[delegation][annonces]", String(e?.message ?? e)));
+  if (Date.now() - (cronDelegueTenteLe.get(d.compte) ?? 0) >= DELEGUE_CRON_ESSAI_MS) {
+    cronDelegueTenteLe.set(d.compte, Date.now());
+    await lancerRelevePlateforme({ platform: "leboncoin", declencheur: "cron", session: sD })
+      .catch((e) => console.warn("[delegation][cron]", String(e?.message ?? e)));
+    await lancerReleveVentes({ platform: "leboncoin", declencheur: "cron", session: sD })
+      .catch((e) => console.warn("[delegation][ventes]", String(e?.message ?? e)));
+  }
+}
 
 async function veillerCommandes(session) {
   await VO.rafraichirOrigineVinted().catch(() => {});
@@ -22852,6 +23119,8 @@ async function veillerCommandes(session) {
     // transaction de CHAQUE annonce (numéro exact) et la base en fait la vente : on le demande pour la fin de ce
     // cycle (une demande par cycle, comme le veilleur) — sans attendre le relevé du jour.
     if (platform === "leboncoin" && aSuivre.length) demanderRelevePourRattachement("leboncoin");
+    // (01/11, 0.6.164) La boutique est partagée : la même commande neuve demande aussi le relevé des comptes délégués.
+    if (platform === "leboncoin" && aSuivre.length) commandeLbcNeuveLe = Date.now();
     if (aSuivre.length) {
       const ids = await jobsARelirePourCommandes(platform, aSuivre, token, etat).catch((err) => {
         console.warn(`[veille-commandes][${platform}] désignation impossible :`, String(err?.message ?? err));
@@ -23592,8 +23861,12 @@ async function lireVerifPrioritaires(session) {
   return rows ?? [];
 }
 
-async function checkPublishedListings(session) {
+async function checkPublishedListings(session, { plateforme = null } = {}) {
   let jobs;
+  // (01/11, 0.6.164) `plateforme` : le compte de travail délégué ne relit que SES annonces Leboncoin ; un poste dont le
+  // compte délègue Leboncoin ne relit plus aucune page Leboncoin. Sans délégation : la lecture d'avant, à l'identique.
+  const filtreDelegation = plateforme ? `&platform=eq.${encodeURIComponent(plateforme)}`
+    : ((await leboncoinDelegueAilleurs()) ? "&platform=neq.leboncoin" : "");
   // (18/10, lot 4) Une annonce Beebs disparue pendant ce cycle → la page des ventes est relue à la fin.
   let ventesBeebsALire = false;
   // (11/10) Sortie d'Opla : aucune annonce Opla n'est plus relue. Écartées DÈS
@@ -23613,7 +23886,7 @@ async function checkPublishedListings(session) {
         // ligne — sans lui, un article republié sortait de la détection de
         // vente (le publish d'origine est clos 'cancelled' à la suppression).
         "&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null" +
-        (sansOpla ? "&platform=neq.opla" : "") +
+        (sansOpla ? "&platform=neq.opla" : "") + filtreDelegation +
         // limit 30 → 60 (2026-08-24, point F) : la fenêtre de 30 pouvait être
         // entièrement occupée par des jobs en délai de grâce ou en
         // temporisation « unknown » un jour de gros lot — les annonces dues

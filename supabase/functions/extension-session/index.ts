@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+import { delegationLbcValide } from "../_shared/delegation-leboncoin.js";
 
 // Bootstrap d'une session PROPRE à l'extension Chrome (2026-07-20).
 //
@@ -103,7 +104,36 @@ serve(async (req) => {
       } catch { /* colonne absente (migration pas encore appliquée) ou payload illisible : sans conséquence */ }
       return json({ error: "Token invalide ou expiré" }, 401);
     }
-    if (!user.email) {
+    // ══ (01/11, décision de Nico — Louis) LE COMPTE DE TRAVAIL D'UNE DÉLÉGATION LEBONCOIN ══════════════════════════
+    // (_shared/delegation-leboncoin.js) L'extension de l'EXÉCUTANT (Amiral) demande une session du PROPRIÉTAIRE
+    // (louis-seller) pour faire ses actions Leboncoin depuis son ordinateur, sur sa session Leboncoin. Rendue seulement
+    // si la délégation est posée DES DEUX CÔTÉS dans profiles.beta_flags (colonne fermée en écriture au client), vers
+    // CET appelant : toute autre demande est refusée (403), sans rien générer. Jamais de mot de passe, même voie que le
+    // bootstrap ci-dessous (lien généré sans envoi, échangé par l'extension). Sans `delegation_pour` : rien ne change.
+    let body: Record<string, unknown> = {};
+    try { body = await req.json(); } catch { /* corps vide : bootstrap ordinaire */ }
+    const delegationPour = typeof body?.delegation_pour === "string" ? body.delegation_pour.trim().toLowerCase() : "";
+    let emailCible = user.email ?? null;
+    if (delegationPour) {
+      const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const flags = async (id: string): Promise<Record<string, unknown> | null> => {
+        const { data } = await admin.from("profiles").select("beta_flags").eq("id", id).maybeSingle();
+        return ((data as { beta_flags?: Record<string, unknown> } | null)?.beta_flags ?? null) as Record<string, unknown> | null;
+      };
+      const valide = delegationLbcValide({
+        proprietaire: delegationPour, flagsProprietaire: await flags(delegationPour).catch(() => null),
+        executant: user.id, flagsExecutant: await flags(user.id).catch(() => null),
+      });
+      if (!valide) {
+        console.warn(`[extension-session] délégation Leboncoin REFUSÉE : ${user.id} → ${delegationPour.slice(0, 8)} (non posée des deux côtés)`);
+        return json({ error: "Délégation non autorisée" }, 403);
+      }
+      const { data: cible, error: errCible } = await admin.auth.admin.getUserById(delegationPour);
+      emailCible = cible?.user?.email ?? null;
+      if (errCible || !emailCible) return json({ error: "Compte délégué introuvable" }, 404);
+      console.log(`[extension-session] délégation Leboncoin : session du compte ${delegationPour.slice(0, 8)} pour l'extension de ${user.id.slice(0, 8)}`);
+    }
+    if (!emailCible) {
       // generate_link s'appuie sur l'email. Un compte sans email (cas théorique)
       // ne peut pas être bootstrappé par cette voie : on le dit au lieu de
       // renvoyer une erreur opaque.
@@ -118,7 +148,7 @@ serve(async (req) => {
         apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
         Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!}`,
       },
-      body: JSON.stringify({ type: "magiclink", email: user.email }),
+      body: JSON.stringify({ type: "magiclink", email: emailCible }),
     });
 
     if (!res.ok) {
@@ -134,6 +164,9 @@ serve(async (req) => {
       console.error("[extension-session] hashed_token absent de la réponse admin");
       return json({ error: "Réponse d'auth inattendue (hashed_token absent)" }, 502);
     }
+
+    // (01/11) Session de délégation : le marqueur de panne de l'extension de l'appelant ne la concerne pas.
+    if (delegationPour) return json({ hashed_token: hashedToken, email: emailCible, compte: delegationPour, delegation: ["leboncoin"] });
 
     // Bootstrap réussi : on efface le marqueur de panne (best-effort — la
     // reprise des polls ferait de toute façon repasser last_seen devant).

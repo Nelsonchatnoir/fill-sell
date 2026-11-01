@@ -42,8 +42,8 @@ import { paysVintedDeLAppareil, noteVintedEtranger, retenirPaysAppareil, paysVin
 import { noterGeste } from '../utils/dernierGeste';
 import { ABSENCES_AVANT_PAUSE } from '../annonces/absencesDeSuite.js';
 import { synchroSansRien } from './synchroSansRien.js';
-import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReussi, texteAutomatique } from './boutonSynchro.js';
-import { lireRelevesRecents, lireChoixEtSessions } from '../utils/syncPlateformes';
+import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReussi, texteAutomatique, pastilleLbcDeleguee, texteDelegationLbc } from './boutonSynchro.js';
+import { lireRelevesRecents, lireChoixEtSessions, lireDelegationLbc } from '../utils/syncPlateformes';
 import { etatSession } from '../utils/sessionsPlateformes.js';
 import { demarrerRelecture } from '../utils/relectureBornee';
 
@@ -179,11 +179,24 @@ export default function BlocSynchro({
     () => lireBilan({ plateformes: r.plateformes, runs: r.runs, runVinted: r.runVinted }),
     [r.plateformes, r.runs, r.runVinted],
   );
+  // (01/11, Louis) La délégation Leboncoin du compte (null pour tout compte qui ne délègue pas) : UNE lecture par
+  // ouverture de la carte, jamais en boucle (stock/boutonSynchro.js, utils/syncPlateformes.js).
+  const [delegationLbc, setDelegationLbc] = useState(null);
+  useEffect(() => {
+    if (!ouvert || !r.userId) return undefined;
+    let vivant = true;
+    lireDelegationLbc(r.userId).then((d) => { if (vivant) setDelegationLbc(d); }).catch(() => {});
+    return () => { vivant = false; };
+  }, [ouvert, r.userId]);
   const tuiles = useMemo(() => r.plateformes.map((p) => {
-    const e = etatTuile({ run: p === 'vinted' ? r.runVinted : (r.runs[p] ?? null), vinted: p === 'vinted', etatVinted, T, fr, pip: A });
+    let e = etatTuile({ run: p === 'vinted' ? r.runVinted : (r.runs[p] ?? null), vinted: p === 'vinted', etatVinted, T, fr, pip: A });
+    // Compte qui délègue Leboncoin : jamais « — » tant qu'un relevé réussi (fait chez l'exécutant) existe.
+    if (p === 'leboncoin' && pastilleLbcDeleguee({ delegation: delegationLbc, phase: e.phase })) {
+      e = etatTuile({ run: delegationLbc.dernierReleve, vinted: false, etatVinted, T, fr, pip: A });
+    }
     const vide = p !== 'vinted' && !!r.vides?.[p] && e.phase === 'fait';
     return { p, nom: LABEL_RELEVE[p] ?? p, e, vide };
-  }), [r.plateformes, r.runs, r.runVinted, r.vides, etatVinted, T, fr]);
+  }), [r.plateformes, r.runs, r.runVinted, r.vides, etatVinted, T, fr, delegationLbc]);
 
   // Le rangement avance : le stock se relit sans attendre un geste (même règle
   // que la carte d'origine).
@@ -336,6 +349,8 @@ export default function BlocSynchro({
   if (!ouvert || !r.userId) return ligneVinted ? <div aria-hidden="true" style={{ display: 'none' }}>{ligneVinted}</div> : null;
 
   const extVue = Number.isFinite(Date.parse(extensionStatus?.lastSeenAt ?? ''));
+  // (01/11, Louis) « Leboncoin passe par ton compte Amiral » — seulement pour un compte qui délègue Leboncoin.
+  const ligneDelegationLbc = texteDelegationLbc(delegationLbc, Date.now(), fr);
   const nbARattacher = r.aRattacher.length;
   const nomsRangement = Object.keys(r.rangement?.parPlateforme ?? {}).map((p) => LABEL_RELEVE[p] ?? p).join(', ');
   // « Déjà vendu ? » vit dans « À régler » (ventes) : ici, les AUTRES paires —
@@ -620,6 +635,11 @@ export default function BlocSynchro({
           {!enCours && msgVintedInfo && (
             <p role="status" style={{ margin: '8px 0 0', fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ink2 }}>
               <PlatformLogo platform="vinted" size={12} /> {msgVintedInfo.texte}
+            </p>
+          )}
+          {!enCours && ligneDelegationLbc && (
+            <p role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: 6, margin: '8px 0 0', fontSize: 12, lineHeight: '16px', fontWeight: 600, color: ligneDelegationLbc.ok ? S.ink2 : S.ambreEncre }}>
+              <PlatformLogo platform="leboncoin" size={12} /> <span style={{ minWidth: 0 }}>{ligneDelegationLbc.texte}</span>
             </p>
           )}
           {premiereAnnonce && <PremiereAnnonce fr={fr} />}

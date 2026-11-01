@@ -50,6 +50,40 @@ export async function lireChoixEtSessions(userId) {
   return { choisies: Array.isArray(choisies) ? choisies : null, sessions: data.extension_sessions ?? null };
 }
 
+// (01/11, décision de Nico — Louis) LA DÉLÉGATION LEBONCOIN DU COMPTE (supabase/functions/_shared/delegation-leboncoin.js) :
+// null pour tout compte qui ne délègue pas (une seule lecture, à l'ouverture de la carte, jamais en boucle). Sinon : le
+// nom de l'exécutant (« Amiral »), le poste de travail délégué (vu quand, session Leboncoin de son navigateur) et le
+// dernier relevé Leboncoin RÉUSSI du compte, quel que soit son déclencheur (le compte de travail les fait tous).
+export async function lireDelegationLbc(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase.from('profiles')
+    .select('beta_flags,extension_postes').eq('id', userId).maybeSingle();
+  if (error || !data) return null;
+  const d = data.beta_flags?.delegation_leboncoin;
+  if (!d || typeof d !== 'object' || typeof d.executant !== 'string') return null;
+  let poste = null;
+  for (const p of Object.values(data.extension_postes ?? {})) {
+    if (!p || typeof p !== 'object' || !p.delegation || typeof p.delegation !== 'object') continue;
+    if (!poste || Date.parse(p.le ?? '') > Date.parse(poste.le ?? '')) poste = p;
+  }
+  let dernier = null;
+  try {
+    const { data: runs } = await supabase.from('vinted_sync_runs')
+      .select('id,platform,status,declencheur,items_vus,items_crees,items_maj,total_entries,erreur,queued_at,started_at,finished_at')
+      .eq('user_id', userId).eq('kind', 'annonces').eq('platform', 'leboncoin').eq('status', 'done')
+      .gte('started_at', new Date(Date.now() - 30 * 86_400_000).toISOString())
+      .order('started_at', { ascending: false }).limit(1);
+    dernier = runs?.[0] ?? null;
+  } catch { dernier = null; }
+  return {
+    nom: typeof d.nom === 'string' && d.nom.trim() ? d.nom.trim().slice(0, 40) : null,
+    posteVuLe: poste?.le ?? null,
+    sessionLbc: poste?.sessions?.leboncoin === true ? true : poste?.sessions?.leboncoin === false ? false : null,
+    sessionLe: poste?.sessions?.lu_le ?? null,
+    dernierReleve: dernier,
+  };
+}
+
 // Mise en file d'un relevé. Le serveur tranche (ouverture, version, cadence).
 // Réponses : queued | deja_en_attente | sync_en_cours | non_expose |
 // extension_jamais_vue | extension_trop_ancienne | cadence | rpc_absente | erreur.
