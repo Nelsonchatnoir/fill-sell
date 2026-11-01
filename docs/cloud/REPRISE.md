@@ -1,6 +1,40 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ 01/11/2026 22:40 — FAUX « CONNECTÉ » CORRIGÉS, ESSAI DE 48 H REMIS À ZÉRO (à lire EN PREMIER ; le bloc 19:35 reste valable pour le reste)
+## ⛔ 02/11/2026 01:00 — PREMIER ESSAI RÉEL : 3 REPUBLICATIONS FAITES PAR LE CLOUD, LEBONCOIN EN PAUSE (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 20. Le bloc 22:40 en dessous reste valable (règle « connecté =
+compte lu »).
+
+### Ce qui s'est passé
+- 22:54:06 : glissière DataDome Leboncoin dans l'onglet de travail (API 403, 31 s après la connexion vérifiée) → la
+  règle d'alors arrêtait TOUT l'exécutant, sans rien dire à l'app : les 4 republications de 23:01 jamais prises.
+- Corrigé (810419b, déployé 23:40) : **un blocage n'arrête que SA plateforme** (verrou, onglets fermés, coffre « en
+  vérification », session gardée ; « Me reconnecter » la rouvre) ; l'app affiche un bandeau quand l'exécutant est arrêté
+  ou muet (OTA à venir : 2.9.150) ; les 48 h ne comptent que les heures de marche.
+- Beebs : la copie Cloud de l'extension ne voyait pas ses jetons (posés sans « Secure » : `chrome.cookies.getAll` ne les
+  rend pas dans Chromium 156). Corrigé (f525610) : lecture par adresse. Copie Cloud **2026-11-01T23:02:16Z+dd69fbb-cloud**
+  (source dd69fbb, 0.6.164 ; la 0.6.165 du parc n'y est PAS).
+
+### Résultat des 4 republications (« Gants de ski Quechua »)
+- Vinted **23:42:40** (10629454888) · Depop **23:49:27** · Beebs **00:40:03** (34280542) — par le Cloud.
+- Leboncoin : **en attente**, retenue par la règle Leboncoin de l'app (« Accès temporairement restreint » depuis 22:54 :
+  tout Leboncoin en pause, un essai automatique au bout de 24 h, ou « Leboncoin remarche »). Décision de Nico.
+- eBay : jamais republié (règle de l'app depuis le 17/09) ; la feuille ne le dit pas (amélioration proposée).
+
+### État à 01:00
+- Orchestrateur f525610 (+ compteur des 48 h corrigé, voir le commit suivant) ; navigateur ouvert depuis 00:15:48 ;
+  verrou : les 4 plateformes ouvertes ; aucune plateforme en vérification (`blocages.json` : Leboncoin débloqué 23:55:07
+  par « Me reconnecter »).
+- Coffre de Nico : Vinted, Leboncoin, Beebs, Depop connectés (vérifiés). Poste de Nico : ARRÊT. Aucun achat.
+- Sauvegardes : `_backup_0111_cloud_faux_connectes`, `_backup_0111_cloud_lbc_verification` (+ inverses dans
+  `scripts/reparations/`).
+- **OTA 2.9.150 (bandeau de l'exécutant arrêté) : pas encore envoyée** — l'arbre partagé était sale (autre terminal) à 01:00.
+
+### À relire au retour (sans boucle)
+- `docker compose exec -T orchestrateur node outils/endurance-bilan.mjs` : heures comptées par plateforme, blocages.
+- `blocages.json` : toute nouvelle plateforme en vérification (et sa cause).
+- Leboncoin : `profiles.platform_settings.leboncoin.blocage_acces` (pause de l'app, essai du 02/11 vers 22:54).
+
+## 01/11/2026 22:40 — FAUX « CONNECTÉ » CORRIGÉS, ESSAI DE 48 H REMIS À ZÉRO (bloc précédent ; la suite est le bloc de 01:00 au-dessus)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 19. Essai de connexion de Nico depuis l'app (21:00 → 21:23) :
 Leboncoin et Depop faussement « connectés » (cookie seul), Beebs + Google refusé par notre liste, effacer muet dans
 « Écrire », eBay « à relier » alors que l'API est reliée. Tout corrigé à la racine (6eb3802), OTA **2.9.149**.

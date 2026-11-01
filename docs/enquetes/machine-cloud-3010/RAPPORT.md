@@ -1374,3 +1374,81 @@ de l'essai) ; le bilan part de la première après la dernière remise à zéro 
   journal porte `connexion_compte_non_lu` {http, motif}.
 - **En attente du feu vert nommé de Nico** : `supabase/migrations/PROPOSITION_20261101_cloud_connexions_depop.sql.txt`
   (Depop dans `cloud_connexions`).
+
+## 20. Premier essai réel (01/11, 23:01) : l'exécutant arrêté sans rien dire, Beebs jamais vu connecté (01/11, 23:10 → 02/11, 01:00)
+Nico a vérifié ses 4 connexions entre 22:53 et 22:57 (Leboncoin, Beebs, Depop ; Vinted déjà là), puis lancé à 23:01 la
+republication des « Gants de ski Quechua » sur 4 plateformes. À 23:05, rien n'avait été pris.
+
+### 20.1 Ce qui s'est passé (journal du navigateur steel, heure de Paris)
+- 22:53:35 Leboncoin vérifié (compte lu, 200). 22:53:55 l'extension Cloud ouvre son onglet de travail Leboncoin
+  (`#fillsell-worker`) ; 22:54:06 `api.leboncoin.fr/api/account/v2/members/me/account` → **403**, et DataDome pose une
+  **glissière** (`geo.captcha-delivery.com/captcha/`, t ≠ bv) dans cet onglet. La même lecture avait rendu 200 31 s plus
+  tôt dans la page « Me connecter » (visible, touchée par Nico) ; dès 22:53:35, `can-access-chat` rendait déjà 403.
+- 22:57:23 (premier relevé sans « Me connecter » ouvert) : la règle de l'essai — arrêt au premier blocage — a arrêté
+  TOUT l'exécutant (navigateur fermé, `arret.json`), sans rien en dire à l'app, qui montrait « En pause : il repart dès
+  qu'une tâche attend ». Les 4 republications de 23:01 sont restées « pending ».
+- **Ce n'était pas un plantage** : un arrêt voulu par la règle, mais trop large (une plateforme arrêtait les quatre) et muet.
+
+### 20.2 La règle corrigée (810419b), déployée à 23:40
+- **Un blocage n'arrête que SA plateforme** : plus aucune requête vers elle (verrou), ses onglets de travail fermés, sa
+  ligne du coffre « en vérification » (connecte faux : get-pending-jobs ne sert plus ses tâches au Cloud, l'app demande
+  « Me reconnecter » ; la session reste chiffrée au coffre et n'est jamais purgée). Les autres plateformes continuent.
+  Une connexion vérifiée (« Me connecter ») la rouvre. Le même geste vaut pour une tâche refusée par l'anti-robot (une
+  fois par tâche). L'arrêt total ne reste que pour un blocage sans plateforme connue, et il s'écrit dans `cloud_postes`
+  (erreur `arret_essai:…`). Au redémarrage, l'`arret.json` de 22:57 est devenu le blocage de Leboncoin seul (rangé en
+  `arret-2026-11-01T21-57-23-350Z.json`).
+- **L'app le dit** : signe de vie de l'exécutant toutes les 10 min (`cloud_postes.derniere_activite`) ; bandeau
+  « FillSell Cloud est arrêté (à HH:MM) » quand il est éteint depuis plus de 5 min, arrêté par l'essai, ou muet depuis
+  plus de 25 min ; la carte de l'exécutant ne dit plus « en pause, il repart » quand il est arrêté ; le bandeau des
+  plateformes dit aussi « résous la vérification demandée ».
+- **Les 48 h ne comptent que les heures de MARCHE** de chaque plateforme : navigateur ouvert, plateforme connectée et
+  pas en vérification, jamais un trou de plus de 15 min entre deux mesures (`decompteEssai`, `endurance-bilan.mjs`).
+- Sauvegarde de la ligne Leboncoin du coffre avant son passage en vérification :
+  `scripts/reparations/20261101_cloud_lbc_verification_nico.sql` (+ inverse).
+
+### 20.3 Les 4 republications (heure de Paris)
+| Plateforme | Pris | Résultat | Durée |
+|---|---|---|---|
+| Vinted | capture 23:41:08, recréation 23:41:39 | **republiée 23:42:40** (étape recreated) | 2 min 29 s après le redémarrage (23:40:11), 61 s de geste |
+| Depop | capture 23:42, retrait ~23:45, recréation 23:49:14 | **republiée 23:49:27** | ≈ 7 min (pause voulue entre retrait et redépôt) |
+| Leboncoin | — | **retenue** par la règle Leboncoin de l'app : « Accès temporairement restreint » depuis 22:54 (le 403 de l'onglet de travail), TOUTES les actions Leboncoin en pause ; un essai par jour, ou « Leboncoin remarche » | — |
+| Beebs | jamais commencée | voir 20.4 | — |
+- 23:53, Nico : « Leboncoin déconnecté » (bandeau, OTA 2.9.149 : texte d'avant) ; « Me reconnecter » → **vérifié en 4 s**
+  (23:55:07, compte lu 200, sans rien retaper : la session gardée) → Leboncoin rouvert par le Cloud ; sa tâche reste
+  retenue par la pause Leboncoin (règle de l'app, inchangée).
+
+### 20.4 Beebs : la copie Cloud de l'extension ne voyait pas sa session (cause trouvée le 02/11 vers 00:00)
+- Aucune requête Beebs depuis le redémarrage ; la capture rendait « lecture_impossible » ; le second verrou (dans la
+  copie Cloud) disait Beebs « fermée » et avait refusé 14 visites.
+- Lu dans le navigateur : les jetons de Beebs (`access_token`, `refresh_token`, `www.beebs.app`) sont posés SANS
+  « Secure » depuis une page https (secure faux, sourceScheme « Secure »). Dans Chromium 156, `chrome.cookies.getAll`
+  (par domaine OU par adresse) ne les rend PAS ; `chrome.cookies.get({ url, name })` les rend. Le verrou ne lisait que
+  `getAll` : Beebs, pourtant connectée et vérifiée par le serveur, n'a jamais été joignable par l'extension Cloud.
+- Correctif : chaque cookie de connexion se lit aussi par son adresse (www, le domaine, auth.) —
+  `scripts/cloud/build-extension-cloud.mjs`, `selftest:cloud-extension` 47. Copie Cloud reconstruite depuis la MÊME
+  source servie (dd69fbb, 0.6.164 — la 0.6.165 du parc n'y entre pas) : seule la lecture du verrou change.
+
+- 00:15:44 copie Cloud **2026-11-01T23:02:16Z+dd69fbb-cloud** en place (cache du script de fond vidé) ; verrou : Beebs « ouverte »,
+  0 refus. 00:29 capture, 00:31:30 retrait, **00:40:03 Beebs republiée** (annonce 34280542, l'ancienne 34239821 retirée) :
+  ≈ 11 min dont la pause voulue entre retrait et redépôt, 48 s de redépôt.
+
+### 20.5 Le compteur des 48 h, après ce soir
+- Vinted n'avait pas de connexion vérifiée depuis la remise à zéro (connectée avant la règle « compte lu », Nico ne l'a
+  pas refaite) : une tâche du Cloud PUBLIÉE vaut preuve (`connexion_verifiee`, preuve « tache_publiee », 23:42:40).
+- Leboncoin est compté hors de ses heures de pause de l'app (`platform_settings.leboncoin.blocage_acces` posé, pas levé).
+- Bilan : `docker compose exec -T orchestrateur node outils/endurance-bilan.mjs` (heures comptées par plateforme,
+  plateformes en vérification, blocages).
+
+### 20.6 Point 4 de Nico : « un retrait sur 5 plateformes, 4 republications sans eBay »
+Ni une erreur de bouton ni une tâche perdue : la feuille « Republier » ne propose jamais eBay (règle de l'app depuis le
+17/09, `utils/republication.js` : « eBay reste HORS republication »). L'article est en ligne sur 5 plateformes ; la feuille
+en a proposé 4 et a créé 4 republications, comme elle le devait. Le défaut : elle ne dit pas pourquoi eBay n'y est pas
+(proposé à Nico : une ligne « eBay : ton annonce reste en ligne telle quelle »).
+
+### 20.7 Leboncoin : ce que ce soir prouve
+Sur ce serveur (steel-browser, 3D logicielle), la page de connexion visible passe (formulaire, code SMS, compte lu 200
+à 22:53:35 et à 23:55:07), mais l'onglet de travail de l'extension prend un 403 de l'API et une glissière DataDome 31 s
+après la connexion. Leboncoin a ensuite restreint l'accès du compte (règle de l'app : tout Leboncoin en pause, un essai
+par jour). C'est le premier blocage réel de l'essai : à trancher par Nico (attendre l'essai automatique de 24 h, ou
+« Leboncoin remarche » — qui refera une requête depuis l'IP du Cloud).
+
