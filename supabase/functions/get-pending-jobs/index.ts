@@ -2,7 +2,7 @@ import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
 import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente } from "../_shared/republication-cible.js";
 import { retraitDeLaRepublication, clotureRepublicationParRetrait, STATUTS_RETRAIT_VIVANT } from "../_shared/republication-retrait.js";
-import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord } from "../_shared/publication-programmee.js";
+import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
 import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
@@ -2777,20 +2777,23 @@ serve(async (req) => {
         if (enAttenteProg.length) {
           const depuis = new Date(Date.now() - 36 * 3600_000).toISOString();
           const { data: servies } = await userClient.from("cross_post_jobs")
-            .select("id, status, servie:platform_fields->>programmee_servie_le")
+            .select("id, status, platform, servie:platform_fields->>programmee_servie_le, reprises:platform_fields->>pas_de_rouge_reprises, boucle:platform_fields->boucle_technique")
             .eq("user_id", user.id).eq("action", "publish")
             .gte("platform_fields->>programmee_servie_le", depuis)
             .limit(500);
-          const lignes = ((servies ?? []) as Array<{ id: string; status: string; servie: string | null }>);
+          const lignes = ((servies ?? []) as Array<{ id: string; status: string; platform: string | null; servie: string | null; reprises: string | null; boucle: unknown }>);
           const nServies = lignes.filter((l) => servieAujourdhui({ platform_fields: { programmee_servie_le: l.servie } }, reglageProg)).length;
           const enVol = lignes.some((l) => l.status === "processing");
           const derniere = lignes.reduce((m, l) => Math.max(m, Date.parse(String(l.servie ?? "")) || 0), 0) || null;
-          const d = decisionProgrammee({ enAttente: enAttenteProg, reglage: reglageProg, servies: nServies, enVol, derniereServieMs: derniere });
+          // (01/11 soir, gjehly) Une plateforme bloquée ne bloque jamais les autres : sa place passe à la suivante d'une
+          // autre plateforme (_shared/publication-programmee.js, plateformesEnRepriseTechnique).
+          const plateformesBloquees = plateformesEnRepriseTechnique(lignes);
+          const d = decisionProgrammee({ enAttente: enAttenteProg, reglage: reglageProg, servies: nServies, enVol, derniereServieMs: derniere, plateformesBloquees });
           for (const id of d.retenues) idsProgrammeesRetenues.add(id);
           if (d.servir) programmeeAMarquer = d.servir;   // (29/10, lot B 4.7) marquée en fin de chaîne si elle part
           if (idsProgrammeesRetenues.size) {
             out = out.filter((j) => !idsProgrammeesRetenues.has(String(j.id)));
-            console.log(`[get-pending-jobs] userId=${user.id} : publications programmées → ${idsProgrammeesRetenues.size} retenue(s) (${d.motif ?? "une_a_la_fois"}), ${d.servir ? "1 servie" : "aucune servie"} ; ${nServies} servie(s) aujourd'hui`);
+            console.log(`[get-pending-jobs] userId=${user.id} : publications programmées → ${idsProgrammeesRetenues.size} retenue(s) (${d.motif ?? "une_a_la_fois"}), ${d.servir ? "1 servie" : "aucune servie"} ; ${nServies} servie(s) aujourd'hui${plateformesBloquees.size ? ` ; en reprise technique, sans nouvelle place : ${[...plateformesBloquees].join(", ")}` : ""}`);
           }
         }
       } catch (_e) { /* jamais un point de panne : la file part comme avant */ }

@@ -24,12 +24,16 @@ function extraireFonction(source, nom) {
   const avant = source.lastIndexOf("async ", debut);
   return source.slice(avant === debut - 6 ? avant : debut, i + 1);
 }
-const fausseChrome = ({ etatFenetre = "minimized", gele = undefined } = {}) => {
-  const journal = { updates: [], session: {} };
+const WORK_WINDOW_KEY = "fillsell_work_window";
+const fausseChrome = ({ etatFenetre = "minimized", gele = undefined, actif = undefined, dediee = false } = {}) => {
+  const journal = { updates: [], ongletsActives: [], session: dediee ? { [WORK_WINDOW_KEY]: 7 } : {} };
   return {
     journal,
     chrome: {
-      tabs: { get: async (id) => ({ id, windowId: 7, ...(gele === undefined ? {} : { frozen: gele }) }) },
+      tabs: {
+        get: async (id) => ({ id, windowId: 7, ...(gele === undefined ? {} : { frozen: gele }), ...(actif === undefined ? {} : { active: actif }) }),
+        update: async (id, opts) => { journal.ongletsActives.push({ id, ...opts }); return {}; },
+      },
       windows: {
         get: async (id) => ({ id, state: etatFenetre }),
         update: async (id, opts) => { journal.updates.push({ id, ...opts }); return {}; },
@@ -43,8 +47,9 @@ const fausseChrome = ({ etatFenetre = "minimized", gele = undefined } = {}) => {
   };
 };
 const charger = (fc) => new Function("chrome", "journaliserEvenementFenetre", "console",
-  `const FENETRE_RESTAUREE_KEY = "fillsell_fenetre_restauree_onglet_muet";\n${extraireFonction(BG, "restaurerFenetrePourOngletMuet")}\n${extraireFonction(BG, "reminimiserFenetreSiRestauree")}\nreturn { restaurerFenetrePourOngletMuet, reminimiserFenetreSiRestauree };`)(
+  `const FENETRE_RESTAUREE_KEY = "fillsell_fenetre_restauree_onglet_muet";\nconst WORK_WINDOW_KEY = "${WORK_WINDOW_KEY}";\n${extraireFonction(BG, "restaurerFenetrePourOngletMuet")}\n${extraireFonction(BG, "reminimiserFenetreSiRestauree")}\n${extraireFonction(BG, "montrerOngletDansFenetreDediee")}\nreturn { restaurerFenetrePourOngletMuet, reminimiserFenetreSiRestauree, montrerOngletDansFenetreDediee };`)(
   fc.chrome, async () => {}, { warn: () => {}, log: () => {} });
+assert.ok(new RegExp(`const WORK_WINDOW_KEY = "${WORK_WINDOW_KEY}"`).test(BG), "la clé de la fenêtre dédiée du banc est celle du background");
 
 await cas("fenêtre de travail minimisée : rendue visible SANS focus, mémorisée, puis re-minimisée après le job", async () => {
   const fc = fausseChrome();
@@ -69,6 +74,52 @@ await cas("onglet gelé par Chrome dans une fenêtre visible : geste fait (jamai
   const fc = fausseChrome({ etatFenetre: "normal", gele: true });
   assert.equal(await charger(fc).restaurerFenetrePourOngletMuet(42), true);
   assert.ok(fc.journal.updates.every((u) => u.focused === false));
+});
+
+// ── (01/11 soir, gjehly — 0.6.165) Une fenêtre visible ne montre que son onglet actif ──────────────────────────────────
+await cas("fenêtre dédiée minimisée, onglet caché derrière le porte-page : fenêtre visible ET onglet montré, jamais le focus", async () => {
+  const fc = fausseChrome({ actif: false, dediee: true });
+  assert.equal(await charger(fc).restaurerFenetrePourOngletMuet(42), true);
+  assert.deepEqual(fc.journal.updates[0], { id: 7, state: "normal", focused: false });
+  assert.deepEqual(fc.journal.ongletsActives, [{ id: 42, active: true }]);
+  assert.ok(fc.journal.updates.every((u) => u.focused === false));
+});
+
+await cas("fenêtre dédiée DÉJÀ visible mais onglet caché (relevé de gjehly : normal, tab_active false) : geste fait", async () => {
+  const fc = fausseChrome({ etatFenetre: "normal", gele: false, actif: false, dediee: true });
+  assert.equal(await charger(fc).restaurerFenetrePourOngletMuet(42), true);
+  assert.deepEqual(fc.journal.ongletsActives, [{ id: 42, active: true }]);
+});
+
+await cas("onglet hors fenêtre dédiée (fenêtre de l'utilisateur) : jamais activé — on ne change pas ce qu'il regarde", async () => {
+  const fc = fausseChrome({ etatFenetre: "normal", gele: false, actif: false, dediee: false });
+  assert.equal(await charger(fc).restaurerFenetrePourOngletMuet(42), false);
+  assert.equal(fc.journal.ongletsActives.length + fc.journal.updates.length, 0);
+  const fc2 = fausseChrome({ actif: false, dediee: false });
+  assert.equal(await charger(fc2).restaurerFenetrePourOngletMuet(42), true, "fenêtre minimisée : rendue visible comme avant");
+  assert.equal(fc2.journal.ongletsActives.length, 0, "… mais l'onglet d'une fenêtre non dédiée n'est jamais activé");
+  assert.equal(await charger(fausseChrome({ actif: false, dediee: false })).montrerOngletDansFenetreDediee(42), false);
+  const fc3 = fausseChrome({ actif: false, dediee: true });
+  assert.equal(await charger(fc3).montrerOngletDansFenetreDediee(42), true, "onglet neuf de la fenêtre dédiée : montré");
+  assert.equal(await charger(fausseChrome({ actif: true, dediee: true })).montrerOngletDansFenetreDediee(42), false, "déjà actif : rien");
+});
+
+await cas("la sonde de l'onglet muet : remède seulement sur preuve (injection manquée, flux sans fin au formulaire hydraté)", () => {
+  const remedeOngletMuet = new Function(`${extraireFonction(BG, "remedeOngletMuet")}\nreturn remedeOngletMuet;`)();
+  assert.equal(remedeOngletMuet({ scripts_manifeste: false, ready_state: "complete" }), "injection_manquee");
+  assert.equal(remedeOngletMuet({ scripts_manifeste: false, ready_state: "interactive" }), "injection_manquee");
+  assert.equal(remedeOngletMuet({ scripts_manifeste: false, ready_state: "loading", formulaire_hydrate: true }), "flux_sans_fin");
+  assert.equal(remedeOngletMuet({ scripts_manifeste: false, ready_state: "loading", formulaire_hydrate: false }), null, "formulaire mort : rien");
+  assert.equal(remedeOngletMuet({ scripts_manifeste: true, ready_state: "complete" }), null, "scripts déjà là (muet pour une autre raison) : jamais une seconde injection");
+  assert.equal(remedeOngletMuet({ fil_bloque: true }), null, "fil de la page bloqué : rien");
+  assert.equal(remedeOngletMuet({ erreur: "Cannot access contents" }), null);
+  assert.equal(remedeOngletMuet(null), null);
+  const s = extraireFonction(BG, "sonderOngletMuet");
+  assert.ok(/injectImmediately: true/.test(s) && /world: "MAIN"/.test(s) && /SONDE_ONGLET_MUET_MS/.test(s), "sonde immédiate, deux mondes, bornée");
+  assert.ok(/journaliserEvenementFenetre\("sonde_onglet_muet"/.test(s), "le verdict part dans le journal de fenêtre (work_window_state)");
+  assert.ok(!/sendMessage|\.click\(|\.value\s*=/.test(s), "la sonde ne touche à rien de la page");
+  const inj = extraireFonction(BG, "injecterScriptsManquants");
+  assert.ok(/getManifest\(\)\.content_scripts/.test(inj) && /files: fichiers, injectImmediately: true/.test(inj), "les fichiers mêmes du manifeste, dans leur ordre");
 });
 
 await cas("ordre des gestes : rechargement, onglet neuf, PUIS fenêtre visible ; re-minimisée après CHAQUE job ; relevé « tab_frozen »", () => {

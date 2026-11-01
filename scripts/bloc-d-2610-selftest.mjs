@@ -139,6 +139,41 @@ ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageP
   ok(PP.ordreProgrammeesPretesDabord([tard, ...jobs], Date.parse("2026-10-26T10:00:00Z"))[0].id === "t", "échéance venue : elle reprend sa place dans la file");
   ok(/ordreProgrammeesPretesDabord\(out\.filter\(\(j\) => estProgrammee\(j\)\)\)/.test(gpj), "get-pending-jobs ordonne les programmées avant la décision");
 }
+// (01/11 soir, gjehly) UNE PLATEFORME BLOQUÉE NE BLOQUE JAMAIS LES AUTRES : 79 Vinted passaient devant 13 Leboncoin,
+// plafond 8 par jour, chaque place mangée par un Vinted dont la page de dépôt restait muette (reprises 4 et 2).
+{
+  const PB = PP.plateformesEnRepriseTechnique;
+  const servies = [
+    { id: "eed4", status: "pending", platform: "vinted", reprises: "4", boucle: null },
+    { id: "64d5", status: "processing", platform: "vinted", reprises: "2", boucle: null },
+    { id: "eb1", status: "published", platform: "ebay", reprises: "1", boucle: null },
+  ];
+  ok([...PB(servies)].join() === "vinted", "Vinted en reprise technique (pending/processing, reprises ≥ 1) : bloquée ; une publiée ne bloque rien");
+  ok(PB([{ status: "needs_user", platform: "vinted", reprises: null, boucle: null }]).size === 0, "une question sur l'article (needs_user sans boucle) ne bloque pas la plateforme");
+  ok([...PB([{ status: "needs_user", platform: "leboncoin", reprises: null, boucle: { signature: "onglet_muet" } }])].join() === "leboncoin", "une boucle technique (needs_user « relancer ») bloque sa plateforme");
+  ok(PB([{ status: "pending", platform: "vinted", reprises: null }]).size === 0 && PB(null).size === 0, "servie sans reprise, ou rien lu : rien de bloqué (comme avant)");
+  const file = [
+    ...["v1", "v2", "v3"].map((id) => ({ id, platform: "vinted", action: "publish", platform_fields: { programmee: true } })),
+    ...["l1", "l2"].map((id) => ({ id, platform: "leboncoin", action: "publish", platform_fields: { programmee: true } })),
+  ];
+  const sansBlocage = PP.decisionProgrammee({ enAttente: file, reglage: reg, servies: 2, derniereServieMs: lundi0830 - 41 * 60_000, maintenant: lundi0830 });
+  const avecBlocage = PP.decisionProgrammee({ enAttente: file, reglage: reg, servies: 2, derniereServieMs: lundi0830 - 41 * 60_000, maintenant: lundi0830, plateformesBloquees: PB(servies) });
+  ok(sansBlocage.servir === "v1" && avecBlocage.servir === "l1" && avecBlocage.retenues.join() === "v1,v2,v3,l2" && avecBlocage.motif === "une_a_la_fois",
+    "Vinted bloquée : la place va au premier Leboncoin, les Vinted gardent leur rang (rien perdu)", JSON.stringify(avecBlocage));
+  const toutesBloquees = PP.decisionProgrammee({ enAttente: file.slice(0, 3), reglage: reg, servies: 2, derniereServieMs: lundi0830 - 41 * 60_000, maintenant: lundi0830, plateformesBloquees: ["vinted"] });
+  ok(toutesBloquees.servir === null && toutesBloquees.retenues.length === 3 && toutesBloquees.motif === "plateforme_bloquee", "il ne reste que la plateforme bloquée : rien de servi (jamais le même mur une fois de plus)");
+  for (const [nom, args] of [
+    ["créneau", { maintenant: lundi1100 }], ["plafond", { servies: 3 }], ["une_a_la_fois", { servies: 2, enVol: true }],
+    ["espacement", { servies: 2, derniereServieMs: lundi0830 - 10 * 60_000 }],
+  ]) {
+    const a = PP.decisionProgrammee({ enAttente: file, reglage: reg, maintenant: lundi0830, ...args });
+    const b = PP.decisionProgrammee({ enAttente: file, reglage: reg, maintenant: lundi0830, ...args, plateformesBloquees: ["vinted"] });
+    ok(a.motif === b.motif && a.servir === b.servir && b.servir === null, `cadence intouchée (${nom}) : même verdict avec ou sans plateforme bloquée`, JSON.stringify({ a, b }));
+  }
+  ok(/const plateformesBloquees = plateformesEnRepriseTechnique\(lignes\);/.test(gpj) && /derniereServieMs: derniere, plateformesBloquees \}\)/.test(gpj)
+    && /reprises:platform_fields->>pas_de_rouge_reprises, boucle:platform_fields->boucle_technique/.test(gpj),
+    "get-pending-jobs lit plateforme, reprises et boucle des servies (même lecture) et les passe à la décision");
+}
 ok(/jobs_retenus_programmation: idsProgrammeesRetenues\.size/.test(gpj), "la réponse dit combien sont retenues (popup, suivi)");
 const mr = lire("src/publication/moteur/regles.js");
 ok(/platform_fields: programmee \? \{ \.\.\.pf, programmee: true, programmee_le: new Date\(\)\.toISOString\(\) \} : pf/.test(mr), "la tâche naît marquée « programmée » (quota décompté au clic, comme avant)");

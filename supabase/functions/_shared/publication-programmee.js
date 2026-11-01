@@ -78,6 +78,30 @@ export function servieAujourdhui(job, reglage, instantMs = Date.now()) {
 }
 
 /**
+ * (01/11 soir, gjehly — Nico : « une plateforme bloquée ne doit jamais bloquer les autres ») Les plateformes dont une
+ * programmée DÉJÀ SERVIE est en reprise technique : rien n'est parti, la tâche repasse seule (pas-de-rouge, échéance
+ * espacée) ou attend « Relancer » après une boucle technique. Lui donner la place suivante, c'est taper le même mur
+ * (onglet muet, canal coupé, compte restreint…) pendant que les autres plateformes attendent derrière elle : chez gjehly,
+ * 79 Vinted passaient avant 13 Leboncoin, plafond 8 par jour, chaque place mangée par un Vinted muet. Une question sur
+ * l'article (needs_user sans boucle technique) ne bloque pas la plateforme : c'est la fiche, pas le poste.
+ * @param {Array<{platform?: string, status?: string, reprises?: unknown, boucle?: unknown}>} lignes  les programmées
+ *   servies récemment (get-pending-jobs les relit déjà pour le plafond et l'espacement)
+ * @returns {Set<string>}
+ */
+export function plateformesEnRepriseTechnique(lignes) {
+  const out = new Set();
+  for (const l of Array.isArray(lignes) ? lignes : []) {
+    const statut = String(l?.status ?? "");
+    const p = String(l?.platform ?? "");
+    if (!p) continue;
+    const reprise = (statut === "pending" || statut === "processing") && (Number(l?.reprises ?? 0) || 0) >= 1;
+    const boucle = statut === "needs_user" && l?.boucle != null && l?.boucle !== false && l?.boucle !== "";
+    if (reprise || boucle) out.add(p);
+  }
+  return out;
+}
+
+/**
  * Que servir maintenant parmi les publications programmées en attente ?
  * @param {object} p
  * @param {Array} p.enAttente     les tâches programmées pas encore servies ('pending'), dans l'ordre de la file
@@ -86,9 +110,12 @@ export function servieAujourdhui(job, reglage, instantMs = Date.now()) {
  * @param {boolean} p.enVol       une programmée servie est encore en cours (processing)
  * @param {number|null} p.derniereServieMs  l'instant de la dernière servie (espacement)
  * @param {number} [p.maintenant]
- * @returns {{ servir: string|null, retenues: string[], motif: null|'creneau'|'plafond'|'une_a_la_fois'|'espacement' }}
+ * @param {Set<string>|string[]|null} [p.plateformesBloquees]  plateformesEnRepriseTechnique(…) : leur tour passe à la
+ *   première programmée d'une AUTRE plateforme ; toutes bloquées → rien de servi (motif 'plateforme_bloquee'). Créneau,
+ *   plafond, une à la fois et espacement inchangés : seule la tâche qui prend la place change.
+ * @returns {{ servir: string|null, retenues: string[], motif: null|'creneau'|'plafond'|'une_a_la_fois'|'espacement'|'plateforme_bloquee' }}
  */
-export function decisionProgrammee({ enAttente = [], reglage = null, servies = 0, enVol = false, derniereServieMs = null, maintenant = Date.now() }) {
+export function decisionProgrammee({ enAttente = [], reglage = null, servies = 0, enVol = false, derniereServieMs = null, maintenant = Date.now(), plateformesBloquees = null }) {
   const ids = enAttente.map((j) => String(j.id));
   if (!reglage) return { servir: null, retenues: [], motif: null, libres: ids };
   if (!ids.length) return { servir: null, retenues: [], motif: null, libres: [] };
@@ -103,7 +130,11 @@ export function decisionProgrammee({ enAttente = [], reglage = null, servies = 0
   const prevues = servies + Math.max(1, Math.min(restant, ids.length));
   const intervalle = Math.max(ESPACEMENT_MIN_MS, Math.floor(f.dureeMs / prevues));
   if (derniereServieMs != null && maintenant - derniereServieMs < intervalle) return { servir: null, retenues: ids, motif: "espacement", libres: [] };
-  return { servir: ids[0], retenues: ids.slice(1), motif: ids.length > 1 ? "une_a_la_fois" : null, libres: [] };
+  const bloquees = new Set(plateformesBloquees ? [...plateformesBloquees].map(String) : []);
+  const choisie = bloquees.size ? enAttente.find((j) => !bloquees.has(String(j?.platform ?? ""))) : enAttente[0];
+  if (!choisie) return { servir: null, retenues: ids, motif: "plateforme_bloquee", libres: [] };
+  const idChoisie = String(choisie.id);
+  return { servir: idChoisie, retenues: ids.filter((id) => id !== idChoisie), motif: ids.length > 1 ? "une_a_la_fois" : null, libres: [] };
 }
 
 /**

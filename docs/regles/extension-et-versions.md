@@ -163,3 +163,15 @@
   anti-bascule ; cycle délégué sous le verrou de flux, après le cycle du compte ; tout s'écrit avec le jeton du compte
   délégué. Un poste dont le compte délègue (`blocages.leboncoin.etat = "delegue"`) ne touche plus Leboncoin, même de
   lui-même (sonde, relevé quotidien, pages d'annonce). Détail : `docs/regles/plateformes.md` § 01/11 après-midi.
+
+## 01/11 soir — 0.6.165 : un onglet muet est vraiment montré, et il dit pourquoi il se tait (gjehly, Brave)
+- Rapport `docs/enquetes/depot-vinted-muet-gjehly-0111/RAPPORT.md`. La fenêtre de travail ne montre que son onglet
+  ACTIF (le porte-page `about:blank`) : « fenêtre visible » (`restaurerFenetrePourOngletMuet`) rend désormais l'onglet
+  muet actif DANS LA FENÊTRE DÉDIÉE seulement (jamais une fenêtre de l'utilisateur, jamais le focus), même fenêtre
+  déjà visible ; l'onglet neuf de la relance suivante aussi (`relancerOngletMuet(…, { montrer: true })`).
+- `sonderOngletMuet` (après la relance, puis fenêtre visible) : lectures immédiates bornées à 4 s, monde isolé + monde de
+  la page ; verdict dans `work_window_state.at_end.events` (`sonde_onglet_muet`), JAMAIS dans le message d'erreur
+  (classement inchangé). Remède sur preuve seulement (`remedeOngletMuet`) : scripts du manifeste jamais reçus ET
+  (document chargé, ou « loading » au formulaire hydraté par React) → les mêmes fichiers, injectés tout de suite.
+- ⛔ Tout content script du manifeste garde au moins un `const` de premier niveau : c'est ce qui fait rejeter d'emblée un
+  second passage (injection + `document_idle`) — jamais deux écouteurs.

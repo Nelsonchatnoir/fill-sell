@@ -8621,6 +8621,11 @@ async function getOrCreateWorkTab(platform, url) {
     console.warn(`[onglet][${platform}] content script joignable après ${relance.geste} (onglet ${relance.tabId}) — on continue`);
     return relance.tabId;
   }
+  // (01/11 soir, 0.6.165) La page dit pourquoi elle se tait ; un document chargé qui n'a jamais reçu nos scripts les reçoit.
+  if (await sonderEtSoignerOngletMuet(platform, relance.tabId, "apres_relance")) {
+    console.warn(`[onglet][${platform}] scripts du manifeste injectés dans un document qui ne les avait pas reçus (onglet ${relance.tabId}) — on continue`);
+    return relance.tabId;
+  }
   // ── (24/10 soir, seghirdeborah711) UN ONGLET GELÉ NE BLOQUE JAMAIS UNE PUBLICATION ──────────────────────────────
   // Sa veste (571cafdc) a attendu 3 h 50 : « le content script ne répond pas, ni après rechargement puis onglet neuf »,
   // puis des traitements figés 16 à 19 min — toujours dans la fenêtre de travail MINIMISÉE, onglet inactif, page
@@ -8634,9 +8639,13 @@ async function getOrCreateWorkTab(platform, url) {
       console.warn(`[onglet][${platform}] content script joignable une fois la fenêtre de travail visible (onglet ${relance.tabId}) — on continue`);
       return relance.tabId;
     }
-    const visible = await relancerOngletMuet(platform, relance.tabId, url, (id) => contentScriptRepondSurOnglet(platform, id));
+    const visible = await relancerOngletMuet(platform, relance.tabId, url, (id) => contentScriptRepondSurOnglet(platform, id), { montrer: true });
     if (visible.ok) {
       console.warn(`[onglet][${platform}] content script joignable après ${visible.geste}, fenêtre visible (onglet ${visible.tabId}) — on continue`);
+      return visible.tabId;
+    }
+    if (await sonderEtSoignerOngletMuet(platform, visible.tabId, "fenetre_visible")) {
+      console.warn(`[onglet][${platform}] scripts du manifeste injectés, fenêtre visible (onglet ${visible.tabId}) — on continue`);
       return visible.tabId;
     }
     throw new Error(`onglet de travail ${platform} : le content script ne répond pas, ni après ${relance.geste}, ni fenêtre de travail visible`);
@@ -8647,23 +8656,135 @@ async function getOrCreateWorkTab(platform, url) {
 // La fenêtre de travail rendue visible pour UN onglet muet (fenêtre minimisée, ou onglet gelé par Chrome) : jamais le
 // focus, jamais au-delà du job (re-minimisée par reminimiserFenetreSiRestauree, après chaque job). Rend true si un
 // geste a été fait.
+// ── (01/11 soir, gjehly — 0.6.165) UNE FENÊTRE VISIBLE NE MONTRE QUE SON ONGLET ACTIF ───────────────────────────────
+// La fenêtre de travail naît sur son porte-page about:blank, et chaque onglet de plateforme y est créé INACTIF : rendre
+// la fenêtre visible montrait… le porte-page. L'onglet muet restait caché derrière (relevé : window_state « normal »,
+// tab_active false, tab_status « loading », six essais de suite chez gjehly, Brave) — le « dernier geste » du 24/10 n'a
+// jamais rendu une page visible. Désormais, DANS LA FENÊTRE DÉDIÉE SEULEMENT, l'onglet muet devient l'onglet actif de
+// cette fenêtre (tabs.update active — ne touche pas au focus des fenêtres) ; une fenêtre déjà visible dont l'onglet est
+// caché reçoit le même geste. ⛔ Jamais dans une fenêtre de l'utilisateur (repli « fenêtre courante ») : on ne change
+// pas ce qu'il regarde.
 const FENETRE_RESTAUREE_KEY = "fillsell_fenetre_restauree_onglet_muet";
 async function restaurerFenetrePourOngletMuet(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     if (!tab) return false;
     const win = await chrome.windows.get(tab.windowId).catch(() => null);
-    if (!win || (win.state !== "minimized" && tab.frozen !== true)) return false;
+    if (!win) return false;
+    const dedieeId = (await chrome.storage.session.get(WORK_WINDOW_KEY).catch(() => ({})))?.[WORK_WINDOW_KEY] ?? null;
+    const ongletCache = dedieeId != null && dedieeId === win.id && tab.active === false;
+    if (win.state !== "minimized" && tab.frozen !== true && !ongletCache) return false;
     await chrome.storage.session.set({ [FENETRE_RESTAUREE_KEY]: { windowId: win.id, le: Date.now(), gele: tab.frozen === true, etat: win.state } }).catch(() => {});
     await chrome.windows.update(win.id, { state: "normal", focused: false }).catch(() => {});
+    let ongletRenduActif = false;
+    if (ongletCache) {
+      ongletRenduActif = await chrome.tabs.update(tab.id, { active: true }).then(() => true).catch(() => false);
+    }
     await journaliserEvenementFenetre("fenetre_rendue_visible_onglet_muet", {
       window_id: win.id, etat_avant: win.state, onglet_gele: typeof tab.frozen === "boolean" ? tab.frozen : null,
+      onglet_cache_avant: ongletCache, onglet_rendu_actif: ongletRenduActif,
     }).catch(() => {});
-    console.warn(`[onglet] onglet ${tabId} muet dans une fenêtre ${win.state}${tab.frozen ? " (gelé par Chrome)" : ""} — fenêtre de travail rendue visible, sans focus, le temps du job`);
+    console.warn(`[onglet] onglet ${tabId} muet dans une fenêtre ${win.state}${tab.frozen ? " (gelé par Chrome)" : ""}${ongletCache ? ", caché derrière le porte-page" : ""} — fenêtre de travail rendue visible${ongletRenduActif ? ", onglet montré" : ""}, sans focus, le temps du job`);
     return true;
   } catch {
     return false;
   }
+}
+
+// ── (01/11 soir, gjehly — 0.6.165) UN ONGLET MUET DIT POURQUOI ─────────────────────────────────────────────────────────
+// Chez gjehly (Brave), le relevé du dressing Vinted passait par le MÊME onglet de travail, dans la MÊME fenêtre, à
+// 21:18 et 21:45 — mais la page de dépôt /items/new est restée « loading », script muet, six essais de suite : le
+// relevé de fenêtre ne pouvait pas dire si le document n'avait jamais reçu nos scripts (injection manquée), si sa page
+// était bloquée en cours de chargement (un script tiers qui ne répond pas, une protection anti-robot), ou si son fil
+// d'exécution était saturé. La sonde le lit, sans rien toucher : un executeScript minuscule, injecté tout de suite
+// (injectImmediately — il n'attend pas la fin du chargement), borné à 4 s (pas de réponse = fil de la page bloqué).
+// Le verdict part dans le journal de fenêtre (work_window_state.at_end.events, type « sonde_onglet_muet ») — jamais
+// dans le message d'erreur, dont le classement (reprise technique) ne change pas.
+// Deux lectures : le monde ISOLÉ (nos scripts y ont-ils tourné ?) et le monde de la PAGE (son état, son formulaire —
+// les propriétés que React pose sur les champs ne se voient que là).
+// Remède, seulement quand le document n'a JAMAIS reçu les scripts du manifeste (consentement.js n'y a pas tourné) :
+//   · son chargement est fini → Chrome a manqué l'injection : on la fait (même fichiers, même ordre ; la parade de la
+//     synchro du 14/09, étendue à toutes les plateformes) ;
+//   · il est encore « loading » MAIS son formulaire est déjà hydraté (React en a pris les champs) → la page est vivante,
+//     seul son flux ne se termine pas : Chrome n'injecte qu'à la fin du chargement (document_idle), il n'injectera
+//     jamais — on injecte. Un formulaire pas encore hydraté : rien (le remplissage échouerait sur des champs morts).
+// Rien n'a encore été envoyé à la page : aucun doublon possible.
+const SONDE_ONGLET_MUET_MS = 4_000;
+async function sonderOngletMuet(platform, tabId, moment) {
+  let verdict;
+  try {
+    const isole = chrome.scripting.executeScript({
+      target: { tabId },
+      injectImmediately: true,
+      // consentement.js ouvre CHAQUE entrée du manifeste (Vinted, Leboncoin, eBay, Beebs) : sa fonction visible dans ce
+      // monde isolé = les scripts du manifeste ont tourné dans CE document.
+      func: () => ({ scripts_manifeste: typeof fsConsentRefuser === "function", vinted_charge: globalThis.__fillsellVintedCharge === true }),
+    }).then((r) => r?.[0]?.result ?? null);
+    const page = chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      injectImmediately: true,
+      func: () => {
+        const hote = (s) => { try { return new URL(s, location.href).hostname; } catch { return null; } };
+        const uniques = (l) => [...new Set(l.filter(Boolean))];
+        const nav = performance.getEntriesByType?.("navigation")?.[0] ?? null;
+        const champs = [...document.querySelectorAll("input, textarea, select")];
+        return {
+          ready_state: document.readyState,
+          visibilite: document.visibilityState,
+          chemin: String(location.pathname).slice(0, 80),
+          titre: String(document.title ?? "").slice(0, 80),
+          http: nav && typeof nav.responseStatus === "number" ? nav.responseStatus : null,
+          dcl_ms: nav && nav.domContentLoadedEventEnd > 0 ? Math.round(nav.domContentLoadedEventEnd) : null,
+          derniers_scripts: uniques([...document.querySelectorAll("script[src]")].map((s) => hote(s.src))).slice(-4),
+          cadres: uniques([...document.querySelectorAll("iframe[src]")].map((f) => hote(f.src))).slice(0, 4),
+          anti_robot: !!document.querySelector('iframe[src*="captcha-delivery"], script[src*="captcha-delivery"], script[src*="datadome"]'),
+          champs: champs.length,
+          formulaire_hydrate: champs.some((el) => Object.keys(el).some((k) => k.startsWith("__reactProps") || k.startsWith("__reactFiber"))),
+        };
+      },
+    }).then((r) => r?.[0]?.result ?? null);
+    const r = await Promise.race([
+      Promise.all([isole, page]).then(([i, p]) => ({ i, p })),
+      sleep(SONDE_ONGLET_MUET_MS).then(() => ({ delai: true })),
+    ]);
+    verdict = r.delai ? { fil_bloque: true } : (r.i || r.p ? { ...(r.p ?? {}), ...(r.i ?? {}) } : { page_illisible: true });
+  } catch (e) {
+    verdict = { erreur: String(e?.message ?? e).slice(0, 160) };
+  }
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  verdict = { ...verdict, tab_status: tab?.status ?? null, tab_active: tab?.active ?? null };
+  await journaliserEvenementFenetre("sonde_onglet_muet", { platform, moment, ...verdict }).catch(() => {});
+  return verdict;
+}
+async function injecterScriptsManquants(platform, tabId, remede) {
+  const fichiers = (chrome.runtime.getManifest().content_scripts ?? [])
+    .find((cs) => Array.isArray(cs.js) && cs.js.includes(`content-scripts/${platform}.js`))?.js ?? null;
+  if (!fichiers) return false;
+  try {
+    // injectImmediately : un document au flux sans fin n'atteint jamais document_idle, l'injection non plus.
+    await chrome.scripting.executeScript({ target: { tabId }, files: fichiers, injectImmediately: true });
+    await journaliserEvenementFenetre("scripts_injectes_onglet_muet", { platform, remede, fichiers: fichiers.length }).catch(() => {});
+    return true;
+  } catch (e) {
+    console.warn(`[onglet][${platform}] injection des scripts impossible :`, String(e?.message ?? e));
+    return false;
+  }
+}
+// Le remède décidé sur le verdict de la sonde (pur, testé) : null = rien à faire.
+function remedeOngletMuet(v) {
+  if (!v || v.scripts_manifeste !== false || !v.ready_state) return null;
+  if (v.ready_state !== "loading") return "injection_manquee";
+  return v.formulaire_hydrate === true ? "flux_sans_fin" : null;
+}
+// Sonde, puis le remède sûr ; rend true si le content script répond ensuite.
+async function sonderEtSoignerOngletMuet(platform, tabId, moment) {
+  const v = await sonderOngletMuet(platform, tabId, moment);
+  const remede = remedeOngletMuet(v);
+  if (!remede) return false;
+  if (!(await injecterScriptsManquants(platform, tabId, remede))) return false;
+  await sleep(1_500);
+  return contentScriptRepondSurOnglet(platform, tabId);
 }
 async function reminimiserFenetreSiRestauree() {
   const s = await chrome.storage.session.get(FENETRE_RESTAUREE_KEY).catch(() => ({}));
@@ -16221,7 +16342,20 @@ async function ouvrirOngletVintedPret() {
 // ⛔ Appelée UNIQUEMENT avant tout envoi à la page : un rechargement ne peut
 //    ni redéposer ni redoubler quoi que ce soit.
 const RELANCE_ONGLET_ATTENTES_MS = [3_000, 10_000];
-async function relancerOngletMuet(platform, tabId, url, ping) {
+// (01/11 soir, 0.6.165) `montrer` : la fenêtre de travail a été rendue visible pour ce job (restaurerFenetrePourOngletMuet)
+// — l'onglet neuf y devient l'onglet montré (fenêtre dédiée seulement), sinon il naîtrait caché derrière le porte-page.
+async function montrerOngletDansFenetreDediee(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    const dedieeId = (await chrome.storage.session.get(WORK_WINDOW_KEY).catch(() => ({})))?.[WORK_WINDOW_KEY] ?? null;
+    if (!tab || dedieeId == null || tab.windowId !== dedieeId || tab.active) return false;
+    await chrome.tabs.update(tabId, { active: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function relancerOngletMuet(platform, tabId, url, ping, { montrer = false } = {}) {
   let courant = tabId;
   let geste = "rien";
   for (let essai = 0; essai < RELANCE_ONGLET_ATTENTES_MS.length; essai++) {
@@ -16241,6 +16375,7 @@ async function relancerOngletMuet(platform, tabId, url, ping) {
         if (tab) { await neutralizeBeforeUnload(courant).catch(() => {}); await chrome.tabs.remove(courant).catch(() => {}); }
         const neuf = await createWorkTabInWorkWindow(url + WORK_TAB_FRAGMENT);
         courant = neuf.id;
+        if (montrer) await montrerOngletDansFenetreDediee(courant);
         await waitForTabComplete(courant, url + WORK_TAB_FRAGMENT, 45_000).catch(() => null);
       }
       try { await chrome.storage.session.set({ [workTabKey(platform)]: courant }); } catch { /* sans conséquence */ }

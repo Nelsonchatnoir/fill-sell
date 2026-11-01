@@ -50,7 +50,7 @@ function monter(src, scenario) {
   const constantes = src.match(/const PLATEFORMES_SCRIPT_DU_MANIFESTE\s*=\s*new Set\(\[[^\]]*\]\)/)?.[0];
   const patience = src.match(/const PATIENCE_INJECTION_MS\s*=\s*[\d_]+/)?.[0];
   const fabrique = new Function('env', `
-    const { sendMessageToTabOnce, sleep, relancerOngletMuet, getOrCreateWorkTabBrut, SYNC_PING_TIMEOUT_MS, console, restaurerFenetrePourOngletMuet } = env;
+    const { sendMessageToTabOnce, sleep, relancerOngletMuet, getOrCreateWorkTabBrut, SYNC_PING_TIMEOUT_MS, console, restaurerFenetrePourOngletMuet, sonderEtSoignerOngletMuet } = env;
     ${constantes}; ${patience};
     ${corps}
     return { getOrCreateWorkTab, contentScriptRepondSurOnglet };`);
@@ -66,8 +66,11 @@ function monter(src, scenario) {
     },
     // (24/10 soir) La fenêtre de travail rendue visible (dernier geste) : absente par défaut, sauf scénario dédié.
     restaurerFenetrePourOngletMuet: async () => { appels.visible = (appels.visible ?? 0) + 1; return scenario.fenetreVisible === true; },
-    relancerOngletMuet: async (platform, tabId, url, ping) => {
+    // (01/11 soir, 0.6.165) La sonde de l'onglet muet et son remède : rien de soigné par défaut, sauf scénario dédié.
+    sonderEtSoignerOngletMuet: async (platform, tabId, moment) => { (appels.sondes ??= []).push(moment); return scenario.soigne === moment; },
+    relancerOngletMuet: async (platform, tabId, url, ping, opts) => {
       appels.relance++;
+      (appels.relanceOpts ??= []).push(opts ?? null);
       if (!scenario.relanceOk) return { ok: false, tabId, geste: 'rechargement puis onglet neuf' };
       return (await ping(22)) ? { ok: true, tabId: 22, geste: 'rechargement' } : { ok: false, tabId, geste: 'rechargement puis onglet neuf' };
     },
@@ -105,6 +108,24 @@ for (const [nom, src] of await sources()) {
     try { await m.api.getOrCreateWorkTab('ebay', 'https://www.ebay.fr/'); } catch (e) { err = String(e.message); }
     m.fin();
     ok(err && TECHNIQUE.test(err) && /ebay/.test(err), `relance impossible : erreur de la liste technique (« ${err} »)`);
+    ok(m.appels.sondes?.join() === 'apres_relance', `(0.6.165) la page muette est sondée après la relance, avant l'erreur (${m.appels.sondes})`);
+  }
+  {
+    // (01/11 soir, gjehly) Fenêtre rendue visible : la relance montre l'onglet neuf ; la sonde passe avant ET après.
+    const m = monter(src, { relanceOk: false, fenetreVisible: true, ping: () => { throw new Error('Timeout: pas de réponse du content script'); } });
+    let err = null;
+    try { await m.api.getOrCreateWorkTab('vinted', 'https://www.vinted.fr/items/new'); } catch (e) { err = String(e.message); }
+    m.fin();
+    ok(err && TECHNIQUE.test(err) && /ni fenêtre de travail visible/.test(err) && !/sonde|loading|DataDome|anti-?robot/i.test(err),
+      `toujours muet, fenêtre visible : même message de la liste technique, la sonde n'y entre pas (« ${err} »)`);
+    ok(m.appels.sondes?.join() === 'apres_relance,fenetre_visible', `sondée après la relance puis fenêtre visible (${m.appels.sondes})`);
+    ok(m.appels.relanceOpts?.[0] == null && m.appels.relanceOpts?.[1]?.montrer === true, 'la seconde relance (fenêtre visible) montre son onglet neuf ; la première non');
+  }
+  {
+    const m = monter(src, { relanceOk: false, soigne: 'apres_relance', ping: () => { throw new Error('Timeout: pas de réponse du content script'); } });
+    const t = await m.api.getOrCreateWorkTab('vinted', 'https://www.vinted.fr/items/new');
+    m.fin();
+    ok(t === 11 && !m.appels.visible, 'scripts injectés par le remède : l\'onglet est rendu, sans fenêtre visible');
   }
   {
     const m = monter(src, { ping: () => { throw new Error('ne doit pas être appelé'); } });

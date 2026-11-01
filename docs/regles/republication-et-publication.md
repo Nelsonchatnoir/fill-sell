@@ -1107,3 +1107,14 @@
   `couleurVintedHorsPalette`) : la réponse fautive est retirée de `vintedAspects.color` ET de `needsUserResolved`
   (elle primait sur tout) ; 1re fois reprise, 2e fois la question avec la palette de la PAGE. « existe bien … n'a pas pu
   être posée » (défaut chez nous) : rien de retiré.
+
+## ⛔ 01/11 soir (gjehly) — une plateforme bloquée ne bloque jamais les autres (publications programmées ; rapport `docs/enquetes/depot-vinted-muet-gjehly-0111/RAPPORT.md`)
+- Décision de Nico (01/11 soir) : « Une plateforme bloquée ne doit jamais bloquer les autres. »
+- `_shared/publication-programmee.js`, `plateformesEnRepriseTechnique` : une plateforme dont une programmée DÉJÀ SERVIE
+  (36 h, la lecture du plafond) est en reprise technique — pending/processing avec `pas_de_rouge_reprises` ≥ 1, ou
+  needs_user avec `boucle_technique` — ne reçoit plus de nouvelle place ; `decisionProgrammee` donne la place à la
+  première programmée d'une AUTRE plateforme (les bloquées gardent leur rang). Toutes bloquées : rien de servi (motif
+  `plateforme_bloquee`). Une question sur l'article (needs_user sans boucle) ne bloque pas sa plateforme.
+- Cadence intouchée : créneau, plafond du jour, une à la fois, espacement — même verdict avec ou sans plateforme
+  bloquée (selftest `bloc-d-2610`). Seule la tâche qui prend la place change.
+- get-pending-jobs v319 (journal : « en reprise technique, sans nouvelle place : vinted »).
