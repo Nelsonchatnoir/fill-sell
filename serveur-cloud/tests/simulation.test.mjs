@@ -420,3 +420,40 @@ test('(01/11) clavier : effacer, effacer un mot, jusqu\'au début de la ligne �
     'rawKeyDown:Backspace:2', 'rawKeyDown:Home:8', 'rawKeyDown:Backspace:0', 'rawKeyDown:Delete:0', 'keyDown:Enter:0']);
   await c.dire({ t: 'fermer' });
 });
+
+test('(01/11, 23:10) une plateforme EN VÉRIFICATION : plus servie, session gardée (jamais purgée), rouverte par une connexion vérifiée', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null, plateformes_connectees: ['leboncoin', 'vinted'] }] });
+  const LBC_C = [{ name: '__Secure-Login', value: 'jeton', domain: '.leboncoin.fr', path: '/' }];
+  const VIN = [{ name: 'access_token_web', value: jwt({ sub: 42 }), domain: '.vinted.fr', path: '/' }, { name: 'refresh_token_web', value: 'r', domain: '.vinted.fr', path: '/' }];
+  await s.coffre.sauvegarderCookies(U, [...LBC_C, ...VIN], { verifiees: ['leboncoin', 'vinted'] });
+  s.nav.poserCookies([...LBC_C, ...VIN]);
+  await s.postes.tour();
+  const fait = await s.postes.bloquerPlateforme(U, 'leboncoin', { nature: 'glissiere', detail: 'cadre DataDome dans un onglet de travail' });
+  assert.equal(fait.coffre, true, 'la ligne du coffre est passée « en vérification »');
+  const ligne = s.base.t.cloud_coffre.find((l) => l.plateforme === 'leboncoin');
+  assert.equal(ligne.connecte, false, 'plus « connectée » : get-pending-jobs ne sert plus ses tâches au Cloud, l’app demande la reconnexion');
+  const lu = await s.coffre.lire(U);
+  assert.equal(lu.leboncoin.bloquee.nature, 'glissiere');
+  assert.equal(lu.leboncoin.cookies.length, 1, 'la session est gardée (aucun mot de passe ni code à retaper)');
+  assert.equal(await s.coffre.bloquer(U, 'leboncoin', { nature: 'glissiere' }), false, 'déjà en vérification : rien ne change');
+  // Une sauvegarde ordinaire ne la relève pas ; une restauration la ramène ; la purge ne la touche pas.
+  assert.equal((await s.postes.sauvegarder(U, s.navigateurs.ouvert(U))).leboncoin, 'non_verifiee');
+  assert.equal((await s.coffre.lire(U)).leboncoin.bloquee.nature, 'glissiere', 'la cause reste');
+  const r = await s.coffre.cookiesARestaurer(U, VIN);
+  assert.equal(r.bilan.leboncoin, 'restauree(1)');
+  assert.deepEqual(r.bloquees, ['leboncoin']);
+  assert.equal(await s.postes.purgerPlateforme(U, 'leboncoin'), 0, 'jamais purgée : seul le verrou la ferme');
+  // La personne résout la vérification dans « Me connecter » : connexion vérifiée → connectée, sans cause.
+  await s.coffre.sauvegarderCookies(U, [...LBC_C, ...VIN], { verifiees: ['leboncoin'], preuves: { leboncoin: { le: 'x', http: 200 } } });
+  const apres = await s.coffre.lire(U);
+  assert.equal(apres.leboncoin.connecte, true);
+  assert.equal(apres.leboncoin.bloquee, undefined);
+});
+
+test('(01/11, 23:10) le signe de vie de l’exécutant : noté avec la sauvegarde périodique (10 min)', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  await s.postes.tour();
+  const avant = s.base.appels.filter(([n, a]) => n === 'cloud_poste_noter' && a.p_details?.vu).length;
+  await s.postes.tour();   // moins de 10 min : rien
+  assert.equal(s.base.appels.filter(([n, a]) => n === 'cloud_poste_noter' && a.p_details?.vu).length, avant);
+});

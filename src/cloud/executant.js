@@ -49,6 +49,31 @@ export function plateformesAReconnecter({ cloudVoie, etats, fermees = [], platef
   return plateformes.filter((p) => !fermees.includes(p.id) && etatConnexion(etats[p.id]) === 'a_reconnecter');
 }
 
+// (01/11, 23:10, demande de Nico) L'exécutant arrêté SANS QU'ON LE SACHE (22:57 → 23:05 : plus rien, l'app disait
+// « En pause : il repart dès qu'une tâche attend ») se DIT. Le serveur note un signe de vie toutes les 10 min
+// (postes.js) : muet depuis plus de MUET_MS = arrêté ; éteint depuis plus de ETEINT_MS (un redémarrage ou un changement
+// d'IP dure moins) = arrêté.
+export const MUET_MS = 25 * 60_000;
+export const ETEINT_MS = 5 * 60_000;
+/**
+ * L'exécutant Cloud est-il arrêté ? (pur) — seulement quand le Cloud exécute les tâches du compte (cloud_voie).
+ * Rend null (il tourne, ou rien à dire) ou { depuis: iso|null, cause: 'arret_essai'|'muet'|'eteint'|'jamais' }.
+ */
+export function executantArrete({ cloudVoie, executant, maintenant = Date.now() }) {
+  if (cloudVoie !== true || !executant || typeof executant !== 'object') return null;
+  const po = executant.poste ?? null;
+  if (!po?.etat) return { depuis: null, cause: 'jamais' };
+  const t = (iso) => { const x = Date.parse(String(iso ?? '')); return Number.isFinite(x) ? x : null; };
+  if (po.etat === 'actif' || po.etat === 'demarrage') {
+    const vu = t(po.derniere_activite) ?? t(po.maj_le);
+    return vu != null && maintenant - vu > MUET_MS ? { depuis: new Date(vu).toISOString(), cause: 'muet' } : null;
+  }
+  const depuis = t(po.arrete_le) ?? t(po.maj_le);
+  if (/^arret_essai:/.test(String(po.derniere_erreur ?? '')) && po.etat !== 'actif') return { depuis: depuis != null ? new Date(depuis).toISOString() : null, cause: 'arret_essai' };
+  if (depuis != null && maintenant - depuis <= ETEINT_MS) return null;
+  return { depuis: depuis != null ? new Date(depuis).toISOString() : null, cause: 'eteint' };
+}
+
 /** La phrase de l'exécutant (pur) → { etat: 'en_marche'|'en_pause'|'erreur'|'jamais', titre, detail[] }. */
 export function phraseExecutant(e, { maintenant = Date.now(), lang = 'fr' } = {}) {
   const en = lang === 'en';

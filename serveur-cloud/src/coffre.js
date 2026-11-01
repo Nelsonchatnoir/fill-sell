@@ -117,8 +117,9 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
     for (const p of PLATEFORMES_CLOUD) {
       if (estConnectee(cookiesCourants, p)) { bilan[p] = 'profil'; continue; }
       const s = coffre[p];
-      // (01/11) Seule une connexion connue (connecte = vrai) revient dans le navigateur.
-      if (s && s.connecte !== true) { bilan[p] = 'non_connectee'; continue; }
+      // (01/11) Seule une connexion connue (connecte = vrai) revient dans le navigateur — ou une connexion EN
+      // VÉRIFICATION (bloquer : sa session est gardée, la plateforme reste fermée au navigateur).
+      if (s && s.connecte !== true && !s.bloquee) { bilan[p] = 'non_connectee'; continue; }
       if (!s?.cookies?.length) { bilan[p] = s?.illisible ? 'illisible' : 'absente'; continue; }
       const params = s.cookies.map((c) => versCookieParam(c)).filter(Boolean);
       aPoser.push(...params);
@@ -126,8 +127,29 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
     }
     // (01/11) Les plateformes connues du coffre : les autres n'ont aucune session dans le profil (postes.js, purge).
     const connectees = PLATEFORMES_CLOUD.filter((p) => coffre[p]?.connecte === true);
-    return { aPoser, bilan, connectees };
+    const bloquees = PLATEFORMES_CLOUD.filter((p) => coffre[p]?.connecte !== true && coffre[p]?.bloquee);
+    return { aPoser, bilan, connectees, bloquees };
   }
 
-  return { lire, ecrire, vider, sauvegarderCookies, cookiesARestaurer };
+  /**
+   * (01/11, essai de Nico : glissière DataDome Leboncoin dans l'onglet de travail, 22:54) UNE PLATEFORME EN
+   * VÉRIFICATION : sa ligne cesse d'être « connectée » (get-pending-jobs ne sert plus ses tâches au poste Cloud, l'app
+   * demande à la personne de s'y reconnecter — BandeauCloudReconnexion) mais garde sa session chiffrée et la cause
+   * (`bloquee`) : la personne résout la vérification dans « Me connecter » sans retaper son mot de passe ni son code ;
+   * une connexion vérifiée réécrit la ligne (connectée, sans `bloquee`). Écriture directe : cloud_coffre_ecrire
+   * n'écrase jamais une ligne connectée par une ligne qui ne l'est pas (garde du 26/09). Rend vrai si une ligne a changé.
+   */
+  async function bloquer(user, plateforme, cause) {
+    const lu = await lire(user);
+    const s = lu[plateforme];
+    if (!s || s.illisible || s.bloquee) return false;
+    const { connecte: _c, maj_le: _m, cle_ancienne: _a, ...contenu } = s;
+    const { chiffre, iv } = chiffrer({ ...contenu, bloquee: { ...cause, le: cause?.le ?? new Date().toISOString() } }, cleBuf, { user, plateforme });
+    const { error } = await base.from('cloud_coffre').update({ chiffre, iv, cle_version: cleVersion, connecte: false, maj_le: new Date().toISOString() })
+      .eq('user_id', user).eq('plateforme', plateforme);
+    if (error) throw new Error(`cloud_coffre (bloquer) : ${error.message}`);
+    return true;
+  }
+
+  return { lire, ecrire, vider, sauvegarderCookies, cookiesARestaurer, bloquer };
 }

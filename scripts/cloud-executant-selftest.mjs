@@ -64,5 +64,28 @@ ok(PLATEFORMES_CLOUD.every((p) => contrainte.includes(`'${p}'::text`)) && contra
   ok(plateformesAReconnecter({ cloudVoie: true, etats })[0].nom === 'Leboncoin', 'bandeau : la plateforme nommée');
 }
 
+// (01/11, 23:10, demande de Nico) L'exécutant arrêté SANS QUE L'APP LE SACHE (22:57 → 23:05) se dit.
+{
+  const { executantArrete, MUET_MS } = await import('../src/cloud/executant.js');
+  const T0 = Date.parse('2026-11-01T22:10:00Z');
+  const ex = (poste) => ({ poste });
+  ok(executantArrete({ cloudVoie: false, executant: ex({ etat: 'eteint' }), maintenant: T0 }) === null, 'sans le drapeau Cloud : jamais un bandeau');
+  ok(executantArrete({ cloudVoie: true, executant: ex({ etat: 'actif', derniere_activite: new Date(T0 - 60_000).toISOString() }), maintenant: T0 }) === null, 'en marche, signe de vie récent : rien');
+  const muet = executantArrete({ cloudVoie: true, executant: ex({ etat: 'actif', derniere_activite: new Date(T0 - MUET_MS - 1000).toISOString() }), maintenant: T0 });
+  ok(muet?.cause === 'muet', 'en marche mais muet depuis plus de 25 min : arrêté (orchestrateur planté)');
+  const essai = executantArrete({ cloudVoie: true, executant: ex({ etat: 'eteint', arrete_le: '2026-11-01T21:57:24Z', derniere_erreur: 'arret_essai:glissiere' }), maintenant: T0 });
+  ok(essai?.cause === 'arret_essai' && essai.depuis === '2026-11-01T21:57:24.000Z', 'arrêt de l’essai : la cause et l’heure');
+  ok(executantArrete({ cloudVoie: true, executant: ex({ etat: 'eteint', arrete_le: new Date(T0 - 60_000).toISOString() }), maintenant: T0 }) === null, 'éteint depuis 1 min (redémarrage, changement d’IP) : rien');
+  ok(executantArrete({ cloudVoie: true, executant: ex({ etat: 'eteint', arrete_le: new Date(T0 - 10 * 60_000).toISOString() }), maintenant: T0 })?.cause === 'eteint', 'éteint depuis 10 min : arrêté');
+  ok(executantArrete({ cloudVoie: true, executant: {}, maintenant: T0 })?.cause === 'jamais', 'jamais démarré : dit');
+  // Les mots (textesConnexion importe le palier sans extension : relus en texte, comme le reste de ce fichier).
+  const tx = lire('src/cloud/textesConnexion.js');
+  ok(tx.split('executantArreteTitre: (depuis) =>').length === 3 && tx.split('executantArreteTexte: (cause) =>').length === 3, 'fr et en : titre avec l’heure, texte de la cause');
+  ok(/Tes tâches du Cloud attendent : rien n'est publié ni retiré tant qu'il ne repart pas./.test(tx), 'fr : les tâches attendent, rien n’est publié ni retiré');
+  ok(/résous la vérification demandée/.test(tx), 'le bandeau des plateformes couvre aussi une vérification à résoudre');
+  const bandeau = lire('src/cloud/BandeauCloudReconnexion.jsx');
+  ok(/supabase\.rpc\('cloud_executant_moi'\)/.test(bandeau) && /executantArrete\(/.test(bandeau) && !/setInterval/.test(bandeau), 'le bandeau lit l’exécutant (à l’ouverture et au retour sur l’app, jamais en boucle)');
+}
+
 if (echecs) { console.error(`\n✗ ${echecs} échec(s) — ${n} contrôles`); process.exit(1); }
 console.log(`\n✓ tout est vert — ${n} contrôles`);

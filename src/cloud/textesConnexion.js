@@ -22,7 +22,12 @@ const FR = {
   reconnecter: 'Me reconnecter',
   // (01/11) Le bandeau qui demande la reconnexion quand une connexion Cloud tombe (BandeauCloudReconnexion.jsx).
   bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l.at(-1)} se sont déconnectés de FillSell Cloud` : `${l[0] ?? 'Une plateforme'} s'est déconnectée de FillSell Cloud`; },
-  bandeauTexte: (noms) => { const l = listeNoms(noms); return `Tes tâches ${l.join(', ')} attendent ta reconnexion : rien n'est publié ni retiré sur ${l.length > 1 ? 'ces plateformes' : 'cette plateforme'} en attendant.`; },
+  // (01/11, 23:10) Une plateforme peut aussi attendre une VÉRIFICATION (glissière anti-robot dans le travail du Cloud) :
+  // le même geste la résout (« Me reconnecter » ouvre sa page ; la session est gardée).
+  bandeauTexte: (noms) => { const l = listeNoms(noms); return `Ouvre « Me reconnecter » : reconnecte-toi ou résous la vérification demandée. Tes tâches ${l.join(', ')} attendent : rien n'est publié ni retiré sur ${l.length > 1 ? 'ces plateformes' : 'cette plateforme'} en attendant.`; },
+  // (01/11, 23:10, demande de Nico) L'exécutant Cloud arrêté : la personne le sait, avec l'heure.
+  executantArreteTitre: (depuis) => (depuis ? `FillSell Cloud est arrêté (${depuis})` : 'FillSell Cloud est arrêté'),
+  executantArreteTexte: (cause) => `${cause === 'muet' ? 'Ton exécutant ne donne plus signe de vie.' : cause === 'arret_essai' ? "Ton exécutant s'est arrêté sur une vérification anti-robot." : 'Ton exécutant ne tourne plus.'} Tes tâches du Cloud attendent : rien n'est publié ni retiré tant qu'il ne repart pas.`,
   plusTard: 'Plus tard',
   ebayTitre: 'eBay',
   ebayTexte: "Par la connexion officielle d'eBay : tu ne donnes aucun mot de passe à FillSell.",
@@ -64,7 +69,9 @@ const EN = {
   meConnecter: 'Sign in',
   reconnecter: 'Sign in again',
   bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)} were disconnected from FillSell Cloud` : `${l[0] ?? 'A platform'} was disconnected from FillSell Cloud`; },
-  bandeauTexte: (noms) => { const l = listeNoms(noms); return `Your ${l.join(', ')} tasks are waiting for you to sign in again: nothing is posted or removed on ${l.length > 1 ? 'these platforms' : 'this platform'} until then.`; },
+  bandeauTexte: (noms) => { const l = listeNoms(noms); return `Open "Sign in again": sign in or solve the check you're asked for. Your ${l.join(', ')} tasks are waiting: nothing is posted or removed on ${l.length > 1 ? 'these platforms' : 'this platform'} until then.`; },
+  executantArreteTitre: (depuis) => (depuis ? `FillSell Cloud has stopped (${depuis})` : 'FillSell Cloud has stopped'),
+  executantArreteTexte: (cause) => `${cause === 'muet' ? 'Your runner has gone silent.' : cause === 'arret_essai' ? 'Your runner stopped on an anti-bot check.' : 'Your runner is no longer running.'} Your Cloud tasks are waiting: nothing is posted or removed until it starts again.`,
   plusTard: 'Later',
   ebayTitre: 'eBay',
   ebayTexte: "Through eBay's official sign-in: you never give FillSell a password.",

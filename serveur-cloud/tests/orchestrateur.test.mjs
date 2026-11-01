@@ -507,3 +507,12 @@ test('(01/11) la restauration ne ramène JAMAIS une plateforme non connectée au
   assert.equal(r.aPoser.length, 0);
   assert.deepEqual(r.connectees, []);
 });
+
+test('(01/11, 23:10) les onglets à fermer quand une plateforme est bloquée : ses domaines, rien d’autre', async () => {
+  const { surPlateforme } = await import('../src/postes.js');
+  assert.equal(surPlateforme('https://www.leboncoin.fr/#fillsell-worker', 'leboncoin'), true);
+  assert.equal(surPlateforme('https://auth.leboncoin.fr/login', 'leboncoin'), true);
+  assert.equal(surPlateforme('https://www.vinted.fr/', 'leboncoin'), false);
+  assert.equal(surPlateforme('https://leboncoin.fr.evil.example/', 'leboncoin'), false);
+  assert.equal(surPlateforme('chrome-extension://x/background.js', 'leboncoin'), false);
+});

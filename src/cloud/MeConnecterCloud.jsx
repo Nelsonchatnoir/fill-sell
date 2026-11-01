@@ -25,7 +25,7 @@ import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsent
 import { textesConnexion } from './textesConnexion';
 import { C, BLANC, MENTHE, DEGRADE_TEAL, POLICE } from './theme';
 // (30/10, lot D) L'état de chaque connexion (connecté / à reconnecter) et de l'exécutant (en marche, dernière action).
-import { etatConnexion, phraseExecutant } from './executant';
+import { etatConnexion, phraseExecutant, executantArrete, quandParis } from './executant';
 
 // (01/11) « ferme » n'est plus une fin : la connexion coupée sans « Fermer » (app quittée pour lire un SMS ou un
 // courriel) reprend au retour, sur la MÊME page (le serveur l'a gardée, connexion.js REPRISE_MS).
@@ -153,11 +153,19 @@ function EtatExecutant({ T, lang }) {
   const [e, setE] = useState(null);   // null = lecture ; 'echec' (migration absente, réseau) = rien d'affiché
   useEffect(() => {
     let mort = false;
-    supabase.rpc('cloud_executant_moi').then(({ data, error }) => { if (!mort) setE(error ? 'echec' : (data ?? {})); }, () => { if (!mort) setE('echec'); });
+    supabase.rpc('cloud_executant_moi').then(({ data, error }) => {
+      if (mort) return;
+      if (error) { setE('echec'); return; }
+      // (01/11, 23:10) Arrêté pour de vrai (éteint, arrêt de l'essai, muet depuis 25 min) : lu ICI, l'heure mise en mots ici.
+      const a = executantArrete({ cloudVoie: true, executant: data ?? {} });
+      setE({ ...(data ?? {}), arretTexte: a ? T.executantArreteTitre(a.depuis ? quandParis(a.depuis, Date.now(), lang) : null) : null });
+    }, () => { if (!mort) setE('echec'); });
     return () => { mort = true; };
-  }, []);
+  }, [T, lang]);
   if (e === 'echec') return null;
-  const p = e ? phraseExecutant(e, { lang }) : null;
+  const brut = e ? phraseExecutant(e, { lang }) : null;
+  // Arrêté pour de vrai : jamais « en pause, il repart dès qu'une tâche attend ».
+  const p = brut && e?.arretTexte ? { ...brut, etat: 'erreur', titre: e.arretTexte } : brut;
   const couleur = p?.etat === 'en_marche' ? C.teal : p?.etat === 'erreur' ? C.amberInk : C.faint;
   return (
     <section aria-live="polite" style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 14, background: BLANC, border: `1px solid ${C.border}` }}>

@@ -7,9 +7,12 @@
 //     les tâches du Cloud (faites, refusées) — une ligne de endurance/mesures.jsonl ;
 //   · une tâche du Cloud refusée par l'anti-robot (texte d'erreur de l'extension) = un blocage ;
 //   · premier blocage : endurance/arret.json (quoi, où, quand), navigateur fermé (sauvegardé), plus aucune ouverture.
+//   · (01/11, 23:10, après l'arrêt silencieux de 22:57) un blocage qui nomme sa plateforme n'arrête QUE cette plateforme
+//     (endurance/blocages.json, postes.bloquerPlateforme) : les autres continuent, l'app demande la vérification ;
+//     l'arrêt total ne reste que pour un blocage sans plateforme connue.
 // Actif seulement avec ENDURANCE=1 ; rien n'est écrit en base. Les fonctions pures sont testées
 // (tests/endurance.test.mjs).
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 
 export const VERIFICATION_TOLEREE_MS = 3 * 60_000;
 const DOMAINES = [['leboncoin', /(^|\.)leboncoin\.fr$/], ['beebs', /(^|\.)beebs\.app$/], ['vinted', /(^|\.)vinted\.(fr|com)$/], ['depop', /(^|\.)depop\.com$/]];
@@ -91,9 +94,14 @@ export const DUREE_ESSAI_MS = 48 * 3600_000;
 /**
  * (01/11) Le décompte des 48 h (pure, lu par outils/endurance-bilan.mjs). Seul compte ce qui suit la DERNIÈRE remise à
  * zéro (evenement 'remise_a_zero', outils/endurance-remise.mjs) : les connexions faussement « connectées » du 01/11 au
- * soir n'entrent dans aucun décompte. Les heures de chaque plateforme partent de SA première connexion vérifiée
- * (compte lu) ; celles de l'essai, de la toute première. Rend { remise, debut, fin_prevue, plateformes, lignes }.
+ * soir n'entrent dans aucun décompte. Chaque plateforme part de SA première connexion vérifiée (compte lu).
+ * (01/11, 23:10, règle de Nico : « le compteur ne doit pas tourner pendant que l'exécutant est arrêté ») Les heures
+ * COMPTÉES d'une plateforme sont celles de MARCHE : entre deux mesures consécutives (au plus ECART_MAX_MS d'écart — un
+ * orchestrateur muet ne compte pas), navigateur ouvert, essai non arrêté, plateforme connectée au coffre et pas en
+ * vérification. Rend { remise, debut, plateformes: { pf: { verifiee_le, tombee_le, heures_comptees, reste_heures,
+ * atteint } }, executant_heures, lignes }.
  */
+export const ECART_MAX_MS = 15 * 60_000;
 export function decompteEssai(lignes, dureeMs = DUREE_ESSAI_MS) {
   const toutes = (lignes ?? []).filter((l) => l && Number.isFinite(Date.parse(l.le)));
   const iRemise = toutes.map((l) => l.evenement).lastIndexOf('remise_a_zero');
@@ -102,45 +110,117 @@ export function decompteEssai(lignes, dureeMs = DUREE_ESSAI_MS) {
   const plateformes = {};
   for (const l of apres) {
     if (l.evenement === 'connexion_verifiee' && l.plateforme && !plateformes[l.plateforme]) {
-      plateformes[l.plateforme] = { verifiee_le: l.verifiee_le ?? l.le, tombee_le: null };
+      plateformes[l.plateforme] = { verifiee_le: l.verifiee_le ?? l.le, tombee_le: null, ms: 0 };
     }
     if (l.evenement === 'connexion_tombee' && plateformes[l.plateforme] && !plateformes[l.plateforme].tombee_le) {
       plateformes[l.plateforme].tombee_le = l.le;
     }
   }
+  const mesures = apres.filter((l) => l.evenement === 'mesure');
+  let executantMs = 0;
+  for (let i = 1; i < mesures.length; i++) {
+    const a = Date.parse(mesures[i - 1].le), b = Date.parse(mesures[i].le), m = mesures[i];
+    if (!(b > a) || b - a > ECART_MAX_MS || m.arrete) continue;
+    if (!Object.values(m.navigateursMo ?? {}).some(Number.isFinite)) continue;   // navigateur fermé : rien ne tourne
+    executantMs += b - a;
+    const cx = Object.assign({}, ...Object.values(m.connexions ?? {}));
+    const enVerif = new Set(Object.values(m.bloquees ?? {}).flat());
+    for (const [pf, info] of Object.entries(plateformes)) {
+      const v = Date.parse(info.verifiee_le);
+      if (!(v < b) || cx[pf] !== true || enVerif.has(pf)) continue;
+      info.ms += b - Math.max(a, v);
+    }
+  }
+  const h = (ms) => Math.round((ms / 3600_000) * 10) / 10;
+  for (const info of Object.values(plateformes)) {
+    info.heures_comptees = h(info.ms);
+    info.reste_heures = h(Math.max(0, dureeMs - info.ms));
+    info.atteint = info.ms >= dureeMs;
+    delete info.ms;
+  }
   const debuts = Object.values(plateformes).map((p) => Date.parse(p.verifiee_le)).filter(Number.isFinite);
   const debut = debuts.length ? new Date(Math.min(...debuts)).toISOString() : null;
-  return { remise: remise ? { le: remise.le, raison: remise.raison ?? null } : null, debut,
-    fin_prevue: debut ? new Date(Date.parse(debut) + dureeMs).toISOString() : null, plateformes, lignes: apres };
+  return { remise: remise ? { le: remise.le, raison: remise.raison ?? null } : null, debut, plateformes,
+    executant_heures: h(executantMs), lignes: apres };
 }
 
 export function creerEndurance({ config, base, docker, navigateurs, postes, connexionsOuvertes, journal }) {
   const dossier = `${config.dossierEtat || '/srv/fillsell-cloud/etat'}/endurance`;
   const fichierArret = `${dossier}/arret.json`;
-  let arret = null;            // le blocage qui a arrêté l'essai (relu au démarrage)
+  const fichierBlocages = `${dossier}/blocages.json`;
+  let arret = null;            // un blocage SANS plateforme (inconnu) : l'essai entier s'arrête (relu au démarrage)
+  // (01/11, 23:10) Les plateformes EN VÉRIFICATION : un blocage n'arrête plus que sa plateforme (postes.bloquerPlateforme).
+  let blocages = [];           // historique { le, user, plateforme, nature, detail, source, tache?, debloquee_le? }
   let vus = new Map();
   const etatsAvant = new Map(); // user → { plateforme: connecte }
   let depuis = new Date().toISOString();
 
+  const enCours = (user) => blocages.filter((b) => b.user === user && !b.debloquee_le);
+  const plateformesBloquees = (user) => [...new Set(enCours(user).map((b) => b.plateforme))];
+  const garderBlocages = () => writeFile(fichierBlocages, `${JSON.stringify(blocages, null, 1)}\n`)
+    .catch((e) => journal.erreur('endurance_blocages_ecriture', { erreur: e.message }));
+
   async function charger() {
     await mkdir(dossier, { recursive: true });
+    blocages = await readFile(fichierBlocages, 'utf8').then(JSON.parse).catch(() => []);
+    if (!Array.isArray(blocages)) blocages = [];
     arret = await readFile(fichierArret, 'utf8').then(JSON.parse).catch(() => null);
+    // (01/11, 23:10) L'arrêt du 22:57 (glissière Leboncoin) venait de la règle d'avant, qui arrêtait TOUT : un arrêt qui
+    // nomme sa plateforme devient le blocage de cette seule plateforme ; le fichier est gardé à côté (historique).
+    if (arret?.plateforme) {
+      if (!blocages.some((b) => b.user === arret.user && b.plateforme === arret.plateforme && b.le === arret.le)) {
+        blocages.push({ ...arret, converti_de: 'arret.json' });
+        await garderBlocages();
+      }
+      await rename(fichierArret, `${dossier}/arret-${String(arret.le).replace(/[:.]/g, '-')}.json`).catch(() => {});
+      journal.alerte('endurance_arret_converti', { plateforme: arret.plateforme, le: arret.le });
+      arret = null;
+    }
     if (arret) journal.alerte('endurance_deja_arretee', { ...arret });
+    // Les plateformes encore en vérification le restent après un redémarrage (coffre marqué, verrou fermé à l'ouverture).
+    for (const b of blocages.filter((x) => !x.debloquee_le)) {
+      await postes.bloquerPlateforme(b.user, b.plateforme, { nature: b.nature, detail: b.detail ?? null, le: b.le })
+        .catch((e) => journal.alerte('endurance_reblocage_echec', { plateforme: b.plateforme, erreur: e.message }));
+    }
     return arret;
   }
 
+  /** Un blocage sans plateforme connue : l'essai entier s'arrête (règle d'avant, gardée pour ce seul cas). */
   async function arreter(user, blocage) {
     if (arret) return;
     arret = { le: new Date().toISOString(), user, ...blocage };
     await writeFile(fichierArret, `${JSON.stringify(arret)}\n`).catch((e) => journal.erreur('endurance_arret_ecriture', { erreur: e.message }));
     await ecrire({ evenement: 'ARRET_PREMIER_BLOCAGE', ...arret });
     journal.alerte('endurance_arret_premier_blocage', { ...arret });
+    await postes.noter?.(user, 'erreur', { erreur: `arret_essai:${blocage.nature ?? 'inconnu'}` });
     await postes.fermer(user, 'blocage_endurance').catch((e) => journal.erreur('endurance_fermeture', { erreur: e.message }));
+  }
+
+  /** (01/11, 23:10) Le blocage d'UNE plateforme : elle seule s'arrête (verrou, onglets, coffre en vérification). */
+  async function bloquer(user, blocage) {
+    if (!blocage?.plateforme) return arreter(user, blocage);
+    if (plateformesBloquees(user).includes(blocage.plateforme)) return;
+    const b = { le: new Date().toISOString(), user, ...blocage };
+    blocages.push(b);
+    await garderBlocages();
+    await ecrire({ evenement: 'PLATEFORME_BLOQUEE', ...b, user: String(user).slice(0, 8) });
+    const fait = await postes.bloquerPlateforme(user, blocage.plateforme, { nature: blocage.nature, detail: blocage.detail ?? null, le: b.le })
+      .catch((e) => ({ erreur: e.message }));
+    journal.alerte('endurance_plateforme_bloquee', { user, ...blocage, fait });
+  }
+
+  /** Une connexion vérifiée (« Me connecter ») rouvre sa plateforme : la vérification est résolue. */
+  async function debloquer(user, plateforme, le = new Date().toISOString()) {
+    const ouverts = enCours(user).filter((b) => b.plateforme === plateforme);
+    if (!ouverts.length) return;
+    for (const b of ouverts) b.debloquee_le = le;
+    await garderBlocages();
+    await ecrire({ evenement: 'plateforme_debloquee', user: String(user).slice(0, 8), plateforme, debloquee_le: le });
   }
 
   const ecrire = (o) => appendFile(`${dossier}/mesures.jsonl`, `${JSON.stringify({ le: new Date().toISOString(), ...o })}\n`).catch(() => {});
 
-  /** Chaque minute : les cadres DataDome des onglets de travail. */
+  /** Chaque minute : les cadres DataDome des onglets de travail (une plateforme déjà en vérification n'est plus lue). */
   async function releveCadres() {
     if (arret) return;
     const enConnexion = connexionsOuvertes?.() ?? new Set();
@@ -149,9 +229,11 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
       const h = navigateurs.ouvert(user);
       const r = await h?.cdp?.send('Target.getTargets').catch(() => null);
       if (!r) continue;
-      const res = blocageDesCadres(r.targetInfos ?? [], vus);
+      const deja = new Set(plateformesBloquees(user));
+      const cibles = (r.targetInfos ?? []).filter((t) => !deja.has(cadreDataDome(t?.url)?.plateforme ?? ''));
+      const res = blocageDesCadres(cibles, vus);
       vus = res.vus;
-      if (res.blocage) return arreter(user, { source: 'navigateur', ...res.blocage });
+      if (res.blocage) await bloquer(user, { source: 'navigateur', ...res.blocage });
     }
   }
 
@@ -182,29 +264,33 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
       etatsAvant.set(user, etat);
       connexions[user.slice(0, 8)] = etat;
     }
+    const bloquees = Object.fromEntries(comptes.map((u) => [u.slice(0, 8), plateformesBloquees(u)]).filter(([, l]) => l.length));
     let taches = null;
     if (comptes.length) {
       const { data } = await base.from('cross_post_jobs').select('id, platform, action, status, error, handler_build')
         .in('user_id', comptes).like('handler_build', '%-cloud%')
         .or(`created_at.gte.${depuis},published_at.gte.${depuis},last_checked_at.gte.${depuis}`).limit(500);
       taches = resumeTachesCloud(data ?? []);
-      const anti = taches.anti_robot[0];
-      if (anti && !arret) {
-        await ecrire({ evenement: 'mesure', navigateursMo, serveurMo, verrou, connexions, taches });
-        return arreter(comptes[0], { source: 'tache', nature: 'tache_refusee_anti_robot', plateforme: anti.plateforme, detail: `tâche ${anti.id} (${anti.action})` });
+      // Une tâche refusée par l'anti-robot bloque SA plateforme, une fois (la même tâche ne rebloque jamais).
+      for (const anti of taches.anti_robot) {
+        if (blocages.some((b) => b.tache === anti.id) || !anti.plateforme) continue;
+        await bloquer(comptes[0], { source: 'tache', nature: 'tache_refusee_anti_robot', plateforme: anti.plateforme, tache: anti.id, detail: `tâche ${anti.id} (${anti.action})` });
       }
     }
-    await ecrire({ evenement: 'mesure', navigateursMo, serveurMo, verrou, connexions, taches, arrete: Boolean(arret) });
+    await ecrire({ evenement: 'mesure', navigateursMo, serveurMo, verrou, connexions, bloquees, taches, arrete: Boolean(arret) });
   }
 
   /**
    * (01/11, règle de Nico : « les 48 h ne comptent qu'à partir de connexions vraiment réussies ») Une connexion VÉRIFIÉE
-   * (compte lu par le serveur, connexion.js) est notée ; le bilan fait partir les 48 h de la première d'entre elles
-   * après la dernière remise à zéro (outils/endurance-remise.mjs).
+   * (compte lu par le serveur, connexion.js) est notée ; le bilan fait partir les heures de chaque plateforme de sa
+   * première vérification après la dernière remise à zéro. (01/11, 23:10) Elle rouvre aussi une plateforme en
+   * vérification.
    */
-  function connexionVerifiee({ user, plateforme, http, le }) {
-    return ecrire({ evenement: 'connexion_verifiee', user: String(user).slice(0, 8), plateforme, http, verifiee_le: le ?? null });
+  async function connexionVerifiee({ user, plateforme, http, le }) {
+    await ecrire({ evenement: 'connexion_verifiee', user: String(user).slice(0, 8), plateforme, http, verifiee_le: le ?? null });
+    await debloquer(user, plateforme, le ?? undefined);
   }
 
-  return { charger, releveCadres, mesure, connexionVerifiee, arretee: () => arret, arreter };
+  return { charger, releveCadres, mesure, connexionVerifiee, bloquer, debloquer, plateformesBloquees,
+    arretee: () => arret, arreter };
 }

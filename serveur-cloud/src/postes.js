@@ -4,8 +4,15 @@
 import { readFile } from 'node:fs/promises';
 import { PLATEFORMES_CLOUD, ORIGINES_SESSION, cookiesAPurger, versCookieParam } from './plateformes.js';
 import { planifierPostes, resumerJobs } from './planificateur.js';
-import { nouveauProfilId } from './navigateur.js';
+import { nouveauProfilId, DOMAINES_VERROU } from './navigateur.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
+
+/** Une adresse sur un domaine de la plateforme (pure) — les onglets à fermer quand elle est bloquée. */
+export function surPlateforme(url, plateforme) {
+  let h = '';
+  try { h = new URL(String(url)).hostname.toLowerCase(); } catch { return false; }
+  return (DOMAINES_VERROU[plateforme] ?? []).some((d) => h === d || h.endsWith(`.${d}`));
+}
 
 export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null }) {
   const dernieresFins = new Map();
@@ -117,8 +124,34 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     const { cookies } = await h.cdp.send('Storage.getCookies');
     const lu = await coffre.lire(user).catch(() => null);
     if (!lu) return 0;    // coffre illisible : on ne sait pas si elle était connue, on ne touche à rien
-    const connectees = PLATEFORMES_CLOUD.filter((p) => lu[p]?.connecte === true);
+    const connectees = PLATEFORMES_CLOUD.filter((p) => lu[p]?.connecte === true || lu[p]?.bloquee);
     return purgerSessions(user, h, cookies, connectees, [plateforme]);
+  }
+
+  /**
+   * (01/11, essai de Nico : glissière DataDome Leboncoin dans l'onglet de travail à 22:54, tout l'exécutant arrêté sans
+   * rien dire) UN BLOCAGE N'ARRÊTE QUE SA PLATEFORME : plus aucune requête vers elle (verrou), ses onglets de travail
+   * fermés, sa ligne du coffre « en vérification » (ses tâches attendent, l'app demande la reconnexion) ; les autres
+   * plateformes continuent. La personne résout la vérification dans « Me connecter » : la connexion vérifiée la rouvre.
+   * Rend ce qui a été fait (pour le journal de l'essai).
+   */
+  async function bloquerPlateforme(user, plateforme, cause) {
+    const h = navigateurs.ouvert(user);
+    const fait = { verrou: false, onglets: 0, coffre: false };
+    if (h) {
+      const restantes = (h.permises ?? []).filter((p) => p !== plateforme);
+      await navigateurs.permettre?.(user, restantes).then(() => { fait.verrou = true; })
+        .catch((e) => journal.alerte('blocage_verrou_echec', { user, plateforme, erreur: e.message }));
+      const r = await h.cdp.send('Target.getTargets').catch(() => null);
+      for (const t of r?.targetInfos ?? []) {
+        if (t.type !== 'page' || !surPlateforme(t.url, plateforme)) continue;
+        await h.cdp.send('Target.closeTarget', { targetId: t.targetId }).then(() => { fait.onglets++; }).catch(() => {});
+      }
+    }
+    fait.coffre = await coffre.bloquer(user, plateforme, cause)
+      .catch((e) => { journal.alerte('blocage_coffre_echec', { user, plateforme, erreur: e.message }); return false; });
+    journal.alerte('plateforme_bloquee', { user, plateforme, nature: cause?.nature ?? null, ...fait });
+    return fait;
   }
 
   async function sauvegarder(user, h) {
@@ -153,8 +186,9 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       // 1. Le coffre : les plateformes absentes du profil reviennent ; (01/11) celles qui n'y sont pas connectées n'ont
       //    plus aucune session dans le profil (demi-connexion abandonnée, connexion remise à « non connecté »).
       const { cookies } = await h.cdp.send('Storage.getCookies');
-      const { aPoser, bilan: bilanCoffre, connectees } = await coffre.cookiesARestaurer(user, cookies);
-      await purgerSessions(user, h, cookies, connectees);
+      const { aPoser, bilan: bilanCoffre, connectees, bloquees = [] } = await coffre.cookiesARestaurer(user, cookies);
+      // (01/11) Une plateforme EN VÉRIFICATION (bloquerPlateforme) garde sa session : seul le verrou la ferme.
+      await purgerSessions(user, h, cookies, [...connectees, ...bloquees]);
       if (aPoser.length) await h.cdp.send('Storage.setCookies', { cookies: aPoser });
       // 2. La session FillSell.
       const s = await assurerSessionFillsell(user, h, poste);
@@ -225,10 +259,12 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     for (const o of decision.ouvrir) {
       await ouvrir(o.user, parUser.get(o.user), o.motif).catch((e) => journal.erreur('ouverture_echec', { user: o.user, erreur: e.message }));
     }
-    // Sauvegardes périodiques (10 min) des navigateurs qui tournent.
+    // Sauvegardes périodiques (10 min) des navigateurs qui tournent. (01/11) Avec elles, le signe de vie de l'exécutant
+    // (cloud_postes.derniere_activite, lu par l'app : un exécutant muet depuis plus de 25 min se DIT, bandeau Cloud).
     for (const u of navigateurs.ouverts()) {
       if (Date.now() - (dernieresSauvegardes.get(u) ?? 0) < 10 * 60_000) continue;
       await sauvegarder(u, navigateurs.ouvert(u)).catch((e) => journal.alerte('sauvegarde_echec', { user: u, erreur: e.message }));
+      await noter(u, 'actif', { vu: new Date().toISOString() });
     }
     if (decision.refuses.some((r) => r.raison === 'capacite')) {
       await alertes?.signaler('serveur', `Capacité atteinte : ${decision.refuses.length} compte(s) attendent un navigateur (max ${config.navigateursMax}).`);
@@ -236,5 +272,5 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     return { comptes: comptes.length, ouverts: navigateurs.ouverts().length, ...decision };
   }
 
-  return { tour, ouvrir, fermer, sauvegarder, purgerPlateforme, extensionId, lirePoste, dernieresFins };
+  return { tour, ouvrir, fermer, sauvegarder, purgerPlateforme, bloquerPlateforme, noter, extensionId, lirePoste, dernieresFins };
 }
