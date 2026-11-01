@@ -1,5 +1,13 @@
-// Le navigateur Cloud d'UN compte : un conteneur steel-browser (image dérivée,
+// Le navigateur Cloud d'UN compte : un conteneur steel-browser (image PUBLIÉE,
 // épinglée), son profil sur le disque du serveur, son IP française dédiée.
+//
+// (01/11, décision de Nico) LANCÉ EXACTEMENT COMME L'ESSAI QUI A PASSÉ (rapport machine-cloud-3010 § 17 : Leboncoin
+// formulaire, Beebs glissière) : steel-browser v0.5.4 tel que publié (Chromium 156.0.8078.73 de Debian), avec écran
+// (Xvfb 1920×1080, que l'image ne démarre pas elle-même), injection d'empreinte coupée, publicités non bloquées, aucun
+// résolveur, 3D logicielle activée comme Steel loué (FILTER_CHROME_ARGS / CHROME_ARGS). Ni langue ni fuseau réglés :
+// l'essai a tourné ainsi (en-US, UTC). Seul ajout : `persist`, qui range le profil du compte sur le disque (les
+// connexions tiennent d'un redémarrage à l'autre) — steel le met dans /app/api/user-data-dir, son navigateur au repos
+// garde son profil jetable (/tmp/steel-chrome).
 //
 // ⛔ TROIS VERROUS contre la fuite de l'IP du serveur vers une plateforme :
 //   1. steel-browser relance, au démarrage et après chaque session, un
@@ -11,7 +19,7 @@
 //   3. le pare-feu de l'hôte (deploiement/pare-feu-navigateurs.sh) n'autorise
 //      aux conteneurs du réseau br-fillsell QUE le port des proxys IPRoyal :
 //      même un navigateur sans proxy ne joint aucune plateforme.
-import { mkdir, rm, readdir, chown } from 'node:fs/promises';
+import { mkdir, rm, readdir, chown, readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { connecterCdp } from './cdp.js';
 
@@ -23,6 +31,48 @@ const octets = (txt) => {
   return Number(m[1]) * ({ '': 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 }[m[2].toLowerCase()]);
 };
 
+// L'image de l'essai du 01/11, par son empreinte (jamais « latest »).
+export const IMAGE_STEEL_ESSAI_0111 = 'ghcr.io/steel-dev/steel-browser@sha256:b5bd99decf276ff6f9a8606def9f7408a376e17ac66a9e12cb82d8400cca23bd';
+// Le lancement de l'essai, mot pour mot : l'écran d'abord, puis steel-browser tel quel (sans nginx).
+export const LANCEMENT_AVEC_ECRAN = 'rm -f /tmp/.X10-lock; Xvfb :10 -screen 0 1920x1080x24 -nolisten tcp -ac >/dev/null 2>&1 & '
+  + 'i=0; while [ ! -e /tmp/.X11-unix/X10 ] && [ $i -lt 50 ]; do i=$((i+1)); sleep 0.1; done; exec /app/api/entrypoint.sh --no-nginx';
+// Les réglages de lancement de l'essai, mot pour mot (3D logicielle comme Steel loué : choix de Nico, 01/11).
+export const ENV_ESSAI_0111 = Object.freeze([
+  'CHROME_HEADLESS=false',
+  'SKIP_FINGERPRINT_INJECTION=true',
+  'DISPLAY=:10',
+  'FILTER_CHROME_ARGS=--disable-gpu --use-gl=swiftshader',
+  'CHROME_ARGS=--use-angle=swiftshader --enable-unsafe-swiftshader',
+  'HOST=0.0.0.0',
+  'PORT=3000',
+]);
+
+/**
+ * (01/11) « PARE-FEU AVANT LE NAVIGATEUR » : la preuve que deploiement/pare-feu-navigateurs.sh a tourné depuis CE
+ * démarrage du serveur (son numéro de démarrage, boot_id, le même dans un conteneur que sur l'hôte). Pure : testée.
+ * Rend { ok, raison, destinations }.
+ */
+export function preuvePareFeu(preuveBrute, bootIdCourant) {
+  let p = null;
+  try { p = JSON.parse(String(preuveBrute ?? '')); } catch { return { ok: false, raison: 'preuve_illisible' }; }
+  const courant = String(bootIdCourant ?? '').trim();
+  if (!courant || !p?.boot_id) return { ok: false, raison: 'preuve_absente' };
+  if (String(p.boot_id).trim() !== courant) return { ok: false, raison: 'preuve_d_un_autre_demarrage' };
+  return { ok: true, destinations: String(p.destinations ?? '') };
+}
+
+/** Refuse (lève) tant que le pare-feu des navigateurs n'est pas posé depuis ce démarrage. */
+export async function exigerPareFeu(config) {
+  const dossier = config.dossierEtat || '/srv/fillsell-cloud/etat';
+  const [brute, boot] = await Promise.all([
+    readFile(`${dossier}/pare-feu.json`, 'utf8').catch(() => ''),
+    readFile('/proc/sys/kernel/random/boot_id', 'utf8').catch(() => ''),
+  ]);
+  const v = preuvePareFeu(brute, boot);
+  if (!v.ok) throw new Error(`navigateur refusé : pare-feu des navigateurs non prouvé (${v.raison})`);
+  return v;
+}
+
 export const nomConteneur = (user) => `fs-nav-${String(user).replace(/[^0-9a-f-]/gi, '')}`;
 export const nouveauProfilId = (user) => `p-${String(user).slice(0, 8)}-${randomBytes(6).toString('hex')}`;
 
@@ -30,16 +80,11 @@ export const nouveauProfilId = (user) => `p-${String(user).slice(0, 8)}-${random
 export function specConteneur({ config, user, profilId }) {
   return {
     Image: config.imageNavigateur,
-    Cmd: ['--no-nginx'],
-    Env: [
-      'CHROME_HEADLESS=false',
-      'SKIP_FINGERPRINT_INJECTION=true',
-      'DEFAULT_TIMEZONE=Europe/Paris',
-      // Verrou 1 : le navigateur « au repos » de steel n'a JAMAIS le profil du compte.
-      'CHROME_USER_DATA_DIR=/tmp/navigateur-au-repos',
-      'CHROME_ARGS=--lang=fr-FR --accept-lang=fr-FR,fr',
-      'HOST=0.0.0.0', 'PORT=3000', 'NODE_ENV=production',
-    ],
+    Entrypoint: ['/bin/sh', '-c'],
+    Cmd: [LANCEMENT_AVEC_ECRAN],
+    // Verrou 1 : le navigateur « au repos » de steel garde son profil jetable (/tmp/steel-chrome) ; celui du compte
+    // n'est ouvert que par une session « persist » (corpsSession), toujours créée avec le proxy.
+    Env: [...ENV_ESSAI_0111],
     Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId },
     HostConfig: {
       // Verrou 2 : le profil du compte, au seul chemin d'une session « persist ».
@@ -48,8 +93,9 @@ export function specConteneur({ config, user, profilId }) {
         `${config.dossierExtension}:/app/api/extensions/${EXTENSION_NOM}:ro`,
       ],
       Memory: octets(config.memoireNavigateur),
-      NanoCpus: 1_500_000_000,
-      ShmSize: 256 * 1024 * 1024,
+      NanoCpus: 2_000_000_000,
+      ShmSize: 1024 * 1024 * 1024,   // l'essai : --shm-size=1g
+      Init: true,                    // l'essai : --init
       PidsLimit: 768,
       NetworkMode: config.reseauDocker,
       RestartPolicy: { Name: 'no' },
@@ -58,24 +104,16 @@ export function specConteneur({ config, user, profilId }) {
   };
 }
 
-/** Le corps de création de session steel (pur : testé). Le proxy est OBLIGATOIRE. */
+/** Le corps de création de session steel (pur : testé). Le proxy est OBLIGATOIRE. Celui de l'essai, plus `persist`. */
 export function corpsSession({ proxyUrl }) {
   if (!proxyUrl || !/^https?:\/\/[^@\s]+@[^:\s]+:\d+$/.test(proxyUrl)) throw new Error('session refusée : proxy du compte absent ou mal formé');
   return {
     proxyUrl,
-    persist: true,                      // le profil du compte (verrou 2)
-    extensions: [EXTENSION_NOM],
-    skipFingerprintInjection: true,     // l'empreinte réelle, identique d'un onglet à l'autre (26/09)
-    timezone: 'Europe/Paris',
-    dimensions: { width: 1366, height: 768 },
-    blockAds: false,
+    skipFingerprintInjection: true,     // l'empreinte réelle, jamais inventée
     headless: false,
-    userPreferences: {
-      intl: { accept_languages: 'fr-FR,fr' },
-      session: { restore_on_startup: 5 },  // jamais de reprise d'onglets
-      credentials_enable_service: false,
-      profile: { password_manager_enabled: false },
-    },
+    blockAds: false,                    // steel bloque les publicités par défaut, Steel loué non : l'essai les laissait
+    extensions: [EXTENSION_NOM],
+    persist: true,                      // le profil du compte, sur le disque (verrou 2) — seul ajout à l'essai
   };
 }
 
@@ -93,6 +131,26 @@ const PERMISSIBLES = new Set(['vinted', 'leboncoin', 'beebs', 'depop']);
 /** Une liste de plateformes nettoyée pour le verrou (pure : testée) : connues du Cloud seulement, sans doublon, triée. */
 export function plateformesVerrou(liste) {
   return [...new Set((Array.isArray(liste) ? liste : []).map((p) => String(p).toLowerCase()).filter((p) => PERMISSIBLES.has(p)))].sort();
+}
+
+// (01/11) LE VERROU DES PLATEFORMES SUR LE MOTEUR STEEL (règle de Nico du 30/10, portée sur steel) : une plateforme
+// n'est joignable que si le compte y est connecté (coffre) ou pendant son « Me connecter ». Sans relais dans le
+// conteneur (l'essai du 01/11 n'en avait pas), le verrou est une interception DevTools AU NIVEAU DU NAVIGATEUR
+// (Fetch.enable sur la session du navigateur : onglets, cadres et service worker de l'extension) qui ne vise QUE les
+// domaines des plateformes FERMÉES — une plateforme ouverte n'est jamais interceptée, son trafic reste celui de
+// l'essai. Une requête vers une plateforme fermée échoue (BlockedByClient) : aucune visite anonyme sur l'IP du compte.
+export const DOMAINES_VERROU = Object.freeze({
+  vinted: Object.freeze(['vinted.fr', 'vinted.com', 'vinted.net']),
+  leboncoin: Object.freeze(['leboncoin.fr']),
+  beebs: Object.freeze(['beebs.app']),
+  depop: Object.freeze(['depop.com']),
+});
+/** Les motifs d'interception des plateformes FERMÉES (pure : testée). Toutes ouvertes = aucun motif. */
+export function motifsVerrou(permises) {
+  const ouvertes = new Set(plateformesVerrou(permises));
+  return Object.entries(DOMAINES_VERROU).filter(([p]) => !ouvertes.has(p))
+    .flatMap(([, domaines]) => domaines.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]))
+    .map((urlPattern) => ({ urlPattern, requestStage: 'Request' }));
 }
 
 /**
@@ -204,6 +262,7 @@ export function creerNavigateurs({ config, docker, journal }) {
   /** Démarre le navigateur du compte, sur SON proxy et SON profil. Rend { cdp, ip, … }. */
   async function ouvrir(user, { proxyUrl, proxyBeebs = null, profilId, permises = [] }) {
     if (ouverts.has(user)) return ouverts.get(user);
+    await exigerPareFeu(config);
     if (chrome) {
       // Le jeton du contrôle du verrou : neuf à chaque ouverture, gardé dans le handle, JAMAIS journalisé.
       const jetonControle = randomBytes(24).toString('hex');
@@ -226,8 +285,17 @@ export function creerNavigateurs({ config, docker, journal }) {
     });
     if (!r.ok) throw new Error(`steel : création de session → HTTP ${r.status}`);
     const cdp = await connecterCdp(`ws://${ip}:3000/`, { delaiAppelMs: 90_000 });
-    const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now() };
-    cdp.on((m) => { if (m.method === '__ferme__' && ouverts.get(user) === h) ouverts.delete(user); });
+    const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'steel', permises: plateformesVerrou(permises), bloquees: 0 };
+    cdp.on((m) => {
+      if (m.method === '__ferme__' && ouverts.get(user) === h) ouverts.delete(user);
+      // (01/11) Le verrou : une requête vers une plateforme fermée (session du navigateur, sans sessionId) échoue.
+      if (m.method === 'Fetch.requestPaused' && !m.sessionId) {
+        h.bloquees++;
+        cdp.send('Fetch.failRequest', { requestId: m.params?.requestId, errorReason: 'BlockedByClient' }).catch(() => {});
+      }
+    });
+    // Le verrou est posé AVANT toute page : le navigateur de la session vient d'ouvrir, l'extension démarre à peine.
+    await poserVerrouSteel(h);
     // Aucun téléchargement, jamais : rien ne s'écrit sur le disque du serveur par une page.
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
     ouverts.set(user, h);
@@ -262,11 +330,25 @@ export function creerNavigateurs({ config, docker, journal }) {
    * plus celle d'un « Me connecter » en cours). Rend { ok, permises } ; { ok: false, raison } si rien n'est ouvert ou
    * si le moteur n'a pas de verrou (steel). Lève si le relais refuse ou ne répond pas : la page ne s'ouvrirait pas.
    */
+  /** (01/11) Le verrou du moteur steel : les motifs des plateformes fermées, sur la session du navigateur. */
+  async function poserVerrouSteel(h) {
+    const motifs = motifsVerrou(h.permises);
+    if (motifs.length) await h.cdp.send('Fetch.enable', { patterns: motifs });
+    else await h.cdp.send('Fetch.disable').catch(() => {});
+    return motifs.length;
+  }
+
   async function permettre(user, plateformes) {
     const h = ouverts.get(user);
     if (!h) return { ok: false, raison: 'ferme' };
-    if (h.moteur !== 'chrome' || !h.jetonControle) return { ok: false, raison: 'moteur_sans_verrou' };
     const liste = plateformesVerrou(plateformes);
+    if (h.moteur === 'steel') {
+      h.permises = liste;
+      await poserVerrouSteel(h);
+      journal.info('verrou_plateformes', { user, permises: liste });
+      return { ok: true, permises: liste };
+    }
+    if (h.moteur !== 'chrome' || !h.jetonControle) return { ok: false, raison: 'moteur_sans_verrou' };
     let derniere = '';
     for (let essai = 0; essai < 4; essai++) {
       try {

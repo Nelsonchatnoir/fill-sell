@@ -326,7 +326,7 @@ try {
 
   await ouvrir('reglages-paye');
   m = await capturer('reglages-paye', { cloudSeul: true });
-  verifier(a(m.texte, 'Active') && a(m.texte, 'En plus de ta formule Pro') && a(m.texte, 'Connecter Vinted et Leboncoin'), 'Réglages, payé : active, en plus de Pro, renvoi à « Me connecter »');
+  verifier(a(m.texte, 'Active') && a(m.texte, 'En plus de ta formule Pro') && a(m.texte, 'Connecter mes plateformes'), 'Réglages, payé : active, en plus de Pro, renvoi à « Me connecter »');
   verifier(!/\d+ ?€/.test(m.texteZones), 'Réglages, payé : aucun prix affiché (règle de la formule)', m.texteZones);
   await cliquerTexte(/Arrêter l.option/);
   m = await capturer('reglages-paye-confirmation', { cloudSeul: true });

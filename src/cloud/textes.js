@@ -151,7 +151,7 @@ const FR = {
   arreteTexte: (date) => `Essai arrêté le ${date}. L'option n'est plus active, et rien n'a été facturé pour elle.`,
   termineSuite: "L'extension sur ton ordinateur et eBay continuent comme avant.",
   termineCta: `Ajouter l'option · ${PRIX}/mois`,
-  meConnecter: 'Connecter Vinted et Leboncoin',
+  meConnecter: 'Connecter mes plateformes',
   arreter: "Arrêter l'option",
   arreterTitre: "Arrêter l'option Sans ordinateur ?",
   // Pendant l'essai : effet IMMÉDIAT, rien facturé. Payée : jusqu'à la fin de période.
@@ -286,7 +286,7 @@ const EN = {
   arreteTexte: (date) => `Trial stopped on ${date}. The add-on is off, and nothing was billed for it.`,
   termineSuite: 'The extension on your computer and eBay keep working as before.',
   termineCta: `Add the add-on · ${PRIX}/mo`,
-  meConnecter: 'Connect Vinted and Leboncoin',
+  meConnecter: 'Connect my platforms',
   arreter: 'Stop the add-on',
   arreterTitre: 'Stop the No computer add-on?',
   arreterEssai: (nom) => `It stops right away, and nothing is billed for it. Your Vinted and Leboncoin listings go back through the extension, on your computer. ${nom ? `Your ${nom} plan` : 'Your Free plan'} does not change.`,

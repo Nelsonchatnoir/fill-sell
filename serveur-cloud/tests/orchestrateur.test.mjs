@@ -7,7 +7,7 @@ import { navigationPermise, estConnectee, identifiantCompte, versCookieParam, PL
 import { chiffrer, dechiffrer, creerCoffre } from '../src/coffre.js';
 import { signerTicket, verifierTicket } from '../src/tickets.js';
 import { planifierPostes, resumerJobs } from '../src/planificateur.js';
-import { specConteneur, corpsSession, nomConteneur } from '../src/navigateur.js';
+import { specConteneur, corpsSession, nomConteneur, IMAGE_STEEL_ESSAI_0111, LANCEMENT_AVEC_ECRAN, ENV_ESSAI_0111 } from '../src/navigateur.js';
 import { masquer } from '../src/journal.js';
 import { lireConfig } from '../src/config.js';
 import { idExtensionDepuisCle, sessionPourExtension } from '../src/sessionFillsell.js';
@@ -191,22 +191,29 @@ test('jobs : une attente programmée plus tard ne réveille personne', () => {
   assert.deepEqual(r.get('b'), { attente: 0, retraits: 0, enCours: 1 });
 });
 
-test('conteneur : profil du compte au seul chemin « persist », navigateur au repos sur un profil vide, image épinglée', () => {
-  const config = { imageNavigateur: 'fillsell-navigateur:0123456789ab', dossierProfils: '/srv/p', dossierExtension: '/srv/e', memoireNavigateur: '1400m', reseauDocker: 'fillsell-cloud' };
+test('conteneur : lancé EXACTEMENT comme l\'essai du 01/11, profil du compte au seul chemin « persist », image épinglée', () => {
+  const config = { imageNavigateur: IMAGE_STEEL_ESSAI_0111, dossierProfils: '/srv/p', dossierExtension: '/srv/e', memoireNavigateur: '1400m', reseauDocker: 'fillsell-cloud' };
   const s = specConteneur({ config, user: U, profilId: 'p-x' });
-  assert.ok(s.Env.includes('CHROME_USER_DATA_DIR=/tmp/navigateur-au-repos'), 'verrou 1 : le navigateur au repos n\'a jamais le profil du compte');
+  assert.match(IMAGE_STEEL_ESSAI_0111, /^ghcr\.io\/steel-dev\/steel-browser@sha256:b5bd99decf276ff6/, 'l\'image de l\'essai, par son empreinte');
+  assert.deepEqual(s.Entrypoint, ['/bin/sh', '-c']);
+  assert.deepEqual(s.Cmd, [LANCEMENT_AVEC_ECRAN]);
+  assert.ok(LANCEMENT_AVEC_ECRAN.includes('Xvfb :10 -screen 0 1920x1080x24 -nolisten tcp -ac')
+    && LANCEMENT_AVEC_ECRAN.endsWith('exec /app/api/entrypoint.sh --no-nginx'), 'l\'écran de l\'essai, puis steel tel quel');
+  assert.deepEqual(s.Env, [...ENV_ESSAI_0111], 'les réglages de l\'essai, rien d\'autre');
+  for (const e of ['CHROME_HEADLESS=false', 'SKIP_FINGERPRINT_INJECTION=true', 'FILTER_CHROME_ARGS=--disable-gpu --use-gl=swiftshader',
+    'CHROME_ARGS=--use-angle=swiftshader --enable-unsafe-swiftshader']) assert.ok(s.Env.includes(e), e);
+  assert.ok(!s.Env.some((e) => /TIMEZONE|lang=|CHROME_USER_DATA_DIR/.test(e)), 'ni langue ni fuseau réglés (l\'essai) ; profil au repos jetable par défaut (verrou 1)');
+  assert.equal(s.HostConfig.ShmSize, 1024 ** 3, '--shm-size=1g');
+  assert.equal(s.HostConfig.Init, true, '--init');
   assert.ok(s.HostConfig.Binds.includes('/srv/p/p-x:/app/api/user-data-dir'), 'verrou 2 : profil monté au chemin « persist »');
   assert.ok(s.HostConfig.Binds.includes('/srv/e:/app/api/extensions/fillsell:ro'), 'extension en lecture seule');
-  assert.ok(s.Env.some((e) => e.startsWith('CHROME_ARGS=') && e.includes('--lang=fr-FR')), 'navigateur en français (le 26/09 : en-US)');
   assert.equal(s.HostConfig.NetworkMode, 'fillsell-cloud', 'réseau filtré par le pare-feu (verrou 3)');
   assert.equal(nomConteneur(U), `fs-nav-${U}`);
   assert.throws(() => corpsSession({ proxyUrl: '' }), 'jamais de session sans proxy');
   assert.throws(() => corpsSession({ proxyUrl: 'http://194.152.141.98:12323' }), 'proxy sans identifiants : refusé');
   const c = corpsSession({ proxyUrl: 'http://u:p@194.152.141.98:12323' });
-  assert.equal(c.persist, true);
-  assert.equal(c.skipFingerprintInjection, true, 'empreinte réelle, stable d\'un onglet à l\'autre (26/09)');
-  assert.deepEqual(c.extensions, ['fillsell']);
-  assert.equal(c.timezone, 'Europe/Paris');
+  assert.deepEqual(c, { proxyUrl: 'http://u:p@194.152.141.98:12323', skipFingerprintInjection: true, headless: false, blockAds: false,
+    extensions: ['fillsell'], persist: true }, 'la session de l\'essai (empreinte réelle, avec écran, publicités laissées, extension), plus « persist »');
 });
 
 test('journal : aucun secret ne sort', () => {

@@ -43,6 +43,10 @@ export function lireConfig(env = process.env) {
     dossierExtensionCrx: env.DOSSIER_EXTENSION_CRX?.trim() || '/srv/fillsell-cloud/extension-crx',
     reseauDocker: env.RESEAU_DOCKER?.trim() || 'fillsell-cloud',
     dossierProfils: env.DOSSIER_PROFILS?.trim() || '/srv/fillsell-cloud/profils',
+    // (01/11) L'état du serveur : la preuve du pare-feu (pare-feu.json), les mesures et l'arrêt de l'essai de 48 h.
+    dossierEtat: env.DOSSIER_ETAT?.trim() || '/srv/fillsell-cloud/etat',
+    // (01/11) L'essai de 48 h sur le vrai produit (endurance.js) : mesures et arrêt au premier blocage. 1 = actif.
+    endurance: lireBool(env.ENDURANCE, false),
     dossierExtension: env.DOSSIER_EXTENSION?.trim() || '/srv/fillsell-cloud/extension',
     socketDocker: env.SOCKET_DOCKER?.trim() || '/var/run/docker.sock',
     // Capacité MESURÉE du serveur (navigateurs simultanés). Défaut prudent.

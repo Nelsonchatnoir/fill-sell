@@ -132,6 +132,8 @@ import HoteCloud from './cloud/HoteCloud';
 // cloudOfferVisible (l'offre) et cloudConnexionVisible (l'écran) : baissés et
 // sans témoin, aucun rendu, aucune requête.
 import MeConnecterCloud from './cloud/MeConnecterCloud';
+// (01/11) Le bandeau qui demande la reconnexion quand une connexion Cloud tombe (drapeau cloud_voie du compte).
+import BandeauCloudReconnexion from './cloud/BandeauCloudReconnexion';
 import { creerAchatCloud } from './cloud/achatCloud';
 import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
 import { cloudOfferVisible, cloudConnexionVisible, chargerTemoinCloud } from './config/cloudOffer';
@@ -9854,6 +9856,10 @@ export default function App({ loginOnly = false }){
           au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}
       {meConnecterOuvert&&user&&cloudConnexionVisible(user.id)&&(
         <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>setMeConnecterOuvert(false)} plateformesFermees={plateformesFermees}/>
+      )}
+      {/* (01/11) Une connexion Cloud tombée (drapeau cloud_voie) : l'app demande la reconnexion — témoin seulement. */}
+      {user&&cloudConnexionVisible(user.id)&&(
+        <BandeauCloudReconnexion userId={user.id} lang={lang} ouvert={meConnecterOuvert} onReconnecter={()=>setMeConnecterOuvert(true)} plateformesFermees={plateformesFermees}/>
       )}
       {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
       {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id))&&(

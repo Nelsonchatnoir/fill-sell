@@ -5,6 +5,8 @@
 import { CLOUD_PRIX_AFFICHE } from '../utils/palier';
 
 const NBSP = ' ';
+// (01/11) Les noms des plateformes du bandeau : une liste, quoi qu'on passe (un autotest appelle chaque phrase avec une date).
+const listeNoms = (n) => (Array.isArray(n) ? n : []).map(String).filter(Boolean);
 const PRIX = CLOUD_PRIX_AFFICHE.replace(/ /g, NBSP);
 
 const FR = {
@@ -18,6 +20,10 @@ const FR = {
   executantLecture: 'Lecture de l’état…',
   meConnecter: 'Me connecter',
   reconnecter: 'Me reconnecter',
+  // (01/11) Le bandeau qui demande la reconnexion quand une connexion Cloud tombe (BandeauCloudReconnexion.jsx).
+  bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l.at(-1)} se sont déconnectés de FillSell Cloud` : `${l[0] ?? 'Une plateforme'} s'est déconnectée de FillSell Cloud`; },
+  bandeauTexte: (noms) => { const l = listeNoms(noms); return `Tes tâches ${l.join(', ')} attendent ta reconnexion : rien n'est publié ni retiré sur ${l.length > 1 ? 'ces plateformes' : 'cette plateforme'} en attendant.`; },
+  plusTard: 'Plus tard',
   ebayTitre: 'eBay',
   ebayTexte: "Par la connexion officielle d'eBay : tu ne donnes aucun mot de passe à FillSell.",
   ebayRelier: 'Relier eBay',
@@ -54,6 +60,9 @@ const EN = {
   executantLecture: 'Reading its status…',
   meConnecter: 'Sign in',
   reconnecter: 'Sign in again',
+  bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)} were disconnected from FillSell Cloud` : `${l[0] ?? 'A platform'} was disconnected from FillSell Cloud`; },
+  bandeauTexte: (noms) => { const l = listeNoms(noms); return `Your ${l.join(', ')} tasks are waiting for you to sign in again: nothing is posted or removed on ${l.length > 1 ? 'these platforms' : 'this platform'} until then.`; },
+  plusTard: 'Later',
   ebayTitre: 'eBay',
   ebayTexte: "Through eBay's official sign-in: you never give FillSell a password.",
   ebayRelier: 'Link eBay',

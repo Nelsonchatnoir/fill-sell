@@ -2,7 +2,7 @@
 // d'utilisation (version, case obligatoire, acceptation enregistrée AVANT toute carte, garde du paiement), le
 // drapeau par compte côté serveur. Pur + lecture du code.
 import fs from 'node:fs';
-import { phraseExecutant, etatConnexion, quandParis } from '../src/cloud/executant.js';
+import { phraseExecutant, etatConnexion, quandParis, plateformesAReconnecter } from '../src/cloud/executant.js';
 
 let echecs = 0, n = 0;
 const ok = (c, m) => { n++; if (c) console.log('  ✓', m); else { echecs++; console.error('  ✗', m); } };
@@ -52,6 +52,17 @@ console.log('4. Une plateforme du Cloud = une ligne du coffre possible');
 const { PLATEFORMES_CLOUD } = await import('../serveur-cloud/src/plateformes.js');
 const contrainte = mig.match(/cloud_coffre_plateforme_check\s+CHECK \(plateforme = ANY \(ARRAY\[([^\]]+)\]\)\)/)?.[1] ?? '';
 ok(PLATEFORMES_CLOUD.every((p) => contrainte.includes(`'${p}'::text`)) && contrainte.includes("'fillsell'::text"), `la contrainte du coffre accepte ${PLATEFORMES_CLOUD.join(', ')} et fillsell`);
+
+// (01/11) Le bandeau « reconnecte-toi » : seulement quand le Cloud exécute les tâches du compte (cloud_voie).
+{
+  const etats = { vinted: { connecte: true }, leboncoin: { connecte: false }, beebs: { connecte: false }, fillsell: { connecte: true } };
+  const ids = (l) => l.map((p) => p.id).join(',');
+  ok(ids(plateformesAReconnecter({ cloudVoie: true, etats })) === 'leboncoin,beebs', "bandeau : les connexions tombées, dans l'ordre de l'écran (jamais une jamais faite, jamais « fillsell »)");
+  ok(plateformesAReconnecter({ cloudVoie: false, etats }).length === 0, "bandeau : rien quand le drapeau Cloud est baissé (l'ordinateur fait les tâches)");
+  ok(plateformesAReconnecter({ cloudVoie: true, etats: null }).length === 0 && plateformesAReconnecter({ cloudVoie: true, etats: 'echec' }).length === 0, "bandeau : état illisible = rien d'affiché");
+  ok(ids(plateformesAReconnecter({ cloudVoie: true, etats, fermees: ['leboncoin'] })) === 'beebs', "bandeau : une plateforme fermée au compte n'est jamais demandée");
+  ok(plateformesAReconnecter({ cloudVoie: true, etats })[0].nom === 'Leboncoin', 'bandeau : la plateforme nommée');
+}
 
 if (echecs) { console.error(`\n✗ ${echecs} échec(s) — ${n} contrôles`); process.exit(1); }
 console.log(`\n✓ tout est vert — ${n} contrôles`);

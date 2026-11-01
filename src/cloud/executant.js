@@ -6,6 +6,8 @@
 // Pur (testé par scripts/cloud-executant-selftest.mjs). Tutoiement, heure de Paris, aucune durée promise.
 
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', depop: 'Depop', ebay: 'eBay' };
+// (01/11) Les plateformes de l'écran « Me connecter », dans son ordre (même liste que config/cloudOffer.js, qui la passe).
+const PLATEFORMES_ECRAN = ['vinted', 'leboncoin', 'beebs', 'depop'].map((id) => ({ id, nom: NOMS[id] }));
 const ACTIONS = {
   fr: { publish: 'publication', republish: 'republication', delete: 'retrait', update: 'modification' },
   en: { publish: 'listing', republish: 'repost', delete: 'removal', update: 'edit' },
@@ -36,6 +38,15 @@ export function etatConnexion(ligne) {
   if (ligne?.connecte === true) return 'connecte';
   if (ligne && typeof ligne === 'object') return 'a_reconnecter';
   return 'a_connecter';
+}
+
+/**
+ * (01/11) Les plateformes à reconnecter (pure) : seulement quand le Cloud exécute les tâches du compte
+ * (profiles.cloud_voie), dans l'ordre de l'écran « Me connecter ». Lu par BandeauCloudReconnexion.jsx.
+ */
+export function plateformesAReconnecter({ cloudVoie, etats, fermees = [], plateformes = PLATEFORMES_ECRAN }) {
+  if (cloudVoie !== true || !etats || typeof etats !== 'object') return [];
+  return plateformes.filter((p) => !fermees.includes(p.id) && etatConnexion(etats[p.id]) === 'a_reconnecter');
 }
 
 /** La phrase de l'exécutant (pur) → { etat: 'en_marche'|'en_pause'|'erreur'|'jamais', titre, detail[] }. */

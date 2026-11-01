@@ -41,6 +41,7 @@ import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
+import { drapeauALire, jobsSelonDrapeauCloud } from "../_shared/cloud-voie.js";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
@@ -989,6 +990,9 @@ serve(async (req) => {
     const PLATEFORMES_POSTE_CLOUD = ["vinted", "leboncoin", "beebs", "depop"];
     // (25/09) Les postes vivants du compte, relus par la garde des relevés Opla.
     let postesDuCompte: Record<string, Poste> = {};
+    // (01/11) Le DRAPEAU CLOUD du compte (profiles.cloud_voie, migration 20261101180000, posé par script) : lu avec les
+    // postes (même lecture), null = pas encore lu. Faux pour tout le parc : rien ne change.
+    let cloudVoie: boolean | null = null;
     // (18/10, lot 6) CE poste tel qu'il est APRÈS ce poll (ce qu'il vient de dire compris).
     let posteCourant: Poste | null = null;
     try {
@@ -1029,7 +1033,8 @@ serve(async (req) => {
       }
       if (sessionId) {
         try {
-          const { data: pp } = await admin.from("profiles").select("extension_postes").eq("id", user.id).maybeSingle();
+          const { data: pp } = await admin.from("profiles").select("extension_postes, cloud_voie").eq("id", user.id).maybeSingle();
+          cloudVoie = pp ? (pp as { cloud_voie?: boolean }).cloud_voie === true : null;
           const postes = postesVivants((pp as { extension_postes?: unknown } | null)?.extension_postes);
           postesDuCompte = postes;
           const avant: Poste = postes[sessionId] ?? {};
@@ -13515,6 +13520,24 @@ serve(async (req) => {
     // au seul poste Cloud tant qu'il est vivant (vu il y a moins de 5 min) ; une plateforme qui ne l'est pas reste à
     // l'ordinateur (le poste Cloud ne la reçoit jamais). Mêmes plafonds, mêmes cadences, mêmes gardes : ce sont ceux
     // de cette fonction, pour tous les postes. Un compte sans Cloud ne lit rien ici (aucun poste « -cloud »).
+    // (01/11, demande de Nico : « comme ebay_voie_api ») LE DRAPEAU CLOUD DU COMPTE : profiles.cloud_voie vrai = le Cloud
+    // exécute les tâches Vinted, Leboncoin, Beebs et Depop du compte, l'ORDINATEUR n'en reçoit plus aucune — qu'il soit
+    // vivant ou non, que la plateforme soit connectée au Cloud ou non (une plateforme à reconnecter attend la
+    // reconnexion ; l'app la demande). Le poste Cloud, lui, garde la règle ci-dessous (ses plateformes connectées).
+    if (!includeProcessing && !includeNeedsUser && out.length && !posteCloud) {
+      if (drapeauALire({ cloudVoie, posteCloud, jobs: out })) {
+        try {
+          const adminVoie = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const { data: pv } = await adminVoie.from("profiles").select("cloud_voie").eq("id", user.id).maybeSingle();
+          cloudVoie = (pv as { cloud_voie?: boolean } | null)?.cloud_voie === true;
+        } catch (_e) { /* illisible = comme avant */ }
+      }
+      const avantVoie = out.length;
+      out = jobsSelonDrapeauCloud(out, { cloudVoie, posteCloud });
+      if (out.length !== avantVoie) {
+        console.log(`[get-pending-jobs] userId=${user.id} : ${avantVoie - out.length} job(s) laissé(s) au Cloud (drapeau cloud_voie du compte)`);
+      }
+    }
     if (!includeProcessing && !includeNeedsUser && out.length) {
       const cloudVivant = Object.entries(postesDuCompte).some(([sid, p]) => sid !== sessionId
         && /-cloud$/.test(String(p?.build ?? "")) && Date.now() - Date.parse(String(p?.le ?? "")) < 5 * 60_000);

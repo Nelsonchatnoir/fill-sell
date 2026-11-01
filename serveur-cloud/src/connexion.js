@@ -26,6 +26,7 @@ import { lireDansExtension } from './sessionFillsell.js';
 const DUREE_MAX_MS = 15 * 60_000;
 const INACTIVITE_MS = 5 * 60_000;
 const SONDE_MS = 2000;
+export const ECHELLE_IMAGES_MAX = 2;
 // Garde anti-boucle des refus de navigation (05/10) : 5 refus en 20 s = arrêt.
 /**
  * (30/10) Une page appartient à « Me connecter » seulement si elle a été OUVERTE par la page de connexion (ou par une
@@ -184,7 +185,10 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     async function diffuser(c) {
       if (active && active !== c) await cdp.send('Page.stopScreencast', {}, active.sessionId).catch(() => {});
       active = c;
-      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: Math.round(largeur * dpr), maxHeight: Math.round(hauteur * dpr), everyNthFrame: 1 }, c.sessionId);
+      // (01/11, « propre et fluide ») Les images au plus en 2× : nettes sur un téléphone 3×, et deux fois plus
+      // légères qu'en 3× (le téléphone les agrandit). La page, elle, garde la densité du téléphone (deviceScaleFactor).
+      const echelle = Math.min(dpr, ECHELLE_IMAGES_MAX);
+      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: Math.round(largeur * echelle), maxHeight: Math.round(hauteur * echelle), everyNthFrame: 1 }, c.sessionId);
     }
 
     function envoyerImage(data) {

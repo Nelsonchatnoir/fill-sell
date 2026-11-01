@@ -11,6 +11,7 @@ import { resolve4 } from 'node:dns/promises';
 import { rm } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { connecterCdp } from './cdp.js';
+import { ENV_ESSAI_0111, LANCEMENT_AVEC_ECRAN, corpsSession, exigerPareFeu } from './navigateur.js';
 import { EXPRESSION_EMPREINTE } from './empreinte.js';
 
 const LISTES = [
@@ -64,13 +65,14 @@ export function creerControles({ config, docker, journal }) {
     const nom = `fs-ctl-${ipId}-${randomBytes(3).toString('hex')}`;
     const profil = `ctl-${ipId}-${randomBytes(4).toString('hex')}`;
     let cdp = null;
+    await exigerPareFeu(config);
     try {
+      // (01/11) Le même lancement que les navigateurs des comptes (l'essai du 01/11), sans extension.
       await docker.creer(nom, {
-        Image: config.imageNavigateur, Cmd: ['--no-nginx'],
-        Env: ['CHROME_HEADLESS=false', 'SKIP_FINGERPRINT_INJECTION=true', 'DEFAULT_TIMEZONE=Europe/Paris',
-          'CHROME_USER_DATA_DIR=/tmp/navigateur-au-repos', 'CHROME_ARGS=--lang=fr-FR --accept-lang=fr-FR,fr', 'HOST=0.0.0.0', 'PORT=3000'],
+        Image: config.imageNavigateur, Entrypoint: ['/bin/sh', '-c'], Cmd: [LANCEMENT_AVEC_ECRAN],
+        Env: [...ENV_ESSAI_0111],
         Labels: { 'fillsell.cloud': '1', 'fillsell.controle': String(ipId) },
-        HostConfig: { Binds: [`${config.dossierProfils}/${profil}:/app/api/user-data-dir`], Memory: 1024 ** 3, NetworkMode: config.reseauDocker, AutoRemove: false },
+        HostConfig: { Binds: [`${config.dossierProfils}/${profil}:/app/api/user-data-dir`], Memory: 1024 ** 3, ShmSize: 1024 ** 3, Init: true, NetworkMode: config.reseauDocker, AutoRemove: false },
       });
       await docker.demarrer(nom);
       const ins = await docker.inspecter(nom);
@@ -81,7 +83,7 @@ export function creerControles({ config, docker, journal }) {
       }
       const r = await fetch(`http://${adr}:3000/v1/sessions`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proxyUrl, persist: true, skipFingerprintInjection: true, timezone: 'Europe/Paris', headless: false }),
+        body: JSON.stringify((({ extensions, ...corps }) => corps)(corpsSession({ proxyUrl }))),
         signal: AbortSignal.timeout(90_000),
       });
       if (!r.ok) throw new Error(`steel : session de contrôle → HTTP ${r.status}`);

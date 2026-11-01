@@ -22,6 +22,7 @@ import { creerControles } from './controle.js';
 import { creerEntretien } from './entretien.js';
 import { chargerRegles } from './regles.js';
 import { creerGardeSocle } from './socle.js';
+import { creerEndurance } from './endurance.js';
 
 const config = lireConfig();
 const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -37,10 +38,16 @@ const fournisseurIp = creerFournisseurIp({ config, base, iproyal, journal, alert
 const regles = await chargerRegles();
 
 let connexions = null;
+let endurance = null;
 const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp,
-  connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
+  connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), arretEndurance: () => endurance?.arretee() ?? null });
 connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal });
 const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp });
+// (01/11) L'essai de 48 h (ENDURANCE=1) : mesures toutes les 10 min, arrêt au premier blocage.
+if (config.endurance) {
+  endurance = creerEndurance({ config, base, docker, navigateurs, postes, journal, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
+  await endurance.charger();
+}
 const serveur = creerServeur({ config, connexions, navigateurs, journal, dossierPublic: fileURLToPath(new URL('../public', import.meta.url)) });
 
 // Le réseau des navigateurs (le pare-feu de l'hôte filtre br-fillsell).
@@ -84,12 +91,15 @@ async function tourEntretien() {
 
 const t1 = setInterval(tourPlanificateur, config.tickPlanificateurS * 1000);
 const t2 = setInterval(tourEntretien, config.tickEntretienMin * 60_000);
+const t3 = endurance ? setInterval(() => endurance.releveCadres().catch((e) => journal.alerte('endurance_cadres_echec', { erreur: e.message })), 60_000) : null;
+const t4 = endurance ? setInterval(() => endurance.mesure().catch((e) => journal.alerte('endurance_mesure_echec', { erreur: e.message })), 10 * 60_000) : null;
+if (endurance) setTimeout(() => endurance.mesure().catch(() => {}), 120_000);
 setTimeout(tourPlanificateur, 5_000);
 setTimeout(tourEntretien, 60_000);
 
 async function arreter(signal) {
   journal.info('arret', { signal });
-  clearInterval(t1); clearInterval(t2);
+  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4);
   connexions.fermerTout();
   for (const u of navigateurs.ouverts()) await postes.fermer(u, 'arret_orchestrateur').catch(() => {});
   await serveur.fermer().catch(() => {});

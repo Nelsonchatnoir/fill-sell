@@ -311,7 +311,7 @@ try {
   const rJ1 = reg(essaiDe('2026-10-11T05:30:00Z'), 'Premium');
   verifier(/Dernier jour d.essai/.test(rJ1) && /11 octobre à 07:30/.test(rJ1), 'Réglages, essai J-1 : « Dernier jour d’essai »', rJ1);
   const rPaye = reg(P.cloudDuProfil({ is_pro: true, is_cloud: true, cloud_periode_fin: '2026-10-31T23:00:00Z' }, n), 'Pro');
-  verifier(/Active/.test(rPaye) && /En plus de ta formule Pro/.test(rPaye) && /Arrêter l.option/.test(rPaye) && /Connecter Vinted et Leboncoin/.test(rPaye), 'Réglages, payé : active, arrêter, renvoi « Me connecter »', rPaye);
+  verifier(/Active/.test(rPaye) && /En plus de ta formule Pro/.test(rPaye) && /Arrêter l.option/.test(rPaye) && /Connecter mes plateformes/.test(rPaye), 'Réglages, payé : active, arrêter, renvoi « Me connecter »', rPaye);
   verifier(!/\d ?€/.test(rPaye), 'Réglages, payé : aucun prix (un tarif particulier ne se devine pas)', rPaye);
   const rArret = reg(P.cloudDuProfil({ is_pro: true, is_cloud: true, cloud_periode_fin: '2026-10-31T23:00:00Z', cloud_arret_fin_periode: true }, n), 'Pro');
   verifier(/S.arrête le 1 novembre|S.arrête le 1er novembre/.test(rArret) && /tourne jusqu.au 1(er)? novembre, puis s.arrête/.test(rArret) && /Garder l.option/.test(rArret) && !/Arrêter l.option/.test(rArret), 'Réglages, arrêt prévu : « S’arrête le [fin de période] », garder, plus de bouton d’arrêt', rArret);

@@ -7,7 +7,7 @@ import { planifierPostes, resumerJobs } from './planificateur.js';
 import { nouveauProfilId } from './navigateur.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
 
-export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp }) {
+export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null }) {
   const dernieresFins = new Map();
   const dernieresSauvegardes = new Map();
   let idExtension = null;
@@ -81,6 +81,8 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
   }
 
   async function ouvrir(user, compte, motif) {
+    // (01/11) L'essai de 48 h arrêté au premier blocage (endurance.js) : plus aucune ouverture, « Me connecter » compris.
+    if (arretEndurance()) throw new Error('essai arrêté au premier blocage (etat/endurance/arret.json)');
     const poste = await lirePoste(user);
     let profilId = poste?.details?.profil;
     if (!profilId) profilId = nouveauProfilId(user);
@@ -134,6 +136,10 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
 
   /** UN tour de planificateur. Rend la décision appliquée (pour le journal et les tests réels). */
   async function tour() {
+    if (arretEndurance()) {
+      for (const u of navigateurs.ouverts()) await fermer(u, 'blocage_endurance').catch((e) => journal.erreur('fermeture_echec', { user: u, erreur: e.message }));
+      return { comptes: 0, ouverts: 0, ouvrir: [], fermer: [], refuses: [], arret_endurance: true };
+    }
     const { data: comptesBruts, error } = await base.rpc('cloud_comptes_a_servir');
     if (error) throw new Error(`cloud_comptes_a_servir : ${error.message}`);
     const comptes = (comptesBruts ?? []).filter((c) => !config.comptesAutorises.length || config.comptesAutorises.includes(c.user_id));
