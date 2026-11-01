@@ -1,0 +1,20 @@
+-- PROPOSITION (01/11, NON APPLIQUÉE — attend le feu vert nommé de Nico) : Depop dans le journal des connexions Cloud.
+-- Constat (essai du 01/11 au soir) : cloud_connexions_plateforme_check ne connaît que vinted, leboncoin, beebs. Les deux
+-- « Me connecter » Depop de Nico (21:17, 21:22) n'y ont AUCUNE ligne : l'insertion était refusée sans bruit (l'orchestrateur
+-- le dit désormais : « connexion_journal_echec »). Sans conséquence sur la connexion elle-même ni sur le coffre
+-- (cloud_coffre connaît déjà depop) ; les 48 h se comptent dans le journal de l'essai du serveur (connexion_verifiee).
+-- Une fois le feu vert donné : renommer en supabase/migrations/<version>_cloud_connexions_depop.sql, puis
+--   npx supabase db query --linked -f <fichier> ; npx supabase migration repair --linked --status applied <version>
+BEGIN;
+ALTER TABLE public.cloud_connexions DROP CONSTRAINT cloud_connexions_plateforme_check;
+ALTER TABLE public.cloud_connexions ADD CONSTRAINT cloud_connexions_plateforme_check
+  CHECK (plateforme = ANY (ARRAY['vinted'::text, 'leboncoin'::text, 'beebs'::text, 'depop'::text]));
+COMMIT;
+
+-- INVERSE (supabase/rollbacks/<version>_cloud_connexions_depop_INVERSE.sql) — les lignes Depop du journal partent d'abord :
+-- BEGIN;
+-- DELETE FROM public.cloud_connexions WHERE plateforme = 'depop';
+-- ALTER TABLE public.cloud_connexions DROP CONSTRAINT cloud_connexions_plateforme_check;
+-- ALTER TABLE public.cloud_connexions ADD CONSTRAINT cloud_connexions_plateforme_check
+--   CHECK (plateforme = ANY (ARRAY['vinted'::text, 'leboncoin'::text, 'beebs'::text]));
+-- COMMIT;

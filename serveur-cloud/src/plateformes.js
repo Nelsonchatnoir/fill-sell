@@ -15,10 +15,20 @@
 export const PLATEFORMES_CLOUD = Object.freeze(['vinted', 'leboncoin', 'beebs', 'depop']);
 
 // [hôte, chemins permis] — null = l'hôte entier (un hôte qui ne sert QUE l'authentification).
+// (01/11, Beebs avec Google : « Une erreur est survenue » au retour) Deux étapes de la connexion Google étaient REFUSÉES
+// (journal du serveur, 21:14 et 21:15) : le dépôt des cookies Google sur le domaine du pays (accounts.google.fr/
+// accounts/SetSID — google.be, google.ch, google.co.uk… selon la personne) et le RETOUR vers la plateforme, qui passe
+// par le gestionnaire d'authentification Firebase (babytouch-782e4.firebaseapp.com/__/auth/handler pour Beebs). La
+// fenêtre Google était fermée net : Beebs n'apprenait jamais la fin de la connexion. Permis désormais : les hôtes
+// accounts.google.<pays>, les écrans de sécurité de Google pendant la connexion (gds.google.com/web/), et les seuls
+// chemins /__/auth/ des gestionnaires Firebase (rien d'autre n'y est servi) — pour Google, Apple et Facebook.
+const PAYS_GOOGLE = String.raw`(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})`;
 const SSO = Object.freeze([
   [/^appleid\.apple\.com$/, null], [/^idmsa\.apple\.com$/, null],
-  [/^accounts\.google\.com$/, null], [/^accounts\.youtube\.com$/, [/^\/accounts\//]],
-  [/^(www\.)?google\.(com|fr)$/, [/^\/accounts\//, /^\/recaptcha\//]],
+  [new RegExp(String.raw`^accounts\.google\.${PAYS_GOOGLE}$`), null], [/^accounts\.youtube\.com$/, [/^\/accounts\//]],
+  [new RegExp(String.raw`^(www\.)?google\.${PAYS_GOOGLE}$`), [/^\/accounts\//, /^\/recaptcha\//]],
+  [/^gds\.google\.com$/, [/^\/web\//]],
+  [/^[a-z0-9-]+\.firebaseapp\.com$/, [/^\/__\/auth\//]], [/^[a-z0-9-]+\.web\.app$/, [/^\/__\/auth\//]],
   // (30/10) Kiabi : « Connexion avec Kiabi » sur la page de connexion de Beebs — ses hôtes d'authentification seulement.
   [/^(auth|secure|connect|accounts|login|id)\.kiabi\.com$/, null], [/^www\.kiabi\.com$/, [/^\/(login|connexion|auth|oauth|account\/login)/i]],
   [/^(www|m|web)\.facebook\.com$/, [/^\/login/, /^\/dialog\/oauth/, /^\/v\d+\.\d+\/dialog\/oauth/, /^\/checkpoint/, /^\/two_step_verification/, /^\/cookie\/consent/, /^\/privacy\/consent/, /^\/auth/]],
@@ -28,6 +38,25 @@ export function pageSsoPermise(hote, chemin) {
   const r = SSO.find(([h]) => h.test(hote));
   if (!r) return false;
   return r[1] == null || r[1].some((c) => c.test(chemin));
+}
+
+/**
+ * (01/11) LE RETOUR DÉCLARÉ PAR LA PLATEFORME (pure). Une page de connexion d'un fournisseur (Google, Apple, Facebook)
+ * porte dans son adresse le `redirect_uri` où elle renverra : c'est la PAGE DE LA PLATEFORME qui l'a choisi (la personne
+ * ne tape aucune adresse), et le fournisseur n'accepte que les retours enregistrés par la plateforme. Ce retour exact
+ * (hôte et chemin, jamais la requête) devient permis pour CE « Me connecter » : le retour vers la plateforme ne se perd
+ * plus, quel que soit son hôte. Rend { hote, chemin } ou null.
+ */
+export function retourDeclare(url) {
+  let u;
+  try { u = new URL(String(url)); } catch { return null; }
+  if (u.protocol !== 'https:' || !SSO.some(([h]) => h.test(u.hostname.toLowerCase()))) return null;
+  const brut = u.searchParams.get('redirect_uri');
+  if (!brut) return null;
+  let r;
+  try { r = new URL(brut); } catch { return null; }
+  if (r.protocol !== 'https:' || !r.hostname) return null;
+  return { hote: r.hostname.toLowerCase(), chemin: r.pathname || '/' };
 }
 
 export const DEFINITIONS = Object.freeze({
@@ -42,6 +71,7 @@ export const DEFINITIONS = Object.freeze({
     cheminsPermis: [/^\/$/, /^\/member\/(signup|register|login|general|auth)/, /^\/oauth/, /^\/auth/, /^\/(verification|two_factor)/, /^\/session/],
     hotesPermis: [/^(www\.)?vinted\.fr$/, /^accounts\.vinted\.com$/],
     cookiesDomaine: /(^|\.)vinted\.(fr|com)$/,
+    hoteSite: 'www.vinted.fr',
   },
   leboncoin: {
     nom: 'Leboncoin',
@@ -52,6 +82,7 @@ export const DEFINITIONS = Object.freeze({
     cheminsPermis: [/^\/$/, /^\/se-connecter/, /^\/connexion/, /^\/login/, /^\/oauth/, /^\/compte\/part\/mes-annonces/],
     hotesPermis: [/^(www\.)?leboncoin\.fr$/, /^auth\.leboncoin\.fr$/, /^api\.leboncoin\.fr$/],
     cookiesDomaine: /(^|\.)leboncoin\.fr$/,
+    hoteSite: 'www.leboncoin.fr',
   },
   beebs: {
     nom: 'Beebs',
@@ -62,20 +93,27 @@ export const DEFINITIONS = Object.freeze({
     cheminsPermis: [/^\/$/, /^\/fr\/?$/, /^\/fr\/(login|signin|connexion|auth|register|inscription)/, /^\/(login|auth)/],
     hotesPermis: [/^(www\.)?beebs\.app$/, /^auth\.beebs\.app$/],
     cookiesDomaine: /(^|\.)beebs\.app$/,
+    hoteSite: 'www.beebs.app',
   },
   // (30/10, lot D) Depop : la page de connexion (et ses étapes : code, mot de passe oublié), rien d'autre.
   depop: {
     nom: 'Depop',
     pageConnexion: 'https://www.depop.com/login/',
     domaine: /(^|\.)depop\.com$/,
-    cheminsPermis: [/^\/$/, /^\/login/, /^\/signup/, /^\/password/, /^\/verify/, /^\/oauth/, /^\/auth/],
+    // (01/11) + l'accueil de la langue (/fr/) : Depop y renvoie une fois connecté ; refusé, il montrait une page d'erreur
+    // juste après la connexion (« Depop a affiché une erreur », Nico, 21:22 ; journal : 3 refus de www.depop.com/fr/).
+    cheminsPermis: [/^\/$/, /^\/[a-z]{2}(-[a-z]{2})?\/?$/, /^\/login/, /^\/signup/, /^\/password/, /^\/verify/, /^\/oauth/, /^\/auth/],
     hotesPermis: [/^(www\.)?depop\.com$/, /^auth\.depop\.com$/, /^api\.depop\.com$/],
     cookiesDomaine: /(^|\.)depop\.com$/,
+    hoteSite: 'www.depop.com',
   },
 });
 
-/** Une navigation (document principal ou fenêtre ouverte par la page de connexion) est-elle permise ? */
-export function navigationPermise(plateforme, url) {
+/**
+ * Une navigation (document principal ou fenêtre ouverte par la page de connexion) est-elle permise ?
+ * `retours` : les retours déclarés par la plateforme pendant CE « Me connecter » (retourDeclare), permis à l'identique.
+ */
+export function navigationPermise(plateforme, url, retours = []) {
   const def = DEFINITIONS[plateforme];
   if (!def) return false;
   let u;
@@ -83,6 +121,7 @@ export function navigationPermise(plateforme, url) {
   if (u.protocol === 'about:' || u.href === 'about:blank') return true;
   if (u.protocol !== 'https:') return false;
   const hote = u.hostname.toLowerCase();
+  if ((retours ?? []).some((r) => r?.hote === hote && r?.chemin === u.pathname)) return true;
   if (SSO.some(([h]) => h.test(hote))) return pageSsoPermise(hote, u.pathname);
   if (!def.hotesPermis.some((r) => r.test(hote))) return false;
   // Les hôtes d'authentification de la plateforme : en entier.
@@ -169,6 +208,89 @@ export function identifiantCompte(cookies, plateforme) {
 
 /** Les cookies d'une plateforme seulement (ce qui entre dans SA ligne du coffre). */
 export const cookiesDe = dePlateforme;
+
+// ── (01/11) LA PREUVE DE CONNEXION : LE COMPTE LU PAR LE SERVEUR ─────────────────────────────────────────────────────
+// Essai de Nico (01/11, 21:00 → 21:23) : Leboncoin et Depop se sont dits « connectés » sur le seul cookie (Leboncoin au
+// milieu de la vérification du téléphone, Depop sur sa page d'erreur). Règle : les cookies ne font que DÉCLENCHER la
+// lecture ; « connecté » = le compte LU par le serveur, depuis la page de connexion revenue sur le site de la plateforme
+// (Runtime.evaluate dans CETTE page, avec ses cookies et son adresse), par les lectures que l'extension fait déjà :
+//   · Vinted : /api/v2/users/current → 200 et un identifiant (sonde de l'extension) ;
+//   · Leboncoin : api.leboncoin.fr/api/account/v2/members/me/account, jeton « luat » de la page → 200 et un compte ;
+//   · Beebs : la session Firebase de la page (non anonyme), vérifiée par Google (identitytoolkit accounts:lookup) ;
+//   · Depop : webapi.depop.com/presentation/api/v1/users/me/, jeton de la page → 200 et un identifiant.
+// Rien ne sort de la page : ni jeton ni courriel — l'état HTTP, la présence d'un identifiant.
+const LECTURES_COMPTE = Object.freeze({
+  vinted: `const r = await fetch('/api/v2/users/current', { credentials: 'include', cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+    const j = r.ok ? await r.json().catch(() => null) : null; const u = j && (j.user || j);
+    return { http: r.status, id: u && u.id != null ? String(u.id) : null };`,
+  leboncoin: `const t = localStorage.getItem('luat'); if (!t) return { http: 0, motif: 'sans_jeton' };
+    const r = await fetch('https://api.leboncoin.fr/api/account/v2/members/me/account', { cache: 'no-store', headers: { authorization: 'Bearer ' + t, accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+    const j = r.ok ? await r.json().catch(() => null) : null; const a = j && j.account;
+    return { http: r.status, id: a ? String(a.id || a.userId || a.user_id || a.account_id || 'compte') : null };`,
+  beebs: `const u = await new Promise((ok) => { let fini = false; const fin = (v) => { if (!fini) { fini = true; ok(v); } };
+      setTimeout(() => fin(null), 4000);
+      try { const q = indexedDB.open('firebaseLocalStorageDb');
+        q.onupgradeneeded = (e) => { try { e.target.transaction.abort(); } catch (x) {} fin(null); };
+        q.onerror = () => fin(null);
+        q.onsuccess = () => { const db = q.result; try { if (!db.objectStoreNames.contains('firebaseLocalStorage')) { db.close(); return fin(null); }
+          const g = db.transaction('firebaseLocalStorage', 'readonly').objectStore('firebaseLocalStorage').getAll();
+          g.onsuccess = () => { db.close(); const l = (g.result || []).find((x) => /^firebase:authUser:/.test(String(x && x.fbase_key))); fin(l && l.value || null); };
+          g.onerror = () => { db.close(); fin(null); }; } catch (x) { fin(null); } };
+      } catch (x) { fin(null); } });
+    if (!u) return { http: 0, motif: 'sans_session' };
+    if (u.isAnonymous === true) return { http: 0, motif: 'anonyme' };
+    const jeton = u.stsTokenManager && u.stsTokenManager.accessToken;
+    if (!jeton || !u.apiKey) return { http: 0, motif: 'sans_jeton' };
+    const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + encodeURIComponent(u.apiKey), { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: jeton }), signal: AbortSignal.timeout(8000) });
+    const j = r.ok ? await r.json().catch(() => null) : null; const c = j && j.users && j.users[0];
+    return { http: r.status, id: c && c.localId && c.localId === u.uid ? String(c.localId) : null };`,
+  depop: `const m = String(document.cookie || '').match(/(?:^|;\\s*)access_token=([^;]+)/); if (!m) return { http: 0, motif: 'sans_jeton' };
+    let t = m[1]; try { t = decodeURIComponent(t); } catch (x) {}
+    const r = await fetch('https://webapi.depop.com/presentation/api/v1/users/me/', { credentials: 'omit', cache: 'no-store', headers: { Accept: 'application/json', Authorization: 'Bearer ' + t }, signal: AbortSignal.timeout(8000) });
+    const j = r.ok ? await r.json().catch(() => null) : null;
+    return { http: r.status, id: j && j.id != null ? String(j.id) : null };`,
+});
+
+/**
+ * L'expression à évaluer dans la page de connexion (pure) : hors du site de la plateforme (page Google, page
+ * d'authentification, étape de vérification sur un autre hôte), elle ne lit RIEN et le dit ({ horsSite }).
+ */
+export function expressionLectureCompte(plateforme) {
+  const def = DEFINITIONS[plateforme];
+  const corps = LECTURES_COMPTE[plateforme];
+  if (!def?.hoteSite || !corps) return null;
+  return `(async () => { if (location.protocol !== 'https:' || location.hostname !== ${JSON.stringify(def.hoteSite)}) return { horsSite: true };
+    try { ${corps} } catch (e) { return { http: 0, motif: 'reseau' }; } })()`;
+}
+
+/** Le verdict d'une lecture de compte (pure) : { ok, http, motif } — ok seulement sur 200 ET un compte lu. */
+export function verdictLectureCompte(lu) {
+  if (!lu || typeof lu !== 'object') return { ok: false, http: 0, motif: 'illisible' };
+  if (lu.horsSite) return { ok: false, http: 0, motif: 'hors_site' };
+  const http = Number(lu.http) || 0;
+  if (http === 200 && typeof lu.id === 'string' && lu.id.length > 0) return { ok: true, http, motif: null };
+  return { ok: false, http, motif: lu.motif ?? (http === 200 ? 'sans_compte' : `http_${http}`) };
+}
+
+// ── (01/11) UNE PLATEFORME NON CONNECTÉE N'A AUCUNE SESSION DANS LE PROFIL ───────────────────────────────────────────
+// Le coffre fait foi : une plateforme sans connexion VÉRIFIÉE au coffre (connecte = vrai) ne garde dans le profil du
+// navigateur aucun cookie de session (demi-connexion abandonnée en pleine vérification, connexion remise à « non
+// connecté »). Seul le cookie de l'appareil DataDome reste : l'effacer ferait repasser la vérification d'appareil.
+const COOKIES_GARDES = new Set(['datadome']);
+/** Les cookies du profil à effacer (pure) : ceux des plateformes du Cloud ABSENTES de `connectees`, sauf DataDome. */
+export function cookiesAPurger(cookies, connectees = []) {
+  const garder = new Set(connectees ?? []);
+  return PLATEFORMES_CLOUD.filter((p) => !garder.has(p))
+    .flatMap((p) => dePlateforme(cookies, p))
+    .filter((c) => !COOKIES_GARDES.has(String(c.name ?? '').toLowerCase()));
+}
+/** Les origines dont le stockage de page (localStorage, IndexedDB) part avec la session (pure). */
+export const ORIGINES_SESSION = Object.freeze({
+  vinted: Object.freeze(['https://www.vinted.fr']),
+  leboncoin: Object.freeze(['https://www.leboncoin.fr', 'https://auth.leboncoin.fr']),
+  beebs: Object.freeze(['https://www.beebs.app']),
+  depop: Object.freeze(['https://www.depop.com']),
+});
 
 /** Cookie lu (Network.Cookie) → cookie à poser (Network.CookieParam). Les cookies échus ne reviennent pas. */
 export function versCookieParam(c, maintenant = Date.now()) {

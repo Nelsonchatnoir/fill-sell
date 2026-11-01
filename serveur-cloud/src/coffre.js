@@ -78,23 +78,31 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
 
   /** Sauvegarde, plateforme par plateforme, les cookies d'un navigateur. Une
    *  plateforme non connectée ne touche pas sa sauvegarde (bilan : noms et nombres). */
-  async function sauvegarderCookies(user, cookies) {
+  // (01/11, règle de Nico après l'essai du soir) « Connecté » ne vient QUE d'une connexion VÉRIFIÉE (compte lu par le
+  // serveur, connexion.js) : `verifiees` porte les plateformes qui viennent de l'être, `preuves` leur preuve (gardée
+  // chiffrée). Une sauvegarde ordinaire (toutes les 10 min, à la fermeture) ne fait que RAFRAÎCHIR une connexion déjà
+  // connue ; des cookies « de connexion » sur une plateforme jamais vérifiée ne créent ni ne relèvent plus rien
+  // (bilan « non_verifiee ») — avant, Leboncoin et Depop passaient « connectés » sur le seul cookie.
+  async function sauvegarderCookies(user, cookies, { verifiees = [], preuves = {} } = {}) {
     const bilan = {};
-    let avant = null;
+    // Coffre illisible : on ne sait pas ce qui est connu, rien d'autre que les vérifiées n'est écrit.
+    const avant = await lire(user).catch(() => null);
     for (const p of PLATEFORMES_CLOUD) {
       const de = cookiesDe(cookies, p);
+      const connue = avant?.[p]?.connecte === true;
       if (!estConnectee(cookies, p)) {
         // (30/10, lot D) Une connexion FAITE qui a lâché (la plateforme a fermé la session) se dit « à reconnecter » :
         // le drapeau `connecte` passe à faux, une fois — avant, il restait vrai pour toujours. Une plateforme jamais
         // connectée (aucune ligne au coffre) ne crée rien.
-        avant ??= await lire(user).catch(() => ({}));
-        if (avant[p]?.connecte === true) {
+        if (connue) {
           await ecrire(user, p, { le: new Date().toISOString(), cookies: [], session_fermee: true }, false);
           bilan[p] = 'a_reconnecter';
         } else bilan[p] = 'absente';
         continue;
       }
-      await ecrire(user, p, { le: new Date().toISOString(), cookies: de }, true);
+      if (!connue && !verifiees.includes(p)) { bilan[p] = 'non_verifiee'; continue; }
+      const verifie = preuves[p] ?? avant?.[p]?.verifie ?? null;
+      await ecrire(user, p, { le: new Date().toISOString(), cookies: de, ...(verifie ? { verifie } : {}) }, true);
       bilan[p] = `sauvegardee(${de.length})`;
     }
     return bilan;
@@ -109,12 +117,16 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
     for (const p of PLATEFORMES_CLOUD) {
       if (estConnectee(cookiesCourants, p)) { bilan[p] = 'profil'; continue; }
       const s = coffre[p];
+      // (01/11) Seule une connexion connue (connecte = vrai) revient dans le navigateur.
+      if (s && s.connecte !== true) { bilan[p] = 'non_connectee'; continue; }
       if (!s?.cookies?.length) { bilan[p] = s?.illisible ? 'illisible' : 'absente'; continue; }
       const params = s.cookies.map((c) => versCookieParam(c)).filter(Boolean);
       aPoser.push(...params);
       bilan[p] = `restauree(${params.length})`;
     }
-    return { aPoser, bilan };
+    // (01/11) Les plateformes connues du coffre : les autres n'ont aucune session dans le profil (postes.js, purge).
+    const connectees = PLATEFORMES_CLOUD.filter((p) => coffre[p]?.connecte === true);
+    return { aPoser, bilan, connectees };
   }
 
   return { lire, ecrire, vider, sauvegarderCookies, cookiesARestaurer };

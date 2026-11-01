@@ -156,11 +156,19 @@ export const DOMAINES_VERROU = Object.freeze({
   beebs: Object.freeze(['beebs.app']),
   depop: Object.freeze(['depop.com']),
 });
-/** Les motifs d'interception des plateformes FERMÉES (pure : testée). Toutes ouvertes = aucun motif. */
+// (01/11, demande de Nico : « en Cloud, eBay passe uniquement par l'API ») eBay et Opla ne sont JAMAIS joignables depuis
+// le navigateur Cloud : aucune page de connexion eBay, aucune sonde, aucune visite — quelles que soient les plateformes
+// permises (eBay se relie par la connexion officielle, ebay-oauth-start, depuis l'app).
+export const DOMAINES_TOUJOURS_FERMES = Object.freeze([
+  'ebay.fr', 'ebay.com', 'ebay.co.uk', 'ebay.de', 'ebay.it', 'ebay.es', 'ebay.be', 'ebay.nl', 'ebay.ch', 'ebay.at', 'ebay.ie',
+  'opla.co',
+]);
+/** Les motifs d'interception des plateformes FERMÉES (pure : testée). eBay et Opla : toujours. */
 export function motifsVerrou(permises) {
   const ouvertes = new Set(plateformesVerrou(permises));
-  return Object.entries(DOMAINES_VERROU).filter(([p]) => !ouvertes.has(p))
-    .flatMap(([, domaines]) => domaines.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]))
+  const fermes = Object.entries(DOMAINES_VERROU).filter(([p]) => !ouvertes.has(p)).flatMap(([, domaines]) => domaines);
+  return [...fermes, ...DOMAINES_TOUJOURS_FERMES]
+    .flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`])
     .map((urlPattern) => ({ urlPattern, requestStage: 'Request' }));
 }
 

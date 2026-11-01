@@ -86,6 +86,34 @@ export function resumeTachesCloud(lignes) {
   return r;
 }
 
+export const DUREE_ESSAI_MS = 48 * 3600_000;
+
+/**
+ * (01/11) Le décompte des 48 h (pure, lu par outils/endurance-bilan.mjs). Seul compte ce qui suit la DERNIÈRE remise à
+ * zéro (evenement 'remise_a_zero', outils/endurance-remise.mjs) : les connexions faussement « connectées » du 01/11 au
+ * soir n'entrent dans aucun décompte. Les heures de chaque plateforme partent de SA première connexion vérifiée
+ * (compte lu) ; celles de l'essai, de la toute première. Rend { remise, debut, fin_prevue, plateformes, lignes }.
+ */
+export function decompteEssai(lignes, dureeMs = DUREE_ESSAI_MS) {
+  const toutes = (lignes ?? []).filter((l) => l && Number.isFinite(Date.parse(l.le)));
+  const iRemise = toutes.map((l) => l.evenement).lastIndexOf('remise_a_zero');
+  const remise = iRemise >= 0 ? toutes[iRemise] : null;
+  const apres = iRemise >= 0 ? toutes.slice(iRemise + 1) : toutes;
+  const plateformes = {};
+  for (const l of apres) {
+    if (l.evenement === 'connexion_verifiee' && l.plateforme && !plateformes[l.plateforme]) {
+      plateformes[l.plateforme] = { verifiee_le: l.verifiee_le ?? l.le, tombee_le: null };
+    }
+    if (l.evenement === 'connexion_tombee' && plateformes[l.plateforme] && !plateformes[l.plateforme].tombee_le) {
+      plateformes[l.plateforme].tombee_le = l.le;
+    }
+  }
+  const debuts = Object.values(plateformes).map((p) => Date.parse(p.verifiee_le)).filter(Number.isFinite);
+  const debut = debuts.length ? new Date(Math.min(...debuts)).toISOString() : null;
+  return { remise: remise ? { le: remise.le, raison: remise.raison ?? null } : null, debut,
+    fin_prevue: debut ? new Date(Date.parse(debut) + dureeMs).toISOString() : null, plateformes, lignes: apres };
+}
+
 export function creerEndurance({ config, base, docker, navigateurs, postes, connexionsOuvertes, journal }) {
   const dossier = `${config.dossierEtat || '/srv/fillsell-cloud/etat'}/endurance`;
   const fichierArret = `${dossier}/arret.json`;
@@ -169,5 +197,14 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
     await ecrire({ evenement: 'mesure', navigateursMo, serveurMo, verrou, connexions, taches, arrete: Boolean(arret) });
   }
 
-  return { charger, releveCadres, mesure, arretee: () => arret, arreter };
+  /**
+   * (01/11, règle de Nico : « les 48 h ne comptent qu'à partir de connexions vraiment réussies ») Une connexion VÉRIFIÉE
+   * (compte lu par le serveur, connexion.js) est notée ; le bilan fait partir les 48 h de la première d'entre elles
+   * après la dernière remise à zéro (outils/endurance-remise.mjs).
+   */
+  function connexionVerifiee({ user, plateforme, http, le }) {
+    return ecrire({ evenement: 'connexion_verifiee', user: String(user).slice(0, 8), plateforme, http, verifiee_le: le ?? null });
+  }
+
+  return { charger, releveCadres, mesure, connexionVerifiee, arretee: () => arret, arreter };
 }

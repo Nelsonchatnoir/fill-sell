@@ -63,5 +63,34 @@ const cache = auPremierPlan(ecran, docAvec(carte));
 ok(cache.visible === false && /rg-ecran/.test(cache.devant), `au centre, la page Réglages : caché, et ce qui est devant est dit (${cache.devant})`);
 ok(auPremierPlan(null, docAvec(bouton)).visible === false, 'écran absent : jamais « visible »');
 
+// ── (01/11, essai de Nico du soir) ────────────────────────────────────────────────────────────────────────────────
+console.log('\n5. Le clavier : le champ caché n\'est JAMAIS vide (iPhone : effacer dans un champ vide n\'émet rien)');
+const client = await import('../src/cloud/connexion/clientConnexion.js');
+const cli = lire('src/cloud/connexion/clientConnexion.js');
+ok(client.REMPLISSAGE.length >= 4, `un remplissage fixe (${client.REMPLISSAGE.length} caractères)`);
+ok(/const remettre = \(\) => \{\s*champ\.value = REMPLISSAGE;/.test(cli) && /\n  remettre\(\);\n/.test(cli) && /addEventListener\('focus', remettre\)/.test(cli)
+  && /ecrire\(\) \{ champ\.focus\(\{ preventScroll: true \}\); remettre\(\); \}/.test(cli), 'rempli à la création, au focus et à « Écrire » (curseur à la fin)');
+const e = (t, d = null) => client.messageSaisie(t, d);
+ok(JSON.stringify(e('deleteContentBackward').message) === '{"t":"touche","cle":"Backspace"}' && e('deleteContentBackward').annuler, 'effacer → Retour arrière (annulé dans le champ)');
+ok(e('deleteWordBackward').message.cle === 'MotPrecedent' && e('deleteContentForward').message.cle === 'Delete' && e('deleteSoftLineBackward').message.cle === 'LignePrecedente', 'effacer un mot, à droite, jusqu\'au début de la ligne');
+ok(e('insertText', 'é').message.s === 'é' && e('insertFromPaste', null).message === null && client.messageSaisie('insertFromPaste', null, 'collé').message.s === 'collé', 'texte, accent, collage');
+ok(e('insertLineBreak').message.cle === 'Enter' && e('insertCompositionText', 'x').annuler === false, 'Entrée ; une composition n\'est pas annulée (lue à sa fin)');
+const R = client.REMPLISSAGE;
+ok(JSON.stringify(client.ecartRemplissage(R.slice(0, -1))) === '{"effacer":1,"texte":""}' && JSON.stringify(client.ecartRemplissage(R.slice(0, -3))) === '{"effacer":3,"texte":""}', 'ce qui a été effacé malgré tout se lit (1, 3 caractères)');
+ok(JSON.stringify(client.ecartRemplissage(`${R}日本`)) === '{"effacer":0,"texte":"日本"}' && JSON.stringify(client.ecartRemplissage('')) === `{"effacer":${R.length},"texte":""}`, 'une composition finie se lit ; un champ vidé = tout effacé');
+ok(/addEventListener\('input', \(e\) => \{ if \(!compose && !e\.isComposing\) rattraper\(\); \}\)/.test(cli), 'une saisie non annulée est rattrapée, puis le champ revient');
+
+console.log('\n6. La page survit à l\'app quittée (lire un SMS, un courriel) et reprend au retour');
+ok(!/ETAPES_FINALES = \[[^\]]*'ferme'/.test(me), '« ferme » n\'est plus une fin');
+ok(/if \(etape === 'ferme'\) \{ if \(!finale && !mort\) reprendre\(\); return; \}/.test(me) && /visibilitychange/.test(me) && /REPRISES_MAX/.test(me), 'connexion coupée sans « Fermer » : reprise quand l\'app revient devant, bornée');
+for (const trace of ['cloud_connexion_reprise', 'cloud_connexion_verifiee']) ok(me.includes(`'${trace}'`), `trace « ${trace} »`);
+ok(/etape === 'verifie'/.test(me) && /onFermer\(verifieeRef\.current\)/.test(me), '« vérifié » : la page reste ; « Fermer » relit la liste quand le compte a été vérifié');
+
+console.log('\n7. eBay : relié par l\'API, jamais une connexion dans le navigateur Cloud');
+ok(/lireEtatEbay\(\)\.then\(\(r\) => setEbayRelie\(ebayVoieApiDuCompte\(r\?\.etat \?\? null\) === true\)/.test(me), 'l\'état eBay est lu dans `etat` (l\'enveloppe { etat } disait « à relier » à tout le monde)');
+ok(/sansBouton=\{ebay\.relie\}/.test(me) && /demarrerConnexionEbay\(\)/.test(me) && !/CLOUD_PLATEFORMES_CONNEXION[^\n]*ebay/i.test(me), 'relié : aucun bouton ; pas relié : la connexion officielle (API), jamais le navigateur');
+const offre = lire('src/config/cloudOffer.js');
+ok(!/id:\s*'ebay'/.test(offre.slice(offre.indexOf('CLOUD_PLATEFORMES_CONNEXION'))), 'eBay n\'est pas une plateforme du navigateur Cloud');
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

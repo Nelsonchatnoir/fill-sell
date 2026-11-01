@@ -86,6 +86,8 @@ function baseSimulee({ comptes = [], jobs = [] } = {}) {
 function navigateurSimule() {
   const stockage = {};
   let cookies = [];
+  // (01/11) Ce que la page de connexion LIT du compte (expressionLectureCompte) : à régler par le test.
+  const page = { lecture: { http: 200, id: '250623918' }, lectures: 0 };
   const ecouteurs = new Set();
   const envoyes = [];
   let n = 0;
@@ -113,13 +115,14 @@ function navigateurSimule() {
           if (e.startsWith('chrome.storage.local.get(')) {
             return { result: { value: { own: stockage.fillsell_session_own ?? null, user: stockage.fillsell_last_user ?? null } } };
           }
+          if (e.includes('location.hostname !==')) { page.lectures++; return { result: { value: page.lecture } }; }
           return { result: { value: false } };
         }
         default: return {};
       }
     },
   };
-  return { cdp, stockage, poserCookies: (c) => { cookies = c; } };
+  return { cdp, stockage, page, poserCookies: (c) => { cookies = c; } };
 }
 
 function navigateursSimules(nav) {
@@ -286,4 +289,134 @@ test('« Me connecter » : jamais de boucle — 5 refus en 20 s arrêtent l’é
   const arret = recus.find((m) => m.t === 'etat' && m.etape === 'erreur');
   assert.ok(arret && /ne s'ouvre pas comme prévu/.test(arret.message), 'la personne lit pourquoi on s’arrête');
   assert.ok(!s.connexions.connexionsOuvertes().has(U), 'l’écran est fermé');
+});
+
+// ── (01/11) Essai de Nico du 01/11 au soir : « connecté » sur le seul cookie, fenêtre fermée en pleine vérification ───
+function brancherClient(s, plateforme = 'leboncoin') {
+  const recus = [];
+  const ws = { readyState: 1, bufferedAmount: 0, ecouteurs: {}, on(e, f) { this.ecouteurs[e] = f; },
+    send(d) { recus.push(typeof d === 'string' ? JSON.parse(d) : { binaire: d }); }, close() { this.readyState = 3; this.ecouteurs.close?.(); } };
+  s.connexions.brancher(ws, 'https://fillsell.app');
+  const ticket = signerTicket({ user: U }, config.cleTickets);
+  const dire = (m) => ws.ecouteurs.message(Buffer.from(JSON.stringify(m)), false);
+  return { ws, recus, dire, ouvrir: () => dire({ t: 'ouvrir', ticket, plateforme, largeur: 390, hauteur: 780, dpr: 3 }), etapes: () => recus.filter((m) => m.t === 'etat').map((m) => m.etape) };
+}
+const LBC = [{ name: '__Secure-Login', value: 'jeton', domain: '.leboncoin.fr', path: '/' }];
+
+test('(01/11) le cookie seul ne fait JAMAIS « connecté » : compte illisible (vérification du téléphone en cours) → la page reste ouverte', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const c = brancherClient(s);
+  await c.ouvrir();
+  await attendre(20);
+  s.nav.poserCookies(LBC);
+  s.nav.page.lecture = { horsSite: true };          // la page est sur auth.leboncoin.fr (étape du téléphone)
+  await c.dire({ t: 'termine' });
+  await attendre(20);
+  s.nav.page.lecture = { http: 401, id: null };     // sur le site, mais le compte ne se lit pas
+  await c.dire({ t: 'termine' });
+  await attendre(20);
+  assert.ok(!c.etapes().includes('connecte') && !c.etapes().includes('verifie'), c.etapes().join(','));
+  assert.ok(c.recus.some((m) => m.etape === 'info' && /Termine les étapes demandées par Leboncoin/.test(m.message)), 'la personne lit qu\'elle doit finir');
+  assert.ok(!s.base.t.cloud_coffre.some((l) => l.plateforme === 'leboncoin'), 'rien au coffre');
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'la page reste ouverte');
+  // Une sauvegarde ordinaire (10 min) ne relève rien non plus.
+  const b = await s.postes.sauvegarder(U, s.navigateurs.ouvert(U));
+  assert.equal(b.leboncoin, 'non_verifiee');
+  assert.ok(!s.base.t.cloud_coffre.some((l) => l.plateforme === 'leboncoin'));
+  await c.dire({ t: 'fermer' });
+});
+
+test('(01/11) le compte LU → « vérifié », la page RESTE ouverte (étape du téléphone) ; « J\'ai fini » → « connecté » et fermeture', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const verifiees = [];
+  s.connexions = creerConnexions({ config, base: s.base, postes: s.postes, navigateurs: s.navigateurs, coffre: s.coffre, journal, surVerifiee: (e) => verifiees.push(e) });
+  const c = brancherClient(s);
+  await c.ouvrir();
+  await attendre(20);
+  s.nav.poserCookies(LBC);
+  s.nav.page.lecture = { http: 200, id: 'compte' };
+  await attendre(2300);                              // la sonde (2 s) lit le compte
+  assert.ok(c.etapes().includes('verifie'), c.etapes().join(','));
+  assert.ok(!c.etapes().includes('connecte'), 'pas de fermeture : la personne finit ses étapes');
+  assert.ok(s.connexions.connexionsOuvertes().has(U));
+  const l = s.base.t.cloud_coffre.find((x) => x.plateforme === 'leboncoin');
+  assert.ok(l?.connecte, 'au coffre, connecté');
+  assert.equal((await s.coffre.lire(U)).leboncoin.verifie.http, 200, 'avec sa preuve');
+  assert.deepEqual(verifiees.map((v) => [v.plateforme, v.http]), [['leboncoin', 200]], 'notée pour les 48 h');
+  assert.equal(s.base.t.cloud_connexions.at(-1).statut, 'connectee');
+  // Après la vérification, une navigation refusée laisse la page où elle est (aucun retour forcé, aucune boucle).
+  const sid = s.nav.cdp.envoyes.find((e) => e.methode === 'Page.navigate').sessionId;
+  const navAvant = s.nav.cdp.envoyes.filter((e) => e.methode === 'Page.navigate').length;
+  for (let i = 0; i < 6; i++) s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: `z${i}`, frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.leboncoin.fr/recherche?text=x' } } });
+  await attendre(20);
+  assert.equal(s.nav.cdp.envoyes.filter((e) => e.methode === 'Page.navigate').length, navAvant);
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'jamais « boucle » après la vérification');
+  await c.dire({ t: 'termine' });
+  await attendre(20);
+  assert.ok(c.etapes().includes('connecte'));
+  await attendre(1600);
+  assert.ok(!s.connexions.connexionsOuvertes().has(U), 'fermée après « J\'ai fini »');
+});
+
+test('(01/11) l\'app quittée pour lire un SMS : la page attend, et le même « Me connecter » la REPREND (aucune page neuve)', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const c1 = brancherClient(s, 'depop');
+  await c1.ouvrir();
+  await attendre(20);
+  const pages = () => s.nav.cdp.envoyes.filter((e) => e.methode === 'Target.createTarget').length;
+  const fermetures = () => s.nav.cdp.envoyes.filter((e) => e.methode === 'Target.closeTarget').length;
+  assert.equal(pages(), 1);
+  c1.ws.close();                                     // iOS coupe la connexion : l'app est en arrière-plan
+  await attendre(20);
+  assert.equal(fermetures(), 0, 'la page de connexion n\'est PAS fermée');
+  assert.ok(s.connexions.connexionsOuvertes().has(U));
+  const c2 = brancherClient(s, 'depop');
+  await c2.ouvrir();
+  await attendre(20);
+  assert.equal(pages(), 1, 'la même page, reprise telle quelle');
+  assert.ok(c2.recus.some((m) => m.etape === 'pret' && /restée ouverte/.test(m.message)), 'la personne lit que sa page l\'attendait');
+  await c2.dire({ t: 'toucher', type: 'debut', x: 10, y: 10 });
+  await attendre(10);
+  assert.ok(s.nav.cdp.envoyes.some((e) => e.methode === 'Input.dispatchTouchEvent'), 'les gestes reprennent');
+  // Une AUTRE plateforme ouverte entre-temps remplace la page en attente.
+  c2.ws.close();
+  const c3 = brancherClient(s, 'vinted');
+  await c3.ouvrir();
+  await attendre(20);
+  assert.equal(pages(), 2);
+  assert.ok(fermetures() >= 1, 'la page Depop en attente est fermée');
+  await c3.dire({ t: 'fermer' });
+});
+
+test('(01/11) fermée sans connexion vérifiée : la demi-session part du profil (sauf l\'appareil DataDome)', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null, plateformes_connectees: [] }] });
+  const c = brancherClient(s);
+  await c.ouvrir();
+  await attendre(20);
+  s.nav.poserCookies([...LBC, { name: 'datadome', value: 'appareil', domain: '.leboncoin.fr', path: '/' }]);
+  s.nav.page.lecture = { horsSite: true };
+  await c.dire({ t: 'fermer' });
+  await attendre(30);
+  const echus = s.nav.cdp.envoyes.filter((e) => e.methode === 'Storage.setCookies').flatMap((e) => e.params.cookies).filter((x) => x.expires === 1);
+  assert.deepEqual(echus.map((x) => x.name), ['__Secure-Login'], 'les cookies de session échus ; l\'appareil DataDome gardé');
+  assert.ok(s.nav.cdp.envoyes.some((e) => e.methode === 'Storage.clearDataForOrigin' && e.params.origin === 'https://www.leboncoin.fr'), 'le jeton « luat » de la page part aussi');
+});
+
+test('(01/11) clavier : effacer, effacer un mot, jusqu\'au début de la ligne — rejoués comme de vraies touches', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const c = brancherClient(s, 'vinted');
+  await c.ouvrir();
+  await attendre(20);
+  const touches = () => s.nav.cdp.envoyes.filter((e) => e.methode === 'Input.dispatchKeyEvent' && e.params.type !== 'keyUp').map((e) => `${e.params.type}:${e.params.key}:${e.params.modifiers ?? 0}`);
+  await c.dire({ t: 'touche', cle: 'Backspace' });
+  await c.dire({ t: 'touche', cle: 'Backspace', n: 3 });
+  await c.dire({ t: 'touche', cle: 'MotPrecedent' });
+  await c.dire({ t: 'touche', cle: 'LignePrecedente' });
+  await c.dire({ t: 'touche', cle: 'Delete' });
+  await c.dire({ t: 'touche', cle: 'Enter' });
+  await c.dire({ t: 'touche', cle: 'toString' });
+  await attendre(20);
+  assert.deepEqual(touches(), ['rawKeyDown:Backspace:0', 'rawKeyDown:Backspace:0', 'rawKeyDown:Backspace:0', 'rawKeyDown:Backspace:0',
+    'rawKeyDown:Backspace:2', 'rawKeyDown:Home:8', 'rawKeyDown:Backspace:0', 'rawKeyDown:Delete:0', 'keyDown:Enter:0']);
+  await c.dire({ t: 'fermer' });
 });

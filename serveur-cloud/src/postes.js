@@ -2,7 +2,7 @@
 // coffre réinjecté à l'ouverture, session FillSell posée, sauvegardes pendant la
 // session et à la fermeture. Et la boucle du planificateur (une minute).
 import { readFile } from 'node:fs/promises';
-import { PLATEFORMES_CLOUD } from './plateformes.js';
+import { PLATEFORMES_CLOUD, ORIGINES_SESSION, cookiesAPurger, versCookieParam } from './plateformes.js';
 import { planifierPostes, resumerJobs } from './planificateur.js';
 import { nouveauProfilId } from './navigateur.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
@@ -72,6 +72,55 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     return false;
   }
 
+  /**
+   * (01/11) Efface du profil la session des plateformes NON connectées au coffre (`connectees` = celles qui le sont) :
+   * leurs cookies (sauf l'appareil DataDome, cookiesAPurger) par un cookie déjà échu — Storage n'a pas d'effacement un
+   * par un —, puis le stockage de leurs pages (jetons Leboncoin « luat », session Firebase de Beebs). Rend le nombre
+   * de cookies effacés. `seulement` : ne viser que ces plateformes (fin d'un « Me connecter » sans connexion).
+   */
+  async function purgerSessions(user, h, cookies, connectees, seulement = null) {
+    const viser = PLATEFORMES_CLOUD.filter((p) => !connectees.includes(p) && (!seulement || seulement.includes(p)));
+    if (!viser.length) return 0;
+    const aPurger = cookiesAPurger(cookies, PLATEFORMES_CLOUD.filter((p) => !viser.includes(p)));
+    const echus = aPurger.map((c) => ({ ...versCookieParam(c, 0), expires: 1 }));
+    if (echus.length) await h.cdp.send('Storage.setCookies', { cookies: echus });
+    const stockage = await effacerStockage(h, viser.flatMap((p) => ORIGINES_SESSION[p] ?? []))
+      .catch((e) => { journal.alerte('stockage_purge_echec', { user, plateformes: viser, erreur: e.message }); return 'echec'; });
+    if (echus.length) journal.info('sessions_purgees', { user, plateformes: viser, cookies: echus.length, stockage });
+    return echus.length;
+  }
+
+  /**
+   * Le stockage de page (localStorage, IndexedDB) de ces origines, effacé SANS jamais ouvrir la plateforme.
+   * (01/11, mesuré dans Chromium) Selon le profil, la session du NAVIGATEUR répond « Internal error » à
+   * Storage.clearDataForOrigin ; celle d'une page vierge (about:blank, fermée aussitôt) efface.
+   */
+  async function effacerStockage(h, origines) {
+    const STOCKAGES = 'local_storage,indexeddb';
+    if (!origines.length) return 'rien';
+    try {
+      for (const origin of origines) await h.cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: STOCKAGES });
+      return 'navigateur';
+    } catch { /* repli : une page vierge */ }
+    const { targetId } = await h.cdp.send('Target.createTarget', { url: 'about:blank', background: true });
+    try {
+      const { sessionId } = await h.cdp.send('Target.attachToTarget', { targetId, flatten: true });
+      for (const origin of origines) await h.cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: STOCKAGES }, sessionId);
+      return 'page_vierge';
+    } finally { await h.cdp.send('Target.closeTarget', { targetId }).catch(() => {}); }
+  }
+
+  /** (01/11) La fin d'un « Me connecter » sans connexion vérifiée : la demi-session de CETTE plateforme part du profil. */
+  async function purgerPlateforme(user, plateforme) {
+    const h = navigateurs.ouvert(user);
+    if (!h) return 0;
+    const { cookies } = await h.cdp.send('Storage.getCookies');
+    const lu = await coffre.lire(user).catch(() => null);
+    if (!lu) return 0;    // coffre illisible : on ne sait pas si elle était connue, on ne touche à rien
+    const connectees = PLATEFORMES_CLOUD.filter((p) => lu[p]?.connecte === true);
+    return purgerSessions(user, h, cookies, connectees, [plateforme]);
+  }
+
   async function sauvegarder(user, h) {
     const { cookies } = await h.cdp.send('Storage.getCookies');
     const bilan = await coffre.sauvegarderCookies(user, cookies);
@@ -101,9 +150,11 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
         await base.rpc('cloud_journal', { p_ip: sortie.ipPool, p_nature: 'attribution', p_user: user, p_details: { rotation: true, serveur: config.serveurNom } })
           .then(({ error }) => { if (error) journal.alerte('journal_ip_echec', { user, erreur: error.message }); });
       }
-      // 1. Le coffre : les plateformes absentes du profil reviennent.
+      // 1. Le coffre : les plateformes absentes du profil reviennent ; (01/11) celles qui n'y sont pas connectées n'ont
+      //    plus aucune session dans le profil (demi-connexion abandonnée, connexion remise à « non connecté »).
       const { cookies } = await h.cdp.send('Storage.getCookies');
-      const { aPoser, bilan: bilanCoffre } = await coffre.cookiesARestaurer(user, cookies);
+      const { aPoser, bilan: bilanCoffre, connectees } = await coffre.cookiesARestaurer(user, cookies);
+      await purgerSessions(user, h, cookies, connectees);
       if (aPoser.length) await h.cdp.send('Storage.setCookies', { cookies: aPoser });
       // 2. La session FillSell.
       const s = await assurerSessionFillsell(user, h, poste);
@@ -185,5 +236,5 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     return { comptes: comptes.length, ouverts: navigateurs.ouverts().length, ...decision };
   }
 
-  return { tour, ouvrir, fermer, sauvegarder, extensionId, lirePoste, dernieresFins };
+  return { tour, ouvrir, fermer, sauvegarder, purgerPlateforme, extensionId, lirePoste, dernieresFins };
 }

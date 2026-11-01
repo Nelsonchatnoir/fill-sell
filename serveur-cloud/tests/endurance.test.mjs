@@ -75,7 +75,11 @@ test('(01/11) verrou des plateformes sur steel : seules les plateformes FERMÉES
   const lbc = motifsVerrou(['leboncoin']).map((m) => m.urlPattern);
   assert.ok(!lbc.some((u) => u.includes('leboncoin')), 'Leboncoin connecté : jamais intercepté (son trafic reste celui de l\'essai)');
   assert.ok(lbc.some((u) => u.includes('beebs.app')), 'Beebs pas connecté : fermé');
-  assert.deepEqual(motifsVerrou(['vinted', 'leboncoin', 'beebs', 'depop']), [], 'tout connecté : aucune interception');
+  // (01/11, demande de Nico) Tout connecté : seuls eBay et Opla restent interceptés — eBay passe par l'API, jamais ici.
+  const toutes = motifsVerrou(['vinted', 'leboncoin', 'beebs', 'depop']).map((m) => m.urlPattern);
+  assert.ok(!toutes.some((u) => /vinted|leboncoin|beebs|depop/.test(u)), 'tout connecté : aucune plateforme du Cloud interceptée');
+  for (const d of ['ebay.fr', 'ebay.com', 'opla.co']) assert.ok(toutes.includes(`*://${d}/*`) && toutes.includes(`*://*.${d}/*`), `${d} : toujours fermé`);
+  assert.ok(motifsVerrou(['ebay']).some((m) => m.urlPattern === '*://*.ebay.fr/*'), 'eBay ne s’ouvre jamais, même demandé');
   assert.ok(motifsVerrou(['ebay', 'opla', 'VINTED']).every((m) => !m.urlPattern.includes('vinted')), 'les noms se nettoient ; eBay et Opla ne sont jamais ouverts ici');
   assert.ok(motifsVerrou([]).every((m) => m.requestStage === 'Request'), 'arrêtées avant de partir');
 });
@@ -86,4 +90,27 @@ test("(01/11) une copie neuve de l'extension : le cache du profil n'est effacé 
   assert.equal(cacheExtensionAEffacer('abc\n', 'abc'), false, "même copie : rien n'est effacé (les ouvertures suivantes ne touchent à rien)");
   assert.equal(cacheExtensionAEffacer('abc', 'def'), true, 'copie neuve : effacé');
   assert.equal(cacheExtensionAEffacer('abc', ''), false, 'copie illisible : on ne touche à rien');
+});
+
+test('(01/11) les 48 h partent de la première connexion VÉRIFIÉE après la remise à zéro ; rien d’avant ne compte', async () => {
+  const { decompteEssai, DUREE_ESSAI_MS } = await import('../src/endurance.js');
+  const l = [
+    { le: '2026-11-01T20:00:00Z', evenement: 'mesure', connexions: { a: { leboncoin: true } } },
+    { le: '2026-11-01T20:05:00Z', evenement: 'connexion_verifiee', plateforme: 'leboncoin', verifiee_le: '2026-11-01T20:05:00Z' },
+    { le: '2026-11-01T22:00:00Z', evenement: 'remise_a_zero', raison: 'faux connectés du 01/11' },
+    { le: '2026-11-01T22:10:00Z', evenement: 'mesure' },
+    { le: '2026-11-01T22:20:00Z', evenement: 'connexion_verifiee', plateforme: 'vinted', verifiee_le: '2026-11-01T22:20:00Z' },
+    { le: '2026-11-01T22:30:00Z', evenement: 'connexion_verifiee', plateforme: 'leboncoin', verifiee_le: '2026-11-01T22:30:00Z' },
+    { le: '2026-11-01T22:35:00Z', evenement: 'connexion_verifiee', plateforme: 'vinted', verifiee_le: '2026-11-01T22:35:00Z' },
+    { le: '2026-11-02T03:00:00Z', evenement: 'connexion_tombee', plateforme: 'leboncoin' },
+  ];
+  const d = decompteEssai(l);
+  assert.equal(d.remise.raison, 'faux connectés du 01/11');
+  assert.equal(d.debut, '2026-11-01T22:20:00.000Z', 'la première connexion vérifiée après la remise');
+  assert.equal(Date.parse(d.fin_prevue) - Date.parse(d.debut), DUREE_ESSAI_MS);
+  assert.equal(d.plateformes.vinted.verifiee_le, '2026-11-01T22:20:00Z', 'sa PREMIÈRE vérification');
+  assert.equal(d.plateformes.leboncoin.verifiee_le, '2026-11-01T22:30:00Z', 'la connexion d’avant la remise ne compte pas');
+  assert.equal(d.plateformes.leboncoin.tombee_le, '2026-11-02T03:00:00Z');
+  assert.ok(!d.lignes.some((x) => x.le < '2026-11-01T22:00:00Z'), 'aucune mesure d’avant la remise');
+  assert.equal(decompteEssai([{ le: '2026-11-01T20:00:00Z', evenement: 'mesure' }]).debut, null, 'aucune connexion vérifiée : les 48 h n’ont pas commencé');
 });

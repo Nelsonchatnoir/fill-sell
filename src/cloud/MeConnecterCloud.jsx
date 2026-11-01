@@ -27,9 +27,12 @@ import { C, BLANC, MENTHE, DEGRADE_TEAL, POLICE } from './theme';
 // (30/10, lot D) L'état de chaque connexion (connecté / à reconnecter) et de l'exécutant (en marche, dernière action).
 import { etatConnexion, phraseExecutant } from './executant';
 
-const ETAPES_FINALES = ['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur', 'ferme'];
+// (01/11) « ferme » n'est plus une fin : la connexion coupée sans « Fermer » (app quittée pour lire un SMS ou un
+// courriel) reprend au retour, sur la MÊME page (le serveur l'a gardée, connexion.js REPRISE_MS).
+const ETAPES_FINALES = ['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur'];
+export const REPRISES_MAX = 6;
 
-function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter = false }) {
+function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter = false, sansBouton = false }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: BLANC, border: `1px solid ${C.border}`, borderRadius: 14 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -40,10 +43,10 @@ function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter 
         </div>
         {texte && <div style={{ fontSize: 12.5, color: C.mute, marginTop: 4, lineHeight: 1.4 }}>{texte}</div>}
       </div>
-      <button type="button" onClick={onClick} style={{
+      {!sansBouton && <button type="button" onClick={onClick} style={{
         flexShrink: 0, minHeight: 40, padding: '9px 14px', borderRadius: 11, fontWeight: 700, fontSize: 14,
         border: connecte ? `1px solid ${C.border}` : 'none', background: connecte ? BLANC : DEGRADE_TEAL, color: connecte ? C.ink : BLANC,
-      }}>{connecte ? (libelle?.refaire ?? T.reconnecter) : (libelle?.faire ?? T.meConnecter)}</button>
+      }}>{connecte ? (libelle?.refaire ?? T.reconnecter) : (libelle?.faire ?? T.meConnecter)}</button>}
     </div>
   );
 }
@@ -55,31 +58,68 @@ function Vue({ userId, plateforme, nom, lang, onFermer }) {
   const [message, setMessage] = useState('');
   const [clavier, setClavier] = useState(false);
   const [finie, setFinie] = useState(false);
+  // (01/11) Le compte lu par le serveur : connecté, mais la page reste pour les étapes de la plateforme.
+  const [verifiee, setVerifiee] = useState(false);
+  const verifieeRef = useRef(false);
 
   useEffect(() => {
     let mort = false;
     let tracee = false;   // (01/11) une seule ligne « fin » par connexion
+    let finale = false;
+    let reprises = 0;
+    let arreterAttente = null;
     const fin = (etape, m) => {
       if (tracee) return;
       tracee = true;
       tracerCloud(userId, 'cloud_connexion_fin', { plateforme, etape, message: String(m ?? '').slice(0, 200) });
     };
-    tracerCloud(userId, 'cloud_connexion_ouverte', { plateforme });
-    (async () => {
+    const ouvrir = async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
       if (mort || !conteneur.current) return;
       session.current = ouvrirConnexion({
         url: `wss://${CLOUD_DOMAINE}/connexion/ws`, jeton: s?.access_token ?? null, plateforme, conteneur: conteneur.current, lang,
         surEtat: (etape, m) => {
           if (etape === 'clavier') { setClavier(m === true); return; }
+          if (etape === 'ferme') { if (!finale && !mort) reprendre(); return; }
           if (m) setMessage(m);
-          if (ETAPES_FINALES.includes(etape)) { setFinie(true); fin(etape, m); }
+          if (etape === 'verifie' && !verifieeRef.current) {
+            verifieeRef.current = true;
+            setVerifiee(true);
+            tracerCloud(userId, 'cloud_connexion_verifiee', { plateforme });
+          }
+          if (ETAPES_FINALES.includes(etape)) { finale = true; setFinie(true); fin(etape, m); }
           if (etape === 'connecte') setTimeout(() => onFermer(true), 1800);
         },
       });
-    })().catch((e) => fin('erreur_client', e?.message ?? e));
-    return () => { mort = true; session.current?.fermer(); };
-  }, [userId, plateforme, lang, onFermer]);
+    };
+    // (01/11) La connexion coupée sans « Fermer » : reprise dès que l'app est de nouveau devant (iOS coupe tout en
+    // arrière-plan), au plus REPRISES_MAX fois, de plus en plus espacées si le serveur ne répond pas.
+    const reprendre = () => {
+      if (reprises >= REPRISES_MAX) {
+        finale = true; setFinie(true); setMessage(T.coupee); fin('ferme', 'reprises_epuisees');
+        return;
+      }
+      const relancer = () => {
+        if (mort || finale) return;
+        reprises += 1;
+        tracerCloud(userId, 'cloud_connexion_reprise', { plateforme, n: reprises });
+        ouvrir().catch((e) => fin('erreur_client', e?.message ?? e));
+      };
+      const delai = Math.min(8000, 500 * 2 ** reprises);
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') { setTimeout(relancer, delai); return; }
+      const auRetour = () => {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', auRetour);
+        arreterAttente = null;
+        setTimeout(relancer, 300);
+      };
+      document.addEventListener('visibilitychange', auRetour);
+      arreterAttente = () => document.removeEventListener('visibilitychange', auRetour);
+    };
+    tracerCloud(userId, 'cloud_connexion_ouverte', { plateforme });
+    ouvrir().catch((e) => fin('erreur_client', e?.message ?? e));
+    return () => { mort = true; arreterAttente?.(); session.current?.fermer(); };
+  }, [userId, plateforme, lang, onFermer, T.coupee]);
 
   return (
     <div role="dialog" aria-modal="true" aria-label={`${T.titre} — ${nom}`} style={{
@@ -88,7 +128,7 @@ function Vue({ userId, plateforme, nom, lang, onFermer }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px' }}>
         <div style={{ flex: 1, fontWeight: 700, color: C.ink, fontSize: 16 }}>{nom}</div>
-        <button type="button" onClick={() => onFermer(false)} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 10, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600 }}>{T.fermer}</button>
+        <button type="button" onClick={() => onFermer(verifieeRef.current)} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 10, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600 }}>{T.fermer}</button>
       </div>
       <div ref={conteneur} style={{ flex: 1, minHeight: 0, width: '100%', maxWidth: 540, margin: '0 auto', overflow: 'hidden', background: BLANC }} />
       <p role="status" aria-live="polite" style={{ margin: 0, padding: '8px 16px', minHeight: 38, fontSize: 13.5, color: C.mute2 }}>{message}</p>
@@ -98,7 +138,10 @@ function Vue({ userId, plateforme, nom, lang, onFermer }) {
             flex: 1, minHeight: 44, borderRadius: 12, fontWeight: 700, border: clavier ? 'none' : `1px solid ${C.border}`,
             background: clavier ? DEGRADE_TEAL : BLANC, color: clavier ? BLANC : C.ink,
           }}>{T.ecrire}</button>
-          <button type="button" onClick={() => session.current?.termine()} style={{ flex: 1, minHeight: 44, borderRadius: 12, fontWeight: 700, border: `1px solid ${C.border}`, background: BLANC, color: C.ink }}>{T.fini}</button>
+          <button type="button" onClick={() => session.current?.termine()} style={{
+            flex: 1, minHeight: 44, borderRadius: 12, fontWeight: 700, border: verifiee ? 'none' : `1px solid ${C.border}`,
+            background: verifiee ? DEGRADE_TEAL : BLANC, color: verifiee ? BLANC : C.ink,
+          }}>{T.fini}</button>
         </div>
       )}
     </div>
@@ -155,7 +198,10 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
       setEtats('echec');
     });
     // eBay : la connexion OFFICIELLE (API), jamais le navigateur Cloud.
-    lireEtatEbay().then((e) => setEbayRelie(ebayVoieApiDuCompte(e) === true), () => setEbayRelie(null));
+    // (01/11, Nico : « il me redemande de me connecter alors que je suis relié par l'API ») ebay-account rend
+    // { etat } : c'était l'enveloppe qui était lue (etat.connecte toujours absent) — eBay se disait « à relier »
+    // pour tout le monde. La vue publique est dans `etat`, comme partout ailleurs (App.jsx, EbayCompteSection).
+    lireEtatEbay().then((r) => setEbayRelie(ebayVoieApiDuCompte(r?.etat ?? null) === true), () => setEbayRelie(null));
   }, [userId]);
   const relierEbay = useCallback(async () => {
     try { const { url } = await demarrerConnexionEbay(); if (url) await ouvrirConsentementEbay(url); }
@@ -201,8 +247,10 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
                 aReconnecter={etatConnexion(etats?.[p.id]) === 'a_reconnecter'} T={T} onClick={() => setOuverte(p)} />
             ))}
             {ebay && (
-              <Ligne nom={T.ebayTitre} connecte={ebay.relie} T={T} texte={T.ebayTexte}
-                libelle={{ connecte: T.ebayRelie, faire: T.ebayRelier, refaire: T.ebayRelier }} onClick={ebay.onRelier} />
+              // (01/11) Relié par l'API : rien à faire ici (aucun bouton, jamais le navigateur Cloud). Pas relié : la
+              // connexion officielle d'eBay (ebay-oauth-start), jamais une page de connexion dans le navigateur Cloud.
+              <Ligne nom={T.ebayTitre} connecte={ebay.relie} T={T} texte={ebay.relie ? T.ebayTexteRelie : T.ebayTexte}
+                libelle={{ connecte: T.ebayRelie, faire: T.ebayRelier, refaire: T.ebayRelier }} onClick={ebay.onRelier} sansBouton={ebay.relie} />
             )}
           </div>
         )}

@@ -41,7 +41,9 @@ let connexions = null;
 let endurance = null;
 const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp,
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), arretEndurance: () => endurance?.arretee() ?? null });
-connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal });
+// (01/11) Une connexion vérifiée (compte lu) est notée dans le journal de l'essai de 48 h : ses heures partent de là.
+connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal,
+  surVerifiee: (e) => { endurance?.connexionVerifiee(e).catch(() => {}); } });
 const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp });
 // (01/11) L'essai de 48 h (ENDURANCE=1) : mesures toutes les 10 min, arrêt au premier blocage.
 if (config.endurance) {

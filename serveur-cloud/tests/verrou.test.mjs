@@ -126,6 +126,8 @@ function monter({ cookies = [] } = {}) {
       if (methode === 'Target.attachToTarget') return { sessionId: 'S1' };
       if (methode === 'Page.getFrameTree') return { frameTree: { frame: { id: 'F1' } } };
       if (methode === 'Storage.getCookies') return { cookies };
+      // (01/11) La lecture du compte dans la page (expressionLectureCompte) : le compte se lit.
+      if (methode === 'Runtime.evaluate' && String(params?.expression).includes('location.hostname !==')) return { result: { value: { http: 200, id: 'compte' } } };
       return {};
     },
   };

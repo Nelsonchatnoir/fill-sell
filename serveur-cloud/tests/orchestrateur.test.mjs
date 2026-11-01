@@ -101,10 +101,17 @@ test('coffre : une plateforme déconnectée ne touche jamais sa sauvegarde ; la 
   } };
   const coffre = creerCoffre({ base, cle: randomBytes(32).toString('base64') });
   const cookies = [{ name: 'access_token_web', value: jwt({ sub: 7 }), domain: '.vinted.fr' }, { name: 'refresh_token_web', value: 'r', domain: '.vinted.fr' }];
-  const b = await coffre.sauvegarderCookies(U, cookies);
+  // (01/11) Des cookies seuls ne créent rien : seule une connexion VÉRIFIÉE (compte lu) entre au coffre.
+  const b0 = await coffre.sauvegarderCookies(U, cookies);
+  assert.equal(b0.vinted, 'non_verifiee', 'cookie seul : jamais « connecté »');
+  assert.equal(lignes.size, 0);
+  const b = await coffre.sauvegarderCookies(U, cookies, { verifiees: ['vinted'], preuves: { vinted: { le: 'x', http: 200 } } });
   assert.equal(b.vinted, 'sauvegardee(2)');
   assert.equal(b.leboncoin, 'absente');
   assert.equal(lignes.size, 1);
+  assert.equal((await coffre.lire(U)).vinted.verifie.http, 200, 'la preuve est gardée (chiffrée)');
+  assert.equal((await coffre.sauvegarderCookies(U, cookies)).vinted, 'sauvegardee(2)', 'connue : la sauvegarde ordinaire la rafraîchit');
+  assert.equal((await coffre.lire(U)).vinted.verifie.http, 200, '…et garde sa preuve');
   const r1 = await coffre.cookiesARestaurer(U, []);
   assert.equal(r1.bilan.vinted, 'restauree(2)');
   const r2 = await coffre.cookiesARestaurer(U, cookies);
@@ -123,7 +130,7 @@ test('coffre : rotation de clé — les lignes chiffrées avec l\'ancienne reste
   const ancienne = randomBytes(32).toString('base64');
   const nouvelle = randomBytes(32).toString('base64');
   const cookies = [{ name: 'access_token_web', value: jwt({ sub: 7 }), domain: '.vinted.fr' }, { name: 'refresh_token_web', value: 'r', domain: '.vinted.fr' }];
-  await creerCoffre({ base, cle: ancienne, cleVersion: 1 }).sauvegarderCookies(U, cookies);
+  await creerCoffre({ base, cle: ancienne, cleVersion: 1 }).sauvegarderCookies(U, cookies, { verifiees: ['vinted'] });
   assert.equal(lignes.get('vinted').cle_version, 1);
   const sansTrousseau = await creerCoffre({ base, cle: nouvelle, cleVersion: 2 }).lire(U);
   assert.equal(sansTrousseau.vinted.illisible, true, 'avant : la rotation rendait la connexion illisible');
@@ -340,7 +347,7 @@ test('(30/10) coffre : une connexion faite qui lâche passe « à reconnecter »
   };
   const coffre = creerCoffre({ base, cle: randomBytes(32).toString('base64') });
   const lbc = [{ domain: '.leboncoin.fr', name: '__Secure-Login', value: 'jeton' }];
-  let b = await coffre.sauvegarderCookies('u', lbc);
+  let b = await coffre.sauvegarderCookies('u', lbc, { verifiees: ['leboncoin'] });
   assert.match(b.leboncoin, /sauvegardee/); assert.equal(b.vinted, 'absente'); assert.equal(lignes.has('vinted'), false);
   b = await coffre.sauvegarderCookies('u', []);
   assert.equal(b.leboncoin, 'a_reconnecter'); assert.equal(lignes.get('leboncoin').connecte, false);
@@ -427,4 +434,76 @@ test('(30/10) Leboncoin : la page de connexion part de « Mes annonces » (la /s
   assert.equal(DEFINITIONS.leboncoin.pageConnexion, 'https://www.leboncoin.fr/compte/part/mes-annonces');
   assert.equal(navigationPermise('leboncoin', DEFINITIONS.leboncoin.pageConnexion), true);
   assert.equal(navigationPermise('leboncoin', 'https://auth.leboncoin.fr/login/?client_id=lbc-front-web'), true);
+});
+
+// ── (01/11) Essai de Nico du 01/11 au soir ───────────────────────────────────────────────────────────────────────────
+test('(01/11) Beebs avec Google : le dépôt des cookies Google du pays et le retour Firebase passent ; rien d’autre', async () => {
+  const { retourDeclare } = await import('../src/plateformes.js');
+  // Les deux pages refusées à 21:14 et 21:15 (journal du serveur) : la fenêtre Google était fermée net.
+  assert.equal(navigationPermise('beebs', 'https://accounts.google.fr/accounts/SetSID?ssdc=1'), true, 'accounts.google.fr (SetSID)');
+  assert.equal(navigationPermise('beebs', 'https://babytouch-782e4.firebaseapp.com/__/auth/handler?apiKey=x&providerId=google.com'), true, 'le retour Firebase');
+  for (const pays of ['be', 'ch', 'co.uk', 'com.br']) assert.equal(navigationPermise('beebs', `https://accounts.google.${pays}/accounts/SetSID`), true, `accounts.google.${pays}`);
+  assert.equal(navigationPermise('beebs', 'https://www.google.fr/accounts/SetSID'), true);
+  assert.equal(navigationPermise('beebs', 'https://www.google.fr/search?q=x'), false, 'jamais une recherche');
+  assert.equal(navigationPermise('beebs', 'https://gds.google.com/web/recoveryoptions?x=1'), true, 'l’écran de sécurité de Google pendant la connexion');
+  assert.equal(navigationPermise('beebs', 'https://babytouch-782e4.firebaseapp.com/'), false, 'Firebase : seulement /__/auth/');
+  assert.equal(navigationPermise('beebs', 'https://evil.firebaseapp.com.example/__/auth/handler'), false);
+  // Le retour déclaré (redirect_uri) d'une page de connexion d'un fournisseur : ce chemin exact, rien d'autre.
+  const r = retourDeclare('https://accounts.google.com/o/oauth2/auth?client_id=1&redirect_uri=https%3A%2F%2Fconnexion.exemple-plateforme.fr%2Fcallback%2Fgoogle&state=s');
+  assert.deepEqual(r, { hote: 'connexion.exemple-plateforme.fr', chemin: '/callback/google' });
+  assert.equal(navigationPermise('depop', 'https://connexion.exemple-plateforme.fr/callback/google?code=c', [r]), true, 'le retour déclaré passe');
+  assert.equal(navigationPermise('depop', 'https://connexion.exemple-plateforme.fr/autre', [r]), false, 'pas un autre chemin');
+  assert.equal(navigationPermise('depop', 'https://connexion.exemple-plateforme.fr/callback/google'), false, 'sans déclaration : refusé');
+  assert.equal(retourDeclare('https://www.depop.com/login/?redirect_uri=https%3A%2F%2Fevil.example%2F'), null, 'seule une page d’un fournisseur déclare un retour');
+  assert.equal(retourDeclare('https://accounts.google.com/o/oauth2/auth?redirect_uri=storagerelay%3A%2F%2Fhttps%2Fwww.vinted.fr'), null, 'jamais un retour non https');
+  // Depop : l'accueil de la langue, où Depop renvoie une fois connecté (« Depop a affiché une erreur »).
+  assert.equal(navigationPermise('depop', 'https://www.depop.com/fr/'), true);
+  assert.equal(navigationPermise('depop', 'https://www.depop.com/fr/products/x-1/'), false, 'une annonce : refusée');
+});
+
+test('(01/11) « connecté » = le compte LU sur le site de la plateforme : jamais hors du site, jamais sans 200 ET un compte', async () => {
+  const { expressionLectureCompte, verdictLectureCompte, DEFINITIONS } = await import('../src/plateformes.js');
+  for (const p of PLATEFORMES_CLOUD) {
+    const e = expressionLectureCompte(p);
+    assert.ok(e && e.includes(JSON.stringify(DEFINITIONS[p].hoteSite)), `${p} : lu seulement sur ${DEFINITIONS[p].hoteSite}`);
+    assert.doesNotThrow(() => new Function(`return ${e};`), `${p} : expression valide`);
+    assert.ok(!/console\.|localStorage\.setItem|document\.cookie\s*=/.test(e), `${p} : rien n'est écrit ni affiché`);
+  }
+  assert.match(expressionLectureCompte('vinted'), /\/api\/v2\/users\/current/);
+  assert.match(expressionLectureCompte('leboncoin'), /members\/me\/account/);
+  assert.match(expressionLectureCompte('beebs'), /accounts:lookup/);
+  assert.match(expressionLectureCompte('depop'), /users\/me\//);
+  assert.equal(expressionLectureCompte('ebay'), null, 'eBay : jamais par ce navigateur');
+  assert.deepEqual(verdictLectureCompte({ http: 200, id: '250623918' }), { ok: true, http: 200, motif: null });
+  assert.equal(verdictLectureCompte({ horsSite: true }).motif, 'hors_site', 'page Google / étape du téléphone : rien de lu');
+  assert.equal(verdictLectureCompte({ http: 401, id: null }).ok, false);
+  assert.equal(verdictLectureCompte({ http: 200, id: null }).motif, 'sans_compte');
+  assert.equal(verdictLectureCompte({ http: 0, motif: 'anonyme' }).motif, 'anonyme', 'Beebs anonyme : jamais connecté');
+  assert.equal(verdictLectureCompte(undefined).ok, false);
+});
+
+test('(01/11) une plateforme non connectée au coffre n’a aucune session dans le profil — sauf l’appareil DataDome', async () => {
+  const { cookiesAPurger } = await import('../src/plateformes.js');
+  const cookies = [
+    { name: '__Secure-Login', value: 'x', domain: '.leboncoin.fr' }, { name: 'datadome', value: 'd', domain: '.leboncoin.fr' },
+    { name: 'access_token', value: 'x', domain: '.depop.com' }, { name: 'access_token_web', value: 'x', domain: '.vinted.fr' },
+    { name: 'SID', value: 'g', domain: '.google.com' },
+  ];
+  assert.deepEqual(cookiesAPurger(cookies, ['vinted']).map((c) => c.name).sort(), ['__Secure-Login', 'access_token']);
+  assert.deepEqual(cookiesAPurger(cookies, ['vinted', 'leboncoin', 'beebs', 'depop']), [], 'tout connecté : rien');
+});
+
+test('(01/11) la restauration ne ramène JAMAIS une plateforme non connectée au coffre', async () => {
+  const lignes = new Map();
+  const base = { rpc: async (nom, a) => {
+    if (nom === 'cloud_coffre_ecrire') { lignes.set(a.p_plateforme, { plateforme: a.p_plateforme, chiffre: a.p_chiffre, iv: a.p_iv, connecte: a.p_connecte }); return { error: null }; }
+    if (nom === 'cloud_coffre_lire') return { data: [...lignes.values()], error: null };
+    return { data: null, error: null };
+  } };
+  const coffre = creerCoffre({ base, cle: randomBytes(32).toString('base64') });
+  await coffre.ecrire(U, 'depop', { le: 'x', cookies: [{ name: 'access_token', value: 'a', domain: '.depop.com', path: '/' }] }, false);
+  const r = await coffre.cookiesARestaurer(U, []);
+  assert.equal(r.bilan.depop, 'non_connectee');
+  assert.equal(r.aPoser.length, 0);
+  assert.deepEqual(r.connectees, []);
 });
