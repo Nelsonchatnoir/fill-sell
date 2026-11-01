@@ -1,6 +1,62 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ 01/11/2026 16:10 — steel-browser CHEZ NOUS : ÇA PASSE (à lire EN PREMIER)
+## ⛔ 01/11/2026 19:35 — LE VRAI PRODUIT EN PLACE, ESSAI DE 48 H SUR LE COMPTE DE NICO (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 18. Décision de Nico (01/11) : toute la mise en place codée,
+l'essai de 48 h sur le vrai produit, son compte seul, son poste sur ARRÊT, rien pour les autres, aucun achat.
+
+### Où en est l'essai
+- **Prêt depuis 19:35** ; il attend le seul geste de Nico : Réglages › Abonnement › FillSell Cloud › « Connecter mes
+  plateformes ». Puis Vinted, Leboncoin, Beebs, Depop l'un après l'autre, glissière résolue par lui, « J'ai fini ».
+  Les 48 h partent de sa première connexion (heure lue dans `cloud_connexions`).
+- **Au retour de Nico, lire** (sans boucle) :
+  - `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@178.105.24.16`, puis
+    `cd /srv/fillsell-cloud/deploiement && docker compose exec -T orchestrateur node outils/endurance-bilan.mjs` ;
+  - `etat/endurance/arret.json` : le premier blocage, s'il y en a eu un ;
+  - `cloud_connexions` et `cloud_coffre` de Nico ; ses tâches `handler_build like '%-cloud%'` ; ses relevés.
+  - Coût réel : 0 € de plus (cx43 déjà payé au mois, 19,79 € TTC ; IP 81.181.239.136 déjà payée jusqu'au 29/11).
+- **Arrêt automatique au premier blocage** (`src/endurance.js`, `ENDURANCE=1`) : DataDome bloqué, glissière dans un
+  onglet de travail, vérification qui dure plus de 3 min, ou tâche refusée par l'anti-robot. Navigateur fermé, plus
+  aucune ouverture tant que `etat/endurance/arret.json` existe.
+- **Fin de l'essai (sur décision de Nico)** :
+  - `npx supabase db query --linked -f scripts/reparations/20261101_cloud_essai48h_nico_INVERSE.sql` (drapeau baissé,
+    IP au repos, rotation remise) ;
+  - `COMPTES_AUTORISES=00000000-0000-0000-0000-000000000000` dans `/srv/fillsell-cloud/.env`, puis
+    `docker compose up -d --force-recreate orchestrateur`.
+
+### Le serveur `fillsell-cloud-1` (cx43, 178.105.24.16, `cloud.fillsell.app`) — réinstallé à neuf le 01/11
+- Avant d'effacer : 27 captures → `fillsell-cloud-proto/archives-ancien-serveur/essais-3010/` ; `COFFRE_CLE` v2 →
+  `secrets.env` (empreintes identiques). Rebuild Ubuntu 24.04 fini à 17:55, même IP ; socle `outils/installer-serveur.sh`.
+- Déployé : **56d7428** (orchestrateur), extension Cloud 0.6.164-cloud (BUILD_ID 2026-11-01T18:00:51Z+dd69fbb).
+  Pour redéployer : `DESTINATIONS_PROXY="81.181.239.136:12323" bash serveur-cloud/outils/deployer.sh 178.105.24.16 cloud.fillsell.app`.
+- `.env` (aucun secret ici) : `COMPTES_AUTORISES` = Nico, `ENDURANCE=1`, `MEMOIRE_NAVIGATEUR=2g`, `NAVIGATEURS_MAX=4`,
+  `IPROYAL_ACHATS_AUTORISES=0`, `ALERTES_MAIL=0`, `COFFRE_CLE_VERSION=2`, `IMAGE_CHROME` vide (moteur steel).
+- Navigateur = steel-browser v0.5.4 épinglé, lancé mot pour mot comme l'essai du § 17, plus `persist`. Fuseau
+  Europe/Paris (lu par steel via le proxy, comme l'essai réel ; l'« UTC » du § 17 venait de la vérification sans
+  réseau), langue en-US.
+- Pare-feu des navigateurs : sortie vers 81.181.239.136:12323 seulement ; preuve `etat/pare-feu.json` exigée.
+- **Deux verrous des plateformes** : une plateforme non connectée n'est jamais visitée.
+  - L'interception DevTools de l'orchestrateur a arrêté 3 pages à 18:54-18:56 (`ERR_BLOCKED_BY_CLIENT`).
+  - La garde de la copie Cloud de l'extension couvre `fetch`, les onglets et les fenêtres.
+  - Journal du navigateur : 0 réponse d'une plateforme avant toute connexion.
+
+### Base, fonctions, app
+- Migration **20261101180000** (`profiles.cloud_voie`, feu vert nommé de Nico), appliquée et inscrite ; inverse
+  `supabase/rollbacks/20261101180000_cloud_voie_drapeau_INVERSE.sql` (après le retour de get-pending-jobs).
+- `get-pending-jobs` **v318** (`verify_jwt` vrai) : drapeau levé = l'ordinateur ne reçoit plus aucune tâche Vinted,
+  Leboncoin, Beebs, Depop (`_shared/cloud-voie.js`, `selftest:cloud-voie`).
+- Compte de Nico : `cloud_voie = true` (seul compte), IP 81.181.239.136 `attribuee_client`, `coin_config.cloud_ip_rotation = 0`
+  (sauvegarde `_backup_0111_cloud_essai48h`).
+- OTA **2.9.147** : bandeau « reconnecte-toi » (`src/cloud/BandeauCloudReconnexion.jsx`, témoin seul), bouton
+  « Connecter mes plateformes ».
+
+### Reste (ensuite, pas avant la fin des 48 h)
+- Offres, essai gratuit, landing : APRÈS les 48 h (Nico).
+- Avant un 2e compte : répartition des comptes entre serveurs (§ 17.2), langue fr-FR à mesurer à part, et la preuve
+  d'identité des OTA Cloud à refaire (outil du 05/10 obsolète : il compare App.jsx à la fusion).
+- Les relevés de l'ORDINATEUR d'un compte au drapeau levé ne sont pas coupés (seules les tâches le sont) : sans
+  conséquence tant que le poste de Nico est sur ARRÊT.
+
+## 01/11/2026 16:10 — steel-browser CHEZ NOUS : ÇA PASSE (bloc précédent ; la suite est le bloc de 19:35 au-dessus)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 17 (essai, ancien serveur, plan de serveurs) ; page de
 décision : `DECISION-0111.md` § 0.
 

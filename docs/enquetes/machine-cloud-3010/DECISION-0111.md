@@ -1,4 +1,9 @@
-# Cloud — la décision, sur une page (01/11/2026, mise à jour de 16:10)
+# Cloud — la décision, sur une page (01/11/2026, mise à jour de 19:35)
+
+## 00. 19:35 — Nico a choisi : le vrai produit, essai de 48 h sur son compte (rapport § 18)
+- Serveur cx43 réinstallé à neuf, steel-browser lancé comme l'essai du § 17, drapeau Cloud par compte, deux verrous des
+  plateformes, arrêt automatique au premier blocage. Prêt à 19:35 : il attend la connexion de Nico depuis l'app.
+- Coût de l'essai : 0 € de plus (serveur et IP déjà payés).
 
 ## 0. 16:10 — l'essai « steel-browser chez nous » PASSE (rapport § 17)
 - Serveur : Hetzner Cloud cpx42 neuf, steel-browser publié, avec écran, injection d'empreinte coupée, aucun résolveur,

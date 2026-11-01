@@ -1174,3 +1174,94 @@ Règles :
 - Conditions d'OVH à relire avant toute commande.
 - Écarté : Scaleway Instances (Paris), PRO2-S 8 vCPU / 32 Go à 163 € HT/mois, trop cher. Elastic Metal EM-A610R
   (Ryzen 3600, 32 Go, 0,11 € HT/h) : stock illisible sans compte.
+
+## 18. Le vrai produit en place, et l'essai de 48 h sur le compte de Nico (01/11, 17:20 → 19:35)
+**Décision de Nico (01/11, après le § 17)** : pas d'essai de labo. Toute la mise en place du Cloud est codée, et l'essai
+de 48 h tourne sur le vrai produit, sur son compte seul. Son poste reste sur ARRÊT ; rien n'est ouvert aux autres
+comptes ; aucun achat.
+
+### 18.1 Le serveur `fillsell-cloud-1` réinstallé à neuf
+- **Mis à l'abri d'abord** :
+  - les 27 captures du 30/10, dans `fillsell-cloud-proto/archives-ancien-serveur/essais-3010/` (empreintes identiques) ;
+  - `COFFRE_CLE` version 2, dans `secrets.env` (empreinte identique, jamais affichée). Le profil Chrome de Nico est
+    parti avec le disque (son accord).
+- **Réinstallation** Hetzner « rebuild » Ubuntu 24.04, même IP 178.105.24.16 (action n° 665204541330960, finie à 17:55).
+  Socle posé par `serveur-cloud/outils/installer-serveur.sh` (Docker 29.1.3, ufw 22/80/443, pare-feu au démarrage).
+  Pare-feu Hetzner n° 11738181 inchangé (entrée 22/80/443).
+- **Navigateur** : `ghcr.io/steel-dev/steel-browser@sha256:b5bd99de…`, lancé mot pour mot comme l'essai du § 17
+  (`src/navigateur.js` : `LANCEMENT_AVEC_ECRAN`, `ENV_ESSAI_0111`, session de l'essai). Seul ajout : `persist`, qui garde
+  le profil du compte sur le disque. Plus d'image dérivée.
+- **Pare-feu des navigateurs** : sortie vers `81.181.239.136:12323` seulement (`deploiement/proxys-permis.txt`). Il est
+  reconstruit sans fenêtre ouverte, et l'orchestrateur refuse tout navigateur sans la preuve qu'il est posé depuis ce
+  démarrage (`etat/pare-feu.json`, numéro de démarrage).
+- **Relu après déploiement** : règles iptables exactes, preuve conforme, clé du coffre identique (v2), image épinglée.
+- **Correction du § 17 (fuseau)** :
+  - steel-browser règle le fuseau de la session d'après l'IP du proxy, en passant par ce proxy.
+  - L'« UTC » noté au § 17 venait de la vérification sans réseau.
+  - L'essai réel, comme le produit, tourne en heure de Paris ; la langue reste en-US.
+
+### 18.2 Ce qui est codé
+| Demande de Nico | Où | État |
+|---|---|---|
+| « Me connecter » par plateforme, page de connexion seule, en direct, format mobile, sans barre ni navigation ni zoom | `serveur-cloud/src/connexion.js`, `src/cloud/MeConnecterCloud.jsx` (05/10 → 30/10) ; 01/11 : images en 2× au plus (plus fluides), bouton « Connecter mes plateformes » | en place |
+| DataDome résolu par Nico dans ce même écran | même écran : les cadres (glissière) passent, ses gestes sont rejoués ; aucun résolveur | en place |
+| Connexions chiffrées chez nous, session FillSell posée par le serveur | `coffre.js` (AES-256-GCM, clé v2), `sessionFillsell.js` | en place |
+| Drapeau Cloud par compte, comme `ebay_voie_api` | `profiles.cloud_voie` (migration 20261101180000, feu vert nommé de Nico, appliquée avant la réinstallation) ; `get-pending-jobs` v318 + `_shared/cloud-voie.js` : l'ordinateur d'un compte au drapeau levé ne reçoit plus aucune tâche Vinted, Leboncoin, Beebs, Depop | en place, ton compte seul |
+| Prise de tâche atomique | `prendre_job` (29/10, prouvée sur 200 tâches et 16 connexions), utilisée par `update-job-status` v163 pour le poste Cloud | en place |
+| Ventes 24 h/24 au rythme de l'extension | le navigateur tourne en continu ; la copie Cloud de l'extension fait sa ronde et ses relevés comme au bureau | en place |
+| Écran de l'état par plateforme, et demande de reconnexion | écran « Me connecter » (état par plateforme) ; 01/11 : bandeau `BandeauCloudReconnexion.jsx` quand une connexion tombe (OTA 2.9.147) | en place |
+
+**Ajouts du 01/11** :
+- **Verrou des plateformes** : une plateforme où le compte n'est pas connecté n'est jamais visitée.
+  - Premier verrou, dans l'orchestrateur : une interception DevTools du navigateur entier, sur les seules plateformes
+    fermées. Il a arrêté à 18:54, 18:55 et 18:56 les trois pages que l'extension a ouvertes avant toute connexion
+    (www.vinted.fr, www.leboncoin.fr, www.beebs.app) : `ERR_BLOCKED_BY_CLIENT`, aucune réponse.
+  - Second verrou, dans la copie Cloud de l'extension : `fetch` du service worker, onglets et fenêtres refusent une
+    plateforme sans cookie de connexion. Il s'était déjà déclenché 10 fois à 19:17.
+  - Journal du navigateur : 4 requêtes vers une plateforme depuis sa création, 4 arrêtées, 0 réponse.
+  - La messagerie, elle, a cherché un onglet ouvert, n'en a pas trouvé et n'a rien demandé (« injection_impossible »).
+- **Copie neuve de l'extension** : Chrome gardait l'ancien script de fond en cache dans le profil (même numéro de
+  version que le parc). L'empreinte de la copie est désormais notée dans le profil, et le cache est effacé quand elle
+  change.
+- **Essai de 48 h** (`src/endurance.js`, `ENDURANCE=1`) :
+  - toutes les 10 min : mémoire de chaque navigateur et du serveur, connexions par plateforme, tâches du Cloud, dans
+    `etat/endurance/mesures.jsonl` ;
+  - arrêt automatique au premier blocage, avec sa nature dans `etat/endurance/arret.json` : DataDome bloqué, glissière
+    dans un onglet de travail, vérification qui dure plus de 3 min, ou tâche refusée par l'anti-robot. Ensuite, plus
+    aucune ouverture.
+  - Bilan : `outils/endurance-bilan.mjs`.
+
+### 18.3 La mise en place sur le compte de Nico
+- IP 81.181.239.136 entrée au pool à 18:51 (`ip.mjs ajouter 87004978`). Contrôle d'entrée à 18:52 : FR, sortie conforme,
+  aucune liste noire, aucune plateforme visitée.
+- `scripts/reparations/20261101_cloud_essai48h_nico.sql` à 18:53 (sauvegarde `_backup_0111_cloud_essai48h`, inverse
+  prêt) :
+  - rotation coupée ;
+  - 81.181.239.136 attribuée à Nico (`attribuee_client`) ;
+  - `cloud_voie = true` sur son compte, le seul compte au drapeau levé.
+- `COMPTES_AUTORISES` = Nico. Navigateur ouvert à 18:53:33, 10 s après.
+- Vérifié sans plateforme (`outils/verifier-navigateur-cloud.mjs`) :
+  - Chrome/156.0.8078.73 ;
+  - WebGL « ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)…)) », le même que l'essai ;
+  - 1920×1080, en-US, Europe/Paris, 8 cœurs, `webdriver` faux ;
+  - verrou posé, les quatre plateformes fermées.
+- `get-pending-jobs` v317 → **v318** à 18:50 (`verify_jwt` vrai, relu avant et après ; prod v317 = dépôt avant
+  déploiement). Parc relu : 43 postes vus en 3 min, toutes les réponses en 200.
+- OTA **2.9.147** à 19:30 sur production (somme de contrôle compatible) :
+  - le diff de l'app depuis la 2.9.146 ne porte que le bandeau, monté derrière `cloudConnexionVisible`, et des
+    fichiers Cloud ;
+  - la preuve d'identité garde 4 échecs, que l'OTA déjà servie 2.9.140 → 2.9.146 a aussi : l'outil du 05/10 compare
+    App.jsx à la fusion ;
+  - le rendu des comptes ordinaires est identique.
+- Autotests : suite complète **516 / 0 rouge** (18:33 → 18:47, puis 19:01 → 19:14) ; serveur-cloud 52/52 ;
+  cloud-extension 44/44 ; cloud-voie 16.
+
+### 18.4 L'essai de 48 h
+- **Le seul geste de Nico** : dans l'app, Réglages › Abonnement › FillSell Cloud › « Connecter mes plateformes ».
+  - Puis Vinted, Leboncoin, Beebs et Depop, l'un après l'autre.
+  - Il résout lui-même la glissière si elle s'affiche, puis appuie sur « J'ai fini ».
+  - Les 48 h partent de sa première connexion.
+- **Mesuré par le serveur seul** : aucune surveillance en boucle dans une session. Le bilan se lit au retour de Nico
+  (`docker compose exec -T orchestrateur node outils/endurance-bilan.mjs`).
+- **Inverse en fin d'essai** (sur décision de Nico) : `20261101_cloud_essai48h_nico_INVERSE.sql`, puis
+  `COMPTES_AUTORISES` remis à un compte fictif.
