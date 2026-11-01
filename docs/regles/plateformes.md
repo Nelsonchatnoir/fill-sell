@@ -634,3 +634,34 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   retrait). La clôture archive le brut technique (`error_technique`) et retire `ebay_a_finir`. eBay France inchangé.
 - App : l'état eBay (drapeau `ebay_voie_api` + compte) est relu au retour dans l'app (onglet visible, au plus une fois
   par minute) : un compte relié dans un autre onglet grise eBay au choix des plateformes avec sa phrase.
+
+## 01/11 après-midi (décision de Nico, Louis) — DÉLÉGATION LEBONCOIN PAR COMPTE ; « ta connexion est bonne » prouvé
+Rapport : `docs/enquetes/delegation-lbc-louis-0111/RAPPORT.md`.
+- **Délégation Leboncoin** (`_shared/delegation-leboncoin.js`) : toutes les actions Leboncoin d'un compte (publication,
+  republication, retrait, relevé des annonces, veille et relevé des ventes, essai de levée de pause) sont EXÉCUTÉES par
+  l'extension d'un AUTRE compte, sur la session Leboncoin de son navigateur. Réglage serveur, posé DES DEUX CÔTÉS dans
+  `profiles.beta_flags` (fermé en écriture au client) : propriétaire `delegation_leboncoin = { executant, nom }`,
+  exécutant `execute_leboncoin_pour = [propriétaire]`. Un seul côté = rien. Posée sur louis-seller → Amiral SEULS
+  (`scripts/reparations/20261101_louis_delegation_leboncoin.sql`, sauvegarde et inverse).
+- **Mécanique** : au poll de l'exécutant, get-pending-jobs rend `delegations` ; l'extension (≥ 0.6.164) obtient une
+  session PROPRE du propriétaire (`extension-session`, `delegation_pour`, 403 sans délégation valide ; jamais de mot de
+  passe), rangée à part, et fait un cycle « compte de travail » sous le verrou de flux : poll délégué (preuve = jeton de
+  l'exécutant dans le corps, vérifié ; non prouvé → rien servi), tâches et relevés Leboncoin, relevé quotidien, veille
+  (une commande Leboncoin neuve vue par la veille du navigateur → relevé du propriétaire), relevé des ventes (cadence à
+  lui). Tout s'écrit avec le jeton du propriétaire : RLS, `auth.uid()`, quotas, garde « une annonce, un compte »
+  (`annonces_plateforme_un_compte`, comptes liés) jouent comme avant — chaque annonce reste sur son compte.
+- **Postes du propriétaire** (sa machine virtuelle) : plus aucune tâche, aucun relevé, aucun « Me connecter »
+  Leboncoin ; `blocages.leboncoin = { etat: "delegue" }` coupe veille, ventes et liens (toutes versions), et dès la 0.6.164
+  la sonde et le relevé quotidien Leboncoin. Ses tâches Leboncoin attendent le compte de travail (message posé seulement
+  s'il n'a pas été vu depuis 2 h).
+- **Pause** : le compte de travail suit la pause sur refus de l'EXÉCUTANT (son `blocage_acces`) en plus de la sienne,
+  l'état le plus prudent gagne ; en reprise prudente, une action toutes les 10 min comptée sur l'exécutant. La règle de
+  pause elle-même ne change pas. Navigateur de l'exécutant en pause → rien ne part pour le compte délégué.
+- **Carte de synchro** du propriétaire : « Leboncoin passe par ton compte Amiral. » (ou « En attente de son
+  ordinateur… », « Leboncoin n'est pas connecté sur son ordinateur. ») ; pastille Leboncoin = dernier relevé réussi
+  (tous déclencheurs) au lieu de « — ».
+- **« Ta connexion X est bonne » se prouve** (`_shared/session-prouvee.js`, tout le parc) : jamais devant une annonce
+  vue « vue acheteur » ; la sonde compte si elle est de CE poste (ou du compte quand il n'a qu'un poste vivant), de moins
+  de 30 min, postérieure au dernier mur vu par ce job ; un relevé réussi aux mêmes conditions. pas-de-rouge reçoit des
+  sessions où un « connecté » non prouvé devient « inconnu ». Sinon le message d'attente de connexion (inchangé).
+- Selftests `delegation-leboncoin` (`-- --prod`), `delegation-leboncoin-releves` (`-- --prod`), `session-prouvee`.
