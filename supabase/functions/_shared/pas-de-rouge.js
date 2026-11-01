@@ -371,6 +371,9 @@ const DISPARUE_RE = /n'est plus en ligne|annonce introuvable|n'existe plus sur/i
 
 /** Le chien de garde a arrêté une attente trop longue. */
 const VEILLE_RE = /attendait une réponse depuis plusieurs jours/i;
+// (01/11 soir, gjehly) La page ouverte par FillSell ne s'est pas chargée jusqu'au bout (getOrCreateWorkTab,
+// ouvrirOngletTravailJob, ouvrirOngletVintedPret) : jamais un onglet fermé ni une coupure réseau.
+export const PAGE_QUI_NE_CHARGE_PAS_RE = /le content script ne répond pas|n'a pas fini de charger/i;
 
 /** (25/09) Le blocage « anti-robot » d'un job est-il CONTREDIT par la sonde ?
  *  Blocage observé depuis au moins 2 h (platform_fields.blocage_antirobot,
@@ -1157,6 +1160,15 @@ function classerEchecSansRegleRetrait(arg) {
     return reprise("opla_hors_hote",
       `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} a été interrompue : l'onglet Opla a quitté opla.co ` +
       "(souvent la page de connexion). Rien n'a été touché : on refait un essai un peu plus tard.", 45);
+  }
+  // (01/11 soir, gjehly — décision de Nico) UNE PAGE QUI NE FINIT PAS DE CHARGER N'EST NI UN ONGLET FERMÉ, NI UNE MISE EN
+  // VEILLE, NI UNE COUPURE RÉSEAU. L'extension le dit (« le content script ne répond pas », « la page de dépôt n'a pas
+  // fini de charger ») : la page de la plateforme, ouverte par FillSell, ne s'est pas chargée jusqu'au bout. Le message
+  // dit cette cause, sans consigne. Même motif (canal_coupe), même reprise, mêmes compteurs : seul le texte change.
+  if (CANAL_RE.test(t) && PAGE_QUI_NE_CHARGE_PAS_RE.test(t)) {
+    return reprise("canal_coupe",
+      `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} a été ${action === "delete" ? "interrompu" : "interrompue"} : la page de ${nom} ne finissait ` +
+      "pas de se charger sur ton ordinateur. Rien n'a été touché : nouvel essai automatique au prochain passage.", 5);
   }
   if (CANAL_RE.test(t)) {
     return reprise("canal_coupe",

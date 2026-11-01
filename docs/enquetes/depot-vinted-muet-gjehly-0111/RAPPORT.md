@@ -91,3 +91,14 @@ from cross_post_jobs where user_id = '229c7b07-51f8-4ca6-835e-6b658f819427' and 
   `programmee_servie_le`) : à trancher par Nico (cadence).
 - Le texte affiché sur ses Vinted (« interrompue sur ton ordinateur — onglet fermé, mise en veille ou coupure réseau »)
   est faux dans ce cas : la page de dépôt Vinted ne se charge pas.
+
+## Suite (01/11 nuit) — les trois décisions de Nico
+1. **Colis déduit du rayon** — règle 10 (`_shared/vinted-colis-categorie.js`). Données du rayon Magazines (5424, 90 j,
+   toutes sources) : 12 tâches, 6 articles hors lots, 4 comptes, 100 % « Petit » (le seul « Grand » est « 9 classeurs »,
+   un lot). Le premier calcul (annonces publiées seules, sans dédoublonnage) donnait 4 Petit / 1 Grand : sous le seuil,
+   d'où l'observation par article et l'écart des lots. `64d51931` → « Petit » (handler-watch).
+2. **eBay programmé** — `ebay-api-worker` : même décision, même plafond, même créneau. Ses 78 eBay du soir étaient déjà
+   tous traités (78 publiés, 16 questions de catégorie) : rien à rattraper, la règle vaut pour les suivants.
+3. **Message** — « la page de Vinted ne finissait pas de se charger sur ton ordinateur » à la place de « onglet fermé,
+   mise en veille ou coupure réseau » ; les tâches déjà en file prennent le texte vrai à leur prochain essai (aucune
+   ligne réécrite à la main).

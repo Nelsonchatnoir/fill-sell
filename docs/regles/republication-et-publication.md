@@ -1118,3 +1118,25 @@
 - Cadence intouchée : créneau, plafond du jour, une à la fois, espacement — même verdict avec ou sans plateforme
   bloquée (selftest `bloc-d-2610`). Seule la tâche qui prend la place change.
 - get-pending-jobs v319 (journal : « en reprise technique, sans nouvelle place : vinted »).
+
+## ⛔ 01/11 nuit (gjehly) — trois décisions de Nico : colis Vinted déduit du rayon, eBay programmé, page qui ne charge pas
+- **Format du colis Vinted d'une PUBLICATION** (« l'app doit le déduire seule de la catégorie quand la plateforme le
+  demande, sans rien demander quand la catégorie suffit ») : `_shared/vinted-colis-categorie.js`, règle 10 de
+  `_shared/questions-tranchees.ts` (handler-watch, 3 min). Vinted ne coche rien ET la personne n'a rien choisi ET ce
+  n'est pas un lot (`titreDeLot`) → le format que portent presque toutes les tâches Vinted de ce rayon (catalog_id) dans
+  le parc sur 90 jours — annonce relevée à la republication, format coché au dépôt, format choisi par la personne — une
+  observation par article, lots écartés, au moins 5 articles, 2 comptes, 90 % ; dans la grille affichée (sinon le plus
+  petit offert qui suffit), dans la liste fermée de la question ; posé comme une réponse (`colis_choisi`), tracé
+  (`colis_tranche_par_categorie`), une passe par job. Sans accord : la question reste, relue une fois par jour par job
+  (`colis_rayon_sans_accord`). Remplace, pour ce seul cas, « jamais choisi à ta place » (05/10). Un format choisi par
+  la personne et non proposé reste une question.
+- **Publications eBay (API) programmées** : `ebay-api-worker` (`programmeesEbayAServir`) prend la MÊME décision que
+  get-pending-jobs (`decisionProgrammee`) — créneau, jours, plafond du jour PARTAGÉ avec les autres plateformes, une à
+  la fois, espacement, plateforme bloquée — sur les servies de toutes les plateformes du compte ; la servie est marquée
+  `programmee_servie_le` à sa prise. Les programmées non servies sont lues à part (300 par passe) : elles n'occupent
+  jamais les `LOT_MAX` places des autres comptes. Réglage éteint : comme avant. Le tour entre plateformes n'est pas
+  strict : la première file qui passe après l'espacement prend la place (extension ou worker, toutes les 2 min).
+- **Page qui ne finit pas de charger** (`_shared/pas-de-rouge.js`, `PAGE_QUI_NE_CHARGE_PAS_RE` : « le content script
+  ne répond pas », « n'a pas fini de charger ») : « La publication a été interrompue : la page de Vinted ne finissait
+  pas de se charger sur ton ordinateur. Rien n'a été touché : nouvel essai automatique au prochain passage. » — jamais
+  « onglet fermé, mise en veille ou coupure réseau », aucune consigne. Même motif (`canal_coupe`), même reprise.

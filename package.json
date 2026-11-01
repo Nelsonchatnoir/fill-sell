@@ -515,6 +515,7 @@
     "selftest:titre-copie-vinted": "node scripts/titre-copie-vinted-selftest.mjs",
     "selftest:vinted-colis": "node scripts/vinted-colis-selftest.mjs",
     "selftest:vinted-colis-tranche": "node scripts/vinted-colis-tranche-selftest.mjs",
+    "selftest:vinted-colis-categorie": "node scripts/vinted-colis-categorie-selftest.mjs",
     "selftest:rayon-moteur-attendu": "node scripts/rayon-moteur-attendu-selftest.mjs",
     "selftest:ebay-photos-recues": "node scripts/ebay-photos-recues-selftest.mjs",
     "selftest:beebs-rayon-fil-ariane": "node scripts/beebs-rayon-fil-ariane-selftest.mjs",

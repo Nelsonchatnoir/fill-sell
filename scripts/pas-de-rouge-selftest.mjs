@@ -357,6 +357,24 @@ console.log("\n── 11. eBay : le manquant que nomme le refus du brouillon (25
     "deux manquants : les retours d'abord (un geste de la personne)");
 }
 
+// ── (01/11 soir, gjehly — décision de Nico) Une page qui ne finit pas de charger : la vraie cause, sans consigne ──
+{
+  const muette = classerEchec({ platform: "vinted", action: "publish", essais: 0, pf: {},
+    brut: "onglet de travail vinted : le content script ne répond pas, ni après rechargement puis onglet neuf, ni fenêtre de travail visible" });
+  ok(muette.verdict === "reprise" && muette.statut === "pending" && muette.motif === "canal_coupe" && muette.dansMinutes === 5,
+    "page muette : même verdict, même motif, même reprise qu'avant (seul le texte change)");
+  ok(/la page de Vinted ne finissait pas de se charger/.test(muette.message) && !/onglet fermé|mise en veille|coupure réseau/.test(muette.message),
+    `page muette : la vraie cause (« ${muette.message} »)`);
+  ok(!/rien à faire|relance|ferme|ouvre|reconnecte|vérifie|mets à jour/i.test(muette.message), "page muette : aucune consigne à la personne");
+  const lbc = classerEchec({ platform: "leboncoin", action: "publish", essais: 0, pf: {},
+    brut: "Publication interrompue en cours d'opération : Timeout: la page de dépôt n'a pas fini de charger — le content script ne répond pas, ni après rechargement puis onglet neuf." });
+  ok(/la page de Leboncoin ne finissait pas de se charger/.test(lbc.message), "page de dépôt Leboncoin « n'a pas fini de charger » : même texte vrai");
+  const retrait = classerEchec({ platform: "vinted", action: "delete", essais: 0, pf: {}, brut: "onglet de travail vinted : le content script ne répond pas, ni après rechargement puis onglet neuf" });
+  ok(/^Le retrait a été interrompu :/.test(retrait.message), "retrait : « Le retrait a été interrompu » (accord juste)");
+  const coupe = classerEchec({ platform: "vinted", action: "publish", essais: 0, pf: {}, brut: "Could not establish connection. Receiving end does not exist." });
+  ok(coupe.motif === "canal_coupe" && /onglet fermé, mise en veille ou coupure réseau/.test(coupe.message), "un vrai canal coupé garde son texte");
+}
+
 console.log(ko === 0 ? "\n✅ PAS DE ROUGE : tout est vert.\n" : `\n❌ ${ko} contrôle(s) en échec.\n`);
 process.exit(ko === 0 ? 0 : 1);
 import { oplaChemin } from '../supabase/functions/_shared/opla-catalogue.ts';

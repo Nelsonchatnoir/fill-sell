@@ -40,6 +40,7 @@ import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique } from "../_shared/publication-programmee.js";
 // (25/10) Une tâche finie n'attend plus personne ; un retrait sur une annonce déjà absente est un retrait fait.
 import { champsAttenteClose } from "../_shared/etat-terminal.js";
 import { dejaAbsente, RETRAIT_PAR_HORS_LIGNE, RETRAIT_PAR_VENDUE } from "../_shared/retrait-deja-absent.js";
@@ -86,6 +87,54 @@ interface Job {
   title: string | null; description: string | null; price: number | string | null;
   photos: unknown; platform_fields: Record<string, unknown> | null;
   listing_url: string | null; platform_listing_id: string | null; created_at: string; voie: string;
+}
+const COLONNES_JOB_API = "id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie";
+
+// ── (01/11 soir, décision de Nico) Les publications eBay programmées, servies comme celles des autres plateformes ──
+// Les programmées eBay pas encore servies (300 au plus par passe), compte par compte : réglage du compte, puis la
+// décision de _shared/publication-programmee.js sur les programmées servies de TOUTES ses plateformes (36 h, même
+// lecture que get-pending-jobs) — le créneau, les jours, le plafond du jour, une à la fois, l'espacement et la plateforme
+// bloquée sont donc partagés. `servir` : à traiter dans cette passe ; `aMarquer` : leur programmee_servie_le se pose à
+// la prise (même compare-and-swap que la prise). Réglage éteint : ses programmées partent comme avant, sans marque.
+async function programmeesEbayAServir(admin: SupabaseClient, jobId: string | null): Promise<{ servir: Job[]; aMarquer: Set<string>; retenues: number }> {
+  let q = admin.from("cross_post_jobs").select(COLONNES_JOB_API)
+    .eq("platform", "ebay").eq("voie", "api").eq("status", "pending").eq("action", "publish")
+    .eq("platform_fields->>programmee", "true").is("platform_fields->>programmee_servie_le", null)
+    .order("created_at", { ascending: true }).limit(300);
+  if (jobId) q = q.eq("id", jobId);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  const parCompte = new Map<string, Job[]>();
+  for (const j of (data ?? []) as Job[]) {
+    if (!estProgrammee(j)) continue;
+    if (!parCompte.has(j.user_id)) parCompte.set(j.user_id, []);
+    parCompte.get(j.user_id)!.push(j);
+  }
+  const servir: Job[] = [];
+  const aMarquer = new Set<string>();
+  let retenues = 0;
+  const depuis = new Date(Date.now() - 36 * 3600_000).toISOString();
+  for (const [userId, liste] of parCompte) {
+    const { data: prof } = await admin.from("profiles").select("platform_settings").eq("id", userId).maybeSingle();
+    const reglage = reglageProgrammation((prof as { platform_settings?: unknown } | null)?.platform_settings ?? null);
+    if (!reglage) { servir.push(...liste); continue; }
+    const { data: servies, error: eS } = await admin.from("cross_post_jobs")
+      .select("id, status, platform, servie:platform_fields->>programmee_servie_le, reprises:platform_fields->>pas_de_rouge_reprises, boucle:platform_fields->boucle_technique")
+      .eq("user_id", userId).eq("action", "publish").gte("platform_fields->>programmee_servie_le", depuis).limit(500);
+    if (eS) throw new Error(eS.message);
+    const lignes = (servies ?? []) as Array<{ id: string; status: string; platform: string | null; servie: string | null; reprises: string | null; boucle: unknown }>;
+    const d = decisionProgrammee({
+      enAttente: ordreProgrammeesPretesDabord(liste), reglage,
+      servies: lignes.filter((l) => servieAujourdhui({ platform_fields: { programmee_servie_le: l.servie } }, reglage)).length,
+      enVol: lignes.some((l) => l.status === "processing"),
+      derniereServieMs: lignes.reduce((m, l) => Math.max(m, Date.parse(String(l.servie ?? "")) || 0), 0) || null,
+      plateformesBloquees: plateformesEnRepriseTechnique(lignes),
+    });
+    retenues += d.retenues.length;
+    const choisie = d.servir ? liste.find((j) => String(j.id) === d.servir) : null;
+    if (choisie) { servir.push(choisie); aMarquer.add(String(choisie.id)); }
+  }
+  return { servir, aMarquer, retenues };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -3785,14 +3834,27 @@ Deno.serve(async (req) => {
   try { retraitsApi = await rerouterRetraitsVersApi(admin); }
   catch (e) { retraitsApi = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
+  // ── (01/11 soir, décision de Nico) LES PUBLICATIONS eBay PROGRAMMÉES SUIVENT LE CRÉNEAU ET LE PLAFOND DES AUTRES ──
+  // gjehly : 78 publications eBay programmées (créneau du soir, 8 par jour) parties en rafale de 21:10 à 21:33, hors
+  // plafond, pendant que ses Leboncoin attendaient leur tour. Une publication eBay programmée pas encore servie ne part
+  // plus de la file ordinaire : elle passe par la MÊME décision que get-pending-jobs (programmeesEbayAServir) et la
+  // servie est marquée programmee_servie_le à sa prise. Lue à part : des programmées retenues n'occupent jamais les
+  // LOT_MAX places des autres comptes. Illisible : la file part comme avant (jamais un point de panne).
+  let programmation: { servir: Job[]; aMarquer: Set<string>; retenues: number } | null = null;
+  try { programmation = await programmeesEbayAServir(admin, body.job_id ? String(body.job_id) : null); }
+  catch (e) { console.warn(`[ebay-api-worker] publications programmées illisibles (${String((e as Error)?.message ?? e).slice(0, 160)}) — file servie comme avant`); }
   let cible = admin.from("cross_post_jobs")
-    .select("id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie")
+    .select(COLONNES_JOB_API)
     .eq("platform", "ebay").eq("voie", "api").eq("status", "pending")
     .order("created_at", { ascending: true }).limit(LOT_MAX);
   if (body.job_id) cible = cible.eq("id", body.job_id);
-  const { data: jobs, error } = await cible;
+  if (programmation) cible = cible.or("platform_fields->>programmee.is.null,platform_fields->>programmee.neq.true,platform_fields->>programmee_servie_le.not.is.null");
+  const { data: jobsFile, error } = await cible;
   if (error) return json({ error: error.message }, 500);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi });
+  const jobs = [...((jobsFile ?? []) as Job[]), ...(programmation?.servir ?? [])]
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(0, LOT_MAX);
+  if (programmation?.retenues) console.log(`[ebay-api-worker] publications programmées : ${programmation.servir.length} servie(s), ${programmation.retenues} retenue(s) (créneau, plafond, une à la fois, espacement)`);
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, programmees_retenues: programmation?.retenues ?? 0 });
 
   const resultats: Record<string, unknown>[] = [];
   // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou
@@ -3808,7 +3870,8 @@ Deno.serve(async (req) => {
     // Claim atomique : seul celui qui fait passer pending → processing traite.
     // processing_since posé À LA PRISE (même clé que handler-watch) : c'est
     // lui que lit le chien de garde. Effacé par marquer() à la conclusion.
-    const pfPrise = { ...(brut.platform_fields ?? {}), processing_since: new Date().toISOString() };
+    const pfPrise = { ...(brut.platform_fields ?? {}), processing_since: new Date().toISOString(),
+      ...(programmation?.aMarquer.has(String(brut.id)) ? { programmee_servie_le: new Date().toISOString() } : {}) };
     // .eq("voie", "api") (27/09) : la prise elle-même exige la voie — un job
     // ne peut pas être pris par le worker s'il appartient à l'extension.
     const { data: pris } = await admin.from("cross_post_jobs").update({ status: "processing", handler_build: HANDLER_BUILD, platform_fields: pfPrise })

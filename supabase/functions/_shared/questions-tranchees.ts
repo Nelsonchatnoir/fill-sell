@@ -33,6 +33,9 @@
 //      republication (pré-vol, étape captured, rien retiré) : rayon changé par FillSell (œuvre d'art) → la
 //      capture repart de l'annonce en ligne, dans son rayon ; format retiré par Vinted du même rayon → le plus
 //      petit format offert qui suffit, sinon le plus grand (_shared/vinted-colis-tranche.js). Une passe par job.
+//  10. (01/11 soir, décision de Nico — gjehly 64d51931, Magazines) Vinted « Format du colis » d'une PUBLICATION
+//      (Vinted n'en coche aucun, la personne n'a rien choisi) : le format que portent presque toutes les annonces
+//      Vinted de ce rayon dans le parc, posé comme une réponse (_shared/vinted-colis-categorie.js). Une passe par job.
 // deno-lint-ignore-file no-explicit-any
 import { estQuestionEtat, etatDepuisSources, etatsDuJob } from "./etat-correspondance.js";
 import { reponseMarqueDepop, champsApresMarqueDepop, QUESTION_MARQUE_DEPOP } from "./marque-depop.js";
@@ -40,6 +43,7 @@ import { archiverErreur } from "./erreurs-archivees.js";
 import { titreSymbolesATrancher } from "./titre-symboles-vinted.js";
 import { titreMajusculesATrancher } from "./casse-titre.js";
 import { colisRepublicationATrancher } from "./vinted-colis-tranche.js";
+import { estQuestionColisPublication, catalogueDuJob, formatDominantDuRayon, colisPublicationATrancher, repereSansAccord } from "./vinted-colis-categorie.js";
 
 const TICKS = ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"];
 const NOMS: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
@@ -344,6 +348,52 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
     if (data?.length) {
       const cle = r.branche === "A" ? "colis_recapture" : "colis_tranche";
       (n as Record<string, number>)[cle] = ((n as Record<string, number>)[cle] ?? 0) + 1;
+    }
+  }
+  // ── 10. (01/11 soir, décision de Nico) Vinted « Format du colis » d'une PUBLICATION : le rayon le dit ──
+  // « L'app doit le déduire seule de la catégorie quand la plateforme le demande (ex. magazines → petit colis). »
+  // (_shared/vinted-colis-categorie.js) Vinted ne coche rien, la personne n'a rien choisi : le format que portent
+  // presque toutes les annonces Vinted de ce rayon dans le parc (5 au moins, 2 comptes, 90 %), dans la grille affichée,
+  // est posé comme une réponse (colis_choisi) — la publication repart. Deux lectures par rayon (annonces relevées à la
+  // republication, dépôts), 10 rayons au plus par passage ; un rayon sans accord n'est relu qu'une fois par jour par job.
+  const colisPub = liste.filter((j) => estQuestionColisPublication(j));
+  if (colisPub.length) {
+    const depuis = new Date(Date.now() - 90 * 86400_000).toISOString();
+    const parRayon = new Map<number, ReturnType<typeof formatDominantDuRayon>>();
+    for (const cat of [...new Set(colisPub.map((j) => catalogueDuJob(j.platform_fields) as number))].slice(0, 10)) {
+      // Le format réel d'une tâche : l'annonce relevée à la republication, sinon le format coché au dépôt, sinon celui
+      // que la personne a choisi (colis_source manuel / retenu). Tous statuts : un format coché ou choisi est réel.
+      const [{ data: snaps }, { data: depots }] = await Promise.all([
+        supabase.from("cross_post_jobs").select("id, user_id, inventaire_id, title, f:platform_fields->republish_snapshot->>package_size_id")
+          .eq("platform", "vinted").gte("created_at", depuis)
+          .eq("platform_fields->republish_snapshot->>catalog_id", String(cat))
+          .not("platform_fields->republish_snapshot->>package_size_id", "is", null).limit(1000),
+        supabase.from("cross_post_jobs")
+          .select("id, user_id, inventaire_id, title, b:platform_fields->colis_bilan->>id, p:platform_fields->>packageSizeId, s:platform_fields->>colis_source")
+          .eq("platform", "vinted").gte("created_at", depuis)
+          .eq("platform_fields->vinted_ids->>catalog_id", String(cat)).limit(1000),
+      ]);
+      const parJob = new Map<string, { id: unknown; user_id: unknown; article: unknown; titre: unknown }>();
+      for (const r of (depots ?? []) as any[]) {
+        const f = r.b ?? (r.s === "manuel" || r.s === "retenu" ? r.p : null);
+        if (f != null) parJob.set(String(r.id), { id: f, user_id: r.user_id, article: r.inventaire_id ?? r.id, titre: r.title });
+      }
+      for (const r of (snaps ?? []) as any[]) parJob.set(String(r.id), { id: r.f, user_id: r.user_id, article: r.inventaire_id ?? r.id, titre: r.title }); // l'annonce en ligne prime
+      parRayon.set(cat, formatDominantDuRayon([...parJob.values()]));
+    }
+    for (const j of colisPub) {
+      const cat = catalogueDuJob(j.platform_fields) as number;
+      if (!parRayon.has(cat)) continue; // au-delà des 10 rayons du passage : au suivant
+      const observe = parRayon.get(cat) ?? null;
+      const r = colisPublicationATrancher(j, observe, maintenant);
+      if (r) {
+        const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: r.platform_fields })
+          .eq("id", j.id).eq("status", "needs_user").select("id");
+        if (data?.length) (n as Record<string, number>).colis_rayon = ((n as Record<string, number>).colis_rayon ?? 0) + 1;
+      } else {
+        await supabase.from("cross_post_jobs").update({ platform_fields: repereSansAccord(j, observe, maintenant) })
+          .eq("id", j.id).eq("status", "needs_user");
+      }
     }
   }
   return n;

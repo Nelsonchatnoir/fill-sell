@@ -174,6 +174,25 @@ ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageP
     && /reprises:platform_fields->>pas_de_rouge_reprises, boucle:platform_fields->boucle_technique/.test(gpj),
     "get-pending-jobs lit plateforme, reprises et boucle des servies (même lecture) et les passe à la décision");
 }
+// (01/11 soir, décision de Nico) LES PUBLICATIONS eBay (API) PROGRAMMÉES SUIVENT LE MÊME CRÉNEAU ET LE MÊME PLAFOND :
+// gjehly, 78 eBay programmées parties en rafale 21:10 – 21:33 par ebay-api-worker, qui ne lisait pas le réglage.
+{
+  const w = lire("supabase/functions/ebay-api-worker/index.ts");
+  const f = w.slice(w.indexOf("async function programmeesEbayAServir"), w.indexOf("return { servir, aMarquer, retenues };"));
+  ok(/import \{ reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique \} from "\.\.\/_shared\/publication-programmee\.js";/.test(w),
+    "ebay-api-worker prend la MÊME décision que get-pending-jobs (_shared/publication-programmee.js)");
+  ok(/\.eq\("platform_fields->>programmee", "true"\)\.is\("platform_fields->>programmee_servie_le", null\)/.test(f) && /\.limit\(300\)/.test(f),
+    "les programmées non servies sont lues à part (300 au plus) : elles n'occupent jamais les LOT_MAX places des autres comptes");
+  ok(/\.gte\("platform_fields->>programmee_servie_le", depuis\)/.test(f) && !/\.eq\("platform", "ebay"\)[^\n]*programmee_servie_le", depuis/.test(f)
+    && /plateformesBloquees: plateformesEnRepriseTechnique\(lignes\)/.test(f),
+    "plafond, une à la fois, espacement : les servies de TOUTES les plateformes du compte (même lecture de 36 h)");
+  ok(/if \(!reglage\) \{ servir\.push\(\.\.\.liste\); continue; \}/.test(f), "réglage éteint : ses programmées partent comme avant");
+  ok(/if \(programmation\) cible = cible\.or\("platform_fields->>programmee\.is\.null,platform_fields->>programmee\.neq\.true,platform_fields->>programmee_servie_le\.not\.is\.null"\);/.test(w),
+    "la file ordinaire écarte les programmées non servies — sauf si la programmation est illisible (servie comme avant)");
+  ok(/programmation\?\.aMarquer\.has\(String\(brut\.id\)\) \? \{ programmee_servie_le: new Date\(\)\.toISOString\(\) \} : \{\}/.test(w)
+    && /\.eq\("id", brut\.id\)\.eq\("status", "pending"\)\.eq\("voie", "api"\)/.test(w),
+    "la servie est marquée programmee_servie_le à sa prise (même compare-and-swap) : le plafond et « une à la fois » la voient");
+}
 ok(/jobs_retenus_programmation: idsProgrammeesRetenues\.size/.test(gpj), "la réponse dit combien sont retenues (popup, suivi)");
 const mr = lire("src/publication/moteur/regles.js");
 ok(/platform_fields: programmee \? \{ \.\.\.pf, programmee: true, programmee_le: new Date\(\)\.toISOString\(\) \} : pf/.test(mr), "la tâche naît marquée « programmée » (quota décompté au clic, comme avant)");
