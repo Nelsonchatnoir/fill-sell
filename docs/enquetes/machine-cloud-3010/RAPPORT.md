@@ -889,3 +889,140 @@ Images et bilan, hors dépôt : `fillsell-cloud-proto/essai-steel-3010/` (`essai
   connexion et la glissière en direct depuis l'app sont donc compatibles avec Steel.
 - Non prouvé : la tenue dans la durée (jobs réels, cookies gardés d'une session à l'autre, glissières à répétition), et
   la connexion Beebs une fois la glissière passée.
+
+## 16. steel-browser (logiciel libre) sur un serveur Hetzner à nous ? (01/11, 15:20 → 15:40, aucun achat)
+**Décisions de Nico (01/11)** :
+- même rythme que l'extension (ronde toutes les 10 min) ;
+- Steel loué à la minute ne sert qu'à tester : à ≈ 15,5 € par utilisateur, il est à perte ;
+- tous les calculs se font sur ce qu'il touche vraiment par abonné Cloud : **14,40 € par Stripe, 10,50 € par Apple**,
+  frais et URSSAF déduits ;
+- son poste reste sur ARRÊT jusqu'à la fin des essais Cloud : il compte comme muet pour les prochains essais.
+
+### 16.1 Ce qui différait entre notre Chrome Hetzner (30/10, bloqué) et Steel loué (01/11, passé)
+| | Notre Chrome Hetzner (30/10) | Steel loué (01/11) |
+|---|---|---|
+| Navigateur | Google Chrome officiel 156 (paquet .deb de Google), 5 plugins PDF | « Chrome/156.0.8078.73 » de Steel (binaire non publié), 0 plugin, pas de lecteur PDF |
+| Rendu | SwiftShader, forcé par drapeaux (`--use-angle=swiftshader --enable-unsafe-swiftshader`) | SwiftShader aussi (Vulkan SwiftShader) |
+| Langue, fuseau | fr-FR, Europe/Paris (réglés par nous) | en-US, America/New_York (ceux du serveur Steel) |
+| Fenêtre | 1366×768 sur un écran de 1920×1080 ; 1536×864 dans un essai | 1920×1080, plein écran |
+| Lancement | `--no-sandbox`, extension par stratégie d'entreprise, outils de développement permis par stratégie, relais de proxy local | lancement de Steel, extension par `--load-extension` |
+| Machine | Hetzner (vCPU partagés) : 2 cœurs vus sur cx23, 8 sur cx43 | machine de Steel aux États-Unis, 6 cœurs vus |
+| IP | IP fixes 1 et 2, 188.126.31.118, résidentielles neuves | 81.181.239.136, jamais vue de nos Chrome Linux (elle a servi à Shadow le 30/10) |
+| Passé | environnement visité des centaines de fois avec un 403 par les brûleurs (§ 7), et essais répétés le 30/10 | jamais utilisé par nous vers Leboncoin et Beebs |
+| Retouches | aucune | injection d'empreinte coupée, résolveur coupé ; la « furtivité avancée » de Steel n'est pas documentée : rien ne prouve qu'aucune autre retouche n'était active |
+
+- L'IP n'explique pas tout : sur les mêmes IP, un vrai Chrome Windows passait (lot D).
+- La langue et le fuseau seuls n'expliquent pas tout non plus : le 30/10, Chrome en fr-FR a eu une glissière à 11:48,
+  puis un blocage à 12:37.
+- Lecture la plus simple : notre environnement s'est fait repérer à force de 403 (brûleurs, essais répétés). Mais un
+  seul essai Steel ne peut pas écarter la part de la « furtivité avancée » non documentée de Steel.
+
+### 16.2 Le logiciel libre face à la version louée
+Sources : dépôt `steel-dev/steel-browser` (v0.5.4, dernier commit du 31/10/2026 ; image
+`ghcr.io/steel-dev/steel-browser:latest` = `sha256:b5bd99decf276ff6f9a8606def9f7408a376e17ac66a9e12cb82d8400cca23bd`,
+relue à 15:36) et page officielle « Steel Local vs Steel Cloud » (docs.steel.dev).
+- **Ce que contient le logiciel libre**, licence Apache 2.0 :
+  - le paquet `chromium` de Debian (pas Google Chrome), piloté par puppeteer-core 23.6 ;
+  - SwiftShader (`--use-gl=swiftshader`), WebRTC limité au proxy.
+- **Ses réglages par défaut, contraires à nos règles** :
+  - sans écran (`CHROME_HEADLESS` vrai, avec `--disable-blink-features=AutomationControlled`) ;
+  - **injection d'empreinte ACTIVE** (`fingerprint-generator` / `fingerprint-injector` 2.1.82 : une empreinte « Linux,
+    Chrome, en-US » tirée au hasard).
+  - À lancer avec écran (Xvfb, déjà dans l'image) et `SKIP_FINGERPRINT_INJECTION=true`. Notre ancienne image du 05/10
+    le faisait déjà.
+- **Ce que seule la version louée ajoute** (page officielle) :
+
+  | | Logiciel libre | Version louée |
+  |---|---|---|
+  | Sessions | 1 par instance | 10 (Launch), 100 (Scale) |
+  | Furtivité | « Limited » | « Advanced Stealth », non détaillée |
+  | Captchas | aucun | résolveur payant |
+  | Proxys | les nôtres | les nôtres ou ceux de Steel |
+  | Autres | — | coffre d'identifiants, fichiers, extensions par API, enregistrement des sessions, région us-east |
+
+  Nous n'utilisons rien de tout cela, sauf peut-être la furtivité, qu'on ne peut pas couper puisqu'elle n'est pas
+  décrite.
+- **Déjà fait chez nous.** Du 05/10 au 30/10, le Cloud tournait sur ce logiciel libre : image du 05/10, Chromium 154,
+  sans WebGL ni lecteur PDF, fr-FR et Paris, ancien serveur, IP fixes 1 et 2. Le 30/10, il était **bloqué** sur
+  Leboncoin et sur Beebs (lot D). L'image a changé depuis (WebGL SwiftShader, Chromium récent). Elle n'a jamais été
+  essayée sur une machine neuve, ni par l'IP qui passe.
+- Une session par instance : un conteneur par utilisateur, comme l'orchestrateur le faisait déjà (`navigateur.js`).
+
+### 16.3 Coût net par utilisateur (serveur + IP), TTC sans récupération de TVA
+- Règles :
+  - prix lus par l'API Hetzner Cloud (`/pricing`, `/server_types`) et par l'API Robot à 15:30 ;
+  - IPv4 du serveur comprise ; IP IPRoyal dédiée 4,64 € par utilisateur ;
+  - navigateur ouvert 24 h/24 : l'extension y garde son propre rythme (veille des commandes toutes les 10 min) ;
+  - capacité estimée : 05/10, 13 navigateurs sur cx43 ; Shadow, 12 Chrome sur 16 Go. À mesurer.
+- Calcul : coût = serveur ÷ n + 4,64 €. Marge = 14,40 € (Stripe) ou 10,50 € (Apple) − coût.
+
+| Serveur | Stock à 15:30 | € TTC / mois | n = 5 | n = 10 | n = 20 | n = 30 | Capacité estimée | Rentable dès (Stripe / Apple) |
+|---|---|---|---|---|---|---|---|---|
+| Cloud **cx43** (8 vCPU, 16 Go) | **indisponible** en fsn1, nbg1, hel1 | 19,79 | 8,60 | **6,62** | — | — | 10 à 13 | **3 / 4** |
+| Cloud **cx53** (16 vCPU, 32 Go) | **indisponible** | 35,99 | 11,84 | 8,24 | **6,44** | — | 20 à 26 | 4 / 7 |
+| Cloud cpx42 (8 vCPU AMD, 16 Go) | disponible | 83,99 | 21,44 | 13,04 | — | — | 10 à 13 | 9 / 15 (Apple : au-delà de sa capacité) |
+| Cloud cpx62 (16 vCPU AMD, 32 Go) | disponible | 156,59 | — | 20,30 | 12,47 | — | 20 à 26 | 17 / 27 (Apple : au-delà de sa capacité) |
+| Robot enchère i7-7700, 64 Go (ex. n° 3104366, FSN1) | plusieurs | 90,84 | 22,81 | 13,72 | 9,18 | 7,67 | 16 (processeur) à 40 (mémoire) | 10 / 16 |
+| Robot **AX42** (Ryzen 7 PRO 8700GE 8 c / 16 f, 64 Go) | commandable | 118,80 + 58,80 une fois | — | 16,52 | 10,58 | **8,60** | 32 à 50 | 13 / 21 |
+
+- **Marge par utilisateur, serveur plein** :
+
+  | Serveur | Stripe | Apple |
+  |---|---|---|
+  | cx43 (10 util.) | + 7,78 | + 3,88 |
+  | cx53 (20 util.) | + 7,96 | + 4,06 |
+  | AX42 (32 util.) | + 6,05 | + 2,15 |
+  | enchère i7 (16 util.) | + 4,08 | + 0,18 |
+
+- Le premier poste de coût est l'IP dédiée (4,64 €), pas le serveur. Partager les IP en rotation (lot D) la ferait
+  baisser, mais c'est ta décision : une IP par compte depuis le 05/10.
+- Les cx, de loin les moins chers, sont en rupture à cet instant (déjà le 30/10 pour cx43). Il faut donc partir sur une
+  machine disponible : cpx42 pour les tout premiers, puis AX42 ou une enchère dès ≈ 15 abonnés.
+
+### 16.4 Comparaison sur les montants nets (toutes les pistes, TTC par utilisateur)
+| Piste | Coût | Marge Stripe (14,40) | Marge Apple (10,50) |
+|---|---|---|---|
+| steel-browser chez nous, cx43 plein / AX42 plein | 6,62 / 8,35 | + 7,78 / + 6,05 | + 3,88 / + 2,15 |
+| Steel loué, ronde de 10 min (moyenne) | 15,53 | − 1,13 | − 5,03 |
+| Steel loué 24 h/24 | 69 à 83 | perte | perte |
+| Windows + carte : AX42 + Windows Server, sans RDS / avec | 9,72 / 20,64 | + 4,68 / perte | + 0,78 / perte |
+| Windows + carte : Hetzner 3093130, sans RDS / avec | 13,15 / 24,07 | + 1,25 / perte | − 2,65 / perte |
+| Windows + carte : Azure spot / centron (sans RDS) | 15,23 / 15,63 | perte | perte |
+| Mac mini Green Mini / Scaleway M4-M (licence bloquante) | 14,72 / 16,58 | − 0,32 / perte | perte |
+| Shadow + Always On | 29,86 | perte | perte |
+
+### 16.5 L'essai proposé (un seul ; rien n'est acheté sans feu vert écrit)
+**But** : savoir si steel-browser, tel que publié, passe Leboncoin et Beebs depuis une machine Hetzner neuve, par l'IP
+qui passe avec Steel loué. On garde tout le reste identique à l'essai du 01/11.
+- **Serveur exact** : Hetzner Cloud **cpx42** (8 vCPU AMD, 16 Go), Nuremberg (nbg1), Ubuntu 24.04, IPv4 primaire ;
+  créé par l'API, supprimé juste après.
+  - Il a la même taille que cx43 (le serveur de production le moins cher, en rupture) et que l'ancien serveur.
+  - C'est la machine des premiers abonnés si les cx restent en rupture.
+- **Logiciel** : `ghcr.io/steel-dev/steel-browser` épinglé par son empreinte (relue au moment de l'essai ; 15:36 :
+  `sha256:b5bd99de…`).
+  - Réglages : `CHROME_HEADLESS=false` (écran Xvfb fourni par l'image), `SKIP_FINGERPRINT_INJECTION=true`, aucun
+    résolveur.
+  - **Rien d'autre** : ni langue ni fuseau réglés (ceux de l'image), aucune retouche.
+  - Copie Cloud de l'extension 0.6.164, « Me connecter » de production : l'outil `essai-me-connecter-steel.mjs`, avec
+    une seule option en plus, l'adresse de notre instance au lieu d'api.steel.dev.
+- **Ordre** :
+  1. création ;
+  2. pare-feu : sortie limitée au proxy 81.181.239.136:12323, SSH entrant ;
+  3. `--verifier` sur proxy mort : extension présente, WebGL SwiftShader, « HeadlessChrome » absent, langue et fuseau
+     relevés ;
+  4. `--a-blanc` sur proxy mort ;
+  5. poste de Nico relu muet en base ;
+  6. **l'essai** : une ouverture Leboncoin, puis une ouverture Beebs, images à 5, 12 et 25 s. Si c'est bloqué, on
+     s'arrête ;
+  7. secrets effacés, serveur supprimé.
+- **Durée** : ≈ 1 h 30 (installation et téléchargement de l'image ≈ 45 min, contrôles, 2 min d'essai), 3 h au plus.
+- **Coût exact** :
+  - 0,1114 € HT/h pour le cpx42 et 0,0008 € HT/h pour l'IPv4, soit 0,1122 € HT/h ;
+  - 2 h facturées = 0,22 € HT = **0,27 € TTC** ; plafond 3 h = 0,34 € HT = **0,40 € TTC** ;
+  - IP 81.181.239.136 déjà payée jusqu'au 29/11 : 0 € ; logiciel : 0 €.
+- **Lecture du résultat** :
+  - **passe** (formulaire ou glissière) → la voie « steel-browser chez nous » est ouverte. Suite : endurance 48 h au
+    rythme de l'extension, sur ton compte, sur ce même serveur (≈ 5,40 € HT, soit 6,46 € TTC pour 48 h de cpx42), sur
+    feu vert ;
+  - **bloqué** → ce qui fait passer Steel loué, c'est sa machine ou sa furtivité non documentée. La voie « chez nous »
+    est fermée, et la voie Steel loué porte un doute de maquillage.

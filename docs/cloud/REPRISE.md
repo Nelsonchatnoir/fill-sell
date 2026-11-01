@@ -1,6 +1,58 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ 01/11/2026 15:20 — ESSAI STEEL FAIT, DÉCISION À PRENDRE (à lire EN PREMIER)
+## ⛔ 01/11/2026 15:45 — STEEL LOUÉ = ESSAIS SEULEMENT ; PROCHAIN ESSAI : steel-browser CHEZ NOUS (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 16 ; page de décision mise à jour : `DECISION-0111.md`.
+Rien n'est acheté.
+
+### Décisions de Nico (01/11)
+- **Rythme** : celui de l'extension (veille des commandes toutes les 10 min, ventes détectées 24 h/24).
+- **Steel loué à la minute** : seulement pour tester (≈ 15,5 € par utilisateur = perte).
+- **Calculs** : sur ce que Nico touche par abonné Cloud, **14,40 € par Stripe, 10,50 € par Apple** (frais et URSSAF
+  déduits), plus jamais sur 20 €. Coûts TTC, sans récupération de TVA.
+- **Poste de Nico : sur ARRÊT jusqu'à la fin des essais Cloud**, volontairement ; son compte ne sert qu'aux tests.
+  - Ne pas lui demander de le rallumer.
+  - Il compte comme muet ; le relire en base avant chaque essai (dernier signe figé depuis le 01/11 à 15:03:59).
+
+### Ce qui est établi (§ 16)
+- **Steel loué face à notre Chrome Hetzner du 30/10** : navigateur, langue et fuseau, fenêtre, lancement, IP et passé
+  différaient.
+  - Steel loué : 81.181.239.136, jamais utilisé par nos Chrome Linux.
+  - Notre Chrome : environnement brûlé par les 403.
+  - Steel loué a peut-être en plus une « furtivité avancée » non documentée, qu'on ne peut pas exclure.
+- **steel-browser (logiciel libre, Apache 2.0, v0.5.4)** :
+  - Chromium de Debian, une session par instance ;
+  - par défaut sans écran et AVEC injection d'empreinte → à lancer avec `CHROME_HEADLESS=false` et
+    `SKIP_FINGERPRINT_INJECTION=true` ;
+  - la version louée ajoute : concurrence, furtivité avancée, résolveur, proxys, coffre, fichiers, enregistrements.
+  - Déjà utilisé chez nous du 05/10 au 30/10 (image du 05/10), **bloqué** le 30/10 sur l'ancien serveur et les IP
+    usées. Jamais essayé sur une machine neuve avec l'IP qui passe.
+- **Coût de steel-browser chez nous** (serveur + IP, TTC par utilisateur) :
+  - cx43 plein : **6,62 €** (rentable dès 3 abonnés Stripe ou 4 Apple) ; mais **cx43 et cx53 sont en rupture** (API,
+    15:30) ;
+  - cpx42 (disponible) : 13,04 € à 10 ;
+  - AX42 plein : 8,35 € (dès 13 / 21) ;
+  - enchère i7-7700 64 Go : 9,18 € à 20.
+- Seules voies avec une marge sur les deux canaux : steel-browser chez nous ; Windows AX42 sans RDS (+ 0,78 € côté Apple).
+
+### Prochain essai proposé (UN seul, attend le feu vert écrit de Nico)
+- **Machine** : Hetzner Cloud **cpx42** neuf (8 vCPU, 16 Go, nbg1), à l'heure, supprimé après.
+- **Navigateur** : steel-browser épinglé par son empreinte (15:36 : `sha256:b5bd99de…`), avec écran, injection coupée,
+  aucun résolveur, ni langue ni fuseau réglés.
+- **Conditions** : IP 81.181.239.136, profil neuf, « Me connecter » de production, extension 0.6.164.
+  - L'outil `essai-me-connecter-steel.mjs` doit d'abord recevoir une option « adresse de l'instance » : rien codé
+    pour l'instant.
+- **Ordre** : pare-feu (sortie vers le proxy seulement), vérification et essai à blanc sur proxy mort, base relue
+  (poste muet), puis une ouverture Leboncoin, puis Beebs ; on s'arrête si c'est bloqué.
+- **Coût** : 0,27 € TTC (2 h), 0,40 € TTC au plus (3 h).
+- **Si ça passe** : endurance 48 h (≈ 6,46 € TTC), sur feu vert. **Si c'est bloqué** : Cloud en pause (Windows AX42
+  seulement après une réponse écrite de Hetzner sur la RDS).
+
+### État
+- Ancien serveur `fillsell-cloud-1` (cx43) : la machine est toujours en marche chez Hetzner (relu par l'API à 15:30),
+  orchestrateur arrêté. Elle n'a pas été touchée.
+- IP, Steel, Shadow : inchangés (bloc 15:20 ci-dessous).
+
+## 01/11/2026 15:20 — ESSAI STEEL FAIT (bloc précédent ; la suite est le bloc de 15:45 au-dessus)
 Détail : dépôt `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 15 ; la page de décision :
 `docs/enquetes/machine-cloud-3010/DECISION-0111.md`. Rien n'est acheté.
 
@@ -19,7 +71,7 @@ Détail : dépôt `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 15 ; la page 
   `chrome://extensions`.
 - Vérifié en base : dernier signe 15:03:59, dernière écriture 15:04:05. Seul le relevé eBay de 15:07:06 a bougé, et il
   vient de la tâche planifiée serveur `ebay-messagerie-20min` (API eBay).
-- **⚠ À la fin de la session, l'extension de Nico est encore sur ARRÊT** (« plus tard »). À la remise en MARCHE,
+- **Extension de Nico sur ARRÊT, volontairement, jusqu'à la fin des essais Cloud** (Nico, 01/11 15:40 : son compte ne sert qu'aux tests ; ne pas l'attendre). À la remise en MARCHE,
   relire en base : `profiles.extension_last_seen_at` qui avance, jobs et messagerie qui reprennent. Requête :
   dernier signe, jobs `processing`, `cross_post_jobs` (created/published/last_checked/vu_en_ligne),
   `vinted_sync_runs`, `messagerie_releves.dernier_le`, `usage_logs` après l'heure de remise.

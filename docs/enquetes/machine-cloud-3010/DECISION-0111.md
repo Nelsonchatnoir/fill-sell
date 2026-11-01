@@ -1,83 +1,63 @@
-# Cloud — la décision, sur une page (01/11/2026)
+# Cloud — la décision, sur une page (01/11/2026, mise à jour de 15:40)
 
-Base : rapport Cloud (`RAPPORT.md`, § 12 Shadow, § 13 Windows + carte NVIDIA, § 14 et 15 Steel) et rapport Mac mini
-(`docs/enquetes/mac-mini-3110/RAPPORT.md`). Rien n'est acheté. Coûts **TTC par utilisateur et par mois**, sans
-récupération de TVA (HT × 1,20 ; change 1 € = 1,1172 $), IP dédiée comprise (4,64 €, base des rapports), face aux
-**20 €** de l'option Cloud (hors commission Stripe).
+Base : rapport Cloud (`RAPPORT.md`, § 12 à 16) et rapport Mac mini (`docs/enquetes/mac-mini-3110/RAPPORT.md`). Rien n'est
+acheté.
+- **Ce que Nico touche vraiment par abonné Cloud** : 14,40 € par Stripe, 10,50 € par Apple (frais et URSSAF déduits).
+  Les marges se calculent sur ces montants, plus sur 20 €.
+- Coûts TTC par utilisateur et par mois, sans récupération de TVA ; IP dédiée comprise (4,64 €).
 
-## 1. Ce que l'essai Steel du 01/11 a tranché
-- Leboncoin : **formulaire**. Beebs : **glissière**. Aucun blocage. Profil neuf, IP 81.181.239.136, sans maquillage ni
-  résolveur. Ton poste est resté muet, vérifié en base.
-- Linux en centre de données n'est donc pas condamné : c'est **notre** Chrome Linux de Hetzner qui est repéré (brûleurs
-  du 05/10 au 30/10, même empreinte). Ce n'est qu'un essai : la tenue dans la durée n'est pas prouvée.
-- Le « Me connecter » de production a piloté le Chrome de Steel tel quel. La connexion et la glissière en direct depuis
-  l'app marchent donc aussi avec Steel.
+## 1. Décisions de Nico (01/11)
+- Même rythme que l'extension : veille des commandes toutes les 10 min, ventes détectées 24 h/24.
+- Steel loué à la minute ne sert qu'à tester : ≈ 15,5 € par utilisateur, donc à perte.
+- Son poste reste sur ARRÊT jusqu'à la fin des essais Cloud : il compte comme muet.
 
-## 2. Toutes les pistes
+## 2. Ce que les essais ont prouvé
+- Windows sur vraie carte graphique passe (PC de Nico, Shadow), avec glissière.
+- Steel loué (Linux, sans carte) passe le 01/11 : Leboncoin formulaire, Beebs glissière.
+- Notre Chrome Linux chez Hetzner était bloqué le 30/10, même sur machine neuve et IP neuve.
+- Deux raisons possibles au passage de Steel, que l'essai ne sépare pas :
+  - notre environnement s'est fait repérer à force de 403 (brûleurs, essais répétés) ;
+  - la « furtivité avancée » non documentée de Steel loué.
 
-| Voie | Prouvé | Pas prouvé | € TTC / utilisateur | Coût fixe / mois | Licence, droit |
-|---|---|---|---|---|---|
-| **(a) Steel, navigateur ouvert 24 h/24** | LBC formulaire, Beebs glissière (01/11) ; LBC connexion + publication (26/09) | durée | **69 à 83** | 0 | aucune licence de système à notre charge ; données aux États-Unis |
-| **(a) Steel à la demande + ronde toutes les 10 min** | idem | durée d'une ronde, cookies gardés d'une session à l'autre, durée | **≈ 15,5** en moyenne, 18 pour 9 utilisateurs sur 10, 34 pour le plus gros | **0** | idem ; Steel enregistre les sessions (à couper) ; conditions de Steel à lire |
-| (b) Mac mini Scaleway M4-M (Paris) | rien (aucun essai) | tout | 16,58 (machine pleine) ; Green Mini 14,72 | 238,80 | **BLOQUANT** : macOS § 3.A, 2.I, 2.J (seul Apple peut lever, par écrit) |
-| (c) Hetzner enchère 3093130, RTX 4000 SFF Ada | Windows + vraie carte passe (Shadow, PC de Nico : glissières) | ce serveur, Windows Server, le pilote | 13,15 ; **24,07 avec RDS** | 340,44 (rentable dès 23 util. ; jamais avec RDS) | Windows SPLA sur ce serveur non acquis ; RDS 9,10 € HT par client à trancher par écrit |
-| (c) centron RTX A4000 | idem | idem | 15,63 ; 24 à 26,6 avec RDS | 571,63 (dès 38 util.) | SaaS permis ; prorata Windows et prix RDS non lus |
-| (c) Azure NV12ads spot, Paris | idem | rendu d'une fraction d'A10 ; éviction | 15,23 ; 26,15 avec RDS | 254,08 (dès 17 util.) | GRID fournie ; RDS non vendue ; machine reprise avec 30 s de préavis |
-| (c) Hetzner AX42 + Windows Server | idem | pilote AMD non prévu pour Windows Server | 9,72 ; 20,64 avec RDS | 152,28 + 58,80 de mise en service | RDS à trancher |
-| Shadow Neo Pro + Always On | LBC et Beebs glissière (30/10) | — | 29,86 | 252,17 | accord de Shadow requis — **écarté par toi** |
-| (d) Cloud en pause | — | — | 0 | 0 | — |
+## 3. Toutes les pistes, sur les montants nets
+| Piste | € TTC / util. | Marge Stripe | Marge Apple | Coût fixe / mois | Prouvé ? | Licence |
+|---|---|---|---|---|---|---|
+| **steel-browser chez nous** (logiciel libre), cx43 plein (10 util.) | **6,62** | **+ 7,78** | **+ 3,88** | 19,79 (cx43 en rupture) | **non** (bloqué le 30/10 sur l'ancien serveur et les IP usées ; jamais essayé sur machine neuve et IP qui passe) | Apache 2.0 : aucune |
+| idem sur AX42 plein (32 util.) | 8,35 | + 6,05 | + 2,15 | 118,80 + 58,80 une fois | non | aucune |
+| Steel loué, ronde de 10 min | 15,53 | − 1,13 | − 5,03 | 0 | oui, 1 essai | données aux États-Unis ; furtivité non documentée |
+| Windows + carte, AX42 + Windows Server | 9,72 (20,64 avec RDS) | + 4,68 (perte) | + 0,78 (perte) | 152,28 | même famille, non essayée | RDS à trancher par écrit |
+| Windows + carte, Hetzner 3093130 | 13,15 (24,07 avec RDS) | + 1,25 (perte) | − 2,65 | 340,44 | même famille, non essayée | idem ; Windows sur ce serveur non acquis |
+| Azure spot / centron | 15,23 / 15,63 | perte | perte | 254 / 572 | non | RDS |
+| Mac mini (Green Mini / Scaleway) | 14,72 / 16,58 | perte | perte | 101 / 239 | non | **bloquante** (macOS) |
+| Shadow + Always On | 29,86 | perte | perte | 252 | oui | écarté |
 
-Le « avec RDS » est la lecture prudente de la licence Microsoft (chaque client, chaque mois). Avec elle, **aucune
-machine Windows ne passe sous 20 €**. Sans elle, Windows ne devient rentable qu'une fois la machine remplie (17 à 38
-utilisateurs payants), parce qu'on paie la machine même vide. Steel ne coûte que ce qu'on utilise.
+Seules deux voies laissent une marge aux deux canaux de paiement : **steel-browser chez nous**, et Windows sur AX42
+**sans** RDS (+ 0,78 € seulement côté Apple). La première est de loin la meilleure, mais elle n'est pas prouvée.
 
-## 3. Ventes détectées 24 h/24 : Steel tient, sans navigateur allumé en permanence
-- Navigateur Steel ouvert 24 h/24 : 69 à 83 € → exclu.
-- **Ronde de 10 min** : une session Steel courte lit la liste des commandes Vinted et Leboncoin, puis se ferme. C'est la
-  lecture et le rythme de la veille des commandes de l'extension (10 min ± 90 s), donc jamais plus vite que l'extension.
-  - Beebs et Depop : relevés du jour, comme sur un PC. eBay : déjà 24 h/24 par l'API, côté serveur.
-  - Coût ≈ 7,84 € par mois, si une ronde dure 1 min.
-  - **Seuil** : une ronde doit durer moins d'environ 1 min 30 s ; au-delà, l'utilisateur moyen dépasse 20 €.
-- Sans aucun navigateur :
-  - la lecture des pages par le serveur est abandonnée depuis le 11/07 : les IP de Supabase sont bloquées par DataDome ;
-  - piste plus tard, non prouvée : les mails de vente que l'utilisateur fait suivre à FillSell servent de signal, jamais
-    de preuve, et ouvrent Steel pour confirmer par identifiant, puis retirer. Coût ≈ 8 €, mais un geste de chaque
-    utilisateur (renvoi de ses mails) et du code neuf.
-- **Steel n'est donc pas éliminé.**
+## 4. steel-browser chez nous : coût par nombre d'utilisateurs (serveur + IP, TTC)
+| Serveur | Stock (15:30) | n = 5 | n = 10 | n = 20 | n = 30 | Rentable dès (Stripe / Apple) |
+|---|---|---|---|---|---|---|
+| Cloud cx43 (8 vCPU, 16 Go), 19,79 €/mois | rupture | 8,60 | 6,62 | — | — | 3 / 4 abonnés |
+| Cloud cx53 (16 vCPU, 32 Go), 35,99 € | rupture | 11,84 | 8,24 | 6,44 | — | 4 / 7 |
+| Cloud cpx42 (8 vCPU, 16 Go), 83,99 € | disponible | 21,44 | 13,04 | — | — | 9 / au-delà de sa capacité |
+| Robot enchère i7-7700 64 Go, 90,84 € | disponible | 22,81 | 13,72 | 9,18 | 7,67 | 10 / 16 |
+| Robot AX42 64 Go, 118,80 € + 58,80 une fois | commandable | — | 16,52 | 10,58 | 8,60 | 13 / 21 |
 
-## 4. Recommandation : (a) Steel, à la demande, avec une ronde toutes les 10 min
-- C'est la seule voie qui passe sans mur de licence. Aucun coût fixe : idéal tant que l'option Cloud a peu d'abonnés.
-- ≈ 15,5 € TTC par utilisateur, ventes détectées 24 h/24, connexion et glissière en direct depuis l'app.
-- Risques :
-  - **marge mince** : ≈ 4,5 € en moyenne ; les plus gros vendeurs (≈ 120 jobs par jour) coûtent plus de 20 € ;
-  - **dépendance** : l'empreinte de Steel est partagée avec ses autres clients ; si DataDome la marque, tout s'arrête ;
-  - **données aux États-Unis** : accord de traitement et clauses types ; enregistrement des sessions à couper ;
-  - un seul essai à ce jour.
-- Formule Launch : 0 $ par mois, 10 sessions simultanées, suffit jusqu'à ≈ 30 utilisateurs. La formule Scale (250 $ par
-  mois) seulement au-delà, après un essai réussi et sur ton feu vert.
-- Repli si l'essai suivant échoue : **(d) pause**. La voie (c) ne se rouvre que si Hetzner ou centron répondent par
-  écrit sur la RDS (tickets prêts, § 13.5, gratuits).
-- Hors liste, non recommandée sans ton avis : refaire notre propre image Linux. Avec la même empreinte, elle a été
-  bloquée sur machine neuve et IP neuve ; en changer reviendrait à choisir une empreinte.
+- Le premier poste de coût est l'IP dédiée (4,64 € par utilisateur).
+- Capacité estimée à 10–13 utilisateurs pour 16 Go ; à mesurer.
 
-## 5. Le prochain essai : endurance Steel, 48 h, ton compte seul
-1. **Préparation**, sans plateforme et sans coût :
-   - petit outil local : un profil Steel persistant, le vrai écran « Me connecter » servi sur ton PC, et les rondes ;
-   - enregistrement des sessions Steel coupé, conditions de Steel lues.
-2. **Toi** : connexion Vinted, Leboncoin, Beebs, Depop, glissières comprises, dans cet écran.
-3. **48 h de rondes** toutes les 10 min ± 90 s, chaque session fermée aussitôt. Mesures :
-   - durée et coût de chaque ronde ;
-   - glissières et blocages ;
-   - cookies gardés d'une session à l'autre ;
-   - ventes vues par Steel face à celles vues par ton PC.
-   Ton poste reste en service : pendant 48 h, tes listes de commandes Vinted et Leboncoin sont lues 12 fois par heure au
-   lieu de 6.
-4. **Arrêt au premier « Accès restreint »**, sans insister.
-5. **Coût exact** :
-   - au plus 288 rondes plafonnées à 2 min + ≈ 15 min de connexions = 9,85 h × 0,10 $ = **0,99 $, soit 1,06 € TTC au
-     plus** ;
-   - attendu, avec des rondes d'1 min : ≈ 0,51 $, soit 0,54 € TTC ;
-   - IP 81.181.239.136 déjà payée jusqu'au 29/11 : 0 € ;
-   - aucun abonnement.
-6. **Critère de réussite** : 0 blocage, ronde ≤ 1 min 30 s, cookies tenus 48 h. Alors seulement, le moteur Steel dans
-   l'orchestrateur (développement à valider).
+## 5. Le prochain essai (un seul, sur ton feu vert écrit)
+- **Quoi** : steel-browser tel que publié, avec écran, injection d'empreinte coupée, aucun résolveur, ni langue ni
+  fuseau réglés. Image `ghcr.io/steel-dev/steel-browser` épinglée par son empreinte.
+- **Où** : un **Hetzner Cloud cpx42 neuf** (8 vCPU, 16 Go, Nuremberg), à l'heure, supprimé juste après.
+- **Comment** :
+  - sortie par l'IP 81.181.239.136 (la même que l'essai Steel loué), profil neuf ;
+  - « Me connecter » de production, extension 0.6.164 ;
+  - vérification et essai à blanc sur proxy mort, puis une ouverture Leboncoin, puis une ouverture Beebs.
+  - Si c'est bloqué, on s'arrête.
+- **Durée** : ≈ 1 h 30, 3 h au plus.
+- **Coût** : 0,27 € TTC (2 h), **0,40 € TTC au plus** (3 h). IP déjà payée, logiciel gratuit, aucun abonnement.
+- **Ensuite** :
+  - si ça passe : endurance de 48 h au rythme de l'extension sur ton compte (≈ 6,46 € TTC de cpx42), sur feu vert ;
+  - si c'est bloqué : la voie « chez nous » est fermée. Steel loué reste à perte et porte un doute de maquillage.
+    → **Cloud en pause**, sauf réponse écrite de Hetzner sur la RDS pour la voie Windows AX42.
