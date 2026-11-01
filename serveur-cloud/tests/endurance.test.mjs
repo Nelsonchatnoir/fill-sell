@@ -79,3 +79,11 @@ test('(01/11) verrou des plateformes sur steel : seules les plateformes FERMÉES
   assert.ok(motifsVerrou(['ebay', 'opla', 'VINTED']).every((m) => !m.urlPattern.includes('vinted')), 'les noms se nettoient ; eBay et Opla ne sont jamais ouverts ici');
   assert.ok(motifsVerrou([]).every((m) => m.requestStage === 'Request'), 'arrêtées avant de partir');
 });
+
+test("(01/11) une copie neuve de l'extension : le cache du profil n'est effacé que si son empreinte a changé", async () => {
+  const { cacheExtensionAEffacer } = await import('../src/navigateur.js');
+  assert.equal(cacheExtensionAEffacer('', 'abc'), true, 'jamais notée : effacé une fois');
+  assert.equal(cacheExtensionAEffacer('abc\n', 'abc'), false, "même copie : rien n'est effacé (les ouvertures suivantes ne touchent à rien)");
+  assert.equal(cacheExtensionAEffacer('abc', 'def'), true, 'copie neuve : effacé');
+  assert.equal(cacheExtensionAEffacer('abc', ''), false, 'copie illisible : on ne touche à rien');
+});

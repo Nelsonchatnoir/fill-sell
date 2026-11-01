@@ -19,8 +19,8 @@
 //   3. le pare-feu de l'hôte (deploiement/pare-feu-navigateurs.sh) n'autorise
 //      aux conteneurs du réseau br-fillsell QUE le port des proxys IPRoyal :
 //      même un navigateur sans proxy ne joint aucune plateforme.
-import { mkdir, rm, readdir, chown, readFile } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
+import { mkdir, rm, readdir, chown, readFile, writeFile } from 'node:fs/promises';
+import { randomBytes, createHash } from 'node:crypto';
 import { connecterCdp } from './cdp.js';
 
 export const EXTENSION_NOM = 'fillsell';
@@ -71,6 +71,17 @@ export async function exigerPareFeu(config) {
   const v = preuvePareFeu(brute, boot);
   if (!v.ok) throw new Error(`navigateur refusé : pare-feu des navigateurs non prouvé (${v.raison})`);
   return v;
+}
+
+/**
+ * (01/11) UNE COPIE NEUVE DE L'EXTENSION ATTEINT VRAIMENT LE NAVIGATEUR : le profil du compte est gardé (persist) et
+ * Chrome y garde le script de fond de l'extension en cache tant que son numéro de version ne change pas — or la copie
+ * Cloud porte le numéro du parc (0.6.164). Vu le 01/11 : la copie neuve sur le disque, l'ancienne qui tournait. Règle :
+ * l'empreinte du script de fond est notée dans le profil ; quand elle change, le cache des service workers du profil est
+ * effacé AVANT d'ouvrir la session (les cookies, donc les connexions, restent). Pure pour la décision : testée.
+ */
+export function cacheExtensionAEffacer(empreinteNotee, empreinteCopie) {
+  return Boolean(empreinteCopie) && String(empreinteNotee ?? '').trim() !== String(empreinteCopie).trim();
 }
 
 export const nomConteneur = (user) => `fs-nav-${String(user).replace(/[^0-9a-f-]/gi, '')}`;
@@ -237,6 +248,21 @@ export function creerNavigateurs({ config, docker, journal }) {
     return { nom, ip };
   }
 
+  /** (01/11) Le cache du script de fond de l'extension, effacé quand la copie a changé (cacheExtensionAEffacer). */
+  async function rafraichirExtensionDuProfil(user, profilId) {
+    const copie = await readFile(`${config.dossierExtension}/background.js`).catch(() => null);
+    if (!copie) return false;
+    const empreinte = createHash('sha256').update(copie).digest('hex').slice(0, 16);
+    const marque = `${config.dossierProfils}/${profilId}/.extension-cloud`;
+    const notee = await readFile(marque, 'utf8').catch(() => '');
+    if (!cacheExtensionAEffacer(notee, empreinte)) return false;
+    await rm(`${config.dossierProfils}/${profilId}/Default/Service Worker`, { recursive: true, force: true });
+    await writeFile(marque, `${empreinte}
+`);
+    journal.info('extension_rafraichie', { user, empreinte });
+    return true;
+  }
+
   /** (30/10) Chrome : conteneur neuf sur le proxy de CETTE ouverture, profil gardé ; CDP par le relais 9223. */
   async function ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId, permises, jetonControle }) {
     const nom = nomConteneur(user);
@@ -277,6 +303,7 @@ export function creerNavigateurs({ config, docker, journal }) {
       return h;
     }
     const { nom, ip } = await assurerConteneur(user, profilId);
+    await rafraichirExtensionDuProfil(user, profilId);
     await attendreApi(ip);
     const corps = corpsSession({ proxyUrl });
     const r = await fetch(`http://${ip}:3000/v1/sessions`, {
