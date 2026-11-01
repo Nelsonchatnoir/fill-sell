@@ -142,7 +142,7 @@ test('(01/11) les heures COMPTÉES : seulement navigateur ouvert, plateforme con
   assert.equal(d.plateformes.vinted.reste_heures, Math.round(((DUREE_ESSAI_MS - 30 * 60_000) / 3600_000) * 10) / 10);
 });
 
-function monterEndurance({ cibles = [], arretFichier = null, taches = [] } = {}) {
+function monterEndurance({ cibles = [], arretFichier = null, taches = [], profil = null } = {}) {
   const dossierEtat = mkdtempSync(path.join(tmpdir(), 'fs-endurance-'));
   mkdirSync(path.join(dossierEtat, 'endurance'), { recursive: true });
   if (arretFichier) writeFileSync(path.join(dossierEtat, 'endurance', 'arret.json'), JSON.stringify(arretFichier));
@@ -151,7 +151,9 @@ function monterEndurance({ cibles = [], arretFichier = null, taches = [] } = {})
   const h = { cdp: { send: async (m) => (m === 'Target.getTargets' ? { targetInfos: cibles } : {}) }, permises: ['beebs', 'leboncoin', 'vinted'] };
   const e = creerEndurance({
     config: { dossierEtat, comptesAutorises: [U] },
-    base: { from: (t) => ({ select: () => ({ eq: async () => ({ data: [] }), in: () => ({ like: () => ({ or: () => ({ limit: async () => ({ data: t === 'cross_post_jobs' ? taches : [] }) }) }) }) }) }) },
+    base: { from: (t) => ({ select: () => ({
+      eq: () => { const r = { data: t === 'profiles' ? null : [] }; return { then: (ok, ko) => Promise.resolve(r).then(ok, ko), maybeSingle: async () => ({ data: t === 'profiles' ? profil : null }) }; },
+      in: () => ({ like: () => ({ or: () => ({ limit: async () => ({ data: t === 'cross_post_jobs' ? taches : [] }) }) }) }) }) }) },
     docker: { lister: async () => [], stats: async () => null },
     navigateurs: { ouverts: () => [U], ouvert: () => h },
     postes: {
@@ -207,4 +209,30 @@ test('(01/11) une tâche refusée par l’anti-robot bloque SA plateforme, une s
   await e.mesure();
   assert.deepEqual(appels.bloquer, [['beebs', 'tache_refusee_anti_robot']]);
   assert.equal(e.arretee(), null);
+});
+
+test('(02/11) une tâche du Cloud PUBLIÉE prouve sa plateforme (Vinted, connectée avant la règle « compte lu ») ; Leboncoin en pause de l’app ne compte pas', async () => {
+  const { pausesDeLApp, preuvesParTache, decompteEssai } = await import('../src/endurance.js');
+  assert.deepEqual(pausesDeLApp({ leboncoin: { blocage_acces: { depuis: 'x' } } }), ['leboncoin'], 'Leboncoin restreint, pas levé : en pause');
+  assert.deepEqual(pausesDeLApp({ leboncoin: { blocage_acces: { depuis: 'x', leve_le: 'y' } } }), [], 'levé (reprise prudente) : il travaille');
+  assert.deepEqual(pausesDeLApp(null), []);
+  const j = (id, platform, published_at, build = 'x-cloud · v0.6.164', status = 'published') => ({ id, platform, status, handler_build: build, published_at });
+  assert.deepEqual(preuvesParTache([j('b', 'vinted', '2026-11-01T22:50:00Z'), j('a', 'vinted', '2026-11-01T22:42:40Z'), j('c', 'depop', '2026-11-01T22:49:27Z'),
+    j('d', 'beebs', '2026-11-01T22:40:00Z', '2026-10-31T09:31:55Z+3876dc8'), j('e', 'leboncoin', null, 'x-cloud', 'pending')], new Set(['depop'])).map((x) => x.id), ['a'],
+  'la PREMIÈRE tâche publiée par le Cloud, seulement pour une plateforme pas encore vérifiée (jamais l’ordinateur)');
+  const taches = [j('t-v', 'vinted', '2026-11-01T22:42:40Z')];
+  const { e, lireMesures } = monterEndurance({ taches, profil: { platform_settings: { leboncoin: { blocage_acces: { depuis: '2026-11-01T21:54:07Z' } } } } });
+  await e.charger();
+  await e.mesure();
+  await e.mesure();
+  const l = lireMesures();
+  const preuves = l.filter((x) => x.evenement === 'connexion_verifiee');
+  assert.deepEqual(preuves.map((x) => [x.plateforme, x.preuve, x.verifiee_le]), [['vinted', 'tache_publiee', '2026-11-01T22:42:40Z']], 'une seule preuve, à l’heure de la publication');
+  assert.deepEqual(l.filter((x) => x.evenement === 'mesure')[0].pauses, { f44b5917: ['leboncoin'] });
+  const d = decompteEssai([
+    { le: '2026-11-01T22:00:00Z', evenement: 'connexion_verifiee', plateforme: 'leboncoin', verifiee_le: '2026-11-01T22:00:00Z' },
+    { le: '2026-11-01T22:10:00Z', evenement: 'mesure', navigateursMo: { a: 1 }, connexions: { a: { leboncoin: true } }, pauses: { a: ['leboncoin'] } },
+    { le: '2026-11-01T22:20:00Z', evenement: 'mesure', navigateursMo: { a: 1 }, connexions: { a: { leboncoin: true } }, pauses: { a: ['leboncoin'] } },
+  ]);
+  assert.equal(d.plateformes.leboncoin.heures_comptees, 0, 'Leboncoin en pause de l’app : ses heures ne comptent pas');
 });

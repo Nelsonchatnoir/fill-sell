@@ -91,6 +91,21 @@ export function resumeTachesCloud(lignes) {
 
 export const DUREE_ESSAI_MS = 48 * 3600_000;
 
+/** (02/11) Les plateformes que l'app met en pause sur le compte (pure) : Leboncoin restreint et pas encore levé. */
+export function pausesDeLApp(ps) {
+  const b = ps?.leboncoin?.blocage_acces;
+  return b && typeof b === 'object' && !b.leve_le ? ['leboncoin'] : [];
+}
+
+/** (02/11) Les tâches du Cloud publiées qui prouvent une plateforme pas encore vérifiée (pure) : la première par plateforme. */
+export function preuvesParTache(lignes, dejaVerifiees = new Set()) {
+  const vues = new Set(dejaVerifiees);
+  return (lignes ?? [])
+    .filter((j) => j?.status === 'published' && /-cloud/.test(String(j.handler_build ?? '')) && Number.isFinite(Date.parse(j.published_at)))
+    .sort((a, b) => Date.parse(a.published_at) - Date.parse(b.published_at))
+    .filter((j) => { if (vues.has(j.platform)) return false; vues.add(j.platform); return true; });
+}
+
 /**
  * (01/11) Le décompte des 48 h (pure, lu par outils/endurance-bilan.mjs). Seul compte ce qui suit la DERNIÈRE remise à
  * zéro (evenement 'remise_a_zero', outils/endurance-remise.mjs) : les connexions faussement « connectées » du 01/11 au
@@ -124,7 +139,7 @@ export function decompteEssai(lignes, dureeMs = DUREE_ESSAI_MS) {
     if (!Object.values(m.navigateursMo ?? {}).some(Number.isFinite)) continue;   // navigateur fermé : rien ne tourne
     executantMs += b - a;
     const cx = Object.assign({}, ...Object.values(m.connexions ?? {}));
-    const enVerif = new Set(Object.values(m.bloquees ?? {}).flat());
+    const enVerif = new Set([...Object.values(m.bloquees ?? {}).flat(), ...Object.values(m.pauses ?? {}).flat()]);
     for (const [pf, info] of Object.entries(plateformes)) {
       const v = Date.parse(info.verifiee_le);
       if (!(v < b) || cx[pf] !== true || enVerif.has(pf)) continue;
@@ -218,6 +233,13 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
     await ecrire({ evenement: 'plateforme_debloquee', user: String(user).slice(0, 8), plateforme, debloquee_le: le });
   }
 
+  /** Les plateformes déjà vérifiées depuis la dernière remise à zéro (relu dans le journal de l'essai, petit fichier). */
+  async function plateformesVerifiees() {
+    const lignes = (await readFile(`${dossier}/mesures.jsonl`, 'utf8').catch(() => '')).split('\n').filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    return new Set(Object.keys(decompteEssai(lignes).plateformes));
+  }
+
   const ecrire = (o) => appendFile(`${dossier}/mesures.jsonl`, `${JSON.stringify({ le: new Date().toISOString(), ...o })}\n`).catch(() => {});
 
   /** Chaque minute : les cadres DataDome des onglets de travail (une plateforme déjà en vérification n'est plus lue). */
@@ -265,9 +287,17 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
       connexions[user.slice(0, 8)] = etat;
     }
     const bloquees = Object.fromEntries(comptes.map((u) => [u.slice(0, 8), plateformesBloquees(u)]).filter(([, l]) => l.length));
+    // (02/11) Une plateforme que l'APP met en pause (Leboncoin « Accès temporairement restreint » :
+    // platform_settings.leboncoin.blocage_acces, _shared/blocage-leboncoin.js) ne fait rien : ses heures ne comptent pas.
+    const pauses = {};
+    for (const user of comptes) {
+      const { data: pr } = await base.from('profiles').select('platform_settings').eq('id', user).maybeSingle();
+      const l = pausesDeLApp(pr?.platform_settings);
+      if (l.length) pauses[user.slice(0, 8)] = l;
+    }
     let taches = null;
     if (comptes.length) {
-      const { data } = await base.from('cross_post_jobs').select('id, platform, action, status, error, handler_build')
+      const { data } = await base.from('cross_post_jobs').select('id, platform, action, status, error, handler_build, published_at')
         .in('user_id', comptes).like('handler_build', '%-cloud%')
         .or(`created_at.gte.${depuis},published_at.gte.${depuis},last_checked_at.gte.${depuis}`).limit(500);
       taches = resumeTachesCloud(data ?? []);
@@ -276,8 +306,14 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
         if (blocages.some((b) => b.tache === anti.id) || !anti.plateforme) continue;
         await bloquer(comptes[0], { source: 'tache', nature: 'tache_refusee_anti_robot', plateforme: anti.plateforme, tache: anti.id, detail: `tâche ${anti.id} (${anti.action})` });
       }
+      // (02/11) Une tâche du Cloud PUBLIÉE est la preuve la plus forte d'une session vivante : une plateforme sans
+      // connexion vérifiée depuis la remise à zéro (Vinted, connectée avant la règle « compte lu ») l'est par elle.
+      const dejaVerifiees = await plateformesVerifiees();
+      for (const j of preuvesParTache(data ?? [], dejaVerifiees)) {
+        await ecrire({ evenement: 'connexion_verifiee', user: comptes[0].slice(0, 8), plateforme: j.platform, preuve: 'tache_publiee', tache: j.id, verifiee_le: j.published_at });
+      }
     }
-    await ecrire({ evenement: 'mesure', navigateursMo, serveurMo, verrou, connexions, bloquees, taches, arrete: Boolean(arret) });
+    await ecrire({ evenement: 'mesure', navigateursMo, serveurMo, verrou, connexions, bloquees, pauses, taches, arrete: Boolean(arret) });
   }
 
   /**
