@@ -5,6 +5,10 @@ Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 18. Décision de Nico
 l'essai de 48 h sur le vrai produit, son compte seul, son poste sur ARRÊT, rien pour les autres, aucun achat.
 
 ### Où en est l'essai
+- **20:12 : OTA 2.9.148** — « Connecter mes plateformes » ne faisait rien sur iPhone (écran ouvert DERRIÈRE la page
+  Réglages) : portail sur `document.body`, traces du clic et des erreurs dans `usage_logs` (`cloud_me_connecter_*`,
+  `cloud_connexion_*`), carte aux quatre plateformes. Rapport § 18.5. Pour le relire : `select feature, metadata,
+  created_at from usage_logs where user_id = '<Nico>' and feature like 'cloud_%' order by created_at desc`.
 - **Prêt depuis 19:35** ; il attend le seul geste de Nico : Réglages › Abonnement › FillSell Cloud › « Connecter mes
   plateformes ». Puis Vinted, Leboncoin, Beebs, Depop l'un après l'autre, glissière résolue par lui, « J'ai fini ».
   Les 48 h partent de sa première connexion (heure lue dans `cloud_connexions`).

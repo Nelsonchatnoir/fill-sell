@@ -1265,3 +1265,30 @@ comptes ; aucun achat.
   (`docker compose exec -T orchestrateur node outils/endurance-bilan.mjs`).
 - **Inverse en fin d'essai** (sur décision de Nico) : `20261101_cloud_essai48h_nico_INVERSE.sql`, puis
   `COMPTES_AUTORISES` remis à un compte fictif.
+
+### 18.5 « Connecter mes plateformes » ne faisait rien sur iPhone (19:38) → corrigé, OTA 2.9.148 (20:12)
+- **Constat de Nico** (iPhone, Réglages › Abonnement, carte « Active ») : aucun écran, aucun message, aucune trace dans
+  `usage_logs` (aucune n'existait pour ce geste).
+- **Cause** : la page Réglages est un portail sur `document.body` (plan 400) ; « Me connecter » était rendu dans
+  `.app-root`. Sous iOS, WKWebView peint les couches fixes de `.app-root` dans sa propre couche, plan ou pas : l'écran
+  s'ouvrait, DERRIÈRE les réglages (même famille que les « lignes mortes » décrites dans `src/reglages/ReglagesUI.jsx`).
+- **Règle corrigée** : une couche Cloud ouverte depuis Réglages est un portail sur `document.body` (« Me connecter », la
+  modale des conditions ; sans `document`, rendu direct pour les autotests). `selftest:cloud-me-connecter` (17).
+- **Traces dans `usage_logs`** :
+  - `cloud_me_connecter_clic`, avec l'origine (Réglages, bandeau ou achat, tous par `ouvrirMeConnecter`) ;
+  - `cloud_me_connecter_muet` : écran non monté 1,5 s après le clic ;
+  - `cloud_me_connecter_ouvert` {visible}, et `cloud_me_connecter_cache` {devant} quand une autre couche le cache ;
+  - `cloud_me_connecter_erreur` : lecture des connexions ratée ;
+  - `cloud_connexion_ouverte` et `cloud_connexion_fin` {plateforme, étape, message} pour chaque connexion.
+- **Textes** : la carte et les écrans Cloud nomment les quatre plateformes (Vinted, Leboncoin, Beebs, Depop). La règle
+  « jamais Beebs » du 05/10 est levée dans les autotests (décision de Nico) ; « Vinted et Leboncoin » seuls est
+  désormais refusé.
+- **Vérification** :
+  - Fabriquer une session au nom de Nico pour piloter l'app a été REFUSÉ par le garde-fou de sécurité (usurpation
+    d'identité) ; aucun contournement.
+  - À la place, la vraie page Réglages et le vrai écran ont été montés sur un banc à base factice, dans WebKit au format
+    iPhone 13. Avant le correctif : écran dans `.app-root`. Après : enfant de `body`, devant au centre, trace
+    « ouvert, visible ».
+  - Le paquet 2.9.148 contient le portail (`createPortal(…, document.body)`) et les 5 traces.
+  - Preuve d'identité : 708 scènes identiques pour les comptes ordinaires.
+  - Suite complète 517 / 0 rouge.
