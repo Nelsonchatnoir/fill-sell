@@ -65,6 +65,59 @@ export const SOURCE_CONNEXION_CLOUD = `async function connexionCloudPresente(pf)
   return false;
 }`;
 
+// (01/11, règle de Nico du 30/10 portée sur le moteur steel) LE VERROU DES PLATEFORMES DANS LA COPIE CLOUD : une
+// plateforme n'est JAMAIS jointe par cette extension tant que son cookie de connexion est absent de ce navigateur
+// (connexionCloudPresente) — ni par fetch (service worker), ni par un onglet ou une fenêtre ouverts par l'extension.
+// « Me connecter » passe par l'orchestrateur (DevTools), pas par l'extension : il n'est pas touché. C'est le SECOND verrou :
+// le premier, dans l'orchestrateur (interception DevTools du navigateur entier, serveur-cloud/src/navigateur.js), a arrêté
+// le 01/11 les trois pages ouvertes par l'extension avant toute connexion (Vinted, Leboncoin, Beebs : ERR_BLOCKED_BY_CLIENT)
+// mais n'est pas prouvé sur les requêtes du service worker ; celui-ci les couvre, avec les onglets et les fenêtres.
+// Exporté pour l'autotest, qui l'exécute avec un faux `chrome` et un faux `fetch`.
+export const SOURCE_VERROU_CLOUD = `const VERROU_DOMAINES_CLOUD = { vinted: ["vinted.fr", "vinted.com", "vinted.net"], leboncoin: ["leboncoin.fr"], beebs: ["beebs.app"], depop: ["depop.com"] };
+const verrouCloud = { bloquees: 0, derniere: null, onglets: false };
+function plateformeVerrouCloud(url) {
+  let h = "";
+  try { h = new URL(String(url)).hostname.toLowerCase(); } catch { return null; }
+  for (const [pf, domaines] of Object.entries(VERROU_DOMAINES_CLOUD)) if (domaines.some((d) => h === d || h.endsWith("." + d))) return pf;
+  return null;
+}
+async function verrouCloudRefuse(url) {
+  const pf = plateformeVerrouCloud(url);
+  if (!pf) return null;
+  return (await connexionCloudPresente(pf).catch(() => false)) ? null : pf;
+}
+function refusVerrouCloud(pf) {
+  verrouCloud.bloquees++;
+  verrouCloud.derniere = { plateforme: pf, le: new Date().toISOString() };
+  return new TypeError("FillSell Cloud : " + pf + " n'est pas connecté dans ce navigateur, aucune visite");
+}
+const fetchSansVerrouCloud = globalThis.fetch.bind(globalThis);
+globalThis.fetch = async function fetch(entree, options) {
+  const pf = await verrouCloudRefuse(typeof entree === "string" ? entree : entree?.url ?? String(entree));
+  if (pf) throw refusVerrouCloud(pf);
+  return fetchSansVerrouCloud(entree, options);
+};
+function envelopperVerrouCloud(objet, nom, adresses) {
+  const origine = objet?.[nom];
+  if (typeof origine !== "function") return false;
+  try {
+    objet[nom] = async function (...args) {
+      for (const u of [].concat(adresses(args) ?? [])) {
+        const pf = u ? await verrouCloudRefuse(u) : null;
+        if (pf) throw refusVerrouCloud(pf);
+      }
+      return origine.apply(this, args);
+    };
+  } catch { return false; }
+  return objet[nom] !== origine;
+}
+verrouCloud.onglets = [
+  envelopperVerrouCloud(chrome.tabs, "create", (a) => a[0]?.url),
+  envelopperVerrouCloud(chrome.tabs, "update", (a) => (typeof a[0] === "object" && a[0] ? a[0] : a[1])?.url),
+  envelopperVerrouCloud(chrome.windows, "create", (a) => a[0]?.url),
+].every(Boolean);
+globalThis.__fillsellVerrouCloud = { etat: () => ({ ...verrouCloud, fetch: globalThis.fetch !== fetchSansVerrouCloud }), refuse: verrouCloudRefuse };`;
+
 /** Les patchs de background.js (pur : testé par scripts/cloud-extension-selftest.mjs). */
 export function patcherBackground(bg) {
   const appliques = [];
@@ -74,12 +127,13 @@ export function patcherBackground(bg) {
     bg = bg.replace(ancre, () => remplacement);
     appliques.push(nom);
   };
-  patch('constantes Cloud',
+  patch('constantes Cloud et verrou des plateformes (01/11)',
     'const FILLSELL_BUILD_ID = "__FILLSELL_BUILD_ID__";',
     'const FILLSELL_BUILD_ID = "__FILLSELL_BUILD_ID__";\n'
     + `const FILLSELL_CLOUD = true; // copie Cloud (scripts/cloud/build-extension-cloud.mjs)\n`
     + `const CLOUD_PLATEFORMES = ${L(PLATEFORMES)};\n`
-    + `${SOURCE_CONNEXION_CLOUD}`);
+    + `${SOURCE_CONNEXION_CLOUD}\n`
+    + `${SOURCE_VERROU_CLOUD}`);
   patch('jobs : plateformes du Cloud seulement (le serveur filtre aussi)',
     '    jobs = rep.jobs;',
     '    jobs = (Array.isArray(rep.jobs) ? rep.jobs : []).filter((j) => CLOUD_PLATEFORMES.includes(j.platform));');

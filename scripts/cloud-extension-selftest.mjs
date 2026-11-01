@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { patcherBackground, patcherManifeste, ID_EXTENSION_CLOUD, PLATEFORMES, SOURCE_CONNEXION_CLOUD } from './cloud/build-extension-cloud.mjs';
+import { patcherBackground, patcherManifeste, ID_EXTENSION_CLOUD, PLATEFORMES, SOURCE_CONNEXION_CLOUD, SOURCE_VERROU_CLOUD } from './cloud/build-extension-cloud.mjs';
 
 let ko = 0, n = 0;
 const ok = (c, m) => { n++; if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}`); } };
@@ -65,6 +65,38 @@ ok(!bg.includes('connexionCloudPresente'), 'la sonde de l’extension du parc (b
   ok(await verifier('vinted', [{ domain: 'vinted.fr', name: 'access_token_web', value: jwt({ sub: 7 }) }, { domain: 'vinted.fr', name: 'refresh_token_web', value: 'r' }]) === true, 'Vinted jeton + refresh : connectée');
   ok(await verifier('depop', [{ domain: 'depop.com', name: 'access_token', value: 't' }]) === true && await verifier('depop', []) === false, 'Depop : access_token présent / absent');
   ok(await verifier('ebay', []) === false, 'plateforme hors Cloud : jamais « connectée »');
+}
+
+// (01/11) LE VERROU DES PLATEFORMES dans la copie Cloud : fetch, onglets et fenêtres ouverts par l'extension
+// refusent une plateforme non connectée dans CE navigateur ; exécuté ici avec un faux chrome et un faux fetch.
+ok(bg2.includes('globalThis.fetch = async function fetch(entree, options)') && bg2.indexOf('const verrouCloud = ') < bg2.indexOf('async function reportPlatformSessions'),
+  'verrou posé en tête du service worker, avant toute fonction qui joint une plateforme');
+ok(!bg.includes('verrouCloud'), 'l’extension du parc (bureau) : aucun verrou, INCHANGÉE');
+{
+  const parti = [];
+  const ouverts = [];
+  const cookies = [{ domain: 'leboncoin.fr', name: '__Secure-Login', value: 'abc' }];
+  const chrome = {
+    cookies: { getAll: async ({ domain }) => cookies.filter((c) => c.domain === domain) },
+    tabs: { create: async (p) => { ouverts.push(p.url); return { id: 1 }; }, update: async (id, p) => { ouverts.push(p?.url); return { id }; } },
+    windows: { create: async (p) => { ouverts.push(p?.url); return { id: 2 }; } },
+  };
+  const globalFaux = { fetch: async (u) => { parti.push(String(u)); return { ok: true, status: 200 }; } };
+  const v = new Function('chrome', 'atob', 'globalThis', `${SOURCE_CONNEXION_CLOUD}\n${SOURCE_VERROU_CLOUD}\nreturn globalThis.__fillsellVerrouCloud;`)(
+    chrome, (s) => Buffer.from(s, 'base64').toString('binary'), globalFaux);
+  const essayer = (p) => p.then(() => 'passe', (e) => `refuse:${e.message}`);
+  ok(await essayer(globalFaux.fetch('https://www.beebs.app/fr/api/x')) === "refuse:FillSell Cloud : beebs n'est pas connecté dans ce navigateur, aucune visite" && !parti.length,
+    'fetch vers Beebs non connecté : refusé AVANT le réseau (rien n’est parti)');
+  ok(await essayer(globalFaux.fetch('https://www.leboncoin.fr/ad/1')) === 'passe' && parti.at(-1) === 'https://www.leboncoin.fr/ad/1', 'fetch vers Leboncoin connecté : passe tel quel');
+  ok(await essayer(globalFaux.fetch('https://tojihnuawsoohlolangc.supabase.co/rest/v1/x')) === 'passe', 'fetch vers FillSell (Supabase) : jamais touché');
+  ok(await essayer(globalFaux.fetch({ url: 'https://images1.vinted.net/t/1.jpg' })) !== 'passe', 'une requête (objet) vers un domaine de Vinted non connecté : refusée');
+  ok(await essayer(chrome.tabs.create({ url: 'https://www.depop.com/products/x' })) !== 'passe' && !ouverts.length, 'onglet ouvert vers Depop non connecté : refusé, aucun onglet');
+  ok(await essayer(chrome.tabs.update(5, { url: 'https://www.vinted.fr/items/1' })) !== 'passe' && !ouverts.length, 'onglet redirigé vers Vinted non connecté : refusé');
+  ok(await essayer(chrome.tabs.create({ url: 'https://www.leboncoin.fr/compte' })) === 'passe' && ouverts.at(-1) === 'https://www.leboncoin.fr/compte', 'onglet vers Leboncoin connecté : ouvert');
+  ok(await essayer(chrome.windows.create({ url: ['https://fillsell.app/', 'https://www.beebs.app/fr'] })) !== 'passe', 'fenêtre dont une adresse vise Beebs non connecté : refusée');
+  const e = v.etat();
+  ok(e.fetch === true && e.onglets === true && e.bloquees === 5 && e.derniere?.plateforme === 'beebs', `état du verrou lisible (${JSON.stringify({ bloquees: e.bloquees, onglets: e.onglets })})`);
+  ok(await v.refuse('https://www.leboncoin.fr/') === null && await v.refuse('https://www.vinted.fr/') === 'vinted' && await v.refuse('https://example.com/') === null, 'décision lisible sans requête (outil de vérification)');
 }
 
 console.log('\n2. Le manifeste Cloud');
