@@ -284,11 +284,15 @@ export function expressionAcces(plateforme) {
  * L'état de la page, lu SANS réseau (pure : une expression) : la page est-elle chargée, y a-t-il un cadre DataDome —
  * glissière (/captcha/), bloqué sans glissière (t=bv), vérification de l'appareil qui passe seule (/interstitial/) ?
  */
+// (02/11, essai de Nico 11:45 : Beebs « vérification de l'appareil » puis « Accès temporairement restreint », l'IP citée)
+// Un refus ÉCRIT (dans la page ou dans le cadre DataDome) est un accès restreint, pour toutes les plateformes.
+export const TEXTE_ACCES_RESTREINT = /acc[eè]s (temporairement )?(restreint|refus[ée]|bloqu[ée])|temporarily (restricted|blocked)|access (has been |is )?(restricted|denied|blocked)|vous (avez été|êtes) bloqu|you (have been|are) blocked/i;
 export const EXPRESSION_ETAT_PAGE = `(() => {
   const hote = (s) => { try { return new URL(s, location.href).hostname; } catch (e) { return ''; } };
   const cadres = [...document.querySelectorAll('iframe')].map((f) => f.src || '').filter((s) => /(^|\\.)captcha-delivery\\.com$/i.test(hote(s)));
   const bloque = cadres.some((s) => /\\/captcha\\//i.test(s) && /[?&]t=bv(&|$)/.test(s));
-  return { hote: location.hostname, pret: document.readyState === 'complete', bloque,
+  const texte = String((document.body && document.body.innerText) || '').slice(0, 2000);
+  return { hote: location.hostname, pret: document.readyState === 'complete', bloque, restreint: ${TEXTE_ACCES_RESTREINT}.test(texte),
     captcha: !bloque && cadres.some((s) => /\\/captcha\\//i.test(s)), interstitiel: cadres.some((s) => /\\/interstitial\\//i.test(s)) };
 })()`;
 

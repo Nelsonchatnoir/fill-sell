@@ -54,6 +54,25 @@ export const ENV_ESSAI_0111 = Object.freeze([
 // (02/11) Langue et fuseau de la session du compte (corpsSession) : français, Paris.
 export const LANGUES_PROFIL = 'fr-FR,fr';
 export const FUSEAU_PROFIL = 'Europe/Paris';
+/**
+ * (02/11, règle de Nico : « FIGE l'empreinte — plus aucun changement en cours de session, sur aucune plateforme, sans mon
+ * accord ») L'empreinte d'un navigateur = son lancement (image, écran, réglages, montages) + sa session (langue, fuseau,
+ * empreinte réelle), jamais le proxy. Elle est notée dans le profil du compte à la première ouverture ; ensuite, une
+ * empreinte différente n'ouvre PAS le navigateur, sauf si le déploiement porte celle-là même (EMPREINTE_AUTORISEE,
+ * l'accord de Nico). Vu le 02/11 : le passage en français en pleine session (anciens témoins DataDome) → Beebs bloqué.
+ * Rend 'premiere' | 'identique' | 'autorisee' | 'refusee' (pure : testée).
+ */
+export function verdictEmpreinte(notee, courante, autorisee = '') {
+  const n = String(notee ?? '').trim();
+  if (!n) return 'premiere';
+  if (n === courante) return 'identique';
+  return autorisee && autorisee === courante ? 'autorisee' : 'refusee';
+}
+export const empreinteNavigateur = (spec, session) => {
+  const { proxyUrl: _p, ...reste } = session ?? {};
+  return createHash('sha256').update(JSON.stringify([spec?.Labels?.['fillsell.lancement'] ?? null, reste])).digest('hex').slice(0, 16);
+};
+
 /** L'empreinte du lancement (pure) : un conteneur lancé autrement (langue, fuseau, image) est recréé, profil gardé. */
 export function empreinteLancement(spec) {
   return createHash('sha256').update(JSON.stringify([spec?.Image, spec?.Cmd, spec?.Env, spec?.Binds ?? []])).digest('hex').slice(0, 12);
@@ -321,6 +340,25 @@ export function creerNavigateurs({ config, docker, journal }) {
     return { nom, ip };
   }
 
+  /** (02/11) L'empreinte notée dans le profil (verdictEmpreinte) : refusée = le navigateur ne s'ouvre pas, et c'est dit. */
+  async function exigerEmpreinte(user, profilId, proxyUrl) {
+    const langueFr = await access(paquetLangueFr(config)).then(() => true, () => false);
+    const courante = empreinteNavigateur(specConteneur({ config, user, profilId, langueFr }), corpsSession({ proxyUrl }));
+    const fichier = `${config.dossierProfils}/${profilId}/.empreinte-navigateur`;
+    const notee = await readFile(fichier, 'utf8').catch(() => '');
+    const v = verdictEmpreinte(notee, courante, config.empreinteAutorisee);
+    if (v === 'refusee') {
+      journal.alerte('empreinte_changee_refusee', { user, notee: notee.trim(), courante });
+      throw new Error(`empreinte du navigateur changée (${notee.trim()} → ${courante}) : refusée sans l'accord de Nico (EMPREINTE_AUTORISEE)`);
+    }
+    if (v !== 'identique') {
+      await mkdir(`${config.dossierProfils}/${profilId}`, { recursive: true });
+      await writeFile(fichier, `${courante}\n`);
+      journal.info('empreinte_notee', { user, empreinte: courante, verdict: v });
+    }
+    return { verdict: v, empreinte: courante };
+  }
+
   /** (01/11) Le cache du script de fond de l'extension, effacé quand la copie a changé (cacheExtensionAEffacer). */
   async function rafraichirExtensionDuProfil(user, profilId) {
     const copie = await readFile(`${config.dossierExtension}/background.js`).catch(() => null);
@@ -375,6 +413,8 @@ export function creerNavigateurs({ config, docker, journal }) {
       journal.info('navigateur_ouvert', { user, conteneur: nom, moteur: 'chrome', navigateur });
       return h;
     }
+    // (02/11) L'empreinte FIGÉE : vérifiée AVANT toute recréation de conteneur (sinon l'ancien serait déjà détruit).
+    await exigerEmpreinte(user, profilId, proxyUrl);
     const { nom, ip } = await assurerConteneur(user, profilId);
     await rafraichirExtensionDuProfil(user, profilId);
     await attendreApi(ip);

@@ -190,3 +190,24 @@ test('(02/11) l\'essai des 24 h d\'un accès restreint : une page de fond, UNE l
   assert.equal(g.v.blocageDe(U, 'beebs')?.nature, 'glissiere', 'une glissière s\'affiche : la personne peut maintenant la résoudre');
   assert.deepEqual(g.coffre, [], 'rien rouvert sans preuve');
 });
+
+test('(02/11, règle de Nico) l\'empreinte du navigateur est FIGÉE : notée à la première ouverture, jamais changée sans accord', async () => {
+  const { verdictEmpreinte, empreinteNavigateur, specConteneur, corpsSession } = await import('../src/navigateur.js');
+  assert.equal(verdictEmpreinte('', 'a1'), 'premiere');
+  assert.equal(verdictEmpreinte('a1\n', 'a1'), 'identique');
+  assert.equal(verdictEmpreinte('a1', 'b2'), 'refusee', 'changée sans accord : le navigateur ne s\'ouvre pas');
+  assert.equal(verdictEmpreinte('a1', 'b2', 'b2'), 'autorisee', 'l\'accord de Nico porte CETTE empreinte-là');
+  assert.equal(verdictEmpreinte('a1', 'b2', 'c3'), 'refusee', 'un accord pour une autre empreinte ne vaut rien');
+  const config = { imageNavigateur: 'i', dossierProfils: '/p', dossierExtension: '/e' };
+  const e = (o = {}) => empreinteNavigateur(specConteneur({ config, user: 'u', profilId: 'p1', ...o }), corpsSession({ proxyUrl: 'http://a:b@1.2.3.4:12323' }));
+  assert.equal(e(), empreinteNavigateur(specConteneur({ config, user: 'u', profilId: 'p1' }), corpsSession({ proxyUrl: 'http://c:d@9.9.9.9:12323' })),
+    'une autre IP (proxy) ne change pas l\'empreinte du navigateur');
+  assert.notEqual(e(), e({ langueFr: true }), 'un montage de plus (langue) la change');
+});
+
+test('(02/11, essai de Nico 11:45) « Accès temporairement restreint » écrit dans la page ou le cadre : un accès restreint', async () => {
+  const { TEXTE_ACCES_RESTREINT } = await import('../src/plateformes.js');
+  for (const t of ['Accès temporairement restreint', 'Acces temporairement restreint', 'Access is temporarily restricted', 'You have been blocked', 'Vous avez été bloqué'])
+    assert.ok(TEXTE_ACCES_RESTREINT.test(t), t);
+  assert.ok(!TEXTE_ACCES_RESTREINT.test('Vérification de l\'appareil en cours'), 'une vérification qui passe : non');
+});

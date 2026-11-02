@@ -544,3 +544,19 @@ test('(02/11) « Résoudre » : bloqué sans glissière (t=bv) → « restreint 
   assert.deepEqual(c2.etapes(), ['rien'], 'Vinted n\'attend aucune vérification');
   assert.equal(s.nav.cdp.envoyes.filter((e) => e.methode === 'Target.createTarget').length, pages, 'aucune page ouverte');
 });
+
+test('(02/11, essai de Nico 11:45) « Résoudre » : la vérification de l\'appareil qui se termine sur « Accès temporairement restreint » → « restreint » TOUT DE SUITE', async () => {
+  const { s, v } = monterResolution({ beebs: { nature: 'glissiere', le: '2026-11-02T04:15:38Z' } });
+  s.nav.page.etatPage = { hote: 'www.beebs.app', pret: true, captcha: false, bloque: false, interstitiel: true, restreint: false };
+  const c = brancherClient(s, 'beebs');
+  await c.ouvrir({ mode: 'resoudre' });
+  await attendre(2200);
+  assert.ok(c.recus.some((m) => m.etape === 'info' && /vérifie l'appareil/.test(m.message)), 'la vérification en cours garde son message');
+  assert.deepEqual(v.appels, []);
+  s.nav.page.etatPage = { ...s.nav.page.etatPage, restreint: true };   // la page écrit « Accès temporairement restreint »
+  await attendre(2100);
+  assert.deepEqual(v.appels, [['requalifier', 'beebs', 'restreint']], 'classée « accès restreint »');
+  assert.ok(c.recus.some((m) => m.etape === 'restreint' && /Accès temporairement restreint/.test(m.message)), c.etapes().join(','));
+  assert.equal(s.nav.page.lectures, 0, 'aucune requête de plus');
+  await attendre(2600);
+});

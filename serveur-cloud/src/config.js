@@ -47,6 +47,9 @@ export function lireConfig(env = process.env) {
     dossierEtat: env.DOSSIER_ETAT?.trim() || '/srv/fillsell-cloud/etat',
     // (01/11) L'essai de 48 h sur le vrai produit (endurance.js) : mesures et arrêt au premier blocage. 1 = actif.
     endurance: lireBool(env.ENDURANCE, false),
+    // (02/11, règle de Nico : « fige l'empreinte ») L'empreinte du navigateur qu'un déploiement a le droit d'installer à la
+    // place de celle notée dans le profil (navigateur.js, verdictEmpreinte) ; vide = aucun changement permis.
+    empreinteAutorisee: env.EMPREINTE_AUTORISEE?.trim() || '',
     dossierExtension: env.DOSSIER_EXTENSION?.trim() || '/srv/fillsell-cloud/extension',
     socketDocker: env.SOCKET_DOCKER?.trim() || '/var/run/docker.sock',
     // Capacité MESURÉE du serveur (navigateurs simultanés). Défaut prudent.

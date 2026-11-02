@@ -33,7 +33,7 @@
 //   automatique.
 import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estConnectee, identifiantCompte,
   retourDeclare, expressionLectureCompte, verdictLectureCompte, expressionAcces, pageDeResolution, navigationResolution,
-  EXPRESSION_ETAT_PAGE } from './plateformes.js';
+  EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT } from './plateformes.js';
 import { etatVisible } from './verifications.js';
 import { verifierTicket } from './tickets.js';
 import { lireDansExtension } from './sessionFillsell.js';
@@ -94,6 +94,7 @@ const ACTIF_EDITABLE = `(() => { const e = document.activeElement; if (!e) retur
   return t === 'IFRAME'; })()`;
 
 const borne = (v, a, b) => Math.min(b, Math.max(a, Number(v) || 0));
+const hoteDe = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch { return ''; } };
 
 export const MESSAGES = Object.freeze({
   fr: {
@@ -116,11 +117,11 @@ export const MESSAGES = Object.freeze({
     resoudreDemarrage: 'On ouvre la page de la vérification…',
     resoudrePret: (nom) => `Page ${nom} ouverte dans ton navigateur FillSell Cloud. Si une vérification s'affiche, fais-la glisser : c'est tout.`,
     glisser: (nom) => `${nom} demande une vérification : fais glisser le curseur jusqu'au bout. FillSell s'occupe du reste.`,
-    interstitiel: (nom) => `${nom} vérifie l'appareil : ça passe tout seul en quelques secondes.`,
+    interstitiel: (nom) => `${nom} vérifie l'appareil : d'habitude, ça passe tout seul en quelques secondes. Si l'accès est refusé, on te le dit tout de suite.`,
     verification: (nom) => `On vérifie que ${nom} répond de nouveau…`,
     resolu: (nom) => `C'est réglé : ${nom} répond de nouveau. FillSell reprend ${nom} tout seul.`,
     revenue: (nom) => `${nom} refuse encore l'accès juste après la vérification : FillSell arrête ${nom} ici, sans insister, et l'équipe regarde. Rien à faire de ton côté ; les autres plateformes continuent.`,
-    restreint: (nom) => `${nom} restreint l'accès sans vérification à faire : rien à glisser. FillSell attend et refait un seul essai dans 24 h ; les autres plateformes continuent.`,
+    restreint: (nom) => `${nom} restreint l'accès (« Accès temporairement restreint ») : rien à glisser. FillSell attend et refait un seul essai dans 24 h ; les autres plateformes continuent.`,
     session_fermee: (nom) => `Ta session ${nom} s'est fermée : reconnecte-toi avec « Me reconnecter ».`,
     rien: (nom) => `Rien à résoudre : ${nom} n'attend aucune vérification.`,
   },
@@ -143,7 +144,7 @@ export const MESSAGES = Object.freeze({
     resoudreDemarrage: 'Opening the check page…',
     resoudrePret: (nom) => `${nom} page open in your FillSell Cloud browser. If a check shows up, slide it: that's all.`,
     glisser: (nom) => `${nom} asks for a check: slide the handle all the way. FillSell takes care of the rest.`,
-    interstitiel: (nom) => `${nom} is checking the device: it clears on its own in a few seconds.`,
+    interstitiel: (nom) => `${nom} is checking the device: it usually clears on its own in a few seconds. If access is refused, you'll know right away.`,
     verification: (nom) => `Checking that ${nom} answers again…`,
     resolu: (nom) => `Done: ${nom} answers again. FillSell resumes ${nom} on its own.`,
     revenue: (nom) => `${nom} still refuses access right after the check: FillSell stops ${nom} here without insisting, and the team is looking into it. Nothing to do on your side; the other platforms keep going.`,
@@ -454,6 +455,11 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       const e = r?.result?.value;
       if (!e || res.conclu || finie) return;
       if (e.bloque) return conclure('restreint', { motif: 'datadome_bloque' });
+      // (02/11, essai de Nico 11:45) « Accès temporairement restreint » : écrit dans la page, ou dans le cadre DataDome
+      // (la vérification de l'appareil qui se termine sur un blocage garde l'adresse de son cadre) → dit TOUT DE SUITE.
+      if (e.restreint || ((e.interstitiel || e.captcha) && TEXTE_ACCES_RESTREINT.test(await texteDesCadresDataDome()))) {
+        return conclure('restreint', { motif: 'acces_restreint_ecrit' });
+      }
       if (e.captcha) {
         res.sansCadreDepuis = null; res.attenteJusqua = null;
         if (!res.vuCaptcha) { res.vuCaptcha = true; journal.info('resolution_glissiere_vue', { user, plateforme }); }
@@ -484,6 +490,33 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       res.dernierHttp = v.http;
       res.attenteJusqua = Date.now() + ATTENTE_GLISSIERE_MS;
       res.sansCadreDepuis = null;
+    }
+
+    /** Le texte des cadres DataDome de la page (monde isolé du cadre ; cadre hors processus : sa propre cible). */
+    async function texteDesCadresDataDome() {
+      let texte = '';
+      const { frameTree } = await cdp.send('Page.getFrameTree', {}, cible.sessionId).catch(() => ({}));
+      const ids = [];
+      const parcourir = (n) => { if (!n) return; if (/(^|\.)captcha-delivery\.com$/i.test(hoteDe(n.frame?.url))) ids.push(n.frame.id); for (const c of n.childFrames ?? []) parcourir(c); };
+      parcourir(frameTree);
+      const lireTexte = "String((document.body && document.body.innerText) || '').slice(0, 2000)";
+      for (const frameId of ids) {
+        const w = await cdp.send('Page.createIsolatedWorld', { frameId, worldName: 'fillsell-lecture' }, cible.sessionId).catch(() => null);
+        if (!w?.executionContextId) continue;
+        const r = await cdp.send('Runtime.evaluate', { expression: lireTexte, contextId: w.executionContextId, returnByValue: true }, cible.sessionId).catch(() => null);
+        texte += ` ${r?.result?.value ?? ''}`;
+      }
+      if (!texte.trim()) {
+        const t = await cdp.send('Target.getTargets').catch(() => null);
+        for (const c of (t?.targetInfos ?? []).filter((x) => x.type === 'iframe' && /(^|\.)captcha-delivery\.com$/i.test(hoteDe(x.url)))) {
+          const sid = await cdp.send('Target.attachToTarget', { targetId: c.targetId, flatten: true }).then((x) => x.sessionId).catch(() => null);
+          if (!sid) continue;
+          const r = await cdp.send('Runtime.evaluate', { expression: lireTexte, returnByValue: true }, sid).catch(() => null);
+          texte += ` ${r?.result?.value ?? ''}`;
+          await cdp.send('Target.detachFromTarget', { sessionId: sid }).catch(() => {});
+        }
+      }
+      return texte;
     }
 
     async function conclure(issue, v = {}) {
