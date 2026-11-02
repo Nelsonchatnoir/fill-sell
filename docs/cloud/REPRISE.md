@@ -1,6 +1,16 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ 02/11/2026 17:50 — TEST DE NICO : 5 PUBLICATIONS FAITES (4 PAR LE CLOUD, eBay PAR L'API) ; OTA 2.9.155 (à lire EN PREMIER)
+## ⛔ 02/11/2026 19:35 — REPUBLICATIONS FAITES PAR LE CLOUD ; CLOUD 7d2a82e + EXTENSION 0.6.168-cloud ; OTA 2.9.157 (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 25.
+- Republications (18:44 → 19:24) : Vinted 18:48, Leboncoin 19:04 (2e essai), Depop 19:13, Beebs « Primark » 19:23 — toutes
+  par le Cloud ; Beebs « TEST » en pause (annonce en modération chez Beebs, rien retiré).
+- Orchestrateur **7d2a82e** déployé 19:30:38 (inclut 3345cf8 : glissière d'onglet de travail confirmée avant « Résoudre »),
+  copie Cloud de l'extension **0.6.168-cloud** (depuis HEAD ; Leboncoin « dépôt interrompu » réglé à la racine). Navigateur
+  rouvert 19:30:51, empreinte 7a1cfa22 inchangée, IP 176.103.182.215.
+- OTA **2.9.157** servie (la 2.9.156 était un dist/ de build:essai « dirty » — remplacée). Extension du parc **0.6.168**
+  dans `build/CWS-0.6.168-A-TELEVERSER/` (contient la 0.6.167).
+
+## 02/11/2026 17:50 — TEST DE NICO : 5 PUBLICATIONS FAITES (4 PAR LE CLOUD, eBay PAR L'API) ; OTA 2.9.155 (bloc précédent ; mis à jour par le bloc de 19:35 au-dessus)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 24. Le bloc 16:50 en dessous reste l'état du Cloud.
 - 17:14 → 17:21 : eBay (ebay-api-worker), Vinted, Leboncoin, Beebs, Depop (copie Cloud `…dd69fbb-cloud`) en ligne ; le
   PC de Nico n'a rien pris (son poste ne polle plus depuis le 01/11 15:27). D'abord retenues par le réglage « Publication

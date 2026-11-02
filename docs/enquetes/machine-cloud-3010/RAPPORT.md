@@ -1888,3 +1888,47 @@ dans ton créneau, une à la fois »), pour tous les comptes.
 ### 24.5 Déploiement du correctif serveur (§ 24.2)
 - Commité (3345cf8), **pas encore déployé** : un déploiement redémarre le navigateur Cloud — jamais pendant les
   republications de Nico. L'app 2.9.155 sait déjà afficher « vérification en cours ».
+
+## 25. Les republications de Nico (02/11, 18:44 → 19:24) et trois corrections
+
+### 25.1 Qui, quand, quoi (heure de Paris ; « TEST FillSell 30/10 — T-shirt… » lancé à 18:44:12)
+| Plateforme | Par | En ligne | Annonce | Note |
+|---|---|---|---|---|
+| Vinted | Cloud | 18:48:49 | https://www.vinted.fr/items/10639328046 | une passe |
+| Leboncoin | Cloud | 19:04:05 | https://www.leboncoin.fr/ad/vetements/3301155216 | retirée 18:51:52 ; 1re remise ratée (§ 25.2), 2e passée |
+| Depop | Cloud | 19:13:05 | https://www.depop.com/products/nel9onchatnoir-article-de-test-fillsell-verification-90cb/ | retenue derrière Leboncoin (« une hors ligne à la fois ») |
+| Beebs | — | — | 34283901 (pas touchée) | en pause, rien retiré : l'annonce publiée à 17:20 est en MODÉRATION chez Beebs (page publique 404 à 18:45:48) — normal (Nico) |
+| Beebs « Primark Disney 100 Mickey Jogging » (lancée 19:06:13) | Cloud | 19:23:42 | https://www.beebs.app/fr/p/34284626 | une passe |
+handler_build de toutes : `2026-11-01T23:02:16Z+dd69fbb-cloud · v0.6.164` ; le PC de Nico n'a rien pris.
+
+### 25.2 Leboncoin : « la page de dépôt ne s'est pas affichée comme attendu »
+- 18:56:53 l'onglet de travail ouvre `/deposer-une-annonce` ; dès l'arrivée, la boîte de Leboncoin « interrompre votre dépôt »
+  (boutons « Enregistrer le brouillon » / « Quitter sans enregistrer » : un dépôt interrompu dans ce navigateur). Le
+  ramasse-interstitiels de l'arrivée (`dismissInterstitials`) clique le DERNIER bouton, « Quitter sans enregistrer » :
+  Leboncoin sort du dépôt vers « Mes annonces » (18:57:01) ; le flux continue et conclut « page de dépôt non reconnue »
+  (18:57:10) — un essai perdu, l'annonce hors ligne 12 min de plus. Le clic avait jeté l'état : 19:02:58, formulaire
+  vierge, dépôt fait.
+- Correction (extension **0.6.168**, tout le parc) : à l'arrivée, cette boîte suit le chemin officiel du brouillon
+  bloquant (prouvé le 03/09) — réponse `draftDiscarded` AVANT le clic, puis « Quitter sans enregistrer » ; le background
+  remet la tâche en file 20 s plus tard, aucun essai consommé. Selftest `prevol-recreation-lbc-depop`.
+- Message : pour un compte Cloud, un texte de tâche ne renvoie plus jamais vers « ton navigateur / ton ordinateur /
+  Chrome » (`texteTacheCloud`, `humanizeJobError`) : une connexion → « Reconnecte … à FillSell Cloud », une vérification
+  → « Résoudre la vérification » dans l'app, le reste → retiré (le Cloud refait seul). Comptes ordinaires inchangés.
+
+### 25.3 Depop : « nouvel essai automatique » alors qu'elle attendait Leboncoin
+- get-pending-jobs pose `retenue_hors_ligne` { job: 19bf1e17 (Leboncoin) } ; `etat-job.js` ne le lisait pas → l'erreur
+  présente donnait le motif « essai ». Correction (tout le parc) : motif **`attente_remise`** → « En attente : Depop repart
+  dès que ton annonce Leboncoin est revenue en ligne — rien n'a été retiré » (la plateforme de la tâche qui retient lue
+  dans la file ; sans elle, « ton annonce retirée sur une autre plateforme »). Copie de l'extension régénérée.
+
+### 25.4 Mis en service
+- **OTA 2.9.157** (build `2026-11-02T18:28:41Z+7d2a82e`, canal relu) ; preuve d'identité : 708 scènes identiques, échecs =
+  3 connus + périmètre. ⚠️ **La 2.9.156** a été envoyée depuis un `dist/` de `build:essai` (tampon `5cd04ab-dirty`) après un
+  REFUS de `npm run build` (EXTENSION_LAST_COMMIT à bumper) — commande enchaînée sans arrêt sur l'échec ; même code que
+  29c5271, version interne 2.9.155 ; numéro consommé, remplacé 3 min plus tard par la 2.9.157 construite proprement.
+- **Cloud** : orchestrateur 7d2a82e déployé 19:30:38 (file vide), avec la confirmation des glissières (§ 24.2) et la copie
+  Cloud de l'extension **0.6.168-cloud** (BUILD_ID `2026-11-02T18:29:21Z+7d2a82e-cloud`, construite depuis HEAD : la copie
+  précédente venait de dd69fbb, 0.6.164). Navigateur rouvert 19:30:51, empreinte 7a1cfa22 inchangée, extension rafraîchie.
+- **Parc** : `build/CWS-0.6.168-A-TELEVERSER/fillsell-extension-0.6.168-cws.zip` (BUILD_ID `2026-11-02T18:29:37Z+7d2a82e`,
+  SHA-256 06ee466b…) ; EXTENSION_LAST_COMMIT = 2026-11-02T18:24:23Z ; EXTENSION_MIN_BUILD non touché.
+- Suite complète 524 / 0 ; serveur-cloud 93/93.
