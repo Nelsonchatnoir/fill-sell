@@ -1679,3 +1679,35 @@ inverse `supabase/rollbacks/20261102110000_cloud_connexions_depop_INVERSE.sql`.
   toutes plateformes ; actif par le serveur (l'app connaît l'étape « restreint » depuis 2.9.151 : aucune OTA nécessaire).
   Une plateforme connue du coffre passe en « restreint » ; l'essai des 24 h qui trouve la page sans session clôt le
   blocage. serveur-cloud 90/90.
+
+### 22.9 Diagnostic sans visite (02/11, 13:50 → 14:05 ; demande de Nico : trouver ce qui a changé, ne plus brûler d'IP)
+Aucune visite de Beebs ni de Leboncoin ; échos : tls.browserleaks.com, httpbin.org (non protégés par DataDome). Référence
+« vrai Chrome » : le Chrome 156 de Nico (Windows), mêmes deux pages.
+- **Chaîne réseau** : steel sort par `proxy-chain` (Server, `upstreamProxyUrl`) — un tunnel CONNECT vers IPRoyal, le TLS
+  reste de bout en bout entre Chrome et le site ; le verrou de domaines est une interception DevTools DANS Chrome ; le
+  pare-feu (iptables FILLSELL-NAV) filtre sans réécrire. **Aucun intermédiaire ne re-termine le TLS ni ne réécrit HTTP/2.**
+- **Écho, deux navigateurs Cloud = vrai Chrome 156** : JA4 `t13d1517h2_8daaf6152771_cb7bf5808d99`, JA3N
+  `bd4930bd9b000ee684830e44bab76fdf`, HTTP/2 Akamai `1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p` — identiques
+  (JA3 brut variable : Chrome mélange l'ordre de ses extensions). Écarts trouvés (couche en-têtes et JS) :
+  1. Accept-Language `fr-FR,fr;q=0.9` (deux langues) ; vrai Chrome français : `fr-FR, fr, en-US, en` →
+     `fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7`. **C'est la seule chose de la première requête qui a changé depuis hier**
+     (le 01/11 : `en-US,en;q=0.9`, profil anglais).
+  2. sec-ch-ua : « Not:A-Brand » + « Chromium » (Chromium de Debian) ; vrai Chrome : + « Google Chrome ». Inchangé depuis
+     le 01/11 (Beebs passait par glissière).
+  3. WebRTC : AUCUN candidat (ni hôte mDNS ni public) ; vrai Chrome : hôtes mDNS + adresse publique. Pas de fuite de l'IP
+     du serveur, mais une absence anormale. Inchangé depuis le 01/11.
+  4. Accept annonce `image/jxl` (non comparé : httpbin refuse la lecture par l'outil dans le Chrome de Nico).
+- **Réseau** : serveur Hetzner **Falkenstein (Allemagne)**, AS24940, noté « VPN, risque 66 » par proxycheck. IPRoyal
+  « ISP Dedicated », proxy HTTP (CONNECT, port 12323) ; DNS résolu par la sortie (le pare-feu ne laisse partir que les
+  connexions vers les proxys). IP essayées, toutes « France, Paris », aucune signalée proxy par ip-api ni proxycheck
+  (« Business », risque 0) : 81.181.239.136 AS2914 NTT ; 185.134.192.253 et 185.134.194.88 AS6830 Liberty Global
+  (Tngnet, Nadejda.Net) ; 176.103.180.12, 80.12.178.102, 94.194.94.233 AS5511 Orange (organisations Telenet SIA, OWI,
+  IPXO = place de marché de location d'IP) — des blocs LOUÉS, annoncés sous de grands opérateurs. Délai serveur → sortie :
+  15 ms (81.181), 27 ms (80.12) ; jusqu'à un site parisien : 50 / 88 ms. IPRoyal refuse tls.peet.ws (502).
+- **Faits à corriger** : les blocages du 02/11 viennent tous du navigateur PRINCIPAL (profil français), sur 3 IP
+  (81.181.239.136, 185.134.192.253, 176.103.180.12) ; le navigateur isolé et 80.12.178.102 n'ont jamais vu Beebs. Le
+  premier 403 porte la vérification de l'appareil DataDome (JavaScript) ; le blocage dur tombe APRÈS elle.
+- Leboncoin (13:45:21, compte lu 200), Vinted (6 lectures 200) et Depop (accueil 200, 13:28) passent sur 81.181.239.136.
+- **Cause la plus probable** : le changement de profil de ce matin — premier en-tête (Accept-Language à deux langues,
+  jamais vu chez un vrai Chrome français) et signaux JS (langues, Intl) — sur un appareil que DataDome connaissait en
+  anglais, avec des IP louées comme risque de fond. La couche TLS / HTTP/2 est hors de cause.
