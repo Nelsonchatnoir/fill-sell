@@ -52,7 +52,11 @@ export const ENV_ESSAI_0111 = Object.freeze([
   'DEFAULT_TIMEZONE=Europe/Paris',
 ]);
 // (02/11) Langue et fuseau de la session du compte (corpsSession) : français, Paris.
-export const LANGUES_PROFIL = 'fr-FR,fr';
+// (02/11 soir, décision de Nico — cause prouvée du blocage Beebs) Les langues d'un VRAI Chrome français : fr-FR, fr, en-US,
+// en → Accept-Language « fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7 » (format de Chrome). « fr-FR, fr » seules (deux langues,
+// jamais vues chez un vrai Chrome) faisaient refuser Beebs par DataDome à chaque visite ; avec celles-ci, Beebs passe
+// (essai du 02/11 14:37). UN seul navigateur par compte, Beebs compris (plus de navigateur isolé).
+export const LANGUES_PROFIL = 'fr-FR,fr,en-US,en';
 export const FUSEAU_PROFIL = 'Europe/Paris';
 /**
  * (02/11, règle de Nico : « FIGE l'empreinte — plus aucun changement en cours de session, sur aucune plateforme, sans mon
@@ -118,38 +122,8 @@ export function cacheExtensionAEffacer(empreinteNotee, empreinteCopie) {
 export const FICHIERS_VERROU_PROFIL = Object.freeze(['SingletonLock', 'SingletonCookie', 'SingletonSocket']);
 export const nomConteneur = (user) => `fs-nav-${String(user).replace(/[^0-9a-f-]/gi, '')}`;
 
-// ── (02/11, décision de Nico : dernier essai Beebs) LE NAVIGATEUR ISOLÉ D'UNE PLATEFORME ─────────────────────────────
-// Beebs bloque le navigateur principal dès la première requête (IP neuve, aucun cookie) ; hypothèse : DataDome a marqué
-// CETTE empreinte. Un second navigateur du compte, réservé à la plateforme : son conteneur, son profil (rien de partagé),
-// sa propre IP (NAVIGATEUR_ISOLE_<PF>_IP), sa propre empreinte (écran 1536×864, 4 cœurs, aucune extension), mêmes langue
-// et fuseau français ; le verrou n'y laisse passer QUE sa plateforme (eBay et Opla jamais). Le principal n'est pas touché.
-export const ATTENTE_SORTIE_ISOLE_MS = 8000;
-// (02/11 14:15, feu vert de Nico — UNE variable : les langues) Les langues d'un vrai Chrome français : fr-FR, fr, en-US, en
-// → Accept-Language « fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7 » (format de Chrome). Le principal garde les siennes (figées).
-export const VARIANTES_ISOLEES = Object.freeze({ beebs: Object.freeze({ ecran: Object.freeze([1536, 864]), cpus: '0-3', langues: 'fr-FR,fr,en-US,en' }) });
-export const nomConteneurIsole = (user, plateforme) => `${nomConteneur(user)}-${plateforme}`;
-export const profilIsole = (user, plateforme) => `p-${String(user).slice(0, 8)}-${plateforme}-isole`;
-/** Le lancement avec écran, à une autre taille (pure). */
-export const lancementAvecEcranDe = ([l, h]) => LANCEMENT_AVEC_ECRAN.replace('1920x1080x24', `${Number(l)}x${Number(h)}x24`);
-/** La spécification du conteneur isolé (pure : testée) : celle du principal, sans extension, son écran, ses cœurs. */
-export function specConteneurIsole({ config, user, profilId, plateforme, langueFr = false }) {
-  const v = VARIANTES_ISOLEES[plateforme];
-  if (!v) throw new Error(`navigateur isolé : plateforme inconnue (${plateforme})`);
-  const base = specConteneur({ config, user, profilId, langueFr });
-  const binds = base.HostConfig.Binds.filter((b) => !b.includes('/app/api/extensions/'));
-  const cmd = [lancementAvecEcranDe(v.ecran)];
-  return { ...base, Cmd: cmd,
-    Labels: { ...base.Labels, 'fillsell.isole': plateforme,
-      'fillsell.lancement': empreinteLancement({ Image: base.Image, Cmd: cmd, Env: base.Env, Binds: [...binds, `cpuset=${v.cpus}`] }) },
-    HostConfig: { ...base.HostConfig, Binds: binds, CpusetCpus: v.cpus } };
-}
-/** Le corps de session du navigateur isolé (pur : testé) : aucune extension, la taille de son écran. */
-export function corpsSessionIsole({ proxyUrl, plateforme }) {
-  const v = VARIANTES_ISOLEES[plateforme];
-  if (!v) throw new Error(`navigateur isolé : plateforme inconnue (${plateforme})`);
-  return { ...corpsSession({ proxyUrl }), extensions: [], dimensions: { width: v.ecran[0], height: v.ecran[1] },
-    ...(v.langues ? { userPreferences: { intl: { accept_languages: v.langues, selected_languages: v.langues } } } : {}) };
-}
+// (02/11 soir, décision de Nico) Le navigateur ISOLÉ de Beebs (essai du 02/11 après-midi) est RETIRÉ : un seul navigateur
+// par compte, une seule IP, les quatre plateformes dedans (rapport machine-cloud-3010 § 23).
 export const nouveauProfilId = (user) => `p-${String(user).slice(0, 8)}-${randomBytes(6).toString('hex')}`;
 
 /** La spécification Docker du conteneur d'un compte (pure : testée). */
@@ -470,7 +444,7 @@ export function creerNavigateurs({ config, docker, journal }) {
     return h;
   }
 
-  /** Le verrou des plateformes sur un navigateur steel (principal ou isolé). */
+  /** Le verrou des plateformes sur un navigateur steel. */
   function brancherVerrou(h, surFermeture) {
     const { cdp } = h;
     cdp.on((m) => {
@@ -487,52 +461,6 @@ export function creerNavigateurs({ config, docker, journal }) {
         cdp.send('Fetch.failRequest', { requestId: m.params?.requestId, errorReason: 'BlockedByClient' }).catch(() => {});
       }
     });
-  }
-
-  /** (02/11) Le navigateur ISOLÉ d'une plateforme (VARIANTES_ISOLEES) : ouvert à la demande, seule sa plateforme passe. */
-  const isoles = new Map(); // `${user}:${plateforme}` → handle
-  async function ouvrirIsole(user, plateforme, { proxyUrl, profilId }) {
-    const cle = `${user}:${plateforme}`;
-    if (isoles.has(cle)) return isoles.get(cle);
-    if (chrome) throw new Error('navigateur isolé : moteur steel seulement');
-    await exigerPareFeu(config);
-    const langueFr = await access(paquetLangueFr(config)).then(() => true, () => false);
-    const spec = specConteneurIsole({ config, user, profilId, plateforme, langueFr });
-    const corps = corpsSessionIsole({ proxyUrl, plateforme });
-    // Son empreinte à lui, FIGÉE elle aussi (notée dans SON profil à la première ouverture).
-    await exigerEmpreinte(user, profilId, proxyUrl, empreinteNavigateur(spec, corps));
-    const { nom, ip } = await assurerConteneur(user, profilId, { nom: nomConteneurIsole(user, plateforme), spec });
-    await attendreApi(ip);
-    const r = await fetch(`http://${ip}:3000/v1/sessions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), signal: AbortSignal.timeout(90_000),
-    });
-    if (!r.ok) throw new Error(`steel (isolé) : création de session → HTTP ${r.status}`);
-    // (02/11, vérification à vide) Le relais de proxy de steel n'est pas prêt tout de suite : 3 s après la session, une requête
-    // a pris ERR_TUNNEL_CONNECTION_FAILED. « Me connecter » navigue aussitôt : on laisse à la sortie le temps d'être prête
-    // (une visite de la personne ne doit jamais tomber sur une page d'erreur).
-    await new Promise((ok) => setTimeout(ok, ATTENTE_SORTIE_ISOLE_MS));
-    const cdp = await connecterCdp(`ws://${ip}:3000/`, { delaiAppelMs: 90_000 });
-    const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'steel', isole: plateforme, permises: [plateforme], bloquees: 0, cadresPermis: new Map() };
-    brancherVerrou(h, () => { if (isoles.get(cle) === h) isoles.delete(cle); });
-    await poserVerrouSteel(h);
-    await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
-    isoles.set(cle, h);
-    journal.info('navigateur_isole_ouvert', { user, plateforme, conteneur: nom });
-    return h;
-  }
-  async function fermerIsole(user, plateforme, raison = 'fin') {
-    const cle = `${user}:${plateforme}`;
-    const h = isoles.get(cle);
-    isoles.delete(cle);
-    try { h?.cdp?.fermer(); } catch { /* déjà parti */ }
-    const nom = nomConteneurIsole(user, plateforme);
-    const ins = await docker.inspecter(nom);
-    if (ins?.State?.Running) {
-      const ip = ipDe(ins);
-      if (ip) { try { await fetch(`http://${ip}:3000/v1/sessions/release`, { method: 'POST', signal: AbortSignal.timeout(20_000) }); } catch { /* best-effort */ } }
-      await docker.arreter(nom).catch(() => {});
-    }
-    journal.info('navigateur_isole_ferme', { user, plateforme, raison });
   }
 
   /** Ferme : la session steel est rendue, puis le conteneur s'arrête (rien ne tourne sans raison). */
@@ -615,6 +543,5 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
   const retirerCadre = (user, cadre) => { ouverts.get(user)?.cadresPermis?.delete(String(cadre)); };
 
-  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()],
-    ouvrirIsole, fermerIsole, ouvertIsole: (user, plateforme) => isoles.get(`${user}:${plateforme}`) ?? null };
+  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
 }

@@ -212,27 +212,22 @@ test('(02/11, essai de Nico 11:45) « Accès temporairement restreint » écrit 
   assert.ok(!TEXTE_ACCES_RESTREINT.test('Vérification de l\'appareil en cours'), 'une vérification qui passe : non');
 });
 
-test('(02/11) le navigateur isolé : sa propre empreinte (écran, cœurs, aucune extension), le principal inchangé', async () => {
-  const { specConteneur, specConteneurIsole, corpsSession, corpsSessionIsole, empreinteNavigateur, nomConteneurIsole, profilIsole } = await import('../src/navigateur.js');
+test('(02/11 soir) UN navigateur : le principal prend les langues d\'un vrai Chrome français, rien d\'autre ne change', async () => {
+  const nav = await import('../src/navigateur.js');
+  const { specConteneur, corpsSession, empreinteNavigateur } = nav;
   const config = { imageNavigateur: 'i', dossierProfils: '/p', dossierExtension: '/e' };
   const p = specConteneur({ config, user: 'u', profilId: 'p1' });
-  const i = specConteneurIsole({ config, user: 'u', profilId: 'p-u-beebs-isole', plateforme: 'beebs' });
-  assert.ok(!i.HostConfig.Binds.some((b) => b.includes('/app/api/extensions/')), 'aucune extension : aucune visite de fond');
-  assert.ok(i.HostConfig.Binds.includes('/p/p-u-beebs-isole:/app/api/user-data-dir'), 'son profil à lui');
-  assert.equal(i.HostConfig.CpusetCpus, '0-3');
-  assert.match(i.Cmd[0], /Xvfb :10 -screen 0 1536x864x24/);
-  assert.equal(i.Labels['fillsell.isole'], 'beebs');
-  const ci = corpsSessionIsole({ proxyUrl: 'http://a:b@1.2.3.4:12323', plateforme: 'beebs' });
-  assert.deepEqual([ci.extensions, ci.dimensions], [[], { width: 1536, height: 864 }]);
-  // (02/11 14:15, feu vert de Nico) UNE variable : les langues d'un vrai Chrome français, sur l'isolé seulement.
-  assert.deepEqual(ci.userPreferences, { intl: { accept_languages: 'fr-FR,fr,en-US,en', selected_languages: 'fr-FR,fr,en-US,en' } });
-  assert.deepEqual(corpsSession({ proxyUrl: 'http://a:b@1.2.3.4:12323' }).userPreferences, { intl: { accept_languages: 'fr-FR,fr', selected_languages: 'fr-FR,fr' } }, 'le principal garde ses langues (figées)');
-  assert.notEqual(empreinteNavigateur(i, ci), empreinteNavigateur(p, corpsSession({ proxyUrl: 'http://a:b@1.2.3.4:12323' })), 'une empreinte différente du principal');
-  assert.match(p.Cmd[0], /1920x1080x24/, 'le principal garde son écran');
-  assert.ok(p.HostConfig.Binds.some((b) => b.includes('/app/api/extensions/')) && !p.HostConfig.CpusetCpus, 'et son extension, sans limite de cœurs');
-  assert.equal(nomConteneurIsole('f44b5917-bccc', 'beebs'), 'fs-nav-f44b5917-bccc-beebs');
-  assert.equal(profilIsole('f44b5917-bccc', 'beebs'), 'p-f44b5917-beebs-isole');
-  assert.throws(() => specConteneurIsole({ config, user: 'u', profilId: 'x', plateforme: 'vinted' }), /inconnue/);
+  const s = corpsSession({ proxyUrl: 'http://a:b@1.2.3.4:12323' });
+  // fr-FR, fr, en-US, en → Accept-Language « fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7 » (cause prouvée du blocage Beebs).
+  assert.deepEqual(s.userPreferences, { intl: { accept_languages: 'fr-FR,fr,en-US,en', selected_languages: 'fr-FR,fr,en-US,en' } });
+  assert.equal(s.timezone, 'Europe/Paris');
+  assert.match(p.Cmd[0], /1920x1080x24/, 'son écran');
+  assert.ok(p.HostConfig.Binds.some((b) => b.includes('/app/api/extensions/')) && !p.HostConfig.CpusetCpus, 'son extension, sans limite de cœurs');
+  // L'empreinte que le déploiement du 02/11 soir autorise (EMPREINTE_AUTORISEE), pour le lancement en place (ca929fd96ad6) :
+  // seules les langues ont changé (73cbe2096d286336 avec « fr-FR, fr »).
+  assert.equal(empreinteNavigateur({ Labels: { 'fillsell.lancement': 'ca929fd96ad6' } }, s), '7a1cfa22decada93');
+  for (const n of ['specConteneurIsole', 'corpsSessionIsole', 'VARIANTES_ISOLEES', 'profilIsole', 'nomConteneurIsole'])
+    assert.equal(nav[n], undefined, `plus de navigateur isolé (${n})`);
 });
 
 test('(02/11) le refus d\'un bandeau de cookies : trouvé dans la page et ses racines d\'ombre, jamais un bouton invisible', async () => {

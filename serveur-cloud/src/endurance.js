@@ -189,7 +189,7 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
     const navigateursMo = {};
     for (const c of await docker.lister().catch(() => [])) {
       const nom = c.Names?.[0]?.replace(/^\//, '') ?? '';
-      if (!nom.startsWith('fs-nav-') || c.Labels?.['fillsell.isole']) continue;   // (02/11) le navigateur isolé à part
+      if (!nom.startsWith('fs-nav-')) continue;
       navigateursMo[nom.slice(7, 15)] = memoireMo(await docker.stats(nom));
     }
     // Le verrou des plateformes de chaque navigateur : ce qui est ouvert, et combien de requêtes vers une plateforme fermée

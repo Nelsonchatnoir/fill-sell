@@ -354,8 +354,6 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
   async function essayer(user, b) {
     const h = navigateurs.ouvert(user);
     const cle = `${user}:${b.plateforme}`;
-    // (02/11) Une plateforme isolée ne passe jamais par le navigateur principal, essai compris.
-    if (config.navigateursIsoles?.[b.plateforme]) return null;
     if (!h || essais.has(cle) || connexionsOuvertes?.().has(user)) return null;
     essais.add(cle);
     let cible = null;

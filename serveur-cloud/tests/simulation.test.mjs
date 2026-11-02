@@ -566,32 +566,28 @@ test('(02/11, essai de Nico 11:45) « Résoudre » : la vérification de l\'appa
   await attendre(2600);
 });
 
-// ── (02/11, décision de Nico : dernier essai Beebs) le navigateur ISOLÉ, et « Accès temporairement restreint » dans « Me connecter »
+// ── (02/11 soir, décision de Nico) UN navigateur par compte : Beebs se connecte dans le principal, comme les autres ; et
+// « Accès temporairement restreint » dans « Me connecter »
 const BEEBS_CO = [{ name: 'access_token', value: jwt({ sub: 'u-beebs', provider_id: 'password' }), domain: 'www.beebs.app', path: '/' }];
-test('(02/11) « Me connecter » Beebs passe par SON navigateur isolé : le principal n\'est ni ouvert ni ouvert à Beebs, rien au coffre', async () => {
+test('(02/11 soir) « Me connecter » Beebs passe par le navigateur PRINCIPAL : ouvert à Beebs, la connexion vérifiée va au coffre', async () => {
   const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
-  const appels = { isole: 0, ferme: [], permettre: 0, principal: 0 };
-  s.postes.ouvrirIsole = async () => { appels.isole++; return { cdp: s.nav.cdp, permises: ['beebs'] }; };
+  const appels = { principal: 0, permises: [] };
   const ouvrirPrincipal = s.postes.ouvrir; s.postes.ouvrir = async (...a) => { appels.principal++; return ouvrirPrincipal(...a); };
-  s.navigateurs.permettre = async () => { appels.permettre++; return { ok: true }; };
-  s.navigateurs.fermerIsole = async (u, p, r) => { appels.ferme.push([p, r]); };
-  s.connexions = creerConnexions({ config: { ...config, navigateursIsoles: { beebs: { ipId: 2 } } }, base: s.base, postes: s.postes, navigateurs: s.navigateurs, coffre: s.coffre, journal });
+  const permettre = s.navigateurs.permettre; s.navigateurs.permettre = async (u, l) => { appels.permises.push([...l]); return permettre ? permettre(u, l) : { ok: true }; };
+  s.connexions = creerConnexions({ config, base: s.base, postes: s.postes, navigateurs: s.navigateurs, coffre: s.coffre, journal });
   const c = brancherClient(s, 'beebs');
   await c.ouvrir();
   await attendre(20);
-  assert.equal(appels.isole, 1, 'le navigateur isolé de Beebs');
-  assert.equal(appels.principal, 0, 'le principal n\'est pas ouvert pour Beebs');
-  assert.equal(appels.permettre, 0, 'ni ouvert à Beebs');
+  assert.equal(appels.principal, 1, 'le principal, comme pour Vinted, Leboncoin, Depop');
+  assert.ok(appels.permises.some((l) => l.includes('beebs')), 'Beebs ouverte au verrou le temps de son « Me connecter »');
   s.nav.poserCookies(BEEBS_CO);
   s.nav.page.lecture = { http: 200, id: 'u-beebs' };
   await attendre(2300);
   assert.ok(c.etapes().includes('verifie'), c.etapes().join(','));
-  assert.ok(!s.base.t.cloud_coffre.some((l) => l.plateforme === 'beebs'), 'rien au coffre du principal (sinon il se l\'ouvrirait)');
-  const iso = s.base.appels.find(([n, a]) => n === 'platform_settings_fusionner' && a.p_chemin.join('.') === 'beebs.cloud_isole');
-  assert.ok(iso?.[1].p_patch.connecte === true && iso[1].p_patch.verifie_le, '(02/11) mais l\'app le sait : platform_settings.beebs.cloud_isole');
+  assert.ok(s.base.t.cloud_coffre.some((l) => l.plateforme === 'beebs' && l.connecte === true), 'la connexion vérifiée au coffre : get-pending-jobs sert ses tâches au Cloud');
+  assert.ok(!s.base.appels.some(([n, a]) => n === 'platform_settings_fusionner' && a.p_chemin.includes('cloud_isole')), 'plus aucun « navigateur réservé »');
   await c.dire({ t: 'termine' });
   await attendre(3400);
-  assert.deepEqual(appels.ferme, [['beebs', 'connectee']], 'le navigateur isolé ne tourne que le temps de sa page');
 });
 
 test('(02/11) « Me connecter » : « Accès temporairement restreint » dès la page de connexion → dit tout de suite, même message que « Résoudre »', async () => {

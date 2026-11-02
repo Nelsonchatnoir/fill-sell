@@ -4,7 +4,7 @@
 import { readFile } from 'node:fs/promises';
 import { PLATEFORMES_CLOUD, ORIGINES_SESSION, cookiesAPurger, versCookieParam } from './plateformes.js';
 import { planifierPostes, resumerJobs } from './planificateur.js';
-import { nouveauProfilId, DOMAINES_VERROU, profilIsole } from './navigateur.js';
+import { nouveauProfilId, DOMAINES_VERROU } from './navigateur.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
 
 /** Une adresse sur un domaine de la plateforme (pure) — les onglets à fermer quand elle est bloquée. */
@@ -173,9 +173,8 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       // (30/10, lot D) La sortie vient du SEUL module fournisseur (IP dédiée, ou rotation).
       const sortie = await fournisseurIp.proxyPour(user, compte);
       // (30/10, règle de Nico) Le verrou du relais : seules les plateformes CONNECTÉES du compte (coffre) sont joignables.
-      // (02/11) Une plateforme ISOLÉE (son navigateur à elle) n'est jamais joignable par le principal.
       const h = await navigateurs.ouvrir(user, { proxyUrl: sortie.proxyUrl, proxyBeebs: sortie.proxyBeebs ?? null, profilId,
-        permises: (compte?.plateformes_connectees ?? []).filter((p) => !config.navigateursIsoles?.[p]) });
+        permises: compte?.plateformes_connectees ?? [] });
       h.ipId = sortie.ipId;
       h.sortie = { mode: sortie.mode, sortie: sortie.sortie };
       // (30/10, lot D) L'historique des IP utilisées par le compte (conditions art. 8, confidentialité 4.8) : en rotation
@@ -273,11 +272,5 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     return { comptes: comptes.length, ouverts: navigateurs.ouverts().length, ...decision };
   }
 
-  /** (02/11) Le navigateur isolé d'une plateforme : SON IP (réservée, NAVIGATEUR_ISOLE_<PF>_IP), SON profil. */
-  async function ouvrirIsole(user, plateforme) {
-    const { proxyUrl } = await fournisseurIp.proxyIsole(plateforme);
-    return navigateurs.ouvrirIsole(user, plateforme, { proxyUrl, profilId: profilIsole(user, plateforme) });
-  }
-
-  return { ouvrirIsole, tour, ouvrir, fermer, sauvegarder, purgerPlateforme, bloquerPlateforme, noter, extensionId, lirePoste, dernieresFins };
+  return { tour, ouvrir, fermer, sauvegarder, purgerPlateforme, bloquerPlateforme, noter, extensionId, lirePoste, dernieresFins };
 }

@@ -228,7 +228,7 @@ test('conteneur : lancé EXACTEMENT comme l\'essai du 01/11, profil du compte au
   assert.throws(() => corpsSession({ proxyUrl: 'http://194.152.141.98:12323' }), 'proxy sans identifiants : refusé');
   const c = corpsSession({ proxyUrl: 'http://u:p@194.152.141.98:12323' });
   assert.deepEqual(c, { proxyUrl: 'http://u:p@194.152.141.98:12323', skipFingerprintInjection: true, headless: false, blockAds: false,
-    extensions: ['fillsell'], persist: true, timezone: 'Europe/Paris', userPreferences: { intl: { accept_languages: 'fr-FR,fr', selected_languages: 'fr-FR,fr' } } },
+    extensions: ['fillsell'], persist: true, timezone: 'Europe/Paris', userPreferences: { intl: { accept_languages: 'fr-FR,fr,en-US,en', selected_languages: 'fr-FR,fr,en-US,en' } } },
   'la session de l\'essai (empreinte réelle, avec écran, publicités laissées, extension), plus « persist » et (02/11) le profil français');
 });
 

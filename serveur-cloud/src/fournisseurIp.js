@@ -125,12 +125,5 @@ export function creerFournisseurIp({ config, base, iproyal, journal, alertes }) 
     return { ...s, seuil, sous_le_seuil: s.montant < seuil };
   }
 
-  /** (02/11) La sortie du navigateur ISOLÉ d'une plateforme : l'IP du pool qui lui est réservée (config.navigateursIsoles). */
-  async function proxyIsole(plateforme) {
-    const iso = config.navigateursIsoles?.[plateforme];
-    if (!iso?.ipId) throw new Error(`navigateur isolé non configuré pour ${plateforme}`);
-    return { proxyUrl: await proxyDuPool(iso.ipId), ipId: Number(iso.ipId) };
-  }
-
-  return { proxyPour, proxyIsole, solde, verifierSolde, rotationActive };
+  return { proxyPour, solde, verifierSolde, rotationActive };
 }

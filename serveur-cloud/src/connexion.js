@@ -237,9 +237,6 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     const def = DEFINITIONS[plateforme];
     // (02/11) « Résoudre la vérification » : la page où la vérification s'affiche, et elle seule joint la plateforme.
     const resoudre = mode === 'resoudre';
-    // (02/11, décision de Nico) Une plateforme ISOLÉE (Beebs) se connecte dans SON navigateur (navigateur.js) : le principal
-    // n'est jamais touché ni ouvert à elle ; sa session reste dans le profil isolé (rien au coffre du principal).
-    const isolee = !resoudre && Boolean(config.navigateursIsoles?.[plateforme]);
     const pageDepart = resoudre ? pageDeResolution(plateforme, blocage) : def.pageConnexion;
     let cadreExcepte = false;
     const cadres = new Set();
@@ -433,9 +430,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       }
       connectee = true;
       const preuve = { le: new Date().toISOString(), http: v.http };
-      // (02/11) Navigateur isolé : la session reste dans SON profil (le coffre du principal n'en saura rien — sinon le
-      // principal se l'ouvrirait).
-      const bilan = isolee ? 'profil_isole' : await coffre.sauvegarderCookies(user, cookies, { verifiees: [plateforme], preuves: { [plateforme]: preuve } })
+      const bilan = await coffre.sauvegarderCookies(user, cookies, { verifiees: [plateforme], preuves: { [plateforme]: preuve } })
         .catch((e) => ({ erreur: e.message }));
       const ident = identifiantCompte(cookies, plateforme);
       let refus = null;
@@ -452,14 +447,6 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         return;
       }
       journal.info('connexion_verifiee', { user, plateforme, http: v.http, coffre: bilan });
-      // (02/11, essai Beebs de Nico 14:37 : « vérifié » dans la fenêtre, « À connecter » dans l'app) La connexion d'une
-      // plateforme ISOLÉE ne va pas au coffre (le principal se l'ouvrirait) : elle est dite à l'app ailleurs —
-      // platform_settings.<plateforme>.cloud_isole (connectée, vérifiée le…), sans rien servir au principal.
-      if (isolee) {
-        const { error: eIso } = await base.rpc('platform_settings_fusionner', { p_chemin: [plateforme, 'cloud_isole'],
-          p_patch: { connecte: true, verifie_le: preuve.le, navigateur: 'isole' }, p_supprimer: [], p_user: user });
-        if (eIso) journal.alerte('connexion_isolee_etat_echec', { user, plateforme, erreur: eIso.message });
-      }
       await journaliser('connectee', null);
       try { surVerifiee?.({ user, plateforme, http: v.http, le: preuve.le }); } catch { /* le journal de l'essai ne bloque rien */ }
       if (manuel) return terminer();
@@ -566,15 +553,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       setTimeout(() => fermer(`resolution_${fin}`), fin === 'resolu' ? 1500 : 2500);
     }
 
-    /** (02/11) La plateforme refuse l'accès dès sa page de connexion : dit, journalisé, et (connue au coffre, hors navigateur
-     *  isolé) mise en « restreint » comme dans « Résoudre » — son essai des 24 h. */
+    /** (02/11) La plateforme refuse l'accès dès sa page de connexion : dit, journalisé, et (connue au coffre) mise en
+     *  « restreint » comme dans « Résoudre » — son essai des 24 h. */
     let restreinte = false;
     async function accesRestreint() {
       if (restreinte || finie) return;
       restreinte = true;
       clearInterval(sonde);
-      journal.alerte('connexion_acces_restreint', { user, plateforme, isolee });
-      if (!isolee && (permisesAvant ?? []).includes(plateforme)) {
+      journal.alerte('connexion_acces_restreint', { user, plateforme });
+      if ((permisesAvant ?? []).includes(plateforme)) {
         await verifications?.bloquer(user, { source: 'me_connecter', nature: 'restreint', plateforme, detail: 'Accès temporairement restreint dès la page de connexion' })
           ?.catch?.(() => {});
       }
@@ -636,12 +623,12 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         if (error) journal.alerte('connexion_journal_echec', { user, plateforme, erreur: error.message });
         ligneJournal = ligne?.id ?? null;
       }
-      let h = isolee ? (navigateurs.ouvertIsole?.(user, plateforme) ?? null) : navigateurs.ouvert(user);
-      if (!h) h = isolee ? await postes.ouvrirIsole(user, plateforme) : await postes.ouvrir(user, compte, resoudre ? 'resolution' : 'connexion');
+      let h = navigateurs.ouvert(user);
+      if (!h) h = await postes.ouvrir(user, compte, resoudre ? 'resolution' : 'connexion');
       // (30/10, règle de Nico) Le verrou du relais : la plateforme de CE « Me connecter » devient joignable, en plus des
       // connectées, AVANT toute navigation ; une fermeture sans connexion la referme (fermer).
       // (02/11) Résoudre : la plateforme reste fermée au navigateur ; seule la page de résolution passe (plus bas).
-      if (!resoudre && !isolee) {
+      if (!resoudre) {
         permisesAvant = [...(h.permises ?? compte?.plateformes_connectees ?? [])];
         await navigateurs.permettre?.(user, [...permisesAvant, plateforme]);
       }
@@ -768,7 +755,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       clearTimeout(attenteRetour);
       if (actives.get(user) === vue) actives.delete(user);
       arreterEcoute?.();
-      const h = isolee ? null : navigateurs.ouvert(user);
+      const h = navigateurs.ouvert(user);
       // (01/11) Connectée : les cookies de la fin (étape du téléphone faite après la vérification, jetons tournés)
       // rejoignent le coffre AVANT que la page ne se ferme.
       const avantFermeture = connectee && h
@@ -778,8 +765,6 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       const cibles = [...fenetres, cible].filter(Boolean);
       avantFermeture.finally(() => {
         for (const c of cibles) cdp?.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
-        // (02/11) Le navigateur isolé ne tourne que le temps de SA page (aucune extension, aucune visite de fond).
-        if (isolee) setTimeout(() => { navigateurs.fermerIsole?.(user, plateforme, raison).catch(() => {}); }, 1500);
       });
       if (!connectee) journaliser(raison === 'expiree' ? 'abandonnee' : raison === 'erreur' ? 'erreur' : 'abandonnee', raison).catch(() => {});
       // (30/10) Sans connexion, la plateforme redevient fermée ; connectée, elle reste joignable (son coffre fait foi).
