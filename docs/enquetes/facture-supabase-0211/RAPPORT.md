@@ -175,3 +175,56 @@ Consigne de Nico : tout point non prouvable revient à l'ancien comportement.
 - **Pas atteint : la moitié** pour cross_post_jobs, profiles et les journaux. Prochain levier prouvable : platform_settings
   (2,35 lectures par poll) gardé par une version tenue par la base, invalidée par le poll quand il l'écrit lui-même
   (platform_settings_fusionner) ; ensuite, les lectures de cross_post_jobs restantes une à une (chacune doit se prouver).
+
+## Partie D (02/11 soir, terminal problèmes) — transformations : inventaire, essai à blanc sur TOUT le stock, coûts
+Consigne de Nico : rien de basculé en prod ; essai à blanc des deux méthodes côte à côte, empreintes stockées
+recalculées avec la nouvelle (jamais d'ancienne comparée à une nouvelle), décisions de fusion et de doublons rejouées.
+Détail complet et scripts : `essai-empreintes/RESULTAT.md`, `essai-empreintes/scripts/` (données : 1,1 Go, gardées hors dépôt).
+
+### D1. Inventaire (journaux de la passerelle, 01/11 16:20 → 02/11 16:20)
+| Appelant | Requêtes render/image | Images distinctes | Touche empreintes / fusion ? |
+|---|---|---|---|
+| `_shared/empreinte-telechargement.ts` (empreintes-urls, doublons-balayage), 400 px q80 | 3 172 | 3 028 | OUI : c'est l'empreinte |
+| photo-empreinte (800 px, second essai) | 0 | 0 | oui (empreinte) |
+| rapprochement-ia (256 px + copie ia-miniatures) | 0 | 0 | oui (verdict IA de fusion) |
+| lens-analysis (photo > 6 000 px seulement) | 0 | 0 | non (attributs) |
+| App web / mobile, extension (affichage) | 0 | 0 | non |
+- **Affichage : rien à basculer.** Aucun écran (src/), ni l'extension, ne demande de transformation (code relu : aucune
+  `render/image`, aucun `transform:` de stockage) ; 0 requête en 24 h. Rien ne change donc à l'écran.
+- **100 % des transformations sont des empreintes.** Les photos empreintées sont toutes à la position ≤ 6 de leur fiche
+  (mesuré sur 7 jours : 9 662 / 9 662 retrouvées), celles que le moteur lit (maxPhotos 6) : aucune ne peut être sautée à
+  l'identique.
+
+### D2. Essai à blanc (16:20 → 17:20, rien écrit en prod, 0 render/image)
+- 65 880 photos du bucket ; 63 827 lues (2 052 fichiers supprimés du stockage, retirés des deux jeux ; 1 refusée par la
+  nouvelle méthode : 2 500 × 2 500 > 6 Mpx). 18,16 Go téléchargés. Le calcul local est celui de la prod à l'octet : les
+  1 313 lignes que la prod avait déjà calculées sur l'originale ressortent à Δ0.
+- Écarts : dHash 0 bit 42 692, 1 : 15 824, 2 : 3 864, 3 : 871, 4 : 212, ≥5 : 364 ; pHash 0 : 46 551, 2 : 16 289,
+  4 : 891, ≥5 : 96. **50 photos à 20-40 bits, dont 47 avec une orientation EXIF 6 ou 8** (render/image tournait l'image,
+  imagescript ne la tourne pas).
+- **Décisions : PAS identiques.**
+  - Moteur v3, passe comme le cron : 835 / 838 comptes identiques à l'octet ; 2 comptes à la distance notée près ;
+    1 compte (39bfa95a) : 2 annonces « à vérifier » avec un autre candidat.
+  - Moteur v3, tout le stock rejugé : 37 comptes, 175 sujets différents — dont 2 fusions automatiques → questions,
+    1 question → fusion, 1 fusion perdue et 1 nouvelle, 88 « à vérifier » avec un autre candidat, « Annonce en double ? »
+    25 perdues / 11 nouvelles. Paires de photos : 11 394 perdues, 11 660 nouvelles sur 1,53 M, marge minimale au seuil 0.
+  - Doublons : 5 470 verdicts photo changés sur 38,7 M paires ; au niveau final, 65 changent : 41 questions perdues,
+    24 nouvelles, dans 18 comptes.
+  - fiches_meme_photo_questions : 5 perdues / 19 nouvelles ; fusion_photo_tick : 0 rattachement changé sur 1 033 ;
+    lecteurs JS (get-pending-jobs, handler-watch, beebs-lien, rapprochement-ia) : 109 paires sur 30 026 changent de
+    niveau (62 perdues, 47 nouvelles, 30 comptes).
+  - Exemples : 39bfa95a « Doudou Minnie » (copie EXIF 6 contre la photo Vinted : 0 → 21 bits, fusion → question) ;
+    8ac5bbda « Jean Lee W40 » (0 → 25 bits, fusion → question) ; 771ac4d9 « Robe été blanche XS » (6,4 → 8 et 9 → 10,
+    seuil « multi » ≤ 9 : la fusion disparaît) ; 18e461c1 « Doudoune bébé 9 mois » (d 9 → 11, seuil proche ≤ 10 : la
+    question de doublon disparaît).
+  - Non couvert (dit honnêtement) : instantané de 16:27 ; lecture du moteur par un miroir SQL de rapprochement_v3_lire ;
+    doublons sans la limite de 60 candidates ni les refus passés ; Beebs et « trancher » comptés en sur-ensemble.
+
+### D3. Coût par cycle (tarif : 5 $ / 1 000 images d'origine au-delà de 100 ; egress 0,09 $ / Go au-delà de 250 Go)
+| Option | Transformations / cycle | Egress en plus | Décisions |
+|---|---|---|---|
+| Garder l'identique (aujourd'hui) | 59 261 au dernier cycle → **≈ 296 $** ; au rythme du 01-02/11 (3 028 / jour) **≈ 450 $** | 0 | identiques |
+| Empreinte sur l'originale (40e4bd3) | **0 $** | ≈ +23 Go / cycle (originale 280 Ko au lieu de 25 Ko) → 0 à ≈ 2 $ ; + une fois 18 Go pour recalculer tout le stock (0 à ≈ 1,6 $) | **différentes** (D2) |
+| Originale + orientation EXIF appliquée (non essayée) | 0 $ | idem | les 50 grands écarts disparaîtraient ; les 1-4 bits restent → différentes aussi, ampleur à mesurer par un second essai (≈ 18 Go, ~1 h) |
+- Aucune méthode sans transformation ne reproduit l'identique : les écarts de 1-4 bits viennent de la réduction +
+  recompression JPEG du service, que rien ne refait à l'octet. **Rien n'est basculé : décision de Nico.**

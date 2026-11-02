@@ -24,7 +24,11 @@ puis v167** (faux), **ebay-api-worker v106** (faux). Relance : `scripts/reparati
   de 3 h, republication « deleted » jamais retenue. Selftest `selftest:rotation-figes` (13 contrôles ajoutés, file réelle).
 - **Relance.** 3bd3cc17 (erreur, échéance, error_technique effacées). Les 76 autres n'avaient rien à effacer. La fenêtre
   de 3 h s'est fermée à 16:00:57 ; le poste reprendra les Vinted à son prochain poll (fin de son lot Leboncoin).
-- **Preuve.** (complétée plus bas.)
+- **Preuve.** Poll de 16:24:55 : « 78 job(s) distribué(s) » (plus aucune ligne « qui figent »), le lot Leboncoin s'étant
+  arrêté sur sa session Leboncoin morte (observée 15:40, « Leboncoin bloque » depuis 16:03 : 56 Leboncoin retenus sans
+  tentative consommée — à lui de se reconnecter, rien à voir avec ce correctif). Vinted **publiées 16:35:53**
+  (10637271752), 16:44:44, 17:02:13, 17:11:53, 17:14:54, une en cours à 17:20. Honnêtement : ce redémarrage-là vient de
+  la fin de la fenêtre de 3 h (16:00:57) et d'un poll arrivé plus tôt ; la règle v326 évite la prochaine famine.
 
 ## 2. labrunettedu44 (Gratuit) — 27 republications Leboncoin en boucle sur « adresse introuvable »
 - **Faits.** Réglages : « 25bis Rue de la Fontaine aux Bretons 44210 Pornic », ville choisie pour l'annonce « Pornic 44210 ».
