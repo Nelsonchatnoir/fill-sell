@@ -1,5 +1,56 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 02/11/2026 15:05 — ÉTAT COMPLET DU CLOUD ; BEEBS : CAUSE PROUVÉE ; POINT 3 EN ATTENTE (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 20 à 22.11. Ce bloc remplace, pour l'état, les blocs du 02/11
+en dessous (gardés pour l'histoire).
+
+### Beebs : cause prouvée
+- Le profil français du matin envoyait `Accept-Language: fr-FR,fr;q=0.9` (deux langues, jamais vu chez un vrai Chrome
+  français) → DataDome de Beebs : « Accès temporairement restreint » à chaque visite (11:45, 12:23, 12:37, 13:02, 13:49).
+- Avec les langues d'un vrai Chrome français (`fr-FR, fr, en-US, en` → `fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7`) : **Beebs
+  passe** (14:37-14:39, navigateur isolé, compte vérifié 200). TLS / HTTP/2 hors de cause (identiques au vrai Chrome 156,
+  tunnel CONNECT sans intermédiaire). Autres écarts connus, non corrigés : « Chromium » sans « Google Chrome »,
+  WebRTC sans candidat.
+- **Plus aucune visite de Beebs sans l'accord de Nico.**
+
+### Navigateurs (serveur cx43 Hetzner, Falkenstein, cloud.fillsell.app ; orchestrateur 7f3ba62)
+- PRINCIPAL (`fs-nav-<compte>`) : IP **81.181.239.136** (pool id 3, jusqu'au 29/11 21:00), empreinte FIGÉE
+  **73cbe2096d286336** (langues fr-FR, fr — le même écart, non corrigé), extension Cloud 0.6.164. Vinted, Leboncoin,
+  Depop connectés et actifs (lectures 200 le 02/11 après-midi ; Gants de ski republiés sur Leboncoin 12:24:31). Beebs
+  y est FERMÉE (plateforme isolée).
+- ISOLÉ Beebs (`fs-nav-<compte>-beebs`, profil `p-f44b5917-beebs-isole`, sans extension, 1536×864, 4 cœurs, langues de
+  vrai Chrome FR) : IP **176.103.182.215** (pool id 39, **24 h, expire le 03/11 14:09**), empreinte
+  **a20440298a88a528**. Session Beebs de Nico dans ce profil (pas au coffre) ; l'app la lit dans
+  `platform_settings.beebs.cloud_isole`. Ne tourne que pendant « Me connecter » Beebs. Les TÂCHES Beebs n'y passent pas
+  encore (point 3).
+- `/srv/fillsell-cloud/.env` : `NAVIGATEUR_ISOLE_BEEBS_IP=39`, `EMPREINTE_AUTORISEE=a20440298a88a528` (seule l'isolée).
+- Déployer (jamais pendant une tâche en cours) :
+  `DESTINATIONS_PROXY="81.181.239.136:12323,176.103.182.215:12323" bash serveur-cloud/outils/deployer.sh 178.105.24.16 cloud.fillsell.app`
+
+### IP grillées pour Beebs (ne plus jamais les y essayer)
+81.181.239.136 · 185.134.192.253 · 185.134.194.88 · 176.103.180.12 · 80.12.178.102 · 94.194.94.233 · 188.126.31.118
+(et toutes les IP des essais du 30/10). Pool : 94.194.94.233 (id 1, 04/11), 185.134.194.88 (id 2, 29/11),
+185.134.192.253 (id 4, rebut, 02/12), 176.103.180.12 (id 5, 03/11), 80.12.178.102 (id 6, 03/11) : libres, non utilisées.
+IPRoyal le 02/11 : 4 + 2,60 + 2,60 + 2,00 = **11,20 $** ; recharge de Nico 15 $ ; **solde 11,15 $**.
+
+### En attente
+- **OTA** de la partie app de 7f3ba62 (Beebs « Connecté » dans son navigateur réservé, bouton « Refuser les cookies ») :
+  l'autre terminal l'embarque dans sa prochaine OTA ; à vérifier sur le canal.
+- **Point 3 (décision de Nico)** — proposition :
+  1. Garder Beebs dans le navigateur isolé et **prolonger 176.103.182.215 à 30 jours** (plan 30 jours : 4 $ ≈ 3,70 €,
+     sur le solde) AVANT le 03/11 14:09 — même IP que la session établie (en changer referait passer la vérification).
+  2. Ne PAS toucher au principal tant que Vinted, Leboncoin, Depop passent : un changement de langues en pleine session
+     est exactement ce qui a cassé Beebs ce matin, et Leboncoin y vit sur un ancien cookie DataDome de confiance.
+     Préparer l'alignement (fr-FR, fr, en-US, en) derrière `EMPREINTE_AUTORISEE`, à ne lancer qu'au premier signe d'un
+     refus, une plateforme à la fois.
+  3. Mettre les tâches Beebs en service dans l'isolé : copie de l'extension limitée à Beebs + un poste « Beebs seul »
+     servi par get-pending-jobs (le principal n'en reçoit jamais) — travail à faire, avec l'autre terminal pour
+     get-pending-jobs. Coût par compte : une 2e IP (4 $/mois) et ≈ 1,3 Go de mémoire (le cx43 sert alors ≈ 5 comptes
+     au lieu de 10).
+  4. Pour les NOUVEAUX comptes : naître avec les langues d'un vrai Chrome français (aucun changement en cours de
+     session) → un seul navigateur, une seule IP, Beebs compris.
+- Poste de Nico : ARRÊT. Aucun autre achat.
+
 ## ⛔ 02/11/2026 14:30 — BEEBS : UN SEUL ESSAI « LANGUES » EN COURS, PUIS ARRÊT (à lire EN PREMIER)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 22.9 et 22.10.
 - Diagnostic : TLS / HTTP/2 des navigateurs Cloud identiques au vrai Chrome 156 (aucun intermédiaire : tunnel CONNECT) ;

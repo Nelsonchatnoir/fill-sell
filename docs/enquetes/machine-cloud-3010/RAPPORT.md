@@ -1730,3 +1730,18 @@ Aucune visite de Beebs ni de Leboncoin ; échos : tls.browserleaks.com, httpbin.
   écran, cœurs, fuseau identiques.
 - Essai « Me connecter » Beebs de Nico : pas encore fait à 14:28 (aucune ouverture au journal) — résultat à relire.
 - IPRoyal du 02/11 : 4 + 2,60 + 2,60 + 2,00 = **11,20 $** ; recharge de Nico : 15 $ ; solde 11,15 $.
+
+### 22.11 Essai « langues » RÉUSSI (02/11, 14:37 → 14:39) ; suites (15:05)
+- « Me connecter » Beebs de Nico, navigateur isolé (langues fr-FR, fr, en-US, en ; 176.103.182.215) : page de
+  connexion affichée, connexion Google (retour Firebase déclaré 14:36:58), **compte vérifié 14:38:29** (200), fermé
+  14:39:07 par « J'ai fini ». **Cause prouvée (Nico)** : l'Accept-Language à deux langues du profil français
+  (`fr-FR,fr;q=0.9`) ; avec celui d'un vrai Chrome français, Beebs passe — même bloc d'IP loué qu'une IP bloquée le matin.
+- « À connecter » dans l'app : la connexion d'une plateforme isolée n'allait pas au coffre (exprès : le principal se
+  l'ouvrirait) et l'app ne lisait que le coffre → publiée dans `platform_settings.beebs.cloud_isole` (7f3ba62 ; la
+  connexion de 14:38 enregistrée après coup à 15:02, sans visite) ; l'écran la montre « Connecté » avec « ses tâches
+  attendent la mise en service ».
+- Bandeau Axeptio impossible à fermer dans la fenêtre : « Refuser les cookies » (bouton dans l'app, le serveur presse le
+  refus — page et racines d'ombre, lu sans réseau), toutes plateformes. serveur-cloud 92/92 ; suite complète 522 / 0.
+- Déployé 15:02 (principal inchangé, 73cbe209). **Partie app : OTA en attente** (arbre partagé occupé par l'autre
+  terminal, prié d'embarquer 7f3ba62 dans sa 2.9.154).
+- **Point 3 (proposition, rien d'appliqué)** — voir la REPRISE, bloc 15:05.
