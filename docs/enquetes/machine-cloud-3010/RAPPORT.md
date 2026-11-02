@@ -1932,3 +1932,62 @@ handler_build de toutes : `2026-11-01T23:02:16Z+dd69fbb-cloud · v0.6.164` ; le 
 - **Parc** : `build/CWS-0.6.168-A-TELEVERSER/fillsell-extension-0.6.168-cws.zip` (BUILD_ID `2026-11-02T18:29:37Z+7d2a82e`,
   SHA-256 06ee466b…) ; EXTENSION_LAST_COMMIT = 2026-11-02T18:24:23Z ; EXTENSION_MIN_BUILD non touché.
 - Suite complète 524 / 0 ; serveur-cloud 93/93.
+
+## 26. Fenêtres, onglets et mémoire du navigateur Cloud (02/11 soir, diagnostic puis correctifs — décision de Nico)
+
+### 26.1 Le diagnostic (20:15 → 20:25, lecture seule, compte de Nico, orchestrateur 7d2a82e, extension 0.6.168-cloud)
+- **Fenêtres : propres.** 2 fenêtres : celle que steel ouvre au lancement (`about:blank`) et LA fenêtre de travail
+  (registre = 1). Un onglet par plateforme, le porte-page ; aucun orphelin, aucun onglet gelé ni déchargé.
+- **« Minimisée » n'existe pas dans le Cloud** : Xvfb sans gestionnaire de fenêtres → Chrome refuse, état `normal`
+  (relevé sur chaque tâche du jour ; l'extension note `fenetre_creee_non_minimisee` à chaque démarrage). Sans effet.
+- **Aucun freinage** : steel lance Chromium avec `--disable-background-timer-throttling`,
+  `--disable-renderer-backgrounding`, `--disable-backgrounding-occluded-windows`. Mesuré en 10 s dans un monde isolé
+  (invisible du site, aucun réseau) : onglet Vinted caché 239 minuteurs/s, 30/30 intervalles de 100 ms, 3 × 1 s =
+  3001 ms — comme une page visible (240/s, 30/30, 3001 ms). Seul l'affichage est suspendu (0 image contre 122) : l'onglet
+  est INACTIF derrière le porte-page — pareil sur PC ; un retrait active déjà l'onglet (`paintTab`).
+- **Aucune accumulation** : chaque déploiement (18 envois le 02/11) arrête et relance le conteneur (journal Docker) ;
+  les 3 changements de version de l'extension en 48 h ont été constatés au démarrage du navigateur.
+- **La mémoire, oui** : les 4 onglets de travail restent chargés entre deux tâches : 1,16 à 1,9 Go sur 2 Go permis,
+  pids 263 à 554 sur 768. L'accueil Leboncoin seul : 24 cadres de pub = 22 processus de rendu ≈ 670 Mo (PSS). Socle
+  sans onglet de travail ≈ 0,85 Go (navigateur 273 Mo, API steel 215, Xvfb 77, extension 122, divers).
+- ⚠️ **OOM du conteneur à 18:51:52** (noyau, `failcnt 3671`) : un processus de page de 406 Mo tué, à la seconde du
+  retrait Leboncoin de la republication de Nico (tâche 19bf1e17 ; `deleted_at` 18:51:52.283). La tâche n'a noté aucun
+  plantage ; quel onglet : non tracé. Seul OOM depuis la mise en route du serveur (01/11 16:55).
+- Le porte-page `about:blank#fillsell-worker` est **invisible** à l'extension : adresse vide sans permission « tabs »,
+  `chrome.scripting` refusé (essayé sur le porte-page et l'about:blank de steel) — `observees` est vide dans tous les
+  événements en base depuis le 15/09.
+
+### 26.2 Mis en place
+- **Plafond du navigateur 2 → 3 Go** (02/11 20:37:33) : `docker update --memory 3g --memory-swap 6g` sur le conteneur
+  vivant (sans redémarrage, `StartedAt` inchangé) ; `/srv/fillsell-cloud/.env` `MEMOIRE_NAVIGATEUR=3g` (avant :
+  `archives/0211-nuit/env-avant-memoire-3g`). `Memory` n'entre pas dans l'empreinte de lancement (Image, Cmd, Env, Binds).
+- **Copie Cloud : les onglets de travail sans tâche sont FERMÉS** (`scripts/cloud/build-extension-cloud.mjs`,
+  `SOURCE_FERMETURE_CLOUD`, 4 patchs) : en fin de cycle du poll, sous le verrou, l'onglet Leboncoin, Beebs ou Depop
+  inutilisé depuis 5 min est fermé (`fermerOngletTravail` : beforeunload neutralisé, clé oubliée) ; la tâche suivante en
+  ouvre un neuf sur sa page. Usage = onglet rendu par `getOrCreateWorkTab` / `workTabForFetch` (storage.session) ;
+  Vinted reste ouvert (lectures sans verrou, `lirePagePubliqueVintedSansVerrou`) ; l'onglet rendu à la personne jamais
+  touché ; un onglet déchargé est réveillé sur l'accueil avant une lecture (`workTabForFetch`, toutes plateformes).
+- ⛔ **Premier essai (21:09, 02b1390) : déchargement par `chrome.tabs.discard` — ABANDONNÉ.** Mesuré : dans le navigateur
+  Cloud la page déchargée est RECHARGÉE à la même seconde (onglet Beebs déchargé à 21:36:47, nouvel id 924915877, accueil
+  rechargé à 21:36:47.775) : aucun gain de mémoire et une visite d'accueil de plus toutes les ~6 min sans tâche.
+  Remplacé par la fermeture (d426d23, déployé 21:42:09, file vide). Jamais `discard` pour libérer la mémoire dans le Cloud.
+- **Tout le parc (extension 0.6.169) : un rechargement ne crée plus de fenêtre de travail en laissant l'ancienne.**
+  Cause et règle : `docs/regles/extension-et-versions.md` § 02/11 nuit ; selftest `fenetre-travail-rechargement`.
+
+### 26.3 Mémoire réelle du navigateur, avant / après (cgroup du conteneur, relevés toutes les 30 s)
+Relevés : `/srv/fillsell-cloud/archives/0211-nuit/mesure-apres.txt` (02b1390) et `mesure-apres-fermeture.txt` (d426d23).
+
+| Moment | Onglets de travail chargés | Mémoire | Pic | pids |
+|---|---|---|---|---|
+| Avant (0.6.168-cloud, 19:30 → 20:25) | Vinted, Leboncoin (accueil + 24 cadres de pub), Depop, Beebs | 1,16 à 1,9 Go | 1,92 Go (2 Go = OOM à 18:51:52) | 263 à 554 / 768 |
+| Après, navigateur rouvert (21:42) | aucun | 0,44 Go | — | 141 |
+| Après, au repos (21:44 → 21:47) | Vinted, Depop | 0,62 Go | — | 175 |
+| Après, relevé Leboncoin (21:47 → 21:59) | + Leboncoin (accueil avec pubs) | 1,5 à 1,64 Go | **1,67 Go** | 473 |
+| Après, Leboncoin fermé (21:59:41, 5 min sans usage) | Vinted, Depop | **1,0 Go** | — | 215 |
+
+- Leboncoin fermé sans rechargement (aucune page leboncoin.fr dans les cibles, 9 processus de rendu au lieu de 25).
+  Depop reste ouvert : il sert à chaque cycle ; Vinted : gardé exprès. Aucun OOM depuis (`oom_kill 0`).
+- Aucune publication n'a tourné pendant ces mesures (file vide) : la « tâche » mesurée est le relevé Leboncoin de
+  l'extension (le plus lourd : accueil avec publicités). À relire au prochain check : le pic d'une vraie publication.
+- Gain : au repos ≈ 1,0 Go au lieu de 1,2-1,9 Go (Leboncoin et ses pubs libérés 5 min après leur dernier usage) ; le pic
+  d'un relevé Leboncoin (1,67 Go) reste sous l'ancien plafond (2 Go) et loin du nouveau (3 Go).

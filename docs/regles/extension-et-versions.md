@@ -186,3 +186,31 @@
   dit les attributs posés par la sonde.
 - Les remises en ligne bloquées sur un champ connu repartent UNE fois dès que le poste a ce build
   (`BUILD_ATTRIBUTS_CONNUS` = EXTENSION_LAST_COMMIT 2026-11-02T08:48:22Z, `_shared/recreation-bloquee.js`).
+
+## ⛔ 02/11 nuit — 0.6.169 : un rechargement ne crée plus de fenêtre de travail en laissant l'ancienne (demande de Nico)
+- **Cause** (rejouée par `selftest:fenetre-travail-rechargement` : 9 cas sur 12 rouges sur la 0.6.168) : un rechargement
+  ou une mise à jour vide `storage.session` ; l'onglet de travail dont la plateforme a réécrit l'URL (sans
+  `#fillsell-worker`, Vinted sur son accueil typiquement) comptait « utilisateur » ; `resolveWorkWindow` « rendait » alors
+  SA fenêtre du registre (oubliée, jamais fermée) et en créait une neuve — à chaque rechargement. Le ménage des orphelins
+  (24/09) jugeait le même onglet « à nous » : deux règles contradictoires.
+- ⛔ **Le porte-page `about:blank#fillsell-worker` est INVISIBLE à l'extension** (sans permission « tabs » : adresse vide,
+  `chrome.scripting` refusé — mesuré le 02/11) ; un onglet de la personne sur un site hors permissions d'hôte (Gmail…)
+  est tout aussi illisible. Jamais conclure « fenêtre à nous » ni « fermable » sur des onglets illisibles.
+- **Règle unique** (`compterOngletsFenetre`, utilisée par la résolution, l'adoption, la consolidation, le plafond et
+  `fermerFenetresAvantMaj`) : fenêtre du REGISTRE (storage.local) sans onglet utilisateur visible → à nous, onglets de
+  plateforme compris ; fenêtre HORS registre → à nous seulement sur preuve (réduite, onglets de plateforme tous au drapeau
+  `autoDiscardable:false` — posé sur chaque onglet de travail depuis le 08/10 —, au plus un onglet illisible, en tête) ;
+  **fermée ou adoptée seulement si `fermable`** (à nous ET au plus un onglet illisible, en tête). L'ancienne
+  consolidation (« utilisateur === 0 ») fermait une fenêtre de la personne qui portait notre onglet de repli et un onglet
+  illisible — corrigé du même geste.
+- Ids des onglets de travail **durables** (`fillsell_onglets_travail_connus`, storage.local, alimentée par toute écriture
+  d'une clé `fillsell_work_tab_*`, purgée des onglets disparus et à `onStartup`) ; l'onglet rendu à la personne (Leboncoin
+  « Valider et payer ») en sort et perd notre drapeau. `getOrCreateWorkTab` retrouve l'onglet sans fragment par cet id.
+- Limite dite : après un redémarrage COMPLET de Chrome avec « reprendre là où vous en étiez », un onglet restauré sans
+  fragment perd aussi le drapeau → il reste à la personne (jamais fermé sur une supposition).
+- Livrable : `build/CWS-0.6.169-A-TELEVERSER/fillsell-extension-0.6.169-cws.zip` (BUILD_ID `2026-11-02T20:10:27Z+02b1390`,
+  SHA-256 26634e94…, empaqueté depuis un worktree propre de HEAD : l'arbre portait les docs d'un autre terminal) ; contient
+  la 0.6.167 et la 0.6.168 (jamais téléversées, rangées dans `build/CWS-PERIMES/…-remplacee-par-0.6.169`).
+  EXTENSION_LAST_COMMIT = 2026-11-02T20:08:13Z ; EXTENSION_MIN_BUILD non touché.
+- Copie Cloud seulement : onglets de travail Leboncoin, Beebs, Depop sans tâche depuis 5 min FERMÉS en fin de cycle (pas `chrome.tabs.discard` : la page s'y recharge aussitôt)
+  (rapport `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 26).

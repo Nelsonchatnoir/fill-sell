@@ -1,5 +1,23 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 02/11/2026 22:05 — NAVIGATEUR À 3 GO ; ONGLETS SANS TÂCHE FERMÉS ; CLOUD d426d23 + EXTENSION 0.6.169-cloud (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 26 (diagnostic, mesures avant / après).
+- Diagnostic : fenêtres propres (2 : steel + la fenêtre de travail ; jamais « minimisée » — pas de gestionnaire de
+  fenêtres), aucun freinage (steel coupe les freins d'arrière-plan), aucune accumulation (chaque déploiement relance le
+  conteneur). Mais la MÉMOIRE : 1,16 à 1,9 Go sur 2 Go, OOM noyau à 18:51:52 (page de 406 Mo tuée pendant le retrait
+  Leboncoin de Nico).
+- Plafond du navigateur **3 Go** depuis 20:37:33 (`docker update`, sans redémarrage ; `.env` `MEMOIRE_NAVIGATEUR=3g`).
+- Copie Cloud : onglets de travail Leboncoin, Beebs, Depop **fermés** après 5 min sans tâche (fin de cycle, sous le
+  verrou) ; la tâche suivante en rouvre un ; Vinted reste ouvert. ⛔ Jamais `chrome.tabs.discard` dans le Cloud : la page
+  s'y recharge à la même seconde (essai 02b1390, 21:36:47 — abandonné).
+- Orchestrateur **d426d23** déployé 21:42:09 (file vide ; 02b1390 à 21:09:39 avant lui), copie Cloud **0.6.169-cloud**
+  (BUILD_ID `2026-11-02T20:41:27Z+d426d23-cloud`) ; navigateur rouvert 21:42:17, empreinte 7a1cfa22 inchangée.
+- Déployer (jamais pendant une tâche en cours) :
+  `DESTINATIONS_PROXY="176.103.182.215:12323" bash serveur-cloud/outils/deployer.sh 178.105.24.16 cloud.fillsell.app`
+  ⚠️ deployer.sh ne reconstruit la copie Cloud que si `build/extension-cloud/` manque : `node scripts/cloud/build-extension-cloud.mjs` d'abord.
+- Mesuré (§ 26.3) : au repos ≈ 1,0 Go (avant 1,2-1,9 Go) ; pic d'un relevé Leboncoin 1,67 Go ; aucun OOM depuis.
+- Mesure (lecture seule, bornée) : `bash /srv/fillsell-cloud/archives/0211-nuit/mesure-memoire.sh <secondes>`.
+
 ## ⛔ 02/11/2026 19:35 — REPUBLICATIONS FAITES PAR LE CLOUD ; CLOUD 7d2a82e + EXTENSION 0.6.168-cloud ; OTA 2.9.157 (à lire EN PREMIER)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 25.
 - Republications (18:44 → 19:24) : Vinted 18:48, Leboncoin 19:04 (2e essai), Depop 19:13, Beebs « Primark » 19:23 — toutes
