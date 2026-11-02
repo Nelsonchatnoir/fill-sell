@@ -1745,3 +1745,89 @@ Aucune visite de Beebs ni de Leboncoin ; échos : tls.browserleaks.com, httpbin.
 - Déployé 15:02 (principal inchangé, 73cbe209). **Partie app : OTA en attente** (arbre partagé occupé par l'autre
   terminal, prié d'embarquer 7f3ba62 dans sa 2.9.154) → servie dans la 2.9.154 (canal relu 15:20).
 - **Point 3 (proposition, rien d'appliqué)** — voir la REPRISE, bloc 15:05.
+
+## 23. UN navigateur, UNE IP, les 5 plateformes (02/11 soir, décision de Nico)
+
+Demande de Nico (02/11, ~15:50) : « un Cloud PROPRE, comme l'aurait un nouvel utilisateur » — le principal sur
+176.103.182.215, langues d'un vrai Chrome français, session Beebs reprise si c'est propre, navigateur isolé retiré, Beebs
+servie par get-pending-jobs comme Vinted, Leboncoin, Depop ; eBay par l'API. Aucune publication ni retrait avant son test.
+
+### 23.1 L'IP
+- **IPRoyal 87284262 prolongée à 30 jours** (plan 22 « 30 Days », 4 $, sur le solde) le 02/11 à 15:55 : échéance
+  **03/12/2026 14:09** (Paris ; IPRoyal 13:09:55 UTC), même adresse 176.103.182.215. Solde IPRoyal : 11,15 → **7,15 $**.
+  Aucun autre achat.
+- 81.181.239.136 (id 3) : grillée pour Beebs → **rebut** (le pool ne l'attribue plus), payée jusqu'au 29/11, non
+  utilisée ; hors du pare-feu des navigateurs (sortie permise : 176.103.182.215:12323 seulement).
+
+### 23.2 L'ordre suivi (le plus sûr)
+UN seul redémarrage du navigateur portant TOUS les changements (une seule « nouvelle apparence » pour chaque anti-robot,
+au lieu de deux), Cloud arrêté sans tâche en cours, sauvegardes avant chaque geste, le navigateur isolé gardé en archive
+jusqu'à ce que Beebs ait répondu dans le principal :
+1. prolongation de l'IP ; 2. écho « avant » et lectures « avant » ; 3. Beebs effacée du principal (son seul reste :
+le cookie d'appareil DataDome refusé à 13:02) ; 4. orchestrateur arrêté (le principal se ferme proprement, coffre
+sauvegardé) ; 5. sauvegarde des deux profils (`/srv/fillsell-cloud/archives/0211-soir/`) ; 6. session Beebs du profil
+isolé → coffre du principal ; 7. session Firebase de la page copiée ; 8. réparation des IP ; 9. `.env` ; 10. déploiement
+(principal rouvert : nouvelle IP, nouvelles langues, Beebs) ; 11. écho « après », lectures « après » ; 12. retrait de l'isolé.
+
+### 23.3 Le code (serveur-cloud)
+- `navigateur.js` : `LANGUES_PROFIL = 'fr-FR,fr,en-US,en'` → Accept-Language `fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7`.
+  Empreinte du principal : 73cbe2096d286336 → **7a1cfa22decada93** (seules les langues changent ; lancement
+  ca929fd96ad6 inchangé), autorisée par `EMPREINTE_AUTORISEE` (accord de Nico).
+- Navigateur isolé RETIRÉ : `VARIANTES_ISOLEES`, `specConteneurIsole`, `corpsSessionIsole`, `ouvrirIsole`/`fermerIsole`,
+  `proxyIsole`, `config.navigateursIsoles` (`NAVIGATEUR_ISOLE_BEEBS_IP`), les branches « isolée » de « Me connecter »,
+  de l'essai des 24 h et du verrou du principal ; plus aucune écriture de `platform_settings.<pf>.cloud_isole`.
+- Outil `outils/echo-navigateur.mjs <user>` : l'écho (IP, langues, Intl, écran, cœurs, WebGL, Accept-Language, JA4,
+  empreinte notée) sans aucune plateforme.
+- Tests : serveur-cloud 92/92 ; « Me connecter » Beebs passe par le principal et va au coffre (simulation).
+
+### 23.4 La bascule (heure de Paris)
+- 16:08 écho « avant » (principal) : sortie **81.181.239.136**, langues fr-FR / fr, Accept-Language `fr-FR,fr;q=0.9`,
+  empreinte notée 73cbe2096d286336, JA4 `t13d1517h2_8daaf6152771_cb7bf5808d99`. Lectures des 30 min d'avant : Vinted 23 ×
+  200, Leboncoin 182 × 200 (un 403 sur `chat-ai-agent-api/v1/can-access-chat`, une fonction refusée, pas l'anti-robot),
+  Depop 19 × 200, Beebs fermée.
+- 16:10 `outils/effacer-plateforme.mjs <Nico> beebs` sur le principal : son seul reste Beebs était le cookie d'appareil
+  `datadome` refusé le 02/11 à 13:02 → effacé ; 94 autres cookies intacts.
+- 16:25 aucune tâche en attente ni en cours (relu) ; orchestrateur arrêté (le principal se ferme proprement, coffre
+  sauvegardé) ; sauvegardes `p-principal-avant.tgz`, `p-beebs-isole.tgz` (600).
+- 16:26 `scripts/reparations/20261102_cloud_beebs_isole_vers_principal_nico.mjs` (image d'avant, orchestrateur arrêté) :
+  isolé ouvert sans page ni navigation (`about:blank`), cookies Beebs lus : `access_token`, `refresh_token`, 3 cookies
+  Axeptio, `datadome` ; ligne Beebs du coffre écrite connectée avec **5 cookies, sans `datadome`** (l'appareil de l'isolé,
+  pas la session), preuve = connexion vérifiée de Nico du 02/11 14:38:29 (200). IndexedDB Firebase
+  `https_www.beebs.app_0.indexeddb.leveldb` copiée dans le principal, navigateurs arrêtés.
+- 16:27 `scripts/reparations/20261102_cloud_un_navigateur_nico.sql` (sauvegardes `_backup_0211_cloud_ip_5`,
+  `_backup_0211_cloud_beebs_isole`, inverse) : id 39 échéance 03/12 14:09 puis attribuée au compte ; id 3 au rebut ;
+  `platform_settings.beebs.cloud_isole` retiré. `.env` : `NAVIGATEUR_ISOLE_BEEBS_IP` retiré,
+  `EMPREINTE_AUTORISEE=7a1cfa22decada93` (ancien `.env` : `archives/0211-soir/env-avant`).
+- 16:27:39 déploiement **08e2f0b** (`DESTINATIONS_PROXY="176.103.182.215:12323"`, copie Cloud de l'extension inchangée :
+  background.js 15ad51ea…, 0.6.164-cloud) ; 16:27:45 `empreinte_notee 7a1cfa22decada93 (autorisee)` ; 16:27:49 principal
+  ouvert, coffre : Vinted, Leboncoin, Depop « profil », **Beebs restaurée (5)**.
+- 16:28 écho « après » : sortie **176.103.182.215**, langues **fr-FR, fr, en-US, en**, Intl fr, Europe/Paris, Accept-Language
+  **`fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7`**, empreinte notée **7a1cfa22decada93** ; JA4, JA3N, HTTP/2, User-Agent, sec-ch-ua
+  (« Chromium »), écran 1920×1080, 8 cœurs, WebGL SwiftShader : inchangés.
+
+### 23.5 Les lectures après la bascule (sans publier)
+- **Vinted : passe** — lectures de l'extension, 130 × 200 (16:32 → 16:45), aucun refus.
+- **Depop : passe** — 114 × 200 (dès 16:36) ; 403 sur `conversations/` (déjà là avant la bascule, 16:13 et 16:25) et UN
+  403 sur le capteur `www.depop.com/vwdj/` (200 auparavant) ; aucune vérification détectée.
+- **Leboncoin : passe** — l'extension ne l'avait pas encore lue (17 min) → UNE lecture simple (`outils/lecture-simple.mjs`,
+  16:44:39) : accueil 200, **compte lu 200** ; même 403 `can-access-chat` qu'avant.
+- **Beebs : redemande une vérification** — 16:28:52, premier onglet de travail de l'extension sur www.beebs.app : 403 +
+  vérification de l'appareil DataDome (`interstitial`), puis une GLISSIÈRE (cadre `/captcha`, pas le blocage dur `t=bv`) ;
+  les lectures de fond lancées en même temps : 8 × 403. 16:29:39 la règle du Cloud arrête Beebs SEULE (verrou fermé,
+  onglet fermé, coffre « en vérification », session gardée) : `platform_settings.beebs.cloud_verification = a_resoudre`
+  → l'app propose « Résoudre la vérification ». Plus aucune requête Beebs depuis. Rien de forcé.
+  Lecture : le principal se présente à DataDome comme un appareil neuf (aucun cookie d'appareil, choix fait pour ne pas
+  rejouer celui de l'isolé) ; DataDome demande la glissière, comme à toute première connexion.
+- eBay : jamais dans le navigateur ; voie API en ordre (compte relié, non révoqué, jeton rafraîchi, `ebay-api-worker`
+  toutes les 2 min en succès).
+
+### 23.6 La chaîne pour le test de Nico
+- Vinted, Leboncoin, Depop : connectées au coffre → get-pending-jobs sert leurs tâches au poste Cloud (poll vu 16:44:49,
+  build `-cloud`) ; l'ordinateur n'en reçoit aucune (`cloud_voie`).
+- Beebs : servie de même dès que « Résoudre » est fait (la ligne du coffre redevient connectée) ; d'ici là ses tâches
+  attendent avec le message du Cloud.
+- eBay : publication par l'API. **Republication eBay : aucune** — règle de l'app depuis le 17/09 (« eBay : ton annonce reste
+  en ligne telle quelle ») ; la changer est une décision de Nico.
+- Aucune OTA : l'app n'avait rien à changer (la ligne « navigateur réservé » venait de `cloud_isole`, retiré ; le code qui
+  la lit dans `src/cloud/` est désormais inerte, à retirer dans une prochaine OTA).
+- Navigateur isolé retiré : conteneur supprimé, profil retiré du disque (archive `p-beebs-isole.tgz`).

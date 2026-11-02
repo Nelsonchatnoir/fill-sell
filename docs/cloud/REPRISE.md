@@ -1,6 +1,39 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ 02/11/2026 15:05 — ÉTAT COMPLET DU CLOUD ; BEEBS : CAUSE PROUVÉE ; POINT 3 EN ATTENTE (à lire EN PREMIER)
+## ⛔ 02/11/2026 16:50 — UN NAVIGATEUR, UNE IP, LES 5 PLATEFORMES (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 23. Ce bloc remplace, pour l'état, tous les blocs du 02/11 en
+dessous (gardés pour l'histoire) : il n'y a PLUS de navigateur isolé (décision de Nico, 02/11 soir).
+
+### Navigateur (serveur cx43 Hetzner, Falkenstein, cloud.fillsell.app ; orchestrateur 08e2f0b, déployé 16:27:39)
+- UN navigateur par compte (`fs-nav-<compte>`, profil `p-f44b5917-60c90d1101a8`), extension Cloud 0.6.164-cloud
+  (BUILD_ID 2026-11-01T23:02:16Z+dd69fbb-cloud, inchangée).
+- IP **176.103.182.215** (pool id 39, IPRoyal 87284262), **prolongée à 30 jours** le 02/11 15:55 (4 $) : échéance
+  **03/12/2026 14:09**. 81.181.239.136 (id 3) : rebut (grillée pour Beebs), payée jusqu'au 29/11, non utilisée, hors du
+  pare-feu. Pare-feu des navigateurs : 176.103.182.215:12323 seulement.
+- Langues d'un vrai Chrome français : `fr-FR, fr, en-US, en` → Accept-Language `fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7`.
+  Empreinte FIGÉE **7a1cfa22decada93** (`EMPREINTE_AUTORISEE=7a1cfa22decada93`, accord de Nico ; l'ancienne 73cbe209).
+- Coffre : Vinted, Leboncoin, Depop connectées ; **Beebs « à résoudre »** (glissière DataDome au premier passage du
+  principal, 16:28:52 ; session gardée) ; eBay par l'API seulement.
+- get-pending-jobs sert au poste Cloud les plateformes CONNECTÉES au coffre (inchangé) : Beebs le sera dès « Résoudre ».
+- Déployer (jamais pendant une tâche en cours) :
+  `DESTINATIONS_PROXY="176.103.182.215:12323" bash serveur-cloud/outils/deployer.sh 178.105.24.16 cloud.fillsell.app`
+- Outils (sans aucune plateforme / une lecture) : `outils/echo-navigateur.mjs <user>` (IP, langues, empreinte, JA4) ;
+  `outils/lecture-simple.mjs <user> <plateforme>` (accueil + compte lu ; une vérification n'est jamais forcée).
+- Archives (600) : `/srv/fillsell-cloud/archives/0211-soir/` — profil principal d'avant, profil isolé (retiré du disque),
+  `.env` d'avant. Réparations : `scripts/reparations/20261102_cloud_un_navigateur_nico.sql` (+ inverse),
+  `…_cloud_beebs_isole_vers_principal_nico.mjs` (inverse dans son en-tête).
+
+### État à 16:50 (aucune publication, aucun retrait, aucune tâche créée)
+- Vinted passe (130 × 200) · Leboncoin passe (accueil 200, compte lu 200) · Depop passe (114 × 200) · **Beebs : à
+  résoudre** (« Résoudre la vérification » dans l'app) · eBay : API en ordre (`ebay-api-worker` en succès).
+- Ce que Nico fait : app quittée puis rouverte ; Réglages › Abonnement › FillSell Cloud → Beebs « Résoudre la
+  vérification », la glissière ; puis son test (annonce ≥ 999 €). Republication eBay : aucune (règle du 17/09).
+- IPRoyal le 02/11 : 11,20 $ + prolongation 4 $ = **15,20 $** ; **solde 7,15 $**. Aucun autre achat. Poste de Nico : ARRÊT.
+
+### IP grillées pour Beebs (ne plus jamais les y essayer)
+81.181.239.136 · 185.134.192.253 · 185.134.194.88 · 176.103.180.12 · 80.12.178.102 · 94.194.94.233 · 188.126.31.118.
+
+## 02/11/2026 15:05 — ÉTAT COMPLET DU CLOUD ; BEEBS : CAUSE PROUVÉE ; POINT 3 EN ATTENTE (bloc précédent ; remplacé par le bloc de 16:50 au-dessus)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 20 à 22.11. Ce bloc remplace, pour l'état, les blocs du 02/11
 en dessous (gardés pour l'histoire).
 
