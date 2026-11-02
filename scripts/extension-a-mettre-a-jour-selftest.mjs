@@ -46,7 +46,7 @@ ok(situationJob(job({}), { ...ctx, extensionAMettreAJour: false }).raison === "E
 console.log("\n3. CHAQUE ÉCRAN");
 const stock = lire("src/tabs/StockTab.jsx");
 // (02/11 soir) + le drapeau Cloud du compte juste après (ses tâches ne dépendent pas de l'extension du PC).
-ok(/extensionAMettreAJour: extensionStatus\?\.outdated === true,\s*(\/\/[^\n]*\n\s*)*cloud: compteCloud \};/.test(stock), "le Stock passe l'état aux barres et à la file");
+ok(/extensionAMettreAJour: extensionStatus\?\.outdated === true,\s*(\/\/[^\n]*\n\s*)*cloud: compteCloud,/.test(stock), "le Stock passe l'état aux barres et à la file");
 // (03/10, refonte du Stock) La pastille de la carte vit dans src/stock/regles.js
 // (pastilleCourte, genre « maj ») ; la CONDITION reste lue dans StockTab, au mot près.
 const { pastilleCourte } = await imp("src/stock/regles.js");
@@ -59,7 +59,7 @@ ok(/\{m\.extensionAMettreAJour && voies\.extension\.some\(p => verdict\.partent\
   "AVANT de publier : ce qui ne partira qu'après la mise à jour, et le geste");
 const suivi = lire("src/publication/EcranSuivi.jsx");
 // (02/11 soir) Une tâche faite par FillSell Cloud (parCloud) ne dit jamais la mise à jour de l'extension du PC.
-ok(/if \(!parApi && !parCloud && m\.extensionAMettreAJour\) return \{ texte: phraseMiseAJourExtension\(m\.lang\) \+ "\.",/.test(suivi) && /extensionAMettreAJour: m\.extensionAMettreAJour === true, cloud, programmation: Boolean\(programmation\.reglage\) \};/.test(suivi),
+ok(/if \(!parApi && !parCloud && m\.extensionAMettreAJour\) return \{ texte: phraseMiseAJourExtension\(m\.lang\) \+ "\.",/.test(suivi) && /extensionAMettreAJour: m\.extensionAMettreAJour === true, cloud, programmation: Boolean\(programmation\.reglage\),/.test(suivi),
   "le suivi après publication : la ligne et la barre");
 const lps = lire("src/components/ListingPreviewScreen.jsx");
 ok(/extensionAMettreAJour: extensionAMettreAJour\(\{ build: extBuildRelu, lastSeenAt: extensionVueLe \}\),/.test(lps) && /\.select\("extension_last_seen_at, extension_build"\)/.test(lps),

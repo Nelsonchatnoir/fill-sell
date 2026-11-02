@@ -373,4 +373,32 @@ async function depopAvec({ marque = { id: "nike", nom: "Nike" }, taille = { idGr
 }
 ok("depop : pré-vol → preuve sans photo ni création ; marque hors liste → « Other », jamais une question ; publication normale inchangée");
 
+// ── (02/11 soir, test Cloud de Nico) La boîte « interrompre votre dépôt » DÈS L'ARRIVÉE : chemin officiel, aucun essai perdu ──
+{
+  const src = extraireFonctionJs(lbc, "dismissInterstitials");
+  const fabriquer = (d) => new Function("dismissDidomi", "findBlockingDialogsLbc", "visibleSansLayoutL", "sleep", "setTimeout", "document",
+    `${src}\nreturn dismissInterstitials;`)(async () => {}, () => (d.ferme ? [] : [d]), () => true, async () => {}, (f) => { d.differe = f; }, {});
+  const dialogue = () => {
+    const d = { clics: [], tagName: "DIV", className: "z-modal absolute", getAttribute: () => "", ferme: false };
+    Object.defineProperty(d, "isConnected", { get: () => !d.ferme });
+    const bouton = (texte) => ({ textContent: texte, closest: () => null, getAttribute: () => null,
+      click() { d.clics.push(texte); if (texte === "Quitter sans enregistrer") d.ferme = true; } });
+    d.boutons = [bouton("Enregistrer le brouillon"), bouton("Quitter sans enregistrer")];
+    d.querySelectorAll = (sel) => (sel === "button" ? d.boutons : []);
+    return d;
+  };
+  const d1 = dialogue();
+  const r1 = await fabriquer(d1)("arrivée sur le dépôt");
+  assert.equal(r1.depotInterrompu, true, "arrivée : dépôt interrompu reconnu");
+  assert.deepEqual(d1.clics, [], "la réponse part AVANT le clic (il navigue hors du dépôt)");
+  d1.differe?.();
+  assert.deepEqual(d1.clics, ["Quitter sans enregistrer"], "puis « Quitter sans enregistrer », le chemin officiel");
+  const d2 = dialogue();
+  const r2 = await fabriquer(d2)("autre étape");
+  assert.ok(!r2.depotInterrompu, "hors de l'arrivée : le ramasseur d'avant, inchangé");
+  assert.ok(/const arrivee = await dismissInterstitials\("arrivée sur le dépôt"\);[\s\S]{0,200}if \(arrivee\?\.depotInterrompu\) \{[\s\S]{0,500}draftDiscarded: true,/.test(lbc),
+    "l'arrivée rend draftDiscarded : le background remet la tâche en file 20 s plus tard, aucun essai consommé");
+}
+ok("leboncoin : « interrompre votre dépôt » à l'arrivée → « Quitter sans enregistrer » APRÈS la réponse, draftDiscarded (jamais « page de dépôt non reconnue »)");
+
 console.log(`\n✓ prevol-recreation-lbc-depop : ${n} contrôles verts`);

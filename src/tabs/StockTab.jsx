@@ -7356,6 +7356,8 @@ const StockTab = memo(function StockTab({
   // déjà lus par le poll (aucune requête de plus).
   const fichesToutes = useMemo(() => new Map((items ?? []).map((i) => [String(i.id), i])), [items]);
   const tousLesJobs = useMemo(() => Object.values(jobsByInventaire).flat(), [jobsByInventaire]);
+  // (02/11 soir) La plateforme d'une tâche par son id : une republication retenue derrière une autre annonce le dit.
+  const plateformeParJob = useMemo(() => new Map(tousLesJobs.map((x) => [String(x.id), x.platform])), [tousLesJobs]);
   // ── LES RETRAITS QUI ATTENDENT UNE RECONNEXION (05/10, risque de double
   // vente) : lus sur les jobs DÉJÀ chargés (la lecture du Stock prend toutes
   // les actions et tous les articles, vendus et supprimés compris) — aucune
@@ -8808,7 +8810,8 @@ const StockTab = memo(function StockTab({
     // (03/10, point 25) Poste trop ancien : la file attend la mise à jour (même règle que le bandeau).
     extensionAMettreAJour: extensionStatus?.outdated === true,
     // (02/11 soir) Compte Cloud : barres, file et raisons disent FillSell Cloud.
-    cloud: compteCloud };
+    cloud: compteCloud,
+    plateformeDuJob: (id) => plateformeParJob.get(String(id)) ?? null };
   // Vinted en PAUSE (platform_health, 2026-09-09) retient aussi la
   // republication — même gating que l'interrupteur coin_config
   // .republish_maintenance : le trigger republish_maintenance_guard refuse

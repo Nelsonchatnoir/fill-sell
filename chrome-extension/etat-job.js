@@ -1086,6 +1086,14 @@ function etatJob(j, ctx = {}) {
     if (!parNosServeurs(j) && !extensionFraiche(ctx.extension)) {
       return { etat: ETATS.EN_PAUSE, motif: ctx.extension?.etat === "session_expiree" ? "ordinateur_session" : "ordinateur" };
     }
+    // (02/11 soir, test de Nico — tout le parc) Une republication RETENUE derrière l'annonce d'une AUTRE plateforme,
+    // retirée et pas encore revenue (retenue_hors_ligne, get-pending-jobs : « une annonce hors ligne à la fois ») : elle
+    // attend CETTE remise en ligne. Depop disait « nouvel essai automatique, rien à faire » (l'attente de 30 min posée
+    // avec la retenue, ou son message) alors qu'aucun essai n'avait eu lieu. Jamais présentée comme un échec qui retente.
+    const retenueHl = objet(pf.retenue_hors_ligne);
+    if (j.action === "republish" && retenueHl.job) {
+      return { etat: ETATS.EN_PAUSE, motif: "attente_remise", detail: { job: String(retenueHl.job), titre: retenueHl.titre ?? null } };
+    }
     const naa = Date.parse(pf.next_action_after ?? "");
     const maintenant = ctx.maintenant ?? Date.now();
     if ((Number.isFinite(naa) && naa > maintenant) || (j.error && String(j.error).trim())) return { etat: ETATS.EN_PAUSE, motif: "essai" };

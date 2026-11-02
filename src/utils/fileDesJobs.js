@@ -124,6 +124,10 @@ const TEXTE = {
     en_cours_cloud: { publish: "FillSell Cloud la publie…", republish: "FillSell Cloud la republie…", delete: "FillSell Cloud la retire…" },
     ordinateur_cloud: "En pause : FillSell Cloud ne répond pas pour l'instant — ça repart tout seul",
     connexion_cloud: (p) => `À toi de jouer : reconnecte ${p} à FillSell Cloud (Réglages › Abonnement › FillSell Cloud)`,
+    // (02/11 soir, Nico) Une republication retenue derrière l'annonce d'une autre plateforme (« une hors ligne à la fois »).
+    attente_remise: (p, autre, titre) => (autre
+      ? `En attente : ${p} repart dès que ton annonce ${autre} est revenue en ligne — rien n'a été retiré`
+      : `En attente : ${p} repart dès que ton annonce${titre ? ` « ${titre} »` : ""} retirée sur une autre plateforme est revenue en ligne — rien n'a été retiré`),
   },
   en: {
     tour: "Queued: it goes out in turn",
@@ -164,6 +168,9 @@ const TEXTE = {
     en_cours_cloud: { publish: "FillSell Cloud is listing it…", republish: "FillSell Cloud is reposting it…", delete: "FillSell Cloud is removing it…" },
     ordinateur_cloud: "Paused: FillSell Cloud is not responding right now — it resumes on its own",
     connexion_cloud: (p) => `Your move: reconnect ${p} to FillSell Cloud (Settings › Subscription › FillSell Cloud)`,
+    attente_remise: (p, autre, titre) => (autre
+      ? `Waiting: ${p} resumes as soon as your ${autre} listing is back online — nothing was removed`
+      : `Waiting: ${p} resumes as soon as your listing${titre ? ` “${titre}”` : ""} removed on another platform is back online — nothing was removed`),
     en_cours_serveurs: "In progress on our servers",
   },
 };
@@ -204,6 +211,12 @@ export function situationJob(j, ctx = {}) {
     case "boutiques_a_ouvrir": raison = T.boutiques_a_ouvrir(v.detail?.boutiques ?? []); break;
     case "plateforme": raison = T.plateforme(nom); break;
     case "connexion": raison = cloud ? T.connexion_cloud(nom) : T.connexion(nom); break;
+    case "attente_remise": {
+      // La plateforme de l'annonce qui retient (sa tâche, quand l'écran la connaît) : « ton annonce Leboncoin ».
+      const autre = v.detail?.job ? ctx.plateformeDuJob?.(v.detail.job) : null;
+      raison = T.attente_remise(nom, autre ? nomPlateforme(autre) : null, v.detail?.titre ?? null);
+      break;
+    }
     case "releve": raison = T.releve(nom); break;
     case "technique": raison = T.technique(nom); break;
     case "ecartee": raison = T.ecartee(nom); break;
@@ -244,6 +257,11 @@ export function situationJob(j, ctx = {}) {
  */
 export function lireFile(jobs, ctx = {}) {
   const groupes = { en_cours: [], en_file: [], en_pause: [], a_toi: [] };
+  // (02/11 soir) La plateforme d'une tâche par son id (retenue derrière une autre annonce : « ton annonce Leboncoin »).
+  if (!ctx.plateformeDuJob) {
+    const parId = new Map((jobs ?? []).map((x) => [String(x?.id), x?.platform]));
+    ctx = { ...ctx, plateformeDuJob: (id) => parId.get(String(id)) ?? null };
+  }
   for (const j of jobs ?? []) {
     if (!jobVivant(j)) continue;
     const situation = situationJob(j, ctx);

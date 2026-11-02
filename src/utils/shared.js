@@ -5,6 +5,8 @@ import { etatsVintedLisibles } from './etatsVinted.js';
 import { oeuvreDArt, estOeuvreDArt } from './oeuvreDArt.js';
 // (16/10) Le filet « aucune estimation de temps » (_shared/etat-job.js).
 import { sansEstimation } from '../../supabase/functions/_shared/etat-job.js';
+// (02/11 soir) Compte Cloud : le texte d'une tâche faite par le Cloud (jamais « ton navigateur », « ton ordinateur »).
+import { parLeCloud, compteCourantEstCloud, texteTacheCloud } from '../cloud/voieCloud.js';
 
 export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -557,7 +559,12 @@ export function texteBeebsValeurHorsListe(raw, job, en = false) {
 // (16/10, Nico) FILET UNIQUE : tout texte de job montré par l'app passe ici, et
 // en ressort sans heure promise ni durée (_shared/etat-job.js, sansEstimation).
 export function humanizeJobError(job, lang = 'fr') {
-  const t = humanizeJobErrorBrut(job, lang);
+  let t = humanizeJobErrorBrut(job, lang);
+  // (02/11 soir, Nico) Compte Cloud : une tâche faite par FillSell Cloud ne renvoie jamais vers le navigateur ni
+  // l'ordinateur de la personne (cloud/voieCloud.js, texteTacheCloud).
+  if (typeof t === 'string' && parLeCloud(job, compteCourantEstCloud())) {
+    t = texteTacheCloud(t, HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (lang === 'en' ? 'the platform' : 'la plateforme'), lang);
+  }
   return typeof t === 'string' ? sansEstimation(t) : t;
 }
 function humanizeJobErrorBrut(job, lang = 'fr') {

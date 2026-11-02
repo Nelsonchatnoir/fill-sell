@@ -48,6 +48,21 @@ ok(JSON.stringify(deLApp) === JSON.stringify(PLATEFORMES_CLOUD_VOIE), 'src/cloud
 ok(parLeCloud({ platform: 'beebs', voie: 'extension' }, true) && !parLeCloud({ platform: 'ebay', voie: 'api' }, true)
   && !parLeCloud({ platform: 'vinted', voie: 'extension' }, false) && !parLeCloud({ platform: 'opla' }, true),
   'parLeCloud : compte Cloud et plateforme du Cloud seulement (eBay par l\'API, Opla, compte ordinaire : non)');
+// (02/11 soir, Nico) Un message de tâche du Cloud ne renvoie jamais vers le navigateur ni l'ordinateur de la personne.
+{
+  const { texteTacheCloud } = await import('../src/cloud/voieCloud.js');
+  const lbc = texteTacheCloud("La page de dépôt Leboncoin ne s'est pas affichée comme attendu (ni formulaire vierge, ni dépôt en cours). Ouvre leboncoin.fr/deposer-une-annonce dans ton navigateur pour voir ce qu'elle montre, puis relance la publication. Nouvel essai automatique (tentative 1/5), rien à faire.", 'Leboncoin');
+  ok(!/navigateur|ordinateur|Chrome/.test(lbc) && /Nouvel essai automatique \(tentative 1\/5\), rien à faire\./.test(lbc) && /page de dépôt Leboncoin/.test(lbc),
+    'le message Leboncoin du 02/11 : plus « ouvre … dans ton navigateur », le constat et l\'essai automatique gardés');
+  ok(/Reconnecte Leboncoin à FillSell Cloud/.test(texteTacheCloud('Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome, le job repartira.', 'Leboncoin')),
+    'une connexion à reprendre : la reconnecter à FillSell Cloud');
+  ok(/Résoudre la vérification/.test(texteTacheCloud('Beebs affiche une vérification anti-robot. Ouvre Beebs sur ton ordinateur et valide-la maintenant.', 'Beebs')),
+    'une vérification : « Résoudre la vérification » dans l\'app');
+  ok(texteTacheCloud('En attente : ton annonce a été retirée.', 'Depop') === 'En attente : ton annonce a été retirée.', 'un message sans renvoi au navigateur : inchangé');
+  const { humanizeJobError } = await import('../src/utils/shared.js');
+  const brut = { platform: 'leboncoin', voie: 'extension', status: 'pending', error: "La page de dépôt Leboncoin ne s'est pas affichée comme attendu (ni formulaire vierge, ni dépôt en cours). Ouvre leboncoin.fr/deposer-une-annonce dans Chrome pour voir ce qu'elle montre, puis relance la publication." };
+  ok(/dans Chrome/.test(humanizeJobError(brut, 'fr')), 'compte ordinaire (aucun compte Cloud noté) : le texte de l\'extension, inchangé');
+}
 
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

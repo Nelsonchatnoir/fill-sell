@@ -131,7 +131,8 @@ export default function EcranSuivi({ m }) {
   const oplaAAutoriser = m.oplaVerdict === "a_autoriser";
   const ctxBarre = { lang: m.lang, extension: ext ?? null, oplaAAutoriser, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr"),
     // (03/10, point 25) Poste trop ancien : la barre attend la mise à jour, jamais « son tour ».
-    extensionAMettreAJour: m.extensionAMettreAJour === true, cloud, programmation: Boolean(programmation.reglage) };
+    extensionAMettreAJour: m.extensionAMettreAJour === true, cloud, programmation: Boolean(programmation.reglage),
+    plateformeDuJob: (id) => jobs.find((x) => String(x.id) === String(id))?.platform ?? null };
   const piste = (p) => {
     const e = etats[p] ?? { kind: "en_file" };
     // (03/10, point 17) La voie du JOB d'abord (trigger), le miroir seulement avant sa création.

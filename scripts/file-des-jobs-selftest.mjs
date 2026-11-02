@@ -171,6 +171,29 @@ console.log("6. LA BARRE D'UN JOB");
   ok(textes.every((t) => !SANS_HEURE.test(t)), "aucune étape de barre ne montre une durée");
 }
 
+// ── (02/11 soir, test Cloud de Nico) Une republication retenue derrière une autre plateforme, et le compte Cloud ──────
+{
+  const M2 = Date.parse("2026-11-02T18:00:00Z");
+  const lbc = { id: "19bf1e17", platform: "leboncoin", action: "republish", status: "pending", created_at: "2026-11-02T17:44:12Z", platform_fields: { republish_step: "deleted" } };
+  const depop = { id: "2d08d3f2", platform: "depop", action: "republish", status: "pending", created_at: "2026-11-02T17:44:13Z", voie: "extension",
+    error: "En attente : ton annonce « T-shirt » a été retirée et n'est pas encore revenue en ligne.",
+    platform_fields: { republish_step: "captured", next_action_after: "2026-11-02T18:20:00Z", retenue_hors_ligne: { job: "19bf1e17", titre: "T-shirt" } } };
+  const f = lireFile([lbc, depop], { maintenant: M2, extension: { etat: "vivante" } });
+  const ligne = [...f.en_pause, ...f.en_file, ...f.en_cours].find((l) => l.job.id === "2d08d3f2");
+  ok(ligne?.situation.raison === "En attente : Depop repart dès que ton annonce Leboncoin est revenue en ligne — rien n'a été retiré",
+    "Depop retenue derrière Leboncoin : « Depop repart dès que ton annonce Leboncoin est revenue en ligne »", ligne?.situation.raison);
+  ok(!/essai/i.test(ligne?.situation.raison ?? ""), "jamais « nouvel essai automatique »");
+  ok(/retirée sur une autre plateforme/.test(situationJob(depop, { maintenant: M2, extension: { etat: "vivante" } }).raison),
+    "sans la tâche qui retient sous la main : la phrase reste vraie, sans nommer la plateforme");
+  // Compte Cloud : jamais « ton ordinateur » ni « Chrome » pour une tâche faite par le Cloud ; eBay et un compte ordinaire inchangés.
+  const enFile = { platform: "vinted", action: "publish", status: "pending", created_at: "2026-11-02T17:00:00Z", platform_fields: {}, voie: "extension" };
+  ok(etapesJob(enFile, "fr", { cloud: true })[0].texte === "Dans la file — FillSell Cloud la prend à son tour…", "compte Cloud : « FillSell Cloud la prend à son tour »");
+  ok(etapesJob(enFile, "fr")[0].texte === "Dans la file — ton ordinateur la prend à son tour…", "compte ordinaire : inchangé");
+  ok(etapesJob({ ...enFile, platform: "ebay", voie: "api" }, "fr", { cloud: true })[0].texte === "Dans la file de nos serveurs…", "eBay par l'API : inchangé");
+  ok(situationJob({ ...enFile, status: "processing" }, { cloud: true }).raison === "FillSell Cloud la publie…", "en cours : « FillSell Cloud la publie… »");
+  ok(situationJob({ ...enFile }, { cloud: true, extensionAMettreAJour: true }).motif !== "mise_a_jour", "une tâche du Cloud ne dépend jamais de la version de l'extension du PC");
+}
+
 console.log("");
 if (echecs) { console.error(`✗ ${echecs} échec(s)`); process.exit(1); }
 console.log("✓ file des jobs et barres des jobs prouvées");

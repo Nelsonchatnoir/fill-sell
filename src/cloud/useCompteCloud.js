@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { cloudConnexionVisible } from '../config/cloudOffer';
+import { noterCompteCourantCloud } from './voieCloud.js';
 
 const memoire = new Map(); // userId → { cloud, lue, promesse }
 const abonnes = new Set();
@@ -24,6 +25,8 @@ function lire(userId) {
     try {
       const { data, error } = await supabase.from('profiles').select('cloud_voie').eq('id', userId).maybeSingle();
       memoire.set(userId, { cloud: !error && data?.cloud_voie === true, lue: !error, promesse: null });
+      // (02/11 soir) Le compte de la session : les textes de tâche (humanizeJobError) parlent du Cloud.
+      noterCompteCourantCloud(!error && data?.cloud_voie === true);
     } catch {
       memoire.set(userId, { cloud: false, lue: false, promesse: null });
     }

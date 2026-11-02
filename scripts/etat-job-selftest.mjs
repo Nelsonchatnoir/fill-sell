@@ -138,6 +138,19 @@ const nettoyes = [
 ];
 for (const [avant, apres] of nettoyes) ok(E.sansEstimation(avant) === apres, `« ${avant.slice(0, 60)}… » → « ${apres.slice(0, 60)} »`, `reçu « ${E.sansEstimation(avant)} »`);
 
+console.log("\n(02/11 soir) UNE REPUBLICATION RETENUE DERRIÈRE UNE AUTRE PLATEFORME N'EST JAMAIS « UN ESSAI »");
+{
+  // Le cas de Nico (Depop 2d08d3f2) : retenue derrière la remise en ligne Leboncoin 19bf1e17, message du serveur, attente
+  // de 30 min posée avec la retenue — l'app disait « En pause : nouvel essai automatique, rien à faire ».
+  const retenue = job({ platform: "depop", action: "republish", error: "En attente : ton annonce « T-shirt » a été retirée et n'est pas encore revenue en ligne.",
+    platform_fields: { republish_step: "captured", next_action_after: iso(20), retenue_hors_ligne: { job: "19bf1e17", titre: "T-shirt", depuis: iso(-5) } } });
+  const r = e(retenue);
+  ok(r.etat === E.ETATS.EN_PAUSE && r.motif === "attente_remise" && r.detail?.job === "19bf1e17", "motif « attente_remise » (la tâche qui retient), jamais « essai »", JSON.stringify(r));
+  const sans = job({ platform: "depop", action: "republish", error: "Coupure", platform_fields: { republish_step: "captured", next_action_after: iso(20) } });
+  ok(e(sans).motif === "essai", "sans retenue : l'essai automatique reste dit comme avant");
+  ok(e(job({ platform: "beebs", action: "publish", platform_fields: { retenue_hors_ligne: { job: "x" } } })).motif !== "attente_remise", "une publication n'est jamais retenue ainsi");
+}
+
 console.log("");
 if (echecs) { console.error(`✗ ${echecs} échec(s)`); process.exit(1); }
 console.log("✓ l'état d'un job est décidé une seule fois, et sans estimation");
