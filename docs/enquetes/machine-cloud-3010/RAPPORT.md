@@ -1654,3 +1654,28 @@ inverse `supabase/rollbacks/20261102110000_cloud_connexions_depop_INVERSE.sql`.
   ne sort plus (toutes plateformes). Options : revenir sur une IP longue du pool (185.134.194.88 jamais attribuée,
   jusqu'au 29/11 ; ou 81.181.239.136 au rebut, valide jusqu'au 29/11, qui marchait pour Vinted, Leboncoin, Depop), ou
   prolonger celle-ci (4 $, solde à recharger).
+
+### 22.8 Suite du test de 13:02 (décisions de Nico, 13:20) : principal revenu sur 81.181.239.136, navigateur ISOLÉ pour Beebs
+- **IP du principal (choix b)** : `scripts/reparations/20261102_cloud_ip_retour_81_nico.sql` (sauvegarde
+  `_backup_0211_cloud_ip_4` protégée, inverse) — 81.181.239.136 rendue au compte, l'IP de 24 h rendue au pool (expire le
+  03/11, pas de prolongation), 185.134.194.88 réservée au navigateur isolé. Aucune tâche en cours (relu). Navigateur
+  rouvert 13:19:15 puis 13:32:31 (déploiements) ; sortie relue 81.181.239.136 ; empreinte inchangée (73cbe209). Vinted :
+  3 lectures en 200 dès 13:20 (commandes, messagerie). Pare-feu : 81.181.239.136 et 185.134.194.88 seulement.
+- **Navigateur isolé** (337bef7, 1c1… attente de sortie) : `navigateur.js` VARIANTES_ISOLEES — conteneur
+  `fs-nav-<compte>-beebs`, profil `p-<compte>-beebs-isole` (rien de partagé), IP du pool réservée
+  (`NAVIGATEUR_ISOLE_BEEBS_IP=2`, lue par le seul module fournisseur d'IP), écran 1536×864, 4 cœurs, AUCUNE extension,
+  fr-FR / Europe/Paris ; verrou : Beebs seule ; empreinte figée à part (**b384dad79457211c**). « Me connecter » Beebs y
+  passe ; la session y reste (jamais au coffre du principal) ; il ne tourne que le temps de la page. Le principal écarte
+  les plateformes isolées (verrou, essai des 24 h).
+- Vérification à vide (13:29, aucune visite de Beebs) : sortie 185.134.194.88, 4 cœurs, écran 1536×864, fr-FR, Intl fr,
+  Europe/Paris, `webdriver` faux, 0 cookie ; WebGL SwiftShader (le même rendu logiciel : inévitable sans vraie carte).
+  Premier essai de sortie : ERR_TUNNEL_CONNECTION_FAILED 3 s après la session (relais de proxy de steel pas prêt) →
+  attente de 8 s ajoutée avant de rendre la main.
+- ⚠️ Découvert à 13:33, AVANT l'essai : **185.134.194.88 a déjà vu Beebs** (« IP fixe 2 » du 30/10 : bloquée depuis
+  l'ancien serveur, glissière depuis le PC de Nico, bloquée à 17:45 depuis le serveur Linux à vraie puce, § 10). Un
+  blocage avec elle ne trancherait pas entre l'empreinte et l'IP → question posée à Nico (essai quand même, ou IP d'une
+  plage jamais vue, ≈ 3 $ après recharge du solde à sa charge).
+- **« Me connecter » dit « Accès temporairement restreint »** comme « Résoudre » (même message, page ou cadre DataDome),
+  toutes plateformes ; actif par le serveur (l'app connaît l'étape « restreint » depuis 2.9.151 : aucune OTA nécessaire).
+  Une plateforme connue du coffre passe en « restreint » ; l'essai des 24 h qui trouve la page sans session clôt le
+  blocage. serveur-cloud 90/90.

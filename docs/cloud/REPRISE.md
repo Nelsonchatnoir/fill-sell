@@ -1,5 +1,15 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 02/11/2026 13:40 — NAVIGATEUR ISOLÉ DE BEEBS PRÊT ; PRINCIPAL SUR 81.181.239.136 (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 22.8. Les blocs 13:10 et 12:55 en dessous : l'IP de 24 h ne sert
+plus (rendue au pool, expire le 03/11) ; le reste vaut.
+- Principal : **81.181.239.136** (pool id 3), empreinte 73cbe209 ; Beebs y est fermée (plateforme isolée).
+- Beebs : navigateur ISOLÉ (`fs-nav-<compte>-beebs`, profil `p-<compte>-beebs-isole`, empreinte b384dad7, sans extension),
+  sortie **185.134.194.88** (`NAVIGATEUR_ISOLE_BEEBS_IP=2` dans `/srv/fillsell-cloud/.env`) — ⚠️ IP déjà vue par Beebs le
+  30/10 : décision de Nico attendue avant l'essai. Ne s'ouvre que par « Me connecter » Beebs.
+- Déployer avec `DESTINATIONS_PROXY="81.181.239.136:12323,185.134.194.88:12323"`. Jamais pendant une tâche en cours.
+- IPRoyal : solde 0,75 $ ; dépensé le 02/11 : 6,60 $.
+
 ## ⛔ 02/11/2026 13:10 — BEEBS : LE NAVIGATEUR CLOUD EST REPÉRÉ ; IP DE 24 H À REMPLACER AVANT LE 03/11 12:54 (à lire EN PREMIER)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 22.7. Le bloc 12:55 en dessous reste valable (empreinte figée).
 - Test propre de Nico (13:02) : Beebs effacée partout, IP neuve d'une autre plage (176.103.180.12), première requête →
