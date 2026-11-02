@@ -118,6 +118,11 @@ function navigateurSimule() {
           if (e.includes('location.hostname !==')) { page.lectures++; return { result: { value: page.lecture } }; }
           // (02/11) L'état de la page lu sans réseau (« Résoudre la vérification ») : cadre DataDome présent ou non.
           if (e.includes('captcha-delivery')) return { result: { value: page.etatPage ?? null } };
+          // (02/11) Le bandeau de cookies (Axeptio) : présent ou non, et le refus pressé.
+          if (e.includes('axeptio_btn_dismiss')) {
+            if (e.includes('.click()')) { page.refusCookies = (page.refusCookies ?? 0) + 1; const c = Boolean(page.cookies?.refus); page.cookies = { refus: false }; return { result: { value: { clique: c } } }; }
+            return { result: { value: page.cookies ?? { refus: false } } };
+          }
           return { result: { value: false } };
         }
         default: return {};
@@ -582,6 +587,8 @@ test('(02/11) « Me connecter » Beebs passe par SON navigateur isolé : le prin
   await attendre(2300);
   assert.ok(c.etapes().includes('verifie'), c.etapes().join(','));
   assert.ok(!s.base.t.cloud_coffre.some((l) => l.plateforme === 'beebs'), 'rien au coffre du principal (sinon il se l\'ouvrirait)');
+  const iso = s.base.appels.find(([n, a]) => n === 'platform_settings_fusionner' && a.p_chemin.join('.') === 'beebs.cloud_isole');
+  assert.ok(iso?.[1].p_patch.connecte === true && iso[1].p_patch.verifie_le, '(02/11) mais l\'app le sait : platform_settings.beebs.cloud_isole');
   await c.dire({ t: 'termine' });
   await attendre(3400);
   assert.deepEqual(appels.ferme, [['beebs', 'connectee']], 'le navigateur isolé ne tourne que le temps de sa page');
@@ -601,4 +608,18 @@ test('(02/11) « Me connecter » : « Accès temporairement restreint » dès la
   assert.equal(s.nav.page.lectures, 0, 'aucune lecture du compte');
   await attendre(2600);
   assert.ok(!s.connexions.connexionsOuvertes().has(U), 'la vue se ferme');
+});
+
+test('(02/11, essai Beebs de Nico) le bandeau de cookies qu\'on ne pouvait pas fermer : dit au téléphone, refusé à sa demande', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  s.nav.page.cookies = { refus: true };
+  const c = brancherClient(s, 'vinted');
+  await c.ouvrir();
+  await attendre(2200);
+  assert.ok(c.recus.some((m) => m.t === 'cookies' && m.present === true), 'le bouton « Refuser les cookies » apparaît');
+  await c.dire({ t: 'cookies', choix: 'refuser' });
+  await attendre(900);
+  assert.equal(s.nav.page.refusCookies, 1, 'le refus pressé une fois');
+  assert.ok(c.recus.some((m) => m.t === 'cookies' && m.present === false), 'le bouton disparaît');
+  await c.dire({ t: 'fermer' });
 });

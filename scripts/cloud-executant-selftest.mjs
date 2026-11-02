@@ -2,7 +2,7 @@
 // d'utilisation (version, case obligatoire, acceptation enregistrée AVANT toute carte, garde du paiement), le
 // drapeau par compte côté serveur. Pur + lecture du code.
 import fs from 'node:fs';
-import { phraseExecutant, etatConnexion, quandParis, plateformesAReconnecter, verificationsCloud } from '../src/cloud/executant.js';
+import { phraseExecutant, etatConnexion, quandParis, plateformesAReconnecter, verificationsCloud, connectesIsoles } from '../src/cloud/executant.js';
 
 let echecs = 0, n = 0;
 const ok = (c, m) => { n++; if (c) console.log('  ✓', m); else { echecs++; console.error('  ✗', m); } };
@@ -97,6 +97,10 @@ ok(PLATEFORMES_CLOUD.every((p) => contrainte.includes(`'${p}'::text`)) && contra
   ok(verificationsCloud({ cloudVoie: true, platformSettings: ps, fermees: ['leboncoin'] }).map((x) => x.id).join() === 'beebs', 'une plateforme fermée au compte : rien');
   ok(verificationsCloud({ cloudVoie: true, platformSettings: null }).length === 0, 'illisible : rien');
 }
+
+// (02/11) La connexion d'une plateforme dans son navigateur réservé (platform_settings.<pf>.cloud_isole), jamais au coffre.
+ok(connectesIsoles({ beebs: { cloud_isole: { connecte: true } }, vinted: { cloud_isole: { connecte: false } } }).join() === 'beebs', 'Beebs connectée dans son navigateur réservé : lue');
+ok(connectesIsoles(null).length === 0 && connectesIsoles({ beebs: {} }).length === 0, 'rien : rien');
 
 if (echecs) { console.error(`\n✗ ${echecs} échec(s) — ${n} contrôles`); process.exit(1); }
 console.log(`\n✓ tout est vert — ${n} contrôles`);

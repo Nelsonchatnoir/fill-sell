@@ -119,5 +119,13 @@ ok(/\{!sansBouton && !connecte && <button/.test(me) && /libelle\?\.faire \?\? \(
 ok(!/connecte \? \(libelle\?\.refaire \?\? T\.reconnecter\)/.test(me), 'plus jamais « Me reconnecter » à côté de « Connecté »');
 ok(tx2.split("changerCompte: '").length === 3 || lire('src/cloud/textesConnexion.js').split("changerCompte: '").length === 3, 'fr et en : « Changer de compte »');
 
+console.log('\n11. Essai Beebs de Nico (02/11 14:37) : la connexion isolée se voit, le bandeau de cookies se ferme');
+ok(/import \{[^}]*connectesIsoles[^}]*\} from '\.\/executant'/.test(me) && /setIsoles\(connectesIsoles\(data\?\.platform_settings \?\? null\)\)/.test(me), 'l\'écran lit les plateformes connectées dans leur navigateur réservé');
+ok(/connecte=\{etatConnexion\(etats\?\.\[p\.id\]\) === 'connecte' \|\| isole\}/.test(me) && /texte=\{isole && !verif \? T\.isoleTexte : null\}/.test(me), 'Beebs connectée dans son navigateur réservé : « Connecté », avec ce que ça veut dire');
+ok(/if \(etape === 'cookies'\) \{ setCookies\(m === true\); return; \}/.test(me) && /session\.current\?\.refuserCookies\(\)/.test(me), 'le bandeau de cookies : un bouton « Refuser les cookies »');
+ok(/else if \(m\.t === 'cookies'\) surEtat\('cookies', m\.present === true\);/.test(cli) && /refuserCookies\(\) \{ envoyer\(\{ t: 'cookies', choix: 'refuser' \}\); \}/.test(cli), 'le client relaie le bandeau et son refus');
+const tx3 = lire('src/cloud/textesConnexion.js');
+ok(tx3.split("refuserCookies: '").length === 3 && tx3.split("isoleTexte: '").length === 3, 'fr et en : le bouton et la ligne');
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

@@ -33,7 +33,7 @@
 //   automatique.
 import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estConnectee, identifiantCompte,
   retourDeclare, expressionLectureCompte, verdictLectureCompte, expressionAcces, pageDeResolution, navigationResolution,
-  EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT } from './plateformes.js';
+  EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT, EXPRESSION_COOKIES, EXPRESSION_REFUSER_COOKIES } from './plateformes.js';
 import { etatVisible } from './verifications.js';
 import { verifierTicket } from './tickets.js';
 import { lireDansExtension } from './sessionFillsell.js';
@@ -452,6 +452,14 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         return;
       }
       journal.info('connexion_verifiee', { user, plateforme, http: v.http, coffre: bilan });
+      // (02/11, essai Beebs de Nico 14:37 : « vérifié » dans la fenêtre, « À connecter » dans l'app) La connexion d'une
+      // plateforme ISOLÉE ne va pas au coffre (le principal se l'ouvrirait) : elle est dite à l'app ailleurs —
+      // platform_settings.<plateforme>.cloud_isole (connectée, vérifiée le…), sans rien servir au principal.
+      if (isolee) {
+        const { error: eIso } = await base.rpc('platform_settings_fusionner', { p_chemin: [plateforme, 'cloud_isole'],
+          p_patch: { connecte: true, verifie_le: preuve.le, navigateur: 'isole' }, p_supprimer: [], p_user: user });
+        if (eIso) journal.alerte('connexion_isolee_etat_echec', { user, plateforme, erreur: eIso.message });
+      }
       await journaliser('connectee', null);
       try { surVerifiee?.({ user, plateforme, http: v.http, le: preuve.le }); } catch { /* le journal de l'essai ne bloque rien */ }
       if (manuel) return terminer();
@@ -575,6 +583,23 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       setTimeout(() => fermer('acces_restreint'), 2500);
     }
 
+    // (02/11) Le bandeau de cookies : sa présence est dite au téléphone (bouton « Refuser les cookies »), lue sans réseau.
+    let banniereCookies = false;
+    async function verifierCookies() {
+      if (!cible || finie) return;
+      const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_COOKIES, returnByValue: true }, cible.sessionId).catch(() => null);
+      const present = r?.result?.value?.refus === true;
+      if (present === banniereCookies) return;
+      banniereCookies = present;
+      dire({ t: 'cookies', present });
+    }
+    async function refuserCookies() {
+      if (!cible || finie) return;
+      const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_REFUSER_COOKIES, returnByValue: true }, cible.sessionId).catch(() => null);
+      journal.info('connexion_cookies_refuses', { user, plateforme, clique: r?.result?.value?.clique === true });
+      setTimeout(() => { verifierCookies().catch(() => {}); }, 800);
+    }
+
     let terminee = false;
     function terminer() {
       if (finie || terminee) return;
@@ -639,6 +664,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       await cdp.send('Page.bringToFront', {}, sessionId).catch(() => {});
       etat('pret', resoudre ? txt.resoudrePret(def.nom) : txt.pret);
       sonde = setInterval(() => {
+        verifierCookies().catch(() => {});
         (resoudre ? verifierResolution() : verifierConnexion()).catch((e) => journal.alerte('connexion_sonde_echec', { erreur: e.message }));
       }, SONDE_MS);
       journal.info(resoudre ? 'resolution_ouverte' : 'connexion_ouverte', { user, plateforme, ...(resoudre ? { page: urlPourJournal(pageDepart), nature: blocage?.nature ?? null } : {}) });
@@ -678,6 +704,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         return passe;
       }
       if (m.t === 'termine') return resoudre ? verifierResolution(true) : verifierConnexion(true);
+      if (m.t === 'cookies') return refuserCookies();
       if (m.t === 'fermer') return fermer('client');
     }
 
@@ -728,6 +755,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       await diffuser(active ?? cible).catch(() => {});
       journal.info('connexion_reprise', { user, plateforme, connectee });
       dire({ t: 'etat', etape: 'pret', message: txt.reprise });
+      if (banniereCookies) dire({ t: 'cookies', present: true });
       if (resoudre) { if (derniereEtape.etape !== 'pret') dire({ t: 'etat', etape: derniereEtape.etape, message: derniereEtape.message }); }
       else if (connectee) dire({ t: 'etat', etape: 'verifie', message: txt.verifie(def.nom) });
       else if (derniereEtape.etape === 'info' && dernierAvis) dire({ t: 'etat', etape: 'info', message: derniereEtape.message });

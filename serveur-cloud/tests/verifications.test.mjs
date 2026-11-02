@@ -234,3 +234,19 @@ test('(02/11) le navigateur isolé : sa propre empreinte (écran, cœurs, aucune
   assert.equal(profilIsole('f44b5917-bccc', 'beebs'), 'p-f44b5917-beebs-isole');
   assert.throws(() => specConteneurIsole({ config, user: 'u', profilId: 'x', plateforme: 'vinted' }), /inconnue/);
 });
+
+test('(02/11) le refus d\'un bandeau de cookies : trouvé dans la page et ses racines d\'ombre, jamais un bouton invisible', async () => {
+  const { EXPRESSION_COOKIES, EXPRESSION_REFUSER_COOKIES } = await import('../src/plateformes.js');
+  const bouton = (o) => ({ id: '', innerText: '', getBoundingClientRect: () => ({ width: 80, height: 30 }), clics: 0, click() { this.clics++; }, ...o });
+  const racine = (els) => ({ querySelectorAll: (sel) => (sel === '*' ? els : els.filter((e) => e.click)) });
+  const lancer = (expr, doc) => new Function('document', 'return ' + expr)(doc);
+  const refus = bouton({ id: 'axeptio_btn_dismiss', innerText: 'Non merci' });
+  const ombre = racine([refus, bouton({ id: 'axeptio_btn_acceptAll', innerText: 'OK pour moi' })]);
+  const doc = racine([{ shadowRoot: ombre }, bouton({ innerText: 'Se connecter' })]);
+  assert.deepEqual(lancer(EXPRESSION_COOKIES, doc), { refus: true }, 'Axeptio, dans sa racine d\'ombre');
+  assert.deepEqual(lancer(EXPRESSION_REFUSER_COOKIES, doc), { clique: true });
+  assert.equal(refus.clics, 1, 'le REFUS, jamais « OK pour moi »');
+  assert.deepEqual(lancer(EXPRESSION_COOKIES, racine([bouton({ innerText: 'Tout refuser', getBoundingClientRect: () => ({ width: 0, height: 0 }) })])), { refus: false }, 'invisible : non');
+  assert.deepEqual(lancer(EXPRESSION_COOKIES, racine([bouton({ innerText: 'Refuser' })])), { refus: true }, 'les mots usuels, hors Axeptio');
+  assert.deepEqual(lancer(EXPRESSION_COOKIES, racine([bouton({ innerText: 'Se connecter' })])), { refus: false });
+});

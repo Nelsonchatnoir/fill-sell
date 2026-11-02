@@ -329,6 +329,18 @@ export function navigationResolution(plateforme, url) {
   return def.domaine.test(h) || /(^|\.)captcha-delivery\.com$/.test(h);
 }
 
+// ── (02/11, essai Beebs de Nico 14:37) LE BANDEAU DE COOKIES QU'ON NE POUVAIT NI ACCEPTER NI REFUSER ─────────────────────
+// Le bandeau Axeptio de Beebs s'affichait dans la fenêtre de connexion sans se fermer. Les boutons de refus d'un bandeau de
+// consentement (Axeptio : #axeptio_btn_dismiss, ou les mots usuels), cherchés dans la page ET ses racines d'ombre ouvertes,
+// lus SANS réseau ; « Refuser les cookies » (le choix le plus discret) les presse à la demande de la personne.
+const TROUVER_REFUS_COOKIES = `const racines = [document];
+  for (let i = 0; i < racines.length && i < 60; i++) for (const el of racines[i].querySelectorAll('*')) if (el.shadowRoot && !racines.includes(el.shadowRoot)) racines.push(el.shadowRoot);
+  const visible = (b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const refus = racines.flatMap((r) => [...r.querySelectorAll('button, [role=button], a')]).find((b) => visible(b)
+    && (/axeptio_btn_dismiss/i.test(b.id || '') || /^(non merci|tout refuser|refuser( tout)?|je refuse|continuer sans accepter)$/i.test(String(b.innerText || b.textContent || '').trim())));`;
+export const EXPRESSION_COOKIES = `(() => { ${TROUVER_REFUS_COOKIES} return { refus: Boolean(refus) }; })()`;
+export const EXPRESSION_REFUSER_COOKIES = `(() => { ${TROUVER_REFUS_COOKIES} if (!refus) return { clique: false }; refus.click(); return { clique: true }; })()`;
+
 /** Le verdict d'une lecture de compte (pure) : { ok, http, motif } — ok seulement sur 200 ET un compte lu. */
 export function verdictLectureCompte(lu) {
   if (!lu || typeof lu !== 'object') return { ok: false, http: 0, motif: 'illisible' };

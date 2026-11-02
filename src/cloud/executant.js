@@ -106,6 +106,16 @@ export function phraseExecutant(e, { maintenant = Date.now(), lang = 'fr' } = {}
   return { etat: 'en_pause', titre: en ? 'Paused: it starts again as soon as a task is waiting.' : "En pause : il repart dès qu'une tâche attend.", detail };
 }
 
+/**
+ * (02/11, essai Beebs de Nico 14:37 : « vérifié » dans la fenêtre, « À connecter » dans l'app) Les plateformes connectées
+ * dans leur navigateur RÉSERVÉ (serveur-cloud : navigateur isolé) — platform_settings.<pf>.cloud_isole.connecte ; jamais
+ * au coffre, que l'app lit pour les autres (pur).
+ */
+export function connectesIsoles(platformSettings) {
+  if (!platformSettings || typeof platformSettings !== 'object') return [];
+  return PLATEFORMES_ECRAN.map((p) => p.id).filter((id) => platformSettings?.[id]?.cloud_isole?.connecte === true);
+}
+
 // (02/11, demande de Nico) « RÉSOUDRE LA VÉRIFICATION » : l'état d'une vérification anti-robot du navigateur Cloud, posé
 // par le serveur (serveur-cloud/src/verifications.js) dans platform_settings.<plateforme>.cloud_verification :
 //   'a_resoudre' (une glissière : le bouton « Résoudre la vérification »), 'restreint' (rien à résoudre : on attend),

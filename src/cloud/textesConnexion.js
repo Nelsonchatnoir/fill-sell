@@ -22,6 +22,9 @@ const FR = {
   reconnecter: 'Me reconnecter',
   // (02/11) Une plateforme connectée : un lien discret, jamais un bouton qui fait croire à un problème.
   changerCompte: 'Changer de compte',
+  // (02/11) Le bandeau de cookies d'une page de connexion, et une plateforme connectée dans son navigateur réservé.
+  refuserCookies: 'Refuser les cookies',
+  isoleTexte: 'Connectée dans son navigateur réservé. Ses tâches attendent la mise en service : rien ne part encore.',
   // (01/11) Le bandeau qui demande la reconnexion quand une connexion Cloud tombe (BandeauCloudReconnexion.jsx).
   bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l.at(-1)} se sont déconnectés de FillSell Cloud` : `${l[0] ?? 'Une plateforme'} s'est déconnectée de FillSell Cloud`; },
   // (01/11, 23:10) Une plateforme peut aussi attendre une VÉRIFICATION (glissière anti-robot dans le travail du Cloud) :
@@ -85,6 +88,8 @@ const EN = {
   meConnecter: 'Sign in',
   reconnecter: 'Sign in again',
   changerCompte: 'Switch account',
+  refuserCookies: 'Decline cookies',
+  isoleTexte: 'Connected in its dedicated browser. Its tasks wait for it to go live: nothing is sent yet.',
   bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)} were disconnected from FillSell Cloud` : `${l[0] ?? 'A platform'} was disconnected from FillSell Cloud`; },
   bandeauTexte: (noms) => { const l = listeNoms(noms); return `Open "Sign in again": sign in or solve the check you're asked for. Your ${l.join(', ')} tasks are waiting: nothing is posted or removed on ${l.length > 1 ? 'these platforms' : 'this platform'} until then.`; },
   executantArreteTitre: (depuis) => (depuis ? `FillSell Cloud has stopped (${depuis})` : 'FillSell Cloud has stopped'),

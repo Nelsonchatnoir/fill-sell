@@ -25,7 +25,7 @@ import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsent
 import { textesConnexion } from './textesConnexion';
 import { C, BLANC, MENTHE, DEGRADE_TEAL, POLICE } from './theme';
 // (30/10, lot D) L'état de chaque connexion (connecté / à reconnecter) et de l'exécutant (en marche, dernière action).
-import { etatConnexion, phraseExecutant, executantArrete, quandParis, verificationsCloud } from './executant';
+import { etatConnexion, phraseExecutant, executantArrete, quandParis, verificationsCloud, connectesIsoles } from './executant';
 
 // (01/11) « ferme » n'est plus une fin : la connexion coupée sans « Fermer » (app quittée pour lire un SMS ou un
 // courriel) reprend au retour, sur la MÊME page (le serveur l'a gardée, connexion.js REPRISE_MS).
@@ -73,6 +73,8 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
   const session = useRef(null);
   const [message, setMessage] = useState('');
   const [clavier, setClavier] = useState(false);
+  // (02/11) Un bandeau de cookies est affiché dans la page : la personne peut le refuser d'ici.
+  const [cookies, setCookies] = useState(false);
   const [finie, setFinie] = useState(false);
   // (01/11) Le compte lu par le serveur : connecté, mais la page reste pour les étapes de la plateforme.
   const [verifiee, setVerifiee] = useState(false);
@@ -96,6 +98,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
         url: `wss://${CLOUD_DOMAINE}/connexion/ws`, jeton: s?.access_token ?? null, plateforme, conteneur: conteneur.current, lang, mode,
         surEtat: (etape, m) => {
           if (etape === 'clavier') { setClavier(m === true); return; }
+          if (etape === 'cookies') { setCookies(m === true); return; }
           if (etape === 'ferme') { if (!finale && !mort) reprendre(); return; }
           if (m) setMessage(m);
           if (etape === 'verifie' && !verifieeRef.current) {
@@ -148,6 +151,14 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
       </div>
       <div ref={conteneur} style={{ flex: 1, minHeight: 0, width: '100%', maxWidth: 540, margin: '0 auto', overflow: 'hidden', background: BLANC }} />
       <p role="status" aria-live="polite" style={{ margin: 0, padding: '8px 16px', minHeight: 38, fontSize: 13.5, color: C.mute2 }}>{message}</p>
+      {/* (02/11, essai Beebs de Nico : le bandeau Axeptio ne se fermait pas) Le refus, le choix le plus discret. */}
+      {!finie && cookies && (
+        <div style={{ padding: '0 16px 6px' }}>
+          <button type="button" data-cloud-bouton="cookies" onClick={() => session.current?.refuserCookies()} style={{
+            width: '100%', minHeight: 40, borderRadius: 12, fontWeight: 600, border: `1px solid ${C.border}`, background: BLANC, color: C.ink,
+          }}>{T.refuserCookies}</button>
+        </div>
+      )}
       {!finie && (
         <div style={{ display: 'flex', gap: 8, padding: '4px 16px 12px' }}>
           {/* (02/11) Résoudre : rien à écrire, on fait glisser. */}
@@ -212,6 +223,8 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
   const [ebayRelie, setEbayRelie] = useState(null);
   // (02/11) Les plateformes en vérification du navigateur Cloud (platform_settings.<plateforme>.cloud_verification).
   const [verifs, setVerifs] = useState([]);
+  // (02/11) Les plateformes connectées dans leur navigateur RÉSERVÉ (platform_settings.<pf>.cloud_isole) : jamais au coffre.
+  const [isoles, setIsoles] = useState([]);
 
   const racine = useRef(null);
 
@@ -231,7 +244,8 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
     lireEtatEbay().then((r) => setEbayRelie(ebayVoieApiDuCompte(r?.etat ?? null) === true), () => setEbayRelie(null));
     supabase.from('profiles').select('platform_settings, cloud_voie').eq('id', userId).maybeSingle().then(({ data }) => {
       setVerifs(verificationsCloud({ cloudVoie: data?.cloud_voie === true, platformSettings: data?.platform_settings ?? null, plateformes: CLOUD_PLATEFORMES_CONNEXION }));
-    }, () => setVerifs([]));
+      setIsoles(connectesIsoles(data?.platform_settings ?? null));
+    }, () => { setVerifs([]); setIsoles([]); });
   }, [userId]);
   const relierEbay = useCallback(async () => {
     try { const { url } = await demarrerConnexionEbay(); if (url) await ouvrirConsentementEbay(url); }
@@ -274,8 +288,10 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
           <div style={{ display: 'grid', gap: 10 }}>
             {CLOUD_PLATEFORMES_CONNEXION.filter((p) => !plateformesFermees.includes(p.id)).map((p) => {
               const verif = verifs.find((x) => x.id === p.id)?.etat ?? null;
+              const isole = isoles.includes(p.id) && etatConnexion(etats?.[p.id]) !== 'connecte';
               return (
-                <Ligne key={p.id} nom={p.nom} connecte={etatConnexion(etats?.[p.id]) === 'connecte'} verif={verif}
+                <Ligne key={p.id} nom={p.nom} connecte={etatConnexion(etats?.[p.id]) === 'connecte' || isole} verif={verif}
+                  texte={isole && !verif ? T.isoleTexte : null}
                   aReconnecter={etatConnexion(etats?.[p.id]) === 'a_reconnecter'} T={T}
                   onClick={() => setOuverte(verif === 'a_resoudre' ? { ...p, mode: 'resoudre' } : p)} />
               );

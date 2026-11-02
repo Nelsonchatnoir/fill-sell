@@ -10,10 +10,11 @@
 //
 // ouvrirConnexion({ url, jeton | ticket, plateforme, conteneur, lang, surEtat, mode })
 //   (02/11) mode 'resoudre' : « Résoudre la vérification » — la page du navigateur Cloud où la glissière s'affiche.
-//   → { fermer(), ecrire(), termine() }
+//   → { fermer(), ecrire(), termine(), refuserCookies() }
 // surEtat(etape, message) : 'demarrage' | 'pret' | 'info' | 'connecte' | 'refuse' |
 //   'inactif' | 'non_autorise' | 'expire' | 'erreur' | 'ferme' | 'clavier' (message = true/false)
 //   (02/11) résoudre : 'resolu' | 'revenue' | 'restreint' | 'session_fermee' | 'rien' (finales).
+//   (02/11) 'cookies' (message = true/false) : un bandeau de cookies est affiché ; refuserCookies() le ferme (refus).
 
 // ── (01/11, Nico : « la touche effacer ne marche pas dans Écrire ») ─────────────────────────────────────────────────
 // Le champ caché qui porte le clavier était VIDE : sur iPhone, effacer dans un champ vide n'émet AUCUN événement —
@@ -95,6 +96,7 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
       let m; try { m = JSON.parse(ev.data); } catch { return; }
       if (m.t === 'etat') surEtat(m.etape, m.message ?? '');
       else if (m.t === 'clavier') surEtat('clavier', m.ouvert === true);
+      else if (m.t === 'cookies') surEtat('cookies', m.present === true);
       return;
     }
     // Une image : 4 octets de numéro, puis le JPEG. L'accusé de réception règle le débit.
@@ -176,6 +178,8 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
     ecrire() { champ.focus({ preventScroll: true }); remettre(); },
     /** « J'ai fini » : le serveur revérifie la connexion tout de suite. */
     termine() { envoyer({ t: 'termine' }); },
+    // (02/11) Le bandeau de cookies qu'on ne pouvait ni accepter ni refuser : le refus, à la demande de la personne.
+    refuserCookies() { envoyer({ t: 'cookies', choix: 'refuser' }); },
     fermer() {
       if (ferme) return;
       ferme = true;
