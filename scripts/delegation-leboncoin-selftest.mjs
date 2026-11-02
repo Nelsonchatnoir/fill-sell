@@ -83,7 +83,9 @@ ok(GPJ.includes('if (!delegationLbc) await admin.from("profiles").update(patch).
   'B4. compte de travail : poste marqué, ni présence/build du propriétaire, ni relance Opla/Depop');
 ok(GPJ.includes('if (delegationLbc) q = q.eq("platform", PLATEFORME_DELEGUEE);') && (GPJ.match(/if \(delegationLbc\) q = q\.eq\("platform", PLATEFORME_DELEGUEE\);/g) ?? []).length === 2,
   'B5. compte de travail : la file lue est la file LEBONCOIN du propriétaire (lecture de fond et popup)');
-ok(/if \(delegationLbc\) qCmds = qCmds\.eq\("platform", PLATEFORME_DELEGUEE\);\n\s+else if \(proprietaireDelegue\) qCmds = qCmds\.neq\("platform", PLATEFORME_DELEGUEE\);/.test(GPJ),
+// (02/11, facture Supabase) Les demandes en file se lisent en une fois (lireCommandesEnFile) : même filtre, en mémoire.
+ok(/if \(delegationLbc\) qCmds = qCmds\.eq\("platform", PLATEFORME_DELEGUEE\);\n\s+else if \(proprietaireDelegue\) qCmds = qCmds\.neq\("platform", PLATEFORME_DELEGUEE\);/.test(GPJ)
+  || GPJ.includes('&& (delegationLbc ? c.platform === PLATEFORME_DELEGUEE : proprietaireDelegue ? c.platform !== PLATEFORME_DELEGUEE : true)).slice(0, 4);'),
   'B6. relevés : le compte de travail ne lit que Leboncoin, les postes du propriétaire jamais Leboncoin (sinon : la lecture d\'avant)');
 ok(GPJ.includes('.filter((c) => delegationLbc ? c.platform === PLATEFORME_DELEGUEE : !(proprietaireDelegue && c.platform === PLATEFORME_DELEGUEE));'),
   'B7. « Me connecter » : Leboncoin chez l\'exécutant ; sans délégation, filtre neutre (tout passe)');

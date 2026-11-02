@@ -3882,14 +3882,16 @@ export default function App({ loginOnly = false }){
   // n'apparaissaient qu'après un F5 manuel (vécu : vente Vinted confirmée,
   // retraits eBay/LBC réussis en tâche de fond, app muette). Revenir sur
   // l'onglet/la fenêtre déclenche désormais un fetchAll silencieux (aucun
-  // spinner), au plus un toutes les 30 s.
+  // spinner), au plus un toutes les 2 min (30 s avant le 02/11 : un aller-retour
+  // d'onglet relisait tout le stock et toutes les ventes — facture Supabase,
+  // docs/enquetes/facture-supabase-0211 ; la sonde ci-dessous rattrape le reste).
   const derniereVisibiliteRef=useRef(0);
   useEffect(()=>{
     if(!user?.id) return;
     const onVisible=()=>{
       if(document.visibilityState!=='visible') return;
       const maintenant=Date.now();
-      if(maintenant-derniereVisibiliteRef.current<30_000) return;
+      if(maintenant-derniereVisibiliteRef.current<120_000) return;
       derniereVisibiliteRef.current=maintenant;
       fetchAll(user.id,{silencieux:true});
     };
@@ -3906,6 +3908,14 @@ export default function App({ loginOnly = false }){
   // d'onglet. ⚠️ Pas de colonne updated_at sur cross_post_jobs (vérifié en
   // base, aucun trigger non plus) : l'empreinte porte sur les champs qui
   // pilotent réellement les bandeaux et les chips, pas sur un horodatage.
+  // ⛔ (02/11, facture Supabase) `last_checked_at` est SORTI de l'empreinte : le
+  // check des ventes le réécrit sur ~3 600 jobs par heure (34 comptes), et chaque
+  // réécriture relançait un fetchAll complet (ventes et stock en select=*, par
+  // pages de 1 000) — mesuré : ~4 800 relectures complètes par jour, le premier
+  // poste d'egress REST. Aucun écran ne lit last_checked_at. Un vrai changement
+  // (statut, marqueurs) relance aussi la relecture COMPLÈTE des jobs du Stock
+  // (événement fillsell:jobs-changes), qui ne se fait plus d'elle-même que
+  // toutes les 30 min.
   const empreinteJobsRef=useRef(null);
   useEffect(()=>{
     if(!user?.id) return;
@@ -3914,7 +3924,7 @@ export default function App({ loginOnly = false }){
     const sonde=async()=>{
       if(document.visibilityState!=='visible') return;
       const {data,error}=await supabase.from('cross_post_jobs')
-        .select('id,status,last_checked_at,sale_signal:platform_fields->>sale_signal,unavailable_since:platform_fields->>unavailable_since,pending_removal:platform_fields->>pending_removal,check_unresolved_since:platform_fields->>check_unresolved_since')
+        .select('id,status,sale_signal:platform_fields->>sale_signal,unavailable_since:platform_fields->>unavailable_since,pending_removal:platform_fields->>pending_removal,check_unresolved_since:platform_fields->>check_unresolved_since')
         .eq('user_id',user.id)
         .order('created_at',{ascending:false})
         .limit(80);
@@ -3924,6 +3934,7 @@ export default function App({ loginOnly = false }){
       if(empreinte!==empreinteJobsRef.current){
         empreinteJobsRef.current=empreinte;
         fetchAll(user.id,{silencieux:true});
+        try{ window.dispatchEvent(new Event('fillsell:jobs-changes')); }catch{ /* sans fenêtre : rien */ }
       }
     };
     sonde();

@@ -50,9 +50,14 @@ const qsd = corps(BG, 'async function releverQuotidien(');
 ok(/lancerRelevePlateforme\(\{ platform, declencheur: "cron" \}\)/.test(qsd), 'A7. le relevé quotidien du compte de l\'extension : inchangé (sa propre session)');
 
 // ── B. serveur ───────────────────────────────────────────────────────────────
-ok(/let qCmds = userClient\n\s+\.from\("vinted_sync_runs"\)/.test(GPJ) && /if \(delegationLbc\) qCmds = qCmds\.eq\("platform", PLATEFORME_DELEGUEE\);/.test(GPJ),
+// (02/11, facture Supabase) Les demandes en file se lisent en une fois sous le jeton du poll (lireCommandesEnFile,
+// userClient), puis se filtrent en mémoire : même règle.
+const lectureUnique = /const \{ data, error \} = await userClient\.from\("vinted_sync_runs"\)\.select\("id, kind, platform, queued_at, declencheur"\)/.test(GPJ);
+const filtreDelegue = GPJ.includes('&& (delegationLbc ? c.platform === PLATEFORME_DELEGUEE : proprietaireDelegue ? c.platform !== PLATEFORME_DELEGUEE : true)).slice(0, 4);');
+ok((/let qCmds = userClient\n\s+\.from\("vinted_sync_runs"\)/.test(GPJ) && /if \(delegationLbc\) qCmds = qCmds\.eq\("platform", PLATEFORME_DELEGUEE\);/.test(GPJ))
+  || (lectureUnique && filtreDelegue),
   'B1. le poll délégué lit les relevés sous le jeton du propriétaire (RLS : les siens seulement), Leboncoin seulement');
-ok(/else if \(proprietaireDelegue\) qCmds = qCmds\.neq\("platform", PLATEFORME_DELEGUEE\);/.test(GPJ),
+ok(/else if \(proprietaireDelegue\) qCmds = qCmds\.neq\("platform", PLATEFORME_DELEGUEE\);/.test(GPJ) || filtreDelegue,
   'B2. les postes du propriétaire ne reçoivent plus aucun relevé Leboncoin (la machine virtuelle ne lit plus la boutique)');
 
 // ── C. base ──────────────────────────────────────────────────────────────────

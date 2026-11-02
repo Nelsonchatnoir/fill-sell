@@ -257,6 +257,8 @@ import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLe
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
 import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
+// (02/11, facture Supabase) coin_config lu une fois par minute et par instance (7 lectures par poll avant).
+import { configUne, configPlusieurs, configPrefixe } from "../_shared/coin-config-cache.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -597,7 +599,7 @@ serve(async (req) => {
     // ce qui suit sur Opla ne s'applique : Opla fonctionne comme avant.
     let sortieOpla = false;
     try {
-      const { data: cfgSortie, error: cfgErr } = await userClient.from("coin_config").select("value").eq("key", OPLA_SORTIE.CLE_CONFIG).maybeSingle();
+      const { data: cfgSortie, error: cfgErr } = await configUne(userClient, OPLA_SORTIE.CLE_CONFIG);
       sortieOpla = sortieOplaActive(Date.now(), cfgErr ? null : (cfgSortie as { value?: unknown } | null)?.value);
     } catch (_e) {
       sortieOpla = sortieOplaActive(Date.now(), null);
@@ -634,6 +636,8 @@ serve(async (req) => {
     //   · delegationsExecutees : ce poll vient de l'exécutant — la réponse lui dit pour quels comptes ouvrir le compte
     //     de travail. Sans ces clés (tous les autres comptes) : une lecture de plus, rien d'autre ne change.
     let delegationLbc: { executant: string; nom: string | null } | null = null;
+    // (02/11, facture Supabase) Les beta_flags du compte lus par la délégation, repris plus bas (keepalive) : une lecture de moins par poll.
+    let betaFlagsDuPoll: Record<string, unknown> | null | undefined = undefined;
     let proprietaireDelegue: { executant: string; nom: string | null } | null = null;
     const delegationsExecutees: Array<{ compte: string; plateformes: string[] }> = [];
     {
@@ -668,6 +672,7 @@ serve(async (req) => {
       } else {
         try {
           const flagsP = await flagsDe(user.id);
+          betaFlagsDuPoll = flagsP;
           const executant = executantLbcDeclare(flagsP);
           if (executant && delegationLbcValide({ proprietaire: user.id, flagsProprietaire: flagsP, executant, flagsExecutant: await flagsDe(executant) })) {
             proprietaireDelegue = { executant, nom: nomExecutantLbc(flagsP) };
@@ -778,8 +783,7 @@ serve(async (req) => {
     const etatRetenueRepublish = async () => {
       // Une seule lecture pour les deux réglages de la pause.
       const cfg = new Map<string, number>();
-      const { data: cfgRows } = await userClient
-        .from("coin_config").select("key, value").in("key", [
+      const { data: cfgRows } = await configPlusieurs(userClient, [
           "republish_pause_apres",
           "republish_pause_duree_min",
         ]);
@@ -1193,6 +1197,20 @@ serve(async (req) => {
       console.log(`[get-pending-jobs] userId=${user.id} : poste sous le seuil (${buildDuPoll || "build absent"}) — ${recreationsEnAttente} recréation(s) à l'étape 'deleted' servie(s) SEULES (annonce déjà retirée), rien d'autre`);
     }
 
+    // ══ (02/11, facture Supabase) UN COMPTE SANS JOB ARRÊTÉ NE BALAIE PAS LES ARRÊTÉS ══════════════════════════════
+    // Neuf balayages ci-dessous (marqués « aDesArretes ») ne lisent QUE des jobs needs_user / failed du compte. Le 02/11,
+    // 69 postes actifs sur 94 n'en avaient aucun : ces neuf lectures rendaient 0 ligne à chaque poll (~250 000 lectures de
+    // cross_post_jobs par jour, autant de lignes de journal). Une lecture de présence d'abord ; illisible → on balaie
+    // comme avant. Un job passé needs_user PENDANT ce poll est vu au poll suivant.
+    let aDesArretes = true;
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const { data: unArrete, error: eArrete } = await userClient.from("cross_post_jobs").select("id")
+          .eq("user_id", user.id).in("status", ["needs_user", "failed"]).limit(1);
+        if (!eArrete && Array.isArray(unArrete)) aDesArretes = unArrete.length > 0;
+      } catch (_e) { aDesArretes = true; }
+    }
+
     // ══ UN DÉFAUT D'EXTENSION CORRIGÉ : LE JOB REPART QUAND LE POSTE EST À JOUR ══
     // (2026-09-25, LES PETITES FIOLES — _shared/correctifs-extension.js)
     // 5 republications Leboncoin PRO arrêtées en « relance d'un clic » après
@@ -1205,7 +1223,7 @@ serve(async (req) => {
     // plus ancien correctif connu. Best-effort : jamais un point de panne.
     let relancesCorrectif = 0;
     const correctifsPortes = CORRECTIFS_EXTENSION.filter((c) => buildMsDe(buildDuPoll) >= buildMsDe(c.buildMin));
-    if (!includeProcessing && !includeNeedsUser && correctifsPortes.length) {
+    if (!includeProcessing && !includeNeedsUser && correctifsPortes.length && aDesArretes) {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: bloques } = await admin
@@ -1257,7 +1275,7 @@ serve(async (req) => {
     // La garde du poste repasse à CHAQUE reprise : rien n'est jamais retiré
     // tant que la page de dépôt ne se lit pas. Jamais un article vendu.
     // Best-effort : une lecture ratée laisse tout en l'état.
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && aDesArretes) {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: pausesLbc } = await admin.from("cross_post_jobs")
@@ -1304,7 +1322,7 @@ serve(async (req) => {
     // retrait). update-job-status (v114+) ne plafonne plus ; ici, les jobs
     // déjà arrêtés repartent seuls, espacés, avec le vrai motif. Jamais à
     // l'étape 'deleted', jamais avec une question en attente.
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && aDesArretes) {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: coupes } = await admin.from("cross_post_jobs")
@@ -1353,7 +1371,7 @@ serve(async (req) => {
     //     d1a86bc2) : défaut de notre garde (titre), corrigé dans la 0.6.84 →
     //     pending, servi seulement à un poste qui porte le correctif
     //     (build_min_requis), message vrai — l'annonce est encore en vente.
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && aDesArretes) {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: arretes } = await admin.from("cross_post_jobs")
@@ -1400,7 +1418,7 @@ serve(async (req) => {
     // le job se clôt avec ce motif. Présente → rien ne change (ex. le Doudou
     // Nala de nicolas.menar, en ligne au relevé du 01/10 : la question « Déjà
     // vendu ? » de sa fiche décide). Jamais par le titre. Best-effort.
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && aDesArretes) {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: arretes } = await admin.from("cross_post_jobs")
@@ -1775,7 +1793,7 @@ serve(async (req) => {
     // a tourné après l'impasse : aucune annonce apparue pendant un de NOS envois
     // → la recréation repart (une fois) ; sinon → message vrai, liens, rien de
     // recréé. Best-effort.
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && aDesArretes) {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: impasses } = await admin.from("cross_post_jobs")
@@ -1968,10 +1986,16 @@ serve(async (req) => {
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing && !includeNeedsUser && !delegationLbc) {
       try {
         const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const { data: cfgP } = await adminP.from("coin_config").select("key, value").in("key", ["premiere_synchro_auto", "premiere_synchro_auto_jours"]);
+        const { data: cfgP } = await configPlusieurs(adminP, ["premiere_synchro_auto", "premiere_synchro_auto_jours"]);
         const cfgPM = new Map(((cfgP ?? []) as Array<{ key: string; value: unknown }>).map((r) => [r.key, Number(r.value)]));
         const reglageP = { actif: cfgPM.get("premiere_synchro_auto") !== 0, jours: cfgPM.get("premiere_synchro_auto_jours") };
-        if (reglageP.actif) {
+        // (02/11, facture Supabase) Un compte inscrit (auth) depuis plus longtemps que la fenêtre de première synchro ne
+        // relit plus son profil à chaque poll pour l'apprendre (~34 000 lectures de profiles par jour) ; la date du
+        // profil reste celle qui décide pour les comptes récents (marge d'un jour sur la date d'inscription).
+        const joursP = Number(reglageP.jours) > 0 ? Number(reglageP.jours) : PREMIERE_SYNCHRO_JOURS_DEFAUT;
+        const inscritAuth = Date.parse(String((user as { created_at?: string }).created_at ?? ""));
+        const horsFenetre = Number.isFinite(inscritAuth) && Date.now() - inscritAuth > (joursP + 1) * 86_400_000;
+        if (reglageP.actif && !horsFenetre) {
           const { data: profP } = await adminP.from("profiles").select("created_at, platform_settings, extension_sessions").eq("id", user.id).maybeSingle();
           const inscritLe = (profP as { created_at?: string } | null)?.created_at ?? null;
           const jours = Number(reglageP.jours) > 0 ? Number(reglageP.jours) : PREMIERE_SYNCHRO_JOURS_DEFAUT;
@@ -1996,6 +2020,22 @@ serve(async (req) => {
         }
       } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
     }
+    // (02/11, facture Supabase) Les demandes EN FILE du compte (relevé du dressing, relevés « annonces », connexion) : lues
+    // UNE fois par poll au lieu de trois lectures de vinted_sync_runs ; chaque lecteur garde ses bornes (durée de vie,
+    // plateforme, nombre) et le même ordre (queued_at croissant). Illisible : liste vide, comme avant (rien n'est servi).
+    type CommandeEnFile = { id: unknown; kind: unknown; platform: unknown; queued_at: unknown; declencheur?: unknown };
+    let commandesEnFile: CommandeEnFile[] | null = null;
+    const lireCommandesEnFile = async (ttlIso: string) => {
+      if (!commandesEnFile) {
+        const { data, error } = await userClient.from("vinted_sync_runs").select("id, kind, platform, queued_at, declencheur")
+          .in("kind", ["dressing", "annonces", "connexion"]).eq("status", "queued")
+          .gte("queued_at", new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
+          .order("queued_at", { ascending: true }).limit(200);
+        if (error || !Array.isArray(data)) return [];
+        commandesEnFile = data as CommandeEnFile[];
+      }
+      return (commandesEnFile ?? []).filter((c) => Date.parse(String(c.queued_at ?? "")) >= Date.parse(ttlIso));
+    };
     // (01/11) Le compte de travail délégué ne fait que Leboncoin : jamais le dressing Vinted, ni les redemandes et
     // reprises de relevés du compte (ses postes à lui s'en chargent, Leboncoin compris quand il est servi ci-dessous).
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing && !delegationLbc) {
@@ -2009,14 +2049,7 @@ serve(async (req) => {
         // Le .gte reste la garde qui FAIT FOI : même si le marquage ci-dessus
         // échoue, une demande périmée n'est jamais servie.
         const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-        const { data: cmds } = await userClient
-          .from("vinted_sync_runs")
-          .select("id, queued_at, declencheur")
-          .eq("kind", "dressing")
-          .eq("status", "queued")
-          .gte("queued_at", ttl)
-          .order("queued_at", { ascending: true })
-          .limit(1);
+        const cmds = (await lireCommandesEnFile(ttl)).filter((c) => c.kind === "dressing").slice(0, 1);
         const repVinted = cmds?.length ? await fenetreRepublication("vinted") : null;
         if (cmds?.length && compteEnPauseAr) {
           console.log(`[get-pending-jobs] userId=${user.id} : relevé Vinted ${String(cmds[0].id).slice(0, 8)} RETENU — compte en pause anti-robot, il partira à la levée`);
@@ -2151,17 +2184,8 @@ serve(async (req) => {
         const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
         // (01/11) Délégation Leboncoin : le compte de travail délégué ne lit que les relevés Leboncoin, les postes du
         // propriétaire jamais (ils restent en file pour le compte de travail).
-        let qCmds = userClient
-          .from("vinted_sync_runs")
-          .select("id, platform, queued_at, declencheur")
-          .eq("kind", "annonces")
-          .eq("status", "queued")
-          .gte("queued_at", ttl);
-        if (delegationLbc) qCmds = qCmds.eq("platform", PLATEFORME_DELEGUEE);
-        else if (proprietaireDelegue) qCmds = qCmds.neq("platform", PLATEFORME_DELEGUEE);
-        const { data: cmds } = await qCmds
-          .order("queued_at", { ascending: true })
-          .limit(4);
+        const cmds = (await lireCommandesEnFile(ttl)).filter((c) => c.kind === "annonces"
+          && (delegationLbc ? c.platform === PLATEFORME_DELEGUEE : proprietaireDelegue ? c.platform !== PLATEFORME_DELEGUEE : true)).slice(0, 4);
         const lues: Array<{ id: unknown; platform: unknown; queued_at: unknown; declencheur?: unknown }> = [];
         for (const c of ((cmds ?? []) as Array<{ id: unknown; platform: unknown; queued_at: unknown; declencheur?: unknown }>)) {
           // (22/10 soir, point 5) Garde absolue : jamais pendant une republication retirée de SA plateforme.
@@ -2278,14 +2302,7 @@ serve(async (req) => {
     if (versionAuMoins(version, "0.6.53") && !includeProcessing) {
       try {
         const ttl = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        const { data: cmds } = await userClient
-          .from("vinted_sync_runs")
-          .select("id, platform, declencheur")
-          .eq("kind", "connexion")
-          .eq("status", "queued")
-          .gte("queued_at", ttl)
-          .order("queued_at", { ascending: true })
-          .limit(3);
+        const cmds = (await lireCommandesEnFile(ttl)).filter((c) => c.kind === "connexion").slice(0, 3);
         connexionCommands = ((cmds ?? []) as Array<{ id: unknown; platform: unknown; declencheur: unknown }>)
           .map((c) => ({
             id: String(c.id),
@@ -2398,7 +2415,7 @@ serve(async (req) => {
     // Retour arrière de la garde serveur « session inconnue » du point A :
     // l'absence de télémétrie ne prouve pas une boutique étrangère. L'origine
     // doit rester confirmée ; le handler lit la session locale avant le geste.
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && aDesArretes) {
       const { data: attentes, error: erreurAttentes } = await userClient.from("cross_post_jobs")
         .select("id,action,platform,platform_fields,inventaire_id,listing_url,platform_listing_id,inventaire:inventaire_id(vinted_account_id)")
         .eq("user_id", user.id).eq("status", "needs_user").eq("voie", "extension")
@@ -2468,7 +2485,7 @@ serve(async (req) => {
     // seule dès que CETTE boutique est vue connectée (sonde, relevé ou
     // capture, < 30 min) — jamais avant, jamais sur une autre, deux fois au
     // plus par tâche. Best-effort : jamais un point de panne.
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && aDesArretes) {
       try {
         const { data: pauses } = await userClient.from("cross_post_jobs")
           .select("id, status, action, platform, platform_fields, inventaire:inventaire_id(vinted_account_id)")
@@ -2835,7 +2852,7 @@ serve(async (req) => {
         const apresRestriction = out.filter((j) => estApresRestrictionVinted(j));
         if (apresRestriction.length) {
           const aujourdhuiParis = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
-          const { data: cfgR } = await userClient.from("coin_config").select("value").eq("key", "vinted_reprise_restriction_jour").maybeSingle();
+          const { data: cfgR } = await configUne(userClient, "vinted_reprise_restriction_jour");
           const plafondR = Number((cfgR as { value?: unknown } | null)?.value) > 0 ? Number((cfgR as { value?: unknown }).value) : 10;
           const { data: lignesR } = await userClient.from("cross_post_jobs").select("id, le:platform_fields->>reprise_restriction_le")
             .eq("user_id", user.id).eq("platform", "vinted").eq("platform_fields->>reprise_restriction_jour", aujourdhuiParis).limit(200);
@@ -3232,7 +3249,7 @@ serve(async (req) => {
     // le modèle connu de l'annonce d'origine prime sur une saisie hors liste).
     // Un needs_user « champ à choisir » dont TOUS les champs exigés sont
     // maintenant connus repart aussitôt (étape 'deleted' : en tête de file).
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && aDesArretes) {
       try {
         const adminA = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: bloquesA } = await adminA.from("cross_post_jobs")
@@ -4990,7 +5007,7 @@ serve(async (req) => {
     // 0, absente ou illisible → rien n'est posé (observer). Copie servie seulement.
     if (!includeProcessing && !includeNeedsUser && out.some((j) => estDepotEbayExtension(j as never))) {
       try {
-        const { data: cfgPhotos } = await userClient.from("coin_config").select("value").eq("key", "ebay_photos_recues_bloquant").maybeSingle();
+        const { data: cfgPhotos } = await configUne(userClient, "ebay_photos_recues_bloquant");
         if (Number((cfgPhotos as Record<string, unknown> | null)?.value) === 1) {
           for (const j of out.filter((x) => estDepotEbayExtension(x as never))) {
             j.platform_fields = { ...((j.platform_fields ?? {}) as Record<string, unknown>), ebay_photos_mode: "bloquer" };
@@ -5454,8 +5471,7 @@ serve(async (req) => {
           ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
         const candidats = out.filter(estPublishLbc);
         if (candidats.length) {
-          const { data: cfgMin } = await userClient
-            .from("coin_config").select("value").eq("key", "lbc_pro_extension_min").maybeSingle();
+          const { data: cfgMin } = await configUne(userClient, "lbc_pro_extension_min");
           const minCode = Number(cfgMin?.value ?? 0);
           // Même encodage que la clé : 0.6.41 → 641. Version absente ou
           // illisible = 0 : un build trop vieux pour se nommer n'a pas le
@@ -5742,7 +5758,8 @@ serve(async (req) => {
       // retirée, bloquée, invisible du poll qui aurait pu la compléter.
       // Une requête, bornée, indexée (user_id + status), 20 lignes au plus.
       const dejaVus = new Set(aCombler.map((j) => String(j.id)));
-      const { data: bloques } = await userClient
+      // (02/11, facture Supabase) Sans job arrêté au début du poll (aDesArretes), cette lecture rendait 0 ligne.
+      const { data: bloques } = !aDesArretes ? { data: [] as Array<Record<string, unknown>> } : await userClient
         .from("cross_post_jobs")
         .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error")
         .eq("platform", "leboncoin").eq("action", "republish")
@@ -7660,8 +7677,7 @@ serve(async (req) => {
         out.some((j) => j.action === "republish" && j.platform === "vinted" &&
           (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "captured")) {
       try {
-        const { data: cfgRetrait } = await userClient
-          .from("coin_config").select("value").eq("key", "republish_pause_retrait_taille_par_id").maybeSingle();
+        const { data: cfgRetrait } = await configUne(userClient, "republish_pause_retrait_taille_par_id");
         if (Number((cfgRetrait as Record<string, unknown> | null)?.value) === 1) {
           const avant = out.length;
           out = out.filter((j) =>
@@ -9738,7 +9754,9 @@ serve(async (req) => {
       if (rendus.length) console.log(`[get-pending-jobs] userId=${user.id} : ${rendus.length} remise(s) Vinted par « Republier » servie(s) (poste « vinted_republier_v1 »)`);
     }
 
-    console.log(
+    // (02/11, facture Supabase) Un poll qui ne distribue ni ne retient RIEN ne s’écrit plus au journal : c’était
+    // une ligne par poll de chaque poste (~34 000 par jour). Toute distribution, toute retenue reste écrite.
+    const ligneDistribution = (
       `[get-pending-jobs] userId=${user.id} → ${out.length} job(s) distribué(s)` +
       (heldFiges ? `, ${heldFiges} job(s) retenu(s) après les autres (plateforme(s) qui figent sur ce poste : ${plateformesFigeesLues.join(", ")})` : "") +
       (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : "") +
@@ -9758,8 +9776,9 @@ serve(async (req) => {
       (isbnDeduits ? `, ${isbnDeduits} ISBN déduit(s) sans rien demander` : "") +
       (heldRequisDestination ? `, ${heldRequisDestination} republish → needs_user AVANT suppression (requis de la catégorie de destination introuvable)` : "") +
       (heldRequisLbc ? `, ${heldRequisLbc} republish Leboncoin → needs_user AVANT retrait (requis prouvé absent, poste sans pré-vol de recréation)` : "") +
-      (heldIsbnCapture ? `, ${heldIsbnCapture} republish retenu(s) AVANT suppression (ISBN capturé non standard)` : ""),
+      (heldIsbnCapture ? `, ${heldIsbnCapture} republish retenu(s) AVANT suppression (ISBN capturé non standard)` : "")
     );
+    if (out.length > 0 || ligneDistribution.includes(", ")) console.log(ligneDistribution);
 
     // ── Contexte du popup (2026-08-04) ──────────────────────────────────────
     // Le popup doit répondre à « où j'en suis ? », pas seulement « qu'est-ce
@@ -9814,7 +9833,7 @@ serve(async (req) => {
       try {
         const s = (contexte.sessions ?? {}) as Record<string, unknown>;
         const ident = (s.vinted_identite ?? null) as { pays?: unknown } | null;
-        const { data: cfgPaysCtx } = await userClient.from("coin_config").select("key, value").like("key", "vinted_pays_%");
+        const { data: cfgPaysCtx } = await configPrefixe(userClient, "vinted_pays_");
         const ouvertsCtx = new Set(((cfgPaysCtx ?? []) as Array<{ key: string; value: number }>)
           .filter((r) => Number(r.value) === 1).map((r) => r.key.replace("vinted_pays_", "").toUpperCase()));
         contexte.vinted_etranger = vintedEtranger({
@@ -10113,8 +10132,7 @@ serve(async (req) => {
           return (step === "captured" || step === "deleted") && Number.isFinite(Number(pf["capture_id"]));
         });
         if (cibles.length) {
-          const { data: cfgIds } = await userClient
-            .from("coin_config").select("value").eq("key", "republish_taille_ids_retires_taille_par_id").maybeSingle();
+          const { data: cfgIds } = await configUne(userClient, "republish_taille_ids_retires_taille_par_id");
           if (Number((cfgIds as Record<string, unknown> | null)?.value) === 1) {
             const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
             for (const j of cibles) {
@@ -13363,7 +13381,7 @@ serve(async (req) => {
         const identZe = (((profZe?.extension_sessions ?? {}) as Record<string, unknown>).vinted_identite ?? null) as
           { pays?: unknown; langue?: unknown } | null;
         const paysSonde = /^[A-Z]{2}$/.test(String(identZe?.pays ?? "")) ? String(identZe!.pays) : null;
-        const { data: cfgPays } = await userClient.from("coin_config").select("key, value").like("key", "vinted_pays_%");
+        const { data: cfgPays } = await configPrefixe(userClient, "vinted_pays_");
         const ouverts = new Set(((cfgPays ?? []) as Array<{ key: string; value: number }>)
           .filter((r) => Number(r.value) === 1).map((r) => r.key.replace("vinted_pays_", "").toUpperCase()));
 
@@ -14199,8 +14217,7 @@ serve(async (req) => {
     // d'aujourd'hui. Lecture tolérante : elle ne bloque jamais la distribution.
     let keepaliveActif = true;
     try {
-      const { data: cfgKa } = await userClient
-        .from("coin_config").select("value").eq("key", "keepalive_actif").maybeSingle();
+      const { data: cfgKa } = await configUne(userClient, "keepalive_actif");
       if (cfgKa && Number(cfgKa.value) === 0) keepaliveActif = false;
     } catch (_e) { /* allumé par défaut */ }
     // (04/10, Ciddjy) Interrupteur général coupé depuis le 17/09 (tests réels
@@ -14211,7 +14228,9 @@ serve(async (req) => {
     // remplissage qui bat (vivant toutes les 20 s).
     if (!keepaliveActif) {
       try {
-        const { data: pKa } = await userClient.from("profiles").select("beta_flags").eq("id", user.id).maybeSingle();
+        const { data: pKa } = betaFlagsDuPoll !== undefined
+          ? { data: { beta_flags: betaFlagsDuPoll } }
+          : await userClient.from("profiles").select("beta_flags").eq("id", user.id).maybeSingle();
         if (((pKa?.beta_flags ?? {}) as Record<string, unknown>)["keepalive"] === true) keepaliveActif = true;
       } catch (_e) { /* éteint, comme l'interrupteur général */ }
     }
@@ -14258,7 +14277,9 @@ serve(async (req) => {
     }
     // Trace quand il est COUPÉ : la preuve, dans les logs, que l'interrupteur
     // a bien joué pour ce poll (rien n'est loggé à l'état allumé, le normal).
-    if (!keepaliveActif) console.log(`[get-pending-jobs] userId=${user.id} : keepalive_actif=0 → port de remplissage ÉTEINT pour ce poll (chemin classique)`);
+    // (02/11, facture Supabase) Plus écrit à chaque poll : keepalive_actif vaut 0 depuis des semaines, c’était une
+    // ligne par poll de chaque poste. La valeur de l’interrupteur se lit dans coin_config.
+    void keepaliveActif;
 
     // ── prevol_copie_actif (2026-09-23) : INTERRUPTEUR SERVEUR du pré-vol
     // « on ne retire pas ce qu'on ne sait pas remettre ». Il n'en avait AUCUN :
@@ -14274,12 +14295,15 @@ serve(async (req) => {
     // résolus, boutique étrangère, réconciliation) restent en place.
     let prevolCopieActif = true;
     try {
-      const { data: cfgPc } = await userClient
-        .from("coin_config").select("value").eq("key", "prevol_copie_actif").maybeSingle();
+      const { data: cfgPc } = await configUne(userClient, "prevol_copie_actif");
       if (cfgPc && Number(cfgPc.value) === 0) prevolCopieActif = false;
     } catch (_e) { /* allumé par défaut */ }
     if (!prevolCopieActif) console.log(`[get-pending-jobs] userId=${user.id} : prevol_copie_actif=0 → pré-vol de la copie ÉTEINT pour ce poll`);
 
+    // (02/11, facture Supabase) Le palier du compte, lu UNE fois par poll pour les deux lectures de fond (Vinted, Beebs).
+    const lirePalier = () => userClient.from("profiles").select("is_premium, is_pro, is_business, is_comped").eq("id", user.id).maybeSingle();
+    let palierDuPoll: Promise<Awaited<ReturnType<typeof lirePalier>>> | null = null;
+    const lirePalierDuPoll = () => (palierDuPoll ??= Promise.resolve(lirePalier()));
     // ══ (25/10) LE TEXTE DU VENDEUR LU EN ARRIÈRE-PLAN, DÈS L'IMPORT (_shared/lecture-fond.js) ════════════════════
     // Les fiches importées de Vinted sans texte, couleur ou rayon : l'extension (≥ 0.6.144) lit leur page PUBLIQUE à la
     // fin de ses polls, à ce rythme, dans cet ordre. Coupé 6 h après le premier refus de Vinted sur ce compte (sa trace
@@ -14303,8 +14327,8 @@ serve(async (req) => {
       try {
         const maintenantLf = Date.now();
         const [cfgLf, profLf, refusLf, luesLf] = await Promise.all([
-          userClient.from("coin_config").select("value").eq("key", "lecture_fond_mode").maybeSingle(),
-          userClient.from("profiles").select("is_premium, is_pro, is_business, is_comped").eq("id", user.id).maybeSingle(),
+          configUne(userClient, "lecture_fond_mode"),
+          lirePalierDuPoll(),
           // (25/10 soir) Les traces Vinted seulement (sans plateforme = Vinted, 0.6.144) : un refus ou une lecture Beebs
           // (0.6.145) ne coupe pas la lecture Vinted et ne mange pas son plafond du jour.
           userClient.from("usage_logs").select("created_at").eq("user_id", user.id).eq("feature", "lecture_fond")
@@ -14363,8 +14387,8 @@ serve(async (req) => {
       try {
         const maintenantLb = Date.now();
         const [cfgLb, profLb, refusLb, luesLb, pauseLb] = await Promise.all([
-          userClient.from("coin_config").select("value").eq("key", "lecture_fond_mode_beebs").maybeSingle(),
-          userClient.from("profiles").select("is_premium, is_pro, is_business, is_comped").eq("id", user.id).maybeSingle(),
+          configUne(userClient, "lecture_fond_mode_beebs"),
+          lirePalierDuPoll(),
           userClient.from("usage_logs").select("created_at").eq("user_id", user.id).eq("feature", "lecture_fond")
             .eq("metadata->>plateforme", "beebs").eq("metadata->>resultat", "antirobot")
             .gte("created_at", new Date(maintenantLb - LECTURE_FOND_BEEBS_RYTHME.pause_refus_h * 3_600_000).toISOString())

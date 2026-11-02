@@ -4,10 +4,9 @@
 // Les mêmes règles que photo-empreinte (liste FERMÉE d'hôtes, poids et pixels
 // bornés, variantes allégées), extraites pour la fonction doublons-balayage.
 // ⛔ photo-empreinte n'est PAS modifiée : elle garde sa copie de ces règles.
-// Différence voulue : les photos de NOTRE bucket passent d'abord par la
-// transformation du Storage (400 px) — le décodage coûte du CPU (2 s par
-// requête au plus) et une empreinte se calcule sur 32×32 pixels : décoder
-// 12 Mpx pour en garder 1 024 ne sert à rien.
+// (Jusqu'au 02/11 les photos de NOTRE bucket passaient d'abord par la
+// transformation du Storage (400 px) pour épargner le CPU : facturée photo par
+// photo, elle est retirée — l'originale est décodée dans le budget de l'appel.)
 import { empreinteDepuisRgba, variantesDepuisRgba, type Empreinte, type Variantes } from "./empreinte-image.ts";
 
 export const MAX_OCTETS = 8 * 1024 * 1024;
@@ -37,19 +36,8 @@ export function urlAllegee(url: string): string {
   return url.replace(/(i\.ebayimg\.com\/images\/g\/[^/]+\/)s-l\d+(\.\w+)$/, "$1s-l500$2");
 }
 
-/** Notre bucket, réduit par le Storage (JPEG) — null hors bucket. */
-export function urlTransformee(url: string, supabaseUrl: string, cote = 400): string | null {
-  try {
-    const u = new URL(url);
-    const s = new URL(supabaseUrl);
-    if (u.hostname !== s.hostname) return null;
-    const m = u.pathname.match(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
-    if (!m) return null;
-    return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/render/image/public/${m[1]}/${m[2]}?width=${cote}&height=${cote}&resize=contain&quality=80`;
-  } catch {
-    return null;
-  }
-}
+// (02/11, facture Supabase) `urlTransformee` (notre bucket réduit à 400 px par render/image) est RETIRÉE : chaque photo
+// ainsi réduite était une image transformée facturée. Voir empreinterUrl.
 
 export async function telecharger(url: string): Promise<Uint8Array> {
   const ctl = new AbortController();
@@ -225,10 +213,15 @@ async function decoderSansBudget(buf: Uint8Array): Promise<Empreinte & { largeur
   return { ...e, largeur: width, hauteur: height, variantes };
 }
 
-/** L'empreinte d'une URL : la variante la moins chère d'abord, l'originale ensuite. */
-export async function empreinterUrl(url: string, supabaseUrl: string, budget?: BudgetDecodage): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
-  const reduite = urlTransformee(url, supabaseUrl);
-  const essais = reduite ? [reduite, url] : [urlAllegee(url), url];
+/** L'empreinte d'une URL : la variante la moins chère d'abord, l'originale ensuite.
+ *  ⛔ (02/11, facture Supabase) JAMAIS la transformation du Storage (render/image) : chaque photo de notre bucket
+ *  passée par `urlTransformee` était une « image transformée » facturée — 59 261 sur le cycle 02/10 → 01/11 (100
+ *  incluses, 300 $ remis une fois), ~2 650 par jour, toutes d'ici (fusion_photo_tick → empreintes-urls). Nos photos
+ *  font 1 024 px au plus (compression de l'app) ou la taille de la plateforme (~0,85 Mpx) : l'originale se décode
+ *  dans le budget de l'appel (remise sinon, jamais un échec), le WebP par libwebp. Mêmes empreintes : elles se
+ * calculent sur 32×32 pixels. */
+export async function empreinterUrl(url: string, _supabaseUrl: string, budget?: BudgetDecodage): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
+  const essais = [urlAllegee(url), url];
   let derniere: unknown = null;
   let passager: string | null = null;
   for (const u of [...new Set(essais)]) {

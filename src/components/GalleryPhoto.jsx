@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { urlsPhotos } from '../utils/photos';
+import { urlMiniature } from '../utils/photosUpload';
 
 // ── Photo d'article (galerie Stock IA + vignettes Ventes, 2026-08-27) ────────
 // Deux formats coexistent dans inventaire.photos : objets {type,url} (flux
@@ -39,9 +40,13 @@ const STYLE_IMAGE={width:'100%',height:'100%',objectFit:'cover',display:'block'}
 // et assumée (logo de plateforme, tuile d'icône), jamais un carré cassé.
 const STYLE_REPLI={width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'};
 
+// (02/11, facture Supabase) Une photo téléversée par l'app depuis le 02/11 a sa MINIATURE (400 px, utils/photosUpload) :
+// la vignette la charge d'abord (~25 Ko au lieu de ~250 Ko). Absente ou cassée → l'originale, puis le repli, comme avant.
 export default function GalleryPhoto({url,alt,fallback,style}){
   const [err,setErr]=useState(false);
+  const [sansMini,setSansMini]=useState(false);
   if(!url||err)return <div className="gph-fallback" style={STYLE_REPLI}>{fallback}</div>;
-  return <img src={url} alt={alt||''} loading="lazy" decoding="async"
-    style={style?{...STYLE_IMAGE,...style}:STYLE_IMAGE} onError={()=>setErr(true)}/>;
+  const mini=sansMini?null:urlMiniature(url);
+  return <img src={mini||url} alt={alt||''} loading="lazy" decoding="async"
+    style={style?{...STYLE_IMAGE,...style}:STYLE_IMAGE} onError={()=>{if(mini)setSansMini(true);else setErr(true);}}/>;
 }

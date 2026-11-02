@@ -8601,8 +8601,13 @@ const StockTab = memo(function StockTab({
     // ou lenteur (relectureBornee), jamais de lecture onglet caché.
     let parId = null;           // Map id → job, la dernière vue complète + fusions
     let completeLe = 0;         // horodatage de la dernière lecture complète
-    const COMPLETE_MS = 5 * 60_000;
-    const COMPLETE_RETOUR_MS = 2 * 60_000;
+    // ⛔ (02/11, facture Supabase) 30 min et 10 min (avant : 5 et 2) : la relecture complète (tout l'historique,
+    // platform_fields compris) faisait ~2 100 passages par jour, ~4 Go d'egress quotidien estimé — le plus gros poste
+    // REST. Ce qu'elle rattrapait (marqueur posé par le serveur sur un job fini : annonce disparue, lien, vente) est
+    // vu par la sonde des jobs de l'App (45 s), qui la relance tout de suite (événement fillsell:jobs-changes, plus
+    // bas) ; la lecture légère des 20 s est inchangée.
+    const COMPLETE_MS = 30 * 60_000;
+    const COMPLETE_RETOUR_MS = 10 * 60_000;
     // platform_listing_id, handler_build : VÉRIFIÉES dans le schéma prod le 31/10 (information_schema.columns) — le
     // numéro de l'annonce et la marque « releve-annonces » d'un import (dates par plateforme, lot H).
     const SELECT_JOBS = "id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id, voie, platform_listing_id, handler_build";
@@ -8729,10 +8734,14 @@ const StockTab = memo(function StockTab({
       if (document.visibilityState === "visible" && parId && Date.now() - completeLe >= COMPLETE_RETOUR_MS) completeLe = 0;
     };
     document.addEventListener("visibilitychange", onVisible);
+    // (02/11) La sonde des jobs de l'App a vu un vrai changement (statut, marqueur) : la vue complète au tour suivant.
+    const onJobsChanges = () => { if (parId) completeLe = 0; };
+    window.addEventListener("fillsell:jobs-changes", onJobsChanges);
 
     return () => {
       annule = true;
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("fillsell:jobs-changes", onJobsChanges);
       relecture.arreter();
     };
   }, [user?.id]);

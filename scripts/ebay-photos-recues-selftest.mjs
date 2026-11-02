@@ -193,7 +193,8 @@ console.log("\nR1.4 Les branchements : observer par défaut, l'interrupteur bloq
   ok(/const photosNonRecues = job\.platform_fields\?\.ebay_photos_recues\?\.code === "ebay_photos_non_recues";[\s\S]{0,300}if \(draftId && !photosNonRecues\) \{[\s\S]{0,600}direct = await ebayDirectPublish\(tabId, job\);/.test(BG),
     "background : jamais ebayDirectPublish après le code ebay_photos_non_recues");
   const GPJ = lire("supabase/functions/get-pending-jobs/index.ts");
-  ok(/eq\("key", "ebay_photos_recues_bloquant"\)[\s\S]{0,300}ebay_photos_mode: "bloquer"/.test(GPJ), "get-pending-jobs : l'interrupteur coin_config ebay_photos_recues_bloquant sert « bloquer » (0 ou absent : observer)");
+  // (02/11) Lu par le cache de coin_config (configUne) ou directement : même interrupteur.
+  ok(/(?:eq\("key", |configUne\(\w+, )"ebay_photos_recues_bloquant"\)[\s\S]{0,300}ebay_photos_mode: "bloquer"/.test(GPJ), "get-pending-jobs : l'interrupteur coin_config ebay_photos_recues_bloquant sert « bloquer » (0 ou absent : observer)");
   const p = await import(pathToFileURL(path.join(ROOT, "supabase/functions/_shared/pas-de-rouge.js")).href);
   const s = p.classerEchec({ platform: "ebay", action: "publish", brut: `${R.ANCRE_PHOTOS_NON_RECUES} : 0 sur 4 après 85 s. Aucun clic fait, rien n'a été soumis ni publié.`, essais: 0, pf: { last_diagnostic: { quoi: "ebay_photos_non_recues" } }, build: "2026-10-26T10:00:00Z+abc · v0.6.150" });
   ok(s.motif === "ebay_photos_non_recues" && s.verdict === "reprise", "le serveur classe l'arrêt de l'extension comme le refus « Photos » (R2 : deux reprises, puis l'arrêt nommé)");

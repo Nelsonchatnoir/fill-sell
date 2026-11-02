@@ -56,6 +56,74 @@ ebay-api-worker v105 ; extension 0.6.166 en examen au Chrome Web Store (pas remp
   (compteurs identiques à HEAD sur background.js et depop.js).
 - Aucun job, aucune annonce, aucun mail, aucune migration touchés.
 
-## Partie B — facture Supabase
+## Partie B — facture Supabase (cycle 02/10 → 01/11 : 39,39 $ grâce à une remise de 100 % ponctuelle)
 
-(rédigée avec le lot B)
+### Étape 1 — mesure (journaux de la passerelle du 01/11 12:00 au 02/11 12:00, 24 h ; tailles mesurées en base)
+| Poste | D'où il vient (mesuré) |
+|---|---|
+| **Transformations** (59 261, 100 incluses → 300 $) | 2 647 requêtes `render/image` en 24 h, **toutes** de Deno, toutes en 400 px : `fusion_photo_tick` (cron chaque minute) → `empreintes-urls` → `_shared/empreinte-telechargement.ts` réduisait chaque photo de notre bucket avant d'en calculer l'empreinte (~2 650 photos neuves par jour ≈ 79 000/mois). Aucun écran de l'app ne demande de transformation. Autres constructeurs (inactifs sur 24 h) : `photo-empreinte` (800 px, second essai), `rapprochement-ia` (256 px + copie dans `ia-miniatures/` à chaque passage), `lens-analysis` (photo > 6 000 px seulement). |
+| **Egress** (303,8 Go/30 j ≈ 10 Go/j) | Photos `listing-photos` : 2,6 Go/j (mesuré, content-length) — vers les pages des plateformes 1,38 Go/j (doit rester en qualité d'origine), app web 0,33, app mobile 0,43 (dont 0,34 en cache CDN), divers 0,4. Réponses REST : pas de taille au journal (réponses fragmentées) → **estimées** lignes × taille moyenne mesurée : app `cross_post_jobs` historique complet avec `platform_fields` (1 600 o/ligne, ~2,6 M lignes/j) **≈ 4,2 Go/j** ; app `inventaire?select=*` (1 960 o/ligne, ~1,5 M lignes/j) **≈ 2,9 Go/j** ; fonctions (Deno) `cross_post_jobs` ~4,8 M lignes/j ≈ 2,4 Go/j ; app `ventes?select=*` (640 o, ~1,9 M lignes/j) ≈ 1,2 Go/j ; app `annonces_plateforme` (colonnes déjà réduites) ≈ 0,6 Go/j. |
+| **Pourquoi l'app relit tout** | La sonde des jobs de l'App (toutes les 45 s, app visible) relance un `fetchAll` complet (ventes + stock en `select=*`, pages de 1 000) dès que son empreinte change — or l'empreinte contenait `last_checked_at`, réécrit par le check des ventes sur ~3 600 jobs/h (34 comptes) : ~4 800 relectures complètes/j (3 198 en 16 h mesurées). Le Stock relisait en plus TOUT l'historique des jobs (avec `platform_fields`) toutes les 5 min : ~2 100 fois/j. Retour d'onglet : `fetchAll` toutes les 30 s au plus. |
+| **Lectures en boucle** | `get-pending-jobs` : ~34 000 polls/j (chaque poste, toutes les 2 min, fixé dans l'extension), ~45 requêtes REST par poll ; sur 2 h (2 200 polls) : `coin_config` 7/poll (171 000/j), `profiles` 9/poll dont palier ×2, `beta_flags` ×2 (245 000/j), `cross_post_jobs` 17/poll dont ~10 balayages needs_user/failed qui rendent 0 ligne (588 000/j), `vinted_sync_runs` 4/poll dont 3 lectures des demandes en file (129 000/j). L'extension : `rpc/lecture_origine_signal` toutes les 30 s (99 000/j), `lectures_origine_en_attente` 49 000/j. |
+| **Journaux** | edge_logs ≈ 2,85 M lignes/j (une par requête HTTP : 92 % du volume), function_logs ≈ 134 000/j (dont 2 lignes par poll vide de get-pending-jobs : « → 0 job(s) distribué(s) », « keepalive_actif=0 »), postgres_logs ≈ 24 000/j (crons). Réduire les journaux = réduire les requêtes. |
+| **Invocations** (1,38 M, 2 M incluses) | get-pending-jobs ≈ 34 000/j, update-job-status 5 000, empreintes-urls 5 000 : sous le quota, rien à faire. |
+
+### Étape 2 — corrigé (du plus gros gain au plus petit)
+1. **Transformations → zéro** (déployé 12:31 : **empreintes-urls v8 → v9**, **doublons-balayage v4 → v5**, faux ;
+   **photo-empreinte v4 → v5**, vrai ; **rapprochement-ia v11 → v12**, faux — versions relues avant/après).
+   L'empreinte se calcule sur l'ORIGINALE (`empreinterUrl` : `[urlAllegee(url), url]`, `urlTransformee` retirée) ;
+   photo-empreinte : second essai = l'originale décodée par le module partagé (WebP compris) ; rapprochement-ia :
+   l'originale (URL de notre bucket, base64 ≤ 1,5 Mo hors bucket), plus de copie `ia-miniatures/`. Essai réel (une
+   fois, local, photos de prod) : JPEG 1 200×1 600, PNG 700×807, WebP 2 000×2 000 → **dHash Δ0, pHash Δ0** avec les
+   empreintes stockées (calculées sur 400 px) ; 0,3 à 1 s par photo en local. Prod : 12:33, 8 appels, 5/5 photos
+   calculées, 488 ms de décodage, aucune erreur CPU, **0 requête render/image depuis 12:31** (304 du 02/11 00:00 à
+   12:30, 303 images distinctes).
+2. **Egress de l'app** (web au push, mobile à l'OTA) : la sonde des jobs sans `last_checked_at` ; un vrai changement
+   relance aussi la vue complète du Stock (`fillsell:jobs-changes`) ; vue complète du Stock 5 → 30 min (2 → 10 min au
+   retour d'onglet) ; `fetchAll` au retour d'onglet 30 s → 2 min.
+3. **Lectures en boucle** (get-pending-jobs, voir § versions) : `coin_config` par `_shared/coin-config-cache.js` (table
+   entière, 60 s par instance) ; présence needs_user/failed avant 10 balayages ; demandes en file lues en une fois ;
+   palier et beta_flags une fois par poll.
+4. **Journaux** : plus de ligne pour un poll vide (« → 0 job(s) distribué(s) », « keepalive_actif=0 ») ; le reste suit
+   la baisse des requêtes (une ligne edge par requête).
+5. **Photos** : miniature 400 px fabriquée à l'enregistrement par l'app (`<lot>_<i>__mini.jpg`), affichée par
+   `GalleryPhoto` (repli sur l'originale) pour les photos téléversées depuis le 02/11 16:00 ; cache d'un an sur les
+   photos téléversées (chemin neuf à chaque photo). Les plateformes reçoivent l'originale, aucune photo supprimée,
+   aucun chemin changé ; la miniature part avec sa photo au ménage d'un article supprimé.
+
+### Versions (relues avant / après)
+- 12:31 : empreintes-urls v8 → **v9**, doublons-balayage v4 → **v5**, rapprochement-ia v11 → **v12** (faux) ; photo-empreinte
+  v4 → **v5** (vrai) — déployées du worktree basé sur fe36466 (aucun autre changement), code identique au commit.
+- 13:03:51 : **get-pending-jobs v322 → v323** (vrai) — v322 était celle de ae3c8e6 (09:51), dernier commit qui la touche ;
+  blocs Cloud inchangés (47 lignes « cloud » avant et après, aucune dans le diff) ; seul module partagé changé depuis :
+  etat-job.js (lot A).
+- Web au push ; mobile : OTA 2.9.153 (après la 2.9.152 du terminal Cloud).
+
+### Contrôles
+- Suite complète : 4 rouges, tous des selftests qui lisaient la FORME du code changé (files-repartent,
+  delegation-leboncoin, delegation-leboncoin-releves : demandes en file lues en une fois ; lecture-fond : bloc lu sur
+  6 000 caractères, mémo du palier déplacé avant son en-tête) → adaptés ou corrigés, verts ; les 109 selftests qui
+  lisent get-pending-jobs relancés : 0 rouge ; `selftest:facture-supabase-0211` vert ; `build:essai` vert ; lint :
+  compteurs identiques à HEAD ; `deno check` get-pending-jobs : la seule erreur de type est celle déjà présente en prod.
+
+### Avant → après (mesuré = M, estimé = E)
+| Poste | Avant | Après |
+|---|---|---|
+| Transformations | 2 647/j (M) ≈ 79 000/mois | **0 depuis 12:31 (M)** ; ce cycle : 303 images avant le correctif ≈ 1 $ |
+| Egress | ~10 Go/j (facture) | **~5,5 Go/j (E)** ≈ 165 Go/mois, sous 250 Go avec ~35 % de marge — à remesurer le 03/11 |
+| coin_config (lectures/j) | 171 000 fonctions + 14 700 app (M) | ~16 000 (E, −90 %) |
+| cross_post_jobs | 708 000 (facture) ; fonctions 588 000 (M) | ~460 000 (E, −35 %) |
+| profiles | 272 000 ; fonctions 245 000 (M) | ~170 000 (E, −35 %) |
+| vinted_sync_runs | 163 000 ; fonctions 129 000 (M) | ~95 000 (E, −40 %) |
+| Journaux (lignes edge/j) | ~2,3 à 2,85 M (M) | ~1,8 à 2,2 M (E, −20 %) ; function_logs −30 % (E) |
+
+### Reste (non fait, et pourquoi)
+- **Moitié des lectures de cross_post_jobs / profiles et des journaux non atteinte** : le levier restant est le poll
+  de l'extension (toutes les 2 min, ~34 000/j) — l'espacer ralentirait les publications lancées du téléphone (refusé
+  par la consigne). Pistes à décider par Nico : un signal « rien n'a changé pour ce compte » posé par la base (migration :
+  feu vert requis) qui rendrait un poll vide en une lecture ; dans la 0.6.167, `lecture_origine_signal` toutes les 60 s
+  au lieu de 30 (99 000 requêtes/j).
+- Miniatures des photos ANCIENNES : non fabriquées (relire 68 Go d'originales coûterait plus d'egress que les
+  miniatures n'en épargnent ; l'affichage des photos dans l'app ne pèse que ~0,3 Go/j non caché).
+- coin_config côté app (16 lectures, ~14 700/j) et côté handler-watch / update-job-status : non branchés au cache (gain
+  < 1 % des requêtes).

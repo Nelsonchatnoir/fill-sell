@@ -44,7 +44,9 @@ ok(/if \(ageCmd < SYNC_DEVANT_FILE_MS && syncDemandeeParLaPersonne\(/.test(gpj),
   "seule une demande de la personne de moins de 10 min passe devant toute la file (jamais une file gelée)");
 ok(!/out = out\.filter\(horsLigne\);/.test(gpj), "plus aucune retenue de TOUS les jobs derrière un relevé");
 ok(/const ageCmd = Date\.now\(\) - Date\.parse\(String\(\(cmds\[0\] as \{ queued_at\?: unknown \}\)\.queued_at \?\? ""\)\);\s*syncCommandFrais = ageCmd < 30 \* 60_000;/.test(gpj)
-  && /\.select\("id, queued_at(?:, declencheur)?"\)\s*\.eq\("kind", "dressing"\)/.test(gpj), "le relevé du dressing ne retient plus jusqu'à 6 h : 30 min au plus");
+  // (02/11, facture Supabase) Les demandes en file se lisent en une fois (lireCommandesEnFile), filtrées par sorte.
+  && (/\.select\("id, queued_at(?:, declencheur)?"\)\s*\.eq\("kind", "dressing"\)/.test(gpj)
+    || /const cmds = \(await lireCommandesEnFile\(ttl\)\)\.filter\(\(c\) => c\.kind === "dressing"\)\.slice\(0, 1\);/.test(gpj)), "le relevé du dressing ne retient plus jusqu'à 6 h : 30 min au plus");
 // Le cas rejoué, en logique : relevé Beebs frais, 215 republications Vinted.
 const held = (jobs, plats) => jobs.filter((j) => !(j.action === "republish" && j.step === "deleted") && plats.has(j.platform));
 const file = Array.from({ length: 215 }, (_, k) => ({ id: k, platform: "vinted", action: "republish", step: "a_capturer" }));

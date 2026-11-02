@@ -24,6 +24,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { empreinteDepuisRgba, type Empreinte } from "../_shared/empreinte-image.ts";
+import { decoderEmpreinte } from "../_shared/empreinte-telechargement.ts";
 
 const MAX_URLS = 40;
 const MAX_OCTETS = 8 * 1024 * 1024;
@@ -56,23 +57,6 @@ function hoteAutorise(url: string, supabaseUrl: string): boolean {
 /** Une variante plus légère de la même image, quand le CDN en sert une (eBay). */
 function urlAllegee(url: string): string {
   return url.replace(/(i\.ebayimg\.com\/images\/g\/[^/]+\/)s-l\d+(\.\w+)$/, "$1s-l500$2");
-}
-
-/** Notre bucket public, par le service de transformation du Storage : rend une
- *  image JPEG/PNG réduite — c'est ce qui décode les WebP que le rapatriement
- *  écrit (rapatrie-fiche/…webp) et qu'imagescript ne lit pas (mesuré le
- *  23/09 : 3 échecs sur 473, tous des .webp de notre bucket). null hors bucket. */
-function urlTransformee(url: string, supabaseUrl: string): string | null {
-  try {
-    const u = new URL(url);
-    const s = new URL(supabaseUrl);
-    if (u.hostname !== s.hostname) return null;
-    const m = u.pathname.match(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
-    if (!m) return null;
-    return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/render/image/public/${m[1]}/${m[2]}?width=800&height=800&resize=contain&quality=80`;
-  } catch {
-    return null;
-  }
 }
 
 async function telecharger(url: string): Promise<Uint8Array> {
@@ -147,11 +131,13 @@ serve(async (req) => {
       try {
         e = await calculer(await telecharger(urlAllegee(url)));
       } catch (premiere) {
-        // Second essai par la transformation du Storage (WebP de notre bucket,
-        // image trop grande) — hors bucket, l'échec d'origine est rendu.
-        const t2 = urlTransformee(url, supabaseUrl);
-        if (!t2) throw premiere;
-        e = await calculer(await telecharger(t2));
+        // Second essai : l'ORIGINALE, décodée ici (libwebp pour le WebP de notre
+        // bucket — _shared/empreinte-telechargement.ts). ⛔ (02/11, facture
+        // Supabase) Plus jamais la transformation du Storage (render/image) :
+        // chaque photo transformée était facturée. Hors bucket, l'échec
+        // d'origine est rendu.
+        if (!url.startsWith(`${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/`)) throw premiere;
+        e = await decoderEmpreinte(await telecharger(url));
       }
       empreintes[url] = e;
       await admin.from("photo_empreintes").upsert({

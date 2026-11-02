@@ -49,6 +49,30 @@ export const QUALITE_UPLOAD = 0.85;
 /** Le bucket durable des photos d'annonce. */
 export const BUCKET_PHOTOS = "listing-photos";
 
+// ── (02/11, facture Supabase) MINIATURES ET CACHE ───────────────────────────
+// Une photo téléversée a un chemin NEUF (<lot>_<i>.jpg, le lot = Date.now()) et
+// ne change jamais : elle se garde un an dans les caches (navigateur, CDN) au
+// lieu d'une heure. Sa miniature (400 px, qualité 0,7, ~25 Ko au lieu de
+// ~250 Ko) vit à côté : <lot>_<i>__mini.jpg. Seules les photos téléversées
+// depuis MINIATURES_DEPUIS en ont une (aucune n'est fabriquée après coup :
+// relire 68 Go d'originales coûterait plus d'egress que les miniatures n'en
+// épargnent) — GalleryPhoto ne la demande que pour elles.
+export const CACHE_PHOTO_S = "31536000";
+export const LARGEUR_MINIATURE = 400;
+export const QUALITE_MINIATURE = 0.7;
+export const MINIATURES_DEPUIS = Date.parse("2026-11-02T15:00:00Z");
+/** Le chemin (ou l'URL) de la miniature d'une photo téléversée : `.jpg` → `__mini.jpg`, la query gardée. */
+export function cheminMiniature(chemin) {
+  return String(chemin).replace(/\.jpg(\?|$)/, "__mini.jpg$1");
+}
+const RE_PHOTO_TELEVERSEE = /\/storage\/v1\/object\/public\/listing-photos\/[^/?]+\/raw\/(\d{13})_[^/?]*\.jpg(\?|$)/;
+/** La miniature à afficher pour cette URL, ou null (photo hébergée ailleurs, ou téléversée avant les miniatures). */
+export function urlMiniature(url) {
+  const m = RE_PHOTO_TELEVERSEE.exec(String(url ?? ""));
+  if (!m || /__mini\.jpg/.test(url) || Number(m[1]) < MINIATURES_DEPUIS) return null;
+  return cheminMiniature(url);
+}
+
 /**
  * Compresse une image en JPEG. Lève une erreur explicite si elle est
  * indécodable ou si le canvas ne rend rien — jamais de promesse pendante.
@@ -130,11 +154,21 @@ export async function televerserPhotos(supabase, {
     const path = `${userId}/raw/${ts}_${marqueur}${i}.jpg`;
     const { error: upErr } = await supabase.storage
       .from(BUCKET_PHOTOS)
-      .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+      .upload(path, blob, { contentType: "image/jpeg", upsert: true, cacheControl: CACHE_PHOTO_S });
     // Un échec de téléversement ne pousse rien : la photo n'existe pas, on ne
     // fabrique pas une URL qui rendrait 404 plus tard. Comportement d'origine.
     if (!upErr) {
       urls.push(supabase.storage.from(BUCKET_PHOTOS).getPublicUrl(path).data.publicUrl + `?v=${ts}`);
+      // (02/11, facture Supabase) La MINIATURE, fabriquée UNE fois ici, à côté de l'originale : c'est elle que les
+      // vignettes de l'app affichent (GalleryPhoto). Les plateformes reçoivent toujours l'originale. Best-effort :
+      // un échec ne retire rien — la vignette retombe sur l'originale.
+      try {
+        const mini = await compresserImage(blob, LARGEUR_MINIATURE, QUALITE_MINIATURE);
+        await supabase.storage.from(BUCKET_PHOTOS)
+          .upload(cheminMiniature(path), mini, { contentType: "image/jpeg", upsert: true, cacheControl: CACHE_PHOTO_S });
+      } catch (e) {
+        console.warn("[photos] miniature non posée :", e?.message ?? e);
+      }
     }
   }
   return { urls, entrees: entreesPhotos(urls), illisibles, ts };
@@ -193,7 +227,9 @@ export async function menagePhotosArticle(supabase, photos) {
       .map(r => (typeof r === "string" ? r : r?.photos_article_supprimables))
       .filter(Boolean);
     if (!aSupprimer.length) return { supprimees: 0, examinees: examinees.length };
-    const { error: rmErr } = await supabase.storage.from(BUCKET_PHOTOS).remove(aSupprimer);
+    // (02/11) La miniature d'une photo jugée supprimable part avec elle (absente : sans effet).
+    const avecMiniatures = [...aSupprimer, ...aSupprimer.filter((n) => /\/raw\/[^/]+\.jpg$/.test(n)).map(cheminMiniature)];
+    const { error: rmErr } = await supabase.storage.from(BUCKET_PHOTOS).remove(avecMiniatures);
     if (rmErr) {
       console.warn("[photos] ménage : suppression storage en échec —", rmErr.message);
       return { supprimees: 0, examinees: examinees.length, motif: rmErr.message };

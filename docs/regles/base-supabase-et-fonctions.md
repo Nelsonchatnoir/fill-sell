@@ -364,3 +364,26 @@ authenticated;` (le déclencheur le fait aussi). Inverse du régime : `supabase/
 - Preuve : `apple-notification-history` {"test_notification":"envoyer"} (net.http_post, x-cron-secret par
   `public.cron_secret()`), puis {"test_notification":"<jeton>"} → `sendAttempts: SUCCESS` ; ligne `TEST`, `jws_ok`,
   `Production` au journal des stores.
+
+## ⛔ 02/11 (facture Supabase) — zéro transformation, coin_config en cache, un poll ne relit que ce qui peut avoir changé
+Rapport `docs/enquetes/facture-supabase-0211/RAPPORT.md` ; selftest `selftest:facture-supabase-0211`.
+- **Jamais `storage/v1/render/image`** : chaque photo réduite par le Storage est une image transformée FACTURÉE (59 261
+  sur le cycle 02/10 → 01/11, 100 incluses). Les empreintes se calculent sur l'ORIGINALE (`empreinterUrl`, décodée dans
+  le budget de l'appel, WebP par libwebp — empreintes identiques mesurées, Δ0) ; `rapprochement-ia` donne à l'IA
+  l'originale (URL de notre bucket, base64 hors bucket ≤ 1,5 Mo), plus aucune copie dans `ia-miniatures/`. Seule
+  exception : le repli de `lens-analysis` pour une photo de plus de 6 000 px (~0 par mois).
+- **coin_config** se lit par `_shared/coin-config-cache.js` (`configUne`, `configPlusieurs`, `configPrefixe`) : la table
+  entière, une fois par minute et par instance, mêmes formes `{ data, error }` qu'une requête. Un réglage changé en base
+  est vu en 60 s au plus. Jamais `from("coin_config")` dans get-pending-jobs.
+- **get-pending-jobs** : une lecture de présence needs_user / failed (`aDesArretes`) garde les balayages qui ne lisent
+  que ces statuts (69 postes actifs sur 94 n'en ont aucun) ; les demandes en file (dressing, annonces, connexion) se
+  lisent en une fois (`lireCommandesEnFile`) ; palier et beta_flags une fois par poll ; un poll qui ne distribue ni ne
+  retient rien n'écrit plus de ligne. Toute nouvelle lecture faite à chaque poll se justifie (34 000 polls par jour).
+- **App** : la sonde des jobs (45 s) n'a pas `last_checked_at` dans son empreinte (le check des ventes le réécrit sans
+  cesse : chaque réécriture relisait tout le stock et toutes les ventes) ; un vrai changement relance la vue complète
+  du Stock (`fillsell:jobs-changes`), qui sinon se fait toutes les 30 min (10 au retour d'onglet) ; retour d'onglet :
+  `fetchAll` toutes les 2 min au plus.
+- **Photos** : une photo téléversée par l'app a sa miniature 400 px (`<lot>_<i>__mini.jpg`, `utils/photosUpload.js`)
+  et un cache d'un an ; `GalleryPhoto` affiche la miniature (repli sur l'originale, puis sur la tuile). Les
+  plateformes reçoivent toujours l'originale. Aucune miniature fabriquée après coup (relire 68 Go d'originales
+  coûterait plus d'egress que les miniatures n'en épargnent).
