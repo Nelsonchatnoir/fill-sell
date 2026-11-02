@@ -266,3 +266,20 @@ seule ; scripts dans `recalculs-0211/`.
 - **Coût restant après le point 1 = le coût d'aujourd'hui** : ≈ 1 600 à 2 600 photos neuves par jour → 47 000 à
   78 000 par cycle → **≈ 235 à 390 $ par cycle** (≈ 295 $ au rythme des 7 derniers jours). Il croît avec les photos
   importées et rapatriées, donc avec les utilisateurs. Seul le point 2 (méthode sans transformation) le ramène à 0 $.
+
+## Partie F (02/11 soir, terminal problèmes) — point 2 : méthode sans transformation, redressée — verdict
+Chiffres : `essai-empreintes-C/RESULTAT.md`. Rien basculé, 0 render/image ; données de travail supprimées.
+- **Méthode C** : l'originale redressée selon l'EXIF puis réduite dans 400 × 400 (moyenne des surfaces), puis le calcul
+  d'aujourd'hui. Sur tout le bucket (63 828 photos) : dHash identique à 80,5 % (essai B : 66,9 %), **aucun écart
+  ≥ 20 bits** (B : 50) ; les 50 grands écarts de B : 48 à ≤ 4 bits.
+- **Seuils** : les seuils actuels sont déjà les meilleurs pour chaque règle (250 millions de paires) ; tout décalage
+  augmente les désaccords — les écarts restants sont du bruit symétrique de 1-2 bits.
+- **Décisions** : moteur, passe du cron : **0 différence**. 200 décisions changent ailleurs (stock rejugé 60, doublons 58,
+  JS 54, fiches même photo 27, tick 1), jugées une à une : **82 meilleures, 74 pires, 37 équivalentes, 7 indécidables**.
+  Aucune fusion ni aucun rattachement automatique faux avec C (A : 1) ; les pires sont des questions perdues ou fausses,
+  et 21 « même » ramenés à « proche ».
+- **Verdict : pas de bascule proposée (règle « zéro pire »).** Zéro pire demanderait de reproduire la transformation à
+  l'octet (libvips en WebAssembly, réglages d'imgproxy) : essai D possible, non fait. Décision de Nico.
+- Coût : aujourd'hui ≈ 235 à 390 $ / cycle ; C : 0 $ (+ ≈ 12 à 20 Go d'egress, 0 à ≈ 1,8 $).
+- Mémoire du PC : deux fois, Claude Code a arrêté les calculs (mémoire basse pendant l'attente) ; repris à charge réduite
+  sur ordre de Nico (6, puis 1 processus), rien perdu.
