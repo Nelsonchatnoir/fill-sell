@@ -216,6 +216,8 @@ test('conteneur : lancé EXACTEMENT comme l\'essai du 01/11, profil du compte au
   assert.equal(s.HostConfig.Init, true, '--init');
   assert.ok(s.HostConfig.Binds.includes('/srv/p/p-x:/app/api/user-data-dir'), 'verrou 2 : profil monté au chemin « persist »');
   assert.ok(s.HostConfig.Binds.includes('/srv/e:/app/api/extensions/fillsell:ro'), 'extension en lecture seule');
+  assert.ok(s.HostConfig.Binds.includes('/srv/fillsell-cloud/etat/chromium.d/fillsell-langue:/etc/chromium.d/fillsell-langue:ro'),
+    '(02/11) la langue française de Chromium (LANGUAGE, LANG : il ignore --lang sous Linux), en lecture seule');
   assert.equal(s.HostConfig.NetworkMode, 'fillsell-cloud', 'réseau filtré par le pare-feu (verrou 3)');
   assert.equal(nomConteneur(U), `fs-nav-${U}`);
   assert.throws(() => corpsSession({ proxyUrl: '' }), 'jamais de session sans proxy');

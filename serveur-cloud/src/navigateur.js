@@ -56,7 +56,7 @@ export const LANGUES_PROFIL = 'fr-FR,fr';
 export const FUSEAU_PROFIL = 'Europe/Paris';
 /** L'empreinte du lancement (pure) : un conteneur lancé autrement (langue, fuseau, image) est recréé, profil gardé. */
 export function empreinteLancement(spec) {
-  return createHash('sha256').update(JSON.stringify([spec?.Image, spec?.Cmd, spec?.Env])).digest('hex').slice(0, 12);
+  return createHash('sha256').update(JSON.stringify([spec?.Image, spec?.Cmd, spec?.Env, spec?.Binds ?? []])).digest('hex').slice(0, 12);
 }
 
 /**
@@ -101,7 +101,21 @@ export const nomConteneur = (user) => `fs-nav-${String(user).replace(/[^0-9a-f-]
 export const nouveauProfilId = (user) => `p-${String(user).slice(0, 8)}-${randomBytes(6).toString('hex')}`;
 
 /** La spécification Docker du conteneur d'un compte (pure : testée). */
+/**
+ * (02/11) LA LANGUE DE CHROMIUM SOUS LINUX : il ignore --lang et ne lit que LANGUAGE / LANG (langue de l'interface, locale
+ * par défaut d'Intl : le format des dates) — mesuré sur le navigateur Cloud : navigator.language fr-FR, mais Intl en-US.
+ * steel ne transmet au processus que HOME, TZ et DISPLAY ; le lanceur Debian (/usr/bin/chromium) lit, lui, chaque fichier
+ * de /etc/chromium.d/ : ce fichier, monté en lecture seule, y pose la langue française.
+ */
+export const LANGUE_CHROMIUM = '# FillSell Cloud (02/11) : profil français — Chromium sous Linux lit sa langue dans LANGUAGE et LANG.\nexport LANGUAGE=fr_FR:fr\nexport LANG=fr_FR.UTF-8\n';
+export const fichierLangueChromium = (config) => `${config.dossierEtat || '/srv/fillsell-cloud/etat'}/chromium.d/fillsell-langue`;
+
 export function specConteneur({ config, user, profilId }) {
+  const binds = [
+    `${config.dossierProfils}/${profilId}:/app/api/user-data-dir`,
+    `${config.dossierExtension}:/app/api/extensions/${EXTENSION_NOM}:ro`,
+    `${fichierLangueChromium(config)}:/etc/chromium.d/fillsell-langue:ro`,
+  ];
   return {
     Image: config.imageNavigateur,
     Entrypoint: ['/bin/sh', '-c'],
@@ -110,13 +124,10 @@ export function specConteneur({ config, user, profilId }) {
     // n'est ouvert que par une session « persist » (corpsSession), toujours créée avec le proxy.
     Env: [...ENV_ESSAI_0111],
     Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId,
-      'fillsell.lancement': empreinteLancement({ Image: config.imageNavigateur, Cmd: [LANCEMENT_AVEC_ECRAN], Env: [...ENV_ESSAI_0111] }) },
+      'fillsell.lancement': empreinteLancement({ Image: config.imageNavigateur, Cmd: [LANCEMENT_AVEC_ECRAN], Env: [...ENV_ESSAI_0111], Binds: binds }) },
     HostConfig: {
-      // Verrou 2 : le profil du compte, au seul chemin d'une session « persist ».
-      Binds: [
-        `${config.dossierProfils}/${profilId}:/app/api/user-data-dir`,
-        `${config.dossierExtension}:/app/api/extensions/${EXTENSION_NOM}:ro`,
-      ],
+      // Verrou 2 : le profil du compte, au seul chemin d'une session « persist ». (02/11) + la langue de Chromium.
+      Binds: binds,
       Memory: octets(config.memoireNavigateur),
       NanoCpus: 2_000_000_000,
       ShmSize: 1024 * 1024 * 1024,   // l'essai : --shm-size=1g
@@ -285,6 +296,10 @@ export function creerNavigateurs({ config, docker, journal }) {
     }
     if (!c) {
       await mkdir(`${config.dossierProfils}/${profilId}`, { recursive: true });
+      // (02/11) Le fichier de langue monté dans le conteneur (LANGUE_CHROMIUM) : écrit avant, toujours le même.
+      const langue = fichierLangueChromium(config);
+      await mkdir(langue.slice(0, langue.lastIndexOf('/')), { recursive: true });
+      await writeFile(langue, LANGUE_CHROMIUM, { mode: 0o644 });
       await docker.creer(nom, spec);
       c = await docker.inspecter(nom);
     }
