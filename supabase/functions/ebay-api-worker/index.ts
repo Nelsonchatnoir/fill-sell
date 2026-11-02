@@ -40,7 +40,7 @@ import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
-import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique } from "../_shared/publication-programmee.js";
+import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 // (25/10) Une tâche finie n'attend plus personne ; un retrait sur une annonce déjà absente est un retrait fait.
 import { champsAttenteClose } from "../_shared/etat-terminal.js";
 import { dejaAbsente, RETRAIT_PAR_HORS_LIGNE, RETRAIT_PAR_VENDUE } from "../_shared/retrait-deja-absent.js";
@@ -123,12 +123,19 @@ async function programmeesEbayAServir(admin: SupabaseClient, jobId: string | nul
       .eq("user_id", userId).eq("action", "publish").gte("platform_fields->>programmee_servie_le", depuis).limit(500);
     if (eS) throw new Error(eS.message);
     const lignes = (servies ?? []) as Array<{ id: string; status: string; platform: string | null; servie: string | null; reprises: string | null; boucle: unknown }>;
+    // (01/11 nuit) Le tour strict par plateforme : la file du compte, toutes plateformes — la même lecture que get-pending-jobs.
+    const { data: enFile, error: eFile } = await admin.from("cross_post_jobs")
+      .select("platform, naa:platform_fields->>next_action_after")
+      .eq("user_id", userId).eq("status", "pending").eq("action", "publish")
+      .eq("platform_fields->>programmee", "true").is("platform_fields->>programmee_servie_le", null).limit(1000);
     const d = decisionProgrammee({
       enAttente: ordreProgrammeesPretesDabord(liste), reglage,
       servies: lignes.filter((l) => servieAujourdhui({ platform_fields: { programmee_servie_le: l.servie } }, reglage)).length,
       enVol: lignes.some((l) => l.status === "processing"),
       derniereServieMs: lignes.reduce((m, l) => Math.max(m, Date.parse(String(l.servie ?? "")) || 0), 0) || null,
       plateformesBloquees: plateformesEnRepriseTechnique(lignes),
+      file: eFile ? null : etatFileProgrammee(enFile ?? []),
+      dernierePlateforme: dernierePlateformeServie(lignes),
     });
     retenues += d.retenues.length;
     const choisie = d.servir ? liste.find((j) => String(j.id) === d.servir) : null;

@@ -1140,3 +1140,16 @@
   ne répond pas », « n'a pas fini de charger ») : « La publication a été interrompue : la page de Vinted ne finissait
   pas de se charger sur ton ordinateur. Rien n'a été touché : nouvel essai automatique au prochain passage. » — jamais
   « onglet fermé, mise en veille ou coupure réseau », aucune consigne. Même motif (`canal_coupe`), même reprise.
+
+## ⛔ 01/11 nuit (décision de Nico) — publications programmées : tour STRICT par plateforme
+- « Chaque place libre va à la plateforme suivante dans l'ordre, pour qu'aucune (eBay compris) ne rafle le plafond du
+  jour pendant que les autres attendent. Une plateforme sans tâche prête passe son tour. »
+- `_shared/publication-programmee.js` : ordre fixe `ORDRE_PLATEFORMES_PROGRAMMEES` (Vinted, Leboncoin, eBay, Beebs,
+  Depop) ; la place libre revient à la plateforme qui SUIT celle de la dernière servie (`dernierePlateformeServie`)
+  parmi celles qui ont une programmée PRÊTE (`etatFileProgrammee` : en file, échéance venue) et ne sont pas en reprise
+  technique ; seule prête, elle reprend. get-pending-jobs (extension) et ebay-api-worker (eBay API) lisent le MÊME état
+  (servies 36 h + file du compte, toutes plateformes) : même tour, même intervalle (l'espacement compte toute la file du
+  compte). La file dont c'est le tour et qui ne prend pas la place en `DELAI_TOUR_MS` (10 min : PC éteint, garde de
+  get-pending-jobs) la passe à la suivante. Créneau, jours, plafond du jour, une à la fois : inchangés.
+- Simulation (selftest `bloc-d-2610`) : 79 Vinted, 12 Leboncoin, 6 eBay, 8 places → Vinted, Leboncoin, eBay, Vinted,
+  Leboncoin, eBay, Vinted, Leboncoin.

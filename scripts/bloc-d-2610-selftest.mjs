@@ -134,8 +134,10 @@ ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageP
   const d0 = PP.decisionProgrammee({ enAttente: [tard, ...jobs], reglage: reg, servies: 1, derniereServieMs: lundi0830 - 41 * 60_000, maintenant: lundi0830 });
   const e1 = PP.decisionProgrammee({ enAttente: o, reglage: reg, servies: 1, derniereServieMs: lundi0830 - 31 * 60_000, maintenant: lundi0830 });
   const e0 = PP.decisionProgrammee({ enAttente: [tard, ...jobs], reglage: reg, servies: 1, derniereServieMs: lundi0830 - 31 * 60_000, maintenant: lundi0830 });
-  ok(d1.servir === "a" && d0.servir === "t" && d1.motif === d0.motif && e1.motif === "espacement" && e0.motif === "espacement",
-    "même décision (créneau, plafond, espacement de 40 min), seule la servie change : une qui peut partir", JSON.stringify({ d1, d0, e1: e1.motif }));
+  // (01/11 nuit) La décision elle-même ne choisit plus jamais une programmée dont l'échéance n'est pas venue : même sans
+  // l'ordre « prêtes d'abord », la servie est une qui peut partir.
+  ok(d1.servir === "a" && d0.servir === "a" && d1.motif === d0.motif && e1.motif === "espacement" && e0.motif === "espacement",
+    "même décision (créneau, plafond, espacement de 40 min), et la servie est toujours une qui peut partir", JSON.stringify({ d1, d0, e1: e1.motif }));
   ok(PP.ordreProgrammeesPretesDabord([tard, ...jobs], Date.parse("2026-10-26T10:00:00Z"))[0].id === "t", "échéance venue : elle reprend sa place dans la file");
   ok(/ordreProgrammeesPretesDabord\(out\.filter\(\(j\) => estProgrammee\(j\)\)\)/.test(gpj), "get-pending-jobs ordonne les programmées avant la décision");
 }
@@ -170,7 +172,7 @@ ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageP
     const b = PP.decisionProgrammee({ enAttente: file, reglage: reg, maintenant: lundi0830, ...args, plateformesBloquees: ["vinted"] });
     ok(a.motif === b.motif && a.servir === b.servir && b.servir === null, `cadence intouchée (${nom}) : même verdict avec ou sans plateforme bloquée`, JSON.stringify({ a, b }));
   }
-  ok(/const plateformesBloquees = plateformesEnRepriseTechnique\(lignes\);/.test(gpj) && /derniereServieMs: derniere, plateformesBloquees \}\)/.test(gpj)
+  ok(/const plateformesBloquees = plateformesEnRepriseTechnique\(lignes\);/.test(gpj) && /derniereServieMs: derniere, plateformesBloquees,\s*file: fileProg, dernierePlateforme: dernierePlateformeServie\(lignes\) \}\)/.test(gpj)
     && /reprises:platform_fields->>pas_de_rouge_reprises, boucle:platform_fields->boucle_technique/.test(gpj),
     "get-pending-jobs lit plateforme, reprises et boucle des servies (même lecture) et les passe à la décision");
 }
@@ -179,7 +181,7 @@ ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageP
 {
   const w = lire("supabase/functions/ebay-api-worker/index.ts");
   const f = w.slice(w.indexOf("async function programmeesEbayAServir"), w.indexOf("return { servir, aMarquer, retenues };"));
-  ok(/import \{ reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique \} from "\.\.\/_shared\/publication-programmee\.js";/.test(w),
+  ok(/import \{ reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie \} from "\.\.\/_shared\/publication-programmee\.js";/.test(w),
     "ebay-api-worker prend la MÊME décision que get-pending-jobs (_shared/publication-programmee.js)");
   ok(/\.eq\("platform_fields->>programmee", "true"\)\.is\("platform_fields->>programmee_servie_le", null\)/.test(f) && /\.limit\(300\)/.test(f),
     "les programmées non servies sont lues à part (300 au plus) : elles n'occupent jamais les LOT_MAX places des autres comptes");
@@ -192,6 +194,67 @@ ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageP
   ok(/programmation\?\.aMarquer\.has\(String\(brut\.id\)\) \? \{ programmee_servie_le: new Date\(\)\.toISOString\(\) \} : \{\}/.test(w)
     && /\.eq\("id", brut\.id\)\.eq\("status", "pending"\)\.eq\("voie", "api"\)/.test(w),
     "la servie est marquée programmee_servie_le à sa prise (même compare-and-swap) : le plafond et « une à la fois » la voient");
+}
+// (01/11 nuit, décision de Nico) LE TOUR STRICT PAR PLATEFORME : « chaque place libre va à la plateforme suivante dans
+// l'ordre, pour qu'aucune (eBay compris) ne rafle le plafond du jour pendant que les autres attendent ; une plateforme
+// sans tâche prête passe son tour ».
+{
+  const reg8 = PP.reglageProgrammation({ publication_programmee: { actif: true, creneau: "soir", plafond_jour: 8, fuseau: "Europe/Paris" } });
+  const soir19h = Date.parse("2026-11-02T18:00:00Z"); // lundi 02/11, 19:00 Paris
+  const fileDe = (comptes) => Object.entries(comptes).flatMap(([p, n]) => [...Array(n)].map((_, i) => ({ id: `${p}${i}`, platform: p, action: "publish", platform_fields: { programmee: true } })));
+  ok(PP.ORDRE_PLATEFORMES_PROGRAMMEES.join() === "vinted,leboncoin,ebay,beebs,depop" && PP.DELAI_TOUR_MS === 600_000, "ordre fixe Vinted, Leboncoin, eBay, Beebs, Depop ; 10 min pour prendre sa place");
+  ok(PP.ordreDuTour("vinted", new Set(["vinted", "leboncoin", "ebay"])).join() === "leboncoin,ebay,vinted"
+    && PP.ordreDuTour("ebay", new Set(["vinted", "leboncoin", "ebay"])).join() === "vinted,leboncoin,ebay"
+    && PP.ordreDuTour(null, new Set(["ebay", "beebs"])).join() === "ebay,beebs"
+    && PP.ordreDuTour("vinted", new Set(["vinted"])).join() === "vinted", "le tour suit la dernière servie ; seule prête, une plateforme reprend");
+  ok(PP.ordreDuTour("vinted", new Set(["vinted", "ebay"])).join() === "ebay,vinted", "Leboncoin sans tâche prête passe son tour");
+  const etat = PP.etatFileProgrammee([{ platform: "vinted" }, { platform: "ebay", naa: "2026-11-02T20:00:00Z" }, { platform: "leboncoin", naa: "2026-11-02T17:00:00Z" }], soir19h);
+  ok([...etat.pretes].sort().join() === "leboncoin,vinted" && etat.total === 3, "état commun : une programmée à l'échéance pas venue ne rend pas sa plateforme prête");
+  ok(PP.dernierePlateformeServie([{ platform: "vinted", servie: "2026-11-02T18:10:00Z" }, { platform: "ebay", servie: "2026-11-02T18:30:00Z" }]) === "ebay", "la dernière servie se lit sur les servies du compte");
+
+  // Une soirée simulée : 79 Vinted, 12 Leboncoin, 6 eBay ; get-pending-jobs (extension) et ebay-api-worker décident
+  // chacun sur LEURS candidates, avec le MÊME état ; passages toutes les 2 min, chacun prend aussitôt sa place.
+  const file = { vinted: 79, leboncoin: 12, ebay: 6 };
+  const servies = [];
+  let t = soir19h;
+  const sequence = [];
+  for (let k = 0; k < 90 && servies.length < 8; k++, t += 120_000) {
+    for (const cote of ["extension", "api"]) {
+      const enFile = fileDe(file);
+      const miennes = enFile.filter((j) => (cote === "api") === (j.platform === "ebay"));
+      const der = servies.length ? Math.max(...servies.map((s) => s.le)) : null;
+      const d = PP.decisionProgrammee({ enAttente: miennes, reglage: reg8, servies: servies.length, enVol: false, derniereServieMs: der, maintenant: t,
+        file: PP.etatFileProgrammee(enFile, t), dernierePlateforme: PP.dernierePlateformeServie(servies.map((s) => ({ platform: s.p, servie: new Date(s.le).toISOString() }))) });
+      if (d.servir) { const p = miennes.find((j) => j.id === d.servir).platform; servies.push({ p, le: t }); file[p]--; sequence.push(p); }
+    }
+  }
+  ok(sequence.join() === "vinted,leboncoin,ebay,vinted,leboncoin,ebay,vinted,leboncoin",
+    "soirée de 8 places : Vinted, Leboncoin, eBay à tour de rôle — aucune ne rafle le plafond (eBay compris)", sequence.join());
+  // eBay sans programmée prête : il passe son tour.
+  const sansEbay = { vinted: 3, leboncoin: 3 };
+  const enFile2 = fileDe(sansEbay);
+  const d2 = PP.decisionProgrammee({ enAttente: enFile2, reglage: reg8, servies: 1, derniereServieMs: soir19h - 30 * 60_000, maintenant: soir19h + 60_000,
+    file: PP.etatFileProgrammee(enFile2, soir19h), dernierePlateforme: "leboncoin" });
+  ok(d2.servir === "vinted0" && d2.tour === "vinted", "après Leboncoin, eBay sans tâche prête passe son tour : Vinted");
+  // Au tour d'eBay, l'extension attend ; 10 min sans preneur (worker en panne), le tour passe à la suivante.
+  const enFile3 = fileDe({ vinted: 3, leboncoin: 3, ebay: 2 });
+  const ext = enFile3.filter((j) => j.platform !== "ebay");
+  const base = { reglage: reg8, servies: 2, derniereServieMs: Date.parse("2026-11-02T18:00:00Z"), dernierePlateforme: "leboncoin" };
+  const libre = Date.parse("2026-11-02T18:00:00Z") + Math.floor(3 * 3600_000 / 8); // espacement : 3 h ÷ (2 servies + 6 restantes)
+  const dA = PP.decisionProgrammee({ ...base, enAttente: ext, maintenant: libre + 60_000, file: PP.etatFileProgrammee(enFile3, libre) });
+  const dB = PP.decisionProgrammee({ ...base, enAttente: ext, maintenant: libre + 10 * 60_000 + 1, file: PP.etatFileProgrammee(enFile3, libre) });
+  const dE = PP.decisionProgrammee({ ...base, enAttente: enFile3.filter((j) => j.platform === "ebay"), maintenant: libre + 60_000, file: PP.etatFileProgrammee(enFile3, libre) });
+  ok(dA.servir === null && dA.motif === "tour" && dA.tour === "ebay" && dE.servir === "ebay0",
+    "au tour d'eBay : l'extension attend, le worker eBay prend la place", JSON.stringify({ dA, dE: dE.servir }));
+  ok(dB.servir === "vinted0" && dB.tour === "vinted", "10 min sans preneur : le tour passe à Vinted (jamais une place perdue)", JSON.stringify(dB));
+  const bloq = PP.decisionProgrammee({ ...base, enAttente: ext, maintenant: libre + 60_000, file: PP.etatFileProgrammee(enFile3, libre), dernierePlateforme: "ebay", plateformesBloquees: ["vinted"] });
+  ok(bloq.servir === "leboncoin0", "Vinted en reprise technique passe son tour : Leboncoin");
+  const sansFile = PP.decisionProgrammee({ ...base, enAttente: ext, maintenant: libre + 60_000, file: null, dernierePlateforme: "vinted" });
+  ok(sansFile.servir === "leboncoin0", "état commun illisible : le tour se fait sur les seules candidates (jamais un point de panne)");
+  const w = lire("supabase/functions/ebay-api-worker/index.ts");
+  const lectureFile = /\.select\("platform, naa:platform_fields->>next_action_after"\)\s*\.eq\("user_id", (?:user\.id|userId)\)\.eq\("status", "pending"\)\.eq\("action", "publish"\)\s*\.eq\("platform_fields->>programmee", "true"\)\.is\("platform_fields->>programmee_servie_le", null\)\.limit\(1000\)/;
+  ok(lectureFile.test(gpj) && lectureFile.test(w) && /file: eFile \? null : etatFileProgrammee\(enFile \?\? \[\]\),\s*dernierePlateforme: dernierePlateformeServie\(lignes\)/.test(w),
+    "get-pending-jobs et ebay-api-worker lisent le MÊME état de la file du compte et la même dernière servie");
 }
 ok(/jobs_retenus_programmation: idsProgrammeesRetenues\.size/.test(gpj), "la réponse dit combien sont retenues (popup, suivi)");
 const mr = lire("src/publication/moteur/regles.js");

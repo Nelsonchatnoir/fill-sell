@@ -2,7 +2,7 @@ import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
 import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente } from "../_shared/republication-cible.js";
 import { retraitDeLaRepublication, clotureRepublicationParRetrait, STATUTS_RETRAIT_VIVANT } from "../_shared/republication-retrait.js";
-import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique } from "../_shared/publication-programmee.js";
+import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
 import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
@@ -2788,12 +2788,20 @@ serve(async (req) => {
           // (01/11 soir, gjehly) Une plateforme bloquée ne bloque jamais les autres : sa place passe à la suivante d'une
           // autre plateforme (_shared/publication-programmee.js, plateformesEnRepriseTechnique).
           const plateformesBloquees = plateformesEnRepriseTechnique(lignes);
-          const d = decisionProgrammee({ enAttente: enAttenteProg, reglage: reglageProg, servies: nServies, enVol, derniereServieMs: derniere, plateformesBloquees });
+          // (01/11 nuit, décision de Nico) Le tour strict par plateforme : la file du COMPTE, toutes plateformes (eBay par
+          // l'API compris, servi par ebay-api-worker sur le même état) — même lecture des deux côtés, même tour.
+          const { data: enFileProg, error: eFile } = await userClient.from("cross_post_jobs")
+            .select("platform, naa:platform_fields->>next_action_after")
+            .eq("user_id", user.id).eq("status", "pending").eq("action", "publish")
+            .eq("platform_fields->>programmee", "true").is("platform_fields->>programmee_servie_le", null).limit(1000);
+          const fileProg = eFile ? null : etatFileProgrammee(enFileProg ?? []);
+          const d = decisionProgrammee({ enAttente: enAttenteProg, reglage: reglageProg, servies: nServies, enVol, derniereServieMs: derniere, plateformesBloquees,
+            file: fileProg, dernierePlateforme: dernierePlateformeServie(lignes) });
           for (const id of d.retenues) idsProgrammeesRetenues.add(id);
           if (d.servir) programmeeAMarquer = d.servir;   // (29/10, lot B 4.7) marquée en fin de chaîne si elle part
           if (idsProgrammeesRetenues.size) {
             out = out.filter((j) => !idsProgrammeesRetenues.has(String(j.id)));
-            console.log(`[get-pending-jobs] userId=${user.id} : publications programmées → ${idsProgrammeesRetenues.size} retenue(s) (${d.motif ?? "une_a_la_fois"}), ${d.servir ? "1 servie" : "aucune servie"} ; ${nServies} servie(s) aujourd'hui${plateformesBloquees.size ? ` ; en reprise technique, sans nouvelle place : ${[...plateformesBloquees].join(", ")}` : ""}`);
+            console.log(`[get-pending-jobs] userId=${user.id} : publications programmées → ${idsProgrammeesRetenues.size} retenue(s) (${d.motif ?? "une_a_la_fois"}), ${d.servir ? "1 servie" : "aucune servie"} ; ${nServies} servie(s) aujourd'hui${d.tour ? ` ; au tour de : ${d.tour}` : ""}${plateformesBloquees.size ? ` ; en reprise technique, sans nouvelle place : ${[...plateformesBloquees].join(", ")}` : ""}`);
           }
         }
       } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
