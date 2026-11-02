@@ -124,7 +124,9 @@ export const nomConteneur = (user) => `fs-nav-${String(user).replace(/[^0-9a-f-]
 // sa propre IP (NAVIGATEUR_ISOLE_<PF>_IP), sa propre empreinte (écran 1536×864, 4 cœurs, aucune extension), mêmes langue
 // et fuseau français ; le verrou n'y laisse passer QUE sa plateforme (eBay et Opla jamais). Le principal n'est pas touché.
 export const ATTENTE_SORTIE_ISOLE_MS = 8000;
-export const VARIANTES_ISOLEES = Object.freeze({ beebs: Object.freeze({ ecran: Object.freeze([1536, 864]), cpus: '0-3' }) });
+// (02/11 14:15, feu vert de Nico — UNE variable : les langues) Les langues d'un vrai Chrome français : fr-FR, fr, en-US, en
+// → Accept-Language « fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7 » (format de Chrome). Le principal garde les siennes (figées).
+export const VARIANTES_ISOLEES = Object.freeze({ beebs: Object.freeze({ ecran: Object.freeze([1536, 864]), cpus: '0-3', langues: 'fr-FR,fr,en-US,en' }) });
 export const nomConteneurIsole = (user, plateforme) => `${nomConteneur(user)}-${plateforme}`;
 export const profilIsole = (user, plateforme) => `p-${String(user).slice(0, 8)}-${plateforme}-isole`;
 /** Le lancement avec écran, à une autre taille (pure). */
@@ -145,7 +147,8 @@ export function specConteneurIsole({ config, user, profilId, plateforme, langueF
 export function corpsSessionIsole({ proxyUrl, plateforme }) {
   const v = VARIANTES_ISOLEES[plateforme];
   if (!v) throw new Error(`navigateur isolé : plateforme inconnue (${plateforme})`);
-  return { ...corpsSession({ proxyUrl }), extensions: [], dimensions: { width: v.ecran[0], height: v.ecran[1] } };
+  return { ...corpsSession({ proxyUrl }), extensions: [], dimensions: { width: v.ecran[0], height: v.ecran[1] },
+    ...(v.langues ? { userPreferences: { intl: { accept_languages: v.langues, selected_languages: v.langues } } } : {}) };
 }
 export const nouveauProfilId = (user) => `p-${String(user).slice(0, 8)}-${randomBytes(6).toString('hex')}`;
 

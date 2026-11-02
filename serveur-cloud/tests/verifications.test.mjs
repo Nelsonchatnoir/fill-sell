@@ -224,6 +224,9 @@ test('(02/11) le navigateur isolé : sa propre empreinte (écran, cœurs, aucune
   assert.equal(i.Labels['fillsell.isole'], 'beebs');
   const ci = corpsSessionIsole({ proxyUrl: 'http://a:b@1.2.3.4:12323', plateforme: 'beebs' });
   assert.deepEqual([ci.extensions, ci.dimensions], [[], { width: 1536, height: 864 }]);
+  // (02/11 14:15, feu vert de Nico) UNE variable : les langues d'un vrai Chrome français, sur l'isolé seulement.
+  assert.deepEqual(ci.userPreferences, { intl: { accept_languages: 'fr-FR,fr,en-US,en', selected_languages: 'fr-FR,fr,en-US,en' } });
+  assert.deepEqual(corpsSession({ proxyUrl: 'http://a:b@1.2.3.4:12323' }).userPreferences, { intl: { accept_languages: 'fr-FR,fr', selected_languages: 'fr-FR,fr' } }, 'le principal garde ses langues (figées)');
   assert.notEqual(empreinteNavigateur(i, ci), empreinteNavigateur(p, corpsSession({ proxyUrl: 'http://a:b@1.2.3.4:12323' })), 'une empreinte différente du principal');
   assert.match(p.Cmd[0], /1920x1080x24/, 'le principal garde son écran');
   assert.ok(p.HostConfig.Binds.some((b) => b.includes('/app/api/extensions/')) && !p.HostConfig.CpusetCpus, 'et son extension, sans limite de cœurs');
