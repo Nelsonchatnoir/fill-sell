@@ -228,3 +228,41 @@ Détail complet et scripts : `essai-empreintes/RESULTAT.md`, `essai-empreintes/s
 | Originale + orientation EXIF appliquée (non essayée) | 0 $ | idem | les 50 grands écarts disparaîtraient ; les 1-4 bits restent → différentes aussi, ampleur à mesurer par un second essai (≈ 18 Go, ~1 h) |
 - Aucune méthode sans transformation ne reproduit l'identique : les écarts de 1-4 bits viennent de la réduction +
   recompression JPEG du service, que rien ne refait à l'octet. **Rien n'est basculé : décision de Nico.**
+
+## Partie E (02/11 soir, terminal problèmes) — point 1 : « une empreinte calculée une seule fois »
+Consigne de Nico : sans changer la méthode, chaque empreinte calculée UNE fois et gardée ; d'abord compter combien des
+≈ 3 000 transformations par jour sont des recalculs ; décisions identiques au bit près. Mesures 18:54 → 19:15, lecture
+seule ; scripts dans `recalculs-0211/`.
+
+### E1. Recalculs : aucun
+- **Le code le garantit déjà** (depuis le 08/10) : une URL qui a son empreinte complète n'est plus jamais téléchargée —
+  `empreintes-urls` saute toute ligne avec variantes, `fusion_photo_tick` ne demande que les URL absentes de
+  `photo_empreintes`, le moteur (`rapprochement`) que les URL sans empreinte complète (`compacteComplete`).
+- **Instantané du 02/11 16:27** (531 465 lignes, essai à blanc) contre la base à 18:54 : 849 empreintes calculées depuis,
+  **0** pour une URL qui en avait déjà une (dont 381 photos du bucket, toutes neuves).
+- **Journaux de la passerelle, 24 h** (01/11 18:55 → 02/11 18:55) : 2 193 images transformées ; 146 l'ont été deux fois
+  à moins d'une heure d'écart (photo remise faute de temps de calcul, ou refus passager, puis reprise : même cycle =
+  facturée une fois) ; **0 image retransformée après plus d'une heure**.
+- Restent possibles, jamais vus depuis 16:27 : les 4 442 photos du bucket sans « variantes » (calculées avant le 08/10 ou
+  par `photo-empreinte`) seraient recalculées si le moteur les redemandait (≤ 22 $ si toutes l'étaient).
+
+### E2. Ce que paient les transformations : des photos NEUVES
+- 2 607 empreintes du bucket en 24 h (base) : `rapatrie-fiche` 1 747 (photos des fiches importées de Leboncoin, Beebs,
+  eBay, Depop, copiées chez nous par handler-watch), `rehosted` 664 (photos re-hébergées pour publier), `raw` 181,
+  `enhanced` 15. Chaque jour depuis le 15/10, les photos empreintées sont des fichiers créés le JOUR MÊME (98 %).
+- Par jour (base, depuis le 15/10) : 437 à 3 653, **≈ 1 560 en moyenne, ≈ 1 960 sur les 7 derniers jours**.
+- Le dernier cycle (59 261) portait un recalcul ponctuel : le **08/10, 22 145 empreintes, dont 14 732 photos de plus de
+  7 jours** (ajout des « variantes » du moteur v3) ≈ 74 $. Pas récurrent.
+- Seul « double » restant : la MÊME photo (octets identiques, même eTag) déposée sous deux noms — **73 / 2 607 en 24 h
+  (2,8 %), 1 939 / 30 063 depuis le 15/10 (6,4 %)**, surtout une photo rapatriée deux fois (59 sur 73). La réutiliser
+  sans transformation économiserait ≈ 8 à 25 $ par cycle, mais demande de lire `storage.objects` (fonction SQL =
+  migration) : **pas fait sans feu vert**, et sans objet si le point 2 est adopté.
+- Constaté au passage : aujourd'hui déjà, deux copies identiques d'une photo n'ont pas toujours la même empreinte —
+  193 paires sur 3 127 diffèrent, 163 parce que l'une a été calculée sur l'originale après un refus de la transformation.
+
+### E3. Résultat
+- **Rien déployé** : la règle « une fois, gardée » est déjà en place et tenue ; aucun changement ne retire de
+  transformation à décisions identiques au bit près, hors les copies identiques (E2, migration).
+- **Coût restant après le point 1 = le coût d'aujourd'hui** : ≈ 1 600 à 2 600 photos neuves par jour → 47 000 à
+  78 000 par cycle → **≈ 235 à 390 $ par cycle** (≈ 295 $ au rythme des 7 derniers jours). Il croît avec les photos
+  importées et rapatriées, donc avec les utilisateurs. Seul le point 2 (méthode sans transformation) le ramène à 0 $.
