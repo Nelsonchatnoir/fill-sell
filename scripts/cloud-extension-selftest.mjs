@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { patcherBackground, patcherManifeste, ID_EXTENSION_CLOUD, PLATEFORMES, SOURCE_CONNEXION_CLOUD, SOURCE_VERROU_CLOUD } from './cloud/build-extension-cloud.mjs';
+import { patcherBackground, patcherManifeste, ID_EXTENSION_CLOUD, PLATEFORMES, SOURCE_CONNEXION_CLOUD, SOURCE_VERROU_CLOUD, SOURCE_DECHARGE_CLOUD, DECHARGE_CLOUD_REPOS_MS } from './cloud/build-extension-cloud.mjs';
 
 let ko = 0, n = 0;
 const ok = (c, m) => { n++; if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}`); } };
@@ -27,7 +27,7 @@ const man = JSON.parse(readFileSync(path.join(racine, 'chrome-extension', 'manif
 
 console.log('\n1. Les patchs du background');
 const { bg: bg2, appliques } = patcherBackground(bg);
-ok(appliques.length === 12, `12 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
+ok(appliques.length === 16, `16 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
 const tmp = mkdtempSync(path.join(tmpdir(), 'fs-cloud-'));
 try {
   writeFileSync(path.join(tmp, 'bg.js'), bg2);
@@ -112,6 +112,77 @@ ok(!bg.includes('verrouCloud'), 'l’extension du parc (bureau) : aucun verrou, 
   const e = v.etat();
   ok(e.fetch === true && e.onglets === true && e.bloquees === 5 && e.derniere?.plateforme === 'beebs', `état du verrou lisible (${JSON.stringify({ bloquees: e.bloquees, onglets: e.onglets })})`);
   ok(await v.refuse('https://www.leboncoin.fr/') === null && await v.refuse('https://www.vinted.fr/') === 'vinted' && await v.refuse('https://example.com/') === null, 'décision lisible sans requête (outil de vérification)');
+}
+
+// (02/11 soir, décision de Nico) Les onglets de travail sans tâche sont déchargés en fin de cycle — exécuté ici contre
+// un faux Chrome (la fonction exacte de la copie Cloud).
+console.log('\n1 bis. Onglets de travail déchargés (copie Cloud)');
+ok(bg2.includes('return noterUsageOngletCloud(await getOrCreateWorkTabCloudBrut(platform, url));')
+  && bg2.includes('return noterUsageOngletCloud(await workTabForFetchCloudBrut(platform));'), 'usage noté à chaque onglet rendu (getOrCreateWorkTab, workTabForFetch)');
+ok(bg2.includes('if (tab.discarded) { // Cloud (02/11)') && !bg2.includes('(platform === "vinted" || platform === "opla" || platform === "depop") && tab.discarded'),
+  'un onglet déchargé est réveillé avant toute lecture, toutes plateformes (jamais lu mort, jamais le fetch du service worker)');
+{
+  const iCleanup = bg2.indexOf('await cleanupOrphanWorkTabs().catch((e) =>');
+  const iDecharge = bg2.indexOf('await dechargerOngletsTravailInactifsCloud()');
+  const iFinCycle = bg2.indexOf('async function pollAndProcessJobsUnlocked(');
+  ok(iFinCycle > 0 && iDecharge > iFinCycle && iCleanup > iDecharge && iCleanup - iDecharge < 200,
+    'déchargement en fin de cycle du poll, avec le ménage des orphelins (sous le verrou)');
+}
+ok(!bg.includes('dechargerOngletsTravailInactifsCloud'), 'l’extension du parc : aucun déchargement (inchangée sur ce point)');
+{
+  const faire = ({ onglets, usage = {}, attente = null }) => {
+    const session = { ...Object.fromEntries(onglets.map((o) => [`fillsell_work_tab_${o.pf}`, o.id])), fillsell_cloud_usage_onglets: usage };
+    const etat = new Map(onglets.map((o) => [o.id, { id: o.id, windowId: 7, index: o.index ?? 2, discarded: false, active: Boolean(o.active) }]));
+    etat.set(1, { id: 1, windowId: 7, index: 0, discarded: false, active: !onglets.some((o) => o.active) });
+    const j = { decharges: [], actives: [] };
+    const chrome = {
+      storage: { session: {
+        get: async (k) => Object.fromEntries([].concat(k).filter((x) => x in session).map((x) => [x, structuredClone(session[x])])),
+        set: async (v) => { Object.assign(session, structuredClone(v)); },
+      } },
+      tabs: {
+        get: async (id) => { if (!etat.has(id)) throw new Error('No tab'); return { ...etat.get(id) }; },
+        query: async ({ windowId, index }) => [...etat.values()].filter((t) => t.windowId === windowId && t.index === index),
+        update: async (id, p) => { if (p.active) { for (const t of etat.values()) t.active = false; etat.get(id).active = true; j.actives.push(id); } return etat.get(id); },
+        discard: async (id) => { const t = etat.get(id); if (t.active) throw new Error('active'); t.discarded = true; j.decharges.push(id); return { ...t }; },
+      },
+    };
+    const f = new Function('chrome', 'workTabKey', 'lireAttentePaiementLbc', 'console',
+      `${SOURCE_DECHARGE_CLOUD}\nreturn { dechargerOngletsTravailInactifsCloud, noterUsageOngletCloud };`)(
+      chrome, (p) => `fillsell_work_tab_${p}`, async () => attente, { log: () => {} });
+    return { f, j, session, etat };
+  };
+  const T = 1_000_000_000_000;
+  const vieux = T - DECHARGE_CLOUD_REPOS_MS - 1;
+  {
+    const { f, j } = faire({ onglets: [{ pf: 'leboncoin', id: 20 }, { pf: 'depop', id: 30 }, { pf: 'beebs', id: 40 }, { pf: 'vinted', id: 10 }], usage: { 20: vieux, 30: T - 60_000, 10: vieux } });
+    const faits = await f.dechargerOngletsTravailInactifsCloud(T);
+    ok(JSON.stringify(faits) === '["leboncoin"]' && JSON.stringify(j.decharges) === '[20]',
+      `sans tâche depuis ${DECHARGE_CLOUD_REPOS_MS / 60000} min : déchargé ; utilisé il y a 1 min : gardé ; jamais vu : gardé (son repos commence) ; Vinted : jamais (${JSON.stringify(faits)})`);
+  }
+  {
+    const { f, j, session } = faire({ onglets: [{ pf: 'beebs', id: 40 }] });
+    await f.dechargerOngletsTravailInactifsCloud(T);
+    ok(!j.decharges.length && session.fillsell_cloud_usage_onglets[40] === T, 'onglet jamais vu : noté au premier passage, déchargé seulement 5 min plus tard');
+    await f.dechargerOngletsTravailInactifsCloud(T + DECHARGE_CLOUD_REPOS_MS + 1);
+    ok(JSON.stringify(j.decharges) === '[40]', '… puis déchargé au passage suivant si personne ne s’en est servi');
+  }
+  {
+    const { f, j } = faire({ onglets: [{ pf: 'leboncoin', id: 20 }], usage: { 20: vieux }, attente: { tabId: 20, jobId: 'x' } });
+    await f.dechargerOngletsTravailInactifsCloud(T);
+    ok(!j.decharges.length, 'l’onglet rendu à la personne (Leboncoin « Valider et payer ») : jamais touché');
+  }
+  {
+    const { f, j } = faire({ onglets: [{ pf: 'depop', id: 30, active: true }], usage: { 30: vieux } });
+    await f.dechargerOngletsTravailInactifsCloud(T);
+    ok(JSON.stringify(j.actives) === '[1]' && JSON.stringify(j.decharges) === '[30]', 'onglet montré dans la fenêtre de travail : le porte-page (1er onglet) reprend la place, puis déchargé');
+  }
+  {
+    const { f, session } = faire({ onglets: [{ pf: 'leboncoin', id: 20 }] });
+    await f.noterUsageOngletCloud(20);
+    const avant = session.fillsell_cloud_usage_onglets[20];
+    ok(Number.isFinite(avant) && (await f.noterUsageOngletCloud(20)) === 20, 'l’usage est noté et l’id rendu tel quel (aucun effet sur l’appelant)');
+  }
 }
 
 console.log('\n2. Le manifeste Cloud');

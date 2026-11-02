@@ -26,7 +26,8 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-11-02-soir (0.6.168 : Leboncoin, dépôt interrompu à l'arrivée = brouillon jeté par le chemin officiel, redépôt aussitôt ; état d'une tâche : une republication retenue derrière l'annonce d'une autre plateforme le dit, jamais « nouvel essai automatique ») — précédent : " +
+  "2026-11-02-nuit (0.6.169 : un rechargement ou une mise à jour de l'extension ne crée plus de fenêtre de travail en laissant l'ancienne — fenêtre du registre gardée avec ses onglets de plateforme sans fragment, ids des onglets de travail durables, vieille fenêtre perdue reconnue sur preuve et fermée ; une fenêtre n'est fermée que sûrement à nous) — précédent : " +
+  "2026-11-02-soir (0.6.168 :Leboncoin, dépôt interrompu à l'arrivée = brouillon jeté par le chemin officiel, redépôt aussitôt ; état d'une tâche : une republication retenue derrière l'annonce d'une autre plateforme le dit, jamais « nouvel essai automatique ») — précédent : " +
   "2026-11-02-lot-a (0.6.167 : aucun corps REST ne part avec un demi-caractère — relevé Depop de laurankoole en HTTP 400 — et le titre Depop se coupe par caractère ; état d'une tâche : l'ordinateur éteint passe avant « nouvel essai automatique ») · " +
   "2026-10-31-lot-f (0.6.162 : alarmes reposées à chaque démarrage du worker, mise à jour constatée sans onInstalled (journal maj_extension tout de suite, poll en 5 s), veille du poll qui relance un poll muet et recharge proprement un verrou figé — 2 fois par 6 h au plus, jamais pendant un job ; la page apprend si l’extension travaille pour son compte) · " +
   "2026-10-30-lot-e-finition (0.6.161 : étape « recreated » comprise — jamais « inconnue », le serveur tranche par les relevés ; adsubmit Leboncoin 2xx sans confirmation = dépôt inachevé, nouvel essai — jamais « publié » ; navigateur réel et rendu graphique du poste envoyés au serveur ; lectures Leboncoin coupées quand le serveur dit l'accès restreint) · 2026-10-16-messagerie-beta-5 (0.6.120 : bêta messagerie — Vinted : un 401 (jeton d'accès d'une heure expiré) fait renouveler le jeton comme la page puis refaire UNE fois la lecture, le chemin du bordereau ou l'envoi d'une réponse (jamais après une autre erreur)) — précédent : " +
@@ -1269,7 +1270,14 @@ let majPlanifiee = false;
 
 async function fermerFenetresAvantMaj() {
   try {
-    for (const id of await fenetresCreeesVivantes()) await chrome.windows.remove(id).catch(() => {});
+    // (02/11) Seulement celles qui sont sûrement à nous (compterOngletsFenetre : `fermable`) — une fenêtre du registre
+    // où la personne a ouvert un onglet reste ouverte ; la nouvelle version y reconnaît nos onglets (ids durables).
+    const registre = await fenetresCreeesVivantes();
+    const idsConnus = await idsOngletsTravailConnus();
+    for (const id of registre) {
+      const w = await chrome.windows.get(id, { populate: true }).catch(() => null);
+      if (w && compterOngletsFenetre(w, idsConnus, new Set(registre)).fermable) await chrome.windows.remove(id).catch(() => {});
+    }
   } catch { /* la nouvelle version balaie de toute façon les fenêtres de l'ancienne */ }
 }
 
@@ -7327,6 +7335,9 @@ async function rendreOngletALaPersonne(job, motif) {
   }
   // Détaché : plus jamais réutilisé ni fermé par les jobs suivants.
   await chrome.storage.session.remove(key).catch(() => {});
+  // (02/11) Il n'est plus à nous : hors de la liste durable, et sans notre drapeau — jamais repris dans sa fenêtre.
+  await memoriserOngletsTravail([], [tabId]).catch(() => {});
+  await chrome.tabs.update(tabId, { autoDiscardable: true }).catch(() => {});
   // La fenêtre de la personne : la dernière fenêtre normale qui n'est pas une fenêtre de travail.
   const { union: travail } = await fenetresTravailVivantes().catch(() => ({ union: [] }));
   let cible = null;
@@ -7892,35 +7903,123 @@ let workWindowInFlight = null;
 // et l'ancienne — réduite à son about:blank une fois l'onglet rapatrié —
 // jamais fermée faute d'onglet marqué. Cinq fenêtres créées en cinq minutes
 // (cliquet_repare → fenetre_creee en cascade, 21:56 → 22:00).
-function compterOngletsFenetre(w, idsConnus = new Set()) {
-  let marques = 0, neutres = 0, utilisateur = 0;
+//
+// ── (02/11 soir, demande de Nico) UNE SEULE RÈGLE « CETTE FENÊTRE EST À NOUS » ──
+// Symptôme (poste de Nico) : à chaque rechargement ou nouvelle version de
+// l'extension, une fenêtre de travail de plus, l'ancienne laissée ouverte.
+// Cause, dans ce code (rejouée par selftest:fenetre-travail-rechargement) :
+//   1. un rechargement VIDE storage.session : les ids de nos onglets sont
+//      perdus ; un onglet de travail dont la plateforme a réécrit l'URL (sans
+//      #fillsell-worker — Vinted sur son accueil, typiquement) n'a plus aucune
+//      marque et comptait « utilisateur » ;
+//   2. resolveWorkWindow jugeait alors SA fenêtre (registre) « habitée par
+//      l'utilisateur » : rendue (oubliée du registre, jamais fermée), une neuve
+//      créée ; la consolidation n'en retirait que les onglets marqués — la
+//      vieille fenêtre restait, invisible à toutes les règles suivantes ;
+//   3. le ménage des orphelins (24/09), lui, savait déjà qu'un onglet de
+//      plateforme dans une fenêtre de travail sans onglet utilisateur est à
+//      nous : deux règles contradictoires sur le même onglet.
+// Et le porte-page about:blank#fillsell-worker, censé marquer nos fenêtres,
+// est INVISIBLE à l'extension (sans permission « tabs », son adresse est vide
+// et chrome.scripting y est refusé — mesuré dans le navigateur Cloud le 02/11).
+// Règle unique, appliquée par la résolution, l'adoption, la consolidation et
+// le plafond :
+//   · fenêtre du REGISTRE (créée par nous, storage.local : survit au
+//     rechargement) sans onglet utilisateur VISIBLE → à nous, ses onglets de
+//     plateforme compris, marqués ou non ;
+//   · fenêtre HORS registre (perdue par une version précédente) → à nous
+//     seulement sur preuve : réduite, au moins un onglet de plateforme portant
+//     notre drapeau autoDiscardable:false (posé sur chaque onglet de travail
+//     depuis le 08/10, gardé par Chrome quelle que soit l'URL), aucun onglet de
+//     plateforme sans ce drapeau, au plus un onglet illisible, en tête ;
+//   · on ne FERME une fenêtre à nous que si elle n'a pas plus d'un onglet
+//     illisible (le porte-page) : sans permission « tabs », l'onglet Gmail de
+//     la personne a la même adresse vide que notre porte-page — en cas de
+//     doute, nos onglets sont déplacés et la fenêtre reste.
+// Les ids de nos onglets survivent désormais au rechargement (storage.local,
+// idsOngletsTravailConnus) : le cas de Nico ne passe plus par la preuve.
+function hotePlateformeTravail(url) {
+  let h = "";
+  try { h = new URL(String(url ?? "")).hostname; } catch { return false; }
+  return Object.values(PLATFORM_HOSTS).filter(Boolean).some((x) => h === x || h.endsWith(`.${x}`));
+}
+function compterOngletsFenetre(w, idsConnus = new Set(), registre = new Set()) {
+  let marques = 0, neutres = 0, utilisateur = 0, plateforme = 0, drapeaux = 0, sansDrapeau = 0;
+  const indexNeutres = [];
   const details = [];
   for (const t of w.tabs ?? []) {
     const url = t.url || t.pendingUrl || "";
     const connu = idsConnus.has(t.id);
     const frag = url.includes(WORK_TAB_FRAGMENT) || url.includes(TEMP_TAB_FRAGMENT);
+    const drapeau = t.autoDiscardable === false;
     let classe;
-    if (connu || frag) { marques++; classe = "marque"; }
-    else if (url === "" || url === "about:blank" || url.startsWith("chrome://newtab")) { neutres++; classe = "neutre"; }
+    if (connu || frag) { marques++; classe = "marque"; if (drapeau) drapeaux++; }
+    else if (url === "" || url === "about:blank" || url.startsWith("chrome://newtab")) { neutres++; classe = "neutre"; indexNeutres.push(t.index); }
+    else if (hotePlateformeTravail(url)) { plateforme++; classe = "plateforme"; if (drapeau) drapeaux++; else sansDrapeau++; }
     else { utilisateur++; classe = "user"; }
     // Détail par onglet pour le journal (hostname seul, jamais l'URL entière) :
     // sans lui, impossible de rejouer POURQUOI une fenêtre a été classée
     // utilisateur (l'incident du 30/07 n'était diagnosticable qu'aux comptes).
     let host;
     try { host = url ? new URL(url).hostname || url.slice(0, 40) : "(vide)"; } catch { host = url.slice(0, 40); }
-    details.push({ h: host, c: classe, ...(connu ? { id: 1 } : {}), ...(frag ? { f: 1 } : {}) });
+    details.push({ h: host, c: classe, ...(connu ? { id: 1 } : {}), ...(frag ? { f: 1 } : {}), ...(drapeau ? { d: 1 } : {}) });
   }
-  return { marques, neutres, utilisateur, details: details.slice(0, 8) };
+  const neutresSurs = neutres === 0 || (neutres === 1 && indexNeutres[0] === 0);
+  const enRegistre = registre.has(w.id);
+  const heritee = !enRegistre && utilisateur === 0 && drapeaux > 0 && sansDrapeau === 0 && neutresSurs && w.state === "minimized";
+  const aNous = utilisateur === 0 && (enRegistre || heritee);
+  // Hors d'une fenêtre à nous, un onglet de plateforme sans marque reste celui de la personne (règle d'avant).
+  if (aNous) marques += plateforme; else utilisateur += plateforme;
+  return { marques, neutres, utilisateur, aNous, heritee, fermable: aNous && neutresSurs, details: details.slice(0, 8) };
 }
 
-// Ids de tous nos onglets d'après nos propres clés storage.session — la source
-// d'identité de compterOngletsFenetre. Perdu au redémarrage du navigateur
-// (storage.session), comme les ids d'onglets eux-mêmes : cohérent.
+// Ids de tous nos onglets : nos clés storage.session (onglet de travail de
+// chaque plateforme, onglet temporaire) ET, depuis le 02/11, la liste
+// storage.local des onglets de travail — storage.session est VIDÉ à chaque
+// rechargement ou mise à jour de l'extension, alors que les onglets, eux,
+// survivent (cause n° 1 ci-dessus). Les ids d'un démarrage précédent du
+// navigateur ne désignent plus rien : purgés à onStartup et à chaque écriture.
+const ONGLETS_TRAVAIL_CONNUS_KEY = "fillsell_onglets_travail_connus";
 async function idsOngletsTravailConnus() {
   const keys = [...Object.keys(PLATFORM_HANDLERS).map(workTabKey), TEMP_TAB_ID_KEY];
-  const store = await chrome.storage.session.get(keys).catch(() => ({}));
-  return new Set(keys.map((k) => store[k]).filter((v) => v != null));
+  const [store, local] = await Promise.all([
+    chrome.storage.session.get(keys).catch(() => ({})),
+    chrome.storage.local.get(ONGLETS_TRAVAIL_CONNUS_KEY).catch(() => ({})),
+  ]);
+  const ids = new Set(keys.map((k) => store[k]).filter((v) => v != null));
+  for (const id of Array.isArray(local?.[ONGLETS_TRAVAIL_CONNUS_KEY]) ? local[ONGLETS_TRAVAIL_CONNUS_KEY] : []) {
+    if (Number.isInteger(id)) ids.add(id);
+  }
+  return ids;
 }
+// Ajoute (et retire) des ids à la liste durable ; les onglets disparus en sortent au passage. Jamais bloquant.
+// Sérialisé : deux écritures concurrentes (lecture-modification-écriture) perdraient un id.
+let memoriserOngletsChaine = Promise.resolve();
+function memoriserOngletsTravail(ajouts = [], retraits = []) {
+  memoriserOngletsChaine = memoriserOngletsChaine.then(() => memoriserOngletsTravailBrut(ajouts, retraits));
+  return memoriserOngletsChaine;
+}
+async function memoriserOngletsTravailBrut(ajouts, retraits) {
+  try {
+    const local = await chrome.storage.local.get(ONGLETS_TRAVAIL_CONNUS_KEY);
+    const sortis = new Set(retraits.map(Number));
+    const liste = [...(Array.isArray(local?.[ONGLETS_TRAVAIL_CONNUS_KEY]) ? local[ONGLETS_TRAVAIL_CONNUS_KEY] : []), ...ajouts]
+      .map(Number).filter((id) => Number.isInteger(id) && !sortis.has(id));
+    const vivants = [];
+    for (const id of [...new Set(liste)]) if (await chrome.tabs.get(id).catch(() => null)) vivants.push(id);
+    await chrome.storage.local.set({ [ONGLETS_TRAVAIL_CONNUS_KEY]: vivants.slice(-24) });
+  } catch { /* best-effort */ }
+}
+// Chaque onglet de travail MÉMORISÉ (toutes les écritures de la clé d'une plateforme, quel que soit le chemin) entre
+// dans la liste durable. L'onglet temporaire, non : il ne doit jamais être adopté comme onglet persistant.
+chrome.storage.onChanged.addListener((changes, zone) => {
+  if (zone !== "session") return;
+  const ids = Object.entries(changes ?? {})
+    .filter(([k, c]) => k.startsWith(workTabKey("")) && Number.isInteger(c?.newValue))
+    .map(([, c]) => c.newValue);
+  if (ids.length) memoriserOngletsTravail(ids).catch(() => {});
+});
+chrome.runtime.onStartup.addListener(() => { memoriserOngletsTravail().catch(() => {}); });
 
 // Registre des fenêtres créées PAR NOUS cette session. Deux usages :
 //   1. consolidation : une fenêtre du registre réduite à des onglets neutres
@@ -8019,23 +8118,20 @@ async function fenetresCreeesVivantes() {
 // jamais fermée, ses onglets marqués sont seulement rapatriés). Une fenêtre
 // portant le moindre onglet utilisateur est ignorée ici aussi : en cas de doute,
 // on la laisse — et on la COMPTE, ce qui ne peut que resserrer le plafond.
+//
+// ✅ MESURÉ (02/11) : le porte-page est INVISIBLE — adresse vide sans permission
+// « tabs », chrome.scripting refusé (navigateur Cloud, extension 0.6.168), et
+// `observees` vide dans tous les événements en base. Ce balayage voit désormais
+// les fenêtres HÉRITÉES par la preuve de compterOngletsFenetre (réduite, onglets
+// de plateforme au drapeau autoDiscardable:false, au plus un onglet illisible en
+// tête) : celles qu'une version précédente a perdues de son registre.
 async function fenetresDeTravailObservees() {
   try {
-    const fenetres = await chrome.windows.getAll({ populate: true }).catch(() => []);
-    const vues = [];
-    for (const w of fenetres) {
-      let portePage = false;
-      let utilisateur = 0;
-      for (const t of w.tabs ?? []) {
-        const url = t.url || t.pendingUrl || "";
-        if (url.startsWith("about:blank") && url.includes(WORK_TAB_FRAGMENT)) { portePage = true; continue; }
-        if (url.includes(WORK_TAB_FRAGMENT) || url.includes(TEMP_TAB_FRAGMENT)) continue;
-        if (url === "" || url === "about:blank" || url.startsWith("chrome://newtab")) continue;
-        utilisateur++;
-      }
-      if (portePage && utilisateur === 0) vues.push(w.id);
-    }
-    return vues;
+    const [fenetres, idsConnus] = await Promise.all([
+      chrome.windows.getAll({ populate: true }).catch(() => []),
+      idsOngletsTravailConnus(),
+    ]);
+    return (fenetres ?? []).filter((w) => compterOngletsFenetre(w, idsConnus).heritee).map((w) => w.id);
   } catch {
     return [];
   }
@@ -8090,12 +8186,15 @@ function getOrCreateWorkWindow() {
 
 async function resolveWorkWindow() {
   const idsConnus = await idsOngletsTravailConnus();
+  // (02/11) Le registre (storage.local) survit au rechargement : ses fenêtres restent à nous, onglets de plateforme
+  // sans marque compris (compterOngletsFenetre) — c'est ce qui empêche le rechargement de les « rendre ».
+  const registreVivant = new Set(await fenetresCreeesVivantes());
   const store = await chrome.storage.session.get(WORK_WINDOW_KEY);
   const known = store[WORK_WINDOW_KEY];
   if (known != null) {
     const win = await chrome.windows.get(known, { populate: true }).catch(() => null);
     if (win) {
-      const { marques, utilisateur, details } = compterOngletsFenetre(win, idsConnus);
+      const { marques, utilisateur, details } = compterOngletsFenetre(win, idsConnus, registreVivant);
       if (utilisateur === 0) {
         await consolidateWorkWindows(win.id, idsConnus);
         return win.id;
@@ -8121,11 +8220,15 @@ async function resolveWorkWindow() {
   // about:blank#fillsell-worker suffit : une fenêtre fraîche pas encore
   // peuplée est adoptable, elle n'est plus invisible) — jamais à une fenêtre
   // de l'utilisateur, qui n'en porte pas.
-  const adoptee = await findExistingWorkWindow(idsConnus);
+  // (02/11) Seulement une fenêtre À NOUS (registre, ou héritée sur preuve) : sans permission « tabs », une fenêtre
+  // de la personne a des onglets illisibles comme notre porte-page — y créer nos onglets serait les lui imposer.
+  const adoptee = await findExistingWorkWindow(idsConnus, registreVivant);
   if (adoptee != null) {
     await chrome.storage.session.set({ [WORK_WINDOW_KEY]: adoptee });
+    // Une fenêtre héritée (perdue du registre par une version précédente) y revient : elle est à nous.
+    if (!registreVivant.has(adoptee)) await memoriserFenetreCreee(adoptee);
     console.log(`[background] Fenêtre de travail ${adoptee} RETROUVÉE (id oublié) — réutilisée, aucune création`);
-    await journaliserEvenementFenetre("fenetre_adoptee", { window_id: adoptee });
+    await journaliserEvenementFenetre("fenetre_adoptee", { window_id: adoptee, ...(registreVivant.has(adoptee) ? {} : { heritee: true }) });
     await consolidateWorkWindows(adoptee, idsConnus);
     return adoptee;
   }
@@ -8153,10 +8256,12 @@ async function resolveWorkWindow() {
   // dans le plafond ; une fenêtre dédiée minimisée est créée à sa place.
   // Une fenêtre qui ne porte que nos onglets — le cas de tout le parc — suit
   // exactement le chemin d'avant.
+  // (02/11) Classée avec le registre : un onglet de plateforme qui a perdu son fragment n'« habite » plus la fenêtre
+  // (c'était la fenêtre rendue à chaque rechargement) ; seul un onglet utilisateur VISIBLE la rend.
   const habitees = [];
   for (const id of creeesBrut) {
     const w = await chrome.windows.get(id, { populate: true }).catch(() => null);
-    if (w && compterOngletsFenetre(w, idsConnus).utilisateur > 0) habitees.push(id);
+    if (w && compterOngletsFenetre(w, idsConnus, registreVivant).utilisateur > 0) habitees.push(id);
   }
   if (habitees.length) {
     await oublierFenetresCreees(habitees);
@@ -8241,18 +8346,22 @@ async function resolveWorkWindow() {
 // l'utilisateur ne la fait plus adopter (cliquet du 2026-07-30) — il sera
 // rapatrié par la consolidation qui suit la création d'une fenêtre dédiée
 // neuve.
-async function findExistingWorkWindow(idsConnus = new Set()) {
+// (02/11) « À nous » = la règle unique de compterOngletsFenetre (registre, ou
+// héritée sur preuve) ; les fenêtres du registre passent d'abord. Une fenêtre
+// hors registre avec un seul onglet marqué et des onglets illisibles n'est
+// plus adoptée : ces onglets illisibles peuvent être ceux de la personne. Même
+// confiance que pour la fermer (`fermable` : au plus un onglet illisible).
+async function findExistingWorkWindow(idsConnus = new Set(), registre = new Set()) {
   const fenetres = await chrome.windows.getAll({ populate: true }).catch(() => []);
-  for (const w of fenetres) {
-    const { marques, utilisateur, details } = compterOngletsFenetre(w, idsConnus);
-    if (!marques) continue;
-    if (utilisateur > 0) {
+  const rang = (w) => { const i = [...registre].indexOf(w.id); return i < 0 ? Infinity : i; };
+  for (const w of [...(fenetres ?? [])].sort((a, b) => rang(a) - rang(b))) {
+    const { marques, utilisateur, fermable, details } = compterOngletsFenetre(w, idsConnus, registre);
+    if (fermable) return w.id;
+    if (marques && utilisateur > 0) {
       await journaliserEvenementFenetre("adoption_refusee_fenetre_utilisateur", {
         window_id: w.id, user_tabs: utilisateur, marked_tabs: marques, tabs: details,
       });
-      continue;
     }
-    return w.id;
   }
   return null;
 }
@@ -8263,21 +8372,27 @@ async function findExistingWorkWindow(idsConnus = new Set()) {
 // windows.remove inconditionnel fermait la fenêtre de l'utilisateur avec tous
 // ses onglets personnels si un seul onglet marqué s'y était égaré (bug grave,
 // 2026-07-30). Idempotent et silencieux quand tout va bien.
+// (02/11) Classée par la règle unique (registre, ou héritée sur preuve) : une
+// fenêtre de travail en trop — la vieille d'un rechargement — rend ses onglets
+// de plateforme (marqués ou non) à la fenêtre gardée, puis se ferme ; le
+// ménage des orphelins ferme en fin de cycle les doublons ainsi rapatriés.
+// Fermée SEULEMENT si elle est à nous et n'a pas plus d'un onglet illisible
+// (`fermable`) : sans permission « tabs », un onglet de la personne sur un
+// autre site est aussi illisible que notre porte-page — l'ancien
+// « utilisateur === 0 » les comptait « neutres » et aurait fermé sa fenêtre.
 async function consolidateWorkWindows(gardee, idsConnus = new Set()) {
   const fenetres = await chrome.windows.getAll({ populate: true }).catch(() => []);
   const creees = new Set(await fenetresCreeesVivantes());
   for (const w of fenetres) {
     if (w.id === gardee) continue;
-    const { marques, utilisateur } = compterOngletsFenetre(w, idsConnus);
-    // Fenêtre sans aucun onglet marqué : consolidée SEULEMENT si c'est nous
-    // qui l'avons créée (registre de session) — cas de la fenêtre réduite à
-    // son about:blank nu d'avant le porte-page marqué. Une fenêtre inconnue
-    // sans onglet marqué reste intouchable (chrome://newtab est « neutre »,
-    // fenêtre utilisateur fraîche possible).
-    if (!marques && !creees.has(w.id)) continue;
+    const { marques, utilisateur, aNous, heritee, fermable } = compterOngletsFenetre(w, idsConnus, creees);
+    // Fenêtre ni à nous ni porteuse d'un de nos onglets : intouchable
+    // (chrome://newtab est « neutre », fenêtre utilisateur fraîche possible).
+    if (!marques && !aNous) continue;
     for (const t of w.tabs ?? []) {
       const url = t.url || t.pendingUrl || "";
-      const estANous = idsConnus.has(t.id) || url.includes(WORK_TAB_FRAGMENT) || url.includes(TEMP_TAB_FRAGMENT);
+      const estANous = idsConnus.has(t.id) || url.includes(WORK_TAB_FRAGMENT) || url.includes(TEMP_TAB_FRAGMENT)
+        || (aNous && hotePlateformeTravail(url));
       const estPortePage = url.startsWith("about:blank");
       if (estANous && !estPortePage) {
         await chrome.tabs.move(t.id, { windowId: gardee, index: -1 }).catch(() => {});
@@ -8288,13 +8403,14 @@ async function consolidateWorkWindows(gardee, idsConnus = new Set()) {
       }
     }
     // Fenêtre utilisateur : onglets marqués déplacés, fenêtre laissée INTACTE.
-    // Fenêtre de travail surnuméraire (que des onglets marqués/neutres) :
-    // fermée — Chrome l'a peut-être déjà fermée seul si son dernier onglet
-    // vient d'être déplacé/fermé, d'où le .catch.
-    const fermer = utilisateur === 0;
+    // Fenêtre de travail surnuméraire (à nous, au plus le porte-page
+    // illisible) : fermée — Chrome l'a peut-être déjà fermée seul si son
+    // dernier onglet vient d'être déplacé/fermé, d'où le .catch.
+    const fermer = fermable;
     if (fermer) await chrome.windows.remove(w.id).catch(() => {});
     await journaliserEvenementFenetre("consolidation", {
       kept: gardee, window_id: w.id, moved: marques, closed: fermer, user_tabs: utilisateur,
+      ...(heritee ? { heritee: true } : {}), ...(aNous && !fermer ? { laissee_onglets_illisibles: true } : {}),
     });
   }
 }
@@ -8819,9 +8935,13 @@ async function getOrCreateWorkTabBrut(platform, url) {
   }
 
   // 2. Storage perdu mais notre onglet marqué existe peut-être encore
+  // (02/11) — reconnu aussi par son id durable (rechargement de l'extension : l'onglet Vinted revenu sur son accueil
+  // n'a plus de fragment ; sans ça, un onglet neuf était créé et l'ancien restait jusqu'au ménage).
   const host = new URL(url).hostname.split(".").slice(-2).join(".");
   const candidates = await chrome.tabs.query({ url: `*://*.${host}/*` }).catch(() => []);
-  const marked = candidates.find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
+  const idsDurables = await idsOngletsTravailConnus().catch(() => new Set());
+  const marked = candidates.find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT))
+    ?? candidates.find((t) => idsDurables.has(t.id) && !(t.url || "").includes(TEMP_TAB_FRAGMENT));
   if (marked) {
     const inWorkWindow = await moveTabToWorkWindow(marked.id);
     const effectiveId = await navigateWorkTab(inWorkWindow, target);

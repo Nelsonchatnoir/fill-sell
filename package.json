@@ -58,6 +58,7 @@
     "selftest:commandes-chaque-tour": "node scripts/commandes-chaque-tour-selftest.mjs",
     "selftest:mur-suppression-arbitre": "node scripts/mur-suppression-arbitre-selftest.mjs",
     "selftest:onglet-gele": "node scripts/onglet-gele-selftest.mjs",
+    "selftest:fenetre-travail-rechargement": "node scripts/fenetre-travail-rechargement-selftest.mjs",
     "selftest:vente-annulee-carte": "node scripts/vente-annulee-carte-selftest.mjs",
     "selftest:lot-2410-soir": "node --import ./scripts/loader-ext.mjs scripts/lot-2410-soir-selftest.mjs",
     "selftest:depart-compte": "node --import ./scripts/loader-ext.mjs scripts/depart-compte-selftest.mjs",

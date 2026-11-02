@@ -133,6 +133,73 @@ verrouCloud.onglets = [
 ].every(Boolean);
 globalThis.__fillsellVerrouCloud = { etat: () => ({ ...verrouCloud, fetch: globalThis.fetch !== fetchSansVerrouCloud }), refuse: verrouCloudRefuse };`;
 
+// (02/11 soir, décision de Nico) LES ONGLETS DE TRAVAIL SANS TÂCHE SONT DÉCHARGÉS. Mesuré le 02/11 (rapport
+// machine-cloud-3010 § 26) : le navigateur Cloud d'un compte garde chargés ses quatre onglets de travail entre deux tâches
+// (1,16 à 1,9 Go sur 2 Go permis ; l'accueil Leboncoin seul : 24 cadres de pub, 22 processus, ≈ 670 Mo) et le noyau a tué
+// un processus de page de 406 Mo à 18:51:52, à la seconde du retrait Leboncoin d'une republication. Sur un PC, c'est la
+// mémoire de la personne ; ici, la nôtre, plafonnée par compte.
+// Règle (copie Cloud seulement ; le parc ne change pas) :
+//   · en fin de cycle du poll, SOUS le verrou des tâches (aucune tâche ne tourne), l'onglet de travail Leboncoin, Beebs
+//     ou Depop resté sans usage depuis DECHARGE_CLOUD_REPOS_MS est déchargé (chrome.tabs.discard : la page et ses
+//     processus partent, l'onglet et son id restent — le chemin déjà suivi par navigateWorkTab) ;
+//   · « usage » = l'onglet rendu par getOrCreateWorkTab ou workTabForFetch (noté en storage.session, qui survit au
+//     sommeil du service worker) ; un onglet jamais vu commence son repos au premier passage ;
+//   · Vinted reste chargé : sa page vivante sert les lectures SANS le verrou (lirePagePubliqueVintedSansVerrou, la
+//     description qu'une personne attend à l'écran) ; l'onglet rendu à la personne (Leboncoin « Valider et payer ») :
+//     jamais touché ;
+//   · tout onglet déchargé est RÉVEILLÉ avant une lecture (workTabForFetch : accueil de la plateforme, comme Vinted et
+//     Depop le faisaient déjà) — jamais une lecture tentée dans une page morte, jamais un repli sur le fetch du service
+//     worker (que DataDome refuse).
+export const DECHARGE_CLOUD_PLATEFORMES = ['leboncoin', 'beebs', 'depop'];
+export const DECHARGE_CLOUD_REPOS_MS = 5 * 60_000;
+export const SOURCE_DECHARGE_CLOUD = `const DECHARGE_CLOUD_PLATEFORMES = ${L(DECHARGE_CLOUD_PLATEFORMES)};
+const DECHARGE_CLOUD_REPOS_MS = ${DECHARGE_CLOUD_REPOS_MS};
+const USAGE_ONGLETS_CLOUD_KEY = "fillsell_cloud_usage_onglets";
+const usageOngletsCloudEcrit = new Map();
+async function noterUsageOngletCloud(tabId) {
+  if (!Number.isInteger(tabId)) return tabId;
+  const maintenant = Date.now();
+  if (maintenant - (usageOngletsCloudEcrit.get(tabId) ?? 0) < 30_000) return tabId;
+  usageOngletsCloudEcrit.set(tabId, maintenant);
+  try {
+    const s = await chrome.storage.session.get(USAGE_ONGLETS_CLOUD_KEY);
+    await chrome.storage.session.set({ [USAGE_ONGLETS_CLOUD_KEY]: { ...(s?.[USAGE_ONGLETS_CLOUD_KEY] ?? {}), [tabId]: maintenant } });
+  } catch { /* un usage manqué retarde au pire un déchargement */ }
+  return tabId;
+}
+async function dechargerOngletsTravailInactifsCloud(maintenant = Date.now()) {
+  const s = await chrome.storage.session.get([...DECHARGE_CLOUD_PLATEFORMES.map(workTabKey), USAGE_ONGLETS_CLOUD_KEY]).catch(() => ({}));
+  const usage = { ...(s?.[USAGE_ONGLETS_CLOUD_KEY] ?? {}) };
+  const attente = await lireAttentePaiementLbc().catch(() => null);
+  const faits = [];
+  for (const pf of DECHARGE_CLOUD_PLATEFORMES) {
+    const id = s?.[workTabKey(pf)];
+    if (!Number.isInteger(id) || id === attente?.tabId) continue;
+    const t = await chrome.tabs.get(id).catch(() => null);
+    if (!t || t.discarded) continue;
+    const vu = Number(usage[id]);
+    if (!Number.isFinite(vu)) { usage[id] = maintenant; continue; }
+    if (maintenant - vu < DECHARGE_CLOUD_REPOS_MS) continue;
+    if (t.active) {
+      // Chrome ne décharge pas l'onglet montré de sa fenêtre : le premier onglet de la fenêtre de travail (le porte-page)
+      // redevient l'onglet montré. Personne ne regarde un écran Cloud.
+      const [premier] = await chrome.tabs.query({ windowId: t.windowId, index: 0 }).catch(() => []);
+      if (!premier || premier.id === id) continue;
+      await chrome.tabs.update(premier.id, { active: true }).catch(() => {});
+    }
+    const d = await chrome.tabs.discard(id).catch(() => null);
+    if (!d) continue;
+    if (Number.isInteger(d.id) && d.id !== id) await chrome.storage.session.set({ [workTabKey(pf)]: d.id }).catch(() => {});
+    delete usage[id];
+    usageOngletsCloudEcrit.delete(id);
+    faits.push(pf);
+  }
+  for (const k of Object.keys(usage)) if (maintenant - Number(usage[k]) > 3_600_000) delete usage[k];
+  await chrome.storage.session.set({ [USAGE_ONGLETS_CLOUD_KEY]: usage }).catch(() => {});
+  if (faits.length) console.log("[cloud] onglet(s) de travail déchargé(s), sans tâche depuis " + (DECHARGE_CLOUD_REPOS_MS / 60000) + " min : " + faits.join(", "));
+  return faits;
+}`;
+
 /** Les patchs de background.js (pur : testé par scripts/cloud-extension-selftest.mjs). */
 export function patcherBackground(bg) {
   const appliques = [];
@@ -148,7 +215,22 @@ export function patcherBackground(bg) {
     + `const FILLSELL_CLOUD = true; // copie Cloud (scripts/cloud/build-extension-cloud.mjs)\n`
     + `const CLOUD_PLATEFORMES = ${L(PLATEFORMES)};\n`
     + `${SOURCE_CONNEXION_CLOUD}\n`
-    + `${SOURCE_VERROU_CLOUD}`);
+    + `${SOURCE_VERROU_CLOUD}\n`
+    + `${SOURCE_DECHARGE_CLOUD}`);
+  patch('onglets de travail déchargés : usage noté (getOrCreateWorkTab) (02/11)',
+    'async function getOrCreateWorkTab(platform, url) {',
+    'async function getOrCreateWorkTab(platform, url) {\n  return noterUsageOngletCloud(await getOrCreateWorkTabCloudBrut(platform, url));\n}\nasync function getOrCreateWorkTabCloudBrut(platform, url) {');
+  patch('onglets de travail déchargés : usage noté (workTabForFetch) (02/11)',
+    'async function workTabForFetch(platform) {',
+    'async function workTabForFetch(platform) {\n  return noterUsageOngletCloud(await workTabForFetchCloudBrut(platform));\n}\nasync function workTabForFetchCloudBrut(platform) {');
+  patch('onglets de travail déchargés : réveillés avant toute lecture (02/11)',
+    'if ((platform === "vinted" || platform === "opla" || platform === "depop") && tab.discarded) {',
+    'if (tab.discarded) { // Cloud (02/11) : toute plateforme — ses onglets sans tâche sont déchargés en fin de cycle');
+  // Ancre sur UNE ligne (le dépôt de travail est en CRLF, l'archive git en LF) : la fin du cycle du poll.
+  patch('onglets de travail déchargés : en fin de cycle, sous le verrou (02/11)',
+    '  await cleanupOrphanWorkTabs().catch((e) =>',
+    '  await dechargerOngletsTravailInactifsCloud().catch((e) => console.warn("[cloud] déchargement des onglets :", String(e?.message ?? e)));\n'
+    + '  await cleanupOrphanWorkTabs().catch((e) =>');
   patch('jobs : plateformes du Cloud seulement (le serveur filtre aussi)',
     '    jobs = rep.jobs;',
     '    jobs = (Array.isArray(rep.jobs) ? rep.jobs : []).filter((j) => CLOUD_PLATEFORMES.includes(j.platform));');
