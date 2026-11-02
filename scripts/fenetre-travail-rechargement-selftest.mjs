@@ -31,8 +31,10 @@ function extraireFonction(source, nom) {
   const avant = source.lastIndexOf('async ', debut);
   return source.slice(avant === debut - 6 ? avant : debut, i + 1);
 }
+// Une constante littérale (chaîne ou nombre), dans la source (`const X = "…";`) comme dans le paquet minifié
+// (`…,X="…";` — le minifieur fusionne les déclarations).
 const constante = (nom) => {
-  const m = BG.match(new RegExp(`const ${nom} = ([^;\\n]+);`));
+  const m = BG.match(new RegExp(`(?:const |,)${nom}\\s*=\\s*("[^"\\n]*"|'[^'\\n]*'|\\d+)`));
   if (!m) throw new Error(`constante ${nom} introuvable`);
   return m[1];
 };
@@ -49,14 +51,14 @@ const PREAMBULE = [
   `const TEMP_TAB_ID_KEY = ${constante('TEMP_TAB_ID_KEY')};`,
   `const WORK_WINDOWS_CREATED_KEY = ${constante('WORK_WINDOWS_CREATED_KEY')};`,
   `const MAX_FENETRES_TRAVAIL = ${constante('MAX_FENETRES_TRAVAIL')};`,
-  BG.includes('const ONGLETS_TRAVAIL_CONNUS_KEY') ? `const ONGLETS_TRAVAIL_CONNUS_KEY = ${constante('ONGLETS_TRAVAIL_CONNUS_KEY')};` : '',
+  BG.includes('ONGLETS_TRAVAIL_CONNUS_KEY') ? `const ONGLETS_TRAVAIL_CONNUS_KEY = ${constante('ONGLETS_TRAVAIL_CONNUS_KEY')};` : '',
   'const workTabKey = (platform) => `fillsell_work_tab_${platform}`;',
   'const PLATFORM_HANDLERS = { vinted: {}, leboncoin: {}, ebay: {}, beebs: {}, opla: {}, depop: {} };',
   'const PLATFORM_HOSTS = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app", opla: "opla.co", depop: "depop.com" };',
   'let workWindowInFlight = null;',
   'let memoriserOngletsChaine = Promise.resolve();',
 ].join('\n');
-assert.ok(BG.includes('const workTabKey = (platform) => `fillsell_work_tab_${platform}`;'), 'la clé des onglets de travail du banc est celle du background');
+assert.ok(/workTabKey\s*=\s*\(?\w+\)?\s*=>\s*`fillsell_work_tab_\$\{\w+\}`/.test(BG), 'la clé des onglets de travail du banc est celle du background');
 
 // ── Le faux Chrome : fenêtres, onglets (ordre = index), stockage. Adresse VIDE pour about:blank (pas de « tabs »). ──
 function faireChrome({ fenetres = [], session = {}, local = {} } = {}) {
