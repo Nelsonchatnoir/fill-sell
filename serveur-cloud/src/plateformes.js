@@ -263,6 +263,68 @@ export function expressionLectureCompte(plateforme) {
     try { ${corps} } catch (e) { return { http: 0, motif: 'reseau' }; } })()`;
 }
 
+// ── (02/11, demande de Nico) « RÉSOUDRE LA VÉRIFICATION » : LA PAGE, ET LA LECTURE QUI PROUVE L'ACCÈS RENDU ─────────────
+// Après la glissière, UNE requête légère dit si la plateforme répond de nouveau : la lecture du compte (Vinted,
+// Leboncoin, Depop : l'adresse même que l'anti-robot protège) ; Beebs lit son compte chez Google, son accès se lit donc
+// par la page elle-même (HEAD, sans corps).
+const LECTURES_ACCES = Object.freeze({
+  beebs: `const r = await fetch(location.pathname || '/', { method: 'HEAD', credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    return { http: r.status, id: r.ok ? 'page' : null };`,
+});
+/** L'expression qui lit l'accès à la plateforme dans SA page (pure) — même garde « hors site » que la lecture du compte. */
+export function expressionAcces(plateforme) {
+  const def = DEFINITIONS[plateforme];
+  const corps = LECTURES_ACCES[plateforme] ?? LECTURES_COMPTE[plateforme];
+  if (!def?.hoteSite || !corps) return null;
+  return `(async () => { if (location.protocol !== 'https:' || location.hostname !== ${JSON.stringify(def.hoteSite)}) return { horsSite: true };
+    try { ${corps} } catch (e) { return { http: 0, motif: 'reseau' }; } })()`;
+}
+
+/**
+ * L'état de la page, lu SANS réseau (pure : une expression) : la page est-elle chargée, y a-t-il un cadre DataDome —
+ * glissière (/captcha/), bloqué sans glissière (t=bv), vérification de l'appareil qui passe seule (/interstitial/) ?
+ */
+export const EXPRESSION_ETAT_PAGE = `(() => {
+  const hote = (s) => { try { return new URL(s, location.href).hostname; } catch (e) { return ''; } };
+  const cadres = [...document.querySelectorAll('iframe')].map((f) => f.src || '').filter((s) => /(^|\\.)captcha-delivery\\.com$/i.test(hote(s)));
+  const bloque = cadres.some((s) => /\\/captcha\\//i.test(s) && /[?&]t=bv(&|$)/.test(s));
+  return { hote: location.hostname, pret: document.readyState === 'complete', bloque,
+    captcha: !bloque && cadres.some((s) => /\\/captcha\\//i.test(s)), interstitiel: cadres.some((s) => /\\/interstitial\\//i.test(s)) };
+})()`;
+
+// La page qui rouvre la vérification quand l'anti-robot l'a montrée sur une requête de fond (une API) : une page du site
+// connecté, qui fait elle-même ses requêtes (la glissière s'y affiche si l'appareil est encore signalé).
+const PAGES_DU_COMPTE = Object.freeze({
+  vinted: 'https://www.vinted.fr/',
+  leboncoin: 'https://www.leboncoin.fr/compte/part/mes-annonces',
+  beebs: 'https://www.beebs.app/fr',
+  depop: 'https://www.depop.com/',
+});
+/**
+ * La page à rouvrir pour résoudre (pure) : celle où l'anti-robot a montré la vérification (son paramètre `referer`,
+ * quand c'est une page du site de la plateforme — jamais son ancre de travail), sinon une page du compte.
+ */
+export function pageDeResolution(plateforme, blocage = null) {
+  const def = DEFINITIONS[plateforme];
+  if (!def) return null;
+  try {
+    const u = new URL(String(blocage?.referer ?? ''));
+    if (u.protocol === 'https:' && u.hostname === def.hoteSite) { u.hash = ''; return u.href; }
+  } catch { /* pas de page connue */ }
+  return PAGES_DU_COMPTE[plateforme] ?? def.pageConnexion;
+}
+
+/** Pendant une résolution, un document principal reste sur le site de la plateforme (ou la page DataDome elle-même). */
+export function navigationResolution(plateforme, url) {
+  const def = DEFINITIONS[plateforme];
+  let u;
+  try { u = new URL(String(url)); } catch { return false; }
+  if (u.href === 'about:blank') return true;
+  if (!def || u.protocol !== 'https:') return false;
+  const h = u.hostname.toLowerCase();
+  return def.domaine.test(h) || /(^|\.)captcha-delivery\.com$/.test(h);
+}
+
 /** Le verdict d'une lecture de compte (pure) : { ok, http, motif } — ok seulement sur 200 ET un compte lu. */
 export function verdictLectureCompte(lu) {
   if (!lu || typeof lu !== 'object') return { ok: false, http: 0, motif: 'illisible' };

@@ -208,8 +208,10 @@ test('conteneur : lancé EXACTEMENT comme l\'essai du 01/11, profil du compte au
     && LANCEMENT_AVEC_ECRAN.endsWith('exec /app/api/entrypoint.sh --no-nginx'), 'l\'écran de l\'essai, puis steel tel quel');
   assert.deepEqual(s.Env, [...ENV_ESSAI_0111], 'les réglages de l\'essai, rien d\'autre');
   for (const e of ['CHROME_HEADLESS=false', 'SKIP_FINGERPRINT_INJECTION=true', 'FILTER_CHROME_ARGS=--disable-gpu --use-gl=swiftshader',
-    'CHROME_ARGS=--use-angle=swiftshader --enable-unsafe-swiftshader']) assert.ok(s.Env.includes(e), e);
-  assert.ok(!s.Env.some((e) => /TIMEZONE|lang=|CHROME_USER_DATA_DIR/.test(e)), 'ni langue ni fuseau réglés (l\'essai) ; profil au repos jetable par défaut (verrou 1)');
+    'CHROME_ARGS=--use-angle=swiftshader --enable-unsafe-swiftshader --lang=fr-FR', 'DEFAULT_TIMEZONE=Europe/Paris']) assert.ok(s.Env.includes(e), e);
+  assert.ok(!s.Env.some((e) => /CHROME_USER_DATA_DIR/.test(e)), 'profil au repos jetable par défaut (verrou 1)');
+  // (02/11, décision de Nico) Profil français : langue fr-FR et fuseau de Paris, cohérents avec l'IP française.
+  assert.match(s.Labels['fillsell.lancement'], /^[0-9a-f]{12}$/, 'l\'empreinte du lancement : un conteneur lancé autrement est recréé (profil gardé)');
   assert.equal(s.HostConfig.ShmSize, 1024 ** 3, '--shm-size=1g');
   assert.equal(s.HostConfig.Init, true, '--init');
   assert.ok(s.HostConfig.Binds.includes('/srv/p/p-x:/app/api/user-data-dir'), 'verrou 2 : profil monté au chemin « persist »');
@@ -220,7 +222,8 @@ test('conteneur : lancé EXACTEMENT comme l\'essai du 01/11, profil du compte au
   assert.throws(() => corpsSession({ proxyUrl: 'http://194.152.141.98:12323' }), 'proxy sans identifiants : refusé');
   const c = corpsSession({ proxyUrl: 'http://u:p@194.152.141.98:12323' });
   assert.deepEqual(c, { proxyUrl: 'http://u:p@194.152.141.98:12323', skipFingerprintInjection: true, headless: false, blockAds: false,
-    extensions: ['fillsell'], persist: true }, 'la session de l\'essai (empreinte réelle, avec écran, publicités laissées, extension), plus « persist »');
+    extensions: ['fillsell'], persist: true, timezone: 'Europe/Paris', userPreferences: { intl: { accept_languages: 'fr-FR,fr', selected_languages: 'fr-FR,fr' } } },
+  'la session de l\'essai (empreinte réelle, avec écran, publicités laissées, extension), plus « persist » et (02/11) le profil français');
 });
 
 test('journal : aucun secret ne sort', () => {

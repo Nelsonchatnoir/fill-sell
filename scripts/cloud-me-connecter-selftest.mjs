@@ -92,5 +92,26 @@ ok(/sansBouton=\{ebay\.relie\}/.test(me) && /demarrerConnexionEbay\(\)/.test(me)
 const offre = lire('src/config/cloudOffer.js');
 ok(!/id:\s*'ebay'/.test(offre.slice(offre.indexOf('CLOUD_PLATEFORMES_CONNEXION'))), 'eBay n\'est pas une plateforme du navigateur Cloud');
 
+// ── (02/11, demande de Nico) « Résoudre la vérification » ────────────────────────────────────────────────────────
+console.log('\n8. Une vérification du navigateur Cloud : « Résoudre la vérification », la même vue que « Me connecter »');
+ok(/export function Vue\(\{ userId, plateforme, nom, lang, onFermer, mode = null \}\)/.test(me) && /lang, mode,/.test(me), 'la vue prend le mode « resoudre » et le passe au serveur');
+for (const f of ['resolu', 'revenue', 'restreint', 'session_fermee', 'rien']) ok(new RegExp(`ETAPES_FINALES = \\[[^\\]]*'${f}'`).test(me), `fin « ${f} »`);
+ok(/etape === 'connecte' \|\| etape === 'resolu'/.test(me), 'résolue : la vue se ferme et la liste se relit');
+ok(/\{!resoudre && <button type="button" onClick=\{\(\) => session\.current\?\.ecrire\(\)\}/.test(me), 'résoudre : pas de clavier, on fait glisser');
+ok(/sansBouton=\{verif !== 'a_resoudre'\}/.test(me) && /verif === 'a_resoudre' \? \{ \.\.\.p, mode: 'resoudre' \}/.test(me), 'la ligne : bouton seulement pour une vérification à résoudre');
+ok(/mode === 'resoudre' \? \{ mode \} : \{\}/.test(cli), 'le client envoie le mode à l\'ouverture (rien pour « Me connecter »)');
+const bandeauR = lire('src/cloud/BandeauCloudReconnexion.jsx');
+ok(/import \{ Vue \} from '\.\/MeConnecterCloud'/.test(bandeauR) && /mode="resoudre"/.test(bandeauR) && /createPortal\(vue, document\.body\)/.test(bandeauR), 'le bandeau ouvre la page de vérification lui-même (sur body)');
+ok(/etat === 'a_resoudre' && \(/.test(bandeauR) && /setResolution\(concernees\[0\]\)/.test(bandeauR), 'bouton seulement pour une vérification à résoudre ; restreinte ou revenue : aucun bouton');
+ok(/fermees: \[\.\.\.fermees, \.\.\.v\.map\(\(x\) => x\.id\)\]/.test(bandeauR), 'une plateforme en vérification n\'est jamais dite « déconnectée » en plus');
+const tx2 = lire('src/cloud/textesConnexion.js');
+ok(!/dans ton navigateur|ouvre leboncoin/i.test(tx2.replace(/^\s*\/\/.*$/gm, '')), 'jamais « ouvre … dans ton navigateur » (c\'est le navigateur du Cloud)');
+ok(tx2.split("\n  resoudre: '").length === 3 && tx2.split('bandeauVerifTexte: (noms, etat) =>').length === 3, 'fr et en : le bouton et le texte de chaque état');
+
+console.log('\n9. La feuille « Republier » dit qu\'eBay reste en ligne (02/11, décision de Nico)');
+const stock = lire('src/tabs/StockTab.jsx');
+ok(/surEbay: computeRemovalInfo\(jobsByInventaire\[it\.id\] \|\| \[\]\)\.publishedActive\.includes\('ebay'\)/.test(stock), 'l\'article en ligne sur eBay est repéré à l\'ouverture de la feuille');
+ok(stock.includes("'eBay : ton annonce reste en ligne telle quelle.'") && /items\.some\(\(i\) => i\.surEbay\)/.test(stock), 'la ligne « eBay : ton annonce reste en ligne telle quelle. », seulement quand eBay porte l\'annonce');
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

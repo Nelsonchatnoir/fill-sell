@@ -2,7 +2,7 @@
 // d'utilisation (version, case obligatoire, acceptation enregistrée AVANT toute carte, garde du paiement), le
 // drapeau par compte côté serveur. Pur + lecture du code.
 import fs from 'node:fs';
-import { phraseExecutant, etatConnexion, quandParis, plateformesAReconnecter } from '../src/cloud/executant.js';
+import { phraseExecutant, etatConnexion, quandParis, plateformesAReconnecter, verificationsCloud } from '../src/cloud/executant.js';
 
 let echecs = 0, n = 0;
 const ok = (c, m) => { n++; if (c) console.log('  ✓', m); else { echecs++; console.error('  ✗', m); } };
@@ -85,6 +85,17 @@ ok(PLATEFORMES_CLOUD.every((p) => contrainte.includes(`'${p}'::text`)) && contra
   ok(/résous la vérification demandée/.test(tx), 'le bandeau des plateformes couvre aussi une vérification à résoudre');
   const bandeau = lire('src/cloud/BandeauCloudReconnexion.jsx');
   ok(/supabase\.rpc\('cloud_executant_moi'\)/.test(bandeau) && /executantArrete\(/.test(bandeau) && !/setInterval/.test(bandeau), 'le bandeau lit l’exécutant (à l’ouverture et au retour sur l’app, jamais en boucle)');
+}
+
+// (02/11, demande de Nico) Une vérification du navigateur Cloud : à résoudre (bouton), restreinte ou revenue (attente).
+{
+  const ps = { leboncoin: { cloud_verification: { etat: 'a_resoudre', depuis: '2026-11-02T03:57:37Z' } },
+    beebs: { cloud_verification: { etat: 'restreint', depuis: 'x', essai_apres: 'y' } }, depop: { cloud_verification: { etat: 'bizarre' } } };
+  const v = verificationsCloud({ cloudVoie: true, platformSettings: ps });
+  ok(v.map((x) => `${x.id}:${x.etat}`).join(',') === 'leboncoin:a_resoudre,beebs:restreint', 'à résoudre et restreinte lues, dans l’ordre de l’écran ; un état inconnu n’est jamais deviné');
+  ok(verificationsCloud({ cloudVoie: false, platformSettings: ps }).length === 0, 'compte hors Cloud : rien');
+  ok(verificationsCloud({ cloudVoie: true, platformSettings: ps, fermees: ['leboncoin'] }).map((x) => x.id).join() === 'beebs', 'une plateforme fermée au compte : rien');
+  ok(verificationsCloud({ cloudVoie: true, platformSettings: null }).length === 0, 'illisible : rien');
 }
 
 if (echecs) { console.error(`\n✗ ${echecs} échec(s) — ${n} contrôles`); process.exit(1); }

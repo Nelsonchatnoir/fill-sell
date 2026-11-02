@@ -4,10 +4,13 @@
 // (01/11, décision de Nico) LANCÉ EXACTEMENT COMME L'ESSAI QUI A PASSÉ (rapport machine-cloud-3010 § 17 : Leboncoin
 // formulaire, Beebs glissière) : steel-browser v0.5.4 tel que publié (Chromium 156.0.8078.73 de Debian), avec écran
 // (Xvfb 1920×1080, que l'image ne démarre pas elle-même), injection d'empreinte coupée, publicités non bloquées, aucun
-// résolveur, 3D logicielle activée comme Steel loué (FILTER_CHROME_ARGS / CHROME_ARGS). Ni langue ni fuseau réglés :
-// l'essai a tourné ainsi (en-US, UTC). Seul ajout : `persist`, qui range le profil du compte sur le disque (les
-// connexions tiennent d'un redémarrage à l'autre) — steel le met dans /app/api/user-data-dir, son navigateur au repos
-// garde son profil jetable (/tmp/steel-chrome).
+// résolveur, 3D logicielle activée comme Steel loué (FILTER_CHROME_ARGS / CHROME_ARGS). Ajout : `persist`, qui range le
+// profil du compte sur le disque (les connexions tiennent d'un redémarrage à l'autre) — steel le met dans
+// /app/api/user-data-dir, son navigateur au repos garde son profil jetable (/tmp/steel-chrome).
+// (02/11, décision de Nico) PROFIL FRANÇAIS, cohérent avec l'IP française : l'essai tournait en en-US et en UTC (cause
+// probable de la glissière Leboncoin). Langue fr-FR (--lang : langue de Chrome et Intl), Accept-Language et
+// navigator.languages fr-FR, fr (préférence intl du profil, posée par steel avant le lancement), fuseau Europe/Paris
+// (TZ du processus Chrome : steel ne lui passe que HOME, TZ et DISPLAY).
 //
 // ⛔ TROIS VERROUS contre la fuite de l'IP du serveur vers une plateforme :
 //   1. steel-browser relance, au démarrage et après chaque session, un
@@ -42,10 +45,19 @@ export const ENV_ESSAI_0111 = Object.freeze([
   'SKIP_FINGERPRINT_INJECTION=true',
   'DISPLAY=:10',
   'FILTER_CHROME_ARGS=--disable-gpu --use-gl=swiftshader',
-  'CHROME_ARGS=--use-angle=swiftshader --enable-unsafe-swiftshader',
+  'CHROME_ARGS=--use-angle=swiftshader --enable-unsafe-swiftshader --lang=fr-FR',
   'HOST=0.0.0.0',
   'PORT=3000',
+  // (02/11) Le fuseau du navigateur au repos (et de toute session sans fuseau) : Europe/Paris, jamais UTC.
+  'DEFAULT_TIMEZONE=Europe/Paris',
 ]);
+// (02/11) Langue et fuseau de la session du compte (corpsSession) : français, Paris.
+export const LANGUES_PROFIL = 'fr-FR,fr';
+export const FUSEAU_PROFIL = 'Europe/Paris';
+/** L'empreinte du lancement (pure) : un conteneur lancé autrement (langue, fuseau, image) est recréé, profil gardé. */
+export function empreinteLancement(spec) {
+  return createHash('sha256').update(JSON.stringify([spec?.Image, spec?.Cmd, spec?.Env])).digest('hex').slice(0, 12);
+}
 
 /**
  * (01/11) « PARE-FEU AVANT LE NAVIGATEUR » : la preuve que deploiement/pare-feu-navigateurs.sh a tourné depuis CE
@@ -96,7 +108,8 @@ export function specConteneur({ config, user, profilId }) {
     // Verrou 1 : le navigateur « au repos » de steel garde son profil jetable (/tmp/steel-chrome) ; celui du compte
     // n'est ouvert que par une session « persist » (corpsSession), toujours créée avec le proxy.
     Env: [...ENV_ESSAI_0111],
-    Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId },
+    Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId,
+      'fillsell.lancement': empreinteLancement({ Image: config.imageNavigateur, Cmd: [LANCEMENT_AVEC_ECRAN], Env: [...ENV_ESSAI_0111] }) },
     HostConfig: {
       // Verrou 2 : le profil du compte, au seul chemin d'une session « persist ».
       Binds: [
@@ -124,7 +137,10 @@ export function corpsSession({ proxyUrl }) {
     headless: false,
     blockAds: false,                    // steel bloque les publicités par défaut, Steel loué non : l'essai les laissait
     extensions: [EXTENSION_NOM],
-    persist: true,                      // le profil du compte, sur le disque (verrou 2) — seul ajout à l'essai
+    persist: true,                      // le profil du compte, sur le disque (verrou 2)
+    // (02/11) Profil français : fuseau de Paris, langues fr-FR puis fr (préférences du profil, fusionnées par steel).
+    timezone: FUSEAU_PROFIL,
+    userPreferences: { intl: { accept_languages: LANGUES_PROFIL, selected_languages: LANGUES_PROFIL } },
   };
 }
 
@@ -163,6 +179,27 @@ export const DOMAINES_TOUJOURS_FERMES = Object.freeze([
   'ebay.fr', 'ebay.com', 'ebay.co.uk', 'ebay.de', 'ebay.it', 'ebay.es', 'ebay.be', 'ebay.nl', 'ebay.ch', 'ebay.at', 'ebay.ie',
   'opla.co',
 ]);
+/**
+ * (02/11) Une requête arrêtée par le verrou passe-t-elle quand même ? (pure : testée) Seulement si elle vient d'un cadre
+ * d'une page de résolution, et jamais vers eBay ni Opla.
+ */
+const plateformeDuDomaine = (hote) => Object.entries(DOMAINES_VERROU).find(([, ds]) => ds.some((d) => hote === d || hote.endsWith(`.${d}`)))?.[0] ?? null;
+export function requetePermise(h, params) {
+  let hote = '';
+  try { hote = new URL(String(params?.request?.url ?? '')).hostname.toLowerCase(); } catch { return false; }
+  if (DOMAINES_TOUJOURS_FERMES.some((d) => hote === d || hote.endsWith(`.${d}`))) return false;
+  const cadre = params?.frameId ? String(params.frameId) : '';
+  if (cadre) return Boolean(h?.cadresPermis?.has(cadre));
+  // Sans cadre : le service worker de la PLATEFORME elle-même (Depop en a un), le temps de SA résolution seulement —
+  // jamais l'extension (son origine est chrome-extension://), jamais une autre plateforme.
+  const pf = plateformeDuDomaine(hote);
+  if (!pf || ![...(h?.cadresPermis?.values() ?? [])].includes(pf)) return false;
+  const e = params?.request?.headers ?? {};
+  let origine = '';
+  try { origine = new URL(String(e.Origin ?? e.origin ?? e.Referer ?? e.referer ?? '')).hostname.toLowerCase(); } catch { return false; }
+  return plateformeDuDomaine(origine) === pf;
+}
+
 /** Les motifs d'interception des plateformes FERMÉES (pure : testée). eBay et Opla : toujours. */
 export function motifsVerrou(permises) {
   const ouvertes = new Set(plateformesVerrou(permises));
@@ -237,14 +274,17 @@ export function creerNavigateurs({ config, docker, journal }) {
   async function assurerConteneur(user, profilId) {
     const nom = nomConteneur(user);
     let c = await docker.inspecter(nom);
-    if (c && c.Config?.Labels?.['fillsell.profil'] !== profilId) {
-      // Le profil a changé (purge) : l'ancien conteneur ne sert plus jamais.
+    const spec = specConteneur({ config, user, profilId });
+    if (c && (c.Config?.Labels?.['fillsell.profil'] !== profilId || c.Config?.Labels?.['fillsell.lancement'] !== spec.Labels['fillsell.lancement'])) {
+      // Le profil a changé (purge), ou le lancement (02/11 : langue, fuseau) : l'ancien conteneur ne sert plus. Le
+      // profil du compte, sur le disque, reste.
+      await docker.arreter(nom).catch(() => {});
       await docker.supprimer(nom);
       c = null;
     }
     if (!c) {
       await mkdir(`${config.dossierProfils}/${profilId}`, { recursive: true });
-      await docker.creer(nom, specConteneur({ config, user, profilId }));
+      await docker.creer(nom, spec);
       c = await docker.inspecter(nom);
     }
     if (!c.State?.Running) {
@@ -320,11 +360,18 @@ export function creerNavigateurs({ config, docker, journal }) {
     });
     if (!r.ok) throw new Error(`steel : création de session → HTTP ${r.status}`);
     const cdp = await connecterCdp(`ws://${ip}:3000/`, { delaiAppelMs: 90_000 });
-    const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'steel', permises: plateformesVerrou(permises), bloquees: 0 };
+    const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'steel', permises: plateformesVerrou(permises), bloquees: 0,
+      cadresPermis: new Map() };   // (02/11) cadre d'une page de résolution → sa plateforme
     cdp.on((m) => {
       if (m.method === '__ferme__' && ouverts.get(user) === h) ouverts.delete(user);
       // (01/11) Le verrou : une requête vers une plateforme fermée (session du navigateur, sans sessionId) échoue.
+      // (02/11) Sauf celle d'une page de RÉSOLUTION (« Résoudre la vérification », essai des 24 h) : ses cadres, et
+      // eux seuls, joignent la plateforme en vérification — l'extension et ses onglets de travail, jamais.
       if (m.method === 'Fetch.requestPaused' && !m.sessionId) {
+        if (requetePermise(h, m.params)) {
+          cdp.send('Fetch.continueRequest', { requestId: m.params?.requestId }).catch(() => {});
+          return;
+        }
         h.bloquees++;
         cdp.send('Fetch.failRequest', { requestId: m.params?.requestId, errorReason: 'BlockedByClient' }).catch(() => {});
       }
@@ -409,5 +456,14 @@ export function creerNavigateurs({ config, docker, journal }) {
     return { profilsRestants: restants };
   }
 
-  return { ouvrir, fermer, detruire, permettre, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
+  /** (02/11) Un cadre (la page de résolution, ses sous-cadres) passe le verrou. Rend faux sans verrou par page (Chrome). */
+  function permettreCadre(user, cadre, plateforme) {
+    const h = ouverts.get(user);
+    if (!h || h.moteur !== 'steel' || !cadre || !DOMAINES_VERROU[plateforme]) return false;
+    h.cadresPermis.set(String(cadre), plateforme);
+    return true;
+  }
+  const retirerCadre = (user, cadre) => { ouverts.get(user)?.cadresPermis?.delete(String(cadre)); };
+
+  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
 }

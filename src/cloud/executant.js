@@ -105,3 +105,20 @@ export function phraseExecutant(e, { maintenant = Date.now(), lang = 'fr' } = {}
   }
   return { etat: 'en_pause', titre: en ? 'Paused: it starts again as soon as a task is waiting.' : "En pause : il repart dès qu'une tâche attend.", detail };
 }
+
+// (02/11, demande de Nico) « RÉSOUDRE LA VÉRIFICATION » : l'état d'une vérification anti-robot du navigateur Cloud, posé
+// par le serveur (serveur-cloud/src/verifications.js) dans platform_settings.<plateforme>.cloud_verification :
+//   'a_resoudre' (une glissière : le bouton « Résoudre la vérification »), 'restreint' (rien à résoudre : on attend),
+//   'revenue' (revenue juste après sa résolution : arrêtée, l'équipe regarde).
+const ETATS_VERIFICATION = new Set(['a_resoudre', 'restreint', 'revenue']);
+/**
+ * Les plateformes en vérification (pur) : seulement quand le Cloud exécute les tâches du compte (cloud_voie), dans l'ordre
+ * de l'écran « Me connecter ». Rend [{ id, nom, etat, depuis }].
+ */
+export function verificationsCloud({ cloudVoie, platformSettings, fermees = [], plateformes = PLATEFORMES_ECRAN }) {
+  if (cloudVoie !== true || !platformSettings || typeof platformSettings !== 'object') return [];
+  return plateformes.filter((p) => !fermees.includes(p.id)).map((p) => {
+    const v = platformSettings?.[p.id]?.cloud_verification;
+    return v && ETATS_VERIFICATION.has(v.etat) ? { id: p.id, nom: p.nom, etat: v.etat, depuis: v.depuis ?? null } : null;
+  }).filter(Boolean);
+}

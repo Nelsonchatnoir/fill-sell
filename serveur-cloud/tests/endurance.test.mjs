@@ -11,9 +11,9 @@ const CAPTCHA = (t, referer) => `https://geo.captcha-delivery.com/captcha/?initi
 const INTER = (referer) => `https://geo.captcha-delivery.com/interstitial/?initialCid=x&hash=y&referer=${encodeURIComponent(referer)}`;
 
 test('cadres DataDome : bloqué, glissière, vérification, et la plateforme du referer', () => {
-  assert.deepEqual(cadreDataDome(CAPTCHA('bv', 'https://www.leboncoin.fr/compte')), { nature: 'bloque', plateforme: 'leboncoin' });
-  assert.deepEqual(cadreDataDome(CAPTCHA('fe', 'https://www.beebs.app/fr/auth')), { nature: 'glissiere', plateforme: 'beebs' });
-  assert.deepEqual(cadreDataDome(INTER('https://www.leboncoin.fr/')), { nature: 'verification', plateforme: 'leboncoin' });
+  assert.deepEqual(cadreDataDome(CAPTCHA('bv', 'https://www.leboncoin.fr/compte')), { nature: 'bloque', plateforme: 'leboncoin', referer: 'https://www.leboncoin.fr/compte' });
+  assert.deepEqual(cadreDataDome(CAPTCHA('fe', 'https://www.beebs.app/fr/auth')), { nature: 'glissiere', plateforme: 'beebs', referer: 'https://www.beebs.app/fr/auth' }, '(02/11) le referer : la page à rouvrir pour résoudre');
+  assert.deepEqual(cadreDataDome(INTER('https://www.leboncoin.fr/')), { nature: 'verification', plateforme: 'leboncoin', referer: 'https://www.leboncoin.fr/' });
   assert.equal(cadreDataDome('https://www.leboncoin.fr/'), null, 'une page de la plateforme n\'est pas un cadre');
   assert.equal(cadreDataDome('https://js.datadome.co/tags.js'), null, 'le script DataDome chargé partout n\'est PAS un blocage (05/10)');
   assert.equal(cadreDataDome('nimporte quoi'), null);

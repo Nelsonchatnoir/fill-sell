@@ -29,6 +29,20 @@ const FR = {
   executantArreteTitre: (depuis) => (depuis ? `FillSell Cloud est arrêté (${depuis})` : 'FillSell Cloud est arrêté'),
   executantArreteTexte: (cause) => `${cause === 'muet' ? 'Ton exécutant ne donne plus signe de vie.' : cause === 'arret_essai' ? "Ton exécutant s'est arrêté sur une vérification anti-robot." : 'Ton exécutant ne tourne plus.'} Tes tâches du Cloud attendent : rien n'est publié ni retiré tant qu'il ne repart pas.`,
   plusTard: 'Plus tard',
+  // (02/11, demande de Nico) « Résoudre la vérification » : une vérification soluble à la main (glissière) dans le
+  // navigateur du Cloud — jamais « ouvre … dans ton navigateur » (c'est celui du Cloud, pas celui du téléphone). Et
+  // l'accès restreint SANS vérification : aucun bouton, on attend. Jamais un nom de plateforme écrit ici (paramètre).
+  resoudre: 'Résoudre la vérification',
+  verifEtat: { a_resoudre: 'Vérification à résoudre', restreint: 'Accès restreint : on attend', revenue: 'Arrêtée : on regarde' },
+  verifLigne: { a_resoudre: 'Elle demande une vérification au navigateur FillSell Cloud : tu la fais glisser, elle reprend toute seule.',
+    restreint: "Accès refusé sans vérification à faire : rien à faire de ton côté, FillSell refait un seul essai dans 24 h.",
+    revenue: "La vérification est revenue juste après : FillSell l'a arrêtée sans insister, l'équipe regarde." },
+  bandeauVerifTitre: (noms, etat) => { const l = listeNoms(noms).join(', ') || 'Une plateforme'; return etat === 'restreint' ? `${l} restreint l'accès de FillSell Cloud` : etat === 'revenue' ? `${l} est arrêtée sur FillSell Cloud` : `${l} demande une vérification`; },
+  bandeauVerifTexte: (noms, etat) => { const l = listeNoms(noms).join(', ') || 'cette plateforme'; return etat === 'restreint'
+    ? `${l} refuse l'accès sans vérification à faire : rien à faire de ton côté. FillSell attend et refait un seul essai dans 24 h ; tes autres plateformes continuent.`
+    : etat === 'revenue'
+      ? `La vérification est revenue juste après sa résolution : FillSell arrête ${l} sans insister, et l'équipe regarde. Rien à faire de ton côté ; tes autres plateformes continuent.`
+      : `Ton navigateur FillSell Cloud a reçu une vérification anti-robot. Appuie sur « Résoudre la vérification » et fais-la glisser : ${l} reprend tout seul. Seul ${l} est en pause, le reste continue.`; },
   ebayTitre: 'eBay',
   ebayTexte: "Par la connexion officielle d'eBay : tu ne donnes aucun mot de passe à FillSell.",
   ebayRelier: 'Relier eBay',
@@ -73,6 +87,17 @@ const EN = {
   executantArreteTitre: (depuis) => (depuis ? `FillSell Cloud has stopped (${depuis})` : 'FillSell Cloud has stopped'),
   executantArreteTexte: (cause) => `${cause === 'muet' ? 'Your runner has gone silent.' : cause === 'arret_essai' ? 'Your runner stopped on an anti-bot check.' : 'Your runner is no longer running.'} Your Cloud tasks are waiting: nothing is posted or removed until it starts again.`,
   plusTard: 'Later',
+  resoudre: 'Solve the check',
+  verifEtat: { a_resoudre: 'Check to solve', restreint: 'Access restricted: waiting', revenue: 'Stopped: we are looking into it' },
+  verifLigne: { a_resoudre: 'It asks the FillSell Cloud browser for a check: you slide it, it resumes on its own.',
+    restreint: 'Access refused with no check to solve: nothing to do on your side, FillSell tries once more in 24 h.',
+    revenue: 'The check came back right away: FillSell stopped it without insisting, the team is looking into it.' },
+  bandeauVerifTitre: (noms, etat) => { const l = listeNoms(noms).join(', ') || 'A platform'; return etat === 'restreint' ? `${l} restricts FillSell Cloud's access` : etat === 'revenue' ? `${l} is stopped on FillSell Cloud` : `${l} asks for a check`; },
+  bandeauVerifTexte: (noms, etat) => { const l = listeNoms(noms).join(', ') || 'this platform'; return etat === 'restreint'
+    ? `${l} refuses access with no check to solve: nothing to do on your side. FillSell waits and tries once more in 24 h; your other platforms keep going.`
+    : etat === 'revenue'
+      ? `The check came back right after it was solved: FillSell stops ${l} without insisting, and the team is looking into it. Nothing to do on your side; your other platforms keep going.`
+      : `Your FillSell Cloud browser got an anti-bot check. Tap "Solve the check" and slide it: ${l} resumes on its own. Only ${l} is paused, the rest keeps going.`; },
   ebayTitre: 'eBay',
   ebayTexte: "Through eBay's official sign-in: you never give FillSell a password.",
   ebayRelier: 'Link eBay',

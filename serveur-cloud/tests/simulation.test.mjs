@@ -116,6 +116,8 @@ function navigateurSimule() {
             return { result: { value: { own: stockage.fillsell_session_own ?? null, user: stockage.fillsell_last_user ?? null } } };
           }
           if (e.includes('location.hostname !==')) { page.lectures++; return { result: { value: page.lecture } }; }
+          // (02/11) L'état de la page lu sans réseau (« Résoudre la vérification ») : cadre DataDome présent ou non.
+          if (e.includes('captcha-delivery')) return { result: { value: page.etatPage ?? null } };
           return { result: { value: false } };
         }
         default: return {};
@@ -299,7 +301,7 @@ function brancherClient(s, plateforme = 'leboncoin') {
   s.connexions.brancher(ws, 'https://fillsell.app');
   const ticket = signerTicket({ user: U }, config.cleTickets);
   const dire = (m) => ws.ecouteurs.message(Buffer.from(JSON.stringify(m)), false);
-  return { ws, recus, dire, ouvrir: () => dire({ t: 'ouvrir', ticket, plateforme, largeur: 390, hauteur: 780, dpr: 3 }), etapes: () => recus.filter((m) => m.t === 'etat').map((m) => m.etape) };
+  return { ws, recus, dire, ouvrir: (extra = {}) => dire({ t: 'ouvrir', ticket, plateforme, largeur: 390, hauteur: 780, dpr: 3, ...extra }), etapes: () => recus.filter((m) => m.t === 'etat').map((m) => m.etape) };
 }
 const LBC = [{ name: '__Secure-Login', value: 'jeton', domain: '.leboncoin.fr', path: '/' }];
 
@@ -456,4 +458,89 @@ test('(01/11, 23:10) le signe de vie de l’exécutant : noté avec la sauvegard
   const avant = s.base.appels.filter(([n, a]) => n === 'cloud_poste_noter' && a.p_details?.vu).length;
   await s.postes.tour();   // moins de 10 min : rien
   assert.equal(s.base.appels.filter(([n, a]) => n === 'cloud_poste_noter' && a.p_details?.vu).length, avant);
+});
+
+// ── (02/11, demande de Nico) « RÉSOUDRE LA VÉRIFICATION » : la page du Cloud où la glissière s'affiche ─────────────────
+function fauxVerifications(blocages) {
+  const appels = [];
+  return { appels, blocageDe: (u, p) => blocages[p] ?? null,
+    rouvrir: async (u, p, o) => { appels.push(['rouvrir', p, o.par, o.preuve?.http]); delete blocages[p]; return true; },
+    revenue: async (u, p) => { appels.push(['revenue', p]); }, requalifier: async (u, p, n) => { appels.push(['requalifier', p, n]); },
+    sessionFermee: async (u, p) => { appels.push(['session_fermee', p]); } };
+}
+function monterResolution(blocages) {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const cadres = { permis: [], retires: [], plateformes: [] };
+  s.navigateurs.permettreCadre = (u, c) => { cadres.permis.push(c); return true; };
+  s.navigateurs.retirerCadre = (u, c) => { cadres.retires.push(c); };
+  s.navigateurs.permettre = async (u, l) => { cadres.plateformes.push(l); return { ok: true }; };
+  const v = fauxVerifications(blocages);
+  s.connexions = creerConnexions({ config, base: s.base, postes: s.postes, navigateurs: s.navigateurs, coffre: s.coffre, journal, verifications: v });
+  return { s, v, cadres };
+}
+
+test('(02/11) « Résoudre » : la page du compte s\'ouvre (seule à joindre Leboncoin), la personne glisse, UNE lecture confirme, Leboncoin repart', async () => {
+  const { s, v, cadres } = monterResolution({ leboncoin: { nature: 'glissiere', le: '2026-11-02T03:57:37Z', referer: 'https://api.leboncoin.fr/api/messaging-items-api/v3/conversations' } });
+  s.nav.poserCookies(LBC);
+  s.nav.page.etatPage = { hote: 'www.leboncoin.fr', pret: true, captcha: true, bloque: false, interstitiel: false };
+  s.nav.page.lecture = { http: 200, id: 'compte' };
+  const c = brancherClient(s);
+  await c.ouvrir({ mode: 'resoudre' });
+  await attendre(20);
+  const nav = s.nav.cdp.envoyes.find((e) => e.methode === 'Page.navigate');
+  assert.equal(nav.params.url, 'https://www.leboncoin.fr/compte/part/mes-annonces', 'refus sur une API : une page du compte, qui refait ses requêtes');
+  assert.deepEqual(cadres.permis, ['page-1'], 'seule CETTE page passe le verrou');
+  assert.deepEqual(cadres.plateformes, [], 'Leboncoin n\'est jamais rouvert au navigateur entier (ni à l\'extension) avant la preuve');
+  assert.ok(!s.base.t.cloud_connexions.length, 'rien au journal des connexions : ce n\'est pas une connexion');
+  await attendre(2200);
+  assert.ok(c.recus.some((m) => m.etape === 'info' && /fais glisser le curseur/.test(m.message)), c.etapes().join(','));
+  assert.equal(s.nav.page.lectures, 0, 'aucune requête tant que la glissière est là');
+  s.nav.page.etatPage = { ...s.nav.page.etatPage, captcha: false };    // la personne a glissé
+  await attendre(6300);
+  assert.equal(s.nav.page.lectures, 1, 'UNE lecture légère, après la glissière');
+  assert.deepEqual(v.appels, [['rouvrir', 'leboncoin', 'resoudre', 200]], 'la plateforme rouverte (coffre, verrou, blocage résolu)');
+  assert.ok(c.etapes().includes('resolu'), c.etapes().join(','));
+  await attendre(1700);
+  assert.ok(!s.connexions.connexionsOuvertes().has(U), 'la vue se ferme');
+  assert.ok(cadres.retires.includes('page-1'), 'l\'exception du verrou part avec la page');
+});
+
+test('(02/11) « Résoudre » : la vérification REVIENT après la glissière → on s\'arrête (aucune boucle), l\'équipe prévenue', async () => {
+  const { s, v } = monterResolution({ leboncoin: { nature: 'glissiere', le: '2026-11-02T03:57:37Z' } });
+  s.nav.poserCookies(LBC);
+  s.nav.page.etatPage = { hote: 'www.leboncoin.fr', pret: true, captcha: true, bloque: false, interstitiel: false };
+  s.nav.page.lecture = { http: 403, id: null };
+  const c = brancherClient(s);
+  await c.ouvrir({ mode: 'resoudre' });
+  await attendre(2200);
+  s.nav.page.etatPage = { ...s.nav.page.etatPage, captcha: false };
+  await c.dire({ t: 'termine' });                    // « J'ai fini » : la lecture part tout de suite
+  await attendre(30);
+  assert.equal(s.nav.page.lectures, 1);
+  assert.deepEqual(v.appels, [['revenue', 'leboncoin']]);
+  assert.ok(c.recus.some((m) => m.etape === 'revenue' && /sans insister/.test(m.message)), c.etapes().join(','));
+  await attendre(2300);
+  assert.equal(s.nav.page.lectures, 1, 'jamais une deuxième lecture : on ne boucle pas');
+  await attendre(400);
+  assert.ok(!s.connexions.connexionsOuvertes().has(U));
+});
+
+test('(02/11) « Résoudre » : bloqué sans glissière (t=bv) → « restreint », rien à glisser ; une plateforme sans vérification → « rien »', async () => {
+  const { s, v } = monterResolution({ beebs: { nature: 'glissiere', le: '2026-11-02T04:15:38Z', referer: 'https://www.beebs.app/#fillsell-worker' } });
+  s.nav.page.etatPage = { hote: 'www.beebs.app', pret: true, captcha: false, bloque: true, interstitiel: false };
+  const c = brancherClient(s, 'beebs');
+  await c.ouvrir({ mode: 'resoudre' });
+  await attendre(20);
+  assert.equal(s.nav.cdp.envoyes.find((e) => e.methode === 'Page.navigate').params.url, 'https://www.beebs.app/', 'la page de la vérification, sans l\'ancre de travail');
+  await attendre(2200);
+  assert.deepEqual(v.appels, [['requalifier', 'beebs', 'restreint']]);
+  assert.equal(s.nav.page.lectures, 0, 'aucune requête : DataDome dit lui-même qu\'il n\'y a rien à glisser');
+  assert.ok(c.recus.some((m) => m.etape === 'restreint' && /rien à glisser/.test(m.message)));
+  await attendre(2600);
+  const c2 = brancherClient(s, 'vinted');
+  const pages = s.nav.cdp.envoyes.filter((e) => e.methode === 'Target.createTarget').length;
+  await c2.ouvrir({ mode: 'resoudre' });
+  await attendre(20);
+  assert.deepEqual(c2.etapes(), ['rien'], 'Vinted n\'attend aucune vérification');
+  assert.equal(s.nav.cdp.envoyes.filter((e) => e.methode === 'Target.createTarget').length, pages, 'aucune page ouverte');
 });

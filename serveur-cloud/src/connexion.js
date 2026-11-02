@@ -24,8 +24,17 @@
 // serveur → client : JSON { t:'etat', etape, message? } · { t:'clavier', ouvert } ;
 //   binaire = une image JPEG (4 octets de numéro, puis l'image).
 //   (01/11) étapes : … · 'verifie' (compte lu, l'écran reste ouvert) · 'connecte' (final, après « J'ai fini »).
+//   (02/11) { t:'ouvrir', …, mode:'resoudre' } = « RÉSOUDRE LA VÉRIFICATION » : la page du navigateur Cloud où la
+//   plateforme en vérification (verifications.js, « a_resoudre ») montre sa glissière, dans cette même vue. La personne
+//   fait glisser ; la page est lue SANS réseau (cadre DataDome présent ou non), puis UNE lecture légère confirme l'accès
+//   rendu (au plus deux en tout, jamais en boucle). Étapes finales : 'resolu' · 'revenue' (l'accès reste refusé juste
+//   après la glissière : arrêtée, l'équipe prévenue) · 'restreint' (rien à glisser) · 'session_fermee' · 'rien'.
+//   Seule CETTE page joint la plateforme (exception du verrou par cadre, navigateur.js) ; jamais de résolution
+//   automatique.
 import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estConnectee, identifiantCompte,
-  retourDeclare, expressionLectureCompte, verdictLectureCompte } from './plateformes.js';
+  retourDeclare, expressionLectureCompte, verdictLectureCompte, expressionAcces, pageDeResolution, navigationResolution,
+  EXPRESSION_ETAT_PAGE } from './plateformes.js';
+import { etatVisible } from './verifications.js';
 import { verifierTicket } from './tickets.js';
 import { lireDansExtension } from './sessionFillsell.js';
 
@@ -40,6 +49,8 @@ export const LECTURE_COMPTE_MS = 5000;
 // désormais le retour de la personne autant que l'inactivité permise.
 export const REPRISE_MS = INACTIVITE_MS;
 export const ECHELLE_IMAGES_MAX = 2;
+// (02/11) « Résoudre » : sans glissière visible, une lecture refusée laisse ce temps à la page pour l'afficher.
+export const ATTENTE_GLISSIERE_MS = 10_000;
 // Garde anti-boucle des refus de navigation (05/10) : 5 refus en 20 s = arrêt.
 /**
  * (30/10) Une page appartient à « Me connecter » seulement si elle a été OUVERTE par la page de connexion (ou par une
@@ -101,6 +112,17 @@ export const MESSAGES = Object.freeze({
     expire: 'Fermé après un moment sans geste. Rouvre « Me connecter » quand tu veux.',
     erreur: 'La page de connexion ne répond pas. Réessaie dans un instant.',
     non_autorise: 'Reconnecte-toi à FillSell, puis réessaie.',
+    // (02/11) « Résoudre la vérification »
+    resoudreDemarrage: 'On ouvre la page de la vérification…',
+    resoudrePret: (nom) => `Page ${nom} ouverte dans ton navigateur FillSell Cloud. Si une vérification s'affiche, fais-la glisser : c'est tout.`,
+    glisser: (nom) => `${nom} demande une vérification : fais glisser le curseur jusqu'au bout. FillSell s'occupe du reste.`,
+    interstitiel: (nom) => `${nom} vérifie l'appareil : ça passe tout seul en quelques secondes.`,
+    verification: (nom) => `On vérifie que ${nom} répond de nouveau…`,
+    resolu: (nom) => `C'est réglé : ${nom} répond de nouveau. FillSell reprend ${nom} tout seul.`,
+    revenue: (nom) => `${nom} refuse encore l'accès juste après la vérification : FillSell arrête ${nom} ici, sans insister, et l'équipe regarde. Rien à faire de ton côté ; les autres plateformes continuent.`,
+    restreint: (nom) => `${nom} restreint l'accès sans vérification à faire : rien à glisser. FillSell attend et refait un seul essai dans 24 h ; les autres plateformes continuent.`,
+    session_fermee: (nom) => `Ta session ${nom} s'est fermée : reconnecte-toi avec « Me reconnecter ».`,
+    rien: (nom) => `Rien à résoudre : ${nom} n'attend aucune vérification.`,
   },
   en: {
     demarrage: 'Getting your sign-in page ready…',
@@ -118,10 +140,20 @@ export const MESSAGES = Object.freeze({
     expire: 'Closed after a while without activity. Open "Sign in" again whenever you like.',
     erreur: 'The sign-in page isn\'t responding. Try again in a moment.',
     non_autorise: 'Sign in to FillSell again, then retry.',
+    resoudreDemarrage: 'Opening the check page…',
+    resoudrePret: (nom) => `${nom} page open in your FillSell Cloud browser. If a check shows up, slide it: that's all.`,
+    glisser: (nom) => `${nom} asks for a check: slide the handle all the way. FillSell takes care of the rest.`,
+    interstitiel: (nom) => `${nom} is checking the device: it clears on its own in a few seconds.`,
+    verification: (nom) => `Checking that ${nom} answers again…`,
+    resolu: (nom) => `Done: ${nom} answers again. FillSell resumes ${nom} on its own.`,
+    revenue: (nom) => `${nom} still refuses access right after the check: FillSell stops ${nom} here without insisting, and the team is looking into it. Nothing to do on your side; the other platforms keep going.`,
+    restreint: (nom) => `${nom} restricts access with no check to solve: nothing to slide. FillSell waits and tries once more in 24 h; the other platforms keep going.`,
+    session_fermee: (nom) => `Your ${nom} session closed: sign in again with "Sign in again".`,
+    rien: (nom) => `Nothing to solve: ${nom} isn't waiting for any check.`,
   },
 });
 
-export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null }) {
+export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null, verifications = null }) {
   const actives = new Map(); // user → vue
 
   async function compteServi(user) {
@@ -168,15 +200,23 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           const compte = await compteServi(user);
           if (!compte) { envoyer({ t: 'etat', etape: 'inactif', message: txt.inactif }); return ws.close(4403); }
           const dims = { largeur: borne(m.largeur, 280, 540), hauteur: borne(m.hauteur, 420, 1000), dpr: borne(m.dpr, 1, 3) };
+          // (02/11) « Résoudre » : seulement une plateforme dont la vérification est À RÉSOUDRE (sinon, ce qui en est).
+          const mode = m.mode === 'resoudre' ? 'resoudre' : 'connexion';
+          const blocage = mode === 'resoudre' ? (verifications?.blocageDe(user, m.plateforme) ?? null) : null;
+          if (mode === 'resoudre' && (!blocage || etatVisible(blocage.nature) !== 'a_resoudre')) {
+            const ev = blocage ? etatVisible(blocage.nature) : 'rien';
+            envoyer({ t: 'etat', etape: ev, message: txt[ev](DEFINITIONS[m.plateforme].nom) });
+            return ws.close(1000);
+          }
           const ancienne = actives.get(user);
           // (01/11) Le même « Me connecter » rouvert (retour dans l'app après un SMS, un courriel) : la page reprend.
-          if (ancienne?.reprenable(m.plateforme)) {
+          if (ancienne?.reprenable(m.plateforme, mode)) {
             vue = ancienne;
             await vue.reprendre({ ws, envoyer, lang, ...dims });
             return;
           }
           if (ancienne) { ancienne.fermer('remplacee'); envoyer({ t: 'etat', etape: 'info', message: txt.occupe }); }
-          vue = creerVue({ user, compte, plateforme: m.plateforme, lang, ws, envoyer, ...dims, origine });
+          vue = creerVue({ user, compte, plateforme: m.plateforme, lang, ws, envoyer, ...dims, origine, mode, blocage });
           actives.set(user, vue);
           await vue.demarrer();
         } catch (e) {
@@ -192,8 +232,13 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     ws.on('close', () => { clearTimeout(attenteOuverture); vue?.clientParti(ws); });
   }
 
-  function creerVue({ user, compte, plateforme, lang, ws, envoyer, largeur, hauteur, dpr }) {
+  function creerVue({ user, compte, plateforme, lang, ws, envoyer, largeur, hauteur, dpr, mode = 'connexion', blocage = null }) {
     const def = DEFINITIONS[plateforme];
+    // (02/11) « Résoudre la vérification » : la page où la vérification s'affiche, et elle seule joint la plateforme.
+    const resoudre = mode === 'resoudre';
+    const pageDepart = resoudre ? pageDeResolution(plateforme, blocage) : def.pageConnexion;
+    let cadreExcepte = false;
+    const cadres = new Set();
     let txt = MESSAGES[lang];
     // (01/11) Le canal vers le téléphone change quand la personne revient (reprendre) ; null = parti, page en attente.
     let canal = { ws, envoyer };
@@ -278,7 +323,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           retours.push(r);
           journal.info('connexion_retour_declare', { user, plateforme, vers: `${r.hote}${r.chemin}`.slice(0, 160) });
         }
-        if (!principal || navigationPermise(plateforme, url, retours)) {
+        if (!principal || (resoudre ? navigationResolution(plateforme, url) : navigationPermise(plateforme, url, retours))) {
           return cdp.send('Fetch.continueRequest', { requestId: p.requestId }, m.sessionId).catch(() => {});
         }
         journal.info('connexion_navigation_refusee', { user, plateforme, vers: urlPourJournal(url) });
@@ -298,8 +343,13 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           return fermer('boucle');
         }
         etat('info', txt.bloquee);
-        if (c === cible) await cdp.send('Page.navigate', { url: def.pageConnexion }, cible.sessionId).catch(() => {});
+        if (c === cible) await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {});
         else await cdp.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
+        return;
+      }
+      if (resoudre && cadreExcepte && m.method === 'Page.frameAttached' && m.sessionId === cible?.sessionId && p.frameId) {
+        cadres.add(String(p.frameId));
+        navigateurs.permettreCadre?.(user, p.frameId, plateforme);
         return;
       }
       if (m.method === 'Page.javascriptDialogOpening') {
@@ -309,6 +359,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           && ouverteParLaConnexion(p.targetInfo, [cible?.targetId, ...fenetres.map((f) => f.targetId)])) {
         const sessionId = await cdp.send('Target.attachToTarget', { targetId: p.targetInfo.targetId, flatten: true }).then((r) => r.sessionId).catch(() => null);
         if (!sessionId) return;
+        // (02/11) Résoudre : aucune fenêtre (rien à suivre : la vérification vit dans la page).
+        if (resoudre) { await cdp.send('Target.closeTarget', { targetId: p.targetInfo.targetId }).catch(() => {}); return; }
         const f = { targetId: p.targetInfo.targetId, sessionId };
         fenetres.push(f);
         await preparerCible(f).catch(() => {});
@@ -388,6 +440,74 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       etat('verifie', txt.verifie(def.nom));
     }
 
+    // (02/11) « RÉSOUDRE LA VÉRIFICATION » : la page lue SANS réseau toutes les 2 s ; la lecture d'accès (une requête
+    // légère) ne part que la glissière faite — ou, sans glissière visible, une fois, pour savoir si l'accès est rendu ou
+    // si la page va l'afficher. Au plus deux lectures en tout, jamais de boucle.
+    const res = { vuCaptcha: false, sansCadreDepuis: null, lectures: 0, attenteJusqua: null, dernierHttp: null, enLecture: false, conclu: null };
+    async function verifierResolution(manuel = false) {
+      if (finie || res.conclu || res.enLecture || !cible) return;
+      if (Date.now() - debut > DUREE_MAX_MS || Date.now() - dernierGeste > INACTIVITE_MS) {
+        etat('expire', txt.expire);
+        return fermer('expiree');
+      }
+      const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_ETAT_PAGE, returnByValue: true }, cible.sessionId).catch(() => null);
+      const e = r?.result?.value;
+      if (!e || res.conclu || finie) return;
+      if (e.bloque) return conclure('restreint', { motif: 'datadome_bloque' });
+      if (e.captcha) {
+        res.sansCadreDepuis = null; res.attenteJusqua = null;
+        if (!res.vuCaptcha) { res.vuCaptcha = true; journal.info('resolution_glissiere_vue', { user, plateforme }); }
+        avis('glisser', txt.glisser(def.nom));
+        return;
+      }
+      if (e.interstitiel) { res.sansCadreDepuis = null; avis('interstitiel', txt.interstitiel(def.nom)); return; }
+      if (!manuel && (!e.pret || e.hote !== def.hoteSite)) return;     // la page charge, ou revient sur le site
+      if (res.attenteJusqua) {
+        if (Date.now() < res.attenteJusqua) return;
+        return conclure('restreint', { motif: 'refus_sans_glissiere', http: res.dernierHttp });
+      }
+      res.sansCadreDepuis ??= Date.now();
+      if (!manuel && Date.now() - res.sansCadreDepuis < (res.vuCaptcha ? 2500 : 4000)) return;
+      if (res.lectures >= 2) return;
+      res.lectures++;
+      res.enLecture = true;
+      avis(`lecture${res.lectures}`, txt.verification(def.nom));
+      const lu = await cdp.send('Runtime.evaluate', { expression: expressionAcces(plateforme), awaitPromise: true, returnByValue: true }, cible.sessionId).catch(() => null);
+      res.enLecture = false;
+      const v = verdictLectureCompte(lu?.result?.value);
+      journal.info('resolution_lecture', { user, plateforme, n: res.lectures, http: v.http, motif: v.motif, glissiere: res.vuCaptcha });
+      if (v.ok) return conclure('resolu', v);
+      if (v.motif === 'hors_site') { res.lectures--; return; }          // la page changeait d'adresse : rien n'est parti
+      if (['sans_jeton', 'sans_session', 'anonyme'].includes(v.motif) || v.http === 401) return conclure('session_fermee', v);
+      if (res.vuCaptcha || res.lectures >= 2) return conclure('revenue', v);
+      // Refusée sans glissière visible : l'anti-robot l'affiche peut-être maintenant (la page a reçu son refus).
+      res.dernierHttp = v.http;
+      res.attenteJusqua = Date.now() + ATTENTE_GLISSIERE_MS;
+      res.sansCadreDepuis = null;
+    }
+
+    async function conclure(issue, v = {}) {
+      if (res.conclu || finie) return;
+      res.conclu = issue;
+      clearInterval(sonde);
+      let fin = issue;
+      try {
+        if (issue === 'resolu') {
+          const { cookies } = await cdp.send('Storage.getCookies');
+          if (!estConnectee(cookies, plateforme)) fin = 'session_fermee';
+          else await verifications?.rouvrir(user, plateforme, { cookies, preuve: { le: new Date().toISOString(), http: v.http }, par: 'resoudre' });
+        }
+        if (fin === 'revenue') await verifications?.revenue(user, plateforme, `après la glissière : ${v.motif ?? v.http ?? '?'}`);
+        if (fin === 'restreint') await verifications?.requalifier(user, plateforme, 'restreint', `page rouverte : ${v.motif ?? 'refus'}`);
+        if (fin === 'session_fermee') await verifications?.sessionFermee(user, plateforme);
+      } catch (e) { journal.alerte('resolution_issue_echec', { user, plateforme, issue: fin, erreur: e.message }); }
+      res.conclu = fin;
+      journal.info('resolution_issue', { user, plateforme, issue: fin, http: v.http ?? null, motif: v.motif ?? null, glissiere: res.vuCaptcha,
+        lectures: res.lectures, duree_s: Math.round((Date.now() - debut) / 1000) });
+      etat(fin, txt[fin](def.nom));
+      setTimeout(() => fermer(`resolution_${fin}`), fin === 'resolu' ? 1500 : 2500);
+    }
+
     let terminee = false;
     function terminer() {
       if (finie || terminee) return;
@@ -417,30 +537,44 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     }
 
     async function demarrer() {
-      etat('demarrage', txt.demarrage);
-      // (01/11) Une ligne refusée par la base (Depop absent de la contrainte de cloud_connexions, 01/11) se DIT.
-      const { data: ligne, error } = await base.from('cloud_connexions').insert({ user_id: user, plateforme, statut: 'ouverte' }).select('id').maybeSingle();
-      if (error) journal.alerte('connexion_journal_echec', { user, plateforme, erreur: error.message });
-      ligneJournal = ligne?.id ?? null;
+      etat('demarrage', resoudre ? txt.resoudreDemarrage : txt.demarrage);
+      if (!resoudre) {
+        // (01/11) Une ligne refusée par la base (Depop absent de la contrainte de cloud_connexions, 01/11) se DIT.
+        const { data: ligne, error } = await base.from('cloud_connexions').insert({ user_id: user, plateforme, statut: 'ouverte' }).select('id').maybeSingle();
+        if (error) journal.alerte('connexion_journal_echec', { user, plateforme, erreur: error.message });
+        ligneJournal = ligne?.id ?? null;
+      }
       let h = navigateurs.ouvert(user);
-      if (!h) h = await postes.ouvrir(user, compte, 'connexion');
+      if (!h) h = await postes.ouvrir(user, compte, resoudre ? 'resolution' : 'connexion');
       // (30/10, règle de Nico) Le verrou du relais : la plateforme de CE « Me connecter » devient joignable, en plus des
       // connectées, AVANT toute navigation ; une fermeture sans connexion la referme (fermer).
-      permisesAvant = [...(h.permises ?? compte?.plateformes_connectees ?? [])];
-      await navigateurs.permettre?.(user, [...permisesAvant, plateforme]);
+      // (02/11) Résoudre : la plateforme reste fermée au navigateur ; seule la page de résolution passe (plus bas).
+      if (!resoudre) {
+        permisesAvant = [...(h.permises ?? compte?.plateformes_connectees ?? [])];
+        await navigateurs.permettre?.(user, [...permisesAvant, plateforme]);
+      }
       cdp = h.cdp;
       arreterEcoute = cdp.on((m) => { surEvenement(m).catch(() => {}); });
       await cdp.send('Target.setDiscoverTargets', { discover: true });
       const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank', newWindow: true });
       const sessionId = await cdp.send('Target.attachToTarget', { targetId, flatten: true }).then((r) => r.sessionId);
       cible = { targetId, sessionId };
+      if (resoudre) {
+        cadreExcepte = navigateurs.permettreCadre?.(user, targetId, plateforme) === true;
+        if (!cadreExcepte) {   // moteur sans exception par page (Chrome) : la plateforme s'ouvre le temps de la résolution
+          permisesAvant = [...(h.permises ?? [])];
+          await navigateurs.permettre?.(user, [...permisesAvant, plateforme]);
+        }
+      }
       await preparerCible(cible);
       await diffuser(cible);
-      await cdp.send('Page.navigate', { url: def.pageConnexion }, sessionId);
+      await cdp.send('Page.navigate', { url: pageDepart }, sessionId);
       await cdp.send('Page.bringToFront', {}, sessionId).catch(() => {});
-      etat('pret', txt.pret);
-      sonde = setInterval(() => { verifierConnexion().catch((e) => journal.alerte('connexion_sonde_echec', { erreur: e.message })); }, SONDE_MS);
-      journal.info('connexion_ouverte', { user, plateforme });
+      etat('pret', resoudre ? txt.resoudrePret(def.nom) : txt.pret);
+      sonde = setInterval(() => {
+        (resoudre ? verifierResolution() : verifierConnexion()).catch((e) => journal.alerte('connexion_sonde_echec', { erreur: e.message }));
+      }, SONDE_MS);
+      journal.info(resoudre ? 'resolution_ouverte' : 'connexion_ouverte', { user, plateforme, ...(resoudre ? { page: urlPourJournal(pageDepart), nature: blocage?.nature ?? null } : {}) });
     }
 
     async function geste(m, depuis) {
@@ -476,7 +610,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         fileClavier = passe.catch(() => {});
         return passe;
       }
-      if (m.t === 'termine') return verifierConnexion(true);
+      if (m.t === 'termine') return resoudre ? verifierResolution(true) : verifierConnexion(true);
       if (m.t === 'fermer') return fermer('client');
     }
 
@@ -512,7 +646,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     }
 
     /** (01/11) Le même « Me connecter » rouvert pendant l'attente (ou pendant qu'il tourne : un autre écran) : il reprend. */
-    const reprenable = (p) => !finie && p === plateforme && Boolean(cible);
+    const reprenable = (p, md = 'connexion') => !finie && p === plateforme && (md === 'resoudre') === resoudre && Boolean(cible);
     async function reprendre({ ws: w, envoyer: e, lang: l, largeur: lg, hauteur: ht, dpr: d }) {
       clearTimeout(attenteRetour); attenteRetour = null;
       const ancien = canal?.ws;
@@ -527,7 +661,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       await diffuser(active ?? cible).catch(() => {});
       journal.info('connexion_reprise', { user, plateforme, connectee });
       dire({ t: 'etat', etape: 'pret', message: txt.reprise });
-      if (connectee) dire({ t: 'etat', etape: 'verifie', message: txt.verifie(def.nom) });
+      if (resoudre) { if (derniereEtape.etape !== 'pret') dire({ t: 'etat', etape: derniereEtape.etape, message: derniereEtape.message }); }
+      else if (connectee) dire({ t: 'etat', etape: 'verifie', message: txt.verifie(def.nom) });
       else if (derniereEtape.etape === 'info' && dernierAvis) dire({ t: 'etat', etape: 'info', message: derniereEtape.message });
     }
 
@@ -551,7 +686,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       // (30/10) Sans connexion, la plateforme redevient fermée ; connectée, elle reste joignable (son coffre fait foi).
       // (01/11) Et la demi-session de cette plateforme (cookies d'une connexion jamais vérifiée) part du profil — sauf si
       // elle était déjà connectée avant ce « Me connecter » (« Reconnecter » abandonné : sa connexion reste).
-      if (!connectee && permisesAvant) {
+      // (02/11) Résoudre : l'exception du verrou part avec la page ; sans elle (Chrome), la plateforme se referme si
+      // elle n'a pas été rouverte. Aucune purge : la session de la plateforme en vérification est gardée.
+      if (resoudre) {
+        if (cadreExcepte) for (const c of [cible?.targetId, ...cadres]) if (c) navigateurs.retirerCadre?.(user, c);
+        if (!cadreExcepte && permisesAvant && res.conclu !== 'resolu') {
+          Promise.resolve().then(() => navigateurs.permettre?.(user, permisesAvant))
+            .catch((e) => journal.alerte('verrou_retour_echec', { user, plateforme, erreur: e.message }));
+        }
+      } else if (!connectee && permisesAvant) {
         const etaitConnectee = permisesAvant.includes(plateforme);
         Promise.resolve().then(() => navigateurs.permettre?.(user, permisesAvant))
           .then(() => (etaitConnectee ? 0 : postes.purgerPlateforme?.(user, plateforme)))

@@ -8,10 +8,12 @@
 // navigation libre (c'est le serveur qui refuse tout le reste).
 // Les doigts deviennent des gestes, le clavier du téléphone du texte.
 //
-// ouvrirConnexion({ url, jeton | ticket, plateforme, conteneur, lang, surEtat })
+// ouvrirConnexion({ url, jeton | ticket, plateforme, conteneur, lang, surEtat, mode })
+//   (02/11) mode 'resoudre' : « Résoudre la vérification » — la page du navigateur Cloud où la glissière s'affiche.
 //   → { fermer(), ecrire(), termine() }
 // surEtat(etape, message) : 'demarrage' | 'pret' | 'info' | 'connecte' | 'refuse' |
 //   'inactif' | 'non_autorise' | 'expire' | 'erreur' | 'ferme' | 'clavier' (message = true/false)
+//   (02/11) résoudre : 'resolu' | 'revenue' | 'restreint' | 'session_fermee' | 'rien' (finales).
 
 // ── (01/11, Nico : « la touche effacer ne marche pas dans Écrire ») ─────────────────────────────────────────────────
 // Le champ caché qui porte le clavier était VIDE : sur iPhone, effacer dans un champ vide n'émet AUCUN événement —
@@ -54,7 +56,7 @@ export function messageSaisie(inputType, data, coller = '') {
   return { annuler: true, message: null };   // mise en forme, annuler/rétablir… : rien (le champ ne change pas)
 }
 
-export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, conteneur, lang = 'fr', surEtat = () => {} }) {
+export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, conteneur, lang = 'fr', surEtat = () => {}, mode = null }) {
   const doc = conteneur.ownerDocument;
   const largeur = Math.max(280, Math.min(540, Math.round(conteneur.clientWidth)));
   const hauteur = Math.max(420, Math.min(1000, Math.round(conteneur.clientHeight)));
@@ -87,7 +89,7 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
   let ferme = false;
   const envoyer = (o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 
-  ws.addEventListener('open', () => envoyer({ t: 'ouvrir', jeton, ticket, plateforme, largeur, hauteur, dpr, lang }));
+  ws.addEventListener('open', () => envoyer({ t: 'ouvrir', jeton, ticket, plateforme, largeur, hauteur, dpr, lang, ...(mode === 'resoudre' ? { mode } : {}) }));
   ws.addEventListener('message', async (ev) => {
     if (typeof ev.data === 'string') {
       let m; try { m = JSON.parse(ev.data); } catch { return; }

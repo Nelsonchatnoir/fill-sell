@@ -9,10 +9,16 @@
 // au retour sur l'app (focus, onglet visible) et à la fermeture de « Me connecter » — jamais en boucle.
 // (01/11, 23:10, demande de Nico) Et L'EXÉCUTANT ARRÊTÉ se dit aussi (22:57 → 23:05 : arrêté sans que l'app le sache) :
 // cloud_executant_moi, executantArrete (éteint, arrêt de l'essai, ou muet depuis plus de 25 min) — avant les plateformes.
+// (02/11, demande de Nico) UNE VÉRIFICATION ANTI-ROBOT du navigateur Cloud se dit à part, avec le bon geste
+// (platform_settings.<plateforme>.cloud_verification, verificationsCloud) : soluble à la main → « Résoudre la
+// vérification » ouvre ICI la page du Cloud où elle s'affiche (la vue de « Me connecter », mode 'resoudre') ; accès
+// restreint sans vérification, ou vérification revenue → aucun bouton, on attend. Jamais « ouvre … dans ton navigateur ».
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
-import { plateformesAReconnecter, executantArrete, quandParis } from './executant';
+import { plateformesAReconnecter, executantArrete, quandParis, verificationsCloud } from './executant';
+import { Vue } from './MeConnecterCloud';
 import { textesConnexion } from './textesConnexion';
 import { C, BLANC, DEGRADE_TEAL, POLICE } from './theme';
 
@@ -24,6 +30,8 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
   const T = textesConnexion(lang);
   const [aRefaire, setARefaire] = useState([]);
   const [arret, setArret] = useState(null);
+  const [verifs, setVerifs] = useState([]);
+  const [resolution, setResolution] = useState(null);   // la plateforme dont la page de vérification est ouverte
   const [masque, setMasque] = useState(false);
   // Une clé stable : un tableau neuf à chaque rendu d'App ne doit jamais relancer une lecture.
   const fermeesCle = (plateformesFermees ?? []).join(',');
@@ -32,15 +40,19 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
     if (!userId) return;
     try {
       const [{ data: p }, { data: etats, error }, { data: executant, error: errExec }] = await Promise.all([
-        supabase.from('profiles').select('cloud_voie').eq('id', userId).maybeSingle(),
+        supabase.from('profiles').select('cloud_voie, platform_settings').eq('id', userId).maybeSingle(),
         supabase.rpc('cloud_coffre_etat_moi'),
         supabase.rpc('cloud_executant_moi'),
       ]);
       const a = errExec ? null : executantArrete({ cloudVoie: p?.cloud_voie === true, executant });
       // L'heure se met en mots à la LECTURE (jamais pendant le rendu).
       setArret(a ? { ...a, depuisTexte: a.depuis ? quandParis(a.depuis, Date.now(), lang) : null } : null);
+      const fermees = fermeesCle ? fermeesCle.split(',') : [];
+      const v = verificationsCloud({ cloudVoie: p?.cloud_voie === true, platformSettings: p?.platform_settings ?? null, fermees, plateformes: CLOUD_PLATEFORMES_CONNEXION });
+      setVerifs(v);
       if (error) return;
-      setARefaire(plateformesAReconnecter({ cloudVoie: p?.cloud_voie === true, etats, fermees: fermeesCle ? fermeesCle.split(',') : [],
+      // Une plateforme en vérification a SON bandeau (ci-dessous) : jamais aussi « déconnectée ».
+      setARefaire(plateformesAReconnecter({ cloudVoie: p?.cloud_voie === true, etats, fermees: [...fermees, ...v.map((x) => x.id)],
         plateformes: CLOUD_PLATEFORMES_CONNEXION }));
     } catch { /* illisible : rien d'affiché, jamais un état deviné */ }
   }, [userId, fermeesCle, lang]);
@@ -57,7 +69,12 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
     return () => { window.removeEventListener('focus', auRetour); document.removeEventListener('visibilitychange', auRetour); };
   }, [relire]);
 
-  if (ouvert || masque || (!aRefaire.length && !arret)) return null;
+  if (resolution) {
+    const vue = <Vue userId={userId} plateforme={resolution.id} nom={resolution.nom} lang={lang} mode="resoudre"
+      onFermer={() => { setResolution(null); relire(); }} />;
+    return typeof document === 'undefined' ? vue : createPortal(vue, document.body);
+  }
+  if (ouvert || masque || (!aRefaire.length && !arret && !verifs.length)) return null;
   const noms = aRefaire.map((p) => p.nom);
   if (arret) {
     return (
@@ -69,6 +86,29 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
         <div style={{ fontWeight: 700, color: C.ink, fontSize: 14.5 }}>{T.executantArreteTitre(arret.depuisTexte)}</div>
         <div style={{ fontSize: 13, color: C.mute2, marginTop: 4, lineHeight: 1.4 }}>{T.executantArreteTexte(arret.cause)}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button type="button" onClick={() => setMasque(true)} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 11, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600, fontSize: 14 }}>{T.plusTard}</button>
+        </div>
+      </div>
+    );
+  }
+  if (verifs.length) {
+    // À résoudre d'abord (un geste possible) ; sinon ce qui attend sans geste.
+    const aResoudre = verifs.filter((v) => v.etat === 'a_resoudre');
+    const etat = aResoudre.length ? 'a_resoudre' : verifs[0].etat;
+    const concernees = aResoudre.length ? aResoudre : verifs.filter((v) => v.etat === etat);
+    const nomsV = concernees.map((v) => v.nom);
+    return (
+      <div role="status" aria-live="polite" data-cloud-verification={etat} style={{
+        position: 'fixed', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom) + 84px)', zIndex: 1050,
+        maxWidth: 540, margin: '0 auto', padding: '12px 14px', borderRadius: 14, background: BLANC,
+        border: `1px solid ${C.amber}`, boxShadow: '0 6px 24px rgba(16,32,27,.14)', fontFamily: POLICE,
+      }}>
+        <div style={{ fontWeight: 700, color: C.ink, fontSize: 14.5 }}>{T.bandeauVerifTitre(nomsV, etat)}</div>
+        <div style={{ fontSize: 13, color: C.mute2, marginTop: 4, lineHeight: 1.4 }}>{T.bandeauVerifTexte(nomsV, etat)}</div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          {etat === 'a_resoudre' && (
+            <button type="button" data-cloud-bouton="resoudre" onClick={() => setResolution(concernees[0])} style={{ flex: 1, minHeight: 40, borderRadius: 11, border: 'none', background: DEGRADE_TEAL, color: BLANC, fontWeight: 700, fontSize: 14 }}>{T.resoudre}</button>
+          )}
           <button type="button" onClick={() => setMasque(true)} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 11, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600, fontSize: 14 }}>{T.plusTard}</button>
         </div>
       </div>

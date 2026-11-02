@@ -23,6 +23,7 @@ import { creerEntretien } from './entretien.js';
 import { chargerRegles } from './regles.js';
 import { creerGardeSocle } from './socle.js';
 import { creerEndurance } from './endurance.js';
+import { creerVerifications } from './verifications.js';
 
 const config = lireConfig();
 const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -41,15 +42,23 @@ let connexions = null;
 let endurance = null;
 const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp,
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), arretEndurance: () => endurance?.arretee() ?? null });
+// (02/11) Les vérifications anti-robot : une règle du PRODUIT, toujours active (verifications.js) — un blocage n'arrête
+// que sa plateforme ; « Résoudre la vérification » la rouvre ; l'essai de 48 h en garde seulement le journal.
+const verifications = creerVerifications({ config, base, navigateurs, postes, coffre, journal, alertes,
+  connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
 // (01/11) Une connexion vérifiée (compte lu) est notée dans le journal de l'essai de 48 h : ses heures partent de là.
-connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal,
-  surVerifiee: (e) => { endurance?.connexionVerifiee(e).catch(() => {}); } });
+// (02/11) Et elle rouvre sa plateforme si elle était en vérification (verifications.resolue, par l'essai ou sans lui).
+connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal, verifications,
+  surVerifiee: (e) => {
+    if (endurance) endurance.connexionVerifiee(e).catch(() => {});
+    else verifications.resolue(e.user, e.plateforme, { par: 'connexion', le: e.le }).catch(() => {});
+  } });
 const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp });
 // (01/11) L'essai de 48 h (ENDURANCE=1) : mesures toutes les 10 min, arrêt au premier blocage.
 if (config.endurance) {
-  endurance = creerEndurance({ config, base, docker, navigateurs, postes, journal, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
+  endurance = creerEndurance({ config, base, docker, navigateurs, postes, journal, verifications, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
   await endurance.charger();
-}
+} else await verifications.charger();
 const serveur = creerServeur({ config, connexions, navigateurs, journal, dossierPublic: fileURLToPath(new URL('../public', import.meta.url)) });
 
 // Le réseau des navigateurs (le pare-feu de l'hôte filtre br-fillsell).
@@ -93,7 +102,8 @@ async function tourEntretien() {
 
 const t1 = setInterval(tourPlanificateur, config.tickPlanificateurS * 1000);
 const t2 = setInterval(tourEntretien, config.tickEntretienMin * 60_000);
-const t3 = endurance ? setInterval(() => endurance.releveCadres().catch((e) => journal.alerte('endurance_cadres_echec', { erreur: e.message })), 60_000) : null;
+// (02/11) Chaque minute, essai ou pas : les cadres DataDome, les pauses de l'app, l'essai des 24 h d'un accès restreint.
+const t3 = setInterval(() => (endurance ? endurance.releveCadres() : verifications.releve()).catch((e) => journal.alerte('verifications_releve_echec', { erreur: e.message })), 60_000);
 const t4 = endurance ? setInterval(() => endurance.mesure().catch((e) => journal.alerte('endurance_mesure_echec', { erreur: e.message })), 10 * 60_000) : null;
 if (endurance) setTimeout(() => endurance.mesure().catch(() => {}), 120_000);
 setTimeout(tourPlanificateur, 5_000);

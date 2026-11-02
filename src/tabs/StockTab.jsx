@@ -5812,6 +5812,16 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
             })}
           </div>
         )}
+        {/* (02/11, décision de Nico — « 4 republications sans eBay, mon erreur de bouton ? ») eBay n'est jamais
+            republiée (garde-fou du 17/09, PLATEFORMES_REPUBLIABLES) : quand l'annonce y est en ligne, la feuille le DIT. */}
+        {items.some((i) => i.surEbay) && (
+          <div data-repub-ebay="" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px', marginBottom: 12, fontSize: 12, color: '#5C6560', lineHeight: 1.45 }}>
+            <PlatformLogo platform="ebay" size={14} />
+            <span>{solo || items.filter((i) => i.surEbay).length === 1
+              ? (fr ? 'eBay : ton annonce reste en ligne telle quelle.' : 'eBay: your listing stays live as it is.')
+              : (fr ? 'eBay : tes annonces restent en ligne telles quelles.' : 'eBay: your listings stay live as they are.')}</span>
+          </div>
+        )}
         {solo && cochee('vinted') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 13, color: '#5C6560', fontWeight: 600 }}>
@@ -6602,6 +6612,8 @@ const StockTab = memo(function StockTab({
         // Les plateformes republiables MAINTENANT pour cet article (Vinted
         // seul tant que l'interrupteur serveur est à 0).
         plateformes: plateformesRepubliables(it, jobsByInventaire[it.id] || [], { multiOuverte, plateformesOuvertes, plateformesFermees }),
+        // (02/11, décision de Nico) En ligne sur eBay : la feuille dit qu'eBay ne bouge pas (jamais republiée).
+        surEbay: computeRemovalInfo(jobsByInventaire[it.id] || []).publishedActive.includes('ebay'),
       })),
     });
   }
