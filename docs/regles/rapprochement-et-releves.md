@@ -494,3 +494,13 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   SECURITY DEFINER (propriétaire postgres) : la garde reste fermée à `authenticated` sans rien casser. Le jour de la pose,
   502 remises en ligne recréées et pas encore revues étaient protégées (Vinted 353, Leboncoin 109, Beebs 22, Depop 18) ;
   environ 2 ms par appel.
+
+## ⛔ 02/11 (laurankoole) — un corps REST ne part jamais avec un demi-caractère
+- Relevé Depop en échec à chaque passage depuis le 29/10 (« REST annonces_plateforme?on_conflict=… → HTTP 400 ») :
+  journal du serveur `PGRST102 « Empty or invalid json »`. Le titre Depop (première ligne de la description) était
+  coupé à 120 **unités UTF-16** : un émoji tranché laisse un surrogate seul, `JSON.stringify` l'écrit `\udXXX`, et
+  PostgREST refuse le lot ENTIER. Prouvé le 02/11 par POST anonyme : `abc\ud83d` → 400 PGRST102, `abc😀` → 401 RLS.
+- Règle : `restRequest` (background.js) remplace tout demi-caractère d'un corps par U+FFFD (`jsonSansDemiCaractere`,
+  toutes les écritures REST de l'extension, toutes plateformes) ; `depopPremiereLigne` coupe par point de code.
+  Selftest `selftest:releve-demi-caractere`. Livré par l'extension 0.6.167 (après l'examen de la 0.6.166) : le relevé
+  repasse seul au premier passage du poste mis à jour, rien à réparer en base.

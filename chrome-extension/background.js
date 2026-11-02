@@ -15141,7 +15141,20 @@ async function attenteSessionLeveeLocalement(job) {
 // main.
 const REST_DELAI_MAX_MS = 45_000;
 
+// ── (02/11, laurankoole) UN CORPS REST NE PART JAMAIS AVEC UN DEMI-CARACTÈRE ──────────────────────────────────
+// Un texte coupé au milieu d'un émoji (surrogate UTF-16 seul : titre Depop tranché à 120 unités) sort de
+// JSON.stringify en « \udXXX » : PostgREST refuse alors le corps EN ENTIER (PGRST102 « Empty or invalid json »,
+// HTTP 400) — relevé Depop en échec à chaque passage depuis le 29/10. JSON.stringify écrit une paire valide en
+// clair : toute séquence \ud800–\udfff de sa sortie est un demi-caractère, remplacé par U+FFFD. Les « \\ » sont
+// consommés d'abord (une barre littérale suivie de « u » n'est pas une séquence) ; une paire écrite à la main
+// reste entière.
+function jsonSansDemiCaractere(texte) {
+  if (typeof texte !== "string" || !/\\u[dD][89a-fA-F]/.test(texte)) return texte;
+  return texte.replace(/\\\\|\\u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}|\\u[dD][89a-fA-F][0-9a-fA-F]{2}/g,
+    (m) => (m.length === 6 ? "\\ufffd" : m));
+}
 async function restRequest(path, accessToken, init = {}, rejeu = false) {
+  if (typeof init.body === "string") init = { ...init, body: jsonSansDemiCaractere(init.body) };
   const borne = init.signal || typeof AbortController !== 'function' ? null : new AbortController();
   const minuterie = borne ? setTimeout(() => borne.abort(), REST_DELAI_MAX_MS) : null;
   let res;

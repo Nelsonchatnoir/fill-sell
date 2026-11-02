@@ -1078,13 +1078,18 @@ function etatJob(j, ctx = {}) {
       if (cr && cr.dans_creneau === false) return { etat: ETATS.EN_PAUSE, motif: "creneau" };
     }
     if (ctx.plateformesEnPause?.has?.(j.platform)) return { etat: ETATS.EN_PAUSE, motif: "plateforme" };
+    // (02/11, dsjhdhayoub — tout le parc) L'ORDINATEUR ÉTEINT (constaté) PRIME SUR « NOUVEL ESSAI AUTOMATIQUE » : 4
+    // publications attendaient depuis le 30/10 un Mac en veille ; les 3 sans message disaient « ordinateur éteint »,
+    // la 4e — remise en file par handler-watch avec son message « dès que Chrome sera ouvert » — disait « nouvel essai
+    // automatique, rien à faire » : faux, rien ne repartira avant le retour de l'ordinateur. Un message passé ou une
+    // échéance ne change rien à ce qui la retient. Les jobs de nos serveurs (voie api) n'attendent pas l'ordinateur.
+    if (!parNosServeurs(j) && !extensionFraiche(ctx.extension)) {
+      return { etat: ETATS.EN_PAUSE, motif: ctx.extension?.etat === "session_expiree" ? "ordinateur_session" : "ordinateur" };
+    }
     const naa = Date.parse(pf.next_action_after ?? "");
     const maintenant = ctx.maintenant ?? Date.now();
     if ((Number.isFinite(naa) && naa > maintenant) || (j.error && String(j.error).trim())) return { etat: ETATS.EN_PAUSE, motif: "essai" };
     if (parNosServeurs(j)) return { etat: ETATS.EN_FILE, motif: "serveurs" };
-    if (!extensionFraiche(ctx.extension)) {
-      return { etat: ETATS.EN_PAUSE, motif: ctx.extension?.etat === "session_expiree" ? "ordinateur_session" : "ordinateur" };
-    }
     return { etat: ETATS.EN_FILE, motif: "tour" };
   }
   return { etat: ETATS.ARRETEE, motif: "arretee" };

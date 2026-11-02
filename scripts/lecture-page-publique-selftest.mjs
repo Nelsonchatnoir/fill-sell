@@ -57,7 +57,7 @@ console.log("1. restRequest — une RPC rend toujours sa réponse");
     const r = reponses.prochaine ?? { status: 200, corps: "[]" };
     return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => r.corps, json: async () => JSON.parse(r.corps) };
   };
-  const { restRequest } = bac(["restRequest"], {
+  const { restRequest } = bac(["jsonSansDemiCaractere", "restRequest"], {
     fetch, AbortController, FILLSELL_CONFIG: { SUPABASE_URL: "https://x.supabase.co", SUPABASE_ANON_KEY: "anon" },
     REST_DELAI_MAX_MS: 20_000, jetonFraisApres401: async () => null,
   });

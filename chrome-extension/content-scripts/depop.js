@@ -968,7 +968,12 @@ async function deleteListing(job) {
 // ═══════════════════════════════════════════════════════════════════════════
 // 9. LE RELEVÉ DE LA BOUTIQUE, LA FICHE, L'ÉTAT, LES VENTES
 // ═══════════════════════════════════════════════════════════════════════════
-const depopPremiereLigne = (texte) => String(texte ?? "").split(/\r?\n/).map((l) => l.trim()).find(Boolean)?.slice(0, 120) ?? null;
+// (02/11, laurankoole) 120 CARACTÈRES, jamais 120 unités UTF-16 : `.slice` coupait un émoji en deux et le demi-
+// caractère rendait le lot du relevé invalide (PGRST102). Array.from découpe par point de code.
+const depopPremiereLigne = (texte) => {
+  const ligne = String(texte ?? "").split(/\r?\n/).map((l) => l.trim()).find(Boolean);
+  return ligne ? Array.from(ligne).slice(0, 120).join("") : null;
+};
 function depopPhotoUrl(pic) {
   const f = pic?.formats ?? {};
   return f.P0?.url ?? f.P8?.url ?? f.P7?.url ?? f.P1?.url ?? Object.values(f)[0]?.url ?? null;

@@ -78,6 +78,12 @@ for (const [j, etat, motif, titre] of cas) {
 }
 ok(e(job({}), { ...ctx, extension: { etat: "eteinte" } }).motif === "ordinateur" && e(job({}), { ...ctx, extension: { etat: "eteinte" } }).etat === "en_pause", "ordinateur éteint → en pause (ordinateur)");
 ok(e(job({}), { ...ctx, extension: { etat: "session_expiree" } }).motif === "ordinateur_session", "session de l'extension expirée → en pause (ordinateur_session)");
+// (02/11, dsjhdhayoub) Remise en file par handler-watch avec son message, Mac en veille : l'ordinateur, pas « nouvel essai ».
+const repriseInterrompue = job({ error: "Reprise après interruption : l'ordinateur qui portait cette publication ne s'est plus manifesté depuis une demi-heure. C'est remis en file et ça repartira tout seul dès que Chrome sera ouvert sur ton ordinateur." });
+ok(e(repriseInterrompue, { ...ctx, extension: { etat: "eteinte" } }).motif === "ordinateur", "ordinateur éteint + message de reprise → en pause (ordinateur), jamais « nouvel essai »");
+ok(e(job({ platform_fields: { next_action_after: "2999-01-01T00:00:00Z" } }), { ...ctx, extension: { etat: "inactive" } }).motif === "ordinateur", "ordinateur éteint + échéance future → en pause (ordinateur)");
+ok(e(repriseInterrompue, ctx).motif === "essai", "ordinateur allumé + message → nouvel essai (inchangé)");
+ok(e(job({ voie: "api", error: "x" }), { ...ctx, extension: { etat: "eteinte" } }).motif === "essai", "voie api (nos serveurs) : l'ordinateur éteint ne la retient pas");
 ok(e(job({}), { ...ctx, extensionAMettreAJour: true }).motif === "mise_a_jour", "extension à mettre à jour → en pause");
 ok(e(job({ platform: "beebs" }), { ...ctx, plateformesEnPause: new Set(["beebs"]) }).motif === "plateforme", "plateforme en pause chez nous → en pause");
 ok(e(job({ action: "republish" }), { ...ctx, plafond: { retenue: true, motif: "plafond" } }).motif === "limite_jour", "limite du jour → en pause");

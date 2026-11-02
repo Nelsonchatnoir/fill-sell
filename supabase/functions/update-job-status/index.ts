@@ -3852,11 +3852,31 @@ serve(async (req) => {
     if (statutEffectif === "needs_user") {
       try {
         const pfSb = (pfIn ?? {}) as Record<string, unknown>;
-        if (String(pfSb["needs_user_source"] ?? "") === "session_vinted") {
+        // ══ (02/11, stephanie.heline — tout le parc) « CONNEXION BONNE » SE PROUVE, ET JAMAIS CONTRE LA CAPTURE ══
+        // 17 republications ont lu « Ta connexion Vinted est bonne » alors que sa capture venait de PROUVER l'inverse
+        // (403, cookie de connexion absent : capture_echec.cause403 = « session_absente », needs_user « connecte-toi »
+        // envoyé par l'extension). Ce bloc lisait extension_sessions.vinted === true sans date : une sonde muette (403)
+        // GARDE la valeur connue (règle B de l'extension, 26/10) — chez elle un « true » de 10:09 relu à 11:51.
+        // Désormais : (1) la capture qui prouve l'absence de session garde son needs_user et son message, rien n'est
+        // requalifié ; (2) sinon « connexion bonne » exige la même preuve que le reste du serveur
+        // (_shared/session-prouvee.js : mesure de CE poste, ou du compte quand il n'a qu'un poste vivant, < 30 min).
+        // Un « true » périmé tombe dans la branche « sonde muette » ci-dessous, qui ne prétend rien.
+        const capEchecSb = (pfSb["capture_echec"] && typeof pfSb["capture_echec"] === "object")
+          ? pfSb["capture_echec"] as Record<string, unknown> : null;
+        if (String(pfSb["needs_user_source"] ?? "") === "session_vinted" && String(capEchecSb?.["cause403"] ?? "") === "session_absente") {
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — session_vinted PROUVÉE absente par la capture (403, cookie de connexion absent) : needs_user « connecte-toi » gardé`);
+        } else if (String(pfSb["needs_user_source"] ?? "") === "session_vinted") {
           const { data: prof } = await userClient
-            .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+            .from("profiles").select("extension_sessions, extension_postes").eq("id", user.id).maybeSingle();
           const s = ((prof as { extension_sessions?: Record<string, unknown> } | null)?.extension_sessions ?? {}) as Record<string, unknown>;
-          if (s["vinted"] === true) {
+          const postesSb = postesVivants((prof as { extension_postes?: unknown } | null)?.extension_postes);
+          const autresVivantsSb = Object.entries(postesSb).filter(([sid, q]) => sid !== sessionIdPoste
+            && Date.now() - Date.parse(String((q as Record<string, unknown>).le ?? "")) < 2 * 3600_000).length;
+          const sondeSb = sondeProuveSession({
+            platform: "vinted", sessionsCompte: s, poste: sessionIdPoste ? (postesSb[sessionIdPoste] ?? null) : null,
+            autresPostesVivants: autresVivantsSb,
+          });
+          if (sondeSb.bonne) {
             const p = { ...pfSb };
             delete p["needs_user_source"];
             delete p["needsUserAttempts"]; delete p["needsUserBoucle"];
@@ -3866,7 +3886,7 @@ serve(async (req) => {
             p["next_action_after"] = new Date(Date.now() + 45 * 60_000).toISOString();
             p["session_bonne_requalifie"] = {
               at: new Date().toISOString(),
-              sonde: { vinted: true, http: (s["http"] as Record<string, unknown> | undefined)?.["vinted"] ?? null },
+              sonde: { vinted: true, http: (s["http"] as Record<string, unknown> | undefined)?.["vinted"] ?? null, preuve: sondeSb.preuve },
               motif: "capture refusée alors que la sonde voit Vinted vivant — reprise espacée, aucune accusation de session",
               message_efface: typeof messageEffectif === "string" ? messageEffectif.slice(0, 200) : null,
             };

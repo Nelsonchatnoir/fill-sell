@@ -1167,3 +1167,24 @@
   elle-même n'est jamais levée par FillSell.
 - (gjehly) Publication programmée : 8 places par jour dans le créneau du soir, aucune hors créneau ; une tâche déjà
   servie la veille et rejouée après un mur technique peut aboutir le matin (une reprise, pas une place).
+
+## ⛔ 02/11 (stephanie.heline) — « ta connexion Vinted est bonne » se prouve, et jamais contre la capture
+- 17 republications lisaient « Ta connexion Vinted est bonne » alors que la capture avait PROUVÉ l'absence de session
+  (403, cookie de connexion absent : `capture_echec.cause403 = session_absente`, needs_user « connecte-toi » envoyé par
+  l'extension). `update-job-status` requalifiait sur `extension_sessions.vinted === true` sans date — valeur GARDÉE par
+  une sonde muette (403, règle B de l'extension) : un « true » de 10:09 relu à 11:51.
+- Règle (update-job-status v165) : la capture `session_absente` garde son needs_user et le message de l'extension
+  (« Connexion Vinted requise : connecte-toi sur vinted.fr dans Chrome, sur ton ordinateur… ») ; sinon « connexion
+  bonne » exige `sondeProuveSession` (`_shared/session-prouvee.js` : mesure de CE poste, < 30 min). Un « true »
+  périmé tombe dans la branche « sonde muette », qui ne prétend rien. Selftest `selftest:session-bonne-capture`.
+- Jobs non touchés : au prochain essai de capture, ils reçoivent le vrai message.
+
+## ⛔ 02/11 (dsjhdhayoub) — l'ordinateur éteint (constaté) prime sur « nouvel essai automatique »
+- 4 publications (2 Leboncoin, 2 Beebs) prises le 30/10 à 13:17:47 (Paris) ; dépôt Leboncoin commencé (fenêtre réduite)
+  puis le Mac s'est mis en veille : plus aucun appel du poste, sauf de brefs réveils de veille (01/11 12:00 et 21:00,
+  onglet de l'app ; 22:00:33 un battement qui déclare encore le dépôt 8edb11a1 « en cours »). VOULU : rien ne part
+  sans ordinateur. DÉFAUT : la tâche remise en file par handler-watch (message « dès que Chrome sera ouvert ») disait
+  « En pause : nouvel essai automatique, rien à faire » (motif `essai`, prioritaire) ; les 3 autres disaient bien
+  « ordinateur éteint ».
+- Règle (`_shared/etat-job.js`, copie de l'extension régénérée) : extension constatée éteinte/inactive + job hors voie
+  api → motif `ordinateur`, avant `essai`. Selftest `selftest:etat-job` (4 cas ajoutés).
