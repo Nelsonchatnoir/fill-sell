@@ -257,6 +257,8 @@ import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLe
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
 import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
+// (02/11, facture Supabase) coin_config relu seulement quand sa version (signal_poll) a changé.
+import { configUne, configPlusieurs, configPrefixe } from "../_shared/coin-config-cache.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -562,6 +564,10 @@ async function oplaRelieDuCompte(admin: any, userId: string): Promise<boolean | 
   }
 }
 
+// (02/11, facture Supabase) beta_flags et palier du compte, gardés par instance tant que compte_signal.profil_version
+// ne change pas (le poll n'écrit jamais ces colonnes ; tout changement incrémente la version dans sa transaction).
+const CACHE_PROFIL = new Map<string, { v: number; beta_flags?: Record<string, unknown> | null; palier?: unknown }>();
+
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const corsOrigin = isAllowedOrigin(origin) ? origin : "https://fillsell.app";
@@ -591,13 +597,36 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) return json({ error: "Token invalide ou expiré" }, 401);
 
+    // ══ (02/11, facture Supabase — migration 20261102160000) LE SIGNAL DU COMPTE ══════════════════════════════════
+    // compte_signal (compteurs EXACTS de ses jobs par « action|statut », version de son profil) et version de coin_config,
+    // tenus par la base dans la transaction de chaque changement. Une lecture n'est sautée que si le signal PROUVE
+    // qu'elle rendrait la même chose ; signal illisible (null) → tout se lit comme avant.
+    type SignalCompte = { jobs?: Record<string, number> | null; profil_version?: number; coin_config_version?: number | null };
+    const signalCompte: SignalCompte | null = await (async () => {
+      try {
+        const { data: sig, error: eSig } = await userClient.rpc("signal_poll", { p_user: user.id });
+        return !eSig && sig && typeof sig === "object" ? sig as SignalCompte : null;
+      } catch (_e) { return null; }
+    })();
+    const versionCoinConfig = typeof signalCompte?.coin_config_version === "number" ? signalCompte.coin_config_version : null;
+    const versionProfil = typeof signalCompte?.profil_version === "number" ? signalCompte.profil_version : null;
+    /** Le compte peut-il avoir un job dans l'un de ces statuts (et l'une de ces actions) ? Sans compteurs : oui. */
+    const jobsPeutExister = (statuts: string[], actions: string[] | null = null): boolean => {
+      const j = signalCompte?.jobs;
+      if (!j || typeof j !== "object") return true;
+      return Object.entries(j).some(([cle, n]) => {
+        const [a, st] = cle.split("|");
+        return Number(n) > 0 && statuts.includes(st) && (!actions || actions.includes(a));
+      });
+    };
+
     // ── L'INTERRUPTEUR DE LA SORTIE D'OPLA (02/10, consigne de Nico) ────────
     // coin_config `opla_sortie_le` (secondes epoch ; 0 = sortie désactivée ;
     // absente ou illisible = le 10/10 à 00:00 Paris). AVANT la bascule, rien de
     // ce qui suit sur Opla ne s'applique : Opla fonctionne comme avant.
     let sortieOpla = false;
     try {
-      const { data: cfgSortie, error: cfgErr } = await userClient.from("coin_config").select("value").eq("key", OPLA_SORTIE.CLE_CONFIG).maybeSingle();
+      const { data: cfgSortie, error: cfgErr } = await configUne(userClient, OPLA_SORTIE.CLE_CONFIG, versionCoinConfig);
       sortieOpla = sortieOplaActive(Date.now(), cfgErr ? null : (cfgSortie as { value?: unknown } | null)?.value);
     } catch (_e) {
       sortieOpla = sortieOplaActive(Date.now(), null);
@@ -641,9 +670,17 @@ serve(async (req) => {
     {
       const adminD = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       const flagsDe = async (id: string): Promise<Record<string, unknown> | null> => {
+        // (02/11) Les flags DU COMPTE du poll : gardés tant que profil_version ne change pas (CACHE_PROFIL).
+        const c = id === user.id && versionProfil !== null ? CACHE_PROFIL.get(id) : undefined;
+        if (c && c.v === versionProfil && c.beta_flags !== undefined) return c.beta_flags ?? null;
         const { data, error } = await adminD.from("profiles").select("beta_flags").eq("id", id).maybeSingle();
         if (error) throw error;
-        return ((data as { beta_flags?: Record<string, unknown> } | null)?.beta_flags ?? null) as Record<string, unknown> | null;
+        const flags = ((data as { beta_flags?: Record<string, unknown> } | null)?.beta_flags ?? null) as Record<string, unknown> | null;
+        if (id === user.id && versionProfil !== null) {
+          const prec = CACHE_PROFIL.get(id);
+          CACHE_PROFIL.set(id, { ...(prec?.v === versionProfil ? prec : {}), v: versionProfil, beta_flags: flags });
+        }
+        return flags;
       };
       const jetonExecutant = typeof body?.delegation?.executant_jeton === "string" ? String(body.delegation.executant_jeton) : "";
       if (jetonExecutant) {
@@ -781,10 +818,10 @@ serve(async (req) => {
     const etatRetenueRepublish = async () => {
       // Une seule lecture pour les deux réglages de la pause.
       const cfg = new Map<string, number>();
-      const { data: cfgRows } = await userClient.from("coin_config").select("key, value").in("key", [
+      const { data: cfgRows } = await configPlusieurs(userClient, [
           "republish_pause_apres",
           "republish_pause_duree_min",
-        ]);
+        ], versionCoinConfig);
       for (const r of (cfgRows ?? []) as { key: string; value: unknown }[]) {
         const v = Number(r.value);
         if (Number.isFinite(v)) cfg.set(r.key, v);
@@ -1201,7 +1238,9 @@ serve(async (req) => {
     // cross_post_jobs par jour, autant de lignes de journal). Une lecture de présence d'abord ; illisible → on balaie
     // comme avant. Un job passé needs_user PENDANT ce poll est vu au poll suivant.
     let aDesArretes = true;
-    if (!includeProcessing && !includeNeedsUser) {
+    if (!includeProcessing && !includeNeedsUser && signalCompte?.jobs && typeof signalCompte.jobs === "object") {
+      aDesArretes = jobsPeutExister(["needs_user", "failed"]);   // (02/11) les compteurs exacts du signal : aucune lecture
+    } else if (!includeProcessing && !includeNeedsUser) {
       try {
         const { data: unArrete, error: eArrete } = await userClient.from("cross_post_jobs").select("id")
           .eq("user_id", user.id).in("status", ["needs_user", "failed"]).limit(1);
@@ -1942,7 +1981,8 @@ serve(async (req) => {
     // Illisible → comportement d'avant.
     let compteEnPauseAr = false;
     try {
-      const { data: pauseAr } = await userClient.from("cross_post_jobs").select("id")
+      // (02/11) Sans job en attente au compte (compteurs du signal), cette lecture rendait 0 ligne.
+      const { data: pauseAr } = !jobsPeutExister(["pending"]) ? { data: [] as Array<{ id: string }> } : await userClient.from("cross_post_jobs").select("id")
         .eq("user_id", user.id).eq("platform", "vinted").eq("status", "pending")
         .not("platform_fields->attente_antirobot_compte", "is", null)
         .limit(1);
@@ -1984,7 +2024,7 @@ serve(async (req) => {
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing && !includeNeedsUser && !delegationLbc) {
       try {
         const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const { data: cfgP } = await adminP.from("coin_config").select("key, value").in("key", ["premiere_synchro_auto", "premiere_synchro_auto_jours"]);
+        const { data: cfgP } = await configPlusieurs(adminP, ["premiere_synchro_auto", "premiere_synchro_auto_jours"], versionCoinConfig);
         const cfgPM = new Map(((cfgP ?? []) as Array<{ key: string; value: unknown }>).map((r) => [r.key, Number(r.value)]));
         const reglageP = { actif: cfgPM.get("premiere_synchro_auto") !== 0, jours: cfgPM.get("premiere_synchro_auto_jours") };
         // (02/11, facture Supabase) Un compte inscrit (auth) depuis plus longtemps que la fenêtre de première synchro ne
@@ -2852,7 +2892,7 @@ serve(async (req) => {
         const apresRestriction = out.filter((j) => estApresRestrictionVinted(j));
         if (apresRestriction.length) {
           const aujourdhuiParis = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
-          const { data: cfgR } = await userClient.from("coin_config").select("value").eq("key", "vinted_reprise_restriction_jour").maybeSingle();
+          const { data: cfgR } = await configUne(userClient, "vinted_reprise_restriction_jour", versionCoinConfig);
           const plafondR = Number((cfgR as { value?: unknown } | null)?.value) > 0 ? Number((cfgR as { value?: unknown }).value) : 10;
           const { data: lignesR } = await userClient.from("cross_post_jobs").select("id, le:platform_fields->>reprise_restriction_le")
             .eq("user_id", user.id).eq("platform", "vinted").eq("platform_fields->>reprise_restriction_jour", aujourdhuiParis).limit(200);
@@ -5007,7 +5047,7 @@ serve(async (req) => {
     // 0, absente ou illisible → rien n'est posé (observer). Copie servie seulement.
     if (!includeProcessing && !includeNeedsUser && out.some((j) => estDepotEbayExtension(j as never))) {
       try {
-        const { data: cfgPhotos } = await userClient.from("coin_config").select("value").eq("key", "ebay_photos_recues_bloquant").maybeSingle();
+        const { data: cfgPhotos } = await configUne(userClient, "ebay_photos_recues_bloquant", versionCoinConfig);
         if (Number((cfgPhotos as Record<string, unknown> | null)?.value) === 1) {
           for (const j of out.filter((x) => estDepotEbayExtension(x as never))) {
             j.platform_fields = { ...((j.platform_fields ?? {}) as Record<string, unknown>), ebay_photos_mode: "bloquer" };
@@ -5471,7 +5511,7 @@ serve(async (req) => {
           ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
         const candidats = out.filter(estPublishLbc);
         if (candidats.length) {
-          const { data: cfgMin } = await userClient.from("coin_config").select("value").eq("key", "lbc_pro_extension_min").maybeSingle();
+          const { data: cfgMin } = await configUne(userClient, "lbc_pro_extension_min", versionCoinConfig);
           const minCode = Number(cfgMin?.value ?? 0);
           // Même encodage que la clé : 0.6.41 → 641. Version absente ou
           // illisible = 0 : un build trop vieux pour se nommer n'a pas le
@@ -7677,7 +7717,7 @@ serve(async (req) => {
         out.some((j) => j.action === "republish" && j.platform === "vinted" &&
           (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "captured")) {
       try {
-        const { data: cfgRetrait } = await userClient.from("coin_config").select("value").eq("key", "republish_pause_retrait_taille_par_id").maybeSingle();
+        const { data: cfgRetrait } = await configUne(userClient, "republish_pause_retrait_taille_par_id", versionCoinConfig);
         if (Number((cfgRetrait as Record<string, unknown> | null)?.value) === 1) {
           const avant = out.length;
           out = out.filter((j) =>
@@ -9833,7 +9873,7 @@ serve(async (req) => {
       try {
         const s = (contexte.sessions ?? {}) as Record<string, unknown>;
         const ident = (s.vinted_identite ?? null) as { pays?: unknown } | null;
-        const { data: cfgPaysCtx } = await userClient.from("coin_config").select("key, value").like("key", "vinted_pays_%");
+        const { data: cfgPaysCtx } = await configPrefixe(userClient, "vinted_pays_", versionCoinConfig);
         const ouvertsCtx = new Set(((cfgPaysCtx ?? []) as Array<{ key: string; value: number }>)
           .filter((r) => Number(r.value) === 1).map((r) => r.key.replace("vinted_pays_", "").toUpperCase()));
         contexte.vinted_etranger = vintedEtranger({
@@ -10132,7 +10172,7 @@ serve(async (req) => {
           return (step === "captured" || step === "deleted") && Number.isFinite(Number(pf["capture_id"]));
         });
         if (cibles.length) {
-          const { data: cfgIds } = await userClient.from("coin_config").select("value").eq("key", "republish_taille_ids_retires_taille_par_id").maybeSingle();
+          const { data: cfgIds } = await configUne(userClient, "republish_taille_ids_retires_taille_par_id", versionCoinConfig);
           if (Number((cfgIds as Record<string, unknown> | null)?.value) === 1) {
             const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
             for (const j of cibles) {
@@ -13381,7 +13421,7 @@ serve(async (req) => {
         const identZe = (((profZe?.extension_sessions ?? {}) as Record<string, unknown>).vinted_identite ?? null) as
           { pays?: unknown; langue?: unknown } | null;
         const paysSonde = /^[A-Z]{2}$/.test(String(identZe?.pays ?? "")) ? String(identZe!.pays) : null;
-        const { data: cfgPays } = await userClient.from("coin_config").select("key, value").like("key", "vinted_pays_%");
+        const { data: cfgPays } = await configPrefixe(userClient, "vinted_pays_", versionCoinConfig);
         const ouverts = new Set(((cfgPays ?? []) as Array<{ key: string; value: number }>)
           .filter((r) => Number(r.value) === 1).map((r) => r.key.replace("vinted_pays_", "").toUpperCase()));
 
@@ -13625,7 +13665,8 @@ serve(async (req) => {
         // indexée par compte, 50 au plus), même quand la file servie n'a
         // aucune republication 'captured' (l'attente de 30 min de l'extension
         // la retire de la file).
-        const { data: marques } = await adminR.from("cross_post_jobs")
+        // (02/11) Sans republication en attente au compte (compteurs du signal), cette lecture rendait 0 ligne.
+        const { data: marques } = !jobsPeutExister(["pending"], ["republish"]) ? { data: [] as Array<Record<string, unknown>> } : await adminR.from("cross_post_jobs")
           .select("id, platform, error, platform_fields")
           .eq("user_id", user.id).eq("action", "republish").eq("status", "pending")
           .not("platform_fields->retenue_hors_ligne", "is", null)
@@ -14217,7 +14258,7 @@ serve(async (req) => {
     // d'aujourd'hui. Lecture tolérante : elle ne bloque jamais la distribution.
     let keepaliveActif = true;
     try {
-      const { data: cfgKa } = await userClient.from("coin_config").select("value").eq("key", "keepalive_actif").maybeSingle();
+      const { data: cfgKa } = await configUne(userClient, "keepalive_actif", versionCoinConfig);
       if (cfgKa && Number(cfgKa.value) === 0) keepaliveActif = false;
     } catch (_e) { /* allumé par défaut */ }
     // (04/10, Ciddjy) Interrupteur général coupé depuis le 17/09 (tests réels
@@ -14295,7 +14336,7 @@ serve(async (req) => {
     // résolus, boutique étrangère, réconciliation) restent en place.
     let prevolCopieActif = true;
     try {
-      const { data: cfgPc } = await userClient.from("coin_config").select("value").eq("key", "prevol_copie_actif").maybeSingle();
+      const { data: cfgPc } = await configUne(userClient, "prevol_copie_actif", versionCoinConfig);
       if (cfgPc && Number(cfgPc.value) === 0) prevolCopieActif = false;
     } catch (_e) { /* allumé par défaut */ }
     if (!prevolCopieActif) console.log(`[get-pending-jobs] userId=${user.id} : prevol_copie_actif=0 → pré-vol de la copie ÉTEINT pour ce poll`);
@@ -14303,7 +14344,17 @@ serve(async (req) => {
     // (02/11, facture Supabase) Le palier du compte, lu UNE fois par poll pour les deux lectures de fond (Vinted, Beebs).
     const lirePalier = () => userClient.from("profiles").select("is_premium, is_pro, is_business, is_comped").eq("id", user.id).maybeSingle();
     let palierDuPoll: Promise<Awaited<ReturnType<typeof lirePalier>>> | null = null;
-    const lirePalierDuPoll = () => (palierDuPoll ??= Promise.resolve(lirePalier()));
+    const lirePalierDuPoll = () => (palierDuPoll ??= (async () => {
+      // (02/11) Gardé par instance tant que profil_version ne change pas (CACHE_PROFIL).
+      const c = versionProfil !== null ? CACHE_PROFIL.get(user.id) : undefined;
+      if (c && c.v === versionProfil && c.palier !== undefined) return { data: c.palier, error: null } as unknown as Awaited<ReturnType<typeof lirePalier>>;
+      const r = await lirePalier();
+      if (!r.error && versionProfil !== null) {
+        const prec = CACHE_PROFIL.get(user.id);
+        CACHE_PROFIL.set(user.id, { ...(prec?.v === versionProfil ? prec : {}), v: versionProfil, palier: r.data });
+      }
+      return r;
+    })());
     // ══ (25/10) LE TEXTE DU VENDEUR LU EN ARRIÈRE-PLAN, DÈS L'IMPORT (_shared/lecture-fond.js) ════════════════════
     // Les fiches importées de Vinted sans texte, couleur ou rayon : l'extension (≥ 0.6.144) lit leur page PUBLIQUE à la
     // fin de ses polls, à ce rythme, dans cet ordre. Coupé 6 h après le premier refus de Vinted sur ce compte (sa trace
@@ -14327,7 +14378,7 @@ serve(async (req) => {
       try {
         const maintenantLf = Date.now();
         const [cfgLf, profLf, refusLf, luesLf] = await Promise.all([
-          userClient.from("coin_config").select("value").eq("key", "lecture_fond_mode").maybeSingle(),
+          configUne(userClient, "lecture_fond_mode", versionCoinConfig),
           lirePalierDuPoll(),
           // (25/10 soir) Les traces Vinted seulement (sans plateforme = Vinted, 0.6.144) : un refus ou une lecture Beebs
           // (0.6.145) ne coupe pas la lecture Vinted et ne mange pas son plafond du jour.
@@ -14387,7 +14438,7 @@ serve(async (req) => {
       try {
         const maintenantLb = Date.now();
         const [cfgLb, profLb, refusLb, luesLb, pauseLb] = await Promise.all([
-          userClient.from("coin_config").select("value").eq("key", "lecture_fond_mode_beebs").maybeSingle(),
+          configUne(userClient, "lecture_fond_mode_beebs", versionCoinConfig),
           lirePalierDuPoll(),
           userClient.from("usage_logs").select("created_at").eq("user_id", user.id).eq("feature", "lecture_fond")
             .eq("metadata->>plateforme", "beebs").eq("metadata->>resultat", "antirobot")
@@ -14395,6 +14446,8 @@ serve(async (req) => {
             .order("created_at", { ascending: false }).limit(1),
           userClient.from("usage_logs").select("id", { count: "exact", head: true }).eq("user_id", user.id)
             .eq("feature", "lecture_fond").eq("metadata->>plateforme", "beebs").gte("created_at", debutJourParis(maintenantLb)),
+          // (02/11) Sans job en attente au compte (compteurs du signal), cette lecture rendait 0 ligne.
+          !jobsPeutExister(["pending"]) ? Promise.resolve({ data: [] as Array<{ id: string }>, error: null }) :
           userClient.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("platform", "beebs").eq("status", "pending")
             .not("platform_fields->attente_antirobot_compte", "is", null).limit(1),
         ]);

@@ -60,7 +60,8 @@ console.log('2. get-pending-jobs');
 const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
 const iEtat = gpj.indexOf('const etatRetenueRepublish = async () => {');
 const blocEtat = iEtat > 0 ? gpj.slice(iEtat, gpj.indexOf('\n    };', iEtat)) : '';
-ok(blocEtat && /"republish_pause_apres",\n\s+"republish_pause_duree_min",\n\s+\]\);/.test(blocEtat) && !/"republish_plafond_jour/.test(gpj),
+// (02/11) La liste peut finir par « ], versionCoinConfig); » (coin_config lu par sa version, _shared/coin-config-cache.js).
+ok(blocEtat && /"republish_pause_apres",\r?\n\s+"republish_pause_duree_min",\r?\n\s+\](?:, versionCoinConfig)?\);/.test(blocEtat) && !/"republish_plafond_jour/.test(gpj),
   'la retenue ne lit que les deux clés de la pause ; plus aucune clé de plafond dans le fichier');
 ok(/retenue: retenuePause,/.test(blocEtat) && /motif: retenuePause \? "pause" : null,/.test(blocEtat)
   && /reprise: retenuePause \? new Date\(finPause as number\)\.toISOString\(\) : null,/.test(blocEtat) && /limite: null as number \| null/.test(blocEtat),

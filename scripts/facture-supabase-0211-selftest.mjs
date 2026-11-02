@@ -14,7 +14,7 @@
 //   npm run selftest:facture-supabase-0211
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const racine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -34,9 +34,53 @@ for (const f of [
 ]) {
   ok(lire(f) === git('9135d4d', f), `${f} : identique à l'avant-lot-B`);
 }
-ok(!fs.existsSync(path.join(racine, 'supabase/functions/_shared/coin-config-cache.js')), 'pas de cache coin_config de 60 s (inexact) : retiré');
 const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
-ok((gpj.match(/from\("coin_config"\)/g) ?? []).length === 14, "get-pending-jobs : les 14 lectures directes de coin_config d'avant");
+
+// ── 1 bis. Le signal du compte (migration 20261102160000) ─────────────────
+console.log('1 bis. Le signal « rien n\'a changé pour ce compte » : exact, sinon tout se lit comme avant');
+const migration = lire('supabase/migrations/20261102160000_signal_compte.sql');
+ok(migration.includes('LOCK TABLE public.cross_post_jobs IN SHARE ROW EXCLUSIVE MODE;') && migration.indexOf('CREATE TRIGGER cross_post_jobs_compte_signal') > migration.indexOf('LOCK TABLE'),
+  'compteurs exacts : déclencheur posé et compteurs comptés sous verrou, dans la même transaction');
+ok(migration.includes("UPDATE public.compte_signal SET jobs = NULL"), "un déclencheur qui échoue ne bloque jamais l'écriture du job : compteurs mis à inconnu");
+ok(fs.existsSync(path.join(racine, 'supabase/rollbacks/20261102160000_signal_compte_INVERSE.sql')), 'inverse présent');
+const cc = await import(pathToFileURL(path.join(racine, 'supabase/functions/_shared/coin-config-cache.js')).href);
+let lectures = 0;
+const table = [{ key: 'keepalive_actif', value: 0 }, { key: 'vinted_pays_be', value: 1 }, { key: 'vintedXpaysYfr', value: 1 }, { key: 'lecture_fond_mode', value: 1 }];
+const requetes = [];
+const client = { from: () => {
+  const q = { cols: null, filtres: [] };
+  const fini = () => { lectures++; requetes.push(q); return Promise.resolve({ data: table, error: null }); };
+  const b = { select: (c) => { q.cols = c; return b; }, eq: (...a) => { q.filtres.push(['eq', ...a]); return b; }, in: (...a) => { q.filtres.push(['in', ...a]); return fini(); },
+    like: (...a) => { q.filtres.push(['like', ...a]); return fini(); }, maybeSingle: () => { lectures++; requetes.push(q); return Promise.resolve({ data: { value: 0 }, error: null }); },
+    then: (r, j) => fini().then(r, j) };
+  return b;
+} };
+cc.viderCoinConfig();
+await cc.configUne(client, 'keepalive_actif', null);
+ok(lectures === 1 && requetes[0].cols === 'value' && JSON.stringify(requetes[0].filtres) === '[["eq","key","keepalive_actif"]]', 'version inconnue : la requête d\'origine, telle quelle');
+lectures = 0;
+const [u1, u2] = await Promise.all([cc.configUne(client, 'keepalive_actif', 7), cc.configUne(client, 'lecture_fond_mode', 7)]);
+await cc.configUne(client, 'absente', 7);
+ok(u1.data?.value === 0 && u2.data?.value === 1 && lectures <= 2, `version connue : la table lue une fois, servie ensuite (${lectures} lecture(s))`);
+const avant = lectures;
+await cc.configPlusieurs(client, ['lecture_fond_mode', 'keepalive_actif'], 7);
+ok(lectures === avant, 'même version : aucune lecture');
+await cc.configUne(client, 'keepalive_actif', 8);
+ok(lectures === avant + 1, 'version changée : relue');
+const pref = await cc.configPrefixe(client, 'vinted_pays_', 8);
+ok(pref.data.map((r) => r.key).sort().join(',') === 'vintedXpaysYfr,vinted_pays_be', 'configPrefixe : la sémantique exacte de LIKE (« _ » = un caractère)');
+ok((gpj.match(/from\("coin_config"\)/g) ?? []).length === 0 && (gpj.match(/, versionCoinConfig\)/g) ?? []).length === 14,
+  'get-pending-jobs : les 14 lectures de coin_config passent par la version du signal');
+ok(gpj.includes('await userClient.rpc("signal_poll", { p_user: user.id });') && gpj.includes('return !eSig && sig && typeof sig === "object" ? sig as SignalCompte : null;'),
+  'le signal lu une fois en tête de poll ; illisible → null → tout se lit comme avant');
+ok(gpj.includes('if (!j || typeof j !== "object") return true;'), 'sans compteurs, une lecture n\'est jamais sautée');
+ok(gpj.includes('!jobsPeutExister(["pending"]) ? { data: [] as Array<{ id: string }> } : await userClient.from("cross_post_jobs")')
+  && gpj.includes('!jobsPeutExister(["pending"]) ? Promise.resolve({ data: [] as Array<{ id: string }>, error: null }) :')
+  && gpj.includes('!jobsPeutExister(["pending"], ["republish"]) ? { data: [] as Array<Record<string, unknown>> } : await adminR.from("cross_post_jobs")'),
+  'anti-robot Vinted / Beebs et retenues hors ligne : sautés seulement si aucun job en attente (marqueurs jamais posés sur un job neuf)');
+ok(gpj.includes('aDesArretes = jobsPeutExister(["needs_user", "failed"]);'), 'présence des arrêtés par les compteurs (même instant que la lecture de présence)');
+ok(gpj.includes('if (c && c.v === versionProfil && c.beta_flags !== undefined) return c.beta_flags ?? null;') && gpj.includes('if (c && c.v === versionProfil && c.palier !== undefined)'),
+  'beta_flags et palier du compte : gardés tant que profil_version ne change pas');
 
 // ── 2. get-pending-jobs ────────────────────────────────────────────────────
 console.log('2. get-pending-jobs : ce qui reste, prouvé identique');

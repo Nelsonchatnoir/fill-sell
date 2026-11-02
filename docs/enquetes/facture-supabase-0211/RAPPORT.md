@@ -148,3 +148,30 @@ Consigne de Nico : tout point non prouvable revient à l'ancien comportement.
 - Déployé : get-pending-jobs **v324** (14:58) ; web au push ; mobile : OTA 2.9.154.
 - ⛔ Conséquence : les transformations reprennent (~2 650 images par jour, ~300 $ par cycle au tarif mesuré). À
   décider par Nico : accepter des empreintes à 1-4 bits près (zéro transformation), ou garder l'identique (payant).
+
+## Partie C2 (02/11 soir) — le signal « rien n'a changé pour ce compte » (feu vert de Nico)
+- Migration **20261102160000_signal_compte** appliquée (15:1x) + `migration repair` ; essais à blanc en prod avant
+  (ROLLBACK) : compteurs = jobs réels (0 écart sur 554 comptes), changement de statut → compteur déplacé, écriture sans
+  statut → rien, beta_flags inchangé → version inchangée, coin_config → version +1. Après application et écritures
+  réelles : 0 compteur inconnu, 0 écart, 0 clé fantôme. Inverse : `supabase/rollbacks/20261102160000_signal_compte_INVERSE.sql`.
+- **get-pending-jobs v324 → v325** (15:24:45, vrai) : signal lu en tête de poll ; coin_config relu seulement quand
+  sa version change (`_shared/coin-config-cache.js`, version inconnue → requête d'origine, LIKE à l'identique) ;
+  présence needs_user / failed par les compteurs ; anti-robot Vinted / Beebs et retenues hors ligne sautées sans job
+  en attente ; beta_flags et palier du compte gardés tant que leur version ne change pas. La requête principale des
+  jobs en attente n'est jamais sautée : une publication lancée du téléphone part au poll suivant, comme avant.
+- **Identique, preuve** : une lecture n'est sautée que si le signal prouve qu'elle rendrait la même chose (compteur
+  à 0 pour les statuts qu'elle filtre ; version inchangée) ; compteurs tenus dans la transaction de chaque écriture ;
+  signal illisible ou compteurs inconnus → tout se lit comme avant ; les marqueurs anti-robot / retenue ne sont jamais
+  posés sur un job neuf (un job créé pendant le poll ne peut pas être manqué) ; selftest `facture-supabase-0211`.
+- **Mesuré** (repère : une lecture des demandes en file par poll) — lectures des fonctions par poll :
+  | | matin (avant tout) | v324 | v325 |
+  |---|---|---|---|
+  | cross_post_jobs | 22,8 | 19,3 | **16,0** (−30 % vs matin) |
+  | profiles | 10,8 | 7,9 | **7,6** (−30 %) |
+  | vinted_sync_runs | 5,1 | 3,2 | **3,1** (−39 %) |
+  | coin_config | 6,7 | 6,7 | **0,42** (−94 %) |
+  | toutes requêtes (= lignes de journal) | 67,8 | 56,4 | **47,1** (−31 %) |
+  (v325 : 253 polls sur 11 min juste après le déploiement, cache du profil encore froid.)
+- **Pas atteint : la moitié** pour cross_post_jobs, profiles et les journaux. Prochain levier prouvable : platform_settings
+  (2,35 lectures par poll) gardé par une version tenue par la base, invalidée par le poll quand il l'écrit lui-même
+  (platform_settings_fusionner) ; ensuite, les lectures de cross_post_jobs restantes une à une (chacune doit se prouver).

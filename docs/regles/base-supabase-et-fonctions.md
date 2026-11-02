@@ -382,3 +382,19 @@ Rapport `docs/enquetes/facture-supabase-0211/RAPPORT.md` ; selftest `selftest:fa
   journal pour un poll vide. App : en plus, la vue complète du Stock est relancée tout de suite sur un changement réel.
 - **Règle durable** : toute baisse de lecture se PROUVE identique pour l'utilisateur (mêmes données, même moment), sinon
   elle ne part pas. Jamais `storage/v1/render/image` dans un nouveau code sans décision de Nico.
+
+## ⛔ 02/11 soir — le signal « rien n'a changé pour ce compte » (migration 20261102160000, feu vert de Nico)
+- `compte_signal` (par compte) : `jobs` = nombre EXACT de jobs par « action|statut » (déclencheur
+  `cross_post_jobs_compte_signal`, même transaction que l'écriture ; un échec ne bloque jamais le job : `jobs` passe à NULL
+  = inconnu), `profil_version` (+1 à chaque changement de beta_flags / is_premium / is_pro / is_business / is_comped) ;
+  `signal_global('coin_config')` (+1 à chaque écriture de coin_config). Lu par la RPC `signal_poll(p_user)` (un client :
+  le sien seulement). Inverse : `supabase/rollbacks/20261102160000_signal_compte_INVERSE.sql`.
+- get-pending-jobs (v325) lit le signal en tête de poll et ne saute une lecture que si le signal PROUVE qu'elle
+  rendrait la même chose : coin_config par `_shared/coin-config-cache.js` (relu quand sa version change ; version
+  inconnue → requête d'origine) ; présence needs_user / failed par les compteurs ; anti-robot Vinted / Beebs et
+  retenues hors ligne sautées sans job en attente (marqueurs jamais posés sur un job neuf) ; beta_flags et palier du
+  compte gardés par instance tant que `profil_version` ne change pas (colonnes jamais écrites par le poll). La
+  requête principale des jobs en attente n'est JAMAIS sautée (une publication lancée du téléphone part au poll suivant,
+  comme avant).
+- Toute nouvelle lecture faite à chaque poll se branche sur ce signal si — et seulement si — le signal prouve son
+  résultat ; sinon elle se lit.

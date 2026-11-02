@@ -106,7 +106,7 @@ console.log("4. Le serveur (get-pending-jobs, ops-digest)");
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
   ok(/versionAuMoins\(version, LECTURE_FOND_BEEBS_VERSION_MIN\)/.test(gpj) && /lecture_fond_beebs: lectureFondBeebs/.test(gpj), "servi aux seuls postes ≥ 0.6.145, sous `lecture_fond_beebs`");
   // (02/11) Lu par le cache de coin_config (configUne) ou directement : même interrupteur.
-  ok(/(?:\.eq\("key", |configUne\(\w+, )"lecture_fond_mode_beebs"\)/.test(gpj) && /modeLectureFond\(cfgLb\.data\?\.value, LECTURE_FOND_BEEBS_MODE_DEFAUT\)/.test(gpj), "son propre interrupteur (coin_config.lecture_fond_mode_beebs)");
+  ok(/(?:\.eq\("key", |configUne\(\w+, )"lecture_fond_mode_beebs"(?:, versionCoinConfig)?\)/.test(gpj) && /modeLectureFond\(cfgLb\.data\?\.value, LECTURE_FOND_BEEBS_MODE_DEFAUT\)/.test(gpj), "son propre interrupteur (coin_config.lecture_fond_mode_beebs)");
   ok(/\.eq\("metadata->>plateforme", "beebs"\)\.eq\("metadata->>resultat", "antirobot"\)/.test(gpj), "refus Beebs comptés à part");
   ok((gpj.match(/\.or\("metadata->>plateforme\.is\.null,metadata->>plateforme\.eq\.vinted"\)/g) ?? []).length >= 2,
     "Vinted : un refus ou une lecture Beebs ne coupe pas la lecture Vinted (refus et plafond du jour comptés par plateforme)");
