@@ -42,6 +42,12 @@ ok(gpj.split('jobsSelonDrapeauCloud(').length === 2, 'appliqué une seule fois')
 const mig = readFileSync(path.join(racine, 'supabase', 'migrations', '20261101180000_cloud_voie_drapeau.sql'), 'utf8');
 ok(/ADD COLUMN IF NOT EXISTS cloud_voie boolean NOT NULL DEFAULT false/.test(mig), 'migration : faux par défaut pour tout le parc');
 ok(/REVOKE UPDATE \(cloud_voie\) ON public\.profiles FROM anon, authenticated/.test(mig), 'migration : jamais modifiable par le client');
+// (02/11 soir) L'app (écrans de suivi d'un compte Cloud) porte sa propre copie de la liste : la même, toujours.
+const { PLATEFORMES_CLOUD: deLApp, parLeCloud } = await import('../src/cloud/voieCloud.js');
+ok(JSON.stringify(deLApp) === JSON.stringify(PLATEFORMES_CLOUD_VOIE), 'src/cloud/voieCloud.js : la même liste de plateformes que le serveur');
+ok(parLeCloud({ platform: 'beebs', voie: 'extension' }, true) && !parLeCloud({ platform: 'ebay', voie: 'api' }, true)
+  && !parLeCloud({ platform: 'vinted', voie: 'extension' }, false) && !parLeCloud({ platform: 'opla' }, true),
+  'parLeCloud : compte Cloud et plateforme du Cloud seulement (eBay par l\'API, Opla, compte ordinaire : non)');
 
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

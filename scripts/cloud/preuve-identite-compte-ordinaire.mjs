@@ -344,6 +344,9 @@ const code = (t) => t.split('\n').filter((l) => { const s = l.trim(); return s &
     // (01/11) La trace des gestes « Me connecter » (usage_logs) : importée par l'écran seulement (vérifié plus bas).
     'src/cloud/traceCloud.js': () => true,
     'src/cloud/BandeauCloudReconnexion.jsx': () => /\{user&&cloudConnexionVisible\(user\.id\)&&\(\s*<BandeauCloudReconnexion /.test(lire('src/App.jsx')),
+    // (02/11 soir) Le drapeau Cloud du compte (écrans de suivi) : sa SEULE lecture part derrière la porte du Cloud.
+    'src/cloud/useCompteCloud.js': (t) => /if \(!userId \|\| !UUID\.test\(String\(userId\)\) \|\| !cloudConnexionVisible\(userId\)\) return;/.test(t)
+      && (t.match(/supabase\.from\(/g) ?? []).length === 1,
   };
   const fautifs = fichiers.filter((f) => reseau.test(code(lire(f))) && !(permis[f]?.(code(lire(f)))));
   verifier(fautifs.length === 0, 'src/cloud : tout appel réseau est dans un fichier à entrée gardée', fautifs.join(', '));
