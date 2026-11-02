@@ -1,0 +1,15 @@
+import Vips from "../lib-wasm-vips-0.0.19/vips-es6.js";
+const vips = await Vips({ dynamicLibraries: [] });
+vips.concurrency(1);
+const b = Deno.args[0];
+const o = await Deno.readFile(b + ".o"), r = await Deno.readFile(b + ".r");
+const t = vips.Image.newFromBuffer(o); const s = 400 / Math.max(t.width, t.height);
+const z = t.resize(s).copy(); for (const f of z.getFields()) if (/^(exif-|xmp-data|iptc-data|icc-profile-data|orientation)/.test(f)) z.remove(f);
+const d = z.writeToBuffer(".png", { filter: "all" });
+const diff: number[] = []; for (let i = 0; i < d.length; i++) if (d[i] !== r[i]) diff.push(i);
+console.log("différences", diff.length, "positions", diff.slice(0, 12).join(","));
+const chunks = (x: Uint8Array) => { const v = new DataView(x.buffer, x.byteOffset); const out = []; let i = 8; while (i < x.length) { const l = v.getUint32(i); out.push([new TextDecoder().decode(x.slice(i + 4, i + 8)), i, l]); i += 12 + l; } return out; };
+console.log(JSON.stringify(chunks(d))); console.log(JSON.stringify(chunks(r)));
+const ex = (x: Uint8Array) => { const c = chunks(x).find((c) => c[0] === "eXIf")!; return [...x.slice((c[1] as number) + 8, (c[1] as number) + 8 + (c[2] as number))].map((v) => v.toString(16).padStart(2, "0")).join(""); };
+console.log(ex(d)); console.log(ex(r));
+Deno.exit(0);

@@ -283,3 +283,24 @@ Chiffres : `essai-empreintes-C/RESULTAT.md`. Rien basculé, 0 render/image ; don
 - Coût : aujourd'hui ≈ 235 à 390 $ / cycle ; C : 0 $ (+ ≈ 12 à 20 Go d'egress, 0 à ≈ 1,8 $).
 - Mémoire du PC : deux fois, Claude Code a arrêté les calculs (mémoire basse pendant l'attente) ; repris à charge réduite
   sur ordre de Nico (6, puis 1 processus), rien perdu.
+
+## Partie G (02/11 soir, 21:30 → 22:15) — essai D : la transformation Supabase refaite à l'octet — verdict
+Chiffres : `essai-empreintes-D/RESULTAT.md` ; scripts : `essai-empreintes-D/scripts/`. Rien basculé ni déployé, lecture
+seule ; photos de travail hors dépôt ; un seul processus sur le PC (4,4 Go libres en fin).
+- **Identique : OUI.** libvips en WebAssembly (wasm-vips 0.0.19 = libvips 8.18.7 + mozjpeg), pipeline d'imgproxy refait
+  (fit 400×400, réduction au décodage JPEG, lanczos3, profil ICC → sRGB après la réduction, JPEG q80 progressif), figé
+  après mise au point sur 86 autres photos. Test sur 200 photos tirées au hasard parmi les 1 356 transformées le 02/11
+  (relecture de leur version Supabase gratuite : déjà comptées ce cycle, 286/286 vues dans les journaux) :
+  **200/200 empreintes identiques au bit près** (dHash, pHash, couleur, variantes), **199/199 JPEG identiques à l'octet**
+  au fichier de Supabase, le PNG identique en pixels et en données compressées (seuls deux blocs d'en-tête diffèrent).
+- Non couvert (aucun cas parmi les photos du cycle) : orientation EXIF ≠ 1, WebP, gris, CMJN, transparence, réduction
+  ×8, profils non sRGB → resteraient à la transformation Supabase (≈ 0 $) tant que non prouvés.
+- **Limites des fonctions : NON tenues par wasm-vips tel qu'il est publié.** Temps : oui (plus grosses photos du bucket :
+  176 ms au pire, démarrage 445 ms, pour 2 s de CPU). Mémoire et threads : non — 256 Mo de mémoire WebAssembly réservés
+  dès le démarrage (= toute la limite d'une fonction) et ≥ 6 Web Workers, absents des fonctions Supabase (doc :
+  « libvips, sharp non supportés »). Le calcul lui-même ne demande que 50 Mo : une version mono-thread allégée tiendrait
+  probablement, à construire puis à reprouver sur les mêmes références et à mesurer dans une fonction de test (accord de
+  Nico requis pour tout déploiement).
+- **Coûts** : aujourd'hui ≈ 235 à 390 $ / cycle, ≈ 2 350 à 3 900 $ à 10 fois plus d'utilisateurs ; méthode D dans nos
+  fonctions ≈ 0 à 5 $ (egress +13 à 22 Go, invocations), ≈ 16 à 38 $ à 10 fois plus.
+- Remesure Supabase 24 h programmée le 03/11 à 16:40 (tâche de la session de ce terminal).
