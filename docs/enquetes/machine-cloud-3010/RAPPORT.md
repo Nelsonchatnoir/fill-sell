@@ -1927,7 +1927,7 @@ handler_build de toutes : `2026-11-01T23:02:16Z+dd69fbb-cloud · v0.6.164` ; le 
   REFUS de `npm run build` (EXTENSION_LAST_COMMIT à bumper) — commande enchaînée sans arrêt sur l'échec ; même code que
   29c5271, version interne 2.9.155 ; numéro consommé, remplacé 3 min plus tard par la 2.9.157 construite proprement.
 - **Cloud** : orchestrateur 7d2a82e déployé 19:30:38 (file vide), avec la confirmation des glissières (§ 24.2) et la copie
-  Cloud de l'extension **0.6.168-cloud** (BUILD_ID `2026-11-02T18:29:21Z+7d2a82e-cloud`, construite depuis HEAD : la copie
+  Cloud de l'extension **0.6.168-cloud** (BUILD_ID `2026-11-02T18:29:30Z+7d2a82e-cloud (lu sur le poste Cloud à 19:31:51)`, construite depuis HEAD : la copie
   précédente venait de dd69fbb, 0.6.164). Navigateur rouvert 19:30:51, empreinte 7a1cfa22 inchangée, extension rafraîchie.
 - **Parc** : `build/CWS-0.6.168-A-TELEVERSER/fillsell-extension-0.6.168-cws.zip` (BUILD_ID `2026-11-02T18:29:37Z+7d2a82e`,
   SHA-256 06ee466b…) ; EXTENSION_LAST_COMMIT = 2026-11-02T18:24:23Z ; EXTENSION_MIN_BUILD non touché.
