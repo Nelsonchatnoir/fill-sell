@@ -1831,3 +1831,60 @@ isolé → coffre du principal ; 7. session Firebase de la page copiée ; 8. ré
 - Aucune OTA : l'app n'avait rien à changer (la ligne « navigateur réservé » venait de `cloud_isole`, retiré ; le code qui
   la lit dans `src/cloud/` est désormais inerte, à retirer dans une prochaine OTA).
 - Navigateur isolé retiré : conteneur supprimé, profil retiré du disque (archive `p-beebs-isole.tgz`).
+
+## 24. Le test de Nico (02/11 soir) : publications et republications par le Cloud ; fausse alerte Leboncoin ; textes Cloud
+
+### 24.1 Avant le test : deux « Résoudre » (heure de Paris)
+- 16:28:52 Beebs : glissière DataDome au premier passage du principal (§ 23.5) → « à résoudre ». **17:00:06 « Résoudre »
+  de Nico : aucune glissière, lecture 200 → rouverte (17:00:22).** Beebs passe dans le navigateur unique.
+- 16:55:00 Leboncoin : dans l'onglet de travail (accueil, `www.leboncoin.fr/`), l'API du compte
+  (`api/account/v2/members/me/account`) rend 200 à 16:54:54 puis **403 + défi DataDome** à 16:55:00 ; la page charge le
+  cadre `geo.captcha-delivery.com/captcha/` (referer = l'API). 16:55:40 la règle ferme Leboncoin et publie « à résoudre ».
+  16:59:46 « Résoudre » de Nico : « Mes annonces » s'ouvre SANS glissière, lecture 200 → rouverte en 13 s.
+  **Fausse alerte** : le défi visait une seule requête et ne tenait pas.
+
+### 24.2 La règle corrigée (serveur-cloud/src/verifications.js)
+- Une glissière vue dans un ONGLET DE TRAVAIL (`source: navigateur`) : la plateforme est fermée aussitôt (verrou, onglets,
+  coffre « en vérification » — plus aucune requête), mais l'app ne lit que **`verification_en_cours`** (aucun bouton,
+  aucun message sur les tâches). Au bout de **3 min** (`CONFIRMATION_MS`) : UNE page de fond + UNE lecture d'accès (le
+  mécanisme de l'essai des 24 h). **Passée → rouverte sans rien dire** (`verification_passagere`, `resolue_par:
+  confirmation`) ; glissière revue, refus, ou essai impossible au-delà de 15 min → « à résoudre » (bouton, tâches annotées).
+- Une glissière qui revient dans les 30 min après une rouverture silencieuse va droit à « Résoudre » (ni seconde
+  confirmation, ni « revenue » : « revenue » ne suit qu'une résolution faite par la personne).
+- Inchangé : blocage dur (`t=bv`) → restreint + essai des 24 h ; tâche refusée par l'anti-robot ; « Me connecter ».
+- Tests : serveur-cloud 93/93 (« une glissière d'onglet de travail est CONFIRMÉE avant d'appeler la personne »).
+- App (OTA 2.9.155) : `verification_en_cours` = « Vérification en cours — FillSell vérifie que l'accès est rendu, puis reprend
+  tout seul : rien à faire » dans « Me connecter », sans bouton ni bandeau, jamais « à reconnecter ».
+
+### 24.3 Les 5 publications (« TEST FillSell 30/10 — T-shirt… », 999 €, lancées à 17:02:51)
+- 17:02:51 → 17:13 : **retenues** — le réglage « Publication programmée » de Nico était ACTIF (créneau du matin) ; l'app
+  a marqué les cinq `programmee=true`, get-pending-jobs les gardait (« 4 retenue(s) (creneau) »), eBay aussi. L'écran
+  disait « Dans la file — Chrome la prend à son tour » (défaut corrigé, § 24.4). Nico a éteint le réglage vers 17:13.
+- Exécutées (handler_build des 4 = `2026-11-01T23:02:16Z+dd69fbb-cloud · v0.6.164`, la copie Cloud ; le poste du PC de Nico
+  n'a plus interrogé get-pending-jobs depuis le 01/11 15:27 ; seul le poste Cloud polle) :
+
+| Plateforme | Par | En ligne | Annonce |
+|---|---|---|---|
+| eBay | nos serveurs (`ebay-api-worker`, API) | 17:14:12 | https://www.ebay.fr/itm/820307245385 |
+| Vinted | Cloud | 17:16:35 | https://www.vinted.fr/items/10637904348 |
+| Leboncoin | Cloud | 17:18:14 | https://www.leboncoin.fr/ad/vetements/3301066727 |
+| Beebs | Cloud | 17:20:04 | https://www.beebs.app/fr/p/34283901 |
+| Depop | Cloud | 17:20:39 | https://www.depop.com/products/nelsonchatsoir-article-de-test-fillsell-verification-a4c6/ |
+
+### 24.4 Les écrans de suivi d'un compte Cloud (OTA 2.9.155)
+Règle : `docs/regles/republication-et-publication.md` § « 02/11 soir — compte Cloud ». « Dans la file — FillSell Cloud la
+prend à son tour(…) », « FillSell Cloud la publie… », pastille « FillSell Cloud actif · vu … » ; eBay inchangé ; comptes
+avec extension inchangés. Et l'écran « Publication lancée » dit une publication programmée (« Programmée : elle partira
+dans ton créneau, une à la fois »), pour tous les comptes.
+- Et partout : une tâche faite par le Cloud ne dit plus jamais « mets à jour l'extension » (la version lue était celle de
+  l'extension du PC : `situationJob` la neutralise pour ces tâches, la carte du Stock aussi).
+- Le drapeau Cloud n'est lu que derrière la porte du Cloud (`cloudConnexionVisible`) : un compte ordinaire ne fait
+  aucune requête de plus ; l'app porte sa copie de la liste des plateformes (`src/cloud/voieCloud.js`, comparée par
+  `selftest:cloud-voie`), jamais un module serveur.
+- **OTA 2.9.155** servie à 17:48 (build `2026-11-02T16:47:38Z+63ebe07`, canal relu). Preuve d'identité contre 2.9.154
+  AVANT l'envoi : **708 scènes identiques** ; échecs = les 3 connus (ConditionsCloudModale, EncartCloudBientot,
+  empreinte d'App.jsx) + le périmètre (ce lot). Suite complète 524 / 0 rouge ; serveur-cloud 93/93.
+
+### 24.5 Déploiement du correctif serveur (§ 24.2)
+- Commité (3345cf8), **pas encore déployé** : un déploiement redémarre le navigateur Cloud — jamais pendant les
+  republications de Nico. L'app 2.9.155 sait déjà afficher « vérification en cours ».

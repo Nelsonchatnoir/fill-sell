@@ -1,6 +1,18 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ 02/11/2026 16:50 — UN NAVIGATEUR, UNE IP, LES 5 PLATEFORMES (à lire EN PREMIER)
+## ⛔ 02/11/2026 17:50 — TEST DE NICO : 5 PUBLICATIONS FAITES (4 PAR LE CLOUD, eBay PAR L'API) ; OTA 2.9.155 (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 24. Le bloc 16:50 en dessous reste l'état du Cloud.
+- 17:14 → 17:21 : eBay (ebay-api-worker), Vinted, Leboncoin, Beebs, Depop (copie Cloud `…dd69fbb-cloud`) en ligne ; le
+  PC de Nico n'a rien pris (son poste ne polle plus depuis le 01/11 15:27). D'abord retenues par le réglage « Publication
+  programmée » (créneau du matin), éteint par Nico vers 17:13.
+- Fausse alerte Leboncoin de 16:55 (défi DataDome sur UNE requête, rien à glisser à 16:59) → règle corrigée
+  (`verifications.js` : glissière d'onglet de travail CONFIRMÉE — une page, une lecture, 3 min — avant « Résoudre »),
+  commitée **3345cf8, À DÉPLOYER après les republications de Nico** (jamais pendant une tâche) :
+  `DESTINATIONS_PROXY="176.103.182.215:12323" bash serveur-cloud/outils/deployer.sh 178.105.24.16 cloud.fillsell.app`.
+- **OTA 2.9.155** servie (17:48) : écrans de suivi d'un compte Cloud (« FillSell Cloud la prend à son tour »,
+  « FillSell Cloud actif »), publication programmée dite sur « Publication lancée », état « vérification en cours ».
+
+## 02/11/2026 16:50 — UN NAVIGATEUR, UNE IP, LES 5 PLATEFORMES (l'état du Cloud ; mis à jour par le bloc de 17:50 au-dessus)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 23. Ce bloc remplace, pour l'état, tous les blocs du 02/11 en
 dessous (gardés pour l'histoire) : il n'y a PLUS de navigateur isolé (décision de Nico, 02/11 soir).
 
