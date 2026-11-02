@@ -1624,3 +1624,33 @@ inverse `supabase/rollbacks/20261102110000_cloud_connexions_depop_INVERSE.sql`.
 ### 22.6 Vinted / Depop — le bouton (point 5)
 - Connectée : plus de bouton principal, un lien discret « Changer de compte » ; « Me reconnecter » seulement déconnectée
   (0d00637, cloud-me-connecter 55). OTA **2.9.152** servie à 12:47 (preuve d’identité AVANT l’envoi, contre 2.9.151 : 708 scènes identiques ; périmètre = ces 2 fichiers + `_shared/etat-job.js` du lot A de l’utre terminal).
+
+### 22.7 Test PROPRE sur Beebs, de zéro (décision de Nico, 12:55 : la langue reste en français, empreinte figée)
+- **Deuxième IP** : solde IPRoyal 3,35 $ < 4 $ (30 jours) → même produit en **24 h** : IPRoyal **87277471**, ISP Dedicated,
+  Lille (plage différente : les deux précédentes étaient en 185.134.19x), **2,60 $** (ville : +0,60 $), livrée 12:54 :
+  **176.103.180.12**, échéance **03/11 12:54** (Paris). Contrôle d'entrée 12:58 (FR, aucune liste, aucune visite).
+- **Tout Beebs effacé AVANT la bascule** : navigateur (`outils/effacer-plateforme.mjs`, 12:55:24) — 5 cookies Beebs
+  (DataDome compris), stockage des origines www.beebs.app, beebs.app, babytouch-782e4.firebaseapp.com (tous types) ; 99
+  autres cookies inchangés ; la copie Cloud de l'extension ne garde aucune donnée d'identité Beebs (4 repères horaires
+  FillSell, laissés). Coffre : ligne Beebs supprimée (`scripts/reparations/20261102_cloud_beebs_de_zero_nico.sql`,
+  sauvegarde `_backup_0211_cloud_beebs` protégée, inverse), état « vérification » retiré ; blocage Beebs fermé
+  (blocages.json, avant le redémarrage). Le cache HTTP du navigateur (commun à toutes les plateformes) n'a PAS été vidé.
+- **Bascule** (`…_ip_remplacement_2_nico.sql` puis `…_2b_nico.sql`) : 185.134.192.253 au rebut ; ⚠️ cloud_ip_attribuer a
+  d'abord donné 185.134.194.88 (id 2 : l'IP de 24 h est écartée par cloud_ip_attribuable, échéance trop proche) —
+  corrigé par réparation avant toute sortie (id 2 rendue au pool, id 5 attribuée). Navigateur rouvert 13:00:13, sortie
+  relue **176.103.180.12**, empreinte inchangée (73cbe2096d286336), aucun cookie Beebs ; Vinted (30), Leboncoin (31),
+  Depop (30) cookies intacts, connectés au coffre (12:59).
+- **13:02:24, « Me connecter » Beebs par Nico, première requête de cette IP vers Beebs, aucun cookie** :
+  `GET www.beebs.app/fr/auth` → **403**, vérification de l'appareil DataDome (`/interstitial/`), puis plus aucune requête
+  Beebs (une vérification passée recharge la page) ; Nico a quitté à 13:02:42 ; page fermée à 13:07:24 (expirée,
+  non connectée). La page de connexion Beebs ne s'est jamais affichée. (L'activité Google de 13:05 venait d'un onglet de
+  travail Depop.)
+- **Conclusion (règle posée par Nico avant l'essai)** : refus dès la page de connexion, sur une IP neuve d'une autre
+  plage, profil vidé de tout Beebs → c'est le navigateur Cloud lui-même qui est repéré par le DataDome de Beebs. Arrêt ;
+  pas d'autre IP. Leboncoin, Vinted, Depop passent avec ce même navigateur. (L'essai « langue en-US » n'a pas été fait :
+  décision de Nico.)
+- Coût IPRoyal du 02/11 : 4 $ + 2,60 $ = **6,60 $** (≈ 6,1 €, plafond 10 €) ; solde 0,75 $.
+- ⚠️ À trancher par Nico avant le **03/11 12:54** : l'IP du compte (176.103.180.12) expire ; sans IP valide, le navigateur
+  ne sort plus (toutes plateformes). Options : revenir sur une IP longue du pool (185.134.194.88 jamais attribuée,
+  jusqu'au 29/11 ; ou 81.181.239.136 au rebut, valide jusqu'au 29/11, qui marchait pour Vinted, Leboncoin, Depop), ou
+  prolonger celle-ci (4 $, solde à recharger).

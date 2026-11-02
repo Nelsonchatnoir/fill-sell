@@ -1,5 +1,15 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 02/11/2026 13:10 — BEEBS : LE NAVIGATEUR CLOUD EST REPÉRÉ ; IP DE 24 H À REMPLACER AVANT LE 03/11 12:54 (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 22.7. Le bloc 12:55 en dessous reste valable (empreinte figée).
+- Test propre de Nico (13:02) : Beebs effacée partout, IP neuve d'une autre plage (176.103.180.12), première requête →
+  403 + vérification de l'appareil, jamais la page de connexion. Conclusion de Nico : le navigateur Cloud lui-même est
+  repéré par Beebs. **Arrêt : pas d'autre IP.** Beebs n'a ni session ni ligne au coffre (« à connecter »).
+- IP du compte : **176.103.180.12** (IPRoyal 87277471, 24 h, **expire le 03/11 12:54**) → décision de Nico attendue
+  (revenir sur 185.134.194.88 ou 81.181.239.136, valides jusqu'au 29/11, ou prolonger). Pare-feu : déployer avec
+  `DESTINATIONS_PROXY="81.181.239.136:12323,185.134.192.253:12323,176.103.180.12:12323"` (+ la prochaine IP).
+- IPRoyal du 02/11 : 6,60 $ (≈ 6,1 €) ; solde 0,75 $.
+
 ## ⛔ 02/11/2026 12:55 — BEEBS BLOQUÉ DUR PAR DATADOME DEPUIS LE PROFIL FRANÇAIS ; IP REMPLACÉE ; EMPREINTE FIGÉE (à lire EN PREMIER)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 22. Le bloc 11:35 en dessous reste valable.
 
