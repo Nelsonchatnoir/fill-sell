@@ -123,6 +123,7 @@ export const nomConteneur = (user) => `fs-nav-${String(user).replace(/[^0-9a-f-]
 // CETTE empreinte. Un second navigateur du compte, réservé à la plateforme : son conteneur, son profil (rien de partagé),
 // sa propre IP (NAVIGATEUR_ISOLE_<PF>_IP), sa propre empreinte (écran 1536×864, 4 cœurs, aucune extension), mêmes langue
 // et fuseau français ; le verrou n'y laisse passer QUE sa plateforme (eBay et Opla jamais). Le principal n'est pas touché.
+export const ATTENTE_SORTIE_ISOLE_MS = 8000;
 export const VARIANTES_ISOLEES = Object.freeze({ beebs: Object.freeze({ ecran: Object.freeze([1536, 864]), cpus: '0-3' }) });
 export const nomConteneurIsole = (user, plateforme) => `${nomConteneur(user)}-${plateforme}`;
 export const profilIsole = (user, plateforme) => `p-${String(user).slice(0, 8)}-${plateforme}-isole`;
@@ -503,6 +504,10 @@ export function creerNavigateurs({ config, docker, journal }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), signal: AbortSignal.timeout(90_000),
     });
     if (!r.ok) throw new Error(`steel (isolé) : création de session → HTTP ${r.status}`);
+    // (02/11, vérification à vide) Le relais de proxy de steel n'est pas prêt tout de suite : 3 s après la session, une requête
+    // a pris ERR_TUNNEL_CONNECTION_FAILED. « Me connecter » navigue aussitôt : on laisse à la sortie le temps d'être prête
+    // (une visite de la personne ne doit jamais tomber sur une page d'erreur).
+    await new Promise((ok) => setTimeout(ok, ATTENTE_SORTIE_ISOLE_MS));
     const cdp = await connecterCdp(`ws://${ip}:3000/`, { delaiAppelMs: 90_000 });
     const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'steel', isole: plateforme, permises: [plateforme], bloquees: 0, cadresPermis: new Map() };
     brancherVerrou(h, () => { if (isoles.get(cle) === h) isoles.delete(cle); });
