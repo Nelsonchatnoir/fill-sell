@@ -1743,5 +1743,5 @@ Aucune visite de Beebs ni de Leboncoin ; échos : tls.browserleaks.com, httpbin.
 - Bandeau Axeptio impossible à fermer dans la fenêtre : « Refuser les cookies » (bouton dans l'app, le serveur presse le
   refus — page et racines d'ombre, lu sans réseau), toutes plateformes. serveur-cloud 92/92 ; suite complète 522 / 0.
 - Déployé 15:02 (principal inchangé, 73cbe209). **Partie app : OTA en attente** (arbre partagé occupé par l'autre
-  terminal, prié d'embarquer 7f3ba62 dans sa 2.9.154).
+  terminal, prié d'embarquer 7f3ba62 dans sa 2.9.154) → servie dans la 2.9.154 (canal relu 15:20).
 - **Point 3 (proposition, rien d'appliqué)** — voir la REPRISE, bloc 15:05.

@@ -34,8 +34,8 @@ en dessous (gardés pour l'histoire).
 IPRoyal le 02/11 : 4 + 2,60 + 2,60 + 2,00 = **11,20 $** ; recharge de Nico 15 $ ; **solde 11,15 $**.
 
 ### En attente
-- **OTA** de la partie app de 7f3ba62 (Beebs « Connecté » dans son navigateur réservé, bouton « Refuser les cookies ») :
-  l'autre terminal l'embarque dans sa prochaine OTA ; à vérifier sur le canal.
+- ~~OTA de la partie app de 7f3ba62~~ → **servie dans la 2.9.154** (OTA de l'autre terminal, 546063a ; canal production
+  relu par le terminal Cloud à 15:20 = 2.9.154 ; src/cloud identique à 7f3ba62).
 - **Point 3 (décision de Nico)** — proposition :
   1. Garder Beebs dans le navigateur isolé et **prolonger 176.103.182.215 à 30 jours** (plan 30 jours : 4 $ ≈ 3,70 €,
      sur le solde) AVANT le 03/11 14:09 — même IP que la session établie (en changer referait passer la vérification).
