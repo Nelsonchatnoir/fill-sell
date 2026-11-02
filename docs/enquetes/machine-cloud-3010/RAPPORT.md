@@ -1438,6 +1438,10 @@ republication des « Gants de ski Quechua » sur 4 plateformes. À 23:05, rien n
 - Leboncoin est compté hors de ses heures de pause de l'app (`platform_settings.leboncoin.blocage_acces` posé, pas levé).
 - Bilan : `docker compose exec -T orchestrateur node outils/endurance-bilan.mjs` (heures comptées par plateforme,
   plateformes en vérification, blocages).
+- **Bilan à 01:17** (après 9fb9d2c et le correctif suivant) : Vinted 1,6 h comptées (depuis sa republication de 23:42:40),
+  Beebs 1,7 h, Depop 1,7 h, Leboncoin **0 h** (pause de l'app depuis 22:54, datée par son début) ; exécutant 2 h de marche.
+  ⚠️ Les heures Beebs de 22:55 à 00:15 sont comptées alors que l'extension Cloud ne pouvait pas la joindre (défaut du
+  verrou, corrigé à 00:15) : une remise à zéro propre est possible sur décision de Nico.
 
 ### 20.6 Point 4 de Nico : « un retrait sur 5 plateformes, 4 republications sans eBay »
 Ni une erreur de bouton ni une tâche perdue : la feuille « Republier » ne propose jamais eBay (règle de l'app depuis le

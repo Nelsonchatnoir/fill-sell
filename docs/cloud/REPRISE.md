@@ -21,13 +21,16 @@ compte lu »).
 - eBay : jamais republié (règle de l'app depuis le 17/09) ; la feuille ne le dit pas (amélioration proposée).
 
 ### État à 01:00
-- Orchestrateur f525610 (+ compteur des 48 h corrigé, voir le commit suivant) ; navigateur ouvert depuis 00:15:48 ;
+- Navigateur rouvert à chaque déploiement (dernier : 01:15) ;
   verrou : les 4 plateformes ouvertes ; aucune plateforme en vérification (`blocages.json` : Leboncoin débloqué 23:55:07
   par « Me reconnecter »).
 - Coffre de Nico : Vinted, Leboncoin, Beebs, Depop connectés (vérifiés). Poste de Nico : ARRÊT. Aucun achat.
 - Sauvegardes : `_backup_0111_cloud_faux_connectes`, `_backup_0111_cloud_lbc_verification` (+ inverses dans
   `scripts/reparations/`).
-- **OTA 2.9.150 (bandeau de l'exécutant arrêté) : pas encore envoyée** — l'arbre partagé était sale (autre terminal) à 01:00.
+- **OTA 2.9.150** sur production (01:00, build 2026-11-01T23:59:20Z+1e7c943) : bandeau de l'exécutant arrêté.
+- Orchestrateur **41edf7a** (01:15) : compteur des 48 h juste — Vinted 1,6 h, Beebs 1,7 h, Depop 1,7 h, Leboncoin 0 h
+  (pause de l'app depuis 22:54) à 01:17. Les heures Beebs 22:55 → 00:15 comptent alors que l'extension ne la joignait
+  pas : remise à zéro propre possible sur décision de Nico.
 
 ### À relire au retour (sans boucle)
 - `docker compose exec -T orchestrateur node outils/endurance-bilan.mjs` : heures comptées par plateforme, blocages.
