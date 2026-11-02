@@ -50,6 +50,9 @@ export function lireConfig(env = process.env) {
     // (02/11, règle de Nico : « fige l'empreinte ») L'empreinte du navigateur qu'un déploiement a le droit d'installer à la
     // place de celle notée dans le profil (navigateur.js, verdictEmpreinte) ; vide = aucun changement permis.
     empreinteAutorisee: env.EMPREINTE_AUTORISEE?.trim() || '',
+    // (02/11, décision de Nico) Les plateformes servies par un navigateur ISOLÉ (navigateur.js, VARIANTES_ISOLEES) : l'id
+    // de l'IP du pool qui lui est réservée. Absent = aucune plateforme isolée.
+    navigateursIsoles: Object.fromEntries([['beebs', lireEntier(env.NAVIGATEUR_ISOLE_BEEBS_IP, 0)]].filter(([, ip]) => ip > 0).map(([p, ipId]) => [p, { ipId }])),
     dossierExtension: env.DOSSIER_EXTENSION?.trim() || '/srv/fillsell-cloud/extension',
     socketDocker: env.SOCKET_DOCKER?.trim() || '/var/run/docker.sock',
     // Capacité MESURÉE du serveur (navigateurs simultanés). Défaut prudent.

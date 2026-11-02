@@ -354,6 +354,8 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
   async function essayer(user, b) {
     const h = navigateurs.ouvert(user);
     const cle = `${user}:${b.plateforme}`;
+    // (02/11) Une plateforme isolée ne passe jamais par le navigateur principal, essai compris.
+    if (config.navigateursIsoles?.[b.plateforme]) return null;
     if (!h || essais.has(cle) || connexionsOuvertes?.().has(user)) return null;
     essais.add(cle);
     let cible = null;
@@ -378,6 +380,10 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
           const { cookies } = await h.cdp.send('Storage.getCookies');
           await rouvrir(user, b.plateforme, { cookies, preuve: { le: new Date().toISOString(), http: v.http }, par: 'essai_24h' });
           issue = 'passe';
+        } else if (['sans_jeton', 'sans_session', 'anonyme'].includes(v.motif) || v.http === 401) {
+          // (02/11) La page répond, mais aucune session : l'accès est rendu, la personne se (re)connecte.
+          await sessionFermee(user, b.plateforme);
+          issue = 'session_fermee';
         }
       }
     } catch (e) { journal.alerte('verification_essai_echec', { user, plateforme: b.plateforme, erreur: e.message }); issue = 'erreur'; }

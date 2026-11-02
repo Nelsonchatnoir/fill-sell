@@ -560,3 +560,45 @@ test('(02/11, essai de Nico 11:45) « Résoudre » : la vérification de l\'appa
   assert.equal(s.nav.page.lectures, 0, 'aucune requête de plus');
   await attendre(2600);
 });
+
+// ── (02/11, décision de Nico : dernier essai Beebs) le navigateur ISOLÉ, et « Accès temporairement restreint » dans « Me connecter »
+const BEEBS_CO = [{ name: 'access_token', value: jwt({ sub: 'u-beebs', provider_id: 'password' }), domain: 'www.beebs.app', path: '/' }];
+test('(02/11) « Me connecter » Beebs passe par SON navigateur isolé : le principal n\'est ni ouvert ni ouvert à Beebs, rien au coffre', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const appels = { isole: 0, ferme: [], permettre: 0, principal: 0 };
+  s.postes.ouvrirIsole = async () => { appels.isole++; return { cdp: s.nav.cdp, permises: ['beebs'] }; };
+  const ouvrirPrincipal = s.postes.ouvrir; s.postes.ouvrir = async (...a) => { appels.principal++; return ouvrirPrincipal(...a); };
+  s.navigateurs.permettre = async () => { appels.permettre++; return { ok: true }; };
+  s.navigateurs.fermerIsole = async (u, p, r) => { appels.ferme.push([p, r]); };
+  s.connexions = creerConnexions({ config: { ...config, navigateursIsoles: { beebs: { ipId: 2 } } }, base: s.base, postes: s.postes, navigateurs: s.navigateurs, coffre: s.coffre, journal });
+  const c = brancherClient(s, 'beebs');
+  await c.ouvrir();
+  await attendre(20);
+  assert.equal(appels.isole, 1, 'le navigateur isolé de Beebs');
+  assert.equal(appels.principal, 0, 'le principal n\'est pas ouvert pour Beebs');
+  assert.equal(appels.permettre, 0, 'ni ouvert à Beebs');
+  s.nav.poserCookies(BEEBS_CO);
+  s.nav.page.lecture = { http: 200, id: 'u-beebs' };
+  await attendre(2300);
+  assert.ok(c.etapes().includes('verifie'), c.etapes().join(','));
+  assert.ok(!s.base.t.cloud_coffre.some((l) => l.plateforme === 'beebs'), 'rien au coffre du principal (sinon il se l\'ouvrirait)');
+  await c.dire({ t: 'termine' });
+  await attendre(3400);
+  assert.deepEqual(appels.ferme, [['beebs', 'connectee']], 'le navigateur isolé ne tourne que le temps de sa page');
+});
+
+test('(02/11) « Me connecter » : « Accès temporairement restreint » dès la page de connexion → dit tout de suite, même message que « Résoudre »', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  s.nav.page.etatPage = { hote: 'www.beebs.app', pret: true, captcha: false, bloque: false, interstitiel: true, restreint: false };
+  const c = brancherClient(s, 'beebs');
+  await c.ouvrir();
+  await attendre(2200);
+  assert.ok(c.recus.some((m) => m.etape === 'info' && /vérifie l'appareil/.test(m.message)), 'la vérification de l\'appareil en cours : son message');
+  s.nav.page.etatPage = { ...s.nav.page.etatPage, restreint: true };
+  await attendre(2100);
+  assert.ok(c.recus.some((m) => m.etape === 'restreint' && /Accès temporairement restreint/.test(m.message)), c.etapes().join(','));
+  assert.equal(s.base.t.cloud_connexions.at(-1).statut, 'erreur');
+  assert.equal(s.nav.page.lectures, 0, 'aucune lecture du compte');
+  await attendre(2600);
+  assert.ok(!s.connexions.connexionsOuvertes().has(U), 'la vue se ferme');
+});

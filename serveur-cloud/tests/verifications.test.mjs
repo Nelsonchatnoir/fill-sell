@@ -211,3 +211,23 @@ test('(02/11, essai de Nico 11:45) « Accès temporairement restreint » écrit 
     assert.ok(TEXTE_ACCES_RESTREINT.test(t), t);
   assert.ok(!TEXTE_ACCES_RESTREINT.test('Vérification de l\'appareil en cours'), 'une vérification qui passe : non');
 });
+
+test('(02/11) le navigateur isolé : sa propre empreinte (écran, cœurs, aucune extension), le principal inchangé', async () => {
+  const { specConteneur, specConteneurIsole, corpsSession, corpsSessionIsole, empreinteNavigateur, nomConteneurIsole, profilIsole } = await import('../src/navigateur.js');
+  const config = { imageNavigateur: 'i', dossierProfils: '/p', dossierExtension: '/e' };
+  const p = specConteneur({ config, user: 'u', profilId: 'p1' });
+  const i = specConteneurIsole({ config, user: 'u', profilId: 'p-u-beebs-isole', plateforme: 'beebs' });
+  assert.ok(!i.HostConfig.Binds.some((b) => b.includes('/app/api/extensions/')), 'aucune extension : aucune visite de fond');
+  assert.ok(i.HostConfig.Binds.includes('/p/p-u-beebs-isole:/app/api/user-data-dir'), 'son profil à lui');
+  assert.equal(i.HostConfig.CpusetCpus, '0-3');
+  assert.match(i.Cmd[0], /Xvfb :10 -screen 0 1536x864x24/);
+  assert.equal(i.Labels['fillsell.isole'], 'beebs');
+  const ci = corpsSessionIsole({ proxyUrl: 'http://a:b@1.2.3.4:12323', plateforme: 'beebs' });
+  assert.deepEqual([ci.extensions, ci.dimensions], [[], { width: 1536, height: 864 }]);
+  assert.notEqual(empreinteNavigateur(i, ci), empreinteNavigateur(p, corpsSession({ proxyUrl: 'http://a:b@1.2.3.4:12323' })), 'une empreinte différente du principal');
+  assert.match(p.Cmd[0], /1920x1080x24/, 'le principal garde son écran');
+  assert.ok(p.HostConfig.Binds.some((b) => b.includes('/app/api/extensions/')) && !p.HostConfig.CpusetCpus, 'et son extension, sans limite de cœurs');
+  assert.equal(nomConteneurIsole('f44b5917-bccc', 'beebs'), 'fs-nav-f44b5917-bccc-beebs');
+  assert.equal(profilIsole('f44b5917-bccc', 'beebs'), 'p-f44b5917-beebs-isole');
+  assert.throws(() => specConteneurIsole({ config, user: 'u', profilId: 'x', plateforme: 'vinted' }), /inconnue/);
+});

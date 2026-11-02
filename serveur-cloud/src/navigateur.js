@@ -117,6 +117,35 @@ export function cacheExtensionAEffacer(empreinteNotee, empreinteCopie) {
 
 export const FICHIERS_VERROU_PROFIL = Object.freeze(['SingletonLock', 'SingletonCookie', 'SingletonSocket']);
 export const nomConteneur = (user) => `fs-nav-${String(user).replace(/[^0-9a-f-]/gi, '')}`;
+
+// ── (02/11, décision de Nico : dernier essai Beebs) LE NAVIGATEUR ISOLÉ D'UNE PLATEFORME ─────────────────────────────
+// Beebs bloque le navigateur principal dès la première requête (IP neuve, aucun cookie) ; hypothèse : DataDome a marqué
+// CETTE empreinte. Un second navigateur du compte, réservé à la plateforme : son conteneur, son profil (rien de partagé),
+// sa propre IP (NAVIGATEUR_ISOLE_<PF>_IP), sa propre empreinte (écran 1536×864, 4 cœurs, aucune extension), mêmes langue
+// et fuseau français ; le verrou n'y laisse passer QUE sa plateforme (eBay et Opla jamais). Le principal n'est pas touché.
+export const VARIANTES_ISOLEES = Object.freeze({ beebs: Object.freeze({ ecran: Object.freeze([1536, 864]), cpus: '0-3' }) });
+export const nomConteneurIsole = (user, plateforme) => `${nomConteneur(user)}-${plateforme}`;
+export const profilIsole = (user, plateforme) => `p-${String(user).slice(0, 8)}-${plateforme}-isole`;
+/** Le lancement avec écran, à une autre taille (pure). */
+export const lancementAvecEcranDe = ([l, h]) => LANCEMENT_AVEC_ECRAN.replace('1920x1080x24', `${Number(l)}x${Number(h)}x24`);
+/** La spécification du conteneur isolé (pure : testée) : celle du principal, sans extension, son écran, ses cœurs. */
+export function specConteneurIsole({ config, user, profilId, plateforme, langueFr = false }) {
+  const v = VARIANTES_ISOLEES[plateforme];
+  if (!v) throw new Error(`navigateur isolé : plateforme inconnue (${plateforme})`);
+  const base = specConteneur({ config, user, profilId, langueFr });
+  const binds = base.HostConfig.Binds.filter((b) => !b.includes('/app/api/extensions/'));
+  const cmd = [lancementAvecEcranDe(v.ecran)];
+  return { ...base, Cmd: cmd,
+    Labels: { ...base.Labels, 'fillsell.isole': plateforme,
+      'fillsell.lancement': empreinteLancement({ Image: base.Image, Cmd: cmd, Env: base.Env, Binds: [...binds, `cpuset=${v.cpus}`] }) },
+    HostConfig: { ...base.HostConfig, Binds: binds, CpusetCpus: v.cpus } };
+}
+/** Le corps de session du navigateur isolé (pur : testé) : aucune extension, la taille de son écran. */
+export function corpsSessionIsole({ proxyUrl, plateforme }) {
+  const v = VARIANTES_ISOLEES[plateforme];
+  if (!v) throw new Error(`navigateur isolé : plateforme inconnue (${plateforme})`);
+  return { ...corpsSession({ proxyUrl }), extensions: [], dimensions: { width: v.ecran[0], height: v.ecran[1] } };
+}
 export const nouveauProfilId = (user) => `p-${String(user).slice(0, 8)}-${randomBytes(6).toString('hex')}`;
 
 /** La spécification Docker du conteneur d'un compte (pure : testée). */
@@ -306,11 +335,11 @@ export function creerNavigateurs({ config, docker, journal }) {
     throw new Error(`steel-browser muet (${derniere})`);
   }
 
-  async function assurerConteneur(user, profilId) {
-    const nom = nomConteneur(user);
+  async function assurerConteneur(user, profilId, autre = null) {
+    const nom = autre?.nom ?? nomConteneur(user);
     let c = await docker.inspecter(nom);
     const langueFr = await access(paquetLangueFr(config)).then(() => true, () => false);
-    const spec = specConteneur({ config, user, profilId, langueFr });
+    const spec = autre?.spec ?? specConteneur({ config, user, profilId, langueFr });
     if (c && (c.Config?.Labels?.['fillsell.profil'] !== profilId || c.Config?.Labels?.['fillsell.lancement'] !== spec.Labels['fillsell.lancement'])) {
       // Le profil a changé (purge), ou le lancement (02/11 : langue, fuseau) : l'ancien conteneur ne sert plus. Le
       // profil du compte, sur le disque, reste.
@@ -341,9 +370,9 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
 
   /** (02/11) L'empreinte notée dans le profil (verdictEmpreinte) : refusée = le navigateur ne s'ouvre pas, et c'est dit. */
-  async function exigerEmpreinte(user, profilId, proxyUrl) {
+  async function exigerEmpreinte(user, profilId, proxyUrl, calculee = null) {
     const langueFr = await access(paquetLangueFr(config)).then(() => true, () => false);
-    const courante = empreinteNavigateur(specConteneur({ config, user, profilId, langueFr }), corpsSession({ proxyUrl }));
+    const courante = calculee ?? empreinteNavigateur(specConteneur({ config, user, profilId, langueFr }), corpsSession({ proxyUrl }));
     const fichier = `${config.dossierProfils}/${profilId}/.empreinte-navigateur`;
     const notee = await readFile(fichier, 'utf8').catch(() => '');
     const v = verdictEmpreinte(notee, courante, config.empreinteAutorisee);
@@ -427,8 +456,21 @@ export function creerNavigateurs({ config, docker, journal }) {
     const cdp = await connecterCdp(`ws://${ip}:3000/`, { delaiAppelMs: 90_000 });
     const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'steel', permises: plateformesVerrou(permises), bloquees: 0,
       cadresPermis: new Map() };   // (02/11) cadre d'une page de résolution → sa plateforme
+    brancherVerrou(h, () => { if (ouverts.get(user) === h) ouverts.delete(user); });
+    // Le verrou est posé AVANT toute page : le navigateur de la session vient d'ouvrir, l'extension démarre à peine.
+    await poserVerrouSteel(h);
+    // Aucun téléchargement, jamais : rien ne s'écrit sur le disque du serveur par une page.
+    await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
+    ouverts.set(user, h);
+    journal.info('navigateur_ouvert', { user, conteneur: nom });
+    return h;
+  }
+
+  /** Le verrou des plateformes sur un navigateur steel (principal ou isolé). */
+  function brancherVerrou(h, surFermeture) {
+    const { cdp } = h;
     cdp.on((m) => {
-      if (m.method === '__ferme__' && ouverts.get(user) === h) ouverts.delete(user);
+      if (m.method === '__ferme__') surFermeture();
       // (01/11) Le verrou : une requête vers une plateforme fermée (session du navigateur, sans sessionId) échoue.
       // (02/11) Sauf celle d'une page de RÉSOLUTION (« Résoudre la vérification », essai des 24 h) : ses cadres, et
       // eux seuls, joignent la plateforme en vérification — l'extension et ses onglets de travail, jamais.
@@ -441,13 +483,48 @@ export function creerNavigateurs({ config, docker, journal }) {
         cdp.send('Fetch.failRequest', { requestId: m.params?.requestId, errorReason: 'BlockedByClient' }).catch(() => {});
       }
     });
-    // Le verrou est posé AVANT toute page : le navigateur de la session vient d'ouvrir, l'extension démarre à peine.
+  }
+
+  /** (02/11) Le navigateur ISOLÉ d'une plateforme (VARIANTES_ISOLEES) : ouvert à la demande, seule sa plateforme passe. */
+  const isoles = new Map(); // `${user}:${plateforme}` → handle
+  async function ouvrirIsole(user, plateforme, { proxyUrl, profilId }) {
+    const cle = `${user}:${plateforme}`;
+    if (isoles.has(cle)) return isoles.get(cle);
+    if (chrome) throw new Error('navigateur isolé : moteur steel seulement');
+    await exigerPareFeu(config);
+    const langueFr = await access(paquetLangueFr(config)).then(() => true, () => false);
+    const spec = specConteneurIsole({ config, user, profilId, plateforme, langueFr });
+    const corps = corpsSessionIsole({ proxyUrl, plateforme });
+    // Son empreinte à lui, FIGÉE elle aussi (notée dans SON profil à la première ouverture).
+    await exigerEmpreinte(user, profilId, proxyUrl, empreinteNavigateur(spec, corps));
+    const { nom, ip } = await assurerConteneur(user, profilId, { nom: nomConteneurIsole(user, plateforme), spec });
+    await attendreApi(ip);
+    const r = await fetch(`http://${ip}:3000/v1/sessions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), signal: AbortSignal.timeout(90_000),
+    });
+    if (!r.ok) throw new Error(`steel (isolé) : création de session → HTTP ${r.status}`);
+    const cdp = await connecterCdp(`ws://${ip}:3000/`, { delaiAppelMs: 90_000 });
+    const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'steel', isole: plateforme, permises: [plateforme], bloquees: 0, cadresPermis: new Map() };
+    brancherVerrou(h, () => { if (isoles.get(cle) === h) isoles.delete(cle); });
     await poserVerrouSteel(h);
-    // Aucun téléchargement, jamais : rien ne s'écrit sur le disque du serveur par une page.
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
-    ouverts.set(user, h);
-    journal.info('navigateur_ouvert', { user, conteneur: nom });
+    isoles.set(cle, h);
+    journal.info('navigateur_isole_ouvert', { user, plateforme, conteneur: nom });
     return h;
+  }
+  async function fermerIsole(user, plateforme, raison = 'fin') {
+    const cle = `${user}:${plateforme}`;
+    const h = isoles.get(cle);
+    isoles.delete(cle);
+    try { h?.cdp?.fermer(); } catch { /* déjà parti */ }
+    const nom = nomConteneurIsole(user, plateforme);
+    const ins = await docker.inspecter(nom);
+    if (ins?.State?.Running) {
+      const ip = ipDe(ins);
+      if (ip) { try { await fetch(`http://${ip}:3000/v1/sessions/release`, { method: 'POST', signal: AbortSignal.timeout(20_000) }); } catch { /* best-effort */ } }
+      await docker.arreter(nom).catch(() => {});
+    }
+    journal.info('navigateur_isole_ferme', { user, plateforme, raison });
   }
 
   /** Ferme : la session steel est rendue, puis le conteneur s'arrête (rien ne tourne sans raison). */
@@ -530,5 +607,6 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
   const retirerCadre = (user, cadre) => { ouverts.get(user)?.cadresPermis?.delete(String(cadre)); };
 
-  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
+  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()],
+    ouvrirIsole, fermerIsole, ouvertIsole: (user, plateforme) => isoles.get(`${user}:${plateforme}`) ?? null };
 }
