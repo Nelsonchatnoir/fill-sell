@@ -22,7 +22,7 @@
 //   3. le pare-feu de l'hôte (deploiement/pare-feu-navigateurs.sh) n'autorise
 //      aux conteneurs du réseau br-fillsell QUE le port des proxys IPRoyal :
 //      même un navigateur sans proxy ne joint aucune plateforme.
-import { mkdir, rm, readdir, chown, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, rm, readdir, chown, readFile, writeFile, access } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { connecterCdp } from './cdp.js';
 
@@ -108,13 +108,17 @@ export const nouveauProfilId = (user) => `p-${String(user).slice(0, 8)}-${random
  * de /etc/chromium.d/ : ce fichier, monté en lecture seule, y pose la langue française.
  */
 export const LANGUE_CHROMIUM = '# FillSell Cloud (02/11) : profil français — Chromium sous Linux lit sa langue dans LANGUAGE et LANG.\nexport LANGUAGE=fr_FR:fr\nexport LANG=fr_FR.UTF-8\n';
+// (02/11) Et la langue française de Chromium elle-même (fr.pak, paquet Debian chromium-l10n de la même version, posé par
+// outils/deployer.sh) : sans elle, Chromium retombe en en-US quoi qu'on lui dise (l'image n'a que en-US.pak).
+export const paquetLangueFr = (config) => `${config.dossierEtat || '/srv/fillsell-cloud/etat'}/chromium-locales/fr.pak`;
 export const fichierLangueChromium = (config) => `${config.dossierEtat || '/srv/fillsell-cloud/etat'}/chromium.d/fillsell-langue`;
 
-export function specConteneur({ config, user, profilId }) {
+export function specConteneur({ config, user, profilId, langueFr = false }) {
   const binds = [
     `${config.dossierProfils}/${profilId}:/app/api/user-data-dir`,
     `${config.dossierExtension}:/app/api/extensions/${EXTENSION_NOM}:ro`,
     `${fichierLangueChromium(config)}:/etc/chromium.d/fillsell-langue:ro`,
+    ...(langueFr ? [`${paquetLangueFr(config)}:/usr/lib/chromium/locales/fr.pak:ro`] : []),
   ];
   return {
     Image: config.imageNavigateur,
@@ -286,7 +290,8 @@ export function creerNavigateurs({ config, docker, journal }) {
   async function assurerConteneur(user, profilId) {
     const nom = nomConteneur(user);
     let c = await docker.inspecter(nom);
-    const spec = specConteneur({ config, user, profilId });
+    const langueFr = await access(paquetLangueFr(config)).then(() => true, () => false);
+    const spec = specConteneur({ config, user, profilId, langueFr });
     if (c && (c.Config?.Labels?.['fillsell.profil'] !== profilId || c.Config?.Labels?.['fillsell.lancement'] !== spec.Labels['fillsell.lancement'])) {
       // Le profil a changé (purge), ou le lancement (02/11 : langue, fuseau) : l'ancien conteneur ne sert plus. Le
       // profil du compte, sur le disque, reste.

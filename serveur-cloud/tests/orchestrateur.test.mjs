@@ -218,6 +218,10 @@ test('conteneur : lancé EXACTEMENT comme l\'essai du 01/11, profil du compte au
   assert.ok(s.HostConfig.Binds.includes('/srv/e:/app/api/extensions/fillsell:ro'), 'extension en lecture seule');
   assert.ok(s.HostConfig.Binds.includes('/srv/fillsell-cloud/etat/chromium.d/fillsell-langue:/etc/chromium.d/fillsell-langue:ro'),
     '(02/11) la langue française de Chromium (LANGUAGE, LANG : il ignore --lang sous Linux), en lecture seule');
+  assert.ok(!s.HostConfig.Binds.some((b) => /fr\.pak/.test(b)), 'sans paquet de langue sur le disque : aucun montage (jamais un dossier vide à sa place)');
+  const fr = specConteneur({ config, user: U, profilId: 'p-x', langueFr: true });
+  assert.ok(fr.HostConfig.Binds.includes('/srv/fillsell-cloud/etat/chromium-locales/fr.pak:/usr/lib/chromium/locales/fr.pak:ro'), 'avec lui : fr.pak, en lecture seule');
+  assert.notEqual(fr.Labels['fillsell.lancement'], s.Labels['fillsell.lancement'], 'le paquet arrivé : le conteneur est recréé (profil gardé)');
   assert.equal(s.HostConfig.NetworkMode, 'fillsell-cloud', 'réseau filtré par le pare-feu (verrou 3)');
   assert.equal(nomConteneur(U), `fs-nav-${U}`);
   assert.throws(() => corpsSession({ proxyUrl: '' }), 'jamais de session sans proxy');

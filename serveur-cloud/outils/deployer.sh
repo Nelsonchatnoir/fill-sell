@@ -59,6 +59,19 @@ if [ -f /srv/fillsell-cloud/cle-extension-cloud.pem ]; then
     -v "$P/extension:/ext-src:ro" -v /srv/fillsell-cloud/cle-extension-cloud.pem:/cle.pem:ro \
     -v /srv/fillsell-cloud/extension-crx:/out "fillsell-chrome:$SHA"
 fi
+# (02/11, décision de Nico : profil français) La langue française de Chromium (fr.pak) : l'image steel n'a que en-US.pak,
+# et Chromium sous Linux retombe alors en en-US (Intl, format des dates) quoi qu'on lui dise. Le paquet officiel Debian
+# chromium-l10n de la MÊME version que le Chromium de l'image (apt vérifie sa signature), récupéré dans un conteneur
+# jetable de l'image hors du réseau des navigateurs ; seul fr.pak est gardé (monté en lecture seule, navigateur.js).
+LOC=/srv/fillsell-cloud/etat/chromium-locales
+VCHR=$(docker run --rm --network none --entrypoint dpkg-query "$IMAGE_STEEL" -W -f '${Version}' chromium 2>/dev/null || true)
+if [ -n "$VCHR" ] && [ "$(cat "$LOC/VERSION" 2>/dev/null)" != "$VCHR" ]; then
+  mkdir -p "$LOC"
+  docker run --rm --network bridge -u 0 -v "$LOC:/out" --entrypoint sh "$IMAGE_STEEL" -c \
+    "apt-get -qq update >/dev/null && cd /tmp && apt-get -qq download chromium-l10n=$VCHR && dpkg-deb -x chromium-l10n_*.deb x \
+     && cp x/usr/lib/chromium/locales/fr.pak /out/fr.pak && echo $VCHR > /out/VERSION" \
+    || echo "langue française de Chromium : non récupérée (le navigateur reste en en-US pour Intl)"
+fi
 rm -rf /srv/fillsell-cloud/extension.nouvelle && cp -r "$P/extension" /srv/fillsell-cloud/extension.nouvelle
 rm -rf /srv/fillsell-cloud/extension.ancienne && mv /srv/fillsell-cloud/extension /srv/fillsell-cloud/extension.ancienne 2>/dev/null || true
 mv /srv/fillsell-cloud/extension.nouvelle /srv/fillsell-cloud/extension
