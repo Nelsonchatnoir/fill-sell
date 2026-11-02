@@ -1549,3 +1549,78 @@ inverse `supabase/rollbacks/20261102110000_cloud_connexions_depop_INVERSE.sql`.
   identiques ; échecs = les trois connus, plus le périmètre (StockTab : la ligne eBay voulue ; publication-programmee.js
   de a929146, déjà servi par le web). La garde « Me connecter n’est importé que par App » accepte désormais le bandeau
   (monté par App derrière la même porte, vérifié).
+
+## 22. Essai « Résoudre » de Nico (02/11, 11:45) et ses suites (11:50 → 12:55)
+
+### 22.1 Ce qui s'est passé à 11:45 (journal du serveur)
+- **Leboncoin** 11:45:15 « Résoudre » ouvre « Mes annonces » (16 en ligne), aucune glissière (expirée) ; 11:45:30 la
+  lecture légère (`members/me/account`) rend **200** → résolue en 15 s, une seule lecture ; pause Leboncoin de l'app
+  levée (reprise prudente). Le « J'ai fini » de Nico est arrivé après.
+- **Beebs** 11:45:36 « Résoudre » ouvre `www.beebs.app/fr` → **403** + vérification de l'appareil DataDome
+  (`/interstitial/`), qui s'est terminée sur « Accès temporairement restreint » (IP 81.181.239.136 citée). La vue lisait
+  seulement l'adresse du cadre (toujours `/interstitial/`) : elle disait « ça passe tout seul en quelques secondes ».
+  Nico a fermé à 11:45:53 ; aucune lecture partie.
+- Cause probable (Nico) : l'empreinte changée en pleine session (fr-FR, Europe/Paris, depuis 11:22) avec les anciens
+  témoins DataDome de l'appareil (cookie `datadome` de `.beebs.app`). Avant, Beebs mettait une glissière à chaque fois.
+
+### 22.2 Beebs — identité propre (point 1)
+- 11:53 `outils/oublier-datadome.mjs <user> beebs` : le cookie `datadome` de `.beebs.app` part du navigateur ouvert
+  (0 restant) et de la ligne Beebs du coffre (1 retiré, 5 gardés, ligne toujours « en vérification ») ; session Beebs
+  (`refresh_token`) et autres plateformes intactes ; aucun stockage DataDome côté Beebs (localStorage relu sur le disque).
+- Empreinte relevée (page vierge, aucune visite) : Chrome 156 Linux x86_64, `webdriver` faux, langues fr-FR / fr, Intl fr,
+  Europe/Paris (UTC+1), 8 cœurs, écran 1920×1080×24, WebGL « ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device …)) »
+  (le même depuis l'essai du 01/11), Accept-Language fr-FR,fr.
+- **FIGÉE** (39f381c) : lancement + session (jamais le proxy) notés dans le profil (`.empreinte-navigateur` =
+  73cbe2096d286336, 11:57:30) ; une empreinte différente n'ouvre plus le navigateur sans `EMPREINTE_AUTORISEE` portant
+  celle-là même (accord de Nico).
+- 11:57:36 navigateur redémarré (déploiement de 39f381c) ; Beebs sans cookie DataDome, toujours « à résoudre ».
+- **12:23**, « Résoudre » Beebs (cookie DataDome neuf) : encore « Accès temporairement restreint » ; la vue l'a dit tout de
+  suite (« rien à glisser ») — la détection du point 4 a marché.
+
+### 22.3 IP de remplacement (point 2)
+- Feu vert de Nico (12:25, plafond 10 € TTC). **IPRoyal 87277315** : ISP Dedicated, France, 30 jours, **4 $** (solde
+  7,35 $ → 3,35 $), livrée à 12:29 : **185.134.192.253**, échéance **02/12/2026** 11:29:07 (heure IPRoyal). Ajoutée au
+  pool (id 4), pare-feu des navigateurs ouvert aux deux IP (redéploiement 12:32:57), contrôle d'entrée 12:34 (sortie FR,
+  aucune liste, aucune plateforme visitée).
+- Échange par `scripts/reparations/20261102_cloud_ip_remplacement_nico.sql` (sauvegarde `_backup_0211_cloud_ip`, RLS,
+  aucun droit client ; inverse) : la neuve réservée au compte, l'ancienne **81.181.239.136 signalée** (rebut,
+  `blocage_anti_robot` ; payée jusqu'au 29/11). Navigateur rouvert 12:36:02 ; sortie relue **185.134.192.253** ; empreinte
+  inchangée (73cbe2096d286336). Vinted, Depop, Leboncoin : toujours connectés au coffre, aucune reconnexion demandée.
+- **12:37, « Résoudre » Beebs par la NOUVELLE IP, première visite : « Accès temporairement restreint »** (IP neuve citée).
+  → Ce n'est pas l'IP : DataDome juge le navigateur (le blocage tombe APRÈS la vérification de l'appareil, qui lit ses
+  signaux JavaScript ; cookie et IP neufs n'y changent rien). Pas d'autre achat.
+
+### 22.3 bis D'où ça vient (relu dans les traces, sans visite)
+- Beebs a toujours mis une GLISSIÈRE (passable) tant que le navigateur était en anglais : 01/11 15:51 (essai), 22:54
+  (connexion Google passée), 02/11 00:40 (republication faite), 05:14 (veille, glissière).
+- Profil passé en français entre 11:19 et 11:31 (langue, Accept-Language, Intl, fr.pak ; le fuseau venait déjà du proxy).
+- Ensuite : blocage dur à chaque visite (11:45, 12:23 cookie neuf, 12:37 IP neuve).
+- Lecture : l'appareil (WebGL SwiftShader, polices, écran : identiques) a changé de langue d'un coup → profil jugé
+  falsifié. Leboncoin, lui, passe en français (page, compte, republication faite).
+- « Tout déconnecter côté Beebs » (idée de Nico) : sans effet attendu sur DataDome (refus à la première requête, avant la
+  session Beebs ; une reconnexion passerait par la même vérification de l'appareil) — pas fait sans son accord.
+- Essai proposé (UN seul, accord de Nico requis — empreinte figée) : remettre SEULEMENT la langue d'avant (en-US), garder
+  Paris et l'IP neuve, cookie DataDome de Beebs effacé, une visite « Résoudre ». Glissière → la langue ; sinon → piste
+  suivante.
+
+### 22.4 Leboncoin — le travail de fond (point 3)
+- Après la résolution : la republication des « Gants de ski Quechua » (c5c2a2c6) a été servie (reprise prudente) ; l'API
+  a passé : préparation, contrôles, puis **retrait de l'ancienne annonce à 11:57:22** (`pintad/v1/public/manual/delete/ads`
+  → 200).
+- ⚠️ Le redémarrage du navigateur (déploiement, 11:57:26) est tombé 4 s après ce retrait : la tâche est restée
+  « processing », étape `captured`, annonce hors ligne. Le filet de l'extension (`recoverStaleProcessingJobs`, 15 min,
+  2 reprises au plus) la reprend.
+- Repris seul (1 reprise) : **republiée à 12:24:31**, nouvelle annonce **3300861757**. Le travail de fond de Leboncoin
+  passe vraiment (préparation, retrait, redépôt, par l'API) avec le profil français. Pas de mur.
+- Leçon : ne jamais redéployer l'orchestrateur pendant une tâche « processing » (le planificateur l'évite pour un
+  changement d'IP ; le déploiement, lui, ne regardait pas) — à porter au déploiement.
+
+### 22.5 Messages de l'app (point 4)
+- « Accès temporairement restreint » écrit dans la page OU dans le cadre DataDome (`TEXTE_ACCES_RESTREINT`) → « restreint »
+  tout de suite, pour toutes les plateformes ; le cadre est lu dans un monde isolé (ou sa cible s'il est hors processus).
+- La vérification de l'appareil en cours garde son message (« d'habitude, ça passe tout seul… Si l'accès est refusé, on te
+  le dit tout de suite ») ; si elle finit sur un blocage, la vue passe aussitôt en « restreint ».
+
+### 22.6 Vinted / Depop — le bouton (point 5)
+- Connectée : plus de bouton principal, un lien discret « Changer de compte » ; « Me reconnecter » seulement déconnectée
+  (0d00637, cloud-me-connecter 55). OTA **2.9.152** servie à 12:47 (preuve d’identité AVANT l’envoi, contre 2.9.151 : 708 scènes identiques ; périmètre = ces 2 fichiers + `_shared/etat-job.js` du lot A de l’utre terminal).

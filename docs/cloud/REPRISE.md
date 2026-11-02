@@ -1,5 +1,24 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 02/11/2026 12:55 — BEEBS BLOQUÉ DUR PAR DATADOME DEPUIS LE PROFIL FRANÇAIS ; IP REMPLACÉE ; EMPREINTE FIGÉE (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 22. Le bloc 11:35 en dessous reste valable.
+
+- **Empreinte du navigateur FIGÉE** (règle de Nico) : `profils/<profil>/.empreinte-navigateur` = **73cbe2096d286336**
+  (lancement + session, jamais le proxy). Une empreinte différente n'ouvre plus le navigateur sans
+  `EMPREINTE_AUTORISEE=<nouvelle>` dans l'environnement de l'orchestrateur — accord écrit de Nico, cas par cas.
+- **IP du compte de Nico : 185.134.192.253** (IPRoyal 87277315, 4 $, échéance 02/12/2026, pool id 4). L'ancienne
+  81.181.239.136 au rebut (`blocage_anti_robot`, payée jusqu'au 29/11). ⚠️ Déployer avec
+  `DESTINATIONS_PROXY="81.181.239.136:12323,185.134.192.253:12323"` (le pare-feu des navigateurs n'ouvre QUE ces sorties).
+  Solde IPRoyal : 3,35 $ (sous le seuil de 5 $).
+- **Beebs** : « Accès temporairement restreint » à chaque visite depuis le passage en français (11:45, 12:23 cookie
+  neuf, 12:37 IP neuve, première visite) ; glissière auparavant. Cause la plus probable : l'appareil a changé de langue
+  d'un coup (profil jugé falsifié). Essai proposé à Nico, en attente de son « OK langue » : la langue seule remise en
+  en-US, une visite. Ne PAS racheter d'IP ; ne pas déconnecter Beebs sans son accord.
+- **Leboncoin** : résolu à 11:45:30 (lecture 200, sans glissière) ; Gants de ski republiés à 12:24:31 (annonce
+  3300861757) après la coupure de 11:57 (déploiement pendant la tâche — ne plus redéployer pendant un « processing »).
+- `outils/oublier-datadome.mjs <user> <plateforme>` : le cookie DataDome d'UNE plateforme, navigateur et coffre.
+- OTA **2.9.152** servie (lien « Changer de compte » sur une plateforme connectée).
+
 ## ⛔ 02/11/2026 11:35 — « RÉSOUDRE LA VÉRIFICATION », PROFIL FRANÇAIS, COMPTEUR BEEBS (à lire EN PREMIER)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 21. Les blocs 01:00 et 22:40 en dessous restent valables.
 
