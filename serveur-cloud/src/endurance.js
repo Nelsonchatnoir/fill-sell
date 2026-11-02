@@ -96,6 +96,11 @@ export function pausesDeLApp(ps) {
   const b = ps?.leboncoin?.blocage_acces;
   return b && typeof b === 'object' && !b.leve_le ? ['leboncoin'] : [];
 }
+/** Le début d'une pause de l'app (pure) : l'instant où Leboncoin a été vu restreint, ou null. */
+export function debutPauseDeLApp(ps, plateforme) {
+  const d = plateforme === 'leboncoin' ? ps?.leboncoin?.blocage_acces?.depuis : null;
+  return Number.isFinite(Date.parse(String(d ?? ''))) ? new Date(Date.parse(d)).toISOString() : null;
+}
 
 /** (02/11) Les tâches du Cloud publiées qui prouvent une plateforme pas encore vérifiée (pure) : la première par plateforme. */
 export function preuvesParTache(lignes, dejaVerifiees = new Set()) {
@@ -132,6 +137,14 @@ export function decompteEssai(lignes, dureeMs = DUREE_ESSAI_MS) {
     }
   }
   const mesures = apres.filter((l) => l.evenement === 'mesure');
+  // (02/11) Les pauses de l'app, datées par leur DÉBUT réel (« pause_app », écrit à la première mesure qui la voit) :
+  // les heures d'avant cette mesure ne comptent pas non plus.
+  const pausesDatees = {};
+  for (const l of toutes) {
+    if (l.evenement === 'pause_app' && l.plateforme) (pausesDatees[l.plateforme] ??= []).push({ de: Date.parse(l.depuis ?? l.le), a: Infinity });
+    if (l.evenement === 'pause_app_levee' && l.plateforme) { const z = (pausesDatees[l.plateforme] ?? []).at(-1); if (z && z.a === Infinity) z.a = Date.parse(l.le); }
+  }
+  const enPause = (pf, a, b) => (pausesDatees[pf] ?? []).some((z) => z.de < b && z.a > a);
   let executantMs = 0;
   for (let i = 1; i < mesures.length; i++) {
     const a = Date.parse(mesures[i - 1].le), b = Date.parse(mesures[i].le), m = mesures[i];
@@ -142,7 +155,7 @@ export function decompteEssai(lignes, dureeMs = DUREE_ESSAI_MS) {
     const enVerif = new Set([...Object.values(m.bloquees ?? {}).flat(), ...Object.values(m.pauses ?? {}).flat()]);
     for (const [pf, info] of Object.entries(plateformes)) {
       const v = Date.parse(info.verifiee_le);
-      if (!(v < b) || cx[pf] !== true || enVerif.has(pf)) continue;
+      if (!(v < b) || cx[pf] !== true || enVerif.has(pf) || enPause(pf, a, b)) continue;
       info.ms += b - Math.max(a, v);
     }
   }
@@ -168,6 +181,7 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
   let blocages = [];           // historique { le, user, plateforme, nature, detail, source, tache?, debloquee_le? }
   let vus = new Map();
   const etatsAvant = new Map(); // user → { plateforme: connecte }
+  const pausesVues = new Map(); // user → plateformes en pause de l'app (début et levée écrits une fois)
   let depuis = new Date().toISOString();
 
   const enCours = (user) => blocages.filter((b) => b.user === user && !b.debloquee_le);
@@ -233,11 +247,12 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
     await ecrire({ evenement: 'plateforme_debloquee', user: String(user).slice(0, 8), plateforme, debloquee_le: le });
   }
 
-  /** Les plateformes déjà vérifiées depuis la dernière remise à zéro (relu dans le journal de l'essai, petit fichier). */
-  async function plateformesVerifiees() {
+  /** Les plateformes déjà vérifiées depuis la dernière remise à zéro, et cette remise (journal de l'essai, petit fichier). */
+  async function etatDuJournal() {
     const lignes = (await readFile(`${dossier}/mesures.jsonl`, 'utf8').catch(() => '')).split('\n').filter(Boolean)
       .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-    return new Set(Object.keys(decompteEssai(lignes).plateformes));
+    const d = decompteEssai(lignes);
+    return { verifiees: new Set(Object.keys(d.plateformes)), remise: d.remise?.le ?? null };
   }
 
   const ecrire = (o) => appendFile(`${dossier}/mesures.jsonl`, `${JSON.stringify({ le: new Date().toISOString(), ...o })}\n`).catch(() => {});
@@ -294,6 +309,10 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
       const { data: pr } = await base.from('profiles').select('platform_settings').eq('id', user).maybeSingle();
       const l = pausesDeLApp(pr?.platform_settings);
       if (l.length) pauses[user.slice(0, 8)] = l;
+      const avant = pausesVues.get(user) ?? new Set();
+      for (const pf of l) if (!avant.has(pf)) await ecrire({ evenement: 'pause_app', user: user.slice(0, 8), plateforme: pf, depuis: debutPauseDeLApp(pr?.platform_settings, pf) });
+      for (const pf of avant) if (!l.includes(pf)) await ecrire({ evenement: 'pause_app_levee', user: user.slice(0, 8), plateforme: pf });
+      pausesVues.set(user, new Set(l));
     }
     let taches = null;
     if (comptes.length) {
@@ -308,8 +327,15 @@ export function creerEndurance({ config, base, docker, navigateurs, postes, conn
       }
       // (02/11) Une tâche du Cloud PUBLIÉE est la preuve la plus forte d'une session vivante : une plateforme sans
       // connexion vérifiée depuis la remise à zéro (Vinted, connectée avant la règle « compte lu ») l'est par elle.
-      const dejaVerifiees = await plateformesVerifiees();
-      for (const j of preuvesParTache(data ?? [], dejaVerifiees)) {
+      // Lues depuis la REMISE À ZÉRO (pas depuis le démarrage de l'orchestrateur : Vinted republiée avant lui).
+      const { verifiees: dejaVerifiees, remise } = await etatDuJournal();
+      let publiees = [];
+      if (remise) {
+        const { data: pub } = await base.from('cross_post_jobs').select('id, platform, status, handler_build, published_at')
+          .in('user_id', comptes).like('handler_build', '%-cloud%').eq('status', 'published').gte('published_at', remise).limit(200);
+        publiees = pub ?? [];
+      }
+      for (const j of preuvesParTache(publiees, dejaVerifiees)) {
         await ecrire({ evenement: 'connexion_verifiee', user: comptes[0].slice(0, 8), plateforme: j.platform, preuve: 'tache_publiee', tache: j.id, verifiee_le: j.published_at });
       }
     }

@@ -153,7 +153,8 @@ function monterEndurance({ cibles = [], arretFichier = null, taches = [], profil
     config: { dossierEtat, comptesAutorises: [U] },
     base: { from: (t) => ({ select: () => ({
       eq: () => { const r = { data: t === 'profiles' ? null : [] }; return { then: (ok, ko) => Promise.resolve(r).then(ok, ko), maybeSingle: async () => ({ data: t === 'profiles' ? profil : null }) }; },
-      in: () => ({ like: () => ({ or: () => ({ limit: async () => ({ data: t === 'cross_post_jobs' ? taches : [] }) }) }) }) }) }) },
+      in: () => ({ like: () => ({ or: () => ({ limit: async () => ({ data: t === 'cross_post_jobs' ? taches : [] }) }),
+        eq: () => ({ gte: () => ({ limit: async () => ({ data: t === 'cross_post_jobs' ? taches.filter((x) => x.status === 'published') : [] }) }) }) }) }) }) }) },
     docker: { lister: async () => [], stats: async () => null },
     navigateurs: { ouverts: () => [U], ouvert: () => h },
     postes: {
@@ -221,7 +222,9 @@ test('(02/11) une tâche du Cloud PUBLIÉE prouve sa plateforme (Vinted, connect
     j('d', 'beebs', '2026-11-01T22:40:00Z', '2026-10-31T09:31:55Z+3876dc8'), j('e', 'leboncoin', null, 'x-cloud', 'pending')], new Set(['depop'])).map((x) => x.id), ['a'],
   'la PREMIÈRE tâche publiée par le Cloud, seulement pour une plateforme pas encore vérifiée (jamais l’ordinateur)');
   const taches = [j('t-v', 'vinted', '2026-11-01T22:42:40Z')];
-  const { e, lireMesures } = monterEndurance({ taches, profil: { platform_settings: { leboncoin: { blocage_acces: { depuis: '2026-11-01T21:54:07Z' } } } } });
+  const { e, lireMesures, dossierEtat: dE } = monterEndurance({ taches, profil: { platform_settings: { leboncoin: { blocage_acces: { depuis: '2026-11-01T21:54:07Z' } } } } });
+  writeFileSync(path.join(dE, 'endurance', 'mesures.jsonl'), `${JSON.stringify({ le: '2026-11-01T21:28:49Z', evenement: 'remise_a_zero', raison: 'r' })}
+`);
   await e.charger();
   await e.mesure();
   await e.mesure();
@@ -229,6 +232,13 @@ test('(02/11) une tâche du Cloud PUBLIÉE prouve sa plateforme (Vinted, connect
   const preuves = l.filter((x) => x.evenement === 'connexion_verifiee');
   assert.deepEqual(preuves.map((x) => [x.plateforme, x.preuve, x.verifiee_le]), [['vinted', 'tache_publiee', '2026-11-01T22:42:40Z']], 'une seule preuve, à l’heure de la publication');
   assert.deepEqual(l.filter((x) => x.evenement === 'mesure')[0].pauses, { f44b5917: ['leboncoin'] });
+  assert.deepEqual(l.filter((x) => x.evenement === 'pause_app').map((x) => [x.plateforme, x.depuis]), [['leboncoin', '2026-11-01T21:54:07.000Z']], 'le début RÉEL de la pause, écrit une fois');
+  const d2 = decompteEssai(l.concat([
+    { le: '2026-11-01T21:50:00Z', evenement: 'connexion_verifiee', plateforme: 'leboncoin', verifiee_le: '2026-11-01T21:50:00Z' },
+    { le: '2026-11-01T22:00:00Z', evenement: 'mesure', navigateursMo: { a: 1 }, connexions: { a: { leboncoin: true } } },
+    { le: '2026-11-01T22:10:00Z', evenement: 'mesure', navigateursMo: { a: 1 }, connexions: { a: { leboncoin: true } } },
+  ].map((x) => x)).sort((a, b) => Date.parse(a.le) - Date.parse(b.le)));
+  assert.equal(d2.plateformes.leboncoin.heures_comptees, 0, 'mesures d’AVANT la première vue de la pause, mais après son début : ne comptent pas');
   const d = decompteEssai([
     { le: '2026-11-01T22:00:00Z', evenement: 'connexion_verifiee', plateforme: 'leboncoin', verifiee_le: '2026-11-01T22:00:00Z' },
     { le: '2026-11-01T22:10:00Z', evenement: 'mesure', navigateursMo: { a: 1 }, connexions: { a: { leboncoin: true } }, pauses: { a: ['leboncoin'] } },
