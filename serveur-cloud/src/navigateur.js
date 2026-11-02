@@ -284,6 +284,10 @@ export function creerNavigateurs({ config, docker, journal }) {
     }
     if (!c) {
       await mkdir(`${config.dossierProfils}/${profilId}`, { recursive: true });
+      // (02/11) Un conteneur NEUF sur un profil gardé : le verrou de profil de l'ancien conteneur (autre nom d'hôte) ferait
+      // refuser le profil à Chromium (« in use by another Chromium process on another computer » : session HTTP 500,
+      // vu au premier lancement en français). Aucun autre conteneur n'ouvre ce profil : ses fichiers de verrou partent.
+      for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) await rm(`${config.dossierProfils}/${profilId}/${f}`, { force: true }).catch(() => {});
       await docker.creer(nom, spec);
       c = await docker.inspecter(nom);
     }
