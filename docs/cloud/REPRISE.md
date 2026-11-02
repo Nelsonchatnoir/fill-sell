@@ -1,5 +1,16 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 02/11/2026 14:30 — BEEBS : UN SEUL ESSAI « LANGUES » EN COURS, PUIS ARRÊT (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 22.9 et 22.10.
+- Diagnostic : TLS / HTTP/2 des navigateurs Cloud identiques au vrai Chrome 156 (aucun intermédiaire : tunnel CONNECT) ;
+  écarts : Accept-Language, « Chromium » sans « Google Chrome », WebRTC sans candidat ; IP IPRoyal = blocs loués.
+- Navigateur isolé (Beebs) : langues fr-FR, fr, en-US, en ; IP **176.103.182.215** (id 39, 24 h, même bloc loué que
+  176.103.180.12) ; empreinte a20440298a88a528 (`EMPREINTE_AUTORISEE`). Principal : 81.181.239.136, 73cbe209.
+- IP grillées pour Beebs : 81.181.239.136, 185.134.192.253, 185.134.194.88, 176.103.180.12, **80.12.178.102 (isolé,
+  13:49)**, 94.194.94.233, 188.126.31.118. Après l'essai : ARRÊT — pas de 2e IP, pas de Chrome officiel, pas d'OVH sans
+  accord de Nico.
+- Déployer avec `DESTINATIONS_PROXY="81.181.239.136:12323,176.103.182.215:12323"`. IPRoyal : solde 11,15 $.
+
 ## ⛔ 02/11/2026 13:40 — NAVIGATEUR ISOLÉ DE BEEBS PRÊT ; PRINCIPAL SUR 81.181.239.136 (à lire EN PREMIER)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 22.8. Les blocs 13:10 et 12:55 en dessous : l'IP de 24 h ne sert
 plus (rendue au pool, expire le 03/11) ; le reste vaut.

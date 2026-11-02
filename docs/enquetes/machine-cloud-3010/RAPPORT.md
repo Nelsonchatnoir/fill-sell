@@ -1711,3 +1711,22 @@ Aucune visite de Beebs ni de Leboncoin ; échos : tls.browserleaks.com, httpbin.
 - **Cause la plus probable** : le changement de profil de ce matin — premier en-tête (Accept-Language à deux langues,
   jamais vu chez un vrai Chrome français) et signaux JS (langues, Intl) — sur un appareil que DataDome connaissait en
   anglais, avec des IP louées comme risque de fond. La couche TLS / HTTP/2 est hors de cause.
+
+### 22.10 Correction du § 22.9, et essai « langues » (02/11, 14:10 → 14:20)
+- **Correction** : le navigateur ISOLÉ a vu Beebs. Journal de l'orchestrateur : **13:49:09** « Me connecter » Beebs par
+  Nico → navigateur isolé (empreinte b384dad7, IP **80.12.178.102**, Accept-Language `fr-FR,fr;q=0.9`) →
+  « Accès temporairement restreint » détecté en 7 s (13:49:16), fermé 13:49:21 (ID donné par Nico :
+  ef2d7bf7-a53d-eb63-e61b-66b6b69ed066). Le § 22.9 (écrit vers 14:05) les disait « jamais vus » : faux, le journal
+  n'avait pas été relu après 13:33. L'empreinte JS neuve a donc été essayée, et bloquée aussi.
+- **Feu vert de Nico, UNE variable** (b2b3bc5) : l'isolé prend les langues d'un vrai Chrome français
+  (`fr-FR, fr, en-US, en` → `fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7`) ; le principal garde les siennes ; WebRTC non touché.
+  Empreinte de l'isolé autorisée à changer, elle seule (`EMPREINTE_AUTORISEE=a20440298a88a528`).
+- IP de l'essai : IPRoyal **87284262**, ISP Dedicated, France, 24 h, **2,00 $** (solde 11,15 $), **176.103.182.215**
+  (pool id 39 ; échéance 03/11 14:09). Hors de la liste grillée, mais MÊME bloc loué que 176.103.180.12 (Telenet SIA,
+  Orange) — l'adresse n'est connue qu'à la livraison ; essai maintenu par Nico (choix A). Contrôle d'entrée 14:17 (FR,
+  aucune liste, aucune visite). Déploiement 14:16 sans tâche en cours ; principal rouvert 14:16:34, empreinte 73cbe209.
+- **Écho de contrôle de l'isolé** (14:20, tls.browserleaks.com et httpbin.org) : sortie 176.103.182.215, 0 cookie ;
+  SEUL changement : Accept-Language et langues ; JA4, JA3N, HTTP/2, sec-ch-ua (« Chromium »), User-Agent, WebRTC (vide),
+  écran, cœurs, fuseau identiques.
+- Essai « Me connecter » Beebs de Nico : pas encore fait à 14:28 (aucune ouverture au journal) — résultat à relire.
+- IPRoyal du 02/11 : 4 + 2,60 + 2,60 + 2,00 = **11,20 $** ; recharge de Nico : 15 $ ; solde 11,15 $.
