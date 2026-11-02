@@ -558,6 +558,7 @@
     "selftest:lecture-origine-publication": "node --import ./scripts/loader-ext.mjs scripts/lecture-origine-publication-selftest.mjs",
     "selftest:vinted-modele-repli": "node scripts/vinted-modele-repli-selftest.mjs",
     "selftest:vinted-attributs-origine-post": "node scripts/vinted-attributs-origine-post-selftest.mjs",
+    "selftest:vinted-attributs-connus": "node scripts/vinted-attributs-connus-selftest.mjs",
     "selftest:copies-completes-2610": "node scripts/copies-completes-2610-selftest.mjs"
   },
   "dependencies": {

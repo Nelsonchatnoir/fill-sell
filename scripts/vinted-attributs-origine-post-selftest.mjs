@@ -101,8 +101,8 @@ ok(sonde({ attrs: [{ code: "x\"]}", ids: [1] }, { code: "sim_lock", ids: ["a", -
 ok(sonde(CAPTURE).corpsAvecAttributsOrigine(URL, "<html>") === null && sonde(CAPTURE).corpsAvecAttributsOrigine(URL, "{pas du json") === null, "corps illisible → rien, jamais d'exception");
 
 console.log("\n3. LA CHAÎNE ET LES RELAIS");
-ok(/const corpsPourDepotSaufAttributs = \(url, body\) => \{[\s\S]*?return avecMarque \?\? avantMarque;\s*\};\s*\/\/ \(29\/10\)[^\n]*\n\s*const corpsPourDepot = \(url, body\) => \{\s*const avant = corpsPourDepotSaufAttributs\(url, body\);\s*const avecAttributs = corpsAvecAttributsOrigine\(url, avant \?\? body\);\s*return avecAttributs \?\? avant;/.test(bg),
-  "corpsPourDepot : ISBN → langue → colis → marque inchangés, les attributs d'origine ferment la chaîne");
+ok(/const corpsPourDepotSaufAttributs = \(url, body\) => \{[\s\S]*?return avecMarque \?\? avantMarque;\s*\};[\s\S]*?\/\/ \(29\/10\)[^\n]*\n\s*const corpsPourDepot = \(url, body\) => \{\s*const avant = corpsPourDepotSaufAttributs\(url, body\);\s*const avecAttributs = corpsAvecAttributsOrigine\(url, avant \?\? body\);\s*const avantConnus = avecAttributs \?\? avant;\s*const avecConnus = corpsAvecAttributsConnus\(url, avantConnus \?\? body\);\s*return avecConnus \?\? avantConnus;/.test(bg),
+  "corpsPourDepot : ISBN → langue → colis → marque inchangés, puis les attributs d'origine, puis (02/11) les attributs connus");
 ok((bg.match(/attributsPoses = dernierePoseAttributs/g) ?? []).length === 2, "fetch ET XMLHttpRequest relèvent la pose");
 ok((bg.match(/^\s+attributsPoses,$/gm) ?? []).length === 2, "fetch ET XMLHttpRequest relaient attributsPoses");
 

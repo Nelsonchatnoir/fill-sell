@@ -2753,8 +2753,22 @@ serve(async (req) => {
       if (filePause && out.length) {
         for (const j of out) if (jobRetenuParPause(j)) idsEnPause.add(String(j.id));
         if (idsEnPause.size) {
+          const out0 = out;
           out = out.filter((j) => !idsEnPause.has(String(j.id)));
           console.log(`[get-pending-jobs] userId=${user.id} : file EN PAUSE (geste de la personne) → ${idsEnPause.size} publication(s)/republication(s) gardée(s) en file ; retraits et republications engagées servis`);
+          // (02/11, tiblancdeshaut — 73 republications « passera à son tour » sous une pause du 30/10) Une seule vérité
+          // (31/10, lot F) : une republication retenue par la pause le DIT sur sa ligne — le texte « En file » posé
+          // avant la pause devient « En pause à ta demande ». Seules les lignes qui portent encore ce texte, lues dans
+          // la file en mémoire (aucune requête sinon) ; la reprise les remet « En file » (bloc ci-dessus, 24 h).
+          const aDire = (out0 as Array<Record<string, unknown>>).filter((j) => idsEnPause.has(String(j.id))
+            && j.action === "republish" && j.error === MESSAGE_EN_FILE).map((j) => String(j.id));
+          if (aDire.length) {
+            try {
+              await userClient.from("cross_post_jobs").update({ error: MESSAGE_REPUBLICATION_EN_PAUSE })
+                .in("id", aDire.slice(0, 200)).eq("status", "pending").eq("error", MESSAGE_EN_FILE);
+              console.log(`[get-pending-jobs] userId=${user.id} : ${Math.min(aDire.length, 200)} republication(s) retenue(s) par la pause → « En pause à ta demande »`);
+            } catch (_e) { /* un texte : jamais un point de panne */ }
+          }
         }
       }
     }
@@ -13971,6 +13985,30 @@ serve(async (req) => {
         console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} en machine virtuelle AVEC l'exception du compte : Leboncoin servi${(marques ?? []).length ? ` (${(marques ?? []).length} message(s) « machine virtuelle » effacé(s))` : ""}`);
       } catch (e) {
         console.warn(`[get-pending-jobs] exception machine virtuelle : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+      }
+    }
+
+    // (02/11, Dayane) Poste où la garde ne s'applique pas — poste réel : le seul pilote « Microsoft Basic Render Driver »
+    // n'en fait plus une machine virtuelle (_shared/poste-virtuel.js) — : le message « machine virtuelle » posé par
+    // l'ancienne règle s'efface des tâches Leboncoin servies à ce poste (archivé), une fois. Lu dans la file déjà en
+    // mémoire : aucune requête quand aucune tâche servie ne le porte.
+    if (!includeProcessing && !includeNeedsUser && !posteCloud && !gardeVirtuelleLbc(renduDuPoll(body), betaFlagsLbc)) {
+      try {
+        const msgR = messagePosteVirtuelLbc();
+        const marqueesR = out.filter((j) => j.platform === "leboncoin" && j.error === msgR);
+        if (marqueesR.length) {
+          const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          for (const j of marqueesR.slice(0, 40)) {
+            const pfR = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            pfR.erreurs_archivees = archiverErreur(pfR.erreurs_archivees, msgR, "pending", "get-pending-jobs (poste réel : « Microsoft Basic Render Driver » seul n'est pas une machine virtuelle)");
+            await adminR.from("cross_post_jobs").update({ error: null, platform_fields: pfAPersister(pfR) })
+              .eq("id", String(j.id)).eq("status", "pending").eq("error", msgR);
+            j.error = null; j.platform_fields = pfR as typeof j.platform_fields;
+          }
+          console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} réel : ${marqueesR.length} message(s) « machine virtuelle » effacé(s), Leboncoin servi`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] message machine virtuelle (poste réel) : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
       }
     }
 

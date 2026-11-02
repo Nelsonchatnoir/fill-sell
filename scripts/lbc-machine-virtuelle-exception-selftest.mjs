@@ -26,7 +26,9 @@ const GPJ = lire('supabase/functions/get-pending-jobs/index.ts');
 let echecs = 0, total = 0;
 const ok = (c, l) => { total++; if (!c) echecs++; console.log(`${c ? '✓' : '✗'} ${l}`); };
 const rv = (renderer, vendor = '') => renduDuPoll({ rendu_graphique: { webgl: true, renderer, vendor } });
-const VM_LOUIS = rv('ANGLE (Microsoft, Microsoft Basic Render Driver (0x0000008C) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Google Inc. (Microsoft)');
+// (02/11, Dayane) « Microsoft Basic Render Driver » seul n'est plus une machine virtuelle : la garde se teste sur un pilote qui la NOMME.
+const VM_LOUIS = rv('ANGLE (Oracle Corporation, VirtualBox Graphics Adapter (WDDM) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Google Inc. (Oracle Corporation)');
+const PILOTE_DE_BASE = rv('ANGLE (Microsoft, Microsoft Basic Render Driver (0x0000008C) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Google Inc. (Microsoft)');
 const VMWARE = rv('ANGLE (VMware, Inc., VMware SVGA 3D Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Google Inc. (VMware, Inc.)');
 const REEL = rv('ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Google Inc. (Intel)');
 const EXC = { [CLE_LBC_VIRTUEL_AUTORISE]: true };
@@ -43,6 +45,8 @@ ok(gardeVirtuelleLbc(VM_LOUIS, EXC) === false && gardeVirtuelleLbc(VMWARE, EXC) 
   'A5. compte AVEC l\'exception + poste virtuel → servi');
 ok(gardeVirtuelleLbc(REEL, {}) === false && gardeVirtuelleLbc(REEL, EXC) === false && gardeVirtuelleLbc(null, {}) === false,
   'A6. poste réel ou rendu inconnu : jamais bloqué (comme avant), avec ou sans exception');
+ok(posteVirtuel(PILOTE_DE_BASE) === false && PILOTE_DE_BASE.pilote_de_base === true && gardeVirtuelleLbc(PILOTE_DE_BASE, {}) === false,
+  'A7. (02/11, Dayane) « Microsoft Basic Render Driver » seul : noté (pilote_de_base), jamais bloquant — un vrai PC sans pilote ou en bureau à distance l\'affiche aussi');
 
 // ── B. get-pending-jobs ──────────────────────────────────────────────────────
 ok(GPJ.split('posteVirtuel(renduDuPoll(body))').length === 2 && GPJ.includes('posteVirtuel(renduDuPoll(body)) && lbcVirtuelAutorise(betaFlagsLbc)'),
@@ -66,6 +70,11 @@ ok(!/blocage_acces|platform_settings_fusionner|status: "pending"|status: "cancel
   'B7. la branche de l\'exception ne touche ni la pause sur refus (blocage_acces), ni le statut d\'aucune tâche');
 ok(GPJ.includes('import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc, gardeVirtuelleLbc, lbcVirtuelAutorise } from "../_shared/poste-virtuel.js";'),
   'B8. la règle vient du module partagé');
+const iReel = GPJ.indexOf('!posteCloud && !gardeVirtuelleLbc(renduDuPoll(body), betaFlagsLbc)) {');
+const reel = GPJ.slice(iReel, GPJ.indexOf('// Point C : seule la file d\'exécution réserve.', iReel));
+ok(iReel > iExc && /out\.filter\(\(j\) => j\.platform === "leboncoin" && j\.error === msgR\)/.test(reel) && /if \(marqueesR\.length\)/.test(reel)
+  && /\.eq\("status", "pending"\)\.eq\("error", msgR\)/.test(reel) && /archiverErreur/.test(reel) && !/blocage_acces|status: "pending"/.test(reel),
+  'B9. (02/11) poste réel : le message « machine virtuelle » des tâches Leboncoin servies s\'efface (archivé), sans requête quand aucune ne le porte');
 
 // ── C. --prod (LECTURE seule) ────────────────────────────────────────────────
 if (process.argv.includes('--prod')) {

@@ -144,7 +144,9 @@ t(fc.some((f) => f.chemin.join(" > ") === "Accessoires de mode > Bijoux > Charms
 const rv = (renderer, vendor = "") => renduDuPoll({ rendu_graphique: { webgl: true, renderer, vendor } });
 t(posteVirtuel(rv("ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)", "Google Inc. (Intel)")) === false, "puce Intel réelle : pas virtuel");
 t(posteVirtuel(rv("ANGLE (VMware, Inc., VMware SVGA 3D Direct3D11 vs_5_0 ps_5_0, D3D11)", "Google Inc. (VMware, Inc.)")) === true, "VMware : virtuel");
-t(posteVirtuel(rv("ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)")) === true, "Microsoft Basic Render Driver : virtuel");
+// (02/11, Dayane) Le pilote d'affichage de secours de Windows SEUL : noté, jamais bloquant (vrai PC sans pilote, bureau à distance).
+const mbrd = rv("ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)");
+t(posteVirtuel(mbrd) === false && mbrd.pilote_de_base === true, "Microsoft Basic Render Driver seul : noté (pilote_de_base), jamais virtuel");
 t(posteVirtuel(rv("ANGLE (Red Hat, QXL paravirtual graphic card, OpenGL 4.5)")) === true, "QXL : virtuel");
 const sw = rv("ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)");
 t(sw.logiciel === true && posteVirtuel(sw) === false, "SwiftShader : noté logiciel, jamais bloquant");

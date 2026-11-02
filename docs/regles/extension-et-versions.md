@@ -175,3 +175,14 @@
   (document chargé, ou « loading » au formulaire hydraté par React) → les mêmes fichiers, injectés tout de suite.
 - ⛔ Tout content script du manifeste garde au moins un `const` de premier niveau : c'est ce qui fait rejeter d'emblée un
   second passage (injection + `document_idle`) — jamais deux écouteurs.
+
+## 02/11 — 0.6.166 : un attribut Vinted exigé et connu part dans l'envoi (XEWER, lot « check du 02/11 »)
+- Langue du livre connue par son libellé → identifiant RELEVÉ en base (`idLangueLivreDuLibelle` : « Français » 6436 sur
+  1 151 annonces capturées, « Anglais » 6435 sur 36 ; aucun autre) armé au POST ; la porte de la langue s'ouvre aussi
+  sur l'étape ISBN qui a TROUVÉ le champ (`isbnChampVu`) ou sur une langue fournie. ISBN d'origine toujours remis TEL QUEL.
+- Toute valeur connue (`vintedAspects`) que le formulaire n'a pas posée part par son identifiant, résolu sur la config de
+  LA catégorie posée (`idAttributParLibelle` : une seule option de ce libellé, sinon rien) ; sonde
+  `corpsAvecAttributsConnus` après les attributs d'origine : code laissé vide seulement, rayon armé, 15 min ; un refus
+  dit les attributs posés par la sonde.
+- Les remises en ligne bloquées sur un champ connu repartent UNE fois dès que le poste a ce build
+  (`BUILD_ATTRIBUTS_CONNUS` = EXTENSION_LAST_COMMIT 2026-11-02T08:48:22Z, `_shared/recreation-bloquee.js`).

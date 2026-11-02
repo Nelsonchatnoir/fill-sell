@@ -565,9 +565,13 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   extension 0.6.161), un message qui nomme le navigateur, un seul essai par jour (24 h, ou « Leboncoin remarche »), un
   essai refusé re-pose la pause (jamais de boucle), un essai réussi = reprise prudente (6 h, 10 min entre deux tâches).
 - **Une machine virtuelle ne fait jamais Leboncoin** (`_shared/poste-virtuel.js`) : l'extension 0.6.161 envoie le moteur
-  de rendu du poste ; un pilote graphique de machine virtuelle (VMware, VirtualBox, QXL, virgl, Hyper-V, « Microsoft
-  Basic Render Driver »…) → les tâches Leboncoin du compte attendent un vrai poste du compte. Rendu logiciel seul
-  (SwiftShader, llvmpipe) : noté, jamais bloquant. ⛔ Le poste Cloud a ses propres règles.
+  de rendu du poste ; un pilote graphique qui NOMME la machine virtuelle (VMware, VirtualBox, Parallels, QXL, virgl,
+  Virtio, Hyper-V, Red Hat, Bochs) → les tâches Leboncoin du compte attendent un vrai poste du compte. Rendu logiciel
+  seul (SwiftShader, llvmpipe) : noté, jamais bloquant. ⛔ Le poste Cloud a ses propres règles.
+  ⛔ (02/11, Dayane) « Microsoft Basic Render Driver » SEUL n'est pas une machine virtuelle (pilote de secours de
+  Windows : vrai PC sans pilote graphique, bureau à distance) — noté `pilote_de_base`, jamais bloquant. Une plateforme
+  ne se bloque que sur un signal SÛR de virtualisation. Le message « machine virtuelle » s'efface des tâches Leboncoin
+  servies à un poste réel (archivé). La délégation Leboncoin (louis-seller) ne dépend pas de ce signal.
 - **Leboncoin refuse automatiquement une annonce « similaire à une annonce déjà en ligne »** (essai du 30/10 à 20:21 :
   12 photos de deux t-shirts déjà en vente → mail « refusée » à la seconde du dépôt) : la page de confirmation s'affiche
   quand même, le tableau de bord de Leboncoin ne liste pas les annonces refusées, la page « Corriger l'annonce » ne dit

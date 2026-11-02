@@ -105,16 +105,68 @@ export function messageRecreationRetenueCompte(job) {
     + `Rien n'est perdu : titre, description, photos et champs sont gardés.`;
 }
 
-/** Le message du job sorti de la file. */
-export function messageRecreationBloquee(job) {
+// ── (02/11, XEWER) LE MESSAGE NOMME LA VRAIE CAUSE ──────────────────────────────────────────────────────────────────
+// Sept lots de livres Barbie : « Ouvre Vinted … pour vérifier ton compte » alors que Vinted refusait l'envoi sur
+// « Sélectionne une langue pour continuer » (language_book) — et le compte n'est JAMAIS en cause ici (une cause du
+// compte retient le job, « proteger », avec son propre message). Le refus de la plateforme (server_required_fields,
+// relevé au 400) est nommé ; une valeur que la tâche connaissait déjà est un défaut de NOTRE envoi, jamais un geste
+// demandé à la personne.
+const LIBELLES_CHAMPS_VINTED = Object.freeze({
+  language_book: "Langue du livre", isbn: "ISBN", photos: "Photos", package_size: "Format du colis", model: "Modèle",
+  internal_memory_capacity: "Espace de stockage", sim_lock: "Simlockage", brand: "Marque", size: "Taille", color: "Couleur",
+  condition: "État", material: "Matière", title: "Titre", description: "Description", price: "Prix",
+  video_game_platform: "Plateforme", video_game_rating: "Classement du contenu",
+});
+/** Les champs que la plateforme a exigés au dernier refus : [{ code, libelle, message }] (vide si inconnu). */
+export function champsExigesAuRefus(pf = {}) {
+  const srf = Array.isArray(pf.server_required_fields) ? pf.server_required_fields : [];
+  const vus = new Set();
+  const out = [];
+  for (const f of srf) {
+    const code = String(f?.key ?? "").trim();
+    if (!code || vus.has(code)) continue;
+    vus.add(code);
+    const label = String(f?.label ?? "").trim();
+    out.push({ code, libelle: LIBELLES_CHAMPS_VINTED[code] ?? (label && label !== code ? label : code), message: String(f?.message ?? "").trim() || null });
+  }
+  return out;
+}
+/** Les champs exigés dont la tâche connaissait DÉJÀ la valeur (vintedAspects) : un défaut de notre envoi. */
+export function champsExigesConnus(pf = {}) {
+  const va = pf.vintedAspects && typeof pf.vintedAspects === "object" ? pf.vintedAspects : {};
+  return champsExigesAuRefus(pf).filter((c) => String(va[c.code] ?? "").trim());
+}
+
+/**
+ * Le message du job sorti de la file.
+ * @param {any} job
+ * @param {{ causeEnAttente?: { code: string } | null }} [opts] une cause corrigée par une extension que le poste n'a pas encore
+ */
+export function messageRecreationBloquee(job, { causeEnAttente = null } = {}) {
   const pf = job?.platform_fields ?? {};
   const nom = NOM[job?.platform] ?? job?.platform ?? "la plateforme";
   const titre = String(job?.title ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
   const le = retireeLe(pf);
   const date = le ? new Date(le).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" }) : null;
-  return `Ton annonce${titre ? ` « ${titre} »` : ""} a été retirée de ${nom}${date ? ` le ${date}` : ""} et FillSell n'a pas réussi à la remettre en ligne `
-    + `(${essaisRates(pf)} essais). Rien n'est perdu : titre, description, photos et champs sont gardés. Ouvre ${nom} sur ton ordinateur pour vérifier ton compte, `
-    + `puis appuie sur « Republier maintenant » : elle repartira. Tes autres republications, elles, continuent.`;
+  const debut = `Ton annonce${titre ? ` « ${titre} »` : ""} a été retirée de ${nom}${date ? ` le ${date}` : ""} et FillSell n'a pas réussi à la remettre en ligne `
+    + `(${essaisRates(pf)} essais)`;
+  const garde = "Rien n'est perdu : titre, description, photos et champs sont gardés.";
+  const autres = "Tes autres republications, elles, continuent.";
+  const champs = champsExigesAuRefus(pf);
+  const connus = new Set(champsExigesConnus(pf).map((c) => c.code));
+  const nomme = (c) => `« ${c.libelle} »${c.message ? ` (« ${c.message} »)` : ""}`;
+  if (champs.length && connus.size) {
+    const notre = champs.filter((c) => connus.has(c.code));
+    return `${debut} : ${nom} a refusé l'envoi, il exige ${notre.map(nomme).join(" et ")}, que FillSell connaissait mais n'a pas mis dans l'envoi — `
+      + (causeEnAttente
+        ? `un défaut de notre côté, corrigé : elle repartira toute seule dès que l'extension FillSell de ton ordinateur sera à jour (c'est automatique). ${garde} Rien à faire. ${autres}`
+        : `un défaut de notre côté. ${garde} ${autres}`);
+  }
+  if (champs.length) {
+    return `${debut} : ${nom} a refusé l'envoi, il exige ${champs.map(nomme).join(" et ")}. ${garde} `
+      + `Appuie sur « Republier maintenant » : elle repartira. ${autres}`;
+  }
+  return `${debut}. ${garde} Appuie sur « Republier maintenant » : elle repartira. ${autres}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -139,6 +191,9 @@ export function messageRecreationBloquee(job) {
 // (29/10) Premier build qui remet au POST le modèle et les attributs capturés (0.6.153) : tout build construit après
 // cette heure le porte (le 0.6.152 servi date du 28/10 21:51:44Z ; le poste de Nico est rechargé après).
 export const BUILD_ATTRIBUTS_ORIGINE = "2026-10-29T13:30:00Z";
+// (02/11, XEWER) Premier build qui met dans l'envoi Vinted tout attribut exigé et connu (0.6.166) : l'horodatage du
+// commit de l'extension qui le porte (EXTENSION_LAST_COMMIT) — tout build construit depuis le porte.
+export const BUILD_ATTRIBUTS_CONNUS = "2026-11-02T08:48:22Z"; // d2ed09b (0.6.166)
 
 export const CAUSES_LEVEES_PAR_LE_SERVEUR = [
   {
@@ -178,6 +233,19 @@ export const CAUSES_LEVEES_PAR_LE_SERVEUR = [
     buildMin: BUILD_ATTRIBUTS_ORIGINE,
     correctif: "extension 0.6.153+ : la recréation Vinted remet au POST le modèle et les attributs de l'annonce d'origine par leurs identifiants",
   },
+  {
+    // (02/11, XEWER — sept lots de livres Barbie retirés le 01/11, règle de Nico) Vinted refusait la remise en ligne
+    // sur un champ EXIGÉ dont la tâche portait déjà la valeur (vintedAspects : « Français » pour language_book) : elle
+    // ne partait que par le formulaire, et le champ n'y apparaît pas (ISBN d'origine de treize zéros). La 0.6.166 met
+    // tout attribut exigé et connu dans l'envoi, par son identifiant (langue du livre comprise). Relancée UNE fois, au
+    // build qui corrige ; si elle rate encore, elle ressort par la porte ordinaire avec le nouveau diagnostic.
+    code: "vinted_attribut_connu_non_pose",
+    plateformes: ["vinted"],
+    signature: /validation_error|champs exigés|Vinted exige/i,
+    condition: (job) => champsExigesConnus(job?.platform_fields ?? {}).length > 0,
+    buildMin: BUILD_ATTRIBUTS_CONNUS,
+    correctif: "extension 0.6.166+ : un attribut exigé et connu part dans l'envoi Vinted par son identifiant (langue du livre comprise)",
+  },
 ];
 
 /** (28/10) Le poste a-t-il le build qu'exige une cause (`buildMin`) ? Préfixe horodaté du BUILD_ID ; absent : non. */
@@ -204,7 +272,7 @@ function textesEchec(job) {
  * @param {any} job
  * @param {string | null} [extensionBuild] le BUILD_ID du poste (causes qui exigent un build d'extension)
  */
-export function causeLeveePourRelance(job, extensionBuild = undefined) {
+export function causeLeveePourRelance(job, extensionBuild = undefined, { ignorerBuild = false } = {}) {
   const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   if (job?.action !== "republish" || job?.status !== "needs_user") return null;
   // (29/10) Une cause peut viser aussi la question posée sur une remise en ligne (champ `sources`) ; par défaut, l'arrêt seul.
@@ -216,7 +284,8 @@ export function causeLeveePourRelance(job, extensionBuild = undefined) {
     if (!c.plateformes.includes(job.platform)) continue;
     if (!(c.sources ?? [SOURCE_RECREATION_BLOQUEE]).includes(String(pf.needs_user_source ?? ""))) continue;
     if (pf.recreation_relancee && pf.recreation_relancee[c.code]) continue; // une fois par cause
-    if (!posteAuBuildDeLaCause(c, extensionBuild)) continue; // (28/10) le poste n'a pas encore le correctif
+    // (28/10) le poste n'a pas encore le correctif ; (02/11) `ignorerBuild` : la cause qui ATTEND le poste (le message le dit)
+    if (!ignorerBuild && !posteAuBuildDeLaCause(c, extensionBuild)) continue;
     if (c.signature.test(textes) && (!c.condition || c.condition(job))) return c;
   }
   return null;

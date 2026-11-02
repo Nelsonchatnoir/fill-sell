@@ -257,6 +257,11 @@ const repub = (pf = {}, extra = {}) => ({ id: "r1", platform: "leboncoin", actio
 const GPJ = lire("supabase/functions/get-pending-jobs/index.ts");
 ok(/const msgL = filePause && jobRetenuParPause\(/.test(GPJ) && /update\(\{ error: msgL, platform_fields: pfW \}\)/.test(GPJ), "serveur : une retenue levée pendant la pause écrit « En pause à ta demande », plus « En file »");
 ok(/eq\("error", MESSAGE_REPUBLICATION_EN_PAUSE\)/.test(GPJ), "serveur : à la reprise, ces lignes repassent « En file » (24 h après la reprise, lignes concernées seulement)");
+// (02/11, tiblancdeshaut) Pendant la pause, une republication retenue qui dit encore « En file » le dit enfin : « En pause à ta demande ».
+ok(/const out0 = out;\n\s+out = out\.filter\(\(j\) => !idsEnPause\.has/.test(GPJ)
+  && /idsEnPause\.has\(String\(j\.id\)\)\n\s+&& j\.action === "republish" && j\.error === MESSAGE_EN_FILE\)/.test(GPJ)
+  && /update\(\{ error: MESSAGE_REPUBLICATION_EN_PAUSE \}\)\n\s+\.in\("id", aDire\.slice\(0, 200\)\)\.eq\("status", "pending"\)\.eq\("error", MESSAGE_EN_FILE\)/.test(GPJ),
+  "serveur (02/11) : pendant la pause, une republication retenue qui dit « En file » passe « En pause à ta demande » (lignes concernées seulement, aucune requête sinon)");
 ok(GPJ.indexOf("let filePause = false;") < GPJ.indexOf("UNE REPUBLICATION VISE L'ANNONCE EN LIGNE ACTUELLE")
   && GPJ.indexOf("UNE REPUBLICATION VISE L'ANNONCE EN LIGNE ACTUELLE") < GPJ.indexOf("PAS DE RETRAIT SANS RECRÉATION GARANTIE (02/10 soir"),
   "serveur : la garde de la cible tourne APRÈS la pause (une file en pause n'est jamais touchée) et AVANT l'étape qui retire");

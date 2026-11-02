@@ -1153,3 +1153,17 @@
   get-pending-jobs) la passe à la suivante. Créneau, jours, plafond du jour, une à la fois : inchangés.
 - Simulation (selftest `bloc-d-2610`) : 79 Vinted, 12 Leboncoin, 6 eBay, 8 places → Vinted, Leboncoin, eBay, Vinted,
   Leboncoin, eBay, Vinted, Leboncoin.
+
+## ⛔ 02/11 (lot « check du 02/11 ») — attribut connu dans l'envoi, cause nommée, pause dite
+- (XEWER, règle de Nico) Tout attribut Vinted exigé et CONNU (capturé, résolu par la personne, déduit) est posé dans
+  l'envoi, publication comme republication, toutes catégories (extension 0.6.166, `docs/regles/extension-et-versions.md`).
+- Remise en ligne bloquée (`_shared/recreation-bloquee.js`) : le message NOMME la cause — le champ exigé au refus
+  (`server_required_fields`, libellé humain) ; une valeur que la tâche connaissait = défaut de notre envoi, jamais un
+  geste demandé ; plus jamais « vérifie ton compte » (une cause du compte a son propre message, « proteger »). Cause
+  `vinted_attribut_connu_non_pose` : relance UNE fois au build 0.6.166 ; d'ici là le message dit qu'elle repartira
+  seule dès que l'extension du poste sera à jour (handler-watch, réécrit seulement s'il change, ancien texte archivé).
+- (tiblancdeshaut) File en pause à la demande de la personne : une republication retenue qui disait encore « En file :
+  passera à son tour » dit « En pause à ta demande » (get-pending-jobs, lignes concernées seulement). La pause
+  elle-même n'est jamais levée par FillSell.
+- (gjehly) Publication programmée : 8 places par jour dans le créneau du soir, aucune hors créneau ; une tâche déjà
+  servie la veille et rejouée après un mur technique peut aboutir le matin (une reprise, pas une place).

@@ -7,17 +7,26 @@
 // Leboncoin et Beebs bloquent un navigateur à rendu graphique virtuel (serveur sans puce graphique, SwiftShader).
 // L'extension (0.6.161) envoie le moteur de rendu WebGL du poste au poll (rendu_graphique) ; le serveur le note sur
 // le poste (extension_postes[poste].rendu) et :
-//   · machine virtuelle NOMMÉE par son pilote graphique (VMware, VirtualBox, Parallels, QXL, virgl, Hyper-V,
-//     « Microsoft Basic Render Driver ») → aucune action ni lecture Leboncoin pour CE poste : les tâches Leboncoin du
-//     compte attendent un poste réel du compte (un autre profil de navigateur sur l'ordinateur), l'extension coupe ses
-//     propres lectures Leboncoin ;
+//   · machine virtuelle NOMMÉE par son pilote graphique (VMware, VirtualBox, Parallels, QXL, virgl, Hyper-V, Red Hat,
+//     Bochs) → aucune action ni lecture Leboncoin pour CE poste : les tâches Leboncoin du compte attendent un poste
+//     réel du compte (un autre profil de navigateur sur l'ordinateur), l'extension coupe ses propres lectures
+//     Leboncoin ;
 //   · rendu LOGICIEL seul (SwiftShader, llvmpipe) : noté, jamais bloquant — un PC réel sans accélération matérielle
 //     le montre aussi ; la décision attend la mesure sur le parc.
+//   · (02/11, Dayane — recrutementgroupezk704) « Microsoft Basic Render Driver » SEUL n'est PAS une machine
+//     virtuelle : c'est le pilote d'affichage de secours de Windows — celui d'un vrai PC sans pilote graphique
+//     installé, d'une session en bureau à distance, comme d'une machine virtuelle sans carte graphique. Les six postes
+//     du parc classés « virtuels » le 02/11 l'étaient tous par ce seul pilote ; Dayane avait publié sur Leboncoin le
+//     30/10 depuis ce même poste. Règle : une plateforme ne se bloque que sur un signal SÛR de virtualisation (un
+//     pilote qui NOMME la machine virtuelle), jamais sur ce pilote seul — il est noté (`pilote_de_base`), comme le
+//     rendu logiciel, jamais bloquant.
 // ⛔ Le poste Cloud a ses propres règles (hors de ce module).
 // Pur (Deno + Node).
 
-const VM_RE = /\b(VMware|VirtualBox|VBox|Parallels|QXL|virgl|Virtio|Hyper-V|Microsoft Basic Render Driver|Red Hat|Bochs)\b/i;
+const VM_RE = /\b(VMware|VirtualBox|VBox|Parallels|QXL|virgl|Virtio|Hyper-V|Red Hat|Bochs)\b/i;
 const LOGICIEL_RE = /\b(SwiftShader|llvmpipe|softpipe|Software Rasterizer)\b/i;
+// (02/11) Le pilote d'affichage de secours de Windows : noté, jamais un signal de machine virtuelle à lui seul.
+const PILOTE_DE_BASE_RE = /\bMicrosoft Basic Render Driver\b/i;
 
 /** Le rendu graphique déclaré au poll, nettoyé, ou null. */
 export function renduDuPoll(body) {
@@ -28,7 +37,10 @@ export function renduDuPoll(body) {
   if (r.webgl === false) return { webgl: false, renderer: null, vendor: null, virtuel: false, logiciel: true };
   if (!renderer) return null;
   const texte = `${renderer} ${vendor}`;
-  return { webgl: true, renderer, vendor: vendor || null, virtuel: VM_RE.test(texte), logiciel: LOGICIEL_RE.test(texte) };
+  return {
+    webgl: true, renderer, vendor: vendor || null, virtuel: VM_RE.test(texte), logiciel: LOGICIEL_RE.test(texte),
+    ...(PILOTE_DE_BASE_RE.test(texte) ? { pilote_de_base: true } : {}),
+  };
 }
 
 /** Le poste est-il une machine virtuelle nommée (jamais Leboncoin) ? */

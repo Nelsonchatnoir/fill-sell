@@ -3131,7 +3131,21 @@ serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     for (const j of (bloquees ?? []) as any[]) {
       const cause = causeLeveePourRelance(j, buildBloquee.get(String(j.user_id)) ?? null);
-      if (!cause) continue;
+      if (!cause) {
+        // (02/11, XEWER) Le message d'une remise en ligne bloquée nomme la vraie cause (refus de la plateforme, défaut
+        // de notre envoi en attente de la mise à jour du poste) : réécrit seulement s'il a changé — jamais une ligne
+        // inchangée, l'ancien texte archivé.
+        if (j.platform_fields?.needs_user_source !== SOURCE_RECREATION_BLOQUEE) continue;
+        const attente = causeLeveePourRelance(j, null, { ignorerBuild: true });
+        const juste = messageRecreationBloquee(j, { causeEnAttente: attente });
+        if (j.error === juste) continue;
+        const pfM = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+        if (j.error) pfM.erreurs_archivees = archiverErreur(pfM.erreurs_archivees, j.error, j.status, "handler-watch (message de la remise en ligne bloquée : la vraie cause)");
+        if (attente) pfM.recreation_attente_maj = { cause: attente.code, le: new Date().toISOString(), par: "handler-watch" };
+        await supabase.from("cross_post_jobs").update({ error: juste, platform_fields: pfM })
+          .eq("id", j.id).eq("status", "needs_user");
+        continue;
+      }
       const pf = champsRelanceCauseLevee(j.platform_fields ?? {}, cause, new Date().toISOString()) as Record<string, unknown>;
       if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, `handler-watch (cause levée : ${cause.code})`);
       const { data: maj } = await supabase.from("cross_post_jobs")
