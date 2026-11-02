@@ -304,3 +304,19 @@ seule ; photos de travail hors dépôt ; un seul processus sur le PC (4,4 Go lib
 - **Coûts** : aujourd'hui ≈ 235 à 390 $ / cycle, ≈ 2 350 à 3 900 $ à 10 fois plus d'utilisateurs ; méthode D dans nos
   fonctions ≈ 0 à 5 $ (egress +13 à 22 Go, invocations), ≈ 16 à 38 $ à 10 fois plus.
 - Remesure Supabase 24 h programmée le 03/11 à 16:40 (tâche de la session de ce terminal).
+
+## Partie H (02/11 nuit, 22:30 → 23:30) — wasm-vips sur un seul thread, essayé dans une fonction de test
+Feu vert de Nico. Détail : `essai-empreintes-D/RESULTAT.md` § 7 ; recette : `essai-empreintes-D/mono-thread/`.
+- **Construit** : libvips 8.18.7 + correctifs de wasm-vips 0.0.19, mêmes dépendances, SANS threads (`patch-mono.py`) ;
+  module de 3,4 Mo, mémoire ordinaire de 16 Mo (croissance jusqu'à 160 Mo), aucun Worker ni SharedArrayBuffer.
+- **Identique** : mêmes 200 photos en local, **200/200 empreintes au bit près**, 199/199 JPEG à l'octet.
+- **Fonction de test `essai-empreintes-d-test` v1** (appelée par personne en prod, garde par SHA-256 du jeton, le jeton
+  reste hors dépôt et hors secrets) : 12/12 photos normales identiques à la base ET au fichier Supabase ; 20 plus gros JPEG
+  et 8 plus gros PNG sans transparence traités en 57 à 152 ms (+ 15 à 50 ms d'empreinte) ; **≈ 62 Mo au plus pour 256 Mo**,
+  module jamais grossi au-delà de 16 Mo ; 0 erreur. Les PNG à transparence et les WebP restent à Supabase.
+- **Rien basculé** : `_shared/empreinte-telechargement.ts`, empreintes-urls, photo-empreinte, doublons-balayage
+  identiques à 041baba (selftest `essai-d-mono`). Le branchement est une décision séparée de Nico.
+- Écriture d'un secret de fonction refusée par le filtre de sécurité : la garde est une empreinte SHA-256 dans le code.
+- Remesure du 03/11 : une seule tâche gardée (16:40, deux doublons supprimés) ; elle est liée à la session de ce
+  terminal. Une tâche côté Supabase ne peut pas lire les journaux (jeton d'administration du compte requis) ; les
+  journaux restant lisibles plusieurs jours, la mesure de la fenêtre 02/11 16:40 → 03/11 16:40 peut se faire après coup.

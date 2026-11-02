@@ -78,3 +78,40 @@ Scripts dans `scripts/` (lancés depuis un dossier de travail HORS dépôt qui c
 `resume.mjs <jeu>` ; `entetes.mjs` (cas rares), `gros.sql` / `gros2.sql` + `mesurer.ts` (temps, mémoire), `diag*.ts`
 (mise au point ICC et PNG), `jpeginfo.mjs` (structure d'un JPEG). ⚠️ Après le 01/12, relire une version Supabase coûte
 à nouveau (nouveau cycle) : réutiliser les références déjà téléchargées.
+
+## 7. Un seul thread (02/11, 22:30 → 23:30, feu vert de Nico) — verdict
+Recette, correctif et scripts : `mono-thread/` ; fonction de test : `supabase/functions/essai-empreintes-d-test/`.
+Rien de basculé : la prod garde la transformation Supabase (selftest `essai-d-mono`).
+
+**Construit** (PC de Nico, outils hors dépôt dans `C:\Users\nicol\wvst`) : Emscripten 6.0.10 ; libvips 8.18.7 et ses
+dépendances aux versions et options de wasm-vips 0.0.19 (mêmes correctifs : glib, libvips, mozjpeg `JCP_FASTEST`, highway
+SIMD), **sans `-pthread`** ; `patch-mono.py` (4 remplacements, actifs seulement sans pthreads) : une tâche « de thread »
+s'exécute sur place (un seul ouvrier, tuiles dans le même ordre), l'écriture différée de `vips_sink_disc` devient
+immédiate au même moment, toute attente impossible s'arrête net avec une erreur ; `essai_d.c` = les appels de l'essai D,
+un par un. Module : 3,4 Mo de WebAssembly ; **mémoire NON partagée, 16 Mo au départ** (croissance permise jusqu'à
+160 Mo), **aucun import de thread**, ni Worker ni SharedArrayBuffer dans le JS.
+
+**Revérifié en local** (Worker et SharedArrayBuffer retirés avant le chargement), mêmes 200 photos : **200/200
+empreintes identiques au bit près**, 199/199 JPEG identiques à l'octet (le PNG : pixels identiques, en-tête seul différent,
+comme l'essai D) ; mise au point 86/86 empreintes. 13 ms médiane, 67 ms max par photo ; mémoire WebAssembly restée à 16 Mo.
+
+**Dans la fonction de test** (`essai-empreintes-d-test` v1, `verify_jwt` false, garde par SHA-256 du jeton ; 11 appels,
+journaux sans aucune erreur ni dépassement) :
+| | photos | résultat | temps par photo (réduction + empreinte) |
+|---|---|---|---|
+| Normales (test) | 12 | **12/12 empreintes = base, 12/12 octets = fichier Supabase** | 19-76 + 25-35 ms |
+| Plus gros JPEG du bucket (1,9 à 2,5 Mo, jusqu'à 2560×2560) | 20 | 20/20 faites, octets = module local 20/20, 1/1 = base | 57-152 + 23-50 ms |
+| Plus gros PNG du bucket | 20 | tous avec transparence → hors périmètre (restent à Supabase) | — |
+| Plus gros PNG sans transparence (3,2 Mo, 1024×1024) | 8 | 8/8 faites | 68-109 + 15-38 ms |
+| Plus gros WebP | 5 | pas de décodeur WebP dans le module → refusés (restent à Supabase) | — |
+- Démarrage à froid : 48-78 ms (fonction) + 57 ms (module) ; première empreinte d'une instance + 300 ms (imagescript,
+  comme aujourd'hui). Pire appel de 8 photos : ≈ 1,2 s de calcul, sous les 2 s.
+- Mémoire mesurée dans la fonction : tas JS ≤ 16,6 Mo, mémoire externe ≤ 45,6 Mo (dont le module 16 Mo, jamais grossi, et
+  les photos téléchargées), pixels libvips ≤ 5,5 Mo : **≈ 62 Mo au plus pour 256 Mo permis**.
+
+**Coût par cycle** (inchangé par rapport au § 5) : aujourd'hui ≈ 235 à 390 $ (≈ 2 350 à 3 900 $ à 10 fois plus
+d'utilisateurs) ; méthode D dans nos fonctions ≈ 0 à 5 $ (≈ 16 à 38 $ à 10 fois plus) : egress +13 à 22 Go (+130 à 220 Go),
+invocations au plus doublées, cas hors périmètre mesurés aujourd'hui 0 sur 1 356 ; le CPU des fonctions n'est pas facturé.
+
+Les photos de travail (200 du test, 86 de mise au point, 45 grosses) et leurs données ont été supprimées du dossier
+temporaire le 02/11 à 23:20.
