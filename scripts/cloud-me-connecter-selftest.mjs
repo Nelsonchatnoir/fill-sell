@@ -113,5 +113,11 @@ const stock = lire('src/tabs/StockTab.jsx');
 ok(/surEbay: computeRemovalInfo\(jobsByInventaire\[it\.id\] \|\| \[\]\)\.publishedActive\.includes\('ebay'\)/.test(stock), 'l\'article en ligne sur eBay est repéré à l\'ouverture de la feuille');
 ok(stock.includes("'eBay : ton annonce reste en ligne telle quelle.'") && /items\.some\(\(i\) => i\.surEbay\)/.test(stock), 'la ligne « eBay : ton annonce reste en ligne telle quelle. », seulement quand eBay porte l\'annonce');
 
+console.log('\n10. Une plateforme connectée : aucun bouton principal (02/11, Nico : « ça fait croire à un problème »)');
+ok(/\{!sansBouton && connecte && <button[^>]*data-cloud-bouton="changer"/.test(me) && /\{libelle\?\.refaire \?\? T\.changerCompte\}/.test(me), 'connectée : un lien discret « Changer de compte »');
+ok(/\{!sansBouton && !connecte && <button/.test(me) && /libelle\?\.faire \?\? \(aReconnecter \? T\.reconnecter : T\.meConnecter\)/.test(me), '« Me reconnecter » seulement déconnectée ; « Me connecter » jamais connectée');
+ok(!/connecte \? \(libelle\?\.refaire \?\? T\.reconnecter\)/.test(me), 'plus jamais « Me reconnecter » à côté de « Connecté »');
+ok(tx2.split("changerCompte: '").length === 3 || lire('src/cloud/textesConnexion.js').split("changerCompte: '").length === 3, 'fr et en : « Changer de compte »');
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

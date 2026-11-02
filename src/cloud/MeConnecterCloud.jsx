@@ -50,10 +50,16 @@ function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter 
         </div>
         {texte && <div style={{ fontSize: 12.5, color: C.mute, marginTop: 4, lineHeight: 1.4 }}>{texte}</div>}
       </div>
-      {!sansBouton && <button type="button" onClick={onClick} data-cloud-bouton={libelle?.faire === T.resoudre ? 'resoudre' : undefined} style={{
+      {/* (02/11, Nico : « Connecté » avec « Me reconnecter » à côté fait croire à un problème) Connectée : aucun bouton
+          principal, un lien discret « Changer de compte ». « Me reconnecter » seulement quand elle est déconnectée. */}
+      {!sansBouton && connecte && <button type="button" onClick={onClick} data-cloud-bouton="changer" style={{
+        flexShrink: 0, minHeight: 40, padding: '8px 4px', border: 'none', background: 'none', color: C.mute2,
+        fontWeight: 500, fontSize: 12.5, textDecoration: 'underline', textUnderlineOffset: 3,
+      }}>{libelle?.refaire ?? T.changerCompte}</button>}
+      {!sansBouton && !connecte && <button type="button" onClick={onClick} data-cloud-bouton={libelle?.faire === T.resoudre ? 'resoudre' : undefined} style={{
         flexShrink: 0, minHeight: 40, padding: '9px 14px', borderRadius: 11, fontWeight: 700, fontSize: 14,
-        border: connecte ? `1px solid ${C.border}` : 'none', background: connecte ? BLANC : DEGRADE_TEAL, color: connecte ? C.ink : BLANC,
-      }}>{connecte ? (libelle?.refaire ?? T.reconnecter) : (libelle?.faire ?? T.meConnecter)}</button>}
+        border: 'none', background: DEGRADE_TEAL, color: BLANC,
+      }}>{libelle?.faire ?? (aReconnecter ? T.reconnecter : T.meConnecter)}</button>}
     </div>
   );
 }
