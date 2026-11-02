@@ -127,3 +127,24 @@ ebay-api-worker v105 ; extension 0.6.166 en examen au Chrome Web Store (pas remp
   miniatures n'en épargnent ; l'affichage des photos dans l'app ne pèse que ~0,3 Go/j non caché).
 - coin_config côté app (16 lectures, ~14 700/j) et côté handler-watch / update-job-status : non branchés au cache (gain
   < 1 % des requêtes).
+
+## Partie C (02/11 après-midi) — « zéro régression, sans exception » : chaque point du lot B
+Consigne de Nico : tout point non prouvable revient à l'ancien comportement.
+| Point | Verdict |
+|---|---|
+| Empreintes sur l'originale (empreintes-urls, doublons-balayage, photo-empreinte) | **Remis comme avant** : sur 60 photos de prod, l'empreinte sur l'originale différait de celle sur la version réduite (dHash Δ ≤ 3, pHash Δ ≤ 4, variantes Δ ≤ 8, couleur parfois) — les rapprochements par photo ne sont pas prouvés identiques (l'essai du matin sur 3 photos n'était pas représentatif). Code d'avant le lot B redéployé 14:54 (v10 / v6 / v6). |
+| rapprochement-ia sans transformation | **Remis comme avant** (l'IA ne voyait plus la même image) — v13 = code d'avant. |
+| Miniatures (vignettes) et cache d'un an | **Remis comme avant** (GalleryPhoto.jsx et photosUpload.js identiques à l'avant-lot-B). Zoom : `components/GaleriePhotos.jsx` l. 119 affiche `<img src={url}>` = l'URL d'origine, jamais `GalleryPhoto` ni une miniature. |
+| Sonde des jobs sans last_checked_at | **Remis comme avant** (même requête, fetchAll sur toute différence) ; EN PLUS, un changement réel (hors last_checked_at) relance tout de suite la vue complète du Stock (demandé). |
+| Retour d'onglet 30 s → 2 min | **Remis comme avant** (30 s). |
+| Vue complète du Stock 5 → 30 min | **Remis comme avant** (5 min, 2 au retour d'onglet) + relance immédiate sur changement réel. |
+| Cache coin_config 60 s | **Remis comme avant** (14 lectures directes) : un réglage changé n'était vu qu'en 60 s au plus. |
+| Présence needs_user / failed avant 10 balayages | **Identique, preuve** : chaque bloc gardé ne lit d'abord que des jobs needs_user / failed du compte (selftest) ; les seules écritures needs_user / failed du poll sont DANS ces blocs (l. 1521, 1528), donc un bloc sauté ne peut rien avoir créé pour le suivant ; même client, même filtre ; lecture illisible → balayage comme avant. Mesuré : blocs sautés 3 fois sur 4. |
+| Demandes en file en une lecture | **Identique, preuve** : mêmes filtres appliqués en mémoire (sorte, durée de vie, plateforme déléguée, ordre, nombre), même client (RLS) ; le seul producteur entre deux lecteurs (`reprendre_releves_absents`) force une relecture quand il remet une demande en file (défaut trouvé et corrigé, v324) ; selftests files-repartent / delegation verts. |
+| Palier lu une fois par poll | **Identique, preuve** : même requête dans le même poll ; le poll n'écrit jamais ces colonnes. |
+| beta_flags repris de la délégation | **Identique, preuve** : même colonne lue dans le même poll ; jamais écrite par le poll. |
+| Profil de première synchro seulement pour un compte récent | **Identique, preuve** : profil créé à l'inscription ; 0 compte sur 3 511 avec plus d'un jour d'écart entre auth et profil (écart max 22 h) ; marge d'un jour. |
+| Ligne de journal d'un poll vide | **Identique** pour l'utilisateur : journal serveur seulement. |
+- Déployé : get-pending-jobs **v324** (14:58) ; web au push ; mobile : OTA 2.9.154.
+- ⛔ Conséquence : les transformations reprennent (~2 650 images par jour, ~300 $ par cycle au tarif mesuré). À
+  décider par Nico : accepter des empreintes à 1-4 bits près (zéro transformation), ou garder l'identique (payant).

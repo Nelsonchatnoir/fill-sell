@@ -31,30 +31,21 @@ const CHAMPS_FICHE = "id, user_id, titre, description, marque, attributs, prix_v
 type Source = { type: "url"; url: string } | { type: "base64"; media_type: string; data: string };
 
 
-// La photo donnée à l'IA : la plus petite qui existe déjà, jamais une transformation.
+// La miniature d'une photo : jamais la photo en grand.
+//  · notre Storage : réduite par le service (render/image) ;
 //  · eBay (s-lNNN) et Leboncoin (rule=) : la variante miniature de la plateforme ;
-//  · notre Storage : l'originale (1 024 px au plus, compression de l'app) ;
-//  · sinon (Vinted, Beebs…) : l'originale téléchargée, envoyée en base64 (1,5 Mo au plus).
-// ⛔ (02/11, facture Supabase) Plus de render/image ni de copie dans ia-miniatures/ : chaque photo réduite par le
-//    Storage était une « image transformée » facturée (59 261 sur le cycle 02/10 → 01/11, 300 $ remis une fois), et
-//    une copie neuve en était une de plus à chaque passage. Une photo plus grande coûte plus de jetons d'entrée
-//    (l'API la ramène elle-même à 1 568 px au plus) : le plafond en euros par compte et par passage (usage réel lu
-//    dans la réponse) reste la borne, inchangé. Aucun décodage dans la fonction (15/10 : WORKER_RESOURCE_LIMIT).
-// COTE_MINIATURE (_shared/rapprochement/ia.js) ne sert plus ici : gardé pour ses lecteurs et ses tests.
-void COTE_MINIATURE;
+//  · sinon (Vinted, Beebs…) : la photo est copiée UN instant dans notre Storage
+//    (ia-miniatures/), réduite par le service, puis effacée après l'appel —
+//    aucun décodage dans la fonction (15/10 : 12 décodages = WORKER_RESOURCE_LIMIT).
 const BUDGET_EPUISE = "budget" as const;
-const BASE64_MAX_OCTETS = 1_500_000;
-const BUCKET = "listing-photos";   // nettoyage des copies d'avant (cx.copies reste vide désormais)
+const BUCKET = "listing-photos";
 // deno-lint-ignore no-explicit-any
 type Contexte = { supabaseUrl: string; admin: any; copies: string[]; budget: { copies: number } };
-function enBase64(octets: Uint8Array): string {
-  let brut = "";
-  for (let i = 0; i < octets.length; i += 0x8000) brut += String.fromCharCode(...octets.subarray(i, i + 0x8000));
-  return btoa(brut);
-}
+const renduStorage = (supabaseUrl: string, reste: string) =>
+  `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/render/image/public/${reste}?width=${COTE_MINIATURE}&height=${COTE_MINIATURE}&resize=contain&quality=70`;
 async function miniature(url: string, cx: Contexte): Promise<Source | null | typeof BUDGET_EPUISE> {
   const prefixe = `${cx.supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/`;
-  if (url.startsWith(prefixe)) return { type: "url", url };
+  if (url.startsWith(prefixe)) return { type: "url", url: renduStorage(cx.supabaseUrl, url.slice(prefixe.length).split("?")[0]) };
   if (/^https:\/\/i\.ebayimg\.com\//.test(url)) return { type: "url", url: url.replace(/s-l\d+\./, "s-l225.") };
   if (/^https:\/\/img\.leboncoin\.fr\//.test(url)) return { type: "url", url: url.replace(/([?&])rule=[^&]*/, "$1rule=ad-thumb").replace(/^([^?]+)$/, "$1?rule=ad-thumb") };
   if (cx.budget.copies <= 0) return BUDGET_EPUISE;
@@ -67,8 +58,12 @@ async function miniature(url: string, cx: Contexte): Promise<Source | null | typ
     const type = String(r.headers.get("content-type") ?? "").split(";")[0].trim();
     if (!/^image\/(jpeg|png|webp|gif)$/.test(type)) { await r.body?.cancel().catch(() => {}); return null; }
     const octets = new Uint8Array(await r.arrayBuffer());
-    if (octets.length > BASE64_MAX_OCTETS) return null;
-    return { type: "base64", media_type: type, data: enBase64(octets) };
+    if (octets.length > 8_000_000) return null;
+    const chemin = `ia-miniatures/${crypto.randomUUID()}.${type.split("/")[1]}`;
+    const { error } = await cx.admin.storage.from(BUCKET).upload(chemin, octets, { contentType: type, upsert: true });
+    if (error) return null;
+    cx.copies.push(chemin);
+    return { type: "url", url: renduStorage(cx.supabaseUrl, `${BUCKET}/${chemin}`) };
   } catch { return null; } finally { clearTimeout(minuteur); }
 }
 

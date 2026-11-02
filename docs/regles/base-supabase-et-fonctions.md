@@ -365,25 +365,20 @@ authenticated;` (le déclencheur le fait aussi). Inverse du régime : `supabase/
   `public.cron_secret()`), puis {"test_notification":"<jeton>"} → `sendAttempts: SUCCESS` ; ligne `TEST`, `jws_ok`,
   `Production` au journal des stores.
 
-## ⛔ 02/11 (facture Supabase) — zéro transformation, coin_config en cache, un poll ne relit que ce qui peut avoir changé
+## ⛔ 02/11 (facture Supabase) — ce qui reste après la consigne « zéro régression » de Nico
 Rapport `docs/enquetes/facture-supabase-0211/RAPPORT.md` ; selftest `selftest:facture-supabase-0211`.
-- **Jamais `storage/v1/render/image`** : chaque photo réduite par le Storage est une image transformée FACTURÉE (59 261
-  sur le cycle 02/10 → 01/11, 100 incluses). Les empreintes se calculent sur l'ORIGINALE (`empreinterUrl`, décodée dans
-  le budget de l'appel, WebP par libwebp — empreintes identiques mesurées, Δ0) ; `rapprochement-ia` donne à l'IA
-  l'originale (URL de notre bucket, base64 hors bucket ≤ 1,5 Mo), plus aucune copie dans `ia-miniatures/`. Seule
-  exception : le repli de `lens-analysis` pour une photo de plus de 6 000 px (~0 par mois).
-- **coin_config** se lit par `_shared/coin-config-cache.js` (`configUne`, `configPlusieurs`, `configPrefixe`) : la table
-  entière, une fois par minute et par instance, mêmes formes `{ data, error }` qu'une requête. Un réglage changé en base
-  est vu en 60 s au plus. Jamais `from("coin_config")` dans get-pending-jobs.
-- **get-pending-jobs** : une lecture de présence needs_user / failed (`aDesArretes`) garde les balayages qui ne lisent
-  que ces statuts (69 postes actifs sur 94 n'en ont aucun) ; les demandes en file (dressing, annonces, connexion) se
-  lisent en une fois (`lireCommandesEnFile`) ; palier et beta_flags une fois par poll ; un poll qui ne distribue ni ne
-  retient rien n'écrit plus de ligne. Toute nouvelle lecture faite à chaque poll se justifie (34 000 polls par jour).
-- **App** : la sonde des jobs (45 s) n'a pas `last_checked_at` dans son empreinte (le check des ventes le réécrit sans
-  cesse : chaque réécriture relisait tout le stock et toutes les ventes) ; un vrai changement relance la vue complète
-  du Stock (`fillsell:jobs-changes`), qui sinon se fait toutes les 30 min (10 au retour d'onglet) ; retour d'onglet :
-  `fetchAll` toutes les 2 min au plus.
-- **Photos** : une photo téléversée par l'app a sa miniature 400 px (`<lot>_<i>__mini.jpg`, `utils/photosUpload.js`)
-  et un cache d'un an ; `GalleryPhoto` affiche la miniature (repli sur l'originale, puis sur la tuile). Les
-  plateformes reçoivent toujours l'originale. Aucune miniature fabriquée après coup (relire 68 Go d'originales
-  coûterait plus d'egress que les miniatures n'en épargnent).
+- **Revenu à l'identique** (02/11 14:54 / 14:58, « tout point non prouvable revient à l'ancien comportement ») :
+  empreintes photo calculées sur la version réduite par le Storage (sur l'originale, elles différaient de 1 à 4 bits
+  sur 60 photos : rapprochements par photo pas prouvés identiques) — empreintes-urls v10, doublons-balayage v6,
+  photo-empreinte v6, rapprochement-ia v13 = code d'avant le lot B ; vignettes sans miniature, cache d'origine ;
+  lectures directes de coin_config dans get-pending-jobs (un cache de 60 s n'est pas exact après un changement de
+  réglage) ; app : sonde des jobs avec last_checked_at, retour d'onglet 30 s, vue complète du Stock 5 min (2 au retour).
+  ⛔ Les transformations reprennent donc (~2 650 images par jour) : décision de Nico attendue (rapport).
+- **Gardé, prouvé identique** (get-pending-jobs v324) : lecture de présence needs_user / failed (`aDesArretes`) avant
+  les balayages qui ne lisent que ces statuts (les seules écritures needs_user / failed du poll sont DANS ces blocs) ;
+  demandes en file lues une fois (`lireCommandesEnFile`), relues après `reprendre_releves_absents` qui en remet ;
+  palier et beta_flags lus une fois (jamais écrits par le poll) ; profil de première synchro seulement pour un compte
+  inscrit dans la fenêtre (0 compte sur 3 511 avec plus d'un jour d'écart entre auth et profil) ; plus de ligne de
+  journal pour un poll vide. App : en plus, la vue complète du Stock est relancée tout de suite sur un changement réel.
+- **Règle durable** : toute baisse de lecture se PROUVE identique pour l'utilisateur (mêmes données, même moment), sinon
+  elle ne part pas. Jamais `storage/v1/render/image` dans un nouveau code sans décision de Nico.
