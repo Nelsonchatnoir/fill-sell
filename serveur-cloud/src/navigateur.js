@@ -96,6 +96,7 @@ export function cacheExtensionAEffacer(empreinteNotee, empreinteCopie) {
   return Boolean(empreinteCopie) && String(empreinteNotee ?? '').trim() !== String(empreinteCopie).trim();
 }
 
+export const FICHIERS_VERROU_PROFIL = Object.freeze(['SingletonLock', 'SingletonCookie', 'SingletonSocket']);
 export const nomConteneur = (user) => `fs-nav-${String(user).replace(/[^0-9a-f-]/gi, '')}`;
 export const nouveauProfilId = (user) => `p-${String(user).slice(0, 8)}-${randomBytes(6).toString('hex')}`;
 
@@ -284,14 +285,14 @@ export function creerNavigateurs({ config, docker, journal }) {
     }
     if (!c) {
       await mkdir(`${config.dossierProfils}/${profilId}`, { recursive: true });
-      // (02/11) Un conteneur NEUF sur un profil gardé : le verrou de profil de l'ancien conteneur (autre nom d'hôte) ferait
-      // refuser le profil à Chromium (« in use by another Chromium process on another computer » : session HTTP 500,
-      // vu au premier lancement en français). Aucun autre conteneur n'ouvre ce profil : ses fichiers de verrou partent.
-      for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) await rm(`${config.dossierProfils}/${profilId}/${f}`, { force: true }).catch(() => {});
       await docker.creer(nom, spec);
       c = await docker.inspecter(nom);
     }
     if (!c.State?.Running) {
+      // (02/11) Conteneur arrêté = aucun Chromium sur ce profil : le verrou de profil d'un ancien conteneur (autre nom d'hôte)
+      // ferait refuser le profil (« in use by another Chromium process on another computer » : session HTTP 500, vu au
+      // premier lancement en français, conteneur recréé). Ses fichiers de verrou partent avant le démarrage.
+      for (const f of FICHIERS_VERROU_PROFIL) await rm(`${config.dossierProfils}/${profilId}/${f}`, { force: true }).catch(() => {});
       await docker.demarrer(nom);
       c = await docker.inspecter(nom);
     }
