@@ -503,6 +503,8 @@ async function readItemsProbeOutcome() {
         // les clés brand* réellement parties dans le corps.
         marquePosee: c?.marquePosee ?? null,
         marqueEnvoyee: c?.marqueEnvoyee ?? null,
+        // (02/11) attributsPoses : les attributs (annonce d'origine, valeurs connues) que la sonde a dû poser.
+        attributsPoses: c?.attributsPoses ?? null,
       };
     }
     if (last && refus) break;
@@ -936,6 +938,65 @@ function resumeReferentielColis(r) {
 // prime toujours quand la capture la porte, et le lookup livre de Vinted prime
 // sur les deux quand il retombe (on n'écrase jamais ce que la page a posé).
 const VINTED_LANGUE_LIVRE_DEFAUT_ID = 6436;
+
+// ── (02/11, XEWER) LA LANGUE CONNUE PAR SON LIBELLÉ PART AUSSI DANS L'ENVOI ──
+// Sept lots de livres Barbie retirés le 01/11, jamais recréés : la langue
+// « Français » était connue (vintedAspects.language_book, réponse rangée),
+// mais elle ne partait que par le formulaire — et sur un ISBN d'origine de
+// treize zéros (remis TEL QUEL), le champ « Langue » n'apparaît jamais :
+// 400 « Sélectionne une langue pour continuer », onze essais. Le libellé
+// devient son identifiant, RELEVÉ en base (captures d'annonces réelles,
+// item_attributes[language_book]) : 6436 « Français » sur 1 151 annonces,
+// 6435 « Anglais » sur 36 (« Moby Dick », « They Both Die at the End »…).
+// Les autres ids vus (6437, 6443…) ne sont pas sûrs : aucun libellé ne s'y
+// rapporte ici, la langue reste alors au seul formulaire (jamais devinée).
+const VINTED_LANGUES_LIVRE_IDS = Object.freeze({ francais: 6436, french: 6436, anglais: 6435, english: 6435 });
+function idLangueLivreDuLibelle(libelle) {
+  const k = String(libelle ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  return VINTED_LANGUES_LIVRE_IDS[k] ?? null;
+}
+
+// ── (02/11, XEWER — règle de Nico) UN ATTRIBUT EXIGÉ ET CONNU PART DANS L'ENVOI ──
+// Toute catégorie, publication comme republication : une valeur connue
+// (réponse de la personne, valeur déduite par le serveur, attribut de
+// l'annonce d'origine résolu en libellé) que le formulaire n'a pas su poser
+// — champ absent, menu qui ne prend pas — part par son IDENTIFIANT dans le
+// corps du POST. L'identifiant vient de la config attributes de LA catégorie
+// posée, reniflée sur cette page (optionsBrutes) : une seule option dont le
+// libellé égale la valeur, sinon rien (jamais deviné, jamais par-dessus ce
+// que la page a posé : la sonde ne remplit qu'un code laissé vide).
+const CLES_ID_OPTION = ["id", "value", "option_id"];
+function idAttributParLibelle(meta, libelle) {
+  const cible = texteComparable(libelle);
+  if (!cible) return null;
+  const trouves = [];
+  for (const opt of Array.isArray(meta?.optionsBrutes) ? meta.optionsBrutes : []) {
+    if (!opt || typeof opt !== "object") continue;
+    const titre = CLES_TITRE_OPTION.map((k) => String(opt[k] ?? "").trim()).find(Boolean) ?? "";
+    if (!titre || texteComparable(titre) !== cible) continue;
+    let id = CLES_ID_OPTION.map((k) => Number(opt[k])).find((n) => Number.isInteger(n) && n > 0) ?? null;
+    if (id == null) {
+      // Aucune clé d'id connue : la seule valeur entière positive de l'objet, sinon rien.
+      const entiers = Object.values(opt).map(Number).filter((n, i, a) => Number.isInteger(n) && n > 0 && a.indexOf(n) === i);
+      id = entiers.length === 1 ? entiers[0] : null;
+    }
+    if (id == null) return null;
+    trouves.push(id);
+  }
+  return new Set(trouves).size === 1 ? trouves[0] : null;
+}
+function armerAttributsConnusPourPost(attrs, catalogId) {
+  try {
+    const propres = (Array.isArray(attrs) ? attrs : [])
+      .map((a) => ({ code: String(a?.code ?? "").trim(), ids: (Array.isArray(a?.ids) ? a.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0) }))
+      .filter((a) => a.code && a.ids.length && !ATTRIBUTS_CONNUS_HORS_SONDE.has(a.code));
+    const cat = Number(catalogId);
+    const arme = propres.length && Number.isInteger(cat) && cat > 0;
+    window.postMessage({ __fillsellArmeAttributsConnus: true, attrs: arme ? propres : null, catalogId: arme ? cat : null }, window.location.origin);
+  } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+// Codes qui ont leur propre pose au POST (ISBN, langue, marque) ou leur canal dédié éprouvé : jamais par ce chemin.
+const ATTRIBUTS_CONNUS_HORS_SONDE = new Set(["isbn", "language_book", "brand", "model", "size", "condition", "color", "material", "package_size"]);
 
 // Ids de langue portés par l'annonce d'origine (republication). Les attributs
 // capturés arrivent bruts dans platform_fields.itemAttributesCaptures — c'est
@@ -3432,6 +3493,9 @@ async function remplirFormulaireVinted(job) {
   // (2026-09-27) ISBN capturé non standard remis tel quel : rendu dans le
   // résultat, le background en fait la preuve (isbn_capture_tel_quel).
   let isbnCaptureTelQuel = null;
+  // (02/11, XEWER) L'étape ISBN a TROUVÉ le champ : c'est un livre, même si le
+  // champ a été redessiné ensuite (ISBN de treize zéros) — la langue s'arme.
+  let isbnChampVu = false;
   // (25/10) Le titre relu dans le champ après la frappe (cf. étape « Titre »).
   let titrePose = null;
   // Relevés d'options du run PRÉCÉDENT purgés : chaque remplissage repart
@@ -3452,6 +3516,8 @@ async function remplirFormulaireVinted(job) {
   armerMarquePourPost(null);
   // (29/10) Attributs de l'annonce d'origine : même raison, même geste.
   armerAttributsOriginePourPost(null);
+  // (02/11) Attributs connus par leur libellé (vintedAspects) : même raison, même geste.
+  armerAttributsConnusPourPost(null);
   // (26/10) La marque pré-remplie relevée sur l'article précédent ne parle pas pour celui-ci.
   prefillMarqueVinted = undefined;
   // { id, titre } quand la marque de l'annonce d'origine part par son
@@ -3750,6 +3816,7 @@ async function remplirFormulaireVinted(job) {
         diagnosticsRecreation.push(`ISBN → champ absent après ${Math.round(ISBN_ATTENTE_MS / 1000)} s`);
         return;
       }
+      isbnChampVu = true;
       // ── (25/10, 0.6.143) UNE-PASSE : LA VALEUR D'ORIGINE DOIT POUVOIR PARTIR ─
       // Vinted demande l'ISBN dans ce rayon (le champ est là) et la valeur de
       // l'annonce d'origine part telle quelle : la sonde du dépôt ne sait la
@@ -3949,10 +4016,23 @@ async function remplirFormulaireVinted(job) {
   // « Divertissement > Livres > … »). C'est un fait du DOM posé par la
   // catégorie déjà sélectionnée, pas un nom de catégorie deviné : aucune autre
   // branche ne peut l'ouvrir, et rien n'est armé si le champ n'est pas là.
-  if (document.querySelector(vintedFieldSelector("isbn"))) {
-    const langueFournie = String(fields.vintedAspects?.language_book ?? "").trim();
+  //
+  // (02/11, XEWER) DEUX TROUS BOUCHÉS. 1. La porte : #isbn relu APRÈS l'étape
+  // ISBN ne se trouvait plus sur un ISBN d'origine de treize zéros (aucune
+  // note de langue dans les onze diagnostics) — l'étape qui a TROUVÉ le champ
+  // le dit (isbnChampVu), et une langue fournie suffit (Vinted ne la demande
+  // que sur un livre). 2. Une langue fournie dont le libellé a un identifiant
+  // RELEVÉ (idLangueLivreDuLibelle) est aussi armée au POST : le formulaire la
+  // pose quand le champ est là, la sonde seulement s'il l'a laissée vide.
+  // Libellé sans identifiant relevé : comme avant, le formulaire seul.
+  const langueFournie = String(fields.vintedAspects?.language_book ?? "").trim();
+  if (isbnChampVu || langueFournie || document.querySelector(vintedFieldSelector("isbn"))) {
     if (langueFournie) {
-      const note = `langue du livre : « ${langueFournie} » fournie (utilisateur ou serveur) — posée par le formulaire, aucune pose au POST armée`;
+      const idFourni = idLangueLivreDuLibelle(langueFournie);
+      if (idFourni) armerLangueLivrePourPost([idFourni]);
+      const note = idFourni
+        ? `langue du livre : « ${langueFournie} » fournie (utilisateur ou serveur) — posée par le formulaire si le champ est là, et armée au POST (id ${idFourni}) s'il reste vide`
+        : `langue du livre : « ${langueFournie} » fournie (utilisateur ou serveur) — posée par le formulaire, aucune pose au POST armée (libellé sans identifiant relevé)`;
       console.log(`[vinted] ${note}`);
       diagnosticsRecreation.push(note);
     } else {
@@ -4423,6 +4503,32 @@ async function remplirFormulaireVinted(job) {
         warnings
       );
     }
+    // (02/11, XEWER — règle de Nico) Ce que le formulaire n'a pas su poser (champ absent ou resté vide) part par son
+    // identifiant dans le corps du POST, résolu sur la config de LA catégorie posée — jamais deviné (cf. idAttributParLibelle).
+    try {
+      const restes = Object.entries(fields.vintedAspects)
+        .map(([code, value]) => [code, String(value ?? "").trim()])
+        .filter(([code, val]) => val && !handledCodes.has(code) && !ATTRIBUTS_CONNUS_HORS_SONDE.has(code))
+        .filter(([code]) => {
+          const el = document.querySelector(vintedFieldSelector(code));
+          return !(el && String(valeurChampVinted(el) ?? "").trim());
+        });
+      if (restes.length) {
+        const config = await readLatestAttrsConfig().catch(() => null);
+        const parCode = new Map((config ?? []).filter((a) => a?.code).map((a) => [a.code, a]));
+        const connus = [];
+        const sansId = [];
+        for (const [code, val] of restes) {
+          const id = idAttributParLibelle(parCode.get(code), val);
+          if (id) connus.push({ code, ids: [id] }); else sansId.push(code);
+        }
+        const catalogue = String(document.querySelector("#category")?.value ?? "").trim();
+        if (connus.length) armerAttributsConnusPourPost(connus, /^\d+$/.test(catalogue) ? Number(catalogue) : null);
+        const note = `attributs connus non posés par le formulaire : ${connus.length ? `armés au POST (${connus.map((a) => `${a.code}=${a.ids[0]}`).join(", ")})` : "aucun armé"}${sansId.length ? ` ; sans identifiant relevé (laissés au formulaire) : ${sansId.join(", ")}` : ""}`;
+        console.log(`[vinted] ${note}`);
+        diagnosticsRecreation.push(note);
+      }
+    } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
   }
 
   jalonRemplissage("Attributs");
@@ -5277,6 +5383,7 @@ async function remplirFormulaireVinted(job) {
         sonde.refus?.colisPose ? `package_size_id POSÉ dans le corps par la sonde (${sonde.refus.colisPose}) — la page l'avait laissé vide` : null,
         sonde.refus?.marquePosee ? `brand_id POSÉ dans le corps par la sonde (${sonde.refus.marquePosee}, marque de l'annonce d'origine) — la page l'avait laissé vide` : null,
         sonde.refus?.marqueEnvoyee ? `marque dans le corps du POST : ${JSON.stringify(sonde.refus.marqueEnvoyee).slice(0, 160)}` : null,
+        sonde.refus?.attributsPoses ? `attributs POSÉS dans le corps par la sonde (${String(sonde.refus.attributsPoses).slice(0, 200)}) — la page les avait laissés vides` : null,
         sonde.refus?.reponse ? `réponse : ${sonde.refus.reponse}` : null,
         `champs exigés : ${details}`,
         serverRequired.map((f) => {

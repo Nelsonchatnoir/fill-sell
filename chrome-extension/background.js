@@ -10674,11 +10674,56 @@ async function installNetworkProbe(tabId, platform) {
           const avecMarque = corpsAvecMarque(url, avantMarque ?? body);
           return avecMarque ?? avantMarque;
         };
-        // (29/10) Les attributs de l'annonce d'origine (recréation) ferment la chaîne.
+        // ══ (02/11, XEWER — règle de Nico) LES ATTRIBUTS CONNUS PAR LEUR LIBELLÉ, PAR LEURS IDENTIFIANTS ══
+        // Une valeur connue (réponse de la personne, valeur déduite par le serveur) que le formulaire n'a pas su
+        // poser part dans le corps — identifiant résolu par le content script sur la config attributes de LA
+        // catégorie posée (une seule option de ce libellé, sinon rien). Même forme { code, ids }, même règle que les
+        // attributs d'origine ci-dessus : seulement les codes que la page (et la pose d'origine) ont laissés vides,
+        // jamais d'écrasement, seulement dans LE rayon armé, armement borné à 15 min. Publication comme recréation.
+        window.__fsAttributsConnusAPoser = null;
+        const attributsConnusArmes = () => {
+          const a = window.__fsAttributsConnusAPoser;
+          if (!Array.isArray(a?.attrs) || !a.attrs.length || !(Number(a?.catalogId) > 0)) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? a : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeAttributsConnus) return;
+          const attrs = (Array.isArray(e.data.attrs) ? e.data.attrs : [])
+            .map((x) => ({ code: String(x?.code ?? "").trim(), ids: (Array.isArray(x?.ids) ? x.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0) }))
+            .filter((x) => /^[a-z0-9_]+$/.test(x.code) && x.ids.length);
+          const cat = Number(e.data.catalogId);
+          window.__fsAttributsConnusAPoser = attrs.length && Number.isInteger(cat) && cat > 0 ? { attrs, catalogId: cat, armeeA: Date.now() } : null;
+        });
+        const corpsAvecAttributsConnus = (url, body) => {
+          const a = attributsConnusArmes();
+          if (!a) return null;
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          const cible = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+          if (!("catalog_id" in cible) || Number(cible.catalog_id) !== a.catalogId) return null; // autre rayon : rien
+          const presents = Array.isArray(cible.item_attributes) ? cible.item_attributes : [];
+          const cle = (x) => String(x?.code ?? "").trim().toLowerCase();
+          const remplis = new Set(presents.filter((x) => Array.isArray(x?.ids) && x.ids.length).map(cle));
+          const aPoser = a.attrs.filter((x) => !remplis.has(x.code.toLowerCase()));
+          if (!aPoser.length) return null;
+          const codes = new Set(aPoser.map((x) => x.code.toLowerCase()));
+          cible.item_attributes = [...presents.filter((x) => !codes.has(cle(x))), ...aPoser.map((x) => ({ code: x.code, ids: x.ids }))];
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseAttributs = [dernierePoseAttributs, ...aPoser.map((x) => `${x.code}=${x.ids.join("|")}`)].filter(Boolean).join(",");
+            return corrige;
+          } catch { return null; }
+        };
+        // (29/10) Les attributs de l'annonce d'origine (recréation) ferment la chaîne ; (02/11) puis les attributs connus.
         const corpsPourDepot = (url, body) => {
           const avant = corpsPourDepotSaufAttributs(url, body);
           const avecAttributs = corpsAvecAttributsOrigine(url, avant ?? body);
-          return avecAttributs ?? avant;
+          const avantConnus = avecAttributs ?? avant;
+          const avecConnus = corpsAvecAttributsConnus(url, avantConnus ?? body);
+          return avecConnus ?? avantConnus;
         };
 
         const origFetch = window.fetch;
