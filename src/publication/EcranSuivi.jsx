@@ -31,6 +31,14 @@ import { MOTIFS } from "../utils/connexionPlateformes";
 import { parcageDepasse } from "../utils/oplaAcces";
 import { Carte, Puce, Logo } from "./composants";
 import { NOM, ilYA } from "./texte";
+// (02/11 soir, Nico) Compte Cloud : les tâches Vinted, Leboncoin, Beebs, Depop sont faites par FillSell Cloud — l'écran le
+// dit (« FillSell Cloud la prend à son tour », pastille « FillSell Cloud actif »), jamais « ton ordinateur » ni « Chrome ».
+// Et une publication PROGRAMMÉE dit qu'elle attend son créneau (le 02/11 à 17:02 : « Chrome la prend à son tour » alors
+// que les cinq attendaient le créneau du matin).
+import { useCompteCloud } from "../cloud/useCompteCloud";
+import { parLeCloud } from "../cloud/voieCloud";
+import { usePublicationProgrammee } from "../utils/usePublicationProgrammee";
+import { situationJob } from "../utils/fileDesJobs";
 
 const LIBELLE_MOTIF = {
   fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse", sans_rayon: "aucun rayon trouvé", rayon_a_choisir: "rayon à choisir — aucun rayon sûr trouvé (rien n’a été débité)", rayon_a_reessayer: "rayon pas trouvé à l'instant — republie pour réessayer", refusee_serveur: "déjà en ligne, en file ou en attente",
@@ -51,6 +59,8 @@ export default function EcranSuivi({ m }) {
   // la valeur du montage pendant que l'extension travaille justement.
   const [vueLe, setVueLe] = useState(null);
   const [fileOuverte, setFileOuverte] = useState(false);
+  const cloud = useCompteCloud(m.userId);
+  const programmation = usePublicationProgrammee(m.userId ?? null);
 
   useEffect(() => {
     if (!f?.inventaireId || !plateformes.length || !m.supabase) return undefined;
@@ -121,7 +131,7 @@ export default function EcranSuivi({ m }) {
   const oplaAAutoriser = m.oplaVerdict === "a_autoriser";
   const ctxBarre = { lang: m.lang, extension: ext ?? null, oplaAAutoriser, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr"),
     // (03/10, point 25) Poste trop ancien : la barre attend la mise à jour, jamais « son tour ».
-    extensionAMettreAJour: m.extensionAMettreAJour === true };
+    extensionAMettreAJour: m.extensionAMettreAJour === true, cloud, programmation: Boolean(programmation.reglage) };
   const piste = (p) => {
     const e = etats[p] ?? { kind: "en_file" };
     // (03/10, point 17) La voie du JOB d'abord (trigger), le miroir seulement avant sa création.
@@ -129,7 +139,7 @@ export default function EcranSuivi({ m }) {
     const voie = parApi ? "api" : "extension";
     const base = e.job
       ? pisteJob({ ...e.job, voie: e.job.voie ?? voie }, ctxBarre)
-      : { etapes: etapesJob({ platform: p, action: "publish", voie }, m.lang), etape: "file", etat: "en_cours" };
+      : { etapes: etapesJob({ platform: p, action: "publish", voie }, m.lang, { cloud }), etape: "file", etat: "en_cours" };
     const l = ligne(p);
     const extra = { cle: p, libelle: NOM(p), icone: <Logo platform={p} size={24} />, phraseLigne: l.texte, geste: l.geste ?? null };
     switch (e.kind) {
@@ -150,8 +160,9 @@ export default function EcranSuivi({ m }) {
     const e = etats[p] ?? { kind: "en_file" };
     // (03/10, point 17) La voie du JOB d'abord (trigger), le miroir seulement avant sa création.
     const parApi = p === "ebay" && (e.job?.voie ? e.job.voie === "api" : m.ebayVoieApiReelle);
+    const parCloud = !parApi && parLeCloud({ platform: p, voie: e.job?.voie ?? "extension" }, cloud);
     switch (e.kind) {
-      case "en_cours": return { texte: parApi ? (en ? "Publishing from our servers…" : "Publication depuis nos serveurs…") : (en ? "In progress in Chrome" : "En cours dans Chrome"), droite: <span className="fsn-spin" aria-label={en ? "in progress" : "en cours"} /> };
+      case "en_cours": return { texte: parApi ? (en ? "Publishing from our servers…" : "Publication depuis nos serveurs…") : parCloud ? (en ? "FillSell Cloud is listing it…" : "FillSell Cloud la publie…") : (en ? "In progress in Chrome" : "En cours dans Chrome"), droite: <span className="fsn-spin" aria-label={en ? "in progress" : "en cours"} /> };
       case "publiee": return { texte: <>{en ? "Online" : "En ligne"}{e.url ? <> · <a href={e.url} target="_blank" rel="noopener noreferrer">{en ? "see the listing ↗" : "voir l'annonce ↗"}</a></> : null}{noteLivraison(e.job)}</>, droite: <Puce ton="ok" point>{MOT(en, "fait")}</Puce> };
       case "attente_champ": return { texte: (en ? `${NOM(p)} asks for “${e.champ}”` : `${NOM(p)} demande « ${e.champ} »`), droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce>,
         geste: m.onCompleter && e.job ? <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => m.onCompleter(e.job)}>{en ? "Answer and resume" : "Répondre et relancer"}</button> : null };
@@ -166,7 +177,9 @@ export default function EcranSuivi({ m }) {
               geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="depop" motif={MOTIFS.AUTORISER_DEPOP} lang={m.lang} variante="bouton" /> : null }
           : { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce>,
             geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /> : null };
-      case "attente_connexion": return { texte: en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur.", droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce> };
+      case "attente_connexion": return { texte: parCloud
+        ? (en ? "Waiting for you to reconnect it to FillSell Cloud (Settings › Subscription › FillSell Cloud)." : "Attend que tu la reconnectes à FillSell Cloud (Réglages › Abonnement › FillSell Cloud).")
+        : (en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur."), droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce> };
       case "attente": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce> };
       case "refusee": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{MOT(en, "a_toi")}</Puce> };
       // Une annulation porte sa raison quand la plateforme ne sait pas faire
@@ -182,8 +195,13 @@ export default function EcranSuivi({ m }) {
         geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /> : null };
         // (03/10, point 25 — geronimo0550) Extension trop ancienne : rien ne
         // partira « à son tour » — la mise à jour d'abord, et son geste.
-        if (!parApi && m.extensionAMettreAJour) return { texte: phraseMiseAJourExtension(m.lang) + ".", droite: <Puce ton="geste">{MOT(en, "en_pause")}</Puce> };
-        return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : (en ? "Queued — Chrome takes it in turn" : "Dans la file — Chrome la prend à son tour"), droite: <Puce ton="mute">{MOT(en, "en_file")}</Puce> };
+        // (02/11 soir) Une publication programmée attend son créneau (réglage de la personne) : dit, jamais « à son tour ».
+        if (e.job && programmation.reglage) {
+          const s = situationJob(e.job, ctxBarre);
+          if (s.motif === "programmee") return { texte: s.raison, droite: <Puce ton="mute">{MOT(en, "en_pause")}</Puce> };
+        }
+        if (!parApi && !parCloud && m.extensionAMettreAJour) return { texte: phraseMiseAJourExtension(m.lang) + ".", droite: <Puce ton="geste">{MOT(en, "en_pause")}</Puce> };
+        return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : parCloud ? (en ? "Queued — FillSell Cloud takes it in turn" : "Dans la file — FillSell Cloud la prend à son tour") : (en ? "Queued — Chrome takes it in turn" : "Dans la file — Chrome la prend à son tour"), droite: <Puce ton="mute">{MOT(en, "en_file")}</Puce> };
     }
   };
 
@@ -281,7 +299,21 @@ export default function EcranSuivi({ m }) {
         </Carte>
       )}
 
-      {!voies.toutServeur && ext && (
+      {!voies.toutServeur && ext && cloud && (
+        // (02/11 soir) Compte Cloud : la pastille dit FillSell Cloud (son signe de vie : le poll de son poste).
+        ext.etat === "vivante" ? (
+          <Carte gravite="flat" style={{ flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Puce ton="ok" point>FillSell Cloud {en ? "active" : "actif"}</Puce>
+            <span className="fsn-small">{en ? "seen " : "vu "}{ilYA(
+              (Date.parse(vueLe ?? "") || 0) >= (Date.parse(m.extensionVueLe ?? "") || 0) ? (vueLe ?? m.extensionVueLe) : m.extensionVueLe, m.lang)}</span>
+          </Carte>
+        ) : (
+          <Carte gravite="geste" titre={en ? "FillSell Cloud is not responding right now" : "FillSell Cloud ne répond pas pour l'instant"}>
+            <div className="fsn-card-p">{en ? "Your listings wait and go out as soon as it is back — on its own, nothing to do." : "Tes annonces attendent et partiront dès qu'il repart — tout seul, rien à faire."}</div>
+          </Carte>
+        )
+      )}
+      {!voies.toutServeur && ext && !cloud && (
         ext.etat === "vivante" ? (
           <Carte gravite="flat" style={{ flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <Puce ton="ok" point>{en ? "Extension active" : "Extension active"}</Puce>

@@ -23,6 +23,18 @@ import { DEFINITIONS, pageDeResolution, expressionAcces, verdictLectureCompte, E
 export const VERIFICATION_TOLEREE_MS = 3 * 60_000;
 export const REVENUE_MS = 30 * 60_000;
 export const ATTENTE_RESTREINT_MS = 24 * 3600_000;
+// (02/11 soir, fausse alerte de 16:55 : Leboncoin « Résoudre la vérification », rien à glisser à 16:59) Une glissière vue
+// dans un ONGLET DE TRAVAIL vise souvent une seule requête (le 02/11 : l'API du compte 200, puis 403 + défi 6 s plus tard ;
+// la page suivante passe sans rien). La plateforme est fermée aussitôt (plus aucune requête), mais la personne n'est
+// appelée que si la vérification TIENT : au bout de CONFIRMATION_MS, UNE page de fond + UNE lecture d'accès (le mécanisme de
+// l'essai des 24 h). Passée → rouverte sans rien dire ; glissière revue (ou essai impossible) → « Résoudre ».
+export const CONFIRMATION_MS = 3 * 60_000;
+// Au-delà, l'essai n'a pas pu se faire (navigateur fermé, « Me connecter » ouvert…) : la personne est appelée.
+export const CONFIRMATION_MAX_MS = 15 * 60_000;
+/** Une glissière à confirmer avant d'appeler la personne (pure) : vue dans un onglet de travail, pas revenue. */
+export const aConfirmer = (blocage) => blocage?.source === 'navigateur' && blocage?.nature === 'glissiere';
+/** La confirmation est-elle en cours (pure) ? */
+export const enConfirmation = (b) => Boolean(b?.confirmation) && !b.confirmation.fin_le;
 const LECTURE_PAUSES_MS = 5 * 60_000;
 const ANNOTATION_MS = 10 * 60_000;
 const DOMAINES = [['leboncoin', /(^|\.)leboncoin\.fr$/], ['beebs', /(^|\.)beebs\.app$/], ['vinted', /(^|\.)vinted\.(fr|com)$/], ['depop', /(^|\.)depop\.com$/]];
@@ -101,9 +113,11 @@ export function etatVisible(nature) {
   return 'a_resoudre';
 }
 
-/** La valeur de platform_settings.<plateforme>.cloud_verification pour un blocage (pure), ou null (aucun). */
+/** La valeur de platform_settings.<plateforme>.cloud_verification pour un blocage (pure), ou null (aucun). (02/11 soir)
+ *  Pendant la confirmation : « verification_en_cours » (rien à faire, aucun bouton). */
 export function etatPublie(blocage) {
   if (!blocage) return null;
+  if (enConfirmation(blocage)) return { etat: 'verification_en_cours', depuis: blocage.le };
   const etat = etatVisible(blocage.nature);
   return { etat, depuis: blocage.le, ...(etat === 'restreint' && blocage.essai_apres ? { essai_apres: blocage.essai_apres } : {}) };
 }
@@ -205,7 +219,7 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
   /** Les tâches de la plateforme qui attendent portent la vraie cause (une fois ; au plus 40 par passage). */
   async function annoterTaches(user, plateforme) {
     const b = blocageDe(user, plateforme);
-    if (!b) return 0;
+    if (!b || enConfirmation(b)) return 0;   // (02/11 soir) pas encore confirmée : aucun message, rien à faire
     const etat = etatVisible(b.nature);
     const message = messageTacheCloud(plateforme, etat, b.le);
     const { data, error } = await base.from('cross_post_jobs').select('id, error, platform_fields')
@@ -265,9 +279,14 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     if (plateformesBloquees(user).includes(blocage.plateforme)) return null;
     const maintenant = Date.now();
     const derniere = blocages.filter((b) => b.user === user && b.plateforme === blocage.plateforme && b.resolue_le).at(-1);
-    const revenue = Boolean(derniere) && maintenant - Date.parse(derniere.resolue_le) < REVENUE_MS;
+    const recente = Boolean(derniere) && maintenant - Date.parse(derniere.resolue_le) < REVENUE_MS;
+    // (02/11 soir) « Revenue » ne suit qu'une résolution de la PERSONNE ; après une rouverture silencieuse (confirmation
+    // passée), une glissière qui revient dans les 30 min va droit à « Résoudre » (pas de seconde confirmation, pas d'arrêt).
+    const revenue = recente && derniere.resolue_par !== 'confirmation';
+    const confirmer = aConfirmer(blocage) && !recente;
     const b = { le: new Date(maintenant).toISOString(), user, ...blocage,
-      ...(revenue ? { nature: 'verification_revenue', nature_vue: blocage.nature, resolue_avant: derniere.resolue_le } : {}) };
+      ...(revenue ? { nature: 'verification_revenue', nature_vue: blocage.nature, resolue_avant: derniere.resolue_le } : {}),
+      ...(confirmer ? { confirmation: { apres: new Date(maintenant + CONFIRMATION_MS).toISOString() } } : {}) };
     if (etatVisible(b.nature) === 'restreint' && !b.essai_apres) b.essai_apres = new Date(Date.parse(b.le) + ATTENTE_RESTREINT_MS).toISOString();
     blocages.push(b);
     await garder();
@@ -347,11 +366,35 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
   }
 
   /**
+   * (02/11 soir) LA CONFIRMATION d'une glissière vue dans un onglet de travail (CONFIRMATION_MS après) : l'essai (une page
+   * de fond, UNE lecture d'accès). Passée → rouverte sans appeler personne (journal « verification_passagere ») ; une
+   * glissière revue, un refus ou un essai impossible au-delà de CONFIRMATION_MAX_MS → « Résoudre » (publié, tâches
+   * annotées) ; la session fermée → la personne se reconnecte.
+   */
+  async function confirmer(user, b) {
+    const issue = Date.now() - Date.parse(b.le) > CONFIRMATION_MAX_MS ? 'impossible' : await essayer(user, b, 'confirmation');
+    if (issue === null) return null;    // à refaire au relevé suivant (essai déjà en cours, « Me connecter » ouvert…)
+    if (issue === 'passe' || issue === 'session_fermee') {
+      b.confirmation = { ...b.confirmation, fin_le: new Date().toISOString(), issue };
+      await garder();
+      if (issue === 'passe') journal.info('verification_passagere', { user, plateforme: b.plateforme, depuis: b.le });
+      return issue;
+    }
+    b.confirmation = { ...b.confirmation, fin_le: new Date().toISOString(), issue };
+    await garder();
+    journal.alerte('verification_confirmee', { user, plateforme: b.plateforme, issue });
+    await sur('publication', () => publier(user, b.plateforme));
+    await sur('annotation', () => annoterTaches(user, b.plateforme));
+    return issue;
+  }
+
+  /**
    * L'ESSAI DES 24 H d'un accès restreint : une page de fond sur la plateforme (la seule à la joindre : exception du
    * verrou pour CETTE page), puis UNE lecture d'accès. Passée → rouverte ; une glissière s'affiche → « à résoudre » (la
-   * personne peut glisser) ; refusée → 24 h de plus.
+   * personne peut glisser) ; refusée → 24 h de plus. (02/11 soir) Le même essai sert à la CONFIRMATION d'une glissière
+   * (mode « confirmation ») : la suite est alors décidée par confirmer().
    */
-  async function essayer(user, b) {
+  async function essayer(user, b, mode = 'essai_24h') {
     const h = navigateurs.ouvert(user);
     const cle = `${user}:${b.plateforme}`;
     if (!h || essais.has(cle) || connexionsOuvertes?.().has(user)) return null;
@@ -376,7 +419,7 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
         const v = verdictLectureCompte(r?.result?.value);
         if (v.ok) {
           const { cookies } = await h.cdp.send('Storage.getCookies');
-          await rouvrir(user, b.plateforme, { cookies, preuve: { le: new Date().toISOString(), http: v.http }, par: 'essai_24h' });
+          await rouvrir(user, b.plateforme, { cookies, preuve: { le: new Date().toISOString(), http: v.http }, par: mode });
           issue = 'passe';
         } else if (['sans_jeton', 'sans_session', 'anonyme'].includes(v.motif) || v.http === 401) {
           // (02/11) La page répond, mais aucune session : l'accès est rendu, la personne se (re)connecte.
@@ -389,7 +432,8 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
       if (cible) { navigateurs.retirerCadre?.(user, cible); await h.cdp.send('Target.closeTarget', { targetId: cible }).catch(() => {}); }
       essais.delete(cle);
     }
-    journal.info('verification_essai_24h', { user, plateforme: b.plateforme, issue });
+    journal.info(mode === 'confirmation' ? 'verification_confirmation' : 'verification_essai_24h', { user, plateforme: b.plateforme, issue });
+    if (mode === 'confirmation') return issue;
     if (issue === 'glissiere') await requalifier(user, b.plateforme, 'glissiere', 'glissière revue à l’essai des 24 h');
     else if (issue === 'refuse' || issue === 'erreur') {
       b.essai_apres = new Date(Date.now() + ATTENTE_RESTREINT_MS).toISOString();
@@ -431,6 +475,10 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     }
     for (const b of (blocages ?? []).filter((x) => !x.debloquee_le && etatVisible(x.nature) === 'restreint')) {
       if (Date.parse(b.essai_apres) <= Date.now()) await essayer(b.user, b);
+    }
+    // (02/11 soir) Les glissières à confirmer, une fois leur délai passé.
+    for (const b of (blocages ?? []).filter((x) => !x.debloquee_le && enConfirmation(x))) {
+      if (Date.parse(b.confirmation.apres) <= Date.now()) await confirmer(b.user, b);
     }
     if (Date.now() - annotees >= ANNOTATION_MS) {
       annotees = Date.now();

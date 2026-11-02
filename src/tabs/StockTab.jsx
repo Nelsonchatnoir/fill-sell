@@ -55,6 +55,9 @@ import { FeuilleAttente } from '../components/FeuilleActivite';
 import FileDesJobs from '../components/FileDesJobs';
 import { useEtatFile } from '../stock/etatFile';
 import { usePublicationProgrammee } from '../utils/usePublicationProgrammee';
+// (02/11 soir, Nico) Compte Cloud : les tâches suivies avec les mots du Cloud, jamais « ton ordinateur » ni « Chrome ».
+import { useCompteCloud } from '../cloud/useCompteCloud';
+import { parLeCloud } from '../cloud/voieCloud';
 import { useAchatsAnnules, achatsAnnulesAMontrer, lireMasquesAchatsAnnules, masquerAchatAnnule, texteAchatAnnule } from '../stock/achatsAnnules';
 import { messageFileEnPause } from '../../supabase/functions/_shared/file-pause.js';
 import BarreJobCarte from '../components/BarreJobCarte';
@@ -2187,6 +2190,7 @@ function isListingUrlRecoverable(platform, pubJob) {
 // demanderait de persister la progression à chaque étape ; reporté.
 function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose, onRelancer, relanceBusy, userId }) {
   useFermetureEchap(onClose);
+  const compteCloud = useCompteCloud(userId ?? null);
   const fr = lang !== "en";
   // L'autorisation Opla du compte (verdict serveur, lecture partagée : aucune
   // requête de plus quand le Stock l'a déjà lue).
@@ -2228,6 +2232,8 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   // extension) garde le texte extension : il est vrai pour les autres.
   const voieApi = (j) => j.voie === "api" || j.platform_fields?.last_diagnostic?.voie === "api";
   const enFileApiSeule = enFile && derniers.filter(j => enCours(j) && !aEchoue(j)).every(voieApi);
+  // (02/11 soir) Compte Cloud : ce qui est en file part de FillSell Cloud (ou de nos serveurs pour eBay), jamais de l'ordinateur.
+  const enFileCloud = compteCloud && enFile && derniers.filter(j => enCours(j) && !aEchoue(j)).every(j => voieApi(j) || parLeCloud(j, true));
   const enReprise = derniers.filter(j => enCours(j) && aEchoue(j)).length;
   // needs_user EN COURS chez la plateforme (2026-09-10) : ni « attend une
   // information de ta part » ni orange — l'app dit « en cours » et ne demande rien.
@@ -2282,6 +2288,14 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
               : "") +
             " Details per platform below.",
       }
+    : enFileCloud && !enFileApiSeule
+      ? {
+          ton: "vert",
+          titre: fr ? "En file d'attente" : "Queued",
+          detail: fr
+            ? "FillSell Cloud la prend à son tour — ton ordinateur n'a pas besoin d'être allumé."
+            : "FillSell Cloud takes it in turn — your computer doesn't need to be on.",
+        }
     : enFileApiSeule
       ? {
           ton: "vert",
@@ -7612,6 +7626,7 @@ const StockTab = memo(function StockTab({
   const etatFileDuCompte = useEtatFile({ supabase, userId: user?.id });
   // (26/10, D4) Publications programmées : une tâche programmée dit qu'elle attend son créneau (jamais une erreur).
   const programmationDuCompte = usePublicationProgrammee(user?.id ?? null);
+  const compteCloud = useCompteCloud(user?.id ?? null);
   const achatsAnnulesLus = useAchatsAnnules({ supabase, userId: user?.id });
   const [achatsAnnulesMasques, setAchatsAnnulesMasques] = useState(() => lireMasquesAchatsAnnules());
   const [attenteOuverte, setAttenteOuverte] = useState(false);
@@ -8791,7 +8806,9 @@ const StockTab = memo(function StockTab({
     programmation: Boolean(programmationDuCompte.reglage),
     boutiques: (boutiquesVinted?.length ?? 0) >= 1 ? { connectee: boutiqueConnectee, liste: boutiquesVinted, origines: originesBoutique } : null,
     // (03/10, point 25) Poste trop ancien : la file attend la mise à jour (même règle que le bandeau).
-    extensionAMettreAJour: extensionStatus?.outdated === true };
+    extensionAMettreAJour: extensionStatus?.outdated === true,
+    // (02/11 soir) Compte Cloud : barres, file et raisons disent FillSell Cloud.
+    cloud: compteCloud };
   // Vinted en PAUSE (platform_health, 2026-09-09) retient aussi la
   // republication — même gating que l'interrupteur coin_config
   // .republish_maintenance : le trigger republish_maintenance_guard refuse
@@ -9904,7 +9921,7 @@ const StockTab = memo(function StockTab({
     if (d.repubOccupeSlot) {
       const e = d.repubEtape;
       if (d.repubOrpheline) {
-        return { ...pastilleCourte({ genre: 'orpheline' }, lang), titre: fr ? "Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité." : "Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe.", onTap: () => setRepubProgress(d.repubLatest), horsLigne: false };
+        return { ...pastilleCourte({ genre: 'orpheline' }, lang), titre: compteCloud ? (fr ? "FillSell Cloud ne répond pas pour l'instant — il terminera la recréation tout seul. Ton annonce et tes photos sont en sécurité." : "FillSell Cloud is not responding right now — it will finish the recreation on its own. Your listing and photos are safe.") : fr ? "Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité." : "Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe.", onTap: () => setRepubProgress(d.repubLatest), horsLigne: false };
       }
       const travail = e.cle === 'lecture' || e.cle === 'retrait' || e.cle === 'deleted';
       return { texte: e.court, ton: tonEtapeRepub(e), pulse: travail && !e.fini, titre: e.titre ?? (fr ? 'Voir où en est la remontée' : 'See bump progress'), onTap: () => setRepubProgress(d.repubLatest), horsLigne: false };
@@ -9912,14 +9929,19 @@ const StockTab = memo(function StockTab({
     if (d.hasPausedPending) return { ...pastilleCourte({ genre: 'pause' }, lang), titre: t("stockJobPausedBadge"), onTap: null, horsLigne: false };
     if (d.hasPending && d.pendingSurConnexion) {
       const j = d.pendingJobs[0];
-      return { ...pastilleCourte({ genre: 'a_regler', plateforme: j.platform }, lang), titre: j.error ? humanizeJobError(j, lang) : (fr ? `Connexion ${PLATFORM_LABELS[j.platform] || j.platform} à reprendre sur ton ordinateur` : `Sign back in to ${PLATFORM_LABELS[j.platform] || j.platform} on your computer`), onTap: () => setJobStatusItem(item), horsLigne: false };
+      return { ...pastilleCourte({ genre: 'a_regler', plateforme: j.platform }, lang), titre: j.error ? humanizeJobError(j, lang) : parLeCloud(j, compteCloud) ? (fr ? `Connexion ${PLATFORM_LABELS[j.platform] || j.platform} à reprendre dans FillSell Cloud (Réglages › Abonnement › FillSell Cloud)` : `Reconnect ${PLATFORM_LABELS[j.platform] || j.platform} in FillSell Cloud (Settings › Subscription › FillSell Cloud)`) : (fr ? `Connexion ${PLATFORM_LABELS[j.platform] || j.platform} à reprendre sur ton ordinateur` : `Sign back in to ${PLATFORM_LABELS[j.platform] || j.platform} on your computer`), onTap: () => setJobStatusItem(item), horsLigne: false };
     }
     if (d.hasPending) {
       const horsFraicheur = extFraicheur.etat === "eteinte" || extFraicheur.etat === "inactive" || extFraicheur.etat === "session_expiree";
       const plusVieux = Math.min(...d.pendingJobs.map((j) => Date.parse(j.created_at)).filter(Number.isFinite));
       const joursAttente = Number.isFinite(plusVieux) ? Math.floor((Date.now() - plusVieux) / 86400000) : 0;
-      const majRequise = extensionStatus?.outdated === true && d.pendingJobs.some((j) => j.voie !== 'api');
+      const majRequise = extensionStatus?.outdated === true && d.pendingJobs.some((j) => j.voie !== 'api' && !parLeCloud(j, compteCloud));
       if (majRequise) return { ...pastilleCourte({ genre: 'maj' }, lang), titre: phraseMiseAJourExtension(lang), onTap: () => setJobStatusItem(item), horsLigne: false, aRegler: true };
+      if (horsFraicheur && compteCloud && d.pendingJobs.every((j) => j.voie === 'api' || parLeCloud(j, true))) {
+        return { ...pastilleCourte({ genre: 'attente', jours: 0 }, lang),
+          titre: fr ? "En attente de FillSell Cloud — il ne répond pas pour l'instant, ça repart tout seul." : "Waiting for FillSell Cloud — it is not responding right now, it resumes on its own.",
+          onTap: () => setJobStatusItem(item), horsLigne: false };
+      }
       if (horsFraicheur) {
         const longue = joursAttente >= 1;
         return {
@@ -10509,7 +10531,9 @@ const StockTab = memo(function StockTab({
               <div style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:10,background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",lineHeight:1.5,fontWeight:600}}>
                 <AlertTriangle size={14} style={{flexShrink:0,marginTop:2}}/>
                 <span>
-                  {lang==='fr'
+                  {compteCloud
+                    ? (lang==='fr' ? "FillSell Cloud ne répond pas pour l'instant — il terminera la recréation tout seul. Ton annonce et tes photos sont en sécurité." : "FillSell Cloud is not responding right now — it will finish the recreation on its own. Your listing and photos are safe.")
+                    : lang==='fr'
                     ?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
                     :"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
                 </span>

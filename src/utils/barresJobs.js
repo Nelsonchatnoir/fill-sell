@@ -24,6 +24,8 @@
 
 import { situationJob, nomPlateforme, etapeRepublication, parNosServeurs, libelleAction, sansEstimation } from "./fileDesJobs.js";
 import { urlsPhotos } from "./photos.js";
+// (02/11 soir, Nico) Compte Cloud : ses tâches sont faites par FillSell Cloud — les mots du Cloud, jamais « ton ordinateur ».
+import { parLeCloud } from "../cloud/voieCloud.js";
 
 // depop (09/10) : dépôt par l'API depuis la page (photos + création + relecture),
 // mesuré sur le parcours réel du 09/10.
@@ -43,6 +45,9 @@ const TEXTES = {
     fileOrdi: "Dans la file — ton ordinateur la prend à son tour…",
     fileServeurs: "Dans la file de nos serveurs…",
     fileRetrait: "Dans la file — ton ordinateur la retire à son tour…",
+    fileCloud: "Dans la file — FillSell Cloud la prend à son tour…",
+    fileRetraitCloud: "Dans la file — FillSell Cloud la retire à son tour…",
+    depotCloud: "FillSell Cloud la publie…",
     fileRepub: "Dans la file — rien n'a encore été touché…",
     fileCourt: "En file…",
     fileLong: "D'autres annonces passent avant elle : elle partira à son tour.",
@@ -73,6 +78,9 @@ const TEXTES = {
     fileOrdi: "Queued — your computer takes it in turn…",
     fileServeurs: "Queued on our servers…",
     fileRetrait: "Queued — your computer removes it in turn…",
+    fileCloud: "Queued — FillSell Cloud takes it in turn…",
+    fileRetraitCloud: "Queued — FillSell Cloud removes it in turn…",
+    depotCloud: "FillSell Cloud is listing it…",
     fileRepub: "Queued — nothing has been touched yet…",
     fileCourt: "Queued…",
     fileLong: "Other listings go before it: it will go out in turn.",
@@ -111,8 +119,8 @@ function depuisPlausible(iso, maintenant) {
   return t;
 }
 
-/** Les étapes réelles d'un job (cle, texte, court, duree, poids, debord). */
-export function etapesJob(job, lang = "fr") {
+/** Les étapes réelles d'un job (cle, texte, court, duree, poids, debord). `opts.cloud` : le compte est servi par FillSell Cloud. */
+export function etapesJob(job, lang = "fr", opts = {}) {
   const T = TEXTES[lang === "en" ? "en" : "fr"];
   const p = job?.platform;
   const nom = nomPlateforme(p);
@@ -127,18 +135,19 @@ export function etapesJob(job, lang = "fr") {
     ];
   }
   const api = parNosServeurs(job);
+  const cloud = !api && parLeCloud(job, opts.cloud === true);
   if (job?.action === "delete") {
     // Un retrait eBay part de nos serveurs (voie « api »), comme la publication.
     return [
-      { cle: "file", texte: api ? T.fileServeurs : T.fileRetrait, court: T.fileCourt, duree: PRISE_EN_CHARGE, poids: 15, debord: false, texteLong: T.fileLong },
+      { cle: "file", texte: api ? T.fileServeurs : cloud ? T.fileRetraitCloud : T.fileRetrait, court: T.fileCourt, duree: PRISE_EN_CHARGE, poids: 15, debord: false, texteLong: T.fileLong },
       { cle: "action", texte: api ? T.retraitServeurs(nom) : T.retrait(nom), court: T.retraitCourt, duree: api ? (DEPOT_SERVEURS[p] ?? 78) : RETRAIT, poids: 85 },
     ];
   }
   return [
-    { cle: "file", texte: api ? T.fileServeurs : T.fileOrdi, court: T.fileCourt, duree: PRISE_EN_CHARGE, poids: 15, debord: false, texteLong: T.fileLong },
+    { cle: "file", texte: api ? T.fileServeurs : cloud ? T.fileCloud : T.fileOrdi, court: T.fileCourt, duree: PRISE_EN_CHARGE, poids: 15, debord: false, texteLong: T.fileLong },
     {
       cle: "action",
-      texte: api ? T.depotServeurs(nom) : T.depot(nom),
+      texte: api ? T.depotServeurs(nom) : cloud ? T.depotCloud : T.depot(nom),
       court: T.depotCourt,
       duree: api ? (DEPOT_SERVEURS[p] ?? 78) : (DEPOT_EXTENSION[p] ?? 70),
       poids: 85,
@@ -149,7 +158,7 @@ export function etapesJob(job, lang = "fr") {
 /**
  * La piste de BarreProgression d'un job.
  * ctx = contexte de situationJob (maintenant, lang, extension, plateformesEnPause,
- *       plafond, creneaux) + texteErreur(job) → phrase humaine de l'erreur (optionnel).
+ *       plafond, creneaux, cloud) + texteErreur(job) → phrase humaine de l'erreur (optionnel).
  */
 export function pisteJob(job, ctx = {}) {
   const lang = ctx.lang === "en" ? "en" : "fr";
@@ -157,7 +166,7 @@ export function pisteJob(job, ctx = {}) {
   const maintenant = ctx.maintenant ?? Date.now();
   const nom = nomPlateforme(job?.platform);
   const pf = pfDe(job);
-  const etapes = etapesJob(job, lang);
+  const etapes = etapesJob(job, lang, { cloud: ctx.cloud === true });
   const erreur = (j) => {
     // (15/10 soir, Nico) Jamais une heure ni une durée promise dans une barre.
     try { return sansEstimation(ctx.texteErreur?.(j) || "") || null; } catch { return null; }

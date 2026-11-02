@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { etatVisible, etatPublie, messageTacheCloud, pauseLbcLevee, creerVerifications, REVENUE_MS } from '../src/verifications.js';
+import { etatVisible, etatPublie, messageTacheCloud, pauseLbcLevee, creerVerifications, REVENUE_MS, CONFIRMATION_MS, CONFIRMATION_MAX_MS, aConfirmer } from '../src/verifications.js';
 import { pageDeResolution, navigationResolution, expressionAcces } from '../src/plateformes.js';
 import { requetePermise } from '../src/navigateur.js';
 import { decompteEssai } from '../src/endurance.js';
@@ -123,16 +123,55 @@ function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte
   return { v, rpc, maj, alertes, coffre, bloquees, permis, jobs };
 }
 
+const etatsPublies = (t, pf) => t.rpc.filter(([n, a]) => n === 'platform_settings_fusionner' && a.p_chemin.join('.') === `${pf}.cloud_verification`).map(([, a]) => a.p_patch.etat);
 test('(02/11) une glissière : la plateforme seule s\'arrête, l\'app le lit (« a_resoudre »), ses tâches portent la vraie cause', async () => {
   const t = monter({ taches: [{ id: 'j1', platform: 'leboncoin', status: 'pending', error: "Ouvre leboncoin.fr dans Chrome", platform_fields: {} }] });
   await t.v.charger();
-  await t.v.bloquer(U, { source: 'navigateur', nature: 'glissiere', plateforme: 'leboncoin', referer: 'https://api.leboncoin.fr/x' });
+  await t.v.bloquer(U, { nature: 'glissiere', plateforme: 'leboncoin', referer: 'https://api.leboncoin.fr/x' });
   assert.deepEqual(t.bloquees, [['leboncoin', 'glissiere']]);
-  const pub = t.rpc.find(([n, a]) => n === 'platform_settings_fusionner' && a.p_chemin.join('.') === 'leboncoin.cloud_verification');
-  assert.equal(pub?.[1].p_patch.etat, 'a_resoudre', 'platform_settings.leboncoin.cloud_verification');
+  assert.deepEqual(etatsPublies(t, 'leboncoin'), ['a_resoudre'], 'platform_settings.leboncoin.cloud_verification');
   assert.match(t.jobs[0].error, /« Résoudre la vérification »/);
   assert.ok(t.jobs[0].platform_fields.attente_verification_cloud, 'la tâche sait pourquoi elle attend');
   assert.equal(await t.v.bloquer(U, { nature: 'glissiere', plateforme: 'leboncoin' }), null, 'jamais deux fois');
+});
+
+test('(02/11 soir, fausse alerte Leboncoin de 16:55) une glissière d\'onglet de travail est CONFIRMÉE avant d\'appeler la personne', async () => {
+  const tache = () => [{ id: 'j1', platform: 'leboncoin', status: 'pending', error: null, platform_fields: {} }];
+  const vue = { source: 'navigateur', nature: 'glissiere', plateforme: 'leboncoin', referer: 'https://api.leboncoin.fr/api/account/v2/members/me/account' };
+  // 1. Passagère (le cas de 16:55) : fermée aussitôt, « vérification en cours » sans bouton, puis rouverte sans rien dire.
+  const t = monter({ taches: tache() });
+  await t.v.charger();
+  const b = await t.v.bloquer(U, vue);
+  assert.deepEqual(t.bloquees, [['leboncoin', 'glissiere']], 'fermée tout de suite : plus aucune requête');
+  assert.deepEqual(etatsPublies(t, 'leboncoin'), ['verification_en_cours'], 'rien à faire, aucun bouton « Résoudre »');
+  assert.equal(t.jobs[0].error, null, 'aucun message sur les tâches tant que ce n\'est pas confirmé');
+  assert.ok(Date.parse(b.confirmation.apres) - Date.parse(b.le) === CONFIRMATION_MS);
+  await t.v.releve();
+  assert.equal(t.v.plateformesBloquees(U).length, 1, 'pas avant son délai');
+  b.confirmation.apres = '2000-01-01T00:00:00Z';
+  await t.v.releve();
+  assert.deepEqual(t.v.plateformesBloquees(U), [], 'UNE page, UNE lecture : passée → rouverte');
+  assert.deepEqual(t.coffre, [['leboncoin']]);
+  assert.ok(!etatsPublies(t, 'leboncoin').includes('a_resoudre'), 'jamais « Résoudre » pour une glissière qui ne tient pas');
+  // Elle revient dans les 30 min : droit à « Résoudre » (ni seconde confirmation, ni « revenue » : la personne n'a rien fait).
+  const b2 = await t.v.bloquer(U, vue);
+  assert.equal(b2.nature, 'glissiere');
+  assert.ok(!b2.confirmation);
+  assert.equal(etatsPublies(t, 'leboncoin').at(-1), 'a_resoudre');
+  assert.equal(t.alertes.length, 0);
+  // 2. Elle tient (la page de fond montre encore la glissière) : « Résoudre », tâches annotées.
+  const g = monter({ taches: tache(), etatPage: { pret: true, captcha: true } });
+  await g.v.charger();
+  const bg = await g.v.bloquer(U, vue);
+  bg.confirmation.apres = '2000-01-01T00:00:00Z';
+  await g.v.releve();
+  assert.equal(g.v.blocageDe(U, 'leboncoin')?.confirmation?.issue, 'glissiere');
+  assert.deepEqual(etatsPublies(g, 'leboncoin'), ['verification_en_cours', 'a_resoudre']);
+  assert.match(g.jobs[0].error, /« Résoudre la vérification »/);
+  assert.deepEqual(g.coffre, [], 'rien rouvert sans preuve');
+  // 3. Pas de navigateur pour l'essai pendant trop longtemps : la personne est appelée quand même.
+  assert.ok(CONFIRMATION_MAX_MS > CONFIRMATION_MS);
+  assert.ok(aConfirmer(vue) && !aConfirmer({ ...vue, source: 'tache' }) && !aConfirmer({ ...vue, nature: 'bloque' }));
 });
 
 test('(02/11) résolue : l\'état part, le message du Cloud part des tâches, la pause Leboncoin de l\'app est levée (reprise prudente)', async () => {

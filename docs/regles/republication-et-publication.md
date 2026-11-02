@@ -1201,3 +1201,17 @@
   (`processing_since` et `published_at` postérieurs ; jamais une annonce importée) lève le gel. Toujours : une seule
   tâche figée par poll, rien d'autre → tout part, fenêtre de 3 h, republication « deleted » jamais retenue. Le journal
   dit « vinted (une servie à l'essai) ». Selftest `selftest:rotation-figes` (cas réel ajouté).
+
+## ⛔ 02/11 soir (Nico, test Cloud de 17:02) — compte Cloud : les écrans de suivi disent FillSell Cloud ; une programmée le dit
+- **Compte Cloud** (`profiles.cloud_voie`, lu par `src/cloud/useCompteCloud.js`, une lecture par session) : une tâche
+  Vinted, Leboncoin, Beebs, Depop qui n'est pas « nos serveurs » est faite par FillSell Cloud (`src/cloud/voieCloud.js`,
+  `parLeCloud`, même liste que `_shared/cloud-voie.js`). Partout où une tâche est suivie — écran « Publication lancée »
+  (`EcranSuivi.jsx`), barres (`utils/barresJobs.js`), « Toute la file » et ses raisons (`FileDesJobs.jsx`,
+  `utils/fileDesJobs.js`), cartes et fiche « statut » du Stock (`StockTab.jsx`, `ctxBarres.cloud`) — les mots sont :
+  « Dans la file — FillSell Cloud la prend à son tour(…) », « FillSell Cloud la publie / republie / retire… »,
+  pastille « FillSell Cloud actif · vu … », « FillSell Cloud ne répond pas pour l'instant — ça repart tout seul »,
+  « reconnecte <plateforme> à FillSell Cloud (Réglages › Abonnement › FillSell Cloud) ». Jamais « ton ordinateur » ni
+  « Chrome » pour ces tâches. eBay par l'API : « nos serveurs », inchangé. Comptes avec extension : textes inchangés.
+- **Publication programmée** : l'écran « Publication lancée » et « Toute la file » ouverte depuis lui lisent le réglage
+  (`usePublicationProgrammee`) et disent « Programmée : elle partira dans ton créneau, une à la fois » — le 02/11 à 17:02,
+  cinq publications de Nico retenues jusqu'au créneau du matin s'affichaient « Dans la file — Chrome la prend à son tour ».

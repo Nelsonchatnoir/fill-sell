@@ -120,7 +120,9 @@ export function connectesIsoles(platformSettings) {
 // par le serveur (serveur-cloud/src/verifications.js) dans platform_settings.<plateforme>.cloud_verification :
 //   'a_resoudre' (une glissière : le bouton « Résoudre la vérification »), 'restreint' (rien à résoudre : on attend),
 //   'revenue' (revenue juste après sa résolution : arrêtée, l'équipe regarde).
-const ETATS_VERIFICATION = new Set(['a_resoudre', 'restreint', 'revenue']);
+// (02/11 soir) 'verification_en_cours' : une glissière vue dans un onglet de travail, que le Cloud CONFIRME (une page, une
+// lecture, 3 min après) avant d'appeler la personne — aucun bouton, aucun bandeau, et jamais « à reconnecter ».
+const ETATS_VERIFICATION = new Set(['a_resoudre', 'restreint', 'revenue', 'verification_en_cours']);
 /**
  * Les plateformes en vérification (pur) : seulement quand le Cloud exécute les tâches du compte (cloud_voie), dans l'ordre
  * de l'écran « Me connecter ». Rend [{ id, nom, etat, depuis }].

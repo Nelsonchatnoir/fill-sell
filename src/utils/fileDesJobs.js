@@ -36,6 +36,8 @@ import {
   attenteAutomatique, boutiqueAttendue, boutiqueDuJob, sansEstimation,
 } from "../../supabase/functions/_shared/etat-job.js";
 import { phraseMiseAJourExtension } from "./extensionAJour.js";
+// (02/11 soir, Nico) Compte Cloud : les mots du Cloud pour ses tâches, jamais « ton ordinateur » ni « Chrome ».
+import { parLeCloud } from "../cloud/voieCloud.js";
 
 export { ETATS, LIBELLES, libelleEtat, etatJob, etapeRepublication, parNosServeurs, attendConnexion, attenteAutomatique, boutiqueAttendue, boutiqueDuJob, sansEstimation };
 
@@ -118,6 +120,10 @@ const TEXTE = {
     ecartee: (p) => `En pause : tu as indiqué ne pas vendre sur ${p}, rien n'est envoyé`,
     en_cours_ordinateur: "En cours sur ton ordinateur",
     en_cours_serveurs: "En cours sur nos serveurs",
+    // (02/11 soir) Une tâche faite par FillSell Cloud.
+    en_cours_cloud: { publish: "FillSell Cloud la publie…", republish: "FillSell Cloud la republie…", delete: "FillSell Cloud la retire…" },
+    ordinateur_cloud: "En pause : FillSell Cloud ne répond pas pour l'instant — ça repart tout seul",
+    connexion_cloud: (p) => `À toi de jouer : reconnecte ${p} à FillSell Cloud (Réglages › Abonnement › FillSell Cloud)`,
   },
   en: {
     tour: "Queued: it goes out in turn",
@@ -155,6 +161,9 @@ const TEXTE = {
     lbc_moderation: "Paused — FillSell is on it: Leboncoin's moderation refused this text, the team adapts the Leboncoin copy (your item doesn't change)",
     ecartee: (p) => `Paused: you said you don't sell on ${p}, nothing is sent`,
     en_cours_ordinateur: "In progress on your computer",
+    en_cours_cloud: { publish: "FillSell Cloud is listing it…", republish: "FillSell Cloud is reposting it…", delete: "FillSell Cloud is removing it…" },
+    ordinateur_cloud: "Paused: FillSell Cloud is not responding right now — it resumes on its own",
+    connexion_cloud: (p) => `Your move: reconnect ${p} to FillSell Cloud (Settings › Subscription › FillSell Cloud)`,
     en_cours_serveurs: "In progress on our servers",
   },
 };
@@ -176,7 +185,9 @@ export function situationJob(j, ctx = {}) {
   const lang = ctx.lang === "en" ? "en" : "fr";
   const T = TEXTE[lang];
   const nom = nomPlateforme(j.platform);
-  const v = etatJob(j, { ...ctx, maintenant });
+  const cloud = parLeCloud(j, ctx.cloud === true);
+  // (02/11 soir) Une tâche faite par FillSell Cloud ne dépend jamais de la version de l'extension du PC.
+  const v = etatJob(j, { ...ctx, maintenant, ...(cloud ? { extensionAMettreAJour: false } : {}) });
   const groupe = GROUPE_DE[v.etat] ?? "en_pause";
   let raison;
   switch (v.motif) {
@@ -192,7 +203,7 @@ export function situationJob(j, ctx = {}) {
     }
     case "boutiques_a_ouvrir": raison = T.boutiques_a_ouvrir(v.detail?.boutiques ?? []); break;
     case "plateforme": raison = T.plateforme(nom); break;
-    case "connexion": raison = T.connexion(nom); break;
+    case "connexion": raison = cloud ? T.connexion_cloud(nom) : T.connexion(nom); break;
     case "releve": raison = T.releve(nom); break;
     case "technique": raison = T.technique(nom); break;
     case "ecartee": raison = T.ecartee(nom); break;
@@ -209,11 +220,14 @@ export function situationJob(j, ctx = {}) {
     case "lecture_origine": {
       const origine = nomPlateforme(v.detail?.plateforme) || (lang === "en" ? "original" : "d'origine");
       raison = lang === "en"
-        ? `Reading your original ${origine} listing (text, photos, condition): it goes out with YOUR content as soon as the FillSell extension on your computer has read it`
-        : `En cours de lecture de ton annonce d'origine ${origine} (texte, photos, état) : elle partira avec TON contenu dès que l'extension FillSell de ton ordinateur l'aura lue`;
+        ? `Reading your original ${origine} listing (text, photos, condition): it goes out with YOUR content as soon as ${cloud ? "FillSell Cloud" : "the FillSell extension on your computer"} has read it`
+        : `En cours de lecture de ton annonce d'origine ${origine} (texte, photos, état) : elle partira avec TON contenu dès que ${cloud ? "FillSell Cloud" : "l'extension FillSell de ton ordinateur"} l'aura lue`;
       break;
     }
-    case "ordinateur": raison = v.etat === ETATS.EN_COURS ? T.en_cours_ordinateur : T.ordinateur; break;
+    case "ordinateur": raison = v.etat === ETATS.EN_COURS
+      ? (cloud ? (T.en_cours_cloud[j.action] ?? T.en_cours_cloud.publish) : T.en_cours_ordinateur)
+      : (cloud ? T.ordinateur_cloud : T.ordinateur); break;
+    case "ordinateur_session": raison = cloud ? T.ordinateur_cloud : T.ordinateur_session; break;
     default: {
       const t = T[v.motif];
       raison = typeof t === "function" ? t(nom) : (t ?? libelleEtat(v.etat, lang));

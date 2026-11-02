@@ -38,10 +38,11 @@ const FR = {
   // navigateur du Cloud — jamais « ouvre … dans ton navigateur » (c'est celui du Cloud, pas celui du téléphone). Et
   // l'accès restreint SANS vérification : aucun bouton, on attend. Jamais un nom de plateforme écrit ici (paramètre).
   resoudre: 'Résoudre la vérification',
-  verifEtat: { a_resoudre: 'Vérification à résoudre', restreint: 'Accès restreint : on attend', revenue: 'Arrêtée : on regarde' },
+  verifEtat: { a_resoudre: 'Vérification à résoudre', restreint: 'Accès restreint : on attend', revenue: 'Arrêtée : on regarde', verification_en_cours: 'Vérification en cours' },
   verifLigne: { a_resoudre: 'Elle demande une vérification au navigateur FillSell Cloud : tu la fais glisser, elle reprend toute seule.',
     restreint: "Accès refusé sans vérification à faire : rien à faire de ton côté, FillSell refait un seul essai dans 24 h.",
-    revenue: "La vérification est revenue juste après : FillSell l'a arrêtée sans insister, l'équipe regarde." },
+    revenue: "La vérification est revenue juste après : FillSell l'a arrêtée sans insister, l'équipe regarde.",
+    verification_en_cours: "FillSell vérifie que l'accès est rendu, puis reprend tout seul : rien à faire de ton côté." },
   bandeauVerifTitre: (noms, etat) => { const l = listeNoms(noms).join(', ') || 'Une plateforme'; return etat === 'restreint' ? `${l} restreint l'accès de FillSell Cloud` : etat === 'revenue' ? `${l} est arrêtée sur FillSell Cloud` : `${l} demande une vérification`; },
   bandeauVerifTexte: (noms, etat) => { const l = listeNoms(noms).join(', ') || 'cette plateforme'; return etat === 'restreint'
     ? `${l} refuse l'accès sans vérification à faire : rien à faire de ton côté. FillSell attend et refait un seul essai dans 24 h ; tes autres plateformes continuent.`
@@ -96,10 +97,11 @@ const EN = {
   executantArreteTexte: (cause) => `${cause === 'muet' ? 'Your runner has gone silent.' : cause === 'arret_essai' ? 'Your runner stopped on an anti-bot check.' : 'Your runner is no longer running.'} Your Cloud tasks are waiting: nothing is posted or removed until it starts again.`,
   plusTard: 'Later',
   resoudre: 'Solve the check',
-  verifEtat: { a_resoudre: 'Check to solve', restreint: 'Access restricted: waiting', revenue: 'Stopped: we are looking into it' },
+  verifEtat: { a_resoudre: 'Check to solve', restreint: 'Access restricted: waiting', revenue: 'Stopped: we are looking into it', verification_en_cours: 'Check in progress' },
   verifLigne: { a_resoudre: 'It asks the FillSell Cloud browser for a check: you slide it, it resumes on its own.',
     restreint: 'Access refused with no check to solve: nothing to do on your side, FillSell tries once more in 24 h.',
-    revenue: 'The check came back right away: FillSell stopped it without insisting, the team is looking into it.' },
+    revenue: 'The check came back right away: FillSell stopped it without insisting, the team is looking into it.',
+    verification_en_cours: 'FillSell checks that access is back, then resumes on its own: nothing to do on your side.' },
   bandeauVerifTitre: (noms, etat) => { const l = listeNoms(noms).join(', ') || 'A platform'; return etat === 'restreint' ? `${l} restricts FillSell Cloud's access` : etat === 'revenue' ? `${l} is stopped on FillSell Cloud` : `${l} asks for a check`; },
   bandeauVerifTexte: (noms, etat) => { const l = listeNoms(noms).join(', ') || 'this platform'; return etat === 'restreint'
     ? `${l} refuses access with no check to solve: nothing to do on your side. FillSell waits and tries once more in 24 h; your other platforms keep going.`

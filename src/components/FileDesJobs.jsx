@@ -42,6 +42,9 @@ import { useBoutiqueVintedParDefaut } from "../utils/boutiqueVintedParDefaut";
 import { useEtatFile } from "../stock/etatFile";
 import { messageFileEnPause } from "../../supabase/functions/_shared/file-pause.js";
 import { jobAnnulable, bilanAnnulation, questionAnnulation, annulerJobs } from "../utils/annulerFile";
+// (02/11 soir, Nico) Compte Cloud : les mots du Cloud ; et, ouverte seule (écran de suivi), la publication programmée.
+import { useCompteCloud } from "../cloud/useCompteCloud";
+import { usePublicationProgrammee } from "../utils/usePublicationProgrammee";
 
 const T = {
   ink: "#10201B", mute: "#5C6560", faint: "#8A8578",
@@ -274,6 +277,8 @@ export default function FileDesJobs({
   // L'autorisation Opla : la MÊME lecture partagée que le Stock et le parcours.
   const aOplaEnAttente = (listeJobs ?? []).some((j) => j.platform === "opla" && j.status === "pending");
   const opla = useOplaAcces({ userId, actif: aOplaEnAttente });
+  const cloudDuCompte = useCompteCloud(userId);
+  const programmationActive = Boolean(usePublicationProgrammee(userId ?? null).reglage);
   const aPublicationVinted = (listeJobs ?? []).some((j) => j.platform === "vinted" && j.action === "publish" && ["pending", "needs_user"].includes(j.status));
   const boutiqueDefaut = useBoutiqueVintedParDefaut(userId, aPublicationVinted);
   // Une horloge qui avance toutes les 30 s : une pause dont l'heure est passée
@@ -287,7 +292,8 @@ export default function FileDesJobs({
   const ctx = useMemo(() => ({
     lang, maintenant,
     filePause: contexte?.filePause ?? (file_.pause === true),
-    programmation: contexte?.programmation ?? false,
+    programmation: contexte?.programmation ?? programmationActive,
+    cloud: contexte?.cloud ?? cloudDuCompte,
     extension: contexte?.extension ?? autonome?.extension ?? null,
     plateformesEnPause: contexte?.plateformesEnPause ?? autonome?.plateformesEnPause ?? new Set(),
     plafond: retenues?.plafond ?? contexte?.plafond ?? null,
@@ -296,7 +302,7 @@ export default function FileDesJobs({
     boutiques: contexte?.boutiques ?? autonome?.boutiques ?? null,
     extensionAMettreAJour: contexte?.extensionAMettreAJour ?? autonome?.majExtension ?? false,
     texteErreur,
-  }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict, file_.pause]);
+  }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict, file_.pause, cloudDuCompte, programmationActive]);
 
   const file = useMemo(() => (listeJobs ? lireFile(listeJobs, ctx) : null), [listeJobs, ctx]);
   const ficheDe = (j) => lesFiches.get?.(String(j?.inventaire_id)) ?? null;

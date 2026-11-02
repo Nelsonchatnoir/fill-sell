@@ -49,7 +49,8 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
       setArret(a ? { ...a, depuisTexte: a.depuis ? quandParis(a.depuis, Date.now(), lang) : null } : null);
       const fermees = fermeesCle ? fermeesCle.split(',') : [];
       const v = verificationsCloud({ cloudVoie: p?.cloud_voie === true, platformSettings: p?.platform_settings ?? null, fermees, plateformes: CLOUD_PLATEFORMES_CONNEXION });
-      setVerifs(v);
+      // (02/11 soir) Une vérification EN COURS de confirmation (3 min) : ni bandeau ni « à reconnecter » — rien à faire.
+      setVerifs(v.filter((x) => x.etat !== 'verification_en_cours'));
       if (error) return;
       // Une plateforme en vérification a SON bandeau (ci-dessous) : jamais aussi « déconnectée ».
       setARefaire(plateformesAReconnecter({ cloudVoie: p?.cloud_voie === true, etats, fermees: [...fermees, ...v.map((x) => x.id)],
