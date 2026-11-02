@@ -1456,3 +1456,96 @@ après la connexion. Leboncoin a ensuite restreint l'accès du compte (règle de
 par jour). C'est le premier blocage réel de l'essai : à trancher par Nico (attendre l'essai automatique de 24 h, ou
 « Leboncoin remarche » — qui refera une requête depuis l'IP du Cloud).
 
+
+## 21. « Résoudre la vérification », profil français, compteur Beebs, eBay dans « Republier », journal Depop (02/11, 10:00 → 11:35)
+Demande de Nico (02/11 matin), cinq points : (1) une vérification anti-robot soluble à la main se résout depuis l'app
+— « Résoudre la vérification » rouvre la page du navigateur Cloud où elle s'affiche, dans la vue de « Me connecter » ;
+la personne fait glisser, UNE requête légère confirme, la plateforme reprend seule ; jamais de résolution automatique ni
+de service tiers ; seule la plateforme concernée en pause ; vérification revenue aussitôt = on s'arrête et on le
+remonte ; « vérification à résoudre » (bouton) ≠ « accès restreint sans vérification » (attente) ; rien ne change pour
+l'extension sur un PC ; essai réel sur Leboncoin tout de suite. (2) Profil du navigateur Cloud en français, Europe/Paris.
+(3) Remise à zéro du compteur des 48 h pour Beebs SEULE. (4) La ligne « eBay : ton annonce reste en ligne telle
+quelle » dans « Republier ». (5) La migration Depop du journal des connexions (feu vert donné).
+
+### 21.1 La nuit du 01 au 02/11 (journal du serveur, heure de Paris)
+- **04:56:46** Leboncoin : une page Leboncoin du navigateur (rafraîchissement silencieux de session, puis
+  `api.leboncoin.fr/api/messaging-items-api/v3/conversations`) → **403** et glissière DataDome (`t=fe`, referer = cette
+  API) ; relevé à 04:57:37 → **Leboncoin seul** en vérification (verrou, 1 onglet fermé, coffre). La pause Leboncoin de
+  l'app (depuis 22:54) tenait encore.
+- **05:14:47** Beebs : `www.beebs.app/fr/account/orders/list/seller` (veille des commandes) → **403**, vérification de
+  l'appareil DataDome, puis glissière ; relevé à 05:15:38 → **Beebs seule** en vérification.
+- Vinted et Depop ont continué (verrou : depop, vinted ; aucun refus d'une tâche). La règle d'hier soir (« un blocage
+  n'arrête que sa plateforme ») a tenu.
+
+### 21.2 La règle (serveur-cloud/src/verifications.js, toujours active — plus seulement pendant l'essai)
+- Les cadres DataDome des onglets de travail, chaque minute, hors « Me connecter » ; une vérification vue n'arrête que
+  sa plateforme (inchangé) et garde désormais la page où elle s'est affichée (`referer`).
+- **Deux états pour la personne**, publiés dans `platform_settings.<plateforme>.cloud_verification` (lu par l'app) :
+  `a_resoudre` (glissière, vérification de l'appareil qui dure, tâche refusée par l'anti-robot) → bouton ;
+  `restreint` (DataDome `t=bv`, refus sans glissière, pause Leboncoin de l'app) → aucun bouton, UN essai au bout de 24 h
+  (page de fond, une lecture : passée → rouverte ; glissière vue → `a_resoudre` ; refusée → 24 h de plus) ;
+  `revenue` (revenue dans les 30 min qui suivent sa résolution, ou accès encore refusé juste après la glissière) →
+  arrêtée, aucun bouton, alerte à l'équipe (alertes.js : cloud_pool_alertes + support).
+- **« Résoudre la vérification »** (connexion.js, mode `resoudre`) : la même vue que « Me connecter » ; la page où la
+  vérification s'est affichée (son referer sur le site, sans ancre de travail), ou une page du compte si elle venait
+  d'une API (Leboncoin : « Mes annonces », qui refait ses requêtes) ; la page est lue SANS réseau toutes les 2 s (cadre
+  DataDome présent ou non) ; la lecture d'accès part la glissière faite (Vinted, Leboncoin, Depop : la lecture du compte,
+  l'adresse même que l'anti-robot protège ; Beebs : la page en HEAD) — au plus deux lectures en tout. Passée → coffre
+  connecté (session gardée, vérifiée), verrou rouvert, blocage résolu, tâches libérées, et pour Leboncoin la pause de
+  l'app levée comme par son essai réussi (reprise prudente 6 h, règle de l'app inchangée).
+- **Seule la page de résolution joint la plateforme** : exception du verrou par CADRE (navigateur.js, `requetePermise`) —
+  la page et ses sous-cadres, plus le service worker de la plateforme elle-même (Depop en a un) ; jamais l'extension ni
+  ses onglets de travail, jamais eBay. L'extension ne retravaille la plateforme qu'après la preuve.
+- **Les tâches retenues portent la vraie cause** (« … demande une vérification au navigateur FillSell Cloud … appuie sur
+  « Résoudre la vérification » » / « … restreint l'accès … rien à faire, un seul essai au bout de 24 h ») ; la plateforme
+  rouverte, ce message part. Plus jamais « ouvre leboncoin.fr dans ton navigateur » pour un compte du Cloud.
+- Une pause Leboncoin de l'app sur un compte du Cloud (cloud_voie) devient un blocage `restreint` côté Cloud (le bon
+  message ; son essai des 24 h au même rendez-vous que celui de l'app).
+- Rien ne change pour l'extension sur un PC (le module ne touche qu'aux comptes dont le navigateur Cloud est ouvert).
+- App (OTA 2.9.151) : bandeau Cloud « Leboncoin demande une vérification » + « Résoudre la vérification » (la vue
+  s'ouvre depuis le bandeau) ; « restreint » / « revenue » : texte seul ; l'écran « Me connecter » montre l'état et le
+  bouton sur la ligne de la plateforme.
+
+### 21.3 Profil français (navigateur.js)
+- `--lang=fr-FR` (langue de Chrome et d'Intl), `intl.accept_languages` / `selected_languages` = `fr-FR,fr` (préférence du
+  profil, posée par steel avant le lancement : Accept-Language et navigator.languages), fuseau `Europe/Paris` (TZ du
+  processus Chrome, et `DEFAULT_TIMEZONE`). Le conteneur porte l'empreinte de son lancement : lancé autrement, il est
+  recréé, le profil du compte reste sur le disque.
+- Mesuré dans le navigateur du compte (page vierge, aucune visite), 11:31 : navigator.language **fr-FR**, languages
+  **fr-FR, fr**, Intl **fr**, fuseau **Europe/Paris**, une date = « 02/11/2026 11:00:00 », « heure normale d’Europe centrale ».
+- Deux pièges levés en route (corrigés à la racine) : (a) le conteneur recréé trouvait le profil verrouillé par l’ancien
+  (« in use by another Chromium process on another computer », session steel HTTP 500 ; navigateur fermé de 11:19 à
+  11:22) : les fichiers de verrou du profil partent à chaque démarrage d’un conteneur arrêté ; (b) Chromium sous Linux
+  ignore --lang et ne lit que LANGUAGE / LANG, et l’image steel n’a que en-US.pak : Intl restait en-US (« 11/2/2026,
+  11:00:00 AM »). Un fichier /etc/chromium.d/fillsell-langue (lu par le lanceur Debian) pose LANGUAGE et LANG, et fr.pak
+  du paquet Debian **chromium-l10n 156.0.8078.73-1~deb12u1** (même version que le Chromium de l’image, signature vérifiée
+  par apt, récupéré dans un conteneur jetable hors du réseau des navigateurs : outils/deployer.sh) est monté en lecture
+  seule.
+
+### 21.4 Compteur des 48 h : Beebs remise à zéro, seule
+- `endurance-remise.mjs "…" --plateforme beebs --depuis 2026-11-01T23:15:48Z` (11:32) : la remise d’UNE plateforme
+  (decompteEssai : ses heures d’avant « depuis » ne comptent plus ; la remise globale du 01/11 22:28 reste la référence).
+- Bilan 11:32 : Vinted 11,8 h et Depop 11,8 h (inchangés), **Beebs 5,0 h** (5,6 h avant : seulement 00:15:48 → 05:15,
+  sa mise en vérification), Leboncoin 0 h (pause de l’app depuis 22:54, puis vérification depuis 04:57).
+
+### 21.5 eBay dans « Republier »
+La feuille dit « eBay : ton annonce reste en ligne telle quelle. » quand l'article est en ligne sur eBay (lot :
+« tes annonces restent en ligne telles quelles »). eBay reste hors republication (garde-fou du 17/09).
+
+### 21.6 Journal des connexions : Depop
+Migration `20261102110000_cloud_connexions_depop.sql` appliquée (feu vert de Nico) : la contrainte connaît depop ;
+inverse `supabase/rollbacks/20261102110000_cloud_connexions_depop_INVERSE.sql`.
+
+### 21.7 Essai réel Leboncoin
+- Prêt à 11:31 : `platform_settings.leboncoin.cloud_verification` = a_resoudre (depuis 04:57), beebs = a_resoudre (05:15) ;
+  la tâche Leboncoin c5c2a2c6 (republication des « Gants de ski Quechua ») porte le message du Cloud ; OTA 2.9.151 servie.
+- **Le geste est celui de Nico** (jamais de résolution automatique) : bandeau → « Résoudre la vérification ». À relire
+  après : journal `resolution_*` de l’orchestrateur, `blocages.json`, la tâche c5c2a2c6, et
+  `platform_settings.leboncoin.blocage_acces.leve_le` (reprise prudente 6 h).
+- Correction du § 20 : le bouton « Leboncoin remarche » que cite le message de pause Leboncoin n’existe pas dans l’app
+  (aucun code n’écrit `essai_demande_le`). Pour un compte du Cloud, la résolution le remplace ; sur un PC, le message
+  promet un geste absent — signalé à Nico, non touché (hors de ce lot).
+- La preuve d’identité de l’OTA a été lancée APRÈS l’envoi (contre 2.9.151 elle-même, puis contre 2.9.150) : 708 scènes
+  identiques ; échecs = les trois connus, plus le périmètre (StockTab : la ligne eBay voulue ; publication-programmee.js
+  de a929146, déjà servi par le web). La garde « Me connecter n’est importé que par App » accepte désormais le bandeau
+  (monté par App derrière la même porte, vérifié).

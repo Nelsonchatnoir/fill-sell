@@ -1,5 +1,41 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 02/11/2026 11:35 — « RÉSOUDRE LA VÉRIFICATION », PROFIL FRANÇAIS, COMPTEUR BEEBS (à lire EN PREMIER)
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 21. Les blocs 01:00 et 22:40 en dessous restent valables.
+
+### La règle (serveur-cloud/src/verifications.js — produit, toujours active)
+- Une vérification anti-robot n'arrête que SA plateforme (inchangé) ; l'app la lit dans
+  `platform_settings.<plateforme>.cloud_verification` : **a_resoudre** (glissière → bouton « Résoudre la vérification »,
+  bandeau Cloud et ligne de « Me connecter ») · **restreint** (t=bv, refus sans glissière, pause Leboncoin de l'app →
+  aucun bouton, UN essai au bout de 24 h) · **revenue** (revenue < 30 min après résolution, ou refus juste après la
+  glissière → arrêtée, aucun bouton, alerte support).
+- « Résoudre » = la vue de « Me connecter » en mode `resoudre` : la page où la vérification s'est affichée (referer sur
+  le site, sinon une page du compte), lue SANS réseau ; la glissière faite, UNE lecture d'accès (au plus deux). Passée :
+  coffre connecté, verrou rouvert, tâches libérées, pause Leboncoin de l'app levée (reprise prudente 6 h).
+- Seule la page de résolution passe le verrou (exception par cadre + le service worker de la plateforme ; jamais
+  l'extension, jamais eBay). Jamais de résolution automatique. Les tâches retenues portent le message du Cloud.
+- Blocages : `etat/endurance/blocages.json` (chemin d'origine gardé). Essai de 48 h (ENDURANCE=1) : n'en garde que le journal.
+
+### Le navigateur Cloud parle français (navigateur.js)
+- `--lang`, `intl.accept_languages` fr-FR,fr, fuseau Europe/Paris, `/etc/chromium.d/fillsell-langue` (LANGUAGE, LANG),
+  `fr.pak` (chromium-l10n de la même version, `/srv/fillsell-cloud/etat/chromium-locales/`, posé par deployer.sh).
+- Vu à 11:31 : fr-FR / fr-FR, fr / Intl fr / Europe/Paris / « 02/11/2026 11:00:00 ».
+- ⚠️ Conteneur recréé quand son lancement change (empreinte `fillsell.lancement`) ; les fichiers de verrou du profil
+  partent à chaque démarrage d'un conteneur arrêté (sinon : session steel HTTP 500).
+
+### État à 11:35
+- Orchestrateur **e54bf35** ; OTA **2.9.151** servie ; migration Depop du journal appliquée.
+- **Leboncoin (04:57) et Beebs (05:15) : à résoudre** — glissières de la nuit (Leboncoin : API messagerie 403 ; Beebs :
+  veille des commandes 403). Vinted et Depop tournent. Tâche Leboncoin c5c2a2c6 en attente, avec le message du Cloud.
+- Compteur 11:32 : Vinted 11,8 h, Depop 11,8 h, Beebs 5,0 h (remise à zéro de Beebs seule, depuis 00:15:48), Leboncoin 0 h.
+- Poste de Nico : ARRÊT. Aucun achat.
+
+### À relire au retour (sans boucle)
+- Après le geste de Nico : `docker compose logs orchestrateur | grep resolution_`, `blocages.json`, la tâche c5c2a2c6,
+  `platform_settings.leboncoin.blocage_acces.leve_le`.
+- Défaut ouvert (hors Cloud, non touché) : le message de pause Leboncoin d'un PC promet un bouton « Leboncoin remarche »
+  qui n'existe pas dans l'app.
+
 ## ⛔ 02/11/2026 01:00 — PREMIER ESSAI RÉEL : 3 REPUBLICATIONS FAITES PAR LE CLOUD, LEBONCOIN EN PAUSE (à lire EN PREMIER)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 20. Le bloc 22:40 en dessous reste valable (règle « connecté =
 compte lu »).

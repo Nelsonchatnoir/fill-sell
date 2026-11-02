@@ -358,7 +358,12 @@ const code = (t) => t.split('\n').filter((l) => { const s = l.trim(); return s &
   const importeurs = importeursDe('clientConnexion(?:\\.js)?');
   verifier(importeurs.length === 1 && importeurs[0] === 'src/cloud/MeConnecterCloud.jsx', 'le client de connexion n’est importé que par « Me connecter »', importeurs.join(', '));
   const importMe = importeursDe('MeConnecterCloud(?:\\.jsx)?');
-  verifier(importMe.length === 1 && importMe[0] === 'src/App.jsx', '« Me connecter » n’est importé que par App', importMe.join(', '));
+  // (02/11, « Résoudre la vérification ») Le bandeau Cloud ouvre la vue de « Me connecter » lui-même ; il n'est monté que
+  // par App, derrière la même porte (cloudConnexionVisible) — vérifié ici aussi.
+  const app = lire('src/App.jsx');
+  const bandeauGarde = /\{user&&cloudConnexionVisible\(user\.id\)&&\(\s*<BandeauCloudReconnexion /.test(app);
+  verifier(importMe.length >= 1 && importMe.every((f) => f === 'src/App.jsx' || (f === 'src/cloud/BandeauCloudReconnexion.jsx' && bandeauGarde)),
+    '« Me connecter » n’est importé que par App (et par le bandeau Cloud, monté par App derrière la même porte)', importMe.join(', '));
   const importTrace = importeursDe('traceCloud(?:\.js)?');
   verifier(importTrace.length === 1 && importTrace[0] === 'src/cloud/MeConnecterCloud.jsx', 'la trace Cloud n’est importée que par « Me connecter » (01/11)', importTrace.join(', '));
   // Les lectures de l'état Cloud : chaque appel de useCloudProfil passe une porte.
