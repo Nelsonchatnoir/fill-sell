@@ -24,8 +24,22 @@
 // ⛔ « Figé » = preuve écrite en base, jamais une supposition : l'erreur
 //    « Reprise après interruption (bloqué N min… » posée par la reprise de
 //    l'extension, ou un canal coupé classé par pas-de-rouge.
+//
+// (02/11, gjehly — « aucune plateforme affamée sur un poste actif après un
+// échec ») « Après les autres » était devenu « jamais » : un seul Vinted figé à
+// 13:00 (content script muet), 77 Vinted retenus à chaque poll pendant 3 h, car
+// le même poll avait toujours des Leboncoin à servir (58 en file, un toutes les
+// 2 min) — et le poste ne repasse prendre la file qu'au bout de son lot (96
+// tâches, ~2 h). Désormais :
+//   · passé FIGE_REPOS_MS après son dernier gel, la plateforme figée a UNE tâche
+//     servie par poll avec les autres (l'essai) : un poste actif retente
+//     toujours, sans jamais se laisser confisquer (une seule tâche à la fois) ;
+//   · une tâche de cette plateforme TRAITÉE par un poste et publiée après le
+//     gel (processing_since et published_at postérieurs) lève le gel : le poste
+//     a prouvé qu'il la sert de nouveau, sa file reprend son rang.
 
 export const FIGE_FENETRE_MS = 3 * 3600_000;
+export const FIGE_REPOS_MS = 10 * 60_000;
 const REPRISE_FIGEE_RE = /^Reprise après interruption \(bloqué \d+ min/;
 
 const ms = (v) => {
@@ -58,15 +72,34 @@ export function horodatageFige(job) {
   return instants.length ? Math.max(...instants) : null;
 }
 
-/** Les plateformes dont un job a figé sur ce compte il y a moins de 3 h. */
-export function plateformesFigees(jobs, maintenant = Date.now()) {
-  const out = new Set();
+/**
+ * Le DERNIER gel de chaque plateforme (moins de 3 h) : Map plateforme → ms.
+ * `reussites` : tâches traitées par un poste et publiées ({ platform, published_at, processing_since }) — une
+ * réussite postérieure au dernier gel lève le gel de sa plateforme.
+ */
+export function gelsParPlateforme(jobs, maintenant = Date.now(), reussites = []) {
+  const out = new Map();
   for (const j of Array.isArray(jobs) ? jobs : []) {
     if (!j?.platform) continue;
     const t = horodatageFige(j);
-    if (t != null && maintenant - t < FIGE_FENETRE_MS && t <= maintenant + 60_000) out.add(String(j.platform));
+    if (t != null && maintenant - t < FIGE_FENETRE_MS && t <= maintenant + 60_000) {
+      const p = String(j.platform);
+      out.set(p, Math.max(out.get(p) ?? -Infinity, t));
+    }
+  }
+  for (const r of Array.isArray(reussites) ? reussites : []) {
+    const p = String(r?.platform ?? "");
+    const gel = out.get(p);
+    if (gel == null) continue;
+    const pub = ms(r?.published_at), traite = ms(r?.processing_since);
+    if (pub != null && traite != null && pub > gel && traite > gel) out.delete(p);
   }
   return out;
+}
+
+/** Les plateformes dont un job a figé sur ce compte il y a moins de 3 h (sans réussite depuis). */
+export function plateformesFigees(jobs, maintenant = Date.now(), reussites = []) {
+  return new Set(gelsParPlateforme(jobs, maintenant, reussites).keys());
 }
 
 /** Un job qui porte la preuve d'un gel mais pas encore son constat daté. */
@@ -79,15 +112,28 @@ const exempt = (j) => j?.action === "republish" && j?.platform_fields?.republish
 
 /**
  * Retire du poll les jobs des plateformes figées, SI le même poll sert
- * quelque chose d'une autre plateforme. Rend { garde, retenus }.
+ * quelque chose d'une autre plateforme. Rend { garde, retenus, essais }.
+ * `figees` : Set des plateformes, ou Map plateforme → instant du dernier gel (gelsParPlateforme). Avec la Map, une
+ * plateforme figée depuis FIGE_REPOS_MS ou plus garde UNE tâche (la première de la file) : l'essai du poll.
  */
-export function rotationFiges(out, figees) {
+export function rotationFiges(out, figees, maintenant = Date.now()) {
   const liste = Array.isArray(out) ? out : [];
-  if (!figees || !figees.size) return { garde: liste, retenus: [] };
+  if (!figees || !figees.size) return { garde: liste, retenus: [], essais: [] };
+  const gelDe = figees instanceof Map ? figees : null;
   const autreChose = liste.some((j) => !figees.has(String(j?.platform)));
-  if (!autreChose) return { garde: liste, retenus: [] };
-  const retenus = liste.filter((j) => figees.has(String(j?.platform)) && !exempt(j));
-  if (!retenus.length) return { garde: liste, retenus: [] };
+  if (!autreChose) return { garde: liste, retenus: [], essais: [] };
+  const essais = [];
+  const retenus = liste.filter((j) => {
+    const p = String(j?.platform);
+    if (!figees.has(p) || exempt(j)) return false;
+    const gel = gelDe?.get(p);
+    if (gel != null && maintenant - gel >= FIGE_REPOS_MS && !essais.some((e) => String(e.platform) === p)) {
+      essais.push(j);
+      return false;
+    }
+    return true;
+  });
+  if (!retenus.length) return { garde: liste, retenus: [], essais };
   const ids = new Set(retenus.map((j) => String(j.id)));
-  return { garde: liste.filter((j) => !ids.has(String(j.id))), retenus };
+  return { garde: liste.filter((j) => !ids.has(String(j.id))), retenus, essais };
 }

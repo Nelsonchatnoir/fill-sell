@@ -177,17 +177,14 @@ export function adresseRefuseeAvantRetrait(texte) {
   return String(texte ?? "").match(RE_PREVOL_ADRESSE)?.[1] ?? null;
 }
 
-/** La même adresse vient-elle de passer en publication ? `publications` : [{ id, adresse, warnings }] des publications
- * Leboncoin PASSÉES du compte (14 jours). Compte l'adresse tapée, et la commune où le repli l'a posée. */
+/** Leboncoin a-t-il ACCEPTÉ cette adresse dans une publication ? `publications` : [{ id, adresse, warnings }] des
+ * publications Leboncoin PASSÉES du compte (14 jours). (02/11, labrunettedu44) Seule l'adresse acceptée compte
+ * (adressesAccepteesParPublication) : la ville choisie quand elle a primé, la commune du repli — jamais la rue refusée. */
 export function publicationAvecLaMemeAdresse(adresse, publications) {
   const cible = adresseComparableLbc(adresse);
   if (!cible) return null;
   for (const p of Array.isArray(publications) ? publications : []) {
-    if (adresseComparableLbc(p?.adresse) === cible) return p;
-    for (const w of Array.isArray(p?.warnings) ? p.warnings : []) {
-      const m = w && typeof w === "object" && w.code === CODE_REPLI_COMMUNE ? String(w.message ?? "").match(RE_REPLI_COMMUNE) : null;
-      if (m && (adresseComparableLbc(m[1]) === cible || adresseComparableLbc(m[2]) === cible)) return p;
-    }
+    if (adressesAccepteesParPublication(p).some((a) => adresseComparableLbc(a) === cible)) return p;
   }
   return null;
 }
@@ -227,4 +224,105 @@ export function decisionRueInconnueLbc(job, reglagesLbc, rueInconnue) {
       },
     },
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (02/11, labrunettedu44) UNE RUE INTROUVABLE N'EST JAMAIS RETAPÉE À L'IDENTIQUE
+// ═══════════════════════════════════════════════════════════════════════════
+// Ses 28 republications Leboncoin bouclaient sur le contrôle avant retrait : la rue des Réglages servie (règle du
+// 01/10), « 25bis Rue de la Fontaine aux Bretons 44210 Pornic », sans AUCUNE proposition de Leboncoin (mode précis et
+// simple vides) — retapée à l'identique à chaque reprise. Et le message disait « Leboncoin a accepté cette même
+// adresse, le blocage vient de chez nous » : faux, sa publication de 13:27 avait tapé la VILLE CHOISIE pour l'annonce
+// (« Pornic 44210 » → « Pornic (44210) »), pas la rue ; publicationAvecLaMemeAdresse comparait platform_fields.adresse
+// (l'adresse des Réglages), pas l'adresse que Leboncoin avait acceptée.
+// LA RÈGLE, pour tous :
+//   · une rue introuvable est retapée autrement, une forme à la fois, chacune contrôlée AVANT tout retrait :
+//     le numéro détaché (« 25bis » → « 25 bis »), puis la rue sans numéro ;
+//   · en dernier recours, la commune de l'annonce — seulement quand une publication du compte a fait accepter CETTE
+//     commune à Leboncoin (ville choisie, ou repli sur la commune) : c'est la preuve que son formulaire la prend ;
+//   · sinon la pause reste, avec le vrai message (la rue, sous toutes ses formes, est inconnue de Leboncoin) ;
+//   · « Leboncoin a accepté cette même adresse » ne se dit que d'une adresse que Leboncoin a ACCEPTÉE : celle tapée
+//     sans repli, la ville choisie, ou la commune du repli — jamais la rue qu'il a refusée.
+
+const RE_VILLE_CHOISIE = /^adresse: ville choisie pour l'annonce \(« ([^»]+) »\)/;
+const texteWarning = (w) => (typeof w === "string" ? w : String(w?.message ?? ""));
+
+/** Les adresses qu'une publication PASSÉE a fait accepter par Leboncoin : la ville choisie si elle a primé, la commune
+ * si la rue a été refusée (repli), sinon l'adresse tapée. */
+export function adressesAccepteesParPublication(p) {
+  let tapee = propre(p?.adresse);
+  let communeDuRepli = null;
+  for (const w of Array.isArray(p?.warnings) ? p.warnings : []) {
+    const m = texteWarning(w);
+    const vc = m.match(RE_VILLE_CHOISIE);
+    if (vc) tapee = propre(vc[1]);
+    if (w && typeof w === "object" && w.code === CODE_REPLI_COMMUNE) {
+      const r = m.match(RE_REPLI_COMMUNE);
+      if (r) communeDuRepli = propre(r[2]);
+    }
+  }
+  if (communeDuRepli) return [communeDuRepli];
+  return tapee ? [tapee] : [];
+}
+
+/** Les autres écritures d'une rue, dans l'ordre d'essai : le numéro détaché (« 25bis » → « 25 bis »), puis sans numéro. */
+export function variantesRueLbc(voie) {
+  const v = propre(voie);
+  if (!v) return [];
+  const out = [];
+  const detachee = propre(v.replace(/^(\d+)\s*,?\s*(bis|ter|quater)\b\s*,?/i, "$1 $2 ").replace(/^(\d+)\s*,\s*/, "$1 "));
+  if (detachee !== v) out.push(detachee);
+  const sansNumero = propre(v.replace(/^\d+\s*(?:(?:bis|ter|quater)\b|[a-z](?=[\s,]))?\s*,?/i, ""));
+  if (sansNumero && sansNumero !== v && /[a-zà-ÿ]{3,}/i.test(sansNumero)) out.push(sansNumero);
+  return [...new Set(out)];
+}
+
+/**
+ * Le contrôle avant retrait n'a trouvé aucune proposition pour `adresseRefusee` : quelle adresse essayer ensuite ?
+ * `lo` : platform_fields.localisation_origine du job. `communeAcceptee` : une publication du compte a fait accepter
+ * cette commune (adressesAccepteesParPublication).
+ * @returns {{ action: "variante", voie: string, lo: object } | { action: "commune", commune: string, lo: object } | { action: "aucune", essais: string[] }}
+ */
+export function prochaineAdresseLbc(lo, adresseRefusee, { communeAcceptee = false } = {}) {
+  const voie = propre(lo?.voie), ville = propre(lo?.ville), cp = propre(lo?.code_postal);
+  const precedentes = Array.isArray(lo?.voies_essayees) ? lo.voies_essayees.map(propre).filter(Boolean) : [];
+  if (!voie || !ville || !/^\d{5}$/.test(cp)) return { action: "aucune", essais: precedentes };
+  // L'adresse refusée est bien celle que cette voie fait taper (« voie code_postal ville », extension).
+  if (adresseComparableLbc(`${voie} ${cp} ${ville}`) !== adresseComparableLbc(adresseRefusee)) return { action: "aucune", essais: precedentes };
+  const essais = [...precedentes, voie];
+  const dejaTapees = new Set(essais.map((e) => e.toLowerCase()));
+  const origine = precedentes[0] ?? voie;
+  const suivante = [...variantesRueLbc(origine), ...variantesRueLbc(voie)].find((x) => !dejaTapees.has(x.toLowerCase()));
+  if (suivante) return { action: "variante", voie: suivante, lo: { ...lo, voie: suivante, voies_essayees: essais } };
+  if (!communeAcceptee) return { action: "aucune", essais };
+  const { voie: _v, voie_des_reglages: _d, ...reste } = lo;
+  return {
+    action: "commune",
+    commune: `${ville} ${cp}`,
+    lo: {
+      ...reste,
+      voies_essayees: essais,
+      voie_des_reglages_retiree: lo.voie_des_reglages_retiree ?? {
+        motif: "aucune écriture de la rue n'est connue de Leboncoin ; une publication du compte a fait accepter la commune",
+        rue: origine, pose_par: "update-job-status (lbc-voie-des-reglages, 02/11)",
+      },
+    },
+  };
+}
+
+/** Le message d'un nouvel essai avec une autre écriture de l'adresse (jamais « tes Réglages », rien à faire). */
+export function messageAutreAdresseLbc(adresseRefusee, suivante, parCommune = false) {
+  return `Republication Leboncoin en pause AVANT tout retrait : Leboncoin ne trouve pas « ${propre(adresseRefusee)} ». `
+    + (parCommune
+      ? `Nouvel essai automatique avec ta commune, « ${propre(suivante)} », que Leboncoin a acceptée pour tes publications. `
+      : `Nouvel essai automatique en l'écrivant « ${propre(suivante)} ». `)
+    + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Rien à faire.";
+}
+
+/** Le message quand aucune écriture de la rue n'est connue et que rien ne prouve la commune : la vraie cause. */
+export function messageRueIntrouvableLbc(adresseRefusee, essais = []) {
+  const autres = (Array.isArray(essais) ? essais : []).map(propre).filter(Boolean);
+  return `Republication Leboncoin mise en pause AVANT tout retrait : Leboncoin ne propose aucune adresse pour « ${propre(adresseRefusee)} »`
+    + (autres.length > 1 ? `, ni pour ${autres.slice(0, -1).map((e) => `« ${e} »`).join(", ")}` : "")
+    + ". Ton annonce est TOUJOURS en ligne, rien n'a été touché. Vérifie l'« Adresse de remise Leboncoin » dans tes Réglages (numéro, rue, code postal, ville), puis relance la republication.";
 }

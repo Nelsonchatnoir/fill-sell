@@ -669,3 +669,20 @@ Rapport : `docs/enquetes/delegation-lbc-louis-0111/RAPPORT.md`.
   de 30 min, postérieure au dernier mur vu par ce job ; un relevé réussi aux mêmes conditions. pas-de-rouge reçoit des
   sessions où un « connecté » non prouvé devient « inconnu ». Sinon le message d'attente de connexion (inchangé).
 - Selftests `delegation-leboncoin` (`-- --prod`), `delegation-leboncoin-releves` (`-- --prod`), `session-prouvee`.
+
+## ⛔ 02/11 (labrunettedu44, sebastien64310) — Leboncoin : une rue introuvable n'est jamais retapée à l'identique ; eBay : rayons médias
+Rapport : `docs/enquetes/trois-rouges-0211/RAPPORT.md`.
+- **Leboncoin, adresse de republication** (update-job-status **v167**, `_shared/lbc-voie-des-reglages.js`) : le contrôle
+  avant retrait ne trouve aucune proposition pour l'adresse tapée → la tâche repasse pending (5 min, rien n'a été touché)
+  avec l'écriture suivante : le numéro détaché (« 25bis » → « 25 bis »), puis la rue sans numéro, puis la COMMUNE de
+  l'annonce seulement si une publication du compte a fait accepter CETTE commune (ville choisie ou repli) ; sinon la pause
+  « Vérifie tes Réglages » reste, avec chaque écriture essayée. Les autres republications du compte qui tapent la MÊME rue
+  (pending, pas retirées) suivent la même écriture. `localisation_origine.voies_essayees` garde la trace ;
+  `voie_des_reglages_retiree` empêche get-pending-jobs de remettre la rue.
+- **« Leboncoin a accepté cette même adresse »** ne se dit plus que d'une adresse ACCEPTÉE (`adressesAccepteesParPublication` :
+  la ville choisie quand elle a primé, la commune d'un repli, sinon l'adresse tapée) — jamais de la rue refusée ni de
+  `platform_fields.adresse` d'une publication passée par la ville. Selftests `lbc-rue-introuvable-0211`, `lot-j-3110` adapté.
+- **eBay, famille `livres_medias`** (ebay-api-worker **v106**) : livres ET médias — un rayon média d'eBay (DVD, cinéma ;
+  Films, DVD ; Musique, CD, vinyles) est dans la famille quand le TITRE nomme un support (vhs, dvd, cd, vinyle…), même si
+  la description désarme le support (critique « roman noir »). Un livre sans support nommé au titre reste gardé « Livres ».
+  Selftest `ebay-rayon-media-0211`.

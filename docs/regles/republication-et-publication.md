@@ -1188,3 +1188,16 @@
   « ordinateur éteint ».
 - Règle (`_shared/etat-job.js`, copie de l'extension régénérée) : extension constatée éteinte/inactive + job hors voie
   api → motif `ordinateur`, avant `essai`. Selftest `selftest:etat-job` (4 cas ajoutés).
+
+## ⛔ 02/11 (gjehly) — une plateforme qui fige n'est plus AFFAMÉE sur un poste actif
+- 13:00:57 un Vinted fige (« content script ne répond pas… », canal coupé) ; la règle du 25/09 (`_shared/rotation-figes.js`)
+  retenait alors TOUS les Vinted du compte « après les autres » tant que le poll avait autre chose à servir — pendant
+  3 h. Avec 58 Leboncoin en file (un toutes les 2 min) et un poste qui ne repasse prendre la file qu'au bout de son lot
+  (96 tâches, ~2 h), « après » voulait dire « jamais » : polls de 13:07 et 14:39, « 77 job(s) retenu(s) après les autres
+  (plateforme(s) qui figent sur ce poste : vinted) », plus aucun essai Vinted. Le tour strict des programmées n'y était
+  pour rien (ses 80 Vinted programmées attendaient le créneau du soir, réglage du compte).
+- Règle (get-pending-jobs **v326**) : passé `FIGE_REPOS_MS` (10 min) après le dernier gel, la plateforme figée a UNE tâche
+  servie par poll avec les autres (l'essai) ; une tâche de la plateforme TRAITÉE par un poste et publiée après le gel
+  (`processing_since` et `published_at` postérieurs ; jamais une annonce importée) lève le gel. Toujours : une seule
+  tâche figée par poll, rien d'autre → tout part, fenêtre de 3 h, republication « deleted » jamais retenue. Le journal
+  dit « vinted (une servie à l'essai) ». Selftest `selftest:rotation-figes` (cas réel ajouté).

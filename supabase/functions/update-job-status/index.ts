@@ -4377,7 +4377,57 @@ serve(async (req) => {
             .eq("platform", "leboncoin").eq("action", "publish").eq("status", "published")
             .gte("published_at", new Date(Date.now() - PUBLICATION_PREUVE_JOURS * 86_400_000).toISOString())
             .order("published_at", { ascending: false }).limit(50);
-          const preuve = publicationAvecLaMemeAdresse(adresseRefusee, pubs ?? []) as { id?: string } | null;
+          // ── (02/11, labrunettedu44) UNE RUE INTROUVABLE N'EST JAMAIS RETAPÉE À L'IDENTIQUE ──
+          // (_shared/lbc-voie-des-reglages.js, prochaineAdresseLbc) Le numéro détaché, puis la rue sans numéro, puis la
+          // commune que ses publications ont fait accepter — chacune contrôlée AVANT tout retrait (5 min, rien n'a été
+          // touché chez Leboncoin, seule une recherche d'adresse). Sinon, la pause « Vérifie tes Réglages » vraie.
+          const pfBaseEchelle = { ...((pfIn ?? (jAd?.platform_fields ?? {})) as Record<string, unknown>) };
+          const loEchelle = pfBaseEchelle["localisation_origine"] as Record<string, unknown> | undefined;
+          const communeEchelle = loEchelle && typeof loEchelle === "object" ? `${String(loEchelle["ville"] ?? "")} ${String(loEchelle["code_postal"] ?? "")}` : "";
+          const communeAcceptee = Boolean(publicationAvecLaMemeAdresse(communeEchelle, pubs ?? []));
+          const ech = prochaineAdresseLbc(loEchelle ?? null, adresseRefusee, { communeAcceptee }) as
+            { action: string; voie?: string; commune?: string; lo?: Record<string, unknown>; essais?: string[] };
+          const preuve = ech.action === "aucune" ? publicationAvecLaMemeAdresse(adresseRefusee, pubs ?? []) as { id?: string } | null : null;
+          if (ech.action === "variante" || ech.action === "commune") {
+            pfBaseEchelle["localisation_origine"] = ech.lo;
+            pfBaseEchelle["adresse_essais_lbc"] = { le: new Date().toISOString(), refusee: adresseRefusee, suivante: ech.voie ?? ech.commune, par: ech.action };
+            delete pfBaseEchelle["processing_since"];
+            delete pfBaseEchelle["needs_user_source"];
+            for (const k of ["needsUserAttempts", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfBaseEchelle[k];
+            pfBaseEchelle["next_action_after"] = new Date(Date.now() + 5 * 60_000).toISOString();
+            statutEffectif = "pending";
+            messageEffectif = messageAutreAdresseLbc(adresseRefusee, ech.action === "commune" ? String(ech.commune) : String(ech.voie), ech.action === "commune");
+            raisonRequalif = `adresse Leboncoin introuvable : nouvel essai ${ech.action === "commune" ? `avec la commune « ${ech.commune} »` : `avec « ${ech.voie} »`}`;
+            pfAdresseChezNous = pfBaseEchelle;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif} → pending`);
+            // La réponse de Leboncoin vaut pour l'adresse, pas pour la tâche : les autres republications Leboncoin du
+            // compte qui tapent la MÊME rue, en attente et pas encore retirées, passent à la même écriture (jamais
+            // trois contrôles par tâche). Compare-and-swap sur le statut et la rue ; illisible → chacune la trouvera.
+            const voieRefusee = String(loEchelle?.["voie"] ?? "").trim();
+            if (voieRefusee) {
+              try {
+                const { data: soeurs } = await userClient.from("cross_post_jobs").select("id, platform_fields")
+                  .eq("platform", "leboncoin").eq("action", "republish").eq("status", "pending").neq("id", jobId)
+                  .eq("platform_fields->localisation_origine->>voie", voieRefusee).limit(200);
+                let suivies = 0;
+                for (const s of (soeurs ?? []) as Array<{ id: string; platform_fields: Record<string, unknown> | null }>) {
+                  const pfS = { ...(s.platform_fields ?? {}) };
+                  if (pfS["republish_step"] === "deleted" || pfS["deleted_at"] || pfS["deleted_at_serveur"] || pfS["deleted_at_client"]) continue;
+                  const loS = pfS["localisation_origine"] as Record<string, unknown> | undefined;
+                  const dS = prochaineAdresseLbc(loS ?? null, adresseRefusee, { communeAcceptee }) as { action: string; lo?: Record<string, unknown> };
+                  if (dS.action !== ech.action || !dS.lo) continue;
+                  pfS["localisation_origine"] = dS.lo;
+                  pfS["adresse_essais_lbc"] = { ...(pfBaseEchelle["adresse_essais_lbc"] as Record<string, unknown>), suivie_de: jobId };
+                  const { data: majS } = await userClient.from("cross_post_jobs").update({ platform_fields: pfS })
+                    .eq("id", s.id).eq("status", "pending").eq("platform_fields->localisation_origine->>voie", voieRefusee).select("id");
+                  if ((majS ?? []).length) suivies++;
+                }
+                if (suivies) console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${suivies} autre(s) republication(s) Leboncoin passée(s) à la même écriture`);
+              } catch (_e) { /* chacune trouvera seule : jamais un point de panne */ }
+            }
+          } else if (!preuve && (ech.essais ?? []).length > 1) {
+            messageEffectif = messageRueIntrouvableLbc(adresseRefusee, ech.essais);
+          }
           if (preuve) {
             const pfBaseAd = { ...((pfIn ?? (jAd?.platform_fields ?? {})) as Record<string, unknown>) };
             const prec = (pfBaseAd["adresse_chez_nous"] ?? {}) as Record<string, unknown>;
@@ -5512,4 +5562,4 @@ import { defautFillsell, messageDefautFillsell } from "../_shared/defaut-fillsel
 import { pauseRayonMoteur } from "../_shared/rayon-moteur-attendu.js";
 import { navigateurDeLaRequete, nomCourtSur, nommerLeNavigateur } from "../_shared/navigateur-poste.js";
 import { CHEMIN_BLOCAGE_LBC, signeBlocageLbc, blocagePose, clesARetirerAuBlocage } from "../_shared/blocage-leboncoin.js";
-import { adresseRefuseeAvantRetrait, publicationAvecLaMemeAdresse, messageAdresseChezNous, PUBLICATION_PREUVE_JOURS } from "../_shared/lbc-voie-des-reglages.js";
+import { adresseRefuseeAvantRetrait, publicationAvecLaMemeAdresse, messageAdresseChezNous, PUBLICATION_PREUVE_JOURS, prochaineAdresseLbc, messageAutreAdresseLbc, messageRueIntrouvableLbc } from "../_shared/lbc-voie-des-reglages.js";

@@ -177,7 +177,9 @@ t(decisionAdresseRepublicationLbc({ ...jobDoriane, platform_fields: { localisati
 const msgExt = "Republication Leboncoin mise en pause AVANT tout retrait : Leboncoin ne propose aucune adresse pour « 2 rue arsene soulages 12110 Viviez ». Ton annonce est TOUJOURS en ligne, rien n'a été touché. Vérifie l'« Adresse de remise Leboncoin » dans tes Réglages (numéro, rue, code postal, ville), puis relance la republication.";
 t(adresseRefuseeAvantRetrait(msgExt) === "2 rue arsene soulages 12110 Viviez", "l'adresse refusée lue dans le message de l'extension");
 const pubs = [{ id: "b80ce26b", adresse: "2 rue arsene soulages 12110 viviez", warnings: warnPub }];
-t(publicationAvecLaMemeAdresse("2 rue arsene soulages 12110 Viviez", pubs)?.id === "b80ce26b", "la même adresse vient de passer en publication");
+// (02/11, labrunettedu44) Leboncoin a refusé cette RUE (repli sur la commune) : il ne l'a pas « acceptée ». Elle suit
+// désormais l'échelle des écritures puis la commune prouvée (prochaineAdresseLbc, selftest lbc-rue-introuvable-0211).
+t(publicationAvecLaMemeAdresse("2 rue arsene soulages 12110 Viviez", pubs) === null, "la rue refusée (repli) n'est jamais « une adresse acceptée »");
 t(publicationAvecLaMemeAdresse("Viviez 12110", pubs)?.id === "b80ce26b", "la commune où la publication s'est posée compte aussi");
 t(publicationAvecLaMemeAdresse("8 rue haute 75001 Paris", pubs) === null, "une autre adresse : le message de l'extension reste");
 t(!/R[ée]glages/.test(messageAdresseChezNous()) && /chez nous/.test(messageAdresseChezNous()) && /nouvel essai automatique/.test(messageAdresseChezNous()), "jamais « tes Réglages » : c'est chez nous");

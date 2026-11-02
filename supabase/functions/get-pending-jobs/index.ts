@@ -235,7 +235,7 @@ import { cheminLisible, cleFourche } from "../_shared/opla-resolution.ts";
 import { completerJobOpla, type OplaMem } from "../_shared/opla-completion.ts";
 // Une plateforme qui fige ne confisque plus le poste (25/09) — module JS sans
 // import, le même qu'exécute scripts/rotation-figes-selftest.mjs.
-import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rotation-figes.js";
+import { gelsParPlateforme, rotationFiges, gelSansConstat } from "../_shared/rotation-figes.js";
 // La tranche « Poids du colis » d'une annonce Leboncoin relue depuis ses grammes (25/09).
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
@@ -9771,13 +9771,25 @@ serve(async (req) => {
             .select("id");
           if ((majF ?? []).length) jf.platform_fields = pfF;
         }
-        const figees = plateformesFigees([...(figesReprise ?? []), ...(figesCanal ?? [])]);
-        if (figees.size) {
-          const { garde, retenus } = rotationFiges(out, figees);
+        const preuvesGel = [...(figesReprise ?? []), ...(figesCanal ?? [])];
+        let gels = gelsParPlateforme(preuvesGel);
+        // (02/11, gjehly) Une tâche de la plateforme traitée par un poste et publiée APRÈS le gel lève le gel
+        // (_shared/rotation-figes.js). Une lecture, seulement quand une plateforme est figée. Illisible → gel gardé.
+        if (gels.size) {
+          const depuisGel = new Date(Math.min(...gels.values())).toISOString();
+          const { data: reussites, error: eReussites } = await userClient.from("cross_post_jobs")
+            .select("platform, published_at, processing_since:platform_fields->>processing_since")
+            .eq("user_id", user.id).in("platform", [...gels.keys()]).in("status", ["published", "sold"])
+            .gt("published_at", depuisGel).not("platform_fields->>processing_since", "is", null)
+            .limit(50);
+          if (!eReussites && (reussites ?? []).length) gels = gelsParPlateforme(preuvesGel, Date.now(), reussites ?? []);
+        }
+        if (gels.size) {
+          const { garde, retenus, essais } = rotationFiges(out, gels);
           if (retenus.length) {
             out = garde;
             heldFiges = retenus.length;
-            plateformesFigeesLues = [...figees];
+            plateformesFigeesLues = [...gels.keys()].map((p) => essais.some((e) => String(e.platform) === p) ? `${p} (une servie à l'essai)` : p);
           }
         }
       } catch (_e) {

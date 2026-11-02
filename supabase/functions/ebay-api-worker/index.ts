@@ -36,7 +36,7 @@ import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { orchestrateSale } from "../_shared/sale-orchestration.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
-import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
+import { estSupportNonLivre, SUPPORT_NON_LIVRE_RE } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
@@ -1004,6 +1004,15 @@ async function scannerLensSiNecessaire(admin: SupabaseClient, job: Job, pf: Plat
 // règle « famille souveraine pour les LIVRES seulement » de l'app
 // (resolveArticleIcon, cas Delavier), portée au serveur.
 const LIVRES_RE = /^livres/i;
+// (02/11, sebastien64310 — « Cassette VHS Léon (1994) », app en « DVD, cinéma > Cassettes vidéo ») « livres_medias »,
+// c'est livres ET médias : un rayon MÉDIA d'eBay (DVD, cinéma ; Films, DVD ; Musique, CD, vinyles) est dans la famille
+// quand le TITRE nomme un support (vhs, dvd, cd, vinyle…). La garde exigeait « Livres » : la critique de presse de la
+// jaquette (« alterne roman noir et romance ») désarmait le support (« roman »), et faute de rayon Livres chez eBay la
+// cassette partait en « aucune catégorie sûre ». Un livre sans support nommé au titre reste gardé comme avant.
+const MEDIAS_RE = /^(DVD, cin[ée]ma|Films, DVD|Musique, CD, vinyles)/i;
+function rayonLivresOuMedia(racine: string, titre: string): boolean {
+  return LIVRES_RE.test(racine) || (MEDIAS_RE.test(racine) && SUPPORT_NON_LIVRE_RE.test(String(titre ?? "")));
+}
 // (24/10, décision 6 de Nico) Un vêtement traditionnel ne part jamais en « Costumes » : la règle de l'app, jouée ici
 // avant toute suggestion d'eBay, pour toute résolution de rayon (_shared/ebay-rayon-traditionnel.js).
 async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "title">, pf: PlatformFields, famille: string | null = null): Promise<Categorie> {
@@ -1293,7 +1302,7 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     // Garde famille livres (lot 1) : la fiche Lens dit « livres_medias » et le
     // mapping de l'app n'est pas dans Livres → needs_user à choix, comme le
     // conflit v2. Les suggestions du rayon Livres passent en tête de la liste.
-    if (famille === "livres_medias" && !LIVRES_RE.test(String(cheminMappe[0] ?? ""))) {
+    if (famille === "livres_medias" && !rayonLivresOuMedia(String(cheminMappe[0] ?? ""), titre)) {
       const livres = suggestions.filter((x) => LIVRES_RE.test(String(x.chemin[0] ?? "")));
       const autres = suggestions.filter((x) => !LIVRES_RE.test(String(x.chemin[0] ?? "")));
       if (!(pf as Record<string, unknown>).ebayCategorieAttente) {
@@ -1351,7 +1360,7 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
   if (top) {
     // Sans mapping, famille livres : la première suggestion du rayon Livres,
     // sinon needs_user — jamais un livre publié dans un autre rayon.
-    if (famille === "livres_medias" && !LIVRES_RE.test(String(top.chemin[0] ?? ""))) {
+    if (famille === "livres_medias" && !rayonLivresOuMedia(String(top.chemin[0] ?? ""), titre)) {
       const livre = suggestions.find((x) => LIVRES_RE.test(String(x.chemin[0] ?? "")));
       if (livre) return { id: livre.id, chemin: livre.chemin, source: "suggestion_livres", detail: "famille Lens livres_medias : suggestion eBay du rayon Livres retenue", suggestions: resume };
       return { choix: suggestions.slice(0, 5).map((s) => ({ id: s.id, chemin: s.chemin.join(" > ") })), motif: "l'analyse photo classe cet article en Livres et médias, aucune suggestion eBay dans ce rayon", suggestions: resume };

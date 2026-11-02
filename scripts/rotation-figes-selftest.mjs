@@ -6,7 +6,7 @@
 //
 //   node scripts/rotation-figes-selftest.mjs
 
-import { horodatageFige, plateformesFigees, rotationFiges, gelSansConstat, FIGE_FENETRE_MS } from "../supabase/functions/_shared/rotation-figes.js";
+import { horodatageFige, plateformesFigees, gelsParPlateforme, rotationFiges, gelSansConstat, FIGE_FENETRE_MS } from "../supabase/functions/_shared/rotation-figes.js";
 
 let ko = 0;
 const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else console.log(`  ✓ ${quoi}`); };
@@ -74,6 +74,52 @@ console.log("5. Le constat daté fait foi (le début du traitement date d'une he
   const t = Date.parse("2026-09-25T15:00:00.000Z");
   ok(plateformesFigees([constate], t).has("beebs"), "Beebs reste figé 3 h après le constat (et non 3 h après le début du traitement)");
   ok(gelSansConstat(beebsAe28) === false && gelSansConstat(vintedCc78) === false, "un job sans gel n'est jamais daté");
+}
+
+console.log("6. (02/11, gjehly) Jamais affamée sur un poste actif : un essai par poll, une réussite lève le gel");
+{
+  // La file réelle du 02/11 : un Vinted figé à 13:00:57 (content script muet → canal coupé), 77 Vinted et 58
+  // Leboncoin en file ; le poste sert un Leboncoin toutes les 2 min et ne repasse qu'au bout de son lot.
+  const gel = "2026-11-02T12:00:57.674Z";
+  const fige = { id: "3bd3cc17", platform: "vinted", action: "publish", status: "pending",
+    error: "La publication a été interrompue : la page de Vinted ne finissait pas de se charger sur ton ordinateur.",
+    platform_fields: { pas_de_rouge: { at: gel, motif: "canal_coupe", verdict: "reprise" }, next_action_after: "2026-11-02T12:05:57.628Z" } };
+  const vinted = [fige, ...Array.from({ length: 76 }, (_, i) => ({ id: `v${i}`, platform: "vinted", action: "publish", status: "pending", platform_fields: {} }))];
+  const lbc = Array.from({ length: 58 }, (_, i) => ({ id: `l${i}`, platform: "leboncoin", action: "publish", status: "pending", platform_fields: {} }));
+  const file = [...lbc.slice(0, 1), ...vinted, ...lbc.slice(1)];
+  const t0 = Date.parse(gel);
+
+  const avant = gelsParPlateforme([fige], t0 + 5 * 60_000);
+  ok(avant.get("vinted") === t0, "le dernier gel de Vinted est daté (Map plateforme → instant)");
+  const r5 = rotationFiges(file, avant, t0 + 5 * 60_000);
+  ok(r5.retenus.length === 77 && r5.essais.length === 0, "5 min après le gel : Vinted passe après les autres (repos)");
+
+  const t = t0 + 98 * 60_000; // le poll réel de 14:39
+  const r = rotationFiges(file, gelsParPlateforme([fige], t), t);
+  ok(r.essais.length === 1 && r.essais[0].id === "3bd3cc17", "1 h 38 après : UNE tâche Vinted servie à l'essai (la première de la file)");
+  ok(r.retenus.length === 76 && r.garde.filter((j) => j.platform === "leboncoin").length === 58, "les 76 autres attendent, les 58 Leboncoin partent");
+  ok(r.garde.filter((j) => j.platform === "vinted").length === 1, "jamais plus d'une tâche de la plateforme figée par poll");
+
+  const essaiReussi = { platform: "vinted", processing_since: "2026-11-02T13:40:00.000Z", published_at: "2026-11-02T13:42:00.000Z" };
+  const leve = gelsParPlateforme([fige], t + 10 * 60_000, [essaiReussi]);
+  ok(!leve.has("vinted"), "l'essai traité par le poste et publié après le gel lève le gel");
+  ok(rotationFiges(file, leve, t + 10 * 60_000).retenus.length === 0, "au poll suivant, toute la file Vinted reprend son rang");
+  const importe = { platform: "vinted", processing_since: null, published_at: "2026-11-02T13:42:00.000Z" };
+  ok(gelsParPlateforme([fige], t, [importe]).has("vinted"), "une annonce importée (jamais traitée par un poste) ne lève pas le gel");
+  const avantGel = { platform: "vinted", processing_since: "2026-11-02T11:00:00.000Z", published_at: "2026-11-02T11:02:00.000Z" };
+  ok(gelsParPlateforme([fige], t, [avantGel]).has("vinted"), "une réussite d'AVANT le gel ne le lève pas");
+  const autrePf = { platform: "leboncoin", processing_since: "2026-11-02T13:40:00.000Z", published_at: "2026-11-02T13:42:00.000Z" };
+  ok(gelsParPlateforme([fige], t, [autrePf]).has("vinted"), "une réussite d'une AUTRE plateforme ne lève pas le gel");
+
+  // Un nouveau gel (l'essai fige à son tour) remet le repos à zéro.
+  const regel = { ...fige, id: "v0", platform_fields: { pas_de_rouge: { at: new Date(t + 4 * 60_000).toISOString(), motif: "canal_coupe" } } };
+  const rr = rotationFiges(file, gelsParPlateforme([fige, regel], t + 6 * 60_000), t + 6 * 60_000);
+  ok(rr.essais.length === 0 && rr.retenus.length === 77, "l'essai a figé à son tour : repos de nouveau, rien de servi pendant 10 min");
+
+  // Ancienne forme (Set) : comportement d'avant, à l'identique.
+  const ancien = rotationFiges(file, new Set(["vinted"]));
+  ok(ancien.retenus.length === 77 && ancien.essais.length === 0, "appel avec un Set : comportement d'avant inchangé");
+  ok(plateformesFigees([fige], t).has("vinted") && !plateformesFigees([fige], t, [essaiReussi]).has("vinted"), "plateformesFigees suit la même règle");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ tout passe");

@@ -253,6 +253,8 @@
     "selftest:releve-ebay-compte-api": "node scripts/releve-ebay-compte-api-selftest.mjs",
     "selftest:retrait-ebay-par-numero": "node scripts/retrait-ebay-par-numero-selftest.mjs",
     "selftest:lbc-voie-des-reglages": "node scripts/lbc-voie-des-reglages-selftest.mjs",
+    "selftest:lbc-rue-introuvable-0211": "node scripts/lbc-rue-introuvable-0211-selftest.mjs",
+    "selftest:ebay-rayon-media-0211": "node scripts/ebay-rayon-media-0211-selftest.mjs",
     "selftest:modifier-en-lot": "node --import ./scripts/loader-ext.mjs scripts/modifier-en-lot-selftest.mjs",
     "selftest:livraison-poids": "node --import ./scripts/loader-ext.mjs scripts/livraison-poids-selftest.mjs",
     "selftest:lot-poids-leboncoin": "node --import ./scripts/loader-ext.mjs scripts/lot-poids-leboncoin-selftest.mjs",
