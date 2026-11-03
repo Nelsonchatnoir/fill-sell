@@ -53,14 +53,22 @@ function LigneChoix({ lang, a, coche, onBasculer, separateur }) {
  *   p.max — plafond de sélection (null = aucun)
  *   p.bouton(n) → libellé ; p.onConfirmer(ids)
  *   p.apres — élément sous la liste (ex. la republication automatique)
+ *   p.enTete — élément entre le titre et la liste (ex. le choix de la plateforme, 03/11)
+ *   p.cleSelection — quand elle change (autre plateforme choisie), la sélection repart de p.initiale
  */
 export default function EcranSelection({
   lang = 'fr', titre, grandTitre, sousTitre, articles = [], initiale = null, max = null,
-  bouton, onConfirmer, note = null, apres = null, vide = null, onFermer, actif = true,
+  bouton, onConfirmer, note = null, apres = null, vide = null, onFermer, actif = true, enTete = null, cleSelection = null,
 }) {
   const fr = lang !== 'en';
   const [sel, setSel] = useState(() => new Set(initiale ?? articles.slice(0, max ?? articles.length).map((a) => a.id)));
   const [tout, setTout] = useState(false);
+  // (03/11) Une autre plateforme choisie : la sélection repart de la règle d'ouverture (tout coché, au plafond près).
+  const [cleVue, setCleVue] = useState(cleSelection);
+  if (cleVue !== cleSelection) {
+    setCleVue(cleSelection);
+    setSel(new Set(initiale ?? articles.slice(0, max ?? articles.length).map((a) => a.id)));
+  }
   const n = articles.filter((a) => sel.has(a.id)).length;
   const auPlafond = max != null && n >= max;
   const basculer = (id) => setSel((prev) => {
@@ -89,6 +97,8 @@ export default function EcranSelection({
         <div style={{ fontSize: 22, lineHeight: '28px', fontWeight: 700, letterSpacing: '-0.02em', color: S.ink }}>{grandTitre}</div>
         {sousTitre && <div style={{ marginTop: 8, fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>{sousTitre}</div>}
       </div>
+
+      {enTete && <div style={{ marginTop: 16 }}>{enTete}</div>}
 
       {articles.length > 0 ? (
         <>

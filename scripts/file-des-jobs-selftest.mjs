@@ -11,6 +11,7 @@
 //     quand le job n'a pas commencé, s'immobilise quand l'ordinateur est absent.
 import { lireFile, situationJob, phraseCompteurs, libelleAction, comparerDepart, depuisQuand, sansEstimation } from "../src/utils/fileDesJobs.js";
 import { pisteJob, etapesJob } from "../src/utils/barresJobs.js";
+import fs from "node:fs";
 import { plagesDe, valeurDansPlage } from "../src/utils/progression.js";
 
 let echecs = 0;
@@ -192,6 +193,21 @@ console.log("6. LA BARRE D'UN JOB");
   ok(etapesJob({ ...enFile, platform: "ebay", voie: "api" }, "fr", { cloud: true })[0].texte === "Dans la file de nos serveurs…", "eBay par l'API : inchangé");
   ok(situationJob({ ...enFile, status: "processing" }, { cloud: true }).raison === "FillSell Cloud la publie…", "en cours : « FillSell Cloud la publie… »");
   ok(situationJob({ ...enFile }, { cloud: true, extensionAMettreAJour: true }).motif !== "mise_a_jour", "une tâche du Cloud ne dépend jamais de la version de l'extension du PC");
+}
+
+{
+  console.log("\n— (03/11) Retrait fait sur une annonce que la plateforme avait déjà retirée : ses mots, tels quels —");
+  const MOTIF = "Cette annonce a été supprimée, car elle enfreint notre Règlement sur les contrefaçons.";
+  const r = { id: "r-0311", platform: "ebay", action: "delete", status: "deleted", created_at: "2026-11-02T22:57:00Z",
+    platform_fields: { deja_absente: { le: "2026-11-03T12:00:00Z", plateforme: "ebay", numero: "400000000001", preuve: { source: "getitem_refus_et_vitrine" }, vente: null, motif_plateforme: MOTIF } } };
+  const pr = pisteJob(r, { lang: "fr" });
+  ok(pr.etat === "termine" && pr.phraseFin === `Déjà retirée par eBay : « ${MOTIF} » Plus rien à retirer.`, "cas du 03/11 : « Déjà retirée par eBay : « motif » »", pr.phraseFin);
+  ok(pisteJob(r, { lang: "en" }).phraseFin.startsWith("Already removed by eBay: “"), "anglais");
+  const sans = { ...r, platform_fields: { deja_absente: { ...r.platform_fields.deja_absente, motif_plateforme: undefined } } };
+  ok(pisteJob(sans, { lang: "fr" }).phraseFin === "Retirée de eBay.", "sans motif de la plateforme : la phrase d'avant");
+  ok(pisteJob({ ...r, status: "pending" }, { lang: "fr" }).phraseFin !== pr.phraseFin, "jamais sur un retrait pas fini");
+  const stock = fs.readFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url), "utf8");
+  ok(stock.includes("motifRetraitParPlateforme((jobsAll ?? [])") && stock.includes("Retirée par ${label} : « ${motif} »"), "fiche du stock : « Retirée par <plateforme> : « motif » »");
 }
 
 console.log("");

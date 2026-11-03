@@ -56,6 +56,54 @@ export function verdictAvantRetraitTrading({ itemId, compteEbay, lecture }) {
   return { geste: "retirer", appel: lecture.type === "Chinese" ? "EndItem" : "EndFixedPriceItem" };
 }
 
+// ── (03/11) UNE ANNONCE QU'eBAY A DÉJÀ SUPPRIMÉE : LE RETRAIT EST FAIT ───────────────────────────
+// Un article vendu sur Vinted (commande du 17/10, vue par FillSell le 02/11 23:56), retrait eBay armé à 23:57.
+// eBay avait déjà supprimé l'annonce : GetItem (jeton du vendeur) répond Failure, « Cette annonce a été
+// supprimée, car elle enfreint notre Règlement sur les contrefaçons. », et la vitrine (Browse, jeton applicatif)
+// répond 404 « legacy item Id was not found » (11003). verdictAvantRetraitTrading lisait « illisible » : retrait reporté
+// à chaque passage, en boucle, depuis le 02/11 23:57.
+// LA RÈGLE (Nico, pour toutes les plateformes) : quand la plateforme confirme que l'annonce n'existe plus (supprimée,
+// terminée, retirée par elle), le retrait est TERMINÉ — `deleted`, drapeau deja_absente — avec le motif de la
+// plateforme, tel quel, montré à la personne. Pour eBay, DEUX lectures concordantes, jamais une seule :
+//   1. GetItem du vendeur en échec DÉFINITIF : Ack Failure, une erreur nommée (code + texte), aucune erreur passagère
+//      (jeton, quota, panne eBay) — sinon c'est illisible, comme avant ;
+//   2. la vitrine eBay ne la vend plus : 404 (introuvable), ou terminée (sans vente / vendue). Une vitrine qui la montre
+//      en vente, ou qui ne répond pas (429, 5xx, réseau), ne conclut rien : le retrait reste reporté.
+// ⛔ Jamais sur un titre, jamais sur une seule lecture : une annonce peut-être encore en vente n'est jamais dite retirée.
+/** Erreurs eBay passagères ou de compte : jamais la preuve qu'une annonce n'existe plus. */
+export const CODES_GETITEM_PASSAGERS = new Set(["1", "2", "518", "841", "931", "932", "10007", "16110", "16112", "16114", "16118", "16119", "17470", "21916984", "21917053", "21917062"]);
+
+/** GetItem a-t-il refusé DÉFINITIVEMENT, en le disant ? { code, motif } ou null. */
+export function refusGetItemDefinitif(lecture) {
+  if (!lecture || lecture.ack !== "Failure") return null;
+  const erreurs = (lecture.erreurs ?? []).filter((e) => e && String(e.severite ?? "Error") !== "Warning");
+  if (!erreurs.length) return null;
+  if (erreurs.some((e) => CODES_GETITEM_PASSAGERS.has(String(e.code ?? "")))) return null;
+  const e = erreurs.find((x) => String(x.message ?? "").trim()) ?? null;
+  const motif = String(e?.message ?? "").replace(/\s+/g, " ").trim();
+  if (!e || !motif) return null;
+  return { code: e.code ? String(e.code) : null, motif: motif.slice(0, 300) };
+}
+
+/**
+ * Les deux lectures concordent-elles : GetItem refuse définitivement ET la vitrine ne la vend plus ?
+ * @param {{ lecture: ReturnType<typeof lireItemTrading>|null, vitrine: { verdict: string, motif?: string }|null }} a
+ *   vitrine = l'état lu par Browse (lireEtatAnnonceEbay) : vivante / vendue / terminee_sans_vente /
+ *   enchere_sans_acheteur / indetermine (motif http_404 = introuvable).
+ * @returns {null | { vente: boolean|null, motif: string, code: string|null, vitrine: string }}
+ */
+export function annonceSupprimeeParEbay({ lecture, vitrine }) {
+  const refus = refusGetItemDefinitif(lecture);
+  if (!refus || !vitrine) return null;
+  const v = String(vitrine.verdict ?? "");
+  let lu = null;
+  if (v === "indetermine" && String(vitrine.motif ?? "") === "http_404") lu = "introuvable_404";
+  else if (v === "terminee_sans_vente" || v === "enchere_sans_acheteur") lu = "terminee";
+  else if (v === "vendue") lu = "vendue";
+  if (!lu) return null;
+  return { vente: lu === "vendue" ? true : lu === "terminee" ? false : null, motif: refus.motif, code: refus.code, vitrine: lu };
+}
+
 /** Le verdict APRÈS le geste (relecture) : la preuve, ou rien. */
 export function preuveApresRetraitTrading({ itemId, lecture }) {
   if (!lecture || String(lecture.itemId ?? "") !== String(itemId)) return { prouve: false, motif: "relecture illisible" };
@@ -133,8 +181,14 @@ export function sourcesACloreApresRetraitTrading(publications, retrait, itemId) 
   });
 }
 
-/** La clôture d'une publication retirée (même sens que « Non, je l'ai retirée ») : jamais une vente. */
-export function clotureSourceRetiree(platformFields, { le, retraitId, itemId }) {
+/** (03/11) Le texte de la publication close quand c'est eBay qui avait déjà supprimé l'annonce : jamais « par le vendeur ». */
+export const MSG_SOURCE_SUPPRIMEE_PAR_EBAY = "Annonce supprimée par eBay (pas par le vendeur) — pas une vente";
+
+/** La clôture d'une publication retirée (même sens que « Non, je l'ai retirée ») : jamais une vente.
+ *  parEbay (03/11) : eBay l'avait déjà supprimée — le texte le dit, removed_by_user n'est pas posé, son motif est gardé.
+ * @param {any} platformFields
+ * @param {{ le: string, retraitId: string, itemId: string, parEbay?: { motif?: string|null } | null }} a */
+export function clotureSourceRetiree(platformFields, { le, retraitId, itemId, parEbay = null }) {
   const pf = { ...((platformFields && typeof platformFields === "object") ? platformFields : {}) };
   // La trace d'une lecture hors ligne d'avant le retrait est archivée, pas détruite.
   if (pf.unavailable_pending_since) {
@@ -142,6 +196,10 @@ export function clotureSourceRetiree(platformFields, { le, retraitId, itemId }) 
     pf.unavailable_pending_archived_at = le;
   }
   for (const k of ["unavailable_since", "unavailable_pending_since", "sale_signal", "detected_price", "fin_ebay"]) delete pf[k];
+  if (parEbay) {
+    pf.supprimee_par_ebay = { le, retrait: retraitId, annonce: String(itemId), motif: String(parEbay.motif ?? "").slice(0, 300) || null };
+    return { status: "cancelled", error: MSG_SOURCE_SUPPRIMEE_PAR_EBAY, platform_fields: pf };
+  }
   pf.removed_by_user = true;
   pf.retiree_par_trading = { le, retrait: retraitId, annonce: String(itemId) };
   return { status: "cancelled", error: MSG_SOURCE_RETIREE, platform_fields: pf };

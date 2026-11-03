@@ -134,6 +134,7 @@ import HoteCloud from './cloud/HoteCloud';
 import MeConnecterCloud from './cloud/MeConnecterCloud';
 // (01/11) Le bandeau qui demande la reconnexion quand une connexion Cloud tombe (drapeau cloud_voie du compte).
 import BandeauCloudReconnexion from './cloud/BandeauCloudReconnexion';
+import BandeauLeboncoinPause from './components/BandeauLeboncoinPause';
 import { creerAchatCloud } from './cloud/achatCloud';
 import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
 import { cloudOfferVisible, cloudConnexionVisible, chargerTemoinCloud } from './config/cloudOffer';
@@ -9878,6 +9879,8 @@ export default function App({ loginOnly = false }){
       {user&&cloudConnexionVisible(user.id)&&(
         <BandeauCloudReconnexion userId={user.id} lang={lang} ouvert={meConnecterOuvert} onReconnecter={()=>ouvrirMeConnecter('bandeau')} plateformesFermees={plateformesFermees}/>
       )}
+      {/* (03/11, point 6) Leboncoin en pause sur le compte : le bouton « Leboncoin remarche » promis par le message existe. */}
+      {user&&<BandeauLeboncoinPause userId={user.id} lang={lang}/>}
       {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
       {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id))&&(
         <ConditionsCloudModale onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>

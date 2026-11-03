@@ -66,3 +66,11 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
   la règle du 05/10 (synchros de la personne seulement). Cas : Vinted « 29/10 » (bouton) alors que le cron avait réussi le
   30/10 à 20:05, eBay « 29/10 » alors que l'API avait relevé le 31/10 à 10:10.
 - Même composant sur le site et l'app mobile (BlocSynchro).
+
+## 03/11 — « Remonter mes annonces » plateforme par plateforme (rapport `docs/enquetes/six-points-0311/RAPPORT.md` § 3)
+- Choix de la plateforme (pastilles : celles où une annonce est republiable MAINTENANT, `plateformesRepubliables` ; eBay
+  jamais, décision du 02/11), date de CETTE plateforme sur chaque ligne, tri par dernière publication ou republication
+  (date inconnue à la fin). Une seule source : `datesParPlateforme` (suivi du 31/10) — `src/stock/remonterParPlateforme.js`.
+- Plateforme choisie → la feuille de republication s'ouvre avec cette seule plateforme cochée
+  (`ouvrirFeuilleRepublication(choisis, [plateforme])`, `repubSheet.choix`). La sélection repart à neuf à chaque
+  changement de plateforme ou de tri (`EcranSelection.cleSelection`).

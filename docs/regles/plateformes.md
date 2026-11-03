@@ -686,3 +686,11 @@ Rapport : `docs/enquetes/trois-rouges-0211/RAPPORT.md`.
   Films, DVD ; Musique, CD, vinyles) est dans la famille quand le TITRE nomme un support (vhs, dvd, cd, vinyle…), même si
   la description désarme le support (critique « roman noir »). Un livre sans support nommé au titre reste gardé « Livres ».
   Selftest `ebay-rayon-media-0211`.
+
+
+## 03/11 — Leboncoin en pause : le bouton « Leboncoin remarche » existe (rapport `docs/enquetes/six-points-0311/RAPPORT.md` § 6)
+- Le message de pause (`messageBlocageLbc`) promettait ce bouton depuis le 30/10 ; il n'existait pas. Bandeau
+  `src/components/BandeauLeboncoinPause.jsx` (monté dans App, PC et téléphone), montré seulement quand
+  `platform_settings.leboncoin.blocage_acces` tient (posé avec `depuis`, pas de `leve_le`). Le geste relit la ligne puis
+  pose `essai_demande_le` (`platform_settings_fusionner`) → `etatBlocageLbc` « essai » : une seule action au prochain
+  passage de l'ordinateur. ⛔ Jamais d'écriture sans pause en cours (elle créerait un blocage).

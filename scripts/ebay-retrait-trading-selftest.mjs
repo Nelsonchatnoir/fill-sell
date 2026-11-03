@@ -4,7 +4,8 @@
 // « vintora16 »), annonce 178450879276 (import du relevé), article vendu sur
 // Vinted le 14/10, retrait bloqué « Connexion eBay requise ».
 import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, RETRAIT_ATTENTE_POSTE_MS,
-  sourcesACloreApresRetraitTrading, clotureSourceRetiree, MSG_SOURCE_RETIREE } from "../supabase/functions/_shared/ebay-retrait-trading.js";
+  sourcesACloreApresRetraitTrading, clotureSourceRetiree, MSG_SOURCE_RETIREE, MSG_SOURCE_SUPPRIMEE_PAR_EBAY, refusGetItemDefinitif, annonceSupprimeeParEbay } from "../supabase/functions/_shared/ebay-retrait-trading.js";
+import { dejaAbsente } from "../supabase/functions/_shared/retrait-deja-absent.js";
 import fs from "node:fs";
 
 let ko = 0;
@@ -110,6 +111,40 @@ const brancheVendue = corpsTrading.slice(corpsTrading.indexOf('if (avant.geste =
 ok((corpsTrading.match(/await cloreSourcesRetireesTrading\(admin, job, itemId\);/g) ?? []).length === 2 && !brancheVendue.includes("cloreSourcesRetireesTrading"),
   "worker : close après « déjà terminée » et après la fin prouvée, jamais après « déjà vendue »");
 ok(/\.update\(patch\)\.eq\("id", s\.id\)\.eq\("status", "published"\)\.select\("id"\)/.test(w), "worker : écriture conditionnée au statut « published »");
+
+console.log("\n7. eBAY L'A DÉJÀ SUPPRIMÉE : LE RETRAIT EST FAIT (03/11, retrait en boucle)");
+// Cas du 03/11 (numéro fictif ici) : article vendu sur Vinted. GetItem du vendeur : Failure + « Cette annonce a été
+// supprimée, car elle enfreint notre Règlement sur les contrefaçons. » ; vitrine (Browse) : 404, errorId 11003.
+const refusXml = (code, msg, sev = "Error") => `<GetItemResponse><Ack>Failure</Ack><Errors><ShortMessage>x</ShortMessage><LongMessage>${msg}</LongMessage><ErrorCode>${code}</ErrorCode><SeverityCode>${sev}</SeverityCode></Errors></GetItemResponse>`;
+const MOTIF = "Cette annonce a été supprimée, car elle enfreint notre Règlement sur les contrefaçons.";
+const casReel = lireItemTrading(refusXml("17", MOTIF));
+const v404 = { verdict: "indetermine", motif: "http_404", limite: false };
+ok(verdictAvantRetraitTrading({ itemId: "400000000001", compteEbay: "x", lecture: casReel }).geste === "illisible", "GetItem seul : toujours « illisible » (une lecture ne suffit pas)");
+ok(JSON.stringify(refusGetItemDefinitif(casReel)) === JSON.stringify({ code: "17", motif: MOTIF }), "refus définitif lu : code + mots d'eBay");
+const sup = annonceSupprimeeParEbay({ lecture: casReel, vitrine: v404 });
+ok(sup?.vitrine === "introuvable_404" && sup.vente === null && sup.motif === MOTIF, "cas du 03/11 : GetItem refuse + vitrine 404 → supprimée par eBay, motif tel quel");
+ok(annonceSupprimeeParEbay({ lecture: casReel, vitrine: { verdict: "terminee_sans_vente", fin: "2026-11-01T00:00:00Z" } })?.vente === false, "vitrine « terminée sans vente » → supprimée, pas une vente");
+ok(annonceSupprimeeParEbay({ lecture: casReel, vitrine: { verdict: "vendue", fin: null, vendus: 1, prix: 10 } })?.vente === true, "vitrine « vendue » → la vente est dite (vente: true)");
+ok(annonceSupprimeeParEbay({ lecture: casReel, vitrine: { verdict: "vivante", quantite: { disponible: 1, vendus: 0, exacte: true } } }) === null, "⛔ vitrine qui la montre EN VENTE → jamais dite retirée");
+ok(annonceSupprimeeParEbay({ lecture: casReel, vitrine: { verdict: "indetermine", motif: "http_429", limite: true } }) === null
+  && annonceSupprimeeParEbay({ lecture: casReel, vitrine: { verdict: "indetermine", motif: "reseau:timeout", limite: false } }) === null
+  && annonceSupprimeeParEbay({ lecture: casReel, vitrine: null }) === null, "⛔ vitrine muette (429, réseau, rien) → rien conclu");
+for (const code of ["10007", "518", "931", "932", "21917053", "16110"]) {
+  ok(annonceSupprimeeParEbay({ lecture: lireItemTrading(refusXml(code, "Erreur passagère")), vitrine: v404 }) === null, `⛔ erreur passagère ${code} (panne, quota, jeton) → jamais une suppression`);
+}
+ok(annonceSupprimeeParEbay({ lecture: lireItemTrading(refusXml("17", MOTIF, "Warning")), vitrine: v404 }) === null, "⛔ simple avertissement → rien conclu");
+ok(annonceSupprimeeParEbay({ lecture: lireItemTrading(refusXml("17", "")), vitrine: v404 }) === null, "⛔ refus sans texte → rien conclu (on n'invente pas de motif)");
+ok(annonceSupprimeeParEbay({ lecture: l, vitrine: v404 }) === null && annonceSupprimeeParEbay({ lecture: null, vitrine: v404 }) === null, "⛔ GetItem réussi ou absent → cette règle ne s'applique pas");
+const closEbay = clotureSourceRetiree({ ...pubA.platform_fields }, { le: "2026-11-03T12:00:00.000Z", retraitId: "r-0311", itemId: "400000000001", parEbay: { motif: MOTIF } });
+ok(closEbay.status === "cancelled" && closEbay.error === MSG_SOURCE_SUPPRIMEE_PAR_EBAY && !closEbay.platform_fields.removed_by_user && closEbay.platform_fields.supprimee_par_ebay?.motif === MOTIF,
+  "publication d'origine close « supprimée par eBay (pas par le vendeur) », motif gardé");
+const brancheSup = corpsTrading.slice(corpsTrading.indexOf('if (avant.geste === "illisible" && refusGetItemDefinitif(lectureAvant))'), corpsTrading.indexOf('if (avant.geste === "illisible") {'));
+ok(brancheSup.includes("lireEtatHorsLigneAvantSuite(env, itemId)") && brancheSup.includes("annonceSupprimeeParEbay({ lecture: lectureAvant, vitrine })")
+  && brancheSup.includes('status: "deleted", error: null') && brancheSup.includes("motifPlateforme: supprimee.motif"),
+  "worker : vitrine relue, deleted sans erreur, motif d'eBay posé dans deja_absente");
+ok(brancheSup.includes("if (supprimee.vente !== true) await cloreSourcesRetireesTrading(admin, job, itemId, { motif: supprimee.motif });"), "worker : publication d'origine close, jamais sur une vente");
+const da = dejaAbsente({ plateforme: "ebay", numero: "400000000001", preuve: { source: "t" }, motifPlateforme: `  ${MOTIF}  ` });
+ok(da.motif_plateforme === MOTIF && !("motif_plateforme" in dejaAbsente({ plateforme: "ebay", preuve: { source: "t" } })), "drapeau deja_absente : motif_plateforme seulement quand la plateforme l'a dit");
 
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");
 process.exit(ko ? 1 : 0);

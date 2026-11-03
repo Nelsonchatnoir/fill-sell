@@ -62,7 +62,7 @@ import { useAchatsAnnules, achatsAnnulesAMontrer, lireMasquesAchatsAnnules, masq
 import { messageFileEnPause } from '../../supabase/functions/_shared/file-pause.js';
 import BarreJobCarte from '../components/BarreJobCarte';
 import BarreProgression from '../components/BarreProgression';
-import { articleDeJob, pisteJob, etapesJob } from '../utils/barresJobs';
+import { articleDeJob, pisteJob, etapesJob, motifRetraitParPlateforme } from '../utils/barresJobs';
 // (16/10) Les six mots de l'état d'un job, les mêmes partout.
 import { LIBELLES, attenteAutomatique } from '../../supabase/functions/_shared/etat-job.js';
 // (18/10, lot 3) La raison d'une attente automatique, dans les mots de la file des jobs.
@@ -112,6 +112,8 @@ import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle, lireDatesRelevees } 
 // (31/10, lot H — XEWER) Depuis quand l'annonce est en ligne, plateforme par plateforme : UNE règle de date, celle de
 // l'éligibilité à la republication automatique.
 import { miseEnLigneAffichee, indexerDatesRelevees, datesParPlateforme } from '../../supabase/functions/_shared/mise-en-ligne.js';
+import { listeRemonter, plateformesDuChoix } from '../stock/remonterParPlateforme';
+import ChoixPlateformeRemonter from '../stock/ChoixPlateformeRemonter';
 import DatesEnLigne from '../stock/DatesEnLigne';
 import { ContenuPlusEnLigne } from '../stock/renduVivant';
 import { useFondFige } from '../utils/modale';
@@ -2635,7 +2637,14 @@ export function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClos
                         </span>
                       );
                     })()}
-                    {state === "removed" && <span>{fr ? "Retirée" : "Removed"}</span>}
+                    {state === "removed" && (() => {
+                      // (03/11, règle de Nico) La plateforme l’avait déjà retirée et a dit pourquoi : ses mots, tels quels.
+                      const motif = motifRetraitParPlateforme((jobsAll ?? [])
+                        .filter((j) => j.action === "delete" && j.platform === p && j.status === "deleted")
+                        .sort((a, b) => Date.parse(b.created_at ?? 0) - Date.parse(a.created_at ?? 0))[0]);
+                      if (!motif) return <span>{fr ? "Retirée" : "Removed"}</span>;
+                      return <span style={{ whiteSpace:"normal" }}>{fr ? `Retirée par ${label} : « ${motif} »` : `Removed by ${label}: “${motif}”`}</span>;
+                    })()}
                     {/* Beebs (2026-08-13) : sans lien, l'annonce n'est PAS en
                         ligne — elle est en vérification côté Beebs. Il n'y a
                         rien à retirer, et rien à récupérer tant que Beebs ne
@@ -6618,8 +6627,10 @@ const StockTab = memo(function StockTab({
   const [repubProgress, setRepubProgress] = useState(null); // job republish affiché en détail
   // (repubGratuit est mort le 2026-08-08 : la republication coûte
   // price_republish pour tous les paliers, plus aucun prix conditionné.)
-  function ouvrirFeuilleRepublication(itemsCibles) {
+  // (03/11) choix : les plateformes cochées d'office (« Remonter mes annonces » filtré sur une plateforme).
+  function ouvrirFeuilleRepublication(itemsCibles, choix = null) {
     setRepubSheet({
+      choix: Array.isArray(choix) && choix.length ? choix : null,
       items: itemsCibles.map(it => ({
         item: it,
         prixActuel: prixAnnonces[it.vinted_item_id] ?? (Number(it.sell) || null),
@@ -7675,6 +7686,9 @@ const StockTab = memo(function StockTab({
   // pré-cochée sur les articles filtrés et ne vise que X.
   const [publierContexte, setPublierContexte] = useState(null);
   const [gesteOuvert, setGesteOuvert] = useState(null);
+  // (03/11, demande d'un vendeur Pro) « Remonter mes annonces » : la plateforme affichée (null = toutes) et le tri par dernière mise en ligne.
+  const [remonterPf, setRemonterPf] = useState(null);
+  const [remonterTri, setRemonterTri] = useState('anciennes');
   // (25/10) Une demande venue de dehors (appui sur la notification « Vente annulée ») ouvre SON écran, une fois : elle
   // est prise au rendu (pas d'effet qui écrit l'état), puis rendue à App, qui l'efface (un retour au Stock ne la rejoue pas).
   const [demandePrise, setDemandePrise] = useState(null);
@@ -10243,6 +10257,16 @@ const StockTab = memo(function StockTab({
         infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: fr ? `Pas encore visible sur ${nom} : FillSell attend de la voir en ligne, rien n'est vendu.` : `Not visible on ${nom} yet: FillSell is waiting to see it online, nothing is sold.` });
       }
       if ((p === "beebs" || p === "leboncoin") && enVerificationPlateforme(d.latestPubByPlatform?.[p])) {
+        // (03/11, point 5) Beebs l'a déjà SORTIE de sa vérification sans la mettre en ligne (pas_encore_visible.sortie_constatee_le,
+        // _shared/beebs-sortie-verification.js) : jamais « Beebs vérifie » — le vrai, daté, sans rien conclure.
+        const sortieBeebs = p === 'beebs' ? Date.parse(d.latestPubByPlatform?.[p]?.platform_fields?.pas_encore_visible?.sortie_constatee_le ?? '') : NaN;
+        if (Number.isFinite(sortieBeebs)) {
+          const le = new Date(sortieBeebs).toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' });
+          infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: fr
+            ? `Beebs a sorti ton annonce de sa vérification le ${le} sans la mettre en ligne pour l'instant ; FillSell attend encore de la voir (jusqu'à 7 jours), rien n'est vendu.`
+            : `Beebs took your listing out of review on ${le} without putting it online so far; FillSell is still waiting to see it (up to 7 days), nothing is sold.` });
+          continue;
+        }
         infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: p === 'beebs' ? (fr ? "Beebs vérifie ton annonce avant de la mettre en ligne." : 'Beebs is reviewing your listing before putting it online.') : (fr ? "Leboncoin vérifie ton annonce : ne la republie pas, tu créerais un doublon." : "Leboncoin is reviewing your listing: don't repost it, you'd create a duplicate.") });
       }
     }
@@ -12192,12 +12216,18 @@ const StockTab = memo(function StockTab({
         );
       })()}
       {gesteOuvert==='remonter'&&(()=>{
-        const articles=aRemonterTout.map(i=>{
+        // (03/11, demande d'un vendeur Pro) Plateforme par plateforme : la date du suivi du Stock (datesParPlateforme), le choix de la
+        // plateforme et le tri par dernière publication ou republication (stock/remonterParPlateforme.js).
+        const base=aRemonterTout.map(i=>{
           const e=indexEtatTout.get(String(i.id));
-          const jours=ancienneteJours(i,jobsByInventaire[i.id],e?.enLigne??[],Date.now(),datesRelevees);
+          const jobsI=jobsByInventaire[i.id]||[];
+          const jours=ancienneteJours(i,jobsI,e?.enLigne??[],Date.now(),datesRelevees);
           return {id:i.id,titre:i.title,photo:premierePhoto(i.photos),logos:e?.enLigne??[],jours,
-            ligne2:jours!=null?(lang==='fr'?`en ligne depuis ${jours} j`:`live for ${jours} d`):null};
-        }).sort((a,b)=>(b.jours??0)-(a.jours??0));
+            lignesDates:datesParPlateforme({item:i,jobs:jobsI,enLigne:e?.enLigne??[],plateformes:[],datesRelevees}),
+            republiables:plateformesRepubliables(i,jobsI,{multiOuverte,plateformesOuvertes,plateformesFermees})};
+        });
+        const choixPf=plateformesDuChoix(base);
+        const {plateforme:pfVue,lignes:articles}=listeRemonter(base,{plateforme:remonterPf,tri:remonterTri,lang});
         const n=articles.length;
         // (15/10, P17) Gratuit : les plus anciennes d'abord, jamais plus que le mois n'en offre encore.
         const offertsRep=offertGratuit.repub;
@@ -12205,6 +12235,10 @@ const StockTab = memo(function StockTab({
         return(
           <EcranSelection lang={lang}
             initiale={coupeRep?new Set(articles.slice(0,offertsRep).map(a=>a.id)):null}
+            cleSelection={`${pfVue??'toutes'}|${remonterTri}`}
+            enTete={base.length&&choixPf.length?(
+              <ChoixPlateformeRemonter lang={lang} choix={choixPf} total={base.length} plateforme={pfVue} onPlateforme={setRemonterPf} tri={remonterTri} onTri={setRemonterTri}/>
+            ):null}
             titre={lang==='fr'?'Remonter mes annonces':'Bump my listings'}
             grandTitre={n?(lang==='fr'?`${nombreFr(n,lang)} annonce${n>1?'s perdent':' perd'} en visibilité`:`${n} listing${n>1?'s':''} losing visibility`):(lang==='fr'?'Rien ne perd en visibilité':'Nothing is losing visibility')}
             sousTitre={n?(coupeRep
@@ -12240,7 +12274,8 @@ const StockTab = memo(function StockTab({
               setGesteOuvert(null);
               // LA feuille de republication existante : plateformes, prix,
               // avertissements, puis lancerRepublicationLot — une seule logique.
-              ouvrirFeuilleRepublication(choisis);
+              // (03/11) Filtrée sur une plateforme : seule celle-là est cochée d'office.
+              ouvrirFeuilleRepublication(choisis,pfVue?[pfVue]:null);
             }}
             onFermer={()=>setGesteOuvert(null)}/>
         );
@@ -12398,7 +12433,7 @@ const StockTab = memo(function StockTab({
           boutiquesVinted={boutiquesVinted}
           boutiqueConnectee={boutiqueConnectee}
           multiOuverte={multiOuverte}
-          choixInitial={choixPlateformesRepub}
+          choixInitial={repubSheet.choix ?? choixPlateformesRepub}
           oplaAcces={oplaAccesRepub}
           oplaVerdict={oplaVerdictRepub}
           repubMois={offertGratuit.repub!=null?{restantes:offertGratuit.repub,remise:offertGratuit.remise}:null}

@@ -65,7 +65,9 @@ import { CLES_ARTICLE_ECRITES, CLES_ARTICLE_LUES, CLES_OFFRE_ECRITES, CLES_OFFRE
 import { completerAspectsIA, estAspectDeTaille, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { appelTrading } from "../_shared/ebay-trading-releve.ts";
-import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, sourcesACloreApresRetraitTrading, clotureSourceRetiree } from "../_shared/ebay-retrait-trading.js";
+import { motifAnnonceDisparueEbay, raisonFinDepuisXml, relanceDepuisXml } from "../_shared/ebay-disparue-motif.js";
+import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, sourcesACloreApresRetraitTrading, clotureSourceRetiree,
+  refusGetItemDefinitif, annonceSupprimeeParEbay } from "../_shared/ebay-retrait-trading.js";
 
 const HANDLER_BUILD = "ebay-api-worker 3-lens";
 const LOT_MAX = 10;
@@ -2086,6 +2088,28 @@ async function retirerParTrading(admin: SupabaseClient, env: EbayEnv, token: str
   };
   const lectureAvant = await lire();
   const avant = verdictAvantRetraitTrading({ itemId, compteEbay: relie, lecture: lectureAvant });
+  // (03/11) GetItem refuse définitivement en le disant : la vitrine eBay est relue. Les deux concordent
+  // (_shared/ebay-retrait-trading.js, annonceSupprimeeParEbay) → eBay a déjà retiré l'annonce : retrait FAIT, motif d'eBay
+  // gardé tel quel et montré dans l'app. Sinon : reporté, comme avant.
+  if (avant.geste === "illisible" && refusGetItemDefinitif(lectureAvant)) {
+    const vitrine = await lireEtatHorsLigneAvantSuite(env, itemId);
+    const supprimee = annonceSupprimeeParEbay({ lecture: lectureAvant, vitrine });
+    if (supprimee) {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        deja_absente: dejaAbsente({ plateforme: "ebay", numero: itemId, vente: supprimee.vente, posePar: "ebay-api-worker", motifPlateforme: supprimee.motif,
+          preuve: { source: "getitem_refus_et_vitrine", code_ebay: supprimee.code, motif_ebay: supprimee.motif, vitrine: supprimee.vitrine } }),
+        retrait_par: supprimee.vente === true ? RETRAIT_PAR_VENDUE : RETRAIT_PAR_HORS_LIGNE,
+        delete_confirmed_by: "api_ebay",
+      };
+      await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: itemId },
+        { etape: "retire", quoi: "annonce_supprimee_par_ebay", source: "trading_getitem+browse", code_ebay: supprimee.code, motif: supprimee.motif, vitrine: supprimee.vitrine, annonce: itemId },
+        { listing_id: itemId, withdrawn_at: new Date().toISOString(), voie_retrait: "deja_supprimee_par_ebay" });
+      if (supprimee.vente !== true) await cloreSourcesRetireesTrading(admin, job, itemId, { motif: supprimee.motif });
+      console.log(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : annonce ${itemId} déjà supprimée par eBay (${supprimee.code ?? "?"} « ${supprimee.motif.slice(0, 80)} », vitrine ${supprimee.vitrine})`);
+      return { job: job.id, issue: "deleted", motif: "annonce_supprimee_par_ebay", annonce: itemId };
+    }
+  }
   if (avant.geste === "illisible") {
     await marquer(admin, job, { status: "pending", error: "Retrait eBay reporté : l'annonce n'a pas pu être relue chez eBay. Aucune annonce n'a été touchée." },
       { etape: "trading_getitem", quoi: "illisible", motif: avant.motif ?? null, annonce: itemId });
@@ -2148,7 +2172,7 @@ async function retirerParTrading(admin: SupabaseClient, env: EbayEnv, token: str
 // « Plus en ligne — Vendue ? » sur un article en stock. Numéro exact, fiche du
 // retrait (_shared/ebay-retrait-trading.js) ; écriture conditionnée au statut
 // « published ». Jamais bloquant : le retrait est fait.
-async function cloreSourcesRetireesTrading(admin: SupabaseClient, job: Job, itemId: string): Promise<number> {
+async function cloreSourcesRetireesTrading(admin: SupabaseClient, job: Job, itemId: string, parEbay: { motif: string } | null = null): Promise<number> {
   try {
     if (!/^\d{9,}$/.test(itemId)) return 0;
     let q = admin.from("cross_post_jobs")
@@ -2162,7 +2186,7 @@ async function cloreSourcesRetireesTrading(admin: SupabaseClient, job: Job, item
     if (error) { console.warn(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : publication d'origine non relue — ${error.message}`); return 0; }
     let closes = 0;
     for (const s of sourcesACloreApresRetraitTrading(data ?? [], job, itemId)) {
-      const patch = clotureSourceRetiree(s.platform_fields, { le: new Date().toISOString(), retraitId: job.id, itemId });
+      const patch = clotureSourceRetiree(s.platform_fields, { le: new Date().toISOString(), retraitId: job.id, itemId, parEbay });
       const { data: maj } = await admin.from("cross_post_jobs").update(patch).eq("id", s.id).eq("status", "published").select("id");
       if (maj?.length) closes++;
     }
@@ -2539,6 +2563,91 @@ async function mesurerAnnonces(env: EbayEnv, body: { ids?: string[] }): Promise<
     }
   }
   return { demandees: ids.length, vivantes: lignes.filter((l) => l.etat === "vivante").length, terminees: lignes.filter((l) => l.etat === "terminee").length, indeterminees: lignes.filter((l) => l.etat === "indeterminee").length, lignes };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE ANNONCE DÉCLARÉE ABSENTE PAR LES RELEVÉS : CE QU'eBAY EN DIT (03/11)
+// ═══════════════════════════════════════════════════════════════════════════
+// fiche_releve_ferme (SQL) clôt « absente aux relevés complets … et eBay n'a donné aucun motif » une publication que deux
+// relevés complets n'ont pas vue — sans avoir lu eBay quand la veille n'avait pas de date de fin (veille en retard).
+// Ici : GetItem (jeton du vendeur) + vitrine, puis le message de _shared/ebay-disparue-motif.js. Une passe sur cinq
+// (minute % 10 < 2), 3 publications au plus, 7 jours ; 3 essais puis « illisible » (le message d'avant reste). Jamais
+// une publication qu'un retrait FillSell a touchée (même numéro) : là, « pas par FillSell » serait faux.
+const DISPARUES_PAR_PASSE = 3;
+const DISPARUES_ESSAIS_MAX = 3;
+async function motiverDisparuesEbay(admin: SupabaseClient, env: EbayEnv): Promise<Record<string, unknown>> {
+  if (new Date().getUTCMinutes() % 10 >= 2) return { lues: 0 };
+  const { data, error } = await admin.from("cross_post_jobs")
+    .select("id, user_id, platform_listing_id, published_at, created_at, platform_fields, error")
+    .eq("platform", "ebay").eq("status", "failed").in("action", ["publish", "republish"])
+    .eq("platform_fields->depot_jamais_en_ligne->>issue", "refus_moderation_probable")
+    .is("platform_fields->motif_ebay", null)
+    .gte("created_at", new Date(Date.now() - 7 * 24 * 3600_000).toISOString())
+    .order("created_at", { ascending: false }).limit(DISPARUES_PAR_PASSE);
+  if (error) return { erreur: error.message };
+  const lot = (data ?? []) as Array<{ id: string; user_id: string; platform_listing_id: string | null; published_at: string | null; created_at: string; platform_fields: Record<string, unknown> | null; error: string | null }>;
+  if (!lot.length) return { lues: 0 };
+  const issues: Record<string, number> = {};
+  for (const j of lot) {
+    const pf = { ...(j.platform_fields ?? {}) };
+    const numero = String(j.platform_listing_id ?? "").trim();
+    const ecrire = async (champs: Record<string, unknown>, error?: string) => {
+      const patch: Record<string, unknown> = { platform_fields: { ...pf, ...champs } };
+      if (error) patch.error = error;
+      await admin.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", "failed");
+    };
+    const lu_le = new Date().toISOString();
+    if (!/^\d{9,15}$/.test(numero)) { await ecrire({ motif_ebay: { issue: "sans_numero", lu_le } }); issues.sans_numero = (issues.sans_numero ?? 0) + 1; continue; }
+    const { data: retraits } = await admin.from("cross_post_jobs").select("id").eq("user_id", j.user_id).eq("platform", "ebay")
+      .eq("action", "delete").eq("platform_listing_id", numero).limit(1);
+    if (retraits?.length) { await ecrire({ motif_ebay: { issue: "retrait_fillsell", retrait: retraits[0].id, lu_le } }); issues.retrait_fillsell = (issues.retrait_fillsell ?? 0) + 1; continue; }
+    const essais = Number(pf.motif_ebay_essais ?? 0) + 1;
+    let r: ReturnType<typeof motifAnnonceDisparueEbay> = null;
+    const jeton = await obtenirAccessToken(admin, j.user_id);
+    if (jeton.ok) {
+      try {
+        const rep = await appelTrading(env, jeton.token as string, "GetItem", `<ItemID>${numero}</ItemID><DetailLevel>ReturnAll</DetailLevel>`);
+        const lecture = rep.http === 200 ? lireItemTrading(rep.xml) : null;
+        const vitrine = await lireEtatHorsLigneAvantSuite(env, numero);
+        r = motifAnnonceDisparueEbay({ lecture, raisonFin: raisonFinDepuisXml(rep.xml), relance: relanceDepuisXml(rep.xml), vitrine, publieLe: j.published_at ?? j.created_at, numero });
+      } catch (e) {
+        console.warn(`[ebay-api-worker] disparue ${String(j.id).slice(0, 8)} : eBay non relu — ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+      }
+    }
+    if (!r) {
+      if (essais >= DISPARUES_ESSAIS_MAX) await ecrire({ motif_ebay: { issue: "illisible", essais, lu_le }, motif_ebay_essais: essais });
+      else await ecrire({ motif_ebay_essais: essais });
+      issues.illisible = (issues.illisible ?? 0) + 1;
+      continue;
+    }
+    const { message, ...trace } = r;
+    await ecrire({ motif_ebay: { ...trace, lu_le, message_avant: message ? String(j.error ?? "").slice(0, 300) || null : null } }, message ?? undefined);
+    issues[r.issue] = (issues[r.issue] ?? 0) + 1;
+    if (r.issue === "encore_active" || r.issue === "vendue") console.warn(`[ebay-api-worker] disparue ${String(j.id).slice(0, 8)} : eBay la dit ${r.issue} (${numero}) — message inchangé, à regarder`);
+  }
+  return { lues: lot.length, issues };
+}
+
+async function lireGetItemDiagnostic(admin: SupabaseClient, env: EbayEnv, body: { user_id?: string; ids?: string[] }): Promise<Record<string, unknown>> {
+  const u = String(body.user_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(u)) return { error: "user_id" };
+  const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => String(x).trim()).filter((x) => /^\d{9,15}$/.test(x)).slice(0, 10);
+  const jeton = await obtenirAccessToken(admin, u);
+  if (!jeton.ok) return { error: `jeton : ${jeton.motif}` };
+  const lignes: Record<string, unknown>[] = [];
+  for (const id of ids) {
+    try {
+      const r = await appelTrading(env, jeton.token as string, "GetItem", `<ItemID>${id}</ItemID><DetailLevel>ReturnAll</DetailLevel>`);
+      const lu = lireItemTrading(r.xml);
+      const v = (s: string, tag: string) => { const m = s.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`)); return m ? m[1].trim() : null; };
+      lignes.push({ id, http: r.http, ...lu, titre: lu.titre ? String(lu.titre).slice(0, 80) : null,
+        raison_fin: v(r.xml, "EndingReason"), debut: v(r.xml, "StartTime"), statut_annonce: v(r.xml, "ListingStatus"),
+        extrait: r.xml.replace(/<Description>[\s\S]*?<\/Description>/g, "").replace(/<PictureDetails>[\s\S]*?<\/PictureDetails>/g, "").slice(0, 1200) });
+    } catch (e) {
+      lignes.push({ id, http: 0, erreur: String((e as Error)?.message ?? e).slice(0, 160) });
+    }
+  }
+  return { user_id: u, lignes };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3782,6 +3891,9 @@ Deno.serve(async (req) => {
   if (body.action === "mots_sans_mot_objet") return json(await motsSansMotObjet(admin, body));
   if (body.action === "backtest_categorie") return json(await backtestCategorie(admin, env, body));
   if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
+  // (03/11) GetItem relu avec le jeton du VENDEUR, lecture seule chez eBay — ce que eBay dit d'une annonce (statut,
+  // fin, motif d'un retrait par eBay, erreurs avec leur code). Appel manuel (x-cron-secret), rien n'est écrit.
+  if (body.action === "lire_getitem") return json(await lireGetItemDiagnostic(admin, env, body as { user_id?: string; ids?: string[] }));
   // (09/10) Le site d'inscription d'un compte relié (GetUser, lecture seule chez
   // eBay), noté dans ebay_accounts.ebay_site — appel manuel (x-cron-secret).
   if (body.action === "site_compte") {
@@ -3821,6 +3933,13 @@ Deno.serve(async (req) => {
   let quantites: Record<string, unknown> = {};
   try { quantites = await quantitesImportsEbay(admin, env); }
   catch (e) { quantites = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+
+  // ── (03/11) Une publication close par les relevés « absente, sans motif » est relue chez eBay : le message
+  // dit ce qu'eBay sait (_shared/ebay-disparue-motif.js). Bornée, jamais bloquante.
+  let disparues: Record<string, unknown> = {};
+  try { disparues = await motiverDisparuesEbay(admin, env); }
+  catch (e) { disparues = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  if ((disparues as { lues?: number }).lues) console.log(`[ebay-api-worker] annonces déclarées absentes relues chez eBay : ${JSON.stringify(disparues).slice(0, 300)}`);
 
   let vendeurs: Record<string, unknown> = {};
   try { vendeurs = await verifierVendeursAnnonces(admin, env); }

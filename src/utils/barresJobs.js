@@ -69,6 +69,7 @@ const TEXTES = {
     finRepublie: (p) => `De retour en tête sur ${p}.`,
     dejaEnLigne: (p) => `Déjà remise en ligne sur ${p} : rien retiré ni recréé.`,
     finRetire: (p) => `Retirée de ${p}.`,
+    dejaRetireeParPlateforme: (p, m) => `Déjà retirée par ${p} : « ${m} » Plus rien à retirer.`,
     geste: "À toi de jouer.",
     pasPartie: "Elle n'est pas partie : à relancer.",
     annulee: "Arrêtée.",
@@ -102,6 +103,7 @@ const TEXTES = {
     finRepublie: (p) => `Back at the top on ${p}.`,
     dejaEnLigne: (p) => `Already back online on ${p}: nothing removed or recreated.`,
     finRetire: (p) => `Removed from ${p}.`,
+    dejaRetireeParPlateforme: (p, m) => `Already removed by ${p}: “${m}” Nothing left to remove.`,
     geste: "Your move.",
     pasPartie: "It didn't go out: to relaunch.",
     annulee: "Stopped.",
@@ -155,6 +157,14 @@ export function etapesJob(job, lang = "fr", opts = {}) {
   ];
 }
 
+/** (03/11) Le motif donné par la PLATEFORME quand elle avait déjà retiré l'annonce d'un retrait fait
+ *  (deja_absente.motif_plateforme, posé par le serveur), ou null. */
+export function motifRetraitParPlateforme(job) {
+  if (job?.action !== "delete" || job?.status !== "deleted") return null;
+  const m = pfDe(job)?.deja_absente?.motif_plateforme;
+  return typeof m === "string" && m.trim() ? m.trim() : null;
+}
+
 /**
  * La piste de BarreProgression d'un job.
  * ctx = contexte de situationJob (maintenant, lang, extension, plateformesEnPause,
@@ -190,7 +200,11 @@ export function pisteJob(job, ctx = {}) {
     : job?.action === "republish"
       ? step === "recreated"
       : ["published", "sold", "dry_run_completed"].includes(job?.status);
-  if (reussi) return { ...base, etape: etapes.at(-1).cle, etat: "termine" };
+  if (reussi) {
+    // (03/11, règle de Nico) La plateforme avait déjà retiré l'annonce et a dit pourquoi : ses mots, tels quels.
+    const motif = motifRetraitParPlateforme(job);
+    return { ...base, etape: etapes.at(-1).cle, etat: "termine", ...(motif ? { phraseFin: T.dejaRetireeParPlateforme(nom, motif) } : {}) };
+  }
 
   // ── Arrêté ── La barre s'arrête à l'étape ATTEINTE (ce qui est acquis
   // reste affiché), jamais plus loin.

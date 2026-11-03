@@ -66,9 +66,10 @@ export function dejaAbsenteValide(da) {
 
 /**
  * Le drapeau unique : { le, plateforme, numero, preuve, vente, pose_par }.
- * @param {{ plateforme?: string|null, numero?: string|null, preuve: Record<string, unknown>, vente?: boolean|null, posePar?: string, maintenantIso?: string }} a
+ * @param {{ plateforme?: string|null, numero?: string|null, preuve: Record<string, unknown>, vente?: boolean|null, posePar?: string, motifPlateforme?: string|null, maintenantIso?: string }} a
  */
-export function dejaAbsente({ plateforme, numero = null, preuve, vente = null, posePar, maintenantIso = new Date().toISOString() }) {
+export function dejaAbsente({ plateforme, numero = null, preuve, vente = null, posePar, motifPlateforme = null, maintenantIso = new Date().toISOString() }) {
+  const motif = String(motifPlateforme ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
   return {
     le: maintenantIso,
     plateforme: plateforme ?? null,
@@ -76,6 +77,9 @@ export function dejaAbsente({ plateforme, numero = null, preuve, vente = null, p
     preuve,
     vente: vente === true ? true : vente === false ? false : null,
     pose_par: String(posePar ?? "").slice(0, 120),
+    // (03/11, règle de Nico) Quand la PLATEFORME dit pourquoi l'annonce n'existe plus (retirée par elle : règlement,
+    // contrefaçon…), ses mots sont gardés tels quels : l'app les montre à la personne (« Déjà retirée par eBay : … »).
+    ...(motif ? { motif_plateforme: motif } : {}),
   };
 }
 

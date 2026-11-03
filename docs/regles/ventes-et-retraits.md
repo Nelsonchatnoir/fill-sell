@@ -477,3 +477,24 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   questions → feature `vente_vinted_article_inconnu_ancienne`, texte retiré ; sauvegarde
   `_backup_0111_questions_article_inconnu`, inverse `…_INVERSE.sql`, 0 vente touchée, 0 mail). Selftest
   `selftest:question-article-inconnu-recente [-- --prod]` ; essai à blanc `scripts/essais/20261101073000_essai.sql` (15/15).
+
+## ⛔ 03/11 — la plateforme dit que l'annonce n'existe plus : retrait FAIT, avec SES mots (rapport `docs/enquetes/six-points-0311/RAPPORT.md` § 1)
+- Règle de Nico, toutes plateformes : supprimée, terminée ou retirée par la plateforme → `deleted` + `deja_absente`
+  (règle du 25/10), et le motif donné par la plateforme gardé tel quel dans `deja_absente.motif_plateforme`
+  (`dejaAbsente({ motifPlateforme })`). L'app le montre : barre « Déjà retirée par eBay : « … » Plus rien à retirer. »,
+  fiche « Retirée par eBay : « … » » (`barresJobs.motifRetraitParPlateforme`).
+- eBay (`_shared/ebay-retrait-trading.js`) : deux lectures concordantes, jamais une seule — GetItem du vendeur en échec
+  DÉFINITIF nommé (`refusGetItemDefinitif` : aucune erreur passagère, jeton, quota, panne — `CODES_GETITEM_PASSAGERS`) ET
+  vitrine Browse 404 / terminée / vendue (`annonceSupprimeeParEbay`). Vitrine qui la vend encore, ou muette : reporté.
+  Publication d'origine close « Annonce supprimée par eBay (pas par le vendeur) — pas une vente » (jamais sur une vente).
+- ⛔ Armement : `cross_post_jobs_publie_sur_article_vendu` ne couvre que `UPDATE OF status` → published ; une annonce
+  INSÉRÉE publiée par un relevé (ou re-pointée sur la fiche) d'un article déjà vendu n'arme rien. Proposition de
+  migration NON appliquée (feu vert de Nico) : `docs/enquetes/six-points-0311/proposition-migration-armement.sql`.
+
+## 03/11 — une publication eBay close « absente, sans motif » est relue chez eBay (rapport § 4)
+- La fonction SQL des relevés clôt « absente aux relevés complets … aucun motif » sans lire eBay quand la veille n'a pas
+  de date de fin (veille très en retard : médiane 351 h le 03/11). ebay-api-worker `motiverDisparuesEbay` relit GetItem
+  + vitrine (3 par passe, une passe sur cinq, 7 jours, 3 essais) et réécrit le message avec ce qu'eBay sait
+  (`_shared/ebay-disparue-motif.js`) : en ligne du … au …, arrêtée depuis le compte eBay (motif choisi), supprimée par
+  eBay (ses mots), remise en vente sous un autre numéro. Statut inchangé ; trace `platform_fields.motif_ebay`. Jamais sur
+  une annonce touchée par un retrait FillSell. Diagnostic sans écriture : action `lire_getitem` (x-cron-secret).
