@@ -96,6 +96,7 @@
     "selftest:vitesse-publication": "node scripts/vitesse-publication-selftest.mjs",
     "selftest:quota-payant-jamais-free": "node scripts/quota-payant-jamais-free-selftest.mjs",
     "selftest:cycle-et-remontees": "node scripts/cycle-et-remontees-selftest.mjs",
+    "selftest:trois-jauges": "node scripts/trois-jauges-selftest.mjs",
     "selftest:lbc-categorie-racines": "node scripts/lbc-categorie-racines-selftest.mjs",
     "selftest:vinted-retrait-mur-compte-bloque": "node scripts/vinted-retrait-mur-compte-bloque-selftest.mjs",
     "selftest:relance-apres-maj": "node scripts/relance-apres-maj-selftest.mjs",

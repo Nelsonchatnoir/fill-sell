@@ -54,6 +54,13 @@ Rapport complet : `docs/enquetes/paliers-quotas-0311/RAPPORT.md`. Règles : `doc
 Premium = plus de quota · Pro = republication automatique + bordereaux · Business = illimité (Lens 600) · Cloud = sans
 ordinateur, en option.
 
+## Phase 2 commencée (04/11 nuit)
+- Maquettes validées : https://claude.ai/artifact/D3HQXTLv9N8AcygCtSTgjW (avis : collection `avis`).
+- Serveur ÉCRIT et PROUVÉ, NON APPLIQUÉ : migration `20261104000000_trois_jauges_interrupteur` (interrupteur
+  `coin_config.grille_trois_jauges` à 0), preuve 110/110, selftest `trois-jauges`. Détail : RAPPORT.md § 5.
+- Prochaines marches : feu vert d'application ; l'app (derrière la même clé) ; avant / après des compteurs payants ;
+  bascule de l'interrupteur sur ordre de Nico.
+
 ## Où ça vivra (repères pour le chantier, rien n'est commencé)
 - Quotas : `coin_config` (`quota_annonces_*`, `quota_republication_*` ; une clé « publications » à créer),
   `quotas_etat`, `spend_coins_for_generate` / `spend_coins_for_lens`, `spend_coins_and_publish` (aucun compteur

@@ -101,3 +101,38 @@ Jauge « Publications » = chaque mise en ligne non-synchro, 1 par plateforme, a
 
   Pour qu'il ne serve qu'à arrêter une boucle, il faut un plafond par jour au-dessus du maximum observé (ex. 2 000 par
   jour) ou un mensuel d'au moins 5 000. À trancher par Nico avant le binaire.
+
+## 5. Phase 2, serveur : la grille à 3 jauges derrière un interrupteur (03-04/11 nuit — ÉCRITE, PROUVÉE, NON APPLIQUÉE)
+Décisions de Nico du 03/11 au soir (maquettes validées écran par écran : https://claude.ai/artifact/D3HQXTLv9N8AcygCtSTgjW,
+avis dans la collection `avis`) : retouches IA et voix inchangées, hors des 3 jauges ; Business affiché « tout illimité,
+sauf Lens (600/mois) et retouches IA (50/mois) » ; baisses du Free confirmées (remontées 50 → 30, publications 50) ;
+garde-fous par jour validés (publications 2 000, remontées 2 000, annonces 800 ; Lens sans garde-fou par jour) ; pas
+de mode sombre.
+
+- **Migration** `supabase/migrations/20261104000000_trois_jauges_interrupteur.sql`, GÉNÉRÉE par
+  `scripts/quotas/generer-trois-jauges.mjs` depuis les définitions de prod lues le 03/11 vers 23:55
+  (`scripts/quotas/fixtures/prod-0311-trois-jauges.sql`, empreintes md5 en tête). Chaque retouche tombe une fois ou
+  le script s'arrête. Inverse : `supabase/rollbacks/20261104000000_trois_jauges_interrupteur_INVERSE.sql`.
+- **Interrupteur** `coin_config.grille_trois_jauges`, posé à 0. 17 clés neuves (`jauge_<annonces|publications|remontees>_<palier>`,
+  0 = illimité ; `jauge_lens_business` 600 ; `garde_jour_*`), ON CONFLICT DO NOTHING : aucune clé existante touchée.
+- **7 fonctions neuves**, fermées aux clients : `jauges_actives`, `jauge_annonces_plafond` (à 0 : `quota_annonces_compte`
+  à l'identique ; grille : 0 = illimité, le réglage du compte ne bride plus le Business), `quota_remontees_plafond`,
+  `jauge_publications_plafond`, `jauge_lens_plafond`, `publications_du_cycle` (même règle que `remontees_du_cycle`,
+  action publish), `garde_fou_jour` (heure de Paris, message honnête, jamais une offre).
+- **8 fonctions de prod retouchées** : `quotas_etat` (clés `grille`, `annonces_mode`, `publications`, `lens` seulement
+  avec l'interrupteur), `quota_republication_free_etat`, `spend_coins_for_generate`, `spend_coins_for_lens`,
+  `spend_coins_and_publish` (jauge Publications avant tout débit, verrou par compte, un appel de l'app ne pose plus
+  « hors quota » lui-même), `spend_coins_and_republish`, `republish_planifiee_etat`, `remise_en_vente_place`.
+- **Compatibilité, sans redéployer de fonction edge** : refus de publication avec `message` (filet générique de l'app,
+  04/08) ; garde-fou de la rédaction sous `pro_daily_cap_reached` (generate-listing relaie le message) ; Lens du
+  Business et garde-fou Lens sous `quota_scan_atteint` (lens-analysis le relaie) ; remontée automatique sous
+  `plafond_auto_atteint` (connu de l'extension 0.6.169). Bordereaux : rien à changer (Pro et Business depuis le 24/10).
+- **Preuve** : `PREUVE_PG=embarque node scripts/quotas/preuve-trois-jauges.mjs`, 110/110 sur Postgres 17 jetable. A. à 0,
+  pour 6 comptes témoins (Free, Premium, Pro, Business, Business réglé à 1 000, Free neuf), 11 appels chacun, avant et
+  après la migration dans la même transaction : identiques. B. à 1 : la grille, les compteurs (annulées, échouées,
+  synchro, hors quota, retraits, avant le cycle jamais comptés), les refus et leurs messages, les trois garde-fous,
+  Lens 600, la régénération sous 24 h hors garde-fou, retour à 0. C. l'inverse rend les 8 définitions de prod à
+  l'empreinte près. Preuve du 03/11 (`preuve-cycle-remontees.mjs`) : 38/38. Selftest `trois-jauges` : 80 contrôles.
+- **Reste avant de basculer** : feu vert de Nico pour appliquer (CLI : `db query --linked -f` demande désormais une
+  confirmation, `--yes` seulement sur son ordre) ; l'app (maquettes validées) ; l'avant / après des compteurs payants
+  juste avant de passer l'interrupteur à 1.
