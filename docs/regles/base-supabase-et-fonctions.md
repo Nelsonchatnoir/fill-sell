@@ -69,6 +69,13 @@ appliqués en direct, migrations « patch » par remplacement de texte). Elles
 sont capturées dans `20260926235900_depot_suit_la_prod_capture_2609.sql` —
 mais tout correctif appliqué en direct depuis recrée l'écart.
 
+⛔ **(03/11, Cloud) UN ESSAI À BLANC ENVELOPPÉ (`BEGIN; <migration>; ROLLBACK;`) NE VAUT RIEN SI LA MIGRATION
+PORTE SES PROPRES `BEGIN;` / `COMMIT;`** : dans une transaction ouverte, son `BEGIN` n'est qu'un avertissement et son
+`COMMIT` valide TOUT ce qui précède — le `ROLLBACK` final n'annule plus rien. Vécu le 03/11 vers 16:37 : l'essai
+enveloppé des migrations Cloud 20261103201000 → 20261103203000 (la dernière finissait par `COMMIT;`) les a appliquées
+en prod. Avant d'envelopper : `grep -nE '^\s*(BEGIN|COMMIT|ROLLBACK|END)\s*;' <fichier>` doit être vide (sinon,
+retirer ces lignes de la COPIE d'essai), et relire en base, après l'essai, qu'aucun objet neuf n'existe.
+
 
 <!-- ex-CLAUDE.md L612-640 : ⛔ Tâche automatique ou relecture en boucle : mesurée, bornée (04/10) -->
 ## ⛔ TÂCHE AUTOMATIQUE OU RELECTURE EN BOUCLE : MESURÉE, BORNÉE (04/10)

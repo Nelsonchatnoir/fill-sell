@@ -235,8 +235,15 @@ export function creerControles({ config, docker, journal }) {
         if (verdict === 'restreint' || verdict === 'glissiere') break;
         if (verdict === 'passe' && echantillons.length >= 2 && verdictVisite(echantillons.slice(0, -1), plateforme) === 'passe') break;
       }
+      // (03/11, première visite : « indéterminé » sans trace de ce qui a été vu) La preuve garde l'état final de la page
+      // (prête, vérification de l'appareil, glissière, blocage — des booléens, aucun texte) et le compte des échantillons.
+      const fin = echantillons.at(-1)?.e ?? null;
       const r = { fait_le: new Date().toISOString(), plateforme, url, verdict, echantillons: echantillons.length,
-        duree_ms: Date.now() - debut, hote_final: echantillons.at(-1)?.e?.hote ?? null };
+        duree_ms: Date.now() - debut, hote_final: fin?.hote ?? null,
+        etat_final: fin ? { pret: fin.pret === true, interstitiel: fin.interstitiel === true, captcha: fin.captcha === true,
+          bloque: fin.bloque === true, restreint: fin.restreint === true } : null,
+        echantillons_interstitiel: echantillons.filter((x) => x.e?.interstitiel).length,
+        echantillons_prets: echantillons.filter((x) => x.e?.pret).length };
       journal.info('visite_controle', { ip_id: ipId, plateforme, verdict, echantillons: r.echantillons, duree_ms: r.duree_ms });
       return r;
     });
