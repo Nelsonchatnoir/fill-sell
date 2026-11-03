@@ -141,6 +141,24 @@ vie d'un client.
   AX42 dès ~15 clients ; essais sur IP « au repos » ou plus courts (3 j) ; onglet Leboncoin de travail sur une page sans
   publicité (extension, prochaine version) ; lectures de fond de get-pending-jobs mises en cache (base).
 
+### 9 bis. À 24,99 € par mois (décision de Nico, 03/11 soir : tous canaux, essai 7 j inchangé — prix posé avec la refonte des paliers)
+Mêmes hypothèses et mêmes coûts qu'au § 9 (les coûts ne dépendent pas du prix ; les prix minimum non plus). Encaissé net
+par client : **Stripe 17,79 €** (24,99 − frais 0,80 − URSSAF 6,40) ; **Apple / Google 13,17 €** (24,99 ÷ 1,2 × 0,85 =
+17,70 reversés, − URSSAF 4,53). Soit + 3,60 € (Stripe) et + 2,63 € (stores) par client par rapport à 20 €.
+
+| Clients | Coût / client (IP 4 $ → 2,94 $) | Marge Stripe | Marge Apple / Google | Marge Stripe, conversion 15 % | Marge stores, conversion 15 % |
+|---|---|---|---|---|---|
+| 10 | 11,08 → 9,97 € | + 6,71 → + 7,83 € | + 2,09 → + 3,20 € | + 4,86 → + 6,25 € | + 0,24 → + 1,63 € |
+| 30 | 9,27 → 8,15 € | + 8,52 → + 9,64 € | + 3,90 → + 5,02 € | + 6,89 → + 8,28 € | + 2,27 → + 3,66 € |
+| 100 | 8,72 → 7,60 € | + 9,07 → + 10,19 € | + 4,45 → + 5,57 € | + 7,55 → + 8,94 € | + 2,93 → + 4,32 € |
+
+- À 24,99 €, chaque canal est rentable dès 10 clients, même à 15 % de conversion (Apple / Google : de justesse à 10 clients
+  avec des IP à 4 $, + 0,24 €).
+- Prix minimum rentable : inchangés (§ 9) — 24,99 € dépasse le minimum des stores dans tous les cas relevés, sauf le cas
+  le plus défavorable (10 clients, conversion 15 %, IP à 4 $ : minimum 24,54 €).
+- Si la TVA devient due côté Stripe : encaissé net ≈ 14,69 € (HT 20,83 €).
+- Rien changé chez Stripe, Apple ni Google : le prix Stripe à 20 € (0 abonné) sera archivé avec la refonte des paliers.
+
 ## 10. Essai réel unique (Leboncoin, 03/11, décision de Nico : « mes anciennes annonces sont des cobayes »)
 - Premier choix refusé par la garde des 24 h (« TEST FillSell 30/10 », republiée le 02/11 19:04 : `cadence_24h`) — rien
   forcé. Retenue : « TEST FillSell — Paris 2024 » (inventaire 1793009594578, 999 €, en ligne depuis le 26/10, jamais

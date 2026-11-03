@@ -28,9 +28,18 @@ Détail : `docs/enquetes/cloud-ouverture-0311/RAPPORT.md`. Commits 9e9bde4, 1a65
      (grâce d'essai) ; (b) pour un compte `cloud_voie`, ne plus servir au PC les lectures que le Cloud fait déjà (relevés
      d'annonces, de ventes, messagerie, sondes) — même compte de plateforme vu depuis deux IP.
   2. Apple : soumettre l'abonnement Cloud (`app.fillsell.cloud.sub`, offre d'intro 1 semaine à confirmer).
+     ⛔ PRIX : **24,99 € / mois sur TOUS les canaux** (décision de Nico, 03/11 soir ; essai 7 j inchangé), au lieu de
+     20 €. Rien changé dans les boutiques le 03/11 : le nouveau prix se pose AVEC LA REFONTE DES PALIERS (Apple :
+     prix de `app.fillsell.cloud.sub` et ses 25 pays euro ; Google : `cloud-monthly` ; Stripe : un prix neuf à 24,99 €).
+     Le prix Stripe à 20 € (`price_1UMuLDQZRA77vrWJZfZh2IS4`, 0 abonné) s'archive À CE MOMENT-LÀ, pas avant.
+     Marge à 24,99 € : `docs/enquetes/cloud-ouverture-0311/RAPPORT.md` § 9 bis.
   3. Vrai paiement de test (Stripe d'abord), en DERNIER, quand tout le reste est en place.
   4. Lot d'IP juste avant l'ouverture (proposé : 10 IP = 29,40 $).
   5. Le drapeau : `CLOUD_OFFER_ENABLED` reste à false ; l'ouvrir = une OTA + `coin_config.cloud_offre_ouverte` = 1.
+     ⛔ Dans la MÊME OTA, le prix affiché passe à 24,99 € (aujourd'hui « 20 € » : `CLOUD_PRIX_AFFICHE` de
+     `src/utils/palier.js`, lu par `src/cloud/textes.js`, `PRIX_AFFICHE` et `prixTtcEur` de `supabase/functions/_shared/cloud-pool.js`), et seulement
+     quand les trois boutiques portent le nouveau prix (refonte des paliers) — jamais un prix affiché différent du prix
+     facturé. Le prix Stripe à 20 € s'archive à ce moment-là.
   6. Beebs du compte de Nico « à résoudre » depuis le 03/11 01:25 (« Résoudre la vérification » dans l'app).
 - `cloud_voie` n'est PLUS posé par script : la base le tient (`cloud_etat().actif`). Ne plus l'écrire à la main.
 - OTA 2.9.159 SERVIE (envoyée par Claude sur autorisation de Nico, 03/11 soir).
