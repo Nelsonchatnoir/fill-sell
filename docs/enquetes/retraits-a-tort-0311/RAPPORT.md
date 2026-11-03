@@ -98,6 +98,11 @@ lecture le 03/11 soir : 7 fusions, 7 retraits, 5 ventes, 5 jobs) — aucune acti
 avant : gjehly voulait-il « tout de suite » (ce que l'écran disait) ou son créneau du soir ?
 
 ## Ce qui reste
+- Déployé : check-listing-status v39 (`verify_jwt` false, comme avant) ; app web au push du commit f757ca9.
+  **OTA mobile NON envoyée** : la machine manquait de mémoire le 03/11 soir (suite et build coupés) — à faire sur
+  décision, JEAN-LUC est sur Android.
+- 10 drapeaux « Vendue » Leboncoin de la même classe restent ouverts (Chris1050 6, Jordy Rouleau 3, PILOU 1) : leur
+  confirmation est refusée depuis v39 ; la migration ne les efface pas (elle n'agit qu'au passage à « Vendue »).
 - Feu vert sur la migration `20261103230000_rattachement_jamais_de_retrait` (l'app et check-listing-status protègent
   déjà ; la migration protège aussi les anciennes versions de l'app et la veille Leboncoin).
 - Étape 2 : le mécanisme de recréation est à décider — les annonces supprimées n'ont plus de page à relire ; il faut
