@@ -354,3 +354,64 @@ par appel, interrupteur dans coin_config, contrôle 20/20, puis ménage. Règle 
   0.0.19 et correctif meson rangés dans `mono-thread/correctifs-wasm-vips-0.0.19/`.
 - **Rien d'autre** : aucune migration (une ligne de coin_config, ordre de Nico), aucun cron, aucune remesure programmée,
   EXTENSION_MIN_BUILD non touché, rien sur le serveur Cloud.
+
+## Partie J (03/11 16:40) — remesure 24 h demandée par Nico (02/11 16:40 → 03/11 16:40, heure de Paris)
+Lecture seule, rien déployé. Même méthode que l'étape 1 de la partie B : journaux de la passerelle (`query_logs`, fenêtre
+de 24 h = 02/11 15:40Z → 03/11 15:40Z), lignes REST rendues lues sur `content-range`, tailles moyennes mesurées en base
+(`row_to_json` des mêmes colonnes, échantillon aléatoire). M = mesuré, E = estimé. ⚠️ Contexte : la partie C (02/11
+14:54-15:20) a remis l'app et les empreintes « comme avant » (sonde des jobs, Stock complet toutes les 5 min + relance sur
+changement réel, retour d'onglet 30 s, transformations) ; v325 (signal « rien n'a changé ») est en place ; le module
+« maison » des empreintes depuis le 03/11 10:04. Le « ~5,5 Go/j » de la partie B ne tenait donc plus dès 15:20.
+
+### J1. Lectures
+| Poste | Matin du 02/11 (partie B) | 02/11 16:40 → 03/11 16:40 |
+|---|---|---|
+| Lignes edge_logs / 24 h | 2,3 à 2,85 M | **2 353 018 (M)** ; function_logs 122 211, postgres_logs 23 131 (M) |
+| Polls get-pending-jobs | ~34 000 | **34 915 (M)** ; requêtes REST des fonctions ≈ 27 par poll (M, borne haute : toutes fonctions) |
+| cross_post_jobs (requêtes) | 708 000 (facture) ; fonctions 588 000 | **699 290 (M)** dont fonctions 390 013 (−34 %) ; 12,13 M lignes rendues (app 6,96 M, fonctions 5,17 M) |
+| profiles | 272 000 ; fonctions 245 000 | **300 019 (M)** dont fonctions 201 297 (−18 %) ; 0,41 M lignes |
+| vinted_sync_runs | 163 000 ; fonctions 129 000 | **150 950 (M)** dont fonctions 81 890 (−37 %) ; 1,61 M lignes |
+| coin_config | 171 000 fonctions + 14 700 app | **33 832 (M)** dont fonctions 12 339 (−93 %) ; 1,03 M lignes |
+| annonces_plateforme | — | 126 423 (M) ; 6,55 M lignes (app 5,69 M) |
+| inventaire | — | 74 219 (M) ; 2,66 M lignes (app 1,86 M) |
+| ventes | — | 14 012 (M) ; 1,97 M lignes (app 1,97 M) |
+| platform_settings | — | pas de table : colonne de profiles (lue avec elle) |
+| Invocations | 1,38 M au cycle | **62 904 / 24 h (M)** : get-pending-jobs 34 915, empreintes-urls 5 433, update-job-status 4 661, ebay-account-deletion 4 027, ebay-account 2 909, rapprochement-ia 2 153 |
+
+### J2. Egress
+- **Photos `listing-photos` (M, content-length) : 37,14 Go en 24 h, dont 34,29 Go d'ESSAIS** (scripts Deno lancés en
+  local par le terminal FACTURE, réseau Free, 02/11 16:40 → 03/11 10:11 : essais à blanc des parties D, F, G ; 120 503
+  requêtes ; 14,27 Go hors cache, 20,02 Go en cache CDN). **Production : 2,85 Go/24 h** (1,39 Go hors cache, 1,46 Go en
+  cache) — pages des plateformes 1,10, app 0,51, fonctions (réseau Amazon) 0,46, autres 0,78. Matin du 02/11 : 2,6 Go/j.
+- **Réponses REST (E, lignes × taille mesurée, sans compression)** — 90 % des lignes des sept tables couvertes :
+  app ≈ 14,0 Go/j — historique complet des jobs du Stock (`SELECT_JOBS` avec `platform_fields`, StockTab l. 8641 :
+  3,48 M lignes × 1 669 o, 23 452 requêtes) **5,8 Go**, `inventaire?select=*` (1,78 M × 1 957 o) 3,5, jobs avec
+  `platform_fields` de la sonde (1,28 M × 1 458 o) 1,9, `ventes?select=*` (1,94 M × 640 o) 1,2, annonces_plateforme (2,79 M
+  × 209 o + 2,77 M × 159 o) 1,0, reste 0,6 ; fonctions ≈ 3,9 Go/j (jobs avec photos/description/platform_fields 2,1,
+  captures d'annonces 1,2, petites lectures 0,6). Réponses des fonctions elles-mêmes : 0,03 Go (M).
+- Recalage : la même méthode donnait ~13,9 Go/j le 01/11 quand la facture du cycle valait ~10,1 Go/j (rapport 0,73,
+  compression probable d'une partie des réponses) ; d'où une fourchette.
+
+### J3. Transformations (`/storage/v1/render/image`)
+- Fenêtre : **1 821 requêtes (M)** — production 1 514 (1 511 images distinctes), essais 307 (257 + 30 + 20, scripts
+  locaux). Production **avant 10:04 : 1 499** (≈ 2 070 / 24 h à ce rythme, 400 px, empreintes-urls et doublons-balayage ;
+  1 en 800 px, photo-empreinte) ; **après 10:04 : 15** en 6 h 36.
+- Module « maison » depuis 10:04 (M, `photo_empreintes.source`) : 557 photos du bucket par le module, 15 renvoyées à
+  Supabase (≈ 3 %) ; 3 876 empreintes de photos hors bucket (aucune transformation).
+- Cycle en cours, déjà consommé (M) : 02/11 00:00 → 16:40 : 1 174 images distinctes (+ 1 d'essai) ; fenêtre : 1 511 + 307
+  d'essais → **≈ 2 990 images** depuis le début du cycle.
+
+### J4. Facture estimée du cycle 02/11 → 01/12 (30 jours, tarif Pro, postes variables seulement)
+| Poste | Cycle 02/10 → 01/11 (facture) | Matin du 02/11 (projeté) | Cycle en cours (E) |
+|---|---|---|---|
+| Transformations (5 $ / 1 000 au-delà de 100) | 59 261 → **296 $** | 2 647/j → ~79 000 → **~395 $** | 2 990 consommées + ~55 à 70/j × 28,3 j (3 % de renvois au module) ≈ 4 550 à 5 000 → **~22 à 24 $** |
+| Egress non caché (0,09 $/Go au-delà de 250 Go) | 303,8 Go → **~4,8 $** | ~10 Go/j → ~300 Go → **~4,5 $** (après lot B attendu : 0 $) | REST 13 à 18 Go/j + photos 1,4 + essais 14,3 (une fois) ≈ **450 à 600 Go → ~18 à 31 $** |
+| Egress caché (0,03 $/Go au-delà de 250 Go) | — | — | photos 1,46 Go/j + essais 20 Go ≈ 64 Go → **0 $** |
+| Invocations (2 $/M au-delà de 2 M) | 1,38 M → 0 $ | ~1,3 M → 0 $ | 62 904/j → ~1,89 M → **0 $** (marge 6 %) |
+| **Total variable** | **~301 $** (avant la remise ponctuelle) | **~400 $** | **~40 à 55 $** |
+- Les transformations ne sont plus le poste : **−92 %** (module « maison »). **L'egress repasse au-dessus du quota** : la
+  partie C a rétabli les relectures complètes de l'app (Stock toutes les 5 min + relance sur changement réel, retour
+  d'onglet 30 s) — quatre lectures font ~12 Go/j bruts (historique des jobs 5,8, inventaire 3,5, jobs de la sonde 1,9,
+  ventes 1,2). Levier : ce que la partie B avait fait et que la partie C a retiré, à décider par Nico.
+- Les essais à blanc du 02/11 soir ont coûté une fois ~34 Go d'egress et ~310 transformations (≈ 1,5 à 3 $).
+- Non mesuré : compression réelle des réponses REST (pas de taille au journal) ; 02/11 00:00 → 16:40 hors egress.
