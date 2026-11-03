@@ -258,7 +258,11 @@ ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageP
 }
 ok(/jobs_retenus_programmation: idsProgrammeesRetenues\.size/.test(gpj), "la réponse dit combien sont retenues (popup, suivi)");
 const mr = lire("src/publication/moteur/regles.js");
-ok(/platform_fields: programmee \? \{ \.\.\.pf, programmee: true, programmee_le: new Date\(\)\.toISOString\(\) \} : pf/.test(mr), "la tâche naît marquée « programmée » (quota décompté au clic, comme avant)");
+// (03/11 soir, gjehly) La marque passe par champsDuJob : posée au clic seulement, jamais héritée d'une tâche d'avant
+// (selftest programmation-au-clic).
+ok(/platform_fields: champsDuJob\(pf, programmee\),/.test(mr)
+  && /return programmee \? \{ \.\.\.propres, programmee: true, programmee_le: new Date\(\)\.toISOString\(\) \} : propres;/.test(mr),
+  "la tâche naît marquée « programmée » (quota décompté au clic, comme avant)");
 ok(/programmee: Boolean\(programmation\.reglage\) && !envoyerMaintenantRef\.current/.test(lps), "le stepper (et le lot) marquent la tâche quand le réglage est allumé — sauf « Envoyer tout de suite »");
 const lot = lire("src/publication/lot/LotPublication.jsx");
 ok(/m\.envoyerMaintenant\?\.\(maintenantLot\)/.test(lot) && /Envoyer tout de suite/.test(lot) && /replace\(\/\^Envoyer\/, "Programmer"\)/.test(lot), "le lot dit « Programmer N annonces », et « Envoyer tout de suite » pour ce lot");

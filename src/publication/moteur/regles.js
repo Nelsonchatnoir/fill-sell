@@ -276,10 +276,22 @@ export function construireJobs({
         : (edited[platform]?.description ?? ""),
       price:           edited[platform]?.price ?? price,
       photos:          rowPhotos,
-      platform_fields: programmee ? { ...pf, programmee: true, programmee_le: new Date().toISOString() } : pf,
+      platform_fields: champsDuJob(pf, programmee),
     });
   }
   return { rows, erreur: null, journal };
+}
+
+// ── LA PROGRAMMATION SE DÉCIDE AU CLIC, JAMAIS PAR UNE TÂCHE D'AVANT (03/11 soir, gjehly) ──────────────────────────
+// La carte d'une fiche (fiches_annonce.edited) garde le platform_fields de la tâche précédente, marques de file
+// comprises : le lot programmé du 01/11 (arrêté le 03/11 à 08:22), renvoyé « tout de suite » à 10:49, a fait naître
+// 80 publications Vinted marquées programmee — retenues dans le créneau du soir, 8 par jour, sans un mot. La marque
+// n'est posée que si l'envoi est programmé MAINTENANT ; celle d'une tâche d'avant ne passe jamais.
+const MARQUES_DE_PROGRAMMATION = ["programmee", "programmee_le", "programmee_servie_le"];
+export function champsDuJob(pf, programmee) {
+  const propres = { ...(pf ?? {}) };
+  for (const k of MARQUES_DE_PROGRAMMATION) delete propres[k];
+  return programmee ? { ...propres, programmee: true, programmee_le: new Date().toISOString() } : propres;
 }
 
 // ── AUCUN JOB SANS CATÉGORIE (2026-09-19) ────────────────────────────────────

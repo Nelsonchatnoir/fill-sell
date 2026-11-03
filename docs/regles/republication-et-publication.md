@@ -1215,3 +1215,10 @@
 - **Publication programmée** : l'écran « Publication lancée » et « Toute la file » ouverte depuis lui lisent le réglage
   (`usePublicationProgrammee`) et disent « Programmée : elle partira dans ton créneau, une à la fois » — le 02/11 à 17:02,
   cinq publications de Nico retenues jusqu'au créneau du matin s'affichaient « Dans la file — Chrome la prend à son tour ».
+
+## ⛔ 03/11 soir (gjehly) — la programmation se décide au clic, jamais par la tâche d'avant (rapport `docs/enquetes/retraits-a-tort-0311/RAPPORT.md` § 3)
+- La carte d'une fiche (`fiches_annonce.edited`) garde le platform_fields de la tâche précédente : 80 publications Vinted
+  envoyées « tout de suite » le 03/11 à 10:49 sont nées `programmee` (marque du lot du 01/11, arrêté à 08:22) et ont été
+  retenues dans le créneau du soir, 8 par jour, sans un mot. `construireJobs` (`src/publication/moteur/regles.js`,
+  `champsDuJob`) retire toujours `programmee`, `programmee_le`, `programmee_servie_le` et ne pose la marque que si l'envoi
+  est programmé AU CLIC. Selftest `programmation-au-clic`. Créneau, plafond et tour : inchangés.

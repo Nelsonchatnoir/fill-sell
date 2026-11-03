@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { orchestrateSale } from "../_shared/sale-orchestration.ts";
+import { vendueAvantSuivi, raisonVenteAncienne, annonceImportee } from "../_shared/lbc-vendu-avant-suivi.js";
 
 // v5 (2026-07-11) — ORCHESTRATEUR DB PUR, appelé par l'extension Chrome.
 //
@@ -86,6 +87,31 @@ serve(async (req) => {
     // remettre_en_vente (11/10, optionnel) : false = « Ne pas remettre en vente »
     // depuis la liste « Ventes à confirmer ». Absent ou autre valeur : comme avant.
     const remettreEnVente = body.remettre_en_vente === false ? false : undefined;
+
+    // (03/11 soir, JEAN-LUC LASSARAT) Un « Vendu » Leboncoin déjà là à la PREMIÈRE lecture de l'annonce n'est pas une
+    // vente du jour : jamais enregistré, jamais de retrait de copie (_shared/lbc-vendu-avant-suivi.js). Lecture bornée :
+    // le job de la personne, puis les traces de CE numéro (index usage_logs_user_feature_created).
+    const { data: jobLu } = await admin.from("cross_post_jobs")
+      .select("id,platform,platform_listing_id,platform_fields").eq("id", jobId).eq("user_id", user.id).maybeSingle();
+    const numeroLbc = String(jobLu?.platform_listing_id ?? "").trim();
+    const pfLu = (jobLu?.platform_fields ?? {}) as Record<string, unknown>;
+    if (jobLu?.platform === "leboncoin" && /^\d+$/.test(numeroLbc) && pfLu.sale_signal === "sold"
+        && annonceImportee(pfLu)) {
+      const { data: traces, error: tracesErr } = await admin.from("usage_logs")
+        .select("created_at,metadata->>transaction,metadata->>avant")
+        .eq("user_id", user.id).eq("feature", "vente_leboncoin_transaction").eq("metadata->>listing_id", numeroLbc)
+        .order("created_at", { ascending: true }).limit(200);
+      if (!tracesErr) {
+        const lu = vendueAvantSuivi((traces ?? []).map((t: Record<string, unknown>) => ({
+          created_at: t.created_at as string, transaction: t.transaction as string | null, avant: t.avant as string | null,
+        })));
+        if (lu.ancienne) {
+          await admin.from("usage_logs").insert({ user_id: user.id, feature: "vente_leboncoin_ancienne_refusee",
+            metadata: { job: jobId, listing_id: numeroLbc, premiere_lecture: lu.premiereLecture, par: "check-listing-status" } });
+          return json({ error: raisonVenteAncienne(lu.premiereLecture) }, 409);
+        }
+      }
+    }
 
     const result = await orchestrateSale(admin, user.id, jobId, { priceOverride, declaree: true, remettreEnVente });
     if (!result.ok) return json({ error: result.reason ?? "Orchestration impossible" }, 409);

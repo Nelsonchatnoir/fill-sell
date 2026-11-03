@@ -493,6 +493,8 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   déjà vendu arme son retrait tout de suite, avec toutes les gardes d'`armer_retrait_job_pour` (vente sur une AUTRE
   plateforme, annonce prouvée, jamais deux exemplaires vus par les relevés, `fillsell.sans_retrait`). Essai à blanc 5/5
   (`scripts/essais/20261103140000_essai.sql`), 30-43 ms par déclenchement. Inverse dans `supabase/rollbacks/`.
+  ⛔ CONTREDITE le soir même (Nico : « un rattachement ne déclenche JAMAIS de retrait ») : retirée par la migration
+  `20261103230000_rattachement_jamais_de_retrait` dès son feu vert — section du 03/11 soir, en fin de fichier.
 
 ## 03/11 — une publication eBay close « absente, sans motif » est relue chez eBay (rapport § 4)
 - La fonction SQL des relevés clôt « absente aux relevés complets … aucun motif » sans lire eBay quand la veille n'a pas
@@ -501,3 +503,25 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   (`_shared/ebay-disparue-motif.js`) : en ligne du … au …, arrêtée depuis le compte eBay (motif choisi), supprimée par
   eBay (ses mots), remise en vente sous un autre numéro. Statut inchangé ; trace `platform_fields.motif_ebay`. Jamais sur
   une annonce touchée par un retrait FillSell. Diagnostic sans écriture : action `lire_getitem` (x-cron-secret).
+
+## ⛔ 03/11 soir (Nico) — un rattachement ne déclenche JAMAIS de retrait ; une ressemblance n'est jamais retirée (rapport `docs/enquetes/retraits-a-tort-0311/RAPPORT.md`)
+- Seule une vente prouvée, survenue APRÈS la mise en ligne de l'annonce, peut la retirer. Une annonce en ligne qui
+  ressemble à un article déjà vendu devient un article à part (ou est « à vérifier ») : jamais retirée, jamais réunie à
+  la fiche vendue. 8 retraits à tort le 03/11 (16:19-16:28, JEAN-LUC LASSARAT, Dylan Fontaine) par « Déjà vendu ? → Oui,
+  c'est le même — retirer l'annonce » ; renverse, pour les ressemblances, la règle du 30/09 (« oui » = preuve de vente).
+- App : `src/annonces/EcranDoublons.jsx` (`ressembleVendu` → « Annonce à vérifier », « La mettre dans mon stock » =
+  « non » au serveur). La copie interrogée À LA VENTE du jour (`copie_non_prouvee`) garde « Oui, la retirer ».
+  Selftest `ressemble-vendu-jamais-retire`.
+- Serveur, migration `20261103230000_rattachement_jamais_de_retrait` (⛔ en attente du feu vert de Nico ; banc
+  `scripts/essais/20261103230000_banc.mjs` 28/28) : déclencheurs de 13:52 (`…_inseree_…`, `…_repointee_…`) retirés ;
+  « publiée après la vente » = dépôt de FillSell seulement ; `armer_retrait_job_pour` refuse une annonce IMPORTÉE
+  (source `releve` / `rattachement.import`) mise en ligne après la vente (`annonce_mise_en_ligne`, `vente_instant`,
+  `vente_apres_mise_en_ligne`, trace `retrait_refuse_vente_avant_mise_en_ligne`) ; le dépôt de FillSell pour la fiche
+  reste retiré même pour une vente vue en retard ; `inventaire_doublon_decider` : « oui » sur une fiche vendue dont
+  l'autre a une annonce en ligne = article à part (`doublon_vendu_article_a_part`). Selftest `rattachement-jamais-de-retrait`.
+- **Leboncoin : « Vendu » dès la PREMIÈRE lecture d'une annonce importée** (badge « Article vendu » d'une annonce
+  encore en ligne : plusieurs exemplaires) = une vente d'avant le suivi, déjà dans l'historique par la page des
+  transactions : jamais une vente du jour, jamais un retrait de copie. Seule une transition vue (lue sans « Vendu »,
+  puis « Vendu ») date une vente. Une annonce déposée par FillSell n'est pas concernée. `check-listing-status` refuse la
+  confirmation avec la raison (`_shared/lbc-vendu-avant-suivi.js`, selftest `lbc-vendu-avant-suivi`) ; la migration
+  ci-dessus fait taire la règle de la transaction (`vendu_avant_suivi`) et écarte le drapeau de la veille avant écriture.

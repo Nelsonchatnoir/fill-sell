@@ -104,22 +104,23 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
     const t = setTimeout(() => setFait(null), 4000);
     return () => clearTimeout(t);
   }, [fait]);
-  // (2026-09-27) « Déjà vendu ? » : une annonce encore en ligne ressemble à un
-  // objet VENDU. « Oui » réunit les deux fiches ET retire l'annonce encore en
-  // ligne (le serveur arme le retrait) ; « Non » : deux articles différents.
-  // En mode « à vérifier », toute paire dont l'autre article est vendu.
+  // (2026-09-27) Une annonce encore en ligne ressemble à un objet VENDU — en
+  // mode « à vérifier », toute paire dont l'autre article est vendu. Depuis le
+  // 03/11 (ci-dessous, ressembleVendu) : jamais réunies, jamais retirée.
   const dejaVendu = aVerifier ? (!orphelin && paire?.a?.statut === 'vendu') : estQuestionDejaVendu(paire);
   // (06/10) Une COPIE de la fiche vendue, liée par le seul titre : une seule
   // fiche, la question « c'est le même article ? » et l'annonce concernée.
   const copie = !aVerifier && estQuestionCopie(paire);
+  // ⛔ (03/11 soir, Nico — JEAN-LUC LASSARAT, Dylan Fontaine) Une annonce EN LIGNE qui RESSEMBLE à un article déjà
+  // vendu n'est jamais retirée : un rattachement ne déclenche jamais de retrait. « Oui, c'est le même — retirer
+  // l'annonce » a retiré 8 annonces le 03/11 (16:19-16:28) : des exemplaires de plus d'un vendeur de neuf, une carte
+  // mise en ligne trois mois après la vente de l'autre. Elle entre dans le stock comme un article à part ; si c'est
+  // l'objet vendu, la personne la retire elle-même depuis sa fiche. Seule la COPIE interrogée à la vente du jour
+  // (« Déjà vendu ? », motif copie_non_prouvee) garde « Oui, la retirer ».
+  const ressembleVendu = dejaVendu && !copie;
   // (2026-09-30) L'annonce qu'un « oui » retirera est montrée AVANT le geste :
   // c'est ce geste qui vaut preuve de vente pour CE retrait-là (décision Nico).
-  const aRetirer = !dejaVendu ? null
-    : (aVerifier
-      ? (paire?.preuves?.annonce_id && paire?.preuves?.platform
-        ? { id: String(paire.preuves.annonce_id), plateforme: String(paire.preuves.platform), url: typeof paire.preuves.url === 'string' && paire.preuves.url ? paire.preuves.url : null }
-        : null)
-      : annonceARetirer(paire));
+  const aRetirer = copie ? annonceARetirer(paire) : null;
   // La plateforme où l'article à vérifier a été trouvé.
   const trouveeSur = nomPlateforme(paire?.b?.a_verifier?.platform ?? paire?.preuves?.platform ?? paire?.b?.plateforme ?? '');
   // (08/10, Nico) « Annonce en double ? » : deux annonces d'une MÊME plateforme,
@@ -175,8 +176,8 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
       ? (decision === 'oui'
         ? (fr ? `C'est noté : ton annonce ${nomPlateforme(aRetirer?.plateforme)} va être retirée.` : `Noted: your ${nomPlateforme(aRetirer?.plateforme)} listing will be removed.`)
         : (fr ? "Noté : c'est un autre exemplaire. On n'y touche pas et on ne te le redemandera pas." : "Noted: it's another copy. We won't touch it or ask again."))
-      : decision === 'oui' && dejaVendu
-      ? (fr ? `C'est noté : « ${paire.a?.title ?? ''} » est vendu. Son annonce encore en ligne va être retirée.` : `Noted: “${paire.a?.title ?? ''}” is sold. Its listing still online will be removed.`)
+      : ressembleVendu
+      ? (fr ? 'Noté : elle est dans ton stock, son annonce reste en ligne.' : "Noted: it's in your stock, its listing stays online.")
       : decision === 'oui' && enDouble
       ? (fr ? `Une seule carte pour « ${paire.a?.title ?? ''} » : ses deux annonces restent en ligne, rien n'est retiré.` : `One card for “${paire.a?.title ?? ''}”: both listings stay online, nothing is removed.`)
       : decision === 'oui'
@@ -205,7 +206,8 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: A.ink }}>
-              {dejaVendu ? (fr ? 'Déjà vendu ?' : 'Already sold?')
+              {ressembleVendu ? (fr ? 'Annonce à vérifier' : 'Listing to check')
+                : dejaVendu ? (fr ? 'Déjà vendu ?' : 'Already sold?')
                 : enDouble ? (fr ? 'Annonce en double ?' : 'Duplicate listing?')
                 : aVerifier ? (fr ? 'Annonces à vérifier' : 'Listings to check')
                 : (fr ? 'Est-ce le même article ?' : 'Is it the same item?')}
@@ -286,16 +288,16 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 ? (fr
                   ? `Deux annonces ${plateformeDouble || 'de la même plateforme'} ont la même photo et le même titre : « ${paire.a?.title ?? ''} ». Est-ce la même annonce publiée deux fois, ou deux exemplaires ? Rien n'est retiré, quelle que soit ta réponse.`
                   : `Two ${plateformeDouble || 'same-platform'} listings share the same photo and title: “${paire.a?.title ?? ''}”. Is it the same listing published twice, or two copies? Nothing is removed either way.`)
+                : ressembleVendu
+                ? (fr
+                  ? `« ${paire.a?.title ?? ''} » est vendu. Une annonce encore en ligne${aVerifier && trouveeSur ? ` sur ${trouveeSur}` : ''} lui ressemble : FillSell ne la retire pas, une ressemblance ne dit pas que c'est le même objet (tu en as peut-être plusieurs). Elle entre dans ton stock comme un article à part. Si c'est bien l'objet vendu, retire-la toi-même depuis sa fiche.`
+                  : `“${paire.a?.title ?? ''}” is sold. A listing still online${aVerifier && trouveeSur ? ` on ${trouveeSur}` : ''} looks like it: FillSell doesn't remove it, a resemblance doesn't mean it's the same object (you may have several). It goes into your stock as a separate item. If it really is the sold object, remove it yourself from its item.`)
                 : aVerifier && !dejaVendu
                 ? (fr
                   ? `Trouvée sur ${trouveeSur || 'une autre plateforme'} pendant ta synchro, elle ressemble à « ${paire.a?.title ?? ''} », déjà dans ton stock. Si c'est le même objet, on les réunit en une seule carte (ses annonces restent en ligne). Sinon, elle entre dans ton stock. En attendant, ses ventes sont suivies comme d'habitude.`
                   : `Found on ${trouveeSur || 'another platform'} during your sync, it looks like “${paire.a?.title ?? ''}”, already in your stock. If it's the same object, we merge them into one card (its listings stay online). Otherwise, it goes into your stock. Meanwhile, its sales are tracked as usual.`)
                 : copie
                 ? texteQuestionCopie(paire, fr)
-                : dejaVendu
-                ? (fr
-                  ? `« ${paire.a?.title ?? ''} » est vendu. Une annonce encore en ligne lui ressemble. Si c'est le même objet, on réunit les deux fiches et on retire cette annonce, pour ne pas le vendre deux fois.`
-                  : `“${paire.a?.title ?? ''}” is sold. A listing still online looks like it. If it's the same object, we merge the two items and remove that listing, so it isn't sold twice.`)
                 : fr
                 ? `Ces deux fiches se ressemblent beaucoup${raisons.length ? ` (${raisons.join(', ')})` : ''}. Si c'est le même objet, on les réunit : ses annonces en ligne restent en ligne, rien n'est retiré.`
                 : `These two items look alike${raisons.length ? ` (${raisons.join(', ')})` : ''}. If they're the same object, we merge them: its online listings stay online, nothing is removed.`}
@@ -324,9 +326,10 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 )}
               </div>
             )}
-            {orphelin ? (
+            {orphelin || ressembleVendu ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
-                <button type="button" disabled={busy} onClick={ranger} className="rv-cta rv-focus"
+                {/* Ressemble à un article vendu : « non » au serveur (deux articles), jamais une fusion ni un retrait. */}
+                <button type="button" disabled={busy} onClick={orphelin ? ranger : () => repondre('non')} className="rv-cta rv-focus"
                   style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
                   {fr ? 'La mettre dans mon stock' : 'Put it in my stock'}
                 </button>
@@ -337,8 +340,6 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
                 {copie
                   ? (fr ? 'Oui, la retirer' : 'Yes, remove it')
-                  : dejaVendu
-                  ? (fr ? "Oui, c'est le même — retirer l'annonce" : "Yes, same item — remove the listing")
                   : enDouble
                   ? (fr ? "Oui, c'est la même annonce" : "Yes, it's the same listing")
                   : (fr ? "Oui, c'est le même" : "Yes, it's the same")}
