@@ -13843,14 +13843,17 @@ serve(async (req) => {
           } else if (essaiEnCours.releve_id) {
             const { data: rE } = await adminB.from("vinted_sync_runs").select("status, erreur").eq("id", String(essaiEnCours.releve_id)).maybeSingle();
             const st = String((rE as Record<string, unknown> | null)?.status ?? "");
-            if (signeBlocageLbc((rE as Record<string, unknown> | null)?.erreur)) verdict = "refuse";
-            else if (st === "done") verdict = "passe";
+            // (03/11, point 7) Un relevé lu en entier (« done », pas « [incomplet] ») = Leboncoin répond : PASSÉ, même si
+            // une de ses relances a vu un 403. Sinon, un signe de blocage dans son texte = refusé.
+            const texteE = String((rE as Record<string, unknown> | null)?.erreur ?? "");
+            if (st === "done" && !/\[incomplet\]/.test(texteE)) verdict = "passe";
+            else if (signeBlocageLbc(texteE)) verdict = "refuse";
           }
           if (verdict) {
             const nb = verdict === "passe" ? blocageLeve(bEnCours, { par: "get-pending-jobs (essai passé)" }) : blocageEssaiRefuse(bEnCours, { signe: null });
             await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nb, p_user: user.id });
             psB = { ...psB, leboncoin: { ...((psB.leboncoin ?? {}) as Record<string, unknown>), blocage_acces: nb } };
-            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — essai ${verdict === "passe" ? "PASSÉ : blocage levé, reprise prudente 6 h" : "REFUSÉ : blocage prolongé de 24 h"}`);
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — essai ${verdict === "passe" ? "PASSÉ : blocage levé, reprise prudente 6 h" : "REFUSÉ : prochaine visite de contrôle dans 2 h"}`);
           }
         }
         const eb = etatBlocageLbc(psB) as { etat: string; blocage: Record<string, unknown> | null; prete?: boolean };
@@ -13866,12 +13869,10 @@ serve(async (req) => {
           const lbc = out.filter((j) => j.platform === "leboncoin")
             .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
           let garde: string | null = null;
-          if (eb.etat === "essai" && lbc.length && essaiPossible) {
-            garde = String(lbc[0].id);
-            await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
-              p_patch: blocageAvecEssai(eb.blocage, { jobId: garde }), p_user: user.id });
-            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin bloqué — ESSAI : une seule action servie (${garde.slice(0, 8)})`);
-          } else if (eb.etat === "reprise" && eb.prete && lbc.length) {
+          // (03/11, point 7 — règle de Nico) Pendant une restriction, JAMAIS une action pour « essayer » : l'essai est une
+          // VISITE DE CONTRÔLE légère, le relevé « Mes annonces » (lecture seule), plus bas. Une action ne part qu'après la
+          // levée, en reprise prudente (une toutes les 10 min) : la file repart d'elle-même, jamais en rafale.
+          if (eb.etat === "reprise" && eb.prete && lbc.length) {
             garde = String(lbc[0].id);
             await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
               p_patch: { ...eb.blocage, derniere_action_reprise: new Date().toISOString() }, p_user: user.id });
@@ -13881,7 +13882,7 @@ serve(async (req) => {
             const ids = new Set(retenus.map((j) => String(j.id)));
             out = out.filter((j) => !ids.has(String(j.id)));
             if (eb.etat !== "reprise") {
-              const msgB = messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""));
+              const msgB = messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""), String(eb.blocage.signe ?? "") || null);
               let ecrits = 0;
               for (const j of retenus) {
                 if (ecrits >= 40 || j.error === msgB) continue;
@@ -13896,12 +13897,24 @@ serve(async (req) => {
           }
           // Relevés Leboncoin : jamais pendant le blocage ; à l'essai, le relevé en file EST l'essai quand aucune tâche ne
           // l'est ; en reprise, seulement quand aucune action n'est partie.
-          const releveLbc = syncCommandsAnnonces.find((c) => c.platform === "leboncoin") ?? null;
+          let releveLbc = syncCommandsAnnonces.find((c) => c.platform === "leboncoin") ?? null;
+          // (03/11, point 7) La visite de contrôle due et aucun relevé Leboncoin en file : le serveur en pose UN (lecture
+          // seule, déclencheur controle_blocage_lbc) — sinon la pause durait sans jamais être retestée.
+          if (!releveLbc && eb.etat === "essai" && essaiPossible) {
+            const { data: rN, error: eN } = await adminB.from("vinted_sync_runs")
+              .insert({ user_id: user.id, kind: "annonces", status: "queued", platform: "leboncoin", declencheur: "controle_blocage_lbc", queued_at: new Date().toISOString() })
+              .select("id").maybeSingle();
+            if (!eN && rN?.id) {
+              releveLbc = { id: String(rN.id), platform: "leboncoin", declencheur: "controle_blocage_lbc", devant: true };
+              syncCommandsAnnonces = [...syncCommandsAnnonces, releveLbc];
+            } else if (eN) console.warn(`[get-pending-jobs] userId=${user.id} : Leboncoin — visite de contrôle non posée (${eN.message})`);
+          }
           if (releveLbc && eb.etat === "essai" && !garde && essaiPossible) {
+            const idControle = releveLbc.id;
             await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
-              p_patch: { ...blocageAvecEssai(eb.blocage, { jobId: "" }), essai: { releve_id: releveLbc.id, le: new Date().toISOString() } }, p_user: user.id });
-            syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin" || c.id === releveLbc.id);
-            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin bloqué — ESSAI par le relevé ${releveLbc.id.slice(0, 8)}`);
+              p_patch: { ...blocageAvecEssai(eb.blocage, { jobId: "" }), essai: { releve_id: idControle, le: new Date().toISOString(), controle: true } }, p_user: user.id });
+            syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin" || c.id === idControle);
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin bloqué — VISITE DE CONTRÔLE par le relevé ${idControle.slice(0, 8)} (lecture seule, aucune action)`);
           } else if (releveLbc && !(eb.etat === "reprise" && eb.prete && !garde)) {
             syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin");
           }
@@ -13909,7 +13922,7 @@ serve(async (req) => {
           // ventes, liens manquants) ; seules les actions restent espacées, ici. Absent = libre pour toute extension.
           if (lecturesExtensionEnPause(eb.etat)) {
             blocageLbcReponse = { etat: eb.etat, depuis: eb.blocage.depuis ?? null, essai_apres: eb.blocage.essai_apres ?? null,
-              message: messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? "")) };
+              message: messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""), String(eb.blocage.signe ?? "") || null) };
           } else {
             console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin en reprise prudente (levé le ${String(eb.blocage.leve_le ?? "?")}) — lectures de l'extension rouvertes, actions espacées`);
           }
@@ -13946,7 +13959,7 @@ serve(async (req) => {
             const idsA = new Set(retenusA.map((j) => String(j.id)));
             out = out.filter((j) => !idsA.has(String(j.id)));
             if (ebA.etat !== "reprise") {
-              const msgA = messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""));
+              const msgA = messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""), String(ebA.blocage.signe ?? "") || null);
               let ecritsA = 0;
               for (const j of retenusA) {
                 if (ecritsA >= 40 || j.error === msgA) continue;
@@ -13962,7 +13975,7 @@ serve(async (req) => {
           if (lecturesExtensionEnPause(ebA.etat)
               && (!blocageLbcReponse || etatLePlusPrudent(String(blocageLbcReponse.etat ?? "libre"), ebA.etat) === ebA.etat)) {
             blocageLbcReponse = { etat: ebA.etat, depuis: ebA.blocage.depuis ?? null, essai_apres: ebA.blocage.essai_apres ?? null,
-              message: messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? "")), session_de: "executant" };
+              message: messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""), String(ebA.blocage.signe ?? "") || null), session_de: "executant" };
           }
           console.log(`[get-pending-jobs] userId=${user.id} (délégation) : Leboncoin ${ebA.etat} chez l'exécutant ${delegationLbc.executant.slice(0, 8)} — ${retenusA.length} tâche(s) retenue(s)${gardeA ? `, 1 servie (${gardeA.slice(0, 8)})` : ""}`);
         }

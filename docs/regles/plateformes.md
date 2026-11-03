@@ -694,3 +694,19 @@ Rapport : `docs/enquetes/trois-rouges-0211/RAPPORT.md`.
   `platform_settings.leboncoin.blocage_acces` tient (posé avec `depuis`, pas de `leve_le`). Le geste relit la ligne puis
   pose `essai_demande_le` (`platform_settings_fusionner`) → `etatBlocageLbc` « essai » : une seule action au prochain
   passage de l'ordinateur. ⛔ Jamais d'écriture sans pause en cours (elle créerait un blocage).
+
+## ⛔ 03/11 — Leboncoin en pause : une visite de contrôle légère, jamais une action, jamais de rafale (rapport § 7)
+- Règle de Nico : pendant une restriction, UNE visite légère de contrôle de temps en temps (le relevé « Mes annonces »,
+  lecture seule, posé par get-pending-jobs s'il manque, `controle_blocage_lbc`), 2 h après la dernière preuve
+  (`ESSAI_APRES_MS`), ou à la demande (« Leboncoin remarche »). Jamais une tâche comme essai. Relevé lu en entier → levée,
+  reprise prudente ; refus → visite suivante.
+- Un relevé fini « done » (non « [incomplet] ») n'est JAMAIS une preuve de restriction, même si une relance interne a vu
+  un 403 (handler-watch, verdict de l'essai).
+- Extension (0.6.170) : un refus de Leboncoin sur une tâche arrête Leboncoin pour tout le cycle
+  (`refusLeboncoinDuResultat`, `lbcRefusCeCycle`) ; la pause est relue avant chaque tâche Leboncoin ; un relevé lancé par
+  l'extension elle-même ne part pas pendant une pause.
+- Le message dit ce que Leboncoin a montré (`messageBlocageLbc(nav, depuis, signe)`) : vérification anti-robot, refus 403,
+  ou « Accès temporairement restreint » — jamais ce dernier par défaut.
+- Leboncoin « déposée » (point 5) : l'extension 0.6.170 garde le statut BRUT de chaque annonce du relevé (`statut_brut`,
+  écrit seulement si la colonne existe — migration à décider) et compte toujours les statuts bruts dans le texte du relevé
+  (« [statuts] … »). Le comportement « déposée » (garde-fous de Nico) se pose quand ces valeurs sont mesurées.

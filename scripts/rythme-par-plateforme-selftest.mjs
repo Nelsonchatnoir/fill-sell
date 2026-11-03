@@ -52,7 +52,8 @@ ok(/v_intervalle := extract\(epoch FROM \(v_row\.fin - v_debut_ryt\)\) \/ GREATE
 const bg = lire('chrome-extension/background.js');
 ok(/let jobFlowTail = Promise\.resolve\(\);/.test(bg) && /function withJobFlowLock\(label, fn\)/.test(bg) && /On sérialise : un seul flux de jobs à la fois/.test(bg),
   'extension : un seul flux de jobs à la fois (verrou de flux)');
-ok(/for \(let i = 0; i < jobs\.length; i\+\+\) \{[\s\S]{0,4000}?const outcome = await processJob\(job, session\.access_token\);/.test(bg),
+// (03/11, point 7) Fenêtre élargie : la boucle relit aussi la pause Leboncoin avant chaque tâche (toujours séquentielle).
+ok(/for \(let i = 0; i < jobs\.length; i\+\+\) \{[\s\S]{0,6000}?const outcome = await processJob\(job, session\.access_token\);/.test(bg),
   'extension : les jobs d\'un poll passent l\'un APRÈS l\'autre (jamais deux onglets en parallèle)');
 
 console.log('4. Allumer / éteindre');

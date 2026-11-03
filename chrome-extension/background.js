@@ -4669,6 +4669,13 @@ async function pollAndProcessJobsUnlocked() {
   // dès qu'un dépôt attend le paiement de la personne, les autres publications
   // Leboncoin du cycle restent en file (le serveur les sert une par une ensuite).
   let lbcPaiementPrepare = false;
+  // (03/11, point 7) UN REFUS DE LEBONCOIN ARRÊTE LEBONCOIN POUR TOUT LE CYCLE. Le 02/11, 96 tâches servies
+  // d'un coup à 14:39 : après le premier mur de connexion (15:34:56) puis la première vérification anti-robot (16:03:20),
+  // la boucle a encore chargé 57 pages de dépôt, une toutes les ~25 s, pendant que Leboncoin refusait — la pause posée
+  // à 16:03:21 par le serveur n'était relue qu'au poll suivant. Désormais : dès qu'une tâche Leboncoin rend un signe de
+  // refus (anti-robot, DataDome, 403, accès restreint) ou un mur de connexion, plus AUCUNE tâche Leboncoin ne démarre
+  // dans ce cycle (elles restent en file) ; et la pause du serveur est relue avant chaque tâche Leboncoin.
+  let lbcRefusCeCycle = null;
   // (22/10 soir, 0.6.130, point 5) Une synchro demandée pendant ce cycle : les publications restantes attendent.
   let synchroPasseDevant = false;
   // Séquentiel : un onglet de publication à la fois, avec une pause entre
@@ -4678,6 +4685,10 @@ async function pollAndProcessJobsUnlocked() {
     const job = jobs[i];
     // (29/10, lot C 1 — 0.6.159) Une lecture qu'une personne attend passe entre deux tâches, jamais derrière la file.
     await drainerLecturesPrioritaires("entre_taches").catch(() => {});
+    if (job.platform === "leboncoin" && (lbcRefusCeCycle || await leboncoinEnPause())) {
+      console.log(`[background] Job ${job.id} : laissé en file — Leboncoin ${lbcRefusCeCycle ? `a refusé une tâche de ce cycle (${lbcRefusCeCycle})` : "est en pause sur ce compte"}, rien ne repart avant le serveur`);
+      continue;
+    }
     if (lbcPaiementPrepare && job.platform === "leboncoin" && String(job.action ?? "publish") === "publish") {
       console.log(`[background] Job ${job.id} : laissé en file — un dépôt Leboncoin attend déjà « Valider et payer » sur ce cycle`);
       continue;
@@ -4736,6 +4747,13 @@ async function pollAndProcessJobsUnlocked() {
     // (24/10 soir) Une fenêtre de travail rendue visible pour un onglet muet se re-minimise dès le job fini.
     await reminimiserFenetreSiRestauree().catch(() => {});
     if (outcome?.garderOnglet === true && job.platform === "leboncoin") lbcPaiementPrepare = true;
+    if (job.platform === "leboncoin" && outcome && outcome.status !== "published") {
+      const motifRefus = refusLeboncoinDuResultat(outcome);
+      if (motifRefus) {
+        lbcRefusCeCycle = motifRefus;
+        console.warn(`[background] Leboncoin a refusé la tâche ${job.id} (${motifRefus}) : plus aucune tâche Leboncoin ce cycle`);
+      }
+    }
     // Même persistance des échecs que le flux popup (cf. recordRecentResult) :
     // un job échoué en poll de fond doit aussi s'afficher « Échec » au popup.
     if (outcome && ["failed", "needsUser", "retry"].includes(outcome.status)) {
@@ -18002,6 +18020,8 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
         : (api.motif ? `relevé par l'adresse interrompu (${api.motif})` : null),
       defilement: `[adresse] ${api.pages} page(s), ${enLigneApi} en ligne lues sur ${lbcTotalEnLigne ?? "?"} annoncées`
         + (motifsApi.length ? ` · relances : ${motifsApi.join(" ; ")}` : "")
+        // (03/11, point 5) Les statuts bruts lus, TOUJOURS (avant : seulement sur une couverture partielle).
+        + (Object.keys(api.statuts ?? {}).length ? ` · [statuts] ${Object.entries(api.statuts).map(([k, n]) => `${k} ${n}`).join(", ")}` : "")
         + (apresPage ? ` · ${apresPage}` : ""),
     };
   };
@@ -19461,6 +19481,11 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
   // (01/11, 0.6.164) Le compte de ce poste délègue Leboncoin : il ne relève jamais Leboncoin lui-même (le compte de
   // travail délégué, chez l'exécutant, passe `session`). Les relevés servis à ce poste n'en contiennent jamais.
   if (platform === "leboncoin" && !sessionFournie && await leboncoinDelegueAilleurs()) return { ok: false, reason: "leboncoin_delegue" };
+  // (03/11, point 7) Pendant une pause Leboncoin, un relevé que l'extension lance d'elle-même (cron, veilleur, bouton
+  // local) ne part pas : seule la visite de contrôle SERVIE par le serveur (bouton_distant, runId) lit Leboncoin.
+  if (platform === "leboncoin" && !sessionFournie && !(declencheur === "bouton_distant" && runId) && await leboncoinEnPause()) {
+    return { ok: false, reason: "blocage_leboncoin" };
+  }
   if (releveEnCours) return { ok: false, reason: "deja_en_cours" };
   const session = sessionFournie ?? await getValidSession();
   if (!session?.access_token) return { ok: false, reason: "session" };
@@ -19538,6 +19563,9 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     // l'API ; jamais « aucune » inventée par une autre lecture) et si la base a la colonne (même règle que ci-dessus).
     const transactionLue = platform === "leboncoin" && annonces.length > 0 && annonces.every((a) => typeof a.transaction === "string");
     const transactionPossible = transactionLue && await restRequest("annonces_plateforme?select=transaction_plateforme&limit=1", token).then(() => true).catch(() => false);
+    // (03/11, point 5) Le statut brut Leboncoin — seulement si la base a la colonne (même règle que ci-dessus).
+    const statutBrutLu = platform === "leboncoin" && annonces.some((a) => typeof a.statut_brut === "string");
+    const statutBrutPossible = statutBrutLu && await restRequest("annonces_plateforme?select=statut_brut&limit=1", token).then(() => true).catch(() => false);
     // ⚠️ Number(null) vaut 0 : un prix ILLISIBLE doit rester NULL (bande
     //    incertaine), jamais devenir 0 € — même règle pour vues / favoris.
     const nombreOuNull = (v) => (v == null || v === "" ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
@@ -19548,6 +19576,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       ...(statsPossibles ? { vues: nombreOuNull(a.vues), favoris: nombreOuNull(a.favoris) } : {}),
       ...(datePossible ? { publiee_le: a.publiee_le ?? null } : {}),
       ...(transactionPossible ? { transaction_plateforme: a.transaction, transaction_lue_le: maintenant() } : {}),
+      ...(statutBrutPossible ? { statut_brut: typeof a.statut_brut === "string" ? a.statut_brut : null } : {}),
       statut_plateforme: ["en_ligne", "en_verification", "desactivee", "vendue"].includes(a.statut) ? a.statut : "inconnu",
       run_id: run.id, vu_le: maintenant(), disparu_le: null, updated_at: maintenant(),
     }));
@@ -20047,6 +20076,10 @@ async function releverLeboncoinParApi() {
           vues: nombre(a?.stats?.Views),
           favoris: nombre(a?.stats?.Favorites),
           statut: actif ? "en_ligne" : "inconnu",
+          // (03/11, point 5) Le statut BRUT de Leboncoin (active, et ceux d'une annonce déposée mais pas en ligne :
+          // modération, brouillon Pro à payer, refus…) : gardé tel quel, jamais interprété ici. Le statut FillSell
+          // (« en_ligne » / « inconnu ») ne change pas : c'est la mesure qui manquait pour distinguer ces états.
+          statut_brut: a?.status != null ? String(a.status).slice(0, 40) : null,
           publiee_le: dateParis(a?.first_publication_date),
           source_releve: "api_dashboard",
           capture_liste: captureDe(a),
@@ -23118,6 +23151,19 @@ async function envoyerMesuresVeille(etat, token, userId) {
 // tant que ce n'est pas « libre » (essai et reprise prudente compris : seules les actions servies partent).
 // Gardé en mémoire ET dans le stockage (un réveil du service worker ne relance pas une lecture interdite).
 let blocageLbcServeur = null;
+/** (03/11, point 7) Le refus de Leboncoin porté par le résultat d'une tâche (même lecture que le serveur,
+ *  _shared/blocage-leboncoin.js signeBlocageLbc, plus le mur de connexion), ou null. */
+function refusLeboncoinDuResultat(outcome) {
+  const t = `${outcome?.error ?? ""} ${outcome?.needsUserSource ?? ""} ${outcome?.reason ?? ""}`;
+  // Le mur de connexion d'un handler se dit « Connexion Leboncoin requise… » (cf. traiterMurDeConnexion).
+  if (/\bConnexion\s+Leboncoin\s+requise/i.test(t)) return "connexion";
+  if (/acc[eè]s temporairement restreint|un robot est sur le m[eê]me r[ée]seau/i.test(t)) return "acces_restreint";
+  if (/captcha-delivery|datadome|v[ée]rification anti-?robot|CHALLENGE DATADOME|r[ée]soudre la v[ée]rification/i.test(t)) return "anti_robot";
+  if (/\bhttp[_ ]?403\b|\bHTTP 403\b|\b403 Forbidden\b/i.test(t)) return "http_403";
+  if (/a refus[ée] l'acc[eè]s [àa] la page/i.test(t)) return "refus_acces_page";
+  if (/mur de connexion|connecte-toi [àa] Leboncoin|session Leboncoin (absente|expir)|jeton absent|me connecter/i.test(t)) return "connexion";
+  return null;
+}
 function noterBlocageLbcServeur(b) {
   blocageLbcServeur = b && typeof b === "object" && b.etat && b.etat !== "libre" ? { ...b, vu_le: Date.now() } : null;
   chrome.storage.local.set({ fillsell_blocage_lbc: blocageLbcServeur }).catch(() => {});

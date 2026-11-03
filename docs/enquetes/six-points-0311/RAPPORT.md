@@ -32,7 +32,9 @@ retrait en file ou ne sont pas prouvées (`armer_retraits_copies` n'arme que les
 question « Déjà vendu ? »). **Trou réel** : le déclencheur `cross_post_jobs_publie_sur_article_vendu` ne regarde que
 `UPDATE OF status` → `published` ; une annonce INSÉRÉE déjà publiée par un relevé (rattachement, import), ou re-pointée sur
 une fiche, n'arme rien. 60 derniers jours : 4 annonces rattachées après la vente vue (2 sans aucun retrait, 1 retrait
-annulé, 1 retrait fait). Proposition, NON appliquée (migration, feu vert de Nico) : `proposition-migration-armement.sql`.
+annulé, 1 retrait fait). Migration `20261103140000_armer_retrait_rattachee_apres_vente` (feu vert de Nico) : essai à
+blanc 5/5, appliquée le 03/11 à 13:52 (annexe A = son texte). Les annonces déjà rattachées avant ne sont pas rejouées
+(aucune action de masse) : liste dans le rapport de session.
 
 ## 2. Audit des descriptions (À BLANC, rien changé)
 
@@ -109,3 +111,69 @@ bouton n'existait nulle part, alors que le serveur savait faire l'essai demandé
 seulement quand `platform_settings.leboncoin.blocage_acces` tient (posé, non levé). Le geste relit la ligne puis pose
 `essai_demande_le` par `platform_settings_fusionner` : une seule action Leboncoin au prochain passage de l'ordinateur, puis
 levée et reprise prudente, ou pause prolongée. Jamais d'écriture sans pause en cours (elle créerait un blocage).
+
+## Annexe A — la migration de l'armement (première rédaction ; le fichier appliqué est dans supabase/migrations/)
+
+```sql
+-- ⛔ PROPOSITION — NON APPLIQUÉE. Feu vert explicite de Nico requis, puis essai à blanc (BEGIN … ROLLBACK) avant toute
+-- application par `npx supabase db query --linked -f` + `migration repair`. Rédigée le 03/11 (rapport § 1).
+--
+-- UNE ANNONCE RATTACHÉE À UN ARTICLE DÉJÀ VENDU ARME SON RETRAIT TOUT DE SUITE
+-- cross_post_jobs_publie_sur_article_vendu (prod, lue le 03/11) n'est appelée que par le déclencheur
+--   AFTER UPDATE OF status … WHEN (new.status = 'published' AND old.status IS DISTINCT FROM 'published' …)
+-- Une annonce INSÉRÉE déjà « published » (relevé : rattachement, import) ou re-pointée sur une autre fiche
+-- (UPDATE OF inventaire_id) n'arme donc rien : 4 cas en 60 jours (rapport § 1). Même fonction, mêmes gardes
+-- (armer_retrait_job : jamais deux retraits de la même annonce, jamais deux exemplaires, sauf fillsell.sans_retrait).
+
+CREATE TRIGGER cross_post_jobs_inseree_sur_article_vendu
+  AFTER INSERT ON public.cross_post_jobs
+  FOR EACH ROW
+  WHEN (new.status = 'published' AND COALESCE(new.action, 'publish') IN ('publish', 'republish') AND new.inventaire_id IS NOT NULL)
+  EXECUTE FUNCTION public.cross_post_jobs_publie_sur_article_vendu();
+
+CREATE TRIGGER cross_post_jobs_repointee_sur_article_vendu
+  AFTER UPDATE OF inventaire_id ON public.cross_post_jobs
+  FOR EACH ROW
+  WHEN (new.status = 'published' AND new.inventaire_id IS NOT NULL AND new.inventaire_id IS DISTINCT FROM old.inventaire_id
+        AND COALESCE(new.action, 'publish') IN ('publish', 'republish'))
+  EXECUTE FUNCTION public.cross_post_jobs_publie_sur_article_vendu();
+
+-- À vérifier dans l'essai à blanc, AVANT : armer_retrait_job refuse-t-il bien d'armer un retrait sur l'annonce de la
+-- plateforme de la VENTE elle-même (relevé Vinted qui importe l'annonce vendue) ? Sinon, ajouter la garde dans la fonction.
+-- Inverse : DROP TRIGGER cross_post_jobs_inseree_sur_article_vendu ON public.cross_post_jobs;
+--           DROP TRIGGER cross_post_jobs_repointee_sur_article_vendu ON public.cross_post_jobs;
+```
+
+## 7. Les pauses Leboncoin « Accès temporairement restreint » (point ajouté par Nico)
+
+**Constat (lecture seule, heure de Paris).** Quatre comptes signalés, quatre natures différentes, aucune cause commune :
+- compte A (02/11) : 57 publications en 2 h (une toutes les ~2 min, lot de ~140 servi en un poll), puis un mur de connexion
+  (15:34:56) et une vérification anti-robot DataDome (16:03:20) — pas l'écran « Accès temporairement restreint ». Pause
+  posée à 16:03:21. **Puis 42 pages de dépôt chargées pendant le refus** (16:03:41 → 16:22:43, ~1 toutes les 25 s ; 57 avec
+  celles d'avant) : la boucle des tâches d'un cycle ne relisait pas la pause (relue au poll seulement) et ne s'arrêtait
+  pas sur un refus. Dernière visite de Leboncoin : 02/11 16:22:43 (page de dépôt remplacée par la vérification anti-robot).
+  Aucun contrôle prévu avant le 03/11 16:22 (24 h) — et ce contrôle aurait été une ACTION. Cause probable du refus : le
+  volume avant la perte de session, non prouvée (des volumes plus forts sont passés en octobre).
+- compte B (01/11) : 0 action dans les 2 h ; la pause vient d'un relevé RÉUSSI (6/6 lus) dont une relance avait vu un 403 :
+  faux positif de NOTRE règle (handler-watch lisait « http_403 » dans le texte d'un relevé fini).
+- compte C (03/11) : 2 actions en 18 min ; vérification passagère (deux relevés complets juste après).
+- compte D (02/11) : aucun signe Leboncoin : le message vient de la garde « machine virtuelle » (pilote graphique), il
+  se corrige au prochain passage de son poste.
+- Versions 0.6.163 à 0.6.169 : aucun changement de cadence (délai entre tâches inchangé depuis le 04/07) ni de lecture de
+  page Leboncoin qui explique un refus ; les témoins jamais restreints tournaient sur les mêmes versions. « Zéro avant le
+  01/11 » est inexact : un autre compte avait un 403 dès le 28/10.
+
+**Règle posée (Nico)** — pendant une restriction, une seule visite légère de contrôle de temps en temps, jamais une action,
+et la file repart d'elle-même :
+- `_shared/blocage-leboncoin.js` : contrôle 2 h après la dernière preuve (24 h avant) ; le message dit ce que Leboncoin a
+  montré (vérification anti-robot, refus 403, accès restreint) au lieu de toujours « Accès temporairement restreint ».
+- get-pending-jobs : l'essai n'est plus jamais une tâche ; c'est le relevé « Mes annonces » (lecture), posé par le serveur
+  s'il n'y en a pas en file (`controle_blocage_lbc`). Relevé lu en entier → levée et reprise prudente (une action toutes
+  les 10 min, 6 h) ; signe de refus → visite suivante 2 h plus tard.
+- handler-watch : un relevé fini « done » (non « [incomplet] ») n'est jamais une preuve de restriction.
+- Extension 0.6.170 : dès qu'une tâche Leboncoin rend un refus (anti-robot, DataDome, 403, accès restreint, mur de connexion,
+  refus d'accès passager), plus AUCUNE tâche Leboncoin ne démarre dans ce cycle, et la pause du serveur est relue avant
+  chaque tâche Leboncoin ; un relevé Leboncoin lancé par l'extension elle-même ne part pas pendant une pause (seule la
+  visite servie par le serveur lit Leboncoin).
+- Ce qui manque pour trancher une cause : la réponse réelle de Leboncoin au moment du signe (statut, en-têtes, identifiant
+  DataDome), l'IP du poste, l'heure de CHAQUE tentative (seule la dernière est gardée).

@@ -487,9 +487,12 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   DÉFINITIF nommé (`refusGetItemDefinitif` : aucune erreur passagère, jeton, quota, panne — `CODES_GETITEM_PASSAGERS`) ET
   vitrine Browse 404 / terminée / vendue (`annonceSupprimeeParEbay`). Vitrine qui la vend encore, ou muette : reporté.
   Publication d'origine close « Annonce supprimée par eBay (pas par le vendeur) — pas une vente » (jamais sur une vente).
-- ⛔ Armement : `cross_post_jobs_publie_sur_article_vendu` ne couvre que `UPDATE OF status` → published ; une annonce
-  INSÉRÉE publiée par un relevé (ou re-pointée sur la fiche) d'un article déjà vendu n'arme rien. Proposition de
-  migration NON appliquée (feu vert de Nico) : `docs/enquetes/six-points-0311/proposition-migration-armement.sql`.
+- ⛔ Armement (migration `20261103140000_armer_retrait_rattachee_apres_vente`, feu vert de Nico, appliquée le 03/11 à
+  13:52) : la MÊME fonction `cross_post_jobs_publie_sur_article_vendu` est aussi appelée AFTER INSERT (annonce insérée déjà
+  publiée par un relevé) et AFTER UPDATE OF inventaire_id (re-pointée sur une fiche) : une annonce rattachée à un article
+  déjà vendu arme son retrait tout de suite, avec toutes les gardes d'`armer_retrait_job_pour` (vente sur une AUTRE
+  plateforme, annonce prouvée, jamais deux exemplaires vus par les relevés, `fillsell.sans_retrait`). Essai à blanc 5/5
+  (`scripts/essais/20261103140000_essai.sql`), 30-43 ms par déclenchement. Inverse dans `supabase/rollbacks/`.
 
 ## 03/11 — une publication eBay close « absente, sans motif » est relue chez eBay (rapport § 4)
 - La fonction SQL des relevés clôt « absente aux relevés complets … aucun motif » sans lire eBay quand la veille n'a pas

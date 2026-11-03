@@ -23,11 +23,27 @@
 //      reprennent dès la levée ; la reprise finie, le blocage est rangé (blocage_acces_dernier). Un refus après la
 //      levée remet la pause, même délai (31/10, lot J 1). Un poste en machine virtuelle ne fait jamais l'essai ;
 //   5. une machine virtuelle (rendu graphique logiciel) ne fait jamais Leboncoin (_shared/poste-virtuel.js).
+// (03/11, point 7 — règle de Nico) L'ESSAI DEVIENT UNE VISITE DE CONTRÔLE : un compte en pause depuis le 02/11 16:03 n'avait
+// aucun contrôle prévu avant le 03/11 16:22 (24 h), et l'essai prévu était une ACTION (la plus ancienne publication).
+// Désormais : toutes les 2 h (ESSAI_APRES_MS), ou à la demande (« Leboncoin remarche »), UNE visite légère — le relevé
+// « Mes annonces », lecture seule, posé par le serveur s'il n'y en a pas en file (get-pending-jobs) — jamais une action.
+// Passée → levée et reprise prudente (la file repart d'elle-même, une action toutes les 10 min, jamais de rafale) ;
+// refusée (signe de blocage dans le relevé) → prochaine visite 2 h plus tard.
 // Pur (Deno + Node).
 
 export const CHEMIN_BLOCAGE_LBC = ["leboncoin", "blocage_acces"];
-export const ESSAI_APRES_MS = 24 * 3600_000;
+export const ESSAI_APRES_MS = 2 * 3600_000;   // (03/11, point 7) une visite de contrôle toutes les 2 h (24 h avant)
 export const REPRISE_PRUDENTE_MS = 6 * 3600_000;
+// (03/11, point 7 — garde-fou de Nico) UNE LECTURE RÉUSSIE NE PROUVE PAS QUE LA PUBLICATION EST DÉBLOQUÉE. Si la visite
+// de contrôle passe (levée) mais qu'une action est de nouveau refusée pendant la reprise prudente, c'est une RECHUTE :
+// la visite suivante s'espace — 2 h à la première rechute, 6 h à la deuxième, 24 h ensuite — au lieu de reprendre
+// toutes les 2 h. Les rechutes repartent de zéro quand une reprise prudente va à son terme (blocage rangé).
+export const PALIERS_RECHUTE_MS = [2 * 3600_000, 6 * 3600_000, 24 * 3600_000];
+/** Le délai avant la prochaine visite de contrôle d'un blocage (ESSAI_APRES_MS, ou le palier de ses rechutes). */
+export function delaiControleLbc(b) {
+  const r = Math.max(0, Math.floor(Number(b?.rechutes) || 0));
+  return r > 0 ? PALIERS_RECHUTE_MS[Math.min(r, PALIERS_RECHUTE_MS.length) - 1] : ESSAI_APRES_MS;
+}
 export const ESPACEMENT_REPRISE_MS = 10 * 60_000;
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
@@ -79,16 +95,16 @@ export function etatBlocageLbc(ps, maintenant = Date.now()) {
   }
   const essai = objet(b.essai);
   if (essai && !essai.issue) {
-    // Un essai déjà servi attend son résultat ; sans résultat au bout de 2 h, il compte pour un refus muet : le
-    // prochain essai vient 24 h après lui.
+    // Un essai déjà servi attend son résultat ; sans résultat au bout de 2 h, il compte pour un refus muet : la
+    // prochaine visite de contrôle vient ESSAI_APRES_MS après lui.
     const le = ms(essai.le);
     if (Number.isFinite(le) && maintenant - le < 2 * 3600_000) return { etat: "bloque", blocage: b, essai_en_cours: true };
-    const prochain = (Number.isFinite(le) ? le : maintenant) + ESSAI_APRES_MS;
+    const prochain = (Number.isFinite(le) ? le : maintenant) + delaiControleLbc(b);
     const demandeApres = ms(b.essai_demande_le);
     if (maintenant >= prochain || (Number.isFinite(demandeApres) && Number.isFinite(le) && demandeApres > le)) return { etat: "essai", blocage: b };
     return { etat: "bloque", blocage: b };
   }
-  const essaiApres = ms(b.essai_apres) || (ms(b.depuis) + ESSAI_APRES_MS);
+  const essaiApres = ms(b.essai_apres) || (ms(b.depuis) + delaiControleLbc(b));
   const demande = ms(b.essai_demande_le);
   if ((Number.isFinite(essaiApres) && maintenant >= essaiApres) || (Number.isFinite(demande) && demande > (ms(b.derniere_preuve) || 0))) {
     return { etat: "essai", blocage: b };
@@ -96,12 +112,14 @@ export function etatBlocageLbc(ps, maintenant = Date.now()) {
   return { etat: "bloque", blocage: b };
 }
 
-/** Le blocage après un signe vu (posé, ou prolongé de 24 h).
+/** Le blocage après un signe vu (posé, ou prolongé jusqu'à la prochaine visite de contrôle).
  * @param {any} ps
  * @param {{ signe: string, source: string, detail?: string | null, maintenant?: string }} o */
 export function blocagePose(ps, { signe, source, detail = null, maintenant = new Date().toISOString() }) {
   const avant = blocageLbc(ps);
   const actif = avant && !avant.leve_le;
+  // Refusé pendant la reprise prudente (blocage levé encore présent) : une rechute de plus ; encore bloqué : les mêmes.
+  const rechutes = avant?.leve_le ? (Number(avant.rechutes) || 0) + 1 : actif ? Number(avant.rechutes) || 0 : 0;
   return {
     depuis: actif ? avant.depuis : maintenant,
     derniere_preuve: maintenant,
@@ -109,8 +127,9 @@ export function blocagePose(ps, { signe, source, detail = null, maintenant = new
     source,
     ...(detail ? { detail: String(detail).slice(0, 240) } : {}),
     preuves: Math.min(99, (actif ? Number(avant.preuves) || 0 : 0) + 1),
-    essai_apres: new Date(Date.parse(maintenant) + ESSAI_APRES_MS).toISOString(),
+    essai_apres: new Date(Date.parse(maintenant) + delaiControleLbc({ rechutes })).toISOString(),
     ...(actif && avant.essais ? { essais: avant.essais } : {}),
+    ...(rechutes > 0 ? { rechutes: Math.min(99, rechutes) } : {}),
   };
 }
 
@@ -149,21 +168,32 @@ export function blocageArchive(b, { maintenant = new Date().toISOString() } = {}
   return { patch: { blocage_acces_dernier: { ...(objet(b) ?? {}), clos_le: maintenant } }, supprimer: ["blocage_acces"] };
 }
 
+/** (03/11, point 7) La tête du message dit CE QUE Leboncoin a montré (signe du blocage) — jamais « Accès temporairement
+ *  restreint » pour une vérification anti-robot ou un refus 403 (02/11 : DataDome, le message disait « restreint »). */
+function teteBlocageLbc(signe, quand) {
+  if (signe === "datadome" || signe === "verification_antirobot") {
+    return `Leboncoin affiche une vérification anti-robot sur ta connexion${quand}`;
+  }
+  if (signe === "http_403") return `Leboncoin refuse l'accès sur ta connexion${quand} (erreur 403)`;
+  return `Leboncoin restreint l'accès sur ta connexion${quand} (« Accès temporairement restreint »)`;
+}
+
 /** Le texte que voit la personne (job retenu, bandeau). `nav` : nom court sûr du navigateur, sinon null.
  * @param {string | null} [nav]
- * @param {string | null} [depuisIso] */
-export function messageBlocageLbc(nav = null, depuisIso = null) {
+ * @param {string | null} [depuisIso]
+ * @param {string | null} [signe] — le signe du blocage (datadome, http_403…), pour dire ce que Leboncoin a montré */
+export function messageBlocageLbc(nav = null, depuisIso = null, signe = null) {
   const dans = ["Chrome", "Brave", "Edge", "Opera"].includes(String(nav ?? "")) ? `dans ${nav}` : "dans ton navigateur";
   const t = ms(depuisIso);
   const quand = Number.isFinite(t)
     ? ` depuis le ${new Date(t).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" })} à ${new Date(t).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}`
     : "";
-  return `Leboncoin restreint l'accès depuis ta connexion${quand} (« Accès temporairement restreint ») : FillSell a mis en pause ` +
+  return `${teteBlocageLbc(signe, quand)} : FillSell a mis en pause ` +
     "TOUTES ses actions Leboncoin sur ton compte — publications, republications, retraits, relevés et détection des ventes — " +
     "pour ne pas aggraver le blocage. Rien n'a été touché. Tant que la pause dure, une vente Leboncoin n'est pas vue par " +
     "FillSell et une annonce Leboncoin d'un article vendu ailleurs n'est pas retirée : fais-le toi-même sur Leboncoin. " +
     `Ouvre leboncoin.fr ${dans} : quand la page s'affiche normalement, appuie sur « Leboncoin remarche » dans FillSell ` +
-    "(sinon FillSell fait lui-même un seul essai par jour), et la reprise se fera doucement.";
+    "(sinon FillSell revérifie lui-même de temps en temps, par une simple lecture, sans rien publier), et la reprise se fera doucement.";
 }
 
 /** Le patch platform_settings d'un essai servi (une seule action). */
@@ -171,11 +201,11 @@ export function blocageAvecEssai(b, { jobId, maintenant = new Date().toISOString
   return { ...(objet(b) ?? {}), essai: { job_id: String(jobId), le: maintenant }, essais: Math.min(99, (Number(b?.essais) || 0) + 1) };
 }
 
-/** Le patch platform_settings d'un essai refusé : bloqué encore 24 h.
+/** Le patch platform_settings d'un essai refusé : bloqué jusqu'à la prochaine visite de contrôle (ESSAI_APRES_MS).
  * @param {any} b
  * @param {{ signe?: string | null, maintenant?: string }} o */
 export function blocageEssaiRefuse(b, { signe, maintenant = new Date().toISOString() }) {
   return { ...(objet(b) ?? {}), derniere_preuve: maintenant, signe: signe ?? b?.signe ?? null,
-    essai_apres: new Date(Date.parse(maintenant) + ESSAI_APRES_MS).toISOString(),
+    essai_apres: new Date(Date.parse(maintenant) + delaiControleLbc(b)).toISOString(),
     essai: { ...(objet(b?.essai) ?? {}), issue: "refuse", fin_le: maintenant } };
 }

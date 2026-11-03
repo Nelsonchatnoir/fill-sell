@@ -427,6 +427,8 @@
     "selftest:ebay-retrait-trading": "node scripts/ebay-retrait-trading-selftest.mjs",
     "selftest:ebay-disparue-motif": "node scripts/ebay-disparue-motif-selftest.mjs",
     "selftest:bouton-leboncoin-remarche": "node scripts/bouton-leboncoin-remarche-selftest.mjs",
+    "selftest:lbc-controle-pause": "node scripts/lbc-controle-pause-selftest.mjs",
+    "selftest:lbc-statut-brut": "node scripts/lbc-statut-brut-selftest.mjs",
     "selftest:remonter-par-plateforme": "node --import ./scripts/loader-ext.mjs scripts/remonter-par-plateforme-selftest.mjs",
     "selftest:ebay-rayon-traditionnel": "node scripts/ebay-rayon-traditionnel-selftest.mjs",
     "selftest:lbc-rattrapage-lecture-fraiche": "node scripts/lbc-rattrapage-lecture-fraiche-selftest.mjs",

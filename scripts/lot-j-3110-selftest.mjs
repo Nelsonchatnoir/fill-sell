@@ -61,7 +61,9 @@ t(etatBlocageLbc({ leboncoin: lbcApres }, L + REPRISE_PRUDENTE_MS + 2).etat === 
 // Le serveur : reprise → rien dit à l'extension ; un poste virtuel ne fait jamais l'essai.
 const gpj = readFileSync("supabase/functions/get-pending-jobs/index.ts", "utf8");
 t(/if \(lecturesExtensionEnPause\(eb\.etat\)\) \{\s*blocageLbcReponse =/.test(gpj), "get-pending-jobs : blocages.leboncoin seulement en pause ou essai");
-t(/eb\.etat === "essai" && lbc\.length && essaiPossible/.test(gpj) && /eb\.etat === "essai" && !garde && essaiPossible/.test(gpj), "get-pending-jobs : pas d'essai sur un poste virtuel");
+t(/eb\.etat === "essai" && !garde && essaiPossible/.test(gpj) && /!releveLbc && eb\.etat === "essai" && essaiPossible/.test(gpj), "get-pending-jobs : pas d'essai sur un poste virtuel");
+// (03/11, point 7) L'essai n'est JAMAIS une action : une visite de contrôle (le relevé, posé par le serveur s'il manque).
+t(!/eb\.etat === "essai" && lbc\.length/.test(gpj) && !/jobId: garde/.test(gpj) && /declencheur: "controle_blocage_lbc"/.test(gpj), "get-pending-jobs : l'essai est une visite de contrôle, jamais une action");
 t(/eb\.etat === "libre" && eb\.blocage\)[\s\S]{0,400}blocageArchive/.test(gpj), "get-pending-jobs : reprise finie → blocage rangé");
 for (const f of ["handler-watch", "update-job-status"]) {
   const src = readFileSync(`supabase/functions/${f}/index.ts`, "utf8");

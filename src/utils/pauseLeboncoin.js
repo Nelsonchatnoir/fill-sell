@@ -3,8 +3,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // Le message de pause (_shared/blocage-leboncoin.js, messageBlocageLbc) dit depuis le 30/10 : « appuie sur « Leboncoin
 // remarche » dans FillSell » — et ce bouton n'existait pas. Le serveur, lui, sait faire l'essai demandé : un
-// `essai_demande_le` plus récent que la dernière preuve du blocage met le compte en « essai » (etatBlocageLbc) ; une
-// seule action Leboncoin part au prochain passage de l'ordinateur, puis levée et reprise prudente, ou pause prolongée.
+// `essai_demande_le` plus récent que la dernière preuve du blocage met le compte en « essai » (etatBlocageLbc) ; depuis
+// le 03/11 (point 7), l'essai est UNE visite de contrôle (relevé, lecture seule), jamais une action — puis levée et
+// reprise prudente, ou pause prolongée jusqu'à la visite suivante (2 h).
 // Ici, la lecture PURE de platform_settings.leboncoin.blocage_acces pour le bandeau (BandeauLeboncoinPause).
 // ⛔ Jamais d'écriture sans pause en cours : écrire `essai_demande_le` dans un blocage absent CRÉERAIT un blocage.
 
@@ -37,8 +38,8 @@ export const TEXTES_PAUSE_LBC = {
     titre: 'Leboncoin est en pause sur ton compte',
     texte: (depuis) => `Leboncoin a restreint l'accès depuis ta connexion${depuis ? ` (${depuis})` : ''} : FillSell a tout mis en pause sur Leboncoin pour ne pas aggraver le blocage. Ouvre leboncoin.fr dans ton navigateur : si la page s'affiche normalement, appuie sur « Leboncoin remarche ».`,
     bouton: 'Leboncoin remarche',
-    demande: 'C\'est noté : FillSell refait UN seul essai Leboncoin au prochain passage de ton ordinateur. S\'il passe, la reprise se fait doucement ; sinon la pause continue et FillSell réessaie seul dans 24 h.',
-    dejaDemande: 'Essai demandé : FillSell refait UN seul essai Leboncoin au prochain passage de ton ordinateur.',
+    demande: 'C\'est noté : au prochain passage de ton ordinateur, FillSell fait UNE visite de contrôle sur Leboncoin (une simple lecture, rien n\'est publié). Si Leboncoin répond normalement, ta file repart d\'elle-même, doucement ; sinon la pause continue et FillSell revérifiera seul, sans rien publier.',
+    dejaDemande: 'Contrôle demandé : FillSell fait UNE visite de contrôle sur Leboncoin (une simple lecture) au prochain passage de ton ordinateur.',
     finie: 'Leboncoin n\'est plus en pause sur ton compte : rien à faire.',
     erreur: 'La demande n\'est pas passée. Réessaie dans un instant.',
     plusTard: 'Plus tard',
@@ -47,8 +48,8 @@ export const TEXTES_PAUSE_LBC = {
     titre: 'Leboncoin is paused on your account',
     texte: (depuis) => `Leboncoin restricted access from your connection${depuis ? ` (${depuis})` : ''}: FillSell paused everything on Leboncoin so the block doesn't get worse. Open leboncoin.fr in your browser: if the page shows normally, tap “Leboncoin works again”.`,
     bouton: 'Leboncoin works again',
-    demande: 'Noted: FillSell will make ONE Leboncoin attempt on your computer\'s next check. If it goes through, it resumes gently; otherwise the pause goes on and FillSell retries on its own in 24 h.',
-    dejaDemande: 'Attempt requested: FillSell will make ONE Leboncoin attempt on your computer\'s next check.',
+    demande: 'Noted: on your computer\'s next check, FillSell makes ONE control visit to Leboncoin (a simple read, nothing is posted). If Leboncoin answers normally, your queue resumes on its own, gently; otherwise the pause goes on and FillSell will check again on its own, posting nothing.',
+    dejaDemande: 'Check requested: FillSell makes ONE control visit to Leboncoin (a simple read) on your computer\'s next check.',
     finie: 'Leboncoin is no longer paused on your account: nothing to do.',
     erreur: 'The request did not go through. Try again in a moment.',
     plusTard: 'Later',

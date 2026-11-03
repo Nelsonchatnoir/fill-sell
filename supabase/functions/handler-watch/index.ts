@@ -3329,7 +3329,7 @@ serve(async (req) => {
     const [{ data: logsB }, { data: runsB }] = await Promise.all([
       supabase.from("usage_logs").select("user_id, created_at, feature, metadata")
         .in("feature", ["veille_commandes", "releve_ventes"]).gte("created_at", depuisB).limit(200),
-      supabase.from("vinted_sync_runs").select("user_id, finished_at, erreur")
+      supabase.from("vinted_sync_runs").select("user_id, finished_at, erreur, status")
         .eq("platform", "leboncoin").gte("finished_at", depuisB).not("erreur", "is", null).limit(100),
     ]);
     const preuves = new Map<string, { le: string; signe: string; source: string; detail: string }>();
@@ -3344,6 +3344,9 @@ serve(async (req) => {
     }
     // deno-lint-ignore no-explicit-any
     for (const r of (runsB ?? []) as any[]) {
+      // (03/11, point 7) Un relevé fini « done » a LU Leboncoin en entier : un 403 vu dans une de ses relances (texte
+      // « relances : … http_403 ») n'est pas une restriction (faux positif du 01/11 : relevé 6/6 lu, compte mis en pause).
+      if (String(r.status ?? "") === "done" && !/\[incomplet\]/.test(String(r.erreur ?? ""))) continue;
       const signe = signeBlocageLbc(r.erreur);
       if (!signe) continue;
       const p = preuves.get(r.user_id);
