@@ -256,3 +256,15 @@ marge de 100 % sur du vent, indétectable ensuite.
   (`_shared/google-accuse-abonnement.js` : validate-google-purchase, filet google-play-webhook sur chaque « on »). Sans
   confirmation Google rembourse à 72 h (BONCOIN 26/10 → remboursée le 29/10 10:04 ; Malena 28/09) : le module Android
   confirmait seul, en asynchrone, puis fermait sa connexion aussitôt.
+
+## ⛔ (03/11, décision de Nico) Un paiement du même palier ouvre TOUJOURS un cycle neuf (cas nadegemarcelin78)
+- Le cycle des quotas part du dernier grant (`debut_cycle_quotas`). `upgrade_monthly_grant`, sur un paiement du MÊME
+  palier reçu plus de 2 jours avant l'échéance interne, ne créditait rien et reportait l'échéance à la fin de la nouvelle
+  période, sans ligne au grand livre : nadegemarcelin78 (Premium, Stripe) payée le 16/10 (échéance interne 20/10), cycle
+  29/09 → 16/11 (48 j), bloquée à 1 500 remontées le 29/10.
+- Règle (migration `20261103233000`) : un `payment` du même palier dont la fin de période PROLONGE l'échéance de plus de
+  2 jours = grant plein à la date du paiement (par `grant_monthly_coins`), compteurs à zéro. Proration, rejeu, RESTARTED
+  sans paiement, second appel du même paiement : ne prolongent rien, ne créditent rien. Le reste : inchangé.
+- Le recalcul a suivi la même règle (une ligne `grant_monthly` datée du paiement, delta 0, `metadata.rattrapage`) :
+  nadegemarcelin78 (cycle au 16/10) et boncoin59300 (29/10, son paiement Stripe ; le cycle partait du paiement Google
+  remboursé du 26/10). Preuve jetable `scripts/quotas/preuve-cycle-remontees.mjs`, selftest `cycle-et-remontees`.

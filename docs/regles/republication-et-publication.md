@@ -1222,3 +1222,14 @@
   retenues dans le créneau du soir, 8 par jour, sans un mot. `construireJobs` (`src/publication/moteur/regles.js`,
   `champsDuJob`) retire toujours `programmee`, `programmee_le`, `programmee_servie_le` et ne pose la marque que si l'envoi
   est programmé AU CLIC. Selftest `programmation-au-clic`. Créneau, plafond et tour : inchangés.
+
+## ⛔ 03/11 — Remontées Premium / Pro : seules les faites ou en cours comptent (décision de Nico ; rapport `docs/enquetes/paliers-quotas-0311/RAPPORT.md`)
+- Une fonction, `remontees_du_cycle(user, cycle)` (migration `20261103234000`), lue par `quotas_etat`,
+  `spend_coins_and_republish`, `remise_en_vente_place` et `republish_planifiee_etat` : les remontées CRÉÉES dans le cycle,
+  publiées ou en cours ; jamais une annulée ou échouée sans publication, une synchro, `hors_quota`, la sortie d'Opla.
+  Sous-ensemble de l'ancien compte : aucun compteur ne monte (alizeed48 974 → 301). Le Free garde
+  `quota_republication_free_etat`, inchangé (il date une remontée à sa publication : appliqué aux payants, six
+  compteurs seraient montés).
+- ⛔ Une remontée `cancelled` AVEC `published_at` a été FAITE : la remontée suivante du même article l'a remplacée
+  (« Annonce en cours de republication (supprimée puis recréée…) »). Elle compte. Ne jamais lire `status <> 'cancelled'`
+  comme « faite » (erreur de l'audit du 03/11 : les 743 « annulées » de nadegemarcelin78 étaient des remontées faites).
