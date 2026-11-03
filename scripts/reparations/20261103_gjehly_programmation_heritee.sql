@@ -28,10 +28,11 @@ ALTER TABLE public._backup_0311_gjehly_programmation ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public._backup_0311_gjehly_programmation FROM PUBLIC, anon, authenticated;
 
 DO $$
-DECLARE n integer;
+DECLARE n integer; v_attendu integer;
 BEGIN
-  SELECT count(*) INTO n FROM public._backup_0311_gjehly_programmation;
-  IF n <> 93 THEN RAISE EXCEPTION '93 tâches attendues (79 Vinted, 12 Leboncoin, 2 eBay), % trouvée(s) : relire avant de jouer', n; END IF;
+  -- 93 au 03/11 19:00 ; le créneau du soir en sert jusqu'à 8 par jour d'ici le jeu : 93 AU PLUS, toutes encore en attente.
+  SELECT count(*) INTO v_attendu FROM public._backup_0311_gjehly_programmation;
+  IF v_attendu < 1 OR v_attendu > 93 THEN RAISE EXCEPTION '1 à 93 tâches attendues, % trouvée(s) : relire avant de jouer', v_attendu; END IF;
   UPDATE public.cross_post_jobs c SET
     platform_fields = (c.platform_fields - ARRAY['programmee', 'programmee_le'])
       || jsonb_build_object('programmation_heritee_levee', jsonb_build_object(
@@ -40,7 +41,7 @@ BEGIN
    WHERE c.id IN (SELECT id FROM public._backup_0311_gjehly_programmation) AND c.status = 'pending'
      AND (c.platform_fields ->> 'programmee') = 'true' AND c.platform_fields ->> 'programmee_servie_le' IS NULL;
   GET DIAGNOSTICS n = ROW_COUNT;
-  IF n <> 93 THEN RAISE EXCEPTION '93 mises à jour attendues, % faite(s)', n; END IF;
-  RAISE NOTICE '93 publications rendues à la file (marque héritée levée)';
+  IF n <> v_attendu THEN RAISE EXCEPTION '% mises à jour attendues, % faite(s)', v_attendu, n; END IF;
+  RAISE NOTICE '% publications rendues à la file (marque héritée levée)', n;
 END $$;
 COMMIT;
