@@ -494,7 +494,7 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   plateforme, annonce prouvée, jamais deux exemplaires vus par les relevés, `fillsell.sans_retrait`). Essai à blanc 5/5
   (`scripts/essais/20261103140000_essai.sql`), 30-43 ms par déclenchement. Inverse dans `supabase/rollbacks/`.
   ⛔ CONTREDITE le soir même (Nico : « un rattachement ne déclenche JAMAIS de retrait ») : retirée par la migration
-  `20261103230000_rattachement_jamais_de_retrait` dès son feu vert — section du 03/11 soir, en fin de fichier.
+  `20261103230000_rattachement_jamais_de_retrait` (appliquée le 03/11 soir) — section du 03/11 soir, en fin de fichier.
 
 ## 03/11 — une publication eBay close « absente, sans motif » est relue chez eBay (rapport § 4)
 - La fonction SQL des relevés clôt « absente aux relevés complets … aucun motif » sans lire eBay quand la veille n'a pas
@@ -512,7 +512,7 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
 - App : `src/annonces/EcranDoublons.jsx` (`ressembleVendu` → « Annonce à vérifier », « La mettre dans mon stock » =
   « non » au serveur). La copie interrogée À LA VENTE du jour (`copie_non_prouvee`) garde « Oui, la retirer ».
   Selftest `ressemble-vendu-jamais-retire`.
-- Serveur, migration `20261103230000_rattachement_jamais_de_retrait` (⛔ en attente du feu vert de Nico ; banc
+- Serveur, migration `20261103230000_rattachement_jamais_de_retrait` (feu vert de Nico, APPLIQUÉE le 03/11 vers 21:00 ; banc
   `scripts/essais/20261103230000_banc.mjs` 28/28) : déclencheurs de 13:52 (`…_inseree_…`, `…_repointee_…`) retirés ;
   « publiée après la vente » = dépôt de FillSell seulement ; `armer_retrait_job_pour` refuse une annonce IMPORTÉE
   (source `releve` / `rattachement.import`) mise en ligne après la vente (`annonce_mise_en_ligne`, `vente_instant`,

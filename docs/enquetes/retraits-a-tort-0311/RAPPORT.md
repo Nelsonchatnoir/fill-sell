@@ -110,3 +110,15 @@ avant : gjehly voulait-il « tout de suite » (ce que l'écran disait) ou son cr
 - Extension : la veille Leboncoin (§ 2), et l'onglet Vinted bloqué sous Brave chez gjehly (§ 3).
 - Les 4 ventes du rattrapage Leboncoin du 23/10 (« fiches importées depuis des annonces déjà Vendu ») relèvent peut-être
   du même défaut : non relues ici.
+
+## Appliqué le 03/11 soir (feux verts de Nico)
+- Migration `20261103230000_rattachement_jamais_de_retrait` appliquée (corps de prod relus identiques aux fixtures juste avant).
+- Étape 1 jouée : 7 fusions défaites (7 fiches au stock, chacune avec son annonce), 5 ventes doublées retirées, 5 jobs
+  Leboncoin « publiés ». Aucun retrait né. Roublenard reste « à vérifier » (une autre question, plus ancienne).
+- Étape 2 / 2b : 10 remises en ligne, hors quota (`hors_quota`, aucun usage_logs « publish »), une à la fois par plateforme.
+  Leboncoin : republication « deleted » complétée par le serveur depuis la capture du 03/11. Beebs : publication depuis la
+  fiche. Vinted serviette : capture valide 21959. Vinted balance et boîtes : catégories choisies par Nico
+  (Balances de cuisine ; Rangement et organisation > Boîtes). Éponge exclue (Nico). Polly Pocket, Dracaufeu V : non.
+- gjehly : 88 tâches rendues à la file (78 Vinted, 9 Leboncoin, 1 eBay) ; les 5 autres déjà parties dans le créneau du soir.
+- OTA 2.9.160 servie (1ae006c). Les deux retraits Beebs de Dylan du 03/11 17:56 (Fermite, Grindur) ont été demandés depuis
+  le compte (aucun armement serveur) : hors de cette famille.
