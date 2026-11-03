@@ -4,7 +4,7 @@
 import { readFile } from 'node:fs/promises';
 import { PLATEFORMES_CLOUD, ORIGINES_SESSION, cookiesAPurger, versCookieParam } from './plateformes.js';
 import { planifierPostes, resumerJobs } from './planificateur.js';
-import { nouveauProfilId, DOMAINES_VERROU } from './navigateur.js';
+import { nouveauProfilId, DOMAINES_VERROU, tailleEnMo } from './navigateur.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
 
 /** Une adresse sur un domaine de la plateforme (pure) — les onglets à fermer quand elle est bloquée. */
@@ -14,9 +14,31 @@ export function surPlateforme(url, plateforme) {
   return (DOMAINES_VERROU[plateforme] ?? []).some((d) => h === d || h.endsWith(`.${d}`));
 }
 
+// (03/11, point 1 de Nico) LE FILET MÉMOIRE : un navigateur au repos qui dépasse le seuil est redémarré proprement.
+export const FILET_OUVERT_DEPUIS_MIN_MS = 30 * 60_000;   // jamais un navigateur qui vient d'ouvrir (pas de boucle)
+export const FILET_ESPACEMENT_MS = 2 * 3600_000;         // au plus un redémarrage mémoire toutes les 2 h par compte
+/** Le seuil du filet en Mo (pure) : réglé, sinon 80 % du plafond du conteneur ; 0 ou illisible = coupé. */
+export function seuilFiletMo(reglage, plafondMo) {
+  if (reglage != null) return Number(reglage) > 0 ? Number(reglage) : 0;
+  return Number(plafondMo) > 0 ? Math.round(Number(plafondMo) * 0.8) : 0;
+}
+/**
+ * Faut-il redémarrer ce navigateur pour sa mémoire ? (pure : testée) Seulement AU REPOS : aucun job en cours, aucun
+ * « Me connecter » ouvert, ouvert depuis au moins 30 min, pas déjà redémarré pour ça depuis 2 h, mémoire lue au-dessus
+ * du seuil.
+ */
+export function redemarrerPourMemoire({ mo, seuilMo, enCours = 0, connexion = false, ouvertLe, dernierRedemarrage = null, maintenant = Date.now() }) {
+  if (!(Number(seuilMo) > 0) || !Number.isFinite(Number(mo)) || Number(mo) <= Number(seuilMo)) return false;
+  if (Number(enCours) > 0 || connexion) return false;
+  if (!Number.isFinite(Number(ouvertLe)) || maintenant - Number(ouvertLe) < FILET_OUVERT_DEPUIS_MIN_MS) return false;
+  if (dernierRedemarrage != null && maintenant - Number(dernierRedemarrage) < FILET_ESPACEMENT_MS) return false;
+  return true;
+}
+
 export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null }) {
   const dernieresFins = new Map();
   const dernieresSauvegardes = new Map();
+  const redemarragesMemoire = new Map();   // (03/11) user → instant du dernier redémarrage pour la mémoire
   let idExtension = null;
 
   async function extensionId() {
@@ -258,6 +280,22 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     for (const f of decision.fermer) await fermer(f.user, f.raison).catch((e) => journal.erreur('fermeture_echec', { user: f.user, erreur: e.message }));
     for (const o of decision.ouvrir) {
       await ouvrir(o.user, parUser.get(o.user), o.motif).catch((e) => journal.erreur('ouverture_echec', { user: o.user, erreur: e.message }));
+    }
+    // (03/11, point 1) LE FILET MÉMOIRE : au repos et au-dessus du seuil → fermé proprement (coffre et session FillSell
+    // sauvegardés par fermer), rouvert au tour suivant sur le même profil (aucune reconnexion). Jamais pendant un job.
+    const seuil = seuilFiletMo(config.memoireRedemarrageMo, tailleEnMo(config.memoireNavigateur));
+    if (seuil > 0 && navigateurs.memoire) {
+      const connexionsVives = connexionsOuvertes();
+      for (const u of navigateurs.ouverts()) {
+        const h = navigateurs.ouvert(u);
+        const mo = await navigateurs.memoire(u).catch(() => null);
+        if (!redemarrerPourMemoire({ mo, seuilMo: seuil, enCours: jobsParUser.get(u)?.enCours ?? 0, connexion: connexionsVives.has(u),
+          ouvertLe: h?.ouvertLe, dernierRedemarrage: redemarragesMemoire.get(u) ?? null })) continue;
+        redemarragesMemoire.set(u, Date.now());
+        journal.alerte('navigateur_redemarre_memoire', { user: u, mo, seuil_mo: seuil });
+        await fermer(u, 'memoire_haute').catch((e) => journal.erreur('fermeture_echec', { user: u, erreur: e.message }));
+        decision.fermer.push({ user: u, raison: 'memoire_haute' });
+      }
     }
     // Sauvegardes périodiques (10 min) des navigateurs qui tournent. (01/11) Avec elles, le signe de vie de l'exécutant
     // (cloud_postes.derniere_activite, lu par l'app : un exécutant muet depuis plus de 25 min se DIT, bandeau Cloud).

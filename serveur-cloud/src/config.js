@@ -59,6 +59,13 @@ export function lireConfig(env = process.env) {
     navigateurGpu: lireBool(env.NAVIGATEUR_GPU, false),
     gpuGroupes: String(env.GPU_GROUPES ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s)),
     memoireNavigateur: env.MEMOIRE_NAVIGATEUR?.trim() || '1400m',
+    // (03/11, point 1) Les régies publicitaires échouent comme chez un bloqueur de pub (navigateur.js, DOMAINES_PUBLICITE).
+    bloquerPublicite: lireBool(env.BLOQUER_PUBLICITE, true),
+    // (03/11, point 1) LE FILET : un navigateur AU REPOS (aucun job en cours, aucun « Me connecter ») au-dessus de ce seuil
+    // (Mo) est redémarré proprement (coffre et session sauvegardés, rouvert au tour suivant). Vide = 80 % du plafond du
+    // conteneur ; 0 = coupé.
+    memoireRedemarrageMo: env.MEMOIRE_REDEMARRAGE_MO == null || String(env.MEMOIRE_REDEMARRAGE_MO).trim() === ''
+      ? null : lireEntier(env.MEMOIRE_REDEMARRAGE_MO, null),
     // ── Garde CPU de la base (règle du 04/10) : au-dessus, aucun démarrage
     //    nouveau sauf une connexion demandée par quelqu'un ───────────────────
     cpuPauseAuDessus: lireEntier(env.CPU_PAUSE_AU_DESSUS, 50),

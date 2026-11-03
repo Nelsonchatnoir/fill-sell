@@ -221,15 +221,55 @@ export const DOMAINES_TOUJOURS_FERMES = Object.freeze([
   'ebay.fr', 'ebay.com', 'ebay.co.uk', 'ebay.de', 'ebay.it', 'ebay.es', 'ebay.be', 'ebay.nl', 'ebay.ch', 'ebay.at', 'ebay.ie',
   'opla.co',
 ]);
+// (03/11, point 1 de Nico : « on ne refuse jamais un client par manque de mémoire ») LES RÉGIES PUBLICITAIRES. Cause
+// PROUVÉE des OOM (02/11 18:51, 03/11 02:26 et 04:32) : l'onglet d'accueil Leboncoin, que l'extension rouvre pour ses
+// lectures, charge ~28 cadres de régies (pubmatic, criteo, rubicon, doubleclick…) = un processus de rendu chacun (21 à
+// 45 processus relevés), et la page grossit à chaque rotation de publicité jusqu'au plafond du conteneur. Ces requêtes
+// échouent comme chez un bloqueur de publicité (BlockedByClient, même erreur que uBlock) : aucune option de lancement
+// changée (empreinte figée intacte), aucune plateforme touchée — ni son anti-robot (DataDome, captcha-delivery) ni ses
+// propres domaines. Interrupteur : BLOQUER_PUBLICITE=0.
+export const DOMAINES_PUBLICITE = Object.freeze([
+  'doubleclick.net', 'googlesyndication.com', 'googletagservices.com', 'googleadservices.com', 'adnxs.com',
+  'pubmatic.com', 'rubiconproject.com', 'criteo.com', 'criteo.net', 'indexww.com', 'casalemedia.com', '3lift.com',
+  'onetag-sys.com', 'smartadserver.com', 'sascdn.com', 'openx.net', '360yield.com', 'richaudience.com', 'pbstck.com',
+  'amazon-adsystem.com', 'adsrvr.org', 'teads.tv', 'taboola.com', 'outbrain.com', 'adform.net', 'smilewanted.com',
+  'seedtag.com', 'sharethrough.com', 'improvedigital.com', 'bidswitch.net', 'yieldmo.com', 'media.net', 'presage.io',
+  'the-ozone-project.com', 'adscale.de', 'quantserve.com',
+]);
+const surDomaine = (hote, domaines) => domaines.some((d) => hote === d || hote.endsWith(`.${d}`));
+
+/** (03/11) La mémoire réelle d'un conteneur (pure), en Mo : l'utilisation moins le cache de fichiers (comme `docker stats`). */
+export function memoireReelleMo(stats) {
+  const m = stats?.memory_stats;
+  if (!m || !Number.isFinite(Number(m.usage))) return null;
+  const cache = Number(m.stats?.inactive_file ?? m.stats?.total_inactive_file ?? 0);
+  return Math.round((Number(m.usage) - (Number.isFinite(cache) ? cache : 0)) / 1048576);
+}
+
+/** (03/11) « 3g », « 1400m », « 2048 » (Mo) → Mo (pure) ; null si illisible. */
+export function tailleEnMo(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  const x = /^(\d+(?:\.\d+)?)\s*([gm]?)b?$/.exec(s);
+  if (!x) return null;
+  return Math.round(Number(x[1]) * (x[2] === 'g' ? 1024 : 1));
+}
+/** Une adresse d'une régie publicitaire ? (pure : testée) */
+export function estPublicite(url) {
+  let hote = '';
+  try { hote = new URL(String(url ?? '')).hostname.toLowerCase(); } catch { return false; }
+  return surDomaine(hote, DOMAINES_PUBLICITE);
+}
+
 /**
  * (02/11) Une requête arrêtée par le verrou passe-t-elle quand même ? (pure : testée) Seulement si elle vient d'un cadre
- * d'une page de résolution, et jamais vers eBay ni Opla.
+ * d'une page de résolution, et jamais vers eBay ni Opla. (03/11) Jamais vers une régie publicitaire.
  */
 const plateformeDuDomaine = (hote) => Object.entries(DOMAINES_VERROU).find(([, ds]) => ds.some((d) => hote === d || hote.endsWith(`.${d}`)))?.[0] ?? null;
 export function requetePermise(h, params) {
   let hote = '';
   try { hote = new URL(String(params?.request?.url ?? '')).hostname.toLowerCase(); } catch { return false; }
   if (DOMAINES_TOUJOURS_FERMES.some((d) => hote === d || hote.endsWith(`.${d}`))) return false;
+  if (surDomaine(hote, DOMAINES_PUBLICITE)) return false;
   const cadre = params?.frameId ? String(params.frameId) : '';
   if (cadre) return Boolean(h?.cadresPermis?.has(cadre));
   // Sans cadre : le service worker de la PLATEFORME elle-même (Depop en a un), le temps de SA résolution seulement —
@@ -242,11 +282,14 @@ export function requetePermise(h, params) {
   return plateformeDuDomaine(origine) === pf;
 }
 
-/** Les motifs d'interception des plateformes FERMÉES (pure : testée). eBay et Opla : toujours. */
-export function motifsVerrou(permises) {
+/**
+ * Les motifs d'interception des plateformes FERMÉES (pure : testée). eBay et Opla : toujours. (03/11) Avec
+ * `publicite`, les régies publicitaires aussi (toujours fermées).
+ */
+export function motifsVerrou(permises, { publicite = false } = {}) {
   const ouvertes = new Set(plateformesVerrou(permises));
   const fermes = Object.entries(DOMAINES_VERROU).filter(([p]) => !ouvertes.has(p)).flatMap(([, domaines]) => domaines);
-  return [...fermes, ...DOMAINES_TOUJOURS_FERMES]
+  return [...fermes, ...DOMAINES_TOUJOURS_FERMES, ...(publicite ? DOMAINES_PUBLICITE : [])]
     .flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`])
     .map((urlPattern) => ({ urlPattern, requestStage: 'Request' }));
 }
@@ -457,7 +500,9 @@ export function creerNavigateurs({ config, docker, journal }) {
           cdp.send('Fetch.continueRequest', { requestId: m.params?.requestId }).catch(() => {});
           return;
         }
-        h.bloquees++;
+        // (03/11) Une régie publicitaire n'est pas une visite de plateforme fermée : comptée à part.
+        if (estPublicite(m.params?.request?.url)) h.publicites = (h.publicites ?? 0) + 1;
+        else h.bloquees++;
         cdp.send('Fetch.failRequest', { requestId: m.params?.requestId, errorReason: 'BlockedByClient' }).catch(() => {});
       }
     });
@@ -492,7 +537,7 @@ export function creerNavigateurs({ config, docker, journal }) {
    */
   /** (01/11) Le verrou du moteur steel : les motifs des plateformes fermées, sur la session du navigateur. */
   async function poserVerrouSteel(h) {
-    const motifs = motifsVerrou(h.permises);
+    const motifs = motifsVerrou(h.permises, { publicite: config.bloquerPublicite !== false });
     if (motifs.length) await h.cdp.send('Fetch.enable', { patterns: motifs });
     else await h.cdp.send('Fetch.disable').catch(() => {});
     return motifs.length;
@@ -543,5 +588,10 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
   const retirerCadre = (user, cadre) => { ouverts.get(user)?.cadresPermis?.delete(String(cadre)); };
 
-  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
+  /** (03/11) La mémoire réelle du navigateur du compte, en Mo (comme `docker stats`) ; null si illisible. */
+  async function memoire(user) {
+    return memoireReelleMo(await docker.stats(nomConteneur(user)).catch(() => null));
+  }
+
+  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, memoire, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
 }
