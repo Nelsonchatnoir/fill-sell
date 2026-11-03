@@ -1,5 +1,27 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 03/11/2026 soir — AUDIT + CORRECTIFS POUR L'OUVERTURE À TOUS (à lire EN PREMIER)
+Détail : `docs/enquetes/cloud-ouverture-0311/RAPPORT.md`. Commits 9e9bde4, 1a65445, 7c7748d, 01d22e2.
+- Mémoire : cause des OOM = accueil Leboncoin et ses ~28 cadres de régies publicitaires. Régies bloquées dans le verrou
+  (`DOMAINES_PUBLICITE`, comme un bloqueur de pub ; empreinte inchangée) + filet (redémarrage propre au repos > 80 % du
+  plafond). Après : médiane 0,77 Go, max 1,10 Go au repos ; pic d'une vraie republication Leboncoin 1 384 Mo ; 0 OOM.
+- Réglage cloud-1 (18:07) : `MEMOIRE_NAVIGATEUR=2g`, `NAVIGATEURS_MAX` vide → capacité AUTOMATIQUE 7 (avant 4).
+- Prise atomique : prendre_job vue en prod pour le poste Cloud (job 062f992c, 18:00:07) — update-job-status v168.
+- Orchestrateur **01d22e2** (cloud-1), copie Cloud de l'extension inchangée (0.6.169-cloud). Déployer : plus besoin de
+  `DESTINATIONS_PROXY` (pare-feu DYNAMIQUE : `etat/proxys-permis.txt` + unité systemd `fillsell-pare-feu-maj.path`) ;
+  depuis un arbre propre (`C:\Users\nicol\fs-deploiement-cloud`, worktree détaché, si l'arbre partagé est sale) :
+  `bash serveur-cloud/outils/deployer.sh 178.105.24.16 cloud.fillsell.app` — jamais pendant une tâche en cours.
+- Base : migrations 20261103201000 (flotte), 202000 (IP), 203000 (voie, place, attente) — APPLIQUÉES (par un essai
+  enveloppé que le `COMMIT;` de la 203000 a validé : rapport § 11). Crons `cloud-voies-5min`, `push-cloud-place-5min`.
+- Pool : ids 1, 2, 3, 4 « disponible » avec refus Beebs NON PROUVÉ (requalification automatique : une visite légère par
+  heure, l'id 2 réservée à Nico jamais visitée) ; id 39 = Nico (03/12). id 1 prolongée au 04/12. Solde IPRoyal 3,15 $.
+- ⛔ COUPÉS jusqu'au go de Nico : achats IP (`IPROYAL_ACHATS_AUTORISES=0`, `cloud_ip_achats_auto` 0), renouvellements
+  (`cloud_ip_renouvellement_auto` 0), création de serveur (`HETZNER_CREATION_AUTORISEE` absent, `cloud_serveurs_auto` 0).
+- `cloud_voie` n'est PLUS posé par script : la base le tient (`cloud_etat().actif`). Ne plus l'écrire à la main.
+- OTA 2.9.159 construite (7c7748d), envoi refusé par le garde-fou de la session : canal toujours 2.9.158.
+- Relevés en cours sur cloud-1 (lecture seule, bornés) : `etat/mesure-0311/echantillons.jsonl` (30 s, jusqu'au 04/11
+  22:00 environ).
+
 ## ⛔ 02/11/2026 22:05 — NAVIGATEUR À 3 GO ; ONGLETS SANS TÂCHE FERMÉS ; CLOUD d426d23 + EXTENSION 0.6.169-cloud (à lire EN PREMIER)
 Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 26 (diagnostic, mesures avant / après).
 - Diagnostic : fenêtres propres (2 : steel + la fenêtre de travail ; jamais « minimisée » — pas de gestionnaire de
