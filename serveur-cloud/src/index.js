@@ -6,6 +6,7 @@
 // session FillSell, puis s'éteint.
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'node:url';
+import { totalmem } from 'node:os';
 import { lireConfig } from './config.js';
 import * as journal from './journal.js';
 import { creerDocker } from './docker.js';
@@ -24,8 +25,15 @@ import { chargerRegles } from './regles.js';
 import { creerGardeSocle } from './socle.js';
 import { creerEndurance } from './endurance.js';
 import { creerVerifications } from './verifications.js';
+import { creerFlotte, capaciteServeur } from './flotte.js';
+import { tailleEnMo } from './navigateur.js';
 
-const config = lireConfig();
+const configLue = lireConfig();
+// (03/11, point 1) LA CAPACITÉ : NAVIGATEURS_MAX s'il est réglé ; sinon ⌊(mémoire de l'hôte − socle) / plafond d'un
+// navigateur⌋ (flotte.js, capaciteServeur) — un serveur neuf de la flotte se règle seul.
+const config = Object.freeze({ ...configLue, navigateursMaxAuto: configLue.navigateursMaxRegle == null,
+  navigateursMax: capaciteServeur({ totalMo: totalmem() / 1048576, socleMo: configLue.socleMo, plafondMo: tailleEnMo(configLue.memoireNavigateur),
+    reglage: configLue.navigateursMaxRegle, repli: configLue.navigateursMax }) });
 const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false, autoRefreshToken: false } });
 const docker = creerDocker({ socket: config.socketDocker });
 const navigateurs = creerNavigateurs({ config, docker, journal });
@@ -53,6 +61,8 @@ connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journa
     if (endurance) endurance.connexionVerifiee(e).catch(() => {});
     else verifications.resolue(e.user, e.plateforme, { par: 'connexion', le: e.le }).catch(() => {});
   } });
+// (03/11, points 1 et 5) La flotte : battement, places, montée en charge (création COUPÉE sans le GO de Nico).
+const flotte = creerFlotte({ config, base, navigateurs, journal, alertes });
 const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp });
 // (01/11) L'essai de 48 h (ENDURANCE=1) : mesures toutes les 10 min, arrêt au premier blocage.
 if (config.endurance) {
@@ -72,7 +82,8 @@ for (const c of await docker.lister()) {
 }
 
 await serveur.ecouter();
-journal.info('demarrage', { serveur: config.serveurNom, port: config.port, comptes_autorises: config.comptesAutorises.length || 'tous' });
+journal.info('demarrage', { serveur: config.serveurNom, port: config.port, comptes_autorises: config.comptesAutorises.length || 'tous',
+  capacite: config.navigateursMax, capacite_auto: config.navigateursMaxAuto });
 
 // (05/10) Serveur déployé AVANT la migration du socle (GO de Nico) : dit une
 // fois, puis une tentative toutes les 10 min au lieu de chaque minute (socle.js).
@@ -84,6 +95,8 @@ async function tourPlanificateur() {
   if (enCours || gardePlanificateur.passer()) return;
   enCours = true;
   try {
+    // (03/11) Le battement d'abord : les places et l'attribution des comptes lisent la capacité de ce tour-ci.
+    await flotte.battre().catch((e) => journal.alerte('flotte_battement_echec', { erreur: e.message }));
     const r = await postes.tour();
     gardePlanificateur.present();
     if (r.ouvrir.length || r.fermer.length || r.refuses.length) journal.info('planificateur', { ...r });
@@ -104,6 +117,8 @@ const t1 = setInterval(tourPlanificateur, config.tickPlanificateurS * 1000);
 const t2 = setInterval(tourEntretien, config.tickEntretienMin * 60_000);
 // (02/11) Chaque minute, essai ou pas : les cadres DataDome, les pauses de l'app, l'essai des 24 h d'un accès restreint.
 const t3 = setInterval(() => (endurance ? endurance.releveCadres() : verifications.releve()).catch((e) => journal.alerte('verifications_releve_echec', { erreur: e.message })), 60_000);
+// (03/11) La flotte : décision toutes les 10 min (plan à blanc tant que les interrupteurs sont coupés).
+const t5 = setInterval(() => flotte.tour().catch((e) => journal.alerte('flotte_tour_echec', { erreur: e.message })), 10 * 60_000);
 const t4 = endurance ? setInterval(() => endurance.mesure().catch((e) => journal.alerte('endurance_mesure_echec', { erreur: e.message })), 10 * 60_000) : null;
 if (endurance) setTimeout(() => endurance.mesure().catch(() => {}), 120_000);
 setTimeout(tourPlanificateur, 5_000);
@@ -111,7 +126,7 @@ setTimeout(tourEntretien, 60_000);
 
 async function arreter(signal) {
   journal.info('arret', { signal });
-  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4);
+  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5);
   connexions.fermerTout();
   for (const u of navigateurs.ouverts()) await postes.fermer(u, 'arret_orchestrateur').catch(() => {});
   await serveur.fermer().catch(() => {});

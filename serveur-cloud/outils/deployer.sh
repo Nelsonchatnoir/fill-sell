@@ -6,6 +6,7 @@
 #
 #   bash serveur-cloud/outils/deployer.sh <ip_du_serveur> [domaine]
 #   DESTINATIONS_PROXY="81.181.239.136:12323" bash serveur-cloud/outils/deployer.sh …   (01/11 : sorties des navigateurs)
+#   (03/11) DESTINATIONS_PROXY n'est plus qu'un repli : l'orchestrateur tient la liste à jour (pareFeu.js).
 #
 # 1. assemble le paquet (orchestrateur + règles du pool + client de l'écran
 #    « Me connecter » + extension Cloud construite par scripts/cloud/build-extension-cloud.mjs) ;
@@ -77,7 +78,17 @@ rm -rf /srv/fillsell-cloud/extension.ancienne && mv /srv/fillsell-cloud/extensio
 mv /srv/fillsell-cloud/extension.nouvelle /srv/fillsell-cloud/extension
 cp "$P"/deploiement/{docker-compose.yml,Caddyfile,pare-feu-navigateurs.sh} /srv/fillsell-cloud/deploiement/
 # (01/11) Les SEULES sorties des navigateurs (adresse:port des proxys), quand on les donne ; sinon le fichier en place.
+# (03/11, point 2 de Nico) Ce n'est plus qu'un REPLI : l'orchestrateur écrit lui-même la liste des IP du pool
+# (etat/proxys-permis.txt) et l'unité fillsell-pare-feu-maj.path rejoue le pare-feu dès qu'elle change.
 if [ -n "$DESTINATIONS" ]; then printf '%s\n' "$DESTINATIONS" | tr ',' '\n' > /srv/fillsell-cloud/deploiement/proxys-permis.txt; fi
+mkdir -p /srv/fillsell-cloud/etat
+if [ -d "$P/deploiement/systemd" ]; then
+  cp "$P"/deploiement/systemd/fillsell-pare-feu.service "$P"/deploiement/systemd/fillsell-pare-feu-maj.service \
+     "$P"/deploiement/systemd/fillsell-pare-feu-maj.path /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable fillsell-pare-feu.service >/dev/null 2>&1 || true
+  systemctl enable --now fillsell-pare-feu-maj.path >/dev/null 2>&1
+fi
 # (05/10) Les variables du fichier compose (version déployée, domaine), lues
 # toutes seules par `docker compose` dans ce dossier : sans elles, tout
 # `docker compose ps|exec|logs` lancé après coup (contrôles, mesure,

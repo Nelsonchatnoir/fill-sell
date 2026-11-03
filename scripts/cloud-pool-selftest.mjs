@@ -219,5 +219,31 @@ const cap = capacite({ serveurs: 1 });
 ok(cap.comptesMax === 20 && capacite({ comptes: 45 }).serveursPour === 3, 'un CX43 ≈ 20 comptes en continu (estimé) ; 45 comptes → 3 serveurs');
 ok(capacite({ comptes: 100 }).cpuBasePctMax === 25, '100 comptes en continu → jusqu\'à +25 % de CPU de base (Small) : le délai entre sessions compte');
 
+// ─────────────────────────────────────────────────────────────────────────────
+titre('10. (03/11, point 2 de Nico) L\'approvisionnement : stock minimum, refus par plateforme, triple garde');
+{
+  const M = await import('../supabase/functions/_shared/cloud-pool.js');
+  const sqlAppro = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261103202000_cloud_ip_approvisionnement.sql', import.meta.url)), 'utf8');
+  ok(M.stockVise({ seuilCommande: 1, stockMin: 2 }) === 2 && M.stockVise({ seuilCommande: 4, stockMin: 2, enAttente: 1 }) === 5,
+    'le stock visé ne descend jamais sous cloud_ip_stock_min, plus une IP par personne qui attend');
+  const d = (id, refus) => ({ id, etat: 'disponible', expire_le: iso(T0 + 25 * J), attributions: 0, refus });
+  const pl = M.planDuJour({ ips: [d(1, { beebs: { prouvee: true } }), d(2, {})], lambda: 0.5, stockMin: 2, maintenant: T0 });
+  ok(pl.projete === 1 && pl.aCommander === 1 && pl.attribuables === 1, 'une IP au refus PROUVÉ ne compte pas dans le stock');
+  ok(M.choisirIp([d(1, { beebs: { prouvee: false } }), d(2, {})], { userId: 'u', maintenant: T0 }).id === 2, 'attribution : sans refus d\'abord');
+  ok(M.effetSignalement('blocage_anti_robot') === 'refus_plateforme' && M.effetSignalement('liste_noire') === 'rebut',
+    'un blocage de plateforme = un refus sur ELLE ; les causes prouvées restent des rebuts');
+  ok(/IF p_critere IN \('blocage_anti_robot', 'captcha_repete'\) THEN/.test(sqlAppro), 'SQL : cloud_ip_signaler dit la même chose');
+  const g = { montantUsd: 29.4, envAutorise: true, interrupteur: true, budgetUsd: 60, depenseMoisUsd: 0, soldeUsd: 50 };
+  ok(M.deciderDepense(g).faire === true && M.deciderDepense({ ...g, envAutorise: false }).raison === 'achats_coupes_serveur'
+    && M.deciderDepense({ ...g, interrupteur: false }).raison === 'interrupteur_coupe'
+    && M.deciderDepense({ ...g, depenseMoisUsd: 40 }).raison === 'plafond' && M.deciderDepense({ ...g, soldeUsd: 3 }).raison === 'solde_insuffisant',
+    'une dépense ne part que sous la triple garde (serveur, interrupteur, plafond) et si le solde la couvre');
+  ok(/\('cloud_ip_achats_auto', 0\)/.test(sqlAppro) && /\('cloud_ip_renouvellement_auto', 0\)/.test(sqlAppro),
+    'SQL : les interrupteurs d\'achat et de renouvellement naissent COUPÉS');
+  ok(new RegExp(`\\('cloud_ip_stock_min', ${M.PARAMETRES.ipStockMin}\\)`).test(sqlAppro)
+    && new RegExp(`\\('cloud_ip_budget_mensuel_usd', ${M.PARAMETRES.ipBudgetMensuelUsd}\\)`).test(sqlAppro),
+    `SQL : stock minimum ${M.PARAMETRES.ipStockMin}, plafond ${M.PARAMETRES.ipBudgetMensuelUsd} $ — mêmes défauts que PARAMETRES`);
+}
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

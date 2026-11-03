@@ -7,12 +7,49 @@
 // Rend la forme lue par cloud_controle_manques :
 //   { fait_le, ip_sortie, pays, listes_noires: [], plateformes: { visite: 'aucune' } }
 // (cloud_controle_manques veut un objet non vide sans « bloque » : on y dit ce qui est vrai, rien n'a été visité.)
+//
+// (03/11, point 2 de Nico — SEULE exception à la règle du 30/10) LA VISITE DE CONTRÔLE D'UNE PLATEFORME : une IP dont
+// une plateforme a refusé l'accès (cloud_ips.refus, « non prouvé ») reçoit UNE visite de la page d'accueil de cette
+// plateforme, dans un navigateur de contrôle jetable sur cette IP, avec l'apparence du produit (langues fr-FR, fr,
+// en-US, en ; fuseau de Paris ; français de Chromium) — jamais sur une IP tenue par un compte, au plus une par heure
+// (entretien.js), aucun geste dans la page (rien n'est cliqué ni glissé), la page lue sans réseau (mondes isolés).
+// passe / glissière (un appareil neuf en reçoit une) = le refus tombe ; « Accès temporairement restreint » = prouvé.
 import { resolve4 } from 'node:dns/promises';
-import { rm } from 'node:fs/promises';
+import { rm, access } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { connecterCdp } from './cdp.js';
-import { ENV_ESSAI_0111, LANCEMENT_AVEC_ECRAN, corpsSession, exigerPareFeu } from './navigateur.js';
+import { ENV_ESSAI_0111, LANCEMENT_AVEC_ECRAN, corpsSession, exigerPareFeu, fichierLangueChromium, paquetLangueFr } from './navigateur.js';
 import { EXPRESSION_EMPREINTE } from './empreinte.js';
+import { EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT } from './plateformes.js';
+
+// (03/11) La SEULE page qu'une visite de contrôle ouvre, par plateforme (une page d'accueil, aucun compte).
+export const ACCUEILS_CONTROLE = Object.freeze({
+  beebs: 'https://www.beebs.app/fr',
+  leboncoin: 'https://www.leboncoin.fr/',
+  vinted: 'https://www.vinted.fr/',
+  depop: 'https://www.depop.com/',
+});
+const HOTES_CONTROLE = Object.freeze({ beebs: /(^|\.)beebs\.app$/i, leboncoin: /(^|\.)leboncoin\.fr$/i, vinted: /(^|\.)vinted\.fr$/i, depop: /(^|\.)depop\.com$/i });
+export const VISITE_DUREE_MAX_MS = 30_000;   // on regarde au plus 30 s
+export const VISITE_DUREE_MIN_MS = 10_000;   // « passe » seulement après 10 s sans anti-robot (il peut arriver après le chargement)
+
+/**
+ * (03/11) LE VERDICT D'UNE VISITE DE CONTRÔLE (pure : testée). `echantillons` : [{ t (ms depuis la navigation),
+ * e: l'état de la page (EXPRESSION_ETAT_PAGE) ou null, texteCadres: le texte des cadres DataDome }].
+ *   restreint : un cadre « bloqué » (t=bv) ou un refus ÉCRIT, dans la page ou dans le cadre DataDome ;
+ *   glissiere : une glissière (passable — un appareil neuf en reçoit une : l'IP n'est pas refusée) ;
+ *   passe     : la page de la plateforme chargée, sans anti-robot, depuis au moins VISITE_DUREE_MIN_MS ;
+ *   indetermine : rien de tout ça (vérification de l'appareil restée, page muette) — le refus reste, revisité à 24 h.
+ */
+export function verdictVisite(echantillons, plateforme, { dureeMinMs = VISITE_DUREE_MIN_MS } = {}) {
+  const liste = (Array.isArray(echantillons) ? echantillons : []).filter((x) => x && Number.isFinite(Number(x.t)));
+  if (liste.some((x) => x.e?.bloque || x.e?.restreint || TEXTE_ACCES_RESTREINT.test(String(x.texteCadres ?? '')))) return 'restreint';
+  if (liste.some((x) => x.e?.captcha)) return 'glissiere';
+  const fin = liste.at(-1);
+  const re = HOTES_CONTROLE[plateforme];
+  if (fin?.e?.pret && !fin.e.interstitiel && re?.test(String(fin.e.hote ?? '')) && Number(fin.t) >= dureeMinMs) return 'passe';
+  return 'indetermine';
+}
 
 const LISTES = [
   { zone: 'zen.spamhaus.org', liste: (a) => /^127\.0\.0\.(2|3|4|9|10|11)$/.test(a) },
@@ -61,18 +98,26 @@ export async function releverControle(lire, ip, { listes = listesNoires, mainten
 
 export function creerControles({ config, docker, journal }) {
   /** Un navigateur NEUF (sans profil, sans compte, sans extension) par le proxy, le temps de `travail(lire, cdp, sessionId)`. */
-  async function avecNavigateurNeuf({ ipId, proxyUrl }, travail) {
+  async function avecNavigateurNeuf({ ipId, proxyUrl, apparenceProduit = false }, travail) {
     const nom = `fs-ctl-${ipId}-${randomBytes(3).toString('hex')}`;
     const profil = `ctl-${ipId}-${randomBytes(4).toString('hex')}`;
     let cdp = null;
     await exigerPareFeu(config);
+    // (03/11) La visite de contrôle d'une plateforme : l'apparence du produit (le français de Chromium, comme
+    // specConteneur) — les langues et le fuseau viennent déjà de corpsSession.
+    const binds = [`${config.dossierProfils}/${profil}:/app/api/user-data-dir`];
+    if (apparenceProduit) {
+      const existe = (f) => access(f).then(() => true, () => false);
+      if (await existe(fichierLangueChromium(config))) binds.push(`${fichierLangueChromium(config)}:/etc/chromium.d/fillsell-langue:ro`);
+      if (await existe(paquetLangueFr(config))) binds.push(`${paquetLangueFr(config)}:/usr/lib/chromium/locales/fr.pak:ro`);
+    }
     try {
       // (01/11) Le même lancement que les navigateurs des comptes (l'essai du 01/11), sans extension.
       await docker.creer(nom, {
         Image: config.imageNavigateur, Entrypoint: ['/bin/sh', '-c'], Cmd: [LANCEMENT_AVEC_ECRAN],
         Env: [...ENV_ESSAI_0111],
         Labels: { 'fillsell.cloud': '1', 'fillsell.controle': String(ipId) },
-        HostConfig: { Binds: [`${config.dossierProfils}/${profil}:/app/api/user-data-dir`], Memory: 1024 ** 3, ShmSize: 1024 ** 3, Init: true, NetworkMode: config.reseauDocker, AutoRemove: false },
+        HostConfig: { Binds: binds, Memory: 1024 ** 3, ShmSize: 1024 ** 3, Init: true, NetworkMode: config.reseauDocker, AutoRemove: false },
       });
       await docker.demarrer(nom);
       const ins = await docker.inspecter(nom);
@@ -141,5 +186,61 @@ export function creerControles({ config, docker, journal }) {
       return { entetes: (entetes.match(/\{[\s\S]*\}/)?.[0] ?? '').replace(/<[^>]+>/g, '').slice(0, 2000), empreinte: e };
     });
   }
-  return { controler, essaiPageConnexion, empreinte };
+  /**
+   * (03/11, point 2 de Nico) LA VISITE DE CONTRÔLE d'une plateforme sur une IP au refus « non prouvé » : UNE page
+   * d'accueil (ACCUEILS_CONTROLE), regardée au plus 30 s, lue sans réseau (mondes isolés : la page ne voit rien), aucun
+   * geste. Rend { fait_le, plateforme, url, verdict, echantillons } (lu par cloud_ip_refus_visite).
+   */
+  async function visiterPlateforme({ ipId, proxyUrl, plateforme }) {
+    const url = ACCUEILS_CONTROLE[plateforme];
+    if (!url) throw new Error(`visite de contrôle : plateforme inconnue (${plateforme})`);
+    return avecNavigateurNeuf({ ipId, proxyUrl, apparenceProduit: true }, async (_lire, cdp, sessionId) => {
+      const lireIsole = async (expression, frameId, sid = sessionId) => {
+        const w = await cdp.send('Page.createIsolatedWorld', { frameId, worldName: 'fillsell-controle' }, sid).catch(() => null);
+        if (!w?.executionContextId) return null;
+        const r = await cdp.send('Runtime.evaluate', { expression, contextId: w.executionContextId, returnByValue: true }, sid).catch(() => null);
+        return r?.result?.value ?? null;
+      };
+      const texteCadres = async (arbre) => {
+        let t = '';
+        const lire = "String((document.body && document.body.innerText) || '').slice(0, 2000)";
+        const ids = [];
+        const parcourir = (n) => { if (!n) return; if (/captcha-delivery\.com/i.test(String(n.frame?.url ?? ''))) ids.push(n.frame.id); for (const c of n.childFrames ?? []) parcourir(c); };
+        parcourir(arbre);
+        for (const id of ids) t += ` ${await lireIsole(lire, id) ?? ''}`;
+        if (!t.trim()) {
+          // Cadre hors processus : sa propre cible.
+          const cibles = await cdp.send('Target.getTargets').catch(() => null);
+          for (const c of (cibles?.targetInfos ?? []).filter((x) => x.type === 'iframe' && /captcha-delivery\.com/i.test(String(x.url)))) {
+            const sid = await cdp.send('Target.attachToTarget', { targetId: c.targetId, flatten: true }).then((x) => x.sessionId).catch(() => null);
+            if (!sid) continue;
+            const r = await cdp.send('Runtime.evaluate', { expression: lire, returnByValue: true }, sid).catch(() => null);
+            t += ` ${r?.result?.value ?? ''}`;
+            await cdp.send('Target.detachFromTarget', { sessionId: sid }).catch(() => {});
+          }
+        }
+        return t;
+      };
+      const debut = Date.now();
+      await cdp.send('Page.navigate', { url }, sessionId);
+      const echantillons = [];
+      let verdict = 'indetermine';
+      while (Date.now() - debut < VISITE_DUREE_MAX_MS) {
+        await new Promise((r) => setTimeout(r, 2500));
+        const { frameTree } = await cdp.send('Page.getFrameTree', {}, sessionId).catch(() => ({}));
+        const e = frameTree?.frame?.id ? await lireIsole(EXPRESSION_ETAT_PAGE, frameTree.frame.id) : null;
+        const ech = { t: Date.now() - debut, e, texteCadres: (e?.interstitiel || e?.captcha) ? await texteCadres(frameTree) : '' };
+        echantillons.push(ech);
+        verdict = verdictVisite(echantillons, plateforme);
+        if (verdict === 'restreint' || verdict === 'glissiere') break;
+        if (verdict === 'passe' && echantillons.length >= 2 && verdictVisite(echantillons.slice(0, -1), plateforme) === 'passe') break;
+      }
+      const r = { fait_le: new Date().toISOString(), plateforme, url, verdict, echantillons: echantillons.length,
+        duree_ms: Date.now() - debut, hote_final: echantillons.at(-1)?.e?.hote ?? null };
+      journal.info('visite_controle', { ip_id: ipId, plateforme, verdict, echantillons: r.echantillons, duree_ms: r.duree_ms });
+      return r;
+    });
+  }
+
+  return { controler, essaiPageConnexion, empreinte, visiterPlateforme };
 }

@@ -296,6 +296,7 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     journal.alerte('verification_plateforme_bloquee', { user, plateforme: b.plateforme, nature: b.nature, etat: etatVisible(b.nature), fait });
     await sur('publication', () => publier(user, b.plateforme));
     await sur('annotation', () => annoterTaches(user, b.plateforme));
+    if (etatVisible(b.nature) === 'restreint') await sur('refus_ip', () => noterRefusIp(user, b));
     if (revenue) {
       await sur('alerte', () => alertes?.signaler('serveur', `${DEFINITIONS[b.plateforme]?.nom ?? b.plateforme} a redemandé la vérification juste après sa résolution (compte ${court(user)}) : arrêtée sur le Cloud, sans nouvel essai. À regarder.`,
         { user, plateforme: b.plateforme, resolue_avant: b.resolue_avant, nature_vue: b.nature_vue ?? null }));
@@ -316,7 +317,21 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     await dire({ evenement: 'verification_requalifiee', user: court(user), plateforme, nature, avant: b.nature_avant });
     await sur('publication', () => publier(user, plateforme));
     await sur('annotation', () => annoterTaches(user, plateforme));
+    if (etatVisible(nature) === 'restreint' && etatVisible(b.nature_avant) !== 'restreint') await sur('refus_ip', () => noterRefusIp(user, b));
     return b;
+  }
+
+  /**
+   * (03/11, point 2 de Nico) UN REFUS SUR L'IP DU COMPTE, pour CETTE plateforme seulement — un accès restreint (blocage
+   * dur), jamais une glissière. « Non prouvé » : l'IP n'est pas jetée ; quand elle reviendra au pool, une visite de
+   * contrôle (entretien) dira si la plateforme la refuse vraiment. Jamais de visite sur l'IP tant que le compte la tient.
+   */
+  async function noterRefusIp(user, b) {
+    const { data, error } = await base.rpc('cloud_ip_refus_noter_compte', { p_user: user, p_plateforme: b.plateforme,
+      p_cause: b.nature, p_details: { source: b.source ?? null, detail: b.detail ?? null, le: b.le ?? null } });
+    if (error) throw new Error(error.message);
+    journal.info('refus_ip_note', { user, plateforme: b.plateforme, nature: b.nature, ok: data?.ok === true, raison: data?.raison ?? null });
+    return data;
   }
 
   /** La vérification revenue aussitôt (après la glissière, l'accès reste refusé) : arrêtée, l'équipe prévenue. */

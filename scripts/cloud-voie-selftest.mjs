@@ -64,5 +64,27 @@ ok(parLeCloud({ platform: 'beebs', voie: 'extension' }, true) && !parLeCloud({ p
   ok(/dans Chrome/.test(humanizeJobError(brut, 'fr')), 'compte ordinaire (aucun compte Cloud noté) : le texte de l\'extension, inchangé');
 }
 
+// (03/11, point 3 de Nico) Le build de l'exécutant Cloud : la prise atomique prendre_job enfin appelée.
+console.log('\n3. Le poste Cloud reconnu par update-job-status (prendre_job)');
+{
+  const { estPosteCloud } = await import('../supabase/functions/_shared/cloud-voie.js');
+  ok(estPosteCloud('2026-11-01T23:02:16Z+dd69fbb-cloud · v0.6.164') === true, 'copie Cloud « …-cloud · v0.6.164 » (le build réellement envoyé, lu en base le 03/11) : vrai');
+  ok(estPosteCloud('2026-11-02T20:41:27Z+d426d23-cloud') === true, 'BUILD_ID « …-cloud » seul : vrai');
+  ok(estPosteCloud('2026-10-31T09:31:55Z+3876dc8 · v0.6.169') === false, 'extension d’un ordinateur : faux');
+  ok(estPosteCloud('') === false && estPosteCloud(null) === false && estPosteCloud(undefined) === false, 'vide : faux');
+  ok(estPosteCloud('2026-11-01T23:02:16Z+dd69fbb-cloudy · v1') === false && estPosteCloud('x-cloud-test · v1') === false, 'un mot qui commence par « cloud » ailleurs : faux');
+  ok(estPosteCloud('2026-11-02T20:41:27Z+d426d23-cloud · sync-dressing') === true, 'relevé de la copie Cloud : vrai');
+  const ujs = readFileSync(path.join(racine, 'supabase', 'functions', 'update-job-status', 'index.ts'), 'utf8');
+  ok(ujs.includes('import { estPosteCloud } from "../_shared/cloud-voie.js";'), 'update-job-status importe estPosteCloud');
+  ok(/if \(status === "processing" && estPosteCloud\(body\.handler_build\)\) \{/.test(ujs), 'la branche Cloud (prendre_job) passe par estPosteCloud');
+  ok(!/\/-cloud\$\//.test(ujs), 'plus aucun /-cloud$/ dans update-job-status');
+  const iBranche = ujs.indexOf('estPosteCloud(body.handler_build)');
+  const iPrendre = ujs.indexOf('rpc("prendre_job"');
+  const iMaj = ujs.indexOf('reservation.statut = "processing";');
+  const iEcriture = ujs.indexOf('p_reservation: reservation.reservation, p_avant: reservation.statut');
+  ok(iBranche > 0 && iBranche < iPrendre && iPrendre < iMaj && iMaj < iEcriture,
+    'après prendre_job, l’écriture finale part de « processing » (sinon : 409 « le job a changé ») ');
+}
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

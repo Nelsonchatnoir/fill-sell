@@ -1,0 +1,10 @@
+[Unit]
+Description=FillSell Cloud - les navigateurs ne sortent que par les proxys IPRoyal
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh
+[Install]
+WantedBy=multi-user.target

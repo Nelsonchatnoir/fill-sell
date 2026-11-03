@@ -1,0 +1,8 @@
+# (03/11, point 2 de Nico) Rejoue le pare-feu des navigateurs quand l'orchestrateur change la liste des sorties
+# (etat/proxys-permis.txt) : une IP neuve ou revenue au pool, sans redéploiement. Chaîne remplacée d'un bloc.
+[Unit]
+Description=FillSell Cloud - pare-feu des navigateurs rejoue (liste des sorties changee)
+After=docker.service fillsell-pare-feu.service
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh

@@ -78,6 +78,11 @@ verify_jwt = false
 [functions.push-ventes]
 verify_jwt = false
 
+# (03/11, point 5 Cloud) « Une place s'est libérée » : appelée par le cron push-cloud-place-5min,
+# garde x-cron-secret, jamais l'app.
+[functions.push-cloud-place]
+verify_jwt = false
+
 # Désinscription publique : appelée depuis la page /desinscription par
 # quelqu'un qui n'est PAS connecté — c'est tout l'intérêt. L'authentification
 # est la détention du jeton, vérifiée dans le code.

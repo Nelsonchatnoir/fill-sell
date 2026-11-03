@@ -96,3 +96,16 @@ export function rappelVeilleDu(cloud, maintenant = Date.now()) {
   const q = quandFin(cloud.essaiFin, maintenant);
   return q === 'demain' || q === 'aujourdhui' ? q : null;
 }
+
+// (03/11) « Ton essai est terminé » ne se dit que d'un essai fini depuis moins de 3 jours ; au-delà (option prise puis
+// arrêtée, impayé), c'est « FillSell Cloud est arrêté » — jamais « rien n'a été facturé » à quelqu'un qui a payé.
+export const ESSAI_RECENT_MS = 3 * 86_400_000;
+/** Quel écran d'après le Cloud montrer ? (pur : testé) 'essai_termine' | 'arrete' | null. */
+export function ecranApresCloud(cloud, profil, maintenant = Date.now()) {
+  if (!cloud || cloud.actif || cloud.essaiArrete) return null;
+  const fin = Date.parse(String(cloud.essaiFin ?? ''));
+  const essaiRecent = Number.isFinite(fin) && maintenant - fin >= 0 && maintenant - fin < ESSAI_RECENT_MS;
+  if (cloud.etat === 'essai_termine' && essaiRecent) return 'essai_termine';
+  if ((cloud.etat === 'essai_termine' || cloud.etat === 'aucun') && profil?.cloud_canal) return 'arrete';
+  return null;
+}

@@ -82,9 +82,34 @@ for (const st of ['past_due', 'unpaid', 'incomplete', 'incomplete_expired', 'can
   const d = drapeauxDepuisStripe([sub('std', 'past_due', ['price_std']), sub('pro', 'active', ['price_pro'])], PRIX);
   ok(d.is_premium && d.is_pro, 'double abonnement historique : seul le Premium impayé tombe, le Pro payé reste');
 }
+// (03/11, point 4 de Nico) UN IMPAYÉ ARRÊTE AUSSI LE CLOUD : fin d'essai dont le paiement échoue, échéance refusée.
+for (const st of ['past_due', 'unpaid', 'incomplete', 'incomplete_expired']) {
+  const d = drapeauxDepuisStripe([sub('p1', 'past_due', ['price_pro']), cloud('c1', st)], PRIX);
+  ok(!d.is_premium && !d.is_pro && !d.is_cloud && !d.cloud_vivant, `option Cloud ${st} : le Cloud s'arrête (is_cloud faux, plus vivant), le palier impayé tombe aussi`);
+  const u = miseAJourProfilDepuisStripe(d, 'stripe');
+  ok(u.is_cloud === false && u.cloud_periode_fin === null && !('cloud_essai_debut' in u), `… ${st} : écrit is_cloud = false, l'essai pris reste écrit`);
+}
 {
-  const d = drapeauxDepuisStripe([sub('p1', 'past_due', ['price_pro']), cloud('c1', 'past_due')], PRIX);
-  ok(!d.is_premium && !d.is_pro && d.is_cloud, 'option Cloud past_due : règle Cloud inchangée (is_cloud), le palier impayé tombe');
+  // Fin d'essai : Stripe tente le premier paiement ; refusé → past_due.
+  const fin = { trial_start: Math.floor((T0 - 7 * J) / 1000), trial_end: Math.floor(T0 / 1000) };
+  const d = drapeauxDepuisStripe([cloud('c1', 'past_due', fin)], PRIX);
+  ok(!d.is_cloud && !d.cloud_vivant && d.cloud_essai_debut === null, 'fin d\'essai, paiement refusé (trialing → past_due) : arrêt immédiat');
+  const r = drapeauxDepuisStripe([cloud('c1', 'active', fin)], PRIX);
+  ok(r.is_cloud && r.cloud_vivant, 'la même facture réglée (past_due → active) : le Cloud revient');
+  ok(litAbonnementStripe(cloud('c1', 'past_due'), PRIX).vivant === false && litAbonnementStripe(cloud('c1', 'trialing'), PRIX).vivant === true
+    && litAbonnementStripe(cloud('c1', 'active'), PRIX).vivant === true, 'vivant = active | trialing, rien d\'autre');
+}
+{
+  // Apple et Google coupaient déjà sur un impayé : lu dans le code des webhooks (une régression se verrait ici).
+  const fs = await import('node:fs');
+  const apple = fs.readFileSync(new URL('../supabase/functions/apple-iap-webhook/index.ts', import.meta.url), 'utf8');
+  const off = /const PREMIUM_OFF\s*=\s*\[([^\]]*)\]/.exec(apple)?.[1] ?? '';
+  ok(/"DID_FAIL_TO_RENEW"/.test(off) && /"EXPIRED"/.test(off), 'Apple : DID_FAIL_TO_RENEW (renouvellement refusé) coupe le Cloud (PREMIUM_OFF, branche Cloud)');
+  ok(/lectureCloudApple\(tx\)[\s\S]{0,600}PREMIUM_OFF\.includes\(notificationType\)\) sens = "off"/.test(apple), 'Apple : la branche Cloud lit bien PREMIUM_OFF');
+  const google = fs.readFileSync(new URL('../supabase/functions/google-play-webhook/index.ts', import.meta.url), 'utf8');
+  const offG = (/const PREMIUM_OFF_TYPES\s*=\s*\[([^\]]*)\]/.exec(google)?.[1] ?? '').split(',').map((x) => Number(x.trim()));
+  ok(offG.includes(5) && offG.includes(6), 'Google : ON_HOLD (5) et IN_GRACE_PERIOD (6) coupent (PREMIUM_OFF_TYPES)');
+  ok(/const sens = notificationType === CANCELED_TYPE \? "annulation" : isPremium \? "on" : "off"/.test(google), 'Google : la branche Cloud suit isPremium (impayé = off)');
 }
 {
   const d = drapeauxDepuisStripe([sub('p1', 'active', ['price_std'], { cancel_at_period_end: false }), cloud('c1', 'active', { cancel_at_period_end: true })], PRIX);

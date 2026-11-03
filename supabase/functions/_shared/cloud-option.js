@@ -140,14 +140,18 @@ export function estAbonnementCloud(sub, prix = {}) {
  */
 export function litAbonnementStripe(sub, prix = {}) {
   const status = sub?.status ?? null;
-  const vivant = status === "active" || status === "past_due" || status === "trialing";
   // ⛔ (29/10, Romain Colson) UN IMPAYÉ NE PORTE PLUS DE PALIER. Le palier ne tient que sur une période
   // PAYÉE (ou un essai) : `past_due` (renouvellement refusé, Stripe relance ~2 semaines puis supprime
   // l'abonnement) n'ouvre plus rien ; le palier revient tout seul quand la facture est réglée
   // (customer.subscription.updated past_due → active, stripe-webhook). Même règle qu'Apple
-  // (DID_FAIL_TO_RENEW → off) et Google (ON_HOLD / IN_GRACE_PERIOD → off). `vivant` reste celui de
-  // l'option Cloud (inchangée : décision à part).
+  // (DID_FAIL_TO_RENEW → off) et Google (ON_HOLD / IN_GRACE_PERIOD → off).
+  // ⛔ (03/11, point 4 de Nico) LE CLOUD AUSSI : un abonnement Cloud n'est VIVANT que payé ou en essai
+  // (active | trialing). Fin d'essai dont le paiement échoue, échéance refusée (past_due), unpaid, incomplete :
+  // le Cloud s'arrête TOUT DE SUITE (is_cloud faux → cloud_voie faux → tâches rendues à l'extension) ; la
+  // facture réglée (past_due → active) le rouvre. Avant : past_due comptait comme vivant pendant toutes les
+  // relances de Stripe (~2 semaines de navigateur et d'IP sans paiement).
   const paye = status === "active" || status === "trialing";
+  const vivant = paye;
   const cloud = estAbonnementCloud(sub, prix);
   let palier = null;
   if (!cloud) {
@@ -183,8 +187,9 @@ export function litAbonnementStripe(sub, prix = {}) {
  *  · paliers : tout abonnement PAYÉ (active | trialing) NON Cloud vaut premium
  *    — Founder legacy compris ; pro/business par métadonnée ou prix. (29/10)
  *    Un abonnement past_due (impayé en relance) ne vaut plus rien ;
- *  · Cloud : is_cloud = un abonnement Cloud active/past_due ; l'essai (trialing)
- *    date cloud_essai_debut/fin et fait tourner Cloud sans is_cloud.
+ *  · Cloud : is_cloud = un abonnement Cloud active (03/11 : plus past_due — un
+ *    impayé arrête le Cloud) ; l'essai (trialing) date cloud_essai_debut/fin et
+ *    fait tourner Cloud sans is_cloud.
  */
 export function drapeauxDepuisStripe(subs, prix = {}) {
   const lus = (subs ?? []).map((s) => litAbonnementStripe(s, prix));

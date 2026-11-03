@@ -1,0 +1,8 @@
+# (03/11, point 2 de Nico) Surveille la liste des sorties écrite par l'orchestrateur (écriture atomique : renommage).
+[Unit]
+Description=FillSell Cloud - surveille la liste des sorties des navigateurs
+[Path]
+PathChanged=/srv/fillsell-cloud/etat/proxys-permis.txt
+Unit=fillsell-pare-feu-maj.service
+[Install]
+WantedBy=multi-user.target

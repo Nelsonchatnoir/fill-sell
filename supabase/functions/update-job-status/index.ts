@@ -39,6 +39,8 @@ import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAcce
 // (18/10, lot 6) La boutique Vinted ouverte sur CE poste, lue par ses gardes ou prouvée après un dépôt.
 import { identiteVintedDesGardes } from "../_shared/poste-extension.ts";
 import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
+// (03/11, point 3) Le build de l'exécutant Cloud (« …-cloud · v0.6.x ») : la prise atomique prendre_job enfin appelée.
+import { estPosteCloud } from "../_shared/cloud-voie.js";
 // (01/11, Louis — tout le parc) « Ta connexion est bonne » ne se dit que prouvé sur CE poste, après le mur.
 import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob } from "../_shared/session-prouvee.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
@@ -588,7 +590,9 @@ serve(async (req) => {
     // une écriture « processing » SUIVANTE (étape de republication, capture) n'est permise qu'à l'exécution qui a
     // pris le job (même processing_since) — deux exécutants d'un même poste ne travaillent jamais le même job.
     // Rien ne change pour l'extension des ordinateurs (chemin d'avant, inchangé).
-    if (status === "processing" && /-cloud$/.test(String(body.handler_build ?? ""))) {
+    // (03/11, point 3) L'ancien test « finit par -cloud » ne voyait jamais « …-cloud · v0.6.164 » (le build envoyé) :
+    // cette branche n'avait jamais servi. estPosteCloud (_shared/cloud-voie.js, testée) reconnaît les deux formes.
+    if (status === "processing" && estPosteCloud(body.handler_build)) {
       if (reservation.statut === "pending") {
         const { data: pris, error: erreurPrise } = await adminReservation.rpc("prendre_job", {
           p_user: user.id, p_poste: posteReservation, p_job: jobId, p_build: String(body.handler_build ?? "").slice(0, 120),

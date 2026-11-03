@@ -42,7 +42,13 @@ export function lirePreparation(r, lang = 'fr') {
   const T = textesConnexion(lang);
   if (!r || r.ok !== true) {
     const raison = r?.raison ?? 'erreur';
-    return { continuer: false, raison, message: raison === 'pool_vide' ? T.poolVide : raison === 'deja_client' ? T.dejaClient : T.achatEchec };
+    // (03/11, point 5) Sans place serveur (« complet ») ou sans IP (« pool_vide ») : jamais de vente ; la liste
+    // d'attente est proposée (attente = vrai), sauf à qui y est déjà inscrit(e).
+    const sansPlace = raison === 'complet' || raison === 'pool_vide';
+    return {
+      continuer: false, raison, attente: sansPlace && r?.inscrit !== true, inscrit: r?.inscrit === true,
+      message: raison === 'complet' ? T.complet : raison === 'pool_vide' ? T.poolVide : raison === 'deja_client' ? T.dejaClient : T.achatEchec,
+    };
   }
   if (r.essai === false) return { continuer: true, essai: false, raison: r.raison, confirmation: T.sansEssai(r.raison) };
   return { continuer: true, essai: true, raison: null };
@@ -88,7 +94,7 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     // La place a expiré entre-temps (plus d'une heure) : on la reprend, une fois.
     if (d?.error === 'preparation_requise') {
       const p = lirePreparation(await preparer(), lang);
-      if (!p.continuer) return { etat: 'refuse', message: p.message };
+      if (!p.continuer) return p.attente ? proposerAttente(p) : { etat: 'refuse', message: p.message };
       d = await appel();
     }
     if (d?.already_cloud) return { etat: 'deja', message: T.dejaClient };
@@ -115,13 +121,35 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     return ok ? { etat: 'actif', message: T.achatOk } : { etat: 'attente', message: T.achatAttente };
   }
 
+  /** (03/11, point 5) L'inscription à la liste d'attente (« Être prévenu(e) »). Rend le message à montrer. */
+  async function inscrireAttente() {
+    const { data, error } = await supabase.rpc('cloud_attente_inscrire_moi');
+    if (error || data?.ok !== true) {
+      return data?.raison === 'deja_client' ? { etat: 'deja', message: T.dejaClient } : { etat: 'erreur', message: T.inscriptionEchec };
+    }
+    return { etat: 'attente', message: T.inscritAttente(data?.attente?.rang ?? null), attente: data?.attente ?? null };
+  }
+
+  /** Pas de place : la vente ne s'ouvre pas ; la personne choisit d'être prévenue (une notification, jamais un mail). */
+  async function proposerAttente(p) {
+    if (typeof confirmer !== 'function' || !(await confirmer(T.etrePrevenuQuestion))) {
+      return { etat: 'refuse', raison: p.raison, message: p.message };
+    }
+    return inscrireAttente();
+  }
+
   /** Prendre l'option (seule sur Free, ou en plus d'une formule). */
   async function acheter(origine = 'non_precisee') {
     // 0. Les conditions d'utilisation : acceptées (case cochée, enregistrée) AVANT la place, avant toute carte.
     if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
     notifier?.(T.preparation);
     const p = lirePreparation(await preparer(), lang);
-    if (!p.continuer) return { etat: 'refuse', raison: p.raison, message: p.message };
+    // (03/11, point 5) Sans place serveur ni IP : ni Stripe, ni la feuille d'achat de l'App Store / Google Play.
+    if (!p.continuer) {
+      if (p.attente) return proposerAttente(p);
+      if (p.inscrit) return { etat: 'attente', raison: p.raison, message: T.inscritAttente(null) };
+      return { etat: 'refuse', raison: p.raison, message: p.message };
+    }
     if (p.essai === false && !(await confirmer(p.confirmation))) return { etat: 'annule' };
     try {
       return platform === 'web' ? await stripe(origine) : await boutique(p.essai);
@@ -148,6 +176,7 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
 
   return {
     acheter,
+    inscrireAttente,
     /** Arrêter : en essai tout de suite (rien facturé), payée à la fin de la période. */
     arreter: () => appelerArret({ option: 'cloud' }),
     /** Garder l'option alors qu'un arrêt était prévu (Stripe). */

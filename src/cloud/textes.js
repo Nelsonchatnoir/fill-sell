@@ -198,6 +198,21 @@ const FR = {
   ],
   finCtaAjouter: `Reprendre l'option · ${PRIX}/mois`,
   finCtaExtension: "Installer l'extension sur mon ordinateur",
+  // (03/11, point 5) Pas de place : jamais de vente, la liste d'attente.
+  completTitre: 'Complet pour le moment',
+  completTexte: "Toutes les places FillSell Cloud sont prises. Inscris-toi : une notification te prévient dès qu'une place se libère, et elle t'est gardée 24 h.",
+  completCta: 'Être prévenu(e)',
+  completInscrit: (rang) => `Tu es sur la liste${rang ? ` (n° ${rang})` : ''} : une notification te prévient dès qu'une place se libère.`,
+  completEchec: "L'inscription n'a pas pu se faire. Réessaie dans un instant.",
+  placeLibreTitre: 'Une place FillSell Cloud est libre',
+  placeLibreTexte: "Elle t'est gardée 24 h : démarre FillSell Cloud quand tu veux d'ici là.",
+  placeLibreCta: 'Démarrer FillSell Cloud',
+  // (03/11, point 3) Le Cloud arrêté (résiliation, impayé) : les tâches repassent par l'extension.
+  arretKicker: 'FillSell Cloud',
+  arretTitre: 'FillSell Cloud est arrêté',
+  arretTexte: "Tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension FillSell, sur ton ordinateur : publication, republication, retrait et ventes, quand il est allumé.",
+  arretCtaReprendre: `Reprendre FillSell Cloud · ${PRIX}/mois`,
+  arretCtaExtension: "Installer ou ouvrir l'extension sur mon ordinateur",
   fermer: 'Fermer',
 };
 
@@ -329,6 +344,19 @@ const EN = {
   ],
   finCtaAjouter: `Restart the add-on · ${PRIX}/mo`,
   finCtaExtension: 'Install the extension on my computer',
+  completTitre: 'Full for now',
+  completTexte: "All FillSell Cloud spots are taken. Sign up: a notification tells you as soon as a spot is free, and it's kept for you for 24 hours.",
+  completCta: 'Notify me',
+  completInscrit: (rang) => `You're on the list${rang ? ` (number ${rang})` : ''}: a notification tells you as soon as a spot is free.`,
+  completEchec: "Signing up didn't work. Try again in a moment.",
+  placeLibreTitre: 'A FillSell Cloud spot is free',
+  placeLibreTexte: "It's kept for you for 24 hours: start FillSell Cloud whenever you like until then.",
+  placeLibreCta: 'Start FillSell Cloud',
+  arretKicker: 'FillSell Cloud',
+  arretTitre: 'FillSell Cloud is off',
+  arretTexte: 'Your Vinted, Leboncoin, Beebs and Depop listings go back through the FillSell extension on your computer: posting, reposting, removal and sales, while it is on.',
+  arretCtaReprendre: `Restart FillSell Cloud · ${PRIX}/mo`,
+  arretCtaExtension: 'Install or open the extension on my computer',
   fermer: 'Close',
 };
 

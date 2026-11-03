@@ -20,6 +20,23 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { tracerCloud, auPremierPlan } from './traceCloud';
 import { CLOUD_DOMAINE, CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
+
+// (03/11, flotte) L'ADRESSE DU SERVEUR DU COMPTE : plusieurs serveurs Cloud, chacun son adresse (cloud-2.fillsell.app…).
+// Lue une fois par session (cloud_serveur_moi, qui attribue un serveur si besoin) ; illisible, absente ou hors de
+// *.fillsell.app → l'adresse d'avant (CLOUD_DOMAINE). Rien ne part pour un compte ordinaire : cet écran n'est monté que
+// derrière cloudConnexionVisible().
+const DOMAINE_CLOUD_PERMIS = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.fillsell\.app$/;
+let domaineLu = null;
+const domaineCloudValide = (d) => (typeof d === 'string' && DOMAINE_CLOUD_PERMIS.test(d) ? d : null);
+async function domaineCloudDuCompte() {
+  if (domaineLu) return domaineLu;
+  try {
+    const { data, error } = await supabase.rpc('cloud_serveur_moi');
+    const d = !error && domaineCloudValide(data?.domaine);
+    if (d) { domaineLu = d; return d; }
+  } catch { /* repli */ }
+  return CLOUD_DOMAINE;
+}
 import { ouvrirConnexion } from './connexion/clientConnexion';
 import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 import { textesConnexion } from './textesConnexion';
@@ -93,6 +110,8 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
     };
     const ouvrir = async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
+      // (03/11, flotte) Le serveur du compte ; repli sur l'adresse d'avant (le nom masque l'import à dessein).
+      const CLOUD_DOMAINE = await domaineCloudDuCompte();
       if (mort || !conteneur.current) return;
       session.current = ouvrirConnexion({
         url: `wss://${CLOUD_DOMAINE}/connexion/ws`, jeton: s?.access_token ?? null, plateforme, conteneur: conteneur.current, lang, mode,

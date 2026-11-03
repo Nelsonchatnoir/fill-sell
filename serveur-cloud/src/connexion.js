@@ -37,6 +37,7 @@ import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estC
 import { etatVisible } from './verifications.js';
 import { verifierTicket } from './tickets.js';
 import { lireDansExtension } from './sessionFillsell.js';
+import { lireComptesDuServeur } from './flotte.js';
 
 const DUREE_MAX_MS = 15 * 60_000;
 const INACTIVITE_MS = 5 * 60_000;
@@ -159,9 +160,9 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
 
   async function compteServi(user) {
     if (config.comptesAutorises.length && !config.comptesAutorises.includes(user)) return null;
-    const { data, error } = await base.rpc('cloud_comptes_a_servir');
-    if (error) throw new Error(error.message);
-    const c = (data ?? []).find((x) => x.user_id === user);
+    // (03/11, flotte) Un compte attribué à CE serveur (repli : tous les comptes servis, avant la migration 20261103201000).
+    const { comptes } = await lireComptesDuServeur(base, config.serveurNom);
+    const c = (comptes ?? []).find((x) => x.user_id === user);
     return c && c.etat_cloud !== 'essai_termine' ? c : null;
   }
 

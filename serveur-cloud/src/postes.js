@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { PLATEFORMES_CLOUD, ORIGINES_SESSION, cookiesAPurger, versCookieParam } from './plateformes.js';
 import { planifierPostes, resumerJobs } from './planificateur.js';
 import { nouveauProfilId, DOMAINES_VERROU, tailleEnMo } from './navigateur.js';
+import { lireComptesDuServeur } from './flotte.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
 
 /** Une adresse sur un domaine de la plateforme (pure) — les onglets à fermer quand elle est bloquée. */
@@ -247,8 +248,9 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       for (const u of navigateurs.ouverts()) await fermer(u, 'blocage_endurance').catch((e) => journal.erreur('fermeture_echec', { user: u, erreur: e.message }));
       return { comptes: 0, ouverts: 0, ouvrir: [], fermer: [], refuses: [], arret_endurance: true };
     }
-    const { data: comptesBruts, error } = await base.rpc('cloud_comptes_a_servir');
-    if (error) throw new Error(`cloud_comptes_a_servir : ${error.message}`);
+    // (03/11, flotte) Les comptes attribués à CE serveur (cloud_comptes_du_serveur) ; repli sur cloud_comptes_a_servir
+    // tant que la migration 20261103201000 n'est pas en base.
+    const { comptes: comptesBruts } = await lireComptesDuServeur(base, config.serveurNom);
     const comptes = (comptesBruts ?? []).filter((c) => !config.comptesAutorises.length || config.comptesAutorises.includes(c.user_id));
     const users = [...new Set([...comptes.map((c) => c.user_id), ...navigateurs.ouverts()])];
     let lignes = [];

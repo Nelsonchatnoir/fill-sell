@@ -40,11 +40,15 @@ export function urlResidentielle({ utilisateur, motDePasse, session, heures = 24
  * L'IP du pool d'un compte pour une tranche (pur) : rendez-vous (le plus haut hachage gagne) — chaque compte garde
  * la même IP pendant la tranche, la répartition est stable quand une IP entre ou sort, et elle tourne à la tranche
  * suivante. Seules les IP françaises, ni au rebut, ni expirées (une heure de marge).
+ * (03/11, point 2 de Nico : « pas de partage d'une IP entre plusieurs clients en même temps ») Jamais une IP tenue par
+ * un AUTRE compte (user_id), ni une IP qu'un autre compte utilise déjà dans cette tranche (`occupees` : ip_id → user).
  */
-export function ipDuPool(ips, user, tranche, maintenant = Date.now()) {
+export function ipDuPool(ips, user, tranche, maintenant = Date.now(), occupees = new Map()) {
   const vivantes = (Array.isArray(ips) ? ips : []).filter((i) => i && String(i.pays ?? '').toUpperCase() === 'FR'
     && !['rebut', 'expiree', 'achetee'].includes(String(i.etat ?? ''))
-    && Date.parse(String(i.expire_le ?? '')) > maintenant + 3600_000);
+    && Date.parse(String(i.expire_le ?? '')) > maintenant + 3600_000
+    && (i.user_id == null || i.user_id === user)
+    && (!occupees.has(Number(i.id)) || occupees.get(Number(i.id)) === user));
   if (!vivantes.length) return null;
   let meilleure = null, score = '';
   for (const i of vivantes) {
@@ -86,10 +90,16 @@ export function creerFournisseurIp({ config, base, iproyal, journal, alertes }) 
     if (!(await rotationActive())) throw new Error('compte sans IP et rotation coupée (coin_config.cloud_ip_rotation)');
     const tranche = trancheRotation(maintenant, heures);
     // Rotation sur les IP françaises du pool (le résidentiel n'est JAMAIS la sortie générale : Beebs seulement).
-    const { data: ips, error } = await base.from('cloud_ips').select('id, ip, pays, etat, expire_le');
+    const { data: ips, error } = await base.from('cloud_ips').select('id, ip, pays, etat, expire_le, user_id');
     if (error) throw new Error(`pool illisible : ${error.message}`);
-    const choisie = ipDuPool(ips ?? [], user, tranche, maintenant);
-    if (!choisie) throw new Error('aucune IP française vivante dans le pool');
+    // (03/11) Les IP déjà prises par un autre compte dans CETTE tranche (journal des sessions en rotation, postes.js).
+    const debutTranche = new Date(tranche * Math.max(1, Number(heures) || 24) * 3600_000).toISOString();
+    const q = base.from('cloud_ip_evenements').select('ip_id, user_id, le').eq('nature', 'attribution');
+    const { data: prises } = await (typeof q.gte === 'function' ? q.gte('le', debutTranche) : q);
+    const occupees = new Map((prises ?? []).filter((p) => p?.ip_id != null && p?.user_id && String(p.le ?? '') >= debutTranche)
+      .map((p) => [Number(p.ip_id), p.user_id]));
+    const choisie = ipDuPool(ips ?? [], user, tranche, maintenant, occupees);
+    if (!choisie) throw new Error('aucune IP française libre dans le pool (jamais deux comptes sur une IP)');
     return { proxyUrl: await proxyDuPool(choisie.id), ipId: null, ipPool: Number(choisie.id), mode: 'rotation_pool',
       sortie: String(choisie.ip).replace(/\/32$/, ''), proxyBeebs: await proxyBeebsPour(user, tranche) };
   }

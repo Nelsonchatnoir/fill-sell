@@ -208,3 +208,65 @@ export function EcranEssaiTermine({ lang = 'fr', nomPalier = null, actions = {},
     </Feuille>
   );
 }
+
+/**
+ * (03/11, point 3 de Nico) LE CLOUD ARRÊTÉ — résiliation, impayé, option reprise puis arrêtée : jamais « ton essai
+ * est terminé » ni « rien n'a été facturé » pour quelqu'un qui a payé. Le vrai état : les tâches repassent par
+ * l'extension FillSell de l'ordinateur ; deux gestes, reprendre FillSell Cloud ou installer / ouvrir l'extension.
+ */
+export function EcranCloudArrete({ lang = 'fr', actions = {}, onFermer }) {
+  const T = textesCloud(lang);
+  return (
+    <Feuille onFermer={onFermer} etiquette={T.arretTitre}>
+      <div data-cloud="arrete">
+        <EnTete kicker={T.arretKicker} titre={T.arretTitre} />
+        <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{T.arretTexte}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {typeof actions.ajouter === 'function' && (
+            <button type="button" onClick={actions.ajouter} style={bouton(true)}>{T.arretCtaReprendre}</button>
+          )}
+          {typeof actions.extension === 'function' && (
+            <button type="button" onClick={actions.extension} style={bouton(false)}>{T.arretCtaExtension}</button>
+          )}
+          <button type="button" onClick={onFermer} style={{ minHeight: 44, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, color: C.mute2 }}>
+            {T.fermer}
+          </button>
+        </div>
+      </div>
+    </Feuille>
+  );
+}
+
+/**
+ * (03/11, point 5 de Nico) LA PLACE LIBRE, GARDÉE 24 H à un(e) inscrit(e) de la liste d'attente : un bandeau (en plus
+ * de la notification push), qui ouvre l'offre. Fermable ; jamais un mail.
+ */
+export function BandeauPlaceLibre({ lang = 'fr', onDemarrer, onFermer }) {
+  const T = textesCloud(lang);
+  return (
+    <div data-cloud="place-libre" role="status" style={{
+      position: 'fixed', left: 12, right: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)', zIndex: 9980,
+      maxWidth: 480, margin: '0 auto', boxSizing: 'border-box', background: C.paper, border: `1.5px solid ${C.teal}`,
+      borderRadius: 18, padding: '12px 14px', fontFamily: POLICE, boxShadow: '0 14px 30px -18px rgba(16,32,27,0.55)',
+      display: 'flex', alignItems: 'center', gap: 11,
+    }}>
+      <span aria-hidden="true" style={{
+        width: 34, height: 34, borderRadius: 11, background: MENTHE, border: '1px solid rgba(47,158,144,0.28)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}>
+        <Cloud size={18} color={C.tealDeep} strokeWidth={2.2} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, lineHeight: 1.3 }}>{T.placeLibreTitre}</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: C.mute2, lineHeight: 1.4, marginTop: 2 }}>{T.placeLibreTexte}</div>
+        {typeof onDemarrer === 'function' && (
+          <button type="button" onClick={onDemarrer} style={{ ...bouton(true), minHeight: 44, marginTop: 9, fontSize: 13.5 }}>{T.placeLibreCta}</button>
+        )}
+      </div>
+      <button type="button" aria-label={T.fermer} onClick={onFermer} style={{
+        alignSelf: 'flex-start', minWidth: 44, minHeight: 44, border: 'none', background: 'none', cursor: 'pointer',
+        fontFamily: 'inherit', fontSize: 20, lineHeight: 1, color: C.mute2,
+      }}>×</button>
+    </div>
+  );
+}

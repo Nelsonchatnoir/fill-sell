@@ -88,6 +88,11 @@ export const PARAMETRES = Object.freeze({
   stripeBillingPct: 0.007,     // Stripe Billing
   commissionApple: 0.15,       // Small Business Program
   commissionGoogle: 0.15,
+  // (03/11, point 2 de Nico) L'approvisionnement — SQL : cloud_param(...), coin_config cloud_<clé>
+  ipStockMin: 2,               // ip_stock_min : IP disponibles attribuables à un ESSAI gardées en stock
+  ipBudgetMensuelUsd: 60,      // ip_budget_mensuel_usd : plafond des dépenses IPRoyal du mois (achats + prolongations)
+  ipAchatMax: 10,              // ip_achat_max : au plus N IP par commande automatique
+  refusRevisiteJours: 14,      // refus_revisite_jours : un refus PROUVÉ est revisité après N jours
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -159,8 +164,12 @@ export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = D
   const siennes = liste.filter((ip) => ip.etat === 'repos' && ipAttribuable(ip, ctx))
     .sort((a, b) => instant(b.liberee_le) - instant(a.liberee_le));
   if (siennes.length) return siennes[0];
+  // (03/11) Puis sans refus de plateforme d'abord, un refus non prouvé ensuite, un refus prouvé en dernier recours.
+  const sansRefus = (ip) => !ip.refus || typeof ip.refus !== 'object' || Object.keys(ip.refus).length === 0;
   const dispo = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, ctx))
     .sort((a, b) => Number(b.reserve_pour === userId && userId != null) - Number(a.reserve_pour === userId && userId != null)
+      || Number(sansRefus(b)) - Number(sansRefus(a))
+      || Number(refusProuve(a.refus)) - Number(refusProuve(b.refus))
       || instant(a.expire_le) - instant(b.expire_le)
       || (a.attributions ?? 0) - (b.attributions ?? 0)
       || Number(a.id) - Number(b.id));
@@ -276,6 +285,31 @@ export const CRITERES_REBUT = Object.freeze([
   'blocage_anti_robot', 'captcha_repete', 'compte_restreint', 'liste_noire',
   'sortie_non_conforme', 'controle_entree', 'manuel',
 ]);
+// (03/11, point 2 de Nico) Ces deux critères visent UNE plateforme : cloud_ip_signaler note un REFUS sur elle (non
+// prouvé, levé ou prouvé par une visite de contrôle), jamais le rebut. Les autres restent des rebuts globaux.
+export const CRITERES_PAR_PLATEFORME = Object.freeze(['blocage_anti_robot', 'captcha_repete']);
+export const effetSignalement = (critere) => (CRITERES_PAR_PLATEFORME.includes(critere) ? 'refus_plateforme' : 'rebut');
+
+/**
+ * (03/11, point 2 de Nico) UNE DÉPENSE IPRoyal (achat ou prolongation) PART-ELLE ? (pure — miroir de
+ * cloud_ip_depense_ouvrir, plus la garde du serveur et le solde). Dans cet ordre :
+ *   prix_illisible · achats_coupes_serveur (IPROYAL_ACHATS_AUTORISES) · interrupteur_coupe (coin_config) ·
+ *   plafond (cloud_ip_budget_mensuel_usd) · solde_insuffisant · ok.
+ */
+export function deciderDepense({ montantUsd, envAutorise = false, interrupteur = false, budgetUsd = 0, depenseMoisUsd = 0, soldeUsd = null }) {
+  const m = Number(montantUsd);
+  if (!Number.isFinite(m) || m <= 0) return { faire: false, raison: 'prix_illisible' };
+  if (envAutorise !== true) return { faire: false, raison: 'achats_coupes_serveur' };
+  if (interrupteur !== true) return { faire: false, raison: 'interrupteur_coupe' };
+  const b = Number(budgetUsd), d = Number(depenseMoisUsd) || 0;
+  if (!(b > 0) || d + m > b + 1e-9) return { faire: false, raison: 'plafond' };
+  if (!Number.isFinite(Number(soldeUsd)) || Number(soldeUsd) + 1e-9 < m) return { faire: false, raison: 'solde_insuffisant' };
+  return { faire: true, raison: 'ok' };
+}
+
+/** Le solde couvre-t-il la prochaine dépense ? (pure ; solde illisible = non) */
+export const soldeCouvre = (soldeUsd, montantUsd) => Number.isFinite(Number(soldeUsd)) && Number.isFinite(Number(montantUsd))
+  && Number(soldeUsd) + 1e-9 >= Number(montantUsd);
 
 /**
  * observation : { nature: 'blocage'|'captcha'|'restriction'|'liste_noire'|'sortie_ko'|'controle_entree_ko', plateforme?, le }
@@ -361,18 +395,37 @@ export function taillePoolCible({ lambda, conversion, clients = 0, departsClient
 //   · une IP au repos est renouvelée si elle sera prête dans l'horizon H et que
 //     le pool en a besoin ; sinon elle expire (payer son repos pour rien) ;
 //   · une IP libre en SURPLUS n'est pas renouvelée ;
-//   · ce qui manque est COMMANDÉ — ⛔ jamais sans le GO de Nico (aCommander est
-//     une proposition ; l'orchestrateur n'achète rien seul).
+//   · ce qui manque est COMMANDÉ — ⛔ jamais sans le GO de Nico : (03/11) l'orchestrateur
+//     n'achète et ne prolonge que sous la TRIPLE garde (IPROYAL_ACHATS_AUTORISES=1 sur le
+//     serveur, coin_config cloud_ip_achats_auto / cloud_ip_renouvellement_auto = 1, plafond
+//     cloud_ip_budget_mensuel_usd — deciderDepense) ; sinon aCommander reste une proposition ;
+//   · (03/11) le stock visé ne descend jamais sous cloud_ip_stock_min (stockVise) ; une IP
+//     au refus PROUVÉ ne compte pas dans le stock.
 const PRETE = (ip, now, H) => ip.etat === 'achetee' || ip.etat === 'disponible'
   || (ip.etat === 'repos' && instant(ip.repos_fin) != null && instant(ip.repos_fin) <= now + H);
 
-export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, maintenant = Date.now(), p = PARAMETRES }) {
+/** (03/11) Un refus PROUVÉ sur au moins une plateforme (= cloud_ip_refus_prouve) : l'IP n'est plus du stock sain. */
+export function refusProuve(refus) {
+  if (!refus || typeof refus !== 'object' || Array.isArray(refus)) return false;
+  return Object.values(refus).some((r) => r?.prouvee === true);
+}
+
+/**
+ * (03/11, point 2 de Nico) Le stock visé : le seuil de commande calculé (λ), jamais sous le STOCK MINIMUM
+ * (cloud_ip_stock_min), plus une IP par personne qui attend une place.
+ */
+export function stockVise({ seuilCommande, stockMin = PARAMETRES.ipStockMin, enAttente = 0 }) {
+  return Math.max(Math.max(0, Math.floor(Number(seuilCommande) || 0)), Math.max(0, Math.floor(Number(stockMin) || 0)))
+    + Math.max(0, Math.floor(Number(enAttente) || 0));
+}
+
+export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, stockMin = PARAMETRES.ipStockMin, maintenant = Date.now(), p = PARAMETRES }) {
   const now = instant(maintenant);
   const s = seuils({ lambda, p });
   const H = (p.delaiAchatJours + p.periodeDecisionJours) * JOUR_MS;
   const N = p.renouvellementAvantJours * JOUR_MS;
   const couvertureEssai = (ESSAI_JOURS + p.graceJours + p.margeExpirationJours) * JOUR_MS;
-  const vise = s.commande + Math.max(0, Math.floor(Number(enAttente) || 0));
+  const vise = stockVise({ seuilCommande: s.commande, stockMin, enAttente });
   let projete = Math.max(0, Math.floor(Number(commandesEnCours) || 0));
   const renouveler = [], laisserExpirer = [], attendre = [], candidats = [];
   for (const ip of Array.isArray(ips) ? ips : []) {
@@ -384,6 +437,8 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
     const usee = (ip.attributions ?? 0) >= p.attributionsMax;
     const prete = PRETE(ip, now, H);
     const couvre = echeance >= couvertureEssai;
+    // (03/11) Une IP au refus PROUVÉ (dernier recours) ne compte pas dans le stock ; elle n'est pas renouvelée pour lui.
+    if (refusProuve(ip.refus)) { if (echeance <= N) laisserExpirer.push(ip.id); else attendre.push(ip.id); continue; }
     if (prete && couvre && !usee) { projete++; attendre.push(ip.id); continue; }
     if (echeance <= N || (prete && !couvre)) {
       if (usee || !prete) laisserExpirer.push(ip.id); else candidats.push(ip);
@@ -396,7 +451,8 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
     if (projete < vise) { renouveler.push(ip.id); projete++; } else laisserExpirer.push(ip.id);
   }
   const aCommander = Math.max(0, vise - projete);
-  const attribuables = (Array.isArray(ips) ? ips : []).filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, { nature: 'essai', maintenant: now, p })).length;
+  const attribuables = (Array.isArray(ips) ? ips : []).filter((ip) => ip.etat === 'disponible' && !refusProuve(ip.refus)
+    && ipAttribuable(ip, { nature: 'essai', maintenant: now, p })).length;
   const niveau = niveauPool({ attribuables, arrivantes: commandesEnCours, seuilAlerte: s.alerte });
   return { seuils: s, vise, projete, renouveler, laisserExpirer, attendre, aCommander, attribuables, niveau };
 }

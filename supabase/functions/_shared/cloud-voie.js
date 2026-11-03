@@ -16,6 +16,16 @@ export function drapeauALire({ cloudVoie, posteCloud, jobs }) {
   return (jobs ?? []).some((j) => PLATEFORMES_CLOUD_VOIE.includes(String(j?.platform)));
 }
 
+/**
+ * (03/11, point 3 de Nico) Ce build est-il celui de l'exécutant Cloud ? La copie Cloud de l'extension porte un
+ * BUILD_ID « …-cloud » (scripts/cloud/build-extension-cloud.mjs) et l'envoie en `handler_build` suivi de sa version :
+ * « 2026-11-01T23:02:16Z+dd69fbb-cloud · v0.6.164 ». Avant, update-job-status testait /-cloud$/ : jamais vrai avec
+ * « · v… », et la prise atomique (prendre_job) n'était jamais appelée. Pur : testé par scripts/cloud-voie-selftest.mjs.
+ */
+export function estPosteCloud(handlerBuild) {
+  return /-cloud(?:\s*·|\s|$)/.test(String(handlerBuild ?? "").trim());
+}
+
 /** Les tâches servies à CE poste une fois le drapeau appliqué (ne retire jamais rien au poste Cloud ni à un compte sans drapeau). */
 export function jobsSelonDrapeauCloud(jobs, { cloudVoie, posteCloud }) {
   const liste = Array.isArray(jobs) ? jobs : [];

@@ -30,12 +30,30 @@ write_files:
       ExecStart=/bin/sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh
       [Install]
       WantedBy=multi-user.target
+  # (03/11, point 2 de Nico) Le pare-feu des navigateurs suit la liste des sorties écrite par l'orchestrateur.
+  - path: /etc/systemd/system/fillsell-pare-feu-maj.service
+    content: |
+      [Unit]
+      Description=FillSell Cloud - pare-feu des navigateurs rejoue (liste des sorties changee)
+      After=docker.service fillsell-pare-feu.service
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh
+  - path: /etc/systemd/system/fillsell-pare-feu-maj.path
+    content: |
+      [Unit]
+      Description=FillSell Cloud - surveille la liste des sorties des navigateurs
+      [Path]
+      PathChanged=/srv/fillsell-cloud/etat/proxys-permis.txt
+      Unit=fillsell-pare-feu-maj.service
+      [Install]
+      WantedBy=multi-user.target
   - path: /etc/docker/daemon.json
     content: |
       { "log-driver": "json-file", "log-opts": { "max-size": "20m", "max-file": "3" }, "live-restore": true }
 
 runcmd:
-  - mkdir -p /srv/fillsell-cloud/profils /srv/fillsell-cloud/extension /srv/fillsell-cloud/deploiement /srv/fillsell-cloud/caddy
+  - mkdir -p /srv/fillsell-cloud/profils /srv/fillsell-cloud/extension /srv/fillsell-cloud/deploiement /srv/fillsell-cloud/caddy /srv/fillsell-cloud/etat
   - chmod 700 /srv/fillsell-cloud
   - systemctl restart ssh
   - systemctl enable --now docker
@@ -44,4 +62,5 @@ runcmd:
   - ufw allow 443/tcp
   - ufw --force enable
   - systemctl enable fillsell-pare-feu.service
+  - systemctl enable fillsell-pare-feu-maj.path
   - systemctl enable --now fail2ban

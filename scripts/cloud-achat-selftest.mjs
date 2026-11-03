@@ -40,6 +40,38 @@ try {
   ok(A.lirePreparation(null).continuer === false, 'réponse illisible → rien ne s\'ouvre');
   ok(A.PRODUIT_CLOUD === 'app.fillsell.cloud.sub', 'produit des stores : app.fillsell.cloud.sub (Apple et Google)');
 
+  // (03/11, point 5 de Nico) Pas de place serveur ni d'IP : aucune vente, la liste d'attente proposée.
+  console.log('\n1 bis. Contrôle de place avant la vente, liste d\'attente');
+  const complet = A.lirePreparation({ ok: false, raison: 'complet', inscrit: false });
+  ok(complet.continuer === false && complet.attente === true && /prises/.test(complet.message), 'complet → rien ne s\'ouvre, la liste d\'attente est proposée');
+  ok(A.lirePreparation({ ok: false, raison: 'pool_vide', inscrit: true }).attente === false && A.lirePreparation({ ok: false, raison: 'pool_vide', inscrit: true }).inscrit === true, 'déjà inscrit(e) → pas reproposée');
+  const scenario = async ({ raison, accepte, rpc }) => {
+    const appels = { stripe: 0, store: 0, rpc: [] };
+    const supabase = {
+      rpc: async (nom) => { appels.rpc.push(nom); if (nom === 'cloud_essai_preparer_moi') return { data: { ok: false, raison, inscrit: false } }; return rpc?.(nom) ?? { data: null }; },
+      auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) },
+    };
+    const vieuxFetch = globalThis.fetch;
+    globalThis.fetch = async () => { appels.stripe++; return { json: async () => ({}) }; };
+    try {
+      for (const platform of ['web', 'ios', 'android']) {
+        const achat = A.creerAchatCloud({ supabase, supabaseUrl: 'https://x', supabaseAnonKey: 'k', user: { id: 'u', email: 'e' }, lang: 'fr', platform,
+          purchasePremium: async () => { appels.store++; return {}; }, ouvrirLien: async () => {}, confirmer: async () => accepte, notifier: () => {},
+          paiementsAndroidCoupes: async () => false, demanderConditions: async () => true });
+        appels[platform] = await achat.acheter('test');
+      }
+    } finally { globalThis.fetch = vieuxFetch; }
+    return appels;
+  };
+  for (const raison of ['complet', 'pool_vide']) {
+    const sansInscription = await scenario({ raison, accepte: false });
+    ok(sansInscription.stripe === 0 && sansInscription.store === 0, `${raison} : ni Stripe, ni la feuille d'achat Apple / Google`);
+    ok(sansInscription.web.etat === 'refuse' && !sansInscription.rpc.includes('cloud_attente_inscrire_moi'), `${raison}, « non » : rien de plus, aucune inscription`);
+    const avec = await scenario({ raison, accepte: true, rpc: (nom) => nom === 'cloud_attente_inscrire_moi' ? { data: { ok: true, attente: { rang: 2 } } } : { data: null } });
+    ok(avec.stripe === 0 && avec.store === 0 && avec.web.etat === 'attente' && /n° 2/.test(avec.web.message) && /notification/.test(avec.web.message) && !/mail/i.test(avec.web.message),
+      `${raison}, « oui » : inscrit(e), prévenu(e) par notification (jamais un mail), rang dit`);
+  }
+
   console.log('\n2. L\'identifiant d\'appareil');
   const m = new Map();
   const st = { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) };

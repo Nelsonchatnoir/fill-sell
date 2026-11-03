@@ -92,6 +92,19 @@ export function lireConfig(env = process.env) {
     // ── Comptes servis : vide = tous les comptes Cloud actifs ; sinon, la
     //    liste fermée (test sur le compte de Nico seulement) ─────────────────
     comptesAutorises: String(env.COMPTES_AUTORISES ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    // ── (03/11, points 1 et 5 de Nico) LA FLOTTE (flotte.js) ────────────────
+    // NAVIGATEURS_MAX vide = capacité AUTOMATIQUE : ⌊(mémoire de l'hôte − socle) / MEMOIRE_NAVIGATEUR⌋ (index.js).
+    navigateursMaxRegle: env.NAVIGATEURS_MAX == null || String(env.NAVIGATEURS_MAX).trim() === '' ? null : lireEntier(env.NAVIGATEURS_MAX, null),
+    socleMo: lireEntier(env.SOCLE_MO, 700),
+    serveurIpv4: env.SERVEUR_IPV4?.trim() || '',
+    // ⛔ Création automatique d'un serveur Hetzner : COUPÉE tant que Nico n'a pas dit GO (et coin_config
+    //    cloud_serveurs_auto = 1 en plus) ; sinon le plan est seulement journalisé, « à blanc ».
+    hetznerJeton: env.HCLOUD_TOKEN?.trim() || '',
+    hetznerCreationAutorisee: lireBool(env.HETZNER_CREATION_AUTORISEE, false),
+    cloudflareJeton: env.CLOUDFLARE_API_TOKEN?.trim() || '',
+    dossierDeploiement: env.DOSSIER_DEPLOIEMENT?.trim() || '/srv/fillsell-cloud/deploiement',
+    dossierPaquets: env.DOSSIER_PAQUETS?.trim() || '/srv/fillsell-cloud/paquets',
+    fichierEnv: env.FICHIER_ENV?.trim() || '/srv/fillsell-cloud/.env',
     // Origines autorisées pour l'écran « Me connecter » (app, web, page autonome)
     origines: String(env.ORIGINES ?? 'https://fillsell.app,capacitor://localhost,https://localhost,http://localhost:5173')
       .split(',').map((s) => s.trim()).filter(Boolean),

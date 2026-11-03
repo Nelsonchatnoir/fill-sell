@@ -38,6 +38,25 @@ ExecStart=/bin/sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh
 [Install]
 WantedBy=multi-user.target
 F
+# (03/11, point 2 de Nico) Le pare-feu des navigateurs suit la liste des sorties écrite par l'orchestrateur
+# (etat/proxys-permis.txt) : une IP neuve passe sans redéploiement (deployer.sh installe les mêmes unités).
+cat > /etc/systemd/system/fillsell-pare-feu-maj.service <<'F'
+[Unit]
+Description=FillSell Cloud - pare-feu des navigateurs rejoue (liste des sorties changee)
+After=docker.service fillsell-pare-feu.service
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh
+F
+cat > /etc/systemd/system/fillsell-pare-feu-maj.path <<'F'
+[Unit]
+Description=FillSell Cloud - surveille la liste des sorties des navigateurs
+[Path]
+PathChanged=/srv/fillsell-cloud/etat/proxys-permis.txt
+Unit=fillsell-pare-feu-maj.service
+[Install]
+WantedBy=multi-user.target
+F
 cat > /etc/docker/daemon.json <<'F'
 { "log-driver": "json-file", "log-opts": { "max-size": "20m", "max-file": "3" }, "live-restore": true }
 F
@@ -50,6 +69,7 @@ ufw allow 22/tcp >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/de
 ufw --force enable >/dev/null
 systemctl daemon-reload
 systemctl enable fillsell-pare-feu.service >/dev/null 2>&1
+systemctl enable fillsell-pare-feu-maj.path >/dev/null 2>&1
 systemctl enable --now fail2ban >/dev/null 2>&1
 echo "socle posé : $(lsb_release -ds), docker $(docker version --format '{{.Server.Version}}'), $(nproc) cœurs, $(free -g | awk '/Mem/{print $2}') Go"
 DISTANT

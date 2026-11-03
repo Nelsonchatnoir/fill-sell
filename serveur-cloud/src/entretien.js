@@ -10,11 +10,24 @@
 //      FAUDRAIT renouveler ou commander est PROPOSÉ par alerte (aucun achat
 //      sans le GO de Nico) ;
 //   5. alertes : pool vide / presque vide, compte actif sans IP, purge en retard.
+// (03/11, point 2 de Nico) Et désormais, tout automatique :
+//   0. le PARE-FEU des navigateurs suit le pool (pareFeu.js : la liste écrite, l'hôte la rejoue sans redéploiement) ;
+//      aucune IP n'est contrôlée ni visitée tant que la preuve ne porte pas sa sortie ;
+//   3 bis. la REQUALIFICATION : une IP disponible au refus de plateforme non prouvé reçoit UNE visite de contrôle de
+//      cette plateforme (au plus une par heure ; controle.js), dont le verdict lève ou prouve le refus ;
+//   4 bis. la LIVRAISON des commandes, le RENOUVELLEMENT et l'ACHAT sous le stock visé — sous la triple garde
+//      (approvisionnement.js) ; sans elle, une proposition (alerte).
 import { mkdir } from 'node:fs/promises';
 import { nouveauProfilId } from './navigateur.js';
 import { claims } from './sessionFillsell.js';
+import { creerPareFeu, sortieOuverte } from './pareFeu.js';
+import { creerApprovisionnement, dateIproyal } from './approvisionnement.js';
 
-export function creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp }) {
+export const VISITE_ESPACEMENT_MS = 3600_000;   // (03/11) au plus une visite de contrôle de plateforme par heure
+
+export function creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp,
+  pareFeu = creerPareFeu({ config, journal }), approvisionnement = creerApprovisionnement({ base, iproyal, alertes, journal, regles }) }) {
+  let derniereVisite = 0;
   async function purger(ip) {
     const user = ip.dernier_user_id;
     const { data: poste } = await base.from('cloud_postes').select('session_fillsell_id, details').eq('user_id', user).maybeSingle();
@@ -110,8 +123,17 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     bilan.base = e1;
 
     const { data: ips } = await base.from('cloud_ips')
-      .select('id, commande, ip, etat, dernier_user_id, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au');
+      .select('id, commande, ip, port, etat, user_id, dernier_user_id, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus');
     const toutes = (ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') }));
+
+    // 0. (03/11) Le pare-feu des navigateurs suit le pool : la liste écrite, l'hôte la rejoue (aucun redéploiement).
+    //    Les IP qu'un navigateur ouvert utilise restent permises quoi qu'il arrive.
+    const enUsage = (navigateurs?.ouverts?.() ?? []).map((u) => navigateurs.ouvert?.(u)?.ipId).filter((x) => x != null);
+    const pf = await pareFeu.synchroniser(toutes, { enUsage })
+      .catch((e) => { journal.alerte('pare_feu_synchro_echec', { erreur: e.message }); return null; });
+    const appliquees = pf?.appliquees ?? await pareFeu.appliquees().catch(() => null);
+    const sortiePermise = (i) => Boolean(appliquees) && sortieOuverte(appliquees, i.ip, i.port ?? 12323);
+    bilan.pare_feu = { ecrit: pf?.ecrit ?? false, manquantes: pf?.manquantes?.length ?? null };
 
     // 2. Purges
     bilan.purges = 0;
@@ -128,6 +150,8 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     ];
     for (const { i, nature } of aControler) {
       if (controlesFaits >= 2) break;
+      // (03/11) Jamais un contrôle par une sortie que le pare-feu n'a pas encore ouverte : il échouerait et jetterait l'IP.
+      if (!sortiePermise(i)) { journal.info('controle_reporte_pare_feu', { ip_id: i.id, nature }); continue; }
       const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: i.id });
       if (!proxyUrl) continue;
       controlesFaits++;
@@ -139,12 +163,34 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     }
     bilan.controles = controlesFaits;
 
+    // 3 bis. (03/11) LA REQUALIFICATION : une visite de contrôle de la plateforme qui a refusé, sur une IP DISPONIBLE
+    //        (jamais une IP tenue par un compte), au plus une par heure, seulement si le pare-feu ouvre sa sortie.
+    bilan.visite = null;
+    if (controles?.visiterPlateforme && controlesFaits < 2 && Date.now() - derniereVisite >= VISITE_ESPACEMENT_MS) {
+      const { data: aVisiter } = await base.rpc('cloud_ip_a_visiter');
+      const parId = new Map(toutes.map((i) => [Number(i.id), i]));
+      const v = (aVisiter ?? []).find((x) => parId.get(Number(x.ip_id)) && sortiePermise(parId.get(Number(x.ip_id))));
+      if (v) {
+        derniereVisite = Date.now();
+        const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: v.ip_id });
+        if (proxyUrl) {
+          const visite = await controles.visiterPlateforme({ ipId: v.ip_id, proxyUrl, plateforme: v.plateforme })
+            .catch((e) => { journal.erreur('visite_controle_echec', { ip_id: v.ip_id, erreur: e.message }); return null; });
+          if (visite) {
+            const { data: r } = await base.rpc('cloud_ip_refus_visite', { p_ip: v.ip_id, p_plateforme: v.plateforme, p_visite: visite });
+            bilan.visite = { ip_id: v.ip_id, plateforme: v.plateforme, verdict: visite.verdict, issue: r?.issue ?? r?.raison ?? null };
+            journal.info('requalification', bilan.visite);
+          }
+        }
+      }
+    }
+
     // 4. Échéances relues (lecture seule), plan proposé.
     if (iproyal.disponible) {
       for (const i of toutes.filter((x) => !['expiree', 'rebut'].includes(x.etat))) {
         try {
           const cmd = await iproyal.lireCommande(i.commande);
-          const fin = Date.parse(cmd?.expire_date ?? '');
+          const fin = dateIproyal(cmd?.expire_date);
           if (Number.isFinite(fin) && fin > Date.parse(i.expire_le)) {
             await base.rpc('cloud_ip_renouvelee', { p_ip: i.id, p_expire_le: new Date(fin).toISOString() });
           }
@@ -160,12 +206,21 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       journal.info('entretien', bilan);
       return bilan;
     }
+    // 4 bis. (03/11) Les commandes livrées entrent au pool (contrôle d'entrée au tour suivant, sortie ouverte d'abord).
+    bilan.livraisons = (await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; }))?.livrees ?? null;
     const { data: etat } = await base.rpc('cloud_pool_etat');
+    const g = await approvisionnement.gardes().catch((e) => { journal.alerte('gardes_illisibles', { erreur: e.message }); return null; });
     const plan = regles.planDuJour({ ips: toutes, lambda: regles.lambdaMesure(etat?.essais_7j ?? 0),
-      enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0 });
-    bilan.plan = { renouveler: plan.renouveler.length, laisserExpirer: plan.laisserExpirer.length, aCommander: plan.aCommander, niveau: plan.niveau };
-    if (plan.renouveler.length || plan.aCommander > 0) {
-      await alertes.signaler('serveur', `Proposition (aucun achat fait) : renouveler ${plan.renouveler.length} IP (${plan.renouveler.join(', ') || '—'}), commander ${plan.aCommander} IP neuve(s).`, { plan: bilan.plan });
+      enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0,
+      stockMin: g?.stockMin ?? regles.PARAMETRES?.ipStockMin });
+    bilan.plan = { renouveler: plan.renouveler.length, laisserExpirer: plan.laisserExpirer.length, aCommander: plan.aCommander, niveau: plan.niveau, vise: plan.vise };
+    // (03/11) Renouveler puis acheter, sous la triple garde ; sans elle, une proposition (approvisionnement.js).
+    if (g && (plan.renouveler.length || plan.aCommander > 0)) {
+      const soldeVivant = bilan.solde ? { ...bilan.solde } : null;
+      bilan.renouvellements = await approvisionnement.renouveler(plan, toutes, g, soldeVivant)
+        .catch((e) => { journal.erreur('renouvellements_echec', { erreur: e.message }); return null; });
+      bilan.achat = await approvisionnement.acheter(plan, g, soldeVivant)
+        .catch((e) => { journal.erreur('achat_echec', { erreur: e.message }); return null; });
     }
 
     // 5. Alertes
