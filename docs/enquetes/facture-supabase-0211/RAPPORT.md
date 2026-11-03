@@ -415,3 +415,39 @@ changement réel, retour d'onglet 30 s, transformations) ; v325 (signal « rien 
   ventes 1,2). Levier : ce que la partie B avait fait et que la partie C a retiré, à décider par Nico.
 - Les essais à blanc du 02/11 soir ont coûté une fois ~34 Go d'egress et ~310 transformations (≈ 1,5 à 3 $).
 - Non mesuré : compression réelle des réponses REST (pas de taille au journal) ; 02/11 00:00 → 16:40 hors egress.
+
+### J5. Correction (03/11 18:00) — les chiffres réels de la page Usage, et ce qu'ils changent
+Lus en lecture seule sur la page Usage du tableau de bord (projet seul, cycle 02/11 → 02/12, jours en UTC, données
+rafraîchies toutes les heures ; 03/11 = environ 16 h 30 de données).
+| | 02/11 (journée entière) | 03/11 (≈ 16 h 30) | Cycle à ce jour (résumé) |
+|---|---|---|---|
+| Egress total, cache compris | 28,78 Go — PostgREST 12,206, Storage 16,473, Auth 0,071, Fonctions 0,033 | 7,10 Go — PostgREST 6,074, Storage 0,970, Auth 0,036, Fonctions 0,020 | 38,502 Go |
+| dont egress en cache | 20,889 Go (les essais locaux) | 0,519 Go | 22,974 Go |
+| Egress hors cache (différence) | ≈ 7,9 Go | ≈ 6,6 Go (≈ 9,6 Go / 24 h) | ≈ 15,5 Go |
+| Transformations (rafraîchi toutes les 24 h) | | | 2 696 images |
+| Appels de fonctions | | | 91 972 (≈ 54 000 / 24 h) |
+- **Compression : active mais sans effet sur l'egress compté.** Les réponses REST partent bien en gzip vers les clients
+  (`Content-Encoding: gzip` ; mesuré : `coin_config` 11 396 → 2 036 octets ; lectures lourdes de l'app ×0,07 en gzip, en
+  mémoire, rien écrit), mais PostgREST compte **≈ 9 à 12 Go/j** : au niveau de la taille non compressée (estimation brute
+  J2 : ~18 Go/j sur la fenêtre), pas de la taille compressée (~1,5 Go/j). L'egress est donc compté AVANT la compression
+  par Cloudflare (la documentation ne le dit pas ; c'est ce que montrent les chiffres). Il n'y a rien à « activer » :
+  seule une baisse des octets lus baisse l'egress.
+- **L'estimation corrigée « 4,5 à 6 Go/j » (donnée à Nico le 03/11 vers 17:00) était fausse** : elle supposait l'egress
+  compté après compression. Réel : ≈ 10 Go/j (≈ 9,6 hors cache), dont PostgREST ≈ 85 % hors essais.
+- **Les ~10 Go/j du cycle précédent s'expliquent** : même composition, PostgREST ≈ 8 à 12 Go/j (relectures complètes de
+  l'app : historique des jobs du Stock, `inventaire?select=*`, jobs de la sonde, `ventes?select=*` ; plus les lectures des
+  fonctions) + photos hors cache ≈ 1,4 Go/j. Les correctifs de la partie B (02/11 12:31 → 15:20) n'ont pas tenu assez
+  longtemps pour se voir : la partie C les a retirés.
+- **Projection de fin de cycle (02/11 → 02/12), à partir de ces chiffres :**
+  - egress hors cache : 15,5 Go + 9 à 11 Go/j × 28,3 j ≈ **270 à 330 Go** (quota 250) → **≈ 2 à 7 $** si facturé ;
+  - egress en cache : 23 Go + 0,75 Go/j × 28,3 j ≈ 44 Go → 0 $ ;
+  - transformations : 2 696 + 55 à 70/j (≈ 3 % de renvois au module « maison ») × 28,3 j ≈ **4 300 à 4 700** (quota 100) →
+    **≈ 21 à 23 $** si facturé ;
+  - appels de fonctions : ≈ 1,6 M (quota 2 M) → 0 $.
+- ⚠️ **Le plafond de dépenses est ACTIF** (page Usage : « you are currently not billed for overages ») : les dépassements
+  ne sont pas facturés, mais le bandeau dit « Projects will be restricted from 02 Dec, 2026 if your organization remains
+  over quota » et le mail du 01/11 demande de ramener l'egress sous 275 Go. À ce rythme, l'egress (≈ 270 à 330 Go) et
+  les transformations (≈ 4 300 à 4 700 pour 100 incluses) dépassent : **le risque est une restriction au 02/12, pas
+  une facture.** À décider par Nico : retirer le plafond (≈ 23 à 30 $ de dépassements), ou baisser l'egress (relectures
+  complètes de l'app, ce que la partie B faisait) et les transformations restantes.
+- Le J4 (« ~40 à 55 $ », « 13 à 18 Go/j ») est remplacé par ce J5.
