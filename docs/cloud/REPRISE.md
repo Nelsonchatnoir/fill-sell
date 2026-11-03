@@ -15,10 +15,25 @@ Détail : `docs/enquetes/cloud-ouverture-0311/RAPPORT.md`. Commits 9e9bde4, 1a65
   enveloppé que le `COMMIT;` de la 203000 a validé : rapport § 11). Crons `cloud-voies-5min`, `push-cloud-place-5min`.
 - Pool : ids 1, 2, 3, 4 « disponible » avec refus Beebs NON PROUVÉ (requalification automatique : une visite légère par
   heure, l'id 2 réservée à Nico jamais visitée) ; id 39 = Nico (03/12). id 1 prolongée au 04/12. Solde IPRoyal 3,15 $.
-- ⛔ COUPÉS jusqu'au go de Nico : achats IP (`IPROYAL_ACHATS_AUTORISES=0`, `cloud_ip_achats_auto` 0), renouvellements
-  (`cloud_ip_renouvellement_auto` 0), création de serveur (`HETZNER_CREATION_AUTORISEE` absent, `cloud_serveurs_auto` 0).
+- FEUX VERTS DE NICO (03/11 soir) :
+  - achat ET renouvellement automatiques des IP : **ALLUMÉS** 18:47 (`cloud_ip_achats_auto` 1, `cloud_ip_renouvellement_auto`
+    1, `IPROYAL_ACHATS_AUTORISES=1` sur cloud-1), plafond **60 $ / mois** ; solde rechargé par Nico : 33,15 $. Un achat ne
+    part que si le stock d'IP attribuables à un essai passe sous `cloud_ip_stock_min` (2) — plan du 03/11 : 0 à acheter ;
+  - lot de départ : **NON pour l'instant** (les 3 IP disponibles suffisent aux tests) — acheter juste avant l'ouverture ;
+  - création automatique de serveurs : **COUPÉE**, plus tard (`HETZNER_CREATION_AUTORISEE` absent, `cloud_serveurs_auto` 0) ;
+  - OTA 2.9.159 : **servie** 03/11 ~18:45 (dist/ = 7c7748d vérifié) ; comptes sans Cloud : 708 écrans identiques.
+  - Migrations : plus JAMAIS d'« essai à blanc » sur la prod — base jetable, puis application réelle explicite.
+- ⛔ CE QUI RESTE AVANT L'OUVERTURE À TOUS :
+  1. get-pending-jobs (terminal qui la tient) : (a) ne plus rien servir au poste Cloud quand `cloud_voie` est faux
+     (grâce d'essai) ; (b) pour un compte `cloud_voie`, ne plus servir au PC les lectures que le Cloud fait déjà (relevés
+     d'annonces, de ventes, messagerie, sondes) — même compte de plateforme vu depuis deux IP.
+  2. Apple : soumettre l'abonnement Cloud (`app.fillsell.cloud.sub`, offre d'intro 1 semaine à confirmer).
+  3. Vrai paiement de test (Stripe d'abord), en DERNIER, quand tout le reste est en place.
+  4. Lot d'IP juste avant l'ouverture (proposé : 10 IP = 29,40 $).
+  5. Le drapeau : `CLOUD_OFFER_ENABLED` reste à false ; l'ouvrir = une OTA + `coin_config.cloud_offre_ouverte` = 1.
+  6. Beebs du compte de Nico « à résoudre » depuis le 03/11 01:25 (« Résoudre la vérification » dans l'app).
 - `cloud_voie` n'est PLUS posé par script : la base le tient (`cloud_etat().actif`). Ne plus l'écrire à la main.
-- OTA 2.9.159 construite (7c7748d), envoi refusé par le garde-fou de la session : canal toujours 2.9.158.
+- OTA 2.9.159 SERVIE (envoyée par Claude sur autorisation de Nico, 03/11 soir).
 - Relevés en cours sur cloud-1 (lecture seule, bornés) : `etat/mesure-0311/echantillons.jsonl` (30 s, jusqu'au 04/11
   22:00 environ).
 

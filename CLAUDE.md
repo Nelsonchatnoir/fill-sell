@@ -32,7 +32,8 @@ si elle sert à CHAQUE session. Jumeau Codex : `AGENTS.md`.
   tracé) ; Nico ne fait que zipper/téléverser sur le Chrome Web Store et « Envoyer pour examen ».
 
 ## Garde-fous qui cassent la prod
-- ⛔ `supabase db push`, `db reset`, `db remote commit` INTERDITS. Migration = feu vert explicite, puis
+- ⛔ `supabase db push`, `db reset`, `db remote commit` INTERDITS. Migration = essai sur une base JETABLE (jamais
+  d'« essai à blanc » sur la prod, décision de Nico du 03/11), feu vert explicite, puis
   `npx supabase db query --linked -f <fichier>` + `npx supabase migration repair --linked --status applied <version>` ;
   une fonction SQL se réécrit depuis `pg_get_functiondef` en prod, jamais depuis le dépôt.
 - Fonction edge : version et `verify_jwt` lus AVANT et APRÈS ; appelant sans session (cron, webhook) =

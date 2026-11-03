@@ -69,12 +69,12 @@ appliqués en direct, migrations « patch » par remplacement de texte). Elles
 sont capturées dans `20260926235900_depot_suit_la_prod_capture_2609.sql` —
 mais tout correctif appliqué en direct depuis recrée l'écart.
 
-⛔ **(03/11, Cloud) UN ESSAI À BLANC ENVELOPPÉ (`BEGIN; <migration>; ROLLBACK;`) NE VAUT RIEN SI LA MIGRATION
-PORTE SES PROPRES `BEGIN;` / `COMMIT;`** : dans une transaction ouverte, son `BEGIN` n'est qu'un avertissement et son
-`COMMIT` valide TOUT ce qui précède — le `ROLLBACK` final n'annule plus rien. Vécu le 03/11 vers 16:37 : l'essai
-enveloppé des migrations Cloud 20261103201000 → 20261103203000 (la dernière finissait par `COMMIT;`) les a appliquées
-en prod. Avant d'envelopper : `grep -nE '^\s*(BEGIN|COMMIT|ROLLBACK|END)\s*;' <fichier>` doit être vide (sinon,
-retirer ces lignes de la COPIE d'essai), et relire en base, après l'essai, qu'aucun objet neuf n'existe.
+⛔ **(03/11, décision de Nico) PLUS JAMAIS D'« ESSAI À BLANC » SUR LA PROD.** Une migration s'essaie sur une base
+JETABLE (Postgres local ou PGlite, avec les définitions de prod recopiées — comme les bancs du 03/11 :
+`scripts/cloud/preuve-voie-place-attente.mjs`), puis s'applique en prod par une application RÉELLE et explicite, après
+le feu vert. Pourquoi : le 03/11 vers 16:37, un essai enveloppé (`BEGIN; <migrations>; ROLLBACK;`) des migrations Cloud
+20261103201000 → 20261103203000 les a APPLIQUÉES — la dernière portait son propre `COMMIT;`, qui a validé toute la
+transaction ouverte ; le `ROLLBACK` final n'annulait plus rien.
 
 
 <!-- ex-CLAUDE.md L612-640 : ⛔ Tâche automatique ou relecture en boucle : mesurée, bornée (04/10) -->

@@ -262,8 +262,10 @@ Détail complet : `supabase/AGENTS.md`. L'essentiel :
   modifiés**. Interdits aussi : `db reset`, `db remote commit`.
 - Migrations **appliquées directement en prod, une par une** (c'est normal et
   irréversible), après : lecture du corps réel en prod → fichier
-  `AAAAMMJJHHMMSS_nom.sql` idempotent → **rejeu en transaction annulée,
-  MONTRÉ** → **GO de Nico qui nomme la migration** → application → relecture
+  `AAAAMMJJHHMMSS_nom.sql` idempotent → **essai sur une base JETABLE
+  (Postgres local, PGlite), MONTRÉ — jamais d'« essai à blanc » sur la prod
+  (décision de Nico, 03/11 : un `COMMIT;` interne a appliqué trois migrations
+  par un essai enveloppé)** → **GO de Nico qui nomme la migration** → application → relecture
   de l'effet → commit avec « APPLIQUÉE le … (GO …) ». Toujours inscrite dans
   l'historique : `migration repair --linked --status applied <version>` (01/10).
 - Fonctions edge : **le geste, avant ET après tout déploiement** :
