@@ -1,0 +1,544 @@
+#!/usr/bin/env bash
+set -e
+
+# Working directories
+#DEPS=/deps
+#TARGET=/target
+#mkdir $DEPS
+#mkdir $TARGET
+
+SOURCE_DIR=$PWD
+
+# Build within the mounted volume, handy for debugging
+# and ensures that dependencies are not being rebuilt
+DEPS=$SOURCE_DIR/build/deps
+TARGET=$SOURCE_DIR/build/target
+rm -rf $DEPS/
+mkdir $DEPS
+mkdir -p $TARGET
+
+# Define default arguments
+
+# Specifies the environment(s) to target
+ENVIRONMENT="web,node"
+
+# WebAssembly-based file system layer for Emscripten, disabled by default
+# https://github.com/emscripten-core/emscripten/issues/15041
+WASM_FS=false
+
+# Emit instructions for the standardized Wasm EH proposal with exnref
+# (adopted on Oct 2023), disabled by default
+# https://github.com/WebAssembly/exception-handling/issues/280
+WASM_EXNREF=false
+
+# Link-time optimizations (LTO), disabled by default
+# https://github.com/emscripten-core/emscripten/issues/10603
+LTO=false
+
+# Dynamic loadable modules, enabled by default
+MODULES=true
+
+# Support for UltraHDR images, enabled by default
+UHDR=true
+
+# Support for JPEG XL images, enabled by default
+JXL=true
+
+# Support for AVIF, enabled by default
+AVIF=true
+
+# Partial support for SVG load via resvg, enabled by default
+SVG=true
+
+# Build libvips C++ API, disabled by default
+LIBVIPS_CPP=false
+
+# Build bindings, enabled by default but can be disabled if you only need libvips
+BINDINGS=true
+
+# Parse arguments
+while [ $# -gt 0 ]; do
+  case $1 in
+    --enable-lto) LTO=true ;;
+    --enable-wasm-fs) WASM_FS=true ;;
+    --enable-new-wasm-eh) WASM_EXNREF=true ;;
+    --disable-uhdr) UHDR=false ;;
+    --disable-jxl) JXL=false ;;
+    --disable-avif) AVIF=false ;;
+    --disable-svg) SVG=false ;;
+    --disable-modules) MODULES=false ;;
+    --disable-bindings) BINDINGS=false ;;
+    --enable-libvips-cpp) LIBVIPS_CPP=true ;;
+    -e|--environment) ENVIRONMENT="$2"; shift ;;
+    *) echo "ERROR: Unknown parameter: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
+
+# Configure the ENABLE_* and DISABLE_* expansion helpers
+for arg in UHDR JXL AVIF SVG MODULES BINDINGS; do
+  if [ "${!arg}" = "true" ]; then
+    declare ENABLE_$arg=true
+  else
+    declare DISABLE_$arg=true
+  fi
+done
+
+# Handy for debugging
+#COMMON_FLAGS="-Og -gsource-map -pthread"
+#export EMCC_DEBUG=1
+#export EMCC_DEBUG_SAVE=1
+
+# Specify location where source maps are published (browser specific)
+#export LDFLAGS+=" --source-map-base http://localhost:3000/lib/"
+
+# Handy for catching bugs
+#COMMON_FLAGS="-Os -g2 -fsanitize=address -pthread"
+
+# Rust flags
+export RUSTFLAGS="-Copt-level=z -Ctarget-feature=+atomics,+simd128 -Zdefault-visibility=hidden -Zlocation-detail=none -Zfmt-debug=none"
+
+# Common compiler flags
+# Default optimization level is for binary size (-Os)
+# Overridden to performance (-O3) for select dependencies that benefit
+COMMON_FLAGS="-Os -pthread -fwasm-exceptions"
+if [ "$WASM_EXNREF" = "true" ]; then
+  COMMON_FLAGS+=" -sWASM_LEGACY_EXCEPTIONS=0"
+  export RUSTFLAGS+=" -Cllvm-args=-wasm-use-legacy-eh=0"
+fi
+if [ "$LTO" = "true" ]; then
+  COMMON_FLAGS+=" -flto"
+  export RUSTFLAGS+=" -Clto -Cembed-bitcode=yes"
+fi
+
+export CFLAGS="$COMMON_FLAGS -fvisibility=hidden -msimd128 -DWASM_SIMD_COMPAT_SLOW"
+export CXXFLAGS="$CFLAGS"
+
+export LDFLAGS="$COMMON_FLAGS -L$TARGET/lib -sAUTO_JS_LIBRARIES=0 -sAUTO_NATIVE_LIBRARIES=0"
+
+# Build paths
+export CPATH="$TARGET/include"
+export PKG_CONFIG_PATH="$TARGET/lib/pkgconfig"
+export EM_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
+
+# Specific variables for cross-compilation
+export CHOST="wasm32-unknown-linux" # wasm32-unknown-emscripten
+export MESON_ARGS="--cross-file=$SOURCE_DIR/build/wasm32-emscripten.ini"
+
+# Run as many parallel jobs as there are available CPU cores
+export MAKEFLAGS="-j$(nproc)"
+
+# Ensure we link against internal/private dependencies
+export PKG_CONFIG="pkg-config --static"
+
+# Ensure Rust build path prefixes are removed from the resulting binaries
+# https://reproducible-builds.org/docs/build-path/
+export CARGO_PROFILE_RELEASE_TRIM_PATHS="all"
+
+# Dependency version numbers
+VERSION_ZLIB_NG=2.3.3       # https://github.com/zlib-ng/zlib-ng
+VERSION_FFI=3.8.0           # https://github.com/libffi/libffi
+VERSION_GLIB=2.90.0         # https://gitlab.gnome.org/GNOME/glib
+VERSION_EXPAT=2.8.5         # https://github.com/libexpat/libexpat
+VERSION_EXIF=0.6.26         # https://github.com/libexif/libexif
+VERSION_LCMS2=2.19.1        # https://github.com/mm2/Little-CMS
+VERSION_HWY=1.4.0           # https://github.com/google/highway
+VERSION_BROTLI=1.2.0        # https://github.com/google/brotli
+VERSION_MOZJPEG=0826579     # https://github.com/mozilla/mozjpeg
+VERSION_UHDR=2.0.2          # https://github.com/google/libultrahdr
+VERSION_JXL=0.12.0          # https://github.com/libjxl/libjxl
+VERSION_PNG=1.6.58          # https://github.com/pnggroup/libpng
+VERSION_IMAGEQUANT=2.4.1    # https://github.com/lovell/libimagequant
+VERSION_CGIF=0.5.4          # https://github.com/dloebl/cgif
+VERSION_WEBP=1.6.0          # https://chromium.googlesource.com/webm/libwebp
+VERSION_TIFF=4.7.2          # https://gitlab.com/libtiff/libtiff
+VERSION_RESVG=0.48.1        # https://github.com/linebender/resvg
+VERSION_AOM=3.15.1          # https://aomedia.googlesource.com/aom
+VERSION_HEIF=1.23.5         # https://github.com/strukturag/libheif
+VERSION_VIPS=8.18.7         # https://github.com/libvips/libvips
+
+VERSION_EMSCRIPTEN="$(emcc -dumpversion)"
+
+# Generate versions.json
+( printf "{\n"; \
+  [ -n "$DISABLE_AVIF" ] || printf "  \"aom\": \"${VERSION_AOM}\",\n"; \
+  [ -n "$DISABLE_JXL" ] || printf "  \"brotli\": \"${VERSION_BROTLI}\",\n"; \
+  printf "  \"cgif\": \"${VERSION_CGIF}\",\n"; \
+  printf "  \"emscripten\": \"${VERSION_EMSCRIPTEN}\",\n"; \
+  printf "  \"exif\": \"${VERSION_EXIF}\",\n"; \
+  printf "  \"expat\": \"${VERSION_EXPAT}\",\n"; \
+  printf "  \"ffi\": \"${VERSION_FFI}\",\n"; \
+  printf "  \"glib\": \"${VERSION_GLIB}\",\n"; \
+  [ -n "$DISABLE_AVIF" ] || printf "  \"heif\": \"${VERSION_HEIF}\",\n"; \
+  printf "  \"highway\": \"${VERSION_HWY}\",\n"; \
+  printf "  \"imagequant\": \"${VERSION_IMAGEQUANT}\",\n"; \
+  [ -n "$DISABLE_JXL" ] || printf "  \"jxl\": \"${VERSION_JXL}\",\n"; \
+  printf "  \"lcms\": \"${VERSION_LCMS2}\",\n"; \
+  printf "  \"mozjpeg\": \"${VERSION_MOZJPEG}\",\n"; \
+  printf "  \"png\": \"${VERSION_PNG}\",\n"; \
+  [ -n "$DISABLE_SVG" ] || printf "  \"resvg\": \"${VERSION_RESVG}\",\n"; \
+  printf "  \"tiff\": \"${VERSION_TIFF}\",\n"; \
+  [ -n "$DISABLE_UHDR" ] || printf "  \"uhdr\": \"${VERSION_UHDR}\",\n"; \
+  printf "  \"vips\": \"${VERSION_VIPS}\",\n"; \
+  printf "  \"webp\": \"${VERSION_WEBP}\",\n"; \
+  printf "  \"zlib-ng\": \"${VERSION_ZLIB_NG}\"\n"; \
+  printf '}'; ) \
+>$TARGET/versions.json
+
+# Remove patch version component
+without_patch() {
+  echo "${1%.[[:digit:]]*}"
+}
+
+# Remove prerelease suffix
+without_prerelease() {
+  echo "${1%-[[:alnum:]]*}"
+}
+
+title() {
+  echo -ne "\e]0;$1\a"
+}
+
+stage() {
+  title "$1"
+  echo -e "\e[1;32m============================================="
+  echo "$1"
+  echo -e "=============================================\e[0m"
+}
+
+stage "Environment"
+emcc --version
+node --version
+
+[ -f "$TARGET/lib/pkgconfig/zlib.pc" ] || (
+  stage "Compiling zlib-ng"
+  mkdir $DEPS/zlib-ng
+  curl -Ls https://github.com/zlib-ng/zlib-ng/archive/refs/tags/$VERSION_ZLIB_NG.tar.gz | tar xzC $DEPS/zlib-ng --strip-components=1
+  cd $DEPS/zlib-ng
+  # SSE intrinsics needs to be checked for wasm32
+  sed -i 's/BASEARCH_X86_FOUND/& OR BASEARCH_WASM32_FOUND/g' CMakeLists.txt
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$TARGET -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_TESTING=OFF -DWITH_RUNTIME_CPU_DETECTION=OFF -DZLIB_COMPAT=ON \
+    -DCMAKE_C_FLAGS="$CFLAGS -O3"
+  make -C _build install
+)
+
+[ -f "$TARGET/lib/pkgconfig/libffi.pc" ] || (
+  stage "Compiling ffi"
+  mkdir $DEPS/ffi
+  curl -Ls https://github.com/libffi/libffi/releases/download/v$VERSION_FFI/libffi-$VERSION_FFI.tar.gz | tar xzC $DEPS/ffi --strip-components=1
+  cd $DEPS/ffi
+  # Compile without -fexceptions
+  sed -i 's/ -fexceptions//g' configure
+  emconfigure ./configure --host=$CHOST --prefix=$TARGET --enable-static --disable-shared --disable-dependency-tracking \
+    --disable-builddir --disable-multi-os-directory --disable-raw-api --disable-structs --disable-docs
+  make install
+)
+
+[ -f "$TARGET/lib/pkgconfig/glib-2.0.pc" ] || (
+  stage "Compiling glib"
+  mkdir $DEPS/glib
+  curl -Lks https://download.gnome.org/sources/glib/$(without_patch $VERSION_GLIB)/glib-$VERSION_GLIB.tar.xz | tar xJC $DEPS/glib --strip-components=1
+  cd $DEPS/glib
+  # https://gitlab.gnome.org/GNOME/glib/-/issues/3596
+  curl -Ls https://github.com/GNOME/glib/compare/$VERSION_GLIB...kleisauke:wasm-vips-$VERSION_GLIB.patch | patch -p1
+  meson setup _build --prefix=$TARGET $MESON_ARGS --default-library=static --buildtype=release \
+    --force-fallback-for=gvdb -Dintrospection=disabled -Dselinux=disabled -Dxattr=false -Dlibmount=disabled -Dsysprof=disabled -Dnls=disabled \
+    -Dglib_debug=disabled -Dtests=false -Dglib_assert=false -Dglib_checks=false
+  meson install -C _build --tag devel
+)
+
+[ -f "$TARGET/lib/pkgconfig/expat.pc" ] || (
+  stage "Compiling expat"
+  mkdir $DEPS/expat
+  curl -Ls https://github.com/libexpat/libexpat/releases/download/R_${VERSION_EXPAT//./_}/expat-$VERSION_EXPAT.tar.xz | tar xJC $DEPS/expat --strip-components=1
+  cd $DEPS/expat
+  emconfigure ./configure --host=$CHOST --prefix=$TARGET --enable-static --disable-shared --disable-dependency-tracking \
+    --without-xmlwf --without-docbook --without-examples --without-tests --without-arc4random --without-arc4random-buf \
+    --without-getrandom --without-sys-getrandom
+  make install dist_cmake_DATA= nodist_cmake_DATA=
+)
+
+[ -f "$TARGET/lib/pkgconfig/libexif.pc" ] || (
+  stage "Compiling exif"
+  mkdir $DEPS/exif
+  curl -Ls https://github.com/libexif/libexif/releases/download/v$VERSION_EXIF/libexif-$VERSION_EXIF.tar.xz | tar xJC $DEPS/exif --strip-components=1
+  cd $DEPS/exif
+  emconfigure ./configure --host=$CHOST --prefix=$TARGET --enable-static --disable-shared --disable-dependency-tracking \
+    --disable-docs --disable-nls --without-libiconv-prefix --without-libintl-prefix CPPFLAGS="-DNO_VERBOSE_TAG_DATA"
+  make install doc_DATA=
+)
+
+[ -f "$TARGET/lib/pkgconfig/lcms2.pc" ] || (
+  stage "Compiling lcms2"
+  mkdir $DEPS/lcms2
+  curl -Ls https://github.com/mm2/Little-CMS/releases/download/lcms$VERSION_LCMS2/lcms2-$VERSION_LCMS2.tar.gz | tar xzC $DEPS/lcms2 --strip-components=1
+  cd $DEPS/lcms2
+  meson setup _build --prefix=$TARGET $MESON_ARGS --default-library=static --buildtype=release \
+    -Dtests=disabled -Djpeg=disabled -Dtiff=disabled -Dc_args="$CFLAGS -O3"
+  meson install -C _build --tag devel
+)
+
+[ -f "$TARGET/lib/pkgconfig/libhwy.pc" ] || (
+  stage "Compiling hwy"
+  mkdir $DEPS/hwy
+  curl -Ls https://github.com/google/highway/archive/refs/tags/$VERSION_HWY.tar.gz | tar xzC $DEPS/hwy --strip-components=1
+  cd $DEPS/hwy
+  # Remove build path from binary
+  sed -i 's/HWY_ASSERT/HWY_DASSERT/' hwy/aligned_allocator.cc
+  meson setup _build --prefix=$TARGET $MESON_ARGS --buildtype=release \
+    -Dcontrib=disabled -Dexamples=disabled -Dtests=disabled -Dtest_standalone=true \
+    -Dc_args="$CFLAGS -O3" -Dcpp_args="$CXXFLAGS -O3"
+  meson install -C _build --tag devel
+)
+
+[ -f "$TARGET/lib/pkgconfig/libbrotlicommon.pc" ] || [ -n "$DISABLE_JXL" ] || (
+  stage "Compiling brotli"
+  mkdir $DEPS/brotli
+  curl -Ls https://github.com/google/brotli/archive/refs/tags/v$VERSION_BROTLI.tar.gz | tar xzC $DEPS/brotli --strip-components=1
+  cd $DEPS/brotli
+  # Exclude internal dictionary, see: https://github.com/emscripten-core/emscripten/issues/9960
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=$TARGET \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=$MODULES -DBROTLI_DISABLE_TESTS=ON -DBROTLI_BUILD_TOOLS=OFF \
+    -DCMAKE_C_FLAGS="$CFLAGS -DBROTLI_EXTERNAL_DICTIONARY_DATA"
+  make -C _build install
+)
+
+[ -f "$TARGET/lib/pkgconfig/libjpeg.pc" ] || (
+  stage "Compiling jpeg"
+  mkdir $DEPS/jpeg
+  curl -Ls https://github.com/mozilla/mozjpeg/archive/$VERSION_MOZJPEG.tar.gz | tar xzC $DEPS/jpeg --strip-components=1
+  cd $DEPS/jpeg
+  # TODO(kleisauke): Discuss this patch upstream
+  curl -Ls https://github.com/kleisauke/libjpeg-turbo/commit/a60fb467fc7601b008741d42e98268c8a7bcb5b4.patch | patch -p1
+  # Use libjpeg-turbo behaviour by default
+  sed -i 's/JCP_MAX_COMPRESSION/JCP_FASTEST/' jcapimin.c
+  # Compile without SIMD support, see: https://github.com/libjpeg-turbo/libjpeg-turbo/issues/250
+  # Disable environment variables usage, see: https://github.com/libjpeg-turbo/libjpeg-turbo/issues/600
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$TARGET -DBUILD_SHARED_LIBS=OFF \
+    -DWITH_JPEG8=ON -DWITH_SIMD=OFF -DWITH_TURBOJPEG=OFF -DPNG_SUPPORTED=OFF \
+    -DCMAKE_C_FLAGS="$CFLAGS -O3 -DNO_GETENV -DNO_PUTENV"
+  make -C _build install
+)
+
+[ -f "$TARGET/lib/pkgconfig/libuhdr.pc" ] || [ -n "$DISABLE_UHDR" ] || (
+  stage "Compiling uhdr"
+  mkdir $DEPS/uhdr
+  curl -Ls https://github.com/google/libultrahdr/archive/refs/tags/v$VERSION_UHDR.tar.gz | tar xzC $DEPS/uhdr --strip-components=1
+  cd $DEPS/uhdr
+  # Ensure install targets are enabled when cross-compiling
+  sed -i 's/CMAKE_CROSSCOMPILING AND UHDR_ENABLE_INSTALL/FALSE/' CMakeLists.txt
+  # Disable threading support, we rely on libvips' thread pool
+  sed -i 's/(std::max)(1u, std::thread::hardware_concurrency())/1u/' lib/src/jpegr.cpp
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=$TARGET -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=$MODULES -DUHDR_BUILD_EXAMPLES=OFF -DUHDR_ENABLE_HEIF=OFF -DUHDR_MAX_DIMENSION=65500
+  make -C _build install
+)
+
+[ -f "$TARGET/lib/pkgconfig/libjxl.pc" ] || [ -n "$DISABLE_JXL" ] || (
+  stage "Compiling jxl"
+  mkdir $DEPS/jxl
+  curl -Ls https://github.com/libjxl/libjxl/archive/refs/tags/v$VERSION_JXL.tar.gz | tar xzC $DEPS/jxl --strip-components=1
+  cd $DEPS/jxl
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$TARGET -DCMAKE_FIND_ROOT_PATH=$TARGET \
+    -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF \
+    -DJPEGXL_ENABLE_SJPEG=OFF -DJPEGXL_ENABLE_SKCMS=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF \
+    -DJPEGXL_FORCE_SYSTEM_BROTLI=ON -DJPEGXL_FORCE_SYSTEM_LCMS2=ON -DJPEGXL_FORCE_SYSTEM_HWY=ON \
+    -DCMAKE_C_FLAGS="$CFLAGS -O3" -DCMAKE_CXX_FLAGS="$CXXFLAGS -O3" \
+    -DJPEGXL_ENABLE_TRANSCODE_JPEG=OFF # libvips always decodes to pixels
+  make -C _build install
+  if [ -n "$ENABLE_MODULES" ]; then
+    # Ensure we don't link with highway in the vips-jxl side module
+    sed -i '/^Requires:/s/ libhwy//' $TARGET/lib/pkgconfig/libjxl.pc
+    # ... and the same for lcms2
+    sed -i '/^Requires:/s/ lcms2//' $TARGET/lib/pkgconfig/libjxl_cms.pc
+    # ... and the same for -lc++, see:
+    # https://github.com/emscripten-core/emscripten/issues/16680#issuecomment-1558015445
+    sed -i '/^Libs/s/ -lc++//g' $TARGET/lib/pkgconfig/libjxl{,_cms}.pc
+  fi
+)
+
+[ -f "$TARGET/lib/pkgconfig/libpng.pc" ] || (
+  stage "Compiling png"
+  mkdir $DEPS/png
+  curl -Ls https://github.com/pnggroup/libpng/archive/refs/tags/v$VERSION_PNG.tar.gz | tar xzC $DEPS/png --strip-components=1
+  cd $DEPS/png
+  emconfigure ./configure --host=$CHOST --prefix=$TARGET --enable-static --disable-shared --disable-dependency-tracking \
+    --disable-tests --disable-tools --without-binconfigs --disable-unversioned-libpng-config \
+    --enable-intel-sse CPPFLAGS="-O3 -msse4.1"
+  make install dist_man_MANS=
+)
+
+[ -f "$TARGET/lib/pkgconfig/imagequant.pc" ] || (
+  stage "Compiling imagequant"
+  mkdir $DEPS/imagequant
+  curl -Ls https://github.com/lovell/libimagequant/archive/refs/tags/v$VERSION_IMAGEQUANT.tar.gz | tar xzC $DEPS/imagequant --strip-components=1
+  cd $DEPS/imagequant
+  meson setup _build --prefix=$TARGET $MESON_ARGS --default-library=static --buildtype=release \
+    -Dc_args="$CFLAGS -O3 -msse -DUSE_SSE=1"
+  meson install -C _build --tag devel
+)
+
+[ -f "$TARGET/lib/pkgconfig/cgif.pc" ] || (
+  stage "Compiling cgif"
+  mkdir $DEPS/cgif
+  curl -Ls https://github.com/dloebl/cgif/archive/refs/tags/v$VERSION_CGIF.tar.gz | tar xzC $DEPS/cgif --strip-components=1
+  cd $DEPS/cgif
+  meson setup _build --prefix=$TARGET $MESON_ARGS --default-library=static --buildtype=release \
+    -Dexamples=false -Dtests=false -Dc_args="$CFLAGS -O3"
+  meson install -C _build --tag devel
+)
+
+[ -f "$TARGET/lib/pkgconfig/libwebp.pc" ] || (
+  stage "Compiling webp"
+  mkdir $DEPS/webp
+  curl -Ls https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$VERSION_WEBP.tar.gz | tar xzC $DEPS/webp --strip-components=1
+  cd $DEPS/webp
+  # https://chromium.googlesource.com/webm/libwebp/+/5339483509d998936c3f184ec5a95e8c1bb4a5d9
+  sed -i 's/EMSCRIPTEN/__&__/' src/dsp/cpu.c
+  # https://chromium.googlesource.com/webm/libwebp/+/453a18c42f396dd803345443fb5f70a0b8291d65
+  sed -i '/if(EMSCRIPTEN/s/2/3/' cmake/cpu.cmake
+  # Install the .cmake files into correct location
+  sed -i '/set(ConfigPackageLocation/s/${CMAKE_INSTALL_DATADIR}\/${PROJECT_NAME}\/cmake/${CMAKE_INSTALL_LIBDIR}\/cmake\/${PROJECT_NAME}/' CMakeLists.txt
+  # Compile without AVX2 support, as most of these instructions are emulated
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=$TARGET -DBUILD_SHARED_LIBS=OFF \
+    -DWEBP_ENABLE_SIMD=ON -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF \
+    -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF \
+    -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF -DWEBP_BUILD_EXTRAS=OFF \
+    -DCMAKE_C_FLAGS="$CFLAGS -U__AVX2__ -DWEBP_DISABLE_STATS -DWEBP_REDUCE_CSP" \
+    -DWEBP_USE_THREAD=OFF # Disable threading support, we rely on libvips' thread pool
+  make -C _build install
+)
+
+[ -f "$TARGET/lib/pkgconfig/libtiff-4.pc" ] || (
+  stage "Compiling tiff"
+  mkdir $DEPS/tiff
+  curl -Ls https://gitlab.com/libtiff/libtiff/-/archive/v$VERSION_TIFF/libtiff-v$VERSION_TIFF.tar.gz | tar xzC $DEPS/tiff --strip-components=1
+  cd $DEPS/tiff
+  # Build with -DCMAKE_FIND_ROOT_PATH=$TARGET to ensure WebP support (see https://github.com/emscripten-core/emscripten/issues/10078)
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=$TARGET -DCMAKE_FIND_ROOT_PATH=$TARGET \
+   -DBUILD_SHARED_LIBS=OFF -Dtiff-contrib=OFF -Dtiff-cxx=OFF -Dtiff-docs=OFF -Dtiff-tests=OFF -Dtiff-tools=OFF \
+   -Dmdi=OFF -Djbig=OFF -Dlerc=OFF -Dlibdeflate=OFF -Dlzma=OFF -Dold-jpeg=OFF -Dpixarlog=OFF -Dtiff-opengl=OFF -Dzstd=OFF
+  make -C _build install
+)
+
+[ -f "$TARGET/lib/libresvg.a" ] || [ -n "$DISABLE_SVG" ] || (
+  stage "Compiling resvg"
+  mkdir -p $DEPS/resvg
+  curl -Ls https://github.com/linebender/resvg/releases/download/v$VERSION_RESVG/resvg-$VERSION_RESVG.tar.xz | tar xJC $DEPS/resvg --strip-components=1
+  cd $DEPS/resvg
+  # Vendor dir doesn't work with -Zbuild-std due to https://github.com/rust-lang/wg-cargo-std-aware/issues/23
+  # Just delete the config so that all deps are downloaded from the internet
+  rm .cargo/config
+  # We don't want to build the shared library
+  sed -i '/^crate-type =/s/"cdylib", //' crates/c-api/Cargo.toml
+  # https://github.com/linebender/resvg/issues/1112
+  sed -i '/RESVG_ERROR_NOT_AN_UTF8_STR,/a RESVG_ERROR_SVGZ_UNSUPPORTED,' crates/c-api/resvg.h
+  # FIXME(kleisauke): Remove panic-unwind from build-std-features once https://github.com/rust-lang/cargo/issues/17404 is fixed
+  cargo build --manifest-path=crates/c-api/Cargo.toml --release --target=wasm32-unknown-emscripten --locked \
+    -Zbuild-std=std,panic_abort -Zbuild-std-features=optimize_for_size,panic-unwind -Ztrim-paths --no-default-features \
+    --features=svgz,raster-images
+  cp target/wasm32-unknown-emscripten/release/libresvg.a $TARGET/lib/
+  cp crates/c-api/resvg.h $TARGET/include/
+)
+
+[ -f "$TARGET/lib/pkgconfig/aom.pc" ] || [ -n "$DISABLE_AVIF" ] || (
+  stage "Compiling aom"
+  mkdir $DEPS/aom
+  curl -Ls https://storage.googleapis.com/aom-releases/libaom-$VERSION_AOM.tar.gz | tar xzC $DEPS/aom --strip-components=1
+  cd $DEPS/aom
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=$TARGET \
+    -DAOM_TARGET_CPU=generic ${ENABLE_MODULES:+-DCONFIG_PIC=1} -DCONFIG_RUNTIME_CPU_DETECT=0 \
+    -DENABLE_DOCS=OFF -DENABLE_TESTS=OFF -DENABLE_APPS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TOOLS=OFF \
+    -DCONFIG_WEBM_IO=0 -DCONFIG_AV1_HIGHBITDEPTH=1 \
+    -DCONFIG_MULTITHREAD=0 # Disable threading support, we rely on libvips' thread pool.
+  make -C _build install
+)
+
+[ -f "$TARGET/lib/pkgconfig/libheif.pc" ] || [ -n "$DISABLE_AVIF" ] || (
+  stage "Compiling libheif"
+  mkdir $DEPS/heif
+  curl -Ls https://github.com/strukturag/libheif/releases/download/v$VERSION_HEIF/libheif-$VERSION_HEIF.tar.gz | tar xzC $DEPS/heif --strip-components=1
+  cd $DEPS/heif
+  # Build with -DCMAKE_FIND_ROOT_PATH=$TARGET to ensure AOM can be found (see https://github.com/emscripten-core/emscripten/issues/10078)
+  # Compile with -D__EMSCRIPTEN_STANDALONE_WASM__ to disable the Embind implementation.
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$TARGET -DCMAKE_FIND_ROOT_PATH=$TARGET \
+    -DBUILD_SHARED_LIBS=OFF -DENABLE_PLUGIN_LOADING=OFF -DBUILD_TESTING=OFF -DWITH_EXAMPLES=OFF \
+    -DWITH_LIBDE265=OFF -DWITH_X265=OFF -DWITH_X264=OFF -DWITH_OpenH264_DECODER=OFF \
+    -DCMAKE_C_FLAGS="$CFLAGS -O3" -DCMAKE_CXX_FLAGS="$CXXFLAGS -O3 -D__EMSCRIPTEN_STANDALONE_WASM__" \
+    -DENABLE_MULTITHREADING_SUPPORT=OFF # Disable threading support, we rely on libvips' thread pool.
+  make -C _build install
+  if [ -n "$ENABLE_MODULES" ]; then
+    # Ensure we don't link with libsharpyuv in the vips-heif side module
+    sed -i '/^Requires.private:/s/ libsharpyuv//' $TARGET/lib/pkgconfig/libheif.pc
+    # ... and the same for -lc++, see:
+    # https://github.com/emscripten-core/emscripten/issues/16680#issuecomment-1558015445
+    sed -i '/^Libs.private:/s/ -lc++//' $TARGET/lib/pkgconfig/libheif.pc
+  fi
+)
+
+[ -f "$TARGET/lib/pkgconfig/vips.pc" ] || (
+  stage "Compiling vips"
+  mkdir $DEPS/vips
+  curl -Ls https://github.com/libvips/libvips/releases/download/v$VERSION_VIPS/vips-$(without_prerelease $VERSION_VIPS).tar.xz | tar xJC $DEPS/vips --strip-components=1
+  cd $DEPS/vips
+  # Emscripten specific patches
+  curl -Ls https://github.com/libvips/libvips/compare/v$VERSION_VIPS...kleisauke:wasm-vips-$VERSION_VIPS.patch | patch -p1
+  # Disable building man pages, gettext po files, tools, and (fuzz-)tests
+  sed -i "/subdir('man')/{N;N;N;N;d;}" meson.build
+  meson setup _build --prefix=$TARGET $MESON_ARGS --default-library=static --buildtype=release \
+    -Ddeprecated=false -Dexamples=false -Dcplusplus=$LIBVIPS_CPP -Dauto_features=enabled \
+    -Dintrospection=disabled ${DISABLE_MODULES:+-Dmodules=disabled} -Darchive=disabled \
+    -Dcfitsio=disabled -Dfftw=disabled -Dfontconfig=disabled ${DISABLE_AVIF:+-Dheif=disabled} \
+    ${DISABLE_JXL:+-Djpeg-xl=disabled} -Dmagick=disabled -Dmatio=disabled -Dnifti=disabled \
+    -Dopenexr=disabled -Dopenjpeg=disabled -Dopenslide=disabled -Dpangocairo=disabled \
+    -Dpdfium=disabled -Dpoppler=disabled -Draw=disabled ${DISABLE_SVG:+-Dresvg=disabled} \
+    -Drsvg=disabled ${DISABLE_UHDR:+-Duhdr=disabled} \
+    -Dc_args="$CFLAGS -O3" -Dcpp_args="$CXXFLAGS -O3"
+  meson install -C _build --tag runtime,devel
+  # Emscripten requires linking to side modules to find the necessary symbols to export
+  module_dir=$(printf '%s\n' $TARGET/lib/vips-modules-* | sort -n | tail -1)
+  [ -d "$module_dir" ] && modules=$(find $module_dir/ -type f -printf " %p") || true
+  sed -i "/^Libs:/ s/$/${modules//\//\\/}/" $TARGET/lib/pkgconfig/vips.pc
+)
+
+[ -n "$DISABLE_BINDINGS" ] || (
+  stage "Compiling JS bindings"
+  cd $SOURCE_DIR
+  meson setup $DEPS/wasm-vips --prefix=$TARGET $MESON_ARGS --buildtype=release --bindir="$SOURCE_DIR/lib" \
+    -Denvironments=$ENVIRONMENT -Dmodules=$MODULES -Dwasmfs=$WASM_FS
+  meson install -C $DEPS/wasm-vips --tag runtime
+)
+
+[ -n "$DISABLE_BINDINGS" ] || [ "$ENVIRONMENT" != "web,node" ] || (
+  # Building for both Node.js and web, prepare NPM package
+  stage "Prepare NPM package"
+
+  # The produced binary should be the same across the different variants (sanity check)
+  expected_sha256=$(sha256sum "$SOURCE_DIR/lib/vips.wasm" | awk '{ print $1 }')
+  for file in vips-es6.wasm vips-node.wasm vips-node-es6.wasm; do
+    echo "$expected_sha256 $SOURCE_DIR/lib/$file" | sha256sum --check --quiet
+    rm $SOURCE_DIR/lib/$file
+  done
+
+  # Use a single wasm binary for web and Node.js
+  for file in vips-es6.js vips-node.js vips-node-es6.js; do
+    sed -i "s/${file%.*}.wasm/vips.wasm/g" $SOURCE_DIR/lib/$file
+  done
+
+  # Omit -es6 suffix from Node.js files, prefer .mjs extension instead
+  mv $SOURCE_DIR/lib/vips-node-es6.js $SOURCE_DIR/lib/vips-node.mjs
+  sed -i 's/vips-node-es6.js/vips-node.mjs/g' $SOURCE_DIR/lib/vips-node.mjs
+
+  # Print the target features section
+  echo -n "Used Wasm features: "
+  $EMSDK/upstream/bin/wasm-opt --mvp-features --print-features -o /dev/null $SOURCE_DIR/lib/vips.wasm | \
+    sed 's/^--enable-//' | paste -sd' '
+
+  # Copy dynamic loadable modules
+  module_dir=$(printf '%s\n' $TARGET/lib/vips-modules-* | sort -n | tail -1)
+  [ -d "$module_dir" ] && cp $module_dir/* $SOURCE_DIR/lib || true
+
+  # Copy versions.json
+  cp $TARGET/versions.json $SOURCE_DIR
+)

@@ -398,3 +398,23 @@ Rapport `docs/enquetes/facture-supabase-0211/RAPPORT.md` ; selftest `selftest:fa
   comme avant).
 - Toute nouvelle lecture faite à chaque poll se branche sur ce signal si — et seulement si — le signal prouve son
   résultat ; sinon elle se lit.
+
+## ⛔ 03/11 — empreintes des photos du bucket : la réduction de Supabase refaite chez nous (module « maison »)
+Rapport `docs/enquetes/facture-supabase-0211/RAPPORT.md` partie I ; recette `…/essai-empreintes-D/mono-thread/RECETTE.md` ;
+selftests `selftest:empreintes-maison`, `selftest:essai-d-mono`.
+- `empreintes-urls` réduit les photos de NOTRE bucket avec libvips 8.18.7 sur un seul thread
+  (`_shared/vips-mono/vips-mono.mjs`, chargé par `_shared/empreinte-maison.ts`) au lieu de `storage/v1/render/image`
+  (≈ 235 à 390 $ par cycle) : mêmes octets, même empreinte au bit près. Le calcul tourne dans NOS fonctions, jamais
+  sur le serveur Cloud.
+- **Interrupteur** : `coin_config.empreintes_moteur_maison` (entier) — 1 = maison, 0 / absente / illisible =
+  Supabase ; relu à chaque appel, effet immédiat sans redéploiement. À remettre à 0 avant tout changement du module.
+- **Périmètre prouvé seulement** (`perimetre`, puis le module) : JPEG trame 0/1/2, 8 bits, 3 composantes, fichier complet ;
+  PNG RVB 8 bits sans tRNS, sans iCCP, non entrelacé, complet ; réduit (un côté > 400 px), aucun côté > 2 560 px ;
+  orientation EXIF 1, sRGB. Tout le reste, toute erreur, tout piège du module (plus utilisé par l'instance), toute
+  réduction lente (> 400 ms) ou tout appel qui approche 1 s de calcul → `Repli` : la photo est calculée chez Supabase
+  comme avant (`empreinterUrl`, inchangé). Une remise (`DecodageRemis`) reste une remise. Élargir le périmètre =
+  nouvelle preuve à l'octet sur photos réelles, jamais sur la foi du code.
+- 5 URL par appel au plus ; les suivantes sont « restantes » (l'appelant les redemande). `photo_empreintes.source` =
+  `empreintes-urls:maison` pour une empreinte du module (traçabilité ; aucun code ne décide sur `source`).
+- doublons-balayage et photo-empreinte gardent la transformation Supabase (0 photo du bucket en 24 h pour
+  doublons-balayage le 03/11 ; photo-empreinte : second essai à 800 px).

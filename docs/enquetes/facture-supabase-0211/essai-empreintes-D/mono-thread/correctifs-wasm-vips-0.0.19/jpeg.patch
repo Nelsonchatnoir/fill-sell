@@ -1,0 +1,73 @@
+From a60fb467fc7601b008741d42e98268c8a7bcb5b4 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Wed, 9 Oct 2024 12:14:00 +0200
+Subject: [PATCH] Build: Support relative libdir/includedir in pkg-config
+ generation
+
+- Use `CMAKE_INSTALL_LIBDIR`/`CMAKE_INSTALL_INCLUDEDIR` in
+  pkg-config generation instead of `_FULL_` variables.
+- Avoid prepending the prefix for absolute paths, enabling
+  support for relative installation paths.
+
+Upstream-Status: Pending
+---
+ CMakeLists.txt             | 14 ++++++++++++++
+ release/libjpeg.pc.in      |  6 +++---
+ release/libturbojpeg.pc.in |  6 +++---
+ 3 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 33e4fa8b14..8cee588548 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1953,6 +1953,20 @@ endif()
+ 
+ set(EXE ${CMAKE_EXECUTABLE_SUFFIX})
+ 
++# Prepend prefix for includedir only if CMAKE_INSTALL_INCLUDEDIR is relative
++if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
++  set(PKG_CONFIG_INSTALL_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
++else()
++  set(PKG_CONFIG_INSTALL_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
++endif()
++
++# Prepend exec_prefix for libdir only if CMAKE_INSTALL_LIBDIR is relative
++if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
++  set(PKG_CONFIG_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
++else()
++  set(PKG_CONFIG_INSTALL_LIBDIR "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
++endif()
++
+ if(WITH_TURBOJPEG)
+   if(ENABLE_SHARED)
+     install(TARGETS turbojpeg EXPORT ${CMAKE_PROJECT_NAME}Targets
+diff --git a/release/libjpeg.pc.in b/release/libjpeg.pc.in
+index 74fb7fc69c..3648bf02b5 100644
+--- a/release/libjpeg.pc.in
++++ b/release/libjpeg.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@CMAKE_INSTALL_PREFIX@
+-exec_prefix=@CMAKE_INSTALL_PREFIX@
+-libdir=@CMAKE_INSTALL_FULL_LIBDIR@
+-includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@
++exec_prefix=${prefix}
++libdir=@PKG_CONFIG_INSTALL_LIBDIR@
++includedir=@PKG_CONFIG_INSTALL_INCLUDEDIR@
+ 
+ Name: libjpeg
+ Description: A SIMD-accelerated JPEG codec that provides the libjpeg API
+diff --git a/release/libturbojpeg.pc.in b/release/libturbojpeg.pc.in
+index 81a006327c..be848424a8 100644
+--- a/release/libturbojpeg.pc.in
++++ b/release/libturbojpeg.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@CMAKE_INSTALL_PREFIX@
+-exec_prefix=@CMAKE_INSTALL_PREFIX@
+-libdir=@CMAKE_INSTALL_FULL_LIBDIR@
+-includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@
++exec_prefix=${prefix}
++libdir=@PKG_CONFIG_INSTALL_LIBDIR@
++includedir=@PKG_CONFIG_INSTALL_INCLUDEDIR@
+ 
+ Name: libturbojpeg
+ Description: A SIMD-accelerated JPEG codec that provides the TurboJPEG API

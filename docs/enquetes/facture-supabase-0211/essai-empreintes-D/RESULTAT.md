@@ -115,3 +115,15 @@ invocations au plus doublées, cas hors périmètre mesurés aujourd'hui 0 sur 1
 
 Les photos de travail (200 du test, 86 de mise au point, 45 grosses) et leurs données ont été supprimées du dossier
 temporaire le 02/11 à 23:20.
+
+## 8. Branché en prod (03/11, 10:06) — verdict
+Détail : `../RAPPORT.md` partie I ; règle : `docs/regles/base-supabase-et-fonctions.md` § 03/11.
+- empreintes-urls **v11** (10:04:13) : `_shared/empreinte-maison.ts` + `_shared/vips-mono/vips-mono.mjs` ; périmètre prouvé
+  seulement, tout le reste et toute erreur repartent chez Supabase (`empreinterUrl`, inchangé) ; 5 URL par appel.
+- Interrupteur `coin_config.empreintes_moteur_maison` = **1** depuis 10:06:26 (0 = tout chez Supabase, sans redéploiement).
+- Premières minutes : 25 photos neuves du bucket, **25 par le module, 0 chez Supabase**, 0 échec, 0 erreur de CPU ;
+  module 117-136 ms pour 5 photos.
+- **Contrôle : 20/20 empreintes identiques, 20/20 réduites identiques à l'octet** à la version servie par Supabase
+  (`mono-thread/controle-bascule.ts`, 20 photos neuves réelles ; données supprimées).
+- Fonction de test supprimée ; outils de construction (`C:\Users\nicol\wvst`, jeton compris) supprimés ; recette complète
+  dans `mono-thread/RECETTE.md`.

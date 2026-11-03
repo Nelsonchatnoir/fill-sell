@@ -320,3 +320,37 @@ Feu vert de Nico. Détail : `essai-empreintes-D/RESULTAT.md` § 7 ; recette : `e
 - Remesure du 03/11 : une seule tâche gardée (16:40, deux doublons supprimés) ; elle est liée à la session de ce
   terminal. Une tâche côté Supabase ne peut pas lire les journaux (jeton d'administration du compte requis) ; les
   journaux restant lisibles plusieurs jours, la mesure de la fenêtre 02/11 16:40 → 03/11 16:40 peut se faire après coup.
+
+## Partie I (03/11 matin) — le module branché EN PROD dans empreintes-urls
+Ordre de Nico : brancher le module de l'essai D dans empreintes-urls, périmètre prouvé seulement, repli Supabase, 5 photos
+par appel, interrupteur dans coin_config, contrôle 20/20, puis ménage. Règle : `docs/regles/base-supabase-et-fonctions.md`
+§ 03/11 ; recette : `essai-empreintes-D/mono-thread/RECETTE.md`.
+- **Code** : `_shared/empreinte-maison.ts` (nouveau) + module `_shared/vips-mono/vips-mono.mjs` (celui de la fonction de
+  test, SHA-256 `93fde86d…`). Pour une photo de notre bucket, moteur « maison » : l'originale est téléchargée, son en-tête
+  doit être dans le périmètre prouvé (JPEG trame 0/1/2 8 bits 3 composantes complet ; PNG RVB 8 bits sans tRNS ni iCCP,
+  non entrelacé, complet ; un côté > 400 px, aucun > 2 560 px), le module refuse en plus gris, CMJN, orientation EXIF ≠ 1 ;
+  la réduite doit avoir 400 px au grand côté ; l'empreinte se calcule avec `decoderEmpreinte`, comme sur la version
+  Supabase. Toute autre issue (hors périmètre, erreur, piège du module, réduction > 400 ms, appel qui approche 1 s de
+  calcul) → la photo est calculée chez Supabase par `empreinterUrl`, inchangé (le filet). `_shared/empreinte-telechargement.ts`,
+  photo-empreinte, doublons-balayage : inchangés.
+- **5 URL par appel** (8 avant) : la 6e d'un lot de rapprochement est comptée « restante » et redemandée à la passe
+  suivante (mesuré 10:10 : 25 manquantes → 4 → 0, compte terminé en 26 s). fusion_photo_tick envoie 4 par appel
+  (inchangé) ; handler-watch (dépôts coupés) jusqu'à 8, le reste au passage suivant.
+- **Interrupteur** : `coin_config.empreintes_moteur_maison` (la colonne `value` est un entier : 1 = maison, 0 / absente /
+  illisible = Supabase), relu à chaque appel. Posé à **1 le 03/11 à 10:06:26**.
+- **Latence** : aucun écran ni geste n'attend ce calcul. Appelants : `fusion_photo_tick` (cron, pg_net sans attente),
+  `rapprochement` (pg_net via `rapprochement_v3_empreinter`, relit 12 s plus tard), handler-watch (cron) ; l'app appelle
+  `photo-empreinte`, non touchée. Temps de calcul mesuré : module 117 à 136 ms pour 5 photos + décodage 329 à 400 ms
+  (dont ≈ 300 ms de premier chargement d'imagescript, comme avant) ; durée des appels 2,2 à 3,5 s (2,3 à 2,9 s avant,
+  pour 6 photos).
+- **Déploiement** : empreintes-urls **v10 → v11** (10:04:13, verify_jwt false avant et après ; code de la v10 = HEAD,
+  vérifié par téléchargement). Un appel de démarrage (photo déjà connue, aucun calcul) avant la bascule : 200, moteur supabase.
+- **Contrôle après bascule** (`mono-thread/controle-bascule.ts`) : les 20 premières photos neuves réelles faites par le
+  module (10:10, JPEG) comparées à la version servie par la transformation Supabase (mêmes paramètres, même Accept) :
+  **20/20 empreintes identiques** (dHash, pHash, couleur, variantes, taille) et **20/20 réduites identiques à l'octet**.
+  Coût du contrôle : 20 transformations (≈ 0,10 $). Liste et photos en mémoire / dossier temporaire, supprimées.
+- **Ménage** : fonction `essai-empreintes-d-test` supprimée (v1 → absente, ≈ 10:11) ; dossier de construction
+  `C:\Users\nicol\wvst` supprimé en entier à 10:11:54, jeton de test compris (absent du dépôt : vérifié) ; correctifs de wasm-vips
+  0.0.19 et correctif meson rangés dans `mono-thread/correctifs-wasm-vips-0.0.19/`.
+- **Rien d'autre** : aucune migration (une ligne de coin_config, ordre de Nico), aucun cron, aucune remesure programmée,
+  EXTENSION_MIN_BUILD non touché, rien sur le serveur Cloud.

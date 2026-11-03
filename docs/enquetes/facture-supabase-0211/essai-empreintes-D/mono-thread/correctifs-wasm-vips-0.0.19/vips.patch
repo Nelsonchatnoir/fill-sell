@@ -1,0 +1,3940 @@
+From 426ae3470bffdf02acc4359908b758114a902d18 Mon Sep 17 00:00:00 2001
+From: Ingvar Stepanyan <me@rreverser.com>
+Date: Tue, 24 Jan 2023 13:04:15 +0000
+Subject: [PATCH 01/14] Add SVG load support via resvg
+
+Co-authored-by: Kleis Auke Wolthuizen <github@kleisauke.nl>
+---
+ libvips/foreign/foreign.c   |   6 +-
+ libvips/foreign/meson.build |   9 ++-
+ libvips/foreign/svgload.c   | 156 +++++++++++++++++++++++++++++++-----
+ libvips/meson.build         |  11 +++
+ libvips/module/resvg.c      |  70 ++++++++++++++++
+ meson.build                 |  28 ++++++-
+ meson_options.txt           |  10 +++
+ 7 files changed, 266 insertions(+), 24 deletions(-)
+ create mode 100644 libvips/module/resvg.c
+
+diff --git a/libvips/foreign/foreign.c b/libvips/foreign/foreign.c
+index a9d6bc91b7..d12b6cc94a 100644
+--- a/libvips/foreign/foreign.c
++++ b/libvips/foreign/foreign.c
+@@ -3172,11 +3172,13 @@ vips_foreign_operation_init(void)
+ 	vips_foreign_load_pdf_source_get_type();
+ #endif /*HAVE_PDFIUM*/
+ 
+-#ifdef HAVE_RSVG
++#if (defined(HAVE_RSVG) || defined(HAVE_RESVG)) && !defined(RESVG_MODULE)
+ 	vips_foreign_load_svg_file_get_type();
+ 	vips_foreign_load_svg_buffer_get_type();
++#ifdef HAVE_RSVG
+ 	vips_foreign_load_svg_source_get_type();
+-#endif /*HAVE_RSVG*/
++#endif
++#endif /*defined(HAVE_RSVG) || defined(HAVE_RESVG)*/
+ 
+ #if defined(HAVE_LIBJXL) && !defined(LIBJXL_MODULE)
+ 	vips_foreign_load_jxl_file_get_type();
+diff --git a/libvips/foreign/meson.build b/libvips/foreign/meson.build
+index 480898b3d6..e943fa2ca4 100644
+--- a/libvips/foreign/meson.build
++++ b/libvips/foreign/meson.build
+@@ -47,7 +47,6 @@ foreign_sources = files(
+     'rawsave.c',
+     'spngload.c',
+     'spngsave.c',
+-    'svgload.c',
+     'tiff2vips.c',
+     'tiff.c',
+     'tiffload.c',
+@@ -126,6 +125,14 @@ if not openslide_module
+     foreign_sources += openslide_module_sources
+ endif
+ 
++resvg_module_sources = files(
++    'svgload.c',
++)
++
++if not resvg_module
++    foreign_sources += resvg_module_sources
++endif
++
+ libvips_sources += foreign_sources
+ 
+ foreign_lib = static_library('foreign',
+diff --git a/libvips/foreign/svgload.c b/libvips/foreign/svgload.c
+index e65fa1e1c7..220da4445c 100644
+--- a/libvips/foreign/svgload.c
++++ b/libvips/foreign/svgload.c
+@@ -83,25 +83,38 @@
+ #include <cairo.h>
+ #include <librsvg/rsvg.h>
+ 
+-/* Render SVGs with tiles this size. They need to be pretty big to limit
+- * overcomputation.
++/* A handy #define for we-will-handle-svgz.
+  */
+-#define TILE_SIZE (2000)
++#if LIBRSVG_CHECK_FEATURE(SVGZ)
++#define HANDLE_SVGZ
++#endif
+ 
+-/* The <svg tag must appear within this many bytes of the start of the file.
+- */
+-#define SVG_HEADER_SIZE (1000)
++#elif defined(HAVE_RESVG)
+ 
+-/* A handy #define for we-will-handle-svgz.
+- */
+-#if LIBRSVG_CHECK_FEATURE(SVGZ) && defined(HAVE_ZLIB)
++#include <resvg.h>
+ #define HANDLE_SVGZ
++
++#endif
++
++#if defined(HAVE_RSVG) || defined(HAVE_RESVG)
++
++#ifndef HAVE_ZLIB
++#undef HANDLE_SVGZ
+ #endif
+ 
+ #ifdef HANDLE_SVGZ
+ #include <zlib.h>
+ #endif
+ 
++/* Render SVGs with tiles this size. They need to be pretty big to limit
++ * overcomputation.
++ */
++#define TILE_SIZE (2000)
++
++/* The <svg tag must appear within this many bytes of the start of the file.
++ */
++#define SVG_HEADER_SIZE (1000)
++
+ typedef struct _VipsForeignLoadSvg {
+ 	VipsForeignLoad parent_object;
+ 
+@@ -129,7 +142,12 @@ typedef struct _VipsForeignLoadSvg {
+ 	 */
+ 	const char *stylesheet;
+ 
++#ifdef HAVE_RSVG
+ 	RsvgHandle *page;
++#else
++	resvg_options *options;
++	resvg_render_tree *tree;
++#endif
+ 
+ } VipsForeignLoadSvg;
+ 
+@@ -338,7 +356,12 @@ vips_foreign_load_svg_dispose(GObject *gobject)
+ {
+ 	VipsForeignLoadSvg *svg = (VipsForeignLoadSvg *) gobject;
+ 
++#ifdef HAVE_RSVG
+ 	VIPS_UNREF(svg->page);
++#else
++	resvg_options_destroy(svg->options);
++	VIPS_FREEF(resvg_tree_destroy, svg->tree);
++#endif
+ 
+ 	G_OBJECT_CLASS(vips_foreign_load_svg_parent_class)->dispose(gobject);
+ }
+@@ -361,6 +384,12 @@ vips_foreign_load_svg_build(VipsObject *object)
+ 
+ 	svg->total_scale = svg->scale * svg->dpi / 72.0;
+ 
++#ifdef HAVE_RESVG
++	/* Set target DPI to scale non-pixel units correctly.
++	 */
++	resvg_options_set_dpi(svg->options, svg->dpi);
++#endif
++
+ 	return VIPS_OBJECT_CLASS(vips_foreign_load_svg_parent_class)
+ 		->build(object);
+ }
+@@ -379,6 +408,7 @@ vips_foreign_load_svg_get_flags(VipsForeignLoad *load)
+ 	return VIPS_FOREIGN_PARTIAL;
+ }
+ 
++#ifdef HAVE_RSVG
+ #if LIBRSVG_CHECK_VERSION(2, 52, 0)
+ /* Derived from `CssLength::to_user` in librsvg.
+  * https://gitlab.gnome.org/GNOME/librsvg/-/blob/2.60.0/rsvg/src/length.rs#L403
+@@ -437,6 +467,7 @@ svg_css_length_to_pixels(RsvgLength length, double dpi)
+ 	return value;
+ }
+ #endif
++#endif
+ 
+ static int
+ vips_foreign_load_svg_get_natural_size(VipsForeignLoadSvg *svg,
+@@ -447,6 +478,7 @@ vips_foreign_load_svg_get_natural_size(VipsForeignLoadSvg *svg,
+ 	double width;
+ 	double height;
+ 
++#ifdef HAVE_RSVG
+ #if LIBRSVG_CHECK_VERSION(2, 52, 0)
+ 
+ 	if (!rsvg_handle_get_intrinsic_size_in_pixels(svg->page,
+@@ -534,6 +566,11 @@ vips_foreign_load_svg_get_natural_size(VipsForeignLoadSvg *svg,
+ 	}
+ 
+ #endif /*LIBRSVG_CHECK_VERSION(2, 52, 0)*/
++#else  /* HAVE_RSVG */
++	resvg_size size = resvg_get_image_size(svg->tree);
++	width = size.width;
++	height = size.height;
++#endif
+ 
+ 	/* width or height below 0.5 can't be rounded to 1.
+ 	 */
+@@ -556,9 +593,11 @@ vips_foreign_load_svg_get_scaled_size(VipsForeignLoadSvg *svg,
+ 	double width;
+ 	double height;
+ 
++#ifdef HAVE_RSVG
+ 	/* Set target DPI to scale non-pixel units correctly.
+ 	 */
+ 	rsvg_handle_set_dpi(svg->page, svg->dpi);
++#endif
+ 	if (vips_foreign_load_svg_get_natural_size(svg, &width, &height))
+ 		return -1;
+ 
+@@ -621,13 +660,8 @@ vips_foreign_load_svg_generate(VipsRegion *out_region,
+ 	void *seq, void *a, void *b, gboolean *stop)
+ {
+ 	const VipsForeignLoadSvg *svg = (VipsForeignLoadSvg *) a;
+-	const VipsObjectClass *class = VIPS_OBJECT_GET_CLASS(svg);
+ 	const VipsRect *r = &out_region->valid;
+ 
+-	cairo_surface_t *surface;
+-	cairo_t *cr;
+-	int y;
+-
+ #ifdef DEBUG
+ 	printf("vips_foreign_load_svg_generate: %p \n     "
+ 		   "left = %d, top = %d, width = %d, height = %d\n",
+@@ -635,10 +669,17 @@ vips_foreign_load_svg_generate(VipsRegion *out_region,
+ 		r->left, r->top, r->width, r->height);
+ #endif /*DEBUG*/
+ 
+-	/* rsvg won't always paint the background.
++	/* SVG won't always paint the background.
+ 	 */
+ 	vips_region_black(out_region);
+ 
++#ifdef HAVE_RSVG
++	const VipsObjectClass *class = VIPS_OBJECT_GET_CLASS(svg);
++
++	cairo_surface_t *surface;
++	cairo_t *cr;
++	int y;
++
+ #ifdef HAVE_CAIRO_FORMAT_RGBA128F
+ 	cairo_format_t format =
+ 		svg->high_bitdepth ? CAIRO_FORMAT_RGBA128F : CAIRO_FORMAT_ARGB32;
+@@ -735,6 +776,39 @@ vips_foreign_load_svg_generate(VipsRegion *out_region,
+ 				(guint32 *) VIPS_REGION_ADDR(out_region, r->left, r->top + y),
+ 				r->width);
+ 	}
++#else
++	VipsPel *q = VIPS_REGION_ADDR(out_region, r->left, r->top);
++
++	resvg_render(
++		svg->tree,
++		(resvg_fit_to){ .type = RESVG_FIT_TO_TYPE_ORIGINAL },
++		(resvg_transform){
++			.a = svg->total_scale,
++			.d = svg->total_scale,
++			.e = -r->left,
++			.f = -r->top,
++		},
++		r->width,
++		r->height,
++		(char *) q);
++
++	/* Just unpremultiply.
++	 */
++	for (int i = 0; i < r->width * r->height; i++) {
++		VipsPel *restrict p = &q[i * 4];
++		VipsPel x = p[3];
++
++		/* Skip transparent and fully opaque pixels.
++		 */
++		if (x == 0 || x == 255)
++			continue;
++
++		/* Any compiler will unroll it.
++		 */
++		for (int j = 0; j < 3; j++)
++			p[j] = 255 * p[j] / x;
++	}
++#endif
+ 
+ 	return 0;
+ }
+@@ -837,8 +911,12 @@ vips_foreign_load_svg_init(VipsForeignLoadSvg *svg)
+ {
+ 	svg->dpi = 72.0;
+ 	svg->scale = 1.0;
++#ifdef HAVE_RESVG
++	svg->options = resvg_options_create();
++#endif
+ }
+ 
++#ifdef HAVE_RSVG
+ typedef struct _VipsForeignLoadSvgSource {
+ 	VipsForeignLoadSvg parent_object;
+ 
+@@ -938,6 +1016,7 @@ static void
+ vips_foreign_load_svg_source_init(VipsForeignLoadSvgSource *source)
+ {
+ }
++#endif
+ 
+ typedef struct _VipsForeignLoadSvgFile {
+ 	VipsForeignLoadSvg parent_object;
+@@ -964,11 +1043,35 @@ vips_foreign_load_svg_file_is_a(const char *filename)
+ 		vips_foreign_load_svg_is_a(buf, bytes);
+ }
+ 
++#ifdef HAVE_RESVG
++static const char *
++resvg_error_msg(resvg_error e)
++{
++	switch (e) {
++	case RESVG_ERROR_NOT_AN_UTF8_STR:
++		return "only UTF-8 content is supported";
++	case RESVG_ERROR_FILE_OPEN_FAILED:
++		return "failed to open the provided file";
++	case RESVG_ERROR_MALFORMED_GZIP:
++		return "compressed SVG must use the GZip algorithm";
++	case RESVG_ERROR_ELEMENTS_LIMIT_REACHED:
++		return "we do not allow SVG with more than 1_000_000 elements for security reasons";
++	case RESVG_ERROR_INVALID_SIZE:
++		return "SVG doesn't have a valid size";
++	case RESVG_ERROR_PARSING_FAILED:
++		return "failed to parse SVG data";
++	default:
++		return "unknown error";
++	}
++}
++#endif
++
+ static int
+ vips_foreign_load_svg_file_header(VipsForeignLoad *load)
+ {
+ 	VipsForeignLoadSvg *svg = (VipsForeignLoadSvg *) load;
+ 	VipsForeignLoadSvgFile *file = (VipsForeignLoadSvgFile *) load;
++#ifdef HAVE_RSVG
+ 	RsvgHandleFlags flags = svg->unlimited ? RSVG_HANDLE_FLAG_UNLIMITED : 0;
+ 
+ 	GError *error = NULL;
+@@ -983,7 +1086,15 @@ vips_foreign_load_svg_file_header(VipsForeignLoad *load)
+ 		return -1;
+ 	}
+ 	g_object_unref(gfile);
+-
++#else
++	resvg_error error = resvg_parse_tree_from_file(
++		file->filename, svg->options, &svg->tree);
++	if (error != RESVG_OK) {
++		vips_error(VIPS_OBJECT_GET_CLASS(svg)->nickname,
++			"%s", resvg_error_msg(error));
++		return -1;
++	}
++#endif
+ 	VIPS_SETSTR(load->out->filename, file->filename);
+ 
+ 	return vips_foreign_load_svg_header(load);
+@@ -993,7 +1104,7 @@ static const char *vips_foreign_svg_suffs[] = {
+ 	".svg",
+ /* librsvg supports svgz directly, no need to check for zlib here.
+  */
+-#if LIBRSVG_CHECK_FEATURE(SVGZ)
++#ifdef HANDLE_SVGZ
+ 	".svgz",
+ 	".svg.gz",
+ #endif
+@@ -1052,6 +1163,7 @@ vips_foreign_load_svg_buffer_header(VipsForeignLoad *load)
+ 	VipsForeignLoadSvg *svg = (VipsForeignLoadSvg *) load;
+ 	VipsForeignLoadSvgBuffer *buffer =
+ 		(VipsForeignLoadSvgBuffer *) load;
++#ifdef HAVE_RSVG
+ 	RsvgHandleFlags flags = svg->unlimited ? RSVG_HANDLE_FLAG_UNLIMITED : 0;
+ 
+ 	GError *error = NULL;
+@@ -1067,7 +1179,15 @@ vips_foreign_load_svg_buffer_header(VipsForeignLoad *load)
+ 		return -1;
+ 	}
+ 	g_object_unref(gstream);
+-
++#else
++	resvg_error error = resvg_parse_tree_from_data(
++		buffer->buf->data, buffer->buf->length, svg->options, &svg->tree);
++	if (error != RESVG_OK) {
++		vips_error(VIPS_OBJECT_GET_CLASS(svg)->nickname,
++			"%s", resvg_error_msg(error));
++		return -1;
++	}
++#endif
+ 	return vips_foreign_load_svg_header(load);
+ }
+ 
+diff --git a/libvips/meson.build b/libvips/meson.build
+index ff55c98781..485874c737 100644
+--- a/libvips/meson.build
++++ b/libvips/meson.build
+@@ -128,3 +128,14 @@ if openslide_module
+         install_dir: module_dir
+     )
+ endif
++
++if resvg_module
++    shared_module('vips-resvg',
++        'module/resvg.c',
++        resvg_module_sources,
++        name_prefix: '',
++        dependencies: [libvips_dep, resvg_dep],
++        install: true,
++        install_dir: module_dir
++    )
++endif
+diff --git a/libvips/module/resvg.c b/libvips/module/resvg.c
+new file mode 100644
+index 0000000000..b22554b78c
+--- /dev/null
++++ b/libvips/module/resvg.c
+@@ -0,0 +1,70 @@
++/* resvg as a dynamically loadable module
++ *
++ * 17/1/23 kleisauke
++ * 	- initial
++ */
++
++/*
++
++	This file is part of VIPS.
++
++	VIPS is free software; you can redistribute it and/or modify
++	it under the terms of the GNU Lesser General Public License as published by
++	the Free Software Foundation; either version 2 of the License, or
++	(at your option) any later version.
++
++	This program is distributed in the hope that it will be useful,
++	but WITHOUT ANY WARRANTY; without even the implied warranty of
++	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++	GNU Lesser General Public License for more details.
++
++	You should have received a copy of the GNU Lesser General Public License
++	along with this program; if not, write to the Free Software
++	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
++	02110-1301  USA
++
++ */
++
++/*
++
++	These files are distributed with VIPS - http://www.vips.ecs.soton.ac.uk
++
++ */
++
++/*
++#define DEBUG
++ */
++
++#ifdef HAVE_CONFIG_H
++#include <config.h>
++#endif /*HAVE_CONFIG_H*/
++#include <glib/gi18n-lib.h>
++
++#include <stdio.h>
++#include <stdlib.h>
++
++#include <vips/vips.h>
++#include <vips/debug.h>
++#include <vips/internal.h>
++
++#if defined(HAVE_RESVG) && defined(RESVG_MODULE)
++
++/* This is called on module load.
++ */
++G_MODULE_EXPORT const gchar *
++g_module_check_init(GModule *module)
++{
++#ifdef DEBUG
++	printf("vips_resvg: module init\n");
++#endif /*DEBUG*/
++
++	extern GType vips_foreign_load_svg_file_get_type(void);
++	extern GType vips_foreign_load_svg_buffer_get_type(void);
++
++	vips_foreign_load_svg_file_get_type();
++	vips_foreign_load_svg_buffer_get_type();
++
++	return NULL;
++}
++
++#endif /*defined(HAVE_RESVG) && defined(RESVG_MODULE)*/
+diff --git a/meson.build b/meson.build
+index 1400f85bae..8f0614ea87 100644
+--- a/meson.build
++++ b/meson.build
+@@ -408,16 +408,38 @@ if libtiff_dep.found()
+     cfg_var.set('HAVE_TIFF_OPEN_OPTIONS_SET_MAX_CUMULATED_MEM_ALLOC', cc.has_function('TIFFOpenOptionsSetMaxCumulatedMemAlloc', prefix: '#include <tiffio.h>', dependencies: libtiff_dep))
+ endif
+ 
++# svg loader we use
++svg_loader = disabler()
++
+ # 2.40.3 so we get the UNLIMITED open flag
+ librsvg_dep = dependency('librsvg-2.0', version: '>=2.40.3', required: get_option('rsvg'))
+ cairo_dep = dependency('cairo', version: '>=1.2', required: get_option('rsvg'))
+-librsvg_found = librsvg_dep.found() and cairo_dep.found()
+-if librsvg_found
++if librsvg_dep.found() and cairo_dep.found()
+     external_deps += librsvg_dep
+     external_deps += cairo_dep
+     cfg_var.set('HAVE_RSVG', true)
+     # CAIRO_FORMAT_RGBA128F added in cairo 1.17.2
+     cfg_var.set('HAVE_CAIRO_FORMAT_RGBA128F', cc.has_type('CAIRO_FORMAT_RGBA128F', prefix: '#include <cairo.h>', dependencies: cairo_dep))
++    svg_loader = librsvg_dep
++endif
++
++# only if librsvg not found
++resvg_module = false
++if not svg_loader.found()
++    # resvg doesn't ship pkg-config files, so we can't use dependency()
++    resvg_lib = cc.find_library('resvg', has_headers: ['resvg.h'], required: get_option('resvg'))
++    if resvg_lib.found()
++        resvg_dep = declare_dependency(dependencies: [resvg_lib])
++        resvg_module = modules_enabled and not get_option('resvg-module').disabled()
++        if resvg_module
++            cfg_var.set('RESVG_MODULE', true)
++            module_deps += resvg_dep
++        else
++            external_deps += resvg_dep
++        endif
++        cfg_var.set('HAVE_RESVG', true)
++        svg_loader = resvg_dep
++    endif
+ endif
+ 
+ openslide_dep = dependency('openslide', version: '>=3.4.0', required: get_option('openslide'))
+@@ -728,7 +750,7 @@ build_features = {
+      'HEIC/AVIF load/save': ['libheif', libheif_dep, libheif_module],
+      'WebP load/save': ['libwebp', libwebp_dep],
+      'PDF load': ['PDFium or Poppler', pdf_loader, libpoppler_module],
+-     'SVG load': ['librsvg', librsvg_found ? librsvg_dep : disabler()],
++     'SVG load': ['librsvg or resvg', svg_loader, resvg_module],
+      'EXR load': ['OpenEXR', openexr_dep],
+      'WSI load': ['OpenSlide', openslide_dep, openslide_module],
+      'Matlab load': ['Matio', matio_dep],
+diff --git a/meson_options.txt b/meson_options.txt
+index 46438ca741..b839602b77 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -218,6 +218,16 @@ option('rsvg',
+   value: 'auto',
+   description: 'Build with rsvg')
+ 
++option('resvg',
++  type: 'feature',
++  value: 'auto',
++  description: 'Build with resvg')
++
++option('resvg-module',
++  type: 'feature',
++  value: 'auto',
++  description: 'Build resvg as module')
++
+ option('spng',
+   type: 'feature',
+   value: 'auto',
+
+From aac5569c01a3cb67e7f39588b03f61ced054e813 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Wed, 5 Aug 2020 16:15:59 +0200
+Subject: [PATCH 02/14] Remove orc dependency
+
+Upstream-Status: Inappropriate [disable feature]
+This patch is just for our convenience.
+---
+ README.md                          |   3 +-
+ libvips/convolution/convi.c        | 510 +----------------------------
+ libvips/deprecated/vips7compat.c   |   3 +-
+ libvips/include/vips/vips7compat.h |  15 +-
+ libvips/iofuncs/vector.cpp         |  29 --
+ libvips/morphology/morph.c         | 361 --------------------
+ libvips/resample/reducev.cpp       | 501 +---------------------------
+ meson.build                        |  20 +-
+ meson_options.txt                  |   5 -
+ tools/vips.c                       |   2 -
+ 10 files changed, 24 insertions(+), 1425 deletions(-)
+
+diff --git a/README.md b/README.md
+index 3b5fe43ac7..308f1374e2 100644
+--- a/README.md
++++ b/README.md
+@@ -247,8 +247,7 @@ package pangocairo in `pkg-config --list-all`.
+ 
+ ### highway
+ 
+-If present, libvips will accelerate some operations with SIMD. If not, it
+-will look for the orc-0.4 package.
++If available, vips will accelerate some operations with SIMD.
+ 
+ ### matio
+ 
+diff --git a/libvips/convolution/convi.c b/libvips/convolution/convi.c
+index dd184648e1..90fd81dcba 100644
+--- a/libvips/convolution/convi.c
++++ b/libvips/convolution/convi.c
+@@ -109,8 +109,6 @@
+ 
+ /*
+ #define DEBUG
+-#define DEBUG_PIXELS
+-#define DEBUG_COMPILE
+  */
+ 
+ #ifdef HAVE_CONFIG_H
+@@ -129,37 +127,6 @@
+ 
+ #include "pconvolution.h"
+ 
+-#ifdef HAVE_ORC
+-#include <orc/orc.h>
+-
+-/* Larger than this and we fall back to C.
+- */
+-#define MAX_PASS (20)
+-
+-#define MAX_SOURCES (8 /*ORC_MAX_SRC_VARS*/)
+-
+-/* A pass with a vector.
+- */
+-typedef struct {
+-	int first; /* The index of the first mask coff we use */
+-	int last;  /* The index of the last mask coff we use */
+-
+-	int r;	/* Set previous result in this var */
+-	int d1; /* The destination var */
+-
+-	int n_const;
+-	int n_scanline;
+-
+-	/* The associated line corresponding to the scanline.
+-	 */
+-	int line[MAX_SOURCES];
+-
+-	/* The code we generate for this section of the mask.
+-	 */
+-	OrcProgram *program;
+-} Pass;
+-#endif /*HAVE_ORC*/
+-
+ typedef struct {
+ 	VipsConvolution parent_instance;
+ 
+@@ -171,31 +138,14 @@ typedef struct {
+ 	int *coeff;		/* Array of non-zero mask coefficients */
+ 	int *coeff_pos; /* Index of each nnz element in mask->coeff */
+ 
+-#if defined(HAVE_HWY) || defined(HAVE_ORC)
+-	/* And a half float version for the vector paths. mant has the signed
++#ifdef HAVE_HWY
++	/* And a half float version for the vector path. mant has the signed
+ 	 * 8-bit mantissas in [-1, +1), exp has the final exponent shift before
+ 	 * write-back.
+ 	 */
+ 	short *mant;
+ 	int exp;
+-#endif /*HAVE_HWY || HAVE_ORC*/
+-
+-#ifdef HAVE_ORC
+-	/* sexp has the exponent shift after the mul and before the add.
+-	 */
+-	int sexp;
+-
+-	/* The set of passes we need for this mask.
+-	 */
+-	int n_pass;
+-	Pass pass[MAX_PASS];
+-
+-	/* Code for the final clip back to 8 bits.
+-	 */
+-	int r;
+-	int d1;
+-	OrcProgram *program;
+-#endif /*HAVE_ORC*/
++#endif /*HAVE_HWY*/
+ } VipsConvi;
+ 
+ typedef VipsConvolutionClass VipsConviClass;
+@@ -212,30 +162,8 @@ typedef struct {
+ 
+ 	int last_bpl; /* Avoid recalcing offsets, if we can */
+ 
+-#ifdef HAVE_ORC
+-	/* We need a pair of intermediate buffers to keep the results of each
+-	 * vector conv pass.
+-	 */
+-	short *t1;
+-	short *t2;
+-#endif /*HAVE_ORC*/
+ } VipsConviSequence;
+ 
+-#ifdef HAVE_ORC
+-static void
+-vips_convi_finalize(GObject *gobject)
+-{
+-	VipsConvi *convi = (VipsConvi *) gobject;
+-
+-	for (int i = 0; i < convi->n_pass; i++)
+-		VIPS_FREEF(orc_program_free, convi->pass[i].program);
+-	convi->n_pass = 0;
+-	VIPS_FREEF(orc_program_free, convi->program);
+-
+-	G_OBJECT_CLASS(vips_convi_parent_class)->finalize(gobject);
+-}
+-#endif /*HAVE_ORC*/
+-
+ /* Free a sequence value.
+  */
+ static int
+@@ -245,10 +173,6 @@ vips_convi_stop(void *vseq, void *a, void *b)
+ 
+ 	VIPS_UNREF(seq->ir);
+ 	VIPS_FREE(seq->offsets);
+-#ifdef HAVE_ORC
+-	VIPS_FREE(seq->t1);
+-	VIPS_FREE(seq->t2);
+-#endif /*HAVE_ORC*/
+ 
+ 	return 0;
+ }
+@@ -268,35 +192,13 @@ vips_convi_start(VipsImage *out, void *a, void *b)
+ 	seq->convi = convi;
+ 	seq->ir = NULL;
+ 	seq->last_bpl = -1;
+-#ifdef HAVE_ORC
+-	seq->offsets = NULL;
+-	seq->t1 = NULL;
+-	seq->t2 = NULL;
+-#endif /*HAVE_ORC*/
+ 
+ 	seq->ir = vips_region_new(in);
+ 
+-	if (convi->nnz) {
+-		if (!(seq->offsets = VIPS_ARRAY(NULL, convi->nnz, int))) {
+-			vips_convi_stop(seq, in, convi);
+-			return NULL;
+-		}
+-	}
+-
+-#ifdef HAVE_ORC
+-	/* Vector mode.
+-	 */
+-	if (convi->n_pass) {
+-		seq->t1 = VIPS_ARRAY(NULL, VIPS_IMAGE_N_ELEMENTS(in), short);
+-		seq->t2 = VIPS_ARRAY(NULL, VIPS_IMAGE_N_ELEMENTS(in), short);
+-
+-		if (!seq->t1 ||
+-			!seq->t2) {
+-			vips_convi_stop(seq, in, convi);
+-			return NULL;
+-		}
++	if (!(seq->offsets = VIPS_ARRAY(NULL, convi->nnz, int))) {
++		vips_convi_stop(seq, in, convi);
++		return NULL;
+ 	}
+-#endif /*HAVE_ORC*/
+ 
+ 	return (void *) seq;
+ }
+@@ -359,337 +261,6 @@ vips_convi_uchar_vector_gen(VipsRegion *out_region,
+ 
+ 	return 0;
+ }
+-#elif defined(HAVE_ORC)
+-
+-#define TEMP(N, S) orc_program_add_temporary(p, S, N)
+-#define SCANLINE(N, S) orc_program_add_source(p, S, N)
+-#define CONST(N, V, S) orc_program_add_constant(p, S, V, N)
+-#define ASM2(OP, A, B) orc_program_append_ds_str(p, OP, A, B)
+-#define ASM3(OP, A, B, C) orc_program_append_str(p, OP, A, B, C)
+-
+-/* Generate code for a section of the mask. first is the index we start
+- * at, we set last to the index of the last one we use before we run
+- * out of intermediates / constants / parameters / sources or mask
+- * coefficients.
+- *
+- * 0 for success, -1 on error.
+- */
+-static int
+-vips_convi_compile_section(VipsConvi *convi, VipsImage *in, Pass *pass)
+-{
+-	VipsConvolution *convolution = (VipsConvolution *) convi;
+-	VipsImage *M = convolution->M;
+-
+-	OrcProgram *p;
+-	OrcCompileResult result;
+-	int i;
+-
+-#ifdef DEBUG_COMPILE
+-	printf("starting pass %d\n", pass->first);
+-#endif /*DEBUG_COMPILE*/
+-
+-	pass->program = p = orc_program_new();
+-
+-	pass->d1 = orc_program_add_destination(p, 2, "d1");
+-
+-	/* "r" is the array of sums from the previous pass (if any).
+-	 */
+-	if (!(pass->r = orc_program_add_source(p, 2, "r")))
+-		return -1;
+-
+-	/* The value we fetch from the image, the accumulated sum.
+-	 */
+-	TEMP("value", 2);
+-	TEMP("valueb", 1);
+-	TEMP("sum", 2);
+-
+-	CONST("sexp", convi->sexp, 2);
+-	CONST("rnd", 1 << (convi->sexp - 1), 2);
+-	pass->n_const += 2;
+-
+-	/* Init the sum. If this is the first pass, it's a constant. If this
+-	 * is a later pass, we have to init the sum from the result
+-	 * of the previous pass.
+-	 */
+-	if (pass->first == 0) {
+-		CONST("rnd2", 1 << (convi->exp - 1), 2);
+-		ASM2("loadpw", "sum", "rnd2");
+-		pass->n_const++;
+-	}
+-	else
+-		ASM2("loadw", "sum", "r");
+-
+-	for (i = pass->first; i < convi->n_point; i++) {
+-		int x = i % M->Xsize;
+-		int y = i / M->Xsize;
+-
+-		char source[256];
+-		char off[256];
+-		char coeff[256];
+-
+-		/* Exclude zero elements.
+-		 */
+-		if (!convi->mant[i])
+-			continue;
+-
+-		/* The source. sl0 is the first scanline in the mask.
+-		 */
+-		g_snprintf(source, 256, "sl%d", y);
+-		if (orc_program_find_var_by_name(p, source) == -1) {
+-			SCANLINE(source, 1);
+-			pass->line[pass->n_scanline] = y;
+-			pass->n_scanline++;
+-		}
+-
+-		/* Load with an offset. Only for non-first-columns though.
+-		 */
+-		if (x == 0)
+-			ASM2("convubw", "value", source);
+-		else {
+-			g_snprintf(off, 256, "c%db", x);
+-			if (orc_program_find_var_by_name(p, off) == -1) {
+-				CONST(off, in->Bands * x, 1);
+-				pass->n_const++;
+-			}
+-			ASM3("loadoffb", "valueb", source, off);
+-			ASM2("convubw", "value", "valueb");
+-		}
+-
+-		/* We need a signed multiply, so the image pixel needs to
+-		 * become a signed 16-bit value. We know only the bottom 8 bits
+-		 * of the image and coefficient are interesting, so we can take
+-		 * the bottom half of a 16x16->32 multiply.
+-		 */
+-		g_snprintf(coeff, 256, "c%dw", convi->mant[i]);
+-		if (orc_program_find_var_by_name(p, coeff) == -1) {
+-			CONST(coeff, convi->mant[i], 2);
+-			pass->n_const++;
+-		}
+-
+-		ASM3("mullw", "value", "value", coeff);
+-
+-		/* Shift right before add to prevent overflow on large masks.
+-		 */
+-		ASM3("addw", "value", "value", "rnd");
+-		ASM3("shrsw", "value", "value", "sexp");
+-
+-		/* We accumulate the signed 16-bit result in sum. Saturated
+-		 * add.
+-		 */
+-		ASM3("addssw", "sum", "sum", "value");
+-
+-		/* orc allows up to 8 constants, so break early once we
+-		 * approach this limit.
+-		 */
+-		if (pass->n_const >= 7 /*ORC_MAX_CONST_VARS - 1*/)
+-			break;
+-
+-		/* You can have 8 sources, and pass->r counts as one of them,
+-		 * so +1 there.
+-		 */
+-		if (pass->n_scanline + 1 >= 7 /*ORC_MAX_SRC_VARS - 1*/)
+-			break;
+-	}
+-
+-	pass->last = i;
+-
+-	/* And write to our intermediate buffer.
+-	 */
+-	ASM2("copyw", "d1", "sum");
+-
+-	/* Some orcs seem to be unstable with many compilers active at once.
+-	 */
+-	g_mutex_lock(&vips__global_lock);
+-	result = orc_program_compile(p);
+-	g_mutex_unlock(&vips__global_lock);
+-
+-	if (!ORC_COMPILE_RESULT_IS_SUCCESSFUL(result))
+-		return -1;
+-
+-#ifdef DEBUG_COMPILE
+-	printf("done coeffs %d to %d\n", pass->first, pass->last);
+-#endif /*DEBUG_COMPILE*/
+-
+-	return 0;
+-}
+-
+-/* Generate code for the final 16->8 conversion.
+- *
+- * 0 for success, -1 on error.
+- */
+-static int
+-vips_convi_compile_clip(VipsConvi *convi)
+-{
+-	VipsConvolution *convolution = (VipsConvolution *) convi;
+-	VipsImage *M = convolution->M;
+-	int offset = rint(vips_image_get_offset(M));
+-
+-	OrcProgram *p;
+-	OrcCompileResult result;
+-
+-	convi->program = p = orc_program_new();
+-
+-	convi->d1 = orc_program_add_destination(p, 1, "d1");
+-
+-	/* "r" is the array of sums we clip down.
+-	 */
+-	if (!(convi->r = orc_program_add_source(p, 2, "r")))
+-		return -1;
+-
+-	/* The value we fetch from the image.
+-	 */
+-	TEMP("value", 2);
+-
+-	CONST("exp", convi->exp, 2);
+-	ASM3("shrsw", "value", "r", "exp");
+-
+-	CONST("off", offset, 2);
+-	ASM3("addw", "value", "value", "off");
+-
+-	ASM2("convsuswb", "d1", "value");
+-
+-	/* Some orcs seem to be unstable with many compilers active at once.
+-	 */
+-	g_mutex_lock(&vips__global_lock);
+-	result = orc_program_compile(p);
+-	g_mutex_unlock(&vips__global_lock);
+-
+-	if (!ORC_COMPILE_RESULT_IS_SUCCESSFUL(result))
+-		return -1;
+-
+-	return 0;
+-}
+-
+-static int
+-vips_convi_compile(VipsConvi *convi, VipsImage *in)
+-{
+-	int i;
+-	Pass *pass;
+-
+-	/* Generate passes until we've used up the whole mask.
+-	 */
+-	for (i = 0;;) {
+-		/* Allocate space for another pass.
+-		 */
+-		if (convi->n_pass == MAX_PASS)
+-			return -1;
+-		pass = &convi->pass[convi->n_pass];
+-		convi->n_pass += 1;
+-
+-		pass->first = i;
+-		pass->r = -1;
+-		pass->n_const = 0;
+-		pass->n_scanline = 0;
+-
+-		if (vips_convi_compile_section(convi, in, pass))
+-			return -1;
+-		i = pass->last + 1;
+-
+-		if (i >= convi->n_point)
+-			break;
+-	}
+-
+-	if (vips_convi_compile_clip(convi))
+-		return -1;
+-
+-	return 0;
+-}
+-
+-static int
+-vips_convi_gen_vector(VipsRegion *out_region,
+-	void *vseq, void *a, void *b, gboolean *stop)
+-{
+-	VipsConviSequence *seq = (VipsConviSequence *) vseq;
+-	VipsConvi *convi = (VipsConvi *) b;
+-	VipsConvolution *convolution = (VipsConvolution *) convi;
+-	VipsImage *M = convolution->M;
+-	VipsImage *in = (VipsImage *) a;
+-	VipsRegion *ir = seq->ir;
+-	VipsRect *r = &out_region->valid;
+-	int ne = r->width * in->Bands;
+-
+-	VipsRect s;
+-	int i, j, y;
+-	OrcExecutor executor[MAX_PASS];
+-	OrcExecutor clip;
+-
+-#ifdef DEBUG_PIXELS
+-	printf("vips_convi_gen_vector: generating %d x %d at %d x %d\n",
+-		r->width, r->height, r->left, r->top);
+-#endif /*DEBUG_PIXELS*/
+-
+-	/* Prepare the section of the input image we need. A little larger
+-	 * than the section of the output image we are producing.
+-	 */
+-	s = *r;
+-	s.width += M->Xsize - 1;
+-	s.height += M->Ysize - 1;
+-	if (vips_region_prepare(ir, &s))
+-		return -1;
+-
+-	for (i = 0; i < convi->n_pass; i++) {
+-		orc_executor_set_program(&executor[i], convi->pass[i].program);
+-		orc_executor_set_n(&executor[i], ne);
+-	}
+-	orc_executor_set_program(&clip, convi->program);
+-	orc_executor_set_n(&clip, ne);
+-
+-	VIPS_GATE_START("vips_convi_gen_vector: work");
+-
+-	for (y = 0; y < r->height; y++) {
+-		VipsPel *q = VIPS_REGION_ADDR(out_region, r->left, r->top + y);
+-
+-#ifdef DEBUG_PIXELS
+-		{
+-			int h, v;
+-
+-			printf("before convolve: x = %d, y = %d\n",
+-				r->left, r->top + y);
+-			for (v = 0; v < M->Ysize; v++) {
+-				for (h = 0; h < M->Xsize; h++)
+-					printf("%3d ",
+-						*VIPS_REGION_ADDR(ir,
+-							r->left + h, r->top + y + v));
+-				printf("\n");
+-			}
+-		}
+-#endif /*DEBUG_PIXELS*/
+-
+-		/* We run our n passes to generate this scanline.
+-		 */
+-		for (i = 0; i < convi->n_pass; i++) {
+-			Pass *pass = &convi->pass[i];
+-
+-			for (j = 0; j < pass->n_scanline; j++)
+-				orc_executor_set_array(&executor[i], pass->r + 1 + j,
+-					VIPS_REGION_ADDR(ir, r->left, r->top + y + pass->line[j]));
+-			orc_executor_set_array(&executor[i], pass->r, seq->t1);
+-			orc_executor_set_array(&executor[i], pass->d1, seq->t2);
+-			orc_executor_run(&executor[i]);
+-
+-			VIPS_SWAP(signed short *, seq->t1, seq->t2);
+-		}
+-
+-#ifdef DEBUG_PIXELS
+-		printf("before clip: %d\n", ((signed short *) seq->t1)[0]);
+-#endif /*DEBUG_PIXELS*/
+-
+-		orc_executor_set_array(&clip, convi->r, seq->t1);
+-		orc_executor_set_array(&clip, convi->d1, q);
+-		orc_executor_run(&clip);
+-
+-#ifdef DEBUG_PIXELS
+-		printf("after clip: %d\n",
+-			*VIPS_REGION_ADDR(out_region, r->left, r->top + y));
+-#endif /*DEBUG_PIXELS*/
+-	}
+-
+-	VIPS_GATE_STOP("vips_convi_gen_vector: work");
+-
+-	VIPS_COUNT_PIXELS(out_region, "vips_convi_gen_vector");
+-
+-	return 0;
+-}
+ #endif /*HAVE_HWY*/
+ 
+ /* INT inner loops.
+@@ -921,7 +492,7 @@ vips__image_intize(VipsImage *in, VipsImage **out)
+ 	return 0;
+ }
+ 
+-#if defined(HAVE_HWY) || defined(HAVE_ORC)
++#ifdef HAVE_HWY
+ /* Make an int version of a mask. Each element is 8.8 float, with the same
+  * exponent for each element (so just 8 bits in @out).
+  *
+@@ -988,7 +559,6 @@ vips_convi_intize(VipsConvi *convi, VipsImage *M)
+ 		return -1;
+ 	}
+ 
+-#ifdef HAVE_HWY
+ 	/* Make sure we have enough range.
+ 	 */
+ 	if (ceil(log2(convi->n_point)) > 10) {
+@@ -999,32 +569,13 @@ vips_convi_intize(VipsConvi *convi, VipsImage *M)
+ 	/* Calculate the final shift.
+ 	 */
+ 	convi->exp = 7 - shift;
+-#elif defined(HAVE_ORC)
+-	/* We need to sum n_points, so we have to shift right before adding a
+-	 * new value to make sure we have enough range.
+-	 */
+-	convi->sexp = ceil(log2(convi->n_point));
+-	if (convi->sexp > 10) {
+-		g_info("vips_convi_intize: mask too large");
+-		return -1;
+-	}
+ 
+-	/* With that already done, the final shift must be ...
+-	 */
+-	convi->exp = 7 - shift - convi->sexp;
+-#endif /*HAVE_HWY*/
+-
+-	if (!(convi->mant = VIPS_ARRAY(convi, convi->n_point, short))
+-#ifdef HAVE_HWY
+-		|| !(convi->coeff_pos =
+-				   VIPS_ARRAY(convi, convi->n_point, int))
+-#endif /*HAVE_HWY*/
+-	)
++	if (!(convi->mant = VIPS_ARRAY(convi, convi->n_point, short)) ||
++		!(convi->coeff_pos =
++				VIPS_ARRAY(convi, convi->n_point, int)))
+ 		return -1;
+ 
+-#ifdef HAVE_HWY
+ 	convi->nnz = 0;
+-#endif /*HAVE_HWY*/
+ 	for (i = 0; i < convi->n_point; i++) {
+ 		/* 128 since this is signed.
+ 		 */
+@@ -1036,7 +587,6 @@ vips_convi_intize(VipsConvi *convi, VipsImage *M)
+ 			return -1;
+ 		}
+ 
+-#ifdef HAVE_HWY
+ 		/* Squeeze out zero mask elements.
+ 		 */
+ 		if (convi->mant[i]) {
+@@ -1044,10 +594,8 @@ vips_convi_intize(VipsConvi *convi, VipsImage *M)
+ 			convi->coeff_pos[convi->nnz] = i;
+ 			convi->nnz += 1;
+ 		}
+-#endif /*HAVE_HWY*/
+ 	}
+ 
+-#ifdef HAVE_HWY
+ 	/* Was the whole mask zero? We must have at least 1 element
+ 	 * in there: set it to zero.
+ 	 */
+@@ -1056,16 +604,12 @@ vips_convi_intize(VipsConvi *convi, VipsImage *M)
+ 		convi->coeff_pos[0] = 0;
+ 		convi->nnz = 1;
+ 	}
+-#endif /*HAVE_HWY*/
+ 
+ #ifdef DEBUG_COMPILE
+ 	{
+ 		int x, y;
+ 
+ 		printf("vips_convi_intize:\n");
+-#ifdef HAVE_ORC
+-		printf("sexp = %d\n", convi->sexp);
+-#endif /*HAVE_ORC*/
+ 		printf("exp = %d\n", convi->exp);
+ 		for (y = 0; y < t->Ysize; y++) {
+ 			printf("\t");
+@@ -1086,22 +630,10 @@ vips_convi_intize(VipsConvi *convi, VipsImage *M)
+ 
+ 		true_sum = 0.0;
+ 		int_sum = 0;
+-#ifdef HAVE_HWY
+ 		for (i = 0; i < convi->nnz; i++) {
+ 			true_sum += 128 * scaled[convi->coeff_pos[i]];
+ 			int_sum += 128 * convi->mant[i];
+ 		}
+-#elif defined(HAVE_ORC)
+-		for (i = 0; i < convi->n_point; i++) {
+-			int value;
+-
+-			true_sum += 128 * scaled[i];
+-			value = 128 * convi->mant[i];
+-			value = (value + (1 << (convi->sexp - 1))) >> convi->sexp;
+-			int_sum += value;
+-			int_sum = VIPS_CLIP(SHRT_MIN, int_sum, SHRT_MAX);
+-		}
+-#endif /*HAVE_HWY*/
+ 
+ 		true_value = VIPS_CLIP(0, true_sum, 255);
+ 
+@@ -1116,7 +648,7 @@ vips_convi_intize(VipsConvi *convi, VipsImage *M)
+ 
+ 	return 0;
+ }
+-#endif /*HAVE_HWY || HAVE_ORC*/
++#endif /*HAVE_HWY*/
+ 
+ static int
+ vips_convi_build(VipsObject *object)
+@@ -1156,15 +688,6 @@ vips_convi_build(VipsObject *object)
+ 		g_info("convi: using vector path");
+ 	}
+ 	else
+-#elif defined(HAVE_ORC)
+-	if (in->BandFmt == VIPS_FORMAT_UCHAR &&
+-		vips_vector_isenabled() &&
+-		!vips_convi_intize(convi, M) &&
+-		!vips_convi_compile(convi, in)) {
+-		generate = vips_convi_gen_vector;
+-		g_info("convi: using vector path");
+-	}
+-	else
+ #endif /*HAVE_HWY*/
+ 		/* Default to the C path.
+ 		 */
+@@ -1234,15 +757,8 @@ vips_convi_build(VipsObject *object)
+ static void
+ vips_convi_class_init(VipsConviClass *class)
+ {
+-#ifdef HAVE_ORC
+-	GObjectClass *gobject_class = G_OBJECT_CLASS(class);
+-#endif /*HAVE_ORC*/
+ 	VipsObjectClass *object_class = (VipsObjectClass *) class;
+ 
+-#ifdef HAVE_ORC
+-	gobject_class->finalize = vips_convi_finalize;
+-#endif /*HAVE_ORC*/
+-
+ 	object_class->nickname = "convi";
+ 	object_class->description = _("int convolution operation");
+ 	object_class->build = vips_convi_build;
+@@ -1254,9 +770,9 @@ vips_convi_init(VipsConvi *convi)
+ 	convi->nnz = 0;
+ 	convi->coeff = NULL;
+ 	convi->coeff_pos = NULL;
+-#if defined(HAVE_HWY) || defined(HAVE_ORC)
++#ifdef HAVE_HWY
+ 	convi->mant = NULL;
+-#endif /*HAVE_HWY || HAVE_ORC*/
++#endif /*HAVE_HWY*/
+ }
+ 
+ /**
+diff --git a/libvips/deprecated/vips7compat.c b/libvips/deprecated/vips7compat.c
+index b637bcaa2c..96281704ef 100644
+--- a/libvips/deprecated/vips7compat.c
++++ b/libvips/deprecated/vips7compat.c
+@@ -999,7 +999,8 @@ im__bandalike(const char *domain,
+ 	return 0;
+ }
+ 
+-/* This is deprecated to make room for highway.
++/* This is deprecated now that we've removed liborc in favour of
++ * highway.
+  */
+ void
+ vips_vector_init(void)
+diff --git a/libvips/include/vips/vips7compat.h b/libvips/include/vips/vips7compat.h
+index 4bc21a92f9..ab93780854 100644
+--- a/libvips/include/vips/vips7compat.h
++++ b/libvips/include/vips/vips7compat.h
+@@ -36,10 +36,6 @@
+ 
+ #include <vips/mask.h>
+ 
+-#ifdef HAVE_ORC
+-#include <orc/orc.h>
+-#endif /* HAVE_ORC */
+-
+ #ifdef __cplusplus
+ extern "C" {
+ #endif /*__cplusplus*/
+@@ -1660,7 +1656,8 @@ int vips__init(const char *argv0);
+ 
+ size_t vips__get_sizeof_vipsobject(void);
+ 
+-/* This is deprecated to make room for highway.
++/* This is deprecated now that we've removed liborc in favour of
++ * highway.
+  */
+ #define VIPS_VECTOR_SOURCE_MAX (10)
+ 
+@@ -1683,18 +1680,10 @@ typedef struct {
+ 
+ 	int d1;
+ 
+-#ifdef HAVE_ORC
+-	OrcProgram *program;
+-#endif /*HAVE_ORC*/
+-
+ 	gboolean compiled;
+ } VipsVector;
+ 
+ typedef struct {
+-#ifdef HAVE_ORC
+-	OrcExecutor executor;
+-#endif /*HAVE_ORC*/
+-
+ 	VipsVector *vector;
+ } VipsExecutor;
+ 
+diff --git a/libvips/iofuncs/vector.cpp b/libvips/iofuncs/vector.cpp
+index f251696817..f1a9f0e239 100644
+--- a/libvips/iofuncs/vector.cpp
++++ b/libvips/iofuncs/vector.cpp
+@@ -37,32 +37,14 @@
+ #include <glib/gi18n-lib.h>
+ 
+ #include <cstdlib>
+-#include <cmath>
+ 
+ #include <vips/vips.h>
+ #include <vips/vector.h>
+ #include <vips/debug.h>
+ #include <vips/internal.h>
+ 
+-/* If we are building with -fcf-protection (run-time checking of
+- * indirect jumps) then Orc won't work. Make sure it's off.
+- *
+- * https://gcc.gnu.org/onlinedocs/gcc/\
+- * 	Instrumentation-Options.html#index-fcf-protection
+- * https://gitlab.freedesktop.org/gstreamer/orc/issues/17
+- *
+- * orc 0.4.30 and later work with cf-protection.
+- */
+-#ifdef __CET__
+-#ifndef HAVE_ORC_CF_PROTECTION
+-#undef HAVE_ORC
+-#endif
+-#endif
+-
+ #ifdef HAVE_HWY
+ #include <hwy/highway.h>
+-#elif defined(HAVE_ORC)
+-#include <orc/orc.h>
+ #endif /*HAVE_HWY*/
+ 
+ /* Cleared by the command-line `--vips-novector` switch and the
+@@ -73,10 +55,6 @@ gboolean vips__vector_enabled = TRUE;
+ void
+ vips__vector_init()
+ {
+-#ifdef HAVE_ORC
+-	orc_init();
+-#endif /*HAVE_ORC*/
+-
+ 	/* Check whether any features are being disabled by the environment.
+ 	 */
+ 	const char *env;
+@@ -99,8 +77,6 @@ vips_vector_isenabled()
+ {
+ #ifdef HAVE_HWY
+ 	return vips__vector_enabled && vips_vector_get_supported_targets() != 0;
+-#elif defined(HAVE_ORC)
+-	return vips__vector_enabled;
+ #else
+ 	return FALSE;
+ #endif
+@@ -142,8 +118,6 @@ vips_vector_get_supported_targets()
+ {
+ #ifdef HAVE_HWY
+ 	return hwy::SupportedTargets() & HWY_TARGETS & ~(HWY_EMU128 | HWY_SCALAR);
+-#elif defined(HAVE_ORC)
+-	return orc_target_get_default_flags(orc_target_get_default());
+ #else
+ 	return 0;
+ #endif
+@@ -162,9 +136,6 @@ vips_vector_target_name(gint64 target)
+ {
+ #ifdef HAVE_HWY
+ 	return hwy::TargetName(target);
+-#elif defined(HAVE_ORC)
+-	return orc_target_get_flag_name(orc_target_get_default(),
+-		log2(target));
+ #else
+ 	return NULL;
+ #endif
+diff --git a/libvips/morphology/morph.c b/libvips/morphology/morph.c
+index 5cdb83c417..fcf36f73d0 100644
+--- a/libvips/morphology/morph.c
++++ b/libvips/morphology/morph.c
+@@ -74,39 +74,6 @@
+ 
+ #include "pmorphology.h"
+ 
+-#ifdef HAVE_ORC
+-#include <orc/orc.h>
+-
+-/* We can't run more than this many passes. Larger than this and we
+- * fall back to C.
+- * TODO: Could this be raised to 20? Just like convi.
+- */
+-#define MAX_PASS (10)
+-
+-#define MAX_SOURCES (8 /*ORC_MAX_SRC_VARS*/)
+-
+-/* A pass with a vector.
+- */
+-typedef struct {
+-	int first; /* The index of the first mask coff we use */
+-	int last;  /* The index of the last mask coff we use */
+-
+-	int r;	/* Set previous result in this var */
+-	int d1; /* The destination var */
+-
+-	int n_const;
+-	int n_scanline;
+-
+-	/* The associated line corresponding to the scanline.
+-	 */
+-	int line[MAX_SOURCES];
+-
+-	/* The code we generate for this section of this mask.
+-	 */
+-	OrcProgram *program;
+-} Pass;
+-#endif /*HAVE_ORC*/
+-
+ /**
+  * VipsOperationMorphology:
+  * @VIPS_OPERATION_MORPHOLOGY_ERODE: true if all set
+@@ -132,13 +99,6 @@ typedef struct {
+ 	int n_point; /* w * h for our matrix */
+ 
+ 	guint8 *coeff; /* Mask coefficients */
+-
+-#ifdef HAVE_ORC
+-	/* The passes we generate for this mask.
+-	 */
+-	int n_pass;
+-	Pass pass[MAX_PASS];
+-#endif /*HAVE_ORC*/
+ } VipsMorph;
+ 
+ typedef VipsMorphologyClass VipsMorphClass;
+@@ -156,30 +116,8 @@ typedef struct {
+ 	guint8 *coeff; /* Array of non-128 mask coefficients */
+ 
+ 	int last_bpl; /* Avoid recalcing offsets, if we can */
+-
+-#ifdef HAVE_ORC
+-	/* In vector mode we need a pair of intermediate buffers to keep the
+-	 * results of each pass in.
+-	 */
+-	void *t1;
+-	void *t2;
+-#endif /*HAVE_ORC*/
+ } VipsMorphSequence;
+ 
+-#ifdef HAVE_ORC
+-static void
+-vips_morph_finalize(GObject *gobject)
+-{
+-	VipsMorph *morph = (VipsMorph *) gobject;
+-
+-	for (int i = 0; i < morph->n_pass; i++)
+-		VIPS_FREEF(orc_program_free, morph->pass[i].program);
+-	morph->n_pass = 0;
+-
+-	G_OBJECT_CLASS(vips_morph_parent_class)->finalize(gobject);
+-}
+-#endif /*HAVE_ORC*/
+-
+ /* Free a sequence value.
+  */
+ static int
+@@ -188,10 +126,6 @@ vips_morph_stop(void *vseq, void *a, void *b)
+ 	VipsMorphSequence *seq = (VipsMorphSequence *) vseq;
+ 
+ 	VIPS_UNREF(seq->ir);
+-#ifdef HAVE_ORC
+-	VIPS_FREE(seq->t1);
+-	VIPS_FREE(seq->t2);
+-#endif /*HAVE_ORC*/
+ 
+ 	return 0;
+ }
+@@ -217,10 +151,6 @@ vips_morph_start(VipsImage *out, void *a, void *b)
+ 	seq->nn128 = 0;
+ 	seq->coeff = NULL;
+ 	seq->last_bpl = -1;
+-#ifdef HAVE_ORC
+-	seq->t1 = NULL;
+-	seq->t2 = NULL;
+-#endif /*HAVE_ORC*/
+ 
+ 	seq->ir = vips_region_new(in);
+ 
+@@ -233,23 +163,6 @@ vips_morph_start(VipsImage *out, void *a, void *b)
+ 		return NULL;
+ 	}
+ 
+-#ifdef HAVE_ORC
+-	/* Vector mode.
+-	 */
+-	if (morph->n_pass) {
+-		seq->t1 = VIPS_ARRAY(NULL,
+-			VIPS_IMAGE_N_ELEMENTS(in), VipsPel);
+-		seq->t2 = VIPS_ARRAY(NULL,
+-			VIPS_IMAGE_N_ELEMENTS(in), VipsPel);
+-
+-		if (!seq->t1 ||
+-			!seq->t2) {
+-			vips_morph_stop(seq, in, morph);
+-			return NULL;
+-		}
+-	}
+-#endif /*HAVE_ORC*/
+-
+ 	return seq;
+ }
+ 
+@@ -387,267 +300,6 @@ vips_erode_vector_gen(VipsRegion *out_region,
+ 
+ 	return 0;
+ }
+-#elif defined(HAVE_ORC)
+-
+-#define TEMP(N, S) orc_program_add_temporary(p, S, N)
+-#define SCANLINE(N, S) orc_program_add_source(p, S, N)
+-#define CONST(N, V, S) orc_program_add_constant(p, S, V, N)
+-#define ASM2(OP, A, B) orc_program_append_ds_str(p, OP, A, B)
+-#define ASM3(OP, A, B, C) orc_program_append_str(p, OP, A, B, C)
+-
+-/* Generate code for a section of the mask. first is the index we start
+- * at, we set last to the index of the last one we use before we run
+- * out of intermediates / constants / parameters / sources or mask
+- * coefficients.
+- *
+- * 0 for success, -1 on error.
+- */
+-static int
+-vips_morph_compile_section(VipsMorph *morph, Pass *pass, gboolean first_pass)
+-{
+-	VipsMorphology *morphology = (VipsMorphology *) morph;
+-	VipsImage *M = morph->M;
+-
+-	OrcProgram *p;
+-	OrcCompileResult result;
+-	int i;
+-
+-	pass->program = p = orc_program_new();
+-
+-	pass->d1 = orc_program_add_destination(p, 1, "d1");
+-
+-	/* "r" is the result of the previous pass.
+-	 */
+-	if (!(pass->r = orc_program_add_source(p, 1, "r")))
+-		return -1;
+-
+-	/* The value we fetch from the image, the accumulated sum.
+-	 */
+-	TEMP("value", 1);
+-	TEMP("sum", 1);
+-
+-	CONST("zero", 0, 1);
+-	CONST("one", 255, 1);
+-	pass->n_const += 2;
+-
+-	/* Init the sum. If this is the first pass, it's a constant. If this
+-	 * is a later pass, we have to init the sum from the result
+-	 * of the previous pass.
+-	 */
+-	if (first_pass) {
+-		if (morph->morph == VIPS_OPERATION_MORPHOLOGY_DILATE)
+-			ASM2("copyb", "sum", "zero");
+-		else
+-			ASM2("copyb", "sum", "one");
+-	}
+-	else
+-		ASM2("loadb", "sum", "r");
+-
+-	for (i = pass->first; i < morph->n_point; i++) {
+-		int x = i % M->Xsize;
+-		int y = i / M->Xsize;
+-
+-		char offset[256];
+-		char source[256];
+-
+-		/* Exclude don't-care elements.
+-		 */
+-		if (morph->coeff[i] == 128)
+-			continue;
+-
+-		/* The source. sl0 is the first scanline in the mask.
+-		 */
+-		g_snprintf(source, 256, "sl%d", y);
+-		if (orc_program_find_var_by_name(p, source) == -1) {
+-			SCANLINE(source, 1);
+-			pass->line[pass->n_scanline] = y;
+-			pass->n_scanline++;
+-		}
+-
+-		/* The offset, only for non-first-columns though.
+-		 */
+-		if (x > 0) {
+-			g_snprintf(offset, 256, "c%db", x);
+-			if (orc_program_find_var_by_name(p, offset) == -1) {
+-				CONST(offset, morphology->in->Bands * x, 1);
+-				pass->n_const++;
+-			}
+-			ASM3("loadoffb", "value", source, offset);
+-		}
+-		else
+-			ASM2("loadb", "value", source);
+-
+-		/* Join to our sum. If the mask element is zero, we have to
+-		 * add an extra negate.
+-		 */
+-		if (morph->morph == VIPS_OPERATION_MORPHOLOGY_DILATE) {
+-			if (!morph->coeff[i])
+-				ASM3("xorb", "value", "value", "one");
+-			ASM3("orb", "sum", "sum", "value");
+-		}
+-		else {
+-			if (!morph->coeff[i]) {
+-				/* You'd think we could use andnb, but it
+-				 * fails on some machines with some orc
+-				 * versions :(
+-				 */
+-				ASM3("xorb", "value", "value", "one");
+-				ASM3("andb", "sum", "sum", "value");
+-			}
+-			else
+-				ASM3("andb", "sum", "sum", "value");
+-		}
+-
+-		/* orc allows up to 8 constants, so break early once we
+-		 * approach this limit.
+-		 */
+-		if (pass->n_const >= 7 /*ORC_MAX_CONST_VARS - 1*/)
+-			break;
+-
+-		/* You can have 8 sources, and pass->r counts as one of them,
+-		 * so +1 there.
+-		 */
+-		if (pass->n_scanline + 1 >= 7 /*ORC_MAX_SRC_VARS - 1*/)
+-			break;
+-	}
+-
+-	pass->last = i;
+-
+-	ASM2("copyb", "d1", "sum");
+-
+-	/* Some orcs seem to be unstable with many compilers active at once.
+-	 */
+-	g_mutex_lock(&vips__global_lock);
+-	result = orc_program_compile(p);
+-	g_mutex_unlock(&vips__global_lock);
+-
+-	if (!ORC_COMPILE_RESULT_IS_SUCCESSFUL(result))
+-		return -1;
+-
+-#ifdef DEBUG
+-	printf("done matrix coeffs %d to %d\n", pass->first, pass->last);
+-#endif /*DEBUG*/
+-
+-	return 0;
+-}
+-
+-/* Generate a set of passes.
+- */
+-static int
+-vips_morph_compile(VipsMorph *morph)
+-{
+-	int i;
+-	Pass *pass;
+-
+-#ifdef DEBUG
+-	printf("vips_morph_compile: generating vector code\n");
+-#endif /*DEBUG*/
+-
+-	/* Generate passes until we've used up the whole mask.
+-	 */
+-	for (i = 0;;) {
+-		/* Skip any don't-care coefficients at the start of the mask
+-		 * region.
+-		 */
+-		for (; i < morph->n_point && morph->coeff[i] == 128; i++)
+-			;
+-		if (i == morph->n_point)
+-			break;
+-
+-		/* Allocate space for another pass.
+-		 */
+-		if (morph->n_pass == MAX_PASS)
+-			return -1;
+-		pass = &morph->pass[morph->n_pass];
+-		morph->n_pass += 1;
+-
+-		pass->first = i;
+-		pass->last = i;
+-		pass->r = -1;
+-		pass->n_const = 0;
+-		pass->n_scanline = 0;
+-
+-		if (vips_morph_compile_section(morph, pass, morph->n_pass == 1))
+-			return -1;
+-		i = pass->last + 1;
+-
+-		if (i >= morph->n_point)
+-			break;
+-	}
+-
+-	return 0;
+-}
+-
+-/* The vector codepath.
+- */
+-static int
+-vips_morph_gen_vector(VipsRegion *out_region,
+-	void *vseq, void *a, void *b, gboolean *stop)
+-{
+-	VipsMorphSequence *seq = (VipsMorphSequence *) vseq;
+-	VipsMorph *morph = (VipsMorph *) b;
+-	VipsImage *M = morph->M;
+-	VipsRegion *ir = seq->ir;
+-	VipsRect *r = &out_region->valid;
+-	int sz = VIPS_REGION_N_ELEMENTS(out_region);
+-
+-	VipsRect s;
+-	int j, i, y;
+-	OrcExecutor executor[MAX_PASS];
+-
+-	/* Prepare the section of the input image we need. A little larger
+-	 * than the section of the output image we are producing.
+-	 */
+-	s = *r;
+-	s.width += M->Xsize - 1;
+-	s.height += M->Ysize - 1;
+-	if (vips_region_prepare(ir, &s))
+-		return -1;
+-
+-#ifdef DEBUG_VERBOSE
+-	printf("vips_morph_gen_vector: preparing %dx%d@%dx%d pixels\n",
+-		s.width, s.height, s.left, s.top);
+-#endif /*DEBUG_VERBOSE*/
+-
+-	for (i = 0; i < morph->n_pass; i++) {
+-		orc_executor_set_program(&executor[i], morph->pass[i].program);
+-		orc_executor_set_n(&executor[i], sz);
+-	}
+-
+-	VIPS_GATE_START("vips_morph_gen_vector: work");
+-
+-	for (y = 0; y < r->height; y++) {
+-		for (i = 0; i < morph->n_pass; i++) {
+-			Pass *pass = &morph->pass[i];
+-			void *d;
+-
+-			/* The last pass goes to the output image,
+-			 * intermediate passes go to t2.
+-			 */
+-			if (i == morph->n_pass - 1)
+-				d = VIPS_REGION_ADDR(out_region, r->left, r->top + y);
+-			else
+-				d = seq->t2;
+-
+-			for (j = 0; j < pass->n_scanline; j++)
+-				orc_executor_set_array(&executor[i], pass->r + 1 + j,
+-					VIPS_REGION_ADDR(ir, r->left, r->top + y + pass->line[j]));
+-			orc_executor_set_array(&executor[i],
+-				pass->r, seq->t1);
+-			orc_executor_set_array(&executor[i],
+-				pass->d1, d);
+-			orc_executor_run(&executor[i]);
+-
+-			VIPS_SWAP(void *, seq->t1, seq->t2);
+-		}
+-	}
+-
+-	VIPS_GATE_STOP("vips_morph_gen_vector: work");
+-
+-	VIPS_COUNT_PIXELS(out_region, "vips_morph_gen_vector");
+-
+-	return 0;
+-}
+ #endif /*HAVE_HWY*/
+ 
+ /* Dilate!
+@@ -900,15 +552,6 @@ vips_morph_build(VipsObject *object)
+ 		g_info("morph: using vector path");
+ 	}
+ 	else
+-#elif defined(HAVE_ORC)
+-	/* Generate code for this mask / image, if possible.
+-	 */
+-	if (vips_vector_isenabled() &&
+-		!vips_morph_compile(morph)) {
+-		generate = vips_morph_gen_vector;
+-		g_info("morph: using vector path");
+-	}
+-	else
+ #endif /*HAVE_HWY*/
+ 		/* Default to the C path.
+ 		 */
+@@ -948,10 +591,6 @@ vips_morph_class_init(VipsMorphClass *class)
+ 	gobject_class->set_property = vips_object_set_property;
+ 	gobject_class->get_property = vips_object_get_property;
+ 
+-#ifdef HAVE_ORC
+-	gobject_class->finalize = vips_morph_finalize;
+-#endif /*HAVE_ORC*/
+-
+ 	object_class->nickname = "morph";
+ 	object_class->description = _("morphology operation");
+ 	object_class->build = vips_morph_build;
+diff --git a/libvips/resample/reducev.cpp b/libvips/resample/reducev.cpp
+index d396b8e4cc..e4ff6df8d6 100644
+--- a/libvips/resample/reducev.cpp
++++ b/libvips/resample/reducev.cpp
+@@ -53,8 +53,6 @@
+  */
+ 
+ /*
+-#define DEBUG_PIXELS
+-#define DEBUG_COMPILE
+ #define DEBUG
+  */
+ 
+@@ -76,37 +74,6 @@
+ #include "presample.h"
+ #include "templates.h"
+ 
+-#ifdef HAVE_ORC
+-#include <orc/orc.h>
+-
+-/* We can't run more than this many passes. Larger than this and we
+- * fall back to C.
+- */
+-#define MAX_PASS (10)
+-
+-/* The number of params we pass for coeffs. Orc limits this rather.
+- */
+-#define MAX_PARAM (8 /*ORC_MAX_PARAM_VARS*/)
+-
+-/* A pass with a vector.
+- */
+-typedef struct {
+-	int first; /* The index of the first mask coff we use */
+-	int last;  /* The index of the last mask coff we use */
+-
+-	int r;	/* Set previous result in this var */
+-	int d1; /* The destination var */
+-	int d2; /* Write new temp result here */
+-
+-	int n_param;
+-	int n_scanline;
+-
+-	/* The code we generate for this section of this mask.
+-	 */
+-	OrcProgram *program;
+-} Pass;
+-#endif /*HAVE_ORC*/
+-
+ typedef struct _VipsReducev {
+ 	VipsResample parent_instance;
+ 
+@@ -136,17 +103,6 @@ typedef struct _VipsReducev {
+ 	short *matrixs[VIPS_TRANSFORM_SCALE + 1];
+ 	double *matrixf[VIPS_TRANSFORM_SCALE + 1];
+ 
+-#ifdef HAVE_ORC
+-	/* And another set for orc: we want 2.6 precision.
+-	 */
+-	int *matrixo[VIPS_TRANSFORM_SCALE + 1];
+-
+-	/* The passes we generate for this mask.
+-	 */
+-	int n_pass;
+-	Pass pass[MAX_PASS];
+-#endif /*HAVE_ORC*/
+-
+ 	/* Deprecated.
+ 	 */
+ 	gboolean centre;
+@@ -161,248 +117,6 @@ extern "C" {
+ G_DEFINE_TYPE(VipsReducev, vips_reducev, VIPS_TYPE_RESAMPLE);
+ }
+ 
+-/* Our VipsReducevSequence value.
+- */
+-typedef struct {
+-	VipsReducev *reducev;
+-	VipsRegion *ir; /* Input region */
+-
+-#ifdef HAVE_ORC
+-	/* In vector mode we need a pair of intermediate buffers to keep the
+-	 * results of each pass in.
+-	 */
+-	short *t1;
+-	short *t2;
+-#endif /*HAVE_ORC*/
+-} VipsReducevSequence;
+-
+-static int
+-vips_reducev_stop(void *vseq, void *a, void *b)
+-{
+-	VipsReducevSequence *seq = (VipsReducevSequence *) vseq;
+-
+-	VIPS_UNREF(seq->ir);
+-#ifdef HAVE_ORC
+-	VIPS_FREE(seq->t1);
+-	VIPS_FREE(seq->t2);
+-#endif /*HAVE_ORC*/
+-
+-	return 0;
+-}
+-
+-static void *
+-vips_reducev_start(VipsImage *out, void *a, void *b)
+-{
+-	VipsImage *in = (VipsImage *) a;
+-	VipsReducev *reducev = (VipsReducev *) b;
+-
+-	VipsReducevSequence *seq;
+-
+-	if (!(seq = VIPS_NEW(out, VipsReducevSequence)))
+-		return nullptr;
+-
+-	/* Init!
+-	 */
+-	seq->reducev = reducev;
+-	seq->ir = nullptr;
+-#ifdef HAVE_ORC
+-	seq->t1 = NULL;
+-	seq->t2 = NULL;
+-#endif /*HAVE_ORC*/
+-
+-	/* Attach region.
+-	 */
+-	seq->ir = vips_region_new(in);
+-
+-#ifdef HAVE_ORC
+-	/* Vector mode.
+-	 */
+-	if (reducev->n_pass) {
+-		seq->t1 = VIPS_ARRAY(NULL, VIPS_IMAGE_N_ELEMENTS(in), short);
+-		seq->t2 = VIPS_ARRAY(NULL, VIPS_IMAGE_N_ELEMENTS(in), short);
+-
+-		if (!seq->t1 ||
+-			!seq->t2) {
+-			vips_reducev_stop(seq, in, reducev);
+-			return NULL;
+-		}
+-	}
+-#endif /*HAVE_ORC*/
+-
+-	return seq;
+-}
+-
+-#ifdef HAVE_ORC
+-static void
+-vips_reducev_finalize(GObject *gobject)
+-{
+-	VipsReducev *reducev = (VipsReducev *) gobject;
+-
+-	for (int i = 0; i < reducev->n_pass; i++)
+-		VIPS_FREEF(orc_program_free, reducev->pass[i].program);
+-	reducev->n_pass = 0;
+-
+-	G_OBJECT_CLASS(vips_reducev_parent_class)->finalize(gobject);
+-}
+-
+-#define TEMP(N, S) orc_program_add_temporary(p, S, N)
+-#define PARAM(N, S) orc_program_add_parameter(p, S, N)
+-#define SCANLINE(N, S) orc_program_add_source(p, S, N)
+-#define CONST(N, V, S) orc_program_add_constant(p, S, V, N)
+-#define ASM2(OP, A, B) orc_program_append_ds_str(p, OP, A, B)
+-#define ASM3(OP, A, B, C) orc_program_append_str(p, OP, A, B, C)
+-
+-/* Generate code for a section of the mask. first is the index we start
+- * at, we set last to the index of the last one we use before we run
+- * out of intermediates / constants / parameters / sources or mask
+- * coefficients.
+- *
+- * 0 for success, -1 on error.
+- */
+-static int
+-vips_reducev_compile_section(VipsReducev *reducev, Pass *pass, gboolean first)
+-{
+-	OrcProgram *p;
+-	OrcCompileResult result;
+-	int i;
+-
+-#ifdef DEBUG_COMPILE
+-	printf("starting pass %d\n", pass->first);
+-#endif /*DEBUG_COMPILE*/
+-
+-	pass->program = p = orc_program_new();
+-
+-	pass->d1 = orc_program_add_destination(p, 1, "d1");
+-
+-	/* We have two destinations: the final output image (8-bit) and the
+-	 * intermediate buffer if this is not the final pass (16-bit).
+-	 */
+-	pass->d2 = orc_program_add_destination(p, 2, "d2");
+-
+-	/* "r" is the array of sums from the previous pass (if any).
+-	 */
+-	if (!(pass->r = orc_program_add_source(p, 2, "r")))
+-		return -1;
+-
+-	/* The value we fetch from the image, the accumulated sum.
+-	 */
+-	TEMP("value", 2);
+-	TEMP("sum", 2);
+-
+-	/* Init the sum. If this is the first pass, it's a constant. If this
+-	 * is a later pass, we have to init the sum from the result
+-	 * of the previous pass.
+-	 */
+-	if (first) {
+-		CONST("c32", 32, 2);
+-		ASM2("loadpw", "sum", "c32");
+-	}
+-	else
+-		ASM2("loadw", "sum", "r");
+-
+-	for (i = pass->first; i < reducev->n_point; i++) {
+-		char source[256];
+-		char coeff[256];
+-
+-		g_snprintf(source, 256, "sl%d", i);
+-		SCANLINE(source, 1);
+-		pass->n_scanline++;
+-
+-		/* This mask coefficient.
+-		 */
+-		g_snprintf(coeff, 256, "p%d", i);
+-		PARAM(coeff, 2);
+-		if (++pass->n_param >= MAX_PARAM)
+-			return -1;
+-
+-		/* Mask coefficients are 2.6 bits fixed point. We need to hold
+-		 * about -0.5 to 1.0, so -2 to +1.999 is as close as we can
+-		 * get.
+-		 *
+-		 * We need a signed multiply, so the image pixel needs to
+-		 * become a signed 16-bit value. We know only the bottom 8 bits
+-		 * of the image and coefficient are interesting, so we can take
+-		 * the bottom bits of a 16x16->32 multiply.
+-		 *
+-		 * We accumulate the signed 16-bit result in sum. Saturated
+-		 * add.
+-		 */
+-		ASM2("convubw", "value", source);
+-		ASM3("mullw", "value", "value", coeff);
+-		ASM3("addssw", "sum", "sum", "value");
+-
+-		/* orc 0.4.24 and earlier hate more than about five lines at
+-		 * once :(
+-		 */
+-		if (pass->n_scanline > 4)
+-			break;
+-	}
+-
+-	pass->last = i;
+-
+-	/* If this is the end of the mask, we write the 8-bit result to the
+-	 * image, otherwise write the 16-bit intermediate to our temp buffer.
+-	 */
+-	if (pass->last >= reducev->n_point - 1) {
+-		CONST("c6", 6, 2);
+-		ASM3("shrsw", "sum", "sum", "c6");
+-
+-		ASM2("convsuswb", "d1", "sum");
+-	}
+-	else
+-		ASM2("copyw", "d2", "sum");
+-
+-	/* Some orcs seem to be unstable with many compilers active at once.
+-	 */
+-	g_mutex_lock(&vips__global_lock);
+-	result = orc_program_compile(p);
+-	g_mutex_unlock(&vips__global_lock);
+-
+-	if (!ORC_COMPILE_RESULT_IS_SUCCESSFUL(result))
+-		return -1;
+-
+-#ifdef DEBUG_COMPILE
+-	printf("done coeffs %d to %d\n", pass->first, pass->last);
+-#endif /*DEBUG_COMPILE*/
+-
+-	return 0;
+-}
+-
+-static int
+-vips_reducev_compile(VipsReducev *reducev)
+-{
+-	Pass *pass;
+-
+-	/* Generate passes until we've used up the whole mask.
+-	 */
+-	for (int i = 0;;) {
+-		/* Allocate space for another pass.
+-		 */
+-		if (reducev->n_pass == MAX_PASS)
+-			return -1;
+-		pass = &reducev->pass[reducev->n_pass];
+-		reducev->n_pass += 1;
+-
+-		pass->first = i;
+-		pass->r = -1;
+-		pass->d1 = -1;
+-		pass->d2 = -1;
+-		pass->n_param = 0;
+-		pass->n_scanline = 0;
+-
+-		if (vips_reducev_compile_section(reducev,
+-				pass, reducev->n_pass == 1))
+-			return -1;
+-		i = pass->last + 1;
+-
+-		if (i >= reducev->n_point)
+-			break;
+-	}
+-
+-	return 0;
+-}
+-#endif /*HAVE_ORC*/
+-
+ /* You'd think this would vectorise, but gcc hates mixed types in nested loops
+  * :-(
+  */
+@@ -482,13 +196,12 @@ static void inline reducev_notab(VipsReducev *reducev,
+ }
+ 
+ static int
+-vips_reducev_gen(VipsRegion *out_region, void *vseq,
++vips_reducev_gen(VipsRegion *out_region, void *seq,
+ 	void *a, void *b, gboolean *stop)
+ {
+ 	VipsImage *in = (VipsImage *) a;
+ 	VipsReducev *reducev = (VipsReducev *) b;
+-	VipsReducevSequence *seq = (VipsReducevSequence *) vseq;
+-	VipsRegion *ir = seq->ir;
++	VipsRegion *ir = (VipsRegion *) seq;
+ 	VipsRect *r = &out_region->valid;
+ 
+ 	/* Double bands for complex.
+@@ -588,13 +301,12 @@ vips_reducev_gen(VipsRegion *out_region, void *vseq,
+ 
+ #ifdef HAVE_HWY
+ static int
+-vips_reducev_uchar_vector_gen(VipsRegion *out_region, void *vseq,
++vips_reducev_uchar_vector_gen(VipsRegion *out_region, void *seq,
+ 	void *a, void *b, gboolean *stop)
+ {
+ 	VipsImage *in = (VipsImage *) a;
+ 	VipsReducev *reducev = (VipsReducev *) b;
+-	VipsReducevSequence *seq = (VipsReducevSequence *) vseq;
+-	VipsRegion *ir = seq->ir;
++	VipsRegion *ir = (VipsRegion *) seq;
+ 	VipsRect *r = &out_region->valid;
+ 	const int bands = in->Bands;
+ 	int ne = r->width * bands;
+@@ -642,185 +354,6 @@ vips_reducev_uchar_vector_gen(VipsRegion *out_region, void *vseq,
+ 
+ 	return 0;
+ }
+-#elif defined(HAVE_ORC)
+-
+-/* Process uchar images with a vector path.
+- */
+-static int
+-vips_reducev_vector_gen(VipsRegion *out_region, void *vseq,
+-	void *a, void *b, gboolean *stop)
+-{
+-	VipsImage *in = (VipsImage *) a;
+-	VipsReducev *reducev = (VipsReducev *) b;
+-	VipsReducevSequence *seq = (VipsReducevSequence *) vseq;
+-	VipsRegion *ir = seq->ir;
+-	VipsRect *r = &out_region->valid;
+-	int ne = r->width * in->Bands;
+-
+-	OrcExecutor executor[MAX_PASS];
+-	VipsRect s;
+-
+-#ifdef DEBUG_PIXELS
+-	printf("vips_reducev_vector_gen: generating %d x %d at %d x %d\n",
+-		r->width, r->height, r->left, r->top);
+-#endif /*DEBUG_PIXELS*/
+-
+-	s.left = r->left;
+-	s.top = r->top * reducev->residual_vshrink - reducev->voffset;
+-	s.width = r->width;
+-	s.height = r->height * reducev->residual_vshrink + reducev->n_point;
+-	if (vips_region_prepare(ir, &s))
+-		return -1;
+-
+-#ifdef DEBUG_PIXELS
+-	printf("vips_reducev_vector_gen: preparing %d x %d at %d x %d\n",
+-		s.width, s.height, s.left, s.top);
+-#endif /*DEBUG_PIXELS*/
+-
+-	for (int i = 0; i < reducev->n_pass; i++) {
+-		orc_executor_set_program(&executor[i], reducev->pass[i].program);
+-		orc_executor_set_n(&executor[i], ne);
+-	}
+-
+-	VIPS_GATE_START("vips_reducev_vector_gen: work");
+-
+-	double Y = (r->top + 0.5) * reducev->residual_vshrink - 0.5 -
+-		reducev->voffset;
+-
+-	for (int y = 0; y < r->height; y++) {
+-		VipsPel *q =
+-			VIPS_REGION_ADDR(out_region, r->left, r->top + y);
+-		const int py = (int) Y;
+-		const int sy = Y * VIPS_TRANSFORM_SCALE * 2;
+-		const int siy = sy & (VIPS_TRANSFORM_SCALE * 2 - 1);
+-		const int ty = (siy + 1) >> 1;
+-		const int *cyo = reducev->matrixo[ty];
+-
+-#ifdef DEBUG_PIXELS
+-		printf("starting row %d\n", y + r->top);
+-		printf("coefficients:\n");
+-		for (int i = 0; i < reducev->n_point; i++)
+-			printf("\t%d - %d\n", i, cyo[i]);
+-		printf("first column of pixel values:\n");
+-		for (int i = 0; i < reducev->n_point; i++)
+-			printf("\t%d - %d\n", i,
+-				*VIPS_REGION_ADDR(ir, r->left, py));
+-#endif /*DEBUG_PIXELS*/
+-
+-		/* We run our n passes to generate this scanline.
+-		 */
+-		for (int i = 0; i < reducev->n_pass; i++) {
+-			Pass *pass = &reducev->pass[i];
+-
+-			for (int j = 0; j < pass->n_scanline; j++)
+-				orc_executor_set_array(&executor[i], pass->r + 1 + j,
+-					VIPS_REGION_ADDR(ir, r->left, py + j + pass->first));
+-			orc_executor_set_array(&executor[i], pass->r, seq->t1);
+-			orc_executor_set_array(&executor[i], pass->d2, seq->t2);
+-			for (int j = 0; j < pass->n_param; j++)
+-				orc_executor_set_param(&executor[i],
+-					ORC_VAR_P1 + j, cyo[j + pass->first]);
+-			orc_executor_set_array(&executor[i], pass->d1, q);
+-			orc_executor_run(&executor[i]);
+-
+-			VIPS_SWAP(signed short *, seq->t1, seq->t2);
+-		}
+-
+-#ifdef DEBUG_PIXELS
+-		printf("pixel result:\n");
+-		printf("\t%d\n", *q);
+-#endif /*DEBUG_PIXELS*/
+-
+-		Y += reducev->residual_vshrink;
+-	}
+-
+-	VIPS_GATE_STOP("vips_reducev_vector_gen: work");
+-
+-	VIPS_COUNT_PIXELS(out_region, "vips_reducev_vector_gen");
+-
+-	return 0;
+-}
+-
+-/* Make a fixed-point version of a matrix. Each
+- * out[i] = rint(in[i] * adj_scale), where adj_scale is selected so that
+- * sum(out) = sum(in) * scale.
+- *
+- * Because of the vagaries of rint(), we can't just calc this, we have to
+- * iterate and converge on the best value for adj_scale.
+- */
+-static void
+-vips_reducev_vector_to_fixed_point(double *in, int *out, int n, int scale)
+-{
+-	double fsum;
+-	int i;
+-	int target;
+-	int sum;
+-	double high;
+-	double low;
+-	double guess;
+-
+-	fsum = 0.0;
+-	for (i = 0; i < n; i++)
+-		fsum += in[i];
+-	target = rint(fsum * scale);
+-
+-	/* As we rint() each scale element, we can get up to 0.5 error.
+-	 * Therefore, by the end of the mask, we can be off by up to n/2. Our
+-	 * high and low guesses are therefore n/2 either side of the obvious
+-	 * answer.
+-	 */
+-	high = scale + (n + 1) / 2;
+-	low = scale - (n + 1) / 2;
+-
+-	do {
+-		guess = (high + low) / 2.0;
+-
+-		for (i = 0; i < n; i++)
+-			out[i] = rint(in[i] * guess);
+-
+-		sum = 0;
+-		for (i = 0; i < n; i++)
+-			sum += out[i];
+-
+-		if (sum == target)
+-			break;
+-		if (sum < target)
+-			low = guess;
+-		if (sum > target)
+-			high = guess;
+-
+-		/* This will typically produce about 5 iterations.
+-		 */
+-	} while (high - low > 0.01);
+-
+-	if (sum != target) {
+-		/* Spread the error out thinly over the whole array. For
+-		 * example, consider the matrix:
+-		 *
+-		 * 	3 3 9 0
+-		 *	1 1 1
+-		 *	1 1 1
+-		 *	1 1 1
+-		 *
+-		 * being converted with scale = 64 (convi does this). We want
+-		 * to generate a mix of 7s and 8s.
+-		 */
+-		int each_error = (target - sum) / n;
+-		int extra_error = (target - sum) % n;
+-
+-		/* To share the residual error, we add or subtract 1 from the
+-		 * first abs(extra_error) elements.
+-		 */
+-		int direction = extra_error > 0 ? 1 : -1;
+-		int n_elements = abs(extra_error);
+-
+-		for (i = 0; i < n; i++)
+-			out[i] += each_error;
+-
+-		for (i = 0; i < n_elements; i++)
+-			out[i] += direction;
+-	}
+-}
+ #endif /*HAVE_HWY*/
+ 
+ static int
+@@ -957,27 +490,6 @@ vips_reducev_build(VipsObject *object)
+ 		g_info("reducev: using vector path");
+ 	}
+ 	else
+-#elif defined(HAVE_ORC)
+-	if (in->BandFmt == VIPS_FORMAT_UCHAR &&
+-		vips_vector_isenabled() &&
+-		!vips_reducev_compile(reducev)) {
+-		generate = vips_reducev_vector_gen;
+-		g_info("reducev: using vector path");
+-
+-		/* We need an 2.6 version if we will use the vector path.
+-		 */
+-		for (int y = 0; y < VIPS_TRANSFORM_SCALE + 1; y++) {
+-			reducev->matrixo[y] =
+-				VIPS_ARRAY(object, reducev->n_point, int);
+-			if (!reducev->matrixo[y])
+-				return -1;
+-
+-			vips_reducev_vector_to_fixed_point(
+-				reducev->matrixf[y], reducev->matrixo[y],
+-				reducev->n_point, 64);
+-		}
+-	}
+-	else
+ #endif /*HAVE_HWY*/
+ 		/* Default to the C path.
+ 		 */
+@@ -1009,7 +521,7 @@ vips_reducev_build(VipsObject *object)
+ #endif /*DEBUG*/
+ 
+ 	if (vips_image_generate(t[3],
+-			vips_reducev_start, generate, vips_reducev_stop,
++			vips_start_one, generate, vips_stop_one,
+ 			in, reducev))
+ 		return -1;
+ 
+@@ -1054,9 +566,6 @@ vips_reducev_class_init(VipsReducevClass *reducev_class)
+ 
+ 	VIPS_DEBUG_MSG("vips_reducev_class_init\n");
+ 
+-#ifdef HAVE_ORC
+-	gobject_class->finalize = vips_reducev_finalize;
+-#endif /*HAVE_ORC*/
+ 	gobject_class->set_property = vips_object_set_property;
+ 	gobject_class->get_property = vips_object_get_property;
+ 
+diff --git a/meson.build b/meson.build
+index 8f0614ea87..6cb6fde0a7 100644
+--- a/meson.build
++++ b/meson.build
+@@ -491,9 +491,6 @@ if libopenjp2_dep.found()
+     cfg_var.set('HAVE_LIBOPENJP2', true)
+ endif
+ 
+-# simd package we use
+-simd_package = disabler()
+-
+ # Require 1.0.5 to support the `ReorderDemote2To(u8, i16, i16)` operation
+ # See: https://github.com/google/highway/pull/1247
+ libhwy_dep = dependency('libhwy', version: '>=1.0.5', required: get_option('highway'))
+@@ -514,21 +511,6 @@ if libhwy_dep.found()
+     # Optionally, build without AVX512 support (helps to reduce binary size at the cost of performance)
+     #disabled_targets += ['HWY_AVX3']
+     add_project_arguments('-DHWY_DISABLED_TARGETS=@0@'.format('|'.join(disabled_targets)), language: ['cpp'])
+-    simd_package = libhwy_dep
+-endif
+-
+-# only if highway not found
+-if not simd_package.found()
+-    # we use loadpw etc.
+-    orc_dep = dependency('orc-0.4', version: '>=0.4.11', required: get_option('orc'))
+-    if orc_dep.found()
+-        external_deps += orc_dep
+-        cfg_var.set('HAVE_ORC', true)
+-        # orc 0.4.30+ works with cf-protection, but 0.4.30 has a bug with multiple
+-        # definitions of OrcTargetPowerPCFlags, so insist on 0.4.31
+-        cfg_var.set('HAVE_ORC_CF_PROTECTION', orc_dep.version().version_compare('>=0.4.31'))
+-        simd_package = orc_dep
+-    endif
+ endif
+ 
+ # pdf loader we use
+@@ -731,7 +713,7 @@ build_summary = {
+ build_features = {
+   'Optional external packages':
+     {'FFTs': ['fftw', fftw_dep],
+-     'SIMD support': ['libhwy or liborc', simd_package],
++     'SIMD support': ['libhwy', libhwy_dep],
+      'ICC profile support': ['lcms2', lcms_dep],
+      'deflate compression': ['zlib', zlib_dep],
+      'text rendering': ['pangocairo', pangocairo_dep],
+diff --git a/meson_options.txt b/meson_options.txt
+index b839602b77..29e3c5609c 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -173,11 +173,6 @@ option('highway',
+   value: 'auto',
+   description: 'Build with highway')
+ 
+-option('orc',
+-  type: 'feature',
+-  value: 'auto',
+-  description: 'Build with orc-0.4')
+-
+ option('pangocairo',
+   type: 'feature',
+   value: 'auto',
+diff --git a/tools/vips.c b/tools/vips.c
+index addc547ba0..5299a9e8e8 100644
+--- a/tools/vips.c
++++ b/tools/vips.c
+@@ -782,10 +782,8 @@ main(int argc, char **argv)
+ 	}
+ 
+ 	if (main_option_targets) {
+-#ifndef HAVE_ORC
+ 		print_vector_targets("builtin targets:  ",
+ 			vips_vector_get_builtin_targets());
+-#endif
+ 		print_vector_targets("supported targets:",
+ 			vips_vector_get_supported_targets());
+ 	}
+
+From a7122d37968740adefe106d735f9fc90f9e2c587 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Tue, 25 Oct 2022 11:07:50 +0200
+Subject: [PATCH 03/14] Remove background thread in `vips_sink_screen`
+
+This thread is only used when the `notify_fn` callback is passed to
+`vips_sink_screen`, which does not happen internally in libvips.
+
+Context: issue 1792.
+
+Upstream-Status: Inappropriate [disable feature]
+Breaks compatibility with vipsdisp and nip4.
+---
+ libvips/conversion/subsample.c  |   7 -
+ libvips/include/vips/internal.h |   1 -
+ libvips/include/vips/private.h  |   2 -
+ libvips/iofuncs/init.c          |   3 -
+ libvips/iofuncs/sinkscreen.c    | 599 ++------------------------------
+ 5 files changed, 28 insertions(+), 584 deletions(-)
+
+diff --git a/libvips/conversion/subsample.c b/libvips/conversion/subsample.c
+index 6c6969f8f7..6a6b760afc 100644
+--- a/libvips/conversion/subsample.c
++++ b/libvips/conversion/subsample.c
+@@ -53,7 +53,6 @@
+ #include <stdlib.h>
+ 
+ #include <vips/vips.h>
+-#include <vips/internal.h>
+ 
+ #include "pconversion.h"
+ 
+@@ -103,9 +102,6 @@ vips_subsample_line_gen(VipsRegion *out_region,
+ 		VipsPel *q = VIPS_REGION_ADDR(out_region, le, y);
+ 		VipsPel *p;
+ 
+-		if (vips__worker_exit())
+-			return 0;
+-
+ 		/* Loop across the region, in owidth-sized pieces.
+ 		 */
+ 		for (x = le; x < ri; x += owidth) {
+@@ -169,9 +165,6 @@ vips_subsample_point_gen(VipsRegion *out_region,
+ 		VipsPel *q = VIPS_REGION_ADDR(out_region, le, y);
+ 		VipsPel *p;
+ 
+-		if (vips__worker_exit())
+-			return 0;
+-
+ 		for (x = le; x < ri; x++) {
+ 			s.left = x * subsample->xfac;
+ 			s.top = y * subsample->yfac;
+diff --git a/libvips/include/vips/internal.h b/libvips/include/vips/internal.h
+index 92b8ac0ea1..16af18c826 100644
+--- a/libvips/include/vips/internal.h
++++ b/libvips/include/vips/internal.h
+@@ -166,7 +166,6 @@ void vips_threadset_free(VipsThreadset *set);
+ 
+ VIPS_API void vips__worker_lock(GMutex *mutex);
+ VIPS_API void vips__worker_cond_wait(GCond *cond, GMutex *mutex);
+-gboolean vips__worker_exit(void);
+ 
+ void vips__cache_init(void);
+ 
+diff --git a/libvips/include/vips/private.h b/libvips/include/vips/private.h
+index 279c21c997..b65dad99d8 100644
+--- a/libvips/include/vips/private.h
++++ b/libvips/include/vips/private.h
+@@ -126,8 +126,6 @@ VipsBuffer *vips_buffer_unref_ref(VipsBuffer *buffer,
+ VIPS_API
+ void vips_buffer_print(VipsBuffer *buffer);
+ 
+-void vips__render_shutdown(void);
+-
+ /* Sections of region.h that are private to VIPS.
+  */
+ 
+diff --git a/libvips/iofuncs/init.c b/libvips/iofuncs/init.c
+index df88a56edf..00d59d63b4 100644
+--- a/libvips/iofuncs/init.c
++++ b/libvips/iofuncs/init.c
+@@ -450,7 +450,6 @@ vips_init(const char *argv0)
+ 	extern GType vips_system_get_type(void);
+ 	extern GType write_thread_state_get_type(void);
+ 	extern GType sink_memory_thread_state_get_type(void);
+-	extern GType render_thread_state_get_type(void);
+ 	extern GType vips_source_get_type(void);
+ 	extern GType vips_source_custom_get_type(void);
+ 	extern GType vips_target_get_type(void);
+@@ -566,7 +565,6 @@ vips_init(const char *argv0)
+ 	(void) vips_region_get_type();
+ 	(void) write_thread_state_get_type();
+ 	(void) sink_memory_thread_state_get_type();
+-	(void) render_thread_state_get_type();
+ 	(void) vips_source_get_type();
+ 	(void) vips_source_custom_get_type();
+ 	(void) vips_target_get_type();
+@@ -751,7 +749,6 @@ vips_shutdown(void)
+ 			vips__thread_gate_stop("init: main");
+ 	}
+ 
+-	vips__render_shutdown();
+ 	vips_thread_shutdown();
+ 	vips__thread_profile_stop();
+ 	vips__threadpool_shutdown();
+diff --git a/libvips/iofuncs/sinkscreen.c b/libvips/iofuncs/sinkscreen.c
+index 65837fc5da..b7e507fc1b 100644
+--- a/libvips/iofuncs/sinkscreen.c
++++ b/libvips/iofuncs/sinkscreen.c
+@@ -89,11 +89,6 @@ typedef struct {
+ 	 */
+ 	gboolean painted;
+ 
+-	/* The tile is on the dirty list. This saves us having to search the
+-	 * dirty list all the time.
+-	 */
+-	gboolean dirty;
+-
+ 	/* Time of last use, for LRU flush
+ 	 */
+ 	int ticks;
+@@ -121,17 +116,6 @@ typedef struct _Render {
+ 	int tile_width;			/* Tile size */
+ 	int tile_height;
+ 	int max_tiles;		   /* Maximum number of tiles */
+-	int priority;		   /* Larger numbers done sooner */
+-	VipsSinkNotify notify; /* Tell caller about paints here */
+-	void *a;
+-
+-	/* This render has it's own threadpool and is not on the shared list.
+-	 *
+-	 * This private threadpool needs a semaphore to wait on for dirty tiles
+-	 * to arrive.
+-	 */
+-	gboolean private_threadpool;
+-	VipsSemaphore dirty_sem;
+ 
+ 	/* Lock here before reading or modifying the tile structure.
+ 	 */
+@@ -143,91 +127,11 @@ typedef struct _Render {
+ 	int ntiles;				/* Number of tiles */
+ 	int ticks;				/* Inc. on each access ... used for LRU */
+ 
+-	/* List of dirty tiles. Most recent at the front.
+-	 */
+-	GSList *dirty;
+-
+-	/* Hash of tiles with positions. Tiles can be dirty or painted.
++	/* Hash of tiles with positions. Tiles can be painted.
+ 	 */
+ 	GHashTable *tiles;
+-
+-	/* A shutdown flag. If ->out or ->mask close, we must no longer do
+-	 * anything to them until we shut down too.
+-	 */
+-	gboolean shutdown;
+ } Render;
+ 
+-/* Our per-thread state.
+- */
+-typedef struct _RenderThreadState {
+-	VipsThreadState parent_object;
+-
+-	/* The tile that should be calculated.
+-	 */
+-	Tile *tile;
+-} RenderThreadState;
+-
+-typedef struct _RenderThreadStateClass {
+-	VipsThreadStateClass parent_class;
+-
+-} RenderThreadStateClass;
+-
+-G_DEFINE_TYPE(RenderThreadState, render_thread_state, VIPS_TYPE_THREAD_STATE);
+-
+-/* The BG thread which sits waiting to do some calculations, and the semaphore
+- * it waits on holding the number of renders with dirty tiles.
+- */
+-static GThread *render_thread = NULL;
+-
+-/* Set this to ask the render thread to quit.
+- */
+-static gboolean render_kill = FALSE;
+-
+-/* All the renders with dirty tiles, and a semaphore that the bg render thread
+- * waits on.
+- */
+-static GMutex render_dirty_lock;
+-static GSList *render_dirty_all = NULL;
+-static VipsSemaphore n_render_dirty_sem;
+-
+-/* Set this to make the bg thread stop and reschedule.
+- */
+-static gboolean render_reschedule = FALSE;
+-
+-/* Set this GPrivate to link a thread back to its Render struct.
+- */
+-static GPrivate render_worker_key;
+-
+-gboolean
+-vips__worker_exit(void)
+-{
+-	Render *render = (Render *) g_private_get(&render_worker_key);
+-
+-	return render && render->shutdown;
+-}
+-
+-static void
+-render_thread_state_class_init(RenderThreadStateClass *class)
+-{
+-	VipsObjectClass *object_class = VIPS_OBJECT_CLASS(class);
+-
+-	object_class->nickname = "renderthreadstate";
+-	object_class->description = _("per-thread state for render");
+-}
+-
+-static void
+-render_thread_state_init(RenderThreadState *state)
+-{
+-	state->tile = NULL;
+-}
+-
+-static VipsThreadState *
+-render_thread_state_new(VipsImage *im, void *a)
+-{
+-	return VIPS_THREAD_STATE(vips_object_new(render_thread_state_get_type(),
+-		vips_thread_state_set, im, a));
+-}
+-
+ static void *
+ tile_free(Tile *tile, void *a, void *b)
+ {
+@@ -250,29 +154,14 @@ render_free(Render *render)
+ 	g_assert(render->ref_count == 0);
+ #endif
+ 
+-	g_mutex_lock(&render_dirty_lock);
+-	if (g_slist_find(render_dirty_all, render)) {
+-		render_dirty_all = g_slist_remove(render_dirty_all, render);
+-
+-		/* We don't need to adjust the semaphore: if it's too high,
+-		 * the render thread will just loop and decrement next time
+-		 * render_dirty_all is NULL.
+-		 */
+-	}
+-	g_mutex_unlock(&render_dirty_lock);
+-
+ #if !GLIB_CHECK_VERSION(2, 58, 0)
+ 	g_mutex_clear(&render->ref_count_lock);
+ #endif
+ 	g_mutex_clear(&render->lock);
+ 
+-	if (render->private_threadpool)
+-		vips_semaphore_destroy(&render->dirty_sem);
+-
+ 	vips_slist_map2(render->all, (VipsSListMap2Fn) tile_free, NULL, NULL);
+ 	VIPS_FREEF(g_slist_free, render->all);
+ 	render->ntiles = 0;
+-	VIPS_FREEF(g_slist_free, render->dirty);
+ 	VIPS_FREEF(g_hash_table_destroy, render->tiles);
+ 
+ 	VIPS_UNREF(render->in);
+@@ -327,204 +216,6 @@ render_unref(Render *render)
+ 	return 0;
+ }
+ 
+-/* Get the next tile to paint off the dirty list.
+- */
+-static Tile *
+-render_tile_dirty_get(Render *render)
+-{
+-	Tile *tile;
+-
+-	if (!render->dirty)
+-		tile = NULL;
+-	else {
+-		tile = (Tile *) render->dirty->data;
+-		g_assert(tile->dirty);
+-		render->dirty = g_slist_remove(render->dirty, tile);
+-		tile->dirty = FALSE;
+-	}
+-
+-	return tile;
+-}
+-
+-/* Pick a dirty tile to reuse. We could potentially get the tile that
+- * render_work() is working on in the background :-( but I don't think we'll
+- * get a crash, just a mis-paint. It should be vanishingly impossible anyway.
+- */
+-static Tile *
+-render_tile_dirty_reuse(Render *render)
+-{
+-	Tile *tile;
+-
+-	if (!render->dirty)
+-		tile = NULL;
+-	else {
+-		tile = (Tile *) g_slist_last(render->dirty)->data;
+-		render->dirty = g_slist_remove(render->dirty, tile);
+-		g_assert(tile->dirty);
+-		tile->dirty = FALSE;
+-
+-		VIPS_DEBUG_MSG("render_tile_get_dirty_reuse: reusing dirty %p\n", tile);
+-	}
+-
+-	return tile;
+-}
+-
+-/* Add a tile to the dirty list.
+- */
+-static void
+-tile_dirty_set(Tile *tile)
+-{
+-	Render *render = tile->render;
+-
+-	if (!tile->dirty) {
+-		g_assert(!g_slist_find(render->dirty, tile));
+-		render->dirty = g_slist_prepend(render->dirty, tile);
+-		tile->dirty = TRUE;
+-		tile->painted = FALSE;
+-	}
+-	else
+-		g_assert(g_slist_find(render->dirty, tile));
+-}
+-
+-/* Bump a tile to the front of the dirty list, if it's there.
+- */
+-static void
+-tile_dirty_bump(Tile *tile)
+-{
+-	Render *render = tile->render;
+-
+-	if (tile->dirty) {
+-		g_assert(g_slist_find(render->dirty, tile));
+-
+-		render->dirty = g_slist_remove(render->dirty, tile);
+-		render->dirty = g_slist_prepend(render->dirty, tile);
+-	}
+-	else
+-		g_assert(!g_slist_find(render->dirty, tile));
+-}
+-
+-static int
+-render_allocate(VipsThreadState *state, void *a, gboolean *stop)
+-{
+-	Render *render = (Render *) a;
+-	RenderThreadState *rstate = (RenderThreadState *) state;
+-
+-	Tile *tile;
+-
+-	g_mutex_lock(&render->lock);
+-
+-	if (render_reschedule ||
+-		!(tile = render_tile_dirty_get(render))) {
+-		VIPS_DEBUG_MSG_GREEN("render_allocate: stopping\n");
+-		*stop = TRUE;
+-		rstate->tile = NULL;
+-	}
+-	else
+-		rstate->tile = tile;
+-
+-	g_mutex_unlock(&render->lock);
+-
+-	return 0;
+-}
+-
+-static int
+-render_work(VipsThreadState *state, void *a)
+-{
+-	Render *render = (Render *) a;
+-	RenderThreadState *rstate = (RenderThreadState *) state;
+-	Tile *tile = rstate->tile;
+-
+-	g_assert(tile);
+-
+-	VIPS_DEBUG_MSG("calculating tile %p %dx%d\n",
+-		tile, tile->area.left, tile->area.top);
+-
+-	/* vips__worker_exit() uses this to find the render to check for
+-	 * shutdown.
+-	 */
+-	g_private_set(&render_worker_key, render);
+-
+-	if (vips_region_prepare_to(state->reg, tile->region,
+-			&tile->area, tile->area.left, tile->area.top)) {
+-		VIPS_DEBUG_MSG_RED("render_work: vips_region_prepare_to() failed: %s\n",
+-			vips_error_buffer());
+-		g_private_set(&render_worker_key, NULL);
+-		return -1;
+-	}
+-	tile->painted = TRUE;
+-
+-	if (!render->shutdown &&
+-		render->notify)
+-		render->notify(render->out, &tile->area, render->a);
+-
+-	g_private_set(&render_worker_key, NULL);
+-
+-	return 0;
+-}
+-
+-static void render_dirty_put(Render *render);
+-
+-/* Called from vips_shutdown().
+- */
+-void
+-vips__render_shutdown(void)
+-{
+-	/* We may come here without having inited.
+-	 */
+-	if (render_thread) {
+-		g_mutex_lock(&render_dirty_lock);
+-
+-		GThread *thread;
+-
+-		thread = render_thread;
+-		render_reschedule = TRUE;
+-		render_kill = TRUE;
+-
+-		g_mutex_unlock(&render_dirty_lock);
+-
+-		vips_semaphore_up(&n_render_dirty_sem);
+-
+-		(void) g_thread_join(thread);
+-
+-		vips_semaphore_destroy(&n_render_dirty_sem);
+-	}
+-}
+-
+-static int
+-render_dirty_sort(Render *a, Render *b, void *user_data)
+-{
+-	return b->priority - a->priority;
+-}
+-
+-/* Add to the jobs list, if it has work to be done.
+- */
+-static void
+-render_dirty_put(Render *render)
+-{
+-	if (render->private_threadpool)
+-		// set our private renderer going
+-		vips_semaphore_up(&render->dirty_sem);
+-	else {
+-		// add to the worklist for thwe global renderer
+-		g_mutex_lock(&render_dirty_lock);
+-
+-		if (render->dirty) {
+-			if (!g_slist_find(render_dirty_all, render)) {
+-				render_dirty_all = g_slist_prepend(render_dirty_all, render);
+-				render_dirty_all = g_slist_sort(render_dirty_all,
+-					(GCompareFunc) render_dirty_sort);
+-
+-				/* Tell the bg render thread we have one more dirty
+-				 * render on there.
+-				 */
+-				vips_semaphore_up(&n_render_dirty_sem);
+-			}
+-		}
+-
+-		g_mutex_unlock(&render_dirty_lock);
+-	}
+-}
+-
+ static guint
+ tile_hash(gconstpointer key)
+ {
+@@ -551,36 +242,13 @@ render_close_cb(VipsImage *image, Render *render)
+ {
+ 	VIPS_DEBUG_MSG_AMBER("render_close_cb\n");
+ 
+-	/* The output image or mask are closing. This render will stick
+-	 * around for a while, since threads can still be running, but it
+-	 * must no longer reference ->out or ->mask (for example, invalidating
+-	 * them).
+-	 */
+-	render->shutdown = TRUE;
+-
+-	if (render->private_threadpool) {
+-		/* Nudge the bg thread (if any) for this pool.
+-		 */
+-		VIPS_DEBUG_MSG_GREEN("render_close_cb: nudge private worker\n");
+-		vips_semaphore_up(&render->dirty_sem);
+-	}
+-	else {
+-		/* If this render is being worked on, we want to jog the bg thread,
+-		 * make it drop it's ref and think again.
+-		 */
+-		VIPS_DEBUG_MSG_GREEN("render_close_cb: reschedule\n");
+-		render_reschedule = TRUE;
+-	}
+-
+ 	render_unref(render);
+ }
+ 
+ static Render *
+ render_new(VipsImage *in, VipsImage *out, VipsImage *mask,
+ 	int tile_width, int tile_height,
+-	int max_tiles,
+-	int priority,
+-	VipsSinkNotify notify, void *a)
++	int max_tiles)
+ {
+ 	Render *render;
+ 
+@@ -607,14 +275,6 @@ render_new(VipsImage *in, VipsImage *out, VipsImage *mask,
+ 	render->tile_width = tile_width;
+ 	render->tile_height = tile_height;
+ 	render->max_tiles = max_tiles;
+-	render->priority = priority;
+-	render->notify = notify;
+-	render->a = a;
+-
+-	if (render->priority < 0) {
+-		render->private_threadpool = TRUE;
+-		vips_semaphore_init(&render->dirty_sem, 0, "dirty_sem");
+-	}
+ 
+ 	g_mutex_init(&render->lock);
+ 
+@@ -624,10 +284,6 @@ render_new(VipsImage *in, VipsImage *out, VipsImage *mask,
+ 
+ 	render->tiles = g_hash_table_new(tile_hash, tile_equal);
+ 
+-	render->dirty = NULL;
+-
+-	render->shutdown = FALSE;
+-
+ 	/* Both out and mask must close before we can free the render.
+ 	 */
+ 	g_signal_connect(out, "close", G_CALLBACK(render_close_cb), render);
+@@ -669,7 +325,6 @@ tile_new(Render *render)
+ 	tile->area.height = render->tile_height;
+ 	tile->region = NULL;
+ 	tile->painted = FALSE;
+-	tile->dirty = FALSE;
+ 	tile->ticks = render->ticks;
+ 
+ 	if (!(tile->region = vips_region_new(render->in))) {
+@@ -733,7 +388,7 @@ render_tile_move(Tile *tile, VipsRect *area)
+ 	}
+ }
+ 
+-/* We've looked at a tile ... bump to end of LRU and front of dirty.
++/* We've looked at a tile ... bump to end of LRU.
+  */
+ static void
+ tile_touch(Tile *tile)
+@@ -742,7 +397,6 @@ tile_touch(Tile *tile)
+ 
+ 	tile->ticks = render->ticks;
+ 	render->ticks += 1;
+-	tile_dirty_bump(tile);
+ }
+ 
+ /* Queue a tile for calculation.
+@@ -752,42 +406,31 @@ tile_queue(Tile *tile, VipsRegion *reg)
+ {
+ 	Render *render = tile->render;
+ 
+-	VIPS_DEBUG_MSG("tile_queue: adding tile %p %dx%d to dirty\n",
++	VIPS_DEBUG_MSG("tile_queue: queue tile %p %dx%d for calculation\n",
+ 		tile, tile->area.left, tile->area.top);
+ 
+ 	tile->painted = FALSE;
+ 	tile_touch(tile);
+ 
+-	if (render->notify) {
+-		/* Add to the list of renders with dirty tiles. The bg
+-		 * thread will pick it up and paint it. It can be already on
+-		 * the dirty list.
+-		 */
+-		tile_dirty_set(tile);
+-		render_dirty_put(render);
+-	}
+-	else {
+-		/* no notify ... paint the tile ourselves
+-		 * synchronously. No need to notify the client since they'll
+-		 * never see black tiles.
+-		 */
+-		VIPS_DEBUG_MSG("tile_queue: painting tile %p %dx%d synchronously\n",
+-			tile, tile->area.left, tile->area.top);
++	/* Paint the tile synchronously. No need to notify the
++	 * client since they'll never see black tiles.
++	 */
++	VIPS_DEBUG_MSG("tile_queue: painting tile %p %dx%d synchronously\n",
++		tile, tile->area.left, tile->area.top);
+ 
+-		/* While we're computing, let other threads use the cache.
+-		 * This tile won't get pulled out from under us since it's not
+-		 * marked as "painted", and it's not on the dirty list.
+-		 */
+-		g_mutex_unlock(&render->lock);
++	/* While we're computing, let other threads use the cache.
++	 * This tile won't get pulled out from under us since it's not
++	 * marked as "painted".
++	 */
++	g_mutex_unlock(&render->lock);
+ 
+-		if (vips_region_prepare_to(reg, tile->region,
+-				&tile->area, tile->area.left, tile->area.top))
+-			VIPS_DEBUG_MSG_RED("tile_queue: prepare failed\n");
++	if (vips_region_prepare_to(reg, tile->region,
++			&tile->area, tile->area.left, tile->area.top))
++		VIPS_DEBUG_MSG_RED("tile_queue: prepare failed\n");
+ 
+-		g_mutex_lock(&render->lock);
++	g_mutex_lock(&render->lock);
+ 
+-		tile->painted = TRUE;
+-	}
++	tile->painted = TRUE;
+ }
+ 
+ static void
+@@ -847,11 +490,9 @@ render_tile_request(Render *render, VipsRegion *reg, VipsRect *area)
+ 		tile_queue(tile, reg);
+ 	}
+ 	else {
+-		/* Need to reuse a tile. Try for an old painted tile first,
+-		 * then if that fails, reuse a dirty tile.
++		/* Need to reuse a tile. Try an old painted tile.
+ 		 */
+-		if (!(tile = render_tile_get_painted(render)) &&
+-			!(tile = render_tile_dirty_reuse(render))) {
++		if (!(tile = render_tile_get_painted(render))) {
+ 			VIPS_DEBUG_MSG("render_tile_request: no tiles to reuse\n");
+ 			return NULL;
+ 		}
+@@ -1003,155 +644,6 @@ mask_fill(VipsRegion *out, void *seq, void *a, void *b, gboolean *stop)
+ 	return 0;
+ }
+ 
+-/* Get the first render with dirty tiles.
+- */
+-static Render *
+-render_dirty_get(void)
+-{
+-	Render *render;
+-
+-	/* Wait for a render with dirty tiles.
+-	 */
+-	vips_semaphore_down(&n_render_dirty_sem);
+-
+-	g_mutex_lock(&render_dirty_lock);
+-
+-	/* Just take the head of the jobs list ... we sort when we add.
+-	 */
+-	render = NULL;
+-	if (render_dirty_all) {
+-		render = (Render *) render_dirty_all->data;
+-
+-		/* Ref the render to make sure it can't die while we're
+-		 * working on it.
+-		 */
+-		render_ref(render);
+-
+-		render_dirty_all = g_slist_remove(render_dirty_all, render);
+-	}
+-
+-	g_mutex_unlock(&render_dirty_lock);
+-
+-	return render;
+-}
+-
+-/* Loop for the background render manager thread.
+- */
+-static void *
+-render_thread_main(void *client)
+-{
+-	Render *render;
+-
+-	while (!render_kill) {
+-		VIPS_DEBUG_MSG_GREEN("render_thread_main: threadpool start\n");
+-
+-		render_reschedule = FALSE;
+-
+-		if ((render = render_dirty_get())) {
+-			if (vips_threadpool_run(render->in,
+-					render_thread_state_new,
+-					render_allocate,
+-					render_work,
+-					NULL,
+-					render))
+-				VIPS_DEBUG_MSG_RED("render_thread_main: "
+-								   "threadpool_run failed\n");
+-
+-			VIPS_DEBUG_MSG_GREEN("render_thread_main: threadpool return\n");
+-
+-			/* Add back to the jobs list, if we need to.
+-			 */
+-			render_dirty_put(render);
+-
+-			/* _get() does a ref to make sure we keep the render
+-			 * alive during processing ... unref before we loop.
+-			 * This can kill off the render.
+-			 */
+-			render_unref(render);
+-		}
+-	}
+-
+-	/* We are exiting, so render_thread must now be NULL.
+-	 */
+-	render_thread = NULL;
+-
+-	return NULL;
+-}
+-
+-static int
+-render_allocate_private(VipsThreadState *state, void *a, gboolean *stop)
+-{
+-	Render *render = (Render *) a;
+-	RenderThreadState *rstate = (RenderThreadState *) state;
+-
+-	/* Wait for a dirty tile to arrive on this render.
+-	 */
+-	vips_semaphore_down(&render->dirty_sem);
+-
+-	/* The mask or image is closing, we must exit.
+-	 */
+-	if (render->shutdown) {
+-		*stop = TRUE;
+-		rstate->tile = NULL;
+-		return 0;
+-	}
+-
+-	/* Get the dirty tile, if any.
+-	 */
+-	g_mutex_lock(&render->lock);
+-	rstate->tile = render_tile_dirty_get(render);
+-	VIPS_DEBUG_MSG_AMBER("render_allocate_private: allocated tile %p\n",
+-		rstate->tile);
+-	g_mutex_unlock(&render->lock);
+-
+-	return 0;
+-}
+-
+-/* A worker for a private render.
+- */
+-static void
+-render_work_private(void *data, void *null)
+-{
+-	VIPS_DEBUG_MSG_AMBER("render_work_private: start\n");
+-
+-	Render *render = (Render *) data;
+-
+-	/* vips__worker_exit() uses this to find the render to check for
+-	 * shutdown.
+-	 */
+-	g_private_set(&render_worker_key, render);
+-
+-	// this will quit on ->shutdown == TRUE
+-	if (vips_threadpool_run(render->in,
+-			render_thread_state_new,
+-			render_allocate_private,
+-			render_work,
+-			NULL,
+-			render))
+-		VIPS_DEBUG_MSG_RED("render_work_private: threadpool_run failed\n");
+-
+-	g_private_set(&render_worker_key, NULL);
+-
+-	render_unref(render);
+-
+-	VIPS_DEBUG_MSG_AMBER("render_work_private: stop\n");
+-}
+-
+-static void *
+-vips__sink_screen_once(void *data)
+-{
+-	g_assert(!render_thread);
+-
+-	vips_semaphore_init(&n_render_dirty_sem, 0, "n_render_dirty");
+-
+-	/* Don't use vips_thread_execute(), since this thread will only be
+-	 * ended by vips_shutdown, and that isn't always called.
+-	 */
+-	render_thread = vips_g_thread_new("sink_screen", render_thread_main, NULL);
+-
+-	return NULL;
+-}
+-
+ /**
+  * vips_sink_screen: (method)
+  * @in: input image
+@@ -1160,41 +652,19 @@ vips__sink_screen_once(void *data)
+  * @tile_width: tile width
+  * @tile_height: tile height
+  * @max_tiles: maximum tiles to cache
+- * @priority: rendering priority
+- * @notify_fn: (scope call) (closure a) (nullable): pixels are ready notification callback
+- * @a: (nullable): client data for callback
+  *
+  * This operation renders @in in the background, making pixels available
+- * on @out as they are calculated. The @notify_fn callback is run every
+- * time a new set of pixels are available. Calculated pixels are kept in
++ * on @out as they are calculated. Calculated pixels are kept in
+  * a cache with tiles sized @tile_width by @tile_height pixels and with at
+  * most @max_tiles tiles.  If @max_tiles is -1, the cache is of unlimited
+  * size (up to the maximum image * size). The @mask image is a one-band
+  * uchar image and has 255 for pixels which are currently in cache and 0
+  * for uncalculated pixels.
+- *
+- * Renders with a positive priority are assumed to be large, high-priority,
+- * foreground images. Although there can be many of these, only one is ever
+- * active, to avoid overcommitting threads.
+- *
+- * Renders with a negative priority are assumed to be small, thumbnail images,
+- * consisting of a single tile. Single tile images are effectively
+- * single-threaded, so all these renders are evaluated together.
+- *
++
+  * Calls to [method@Region.prepare] on @out return immediately and hold
+  * whatever is currently in cache for that [struct@Rect] (check @mask to see
+  * which parts of the [struct@Rect] are valid). Any pixels in the [struct@Rect]
+- * which are not in cache are added to a queue, and the @notify_fn
+- * callback will trigger when those pixels are ready.
+- *
+- * The @notify_fn callback is run from one of the background threads. In the
+- * callback you need to somehow send a message to the main thread that the
+- * pixels are ready. In a glib-based application, this is easily done with
+- * [func@GLib.idle_add].
+- *
+- * If @notify_fn is `NULL` then [method@Image.sink_screen] runs synchronously.
+- * [method@Region.prepare] on @out will always block until the pixels have been
+- * calculated.
++ * which are not in cache are added to a queue.
+  *
+  * ::: seealso
+  *     [method@Image.tilecache], [method@Region.prepare],
+@@ -1209,11 +679,11 @@ vips_sink_screen(VipsImage *in, VipsImage *out, VipsImage *mask,
+ 	int priority,
+ 	VipsSinkNotify notify_fn, void *a)
+ {
+-	static GOnce once = G_ONCE_INIT;
+-
+ 	Render *render;
+ 
+-	VIPS_ONCE(&once, vips__sink_screen_once, NULL);
++	(void) priority;
++	(void) notify_fn;
++	(void) a;
+ 
+ 	if (tile_width <= 0 || tile_height <= 0 ||
+ 		max_tiles < -1) {
+@@ -1236,16 +706,11 @@ vips_sink_screen(VipsImage *in, VipsImage *out, VipsImage *mask,
+ 	}
+ 
+ 	if (!(render = render_new(in, out, mask,
+-			  tile_width, tile_height, max_tiles, priority, notify_fn, a)))
++			  tile_width, tile_height, max_tiles)))
+ 		return -1;
+ 
+ 	VIPS_DEBUG_MSG("vips_sink_screen: max = %d, %p\n", max_tiles, render);
+ 
+-	if (render->private_threadpool) {
+-		render_ref(render);
+-		vips_thread_execute("private threadpool", render_work_private, render);
+-	}
+-
+ 	if (vips_image_generate(out,
+ 			vips_start_one, image_fill, vips_stop_one, in, render))
+ 		return -1;
+@@ -1270,13 +735,5 @@ vips__print_renders(void)
+ 	}
+ #endif /*VIPS_DEBUG_AMBER*/
+ 
+-	g_mutex_lock(&render_dirty_lock);
+-
+-	n_leaks += g_slist_length(render_dirty_all);
+-	if (render_dirty_all)
+-		printf("dirty renders\n");
+-
+-	g_mutex_unlock(&render_dirty_lock);
+-
+ 	return n_leaks;
+ }
+
+From f518dedfb63b5c671aab4cfc9c8f515ecf01a30a Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Tue, 23 Aug 2022 10:45:02 +0200
+Subject: [PATCH 04/14] Disable NLS
+
+Upstream-Status: Inappropriate [disable feature]
+This patch is just for our convenience.
+---
+ meson.build | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 6cb6fde0a7..ec8c4b7328 100644
+--- a/meson.build
++++ b/meson.build
+@@ -651,20 +651,6 @@ gettext_domain = 'vips@0@.@1@'.format(version_major, version_minor)
+ cfg_var.set_quoted('GETTEXT_PACKAGE', gettext_domain)
+ cfg_var.set_quoted('VIPS_PREFIX', prefix_dir)
+ cfg_var.set_quoted('VIPS_LIBDIR', lib_dir)
+-if cc.has_function('ngettext')
+-    cfg_var.set('ENABLE_NLS', true)
+-    have_bind_textdomain_codeset = cc.has_function('bind_textdomain_codeset')
+-else
+-    libintl_dep = cc.find_library('intl', required: false)
+-    if libintl_dep.found()
+-        other_deps += libintl_dep
+-        cfg_var.set('ENABLE_NLS', true)
+-        have_bind_textdomain_codeset = cc.has_function('bind_textdomain_codeset', prefix: '#include <libintl.h>', dependencies: libintl_dep)
+-    else
+-        have_bind_textdomain_codeset = false
+-    endif
+-endif
+-cfg_var.set('HAVE_BIND_TEXTDOMAIN_CODESET', have_bind_textdomain_codeset)
+ 
+ if host_os == 'darwin'
+     profile_dir = '/Library/ColorSync/Profiles'
+
+From 5fe79ebb81068485c59d764550026045c5c1f94b Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Sun, 14 Aug 2022 12:12:00 +0200
+Subject: [PATCH 05/14] Disable concurrency in jxl{load,save}
+
+Upstream-Status: Inappropriate [Emscripten specific]
+---
+ libvips/foreign/jxlload.c | 2 +-
+ libvips/foreign/jxlsave.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/libvips/foreign/jxlload.c b/libvips/foreign/jxlload.c
+index c655b1eb4b..8ff653fdf2 100644
+--- a/libvips/foreign/jxlload.c
++++ b/libvips/foreign/jxlload.c
+@@ -196,7 +196,7 @@ vips_foreign_load_jxl_build(VipsObject *object)
+ 	printf("vips_foreign_load_jxl_build:\n");
+ #endif /*DEBUG*/
+ 
+-	jxl->runner = JxlThreadParallelRunnerCreate(NULL, vips_concurrency_get());
++	jxl->runner = JxlThreadParallelRunnerCreate(NULL, 0);
+ 	jxl->decoder = JxlDecoderCreate(NULL);
+ 
+ 	if (JxlDecoderSetParallelRunner(jxl->decoder,
+diff --git a/libvips/foreign/jxlsave.c b/libvips/foreign/jxlsave.c
+index 551054e035..0223b42be2 100644
+--- a/libvips/foreign/jxlsave.c
++++ b/libvips/foreign/jxlsave.c
+@@ -975,7 +975,7 @@ vips_foreign_save_jxl_build(VipsObject *object)
+ 	if (jxl->distance == 0)
+ 		jxl->lossless = TRUE;
+ 
+-	jxl->runner = JxlThreadParallelRunnerCreate(NULL, vips_concurrency_get());
++	jxl->runner = JxlThreadParallelRunnerCreate(NULL, 0);
+ 	jxl->encoder = JxlEncoderCreate(NULL);
+ 
+ 	if (JxlEncoderSetParallelRunner(jxl->encoder,
+
+From 0f6ad23ba4ff953ec76c3f692a924ec12639c49a Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Mon, 24 Oct 2022 16:21:22 +0200
+Subject: [PATCH 06/14] Skip unsupported Wasm tests
+
+Upstream-Status: Inappropriate [Emscripten specific]
+---
+ test/test-suite/test_connection.py |  2 +-
+ test/test-suite/test_foreign.py    |  2 +-
+ test/test_formats.sh               | 11 ++++++-----
+ 3 files changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/test/test-suite/test_connection.py b/test/test-suite/test_connection.py
+index a23c7aa191..06caae5d2b 100644
+--- a/test/test-suite/test_connection.py
++++ b/test/test-suite/test_connection.py
+@@ -139,7 +139,7 @@ def test_connection_tiff(self):
+ 
+         assert (im - self.mono).abs().max() == 0
+ 
+-    @skip_if_no("dzsave_target")
++    @pytest.mark.skip # Skipped on Wasm
+     def test_connection_dz(self):
+         x = pyvips.Target.new_to_memory()
+         self.mono.dzsave_target(x)
+diff --git a/test/test-suite/test_foreign.py b/test/test-suite/test_foreign.py
+index 754674e2c9..cc24ba00da 100644
+--- a/test/test-suite/test_foreign.py
++++ b/test/test-suite/test_foreign.py
+@@ -1564,7 +1564,7 @@ def hdr_valid(im):
+         self.save_buffer_tempfile("radsave_buffer", ".hdr",
+                                   rad, max_diff=0)
+ 
+-    @skip_if_no("dzsave")
++    @pytest.mark.skip # Skipped on Wasm
+     def test_dzsave(self):
+         # dzsave is hard to test, there are so many options
+         # test each option separately and hope they all function together
+diff --git a/test/test_formats.sh b/test/test_formats.sh
+index 6abe6425bf..7042456d5b 100755
+--- a/test/test_formats.sh
++++ b/test/test_formats.sh
+@@ -193,11 +193,12 @@ if test_supported matload; then
+ 	unset VIPS_BLOCK_UNTRUSTED
+ fi
+ 
+-if test_supported dzsave; then
+-	test_saver dzsave $image .zip
+-	test_saver copy $image .dz
+-	test_saver copy $image .dz[container=zip]
+-fi
++# Skipped on Wasm
++#if test_supported dzsave; then
++#	test_saver dzsave $image .zip
++#	test_saver copy $image .dz
++#	test_saver copy $image .dz[container=zip]
++#fi
+ 
+ if test_supported jp2kload; then
+ 	test_format $image jp2 20
+
+From 461c50588aca18ec780a834b16a17dd36002ebe9 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Mon, 22 Aug 2022 14:10:04 +0200
+Subject: [PATCH 07/14] Support shared modules on Emscripten
+
+---
+ libvips/meson.build | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/libvips/meson.build b/libvips/meson.build
+index 485874c737..6f4d26e4cc 100644
+--- a/libvips/meson.build
++++ b/libvips/meson.build
+@@ -73,12 +73,28 @@ if not modules_enabled
+     subdir_done()
+ endif
+ 
++# For shared modules on Emscripten:
++# - Use .wasm as shared module suffix
++# - Compile and link with -sSIDE_MODULE=2
++# - Ensure g_module_check_init is not DCE'd
++module_suffix = []
++module_c_args = []
++module_link_args = []
++if host_os == 'emscripten'
++    module_suffix = 'wasm'
++    module_c_args = '-sSIDE_MODULE=2'
++    module_link_args = [module_c_args, '-sEXPORTED_FUNCTIONS=_g_module_check_init']
++endif
++
+ if magick_module
+     shared_module('vips-magick',
+         'module/magick.c',
+         magick_module_sources,
+         magick_module_headers,
++        c_args: module_c_args,
++        link_args: module_link_args,
+         name_prefix: '',
++        name_suffix: module_suffix,
+         dependencies: [libvips_dep, magick_dep],
+         install: true,
+         install_dir: module_dir
+@@ -89,7 +105,10 @@ if libjxl_module
+     shared_module('vips-jxl',
+         'module/jxl.c',
+         jpeg_xl_module_sources,
++        c_args: module_c_args,
++        link_args: module_link_args,
+         name_prefix: '',
++        name_suffix: module_suffix,
+         dependencies: [libvips_dep, libjxl_dep, libjxl_threads_dep],
+         install: true,
+         install_dir: module_dir
+@@ -100,7 +119,10 @@ if libheif_module
+     shared_module('vips-heif',
+         'module/heif.c',
+         heif_module_sources,
++        c_args: module_c_args,
++        link_args: module_link_args,
+         name_prefix: '',
++        name_suffix: module_suffix,
+         dependencies: [libvips_dep, libheif_dep],
+         install: true,
+         install_dir: module_dir
+@@ -111,7 +133,10 @@ if libpoppler_module
+     shared_module('vips-poppler',
+         'module/poppler.c',
+         poppler_module_sources,
++        c_args: module_c_args,
++        link_args: module_link_args,
+         name_prefix: '',
++        name_suffix: module_suffix,
+         dependencies: [libvips_dep, libpoppler_dep, cairo_dep],
+         install: true,
+         install_dir: module_dir
+@@ -122,7 +147,10 @@ if openslide_module
+     shared_module('vips-openslide',
+         'module/openslide.c',
+         openslide_module_sources,
++        c_args: module_c_args,
++        link_args: module_link_args,
+         name_prefix: '',
++        name_suffix: module_suffix,
+         dependencies: [libvips_dep, openslide_dep],
+         install: true,
+         install_dir: module_dir
+@@ -133,7 +161,10 @@ if resvg_module
+     shared_module('vips-resvg',
+         'module/resvg.c',
+         resvg_module_sources,
++        c_args: module_c_args,
++        link_args: module_link_args,
+         name_prefix: '',
++        name_suffix: module_suffix,
+         dependencies: [libvips_dep, resvg_dep],
+         install: true,
+         install_dir: module_dir
+
+From 213c6f7c11d9c27e5cb2f842170a09c19642ad09 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Mon, 22 Aug 2022 19:33:06 +0200
+Subject: [PATCH 08/14] Apply GNU visibility arguments to shared modules
+
+---
+ libvips/meson.build | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/libvips/meson.build b/libvips/meson.build
+index 6f4d26e4cc..7752407cbf 100644
+--- a/libvips/meson.build
++++ b/libvips/meson.build
+@@ -96,6 +96,7 @@ if magick_module
+         name_prefix: '',
+         name_suffix: module_suffix,
+         dependencies: [libvips_dep, magick_dep],
++        gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+     )
+@@ -110,6 +111,7 @@ if libjxl_module
+         name_prefix: '',
+         name_suffix: module_suffix,
+         dependencies: [libvips_dep, libjxl_dep, libjxl_threads_dep],
++        gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+     )
+@@ -124,6 +126,7 @@ if libheif_module
+         name_prefix: '',
+         name_suffix: module_suffix,
+         dependencies: [libvips_dep, libheif_dep],
++        gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+     )
+@@ -138,6 +141,7 @@ if libpoppler_module
+         name_prefix: '',
+         name_suffix: module_suffix,
+         dependencies: [libvips_dep, libpoppler_dep, cairo_dep],
++        gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+     )
+@@ -152,6 +156,7 @@ if openslide_module
+         name_prefix: '',
+         name_suffix: module_suffix,
+         dependencies: [libvips_dep, openslide_dep],
++        gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+     )
+@@ -166,6 +171,7 @@ if resvg_module
+         name_prefix: '',
+         name_suffix: module_suffix,
+         dependencies: [libvips_dep, resvg_dep],
++        gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+     )
+
+From 133cf9421670f73f40158048e5625b349236d89c Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Mon, 22 Aug 2022 19:54:04 +0200
+Subject: [PATCH 09/14] Ensure shared modules are not linked against transitive
+ deps
+
+`EM_JS` (as used by libffi) is not supported in side modules,
+so try to avoid linking with that.
+
+Upstream-Status: Inappropriate [Emscripten specific]
+---
+ libvips/meson.build | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/libvips/meson.build b/libvips/meson.build
+index 7752407cbf..730b7dc896 100644
+--- a/libvips/meson.build
++++ b/libvips/meson.build
+@@ -86,6 +86,10 @@ if host_os == 'emscripten'
+     module_link_args = [module_c_args, '-sEXPORTED_FUNCTIONS=_g_module_check_init']
+ endif
+ 
++module_dep = declare_dependency(
++    dependencies: [gmodule_dep, config_dep, libvips_headers_dep]
++)
++
+ if magick_module
+     shared_module('vips-magick',
+         'module/magick.c',
+@@ -95,7 +99,7 @@ if magick_module
+         link_args: module_link_args,
+         name_prefix: '',
+         name_suffix: module_suffix,
+-        dependencies: [libvips_dep, magick_dep],
++        dependencies: [module_dep, magick_dep],
+         gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+@@ -110,7 +114,7 @@ if libjxl_module
+         link_args: module_link_args,
+         name_prefix: '',
+         name_suffix: module_suffix,
+-        dependencies: [libvips_dep, libjxl_dep, libjxl_threads_dep],
++        dependencies: [module_dep, libjxl_dep, libjxl_threads_dep],
+         gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+@@ -125,7 +129,7 @@ if libheif_module
+         link_args: module_link_args,
+         name_prefix: '',
+         name_suffix: module_suffix,
+-        dependencies: [libvips_dep, libheif_dep],
++        dependencies: [module_dep, libheif_dep],
+         gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+@@ -140,7 +144,7 @@ if libpoppler_module
+         link_args: module_link_args,
+         name_prefix: '',
+         name_suffix: module_suffix,
+-        dependencies: [libvips_dep, libpoppler_dep, cairo_dep],
++        dependencies: [module_dep, libpoppler_dep, cairo_dep],
+         gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+@@ -155,7 +159,7 @@ if openslide_module
+         link_args: module_link_args,
+         name_prefix: '',
+         name_suffix: module_suffix,
+-        dependencies: [libvips_dep, openslide_dep],
++        dependencies: [module_dep, openslide_dep],
+         gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+@@ -170,7 +174,7 @@ if resvg_module
+         link_args: module_link_args,
+         name_prefix: '',
+         name_suffix: module_suffix,
+-        dependencies: [libvips_dep, resvg_dep],
++        dependencies: [module_dep, resvg_dep],
+         gnu_symbol_visibility: 'hidden',
+         install: true,
+         install_dir: module_dir
+
+From 6804ce3c3343f125255da6baa640819ae778df9f Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Sun, 28 Aug 2022 11:32:25 +0200
+Subject: [PATCH 10/14] Load modules from Module.dynamicLibraries instead
+
+Upstream-Status: Inappropriate [Emscripten specific]
+---
+ libvips/iofuncs/init.c | 42 ++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/libvips/iofuncs/init.c b/libvips/iofuncs/init.c
+index 00d59d63b4..a272abb2fe 100644
+--- a/libvips/iofuncs/init.c
++++ b/libvips/iofuncs/init.c
+@@ -326,6 +326,42 @@ vips_load_plugins(const char *fmt, ...)
+ 
+ 	g_dir_close(dir);
+ }
++
++#ifdef __EMSCRIPTEN__
++extern char **_emscripten_get_dynamic_libraries_js();
++
++static void
++vips_load_modules_wasm()
++{
++	char **libs, **p;
++
++	/* Do nothing if modules aren't supported.
++	 */
++	if (!g_module_supported())
++		return;
++
++	libs = _emscripten_get_dynamic_libraries_js();
++
++	for (p = libs; *p; p++) {
++		GModule *module;
++
++		g_info("loading \"%s\"", *p);
++
++		module = g_module_open(*p, G_MODULE_BIND_LAZY);
++		if (module)
++			/* Modules will almost certainly create new
++			 * types, so they can't be unloaded.
++			 */
++			g_module_make_resident(module);
++		else
++			g_warning(_("unable to load \"%s\" -- %s"),
++				*p, g_module_error());
++		g_free(*p);
++	}
++
++	g_free(libs);
++}
++#endif /*__EMSCRIPTEN__*/
+ #endif /*ENABLE_MODULES*/
+ 
+ /* Install this log handler to hide warning messages.
+@@ -602,6 +638,11 @@ vips_init(const char *argv0)
+ 	vips_g_input_stream_get_type();
+ 
+ #ifdef ENABLE_MODULES
++#ifdef __EMSCRIPTEN__
++	/* Load any vips8 modules from the Module.dynamicLibraries array.
++	 */
++	vips_load_modules_wasm();
++#else  /*!__EMSCRIPTEN__*/
+ 	/* Load any vips8 modules from the vips libdir. Keep going, even if
+ 	 * some modules fail to load.
+ 	 *
+@@ -611,6 +652,7 @@ vips_init(const char *argv0)
+ 	 */
+ 	vips_load_plugins("%s/vips-modules-%d.%d",
+ 		libdir, VIPS_MAJOR_VERSION, VIPS_MINOR_VERSION);
++#endif /*__EMSCRIPTEN__*/
+ 
+ #ifdef ENABLE_DEPRECATED
+ 	/* We had vips8 plugins for a while.
+
+From 15675c436aea8c986d8ac761998e0f77df007d77 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Thu, 23 Mar 2023 10:34:34 +0100
+Subject: [PATCH 11/14] Use a thread stack size of 256kb
+
+---
+ libvips/iofuncs/init.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/libvips/iofuncs/init.c b/libvips/iofuncs/init.c
+index a272abb2fe..e6d958f5cd 100644
+--- a/libvips/iofuncs/init.c
++++ b/libvips/iofuncs/init.c
+@@ -382,9 +382,9 @@ set_stacksize(guint64 size)
+ 	pthread_attr_t attr;
+ 	size_t cur_stack_size;
+ 
+-	/* Don't allow stacks less than 2mb.
++	/* Don't allow stacks less than 256kb.
+ 	 */
+-	size = VIPS_MAX(size, 2 * 1024 * 1024);
++	size = VIPS_MAX(size, 256 * 1024);
+ 
+ 	if (pthread_attr_init(&attr) ||
+ 		pthread_attr_getstacksize(&attr, &cur_stack_size)) {
+@@ -517,10 +517,10 @@ vips_init(const char *argv0)
+ 		return 0;
+ 	started = TRUE;
+ 
+-	/* Try to set a minimum stacksize, default 2mb. We need to do this
++	/* Try to set a minimum stacksize, default 256kb. We need to do this
+ 	 * before any threads start.
+ 	 */
+-	min_stack_size = 2 * 1024 * 1024;
++	min_stack_size = 256 * 1024;
+ 	if ((vips_min_stack_size = g_getenv("VIPS_MIN_STACK_SIZE")))
+ 		min_stack_size = vips__parse_size(vips_min_stack_size);
+ 	(void) set_stacksize(min_stack_size);
+
+From 8d3650617eec86686da8a88685b6a438843c86ac Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Fri, 19 May 2023 12:03:13 +0200
+Subject: [PATCH 12/14] Fix compatibility with resvg >= 0.33.0
+
+See:
+https://github.com/linebender/resvg/commit/2e7542fd15e1eacf86be7f6175684319e4c7a58b
+---
+ libvips/foreign/svgload.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/libvips/foreign/svgload.c b/libvips/foreign/svgload.c
+index 220da4445c..b59553de5a 100644
+--- a/libvips/foreign/svgload.c
++++ b/libvips/foreign/svgload.c
+@@ -781,7 +781,6 @@ vips_foreign_load_svg_generate(VipsRegion *out_region,
+ 
+ 	resvg_render(
+ 		svg->tree,
+-		(resvg_fit_to){ .type = RESVG_FIT_TO_TYPE_ORIGINAL },
+ 		(resvg_transform){
+ 			.a = svg->total_scale,
+ 			.d = svg->total_scale,
+
+From af5c208be229aa0f96b9ffa1c9f576713843f629 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Sun, 27 Apr 2025 13:36:17 +0200
+Subject: [PATCH 13/14] svgload: add support for custom CSS in resvg loader
+
+Available since resvg v0.45.0, see:
+https://github.com/linebender/resvg/commit/ddd942bc5ca2971fab91fd1c243c88e782a9a416
+---
+ libvips/foreign/svgload.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/libvips/foreign/svgload.c b/libvips/foreign/svgload.c
+index b59553de5a..99ba0dbec5 100644
+--- a/libvips/foreign/svgload.c
++++ b/libvips/foreign/svgload.c
+@@ -388,6 +388,10 @@ vips_foreign_load_svg_build(VipsObject *object)
+ 	/* Set target DPI to scale non-pixel units correctly.
+ 	 */
+ 	resvg_options_set_dpi(svg->options, svg->dpi);
++
++	if (svg->stylesheet &&
++		g_utf8_validate(svg->stylesheet, -1, NULL))
++		resvg_options_set_stylesheet(svg->options, svg->stylesheet);
+ #endif
+ 
+ 	return VIPS_OBJECT_CLASS(vips_foreign_load_svg_parent_class)
+
+From e9ac3e5c29fed4e3c8678595564e4974f1ef05c1 Mon Sep 17 00:00:00 2001
+From: Kleis Auke Wolthuizen <github@kleisauke.nl>
+Date: Sun, 22 Mar 2026 18:10:35 +0100
+Subject: [PATCH 14/14] Emscripten doesn't support `O_TMPFILE`
+
+---
+ libvips/iofuncs/vips.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/libvips/iofuncs/vips.c b/libvips/iofuncs/vips.c
+index 0bfa0ac3af..efec62bd43 100644
+--- a/libvips/iofuncs/vips.c
++++ b/libvips/iofuncs/vips.c
+@@ -164,7 +164,7 @@ vips__open_image_write(const char *filename, gboolean temp)
+ 		g_info("vips__open_image_write: O_TMPFILE not available");
+ #endif /*!O_TMPFILE*/
+ 
+-#ifdef O_TMPFILE
++#if defined(O_TMPFILE) && !defined(__EMSCRIPTEN__)
+ 	/* Linux-only extension creates an unlinked file. CREAT and TRUNC must
+ 	 * be clear. The filename arg to open() must name a directory.
+ 	 *
+@@ -182,7 +182,7 @@ vips__open_image_write(const char *filename, gboolean temp)
+ 			g_info("vips__open_image_write: O_TMPFILE failed!");
+ 		g_free(dirname);
+ 	}
+-#endif /*O_TMPFILE*/
++#endif /*defined(O_TMPFILE) && !defined(__EMSCRIPTEN__)*/
+ 
+ 	flags = MODE_WRITE;
+ 

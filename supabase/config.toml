@@ -62,10 +62,6 @@ verify_jwt = false
 [functions.apple-subscription-status]
 verify_jwt = false
 
-# (02/11, essai D) FONCTION DE TEST, appelée par personne en prod : garde x-essai-d (SHA-256 du jeton dans le code).
-[functions.essai-empreintes-d-test]
-verify_jwt = false
-
 # [functions.tiktok-event] — fonction SUPPRIMÉE en prod le 7 septembre 2026
 # (décision Nico) : plus aucune donnée ne part vers une régie publicitaire.
 

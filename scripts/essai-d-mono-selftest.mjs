@@ -2,10 +2,10 @@
 // ESSAI D, UN SEUL THREAD — SELFTEST (02/11)
 // ═══════════════════════════════════════════════════════════════════════════
 // libvips 8.18.7 compilé SANS threads (docs/enquetes/facture-supabase-0211/essai-empreintes-D/mono-thread/),
-// déployé dans la fonction de TEST essai-empreintes-d-test, appelée par personne en prod. Ce test fige :
-//   1. rien de basculé : le calcul d'empreinte de la prod (transformation Supabase) est inchangé ;
-//   2. la fonction de test : garde par SHA-256 du jeton (aucun secret lu), verify_jwt false, 8 photos au plus,
-//      bucket listing-photos seulement, rien d'écrit en base ;
+// essayé le 02/11 dans la fonction de TEST essai-empreintes-d-test, BRANCHÉ le 03/11 dans empreintes-urls
+// (_shared/empreinte-maison.ts, selftest:empreintes-maison). Ce test fige :
+//   1. le filet inchangé : la transformation Supabase (empreinterUrl), photo-empreinte, doublons-balayage ;
+//   2. la fonction de test supprimée : plus aucun code ni réglage ne la cite ;
 //   3. le module : ni Web Worker ni SharedArrayBuffer, mémoire ordinaire (non partagée) de 16 Mo au départ ;
 //   4. les mêmes octets que wasm-vips 0.0.19 à threads (l'oracle prouvé identique à Supabase, 200/200) sur des
 //      images SYNTHÉTIQUES : réduction ×4 au décodage, réduction ×2 + lanczos ; transparence → hors périmètre.
@@ -23,41 +23,32 @@ const git = (ref, f) => execFileSync('git', ['show', `${ref}:${f}`], { cwd: raci
 let ko = 0;
 const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else console.log(`  ✓ ${quoi}`); };
 
-// ── 1. Rien de basculé ─────────────────────────────────────────────────────
-console.log('1. La prod garde la transformation Supabase');
+// ── 1. Le filet ────────────────────────────────────────────────────────────
+console.log('1. Le filet : la transformation Supabase, inchangée');
 for (const f of [
   'supabase/functions/_shared/empreinte-telechargement.ts',
   'supabase/functions/_shared/empreinte-image.ts',
-  'supabase/functions/empreintes-urls/index.ts',
   'supabase/functions/photo-empreinte/index.ts',
   'supabase/functions/doublons-balayage/index.ts',
 ]) {
   ok(lire(f) === git('041baba', f), `${f} : identique à 041baba (avant l'essai mono-thread)`);
 }
 ok(/urlTransformee\(url, supabaseUrl\)/.test(lire('supabase/functions/_shared/empreinte-telechargement.ts')),
-  'empreinterUrl passe toujours par render/image pour notre bucket');
-const appelants = execFileSync('git', ['grep', '-l', 'essai-empreintes-d-test', '--', 'src', 'supabase', 'chrome-extension', 'serveur-cloud'],
-  { cwd: racine, encoding: 'utf8' }).trim().split('\n').filter(Boolean);
-ok(appelants.every((f) => f === 'supabase/config.toml' || f.startsWith('supabase/functions/essai-empreintes-d-test/')),
-  `personne n'appelle la fonction de test (${appelants.join(', ')})`);
+  'empreinterUrl passe toujours par render/image pour notre bucket (le repli du module)');
 
-// ── 2. La fonction de test ─────────────────────────────────────────────────
-console.log('2. essai-empreintes-d-test : gardée, sans écriture');
-const fn = lire('supabase/functions/essai-empreintes-d-test/index.ts');
-const hash = (fn.match(/JETON_SHA256 = "([0-9a-f]{64})"/) || [])[1];
-ok(!!hash, 'garde : SHA-256 du jeton écrit dans le code');
-ok(!/Deno\.env\.get\("[A-Z_]*(JETON|SECRET|KEY)/.test(fn), 'aucun secret lu dans l\'environnement');
-ok(crypto.createHash('sha256').update('').digest('hex') !== hash && crypto.createHash('sha256').update('x').digest('hex') !== hash,
-  'un jeton vide ou banal ne passe pas');
-ok(/return new Response\("interdit", \{ status: 403 \}\)/.test(fn), 'sans le bon jeton : 403');
-ok(/const MAX_PHOTOS = 8;/.test(fn) && /urls\.length > MAX_PHOTOS/.test(fn), '8 photos au plus par appel');
-ok(/storage\/v1\/object\/public\/listing-photos\//.test(fn) && /hors bucket listing-photos/.test(fn), 'bucket listing-photos seulement');
-ok(!/supabase-js|createClient|\.from\("|\.rpc\(|\.insert\(|\.upsert\(/.test(fn), 'rien d\'écrit en base (aucun client Supabase, aucune table)');
-ok(/\[functions\.essai-empreintes-d-test\]\nverify_jwt = false/.test(lire('supabase/config.toml')), 'config.toml : verify_jwt = false');
+// ── 2. La fonction de test, supprimée ──────────────────────────────────────
+console.log('2. essai-empreintes-d-test : supprimée');
+let cites = '';
+try {
+  cites = execFileSync('git', ['grep', '-l', 'essai-empreintes-d-test', '--', 'src', 'supabase', 'chrome-extension', 'serveur-cloud'],
+    { cwd: racine, encoding: 'utf8' }).trim();
+} catch { /* git grep rend 1 quand rien ne la cite */ }
+ok(cites === '', `plus aucun code ni réglage ne la cite (${cites || 'aucun'})`);
+ok(!fs.existsSync(path.join(racine, 'supabase/functions/essai-empreintes-d-test')), 'son dossier est retiré du dépôt');
 
 // ── 3. Le module : un seul thread ──────────────────────────────────────────
 console.log('3. vips-mono.mjs : ni Web Worker ni SharedArrayBuffer');
-const fichierModule = path.join(racine, 'supabase/functions/essai-empreintes-d-test/vips-mono.mjs');
+const fichierModule = path.join(racine, 'supabase/functions/_shared/vips-mono/vips-mono.mjs');
 const brut = fs.readFileSync(fichierModule, 'latin1');
 ok(!/new Worker|SharedArrayBuffer/.test(brut), 'aucun Worker ni SharedArrayBuffer dans le JS');
 const dossier = 'docs/enquetes/facture-supabase-0211/essai-empreintes-D/mono-thread/';
