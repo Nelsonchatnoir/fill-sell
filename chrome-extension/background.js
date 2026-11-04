@@ -2546,6 +2546,12 @@ async function refreshIfNeeded(session, storageKey) {
   const expiresSoon = session.expires_at && session.expires_at * 1000 - Date.now() < 5 * 60 * 1000;
   if (expiresSoon && session.refresh_token) {
     const refreshed = await refreshSessionOnce(storageKey, session.refresh_token);
+    // (04/11, sebastien64310) L'Auth n'a pas répondu (redémarrage de 6 s, 5xx, réseau) : rien n'est révoqué. La session
+    // reste stockée ; son jeton sert tant qu'il vit, et expiré, ce passage rend null SANS purge — le suivant rafraîchit.
+    if (refreshed?.transitoire) {
+      console.warn(`[background] Refresh du token sans réponse de l'Auth (${storageKey}, HTTP ${refreshed.http}) — session gardée`);
+      return session.expires_at * 1000 > Date.now() ? session : null;
+    }
     if (refreshed) {
       session = { ...session, ...refreshed };
       await chrome.storage.local.set({ [storageKey]: session });
@@ -2578,7 +2584,9 @@ async function refreshSession(refreshToken) {
         body: JSON.stringify({ refresh_token: refreshToken }),
       }
     );
-    if (!res.ok) return null;
+    // (04/11) Seul un REFUS de l'Auth (4xx : refresh révoqué, déjà consommé) rend null — la session est morte. Une Auth
+    // qui ne répond pas (5xx, 520/521 de la passerelle, 429, 408) rend { transitoire } : rien n'est purgé.
+    if (!res.ok) return (res.status >= 500 || res.status === 429 || res.status === 408) ? { transitoire: true, http: res.status } : null;
     const data = await res.json();
     return {
       access_token: data.access_token,
@@ -2587,7 +2595,7 @@ async function refreshSession(refreshToken) {
     };
   } catch (e) {
     console.error("[background] refreshSession:", e);
-    return null;
+    return { transitoire: true, http: 0 };
   }
 }
 
@@ -2606,6 +2614,11 @@ async function invalidateRejectedSession(session) {
   if (!key) return;
   if (key === SESSION_OWN && session.refresh_token) {
     const refreshed = await refreshSessionOnce(SESSION_OWN, session.refresh_token);
+    // (04/11) L'Auth ne répond pas : rien ne prouve que la session est morte — gardée, le prochain poll repart.
+    if (refreshed?.transitoire) {
+      console.warn(`[background] Token rejeté, mais l'Auth ne répond pas (HTTP ${refreshed.http}) — session gardée, le prochain poll repart`);
+      return;
+    }
     if (refreshed) {
       const { storage_key, ...sansTag } = session;
       await chrome.storage.local.set({ [SESSION_OWN]: { ...sansTag, ...refreshed } });
@@ -2691,7 +2704,8 @@ function renduGraphiquePoste() {
   } catch { renduGraphiqueCache = null; }
   return renduGraphiqueCache;
 }
-async function callEdgeFunction(name, accessToken, body, rejeu = false) {
+const REPRISES_AUTH_INDISPONIBLE_MS = [2000, 5000, 10000];
+async function callEdgeFunction(name, accessToken, body, rejeu = false, reprise = 0) {
   const nommer = FONCTIONS_QUI_NOMMENT_LE_NAVIGATEUR.has(name) && body && typeof body === "object" && !Array.isArray(body);
   const corps = nommer
     ? { ...body,
@@ -2715,6 +2729,16 @@ async function callEdgeFunction(name, accessToken, body, rejeu = false) {
     }
   }
   const data = await res.json().catch(() => ({}));
+  // ── (04/11, sebastien64310) L'AUTH INDISPONIBLE SE REJOUE, ELLE NE CONCLUT RIEN ─────────────────────────────────────
+  // L'Auth de Supabase a redémarré 6 s (19:21:46) pendant l'écriture du verdict d'un redépôt Leboncoin déjà en ligne :
+  // le serveur répond désormais 503 « auth_indisponible » (_shared/auth-indisponible.js), garde passée AVANT toute
+  // lecture ni écriture — rejouer ne double rien. La même requête repart 2 s, 5 s puis 10 s plus tard ; au-delà,
+  // l'erreur remonte avec son statut 503 (panne passagère : le poll saute le cycle, aucune session n'est touchée).
+  if (res.status === 503 && data?.code === "auth_indisponible" && reprise < REPRISES_AUTH_INDISPONIBLE_MS.length) {
+    console.warn(`[background] ${name} → Auth de FillSell indisponible — nouvel essai dans ${REPRISES_AUTH_INDISPONIBLE_MS[reprise] / 1000} s`);
+    await sleep(REPRISES_AUTH_INDISPONIBLE_MS[reprise]);
+    return callEdgeFunction(name, accessToken, body, rejeu, reprise + 1);
+  }
   if (!res.ok) {
     const err = new Error(data?.error || `${name} → HTTP ${res.status}`);
     // Le statut voyage avec l'erreur : un 401 déclenche l'invalidation de la

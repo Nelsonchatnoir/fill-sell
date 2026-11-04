@@ -17,7 +17,12 @@
 //   6. restRequest suit la même règle, même corps renvoyé ;
 //   7. aucun appel à une fonction edge pendant la relecture (le chemin
 //      d'amorçage d'extension-session bouclerait) — prouvé en comptant les
-//      appels /functions/v1/.
+//      appels /functions/v1/ ;
+//   8–10. (04/11, sebastien64310 — redémarrage de l'Auth de 6 s) un 503
+//      « auth_indisponible » rejoue la même requête (2, 5, 10 s), puis remonte
+//      en 503, jamais en 401 ; un 503 sans ce code n'est jamais rejoué ;
+//   11. un refresh sans réponse de l'Auth (5xx, 521, réseau) ne purge jamais la
+//      session ; seul un refus (4xx) la purge, comme avant.
 //
 // Il n'analyse pas le code : il CHARGE background.js dans un vm et appelle les
 // vraies fonctions (même patron que capture-fraicheur-selftest.mjs).
@@ -44,7 +49,15 @@ const SUB = "63ad8597-4fee-4277-9a69-14ad44af1896";
 const AUTRE = "11111111-2222-3333-4444-555555555555";
 
 // Un bac à sable par scénario : storage local réel (Map), fetch scripté.
-function charger({ session, reponses, refresh }) {
+function charger({ session, reponses, refresh, refreshStatut = null, rapide = false }) {
+  // rapide : les attentes créées PENDANT le scénario (sleep) passent à 0 ms et leurs durées sont notées — jamais les
+  // minuteries posées au chargement du script (démarrage), qui tireraient des appels sur les réponses scriptées.
+  const attentes = [];
+  let accelere = false;
+  const minuteur = (f, ms, ...a) => {
+    if (rapide && accelere) { attentes.push(ms); return setTimeout(f, 0, ...a); }
+    return setTimeout(f, ms, ...a);
+  };
   const rien = { addListener: () => {} };
   const store = new Map();
   const aireLocale = {
@@ -62,7 +75,7 @@ function charger({ session, reponses, refresh }) {
   const file = [...reponses];
   const ctx = {
     console: { log: () => {}, warn: () => {}, error: () => {}, info: () => {}, debug: () => {} },
-    setTimeout, clearTimeout, setInterval, clearInterval,
+    setTimeout: minuteur, clearTimeout, setInterval, clearInterval,
     URL, TextEncoder, TextDecoder, crypto: globalThis.crypto,
     Blob: globalThis.Blob, FormData: globalThis.FormData,
     atob: (s) => Buffer.from(s, "base64").toString("binary"),
@@ -71,6 +84,8 @@ function charger({ session, reponses, refresh }) {
     fetch: async (url, init = {}) => {
       appels.push({ url: String(url), auth: init?.headers?.Authorization ?? null, body: init?.body ?? null });
       if (String(url).includes("/auth/v1/token")) {
+        if (refreshStatut === "reseau") throw new TypeError("fetch failed");
+        if (refreshStatut) return { ok: false, status: refreshStatut, json: async () => { throw new SyntaxError("html"); }, text: async () => "<html>down</html>" };
         return { ok: Boolean(refresh), status: refresh ? 200 : 400, json: async () => refresh ?? {}, text: async () => "" };
       }
       const r = file.shift() ?? { status: 200, json: { ok: true } };
@@ -101,7 +116,16 @@ function charger({ session, reponses, refresh }) {
   // Le chargement du script a pu déclencher des fetch (démarrage) : on ne
   // compte que ceux du scénario.
   appels.length = 0;
-  return { ctx, appels, store, cle };
+  attentes.length = 0;
+  // Le démarrage du script continue en asynchrone après son chargement (minuteries de 30 s, 5 min) : on le laisse
+  // poser ses minuteries avec leurs vraies durées, puis seules les attentes du scénario sont accélérées.
+  const accelerer = async () => {
+    await new Promise((r) => setTimeout(r, 50));
+    appels.length = 0;
+    attentes.length = 0;
+    accelere = true;
+  };
+  return { ctx, appels, store, cle, attentes, accelerer };
 }
 
 const maintenantS = () => Math.floor(Date.now() / 1000);
@@ -181,6 +205,70 @@ console.log("\n7. restRequest SUIT LA MÊME RÈGLE — ET NE PASSE PAR AUCUNE FO
   ok("même corps", rest[0].body === corps && rest[1].body === corps);
   ok("return=minimal : null, comme avant", r === null);
   ok("aucun appel /functions/v1/ pendant la relecture (pas de boucle d'amorçage)", !appels.some((a) => a.url.includes("/functions/v1/")));
+}
+
+// ── (04/11, sebastien64310) L'AUTH INDISPONIBLE (redémarrage de 6 s) NE CONCLUT RIEN ────────────────────────────────
+const INDISPO = { status: 503, json: { error: "Connexion à FillSell momentanément indisponible : nouvel essai automatique, rien à faire.", code: "auth_indisponible" } };
+const vivante = () => ({ access_token: FRAIS, refresh_token: "r2", expires_at: maintenantS() + 3600 });
+
+console.log("\n8. 503 « auth_indisponible » PUIS 200 : LA MÊME REQUÊTE SE REJOUE, SA RÉPONSE REVIENT");
+{
+  const { ctx, appels, attentes, accelerer } = charger({ session: vivante(), reponses: [INDISPO, { status: 200, json: { success: true, n: 8 } }], rapide: true });
+  await accelerer();
+  const data = await ctx.callEdgeFunction("update-job-status", FRAIS, { job_id: "b3727bbe", status: "published" });
+  const f = appels.filter((a) => a.url.includes("/functions/v1/"));
+  ok("la réponse du rejeu revient (le verdict « published » est écrit)", data?.success === true && data?.n === 8, JSON.stringify(data));
+  ok("deux appels, même jeton, même corps", f.length === 2 && f[0].auth === f[1].auth && f[0].body === f[1].body);
+  ok("attente de 2 s avant le rejeu", attentes.includes(2000), JSON.stringify(attentes));
+  ok("aucun refresh : le jeton n'est pas en cause", !appels.some((a) => a.url.includes("/auth/v1/token")));
+}
+
+console.log("\n9. 503 « auth_indisponible » QUI DURE : TROIS REJEUX (2, 5, 10 s), PUIS UN 503 — JAMAIS UN 401");
+{
+  const { ctx, appels, attentes, accelerer } = charger({ session: vivante(), reponses: [INDISPO, INDISPO, INDISPO, INDISPO, { status: 200 }], rapide: true });
+  await accelerer();
+  let err = null;
+  try { await ctx.callEdgeFunction("get-pending-jobs", FRAIS, {}); } catch (e) { err = e; }
+  ok("quatre appels au plus", appels.filter((a) => a.url.includes("/functions/v1/")).length === 4);
+  ok("attentes 2 s, 5 s, 10 s", [2000, 5000, 10000].every((ms) => attentes.includes(ms)), JSON.stringify(attentes));
+  ok("l'erreur remonte en 503 (le poll saute le cycle, invalidateRejectedSession n'est pas appelée)", err?.status === 503, String(err?.status));
+}
+
+console.log("\n10. UN 503 SANS « auth_indisponible » : AUCUN REJEU (on ne sait pas ce qui a été écrit)");
+{
+  const { ctx, appels, accelerer } = charger({ session: vivante(), reponses: [{ status: 503, json: { error: "boom" } }, { status: 200 }], rapide: true });
+  await accelerer();
+  let err = null;
+  try { await ctx.callEdgeFunction("update-job-status", FRAIS, {}); } catch (e) { err = e; }
+  ok("un seul appel", appels.filter((a) => a.url.includes("/functions/v1/")).length === 1);
+  ok("le 503 remonte", err?.status === 503);
+}
+
+console.log("\n11. REFRESH SANS RÉPONSE DE L'AUTH (521, réseau) : LA SESSION N'EST JAMAIS PURGÉE");
+for (const statut of [521, 503, "reseau"]) {
+  const bientot = { access_token: FRAIS, refresh_token: "r2", expires_at: maintenantS() + 120 };
+  const { ctx, store, cle } = charger({ session: bientot, reponses: [], refreshStatut: statut });
+  const s = await ctx.refreshIfNeeded(bientot, cle);
+  ok(`${statut} : la session reste stockée`, store.get(cle)?.access_token === FRAIS);
+  ok(`${statut} : son jeton encore vivant sert`, s?.access_token === FRAIS, JSON.stringify(s));
+}
+{
+  const expiree = { access_token: PERIME, refresh_token: "r1", expires_at: maintenantS() - 60 };
+  const { ctx, store, cle } = charger({ session: expiree, reponses: [], refreshStatut: 521 });
+  const s = await ctx.refreshIfNeeded(expiree, cle);
+  ok("jeton expiré + Auth muette : null pour ce passage, mais rien de purgé", s === null && store.get(cle)?.refresh_token === "r1");
+}
+{
+  const bientot = { access_token: FRAIS, refresh_token: "r2", expires_at: maintenantS() + 120 };
+  const { ctx, store, cle } = charger({ session: bientot, reponses: [] });
+  const s = await ctx.refreshIfNeeded(bientot, cle);
+  ok("refus de l'Auth (400, refresh révoqué) : purge, comme avant", s === null && !store.has(cle));
+}
+{
+  const own = { access_token: FRAIS, refresh_token: "r2", expires_at: maintenantS() + 3600 };
+  const { ctx, store, cle } = charger({ session: own, reponses: [], refreshStatut: 521 });
+  await ctx.invalidateRejectedSession({ ...own, storage_key: cle });
+  ok("invalidateRejectedSession sur une Auth muette : la session est gardée", store.get(cle)?.access_token === FRAIS);
 }
 
 console.log(echecs ? `\n${echecs} échec(s).` : "\nTout est vert.");

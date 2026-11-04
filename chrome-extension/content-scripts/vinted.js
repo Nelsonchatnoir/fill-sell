@@ -3309,6 +3309,20 @@ async function remplirFormulaireVinted(job) {
   // La navigation fermait le canal du remplissage (« message channel closed ») ou cette garde répondait « refus
   // passager » : 5 erreurs archivées sur une même annonce, rien de dit. C'est un geste de la personne, une seule fois :
   // attente nommée (relancer), jamais une reprise.
+  // ── (04/11, lp.vtd89) LE COMPTE BLOQUÉ PAR VINTED, AUSSI SUR LE DÉPÔT ─────────────────────────────────────────────
+  // /items/new renvoyait sur /main/banned dès la toute première publication (aucun geste de FillSell avant) : la page
+  // tombait dans le « pathname inattendu » ci-dessous, la sonde répondait (l'API du compte vit) et le job repartait en
+  // « refus passager » — quatre essais en 23 min avant que le serveur le nomme. La règle du retrait (0.6.84) vaut ici :
+  // la page /main/banned ELLE-MÊME (le chemin exact, jamais un refus, une connexion ou un captcha) est un mur de
+  // Vinted. Attente nommée, aucune reprise ; le préfixe « COMPTE VINTED BLOQUÉ » est lu par update-job-status
+  // (_shared/vinted-compte-bloque.js), qui pose le motif et le message.
+  if (/^\/main\/banned(?:[/?#]|$)/.test(location.pathname)) {
+    return {
+      success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "compte_vinted_bloque", compteBloque: true,
+      diagnostic: { url: String(location.href).slice(0, 300), signal: "compte_vinted_bloque" },
+      error: "COMPTE VINTED BLOQUÉ : Vinted affiche sa page « compte bloqué » à la place du formulaire de dépôt — rien n'a été publié.",
+    };
+  }
   if (/^\/terms_and_conditions(?:[/?#]|$)/i.test(location.pathname)) {
     return {
       success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "vinted_conditions_a_accepter",

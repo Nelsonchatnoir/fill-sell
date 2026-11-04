@@ -227,3 +227,10 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   nomme pour les postes d'avant (`_shared/vinted-conditions.js`, adresse datée < 5 min, après la dernière relance).
 - Livrable : `build/CWS-0.6.171-A-TELEVERSER/fillsell-extension-0.6.171-cws.zip` (BUILD_ID `2026-11-04T19:49:41Z+29ba667`,
   SHA-256 861d92b4…cac88) ; contient la 0.6.170 (jamais servie, `build/CWS-PERIMES/CWS-0.6.170-remplacee-par-0.6.171`).
+
+## 05/11 — 0.6.172 téléversée ; 0.6.173 préparée, sans zip
+- 0.6.172 (la 0.6.171 de 5183f26, numéro seul) TÉLÉVERSÉE le 04/11 au soir : dans ALREADY_PUBLISHED.
+- 0.6.173 : compte bloqué Vinted au dépôt, 503 « auth_indisponible » rejoué, refresh sans réponse de l'Auth sans purge.
+  Pas de zip avant la décision de Nico.
+- Paquet depuis un worktree : remettre l'arbre en LF avant la suite (`git rm --cached -r -q . && git -c core.autocrlf=false
+  reset -q --hard <sha>`), sinon faux rouges CRLF ; une suite à la fois (4 tranches parallèles = arrêt mémoire).
