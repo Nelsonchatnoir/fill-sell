@@ -46,7 +46,8 @@ scp -i "$CLE" -q -r "$PAQUET" "root@$IP:/srv/fillsell-cloud/paquets/$SHA"
 echo "→ images, extension, configuration, pare-feu"
 $SSH bash -s -- "$SHA" "$DOMAINE" "$IMAGE_STEEL" "${DESTINATIONS_PROXY:-}" <<'DISTANT'
 set -euo pipefail
-SHA="$1"; DOMAINE="$2"; IMAGE_STEEL="$3"; DESTINATIONS="$4"; P="/srv/fillsell-cloud/paquets/$SHA"
+# (04/11 soir) ${4:-} : ssh recolle les arguments en une ligne, un DESTINATIONS_PROXY vide y disparaît (set -u l'arrêtait).
+SHA="$1"; DOMAINE="$2"; IMAGE_STEEL="$3"; DESTINATIONS="${4:-}"; P="/srv/fillsell-cloud/paquets/$SHA"
 docker image inspect "$IMAGE_STEEL" >/dev/null 2>&1 || docker pull -q "$IMAGE_STEEL" >/dev/null
 docker build -q -t "fillsell-orchestrateur:$SHA" "$P" >/dev/null
 # (30/10, lot D) Le navigateur Google Chrome officiel et l'extension Cloud SIGNÉE (installation par stratégie
