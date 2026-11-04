@@ -28,6 +28,8 @@ import { readFile, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// (04/11 soir, règle de Nico) Les lectures de fond Leboncoin faites comme la page (aussi appliqué au PC, chrome-extension/).
+import { patcherBackgroundLeboncoin, patcherMessagerieLeboncoin, patcherContentLeboncoin } from '../leboncoin-comme-la-page.mjs';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SORTIE = path.join(RACINE, 'build', 'extension-cloud');
@@ -375,7 +377,18 @@ async function main() {
   }
   const SRC = path.join(TRAVAIL, 'chrome-extension');
   const bgChemin = path.join(SRC, 'background.js');
-  const { bg, appliques } = patcherBackground(await readFile(bgChemin, 'utf8'));
+  const { bg: bgCloud, appliques } = patcherBackground(await readFile(bgChemin, 'utf8'));
+  // (04/11 soir) Leboncoin comme la page : background, messagerie, content script (sans effet si le commit l'a déjà).
+  const lbc = patcherBackgroundLeboncoin(bgCloud);
+  const bg = lbc.src;
+  appliques.push(...lbc.appliques);
+  for (const [rel, patcher] of [['messagerie.js', patcherMessagerieLeboncoin], [path.join('content-scripts', 'leboncoin.js'), patcherContentLeboncoin]]) {
+    const p = path.join(SRC, rel);
+    const r = patcher(await readFile(p, 'utf8'));
+    await writeFile(p, r.src);
+    execFileSync(process.execPath, ['--check', p], { stdio: 'pipe' });
+    appliques.push(...r.appliques);
+  }
   await writeFile(bgChemin, bg);
   execFileSync(process.execPath, ['--check', bgChemin], { stdio: 'pipe' });
   const manChemin = path.join(SRC, 'manifest.json');

@@ -1055,8 +1055,15 @@
   async function lecteurListeLeboncoin() {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent", requetes: 0 };
+    const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
+      const ck = (typeof document === "object" && document && document.cookie) || "";
+      const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
+      const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
+      return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
+    })();
     const r = await fetch("https://api.leboncoin.fr/api/messaging-items-api/v3/conversations", {
-      headers: { authorization: `Bearer ${tok}`, accept: "application/json" },
+      headers: H, credentials: "include",
     }).catch(() => null);
     if (!r) return { ok: false, motif: "reseau", requetes: 1 };
     const t = await r.text().catch(() => "");
@@ -1077,13 +1084,20 @@
 
   async function lecteurDetailsLeboncoin(moi, refs) {
     const tok = localStorage.getItem("luat");
+    const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
+      const ck = (typeof document === "object" && document && document.cookie) || "";
+      const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
+      const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
+      return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
+    })();
     if (!tok || !moi) return { ok: false, motif: "jeton_absent", requetes: 0 };
     const details = {}; let requetes = 0;
     for (const ref of refs) {
       await new Promise((ok) => setTimeout(ok, 1300 + Math.random() * 1500));
       requetes++;
       const r = await fetch(`https://api.leboncoin.fr/messaging/proxy/api/v1/hal/${encodeURIComponent(moi)}/conversations/${encodeURIComponent(ref)}/messages?expanded=true&order=asc`, {
-        headers: { authorization: `Bearer ${tok}`, accept: "application/hal+json" },
+        headers: { ...H, accept: "application/hal+json" }, credentials: "include",
       }).catch(() => null);
       if (!r) continue;
       if (r.status === 403 || r.status === 429) return { ok: false, http: r.status, motif: `http_${r.status}`, details, requetes };
@@ -1104,11 +1118,17 @@
   async function lecteurCommandesLeboncoin(suivies, detailsMax, priorite) {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent", requetes: 0 };
-    const H = { authorization: `Bearer ${tok}`, accept: "application/json" };
+    const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
+      const ck = (typeof document === "object" && document && document.cookie) || "";
+      const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
+      const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
+      return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
+    })();
     let requetes = 1;
     const u = "https://api.leboncoin.fr/api/consumergoods/proxy/v3/pages/transactions"
       + `?created_at%5Blt%5D=${encodeURIComponent(new Date().toISOString())}&limit=20&user_kind=seller`;
-    const r = await fetch(u, { headers: H }).catch(() => null);
+    const r = await fetch(u, { headers: H, credentials: "include" }).catch(() => null);
     if (!r) return { ok: false, motif: "reseau", requetes };
     const t = await r.text().catch(() => "");
     const bot = /datadome|captcha-delivery|geo\.captcha/i.test(t.slice(0, 5000));
@@ -1130,7 +1150,7 @@
     for (const c of aDetailler) {
       await new Promise((ok) => setTimeout(ok, 1300 + Math.random() * 1500));
       requetes++;
-      const rd = await fetch(`https://api.leboncoin.fr/api/consumergoods/purchase/v2/purchases/${encodeURIComponent(c.purchase_id)}`, { headers: H }).catch(() => null);
+      const rd = await fetch(`https://api.leboncoin.fr/api/consumergoods/purchase/v2/purchases/${encodeURIComponent(c.purchase_id)}`, { headers: H, credentials: "include" }).catch(() => null);
       if (!rd) continue;
       if (rd.status === 403 || rd.status === 429) return { ok: false, http: rd.status, motif: `http_${rd.status}`, requetes };
       if (rd.status !== 200) continue;

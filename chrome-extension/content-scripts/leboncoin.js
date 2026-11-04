@@ -2476,12 +2476,8 @@ async function fillListingForm(job) {
   // Rien de lisible → null (la règle d'avant s'applique).
   const lireTypeCompteLbc = async () => {
     try {
-      const tok = localStorage.getItem("luat");
-      if (!tok) return null;
-      const r = await fetch("https://api.leboncoin.fr/api/account/v2/members/me/account",
-        { headers: { authorization: `Bearer ${tok}`, accept: "application/json" } });
-      if (r.status !== 200) return null;
-      const t = (await r.json())?.account?.type;
+      // (04/11 soir, règle de Nico) requête du client de la page Leboncoin : la réponse que la page a déjà reçue (son cache de session), jamais redemandée.
+      const t = JSON.parse(sessionStorage.getItem("cache:https://api.leboncoin.fr/api/account/v2/members/me/account") ?? "null")?.account?.type;
       return typeof t === "string" && t.trim() ? t.trim().toLowerCase().slice(0, 40) : null;
     } catch { return null; }
   };

@@ -30,7 +30,8 @@ export function changementDePoste(avant, maintenant) {
 
 /**
  * L'expression évaluée dans l'extension (pure : testée) : retire « coupee » des plateformes visées dans les deux états,
- * rend ce qui a été levé { cle: [plateformes] }. Rien d'autre n'est touché (cadence, mesures, type de compte).
+ * rend ce qui a été levé { cle: [plateformes] }. Rien d'autre n'est touché (cadence, mesures, type de compte). (04/11 soir)
+ * Une coupure posée À LA MAIN (motif « coupe_par_… », ordre de Nico) ne se lève qu'à la main, jamais par cette règle.
  */
 export function expressionLeverCoupures(plateformes) {
   const p = JSON.stringify((plateformes ?? []).filter((x) => PLATEFORMES_PAUSES.includes(x)));
@@ -38,7 +39,7 @@ export function expressionLeverCoupures(plateformes) {
   return `(async () => { const ps = ${p}, cles = ${cles}, levees = {};
     const s = await chrome.storage.local.get(cles);
     for (const k of cles) { const e = s[k]; if (!e || typeof e !== 'object') continue; let n = false;
-      for (const pf of ps) if (e[pf] && e[pf].coupee) { levees[k] = [...(levees[k] || []), pf]; delete e[pf].coupee; n = true; }
+      for (const pf of ps) if (e[pf] && e[pf].coupee && !String(e[pf].coupee.motif || '').startsWith('coupe_par_')) { levees[k] = [...(levees[k] || []), pf]; delete e[pf].coupee; n = true; }
       if (n) await chrome.storage.local.set({ [k]: e }); }
     return levees; })()`;
 }

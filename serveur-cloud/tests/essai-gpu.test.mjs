@@ -276,15 +276,16 @@ test('la coupure levée dans l\'extension : seulement « coupee » des plateform
   const { expressionLeverCoupures, CLES_ETAT_EXTENSION } = await import('../src/pausesMessagerie.js');
   const vm = await import('node:vm');
   const coupee = { le: 'x', jusqu: 9e12, motif: 'http_403' };
-  const stock = { messagerie_beta_etat: { leboncoin: { coupee, prochain: 5 }, vinted: { coupee } }, veille_commandes_etat: { leboncoin: { coupee, typeCompte: 'individual' } } };
+  const main = { le: 'y', jusqu: 9e12, motif: 'coupe_par_nico_correction_0411' };
+  const stock = { messagerie_beta_etat: { leboncoin: { coupee, prochain: 5 }, vinted: { coupee }, depop: { coupee: main } }, veille_commandes_etat: { leboncoin: { coupee, typeCompte: 'individual' } } };
   const chrome = { storage: { local: {
     get: async (cles) => Object.fromEntries(cles.map((k) => [k, structuredClone(stock[k])])),
     set: async (o) => { Object.assign(stock, o); },
   } } };
   // (un autre royaume : comparé par sa forme JSON)
-  const levees = JSON.parse(JSON.stringify(await vm.runInNewContext(expressionLeverCoupures(['leboncoin', 'ebay']), { chrome })));
+  const levees = JSON.parse(JSON.stringify(await vm.runInNewContext(expressionLeverCoupures(['leboncoin', 'depop', 'ebay']), { chrome })));
   assert.deepEqual(levees, { messagerie_beta_etat: ['leboncoin'], veille_commandes_etat: ['leboncoin'] });
-  assert.deepEqual(stock.messagerie_beta_etat, { leboncoin: { prochain: 5 }, vinted: { coupee } }, 'Vinted et la cadence intacts');
+  assert.deepEqual(stock.messagerie_beta_etat, { leboncoin: { prochain: 5 }, vinted: { coupee }, depop: { coupee: main } }, 'Vinted, la cadence et une coupure posée À LA MAIN intacts');
   assert.deepEqual(stock.veille_commandes_etat, { leboncoin: { typeCompte: 'individual' } });
   assert.deepEqual(CLES_ETAT_EXTENSION, ['messagerie_beta_etat', 'veille_commandes_etat']);
 });

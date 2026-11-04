@@ -20076,7 +20076,8 @@ async function releverLeboncoinParApi() {
     //    liste ». On avance de ce qui est arrivé ; on s'arrête sur une page
     //    VIDE ou quand le total est atteint.
     const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
-      const lc = (n) => { const m = document.cookie.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const ck = (typeof document === "object" && document && document.cookie) || "";
+      const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
       const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
       const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
       return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
@@ -20492,7 +20493,8 @@ async function lireVentesLeboncoin(connues) {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent" };
     const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
-      const lc = (n) => { const m = document.cookie.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const ck = (typeof document === "object" && document && document.cookie) || "";
+      const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
       const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
       const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
       return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
@@ -23076,7 +23078,8 @@ async function lireCommandesRecentes(platform, typeConnu = null) {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent", requetes: 0 };
     const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
-      const lc = (n) => { const m = document.cookie.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const ck = (typeof document === "object" && document && document.cookie) || "";
+      const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
       const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
       const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
       return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };

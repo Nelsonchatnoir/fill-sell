@@ -380,3 +380,24 @@ dédiée (`cloud_postes.details.ouvert_sur`) repart sans les pauses de l'ancienn
 Nico : `20261104_cloud_essai_gpu_pauses_messagerie_nico.sql` (Leboncoin et Beebs, bloquées avant la bascule ; + INVERSE)
 et coupure de la veille Leboncoin retirée du stockage de l'extension de cloud-2 à 20:29 (avant : jusqu'au 05/11 18:58:34).
 L'INVERSE de la bascule garde `ouvert_sur` : au retour, cloud-1 repart sans les pauses nées sur cloud-2.
+
+**Leboncoin : la cause à la racine et sa correction (04/11 soir, ordre de Nico)** :
+- 20:41 (heure du serveur) veille des commandes Leboncoin COUPÉE à la main sur cloud-2 (`veille_commandes_etat.leboncoin.coupee`,
+  motif `coupe_par_nico_correction_0411`, 7 j) ; pause Leboncoin non levée. Une coupure « coupe_par_… » ne se lève qu'à la
+  main (`pausesMessagerie.js`).
+- La différence exacte (enregistrement de fond + client du site lu dans le cache HTTP du navigateur de cloud-2, AUCUNE
+  requête) — mêmes cookies dans les deux cas (datadome compris) :
+  · page (200) : `fetch` par le client « S » du site → `Authorization: Bearer <luat>`, `x-lbc-experiment: base64({version:1,
+    rollout_visitor_id ← cookie cnfdVisitorId, rollout_user_id, experiment_visitor_id, experiment_user_id})`,
+    `Content-Type: application/json`, `credentials: "include"`, Accept par défaut ; et la réponse est mise en cache de
+    session (`sessionStorage["cache:https://api.leboncoin.fr/api/account/v2/members/me/account"]`, 300 s) ;
+  · veille (403, Cloud) : `authorization: Bearer <luat>`, `accept: application/json` — sans `x-lbc-experiment` ni
+    `Content-Type` ; même page, même monde (MAIN), 11 à 13 s après le chargement ;
+  · veille sur PC : MÊME code, donc mêmes en-têtes (non capturé : aucun contact Leboncoin) — elle passe chez 8 comptes,
+    refusée 5 fois chez 3 comptes (sur les transactions) : même défaut, toléré sur une IP résidentielle de maison.
+- Correction (`scripts/leboncoin-comme-la-page.mjs`, une transformation appliquée au PC — `chrome-extension/` — ET à la copie
+  Cloud — `build-extension-cloud.mjs`, sur d426d23) : le type du compte est LU dans le cache de session de la page (ventes,
+  veille, mur « pro » de la publication), jamais redemandé ; les autres lectures de fond (transactions des ventes et de la
+  veille, relevé des annonces `dashboard/v1/search`, messagerie : liste, messages, commandes, détail d'achat) partent avec
+  la requête du client de la page (ses en-têtes, calculés comme lui depuis les mêmes cookies, credentials « include »).
+  Aucune valeur inventée. Gestes (envoi de message, bordereaux) non touchés.

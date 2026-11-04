@@ -269,5 +269,34 @@ const iReserve = gpj.indexOf('admin.rpc("reserver_jobs_extension"');
 ok(iFiltre > 0 && iFiltre < iReserve, 'le filtre des plateformes passe AVANT la réservation (jamais réservé ce qu\'il ne fera pas)');
 ok(/const PLATEFORMES_POSTE_CLOUD = \["vinted", "leboncoin", "beebs", "depop"\];/.test(gpj), 'Vinted, Leboncoin, Beebs, Depop — même liste que la copie Cloud');
 
+
+console.log('\n4. (04/11 soir, règle de Nico) Leboncoin : les lectures de fond faites comme la page (PC ET Cloud)');
+{
+  const L = await import('./leboncoin-comme-la-page.mjs');
+  const vm = await import('node:vm');
+  const b64 = (t) => Buffer.from(t, 'binary').toString('base64');
+  // Les en-têtes : ceux du client de la page (module « S » des chunks Leboncoin), calculés depuis les mêmes cookies.
+  const enTetes = (cookie) => JSON.parse(JSON.stringify(vm.runInNewContext(`(() => { const tok = "T"; ${L.SOURCE_H_PAGE} return H; })()`, { document: { cookie }, btoa: b64 })));
+  const H = enTetes('pa_privacy=1; cnfdVisitorId=v-1; rollout_user_id=u-2; autre=x');
+  const attendu = Buffer.from(JSON.stringify({ version: 1, rollout_visitor_id: 'v-1', rollout_user_id: 'u-2' })).toString('base64');
+  ok(JSON.stringify(Object.keys(H)) === JSON.stringify(['Authorization', 'x-lbc-experiment', 'Content-Type']), 'en-têtes de la page, dans son ordre (Authorization, x-lbc-experiment, Content-Type)');
+  ok(H.Authorization === 'Bearer T' && H['x-lbc-experiment'] === attendu && H['Content-Type'] === 'application/json', 'x-lbc-experiment = base64({version, rollout_visitor_id ← cnfdVisitorId, rollout_user_id}) comme la page');
+  ok(enTetes('')['x-lbc-experiment'] === Buffer.from('{"version":1}').toString('base64'), 'sans cookie d\'expérience : {version:1} seul, comme la page (aucune valeur inventée)');
+  const typeDe = (valeur) => vm.runInNewContext(`(() => { let type = null; ${L.SOURCE_TYPE_PAGE} return type; })()`, { sessionStorage: { getItem: (k) => (k === L.CLE_CACHE_COMPTE ? valeur : null) } });
+  ok(typeDe(JSON.stringify({ account: { type: 'individual' } })) === 'individual' && typeDe(null) === null && typeDe('{pas du json') === null,
+    'le type du compte : lu dans le cache de session de la page ; absent ou illisible → rien (jamais redemandé)');
+  // Les sources : transformées une fois (PC), transformées au build (Cloud, d426d23), plus aucun appel de compte direct.
+  const lire = (rel) => readFileSync(path.join(racine, 'chrome-extension', ...rel.split('/')), 'utf8').replace(/\r\n/g, '\n');
+  const pc = { bg: lire('background.js'), msg: lire('messagerie.js'), cs: lire('content-scripts/leboncoin.js') };
+  ok(pc.bg.includes(L.MARQUE) && pc.msg.includes(L.MARQUE) && pc.cs.includes(L.MARQUE), 'PC : background, messagerie, content script portent la règle');
+  ok(!/members\/me\/account",\s*\{ headers/.test(pc.bg) && !/members\/me\/account",\s*\{ headers/.test(pc.cs), 'PC : plus aucun appel de compte fait par l\'extension');
+  const lecteurs = pc.msg.slice(pc.msg.indexOf('async function lecteurListeLeboncoin'), pc.msg.indexOf('async function lecteurCommandesLeboncoin') + 1600);
+  ok(lecteurs.length > 2000 && !/accept: "application\/json" \}/.test(lecteurs), 'PC : les lecteurs de fond Leboncoin de la messagerie n\'envoient plus les en-têtes faits main');
+  ok(L.patcherBackgroundLeboncoin(pc.bg).deja && L.patcherMessagerieLeboncoin(pc.msg).deja && L.patcherContentLeboncoin(pc.cs).deja, 'déjà transformées : la copie Cloud d\'un commit récent ne les retransforme pas');
+  const ancien = (rel) => execFileSync('git', ['-C', racine, 'show', `d426d23:chrome-extension/${rel}`], { maxBuffer: 64 * 1024 * 1024 }).toString('utf8');
+  const nb = L.patcherBackgroundLeboncoin(ancien('background.js')).appliques.length + L.patcherMessagerieLeboncoin(ancien('messagerie.js')).appliques.length
+    + L.patcherContentLeboncoin(ancien('content-scripts/leboncoin.js')).appliques.length;
+  ok(nb === 15, `Cloud (d426d23, la copie déployée) : les 15 transformations s'appliquent (${nb})`);
+}
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);
