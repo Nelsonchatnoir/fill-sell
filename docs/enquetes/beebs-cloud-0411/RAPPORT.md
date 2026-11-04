@@ -134,3 +134,32 @@ Historique du navigateur Cloud (`History`) et `vinted_sync_runs` :
   `_backup_0411_cloud_ip_essai`, jamais `cloud_ip_liberer`) : 41 au compte, 39 disponible sans réservation (une seule IP
   réservée par compte : la 2 l'est déjà ; offre fermée, visites Beebs coupées). Navigateur rouvert 15:16 sur 88.151.56.82,
   même profil, empreinte identique, aucune purge. Retour sur la 39 après l'essai : `…_INVERSE.sql`.
+
+## 12. L'essai de 15:45 sur l'IP 41, le retour sur l'IP 39, la comparaison avec le PC de Nico (04/11, 15:45 → 16:10)
+- **Essai** (`etat/essais/beebs-2026-11-04T14-44-53-440Z-connexion.jsonl`, 12 lignes, 0 geste) : 15:44:54.099 `GET /fr/auth`
+  → **403**, cookie envoyé : `datadome` seul (celui du profil remis à 14:05), un nouveau `datadome` reçu ; 15:44:54.283 `i.js` ;
+  15:44:56.283 vérification de l'appareil affichée ; **15:44:56.711 POST `/interstitial/`** (9 004 octets chiffrés, aucun
+  cookie : autre domaine) → réponse `view: "captcha"` ; 15:44:57.217 `/captcha/` sans aucun script de glissière (à 13:40,
+  `captcha.1.37.0.js` était chargé) ; 15:45:00.909 « Accès temporairement restreint » lu dans la page. Refus 2,6 s après
+  l'ouverture, avant tout geste ; 0 requête coupée (verrou, filtre). ID DataDome 944edeab-bdaf-841e-4034-2585001aed8f.
+- Lecture (deux essais, pas une preuve) : IP neuve 40 + 0 cookie (13:40) → glissière puis refus ; IP neuve 41 + ancien
+  cookie datadome (15:45) → refus sec. L'IP neuve ne change rien ; l'ancien cookie a durci la réponse.
+- **Retour sur l'IP 39** : `…_ip_essai_beebs_nico_INVERSE.sql` (41 → disponible, refus NON noté ; 39 → compte), navigateur
+  fermé 15:48:07 (`ip_remplacee`), rouvert 15:49:10 ; écho 15:53 : sortie 176.103.182.215, empreinte 091d90b32056e8dd,
+  même profil, aucune purge. Vinted relu 15:56:31, Depop 16:00:31, sans erreur. Leboncoin : 403 de 11:01:21 (glissière) toujours en attente
+  de « Résoudre ».
+- **Différences mesurées avec le PC de Nico** (Cloud : écho 15:53 et conteneur ; PC : Windows lu à 16:00, WebGL du 30/10) :
+  | | Cloud | PC de Nico |
+  |---|---|---|
+  | Système | Debian 12 (conteneur steel) sur VM Hetzner cx43, AMD EPYC-Rome, 8 cœurs | Windows 11 Pro 10.0.26300, Ryzen 7 7735HS, 16 cœurs logiques |
+  | Rendu | SwiftShader (logiciel) : « ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)…) » | AMD Radeon intégrée, pilote 32.0.21030.2001 : « ANGLE (AMD, AMD Radeon(TM) Graphics … Direct3D11) » |
+  | Navigateur | Chromium 156.0.8078.73 de Debian ; `Sec-Ch-Ua` « Chromium » 156 seul | Google Chrome 156.0.8078.48 officiel (marque « Google Chrome » : supposée) |
+  | Polices | 43 familles (DejaVu, Liberation, Free, Kacst, Tlwg, IPA, WenQuanYi : la liste type des conteneurs) | 340 fichiers de polices Windows |
+  | Écran | 1920×1080, échelle 1 ; fenêtre de 500 px pendant « Me connecter » | 1920×1200 |
+  Identiques : fr-FR, Europe/Paris, 5 plugins PDF (PC : supposé), `webdriver` faux. Déjà mesuré : Chrome officiel sous Linux
+  bloqué (30/10, machine et IP neuves comprises) ; Linux + vraie puce Intel UHD 630 bloqué (30/10 17:45, doute sur l'IP 2) ;
+  steel neuf sur Hetzner neuf passé (01/11) ; ce Cloud passé le 03/11 18:40 puis refusé d'IP en IP.
+- **Prix relus à 16:00** (rien commandé) : Hetzner EX44 (i5-13500, Intel UHD 770 selon la fiche Intel) **59,00 € HT/mois ou
+  0,0945 € HT/h, mise en service 0,00 €**, FSN1/HEL1, Windows dans la liste des systèmes (licence non chiffrée sur la page) ;
+  accès à la puce (`/dev/dri`) NON confirmé sans la machine. Scaleway **L4-1-24G 0,013125 € HT/min (0,79 €/h)**, Paris,
+  catalogue public ; aucune offre à carte sous Windows (Windows : POP2 seulement) ; les RTX 3070 sont retirées.
