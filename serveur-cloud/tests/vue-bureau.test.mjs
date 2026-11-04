@@ -1,7 +1,26 @@
 // (04/11, mesure Beebs) La vue « bureau réduit » de « Me connecter » / « Résoudre » (src/vueBureau.js).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneRequete, VUE_BUREAU_LARGEUR } from '../src/vueBureau.js';
+import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneRequete, VUE_BUREAU_LARGEUR,
+  nomsCookiesEnvoyes, nomsCookiesRecus, parametresSansValeur, reponseDataDomeMasquee, estDataDome } from '../src/vueBureau.js';
+
+test('(04/11) enregistrement complet : noms des cookies envoyés et reçus, réponses DataDome, jamais une valeur', () => {
+  const env = nomsCookiesEnvoyes([{ cookie: { name: 'datadome', domain: '.beebs.app', value: 'SECRET' }, blockedReasons: [] },
+    { cookie: { name: 'x', domain: 'www.beebs.app', value: 'S2' }, blockedReasons: ['SameSiteLax'] }]);
+  assert.deepEqual(env, [{ nom: 'datadome', domaine: '.beebs.app' }, { nom: 'x', domaine: 'www.beebs.app', retenu: ['SameSiteLax'] }]);
+  const rec = nomsCookiesRecus({ 'set-cookie': 'datadome=SECRET; Max-Age=31536000; Domain=.beebs.app; Path=/; Secure; SameSite=Lax\nautre=V; Path=/' },
+    [{ cookieLine: 'autre=V; Path=/', blockedReasons: ['SameSiteUnspecifiedTreatedAsLax'] }]);
+  assert.equal(rec[0].nom, 'datadome'); assert.deepEqual(rec[0].attributs, ['max-age', 'domain', 'path', 'secure', 'samesite']);
+  assert.deepEqual(rec[1].refuse, ['SameSiteUnspecifiedTreatedAsLax']);
+  assert.ok(!JSON.stringify([env, rec]).includes('SECRET'));
+  assert.deepEqual(parametresSansValeur('https://geo.captcha-delivery.com/captcha/check?cid=ABCDEF&x=12'), ['cid:6', 'x:2']);
+  const rep = reponseDataDomeMasquee('{"cookie":"datadome=TOKEN123; Max-Age=31536000; Domain=.beebs.app; Path=/; Secure; SameSite=Lax","view":"redirect"}');
+  assert.equal(rep.view, 'redirect'); assert.ok(rep.cookie.startsWith('datadome=<masqué>;')); assert.ok(!JSON.stringify(rep).includes('TOKEN123'));
+  assert.ok(String(reponseDataDomeMasquee('pas du json datadome=ABC; x')).includes('datadome=<masqué>'));
+  assert.equal(estDataDome('https://geo.captcha-delivery.com/interstitial/'), true); assert.equal(estDataDome('https://www.beebs.app/'), false);
+  const l = ligneRequete({ le: 'x', url: 'https://geo.captcha-delivery.com/captcha/check?cid=Z', id: 'R1', envoyes: env, parametres: ['cid:1'], reponse: rep });
+  assert.equal(l.id, 'R1'); assert.equal(l.cookies_envoyes.length, 2); assert.deepEqual(l.parametres, ['cid:1']); assert.equal(l.reponse.view, 'redirect');
+});
 
 // L'iPhone 15 de la capture du 04/11 : canvas 393×587 ; la glissière DataDome de Beebs rendue à 500 px (cache du Cloud).
 const IPHONE = { largeur: 393, hauteur: 587, dpr: 3 };

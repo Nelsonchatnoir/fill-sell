@@ -72,3 +72,53 @@ Historique du navigateur Cloud (`History`) et `vinted_sync_runs` :
   (coffre Beebs, état « vérification », IP 39 → repos, 40 → compte ; inverse `…_INVERSE.sql`), blocage Beebs clos dans
   `blocages.json` (sauvegarde `archives/0411-beebs/`), orchestrateur redémarré.
 - Essai unique : UN « Me connecter » Beebs de Nico, enregistré dans `etat/essais/beebs-…-connexion.jsonl`.
+
+## 8. L'essai de 13:40, l'incident de 12:25, la réparation (04/11 après-midi)
+- **Incident 12:25** : `cloud_ip_liberer` (bascule d'IP de 12:23) a mis l'IP 39 au repos — chemin d'un compte qui PART —
+  et l'entretien a purgé le compte : profil détruit, coffre vidé (Vinted, Leboncoin, Depop, Beebs), session FillSell
+  révoquée, réservation de l'IP 2 levée (visite de contrôle Beebs à 12:25). ⛔ Plus jamais `cloud_ip_liberer` pour changer
+  l'IP d'un compte qui reste.
+- **Essai 13:40** (`etat/essais/beebs-2026-11-04T12-40-03-527Z-connexion.jsonl`, profil neuf, 0 cookie, IP 40) : `GET /fr/auth`
+  → 403 dès la 1re requête ; vérification de l'appareil (POST `/interstitial/`, 13:40:07.181) RATÉE avant tout geste →
+  glissière → `/captcha/check` (13:40:12.265) → rechargement 403 → « Accès temporairement restreint » ; 13 s. 0 requête
+  coupée (verrou, filtre anti-pubs). Même suite qu'au « Résoudre » de 08:14 en mode téléphone ; le 03/11 18:40 (réussi),
+  la vérification de l'appareil était passée seule (cookie datadome ancien, IP 39). Ce que la page voit dans les deux
+  modes (mesuré) : bureau 500×776 / 500×863, écran 1920×1080, échelle 1, souris — téléphone 393×610 « paysage », ×3,
+  5 points de toucher. Cause non prouvée ; candidat principal : l'APPAREIL (SwiftShader, 0 plugin).
+- **Réparation (2)**, 14:05 : IP 39 rendue au compte, 40 au pool (disponible, jamais au repos ; son refus Beebs NON noté :
+  il déclencherait une visite), réservation de l'IP 2 rétablie, profil d'avant (archive 12:08) remis sous son nom
+  (empreinte 7a1cfa22 identique), coffre refait depuis ses 186 cookies (`outils/restaurer-coffre-profil.mjs`). Preuve :
+  messagerie Vinted (14:08:29) et Depop (14:08:37) relues sans erreur. Leboncoin : session gardée, glissière de 11:02 à
+  résoudre (antérieure à l'incident). Réparation `20261104_cloud_retour_avant_1223_nico.sql` (+ INVERSE), restée sur le poste.
+- **Interrupteur des visites de contrôle** (accord de Nico) : `coin_config.cloud_visites_controle_beebs = 0` (14:15),
+  déployé 8e91ac1 à 14:17 ; 1er entretien 14:18 : `visites_coupees: ["beebs"]`, aucune visite. Le paquet portait aussi le
+  prix 24,99 € de `_shared/cloud-pool.js` (autre terminal) : sans effet sur l'orchestrateur.
+
+## 9. Points 2 et 3 (bugs de notre côté, enregistrement complet)
+- **2a — cookie de la glissière** : notre code ne recharge jamais la page (journal de l'essai : aucune navigation refusée,
+  aucun `Page.navigate` après l'ouverture) ; le rechargement est celui du script de DataDome. Banc hors ligne (vrai serveur
+  HTTPS local) : le cookie posé par la page juste avant son rechargement PART avec lui (`cookies_envoyes: ["datadome"]`) ;
+  les 35 ms de la base de cookies ne prouvent pas un rechargement sans cookie. Aucun changement de code.
+- **2b — ne plus repartir de zéro** : l'entretien ne purge JAMAIS un compte qui tient une IP ou dont le Cloud est actif
+  (`compteToujoursActif` ; lecture ratée = pas de purge) ; `outils/effacer-plateforme.mjs` garde `datadome` par défaut
+  (`--avec-datadome` sur décision de Nico). La purge des sessions à l'ouverture le gardait déjà (`COOKIES_GARDES`).
+- **2c — lecteur PDF intégré** : steel le coupe par défaut (`plugins.always_open_pdf_externally: true`,
+  `plugins_disabled: ["Chrome PDF Viewer"]`) → navigator.plugins vide. `REGLAGES_PDF` le rend tel que Chromium le livre.
+  Mesuré au banc : 0 → 5 plugins (« PDF Viewer », « Chrome PDF Viewer », « Chromium PDF Viewer », « Microsoft Edge PDF
+  Viewer », « WebKit built-in PDF »), 2 types MIME (application/pdf, text/pdf), `pdfViewerEnabled` vrai ; identité
+  inchangée. Empreinte figée : 7a1cfa22decada93 → **091d90b32056e8dd** (EMPREINTE_AUTORISEE, accord de Nico).
+- **3 — enregistrement complet** : par requête, noms des cookies envoyés (et retenus) et reçus (et refusés) ; pour
+  DataDome, noms et longueurs des paramètres, taille du corps, réponse (verdict, jeton masqué) ; chaque mouvement de
+  souris (reçu, rejoué, point du canvas et de la page). Prouvé au banc (aucun secret dans le fichier).
+
+## 10. Point 4 — le vrai rendu graphique (étude, rien commandé)
+- **PC de Nico sous WSL2** : rendu par la puce via la couche D3D12 de Mesa — le moteur de rendu se nomme « D3D12 (Intel(R)
+  UHD Graphics) », une signature que seul WSL porte, avec des retombées connues en rendu logiciel. Pas parlant pour un
+  serveur Linux, et lourd pour son PC. Seule voie parlante sur sa machine : démarrer un Linux sur clé USB (vrai pilote de
+  la puce), ~1 h, PC indisponible pendant l'essai.
+- **Serveur Linux à puce graphique à l'heure** : Scaleway L4 (Paris), ~0,75-0,90 €/h selon les sources (à relire) ; mais
+  une NVIDIA L4 est une carte de centre de données, rare chez les vrais utilisateurs.
+- **Hetzner EX44** (i5-13500, puce Intel UHD 770, 64 Go) : la puce la plus répandue chez les vrais utilisateurs Linux. Prix
+  à relire (page Hetzner : dès 46,41 €/mois + 46,41 € d'installation TTC ; frais d'installation relevés depuis selon un
+  forum). Accès à la puce (`/dev/dri`) non confirmé par les sources : à vérifier avant commande. Capacité : 31 navigateurs
+  par la mémoire, ~15-25 en pratique (puce partagée) → ~2 à 3 € par client et par mois, contre 2,83 € sur le cx43.

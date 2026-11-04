@@ -91,8 +91,51 @@ export function creerGesteSouris({ seuilGlisse = 6, seuilDefile = 10 } = {}) {
  * net::ERR_BLOCKED_BY_CLIENT. Jamais une requête (query), jamais un en-tête, jamais un corps : l'hôte et le chemin
  * (borné), la méthode, le type, le code, l'échec.
  */
-export function ligneRequete({ le, cadre, url, methode, type, http = null, echec = null, bloquee = null, publicite = false }) {
+export function ligneRequete({ le, cadre, url, methode, type, http = null, echec = null, bloquee = null, publicite = false,
+  id = null, envoyes = null, recus = null, parametres = null, corps = null, reponse = null }) {
   let hote = '', chemin = '';
   try { const u = new URL(String(url)); hote = u.hostname; chemin = u.pathname.slice(0, 120); } catch { hote = String(url ?? '').slice(0, 40); }
-  return { le, cadre: cadre ?? 'page', hote, chemin, methode: methode ?? null, type: type ?? null, http, echec, bloquee, publicite: Boolean(publicite) };
+  return { le, cadre: cadre ?? 'page', hote, chemin, methode: methode ?? null, type: type ?? null, http, echec, bloquee, publicite: Boolean(publicite),
+    ...(id ? { id } : {}), ...(envoyes ? { cookies_envoyes: envoyes } : {}), ...(recus ? { cookies_recus: recus } : {}),
+    ...(parametres ? { parametres } : {}), ...(corps != null ? { corps_octets: corps } : {}), ...(reponse != null ? { reponse } : {}) };
 }
+
+// ── (04/11, décision de Nico : « l'enregistrement complet ») Ce qui part et ce qui revient, SANS une valeur secrète ────
+/** Les cookies ENVOYÉS avec une requête (Network.requestWillBeSentExtraInfo.associatedCookies) : noms, et la raison s'il
+ *  a été retenu par le navigateur — jamais une valeur (pure). */
+export function nomsCookiesEnvoyes(associes) {
+  return (Array.isArray(associes) ? associes : []).map((a) => {
+    const raisons = (a?.blockedReasons ?? []).filter(Boolean);
+    return { nom: String(a?.cookie?.name ?? '?'), domaine: a?.cookie?.domain ?? null, ...(raisons.length ? { retenu: raisons } : {}) };
+  });
+}
+
+/** Les cookies POSÉS par une réponse (en-têtes set-cookie de Network.responseReceivedExtraInfo) : noms, attributs, et la
+ *  raison s'il a été refusé par le navigateur (blockedCookies) — jamais une valeur (pure). */
+export function nomsCookiesRecus(entetes, refuses) {
+  const brut = Object.entries(entetes ?? {}).filter(([k]) => k.toLowerCase() === 'set-cookie').map(([, v]) => String(v)).join('\n');
+  const raisonsDe = new Map((Array.isArray(refuses) ? refuses : []).map((b) => [String(b?.cookie?.name ?? String(b?.cookieLine ?? '').split('=')[0]).trim(), b?.blockedReasons ?? []]));
+  return brut.split('\n').map((l) => l.trim()).filter(Boolean).map((ligne) => {
+    const [paire, ...attrs] = ligne.split(';');
+    const nom = paire.split('=')[0].trim();
+    const raisons = raisonsDe.get(nom) ?? [];
+    return { nom, attributs: attrs.map((a) => a.trim().split('=')[0].toLowerCase()).filter(Boolean),
+      ...(raisons.length ? { refuse: raisons } : {}) };
+  });
+}
+
+/** Les paramètres d'une adresse : noms et longueurs, jamais les valeurs (la trajectoire de la glissière y passe) (pure). */
+export function parametresSansValeur(url) {
+  try { return [...new URL(String(url)).searchParams.entries()].map(([k, v]) => `${k}:${v.length}`); } catch { return null; }
+}
+
+/** La réponse de DataDome (vérification de l'appareil, glissière) : sa forme et son verdict, jetons masqués (pure). */
+export function reponseDataDomeMasquee(texte, max = 2000) {
+  const masquer = (s) => String(s).replace(/(datadome=)[^;"\s\\]+/gi, (_, n, v) => `${n}<masqué>`);
+  let j = null;
+  try { j = JSON.parse(String(texte ?? '')); } catch { return masquer(String(texte ?? '').slice(0, max)); }
+  const parcourir = (v) => (typeof v === 'string' ? masquer(v).slice(0, 300) : Array.isArray(v) ? v.slice(0, 20).map(parcourir)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).slice(0, 40).map(([k, x]) => [k, parcourir(x)])) : v);
+  return parcourir(j);
+}
+export const estDataDome = (url) => { try { return /(^|\.)captcha-delivery\.com$/i.test(new URL(String(url)).hostname); } catch { return false; } };

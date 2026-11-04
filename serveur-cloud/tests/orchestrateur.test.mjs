@@ -228,7 +228,8 @@ test('conteneur : lancé EXACTEMENT comme l\'essai du 01/11, profil du compte au
   assert.throws(() => corpsSession({ proxyUrl: 'http://194.152.141.98:12323' }), 'proxy sans identifiants : refusé');
   const c = corpsSession({ proxyUrl: 'http://u:p@194.152.141.98:12323' });
   assert.deepEqual(c, { proxyUrl: 'http://u:p@194.152.141.98:12323', skipFingerprintInjection: true, headless: false, blockAds: false,
-    extensions: ['fillsell'], persist: true, timezone: 'Europe/Paris', userPreferences: { intl: { accept_languages: 'fr-FR,fr,en-US,en', selected_languages: 'fr-FR,fr,en-US,en' } } },
+    extensions: ['fillsell'], persist: true, timezone: 'Europe/Paris', userPreferences: { intl: { accept_languages: 'fr-FR,fr,en-US,en', selected_languages: 'fr-FR,fr,en-US,en' },
+      plugins: { always_open_pdf_externally: false, plugins_disabled: [] } } },
   'la session de l\'essai (empreinte réelle, avec écran, publicités laissées, extension), plus « persist » et (02/11) le profil français');
 });
 
@@ -429,6 +430,56 @@ test('(04/11, accord de Nico) visites de contrôle : l’interrupteur coupe Beeb
   const doute = faire({}, true);
   await doute.e.tour();
   assert.deepEqual(doute.visites, [], 'interrupteur illisible : aucune visite (jamais sur un doute)');
+});
+
+test('(04/11, incident de 12:25) une IP au repos ne purge JAMAIS un compte qui tient encore une IP ou dont le Cloud est actif', async (t) => {
+  const { creerEntretien } = await import('../src/entretien.js');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const profils = mkdtempSync(join(tmpdir(), 'fs-purge-'));   // le profil neuf d'une purge se crée ici, puis part
+  t.after(() => rmSync(profils, { recursive: true, force: true }));
+  const faire = ({ ips, etats, erreurEtat = false }) => {
+    const detruits = [], vides = [];
+    const base = {
+      from(table) {
+        const data = table === 'cloud_ips' ? ips : table === 'cloud_postes' ? [] : [];
+        const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: { details: { profil: 'p' } }, error: null }), then: (ok) => ok({ data, error: null }) };
+        return q;
+      },
+      async rpc(nom, a) {
+        if (nom === 'cloud_pool_entretien') return { data: {}, error: null };
+        if (nom === 'cloud_etat') return erreurEtat ? { data: null, error: { message: 'illisible' } } : { data: etats[a.p_user] ?? { actif: false }, error: null };
+        if (nom === 'cloud_param') return { data: a.p_defaut, error: null };
+        if (nom === 'cloud_ip_noter_purge') return { data: { ok: true }, error: null };
+        return { data: null, error: null };
+      },
+    };
+    const pareFeu = { async synchroniser() { return { ecrit: false, appliquees: { ports: null, sorties: new Set() }, manquantes: [] }; }, async appliquees() { return null; } };
+    const e = creerEntretien({ config: { dossierProfils: profils }, base, regles: {}, iproyal: { disponible: false }, pareFeu,
+      controles: {}, fournisseurIp: { async verifierSolde() { return null; }, async rotationActive() { return true; } },
+      navigateurs: { ouverts: () => [], async detruire(u, p) { detruits.push([u, p]); return { profilsRestants: 0 }; } },
+      coffre: { async lire() { return {}; }, async vider(u) { vides.push(u); return 1; } },
+      sessions: { async revoquer() {} }, alertes: { async signaler() {} }, journal: { info() {}, erreur() {}, alerte() {} } });
+    return { e, detruits, vides };
+  };
+  // Le cas du 04/11 : l'IP 39 au repos (dernier compte Nico), Nico tient l'IP 40 → aucune purge.
+  const actif = faire({ ips: [{ id: 39, etat: 'repos', dernier_user_id: 'nico', user_id: null }, { id: 40, etat: 'attribuee_client', user_id: 'nico' }], etats: { nico: { actif: true } } });
+  const b1 = await actif.e.tour();
+  assert.deepEqual(actif.detruits, []); assert.deepEqual(actif.vides, []);
+  assert.equal(b1.purges_refusees, 1, 'refusée, et dite');
+  // Cloud actif sans IP (rotation) : aucune purge non plus.
+  const rotation = faire({ ips: [{ id: 7, etat: 'repos', dernier_user_id: 'r', user_id: null }], etats: { r: { actif: true } } });
+  await rotation.e.tour();
+  assert.deepEqual(rotation.detruits, []);
+  // Lecture de l'état ratée : aucune purge (jamais sur un doute).
+  const doute = faire({ ips: [{ id: 8, etat: 'repos', dernier_user_id: 'd', user_id: null }], etats: {}, erreurEtat: true });
+  await doute.e.tour();
+  assert.deepEqual(doute.detruits, []);
+  // Un compte qui est vraiment PARTI : purgé comme avant (conditions, confidentialité).
+  const parti = faire({ ips: [{ id: 9, etat: 'repos', dernier_user_id: 'parti', user_id: null }], etats: { parti: { actif: false } } });
+  const b4 = await parti.e.tour();
+  assert.equal(parti.detruits.length, 1); assert.deepEqual(parti.vides, ['parti']); assert.equal(b4.purges, 1);
 });
 
 test('(30/10) Beebs : la page de connexion est /fr/auth (la /fr/login rend une 404), Kiabi limité à son authentification', async () => {

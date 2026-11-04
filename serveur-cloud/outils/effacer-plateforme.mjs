@@ -3,7 +3,10 @@
 // (localStorage, IndexedDB, Cache Storage, service workers…). Aucune visite de la plateforme ; les autres plateformes, leurs
 // sessions et leurs témoins ne bougent pas. La ligne du coffre et l'état de l'app se règlent par le script de réparation
 // qui accompagne (scripts/reparations/), le blocage par blocages.json avant le redémarrage.
-//   docker compose exec -T orchestrateur node outils/effacer-plateforme.mjs <user> <plateforme>
+// ⛔ (04/11, règle de Nico : « ne plus jamais repartir de zéro ») Le cookie de l'appareil DataDome (`datadome`) est GARDÉ
+// par défaut, comme dans la purge des sessions (plateformes.js, COOKIES_GARDES) : l'effacer fait repasser la vérification
+// de l'appareil sans aucun historique. `--avec-datadome` seulement sur décision explicite de Nico.
+//   docker compose exec -T orchestrateur node outils/effacer-plateforme.mjs <user> <plateforme> [--avec-datadome]
 import { lireConfig } from '../src/config.js';
 import { connecterCdp } from '../src/cdp.js';
 import { creerDocker } from '../src/docker.js';
@@ -25,7 +28,8 @@ const cdp = await connecterCdp(`ws://${ip}:3000/`, { delaiAppelMs: 20_000 });
 
 // 1. Les cookies de ses domaines (un cookie déjà échu posé à leur place : la session du navigateur n'a pas deleteCookies).
 const { cookies } = await cdp.send('Storage.getCookies');
-const vises = cookies.filter((c) => sienne(c.domain));
+const avecDatadome = process.argv.includes('--avec-datadome');
+const vises = cookies.filter((c) => sienne(c.domain) && (avecDatadome || String(c.name ?? '').toLowerCase() !== 'datadome'));
 if (vises.length) await cdp.send('Storage.setCookies', { cookies: vises.map((c) => ({ ...versCookieParam(c, 0), expires: 1 })) });
 
 // 2. Le stockage de ses origines, tout type (Storage.clearDataForOrigin ; repli par une page vierge, comme postes.js).
@@ -47,7 +51,7 @@ try {
 const apres = (await cdp.send('Storage.getCookies')).cookies;
 const autres = (l) => l.filter((c) => !sienne(c.domain)).length;
 console.log(JSON.stringify({ le: new Date().toISOString(), plateforme, cookies_effaces: vises.map((c) => `${c.domain} ${c.name}`),
-  cookies_restants: apres.filter((c) => sienne(c.domain)).length, autres_cookies_avant: autres(cookies), autres_cookies_apres: autres(apres),
+  cookies_restants: apres.filter((c) => sienne(c.domain)).length, datadome_garde: !avecDatadome, autres_cookies_avant: autres(cookies), autres_cookies_apres: autres(apres),
   stockage: { origines, par } }));
 cdp.fermer();
 process.exit(0);

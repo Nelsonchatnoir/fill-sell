@@ -1,5 +1,17 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 04/11/2026 après-midi — RÉPARATION, INTERRUPTEUR DES VISITES, POINTS 2-3 (à lire EN PREMIER)
+Détail : `docs/enquetes/beebs-cloud-0411/RAPPORT.md` § 8 à 10.
+- Compte de Nico remis comme avant 12:23 (14:05) : IP 39, profil d'avant (empreinte 7a1cfa22), coffre refait
+  (`outils/restaurer-coffre-profil.mjs`) ; Vinted et Depop relus sans erreur à 14:08 ; Leboncoin : glissière de 11:02 à résoudre.
+- Visites de contrôle Beebs COUPÉES pendant tout le chantier : `coin_config.cloud_visites_controle_beebs = 0` (déployé
+  8e91ac1, 14:17). Le refus Beebs de l'IP 40 n'est PAS noté (il déclencherait une visite) — à noter après le chantier.
+- Points 2-3 (codés, banc) : la purge de l'entretien ne touche JAMAIS un compte actif ; `effacer-plateforme` garde
+  `datadome` ; lecteur PDF intégré réactivé (`REGLAGES_PDF`, empreinte → **091d90b32056e8dd**, EMPREINTE_AUTORISEE) ;
+  enregistrement complet (cookies envoyés/reçus, réponses DataDome masquées, chaque mouvement).
+- L'essai unique : IP neuve par le pool, bascule par `scripts/reparations/20261104_cloud_ip_essai_beebs_nico.sql`
+  (jamais `cloud_ip_liberer` ; l'IP 39 reste réservée à Nico ; inverse pour revenir dessus après l'essai).
+
 ## ⛔ 04/11/2026 — BEEBS : CE QUI DÉCLENCHE LE BLOCAGE, CADENCE DE FOND, VUE BUREAU (à lire EN PREMIER)
 Détail : `docs/enquetes/beebs-cloud-0411/RAPPORT.md`.
 - Le point 6 du bloc du 03/11 est FAUX : Beebs a été résolu le 03/11 18:40 (« Résoudre », filtre anti-pubs actif), puis

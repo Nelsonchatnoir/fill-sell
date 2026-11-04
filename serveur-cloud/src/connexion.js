@@ -41,7 +41,8 @@ import { lireDansExtension } from './sessionFillsell.js';
 import { lireComptesDuServeur } from './flotte.js';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { estPublicite } from './navigateur.js';
-import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneRequete } from './vueBureau.js';
+import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneRequete, nomsCookiesEnvoyes, nomsCookiesRecus,
+  parametresSansValeur, reponseDataDomeMasquee, estDataDome } from './vueBureau.js';
 
 // (04/11) Le cadre DataDome dans la page (sa place, et le défilement de la page) — lecture seule, aucun réseau.
 const EXPRESSION_CADRE_DATADOME = `(() => {
@@ -405,11 +406,22 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       };
       const hote = (u) => { try { return new URL(String(u)).hostname; } catch { return 'cadre'; } };
       const quand = (p) => (Number.isFinite(p?.wallTime) ? new Date(p.wallTime * 1000).toISOString() : new Date().toISOString());
+      // (04/11, enregistrement complet) Les cookies envoyés / reçus arrivent par des événements à part (…ExtraInfo), avant
+      // ou après la fin de la requête : gardés ici, joints à sa ligne, ou écrits en complément (même `id`) s'ils sont tardifs.
+      const extras = new Map();       // sessionId:requestId → { envoyes, recus }
+      const finies = new Set();       // les requêtes déjà écrites (un complément tardif s'y rattache par son id)
       const finir = (cle, extra) => {
         const r = requetes.get(cle);
         if (!r) return;
         requetes.delete(cle);
-        ecrire(ligneRequete({ ...r, ...extra, publicite: estPublicite(r.url) }));
+        finies.add(cle);
+        const x = extras.get(cle) ?? {};
+        extras.delete(cle);
+        ecrire(ligneRequete({ ...r, ...x, ...extra, id: cle.split(':').pop(), publicite: estPublicite(r.url) }));
+      };
+      const completer = (cle, champ, valeur) => {
+        if (finies.has(cle) && !requetes.has(cle)) { ecrire({ le: new Date().toISOString(), evenement: 'cookies_tardifs', id: cle.split(':').pop(), [champ]: valeur }); return; }
+        extras.set(cle, { ...(extras.get(cle) ?? {}), [champ]: valeur });
       };
       ecrire({ le: new Date().toISOString(), evenement: 'debut', plateforme, mode, vue: formatBureau(dims) });
       return {
@@ -436,11 +448,27 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
             // Le cadre : la page (ou sa fenêtre), sinon l'hôte du document du cadre qui demande.
             const nom = sessions.get(m.sessionId);
             const cadre = nom === 'page' || nom === 'fenetre' ? nom : (hote(p.documentURL) !== 'cadre' ? hote(p.documentURL) : nom);
-            requetes.set(cle, { le: quand(p), cadre, url: p.request?.url, methode: p.request?.method, type: p.type ?? null });
+            const url = p.request?.url;
+            requetes.set(cle, { le: quand(p), cadre, url, methode: p.request?.method, type: p.type ?? null,
+              // DataDome : les NOMS des paramètres et leur longueur (la trajectoire de la glissière y passe), la taille du corps.
+              ...(estDataDome(url) ? { parametres: parametresSansValeur(url), corps: p.request?.postData != null ? String(p.request.postData).length : (p.request?.hasPostData ? 'present' : null) } : {}) });
             return true;
           }
+          if (m.method === 'Network.requestWillBeSentExtraInfo') { completer(cle, 'envoyes', nomsCookiesEnvoyes(p.associatedCookies)); return true; }
+          if (m.method === 'Network.responseReceivedExtraInfo') { completer(cle, 'recus', nomsCookiesRecus(p.headers, p.blockedCookies)); return true; }
           if (m.method === 'Network.responseReceived') { const r = requetes.get(cle); if (r) r.http = p.response?.status ?? null; return true; }
-          if (m.method === 'Network.loadingFinished') { finir(cle, {}); return true; }
+          if (m.method === 'Network.loadingFinished') {
+            const r = requetes.get(cle);
+            // La réponse de DataDome à la vérification de l'appareil et à la glissière : sa forme et son verdict, jetons masqués.
+            if (r && estDataDome(r.url) && ['XHR', 'Fetch'].includes(r.type)) {
+              cdp.send('Network.getResponseBody', { requestId: p.requestId }, m.sessionId)
+                .then((b) => finir(cle, { reponse: reponseDataDomeMasquee(b?.base64Encoded ? Buffer.from(b.body, 'base64').toString('utf8') : b?.body) }))
+                .catch(() => finir(cle, { reponse: 'illisible' }));
+              return true;
+            }
+            finir(cle, {});
+            return true;
+          }
           if (m.method === 'Network.loadingFailed') { finir(cle, { echec: p.errorText ?? 'echec', bloquee: p.blockedReason ?? null }); return true; }
           return false;
         },
@@ -848,8 +876,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         // (04/11) Beebs : le doigt devient la souris d'un bureau (clic, glisser bouton enfoncé, molette), rapporté à la
         // page entière ou à la zone du zoom. Aucun événement de toucher n'atteint la page.
         if (!['debut', 'deplacer', 'fin'].includes(m.type)) return;
+        const recuLe = Date.now();
         const p = versPage({ x: borne(m.x, 0, dims.largeur), y: borne(m.y, 0, dims.hauteur) }, vueDesGestes());
-        for (const ev of souris(m.type, p)) await cdp.send('Input.dispatchMouseEvent', ev, s);
+        const evs = souris(m.type, p);
+        for (const ev of evs) await cdp.send('Input.dispatchMouseEvent', ev, s);
+        // (04/11, enregistrement complet) CHAQUE mouvement : reçu du téléphone, point du canvas, point de la page, ce qui a
+        // été rejoué (types et points) et quand — pour comparer le rejeu au geste de la personne.
+        enregistrement?.noter({ evenement: 'souris', recu_ms: recuLe, rejoue_ms: Date.now(), doigt: m.type,
+          canvas: [Math.round(Number(m.x)), Math.round(Number(m.y))], page: [Math.round(p.x), Math.round(p.y)],
+          rejoue: evs.map((e) => `${e.type}:${e.x},${e.y}${e.buttons ? `:b${e.buttons}` : ''}`), zoom: Boolean(zoom && active === cible) });
         if (m.type === 'fin') {
           enregistrement?.noter({ evenement: 'geste', zoom: Boolean(zoom) });
           setTimeout(async () => {

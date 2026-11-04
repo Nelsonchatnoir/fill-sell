@@ -170,6 +170,16 @@ export function specConteneur({ config, user, profilId, langueFr = false }) {
   };
 }
 
+/**
+ * (04/11, décision de Nico : « réactive le lecteur PDF intégré, c'est un réglage du vrai navigateur ; n'invente aucune
+ * valeur ») steel lance Chromium avec ses préférences par défaut `plugins.always_open_pdf_externally: true` et
+ * `plugins_disabled: ["Chrome PDF Viewer"]` (session.service.js) : le lecteur PDF intégré est coupé, et la page voit
+ * navigator.plugins VIDE — ce qu'aucun Chrome de bureau ordinaire ne montre. Nos préférences passent APRÈS les siennes
+ * (deepMerge : un tableau remplace l'autre) : le lecteur intégré revient tel que Chromium le livre, rien d'inventé.
+ * ⛔ Change l'empreinte figée (EMPREINTE_AUTORISEE) : jamais déployé sans l'accord de Nico.
+ */
+export const REGLAGES_PDF = Object.freeze({ plugins: Object.freeze({ always_open_pdf_externally: false, plugins_disabled: Object.freeze([]) }) });
+
 /** Le corps de création de session steel (pur : testé). Le proxy est OBLIGATOIRE. Celui de l'essai, plus `persist`. */
 export function corpsSession({ proxyUrl }) {
   if (!proxyUrl || !/^https?:\/\/[^@\s]+@[^:\s]+:\d+$/.test(proxyUrl)) throw new Error('session refusée : proxy du compte absent ou mal formé');
@@ -182,7 +192,7 @@ export function corpsSession({ proxyUrl }) {
     persist: true,                      // le profil du compte, sur le disque (verrou 2)
     // (02/11) Profil français : fuseau de Paris, langues fr-FR puis fr (préférences du profil, fusionnées par steel).
     timezone: FUSEAU_PROFIL,
-    userPreferences: { intl: { accept_languages: LANGUES_PROFIL, selected_languages: LANGUES_PROFIL } },
+    userPreferences: { intl: { accept_languages: LANGUES_PROFIL, selected_languages: LANGUES_PROFIL }, ...REGLAGES_PDF },
   };
 }
 

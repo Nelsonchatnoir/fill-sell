@@ -39,6 +39,14 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     return coupees;
   }
 
+  /** (04/11) Le compte tient-il encore une IP, ou son Cloud est-il actif ? Dans le doute (lecture ratée) : oui, jamais de purge. */
+  async function compteToujoursActif(user, ips) {
+    if ((ips ?? []).some((i) => i.user_id && i.user_id === user)) return true;
+    const { data: e, error } = await base.rpc('cloud_etat', { p_user: user });
+    if (error) return true;
+    return e?.actif === true;
+  }
+
   async function purger(ip) {
     const user = ip.dernier_user_id;
     const { data: poste } = await base.from('cloud_postes').select('session_fillsell_id, details').eq('user_id', user).maybeSingle();
@@ -148,7 +156,17 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
 
     // 2. Purges
     bilan.purges = 0;
+    bilan.purges_refusees = 0;
     for (const ip of toutes.filter((i) => i.etat === 'repos' && !i.purge_prouvee_le && i.dernier_user_id)) {
+      // ⛔ (04/11, incident de 12:25 — règle de Nico : « ne plus jamais repartir de zéro ») La purge détruit le profil,
+      // vide le coffre (cookies DataDome compris) et révoque la session : elle n'est due qu'à un compte qui PART. Un compte
+      // qui tient encore une IP, ou dont le Cloud est actif, n'est JAMAIS purgé parce qu'une de ses IP est au repos (le
+      // 04/11, cloud_ip_liberer sur un compte actif a fait effacer Vinted, Leboncoin, Depop). L'IP reste au repos, dite.
+      if (await compteToujoursActif(ip.dernier_user_id, toutes)) {
+        bilan.purges_refusees++;
+        journal.alerte('purge_refusee_compte_actif', { ip_id: ip.id, user: String(ip.dernier_user_id).slice(0, 8) });
+        continue;
+      }
       await purger(ip).catch((e) => journal.erreur('purge_echec', { ip_id: ip.id, erreur: e.message }));
       bilan.purges++;
     }

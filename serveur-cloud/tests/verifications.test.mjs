@@ -258,13 +258,16 @@ test('(02/11 soir) UN navigateur : le principal prend les langues d\'un vrai Chr
   const p = specConteneur({ config, user: 'u', profilId: 'p1' });
   const s = corpsSession({ proxyUrl: 'http://a:b@1.2.3.4:12323' });
   // fr-FR, fr, en-US, en → Accept-Language « fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7 » (cause prouvée du blocage Beebs).
-  assert.deepEqual(s.userPreferences, { intl: { accept_languages: 'fr-FR,fr,en-US,en', selected_languages: 'fr-FR,fr,en-US,en' } });
+  // (04/11, décision de Nico) + le lecteur PDF intégré de Chromium, que steel coupait par défaut (REGLAGES_PDF).
+  assert.deepEqual(s.userPreferences, { intl: { accept_languages: 'fr-FR,fr,en-US,en', selected_languages: 'fr-FR,fr,en-US,en' },
+    plugins: { always_open_pdf_externally: false, plugins_disabled: [] } });
   assert.equal(s.timezone, 'Europe/Paris');
   assert.match(p.Cmd[0], /1920x1080x24/, 'son écran');
   assert.ok(p.HostConfig.Binds.some((b) => b.includes('/app/api/extensions/')) && !p.HostConfig.CpusetCpus, 'son extension, sans limite de cœurs');
   // L'empreinte que le déploiement du 02/11 soir autorise (EMPREINTE_AUTORISEE), pour le lancement en place (ca929fd96ad6) :
-  // seules les langues ont changé (73cbe2096d286336 avec « fr-FR, fr »).
-  assert.equal(empreinteNavigateur({ Labels: { 'fillsell.lancement': 'ca929fd96ad6' } }, s), '7a1cfa22decada93');
+  // seules les langues ont changé (73cbe2096d286336 avec « fr-FR, fr »). (04/11) Avec le lecteur PDF intégré réactivé :
+  // 7a1cfa22decada93 → 091d90b32056e8dd — à porter dans EMPREINTE_AUTORISEE avec l'accord de Nico, jamais avant.
+  assert.equal(empreinteNavigateur({ Labels: { 'fillsell.lancement': 'ca929fd96ad6' } }, s), '091d90b32056e8dd');
   for (const n of ['specConteneurIsole', 'corpsSessionIsole', 'VARIANTES_ISOLEES', 'profilIsole', 'nomConteneurIsole'])
     assert.equal(nav[n], undefined, `plus de navigateur isolé (${n})`);
 });
