@@ -395,6 +395,42 @@ test('(30/10) rotation : un compte dont le Cloud est fini est PURGÉ (navigateur
   assert.equal(notes[0].p_user, 'u_fini'); assert.ok(notes[0].p_details.purge, 'la date de purge est notée');
 });
 
+test('(04/11, accord de Nico) visites de contrôle : l’interrupteur coupe Beebs depuis toute IP ; une lecture ratée coupe tout', async () => {
+  const { creerEntretien } = await import('../src/entretien.js');
+  const faire = (params, erreurParam = false) => {
+    const visites = [];
+    const ips = [{ id: 4, ip: '1.1.1.4', port: 12323, etat: 'disponible', user_id: null }, { id: 3, ip: '1.1.1.3', port: 12323, etat: 'disponible', user_id: null }];
+    const base = {
+      from(table) { return { select: async () => ({ data: table === 'cloud_ips' ? ips : [], error: null }) }; },
+      async rpc(nom, a) {
+        if (nom === 'cloud_pool_entretien') return { data: {}, error: null };
+        if (nom === 'cloud_param') return erreurParam ? { data: null, error: { message: 'illisible' } } : { data: params[`cloud_${a.p_cle}`] ?? a.p_defaut, error: null };
+        if (nom === 'cloud_ip_a_visiter') return { data: [{ ip_id: 4, plateforme: 'beebs' }, { ip_id: 3, plateforme: 'leboncoin' }], error: null };
+        if (nom === 'cloud_proxy_identifiants') return { data: 'http://u:p@1.1.1.1:12323', error: null };
+        if (nom === 'cloud_ip_refus_visite') return { data: { issue: 'inchange' }, error: null };
+        return { data: null, error: null };
+      },
+    };
+    const pareFeu = { async synchroniser() { return { ecrit: false, appliquees: { ports: null, sorties: new Set(['1.1.1.4:12323', '1.1.1.3:12323']) }, manquantes: [] }; }, async appliquees() { return null; } };
+    const e = creerEntretien({ config: {}, base, regles: {}, iproyal: {}, pareFeu,
+      controles: { async controler() { return null; }, async visiterPlateforme(v) { visites.push(`${v.plateforme}:${v.ipId}`); return { verdict: 'indetermine' }; } },
+      fournisseurIp: { async verifierSolde() { return null; }, async rotationActive() { return true; } },
+      navigateurs: { ouverts: () => [] }, coffre: {}, sessions: {}, alertes: { async signaler() {} }, journal: { info() {}, erreur() {}, alerte() {} } });
+    return { e, visites };
+  };
+  const sans = faire({});
+  const b1 = await sans.e.tour();
+  assert.deepEqual(sans.visites, ['beebs:4'], 'sans interrupteur : comme avant (la première IP à revoir)');
+  assert.deepEqual(b1.visites_coupees, []);
+  const coupe = faire({ cloud_visites_controle_beebs: 0 });
+  const b2 = await coupe.e.tour();
+  assert.deepEqual(coupe.visites, ['leboncoin:3'], 'Beebs coupé : aucune visite de Beebs, depuis aucune IP ; les autres plateformes inchangées');
+  assert.deepEqual(b2.visites_coupees, ['beebs']);
+  const doute = faire({}, true);
+  await doute.e.tour();
+  assert.deepEqual(doute.visites, [], 'interrupteur illisible : aucune visite (jamais sur un doute)');
+});
+
 test('(30/10) Beebs : la page de connexion est /fr/auth (la /fr/login rend une 404), Kiabi limité à son authentification', async () => {
   const { DEFINITIONS } = await import('../src/plateformes.js');
   assert.equal(DEFINITIONS.beebs.pageConnexion, 'https://www.beebs.app/fr/auth');

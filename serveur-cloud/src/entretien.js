@@ -28,6 +28,17 @@ export const VISITE_ESPACEMENT_MS = 3600_000;   // (03/11) au plus une visite de
 export function creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp,
   pareFeu = creerPareFeu({ config, journal }), approvisionnement = creerApprovisionnement({ base, iproyal, alertes, journal, regles }) }) {
   let derniereVisite = 0;
+  /** (04/11) Les plateformes dont les visites de contrôle sont coupées (coin_config) ; « * » = lecture ratée, toutes. */
+  async function visitesCoupees() {
+    const coupees = new Set();
+    for (const pf of ['vinted', 'leboncoin', 'beebs', 'depop']) {
+      const { data, error } = await base.rpc('cloud_param', { p_cle: `visites_controle_${pf}`, p_defaut: 1 });
+      if (error) { coupees.add('*'); break; }
+      if (Number(data) === 0) coupees.add(pf);
+    }
+    return coupees;
+  }
+
   async function purger(ip) {
     const user = ip.dernier_user_id;
     const { data: poste } = await base.from('cloud_postes').select('session_fillsell_id, details').eq('user_id', user).maybeSingle();
@@ -166,10 +177,17 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     // 3 bis. (03/11) LA REQUALIFICATION : une visite de contrôle de la plateforme qui a refusé, sur une IP DISPONIBLE
     //        (jamais une IP tenue par un compte), au plus une par heure, seulement si le pare-feu ouvre sa sortie.
     bilan.visite = null;
+    // (04/11, accord de Nico) L'INTERRUPTEUR DES VISITES DE CONTRÔLE, par plateforme : coin_config
+    // `cloud_visites_controle_<plateforme>` = 0 → aucune visite de cette plateforme, depuis aucune IP. Chaque visite
+    // présente à la plateforme notre navigateur sans cookie, depuis une IP du pool ; pendant le chantier Beebs, aucune.
+    // Une lecture ratée de l'interrupteur coupe la visite (jamais une visite sur un doute).
+    const coupees = await visitesCoupees();
+    bilan.visites_coupees = [...coupees];
     if (controles?.visiterPlateforme && controlesFaits < 2 && Date.now() - derniereVisite >= VISITE_ESPACEMENT_MS) {
       const { data: aVisiter } = await base.rpc('cloud_ip_a_visiter');
       const parId = new Map(toutes.map((i) => [Number(i.id), i]));
-      const v = (aVisiter ?? []).find((x) => parId.get(Number(x.ip_id)) && sortiePermise(parId.get(Number(x.ip_id))));
+      const v = (aVisiter ?? []).find((x) => !coupees.has(x.plateforme) && !coupees.has('*')
+        && parId.get(Number(x.ip_id)) && sortiePermise(parId.get(Number(x.ip_id))));
       if (v) {
         derniereVisite = Date.now();
         const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: v.ip_id });
