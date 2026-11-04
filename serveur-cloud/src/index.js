@@ -28,6 +28,7 @@ import { creerVerifications } from './verifications.js';
 import { creerFlotte, capaciteServeur } from './flotte.js';
 import { tailleEnMo } from './navigateur.js';
 import { creerEnregistrementFond } from './enregistrementFond.js';
+import { creerPausesMessagerie } from './pausesMessagerie.js';
 
 const configLue = lireConfig();
 // (03/11, point 1) LA CAPACITÉ : NAVIGATEURS_MAX s'il est réglé ; sinon ⌊(mémoire de l'hôte − socle) / plafond d'un
@@ -51,11 +52,14 @@ let connexions = null;
 let endurance = null;
 // (04/11 soir, essai GPU) L'enregistrement de fond : actif sur ENREGISTREMENT_FOND=1 seulement (sinon il ne fait rien).
 const enregistrementFond = creerEnregistrementFond({ config, journal });
-const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp, enregistrementFond,
+// (04/11 soir, règle de Nico) Les pauses de la messagerie et de la veille des commandes : levées par une résolution réussie
+// (verifications.js) et par un changement de machine ou d'IP (postes.js).
+const pausesMessagerie = creerPausesMessagerie({ config, base, navigateurs, journal });
+const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp, enregistrementFond, pausesMessagerie,
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), arretEndurance: () => endurance?.arretee() ?? null });
 // (02/11) Les vérifications anti-robot : une règle du PRODUIT, toujours active (verifications.js) — un blocage n'arrête
 // que sa plateforme ; « Résoudre la vérification » la rouvre ; l'essai de 48 h en garde seulement le journal.
-const verifications = creerVerifications({ config, base, navigateurs, postes, coffre, journal, alertes,
+const verifications = creerVerifications({ config, base, navigateurs, postes, coffre, journal, alertes, pausesMessagerie,
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
 // (01/11) Une connexion vérifiée (compte lu) est notée dans le journal de l'essai de 48 h : ses heures partent de là.
 // (02/11) Et elle rouvre sa plateforme si elle était en vérification (verifications.resolue, par l'essai ou sans lui).

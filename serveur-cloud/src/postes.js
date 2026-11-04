@@ -6,6 +6,7 @@ import { PLATEFORMES_CLOUD, ORIGINES_SESSION, cookiesAPurger, versCookieParam } 
 import { planifierPostes, resumerJobs } from './planificateur.js';
 import { nouveauProfilId, DOMAINES_VERROU, tailleEnMo } from './navigateur.js';
 import { lireComptesDuServeur } from './flotte.js';
+import { changementDePoste } from './pausesMessagerie.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
 
 /** Une adresse sur un domaine de la plateforme (pure) — les onglets à fermer quand elle est bloquée. */
@@ -37,7 +38,7 @@ export function redemarrerPourMemoire({ mo, seuilMo, enCours = 0, connexion = fa
 }
 
 export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null,
-  enregistrementFond = null }) {
+  enregistrementFond = null, pausesMessagerie = null }) {
   const dernieresFins = new Map();
   const dernieresSauvegardes = new Map();
   const redemarragesMemoire = new Map();   // (03/11) user → instant du dernier redémarrage pour la mémoire
@@ -216,8 +217,15 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       if (aPoser.length) await h.cdp.send('Storage.setCookies', { cookies: aPoser });
       // 2. La session FillSell.
       const s = await assurerSessionFillsell(user, h, poste);
+      // (04/11 soir, règle de Nico) Un changement de machine ou d'IP dédiée repart sans les pauses de l'ancienne
+      // (messagerie, veille des commandes) : elles disaient l'ancienne machine, pas celle-ci. Jamais une cause d'échec.
+      const ouvertSur = { serveur: config.serveurNom, ip_id: sortie.ipId ?? null, mode: sortie.mode ?? null };
+      if (pausesMessagerie && changementDePoste(poste?.details?.ouvert_sur, ouvertSur)) {
+        await pausesMessagerie.lever(user, null, { raison: 'changement_de_poste', oublier: true })
+          .catch((e) => journal.alerte('pauses_changement_echec', { user, erreur: e.message }));
+      }
       await noter(user, 'actif', { serveur: config.serveurNom, conteneur: h.conteneur, profil: profilId,
-        session_fillsell_id: s.sessionId ?? '', motif, ip_mode: sortie.mode });
+        session_fillsell_id: s.sessionId ?? '', motif, ip_mode: sortie.mode, ouvert_sur: ouvertSur });
       journal.info('poste_ouvert', { user, motif, coffre: bilanCoffre, session: s.source });
       // (04/11 soir, essai GPU) L'enregistrement de fond (ENREGISTREMENT_FOND=1) : jamais attendu, jamais une cause d'échec.
       enregistrementFond?.suivre(user, h).catch((e) => journal.alerte('enregistrement_fond_echec', { user, erreur: e.message }));

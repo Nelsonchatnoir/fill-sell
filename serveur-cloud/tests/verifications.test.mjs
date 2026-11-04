@@ -80,7 +80,7 @@ test('(02/11, décision de Nico) remise à zéro de Beebs SEULE : ses heures d\'
 });
 
 // ── Le module, avec une base et un navigateur simulés ───────────────────────────────────────────────────────────────
-function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true } } = {}) {
+function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null } = {}) {
   const dossierEtat = mkdtempSync(path.join(tmpdir(), 'fs-verif-'));
   const rpc = [], maj = [], alertes = [], coffre = [], bloquees = [], permis = [];
   const jobs = taches.map((t) => ({ ...t }));
@@ -119,6 +119,7 @@ function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte
     connexionsOuvertes: () => new Set(),
     journal: { info() {}, alerte() {}, erreur() {} },
     alertes: { signaler: async (n, t) => { alertes.push(t); } },
+    pausesMessagerie,
   });
   return { v, rpc, maj, alertes, coffre, bloquees, permis, jobs };
 }
@@ -286,4 +287,17 @@ test('(02/11) le refus d\'un bandeau de cookies : trouvé dans la page et ses ra
   assert.deepEqual(lancer(EXPRESSION_COOKIES, racine([bouton({ innerText: 'Tout refuser', getBoundingClientRect: () => ({ width: 0, height: 0 }) })])), { refus: false }, 'invisible : non');
   assert.deepEqual(lancer(EXPRESSION_COOKIES, racine([bouton({ innerText: 'Refuser' })])), { refus: true }, 'les mots usuels, hors Axeptio');
   assert.deepEqual(lancer(EXPRESSION_COOKIES, racine([bouton({ innerText: 'Se connecter' })])), { refus: false });
+});
+
+test('(04/11 soir, règle de Nico) une résolution réussie lève la pause de la messagerie de SA plateforme (et la coupure de sa veille)', async () => {
+  const levees = [];
+  const t = monter({ pausesMessagerie: { lever: async (u, ps, o) => { levees.push([u, ps, o.raison]); return { base: ps, extension: null }; } } });
+  await t.v.charger();
+  await t.v.bloquer(U, { nature: 'glissiere', plateforme: 'leboncoin' });
+  assert.equal(await t.v.resolue(U, 'leboncoin', { par: 'resoudre' }), true);
+  assert.deepEqual(levees, [[U, ['leboncoin'], 'resolution (resoudre)']]);
+  const sans = monter();
+  await sans.v.charger();
+  await sans.v.bloquer(U, { nature: 'glissiere', plateforme: 'leboncoin' });
+  assert.equal(await sans.v.resolue(U, 'leboncoin', { par: 'resoudre' }), true, 'sans le module : la résolution tient comme avant');
 });

@@ -349,3 +349,34 @@ qui purgerait les sessions de son profil (coffre vide). Retour : cloud-2 arrêt�
   01/12 (8 $ sur 30 j, 12 $ sur 60 j). Les 1, 4, 40, 41 n'auraient pas été renouvelées non plus (stock tenu par 2 et 3) :
   échéances 2 et 3 le 29/11, 4 le 02/12, 1 / 40 / 41 le 04/12. ⚠ Mise en service sur cloud-1 (seul à tenir le pool) REFUSÉE par
   le garde-fou de la session : à déployer sur cloud-1 avant le 24/11 (première décision de renouvellement).
+
+**Leboncoin, 1er signal de l'essai (04/11 18:58, lu dans `etat/essais/fond-f44b5917-2026-11-04.jsonl`)** :
+- Refusée : `GET https://api.leboncoin.fr/api/account/v2/members/me/account` à **18:58:34.906**, Fetch émis dans l'onglet de
+  travail Leboncoin (`/compte/part/mes-annonces`, ouvert par l'extension à 18:58:21) par la veille des commandes
+  (`lireCommandesRecentes` : type du compte avant les transactions ; usage_logs `veille_commandes` « coupure »
+  `compte_http_403` à 18:58:35). Cookies envoyés : la session + `datadome` ; réponse **403 + un `datadome` neuf posé** = la
+  marque d'un refus DataDome sur un appel d'API. 13 s plus tôt (18:58:21.583), la page elle-même appelait le MÊME point
+  d'accès avec les mêmes cookies : 200.
+- Puis le script DataDome de la page a ouvert un cadre de glissière dans cet onglet caché (vu par le relevé des cadres à
+  18:59:17, referer = cette API) → Leboncoin verrouillé, onglet fermé. Nico n'a rien vu : tout s'est passé dans un onglet
+  de fond. ⚠ Le cadre lui-même n'est PAS dans l'enregistrement de fond (les cadres des onglets de travail n'y entrent pas :
+  trou de l'enregistreur, à corriger) — son type (glissière `t=fe` ou blocage `t=bv`) n'est donc pas lu.
+- Ce qui précède (le plus probable, NON prouvé) : depuis la connexion (18:48:55), la page « mes annonces » de Leboncoin a été
+  rechargée dans un onglet de fond neuf **toutes les 2 min pile** (18:50:21, 18:52:21, 18:54:21, 18:56:21, 18:58:21 — tour
+  du poll ; vraisemblablement le renouvellement du jeton de la page, `assurerJetonLeboncoin`), chaque fois avec ~25 appels
+  d'API ; le refus tombe au 6e chargement, sur l'appel de plus. Même point d'accès refusé sur cloud-1 le 04/11 à 14:45
+  (sonde du compte) : le signal ne vient donc pas de la machine seule.
+- ⚠ Défaut du moteur Chrome (cloud-2) : la contre-visite automatique de 19:02:17 a échoué (« verrou sans exception par
+  page » : l'exception par page n'existe que sur steel) → Leboncoin est resté verrouillé jusqu'au « Résoudre » de Nico
+  (20:16:38 : lecture 200, aucune glissière, rouvert). Sur cloud-1, la contre-visite l'aurait rouvert seule à ~19:02.
+- Réseau Supabase : `cloud_serveur_battre` a reçu une page d'erreur HTML à 19:21:48 et 19:51:33, un tour du planificateur a
+  échoué à 19:21:50 (« schema cache ») — sans effet sur le navigateur.
+
+**Pauses de messagerie (ordre de Nico, 20:2x)** : la pause Leboncoin née sur cloud-1 (403 de 17:02:37, jusqu'au 05/11 17:02)
+tenait sur cloud-2 et le « Résoudre » de 20:16 ne la levait pas, ni la coupure de 24 h de la veille des commandes posée par
+l'extension de cloud-2 à 18:58:34. Règle corrigée (`src/pausesMessagerie.js`) : une résolution réussie lève la pause de la
+messagerie et la coupure de la veille de SA plateforme (base + stockage de l'extension) ; un changement de machine ou d'IP
+dédiée (`cloud_postes.details.ouvert_sur`) repart sans les pauses de l'ancienne, mémoire comprise. Appliqué au compte de
+Nico : `20261104_cloud_essai_gpu_pauses_messagerie_nico.sql` (Leboncoin et Beebs, bloquées avant la bascule ; + INVERSE)
+et coupure de la veille Leboncoin retirée du stockage de l'extension de cloud-2 à 20:29 (avant : jusqu'au 05/11 18:58:34).
+L'INVERSE de la bascule garde `ouvert_sur` : au retour, cloud-1 repart sans les pauses nées sur cloud-2.

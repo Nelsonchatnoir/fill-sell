@@ -156,7 +156,7 @@ export function pauseLbcProlongee({ maintenant = new Date().toISOString() } = {}
   return { derniere_preuve: maintenant, essai_apres: new Date(Date.parse(maintenant) + ATTENTE_RESTREINT_MS).toISOString() };
 }
 
-export function creerVerifications({ config, base, navigateurs, postes, coffre = null, connexionsOuvertes, journal, alertes = null }) {
+export function creerVerifications({ config, base, navigateurs, postes, coffre = null, connexionsOuvertes, journal, alertes = null, pausesMessagerie = null }) {
   // Le fichier d'origine (01/11, essai de 48 h) : les blocages en cours y sont, il ne change pas de place.
   const dossier = `${config.dossierEtat || '/srv/fillsell-cloud/etat'}/endurance`;
   const fichier = `${dossier}/blocages.json`;
@@ -354,6 +354,9 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     await sur('publication', () => publier(user, plateforme));
     await sur('liberation', () => libererTaches(user, plateforme));
     if (plateforme === 'leboncoin') await sur('pause_lbc', () => pauseLbc(user, 'lever', `cloud (${par})`));
+    // (04/11 soir, règle de Nico) Une résolution réussie lève aussi la pause de sa messagerie et la coupure de sa veille
+    // des commandes (base et extension) : sinon la plateforme rouverte resterait muette jusqu'à 24 h.
+    if (pausesMessagerie) await sur('pauses_messagerie', () => pausesMessagerie.lever(user, [plateforme], { raison: `resolution (${par})` }));
     return true;
   }
 

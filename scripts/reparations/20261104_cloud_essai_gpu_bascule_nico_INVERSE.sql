@@ -30,6 +30,9 @@ BEGIN
   UPDATE public.cloud_postes p
      SET serveur = 'cloud-1', etat = 'eteint', conteneur = b.ligne ->> 'conteneur', maj_le = now(),
          details = (b.ligne -> 'details') || jsonb_build_object('essai_gpu', jsonb_build_object('retour_le', now()))
+                   -- (04/11 soir) La dernière ouverture (cloud-2) reste notée : cloud-1 voit le changement de machine et repart
+                   -- sans les pauses de messagerie nées sur cloud-2 (postes.js, pausesMessagerie.js).
+                   || CASE WHEN p.details ? 'ouvert_sur' THEN jsonb_build_object('ouvert_sur', p.details -> 'ouvert_sur') ELSE '{}'::jsonb END
     FROM public._backup_0411_essai_gpu b
    WHERE b.t = 'cloud_postes' AND p.user_id = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
   -- Les IP.

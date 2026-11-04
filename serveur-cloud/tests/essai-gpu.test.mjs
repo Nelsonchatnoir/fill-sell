@@ -260,3 +260,54 @@ test('achat d’IP : sur ACCORD ÉCRIT, l’interrupteur à 0 ne bloque plus —
   assert.equal((await solde.a.acheter(un, await solde.a.gardes(), { montant: 3 }, { accordEcrit: accord })).raison, 'solde_insuffisant');
   for (const x of [serveur, plafond, solde]) { assert.deepEqual(x.gestes, []); assert.deepEqual(x.inseres, []); }
 });
+
+// ── (04/11 soir, règle de Nico) Les pauses de la messagerie et de la veille des commandes ─────────────────────────────
+test('changement de machine ou d\'IP dédiée : oui ; même poste, inconnu ou rotation : non', async () => {
+  const { changementDePoste } = await import('../src/pausesMessagerie.js');
+  const c1 = { serveur: 'cloud-1', ip_id: 39, mode: 'dedie' };
+  assert.equal(changementDePoste(null, c1), false, 'avant inconnu : on ne lève rien');
+  assert.equal(changementDePoste(c1, { ...c1 }), false);
+  assert.equal(changementDePoste(c1, { serveur: 'cloud-2', ip_id: 39, mode: 'dedie' }), true, 'autre machine');
+  assert.equal(changementDePoste(c1, { serveur: 'cloud-1', ip_id: 42, mode: 'dedie' }), true, 'autre IP dédiée');
+  assert.equal(changementDePoste({ ...c1, mode: 'rotation' }, { serveur: 'cloud-1', ip_id: 7, mode: 'rotation' }), false, 'rotation : l\'IP change par construction');
+});
+
+test('la coupure levée dans l\'extension : seulement « coupee » des plateformes visées, dans les deux états', async () => {
+  const { expressionLeverCoupures, CLES_ETAT_EXTENSION } = await import('../src/pausesMessagerie.js');
+  const vm = await import('node:vm');
+  const coupee = { le: 'x', jusqu: 9e12, motif: 'http_403' };
+  const stock = { messagerie_beta_etat: { leboncoin: { coupee, prochain: 5 }, vinted: { coupee } }, veille_commandes_etat: { leboncoin: { coupee, typeCompte: 'individual' } } };
+  const chrome = { storage: { local: {
+    get: async (cles) => Object.fromEntries(cles.map((k) => [k, structuredClone(stock[k])])),
+    set: async (o) => { Object.assign(stock, o); },
+  } } };
+  // (un autre royaume : comparé par sa forme JSON)
+  const levees = JSON.parse(JSON.stringify(await vm.runInNewContext(expressionLeverCoupures(['leboncoin', 'ebay']), { chrome })));
+  assert.deepEqual(levees, { messagerie_beta_etat: ['leboncoin'], veille_commandes_etat: ['leboncoin'] });
+  assert.deepEqual(stock.messagerie_beta_etat, { leboncoin: { prochain: 5 }, vinted: { coupee } }, 'Vinted et la cadence intacts');
+  assert.deepEqual(stock.veille_commandes_etat, { leboncoin: { typeCompte: 'individual' } });
+  assert.deepEqual(CLES_ETAT_EXTENSION, ['messagerie_beta_etat', 'veille_commandes_etat']);
+});
+
+test('lever en base : la pause seule (résolution), la pause et sa mémoire (changement de poste) ; navigateur fermé = base seule', async () => {
+  const { creerPausesMessagerie } = await import('../src/pausesMessagerie.js');
+  const appels = [];
+  const base = { from: (table) => {
+    const a = { table, filtres: [] }; appels.push(a);
+    const q = {
+      update: (p) => { a.patch = p; return q; }, eq: (k, v) => { a.filtres.push(['eq', k, v]); return q; },
+      in: (k, v) => { a.filtres.push(['in', k, v]); return q; }, gt: (k) => { a.filtres.push(['gt', k]); return q; },
+      or: (f) => { a.filtres.push(['or', f.replace(/\d{4}-[^,]*Z/, 'T')]); return q; },
+      select: async () => ({ data: [{ platform: 'leboncoin' }], error: null }),
+    };
+    return q;
+  } };
+  const p = creerPausesMessagerie({ config: { dossierExtension: '/nulle-part' }, base, navigateurs: { ouvert: () => null }, journal: { info() {}, alerte() {} } });
+  assert.deepEqual(await p.lever('u', ['leboncoin', 'ebay'], { raison: 'resolution (resoudre)' }), { base: ['leboncoin'], extension: null });
+  assert.deepEqual(appels[0].patch, { pause_jusqu_au: null });
+  assert.deepEqual(appels[0].filtres, [['eq', 'user_id', 'u'], ['in', 'platform', ['leboncoin']], ['gt', 'pause_jusqu_au']]);
+  await p.lever('u', null, { raison: 'changement_de_poste', oublier: true });
+  assert.deepEqual(appels[1].patch, { pause_jusqu_au: null, bloque_le: null });
+  assert.deepEqual(appels[1].filtres[1], ['in', 'platform', ['vinted', 'leboncoin', 'beebs', 'depop']]);
+  assert.deepEqual(appels[1].filtres[2], ['or', 'pause_jusqu_au.gt.T,bloque_le.not.is.null']);
+});
