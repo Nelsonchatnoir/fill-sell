@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { retraitEngage, suppressionEnvoyeeHeritee } from "../_shared/retenue-creneau.js";
 import {
   decisionIntrouvable, identifiantAnnonceJob, messageDisparueConfirmee, messagePersistant, messageVendueLue,
-  SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE, FENETRE_TRACE_MS,
+  SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE, FENETRE_TRACE_MS, borneReleveAttendu,
 } from "../_shared/introuvable-a-confirmer.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -13,6 +13,8 @@ import { grilleDuDernierEchecTaille, normaliserTaille, tailleAServir } from "../
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // (06/10, Glowik) Un échec qu'une extension corrige repart dès que le poste l'a.
 import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj, champsPauseAttenteMaj } from "../_shared/relance-apres-maj.js";
+import { MESSAGE_REPUBLICATION_ARTICLE_VENDU } from "../_shared/relance-apres-maj.js";
+import { motifsCaptureIncomplete, seulementLibellesIrresolus, repriseCaptureLibelle } from "../_shared/capture-libelle.js";
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, attendIdentiteLbc, attentesIdentiteLbc, eclaireurIdentiteLbc, champsEclaireur, champsReprise } from "../_shared/lbc-identite.js";
 import {
@@ -3559,6 +3561,7 @@ serve(async (req) => {
       let reprisesCompte = 0;
       // (25/10) Les relevés que la règle attend, par plateforme (Vinted : la boutique de l'annonce).
       const relevesAttendus = new Map<string, string | null>();
+      const lectureAttendueDe = new Map<string, number>();
       for (const j of jobs) {
         const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
         const fiche = ficheDe.get(String(j.inventaire_id)) ?? null;
@@ -3584,6 +3587,12 @@ serve(async (req) => {
         const runsPf = ((runs ?? []) as any[]).filter((r) => r.platform === j.platform);
         const creeLe = creeLeDe.get(String(j.platform) + ":" + String(identifiantAnnonceJob(j) ?? "")) ?? null;
         const d = decisionIntrouvable({ job: j, fiche, vu, annonce, runs: runsPf, boutique, creeLe });
+        if (d.decision === "attendre" && (d as { releve_attendu?: boolean }).releve_attendu) {
+          // (05/11, point 5) La lecture la plus ancienne qui attend son relevé, par plateforme (borne ci-dessous).
+          const marqueI = (pf.introuvable_a_confirmer ?? {}) as Record<string, unknown>;
+          const lu = Date.parse(String(marqueI.premiere ?? marqueI.depuis ?? ""));
+          if (Number.isFinite(lu)) lectureAttendueDe.set(String(j.platform), Math.min(lectureAttendueDe.get(String(j.platform)) ?? lu, lu));
+        }
         if (d.decision === "attendre" && (d as { releve_attendu?: boolean }).releve_attendu
             && (j.platform !== "vinted" || boutique) && !relevesAttendus.has(String(j.platform))) {
           relevesAttendus.set(String(j.platform), j.platform === "vinted" ? boutique : null);
@@ -3675,9 +3684,14 @@ serve(async (req) => {
             for (const [plateforme, boutiqueAttendue] of relevesAttendus) {
               if (plateforme === "vinted" && (!boutiqueAttendue || boutiqueOuverte !== boutiqueAttendue)) continue;
               const kind = plateforme === "vinted" ? "dressing" : "annonces";
+              // (05/11, point 5 — ayoub, Dylan, bertin) Un relevé commencé AVANT la lecture ratée ne peut pas la
+              // trancher : il ne compte plus. Chez ayoub, le relevé de 19:06 (Paris) bloquait toute demande pour les 8
+              // annonces lues à 19:29, poste allumé. La borne part de la plus récente de ces deux dates : il y a 6 h, ou
+              // la plus ancienne lecture qui attend — un relevé demandé APRÈS elle reprend la cadence de 6 h, inchangée.
+              const borne = borneReleveAttendu(seuil, lectureAttendueDe.get(plateforme));
               const { data: recents, error: eRec } = await supabase.from("vinted_sync_runs").select("id")
                 .eq("user_id", userId).eq("kind", kind).eq("platform", plateforme)
-                .or(`started_at.gt.${seuil},queued_at.gt.${seuil},status.in.(queued,running,claimed)`).limit(1);
+                .or(`started_at.gt.${borne},queued_at.gt.${borne},status.in.(queued,running,claimed)`).limit(1);
               if (eRec || recents?.length) continue;
               const { data: pose, error: qErr } = await supabase.from("vinted_sync_runs").insert({
                 user_id: userId, kind, platform: plateforme, status: "queued",
@@ -5412,6 +5426,22 @@ serve(async (req) => {
       const buildDe = new Map(((profs ?? []) as Array<{ id: string; extension_build: string | null }>)
         .map((p) => [p.id, p.extension_build]));
       for (const j of cands) {
+        // (05/11, point 5 — abenjemaa, 79db9102) La fiche (même inventaire_id) est VENDUE : une republication n'a plus
+        // d'objet, quel que soit le poste. Elle était sautée en silence, gardant « repartira toute seule » à vie :
+        // close, rien de retiré ni de republié, la trace archivée.
+        if (j.action === "republish" && j.inventaire_id) {
+          const { data: artV } = await supabase.from("inventaire").select("statut").eq("id", j.inventaire_id).maybeSingle();
+          if ((artV as { statut?: string } | null)?.statut === "vendu") {
+            const pfV = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            pfV.erreurs_archivees = archiverErreur(pfV.erreurs_archivees, j.error as string, "needs_user", "handler-watch (article vendu : republication sans objet)");
+            pfV.republication_article_vendu = { le: new Date(now).toISOString(), pose_par: "handler-watch (relance après mise à jour)" };
+            const { data: close } = await supabase.from("cross_post_jobs")
+              .update({ status: "cancelled", error: MESSAGE_REPUBLICATION_ARTICLE_VENDU, platform_fields: pfV })
+              .eq("id", String(j.id)).eq("status", "needs_user").select("id");
+            if ((close ?? []).length) console.log(`[handler-watch] job ${j.id} (${j.platform}/republish) : fiche ${j.inventaire_id} vendue → republication close (rien retiré ni republié)`);
+            continue;
+          }
+        }
         const eb = buildDe.get(String(j.user_id)) ?? null;
         if (!posteALeBuild(eb, regle)) {
           // le poste n'a pas encore le correctif. (28/10) Une règle `messageAttente` le DIT, une fois par texte, sans
@@ -5457,6 +5487,32 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] relance après mise à jour:", (e as Error)?.message ?? e);
+  }
+
+  // ── (05/11, point 5 — linda.sidhoum a79256da) LES CAPTURES « → LIBELLÉ » DÉJÀ ARRÊTÉES REPARTENT SEULES ──────────
+  // update-job-status ne demande plus de geste pour une information que nous n'avons pas su nommer
+  // (_shared/capture-libelle.js) ; les republications arrêtées AVANT ce correctif le reçoivent ici, sous la même règle :
+  // tous les motifs « … → libellé) », au plus 3 reprises par job (compteur capture_libelle_reprises), 20 par passage.
+  try {
+    const { data: arretesL } = await supabase.from("cross_post_jobs")
+      .select("id, error, platform_fields")
+      .eq("status", "needs_user").eq("action", "republish")
+      .eq("platform_fields->>needs_user_source", "capture_incomplete")
+      .like("error", "%→ libellé)%")
+      .limit(20);
+    for (const j of (arretesL ?? []) as Array<{ id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+      const motifsL = motifsCaptureIncomplete(j.error);
+      if (!motifsL || !seulementLibellesIrresolus(motifsL)) continue;
+      const r = repriseCaptureLibelle(j.platform_fields ?? {}, motifsL);
+      if (!r) continue;
+      const pfL = { ...r.pf, erreurs_archivees: archiverErreur((j.platform_fields ?? {}).erreurs_archivees, j.error as string, "needs_user", "handler-watch (capture « → libellé » : notre lecture, pas un geste)") };
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "pending", error: r.message, platform_fields: pfL })
+        .eq("id", j.id).eq("status", "needs_user").select("id");
+      if ((maj ?? []).length) console.log(`[handler-watch] job ${j.id} : capture « → libellé » (${motifsL.join(" ; ").slice(0, 80)}) → reprise ${r.n}/3 dans ${r.dansMinutes} min, aucun geste demandé`);
+    }
+  } catch (e) {
+    console.error("[handler-watch] captures « → libellé » :", (e as Error)?.message ?? e);
   }
 
   // ── UNE QUESTION DE TAILLE QUE LA RÈGLE SAIT TRANCHER REPART SEULE (06/10) ──

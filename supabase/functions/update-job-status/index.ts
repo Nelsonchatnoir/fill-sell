@@ -48,7 +48,9 @@ import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierM
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
 import { heureVintedDuRetrait, fusionnerEnvois, memesEnvois } from "../_shared/recreation-vinted-envois.js";
 import { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE } from "../_shared/lbc-forfait.js";
-import { pageCompteVintedBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
+import { essaiSurPageCompteBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
+import { refusAuthentification } from "../_shared/auth-indisponible.js";
+import { motifsCaptureIncomplete, seulementLibellesIrresolus, repriseCaptureLibelle } from "../_shared/capture-libelle.js";
 import { BUILD_COLIS_DEMANDE } from "../_shared/vinted-colis.js";
 import { reponseMarqueDepop, champsApresMarqueDepop } from "../_shared/marque-depop.js";
 import {
@@ -441,7 +443,9 @@ serve(async (req) => {
     );
 
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
-    if (authErr || !user) return json({ error: "Token invalide ou expiré" }, 401);
+    // (04/11, sebastien64310) Une Auth indisponible rend 503, jamais « Token invalide » (_shared/auth-indisponible.js) :
+    // rien n'est écrit, l'extension rejoue l'écriture du verdict au lieu de conclure « pas pu être redéposée ».
+    if (authErr || !user) { const r = refusAuthentification(authErr); return json(r.body, r.status); }
 
     let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch { /* ok */ }
@@ -1362,7 +1366,9 @@ serve(async (req) => {
         const pfBodyB = (body.platform_fields && typeof body.platform_fields === "object"
           ? body.platform_fields : null) as Record<string, unknown> | null;
         const brutB = typeof body.error === "string" ? body.error : "";
-        if ((pfBodyB && pageCompteVintedBloque(pfBodyB)) || /^COMPTE VINTED BLOQUÉ/.test(brutB)) {
+        // (04/11, lp.vtd89) Aussi le dépôt rendu « pathname inattendu (/main/banned) » par les extensions ≤ 0.6.172 :
+        // le chemin exact relevé par CET essai — arrêté au premier, plus de refus passager retenté.
+        if (essaiSurPageCompteBloque(pfBodyB, brutB)) {
           const { data: jB } = await userClient.from("cross_post_jobs")
             .select("action, platform, title, platform_fields").eq("id", jobId).maybeSingle();
           if (jB?.platform === "vinted" && jB.action === "delete") {
@@ -1395,6 +1401,35 @@ serve(async (req) => {
       } catch (e) {
         console.error("[update-job-status] compte Vinted bloqué :", (e as Error)?.message ?? e);
         pfCompteVintedBloque = null;
+      }
+    }
+
+    // ── (05/11, point 5 — linda.sidhoum a79256da) UNE INFORMATION QUE NOUS N'AVONS PAS SU NOMMER N'EST PAS UN GESTE ──
+    // _shared/capture-libelle.js : tous les motifs d'une capture incomplète sont « … → libellé) » (l'annonce porte
+    // l'information, c'est notre lecture du référentiel Vinted qui a échoué) → la republication repart seule, espacée,
+    // au plus 3 fois, rien de retiré ; ensuite la question d'avant revient. Toute version de l'extension.
+    let pfCaptureLibelle: Record<string, unknown> | null = null;
+    if (!pfCompteVintedBloque && (statutEffectif === "needs_user" || statutEffectif === "failed")) {
+      try {
+        const motifsL = motifsCaptureIncomplete(typeof body.error === "string" ? body.error : "");
+        if (motifsL && seulementLibellesIrresolus(motifsL)) {
+          const { data: jL } = await userClient.from("cross_post_jobs").select("action, platform_fields").eq("id", jobId).maybeSingle();
+          if (jL?.action === "republish") {
+            const pfBodyL = (body.platform_fields && typeof body.platform_fields === "object" ? body.platform_fields : {}) as Record<string, unknown>;
+            const r = repriseCaptureLibelle({ ...((jL.platform_fields ?? {}) as Record<string, unknown>), ...pfBodyL,
+              capture_libelle_reprises: (jL.platform_fields as Record<string, unknown> | null)?.capture_libelle_reprises ?? 0 }, motifsL);
+            if (r) {
+              pfCaptureLibelle = { ...r.pf, needsUserAttempts: Number((jL.platform_fields as Record<string, unknown> | null)?.needsUserAttempts ?? 0) || 0 };
+              statutEffectif = "pending";
+              messageEffectif = r.message;
+              champsACompleter = null;
+              raisonRequalif = `capture incomplète sur un libellé que nous n'avons pas su lire (${motifsL.join(" ; ").slice(0, 120)}) → reprise ${r.n}/3 dans ${r.dansMinutes} min, aucun geste demandé`;
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] capture « → libellé » :", (e as Error)?.message ?? e);
+        pfCaptureLibelle = null;
       }
     }
 
@@ -3287,7 +3322,7 @@ serve(async (req) => {
         && bfcacheRearms == null && !pfCanalCoupe && !pfRetraitVerif && !pfAntirobotRepub && !pfDisparue && !pfPhotoReprise
         && !pfAttenteSession && !pfRepareEtat && !pfGrilleReprise && !pfGrilleRefus
         && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif && !pfEbayConnexionRequise && !pfCompteVintedBloque
-        && !pfOplaRelache;
+        && !pfOplaRelache && !pfCaptureLibelle;
       const surface = statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user";
       const brut = typeof body.error === "string" ? body.error : "";
       const bodyPfOk = body.platform_fields != null && typeof body.platform_fields === "object";
@@ -4602,6 +4637,8 @@ serve(async (req) => {
     // ré-armement vers la voie API se fait ailleurs, quand le compte est prêt.
     if (pfEbayConnexionRequise) patch.platform_fields = pfEbayConnexionRequise;
     if (pfCompteVintedBloque) patch.platform_fields = pfCompteVintedBloque;
+    // (05/11) Capture incomplète sur un libellé que nous n'avons pas su lire : reprise espacée, aucun geste demandé.
+    if (pfCaptureLibelle) patch.platform_fields = pfCaptureLibelle;
     // Refus de capture alors que la sonde voit Vinted vivant : plus de
     // needs_user_source 'session_vinted', échéance à 45 min, trace nommée.
     if (pfSessionBonne) patch.platform_fields = pfSessionBonne;

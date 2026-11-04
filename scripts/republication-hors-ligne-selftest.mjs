@@ -158,5 +158,23 @@ console.log("\n6. Un refus de garde n'est pas une panne passagère");
   ok(normal && /rien à faire/.test(normal.message), "une panne passagère garde son message d'avant");
 }
 
+console.log("\n(04/11, sebastien64310, b3727bbe) Coupure de NOTRE authentification pendant le redépôt : 1 min, anti-doublon armé");
+{
+  const BRUT_SEB = "Ton annonce a été retirée de Leboncoin et n'a pas pu être redéposée automatiquement : Token invalide ou expiré. " +
+    "Rien n'est perdu : titre, description, photos et champs sont sauvegardés. Clique « Republier maintenant » depuis la fiche de l'article.";
+  const pfSeb = () => ({ republish_step: "deleted", deleted_at: "2026-11-04T18:17:39.067Z",
+    work_window_state: { at_start: { tab_url: "https://www.leboncoin.fr/deposer-une-annonce" } } });
+  const T2 = Date.parse("2026-11-04T18:21:52.892Z");
+  const d = decisionRecreationHorsLigne({ action: "republish", platform: "leboncoin", statut: "needs_user", pf: pfSeb(), pfEnBase: pfSeb(), brut: BRUT_SEB, maintenant: T2 });
+  ok(d && d.statut === "pending" && d.pf.republish_step === "deleted", "reprise automatique, étape conservée");
+  ok(d && d.dansMinutes === 1 && d.pf.next_action_after === new Date(T2 + 60_000).toISOString(), "dans 1 min, pas 5 (la coupure est finie : ce compte rendu nous parvient)");
+  ok(d && d.pf.verifier_doublon_avant_publication === true && d.motif === "recreation_reprise_verif_doublon", "anti-doublon armé : le dépôt a pu partir (il était parti)");
+  const neuf = decisionRecreationHorsLigne({ action: "republish", platform: "leboncoin", statut: "failed", pf: pfSeb(), pfEnBase: pfSeb(),
+    brut: "Connexion à FillSell momentanément indisponible : nouvel essai automatique, rien à faire.", maintenant: T2 });
+  ok(neuf && neuf.dansMinutes === 1 && neuf.pf.verifier_doublon_avant_publication === true, "le 503 « auth_indisponible » : même règle");
+  const fioles = decisionRecreationHorsLigne({ action: "republish", platform: "leboncoin", statut: "needs_user", pf: pfFioles(), pfEnBase: pfFioles(), brut: BRUT_FIOLES, maintenant: T0 });
+  ok(fioles && fioles.dansMinutes === PALIERS_REPRISE_MIN[0] && !fioles.pf.verifier_doublon_avant_publication, "un autre échec garde son palier et sa règle d'avant");
+}
+
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ tout passe");
 process.exit(ko ? 1 : 0);

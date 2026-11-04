@@ -206,7 +206,7 @@ import { republicationFinie, champsRepublicationFinie } from "../_shared/republi
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
 import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree } from "../_shared/blocage-leboncoin.js";
 import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc, gardeVirtuelleLbc, lbcVirtuelAutorise } from "../_shared/poste-virtuel.js";
-import { executantLbcDeclare, nomExecutantLbc, comptesExecutesLbc, delegationLbcValide, etatLePlusPrudent, messageDelegationLbc, messageTacheDelegueeEnAttente, PLATEFORME_DELEGUEE } from "../_shared/delegation-leboncoin.js";
+import { executantLbcDeclare, nomExecutantLbc, comptesExecutesLbc, delegationLbcValide, etatLePlusPrudent, messageDelegationLbc, messageTacheDelegueeEnAttente, messageTacheDelegueeEnPause, PLATEFORME_DELEGUEE } from "../_shared/delegation-leboncoin.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
@@ -259,6 +259,7 @@ import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/cou
 import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
 // (02/11, facture Supabase) coin_config relu seulement quand sa version (signal_poll) a changé.
 import { configUne, configPlusieurs, configPrefixe } from "../_shared/coin-config-cache.js";
+import { refusAuthentification } from "../_shared/auth-indisponible.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -595,7 +596,8 @@ serve(async (req) => {
     );
 
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
-    if (authErr || !user) return json({ error: "Token invalide ou expiré" }, 401);
+    // (04/11, sebastien64310) Une Auth indisponible rend 503, jamais « Token invalide » (_shared/auth-indisponible.js).
+    if (authErr || !user) { const r = refusAuthentification(authErr); return json(r.body, r.status); }
 
     // ══ (02/11, facture Supabase — migration 20261102160000) LE SIGNAL DU COMPTE ══════════════════════════════════
     // compte_signal (compteurs EXACTS de ses jobs par « action|statut », version de son profil) et version de coin_config,
@@ -13911,9 +13913,17 @@ serve(async (req) => {
               .insert({ user_id: user.id, kind: "annonces", status: "queued", platform: "leboncoin", declencheur: "controle_blocage_lbc", queued_at: new Date().toISOString() })
               .select("id").maybeSingle();
             if (!eN && rN?.id) {
-              releveLbc = { id: String(rN.id), platform: "leboncoin", declencheur: "controle_blocage_lbc", devant: true };
+              // (05/11, point 4) Jamais `devant` : l'extension ≥ 0.6.170 lance une relecture servie devant avec le
+              // déclencheur « serveur », que sa garde de pause Leboncoin refuse (seuls « bouton_distant » + numéro de
+              // relevé passent) — servie avec les relevés du cycle, la visite part en bouton_distant, sur tout le parc.
+              releveLbc = { id: String(rN.id), platform: "leboncoin", declencheur: "controle_blocage_lbc" };
               syncCommandsAnnonces = [...syncCommandsAnnonces, releveLbc];
-            } else if (eN) console.warn(`[get-pending-jobs] userId=${user.id} : Leboncoin — visite de contrôle non posée (${eN.message})`);
+            } else {
+              // (05/11, point 4 — Amiral, 690 refus le 04/11) Une ligne avalée par une garde de la base
+              // (garde_releve_sans_geste : déclencheur absent de releve_est_veille) ne rend NI ligne NI erreur : la
+              // pause a duré du 02/11 au 05/11 sans un mot ici. Toujours dit, désormais.
+              console.warn(`[get-pending-jobs] userId=${user.id} : Leboncoin — visite de contrôle NON posée (${eN ? eN.message : "aucune ligne écrite : refusée par une garde de la base (releve_est_veille ?)"})`);
+            }
           }
           if (releveLbc && eb.etat === "essai" && !garde && essaiPossible) {
             const idControle = releveLbc.id;
@@ -14009,7 +14019,14 @@ serve(async (req) => {
         });
         if (lbcLaissesAuDelegue.length && !delegueVivant) {
           const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-          const msgP = messageTacheDelegueeEnAttente(proprietaireDelegue.nom);
+          // (05/11, point 4) Le compte de travail en pause Leboncoin ne fait pas le cycle délégué (extension,
+          // cycleDelegueLbc) : son extension EST ouverte — le dire, jamais « ouvre l'extension ». Une lecture, seulement
+          // quand une tâche attend et que le compte de travail n'a pas été vu depuis 2 h.
+          const { data: profEx } = await adminP.from("profiles").select("platform_settings").eq("id", proprietaireDelegue.executant).maybeSingle();
+          const ebEx = etatBlocageLbc(((profEx as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>) as { etat: string };
+          const msgP = lecturesExtensionEnPause(ebEx.etat)
+            ? messageTacheDelegueeEnPause(proprietaireDelegue.nom)
+            : messageTacheDelegueeEnAttente(proprietaireDelegue.nom);
           let ecritsP = 0;
           for (const j of lbcLaissesAuDelegue) {
             if (ecritsP >= 40 || j.error === msgP) continue;

@@ -28,6 +28,11 @@
 //    qu'on n'a pas su rapprocher ⇒ `false`, c'est-à-dire « on ne sait pas », et
 //    le message d'avant s'applique tel quel.
 
+/** Code de champ de Vinted (needsUserField.field_key) → clé de champ de la capture. */
+const CODES_CHAMP_VINTED: Record<string, string> = {
+  condition: "etat", status: "etat", size: "taille", brand: "marque", color: "couleur", colour: "couleur",
+};
+
 /** Minuscules, sans accents, espaces réduits — pour comparer deux libellés. */
 export const comparableLibelle = (s: unknown) =>
   String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -52,7 +57,10 @@ export function valeurFigureDansListeServie(
   },
 ): { offerte: boolean; champ: string; valeur: string } {
   const liste = (Array.isArray(listeServie) ? listeServie : []).map(String).filter(Boolean);
-  const cle = comparableLibelle(champDemande);
+  // (05/11, point 5 — labouquinerie85, abenjemaa) Le champ arrive sous son CODE Vinted (needsUserField.field_key :
+  // « condition », « size »…), jamais reconnu ici : « Très bon état », pourtant dans « accepte : … », passait pour
+  // absent de la liste, et le message disait « la grille ne correspond pas » — faux pour tout Vinted.
+  const cle = CODES_CHAMP_VINTED[comparableLibelle(champDemande)] ?? comparableLibelle(champDemande);
   const champ = Object.keys(libelles)
     .find((k) => k === cle || comparableLibelle(libelles[k]) === cle) ?? "";
   const valeur = String(valeurs?.[champ] ?? "").trim();

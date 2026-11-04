@@ -72,6 +72,14 @@ const IMPASSE_RE =
   /capture introuvable ou invalide|copie de dépôt est introuvable|prix de la nouvelle annonce n'a pas pu être déterminé|plusieurs annonces identiques|Étape de republication inconnue/i;
 /** La tentative ratée a pu partir chez la plateforme : on vérifie avant de redéposer. */
 const ENVOI_PARTI_RE = /adsubmit|issue inconnue|d'issue INCONNUE|demande de publication est partie|dépôt peut-être abouti/i;
+// ── (04/11, sebastien64310) UNE COUPURE DE NOTRE AUTHENTIFICATION N'EST PAS UN ÉCHEC DU REDÉPÔT ──────────────────────
+// L'Auth de Supabase a redémarré 6 s (19:21:46) pendant que l'extension écrivait le résultat d'un redépôt Leboncoin
+// DÉJÀ en ligne : le 401 « Token invalide ou expiré » (« Connexion à FillSell momentanément indisponible » depuis
+// _shared/auth-indisponible.js) est devenu « n'a pas pu être redéposée ». Si ce compte rendu nous parvient, l'Auth
+// répond de nouveau : la coupure est finie. Le dépôt a pu partir (l'écriture ratée est souvent celle du verdict) :
+// vérification anti-doublon obligatoire, et reprise dans 1 min au lieu du palier — jamais 5 min hors ligne pour ça.
+const COUPURE_AUTH_RE = /Token invalide ou expir[ée]|Connexion à FillSell momentanément indisponible/i;
+export const REPRISE_COUPURE_AUTH_MIN = 1;
 const ETAPES_ENVOI = new Set(["depot", "options"]);
 /** Vérification anti-robot : on ne retape pas la porte toutes les 5 min (même
  *  espacement que pas-de-rouge, 45 min au moins). */
@@ -158,8 +166,10 @@ export function decisionRecreationHorsLigne(a) {
   const recente = precedente && maintenant - Date.parse(String(precedente.at ?? "")) < 90_000;
   const n = recente ? Math.max(1, nAvant) : nAvant + 1;
   const palier = PALIERS_REPRISE_MIN[n - 1] ?? REPRISE_MAX_MIN;
+  const coupureAuth = COUPURE_AUTH_RE.test(texte);
   // Garde corrigée : l'extension à jour arrive par Chrome, pas en 5 min.
-  const dansMinutes = ANTIROBOT_RE.test(texte) ? Math.max(palier, ANTIROBOT_MIN)
+  const dansMinutes = coupureAuth ? REPRISE_COUPURE_AUTH_MIN
+    : ANTIROBOT_RE.test(texte) ? Math.max(palier, ANTIROBOT_MIN)
     : colisRefuseEnvoye ? Math.max(palier, 360)
     : gardeCorrigee ? Math.max(palier, 60) : palier;
   const prochain = recente && Number.isFinite(Date.parse(String(pfEnBase.next_action_after ?? "")))
@@ -188,7 +198,7 @@ export function decisionRecreationHorsLigne(a) {
   const fin = pf.work_window_state?.at_end ?? pfEnBase.work_window_state?.at_end ?? null;
   const etapeFin = String(fin?.fill_step ?? "");
   const urlFin = String(fin?.tab_url ?? "");
-  if (ETAPES_ENVOI.has(etapeFin) || /\/options(?:[/?#]|$)/.test(urlFin) || ENVOI_PARTI_RE.test(texte)) {
+  if (ETAPES_ENVOI.has(etapeFin) || /\/options(?:[/?#]|$)/.test(urlFin) || ENVOI_PARTI_RE.test(texte) || coupureAuth) {
     pfNeuf.verifier_doublon_avant_publication = true;
   }
 

@@ -98,3 +98,11 @@ export function messageTacheDelegueeEnAttente(nom) {
   return `Leboncoin passe par ${nomOu(nom)} : cette tâche partira dès que l'extension FillSell (à jour) sera ouverte ` +
     `sur ${nom ? `le compte ${nom}` : "cet autre compte"}, sur ton ordinateur. Rien n'a été touché.`;
 }
+
+/** (05/11, point 4 — louis-seller) Le compte de travail est EN PAUSE Leboncoin (Leboncoin y a restreint l'accès) : son
+ *  extension, ouverte, ne fait aucun travail délégué tant que la pause dure. Jamais « ouvre l'extension » à tort. */
+export function messageTacheDelegueeEnPause(nom) {
+  return `Leboncoin passe par ${nomOu(nom)} : Leboncoin y a restreint l'accès, et FillSell y a mis Leboncoin en pause ` +
+    "pour ne pas aggraver le blocage. Cette tâche partira toute seule dès que la pause sera levée (FillSell revérifie " +
+    "lui-même, par une simple lecture). Rien n'a été touché.";
+}

@@ -1258,3 +1258,19 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 1 (9cdr9rm4rn, Beeb
   `annonceDejaRetiree` (`_shared/blocage-leboncoin.js`), appliquée dans les deux blocs de get-pending-jobs (compte, et
   délégation chez l'exécutant) ; même exemption dans la reprise après restriction Vinted (`estApresRestrictionVinted`).
   Côté serveur : vaut pour le PC et le Cloud. Selftests : `lbc-controle-pause`, `restriction-vinted-reprise`.
+
+## 05/11 — Vinted : compte bloqué dès le dépôt, capture « → libellé », grille par code, article vendu
+- /main/banned atteint par le formulaire de dépôt = mur de Vinted (le chemin exact — jamais un refus, une connexion, un
+  captcha) : attente nommée, aucune reprise, message « bloqué par Vinted », classé PLATEFORME (`cause-blocage`). Serveur :
+  `essaiSurPageCompteBloque` (lit aussi « pathname inattendu (/main/banned) » des extensions ≤ 0.6.172). Selftest
+  `vinted-depot-compte-bloque`.
+- Capture incomplète dont TOUS les motifs sont « … → libellé) » = notre lecture du référentiel : reprise 10, 30, 120 min,
+  au plus 3, aucun geste demandé (`_shared/capture-libelle.js`, update-job-status + handler-watch). Selftest
+  `capture-libelle`.
+- Diagnostic « grille » : le champ arrive sous son code Vinted (condition, size…), traduit (`vinted-grille-servie.ts`).
+  « UK 8 child » = « UK 8 enfant » seulement si la grille porte ce libellé exact (`tailleAServir`).
+- Une republication arrêtée dont la fiche est vendue est close (handler-watch), jamais « repartira toute seule ».
+- introuvable_a_confirmer : le relevé demandé ne tient compte que des relevés commencés après la plus ancienne lecture en
+  attente (`borneReleveAttendu`) ; la cadence de 6 h de nos demandes ne change pas.
+- Un redépôt raté sur une coupure de NOTRE authentification : reprise dans 1 min, anti-doublon armé
+  (`_shared/republication-hors-ligne.js`).

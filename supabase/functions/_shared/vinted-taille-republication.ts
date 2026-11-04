@@ -78,6 +78,8 @@
 export const TAILLE_PREFIXEE_RE = /^(EU|FR|UK) ?(\d{1,3}(?:[.,]\d)?)$/i;
 /** Âge en anglais tel que la capture peut le rendre : « 10 years », « 10Y », « 1 year ». */
 export const AGE_ANGLAIS_RE = /^(\d{1,2}) ?(?:YEARS?|YRS?|Y)$/i;
+/** (05/11) Taille enfant en anglais telle que la capture peut la rendre : « UK 8 child », « EU 30 kids », « UK 2 baby ». */
+export const TAILLE_ENFANT_ANGLAIS_RE = /^(UK|EU|US) ?(\d{1,2}(?:[.,]\d)?) (CHILD|KIDS?|BABY|INFANT)$/i;
 /** Les lettres de la grille Femme/Homme Vinted : XXXS…S, M, L…XXXL, 4XL…9XL. */
 const LETTRE_RE = /^(?:X{0,3}S|X{0,3}L|M|\dXL)$/i;
 const NOMBRE_RE = /^\d{1,3}$/;
@@ -329,6 +331,23 @@ export function tailleAServir(args: {
     const candsA = grilleA.filter((o) => contientJeton(o.norm, fr));
     if (candsA.length === 1) return { valeur: candsA[0].brut, etape: 2, ordre: ordreA, detail: `« ${nt} » = « ${fr} », seule option qui le contient` };
     return { valeur: null, etape: null, ordre: ordreA, motif: candsA.length ? `« ${fr} » ambigu (${candsA.length} options)` : `aucune option « ${fr} » dans la grille` };
+  }
+  // ── TAILLE ENFANT EN ANGLAIS (05/11, point 5 — doriane-henri c0813887) ───
+  // La capture rend « UK 8 child » (libellé anglais du référentiel) ; la grille du formulaire écrit « UK 8 enfant ».
+  // Le suffixe sortait la capture du périmètre (« capture non préfixée »), la question revenait à chaque relance.
+  // Même règle que l'âge anglais : la traduction mot pour mot (child/kid/kids → enfant, baby/infant → bébé), servie
+  // SEULEMENT si la grille porte exactement ce libellé — jamais une taille voisine.
+  const enfant = TAILLE_ENFANT_ANGLAIS_RE.exec(nt);
+  if (enfant) {
+    const fr = `${enfant[1].toUpperCase()} ${enfant[2]} ${/^(BABY|INFANT)$/i.test(enfant[3]) ? "BÉBÉ" : "ENFANT"}`;
+    const grilleE = (Array.isArray(args.options) ? args.options : [])
+      .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
+      .filter((o) => o.norm);
+    const ordreE = "taille enfant anglais→français";
+    if (!grilleE.length) return { valeur: null, etape: null, ordre: ordreE, motif: `« ${nt} » = « ${fr} » : grille non relevée` };
+    const exactE = grilleE.find((o) => o.norm === fr);
+    if (exactE) return { valeur: exactE.brut, etape: 1, ordre: ordreE, detail: `« ${nt} » = « ${fr} », libellé exact de la grille` };
+    return { valeur: null, etape: null, ordre: ordreE, motif: `aucune option « ${fr} » dans la grille` };
   }
   const m = TAILLE_PREFIXEE_RE.exec(nt);
   // euCoupe = le client retire encore le préfixe « EU » (builds sans la

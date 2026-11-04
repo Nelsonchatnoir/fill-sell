@@ -41,7 +41,8 @@ const PAR_SOURCE = Object.freeze({
   depop_vendeur: [ORIGINE.UTILISATEUR, "compte_a_finir"],
   ebay_compte_a_finir: [ORIGINE.UTILISATEUR, "compte_a_finir"],
   ebay_compte_vendeur_inactif: [ORIGINE.UTILISATEUR, "compte_a_finir"],
-  compte_vinted_bloque: [ORIGINE.UTILISATEUR, "compte_restreint"],
+  // (04/11, Nico) Le compte bloqué par Vinted (page /main/banned) : un refus de la plateforme, jamais chez nous.
+  compte_vinted_bloque: [ORIGINE.PLATEFORME, "compte_bloque"],
   // (25/10 nuit, audit N1) Deux sources posées par le code que la sentinelle rangeait en « nous/autre » : la
   // vérification anti-robot sur le compte (la personne seule peut la passer) et l'annonce d'une autre boutique
   // que celle ouverte dans le navigateur (la personne ouvre la bonne boutique).
@@ -69,6 +70,9 @@ const PAR_SOURCE = Object.freeze({
 // « utilisateur » passent AVANT les nôtres (un message de connexion qui cite un
 // champ reste une connexion).
 const PAR_TEXTE = Object.freeze([
+  // ── plateforme ── (04/11, Nico) Le compte bloqué PAR VINTED (page /main/banned) : un refus de la plateforme, avant la
+  // règle « compte restreint » ci-dessous, qui le rangerait chez la personne.
+  [/compte Vinted est bloqu[ée] par Vinted|Vinted affiche « compte bloqu[ée] »|^COMPTE VINTED BLOQU[ÉE]/i, ORIGINE.PLATEFORME, "compte_bloque"],
   // ── utilisateur ──
   [/Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|reconnecte-toi|en attente de ta connexion|Connecte ton compte eBay|connecte-toi (sur vinted|[àa] eBay sur ton ordinateur)|attend que Vinted soit rouvert|attend ton autorisation|reconnexion de s[ée]curit[ée]/i, ORIGINE.UTILISATEUR, "connexion"],
   [/configuration de vendeur|compte eBay n.est pas encore pr[êe]t|mise [àa] niveau de ton compte vendeur|ton nom et (ton )?pr[ée]nom|compte eBay doit d.abord [êe]tre ouvert [àa] la vente/i, ORIGINE.UTILISATEUR, "compte_a_finir"],

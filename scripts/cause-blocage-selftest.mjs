@@ -26,6 +26,16 @@ cas("1. ce que lui seul peut faire : connexion, compte vendeur à finir, compte 
   est(causeDuTexte({ texte: "Vinted bloque tes actions depuis plusieurs heures : ouvre vinted.fr dans Chrome" }), ORIGINE.UTILISATEUR, "compte_restreint");
 });
 
+const { messageCompteVintedBloque } = await import(pathToFileURL(path.join(RACINE, "supabase/functions/_shared/vinted-compte-bloque.js")).href);
+cas("1b. (04/11, lp.vtd89) le compte bloqué PAR VINTED (page /main/banned) est un refus de la plateforme, jamais chez nous", () => {
+  est(causeDuTexte({ texte: messageCompteVintedBloque("publish", null), source: "compte_vinted_bloque", platform: "vinted" }), ORIGINE.PLATEFORME, "compte_bloque");
+  est(causeDuTexte({ texte: messageCompteVintedBloque("publish", null), source: null, platform: "vinted" }), ORIGINE.PLATEFORME, "compte_bloque");
+  est(causeDuTexte({ texte: messageCompteVintedBloque("delete", "Jeans"), source: null, platform: "vinted" }), ORIGINE.PLATEFORME, "compte_bloque");
+  est(causeDuTexte({ texte: "COMPTE VINTED BLOQUÉ : Vinted affiche sa page « compte bloqué » à la place du formulaire de dépôt — rien n'a été publié.", source: null, platform: "vinted" }), ORIGINE.PLATEFORME, "compte_bloque");
+  // Une restriction qui n'est pas la page de bannissement reste ce qu'elle était.
+  est(causeDuTexte({ texte: "Vinted a restreint ton compte jusqu'au 05/11.", platform: "vinted" }), ORIGINE.UTILISATEUR, "compte_restreint");
+});
+
 cas("2. les gardes voulues (doute → question) ne sont jamais comptées chez nous", () => {
   est(causeDuTexte({ texte: "Une annonce Leboncoin pourrait correspondre à cet article : https://www.leboncoin.fr/ad/3292326913. On ne redépose pas, pour ne jamais la mettre en double", source: "recreation_deja_partie" }), ORIGINE.GARDE, "doublon_possible");
   est(causeDuTexte({ texte: "Une annonce Beebs apparue depuis le dernier essai pourrait être cet article : https://www.beebs.app/fr/p/34202", source: "depot_deja_parti" }), ORIGINE.GARDE, "doublon_possible");

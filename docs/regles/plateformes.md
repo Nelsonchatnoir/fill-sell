@@ -728,3 +728,10 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 3, 4, 5.
   ⛔ (04/11, décision de Nico, remplace le 12/10) plus de renvoi vers ebay.fr : « Créer mes conditions eBay » dans
   l'app, valeurs lues sur SES annonces, prix de livraison jamais deviné, rien créé sans son clic (`proposer_conditions`
   lecture seule, `creer_conditions` au clic).
+
+## 05/11 — Leboncoin : la visite de contrôle d'une pause n'est jamais avalée, jamais servie « devant »
+- 'controle_blocage_lbc' doit figurer dans releve_est_veille (migration 20261105010000, feu vert de Nico) ; la visite est
+  servie avec les relevés du cycle (bouton_distant + numéro de relevé), jamais `devant` (la 0.6.170+ refuse un relevé
+  « serveur » pendant une pause).
+- Délégation : quand le compte de travail est en pause Leboncoin, le propriétaire lit « Leboncoin y a restreint
+  l'accès… » (`messageTacheDelegueeEnPause`), jamais « ouvre l'extension ».

@@ -52,6 +52,23 @@ export function pageCompteVintedBloque(pf) {
   return BANNI_RE.test(String(w.at_end?.tab_url ?? ""));
 }
 
+// ── (04/11, lp.vtd89) LE DÉPÔT SUR LA PAGE DE BANNISSEMENT, ÉCRIT PAR LES EXTENSIONS ≤ 0.6.172 ─────────────────────────
+// Compte déjà banni par Vinted, aucune action de FillSell avant : /items/new renvoyait sur /main/banned et vinted.js le
+// rendait en refus passager (« Page de dépôt Vinted non atteinte (pathname inattendu (/main/banned)) … nouvelle
+// tentative ») — quatre essais en 23 min, nommé au 4e seulement (work_window_state.at_end n'était pas toujours posé).
+// Ce texte est écrit par CET essai, avec le chemin EXACT de la page où le formulaire a atterri (location.pathname) :
+// c'est la page de bannissement elle-même. Un refus, une connexion (/member/login), un captcha (DataDome, servi sous
+// /items/new) ou une restriction (/listing-restriction) ne l'écrivent jamais. La 0.6.173 nomme le mur elle-même
+// (préfixe « COMPTE VINTED BLOQUÉ »).
+const DEPOT_SUR_PAGE_BANNIE_RE = /pathname inattendu \(\/main\/banned(?:[/?#][^)]*)?\)/;
+
+/** CET essai a-t-il fini sur la page « compte bloqué » ? Fin de l'essai (at_end), verdict nommé de l'extension, ou
+ *  chemin exact relevé par le formulaire de dépôt (extensions ≤ 0.6.172). */
+export function essaiSurPageCompteBloque(pf, brut) {
+  const texte = String(brut ?? "");
+  return pageCompteVintedBloque(pf) || /^COMPTE VINTED BLOQUÉ/.test(texte) || DEPOT_SUR_PAGE_BANNIE_RE.test(texte);
+}
+
 export function messageCompteVintedBloque(action, titre) {
   const quoi = titre ? ` « ${String(titre).slice(0, 80)} »` : "";
   if (action === "delete") {
@@ -59,8 +76,11 @@ export function messageCompteVintedBloque(action, titre) {
       `donc l'annonce${quoi} n'a PAS été retirée. Si elle est encore en ligne, retire-la toi-même depuis l'appli Vinted ` +
       "pour éviter une double vente ; l'appli te dit aussi ce que Vinted attend de toi.";
   }
-  return "Vinted affiche « compte bloqué » sur ton ordinateur : tant que Vinted affiche cette page, FillSell ne peut rien faire sur ton compte Vinted, " +
-    "et rien n'a été touché. Ouvre l'appli Vinted : elle te dit ce que Vinted attend de toi. Tes autres plateformes ne sont pas concernées.";
+  // (04/11, Nico) Le compte bloqué PAR VINTED, dit en premier : un refus de la plateforme, jamais une panne de FillSell.
+  return "Ton compte Vinted est bloqué par Vinted : à la place du formulaire, Vinted affiche sa page « compte bloqué ». " +
+    "Ce n'est pas une panne de FillSell : tant que Vinted affiche cette page, FillSell ne peut rien faire sur ton compte Vinted " +
+    "et ne réessaie pas ; rien n'a été publié ni touché. Ouvre l'appli Vinted : elle te dit ce que Vinted attend de toi. " +
+    "Tes autres plateformes ne sont pas concernées.";
 }
 
 // ── LE RETRAIT SOUS LE MUR : REPRISE ESPACÉE, JAMAIS ARRÊTÉE (04/10) ───────

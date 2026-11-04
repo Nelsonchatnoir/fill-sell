@@ -255,6 +255,10 @@ export function messageAttenteMaj(job, regle) {
 // « En pause », mise à jour), build_min_requis posé (jamais abaissé), la question retirée et gardée sous
 // attente_maj_extension, l'ancien message archivé, un message neutre et vrai, sans heure. Une fois : une tâche déjà en
 // pause pour cette cause n'est jamais réécrite (null). Quand le poste a le build, champsRelance la relance, une fois.
+// (05/11, point 5) Une republication arrêtée dont la fiche est VENDUE n'est jamais relancée : close (handler-watch).
+export const MESSAGE_REPUBLICATION_ARTICLE_VENDU =
+  "Republication annulée : cet article est vendu (sa fiche est marquée vendue dans ton stock). " +
+  "Rien n'a été retiré ni republié ; la vente est suivie à part, comme les autres.";
 export const MESSAGES_PAUSE_ATTENTE = Object.freeze({
   publish: "Ta publication est en pause, rien n'a été publié : elle repart toute seule dès que l'extension FillSell de " +
     "ton ordinateur est à jour. Rien à faire.",

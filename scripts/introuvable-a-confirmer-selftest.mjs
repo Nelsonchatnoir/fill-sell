@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   decisionIntrouvable as d, marqueIntrouvable, messagePause, messageDisparueConfirmee, MAX_REPRISES_INTROUVABLE,
-  identifiantAnnonceJob, releveComplet, RELEVES_POUR_DISPARITION, messageVendueLue, FENETRE_TRACE_MS,
+  identifiantAnnonceJob, releveComplet, RELEVES_POUR_DISPARITION, messageVendueLue, FENETRE_TRACE_MS, borneReleveAttendu,
 } from '../supabase/functions/_shared/introuvable-a-confirmer.js';
 import { classerEchec } from '../supabase/functions/_shared/pas-de-rouge.js';
 
@@ -280,6 +280,21 @@ ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSIS
   // Câblage (handler-watch).
   ok(/\.eq\("status", "published"\)\.in\("platform_listing_id", numerosI\)/.test(zone) && /decisionIntrouvable\(\{ job: j, fiche, vu, annonce, runs: runsPf, boutique, creeLe \}\)/.test(zone),
     'handler-watch : la création par FillSell (job publié, même numéro) est passée à la décision');
+}
+
+{
+  // (05/11, point 5 — ayoub 90d11dae) Le relevé demandé : un relevé commencé AVANT la lecture ratée ne la tranche pas.
+  // Faits du 04/11 (UTC) : relevé de la boutique à 18:06, 8 annonces lues 404 de 18:29 à 18:38, poste en ligne ensuite.
+  const seuil = '2026-11-04T13:00:00.000Z';                       // « il y a 6 h » à 19:00
+  const lecture = Date.parse('2026-11-04T18:29:00.000Z');
+  ok(borneReleveAttendu(seuil, lecture) === '2026-11-04T18:29:00.000Z', 'ayoub : la borne part de la lecture — le relevé de 18:06 ne bloque plus la demande');
+  ok(Date.parse('2026-11-04T18:06:00Z') < Date.parse(borneReleveAttendu(seuil, lecture)), '… un relevé antérieur à la lecture tombe hors de la borne');
+  ok(Date.parse('2026-11-04T18:40:00Z') > Date.parse(borneReleveAttendu(seuil, lecture)), '… un relevé demandé après la lecture la tient : cadence de 6 h, inchangée');
+  ok(borneReleveAttendu(seuil, Date.parse('2026-11-04T09:00:00Z')) === seuil, 'lecture plus vieille que 6 h : la borne de 6 h, comme avant');
+  ok(borneReleveAttendu(seuil, undefined) === seuil && borneReleveAttendu(seuil, NaN) === seuil, 'lecture inconnue : la borne de 6 h, comme avant');
+  const hw = readFileSync(new URL('../supabase/functions/handler-watch/index.ts', import.meta.url), 'utf8');
+  ok(hw.includes('const borne = borneReleveAttendu(seuil, lectureAttendueDe.get(plateforme));') && hw.includes('started_at.gt.${borne},queued_at.gt.${borne}'),
+    'handler-watch : la demande de relevé utilise cette borne');
 }
 
 console.log(`✓ selftest:introuvable-a-confirmer — ${n} assertions`);

@@ -19,6 +19,10 @@ export const DECLENCHEURS_VEILLE = [
   'serveur:quotidien_api',
   // (25/10, point 1b) le relevé qu'attend une pause « introuvable à confirmer », demandé par handler-watch
   'serveur:introuvable_a_confirmer',
+  // (05/11) le miroir exact de la base (selftest:releve-veille-miroir) : la lecture d'origine manquait ici depuis le
+  // 25/10, et la visite de contrôle d'une pause Leboncoin (migration 20261105010000) — lectures seules du serveur.
+  'serveur:lecture_origine',
+  'controle_blocage_lbc',
 ];
 
 export function estReleveDeVeille(declencheur) {

@@ -80,5 +80,15 @@ ok("« XS » ne passe pas pour « S »",
   valeurFigureDansListeServie({ champDemande: "taille", valeurs: { taille: "XS" }, listeServie: ["S", "M"], libelles: LIBELLES }).offerte === false);
 ok("comparableLibelle réduit les espaces", comparableLibelle("  Très   Bon   État ") === "tres bon etat");
 
+console.log("\n=== (05/11) LE CHAMP SOUS SON CODE VINTED (needsUserField.field_key) ===");
+ok("labouquinerie85 : « condition » + « Très bon état » dans « accepte : … » ⇒ la grille est bonne (true)",
+  valeurFigureDansListeServie({ champDemande: "condition", valeurs: { etat: "Très bon état" }, listeServie: ["Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "Satisfaisant"], libelles: LIBELLES }).offerte === true);
+ok("« size » + « S » dans la grille ⇒ true",
+  valeurFigureDansListeServie({ champDemande: "size", valeurs: { taille: "S" }, listeServie: GRILLE_LETTRES, libelles: LIBELLES }).offerte === true);
+ok("« size » + « XS » hors grille ⇒ false (la règle ne devient pas plus large)",
+  valeurFigureDansListeServie({ champDemande: "size", valeurs: { taille: "XS" }, listeServie: ["S", "M"], libelles: LIBELLES }).offerte === false);
+ok("un code inconnu ⇒ on ne sait pas (false)",
+  valeurFigureDansListeServie({ champDemande: "material", valeurs: { taille: "S" }, listeServie: GRILLE_LETTRES, libelles: LIBELLES }).offerte === false);
+
 console.log(ko ? `\n⚠ ${ko} CAS EN ECHEC` : "\n✓ TOUS LES CAS PASSENT");
 if (ko) Deno.exit(1);

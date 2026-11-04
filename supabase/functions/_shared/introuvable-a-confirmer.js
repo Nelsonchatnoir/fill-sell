@@ -295,3 +295,15 @@ export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = nu
       : "absente d'un relevé complet : on attend le suivant",
   };
 }
+
+// ── (05/11, point 5 — ayoub, Dylan, bertin) LA BORNE DU RELEVÉ QU'ON DEMANDE ─────────────────────────────────────────
+// handler-watch ne demande le relevé attendu que si aucun relevé de la plateforme n'a commencé ni été demandé depuis la
+// borne. Elle valait « il y a 6 h » : un relevé commencé AVANT la lecture ratée la bloquait, alors qu'il ne peut pas la
+// trancher (ayoub : relevé à 19:06, 8 annonces lues à 19:29, poste allumé, rien demandé). La borne part désormais de la
+// plus récente de ces deux dates : il y a 6 h, ou la plus ancienne lecture qui attend son relevé. Un relevé demandé
+// après elle reprend la cadence de 6 h, inchangée. Pure.
+/** @param {string} seuilIso — il y a 6 h @param {number|null|undefined} lectureMs — la plus ancienne lecture en attente */
+export function borneReleveAttendu(seuilIso, lectureMs) {
+  const s = Date.parse(String(seuilIso ?? ''));
+  return Number.isFinite(lectureMs) && Number.isFinite(s) && lectureMs > s ? new Date(lectureMs).toISOString() : seuilIso;
+}

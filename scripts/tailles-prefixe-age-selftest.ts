@@ -62,5 +62,15 @@ ok("10 years sans grille → rien", v("10 years", null) === null);
 ok("10 years : l’option exacte « 10 ans » passe devant", v("10 years", ["10 ans / 140 cm", "10 ans"]) === "10 ans");
 ok("10 years, deux options qui le contiennent → rien", v("10 years", ["10 ans / 140 cm", "10 ans / 140 cm long"]) === null);
 
+// (05/11, point 5 — doriane-henri c0813887) « UK 8 child » : la grille du formulaire écrit « UK 8 enfant ».
+const ENFANT_UK = ["UK 7 enfant", "UK 8 enfant", "UK 8,5 enfant", "UK 9 enfant", "UK 1"];
+ok("UK 8 child → UK 8 enfant (libellé exact de la grille)", v("UK 8 child", ENFANT_UK) === "UK 8 enfant");
+ok("UK 8 kids → UK 8 enfant", v("UK 8 kids", ENFANT_UK) === "UK 8 enfant");
+ok("UK 8,5 child → UK 8,5 enfant (jamais UK 8 ni UK 9)", v("UK 8,5 child", ENFANT_UK) === "UK 8,5 enfant");
+ok("UK 2 baby → UK 2 bébé", v("UK 2 baby", ["UK 2 bébé", "UK 2 enfant"]) === "UK 2 bébé");
+ok("UK 10 child absent de la grille → rien (jamais une taille voisine)", v("UK 10 child", ENFANT_UK) === null);
+ok("UK 8 child sans grille → rien", v("UK 8 child", null) === null);
+ok("« UK 8 » sans suffixe : la règle préfixée d'avant, inchangée", tailleAServir({ captureTaille: "UK 8", inventaireTaille: null, options: ENFANT_UK }).valeur !== "UK 8 enfant");
+
 console.log(ko ? `[tailles-prefixe-age] ${ko} KO` : "[tailles-prefixe-age] OK");
 if (ko) Deno.exit(1);

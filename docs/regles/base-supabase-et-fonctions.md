@@ -436,3 +436,14 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 7 et § 8.
   `photo-heic-jpeg` (verify_jwt true, `[functions.photo-heic-jpeg]` dans config.toml) — dépôt d'un instant dans lens-temp,
   transformation Supabase avec `Accept: image/jpeg` SEUL (WebP sinon), sortie relue, original effacé. heic2any n'est
   qu'un secours. Coût : une transformation par HEIC (5 $ / 1 000 au-delà du quota).
+
+## ⛔ 05/11 — une Auth indisponible n'est jamais « Token invalide » ; un relevé du serveur n'est jamais avalé en silence
+- Garde d'une fonction appelée par l'extension : `refusAuthentification(authErr)` (`_shared/auth-indisponible.js`) —
+  401 seulement si l'Auth a RÉPONDU 4xx ; réseau, 5xx, page 520/521 → 503 `auth_indisponible` (rien lu ni écrit, la même
+  requête se rejoue). Jamais `if (authErr || !user) return 401` (04/11 19:21:46, redémarrage de l'Auth de 6 s : redépôt
+  déclaré raté, une session marquée rejetée, sessions purgées). Selftest `auth-indisponible`.
+- Un relevé posé par le SERVEUR (`vinted_sync_runs.insert`) : son déclencheur figure dans `releve_est_veille()`
+  (migration) ET dans `src/utils/declencheursReleve.js` — sinon `garde_releve_sans_geste` fait RETURN NULL, ni ligne ni
+  erreur (05/11 : visite de contrôle Leboncoin, 690 refus par jour pour un compte). `.select("id")` sur l'insertion et un
+  journal quand rien n'est écrit. Selftest `releve-veille-miroir` (rougit sur tout déclencheur neuf).
+- Une fonction SQL appliquée depuis Windows porte des CRLF dans son corps : comparer `pg_get_functiondef` sans `\r`.

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { delegationLbcValide } from "../_shared/delegation-leboncoin.js";
+import { jetonRefuse, refusAuthentification } from "../_shared/auth-indisponible.js";
 
 // Bootstrap d'une session PROPRE à l'extension Chrome (2026-07-20).
 //
@@ -77,6 +78,9 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    // (04/11, sebastien64310) L'Auth qui ne répond pas (redémarrage de 6 s, 521/503) ne dit RIEN du jeton relayé :
+    // 503, aucune session marquée « rejetée », aucune purge côté extension (_shared/auth-indisponible.js).
+    if (authErr && !jetonRefuse(authErr)) { const r = refusAuthentification(authErr); return json(r.body, r.status); }
     if (authErr || !user) {
       // ── Signal de panne pour l'app (incident bootstrap du 02/09 soir) ─────
       // Ce 401 précis = « l'extension tourne mais son jeton relayé est mort »

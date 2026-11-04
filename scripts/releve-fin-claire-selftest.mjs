@@ -36,7 +36,14 @@ ok('extension : veille et coupés n\'importent pas', !!geste && [...DECLENCHEURS
 const mig = lire('supabase/migrations/20261005200000_releves_sur_geste.sql');
 ok('base : même expression de geste', mig.includes("'^(bouton|bouton_distant|app)(:redemande)?$'"));
 // (25/10, point 1b) La liste de veille se lit sur la DERNIÈRE définition de releve_est_veille().
-const migVeille = lire('supabase/migrations/20261025030000_releve_introuvable_a_confirmer.sql');
+// (05/11) Cherchée, plus écrite en dur : le fichier du 25/10 n'était plus la dernière (lecture d'origine, puis la visite
+// de contrôle Leboncoin de 20261105010000).
+const migVeille = (() => {
+  const d = path.join(ROOT, 'supabase/migrations');
+  const f = fs.readdirSync(d).filter((x) => x.endsWith('.sql')).sort()
+    .filter((x) => /FUNCTION public\.releve_est_veille\(/.test(fs.readFileSync(path.join(d, x), 'utf8'))).at(-1);
+  return lire(`supabase/migrations/${f}`);
+})();
 ok('base : même liste de veille', DECLENCHEURS_VEILLE.every((d) => migVeille.includes(`'${d}'`)));
 ok('filtre PostgREST : déclencheur absent gardé, veille écartée', FILTRE_SANS_VEILLE.startsWith('declencheur.is.null,declencheur.not.in.(') && DECLENCHEURS_VEILLE.every((d) => FILTRE_SANS_VEILLE.includes(`"${d}"`)));
 ok('extension : interrupteur des reprises automatiques éteint', bg.includes('const REPRISE_AUTOMATIQUE_RELEVE = false;'));
