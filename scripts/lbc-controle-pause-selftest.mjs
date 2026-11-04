@@ -3,7 +3,7 @@
 // Cas du 02/11 : 96 tâches servies d'un coup ; après un mur de connexion puis une vérification anti-robot, la boucle a
 // chargé 57 pages de dépôt (~1 toutes les 25 s) pendant le refus ; aucun contrôle prévu avant 24 h, et c'était une action.
 import fs from "node:fs";
-import { ESSAI_APRES_MS, etatBlocageLbc, blocagePose, blocageLeve, blocageEssaiRefuse, delaiControleLbc, PALIERS_RECHUTE_MS } from "../supabase/functions/_shared/blocage-leboncoin.js";
+import { annonceDejaRetiree, ESSAI_APRES_MS, etatBlocageLbc, blocagePose, blocageLeve, blocageEssaiRefuse, delaiControleLbc, PALIERS_RECHUTE_MS } from "../supabase/functions/_shared/blocage-leboncoin.js";
 
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
@@ -64,5 +64,20 @@ console.log("\n3. UN RELEVÉ RÉUSSI N'EST JAMAIS UNE PREUVE DE RESTRICTION (fau
 ok(hw.includes('if (String(r.status ?? "") === "done" && !/\\[incomplet\\]/.test(String(r.erreur ?? ""))) continue;') && hw.includes('select("user_id, finished_at, erreur, status")'),
   "handler-watch : relevé « done » (6/6 lu après un 403 dans une relance) → aucune pause posée");
 
+console.log("\n4. (04/11 nuit, règle de Nico) REPRISE PRUDENTE : UNE ANNONCE DÉJÀ RETIRÉE EST REDÉPOSÉE TOUT DE SUITE");
+ok(annonceDejaRetiree({ action: "republish", platform_fields: { republish_step: "deleted" } })
+  && !annonceDejaRetiree({ action: "republish", platform_fields: { republish_step: "captured" } })
+  && !annonceDejaRetiree({ action: "publish", platform_fields: { republish_step: "deleted" } }) && !annonceDejaRetiree(null),
+  "annonce déjà retirée = republication à l'étape « deleted » (rien d'autre)");
+{
+  const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
+  ok(gpj.includes('const retireesB = eb.etat === "reprise" ? lbc.filter((j) => annonceDejaRetiree(j)) : [];')
+    && gpj.includes('if (eb.etat === "reprise" && (retireesB.length || (eb.prete && lbc.length))) {')
+    && gpj.includes('const retenus = lbc.filter((j) => !serviesB.has(String(j.id)));'),
+    "get-pending-jobs : en reprise, les annonces retirées partent tout de suite et comptent pour l'action du moment ; les nouvelles restent espacées");
+  ok(gpj.includes('const retireesA = ebA.etat === "reprise" ? lbcA.filter((j) => annonceDejaRetiree(j)) : [];')
+    && gpj.includes('const retenusA = lbcA.filter((j) => !serviesA.has(String(j.id)));'),
+    "même règle pour la délégation (reprise de l'exécutant)");
+}
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");
 process.exit(ko ? 1 : 0);

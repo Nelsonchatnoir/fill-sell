@@ -1249,3 +1249,12 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 1 (9cdr9rm4rn, Beeb
   qui juge un marqueur ramène `created_at, platform_listing_id, listing_url`, sinon le marqueur retient (sûr par défaut).
 - Filet : un frère « captured » qui m'attend ne me retient pas si je suis le plus ancien (`jePasseDevant`) ; jamais
   pour un frère à l'étape « deleted ».
+
+## 04/11 (nuit) — une annonce déjà retirée n'attend jamais une reprise prudente (règle de Nico)
+- Constat (t-shirt Adidas, Leboncoin, compte Cloud de Nico) : retirée 21:54:05, retenue ~11 min par la reprise prudente
+  (une action Leboncoin toutes les 10 min pendant 6 h après la levée d'une pause), en ligne 22:07:30.
+- Règle : la cadence prudente ne vise que les NOUVELLES actions. Une republication à l'étape « deleted » est servie tout de
+  suite (toutes celles du compte), et compte pour l'action du moment : la suivante attend ses 10 min après elle.
+  `annonceDejaRetiree` (`_shared/blocage-leboncoin.js`), appliquée dans les deux blocs de get-pending-jobs (compte, et
+  délégation chez l'exécutant) ; même exemption dans la reprise après restriction Vinted (`estApresRestrictionVinted`).
+  Côté serveur : vaut pour le PC et le Cloud. Selftests : `lbc-controle-pause`, `restriction-vinted-reprise`.

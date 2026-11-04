@@ -448,3 +448,8 @@ L'INVERSE de la bascule garde `ouvert_sur` : au retour, cloud-1 repart sans les 
   confirmation 22:06:15, « published » 22:06:21 ; vue en ligne dans « mes annonces » à **22:07:30** (leboncoin.fr/ad/vetements/3302470047).
 - **Hors ligne : 21:54:05 → 22:07:30 = 13 min 25 s** (dont ~11 min d'attente de la reprise prudente). Ancien job annulé, un seul
   publié en base (aucun doublon). Ancienne annonce 3295657528 retirée (confirmation lue).
+- **Contrôle réel du veilleur corrigé (accord de Nico)** : coupure levée à 22:18:12 (navigateur non redémarré) ; à 22:19:35 UNE
+  lecture : `OPTIONS …/pages/transactions` 204 puis `GET api.leboncoin.fr/api/consumergoods/proxy/v3/pages/transactions` **200**
+  (cookie datadome renouvelé), type du compte lu dans le cache de la page (aucun appel de compte) ; usage_logs `veille_commandes`
+  « amorcage » Leboncoin, 10 commandes, 1 requête. 1er succès sur le Cloud (avant : 5 refus sur 5). Veilleur laissé en marche.
+- **Reprise prudente corrigée** (ordre de Nico) : une annonce déjà retirée part tout de suite (`docs/regles/republication-et-publication.md`, 04/11 nuit).

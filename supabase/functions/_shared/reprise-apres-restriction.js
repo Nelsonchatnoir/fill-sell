@@ -32,6 +32,9 @@ export function retenueParRestrictionVinted(job) {
 export function estApresRestrictionVinted(job, maintenant = Date.now()) {
   if (!retenueParRestrictionVinted(job)) return false;
   const pf = objet(job.platform_fields);
+  // (04/11 nuit, règle de Nico — même règle que annonceDejaRetiree, _shared/blocage-leboncoin.js) Une annonce DÉJÀ
+  // RETIRÉE (republication à l'étape « deleted ») n'attend jamais un palier : elle est redéposée tout de suite.
+  if (String(job.action ?? "") === "republish" && String(pf.republish_step ?? "") === "deleted") return false;
   if (pf.reprise_restriction_jour) return false;
   const fin = instant(objet(pf.restriction_compte).fin);
   if (fin != null && fin > maintenant) return false;

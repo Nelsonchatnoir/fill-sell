@@ -57,6 +57,10 @@ ok(!R.estApresRestrictionVinted(pdr, le("2026-11-01T08:00:00Z")) && R.estApresRe
   "pas-de-rouge compte_restreint : son échéance d'abord (avant : marquée pendant la restriction, puis libre de tout palier)");
 ok(!R.estApresRestrictionVinted(tache({}), le("2026-11-06T08:00:00Z")) && !R.estApresRestrictionVinted(tache({ restriction_compte: { fin: "pas une date" } }), le("2026-11-06T08:00:00Z")),
   "aucune trace de restriction (ou une date illisible) : hors de la règle");
+// (04/11 nuit, règle de Nico) Une annonce DÉJÀ RETIRÉE (étape « deleted ») n'attend jamais un palier : redéposée tout de suite.
+const retiree = tache({ republish_step: "deleted", pas_de_rouge: { motif: "compte_restreint_echu" } });
+ok(!R.estApresRestrictionVinted(retiree, le("2026-11-06T08:00:00Z")) && R.retenueParRestrictionVinted(retiree),
+  "annonce déjà retirée : jamais retenue par les paliers de reprise (la restriction elle-même reste connue)");
 
 console.log(`\n${rouges ? `✗ ${rouges} RATÉ(S)` : "✓ tout est vert"} — ${verts} vérifications`);
 process.exit(rouges ? 1 : 0);

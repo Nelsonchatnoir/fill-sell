@@ -204,7 +204,7 @@ import { lireParLots } from "../_shared/par-lots.ts";
 import { teteDeFile } from "../_shared/tete-de-file.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
-import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive } from "../_shared/blocage-leboncoin.js";
+import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree } from "../_shared/blocage-leboncoin.js";
 import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc, gardeVirtuelleLbc, lbcVirtuelAutorise } from "../_shared/poste-virtuel.js";
 import { executantLbcDeclare, nomExecutantLbc, comptesExecutesLbc, delegationLbcValide, etatLePlusPrudent, messageDelegationLbc, messageTacheDelegueeEnAttente, PLATEFORME_DELEGUEE } from "../_shared/delegation-leboncoin.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
@@ -13874,12 +13874,16 @@ serve(async (req) => {
           // (03/11, point 7 — règle de Nico) Pendant une restriction, JAMAIS une action pour « essayer » : l'essai est une
           // VISITE DE CONTRÔLE légère, le relevé « Mes annonces » (lecture seule), plus bas. Une action ne part qu'après la
           // levée, en reprise prudente (une toutes les 10 min) : la file repart d'elle-même, jamais en rafale.
-          if (eb.etat === "reprise" && eb.prete && lbc.length) {
-            garde = String(lbc[0].id);
+          // (04/11 nuit, règle de Nico) En reprise, une annonce DÉJÀ RETIRÉE (étape « deleted ») part tout de suite, toutes
+          // celles du compte ; elle compte pour l'action du moment. La cadence des 10 min ne vise que les nouvelles actions.
+          const retireesB = eb.etat === "reprise" ? lbc.filter((j) => annonceDejaRetiree(j)) : [];
+          if (eb.etat === "reprise" && (retireesB.length || (eb.prete && lbc.length))) {
+            garde = String((retireesB[0] ?? lbc[0]).id);
             await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
               p_patch: { ...eb.blocage, derniere_action_reprise: new Date().toISOString() }, p_user: user.id });
           }
-          const retenus = lbc.filter((j) => String(j.id) !== garde);
+          const serviesB = new Set([...retireesB.map((j) => String(j.id)), ...(garde ? [garde] : [])]);
+          const retenus = lbc.filter((j) => !serviesB.has(String(j.id)));
           if (retenus.length) {
             const ids = new Set(retenus.map((j) => String(j.id)));
             out = out.filter((j) => !ids.has(String(j.id)));
@@ -13895,7 +13899,7 @@ serve(async (req) => {
                 ecrits++;
               }
             }
-            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin ${eb.etat} (depuis ${String(eb.blocage.depuis ?? "?")}) — ${retenus.length} tâche(s) Leboncoin retenue(s)${garde ? `, 1 servie (${garde.slice(0, 8)})` : ""}`);
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin ${eb.etat} (depuis ${String(eb.blocage.depuis ?? "?")}) — ${retenus.length} tâche(s) Leboncoin retenue(s)${garde ? `, ${serviesB.size} servie(s) (${garde.slice(0, 8)}${retireesB.length ? `, ${retireesB.length} annonce(s) déjà retirée(s)` : ""})` : ""}`);
           }
           // Relevés Leboncoin : jamais pendant le blocage ; à l'essai, le relevé en file EST l'essai quand aucune tâche ne
           // l'est ; en reprise, seulement quand aucune action n'est partie.
@@ -13951,12 +13955,15 @@ serve(async (req) => {
           const lbcA = out.filter((j) => j.platform === PLATEFORME_DELEGUEE)
             .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
           let gardeA: string | null = null;
-          if (ebA.etat === "reprise" && ebA.prete && lbcA.length) {
-            gardeA = String(lbcA[0].id);
+          // (04/11 nuit, règle de Nico) Une annonce déjà retirée part tout de suite, même chez l'exécutant (voir plus haut).
+          const retireesA = ebA.etat === "reprise" ? lbcA.filter((j) => annonceDejaRetiree(j)) : [];
+          if (ebA.etat === "reprise" && (retireesA.length || (ebA.prete && lbcA.length))) {
+            gardeA = String((retireesA[0] ?? lbcA[0]).id);
             await adminA.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
               p_patch: { ...ebA.blocage, derniere_action_reprise: new Date().toISOString() }, p_user: delegationLbc.executant });
           }
-          const retenusA = lbcA.filter((j) => String(j.id) !== gardeA);
+          const serviesA = new Set([...retireesA.map((j) => String(j.id)), ...(gardeA ? [gardeA] : [])]);
+          const retenusA = lbcA.filter((j) => !serviesA.has(String(j.id)));
           if (retenusA.length) {
             const idsA = new Set(retenusA.map((j) => String(j.id)));
             out = out.filter((j) => !idsA.has(String(j.id)));
@@ -13979,7 +13986,7 @@ serve(async (req) => {
             blocageLbcReponse = { etat: ebA.etat, depuis: ebA.blocage.depuis ?? null, essai_apres: ebA.blocage.essai_apres ?? null,
               message: messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""), String(ebA.blocage.signe ?? "") || null), session_de: "executant" };
           }
-          console.log(`[get-pending-jobs] userId=${user.id} (délégation) : Leboncoin ${ebA.etat} chez l'exécutant ${delegationLbc.executant.slice(0, 8)} — ${retenusA.length} tâche(s) retenue(s)${gardeA ? `, 1 servie (${gardeA.slice(0, 8)})` : ""}`);
+          console.log(`[get-pending-jobs] userId=${user.id} (délégation) : Leboncoin ${ebA.etat} chez l'exécutant ${delegationLbc.executant.slice(0, 8)} — ${retenusA.length} tâche(s) retenue(s)${gardeA ? `, ${serviesA.size} servie(s) (${gardeA.slice(0, 8)}${retireesA.length ? `, ${retireesA.length} annonce(s) déjà retirée(s)` : ""})` : ""}`);
         }
       } catch (e) {
         out = out.filter((j) => j.platform !== PLATEFORME_DELEGUEE);

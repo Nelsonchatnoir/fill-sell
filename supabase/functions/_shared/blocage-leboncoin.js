@@ -45,6 +45,16 @@ export function delaiControleLbc(b) {
   return r > 0 ? PALIERS_RECHUTE_MS[Math.min(r, PALIERS_RECHUTE_MS.length) - 1] : ESSAI_APRES_MS;
 }
 export const ESPACEMENT_REPRISE_MS = 10 * 60_000;
+/**
+ * (04/11 nuit, règle de Nico — t-shirt Adidas, Leboncoin : retiré 21:54:05, retenu 11 min par la reprise prudente, en
+ * ligne 22:07:30) UNE ANNONCE DÉJÀ RETIRÉE (republication à l'étape « deleted ») est redéposée TOUT DE SUITE : la reprise
+ * prudente espace les NOUVELLES actions, jamais une remise en ligne. Elle compte comme l'action du moment (la suivante
+ * attend ses 10 min après elle). Même règle pour la reprise après restriction Vinted (reprise-apres-restriction.js).
+ */
+export function annonceDejaRetiree(job) {
+  return String(job?.action ?? "") === "republish"
+    && String((objet(job?.platform_fields) ?? {}).republish_step ?? "") === "deleted";
+}
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
