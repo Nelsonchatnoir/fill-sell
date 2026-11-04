@@ -423,17 +423,20 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
 
   /** (01/11) Le cache du script de fond de l'extension, effacé quand la copie a changé (cacheExtensionAEffacer). */
-  async function rafraichirExtensionDuProfil(user, profilId) {
+  // (04/11 soir, mesuré sur cloud-2) Le moteur Chrome aussi : son profil vit dans « <profil>/chrome » (`sous`) — une copie
+  // neuve installée gardait l'ANCIEN script de fond (cache des service workers) tant que ce cache n'était pas effacé.
+  async function rafraichirExtensionDuProfil(user, profilId, sous = '') {
     const copie = await readFile(`${config.dossierExtension}/background.js`).catch(() => null);
     if (!copie) return false;
     const empreinte = createHash('sha256').update(copie).digest('hex').slice(0, 16);
-    const marque = `${config.dossierProfils}/${profilId}/.extension-cloud`;
+    const racine = `${config.dossierProfils}/${profilId}${sous ? `/${sous}` : ''}`;
+    const marque = `${racine}/.extension-cloud`;
     const notee = await readFile(marque, 'utf8').catch(() => '');
     if (!cacheExtensionAEffacer(notee, empreinte)) return false;
-    await rm(`${config.dossierProfils}/${profilId}/Default/Service Worker`, { recursive: true, force: true });
+    await rm(`${racine}/Default/Service Worker`, { recursive: true, force: true });
     await writeFile(marque, `${empreinte}
 `);
-    journal.info('extension_rafraichie', { user, empreinte });
+    journal.info('extension_rafraichie', { user, empreinte, ...(sous ? { moteur: sous } : {}) });
     return true;
   }
 
@@ -444,6 +447,7 @@ export function creerNavigateurs({ config, docker, journal }) {
     const dossier = `${config.dossierProfils}/${profilId}/chrome`;
     await mkdir(dossier, { recursive: true });
     await chown(dossier, 1000, 1000).catch(() => {});   // l'utilisateur « navigateur » du conteneur
+    await rafraichirExtensionDuProfil(user, profilId, 'chrome');
     await docker.creer(nom, specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs, permises, jetonControle }));
     await docker.demarrer(nom);
     const ip = ipDe(await docker.inspecter(nom));
