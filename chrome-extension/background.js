@@ -20075,13 +20075,19 @@ async function releverLeboncoinParApi() {
     //    « limit » demandé, « moins que demandé » ne veut PAS dire « fin de
     //    liste ». On avance de ce qui est arrivé ; on s'arrête sur une page
     //    VIDE ou quand le total est atteint.
+    const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
+      const lc = (n) => { const m = document.cookie.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
+      const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
+      return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
+    })();
     let offset = 0;
     for (; pages < pagesMax;) {
       let j = null;
       try {
         const r = await fetch("https://api.leboncoin.fr/api/dashboard/v1/search", {
           method: "POST",
-          headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" },
+          headers: H, credentials: "include",
           body: JSON.stringify({
             context: "list", filters: { owner: { user_id: uid } },
             limit: perPage, offset, sort_by: "time", sort_order: "desc",
@@ -20485,17 +20491,20 @@ async function lireVentesLeboncoin(connues) {
   return executerDansOngletPlateforme("leboncoin", async (perPage, pagesMax, refsConnues) => {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent" };
-    const H = { authorization: `Bearer ${tok}`, accept: "application/json" };
+    const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
+      const lc = (n) => { const m = document.cookie.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
+      const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
+      return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
+    })();
     // 🚨 LE COMPTE PRO D'ABORD. Les routes /compte/part/… redirigent vers « / »
     // sur un compte pro (défaut du 18/09 : tout le filet lisait une page vide en
     // silence). Aucun compte pro n'a pu être relevé ici : on ne relève donc les
     // ventes QUE sur un compte `individual`, et on NOMME le type sinon.
     let type = null;
-    try {
-      const r = await fetch("https://api.leboncoin.fr/api/account/v2/members/me/account", { headers: H });
-      if (r.status === 200) type = (await r.json())?.account?.type ?? null;
-      else return { ok: false, motif: `compte_http_${r.status}` };
-    } catch { return { ok: false, motif: "compte_illisible" }; }
+    // (04/11 soir, règle de Nico) requête du client de la page Leboncoin : le type du compte est lu dans la réponse que la PAGE a déjà reçue (son cache de session), jamais redemandé.
+    try { type = JSON.parse(sessionStorage.getItem("cache:https://api.leboncoin.fr/api/account/v2/members/me/account") ?? "null")?.account?.type ?? null; } catch { type = null; }
+    if (!type) return { ok: false, motif: "compte_absent_de_la_page" };
     if (type !== "individual") return { ok: false, motif: `compte_non_individual_${type ?? "inconnu"}`, typeCompte: type };
 
     const dejaVu = new Set(refsConnues);
@@ -20506,7 +20515,7 @@ async function lireVentesLeboncoin(connues) {
         + `?created_at%5Blt%5D=${encodeURIComponent(curseur)}&limit=${perPage}&user_kind=seller`;
       let lot = null;
       try {
-        const r = await fetch(u, { headers: H });
+        const r = await fetch(u, { headers: H, credentials: "include" });
         if (r.status !== 200) { motif = `http_${r.status}`; break; }
         lot = await r.json();
       } catch { motif = "reseau"; break; }
@@ -23066,23 +23075,26 @@ async function lireCommandesRecentes(platform, typeConnu = null) {
   return executerDansOngletPlateforme("leboncoin", async (perPage, typeConnu) => {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent", requetes: 0 };
-    const H = { authorization: `Bearer ${tok}`, accept: "application/json" };
+    const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
+      const lc = (n) => { const m = document.cookie.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+      const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
+      const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
+      return { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
+    })();
     // Même règle que lireVentesLeboncoin : un compte PRO n'a pas cette liste
     // (ses routes renvoient ailleurs) — type lu une fois par jour, jamais
     // confondu avec un refus anti-robot.
     let type = typeConnu, requetes = 0;
     if (!type) {
-      requetes++;
-      const ra = await fetch("https://api.leboncoin.fr/api/account/v2/members/me/account", { headers: H }).catch(() => null);
-      if (!ra) return { ok: false, motif: "reseau", requetes };
-      if (ra.status !== 200) return { ok: false, http: ra.status, motif: `compte_http_${ra.status}`, requetes };
-      type = (await ra.json().catch(() => null))?.account?.type ?? "inconnu";
+      // (04/11 soir, règle de Nico) requête du client de la page Leboncoin : le type du compte est lu dans la réponse que la PAGE a déjà reçue (son cache de session), jamais redemandé.
+      try { type = JSON.parse(sessionStorage.getItem("cache:https://api.leboncoin.fr/api/account/v2/members/me/account") ?? "null")?.account?.type ?? null; } catch { type = null; }
+      if (!type) return { ok: false, motif: "compte_absent_de_la_page", requetes };
     }
     if (type !== "individual") return { ok: false, motif: `compte_non_individual_${type}`, typeCompte: type, requetes };
     const u = "https://api.leboncoin.fr/api/consumergoods/proxy/v3/pages/transactions"
       + `?created_at%5Blt%5D=${encodeURIComponent(new Date().toISOString())}&limit=${perPage}&user_kind=seller`;
     requetes++;
-    const r = await fetch(u, { headers: H }).catch(() => null);
+    const r = await fetch(u, { headers: H, credentials: "include" }).catch(() => null);
     if (!r) return { ok: false, motif: "reseau", requetes, typeCompte: type };
     const t = await r.text().catch(() => "");
     const bot = /datadome|captcha-delivery|geo\.captcha/i.test(t.slice(0, 5000));
