@@ -316,3 +316,29 @@ gardée ; poste → cloud-2, profil neuf `p-f44b5917-1443a482c05b` (celui de clo
 disque) ; IP 39 → disponible (jamais au repos), IP neuve → Nico. cloud-1 cesse de servir Nico AVANT (`COMPTES_AUTORISES` =
 un compte inexistant, jamais vide : vide = tous) : sinon, si cloud-2 se taisait 15 min, la base rendrait le compte à cloud-1
 qui purgerait les sessions de son profil (coffre vide). Retour : cloud-2 arrêté → INVERSE → cloud-1 rouvert sur Nico.
+
+**Déroulé (04/11 soir, heures de Paris, relues en base et sur les serveurs)** :
+- 18:06 cloud-2 déployé (3094473 ; `deployer.sh` corrigé : un `DESTINATIONS_PROXY` vide disparaissait dans la ligne ssh) ;
+  18:16 redéployé **387043a** : le moteur Chrome annonçait « fr-FR, fr » seules (mesuré) → langues d'un vrai Chrome
+  français (`--accept-lang=fr-FR,fr,en-US,en`, comme `LANGUES_PROFIL` sur steel).
+- 18:08 IP **42** (94.194.94.68, Paris, Orange AS5511 ; même /24 que l'IP 1, déjà vue par Beebs) achetée sur l'accord écrit
+  (IPRoyal 87509051, 4 $) ; son contrôle d'entrée, 18 s après la livraison, l'a mise au REBUT (page d'écho vide, proxy pas
+  encore actif) → remise « achetee » (`…_ip42_controle_rejoue.sql` + INVERSE), proxy vérifié (sortie 94.194.94.68), contrôle
+  rejoué 18:10 : passé (FR, sortie conforme, 0 liste noire, aucune plateforme).
+- Navigateur jetable de cloud-2 (sans compte, sans réseau) puis navigateur du compte : WebGL « ANGLE (Intel, Mesa Intel(R)
+  Graphics (RPL-S), OpenGL 4.6) », compositing / rastérisation / WebGL / WebGPU par la puce, Chrome 157.0.8103.38, Mesa
+  25.2.8, 220 familles de polices, 5 plugins, 32 cœurs (réels), 1920×1080, `webdriver` faux.
+- 18:3x `cloud-2.fillsell.app` A → 5.9.80.213 (DNS only), créé dans Cloudflare depuis le navigateur de Nico sur son ordre
+  (la clé Cloudflare du poste a expiré le 12/10) ; certificat Let's Encrypt obtenu par Caddy.
+- 18:34:29 cloud-1 : `COMPTES_AUTORISES` = compte inexistant, orchestrateur relancé ; navigateur de Nico fermé proprement
+  (coffre sauvegardé 18:34:27). Bascule jouée (:ip_neuve = 42) : 7 lignes sauvegardées, coffre = fillsell seule, poste
+  cloud-2 / `p-f44b5917-1443a482c05b`, IP 39 disponible, 42 → Nico. 18:35:19 navigateur ouvert sur cloud-2, coffre
+  « absente » ×4, sortie 94.194.94.68, aucune plateforme permise.
+- 18:44 → 18:49 Nico se connecte depuis l'app : Beebs, Vinted, Leboncoin, Depop vérifiées, sans glissière. **Beebs : la
+  vérification de l'appareil passe seule** (POST `/interstitial/` 18:44:16 → `view: "redirect"` + cookie datadome), là où
+  cloud-1 recevait `view: "captcha"` (13:40, 15:45). Leboncoin : idem à 18:48:02. Enregistrements :
+  `etat/essais/{beebs,vinted,leboncoin,depop}-2026-11-04T17-4x-…-connexion.jsonl` et `fond-f44b5917-2026-11-04.jsonl`.
+- 18:5x (ordre de Nico) IP 39 RÉSERVÉE à Nico jusqu'au 03/12 (`…_reserve_39_nico.sql` + INVERSE) ; ⚠ une seule réservation
+  par compte (index `cloud_ips_une_reservation`) : celle de l'IP 2 est levée. `cloud_ip_achats_auto` relu : 0.
+- cloud-1 relu après la bascule : aucun navigateur, aucun compte au planificateur, entretien sans contrôle ni visite
+  (`visites_coupees: ["beebs"]`), mesure « taches faites 0 ».
