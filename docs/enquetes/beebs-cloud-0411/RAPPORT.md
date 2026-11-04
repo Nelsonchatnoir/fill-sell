@@ -60,6 +60,15 @@ Historique du navigateur Cloud (`History`) et `vinted_sync_runs` :
   les 24 événements d'un glisser (appui 142,308 → relâché 382,309) tombent tous sur la poignée, sans un décalage.
 - La glissière hors ligne ne bouge pas (son script attend le serveur de DataDome) : le glisser réel se vérifie à l'essai.
 
-## 7. Le déblocage et l'essai — à compléter
-IP neuve par le pool (achat 1 IP, `outils/acheter-une-ip.mjs`), cookies Beebs remis à zéro (`outils/effacer-plateforme.mjs`,
-coffre et état « vérification » par script de réparation), puis UN « Me connecter » Beebs de Nico, enregistré.
+## 7. Le déploiement, le déblocage et l'essai
+- Déployé le 04/11 à 12:02 : orchestrateur **8f33110** (vue bureau, enregistrement) et copie Cloud **0.6.169-cloud**
+  `2026-11-04T11:00:31Z+d426d23.p8f33110-cloud` — l'extension DÉJÀ déployée (d426d23) + les patchs Beebs du jour, SANS les
+  changements Leboncoin de la 0.6.170 (`--extension=d426d23`). Aucune tâche en cours au déploiement ; Vinted et Depop
+  connectés après ; Leboncoin : sa glissière de 11:02 (messagerie, AVANT le déploiement) attend « Résoudre ».
+- IP neuve par le pool (`outils/acheter-une-ip.mjs --acheter`, mêmes gardes que l'achat automatique) : IPRoyal
+  **87481742**, 4 $, livrée en 20 s, id **40**, `81.181.237.207` (échéance 04/12). Même /22 que 81.181.239.136 (refusée
+  par Beebs le 02/11) — sans valeur de preuve : le 02/11, 176.103.182.215 est passée sur le bloc d'une IP refusée.
+- Remise à zéro : `outils/effacer-plateforme.mjs` (navigateur), `scripts/reparations/20261104_cloud_beebs_ip_neuve_nico.sql`
+  (coffre Beebs, état « vérification », IP 39 → repos, 40 → compte ; inverse `…_INVERSE.sql`), blocage Beebs clos dans
+  `blocages.json` (sauvegarde `archives/0411-beebs/`), orchestrateur redémarré.
+- Essai unique : UN « Me connecter » Beebs de Nico, enregistré dans `etat/essais/beebs-…-connexion.jsonl`.

@@ -12,7 +12,16 @@ Détail : `docs/enquetes/beebs-cloud-0411/RAPPORT.md`.
   dans `etat/essais/` ; zoom sur la glissière dans l'APP seulement (`zoom: true`, actif à la prochaine OTA).
 - ⛔ Jamais `Emulation.setDeviceMetricsOverride` ni `Page.captureScreenshot` avec `clip` pendant « Me connecter » d'une page
   à cadre DataDome : mesuré au banc, la souris arrive décalée dans le cadre (rapport § 6).
-- Achat d'une IP par le pool : `docker compose exec -T orchestrateur node outils/acheter-une-ip.mjs [--acheter]`.
+- Achat d'une IP par le pool : `docker compose exec -T orchestrateur node outils/acheter-une-ip.mjs [--acheter]` ;
+  contrôle d'entrée tout de suite (sinon l'entretien horaire) : `… node outils/controle-entree.mjs <ip_id>`.
+- ÉTAT 04/11 12:25 : orchestrateur **8f33110**, copie Cloud **0.6.169-cloud** `…+d426d23.p8f33110-cloud` (sans la 0.6.170 :
+  `node scripts/cloud/build-extension-cloud.mjs --extension=d426d23`). IP du compte de Nico : **id 40, 81.181.237.207**
+  (IPRoyal 87481742, 4 $, échéance 04/12) ; id 39 (176.103.182.215) au repos, refus Beebs non prouvé. Beebs remis à zéro
+  (navigateur, coffre, état ; réparation `20261104_cloud_beebs_ip_neuve_nico.sql` + INVERSE ; blocage clos, sauvegarde
+  `archives/0411-beebs/`) → l'app propose « Me connecter » Beebs. Vinted, Depop connectés ; Leboncoin : glissière de
+  11:02 (messagerie, avant le déploiement) à résoudre par Nico.
+- L'ESSAI UNIQUE : le « Me connecter » Beebs de Nico, enregistré dans `etat/essais/beebs-…-connexion.jsonl`. Aucun autre
+  essai Beebs ; aucune autre IP.
 
 ## ⛔ 03/11/2026 soir — AUDIT + CORRECTIFS POUR L'OUVERTURE À TOUS (à lire EN PREMIER)
 Détail : `docs/enquetes/cloud-ouverture-0311/RAPPORT.md`. Commits 9e9bde4, 1a65445, 7c7748d, 01d22e2.
