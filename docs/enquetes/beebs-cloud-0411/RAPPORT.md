@@ -189,3 +189,91 @@ Historique du navigateur Cloud (`History`) et `vinted_sync_runs` :
 - **Capacité** (mesurée sur le Cloud, 03-04/11, 242 relevés, un navigateur) : 1,2 Go en moyenne, 2,1 Go au 95e centile,
   2,9 Go au plus ; processeur presque au repos. EX44 (64 Go, 14 cœurs / 20 fils) : ≈ 25 navigateurs par la mémoire, Linux ou
   Windows ; partage de la puce non mesuré.
+
+## 14. Reprise (04/11, 17:00 — tout relu à cette heure, rien deviné)
+**cloud-1** (Hetzner `fillsell-cloud-1`, 178.105.24.16, cx43 fsn1 ; `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@178.105.24.16`) :
+- `deploiement-orchestrateur-1` = `fillsell-orchestrateur:cce5ebab06b3` (commit cce5eba, déployé 15:07) ;
+  `fs-nav-f44b5917-…` = steel `b5bd99decf27` (Chromium 156.0.8078.73 de Debian 12, rendu SwiftShader) ; `deploiement-caddy-1`.
+- Copie Cloud de l'extension : 0.6.169, `2026-11-04T11:00:31Z+d426d23.p8f33110-cloud` (déployée 12:02 ; le 15:07 n'a touché
+  que l'orchestrateur).
+- `.env` (drapeaux, aucun secret) : `EMPREINTE_AUTORISEE=091d90b32056e8dd` (l'ancienne : `archives/0411-beebs/env-avant-pdf`),
+  `COMPTES_AUTORISES` = le seul compte de Nico, `ALERTES_MAIL=0`, `IPROYAL_ACHATS_AUTORISES=1`.
+- Un seul profil, `p-f44b5917-60c90d1101a8` (empreinte 091d90b32056e8dd), remis par la réparation de 14:05. Poste rouvert à
+  15:49:10 sur l'IP 39 ; coffre : Vinted, Leboncoin, Depop = profil, Beebs absente. Enregistrements : `etat/essais/`.
+- Plateformes : Vinted relu 16:56:24, Depop 16:48:35, sans erreur. Leboncoin : rien à résoudre ; messagerie en pause
+  jusqu'à 17:01:21 ; à 17:00, première lecture d'après la pause PAS ENCORE FAITE, à relire dans `messagerie_releves`. Beebs :
+  « onglet_indisponible » (effacée du coffre) ; rien à y faire sans décision de Nico.
+
+**IP (`cloud_ips`, 17:00)** — toutes celles qui restent payées ont déjà vu Beebs : AUCUNE IP propre pour un essai.
+| id | IP | état | compte | refus Beebs en base | échéance |
+|---|---|---|---|---|---|
+| 39 | 176.103.182.215 | attribuee_client | Nico | noté | 03/12 14:09 |
+| 2 | 185.134.194.88 | disponible, **réservée à Nico** | — | noté | 29/11 11:37 |
+| 1 | 94.194.94.233 | disponible | — | noté | 04/12 13:57 |
+| 3 | 81.181.239.136 | disponible | — | noté | 29/11 21:00 |
+| 4 | 185.134.192.253 | disponible | — | noté | 02/12 12:29 |
+| 40 | 81.181.237.207 | disponible | — | ⚠ **NON noté** (refusée le 04/11 à 13:40) | 04/12 12:03 |
+| 41 | 88.151.56.82 | disponible | — | ⚠ **NON noté** (refusée le 04/11 à 15:45) | 04/12 15:08 |
+| 5, 6 | — | expirées | — | — | 03/11 |
+- 40 et 41 : refus volontairement non notés (la note déclencherait une visite de contrôle). À noter seulement visites
+  coupées. Personne d'autre ne peut les recevoir tant que `COMPTES_AUTORISES` ne compte que Nico.
+
+**Interrupteurs (`coin_config`, 17:00)** : `cloud_visites_controle_beebs = 0` (aucune visite Beebs, d'aucune IP, depuis
+14:15) ; `cloud_ip_achats_auto = 1`, `cloud_ip_renouvellement_auto = 1`, `cloud_ip_stock_min = 2`, `cloud_ip_achat_max = 10`,
+`cloud_ip_budget_mensuel_usd = 60` (6 IP disponibles : aucun achat déclenché) ; `cloud_ip_rotation = 0` ;
+`cloud_serveurs_auto = 0`. Entretien : `compteToujoursActif` (cce5eba) — jamais de purge d'un compte qui tient une IP ou
+dont le Cloud est actif ; lecture ratée = pas de purge.
+
+**Scripts** — `scripts/reparations/`, sur le PC de Nico SEULEMENT (`*.sql` ignoré par `.gitignore` ; le `git add -f` a été
+refusé, non contourné). Exécution : `npx supabase db query --linked -f <fichier>`.
+- Bascule sur une IP neuve **sans `cloud_ip_liberer`** : `20261104_cloud_ip_essai_beebs_nico.sql` (remplacer `:ip_neuve` par
+  l'id) ; retour sur la 39 : `…_INVERSE.sql` (même remplacement). Sauvegarde `_backup_0411_cloud_ip_essai`. Joués à 15:15
+  et 15:48.
+- Réparation (2) de 14:05 : `20261104_cloud_retour_avant_1223_nico.sql` / `_INVERSE.sql` (orchestrateur arrêté pendant),
+  sauvegarde `_backup_0411_cloud_retour`.
+- ⛔ `20261104_cloud_beebs_ip_neuve_nico.sql` : ne JAMAIS relancer (il appelle `cloud_ip_liberer` : incident de 12:25) ; son
+  inverse est dépassé par la réparation (2). Sauvegarde `_backup_0411_cloud_beebs_ip`.
+- Outils du conteneur orchestrateur : `outils/echo-navigateur.mjs <user>` (IP de sortie, empreinte, sans plateforme),
+  `acheter-une-ip.mjs`, `controle-entree.mjs <id>`, `restaurer-coffre-profil.mjs`, `effacer-plateforme.mjs` (garde
+  `datadome` sauf `--avec-datadome`).
+- Location à l'heure chez Hetzner (API Robot, identifiants dans `fillsell-cloud-proto/secrets.env`) :
+  `POST /order/server_market/transaction` (d'abord avec `test=true`), puis résiliation par
+  `POST /server/<n>/cancellation` avec `cancellation_date=now`. Aucun serveur dédié en cours.
+
+**Prouvé** :
+- Le refus Beebs se décide dans la réponse de DataDome à la vérification de l'appareil (`POST /interstitial/`), 2 à 3 s
+  après l'ouverture et avant tout geste (13:40 et 15:45).
+- Notre code ne recharge jamais la page ; un cookie posé juste avant le rechargement part avec lui (banc).
+- Le filtre anti-pubs et le verrou n'ont rien coupé.
+- Une IP neuve (40, 41) donne le même verdict. Mode bureau ou mode téléphone : même verdict.
+- Chez Hetzner (enchère i5-12500, UHD 770), la puce est active et Google Chrome 157 officiel l'utilise pour tout, sous Linux,
+  avec la sortie écran forcée.
+- Ce qui passe : Windows sur du vrai matériel (PC de Nico, Shadow : 30/10) ; un navigateur NEUF (steel neuf le 01/11 ; ce
+  Cloud le 03/11 18:40), qui se fait refuser ensuite.
+
+**Écarté** :
+- le filtre anti-pubs ;
+- le pilotage par les outils de développement à lui seul (le PC piloté passait, 30/10) ;
+- l'IP seule et le type d'IP ;
+- la langue et le fuseau ;
+- Google Chrome officiel seul sous Linux (bloqué le 30/10) ;
+- un rechargement sans cookie de notre fait ;
+- Scaleway L4 en production (≈ 575 € HT/mois) ;
+- Windows Server + puce Intel sur l'EX44 (aucun pilote Intel pour Windows Server) ;
+- Shadow (Always On à 208,99 €/mois).
+
+**Ouvert, non prouvé** :
+- La cause : la signature du navigateur, repérée après des heures de lectures de fond et partagée par tous les clients
+  Cloud (rendu SwiftShader, polices de conteneur, Linux). Probable.
+- Linux + vraie puce face à Beebs : pas essayé depuis le 30/10. L'essai demande une IP neuve (4 $) et quelques heures de
+  machine, sur accord écrit de Nico.
+- La tenue dans la durée de toute solution : il faut plusieurs jours de lectures de fond pour la juger.
+- L'EX44 exact : non commandable par l'API ; Windows est listé sur sa page, mais pas vérifié à la commande.
+- Le ressenti de l'ancien cookie datadome (2 essais seulement).
+
+**Interdits rappelés** :
+- jamais `cloud_ip_liberer` pour un compte qui reste ;
+- aucune visite Beebs (interrupteur à 0) ;
+- aucun achat d'IP ni de serveur, aucun essai Beebs, aucun contact avec Beebs sans accord écrit de Nico ;
+- aucune fausse valeur d'empreinte, aucun navigateur « anti-détection », aucun résolveur, aucune IP tournante ;
+- Vinted, Leboncoin et Depop jamais cassés par ce chantier.
