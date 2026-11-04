@@ -29,7 +29,11 @@ const EXEMPLES = [
   { titre: 'Poussette Yoyo', prix: '240,00 €', teinte: 'linear-gradient(140deg,#E1E7DE,#F0F3EC)', pf: 'beebs' },
 ];
 
+// (04/11/2026, lot 3 — maquette o-releve) AVEC LE CLOUD PRIS (essai ou option active, c.cloudPris), la phrase ne
+// parle plus de l'ordinateur : « FillSell lit, depuis ses serveurs… », « Rien à laisser allumé ». AVEC LA GRILLE,
+// le contrat de lecture ajoute que l'import ne compte dans aucune jauge. Sinon : l'écran d'avant, au mot près.
 export default function EtapeReleve({ c, T, onSuivant }) {
+  const cloud = c.cloudPris === true;
   const cibles = c.choix.plateformes;
   const lance = c.releve.etat === 'lance';
   const enFile = c.releve.etat === 'en_file';
@@ -53,7 +57,9 @@ export default function EtapeReleve({ c, T, onSuivant }) {
             {demande ? T.continuer : enCours ? T.relEnCours : T.relCta}
           </BoutonPrimaire>
           <Texte centre style={{ margin: '10px 0 0', fontSize: 12.5 }}>
-            {lance ? T.relLance : enFile ? T.relEnFileNote : T.relSousBouton}
+            {cloud
+              ? (lance ? T.relLanceCloud : enFile ? T.relEnFileNoteCloud : T.relSousBoutonCloud)
+              : (lance ? T.relLance : enFile ? T.relEnFileNote : T.relSousBouton)}
           </Texte>
           {!demande && <LienDiscret onClick={onSuivant} style={{ marginTop: 4 }}>{T.passer}</LienDiscret>}
         </>
@@ -61,7 +67,7 @@ export default function EtapeReleve({ c, T, onSuivant }) {
     >
       <Kicker>{T.relKicker}</Kicker>
       <Titre>{T.relTitre}</Titre>
-      <Texte>{T.relTexte}</Texte>
+      <Texte>{cloud ? T.relTexteCloud : T.relTexte}</Texte>
 
       <div className="en-anime" style={{ position: 'relative', background: E.card, border: `1px solid ${E.border}`, borderRadius: 20, padding: '14px 16px 8px', marginBottom: 12, overflow: 'hidden' }}>
         {/* La ligne de scan : ce qui se passe pendant qu'on relève. */}
@@ -121,12 +127,12 @@ export default function EtapeReleve({ c, T, onSuivant }) {
         <span aria-hidden="true" style={{ width: 20, height: 20, marginTop: 1, borderRadius: 10, flexShrink: 0, border: `1.5px solid ${E.tealDeep}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ width: 6, height: 6, borderRadius: 3, background: E.tealDeep }} />
         </span>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.5, color: E.ink }}>{T.relContrat}</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.5, color: E.ink }}>{c.grille === true ? `${T.relContrat} ${T.relImportGratuit}` : T.relContrat}</span>
       </div>
 
       {demande && (
         <div style={{ marginTop: 12 }}>
-          <Etat ok={lance}>{lance ? T.relLance : T.relEnFile}</Etat>
+          <Etat ok={lance}>{cloud ? (lance ? T.relLanceCloud : T.relEnFileCloud) : (lance ? T.relLance : T.relEnFile)}</Etat>
         </div>
       )}
 

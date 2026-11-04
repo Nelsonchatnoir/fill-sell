@@ -11,6 +11,19 @@
 //     ci-dessous correspond à un appel réel (relevé, OAuth eBay,
 //     republication planifiée).
 //   · « tu », jamais « vous ».
+//
+// (04/11/2026, lot 3) Les mots de la grille à 3 jauges et de la voie FillSell Cloud (maquettes validées par Nico
+// le 03/11) sont AJOUTÉS en fin d'objet : aucune clé d'avant ne change. ⛔ Ni prix, ni durée d'essai, ni quota
+// écrits ici : le prix vient de CLOUD_PRIX_AFFICHE, la durée de CLOUD_ESSAI_JOURS (utils/palier.js), les volumes
+// de coin_config (passés en paramètre), les noms des plateformes du Cloud de config/cloudOffer.js.
+import { CLOUD_PRIX_AFFICHE, CLOUD_ESSAI_JOURS } from '../utils/palier';
+
+// Insécables : « 7 jours », « 20 €/mois » ne se coupent pas en fin de ligne (même règle que cloud/textes.js).
+const NBSP = String.fromCharCode(0xa0);
+const PRIX = CLOUD_PRIX_AFFICHE.replace(/ /g, NBSP);
+const J7 = `${CLOUD_ESSAI_JOURS}${NBSP}jours`;
+const D7 = `${CLOUD_ESSAI_JOURS}${NBSP}days`;
+
 const FR = {
   passer: 'Passer',
   continuer: 'Continuer',
@@ -133,6 +146,124 @@ const FR = {
   finSuiteTel: "Prochaine étape : installe l'extension sur ton ordinateur — l'app te le rappellera dans le Stock.",
   finSuiteOrdi: "Prochaine étape : garde Chrome ouvert avec l'extension, c'est lui qui dépose tes annonces.",
   finCta: 'Entrer dans FillSell',
+
+  // ══ (04/11, lot 3) GRILLE À 3 JAUGES ET FILLSELL CLOUD ══════════════════
+  // ── 2 bis. Comment tu veux publier ? (maquette o-voie, v3) ───────────────
+  voieKicker: "L'étape qui compte",
+  voieTitre: 'Comment tu veux publier ?',
+  voieTexteAvant: 'Tes annonces doivent être déposées sur chaque plateforme, avec ton compte.',
+  voieTexteApres: "Choisis qui s'en charge : tu pourras changer plus tard.",
+  voiePastille: `${J7} offerts`,
+  voieCloudK: 'FillSell Cloud',
+  voieCloudT: 'Tout depuis ton téléphone',
+  voieCloudP: (noms) => `Sans ordinateur. FillSell publie, remonte et retire tes annonces ${noms} depuis ses serveurs, même quand tout est éteint.`,
+  voieCloudPlus: ['Rien à installer', 'Ventes vues en direct', 'Sans engagement'],
+  voieCloudCta: `Essayer ${J7} offerts`,
+  voieCloudNote: `Puis ${PRIX}/mois. Tu l'arrêtes en un geste, on te prévient la veille.`,
+  voieExtK: 'Extension Chrome',
+  voieExtT: 'Sur ton ordinateur, gratuit',
+  voieExtP: 'Installée une fois dans Chrome, elle dépose tes annonces avec tes comptes déjà connectés. Ton ordinateur doit être allumé pour publier.',
+  voieExtCta: 'Utiliser mon ordinateur',
+  voieExtNote: 'Gratuite, sans carte, pour toujours.',
+  voiePied: "Tu pourras passer de l'un à l'autre dans Réglages, quand tu veux.",
+  // Le point « i » et sa petite fenêtre.
+  infoTitre: 'Il te faut déjà un compte sur chaque plateforme',
+  infoP1: 'FillSell se connecte à tes comptes Vinted, Leboncoin, Beebs, Depop ou eBay déjà créés. Il ne crée pas de compte à ta place.',
+  infoP2: "Pas encore de compte sur l'une d'elles ? Crée-le d'abord sur la plateforme, puis reviens : rien n'est perdu, tu la connecteras plus tard.",
+  infoP3: "Avec le Cloud, tu te connectes sur la page de connexion de la plateforme. Avec l'extension, FillSell utilise les comptes déjà ouverts dans Chrome.",
+  infoCompris: 'Compris',
+
+  // ── 2 ter. Cloud : l'essai (maquette o-cloud-essai) ──────────────────────
+  cloudKicker: `FillSell Cloud · ${J7} offerts`,
+  cloudTitre: (date) => `Rien à payer avant le ${String(date).replace(/ /g, NBSP)}`,
+  cloudTexte: `Pendant ${J7}, tes annonces partent de nos serveurs, pilotées depuis ton téléphone. Tu ne paies que si tu continues.`,
+  cloudFrise: (veille, bascule) => [
+    { quand: "Aujourd'hui", quoi: `Carte demandée, 0${NBSP}€ prélevé.` },
+    { quand: veille, quoi: "On te prévient, dans l'app et par e-mail." },
+    { quand: bascule, quoi: `${PRIX}/mois, sauf si tu arrêtes avant. Sans engagement.` },
+  ],
+  cloudFait: 'Ce que fait le Cloud',
+  cloudFaitListe: (noms, quotasFree) => [
+    `${noms} : publiés, remontés et retirés après une vente, ordinateur éteint`,
+    'Tes ventes vues en direct, sur ton téléphone',
+    'eBay part déjà de nos serveurs, pour tout le monde',
+    quotasFree ? `Tes quotas restent ceux de ton plan : en Free, ${quotasFree} par mois` : 'Tes quotas restent ceux de ton plan',
+  ],
+  cloudCta: `Commencer mes ${J7} offerts`,
+  // La ligne sous le bouton, selon le canal de l'achat (achatCloud : boutique sur téléphone, Stripe sur le web).
+  cloudCanal: {
+    ios: "L'essai passe par l'App Store : tu l'arrêtes aussi dans tes abonnements Apple.",
+    android: "L'essai passe par Google Play : tu l'arrêtes aussi dans tes abonnements Google Play.",
+    web: "L'essai passe par une page de paiement sécurisée : tu l'arrêtes en un geste dans Réglages › Abonnement.",
+  },
+  cloudOrdinateur: 'Je préfère utiliser mon ordinateur',
+  // Toutes les places prises : la liste d'attente existante (cloud/textes.js), jamais une vente.
+  cloudCompletKicker: 'FillSell Cloud',
+
+  // ── 2 quater. Cloud : les connexions (maquette o-cloud-connexion, v3) ────
+  cxKicker: (date) => (date ? `Cloud activé · essai jusqu'au ${date}` : 'Cloud activé'),
+  cxTitre: 'Connecte tes comptes, une fois',
+  cxTexte: "La page de connexion de chaque plateforme s'ouvre ici. Ensuite, FillSell publie depuis ses serveurs, même ordinateur éteint.",
+  cxEbaySous: "Par la connexion officielle d'eBay",
+  cxBande: "Seule la page de connexion s'ouvre : connecte-toi avec ton compte déjà créé sur la plateforme, FillSell n'en crée pas. Connecte une plateforme maintenant, les autres quand tu veux, dans Réglages › Mes plateformes.",
+  cxCompte: (n, total) => `${n} plateforme${n > 1 ? 's' : ''} connectée${n > 1 ? 's' : ''} sur ${total}`,
+  cxReessayer: 'Réessayer',
+
+  // ── 3 bis. L'extension, choisie (maquette o-extension) ───────────────────
+  extKickerVoie: 'Extension Chrome · gratuite',
+  extFinalement: "Finalement, je n'ai pas d'ordinateur",
+
+  // ── 4. Relevé, avec le Cloud (maquette o-releve) ─────────────────────────
+  relTexteCloud: `Appuie sur «${NBSP}Synchroniser mes annonces${NBSP}» : FillSell lit, depuis ses serveurs, tes annonces déjà publiées (titres, prix, photos) et crée une fiche par article dans ton stock, même article vu sur deux plateformes.`,
+  relSousBoutonCloud: 'Rien à laisser allumé : la lecture se fait depuis nos serveurs.',
+  relLanceCloud: 'Synchronisation lancée — elle avance depuis nos serveurs',
+  relEnFileCloud: 'Demande gardée — elle part dès que FillSell Cloud est prêt',
+  relEnFileNoteCloud: "C'est noté. Ta synchronisation part depuis nos serveurs dès que FillSell Cloud est prêt — tu n'as pas à revenir cliquer.",
+  // Avec la grille : l'import ne coûte rien.
+  relImportGratuit: "Et l'import ne compte dans aucune jauge, même avec 500 annonces.",
+
+  // ── 4 bis. Je débute, avec le Cloud ──────────────────────────────────────
+  debTexteCloud: 'Photographie un article : FillSell remplit la fiche, tu choisis les plateformes, FillSell la publie depuis ses serveurs.',
+  debEtapeCloud: "FillSell la publie depuis ses serveurs, une plateforme après l'autre, même ordinateur éteint",
+
+  // ── 5. Remonter tes annonces, avec la grille (maquette o-remontees) ──────
+  remTitre: 'Remonte tes annonces en un geste',
+  remTexte: `Une annonce qui date descend dans les listes. «${NBSP}Remonter mes annonces${NBSP}», dans ton Stock, la remet en haut sur chaque plateforme.`,
+  remCycle: ['Elle redescend', `Tu appuies sur «${NBSP}Remonter${NBSP}»`, 'Elle repart en haut'],
+  remEnFree: 'En Free',
+  remDesLe: (nom) => `Dès le ${nom}`,
+  remFreeVolume: (compte) => `${compte} par mois`,
+  remProVolume: (compte) => (compte ? `${compte} par mois, et toutes seules au créneau que tu choisis` : 'illimitées, et toutes seules au créneau que tu choisis'),
+  remNote: "Rien n'est activé maintenant. Une remontée, c'est une annonce remise en haut sur une plateforme.",
+
+  // ── 5 bis. Ton plan Free (maquette o-free) ───────────────────────────────
+  freeKicker: 'Ton plan Free',
+  freeKickerCloud: 'Ton plan Free + Cloud',
+  freeTitre: 'Ce que tu as chaque mois, sans payer',
+  freeTexte: 'De quoi lancer ton stock et voir tes premières ventes. Tes compteurs repartent à zéro chaque mois, à la date de ton inscription.',
+  freeSous: {
+    annonces: "rédigées par l'IA ou scannées avec Lens",
+    publications: 'une mise en ligne sur une plateforme',
+    remontees: 'une annonce remise en haut sur une plateforme',
+  },
+  freeSansLimite: 'Sans limite, même en Free',
+  freeSansLimiteListe: ['Import de tout ton stock, depuis toutes tes plateformes', 'Retrait automatique partout après une vente', 'Synchronisation de tes annonces'],
+  freeExemple: (cout) => `Exemple : un article publié sur Vinted et Leboncoin compte ${cout}.`,
+  freeCloud: 'Le Cloud ne change pas ces chiffres : il publie sans ordinateur.',
+  freeCta: "C'est parti",
+  freeFormules: 'Besoin de plus un jour ? Les formules sont dans Réglages › Abonnement.',
+
+  // ── 7 bis. Le récap, avec la grille et le Cloud (maquette o-fin) ─────────
+  finPlan: 'Ton plan',
+  finPlanValeur: (nom, liste) => `${nom} : ${liste}`,
+  finCloud: 'FillSell Cloud',
+  finCloudEssai: (date) => `Essai gratuit jusqu'au ${date}`,
+  finCloudActif: 'Actif',
+  finCloudOu: 'Réglages › Abonnement',
+  finConnexions: 'Connexions',
+  finConnexionsValeur: (n, total, reste) => (reste ? `${n} sur ${total} : ${reste} à connecter` : `${n} sur ${total}`),
+  finSuiteCloud: 'Prochaine étape : connecte tes autres plateformes, puis publie ta première annonce.',
+  finSuiteCloudPret: 'Prochaine étape : publie ta première annonce.',
 };
 
 const EN = {
@@ -242,6 +373,111 @@ const EN = {
   finSuiteTel: 'Next step: install the extension on your computer — the app will remind you in Stock.',
   finSuiteOrdi: 'Next step: keep Chrome open with the extension, it is what posts your listings.',
   finCta: 'Enter FillSell',
+
+  // ══ (04/11, lot 3) 3-GAUGE GRID AND FILLSELL CLOUD ══════════════════════
+  voieKicker: 'The step that matters',
+  voieTitre: 'How do you want to post?',
+  voieTexteAvant: 'Your listings have to be posted on each platform, with your account.',
+  voieTexteApres: 'Pick who does it: you can change later.',
+  voiePastille: `${D7} free`,
+  voieCloudK: 'FillSell Cloud',
+  voieCloudT: 'Everything from your phone',
+  voieCloudP: (noms) => `No computer needed. FillSell posts, bumps and removes your ${noms} listings from its servers, even when everything is off.`,
+  voieCloudPlus: ['Nothing to install', 'Sales seen live', 'No commitment'],
+  voieCloudCta: `Try ${D7} free`,
+  voieCloudNote: `Then ${PRIX}/mo. Stop it in one tap, we remind you the day before.`,
+  voieExtK: 'Chrome extension',
+  voieExtT: 'On your computer, free',
+  voieExtP: 'Installed once in Chrome, it posts your listings with the accounts already signed in. Your computer must be on to post.',
+  voieExtCta: 'Use my computer',
+  voieExtNote: 'Free, no card, forever.',
+  voiePied: 'You can switch from one to the other in Settings, whenever you want.',
+  infoTitre: 'You need an account on each platform first',
+  infoP1: 'FillSell connects to your Vinted, Leboncoin, Beebs, Depop or eBay accounts you already created. It does not create an account for you.',
+  infoP2: "No account on one of them yet? Create it on the platform first, then come back: nothing is lost, you'll connect it later.",
+  infoP3: 'With the Cloud, you sign in on the platform\'s sign-in page. With the extension, FillSell uses the accounts already open in Chrome.',
+  infoCompris: 'Got it',
+
+  cloudKicker: `FillSell Cloud · ${D7} free`,
+  cloudTitre: (date) => `Nothing to pay before ${String(date).replace(/ /g, NBSP)}`,
+  cloudTexte: `For ${D7}, your listings go out from our servers, driven from your phone. You only pay if you keep going.`,
+  cloudFrise: (veille, bascule) => [
+    { quand: 'Today', quoi: 'Card required, €0 charged.' },
+    { quand: veille, quoi: 'We remind you, in the app and by email.' },
+    { quand: bascule, quoi: `${PRIX}/mo, unless you stop before. No commitment.` },
+  ],
+  cloudFait: 'What the Cloud does',
+  cloudFaitListe: (noms, quotasFree) => [
+    `${noms}: posted, bumped and removed after a sale, computer off`,
+    'Your sales seen live, on your phone',
+    'eBay already goes out from our servers, for everyone',
+    quotasFree ? `Your quotas stay those of your plan: on Free, ${quotasFree} a month` : 'Your quotas stay those of your plan',
+  ],
+  cloudCta: `Start my ${D7} free`,
+  cloudCanal: {
+    ios: 'The trial goes through the App Store: you can also stop it in your Apple subscriptions.',
+    android: 'The trial goes through Google Play: you can also stop it in your Google Play subscriptions.',
+    web: 'The trial goes through a secure payment page: stop it in one tap in Settings › Subscription.',
+  },
+  cloudOrdinateur: "I'd rather use my computer",
+  cloudCompletKicker: 'FillSell Cloud',
+
+  cxKicker: (date) => (date ? `Cloud on · trial until ${date}` : 'Cloud on'),
+  cxTitre: 'Connect your accounts, once',
+  cxTexte: "Each platform's sign-in page opens here. Then FillSell posts from its servers, even with your computer off.",
+  cxEbaySous: "Through eBay's official sign-in",
+  cxBande: 'Only the sign-in page opens: sign in with the account you already created on the platform, FillSell does not create one. Connect one platform now, the others whenever you want, in Settings › My platforms.',
+  cxCompte: (n, total) => `${n} platform${n === 1 ? '' : 's'} connected out of ${total}`,
+  cxReessayer: 'Try again',
+
+  extKickerVoie: 'Chrome extension · free',
+  extFinalement: "Actually, I don't have a computer",
+
+  relTexteCloud: 'Tap "Scan my listings": FillSell reads, from its servers, your published listings (titles, prices, photos) and creates one card per item in your stock, even when the same item is on two platforms.',
+  relSousBoutonCloud: 'Nothing to leave on: the scan runs from our servers.',
+  relLanceCloud: 'Scan started — it runs from our servers',
+  relEnFileCloud: 'Request kept — it starts as soon as FillSell Cloud is ready',
+  relEnFileNoteCloud: "Noted. The scan starts from our servers as soon as FillSell Cloud is ready — you don't have to come back and click.",
+  relImportGratuit: 'And the import counts in no gauge, even with 500 listings.',
+
+  debTexteCloud: 'Photograph an item: FillSell fills the card, you pick the platforms, FillSell posts it from its servers.',
+  debEtapeCloud: 'FillSell posts it from its servers, one platform after another, even with your computer off',
+
+  remTitre: 'Bump your listings in one tap',
+  remTexte: 'An ageing listing sinks down the lists. "Bump my listings", in your Stock, puts it back on top on each platform.',
+  remCycle: ['It sinks', 'You tap "Bump"', 'It goes back on top'],
+  remEnFree: 'On Free',
+  remDesLe: (nom) => `From ${nom}`,
+  remFreeVolume: (compte) => `${compte} a month`,
+  remProVolume: (compte) => (compte ? `${compte} a month, and on their own at the time slot you choose` : 'unlimited, and on their own at the time slot you choose'),
+  remNote: 'Nothing is turned on now. A bump is one listing put back on top on one platform.',
+
+  freeKicker: 'Your Free plan',
+  freeKickerCloud: 'Your Free plan + Cloud',
+  freeTitre: 'What you get each month, without paying',
+  freeTexte: 'Enough to start your stock and see your first sales. Your counters reset every month, on your sign-up date.',
+  freeSous: {
+    annonces: 'written by the AI or scanned with Lens',
+    publications: 'one listing put online on one platform',
+    remontees: 'one listing put back on top on one platform',
+  },
+  freeSansLimite: 'No limit, even on Free',
+  freeSansLimiteListe: ['Import of your whole stock, from all your platforms', 'Automatic removal everywhere after a sale', 'Sync of your listings'],
+  freeExemple: (cout) => `Example: an item posted on Vinted and Leboncoin counts as ${cout}.`,
+  freeCloud: "The Cloud doesn't change these numbers: it posts without a computer.",
+  freeCta: "Let's go",
+  freeFormules: 'Need more one day? The plans are in Settings › Subscription.',
+
+  finPlan: 'Your plan',
+  finPlanValeur: (nom, liste) => `${nom}: ${liste}`,
+  finCloud: 'FillSell Cloud',
+  finCloudEssai: (date) => `Free trial until ${date}`,
+  finCloudActif: 'On',
+  finCloudOu: 'Settings › Subscription',
+  finConnexions: 'Connections',
+  finConnexionsValeur: (n, total, reste) => (reste ? `${n} of ${total}: ${reste} to connect` : `${n} of ${total}`),
+  finSuiteCloud: 'Next step: connect your other platforms, then post your first listing.',
+  finSuiteCloudPret: 'Next step: post your first listing.',
 };
 
 export function textesEntree(lang) {

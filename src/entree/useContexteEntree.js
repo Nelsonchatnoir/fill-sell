@@ -11,6 +11,14 @@
 //   · usage_logs 'onboarding_choice' (télémétrie best-effort, jamais bloquante)
 // Aucun quota, aucun palier, aucun coin_ledger n'est touché : le relevé n'est
 // ni une publication ni une republication (cf. syncPlateformes.js).
+//
+// (04/11/2026, lot 3 — grille à 3 jauges et voie Cloud, décisions de Nico du 03/11) DEUX lectures de plus, et
+// seulement celles-là :
+//   · coin_config, UNE fois, bornée aux clés de la grille (interrupteur grille_trois_jauges + volumes jauge_*) —
+//     elle ne bloque rien : tant qu'elle n'est pas revenue, ou si elle échoue, il n'y a PAS de grille ;
+//   · la voie Cloud (useCloudEntree) : téléphone + Cloud ouvert à ce compte seulement — fermé (tout le monde le
+//     04/11), elle ne lit rien.
+// À 0 et Cloud fermé, rien de ce qu'elles rendent ne change un pixel du parcours.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
@@ -20,6 +28,10 @@ import { lireSyncMultiOuverte, demanderRelevePlateforme, lireDerniersRunsReleve 
 import { murConnexionReleve } from '../annonces/etatReleve';
 import { useEnvoiLienExtension } from '../hooks/useEnvoiLienExtension';
 import { plateformesFermeesHorsFrance } from '../../supabase/functions/_shared/lbc-adresse-france.js';
+import { grilleActiveConfig } from '../utils/jauges';
+import { CLES_CONFIG_JAUGES } from '../reglages/quotas';
+import { planEntree } from './regles';
+import { useCloudEntree } from './useCloudEntree';
 
 // ⚠️ CES DEUX CLÉS NE CHANGENT PAS DE NOM NI DE SENS. Elles sont lues
 // ailleurs (App.jsx remonte le parcours quand l'attente est encore posée) :
@@ -41,6 +53,11 @@ export const ENTREE_CHOIX_KEY = 'fs_entree_choix';
 // Sans cette clé, un rechargement effacerait l'intention et la personne
 // devrait revenir cliquer — exactement ce qu'on lui promet d'éviter.
 export const ENTREE_RELEVE_KEY = 'fs_entree_releve_demande';
+// (04/11, lot 3) La réponse à « Comment tu veux publier ? » : 'cloud' | 'extension'. Cache d'AFFICHAGE de cet
+// appareil (reprise du parcours), retiré à la fin ; jamais écrite tant que la voie Cloud n'existe pas.
+export const ENTREE_VOIE_KEY = 'fs_entree_voie';
+// Les clés de coin_config que le parcours lit : l'interrupteur et les volumes de la grille, rien d'autre.
+const CLES_CONFIG_ENTREE = Object.freeze(['grille_trois_jauges', ...CLES_CONFIG_JAUGES]);
 
 // ── LE CHAMP DE PRÉFÉRENCE ──────────────────────────────────────────────────
 // profiles.platform_settings est le sac de préférences de plateformes qui
@@ -101,7 +118,7 @@ export function marquerEntreeFaiteAuVol(userId, jeton) {
   } catch { /* idem */ }
 }
 
-export function useContexteEntree({ lang, user, demanderPseudo }) {
+export function useContexteEntree({ lang, user, demanderPseudo, palier = 'gratuit', essaiCloud = null }) {
   const fr = lang !== 'en';
   // ⚠️ L'identifiant est EXTRAIT UNE FOIS, et c'est LUI qu'on met en
   // dépendance. Écrire `[user?.id]` fait diverger les dépendances inférées
@@ -140,6 +157,46 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
   const jetonRef = useRef(null);
 
   const { envoi, secondesRestantes, envoyer: envoyerLien } = useEnvoiLienExtension(lang, user?.email ?? null);
+
+  // ── (04/11, lot 3) LA GRILLE À 3 JAUGES — coin_config, lue une fois ───────
+  // Illisible ou pas encore revenue = K null = pas de grille : le parcours d'avant.
+  const [K, setK] = useState(null);
+  useEffect(() => {
+    if (!userId) return undefined;
+    let annule = false;
+    Promise.resolve()
+      .then(() => supabase.from('coin_config').select('key, value').in('key', CLES_CONFIG_ENTREE))
+      .then(({ data, error }) => {
+        if (annule || error || !Array.isArray(data)) return;
+        const map = {};
+        for (const row of data) map[row.key] = row.value;
+        setK(map);
+      })
+      .catch(() => { /* config illisible : pas de grille, rien d'autre */ });
+    return () => { annule = true; };
+  }, [userId]);
+  const grille = grilleActiveConfig(K);
+  const plan = planEntree(K, palier);
+
+  // ── (04/11, lot 3) LA VOIE : « Comment tu veux publier ? » ───────────────
+  const [voie, setVoie] = useState(() => {
+    const v = lireJSON(ENTREE_VOIE_KEY, null);
+    return v === 'cloud' || v === 'extension' ? v : null;
+  });
+  const choisirVoie = useCallback((v) => {
+    const sure = v === 'cloud' || v === 'extension' ? v : null;
+    setVoie(sure);
+    try {
+      if (sure) localStorage.setItem(ENTREE_VOIE_KEY, JSON.stringify(sure));
+      else localStorage.removeItem(ENTREE_VOIE_KEY);
+    } catch { /* cache d'affichage seul */ }
+  }, []);
+  const plateforme = useMemo(() => Capacitor.getPlatform(), []);
+  const cloud = useCloudEntree({ userId, lang, surTelephone, voie, essaiCloud, plateformesFermees });
+  // La voie Cloud CHOISIE (étapes Cloud, pas d'extension) ; PRISE = l'option tourne vraiment (le relevé, la fiche
+  // « Je débute », le plan et le récap ne disent « depuis nos serveurs » qu'à ce moment-là).
+  const cloudChoisi = cloud.parcours && voie === 'cloud';
+  const cloudPris = cloudChoisi && cloud.actif;
 
   useEffect(() => { choixRef.current = choix; }, [choix]);
 
@@ -319,5 +376,9 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
     ebayRelie, setEbayRelie,
     journaliser, jetonRef,
     plateformesFermees,
+    // (04/11, lot 3) Grille à 3 jauges et voie Cloud — à 0 et Cloud fermé : grille false, plan null,
+    // cloud.parcours false, voie null ; aucune étape ne les lit autrement.
+    K, grille, plan, palier,
+    voie, choisirVoie, cloud, cloudChoisi, cloudPris, plateforme,
   };
 }

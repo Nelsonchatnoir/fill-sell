@@ -10513,6 +10513,10 @@ export default function App({ loginOnly = false }){
           user={user}
           demanderPseudo={demanderPseudo}
           onUsername={(nom)=>setUsername(nom)}
+          // (04/11, lot 3) « Ton plan » de la grille à 3 jauges, et l'essai Cloud par le chemin EXISTANT
+          // (achatCloud.acheter : conditions, place, Stripe ou boutique) — null tant que le Cloud est fermé.
+          palier={palier}
+          essaiCloud={cloudOfferVisible(user.id)&&achatCloud?(origine)=>{logTunnel('cloud_cta_click',{origine,declencheur:'clic'});return achatCloud.acheter(origine);}:null}
           onDone={(dest)=>{
             onboardingFiniRef.current=true;
             setShowOnboardingFlow(false);

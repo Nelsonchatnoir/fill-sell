@@ -18,6 +18,13 @@
 //     existantes continuent de se lire ;
 //   · la signature du composant est INCHANGÉE (lang, user, onDone,
 //     demanderPseudo, onUsername) → App.jsx ne change que son chemin d'import.
+//     (04/11/2026, lot 3) Deux props FACULTATIVES s'y ajoutent : `palier`
+//     (celui de l'app, pour « Ton plan » de la grille à 3 jauges) et
+//     `essaiCloud(origine)` (l'achat de l'essai Cloud par le chemin existant,
+//     achatCloud.acheter ; null = pas de voie Cloud). Absentes : le parcours d'avant.
+//   · (04/11, lot 3) la télémétrie 'onboarding_choice' garde toutes ses
+//     valeurs ; la voie Cloud en AJOUTE (voie_cloud, voie_extension, voie_info,
+//     voie_retour, cloud_essai_*, cloud_ordinateur, cloud_connexion_ouverte…).
 //
 // LA RÈGLE DU PARCOURS : chaque étape est sautable, aucune ne conditionne
 // l'entrée dans l'app. La seule non passable est le récap, qui EST la sortie.
@@ -30,7 +37,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import {
   useContexteEntree, marquerEntreeFaite, marquerEntreeFaiteAuVol,
-  ONBOARD_DONE_KEY, ONBOARD_STATE_KEY, ENTREE_ETAPE_KEY, ENTREE_RELEVE_KEY,
+  ONBOARD_DONE_KEY, ONBOARD_STATE_KEY, ENTREE_ETAPE_KEY, ENTREE_RELEVE_KEY, ENTREE_VOIE_KEY,
 } from './useContexteEntree';
 import { etapesVisibles } from './plan';
 import { textesEntree } from './textes';
@@ -44,18 +51,32 @@ import EtapeDebut from './EtapeDebut';
 import EtapeRepublication from './EtapeRepublication';
 import EtapePseudo from './EtapePseudo';
 import EtapeFin from './EtapeFin';
+import EtapeVoie from './EtapeVoie';
+import EtapeCloud from './EtapeCloud';
+import EtapeCloudConnexion from './EtapeCloudConnexion';
+import EtapeFree from './EtapeFree';
 
 // Un id d'étape → un composant. C'est la SEULE table de correspondance.
 const ECRANS = {
   plateformes: EtapePlateformes,
   ebay: EtapeEbay,
+  voie: EtapeVoie,
+  cloud: EtapeCloud,
+  cloud_connexion: EtapeCloudConnexion,
   extension: EtapeExtension,
   releve: EtapeReleve,
   debut: EtapeDebut,
   republication: EtapeRepublication,
+  free: EtapeFree,
   pseudo: EtapePseudo,
   fin: EtapeFin,
 };
+
+// (04/11, lot 3) PENDANT l'achat de l'essai Cloud seulement : le parcours passe SOUS la case des conditions
+// d'utilisation du Cloud (ConditionsCloudModale, z-index 1250, montée par App avant toute carte) — sinon elle
+// s'ouvrirait derrière lui et l'achat attendrait une case invisible. Au-dessus du reste de l'app (≤ 1050).
+const Z_PARCOURS = 9980;
+const Z_PENDANT_ACHAT_CLOUD = 1240;
 
 const lireEtapeInitiale = () => {
   try { return localStorage.getItem(ENTREE_ETAPE_KEY) || null; }
@@ -64,9 +85,9 @@ const lireEtapeInitiale = () => {
 
 export { ONBOARD_DONE_KEY, ONBOARD_STATE_KEY };
 
-export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = false, onUsername = null }) {
+export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = false, onUsername = null, palier = 'gratuit', essaiCloud = null }) {
   const T = useMemo(() => textesEntree(lang), [lang]);
-  const c = useContexteEntree({ lang, user, demanderPseudo });
+  const c = useContexteEntree({ lang, user, demanderPseudo, palier, essaiCloud });
   const [etapeId, setEtapeId] = useState(lireEtapeInitiale);
   const [pseudo, setPseudo] = useState('');
   const finiRef = useRef(false);
@@ -90,6 +111,9 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
     const prochaine = liste[Math.min(liste.length - 1, index + 1)];
     poser(prochaine.id);
   };
+  // (04/11, lot 3) Aller à une étape NOMMÉE : un choix (voie Cloud / extension) change la liste au rendu suivant,
+  // `suivant` calculerait la prochaine sur l'ancienne. L'étape visée est visible dès ce rendu-là (plan.js).
+  const aller = (id) => poser(id);
 
   // ── SORTIE EN COURS DE ROUTE ───────────────────────────────────────────────
   // L'app se ferme, l'onglet part, le téléphone met l'app en fond : le drapeau
@@ -138,6 +162,7 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
       localStorage.setItem(ONBOARD_DONE_KEY, '1');
       localStorage.removeItem(ONBOARD_STATE_KEY);
       localStorage.removeItem(ENTREE_ETAPE_KEY);
+      localStorage.removeItem(ENTREE_VOIE_KEY);
       // ⚠️ ENTREE_RELEVE_KEY reste : la demande de relevé peut encore être en
       // attente de l'extension, et le Stock la reprendra. fs_extension_link_sent
       // reste aussi — elle appartient au mécanisme partagé (le Stock doit
@@ -159,7 +184,7 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
       role="dialog"
       aria-modal="true"
       style={{
-        position: 'fixed', inset: 0, zIndex: 9980, background: E.page, color: E.ink,
+        position: 'fixed', inset: 0, zIndex: c.cloud?.achat?.etat === 'en_cours' ? Z_PENDANT_ACHAT_CLOUD : Z_PARCOURS, background: E.page, color: E.ink,
         display: 'flex', flexDirection: 'column', fontFamily: "'Space Grotesk', sans-serif",
       }}
     >
@@ -190,6 +215,7 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
           pseudo={pseudo}
           setPseudo={setPseudo}
           onSuivant={suivant}
+          onAller={aller}
           onTerminer={terminer}
         />
       </div>

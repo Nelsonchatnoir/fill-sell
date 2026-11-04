@@ -28,9 +28,19 @@ import VoieSansOrdinateur from '../cloud/VoieSansOrdinateur';
 import { E } from './theme';
 import { Scene, Kicker, Titre, Texte, BoutonPrimaire, LienDiscret, Bande, Etat } from './EntreeUI';
 
-export default function EtapeExtension({ c, T, onSuivant }) {
+// (04/11/2026, lot 3 — maquette o-extension) QUAND LA VOIE CLOUD EXISTE (téléphone, Cloud ouvert : c.cloud.parcours),
+// le choix « Comment tu veux publier ? » vient d'être fait : la rangée « Je n'ai pas d'ordinateur » disparaît, un
+// lien « Finalement, je n'ai pas d'ordinateur » ramène au choix, le kicker dit « Extension Chrome · gratuite » et
+// Depop rejoint les logos du schéma. Sinon (Cloud fermé, ordinateur) : l'écran d'avant, au mot près.
+export default function EtapeExtension({ c, T, onSuivant, onAller }) {
   const [pitch, setPitch] = useState(false);
   const { envoi, secondesRestantes } = c;
+  const voieFaite = c.cloud?.parcours === true;
+  const revenirAuChoix = () => {
+    c.journaliser('voie_retour');
+    c.choisirVoie(null);
+    onAller?.('voie');
+  };
 
   const envoyerEtJournaliser = async () => {
     logInstallExtension(c.user?.id ?? null, 'clic_mail', 'entree', { renvoi: envoi.etat === 'envoye' });
@@ -83,17 +93,22 @@ export default function EtapeExtension({ c, T, onSuivant }) {
           {/* La 2e voie, SOUS le bouton de l'extension : celui-ci (gratuit)
               reste le chemin de l'écran et ne descend pas ; la rangée ne
               parle qu'à qui n'a pas d'ordinateur. Téléphone seulement. */}
-          {c.surTelephone && (
-            <VoieSansOrdinateur lang={c.lang} userId={c.user?.id ?? null} origine="entree_extension" variante="rangee" style={{ marginTop: 14 }} />
+          {c.surTelephone && (voieFaite
+            ? (
+              <LienDiscret onClick={revenirAuChoix} style={{ marginTop: 10, fontSize: 12.5, color: E.tealDeep, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                {T.extFinalement}
+              </LienDiscret>
+            )
+            : <VoieSansOrdinateur lang={c.lang} userId={c.user?.id ?? null} origine="entree_extension" variante="rangee" style={{ marginTop: 14 }} />
           )}
         </>
       )}
     >
-      <Kicker>{T.extKicker}</Kicker>
+      <Kicker>{voieFaite ? T.extKickerVoie : T.extKicker}</Kicker>
       <Titre>{T.extTitre}</Titre>
       <Texte>{T.extTexte}</Texte>
 
-      <SchemaExtension T={T} />
+      <SchemaExtension T={T} avecDepop={voieFaite} />
       {/* ⛔ LE TUTO EST SUR CET ÉCRAN, PAS SUR CELUI DES DÉBUTANTS. « Je
           photographie depuis l'app, mon ordinateur resté ouvert reprend le
           travail » vaut pour tout le monde — y compris pour qui a déjà 200

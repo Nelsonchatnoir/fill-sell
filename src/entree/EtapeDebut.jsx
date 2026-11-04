@@ -8,7 +8,11 @@
 import { E, DEGRADE } from './theme';
 import { Scene, Kicker, Titre, Texte, Carte, BoutonPrimaire } from './EntreeUI';
 
+// (04/11/2026, lot 3) Avec le Cloud PRIS (c.cloudPris), le dépôt ne passe plus par l'ordinateur : la phrase et le
+// 3e temps disent « depuis ses serveurs ». Sinon : l'écran d'avant, au mot près.
 export default function EtapeDebut({ c, T, onSuivant }) {
+  const cloud = c.cloudPris === true;
+  const etapes = cloud ? [...T.debEtapes.slice(0, -1), T.debEtapeCloud] : T.debEtapes;
   return (
     <Scene
       cle="debut"
@@ -16,10 +20,10 @@ export default function EtapeDebut({ c, T, onSuivant }) {
     >
       <Kicker>{T.debKicker}</Kicker>
       <Titre>{T.debTitre}</Titre>
-      <Texte>{T.debTexte}</Texte>
+      <Texte>{cloud ? T.debTexteCloud : T.debTexte}</Texte>
 
       <Carte style={{ padding: '18px 16px' }}>
-        {T.debEtapes.map((texte, k) => (
+        {etapes.map((texte, k) => (
           <div key={texte} className="en-monte" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 0', animationDelay: `${k * 70}ms` }}>
             <span aria-hidden="true" style={{
               width: 24, height: 24, borderRadius: 12, flexShrink: 0, background: DEGRADE, color: '#FFFFFF',

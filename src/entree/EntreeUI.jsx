@@ -115,6 +115,15 @@ export function Etat({ ok, children }) {
   );
 }
 
+// (04/11/2026, lot 3) Le petit titre d'une carte (même casse que « Ce qu'on relève ») — étapes Cloud et plan Free.
+export function TitreCarte({ children }) {
+  return (
+    <p style={{ margin: '0 0 2px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: E.texteSecondaire }}>
+      {children}
+    </p>
+  );
+}
+
 // La progression : un jalon par étape restante, sans chiffre — le parcours
 // est court, le compter le rendrait long.
 export function Progression({ total, index }) {

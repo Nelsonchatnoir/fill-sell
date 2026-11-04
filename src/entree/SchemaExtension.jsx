@@ -10,8 +10,11 @@ import { E } from './theme';
 
 // (02/10) Opla n'est plus proposée : sortie d'Opla, décision de Nico.
 const PF = ['vinted', 'leboncoin', 'ebay', 'beebs'];
+// (04/11, lot 3 — maquette o-extension) Depop rejoint le schéma sur la voie « extension » choisie (ouverte à tous
+// depuis le 10/10). Ailleurs, le schéma d'avant.
+const PF_AVEC_DEPOP = [...PF, 'depop'];
 
-export default function SchemaExtension({ T }) {
+export default function SchemaExtension({ T, avecDepop = false }) {
   return (
     <div className="en-anime" style={{ background: E.card, border: `1px solid ${E.border}`, borderRadius: 20, padding: '18px 16px 16px', marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -55,7 +58,7 @@ export default function SchemaExtension({ T }) {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${E.ligneDouce}` }}>
-        {PF.map((p, k) => (
+        {(avecDepop ? PF_AVEC_DEPOP : PF).map((p, k) => (
           <span key={p} style={{ display: 'flex', animation: 'enAllume 4s ease-in-out infinite', animationDelay: `${k * 0.55}s` }}>
             <PlatformLogo platform={p} size={30} />
           </span>
