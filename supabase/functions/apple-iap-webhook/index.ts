@@ -411,7 +411,7 @@ serve(async (req) => {
     }
 
     // ── L'OPTION CLOUD — groupe « FillSell Cloud » (04/10/2026) ─────────────
-    // app.fillsell.cloud.sub : 20 €/mois, offre d'introduction gratuite 1
+    // app.fillsell.cloud.sub : 24,99 €/mois (décision de Nico du 03/11), offre d'introduction gratuite 1
     // semaine, ouvert à tous (Free compris). Ne touche à AUCUNE colonne de
     // palier ni aux quotas : essai (offerType 1) → dates d'essai ; payé →
     // is_cloud ; expiré / remboursé → option retirée. Cloud continue si le

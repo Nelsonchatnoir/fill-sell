@@ -8,8 +8,9 @@
 // résilié encore payé), jamais un essai (trialing, essai gratuit), jamais un impayé (past_due, période de grâce).
 // Montants TTC par mois. Calculé par abonnements-stores-audit (lecture seule). Pur.
 
-/** Prix publics TTC par mois (Premium, Pro, Business, Cloud) — repli quand le canal ne donne pas le montant. */
-export const PRIX_MENSUELS_TTC = Object.freeze({ premium: 12.99, pro: 29.99, business: 59.99, cloud: 20 });
+/** Prix publics TTC par mois (Premium, Pro, Business, Cloud) — repli quand le canal ne donne pas le montant.
+ *  (03/11, décision de Nico) Cloud à 24,99 € sur les trois canaux (= CLOUD_PRIX_AFFICHE, src/utils/palier.js). */
+export const PRIX_MENSUELS_TTC = Object.freeze({ premium: 12.99, pro: 29.99, business: 59.99, cloud: 24.99 });
 
 /** Le palier d'un produit des stores, Cloud compris ; null pour un pack ou un inconnu. */
 export function palierProduitStore(id) {

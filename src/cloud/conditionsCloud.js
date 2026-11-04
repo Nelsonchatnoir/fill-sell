@@ -12,6 +12,8 @@
 // plateformes.js), mêmes plafonds et cadences que l'extension (get-pending-jobs, un exécutant par plateforme),
 // arrêt sur restriction, purge au plus tard 3 jours après la fin, empreintes HMAC 12 mois, IP françaises IPRoyal
 // en rotation (fournisseurIp.js). Changer le texte = changer la VERSION (une nouvelle acceptation est demandée).
+// (04/11, décision de Nico du 03/11) Article 6 : le prix passe à 24,99 € TTC par mois (le prix facturé sur les trois
+// canaux) → version 2026-11-04 (config/cloudOffer.js ET supabase/functions/_shared/cloud-conditions.js).
 
 // La version en vigueur (AAAA-MM-JJ) vit dans config/cloudOffer.js (aucune date en dur dans src/cloud/) — même
 // valeur que supabase/functions/_shared/cloud-conditions.js.
@@ -45,8 +47,8 @@ const FR = {
       "Le Cloud exécute des tâches. Il ne garantit ni la visibilité de vos annonces, ni un nombre de vues, ni une vente, ni un prix. Il dépend des plateformes, qui peuvent changer leurs pages ou refuser l'accès depuis les serveurs de FillSell : une tâche peut alors être retardée ou ne pas aboutir, et l'app vous le signale. FillSell met en œuvre des moyens raisonnables pour que le Cloud fonctionne en continu, sans garantie de résultat ni de disponibilité permanente.",
     ] },
     { t: '6. Prix et essai de 7 jours', ps: [
-      "Le Cloud coûte 20 € TTC par mois, sur le web (carte bancaire, paiement géré par Stripe), dans l'App Store et dans Google Play. C'est un abonnement distinct des forfaits : il se prend seul, avec le forfait gratuit, ou en plus d'un forfait payant ; résilier un forfait n'arrête pas le Cloud.",
-      "Les 7 premiers jours sont offerts. Un moyen de paiement est demandé pour commencer l'essai ; rien n'est prélevé pendant l'essai. La date de fin de l'essai et le montant prélevé ensuite sont affichés avant l'enregistrement du moyen de paiement. Sans résiliation avant la fin de l'essai, l'abonnement commence : 20 € sont prélevés, puis chaque mois à la même date. Au plus tard la veille de la fin de l'essai, un rappel vous est envoyé dans l'app et par e-mail.",
+      "Le Cloud coûte 24,99 € TTC par mois, sur le web (carte bancaire, paiement géré par Stripe), dans l'App Store et dans Google Play. C'est un abonnement distinct des forfaits : il se prend seul, avec le forfait gratuit, ou en plus d'un forfait payant ; résilier un forfait n'arrête pas le Cloud.",
+      "Les 7 premiers jours sont offerts. Un moyen de paiement est demandé pour commencer l'essai ; rien n'est prélevé pendant l'essai. La date de fin de l'essai et le montant prélevé ensuite sont affichés avant l'enregistrement du moyen de paiement. Sans résiliation avant la fin de l'essai, l'abonnement commence : 24,99 € sont prélevés, puis chaque mois à la même date. Au plus tard la veille de la fin de l'essai, un rappel vous est envoyé dans l'app et par e-mail.",
       "Un seul essai par personne : un essai déjà pris avec le même compte, le même appareil, la même carte ou le même compte de plateforme n'en ouvre pas un second ; le Cloud reste alors disponible sans essai. Dans l'App Store et Google Play, l'essai est proposé par la boutique, aux conditions qu'elle affiche.",
     ] },
     { t: '7. Résiliation', ps: [

@@ -9,7 +9,7 @@
 //      page /extension, et demande à l'hôte d'ouvrir la feuille des formules
 //      interrupteur coché — `onOuvrirOffres(origine)` ;
 //   2. la VEILLE de la fin d'essai (ou le jour même), il montre le rappel
-//      « Demain, l'option passe à 20 €/mois » — une fois par essai ;
+//      « Demain, l'option passe à 24,99 €/mois » — une fois par essai ;
 //   3. l'essai FINI et non gardé, il montre ce qui s'arrête et ce qui continue
 //      — une fois par essai ;
 //   4. (03/11, point 3) le Cloud ARRÊTÉ après paiement (résiliation, impayé) : « FillSell Cloud est arrêté », les

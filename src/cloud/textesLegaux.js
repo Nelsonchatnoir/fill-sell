@@ -1,5 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// LES TEXTES LÉGAUX DE L'OPTION « SANS ORDINATEUR » (FillSell Cloud) — 05/10/2026
+// LES TEXTES LÉGAUX DE L'OPTION « FILLSELL CLOUD » (sans ordinateur) — 05/10/2026
+// (04/11, décisions de Nico du 03/11) Prix : 24,99 € TTC par mois, le prix facturé sur les trois canaux ; nom de
+// l'option : « FillSell Cloud » (« sans ordinateur » reste la promesse). Rien n'est publié tant que
+// CLOUD_TEXTES_LEGAUX est faux : à l'ouverture, la date « Dernière mise à jour » de /legal suivra.
 // ═══════════════════════════════════════════════════════════════════════════
 // Affichés par src/pages/Legal.jsx SEULEMENT quand CLOUD_TEXTES_LEGAUX est vrai
 // (config/cloudOffer.js : il suit le drapeau de l'offre). Drapeau baissé, la page
@@ -30,30 +33,30 @@
 
 const FR = {
   // CGV, article 2 (« Extension Chrome requise ») — une phrase ajoutée à la fin.
-  cgvArticle2: "Par exception, avec l'option Sans ordinateur (article 7), ces actions sont exécutées pour Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, sans ordinateur.",
+  cgvArticle2: "Par exception, avec l'option FillSell Cloud (article 7), ces actions sont exécutées pour Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, sans ordinateur.",
   // CGV, nouvel article 7.
   cgvArticle7: {
-    t: 'Article 7 — Option Sans ordinateur (FillSell Cloud)',
+    t: 'Article 7 — Option FillSell Cloud',
     ps: [
-      "Objet. L'option Sans ordinateur fait exécuter la publication, la republication et le retrait des annonces Vinted, Leboncoin, Beebs et Depop de l'utilisateur, ainsi que le suivi de leurs ventes, depuis les serveurs de FillSell, dans un navigateur réservé à l'utilisateur et au sein de ses propres sessions, y compris lorsque son ordinateur est éteint. Elle ne concerne pas les autres plateformes ; eBay passe par sa connexion officielle. L'article 3 s'applique pleinement : une plateforme peut limiter ou refuser l'accès depuis les serveurs de FillSell ; FillSell en informe alors l'utilisateur, et l'extension Chrome reste disponible gratuitement.",
-      "Prix. 20 € TTC par mois, sur le web (paiement par Stripe) comme dans l'App Store et Google Play. L'option est un abonnement distinct des forfaits : elle se souscrit seule (forfait gratuit compris, avec ses volumes) ou en plus d'un forfait payant. La résiliation d'un forfait n'arrête pas l'option.",
-      "Essai gratuit de 7 jours. Un moyen de paiement est demandé. La date de fin de l'essai et le montant prélevé ensuite (20 € par mois) sont indiqués avant l'enregistrement du moyen de paiement ; rien n'est prélevé pendant l'essai. Un seul essai par personne : un essai déjà pris avec le même compte, le même appareil, le même moyen de paiement ou le même compte de plateforme n'en ouvre pas un second — l'option reste alors disponible sans essai, après information de l'utilisateur. Au plus tard la veille de la fin de l'essai, un rappel est adressé à l'utilisateur dans l'application et par e-mail. Dans l'App Store et Google Play, l'essai est proposé par la boutique, aux conditions qu'elle affiche.",
+      "Objet. L'option FillSell Cloud fait exécuter la publication, la republication et le retrait des annonces Vinted, Leboncoin, Beebs et Depop de l'utilisateur, ainsi que le suivi de leurs ventes, depuis les serveurs de FillSell, dans un navigateur réservé à l'utilisateur et au sein de ses propres sessions, y compris lorsque son ordinateur est éteint. Elle ne concerne pas les autres plateformes ; eBay passe par sa connexion officielle. L'article 3 s'applique pleinement : une plateforme peut limiter ou refuser l'accès depuis les serveurs de FillSell ; FillSell en informe alors l'utilisateur, et l'extension Chrome reste disponible gratuitement.",
+      "Prix. 24,99 € TTC par mois, sur le web (paiement par Stripe) comme dans l'App Store et Google Play. L'option est un abonnement distinct des forfaits : elle se souscrit seule (forfait gratuit compris, avec ses volumes) ou en plus d'un forfait payant. La résiliation d'un forfait n'arrête pas l'option.",
+      "Essai gratuit de 7 jours. Un moyen de paiement est demandé. La date de fin de l'essai et le montant prélevé ensuite (24,99 € par mois) sont indiqués avant l'enregistrement du moyen de paiement ; rien n'est prélevé pendant l'essai. Un seul essai par personne : un essai déjà pris avec le même compte, le même appareil, le même moyen de paiement ou le même compte de plateforme n'en ouvre pas un second — l'option reste alors disponible sans essai, après information de l'utilisateur. Au plus tard la veille de la fin de l'essai, un rappel est adressé à l'utilisateur dans l'application et par e-mail. Dans l'App Store et Google Play, l'essai est proposé par la boutique, aux conditions qu'elle affiche.",
       "Arrêt. Sur le web, pendant l'essai, l'option s'arrête en un geste (Réglages › Abonnement), immédiatement et sans aucun prélèvement. Une fois payée, elle reste active jusqu'à la fin de la période payée, puis s'arrête ; aucun prélèvement n'a lieu ensuite. Une option souscrite dans l'App Store ou Google Play se gère et s'arrête dans les réglages d'abonnement de la boutique.",
       "Rétractation. Le droit de rétractation de l'article 6 s'applique à l'option.",
       "Responsabilité. L'utilisateur reste l'auteur et le seul responsable de ses annonces et du respect des conditions de chaque plateforme (article 3). FillSell ne garantit pas qu'une plateforme accepte durablement les connexions faites depuis ses serveurs.",
     ],
   },
   // CGU 3.9 — une phrase ajoutée à la fin.
-  cgu39: "Avec l'option Sans ordinateur (CGV, article 7), ces actions sont exécutées dans un navigateur réservé à l'utilisateur, sur les serveurs de FillSell, toujours au sein de ses propres sessions.",
+  cgu39: "Avec l'option FillSell Cloud (CGV, article 7), ces actions sont exécutées dans un navigateur réservé à l'utilisateur, sur les serveurs de FillSell, toujours au sein de ses propres sessions.",
   // Confidentialité 4.7 — deux sous-traitants ajoutés.
   sousTraitants: [
-    ['Hetzner Online GmbH', "hébergement des navigateurs de l'option Sans ordinateur (Allemagne, Union européenne)"],
-    ['IPRoyal Services FZE LLC', "adresses IP françaises de l'option Sans ordinateur (Émirats arabes unis — clauses contractuelles types de la Commission européenne)"],
+    ['Hetzner Online GmbH', "hébergement des navigateurs de l'option FillSell Cloud (Allemagne, Union européenne)"],
+    ['IPRoyal Services FZE LLC', "adresses IP françaises de l'option FillSell Cloud (Émirats arabes unis — clauses contractuelles types de la Commission européenne)"],
   ],
   // Confidentialité, nouvel article 4.8.
   confidentialite: {
-    titre: "4.8 L'option Sans ordinateur (FillSell Cloud)",
-    intro: "Avec l'option payante Sans ordinateur, FillSell publie, republie et retire vos annonces Vinted, Leboncoin, Beebs et Depop et suit leurs ventes depuis ses serveurs, dans un navigateur qui vous est réservé. Ce navigateur fait ce que fait l'extension sur un ordinateur : il lit et modifie vos annonces et l'état de vos ventes, et ce qu'il lit rejoint votre compte FillSell comme avec l'extension. Base légale : l'exécution du contrat (l'option ne peut pas fonctionner sans ces traitements) ; pour la limite d'un essai par personne, notre intérêt légitime.",
+    titre: "4.8 L'option FillSell Cloud",
+    intro: "Avec l'option payante FillSell Cloud, FillSell publie, republie et retire vos annonces Vinted, Leboncoin, Beebs et Depop et suit leurs ventes depuis ses serveurs, dans un navigateur qui vous est réservé. Ce navigateur fait ce que fait l'extension sur un ordinateur : il lit et modifie vos annonces et l'état de vos ventes, et ce qu'il lit rejoint votre compte FillSell comme avec l'extension. Base légale : l'exécution du contrat (l'option ne peut pas fonctionner sans ces traitements) ; pour la limite d'un essai par personne, notre intérêt légitime.",
     conserve: 'Ce que nous conservons pour faire fonctionner l’option :',
     liste: [
       ["Vos connexions aux plateformes :", "les cookies de session que les plateformes déposent quand vous vous connectez depuis l'écran « Me connecter ». Pendant cette connexion, l'image de la page vous est transmise en direct, et ce que vous tapez (identifiant, mot de passe, code) est transmis par nos serveurs à la page de la plateforme sans être enregistré ni journalisé : nous ne conservons jamais votre mot de passe. Les cookies sont chiffrés (AES-256-GCM) avec une clé qui ne se trouve que sur nos serveurs de navigateurs ; notre base de données n'en garde qu'une version chiffrée."],
@@ -69,26 +72,26 @@ const FR = {
 };
 
 const EN = {
-  cgvArticle2: 'By way of exception, with the No computer add-on (article 7), these actions are performed for Vinted, Leboncoin, Beebs and Depop from FillSell\'s servers, without a computer.',
+  cgvArticle2: 'By way of exception, with the FillSell Cloud add-on (article 7), these actions are performed for Vinted, Leboncoin, Beebs and Depop from FillSell\'s servers, without a computer.',
   cgvArticle7: {
-    t: 'Article 7 — No computer add-on (FillSell Cloud)',
+    t: 'Article 7 — FillSell Cloud add-on',
     ps: [
-      "Purpose. The No computer add-on has the publication, reposting and withdrawal of the user's Vinted, Leboncoin, Beebs and Depop listings, and the tracking of their sales, performed from FillSell's servers, in a browser reserved for the user and within the user's own sessions, including when the user's computer is switched off. It does not cover other marketplaces; eBay goes through its official sign-in. Article 3 applies in full: a marketplace may limit or refuse access from FillSell's servers; FillSell then informs the user, and the Chrome extension remains available free of charge.",
-      'Price. €20 including VAT per month, on the web (payment by Stripe) as in the App Store and Google Play. The add-on is a subscription separate from the plans: it can be taken on its own (free plan included, with its volumes) or on top of a paid plan. Cancelling a plan does not stop the add-on.',
-      "7-day free trial. A payment method is required. The end date of the trial and the amount charged afterwards (€20 per month) are shown before the payment method is saved; nothing is charged during the trial. One trial per person: a trial already taken with the same account, device, payment method or marketplace account does not open a second one — the add-on then remains available without a trial, after the user has been informed. No later than the day before the trial ends, a reminder is sent to the user in the app and by email. In the App Store and Google Play, the trial is offered by the store, on the terms it displays.",
+      "Purpose. The FillSell Cloud add-on has the publication, reposting and withdrawal of the user's Vinted, Leboncoin, Beebs and Depop listings, and the tracking of their sales, performed from FillSell's servers, in a browser reserved for the user and within the user's own sessions, including when the user's computer is switched off. It does not cover other marketplaces; eBay goes through its official sign-in. Article 3 applies in full: a marketplace may limit or refuse access from FillSell's servers; FillSell then informs the user, and the Chrome extension remains available free of charge.",
+      'Price. €24.99 including VAT per month, on the web (payment by Stripe) as in the App Store and Google Play. The add-on is a subscription separate from the plans: it can be taken on its own (free plan included, with its volumes) or on top of a paid plan. Cancelling a plan does not stop the add-on.',
+      "7-day free trial. A payment method is required. The end date of the trial and the amount charged afterwards (€24.99 per month) are shown before the payment method is saved; nothing is charged during the trial. One trial per person: a trial already taken with the same account, device, payment method or marketplace account does not open a second one — the add-on then remains available without a trial, after the user has been informed. No later than the day before the trial ends, a reminder is sent to the user in the app and by email. In the App Store and Google Play, the trial is offered by the store, on the terms it displays.",
       'Stopping. On the web, during the trial, the add-on stops in one tap (Settings › Subscription), immediately and without any charge. Once paid, it stays active until the end of the paid period, then stops; nothing is charged afterwards. An add-on subscribed in the App Store or Google Play is managed and stopped in the store\'s subscription settings.',
       'Withdrawal. The right of withdrawal in article 6 applies to the add-on.',
       "Liability. The user remains the author of and solely responsible for their listings and for complying with each marketplace's terms (article 3). FillSell does not guarantee that a marketplace will keep accepting connections made from its servers.",
     ],
   },
-  cgu39: "With the No computer add-on (Terms of Sale, article 7), these actions are performed in a browser reserved for the user, on FillSell's servers, always within the user's own sessions.",
+  cgu39: "With the FillSell Cloud add-on (Terms of Sale, article 7), these actions are performed in a browser reserved for the user, on FillSell's servers, always within the user's own sessions.",
   sousTraitants: [
-    ['Hetzner Online GmbH', 'hosting of the No computer add-on browsers (Germany, European Union)'],
-    ['IPRoyal Services FZE LLC', 'French IP addresses of the No computer add-on (United Arab Emirates — European Commission standard contractual clauses)'],
+    ['Hetzner Online GmbH', 'hosting of the FillSell Cloud add-on browsers (Germany, European Union)'],
+    ['IPRoyal Services FZE LLC', 'French IP addresses of the FillSell Cloud add-on (United Arab Emirates — European Commission standard contractual clauses)'],
   ],
   confidentialite: {
-    titre: '4.8 The No computer add-on (FillSell Cloud)',
-    intro: "With the paid No computer add-on, FillSell publishes, reposts and withdraws your Vinted, Leboncoin, Beebs and Depop listings and tracks their sales from its servers, in a browser reserved for you. This browser does what the extension does on a computer: it reads and edits your listings and the status of your sales, and what it reads reaches your FillSell account just as with the extension. Legal basis: performance of the contract (the add-on cannot work without this processing); for the one-trial-per-person limit, our legitimate interest.",
+    titre: '4.8 The FillSell Cloud add-on',
+    intro: "With the paid FillSell Cloud add-on, FillSell publishes, reposts and withdraws your Vinted, Leboncoin, Beebs and Depop listings and tracks their sales from its servers, in a browser reserved for you. This browser does what the extension does on a computer: it reads and edits your listings and the status of your sales, and what it reads reaches your FillSell account just as with the extension. Legal basis: performance of the contract (the add-on cannot work without this processing); for the one-trial-per-person limit, our legitimate interest.",
     conserve: 'What we keep to run the add-on:',
     liste: [
       ['Your marketplace connections:', "the session cookies that the marketplaces set when you sign in from the \"Sign in\" screen. During this sign-in, the image of the page is streamed to you live, and what you type (username, password, code) is passed by our servers to the marketplace's page without being recorded or logged: we never keep your password. The cookies are encrypted (AES-256-GCM) with a key that exists only on our browser servers; our database only keeps an encrypted version."],

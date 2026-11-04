@@ -7,13 +7,16 @@ export * from "../../supabase/functions/_shared/palier.js";
 import { aAuMoins, palierDuProfil, droitsDuPalier } from "../../supabase/functions/_shared/palier.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// L'OPTION CLOUD — « SANS ORDINATEUR » (conception du 04/10/2026, NON LIVRÉE)
+// L'OPTION « FILLSELL CLOUD » — sans ordinateur (conception du 04/10/2026, NON LIVRÉE)
 // ═══════════════════════════════════════════════════════════════════════════
 // Décisions FINALES de Nico (04/10 soir) : le Cloud n'est PAS un 4e palier.
-// C'est une OPTION à 20 €/mois, essai gratuit de 7 jours (carte demandée), un
+// C'est une OPTION mensuelle (prix : CLOUD_PRIX_AFFICHE ci-dessous, 24,99 €
+// depuis la décision du 03/11), essai gratuit de 7 jours (carte demandée), un
 // seul essai par personne. Elle se prend SEULE sur un compte Free (qui garde
 // ses quotas Free) ou EN PLUS de Premium, Pro ou Business. Résilier la formule
-// ne l'arrête pas : le compte repasse en Free + Sans ordinateur.
+// ne l'arrête pas : le compte repasse en Free + FillSell Cloud.
+// (03/11, décision de Nico) Son NOM est « FillSell Cloud » ; « sans ordinateur »
+// est sa PROMESSE, jamais son nom.
 //
 // Les colonnes lues (migration 20261004233000_option_cloud_paiements.sql ;
 // le pool d'IP dédiées les suit : 20261005120000_cloud_socle_ip_dediee.sql) :
@@ -38,8 +41,13 @@ import { aAuMoins, palierDuProfil, droitsDuPalier } from "../../supabase/functio
 export const CLOUD_EXIGE_UN_PALIER = false;
 export const CLOUD_ESSAI_JOURS = 7;
 // Prix AFFICHÉ — le vrai vit chez Stripe / Apple / Google, comme PLAN_PRICES
-// (ConversionModal). Il n'est vrai que si les trois canaux facturent 20 €.
-export const CLOUD_PRIX_AFFICHE = '20 €';
+// (ConversionModal). Il n'est vrai que si les trois canaux facturent ce montant.
+// (03/11, décision de Nico) 24,99 € par mois partout (Stripe, Apple
+// app.fillsell.cloud.sub, Google cloud-monthly) : jamais un prix affiché
+// différent du prix facturé. MÊME valeur : PRIX_AFFICHE de
+// supabase/functions/_shared/cloud-pool.js et cloud-rappel-veille.js
+// (contrôlé par scripts/cloud-prix-nom-selftest.mjs).
+export const CLOUD_PRIX_AFFICHE = '24,99 €';
 
 const JOUR_MS = 86_400_000;
 const instant = (v) => {

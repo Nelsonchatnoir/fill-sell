@@ -40,7 +40,7 @@ const plafond = (x) => Math.ceil(x - 1e-9);
 // ── Le contrat avec l'app — MÊMES VALEURS que src/utils/palier.js ─────────
 export const ESSAI_JOURS = 7;          // = CLOUD_ESSAI_JOURS
 export const EXIGE_UN_PALIER = false;  // = CLOUD_EXIGE_UN_PALIER (l'option se prend seule sur Free)
-export const PRIX_AFFICHE = '20 €';    // = CLOUD_PRIX_AFFICHE (TTC, partout)
+export const PRIX_AFFICHE = '24,99 €'; // = CLOUD_PRIX_AFFICHE (TTC, partout — décision de Nico du 03/11)
 
 // ── Les réglages — chaque valeur est une PROPOSITION, nommée ──────────────
 // En base : coin_config `cloud_<clé>` (cloud_param), mêmes défauts.
@@ -80,8 +80,8 @@ export const PARAMETRES = Object.freeze({
   baseCpuPctParPosteMax: 0.25, // MESURÉ (04/10 soir) : 0,1 à 0,25 % du CPU d'une Small par poste allumé
   baseInstanceUsdMois: 15,     // Supabase Small ≈ 15 $/mois
   traficPlafondGoMois: 100,    // IPRoyal : 100 Go par proxy et par 30 j
-  // Revenus de l'option — 20 € TTC partout
-  prixTtcEur: 20,
+  // Revenus de l'option — 24,99 € TTC partout (décision de Nico du 03/11 ; = PRIX_AFFICHE)
+  prixTtcEur: 24.99,
   tva: 0.20,
   stripePct: 0.015,            // cartes standard de l'EEE (stripe.com/fr/pricing, 04/10/2026)
   stripeFixeEur: 0.25,
@@ -527,7 +527,7 @@ export function verdictCarte({ userId, carte, proprietaireEmpreinte = undefined 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 9. LES COÛTS — par essai, par client, marge sur 20 € TTC/mois
+// 9. LES COÛTS — par essai, par client, marge sur 24,99 € TTC/mois (prixTtcEur)
 // ═══════════════════════════════════════════════════════════════════════════
 const ipEurJour = (p) => (p.prixIpUsd30j / p.periodeIpJours) * p.tauxUsdEur;
 const serveurEurJourParCompte = (p) => (p.serveurEurMois / 30) / p.navigateursParServeur;

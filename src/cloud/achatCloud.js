@@ -1,4 +1,4 @@
-// L'ACHAT ET L'ARRÊT DE L'OPTION « SANS ORDINATEUR » (05/10) — côté app.
+// L'ACHAT ET L'ARRÊT DE L'OPTION « FILLSELL CLOUD » (05/10) — côté app.
 //
 // L'ordre, toujours le même, quel que soit le canal :
 //   1. PRÉPARER (cloud_essai_preparer_moi) AVANT d'ouvrir Stripe, l'App Store

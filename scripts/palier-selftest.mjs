@@ -121,7 +121,7 @@ const L = await charger('src/publication/lot/regles.js');
   const dFree = P.droitsDuCompte({ is_cloud: true }, n);
   verifier(dFree.palier === 'gratuit' && dFree.isPremium === false && dFree.cloud.actif === true, 'Free + Sans ordinateur : quotas Free, option active', JSON.stringify(dFree));
   verifier(egal(P.PALIERS, ['gratuit', 'premium', 'pro', 'business']), 'le Cloud n’ajoute aucun palier');
-  verifier(P.CLOUD_ESSAI_JOURS === 7 && P.CLOUD_PRIX_AFFICHE === '20 €', 'essai 7 jours, 20 € affichés (décision Nico du 04/10)');
+  verifier(P.CLOUD_ESSAI_JOURS === 7 && P.CLOUD_PRIX_AFFICHE === '24,99 €', 'essai 7 jours, 24,99 € affichés (décision Nico du 03/11)');
 }
 
 // ── 2. Un seul calcul, nulle part ailleurs ───────────────────────────────────

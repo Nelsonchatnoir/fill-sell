@@ -35,7 +35,7 @@ try {
   ok(/réessaie/.test(A.lirePreparation({ ok: false, raison: 'pool_vide' }).message) && /carte/.test(A.lirePreparation({ ok: false, raison: 'pool_vide' }).message), '…et on le dit (rien demandé à la carte)');
   ok(A.lirePreparation({ ok: false, raison: 'deja_client' }).continuer === false, 'déjà client → rien');
   const sans = A.lirePreparation({ ok: true, essai: false, raison: 'appareil_deja_vu' });
-  ok(sans.continuer && sans.essai === false && /tout de suite/.test(sans.confirmation) && /20.€\/mois/.test(sans.confirmation), 'essai refusé → on DEMANDE avant de payer (tout de suite, 20 €/mois)');
+  ok(sans.continuer && sans.essai === false && /tout de suite/.test(sans.confirmation) && /24,99.€\/mois/.test(sans.confirmation), 'essai refusé → on DEMANDE avant de payer (tout de suite, 24,99 €/mois)');
   ok(A.lirePreparation({ ok: true, essai: true }).essai === true, 'essai permis → on continue avec l\'essai');
   ok(A.lirePreparation(null).continuer === false, 'réponse illisible → rien ne s\'ouvre');
   ok(A.PRODUIT_CLOUD === 'app.fillsell.cloud.sub', 'produit des stores : app.fillsell.cloud.sub (Apple et Google)');
@@ -104,7 +104,7 @@ try {
     const T = Tx.textesConnexion(lang);
     const tout = Object.values(T).map((v) => (typeof v === 'function' ? v('appareil_deja_vu') : v)).join(' ');
     ok(INTERDITS.every((r) => !r.test(tout)), `${lang} : aucune plateforme non prouvée, aucune phrase technique, tutoiement`);
-    ok(/20.€/.test(T.sansEssai('essai_deja_pris')), `${lang} : le prix est dit (20 € TTC)`);
+    ok(/24,99.€/.test(T.sansEssai('essai_deja_pris')), `${lang} : le prix est dit (24,99 € TTC)`);
   }
 
   console.log('\n5. Le câblage dans App');

@@ -77,13 +77,13 @@ titre('3. Le texte — fr / en, heure de Paris, aucune désinscription');
 ok(dateFin(iso(FIN), 'fr') === 'mardi 13 octobre à 18h00' && dateFin(iso(FIN), 'en') === 'Tuesday 13 October at 18:00', 'date de fin en heure de Paris (« mardi 13 octobre à 18h00 »)');
 ok(dateFin('2026-12-01T07:05:00Z', 'fr') === 'mardi 1 décembre à 08h05', 'heure d\'hiver comprise (UTC+1)');
 const fr = texteRappel({ lang: 'fr', finIso: iso(FIN) });
-ok(fr.sujet === 'Ton essai Sans ordinateur se termine le mardi 13 octobre à 18h00', `sujet : « ${fr.sujet} »`);
-ok(fr.paragraphes.some((p) => p.includes('20 € par mois')) && fr.paragraphes.some((p) => p.includes('Réglages → Abonnement')) && fr.paragraphes.some((p) => p.includes('rien n\'est facturé')),
+ok(fr.sujet === 'Ton essai FillSell Cloud se termine le mardi 13 octobre à 18h00', `sujet : « ${fr.sujet} »`);
+ok(fr.paragraphes.some((p) => p.includes('24,99 € par mois')) && fr.paragraphes.some((p) => p.includes('Réglages → Abonnement')) && fr.paragraphes.some((p) => p.includes('rien n\'est facturé')),
   'le prix, comment arrêter (Réglages → Abonnement), et qu\'un arrêt ne coûte rien');
 ok(fr.lienDesinscription === null && fr.categorie === 'support' && /facturation/.test(fr.raisonEnvoi) && /désinscrit/.test(fr.raisonEnvoi), 'aucun lien de désinscription : information de facturation, dit pourquoi');
 ok(!/pépite/i.test(JSON.stringify(fr)), 'aucun « pépite » (vocabulaire : quotas)');
 const en = texteRappel({ lang: 'en', finIso: iso(FIN), carteFin: '4242' });
-ok(en.sujet.startsWith('Your Sans ordinateur trial ends on Tuesday 13 October') && en.paragraphes.some((p) => p.includes('ending in 4242')), 'anglais, et les 4 derniers chiffres de la carte quand le flux de paiement les donne');
+ok(en.sujet.startsWith('Your FillSell Cloud trial ends on Tuesday 13 October') && en.paragraphes.some((p) => p.includes('ending in 4242')), 'anglais, et les 4 derniers chiffres de la carte quand le flux de paiement les donne');
 ok(!JSON.stringify(texteRappel({ lang: 'fr', finIso: iso(FIN), carteFin: 'abcd' })).includes('abcd'), 'chiffres de carte illisibles → jamais affichés');
 ok(texteRappel({ lang: 'de', finIso: iso(FIN) }).sujet === fr.sujet, 'langue inconnue → français');
 

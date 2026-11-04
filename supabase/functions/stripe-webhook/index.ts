@@ -14,7 +14,7 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
 });
 
 // ── L'OPTION « FILLSELL CLOUD » (04/10/2026) ─────────────────────────────────
-// Un abonnement Stripe À PART (prix STRIPE_PRICE_CLOUD, 20 €/mois, essai 7 j,
+// Un abonnement Stripe À PART (prix STRIPE_PRICE_CLOUD, 24,99 €/mois depuis le 03/11, essai 7 j,
 // metadata.option = "cloud"), ouvert à tous, comptes Free compris. Il ne pose
 // JAMAIS is_premium / is_pro / is_business, ne crédite AUCUN quota, et continue
 // si le palier tombe. Règles : _shared/cloud-option.js (testé par
@@ -603,7 +603,7 @@ serve(async (req) => {
     const invoice = event.data.object as Stripe.Invoice;
     const customerId = invoice.customer as string;
     // ── LA FACTURE D'UN ABONNEMENT CLOUD (04/10/2026) ───────────────────────
-    // Fin d'essai (première facture à 20 €), renouvellement, ou facture à 0 € de
+    // Fin d'essai (première facture à 24,99 €), renouvellement, ou facture à 0 € de
     // la création : on relit les colonnes Cloud chez Stripe et on SORT — le
     // chemin des paliers ci-dessous créditerait les quotas du palier du compte
     // sur une facture Cloud.

@@ -4,7 +4,9 @@
 // garde : rien ne part tant que les colonnes Cloud n'existent pas)
 // ═══════════════════════════════════════════════════════════════════════════
 // Décisions de Nico : un essai gratuit de 7 jours, carte demandée, qui devient
-// payant (20 €/mois) sans geste. La personne est prévenue AVANT, par e-mail,
+// payant (PRIX_AFFICHE par mois, 24,99 € depuis le 03/11) sans geste. Le mail
+// nomme l'option « FillSell Cloud » (décision du 03/11 : le nom ; « sans
+// ordinateur » est la promesse). La personne est prévenue AVANT, par e-mail,
 // par la porte unique existante (envoyerEmail, _shared/desinscription.ts).
 //   · type `cloud_essai_veille` : UN par essai, donc un par personne à vie →
 //     dans l'index email_logs_one_shot_unique (PROPOSITION SQL), envoi en
@@ -47,7 +49,7 @@ const nonVide = (v) => typeof v === 'string' && v.trim() !== '';
 export const TYPE_RAPPEL = 'cloud_essai_veille';
 export const CATEGORIE_RAPPEL = 'support';
 export const DEDUP_RAPPEL = 'reservation';
-export const PRIX_AFFICHE = '20 €';          // = CLOUD_PRIX_AFFICHE (src/utils/palier.js)
+export const PRIX_AFFICHE = '24,99 €';       // = CLOUD_PRIX_AFFICHE (src/utils/palier.js — décision de Nico du 03/11)
 export const LIEN_APP = 'https://fillsell.app';
 
 // Le créneau : il s'ouvre `ouvertureAvantFinH` heures avant la fin ; jusqu'à
@@ -133,34 +135,34 @@ export function texteRappel({ lang = 'fr', finIso, prix = PRIX_AFFICHE, carteFin
   const carte = /^\d{4}$/.test(String(carteFin ?? '')) ? String(carteFin) : null;
   if (en) {
     return {
-      sujet: `Your Sans ordinateur trial ends on ${quand}`,
+      sujet: `Your FillSell Cloud trial ends on ${quand}`,
       preheader: `If you do nothing, the option continues at ${prix} a month. Stop it before then and nothing is charged.`,
       titre: 'Your free trial ends soon',
       paragraphes: [
-        `Your 7-day trial of the Sans ordinateur option ends on ${quand} (Paris time).`,
+        `Your 7-day trial of the FillSell Cloud option ends on ${quand} (Paris time).`,
         `If you do nothing, the option continues at ${prix} a month, charged to the card you saved${carte ? ` (ending in ${carte})` : ''}, from that date.`,
         'If you don\'t want to continue, stop the trial before then in Settings → Subscription. It stops straight away and nothing is charged.',
-        'Your FillSell plan is not affected: only the Sans ordinateur option is.',
+        'Your FillSell plan is not affected: only the FillSell Cloud option is.',
       ],
       bouton: { texte: 'Open FillSell', url: LIEN_APP },
-      raisonEnvoi: 'You are getting this email because you started a trial of the Sans ordinateur option. It is billing information, so it is sent even if you unsubscribed from FillSell news.',
+      raisonEnvoi: 'You are getting this email because you started a trial of the FillSell Cloud option. It is billing information, so it is sent even if you unsubscribed from FillSell news.',
       lienDesinscription: null,
       categorie: CATEGORIE_RAPPEL,
       type: TYPE_RAPPEL,
     };
   }
   return {
-    sujet: `Ton essai Sans ordinateur se termine le ${quand}`,
+    sujet: `Ton essai FillSell Cloud se termine le ${quand}`,
     preheader: `Si tu ne fais rien, l'option continue à ${prix} par mois. Arrête-la avant et rien ne sera facturé.`,
     titre: 'Ton essai gratuit se termine bientôt',
     paragraphes: [
-      `Ton essai de 7 jours de l'option Sans ordinateur se termine le ${quand} (heure de Paris).`,
+      `Ton essai de 7 jours de l'option FillSell Cloud se termine le ${quand} (heure de Paris).`,
       `Si tu ne fais rien, l'option continue à ${prix} par mois, prélevés sur la carte que tu as enregistrée${carte ? ` (finissant par ${carte})` : ''}, à partir de cette date.`,
       'Si tu ne veux pas continuer, arrête l\'essai avant cette date dans Réglages → Abonnement : l\'arrêt est immédiat et rien n\'est facturé.',
-      'Ta formule FillSell n\'est pas concernée : seule l\'option Sans ordinateur l\'est.',
+      'Ta formule FillSell n\'est pas concernée : seule l\'option FillSell Cloud l\'est.',
     ],
     bouton: { texte: 'Ouvrir FillSell', url: LIEN_APP },
-    raisonEnvoi: 'Tu reçois cet e-mail parce que tu as commencé un essai de l\'option Sans ordinateur. C\'est une information sur ta facturation : elle t\'est envoyée même si tu t\'es désinscrit des actualités de FillSell.',
+    raisonEnvoi: 'Tu reçois cet e-mail parce que tu as commencé un essai de l\'option FillSell Cloud. C\'est une information sur ta facturation : elle t\'est envoyée même si tu t\'es désinscrit des actualités de FillSell.',
     lienDesinscription: null,
     categorie: CATEGORIE_RAPPEL,
     type: TYPE_RAPPEL,

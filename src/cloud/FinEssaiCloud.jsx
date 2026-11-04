@@ -1,11 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// LA FIN DE L'ESSAI « SANS ORDINATEUR » — LA VEILLE, ET L'APRÈS (04/10/2026)
+// LA FIN DE L'ESSAI « FILLSELL CLOUD » — LA VEILLE, ET L'APRÈS (04/10/2026)
 // ═══════════════════════════════════════════════════════════════════════════
 // CONCEPTION. Deux feuilles, montées par cloud/HoteCloud.jsx (une à la fois,
 // une fois chacune par essai) :
 //
 //   · RappelVeilleFinEssai — la veille (ou le jour même) de la bascule :
-//     « Demain, l'option passe à 20 €/mois », la date ET l'heure, ce qui se
+//     « Demain, l'option passe à 24,99 €/mois », la date ET l'heure, ce qui se
 //     passe dans chaque cas, et DEUX boutons de même taille — garder, arrêter.
 //     Arrêter se fait ICI, en un geste : la feuille a déjà dit ce que ça
 //     change. Aucun compte à rebours, aucune couleur d'alarme ;
@@ -179,7 +179,7 @@ function Liste({ titre, lignes, ton }) {
 /**
  * Après la fin de l'essai, option non gardée.
  * actions : { ajouter?, extension? } — un geste absent = pas de bouton. Depuis le
- * 04/10 soir, un compte Free reprend l'option comme les autres (Free + Sans ordinateur).
+ * 04/10 soir, un compte Free reprend l'option comme les autres (Free + FillSell Cloud).
  */
 export function EcranEssaiTermine({ lang = 'fr', nomPalier = null, actions = {}, onFermer }) {
   const T = textesCloud(lang);

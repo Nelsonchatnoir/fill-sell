@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// L'INTERRUPTEUR « SANS ORDINATEUR · +20 €/MOIS » — FEUILLE DES FORMULES
+// L'INTERRUPTEUR « FILLSELL CLOUD · SANS ORDINATEUR · +24,99 €/MOIS » — FEUILLE DES FORMULES
 // ═══════════════════════════════════════════════════════════════════════════
 // CONCEPTION (04/10/2026), monté par components/ConversionModal.jsx derrière
 // cloudOfferVisible() (drapeau baissé = jamais rendu).
@@ -8,13 +8,13 @@
 // choisie, elle n'est pas un palier (décision Nico du 04/10). Depuis les
 // décisions du 04/10 soir, elle se prend AUSSI seule sur un compte Free : pour
 // un lecteur Free, l'interrupteur se pose AU-DESSUS de la carte Free et, coché,
-// la carte Free porte sa propre voie « Free + Sans ordinateur » (bouton dédié,
-// jamais onUpgrade('free')), les cartes payantes leur « + 20 € ».
+// la carte Free porte sa propre voie « Free + FillSell Cloud » (bouton dédié,
+// jamais onUpgrade('free')), les cartes payantes leur « + 24,99 € ».
 //
 // L'ESSAI, SANS PIÈGE : décoché, la pastille d'essai et la ligne « carte
 // demandée, rien n'est prélevé pour l'option avant le [date] » ; coché, une
 // frise en trois temps — aujourd'hui (carte demandée, rien prélevé), la DATE
-// de bascule (20 €/mois), et la sortie (où, comment, prévenu la veille dans
+// de bascule (24,99 €/mois), et la sortie (où, comment, prévenu la veille dans
 // l'app et par e-mail). Essai déjà pris : ni pastille ni frise, une phrase qui
 // dit que l'option est facturée dès aujourd'hui.
 // La date vient TOUJOURS de maintenant + 7 jours (finEssaiSiOnCommence) : un
@@ -22,7 +22,7 @@
 //
 // ⛔ Ce bloc ne décide de rien : il reçoit `offre` (cloud/regles.js,
 //    offreCloudPourModale) et `coche`. L'hôte transmet le choix par
-//    onUpgrade(tier, { cloud }) ou, pour Free + Sans ordinateur, onCloudSeul().
+//    onUpgrade(tier, { cloud }) ou, pour Free + FillSell Cloud, onCloudSeul().
 import { useEffect, useState } from 'react';
 import { Cloud } from 'lucide-react';
 import { C, MENTHE, BLANC, DEGRADE_TEAL } from './theme';
@@ -142,7 +142,7 @@ export function BlocCompletCloud({ dispo, onInscrire, lang = 'fr' }) {
 /**
  * offre : { mode: 'interrupteur', essai } (sinon rien n'est rendu ici)
  * coche, onBasculer(bool), lang, maintenant (horloge injectable pour l'aperçu)
- * freeCompris : la carte Free porte la voie « Free + Sans ordinateur »
+ * freeCompris : la carte Free porte la voie « Free + FillSell Cloud »
  */
 export default function InterrupteurCloud({ offre, coche, onBasculer, lang = 'fr', maintenant, freeCompris = false }) {
   // L'horloge est figée à l'ouverture : la date de bascule affichée ne bouge
@@ -205,7 +205,7 @@ export default function InterrupteurCloud({ offre, coche, onBasculer, lang = 'fr
 }
 
 /**
- * La voie « Free + Sans ordinateur », posée DANS la carte Free quand
+ * La voie « Free + FillSell Cloud », posée DANS la carte Free quand
  * l'interrupteur est coché. Bouton dédié : `onCloudSeul` (jamais
  * onUpgrade('free'), qui partirait en paiement de formule). Sans geste d'hôte,
  * rien n'est rendu.
@@ -259,7 +259,7 @@ export function LigneCloudModale({ offre, lang = 'fr' }) {
 }
 
 /**
- * Le prix d'une carte quand l'option est cochée : « 12,99 € + 20 € ».
+ * Le prix d'une carte quand l'option est cochée : « 12,99 € + 24,99 € ».
  * `cloud` = { essai } ; `sombre` = cartes Pro / Business (fond encre).
  * Hors option, la carte garde SON balisage d'origine (ConversionModal) —
  * ce composant n'est jamais rendu.

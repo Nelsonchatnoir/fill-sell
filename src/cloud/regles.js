@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// L'OPTION « SANS ORDINATEUR » — CE QUE LES ÉCRANS DÉCIDENT (04/10/2026)
+// L'OPTION « FILLSELL CLOUD » — CE QUE LES ÉCRANS DÉCIDENT (04/10/2026)
 // ═══════════════════════════════════════════════════════════════════════════
 // CONCEPTION, NON LIVRÉE. Fonctions PURES, sans React ni réseau : l'état Cloud
 // d'un compte se lit par cloudDuProfil (utils/palier.js, même règle que le

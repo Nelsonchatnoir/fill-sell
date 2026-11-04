@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// L'OPTION « SANS ORDINATEUR » — JETONS VISUELS (04/10/2026, conception)
+// L'OPTION « FILLSELL CLOUD » — JETONS VISUELS (04/10/2026, conception)
 // ═══════════════════════════════════════════════════════════════════════════
 // ⛔ AUCUNE PALETTE NEUVE. `C` est la palette de la feuille des formules
 //    (components/ConversionModal.jsx), recopiée À L'IDENTIQUE — pas importée,

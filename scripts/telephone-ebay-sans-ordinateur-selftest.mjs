@@ -19,7 +19,7 @@ const bloc = pitch.slice(pitch.indexOf("SANS ORDINATEUR, TOUT DE SUITE : eBAY"),
 ok(/ebaySansOrdinateur = null,/.test(pitch), "facultative : les six autres hôtes ne changent pas");
 ok(/\{ebaySansOrdinateur && !onComputer && \(/.test(bloc), "sur téléphone seulement");
 ok(/tu ne donnes aucun mot de passe à FillSell/.test(bloc), "connexion officielle, aucun identifiant demandé");
-ok(/Vinted, Leboncoin et Beebs demandent l'extension sur un ordinateur\./.test(bloc) && !/attendront|Cloud|bientôt/i.test(bloc), "rien de promis pour les autres plateformes");
+ok(/Vinted, Leboncoin et Beebs demandent l'extension sur un ordinateur\./.test(bloc) && !/attendront|Cloud|bientôt/i.test(bloc.replace(/par l'option FillSell Cloud\.|through the FillSell Cloud add-on\./g, "")), "rien de promis pour les autres plateformes (drapeau levé : l'option nommée « FillSell Cloud », décision du 03/11)");
 ok(/\{!ebaySansOrdinateur\.relie && \(/.test(bloc) && /garde seulement eBay/.test(bloc), "relié : garder eBay seul ; pas relié : le bouton");
 const lps = lire("src/components/ListingPreviewScreen.jsx");
 ok(/ebaySansOrdinateur=\{\{ relie: ebayVoieApiReelle, onRelier: \(\) => \{ setShowExtGate\(false\); setEbayPanneauOuvert\(true\); \} \}\}/.test(lps),

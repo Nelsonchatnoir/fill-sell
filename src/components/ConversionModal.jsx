@@ -498,7 +498,7 @@ export function CorpsCarteGrille({ fr, palier, K, dark = false, accroche = false
 // cinq lignes de gestes disent tout (5 annonces, 50 republications par mois…).
 // (04/10 soir, option « Sans ordinateur ») SEULE exception au « pas de CTA » :
 // interrupteur coché et hôte qui sait le faire (`voieCloud`), la carte porte
-// la voie « Free + Sans ordinateur » et son prix « 0 € + 20 € ». Sinon, la
+// la voie « Free + FillSell Cloud » et son prix « 0 € + 24,99 € ». Sinon, la
 // carte d'avant, au balisage près.
 function FreePlanCard({ fr, estMonPlan, K, cloud = null, voieCloud = null }) {
   // (04/11) Grille à 3 jauges : accroche, tuiles et lignes de la maquette ; sinon la carte d'avant.
@@ -543,7 +543,7 @@ function FreePlanCard({ fr, estMonPlan, K, cloud = null, voieCloud = null }) {
 // Seules fr/K/onUpgrade servent.)
 // `cloud` (option « Sans ordinateur », 04/10) : null = la carte d'avant, au
 // balisage près ; { essai } = l'interrupteur commun est coché — le prix dit
-// « 12,99 € + 20 € » et le bouton nomme l'option. Même prop sur les trois cartes.
+// « 12,99 € + 24,99 € » et le bouton nomme l'option. Même prop sur les trois cartes.
 const suffixeCloud = (fr, cloud) => (cloud ? textesCloud(fr ? 'fr' : 'en').ctaSuffixe : '');
 
 function PremiumPlanCard({ fr, K, onUpgrade, cloud = null }) {
@@ -1066,7 +1066,7 @@ export default function ConversionModal({
 
   // ══ Option « Sans ordinateur » (Cloud, conception du 04/10/2026) ═══════════
   // UN interrupteur commun aux cartes payantes (décision Nico : une option à
-  // 20 €/mois EN PLUS d'un palier, pas un 4e palier). Drapeau baissé : aucune
+  // 24,99 €/mois depuis le 03/11, EN PLUS d'un palier, pas un 4e palier). Drapeau baissé : aucune
   // lecture, aucun rendu, et `offreCloud` vaut null — onUpgrade(tier) part
   // alors à l'identique. L'état du compte (essai déjà pris, option active…)
   // se lit dans une requête À PART (useCloudProfil) : illisible = rien montré.

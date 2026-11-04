@@ -48,7 +48,7 @@ ok(/user_id\s+uuid REFERENCES auth\.users \(id\) ON DELETE SET NULL/.test(socle)
 ok(/effacé au bout de 12 mois/.test(fr) && /SET user_id = NULL WHERE user_id IS NOT NULL AND le < now\(\) - make_interval\(months => v_mois\)/.test(socle), 'journal des IP : identifiant effacé à 12 mois');
 ok(connexions === 90 && /« Me connecter »[^:]*: 90 jours/.test(fr) && /90 days/.test(en), `connexions « Me connecter » : ${connexions} jours`);
 const P = await import(pathToFileURL(join(ROOT, 'src/utils/palier.js')).href);
-ok(P.CLOUD_PRIX_AFFICHE === '20 €' && /20 € TTC par mois/.test(fr) && /€20 including VAT per month/.test(en), 'prix : 20 € TTC (CLOUD_PRIX_AFFICHE)');
+ok(P.CLOUD_PRIX_AFFICHE === '24,99 €' && /24,99 € TTC par mois/.test(fr) && /€24\.99 including VAT per month/.test(en), 'prix : 24,99 € TTC (CLOUD_PRIX_AFFICHE)');
 ok(P.CLOUD_ESSAI_JOURS === 7 && /Essai gratuit de 7 jours/.test(fr) && /7-day free trial/.test(en), 'essai : 7 jours (CLOUD_ESSAI_JOURS)');
 ok(/IPRoyal Services FZE LLC \(Ajman, Émirats arabes unis\)/.test(fr) && /IPRoyal Services FZE LLC \(Ajman, United Arab Emirates\)/.test(en), 'IPRoyal : la société et le pays exacts (relus le 05/10)');
 ok(/clauses contractuelles types de la Commission européenne/.test(fr) && /standard contractual clauses/.test(en), 'le transfert hors UE et son encadrement sont dits');
@@ -110,7 +110,7 @@ async function rendreLegal(ouvert) {
 }
 const ferme = await rendreLegal(false);
 ok(ferme.fr.length > 5000 && /Article 6 — Droit de rétractation/.test(ferme.fr), 'baissé : la page se rend (fr)');
-ok(!/Sans ordinateur|IPRoyal|Hetzner|Article 7/.test(ferme.fr) && !/No computer|IPRoyal|Hetzner|Article 7/.test(ferme.en), 'baissé : aucune trace de l’option (fr et en)');
+ok(!/FillSell Cloud|IPRoyal|Hetzner|Article 7/.test(ferme.fr) && !/FillSell Cloud|IPRoyal|Hetzner|Article 7/.test(ferme.en), 'baissé : aucune trace de l’option (fr et en)');
 const ouvert = await rendreLegal(true);
 const net = (s) => s.replace(NBSP, ' ').replace(/\s+/g, ' ');
 for (const lang of ['fr', 'en']) {

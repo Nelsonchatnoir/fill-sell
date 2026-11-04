@@ -1,5 +1,6 @@
-// Les mots de l'écran « Me connecter » et de l'achat de l'option Sans
-// ordinateur (05/10). Mêmes règles que textes.js : tutoiement, aucune phrase
+// Les mots de l'écran « Me connecter » et de l'achat de l'option FillSell
+// Cloud (05/10 ; son nom depuis la décision de Nico du 03/11, « sans
+// ordinateur » étant sa promesse). Mêmes règles que textes.js : tutoiement, aucune phrase
 // technique, aucune date ni aucun quota en dur, l'essai sans piège, aucune
 // plateforme promise qui n'est pas prouvée (la liste vient de config/cloudOffer.js).
 import { CLOUD_PRIX_AFFICHE } from '../utils/palier';
@@ -63,13 +64,13 @@ const FR = {
   lectureEchec: "Tes connexions ne se lisent pas pour l'instant. Réessaie dans un instant.",
   // L'achat
   preparation: 'On prépare ta place…',
-  poolVide: "Toutes les places Sans ordinateur sont prises pour l'instant. On en ajoute : réessaie plus tard, rien n'a été demandé à ta carte.",
+  poolVide: "Toutes les places FillSell Cloud sont prises pour l'instant. On en ajoute : réessaie plus tard, rien n'a été demandé à ta carte.",
   // (03/11, point 5) Pas de place (serveur ou IP) : jamais de vente ; la liste d'attente, prévenu(e) par notification.
   complet: "Toutes les places FillSell Cloud sont prises pour l'instant. Rien n'a été demandé à ta carte.",
   etrePrevenuQuestion: "Toutes les places FillSell Cloud sont prises pour l'instant. Être prévenu(e) par une notification dès qu'une place se libère ?",
   inscritAttente: (rang) => `C'est noté : tu seras prévenu(e) par une notification dès qu'une place se libère${rang ? ` (tu es n° ${rang} sur la liste)` : ''}. Elle te sera gardée 24 h.`,
   inscriptionEchec: "L'inscription n'a pas pu se faire. Réessaie dans un instant.",
-  dejaClient: "L'option Sans ordinateur est déjà active sur ton compte.",
+  dejaClient: "L'option FillSell Cloud est déjà active sur ton compte.",
   sansEssai: (raison) => `${raison === 'essai_deja_pris'
     ? "Tu as déjà profité de l'essai gratuit."
     : "L'essai gratuit a déjà servi sur cet appareil ou ce compte de plateforme."} L'option démarre donc tout de suite, à ${PRIX}/mois, et tu l'arrêtes quand tu veux. Continuer ?`,
@@ -125,12 +126,12 @@ const EN = {
   lecture: 'Reading your connections…',
   lectureEchec: "Your connections can't be read right now. Try again in a moment.",
   preparation: 'Getting your spot ready…',
-  poolVide: 'All No computer spots are taken for now. We are adding more: try again later, nothing was asked of your card.',
+  poolVide: 'All FillSell Cloud spots are taken for now. We are adding more: try again later, nothing was asked of your card.',
   complet: 'All FillSell Cloud spots are taken for now. Nothing was asked of your card.',
   etrePrevenuQuestion: 'All FillSell Cloud spots are taken for now. Get a notification as soon as a spot is free?',
   inscritAttente: (rang) => `Done: you'll get a notification as soon as a spot is free${rang ? ` (you're number ${rang} on the list)` : ''}. It will be kept for you for 24 hours.`,
   inscriptionEchec: "Signing up didn't work. Try again in a moment.",
-  dejaClient: 'The No computer add-on is already active on your account.',
+  dejaClient: 'The FillSell Cloud add-on is already active on your account.',
   sansEssai: (raison) => `${raison === 'essai_deja_pris'
     ? 'You already used the free trial.'
     : 'The free trial was already used on this device or platform account.'} The add-on therefore starts right away, at ${PRIX}/mo, and you can stop it whenever you want. Continue?`,

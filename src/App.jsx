@@ -3362,7 +3362,7 @@ export default function App({ loginOnly = false }){
   }
 
   // ══ L'OPTION « SANS ORDINATEUR » (05/10) — l'achat, l'arrêt, « Me connecter » ══
-  // Un abonnement À PART (20 € TTC/mois, essai 7 jours, carte demandée), ouvert
+  // Un abonnement À PART (24,99 € TTC/mois depuis le 03/11, essai 7 jours, carte demandée), ouvert
   // à tous, Free compris. Les règles vivent dans cloud/achatCloud.js : préparer
   // (place réservée + verrous d'essai) AVANT tout paiement, puis Stripe (web) ou
   // la boutique (iOS / Android), et ne croire que le serveur.

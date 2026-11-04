@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// « OUVRIR L'OFFRE SANS ORDINATEUR » — DE N'IMPORTE OÙ, VERS LA FEUILLE D'APP
+// « OUVRIR L'OFFRE FILLSELL CLOUD » — DE N'IMPORTE OÙ, VERS LA FEUILLE D'APP
 // ═══════════════════════════════════════════════════════════════════════════
 // CONCEPTION (04/10/2026). La 2e voie vit dans des écrans qui n'ont pas la
 // main sur le paiement (parcours d'entrée, mur « installe l'extension », carte

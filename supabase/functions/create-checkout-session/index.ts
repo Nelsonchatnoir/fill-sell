@@ -78,7 +78,7 @@ function rangAbonnement(s: Stripe.Subscription): number {
 
 // ── L'OPTION « FILLSELL CLOUD » (04/10/2026) ─────────────────────────────────
 // `product: "cloud"` → un abonnement Stripe À PART (secret STRIPE_PRICE_CLOUD,
-// 20 €/mois), ouvert à TOUS les comptes, Free compris ; carte obligatoire ;
+// 24,99 €/mois depuis le 03/11), ouvert à TOUS les comptes, Free compris ; carte obligatoire ;
 // essai 7 jours si ce compte n'en a jamais pris (garde serveur
 // essaiCloudPermis). Il ne touche jamais l'abonnement du palier, et les
 // chemins de palier ci-dessous ne touchent jamais un abonnement Cloud

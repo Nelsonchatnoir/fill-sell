@@ -39,7 +39,7 @@ const ip = (o) => ({ id: 1, ip: '10.0.0.1', etat: 'disponible', attributions: 0,
 titre('0. Le contrat — mêmes valeurs que l\'app et que la migration SQL');
 ok(ESSAI_JOURS === CLOUD_ESSAI_JOURS, `durée d'essai = CLOUD_ESSAI_JOURS (${CLOUD_ESSAI_JOURS} j)`);
 ok(EXIGE_UN_PALIER === CLOUD_EXIGE_UN_PALIER, `palier exigé = CLOUD_EXIGE_UN_PALIER (${CLOUD_EXIGE_UN_PALIER})`);
-ok(PRIX_AFFICHE === CLOUD_PRIX_AFFICHE && PRIX_AFFICHE === '20 €' && PARAMETRES.prixTtcEur === 20, '20 € TTC partout (app, règles, coûts)');
+ok(PRIX_AFFICHE === CLOUD_PRIX_AFFICHE && PRIX_AFFICHE === '24,99 €' && PARAMETRES.prixTtcEur === 24.99, '24,99 € TTC partout (app, règles, coûts)');
 const sql = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261005120000_cloud_socle_ip_dediee.sql', import.meta.url)), 'utf8');
 const sqlPaiements = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261004233000_option_cloud_paiements.sql', import.meta.url)), 'utf8');
 ok(!existsSync(fileURLToPath(new URL('../supabase/migrations/PROPOSITION_20261004_cloud_option_et_pool_ip.sql.txt', import.meta.url))),
@@ -212,9 +212,9 @@ ok(c25.nonConverti.joursIp === 16 && c25.converti.joursIp === 7, 'essai non conv
 ok(c25.nonConverti.ipEur === 2.48 && c25.converti.ipEur === 1.08, 'IP : 2,48 € (non converti), 1,08 € (converti) à 5,40 $ / 30 j');
 ok(c25.serveurMesure === false, 'le serveur est ESTIMÉ tant qu\'il n\'a pas tourné (dit, jamais caché)');
 const mS = margeParClient({ canal: 'stripe' });
-ok(mS.ipEur === 4.64 && mS.netEur === 15.98, 'client Stripe : 15,98 € nets, IP 4,64 €/mois');
-ok(mS.margeEur > 10 && mS.margeEur < 11, `marge d'un client Stripe ≈ ${mS.margeEur} €/mois (IP + serveur + base déduits)`);
-ok(fraisPaiement({ canal: 'apple' }).netEur === 14.17, 'Apple (15 %) : 14,17 € nets');
+ok(mS.ipEur === 4.64 && mS.netEur === 20.03, 'client Stripe : 20,03 € nets, IP 4,64 €/mois');
+ok(mS.margeEur > 14 && mS.margeEur < 15, `marge d'un client Stripe ≈ ${mS.margeEur} €/mois (IP + serveur + base déduits)`);
+ok(fraisPaiement({ canal: 'apple' }).netEur === 17.7, 'Apple (15 %) : 17,70 € nets');
 const cap = capacite({ serveurs: 1 });
 ok(cap.comptesMax === 20 && capacite({ comptes: 45 }).serveursPour === 3, 'un CX43 ≈ 20 comptes en continu (estimé) ; 45 comptes → 3 serveurs');
 ok(capacite({ comptes: 100 }).cpuBasePctMax === 25, '100 comptes en continu → jusqu\'à +25 % de CPU de base (Small) : le délai entre sessions compte');

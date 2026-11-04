@@ -18,7 +18,7 @@
 // de coin_config (passés en paramètre), les noms des plateformes du Cloud de config/cloudOffer.js.
 import { CLOUD_PRIX_AFFICHE, CLOUD_ESSAI_JOURS } from '../utils/palier';
 
-// Insécables : « 7 jours », « 20 €/mois » ne se coupent pas en fin de ligne (même règle que cloud/textes.js).
+// Insécables : « 7 jours », le prix « …/mois » ne se coupent pas en fin de ligne (même règle que cloud/textes.js).
 const NBSP = String.fromCharCode(0xa0);
 const PRIX = CLOUD_PRIX_AFFICHE.replace(/ /g, NBSP);
 const J7 = `${CLOUD_ESSAI_JOURS}${NBSP}jours`;

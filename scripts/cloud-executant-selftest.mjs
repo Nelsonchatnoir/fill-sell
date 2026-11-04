@@ -28,7 +28,7 @@ ok(vApp && vApp === vSrv, `une seule version, app = serveur (${vApp})`);
 const { conditionsCloud } = await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
 const T = conditionsCloud?.();
 const texte = JSON.stringify(T ?? {});
-for (const [mot, quoi] of [['AES-256-GCM', 'chiffrement'], ['restriction', 'risque de restriction'], ['ne garantit ni', 'aucune garantie de vente'], ['7 premiers jours', 'essai 7 jours'], ['moyen de paiement est demandé', 'carte demandée'], ['20 € TTC par mois', 'prix'], ['résiliez', 'résiliation'], ['HMAC-SHA256', 'données'], ['page de connexion', 'connexion seule'], ['ne va jamais plus vite', 'jamais plus vite que l’extension']]) {
+for (const [mot, quoi] of [['AES-256-GCM', 'chiffrement'], ['restriction', 'risque de restriction'], ['ne garantit ni', 'aucune garantie de vente'], ['7 premiers jours', 'essai 7 jours'], ['moyen de paiement est demandé', 'carte demandée'], ['24,99 € TTC par mois', 'prix'], ['résiliez', 'résiliation'], ['HMAC-SHA256', 'données'], ['page de connexion', 'connexion seule'], ['ne va jamais plus vite', 'jamais plus vite que l’extension']]) {
   ok(texte.includes(mot), `le texte dit : ${quoi}`);
 }
 ok(T?.articles?.length === 9 && /accepte/.test(T?.case ?? ''), '9 articles et une case à cocher');

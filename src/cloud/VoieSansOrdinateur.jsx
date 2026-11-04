@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// LA 2e VOIE — « JE N'AI PAS D'ORDINATEUR » → SANS ORDINATEUR (04/10/2026)
+// LA 2e VOIE — « JE N'AI PAS D'ORDINATEUR » → FILLSELL CLOUD (04/10/2026 ; nom du 03/11)
 // ═══════════════════════════════════════════════════════════════════════════
 // CONCEPTION, derrière cloudOfferVisible(). Mesuré : 7 inscrits sur 9
 // décrochent au mur « installe l'extension » — beaucoup n'ont simplement pas

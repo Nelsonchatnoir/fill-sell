@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// RÉGLAGES › ABONNEMENT — LE BLOC « SANS ORDINATEUR » (04/10/2026, conception)
+// RÉGLAGES › ABONNEMENT — LE BLOC « FILLSELL CLOUD » (04/10/2026, conception ; nom du 03/11)
 // ═══════════════════════════════════════════════════════════════════════════
 // Monté par reglages/SousPageAbonnement.jsx derrière cloudOfferVisible().
 // L'état vient de cloudDuProfil (utils/palier.js), lu par useCloudProfil dans
@@ -291,7 +291,7 @@ export function BlocCloudReglagesLu({ c, lecture, actions, arretDemande = 0 }) {
 
 /**
  * Dans la confirmation « Se désabonner » de la FORMULE : l'option, elle,
- * continue (le compte repasse en Free + Sans ordinateur) — dit AU MOMENT de
+ * continue (le compte repasse en Free + FillSell Cloud) — dit AU MOMENT de
  * résilier, avec le lien pour l'arrêter aussi. Seulement si l'option tourne
  * et qu'aucun arrêt n'est déjà prévu ; drapeau baissé ou lecture incertaine :
  * rien, et la confirmation reste mot pour mot.

@@ -1,4 +1,4 @@
-// ── Drapeau UNIQUE de l'option « Sans ordinateur » (FillSell Cloud) — 04/10/2026 ──
+// ── Drapeau UNIQUE de l'option « FillSell Cloud » (sans ordinateur) — 04/10/2026 ──
 //
 // CONCEPTION, NON LIVRÉE. Sur le modèle de businessOffer.js : UNE constante,
 // UN point de décision, et plus aucune lecture directe du drapeau côté UI.
@@ -16,9 +16,10 @@
 //   1. la migration des colonnes (profiles.is_cloud, cloud_essai_debut,
 //      cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin,
 //      cloud_arret_fin_periode) et `cloud_etat()` APPLIQUÉES et inscrites ;
-//   2. les produits de paiement de l'option créés et alignés à 20 € sur les
-//      TROIS canaux (Stripe, Apple, Google) — le prix est affiché en dur
-//      (CLOUD_PRIX_AFFICHE, utils/palier.js), comme PLAN_PRICES ;
+//   2. les produits de paiement de l'option créés et alignés à 24,99 € sur les
+//      TROIS canaux (Stripe, Apple, Google — décision de Nico du 03/11) — le
+//      prix est affiché en dur (CLOUD_PRIX_AFFICHE, utils/palier.js), comme
+//      PLAN_PRICES ;
 //   3. l'hôte (App.jsx) lit le 2e argument d'`onUpgrade(tier, { cloud })` et
 //      ouvre l'essai / ajoute l'option au paiement, et sait prendre l'option
 //      SEULE sur un compte Free (`onCloudSeul`, décision du 04/10 soir) —
@@ -77,7 +78,9 @@ export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED || estTemoin(us
 export const CLOUD_DOMAINE = 'cloud.fillsell.app';
 // (30/10, lot D) La version en vigueur des conditions d'utilisation du Cloud (src/cloud/conditionsCloud.js) — même
 // valeur que supabase/functions/_shared/cloud-conditions.js. Changer le texte = changer cette version.
-export const CGU_CLOUD_VERSION = '2026-10-30';
+// (04/11) 2026-10-30 → 2026-11-04 : le prix de l'article 6 passe à 24,99 € (décision de Nico du 03/11). Une personne
+// qui avait accepté la version du 30/10 se voit présenter la nouvelle avant tout paiement Cloud.
+export const CGU_CLOUD_VERSION = '2026-11-04';
 // Les plateformes proposées : SEULEMENT celles prouvées en réel depuis le Cloud.
 // (Une plateforme qui bloque le Cloud n'est jamais promise : elle s'ajoute ici
 // après son test réel, sur décision de Nico.) eBay a sa propre ligne (API).

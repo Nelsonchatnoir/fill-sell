@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// L'ÉCRAN « ME CONNECTER » — l'option Sans ordinateur (05/10)
+// L'ÉCRAN « ME CONNECTER » — l'option FillSell Cloud (05/10)
 // ═══════════════════════════════════════════════════════════════════════════
 // Un bouton par plateforme. Il mène UNIQUEMENT à la page de connexion de la
 // plateforme, ouverte dans le navigateur FillSell du compte (sa place, son

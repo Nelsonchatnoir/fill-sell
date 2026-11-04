@@ -7,8 +7,8 @@
 // sans réseau). Aucune dépendance, aucun appel réseau.
 //
 // DÉCISIONS FINALES DE NICO (04/10 nuit) :
-//  · Cloud = abonnement SÉPARÉ, 20,00 €/mois, essai gratuit de 7 JOURS, carte
-//    obligatoire.
+//  · Cloud = abonnement SÉPARÉ, 24,99 €/mois (décision de Nico du 03/11), essai
+//    gratuit de 7 JOURS, carte obligatoire.
 //  · Ouvert à TOUS, comptes Free compris : Cloud se prend SEUL. Le compte garde
 //    les quotas de son palier (Free : 5 annonces). Cumulable avec Premium / Pro
 //    / Business.
