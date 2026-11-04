@@ -34,6 +34,8 @@ export const SOURCE_TYPE_PAGE = `// ${MARQUE} : le type du compte est lu dans la
     try { type = JSON.parse(sessionStorage.getItem(${JSON.stringify(CLE_CACHE_COMPTE)}) ?? "null")?.account?.type ?? null; } catch { type = null; }`;
 
 function patcheur(src, nomFichier) {
+  // L'archive git du build Cloud sort en CRLF sur ce poste (autocrlf) : les ancres sont en LF.
+  src = src.replace(/\r\n/g, '\n');
   const appliques = [];
   const patch = (nom, ancre, remplacement) => {
     const n = src.split(ancre).length - 1;
