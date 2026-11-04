@@ -354,7 +354,11 @@ export function patcherManifeste(man) {
 }
 
 async function main() {
-  const commit = (process.argv.find((a) => a.startsWith('--commit='))?.slice(9)) || 'HEAD';
+  // (04/11) --extension=<commit> : l'extension d'un AUTRE commit que les patchs (la copie déjà déployée + un patch neuf,
+  // sans embarquer les changements du parc d'entre-temps) ; le BUILD_ID porte alors les deux (…+<ext>.p<patchs>-cloud).
+  const extension = process.argv.find((a) => a.startsWith('--extension='))?.slice(12) || null;
+  const commit = extension || (process.argv.find((a) => a.startsWith('--commit='))?.slice(9)) || 'HEAD';
+  const shaPatchs = extension ? execFileSync('git', ['-C', RACINE, 'rev-parse', '--short=7', 'HEAD']).toString().trim() : null;
   const require = createRequire(path.join(RACINE, 'package.json'));
   const JSZip = require('jszip');
   const { transformExtensionFile, isExcludedFromPackage } = await import(pathToFileURL(path.join(RACINE, 'scripts', 'minify-extension.mjs')).href);
@@ -377,7 +381,7 @@ async function main() {
   const manChemin = path.join(SRC, 'manifest.json');
   const man = patcherManifeste(JSON.parse(await readFile(manChemin, 'utf8')));
   await writeFile(manChemin, JSON.stringify(man, null, 2) + '\n');
-  const BUILD_ID = `${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}+${sha}-cloud`;
+  const BUILD_ID = `${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}+${sha}${shaPatchs && shaPatchs !== sha ? `.p${shaPatchs}` : ''}-cloud`;
   await rm(SORTIE, { recursive: true, force: true });
   let nJs = 0, nAutres = 0;
   async function parcourir(dir) {
@@ -396,7 +400,7 @@ async function main() {
   await parcourir(SRC);
   await rm(TRAVAIL, { recursive: true, force: true });
   console.log('── Extension Cloud ──');
-  console.log(`  commit      : ${sha} (${commit})`);
+  console.log(`  commit      : ${sha} (${commit})${shaPatchs ? ` · patchs ${shaPatchs}` : ''}`);
   console.log(`  version     : ${man.version} (${man.version_name})`);
   console.log(`  BUILD_ID    : ${BUILD_ID}`);
   console.log(`  identifiant : ${ID_EXTENSION_CLOUD}`);
