@@ -225,3 +225,5 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Vinted renvoie vers `/terms_and_conditions` : attente nommée `vinted_conditions_a_accepter` (MURS_SANS_QUESTION),
   jamais une reprise ; la page le dit avant sa garde, le background le lit sur l'onglet au canal coupé, le serveur le
   nomme pour les postes d'avant (`_shared/vinted-conditions.js`, adresse datée < 5 min, après la dernière relance).
+- Livrable : `build/CWS-0.6.171-A-TELEVERSER/fillsell-extension-0.6.171-cws.zip` (BUILD_ID `2026-11-04T19:49:41Z+29ba667`,
+  SHA-256 861d92b4…cac88) ; contient la 0.6.170 (jamais servie, `build/CWS-PERIMES/CWS-0.6.170-remplacee-par-0.6.171`).
