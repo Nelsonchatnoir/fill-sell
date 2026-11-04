@@ -22,6 +22,14 @@ Détail : `docs/enquetes/beebs-cloud-0411/RAPPORT.md`.
   11:02 (messagerie, avant le déploiement) à résoudre par Nico.
 - L'ESSAI UNIQUE : le « Me connecter » Beebs de Nico, enregistré dans `etat/essais/beebs-…-connexion.jsonl`. Aucun autre
   essai Beebs ; aucune autre IP.
+- ⛔ INCIDENT 04/11 12:25 (corrige la ligne « Vinted, Depop connectés » ci-dessus) : `cloud_ip_liberer` (réparation de
+  12:23) a mis l'IP 39 au repos — le chemin d'un compte qui PART — et l'entretien l'a PURGÉE : profil de Nico détruit
+  (neuf : p-f44b5917-4a22e14524a7), coffre vidé (Vinted, Leboncoin, Depop, Beebs perdus ; ne reste que la session
+  FillSell), réservation de l'IP 2 levée (visite de contrôle Beebs à 12:25). ⛔ JAMAIS `cloud_ip_liberer` pour changer
+  l'IP d'un compte actif. Profil d'avant : `archives/0411-beebs/p-principal-avant.tgz` (12:08, sans le cache).
+- Essai 13:40 : 403 dès la 1re requête (0 cookie, profil neuf), vérification de l'appareil ratée AVANT tout geste,
+  glissière, « Accès temporairement restreint » (13 s). Même suite qu'au « Résoudre » de 08:14 en mode téléphone.
+  Aucune IP payée n'a jamais vu Beebs (ids 1 à 6, 39, 40 : toutes l'ont vu).
 
 ## ⛔ 03/11/2026 soir — AUDIT + CORRECTIFS POUR L'OUVERTURE À TOUS (à lire EN PREMIER)
 Détail : `docs/enquetes/cloud-ouverture-0311/RAPPORT.md`. Commits 9e9bde4, 1a65445, 7c7748d, 01d22e2.
