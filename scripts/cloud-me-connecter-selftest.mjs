@@ -127,5 +127,18 @@ ok(/else if \(m\.t === 'cookies'\) surEtat\('cookies', m\.present === true\);/.t
 const tx3 = lire('src/cloud/textesConnexion.js');
 ok(tx3.split("refuserCookies: '").length === 3 && tx3.split("isoleTexte: '").length === 3, 'fr et en : le bouton et la ligne');
 
+// (04/11, Beebs) Le zoom sur la glissière : l'app découpe l'image reçue (le serveur ne zoome que pour une app qui l'annonce).
+console.log('\n6. Le zoom sur la glissière Beebs (04/11)');
+const sz = client.sourceZoom({ x: 70, y: 0, l: 360, h: 538 }, { l: 500, h: 747 }, { width: 500, height: 747 });
+ok(JSON.stringify(sz) === '{"sx":70,"sy":0,"sl":360,"sh":538}', 'image à la taille de la page : la zone telle quelle');
+const sz2 = client.sourceZoom({ x: 70, y: 0, l: 360, h: 538 }, { l: 500, h: 747 }, { width: 1000, height: 1494 });
+ok(sz2.sx === 140 && sz2.sl === 720 && sz2.sh === 1076, 'image deux fois plus grande : la zone à son échelle');
+ok(client.sourceZoom(null, { l: 500, h: 747 }, { width: 500, height: 747 }) === null && client.sourceZoom({ x: 0, y: 0, l: 1, h: 1 }, null, { width: 1, height: 1 }) === null, 'sans zone (ou sans page) : l\'image entière');
+ok(/zoom: true, \.\.\.\(mode === 'resoudre'/.test(cli), 'l\'app annonce qu\'elle sait zoomer (sinon le serveur ne zoome jamais)');
+ok(/else if \(m\.t === 'zoom'\) \{ zoom = m\.zone \? \{ zone: m\.zone, page: m\.page \} : null; dessiner\(\); \}/.test(cli), 'un changement de zoom redessine aussitôt la dernière image');
+const srvCx = lire('serveur-cloud/src/connexion.js');
+ok(/zoomClient: m\.zoom === true/.test(srvCx) && /if \(!bureau \|\| !zoomClient/.test(srvCx), 'serveur : zoom seulement pour une app qui l\'annonce, et pour Beebs (vue bureau)');
+ok(!/send\('Page\.captureScreenshot'/.test(srvCx) && /mettreFenetreBureau/.test(srvCx) && !/mobile: false/.test(srvCx),'serveur : jamais de capture découpée pendant « Me connecter » (elle décale la souris, banc du 04/11)');
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

@@ -17,7 +17,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { patcherBackground, patcherManifeste, ID_EXTENSION_CLOUD, PLATEFORMES, SOURCE_CONNEXION_CLOUD, SOURCE_VERROU_CLOUD, SOURCE_FERMETURE_CLOUD, FERMETURE_CLOUD_REPOS_MS } from './cloud/build-extension-cloud.mjs';
+import { patcherBackground, patcherManifeste, ID_EXTENSION_CLOUD, PLATEFORMES, SOURCE_CONNEXION_CLOUD, SOURCE_VERROU_CLOUD, SOURCE_FERMETURE_CLOUD, FERMETURE_CLOUD_REPOS_MS,
+  SOURCE_RYTHME_BEEBS_CLOUD, RYTHME_BEEBS_CLOUD } from './cloud/build-extension-cloud.mjs';
 
 let ko = 0, n = 0;
 const ok = (c, m) => { n++; if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}`); } };
@@ -27,7 +28,7 @@ const man = JSON.parse(readFileSync(path.join(racine, 'chrome-extension', 'manif
 
 console.log('\n1. Les patchs du background');
 const { bg: bg2, appliques } = patcherBackground(bg);
-ok(appliques.length === 16, `16 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
+ok(appliques.length === 20, `20 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
 const tmp = mkdtempSync(path.join(tmpdir(), 'fs-cloud-'));
 try {
   writeFileSync(path.join(tmp, 'bg.js'), bg2);
@@ -196,6 +197,53 @@ ok(!SOURCE_FERMETURE_CLOUD.includes('chrome.tabs.discard'), 'jamais chrome.tabs.
     const avant = session.fillsell_cloud_usage_onglets[20];
     ok(Number.isFinite(avant) && (await f.noterUsageOngletCloud(20)) === 20, 'l’usage est noté et l’id rendu tel quel (aucun effet sur l’appelant)');
   }
+}
+
+// (04/11, mesure Beebs) Le rythme des lectures de FOND de Beebs : exécuté ici avec un faux `chrome` et un faux minuteur.
+console.log('\n1 ter. Le rythme des lectures de fond Beebs (04/11)');
+{
+  const appels = [], attentes = [];
+  const chrome = { tabs: { update: async (...a) => { appels.push(a); return a; }, create: async (a) => { appels.push([a]); return a; } } };
+  const fauxSetTimeout = (f, ms) => { attentes.push(ms); f(); };
+  let releve = async () => {};
+  const R = new Function('chrome', 'intervalleSonde', 'releverQuotidien', 'plateformeVerrouCloud', 'setTimeout',
+    `${SOURCE_RYTHME_BEEBS_CLOUD}\nreturn { prochainMessagerieBeebsCloud, intervalleSondeCloud, fichesBeebsParTourCloud, releverQuotidienCloud, releveFondCloud };`)(
+    chrome, (pf) => (pf === 'vinted' ? 600_000 : 3_600_000), (...a) => releve(...a),
+    (u) => (/beebs\.app/.test(String(u)) ? 'beebs' : /vinted/.test(String(u)) ? 'vinted' : null), fauxSetTimeout);
+  const MIN = 60_000;
+  // Messagerie : exécutée au premier tour de poll (2 min) qui suit l'échéance tirée.
+  const surGrille = (d) => Math.ceil(d / (2 * MIN)) * 2;
+  const tirages = Array.from({ length: 20_000 }, (_, i) => surGrille(R.prochainMessagerieBeebsCloud((i + 0.5) / 20_000)));
+  const moyenne = tirages.reduce((s, x) => s + x, 0) / tirages.length;
+  ok(R.prochainMessagerieBeebsCloud(0) === 7 * MIN && R.prochainMessagerieBeebsCloud(1) === 15 * MIN, 'messagerie Beebs : échéance tirée entre 7 et 15 min');
+  ok(Math.min(...tirages) === 8 && Math.max(...tirages) === 16 && Math.abs(moyenne - 12) < 0.05,
+    `sur la grille du poll : 8 à 16 min, moyenne ${moyenne.toFixed(2)} min — la moyenne d'avant (12 min pile) est gardée`);
+  ok(new Set(tirages).size === 5, 'cinq écarts possibles (8, 10, 12, 14, 16 min) : plus jamais le même');
+  const sondes = Array.from({ length: 5000 }, (_, i) => R.intervalleSondeCloud('beebs', 1_762_000_000_000 + i * 7919) / MIN);
+  const ms = sondes.reduce((s, x) => s + x, 0) / sondes.length;
+  ok(Math.min(...sondes) >= 45 && Math.max(...sondes) <= 75 && Math.abs(ms - 60) < 1.5, `sonde Beebs : 45 à 75 min, moyenne ${ms.toFixed(1)} min (avant : 60 pile)`);
+  ok(R.intervalleSondeCloud('beebs', 123456) === R.intervalleSondeCloud('beebs', 123456), 'sonde Beebs : le même écart d’un tour à l’autre (tiré de la sonde précédente)');
+  ok(R.intervalleSondeCloud('vinted', 5) === 600_000 && R.intervalleSondeCloud('leboncoin', 5) === 3_600_000, 'les sondes Vinted, Leboncoin, Depop : INCHANGÉES');
+  const b = (id) => ({ id, platform: 'beebs' }), v = (id) => ({ id, platform: 'vinted' });
+  const dues = [b('p'), ...Array.from({ length: 8 }, (_, i) => b(`b${i}`)), v('v1'), v('v2')];
+  const gardees = dues.filter(R.fichesBeebsParTourCloud(new Set(['p'])));
+  ok(gardees.filter((j) => j.platform === 'beebs' && j.id !== 'p').length === 4 && gardees.some((j) => j.id === 'p') && gardees.filter((j) => j.platform === 'vinted').length === 2,
+    'détection : 8 fiches Beebs dues → 4 ce tour (une par tranche de deux), la relecture prioritaire (commande neuve) et Vinted intactes');
+  ok([b('x')].filter(R.fichesBeebsParTourCloud(new Set())).length === 1, 'détection : une seule fiche due → lue tout de suite (régime établi : aucun changement)');
+  releve = async () => {
+    await chrome.tabs.update(1, { url: 'https://www.beebs.app/fr/account/my-adverts#fillsell-worker' });
+    await chrome.tabs.update(1, { url: 'https://www.beebs.app/fr/p/1#fillsell-worker' });
+    await chrome.tabs.update(2, { url: 'https://www.vinted.fr/' });
+  };
+  await chrome.tabs.update(1, { url: 'https://www.beebs.app/' });
+  ok(attentes.length === 0, 'hors du relevé quotidien de fond (une tâche, un relevé lancé par la personne) : aucune attente');
+  await R.releverQuotidienCloud();
+  ok(attentes.length === 1 && attentes[0] >= 6000 - 50 && attentes[0] <= 15_000 && appels.length === 4,
+    `relevé quotidien : 6 à 15 s entre deux pages Beebs (${attentes[0]} ms), aucune pour Vinted, toutes les navigations passent`);
+  ok(R.releveFondCloud.actif === false, 'le relevé fini : le rythme ne s’applique plus');
+  ok(!bg.includes('prochainMessagerieBeebsCloud') && bg2.includes('prochainMessagerieBeebsCloud()') && bg2.includes('releverQuotidienCloud)'),
+    'branché dans la copie Cloud seulement (le parc : INCHANGÉ)');
+  ok(RYTHME_BEEBS_CLOUD.messagerieMaxMs === 15 * MIN, 'réglage exporté (tests et rapport)');
 }
 
 console.log('\n2. Le manifeste Cloud');

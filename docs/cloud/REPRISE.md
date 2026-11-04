@@ -1,5 +1,19 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 04/11/2026 — BEEBS : CE QUI DÉCLENCHE LE BLOCAGE, CADENCE DE FOND, VUE BUREAU (à lire EN PREMIER)
+Détail : `docs/enquetes/beebs-cloud-0411/RAPPORT.md`.
+- Le point 6 du bloc du 03/11 est FAUX : Beebs a été résolu le 03/11 18:40 (« Résoudre », filtre anti-pubs actif), puis
+  re-bloqué le 04/11 02:45 (glissière, onglet de travail), « restreint » au « Résoudre » de 08:14.
+- Filtre anti-pubs : ÉCARTÉ (1er blocage 15 h avant lui ; réussites avec lui). Cause : le rythme de robot des lectures de
+  fond (messagerie toutes les 12 min pile, relevé quotidien 13 pages en 65 s, onglet caché 25 min) + un « Résoudre » qui
+  présentait un téléphone sur un Chrome Linux de bureau.
+- Corrigé (Beebs seulement) : `RYTHME_BEEBS_CLOUD` (copie Cloud de l'extension, moyennes inchangées) ; « Me connecter »
+  et « Résoudre » de Beebs dans une VRAIE fenêtre de bureau de 500 px, à la souris (`vueBureau.js`), requêtes enregistrées
+  dans `etat/essais/` ; zoom sur la glissière dans l'APP seulement (`zoom: true`, actif à la prochaine OTA).
+- ⛔ Jamais `Emulation.setDeviceMetricsOverride` ni `Page.captureScreenshot` avec `clip` pendant « Me connecter » d'une page
+  à cadre DataDome : mesuré au banc, la souris arrive décalée dans le cadre (rapport § 6).
+- Achat d'une IP par le pool : `docker compose exec -T orchestrateur node outils/acheter-une-ip.mjs [--acheter]`.
+
 ## ⛔ 03/11/2026 soir — AUDIT + CORRECTIFS POUR L'OUVERTURE À TOUS (à lire EN PREMIER)
 Détail : `docs/enquetes/cloud-ouverture-0311/RAPPORT.md`. Commits 9e9bde4, 1a65445, 7c7748d, 01d22e2.
 - Mémoire : cause des OOM = accueil Leboncoin et ses ~28 cadres de régies publicitaires. Régies bloquées dans le verrou

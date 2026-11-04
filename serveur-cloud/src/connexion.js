@@ -2,7 +2,8 @@
 //
 // La personne, sur son téléphone, voit UNE page : celle de connexion de la
 // plateforme, ouverte dans SON navigateur Cloud (son IP dédiée, son profil),
-// au format mobile. Elle tape, elle écrit ; on rejoue ses gestes. Rien d'autre :
+// au format mobile — (04/11) Beebs : dans une fenêtre de BUREAU réduite, à la souris (vueBureau.js), chaque requête de
+// la page enregistrée (etat/essais/). Elle tape, elle écrit ; on rejoue ses gestes. Rien d'autre :
 //   · aucune barre d'adresse, aucune navigation libre : un document principal
 //     hors de la liste de la plateforme (plateformes.js) est REFUSÉ, et la page
 //     revient à la connexion ; les fenêtres Apple / Google / Facebook ouvertes
@@ -38,6 +39,21 @@ import { etatVisible } from './verifications.js';
 import { verifierTicket } from './tickets.js';
 import { lireDansExtension } from './sessionFillsell.js';
 import { lireComptesDuServeur } from './flotte.js';
+import { appendFile, mkdir } from 'node:fs/promises';
+import { estPublicite } from './navigateur.js';
+import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneRequete } from './vueBureau.js';
+
+// (04/11) Le cadre DataDome dans la page (sa place, et le défilement de la page) — lecture seule, aucun réseau.
+const EXPRESSION_CADRE_DATADOME = `(() => {
+  const hote = (s) => { try { return new URL(s, location.href).hostname; } catch { return ''; } };
+  const f = [...document.querySelectorAll('iframe')].find((i) => /(^|\\.)captcha-delivery\\.com$/i.test(hote(i.src)));
+  if (!f) return null;
+  const r = f.getBoundingClientRect();
+  return { x: r.x, y: r.y, l: r.width, h: r.height, sx: scrollX, sy: scrollY };
+})()`;
+const EXPRESSION_CADRE_GLISSIERE = `(() => { const e = document.querySelector('#captcha__frame') || document.querySelector('.sliderContainer');
+  if (!e) return null; const r = e.getBoundingClientRect(); return r.width > 0 ? { x: r.x, y: r.y, l: r.width, h: r.height } : null; })()`;
+const ENREGISTREMENT_LIGNES_MAX = 5000;
 
 const DUREE_MAX_MS = 15 * 60_000;
 const INACTIVITE_MS = 5 * 60_000;
@@ -214,11 +230,11 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           // (01/11) Le même « Me connecter » rouvert (retour dans l'app après un SMS, un courriel) : la page reprend.
           if (ancienne?.reprenable(m.plateforme, mode)) {
             vue = ancienne;
-            await vue.reprendre({ ws, envoyer, lang, ...dims });
+            await vue.reprendre({ ws, envoyer, lang, ...dims, zoom: m.zoom === true });
             return;
           }
           if (ancienne) { ancienne.fermer('remplacee'); envoyer({ t: 'etat', etape: 'info', message: txt.occupe }); }
-          vue = creerVue({ user, compte, plateforme: m.plateforme, lang, ws, envoyer, ...dims, origine, mode, blocage });
+          vue = creerVue({ user, compte, plateforme: m.plateforme, lang, ws, envoyer, ...dims, origine, mode, blocage, zoomClient: m.zoom === true });
           actives.set(user, vue);
           await vue.demarrer();
         } catch (e) {
@@ -234,8 +250,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     ws.on('close', () => { clearTimeout(attenteOuverture); vue?.clientParti(ws); });
   }
 
-  function creerVue({ user, compte, plateforme, lang, ws, envoyer, largeur, hauteur, dpr, mode = 'connexion', blocage = null }) {
+  function creerVue({ user, compte, plateforme, lang, ws, envoyer, largeur, hauteur, dpr, mode = 'connexion', blocage = null, zoomClient: zoomAnnonce = false }) {
     const def = DEFINITIONS[plateforme];
+    // (04/11) Beebs : la vue « bureau réduit » (vueBureau.js) — souris, aucun toucher, zoom sur la glissière, et chaque
+    // requête de la page enregistrée (etat/essais/). Les autres plateformes : le format du téléphone, inchangé.
+    const bureau = vueBureau(plateforme);
+    const souris = bureau ? creerGesteSouris() : null;
+    let zoom = null;
+    // (04/11) L'app sait-elle découper l'image pour le zoom ({ t:'ouvrir', zoom: true }) ? Sinon : jamais de zoom.
+    let zoomClient = zoomAnnonce === true;
     // (02/11) « Résoudre la vérification » : la page où la vérification s'affiche, et elle seule joint la plateforme.
     const resoudre = mode === 'resoudre';
     const pageDepart = resoudre ? pageDeResolution(plateforme, blocage) : def.pageConnexion;
@@ -273,15 +296,47 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       const { frameTree } = await cdp.send('Page.getFrameTree', {}, s);
       c.mainFrame = frameTree?.frame?.id ?? c.targetId;
       await appliquerFormat(c);
-      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, s);
+      // (04/11) Beebs (vue bureau) : AUCUN toucher émulé — un Chrome de bureau a une souris.
+      if (!bureau) await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, s);
       await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, s).catch(() => {});
       await cdp.send('Page.setInterceptFileChooserDialog', { enabled: true }, s).catch(() => {});
       // Seuls les documents PRINCIPAUX sont filtrés : les cadres (captcha, bouton Google…) passent.
       await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', resourceType: 'Document', requestStage: 'Request' }] }, s);
+      if (enregistrement) await enregistrement.suivre(c.sessionId, c === cible ? 'page' : 'fenetre').catch((e) => journal.alerte('enregistrement_echec', { user, plateforme, erreur: e.message }));
     }
 
-    const appliquerFormat = (c) => cdp.send('Emulation.setDeviceMetricsOverride', { width: dims.largeur, height: dims.hauteur,
-      deviceScaleFactor: dims.dpr, mobile: true, screenWidth: dims.largeur, screenHeight: dims.hauteur }, c.sessionId);
+    // (04/11) Beebs : une VRAIE fenêtre de bureau de 500 px aux proportions du canvas — la fenêtre de la page est
+    // redimensionnée (Browser.setWindowBounds), AUCUNE émulation : ni mobile, ni écran inventé, ni taille simulée. Mesuré
+    // au banc du 04/11 : avec Emulation.setDeviceMetricsOverride, la souris envoyée à la page arrive DÉCALÉE dans le cadre
+    // DataDome hors processus (200,300 → 161,137) — la glissière n'aurait jamais bougé. Les autres : le téléphone, comme avant.
+    const appliquerFormat = (c) => (bureau ? mettreFenetreBureau(c)
+      : cdp.send('Emulation.setDeviceMetricsOverride', { width: dims.largeur, height: dims.hauteur,
+        deviceScaleFactor: dims.dpr, mobile: true, screenWidth: dims.largeur, screenHeight: dims.hauteur }, c.sessionId));
+    async function mettreFenetreBureau(c) {
+      const fb = formatBureau(dims);
+      const taille = async () => {
+        const v = (await cdp.send('Runtime.evaluate', { expression: '[innerWidth, innerHeight]', returnByValue: true }, c.sessionId).catch(() => null))?.result?.value;
+        return Array.isArray(v) && v.length === 2 ? v.map(Number) : [0, 0];
+      };
+      await cdp.send('Emulation.clearDeviceMetricsOverride', {}, c.sessionId).catch(() => {});
+      try {
+        const { windowId } = await cdp.send('Browser.getWindowForTarget', { targetId: c.targetId });
+        await cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } }).catch(() => {});
+        const avant = (await cdp.send('Browser.getWindowBounds', { windowId }))?.bounds ?? {};
+        const [l0, h0] = await taille();
+        // Le cadre du navigateur (barres) : ce que la fenêtre a de plus que sa page.
+        const bordL = Math.max(0, (Number(avant.width) || l0) - l0), bordH = Math.max(0, (Number(avant.height) || h0) - h0);
+        await cdp.send('Browser.setWindowBounds', { windowId, bounds: { left: 0, top: 0, width: fb.largeur + bordL, height: fb.hauteur + bordH } });
+        await new Promise((ok) => setTimeout(ok, 250));
+      } catch (e) {
+        // Fenêtre non redimensionnée : la page garde sa taille réelle (jamais une émulation, qui décale la souris).
+        journal.alerte('vue_bureau_fenetre_echec', { user, plateforme, erreur: String(e?.message ?? e).slice(0, 120) });
+      }
+      const [l, h] = await taille();
+      c.pageBureau = l > 0 && h > 0 ? { largeur: l, hauteur: h, k: dims.largeur / l } : fb;
+      journal.info('vue_bureau_fenetre', { user, plateforme, demandee: [fb.largeur, fb.hauteur], obtenue: [l, h] });
+    }
+    const pageDe = (c) => c?.pageBureau ?? formatBureau(dims);
 
     async function diffuser(c) {
       if (active && active !== c) await cdp.send('Page.stopScreencast', {}, active.sessionId).catch(() => {});
@@ -289,9 +344,120 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       if (!canal) return;      // personne ne regarde : aucune image (la reprise relance la diffusion)
       // (01/11, « propre et fluide ») Les images au plus en 2× : nettes sur un téléphone 3×, et deux fois plus
       // légères qu'en 3× (le téléphone les agrandit). La page, elle, garde la densité du téléphone (deviceScaleFactor).
+      // (04/11) Beebs : la page de bureau, à sa taille (échelle 1) ; l'app l'étire sur son canvas.
       const echelle = Math.min(dims.dpr, ECHELLE_IMAGES_MAX);
-      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: Math.round(dims.largeur * echelle), maxHeight: Math.round(dims.hauteur * echelle), everyNthFrame: 1 }, c.sessionId);
+      const fb = bureau ? pageDe(c) : null;
+      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: fb ? fb.largeur : Math.round(dims.largeur * echelle),
+        maxHeight: fb ? fb.hauteur : Math.round(dims.hauteur * echelle), everyNthFrame: 1 }, c.sessionId);
     }
+
+    // ── (04/11) LE ZOOM SUR LA GLISSIÈRE (Beebs) : quand le cadre DataDome montre sa glissière, l'APP n'affiche plus que sa
+    // zone, à la largeur du téléphone ({ t:'zoom', zone, page } : elle découpe l'image qu'elle reçoit) ; les gestes sont
+    // rapportés à cette zone ici. La page n'en sait rien : elle reçoit la même diffusion, la même souris. Seulement pour
+    // une app qui l'annonce ({ t:'ouvrir', zoom: true }) — une app plus ancienne voit la page entière, gestes compris.
+    // ⛔ Jamais par une capture découpée côté serveur (Page.captureScreenshot avec clip) : mesuré au banc du 04/11, le temps
+    // de la prise Chrome déplace la vue, et des mouvements de souris décalés (+70 px, ×0,46) partent en plein glisser.
+    async function calculerZoom() {
+      const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_CADRE_DATADOME, returnByValue: true }, cible.sessionId).catch(() => null);
+      const ifr = r?.result?.value;
+      if (!ifr) return null;
+      const dedans = (await valeursDesCadresDataDome(EXPRESSION_CADRE_GLISSIERE).catch(() => [])).find(Boolean) ?? null;
+      const cadre = dedans ? { x: ifr.x + dedans.x, y: ifr.y + dedans.y, l: dedans.l, h: dedans.h }
+        : { x: ifr.x + ifr.l / 2 - 170, y: ifr.y + ifr.h / 2 - 90, l: Math.min(340, ifr.l), h: 180 };
+      const z = zoneZoom(cadre, pageDe(cible), dims);
+      return z ? { ...z, mesure: dedans ? 'glissiere' : 'cadre' } : null;
+    }
+    const direZoom = () => dire({ t: 'zoom', zone: zoom ? { x: zoom.x, y: zoom.y, l: zoom.l, h: zoom.h } : null,
+      page: { l: pageDe(cible).largeur, h: pageDe(cible).hauteur } });
+    // Les gestes se rapportent à la zone zoomée quand c'est elle que l'app montre, sinon à la page de bureau entière.
+    const vueDesGestes = () => (zoom && active === cible ? zoom : { k: pageDe(active).k });
+    async function suivreZoom(e) {
+      if (!bureau || !zoomClient || finie || !cible || active !== cible) return;
+      if (e?.captcha && !e.bloque) {
+        if (zoom) return;
+        const z = await calculerZoom();
+        if (!z || finie) return;
+        zoom = z;
+        direZoom();
+        journal.info('vue_zoom_glissiere', { user, plateforme, zone: { x: z.x, y: z.y, l: z.l, h: z.h }, k: Number(z.k.toFixed(3)), mesure: z.mesure });
+        enregistrement?.noter({ evenement: 'zoom', zone: { x: z.x, y: z.y, l: z.l, h: z.h }, mesure: z.mesure });
+      } else if (zoom) {
+        zoom = null;
+        direZoom();
+        enregistrement?.noter({ evenement: 'zoom_fin' });
+      }
+    }
+
+    // ── (04/11, mesure Beebs) L'ENREGISTREMENT de chaque requête de la page et de ses cadres (DataDome compris) :
+    // etat/essais/<plateforme>-<heure>.jsonl (hôte, chemin, méthode, type, code, échec ; jamais une query, un en-tête ni
+    // un corps). Network côté DevTools : rien de visible par la page. Ce que le verrou ou le filtre anti-pubs coupent y
+    // paraît (net::ERR_BLOCKED_BY_CLIENT, « publicite »).
+    const enregistrement = bureau && config.dossierEtat ? (() => {
+      const fichier = `${config.dossierEtat}/essais/${plateforme}-${new Date().toISOString().replace(/[:.]/g, '-')}-${mode}.jsonl`;
+      const sessions = new Map();     // sessionId → « page », « fenetre » ou l'hôte du cadre
+      const requetes = new Map();     // sessionId:requestId → requête en cours
+      let lignes = 0, file = mkdir(`${config.dossierEtat}/essais`, { recursive: true }).catch(() => {});
+      const ecrire = (o) => {
+        if (lignes >= ENREGISTREMENT_LIGNES_MAX) return;
+        lignes++;
+        const l = JSON.stringify(o) + '\n';
+        file = file.then(() => appendFile(fichier, l, { mode: 0o600 })).catch(() => {});
+      };
+      const hote = (u) => { try { return new URL(String(u)).hostname; } catch { return 'cadre'; } };
+      const quand = (p) => (Number.isFinite(p?.wallTime) ? new Date(p.wallTime * 1000).toISOString() : new Date().toISOString());
+      const finir = (cle, extra) => {
+        const r = requetes.get(cle);
+        if (!r) return;
+        requetes.delete(cle);
+        ecrire(ligneRequete({ ...r, ...extra, publicite: estPublicite(r.url) }));
+      };
+      ecrire({ le: new Date().toISOString(), evenement: 'debut', plateforme, mode, vue: formatBureau(dims) });
+      return {
+        fichier,
+        noter: (o) => ecrire({ le: new Date().toISOString(), ...o }),
+        async suivre(sessionId, nom) {
+          sessions.set(sessionId, nom);
+          await cdp.send('Network.enable', {}, sessionId);
+          await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sessionId);
+        },
+        evenement(m) {
+          const p = m.params ?? {};
+          if (!m.sessionId || !sessions.has(m.sessionId)) return false;
+          if (m.method === 'Target.attachedToTarget' && p.targetInfo?.type === 'iframe' && p.sessionId) {
+            sessions.set(p.sessionId, hote(p.targetInfo.url));
+            cdp.send('Network.enable', {}, p.sessionId).catch(() => {});
+            cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, p.sessionId).catch(() => {});
+            return true;
+          }
+          const cle = `${m.sessionId}:${p.requestId}`;
+          if (m.method === 'Network.requestWillBeSent') {
+            if (/^(data|blob):/i.test(String(p.request?.url ?? ''))) return true;   // rien ne sort : pas une requête
+            if (p.redirectResponse) finir(cle, { http: p.redirectResponse.status, echec: 'redirection' });
+            // Le cadre : la page (ou sa fenêtre), sinon l'hôte du document du cadre qui demande.
+            const nom = sessions.get(m.sessionId);
+            const cadre = nom === 'page' || nom === 'fenetre' ? nom : (hote(p.documentURL) !== 'cadre' ? hote(p.documentURL) : nom);
+            requetes.set(cle, { le: quand(p), cadre, url: p.request?.url, methode: p.request?.method, type: p.type ?? null });
+            return true;
+          }
+          if (m.method === 'Network.responseReceived') { const r = requetes.get(cle); if (r) r.http = p.response?.status ?? null; return true; }
+          if (m.method === 'Network.loadingFinished') { finir(cle, {}); return true; }
+          if (m.method === 'Network.loadingFailed') { finir(cle, { echec: p.errorText ?? 'echec', bloquee: p.blockedReason ?? null }); return true; }
+          return false;
+        },
+        etat(e) { if (e) ecrire({ le: new Date().toISOString(), evenement: 'etat_page', captcha: Boolean(e.captcha), interstitiel: Boolean(e.interstitiel), bloque: Boolean(e.bloque), restreint: Boolean(e.restreint), pret: Boolean(e.pret) }); },
+        fermer(raison) {
+          for (const cle of [...requetes.keys()]) finir(cle, { echec: 'en_cours_a_la_fermeture' });
+          ecrire({ le: new Date().toISOString(), evenement: 'fin', raison, lignes });
+          journal.info('enregistrement_ferme', { user, plateforme, mode, lignes, fichier });
+        },
+      };
+    })() : null;
+    let dernierEtatNote = '';
+    const noterEtat = (e) => {
+      if (!enregistrement || !e) return;
+      const cle = ['captcha', 'interstitiel', 'bloque', 'restreint', 'pret'].map((k) => (e[k] ? 1 : 0)).join('');
+      if (cle !== dernierEtatNote) { dernierEtatNote = cle; enregistrement.etat(e); }
+    };
 
     function envoyerImage(data) {
       const w = canal?.ws;
@@ -307,6 +473,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       if (finie) return;
       const p = m.params ?? {};
       if (m.method === '__ferme__') return fermer('navigateur_ferme');
+      if (enregistrement?.evenement(m)) return;   // (04/11) Beebs : réseau de la page et de ses cadres, enregistré
       if (m.method === 'Page.screencastFrame') {
         const c = sessionDe(m.sessionId);
         await cdp.send('Page.screencastFrameAck', { sessionId: p.sessionId }, m.sessionId).catch(() => {});
@@ -401,6 +568,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         return fermer('expiree');
       }
       // (01/11) Déjà vérifiée : la page reste ouverte pour les étapes de la plateforme ; « J'ai fini » ferme.
+      if (connectee && zoom) await suivreZoom(null).catch(() => {});   // (04/11) vérifiée : la page entière revient
       if (connectee) { if (manuel) terminer(); return; }
       // (02/11, demande de Nico) « Accès temporairement restreint » dès la page de connexion : dit tout de suite, avec le
       // message de « Résoudre » ; la vérification de l'appareil en cours garde le sien, la glissière aussi.
@@ -408,6 +576,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         const r0 = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_ETAT_PAGE, returnByValue: true }, cible.sessionId).catch(() => null);
         const e0 = r0?.result?.value;
         if (finie) return;
+        noterEtat(e0);
+        await suivreZoom(e0).catch(() => {});
         if (e0 && (e0.bloque || e0.restreint || ((e0.interstitiel || e0.captcha) && TEXTE_ACCES_RESTREINT.test(await texteDesCadresDataDome())))) {
           return accesRestreint();
         }
@@ -467,6 +637,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_ETAT_PAGE, returnByValue: true }, cible.sessionId).catch(() => null);
       const e = r?.result?.value;
       if (!e || res.conclu || finie) return;
+      noterEtat(e);
+      await suivreZoom(e).catch(() => {});
       if (e.bloque) return conclure('restreint', { motif: 'datadome_bloque' });
       // (02/11, essai de Nico 11:45) « Accès temporairement restreint » : écrit dans la page, ou dans le cadre DataDome
       // (la vérification de l'appareil qui se termine sur un blocage garde l'adresse de son cadre) → dit TOUT DE SUITE.
@@ -507,29 +679,34 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
 
     /** Le texte des cadres DataDome de la page (monde isolé du cadre ; cadre hors processus : sa propre cible). */
     async function texteDesCadresDataDome() {
-      let texte = '';
+      const lireTexte = "String((document.body && document.body.innerText) || '').slice(0, 2000)";
+      return (await valeursDesCadresDataDome(lireTexte)).map((v) => ` ${v ?? ''}`).join('');
+    }
+
+    /** Une expression lue dans chaque cadre DataDome de la page (monde isolé ; sinon le cadre hors processus). */
+    async function valeursDesCadresDataDome(expression) {
+      const valeurs = [];
       const { frameTree } = await cdp.send('Page.getFrameTree', {}, cible.sessionId).catch(() => ({}));
       const ids = [];
       const parcourir = (n) => { if (!n) return; if (/(^|\.)captcha-delivery\.com$/i.test(hoteDe(n.frame?.url))) ids.push(n.frame.id); for (const c of n.childFrames ?? []) parcourir(c); };
       parcourir(frameTree);
-      const lireTexte = "String((document.body && document.body.innerText) || '').slice(0, 2000)";
       for (const frameId of ids) {
         const w = await cdp.send('Page.createIsolatedWorld', { frameId, worldName: 'fillsell-lecture' }, cible.sessionId).catch(() => null);
         if (!w?.executionContextId) continue;
-        const r = await cdp.send('Runtime.evaluate', { expression: lireTexte, contextId: w.executionContextId, returnByValue: true }, cible.sessionId).catch(() => null);
-        texte += ` ${r?.result?.value ?? ''}`;
+        const r = await cdp.send('Runtime.evaluate', { expression, contextId: w.executionContextId, returnByValue: true }, cible.sessionId).catch(() => null);
+        if (r?.result?.value != null && r.result.value !== '') valeurs.push(r.result.value);
       }
-      if (!texte.trim()) {
+      if (!valeurs.length) {
         const t = await cdp.send('Target.getTargets').catch(() => null);
         for (const c of (t?.targetInfos ?? []).filter((x) => x.type === 'iframe' && /(^|\.)captcha-delivery\.com$/i.test(hoteDe(x.url)))) {
           const sid = await cdp.send('Target.attachToTarget', { targetId: c.targetId, flatten: true }).then((x) => x.sessionId).catch(() => null);
           if (!sid) continue;
-          const r = await cdp.send('Runtime.evaluate', { expression: lireTexte, returnByValue: true }, sid).catch(() => null);
-          texte += ` ${r?.result?.value ?? ''}`;
+          const r = await cdp.send('Runtime.evaluate', { expression, returnByValue: true }, sid).catch(() => null);
+          if (r?.result?.value != null && r.result.value !== '') valeurs.push(r.result.value);
           await cdp.send('Target.detachFromTarget', { sessionId: sid }).catch(() => {});
         }
       }
-      return texte;
+      return valeurs;
     }
 
     async function conclure(issue, v = {}) {
@@ -667,6 +844,27 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         return;
       }
       dernierGeste = Date.now();
+      if (m.t === 'toucher' && bureau) {
+        // (04/11) Beebs : le doigt devient la souris d'un bureau (clic, glisser bouton enfoncé, molette), rapporté à la
+        // page entière ou à la zone du zoom. Aucun événement de toucher n'atteint la page.
+        if (!['debut', 'deplacer', 'fin'].includes(m.type)) return;
+        const p = versPage({ x: borne(m.x, 0, dims.largeur), y: borne(m.y, 0, dims.hauteur) }, vueDesGestes());
+        for (const ev of souris(m.type, p)) await cdp.send('Input.dispatchMouseEvent', ev, s);
+        if (m.type === 'fin') {
+          enregistrement?.noter({ evenement: 'geste', zoom: Boolean(zoom) });
+          setTimeout(async () => {
+            const r = await cdp.send('Runtime.evaluate', { expression: ACTIF_EDITABLE, returnByValue: true }, s).catch(() => null);
+            dire({ t: 'clavier', ouvert: r?.result?.value === true });
+          }, 350);
+        }
+        return;
+      }
+      if (m.t === 'molette' && bureau) {
+        const vue = vueDesGestes();
+        const p = versPage({ x: borne(m.x, 0, dims.largeur), y: borne(m.y, 0, dims.hauteur) }, vue);
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(p.x), y: Math.round(p.y), deltaX: 0, deltaY: Math.round(borne(m.dy, -2000, 2000) / vue.k), pointerType: 'mouse' }, s);
+        return;
+      }
       if (m.t === 'toucher') {
         const x = borne(m.x, 0, dims.largeur), y = borne(m.y, 0, dims.hauteur);
         const type = { debut: 'touchStart', deplacer: 'touchMove', fin: 'touchEnd' }[m.type];
@@ -729,7 +927,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
 
     /** (01/11) Le même « Me connecter » rouvert pendant l'attente (ou pendant qu'il tourne : un autre écran) : il reprend. */
     const reprenable = (p, md = 'connexion') => !finie && p === plateforme && (md === 'resoudre') === resoudre && Boolean(cible);
-    async function reprendre({ ws: w, envoyer: e, lang: l, largeur: lg, hauteur: ht, dpr: d }) {
+    async function reprendre({ ws: w, envoyer: e, lang: l, largeur: lg, hauteur: ht, dpr: d, zoom: zoomApp = false }) {
       clearTimeout(attenteRetour); attenteRetour = null;
       const ancien = canal?.ws;
       canal = { ws: w, envoyer: e };
@@ -739,8 +937,12 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       enVol = 0; enAttente = null;
       const changees = lg !== dims.largeur || ht !== dims.hauteur || d !== dims.dpr;
       dims = { largeur: lg, hauteur: ht, dpr: d };
+      // (04/11) La zone du zoom dépend du canvas, et l'app reprise ne sait peut-être pas zoomer : recalculée au relevé suivant.
+      zoomClient = zoomApp === true;
+      if (zoom && (changees || !zoomClient)) zoom = null;
       if (changees) for (const c of [cible, ...fenetres].filter(Boolean)) await appliquerFormat(c).catch(() => {});
       await diffuser(active ?? cible).catch(() => {});
+      if (zoom) direZoom();
       journal.info('connexion_reprise', { user, plateforme, connectee });
       dire({ t: 'etat', etape: 'pret', message: txt.reprise });
       if (banniereCookies) dire({ t: 'cookies', present: true });
@@ -754,6 +956,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       finie = true;
       clearInterval(sonde);
       clearTimeout(attenteRetour);
+      zoom = null;
+      try { enregistrement?.fermer(raison); } catch { /* l'enregistrement ne retient jamais la fermeture */ }
       if (actives.get(user) === vue) actives.delete(user);
       arreterEcoute?.();
       const h = navigateurs.ouvert(user);

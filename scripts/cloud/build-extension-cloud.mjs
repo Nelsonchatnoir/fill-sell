@@ -20,7 +20,9 @@
 //   · BUILD_ID « …-cloud » : handler_build dit qui a traité quoi ;
 //   · (30/10, règle de Nico) la sonde de session ne visite JAMAIS une plateforme dont le cookie de connexion est
 //     absent de ce navigateur (même règle que estConnectee, serveur-cloud/src/plateformes.js) : sur un profil neuf,
-//     chaque sonde était un 403 DataDome sur l'IP du compte, toutes les heures.
+//     chaque sonde était un 403 DataDome sur l'IP du compte, toutes les heures ;
+//   · (04/11) les lectures de FOND de Beebs espacées et irrégulières (RYTHME_BEEBS_CLOUD), aucune attente de la personne
+//     changée.
 import { execFileSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -193,6 +195,64 @@ async function fermerOngletsTravailInactifsCloud(maintenant = Date.now()) {
   return faits;
 }`;
 
+// (04/11, mesure Beebs — décision de Nico : « aucun changement pour l'utilisateur, seules les lectures de fond espacées et
+// irrégulières, comme un humain ») LE RYTHME DES LECTURES DE FOND BEEBS DU CLOUD. Mesuré dans l'historique du navigateur
+// Cloud de Nico avant les deux glissières (03/11 01:25, 04/11 02:45) : la messagerie relue toutes les 12 min PILE (son
+// tirage de 10 min + 0 à 90 s retombe toujours sur le même tour de 2 min du poll : 26 rechargements de l'accueil de 18:55
+// à 23:55), le relevé quotidien qui enchaîne 13 pages en 65 s (une fiche toutes les ~4 s), les fiches de la détection de
+// vente relues par rafales (jusqu'à 8 en 30 s). Copie Cloud seulement, Beebs seulement ; le parc ne change pas :
+//   · messagerie et commandes Beebs : écart tiré entre 7 et 15 min → 8 à 16 min sur la grille du poll, MOYENNE 12 min
+//     comme avant (choix de Nico, 04/11 : « 8-16 min, même moyenne ») ;
+//   · sonde de session Beebs : 45 à 75 min (tirée de la sonde précédente, stable d'un tour à l'autre), moyenne 60 comme avant ;
+//   · relevé quotidien (l'alarme de 24 h SEULEMENT — un relevé que la personne lance n'est pas touché) : 6 à 15 s entre deux
+//     pages Beebs ;
+//   · détection de vente : au plus une fiche Beebs par tranche de deux dues, par tour de poll (au moins une) — en régime
+//     établi (≤ 1 due par tour) rien ne change ; une relecture prioritaire (commande neuve) passe toujours en tête, sans limite.
+export const RYTHME_BEEBS_CLOUD = Object.freeze({
+  messagerieMinMs: 7 * 60_000, messagerieMaxMs: 15 * 60_000,
+  sondeMinMs: 45 * 60_000, sondeEcartMs: 30 * 60_000,
+  releveEcartMinMs: 6_000, releveEcartMaxMs: 15_000,
+  fichesParTranche: 2,
+});
+export const SOURCE_RYTHME_BEEBS_CLOUD = `const RYTHME_BEEBS_CLOUD = ${JSON.stringify(RYTHME_BEEBS_CLOUD)};
+function prochainMessagerieBeebsCloud(alea = Math.random()) {
+  return RYTHME_BEEBS_CLOUD.messagerieMinMs + Math.round(alea * (RYTHME_BEEBS_CLOUD.messagerieMaxMs - RYTHME_BEEBS_CLOUD.messagerieMinMs));
+}
+function intervalleSondeCloud(pf, derniere) {
+  if (pf !== "beebs") return intervalleSonde(pf);
+  const graine = Math.floor(Number(derniere) || 0) % 1801;
+  return RYTHME_BEEBS_CLOUD.sondeMinMs + Math.round((graine / 1800) * RYTHME_BEEBS_CLOUD.sondeEcartMs);
+}
+function fichesBeebsParTourCloud(prioritaires) {
+  let max = null, pris = 0;
+  return (j, _i, liste) => {
+    if (j?.platform !== "beebs" || prioritaires?.has?.(j.id)) return true;
+    if (max === null) {
+      const dues = liste.filter((x) => x?.platform === "beebs" && !prioritaires?.has?.(x.id)).length;
+      max = Math.max(1, Math.ceil(dues / RYTHME_BEEBS_CLOUD.fichesParTranche));
+    }
+    return pris++ < max;
+  };
+}
+const releveFondCloud = { actif: false, derniereBeebs: 0 };
+async function releverQuotidienCloud(...args) {
+  releveFondCloud.actif = true;
+  try { return await releverQuotidien(...args); } finally { releveFondCloud.actif = false; }
+}
+async function attendreRythmeBeebsCloud(url) {
+  if (!releveFondCloud.actif || plateformeVerrouCloud(url) !== "beebs") return 0;
+  const ecart = RYTHME_BEEBS_CLOUD.releveEcartMinMs + Math.round(Math.random() * (RYTHME_BEEBS_CLOUD.releveEcartMaxMs - RYTHME_BEEBS_CLOUD.releveEcartMinMs));
+  const reste = releveFondCloud.derniereBeebs + ecart - Date.now();
+  if (reste > 0) await new Promise((ok) => setTimeout(ok, reste));
+  releveFondCloud.derniereBeebs = Date.now();
+  return Math.max(0, reste);
+}
+for (const [objet, nom, adresse] of [[chrome.tabs, "update", (a) => (typeof a[0] === "object" && a[0] ? a[0] : a[1])?.url], [chrome.tabs, "create", (a) => a[0]?.url]]) {
+  const origine = objet?.[nom];
+  if (typeof origine !== "function") continue;
+  objet[nom] = async function (...args) { const u = adresse(args); if (u) await attendreRythmeBeebsCloud(u); return origine.apply(this, args); };
+}`;
+
 /** Les patchs de background.js (pur : testé par scripts/cloud-extension-selftest.mjs). */
 export function patcherBackground(bg) {
   const appliques = [];
@@ -209,7 +269,20 @@ export function patcherBackground(bg) {
     + `const CLOUD_PLATEFORMES = ${L(PLATEFORMES)};\n`
     + `${SOURCE_CONNEXION_CLOUD}\n`
     + `${SOURCE_VERROU_CLOUD}\n`
-    + `${SOURCE_FERMETURE_CLOUD}`);
+    + `${SOURCE_FERMETURE_CLOUD}\n`
+    + `${SOURCE_RYTHME_BEEBS_CLOUD}`);
+  patch('rythme Beebs : messagerie et commandes, 8 à 16 min, moyenne 12 (04/11)',
+    '    e.prochain = maintenant + M.CADENCE_MS + Math.round(Math.random() * M.ALEA_MS);',
+    '    e.prochain = maintenant + (platform === "beebs" ? prochainMessagerieBeebsCloud() : M.CADENCE_MS + Math.round(Math.random() * M.ALEA_MS));');
+  patch('rythme Beebs : sonde de session, 45 à 75 min (04/11)',
+    '    : plateformes.filter((pf) => maintenant - (Number(horodatages[pf]) || 0) >= intervalleSonde(pf));',
+    '    : plateformes.filter((pf) => maintenant - (Number(horodatages[pf]) || 0) >= intervalleSondeCloud(pf, horodatages[pf]));');
+  patch('rythme Beebs : détection de vente, fiches étalées sur les tours (04/11)',
+    '    .slice(0, SALE_CHECK_MAX_PER_CYCLE);',
+    '    .filter(fichesBeebsParTourCloud(idsPrio))\n    .slice(0, SALE_CHECK_MAX_PER_CYCLE);');
+  patch('rythme Beebs : relevé quotidien de fond, 6 à 15 s entre deux pages (04/11)',
+    '    withJobFlowLock("releve-annonces-cron", releverQuotidien).catch((e) =>',
+    '    withJobFlowLock("releve-annonces-cron", releverQuotidienCloud).catch((e) =>');
   patch('onglets de travail sans tâche fermés : usage noté (getOrCreateWorkTab) (02/11)',
     'async function getOrCreateWorkTab(platform, url) {',
     'async function getOrCreateWorkTab(platform, url) {\n  return noterUsageOngletCloud(await getOrCreateWorkTabCloudBrut(platform, url));\n}\nasync function getOrCreateWorkTabCloudBrut(platform, url) {');

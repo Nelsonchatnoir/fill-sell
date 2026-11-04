@@ -41,7 +41,7 @@
     "selftest:cloud-pool": "node scripts/cloud-pool-selftest.mjs",
     "selftest:cloud-rappel-veille": "node scripts/cloud-rappel-veille-selftest.mjs",
     "selftest:cloud-extension": "node scripts/cloud-extension-selftest.mjs",
-    "selftest:cloud-orchestrateur": "node --test serveur-cloud/tests/orchestrateur.test.mjs serveur-cloud/tests/simulation.test.mjs serveur-cloud/tests/endurance.test.mjs serveur-cloud/tests/verifications.test.mjs serveur-cloud/tests/memoire.test.mjs serveur-cloud/tests/flotte.test.mjs serveur-cloud/tests/ip.test.mjs serveur-cloud/tests/fournisseur-ip.test.mjs serveur-cloud/tests/verrou.test.mjs",
+    "selftest:cloud-orchestrateur": "node --test serveur-cloud/tests/orchestrateur.test.mjs serveur-cloud/tests/simulation.test.mjs serveur-cloud/tests/endurance.test.mjs serveur-cloud/tests/verifications.test.mjs serveur-cloud/tests/memoire.test.mjs serveur-cloud/tests/flotte.test.mjs serveur-cloud/tests/ip.test.mjs serveur-cloud/tests/fournisseur-ip.test.mjs serveur-cloud/tests/verrou.test.mjs serveur-cloud/tests/vue-bureau.test.mjs",
     "selftest:cloud-achat": "node scripts/cloud-achat-selftest.mjs",
     "selftest:cloud-textes-legaux": "node scripts/cloud-textes-legaux-selftest.mjs",
     "selftest:ventes-supprimees": "node scripts/ventes-supprimees-selftest.mjs",

@@ -57,6 +57,16 @@ export function messageSaisie(inputType, data, coller = '') {
   return { annuler: true, message: null };   // mise en forme, annuler/rétablir… : rien (le champ ne change pas)
 }
 
+/**
+ * (04/11, Beebs) La zone de l'image à dessiner pour le zoom sur la glissière (pure) : le serveur dit la zone et la taille
+ * de la page ({ t:'zoom', zone, page }) ; l'image reçue peut être à une autre échelle. null = l'image entière.
+ */
+export function sourceZoom(zone, page, img) {
+  if (!zone || !(page?.l > 0) || !(page?.h > 0) || !(img?.width > 0) || !(img?.height > 0)) return null;
+  const fx = img.width / page.l, fy = img.height / page.h;
+  return { sx: zone.x * fx, sy: zone.y * fy, sl: zone.l * fx, sh: zone.h * fy };
+}
+
 export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, conteneur, lang = 'fr', surEtat = () => {}, mode = null }) {
   const doc = conteneur.ownerDocument;
   const largeur = Math.max(280, Math.min(540, Math.round(conteneur.clientWidth)));
@@ -90,25 +100,36 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
   let ferme = false;
   const envoyer = (o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 
-  ws.addEventListener('open', () => envoyer({ t: 'ouvrir', jeton, ticket, plateforme, largeur, hauteur, dpr, lang, ...(mode === 'resoudre' ? { mode } : {}) }));
+  // (04/11, Beebs) `zoom: true` : cette app sait n'afficher que la zone de la glissière (le serveur ne zoome que pour elle).
+  ws.addEventListener('open', () => envoyer({ t: 'ouvrir', jeton, ticket, plateforme, largeur, hauteur, dpr, lang, zoom: true, ...(mode === 'resoudre' ? { mode } : {}) }));
+  // La dernière image est gardée : un changement de zoom la redessine aussitôt (une page immobile n'en envoie pas d'autre).
+  let derniere = null, zoom = null;
+  const dessiner = () => {
+    if (!derniere) return;
+    const z = sourceZoom(zoom?.zone, zoom?.page, derniere);
+    if (z) ctx.drawImage(derniere, z.sx, z.sy, z.sl, z.sh, 0, 0, toile.width, toile.height);
+    else ctx.drawImage(derniere, 0, 0, toile.width, toile.height);
+  };
   ws.addEventListener('message', async (ev) => {
     if (typeof ev.data === 'string') {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
       if (m.t === 'etat') surEtat(m.etape, m.message ?? '');
       else if (m.t === 'clavier') surEtat('clavier', m.ouvert === true);
       else if (m.t === 'cookies') surEtat('cookies', m.present === true);
+      else if (m.t === 'zoom') { zoom = m.zone ? { zone: m.zone, page: m.page } : null; dessiner(); }
       return;
     }
     // Une image : 4 octets de numéro, puis le JPEG. L'accusé de réception règle le débit.
     const blob = new Blob([new Uint8Array(ev.data, 4)], { type: 'image/jpeg' });
     try {
       const img = await createImageBitmap(blob);
-      ctx.drawImage(img, 0, 0, toile.width, toile.height);
-      img.close?.();
+      derniere?.close?.();
+      derniere = img;
+      dessiner();
     } catch { /* image abîmée : la suivante viendra */ }
     envoyer({ t: 'ack' });
   });
-  ws.addEventListener('close', () => { if (!ferme) { ferme = true; surEtat('ferme', ''); } });
+  ws.addEventListener('close', () => { derniere?.close?.(); derniere = null; if (!ferme) { ferme = true; surEtat('ferme', ''); } });
 
   // ── Les doigts → des gestes (un seul doigt ; deux doigts = rien : jamais de zoom)
   const point = (t) => { const r = toile.getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; };
