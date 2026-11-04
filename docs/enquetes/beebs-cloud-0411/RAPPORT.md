@@ -122,3 +122,15 @@ Historique du navigateur Cloud (`History`) et `vinted_sync_runs` :
   à relire (page Hetzner : dès 46,41 €/mois + 46,41 € d'installation TTC ; frais d'installation relevés depuis selon un
   forum). Accès à la puce (`/dev/dri`) non confirmé par les sources : à vérifier avant commande. Capacité : 31 navigateurs
   par la mémoire, ~15-25 en pratique (puce partagée) → ~2 à 3 € par client et par mois, contre 2,83 € sur le cx43.
+
+## 11. Déploiement des points 2-3 et préparation de l'essai (04/11, 15:07 → 15:16)
+- Suite complète par lots (le passage d'un bloc avait été arrêté par manque de mémoire du PC) : 545 selftests, 3 rouges
+  (offres-trois-jauges, reglages-jauges, cout-publication — travail non commité d'un autre terminal ; aucun fichier du lot).
+- Déployé **cce5eba** à 15:07 ; `.env` : EMPREINTE_AUTORISEE **091d90b32056e8dd** (avant : `archives/0411-beebs/env-avant-pdf`).
+  Navigateur rouvert, empreinte « autorisée » ; une page voit 5 plugins PDF, 2 types MIME, `pdfViewerEnabled` vrai ;
+  entretien 15:08 : aucune visite (Beebs coupé), aucune purge. Vinted relu 15:10:36, Depop 15:12:36, sans erreur.
+- IP de l'essai : IPRoyal **87495735**, 4 $ (accord pour cet essai), id **41**, `88.151.56.82`, contrôle d'entrée passé (FR,
+  0 liste, aucune plateforme). Bascule 15:15 par `scripts/reparations/20261104_cloud_ip_essai_beebs_nico.sql` (sauvegarde
+  `_backup_0411_cloud_ip_essai`, jamais `cloud_ip_liberer`) : 41 au compte, 39 disponible sans réservation (une seule IP
+  réservée par compte : la 2 l'est déjà ; offre fermée, visites Beebs coupées). Navigateur rouvert 15:16 sur 88.151.56.82,
+  même profil, empreinte identique, aucune purge. Retour sur la 39 après l'essai : `…_INVERSE.sql`.

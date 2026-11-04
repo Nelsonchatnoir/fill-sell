@@ -9,8 +9,11 @@ Détail : `docs/enquetes/beebs-cloud-0411/RAPPORT.md` § 8 à 10.
 - Points 2-3 (codés, banc) : la purge de l'entretien ne touche JAMAIS un compte actif ; `effacer-plateforme` garde
   `datadome` ; lecteur PDF intégré réactivé (`REGLAGES_PDF`, empreinte → **091d90b32056e8dd**, EMPREINTE_AUTORISEE) ;
   enregistrement complet (cookies envoyés/reçus, réponses DataDome masquées, chaque mouvement).
-- L'essai unique : IP neuve par le pool, bascule par `scripts/reparations/20261104_cloud_ip_essai_beebs_nico.sql`
-  (jamais `cloud_ip_liberer` ; l'IP 39 reste réservée à Nico ; inverse pour revenir dessus après l'essai).
+- ÉTAT 15:16 : orchestrateur **cce5eba**, copie Cloud inchangée (0.6.169-cloud +d426d23.p8f33110), empreinte
+  **091d90b32056e8dd** (EMPREINTE_AUTORISEE). Compte de Nico sur l'**IP 41** (88.151.56.82, IPRoyal 87495735, jamais vue par
+  Beebs) pour l'essai unique ; 39 disponible (retour après l'essai : `20261104_cloud_ip_essai_beebs_nico_INVERSE.sql`, avec
+  41) ; 40 disponible (refus Beebs non noté). Les scripts de réparation du jour restent sur le poste (ajout refusé par le
+  garde-fou de la session).
 
 ## ⛔ 04/11/2026 — BEEBS : CE QUI DÉCLENCHE LE BLOCAGE, CADENCE DE FOND, VUE BUREAU (à lire EN PREMIER)
 Détail : `docs/enquetes/beebs-cloud-0411/RAPPORT.md`.
