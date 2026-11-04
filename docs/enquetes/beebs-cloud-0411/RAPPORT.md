@@ -147,7 +147,7 @@ Historique du navigateur Cloud (`History`) et `vinted_sync_runs` :
 - **Retour sur l'IP 39** : `…_ip_essai_beebs_nico_INVERSE.sql` (41 → disponible, refus NON noté ; 39 → compte), navigateur
   fermé 15:48:07 (`ip_remplacee`), rouvert 15:49:10 ; écho 15:53 : sortie 176.103.182.215, empreinte 091d90b32056e8dd,
   même profil, aucune purge. Vinted relu 15:56:31, Depop 16:00:31, sans erreur. Leboncoin : 403 de 11:01:21 (glissière) toujours en attente
-  de « Résoudre ».
+  de « Résoudre » (FAUX, corrigé au § 13 : rien à résoudre, messagerie en pause jusqu'à 17:01).
 - **Différences mesurées avec le PC de Nico** (Cloud : écho 15:53 et conteneur ; PC : Windows lu à 16:00, WebGL du 30/10) :
   | | Cloud | PC de Nico |
   |---|---|---|
@@ -163,3 +163,29 @@ Historique du navigateur Cloud (`History`) et `vinted_sync_runs` :
   0,0945 € HT/h, mise en service 0,00 €**, FSN1/HEL1, Windows dans la liste des systèmes (licence non chiffrée sur la page) ;
   accès à la puce (`/dev/dri`) NON confirmé sans la machine. Scaleway **L4-1-24G 0,013125 € HT/min (0,79 €/h)**, Paris,
   catalogue public ; aucune offre à carte sous Windows (Windows : POP2 seulement) ; les RTX 3070 sont retirées.
+
+## 13. Leboncoin relu sur le Cloud, contrôle de la puce Intel, Windows sur l'EX44 (04/11, 16:15 → 16:45)
+- **Leboncoin (correction du § 12)** : il n'attend AUCUN « Résoudre ». `etat/endurance/blocages.json` : glissière de 11:02
+  close à 14:11 (`resolue_par: resoudre`) ; glissière de 14:45 dans l'onglet de travail (sonde du compte), contre-visite de
+  14:48 : **passe**, close. `platform_settings.<pf>.cloud_verification` vide pour les quatre plateformes (rien à résoudre dans
+  l'app). Ce qui arrête sa messagerie : la pause automatique de l'extension après le 403 de 11:01:21
+  (`messagerie_releves.pause_jusqu_au` = **17:01:21**, 6 h, `bloquerMessagerie`) ; elle repart seule ensuite.
+- **EX44 non commandable par l'API Robot** (33 produits standard relus, comme le 30/10). Choix de Nico : l'enchère
+  **3106687** (i5-12500, Intel UHD 770 selon la fiche Intel, ASUS, 64 Go, FSN1-DC2), 0,1651 € HT/h + IPv4 0,0027 € HT/h,
+  sans mise en service ; commande d'essai (`test=true`) puis commande 16:27:55 (B20261104-3542083-3113266), livrée 16:33,
+  **résiliée 16:39** (`cancellation_date=now`, plus aucun serveur au compte). Coût : une heure entamée au plus, ≈ 0,17 € HT.
+- **Mesures (aucun site visité ; sortie réseau coupée par iptables et vérifiée avant Chrome ; profil jetable, proxy mort)** :
+  système de secours : i915 chargé (« alderlake_s », 4690), `/dev/dri/card0` et `renderD128` présents, trois sorties
+  « disconnected » ; installimage met désormais `USE_KERNEL_MODE_SETTING=1` par défaut (pas de `nomodeset`). Ubuntu 24.04
+  (noyau 6.8), sortie forcée `video=HDMI-A-1:1920x1080@60e` → HDMI-A-1 « connected », Xorg 1920×1080 ; `glxinfo` « Mesa
+  Intel(R) UHD Graphics 770 (ADL-S GT1) », accéléré. **Google Chrome 157.0.8103.38 officiel** : WebGL « ANGLE (Intel, Mesa
+  Intel(R) UHD Graphics 770 (ADL-S GT1), OpenGL 4.6) », WebGL 2, Mesa 25.2.8 ; `SystemInfo` : 2d_canvas, gpu_compositing,
+  rasterization, webgl, webgpu, video_decode **enabled** ; 5 plugins, 12 cœurs, `webdriver` faux.
+- **Windows sur l'EX44 (rien commandé)** : Windows Server 2025 Standard **49,00 € HT/mois pour 14 cœurs** (i5-13500), facturé
+  au mois civil complet, commandable seulement dans Robot ; Windows figure dans la liste des systèmes de la page EX44, non
+  vérifié à la commande. **Intel ne prend en charge la puce UHD 770 que sous Windows 10/11 64 bits et Linux** (article Intel
+  000005526) : aucun Windows Server ; sans pilote Intel, Windows retombe sur son pilote de base et Chrome sur le rendu
+  logiciel.
+- **Capacité** (mesurée sur le Cloud, 03-04/11, 242 relevés, un navigateur) : 1,2 Go en moyenne, 2,1 Go au 95e centile,
+  2,9 Go au plus ; processeur presque au repos. EX44 (64 Go, 14 cœurs / 20 fils) : ≈ 25 navigateurs par la mémoire, Linux ou
+  Windows ; partage de la puce non mesuré.
