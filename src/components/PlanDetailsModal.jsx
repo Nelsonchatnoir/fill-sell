@@ -21,9 +21,13 @@ import { useEffect, useState } from 'react';
 import { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 // (import PepiteIcon retiré au nettoyage unités du 02/09 soir — plus une
 // unité dans cette modale.)
-import { COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard } from './ConversionModal';
+import { COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard, CorpsCarteGrille, BlocCoches } from './ConversionModal';
 import { businessOfferVisible } from '../config/businessOffer';
 import { palierDesDrapeaux } from '../utils/palier';
+// (04/11) Grille à 3 jauges, derrière coin_config.grille_trois_jauges : la carte du plan reprend les tuiles et
+// les lignes de la carte des offres (CorpsCarteGrille, une seule source), sans aucun prix (règle Founder), puis
+// « Aussi dans ton plan ». À 0 (ou config de repli), la modale d'avant, au balisage près.
+import { grilleActiveConfig } from '../utils/jauges';
 
 const C = {
   canvas: '#EDEAE0',
@@ -92,6 +96,7 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
   }, [onClose]);
 
   const K = cfg || COIN_CONFIG_FALLBACK;
+  const grille = grilleActiveConfig(K);
   // Bascule quotas (02/09) : le plan se décrit en GESTES RÉELS lus dans
   // coin_config — plus une unité à l'écran. Le palier courant pilote les clés.
   // Le palier : le calcul unique (utils/palier.js). Cette modale ne s'ouvre
@@ -189,9 +194,21 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
             padding: '18px 18px 20px', boxShadow: '0 12px 30px -16px rgba(27,110,98,0.4)',
           }}>
             {/* (Le bandeau « N unités/mois » et ses équivalences sont MORTS
-                le 02/09 avec la bascule quotas — la liste dit les volumes.) */}
-            <Features dark={sombre} items={features} />
+                le 02/09 avec la bascule quotas — la liste dit les volumes.)
+                (04/11) Grille : mêmes tuiles et mêmes lignes que la carte des offres, aucun prix. */}
+            {grille
+              ? <CorpsCarteGrille fr={fr} palier={palierCourant} K={K} dark={sombre} margeBas={0} />
+              : <Features dark={sombre} items={features} />}
           </div>
+
+          {/* (04/11) Grille : ce que la liste d'avant disait en plus, sous la carte (maquette 2.4). */}
+          {grille && (
+            <BlocCoches
+              titre={fr ? 'Aussi dans ton plan' : 'Also in your plan'}
+              items={fr ? ['Import et export Excel de ton stock', 'Commandes vocales'] : ['Excel import and export of your stock', 'Voice commands']}
+              style={{ marginTop: 12, marginBottom: 0 }}
+            />
+          )}
 
           {/* Upsell Business (2026-08-09) — pour un Pro non-Business, et
               seulement si l'offre est ouverte (Apple doit avoir approuvé). */}

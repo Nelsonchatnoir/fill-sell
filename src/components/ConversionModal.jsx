@@ -18,6 +18,9 @@ import { textesCloud } from '../cloud/textes';
 // à retirer à la sortie du Cloud (interrupteur ENCART_CLOUD_BIENTOT).
 import EncartCloudBientot from '../cloud/EncartCloudBientot';
 import { jourRemise } from '../utils/jourRemise';
+// (04/11) La grille à 3 jauges (annonces · publications · remontées) — règle d'affichage unique, derrière
+// l'interrupteur coin_config.grille_trois_jauges. À 0 (ou config illisible), rien de ce qui suit ne se rend.
+import { JAUGES, grilleActiveConfig, grilleDuPalier, nombre, motJauge, palierQuiDebloque } from '../utils/jauges';
 import { lireDernierGeste, canalDeLApp } from '../utils/dernierGeste';
 import { Capacitor } from '@capacitor/core';
 
@@ -175,7 +178,10 @@ function Title({ children }) {
 // ligne, ici, lue dans coin_config comme tout le reste (jamais en dur).
 // Exporté pour un éventuel réemploi (PlanDetailsModal) — même source unique
 // que les cartes.
-export function ToutesOffresBlock({ fr }) {
+export function ToutesOffresBlock({ fr, grille = false }) {
+  // (04/11) Grille à 3 jauges : la liste des maquettes (Depop comprise) et la légende « Comment on compte ».
+  // Sans la grille, le bloc d'avant, au balisage près.
+  if (grille) return <ToutesOffresGrille fr={fr} />;
   // Bascule quotas (02/09 soir) : la ligne de tarif en unités est MORTE, et
   // le bloc dit ce que TOUS les forfaits font (liste de la décision Nico) —
   // import du dressing, 4 plateformes, voix, retrait auto après vente.
@@ -201,6 +207,58 @@ export function ToutesOffresBlock({ fr }) {
         ))}
       </div>
     </div>
+  );
+}
+
+// (04/11) Un bloc « liste à coches » au style de « Dans tous les forfaits » : la grille l'emploie pour ce bloc
+// et PlanDetailsModal pour « Aussi dans ton plan » (une seule source de style). `children` = ce qui suit la liste.
+export function BlocCoches({ titre, items, style = null, children = null }) {
+  return (
+    <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 12, ...style }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.faint, marginBottom: 8 }}>
+        {titre}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px' }}>
+        {items.map((t, i) => (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: C.mute2 }}>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={C.tealDeep} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            {t}
+          </span>
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// (04/11) « Dans tous les forfaits » de la grille (maquette 2.1) : Depop nommée avec les autres, puis la légende
+// « Comment on compte » — elle répond à la question avant qu'elle se pose ; « l'import ne compte jamais » rassure
+// celui qui a 300 annonces.
+function ToutesOffresGrille({ fr }) {
+  const items = fr
+    ? ['Import de tout ton stock, depuis toutes tes plateformes', 'Vinted, Leboncoin, eBay, Beebs et Depop', 'Retrait automatique partout après une vente', 'Commandes vocales']
+    : ['Import your whole stock, from all your platforms', 'Vinted, Leboncoin, eBay, Beebs and Depop', 'Automatic removal everywhere after a sale', 'Voice commands'];
+  const compte = fr
+    ? [['1 annonce', "une rédaction par l'IA ou un scan Lens"], ['1 publication', 'une mise en ligne sur une plateforme'], ['1 remontée', 'une republication sur une plateforme']]
+    : [['1 listing', 'one AI write-up or one Lens scan'], ['1 publication', 'one listing put online on one platform'], ['1 bump', 'one repost on one platform']];
+  return (
+    <BlocCoches titre={fr ? 'Dans tous les forfaits' : 'In every plan'} items={items}>
+      <div data-comment-on-compte="" style={{ borderTop: `1px solid ${C.border}`, marginTop: 11, paddingTop: 10 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.faint, marginBottom: 6 }}>
+          {fr ? 'Comment on compte' : 'How we count'}
+        </div>
+        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {compte.map(([quoi, def]) => (
+            <li key={quoi} style={{ fontSize: 11.5, fontWeight: 600, color: C.mute2 }}>
+              <b style={{ color: C.ink }}>{quoi}</b>{fr ? ' : ' : ': '}{def}
+            </li>
+          ))}
+        </ul>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: C.tealDeep, marginTop: 5 }}>
+          {fr ? "L'import, la synchro et les retraits ne comptent jamais." : 'Imports, syncs and removals never count.'}
+        </div>
+      </div>
+    </BlocCoches>
   );
 }
 
@@ -284,6 +342,13 @@ function lignesDiff(fr, palier, K) {
 }
 
 function LignesDiff({ fr, palier, dark, K = COIN_CONFIG_FALLBACK }) {
+  return <LignesRendu lignes={lignesDiff(fr, palier, K)} dark={dark} />;
+}
+
+// Le RENDU d'une liste de lignes coche/croix — commun à LignesDiff (sans la grille, balisage inchangé) et aux
+// cartes de la grille (04/11). `l.bientot` (grille seulement) : une petite mention collée au texte
+// (« Leboncoin, eBay : bientôt »).
+function LignesRendu({ lignes, dark, margeBas = 18 }) {
   const okBg   = dark ? 'rgba(232,149,109,0.22)' : 'rgba(47,158,144,0.15)';
   const okInk  = dark ? '#F2C98A' : C.tealDeep;
   const koBg   = dark ? 'rgba(246,245,241,0.10)' : 'rgba(163,157,142,0.14)';
@@ -291,8 +356,8 @@ function LignesDiff({ fr, palier, dark, K = COIN_CONFIG_FALLBACK }) {
   const okTxt  = dark ? C.paper : C.ink;
   const koTxt  = dark ? 'rgba(246,245,241,0.55)' : C.mute;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 18 }}>
-      {lignesDiff(fr, palier, K).map((l, i) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: margeBas }}>
+      {lignes.map((l, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
           <span style={{
             flexShrink: 0, width: 17, height: 17, borderRadius: '50%', marginTop: 1,
@@ -306,10 +371,125 @@ function LignesDiff({ fr, palier, dark, K = COIN_CONFIG_FALLBACK }) {
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={koInk} strokeWidth="2.6" strokeLinecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             )}
           </span>
-          <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35, color: l.ok ? okTxt : koTxt }}>{l.texte}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35, color: l.ok ? okTxt : koTxt }}>{l.texte}{l.bientot ? (
+            <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: dark ? 'rgba(246,245,241,0.6)' : C.mute }}>{l.bientot}</span>
+          ) : null}</span>
         </div>
       ))}
     </div>
+  );
+}
+
+// ══ LA GRILLE À 3 JAUGES SUR LES CARTES (04/11/2026, maquettes validées par Nico le 03/11) ═══════════════════
+// Derrière l'interrupteur : chaque carte teste grilleActiveConfig(K) ELLE-MÊME — à 0 (ou config de repli, qui
+// ne porte pas grille_trois_jauges), elle rend la carte d'avant, au balisage près. Avec la grille :
+//   en-tête (badge + prix, inchangé) · une phrase d'accroche · 3 tuiles (annonces / publications / remontées,
+//   « illimitées » en mot) · « par mois » · les lignes coche/croix de la maquette · le bouton.
+// ⛔ Les volumes viennent de grilleDuPalier(K, palier) — jamais en dur. Le mot « plafond » reste banni des cartes,
+//    et les garde-fous par jour ne s'affichent nulle part. Les retouches IA restent une ligne de chaque carte,
+//    hors des 3 jauges. Bordereaux Vinted : Pro et Business seulement (« Leboncoin, eBay : bientôt »).
+const ACCROCHES = {
+  free:     ['Pour démarrer, sans payer.', 'To get started, for free.'],
+  premium:  ['Pour vendre plus, toi-même.', 'To sell more, yourself.'],
+  pro:      ['Pour que ça tourne tout seul.', 'So it all runs on its own.'],
+  business: ['Pour publier sans compter.', 'To publish without counting.'],
+};
+const NOMS_PALIERS = { free: 'Free', premium: 'Premium', pro: 'Pro', business: 'Business' };
+const palierCarte = (p) => (p === 'gratuit' || !NOMS_PALIERS[p] ? 'free' : p);
+
+// Les lignes coche/croix d'une carte de la grille (maquette lignesDe), dans l'ordre de la maquette, coches d'abord
+// (tri stable, comme lignesDiff).
+function lignesGrille(fr, palier, K) {
+  const lang = fr ? 'fr' : 'en';
+  const g = grilleDuPalier(K, palier);
+  const nRet = Number(g.retouches) || 0;
+  const retouche = nRet > 0
+    ? { ok: true, texte: fr ? `Retouche IA : ${nombre(nRet, lang)} ${nRet > 1 ? 'annonces retouchées' : 'annonce retouchée'} par mois`
+                            : `AI touch-up: ${nombre(nRet, lang)} ${nRet === 1 ? 'listing' : 'listings'} retouched a month` }
+    : { ok: false, texte: fr ? 'Retouche IA' : 'AI touch-up' };
+  const autoKo = { ok: false, texte: fr ? 'Republication automatique' : 'Automatic reposting' };
+  const bordereauxKo = { ok: false, texte: fr ? 'Bordereaux Vinted' : 'Vinted shipping labels' };
+  let lignes;
+  if (palier === 'business') {
+    const toutIllimite = JAUGES.every((j) => g[j] === Infinity);
+    const lens = g.lens != null ? nombre(g.lens, lang) : null;
+    const ret = nombre(nRet, lang);
+    lignes = [
+      { ok: true, texte: toutIllimite
+        ? (fr ? `Tout illimité, sauf ${lens ? `Lens (${lens} scans par mois) et ` : ''}retouches IA (${ret} par mois)`
+              : `Everything unlimited, except ${lens ? `Lens (${lens} scans a month) and ` : ''}AI touch-ups (${ret} a month)`)
+        : (fr ? `${lens ? `Lens : ${lens} scans par mois · ` : ''}retouches IA : ${ret} par mois`
+              : `${lens ? `Lens: ${lens} scans a month · ` : ''}AI touch-ups: ${ret} a month`) },
+      { ok: true, texte: fr ? 'Tout le Pro : republication automatique, bordereaux Vinted' : 'Everything in Pro: automatic reposting, Vinted shipping labels' },
+      { ok: true, texte: fr ? 'Support prioritaire : tes demandes passent en premier' : 'Priority support: your requests come first' },
+    ];
+  } else if (palier === 'pro') {
+    lignes = [
+      { ok: true, texte: fr ? 'Republication automatique : tes annonces remontent toutes seules, au créneau que tu choisis'
+                            : 'Automatic reposting: your listings bump themselves, at the time slot you choose' },
+      { ok: true, texte: fr ? 'Bordereaux Vinted inclus, prêts dès la vente' : 'Vinted shipping labels included, ready as soon as you sell',
+        bientot: fr ? 'Leboncoin, eBay : bientôt' : 'Leboncoin, eBay: coming soon' },
+      retouche,
+      { ok: true, texte: fr ? 'Support prioritaire' : 'Priority support' },
+    ];
+  } else if (palier === 'premium') {
+    lignes = [retouche, { ok: true, texte: fr ? 'Support par e-mail' : 'Email support' }, autoKo, bordereauxKo];
+  } else {
+    lignes = [autoKo, bordereauxKo, retouche];
+  }
+  return lignes.sort((a, b) => Number(b.ok) - Number(a.ok));
+}
+
+// Les 3 tuiles d'une carte (maquette jauges3) puis « par mois ».
+function TuilesGrille({ fr, palier, K, dark }) {
+  const lang = fr ? 'fr' : 'en';
+  const g = grilleDuPalier(K, palier);
+  const encreIllimite = palier === 'business' ? '#9BE8DC' : dark ? '#F2C98A' : C.tealDeep;
+  return (
+    <div data-jauges-carte={palier}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+        {JAUGES.map((cle) => {
+          const illimite = g[cle] === Infinity;
+          return (
+            <div key={cle} style={{
+              background: dark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', border: `1px solid ${dark ? 'rgba(255,255,255,0.1)' : C.border}`,
+              borderRadius: 12, padding: '8px 9px 7px', display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0,
+            }}>
+              <span style={{
+                fontSize: illimite ? 13 : 17, fontWeight: 700, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', lineHeight: 1.15,
+                paddingTop: illimite ? 3 : 0, color: illimite ? encreIllimite : dark ? C.paper : C.ink,
+              }}>
+                {illimite ? (fr ? 'illimitées' : 'unlimited') : nombre(g[cle], lang)}
+              </span>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: dark ? 'rgba(246,245,241,0.6)' : C.mute2, overflowWrap: 'anywhere' }}>
+                {motJauge(cle, 2, lang)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: dark ? 'rgba(246,245,241,0.55)' : C.mute2, textAlign: 'right', margin: '4px 2px 12px' }}>
+        {fr ? 'par mois' : 'a month'}
+      </div>
+    </div>
+  );
+}
+
+// Le CORPS d'une carte de la grille : accroche (si demandée), 3 tuiles, lignes. Exporté pour PlanDetailsModal
+// (« Ton plan ») : mêmes tuiles et mêmes lignes que la carte des offres — une seule source, plus de liste à
+// part qui dérive. Aucun prix ici (règle Founder : le prix vit dans l'en-tête des cartes d'offre seulement).
+export function CorpsCarteGrille({ fr, palier, K, dark = false, accroche = false, margeBas = 18 }) {
+  const p = palierCarte(palier);
+  return (
+    <>
+      {accroche && (
+        <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: dark ? 'rgba(246,245,241,0.72)' : C.mute2, marginBottom: 12 }}>
+          {ACCROCHES[p][fr ? 0 : 1]}
+        </div>
+      )}
+      <TuilesGrille fr={fr} palier={p} K={K} dark={dark} />
+      <LignesRendu lignes={lignesGrille(fr, p, K)} dark={dark} margeBas={margeBas} />
+    </>
   );
 }
 
@@ -321,9 +501,11 @@ function LignesDiff({ fr, palier, dark, K = COIN_CONFIG_FALLBACK }) {
 // la voie « Free + Sans ordinateur » et son prix « 0 € + 20 € ». Sinon, la
 // carte d'avant, au balisage près.
 function FreePlanCard({ fr, estMonPlan, K, cloud = null, voieCloud = null }) {
+  // (04/11) Grille à 3 jauges : accroche, tuiles et lignes de la maquette ; sinon la carte d'avant.
+  const grille = grilleActiveConfig(K);
   return (
     <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 22, padding: '20px 18px 14px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: grille ? 6 : 14 }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
           <span style={{
             fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: C.mute2,
@@ -344,7 +526,7 @@ function FreePlanCard({ fr, estMonPlan, K, cloud = null, voieCloud = null }) {
         </div>
         )}
       </div>
-      <LignesDiff fr={fr} palier="free" K={K} />
+      {grille ? <CorpsCarteGrille fr={fr} palier="free" K={K} accroche /> : <LignesDiff fr={fr} palier="free" K={K} />}
       {voieCloud}
     </div>
   );
@@ -365,12 +547,13 @@ function FreePlanCard({ fr, estMonPlan, K, cloud = null, voieCloud = null }) {
 const suffixeCloud = (fr, cloud) => (cloud ? textesCloud(fr ? 'fr' : 'en').ctaSuffixe : '');
 
 function PremiumPlanCard({ fr, K, onUpgrade, cloud = null }) {
+  const grille = grilleActiveConfig(K);
   return (
     <div style={{
       background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
       padding: '20px 18px 18px', boxShadow: '0 12px 30px -16px rgba(27,110,98,0.4)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: grille ? 6 : 14 }}>
         <PremiumBadge />
         {cloud ? <PrixAvecCloud prix={PLAN_PRICES.premium.price} cloud={cloud} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
@@ -382,7 +565,7 @@ function PremiumPlanCard({ fr, K, onUpgrade, cloud = null }) {
       {/* Les cinq lignes de gestes (bascule 02/09) — cf. lignesDiff : mêmes
           lignes, même ordre sur les QUATRE cartes ; la croix « Republication
           automatique » reste le levier visible vers Pro. */}
-      <LignesDiff fr={fr} palier="premium" K={K} />
+      {grille ? <CorpsCarteGrille fr={fr} palier="premium" K={K} accroche /> : <LignesDiff fr={fr} palier="premium" K={K} />}
       <button
         onClick={() => onUpgrade('premium')}
         style={{
@@ -405,6 +588,7 @@ function PremiumPlanCard({ fr, K, onUpgrade, cloud = null }) {
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
 // Mêmes props mortes retirées qu'au-dessus (+ proFactor / showFactor).
 export function ProPlanCard({ fr, K, onUpgrade, cloud = null }) {
+  const grille = grilleActiveConfig(K);
   return (
     <div style={{
       position: 'relative',
@@ -412,7 +596,7 @@ export function ProPlanCard({ fr, K, onUpgrade, cloud = null }) {
       border: '1.5px solid rgba(214,178,96,0.55)', borderRadius: 22,
       padding: '20px 18px 18px', boxShadow: '0 14px 34px -14px rgba(16,32,27,0.5)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: grille ? 6 : 14 }}>
         <ProBadge />
         {cloud ? <PrixAvecCloud prix={PLAN_PRICES.pro.price} cloud={cloud} sombre taille={24} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
@@ -424,7 +608,7 @@ export function ProPlanCard({ fr, K, onUpgrade, cloud = null }) {
       {/* Bascule quotas (02/09 soir) : bandeau de grant et équivalences MORTS
           — les cinq lignes de gestes portent les volumes. La phrase de
           republication automatique reste STRICTEMENT identique à Business. */}
-      <LignesDiff fr={fr} palier="pro" dark K={K} />
+      {grille ? <CorpsCarteGrille fr={fr} palier="pro" K={K} dark accroche /> : <LignesDiff fr={fr} palier="pro" dark K={K} />}
       <button
         onClick={() => onUpgrade('pro')}
         style={{
@@ -467,6 +651,7 @@ export function ProPlanCard({ fr, K, onUpgrade, cloud = null }) {
 // Exportée pour PlanDetailsModal (upsell des Pro), comme ProPlanCard.
 // Mêmes props mortes retirées qu'au-dessus.
 export function BusinessPlanCard({ fr, K, onUpgrade, cloud = null }) {
+  const grille = grilleActiveConfig(K);
   return (
     <div style={{
       position: 'relative', overflow: 'hidden',
@@ -475,7 +660,7 @@ export function BusinessPlanCard({ fr, K, onUpgrade, cloud = null }) {
       padding: '20px 18px 18px',
       boxShadow: '0 16px 40px -14px rgba(0,0,0,0.65), 0 0 30px -8px rgba(174,233,223,0.35)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: grille ? 6 : 14 }}>
         <BusinessBadge />
         {cloud ? <PrixAvecCloud prix={PLAN_PRICES.business.price} cloud={cloud} sombre taille={24} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
@@ -491,7 +676,7 @@ export function BusinessPlanCard({ fr, K, onUpgrade, cloud = null }) {
           que Pro sur les trois lignes, y compris le support (« prioritaire »,
           promesse de priorité seulement, garde-fou du 09/08 inchangé) : seul
           le volume d'unités distingue Business, et il est au-dessus. */}
-      <LignesDiff fr={fr} palier="business" dark K={K} />
+      {grille ? <CorpsCarteGrille fr={fr} palier="business" K={K} dark accroche /> : <LignesDiff fr={fr} palier="business" dark K={K} />}
       <button
         onClick={() => onUpgrade('business')}
         style={{
@@ -587,6 +772,219 @@ function Sheet({ onClose, children }) {
   );
 }
 
+// ══ LES MURS, UN PAR JAUGE (04/11/2026, maquettes 5.1 → 5.5) — grille à 3 jauges seulement ════════════════════
+// Chaque mur dit quelle jauge est pleine, quand elle revient (si le serveur l'a dit — jamais une date inventée)
+// et ce qui marche encore, PUIS propose UNE carte : le palier qui débloque, le plus proche, pas le plus cher
+// (palierQuiDebloque). Les autres formules restent à un appui (« Voir toutes les formules »). Pour TOUT palier :
+// avant le 04/11, un Premium au mur ne lisait que « Passe au volume supérieur. ».
+// ⛔ Le chiffre du titre vient du refus du serveur (quotaInfo.plafond, plafondRepub.plafond) : sans lui, la
+//    phrase ne dit AUCUN nombre (règle du 26/10 : jamais le plafond d'un autre palier prêté à un compte).
+
+// La carte d'un palier, par son nom (le mur n'en montre qu'une).
+function CarteDuPalier({ palier, ...props }) {
+  if (palier === 'premium') return <PremiumPlanCard {...props} />;
+  if (palier === 'pro') return <ProPlanCard {...props} />;
+  if (palier === 'business') return <BusinessPlanCard {...props} />;
+  return null;
+}
+
+// La pastille du palier actuel, en tête d'un mur (même gabarit que les vues des offres).
+function PastillePlan({ fr, isPremium, isPro, isBusiness }) {
+  if (!isPremium && !isPro && !isBusiness) {
+    return (
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12,
+        background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
+        padding: '5px 11px', fontSize: 11, fontWeight: 600, color: C.mute,
+      }}>
+        {fr ? 'Tu es en Free' : "You're on Free"}
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
+      background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
+      padding: '5px 10px 5px 5px',
+    }}>
+      <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} />
+      <span style={{ fontSize: 11, fontWeight: 600, color: C.mute }}>
+        {fr ? 'ton plan actuel' : 'your current plan'}
+      </span>
+    </div>
+  );
+}
+
+// « Aujourd'hui : 40 annonces · 400 publications · 1 500 remontées par mois » (maquettes 2.2 et 2.3) : ce que le
+// payant A, en une ligne, avant ce que le palier au-dessus change. Volumes de grilleDuPalier ; aucun prix.
+function ResumePalier({ fr, palier, K }) {
+  const lang = fr ? 'fr' : 'en';
+  const g = grilleDuPalier(K, palier);
+  const gras = { color: C.ink, fontWeight: 700, fontVariantNumeric: 'tabular-nums' };
+  return (
+    <div data-resume-palier={palier} style={{
+      background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: '9px 12px', marginBottom: 12,
+      fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2,
+    }}>
+      {fr ? "Aujourd'hui : " : 'Today: '}
+      {JAUGES.map((cle, i) => (
+        <span key={cle}>
+          {i > 0 ? ' · ' : null}
+          {g[cle] === Infinity
+            ? <>{motJauge(cle, 2, lang)} <b style={gras}>{fr ? 'illimitées' : 'unlimited'}</b></>
+            : <><b style={gras}>{nombre(g[cle], lang)}</b> {motJauge(cle, 2, lang)}</>}
+        </span>
+      ))}
+      {fr ? ' par mois' : ' a month'}
+    </div>
+  );
+}
+
+// Les mots d'un mur (maquettes 5.1 → 5.5). `plafond` : du serveur, ou null (alors aucun nombre).
+function textesDuMur({ fr, geste, palier, plafond, remise, publicationsRestantes, remonteesRestantes }) {
+  const lang = fr ? 'fr' : 'en';
+  const nom = NOMS_PALIERS[palier] ?? 'Free';
+  const n = plafond != null ? nombre(plafond, lang) : null;
+  const retour = remise ? (fr ? <> Elles reviennent le {remise}.</> : <> They come back on {remise}.</>) : null;
+  const pubs = publicationsRestantes != null
+    ? `${nombre(publicationsRestantes, lang)} ${motJauge('publications', publicationsRestantes, lang)}` : null;
+  if (geste === 'publications') {
+    return {
+      titre: fr ? (n ? `Tes ${n} publications du mois sont faites.` : 'Tes publications du mois sont faites.')
+                : (n ? `Your ${n} publications for this month are done.` : "This month's publications are done."),
+      fait: fr
+        ? <>Une publication, c'est une mise en ligne sur une plateforme. {n
+            ? <>Ton plan {nom} en comprend <b>{n} par mois</b> : elles sont toutes faites, rien n'a été décompté.</>
+            : <>Celles de ton plan {nom} pour ce mois sont toutes faites, rien n'a été décompté.</>}{retour}</>
+        : <>A publication is one listing put online on one platform. {n
+            ? <>Your {nom} plan includes <b>{n} a month</b>: they are all done, nothing was deducted.</>
+            : <>Your {nom} plan's publications for this month are all done, nothing was deducted.</>}{retour}</>,
+      encore: fr ? "Tes articles restent dans ton stock, rien n'est perdu." : 'Your items stay in your stock, nothing is lost.',
+      encoreSous: fr ? "L'import, la synchro et le retrait après une vente continuent, sans compter."
+                     : 'Imports, syncs and removal after a sale keep going, without counting.',
+    };
+  }
+  if (geste === 'remontees') {
+    // La définition n'est rappelée qu'au Free (maquette 5.3) : le payant connaît déjà le geste.
+    const def = palier === 'free'
+      ? (fr ? "Une remontée remet une annonce en haut d'une plateforme. " : 'A bump puts a listing back at the top of a platform. ') : null;
+    return {
+      titre: fr ? (n ? `Tes ${n} remontées du mois sont faites.` : 'Tes remontées du mois sont faites.')
+                : (n ? `Your ${n} bumps for this month are done.` : "This month's bumps are done."),
+      fait: fr
+        ? <>{def}{n
+            ? <>Ton plan {nom} en comprend <b>{n} par mois</b> : elles sont toutes faites, rien n'a été décompté.</>
+            : <>Celles de ton plan {nom} pour ce mois sont toutes faites, rien n'a été décompté.</>}{retour}</>
+        : <>{def}{n
+            ? <>Your {nom} plan includes <b>{n} a month</b>: they are all done, nothing was deducted.</>
+            : <>Your {nom} plan's bumps for this month are all done, nothing was deducted.</>}{retour}</>,
+      encore: fr ? 'Tes annonces restent en ligne et à vendre.' : 'Your listings stay online and for sale.',
+      encoreSous: pubs ? (fr ? `Tu peux toujours publier : il te reste ${pubs}.` : `You can still publish: you have ${pubs} left.`) : null,
+    };
+  }
+  if (geste === 'lens') {
+    return {
+      titre: fr ? (n ? `Tes ${n} scans Lens du mois sont faits.` : 'Tes scans Lens du mois sont faits.')
+                : (n ? `Your ${n} Lens scans for this month are done.` : "This month's Lens scans are done."),
+      fait: fr ? <>{remise ? <>Ils reviennent le {remise}. </> : null}Rien n'a été décompté.</>
+               : <>{remise ? <>They come back on {remise}. </> : null}Nothing was deducted.</>,
+      encore: fr ? 'Tout le reste continue, sans limite.' : 'Everything else keeps going, with no limit.',
+      encoreSous: fr ? "Rédaction par l'IA depuis tes photos, publications et remontées : illimitées."
+                     : 'AI write-ups from your photos, publications and bumps: unlimited.',
+    };
+  }
+  if (geste === 'auto') {
+    return {
+      titre: fr ? 'Laisse tes annonces remonter toutes seules.' : 'Let your listings rise on their own.',
+      fait: fr ? 'La republication automatique est incluse dès le Pro. Tu choisis le créneau et les jours : tes annonces remontent sans que tu y penses.'
+               : 'Automatic reposting is included from Pro. You pick the time slot and the days: your listings bump themselves without you thinking about it.',
+      encore: fr ? 'Tu peux toujours remonter tes annonces toi-même.' : 'You can still bump your listings yourself.',
+      encoreSous: remonteesRestantes != null
+        ? (fr ? `Il t'en reste ${nombre(remonteesRestantes, lang)} ce mois-ci.` : `You have ${nombre(remonteesRestantes, lang)} left this month.`) : null,
+    };
+  }
+  // annonces (un scan Lens refusé hors Business arrive ici : la jauge Annonces compte les deux)
+  return {
+    titre: fr ? (n ? `Tes ${n} annonces du mois sont créées.` : 'Tes annonces du mois sont créées.')
+              : (n ? `Your ${n} listings for this month are created.` : "This month's listings are created."),
+    fait: fr
+      ? (n ? <>Ton plan {nom} comprend <b>{n} annonces par mois</b>, rédigées par l'IA ou scannées avec Lens. Elles sont toutes utilisées, rien n'a été décompté.{retour}</>
+           : <>Les annonces de ton plan {nom} pour ce mois, rédigées par l'IA ou scannées avec Lens, sont toutes utilisées, rien n'a été décompté.{retour}</>)
+      : (n ? <>Your {nom} plan includes <b>{n} listings a month</b>, written by the AI or scanned with Lens. They are all used, nothing was deducted.{retour}</>
+           : <>Your {nom} plan's listings for this month, written by the AI or scanned with Lens, are all used, nothing was deducted.{retour}</>),
+    encore: fr ? 'Ce qui est déjà rédigé se publie toujours.' : 'What is already written can still be published.',
+    encoreSous: pubs ? (fr ? `Il te reste ${pubs} ce mois-ci.` : `You have ${pubs} left this month.`) : null,
+  };
+}
+
+// Le petit libellé au-dessus de la carte proposée (maquettes 5.x) : ce que CE palier change pour CETTE jauge.
+function rubanDuMur(geste, reco, K, fr) {
+  const lang = fr ? 'fr' : 'en';
+  const v = grilleDuPalier(K, reco)[geste === 'auto' ? 'remontees' : geste];
+  const illimite = v === Infinity;
+  const n = illimite ? null : nombre(v, lang);
+  const autoInclus = reco === 'pro' || reco === 'business';
+  if (geste === 'annonces') return illimite ? (fr ? 'Pour ne plus compter tes annonces' : 'To stop counting your listings')
+    : (fr ? `Pour créer plus d'annonces : ${n} par mois` : `To create more listings: ${n} a month`);
+  if (geste === 'publications') return illimite ? (fr ? 'Pour publier sans compter' : 'To publish without counting')
+    : (fr ? `Pour publier plus : ${n} par mois` : `To publish more: ${n} a month`);
+  if (geste === 'remontees') return illimite
+    ? (autoInclus ? (fr ? 'Remontées illimitées, et toutes seules' : 'Unlimited bumps, and on their own') : (fr ? 'Remontées illimitées' : 'Unlimited bumps'))
+    : (fr ? `Pour remonter plus : ${n} par mois` : `To bump more: ${n} a month`);
+  return illimite ? (fr ? 'Toutes seules, et illimitées' : 'On their own, and unlimited') : (fr ? 'Toutes seules' : 'On their own');
+}
+
+// Le mur (maquette mur()) : pastille · titre-fait · carte du fait · carte menthe « ce qui marche encore » ·
+// libellé + UNE carte · « Voir toutes les formules » · la sortie. Sans palier au-dessus (Lens du Business) :
+// aucune offre, un bouton « Fermer ». Les sorties passent par les mêmes fonctions que les autres vues
+// (onFond = tap hors de la feuille, onSortie = le lien ou le bouton du bas) : la télémétrie ne change pas.
+function MurDeJauge({ fr, geste, pastille, titre, fait, encore, encoreSous, ruban, carte, onVoirTout, sortie, boutonFermer, onFond, onSortie }) {
+  return (
+    <Sheet onClose={onFond}>
+      <div data-mur-jauge={geste}>
+        {pastille}
+        <Title>{titre}</Title>
+        <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 10, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
+          {fait}
+        </div>
+        <div style={{ background: '#E8F5F3', border: `1px solid ${C.teal}`, borderRadius: 16, padding: '11px 14px', marginBottom: 16, fontSize: 12.5, fontWeight: 700, lineHeight: 1.5, color: C.tealDeep }}>
+          {encore}
+          {encoreSous ? <div style={{ fontSize: 11.5, fontWeight: 600, color: C.mute2, marginTop: 2 }}>{encoreSous}</div> : null}
+        </div>
+        {carte ? (
+          <>
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.mute, margin: '2px 2px 8px' }}>
+              {ruban}
+            </div>
+            {carte}
+          </>
+        ) : null}
+        {onVoirTout ? (
+          <div style={{ textAlign: 'center', marginTop: 12 }}>
+            <button type="button" onClick={onVoirTout} style={{
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: 13, fontWeight: 700, color: C.tealDeep, textDecoration: 'underline', textUnderlineOffset: 3,
+            }}>
+              {fr ? 'Voir toutes les formules' : 'See all plans'}
+            </button>
+          </div>
+        ) : null}
+        {boutonFermer ? (
+          <button type="button" onClick={onSortie} style={{
+            width: '100%', marginTop: 16, padding: '13px 0', borderRadius: 999,
+            background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer',
+            fontSize: 13.5, fontWeight: 700, color: C.mute2, fontFamily: 'inherit',
+          }}>
+            {sortie}
+          </button>
+        ) : (
+          <Dismiss onClose={onSortie} label={sortie} />
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
 // ── Modale ───────────────────────────────────────────────────────────────────
 
 export default function ConversionModal({
@@ -621,6 +1019,9 @@ export default function ConversionModal({
   // trigger 'quota_geste' UNIQUEMENT : { geste: 'annonces'|'retouches',
   // plafond, consommes } — le refus serveur quota_*_atteint relayé par l'hôte.
   // ('scans' a disparu le 02/09 soir — fusion scans+annonces, un seul geste.)
+  // (04/11, grille à 3 jauges) gestes en plus : 'publications' | 'remontees' | 'lens' (Lens du Business), et
+  // champs facultatifs remise_le (la remise à zéro, rendue par le serveur), restantes, publications_restantes
+  // (pour « Il te reste N publications » sous les murs Annonces et Remontées). Absents : rien d'affiché.
   quotaInfo    = null,
   // Code d'offre arrivé par un lien d'e-mail (lib/offreMail, 26/09) — web
   // seulement, l'hôte passe null en natif. Sert UNIQUEMENT à dire, sur la vue
@@ -722,7 +1123,9 @@ export default function ConversionModal({
     if (!isOpen) return;
     palierCliqueRef.current = false;
     ouvertureRef.current = { id: Math.random().toString(36).slice(2, 10), le: Date.now(), notee: false };
-    logModale('offers_modal_open', { origine: origine ?? 'non_precisee', trigger, ouverture: ouvertureRef.current.id, ...contexteDeLogs() });
+    logModale('offers_modal_open', { origine: origine ?? 'non_precisee', trigger, ouverture: ouvertureRef.current.id, ...contexteDeLogs(),
+      // (04/11) Le geste du mur (quota_geste), pour savoir QUELLE jauge a ouvert la feuille. Rien d'autre ne change.
+      ...(trigger === 'quota_geste' && quotaInfo?.geste ? { geste: quotaInfo.geste } : {}) });
     const quitte = () => { if (document.visibilityState === 'hidden') noterFermetureRef.current('quitte'); };
     const pageQuittee = () => noterFermetureRef.current('quitte');
     document.addEventListener('visibilitychange', quitte);
@@ -848,6 +1251,76 @@ export default function ConversionModal({
   // qui a l'option, témoin de la vraie offre, interrupteur baissé).
   const encartCloud = <EncartCloudBientot lang={lang} userId={userId} />;
 
+  // ══ LA GRILLE À 3 JAUGES (04/11/2026) — tout ce qui suit change DERRIÈRE grilleActiveConfig(K) ═════════════
+  // Interrupteur à 0, ou config de repli (COIN_CONFIG_FALLBACK ne porte PAS grille_trois_jauges) : `grille` est
+  // faux, aucun mur ne s'ouvre et chaque vue ci-dessous rend exactement ce qu'elle rendait.
+  const grille = grilleActiveConfig(K);
+  const palierIci = palierCarte(palierDesDrapeaux({ isPremium, isPro, isBusiness }));
+  // Chez un payant, la carte d'ajout du Cloud passe SOUS les cartes (maquette 2.2 : c'est une option, elle ne
+  // doit pas cacher la vraie montée). Sans la grille, elle reste au-dessus (carteAjoutCloud).
+  const carteAjoutCloudSous = grille && ajoutCloudPossible ? (
+    <div style={{ marginTop: 12 }}>
+      <CarteAjoutCloud offre={offreCloud} nomPalier={nomDuPalier(palierDesDrapeaux({ isPremium, isPro, isBusiness }))} onAjouter={ajouterCloud} lang={lang} />
+    </div>
+  ) : null;
+
+  // ── Les murs, un par jauge (grille seulement, vue d'entrée) ──────────────────
+  // quota_geste → la jauge du refus ('retouches' garde la feuille d'avant : compteur à part, inchangé ; un scan
+  // Lens refusé hors Business compte en Annonces, la jauge qui compte les deux) ; republish_cap (refus du
+  // Free) → Remontées ; republish_auto (Free, Premium) → le mur de l'automatique. « Voir toutes les formules »
+  // bascule sur la vue complète du palier (view = 'plans'), où plus aucun mur ne s'ouvre.
+  const gesteMur = !grille || view !== 'entry' ? null
+    : trigger === 'quota_geste'
+      ? (quotaInfo?.geste === 'retouches' ? null
+        : quotaInfo?.geste === 'publications' || quotaInfo?.geste === 'remontees' ? quotaInfo.geste
+        : quotaInfo?.geste === 'lens' && palierIci === 'business' ? 'lens'
+        : 'annonces')
+      : trigger === 'republish_cap' ? 'remontees'
+      : trigger === 'republish_auto' && (palierIci === 'free' || palierIci === 'premium') ? 'auto'
+      : null;
+  if (gesteMur) {
+    const lu = (v) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
+    // Le chiffre du titre vient du refus du serveur. Seule exception, déjà vraie avant la grille : le refus
+    // plafond_republication_free est celui du Free, son propre volume (grilleDuPalier) peut le dire.
+    const remonteesFree = grilleDuPalier(K, 'free').remontees;
+    const plafondMur = gesteMur === 'auto' ? null
+      : trigger === 'republish_cap'
+        ? (lu(plafondRepub?.plafond) ?? (palierIci === 'free' && Number.isFinite(remonteesFree) ? remonteesFree : null))
+        : lu(quotaInfo?.plafond);
+    const remiseMur = jourRemise(trigger === 'republish_cap' ? plafondRepub?.remise_le : quotaInfo?.remise_le, fr ? 'fr' : 'en');
+    const mots = textesDuMur({
+      fr, geste: gesteMur, palier: palierIci, plafond: plafondMur, remise: remiseMur,
+      publicationsRestantes: lu(quotaInfo?.publications_restantes),
+      remonteesRestantes: lu(repubOffertes?.restantes),
+    });
+    // Le palier qui débloque — le plus proche, pas le plus cher — et seulement s'il est VENDABLE à ce compte
+    // (offre Business, targetTiers) ; sinon le plus proche des vendables qui fait mieux sur cette jauge.
+    const recoMur = (() => {
+      if (gesteMur === 'lens') return null;
+      if (gesteMur === 'auto') return ['pro', 'business'].find((p) => sellable.includes(p)) ?? null;
+      const brut = palierQuiDebloque(gesteMur, palierIci, K);
+      if (brut && sellable.includes(brut)) return brut;
+      const ici = grilleDuPalier(K, palierIci)[gesteMur];
+      return sellable.find((p) => grilleDuPalier(K, p)[gesteMur] > ici) ?? null;
+    })();
+    const sortieMur = gesteMur === 'lens' ? (fr ? 'Fermer' : 'Close')
+      : gesteMur === 'auto' ? (fr ? 'Pas maintenant' : 'Not now')
+      : remiseMur ? (fr ? `Attendre le ${remiseMur}` : `Wait until ${remiseMur}`)
+      : (fr ? 'Non merci' : 'No thanks');
+    return (
+      <MurDeJauge
+        fr={fr} geste={gesteMur}
+        pastille={<PastillePlan fr={fr} isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} />}
+        titre={mots.titre} fait={mots.fait} encore={mots.encore} encoreSous={mots.encoreSous}
+        ruban={recoMur ? rubanDuMur(gesteMur, recoMur, K, fr) : null}
+        carte={recoMur ? <CarteDuPalier palier={recoMur} fr={fr} K={K} onUpgrade={choisirPalier} /> : null}
+        onVoirTout={sellable.length > 0 ? () => setView('plans') : null}
+        sortie={sortieMur} boutonFermer={gesteMur === 'lens'}
+        onFond={fermerParLeFond} onSortie={fermerNonMerci}
+      />
+    );
+  }
+
   // (CAS 1/2 « unités insuffisantes » et leur vue 'plans' : SUPPRIMÉS le
   // 02/09 soir — insufficient_coins ne peut plus exister, cf. bascule quotas.)
 
@@ -868,11 +1341,14 @@ export default function ConversionModal({
             {fr ? 'ton plan actuel' : 'your current plan'}
           </span>
         </div>
-        <Title>{titreCloud ?? (fr ? 'Le sommet. Zéro limite.' : 'The top. No limits.')}</Title>
-        {carteAjoutCloud}
-        <ToutesOffresBlock fr={fr} />
+        {/* (04/11) Grille : « Publie sans compter. » (« Zéro limite » était faux avec Lens à 600), puis ce
+            que le Pro A, en une ligne (maquette 2.3) ; la carte d'ajout du Cloud passe sous la carte. */}
+        <Title>{titreCloud ?? (grille ? (fr ? 'Publie sans compter.' : 'Publish without counting.') : (fr ? 'Le sommet. Zéro limite.' : 'The top. No limits.'))}</Title>
+        {grille ? <ResumePalier fr={fr} palier={palierIci} K={K} /> : carteAjoutCloud}
+        {grille ? null : <ToutesOffresBlock fr={fr} />}
         {blocCloudAuDessus}
         <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
+        {carteAjoutCloudSous}
         {encartCloud}
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
       </Sheet>
@@ -896,11 +1372,14 @@ export default function ConversionModal({
             {fr ? 'ton plan actuel' : 'your current plan'}
           </span>
         </div>
-        <Title>{titreCloud ?? (fr ? 'Passe au volume supérieur.' : 'Move up a gear.')}</Title>
-        {carteAjoutCloud}
-        <ToutesOffresBlock fr={fr} />
+        {/* (04/11) Grille (maquette 2.2) : le Premium lit d'abord ce qu'il a, en une ligne, puis ce que le Pro
+            change ; la carte d'ajout du Cloud passe sous les cartes. */}
+        <Title>{titreCloud ?? (grille ? (fr ? 'Laisse FillSell travailler pour toi.' : 'Let FillSell work for you.') : (fr ? 'Passe au volume supérieur.' : 'Move up a gear.'))}</Title>
+        {grille ? <ResumePalier fr={fr} palier={palierIci} K={K} /> : carteAjoutCloud}
+        {grille ? null : <ToutesOffresBlock fr={fr} />}
         {blocCloudAuDessus}
         <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
+        {carteAjoutCloudSous}
         {encartCloud}
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
       </Sheet>
@@ -947,15 +1426,20 @@ export default function ConversionModal({
   // peut plus partir. Si l'interrupteur repassait à false, ces appels
   // rouvriraient la modale sur sa branche GÉNÉRIQUE (« Débloque tout
   // FillSell. », sans la puce de compteur) — dégradé, jamais cassé.
-  const repubCap = trigger === 'republish_cap';
-  const repubLot = trigger === 'republish_lot';
+  // (04/11) Grille : arrivé ici par « Voir toutes les formules » d'un mur (view = 'plans'), le lecteur a déjà
+  // lu le fait — la vue est la vue générique (titre et encarts). Sans la grille, `trig` vaut `trigger`.
+  const trig = grille && view === 'plans' ? 'generic' : trigger;
+  const repubCap = trig === 'republish_cap';
+  const repubLot = trig === 'republish_lot';
   // Republication AUTOMATIQUE (20/09) : le module en pied de Stock est
   // montré à tous les paliers ; ceux qui n'y ont pas droit arrivent ici et
   // doivent lire POURQUOI. `autorise` vaut pro/business côté serveur
   // (republish_palier) — c'est donc Pro qu'on nomme, jamais Premium.
-  const repubAuto = trigger === 'republish_auto';
-  const quotaCas = trigger === 'quota_geste' ? (quotaInfo ?? {}) : null;
-  const repubPremium = (K.quota_republication_premium ?? 1500).toLocaleString(fr ? 'fr-FR' : 'en-US');
+  const repubAuto = trig === 'republish_auto';
+  const quotaCas = trig === 'quota_geste' ? (quotaInfo ?? {}) : null;
+  const repubPremium = grille
+    ? nombre(grilleDuPalier(K, 'premium').remontees, fr ? 'fr' : 'en')
+    : (K.quota_republication_premium ?? 1500).toLocaleString(fr ? 'fr-FR' : 'en-US');
   // (05/10) Le jour où les republications du gratuit reviennent : la remise à
   // zéro rendue par le refus (coin_wallets.next_grant_at, la même que les
   // annonces). Absente, passée ou illisible → rien (jamais une date inventée).
@@ -974,7 +1458,7 @@ export default function ConversionModal({
       </div>
 
       <Title>
-        {titreCloud ?? (trigger === 'voice'
+        {titreCloud ?? (trig === 'voice'
           ? (fr ? 'Passe en vocal illimité.' : 'Go unlimited on voice.')
           : repubCap
             ? (fr ? 'Tes republications du mois sont faites.' : "This month's repostings are done.")
@@ -986,7 +1470,10 @@ export default function ConversionModal({
                 ? (quotaCas.geste === 'retouches'
                     ? (fr ? 'Tes retouches du mois sont faites.' : "This month's touch-ups are done.")
                     : (fr ? 'Tes annonces du mois sont créées.' : "This month's listings are created."))
-                : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.'))}
+                // (04/11) Grille : « Débloque tout FillSell. » laissait croire que le Free est bridé partout.
+                : grille
+                  ? (fr ? 'Vends plus, en faisant moins.' : 'Sell more, doing less.')
+                  : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.'))}
       </Title>
 
       {(repubLot || repubAuto) && Number(repubOffertes?.restantes) > 0 && (
@@ -1115,8 +1602,9 @@ export default function ConversionModal({
       )}
 
       {/* Bloc commun AU-DESSUS des cartes (02/09 soir) : ce que fait le
-          produit se lit avant de comparer les prix. */}
-      <ToutesOffresBlock fr={fr} />
+          produit se lit avant de comparer les prix. (04/11) Avec la grille : Depop
+          et « Comment on compte ». */}
+      <ToutesOffresBlock fr={fr} grille={grille} />
 
       {/* Vue comparative (2026-07-22) : les cartes d'emblée, empilées —
           ouvertes par la carte Free (le point de départ du lecteur). */}
