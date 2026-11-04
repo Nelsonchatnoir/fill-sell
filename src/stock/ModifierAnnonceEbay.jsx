@@ -86,10 +86,13 @@ export default function ModifierAnnonceEbay({ lang = 'fr', job: jobListe, supaba
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobListe.id]);
 
-  // L'ordre d'affichage : obligatoires, puis remplies, puis les autres (repliées).
+  // L'ordre d'affichage : obligatoires, puis remplies, puis les autres (repliées). « Remplie » se lit sur ce qu'eBay
+  // porte à l'ouverture, JAMAIS sur la saisie en cours : sinon le premier caractère tapé dans une « autre »
+  // caractéristique la déplaçait vers le haut, le champ était recréé et perdait le focus (essai réel du 04/11 : « M »
+  // enregistré au lieu de « Manches courtes »).
   const rangees = useMemo(() => {
     const cat = ebay?.catalogue ?? [];
-    const rempli = (a) => String(saisies[a.name] ?? '').trim() !== '';
+    const rempli = (a) => (ebay?.aspects?.[a.name] ?? []).length > 0;
     const obligatoires = cat.filter((a) => a.required);
     const remplies = cat.filter((a) => !a.required && rempli(a));
     const autres = cat.filter((a) => !a.required && !rempli(a));
@@ -97,7 +100,7 @@ export default function ModifierAnnonceEbay({ lang = 'fr', job: jobListe, supaba
     const horsCatalogue = Object.keys(ebay?.aspects ?? {}).filter((n) => !cat.some((a) => a.name === n))
       .map((name) => ({ name, required: false, mode: 'FREE_TEXT', allowedValues: [] }));
     return { visibles: [...obligatoires, ...remplies, ...horsCatalogue], autres };
-  }, [ebay, saisies]);
+  }, [ebay]);
 
   const ajouterPhotos = async (files) => {
     const liste = [...(files ?? [])].slice(0, Math.max(0, PHOTOS_MAX - photos.length));

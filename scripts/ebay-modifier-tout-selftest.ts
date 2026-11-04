@@ -108,6 +108,11 @@ console.log("5. Plus de renvoi vers ebay.fr ; rien créé sans clic ; le câblag
   ok(/lien\.action === 'creer_conditions_ebay'/.test(st) && /<BoutonConditionsEbay /.test(st), "le Stock : le bouton dans la fiche de la publication arrêtée");
   const mod = lire("src/stock/ModifierAnnonceEbay.jsx");
   ok(/action: 'lire_annonce'/.test(mod) && /corps\.aspects = ch/.test(mod) && /corps\.photos = photos/.test(mod), "« Modifier sur eBay » : caractéristiques et photos lues chez eBay, envoyées si changées");
+  // (04/11, essai réel) Le 1er caractère tapé dans une « autre » caractéristique la déplaçait vers le haut : champ
+  // recréé, focus perdu, « M » enregistré au lieu de « Manches courtes ». L'ordre se lit sur ce qu'eBay porte, jamais
+  // sur la saisie en cours.
+  ok(/const rempli = \(a\) => \(ebay\?\.aspects\?\.\[a\.name\] \?\? \[\]\)\.length > 0;/.test(mod) && /\}, \[ebay\]\);/.test(mod) && !/\}, \[ebay, saisies\]\);/.test(mod),
+    "l'ordre des caractéristiques ne bouge pas pendant la saisie (le champ garde le focus)");
 }
 
 console.log(ko ? `\n✗ ebay-modifier-tout : ${ko} rouge(s) sur ${n}` : `\n✓ ebay-modifier-tout : ${n} contrôles verts`);
