@@ -101,6 +101,7 @@
     "selftest:offres-trois-jauges": "node scripts/offres-trois-jauges-selftest.mjs",
     "selftest:reglages-jauges": "node --import ./scripts/loader-ext.mjs scripts/reglages-jauges-selftest.mjs",
     "selftest:cout-publication": "node --import ./scripts/loader-ext.mjs scripts/cout-publication-selftest.mjs",
+    "selftest:ecarts-0411": "node --import ./scripts/loader-ext.mjs scripts/ecarts-0411-selftest.mjs",
     "selftest:onboarding-trois-jauges": "node scripts/onboarding-trois-jauges-selftest.mjs",
     "selftest:cloud-prix-nom": "node --import ./scripts/loader-ext.mjs scripts/cloud-prix-nom-selftest.mjs",
     "selftest:lbc-categorie-racines": "node scripts/lbc-categorie-racines-selftest.mjs",

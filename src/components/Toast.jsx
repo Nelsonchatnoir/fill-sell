@@ -11,6 +11,14 @@ import { createPortal } from 'react-dom';
 // silence.
 // ⛔ CHANGEMENT DE POINT DE MONTAGE, ET RIEN D'AUTRE : mêmes styles, même
 //    z-index (500), mêmes props. Les appelants ne voient aucune différence.
+// (04/11/2026, décision de Nico) UN MESSAGE LONG PASSE À LA LIGNE, JAMAIS HORS DE
+// L'ÉCRAN. Le toast ne passait jamais à la ligne (nowrap) : la phrase de pause
+// du garde-fou (Lens, « Pause de sécurité jusqu'à minuit… ») sortait de l'écran
+// des deux côtés sur un téléphone. La boîte prend la largeur de son texte
+// (max-content, comme le nowrap d'avant), plafonnée à l'écran moins les deux
+// gouttières de 16 px ; au-delà, le texte passe à la ligne, centré. Un message
+// court tient sur une ligne plus étroite que le plafond : rendu identique au
+// pixel près (vérifié en capture, 320 et 390 px).
 export default function Toast({ message, visible }) {
   return createPortal(
     <div style={{
@@ -30,7 +38,11 @@ export default function Toast({ message, visible }) {
       transition:"opacity 0.3s ease, transform 0.3s ease",
       opacity:visible?1:0,
       pointerEvents:visible?"auto":"none",
-      whiteSpace:"nowrap",
+      width:"max-content",
+      maxWidth:"calc(100vw - 32px)",
+      whiteSpace:"normal",
+      overflowWrap:"break-word",
+      textAlign:"center",
     }}>
       {message}
     </div>,

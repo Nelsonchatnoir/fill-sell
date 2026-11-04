@@ -87,7 +87,8 @@ try {
     onUpgradePro() {}, onUpgradeBusiness() {},
   }));
   const plan = (palier, lang = 'fr') => texte(planHtml(palier, lang));
-  const jour = JR.jourRemise(futur, 'fr');
+  // (04/11, décision de Nico) Les murs écrivent la date en JJ/MM (« Attendre le 16/11 ») : jourRemiseCourt.
+  const jour = JR.jourRemiseCourt(futur, 'fr');
   const avant = (t, a, b) => t.indexOf(a) >= 0 && t.indexOf(b) > t.indexOf(a);
 
   // ── 1. L'interrupteur ─────────────────────────────────────────────────────
@@ -313,6 +314,58 @@ try {
       ].join(' ');
       ok(!/plafond/i.test(tous) && !/20 €/.test(tous), 'murs : jamais « plafond », jamais « 20 € »');
     }
+    // 3i. (04/11, écarts relevés sur les vrais écrans, décisions de Nico) La date en JJ/MM ; le Lens du Business garde
+    //     une voie ; l'automatique dit au Premium combien de remontées il lui reste.
+    {
+      const jj = JR.jourRemiseCourt(futur, 'fr');
+      ok(/^\d{2}\/\d{2}$/.test(jj) && jj === new Date(futur).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' })
+        && JR.jourRemiseCourt(passe, 'fr') === null && JR.jourRemiseCourt(null, 'fr') === null && JR.jourRemiseCourt('nimporte', 'fr') === null,
+        `la date des murs : JJ/MM, jour de Paris (« ${jj} ») ; passée, absente ou illisible → rien`);
+      for (const [palier, props] of [
+        ['premium', { trigger: 'quota_geste', quotaInfo: { geste: 'remontees', plafond: 1500, consommes: 1500, restantes: 0, remise_le: futur } }],
+        ['pro', { trigger: 'quota_geste', quotaInfo: { geste: 'annonces', plafond: 120, consommes: 120, restantes: 0, remise_le: futur } }],
+        ['premium', { trigger: 'quota_geste', quotaInfo: { geste: 'publications', plafond: 400, consommes: 400, restantes: 0, remise_le: futur } }],
+      ]) {
+        const t = modale(palier, props);
+        ok(t.endsWith(`Attendre le ${net(jj)}`) && t.includes(`reviennent le ${net(jj)}.`) && !/Non merci$/.test(t),
+          `mur ${props.quotaInfo.geste} d'un ${palier} : « Attendre le ${jj} » et « … reviennent le ${jj}. » (JJ/MM)`, t.slice(-200));
+      }
+      ok(/Attendre le \d{2}\/\d{2}$/.test(modale('free', { trigger: 'republish_cap', plafondRepub: { plafond: 30, faites: 30, remise_le: futur } })), 'republish_cap (Free) : « Attendre le JJ/MM » aussi');
+      // Le Lens du Business : « Créer une annonce depuis mes photos », seulement si l'hôte sait le faire.
+      const lensProps = { trigger: 'quota_geste', quotaInfo: { geste: 'lens', plafond: 600, consommes: 600, restantes: 0, remise_le: futur } };
+      const sansHote = modaleHtml('business', lensProps);
+      ok(!/Créer une annonce depuis mes photos|data-mur-action/.test(sansHote) && /<button[^>]*>Fermer<\/button>/.test(sansHote), 'mur Lens : sans hôte qui sait le faire, pas de bouton « Créer une annonce depuis mes photos » (« Fermer » seul)');
+      const avecHote = renderToStaticMarkup(h(CM.default, { ...base, lang: 'fr', ...drap.business, ...lensProps, onCreerDepuisPhotos() {} }));
+      const tl = texte(avecHote);
+      ok(/data-mur-action=""[^>]*>Créer une annonce depuis mes photos<\/button>/.test(avecHote) && avant(tl, 'Tout le reste continue, sans limite.', 'Créer une annonce depuis mes photos') && avant(tl, 'Créer une annonce depuis mes photos', 'Fermer')
+        && !/Passer|€|Voir toutes les formules/.test(tl), 'mur Lens (Business, hôte capable) : « Créer une annonce depuis mes photos » sous « Tout le reste continue », puis « Fermer » ; aucune offre (maquette 5.4)', tl.slice(-260));
+      ok(/Create a listing from my photos/.test(texte(renderToStaticMarkup(h(CM.default, { ...base, lang: 'en', ...drap.business, ...lensProps, onCreerDepuisPhotos() {} })))), 'en : « Create a listing from my photos »');
+      ok(!/Créer une annonce depuis mes photos/.test(modale('pro', { trigger: 'quota_geste', quotaInfo: { geste: 'annonces', plafond: 120 }, onCreerDepuisPhotos() {} })), 'les autres murs ne montrent jamais ce bouton');
+      const code = lignesDeCode(lire('src/components/ConversionModal.jsx'));
+      ok(/action=\{gesteMur === 'lens' && typeof onCreerDepuisPhotos === 'function' \? \{/.test(code) && /onClick: \(\) => \{ fermer\('creer_depuis_photos'\); onCreerDepuisPhotos\(\); \}/.test(code),
+        'le bouton ferme la feuille (sortie nommée « creer_depuis_photos ») puis passe la main à l’hôte');
+      // L'automatique : le Premium lit ses remontées restantes (quotas_etat), jamais inventées ; le Free garde SA ligne.
+      const autoPrem = modale('premium', { trigger: 'republish_auto', remonteesRestantes: 1088 });
+      ok(autoPrem.includes("Tu peux toujours remonter tes annonces toi-même. Il t'en reste 1 088 ce mois-ci."), 'mur automatique (Premium) : « Tu peux toujours remonter tes annonces toi-même. Il t’en reste 1 088 ce mois-ci. » (maquette m-auto)', autoPrem.slice(0, 400));
+      ok(!/Il t'en reste/.test(modale('premium', { trigger: 'republish_auto' })) && !/Il t'en reste/.test(modale('premium', { trigger: 'republish_auto', remonteesRestantes: null })),
+        'mur automatique (Premium) : sans le chiffre du serveur, aucune ligne (jamais inventé)');
+      ok(modale('free', { trigger: 'republish_auto', repubOffertes: { restantes: 18, plafond: 30, remise_le: futur }, remonteesRestantes: 999 }).includes("Il t'en reste 18 ce mois-ci."),
+        'mur automatique (Free) : sa ligne vient toujours de repubOffertes');
+      const app = lignesDeCode(lire('src/App.jsx'));
+      ok(/remonteesRestantes=\{grilleEntete&&quotas\?\.palier==='premium'&&quotas\?\.republication\?\.mode==='mensuel'&&quotas\?\.republication\?\.restantes!=null\?quotas\.republication\.restantes:null\}/.test(app),
+        'App : le Premium seulement, avec la grille, le chiffre de quotas_etat (Pro et Business : sans objet)');
+      ok(/onCreerDepuisPhotos=\{grilleEntete&&conversionModal\.quotaInfo\?\.geste==='lens'&&tab===2&&lensPhotos\.length>0/.test(app)
+        && /window\.dispatchEvent\(new CustomEvent\('fillsell:lens-sans-analyse'/.test(app),
+        'App : le bouton n’existe qu’avec la grille, sur le mur Lens, onglet Lens monté avec des photos ; il relaie fillsell:lens-sans-analyse');
+      const lens = lire('src/tabs/LensTab.jsx');
+      ok(/sansAnalyseRef\.current=lensPhotos\.length>0&&!generatingListing&&!showListingPreview\?\(\)=>lancer\('sans'\):null;/.test(lens)
+        && /window\.addEventListener\('fillsell:lens-sans-analyse',surMur\)/.test(lens),
+        'LensTab : l’événement lance « Créer l’annonce sans analyse » (lancer(\'sans\') : photos seules, rédaction au stepper, comptée en annonces)');
+      ok(/quotaInfo=\{quotaInfoAvecRemise\(conversionModal\.quotaInfo\?\?null\)\}/.test(app)
+        && /const quotaInfoAvecRemise=\(info\)=>\(grilleEntete&&info&&typeof info==='object'&&info\.remise_le==null/.test(app)
+        && /lireProchaineRemiseAZero\(user\.id\)/.test(app) && /const remiseALire=grilleEntete&&remiseDuCompte\(quotas\)==null&&Boolean\(user\?\.id\);/.test(app),
+        'App : un mur sans date la reçoit de quotas_etat, sinon de coin_wallets.next_grant_at (lu une fois, grille seulement)');
+    }
   });
 
   // ── 4. « Ton plan » ───────────────────────────────────────────────────────
@@ -351,7 +404,7 @@ try {
       '« Voir toutes les formules » bascule sur la vue complète (état view), générique');
     ok(/onFond=\{fermerParLeFond\} onSortie=\{fermerNonMerci\}/.test(code), 'les sorties du mur passent par les mêmes fonctions (fond, non_merci) : télémétrie inchangée');
     ok(/const brut = palierQuiDebloque\(gesteMur, palierIci, K\);/.test(code) && /if \(brut && sellable\.includes\(brut\)\) return brut;/.test(code), 'le palier qui débloque : palierQuiDebloque, et seulement s’il est vendable');
-    ok(/jourRemise\(trigger === 'republish_cap' \? plafondRepub\?\.remise_le : quotaInfo\?\.remise_le/.test(code), 'la date du mur : jourRemise (jamais une date inventée)');
+    ok(/jourRemiseCourt\(trigger === 'republish_cap' \? plafondRepub\?\.remise_le : quotaInfo\?\.remise_le/.test(code), 'la date du mur : jourRemiseCourt, en JJ/MM (jamais une date inventée)');
     const ouverture = code.match(/logModale\('offers_modal_open', \{[\s\S]*?\}\);/)?.[0] ?? '';
     ok(/\.\.\.\(trigger === 'quota_geste' && quotaInfo\?\.geste \? \{ geste: quotaInfo\.geste \} : \{\}\)/.test(ouverture), 'télémétrie : l’ouverture porte le geste, rien d’autre');
     const logs = [...code.matchAll(/logModale\('([a-z_]+)'/g)].map((x) => x[1]).sort().join(',');

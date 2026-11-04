@@ -334,8 +334,12 @@ try {
     ok(/\{grilleEntete&&pastilleGrille&&\(\s*<button\s*onClick=\{appuiPastilleGrille\}/.test(app) && /\{!grilleEntete&&quotas\?\.annonces\?\.plafond!=null&&\(/.test(app),
       'en-tête : la pastille de la grille, sinon le compteur d’avant (inchangé)');
     const pastille = app.slice(app.indexOf('{grilleEntete&&pastilleGrille&&('), app.indexOf('{!grilleEntete&&quotas?.annonces?.plafond!=null&&('));
-    ok(/className="tb-quota"/.test(pastille) && /className="tb-quota-chip"/.test(pastille) && /className="tb-quota-libelle"/.test(pastille) && /className="tb-quota-mot"/.test(pastille),
-      'pastille : mêmes classes que le compteur (le mot cède sur petit écran)');
+    // (04/11, décision de Nico) Le MOT de la jauge ne cède plus jamais : c'est « restante(s) » qui part sur petit écran.
+    const css = lire('src/App.css');
+    ok(/className="tb-quota"/.test(pastille) && /className="tb-quota-chip tb-quota-chip--jauge"/.test(pastille) && /className="tb-quota-libelle tb-quota-libelle--jauge"/.test(pastille)
+      && /className="tb-quota-jauge"/.test(pastille) && /className="tb-quota-restante"/.test(pastille) && !/tb-quota-mot/.test(pastille)
+      && /@media \(max-width: 420px\) \{\s*\n\s*\.tb-quota-mot \{ display: none; \}\s*\n\s*\.tb-quota-restante \{ display: none; \}/.test(css) && !/\.tb-quota-jauge\s*\{[^}]*display:\s*none/.test(css),
+      'pastille : le gabarit du compteur, mais le mot de la jauge ne cède jamais — c’est « restante(s) » qui part (≤ 420 px)');
     ok(/pastilleGrille\.basse\?"#FFF6E3"/.test(pastille) && /pastilleGrille\.basse\?"#8A6100"/.test(pastille), 'pastille : ambre sous 20 %');
     ok(!/openUpgradeModal\(/.test(pastille), 'pastille : aucune porte vers les offres écrite dans l’en-tête (le compte des portes de l’en-tête ne bouge pas)');
     ok(/const pastilleGrille=grilleEntete\?jaugeLaPlusProche\(jaugesDuCompte\(quotas\)\):null;/.test(app), 'pastille : jaugeLaPlusProche(jaugesDuCompte(quotas)) — rien chez le Business');

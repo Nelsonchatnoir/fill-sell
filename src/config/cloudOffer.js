@@ -24,7 +24,7 @@
 //      ouvre l'essai / ajoute l'option au paiement, et sait prendre l'option
 //      SEULE sur un compte Free (`onCloudSeul`, décision du 04/10 soir) —
 //      essai de 7 jours, carte demandée ;
-//   4. la SORTIE existe : « Arrêter l'option » est câblée (HoteCloud reçoit
+//   4. la SORTIE existe : « Arrêter le Cloud » est câblée (HoteCloud reçoit
 //      `actions.arreter`) — on ne vend pas un essai qu'on ne sait pas arrêter.
 //      scripts/cloud-ecrans-selftest.mjs refuse le drapeau levé sans elle ;
 //   5. le navigateur Cloud tourne vraiment (pool d'adresses, docs/cloud/).

@@ -14,6 +14,8 @@
 // en rotation (fournisseurIp.js). Changer le texte = changer la VERSION (une nouvelle acceptation est demandée).
 // (04/11, décision de Nico du 03/11) Article 6 : le prix passe à 24,99 € TTC par mois (le prix facturé sur les trois
 // canaux) → version 2026-11-04 (config/cloudOffer.js ET supabase/functions/_shared/cloud-conditions.js).
+// (04/11, décision de Nico) « l'option FillSell Cloud » ou « le Cloud », jamais « option » seul (article 1) : même
+// version 2026-11-04 — rien n'a été publié depuis qu'elle a été posée le même jour.
 
 // La version en vigueur (AAAA-MM-JJ) vit dans config/cloudOffer.js (aucune date en dur dans src/cloud/) — même
 // valeur que supabase/functions/_shared/cloud-conditions.js.
@@ -25,7 +27,7 @@ const FR = {
   version: `Version du ${CGU_CLOUD_VERSION.split('-').reverse().join('/')}`,
   articles: [
     { t: '1. Le service', ps: [
-      "FillSell Cloud est une option de FillSell. Il exécute depuis les serveurs de FillSell, sans que votre ordinateur soit allumé, ce que l'extension Chrome FillSell fait sur un ordinateur : publier, republier et retirer vos annonces, relever vos annonces en ligne et détecter vos ventes, 24 heures sur 24, dans un navigateur réservé à votre compte.",
+      "L'option FillSell Cloud (« le Cloud ») est un service de FillSell. Le Cloud exécute depuis les serveurs de FillSell, sans que votre ordinateur soit allumé, ce que l'extension Chrome FillSell fait sur un ordinateur : publier, republier et retirer vos annonces, relever vos annonces en ligne et détecter vos ventes, 24 heures sur 24, dans un navigateur réservé à votre compte.",
       "Il fonctionne pour chaque plateforme que vous connectez depuis l'écran « Me connecter » (Vinted, Leboncoin, Beebs, Depop). eBay passe par sa connexion officielle, comme sans le Cloud.",
       "Le Cloud n'a pas de volumes propres : il applique ceux de votre forfait FillSell, gratuit ou payant, avec les mêmes plafonds, les mêmes rythmes de republication et les mêmes protections que l'extension. Il ne va jamais plus vite qu'elle. Si l'extension tourne aussi sur votre ordinateur, chaque tâche n'est faite qu'une fois, par l'un ou par l'autre.",
     ] },

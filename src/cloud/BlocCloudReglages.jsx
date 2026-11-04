@@ -17,7 +17,7 @@
 //                      carte demandée, rien prélevé avant le [date] (Free :
 //                      « tu restes à N annonces par mois ») ;
 //   · essai          — combien de jours, la DATE et l'HEURE de bascule, le
-//                      montant, et « Arrêter l'option » ; un compte Free y lit
+//                      montant, et « Arrêter le Cloud » ; un compte Free y lit
 //                      UNE mention de Premium (jamais une fenêtre, jamais
 //                      ailleurs) ;
 //   · paye           — active, en plus de quelle formule (ou avec Free) ;
@@ -237,7 +237,7 @@ export default function BlocCloudReglages({
         </div>
       </Carte>
 
-      {/* « Arrêter l'option » — visible, jamais caché sous un menu, et confirmé
+      {/* « Arrêter le Cloud » — visible, jamais caché sous un menu, et confirmé
           en deux temps : la phrase dit ce qui change AVANT le geste. */}
       {peutArreter && (!confirmer ? (
         <Bouton ton="danger-creux" onClick={() => setConfirmer(true)} style={{ width: '100%', minHeight: 50 }}>{T.arreter}</Bouton>

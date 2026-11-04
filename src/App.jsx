@@ -190,7 +190,9 @@ import DatesEnLigne, { ResumeDatesEnLigne } from './stock/DatesEnLigne';
 import ReglagesPage from './reglages/ReglagesPage';
 // (04/11, grille à 3 jauges) La pastille de l'en-tête et les refus → murs. Interrupteur à 0 : rien ne change.
 import { grilleActive, jaugesDuCompte, jaugeLaPlusProche, motJauge, nombre as nombreJauge } from './utils/jauges';
-import { murDeLaJauge, suiteDuRefus } from './reglages/refusEtMurs';
+import { murDeLaJauge, suiteDuRefus, remiseDuCompte } from './reglages/refusEtMurs';
+// (04/11) La remise à zéro d'un payant, tant que quotas_etat ne la rend pas : coin_wallets.next_grant_at (RLS « own wallet read »).
+import { lireProchaineRemiseAZero } from './reglages/quotas';
 import FusionArticleModal from './components/FusionArticleModal';
 import QuestionsPlusEnLigne from './components/QuestionsPlusEnLigne';
 import { trierParVente } from './utils/triVendus';
@@ -3985,6 +3987,25 @@ export default function App({ loginOnly = false }){
   // jaugeLaPlusProche rend null). L'appui ouvre la feuille sur le mur de cette jauge si elle est pleine, sinon
   // les offres comme aujourd'hui. Interrupteur à 0 : grilleEntete est faux et l'en-tête d'avant reste tel quel.
   const grilleEntete=grilleActive(quotas);
+  // (04/11, décision de Nico) Les murs des payants disent « Attendre le JJ/MM » : la date vient de quotas_etat quand
+  // le serveur la rend (remise_le, migration 20261104140000), sinon du refus, sinon de CETTE lecture —
+  // coin_wallets.next_grant_at, une ligne, une fois, SEULEMENT avec la grille et tant que quotas_etat ne la rend pas.
+  // Interrupteur à 0 : aucune lecture, rien ne change. Illisible : null, le mur garde « Non merci » (jamais une date
+  // inventée).
+  const [remiseLueApp,setRemiseLueApp]=useState(null);
+  const remiseALire=grilleEntete&&remiseDuCompte(quotas)==null&&Boolean(user?.id);
+  useEffect(()=>{
+    if(!remiseALire||remiseLueApp)return undefined;
+    let vivant=true;
+    lireProchaineRemiseAZero(user.id).then((d)=>{if(vivant&&d)setRemiseLueApp(d);}).catch(()=>{});
+    return()=>{vivant=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[remiseALire,user?.id]);
+  // Le mur d'une jauge ouvert par App (pastille, Lens, Stock, Réglages) : la date manquante est complétée par la lecture
+  // ci-dessus. Sans la grille : le quotaInfo tel quel, comme avant.
+  const quotaInfoAvecRemise=(info)=>(grilleEntete&&info&&typeof info==='object'&&info.remise_le==null&&(remiseDuCompte(quotas)??remiseLueApp)
+    ?{...info,remise_le:remiseDuCompte(quotas)??remiseLueApp}
+    :info);
   const pastilleGrille=grilleEntete?jaugeLaPlusProche(jaugesDuCompte(quotas)):null;
   const appuiPastilleGrille=()=>{
     const mur=pastilleGrille&&pastilleGrille.restantes===0?murDeLaJauge(pastilleGrille.cle,quotas):null;
@@ -8583,9 +8604,12 @@ export default function App({ loginOnly = false }){
       <div className={quotas?.annonces?.plafond!=null?"topbar topbar--solde":"topbar"}>
         <div className="tb-left">
         <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
-        {/* (04/11, grille à 3 jauges, maquette 3.3) La pastille de la jauge la plus proche de la fin : même balisage
-            et mêmes classes que le compteur d'annonces ci-dessous (le mot cède sur petit écran), ambre sous 20 %,
-            rien chez le Business. Appui : le mur de cette jauge si elle est pleine, sinon les offres. */}
+        {/* (04/11, grille à 3 jauges, maquette 3.3) La pastille de la jauge la plus proche de la fin : même gabarit
+            que le compteur d'annonces ci-dessous, ambre sous 20 %, rien chez le Business. Appui : le mur de cette
+            jauge si elle est pleine, sinon les offres.
+            (04/11, décision de Nico) Le MOT de la jauge (« annonces », « publications », « remontées ») ne cède
+            JAMAIS, quelle que soit la largeur : sur petit écran, c'est « restante(s) » qui part (.tb-quota-restante,
+            App.css), et la roue des réglages reste à l'écran (correctif A7 du 12/10). */}
         {grilleEntete&&pastilleGrille&&(
           <button
             onClick={appuiPastilleGrille}
@@ -8596,12 +8620,12 @@ export default function App({ loginOnly = false }){
             data-pastille-jauge={pastilleGrille.cle}
             style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",fontFamily:"inherit",color:"inherit",opacity:1}}
           >
-            <span className="tb-quota-chip" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 10px",borderRadius:999,background:pastilleGrille.basse?"#FFF6E3":"rgba(0,0,0,0.05)",color:pastilleGrille.basse?"#8A6100":UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+            <span className="tb-quota-chip tb-quota-chip--jauge" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 10px",borderRadius:999,background:pastilleGrille.basse?"#FFF6E3":"rgba(0,0,0,0.05)",color:pastilleGrille.basse?"#8A6100":UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
               {nombreJauge(pastilleGrille.restantes,lang==='en'?'en':'fr')}
-              <span className="tb-quota-libelle" style={{fontWeight:600,opacity:pastilleGrille.basse?0.85:0.65}}>
+              <span className="tb-quota-libelle tb-quota-libelle--jauge" style={{fontWeight:600,opacity:pastilleGrille.basse?0.85:0.65}}>
                 {lang==='fr'
-                  ?<><span className="tb-quota-mot">{`${motJauge(pastilleGrille.cle,pastilleGrille.restantes,'fr')} `}</span>{`restante${pastilleGrille.restantes>1?"s":""}`}</>
-                  :<><span className="tb-quota-mot">{`${motJauge(pastilleGrille.cle,pastilleGrille.restantes,'en')} `}</span>left</>}
+                  ?<><span className="tb-quota-jauge">{motJauge(pastilleGrille.cle,pastilleGrille.restantes,'fr')}</span><span className="tb-quota-restante">{` restante${pastilleGrille.restantes>1?"s":""}`}</span></>
+                  :<><span className="tb-quota-jauge">{motJauge(pastilleGrille.cle,pastilleGrille.restantes,'en')}</span><span className="tb-quota-restante"> left</span></>}
               </span>
             </span>
           </button>
@@ -9902,7 +9926,7 @@ export default function App({ loginOnly = false }){
         isBusiness={isBusiness}
         userId={user?.id}
         itemCount={items.filter(i=>i.statut!=='vendu').length}
-        quotaInfo={conversionModal.quotaInfo??null}
+        quotaInfo={quotaInfoAvecRemise(conversionModal.quotaInfo??null)}
         origine={conversionModal.origine??null}
         // (15/10, P17) L'écran d'où elle s'ouvre — télémétrie seulement.
         contexte={{ecran:showSettings?'reglages':(['tableau','stock','lens','ventes','stats'][tab]??'autre')}}
@@ -9910,9 +9934,20 @@ export default function App({ loginOnly = false }){
         offre={isNative?null:offreEnCours()}
         // (03/10, point 20) Free : ses republications du mois (50 par mois depuis le 05/10), dites AVANT les offres.
         repubOffertes={quotas?.palier==='free'&&quotas?.republication?.plafond!=null?{restantes:quotas.republication.restantes??null,plafond:quotas.republication.plafond??null,remise_le:quotas.republication.remise_le??null}:null}
+        // (04/11, grille à 3 jauges, décision de Nico) Le Premium (1 500 remontées par mois) : le mur de l'automatique lui
+        // dit aussi « Il t'en reste N ce mois-ci » (N = quotas_etat, jamais inventé ; Pro et Business : illimitées, sans
+        // objet). Sans la grille : null, rien ne change.
+        remonteesRestantes={grilleEntete&&quotas?.palier==='premium'&&quotas?.republication?.mode==='mensuel'&&quotas?.republication?.restantes!=null?quotas.republication.restantes:null}
         // (04/11) La grille vue de quotas_etat : tant que coin_config n'est pas lue, la feuille part sur son repli
         // AVEC la grille (pas d'éclair de l'ancienne feuille). Interrupteur à 0 : false, rien ne change.
         grille={grilleActive(quotas)}
+        // (04/11, grille, maquette 5.4) Le mur Lens du Business : « Créer une annonce depuis mes photos », seulement
+        // quand l'onglet Lens est monté avec des photos — le geste « Créer l'annonce sans analyse » de LensTab (photos
+        // seules, rédaction par l'IA au stepper, comptée en annonces : illimitées chez le Business), relayé par
+        // l'événement fillsell:lens-sans-analyse. Sinon null : le bouton n'est pas rendu.
+        onCreerDepuisPhotos={grilleEntete&&conversionModal.quotaInfo?.geste==='lens'&&tab===2&&lensPhotos.length>0
+          ?()=>{setConversionModal(m=>({...m,open:false}));try{window.dispatchEvent(new CustomEvent('fillsell:lens-sans-analyse',{detail:{source:'mur_lens'}}));}catch{/* navigateur sans CustomEvent */}}
+          :null}
       />
 
       {/* ── OPTION « SANS ORDINATEUR » (Cloud) ──

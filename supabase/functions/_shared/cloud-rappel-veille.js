@@ -136,11 +136,11 @@ export function texteRappel({ lang = 'fr', finIso, prix = PRIX_AFFICHE, carteFin
   if (en) {
     return {
       sujet: `Your FillSell Cloud trial ends on ${quand}`,
-      preheader: `If you do nothing, the option continues at ${prix} a month. Stop it before then and nothing is charged.`,
+      preheader: `If you do nothing, FillSell Cloud continues at ${prix} a month. Stop it before then and nothing is charged.`,
       titre: 'Your free trial ends soon',
       paragraphes: [
         `Your 7-day trial of the FillSell Cloud option ends on ${quand} (Paris time).`,
-        `If you do nothing, the option continues at ${prix} a month, charged to the card you saved${carte ? ` (ending in ${carte})` : ''}, from that date.`,
+        `If you do nothing, FillSell Cloud continues at ${prix} a month, charged to the card you saved${carte ? ` (ending in ${carte})` : ''}, from that date.`,
         'If you don\'t want to continue, stop the trial before then in Settings → Subscription. It stops straight away and nothing is charged.',
         'Your FillSell plan is not affected: only the FillSell Cloud option is.',
       ],
@@ -153,11 +153,11 @@ export function texteRappel({ lang = 'fr', finIso, prix = PRIX_AFFICHE, carteFin
   }
   return {
     sujet: `Ton essai FillSell Cloud se termine le ${quand}`,
-    preheader: `Si tu ne fais rien, l'option continue à ${prix} par mois. Arrête-la avant et rien ne sera facturé.`,
+    preheader: `Si tu ne fais rien, le Cloud continue à ${prix} par mois. Arrête-le avant et rien ne sera facturé.`,
     titre: 'Ton essai gratuit se termine bientôt',
     paragraphes: [
       `Ton essai de 7 jours de l'option FillSell Cloud se termine le ${quand} (heure de Paris).`,
-      `Si tu ne fais rien, l'option continue à ${prix} par mois, prélevés sur la carte que tu as enregistrée${carte ? ` (finissant par ${carte})` : ''}, à partir de cette date.`,
+      `Si tu ne fais rien, le Cloud continue à ${prix} par mois, prélevés sur la carte que tu as enregistrée${carte ? ` (finissant par ${carte})` : ''}, à partir de cette date.`,
       'Si tu ne veux pas continuer, arrête l\'essai avant cette date dans Réglages → Abonnement : l\'arrêt est immédiat et rien n\'est facturé.',
       'Ta formule FillSell n\'est pas concernée : seule l\'option FillSell Cloud l\'est.',
     ],

@@ -166,7 +166,7 @@ try {
       'remontée : la ligne « Ton mois gratuit en couvre encore 6 sur 24… » d’avant, aucune carte neuve', fr(f0).slice(-500));
     ok(feuille({ repubMois: { restantes: 6, remise: '16 novembre' }, jaugeRemontees: null }) === f0, 'remontée : jaugeRemontees={null} rend exactement la feuille d’avant');
     const stock = lire('src/tabs/StockTab.jsx');
-    ok(/jaugeRemontees=\{\(\(\)=>\{const j=jaugesDuCompte\(quotas\)\?\.remontees;return j&&!j\.illimite\?\{\.\.\.j,remise:jourRemise\(quotas\?\.republication\?\.remise_le,lang==='en'\?'en':'fr'\)\}:null;\}\)\(\)\}/.test(stock),
+    ok(/jaugeRemontees=\{\(\(\)=>\{const j=jaugesDuCompte\(quotas\)\?\.remontees;return j&&!j\.illimite\?\{\.\.\.j,remise:jourRemiseCourt\(remiseDuCompte\(quotas\)\?\?remiseLueStock,lang==='en'\?'en':'fr'\)\}:null;\}\)\(\)\}/.test(stock),
       'remontée : la jauge n’est passée qu’avec la grille et un plafond (illimitées : null, rien de neuf)');
     ok(J.jaugesDuCompte(AUJ_FREE) === null && J.jaugesDuCompte({ ...etat('pro', [0, 120], [0, 1200]), republication: { mode: 'illimite' } }).remontees.illimite === true,
       'à 0, jaugesDuCompte rend null ; Pro avec la grille : remontées illimitées');
@@ -285,8 +285,8 @@ try {
     const h43 = renderToStaticMarkup(h(LOT.EcranPlateformes, base(free, p43, cibles2)));
     const t43 = fr(h43);
     ok(/data-mur-jauge="annonces"/.test(h43) && /Ton plan Free ne couvre pas tout le lot/.test(t43), 'le mur : « Ton plan Free ne couvre pas tout le lot », jauge annonces', t43);
-    ok(/Il te reste 5 annonces ce mois-ci : 5 articles peuvent partir maintenant\. Les 7 autres restent dans ton stock, à publier dès le 16 novembre\./.test(t43),
-      '« Il te reste 5 annonces ce mois-ci : 5 articles peuvent partir maintenant. Les 7 autres restent dans ton stock, à publier dès le 16 novembre. »', t43);
+    ok(/Il te reste 5 annonces ce mois-ci : 5 articles peuvent partir maintenant\. Les 7 autres restent dans ton stock, à publier dès le 16\/11\./.test(t43),
+      '« Il te reste 5 annonces ce mois-ci : 5 articles peuvent partir maintenant. Les 7 autres restent dans ton stock, à publier dès le 16/11. » (JJ/MM, maquette 4.3)', t43);
     ok(/Passer Premium : 40 annonces et 400 publications par mois/.test(t43), 'le bouton chiffre le palier visé sur les deux jauges (coin_config, clés jauge_*)');
     ok(/Ou continue avec les 5 articles que ton plan permet : le bouton du bas\. Rien n'est perdu\./.test(t43), '« Ou continue avec les 5 articles que ton plan permet… Rien n’est perdu. » reste');
     ok(/Ces 5 articles utiliseront 5 annonces et 10 publications\./.test(t43) && /Il te restera 0 annonce et 31 publications ce mois-ci\./.test(t43)
@@ -301,7 +301,7 @@ try {
     const pPub = partageDe(premPeu, cibles2);
     ok(pPub.maintenant.length === 7 && pPub.bloque === 'publications' && pPub.publications === 14, 'Premium, 14 publications : 7 articles, bloqués par les publications');
     const tPub = fr(renderToStaticMarkup(h(LOT.EcranPlateformes, base(premPeu, pPub, cibles2))));
-    ok(/Ton plan Premium ne couvre pas tout le lot/.test(tPub) && /Il te reste 14 publications : 7 articles sur 2 plateformes peuvent partir maintenant\. Les 5 autres restent dans ton stock, à publier dès le 16 novembre\./.test(tPub),
+    ok(/Ton plan Premium ne couvre pas tout le lot/.test(tPub) && /Il te reste 14 publications : 7 articles sur 2 plateformes peuvent partir maintenant\. Les 5 autres restent dans ton stock, à publier dès le 16\/11\./.test(tPub),
       '« Il te reste 14 publications : 7 articles sur 2 plateformes peuvent partir maintenant… »', tPub);
     ok(/Passer Pro : 120 annonces et 1 200 publications par mois/.test(tPub), 'Premium → « Passer Pro : 120 annonces et 1 200 publications par mois »', tPub);
     ok(R.boutonPalierDuLot('business', CLES_JAUGES) === 'Passer Business : annonces et publications illimitées', 'Business visé : « annonces et publications illimitées » (le mot, jamais un faux chiffre)');
@@ -383,13 +383,60 @@ try {
     ok(/Remontées 6 sur 30/.test(ta) && !/Gratuit : il t’en restera/.test(ta), 'mini-jauge 6 sur 30 ; la ligne « Gratuit » d’avant laisse la place');
     const court = { ...assez, consommes: 24, restantes: 6 };
     const tc = fr(feuille(court));
-    ok(/Il te reste 6 remontées ce mois-ci\./.test(tc) && /Ce lot en demande 24 : 12 annonces sur 2 plateformes \(Vinted et Leboncoin\)\. Elles reviennent le 16 novembre\./.test(tc)
-      && /Remontées 0 sur 30/.test(tc), 'il en manque : « Il te reste 6 remontées ce mois-ci. », combien le lot en demande — sans promettre lesquelles partent', tc.slice(-700));
-    ok(!/Les 3 annonces les plus anciennes|attendent le/.test(tc), 'le lot ne sait pas remonter un sous-ensemble choisi : aucune phrase ne le promet');
-    ok(/Republier 24 annonces \(12 articles sur 2 plateformes\)/.test(tc), 'le bouton et ce qui part ne changent pas (24 paires, comme avant)');
+    // (04/11, décision de Nico) Il en manque : les PLUS ANCIENNES d'abord, dans la limite exacte, jamais un article à moitié.
+    ok(/Il te reste 6 remontées ce mois-ci\./.test(tc) && /Les 3 annonces les plus anciennes remontent maintenant, sur Vinted et Leboncoin\. Les 9 autres attendent le 16 novembre\./.test(tc)
+      && /Remontées 0 sur 30/.test(tc), 'il en manque : « Il te reste 6 remontées ce mois-ci. », les 3 plus anciennes maintenant, les 9 autres attendent la remise à zéro', tc.slice(-700));
+    ok(/Remonter les 3 plus anciennes \(6 remontées sur Vinted et Leboncoin\)/.test(tc) && !/Republier 24 annonces/.test(tc),
+      'le bouton : « Remonter les 3 plus anciennes (6 remontées sur Vinted et Leboncoin) » — le « tout envoyer » laisse la place', tc.slice(-300));
+    ok(/Republier 24 annonces \(12 articles sur 2 plateformes\)/.test(fr(feuille(assez))), 'il en reste assez : le bouton d’avant, inchangé (24 paires)');
     const solo = fr(renderToStaticMarkup(h(ST.RepublishSheet, { lang: 'fr', items: items.slice(0, 1), prixUnitaire: null, multiOuverte: true, choixInitial: ['vinted'], onClose: noop, onConfirm: noop,
       repubMois: { restantes: 6, remise: '16 novembre' }, jaugeRemontees: { ...court, remise: '16 novembre' } })));
     ok(!/Cette remontée utilisera|Ce lot en demande/.test(solo) && /Gratuit : il t’en restera 5 ce mois-ci/.test(solo), 'à l’unité, la feuille garde sa ligne d’avant (la carte est celle du lot)', solo.slice(-400));
+    // (04/11) Les plus anciennes, vraiment : datées plateforme par plateforme (datesPf, la date du Stock), un article sur
+    // une ou deux plateformes, une date inconnue à la fin, jamais un article à moitié.
+    {
+      const J0 = Date.parse('2026-10-01T10:00:00Z');
+      const j = (n) => J0 + n * 86_400_000;
+      const itemsD = [
+        { id: 1, pfs: ['vinted', 'leboncoin'], d: { vinted: j(20), leboncoin: j(21) } },
+        { id: 2, pfs: ['vinted'], d: { vinted: j(2) } },
+        { id: 3, pfs: ['vinted', 'leboncoin'], d: { vinted: j(10), leboncoin: j(5) } },
+        { id: 4, pfs: ['vinted', 'leboncoin'], d: {} },
+        { id: 5, pfs: ['leboncoin'], d: { leboncoin: j(8) } },
+      ].map(({ id, pfs, d }) => ({ item: { id, title: `Article ${id}` }, prixActuel: 20, plateformes: pfs, surEbay: false, datesPf: d }));
+      const feuilleD = (restantes, lang = 'fr') => renderToStaticMarkup(h(ST.RepublishSheet, {
+        lang, items: itemsD, prixUnitaire: null, multiOuverte: true, choixInitial: ['vinted', 'leboncoin'], onClose: noop, onConfirm: noop,
+        repubMois: null, jaugeRemontees: { cle: 'remontees', illimite: false, plafond: 30, consommes: 30 - restantes, restantes, remise: '16/11' },
+      }));
+      const hd = feuilleD(5);
+      const td = fr(hd);
+      ok(/data-plus-anciennes="3"/.test(hd) && /Il te reste 5 remontées ce mois-ci\. Les 3 annonces les plus anciennes remontent maintenant, sur Vinted et Leboncoin\. Les 2 autres attendent le 16\/11\./.test(td)
+        && /Remonter les 3 plus anciennes \(4 remontées sur Vinted et Leboncoin\)/.test(td) && /Remontées 1 sur 30/.test(td),
+        '5 restantes, 8 demandées : les 3 plus anciennes (2 oct., 6 oct. sur Leboncoin, 9 oct.) = 4 remontées ; la suivante (2 de plus) ne tient pas : on s’arrête', td.slice(-420));
+      const t1 = fr(feuilleD(3));
+      ok(/Les 2 annonces les plus anciennes remontent maintenant, sur Vinted et Leboncoin\. Les 3 autres attendent le 16\/11\./.test(t1) && /Remonter les 2 plus anciennes \(3 remontées sur Vinted et Leboncoin\)/.test(t1),
+        '3 restantes : 1 + 2 = 3 exactement (la limite exacte)', t1.slice(-300));
+      const t0 = feuilleD(0);
+      ok(/data-bouton-remontee="aucune"/.test(t0) && /<button disabled=""[^>]*data-bouton-remontee="aucune"[^>]*>Plus assez de remontées avant le 16\/11<\/button>/.test(t0)
+        && /Ce lot en demande 8/.test(fr(t0)), '0 restante : rien ne part, le bouton grisé le dit (« Plus assez de remontées avant le 16/11 »)', fr(t0).slice(-300));
+      const items2 = itemsD.filter((x) => x.plateformes.length === 2);
+      const f1 = fr(renderToStaticMarkup(h(ST.RepublishSheet, { lang: 'fr', items: items2, prixUnitaire: null, multiOuverte: true, choixInitial: ['vinted', 'leboncoin'], onClose: noop, onConfirm: noop,
+        jaugeRemontees: { cle: 'remontees', illimite: false, plafond: 30, consommes: 29, restantes: 1, remise: '16/11' } })));
+      ok(/Plus assez de remontées avant le 16\/11/.test(f1) && !/Remonter la plus ancienne/.test(f1), '1 restante, chaque article en demande 2 : jamais un article à moitié (aucun ne part)', f1.slice(-200));
+      const un = fr(renderToStaticMarkup(h(ST.RepublishSheet, { lang: 'fr', items: items2, prixUnitaire: null, multiOuverte: true, choixInitial: ['vinted', 'leboncoin'], onClose: noop, onConfirm: noop,
+        jaugeRemontees: { cle: 'remontees', illimite: false, plafond: 30, consommes: 27, restantes: 3, remise: null } })));
+      ok(/L'annonce la plus ancienne remonte maintenant, sur Vinted et Leboncoin\. Les 2 autres attendent la remise à zéro de tes remontées\./.test(un) && /Remonter la plus ancienne \(2 remontées sur Vinted et Leboncoin\)/.test(un),
+        'singulier, et sans date connue : « … attendent la remise à zéro de tes remontées » (jamais une date inventée)', un.slice(-300));
+      const en = texte(feuilleD(5, 'en'));
+      ok(/The 3 oldest listings go back up now, on Vinted and Leboncoin\. The other 2 wait until 16\/11\./.test(en) && /Bump the 3 oldest \(4 bumps on Vinted and Leboncoin\)/.test(en), 'en anglais aussi', en.slice(-300));
+      const st = lire('src/tabs/StockTab.jsx');
+      ok(/onClick=\{lotCourt \? confirmerPlusAnciennes : confirmer\}/.test(st)
+        && /const garder = new Set\(plusAnciennes\.choisis\);\s*onConfirm\(items\.map\(\(\{ item, prixActuel, plateformes \}, i\) => \{\s*if \(!garder\.has\(i\)\) return null;/.test(st)
+        && /return \{ item, prix, plateformes: \(plateformes \?\? \['vinted'\]\)\.filter\(cochee\) \};\s*\}\)\.filter\(\(c\) => c && c\.plateformes\.length\), nomsSel\);/.test(st),
+        'l’appui envoie le sous-ensemble choisi, par le MÊME onConfirm (mêmes cibles : prix, plateformes cochées), dans l’ordre de la sélection');
+      ok(/\.\.\.\(grilleActive\(quotas\) \? \{ datesPf: Object\.fromEntries\(datesEnLigneDe\(it\)\.lignes\.filter\(\(l\) => l\.enLigne\)\.map\(\(l\) => \[l\.platform, Date\.parse\(l\.date \?\? ''\)\]\)\) \} : \{\}\),/.test(st),
+        'les dates des articles : datesEnLigneDe (la source du Stock), grille seulement');
+    }
     const stock = lire('src/tabs/StockTab.jsx');
     const lancer = stock.slice(stock.indexOf('async function lancerRepublicationLot('), stock.indexOf('async function relancerRepublication('));
     ok(lancer.length > 1000 && !/jaugeRemontees|nombreJauge|MiniJauge/.test(lancer), 'la CADENCE est intouchée : lancerRepublicationLot ne lit rien de neuf');

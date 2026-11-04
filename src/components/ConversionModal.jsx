@@ -17,7 +17,7 @@ import { textesCloud } from '../cloud/textes';
 // (06/10) « Bientôt : FillSell Cloud » — encart informatif SOUS les cartes ;
 // à retirer à la sortie du Cloud (interrupteur ENCART_CLOUD_BIENTOT).
 import EncartCloudBientot from '../cloud/EncartCloudBientot';
-import { jourRemise } from '../utils/jourRemise';
+import { jourRemise, jourRemiseCourt } from '../utils/jourRemise';
 // (04/11) La grille à 3 jauges (annonces · publications · remontées) — règle d'affichage unique, derrière
 // l'interrupteur coin_config.grille_trois_jauges. À 0 (ou config illisible), rien de ce qui suit ne se rend.
 import { JAUGES, grilleActiveConfig, grilleDuPalier, nombre, motJauge, palierQuiDebloque } from '../utils/jauges';
@@ -938,7 +938,9 @@ function rubanDuMur(geste, reco, K, fr) {
 // libellé + UNE carte · « Voir toutes les formules » · la sortie. Sans palier au-dessus (Lens du Business) :
 // aucune offre, un bouton « Fermer ». Les sorties passent par les mêmes fonctions que les autres vues
 // (onFond = tap hors de la feuille, onSortie = le lien ou le bouton du bas) : la télémétrie ne change pas.
-function MurDeJauge({ fr, geste, pastille, titre, fait, encore, encoreSous, ruban, carte, onVoirTout, sortie, boutonFermer, onFond, onSortie }) {
+// (04/11, maquette 5.4) `action` : { libelle, onClick } — le geste qui reste (Lens du Business : « Créer une
+// annonce depuis mes photos »), rendu SEULEMENT si l'hôte sait le faire ; absent, rien de neuf.
+function MurDeJauge({ fr, geste, pastille, titre, fait, encore, encoreSous, ruban, carte, onVoirTout, sortie, boutonFermer, onFond, onSortie, action = null }) {
   return (
     <Sheet onClose={onFond}>
       <div data-mur-jauge={geste}>
@@ -958,6 +960,16 @@ function MurDeJauge({ fr, geste, pastille, titre, fait, encore, encoreSous, ruba
             </div>
             {carte}
           </>
+        ) : null}
+        {action ? (
+          <button type="button" data-mur-action="" onClick={action.onClick} style={{
+            width: '100%', padding: 15, border: 'none', borderRadius: 14,
+            background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff',
+            fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+            boxShadow: '0 10px 22px -8px rgba(47,158,144,0.5)',
+          }}>
+            {action.libelle}
+          </button>
         ) : null}
         {onVoirTout ? (
           <div style={{ textAlign: 'center', marginTop: 12 }}>
@@ -1032,6 +1044,10 @@ export default function ConversionModal({
   // republications du mois (quotas_etat ; 50 par mois depuis le 05/10). Le mur
   // des republications (en lot, automatique) dit d'abord ce qu'il A DÉJÀ.
   repubOffertes = null,
+  // (04/11, grille à 3 jauges, décision de Nico) Le Premium : ses remontées restantes du mois (quotas_etat), pour le
+  // mur de l'automatique (« Il t'en reste N ce mois-ci »). null (défaut, et pour le Free qui passe par
+  // repubOffertes) : rien ne change.
+  remonteesRestantes = null,
   // (06/10 soir) Articles en stock (App : items non vendus) — relu pour UNE
   // chose : le bouton « Republier mes annonces » n'a rien à proposer sur un
   // stock vide. null (hôte qui ne le passe pas) = comportement d'avant.
@@ -1054,6 +1070,10 @@ export default function ConversionModal({
   // sur GRILLE_REPLI) au lieu d'un éclair de l'ancienne feuille ; la config lue fait foi ensuite. false (défaut) :
   // rien ne change.
   grille: grilleHote = false,
+  // (04/11, grille à 3 jauges, maquette 5.4) Le mur Lens du Business : « Créer une annonce depuis mes photos » ouvre la
+  // création d'annonce par photos SANS Lens (rédaction par l'IA, comptée en annonces, illimitées chez le Business).
+  // Seul l'hôte sait si c'est possible (photos à l'écran, parcours monté) : absente (null), le bouton n'est pas rendu.
+  onCreerDepuisPhotos = null,
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
@@ -1292,11 +1312,12 @@ export default function ConversionModal({
       : trigger === 'republish_cap'
         ? (lu(plafondRepub?.plafond) ?? (palierIci === 'free' && Number.isFinite(remonteesFree) ? remonteesFree : null))
         : lu(quotaInfo?.plafond);
-    const remiseMur = jourRemise(trigger === 'republish_cap' ? plafondRepub?.remise_le : quotaInfo?.remise_le, fr ? 'fr' : 'en');
+    // (04/11, décision de Nico) La date des murs au format JJ/MM des maquettes (« Attendre le 16/11 »).
+    const remiseMur = jourRemiseCourt(trigger === 'republish_cap' ? plafondRepub?.remise_le : quotaInfo?.remise_le, fr ? 'fr' : 'en');
     const mots = textesDuMur({
       fr, geste: gesteMur, palier: palierIci, plafond: plafondMur, remise: remiseMur,
       publicationsRestantes: lu(quotaInfo?.publications_restantes),
-      remonteesRestantes: lu(repubOffertes?.restantes),
+      remonteesRestantes: lu(repubOffertes?.restantes) ?? lu(remonteesRestantes),
     });
     // Le palier qui débloque — le plus proche, pas le plus cher — et seulement s'il est VENDABLE à ce compte
     // (offre Business, targetTiers) ; sinon le plus proche des vendables qui fait mieux sur cette jauge.
@@ -1322,6 +1343,11 @@ export default function ConversionModal({
         onVoirTout={sellable.length > 0 ? () => setView('plans') : null}
         sortie={sortieMur} boutonFermer={gesteMur === 'lens'}
         onFond={fermerParLeFond} onSortie={fermerNonMerci}
+        action={gesteMur === 'lens' && typeof onCreerDepuisPhotos === 'function' ? {
+          libelle: fr ? 'Créer une annonce depuis mes photos' : 'Create a listing from my photos',
+          // La sortie est nommée (abandon « creer_depuis_photos ») avant de passer la main à l'hôte.
+          onClick: () => { fermer('creer_depuis_photos'); onCreerDepuisPhotos(); },
+        } : null}
       />
     );
   }

@@ -88,12 +88,15 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // (25/10, balayage des erreurs visibles) CE QUI DEMANDE VRAIMENT UN GESTE, une règle pour la carte, « À régler »,
 // le filtre, la modale de statut et la pastille de l'onglet (App.jsx).
 import { causeARegler, jobSupplante, derniersParLigne, republicationLibereeApresArret, pastilleRepublicationEnPause, indexSelonARegler, plateformesHorsJeu as plateformesHorsJeuDe } from '../utils/erreursVisibles';
-import { jourRemise, messagePlafondRepublicationGratuit } from '../utils/jourRemise';
+import { jourRemise, jourRemiseCourt, messagePlafondRepublicationGratuit } from '../utils/jourRemise';
 // (04/11, grille à 3 jauges) Un refus de remontée → le mur Remontées, ou la phrase du garde-fou. Interrupteur à 0 : null.
-import { suiteDuRefus, publicationsRestantes } from '../reglages/refusEtMurs';
+import { suiteDuRefus, publicationsRestantes, remiseDuCompte } from '../reglages/refusEtMurs';
 // (04/11, grille à 3 jauges — maquette 4.4) Le coût d'une remontée en lot, dit avant l'appui. Interrupteur à 0 : null.
-import { jaugesDuCompte, nombre as nombreJauge, motJauge } from '../utils/jauges';
+import { grilleActive, jaugesDuCompte, nombre as nombreJauge, motJauge } from '../utils/jauges';
 import { MiniJauge } from '../publication/EcranOuPublier';
+// (04/11, décision de Nico) Pas assez de remontées pour tout le lot : les plus anciennes d'abord, jamais un article à moitié.
+import { plusAnciennesDuLot, listeDesNoms } from '../stock/remonteesDuLot';
+import { lireProchaineRemiseAZero } from '../reglages/quotas';
 // Relevé des annonces par plateforme (2026-09-17, sync lot 2) — FERMÉ tant que
 // coin_config.sync_multi_ouverte = 0 : le bloc n'existe pas, aucun texte ne
 // l'annonce (lireSyncMultiOuverte, fail-closed).
@@ -5699,10 +5702,14 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
 // (04/11/2026, grille à 3 jauges — maquette 4.4) `jaugeRemontees` : la jauge Remontées du compte
-// (jaugesDuCompte(quotas).remontees + `remise` en mots), SEULEMENT avec la grille et un plafond (Free 30,
+// (jaugesDuCompte(quotas).remontees + `remise` en JJ/MM), SEULEMENT avec la grille et un plafond (Free 30,
 // Premium 1 500) ; null sinon (sans la grille, remontées illimitées) : la feuille rend ce qu'elle rendait.
-// ⛔ CADENCE INTOUCHABLE : la feuille ne fait que DIRE, avant l'appui, ce que le lot va utiliser — elle ne change
-//    ni l'ordre ni le nombre de ce qui part (lancerRepublicationLot, inchangé, s'arrête au refus du serveur).
+// (04/11, décision de Nico) Le lot demande plus qu'il n'en reste : la feuille propose les PLUS ANCIENNES, dans la
+// limite exacte de ce qui reste (stock/remonteesDuLot.js : chaque article sur TOUTES ses plateformes cochées ou pas
+// du tout) ; le bouton « tout envoyer » ne disparaît que dans ce cas. Les articles arrivent avec `datesPf`
+// (plateforme → date de l'annonce en ligne, datesParPlateforme) quand la grille est active.
+// ⛔ CADENCE INTOUCHABLE : la feuille ne fait que CHOISIR, avant l'appui, le sous-ensemble de la sélection qui part —
+//    l'envoi reste onConfirm → lancerRepublication / lancerRepublicationLot, inchangés, dans l'ordre de la sélection.
 // Exportée pour selftest:cout-publication (rendu serveur), rien d'autre ne la monte.
 export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, repubMois = null, jaugeRemontees = null }) {
   const fr = lang !== 'en';
@@ -5759,6 +5766,22 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
   // Bascule quotas (02/09) : prixUnitaire null = republication non facturée →
   // aucun coût affiché (fragment vide), le libellé reste « Republier … ».
   const cout = prixUnitaire != null ? <>{nbEnvois * prixUnitaire}</> : null;
+  // (04/11, grille, décision de Nico) Le lot demande plus de remontées qu'il n'en reste : les plus anciennes d'abord,
+  // dans la limite exacte (null sinon — à l'unité, sans la grille, ou quand il en reste assez : rien ne change).
+  const restantesRemontees = jaugeRemontees ? Math.max(0, Number(jaugeRemontees.restantes) || 0) : null;
+  const lotCourt = Boolean(jaugeRemontees) && !solo && nbEnvois > 0 && nbEnvois > restantesRemontees;
+  const plusAnciennes = lotCourt ? plusAnciennesDuLot(items, nomsSel, restantesRemontees) : null;
+  // Les plus anciennes, et elles seules : les mêmes cibles que `confirmer` (prix, plateformes cochées), filtrées sur
+  // le sous-ensemble choisi, dans l'ordre de la sélection.
+  const confirmerPlusAnciennes = () => {
+    if (!plusAnciennes?.choisis.length) return;
+    const garder = new Set(plusAnciennes.choisis);
+    onConfirm(items.map(({ item, prixActuel, plateformes }, i) => {
+      if (!garder.has(i)) return null;
+      const prix = pct > 0 && prixActuel != null ? arrondi(prixActuel) : null;
+      return { item, prix, plateformes: (plateformes ?? ['vinted']).filter(cochee) };
+    }).filter((c) => c && c.plateformes.length), nomsSel);
+  };
   // (24/10, décision de Nico) Plus de limite par jour : plus de phrase « combien partent aujourd'hui » avant le clic.
   const confirmer = () => {
     if (!nbEnvois) return;
@@ -5939,8 +5962,9 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
           </div>
         )}
         {/* (04/11/2026, grille à 3 jauges — maquette 4.4) Avant une remontée EN LOT : ce qu'elle utilisera et ce qu'il
-            restera (« Cette remontée utilisera 24 remontées. »), ou, s'il en manque, combien il en reste et combien le
-            lot en demande. Le lot ne sait pas remonter un sous-ensemble choisi : on ne promet pas lesquelles partent.
+            restera (« Cette remontée utilisera 24 remontées. »), ou, s'il en manque, combien il en reste et (décision
+            de Nico du 04/11) les plus anciennes qui partent maintenant, les autres attendant la remise à zéro (JJ/MM).
+            Aucune ne tient (la plus ancienne demande plus qu'il n'en reste) : combien le lot en demande, rien ne part.
             Cette carte remplace, avec la grille, la ligne « Gratuit : il t'en restera… » ci-dessous. */}
         {jaugeRemontees && !solo ? (nbEnvois > 0 && (() => {
           const r = Math.max(0, Number(jaugeRemontees.restantes) || 0);
@@ -5954,15 +5978,26 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
             ? (fr ? `Cette remontée utilisera ${nombreJauge(nbEnvois, 'fr')} ${motR(nbEnvois)}.` : `This bump will use ${nombreJauge(nbEnvois, 'en')} ${motR(nbEnvois)}.`)
             : (fr ? `Il te reste ${nombreJauge(r, 'fr')} ${motR(r)} ce mois-ci.` : `You have ${nombreJauge(r, 'en')} ${motR(r)} left this month.`);
           const remise = jaugeRemontees.remise ?? null;
+          // Les plus anciennes qui tiennent (plusAnciennesDuLot) : k articles, leurs remontées, leurs plateformes.
+          const k = !assez && plusAnciennes ? plusAnciennes.choisis.length : 0;
+          const autres = k > 0 ? plusAnciennes.nbArticles - k : 0;
+          const pfsK = k > 0 ? listeDesNoms(plusAnciennes.plateformes.map((p) => LABEL_PF[p] ?? p), fr ? 'fr' : 'en') : '';
+          const attente = fr
+            ? `${autres > 1 ? `Les ${nombreJauge(autres, 'fr')} autres attendent` : "L'autre attend"} ${remise ? `le ${remise}` : 'la remise à zéro de tes remontées'}.`
+            : `${autres > 1 ? `The other ${nombreJauge(autres, 'en')} wait` : 'The other one waits'} ${remise ? `until ${remise}` : 'until your bumps reset'}.`;
           return (
-            <div data-cout-remontee={assez ? 'assez' : 'court'} role="status" style={{ background: '#FFFFFF', border: '1px solid #E7E3D8', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+            <div data-cout-remontee={assez ? 'assez' : 'court'} {...(k > 0 ? { 'data-plus-anciennes': k } : {})} role="status" style={{ background: '#FFFFFF', border: '1px solid #E7E3D8', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#10201B', lineHeight: 1.4 }}>{titre}</div>
               <div style={{ fontSize: 12.5, color: '#3A4742', lineHeight: 1.5 }}>
                 {assez
                   ? (fr ? <>{detail}. Il t'en restera <b className="num">{nombreJauge(r - nbEnvois, 'fr')}</b> ce mois-ci.</> : <>{detail}. You will have <b className="num">{nombreJauge(r - nbEnvois, 'en')}</b> left this month.</>)
-                  : (fr ? `Ce lot en demande ${nombreJauge(nbEnvois, 'fr')} : ${detail}.${remise ? ` Elles reviennent le ${remise}.` : ''}` : `This batch needs ${nombreJauge(nbEnvois, 'en')}: ${detail}.${remise ? ` They come back on ${remise}.` : ''}`)}
+                  : k > 0
+                    ? (fr
+                      ? `${k > 1 ? `Les ${nombreJauge(k, 'fr')} annonces les plus anciennes remontent` : "L'annonce la plus ancienne remonte"} maintenant, sur ${pfsK}.${autres > 0 ? ` ${attente}` : ''}`
+                      : `${k > 1 ? `The ${nombreJauge(k, 'en')} oldest listings go back up` : 'The oldest listing goes back up'} now, on ${pfsK}.${autres > 0 ? ` ${attente}` : ''}`)
+                    : (fr ? `Ce lot en demande ${nombreJauge(nbEnvois, 'fr')} : ${detail}.${remise ? ` Elles reviennent le ${remise}.` : ''}` : `This batch needs ${nombreJauge(nbEnvois, 'en')}: ${detail}.${remise ? ` They come back on ${remise}.` : ''}`)}
               </div>
-              <MiniJauge cle="remontees" jauge={jaugeRemontees} pris={nbEnvois} lang={fr ? 'fr' : 'en'} />
+              <MiniJauge cle="remontees" jauge={jaugeRemontees} pris={k > 0 ? plusAnciennes.cout : nbEnvois} lang={fr ? 'fr' : 'en'} />
             </div>
           );
         })()) : null}
@@ -5975,10 +6010,32 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
               : (fr ? `Ton mois gratuit en couvre encore ${repubMois.restantes} sur ${nbEnvois}${repubMois.remise ? ` (remise à zéro le ${repubMois.remise})` : ''} : décoche ce que tu peux garder pour plus tard.` : `Your free month still covers ${repubMois.restantes} of ${nbEnvois}${repubMois.remise ? ` (resets on ${repubMois.remise})` : ''}: untick what can wait.`)}
           </div>
         )}
-        <button onClick={confirmer} disabled={!nbEnvois}
-          style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: nbEnvois ? 'linear-gradient(120deg,#2F9E90,#1B6E62)' : '#B9C4C0', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: nbEnvois ? 'pointer' : 'default' }}>
-          {bouton}
-        </button>
+        {/* (04/11, grille, décision de Nico) Pas assez de remontées pour tout le lot : le bouton « tout envoyer »
+            laisse la place aux plus anciennes (« Remonter les 3 plus anciennes (6 remontées sur Vinted et
+            Leboncoin) ») ; aucune ne tient : grisé, rien ne part. Sinon : le bouton d'avant, inchangé. */}
+        {(() => {
+          const actif = lotCourt ? plusAnciennes.choisis.length > 0 : nbEnvois;
+          const libelle = !lotCourt ? bouton : (() => {
+            const k = plusAnciennes.choisis.length;
+            const remise = jaugeRemontees.remise ?? null;
+            if (!k) {
+              return fr ? (remise ? `Plus assez de remontées avant le ${remise}` : 'Plus assez de remontées ce mois-ci')
+                : (remise ? `Not enough bumps before ${remise}` : 'Not enough bumps this month');
+            }
+            const n = plusAnciennes.cout;
+            const pfs = listeDesNoms(plusAnciennes.plateformes.map((p) => LABEL_PF[p] ?? p), fr ? 'fr' : 'en');
+            const prixLot = prixUnitaire != null ? <> · {n * prixUnitaire}</> : null;
+            return fr
+              ? <>{k > 1 ? `Remonter les ${nombreJauge(k, 'fr')} plus anciennes` : 'Remonter la plus ancienne'} ({nombreJauge(n, 'fr')} {motJauge('remontees', n, 'fr')} sur {pfs}){pct > 0 ? ` à −${pct} %` : ''}{prixLot}</>
+              : <>{k > 1 ? `Bump the ${nombreJauge(k, 'en')} oldest` : 'Bump the oldest'} ({nombreJauge(n, 'en')} {motJauge('remontees', n, 'en')} on {pfs}){pct > 0 ? ` at −${pct}%` : ''}{prixLot}</>;
+          })();
+          return (
+            <button onClick={lotCourt ? confirmerPlusAnciennes : confirmer} disabled={!actif} {...(lotCourt ? { 'data-bouton-remontee': plusAnciennes.choisis.length ? 'plus-anciennes' : 'aucune' } : {})}
+              style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: actif ? 'linear-gradient(120deg,#2F9E90,#1B6E62)' : '#B9C4C0', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: actif ? 'pointer' : 'default' }}>
+              {libelle}
+            </button>
+          );
+        })()}
         {/* (Le CTA « Gratuite et illimitée avec Premium » du 07/08 est mort le
             08/08 avec la gratuité plan : la republication coûte le même prix
             pour tous, il n'y a plus rien à convertir ici.) */}
@@ -6697,9 +6754,24 @@ const StockTab = memo(function StockTab({
         plateformes: plateformesRepubliables(it, jobsByInventaire[it.id] || [], { multiOuverte, plateformesOuvertes, plateformesFermees }),
         // (02/11, décision de Nico) En ligne sur eBay : la feuille dit qu'eBay ne bouge pas (jamais republiée).
         surEbay: computeRemovalInfo(jobsByInventaire[it.id] || []).publishedActive.includes('ebay'),
+        // (04/11, grille seulement) La date de chaque annonce en ligne — la dernière publication ou remontée, la source du
+        // Stock (datesEnLigneDe → datesParPlateforme) : s'il manque des remontées, la feuille propose les plus anciennes.
+        ...(grilleActive(quotas) ? { datesPf: Object.fromEntries(datesEnLigneDe(it).lignes.filter((l) => l.enLigne).map((l) => [l.platform, Date.parse(l.date ?? '')])) } : {}),
       })),
     });
   }
+  // (04/11, décision de Nico) La date de remise à zéro de la feuille de remontée (« attendent le 16/11 ») : quotas_etat
+  // quand il la rend, sinon coin_wallets.next_grant_at, lu UNE fois, à l'ouverture de la feuille, avec la grille
+  // seulement. Interrupteur à 0 : aucune lecture.
+  const [remiseLueStock, setRemiseLueStock] = useState(null);
+  const remiseStockALire = Boolean(repubSheet) && grilleActive(quotas) && remiseDuCompte(quotas) == null && Boolean(user?.id);
+  useEffect(() => {
+    if (!remiseStockALire || remiseLueStock) return undefined;
+    let vivant = true;
+    lireProchaineRemiseAZero(user.id).then((d) => { if (vivant && d) setRemiseLueStock(d); }).catch(() => {});
+    return () => { vivant = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remiseStockALire, user?.id]);
 
   // ── É5.2 : sélection multiple (2026-08-05) — même patron que la saisie des
   // prix d'achat (toggle + Set + checkboxes + barre sticky). Seuls les
@@ -12505,7 +12577,8 @@ const StockTab = memo(function StockTab({
           oplaVerdict={oplaVerdictRepub}
           repubMois={offertGratuit.repub!=null?{restantes:offertGratuit.repub,remise:offertGratuit.remise}:null}
           // (04/11, grille à 3 jauges) La jauge Remontées (plafond seulement : illimitées, rien de neuf). Sans la grille : null.
-          jaugeRemontees={(()=>{const j=jaugesDuCompte(quotas)?.remontees;return j&&!j.illimite?{...j,remise:jourRemise(quotas?.republication?.remise_le,lang==='en'?'en':'fr')}:null;})()}
+          // (04/11, décision de Nico) La date en JJ/MM : quotas_etat (remise_le, tous paliers avec la grille), sinon la lecture de la feuille.
+          jaugeRemontees={(()=>{const j=jaugesDuCompte(quotas)?.remontees;return j&&!j.illimite?{...j,remise:jourRemiseCourt(remiseDuCompte(quotas)??remiseLueStock,lang==='en'?'en':'fr')}:null;})()}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles,choix)=>{
             setRepubSheet(null);

@@ -95,5 +95,18 @@ const P = lire("scripts/quotas/preuve-trois-jauges.mjs");
 ok(existsSync(path.join(RACINE, "scripts/quotas/preuve-trois-jauges.mjs")) && P.includes("20261104000000_trois_jauges_interrupteur.sql") && P.includes("_INVERSE.sql"), "la preuve sur base jetable joue la migration et son inverse");
 ok(/sansIds\(avant\[id\]\[k\]\) === sansIds\(apres\[id\]\[k\]\)/.test(P), "… et compare, à l'interrupteur à 0, chaque appel avant / après");
 
+console.log("6. La date de remise à zéro, aussi pour les payants (20261104140000, demande de Nico du 04/11)");
+const M2 = lire("supabase/migrations/20261104140000_remise_le_payants.sql");
+const INV2 = lire("supabase/rollbacks/20261104140000_remise_le_payants_INVERSE.sql");
+const FIX2 = lire("scripts/quotas/fixtures/prod-0411-remise-payants.sql");
+const qe2 = fonction(M2, "quotas_etat");
+ok(/CASE WHEN jauges_actives\(\) THEN jsonb_build_object\(\n[\s\S]{0,200}'grille', 'trois_jauges',\n[^\n]*\n\s+'remise_le', \(SELECT w\.next_grant_at FROM coin_wallets w WHERE w\.user_id = v_user\),/.test(qe2), "quotas_etat : « remise_le » (coin_wallets.next_grant_at) seulement avec la grille, pour tous les paliers");
+ok(/'plafond', v_plafond, 'faites', v_faits\)\n\s+\|\| CASE WHEN jauges_actives\(\) THEN jsonb_build_object\('remise_le',/.test(fonction(M2, "spend_coins_and_republish")), "refus du Premium à 1 500 : la date, seulement avec la grille");
+for (const nom of ["quotas_etat", "spend_coins_and_republish"]) {
+  ok(fonction(FIX2, nom) === fonction(M, nom), `${nom} : la fixture du 04/11 = la migration 20261104000000 (relue en prod)`);
+  ok(fonction(INV2, nom) === fonction(FIX2, nom), `inverse 2 : ${nom} = sa définition du 04/11`);
+}
+ok(!/(INSERT INTO|UPDATE|DELETE FROM)\s+(public\.)?coin_config/i.test(M2), "aucune clé de coin_config écrite");
+
 console.log(`\n${rouges === 0 ? "✓" : "✗"} trois-jauges : ${verts} contrôles verts, ${rouges} rouges`);
 process.exit(rouges === 0 ? 0 : 1);

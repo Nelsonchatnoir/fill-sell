@@ -189,6 +189,48 @@ titre('5. Le nom : « FillSell Cloud » ; « sans ordinateur » est la promesse'
   'l’onboarding (entree/textes.js) et la feuille (ConversionModal, par cloud/textes.js) lisent CLOUD_PRIX_AFFICHE');
 }
 
+// ── 5 bis. « Cloud » partout, jamais « option » seul (04/11, décision de Nico) ─────────────────────────────────
+titre('5 bis. « le Cloud » ou « l’option FillSell Cloud », jamais « option » seul (fr) ni « add-on » seul (en)');
+{
+  // « option » / « add-on » ne sont admis que suivis / précédés du nom : « l'option FillSell Cloud », « the FillSell Cloud add-on ».
+  const OPTION_SEULE = /\b[Oo]ption\b(?! FillSell Cloud)/;
+  const ADDON_SEUL = /(?<!FillSell Cloud )\b[Aa]dd-on\b/;
+  const FR = TX.textesCloud('fr'), EN = TX.textesCloud('en');
+  const lots = {
+    'textes.js': [phrases(FR), phrases(EN)],
+    'textesConnexion.js': [phrases(CX.textesConnexion('fr')), phrases(CX.textesConnexion('en'))],
+    'textesLegaux.js': [phrases(LEG.textesLegauxCloud('fr')), phrases(LEG.textesLegauxCloud('en'))],
+    'conditionsCloud.js': [phrases(COND.conditionsCloud()), []],
+  };
+  for (const [quoi, [fr, en]] of Object.entries(lots)) {
+    const f = [...fr.filter((p) => OPTION_SEULE.test(p)), ...en.filter((p) => ADDON_SEUL.test(p))];
+    ok(fr.length > 0 && f.length === 0, `${quoi} : jamais « option » seul (fr) ni « add-on » seul (en)`, f.join(' | '));
+  }
+  // Les chaînes écrites dans les écrans du Cloud, la feuille des offres, les Réglages et l'onboarding (hors commentaires).
+  const sources = ['src/components/ConversionModal.jsx', 'src/components/ExtensionPitchScreen.jsx', 'src/cloud/BlocCloudReglages.jsx', 'src/cloud/InterrupteurCloud.jsx',
+    'src/reglages/SousPageAbonnement.jsx', 'src/reglages/textes.js', 'src/entree/textes.js'];
+  const fautes = [];
+  for (const s of sources) {
+    // Sans les commentaires (blocs /* … */, y compris ceux du JSX, et lignes //) : seules les chaînes écrites comptent.
+    const code = lire(s).replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    for (const m of code.matchAll(/(['"`])((?:\\.|(?!\1)[^\\\n])*)\1/g)) {
+      const lit = m[2];
+      if (!/\s/.test(lit)) continue; // une clé, un identifiant : pas un texte
+      if (OPTION_SEULE.test(lit) || ADDON_SEUL.test(lit)) fautes.push(`${s} : ${lit.slice(0, 90)}`);
+    }
+  }
+  ok(fautes.length === 0, `écrans (feuille des offres, mur de l’extension, Réglages, onboarding) : aucun « option » / « add-on » seul écrit`, fautes.join(' | '));
+  // Les mots de la décision, mot pour mot.
+  ok(net(FR.prixOptionSousEssai) === '/mois · Cloud offert 7 jours' && net(EN.prixOptionSousEssai) === '/mo · Cloud free for 7 days', '« /mois · Cloud offert 7 jours »', net(FR.prixOptionSousEssai));
+  ok(FR.arreter === 'Arrêter le Cloud' && FR.veilleArreter === 'Arrêter le Cloud' && FR.garderOption === 'Garder le Cloud' && FR.resiliationCloudLien === 'Arrêter aussi le Cloud'
+    && EN.arreter === 'Stop the Cloud' && EN.garderOption === 'Keep the Cloud', '« Arrêter le Cloud », « Garder le Cloud », « Arrêter aussi le Cloud » (en : « Stop the Cloud »)');
+  ok(net(FR.carteDemandee('10 novembre')) === "Carte demandée, rien n'est prélevé pour le Cloud avant le 10 novembre." && net(FR.frise('10 novembre')[0].quoi) === "Carte demandée, rien n'est prélevé pour le Cloud."
+    && net(FR.frise('10 novembre')[1].quoi) === `Le Cloud passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.`, '« rien n’est prélevé pour le Cloud », « Le Cloud passe à 24,99 €/mois » (masculin)');
+  ok(FR.etatAucun === 'Pas activé' && FR.etatPaye === 'Actif' && /n'est plus actif, et rien n'a été facturé pour lui/.test(FR.termineTexte('7 octobre')), 'les accords : « le Cloud », masculin (« Pas activé », « Actif », « pour lui »)');
+  ok(/« le Cloud »/.test(COND.conditionsCloud().articles[0].ps[0]) && /^L'option FillSell Cloud/.test(COND.conditionsCloud().articles[0].ps[0]), 'conditions, article 1 : « L’option FillSell Cloud (« le Cloud ») est un service de FillSell »');
+  ok(CFG.CGU_CLOUD_VERSION === '2026-11-04' && SRV.CGU_CLOUD_VERSION === CFG.CGU_CLOUD_VERSION, 'la version des conditions reste 2026-11-04, la même des deux côtés (rien publié depuis)');
+}
+
 // ── 6. Rien d'autre ne bouge ─────────────────────────────────────────────────
 titre('6. Rien d’autre ne bouge');
 ok(CFG.CLOUD_OFFER_ENABLED === false && CFG.cloudOfferVisible('n-importe-qui') === false, 'CLOUD_OFFER_ENABLED reste à false : personne ne voit l’offre');

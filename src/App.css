@@ -130,6 +130,23 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 }
 @media (max-width: 420px) {
   .tb-quota-mot { display: none; }
+  .tb-quota-restante { display: none; }
+}
+/* (04/11, grille à 3 jauges, décision de Nico) LA PASTILLE DE LA JAUGE (App.jsx, grille seulement) : son MOT
+   (« annonces », « publications », « remontées ») ne cède JAMAIS, à aucune largeur — c'est « restante(s) » qui
+   part (≤ 420 px, ci-dessus), et le libellé n'est jamais coupé en points de suspension : le mot reste entier.
+   La roue reste à l'écran (A7) : la droite ne cède toujours rien ; sous 340 px, la place vient de la pastille
+   elle-même (marges et corps resserrés) et des espacements de l'en-tête qui la porte (:has, un navigateur qui ne le
+   connaît pas garde les espacements d'avant). Mesuré de 320 à 1920 px, Free « Voir les offres » + « 19 publications »
+   compris (le pire cas : 19 px manquaient à 320 px). Sans la grille, ces classes ne sont posées nulle part : l'en-tête
+   d'avant, au pixel près. */
+@media (max-width: 768px) {
+  .tb-quota-libelle--jauge { overflow: visible; text-overflow: clip; }
+}
+@media (max-width: 340px) {
+  .tb-quota-chip--jauge { padding: 6px 7px !important; gap: 3px !important; font-size: 11.5px !important; }
+  .tb-left:has(.tb-quota-chip--jauge) { gap: 4px; }
+  .topbar:has(.tb-quota-chip--jauge) { padding-left: 10px; padding-right: 10px; }
 }
 @media (max-width: 360px) {
   .tb-left { gap: 6px; }

@@ -182,6 +182,13 @@ const dateCourte = (iso, en) => {
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString(en ? "en-GB" : "fr-FR", { day: "numeric", month: "long" });
 };
+// (04/11, décision de Nico — grille à 3 jauges seulement) La même date au format JJ/MM des maquettes (« dès le
+// 16/11 »), jour de Paris ; mêmes gardes que dateCourte.
+const dateJJMM = (iso, en) => {
+  const d = new Date(iso ?? "");
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(en ? "en-GB" : "fr-FR", { day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" });
+};
 
 function Vignette({ item, taille = null }) {
   const url = urlsPhotos(item?.photos)[0] ?? null;
@@ -1213,8 +1220,10 @@ function EcranDuLot({
     // (ou avant la lecture) : null, le libellé d'avant.
     if (fiches != null && quotas != null) cta = libelleCtaDuLot({ partage, murActif, nbChoix: choix.length, jauges: jaugesLot, lang }) ?? cta;
     onCta = preparer;
+    // (04/11, décision de Nico) Avec la grille : la date en JJ/MM (« (le 16/11) »), celle de quotas_etat d'abord.
+    const dateSous = jaugesLot ? dateJJMM(quotas?.remise_le ?? remise, en) : dateCourte(remise, en);
     sous = [murActif && n
-      ? (en ? `The other ${partage.plusTard.length} stay in your stock: you can publish them from your new month${dateCourte(remise, en) ? ` (${dateCourte(remise, en)})` : ""}. Nothing goes out yet.` : `${partage.plusTard.length > 1 ? `Les ${partage.plusTard.length} autres restent` : "L'autre reste"} dans ton stock : tu pourras ${partage.plusTard.length > 1 ? "les" : "le"} publier dès ton nouveau mois${dateCourte(remise, en) ? ` (le ${dateCourte(remise, en)})` : ""}. Rien ne part encore.`)
+      ? (en ? `The other ${partage.plusTard.length} stay in your stock: you can publish them from your new month${dateSous ? ` (${dateSous})` : ""}. Nothing goes out yet.` : `${partage.plusTard.length > 1 ? `Les ${partage.plusTard.length} autres restent` : "L'autre reste"} dans ton stock : tu pourras ${partage.plusTard.length > 1 ? "les" : "le"} publier dès ton nouveau mois${dateSous ? ` (le ${dateSous})` : ""}. Rien ne part encore.`)
       : (en ? "Nothing goes out yet: we prepare, you check." : "Rien ne part encore : on prépare, tu vérifies.")];
   } else if (etape === "avant") {
     if (!preparationFinie) {
@@ -1423,7 +1432,8 @@ export function EcranPlateformes({
       {/* (04/11, grille à 3 jauges — maquette 4.3) Le même mur, même structure (c'est lui qui fait le plus payer) :
           il NOMME la jauge qui bloque et son bouton chiffre le palier visé sur les deux jauges du lot. */}
       {grille && mur && partage.plusTard.length > 0 && (() => {
-        const t = murDuLot({ partage, jauges: grille.jauges, palier: grille.palier, dateRemise, plateformesDe: (d) => grille.nbPlateformes(d.id), lang });
+        // (04/11, décision de Nico) La date en JJ/MM (« dès le 16/11 », maquette 4.3), celle de quotas_etat d'abord.
+        const t = murDuLot({ partage, jauges: grille.jauges, palier: grille.palier, dateRemise: dateJJMM(quotas?.remise_le ?? remise, en), plateformesDe: (d) => grille.nbPlateformes(d.id), lang });
         return (
           <Carte gravite="geste" titre={t.titre} data-mur-jauge={t.jauge}>
             <div className="fsn-card-p">{t.phrase}</div>

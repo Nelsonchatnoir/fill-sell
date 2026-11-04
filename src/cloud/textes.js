@@ -68,7 +68,7 @@ const FR = {
   libelleInterrupteur: `FillSell Cloud · sans ordinateur · +${PRIX}/mois`,
   essaiPastille: `${J7} d'essai gratuits`,
   // ⛔ CARTE DEMANDÉE (décision du 04/10 soir) — dit là où l'essai se propose.
-  carteDemandee: (date) => `Carte demandée, rien n'est prélevé pour l'option avant le ${date}.`,
+  carteDemandee: (date) => `Carte demandée, rien n'est prélevé pour le Cloud avant le ${date}.`,
 
   // ── Ce que ça fait (une phrase, la même partout) ─────────────────────────
   ceQueCaFait: 'Tes annonces Vinted, Leboncoin, Beebs et Depop partent, se republient et se retirent même ordinateur éteint, et tes ventes sont vues : tout se pilote depuis ton téléphone.',
@@ -78,15 +78,15 @@ const FR = {
   sAjoute: "S'ajoute à la formule que tu choisis ci-dessous.",
   sAjouteFree: "S'ajoute à la formule que tu choisis ci-dessous, Free compris.",
   frise: (date) => [
-    { quand: "Aujourd'hui", quoi: "Carte demandée, rien n'est prélevé pour l'option." },
-    { quand: date, quoi: `L'option passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.` },
+    { quand: "Aujourd'hui", quoi: "Carte demandée, rien n'est prélevé pour le Cloud." },
+    { quand: date, quoi: `Le Cloud passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.` },
     { quand: "D'ici là", quoi: "Tu l'arrêtes en un geste dans Réglages › Abonnement. On te prévient la veille, dans l'app et par e-mail." },
   ],
-  sansEssai: `Ton essai gratuit a déjà servi : l'option est facturée ${PRIX}/mois dès aujourd'hui. Tu l'arrêtes quand tu veux dans Réglages › Abonnement.`,
+  sansEssai: `Ton essai gratuit a déjà servi : le Cloud est facturé ${PRIX}/mois dès aujourd'hui. Tu l'arrêtes quand tu veux dans Réglages › Abonnement.`,
   dejaActif: 'FillSell Cloud est déjà actif sur ton compte : il suit la formule que tu choisis.',
-  suspenduModale: 'Ton option FillSell Cloud est en pause : elle repart avec la formule que tu choisis.',
+  suspenduModale: 'Ton FillSell Cloud est en pause : il repart avec la formule que tu choisis.',
   prixOption: `+ ${PRIX}`,
-  prixOptionSousEssai: `/mois · option offerte ${J7}`,
+  prixOptionSousEssai: `/mois · Cloud offert ${J7}`,
   prixOptionSous: '/mois · avec FillSell Cloud',
   ctaSuffixe: ' + FillSell Cloud',
   titreModale: 'Vends même ordinateur éteint.',
@@ -102,7 +102,7 @@ const FR = {
     { quand: "Pendant l'essai", quoi: `Tes ${annoncesFree(n)} du plan Free.` },
     { quand: date, quoi: `${PRIX}/mois, sauf si tu l'arrêtes.` },
   ],
-  freeCloudSansEssai: `L'option est facturée ${PRIX}/mois dès aujourd'hui ; tu l'arrêtes quand tu veux.`,
+  freeCloudSansEssai: `Le Cloud est facturé ${PRIX}/mois dès aujourd'hui ; tu l'arrêtes quand tu veux.`,
   freeCloudCtaEssai: 'Essayer Free + FillSell Cloud',
   freeCloudCta: `Prendre Free + FillSell Cloud · ${PRIX}/mois`,
 
@@ -113,7 +113,7 @@ const FR = {
   // ⛔ PHRASE IMPOSÉE (04/10 soir) : « FillSell publie tes annonces depuis ses serveurs ».
   voieTexte: "FillSell publie tes annonces depuis ses serveurs : tu te connectes une fois à Vinted, Leboncoin, Beebs et Depop depuis ton téléphone, et elles partent même sans ordinateur.",
   voieCtaEssai: 'Essayer FillSell Cloud',
-  voieCta: "Voir l'option",
+  voieCta: 'Voir le Cloud',
   voieNote: (date) => `Carte demandée, rien n'est prélevé avant le ${date}. Puis ${PRIX}/mois, tu l'arrêtes quand tu veux.`,
   voieNoteSansEssai: `${PRIX}/mois, tu l'arrêtes quand tu veux.`,
   voieCompactEssai: `Pas d'ordinateur ? Essaie FillSell Cloud, ${J7} offerts`,
@@ -121,16 +121,16 @@ const FR = {
   // La page /extension, ouverte sur un téléphone (souvent sans session).
   pageTitre: "Pas d'ordinateur ?",
   pageTexte: "Avec l'option FillSell Cloud, FillSell publie tes annonces depuis ses serveurs : sur Vinted, Leboncoin, Beebs et Depop, tout se pilote depuis ton téléphone.",
-  pageCta: "Voir l'option dans l'app",
+  pageCta: "Voir le Cloud dans l'app",
   pageNote: `${J7} d'essai, carte demandée.`,
   // Le mur, près du bouton de l'extension : elle reste gratuite ET sans carte.
   extensionGratuite: 'Gratuite, sans carte.',
 
   // ── Réglages › Abonnement ────────────────────────────────────────────────
   groupe: 'FillSell Cloud',
-  etatAucun: 'Pas activée',
+  etatAucun: 'Pas activé',
   etatEssai: 'Essai gratuit',
-  etatPaye: 'Active',
+  etatPaye: 'Actif',
   etatArretPrevu: (date) => `S'arrête le ${date}`,
   etatSuspendu: 'En pause',
   etatTermine: 'Essai terminé',
@@ -139,61 +139,61 @@ const FR = {
   aucunCtaEssai: `Essayer ${J7} gratuits`,
   aucunNoteEssai: (date) => `Carte demandée, rien n'est prélevé avant le ${date}. Puis ${PRIX}/mois, tu l'arrêtes quand tu veux.`,
   aucunCta: `Ajouter · +${PRIX}/mois`,
-  aucunNote: "Ton essai gratuit a déjà servi : l'option est facturée dès son ajout.",
+  aucunNote: "Ton essai gratuit a déjà servi : le Cloud est facturé dès son ajout.",
   voirFormules: 'Voir les formules',
   essaiReste: (j) => (j > 1 ? `Encore ${j} jours d'essai` : "Dernier jour d'essai"),
   essaiFin: (date, heure, nom) => (nom
     ? `Gratuit jusqu'au ${date} à ${heure}. Ensuite, ${PRIX}/mois s'ajoutent à ta formule ${nom}, sauf si tu l'arrêtes avant.`
-    : `Gratuit jusqu'au ${date} à ${heure}. Ensuite, l'option passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.`),
+    : `Gratuit jusqu'au ${date} à ${heure}. Ensuite, le Cloud passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.`),
   essaiJauge: (j, total) => `Jour ${j} sur ${total}`,
   essaiNote: (nom) => `Si tu l'arrêtes, ${taFormule(nom)} ne change pas, et l'extension comme eBay restent possibles.`,
   // UNE mention, ici seulement, pendant l'essai d'un compte Free (jamais une fenêtre).
-  mentionPremium: (n) => `Tu es en Free + FillSell Cloud : ${annoncesFree(n)} par mois. Pour en publier plus, Premium s'ajoute à l'option.`,
+  mentionPremium: (n) => `Tu es en Free + FillSell Cloud : ${annoncesFree(n)} par mois. Pour en publier plus, Premium s'ajoute au Cloud.`,
   voirPremium: 'Voir Premium',
   payeTexte: (nom) => (nom
     ? `En plus de ta formule ${nom} : tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint.`
     : 'Avec ton plan Free : tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint.'),
-  arretPrevuTexte: (date) => `L'option tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite.`,
-  garderOption: "Garder l'option",
+  arretPrevuTexte: (date) => `Le Cloud tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite.`,
+  garderOption: 'Garder le Cloud',
   // Plus rendu depuis CLOUD_EXIGE_UN_PALIER = false (gardé pour l'interrupteur de palier.js).
-  suspenduTexte: "L'option est en pause : elle repart dès que tu reprends une formule.",
-  termineTexte: (date) => `Essai terminé le ${date}. L'option n'est plus active, et rien n'a été facturé pour elle.`,
-  arreteTexte: (date) => `Essai arrêté le ${date}. L'option n'est plus active, et rien n'a été facturé pour elle.`,
+  suspenduTexte: 'Le Cloud est en pause : il repart dès que tu reprends une formule.',
+  termineTexte: (date) => `Essai terminé le ${date}. Le Cloud n'est plus actif, et rien n'a été facturé pour lui.`,
+  arreteTexte: (date) => `Essai arrêté le ${date}. Le Cloud n'est plus actif, et rien n'a été facturé pour lui.`,
   termineSuite: "L'extension sur ton ordinateur et eBay continuent comme avant.",
-  termineCta: `Ajouter l'option · ${PRIX}/mois`,
+  termineCta: `Ajouter le Cloud · ${PRIX}/mois`,
   meConnecter: 'Connecter mes plateformes',
-  arreter: "Arrêter l'option",
-  arreterTitre: "Arrêter l'option FillSell Cloud ?",
+  arreter: 'Arrêter le Cloud',
+  arreterTitre: 'Arrêter FillSell Cloud ?',
   // Pendant l'essai : effet IMMÉDIAT, rien facturé. Payée : jusqu'à la fin de période.
-  arreterEssai: (nom) => `Elle s'arrête tout de suite, et rien n'est facturé pour elle. Tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension, sur ton ordinateur. ${nom ? `Ta formule ${nom}` : 'Ton plan Free'} ne change pas.`,
+  arreterEssai: (nom) => `Il s'arrête tout de suite, et rien n'est facturé pour lui. Tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension, sur ton ordinateur. ${nom ? `Ta formule ${nom}` : 'Ton plan Free'} ne change pas.`,
   arreterPaye: (date) => (date
-    ? `Elle tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite. Après cette date, tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension, sur ton ordinateur.`
-    : "Elle tourne jusqu'à la fin de la période payée, puis s'arrête : rien ne sera prélevé ensuite. Tes annonces Vinted, Leboncoin, Beebs et Depop repasseront alors par l'extension, sur ton ordinateur."),
+    ? `Il tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite. Après cette date, tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension, sur ton ordinateur.`
+    : "Il tourne jusqu'à la fin de la période payée, puis s'arrête : rien ne sera prélevé ensuite. Tes annonces Vinted, Leboncoin, Beebs et Depop repasseront alors par l'extension, sur ton ordinateur."),
   arreterConfirmer: 'Arrêter',
   arreterAnnuler: 'Garder',
   // La confirmation « Se désabonner » de la formule, quand l'option est active.
-  resiliationCloud: "L'option FillSell Cloud, elle, continue : ton compte repasse en Free + FillSell Cloud, avec les quotas du plan Free.",
-  resiliationCloudLien: "Arrêter aussi l'option",
+  resiliationCloud: 'FillSell Cloud, lui, continue : ton compte repasse en Free + FillSell Cloud, avec les quotas du plan Free.',
+  resiliationCloudLien: 'Arrêter aussi le Cloud',
 
   // ── La veille de la fin d'essai ──────────────────────────────────────────
   veilleKicker: 'FillSell Cloud · essai gratuit',
   veilleTitre: (quand, heure) => (quand === 'aujourdhui'
-    ? `Aujourd'hui à ${heure}, l'option passe à ${PRIX}/mois`
-    : `Demain, l'option passe à ${PRIX}/mois`),
+    ? `Aujourd'hui à ${heure}, le Cloud passe à ${PRIX}/mois`
+    : `Demain, le Cloud passe à ${PRIX}/mois`),
   veilleTexte: (date, heure, nom) => (nom
-    ? `Ton essai gratuit se termine le ${date} à ${heure}. Si tu gardes l'option, ${PRIX}/mois s'ajoutent à ta formule ${nom} à partir de là. Si tu l'arrêtes, rien n'est facturé pour elle.`
-    : `Ton essai gratuit se termine le ${date} à ${heure}. Si tu gardes l'option, elle passe à ${PRIX}/mois à partir de là. Si tu l'arrêtes, rien n'est facturé pour elle.`),
-  veilleGarder: "Garder l'option",
-  veilleArreter: "Arrêter l'option",
+    ? `Ton essai gratuit se termine le ${date} à ${heure}. Si tu gardes le Cloud, ${PRIX}/mois s'ajoutent à ta formule ${nom} à partir de là. Si tu l'arrêtes, rien n'est facturé pour lui.`
+    : `Ton essai gratuit se termine le ${date} à ${heure}. Si tu gardes le Cloud, il passe à ${PRIX}/mois à partir de là. Si tu l'arrêtes, rien n'est facturé pour lui.`),
+  veilleGarder: 'Garder le Cloud',
+  veilleArreter: 'Arrêter le Cloud',
   veilleNote: (nom) => `Dans les deux cas, ${taFormule(nom)} ne change pas, et l'extension comme eBay restent possibles.`,
   veilleBascule: (date, heure) => `Le ${date} à ${heure} · +${PRIX}/mois`,
-  veilleArretee: "C'est arrêté. Rien ne sera facturé pour l'option, et tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension.",
+  veilleArretee: "C'est arrêté. Rien ne sera facturé pour le Cloud, et tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension.",
   veilleArretEchec: "L'arrêt n'a pas pu se faire. Réessaie dans un instant.",
 
   // ── Après la fin de l'essai (non converti) ───────────────────────────────
   finKicker: 'FillSell Cloud',
   finTitre: 'Ton essai est terminé',
-  finTexte: "L'option n'est plus active. Rien n'a été facturé pour elle.",
+  finTexte: "Le Cloud n'est plus actif. Rien n'a été facturé pour lui.",
   finArreteTitre: "Ce qui s'arrête",
   finArrete: [
     "Tes annonces Vinted, Leboncoin, Beebs et Depop ne partent plus ordinateur éteint : publication, republication, retrait et ventes repassent par l'extension, sur ton ordinateur.",
@@ -204,7 +204,7 @@ const FR = {
     "eBay, depuis ton téléphone, par la connexion officielle d'eBay.",
     "L'extension Chrome, gratuite : le même travail quand ton ordinateur est allumé.",
   ],
-  finCtaAjouter: `Reprendre l'option · ${PRIX}/mois`,
+  finCtaAjouter: `Reprendre le Cloud · ${PRIX}/mois`,
   finCtaExtension: "Installer l'extension sur mon ordinateur",
   // (03/11, point 5) Pas de place : jamais de vente, la liste d'attente.
   completTitre: 'Complet pour le moment',
@@ -228,7 +228,7 @@ const EN = {
   nom: 'FillSell Cloud',
   libelleInterrupteur: `FillSell Cloud · no computer · +${PRIX}/mo`,
   essaiPastille: `${JOURS}-day free trial`,
-  carteDemandee: (date) => `Card required, nothing is charged for the add-on before ${date}.`,
+  carteDemandee: (date) => `Card required, nothing is charged for the Cloud before ${date}.`,
 
   ceQueCaFait: 'Your Vinted, Leboncoin, Beebs and Depop listings go out, get reposted and removed even with your computer off, and your sales are seen: everything is driven from your phone.',
   ebayDeja: 'eBay already works without a computer, for everyone.',
@@ -236,15 +236,15 @@ const EN = {
   sAjoute: 'Adds to the plan you pick below.',
   sAjouteFree: 'Adds to the plan you pick below, Free included.',
   frise: (date) => [
-    { quand: 'Today', quoi: 'Card required, nothing is charged for the add-on.' },
-    { quand: date, quoi: `The add-on moves to ${PRIX}/mo, unless you stop it before.` },
+    { quand: 'Today', quoi: 'Card required, nothing is charged for the Cloud.' },
+    { quand: date, quoi: `The Cloud moves to ${PRIX}/mo, unless you stop it before.` },
     { quand: 'Until then', quoi: "Stop it in one tap in Settings › Subscription. We'll remind you the day before, in the app and by email." },
   ],
-  sansEssai: `Your free trial has already been used: the add-on is billed ${PRIX}/mo from today. Stop it any time in Settings › Subscription.`,
+  sansEssai: `Your free trial has already been used: the Cloud is billed ${PRIX}/mo from today. Stop it any time in Settings › Subscription.`,
   dejaActif: 'FillSell Cloud is already on for your account: it follows the plan you pick.',
-  suspenduModale: 'Your FillSell Cloud add-on is paused: it restarts with the plan you pick.',
+  suspenduModale: 'Your FillSell Cloud is paused: it restarts with the plan you pick.',
   prixOption: `+ ${PRIX}`,
-  prixOptionSousEssai: `/mo · add-on free for ${D7}`,
+  prixOptionSousEssai: `/mo · Cloud free for ${D7}`,
   prixOptionSous: '/mo · with FillSell Cloud',
   ctaSuffixe: ' + FillSell Cloud',
   titreModale: 'Sell even with your computer off.',
@@ -259,7 +259,7 @@ const EN = {
     { quand: 'During the trial', quoi: `Your ${listingsFree(n)} of the Free plan.` },
     { quand: date, quoi: `${PRIX}/mo, unless you stop it.` },
   ],
-  freeCloudSansEssai: `The add-on is billed ${PRIX}/mo from today; stop it whenever you want.`,
+  freeCloudSansEssai: `The Cloud is billed ${PRIX}/mo from today; stop it whenever you want.`,
   freeCloudCtaEssai: 'Try Free + FillSell Cloud',
   freeCloudCta: `Take Free + FillSell Cloud · ${PRIX}/mo`,
 
@@ -268,14 +268,14 @@ const EN = {
   voieTitre: `FillSell Cloud · +${PRIX}/mo`,
   voieTexte: 'FillSell posts your listings from its servers: you sign in to Vinted, Leboncoin, Beebs and Depop once from your phone, and they go out even without a computer.',
   voieCtaEssai: 'Try FillSell Cloud',
-  voieCta: 'See the add-on',
+  voieCta: 'See the Cloud',
   voieNote: (date) => `Card required, nothing is charged before ${date}. Then ${PRIX}/mo, stop it whenever you want.`,
   voieNoteSansEssai: `${PRIX}/mo, stop it whenever you want.`,
   voieCompactEssai: `No computer? Try FillSell Cloud, ${D7} free`,
   voieCompact: `No computer? FillSell Cloud add-on, ${PRIX}/mo`,
   pageTitre: 'No computer?',
   pageTexte: 'With the FillSell Cloud add-on, FillSell posts your listings from its servers: on Vinted, Leboncoin, Beebs and Depop, everything is driven from your phone.',
-  pageCta: 'See the add-on in the app',
+  pageCta: 'See the Cloud in the app',
   pageNote: `${JOURS}-day trial, card required.`,
   extensionGratuite: 'Free, no card needed.',
 
@@ -291,55 +291,55 @@ const EN = {
   aucunCtaEssai: `Try ${D7} free`,
   aucunNoteEssai: (date) => `Card required, nothing is charged before ${date}. Then ${PRIX}/mo, stop it whenever you want.`,
   aucunCta: `Add · +${PRIX}/mo`,
-  aucunNote: 'Your free trial has already been used: the add-on is billed as soon as it is added.',
+  aucunNote: 'Your free trial has already been used: the Cloud is billed as soon as it is added.',
   voirFormules: 'See the plans',
   essaiReste: (j) => (j > 1 ? `${j} trial days left` : 'Last trial day'),
   essaiFin: (date, heure, nom) => (nom
     ? `Free until ${date} at ${heure}. Then ${PRIX}/mo is added to your ${nom} plan, unless you stop it before.`
-    : `Free until ${date} at ${heure}. Then the add-on moves to ${PRIX}/mo, unless you stop it before.`),
+    : `Free until ${date} at ${heure}. Then the Cloud moves to ${PRIX}/mo, unless you stop it before.`),
   essaiJauge: (j, total) => `Day ${j} of ${total}`,
   essaiNote: (nom) => `If you stop it, ${yourPlan(nom)} does not change, and the extension and eBay remain available.`,
-  mentionPremium: (n) => `You are on Free + FillSell Cloud: ${listingsFree(n)} a month. To post more, Premium adds to the add-on.`,
+  mentionPremium: (n) => `You are on Free + FillSell Cloud: ${listingsFree(n)} a month. To post more, Premium adds to the Cloud.`,
   voirPremium: 'See Premium',
   payeTexte: (nom) => (nom
     ? `On top of your ${nom} plan: your Vinted, Leboncoin, Beebs and Depop listings go out even with your computer off.`
     : 'With your Free plan: your Vinted, Leboncoin, Beebs and Depop listings go out even with your computer off.'),
-  arretPrevuTexte: (date) => `The add-on runs until ${date}, then stops: nothing will be charged after that.`,
-  garderOption: 'Keep the add-on',
-  suspenduTexte: 'The add-on is paused: it restarts as soon as you pick a plan again.',
-  termineTexte: (date) => `Trial ended on ${date}. The add-on is off, and nothing was billed for it.`,
-  arreteTexte: (date) => `Trial stopped on ${date}. The add-on is off, and nothing was billed for it.`,
+  arretPrevuTexte: (date) => `The Cloud runs until ${date}, then stops: nothing will be charged after that.`,
+  garderOption: 'Keep the Cloud',
+  suspenduTexte: 'The Cloud is paused: it restarts as soon as you pick a plan again.',
+  termineTexte: (date) => `Trial ended on ${date}. The Cloud is off, and nothing was billed for it.`,
+  arreteTexte: (date) => `Trial stopped on ${date}. The Cloud is off, and nothing was billed for it.`,
   termineSuite: 'The extension on your computer and eBay keep working as before.',
-  termineCta: `Add the add-on · ${PRIX}/mo`,
+  termineCta: `Add the Cloud · ${PRIX}/mo`,
   meConnecter: 'Connect my platforms',
-  arreter: 'Stop the add-on',
-  arreterTitre: 'Stop the FillSell Cloud add-on?',
+  arreter: 'Stop the Cloud',
+  arreterTitre: 'Stop FillSell Cloud?',
   arreterEssai: (nom) => `It stops right away, and nothing is billed for it. Your Vinted, Leboncoin, Beebs and Depop listings go back through the extension, on your computer. ${nom ? `Your ${nom} plan` : 'Your Free plan'} does not change.`,
   arreterPaye: (date) => (date
     ? `It runs until ${date}, then stops: nothing will be charged after that. After that date, your Vinted, Leboncoin, Beebs and Depop listings go back through the extension, on your computer.`
     : 'It runs until the end of the paid period, then stops: nothing will be charged after that. Your Vinted, Leboncoin, Beebs and Depop listings will then go back through the extension, on your computer.'),
   arreterConfirmer: 'Stop',
   arreterAnnuler: 'Keep',
-  resiliationCloud: 'The FillSell Cloud add-on keeps running: your account goes back to Free + FillSell Cloud, with the Free plan quotas.',
-  resiliationCloudLien: 'Stop the add-on too',
+  resiliationCloud: 'FillSell Cloud keeps running: your account goes back to Free + FillSell Cloud, with the Free plan quotas.',
+  resiliationCloudLien: 'Stop the Cloud too',
 
   veilleKicker: 'FillSell Cloud · free trial',
   veilleTitre: (quand, heure) => (quand === 'aujourdhui'
-    ? `Today at ${heure}, the add-on moves to ${PRIX}/mo`
-    : `Tomorrow, the add-on moves to ${PRIX}/mo`),
+    ? `Today at ${heure}, the Cloud moves to ${PRIX}/mo`
+    : `Tomorrow, the Cloud moves to ${PRIX}/mo`),
   veilleTexte: (date, heure, nom) => (nom
-    ? `Your free trial ends on ${date} at ${heure}. If you keep the add-on, ${PRIX}/mo is added to your ${nom} plan from then on. If you stop it, nothing is billed for it.`
-    : `Your free trial ends on ${date} at ${heure}. If you keep the add-on, it moves to ${PRIX}/mo from then on. If you stop it, nothing is billed for it.`),
-  veilleGarder: 'Keep the add-on',
-  veilleArreter: 'Stop the add-on',
+    ? `Your free trial ends on ${date} at ${heure}. If you keep the Cloud, ${PRIX}/mo is added to your ${nom} plan from then on. If you stop it, nothing is billed for it.`
+    : `Your free trial ends on ${date} at ${heure}. If you keep the Cloud, it moves to ${PRIX}/mo from then on. If you stop it, nothing is billed for it.`),
+  veilleGarder: 'Keep the Cloud',
+  veilleArreter: 'Stop the Cloud',
   veilleNote: (nom) => `Either way, ${yourPlan(nom)} does not change, and the extension and eBay remain available.`,
   veilleBascule: (date, heure) => `${date} at ${heure} · +${PRIX}/mo`,
-  veilleArretee: 'It is stopped. Nothing will be billed for the add-on, and your Vinted, Leboncoin, Beebs and Depop listings go back through the extension.',
-  veilleArretEchec: 'The add-on could not be stopped. Try again in a moment.',
+  veilleArretee: 'It is stopped. Nothing will be billed for the Cloud, and your Vinted, Leboncoin, Beebs and Depop listings go back through the extension.',
+  veilleArretEchec: 'The Cloud could not be stopped. Try again in a moment.',
 
   finKicker: 'FillSell Cloud',
   finTitre: 'Your trial has ended',
-  finTexte: 'The add-on is off. Nothing was billed for it.',
+  finTexte: 'The Cloud is off. Nothing was billed for it.',
   finArreteTitre: 'What stops',
   finArrete: [
     'Your Vinted, Leboncoin, Beebs and Depop listings no longer go out with your computer off: posting, reposting, removal and sales go back through the extension, on your computer.',
@@ -350,7 +350,7 @@ const EN = {
     "eBay, from your phone, through eBay's official sign-in.",
     'The Chrome extension, free: the same work while your computer is on.',
   ],
-  finCtaAjouter: `Restart the add-on · ${PRIX}/mo`,
+  finCtaAjouter: `Restart the Cloud · ${PRIX}/mo`,
   finCtaExtension: 'Install the extension on my computer',
   completTitre: 'Full for now',
   completTexte: "All FillSell Cloud spots are taken. Sign up: a notification tells you as soon as a spot is free, and it's kept for you for 24 hours.",

@@ -1,4 +1,4 @@
-import { memo, useState, useEffect } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Mic, Sparkles, Plus, X, ChevronLeft, History, Image as ImageIcon } from 'lucide-react';
 import ListingPreviewScreen, { clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
@@ -1060,6 +1060,17 @@ const LensTab = memo(function LensTab({
     if(shouldShowExtensionReminder()){setRappelAction(action);return;}
     executer(action);
   }
+  // (04/11, grille à 3 jauges, maquette 5.4) Le mur Lens du Business (scans Lens du mois faits) propose « Créer une
+  // annonce depuis mes photos » : App le relaie par l'événement fillsell:lens-sans-analyse. C'est le MÊME geste que
+  // « Créer l'annonce sans analyse » (lancer('sans') : les photos seules, la rédaction par l'IA au stepper, comptée en
+  // annonces — illimitées chez le Business). Sans photo à l'écran, ou un parcours déjà en route : rien.
+  const sansAnalyseRef=useRef(null);
+  sansAnalyseRef.current=lensPhotos.length>0&&!generatingListing&&!showListingPreview?()=>lancer('sans'):null;
+  useEffect(()=>{
+    const surMur=()=>{sansAnalyseRef.current?.();};
+    window.addEventListener('fillsell:lens-sans-analyse',surMur);
+    return()=>window.removeEventListener('fillsell:lens-sans-analyse',surMur);
+  },[]);
 
   // ── « Voir l'analyse » / reprise du stepper en pause (29/10, lot B 1.2) ────
   // L'écran de publication appelle onVoirAnalyse : on referme le stepper sur le

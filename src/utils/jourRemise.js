@@ -18,6 +18,17 @@ export function jourRemise(iso, lang = 'fr') {
   return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'long' });
 }
 
+// (04/11/2026, grille à 3 jauges, décision de Nico) La MÊME date, au format JJ/MM des maquettes (« Attendre le
+// 16/11 », « elles reviennent le 16/11 ») : les murs des jauges, le mur du lot et la feuille de remontée en lot,
+// SEULEMENT avec la grille. Mêmes gardes que jourRemise : absente, passée ou illisible → null, rien d'affiché.
+// Heure de Paris : la remise à zéro tombe le jour de Paris où elle a lieu (une échéance à 23:30 UTC est déjà le
+// lendemain à Paris).
+export function jourRemiseCourt(iso, lang = 'fr') {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t) || t <= Date.now()) return null;
+  return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' });
+}
+
 // Le refus « republications du mois du gratuit faites » (code serveur
 // plafond_republication_free), en mots. Le chiffre vient du refus : jamais
 // en dur — absent, la phrase s'en passe.

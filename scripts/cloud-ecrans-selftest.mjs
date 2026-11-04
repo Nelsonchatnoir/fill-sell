@@ -146,10 +146,10 @@ const toutes = (T) => Object.values(T).flatMap((v) => {
     'la carte des Réglages : « tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint »', net(FR.payeTexte('Pro')));
   verifier(FR.voieTexte.includes('FillSell publie tes annonces depuis ses serveurs') && FR.pageTexte.includes('FillSell publie tes annonces depuis ses serveurs'), 'la phrase imposée : « FillSell publie tes annonces depuis ses serveurs », partout');
   const frise = FR.frise('17 octobre').map((e) => ({ quand: net(e.quand), quoi: net(e.quoi) }));
-  verifier(frise.length === 3 && /Carte demandée, rien n.est prélevé pour l.option/.test(frise[0].quoi) && frise[1].quand === '17 octobre' && /24,99 €\/mois/.test(frise[1].quoi)
+  verifier(frise.length === 3 && /Carte demandée, rien n.est prélevé pour le Cloud/.test(frise[0].quoi) && frise[1].quand === '17 octobre' && /24,99 €\/mois/.test(frise[1].quoi)
     && /Réglages › Abonnement/.test(frise[2].quoi) && /la veille, dans l.app et par e-mail/.test(frise[2].quoi),
     'l’essai sans piège : carte demandée sans prélèvement, date de bascule, montant, sortie, rappel la veille (app + e-mail)', JSON.stringify(frise));
-  verifier(/^Carte demandée, rien n.est prélevé pour l.option avant le 17 octobre\.$/.test(net(FR.carteDemandee('17 octobre'))), 'la carte demandée, dite là où l’essai se propose');
+  verifier(/^Carte demandée, rien n.est prélevé pour le Cloud avant le 17 octobre\.$/.test(net(FR.carteDemandee('17 octobre'))), 'la carte demandée, dite là où l’essai se propose');
   const ff = FR.freeCloudFrise('17 octobre', 5).map((e) => net(`${e.quand} — ${e.quoi}`));
   verifier(/^Aujourd.hui — 0 €/.test(ff[0]) && /Pendant l.essai — Tes 5 annonces du plan Free/.test(ff[1]) && /^17 octobre — 24,99 €\/mois, sauf si tu l.arrêtes/.test(ff[2]), 'la frise Free (décision Nico) : 0 € / tes N annonces du plan Free / 24,99 €/mois sauf arrêt', ff.join(' | '));
   verifier(net(FR.freeCloudQuota(5)) === 'Avec Free + FillSell Cloud, tu restes à 5 annonces par mois.', '« Avec Free + FillSell Cloud, tu restes à N annonces par mois. »', FR.freeCloudQuota(5));
@@ -157,9 +157,9 @@ const toutes = (T) => Object.values(T).flatMap((v) => {
   verifier(/tout de suite/.test(FR.arreterEssai('Premium')) && /rien n.est facturé/.test(FR.arreterEssai('Premium')) && /Ta formule Premium ne change pas/.test(FR.arreterEssai('Premium')), 'arrêter pendant l’essai : tout de suite, rien facturé, formule inchangée — dit AVANT le geste');
   verifier(/jusqu.au 31 octobre/.test(FR.arreterPaye('31 octobre')) && /fin de la période payée/.test(FR.arreterPaye(null)), 'arrêter une fois payée : elle tourne jusqu’à la fin de période (date quand elle est connue)');
   verifier(/^S.arrête le 31 octobre$/.test(FR.etatArretPrevu('31 octobre')), 'arrêt prévu : « S’arrête le [date] »');
-  verifier(/continue/.test(FR.resiliationCloud) && /Free \+ FillSell Cloud/.test(FR.resiliationCloud) && /Arrêter aussi l.option/.test(FR.resiliationCloudLien), 'résilier la formule : l’option continue (Free + FillSell Cloud), lien pour l’arrêter aussi');
+  verifier(/continue/.test(FR.resiliationCloud) && /Free \+ FillSell Cloud/.test(FR.resiliationCloud) && /Arrêter aussi le Cloud/.test(FR.resiliationCloudLien), 'résilier la formule : l’option continue (Free + FillSell Cloud), lien pour l’arrêter aussi');
   verifier(/Demain/.test(FR.veilleTitre('demain', '10:00')) && /Aujourd.hui à 10:00/.test(FR.veilleTitre('aujourdhui', '10:00')), 'la veille : « Demain… » / « Aujourd’hui à 10:00… »');
-  verifier(/elle passe à 24,99 €\/mois/.test(net(FR.veilleTexte('11 octobre', '07:30', null))) && /ton plan Free ne change pas/.test(FR.veilleNote(null)), 'la veille d’un compte Free : pas de « formule » inventée');
+  verifier(/il passe à 24,99 €\/mois/.test(net(FR.veilleTexte('11 octobre', '07:30', null))) && /ton plan Free ne change pas/.test(FR.veilleNote(null)), 'la veille d’un compte Free : pas de « formule » inventée');
 }
 
 // ── 5 bis. Aucune date ni aucun quota écrit en dur ──────────────────────────
@@ -277,17 +277,17 @@ try {
   // ── 7b. L'interrupteur ───────────────────────────────────────────────────
   const inter = (offre, coche, extra = {}) => texte(h(IC.default, { offre, coche, onBasculer() {}, lang: 'fr', maintenant: n, ...extra }));
   const i0 = inter({ mode: 'interrupteur', essai: true }, false);
-  verifier(i0.includes('FillSell Cloud · sans ordinateur · +24,99 €/mois') && /7 jours d.essai gratuits/.test(i0) && /Carte demandée, rien n.est prélevé pour l.option avant le 17 octobre/.test(i0), 'interrupteur décoché : libellé, essai, carte demandée avec la date', i0);
+  verifier(i0.includes('FillSell Cloud · sans ordinateur · +24,99 €/mois') && /7 jours d.essai gratuits/.test(i0) && /Carte demandée, rien n.est prélevé pour le Cloud avant le 17 octobre/.test(i0), 'interrupteur décoché : libellé, essai, carte demandée avec la date', i0);
   verifier(/ci-dessous\./.test(i0) && !/Free compris/.test(i0), 'interrupteur sans voie Free : « ci-dessous » seulement');
   verifier(/Free compris/.test(inter({ mode: 'interrupteur', essai: true }, false, { freeCompris: true })), 'interrupteur avec voie Free : « Free compris »');
   const i1 = inter({ mode: 'interrupteur', essai: true }, true);
-  verifier(/Aujourd.hui — Carte demandée, rien n.est prélevé pour l.option/.test(i1) && /17 octobre — L.option passe à 24,99 €\/mois, sauf si tu l.arrêtes avant/.test(i1) && /D.ici là — Tu l.arrêtes en un geste dans Réglages › Abonnement\. On te prévient la veille, dans l.app et par e-mail/.test(i1), 'interrupteur coché : la frise sans piège', i1);
+  verifier(/Aujourd.hui — Carte demandée, rien n.est prélevé pour le Cloud/.test(i1) && /17 octobre — Le Cloud passe à 24,99 €\/mois, sauf si tu l.arrêtes avant/.test(i1) && /D.ici là — Tu l.arrêtes en un geste dans Réglages › Abonnement\. On te prévient la veille, dans l.app et par e-mail/.test(i1), 'interrupteur coché : la frise sans piège', i1);
   const i2 = inter({ mode: 'interrupteur', essai: false }, true);
   verifier(i2.includes('FillSell Cloud · sans ordinateur · +24,99 €/mois') && !/7 jours|Carte demandée/.test(i2) && /déjà servi/.test(i2), 'essai déjà pris : « +24,99 €/mois », sans essai ni carte « offerte », facturée dès aujourd’hui', i2);
   verifier(inter({ mode: 'deja_actif' }, false) === '' && inter(null, true) === '', 'l’interrupteur ne se rend que pour une option prenable');
   sansMotsInterdits(i0 + i1 + i2, 'interrupteur');
   const prix = texte(h(IC.PrixAvecCloud, { prix: '12,99 €', cloud: { essai: true }, lang: 'fr' }));
-  verifier(/12,99 € \+ 24,99 €/.test(prix) && /option offerte 7 jours/.test(prix), 'carte cochée : « 12,99 € + 24,99 € », option offerte 7 jours', prix);
+  verifier(/12,99 € \+ 24,99 €/.test(prix) && /Cloud offert 7 jours/.test(prix), 'carte cochée : « 12,99 € + 24,99 € », Cloud offert 7 jours', prix);
   const ajout = texte(h(IC.CarteAjoutCloud, { offre: { mode: 'interrupteur', essai: true }, nomPalier: 'Pro', onAjouter() {}, lang: 'fr', maintenant: n }));
   verifier(/Ajouter à ta formule Pro/.test(ajout) && /Essayer 7 jours gratuits/.test(ajout) && /17 octobre/.test(ajout) && /Carte demandée/.test(ajout), 'carte d’ajout (formule déjà payée) : essai, carte demandée, date de bascule', ajout);
   verifier(texte(h(IC.CarteAjoutCloud, { offre: { mode: 'interrupteur', essai: true }, nomPalier: 'Pro', lang: 'fr' })) === '', 'carte d’ajout : sans geste d’hôte, rien (jamais un bouton mort)');
@@ -298,7 +298,7 @@ try {
   verifier(/Free \+ FillSell Cloud/.test(f1) && /Avec Free \+ FillSell Cloud, tu restes à 9 annonces par mois\./.test(f1), 'Free + option : le quota Free dit noir sur blanc, LU (9 ici : jamais un 5 en dur)', f1);
   verifier(/Aujourd.hui — 0 €, carte demandée\./.test(f1) && /Pendant l.essai — Tes 9 annonces du plan Free\./.test(f1) && /17 octobre — 24,99 €\/mois, sauf si tu l.arrêtes\./.test(f1) && /Essayer Free \+ FillSell Cloud/.test(f1), 'Free + option : la frise Free et le bouton dédié', f1);
   const f2 = free({ mode: 'interrupteur', essai: false });
-  verifier(/facturée 24,99 €\/mois dès aujourd.hui/.test(f2) && /Prendre Free \+ FillSell Cloud · 24,99 €\/mois/.test(f2) && !/Pendant l.essai/.test(f2), 'Free + option, essai déjà pris : facturée dès aujourd’hui, pas de frise', f2);
+  verifier(/facturé 24,99 €\/mois dès aujourd.hui/.test(f2) && /Prendre Free \+ FillSell Cloud · 24,99 €\/mois/.test(f2) && !/Pendant l.essai/.test(f2), 'Free + option, essai déjà pris : facturée dès aujourd’hui, pas de frise', f2);
   verifier(free({ mode: 'interrupteur', essai: true }, { onCloudSeul: null }) === '', 'Free + option : sans geste d’hôte (onCloudSeul), pas de bouton');
   sansMotsInterdits(f1 + f2, 'Free + Sans ordinateur');
 
@@ -307,37 +307,37 @@ try {
   const tous = { essayer() {}, ajouter() {}, arreter() {}, reprendre() {}, meConnecter() {}, voirFormules() {} };
   const reg = (cloud, nomPalier, actions = tous, extra = {}) => texte(h(BR.default, { lang: 'fr', cloud, nomPalier, actions, maintenant: n, quotaFree: 5, ...extra }));
   const rAucun = reg(P.cloudDuProfil({ is_premium: true }, n), 'Premium');
-  verifier(/Pas activée/.test(rAucun) && /Essayer 7 jours gratuits/.test(rAucun) && /Carte demandée, rien n.est prélevé avant le 17 octobre/.test(rAucun) && /Puis 24,99 €\/mois/.test(rAucun), 'Réglages, aucun : essai, carte demandée, date, prix ensuite', rAucun);
+  verifier(/Pas activé/.test(rAucun) && /Essayer 7 jours gratuits/.test(rAucun) && /Carte demandée, rien n.est prélevé avant le 17 octobre/.test(rAucun) && /Puis 24,99 €\/mois/.test(rAucun), 'Réglages, aucun : essai, carte demandée, date, prix ensuite', rAucun);
   verifier(!/restes à/.test(rAucun), 'Réglages, aucun (Premium) : pas de quota Free');
   const rGratuit = reg(P.cloudDuProfil({}, n), null);
   verifier(/Essayer 7 jours gratuits/.test(rGratuit) && /Avec Free \+ FillSell Cloud, tu restes à 5 annonces par mois/.test(rGratuit) && /Carte demandée/.test(rGratuit), 'Réglages, Free sans option : l’essai, le quota Free gardé, carte demandée', rGratuit);
   const rJ5 = reg(essaiDe('2026-10-15T05:00:00Z'), 'Premium');
-  verifier(/Encore 5 jours d.essai/.test(rJ5) && /Gratuit jusqu.au 15 octobre à 07:00/.test(rJ5) && /Jour 3 sur 7/.test(rJ5) && /Arrêter l.option/.test(rJ5), 'Réglages, essai J-5 : jours, date, heure, jauge, arrêter', rJ5);
-  verifier(!/Voir Premium|Premium s.ajoute à l.option/.test(rJ5), 'Réglages, essai avec formule : aucune mention de Premium');
+  verifier(/Encore 5 jours d.essai/.test(rJ5) && /Gratuit jusqu.au 15 octobre à 07:00/.test(rJ5) && /Jour 3 sur 7/.test(rJ5) && /Arrêter le Cloud/.test(rJ5), 'Réglages, essai J-5 : jours, date, heure, jauge, arrêter', rJ5);
+  verifier(!/Voir Premium|Premium s.ajoute au Cloud/.test(rJ5), 'Réglages, essai avec formule : aucune mention de Premium');
   const rFreeEssai = reg(P.cloudDuProfil({ cloud_essai_debut: '2026-10-08T05:00:00Z', cloud_essai_fin: '2026-10-15T05:00:00Z' }, n), null);
-  verifier(/Essai gratuit/.test(rFreeEssai) && /l.option passe à 24,99 €\/mois/.test(rFreeEssai) && /Tu es en Free \+ FillSell Cloud : 5 annonces par mois\. Pour en publier plus, Premium s.ajoute à l.option\./.test(rFreeEssai) && /Voir Premium/.test(rFreeEssai), 'Réglages, Free en essai : UNE mention de Premium, avec son bouton', rFreeEssai);
+  verifier(/Essai gratuit/.test(rFreeEssai) && /le Cloud passe à 24,99 €\/mois/.test(rFreeEssai) && /Tu es en Free \+ FillSell Cloud : 5 annonces par mois\. Pour en publier plus, Premium s.ajoute au Cloud\./.test(rFreeEssai) && /Voir Premium/.test(rFreeEssai), 'Réglages, Free en essai : UNE mention de Premium, avec son bouton', rFreeEssai);
   verifier((rFreeEssai.match(/Premium/g) ?? []).length <= 3, 'Réglages, Free en essai : Premium n’est pas martelé', rFreeEssai);
   const rJ1 = reg(essaiDe('2026-10-11T05:30:00Z'), 'Premium');
   verifier(/Dernier jour d.essai/.test(rJ1) && /11 octobre à 07:30/.test(rJ1), 'Réglages, essai J-1 : « Dernier jour d’essai »', rJ1);
   const rPaye = reg(P.cloudDuProfil({ is_pro: true, is_cloud: true, cloud_periode_fin: '2026-10-31T23:00:00Z' }, n), 'Pro');
-  verifier(/Active/.test(rPaye) && /En plus de ta formule Pro/.test(rPaye) && /Arrêter l.option/.test(rPaye) && /Connecter mes plateformes/.test(rPaye), 'Réglages, payé : active, arrêter, renvoi « Me connecter »', rPaye);
+  verifier(/Actif/.test(rPaye) && /En plus de ta formule Pro/.test(rPaye) && /Arrêter le Cloud/.test(rPaye) && /Connecter mes plateformes/.test(rPaye), 'Réglages, payé : active, arrêter, renvoi « Me connecter »', rPaye);
   verifier(!/\d ?€/.test(rPaye), 'Réglages, payé : aucun prix (un tarif particulier ne se devine pas)', rPaye);
   const rArret = reg(P.cloudDuProfil({ is_pro: true, is_cloud: true, cloud_periode_fin: '2026-10-31T23:00:00Z', cloud_arret_fin_periode: true }, n), 'Pro');
-  verifier(/S.arrête le 1 novembre|S.arrête le 1er novembre/.test(rArret) && /tourne jusqu.au 1(er)? novembre, puis s.arrête/.test(rArret) && /Garder l.option/.test(rArret) && !/Arrêter l.option/.test(rArret), 'Réglages, arrêt prévu : « S’arrête le [fin de période] », garder, plus de bouton d’arrêt', rArret);
+  verifier(/S.arrête le 1 novembre|S.arrête le 1er novembre/.test(rArret) && /tourne jusqu.au 1(er)? novembre, puis s.arrête/.test(rArret) && /Garder le Cloud/.test(rArret) && !/Arrêter le Cloud/.test(rArret), 'Réglages, arrêt prévu : « S’arrête le [fin de période] », garder, plus de bouton d’arrêt', rArret);
   const rFreePaye = reg(P.cloudDuProfil({ is_cloud: true }, n), null);
-  verifier(/Active/.test(rFreePaye) && /Avec ton plan Free/.test(rFreePaye) && !/En pause/.test(rFreePaye), 'Réglages, Free + Sans ordinateur payée : active (plus jamais « en pause »)', rFreePaye);
+  verifier(/Actif/.test(rFreePaye) && /Avec ton plan Free/.test(rFreePaye) && !/En pause/.test(rFreePaye), 'Réglages, Free + Sans ordinateur payée : active (plus jamais « en pause »)', rFreePaye);
   const rFin = reg(P.cloudDuProfil({ is_premium: true, cloud_essai_debut: '2026-09-30T06:00:00Z', cloud_essai_fin: '2026-10-07T06:00:00Z' }, n), 'Premium');
-  verifier(/Essai terminé le 7 octobre/.test(rFin) && /rien n.a été facturé/.test(rFin) && /Ajouter l.option · 24,99 €\/mois/.test(rFin), 'Réglages, essai terminé : rien facturé, proposer de l’ajouter', rFin);
+  verifier(/Essai terminé le 7 octobre/.test(rFin) && /rien n.a été facturé/.test(rFin) && /Ajouter le Cloud · 24,99 €\/mois/.test(rFin), 'Réglages, essai terminé : rien facturé, proposer de l’ajouter', rFin);
   const rArrete = reg(P.cloudDuProfil({ cloud_essai_debut: '2026-10-05T06:00:00Z', cloud_essai_fin: '2026-10-08T09:00:00Z', cloud_essai_arrete: true }, n), null);
-  verifier(/Essai arrêté/.test(rArrete) && /Essai arrêté le 8 octobre/.test(rArrete) && /Ajouter l.option/.test(rArrete), 'Réglages, essai arrêté (Free) : la date réelle de l’arrêt, et l’ajouter reste possible', rArrete);
+  verifier(/Essai arrêté/.test(rArrete) && /Essai arrêté le 8 octobre/.test(rArrete) && /Ajouter le Cloud/.test(rArrete), 'Réglages, essai arrêté (Free) : la date réelle de l’arrêt, et l’ajouter reste possible', rArrete);
   const rSans = reg(essaiDe('2026-10-15T05:00:00Z'), 'Premium', {});
-  verifier(!/Arrêter l.option|Connecter Vinted/.test(rSans), 'Réglages : un geste que l’hôte ne sait pas faire n’a pas de bouton', rSans);
+  verifier(!/Arrêter le Cloud|Connecter Vinted/.test(rSans), 'Réglages : un geste que l’hôte ne sait pas faire n’a pas de bouton', rSans);
   sansMotsInterdits([rAucun, rGratuit, rJ5, rFreeEssai, rJ1, rPaye, rArret, rFreePaye, rFin, rArrete].join(' '), 'Réglages');
 
   // ── 7c bis. La résiliation de la formule, option active ──────────────────
   const lu = (cloud) => ({ etat: 'ok', cloud });
   const mRes = texte(h(BR.MentionCloudResiliation, { lang: 'fr', lecture: lu(P.cloudDuProfil({ is_premium: true, is_cloud: true }, n)), onArreterOption() {} }));
-  verifier(/continue : ton compte repasse en Free \+ FillSell Cloud/.test(mRes) && /Arrêter aussi l.option/.test(mRes), 'résiliation, option active : elle continue, lien pour l’arrêter aussi', mRes);
+  verifier(/continue : ton compte repasse en Free \+ FillSell Cloud/.test(mRes) && /Arrêter aussi le Cloud/.test(mRes), 'résiliation, option active : elle continue, lien pour l’arrêter aussi', mRes);
   verifier(texte(h(BR.MentionCloudResiliation, { lang: 'fr', lecture: lu(essaiDe('2026-10-15T05:00:00Z')), onArreterOption() {} })).length > 0, 'résiliation, option en essai : la mention aussi');
   verifier(texte(h(BR.MentionCloudResiliation, { lang: 'fr', lecture: lu(P.cloudDuProfil({ is_premium: true }, n)) })) === ''
     && texte(h(BR.MentionCloudResiliation, { lang: 'fr', lecture: lu(P.cloudDuProfil({ is_premium: true, is_cloud: true, cloud_periode_fin: '2026-10-31T23:00:00Z', cloud_arret_fin_periode: true }, n)) })) === ''
@@ -346,13 +346,13 @@ try {
 
   // ── 7d. La fin d'essai ───────────────────────────────────────────────────
   const veille = texte(h(FE.RappelVeilleFinEssai, { lang: 'fr', cloud: essaiDe('2026-10-11T05:30:00Z'), quand: 'demain', nomPalier: 'Premium', actions: { arreter: async () => ({ ok: true }) }, onFermer() {} }));
-  verifier(/Demain, l.option passe à 24,99 €\/mois/.test(veille) && /11 octobre à 07:30/.test(veille) && /Garder l.option/.test(veille) && /Arrêter l.option/.test(veille), 'la veille : titre, date, heure, garder / arrêter', veille);
+  verifier(/Demain, le Cloud passe à 24,99 €\/mois/.test(veille) && /11 octobre à 07:30/.test(veille) && /Garder le Cloud/.test(veille) && /Arrêter le Cloud/.test(veille), 'la veille : titre, date, heure, garder / arrêter', veille);
   const veilleFree = texte(h(FE.RappelVeilleFinEssai, { lang: 'fr', cloud: essaiDe('2026-10-11T05:30:00Z'), quand: 'demain', nomPalier: null, actions: {}, onFermer() {} }));
-  verifier(/elle passe à 24,99 €\/mois/.test(veilleFree) && /ton plan Free ne change pas/.test(veilleFree), 'la veille d’un compte Free', veilleFree);
+  verifier(/il passe à 24,99 €\/mois/.test(veilleFree) && /ton plan Free ne change pas/.test(veilleFree), 'la veille d’un compte Free', veilleFree);
   const fin = texte(h(FE.EcranEssaiTermine, { lang: 'fr', nomPalier: 'Premium', actions: { ajouter() {}, extension() {} }, onFermer() {} }));
   verifier(/Ton essai est terminé/.test(fin) && /Ce qui s.arrête/.test(fin) && /Ce qui continue/.test(fin) && /eBay, depuis ton téléphone/.test(fin) && /L.extension Chrome, gratuite/.test(fin), 'l’après : ce qui s’arrête, ce qui continue (extension, eBay)', fin);
   const finFree = texte(h(FE.EcranEssaiTermine, { lang: 'fr', nomPalier: null, actions: { ajouter() {} }, onFermer() {} }));
-  verifier(/Reprendre l.option · 24,99 €\/mois/.test(finFree) && /Ton plan Free/.test(finFree), 'l’après, compte Free : il reprend l’option comme les autres (Free + FillSell Cloud)', finFree);
+  verifier(/Reprendre le Cloud · 24,99 €\/mois/.test(finFree) && /Ton plan Free/.test(finFree), 'l’après, compte Free : il reprend l’option comme les autres (Free + FillSell Cloud)', finFree);
   sansMotsInterdits(veille + veilleFree + fin + finFree, 'fin d’essai');
 
   // ── 7e. La 2e voie ───────────────────────────────────────────────────────

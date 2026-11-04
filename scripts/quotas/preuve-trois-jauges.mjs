@@ -286,6 +286,29 @@ try {
   ok(e.annonces.plafond === 300 && !('grille' in e) && !('publications' in e), 'interrupteur remis à 0 : Business revient à 300, plus aucune clé neuve dans quotas_etat');
   ok((await publier(F2, [job(16, 'beebs')])).allowed === true, '… et la publication n’est plus comptée');
 
+  // ── D. LA REMISE À ZÉRO, AUSSI POUR LES PAYANTS (20261104140000, demande de Nico du 04/11) ──
+  console.log('D. La date de remise à zéro, aussi pour les payants (20261104140000)');
+  const avantD = { etat: await etat(P), rep: await republier(P, 12) };
+  const empreintesM1 = await empreintes();
+  await q(lire('../../supabase/migrations/20261104140000_remise_le_payants.sql'));
+  ok(sansIds(await etat(P)) === sansIds(avantD.etat) && sansIds(await republier(P, 12)) === sansIds(avantD.rep),
+    'interrupteur à 0 : quotas_etat et le refus du Premium à 1 500, identiques', json(avantD));
+  await interrupteur(1);
+  for (const [nom, id] of [['Free', F], ['Premium', P], ['Pro', R], ['Business', B]]) {
+    const x = await etat(id);
+    const w = await un(`SELECT next_grant_at AS n FROM public.coin_wallets WHERE user_id = $1`, [id]);
+    ok(x.remise_le != null && new Date(x.remise_le).getTime() === new Date(w.n).getTime(), `${nom} : quotas_etat rend la remise à zéro du cycle (coin_wallets.next_grant_at)`, json(x.remise_le));
+  }
+  const rp = await republier(P, 12);
+  const wp = await un(`SELECT next_grant_at AS n FROM public.coin_wallets WHERE user_id = $1`, [P]);
+  ok(rp.reason === 'plafond_republication_mensuel' && rp.remise_le != null && new Date(rp.remise_le).getTime() === new Date(wp.n).getTime(),
+    'Premium à 1 500 : le refus porte la date du mur (« Attendre le JJ/MM »)', json(rp));
+  await interrupteur(0);
+  await q(lire('../../supabase/rollbacks/20261104140000_remise_le_payants_INVERSE.sql'));
+  const apresInverseD = await empreintes();
+  ok(['quotas_etat', 'spend_coins_and_republish'].every((k) => apresInverseD[k] === empreintesM1[k]),
+    'inverse : les 2 fonctions retrouvent leur définition du 04/11, à l’empreinte près', json({ empreintesM1, apresInverseD }));
+
   // ── C. L'INVERSE ────────────────────────────────────────────────────────
   console.log('C. L’inverse');
   await q(lire('../../supabase/rollbacks/20261104000000_trois_jauges_interrupteur_INVERSE.sql'));

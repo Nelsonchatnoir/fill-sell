@@ -22,9 +22,13 @@ export function publicationsRestantes(quotas) {
   return p && !p.illimite && Number.isFinite(p.restantes) ? p.restantes : null;
 }
 
-/** La remise à zéro du compte telle que quotas_etat la rend (coin_wallets.next_grant_at, compte Free), ou null. */
+/**
+ * La remise à zéro du compte telle que quotas_etat la rend (coin_wallets.next_grant_at), ou null.
+ * (04/11, décision de Nico) Avec la grille, quotas_etat la rend pour TOUS les paliers (`remise_le`, migration
+ * 20261104140000) ; avant cette migration, seul le Free la portait (republication.remise_le).
+ */
 export function remiseDuCompte(quotas) {
-  return quotas?.republication?.remise_le ?? null;
+  return quotas?.remise_le ?? quotas?.republication?.remise_le ?? null;
 }
 
 /**
@@ -43,7 +47,8 @@ export function murDeLaJauge(cle, quotas, { remise = null } = {}) {
     plafond: j.plafond,
     consommes: j.consommes,
     restantes: j.restantes,
-    remise_le: remise ?? remiseDuCompte(quotas) ?? null,
+    // (04/11) quotas_etat d'abord, puis la lecture de l'hôte (coin_wallets.next_grant_at), puis l'ancienne place.
+    remise_le: quotas?.remise_le ?? remise ?? remiseDuCompte(quotas) ?? null,
     ...(pubs != null ? { publications_restantes: pubs } : {}),
   };
 }
@@ -83,7 +88,9 @@ export function suiteDuRefus(refus, quotas, { lang = 'fr', remise = null } = {})
   if (j.gardeFou) return { message: messagePause(refus, lang) };
   const code = refus?.reason ?? refus?.error ?? null;
   const plafond = lu(refus?.plafond);
-  const remiseLe = refus?.remise_le ?? remise ?? remiseDuCompte(quotas) ?? null;
+  // (04/11, décision de Nico) La date : quotas_etat quand le serveur la rend, sinon le refus, sinon la lecture de
+  // l'hôte (coin_wallets.next_grant_at, lireProchaineRemiseAZero) — jamais une date inventée.
+  const remiseLe = quotas?.remise_le ?? refus?.remise_le ?? remise ?? remiseDuCompte(quotas) ?? null;
   const pubs = publicationsRestantes(quotas);
 
   if (code === 'quota_scan_atteint') {
