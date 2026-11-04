@@ -146,7 +146,9 @@ console.log("6. LA BARRE D'UN JOB");
   ok(p(job({ status: "cancelled" })).ton === "neutre", "annulée → grise, jamais orange");
   ok(p(job({ status: "processing", platform_fields: { processing_since: iso(-0.5) } })).etape === "action", "processing → étape du dépôt");
   ok(p(job({ status: "processing", platform_fields: { processing_since: iso(-0.5) } })).depuis === M - 30000, "… depuis processing_since");
-  ok(p(job({ status: "processing", platform_fields: { processing_since: iso(5) } })).depuis === undefined, "horloge du poste en avance : départ ignoré, jamais un bond");
+  // (04/11) Ramené à maintenant (aucun temps écoulé) plutôt qu'ignoré : même effet, aucun bond — et le même chiffre
+  // sur la carte et dans la file (selftest:barre-job-position).
+  ok(p(job({ status: "processing", platform_fields: { processing_since: iso(5) } })).depuis === M, "horloge du poste en avance : départ ramené à maintenant, jamais un bond");
   ok(p(job({})).etape === "file" && p(job({})).etat === "en_cours", "en file → avance doucement dans l'étape « file »");
   ok(p(job({}), { ...ctx, extension: { etat: "eteinte" } }).etat === "pause", "Chrome fermé → la barre s'immobilise");
   ok(p(job({}), { ...ctx, extension: { etat: "eteinte" } }).phrasePause.startsWith("En pause : ton ordinateur est éteint"), "… et le dit");

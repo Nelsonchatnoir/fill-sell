@@ -74,3 +74,10 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
 - Plateforme choisie → la feuille de republication s'ouvre avec cette seule plateforme cochée
   (`ouvrirFeuilleRepublication(choisis, [plateforme])`, `repubSheet.choix`). La sélection repart à neuf à chaque
   changement de plateforme ou de tri (`EcranSelection.cleSelection`).
+
+## 05/11 — la barre d'un job : une seule source, la base
+- La position d'une barre de job est `positionJob` (`src/utils/barresJobs.js`) : fonction pure du job (republish_step,
+  statut, horodatages en base) et de l'heure — même chiffre sur la carte, dans la file, la feuille, web et app ; posée
+  dès l'affichage (piste `reprise`), jamais remontée depuis 0 ; une portion par phase écrite en base, jamais de débord,
+  jamais en recul (essai raté = posé sur CAP_ESSAI). Un départ de plus de 6 h reste un départ. Ni l'ordre ni la logique
+  des étapes ne changent. Selftest `barre-job-position`.

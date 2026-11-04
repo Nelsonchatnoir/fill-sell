@@ -24,6 +24,7 @@
 
 import { situationJob, nomPlateforme, etapeRepublication, parNosServeurs, libelleAction, sansEstimation } from "./fileDesJobs.js";
 import { urlsPhotos } from "./photos.js";
+import { plagesDe, PLAFOND } from "./progression.js";
 // (02/11 soir, Nico) Compte Cloud : ses tâches sont faites par FillSell Cloud — les mots du Cloud, jamais « ton ordinateur ».
 import { parLeCloud } from "../cloud/voieCloud.js";
 
@@ -115,10 +116,94 @@ const pfDe = (j) => (j?.platform_fields && typeof j.platform_fields === "object"
 
 // Un horodatage n'est un départ d'étape que s'il est plausible : ni dans le
 // futur (horloge du poste en avance), ni vieux de plus de 6 h.
+// (04/11, Nico) Un départ ANCIEN reste un départ : la barre se pose alors près du bout de sa portion (la glissade est
+// asymptotique) au lieu de repartir de zéro à chaque affichage — c'était la règle « plus de 6 h = inconnu » qui
+// renvoyait à 0 % les republications en file depuis le matin. Seul le futur (horloge du poste en avance) est ramené
+// à maintenant.
 function depuisPlausible(iso, maintenant) {
   const t = Date.parse(iso ?? "");
-  if (!Number.isFinite(t) || t > maintenant || maintenant - t > 6 * 3600000) return undefined;
-  return t;
+  if (!Number.isFinite(t)) return undefined;
+  return Math.min(t, maintenant);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LA POSITION D'UN JOB DANS SA BARRE : UNE SEULE SOURCE, LA BASE (04/11, Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// Constat de Nico : la progression d'une republication n'était pas la même sur la carte du Stock et dans la file des
+// jobs, et repartait à zéro au rafraîchissement. Cause : le moteur de la barre (BarreProgression) partait du moment
+// où L'ÉCRAN voyait l'étape — départ à 0 au montage, débord d'une étape sur la suivante gardé en mémoire, départ jeté
+// au-delà de 6 h. La carte, montée depuis longtemps, et la file qu'on vient d'ouvrir avaient deux histoires.
+// La règle : la position est une fonction PURE du job tel qu'il est en base (republish_step, statut, horodatages
+// écrits par le serveur et l'extension) et de l'heure. Même chiffre partout (carte, file, feuille, web, app), au
+// premier affichage comme après un rafraîchissement ; jamais en recul.
+// Chaque PHASE écrite en base a sa portion de barre, faite de ses étapes (poids de etapesJob) :
+//   · republication : a_capturer = « file » + « relevé » ; captured = « attente » + « retrait » ; deleted = « remise » ;
+//   · publication et retrait : « file » + « action ».
+// Dans une phase :
+//   · en file, jamais tentée : glisse sur l'étape d'attente, depuis le début de la phase ;
+//   · premier essai (processing) : glisse du début de l'étape de travail vers CAP de sa plage, depuis processing_since ;
+//   · retombée après un essai (en file, en pause, arrêtée — un essai est noté depuis le début de la phase) : posée
+//     sur CAP, là où le premier essai ne pouvait pas aller ;
+//   · nouvel essai après un essai : glisse de CAP vers la fin de l'étape de travail.
+//   · deleted (« remise ») : une seule portion, ancrée sur deleted_at, quel que soit le statut ; un essai noté depuis
+//     le retrait pose la barre sur CAP, un nouvel essai glisse de CAP à la fin.
+// Une phase ne déborde jamais sur la suivante : en file ↔ en travail, une phase après l'autre, la barre ne recule pas.
+// ⛔ LECTURE SEULE : ni l'ordre ni la logique des étapes ne changent ici — seulement leur lecture et leur affichage.
+export const CAP_ESSAI = 0.6;
+
+// Un essai de CETTE phase est-il noté en base ? (une erreur technique, ou un passage en travail archivé, depuis son début)
+function essaiNoteDepuis(pf, debutMs) {
+  if (!Number.isFinite(debutMs)) return false;
+  const apres = (iso) => { const t = Date.parse(iso ?? ""); return Number.isFinite(t) && t >= debutMs; };
+  if (apres(pf?.error_technique?.at)) return true;
+  if (apres(pf?.recreation_reprise?.at)) return true;
+  return Array.isArray(pf?.erreurs_archivees) && pf.erreurs_archivees.some((e) => e?.statut === "processing" && apres(e?.le));
+}
+
+/**
+ * La position d'un job dans sa barre, pour BarreProgression en mode « fraction » (pure) :
+ * { fraction, pas, dureePas, depuis } — fraction et pas en part de la barre (0 à 1), depuis en ms.
+ * @param {object} job
+ * @param {Array} etapes — etapesJob(job)
+ * @param {{ maintenant?: number, arrete?: boolean }} [opts] — arrete : needs_user / failed (la barre se pose)
+ */
+export function positionJob(job, etapes, opts = {}) {
+  const maintenant = opts.maintenant ?? Date.now();
+  const pf = pfDe(job);
+  const plages = plagesDe(etapes);
+  const plage = (cle) => plages.find((x) => x.cle === cle) ?? null;
+  const step = job?.action === "republish" ? etapeRepublication(job) : null;
+  const cree = depuisPlausible(job?.created_at, maintenant);
+  let attente; let travail; let debutPhase;
+  if (step === "deleted") {
+    attente = travail = plage("remise");
+    debutPhase = depuisPlausible(pf.deleted_at, maintenant) ?? cree;
+  } else if (job?.action === "republish" && step === "captured") {
+    attente = plage("attente"); travail = plage("retrait");
+    const capture = depuisPlausible(pf.republish_snapshot?.captured_at, maintenant);
+    debutPhase = Number.isFinite(capture) && Number.isFinite(cree) ? Math.max(capture, cree) : (capture ?? cree);
+  } else if (job?.action === "republish") {
+    attente = plage("file"); travail = plage("releve");
+    debutPhase = cree;
+  } else {
+    attente = plage("file"); travail = plage("action");
+    debutPhase = cree;
+  }
+  if (!attente || !travail) return null;
+  const versFraction = (debut, fin, duree, depuis) => ({
+    fraction: debut / PLAFOND, pas: Math.max(0, fin - debut) / PLAFOND, dureePas: duree, depuis,
+  });
+  const cap = travail.debut + CAP_ESSAI * (travail.fin - travail.debut);
+  const enTravail = job?.status === "processing";
+  const essai = Boolean(opts.arrete) || essaiNoteDepuis(pf, debutPhase);
+  const depuisTravail = depuisPlausible(pf.processing_since, maintenant) ?? debutPhase;
+  if (step === "deleted") {
+    if (!essai) return versFraction(travail.debut, cap, travail.duree, debutPhase);
+    return enTravail ? versFraction(cap, travail.fin, travail.duree, depuisTravail) : versFraction(cap, cap, travail.duree, debutPhase);
+  }
+  if (enTravail) return essai ? versFraction(cap, travail.fin, travail.duree, depuisTravail) : versFraction(travail.debut, cap, travail.duree, depuisTravail);
+  if (essai) return versFraction(cap, cap, travail.duree, debutPhase);
+  return versFraction(attente.debut, attente.fin, attente.duree, debutPhase);
 }
 
 /** Les étapes réelles d'un job (cle, texte, court, duree, poids, debord). `opts.cloud` : le compte est servi par FillSell Cloud. */
@@ -169,8 +254,18 @@ export function motifRetraitParPlateforme(job) {
  * La piste de BarreProgression d'un job.
  * ctx = contexte de situationJob (maintenant, lang, extension, plateformesEnPause,
  *       plafond, creneaux, cloud) + texteErreur(job) → phrase humaine de l'erreur (optionnel).
+ * (04/11) L'étape et l'état disent les MOTS ; la position (positionJob) dit où est la barre, lue en base — `reprise`
+ * demande au moteur de s'y poser dès le premier affichage, jamais de repartir de zéro.
  */
 export function pisteJob(job, ctx = {}) {
+  const p = pisteSansPosition(job, ctx);
+  if (p.etat === "termine") return { ...p, reprise: true };
+  if (p.etape == null) return p;
+  const pos = positionJob(job, p.etapes, { maintenant: ctx.maintenant ?? Date.now(), arrete: p.etat === "echec" });
+  return pos ? { ...p, ...pos, reprise: true } : p;
+}
+
+function pisteSansPosition(job, ctx = {}) {
   const lang = ctx.lang === "en" ? "en" : "fr";
   const T = TEXTES[lang];
   const maintenant = ctx.maintenant ?? Date.now();

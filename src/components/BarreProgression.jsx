@@ -116,7 +116,7 @@ function pistesDe(props) {
   if (Array.isArray(props.pistes) && props.pistes.length) return props.pistes;
   return [{
     cle: "_", etapes: props.etapes, etape: props.etape, fraction: props.fraction,
-    pas: props.pas, dureePas: props.dureePas, etat: props.etat, depuis: props.depuis, ton: props.ton,
+    pas: props.pas, dureePas: props.dureePas, etat: props.etat, depuis: props.depuis, ton: props.ton, reprise: props.reprise,
   }];
 }
 
@@ -215,10 +215,20 @@ class MoteurBarre {
       if ((etat === "pause" || etat === "attente") && r.plage) r.visee = Math.max(r.visee, r.plage.debut);
       // `depuis` (horodatage, ms) : une étape commencée avant l'affichage de
       // la barre (onglet rouvert, poll) reprend où elle en est.
-      const depuis = neuve && Number(p.depuis) > 0 ? Math.max(0, Date.now() - Number(p.depuis)) : 0;
+      // (04/11) Une piste `reprise` (un job, position lue en base — utils/barresJobs.js, positionJob) s'ancre sur son
+      // départ RÉEL à chaque nouvelle étape, pas sur l'instant où le poll l'a apportée : la carte du Stock, ouverte
+      // depuis longtemps, et la file qu'on vient d'ouvrir calculent le même chiffre.
+      const depuis = (neuve || p.reprise) && Number(p.depuis) > 0 ? Math.max(0, Date.now() - Number(p.depuis)) : 0;
       r.debut = maintenant - depuis;
       r.etat = etat;
       r.sig = sig;
+      // (04/11) Premier affichage d'une piste `reprise` : la barre se POSE sur la position du job — jamais de remontée
+      // depuis 0 à chaque rafraîchissement ou à l'ouverture de la file.
+      if (neuve && p.reprise) {
+        if (etat === "en_cours" && r.plage) r.visee = Math.max(r.visee, valeurDansPlage(r.plage, r.depart, r.debut, maintenant));
+        if (etat === "termine") r.visee = 100;
+        r.affichee = r.visee;
+      }
     }
     // Un élément du DOM neuf (remonté par React) doit recevoir la valeur tout
     // de suite, même si rien d'autre n'a changé.
