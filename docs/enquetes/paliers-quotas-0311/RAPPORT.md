@@ -138,3 +138,12 @@ de mode sombre.
   (CLI : `db query --linked -f` demande désormais une confirmation ; `--yes` seulement sur ordre de Nico.)
 - **Reste avant de basculer** : l'app (maquettes validées), derrière la même clé ; l'avant / après des compteurs
   payants juste avant de passer l'interrupteur à 1.
+
+## 6. 04/11 soir — les 7 écarts des vrais écrans (709e35c) et la migration 20261104140000 (APPLIQUÉE)
+- Écarts corrigés à la demande de Nico, derrière la grille : pastille (le mot de la jauge ne disparaît jamais), murs
+  des payants « Attendre le JJ/MM », bouton « Créer une annonce depuis mes photos » au mur Lens du Business, « Il t'en
+  reste N » au mur de l'automatique du Premium, toast à la ligne, remontée en lot des plus anciennes dans la limite
+  exacte (un article entier ou rien, cadence intacte), « le Cloud » / « l'option FillSell Cloud » partout.
+- `20261104140000_remise_le_payants` : prouvée sur base jetable (`preuve-trois-jauges.mjs` partie D, 117/117), puis
+  APPLIQUÉE sur le feu vert nommé de Nico (empreintes avant = fixture, corps relus après, interrupteur à 0).
+- Vrais écrans : https://claude.ai/artifact/D3HQXTLv9N8AcygCtSTgjW (version 6, avis dans `avis_reels`).
