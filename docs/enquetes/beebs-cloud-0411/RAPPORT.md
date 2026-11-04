@@ -342,3 +342,10 @@ qui purgerait les sessions de son profil (coffre vide). Retour : cloud-2 arrêt�
   par compte (index `cloud_ips_une_reservation`) : celle de l'IP 2 est levée. `cloud_ip_achats_auto` relu : 0.
 - cloud-1 relu après la bascule : aucun navigateur, aucun compte au planificateur, entretien sans contrôle ni visite
   (`visites_coupees: ["beebs"]`), mesure « taches faites 0 ».
+- 19:1x (ordre de Nico) **renouvellement coupé pour les IP refusées** : règle du plan horaire (`planDuJour`, commit fc25780)
+  — une IP du pool au refus de plateforme NON prouvé sert jusqu'à son échéance mais n'est plus jamais renouvelée, sauf
+  RÉSERVÉE (la 39) ; une IP attribuée (la 42) reste renouvelée. Plan simulé sur 60 j avec les vraies IP (λ minimal, stock
+  minimum 2) : avant = 2 et 3 renouvelées le 24/11, 42 le 01/12 (12 $ sur 30 j, 24 $ sur 60 j) ; après = 39 le 24/11 et 42 le
+  01/12 (8 $ sur 30 j, 12 $ sur 60 j). Les 1, 4, 40, 41 n'auraient pas été renouvelées non plus (stock tenu par 2 et 3) :
+  échéances 2 et 3 le 29/11, 4 le 02/12, 1 / 40 / 41 le 04/12. ⚠ Mise en service sur cloud-1 (seul à tenir le pool) REFUSÉE par
+  le garde-fou de la session : à déployer sur cloud-1 avant le 24/11 (première décision de renouvellement).
