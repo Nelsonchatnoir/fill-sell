@@ -5,6 +5,8 @@
 # le conteneur EST le bac à sable (utilisateur sans droit, réseau limité au proxy).
 # (30/10) ECRAN_EXTERNE=1 (poste à vraie puce graphique, deploiement/gpu/) : pas d'écran virtuel — Chrome dessine sur
 # l'écran du bureau de l'hôte (DISPLAY, socket X monté) par la puce Intel ; CHROME_ARGS_GL y retire SwiftShader.
+# (04/11 soir, essai GPU) Les langues d'un VRAI Chrome français (LANGUES_PROFIL de navigateur.js, décision de Nico du
+# 02/11) : « fr-FR,fr » seules, mesurées sur cloud-2 (navigator.languages), sont celles que DataDome refusait sur steel.
 set -e
 node /relais.mjs &
 if [ "${ECRAN_EXTERNE:-0}" != 1 ]; then
@@ -14,7 +16,7 @@ if [ "${ECRAN_EXTERNE:-0}" != 1 ]; then
 fi
 socat TCP-LISTEN:9223,fork,reuseaddr TCP:127.0.0.1:9222 &
 exec google-chrome --no-sandbox --no-first-run --no-default-browser-check --password-store=basic --lang=fr-FR \
-  --accept-lang=fr-FR,fr --user-data-dir="${PROFIL:-/profil}" --remote-debugging-port=9222 --remote-allow-origins=* \
+  --accept-lang=fr-FR,fr,en-US,en --user-data-dir="${PROFIL:-/profil}" --remote-debugging-port=9222 --remote-allow-origins=* \
   --proxy-server=http://127.0.0.1:3128 \
   ${CHROME_ARGS_GL:---use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader} \
   --window-size=1366,768 about:blank
