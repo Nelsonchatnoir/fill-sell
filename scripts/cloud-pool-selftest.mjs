@@ -229,6 +229,16 @@ titre('10. (03/11, point 2 de Nico) L\'approvisionnement : stock minimum, refus 
   const d = (id, refus) => ({ id, etat: 'disponible', expire_le: iso(T0 + 25 * J), attributions: 0, refus });
   const pl = M.planDuJour({ ips: [d(1, { beebs: { prouvee: true } }), d(2, {})], lambda: 0.5, stockMin: 2, maintenant: T0 });
   ok(pl.projete === 1 && pl.aCommander === 1 && pl.attribuables === 1, 'une IP au refus PROUVÉ ne compte pas dans le stock');
+  // (04/11 soir, décision de Nico) Refus NON prouvé : plus jamais renouvelée, sauf réservée (l'IP du retour d'un compte).
+  const e = (id, refus, x = {}) => ({ id, etat: 'disponible', expire_le: iso(T0 + 2 * J), attributions: 0, refus, ...x });
+  const pr = M.planDuJour({ ips: [e(1, { beebs: { prouvee: false } }), e(2, { beebs: { prouvee: false } }, { reserve_pour: 'u', reserve_jusqu_au: iso(T0 + 2 * J) }),
+    e(3, {}), e(4, { beebs: { prouvee: false } }, { reserve_pour: 'v', reserve_jusqu_au: iso(T0 - J) }),
+    { ...e(5, { beebs: { prouvee: false } }), etat: 'attribuee_client', user_id: 'w' }], lambda: 0.5, stockMin: 3, maintenant: T0 });
+  ok(pr.laisserExpirer.includes(1) && pr.laisserExpirer.includes(4) && !pr.renouveler.includes(1) && !pr.renouveler.includes(4),
+    'une IP au refus NON prouvé (ou à la réservation échue) n\'est plus renouvelée');
+  ok(pr.renouveler.includes(2) && pr.renouveler.includes(3) && pr.renouveler.includes(5),
+    '…sauf réservée à un compte ; une IP saine et une IP attribuée le restent');
+  ok(M.refusee({ beebs: {} }) && !M.refusee({}) && !M.refusee(null), 'refusee : au moins une plateforme');
   ok(M.choisirIp([d(1, { beebs: { prouvee: false } }), d(2, {})], { userId: 'u', maintenant: T0 }).id === 2, 'attribution : sans refus d\'abord');
   ok(M.effetSignalement('blocage_anti_robot') === 'refus_plateforme' && M.effetSignalement('liste_noire') === 'rebut',
     'un blocage de plateforme = un refus sur ELLE ; les causes prouvées restent des rebuts');

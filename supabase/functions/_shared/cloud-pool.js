@@ -401,6 +401,10 @@ export function taillePoolCible({ lambda, conversion, clients = 0, departsClient
 //     cloud_ip_budget_mensuel_usd — deciderDepense) ; sinon aCommander reste une proposition ;
 //   · (03/11) le stock visé ne descend jamais sous cloud_ip_stock_min (stockVise) ; une IP
 //     au refus PROUVÉ ne compte pas dans le stock.
+//   · (04/11 soir, décision de Nico) une IP du pool au refus de plateforme NON prouvé sert encore
+//     tant qu'elle vit, mais n'est plus jamais renouvelée, SAUF si elle est RÉSERVÉE à un compte
+//     (l'IP du retour d'un compte : la 39 pendant l'essai GPU). Une IP attribuée reste renouvelée
+//     tant que son compte paie.
 const PRETE = (ip, now, H) => ip.etat === 'achetee' || ip.etat === 'disponible'
   || (ip.etat === 'repos' && instant(ip.repos_fin) != null && instant(ip.repos_fin) <= now + H);
 
@@ -409,6 +413,14 @@ export function refusProuve(refus) {
   if (!refus || typeof refus !== 'object' || Array.isArray(refus)) return false;
   return Object.values(refus).some((r) => r?.prouvee === true);
 }
+
+/** (04/11 soir) Un refus d'au moins une plateforme, prouvé ou non (pure). */
+export function refusee(refus) {
+  return Boolean(refus) && typeof refus === 'object' && !Array.isArray(refus) && Object.keys(refus).length > 0;
+}
+/** (04/11 soir) Une IP réservée à un compte, réservation en cours (= cloud_ip_attribuable) (pure). */
+export const reservee = (ip, now) => Boolean(ip?.reserve_pour)
+  && (ip.reserve_jusqu_au == null || !(instant(ip.reserve_jusqu_au) < now));
 
 /**
  * (03/11, point 2 de Nico) Le stock visé : le seuil de commande calculé (λ), jamais sous le STOCK MINIMUM
@@ -439,9 +451,12 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, s
     const couvre = echeance >= couvertureEssai;
     // (03/11) Une IP au refus PROUVÉ (dernier recours) ne compte pas dans le stock ; elle n'est pas renouvelée pour lui.
     if (refusProuve(ip.refus)) { if (echeance <= N) laisserExpirer.push(ip.id); else attendre.push(ip.id); continue; }
+    // (04/11 soir, décision de Nico) Un refus NON prouvé : l'IP sert encore tant qu'elle vit (stock), mais elle n'est
+    // JAMAIS renouvelée — sauf RÉSERVÉE à un compte (l'IP de son retour).
+    const sansRenouvellement = refusee(ip.refus) && !reservee(ip, now);
     if (prete && couvre && !usee) { projete++; attendre.push(ip.id); continue; }
     if (echeance <= N || (prete && !couvre)) {
-      if (usee || !prete) laisserExpirer.push(ip.id); else candidats.push(ip);
+      if (usee || !prete || sansRenouvellement) laisserExpirer.push(ip.id); else candidats.push(ip);
       continue;
     }
     attendre.push(ip.id);
