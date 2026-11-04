@@ -453,3 +453,12 @@ L'INVERSE de la bascule garde `ouvert_sur` : au retour, cloud-1 repart sans les 
   (cookie datadome renouvelé), type du compte lu dans le cache de la page (aucun appel de compte) ; usage_logs `veille_commandes`
   « amorcage » Leboncoin, 10 commandes, 1 requête. 1er succès sur le Cloud (avant : 5 refus sur 5). Veilleur laissé en marche.
 - **Reprise prudente corrigée** (ordre de Nico) : une annonce déjà retirée part tout de suite (`docs/regles/republication-et-publication.md`, 04/11 nuit).
+
+**Suite (décisions de Nico, 04/11 23:2x)** : l'essai continue sur cloud-2 jusqu'au verdict du 05/11 ~18:00 (rapports 07:57 et
+17:57), rien qui puisse le fausser. Paquet du Chrome Web Store : la 0.6.172 de `build/CWS-0.6.172-A-TELEVERSER/` (même contenu
+que la 0.6.171, périmée), aucun autre zip. Un autre terminal traite l'affichage de la progression des republications et deux
+cas rouges (jeton Leboncoin expiré entre retrait et redépôt, compte Vinted banni qui retente) : ni ses sujets ni ses fichiers.
+**À garder pour le prompt « finitions Cloud » (APRÈS l'essai, pas avant)** :
+1. après un « Résoudre » réussi, relancer tout de suite les jobs de la plateforme (la republication Leboncoin est restée à
+   l'arrêt de 21:38 à 21:56) ;
+2. noter l'heure de chaque étape d'une republication (prise, retrait, chaque essai de redépôt, en ligne).
