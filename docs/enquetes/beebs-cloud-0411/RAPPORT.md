@@ -401,3 +401,34 @@ L'INVERSE de la bascule garde `ouvert_sur` : au retour, cloud-1 repart sans les 
   veille, relevé des annonces `dashboard/v1/search`, messagerie : liste, messages, commandes, détail d'achat) partent avec
   la requête du client de la page (ses en-têtes, calculés comme lui depuis les mêmes cookies, credentials « include »).
   Aucune valeur inventée. Gestes (envoi de message, bordereaux) non touchés.
+
+**Rapport de 21:00 (dressé à 21:2x, état relu : `blocages.json`, `fond-f44b5917-2026-11-04.jsonl`, journal, base)** :
+- **Vinted** : aucune glissière, aucun 403 de fond (un 401 normal à la connexion, 18:47:34). Connecté. Messagerie lue (21:14).
+- **Leboncoin** : 2 glissières dans l'onglet de travail, toutes deux sur l'appel de compte de la veille des commandes
+  (403 à 18:58:34.906 et 20:30:33.356) ; le cadre `geo.captcha-delivery.com/captcha/` est bien dans l'enregistrement
+  (18:58:34.960 et 20:30:33.403, 47-54 ms après le 403 ; ⚠ corrige la ligne « le cadre n'est pas dans l'enregistrement »
+  plus haut : il est rattaché à la page). Résolue par Nico à 20:16:38 ; rechute 20:30 (après la levée de la coupure de la
+  veille, à 20:29) → « revenue » ; requalifiée « à résoudre » à 21:18 pour le « Résoudre » de Nico après correction.
+  Aucune connexion perdue (session gardée ; « connecté » faux = verrou de vérification). Messagerie : `injection_impossible`
+  (plateforme verrouillée). Aucune autre requête Leboncoin refusée en fond.
+- **Depop** : aucune glissière, aucune connexion perdue ; refus NON bloquants de sa protection : 403 sur ses capteurs
+  `/vwdj/…` (19:04, 19:28, 19:39, 20:04, 20:16, 21:04), sur des pré-vols OPTIONS de `webapi.depop.com` (receipts 19:52,
+  conversations 20:16 et 21:06, users/me 20:36 ×3) et une fois sur la page d'accueil (20:16:21). Messagerie lue (21:17).
+- **Beebs** : aucune glissière de fond ; vérification de l'appareil passée seule à la connexion (18:44:16, `redirect`).
+  Messagerie : `telephone_non_verifie` (état du compte Beebs, pas un blocage).
+- **Republication du t-shirt Adidas** (demandée 20:32:41, une plateforme hors ligne à la fois : « les autres attendent sa
+  remise en ligne ») : Vinted pris ≤ 20:37:14, retiré 20:37:45, recréé 20:37:57 → **12 s** hors ligne, nouvelle annonce
+  10667855416 (vinted.fr/items/10667855416), ancienne 10331672146 retirée ; Beebs pris 20:42:02, retiré 20:42:26, 1re
+  recréation ratée (20:48:17, « dépôt non confirmé 45 s après Publier » — les demandes d'URL d'envoi des photos
+  `cdn-api.beebs.app/v1/upload/signedUrl` ont échoué une fois en `ERR_TUNNEL_CONNECTION_FAILED` à 20:47:31 puis répondu
+  200), reprise automatique, recréé 20:55:46 → **13 min 20 s** hors ligne, nouvelle 34297569 (beebs.app/fr/p/34297569),
+  ancienne 34150301 absente du relevé « mes annonces » (preuve de retrait 20:42:25) ; Depop retiré 20:58:21, recréé 21:04:40
+  → **6 min 19 s**, nouvelle `nelsoechatnoir-tres-bon-etat-pour-son-cbdd`, ancienne `…-5b37` retirée ; aucun refus
+  bloquant (un 403 de capteur `/vwdj/gs/ccm/collect` à 21:04:25). Leboncoin : en attente (verrouillé), annonce 3295657528
+  toujours en ligne, rien retiré. Ordre : création des jobs (Vinted, Leboncoin, Beebs, Depop), Leboncoin sauté (bloqué),
+  puis un seul retrait à la fois. En base : une seule annonce publiée par plateforme (aucun doublon) ; non vérifié sur les
+  plateformes (aucun contact).
+- Navigateur de cloud-2 redémarré à 21:07, 21:10, 21:14, 21:17, 21:18 (déploiements de la correction, réinstallation de
+  l'extension, requalification), jamais pendant une tâche ; extension sans fichiers 21:10 → 21:11 (remise aussitôt).
+  Supabase : `cloud_serveur_battre` en erreur HTML à 20:21:48 et 20:51:33 (sans effet).
+- Rien de grave : aucun compte restreint, aucune connexion perdue → pas de retour sur cloud-1.
