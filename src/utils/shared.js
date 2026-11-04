@@ -320,15 +320,26 @@ export function lienVerificationEbay(job, lang = 'fr') {
     // ses retours, son lieu d'expédition) n'a pas de lien eBay : le geste est
     // le parcours eBay de l'app (Réglages › Compte eBay).
     if (aFinir?.etape === 'parcours' || aFinir?.etape === 'retours') return null;
-    const conditions = aFinir?.etape === 'conditions';
+    // (04/11, décision de Nico — remplace le 12/10) Des conditions de vente qui n'existent nulle part : FillSell les
+    // crée, sur le clic de la personne, avec les réglages de ses annonces eBay (src/stock/CreerConditionsEbay.jsx).
+    // Plus de renvoi vers ebay.fr/bp/manage, même pour un job parqué avant (il portait ce lien).
+    if (aFinir?.etape === 'conditions') {
+      return {
+        action: 'creer_conditions_ebay', url: null,
+        libelle: lang === 'en' ? 'Create my eBay policies' : 'Créer mes conditions eBay',
+        aide: lang === 'en'
+          ? 'FillSell creates them with the settings of your eBay listings: nothing is created without your OK.'
+          : "FillSell les crée avec les réglages de tes annonces eBay : rien n'est créé sans ton accord.",
+      };
+    }
     // (17/10) Plafond de vente eBay à zéro : c'est eBay qui le relève, sur le
     // compte vendeur (Seller Hub).
     const plafond = aFinir?.etape === 'plafond';
     return {
       url: typeof aFinir?.url === 'string' && /^https:\/\/www\.ebay\.fr\//.test(aFinir.url) ? aFinir.url : EBAY_SELLER_HUB_URL,
       libelle: lang === 'en'
-        ? (conditions ? 'Create my eBay selling policies' : plafond ? 'Open my eBay seller account' : 'Finish my eBay seller account')
-        : (conditions ? 'Créer mes conditions de vente eBay' : plafond ? 'Ouvrir mon compte vendeur eBay' : 'Finir mon compte vendeur eBay'),
+        ? (plafond ? 'Open my eBay seller account' : 'Finish my eBay seller account')
+        : (plafond ? 'Ouvrir mon compte vendeur eBay' : 'Finir mon compte vendeur eBay'),
       aide: lang === 'en'
         ? (plafond ? 'Once eBay lifts your selling limit, this listing goes out on its own.' : 'Once eBay lets your account sell, this listing goes out on its own.')
         : (plafond ? "Dès qu'eBay relève ton plafond de vente, cette annonce part toute seule." : "Dès qu'eBay laisse ton compte vendre, cette annonce part toute seule."),

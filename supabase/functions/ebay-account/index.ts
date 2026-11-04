@@ -85,7 +85,11 @@ import { compteEbayApiUsableDepuisLigne, rearmerJobsEbayConnexionSiUtilisable } 
 import { plafondEbay } from "../_shared/ebay-etat-compte.js";
 import { domaineSiteEbay, messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 // (30/10, lot E) Modifier une annonce eBay en ligne (voie API) depuis FillSell.
-import { demandePropre, modifierAnnonceEbay } from "../_shared/ebay-modifier-annonce.ts";
+import { demandePropre, lireAnnonceEbay, modifierAnnonceEbay } from "../_shared/ebay-modifier-annonce.ts";
+import { aspectsCategorie } from "../_shared/ebay-publication.ts";
+// (04/11, point 4) « Créer mes conditions eBay » : les réglages lus sur les annonces du vendeur.
+import { appelTrading, erreurTrading, valeur as valeurXml } from "../_shared/ebay-trading-releve.ts";
+import { conditionsDeLAnnonce, identifiantsActifs, proposerConditions } from "../_shared/ebay-conditions-proposees.ts";
 
 // localhost:5177 : le serveur de développement des essais réels (session déjà
 // ouverte) — même statut que 5173 ; le JWT reste exigé, CORS n'est pas la garde.
@@ -252,7 +256,9 @@ function corpsCreation(type: TypePolitique, options: Record<string, unknown>, se
   if (type === "payment") return { ...base, immediatePay: true };
   if (type === "return") {
     if (options.retours === "refuses") return { ...base, returnsAccepted: false };
-    return { ...base, returnsAccepted: true, returnPeriod: { value: 30, unit: "DAY" }, refundMethod: "MONEY_BACK", returnShippingCostPayer: "BUYER" };
+    // (04/11) La durée lue sur les annonces du vendeur (14, 30 ou 60 jours) ; 30 sinon.
+    const jours = [14, 30, 60].includes(Number(options.retours_jours)) ? Number(options.retours_jours) : 30;
+    return { ...base, returnsAccepted: true, returnPeriod: { value: jours, unit: "DAY" }, refundMethod: "MONEY_BACK", returnShippingCostPayer: "BUYER" };
   }
   // fulfillment
   const delai = Math.min(3, Math.max(1, Number(options.delai_jours) || 2));
@@ -516,11 +522,13 @@ Deno.serve(async (req) => {
     // API : elle ne se modifie que par l'API (_shared/ebay-modifier-annonce.ts).
     // Titre, description, prix — révisés EN PLACE (même numéro, vues gardées).
     // La personne seulement, sur SES publications ; la tâche suit ce qui est en ligne.
-    if (action === "modifier_annonce") {
+    // (04/11, point 3 — décision de Nico) Tout se modifie ici : + caractéristiques et photos. lire_annonce rend l'annonce
+    // telle qu'eBay la porte et le catalogue de sa catégorie (obligatoires, listes fermées, valeurs proposées).
+    if (action === "lire_annonce" || action === "modifier_annonce") {
       const jobId = String(body.job_id ?? "");
       if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ ok: false, motif: "parametres", message: "Publication inconnue." }, 400);
-      const demande = demandePropre(body);
-      if (!demande.ok) return json(demande, 400);
+      const demande = action === "modifier_annonce" ? demandePropre(body) : null;
+      if (demande && !demande.ok) return json(demande, 400);
       const { data: j } = await admin.from("cross_post_jobs")
         .select("id, user_id, platform, status, voie, title, description, price, platform_fields")
         .eq("id", jobId).eq("user_id", user.id).maybeSingle();
@@ -532,7 +540,23 @@ Deno.serve(async (req) => {
       }
       const jeton = await obtenirAccessToken(admin, user.id);
       if (!jeton.ok) return json({ ok: false, motif: `jeton_${jeton.motif}`, message: "Ton compte eBay doit être reconnecté (Réglages › Plateformes › eBay) avant de modifier une annonce." });
-      const r = await modifierAnnonceEbay(env, jeton.token as string, ids, demande.d);
+      const catalogue = async (categoryId: string) => {
+        if (!/^\d+$/.test(categoryId)) return null;
+        const c = await aspectsCategorie(admin, env, jeton.token as string, categoryId);
+        return "aspects" in c ? c.aspects : null;
+      };
+      if (action === "lire_annonce") {
+        const lu = await lireAnnonceEbay(env, jeton.token as string, ids);
+        if (!lu.ok) return json(lu);
+        const cat = (await catalogue(lu.annonce.categoryId).catch(() => null)) ?? [];
+        console.log(`[ebay-account] lire_annonce job=${jobId.slice(0, 8)} annonce=${ids.listingId} rayon=${lu.annonce.categoryId} aspects=${Object.keys(lu.annonce.aspects).length}/${cat.length}`);
+        return json({ ok: true, annonce: lu.annonce, catalogue: cat.map((a) => ({
+          name: a.name, required: a.required, mode: a.mode, cardinality: (a as { cardinality?: string | null }).cardinality ?? null,
+          allowedValues: (a.allowedValues ?? []).slice(0, 400),
+        })) });
+      }
+      if (!demande?.ok) return json({ ok: false, motif: "parametres", message: "Rien à modifier." }, 400);
+      const r = await modifierAnnonceEbay(env, jeton.token as string, ids, demande.d, catalogue);
       console.log(`[ebay-account] modifier_annonce job=${jobId.slice(0, 8)} annonce=${ids.listingId} → ${r.ok ? `ok (${r.changements.join(", ")})` : r.motif}`);
       if (!r.ok) return json(r);
       // La tâche suit ce qui est en ligne (titre, description, prix) ; trace des modifications (10 dernières).
@@ -540,8 +564,16 @@ Deno.serve(async (req) => {
       if (demande.d.titre != null) maj.title = demande.d.titre;
       if (demande.d.description != null) maj.description = demande.d.description;
       if (demande.d.prix != null) maj.price = demande.d.prix;
+      // (04/11) Les caractéristiques et les photos suivent aussi : une republication repart de ce qui est en ligne.
+      const pfMaj: Record<string, unknown> = { ...pf };
+      if (demande.d.aspects) {
+        const ea = { ...((pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects as Record<string, unknown> : {}) };
+        for (const [k, v] of Object.entries(demande.d.aspects)) { if (v.length) ea[k] = v.length === 1 ? v[0] : v; else delete ea[k]; }
+        pfMaj.ebayAspects = ea;
+      }
+      if (demande.d.photos) maj.photos = demande.d.photos.map((url) => ({ url, type: "original" }));
       const trace = Array.isArray(pf.modifications_ebay) ? (pf.modifications_ebay as unknown[]).slice(-9) : [];
-      maj.platform_fields = { ...pf, modifications_ebay: [...trace, { le: new Date().toISOString(), champs: r.changements, par: "personne (FillSell)" }] };
+      maj.platform_fields = { ...pfMaj, modifications_ebay: [...trace, { le: new Date().toISOString(), champs: r.changements, par: "personne (FillSell)" }] };
       const { error: errMaj } = await admin.from("cross_post_jobs").update(maj).eq("id", jobId).eq("user_id", user.id);
       if (errMaj) console.warn(`[ebay-account] modifier_annonce : annonce modifiée chez eBay, tâche non mise à jour — ${errMaj.message}`);
       return json({ ok: true, changements: r.changements, listing_id: r.listing_id });
@@ -572,7 +604,7 @@ Deno.serve(async (req) => {
     const siteEbay = siteCompte.site
       ? { site: siteCompte.site, domaine: domaineSiteEbay(siteCompte.site), etranger, message: etranger ? messageSiteEtranger(siteCompte.site, siteCompte.pseudo) : null }
       : null;
-    if (etranger && ["activer_politiques", "poser_livraison", "choisir_politique", "creer_politique"].includes(action)) {
+    if (etranger && ["activer_politiques", "poser_livraison", "choisir_politique", "creer_politique", "creer_conditions"].includes(action)) {
       console.log(`[ebay-account] action=${action} REFUSÉE : compte inscrit sur ${siteCompte.site} (user=${user.id})`);
       return json({ error: siteEbay!.message, site_ebay: siteEbay }, 409);
     }
@@ -587,6 +619,111 @@ Deno.serve(async (req) => {
         await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
       }
       return json({ etat: etatPublic(compte), checklist, site_ebay: siteEbay });
+    }
+
+    // ── (04/11, point 4 — décision de Nico, remplace le 12/10) « CRÉER MES CONDITIONS eBAY » ────────────────────
+    // proposer_conditions : LECTURE SEULE — les réglages que le vendeur utilise déjà sur ses annonces eBay (3 au plus :
+    // GetMyeBaySelling puis GetItem), recalés sur les services qu'eBay FR accepte ; sinon des valeurs ordinaires et un
+    // prix de livraison vide (_shared/ebay-conditions-proposees.ts).
+    // creer_conditions : SUR SON CLIC seulement — inscription aux conditions de vente si besoin, puis paiement, retours,
+    // livraison (nos politiques, adressées par leur nom : une politique faite par le vendeur n'est jamais touchée), puis
+    // relevé ; les publications parquées repartent si le compte est prêt. Un refus d'eBay est rendu avec sa phrase.
+    if (action === "proposer_conditions") {
+      let lues: ReturnType<typeof conditionsDeLAnnonce>[] = [];
+      try {
+        const liste = await appelTrading(env, token, "GetMyeBaySelling",
+          "<ActiveList><Include>true</Include><Pagination><EntriesPerPage>5</EntriesPerPage><PageNumber>1</PageNumber></Pagination></ActiveList>" +
+          "<SoldList><Include>false</Include></SoldList><UnsoldList><Include>false</Include></UnsoldList>");
+        const ids = liste.http === 200 && !erreurTrading(liste.xml) ? identifiantsActifs(liste.xml, 3) : [];
+        for (const id of ids) {
+          const r = await appelTrading(env, token, "GetItem", `<ItemID>${id}</ItemID><DetailLevel>ReturnAll</DetailLevel>`);
+          if (r.http === 200 && !erreurTrading(r.xml)) lues.push(conditionsDeLAnnonce(valeurXml(r.xml, "Item") ?? ""));
+        }
+      } catch (e) {
+        console.warn(`[ebay-account] proposer_conditions : annonces illisibles (${(e as Error)?.message ?? e}) — valeurs ordinaires`);
+        lues = [];
+      }
+      let services: ServiceLivraison[] = [];
+      try { services = await listerServicesLivraison(env, token); } catch { services = []; }
+      const proposition = proposerConditions(lues, services, PLAFOND_SERVICES_DOMESTIQUES);
+      const checklist = await releverChecklist(admin, env, token, user.id);
+      const { compte } = await lireCompte(admin, user.id);
+      console.log(`[ebay-account] proposer_conditions user=${user.id} source=${proposition.source} annonces=${proposition.annonces_lues} services=${proposition.livraison.services.map((x) => x.code).join(",")}`);
+      return json({ proposition, etat: etatPublic(compte), checklist, site_ebay: siteEbay });
+    }
+
+    if (action === "creer_conditions") {
+      const liv = (body.livraison && typeof body.livraison === "object" ? body.livraison : {}) as Record<string, unknown>;
+      const ret = (body.retours && typeof body.retours === "object" ? body.retours : {}) as Record<string, unknown>;
+      const brut = Array.isArray(liv.services) ? liv.services as Array<Record<string, unknown>> : [];
+      if (!brut.length) return json({ error: "Choisis au moins un mode d'envoi." }, 400);
+      if (brut.length > PLAFOND_SERVICES_DOMESTIQUES) return json({ error: `eBay accepte au maximum ${PLAFOND_SERVICES_DOMESTIQUES} modes d'envoi.` }, 400);
+      let services: ServiceLivraison[];
+      try { services = await listerServicesLivraison(env, token); }
+      catch (e) { return json({ error: `Impossible de lire les modes d'envoi chez eBay : ${(e as Error).message}` }, 502); }
+      const demandes: ServiceDemande[] = [];
+      for (const x of brut) {
+        const code = String(x.code ?? "").trim();
+        const service = resoudreCodeService(code, services);
+        if (!service) return json({ error: `eBay ne propose pas (ou plus) le mode d'envoi « ${code} » pour la France.` }, 400);
+        const fraisTexte = String(x.frais_eur ?? "").replace(",", ".").trim();
+        const frais = Number(fraisTexte);
+        // Le prix est écrit par la personne : jamais deviné (vide = à remplir).
+        if (fraisTexte === "" || !Number.isFinite(frais) || frais < 0) return json({ error: `Indique le prix de « ${service.libelle} » (0 pour la livraison gratuite).` }, 400);
+        demandes.push({ code, frais });
+      }
+      const faits: string[] = [];
+      const refus = (quoi: string, r: { http: number; json: unknown; texte?: string }) =>
+        json({ error: `eBay a refusé ${quoi} : ${messageErreurEbay(r.json, r.texte ?? "")}${faits.length ? ` (déjà fait : ${faits.join(", ")})` : ""}`, http: r.http, faits }, 502);
+      // 1. L'inscription aux conditions de vente, si elle manque (eBay peut mettre jusqu'à 24 h à l'activer).
+      const prog = await appelEbay(env, token, "/sell/account/v1/program/get_opted_in_programs");
+      const inscrit = prog.http === 200 && Array.isArray((prog.json as { programs?: Array<{ programType?: string }> } | null)?.programs)
+        && ((prog.json as { programs: Array<{ programType?: string }> }).programs).some((x) => x.programType === "SELLING_POLICY_MANAGEMENT");
+      if (!inscrit) {
+        const o = await appelEbay(env, token, "/sell/account/v1/program/opt_in", { method: "POST", body: { programType: "SELLING_POLICY_MANAGEMENT" } });
+        if (o.http < 200 || o.http >= 300) return refus("l'activation des conditions de vente", o);
+        faits.push("conditions de vente activées");
+      }
+      // 2. Paiement et retours : nos politiques, mises à jour si elles existent déjà sous leur nom.
+      const ecrire = async (type: "payment" | "return", options: Record<string, unknown>) => {
+        const corps = corpsCreation(type, options);
+        const ex = await appelEbay(env, token, `${TYPES[type].chemin}/get_by_policy_name?marketplace_id=${MARKETPLACE}&name=${encodeURIComponent(corps.name)}`);
+        const idEx = ex.http === 200 && ex.json && typeof ex.json === "object" ? String((ex.json as Record<string, unknown>)[TYPES[type].id] ?? "") : "";
+        const r = idEx
+          ? await appelEbay(env, token, `${TYPES[type].chemin}/${encodeURIComponent(idEx)}`, { method: "PUT", body: corps })
+          : await appelEbay(env, token, TYPES[type].chemin, { method: "POST", body: corps });
+        const id = String(((r.json ?? {}) as Record<string, unknown>)[TYPES[type].id] ?? idEx);
+        return { r, id };
+      };
+      const pai = await ecrire("payment", {});
+      if (pai.r.http < 200 || pai.r.http >= 300 || !pai.id) {
+        const attente = !inscrit ? " — eBay active tes conditions de vente (jusqu'à 24 h) : appuie de nouveau sur « Créer mes conditions eBay » un peu plus tard, tes choix seront proposés de nouveau" : "";
+        return json({ error: `eBay a refusé le paiement : ${messageErreurEbay(pai.r.json, pai.r.texte)}${attente}`, http: pai.r.http, faits, en_attente_activation: !inscrit }, 502);
+      }
+      await admin.from("ebay_accounts").update({ payment_policy_id: pai.id }).eq("user_id", user.id);
+      faits.push("paiement");
+      const retours = await ecrire("return", { retours: ret.acceptes === false ? "refuses" : "acceptes_30", retours_jours: ret.jours });
+      if (retours.r.http < 200 || retours.r.http >= 300 || !retours.id) return refus("les retours", retours.r);
+      await admin.from("ebay_accounts").update({ return_policy_id: retours.id }).eq("user_id", user.id);
+      faits.push("retours");
+      // 3. La livraison : la politique FillSell, avec les transporteurs et prix choisis.
+      const existante = await appelEbay(env, token, `${TYPES.fulfillment.chemin}/get_by_policy_name?marketplace_id=${MARKETPLACE}&name=${encodeURIComponent(NOM_POLITIQUE_LIVRAISON)}`);
+      const dejaLa = existante.http === 200 && existante.json && typeof existante.json === "object" ? existante.json as Record<string, unknown> : null;
+      const idLiv = String(dejaLa?.fulfillmentPolicyId ?? "");
+      const corpsLiv = corpsLivraison(demandes, services, Number(liv.delai_jours ?? 2), dejaLa);
+      const rl = idLiv
+        ? await appelEbay(env, token, `${TYPES.fulfillment.chemin}/${idLiv}`, { method: "PUT", body: corpsLiv })
+        : await appelEbay(env, token, TYPES.fulfillment.chemin, { method: "POST", body: corpsLiv });
+      if (rl.http < 200 || rl.http >= 300) return refus("la livraison", rl);
+      const idL = String(((rl.json ?? {}) as Record<string, unknown>)[TYPES.fulfillment.id] ?? idLiv);
+      if (idL) await admin.from("ebay_accounts").update({ fulfillment_policy_id: idL }).eq("user_id", user.id);
+      faits.push("livraison");
+      console.log(`[ebay-account] creer_conditions user=${user.id} ${faits.join(", ")} services=${demandes.map((d) => d.code).join(",")}`);
+      await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
+      const checklist = await releverChecklist(admin, env, token, user.id);
+      const { compte } = await lireCompte(admin, user.id);
+      if (compteEbayApiUsableDepuisLigne(compte)) await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
+      return json({ ok: true, faits, etat: etatPublic(compte), checklist });
     }
 
     if (action === "activer_politiques") {

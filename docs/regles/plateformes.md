@@ -721,7 +721,10 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 3, 4, 5.
   s'ajoute à `CODES_GESTE_COMPTE_DEPOP` ET à `DEPOP_CODES_GESTE_COMPTE` (content-scripts/depop.js).
 - eBay : une annonce publiée par l'API Inventory n'est modifiable QUE par l'API Inventory (doc eBay ; « Cette opération
   n'est pas autorisée pour les objets de l'inventaire » sur le site). Toute modification passe par l'app (« Modifier
-  sur eBay »). Voie a (tout modifier depuis l'app) recommandée le 04/11 ; décision de Nico en attente.
+  sur eBay ») : titre, prix, description, caractéristiques, photos (voie a, décision de Nico du 04/11). À la
+  publication, les caractéristiques écrites par la personne sont lues (`_shared/ebay-aspects-du-texte.ts`), recalées sur
+  la liste eBay, jamais par-dessus une valeur connue ni pour une taille.
 - eBay « compte pas prêt » étape `conditions` : un vendeur inscrit sans conditions EBAY_FR ne publie pas par l'API ;
-  l'app sait les créer, mais la décision du 12/10 envoie sur ebay.fr. Bouton « Créer mes conditions eBay » proposé
-  (consentement au clic) — décision de Nico en attente.
+  ⛔ (04/11, décision de Nico, remplace le 12/10) plus de renvoi vers ebay.fr : « Créer mes conditions eBay » dans
+  l'app, valeurs lues sur SES annonces, prix de livraison jamais deviné, rien créé sans son clic (`proposer_conditions`
+  lecture seule, `creer_conditions` au clic).

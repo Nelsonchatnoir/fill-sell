@@ -77,7 +77,9 @@ export const LIEN_EBAY_CONDITIONS = "https://www.ebay.fr/bp/manage";
  *   · retours   — seule la politique de retours manque : à choisir dans FillSell (aucun lien eBay) ;
  *   · parcours  — le reste se règle dans FillSell (conditions qui EXISTENT chez eBay à choisir,
  *                 lieu d'expédition, activation) : aucun lien eBay ;
- *   · conditions — des conditions de vente n'existent nulle part : la page eBay (12/10, Nico).
+ *   · conditions — des conditions de vente n'existent nulle part : (04/11, décision de Nico, remplace le 12/10)
+ *                 FillSell les crée sur un clic de la personne (« Créer mes conditions eBay », ebay-account
+ *                 proposer_conditions / creer_conditions) — aucun lien eBay.
  */
 export type EtapeEbayAFinir = { etape: "plafond" | "vendeur" | "retours" | "parcours" | "conditions"; url: string | null };
 // deno-lint-ignore no-explicit-any
@@ -89,7 +91,7 @@ export function etapeEbayAFinir(a: any): EtapeEbayAFinir | null {
   if (e.statut === "inconnu" || e.etapes.inscription_vendeur === "manque") return { etape: "vendeur", url: LIEN_EBAY_VENDEUR };
   if (e.manquantes.length === 1 && e.manquantes[0] === "politique_retours") return { etape: "retours", url: null };
   const aCreerChezEbay = e.manquantes.some((c: string) => c.startsWith("politique_") && !e.aChoisir.includes(c));
-  return aCreerChezEbay ? { etape: "conditions", url: LIEN_EBAY_CONDITIONS } : { etape: "parcours", url: null };
+  return aCreerChezEbay ? { etape: "conditions", url: null } : { etape: "parcours", url: null };
 }
 
 const QUOI_A_FINIR: Record<EtapeEbayAFinir["etape"], string> = {
@@ -97,7 +99,7 @@ const QUOI_A_FINIR: Record<EtapeEbayAFinir["etape"], string> = {
   vendeur: "eBay ne le laisse pas encore vendre : il reste à finir ton compte vendeur chez eBay (vérification ou inscription vendeur)",
   retours: "il reste à choisir, dans Réglages › Compte eBay, si tu acceptes les retours",
   parcours: "il reste à finir son réglage dans FillSell : ouvre Réglages › Compte eBay, l'étape qui reste y est indiquée",
-  conditions: "eBay ne le laisse pas encore vendre : il reste à créer tes conditions de vente chez eBay (paiement, retours, livraison)",
+  conditions: "il n'a pas encore de conditions de vente eBay (livraison, retours, paiement). FillSell peut les créer pour toi, avec les réglages de tes annonces eBay : appuie sur « Créer mes conditions eBay », rien n'est créé sans ton accord",
 };
 
 /** Le message « compte à finir », avec l'étape nommée et, s'il y en a un, son lien direct. */

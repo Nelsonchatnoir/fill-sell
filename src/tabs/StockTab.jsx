@@ -151,6 +151,7 @@ import { CarteArticle, LigneArticle } from '../stock/Carte';
 import MenuArticle from '../stock/MenuArticle';
 // (30/10, lot E) Une annonce eBay publiée par l'API se modifie depuis FillSell (eBay l'interdit dans Seller Hub).
 import ModifierAnnonceEbay from '../stock/ModifierAnnonceEbay';
+import BoutonConditionsEbay from '../stock/CreerConditionsEbay';
 import EcranSelection from '../stock/EcranSelection';
 import EcranARegler from '../stock/EcranARegler';
 import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
@@ -2444,6 +2445,15 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                 {(() => {
                   const lien = lienVerificationEbay(j, lang);
                   if (!lien) return null;
+                  // (04/11, décision de Nico) Conditions de vente à créer : FillSell les crée, au clic, dans l'app.
+                  if (lien.action === 'creer_conditions_ebay') {
+                    return (
+                      <BoutonConditionsEbay lang={lang} libelle={lien.libelle} aide={lien.aide}
+                        style={{ display:"block", width:"100%", textAlign:"center", padding:"8px 12px", borderRadius:10,
+                          border:"none", color:"#FFFFFF", background:NU_T.mute,
+                          fontSize:12.5, fontWeight:700, fontFamily:"inherit", cursor:"pointer" }} />
+                    );
+                  }
                   return (
                     <div style={{ marginTop:8 }}>
                       <a
@@ -10451,7 +10461,7 @@ const StockTab = memo(function StockTab({
       const ebayApi = (d.jobs ?? [])
         .filter((j) => j.platform === 'ebay' && j.status === 'published' && (j.voie === 'api' || j.platform_fields?.ebay_api?.offer_id))
         .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))[0];
-      if (ebayApi) menu.push({ cle: 'modifier-ebay', icone: Pencil, libelle: fr ? 'Modifier sur eBay' : 'Edit on eBay', detail: fr ? "Titre, description, prix — l'annonce reste en ligne" : 'Title, description, price — the listing stays online', onTap: () => setModifEbayJob(ebayApi) });
+      if (ebayApi) menu.push({ cle: 'modifier-ebay', icone: Pencil, libelle: fr ? 'Modifier sur eBay' : 'Edit on eBay', detail: fr ? "Titre, prix, caractéristiques, photos — l'annonce reste en ligne" : 'Title, price, item specifics, photos — the listing stays online', onTap: () => setModifEbayJob(ebayApi) });
     }
     if (onDupliquer) menu.push({ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) });
     if (d.logosEnLigne.length > 0 || d.jobsAll.some((j) => j.action !== 'delete')) {

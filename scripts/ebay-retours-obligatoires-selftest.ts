@@ -89,7 +89,12 @@ ok(iCreer > 0 && /get_by_policy_name\?marketplace_id=\$\{MARKETPLACE\}&name=\$\{
 ok(/method: "PUT", body: corps/.test(creer) && /method: "POST", body: corps/.test(creer) && /if \(type !== "fulfillment"\)/.test(creer),
   "existe déjà → mise à jour ; sinon création ; la livraison garde poser_livraison");
 ok(/retours=\$\{String\(options\.retours \?\? "acceptes_30"\)\}/.test(creer), "le choix des retours est journalisé");
-ok((a.match(/corpsCreation\(/g) ?? []).length === 2, "une politique ne se crée QUE sur le geste de la personne (un seul appel, dans creer_politique)");
+// (04/11, point 4 — décision de Nico) + « Créer mes conditions eBay » (creer_conditions), elle aussi sur le seul clic de
+// la personne : deux appels de création, chacun dans une action déclenchée par son geste — jamais ailleurs.
+const iCond = a.indexOf('if (action === "creer_conditions") {');
+const appels = [...a.matchAll(/corpsCreation\(/g)].map((m) => m.index ?? -1);
+ok(appels.length === 3 && appels[0] < iCond && appels.slice(1).every((i) => (i > iCond && i < a.indexOf('if (action === "activer_politiques")', iCond)) || (i > iCreer)),
+  "une politique ne se crée QUE sur le geste de la personne (creer_politique, creer_conditions)");
 
 console.log("6. CE QUE L'APP DIT");
 const sec = await lire("src/components/EbayCompteSection.jsx");

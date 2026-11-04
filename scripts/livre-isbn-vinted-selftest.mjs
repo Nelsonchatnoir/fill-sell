@@ -86,7 +86,8 @@ const w = lire('supabase/functions/ebay-api-worker/index.ts');
 verifier(!/MESSAGE_EBAY_COMPTE_A_FINIR/.test(w) && (w.match(/messageEbayCompteAFinir\(/g) ?? []).length === 2 && /ebay_a_finir/.test(w), 'ebay-api-worker : les deux parcages disent l’étape et son lien');
 const l1 = S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { etape: 'conditions', url: 'https://www.ebay.fr/bp/manage' } } }, 'fr');
 const l2 = S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir' } }, 'fr');
-verifier(l1?.url === 'https://www.ebay.fr/bp/manage' && /conditions de vente/.test(l1.libelle) && l2?.url === 'https://www.ebay.fr/sh/ovw', 'l’app : un bouton vers la page eBay (conditions, ou Seller Hub pour un job d’avant)');
+// (04/11, décision de Nico) Conditions à créer : le bouton de l'app (« Créer mes conditions eBay »), jamais ebay.fr/bp/manage — même pour un job d'avant qui portait ce lien.
+verifier(l1?.action === 'creer_conditions_ebay' && l1.url === null && /Créer mes conditions eBay/.test(l1.libelle) && l2?.url === 'https://www.ebay.fr/sh/ovw', 'l’app : « Créer mes conditions eBay » dans FillSell (conditions), Seller Hub pour un job d’avant sans étape');
 verifier(S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { url: 'https://evil.example/' } } }, 'fr')?.url === 'https://www.ebay.fr/sh/ovw', 'jamais un lien hors ebay.fr');
 verifier(S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_connexion_requise' } }, 'fr') === null, '« connexion requise » : pas de lien eBay (le geste est « Relier mon compte »)');
 // (17/10) Plafond de vente eBay à zéro : le Seller Hub, nommé comme tel ; ce qui

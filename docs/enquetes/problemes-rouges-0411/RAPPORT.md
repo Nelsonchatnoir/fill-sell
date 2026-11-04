@@ -74,7 +74,16 @@ Pendant l'attente rien n'est envoyé à la page (aucune suppression possible). `
   - b) publier par l'API Trading : ≈ 1 500-2 000 lignes, 8-12 jours + rodage ; ventes inchangées (legacyItemId), mais
     retraits, republications, stock et conditions de vente à brancher, refus à relever en réel, DEUX voies pour toujours
     (les 1 018 annonces Inventory restent Inventory), retouches faites sur eBay écrasées par une republication.
-- Recommandation : a). Rien codé (décision de Nico, et « lu dans le texte » élargit la règle du 30/10 « valeur CONNUE »).
+- Recommandation : a). **Validée par Nico le 04/11 au soir, codée** :
+  - « Modifier sur eBay » modifie TOUT : titre, prix, description, caractéristiques (celles de la catégorie : obligatoires
+    d'abord, liste fermée en choix, recalées à l'écriture d'eBay, une obligatoire jamais retirée) et photos (ordre,
+    retrait, ajout, 24 au plus). Serveur : `ebay-account` `lire_annonce` / `modifier_annonce`,
+    `_shared/ebay-modifier-annonce.ts` (`aspectsControles`, `lireAnnonceEbay`) ; la tâche suit (ebayAspects, photos).
+  - À la publication, les caractéristiques que la personne écrit déjà sont lues (`_shared/ebay-aspects-du-texte.ts`) :
+    lignes « Libellé : valeur », « vintage », « made in / fabriqué en », « W40 L30 », « 22W / grande taille »,
+    « 5 poches », styles de jambe, « jean / denim » — toujours recalées sur la liste eBay, jamais par-dessus une valeur
+    connue, jamais une taille, avant l'IA (un aspect obligatoire lu n'est plus demandé). Selftests
+    `ebay-aspects-du-texte` (22) et `ebay-modifier-tout` (30).
 
 ## 4. eBay « compte pas prêt » chez un vendeur eBay actif (benjamin.ployer, Pro)
 
@@ -84,9 +93,15 @@ Pendant l'attente rien n'est envoyé à la page (aucune suppression possible). `
 - La contradiction est chez nous : l'app sait créer ces conditions (`activer_politiques`, `creer_politique`,
   `poser_livraison`), mais depuis la décision du 12/10 l'étape « conditions » envoie sur ebay.fr/bp/manage.
   24 comptes sur 161 reliés seraient dans ce cas aujourd'hui (14 non inscrits, 10 inscrits sans les trois).
-- Proposition (≈ 1,5-2 jours) : bouton « Créer mes conditions eBay » dans l'app, valeurs lues sur SES annonces eBay
-  (GetItem) sinon défauts avec prix de livraison VIDE à remplir, création au clic seulement. Revient sur le 12/10 :
-  feu vert de Nico requis. Rien codé.
+- Proposition : bouton « Créer mes conditions eBay » dans l'app. **Validé par Nico le 04/11 au soir (remplace le
+  12/10), codé** : `ebay-account` `proposer_conditions` (lecture seule : GetMyeBaySelling puis GetItem sur 3 annonces —
+  transporteurs et prix, délai, retours, code postal et ville —, recalés sur les services qu'eBay FR accepte ; sans
+  annonce lisible : Colissimo, 2 jours, retours 30 jours, prix VIDE à remplir) et `creer_conditions` (au clic :
+  inscription aux conditions de vente si besoin, paiement, retours, livraison — nos politiques, adressées par leur nom —,
+  relevé, publications parquées relancées) ; l'adresse d'expédition manquante par `platform_settings_fusionner`.
+  L'étape « conditions » ne renvoie plus vers ebay.fr (message et carte : le bouton). Écran `src/stock/CreerConditionsEbay.jsx`.
+  Limite : un compte jamais inscrit aux conditions de vente attend l'activation d'eBay (jusqu'à 24 h) ; la création le
+  dit et se refait d'un clic.
 
 ## 5. Depop : refus « PayPal à relier » pris pour une erreur passagère (christophe.lanoux30)
 

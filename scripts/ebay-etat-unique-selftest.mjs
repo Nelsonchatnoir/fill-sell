@@ -132,7 +132,8 @@ ok(!/C'est ici/.test(mRomain) && /Réglages › Compte eBay/.test(mRomain) && / 
 const eRetours = voie.etapeEbayAFinir(ligne(['a', 'b', null], SS_FLUXEN));
 ok(eRetours?.etape === 'retours' && eRetours.url === null, 'seuls les retours manquent : « retours », à choisir dans FillSell', json(eRetours));
 const eConditions = voie.etapeEbayAFinir(ligne(['a', null, 'c'], { ...SS_FLUXEN, politiques: { livraison: 1, paiement: 0, retours: 1 } }));
-ok(eConditions?.etape === 'conditions' && eConditions.url === 'https://www.ebay.fr/bp/manage', 'une condition qui n’existe nulle part : la page eBay du 12/10', json(eConditions));
+// (04/11, décision de Nico — remplace le 12/10) FillSell les crée, au clic : plus de lien eBay.
+ok(eConditions?.etape === 'conditions' && eConditions.url === null && /Créer mes conditions eBay/.test(voie.messageEbayCompteAFinir(eConditions)) && !voie.messageEbayCompteAFinir(eConditions).includes("bp/manage"), 'une condition qui n’existe nulle part : le bouton « Créer mes conditions eBay » (04/11), plus de lien eBay', json(eConditions));
 ok(voie.etapeEbayAFinir(ligne(...CAS.inscription_pas_finie))?.etape === 'vendeur' && voie.etapeEbayAFinir(ligne(...CAS.jamais_releve))?.etape === 'vendeur', 'inscription vendeur ou rien de relevé : le compte vendeur eBay');
 ok(voie.etapeEbayAFinir(ligne(...CAS.fluxen)) === null, 'compte prêt : rien à finir');
 const vendeur = voie.messageEbayCompteAFinir({ etape: 'vendeur', url: 'https://www.ebay.fr/sh/ovw' });

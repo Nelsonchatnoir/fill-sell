@@ -15,6 +15,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
+import { aspectsLusDansLeTexte, completerAvecLeTexte } from "./ebay-aspects-du-texte.ts";
 import { resoudreAspectsIA, estAspectDeTaille, tailleRetenueDansLaListe, tailleSansPrefixeEuFr, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";
 // (25/10, N5) tailleSansPrefixeEuFr vit désormais dans ebay-aspects-ia.ts (même corps) : la réponse de l'IA
 // sur une taille passe par la même lecture. Réexportée ici pour ses appelants d'avant.
@@ -572,7 +573,7 @@ function estLivre(pf: PlatformFields): boolean {
 // 'attributs' / 'lens' (lot 1, 07/09/2026) : valeur standard comblée depuis
 // inventaire.attributs — respectivement une source Vinted/capture/saisie, ou
 // un scan Lens (stepper ou worker).
-export type SourceAspect = "job" | "genre" | "standard" | "attributs" | "lens" | "defaut" | "ia";
+export type SourceAspect = "job" | "genre" | "standard" | "attributs" | "lens" | "defaut" | "ia" | "texte";
 // ── LES ALIAS MODE, UNE SEULE DOCTRINE POUR LES DEUX VOIES (2026-09-25) ─────
 // Ornella, « Parka C.P.E. Classic Club » (job c0ace243, catégorie 57988) :
 // needs_user « eBay exige encore : Matière doublure externe » APRÈS l'envoi,
@@ -847,6 +848,8 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
 export interface RemplissageAspects {
   aspects: Record<string, string[]>;
   manquants: string[];
+  // (04/11) Les caractéristiques lues dans le texte de la personne (nom → « valeur ← preuve »), pour la trace.
+  lus_dans_le_texte?: Record<string, string>;
   recalages: string[];
   sources: Record<string, SourceAspect>;
   ia: { demandes: string[]; obtenus: Record<string, string>; refuses: Array<{ name: string; valeur: string; motif: string }>; appel: boolean } | null;
@@ -854,7 +857,11 @@ export interface RemplissageAspects {
 export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalogue[], contexte: ContexteArticle, apiKey: string, onUsage?: (d: unknown) => void): Promise<RemplissageAspects> {
   // (25/10, N5) Les textes de l'article : seuls juges, avec la fiche, d'une « Taille unique ».
   const textes = [contexte.titre, contexte.description];
-  const premier = assemblerAspects(pf, catalogue, textes);
+  // (04/11, point 3 — décision de Nico) Ce que la personne écrit déjà (lignes « Libellé : valeur », « vintage »,
+  // « made in … », « W40 L30 »…), recalé sur la liste eBay, pour les seules caractéristiques encore absentes —
+  // avant l'IA (un aspect obligatoire lu dans le texte ne lui est plus demandé) et après (_shared/ebay-aspects-du-texte.ts).
+  const lus = aspectsLusDansLeTexte(catalogue, contexte.titre, contexte.description);
+  const premier = completerAvecLeTexte(assemblerAspects(pf, catalogue, textes), lus);
   if (!premier.manquants.length) return { ...premier, ia: null };
   const demandes: AspectDemande[] = premier.manquants
     .map((nom) => catalogue.find((c) => c.name === nom))
@@ -893,7 +900,7 @@ export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalo
     refuses = [...refuses, ...ia2.refuses];
     for (const l of libres) if (!demandesNoms.includes(l.name)) demandesNoms.push(l.name);
   }
-  return { ...second, ia: { demandes: demandesNoms, obtenus, refuses, appel: ia.appel_ia } };
+  return { ...completerAvecLeTexte(second, lus), ia: { demandes: demandesNoms, obtenus, refuses, appel: ia.appel_ia } };
 }
 
 // ── Catégorie : suggestions eBay depuis le titre (repli de la phase 0) ──────

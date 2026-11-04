@@ -16,6 +16,7 @@
 // prouvée sur de vraies annonces : elles vivent ici, le worker les importe.
 import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
 import { descriptionEbay, lireErreurEbay, titreEbay } from "./ebay-publication.ts";
+import { valeurDansLaListe, type AspectDuCatalogue } from "./ebay-aspects-du-texte.ts";
 
 export const CLES_OFFRE_ECRITES = ["availableQuantity", "categoryId", "charity", "extendedProducerResponsibility", "format", "hideBuyerDetails",
   "includeCatalogProductDetails", "listingDescription", "listingDuration", "listingPolicies", "listingStartDate", "lotSize",
@@ -30,7 +31,15 @@ export function sousObjet(o: Record<string, unknown>, cles: string[]): Record<st
   return r;
 }
 
-export interface DemandeModification { titre?: string | null; description?: string | null; prix?: number | null }
+// (04/11, point 3 — décision de Nico) + les caractéristiques (aspects : nom → valeurs ; [] retire la caractéristique) et
+// les photos (adresses https, dans l'ordre, 24 au plus) : TOUT se modifie depuis FillSell, puisque eBay l'interdit sur
+// son site pour ces annonces.
+export interface DemandeModification {
+  titre?: string | null; description?: string | null; prix?: number | null;
+  aspects?: Record<string, string[]> | null; photos?: string[] | null;
+}
+export const PHOTOS_MAX_EBAY = 24;
+const VALEUR_ASPECT_MAX = 65;
 
 /** La demande, propre : { titre, description, prix } retenus, ou l'erreur à dire. */
 export function demandePropre(body: Record<string, unknown>): { ok: true; d: DemandeModification } | { ok: false; motif: string; message: string } {
@@ -50,7 +59,29 @@ export function demandePropre(body: Record<string, unknown>): { ok: true; d: Dem
     if (!Number.isFinite(p) || p <= 0 || p >= 100000) return { ok: false, motif: "prix_invalide", message: "Écris un prix en euros, par exemple 25 ou 19,90." };
     d.prix = Math.round(p * 100) / 100;
   }
-  if (d.titre == null && d.description == null && d.prix == null) return { ok: false, motif: "rien_a_modifier", message: "Rien à modifier." };
+  if (body.aspects != null) {
+    if (typeof body.aspects !== "object" || Array.isArray(body.aspects)) return { ok: false, motif: "aspects_illisibles", message: "Caractéristiques illisibles." };
+    const aspects: Record<string, string[]> = {};
+    for (const [nomBrut, v] of Object.entries(body.aspects as Record<string, unknown>)) {
+      const nom = String(nomBrut ?? "").trim();
+      if (!nom || nom.length > VALEUR_ASPECT_MAX) return { ok: false, motif: "aspect_nom", message: "Une caractéristique porte un nom illisible." };
+      const valeurs = (Array.isArray(v) ? v : [v]).map((x) => String(x ?? "").trim()).filter(Boolean);
+      if (valeurs.length > 30 || valeurs.some((x) => x.length > VALEUR_ASPECT_MAX)) {
+        return { ok: false, motif: "aspect_valeur", message: `« ${nom} » : 65 caractères au plus par valeur.` };
+      }
+      aspects[nom] = [...new Set(valeurs)];
+    }
+    if (Object.keys(aspects).length > 60) return { ok: false, motif: "aspects_trop", message: "Trop de caractéristiques à la fois." };
+    if (Object.keys(aspects).length) d.aspects = aspects;
+  }
+  if (body.photos != null) {
+    const photos = (Array.isArray(body.photos) ? body.photos : []).map((x) => String(x ?? "").trim()).filter(Boolean);
+    if (!photos.length) return { ok: false, motif: "photos_vides", message: "Une annonce eBay garde au moins une photo." };
+    if (photos.length > PHOTOS_MAX_EBAY) return { ok: false, motif: "photos_trop", message: `eBay accepte ${PHOTOS_MAX_EBAY} photos au plus.` };
+    if (photos.some((u) => !/^https:\/\/\S+$/i.test(u) || u.length > 500)) return { ok: false, motif: "photos_adresse", message: "Une photo n'a pas d'adresse https valide." };
+    d.photos = [...new Set(photos)];
+  }
+  if (d.titre == null && d.description == null && d.prix == null && d.aspects == null && d.photos == null) return { ok: false, motif: "rien_a_modifier", message: "Rien à modifier." };
   return { ok: true, d };
 }
 
@@ -62,8 +93,76 @@ export type ResultatModification =
  * Révise EN PLACE une annonce publiée par l'API. Relit tout, réécrit l'article (titre, description) puis l'offre
  * (prix, description de l'annonce), dans cet ordre ; un refus d'eBay est rendu tel quel (sa phrase).
  */
+/**
+ * (04/11) Les caractéristiques demandées, contrôlées contre la catégorie de l'annonce : une liste FERMÉE n'accepte
+ * qu'une de ses entrées (recalée à l'écriture exacte d'eBay), une caractéristique à valeur unique n'en prend qu'une, une
+ * caractéristique obligatoire ne se retire pas. Catalogue absent : eBay tranche (sa phrase est rendue).
+ */
+export function aspectsControles(
+  demandes: Record<string, string[]>, catalogue: AspectDuCatalogue[] | null,
+): { ok: true; aspects: Record<string, string[]> } | { ok: false; motif: string; message: string } {
+  const out: Record<string, string[]> = {};
+  for (const [nom, valeurs] of Object.entries(demandes)) {
+    const a = (catalogue ?? []).find((c) => c.name === nom) as (AspectDuCatalogue & { cardinality?: string | null }) | undefined;
+    if (!a) { out[nom] = valeurs; continue; }
+    if (!valeurs.length) {
+      if (a.required) return { ok: false, motif: "aspect_obligatoire", message: `« ${nom} » est obligatoire pour eBay : choisis une valeur au lieu de la retirer.` };
+      out[nom] = []; continue;
+    }
+    if (a.cardinality === "SINGLE" && valeurs.length > 1) return { ok: false, motif: "aspect_unique", message: `« ${nom} » n'accepte qu'une seule valeur.` };
+    const liste = Array.isArray(a.allowedValues) ? a.allowedValues : [];
+    if (a.mode === "SELECTION_ONLY" && liste.length) {
+      const recalees: string[] = [];
+      for (const v of valeurs) {
+        const r = valeurDansLaListe(v, liste);
+        if (!r) return { ok: false, motif: "aspect_hors_liste", message: `« ${v} » n'est pas une valeur d'eBay pour « ${nom} » : choisis-la dans la liste.` };
+        recalees.push(r);
+      }
+      out[nom] = recalees;
+    } else {
+      out[nom] = valeurs.map((v) => valeurDansLaListe(v, liste) ?? v);
+    }
+  }
+  return { ok: true, aspects: out };
+}
+
+export interface AnnonceLue { titre: string; description: string; prix: number | null; aspects: Record<string, string[]>; photos: string[]; categoryId: string }
+
+/** (04/11) L'annonce telle qu'eBay la porte (article + offre), pour pré-remplir l'écran de modification. */
+export async function lireAnnonceEbay(
+  env: EbayEnv, token: string, ids: { sku: string; offerId: string; listingId: string },
+): Promise<{ ok: true; annonce: AnnonceLue } | { ok: false; motif: string; message: string }> {
+  const [ro, ra] = await Promise.all([
+    appelEbay(env, token, `/sell/inventory/v1/offer/${encodeURIComponent(ids.offerId)}`),
+    appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(ids.sku)}`),
+  ]);
+  if (ro.http !== 200 || !ro.json || ra.http !== 200 || !ra.json) {
+    return { ok: false, motif: `lecture_${ro.http}_${ra.http}`, message: "eBay n'a pas rendu l'annonce : réessaie dans un instant." };
+  }
+  const offre = ro.json as Record<string, any>;
+  const article = ra.json as Record<string, any>;
+  if (offre.status !== "PUBLISHED" || offre.listing?.listingStatus !== "ACTIVE") {
+    return { ok: false, motif: "annonce_pas_en_vente", message: "Cette annonce n'est plus en vente sur eBay : elle ne peut plus être modifiée." };
+  }
+  if (ids.listingId && String(offre.listing?.listingId ?? "") !== ids.listingId) {
+    return { ok: false, motif: "annonce_differente", message: "L'annonce eBay ne correspond plus à cette publication." };
+  }
+  const prix = Number(offre.pricingSummary?.price?.value);
+  const aspects: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries((article.product?.aspects ?? {}) as Record<string, unknown>)) {
+    aspects[k] = (Array.isArray(v) ? v : [v]).map((x) => String(x ?? "")).filter(Boolean);
+  }
+  return { ok: true, annonce: {
+    titre: String(article.product?.title ?? ""), description: String(article.product?.description ?? ""),
+    prix: Number.isFinite(prix) ? prix : null, aspects,
+    photos: (Array.isArray(article.product?.imageUrls) ? article.product.imageUrls : []).map((u: unknown) => String(u)).filter(Boolean),
+    categoryId: String(offre.categoryId ?? ""),
+  } };
+}
+
 export async function modifierAnnonceEbay(
   env: EbayEnv, token: string, ids: { sku: string; offerId: string; listingId: string }, d: DemandeModification,
+  catalogue: ((categoryId: string) => Promise<AspectDuCatalogue[] | null>) | null = null,
 ): Promise<ResultatModification> {
   const [ro, ra] = await Promise.all([
     appelEbay(env, token, `/sell/inventory/v1/offer/${encodeURIComponent(ids.offerId)}`),
@@ -86,11 +185,26 @@ export async function modifierAnnonceEbay(
   }
   const changements: string[] = [];
   const titre = d.titre ?? String(article.product?.title ?? "");
-  // 1. L'article : titre et description.
-  if (d.titre != null || d.description != null) {
+  // (04/11) Les caractéristiques, contrôlées contre la catégorie de l'annonce AVANT toute écriture.
+  let aspectsEcrits: Record<string, string[]> | null = null;
+  if (d.aspects) {
+    const cat = catalogue ? await catalogue(String(offre.categoryId ?? "")).catch(() => null) : null;
+    const c = aspectsControles(d.aspects, cat);
+    if (!c.ok) return c;
+    aspectsEcrits = c.aspects;
+  }
+  // 1. L'article : titre, description, caractéristiques, photos.
+  if (d.titre != null || d.description != null || aspectsEcrits || d.photos) {
     const product = { ...(article.product ?? {}) };
     if (d.titre != null && d.titre !== product.title) { product.title = d.titre; changements.push("titre"); }
     if (d.description != null) { product.description = descriptionEbay(d.description, titre); changements.push("description"); }
+    if (aspectsEcrits) {
+      const aspects: Record<string, string[]> = { ...((product.aspects ?? {}) as Record<string, string[]>) };
+      for (const [k, v] of Object.entries(aspectsEcrits)) { if (v.length) aspects[k] = v; else delete aspects[k]; }
+      product.aspects = aspects;
+      changements.push("caracteristiques");
+    }
+    if (d.photos) { product.imageUrls = d.photos; changements.push("photos"); }
     const corps = { ...sousObjet(article, CLES_ARTICLE_ECRITES), product };
     const p = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(ids.sku)}`, { method: "PUT", body: corps });
     if (![200, 201, 204].includes(p.http)) {
