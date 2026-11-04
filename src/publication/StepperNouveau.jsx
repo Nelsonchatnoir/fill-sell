@@ -24,6 +24,50 @@ import EcranSuivi from "./EcranSuivi";
 import { Bouton, Carte } from "./composants";
 import { NOM } from "./texte";
 import { bilanPlateformes, rienAPublier, verdictConfirmation } from "./plateformes";
+// (04/11/2026, grille à 3 jauges) Le coût avant publication (maquette 4.1) : la règle unique d'affichage.
+import { jaugesDuCompte, coutPublication, nombre, motJauge } from "../utils/jauges";
+import { formaterRemiseAZero } from "../reglages/quotas";
+import { murDeLaJauge } from "../reglages/refusEtMurs";
+
+// (04/11/2026, grille à 3 jauges) Ce que dit le bouton de « Où publier ? » quand une jauge ne suffit pas — AVANT
+// l'appui, plus après un refus. Rend { cta, raison, mur } : `mur` = la jauge dont le mur s'ouvre d'un lien (null :
+// il reste des publications, mais moins que de cases cochées — le mur dirait « elles sont toutes faites », il
+// mentirait : on dit de décocher, comme le serveur). Fonction pure, sans JSX (selftest:cout-publication l'exécute).
+function piedSiUneJaugeManque(cout, nCochees, lang, remise) {
+  const en = lang === "en";
+  const cle = cout.bloque;
+  const j = cout.jauges[cle];
+  const r = Math.max(0, Number(j?.restantes) || 0);
+  const plafond = j?.plafond;
+  const compte = (n) => `${nombre(n, lang)} ${motJauge(cle, n, lang)}`;
+  const revient = remise ? (en ? `: they come back on ${remise}` : ` : elles reviennent le ${remise}`) : "";
+  if (cle === "annonces") {
+    return {
+      cta: en ? "No listings left this month" : "Plus d'annonce ce mois-ci",
+      raison: Number.isFinite(plafond)
+        ? (en ? `Your ${compte(plafond)} for the month are created${revient}.` : `Tes ${compte(plafond)} du mois sont créées${revient}.`)
+        : null,
+      mur: "annonces",
+    };
+  }
+  if (r > 0) {
+    const trop = Math.max(1, nCochees - r);
+    return {
+      cta: en
+        ? `${compte(r)} left: untick ${trop} platform${trop > 1 ? "s" : ""}`
+        : `Il te reste ${compte(r)} : décoche ${trop} plateforme${trop > 1 ? "s" : ""}`,
+      raison: null,
+      mur: null,
+    };
+  }
+  return {
+    cta: en ? "No publications left this month" : "Plus de publication ce mois-ci",
+    raison: Number.isFinite(plafond)
+      ? (en ? `Your ${compte(plafond)} for the month are done${revient}.` : `Tes ${compte(plafond)} du mois sont faites${revient}.`)
+      : null,
+    mur: "publications",
+  };
+}
 
 export default function StepperNouveau({ m }) {
   const en = m.lang === "en";
@@ -54,7 +98,15 @@ export default function StepperNouveau({ m }) {
 
   const bilan = bilanPlateformes(m);
   const rien = ecran === 1 && m.publishedStateLoaded ? rienAPublier(bilan, m.lang) : null;
-  const mq = { ...m, quotas, retouchesEpuisees, bilan, rien };
+  // ── (04/11/2026, grille à 3 jauges) LE COÛT DE CETTE PUBLICATION, AVANT L'APPUI (maquette 4.1) ─────────────
+  // 1 annonce si l'IA rédige (même règle que le bouton : pas de texte, une copie manquante, une retouche à refaire),
+  // 1 publication par case cochée ET cochable. Recalculé à chaque rendu : cocher, décocher, il suit. Sans la grille
+  // (quotas_etat sans « grille ») : null, et `m` reste exactement celui d'avant.
+  const jauges = jaugesDuCompte(quotas);
+  const redactionIA = !m.platformListings || Boolean(m.copieManquante) || Boolean(m.retoucheARefaire);
+  const besoin = { annonces: redactionIA ? 1 : 0, publications: bilan.cochees.length };
+  const cout = jauges ? { ...coutPublication(besoin, jauges, { lang: m.lang }), jauges, besoin, redaction: redactionIA } : null;
+  const mq = { ...m, quotas, retouchesEpuisees, bilan, rien, ...(cout ? { cout } : {}) };
 
   // ── Le pied de page : le bouton, et ce qui l'explique ─────────────────────
   // `sous` : une ligne, ou une liste de lignes — une information par ligne.
@@ -94,6 +146,29 @@ export default function StepperNouveau({ m }) {
           : ["Une plateforme cochée n'a pas encore de texte : l'annonce est rédigée à nouveau (1 annonce sur ton quota).", "Rien ne part encore."];
       } else {
         sous = en ? "Nothing goes out yet. You check at the next screen." : "Rien ne part encore. Tu vérifies à l'écran suivant.";
+      }
+      // (04/11, grille à 3 jauges) Une jauge ne suffit pas : le bouton le dit AVANT l'appui (gris), la raison en
+      // premier, et un lien ouvre le mur de la jauge qui manque. Sans la grille (cout null) : rien ne change.
+      if (cout && !cout.suffit && !disabled) {
+        const p = piedSiUneJaugeManque(cout, n, m.lang, formaterRemiseAZero(m.remiseAZero, m.lang));
+        cta = p.cta;
+        disabled = true;
+        sous = [p.raison, ...(m.platformListings ? (Array.isArray(sous) ? sous : [sous]) : [])].filter(Boolean);
+        // Le mur de la jauge vide s'ouvre par le geste du moteur (voirOffres), annonces comme publications. Il reste
+        // des publications, mais moins que de cases cochées (p.mur null) : la phrase « décoche », aucun mur.
+        if (p.mur === "annonces") {
+          secondaire = (
+            <button type="button" className="fsn-lien" data-lien-mur="annonces" onClick={() => m.voirOffres("annonces", quotas?.annonces ?? {})}>
+              {en ? "More listings: see the plans" : "Plus d'annonces : voir les offres"}
+            </button>
+          );
+        } else if (p.mur === "publications") {
+          secondaire = (
+            <button type="button" className="fsn-lien" data-lien-mur="publications" onClick={() => m.voirOffres("publications", murDeLaJauge("publications", quotas, { remise: m.remiseAZero ?? null }) ?? {})}>
+              {en ? "More publications: see the plans" : "Plus de publications : voir les offres"}
+            </button>
+          );
+        }
       }
     }
   } else if (ecran === 2) {

@@ -20,6 +20,66 @@ import { Carte, Puce, Logo, CarteArticle } from "./composants";
 import { NOM } from "./texte";
 import { etatPlateforme } from "./plateformes";
 import { formaterRemiseAZero } from "../reglages/quotas";
+import { nombre, motJauge } from "../utils/jauges";
+
+// ═══ (04/11/2026, grille à 3 jauges) LE COÛT AVANT PUBLICATION — maquettes 4.1 à 4.4 ════════════════════════
+// Une mini-jauge : le nom, la barre (ce qu'il restera en sarcelle, la part qui va partir en ambre pâle au bout),
+// « 4 sur 5 » — ou « illimité », en mot, jamais une barre pleine. Les couleurs sont celles du stepper (--fs-*),
+// avec leur valeur en repli : la feuille de remontée du Stock, hors du stepper, la dessine pareil.
+//   jauge : une entrée de jaugesDuCompte (plafond, restantes, illimite) · pris : ce que le geste va utiliser.
+const LIBELLE_JAUGE = {
+  fr: { annonces: "Annonces", publications: "Publications", remontees: "Remontées" },
+  en: { annonces: "Listings", publications: "Publications", remontees: "Bumps" },
+};
+export function MiniJauge({ cle, jauge, pris = 0, lang = "fr" }) {
+  const en = lang === "en";
+  const lib = LIBELLE_JAUGE[en ? "en" : "fr"][cle] ?? cle;
+  const ligne = { display: "grid", gridTemplateColumns: "96px 1fr auto", gap: 10, alignItems: "center", fontSize: 12.5 };
+  const nom = <span style={{ color: "var(--fs-mute, #5C6560)", fontWeight: 600 }}>{lib}</span>;
+  if (!jauge) return null;
+  if (jauge.illimite) {
+    return (
+      <div data-mini-jauge={cle} style={ligne}>
+        {nom}<span />
+        <b className="num" style={{ color: "var(--fs-teal-ink, #1B6E62)", whiteSpace: "nowrap" }}>{nombre(Infinity, lang)}</b>
+      </div>
+    );
+  }
+  const total = Math.max(0, Number(jauge.plafond) || 0);
+  const avant = Math.max(0, Number(jauge.restantes) || 0);
+  const part = Math.min(Math.max(0, Number(pris) || 0), avant);
+  const apres = avant - part;
+  const pct = (v) => (total > 0 ? Math.max(0, Math.min(100, Math.round((v / total) * 100))) : 0);
+  const pApres = pct(apres);
+  const pPart = Math.min(100 - pApres, pct(part));
+  return (
+    <div data-mini-jauge={cle} style={ligne}>
+      {nom}
+      <div aria-hidden="true" style={{ height: 6, borderRadius: 4, background: "var(--fs-border, #E7E3D8)", overflow: "hidden", display: "flex" }}>
+        <i style={{ display: "block", height: "100%", width: `${pApres}%`, borderRadius: 4, background: "linear-gradient(120deg, var(--fs-teal, #2F9E90), var(--fs-teal-deep, #1B6E62))" }} />
+        <i data-part="1" style={{ display: "block", height: "100%", width: `${pPart}%`, borderRadius: "0 4px 4px 0", background: "var(--fs-amber, #E0A53C)", opacity: 0.55 }} />
+      </div>
+      <b className="num" style={{ whiteSpace: "nowrap", color: "var(--fs-ink, #10201B)" }}>
+        {en ? `${nombre(apres, lang)} of ${nombre(total, lang)}` : `${nombre(apres, lang)} sur ${nombre(total, lang)}`}
+      </b>
+    </div>
+  );
+}
+
+/** « Il te restera <b>4 annonces</b> et <b>47 publications</b> ce mois-ci. » : la phrase telle quelle, ses nombres en gras. */
+export function ResteEnGras({ phrase, gras = [] }) {
+  const morceaux = [];
+  let reste = String(phrase ?? "");
+  for (const g of gras) {
+    const i = g ? reste.indexOf(g) : -1;
+    if (i < 0) continue;
+    if (i > 0) morceaux.push(reste.slice(0, i));
+    morceaux.push(<b key={morceaux.length} className="num">{g}</b>);
+    reste = reste.slice(i + g.length);
+  }
+  if (reste) morceaux.push(reste);
+  return <>{morceaux}</>;
+}
 
 export default function EcranOuPublier({ m }) {
   const en = m.lang === "en";
@@ -277,6 +337,12 @@ export default function EcranOuPublier({ m }) {
         )}
       </div>
 
+      {/* (04/11/2026, grille à 3 jauges — maquette 4.1) LE COÛT, AVANT L'APPUI : « Cette publication utilisera
+          1 annonce et 3 publications. », ce qu'il restera, deux mini-jauges, la règle. Recalculé à chaque case
+          cochée ou décochée (m.cout, calculé par la coque sur les cases cochées). Sans la grille : m.cout absent,
+          rien de neuf — et la phrase « ne coûte rien de plus », plus bas, reste. */}
+      {m.cout && !m.rien && <CarteCout cout={m.cout} lang={m.lang} />}
+
       {/* Photos : retouche IA ou telles quelles — un réglage, plus une étape.
           (01/10) Le choix dit ce qui sera VRAIMENT fait, avec le quota de
           retouches à côté de celui des annonces. Plus de retouche ce mois-ci :
@@ -318,7 +384,9 @@ export default function EcranOuPublier({ m }) {
               </button>
             </div>
           )}
-          {m.quotas?.annonces?.plafond != null && (
+          {/* (04/11, grille à 3 jauges) Avec la grille, le compte des annonces vit dans la carte « coût » et la
+              phrase « ne coûte rien de plus » (fausse avec la jauge Publications) disparaît. */}
+          {!m.cout && m.quotas?.annonces?.plafond != null && (
             <div className="fsn-row fsn-row--between">
               <span className="fsn-small">{en ? "Listings this month" : "Annonces ce mois-ci"}</span>
               <b className="fsn-small fsn-strong num">
@@ -327,7 +395,7 @@ export default function EcranOuPublier({ m }) {
               </b>
             </div>
           )}
-          {!aUneFiche && (
+          {!m.cout && !aUneFiche && (
             <p className="fsn-small">
               {en ? "Writing counts 1 listing, once. Publishing on several platforms costs nothing more." : "La rédaction compte 1 annonce, une seule fois. Publier sur plusieurs plateformes ne coûte rien de plus."}
             </p>
@@ -404,4 +472,38 @@ export default function EcranOuPublier({ m }) {
 
 function dejaOuEnCours(p, m) {
   return m.publishedSet.has(p) || m.queuedSet.has(p);
+}
+
+// (04/11/2026, grille à 3 jauges — maquette 4.1) La carte « coût » de la publication à l'unité.
+//   cout : coutPublication(besoin, jauges) + { jauges, besoin, redaction } — calculé par la coque (StepperNouveau).
+// Texte déjà rédigé : aucune annonce dans la phrase. Business : « Il te restera : illimité. ». Une jauge qui ne
+// suffit pas : ce qu'il en reste, sans « il te restera » (le bouton du bas le dit, avant l'appui).
+function CarteCout({ cout, lang }) {
+  const en = lang === "en";
+  const { jauges, besoin } = cout;
+  const compte = (cle, n) => `${nombre(n, lang)} ${motJauge(cle, n, lang)}`;
+  let reste = cout.reste;
+  const gras = [];
+  if (!cout.suffit && cout.bloque) {
+    const r = jauges[cout.bloque]?.restantes ?? 0;
+    reste = en ? `You have ${compte(cout.bloque, r)} left this month.` : `Il te reste ${compte(cout.bloque, r)} ce mois-ci.`;
+    gras.push(compte(cout.bloque, r));
+  } else if (reste) {
+    if (/illimité\.$|unlimited\.$/.test(reste)) gras.push(nombre(Infinity, lang));
+    else for (const [cle, v] of [["annonces", cout.resteA], ["publications", cout.resteP]]) if (besoin[cle] > 0 && Number.isFinite(v)) gras.push(compte(cle, v));
+  }
+  return (
+    <Carte gravite={null} data-cout="unite">
+      {cout.utilise && <div className="fsn-card-t">{cout.utilise}</div>}
+      {cout.utilise && reste && (
+        <div className="fsn-card-p">
+          {!cout.redaction && cout.suffit ? (en ? "Your text is already written: no listing is used. " : "Ton texte est déjà rédigé : aucune annonce n'est utilisée. ") : null}
+          <ResteEnGras phrase={reste} gras={gras} />
+        </div>
+      )}
+      <MiniJauge cle="annonces" jauge={jauges.annonces} pris={besoin.annonces} lang={lang} />
+      <MiniJauge cle="publications" jauge={jauges.publications} pris={besoin.publications} lang={lang} />
+      <p className="fsn-small">{en ? "1 listing for the AI writing, 1 publication per ticked platform." : "1 annonce pour la rédaction par l'IA, 1 publication par plateforme cochée."}</p>
+    </Carte>
+  );
 }

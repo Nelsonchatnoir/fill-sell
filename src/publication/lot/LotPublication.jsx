@@ -78,7 +78,12 @@ import {
   dureeEstimeeMin, libelleDuree, bilanArticle, jumeauxQuiRetiennent, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
   lirePoidsSaisi,
+  coutDuLot, murDuLot, boutonPalierDuLot, libelleCtaDuLot, libelleEnvoiDuLot, titreFinDuLot,
 } from "./regles";
+// (04/11/2026, grille à 3 jauges) Les jauges du compte (quotas_etat, null sans la grille) et la carte « coût » de
+// l'unité (mêmes mini-jauges, même mise en gras) : le lot dit son coût comme le stepper.
+import { jaugesDuCompte } from "../../utils/jauges";
+import { MiniJauge, ResteEnGras } from "../EcranOuPublier";
 import { posesMemoireVisibles } from "../moteur/memoireCategorie";
 // (26/10 nuit, design B validé par Nico) L'étape 2 rangée par question.
 import { questionsDeLArticle } from "./sujetsDuLot";
@@ -113,6 +118,8 @@ const LIBELLE_PHASE = {
   en: { origine: "Reading your original listing", attente: "Waiting", lecture: "Your description…", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "Your move", quota: "Stays in stock", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Your move" },
 };
 const NOM_PALIER = { premium: "Premium", pro: "Pro", business: "Business" };
+// (04/11, grille à 3 jauges) Les clés coin_config des deux jauges du lot, pour les paliers qu'un mur peut viser.
+const CLES_JAUGES_PALIERS = ["premium", "pro", "business"].flatMap((p) => [`jauge_annonces_${p}`, `jauge_publications_${p}`]);
 // Un abonnement se change là où il a été pris : payé ailleurs qu'ici, on dit
 // où, et on ne lance JAMAIS un second abonnement.
 const RENVOI_BOUTIQUE = {
@@ -187,6 +194,10 @@ function Vignette({ item, taille = null }) {
 
 // (25/10) Aucune plateforme fermée : UNE référence, jamais un tableau neuf à chaque rendu (le moteur est mémoïsé).
 const AUCUNE_FERMEE = Object.freeze([]);
+// (04/11/2026, grille à 3 jauges) Les refus de spend_coins_and_publish (code exposé par le moteur, publishErrorCode)
+// qui mettent un article de côté comme un refus d'annonces — phase « quota », la phrase du serveur, aucune modale :
+// la jauge Publications du mois, ou le garde-fou du jour.
+const REFUS_DE_JAUGE = new Set(["quota_publications_atteint", "garde_fou_jour"]);
 // Le moteur d'UN article, monté sans rien afficher. Mémoïsé : l'écran du lot
 // se redessine souvent, le moteur seulement quand SES entrées changent.
 const HoteMoteur = memo(function HoteMoteur({
@@ -302,6 +313,9 @@ function EcranDuLot({
   const [quotasPaliers, setQuotasPaliers] = useState(() => ({
     premium: COIN_CONFIG_FALLBACK.quota_annonces_premium, pro: COIN_CONFIG_FALLBACK.quota_annonces_pro, business: COIN_CONFIG_FALLBACK.quota_annonces_business,
   }));
+  // (04/11, grille à 3 jauges) Les volumes des paliers sur les deux jauges du lot (coin_config, clés jauge_* ;
+  // 0 = illimité) : le bouton du mur chiffre le palier visé. Vide tant que non lu : grilleDuPalier prend son repli.
+  const [configJauges, setConfigJauges] = useState(null);
   // Le quota se relit quand le palier change : un achat fait depuis le mur
   // (App Store, Google Play) rend la main ici, et le compte doit suivre.
   const palier = palierCourant(ctx);
@@ -331,10 +345,12 @@ function EcranDuLot({
         // ici, ils servent aussi au clic Publier des moteurs (aucune relecture).
         if (!error && data) semerColisRetenus(userId, colisRetenusDuProfil(data.platform_settings));
       }, () => { if (vivant) setProfil({}); });
-    supabase.from("coin_config").select("key, value").in("key", ["quota_annonces_premium", "quota_annonces_pro", "quota_annonces_business"])
+    supabase.from("coin_config").select("key, value").in("key", ["quota_annonces_premium", "quota_annonces_pro", "quota_annonces_business", ...CLES_JAUGES_PALIERS])
       .then(({ data }) => {
         if (!vivant || !Array.isArray(data)) return;
-        setQuotasPaliers((prev) => ({ ...prev, ...Object.fromEntries(data.map((r) => [String(r.key).replace("quota_annonces_", ""), Number(r.value)]).filter(([, v]) => Number.isFinite(v))) }));
+        const anciennes = data.filter((r) => String(r.key).startsWith("quota_annonces_"));
+        setQuotasPaliers((prev) => ({ ...prev, ...Object.fromEntries(anciennes.map((r) => [String(r.key).replace("quota_annonces_", ""), Number(r.value)]).filter(([, v]) => Number.isFinite(v))) }));
+        setConfigJauges(Object.fromEntries(data.filter((r) => CLES_JAUGES_PALIERS.includes(String(r.key))).map((r) => [String(r.key), Number(r.value)]).filter(([, v]) => Number.isFinite(v))));
       }, () => {});
     const ids = (articles ?? []).map((a) => a.id);
     if (ids.length) {
@@ -378,10 +394,19 @@ function EcranDuLot({
     try { const v = localStorage.getItem("fs_lot_quota_simule"); return v != null && Number.isFinite(Number(v)) ? Number(v) : null; } catch { return null; }
   });
   const restantes = quotaSimule ?? quotas?.annonces?.restantes ?? null;
+  // (04/11, grille à 3 jauges — maquettes 4.2 / 4.3) Avec la grille (quotas_etat rend `grille`), le partage tient
+  // compte des DEUX jauges : 1 annonce par article à rédiger, 1 publication par plateforme visée. Sans : null, le
+  // partage d'avant à l'identique. Le quota simulé (développement seulement) remplace les annonces restantes.
+  const jaugesLot = useMemo(() => {
+    const j = jaugesDuCompte(quotas);
+    if (!j || quotaSimule == null) return j;
+    return { ...j, annonces: { ...j.annonces, illimite: false, restantes: Math.max(0, quotaSimule) } };
+  }, [quotas, quotaSimule]);
   const partage = useMemo(() => partagerQuota(articlesAvecCible, {
     restantes: Number.isFinite(restantes) ? restantes : null,
     consomme: (d) => !ficheCouvre(fiches?.[d.id], ciblesAvant[d.id]),
-  }), [articlesAvecCible, restantes, fiches, ciblesAvant]);
+    ...(jaugesLot ? { jauges: jaugesLot, plateformes: (d) => ciblesAvant[d.id].length } : {}),
+  }), [articlesAvecCible, restantes, fiches, ciblesAvant, jaugesLot]);
   const annoncesPrevues = partage.maintenant.reduce((n, d) => n + ciblesAvant[d.id].length, 0);
   const parPlateformePrevu = {};
   for (const d of partage.maintenant) for (const p of ciblesAvant[d.id]) parPlateformePrevu[p] = (parPlateformePrevu[p] ?? 0) + 1;
@@ -410,6 +435,11 @@ function EcranDuLot({
     articles_retenus: partage.maintenant.length, articles_reportes: partage.plusTard.length,
     restantes: Number.isFinite(restantes) ? restantes : null, canal_appareil: canalIci, canal_abonnement: canalAbo,
     ...(quotaSimule != null ? { simule: true } : {}),
+    // (04/11, grille à 3 jauges) Les mêmes lignes, avec la jauge qui bloque et les publications restantes.
+    ...(jaugesLot ? {
+      jauge: partage.bloque ?? null,
+      publications_restantes: Number.isFinite(jaugesLot.publications.restantes) ? jaugesLot.publications.restantes : null,
+    } : {}),
   });
   // Essai en développement (quota simulé) : le clic « Passer à… » est tracé
   // mais n'ouvre JAMAIS le parcours d'achat — un compte réel ne doit ni
@@ -968,6 +998,11 @@ function EcranDuLot({
           .filter("platform_fields->lot_publication->>id", "eq", lot.id)
           .select("id")
           .then(({ error }) => { if (error) console.warn("[lot] estampille du lot :", error.message); }, () => {});
+      } else if (jaugesLot && REFUS_DE_JAUGE.has(mm?.publishErrorCode)) {
+        // (04/11, grille à 3 jauges) Les publications du mois, ou le garde-fou du jour : l'article est mis de côté
+        // comme un refus d'annonces (phase « quota », « Reste au stock »), avec la phrase du serveur (publishError :
+        // le moteur du lot ne reçoit pas quotas, il dit le message du refus tel quel) — aucune modale.
+        majEtat(id, { phase: "quota", raison: mm.publishError || null });
       } else {
         majEtat(id, { phase: "refuse", raison: mm?.publishError || (en ? "The server didn't confirm — nothing was created for this item." : "Le serveur n'a pas confirmé — rien n'a été créé pour cet article.") });
       }
@@ -1174,6 +1209,9 @@ function EcranDuLot({
         // Le second choix du mur : continuer avec ce que le quota permet.
         ? (en ? `Continue with ${n} item${n > 1 ? "s" : ""}` : `Continuer avec ${n} article${n > 1 ? "s" : ""}`)
         : (en ? `Prepare ${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""}` : `Préparer ${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""}`);
+    // (04/11, grille à 3 jauges) « Préparer N publications » ; rien ne tient : la jauge qui manque. Sans la grille
+    // (ou avant la lecture) : null, le libellé d'avant.
+    if (fiches != null && quotas != null) cta = libelleCtaDuLot({ partage, murActif, nbChoix: choix.length, jauges: jaugesLot, lang }) ?? cta;
     onCta = preparer;
     sous = [murActif && n
       ? (en ? `The other ${partage.plusTard.length} stay in your stock: you can publish them from your new month${dateCourte(remise, en) ? ` (${dateCourte(remise, en)})` : ""}. Nothing goes out yet.` : `${partage.plusTard.length > 1 ? `Les ${partage.plusTard.length} autres restent` : "L'autre reste"} dans ton stock : tu pourras ${partage.plusTard.length > 1 ? "les" : "le"} publier dès ton nouveau mois${dateCourte(remise, en) ? ` (le ${dateCourte(remise, en)})` : ""}. Rien ne part encore.`)
@@ -1200,6 +1238,9 @@ function EcranDuLot({
               ? `Send ${prets.length > 1 ? `the ${prets.length} ready items` : "the ready item"} (${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""})`
               : `Envoyer ${prets.length > 1 ? `les ${prets.length} prêts` : "l'article prêt"} (${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""})`)
           : (en ? `Send ${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""}` : `Envoyer ${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""}`);
+      // (04/11, grille à 3 jauges) « Envoyer N publications » (et donc « Programmer N publications ») : le mot
+      // « annonce » appartient à la jauge IA. Sans la grille : null, le libellé d'avant.
+      cta = libelleEnvoiDuLot({ nPrets: prets.length, nACompleter: aCompleter.length, publications: annoncesPretes, jauges: jaugesLot, lang }) ?? cta;
       // (26/10, D4) Programmées : le geste dit ce qu'il fait.
       if (prets.length && programme) cta = cta.replace(/^Envoyer/, "Programmer").replace(/^Send/, "Schedule");
       onCta = envoyer;
@@ -1275,6 +1316,10 @@ function EcranDuLot({
                 palierVise, quotaVise: palierVise ? quotasPaliers[palierVise] ?? null : null,
                 onMonter: onMonterDePalier && palierVise ? monterDePalier : null, renvoiBoutique, essaiAchat,
               } : null}
+              // (04/11, grille à 3 jauges) null sans la grille : l'écran rend ce qu'il rendait.
+              grille={jaugesLot ? {
+                jauges: jaugesLot, palier, configJauges, nbPlateformes: (id) => ciblesAvant[id]?.length ?? 0,
+              } : null}
             />
           )}
           {(etape === "avant" || etape === "envoi") && lot && (
@@ -1299,7 +1344,8 @@ function EcranDuLot({
           )}
           {etape === "fin" && lot && (
             <EcranFin en={en} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId}
-              extensionNeverSeen={ctx.extensionNeverSeen} ebayParServeur={ebayParServeur} onOuvrirArticle={onOuvrirArticle} remise={remise} />
+              extensionNeverSeen={ctx.extensionNeverSeen} ebayParServeur={ebayParServeur} onOuvrirArticle={onOuvrirArticle} remise={remise}
+              grille={Boolean(jaugesLot)} />
           )}
     </CoqueLot>
   );
@@ -1348,6 +1394,8 @@ export function EcranPlateformes({
   en, lang, userId, donnees, resume, choix, basculer, sessions, pauses, ebayBloque, ebayParServeur, ebayEtat = null,
   quotas, restantes, remise, partage, annoncesPrevues, duree, extensionNeverSeen, extensionLastSeenAt, fichesLues, boutiqueVinted = null,
   mur = null, depopAAutoriser = false,
+  // (04/11, grille à 3 jauges) { jauges, palier, configJauges, nbPlateformes(id) } — null sans la grille : rendu d'avant.
+  grille = null,
 }) {
   const n = donnees.length;
   const vus = donnees.slice(0, 6);
@@ -1372,10 +1420,30 @@ export function EcranPlateformes({
         </div>
       </div>
 
+      {/* (04/11, grille à 3 jauges — maquette 4.3) Le même mur, même structure (c'est lui qui fait le plus payer) :
+          il NOMME la jauge qui bloque et son bouton chiffre le palier visé sur les deux jauges du lot. */}
+      {grille && mur && partage.plusTard.length > 0 && (() => {
+        const t = murDuLot({ partage, jauges: grille.jauges, palier: grille.palier, dateRemise, plateformesDe: (d) => grille.nbPlateformes(d.id), lang });
+        return (
+          <Carte gravite="geste" titre={t.titre} data-mur-jauge={t.jauge}>
+            <div className="fsn-card-p">{t.phrase}</div>
+            {mur.onMonter && !mur.renvoiBoutique && (
+              <Bouton onClick={mur.onMonter}>{boutonPalierDuLot(mur.palierVise, grille.configJauges, lang)}</Bouton>
+            )}
+            {mur.renvoiBoutique && (
+              <div className="fsn-card-p">{RENVOI_BOUTIQUE[en ? "en" : "fr"][mur.renvoiBoutique]}</div>
+            )}
+            {mur.essaiAchat && (
+              <div className="fsn-small">Essai (développement) : le parcours d'achat s'ouvrirait ici. Rien n'est lancé pendant un essai.</div>
+            )}
+            {t.suite && <div className="fsn-small">{t.suite}</div>}
+          </Carte>
+        );
+      })()}
       {/* LE MUR : le quota ne couvre pas tout le lot. Deux choix clairs —
           monter d'un palier (ici), ou continuer avec ce qui passe (le bouton
           du bas). Jamais au-delà du quota. */}
-      {mur && partage.plusTard.length > 0 && (
+      {!grille && mur && partage.plusTard.length > 0 && (
         <Carte gravite="geste" titre={en ? "Your monthly listings don't cover the whole batch" : "Ton quota ne suffit pas pour tout le lot"}>
           <div className="fsn-card-p">
             {partage.maintenant.length
@@ -1456,8 +1524,33 @@ export function EcranPlateformes({
         </div>
       </div>
 
+      {/* (04/11, grille à 3 jauges — maquettes 4.2 / 4.3) Le compte exact, en jauges : ce que le lot utilisera,
+          ce qu'il restera (« illimité » en mot), deux mini-jauges (la part qui part en ambre pâle au bout), la
+          règle des deux jauges. « Un article publié sur plusieurs plateformes compte pour un » (fausse avec la
+          jauge Publications) disparaît. */}
+      {grille && (() => {
+        const murLa = Boolean(mur) && partage.plusTard.length > 0;
+        const nbCochees = plateformes.filter((p) => choix.includes(p) && !(resume[p].possibles === 0 || Boolean(pauses[p]) || (p === "ebay" && ebayBloque))).length;
+        const c = coutDuLot({ partage, jauges: grille.jauges, murActif: murLa, nbPlateformes: nbCochees, lang });
+        return (
+          <Carte gravite={null} data-cout="lot">
+            {!fichesLues ? <div className="fsn-card-t">{en ? "Counting…" : "On compte…"}</div> : (
+              <>
+                {c.utilise && <div className="fsn-card-t">{c.utilise}</div>}
+                {c.utilise && c.reste && <div className="fsn-card-p"><ResteEnGras phrase={c.reste} gras={c.gras} /></div>}
+                <MiniJauge cle="annonces" jauge={grille.jauges.annonces} pris={c.annonces} lang={lang} />
+                <MiniJauge cle="publications" jauge={grille.jauges.publications} pris={c.publications} lang={lang} />
+              </>
+            )}
+            {!murLa && <div className="fsn-small">{c.regle}</div>}
+            {duree && annoncesPrevues > 0 && (
+              <div className="fsn-card-p">{en ? `With your computer on: ${duree}, one listing after the other.` : `Avec ton ordinateur allumé : ${duree}, une annonce après l'autre.`}</div>
+            )}
+          </Carte>
+        );
+      })()}
       {/* Le compte exact, avant tout geste. */}
-      <Carte gravite={null} titre={fichesLues
+      {!grille && <Carte gravite={null} titre={fichesLues
         ? (en ? `${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""} to create` : `${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""} à créer`)
         : (en ? "Counting…" : "On compte…")}>
         {ann?.plafond != null && (
@@ -1474,7 +1567,7 @@ export function EcranPlateformes({
         {duree && annoncesPrevues > 0 && (
           <div className="fsn-card-p">{en ? `With your computer on: ${duree}, one listing after the other.` : `Avec ton ordinateur allumé : ${duree}, une annonce après l'autre.`}</div>
         )}
-      </Carte>
+      </Carte>}
 
       {extensionNeverSeen === true && (
         <Carte gravite="geste" titre={en ? "The FillSell extension isn't installed yet" : "L'extension FillSell n'est pas encore installée"}>
@@ -2417,7 +2510,8 @@ function PliDuLot({ en, titre, resume, ouvertDOffice = false, children }) {
 }
 
 // ═══ ÉCRAN 3 — « C'EST PARTI » ═══════════════════════════════════════════════
-export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen, ebayParServeur, onOuvrirArticle, remise }) {
+// (04/11, grille à 3 jauges) `grille` vrai : « N publications en file » (le mot « annonce » appartient à la jauge IA).
+export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen, ebayParServeur, onOuvrirArticle, remise, grille = false }) {
   const envoyes = lot.ids.filter((id) => etats[id]?.phase === "envoye");
   const annonces = envoyes.reduce((n, id) => n + (etats[id]?.envoyees?.length ?? 0), 0);
   const deCote = lignes.filter((id) => etats[id]?.phase !== "envoye");
@@ -2427,7 +2521,7 @@ export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen,
       <div className="fsn-centre fsn-stack" style={{ gap: 10, padding: "8px 0" }}>
         <div className="fsn-ok-rond">✓</div>
         <h2 className="fsn-h">{annonces
-          ? (en ? `${annonces} listing${annonces > 1 ? "s" : ""} queued` : `${annonces} annonce${annonces > 1 ? "s" : ""} en file`)
+          ? (grille ? titreFinDuLot(annonces, en ? "en" : "fr") : en ? `${annonces} listing${annonces > 1 ? "s" : ""} queued` : `${annonces} annonce${annonces > 1 ? "s" : ""} en file`)
           : (en ? "Nothing was sent" : "Rien n'est parti")}</h2>
         {annonces > 0 && (
           <p className="fsn-lead">{extensionNeverSeen === true

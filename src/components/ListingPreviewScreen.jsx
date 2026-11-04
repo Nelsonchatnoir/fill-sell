@@ -134,7 +134,7 @@ import { categorieFermee } from "../publication/plateformes";
 import { lireProchaineRemiseAZero } from "../reglages/quotas";
 // (04/11, grille à 3 jauges) Les refus → le mur de leur jauge, ou la phrase du garde-fou. Interrupteur à 0 : null.
 import { grilleActive } from "../utils/jauges";
-import { suiteDuRefus, publicationsRestantes } from "../reglages/refusEtMurs";
+import { suiteDuRefus, publicationsRestantes, murDeLaJauge } from "../reglages/refusEtMurs";
 import {
   aspectBloquant, plateformesPubliables as calculerPlateformesPubliables,
   champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
@@ -5506,6 +5506,10 @@ export default function ListingPreviewScreen({
   ));
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
+  // (04/11, grille à 3 jauges) Le CODE du dernier refus de spend_coins_and_publish (pubRes.reason), à côté de sa
+  // phrase : le lot met de côté un article refusé par les publications du mois ou le garde-fou du jour (phase
+  // « quota »), comme platformErrorCode === "quota_annonces". Rien ne l'affiche.
+  const [publishErrorCode, setPublishErrorCode] = useState(null);
   const [done, setDone]                 = useState(false);
   // (15/10, Romain GUERIN) Un aspect eBay EXIGÉ et vide au clic : la question
   // est posée sur l'écran (« Confirmer », bloc des questions), et la
@@ -10485,6 +10489,7 @@ export default function ListingPreviewScreen({
   // ── Publication ───────────────────────────────────────────────────────────
   async function handlePublish() {
     if (!selected.size) return;
+    setPublishErrorCode(null);
     // Défense en profondeur (inventaire plein) : handleNext route déjà vers la
     // ConversionModal — au cas où, on ne tente jamais un publish qui créerait
     // la 21e ligne (le trigger serveur le refuserait de toute façon).
@@ -11294,6 +11299,7 @@ export default function ListingPreviewScreen({
         : t("genericError"));
       if (pubRes?.allowed === false) {
         setPublishing(false);
+        setPublishErrorCode(typeof pubRes.reason === "string" ? pubRes.reason : null);
         if (pubRes.reason === "insufficient_coins") {
           ouvrirQuotaModal("plafond_pepites_publi", { trigger: "publish", targetTiers: ["premium","pro"] });
           return;
@@ -12347,11 +12353,21 @@ export default function ListingPreviewScreen({
     // Les offres, UNIQUEMENT sur demande (« Voir les offres ») — jamais
     // ouvertes toutes seules au milieu du parcours pour une retouche.
     // (04/11, grille à 3 jauges) Le mur Annonces dit aussi ce qu'il reste en publications (null sans la grille).
-    voirOffres: (geste, info = {}) => ouvrirQuotaModal(geste === "annonces" ? "quota_annonces" : "quota_retouche", {
-      trigger: "quota_geste", targetTiers: ["premium", "pro"],
-      quotaInfo: { geste: geste === "annonces" ? "annonces" : "retouches", plafond: info.plafond ?? null, consommes: info.consommes ?? null,
-        ...(geste === "annonces" && publicationsRestantes(quotas) != null ? { publications_restantes: publicationsRestantes(quotas), remise_le: remiseAZero ?? null } : {}) },
-    }, "clic"),
+    // « publications » (le lien du bouton gris de « Où publier ? », grille seulement) : le mur Publications, par le
+    // même chemin — murDeLaJauge sur les compteurs de l'hôte, sinon celui que la coque a lu (`info`) ; aucun mur
+    // (sans la grille, jauge illimitée) : rien ne s'ouvre, jamais une autre feuille.
+    voirOffres: (geste, info = {}) => {
+      if (geste === "publications") {
+        const mur = murDeLaJauge("publications", quotas, { remise: remiseAZero ?? null }) ?? (info?.geste === "publications" ? info : null);
+        if (mur) ouvrirQuotaModal("quota_publications", { trigger: "quota_geste", targetTiers: ["premium", "pro"], quotaInfo: mur }, "clic");
+        return;
+      }
+      ouvrirQuotaModal(geste === "annonces" ? "quota_annonces" : "quota_retouche", {
+        trigger: "quota_geste", targetTiers: ["premium", "pro"],
+        quotaInfo: { geste: geste === "annonces" ? "annonces" : "retouches", plafond: info.plafond ?? null, consommes: info.consommes ?? null,
+          ...(geste === "annonces" && publicationsRestantes(quotas) != null ? { publications_restantes: publicationsRestantes(quotas), remise_le: remiseAZero ?? null } : {}) },
+      }, "clic");
+    },
     isPremium, isPro, isBusiness,
     modeleAConfirmer, modelePropose: initialListing?.modele ?? null, modeleSource: initialListing?.modele_source ?? null, setModeleConfirme,
     identifyFailed,
@@ -12423,6 +12439,8 @@ export default function ListingPreviewScreen({
       saisie: lirePoidsGrammes(poidsLbcSaisi).valeur ?? null, fiche: poidsDeLaFiche,
     },
     publishError, publishing, motifsCtaGris, ctaDisabled, ctaBlockingActive, requiredBlocking, publishedStateLoaded,
+    // (04/11, grille à 3 jauges) Le code du dernier refus de publication (lu par le lot, jamais affiché).
+    publishErrorCode,
     ctaLabel: step === 3 ? ctaLabel() : null,
     // Le suivi
     fournee, exclusionsDuClic, publieesSansPf, createdThisRun, parcoursCreation,

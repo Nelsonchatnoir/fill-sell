@@ -19,6 +19,9 @@ import { estClotureEbayHorsFrance } from "../../../supabase/functions/_shared/eb
 // et la nature d'un needs_user (« en cours de confirmation » : la carte le dit gris, le lot aussi).
 import { etatJob, ETATS, attenteAutomatique } from "../../../supabase/functions/_shared/etat-job.js";
 import { natureNeedsUser } from "../../utils/shared.js";
+// (04/11/2026, grille à 3 jauges) La règle d'affichage unique : chaque article du lot passe-t-il avec ce qu'il reste
+// (partageDuLot), ce que le lot coûtera (coutPublication), les volumes du palier visé (grilleDuPalier, coin_config).
+import { partageDuLot, coutPublication, grilleDuPalier, nombre, motJauge } from "../../utils/jauges.js";
 // La liste de l'unité (utils/stockFiltres.js, PLATEFORMES_JAMAIS_PRECOCHEES),
 // recopiée : stockFiltres importe sans extension, ce module reste lisible par
 // node seul (selftest:publication-lot) — selftest:depop-file-jamais-silencieuse
@@ -149,7 +152,14 @@ export function ficheCouvre(fiche, plateformes) {
  * L'ordre des articles est celui de la sélection : le premier choisi part le
  * premier. Rend { maintenant: [...], plusTard: [...], aConsommer }.
  */
-export function partagerQuota(articles, { restantes = null, consomme = () => true } = {}) {
+export function partagerQuota(articles, { restantes = null, consomme = () => true, jauges = null, plateformes = null } = {}) {
+  // (04/11/2026, grille à 3 jauges — maquette 4.3) `jauges` = jaugesDuCompte(quotas_etat), présent SEULEMENT avec la
+  // grille : un article passe s'il tient dans les DEUX jauges (1 annonce s'il passe par la rédaction, 1 publication
+  // par plateforme visée — `plateformes(article)`), jugé par partageDuLot, dans l'ordre de la sélection. Comme avant,
+  // un article qui ne tient pas n'arrête pas le partage : ce qui est déjà rédigé se publie toujours (mur Annonces).
+  // Rend aussi `publications` (la somme des plateformes de « maintenant ») et `bloque` (la jauge qui a mis de côté
+  // le premier article reporté, null sinon). Sans `jauges` : le partage d'avant, à l'identique.
+  if (jauges) return partagerDeuxJauges(articles, { consomme, jauges, plateformes });
   const maintenant = [], plusTard = [];
   let reste = Number.isFinite(restantes) ? Math.max(0, restantes) : Infinity;
   let aConsommer = 0;
@@ -159,6 +169,166 @@ export function partagerQuota(articles, { restantes = null, consomme = () => tru
     else plusTard.push(a);
   }
   return { maintenant, plusTard, aConsommer };
+}
+
+function partagerDeuxJauges(articles, { consomme, jauges, plateformes }) {
+  const maintenant = [], plusTard = [];
+  const reste = (j) => ({ ...j, restantes: j.illimite ? Infinity : Math.max(0, Number(j.restantes) || 0) });
+  let restes = { ...jauges, annonces: reste(jauges.annonces), publications: reste(jauges.publications) };
+  let aConsommer = 0, publications = 0, bloque = null;
+  for (const a of articles ?? []) {
+    const besoin = { redaction: Boolean(consomme(a)), plateformes: Math.max(0, Number(plateformes ? plateformes(a) : 0) || 0) };
+    const p = partageDuLot([besoin], restes);
+    if (!p.maintenant) { plusTard.push(a); bloque = bloque ?? p.bloque; continue; }
+    maintenant.push(a);
+    if (besoin.redaction) aConsommer++;
+    publications += besoin.plateformes;
+    restes = {
+      ...restes,
+      annonces: { ...restes.annonces, restantes: restes.annonces.restantes - (besoin.redaction ? 1 : 0) },
+      publications: { ...restes.publications, restantes: restes.publications.restantes - besoin.plateformes },
+    };
+  }
+  return { maintenant, plusTard, aConsommer, publications, bloque };
+}
+
+// ── (04/11/2026, grille à 3 jauges) CE QUE LE LOT DIT DE SON COÛT — maquettes 4.2 et 4.3 ──────────────────────
+// Textes purs, lus par EcranPlateformes et le pied de l'écran 1, SEULEMENT avec la grille (jauges présentes). Le
+// mot « annonce » appartient à la jauge de l'IA (décision de Nico, question 6.3) : le lot prépare des PUBLICATIONS.
+const NOM_PLAN = { gratuit: "Free", free: "Free", premium: "Premium", pro: "Pro", business: "Business" };
+const compteJauge = (cle, n, lang) => `${nombre(n, lang)} ${motJauge(cle, n, lang)}`;
+const morceauxCout = (nA, nP, lang) => [nA > 0 ? compteJauge("annonces", nA, lang) : null, nP > 0 ? compteJauge("publications", nP, lang) : null].filter(Boolean);
+
+/**
+ * La carte « coût » de l'écran 1 : « Ce lot utilisera 12 annonces et 30 publications. » (mur actif : « Ces 5
+ * articles utiliseront… »), « Il te restera 28 annonces et 370 publications ce mois-ci. » (« illimité » au
+ * Business), la règle des deux jauges, et ce qui part de chaque jauge (pour les mini-jauges).
+ *   partage : partagerQuota(…, { jauges }) · nbPlateformes : les plateformes cochées (la phrase de la règle).
+ */
+export function coutDuLot({ partage, jauges, murActif = false, nbPlateformes = 1, lang = "fr" }) {
+  const en = lang === "en";
+  const nA = partage?.aConsommer ?? 0;
+  const nP = partage?.publications ?? 0;
+  const c = coutPublication({ annonces: nA, publications: nP }, jauges, { lang, lot: true });
+  const k = partage?.maintenant?.length ?? 0;
+  let utilise = c.utilise;
+  if (murActif && k > 0 && utilise) {
+    const corps = morceauxCout(nA, nP, lang).join(en ? " and " : " et ");
+    utilise = en ? (k > 1 ? `These ${k} items will use ${corps}.` : `This item will use ${corps}.`)
+      : (k > 1 ? `Ces ${k} articles utiliseront ${corps}.` : `Cet article utilisera ${corps}.`);
+  }
+  // Les morceaux de « Il te restera … » à mettre en gras : les nombres et leur mot, tels que coutPublication les écrit.
+  const gras = [];
+  if (c.reste) {
+    if (/illimité\.$|unlimited\.$/.test(c.reste)) gras.push(en ? "unlimited" : "illimité");
+    else for (const [cle, v, n] of [["annonces", c.resteA, nA], ["publications", c.resteP, nP]]) if (n > 0 && Number.isFinite(v)) gras.push(compteJauge(cle, v, lang));
+  }
+  const kp = Math.max(1, Number(nbPlateformes) || 0);
+  const regle = en
+    ? `An item on ${kp} platform${kp > 1 ? "s" : ""} counts 1 listing and ${kp} publication${kp > 1 ? "s" : ""}. A text that's already written doesn't use a listing.`
+    : `Un article sur ${kp} plateforme${kp > 1 ? "s" : ""} compte 1 annonce et ${kp} publication${kp > 1 ? "s" : ""}. Un texte déjà rédigé ne prend pas d'annonce.`;
+  return { utilise, reste: c.reste, gras, regle, annonces: nA, publications: nP };
+}
+
+/**
+ * Le mur du lot avec la grille (maquette 4.3) : il NOMME la jauge qui bloque.
+ *   « Il te reste 5 annonces ce mois-ci : 5 articles peuvent partir maintenant. Les 7 autres restent dans ton
+ *   stock, à publier dès le 16 novembre. » — ou, par les publications : « Il te reste 14 publications : 7 articles
+ *   sur 2 plateformes peuvent partir maintenant. … »
+ *   plateformesDe(article) : le nombre de plateformes visées par cet article · dateRemise : déjà mise en mots (ou null).
+ */
+export function murDuLot({ partage, jauges, palier, dateRemise = null, plateformesDe = () => 0, lang = "fr" }) {
+  const en = lang === "en";
+  const k = partage?.maintenant?.length ?? 0;
+  const p = partage?.plusTard?.length ?? 0;
+  const nom = NOM_PLAN[palier] ?? "Free";
+  const titre = en ? `Your ${nom} plan doesn't cover the whole batch` : `Ton plan ${nom} ne couvre pas tout le lot`;
+  const cle = partage?.bloque === "publications" ? "publications" : "annonces";
+  const r = jauges?.[cle]?.restantes;
+  const reste = Number.isFinite(r) ? r : 0;
+  // « sur 2 plateformes » : seulement quand tous les articles qui partent visent le même nombre de plateformes.
+  const nbs = [...new Set((partage?.maintenant ?? []).map((a) => Number(plateformesDe(a)) || 0))];
+  const surPf = cle === "publications" && nbs.length === 1 && nbs[0] > 0
+    ? (en ? ` on ${nbs[0]} platform${nbs[0] > 1 ? "s" : ""}` : ` sur ${nbs[0]} plateforme${nbs[0] > 1 ? "s" : ""}`) : "";
+  const quand = en ? (dateRemise ? `from ${dateRemise}` : "from your new month") : (dateRemise ? `dès le ${dateRemise}` : "dès ton nouveau mois");
+  const ilReste = en
+    ? `You have ${compteJauge(cle, reste, lang)} left${cle === "annonces" ? " this month" : ""}`
+    : `Il te reste ${compteJauge(cle, reste, lang)}${cle === "annonces" ? " ce mois-ci" : ""}`;
+  let phrase;
+  if (k > 0) {
+    phrase = en
+      ? `${ilReste}: ${k} item${k > 1 ? "s" : ""}${surPf} can go now. ${p > 1 ? `The other ${p} stay` : "The other one stays"} in your stock, to publish ${quand}.`
+      : `${ilReste} : ${k > 1 ? `${k} articles` : "1 article"}${surPf} ${k > 1 ? "peuvent" : "peut"} partir maintenant. ${p > 1 ? `Les ${p} autres restent` : "L'autre reste"} dans ton stock, à publier ${quand}.`;
+  } else {
+    phrase = en
+      ? `${ilReste}. ${p > 1 ? `Your ${p} items stay` : "Your item stays"} in your stock, to publish ${quand}.`
+      : `${ilReste}. ${p > 1 ? `Tes ${p} articles restent` : "Ton article reste"} dans ton stock, à publier ${quand}.`;
+  }
+  const suite = k > 0
+    ? (en ? `Or continue with the ${k > 1 ? `${k} items` : "item"} your plan allows: the button below. Nothing is lost.`
+      : `Ou continue avec ${k > 1 ? `les ${k} articles` : "l'article"} que ton plan permet : le bouton du bas. Rien n'est perdu.`)
+    : null;
+  return { titre, phrase, suite, jauge: cle };
+}
+
+/** Le bouton du mur : le palier visé chiffré sur les deux jauges du lot (volumes lus dans coin_config, clés jauge_*). */
+export function boutonPalierDuLot(palierVise, K, lang = "fr") {
+  if (!palierVise) return null;
+  const en = lang === "en";
+  const g = grilleDuPalier(K, palierVise);
+  const finies = ["annonces", "publications"].filter((j) => g[j] !== Infinity);
+  const illimitees = ["annonces", "publications"].filter((j) => g[j] === Infinity);
+  const a = finies.length ? `${finies.map((j) => compteJauge(j, g[j], lang)).join(en ? " and " : " et ")} ${en ? "a month" : "par mois"}` : "";
+  const b = illimitees.length ? (en ? `unlimited ${illimitees.map((j) => motJauge(j, 2, lang)).join(" and ")}` : `${illimitees.map((j) => motJauge(j, 2, lang)).join(" et ")} illimitées`) : "";
+  const nom = NOM_PLAN[palierVise] ?? palierVise;
+  return `${en ? `Switch to ${nom}:` : `Passer ${nom} :`} ${[a, b].filter(Boolean).join(en ? " and " : " et ")}`;
+}
+
+/**
+ * Le bouton du bas de l'écran 1 avec la grille, ou null (le libellé d'avant reste) : « Préparer 30 publications »
+ * (décision de Nico : le mot « annonce » appartient à la jauge IA) ; rien ne tient : la jauge qui manque.
+ * « Continuer avec N articles » (mur actif) et « Coche au moins une plateforme » ne changent pas : null.
+ */
+export function libelleCtaDuLot({ partage, murActif = false, nbChoix = 0, jauges = null, lang = "fr" }) {
+  if (!jauges) return null;
+  const en = lang === "en";
+  const n = partage?.maintenant?.length ?? 0;
+  if (!n) {
+    if (!nbChoix || !(partage?.plusTard?.length)) return null;
+    if (partage?.bloque === "publications") {
+      const r = jauges.publications?.restantes;
+      return Number.isFinite(r) && r > 0
+        ? (en ? "Not enough publications left this month" : "Pas assez de publications ce mois-ci")
+        : (en ? "No publications left this month" : "Plus de publication ce mois-ci");
+    }
+    return en ? "No listings left this month" : "Plus d'annonce ce mois-ci";
+  }
+  if (murActif) return null;
+  const nP = partage?.publications ?? 0;
+  return en ? `Prepare ${nP} publication${nP > 1 ? "s" : ""}` : `Préparer ${nP} publication${nP > 1 ? "s" : ""}`;
+}
+
+/**
+ * (04/11/2026, grille à 3 jauges) Le bouton d'envoi de l'écran 2 avec la grille, ou null (le libellé d'avant) :
+ * « Envoyer 30 publications », « Envoyer les 5 prêts (12 publications) » — même règle que « Préparer N
+ * publications » : le mot « annonce » appartient à la jauge IA. « Programmer » vient ensuite, du libellé (inchangé).
+ */
+export function libelleEnvoiDuLot({ nPrets = 0, nACompleter = 0, publications = 0, jauges = null, lang = "fr" }) {
+  if (!jauges || !nPrets) return null;
+  const en = lang === "en";
+  const pub = `publication${publications > 1 ? "s" : ""}`;
+  if (nACompleter) {
+    return en
+      ? `Send ${nPrets > 1 ? `the ${nPrets} ready items` : "the ready item"} (${publications} ${pub})`
+      : `Envoyer ${nPrets > 1 ? `les ${nPrets} prêts` : "l'article prêt"} (${publications} ${pub})`;
+  }
+  return en ? `Send ${publications} ${pub}` : `Envoyer ${publications} ${pub}`;
+}
+
+/** (04/11/2026, grille à 3 jauges) Le titre de l'écran de fin avec la grille : « 30 publications en file ». */
+export function titreFinDuLot(n, lang = "fr") {
+  const en = lang === "en";
+  return en ? `${n} publication${n > 1 ? "s" : ""} queued` : `${n} publication${n > 1 ? "s" : ""} en file`;
 }
 
 // ── La durée annoncée ──────────────────────────────────────────────────────

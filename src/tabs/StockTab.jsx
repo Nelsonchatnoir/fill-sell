@@ -91,6 +91,9 @@ import { causeARegler, jobSupplante, derniersParLigne, republicationLibereeApres
 import { jourRemise, messagePlafondRepublicationGratuit } from '../utils/jourRemise';
 // (04/11, grille à 3 jauges) Un refus de remontée → le mur Remontées, ou la phrase du garde-fou. Interrupteur à 0 : null.
 import { suiteDuRefus, publicationsRestantes } from '../reglages/refusEtMurs';
+// (04/11, grille à 3 jauges — maquette 4.4) Le coût d'une remontée en lot, dit avant l'appui. Interrupteur à 0 : null.
+import { jaugesDuCompte, nombre as nombreJauge, motJauge } from '../utils/jauges';
+import { MiniJauge } from '../publication/EcranOuPublier';
 // Relevé des annonces par plateforme (2026-09-17, sync lot 2) — FERMÉ tant que
 // coin_config.sync_multi_ouverte = 0 : le bloc n'existe pas, aucun texte ne
 // l'annonce (lireSyncMultiOuverte, fail-closed).
@@ -5695,7 +5698,13 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, repubMois = null }) {
+// (04/11/2026, grille à 3 jauges — maquette 4.4) `jaugeRemontees` : la jauge Remontées du compte
+// (jaugesDuCompte(quotas).remontees + `remise` en mots), SEULEMENT avec la grille et un plafond (Free 30,
+// Premium 1 500) ; null sinon (sans la grille, remontées illimitées) : la feuille rend ce qu'elle rendait.
+// ⛔ CADENCE INTOUCHABLE : la feuille ne fait que DIRE, avant l'appui, ce que le lot va utiliser — elle ne change
+//    ni l'ordre ni le nombre de ce qui part (lancerRepublicationLot, inchangé, s'arrête au refus du serveur).
+// Exportée pour selftest:cout-publication (rendu serveur), rien d'autre ne la monte.
+export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, repubMois = null, jaugeRemontees = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -5929,9 +5938,37 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
               : `On ${nomsSel.filter((p) => p === 'leboncoin' || p === 'beebs').map((p) => PLATFORM_LABELS[p] ?? p).join(' and ')}, the listing is rebuilt from the copy stored here. Anything you edited by hand on the site will be lost — bring it back into the app before republishing.`}
           </div>
         )}
+        {/* (04/11/2026, grille à 3 jauges — maquette 4.4) Avant une remontée EN LOT : ce qu'elle utilisera et ce qu'il
+            restera (« Cette remontée utilisera 24 remontées. »), ou, s'il en manque, combien il en reste et combien le
+            lot en demande. Le lot ne sait pas remonter un sous-ensemble choisi : on ne promet pas lesquelles partent.
+            Cette carte remplace, avec la grille, la ligne « Gratuit : il t'en restera… » ci-dessous. */}
+        {jaugeRemontees && !solo ? (nbEnvois > 0 && (() => {
+          const r = Math.max(0, Number(jaugeRemontees.restantes) || 0);
+          const assez = nbEnvois <= r;
+          const nbArticles = items.filter(({ plateformes }) => (plateformes ?? ['vinted']).some(cochee)).length;
+          const motR = (n) => motJauge('remontees', n, fr ? 'fr' : 'en');
+          const detail = fr
+            ? `${nombreJauge(nbArticles, 'fr')} annonce${nbArticles > 1 ? 's' : ''} sur ${nomsSel.length > 1 ? `${nomsSel.length} plateformes (${libelleSel})` : libelleSel}`
+            : `${nombreJauge(nbArticles, 'en')} listing${nbArticles > 1 ? 's' : ''} on ${nomsSel.length > 1 ? `${nomsSel.length} platforms (${libelleSel})` : libelleSel}`;
+          const titre = assez
+            ? (fr ? `Cette remontée utilisera ${nombreJauge(nbEnvois, 'fr')} ${motR(nbEnvois)}.` : `This bump will use ${nombreJauge(nbEnvois, 'en')} ${motR(nbEnvois)}.`)
+            : (fr ? `Il te reste ${nombreJauge(r, 'fr')} ${motR(r)} ce mois-ci.` : `You have ${nombreJauge(r, 'en')} ${motR(r)} left this month.`);
+          const remise = jaugeRemontees.remise ?? null;
+          return (
+            <div data-cout-remontee={assez ? 'assez' : 'court'} role="status" style={{ background: '#FFFFFF', border: '1px solid #E7E3D8', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#10201B', lineHeight: 1.4 }}>{titre}</div>
+              <div style={{ fontSize: 12.5, color: '#3A4742', lineHeight: 1.5 }}>
+                {assez
+                  ? (fr ? <>{detail}. Il t'en restera <b className="num">{nombreJauge(r - nbEnvois, 'fr')}</b> ce mois-ci.</> : <>{detail}. You will have <b className="num">{nombreJauge(r - nbEnvois, 'en')}</b> left this month.</>)
+                  : (fr ? `Ce lot en demande ${nombreJauge(nbEnvois, 'fr')} : ${detail}.${remise ? ` Elles reviennent le ${remise}.` : ''}` : `This batch needs ${nombreJauge(nbEnvois, 'en')}: ${detail}.${remise ? ` They come back on ${remise}.` : ''}`)}
+              </div>
+              <MiniJauge cle="remontees" jauge={jaugeRemontees} pris={nbEnvois} lang={fr ? 'fr' : 'en'} />
+            </div>
+          );
+        })()) : null}
         {/* (15/10, P17, Chiara) Gratuit : le MOIS, dit avant le clic. Le refus du
             serveur reste le filet. */}
-        {repubMois && Number.isFinite(repubMois.restantes) && nbEnvois > 0 && (
+        {!(jaugeRemontees && !solo) && repubMois && Number.isFinite(repubMois.restantes) && nbEnvois > 0 && (
           <div role="status" style={{ background: '#F0FDFB', border: '1px solid rgba(13,148,136,0.18)', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#1B6E62', lineHeight: 1.55, marginBottom: 12 }}>
             {nbEnvois <= repubMois.restantes
               ? (fr ? `Gratuit : il t’en restera ${repubMois.restantes - nbEnvois} ce mois-ci${repubMois.remise ? ` (remise à zéro le ${repubMois.remise})` : ''}.` : `Free: you will have ${repubMois.restantes - nbEnvois} left this month${repubMois.remise ? ` (resets on ${repubMois.remise})` : ''}.`)
@@ -12467,6 +12504,8 @@ const StockTab = memo(function StockTab({
           oplaAcces={oplaAccesRepub}
           oplaVerdict={oplaVerdictRepub}
           repubMois={offertGratuit.repub!=null?{restantes:offertGratuit.repub,remise:offertGratuit.remise}:null}
+          // (04/11, grille à 3 jauges) La jauge Remontées (plafond seulement : illimitées, rien de neuf). Sans la grille : null.
+          jaugeRemontees={(()=>{const j=jaugesDuCompte(quotas)?.remontees;return j&&!j.illimite?{...j,remise:jourRemise(quotas?.republication?.remise_le,lang==='en'?'en':'fr')}:null;})()}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles,choix)=>{
             setRepubSheet(null);
