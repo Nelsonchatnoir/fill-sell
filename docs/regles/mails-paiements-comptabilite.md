@@ -268,3 +268,14 @@ marge de 100 % sur du vent, indétectable ensuite.
 - Le recalcul a suivi la même règle (une ligne `grant_monthly` datée du paiement, delta 0, `metadata.rattrapage`) :
   nadegemarcelin78 (cycle au 16/10) et boncoin59300 (29/10, son paiement Stripe ; le cycle partait du paiement Google
   remboursé du 26/10). Preuve jetable `scripts/quotas/preuve-cycle-remontees.mjs`, selftest `cycle-et-remontees`.
+
+## ⛔ (04/11, décision de Nico) Les quotas se lisent par les aides de la grille à 3 jauges, jamais par une clé brute
+- Annonces : `jauge_annonces_plafond(compte, palier)` ; remontées : `quota_remontees_plafond(palier)` ; publications :
+  `jauge_publications_plafond(palier)` ; Lens du Business : `jauge_lens_plafond(palier)` ; garde-fou du jour :
+  `garde_fou_jour(compte, jauge, ajout)`. NULL = pas de compteur (illimité). Interrupteur `coin_config.grille_trois_jauges`
+  (0 = règles d'avant, à l'identique). Une fonction neuve qui lit un quota passe par ces aides.
+- Les publications comptent comme les remontées : faites ou en cours (`publications_du_cycle`) ; jamais une synchro, un
+  import, un retrait, une annulée jamais publiée, une tâche hors quota. Un appel de l'app ne pose jamais « hors quota ».
+- Garde-fous par jour (heure de Paris) : publications 2 000, remontées 2 000, annonces 800 ; message de pause honnête,
+  jamais une offre ; aucun plafond mensuel caché. Retouches IA et voix : hors des 3 jauges.
+- Preuve : `PREUVE_PG=embarque node scripts/quotas/preuve-trois-jauges.mjs` ; selftest `trois-jauges`.

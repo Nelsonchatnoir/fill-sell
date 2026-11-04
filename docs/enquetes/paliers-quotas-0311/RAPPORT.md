@@ -102,7 +102,7 @@ Jauge « Publications » = chaque mise en ligne non-synchro, 1 par plateforme, a
   Pour qu'il ne serve qu'à arrêter une boucle, il faut un plafond par jour au-dessus du maximum observé (ex. 2 000 par
   jour) ou un mensuel d'au moins 5 000. À trancher par Nico avant le binaire.
 
-## 5. Phase 2, serveur : la grille à 3 jauges derrière un interrupteur (03-04/11 nuit — ÉCRITE, PROUVÉE, NON APPLIQUÉE)
+## 5. Phase 2, serveur : la grille à 3 jauges derrière un interrupteur (03-04/11 nuit — APPLIQUÉE le 04/11, interrupteur à 0)
 Décisions de Nico du 03/11 au soir (maquettes validées écran par écran : https://claude.ai/artifact/D3HQXTLv9N8AcygCtSTgjW,
 avis dans la collection `avis`) : retouches IA et voix inchangées, hors des 3 jauges ; Business affiché « tout illimité,
 sauf Lens (600/mois) et retouches IA (50/mois) » ; baisses du Free confirmées (remontées 50 → 30, publications 50) ;
@@ -133,6 +133,8 @@ de mode sombre.
   synchro, hors quota, retraits, avant le cycle jamais comptés), les refus et leurs messages, les trois garde-fous,
   Lens 600, la régénération sous 24 h hors garde-fou, retour à 0. C. l'inverse rend les 8 définitions de prod à
   l'empreinte près. Preuve du 03/11 (`preuve-cycle-remontees.mjs`) : 38/38. Selftest `trois-jauges` : 80 contrôles.
-- **Reste avant de basculer** : feu vert de Nico pour appliquer (CLI : `db query --linked -f` demande désormais une
-  confirmation, `--yes` seulement sur son ordre) ; l'app (maquettes validées) ; l'avant / après des compteurs payants
-  juste avant de passer l'interrupteur à 1.
+- **Appliquée** le 04/11 (feu vert de Nico) : empreintes avant = fixture ; après, 19 corps relus = migration ou inchangés,
+  7 fonctions neuves fermées aux clients, 17 clés, interrupteur à 0, migration inscrite. Cf. `docs/agents/etat-2026-10-01.md`.
+  (CLI : `db query --linked -f` demande désormais une confirmation ; `--yes` seulement sur ordre de Nico.)
+- **Reste avant de basculer** : l'app (maquettes validées), derrière la même clé ; l'avant / après des compteurs
+  payants juste avant de passer l'interrupteur à 1.
