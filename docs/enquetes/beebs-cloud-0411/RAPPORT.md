@@ -432,3 +432,19 @@ L'INVERSE de la bascule garde `ouvert_sur` : au retour, cloud-1 repart sans les 
   l'extension, requalification), jamais pendant une tâche ; extension sans fichiers 21:10 → 21:11 (remise aussitôt).
   Supabase : `cloud_serveur_battre` en erreur HTML à 20:21:48 et 20:51:33 (sans effet).
 - Rien de grave : aucun compte restreint, aucune connexion perdue → pas de retour sur cloud-1.
+
+**Republication Leboncoin du t-shirt (job 8a248bd9, lue minute par minute : fond, journaux get-pending-jobs / update-job-status)** :
+- 21:38:18 « Résoudre » de Nico réussi → pause Leboncoin de l'app levée → **reprise prudente** (`_shared/blocage-leboncoin.js` :
+  pendant 6 h, UNE action Leboncoin toutes les 10 min au plus, `ESPACEMENT_REPRISE_MS`).
+- 21:41:50 1re action servie (21:41:53 état réel lu sur la fiche : en ligne) → rendu « pending » 21:41:59 ; retenu à 21:43, 21:45,
+  21:47, 21:49, 21:51 (« Leboncoin reprise … 1 tâche retenue »).
+- 21:53:27 2e action servie, prise 21:53:57 : formulaire de dépôt rempli et vérifié (21:53:27-57, 6 photos envoyées 21:53:47),
+  fiche de l'ancienne annonce, **retrait 21:54:05** (`DELETE /api/pintad/v1/public/manual/delete/ads` 200), confirmé 21:54:08 → « pending »
+  à l'étape « deleted ».
+- 21:55:26 « attente programmée non servie avant son heure », puis retenu à 21:57, 21:59, 22:01, 22:03 par la MÊME reprise prudente :
+  ⚠ **défaut de la règle** — l'espacement de 10 min ne fait pas d'exception pour une republication dont l'annonce est déjà RETIRÉE
+  (les autres retenues exemptent l'étape « deleted »). Aucune vérification, aucun refus, aucun 403 dans ce temps mort.
+- 22:05:27 3e action servie : formulaire, photos 22:05:42, `adsubmit/v2/classifieds` 201 à 22:06:12.883 (annonce 3302470047),
+  confirmation 22:06:15, « published » 22:06:21 ; vue en ligne dans « mes annonces » à **22:07:30** (leboncoin.fr/ad/vetements/3302470047).
+- **Hors ligne : 21:54:05 → 22:07:30 = 13 min 25 s** (dont ~11 min d'attente de la reprise prudente). Ancien job annulé, un seul
+  publié en base (aucun doublon). Ancienne annonce 3295657528 retirée (confirmation lue).
