@@ -158,8 +158,26 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     return faits;
   }
 
-  /** L'achat sous le stock visé : UNE commande de N IP (N ≤ cloud_ip_achat_max). */
-  async function acheter(plan, g, solde) {
+  /**
+   * (04/11 soir, essai GPU — règle de Nico : « aucun achat d'IP sans mon accord écrit tant que le Cloud n'est pas ouvert »)
+   * Le registre d'un achat sur ACCORD ÉCRIT quand l'interrupteur automatique est à 0 : cloud_ip_depense_ouvrir le refuse
+   * (il ne connaît que l'automatique) ; la ligne s'écrit donc ici, mêmes colonnes, plafond du mois relu juste avant, et
+   * `go_par` dit l'accord. Aucun achat automatique ne peut courir en même temps (interrupteur à 0 : deciderDepense le refuse).
+   */
+  async function ouvrirSurAccord({ quantite, prixUsd, budgetUsd, details, accord }) {
+    const { data: deja, error } = await base.rpc('cloud_ip_depenses_mois');
+    if (error) return { ok: false, raison: 'registre_illisible' };
+    if (!(Number(budgetUsd) > 0) || Number(deja ?? 0) + prixUsd > Number(budgetUsd) + 1e-9) return { ok: false, raison: 'plafond' };
+    const { data, error: e2 } = await base.from('cloud_ip_commandes').insert({ fournisseur: 'iproyal', nature: 'achat', quantite, statut: 'demandee',
+      prix_usd: prixUsd, go_par: `accord écrit de Nico : ${accord}`.slice(0, 300), details: { ...details, accord_ecrit: accord } }).select('id').maybeSingle();
+    if (e2 || !data?.id) return { ok: false, raison: 'registre_refuse' };
+    return { ok: true, id: data.id };
+  }
+
+  /** L'achat sous le stock visé : UNE commande de N IP (N ≤ cloud_ip_achat_max). (04/11 soir) `accordEcrit` : le texte de
+   *  l'accord écrit de Nico — il tient lieu d'interrupteur automatique, rien d'autre (serveur, plafond, solde, registre). */
+  async function acheter(plan, g, solde, { accordEcrit = null } = {}) {
+    const accord = typeof accordEcrit === 'string' && accordEcrit.trim().length >= 10 ? accordEcrit.trim() : null;
     const n = Math.min(Math.max(0, Math.floor(Number(plan?.aCommander) || 0)), g.achatMax);
     if (n <= 0) return { fait: false, raison: 'rien_a_acheter' };
     let montant = NaN, cat = null;
@@ -168,11 +186,13 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     if (Number.isFinite(montant) && !regles.soldeCouvre(solde?.montant, montant)) {
       await alertes?.signaler('serveur', `Solde IPRoyal ${Number(solde?.montant ?? NaN).toFixed(2)} $ : il ne couvre pas le prochain achat (${n} IP, ${montant.toFixed(2)} $). Recharger le solde.`, { quantite: n });
     }
-    const d = regles.deciderDepense({ montantUsd: montant, envAutorise: g.envAutorise, interrupteur: g.achatsAuto,
+    const d = regles.deciderDepense({ montantUsd: montant, envAutorise: g.envAutorise, interrupteur: g.achatsAuto || Boolean(accord),
       budgetUsd: g.budgetUsd, depenseMoisUsd: g.depenseMoisUsd, soldeUsd: solde?.montant });
     if (!d.faire) { await dire('achat', d.raison, texte, { quantite: n, prix_usd: montant }); return { fait: false, raison: d.raison }; }
-    const { data: o } = await base.rpc('cloud_ip_depense_ouvrir', { p_nature: 'achat', p_quantite: n, p_prix_usd: montant, p_ip: null,
-      p_details: { produit: cat.produitId, offre: cat.planId, lieu: cat.lieuId } });
+    const detailsAchat = { produit: cat.produitId, offre: cat.planId, lieu: cat.lieuId, ...(accord ? { accord_ecrit: accord } : {}) };
+    const o = accord && !g.achatsAuto
+      ? await ouvrirSurAccord({ quantite: n, prixUsd: montant, budgetUsd: g.budgetUsd, details: detailsAchat, accord })
+      : (await base.rpc('cloud_ip_depense_ouvrir', { p_nature: 'achat', p_quantite: n, p_prix_usd: montant, p_ip: null, p_details: detailsAchat })).data;
     if (!o?.ok) { await dire('achat', o?.raison ?? 'refus_base', texte, { quantite: n }); return { fait: false, raison: o?.raison }; }
     let commande = null;
     try {

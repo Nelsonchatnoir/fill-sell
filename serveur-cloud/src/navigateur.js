@@ -314,7 +314,8 @@ function specGpu(config) {
   if (!config.navigateurGpu) return { env: [], devices: [], binds: [], groupes: [] };
   return {
     env: ['DISPLAY=:0', 'ECRAN_EXTERNE=1', 'CHROME_ARGS_GL=--use-gl=angle --use-angle=gl'],
-    devices: ['/dev/dri/card0', '/dev/dri/renderD128'].map((d) => ({ PathOnHost: d, PathInContainer: d, CgroupPermissions: 'rwm' })),
+    devices: (config.gpuPeripheriques?.length ? config.gpuPeripheriques : ['card0', 'renderD128']).map((n) => `/dev/dri/${n}`)
+      .map((d) => ({ PathOnHost: d, PathInContainer: d, CgroupPermissions: 'rwm' })),
     binds: ['/tmp/.X11-unix:/tmp/.X11-unix:ro'],
     groupes: config.gpuGroupes ?? [],
   };
@@ -328,7 +329,9 @@ export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBee
   return {
     Image: config.imageChrome,
     Env: [`PROXY_AMONT=${proxyUrl}`, ...(proxyBeebs ? [`PROXY_BEEBS=${proxyBeebs}`] : []), 'PROFIL=/profil',
-      `PLATEFORMES_PERMISES=${(permises ?? []).join(',')}`, `JETON_CONTROLE=${jetonControle}`, `PORT_CONTROLE=${PORT_CONTROLE_RELAIS}`, ...gpu.env],
+      `PLATEFORMES_PERMISES=${(permises ?? []).join(',')}`, `JETON_CONTROLE=${jetonControle}`, `PORT_CONTROLE=${PORT_CONTROLE_RELAIS}`,
+      // (04/11 soir, essai GPU) Le filtre anti-pubs du moteur steel, porté par le relais (parité : BLOQUER_PUBLICITE).
+      ...(config.bloquerPublicite ? [`PUBLICITE=${DOMAINES_PUBLICITE.join(',')}`] : []), ...gpu.env],
     Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId, 'fillsell.moteur': 'chrome' },
     HostConfig: {
       // Le profil Chrome vit dans un sous-dossier du profil du compte (neuf, à l'utilisateur du conteneur) : la purge

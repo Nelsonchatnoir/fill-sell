@@ -137,9 +137,15 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
 
   async function tour() {
     const bilan = {};
-    const { data: e1, error } = await base.rpc('cloud_pool_entretien');
-    if (error) throw new Error(`cloud_pool_entretien : ${error.message}`);
-    bilan.base = e1;
+    // (04/11 soir, essai GPU) ENTRETIEN_POOL=0 : un SECOND serveur (l'essai) ne tient pas le pool — cloud-1 le fait. Seul
+    // le pare-feu de SES navigateurs suit le pool (étape 0) : aucune purge, aucun contrôle, aucune visite, aucune échéance,
+    // aucun achat, aucune livraison, aucune alerte, aucun cloud_pool_entretien() — jamais deux entretiens du même pool.
+    const pool = config?.entretienPool !== false;
+    if (pool) {
+      const { data: e1, error } = await base.rpc('cloud_pool_entretien');
+      if (error) throw new Error(`cloud_pool_entretien : ${error.message}`);
+      bilan.base = e1;
+    } else bilan.pool = 'coupe';
 
     const { data: ips } = await base.from('cloud_ips')
       .select('id, commande, ip, port, etat, user_id, dernier_user_id, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus');
@@ -153,6 +159,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     const appliquees = pf?.appliquees ?? await pareFeu.appliquees().catch(() => null);
     const sortiePermise = (i) => Boolean(appliquees) && sortieOuverte(appliquees, i.ip, i.port ?? 12323);
     bilan.pare_feu = { ecrit: pf?.ecrit ?? false, manquantes: pf?.manquantes?.length ?? null };
+    if (!pool) { journal.info('entretien', bilan); return bilan; }
 
     // 2. Purges
     bilan.purges = 0;

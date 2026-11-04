@@ -9,6 +9,9 @@
 //     requête vers une plateforme reçoit 403 SANS aucune connexion vers le proxy : aucune tâche de l'extension
 //     (sonde, relevés, ventes, détection de vente, messagerie…) ne peut plus visiter seule une plateforme. Les tiers
 //     (DataDome, Google, Apple, Kiabi, Facebook, Supabase, fillsell.app) passent toujours.
+//   · (04/11 soir, essai GPU) LES RÉGIES PUBLICITAIRES (PUBLICITE = « a,b,c », posée par l'orchestrateur quand
+//     BLOQUER_PUBLICITE=1) : refusées en 403 SANS connexion amont, comme chez un bloqueur de pub — la parité du filtre du
+//     moteur steel (navigateur.js, DOMAINES_PUBLICITE). Comptées à part (GET /etat → publicites).
 //   · 0.0.0.0:3130 (PORT_CONTROLE) : le contrôle du verrou, pour l'orchestrateur seul — en-tête X-Jeton =
 //     JETON_CONTROLE (aléatoire à chaque ouverture, jamais journalisé) ; POST /permis {"plateformes":[…]} remplace
 //     l'ensemble, GET /etat rend { permises, refus }. Sans jeton configuré, le contrôle refuse tout.
@@ -37,6 +40,17 @@ export function plateformeDe(hote) {
   return DOMAINES.find(([, re]) => re.test(h))?.[0] ?? null;
 }
 
+/** (04/11 soir) Les domaines des régies lus d'une chaîne « a,b » (pure) : minuscules, formes invalides écartées. */
+export function lireDomaines(texte) {
+  return [...new Set(String(texte ?? '').split(',').map((s) => s.trim().toLowerCase().replace(/\.$/, ''))
+    .filter((d) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)))];
+}
+/** (04/11 soir) L'hôte est-il une régie de la liste (domaine ou sous-domaine) ? (pure) */
+export function estRegie(hote, domaines) {
+  const h = String(hote ?? '').trim().toLowerCase().replace(/\.$/, '').replace(/:\d+$/, '');
+  return Boolean(h) && (domaines ?? []).some((d) => h === d || h.endsWith(`.${d}`));
+}
+
 /** La liste des plateformes permises lue d'une chaîne « a,b » (pure) : inconnues écartées. */
 export function lirePermises(texte) {
   return new Set(String(texte ?? '').split(',').map((s) => s.trim().toLowerCase()).filter((p) => PLATEFORMES_VERROU.includes(p)));
@@ -59,7 +73,7 @@ const ecouter = (serveur, port, hote) => new Promise((ok, ko) => {
  * Testé tel quel : tests/verrou.test.mjs le lance en local avec un faux proxy amont.
  */
 export async function demarrerRelais({
-  proxyAmont, proxyBeebs = null, permises = '', jetonControle = '',
+  proxyAmont, proxyBeebs = null, permises = '', jetonControle = '', publicite = '',
   portRelais = 3128, portExtension = 3129, portControle = 3130, hoteControle = '0.0.0.0', dossierCrx = '/extension-crx',
 } = {}) {
   const DEFAUT = amont(proxyAmont);
@@ -68,6 +82,9 @@ export async function demarrerRelais({
   const pour = (hote) => (BEEBS && /(^|\.)beebs\.app$/i.test(String(hote)) ? BEEBS : DEFAUT);
   let permis = lirePermises(permises);
   const refus = new Map(); // hôte → nombre de requêtes refusées
+  const regies = lireDomaines(publicite);
+  let publicites = 0;      // (04/11 soir) requêtes de régies refusées (jamais sorties)
+  const regie = (hote) => { if (!regies.length || !estRegie(hote, regies)) return false; publicites++; return true; };
   /** Le verrou : true si l'hôte est une plateforme NON permise (la requête est alors refusée, rien ne sort). */
   const verrouille = (hote) => {
     const pf = plateformeDe(hote);
@@ -80,7 +97,7 @@ export async function demarrerRelais({
   const relais = http.createServer((req, res) => {
     // Requête http:// en clair (rare) : relayée telle quelle, avec les identifiants du proxy amont.
     let cible; try { cible = new URL(req.url); } catch { res.writeHead(400); res.end(); return; }
-    if (verrouille(cible.hostname)) { res.writeHead(403); res.end(); return; }
+    if (verrouille(cible.hostname) || regie(cible.hostname)) { res.writeHead(403); res.end(); return; }
     const a = pour(cible.hostname);
     const entetes = { ...req.headers }; if (a.auth) entetes['proxy-authorization'] = a.auth;
     const up = http.request({ host: a.hote, port: a.port, method: req.method, path: req.url, headers: entetes }, (r) => { res.writeHead(r.statusCode ?? 502, r.headers); r.pipe(res); });
@@ -91,7 +108,7 @@ export async function demarrerRelais({
     const cible = String(req.url);
     const hote = cible.replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
     client.on('error', () => {});
-    if (verrouille(hote)) { client.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n'); return; }
+    if (verrouille(hote) || regie(hote)) { client.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n'); return; }
     const a = pour(hote);
     const up = net.connect(a.port, a.hote, () => {
       up.write(`CONNECT ${cible} HTTP/1.1\r\nHost: ${cible}\r\n${a.auth ? `Proxy-Authorization: ${a.auth}\r\n` : ''}\r\n`);
@@ -131,7 +148,7 @@ export async function demarrerRelais({
     const repondre = (code, corps) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(corps)); };
     // Aucune réponse aux pré-vols CORS : une page ouverte dans Chrome ne peut pas joindre ce contrôle.
     if (!jetonValide(req.headers['x-jeton'])) return repondre(401, { erreur: 'jeton' });
-    if (req.method === 'GET' && req.url === '/etat') return repondre(200, { permises: [...permis].sort(), refus: Object.fromEntries(refus) });
+    if (req.method === 'GET' && req.url === '/etat') return repondre(200, { permises: [...permis].sort(), refus: Object.fromEntries(refus), publicites });
     if (req.method === 'POST' && req.url === '/permis') {
       let corps = '';
       req.on('data', (d) => { corps += d; if (corps.length > 4096) req.destroy(); });
@@ -156,6 +173,7 @@ export async function demarrerRelais({
     ports,
     permises: () => [...permis].sort(),
     refus: () => Object.fromEntries(refus),
+    publicites: () => publicites,
     fermer: () => Promise.all([relais, extension, controle].map((s) => new Promise((ok) => s.close(() => ok())))),
   };
 }
@@ -165,7 +183,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const e = process.env;
   demarrerRelais({
     proxyAmont: e.PROXY_AMONT, proxyBeebs: e.PROXY_BEEBS || null, permises: e.PLATEFORMES_PERMISES || '',
-    jetonControle: e.JETON_CONTROLE || '',
+    jetonControle: e.JETON_CONTROLE || '', publicite: e.PUBLICITE || '',
     portRelais: Number(e.PORT_RELAIS || 3128), portExtension: Number(e.PORT_EXTENSION || 3129), portControle: Number(e.PORT_CONTROLE || 3130),
     // Le poste Windows (un relais par utilisateur, sur la même machine) l'écoute en local seulement.
     hoteControle: e.HOTE_CONTROLE || '0.0.0.0',

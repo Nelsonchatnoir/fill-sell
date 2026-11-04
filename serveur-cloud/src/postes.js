@@ -36,7 +36,8 @@ export function redemarrerPourMemoire({ mo, seuilMo, enCours = 0, connexion = fa
   return true;
 }
 
-export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null }) {
+export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null,
+  enregistrementFond = null }) {
   const dernieresFins = new Map();
   const dernieresSauvegardes = new Map();
   const redemarragesMemoire = new Map();   // (03/11) user → instant du dernier redémarrage pour la mémoire
@@ -218,6 +219,8 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       await noter(user, 'actif', { serveur: config.serveurNom, conteneur: h.conteneur, profil: profilId,
         session_fillsell_id: s.sessionId ?? '', motif, ip_mode: sortie.mode });
       journal.info('poste_ouvert', { user, motif, coffre: bilanCoffre, session: s.source });
+      // (04/11 soir, essai GPU) L'enregistrement de fond (ENREGISTREMENT_FOND=1) : jamais attendu, jamais une cause d'échec.
+      enregistrementFond?.suivre(user, h).catch((e) => journal.alerte('enregistrement_fond_echec', { user, erreur: e.message }));
       return h;
     } catch (e) {
       await noter(user, 'erreur', { erreur: String(e.message).slice(0, 300) });
@@ -231,6 +234,7 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     if (h) {
       try { await sauvegarder(user, h); } catch (e) { journal.alerte('sauvegarde_fermeture_echec', { user, erreur: e.message }); }
     }
+    enregistrementFond?.arreter(user, raison);
     await navigateurs.fermer(user, raison);
     dernieresFins.set(user, Date.now());
     await noter(user, 'eteint', { raison });

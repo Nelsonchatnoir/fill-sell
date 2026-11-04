@@ -71,6 +71,10 @@ fillsell-backups/
 # future baseline.
 !supabase/migrations/*.sql
 !supabase/migrations_archive/*.sql
+# (04/11, ordre de Nico) …ET les scripts de réparation du Cloud : du code joué sur le compte de test de Nico (sauvegarde
+# + inverse), jamais une sauvegarde de base ; le retour d'un essai ne doit pas vivre que sur un poste. Les autres .sql de
+# scripts/reparations/ restent ignorés (cas clients).
+!scripts/reparations/*_cloud_*.sql
 
 # send-relance : SUPPRIMEE de la prod ET du depot le 20/09/2026.
 # Elle avait ete exclue d ici parce qu elle portait ~110 adresses reelles ;

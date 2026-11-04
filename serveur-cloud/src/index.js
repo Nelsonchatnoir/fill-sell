@@ -27,6 +27,7 @@ import { creerEndurance } from './endurance.js';
 import { creerVerifications } from './verifications.js';
 import { creerFlotte, capaciteServeur } from './flotte.js';
 import { tailleEnMo } from './navigateur.js';
+import { creerEnregistrementFond } from './enregistrementFond.js';
 
 const configLue = lireConfig();
 // (03/11, point 1) LA CAPACITÉ : NAVIGATEURS_MAX s'il est réglé ; sinon ⌊(mémoire de l'hôte − socle) / plafond d'un
@@ -48,7 +49,9 @@ const regles = await chargerRegles();
 
 let connexions = null;
 let endurance = null;
-const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp,
+// (04/11 soir, essai GPU) L'enregistrement de fond : actif sur ENREGISTREMENT_FOND=1 seulement (sinon il ne fait rien).
+const enregistrementFond = creerEnregistrementFond({ config, journal });
+const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp, enregistrementFond,
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), arretEndurance: () => endurance?.arretee() ?? null });
 // (02/11) Les vérifications anti-robot : une règle du PRODUIT, toujours active (verifications.js) — un blocage n'arrête
 // que sa plateforme ; « Résoudre la vérification » la rouvre ; l'essai de 48 h en garde seulement le journal.

@@ -1,5 +1,16 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 04/11/2026 soir → 05/11 18:00 — ESSAI « RECETTE DE PROD » SUR cloud-2 (machine à vraie puce) (à lire EN PREMIER)
+Détail et état : `docs/enquetes/beebs-cloud-0411/RAPPORT.md` § 15.
+- cloud-2 = enchère Hetzner 3104939 (5.9.80.213, i9-13900, UHD 770), Ubuntu 24.04 + Google Chrome officiel par la puce,
+  `ENTRETIEN_POOL=0` (cloud-1 garde le pool), `ENREGISTREMENT_FOND=1`, `ENREGISTREMENT_CONNEXIONS=1`, achats d'IP coupés.
+- Pendant l'essai, cloud-1 ne sert PERSONNE (`COMPTES_AUTORISES` = compte inexistant ; jamais vide). ⛔ Ne jamais lui rendre
+  Nico avant l'INVERSE de la bascule (coffre restauré d'abord), sinon il purgerait les sessions de son profil.
+- Retour : `docker compose stop orchestrateur` sur cloud-2 → `20261104_cloud_essai_gpu_bascule_nico_INVERSE.sql` (:ip_neuve)
+  → cloud-1 `COMPTES_AUTORISES=f44b5917-…` + orchestrateur relancé. Machine rendue sur ordre de Nico seulement
+  (`POST /server/3104939/cancellation`, `cancellation_date=now`).
+- `cloud_ip_achats_auto = 0` : un achat d'IP = `acheter-une-ip.mjs --acheter --accord-ecrit="…"` sur accord écrit de Nico.
+
 ## ⛔ 04/11/2026 après-midi — RÉPARATION, INTERRUPTEUR DES VISITES, POINTS 2-3 (à lire EN PREMIER)
 Détail : `docs/enquetes/beebs-cloud-0411/RAPPORT.md` § 8 à 10.
 - Compte de Nico remis comme avant 12:23 (14:05) : IP 39, profil d'avant (empreinte 7a1cfa22), coffre refait

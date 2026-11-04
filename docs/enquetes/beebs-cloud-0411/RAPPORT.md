@@ -277,3 +277,42 @@ refusé, non contourné). Exécution : `npx supabase db query --linked -f <fichi
 - aucun achat d'IP ni de serveur, aucun essai Beebs, aucun contact avec Beebs sans accord écrit de Nico ;
 - aucune fausse valeur d'empreinte, aucun navigateur « anti-détection », aucun résolveur, aucune IP tournante ;
 - Vinted, Leboncoin et Depop jamais cassés par ce chantier.
+
+## 15. L'essai « recette de prod » sur une machine à vraie puce (04/11 soir → 05/11 18:00, ordre de Nico)
+**Ordre de Nico (17:04)** : compte Cloud de Nico ENTIÈREMENT sur une machine d'enchère à puce Intel UHD 770, Linux + Google
+Chrome officiel par la vraie puce, IP neuve (4 $), profil neuf, aucun cookie de cloud-1 ; Nico se connecte lui-même aux
+quatre plateformes ; fonctionnement normal de prod ; enregistrement complet ; rapports ~21:00, ~08:00, ~18:00 ; verdict
+05/11 ~18:00. Plafond 15 € ; une seule IP ; retour sur cloud-1 au moindre souci grave.
+
+**Préalables (17:18)** — `scripts/reparations/20261104_cloud_essai_gpu_preparatifs.sql` (+ INVERSE, sauvegarde
+`_backup_0411_essai_gpu_prep`) : `cloud_ip_achats_auto = 0` ; refus Beebs des IP 40 et 41 notés (`restreint`, preuve = les
+fichiers d'essai de 13:40 et 15:45), visites Beebs toujours à 0 → aucune visite. ⚠ La règle d'attribution met une IP
+refusée en fin de file, elle ne l'exclut pas (toutes les IP disponibles ont un refus Beebs). Les scripts `.sql` du Cloud
+entrent au dépôt par une exception ÉTROITE de `.gitignore` (`scripts/reparations/*_cloud_*.sql`) ; celui qui appelle
+`cloud_ip_liberer` est désormais arrêté net par sa première ligne. Leboncoin (relu 17:10) : la 1re lecture d'après la
+pause (17:02:37) a pris un 403 (API messagerie), glissière 17:03:07, contre-visite 17:06 « passe » ; messagerie de nouveau
+en pause jusqu'au 05/11 17:02:37.
+
+**La machine** — enchère Hetzner **3104939** (choix de Nico : plus aucune i5-12500, la seule i5-13500 portait une RTX 4000) :
+i9-13900, ASRock Rack W680D4U-1L, 64 Go, FSN1-DC7 ; **5.9.80.213** ; commandée 17:20:27 (B20261104-3542120-3113293),
+livrée 17:26 ; 0,3109 + 0,0027 € HT/h (plafond 195,70 € HT/mois si gardée). Puce lue au secours : « Raptor Lake-S GT1 [UHD
+Graphics 770] [8086:a780] », i915. Ubuntu 24.04.5 (installimage, ESP), `deploiement/gpu/preparer-poste-gpu.sh`, sortie
+HDMI-A-1 forcée : Xorg 1920×1080, `glxinfo` « Mesa Intel(R) Graphics (RPL-S) », Mesa 25.2.8, accéléré.
+
+**Le code (derrière des réglages, défauts = cloud-1 inchangé ; cloud-1 n'est pas redéployé)** :
+- `ENTRETIEN_POOL=0` : le 2e serveur ne tient pas le pool (seul le pare-feu de ses navigateurs le suit) ;
+- `acheter-une-ip.mjs --accord-ecrit="…"` : l'accord écrit de Nico remplace le seul interrupteur (serveur, plafond, solde,
+  registre tiennent ; le registre porte l'accord) ;
+- relais du moteur Chrome : régies publicitaires refusées comme sur steel (parité du filtre) ;
+- `ENREGISTREMENT_FOND=1` (`src/enregistrementFond.js`) : chaque requête des onglets de travail vers une plateforme ou
+  DataDome, et chaque onglet ouvert/fermé, dans `etat/essais/fond-<compte>-<jour>.jsonl` (Network seulement, rien de
+  visible par la page ; le service worker de l'extension n'est PAS suivi : `ENREGISTREMENT_FOND_SW`) ;
+- `ENREGISTREMENT_CONNEXIONS=1` : « Me connecter » / « Résoudre » enregistrés pour les quatre plateformes, affichage inchangé ;
+- image Chrome sur Ubuntu 24.04 à jour (le Mesa de l'hôte) et les polices d'`ubuntu-desktop-minimal`.
+
+**La bascule** — `20261104_cloud_essai_gpu_bascule_nico.sql` (+ INVERSE, sauvegarde `_backup_0411_essai_gpu`) : le coffre
+est COMMUN aux serveurs → lignes Vinted / Leboncoin / Depop sauvegardées puis retirées (accord de Nico), session FillSell
+gardée ; poste → cloud-2, profil neuf `p-f44b5917-1443a482c05b` (celui de cloud-1, `p-f44b5917-60c90d1101a8`, reste sur son
+disque) ; IP 39 → disponible (jamais au repos), IP neuve → Nico. cloud-1 cesse de servir Nico AVANT (`COMPTES_AUTORISES` =
+un compte inexistant, jamais vide : vide = tous) : sinon, si cloud-2 se taisait 15 min, la base rendrait le compte à cloud-1
+qui purgerait les sessions de son profil (coffre vide). Retour : cloud-2 arrêté → INVERSE → cloud-1 rouvert sur Nico.

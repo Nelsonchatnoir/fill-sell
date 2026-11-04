@@ -58,6 +58,9 @@ export function lireConfig(env = process.env) {
     // GPU_GROUPES = les gid video et render de l'hôte (getent group video render).
     navigateurGpu: lireBool(env.NAVIGATEUR_GPU, false),
     gpuGroupes: String(env.GPU_GROUPES ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s)),
+    // (04/11 soir, essai GPU) Les nœuds de la puce Intel sur CET hôte (une carte mère à BMC ASPEED donne card0 à l'ASPEED
+    // et card1 à la puce Intel) : « card1,renderD128 » ; vide = card0,renderD128 (le poste du 30/10).
+    gpuPeripheriques: String(env.GPU_PERIPHERIQUES ?? '').split(',').map((s) => s.trim()).filter((s) => /^(card|renderD)\d+$/.test(s)),
     memoireNavigateur: env.MEMOIRE_NAVIGATEUR?.trim() || '1400m',
     // (03/11, point 1) Les régies publicitaires échouent comme chez un bloqueur de pub (navigateur.js, DOMAINES_PUBLICITE).
     bloquerPublicite: lireBool(env.BLOQUER_PUBLICITE, true),
@@ -72,6 +75,17 @@ export function lireConfig(env = process.env) {
     // ── Rythme ──────────────────────────────────────────────────────────────
     tickPlanificateurS: lireEntier(env.TICK_PLANIFICATEUR_S, 60),
     tickEntretienMin: lireEntier(env.TICK_ENTRETIEN_MIN, 60),
+    // (04/11 soir, essai GPU) 0 = ce serveur ne tient PAS le pool (purges, contrôles, visites, échéances, achats,
+    // alertes) : seul le pare-feu de ses navigateurs suit le pool (entretien.js). Un seul serveur tient le pool.
+    entretienPool: lireBool(env.ENTRETIEN_POOL, true),
+    // (04/11 soir, essai GPU) L'enregistrement de FOND (enregistrementFond.js) : chaque requête des onglets de travail et
+    // du service worker de l'extension vers une plateforme ou DataDome, dans etat/essais/fond-…jsonl. 1 = actif.
+    enregistrementFond: lireBool(env.ENREGISTREMENT_FOND, false),
+    // Le service worker de l'extension aussi : 1 = oui. ⚠ Une session DevTools attachée l'empêche de s'endormir.
+    enregistrementFondSw: lireBool(env.ENREGISTREMENT_FOND_SW, false),
+    // (04/11 soir, essai GPU) L'enregistrement des « Me connecter » / « Résoudre » de TOUTES les plateformes (sans lui :
+    // Beebs seulement), sans changer leur affichage. 1 = actif.
+    enregistrementConnexions: lireBool(env.ENREGISTREMENT_CONNEXIONS, false),
     sessionMinimaleMin: lireEntier(env.SESSION_MINIMALE_MIN, 8),
     // Le délai entre deux sessions se lit dans la BASE (coin_config
     // cloud_delai_sessions_min) : non tranché au 05/10, jamais figé ici.

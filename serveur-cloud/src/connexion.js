@@ -393,7 +393,9 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     // etat/essais/<plateforme>-<heure>.jsonl (hôte, chemin, méthode, type, code, échec ; jamais une query, un en-tête ni
     // un corps). Network côté DevTools : rien de visible par la page. Ce que le verrou ou le filtre anti-pubs coupent y
     // paraît (net::ERR_BLOCKED_BY_CLIENT, « publicite »).
-    const enregistrement = bureau && config.dossierEtat ? (() => {
+    // (04/11 soir, essai GPU) ENREGISTREMENT_CONNEXIONS=1 : toutes les plateformes, chacune dans SON affichage (téléphone ou
+    // bureau) — l'enregistrement n'ajoute que Network.enable et l'attache des cadres, rien de visible par la page.
+    const enregistrement = (bureau || config.enregistrementConnexions === true) && config.dossierEtat ? (() => {
       const fichier = `${config.dossierEtat}/essais/${plateforme}-${new Date().toISOString().replace(/[:.]/g, '-')}-${mode}.jsonl`;
       const sessions = new Map();     // sessionId → « page », « fenetre » ou l'hôte du cadre
       const requetes = new Map();     // sessionId:requestId → requête en cours
@@ -423,7 +425,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         if (finies.has(cle) && !requetes.has(cle)) { ecrire({ le: new Date().toISOString(), evenement: 'cookies_tardifs', id: cle.split(':').pop(), [champ]: valeur }); return; }
         extras.set(cle, { ...(extras.get(cle) ?? {}), [champ]: valeur });
       };
-      ecrire({ le: new Date().toISOString(), evenement: 'debut', plateforme, mode, vue: formatBureau(dims) });
+      ecrire({ le: new Date().toISOString(), evenement: 'debut', plateforme, mode, vue: bureau ? formatBureau(dims) : { telephone: { ...dims } } });
       return {
         fichier,
         noter: (o) => ecrire({ le: new Date().toISOString(), ...o }),
@@ -501,7 +503,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       if (finie) return;
       const p = m.params ?? {};
       if (m.method === '__ferme__') return fermer('navigateur_ferme');
-      if (enregistrement?.evenement(m)) return;   // (04/11) Beebs : réseau de la page et de ses cadres, enregistré
+      if (enregistrement?.evenement(m)) return;   // (04/11) Beebs (04/11 soir : toutes, sur réglage) : réseau de la page et de ses cadres
       if (m.method === 'Page.screencastFrame') {
         const c = sessionDe(m.sessionId);
         await cdp.send('Page.screencastFrameAck', { sessionId: p.sessionId }, m.sessionId).catch(() => {});
