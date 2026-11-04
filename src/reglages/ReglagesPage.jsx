@@ -36,9 +36,10 @@ import { GROUPES, entreesVisibles } from './plan';
 import { useSessionsPlateformes } from './useSessionsPlateformes';
 import { useVeritePlateformes } from './useVeritePlateformes';
 import { etatsDepuisVerite } from '../utils/veritePlateformes';
-import { consommationVisible, lireProchaineRemiseAZero, formaterRemiseAZero, formaterDatePleine } from './quotas';
+import { consommationVisible, lireProchaineRemiseAZero, formaterRemiseAZero, formaterDatePleine, lireConfigJauges } from './quotas';
+import { grilleActive } from '../utils/jauges';
 import {
-  EcranReglages, Groupe, Carte, Ligne, Jauge, JaugeRepublication, CarteIdentite, PiedPage,
+  EcranReglages, Groupe, Carte, Ligne, Jauge, JaugeRepublication, CarteIdentite, PiedPage, ConsommationGrille,
 } from './ReglagesUI';
 import SousPageAbonnement from './SousPageAbonnement';
 import SousPagePlateformes from './SousPagePlateformes';
@@ -223,6 +224,19 @@ export default function ReglagesPage({
     return () => { mort = true; };
   }, [user?.id]);
   const remiseAZero = useMemo(() => formaterRemiseAZero(prochainGrant, lang), [prochainGrant, lang]);
+  // (04/11, grille à 3 jauges) Les volumes des paliers (coin_config, clés jauge_*) pour le lien d'une jauge vide —
+  // lus SEULEMENT quand quotas_etat porte la grille : interrupteur à 0, aucune lecture de plus. undefined tant que
+  // la base n'a pas répondu (le lien attend), null si illisible (repli de utils/jauges).
+  const grille = grilleActive(quotas);
+  const [configJauges, setConfigJauges] = useState(undefined);
+  useEffect(() => {
+    if (!grille) return undefined;
+    let mort = false;
+    lireConfigJauges()
+      .then((m) => { if (!mort) setConfigJauges(m); })
+      .catch(() => { if (!mort) setConfigJauges(null); });
+    return () => { mort = true; };
+  }, [grille]);
   // La MÊME échéance, en date pleine, pour la carte de formule. Chez un abonné
   // elle vient de la boutique : c'est la date du prochain prélèvement. Chez un
   // compte gratuit ou offert, elle est ancrée sur la date d'inscription — la
@@ -250,6 +264,9 @@ export default function ReglagesPage({
     // devient « 99a9179 », qui se compare au git log en une seconde.
     appBuild: String(appBuild ?? '').split('+')[1]?.replace(/-dirty$/, '') || null,
     quotas, remiseAZero, prochainPrelevement,
+    // (04/11, grille à 3 jauges) La même remise à zéro, brute (ISO), pour le mur qu'ouvre une jauge vide ; et les
+    // volumes des paliers. Lus seulement avec la grille (cf. plus haut).
+    remiseIso: prochainGrant, configJauges,
     username, setUsername,
     currency, deviseLabel, saveCurrency, devises,
     adresseLbc: {
@@ -433,9 +450,13 @@ function LigneEntree({ e, c, T }) {
 
 // La SEULE carte de contenu du hub : la consommation du mois. Les mêmes
 // compteurs que la pop-up (quotas_etat), avec le reste en clair.
-function CarteConsommation({ c, T }) {
+// (04/11) Avec la grille à 3 jauges (quotas_etat porte « grille »), la carte est celle de ReglagesUI
+// (ConsommationGrille, variante 'hub') : la même source et les mêmes jauges que la sous-page Abonnement.
+// Interrupteur à 0 : le chemin ci-dessous, inchangé.
+export function CarteConsommation({ c, T }) {
   const q = c.quotas;
   if (!q || q.error) return null;
+  if (grilleActive(q)) return <ConsommationGrille c={c} T={T} variante="hub" />;
   const lignes = [];
   if (q.annonces?.plafond != null) {
     lignes.push(

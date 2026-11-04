@@ -1049,6 +1049,11 @@ export default function ConversionModal({
   // (15/10, P17) { ecran } : l'écran d'où la modale s'ouvre (stock, lens,
   // ventes, stats, reglages, stepper…) — télémétrie seulement, jamais l'affichage.
   contexte = null,
+  // (04/11, grille à 3 jauges) L'hôte sait déjà, par quotas_etat, que la grille est active (grilleActive(quotas)).
+  // Tant que coin_config n'est pas lue, la feuille part alors sur le repli AVEC la grille (grilleDuPalier se replie
+  // sur GRILLE_REPLI) au lieu d'un éclair de l'ancienne feuille ; la config lue fait foi ensuite. false (défaut) :
+  // rien ne change.
+  grille: grilleHote = false,
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
@@ -1199,7 +1204,7 @@ export default function ConversionModal({
 
   if (!isOpen) return null;
 
-  const K = cfg || COIN_CONFIG_FALLBACK;
+  const K = cfg || (grilleHote === true ? { ...COIN_CONFIG_FALLBACK, grille_trois_jauges: 1 } : COIN_CONFIG_FALLBACK);
   // Suppression de la monnaie interne (02-03/09) : les anciens CAS 1/2 sont
   // MORTS (le serveur ne peut plus émettre insufficient_coins, prix à 0) et
   // leurs props ont disparu. La modale ne parle qu'en gestes et en plans.

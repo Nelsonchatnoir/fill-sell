@@ -22,7 +22,10 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useFondFige } from '../utils/modale';
+import { JAUGES, jaugesDuCompte, palierQuiDebloque, grilleDuPalier, nombre, motJauge } from '../utils/jauges';
+import { nomDuPalier } from '../utils/palier';
 import { R, CSS_REGLAGES } from './theme';
+import { murDeLaJauge } from './refusEtMurs';
 
 // ── Z-INDEX 400, ET C'EST TOUT LE SUJET DES « LIGNES MORTES » ──────────────
 // La page est un PORTAIL sur document.body ; les couches que l'app ouvre
@@ -245,6 +248,160 @@ export function JaugeRepublication({ repub, T }) {
       reste={repub.restantes}
       sous={repub.restantes == null ? null : T.restantes(repub.restantes, T.motRepublications)}
     />
+  );
+}
+
+// ══ LA GRILLE À 3 JAUGES (04/11/2026, maquettes 3.1 et 3.2 validées par Nico le 03/11) ═══════════════════════
+// Rendue SEULEMENT quand quotas_etat porte « grille » (jaugesDuCompte non nul) : interrupteur à 0, le hub et la
+// sous-page Abonnement gardent leurs compteurs d'avant, à l'identique.
+//   · Annonces · Publications · Remontées, toujours dans cet ordre ;
+//   · « illimitées » se dit avec le mot, en vert — jamais une jauge pleine ni un faux chiffre ;
+//   · une jauge vide passe en ambre (Jauge) et dit en une ligne quand elle revient — la remise à zéro LUE par la
+//     page (c.remiseAZero), jamais une date inventée — et le palier qui la débloque, par un lien qui ouvre les
+//     offres sur le mur de cette jauge ;
+//   · les retouches IA restent À PART, sous les jauges (rien en Free : plafond 0) ;
+//   · Business : « Tout illimité, sauf Lens (600 par mois) et retouches IA (50 par mois). », puis Lens.
+// Le hub (variante 'hub', plus court) et la sous-page ('page') lisent la MÊME source : ils disent la même chose.
+// c.configJauges : les clés jauge_* de coin_config, lues par la page — undefined tant qu'elle n'a pas répondu (le
+// lien du palier attend : aucun chiffre en dur), null si illisible (repli GRILLE_REPLI, comme la feuille des offres).
+
+export function JaugeIllimitee({ libelle, T, children }) {
+  return (
+    <div data-jauge-illimitee="1" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+        <span style={{ fontSize: 14.5, fontWeight: 500, color: R.ink }}>{libelle}</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: R.tealDeep }}>{T.illimitees}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Le lien d'une jauge vide : 44 px de zone tactile (marges négatives : la ligne de texte ne grandit pas).
+function LienMur({ onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rg-focus"
+      data-lien-mur="1"
+      style={{
+        background: 'none', border: 'none', padding: '13px 0', margin: '-13px 0', cursor: 'pointer',
+        fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: R.tealDeep,
+        textDecoration: 'underline', textUnderlineOffset: 2,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function ConsommationGrille({ c, T, variante = 'page' }) {
+  const q = c.quotas;
+  const jauges = jaugesDuCompte(q);
+  if (!jauges) return null;
+  const lang = c.lang === 'en' ? 'en' : 'fr';
+  const hub = variante === 'hub';
+  const d = c.remiseAZero ?? null;
+  const LIBELLE = { annonces: T.jaugeAnnonces, publications: T.jaugePublications, remontees: T.jaugeRemontees };
+  const toutIllimite = JAUGES.every((cle) => jauges[cle].illimite);
+  const lens = jauges.lens;
+  const ret = q.retouches?.plafond != null && Number(q.retouches.plafond) > 0 ? q.retouches : null;
+
+  // Le palier qui débloque une jauge vide (le plus proche, pas le plus cher), et le mur qu'ouvre son lien.
+  const lienDuPalier = (cle) => {
+    if (c.configJauges === undefined || typeof c.ouvrirOffres !== 'function') return null;
+    const reco = palierQuiDebloque(cle, q.palier, c.configJauges);
+    const mur = reco ? murDeLaJauge(cle, q, { remise: c.remiseIso ?? null }) : null;
+    if (!mur) return null;
+    const v = grilleDuPalier(c.configJauges, reco)[cle];
+    return (
+      <LienMur onClick={() => c.ouvrirOffres('reglages_jauge', mur)}>
+        {T.debloquePar(v === Infinity ? null : nombre(v, lang), nomDuPalier(reco))}
+      </LienMur>
+    );
+  };
+  const sousDe = (cle, j) => {
+    if (j.restantes > 0) return T.resteJauge(nombre(j.restantes, lang), motJauge(cle, j.restantes, lang), j.restantes);
+    const phrase = hub ? T.jaugeVideCourt(cle, d) : T.jaugeVide(nombre(j.plafond, lang), motJauge(cle, j.plafond, lang), cle, d);
+    const lien = lienDuPalier(cle);
+    return <>{phrase}{lien ? <> {lien}</> : null}</>;
+  };
+  const jaugeFinie = (cle, j) => (
+    <Jauge key={cle} libelle={LIBELLE[cle]} consomme={j.consommes} plafond={j.plafond} reste={j.restantes} sous={sousDe(cle, j)} />
+  );
+  // Lens du Business : « dont Lens » sous les annonces (page), « Lens » seul dans l'accueil.
+  const jaugeLens = () => {
+    if (!lens) return null;
+    const sous = lens.restantes > 0
+      ? (hub ? T.scansRestants : T.scansLensRestants)(nombre(lens.restantes, lang), lens.restantes)
+      : (hub ? T.lensVideCourt(d) : T.lensVide(nombre(lens.plafond, lang), d));
+    return <Jauge libelle={hub ? T.jaugeLens : T.dontLens} consomme={lens.consommes} plafond={lens.plafond} reste={lens.restantes} sous={sous} />;
+  };
+  const phraseBusiness = toutIllimite ? (
+    <p data-tout-illimite="1" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: R.tealDeep, lineHeight: 1.45 }}>
+      {T.toutIllimite(lens ? nombre(lens.plafond, lang) : null, ret ? nombre(ret.plafond, lang) : null)}
+    </p>
+  ) : null;
+
+  if (hub) {
+    const r = ret ? (Number.isFinite(Number(ret.restantes)) ? Number(ret.restantes) : Math.max(0, Number(ret.plafond) - (Number(ret.consommes) || 0))) : null;
+    return (
+      <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {toutIllimite
+          ? <>{phraseBusiness}{jaugeLens()}</>
+          : JAUGES.map((cle) => (jauges[cle].illimite
+            ? <JaugeIllimitee key={cle} libelle={LIBELLE[cle]} T={T} />
+            : jaugeFinie(cle, jauges[cle])))}
+        {ret && (
+          // Les retouches IA : une ligne À PART, sous un filet, hors des 3 jauges.
+          <div data-retouches-a-part="1" style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10,
+            borderTop: `1px solid ${R.ligneDouce}`, paddingTop: 12,
+          }}>
+            <span style={{ fontSize: 13.5, fontWeight: 500, color: R.ink }}>{T.retouchesIA}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: R.ink, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+              {T.retouchesSur(nombre(r, lang), nombre(Number(ret.plafond), lang))}
+            </span>
+          </div>
+        )}
+      </Carte>
+    );
+  }
+
+  return (
+    <>
+      <Groupe intitule={T.consommation} appoint={d ? T.remiseAZeroLe(d) : null}>
+        <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {phraseBusiness}
+          {JAUGES.map((cle) => {
+            const j = jauges[cle];
+            if (!j.illimite) return jaugeFinie(cle, j);
+            return (
+              <JaugeIllimitee key={cle} libelle={LIBELLE[cle]} T={T}>
+                {cle === 'annonces' && lens ? (
+                  <div style={{ marginLeft: 12, paddingLeft: 10, borderLeft: `2px solid ${R.ligneDouce}` }}>{jaugeLens()}</div>
+                ) : null}
+              </JaugeIllimitee>
+            );
+          })}
+        </Carte>
+      </Groupe>
+      {ret && (
+        // Les retouches IA : leur propre groupe, sous les jauges, inchangé (Premium 5, Pro 20, Business 50).
+        <Groupe intitule={T.retouchesIA} appoint={d ? T.remiseAZeroLe(d) : null}>
+          <Carte pad>
+            <Jauge
+              libelle={T.retouchesIA}
+              consomme={ret.consommes}
+              plafond={ret.plafond}
+              reste={ret.restantes}
+              sous={ret.restantes != null ? T.restantes(ret.restantes, T.motRetouches) : null}
+            />
+          </Carte>
+        </Groupe>
+      )}
+    </>
   );
 }
 

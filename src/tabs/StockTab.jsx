@@ -89,6 +89,8 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // le filtre, la modale de statut et la pastille de l'onglet (App.jsx).
 import { causeARegler, jobSupplante, derniersParLigne, republicationLibereeApresArret, pastilleRepublicationEnPause, indexSelonARegler, plateformesHorsJeu as plateformesHorsJeuDe } from '../utils/erreursVisibles';
 import { jourRemise, messagePlafondRepublicationGratuit } from '../utils/jourRemise';
+// (04/11, grille à 3 jauges) Un refus de remontée → le mur Remontées, ou la phrase du garde-fou. Interrupteur à 0 : null.
+import { suiteDuRefus, publicationsRestantes } from '../reglages/refusEtMurs';
 // Relevé des annonces par plateforme (2026-09-17, sync lot 2) — FERMÉ tant que
 // coin_config.sync_multi_ouverte = 0 : le bloc n'existe pas, aucun texte ne
 // l'annonce (lireSyncMultiOuverte, fail-closed).
@@ -6536,10 +6538,24 @@ const StockTab = memo(function StockTab({
   const ouvrirModalePlafondRepub = (res) => {
     if (typeof ouvrirModalePlafond !== 'function') return false;
     noterGeste('plafond_repub');
+    // (04/11, grille à 3 jauges) Le mur Remontées que rend republish_cap dit aussi « il te reste N publications »
+    // (quotaInfo.publications_restantes). Sans la grille, publicationsRestantes rend null : l'appel d'avant.
+    const pubsRestantes = publicationsRestantes(quotas);
     ouvrirModalePlafond('plafond_republication_free', {
       trigger: 'republish_cap',
       plafondRepub: { plafond: res?.plafond ?? null, faites: res?.faites ?? null, remise_le: res?.remise_le ?? null },
+      ...(pubsRestantes != null ? { quotaInfo: { publications_restantes: pubsRestantes } } : {}),
     });
+    return true;
+  };
+  // (04/11, grille à 3 jauges) Le Premium à 1 500 remontées (plafond_republication_mensuel) : le MUR Remontées, qui
+  // dit ce qui est plein, quand ça revient et ce qui le débloque — avant, une phrase seule sur la carte (cas du
+  // 29/10). Le garde-fou du jour, lui, n'est JAMAIS un mur : sa phrase (res.message) dans le message de la carte.
+  // Sans la grille (ou sans hôte de modale) : false, le chemin d'avant.
+  const ouvrirMurRemontees = (suite) => {
+    if (!suite?.mur || typeof ouvrirModalePlafond !== 'function') return false;
+    noterGeste('plafond_repub');
+    ouvrirModalePlafond('plafond_republication_mensuel', { trigger: 'quota_geste', quotaInfo: suite.mur });
     return true;
   };
   // (05/10, décision Nico) La règle du SERVEUR : 50 republications PAR MOIS en
@@ -6572,6 +6588,11 @@ const StockTab = memo(function StockTab({
             }
             return;
           }
+          // (04/11, grille) Le mur Remontées du Premium ; le garde-fou du jour : sa phrase, UNE fois (il refusera
+          // pareil les plateformes suivantes), jamais une modale d'offres.
+          const suite = suiteDuRefus(res, quotas, { lang });
+          if (ouvrirMurRemontees(suite)) return;
+          if (suite?.message) { refus.push(suite.message); break; }
           const texte = messageRefusRepublication(res, lang, platform);
           refus.push(liste.length > 1 ? `${LABEL_PF[platform] ?? platform} : ${texte}` : texte);
           continue;
@@ -6752,6 +6773,15 @@ const StockTab = memo(function StockTab({
             refus.push({ titre: nomArticle, raison: msgPlafondRepub(res) });
             setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] });
             ouvrirModalePlafondRepub(res);
+            break;
+          }
+          // (04/11, grille) Même arrêt pour le Premium à 1 500 (une entrée, le mur Remontées UNE fois par lot) et pour
+          // le garde-fou du jour (sa phrase, une fois, jamais une modale) : le serveur refuserait tout le reste du lot.
+          const suiteLot = suiteDuRefus(res, quotas, { lang });
+          if (suiteLot) {
+            refus.push({ titre: nomArticle, raison: suiteLot.message ?? messageRefusRepublication(res, lang, platform) });
+            setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] });
+            ouvrirMurRemontees(suiteLot);
             break;
           }
           refus.push({ titre: nomArticle, raison: messageRefusRepublication(res, lang, platform) });
@@ -12860,6 +12890,8 @@ const StockTab = memo(function StockTab({
           onUpgrade={(tier)=>openUpgradeModal(tier,'stepper_publication')}
           extensionNeverSeen={extensionNeverSeen}
           extensionLastSeenAt={extLastSeenBest}
+          // (04/11, grille à 3 jauges) Les compteurs du compte : la feuille des offres du stepper et ses murs.
+          quotas={quotas}
         />
       )}
       {/* ── LA PUBLICATION EN LOT (02/10, nuit) ────────────────────────────

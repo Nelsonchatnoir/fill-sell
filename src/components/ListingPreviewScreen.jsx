@@ -132,6 +132,9 @@ import { REPOS_AVANT_LECTURE_MS } from "../publication/lot/regles";
 const FILET_QUESTIONS_MS = 45_000;
 import { categorieFermee } from "../publication/plateformes";
 import { lireProchaineRemiseAZero } from "../reglages/quotas";
+// (04/11, grille à 3 jauges) Les refus → le mur de leur jauge, ou la phrase du garde-fou. Interrupteur à 0 : null.
+import { grilleActive } from "../utils/jauges";
+import { suiteDuRefus, publicationsRestantes } from "../reglages/refusEtMurs";
 import {
   aspectBloquant, plateformesPubliables as calculerPlateformesPubliables,
   champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
@@ -4666,6 +4669,10 @@ export default function ListingPreviewScreen({
   // `onVoirAnalyse` : le lien « Voir l'analyse » qui ramène au résultat (LensTab). `noteVendeur` / `prixAchatSaisi`
   // ce que la personne a dit ou tapé au viseur : rien ne se perd entre Lens et l'annonce.
   ouvertureDirecte = false, onVoirAnalyse = null, noteVendeur = null, prixAchatSaisi: prixAchatSaisiLens = null,
+  // (04/11, grille à 3 jauges) Les compteurs du compte (quotas_etat, lus par l'hôte : Stock, Lens). Lus SEULEMENT
+  // pour la grille : la prop `grille` de la feuille des offres et les murs (Publications, Lens, ce qu'il reste en
+  // publications sous le mur Annonces). Absents (lot, interrupteur à 0) : rien ne change.
+  quotas = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -6258,6 +6265,18 @@ export default function ListingPreviewScreen({
       if (fnErr) {
         let err = null;
         try { err = await fnErr.context?.json(); } catch { /* body non-JSON */ }
+        // (04/11, grille à 3 jauges) Sous la grille, un scan refusé est le Lens du Business (son mur, sans offre)
+        // ou le garde-fou du jour (sa phrase, JAMAIS une modale d'offres) ; le quota du mois ouvre le mur Annonces
+        // avec ce qu'il reste en publications. Sans la grille : null, les branches d'avant.
+        const suiteScan = suiteDuRefus(err, quotas, { lang, remise: remiseAZero });
+        if (suiteScan?.message) {
+          setAnalysisError(suiteScan.message);
+          return;
+        }
+        if (err?.error === "quota_scan_atteint" && suiteScan?.mur) {
+          ouvrirQuotaModal("quota_scan", { trigger: "quota_geste", targetTiers: ["premium","pro"], quotaInfo: suiteScan.mur });
+          return;
+        }
         // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
         // insufficient_coins est mort (prix à 0), branche retirée.
         if (err?.error === "quota_scan_atteint") {
@@ -6276,7 +6295,7 @@ export default function ListingPreviewScreen({
         if (err?.error === "quota_annonces_atteint") {
           ouvrirQuotaModal("quota_annonces", {
             trigger: "quota_geste", targetTiers: ["premium","pro"],
-            quotaInfo: { geste: "annonces", plafond: err.plafond, consommes: err.consommes },
+            quotaInfo: suiteScan?.mur ?? { geste: "annonces", plafond: err.plafond, consommes: err.consommes },
           });
           // (01/10) La modale fermée, l'écran dit encore ce qui bloque.
           setAnalysisError(lang === "en" ? "No listings left this month: the analysis didn't run, nothing was counted." : "Plus d'annonce ce mois-ci : l'analyse n'a pas tourné, rien n'a été décompté.");
@@ -6571,9 +6590,10 @@ export default function ListingPreviewScreen({
         //    il rendait la main sans rien poser, et l'étape 2 tournait à vide
         //    pour toujours une fois la modale fermée.
         if (errBody?.error === "quota_annonces_atteint") {
+          // (04/11, grille) Le mur Annonces dit aussi ce qu'il reste en publications ; sans la grille, l'objet d'avant.
           ouvrirQuotaModal("quota_annonces", {
             trigger: "quota_geste", targetTiers: ["premium","pro"],
-            quotaInfo: { geste: "annonces", plafond: errBody.plafond, consommes: errBody.consommes },
+            quotaInfo: suiteDuRefus(errBody, quotas, { lang, remise: remiseAZero })?.mur ?? { geste: "annonces", plafond: errBody.plafond, consommes: errBody.consommes },
           });
           setPlatformErrorCode("quota_annonces");
           const n = errBody.plafond != null ? `${errBody.plafond} ` : "";
@@ -11317,6 +11337,16 @@ export default function ListingPreviewScreen({
             publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, compteRelie: new Set(compteRelieServeur), lang,
           }));
         }
+        // (04/11, grille à 3 jauges) Les publications du mois faites : le MUR Publications (ce qui est plein, quand
+        // ça revient, ce qui le débloque), puis la phrase du serveur dans le bandeau une fois la feuille fermée.
+        // Le garde-fou du jour, ou un article qui demande plus que ce qu'il reste : la phrase seule, JAMAIS une
+        // modale d'offres. Sans la grille : null, le filet ci-dessous, inchangé.
+        const suitePub = suiteDuRefus(pubRes, quotas, { lang, remise: remiseAZero });
+        if (suitePub?.mur) {
+          ouvrirQuotaModal("quota_publications", { trigger: "quota_geste", targetTiers: ["premium","pro"], quotaInfo: suitePub.mur });
+          throw new Error(typeof pubRes.message === "string" && pubRes.message.trim() ? pubRes.message : t("genericError"));
+        }
+        if (suitePub?.message) throw new Error(suitePub.message);
         // Filet générique (2026-08-04) : un refus futur du RPC qui porte un
         // `message` s'affiche tel quel dans le bandeau — plus jamais « Une
         // erreur est survenue » quand le serveur a pris la peine d'expliquer.
@@ -12027,6 +12057,8 @@ export default function ListingPreviewScreen({
           // (15/10, P17) Le point d'entrée et l'écran, pour la mesure de la fermeture.
           origine="stepper_quota"
           contexte={{ ecran: "stepper" }}
+          // (04/11) La grille vue de quotas_etat (prop de l'hôte) : pas d'éclair de l'ancienne feuille. Sans : false.
+          grille={grilleActive(quotas)}
         />
       )}
 
@@ -12314,9 +12346,11 @@ export default function ListingPreviewScreen({
     retoucheLivree, optionRedaction, retoucheARefaire, avisRetouche, remiseAZero,
     // Les offres, UNIQUEMENT sur demande (« Voir les offres ») — jamais
     // ouvertes toutes seules au milieu du parcours pour une retouche.
+    // (04/11, grille à 3 jauges) Le mur Annonces dit aussi ce qu'il reste en publications (null sans la grille).
     voirOffres: (geste, info = {}) => ouvrirQuotaModal(geste === "annonces" ? "quota_annonces" : "quota_retouche", {
       trigger: "quota_geste", targetTiers: ["premium", "pro"],
-      quotaInfo: { geste: geste === "annonces" ? "annonces" : "retouches", plafond: info.plafond ?? null, consommes: info.consommes ?? null },
+      quotaInfo: { geste: geste === "annonces" ? "annonces" : "retouches", plafond: info.plafond ?? null, consommes: info.consommes ?? null,
+        ...(geste === "annonces" && publicationsRestantes(quotas) != null ? { publications_restantes: publicationsRestantes(quotas), remise_le: remiseAZero ?? null } : {}) },
     }, "clic"),
     isPremium, isPro, isBusiness,
     modeleAConfirmer, modelePropose: initialListing?.modele ?? null, modeleSource: initialListing?.modele_source ?? null, setModeleConfirme,

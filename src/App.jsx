@@ -188,6 +188,9 @@ import { useFonctionsStables } from './utils/fonctionsStables';
 import { RenduPlusEnLigne } from './stock/renduVivant';
 import DatesEnLigne, { ResumeDatesEnLigne } from './stock/DatesEnLigne';
 import ReglagesPage from './reglages/ReglagesPage';
+// (04/11, grille à 3 jauges) La pastille de l'en-tête et les refus → murs. Interrupteur à 0 : rien ne change.
+import { grilleActive, jaugesDuCompte, jaugeLaPlusProche, motJauge, nombre as nombreJauge } from './utils/jauges';
+import { murDeLaJauge, suiteDuRefus } from './reglages/refusEtMurs';
 import FusionArticleModal from './components/FusionArticleModal';
 import QuestionsPlusEnLigne from './components/QuestionsPlusEnLigne';
 import { trierParVente } from './utils/triVendus';
@@ -3339,7 +3342,10 @@ export default function App({ loginOnly = false }){
   // `origine` : d'OÙ vient le geste — obligatoire en pratique, un appel qui
   // l'oublie se voit en base ('non_precisee') au lieu de se fondre dans la
   // masse.
-  function openUpgradeModal(tier,origine='non_precisee',trigger='generic'){
+  // (04/11, grille à 3 jauges) `etat` : facultatif, ce que la feuille reçoit en plus — { quotaInfo } pour ouvrir le
+  // mur d'une jauge (trigger 'quota_geste') d'un CLIC (pastille de l'en-tête, jauge vide des Réglages, viseur
+  // Lens). Absent : exactement l'appel d'avant.
+  function openUpgradeModal(tier,origine='non_precisee',trigger='generic',etat=null){
     // ⛔ L'ORIGINE EST UNE CHAÎNE, SANS EXCEPTION (18/09/2026).
     // Un appelant qui écrit `onClick={ouvrirOffres}` passe l'ÉVÉNEMENT du clic
     // en premier argument. Il finissait alors dans le metadata d'usage_logs —
@@ -3352,7 +3358,7 @@ export default function App({ loginOnly = false }){
     const org=(typeof origine==='string'&&origine)?origine:'non_precisee';
     if(tier==='pro'||tier==='premium'||tier==='business'){startTierCheckout(tier,org);return;}
     logTunnel('premium_cta_click',{origine:org,declencheur:'clic'});
-    setConversionModal({open:true,trigger,origine:org});
+    setConversionModal({open:true,trigger,origine:org,...(etat&&typeof etat==='object'&&etat.quotaInfo?{quotaInfo:etat.quotaInfo}:{})});
   }
 
   // ══ L'OPTION « SANS ORDINATEUR » (05/10) — l'achat, l'arrêt, « Me connecter » ══
@@ -3973,6 +3979,18 @@ export default function App({ loginOnly = false }){
   const _tmMarge=totalMarge(currentMonthSales);
   const tm={profit:_tmMarge.total,count:currentMonthSales.length,retenues:_tmMarge.retenues,sansAchat:_tmMarge.exclus};
   const nomMoisCourant=new Intl.DateTimeFormat(lang==='en'?'en-GB':'fr-FR',{month:'long',timeZone:'UTC'}).format(new Date(`${periodeStats('mois').debut}T12:00:00Z`));
+  // ── (04/11, grille à 3 jauges, maquette 3.3) LA PASTILLE DE L'EN-TÊTE ─────────────────────────────────────────
+  // Avec la grille (quotas_etat porte « grille ») : UNE pastille, la jauge la plus proche de la fin, avec son mot
+  // (« annonces », « publications » ou « remontées »), ambre sous 20 % ; RIEN chez le Business (tout illimité :
+  // jaugeLaPlusProche rend null). L'appui ouvre la feuille sur le mur de cette jauge si elle est pleine, sinon
+  // les offres comme aujourd'hui. Interrupteur à 0 : grilleEntete est faux et l'en-tête d'avant reste tel quel.
+  const grilleEntete=grilleActive(quotas);
+  const pastilleGrille=grilleEntete?jaugeLaPlusProche(jaugesDuCompte(quotas)):null;
+  const appuiPastilleGrille=()=>{
+    const mur=pastilleGrille&&pastilleGrille.restantes===0?murDeLaJauge(pastilleGrille.cle,quotas):null;
+    if(mur)openUpgradeModal(null,'entete_quota','quota_geste',{quotaInfo:mur});
+    else openUpgradeModal(null,'entete_quota');
+  };
 
   function buildChartData(salesArr,range){
     const byMonth=(n)=>Array.from({length:n},(_,i)=>{
@@ -8088,7 +8106,17 @@ export default function App({ loginOnly = false }){
       // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
       // insufficient_coins ne peut plus arriver (prix à 0), la branche
       // unités est morte. Modale de conversion, origine dédiée.
+      // (04/11, grille à 3 jauges) Sous la grille, un scan refusé est le Lens du Business (600 par mois → son mur,
+      // sans offre) ou le garde-fou du jour (la phrase « Pause de sécurité jusqu'à minuit… », JAMAIS une modale
+      // d'offres) ; le quota du mois ouvre le mur Annonces avec ce qu'il reste en publications. Sans la grille :
+      // suiteRefusLens est null, les deux branches ci-dessous restent celles d'avant.
+      const suiteRefusLens=suiteDuRefus(errBody,quotas,{lang});
+      if(suiteRefusLens?.message){
+        setToast({visible:true,message:suiteRefusLens.message});setTimeout(()=>setToast({visible:false,message:''}),8000);
+        return;
+      }
       if(errBody.error==='quota_scan_atteint'){
+        if(suiteRefusLens?.mur){ouvrirModalePlafond('quota_scan',{trigger:'quota_geste',quotaInfo:suiteRefusLens.mur});return;}
         // Fenêtre de déploiement seulement (serveur pas encore migré) : la
         // variante 'scans' de la modale n'existe plus, on parle annonces.
         ouvrirModalePlafond('quota_scan',{trigger:'quota_geste',quotaInfo:{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
@@ -8099,7 +8127,7 @@ export default function App({ loginOnly = false }){
       // même modale, geste « annonces ». quota_scan_atteint ci-dessus est
       // conservé pour la fenêtre de déploiement.
       if(errBody.error==='quota_annonces_atteint'){
-        ouvrirModalePlafond('quota_annonces',{trigger:'quota_geste',quotaInfo:{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
+        ouvrirModalePlafond('quota_annonces',{trigger:'quota_geste',quotaInfo:suiteRefusLens?.mur??{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
         return;
       }
       throw new Error(errBody.error||`HTTP ${r.status}`);
@@ -8555,7 +8583,30 @@ export default function App({ loginOnly = false }){
       <div className={quotas?.annonces?.plafond!=null?"topbar topbar--solde":"topbar"}>
         <div className="tb-left">
         <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
-        {quotas?.annonces?.plafond!=null&&(
+        {/* (04/11, grille à 3 jauges, maquette 3.3) La pastille de la jauge la plus proche de la fin : même balisage
+            et mêmes classes que le compteur d'annonces ci-dessous (le mot cède sur petit écran), ambre sous 20 %,
+            rien chez le Business. Appui : le mur de cette jauge si elle est pleine, sinon les offres. */}
+        {grilleEntete&&pastilleGrille&&(
+          <button
+            onClick={appuiPastilleGrille}
+            title={lang==='fr'
+              ?`${motJauge(pastilleGrille.cle,2,'fr').replace(/^./,(l)=>l.toUpperCase())} restantes ce mois-ci — voir les offres`
+              :`${motJauge(pastilleGrille.cle,2,'en').replace(/^./,(l)=>l.toUpperCase())} left this month — see plans`}
+            className="tb-quota"
+            data-pastille-jauge={pastilleGrille.cle}
+            style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",fontFamily:"inherit",color:"inherit",opacity:1}}
+          >
+            <span className="tb-quota-chip" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 10px",borderRadius:999,background:pastilleGrille.basse?"#FFF6E3":"rgba(0,0,0,0.05)",color:pastilleGrille.basse?"#8A6100":UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+              {nombreJauge(pastilleGrille.restantes,lang==='en'?'en':'fr')}
+              <span className="tb-quota-libelle" style={{fontWeight:600,opacity:pastilleGrille.basse?0.85:0.65}}>
+                {lang==='fr'
+                  ?<><span className="tb-quota-mot">{`${motJauge(pastilleGrille.cle,pastilleGrille.restantes,'fr')} `}</span>{`restante${pastilleGrille.restantes>1?"s":""}`}</>
+                  :<><span className="tb-quota-mot">{`${motJauge(pastilleGrille.cle,pastilleGrille.restantes,'en')} `}</span>left</>}
+              </span>
+            </span>
+          </button>
+        )}
+        {!grilleEntete&&quotas?.annonces?.plafond!=null&&(
           // (03/10, point 18) Business est la formule du haut : il n'y a pas
           // d'offre à lui montrer. Le compteur reste (il informe), mais il
           // n'ouvre plus les offres — la pastille Business, juste à droite,
@@ -9812,7 +9863,10 @@ export default function App({ loginOnly = false }){
           plateformesFermees={plateformesFermees}
           oplaRelie={sortieOpla.relie===true}
           onToast={(message)=>{setToast({visible:true,message});setTimeout(()=>setToast({visible:false,message:''}),3000);}}
-          ouvrirOffres={(origine)=>openUpgradeModal(null,origine??'reglages')}
+          // (04/11, grille à 3 jauges) 2e argument facultatif : le mur d'une jauge vide (quotaInfo de murDeLaJauge).
+          ouvrirOffres={(origine,mur)=>(mur&&typeof mur==='object'&&typeof mur.geste==='string'
+            ?openUpgradeModal(null,origine??'reglages','quota_geste',{quotaInfo:mur})
+            :openUpgradeModal(null,origine??'reglages'))}
           actionsCloud={actionsCloud}
           ouvrirSignalementBug={(mode)=>{setBugMode(mode==='support'?'support':'bug');setShowBugReport(true);setBugMessage("");}}
           resiliation={{
@@ -9856,6 +9910,9 @@ export default function App({ loginOnly = false }){
         offre={isNative?null:offreEnCours()}
         // (03/10, point 20) Free : ses republications du mois (50 par mois depuis le 05/10), dites AVANT les offres.
         repubOffertes={quotas?.palier==='free'&&quotas?.republication?.plafond!=null?{restantes:quotas.republication.restantes??null,plafond:quotas.republication.plafond??null,remise_le:quotas.republication.remise_le??null}:null}
+        // (04/11) La grille vue de quotas_etat : tant que coin_config n'est pas lue, la feuille part sur son repli
+        // AVEC la grille (pas d'éclair de l'ancienne feuille). Interrupteur à 0 : false, rien ne change.
+        grille={grilleActive(quotas)}
       />
 
       {/* ── OPTION « SANS ORDINATEUR » (Cloud) ──

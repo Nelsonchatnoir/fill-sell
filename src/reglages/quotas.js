@@ -48,6 +48,25 @@ export function consommationVisible(q) {
 //    Jamais une date inventée sur un écran qui parle d'argent — c'est le
 //    garde-fou qui a manqué la première fois.
 import { supabase } from '../lib/supabase';
+import { JAUGES, PALIERS_GRILLE } from '../utils/jauges';
+
+// ── (04/11/2026, grille à 3 jauges) LES VOLUMES DES PALIERS SE LISENT, ILS NE S'ÉCRIVENT PAS ─────────────────
+// Le lien d'une jauge vide (« 1 500 par mois en Premium ») dit le volume d'un AUTRE palier : il le lit dans
+// coin_config (clés jauge_*, 0 = illimité), comme la feuille des offres — jamais un chiffre en dur. Lecture
+// bornée (13 clés), faite par la page SEULEMENT quand la grille est active. Illisible → null : l'appelant se
+// replie sur GRILLE_REPLI (utils/jauges), comme COIN_CONFIG_FALLBACK dans la feuille des offres.
+export const CLES_CONFIG_JAUGES = Object.freeze([
+  ...JAUGES.flatMap((j) => PALIERS_GRILLE.map((p) => `jauge_${j}_${p}`)),
+  'jauge_lens_business',
+]);
+
+export async function lireConfigJauges() {
+  const { data, error } = await supabase.from('coin_config').select('key, value').in('key', CLES_CONFIG_JAUGES);
+  if (error || !Array.isArray(data)) return null;
+  const map = {};
+  for (const row of data) map[row.key] = row.value;
+  return map;
+}
 
 export async function lireProchaineRemiseAZero(userId) {
   if (!userId) return null;

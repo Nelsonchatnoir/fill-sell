@@ -56,6 +56,32 @@ const FR = {
   motAnnonces: 'annonces',
   motRetouches: 'retouches',
   motRepublications: 'republications',
+  // ── (04/11) La grille à 3 jauges (maquettes 3.1 et 3.2) — rien de ceci ne s'affiche interrupteur à 0 ─────
+  jaugeAnnonces: 'Annonces',
+  jaugePublications: 'Publications',
+  jaugeRemontees: 'Remontées',
+  // « 2 annonces restantes ce mois-ci » : le mot vient de utils/jauges (motJauge), accordé.
+  resteJauge: (n, mot, restantes) => `${n} ${mot} ${restantes > 1 ? 'restantes' : 'restante'} ce mois-ci`,
+  // Une jauge vide, en une ligne (page Abonnement) ; « Faites : … » dans l'accueil des Réglages.
+  jaugeVide: (n, mot, cle, d) => `Tes ${n} ${mot} du mois sont ${cle === 'annonces' ? 'créées' : 'faites'}${d ? ` : elles reviennent le ${d}` : ''}.`,
+  jaugeVideCourt: (cle, d) => `${cle === 'annonces' ? 'Créées' : 'Faites'}${d ? ` : elles reviennent le ${d}` : ''}.`,
+  // Le palier qui la débloque : « 1 500 par mois en Premium », « illimitées en Pro ».
+  debloquePar: (n, nom) => (n == null ? `illimitées en ${nom}` : `${n} par mois en ${nom}`),
+  // Business : la phrase de tête, avec les deux compteurs qui bougent (lus dans quotas_etat).
+  toutIllimite: (lens, ret) => {
+    const sauf = [lens != null ? `Lens (${lens} par mois)` : null, ret != null ? `retouches IA (${ret} par mois)` : null].filter(Boolean);
+    return sauf.length ? `Tout illimité, sauf ${sauf.join(' et ')}.` : 'Tout illimité.';
+  },
+  dontLens: 'dont Lens',
+  jaugeLens: 'Lens',
+  scansLensRestants: (n, r) => `${n} ${r > 1 ? 'scans Lens restants' : 'scan Lens restant'} ce mois-ci`,
+  scansRestants: (n, r) => `${n} ${r > 1 ? 'scans restants' : 'scan restant'} ce mois-ci`,
+  lensVide: (n, d) => `Tes ${n} scans Lens du mois sont faits${d ? ` : ils reviennent le ${d}` : ''}.`,
+  lensVideCourt: (d) => `Faits${d ? ` : ils reviennent le ${d}` : ''}.`,
+  // Les retouches IA, À PART des 3 jauges : « 3 restantes sur 5 » dans l'accueil des Réglages.
+  retouchesSur: (r, p) => `${r} ${r > 1 ? 'restantes' : 'restante'} sur ${p}`,
+  bordereauxVinted: 'Bordereaux Vinted',
+  inclus: 'inclus',
 
   // ── Abonnement ──────────────────────────────────────────────────────────
   gererAbonnement: 'Gérer mon abonnement',
@@ -289,6 +315,26 @@ const EN = {
   motAnnonces: 'listings',
   motRetouches: 'touch-ups',
   motRepublications: 'reposts',
+  jaugeAnnonces: 'Listings',
+  jaugePublications: 'Publications',
+  jaugeRemontees: 'Bumps',
+  resteJauge: (n, mot) => `${n} ${mot} left this month`,
+  jaugeVide: (n, mot, cle, d) => `Your ${n} ${mot} for this month are ${cle === 'annonces' ? 'created' : 'done'}${d ? `: they come back on ${d}` : ''}.`,
+  jaugeVideCourt: (cle, d) => `${cle === 'annonces' ? 'Created' : 'Done'}${d ? `: they come back on ${d}` : ''}.`,
+  debloquePar: (n, nom) => (n == null ? `unlimited on ${nom}` : `${n} a month on ${nom}`),
+  toutIllimite: (lens, ret) => {
+    const sauf = [lens != null ? `Lens (${lens} a month)` : null, ret != null ? `AI touch-ups (${ret} a month)` : null].filter(Boolean);
+    return sauf.length ? `Everything unlimited, except ${sauf.join(' and ')}.` : 'Everything unlimited.';
+  },
+  dontLens: 'of which Lens',
+  jaugeLens: 'Lens',
+  scansLensRestants: (n, r) => `${n} Lens ${r === 1 ? 'scan' : 'scans'} left this month`,
+  scansRestants: (n, r) => `${n} ${r === 1 ? 'scan' : 'scans'} left this month`,
+  lensVide: (n, d) => `Your ${n} Lens scans for this month are done${d ? `: they come back on ${d}` : ''}.`,
+  lensVideCourt: (d) => `Done${d ? `: they come back on ${d}` : ''}.`,
+  retouchesSur: (r, p) => `${r} left of ${p}`,
+  bordereauxVinted: 'Vinted labels',
+  inclus: 'included',
 
   gererAbonnement: 'Manage my subscription',
   formuleGratuite: 'Free plan',

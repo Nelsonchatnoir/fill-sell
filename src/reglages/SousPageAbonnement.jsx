@@ -19,12 +19,13 @@
 // ⛔ La résiliation reste handleCancelSubscription (App.jsx) : même appel,
 //    même confirmation en deux temps, même message. Rien n'est réécrit.
 import { useEffect, useState } from 'react';
-import { Receipt, ListOrdered, RefreshCw } from 'lucide-react';
+import { Receipt, ListOrdered, RefreshCw, Truck } from 'lucide-react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import PlanBadge from '../components/PlanBadge';
 import { R } from './theme';
-import { Groupe, Carte, Ligne, Jauge, JaugeRepublication, BandeInfo, Bouton, Note } from './ReglagesUI';
+import { Groupe, Carte, Ligne, Jauge, JaugeRepublication, BandeInfo, Bouton, Note, ConsommationGrille } from './ReglagesUI';
 import { consommationVisible } from './quotas';
+import { grilleActive } from '../utils/jauges';
 // Option « Sans ordinateur » (Cloud, conception du 04/10) — le bloc regarde
 // lui-même le drapeau (config/cloudOffer.js) : baissé, il ne rend rien.
 import { BlocCloudReglagesLu, MentionCloudResiliation } from '../cloud/BlocCloudReglages';
@@ -113,6 +114,9 @@ export default function SousPageAbonnement({ c, T }) {
 
   const q = c.quotas;
   const compteurs = consommationVisible(q) ? q : null;
+  // (04/11) La grille à 3 jauges, vue de quotas_etat : la consommation en 3 jauges (+ retouches à part) et la
+  // ligne « Bordereaux Vinted · inclus » du Pro et du Business. Interrupteur à 0 : la page d'avant, à l'identique.
+  const grille = grilleActive(q);
 
   return (
     <>
@@ -163,7 +167,8 @@ export default function SousPageAbonnement({ c, T }) {
       <BlocCloudReglagesLu c={c} lecture={lectureCloud} arretDemande={arretCloudDemande} actions={{ voirFormules: () => c.ouvrirOffres('reglages_cloud'), ...avecRelecture(c.actionsCloud, lectureCloud.relire) }} />
 
       {/* ── Consommation du mois, avec le RESTE ───────────────────────── */}
-      {compteurs && (
+      {compteurs && grille && <ConsommationGrille c={c} T={T} variante="page" />}
+      {compteurs && !grille && (
         <Groupe intitule={T.consommation} appoint={c.remiseAZero ? T.remiseAZeroLe(c.remiseAZero) : null}>
           <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {compteurs.annonces?.plafond != null && (
@@ -192,6 +197,15 @@ export default function SousPageAbonnement({ c, T }) {
       {/* ── Gérer ─────────────────────────────────────────────────────── */}
       <Groupe intitule={T.gerer}>
         <Carte>
+          {/* (04/11, grille à 3 jauges) Les bordereaux Vinted sont du Pro et du Business (bordereaux_ouverts_pour) :
+              une ligne qui porte un état, pas un geste. */}
+          {grille && (c.isPro || c.isBusiness) && (
+            <Ligne
+              icone={Truck}
+              libelle={T.bordereauxVinted}
+              apres={<span data-bordereaux-inclus="1" style={{ fontSize: 13, fontWeight: 700, color: R.tealDeep, flexShrink: 0 }}>{T.inclus}</span>}
+            />
+          )}
           <Ligne
             icone={ListOrdered}
             libelle={c.isPremium ? T.comparerFormules : T.voirOffres}

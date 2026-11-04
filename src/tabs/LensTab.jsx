@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { Camera, Mic, Sparkles, Plus, X, ChevronLeft, History, Image as ImageIcon } from 'lucide-react';
 import ListingPreviewScreen, { clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import { apresFermetureStepper } from '../utils/parcoursLens';
+// (04/11, grille à 3 jauges) Le mur Annonces ouvert d'un clic dit ce qu'il reste en publications. Interrupteur à 0 : null.
+import { murDeLaJauge } from '../reglages/refusEtMurs';
 // La peau du stepper (refonte 24/09) : ancienne par défaut, nouvelle par l'interrupteur.
 import { useNouveauStepper } from '../publication/interrupteur';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
@@ -1175,6 +1177,8 @@ const LensTab = memo(function LensTab({
           alreadyInStock={!!effectiveInvId}
           extensionNeverSeen={extensionNeverSeen}
           extensionLastSeenAt={extensionLastSeenAt}
+          // (04/11, grille à 3 jauges) Les compteurs du compte : la feuille des offres du stepper et ses murs.
+          quotas={quotas}
         />
       </div>
     );
@@ -1235,7 +1239,9 @@ const LensTab = memo(function LensTab({
           onCreerALaMain={onCreerALaMain}
           // Le quota du mois atteint : la modale des offres, variante quota
           // (ConversionModal, trigger quota_geste) — ouverte par un CLIC.
-          onVoirForfaits={openUpgradeModal?()=>openUpgradeModal(undefined,'lens_quota_atteint','quota_geste'):null}
+          // (04/11) Avec la grille, le mur Annonces porte la jauge du compte (plafond, ce qu'il reste en
+          // publications) ; sans elle, murDeLaJauge rend null et l'appel reste celui d'avant.
+          onVoirForfaits={openUpgradeModal?()=>{const mur=murDeLaJauge('annonces',quotas);if(mur)openUpgradeModal(undefined,'lens_quota_atteint','quota_geste',{quotaInfo:mur});else openUpgradeModal(undefined,'lens_quota_atteint','quota_geste');}:null}
         />
       ) : (
         <>
