@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- 04/11 soir — Depop : refus « PayPal à relier » (1216) = mur du compte ; eBay : annonces API non modifiables sur eBay (en fin de fichier)
 - 11/10 nuit — Depop comme Opla (ex-L59-69)
 - 11/10 midi — poids Leboncoin (remplacé) (ex-L105-112)
 - 10/10 soir — champs eBay : l'IA remplit avant de demander (ex-L147-156)
@@ -710,3 +711,17 @@ Rapport : `docs/enquetes/trois-rouges-0211/RAPPORT.md`.
 - Leboncoin « déposée » (point 5) : l'extension 0.6.170 garde le statut BRUT de chaque annonce du relevé (`statut_brut`,
   écrit seulement si la colonne existe — migration à décider) et compte toujours les statuts bruts dans le texte du relevé
   (« [statuts] … »). Le comportement « déposée » (garde-fous de Nico) se pose quand ces valeurs sont mesurées.
+
+## 04/11 soir — Depop « PayPal à relier » ; eBay : les annonces de l'API Inventory ne se modifient pas sur eBay
+Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 3, 4, 5.
+- Depop : un refus de CRÉATION qui demande un geste sur le compte (`CODES_GESTE_COMPTE_DEPOP` — 1216 « collegare un
+  account PayPal » —, ou le mot PayPal ; message de Depop en italien chez tous) = le mur « configuration vendeur »
+  (`_shared/vendeur-depop.js`), message PayPal, aucune reprise. Un essai arrêté sur ce refus n'est jamais une preuve que
+  le compte vend (`vendeur_depop.paypal_le`) ; la sonde canSell non plus tant que ce mur tient. Un code neuf de ce genre
+  s'ajoute à `CODES_GESTE_COMPTE_DEPOP` ET à `DEPOP_CODES_GESTE_COMPTE` (content-scripts/depop.js).
+- eBay : une annonce publiée par l'API Inventory n'est modifiable QUE par l'API Inventory (doc eBay ; « Cette opération
+  n'est pas autorisée pour les objets de l'inventaire » sur le site). Toute modification passe par l'app (« Modifier
+  sur eBay »). Voie a (tout modifier depuis l'app) recommandée le 04/11 ; décision de Nico en attente.
+- eBay « compte pas prêt » étape `conditions` : un vendeur inscrit sans conditions EBAY_FR ne publie pas par l'API ;
+  l'app sait les créer, mais la décision du 12/10 envoie sur ebay.fr. Bouton « Créer mes conditions eBay » proposé
+  (consentement au clic) — décision de Nico en attente.

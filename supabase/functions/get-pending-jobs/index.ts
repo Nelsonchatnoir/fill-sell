@@ -30,7 +30,7 @@ import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, p
 // (18/10, lot 6) Deux postes, deux boutiques Vinted : chaque poste reçoit les jobs de SA boutique.
 import { identiteVintedDuPoste, routageBoutiquesActif, posteLaisseJobVinted, boutiqueAutoTenueParAutrePoste, murDuPosteTient, posteSeDitDeconnecte, patchPosteDuPoll } from "../_shared/poste-extension.ts";
 import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
-import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP, attentesVendeurDepop, derniereObservationMur, estEclaireurFrais, champsRetenue } from "../_shared/vendeur-depop.js";
+import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, attentesVendeurDepop, messageVendeurDepop, derniereObservationMur, estEclaireurFrais, champsRetenue } from "../_shared/vendeur-depop.js";
 // (25/10, R3 et N6) eBay par l'extension : le compte pas encore ouvert à la vente, les conditions de retour du compte.
 import {
   MESSAGE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE as RETENUES_VENDEUR_EBAY, estDepotEbayExtension, dernierMurVendeurEbay,
@@ -4870,16 +4870,18 @@ serve(async (req) => {
             const maintenantV = Date.now();
             const eclaireurV = out.find((j) => j.platform === "depop" && j.action !== "delete" && estEclaireurFrais(j as never, maintenantV));
             const retenusV = out.filter((j) => j.platform === "depop" && j.action !== "delete" && j !== eclaireurV);
+            // (04/11) Le message du mur qui tient : « relie ton compte PayPal » (refus 1216) ou la configuration vendeur.
+            const messageV = messageVendeurDepop(attentesV as never[]);
             let posesV = 0;
             for (const j of retenusV) {
               if (posesV >= 40) break;
               const pfV = champsRetenue((j.platform_fields ?? {}) as Record<string, unknown>, new Date(maintenantV).toISOString()) as Record<string, unknown>;
               const erreurV = (j as { error?: string | null }).error ?? null;
-              if (erreurV && erreurV !== MESSAGE_VENDEUR_DEPOP) {
+              if (erreurV && erreurV !== messageV) {
                 pfV.erreurs_archivees = archiverErreur(pfV.erreurs_archivees, erreurV, "pending", "get-pending-jobs (configuration vendeur Depop à terminer)");
               }
               const { data: majV } = await userClient.from("cross_post_jobs")
-                .update({ status: "needs_user", error: MESSAGE_VENDEUR_DEPOP, platform_fields: pfAPersister(pfV) })
+                .update({ status: "needs_user", error: messageV, platform_fields: pfAPersister(pfV) })
                 .eq("id", String(j.id)).eq("status", "pending").select("id");
               posesV += (majV ?? []).length;
             }
@@ -7071,7 +7073,7 @@ serve(async (req) => {
         // retirées en deux jours, aucune remise en ligne, parce que celle-ci ne comptait pas.
         const { data: envoyees } = await userClient
           .from("cross_post_jobs")
-          .select("id, platform, title, status, error, platform_fields")
+          .select("id, platform, title, status, error, created_at, platform_listing_id, listing_url, platform_fields")
           .eq("user_id", user.id)
           .eq("action", "republish")
           .eq("platform_fields->>republish_step", "captured")
@@ -13698,7 +13700,7 @@ serve(async (req) => {
         // (marqueur, ou trace écrite : retraitEngage) retient comme une étape 'deleted' ; elle-même va au bout
         // (exemptée plus bas) et n'est jamais retenue par une autre.
         const { data: horsLigneEnvoyees } = await adminR.from("cross_post_jobs")
-          .select("id, platform, title, error, platform_fields")
+          .select("id, platform, title, error, created_at, platform_listing_id, listing_url, platform_fields")
           .eq("user_id", user.id).eq("action", "republish").in("status", ["pending", "processing"])
           .eq("platform_fields->>republish_step", "captured")
           .not("platform_fields->republish_suppression_envoyee", "is", null)

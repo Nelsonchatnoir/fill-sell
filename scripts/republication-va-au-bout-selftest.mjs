@@ -18,7 +18,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { retraitEngage, messageRetenueCreneau } from '../supabase/functions/_shared/retenue-creneau.js';
+import { retraitEngage, messageRetenueCreneau, suppressionEnvoyeeHeritee, jePasseDevant, TRACES_DE_RETRAIT_RE } from '../supabase/functions/_shared/retenue-creneau.js';
+import { ligneRepublicationPhotos } from '../supabase/functions/_shared/photos-lbc-amputees.js';
+import { extraireFonctionJs } from './lib/extraire-fonction-js.mjs';
 
 const racine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (f) => fs.readFileSync(path.join(racine, f), 'utf8');
@@ -77,6 +79,107 @@ console.log('4. Le balayage ne lance pas ce qui ne peut pas finir dans le créne
   ok(/'republish_step' = 'deleted' OR j\.platform_fields \? 'republish_suppression_envoyee'/.test(m),
     'une suppression envoyée compte comme un retrait en vol (le créneau attend)');
   ok(fs.existsSync(path.join(racine, 'supabase/rollbacks/20261008140000_republication_finit_dans_son_creneau_INVERSE.sql')), 'l\'inverse est prêt');
+}
+
+// ── (04/11, 9cdr9rm4rn — Beebs) UNE TRACE HÉRITÉE NE RETIENT PERSONNE ; DEUX JOBS NE S'ATTENDENT JAMAIS ──────────────
+console.log('5. Le marqueur hérité d\'une republication précédente (04/11)');
+// Les deux jobs du 03/11 tels qu'ils étaient avant le déblocage manuel (champs utiles, lus en base).
+const pyjama = { id: 'c10e8d1a', action: 'republish', platform: 'beebs', created_at: '2026-11-03T14:22:12Z', platform_listing_id: '34199633',
+  listing_url: 'https://www.beebs.app/fr/p/34199633', platform_fields: { republish_step: 'captured',
+    republish_suppression_envoyee: { annonce: '34174560', at: '2026-10-18T14:59:30Z' } } };
+const ensemble = { id: '07c8d5e3', action: 'republish', platform: 'beebs', created_at: '2026-11-03T14:22:03Z', platform_listing_id: '34199441',
+  listing_url: 'https://www.beebs.app/fr/p/34199441', platform_fields: { republish_step: 'captured',
+    republish_suppression_envoyee: { annonce: '34174206', at: '2026-10-18T05:20:56Z' },
+    retenue_hors_ligne: { job: 'c10e8d1a', titre: 'Pyjama 36 mois', depuis: '2026-11-04T09:06:49Z' } } };
+{
+  ok(suppressionEnvoyeeHeritee(pyjama) && !retraitEngage(pyjama), 'Pyjama : marqueur du 18/10 (34174560), annonce actuelle 34199633 → hérité, pas engagé');
+  ok(suppressionEnvoyeeHeritee(ensemble) && !retraitEngage(ensemble), 'Ensemble : idem (34174206 / 34199441)');
+  const sans = { ...pyjama, platform_fields: { republish_step: 'captured', republish_suppression_envoyee: { at: '2026-10-18T14:59:30Z' } } };
+  ok(!suppressionEnvoyeeHeritee(sans) && retraitEngage(sans), 'marqueur SANS annonce : il retient (vraie protection)');
+  const actuel = { ...pyjama, platform_fields: { republish_step: 'captured', republish_suppression_envoyee: { annonce: '34199633', at: '2026-11-04T14:20:00Z' } } };
+  ok(retraitEngage(actuel), 'marqueur au numéro ACTUEL : il retient');
+  const apres = { ...pyjama, platform_fields: { republish_step: 'captured', republish_suppression_envoyee: { annonce: '34174560', at: '2026-11-03T15:00:00Z' } } };
+  ok(retraitEngage(apres), 'autre numéro mais écrit APRÈS la naissance du job : il retient (une seule preuve ne suffit pas)');
+  const sansNumero = { ...pyjama, platform_listing_id: null, listing_url: null };
+  ok(retraitEngage(sansNumero), 'job sans numéro à comparer : il retient');
+  const sansNaissance = { ...pyjama, created_at: undefined };
+  ok(retraitEngage(sansNaissance), 'naissance inconnue : il retient');
+  const retire = { ...pyjama, platform_listing_id: null, listing_url: null, platform_fields: { republish_step: 'captured',
+    old_platform_listing_id: '34199633', republish_suppression_envoyee: { annonce: '34199633', at: '2026-11-04T14:20:00Z' } } };
+  ok(retraitEngage(retire), 'annonce vraiment retirée (numéro passé dans old_platform_listing_id) : elle retient');
+  ok(retraitEngage({ ...pyjama, platform_fields: { republish_step: 'deleted' } }), 'étape « deleted » : toujours engagé');
+  // Depop : l'identifiant est un slug (thibault.andrieux, c9dbe10d).
+  const depop = { id: 'c9dbe10d', platform: 'depop', created_at: '2026-10-30T10:00:00Z', platform_listing_id: 'thaad_733-sweat-7fbe',
+    listing_url: 'https://www.depop.com/products/thaad_733-sweat-7fbe/', platform_fields: { republish_step: 'captured',
+      republish_suppression_envoyee: { annonce: 'tha9d_733-sweat-e662', at: '2026-10-20T08:00:00Z' } } };
+  ok(suppressionEnvoyeeHeritee(depop) && !retraitEngage(depop), 'Depop : un slug d\'une autre annonce, écrit avant → hérité');
+  const depopLien = { ...depop, platform_fields: { ...depop.platform_fields, republish_suppression_envoyee: { annonce: 'https://www.depop.com/products/thaad_733-sweat-7fbe/', at: '2026-10-31T08:00:00Z' } } };
+  ok(retraitEngage(depopLien), 'Depop : le lien de l\'annonce actuelle → il retient');
+  const archive = { ...pyjama, platform_fields: { republish_step: 'captured',
+    erreurs_archivees: [{ erreur: 'Suppression envoyée à Beebs (encore dans « Mes annonces »)', le: '2026-10-18T15:00:00Z' }],
+    error_technique: { brut: 'Suppression envoyée à Beebs', at: '2026-10-18T15:00:00Z' } } };
+  ok(!retraitEngage(archive), 'trace écrite datée d\'avant la naissance du job : pas la sienne');
+  const archiveSienne = { ...archive, platform_fields: { republish_step: 'captured',
+    erreurs_archivees: [{ erreur: 'Suppression envoyée à Beebs (encore dans « Mes annonces »)', le: '2026-11-04T09:00:00Z' }] } };
+  ok(retraitEngage(archiveSienne), 'trace écrite après la naissance : la sienne, elle retient');
+}
+
+console.log('6. Deux jobs ne s\'attendent jamais : le plus ancien passe');
+{
+  // Ensemble (né à 15:22:03) attend le Pyjama (15:22:12) ; si le Pyjama est jugé derrière l'Ensemble, l'Ensemble passe.
+  const pyjamaVraimentEnvoye = { ...pyjama, platform_fields: { ...pyjama.platform_fields, retenue_hors_ligne: { job: '07c8d5e3' } } };
+  ok(jePasseDevant(ensemble, pyjamaVraimentEnvoye), 'cycle : l\'Ensemble (le plus ancien) passe devant le Pyjama qui l\'attend');
+  ok(!jePasseDevant(pyjamaVraimentEnvoye, ensemble), '… et le Pyjama (le plus récent) attend');
+  ok(!jePasseDevant(ensemble, pyjama), 'aucun cycle (le frère n\'attend pas ce job) : on attend, comme avant');
+  ok(!jePasseDevant(ensemble, { ...pyjamaVraimentEnvoye, platform_fields: { ...pyjamaVraimentEnvoye.platform_fields, republish_step: 'deleted' } }),
+    'un frère à l\'étape « deleted » (vraiment retiré) retient toujours');
+  ok(!jePasseDevant({ ...ensemble, created_at: null }, pyjamaVraimentEnvoye), 'date illisible : on attend');
+}
+
+console.log('7. L\'extension juge comme le serveur (copie dans background.js)');
+{
+  const bg = lire('chrome-extension/background.js');
+  const noms = ['jetonsAnnonce', 'pfDeJob', 'identifiantsVises', 'naissanceJob', 'suppressionEnvoyeeHeritee', 'textesDuJob', 'jePasseDevant', 'suppressionDejaEnvoyee', 'retraitEngageJob'];
+  const corps = noms.map((n) => extraireFonctionJs(bg, n)).join('\n');
+  const ext = new Function(`${corps}\nreturn { suppressionEnvoyeeHeritee, jePasseDevant, suppressionDejaEnvoyee, retraitEngageJob };`)();
+  const cas = [pyjama, ensemble, { ...pyjama, created_at: undefined }, { ...pyjama, platform_listing_id: null, listing_url: null },
+    { ...pyjama, platform_fields: { republish_step: 'captured', republish_suppression_envoyee: { annonce: '34174560', at: '2026-11-03T15:00:00Z' } } },
+    { ...pyjama, platform_fields: { republish_step: 'captured', republish_suppression_envoyee: { at: '2026-10-18T14:59:30Z' } } },
+    { ...pyjama, platform_fields: { republish_step: 'captured', erreurs_archivees: [{ erreur: 'Suppression envoyée à Beebs', le: '2026-10-18T15:00:00Z' }] } },
+    { ...pyjama, platform_fields: { republish_step: 'captured', erreurs_archivees: [{ erreur: 'Suppression envoyée à Beebs', le: '2026-11-04T15:00:00Z' }] } }];
+  ok(cas.every((j) => ext.suppressionEnvoyeeHeritee(j) === suppressionEnvoyeeHeritee(j)), 'suppressionEnvoyeeHeritee : même verdict que le serveur sur les 8 cas');
+  ok(cas.every((j) => ext.suppressionDejaEnvoyee(j, j.platform_fields) === retraitEngage(j)), 'le juge de SOI (suppressionDejaEnvoyee) = retraitEngage du serveur');
+  ok(cas.every((j) => ext.retraitEngageJob(j) === (j.platform_fields.republish_step === 'deleted' || Boolean(j.platform_fields.deleted_at)
+    || Boolean(j.platform_fields.republish_suppression_envoyee && !suppressionEnvoyeeHeritee(j)))), 'retraitEngageJob : marqueur hérité muet');
+  ok(ext.jePasseDevant(ensemble, { ...pyjama, platform_fields: { ...pyjama.platform_fields, retenue_hors_ligne: { job: '07c8d5e3' } } })
+    && !ext.jePasseDevant(ensemble, pyjama), 'jePasseDevant : même règle que le serveur');
+  const garde = bg.slice(bg.indexOf('const baseHorsLigne = '), bg.indexOf('retenirDerriereAnnonceHorsLigne(accessToken, job, pf, horsLigne[0])'));
+  ok(/select=id,title,created_at,error,platform_listing_id,listing_url,platform_fields/.test(garde)
+    && /\.filter\(\(r\) => suppressionDejaEnvoyee\(r, r\?\.platform_fields \?\? \{\}\)\)\s*\.filter\(\(r\) => !jePasseDevant\(job, r\)\)/.test(garde),
+    'le garde-fou juge les autres avec le même juge que soi, puis le filet du cycle');
+}
+
+console.log('8. Une republication neuve n\'hérite d\'aucune trace de retrait (20261104210000)');
+{
+  const m = lire('supabase/migrations/20261104210000_republication_sans_traces_de_retrait.sql');
+  const reSql = m.match(/WHERE e\.key !~ '([^']+)'/)?.[1];
+  ok(reSql && reSql === TRACES_DE_RETRAIT_RE.source, 'la règle SQL et son miroir JS sont identiques', reSql);
+  ok(/v_pf_src := public\.republication_sans_traces\(COALESCE\(v_src\.platform_fields, '\{\}'::jsonb\)\)\s*- ARRAY\['needsUserField'/.test(m),
+    'spend_coins_and_republish : la copie passe par la règle, PUIS la liste d\'avant');
+  ok((m.match(/CREATE OR REPLACE FUNCTION/g) ?? []).length === 2 && !/republish_planifiee_sweep/.test(m.replace(/^--.*$/gm, '')),
+    'deux fonctions seulement ; la cadence (republish_planifiee_sweep) n\'est pas touchée');
+  const traces = ['republish_suppression_envoyee', 'suppression_non_prouvee', 'preuve_retrait', 'republish_retrait', 'retenue_hors_ligne',
+    'retenue_levee_le', 'recreation_attente_depuis', 'recreated_at', 'deleted_at', 'old_platform_listing_id', 'new_listing_url', 'orphan_alerted_at',
+    'error_technique', 'retrait_arme', 'republish_etat_indetermine', 'republish_reprise_apres_suppression', 'deja_absente', 'delete_trace'];
+  ok(traces.every((k) => TRACES_DE_RETRAIT_RE.test(k)), 'toutes les traces de retrait relevées en base sont attrapées');
+  const depot = ['beebsAspects', 'beebsCategory', 'lbcCategory', 'adresse', 'taille', 'marque', 'colis', 'republish_prevol_formulaire',
+    'republish_source', 'photos_lbc', 'depopCategory', 'ebayAspects', 'preuve_identifiant_beebs', 'vinted_item_id', 'prix_republication'];
+  ok(!depot.some((k) => TRACES_DE_RETRAIT_RE.test(k)), 'aucun champ de dépôt n\'est attrapé');
+  const ligne = ligneRepublicationPhotos({ user_id: 'u', inventaire_id: 1, platform: 'leboncoin', title: 't', photos: [],
+    platform_fields: { lbcCategory: 'x', republish_suppression_envoyee: { annonce: '1', at: '2026-10-18T00:00:00Z' }, preuve_retrait: {}, retenue_levee_le: 'x' } });
+  ok(ligne.platform_fields.lbcCategory === 'x' && !('republish_suppression_envoyee' in ligne.platform_fields) && !('preuve_retrait' in ligne.platform_fields)
+    && !('retenue_levee_le' in ligne.platform_fields), 'republier-photos-lbc : même règle (miroir JS)');
+  ok(fs.existsSync(path.join(racine, 'supabase/rollbacks/20261104210000_republication_sans_traces_de_retrait_INVERSE.sql')), 'l\'inverse est prêt');
 }
 
 console.log(ko ? `\n${ko} contrôle(s) en échec.` : '\nTout est vert.');

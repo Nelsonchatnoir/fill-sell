@@ -342,3 +342,8 @@ verify_jwt = false
 [functions.bordereaux-purge]
 # Appelée par pg_cron (bordereaux-purge-horaire, x-cron-secret) seulement.
 verify_jwt = false
+
+# (04/11, point 7) photo-heic-jpeg : appelée par l'app connectée (src/utils/imageDecode.js) — un HEIC reconverti
+# par la transformation d'images Supabase avant d'entrer dans une fiche.
+[functions.photo-heic-jpeg]
+verify_jwt = true

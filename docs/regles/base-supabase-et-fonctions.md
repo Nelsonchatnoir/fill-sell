@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- 04/11 soir — départ d'un compte : activité anonyme ; photo HEIC reconvertie par photo-heic-jpeg (en fin de fichier)
 - 04/10 — incident CPU 99 % (ex-L343-346)
 - platform_settings (fusion seulement) (ex-L442-443)
 - Crons coupés (ex-L447-448)
@@ -425,3 +426,13 @@ selftests `selftest:empreintes-maison`, `selftest:essai-d-mono`.
   `empreintes-urls:maison` pour une empreinte du module (traçabilité ; aucun code ne décide sur `source`).
 - doublons-balayage et photo-empreinte gardent la transformation Supabase (0 photo du bucket en 24 h pour
   doublons-balayage le 03/11 ; photo-empreinte : second essai à 800 px).
+
+## 04/11 soir — départ d'un compte : l'activité en chiffres anonymes ; une photo HEIC est reconvertie côté serveur
+Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 7 et § 8.
+- `departs_compte.activite` (migration 20261104200000, NON appliquée au 04/11 soir) : écrite par `enregistrer_depart`
+  seulement, avant tout effacement. ⛔ Tout texte qui y entre passe par `erreur_anonyme` (mots de la personne et de
+  l'annonce, citations, liens, e-mails, chiffres effacés) ; jamais un titre, un numéro, un lien, un e-mail, un pseudo.
+- ⛔ Aucune photo HEIC dans une fiche : le format se lit dans les octets (`_shared/format-photo.js`) ; un HEIC passe par
+  `photo-heic-jpeg` (verify_jwt true, `[functions.photo-heic-jpeg]` dans config.toml) — dépôt d'un instant dans lens-temp,
+  transformation Supabase avec `Accept: image/jpeg` SEUL (WebP sinon), sortie relue, original effacé. heic2any n'est
+  qu'un secours. Coût : une transformation par HEIC (5 $ / 1 000 au-delà du quota).

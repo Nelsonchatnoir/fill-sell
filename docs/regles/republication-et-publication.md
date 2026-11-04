@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- 04/11 soir — une republication neuve n'hérite d'aucune trace de retrait ; un seul juge du marqueur ; deux jobs ne s'attendent jamais (en fin de fichier)
 - 26/10 nuit — « Ta file » : annuler ce qui attend (Tout annuler, par ligne) — jamais l'en cours, une annonce retirée ni un retrait (en fin de fichier)
 - 26/10 nuit — la relecture avant redépôt passe devant, relancée puis dite ; en relecture, une annonce ne retient que sa plateforme (en fin de fichier)
 - 17/10 — « introuvable » sur l'annonce exacte (2 relevés complets) ; une republication naît avec son lien et garde sa copie (en fin de fichier)
@@ -1233,3 +1234,18 @@
 - ⛔ Une remontée `cancelled` AVEC `published_at` a été FAITE : la remontée suivante du même article l'a remplacée
   (« Annonce en cours de republication (supprimée puis recréée…) »). Elle compte. Ne jamais lire `status <> 'cancelled'`
   comme « faite » (erreur de l'audit du 03/11 : les 743 « annulées » de nadegemarcelin78 étaient des remontées faites).
+
+## 04/11 soir — une republication neuve n'hérite d'aucune trace de retrait ; un seul juge ; jamais deux jobs qui s'attendent
+Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 1 (9cdr9rm4rn, Beebs, 03/11 15:22).
+- ⛔ La copie d'une republication (`spend_coins_and_republish`, republier-photos-lbc) retire toute trace de retrait par
+  PRÉFIXES (`republication_sans_traces` / `TRACES_DE_RETRAIT_RE`, identiques — selftest:republication-va-au-bout), puis
+  la liste d'avant. Une clé neuve de retrait se nomme dans ces familles (`republish_suppression…`, `suppression_…`,
+  `preuve_retrait`, `retrait…`, `retenue_…`, `deleted_…`, `recreat…`, `old_…`, `new_listing…`, `orphan_…`,
+  `delete_…`, `deja_absente`, `beebs_404_…`, `error_technique`). Jamais de liste blanche (un champ de dépôt oublié
+  ferait échouer la recréation APRÈS le retrait). Migration 20261104210000 : écrite, NON appliquée au 04/11 soir.
+- ⛔ UN seul juge du marqueur `republish_suppression_envoyee`, pour soi ET pour les autres, serveur ET extension
+  (`suppressionEnvoyeeHeritee`, `_shared/retenue-creneau.js`, recopié dans background.js) : hérité = muet sur DEUX
+  preuves (autre annonce que celles du job ET écrit avant sa naissance) ; tout le reste retient comme avant. Une lecture
+  qui juge un marqueur ramène `created_at, platform_listing_id, listing_url`, sinon le marqueur retient (sûr par défaut).
+- Filet : un frère « captured » qui m'attend ne me retient pas si je suis le plus ancien (`jePasseDevant`) ; jamais
+  pour un frère à l'étape « deleted ».

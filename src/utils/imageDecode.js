@@ -19,6 +19,8 @@
 //   3. le décodeur HEIC est chargé À LA DEMANDE (import dynamique) : il ne
 //      pèse rien pour les utilisateurs qui n'en rencontrent jamais.
 
+import { formatPhoto, FORMATS_UNIVERSELS } from "../../supabase/functions/_shared/format-photo.js";
+
 /** Délai au-delà duquel un décodage est considéré perdu. Généreux : une photo
  *  de 12 Mpx sur un téléphone modeste peut prendre plusieurs secondes. */
 export const DELAI_DECODAGE_MS = 20000;
@@ -57,15 +59,64 @@ export function chargerImage(blob, delaiMs = DELAI_DECODAGE_MS) {
   });
 }
 
-/** Convertit un HEIC en JPEG. Le décodeur (heic2any, ~1,5 Mo) est importé
- *  DYNAMIQUEMENT : Vite en fait un chunk séparé, téléchargé uniquement par les
- *  navigateurs qui rencontrent réellement un HEIC. Zéro octet pour les autres.
+// ── (04/11, romain.guerin85) LE HEIC EST RECONVERTI CÔTÉ SERVEUR ─────────────
+// heic2any 0.0.4 (plus maintenu depuis 2023) a refusé le HEIC de Romain le 03/11
+// (« ERR_LIBHEIF format not supported ») : la photo et les suivantes n'ont pas
+// été ajoutées. Désormais le format se lit dans les OCTETS
+// (_shared/format-photo.js — un HEIC arrive souvent sans type ni extension), et
+// un HEIC que le navigateur ne décode pas part d'abord au serveur
+// (photo-heic-jpeg : transformation d'images Supabase, original effacé aussitôt),
+// heic2any ne restant qu'en secours (hors ligne, serveur muet). Aucune photo
+// HEIC n'entre dans nos fiches : rien de tel ne part vers les plateformes.
+
+/** Le format lu dans les premiers octets du fichier. */
+export async function formatDuFichier(file) {
+  try {
+    return formatPhoto(new Uint8Array(await file.slice(0, 512).arrayBuffer()));
+  } catch {
+    return "inconnu";
+  }
+}
+
+/** Le HEIC converti par le serveur : un blob que tout navigateur décode (JPEG, PNG ou WebP), sinon une erreur.
+ *  `invoquer` : l'appel de la fonction (injecté par les tests). */
+export async function convertirHeicParLeServeur(file, { invoquer = null } = {}) {
+  const appel = invoquer ?? (async (corps) => {
+    const { supabase } = await import("../lib/supabase");
+    const { data, error } = await supabase.functions.invoke("photo-heic-jpeg", { body: corps });
+    if (error) throw error;
+    return data;
+  });
+  const sortie = await appel(file);
+  if (!(sortie instanceof Blob) || !sortie.size) throw new Error("conversion_serveur_vide");
+  const format = formatPhoto(new Uint8Array(await sortie.slice(0, 64).arrayBuffer()));
+  if (!FORMATS_UNIVERSELS.includes(format)) throw new Error(`conversion_serveur_${format}`);
+  return new Blob([sortie], { type: `image/${format}` });
+}
+
+/** Convertit un HEIC : le serveur d'abord, puis le décodeur local (heic2any,
+ *  ~1,5 Mo, importé DYNAMIQUEMENT : téléchargé uniquement par les navigateurs
+ *  qui rencontrent réellement un HEIC et dont le serveur n'a pas répondu).
  *  heic2any peut rendre un tableau (HEIC « séquence », Live Photo) : on garde
  *  la première image. */
 async function heicVersJpeg(file, quality = 0.92) {
+  try {
+    return await convertirHeicParLeServeur(file);
+  } catch (e) {
+    console.warn("[photos] HEIC : conversion serveur impossible, décodeur local en secours :", e?.message ?? e);
+  }
   const { default: heic2any } = await import("heic2any");
   const sortie = await heic2any({ blob: file, toType: "image/jpeg", quality });
   return Array.isArray(sortie) ? sortie[0] : sortie;
+}
+
+/** (04/11) Un blob prêt à téléverser tel quel : un HEIC (lu dans les octets) est reconverti, même quand le
+ *  navigateur sait l'afficher (Safari) — il ne doit jamais entrer dans nos fiches. Les autres formats passent
+ *  inchangés. */
+export async function versFormatUniversel(blob, mime = "") {
+  if ((await formatDuFichier(blob)) !== "heic") return { blob, mime: mime || String(blob?.type ?? "") || "image/jpeg", converti: false };
+  const converti = await heicVersJpeg(blob);
+  return { blob: converti, mime: String(converti.type || "image/jpeg"), converti: true };
 }
 
 /**
@@ -84,7 +135,7 @@ export async function versImageDecodable(file) {
     // le mime — on ne déclare que ce qu'on a vérifié.
     return { blob: file, mime: String(file?.type ?? "") || "image/jpeg", converti: false };
   } catch (e) {
-    if (!estProbablementHeic(file)) throw e;
+    if (!estProbablementHeic(file) && (await formatDuFichier(file)) !== "heic") throw e;
   }
   const jpeg = await heicVersJpeg(file);
   // Re-vérification : une conversion qui rend un blob indécodable serait pire

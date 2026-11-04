@@ -725,20 +725,106 @@ function messageRetenueCreneau(platform, reprise) {
 // suppressionDejaEnvoyee dans l'extension).
 const SUPPRESSION_ENVOYEE_RE = /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted|Depop)/;
 
-/** Le retrait de l'annonce est-il engagé (supprimée, ou suppression envoyée) ? */
-function retraitEngage(job) {
-  const pf = (job && typeof job.platform_fields === "object" && job.platform_fields) || {};
-  if (pf.republish_step === "deleted" || pf.deleted_at) return true;
-  if (pf.republish_suppression_envoyee && typeof pf.republish_suppression_envoyee === "object") return true;
-  const textes = [
-    String(job?.error ?? ""),
-    String(pf.error_technique?.brut ?? ""),
-    ...(Array.isArray(pf.erreurs_archivees) ? pf.erreurs_archivees.map((e) => String(e?.erreur ?? "")) : []),
-  ];
-  return textes.some((t) => SUPPRESSION_ENVOYEE_RE.test(t));
+// (04/11) Les clés de platform_fields qui racontent un RETRAIT (marqueurs, preuves, retenues, recréation) : jamais
+// recopiées dans une republication neuve. Miroir À L'IDENTIQUE de la base : republication_sans_traces (migration
+// 20261104210000) — selftest:republication-va-au-bout compare les deux.
+const TRACES_DE_RETRAIT_RE = /^(republish_(suppression|retrait|reprise|etat)|republished_|suppression_|preuve_retrait|retrait|retenue_|deleted_|recreat|old_|new_listing|orphan_|delete_|deja_absente|beebs_404_|error_technique)/;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE TRACE DE RETRAIT HÉRITÉE NE RETIENT PERSONNE (04/11, 9cdr9rm4rn — Beebs)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le 03/11 à 15:22, « Pyjama 36 mois » et « Ensemble 9 mois » se sont attendues l'une l'autre : chaque republication
+// avait recopié les platform_fields de la précédente (spend_coins_and_republish), dont le marqueur
+// republish_suppression_envoyee des 18-19/10, qui portait les ANCIENS numéros. L'extension jugeait SON marqueur au
+// numéro (« pas le mien » → elle passait par le garde-fou) et celui des AUTRES à sa seule présence (« hors ligne ») :
+// chacune retenait l'autre.
+// Règle (un seul juge, serveur ET extension — recopié dans chrome-extension/etat-job.js et background.js) : un
+// marqueur est HÉRITÉ, donc muet, sur DEUX preuves à la fois —
+//   1. il nomme une annonce qui n'est AUCUNE de celles que vise le job (numéro, lien, ancien numéro, ancien lien,
+//      numéro et lien de la capture) ;
+//   2. il a été écrit AVANT la naissance du job (created_at, sinon l'heure de la capture).
+// Tout le reste RETIENT, comme avant : un marqueur sans annonce, un job sans numéro à comparer, le numéro actuel, un
+// marqueur écrit après la naissance du job. Une annonce vraiment retirée et pas encore revenue bloque toujours.
+// Même règle pour la trace écrite « Suppression envoyée à … » : une erreur archivée (ou technique) datée d'avant la
+// naissance du job n'est pas la sienne.
+const jetonsAnnonce = (v) => {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return [];
+  const segment = s.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop();
+  return [...new Set([s, segment, s.match(/(\d{6,})/)?.[1]].filter(Boolean))];
+};
+const pfDe = (job) => (job && typeof job.platform_fields === "object" && job.platform_fields) || {};
+
+/** Les identifiants (numéros, liens, slugs) de l'annonce que vise ce job, en jetons comparables. */
+function identifiantsVises(job) {
+  const pf = pfDe(job);
+  const snap = pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot : {};
+  return new Set([job?.platform_listing_id, job?.listing_url, pf.old_platform_listing_id, pf.old_listing_url,
+    snap.platform_listing_id, snap.listing_url, pf.vinted_item_id].flatMap(jetonsAnnonce));
 }
 
-return { messageRetenuePause, messageRetenueCreneau, retraitEngage };
+/** L'heure de naissance du job (ms), ou NaN si on ne la connaît pas. */
+function naissanceJob(job) {
+  const pf = pfDe(job);
+  const ne = Date.parse(String(job?.created_at ?? ""));
+  return Number.isFinite(ne) ? ne : Date.parse(String(pf.republish_snapshot?.captured_at ?? ""));
+}
+
+/** Le marqueur republish_suppression_envoyee de ce job a-t-il été hérité d'une republication précédente ? */
+function suppressionEnvoyeeHeritee(job) {
+  const m = pfDe(job).republish_suppression_envoyee;
+  if (!m || typeof m !== "object") return false;
+  const siens = jetonsAnnonce(m.annonce);
+  const vises = identifiantsVises(job);
+  // Sans annonce, rien à comparer, ou la même annonce : c'est le sien, il retient.
+  if (!siens.length || !vises.size || siens.some((t) => vises.has(t))) return false;
+  const ne = naissanceJob(job);
+  const at = Date.parse(String(m.at ?? ""));
+  return Number.isFinite(ne) && Number.isFinite(at) && at < ne;
+}
+
+/** Les traces écrites du job, sans celles d'avant sa naissance (héritées). */
+function textesDuJob(job) {
+  const pf = pfDe(job);
+  const ne = naissanceJob(job);
+  const avantNaissance = (quand) => {
+    const t = Date.parse(String(quand ?? ""));
+    return Number.isFinite(ne) && Number.isFinite(t) && t < ne;
+  };
+  return [
+    String(job?.error ?? ""),
+    avantNaissance(pf.error_technique?.at) ? "" : String(pf.error_technique?.brut ?? ""),
+    ...(Array.isArray(pf.erreurs_archivees)
+      ? pf.erreurs_archivees.filter((e) => !avantNaissance(e?.le)).map((e) => String(e?.erreur ?? ""))
+      : []),
+  ];
+}
+
+/** Le retrait de l'annonce est-il engagé (supprimée, ou suppression envoyée) ? */
+function retraitEngage(job) {
+  const pf = pfDe(job);
+  if (pf.republish_step === "deleted" || pf.deleted_at) return true;
+  if (pf.republish_suppression_envoyee && typeof pf.republish_suppression_envoyee === "object" && !suppressionEnvoyeeHeritee(job)) return true;
+  return textesDuJob(job).some((t) => SUPPRESSION_ENVOYEE_RE.test(t));
+}
+
+/**
+ * (04/11) Filet contre l'attente croisée : `job` est retenu derrière `frere` (étape 'captured', suppression envoyée)
+ * mais `frere` porte lui-même une retenue posée derrière `job` — un cycle. Le plus ancien passe (created_at, puis id) ;
+ * date illisible → on attend, comme avant. Jamais pour un frère à l'étape 'deleted' (annonce vraiment retirée).
+ */
+function jePasseDevant(job, frere) {
+  const pfF = pfDe(frere);
+  if (String(pfF.republish_step ?? "") === "deleted" || pfF.deleted_at) return false;
+  const r = pfF.retenue_hors_ligne;
+  if (!r || typeof r !== "object" || String(r.job ?? "") !== String(job?.id ?? "")) return false;
+  const a = Date.parse(String(job?.created_at ?? ""));
+  const b = Date.parse(String(frere?.created_at ?? ""));
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return a < b || (a === b && String(job?.id ?? "") < String(frere?.id ?? ""));
+}
+
+return { messageRetenuePause, messageRetenueCreneau, TRACES_DE_RETRAIT_RE, identifiantsVises, suppressionEnvoyeeHeritee, retraitEngage, jePasseDevant };
 })();
 
 // ── supabase/functions/_shared/file-pause.js ──────────────────────────────────────────────────

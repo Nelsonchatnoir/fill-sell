@@ -62,6 +62,7 @@
     "selftest:vente-annulee-carte": "node scripts/vente-annulee-carte-selftest.mjs",
     "selftest:lot-2410-soir": "node --import ./scripts/loader-ext.mjs scripts/lot-2410-soir-selftest.mjs",
     "selftest:depart-compte": "node --import ./scripts/loader-ext.mjs scripts/depart-compte-selftest.mjs",
+    "selftest:photo-heic": "node --import ./scripts/loader-ext.mjs scripts/photo-heic-selftest.mjs",
     "selftest:lbc-jeton-releve": "node --import ./scripts/loader-ext.mjs scripts/lbc-jeton-releve-selftest.mjs",
     "selftest:encart-cloud-bientot": "node --import ./scripts/loader-ext.mjs scripts/encart-cloud-bientot-selftest.mjs",
     "preuve:suppression-gros-stock": "node scripts/suppression-gros-stock-preuve.mjs",

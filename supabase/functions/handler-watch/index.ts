@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { retraitEngage } from "../_shared/retenue-creneau.js";
+import { retraitEngage, suppressionEnvoyeeHeritee } from "../_shared/retenue-creneau.js";
 import {
   decisionIntrouvable, identifiantAnnonceJob, messageDisparueConfirmee, messagePersistant, messageVendueLue,
   SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE, FENETRE_TRACE_MS,
@@ -22,7 +22,7 @@ import {
 } from "../_shared/lbc-forfait.js";
 import {
   MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, FENETRE_VENDEUR_DEPOP_MS, POSTE_RECENT_MS, attendVendeurDepop, attentesVendeurDepop,
-  eclaireurVendeurDepop, derniereObservationMur, controleVendeurPasse, sondeVendeurDepopOk,
+  eclaireurVendeurDepop, derniereObservationMur, controleVendeurPasse, sondeVendeurDepopOk, murPaypalDepop,
   champsEclaireur as champsEclaireurVendeurDepop, champsReprise as champsRepriseVendeurDepop,
 } from "../_shared/vendeur-depop.js";
 // Liste FERMÉE des CDN des plateformes dont on importe des annonces — UNE
@@ -358,15 +358,19 @@ serve(async (req) => {
     // (28/10 soir, Nico) Et les suppressions ENVOYÉES jamais prouvées (étape restée 'captured') : Sébastien (15 annonces
     // Beebs hors ligne depuis le 26/10), recrutementgroupezk704, boncoin59300 — invisibles tant qu'on ne regardait que
     // l'étape 'deleted'. Même dédup (orphan_alerted_at), même seuil de 30 min (alerteOrphelineDue).
-    const { data: envoyees } = await supabase
+    // (04/11, 9cdr9rm4rn) Un marqueur HÉRITÉ d'une republication précédente (autre annonce, écrit avant la naissance du
+    // job : suppressionEnvoyeeHeritee) n'est pas une suppression envoyée : pas d'alerte (deux fausses le 04/11 à 10:09).
+    const { data: envoyeesBrutes } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, platform, title, status, platform_fields")
+      .select("id, user_id, platform, title, status, created_at, platform_listing_id, listing_url, platform_fields")
       .eq("action", "republish")
       .in("status", ["pending", "processing", "needs_user", "failed"])
       .filter("platform_fields->>republish_step", "eq", "captured")
       .filter("platform_fields->>orphan_alerted_at", "is", "null")
       .not("platform_fields->republish_suppression_envoyee", "is", null)
       .limit(200);
+    // deno-lint-ignore no-explicit-any
+    const envoyees = ((envoyeesBrutes ?? []) as any[]).filter((j) => !suppressionEnvoyeeHeritee(j));
     // deno-lint-ignore no-explicit-any
     const candidats = ([...((bruts ?? []) as any[]), ...((envoyees ?? []) as any[])]).filter((j) =>
       (j.platform_fields?.deleted_at || j.platform_fields?.republish_suppression_envoyee) && alerteOrphelineDue(j.platform_fields, now).due);
@@ -5272,8 +5276,10 @@ serve(async (req) => {
         if (!enAttente.length) continue;
         const depuis = derniereObservationMur(enAttente as never[]);
         const p = profDeV.get(u) ?? {};
+        // (04/11, christophe.lanoux30) canSell = true ne prouve rien quand le mur est « PayPal à relier » : Depop
+        // répondait canSell = true ET refusait la création (code 1216). Seuls l'éclaireur et « C'est fait » relancent.
         const preuve = recentsJobsV.some((r) => String(r.user_id) === u && controleVendeurPasse(r as never, depuis))
-          || sondeVendeurDepopOk(p.extension_sessions, depuis);
+          || (!murPaypalDepop(enAttente as never[]) && sondeVendeurDepopOk(p.extension_sessions, depuis));
         if (preuve) {
           let k = 0;
           for (const j of enAttente) {

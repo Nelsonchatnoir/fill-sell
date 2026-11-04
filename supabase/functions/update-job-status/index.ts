@@ -53,6 +53,7 @@ import { BUILD_COLIS_DEMANDE } from "../_shared/vinted-colis.js";
 import { reponseMarqueDepop, champsApresMarqueDepop } from "../_shared/marque-depop.js";
 import {
   MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP, attentesVendeurDepop, controleVendeurPasse,
+  MOTIF_PAYPAL_DEPOP, MESSAGE_PAYPAL_DEPOP, refusCompteDepop,
   champsReprise as champsRepriseVendeurDepop,
 } from "../_shared/vendeur-depop.js";
 // (25/10, N6, R2, R3) eBay par l'extension : le manquant nommé au refus du brouillon (retours, photos),
@@ -3628,7 +3629,11 @@ serve(async (req) => {
         const questionMarqueD = statutEffectif === "needs_user"
           ? String(nufD?.["field_key"] ?? "") === "depopMarque"
           : String(boucleD?.["field_key"] ?? "") === "depopMarque";
-        if (questionMarqueD || (statutEffectif === "needs_user" && quoiD === MOTIF_VENDEUR_DEPOP)) {
+        // (04/11, christophe.lanoux30) Un refus de création qui demande un geste sur le COMPTE (code 1216 « relier un
+        // compte PayPal ») : le même mur, needs_user tout de suite, aucune reprise (_shared/vendeur-depop.js).
+        const refusCompteD = refusCompteDepop(typeof body.error === "string" ? body.error : "")
+          ?? (quoiD === MOTIF_PAYPAL_DEPOP ? { code: null, motif: MOTIF_PAYPAL_DEPOP } : null);
+        if (questionMarqueD || (statutEffectif === "needs_user" && quoiD === MOTIF_VENDEUR_DEPOP) || refusCompteD) {
           const { data: jD } = await userClient.from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
           if (jD?.platform === "depop" && questionMarqueD) {
             const repD = reponseMarqueDepop({ platform: "depop", action: jD.action, status: statutEffectif,
@@ -3640,6 +3645,15 @@ serve(async (req) => {
               raisonRequalif = raisonRequalif ?? `Depop : « ${repD.de ?? ""} » n'est pas une marque de la liste Depop → « Sans marque » (Other), sans question`;
               console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
             }
+          } else if (jD?.platform === "depop" && ["publish", "republish"].includes(String(jD.action)) && !nufD && refusCompteD) {
+            const vdD = (pfIn["vendeur_depop"] && typeof pfIn["vendeur_depop"] === "object") ? pfIn["vendeur_depop"] as Record<string, unknown> : {};
+            pfVendeurDepop = { ...pfIn, needs_user_source: SOURCE_VENDEUR_DEPOP,
+              vendeur_depop: { ...vdD, paypal_le: new Date().toISOString(), code: refusCompteD.code } };
+            statutEffectif = "needs_user";
+            messageEffectif = MESSAGE_PAYPAL_DEPOP;
+            erreurTechniqueBrute = erreurTechniqueBrute ?? (typeof body.error === "string" ? body.error : null);
+            raisonRequalif = raisonRequalif ?? `Depop : refus de création code ${refusCompteD.code ?? "?"} → geste du compte (${refusCompteD.motif}), aucune reprise`;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
           } else if (jD?.platform === "depop" && ["publish", "republish"].includes(String(jD.action)) && !nufD) {
             pfVendeurDepop = { ...pfIn, needs_user_source: SOURCE_VENDEUR_DEPOP };
             messageEffectif = MESSAGE_VENDEUR_DEPOP;
@@ -3648,6 +3662,39 @@ serve(async (req) => {
         }
       } catch (e) {
         console.error("[update-job-status] Depop (marque / configuration vendeur) :", (e as Error)?.message ?? e);
+      }
+    }
+
+    // ── (04/11, smaillachkar) VINTED RENVOIE LE DÉPÔT VERS SES CONDITIONS D'UTILISATION ─────────────────────────────
+    // Compte Vinted neuf : /items/new redirigeait vers /terms_and_conditions ~3 s après son chargement. L'extension
+    // 0.6.169 le rendait en canal coupé ou en « refus passager » (5 erreurs archivées sur une même annonce, rien de
+    // dit). Les postes à jour le nomment eux-mêmes (vinted_conditions_a_accepter) ; ce filet nomme le même geste pour
+    // les autres, d'après l'adresse relevée par CET essai (fenêtre de travail, coupure du canal, diagnostic daté : moins de
+    // 5 min, après la dernière relance). Jamais sur une republication dont le retrait est engagé (l'annonce doit
+    // revenir, pas attendre).
+    let pfCguVinted: Record<string, unknown> | null = null;
+    if (["pending", "failed", "needs_user"].includes(String(statutEffectif)) && !pfVendeurDepop && !pfMarqueDepop && pfIn && typeof pfIn === "object") {
+      try {
+        // Un poste à jour l'a déjà nommé (son message dit aussi le navigateur) : rien à refaire.
+        const dejaNommeC = String((pfIn["last_diagnostic"] as Record<string, unknown> | undefined)?.["quoi"] ?? "") === "vinted_conditions_a_accepter";
+        const urlCgu = dejaNommeC ? null : urlConditionsVintedRelevee(pfIn, Date.now());
+        if (urlCgu) {
+          const { data: jC } = await userClient.from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+          if (jC?.platform === "vinted" && ["publish", "republish"].includes(String(jC.action))
+              && !(String(jC.action) === "republish" && retraitEngage({ platform_fields: pfIn }))) {
+            const motifC = "vinted_conditions_a_accepter";
+            pfCguVinted = { ...pfIn, needs_user_source: "relancer",
+              last_diagnostic: { quoi: motifC, detail: `adresse relevée : ${urlCgu.slice(0, 200)}`, at: new Date().toISOString() } };
+            for (const k of ["needsUserField", "needsUserFields", "next_action_after"]) delete pfCguVinted[k];
+            statutEffectif = "needs_user";
+            messageEffectif = messageConditionsVinted(urlCgu);
+            erreurTechniqueBrute = erreurTechniqueBrute ?? (typeof body.error === "string" ? body.error : null);
+            raisonRequalif = raisonRequalif ?? "Vinted : dépôt renvoyé vers les conditions d'utilisation → geste de la personne (relancer)";
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] Vinted (conditions d'utilisation) :", (e as Error)?.message ?? e);
       }
     }
 
@@ -4480,6 +4527,7 @@ serve(async (req) => {
     if (pfMarqueGenerique) patch.platform_fields = pfMarqueGenerique;
     if (pfMarqueDepop) patch.platform_fields = pfMarqueDepop;
     if (pfVendeurDepop) patch.platform_fields = pfVendeurDepop;
+    if (pfCguVinted) patch.platform_fields = pfCguVinted;
 
     // Détail structuré du palliatif : l'app lit champs_a_completer pour
     // afficher quoi compléter, sans re-parser le message humain.
@@ -5567,3 +5615,5 @@ import { pauseRayonMoteur } from "../_shared/rayon-moteur-attendu.js";
 import { navigateurDeLaRequete, nomCourtSur, nommerLeNavigateur } from "../_shared/navigateur-poste.js";
 import { CHEMIN_BLOCAGE_LBC, signeBlocageLbc, blocagePose, clesARetirerAuBlocage } from "../_shared/blocage-leboncoin.js";
 import { adresseRefuseeAvantRetrait, publicationAvecLaMemeAdresse, messageAdresseChezNous, PUBLICATION_PREUVE_JOURS, prochaineAdresseLbc, messageAutreAdresseLbc, messageRueIntrouvableLbc } from "../_shared/lbc-voie-des-reglages.js";
+import { urlConditionsVintedRelevee, messageConditionsVinted } from "../_shared/vinted-conditions.js";
+import { retraitEngage } from "../_shared/retenue-creneau.js";

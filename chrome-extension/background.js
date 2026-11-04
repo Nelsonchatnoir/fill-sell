@@ -3184,9 +3184,12 @@ function armerRelanceApresCycle() {
   return d.delaiMs;
 }
 /** Une republication dont le retrait est engagé (annonce retirée ou retrait envoyé) : elle va au bout. */
+// (04/11, 9cdr9rm4rn) Un marqueur HÉRITÉ d'une republication précédente n'engage rien : même juge que le serveur
+// (_shared/retenue-creneau.js, suppressionEnvoyeeHeritee — recopié plus bas, près de suppressionDejaEnvoyee).
 function retraitEngageJob(job) {
   const pf = job?.platform_fields ?? {};
-  return pf.republish_step === "deleted" || Boolean(pf.deleted_at) || Boolean(pf.republish_suppression_envoyee);
+  return pf.republish_step === "deleted" || Boolean(pf.deleted_at)
+    || Boolean(pf.republish_suppression_envoyee && !suppressionEnvoyeeHeritee(job));
 }
 /** La pause et la synchro demandée, relues au plus toutes les 20 s (RPC file_etat_poste). Illisible → rien ne change. */
 async function etatFileEntreDeuxTaches(token) {
@@ -6562,6 +6565,13 @@ async function processJob(rawJob, accessToken) {
       // RAPIDE (2 min) et ne consomme aucune tentative, deux fois au plus par job — la troisième suit le recul
       // ordinaire ; (3) la phrase dit ce qui s'est passé, jamais l'exception brute.
       if (CANAL_COUPE_RE.test(msg) && job.action === "publish") {
+        // (04/11, smaillachkar) Le canal coupé PAR une redirection de Vinted vers ses conditions d'utilisation (compte
+        // neuf, CGU à accepter) : un geste de la personne, nommé — jamais une reprise qui retape la même page.
+        const cgu = await conditionsVintedAAccepter(job, tabId);
+        if (cgu) {
+          await marquerAttenteUtilisateur(accessToken, job, cgu);
+          return { status: "needsUser", error: cgu.error, attenteMotif: cgu.attenteMotif };
+        }
         let depotParti = false;
         if (job.platform === "leboncoin" && tabId != null) {
           const depuis = Date.parse(String(job.platform_fields?.processing_since ?? "")) || 0;
@@ -7472,7 +7482,28 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // garde l'écriture d'avant, inchangée.
 // (30/10, lot E) « lbc_photos_quota_illisible » : le dépôt arrêté avant tout envoi parce que Leboncoin n'a pas dit
 // combien de photos sont gratuites (jamais une annonce amputée) — une attente à relancer, pas une question de champ.
-const MURS_SANS_QUESTION = Object.freeze(["lbc_options_payant_seulement", "lbc_valider_et_payer", "lbc_photos_quota_illisible"]);
+// (04/11, smaillachkar) « vinted_conditions_a_accepter » : Vinted renvoie le dépôt vers ses conditions d'utilisation
+// (compte neuf) — un geste de la personne, puis Relancer ; jamais une question de champ.
+const MURS_SANS_QUESTION = Object.freeze(["lbc_options_payant_seulement", "lbc_valider_et_payer", "lbc_photos_quota_illisible",
+  "vinted_conditions_a_accepter"]);
+// Le message (même texte que content-scripts/vinted.js, messageConditionsVinted — selftest:canal-coupe-reprise).
+function messageConditionsVinted(domaine, navigateur) {
+  return `Vinted te demande d'accepter ses conditions d'utilisation avant de pouvoir déposer une annonce. Ta connexion n'est pas en cause : ouvre ${domaine} dans ${navigateur} sur ton ordinateur, accepte les conditions affichées, puis relance. Rien n'a été publié ni retiré.`;
+}
+const CGU_VINTED_RE = /^https:\/\/(?:www\.)?vinted\.[a-z.]+\/terms_and_conditions(?:[/?#]|$)/i;
+// L'onglet de travail Vinted est-il (ou part-il) sur la page des conditions d'utilisation ? Rend le résultat d'attente
+// à poser (marquerAttenteUtilisateur), ou null. Onglet illisible → null (le chemin d'avant décide).
+async function conditionsVintedAAccepter(job, tabId) {
+  if (job?.platform !== "vinted" || tabId == null) return null;
+  const t = await chrome.tabs.get(tabId).catch(() => null);
+  const url = String(t?.pendingUrl || t?.url || "");
+  if (!CGU_VINTED_RE.test(url)) return null;
+  return {
+    success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "vinted_conditions_a_accepter",
+    error: messageConditionsVinted(VO.domaineVintedAffiche(), VO.navigateurCourt()),
+    diagnostic: { url: url.slice(0, 300), signal: "canal coupé : onglet redirigé vers les conditions d'utilisation" },
+  };
+}
 const MARQUEURS_QUESTION_PASSEE = Object.freeze([
   "needsUserField", "needsUserFields", "champs_a_completer", "server_required_fields", "serverRequired", "needsUserBoucle",
 ]);
@@ -8733,9 +8764,45 @@ function stampEtatFenetre(job, phase, releve) {
 // Opla : pas de content script du manifest (injection à la demande) — inchangé.
 const PLATEFORMES_SCRIPT_DU_MANIFESTE = new Set(["vinted", "leboncoin", "ebay", "beebs"]);
 const PATIENCE_INJECTION_MS = 10_000;
-async function contentScriptRepondSurOnglet(platform, tabId) {
+// ── (04/11, gjehly — Business) UN POSTE LENT GARDE SA PREMIÈRE PAGE LE TEMPS QU'IL LUI FAUT ─────────────────────────
+// Ses republications Vinted échouaient un essai sur deux (« L'onglet de dépôt n'a pas répondu ») : sur son poste,
+// /items/new met 20 à 160 s à recevoir nos scripts (moteur de rendu 2,5 à 5 fois plus lent que le parc, ouverture
+// médiane 85 s contre ~7 s). La cascade jugeait la page à 10 s (8 s si un ping restait sans réponse), puis la
+// RECHARGEAIT et la REMPLAÇAIT toutes les ~20 s : aucune page n'avait jamais le temps de finir.
+// Désormais le poste apprend sa vitesse : l'âge de la page au premier « pong » (ou l'âge atteint quand tout a échoué)
+// est noté par plateforme (10 dernières mesures, chrome.storage.local). La PREMIÈRE page reçoit une patience de
+// 1,5 × le 80e centile des mesures, plafonnée à 90 s — seulement à partir de 3 mesures et si elle dépasse 20 s :
+// un poste rapide (mesures de 5 à 10 s) garde exactement la règle d'avant. Rien n'a été envoyé à la page pendant
+// l'attente : aucune suppression, aucun doublon possible.
+const REVEIL_ONGLET_KEY = "fillsell_reveil_onglet";
+const REVEIL_FACTEUR = 1.5;
+const PATIENCE_APPRISE_MAX_MS = 90_000;
+const REVEIL_SEUIL_MS = 20_000;
+const REVEIL_MESURES_MAX = 10;
+function patienceApprise(mesures) {
+  const v = (Array.isArray(mesures) ? mesures : []).map((m) => Number(m?.ms)).filter((x) => Number.isFinite(x) && x > 0).sort((a, b) => a - b);
+  if (v.length < 3) return 0;
+  const p80 = v[Math.min(v.length - 1, Math.floor(v.length * 0.8))];
+  const patience = Math.min(PATIENCE_APPRISE_MAX_MS, Math.round(REVEIL_FACTEUR * p80));
+  return patience >= REVEIL_SEUIL_MS ? patience : 0;
+}
+async function lireReveilsOnglet(platform) {
+  try { return (await chrome.storage.local.get(REVEIL_ONGLET_KEY))?.[REVEIL_ONGLET_KEY]?.[platform] ?? []; } catch { return []; }
+}
+async function noterReveilOnglet(platform, ms, echec = false) {
+  try {
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    const st = (await chrome.storage.local.get(REVEIL_ONGLET_KEY))?.[REVEIL_ONGLET_KEY] ?? {};
+    st[platform] = [...(Array.isArray(st[platform]) ? st[platform] : []), { ms: Math.round(ms), ...(echec ? { echec: true } : {}), le: Date.now() }]
+      .slice(-REVEIL_MESURES_MAX);
+    await chrome.storage.local.set({ [REVEIL_ONGLET_KEY]: st });
+  } catch { /* une mesure, jamais bloquante */ }
+}
+async function contentScriptRepondSurOnglet(platform, tabId, { jusqua = 0 } = {}) {
   const type = platform === "vinted" ? "VINTED_PING" : "FILLSELL_PING";
-  const fin = Date.now() + PATIENCE_INJECTION_MS;
+  const fin = Math.max(Date.now() + PATIENCE_INJECTION_MS, jusqua);
+  // (04/11) Poste lent appris : jusqu'à `jusqua`, un ping resté sans réponse ne juge pas encore la page.
+  const prolonge = fin > Date.now() + PATIENCE_INJECTION_MS;
   for (;;) {
     let absent = false;
     try {
@@ -8744,17 +8811,26 @@ async function contentScriptRepondSurOnglet(platform, tabId) {
       absent = /Receiving end does not exist|Could not establish connection/i.test(String(e?.message ?? e));
     }
     // Une réponse sans « pong » ou un délai dépassé : le script est là mais muet.
-    if (!absent || Date.now() >= fin) return false;
+    if ((!absent && !prolonge) || Date.now() >= fin) return false;
     await sleep(1_000);
   }
 }
 async function getOrCreateWorkTab(platform, url) {
+  const depuis = Date.now();
   const tabId = await getOrCreateWorkTabBrut(platform, url);
   if (!PLATEFORMES_SCRIPT_DU_MANIFESTE.has(platform)) return tabId;
-  if (await contentScriptRepondSurOnglet(platform, tabId)) return tabId;
+  const patience = patienceApprise(await lireReveilsOnglet(platform));
+  if (await contentScriptRepondSurOnglet(platform, tabId, { jusqua: patience ? depuis + patience : 0 })) {
+    await noterReveilOnglet(platform, Date.now() - depuis);
+    return tabId;
+  }
+  // L'âge le plus grand atteint par une page jugée muette : la mesure d'un échec (une borne basse).
+  let ageMax = Date.now() - depuis;
   const relance = await relancerOngletMuet(platform, tabId, url, (id) => contentScriptRepondSurOnglet(platform, id));
+  if (relance.depuis) ageMax = Math.max(ageMax, Date.now() - relance.depuis);
   if (relance.ok) {
     console.warn(`[onglet][${platform}] content script joignable après ${relance.geste} (onglet ${relance.tabId}) — on continue`);
+    if (relance.depuis) await noterReveilOnglet(platform, Date.now() - relance.depuis);
     return relance.tabId;
   }
   // (01/11 soir, 0.6.165) La page dit pourquoi elle se tait ; un document chargé qui n'a jamais reçu nos scripts les reçoit.
@@ -8773,19 +8849,25 @@ async function getOrCreateWorkTab(platform, url) {
     await sleep(3_000);
     if (await contentScriptRepondSurOnglet(platform, relance.tabId)) {
       console.warn(`[onglet][${platform}] content script joignable une fois la fenêtre de travail visible (onglet ${relance.tabId}) — on continue`);
+      if (relance.depuis) await noterReveilOnglet(platform, Date.now() - relance.depuis);
       return relance.tabId;
     }
+    if (relance.depuis) ageMax = Math.max(ageMax, Date.now() - relance.depuis);
     const visible = await relancerOngletMuet(platform, relance.tabId, url, (id) => contentScriptRepondSurOnglet(platform, id), { montrer: true });
+    if (visible.depuis) ageMax = Math.max(ageMax, Date.now() - visible.depuis);
     if (visible.ok) {
       console.warn(`[onglet][${platform}] content script joignable après ${visible.geste}, fenêtre visible (onglet ${visible.tabId}) — on continue`);
+      if (visible.depuis) await noterReveilOnglet(platform, Date.now() - visible.depuis);
       return visible.tabId;
     }
     if (await sonderEtSoignerOngletMuet(platform, visible.tabId, "fenetre_visible")) {
       console.warn(`[onglet][${platform}] scripts du manifeste injectés, fenêtre visible (onglet ${visible.tabId}) — on continue`);
       return visible.tabId;
     }
+    await noterReveilOnglet(platform, ageMax, true);
     throw new Error(`onglet de travail ${platform} : le content script ne répond pas, ni après ${relance.geste}, ni fenêtre de travail visible`);
   }
+  await noterReveilOnglet(platform, ageMax, true);
   throw new Error(`onglet de travail ${platform} : le content script ne répond pas, ni après ${relance.geste}`);
 }
 
@@ -16553,9 +16635,12 @@ async function montrerOngletDansFenetreDediee(tabId) {
     return false;
   }
 }
+// (04/11) `depuis` : l'instant où la dernière page relancée a commencé à charger (âge de la page, appris par
+// getOrCreateWorkTab).
 async function relancerOngletMuet(platform, tabId, url, ping, { montrer = false } = {}) {
   let courant = tabId;
   let geste = "rien";
+  let depuis = 0;
   for (let essai = 0; essai < RELANCE_ONGLET_ATTENTES_MS.length; essai++) {
     await sleep(RELANCE_ONGLET_ATTENTES_MS[essai]);
     try {
@@ -16565,12 +16650,14 @@ async function relancerOngletMuet(platform, tabId, url, ping, { montrer = false 
         console.warn(`[onglet][${platform}] content script muet sur l'onglet ${courant} — ${geste}`);
         await neutralizeBeforeUnload(courant).catch(() => {});
         const attente = waitForTabComplete(courant, null, 45_000).catch(() => null);
+        depuis = Date.now();
         await chrome.tabs.reload(courant, { bypassCache: false });
         await attente;
       } else {
         geste = "onglet neuf";
         console.warn(`[onglet][${platform}] toujours muet — fermeture de l'onglet ${courant} et ouverture d'un onglet neuf`);
         if (tab) { await neutralizeBeforeUnload(courant).catch(() => {}); await chrome.tabs.remove(courant).catch(() => {}); }
+        depuis = Date.now();
         const neuf = await createWorkTabInWorkWindow(url + WORK_TAB_FRAGMENT);
         courant = neuf.id;
         if (montrer) await montrerOngletDansFenetreDediee(courant);
@@ -16578,12 +16665,12 @@ async function relancerOngletMuet(platform, tabId, url, ping, { montrer = false 
       }
       try { await chrome.storage.session.set({ [workTabKey(platform)]: courant }); } catch { /* sans conséquence */ }
       await sleep(2_000);
-      if (await ping(courant)) return { ok: true, tabId: courant, geste };
+      if (await ping(courant)) return { ok: true, tabId: courant, geste, depuis };
     } catch (e) {
       console.warn(`[onglet][${platform}] relance impossible (${geste}) :`, String(e?.message ?? e));
     }
   }
-  return { ok: false, tabId: courant, geste: "rechargement puis onglet neuf" };
+  return { ok: false, tabId: courant, geste: "rechargement puis onglet neuf", depuis };
 }
 
 // Le « es-tu là ? » de chaque plateforme (réponse synchrone, aucune lecture).
@@ -28054,19 +28141,72 @@ async function reprendreChampsDeLAnnonce(job, pf) {
 // Marqueur posé depuis la 0.6.97 (republish_suppression_envoyee) ; avant, seule
 // la trace écrite la disait (« Suppression envoyée à Beebs… » dans l'erreur
 // archivée) — elle compte aussi, pour les jobs déjà arrêtés à tort.
-function suppressionDejaEnvoyee(job, pf) {
-  const m = pf?.republish_suppression_envoyee;
-  if (m && typeof m === "object") {
-    const a = String(m.annonce ?? "");
-    const id = String(job.platform_listing_id ?? "");
-    if (!a || a === id || a === String(job.listing_url ?? "") || (id && a.includes(id))) return true;
-  }
-  const textes = [
-    String(job.error ?? ""),
-    String(pf?.error_technique?.brut ?? ""),
-    ...(Array.isArray(pf?.erreurs_archivees) ? pf.erreurs_archivees.map((e) => String(e?.erreur ?? "")) : []),
+// ── (04/11, 9cdr9rm4rn — Beebs) UN SEUL JUGE POUR SOI ET POUR LES AUTRES ─────────────────────────────────────────────
+// « Pyjama 36 mois » et « Ensemble 9 mois » se sont attendues l'une l'autre le 03/11 : chacune portait le marqueur
+// HÉRITÉ de sa republication du 18/10 (ancien numéro). Ce juge-ci le disait « pas le mien » (elle passait par le
+// garde-fou), la requête du garde-fou le comptait « hors ligne » chez l'autre sur sa seule présence. Désormais un
+// marqueur n'est muet que s'il est hérité — DEUX preuves : il nomme une autre annonce que celles du job ET il date
+// d'avant la naissance du job. Copie À L'IDENTIQUE de _shared/retenue-creneau.js (selftest:republication-va-au-bout
+// compare les deux) : le service worker ne charge pas etat-job.js.
+function jetonsAnnonce(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return [];
+  const segment = s.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop();
+  return [...new Set([s, segment, s.match(/(\d{6,})/)?.[1]].filter(Boolean))];
+}
+function pfDeJob(job) { return (job && typeof job.platform_fields === "object" && job.platform_fields) || {}; }
+function identifiantsVises(job) {
+  const pf = pfDeJob(job);
+  const snap = pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot : {};
+  return new Set([job?.platform_listing_id, job?.listing_url, pf.old_platform_listing_id, pf.old_listing_url,
+    snap.platform_listing_id, snap.listing_url, pf.vinted_item_id].flatMap(jetonsAnnonce));
+}
+function naissanceJob(job) {
+  const pf = pfDeJob(job);
+  const ne = Date.parse(String(job?.created_at ?? ""));
+  return Number.isFinite(ne) ? ne : Date.parse(String(pf.republish_snapshot?.captured_at ?? ""));
+}
+function suppressionEnvoyeeHeritee(job) {
+  const m = pfDeJob(job).republish_suppression_envoyee;
+  if (!m || typeof m !== "object") return false;
+  const siens = jetonsAnnonce(m.annonce);
+  const vises = identifiantsVises(job);
+  if (!siens.length || !vises.size || siens.some((t) => vises.has(t))) return false;
+  const ne = naissanceJob(job);
+  const at = Date.parse(String(m.at ?? ""));
+  return Number.isFinite(ne) && Number.isFinite(at) && at < ne;
+}
+function textesDuJob(job) {
+  const pf = pfDeJob(job);
+  const ne = naissanceJob(job);
+  const avantNaissance = (quand) => {
+    const t = Date.parse(String(quand ?? ""));
+    return Number.isFinite(ne) && Number.isFinite(t) && t < ne;
+  };
+  return [
+    String(job?.error ?? ""),
+    avantNaissance(pf.error_technique?.at) ? "" : String(pf.error_technique?.brut ?? ""),
+    ...(Array.isArray(pf.erreurs_archivees)
+      ? pf.erreurs_archivees.filter((e) => !avantNaissance(e?.le)).map((e) => String(e?.erreur ?? ""))
+      : []),
   ];
-  return textes.some((t) => /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted|Depop)/.test(t));
+}
+// Le filet contre l'attente croisée (copie de jePasseDevant, _shared/retenue-creneau.js) : le plus ancien passe.
+function jePasseDevant(job, frere) {
+  const pfF = pfDeJob(frere);
+  if (String(pfF.republish_step ?? "") === "deleted" || pfF.deleted_at) return false;
+  const r = pfF.retenue_hors_ligne;
+  if (!r || typeof r !== "object" || String(r.job ?? "") !== String(job?.id ?? "")) return false;
+  const a = Date.parse(String(job?.created_at ?? ""));
+  const b = Date.parse(String(frere?.created_at ?? ""));
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return a < b || (a === b && String(job?.id ?? "") < String(frere?.id ?? ""));
+}
+function suppressionDejaEnvoyee(job, pf) {
+  const j = { ...job, platform_fields: pf ?? {} };
+  const m = pf?.republish_suppression_envoyee;
+  if (m && typeof m === "object" && !suppressionEnvoyeeHeritee(j)) return true;
+  return textesDuJob(j).some((t) => /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted|Depop)/.test(t));
 }
 
 // ── (0.6.104, Louis) BEEBS : LA PREUVE D'UNE SUPPRESSION RELUE JUSQU'À ~6 MIN ─
@@ -28545,11 +28685,18 @@ async function processRepublishJobPlateforme(job, accessToken) {
         accessToken, { headers: { Prefer: "return=representation" } },
       );
       if (Array.isArray(horsLigne) && !horsLigne.length && !suppressionDejaEnvoyee(job, pf)) {
-        horsLigne = await restRequest(
+        // (04/11, 9cdr9rm4rn) Les autres sont jugés par le MÊME juge que soi : un marqueur hérité d'une republication
+        // précédente (autre annonce, écrit avant la naissance du job) ne les met pas « hors ligne ». Et un frère qui
+        // m'attend déjà ne me retient pas si je suis le plus ancien (jamais deux jobs qui s'attendent).
+        const envoyees = await restRequest(
           `${baseHorsLigne}&platform_fields->>republish_step=eq.captured` +
-          `&platform_fields->republish_suppression_envoyee=not.is.null&select=id,title&limit=1`,
+          `&platform_fields->republish_suppression_envoyee=not.is.null` +
+          `&select=id,title,created_at,error,platform_listing_id,listing_url,platform_fields&order=created_at.asc&limit=20`,
           accessToken, { headers: { Prefer: "return=representation" } },
         );
+        horsLigne = (Array.isArray(envoyees) ? envoyees : [])
+          .filter((r) => suppressionDejaEnvoyee(r, r?.platform_fields ?? {}))
+          .filter((r) => !jePasseDevant(job, r));
       }
       if (Array.isArray(horsLigne) && horsLigne.length) {
         console.log(`[republish] job ${job.id} : retrait reporté — une annonce ${label} du compte est déjà hors ligne (job ${horsLigne[0].id})`);

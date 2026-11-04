@@ -186,6 +186,35 @@ console.log('4. La base');
   ok(!/DELETE FROM|UPDATE (public\.)?(inventaire|ventes|profiles)/i.test(m), 'aucune donnée existante touchée');
 }
 
+// (04/11, point 8) Ce que FillSell a fait, en chiffres anonymes. La preuve en base est
+// scripts/preuve-depart-activite.mjs (Postgres jetable) ; ici, les verrous du texte.
+console.log('4 bis. L’activité anonyme au départ (migration 20261104200000)');
+{
+  const m = lire('supabase/migrations/20261104200000_depart_activite_anonyme.sql');
+  const inv = lire('supabase/rollbacks/20261104200000_depart_activite_anonyme_INVERSE.sql');
+  ok(/ALTER TABLE public\.departs_compte ADD COLUMN IF NOT EXISTS activite jsonb;/.test(m), 'une colonne activite, vide, rien d’autre dans la table');
+  ok(!/DELETE FROM|UPDATE (public\.)?\w+ SET|DROP (TABLE|COLUMN)/i.test(m), 'aucune donnée existante touchée');
+  ok(/REVOKE ALL ON FUNCTION public\.erreur_anonyme\(text, text\[\]\) FROM PUBLIC, anon, authenticated;/.test(m)
+    && /REVOKE ALL ON FUNCTION public\.activite_anonyme_depart\(uuid\) FROM PUBLIC, anon, authenticated;/.test(m),
+    'les deux fonctions neuves fermées à anon et authenticated');
+  const resume = m.slice(m.indexOf('CREATE OR REPLACE FUNCTION public.activite_anonyme_depart'), m.indexOf('COMMENT ON FUNCTION public.activite_anonyme_depart'));
+  const sortie = resume.slice(resume.indexOf('SELECT jsonb_build_object('));
+  ok(!/'(titre|title|platform_listing_id|listing_url|email|username|user_id|id)'\s*,/.test(sortie), 'le résumé ne sort ni titre, ni numéro, ni lien, ni e-mail, ni pseudo', sortie.slice(0, 300));
+  ok(/'texte', erreur_anonyme\(er\.texte, er\.mots\)/.test(sortie) && /'diagnostic', erreur_anonyme\(er\.diagnostic, er\.mots\)/.test(sortie),
+    'tout texte d’erreur passe par erreur_anonyme, avec les mots à taire');
+  ok(/ARRAY\[j\.title, j\.platform_listing_id, j\.listing_url\]/.test(resume) && /ARRAY\[p\.email, split_part\(coalesce\(p\.email, ''\), '@', 1\), p\.username\]/.test(resume),
+    'mots à taire : titre, numéro, lien, e-mail, pseudo');
+  ok(/'\[\^\[:space:\]\]\+@/.test(m) && /'\[0-9\]\+', '#'/.test(m) && /'«\[\^»\]\*\(»\|\$\)'/.test(m) && /'"\[\^"\]\*\("\|\$\)'/.test(m),
+    'erreur_anonyme efface e-mails, chiffres et citations (même coupées)');
+  ok(/v_activite := activite_anonyme_depart\(v_uid\);\s*EXCEPTION WHEN OTHERS THEN v_activite := NULL;/.test(m), 'un résumé qui casse laisse la case vide, la réponse est gardée');
+  const avant = lire('supabase/migrations/20261006090000_departs_compte.sql');
+  const corps = (s) => s.slice(s.indexOf('INSERT INTO departs_compte_garde'), s.indexOf('INSERT INTO departs_compte ('));
+  ok(corps(m).replace(/\s+-- \(04\/11\)[^\n]*\n\s*BEGIN\s+v_activite[\s\S]*?END;\s*$/, '').trim() === corps(avant).trim(),
+    'enregistrer_depart : le corps de prod à l’identique, seul le bloc « activité » s’ajoute');
+  ok(/DROP FUNCTION IF EXISTS public\.activite_anonyme_depart\(uuid\)/.test(inv) && /DROP COLUMN IF EXISTS activite/.test(inv)
+    && corps(inv).trim() === corps(avant).trim(), 'l’inverse rend la fonction de prod et retire colonne et fonctions');
+}
+
 console.log('5. Les index de la suppression d’un gros stock');
 for (const t of ['vinted_listing_snapshots', 'rapprochements', 'vinted_republish_captures']) {
   const f = fs.readdirSync(join(ROOT, 'supabase/migrations')).find((x) => x.startsWith('20261006') && x.includes(`index_${t}_inventaire`));

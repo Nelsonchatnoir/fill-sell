@@ -128,7 +128,7 @@ console.log("\nD. LE CÂBLAGE");
   const bloc = iBloc > 0 ? gpj.slice(iBloc, gpj.indexOf("── DEPOP : LES CATÉGORIES QUE DEPOP INTERDIT", iBloc)) : "";
   ok(iBloc > 0 && iResa > iBloc, "get-pending-jobs : la retenue AVANT la réservation");
   ok(/j\.platform === "depop" && j\.action !== "delete" && j !== eclaireurV/.test(bloc), "les retraits ne sont jamais retenus ; l'éclaireur reste servi");
-  ok(/champsRetenue\(/.test(bloc) && /status: "needs_user", error: MESSAGE_VENDEUR_DEPOP/.test(bloc) && /\.eq\("id", String\(j\.id\)\)\.eq\("status", "pending"\)/.test(bloc), "retenue = attente du même geste, compare-and-swap sur pending");
+  ok(/champsRetenue\(/.test(bloc) && /status: "needs_user", error: messageV/.test(bloc) && /\.eq\("id", String\(j\.id\)\)\.eq\("status", "pending"\)/.test(bloc), "retenue = attente du même geste (message du mur qui tient), compare-and-swap sur pending");
   ok(/if \(posesV >= 40\) break;/.test(bloc) && /!includeProcessing && !includeNeedsUser/.test(bloc), "au plus 40 écritures, poll d'exécution seul");
   ok(/\.gt\("published_at", new Date\(vuV\)\.toISOString\(\)\)/.test(bloc) && /\.neq\("handler_build", "releve-annonces"\)/.test(bloc), "une publication faite depuis le dernier mur vu : rien n'est retenu");
   const ujs = lire("supabase/functions/update-job-status/index.ts");
@@ -158,6 +158,53 @@ console.log("\nD. LE CÂBLAGE");
   ok(/vendeur_plateforme: Wallet/.test(ar) && /present\('vendeur_plateforme'\)/.test(ar), "« À régler » : l'icône et la phrase de la ligne");
   const bg = lire("chrome-extension/background.js");
   ok(/const vendeur = typeof r\?\.vendeur\?\.canSell === "boolean" \? r\.vendeur\.canSell : null;/.test(bg) && /depop_vendeur: depop\.vendeur \?\? null/.test(bg) && /fusion\.depop_vendeur = prev\.depop_vendeur \?\? null;/.test(bg), "extension : la sonde remonte canSell (extension_sessions.depop_vendeur)");
+}
+
+// ── (04/11, christophe.lanoux30) LE REFUS « PAYPAL À RELIER » (CODE 1216) EST LE MÊME MUR, JAMAIS UNE REPRISE ─────────
+console.log("PayPal à relier (code 1216)");
+{
+  // Les bruts réels (60 jours en base : 6 tâches, 3 comptes — message toujours en italien).
+  const bruts = [
+    `Depop a refusé l'annonce (HTTP 400) : {"id":"x","message":"È necessario collegare un account PayPal prima di poter pubblicare questa inserzione.","code":1216}`,
+    `Depop a refusé l'annonce (HTTP 400) : "{\\"id\\":\\"x\\",\\"message\\":\\"È necessario collegare un account PayPal…\\",\\"code\\":1216}"`,
+    `Depop a refusé l'annonce (HTTP 400) : {"message":"You need to connect a PayPal account"}`,
+  ];
+  ok(bruts.every((b) => V.refusCompteDepop(b)?.motif === V.MOTIF_PAYPAL_DEPOP), "les 3 formes réelles du refus sont reconnues (code ou mot PayPal)");
+  ok(V.refusCompteDepop(bruts[0]).code === 1216, "le code 1216 est lu");
+  ok(V.refusCompteDepop(`Depop a refusé l'annonce (HTTP 400) : {"message":"Title too long","code":1100}`) === null
+    && V.refusCompteDepop("Session Depop illisible (reseau)") === null && V.refusCompteDepop("Réponse de Depop perdue pendant la création") === null,
+    "un autre refus, une session illisible, une réponse perdue : pas ce mur");
+  // Le job de Christophe le 04/11 : l'essai est allé jusqu'à « creation » (après le contrôle vendeur), puis 1216.
+  const t0 = Date.parse("2026-11-04T17:31:00Z");
+  const essai = { platform: "depop", action: "publish", status: "needs_user", created_at: "2026-10-25T10:00:00Z",
+    platform_fields: { needs_user_source: V.SOURCE_VENDEUR_DEPOP,
+      work_window_state: { at_end: { fill_step: "creation", fill_step_at: new Date(t0).toISOString() } },
+      vendeur_depop: { paypal_le: new Date(t0 + 2_000).toISOString(), code: 1216 } } };
+  ok(!V.controleVendeurPasse(essai, -Infinity), "un essai arrêté au refus PayPal n'est PAS la preuve que le compte vend (plus de relâche en rafale)");
+  const avant = { ...essai, platform_fields: { ...essai.platform_fields, vendeur_depop: { paypal_le: new Date(t0 - 3_600_000).toISOString() } } };
+  ok(V.controleVendeurPasse(avant, -Infinity), "un essai passé APRÈS un ancien refus PayPal (relié depuis) : la preuve tient");
+  ok(V.attendVendeurDepop(essai) && V.murVuLe(essai) === t0 + 2_000, "la tâche attend le geste du compte ; le mur est daté du refus");
+  ok(V.murPaypalDepop([essai]) && V.messageVendeurDepop([essai]) === V.MESSAGE_PAYPAL_DEPOP, "le message de la carte et de la retenue : relier PayPal");
+  const vendeur = { platform: "depop", action: "publish", status: "needs_user", platform_fields: { last_diagnostic: { quoi: V.MOTIF_VENDEUR_DEPOP, at: "2026-11-04T10:00:00Z" } } };
+  ok(!V.murPaypalDepop([vendeur]) && V.messageVendeurDepop([vendeur]) === V.MESSAGE_VENDEUR_DEPOP, "le mur « configuration vendeur » garde son message");
+  ok(/PayPal/.test(V.MESSAGE_PAYPAL_DEPOP) && /Rien n'a été publié ni retiré\.$/.test(V.MESSAGE_PAYPAL_DEPOP) && !/[a-z]{3,} [a-z]+ (è|un account)/i.test(V.MESSAGE_PAYPAL_DEPOP),
+    "le message est en français, dit le geste et que rien n'est parti");
+  const dp = lire("chrome-extension/content-scripts/depop.js");
+  const msgExt = dp.match(/const DEPOP_MSG_PAYPAL =\s*("[^"]*"\s*\+\s*"[^"]*");/)?.[1];
+  ok(msgExt && new Function(`return ${msgExt}`)() === V.MESSAGE_PAYPAL_DEPOP, "extension : le même message, à l'octet");
+  ok(/const DEPOP_CODES_GESTE_COMPTE = \{ 1216: "depop_paypal_a_relier" \};/.test(dp) && /depopEtape\("compte_paypal"\);/.test(dp)
+    && /needsUser: true, attenteUtilisateur: true, attenteMotif: motifCompte,\s*error: DEPOP_MSG_PAYPAL/.test(dp),
+    "extension : le refus part en attente nommée (étape hors preuve), jamais en échec inconnu");
+  const ujs = lire("supabase/functions/update-job-status/index.ts");
+  ok(/refusCompteDepop\(typeof body\.error === "string" \? body\.error : ""\)/.test(ujs) && /statutEffectif = "needs_user";\s*messageEffectif = MESSAGE_PAYPAL_DEPOP;/.test(ujs)
+    && /paypal_le: new Date\(\)\.toISOString\(\), code: refusCompteD\.code/.test(ujs),
+    "update-job-status : le brut d'une extension d'avant (0.6.169) passe aussi en attente du geste, sans reprise");
+  const hw = lire("supabase/functions/handler-watch/index.ts");
+  ok(/\|\| \(!murPaypalDepop\(enAttente as never\[\]\) && sondeVendeurDepopOk\(p\.extension_sessions, depuis\)\)/.test(hw),
+    "handler-watch : canSell = true ne relâche rien tant que le mur est PayPal");
+  const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
+  ok(/const messageV = messageVendeurDepop\(attentesV as never\[\]\);/.test(gpj) && /error: messageV, platform_fields: pfAPersister\(pfV\)/.test(gpj),
+    "get-pending-jobs : les publications retenues portent le message du mur qui tient");
 }
 
 console.log(ko ? `\n✗ depop-vendeur-mur : ${ko} rouge(s) sur ${n}` : `\n✓ depop-vendeur-mur : ${n} contrôles verts`);

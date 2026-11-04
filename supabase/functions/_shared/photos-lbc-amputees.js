@@ -15,6 +15,8 @@
 
 // Le commit de l'extension qui lit le gratuit sur la nouvelle page (66352f9, lot E, EXTENSION_LAST_COMMIT) : tout build
 // construit depuis le porte (0.6.160 jamais téléversée, 0.6.161, copie Cloud 0.6.160-cloud).
+import { TRACES_DE_RETRAIT_RE } from "./retenue-creneau.js";
+
 export const BUILD_PHOTOS_LBC = "2026-10-30T16:30:40Z";
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
@@ -104,6 +106,9 @@ export function ligneRepublicationPhotos(src, { photosFiche = null, maintenant =
   const photos = photosJob.length >= (am?.fiche ?? 0) || photosJob.length >= photosF.length ? photosJob : photosF;
   const pf0 = { ...(objet(src.platform_fields) ?? {}) };
   for (const k of CLES_TRANSITOIRES) delete pf0[k];
+  // (04/11, 9cdr9rm4rn) Aucune trace de retrait du dépôt précédent : même règle par préfixes que la base
+  // (republication_sans_traces, migration 20261104210000).
+  for (const k of Object.keys(pf0)) if (TRACES_DE_RETRAIT_RE.test(k)) delete pf0[k];
   return {
     user_id: src.user_id, inventaire_id: src.inventaire_id, platform: "leboncoin", action: "republish", status: "pending",
     photo_option: src.photo_option ?? "original", title: src.title, description: src.description, price: src.price,

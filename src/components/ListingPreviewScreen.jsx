@@ -6345,12 +6345,28 @@ export default function ListingPreviewScreen({
     if (!toAdd.length) return;
     // `marqueur: "extra_"` garde le schéma de nom d'origine
     // (<ts>_extra_<i>.jpg), qui distingue les photos ajoutées après coup.
-    const { urls } = await televerserPhotos(supabase, {
-      userId,
-      sources: toAdd,
-      marqueur: "extra_",
-      surErreur: "lever",
-    });
+    // (04/11, romain.guerin85) Une photo illisible est SAUTÉE et DITE, comme à
+    // l'étape 0 — jamais une promesse rejetée sans un mot (son HEIC refusé
+    // emportait la photo et les suivantes, en silence).
+    let urls = [];
+    try {
+      setUploadError("");
+      const r = await televerserPhotos(supabase, {
+        userId,
+        sources: toAdd,
+        marqueur: "extra_",
+        surErreur: "ignorer",
+      });
+      urls = r.urls;
+      if (r.illisibles.length) {
+        setUploadError(!urls.length ? messageDecodage(lang) : lang === "en"
+          ? `${r.illisibles.length} photo(s) could not be read and were skipped: ${r.illisibles.join(", ")}. The others were added.`
+          : `${r.illisibles.length} photo(s) n'ont pas pu être lues et ont été ignorées : ${r.illisibles.join(", ")}. Les autres sont bien ajoutées.`);
+      }
+    } catch (e) {
+      setUploadError(e?.message || t("stepUploadError"));
+      return;
+    }
     if (urls.length) {
       setPhotos(prev => [...prev, ...urls]);
       // ── LA PHOTO AJOUTÉE APRÈS GÉNÉRATION PART AUSSI (2026-09-08) ────────

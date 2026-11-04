@@ -34,6 +34,11 @@ const VINTED_ORIGINE_PAGE =
     ? location.origin
     : "https://www.vinted.fr";
 const VINTED_DOMAINE_PAGE = VINTED_ORIGINE_PAGE.replace(/^https:\/\/(www\.)?/, "");
+// (04/11, smaillachkar) Vinted demande d'accepter ses conditions d'utilisation : le même texte que background.js
+// (messageConditionsVinted, selftest:canal-coupe-reprise).
+function messageConditionsVinted(domaine, navigateur) {
+  return `Vinted te demande d'accepter ses conditions d'utilisation avant de pouvoir déposer une annonce. Ta connexion n'est pas en cause : ouvre ${domaine} dans ${navigateur} sur ton ordinateur, accepte les conditions affichées, puis relance. Rien n'a été publié ni retiré.`;
+}
 function navigateurCourtPage() {
   try {
     const nav = globalThis.navigator ?? {};
@@ -3299,6 +3304,18 @@ async function remplirFormulaireVinted(job) {
   // Le diagnostic { url, signal, sonde, http } part dans TOUS les cas en
   // platform_fields.last_diagnostic (canal objet, cf. arbitrerSessionEbay) —
   // c'est l'absence d'URL relevée qui a rendu le cas Manon muet.
+  // ── (04/11, smaillachkar) VINTED DEMANDE D'ACCEPTER SES CONDITIONS D'UTILISATION ─────────────────────────────────
+  // Compte Vinted neuf : /items/new redirigeait ~3 s après son chargement vers /terms_and_conditions (CGU à accepter).
+  // La navigation fermait le canal du remplissage (« message channel closed ») ou cette garde répondait « refus
+  // passager » : 5 erreurs archivées sur une même annonce, rien de dit. C'est un geste de la personne, une seule fois :
+  // attente nommée (relancer), jamais une reprise.
+  if (/^\/terms_and_conditions(?:[/?#]|$)/i.test(location.pathname)) {
+    return {
+      success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "vinted_conditions_a_accepter",
+      diagnostic: { url: String(location.href).slice(0, 300), signal: `pathname inattendu (${location.pathname})` },
+      error: messageConditionsVinted(VINTED_DOMAINE_PAGE, navigateurCourtPage()),
+    };
+  }
   if (!location.pathname.startsWith("/items/new") || (await sel()).tryResolveSelector("vinted", "auth.password_guard")) {
     const signal = !location.pathname.startsWith("/items/new")
       ? `pathname inattendu (${location.pathname})`

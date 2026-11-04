@@ -109,8 +109,11 @@ console.log("D. Une suppression envoyée retient comme une annonce retirée");
   const iInv = bg.indexOf("// Invariant « une seule annonce hors ligne à la fois », par plateforme");
   const inv = bg.slice(iInv, bg.indexOf("delete pf.retenue_hors_ligne;", iInv));
   ok(/let horsLigne = suppressionDejaEnvoyee\(job, pf\) \? \[\] : await restRequest\(/.test(inv), "extension : le job dont la suppression est partie va au bout");
-  ok(/&platform_fields->>republish_step=eq\.captured` \+\n\s+`&platform_fields->republish_suppression_envoyee=not\.is\.null&select=id,title&limit=1`/.test(inv),
-    "extension : une suppression envoyée d'un autre job retient");
+  // (04/11, 9cdr9rm4rn) La même lecture, jugée par le MÊME juge que soi (un marqueur hérité ne retient plus) et le
+  // filet du cycle (selftest:republication-va-au-bout, § 5 à 7).
+  ok(/&platform_fields->>republish_step=eq\.captured` \+\n\s+`&platform_fields->republish_suppression_envoyee=not\.is\.null` \+/.test(inv)
+    && /\.filter\(\(r\) => suppressionDejaEnvoyee\(r, r\?\.platform_fields \?\? \{\}\)\)/.test(inv),
+    "extension : une suppression envoyée d'un autre job retient (sauf marqueur hérité)");
   ok((bg.match(/await retenirDerriereAnnonceHorsLigne\(accessToken, job, pf, horsLigne\[0\]\)/g) ?? []).length === 2, "retenue toujours écrite (jamais un « skipped » muet)");
 }
 

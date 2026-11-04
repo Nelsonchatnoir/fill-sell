@@ -52,6 +52,42 @@ export const MESSAGE_VENDEUR_DEPOP =
   "Depop demande de terminer ta configuration de vendeur (ajouter un moyen de paiement) avant ta première mise en ligne. " +
   "Fais-le une seule fois sur depop.com, sur ton ordinateur : tes publications Depop repartiront toutes seules. Rien n'a été publié ni retiré.";
 
+// ── (04/11, christophe.lanoux30) DEPOP REFUSE LA CRÉATION TANT QUE PAYPAL N'EST PAS RELIÉ ──────────────────────────
+// Depop répond HTTP 400, code 1216 (« È necessario collegare un account PayPal prima di poter pubblicare questa
+// inserzione. » — en italien chez tous les comptes) APRÈS les photos, alors que canSell vaut true. Le connecteur le
+// rendait comme un échec inconnu : trois reprises de 15 min par tâche, et l'essai arrêté à l'étape « creation »
+// passait pour la preuve que le compte vend → toutes les publications retenues du compte repartaient, montaient
+// leurs photos et reprenaient le même refus. 60 jours en base : 6 tâches, 3 comptes, aucun autre refus de création.
+// Règle : un refus de création Depop qui demande un geste sur le COMPTE (CODES_GESTE_COMPTE_DEPOP, ou le mot PayPal)
+// est le même mur que la configuration vendeur — needs_user, une carte, aucune reprise, un éclaireur au barème —
+// avec son propre message. Un essai arrêté sur ce refus ne prouve JAMAIS que le compte vend (paypal_le), et la sonde
+// canSell non plus tant que ce mur tient.
+export const MOTIF_PAYPAL_DEPOP = "depop_paypal_a_relier";
+export const MESSAGE_PAYPAL_DEPOP =
+  "Depop demande de relier un compte PayPal avant de mettre une annonce en ligne. " +
+  "Relie ton compte PayPal sur depop.com (Réglages › Paiements), sur ton ordinateur : tes publications Depop repartiront toutes seules. Rien n'a été publié ni retiré.";
+// Les codes de refus Depop qui demandent un geste du vendeur sur son compte (relevés en base, 60 jours au 04/11).
+export const CODES_GESTE_COMPTE_DEPOP = Object.freeze({ 1216: MOTIF_PAYPAL_DEPOP });
+
+/** Un refus de création Depop qui demande un geste sur le compte ? `texte` : l'erreur rendue par le connecteur. */
+export function refusCompteDepop(texte) {
+  const t = String(texte ?? "");
+  if (!/Depop a refusé l'annonce \(HTTP 4\d\d\)/.test(t)) return null;
+  const code = Number((/\\?"code\\?"\s*:\s*(\d{3,5})/.exec(t) ?? [])[1]) || null;
+  if (code && CODES_GESTE_COMPTE_DEPOP[code]) return { code, motif: CODES_GESTE_COMPTE_DEPOP[code] };
+  return /paypal/i.test(t) ? { code, motif: MOTIF_PAYPAL_DEPOP } : null;
+}
+
+/** Une des tâches en attente tient-elle sur le refus « PayPal à relier » ? (la sonde canSell ne prouve alors rien) */
+export function murPaypalDepop(jobs) {
+  return (Array.isArray(jobs) ? jobs : []).some((j) => Number.isFinite(paypalLe(j)));
+}
+
+/** Le message de la carte : PayPal quand c'est ce mur-là qui tient une des tâches, la configuration vendeur sinon. */
+export function messageVendeurDepop(jobs) {
+  return murPaypalDepop(jobs) ? MESSAGE_PAYPAL_DEPOP : MESSAGE_VENDEUR_DEPOP;
+}
+
 // Les étapes du connecteur APRÈS le contrôle vendeur (content-scripts/depop.js,
 // depopEtape) : y arriver prouve que Depop accepte ce vendeur.
 const ETAPES_APRES_VENDEUR = new Set(["prevol", "referentiels", "photos", "creation", "verification"]);
@@ -63,10 +99,22 @@ const pfDe = (job) => (job && job.platform_fields && typeof job.platform_fields 
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
 const estPublication = (job) => ["publish", "republish"].includes(String(job?.action ?? "publish"));
 
+/** (04/11) La date (ms) du refus « PayPal à relier » sur ce job, NaN sinon. */
+function paypalLe(job) {
+  const pf = pfDe(job);
+  const vd = pf.vendeur_depop && typeof pf.vendeur_depop === "object" ? pf.vendeur_depop : {};
+  const d = pf.last_diagnostic;
+  const vu = d && typeof d === "object" && d.quoi === MOTIF_PAYPAL_DEPOP ? ms(d.at) : NaN;
+  const t = [ms(vd.paypal_le), vu].filter(Number.isFinite);
+  return t.length ? Math.max(...t) : NaN;
+}
+
 /** La date (ms) du mur VU par l'extension sur ce job, NaN sinon (une retenue n'en est jamais un). */
 export function murVuLe(job) {
   const d = pfDe(job).last_diagnostic;
-  return d && typeof d === "object" && d.quoi === MOTIF_VENDEUR_DEPOP ? ms(d.at) : NaN;
+  const vendeur = d && typeof d === "object" && d.quoi === MOTIF_VENDEUR_DEPOP ? ms(d.at) : NaN;
+  const t = [vendeur, paypalLe(job)].filter(Number.isFinite);
+  return t.length ? Math.max(...t) : NaN;
 }
 
 /**
@@ -85,6 +133,9 @@ export function controleVendeurPasse(job, depuisMs = -Infinity) {
   const fin = pfDe(job).work_window_state?.at_end;
   if (!fin || typeof fin !== "object" || !ETAPES_APRES_VENDEUR.has(String(fin.fill_step ?? ""))) return false;
   const t = ms(fin.fill_step_at ?? fin.at);
+  // (04/11) Arrêté sur le refus « PayPal à relier » (posé au retour de CET essai) : pas une preuve que le compte vend.
+  const paypal = paypalLe(job);
+  if (Number.isFinite(paypal) && Number.isFinite(t) && paypal >= t) return false;
   return Number.isFinite(t) && t > depuis;
 }
 

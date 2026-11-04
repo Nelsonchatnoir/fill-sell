@@ -106,7 +106,7 @@ import { enregistrerVenteArticle } from './utils/venteAtomique.js';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { offreEnCours, offreAOuvrir } from './lib/offreMail';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
-import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
+import { versImageDecodable, messageDecodage, reduireSousLimiteIA, versFormatUniversel } from './utils/imageDecode';
 import { televerserPhotos, menagePhotosArticle, compresserImage } from './utils/photosUpload';
 import { entreesPhotos, urlsPhotos, MAX_PHOTOS, LENS_PHOTOS_LUES, LENS_COTE_IA, LENS_ENVOIS_PARALLELES, envoyerEnParallele } from './utils/photos';
 import { searchMatch } from './utils/recherche';
@@ -8302,9 +8302,13 @@ export default function App({ loginOnly = false }){
         // centaines de Ko au lieu de plusieurs Mo : quinze photos de plus
         // n'allongent pas l'attente du scan. Compression impossible → la photo
         // part telle quelle, jamais perdue.
-        const{blob,mime}=i<LENS_PHOTOS_LUES
+        const{blob:blobLu,mime:mimeLu}=i<LENS_PHOTOS_LUES
           ?await reduireSousLimiteIA(brut,LENS_COTE_IA,LENS_COTE_IA,0.92).then(({blob,mime:mimeReduit,reduite})=>({blob,mime:reduite?mimeReduit:(photo.mime||"image/jpeg")}))
           :await compresserImage(brut).then(b=>({blob:b,mime:"image/jpeg"}),()=>({blob:brut,mime:photo.mime||"image/jpeg"}));
+        // (04/11) Jamais un HEIC dans lens-temp : ces adresses deviennent les photos de la fiche (lens-analysis), puis
+        // partent aux plateformes. Lu dans les octets ; reconverti par le serveur (photo-heic-jpeg). Échec → un envoi
+        // raté comme un autre (le lot s'arrête et le dit), jamais un HEIC envoyé tel quel.
+        const{blob,mime}=await versFormatUniversel(blobLu,mimeLu);
         const ext=(mime||"image/jpeg").split("/")[1]||"jpg";
         const path=`lens/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
         const{error:upErr}=await supabase.storage.from('lens-temp').upload(path,blob,{contentType:mime});

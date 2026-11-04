@@ -48,5 +48,39 @@ console.log("D. Vinted et eBay d'abord");
 ok(iVinted > 0 && iVinted < i, "Vinted : la redirection de succès est lue avant");
 ok(iEbay > 0 && iEbay < i, "eBay : la sonde de canal coupé passe avant");
 
+// ── (04/11, smaillachkar) LE CANAL COUPÉ PAR LA PAGE DES CONDITIONS D'UTILISATION VINTED EST NOMMÉ ─────────────────
+console.log("Vinted : les conditions d'utilisation à accepter (04/11)");
+{
+  const C = await import("../supabase/functions/_shared/vinted-conditions.js");
+  const lire = (p) => fs.readFileSync(join(ROOT, p), "utf8").replace(/\r\n/g, "\n");
+  const now = Date.parse("2026-11-04T16:14:40Z");
+  // Les champs réels de f30a5cb9 (04/11 17:14 Paris) : garde de page sans heure, fenêtre de fin sur les conditions.
+  const pf = { last_diagnostic: { http: 200, signal: "pathname inattendu (/terms_and_conditions)", sonde: "vivante",
+    url: "https://www.vinted.fr/terms_and_conditions?ref_url=%2Fitems%2Fnew" },
+    work_window_state: { at_end: { at: "2026-11-04T16:14:35.546Z", tab_url: "https://www.vinted.fr/terms_and_conditions" } } };
+  ok(C.urlConditionsVintedRelevee(pf, now) === "https://www.vinted.fr/terms_and_conditions", "la fenêtre de fin d'essai sur les conditions : nommé");
+  ok(C.urlConditionsVintedRelevee({ last_diagnostic: pf.last_diagnostic }, now) === null, "un diagnostic sans heure (il reste d'un essai à l'autre) ne prouve rien seul");
+  ok(C.urlConditionsVintedRelevee(pf, now + 10 * 60_000) === null, "un relevé de plus de 5 min ne prouve rien");
+  ok(C.urlConditionsVintedRelevee({ ...pf, derniere_relance_manuelle: "2026-11-04T16:14:38Z" }, now) === null, "relancé à la main depuis : la personne a peut-être accepté");
+  ok(C.urlConditionsVintedRelevee({ canal_coupe_diag: { le: "2026-11-04T16:14:36Z", url: "https://www.vinted.fr/items/new", url_en_chargement: "https://www.vinted.fr/terms_and_conditions?ref_url=%2Fitems%2Fnew" } }, now)
+    !== null, "la coupure du canal pendant le chargement des conditions : nommé");
+  ok(C.urlConditionsVintedRelevee({ work_window_state: { at_end: { at: "2026-11-04T16:14:35Z", tab_url: "https://www.vinted.fr/items/new" } } }, now) === null,
+    "une page de dépôt ordinaire : rien");
+  ok(C.messageConditionsVinted("https://www.vinted.be/terms_and_conditions").includes("ouvre vinted.be sur ton ordinateur"), "le message dit la boutique de la personne");
+  const vj = lire("chrome-extension/content-scripts/vinted.js");
+  const corps = (src) => src.slice(src.indexOf("function messageConditionsVinted("), src.indexOf("\n}\n", src.indexOf("function messageConditionsVinted(")));
+  ok(corps(vj).length > 50 && corps(vj) === corps(bg), "le message est le même dans la page et dans le background");
+  const iCgu = vj.indexOf("if (/^\\/terms_and_conditions(?:[/?#]|$)/i.test(location.pathname)) {");
+  const iGarde = vj.indexOf('if (!location.pathname.startsWith("/items/new") || (await sel()).tryResolveSelector("vinted", "auth.password_guard")) {');
+  ok(iCgu > 0 && iCgu < iGarde && /attenteMotif: "vinted_conditions_a_accepter"/.test(vj.slice(iCgu, iGarde)), "la page : les conditions nommées AVANT la garde (jamais « refus passager »)");
+  const iCanal = bg.indexOf('if (CANAL_COUPE_RE.test(msg) && job.action === "publish") {');
+  ok(/const cgu = await conditionsVintedAAccepter\(job, tabId\);\s*if \(cgu\) \{\s*await marquerAttenteUtilisateur\(accessToken, job, cgu\);/.test(bg.slice(iCanal, iCanal + 600)),
+    "le background : un canal coupé sur les conditions = attente nommée, avant toute reprise");
+  ok(/const MURS_SANS_QUESTION = Object\.freeze\(\[[^\]]*"vinted_conditions_a_accepter"\]\)/.test(bg), "un mur sans question : Relancer");
+  const ujs = lire("supabase/functions/update-job-status/index.ts");
+  ok(/urlConditionsVintedRelevee\(pfIn, Date\.now\(\)\)/.test(ujs) && /!\(String\(jC\.action\) === "republish" && retraitEngage\(\{ platform_fields: pfIn \}\)\)/.test(ujs)
+    && /if \(pfCguVinted\) patch\.platform_fields = pfCguVinted;/.test(ujs), "le serveur nomme le même geste pour les postes d'avant, jamais sur un retrait engagé");
+}
+
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ tout est vert");
 process.exit(ko ? 1 : 0);

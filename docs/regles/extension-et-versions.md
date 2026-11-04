@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- 04/11 soir — un poste lent garde sa première page (patience apprise) ; Vinted « conditions d'utilisation » nommé (en fin de fichier)
 - « Servi » — versions servies (extension, web, OTA, fonctions) (ex-L277-295)
 - 06/10 soir — un échec qu'une extension corrige repart seul (ex-L323-328)
 - 04/10 — boucles (onglet muet, canal coupé) (ex-L364-365)
@@ -214,3 +215,13 @@
   EXTENSION_LAST_COMMIT = 2026-11-02T20:08:13Z ; EXTENSION_MIN_BUILD non touché.
 - Copie Cloud seulement : onglets de travail Leboncoin, Beebs, Depop sans tâche depuis 5 min FERMÉS en fin de cycle (pas `chrome.tabs.discard` : la page s'y recharge aussitôt)
   (rapport `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 26).
+
+## 04/11 soir — un poste lent garde sa première page ; les conditions d'utilisation Vinted sont nommées
+Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
+- `getOrCreateWorkTab` : l'âge de la page au premier « pong » (ou atteint à l'échec) est noté par plateforme
+  (`fillsell_reveil_onglet`, 10 mesures). La PREMIÈRE page reçoit 1,5 × p80, plafond 90 s, dès 3 mesures et si ≥ 20 s ;
+  sinon la règle d'avant à l'identique (10 s, ping sans réponse = muet, rechargement puis onglet neuf). Ne jamais
+  raccourcir ces bornes sans relire les mesures d'un poste lent (gjehly : ouverture médiane 85 s).
+- Vinted renvoie vers `/terms_and_conditions` : attente nommée `vinted_conditions_a_accepter` (MURS_SANS_QUESTION),
+  jamais une reprise ; la page le dit avant sa garde, le background le lit sur l'onglet au canal coupé, le serveur le
+  nomme pour les postes d'avant (`_shared/vinted-conditions.js`, adresse datée < 5 min, après la dernière relance).

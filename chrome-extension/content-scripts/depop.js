@@ -134,6 +134,13 @@ const DEPOP_MSG_SESSION_RETRAIT =
 const DEPOP_MSG_VENDEUR =
   "Depop demande de terminer ta configuration de vendeur (ajouter un moyen de paiement) avant ta première mise en ligne. " +
   "Fais-le une seule fois sur depop.com, sur ton ordinateur : tes publications Depop repartiront toutes seules. Rien n'a été publié ni retiré.";
+// (04/11, christophe.lanoux30) Depop refuse la CRÉATION (HTTP 400, code 1216, « collegare un account PayPal ») alors que
+// canSell vaut true : le même mur du compte, son propre message (_shared/vendeur-depop.js, MESSAGE_PAYPAL_DEPOP, à l'octet).
+const DEPOP_MSG_PAYPAL =
+  "Depop demande de relier un compte PayPal avant de mettre une annonce en ligne. " +
+  "Relie ton compte PayPal sur depop.com (Réglages › Paiements), sur ton ordinateur : tes publications Depop repartiront toutes seules. Rien n'a été publié ni retiré.";
+// Les codes de refus Depop qui demandent un geste sur le compte (_shared/vendeur-depop.js, CODES_GESTE_COMPTE_DEPOP).
+const DEPOP_CODES_GESTE_COMPTE = { 1216: "depop_paypal_a_relier" };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. L'API
@@ -865,6 +872,18 @@ async function fillListingForm(job) {
     }
     if (!c.ok || !c.corps?.id || !c.corps?.slug) {
       const detail = JSON.stringify(c.corps ?? c.texte ?? "").slice(0, 300);
+      // (04/11) Un refus qui demande un geste sur le COMPTE (PayPal à relier) : attente nommée, jamais une reprise.
+      // Étape « compte_paypal » : hors des étapes qui prouvent que le compte vend (_shared/vendeur-depop.js).
+      const codeDepop = Number(c.corps?.code) || null;
+      const motifCompte = c.statut >= 400 && c.statut < 500
+        ? (DEPOP_CODES_GESTE_COMPTE[codeDepop] ?? (/paypal/i.test(String(c.corps?.message ?? c.texte ?? "")) ? "depop_paypal_a_relier" : null))
+        : null;
+      if (motifCompte) {
+        depopEtape("compte_paypal");
+        depopTracer(`création refusée : code ${codeDepop ?? "?"} — geste du compte (${motifCompte})`);
+        return depopSortie({ success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: motifCompte,
+          error: DEPOP_MSG_PAYPAL, reponse: detail, http: c.statut, codeDepop, t0 });
+      }
       return depopSortie({ success: false, error: `Depop a refusé l'annonce (HTTP ${c.statut}) : ${detail}`, reponse: detail, http: c.statut, t0 });
     }
 
