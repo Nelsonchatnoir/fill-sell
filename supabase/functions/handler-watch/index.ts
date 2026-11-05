@@ -134,6 +134,10 @@ const BROKEN_MIN = 2;       // S2 : nb d'échecs minimum pour une signature « r
 // sont coupées. La garde en base (garde_releve_sans_geste) refuse de toute
 // façon ces lignes ; on ne les pose plus du tout.
 const RELANCE_AUTOMATIQUE_DRESSING_VINTED = false;   // (05/11, A4) les relevés d'annonces Leboncoin, Beebs, Depop sont rallumés (releves-de-veille.js) ; le dressing Vinted, non.
+// (05/11 16:52, INCIDENT) Règle « annonce publiée confirmée disparue » (7c48b8c) COUPÉE : pour une REPUBLICATION Vinted publiée,
+// le juge lisait platform_fields.vinted_item_id (l'ANCIENNE annonce, retirée par la republication elle-même) au lieu de
+// platform_listing_id (l'annonce en ligne) — 24 annonces vivantes closes à 16:33. Rallumer sur décision de Nico seulement.
+const JUGER_ANNONCES_PUBLIEES_DISPARUES = false;
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
@@ -3722,7 +3726,8 @@ serve(async (req) => {
   // _shared/annonce-publiee-disparue.js. Une fois par heure (minutes 33 à 35), un seizième des annonces publiées que la
   // détection de vente n'arrive plus à lire (check_unresolved), tournant sur l'identifiant : chaque annonce est jugée
   // environ une fois par jour, en une dizaine de lectures groupées. Aucune visite de plateforme, aucun relevé demandé.
-  if (new Date().getUTCMinutes() >= 33 && new Date().getUTCMinutes() < 36) {
+  // ⛔ (05/11 16:52, INCIDENT après le déploiement commun) COUPÉ : voir JUGER_ANNONCES_PUBLIEES_DISPARUES.
+  if (JUGER_ANNONCES_PUBLIEES_DISPARUES && new Date().getUTCMinutes() >= 33 && new Date().getUTCMinutes() < 36) {
     try {
       const r = await jugerAnnoncesPublieesDisparues(supabase, new Date().getUTCHours() % 16);
       if (r.closes || r.en_verification) console.log(`[handler-watch] annonces publiées : ${r.jugees} jugées, ${r.closes} closes (disparues ou vendues, preuve des relevés), ${r.en_verification} en vérification chez la plateforme`);
