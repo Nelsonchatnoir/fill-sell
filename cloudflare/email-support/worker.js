@@ -1,15 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// WORKER E-MAIL DE support@fillsell.app (05/11, point 4 — Nico) — PRÉPARÉ, NON DÉPLOYÉ
+// WORKER E-MAIL DE support@fillsell.app (05/11, point 4 — Nico) — Worker Cloudflare « support-fillsell »
 // ═══════════════════════════════════════════════════════════════════════════
-// Cause prouvée le 05/11 (journal Email Routing + Gmail) : les mails de Louis du 01/11 16:42, 02/11 09:22 et 03/11 09:25
-// (envoyés depuis Outlook sous son adresse relais outlook_…@outlook.com) ont été TRANSFÉRÉS par Cloudflare
-// (delivered/forward, SPF/DKIM pass) puis classés en SPAM par Gmail : personne ne les a vus.
+// Cause prouvée le 05/11 (journal Email Routing + en-têtes Gmail) : les 4 mails de Louis (01/11 13:58 et 16:42, 02/11 09:22,
+// 03/11 09:25, adresse relais outlook_…@outlook.com) ont été TRANSFÉRÉS par Cloudflare, SPF, DKIM, DMARC et ARC tous « pass »,
+// puis classés en SPAM par Gmail (« semblable à des messages identifiés comme spam par le passé ») : personne ne les a vus.
+// Parade Gmail posée le 05/11 : filtre « À : support@fillsell.app → ne jamais envoyer dans le spam ».
 // RÈGLE : aucun mail de support ne se perd sans qu'on le sache. Chaque mail reçu est d'abord ARCHIVÉ (table
 // public.support_mails, migration 20261105200000), puis transféré à la boîte de Nico ; un transfert qui échoue est noté et
 // déclenche une alerte (Resend) ; ops-digest liste chaque jour les mails reçus — un mail rangé en spam par Gmail reste visible.
-// Secrets du Worker (jamais écrits ici) : SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY ; variables : DESTINATION
-// (la boîte de Nico), ALERTE (adresse d'alerte, autre que la destination).
-// Déploiement : sur accord de Nico seulement (règle Email Routing support@ → « Send to a Worker »).
+// Secrets du Worker (posés par Nico dans le tableau de bord, jamais écrits ici) : SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY ;
+// variables : SUPABASE_URL, DESTINATION (la boîte de Nico), ALERTE (l'alerte part par Resend, pas par le transfert).
+// Routage : règle Email Routing support@fillsell.app → « Send to a Worker » support-fillsell (accord de Nico du 05/11).
 
 const MAX_EXTRAIT = 20_000;   // caractères du texte brut gardés en base (le mail entier reste chez Gmail)
 
