@@ -276,3 +276,62 @@ test('point 11 — le relais retente sur place une panne passagère, jamais un r
   await c.r.fermer(); await c.amontF.fermer();
   await new Promise((ok) => echo.close(ok));
 });
+
+// ── Décisions de Nico du 05/11 soir : IP de secours allumée (h) ; plafond d'achat d'IP 100 $, alerte à 80 % (d) ──
+import { choisirIpSecours } from '../src/fournisseurIp.js';
+import { specConteneurChrome } from '../src/navigateur.js';
+import { alerteSeuilPlafond, moisParis, SEUIL_ALERTE_PLAFOND } from '../src/approvisionnement.js';
+
+test('(h) l’IP de secours d’un compte = l’IP qui lui est RÉSERVÉE, jamais celle d’un autre compte', () => {
+  const t = Date.parse('2026-11-05T21:00:00Z');
+  const lignes = [
+    { id: 39, etat: 'disponible', user_id: null, reserve_pour: U, reserve_jusqu_au: '2026-12-03T13:09:55Z', expire_le: '2026-12-03T13:09:55Z' },
+    { id: 2, etat: 'disponible', user_id: null, reserve_pour: 'autre-compte', reserve_jusqu_au: '2026-12-01T00:00:00Z', expire_le: '2026-12-01T00:00:00Z' },
+    { id: 42, etat: 'attribuee_client', user_id: U, reserve_pour: null, expire_le: '2026-12-04T17:08:04Z' },
+  ];
+  assert.equal(choisirIpSecours(lignes, U, 42, t)?.id, 39);
+  assert.equal(choisirIpSecours(lignes, 'autre-compte', 7, t)?.id, 2);
+  assert.equal(choisirIpSecours(lignes, 'sans-reserve', 7, t), null, 'pas de réserve : pas de secours (jamais une IP partagée)');
+  assert.equal(choisirIpSecours([{ ...lignes[0], user_id: 'quelquun' }], U, 42, t), null, 'une IP attribuée à un compte ne sert jamais de secours');
+  assert.equal(choisirIpSecours([{ ...lignes[0], reserve_jusqu_au: '2026-11-01T00:00:00Z' }], U, 42, t), null, 'réservation échue');
+  assert.equal(choisirIpSecours([{ ...lignes[0], etat: 'repos' }], U, 42, t), null, 'au repos : jamais');
+  assert.equal(choisirIpSecours([lignes[0]], U, 39, t), null, 'jamais l’IP principale elle-même');
+  const base = { imageChrome: 'img', dossierProfils: '/p', dossierEtat: '/e', memoireNavigateur: '2g' };
+  const avec = specConteneurChrome({ config: base, user: U, profilId: 'p1', proxyUrl: 'http://u:p@10.0.0.1:8000', proxySecours: 'http://v:q@10.0.0.2:8001', jetonControle: 'a'.repeat(48) });
+  assert.ok(avec.Env.includes('PROXY_SECOURS=http://v:q@10.0.0.2:8001'));
+  const sans = specConteneurChrome({ config: base, user: U, profilId: 'p1', proxyUrl: 'http://u:p@10.0.0.1:8000', proxySecours: 'pas-une-url', jetonControle: 'a'.repeat(48) });
+  assert.ok(!sans.Env.some((e) => e.startsWith('PROXY_SECOURS=')), 'une adresse mal formée n’est jamais donnée au relais');
+});
+
+test('(d) plafond d’achat d’IP : alerte à 80 %, une fois par mois', () => {
+  assert.equal(SEUIL_ALERTE_PLAFOND, 0.8);
+  const mois = moisParis(Date.parse('2026-11-05T21:00:00Z'));
+  assert.equal(mois, '2026-11');
+  assert.equal(alerteSeuilPlafond({ budgetUsd: 100, depenseMoisUsd: 79.99, mois, dejaDitPour: null }), false);
+  assert.equal(alerteSeuilPlafond({ budgetUsd: 100, depenseMoisUsd: 80, mois, dejaDitPour: null }), true);
+  assert.equal(alerteSeuilPlafond({ budgetUsd: 100, depenseMoisUsd: 96, mois, dejaDitPour: '2026-11' }), false, 'déjà dite ce mois-ci');
+  assert.equal(alerteSeuilPlafond({ budgetUsd: 100, depenseMoisUsd: 96, mois: '2026-12', dejaDitPour: '2026-11' }), true, 'mois suivant : redite');
+  assert.equal(alerteSeuilPlafond({ budgetUsd: 0, depenseMoisUsd: 50, mois, dejaDitPour: null }), false, 'plafond non posé : rien (et aucun achat ne part)');
+});
+
+// ── Point 8 : « Me connecter » — la page de connexion, ses fournisseurs (Google, Apple, Facebook, Kiabi) COMME
+// AUJOURD'HUI (ordre de Nico, 05/11 soir : « ne casse rien, la connexion doit passer par Google, Apple… »), rien d'autre ──
+import { navigationPermise } from '../src/plateformes.js';
+
+test('point 8 — Me connecter : connexion par Google, Apple, Facebook, Kiabi intacte ; aucune page hors connexion', () => {
+  // Les fournisseurs de connexion : leurs pages de connexion passent, comme avant.
+  assert.equal(navigationPermise('vinted', 'https://accounts.google.com/o/oauth2/v2/auth?client_id=x'), true, 'Google');
+  assert.equal(navigationPermise('depop', 'https://appleid.apple.com/auth/authorize?client_id=x'), true, 'Apple');
+  assert.equal(navigationPermise('vinted', 'https://www.facebook.com/v18.0/dialog/oauth?client_id=x'), true, 'Facebook');
+  assert.equal(navigationPermise('beebs', 'https://auth.kiabi.com/connect/authorize?x=1'), true, 'Kiabi (Beebs)');
+  // Le retour déclaré par le fournisseur (redirect_uri) est permis à l'identique, quel que soit l'hôte de la plateforme.
+  assert.equal(navigationPermise('depop', 'https://api.depop.com/api/v1/social/callback', [{ hote: 'api.depop.com', chemin: '/api/v1/social/callback' }]), true, 'retour déclaré');
+  // Les pages de la plateforme hors connexion : jamais (pas de navigation libre).
+  assert.equal(navigationPermise('leboncoin', 'https://www.leboncoin.fr/ad/vetements/3302470047'), false);
+  assert.equal(navigationPermise('vinted', 'https://www.vinted.fr/items/10667855416'), false);
+  assert.equal(navigationPermise('beebs', 'https://www.beebs.app/fr/p/34300468'), false);
+  assert.equal(navigationPermise('vinted', 'https://www.vinted.fr/member/login'), true);
+  assert.equal(navigationPermise('beebs', 'https://www.beebs.app/fr/auth'), true);
+  assert.equal(navigationPermise('depop', 'http://www.depop.com/login/'), false, 'jamais en clair');
+  assert.equal(navigationPermise('vinted', 'https://www.google.com/search?q=x'), false, 'Google hors connexion : jamais');
+});

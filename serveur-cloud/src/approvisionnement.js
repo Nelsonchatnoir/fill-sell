@@ -44,7 +44,28 @@ const RAISONS = Object.freeze({
 });
 export const raisonLisible = (r) => RAISONS[r] ?? r;
 
-export function creerApprovisionnement({ base, iproyal, alertes, journal, regles, attendreLivraisonMs = 120_000, pasMs = 20_000 }) {
+// (05/11 soir, décision de Nico) LE PLAFOND DU MOIS : 100 $ (coin_config cloud_ip_budget_mensuel_usd) — arrêt NET au
+// plafond (cloud_ip_depense_ouvrir le refuse en base, sous verrou, avant toute commande) et une ALERTE à 80 % (support@,
+// une fois par mois et par démarrage de l'orchestrateur). L'achat automatique reste coupé jusqu'au jour de l'ouverture.
+export const SEUIL_ALERTE_PLAFOND = 0.8;
+/** Le mois d'un instant, heure de Paris (pure) : « AAAA-MM ». */
+export const moisParis = (ms) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit' }).format(new Date(ms));
+/** Faut-il l'alerte des 80 % ? (pure : testée) — plafond posé, dépense du mois ≥ 80 %, pas encore dite ce mois-ci. */
+export function alerteSeuilPlafond({ budgetUsd, depenseMoisUsd, mois, dejaDitPour }) {
+  return Number(budgetUsd) > 0 && Number(depenseMoisUsd) >= SEUIL_ALERTE_PLAFOND * Number(budgetUsd) && dejaDitPour !== mois;
+}
+
+export function creerApprovisionnement({ base, iproyal, alertes, journal, regles, attendreLivraisonMs = 120_000, pasMs = 20_000, maintenant = () => Date.now() }) {
+  let seuilDitPour = null;
+  /** (05/11 soir) L'alerte des 80 % du plafond, au plus une fois par mois. */
+  async function verifierSeuil(g) {
+    const mois = moisParis(maintenant());
+    if (!alerteSeuilPlafond({ budgetUsd: g?.budgetUsd, depenseMoisUsd: g?.depenseMoisUsd, mois, dejaDitPour: seuilDitPour })) return false;
+    seuilDitPour = mois;
+    await alertes?.signaler('serveur', `Dépenses IP du mois : ${Number(g.depenseMoisUsd).toFixed(2)} $ sur un plafond de ${Number(g.budgetUsd).toFixed(2)} $ (80 % atteints). Au plafond, plus aucun achat ni renouvellement ne part.`,
+      { depense_usd: g.depenseMoisUsd, plafond_usd: g.budgetUsd, mois });
+    return true;
+  }
   const param = async (cle, defaut) => {
     const { data, error } = await base.rpc('cloud_param', { p_cle: cle, p_defaut: defaut });
     return error ? defaut : Number(data ?? defaut);
@@ -62,6 +83,12 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
       budgetUsd, stockMin, achatMax: Math.max(1, Math.min(50, achatMax || 10)),
       depenseMoisUsd: Number(depense?.data ?? 0) || 0,
     };
+  }
+  /** Les gardes du tour, et l'alerte des 80 % si elle est due. */
+  async function gardesEtSeuil() {
+    const g = await gardes();
+    await verifierSeuil(g).catch(() => false);
+    return g;
   }
 
   /** Une dépense refusée ou impossible : dite (jamais un mail à un utilisateur ; ALERTES_MAIL décide pour support@). */
@@ -148,6 +175,7 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
         g.depenseMoisUsd += montant;
         if (solde && Number.isFinite(solde.montant)) solde.montant -= montant;
         journal.info('renouvellement_fait', { commande, ips: ids.length, prix_usd: montant });
+        await verifierSeuil({ ...g, depenseMoisUsd: Number(g.depenseMoisUsd ?? 0) + montant }).catch(() => false);
         faits.push({ commande, fait: true });
       } catch (e) {
         await base.rpc('cloud_ip_depense_fermer', { p_id: o.id, p_statut: 'echec', p_commande: String(commande), p_prix_usd: null, p_details: { erreur: e.message.slice(0, 200) } });
@@ -201,6 +229,7 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
       g.depenseMoisUsd += montant;
       if (solde && Number.isFinite(solde.montant)) solde.montant -= montant;
       journal.info('achat_fait', { commande: String(commande.id), quantite: n, prix_usd: montant });
+      await verifierSeuil(g).catch(() => false);
     } catch (e) {
       await base.rpc('cloud_ip_depense_fermer', { p_id: o.id, p_statut: 'echec', p_commande: null, p_prix_usd: null, p_details: { erreur: e.message.slice(0, 200) } });
       await alertes?.signaler('serveur', `Achat IPRoyal ÉCHOUÉ (${n} IP) : ${e.message.slice(0, 120)}`, { quantite: n });
@@ -214,5 +243,5 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     return { fait: true, commande: String(commande.id), quantite: n };
   }
 
-  return { gardes, livrer, renouveler, acheter };
+  return { gardes, gardesEtSeuil, verifierSeuil, livrer, renouveler, acheter };
 }

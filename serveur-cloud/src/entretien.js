@@ -252,7 +252,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     // 4 bis. (03/11) Les commandes livrées entrent au pool (contrôle d'entrée au tour suivant, sortie ouverte d'abord).
     bilan.livraisons = (await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; }))?.livrees ?? null;
     const { data: etat } = await base.rpc('cloud_pool_etat');
-    const g = await approvisionnement.gardes().catch((e) => { journal.alerte('gardes_illisibles', { erreur: e.message }); return null; });
+    const g = await (approvisionnement.gardesEtSeuil ?? approvisionnement.gardes)().catch((e) => { journal.alerte('gardes_illisibles', { erreur: e.message }); return null; });
     const plan = regles.planDuJour({ ips: toutes, lambda: regles.lambdaMesure(etat?.essais_7j ?? 0),
       enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0,
       stockMin: g?.stockMin ?? regles.PARAMETRES?.ipStockMin });

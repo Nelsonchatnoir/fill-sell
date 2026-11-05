@@ -65,6 +65,17 @@ export function alerteSolde(montant, seuil, derniereAlerteLe, maintenant = Date.
   return !(Number.isFinite(derniereAlerteLe) && maintenant - derniereAlerteLe < 24 * 3600_000);
 }
 
+/**
+ * (05/11 soir) L'IP de secours d'un compte parmi les lignes du pool (pure : testée) : réservée à CE compte, libre (aucun
+ * compte attribué, pas au rebut ni au repos), réservation et échéance non passées, autre que l'IP principale.
+ */
+export function choisirIpSecours(lignes, user, ipPrincipale, maintenant = Date.now()) {
+  const t = (v) => { const x = Date.parse(String(v ?? '')); return Number.isFinite(x) ? x : null; };
+  return (lignes ?? []).find((l) => l && String(l.reserve_pour ?? '') === String(user) && l.user_id == null
+    && ['disponible', 'achetee'].includes(String(l.etat ?? '')) && Number(l.id) !== Number(ipPrincipale)
+    && (t(l.reserve_jusqu_au) == null || t(l.reserve_jusqu_au) > maintenant) && (t(l.expire_le) == null || t(l.expire_le) > maintenant)) ?? null;
+}
+
 export function creerFournisseurIp({ config, base, iproyal, journal, alertes }) {
   let derniereAlerteSolde = null;
   const heures = config.rotationHeures ?? 24;
@@ -80,12 +91,30 @@ export function creerFournisseurIp({ config, base, iproyal, journal, alertes }) 
     return proxyUrl;
   }
 
+  /**
+   * (05/11 soir, décision de Nico : « IP de secours : allume-la ») L'IP DE SECOURS d'un compte : l'IP du pool qui lui est
+   * RÉSERVÉE (cloud_ips.reserve_pour = le compte, libre, réservation et échéance non passées) — jamais une IP attribuée à
+   * un autre compte ni partagée (deux comptes sur une même IP seraient reliés aux yeux des plateformes). Le relais ne la
+   * prend qu'après ses réessais, sur une panne passagère du proxy du compte (relais.mjs). null si aucune ou illisible.
+   */
+  async function proxySecoursPour(user, ipPrincipale, maintenant = Date.now()) {
+    if (config.ipSecours === false) return null;
+    try {
+      const { data, error } = await base.from('cloud_ips').select('id, etat, user_id, reserve_pour, reserve_jusqu_au, expire_le')
+        .eq('reserve_pour', user).limit(5);
+      if (error) return null;
+      const ip = choisirIpSecours(data ?? [], user, ipPrincipale, maintenant);
+      return ip ? await proxyDuPool(ip.id) : null;
+    } catch { return null; }
+  }
+
   /** La sortie d'un navigateur, à son ouverture. */
   async function proxyPour(user, compte, maintenant = Date.now()) {
     // Mode dédié : le compte a son IP.
     if (compte?.ip_id != null) {
       return { proxyUrl: await proxyDuPool(compte.ip_id), ipId: Number(compte.ip_id), mode: 'dedie', sortie: compte.ip ?? null,
-        proxyBeebs: await proxyBeebsPour(user, trancheRotation(maintenant, heures)) };
+        proxyBeebs: await proxyBeebsPour(user, trancheRotation(maintenant, heures)),
+        proxySecours: await proxySecoursPour(user, Number(compte.ip_id), maintenant) };
     }
     if (!(await rotationActive())) throw new Error('compte sans IP et rotation coupée (coin_config.cloud_ip_rotation)');
     const tranche = trancheRotation(maintenant, heures);

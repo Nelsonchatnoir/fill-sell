@@ -322,13 +322,15 @@ function specGpu(config) {
 }
 
 /** La spécification Docker du conteneur Chrome d'un compte (pure : testée). */
-export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs = null, permises = [], jetonControle }) {
+export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs = null, proxySecours = null, permises = [], jetonControle }) {
   if (!proxyUrl || !/^https?:\/\/[^@\s]+@[^:\s]+:\d+$/.test(proxyUrl)) throw new Error('conteneur refusé : proxy du compte absent ou mal formé');
   if (!/^[0-9a-f]{32,}$/.test(String(jetonControle ?? ''))) throw new Error('conteneur refusé : jeton du contrôle du verrou absent');
   const gpu = specGpu(config);
   return {
     Image: config.imageChrome,
-    Env: [`PROXY_AMONT=${proxyUrl}`, ...(proxyBeebs ? [`PROXY_BEEBS=${proxyBeebs}`] : []), 'PROFIL=/profil',
+    // (05/11 soir, décision de Nico) PROXY_SECOURS : l'IP réservée au compte, prise par le relais après ses réessais.
+    Env: [`PROXY_AMONT=${proxyUrl}`, ...(proxyBeebs ? [`PROXY_BEEBS=${proxyBeebs}`] : []),
+      ...(proxySecours && /^https?:\/\/[^@\s]+@[^:\s]+:\d+$/.test(proxySecours) ? [`PROXY_SECOURS=${proxySecours}`] : []), 'PROFIL=/profil',
       `PLATEFORMES_PERMISES=${(permises ?? []).join(',')}`, `JETON_CONTROLE=${jetonControle}`, `PORT_CONTROLE=${PORT_CONTROLE_RELAIS}`,
       // (04/11 soir, essai GPU) Le filtre anti-pubs du moteur steel, porté par le relais (parité : BLOQUER_PUBLICITE).
       ...(config.bloquerPublicite ? [`PUBLICITE=${DOMAINES_PUBLICITE.join(',')}`] : []), ...gpu.env],
@@ -441,14 +443,14 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
 
   /** (30/10) Chrome : conteneur neuf sur le proxy de CETTE ouverture, profil gardé ; CDP par le relais 9223. */
-  async function ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId, permises, jetonControle }) {
+  async function ouvrirChrome(user, { proxyUrl, proxyBeebs, proxySecours = null, profilId, permises, jetonControle }) {
     const nom = nomConteneur(user);
     await docker.supprimer(nom).catch(() => {});
     const dossier = `${config.dossierProfils}/${profilId}/chrome`;
     await mkdir(dossier, { recursive: true });
     await chown(dossier, 1000, 1000).catch(() => {});   // l'utilisateur « navigateur » du conteneur
     await rafraichirExtensionDuProfil(user, profilId, 'chrome');
-    await docker.creer(nom, specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs, permises, jetonControle }));
+    await docker.creer(nom, specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs, proxySecours, permises, jetonControle }));
     await docker.demarrer(nom);
     const ip = ipDe(await docker.inspecter(nom));
     if (!ip) throw new Error(`conteneur ${nom} sans adresse sur ${config.reseauDocker}`);
@@ -464,14 +466,14 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
 
   /** Démarre le navigateur du compte, sur SON proxy et SON profil. Rend { cdp, ip, … }. */
-  async function ouvrir(user, { proxyUrl, proxyBeebs = null, profilId, permises = [] }) {
+  async function ouvrir(user, { proxyUrl, proxyBeebs = null, proxySecours = null, profilId, permises = [] }) {
     if (ouverts.has(user)) return ouverts.get(user);
     await exigerPareFeu(config);
     if (chrome) {
       // Le jeton du contrôle du verrou : neuf à chaque ouverture, gardé dans le handle, JAMAIS journalisé.
       const jetonControle = randomBytes(24).toString('hex');
       const permisesVerrou = plateformesVerrou(permises);
-      const { cdp, ip, nom, navigateur } = await ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId, permises: permisesVerrou, jetonControle });
+      const { cdp, ip, nom, navigateur } = await ouvrirChrome(user, { proxyUrl, proxyBeebs, proxySecours, profilId, permises: permisesVerrou, jetonControle });
       const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'chrome', navigateur, permises: permisesVerrou };
       Object.defineProperty(h, 'jetonControle', { value: jetonControle, enumerable: false });
       cdp.on((m) => { if (m.method === '__ferme__' && ouverts.get(user) === h) ouverts.delete(user); });

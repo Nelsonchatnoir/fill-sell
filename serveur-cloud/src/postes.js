@@ -226,7 +226,7 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       // (30/10, lot D) La sortie vient du SEUL module fournisseur (IP dédiée, ou rotation).
       const sortie = await fournisseurIp.proxyPour(user, compte);
       // (30/10, règle de Nico) Le verrou du relais : seules les plateformes CONNECTÉES du compte (coffre) sont joignables.
-      const h = await navigateurs.ouvrir(user, { proxyUrl: sortie.proxyUrl, proxyBeebs: sortie.proxyBeebs ?? null, profilId,
+      const h = await navigateurs.ouvrir(user, { proxyUrl: sortie.proxyUrl, proxyBeebs: sortie.proxyBeebs ?? null, proxySecours: sortie.proxySecours ?? null, profilId,
         permises: compte?.plateformes_connectees ?? [] });
       h.ipId = sortie.ipId;
       h.sortie = { mode: sortie.mode, sortie: sortie.sortie };
