@@ -59,7 +59,9 @@ export function identifiantAnnoncePubliee(job) {
       || (String(job?.action ?? '') === 'publish' ? String(pf.vinted_item_id ?? '').trim() : '');
     return /^\d+$/.test(brut) ? brut : null;
   }
-  return enLigne || String(job?.listing_url ?? '').trim() || null;
+  // (05/11 soir, décision de Nico) Hors Vinted, sans numéro d'annonce : identifiant INCONNU, aucune clôture. Le lien entier
+  // ne correspond jamais à un listing_id du relevé : il faisait passer l'annonce pour absente de tous les relevés.
+  return enLigne || null;
 }
 
 /** La « lecture ratée » d'une annonce publiée : la détection de vente l'a déclarée non vérifiable (check_unresolved). */
@@ -85,6 +87,13 @@ export function decisionAnnoncePubliee({ job, fiche = null, vu = null, annonce =
   if (!ident) return { decision: 'attendre', raison: "identifiant exact de l'annonce en ligne inconnu" };
   const lecture = lectureRateeAnnoncePubliee(job);
   if (!lecture) return { decision: 'attendre', raison: 'aucune lecture ratée à répétition' };
+  // (05/11 soir, vérification une par une sur les plateformes) Une annonce JAMAIS VUE EN LIGNE (marqueur pas_encore_visible :
+  // en vérification, ou jamais vue depuis son dépôt) n'a pas « disparu » : Beebs a gardé une annonce invisible ~9,4 jours
+  // avant de la montrer (7b9d8a71, 34237930). Son absence des relevés ne prouve rien ; c'est le juge des dépôts jamais mis
+  // en ligne qui décide, avec sa propre attente (les 3 annonces TEST Beebs de f44b5917, 404 et jamais vues, épargnées).
+  if (job?.platform_fields?.pas_encore_visible) {
+    return { decision: 'attendre', raison: `jamais vue en ligne chez ${NOMS[platform] ?? platform} (pas_encore_visible) : pas une disparition` };
+  }
   // Beebs : relevée dans l'onglet « en vérification » (et pas disparue depuis) → jamais « disparue ».
   if (annonce && String(annonce.statut_plateforme ?? '') === 'en_verification' && !(t(annonce.disparu_le) > t(annonce.vu_le))) {
     return { decision: 'en_verification', raison: `relevée « en vérification » chez ${NOMS[platform] ?? platform} le ${String(annonce.vu_le ?? '?')}` };

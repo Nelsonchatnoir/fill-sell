@@ -145,6 +145,20 @@ const vueAncienne = { vu_le: "2026-10-28T11:01:00.010Z", statut: "active" };
   ok(identifiantAnnoncePubliee(depot) === EN_LIGNE, "dépôt « publish » sans les deux : son vinted_item_id (il n'a pas d'ancienne annonce)");
   ok(identifiantAnnoncePubliee({ platform: "beebs", platform_listing_id: "34283901", listing_url: "https://www.beebs.app/fr/p/34283901" }) === "34283901",
     "autres plateformes : platform_listing_id (inchangé)");
+  // (05/11 soir, décision de Nico) Hors Vinted, sans numéro : « identifiant inconnu », jamais le lien entier, aucune clôture.
+  const lbcSansNumero = { ...republication(), platform: "leboncoin", platform_listing_id: null, listing_url: "https://www.leboncoin.fr/ad/collection/3289178478",
+    platform_fields: { check_unresolved: true, check_unresolved_since: "2026-11-01T10:00:00Z" } };
+  ok(identifiantAnnoncePubliee(lbcSansNumero) === null, "Leboncoin sans platform_listing_id : identifiant inconnu (null), jamais le lien entier");
+  const dSans = decisionAnnoncePubliee({ job: lbcSansNumero, runs: [], creeLe: "2026-10-20T10:00:00Z" });
+  ok(dSans.decision === "attendre" && /identifiant exact/.test(dSans.raison), "… et le juge attend, aucune clôture", JSON.stringify(dSans));
+  ok(identifiantAnnoncePubliee({ platform: "beebs", platform_listing_id: null, listing_url: "https://www.beebs.app/fr/p/34283901" }) === null,
+    "Beebs sans numéro : identifiant inconnu");
+  // (05/11 soir) Jamais vue en ligne (pas_encore_visible) : jamais « disparue » par ce juge (3 TEST Beebs de f44b5917).
+  const jamaisVue = { platform: "beebs", action: "publish", status: "published", platform_listing_id: "34270410", listing_url: null,
+    platform_fields: { check_unresolved: true, check_unresolved_since: "2026-11-01T10:00:00Z",
+      pas_encore_visible: { regle: "jamais_vue_en_ligne_2010", depuis: "2026-10-31T14:50:02Z" } } };
+  const dJ = decisionAnnoncePubliee({ job: jamaisVue, runs: [], creeLe: "2026-10-31T10:46:00Z" });
+  ok(dJ.decision === "attendre" && /jamais vue en ligne/.test(dJ.raison), "Beebs jamais vue en ligne (pas_encore_visible) : on attend, jamais « disparue »", JSON.stringify(dJ));
 }
 
 // Le VRAI jugerAnnoncesPublieesDisparues (handler-watch), extrait, transpilé et rejoué sur un client EN MÉMOIRE : aucune
