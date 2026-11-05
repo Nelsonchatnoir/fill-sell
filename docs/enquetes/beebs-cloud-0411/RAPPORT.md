@@ -462,3 +462,33 @@ cas rouges (jeton Leboncoin expiré entre retrait et redépôt, compte Vinted ba
 1. après un « Résoudre » réussi, relancer tout de suite les jobs de la plateforme (la republication Leboncoin est restée à
    l'arrêt de 21:38 à 21:56) ;
 2. noter l'heure de chaque étape d'une republication (prise, retrait, chaque essai de redépôt, en ligne).
+
+**Rapport de 08:00 (05/11, dressé à 08:0x ; nuit du 04/11 21:00 au 05/11 08:00, lecture seule : `blocages.json` inchangé
+depuis 04/11 21:38, `fond-f44b5917-2026-11-0{4,5}.jsonl` — 43 771 requêtes —, journaux de l'orchestrateur et du conteneur,
+compteurs du relais `/etat`, base)** :
+- **Vinted** : aucune glissière, aucun 403. Un 401 à peu près toutes les heures sur `/api/v2/inbox` ou `/api/v2/my_orders`
+  (21:49, 23:01, 03:51, 04:51, 05:57, 06:03, 07:09, 07:13) : jeton d'accès échu → `/web/api/auth/refresh` 200 → appel suivant
+  200 (renouvellement normal ; `/session-refresh` à 00:01, 00:56, 01:52, 02:47). Messagerie lue 07:49:36.
+- **Leboncoin** : aucune glissière, aucun 403, aucun cadre DataDome de toute la nuit. Veilleur corrigé en marche continue :
+  par heure ~10 lectures des transactions, ~60 du compte séquestre, ~30 du compte (appels de la page), toutes 200/204.
+  Messagerie lue 07:53:38. Seuls échecs : 5 tunnels ratés sur `/assets/favicons/manifest.json` (00:25, 01:29, 06:11, 07:43,
+  07:53, sans effet) ; les 67 refus de `www.leboncoin.fr` du relais datent de la pause d'avant le « Résoudre » de 21:38.
+- **Depop** : aucune glissière, aucune connexion perdue. Mêmes refus non bloquants que la veille : 403 sur les capteurs
+  `/vwdj/…`, sur 21 pré-vols OPTIONS (`conversations`, `receipts`) et un POST `/fr/` à 06:53:40 (page chargée en 200). Messagerie
+  lue 07:53:44.
+- **Beebs** : lectures de fond toutes en 200 jusqu'à 02:44 (~40 par heure). **02:44:30** 403 sur la fiche 33640171 (annonce
+  disparue : 404 à 21:39:59) ; **02:48:44** 403 sur `/fr/account/orders/list/seller` (veille des commandes) → messagerie Beebs
+  en pause 6 h (`messagerie_releves` : `http_403`, jusqu'au 05/11 08:48:44) ; **02:48:48 vérification de l'appareil DataDome
+  (`geo.captcha-delivery.com/interstitial/`) passée SEULE** → `view: "redirect"`, cookie datadome renouvelé ; 02:48:50-52
+  accueil et API en 200. Aucune glissière (cloud-1 servait une glissière à cet endroit), rien dans `blocages.json`, aucune
+  vérification ouverte, coffre Beebs « connecté ». Depuis 02:48:52 : plus AUCUNE lecture Beebs (la pause) → Beebs non mesuré
+  de 02:49 à 08:48. ⚠ La pause tient 6 h alors que la vérification est passée 4 s plus tard : la règle « une résolution réussie
+  lève la pause » ne couvre pas une vérification passée seule (à trancher par Nico ; rien touché pendant l'essai).
+  Relevé quotidien : aucun cette nuit, par règle — 20 h après le dernier (`RELEVE_CADENCE_CRON_MS`, fini 04/11 21:41:46,
+  14 annonces vues) → prochain possible à partir de 17:41.
+- **eBay** (API) : messagerie lue 07:47:02. **Ventes** : aucune cette nuit. **Jobs** : aucun créé, aucun en cours.
+- Machine : orchestrateur sans alerte (seul l'entretien horaire, pool coupé), navigateur jamais redémarré depuis 04/11 21:18,
+  `cloud_verification` absente sur toutes les plateformes. cloud-1 : 0 compte ouvert. IP 42 attribuée à Nico, IP 39 réservée à
+  Nico jusqu'au 03/12, `cloud_ip_achats_auto = 0`.
+- Coût à 08:00 : machine ~14 h 40 × 0,3136 € HT ≈ 4,6 € HT + IP 4 $ ; projeté à 18:00 ≈ 7,7 € HT + 4 $ (sous le plafond de 15 €).
+- Rien de grave : aucun compte restreint, aucune connexion perdue → pas de retour sur cloud-1.
