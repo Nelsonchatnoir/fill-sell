@@ -23,6 +23,8 @@ import { jourRemise, jourRemiseCourt } from '../utils/jourRemise';
 import { JAUGES, grilleActiveConfig, grilleDuPalier, nombre, motJauge, palierQuiDebloque } from '../utils/jauges';
 import { lireDernierGeste, canalDeLApp } from '../utils/dernierGeste';
 import { Capacitor } from '@capacitor/core';
+// (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité, au pied.
+import MentionsAbonnement from './MentionsAbonnement';
 
 // ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -1641,6 +1643,8 @@ export default function ConversionModal({
           ouvertes par la carte Free (le point de départ du lecteur). */}
       <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} avant={blocCloud} cloud={cloudCarte} voieCloudFree={voieCloudFree} />
       {encartCloud}
+
+      <MentionsAbonnement lang={fr ? 'fr' : 'en'} cloud={Boolean(offreCloud)} essaiCloud={offreCloud?.essai !== false} />
 
       <Dismiss onClose={fermerNonMerci} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>

@@ -207,7 +207,8 @@ try {
     'essai : la ligne du canal suit la plateforme (Google Play, web)');
     const k40 = { ...K1, jauge_remontees_free: 40 };
     ok(/en Free, 5 annonces, 50 publications et 40 remontées par mois/.test(lu('EtapeCloud', { ...cC(), K: k40, grille: true })), 'essai : les quotas suivent coin_config (40 remontées si la base dit 40)');
-    ok(/Tes quotas restent ceux de ton plan Commencer/.test(lu('EtapeCloud', cC({ grille: false }))) && !/\d+ annonces/.test(lu('EtapeCloud', cC({ grille: false }))), 'essai sans la grille : « Tes quotas restent ceux de ton plan », sans chiffre');
+    // (05/11 soir, décision l) Entre la carte et le bouton : les mentions d'abonnement (renouvellement, EULA, confidentialité).
+    ok(/Tes quotas restent ceux de ton plan (Abonnements à renouvellement automatique : .*?Politique de confidentialité )?Commencer/.test(lu('EtapeCloud', cC({ grille: false }))) && !/\d+ annonces/.test(lu('EtapeCloud', cC({ grille: false }))), 'essai sans la grille : « Tes quotas restent ceux de ton plan », sans chiffre');
     ok(/On prépare ta place…/.test(lu('EtapeCloud', cC({ achat: { etat: 'en_cours', message: null } }))), 'essai en cours : le mot de l’achat existant (« On prépare ta place… »)');
     ok(/Toutes les places FillSell Cloud sont prises/.test(lu('EtapeCloud', cC({ achat: { etat: 'refuse', message: 'Toutes les places FillSell Cloud sont prises pour l\'instant. Rien n\'a été demandé à ta carte.' } }))),
       'essai refusé : le message rendu par l’achat est dit à l’écran (le toast de l’app est sous le parcours)');

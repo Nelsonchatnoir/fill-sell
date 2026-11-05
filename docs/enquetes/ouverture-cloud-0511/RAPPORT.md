@@ -183,3 +183,30 @@ déduit d'une mémoire. Reprise : `docs/reprise/REPRISE-OUVERTURE-CLOUD-PHASE1.m
   principal, iPad 13 pouces, Apple Watch. Nouveau : un « En-tête » de page produit et ses « Résultats de recherche ».
   À compléter en phase 2 : tailles exactes iPhone Duo et iPad (sections repliées), durée et format des aperçus vidéo
   (aide Apple liée depuis la page).
+
+## Phase 2 — nom, textes, EULA, confidentialité (05/11 21:45-22:30)
+- Nom (décision de Nico, 21:37) SAISI dans App Store Connect, FR et EN : « FillSell – Crosslisting » (Informations sur
+  l'app, « Modifiée » : part avec la 2.9) ; sous-titres gardés. Mots-clés de la 2.9 : EN
+  `crosslist,cross-post,reseller,multi-platform,listing,resale` (avant : …vinted,ebay,ai), FR
+  `cross-post,cross-listing,multi-plateformes,revente,annonces` (avant : …vinted,leboncoin,ebay,ia).
+- Sortie de la 2.9 réglée sur « Publier cette version manuellement » (elle était sur « automatiquement après
+  vérification ») — garde-fou de Nico tenu côté Apple.
+- Descriptions et « Nouveautés » FR et EN de la 2.9 SAISIES (texte : `docs/stores/fiche-2.9.md`) : Opla retirée (quittée
+  le 10/10), Depop ajoutée, FillSell Cloud « en France » avec l'essai de 7 jours, mentions d'abonnement à renouvellement
+  automatique, liens confidentialité / conditions générales / EULA d'Apple en fin de texte. EN : ne promet Leboncoin et
+  Beebs qu'en France (« FillSell only shows the marketplaces that operate in your country ») — liste à relire à la fin
+  de la phase 3 selon les plateformes prouvées par pays.
+- Confidentialité de l'app (ASC) : URL de la politique et des choix, EN `https://fillsell.app/legal?lang=en#confidentialite`,
+  FR `https://fillsell.app/legal#confidentialite` (avant : `/legal`, page française pour tous).
+- Écran d'achat (dans le binaire) : `MentionsAbonnement` au pied de la feuille des formules (ConversionModal) et de l'étape
+  Cloud du parcours d'entrée — renouvellement automatique, où c'est prélevé (Apple, Google Play, carte), où l'arrêter,
+  24 h avant le terme, la ligne Cloud (7 jours d'essai puis 24,99 €/mois) quand l'offre est montrée, liens EULA d'Apple
+  (iOS), conditions générales, confidentialité ; il n'y avait AUCUN lien ni mention sur ces écrans (règle Apple 3.1.2,
+  risque de refus avec le nouvel abonnement). Selftest mentions-abonnement (17) ; onboarding-trois-jauges adapté (118).
+- Constats pour Nico : (1) la vérification Apple utilise le compte `test@fillsell.app`, pas googlereview@ — à remplacer
+  par Nico (identifiant + mot de passe ensemble) dans « Informations utiles à la vérification » ; (2) statut DSA
+  « non-commerçant » déclaré pour l'app (abonnements payants : à revoir) ; (3) les textes légaux du Cloud
+  (`CLOUD_TEXTES_LEGAUX`, CGV art. 7, CGU 3.9, confidentialité 4.7/4.8) ne sont pas publics tant que le drapeau est
+  baissé — or le relecteur achètera le Cloud : à publier au plus tard à la soumission ; (4) déclarations de données
+  d'Apple incomplètes (2 types déclarés : e-mail, interaction) — liste complète préparée (`docs/stores/donnees-2.9.md`),
+  à saisir avec la soumission ; GTM (Google) se charge aussi dans l'app native (index.html) : à décider.

@@ -21,6 +21,8 @@ import { grilleDuPalier } from '../utils/jauges';
 import { E } from './theme';
 import { Scene, Kicker, Titre, Texte, Carte, BoutonPrimaire, LienDiscret, Bande, TitreCarte } from './EntreeUI';
 import { listeNoms, listeJauges } from './regles';
+// (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité.
+import MentionsAbonnement from '../components/MentionsAbonnement';
 
 function Coche({ children, k, dernier }) {
   return (
@@ -158,6 +160,7 @@ export default function EtapeCloud({ c, T, onSuivant, onAller }) {
       </Carte>
 
       {message && <Bande ton={tonMessage}>{message}</Bande>}
+      {!k.actif && <MentionsAbonnement lang={c.lang === 'en' ? 'en' : 'fr'} cloud />}
     </Scene>
   );
 }
