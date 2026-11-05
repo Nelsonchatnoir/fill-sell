@@ -45,6 +45,22 @@ export function paysAnglophoneDuFuseau(fuseau) {
   return FUSEAUX_ANGLOPHONES.get(String(fuseau ?? '').trim()) ?? null;
 }
 
+/**
+ * Le pays que le COMPTE FillSell dit déjà (pure) : 'FR' dès qu'une trace française existe — adresse de remise française
+ * (lbc-adresse-france.js, motif « france »), une annonce Leboncoin ou Beebs, une annonce sur un site en « .fr », ou la
+ * sonde Vinted du compte (pays) ; sinon le pays de la sonde, sinon null. Un vendeur français en voyage, ou installé à
+ * Londres sur vinted.fr, garde ainsi l'app d'avant (zéro régression).
+ */
+export function paysDuCompte({ motifAdresse = null, jobs = [], paysSonde = null } = {}) {
+  const sonde = String(paysSonde ?? '').trim().toUpperCase();
+  if (sonde === 'FR' || motifAdresse === 'france') return 'FR';
+  for (const j of jobs ?? []) {
+    if (j?.platform === 'leboncoin' || j?.platform === 'beebs') return 'FR';
+    if (/^https?:\/\/(www\.)?[a-z0-9.-]+\.fr\//i.test(String(j?.listing_url ?? ''))) return 'FR';
+  }
+  return /^[A-Z]{2}$/.test(sonde) ? sonde : null;
+}
+
 /** Le pays retenu : le compte d'abord (code ISO à 2 lettres), sinon le téléphone ; null = on ne sait pas. */
 export function paysDuVendeur({ paysCompte = null, fuseau = null } = {}) {
   const c = String(paysCompte ?? '').trim().toUpperCase();

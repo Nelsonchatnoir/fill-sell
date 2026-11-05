@@ -2,7 +2,7 @@
 // masquées tant qu'elles ne sont pas prouvées dans un pays anglophone, Leboncoin et Beebs jamais hors de France, et
 // RIEN qui change pour la France et les autres pays.
 import assert from 'node:assert/strict';
-import { paysAnglophoneDuFuseau, paysDuVendeur, plateformesFermeesParPays, clesAOuvrir, cleOuverture, PAYS_ANGLOPHONES, PLATEFORMES } from '../supabase/functions/_shared/plateformes-pays.js';
+import { paysAnglophoneDuFuseau, paysDuVendeur, paysDuCompte, plateformesFermeesParPays, clesAOuvrir, cleOuverture, PAYS_ANGLOPHONES, PLATEFORMES } from '../supabase/functions/_shared/plateformes-pays.js';
 
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n++; };
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -35,5 +35,16 @@ ok(paysAnglophoneDuFuseau('America/Toronto') === 'CA' && paysAnglophoneDuFuseau(
 ok(paysAnglophoneDuFuseau('America/Mexico_City') === null && paysAnglophoneDuFuseau('America/Sao_Paulo') === null, 'Mexique, Brésil : non suivis');
 ok(paysDuVendeur({ paysCompte: 'fr', fuseau: 'America/New_York' }) === 'FR', 'un compte français en voyage à New York reste français (rien ne change)');
 ok(paysDuVendeur({ paysCompte: null, fuseau: 'Europe/London' }) === 'GB', 'sans pays du compte : le téléphone');
+
+// 4. Le pays du COMPTE : une trace française suffit (zéro régression pour un Français à l'étranger).
+ok(paysDuCompte({ motifAdresse: 'france' }) === 'FR', 'adresse de remise française : France');
+ok(paysDuCompte({ jobs: [{ platform: 'leboncoin' }] }) === 'FR' && paysDuCompte({ jobs: [{ platform: 'beebs' }] }) === 'FR', 'une annonce Leboncoin ou Beebs : France');
+ok(paysDuCompte({ jobs: [{ platform: 'vinted', listing_url: 'https://www.vinted.fr/items/123-pull' }] }) === 'FR', 'une annonce sur vinted.fr : France');
+ok(paysDuCompte({ jobs: [{ platform: 'vinted', listing_url: 'https://www.vinted.co.uk/items/1' }] }) === null, 'vinted.co.uk seul : rien ne dit la France');
+ok(paysDuCompte({ paysSonde: 'gb' }) === 'GB' && paysDuCompte({ paysSonde: 'FR', jobs: [] }) === 'FR', 'la sonde Vinted du compte');
+ok(paysDuCompte({}) === null, 'aucune trace : null (le téléphone décidera)');
+ok(paysDuVendeur({ paysCompte: paysDuCompte({ jobs: [{ platform: 'beebs' }] }), fuseau: 'Europe/London' }) === 'FR'
+  && eq(plateformesFermeesParPays({ pays: paysDuVendeur({ paysCompte: paysDuCompte({ jobs: [{ platform: 'beebs' }] }), fuseau: 'Europe/London' }) }), []),
+  'une vendeuse Beebs installée à Londres garde toutes ses plateformes');
 
 console.log(`✓ selftest:plateformes-pays — ${n} assertions`);
