@@ -92,6 +92,7 @@ import { estDepotCoupe, reperesDuJob, candidatesDepotCoupe, urlsCandidate, decis
 import { lienDepuisId } from "../_shared/annonce-lien.ts";
 import { titreNommeAnnonce, decisionAlignementTitre, CONTRADICTION_IDENTITE_RE } from "../_shared/titre-aligne.js";
 import { urlsAnnonce } from "../_shared/depot-sans-numero.js";
+import { BEEBS_ATTENTE_MAX_MS, POSE_PAR_SANS_NUMERO, jugerDepotBeebsSansNumero, patchDepotBeebsJamaisEnLigne, patchApresRemboursement } from "../_shared/beebs-depot-sans-numero.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -138,6 +139,10 @@ const RELANCE_AUTOMATIQUE_DRESSING_VINTED = false;   // (05/11, A4) les relevés
 // le juge lisait platform_fields.vinted_item_id (l'ANCIENNE annonce, retirée par la republication elle-même) au lieu de
 // platform_listing_id (l'annonce en ligne) — 24 annonces vivantes closes à 16:33. Rallumer sur décision de Nico seulement.
 const JUGER_ANNONCES_PUBLIEES_DISPARUES = false;
+// (05/11, point 6 a, règle de Nico) Un dépôt Beebs sans numéro ni lien n'est plus « En ligne » à vie : jugé par la règle
+// des retraits sans numéro (_shared/beebs-depot-sans-numero.js). COUPÉ par défaut : Nico l'allume après la simulation
+// (scripts/simulation-beebs-sans-numero.mjs).
+const JUGER_BEEBS_SANS_NUMERO = false;
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
@@ -3736,6 +3741,19 @@ serve(async (req) => {
     }
   }
 
+  // ══ (05/11, point 6 a, règle de Nico) UN DÉPÔT BEEBS SANS NUMÉRO NE RESTE JAMAIS « EN LIGNE » À VIE ══
+  // _shared/beebs-depot-sans-numero.js (jugerBeebsDepotsSansNumero, plus bas). Une fois par heure (minutes 42 à 44,
+  // libres : les blocs au quart d'heure occupent 0-11 de chaque quart, l'autre bloc horaire 33-35), 200 dépôts au plus,
+  // lectures groupées, aucune visite de plateforme ; seules les fermetures écrivent. COUPÉ : JUGER_BEEBS_SANS_NUMERO.
+  if (JUGER_BEEBS_SANS_NUMERO && new Date().getUTCMinutes() >= 42 && new Date().getUTCMinutes() < 45) {
+    try {
+      const r = await jugerBeebsDepotsSansNumero(supabase);
+      if (r.fermees || r.jugees) console.log(`[handler-watch] Beebs, dépôts sans numéro : ${r.jugees} jugé(s) (page ${r.page + 1}/${r.pages}), ${r.fermees} fermé(s) « jamais mis en ligne », ${r.rendues} publication(s) rendue(s), en attente ${JSON.stringify(r.attente)}`);
+    } catch (e) {
+      console.error("[handler-watch] dépôts Beebs sans numéro :", (e as Error)?.message ?? e);
+    }
+  }
+
   // ══ (18/10, lot 3) LEBONCOIN REFUSE LE CONTENU : JAMAIS LE MÊME TEXTE DEUX FOIS ══
   // Le refus de modération au dépôt (adsubmit 403, « mention d'un site
   // internet », « règles de contenu ») revient à l'extension, qui le réessaie à
@@ -6615,6 +6633,93 @@ async function jugerAnnoncesPublieesDisparues(supabase: any, tranche: number) {
       .update(patchAnnoncePublieeDisparue(j, d, { posePar: POSES_PAR_DISPARUE[0] }))
       .eq("id", j.id).eq("status", "published").select("id");
     if (maj?.length) { res.closes++; console.log(`[handler-watch] annonce publiée ${String(j.id).slice(0, 8)} (${j.platform} ${id}) close : ${d.raison}`); }
+  }
+  return res;
+}
+
+// ══ (05/11, point 6 a, règle de Nico) UN DÉPÔT BEEBS SANS NUMÉRO NE RESTE JAMAIS « EN LIGNE » À VIE ═══════════════════
+// Le juge des retraits sans numéro (jugerRetraitIntrouvable) appliqué au dépôt lui-même : _shared/beebs-depot-sans-numero.js.
+// Candidats : dépôts Beebs « published » sans lien ni numéro, jamais vus en ligne, créés il y a plus de 7 jours — une page
+// de 200 au plus, tournante à l'heure (tout le parc revu en ⌈n/200⌉ heures). Lectures groupées par lots de 50 comptes :
+// relevés Beebs depuis le plus ancien dépôt du lot, annonces Beebs du compte (toutes : le plancher des numéros se lit
+// sur les disparues), retraits Beebs en file. Écriture : la fermeture seule (compare-and-set), puis la publication rendue
+// (refund_publish_unconfirmed, idempotent) et son résultat noté. 50 fermetures au plus par passage.
+const BEEBS_SANS_NUMERO_PAGE = 200;
+const BEEBS_SANS_NUMERO_FERMETURES_MAX = 50;
+// deno-lint-ignore no-explicit-any
+async function jugerBeebsDepotsSansNumero(supabase: any, page: number | null = null) {
+  const res = { candidats: 0, pages: 1, page: 0, jugees: 0, fermees: 0, rendues: 0, attente: {} as Record<string, number> };
+  const avant7j = new Date(Date.now() - BEEBS_ATTENTE_MAX_MS).toISOString();
+  // deno-lint-ignore no-explicit-any
+  const depots = (cols: string, opts?: Record<string, unknown>): any => supabase.from("cross_post_jobs").select(cols, opts)
+    .eq("platform", "beebs").in("action", ["publish", "republish"]).eq("status", "published")
+    .is("listing_url", null).is("platform_listing_id", null).is("vu_en_ligne_le", null).lt("created_at", avant7j);
+  const { count, error: eCount } = await depots("id", { count: "exact", head: true });
+  if (eCount) throw new Error(eCount.message);
+  res.candidats = Number(count) || 0;
+  if (!res.candidats) return res;
+  res.pages = Math.max(1, Math.ceil(res.candidats / BEEBS_SANS_NUMERO_PAGE));
+  res.page = page ?? Math.floor(Date.now() / 3_600_000) % res.pages;
+  const { data: lus, error } = await depots("id, user_id, platform, action, status, error, inventaire_id, title, price, platform_listing_id, listing_url, vu_en_ligne_le, created_at, published_at, platform_fields")
+    .order("created_at", { ascending: true }).order("id", { ascending: true })
+    .range(res.page * BEEBS_SANS_NUMERO_PAGE, res.page * BEEBS_SANS_NUMERO_PAGE + BEEBS_SANS_NUMERO_PAGE - 1);
+  if (error) throw new Error(error.message);
+  // deno-lint-ignore no-explicit-any
+  const jobs = (lus ?? []) as any[];
+  const users = [...new Set(jobs.map((j) => String(j.user_id)))];
+  for (const lot of parLots(users, 50)) {
+    const duLot = jobs.filter((j) => lot.includes(String(j.user_id)));
+    const plusAncien = Math.min(...duLot.map((j) => Date.parse(String(j.published_at ?? j.created_at)) || Date.now()));
+    const depuis = new Date(Math.max(plusAncien - 3_600_000, Date.now() - 120 * 86_400_000)).toISOString();
+    const [releves, annonces, retraits] = await Promise.all([
+      lirePagesDisparues(() => supabase.from("vinted_sync_runs")
+        .select("id, user_id, status, started_at, finished_at, items_vus, total_entries, erreur, vinted_user_id")
+        .in("user_id", lot).eq("platform", "beebs").eq("kind", "annonces").gte("started_at", depuis)
+        .order("started_at", { ascending: false }).order("id", { ascending: true })),
+      lirePagesDisparues(() => supabase.from("annonces_plateforme")
+        .select("id, user_id, listing_id, url, titre, prix, job_id, inventaire_id, source_rapprochement, vu_le, disparu_le, retiree_le, statut_plateforme, created_at")
+        .in("user_id", lot).eq("platform", "beebs").order("id", { ascending: true }), 20000),
+      lirePagesDisparues(() => supabase.from("cross_post_jobs").select("id, user_id, inventaire_id, platform_fields")
+        .in("user_id", lot).eq("platform", "beebs").eq("action", "delete").in("status", ["pending", "processing", "needs_user"])
+        .order("id", { ascending: true })),
+    ]);
+    // deno-lint-ignore no-explicit-any
+    const parCompte = (l: any[]) => { const m = new Map<string, any[]>(); for (const x of l) { const k = String(x.user_id); if (!m.has(k)) m.set(k, []); m.get(k)!.push(x); } return m; };
+    // Une lecture des annonces coupée au plafond ne prouve aucune absence : le lot attend le passage suivant.
+    if (annonces.length >= 20000) { res.attente.lecture_tronquee = (res.attente.lecture_tronquee ?? 0) + duLot.length; continue; }
+    const relevesDe = parCompte(releves);
+    const annoncesDe = parCompte(annonces);
+    const retraitsDe = parCompte(retraits);
+    for (const j of duLot) {
+      const uid = String(j.user_id);
+      const retraitActif = (retraitsDe.get(uid) ?? []).some((r) => (j.inventaire_id != null && String(r.inventaire_id ?? "") === String(j.inventaire_id))
+        || String(r.platform_fields?.arme_par?.depot ?? "") === String(j.id));
+      const v = jugerDepotBeebsSansNumero(j, { releves: relevesDe.get(uid) ?? [], annonces: annoncesDe.get(uid) ?? [], retraitActif, maintenant: Date.now() });
+      if (!v) continue;
+      res.jugees++;
+      if (v.verdict === "attente") { res.attente[v.motif] = (res.attente[v.motif] ?? 0) + 1; continue; }
+      if (res.fermees >= BEEBS_SANS_NUMERO_FERMETURES_MAX) { res.attente.plafond_du_passage = (res.attente.plafond_du_passage ?? 0) + 1; continue; }
+      const patch = patchDepotBeebsJamaisEnLigne(j, v);
+      if (j.error) patch.platform_fields.erreurs_archivees = archiverErreur(patch.platform_fields.erreurs_archivees, j.error as string, "published", POSE_PAR_SANS_NUMERO);
+      const { data: maj } = await supabase.from("cross_post_jobs").update(patch)
+        .eq("id", j.id).eq("status", "published").is("listing_url", null).is("platform_listing_id", null).is("vu_en_ligne_le", null).select("id");
+      if (!maj?.length) continue;
+      res.fermees++;
+      // La publication est rendue par le chemin existant (idempotent : ref refund_publish_unconfirmed:<job>).
+      // deno-lint-ignore no-explicit-any
+      let refund: any = null;
+      if (j.action === "publish") {
+        const { data: ref, error: refErr } = await supabase.rpc("refund_publish_unconfirmed", { p_job: j.id });
+        if (refErr) console.warn(`[handler-watch] dépôt Beebs sans numéro ${String(j.id).slice(0, 8)} : publication non rendue — ${refErr.message}`);
+        else refund = ref ?? null;
+      }
+      const apres = patchApresRemboursement(j, patch, refund);
+      if (apres) {
+        await supabase.from("cross_post_jobs").update(apres).eq("id", j.id).eq("status", "failed").select("id");
+        if (apres.error !== patch.error) res.rendues++;
+      }
+      console.log(`[handler-watch] dépôt Beebs sans numéro ${String(j.id).slice(0, 8)} (${j.action}, déposé le ${v.depot_le}) : jamais mis en ligne — relevés complets ${v.releves.map((r: { started_at: string }) => r.started_at).join(" / ")} → « failed »${refund ? `, ${JSON.stringify(refund)}` : ""}`);
+    }
   }
   return res;
 }
