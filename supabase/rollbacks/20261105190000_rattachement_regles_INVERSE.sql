@@ -1,5 +1,6 @@
 -- INVERSE de 20261105190000_rattachement_regles : les définitions de PROD du 05/11, mot pour mot (pg_get_functiondef),
--- puis les deux fonctions neuves retirées. md5 sans CR :
+-- puis les deux fonctions neuves retirées. md5 sans CR (relus en prod le 05/11 soir, après 20261105170000 et
+-- 20261105180000 : inchangés ; la version « décisions du 05/11 soir » de la migration ne change rien à cet inverse) :
 --   inventaire_fusionner_pour            9bcfcd661b1561731fe2ab33e7a5a136
 --   inventaire_doublon_decider           3a9d7674e6c14d8df66e65063a1fff51
 --   rapprochement_v3_appliquer           f417a5e0eead76135922c03d6c05b494

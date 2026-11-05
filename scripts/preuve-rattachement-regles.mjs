@@ -5,6 +5,9 @@
 //   (c) un retrait de copie n'est jamais armé sur un rattachement automatique non confirmé : la copie devient la
 //       question « Déjà vendu ? » (copie_non_prouvee), dont le « Oui » arme le retrait ;
 //   (d) la question « photo proche » n'est plus posée sur un titre en série (≥ 3 annonces d'une plateforme).
+// Décisions de Nico du 05/11 soir : (a) une PHOTO IDENTIQUE reste une preuve — rattachement ou fusion automatique par
+// photo identique = confirmé, retrait armé comme avant ; seul l'automatique SANS photo identique devient la question ;
+// (b) P16 gardée ; (c) « Annonce en double ? » → « Oui » refusé sur une fiche unitaire, sauf republication prouvée.
 // Et les cas normaux inchangés : fusion légitime, retrait d'une copie confirmée, série à plusieurs exemplaires, P16.
 //
 //   PREUVE_PG=embarque node scripts/preuve-rattachement-regles.mjs                       (Postgres 17 jetable sur le PC)
@@ -335,6 +338,41 @@ async function casRetraitApresOui() {
   return { r, a, source: (await un(`SELECT source_rapprochement AS s FROM annonces_plateforme WHERE id = $1`, [a.annonce])).s,
     par: (await un(`SELECT par FROM inventaire_fusions WHERE garde = $1`, [vin]))?.par, retrait: await retraitDe(a.job), q: await questionCopie(a.job) };
 }
+// (05/11 soir, a) une copie Leboncoin rattachée AUTOMATIQUEMENT SANS photo identique (rapprochement par le titre,
+//     rattachement.motif = 'titre_exact'), puis la vente Vinted de la fiche.
+async function casCopieTitre() {
+  const f = await fiche({ titre: 'Gilet Petit Bateau marinière 4 ans', vinted: String(lidSuivant++) });
+  const a = await annonce(f, { platform: 'leboncoin', titre: 'Gilet Petit Bateau marinière 4 ans', rattachement: { par: 'auto', motif: 'titre_exact' } });
+  await vendreSurVinted(f);
+  return { f, a, retrait: await retraitDe(a.job), q: await questionCopie(a.job) };
+}
+// (05/11 soir, a) une copie CONFIRMÉE par la personne (« Oui, la retirer » d'une vente passée : meme_article_confirme),
+//     puis déplacée sur une AUTRE fiche par une fusion automatique SANS photo identique (verdict de l'IA) — la
+//     confirmation portait sur l'ancienne fiche ; retrait_job_prouve la croit encore prouvée. Puis la vente Vinted.
+async function casConfirmeePuisFusionIA() {
+  const vin = await fiche({ titre: 'Bottines Minelli cuir camel 38', vinted: String(lidSuivant++) });
+  const x = await fiche({ titre: 'Bottines cuir camel Minelli pointure 38' });
+  const a = await annonce(x, { platform: 'leboncoin', titre: 'Bottines cuir camel Minelli pointure 38',
+    rattachement: { par: 'utilisateur', motif: 'meme_article_confirme', confirme: { question: null, le: new Date(Date.now() - 3 * 864e5).toISOString() } } });
+  const r = (await un(`SELECT public.inventaire_fusionner_pour($1, $2, $3, 'ia (doublon proposé)') AS r`, [U, vin, x])).r;
+  await vendreSurVinted(vin);
+  return { r, a, vin, retrait: await retraitDe(a.job), q: await questionCopie(a.job),
+    fiche: (await un(`SELECT inventaire_id FROM cross_post_jobs WHERE id = $1`, [a.job])).inventaire_id };
+}
+// (05/11 soir, c) « Annonce en double ? » : deux fiches unitaires, chacune son annonce Leboncoin (même photo, même
+//     titre) ; « Oui ». Avec `republication` : même titre, même prix, même description (P16, la même annonce publiée
+//     deux fois) — la seule exception.
+async function casAnnonceEnDouble({ republication = false } = {}) {
+  const titre = republication ? 'Trottinette Micro Maxi bleue' : 'Draisienne bois Janod';
+  const desc = (k) => ({ description: republication ? 'Trottinette Micro Maxi bleue, très bon état, roues neuves, envoi possible.' : `Draisienne en bois Janod, exemplaire ${k}, bon état général.` });
+  const f1 = await fiche({ titre }); const a1 = await annonce(f1, { platform: 'leboncoin', titre, prix: 30, capture: desc(1) });
+  const f2 = await fiche({ titre }); const a2 = await annonce(f2, { platform: 'leboncoin', titre, prix: 30, capture: desc(2) });
+  const q = await question(f1, f2, 'annonce_en_double', { platform: 'leboncoin', regle: 'rapprochement_v3', avant_stock: true });
+  const r = await decider(q, 'oui');
+  const e = await un(`SELECT (SELECT statut FROM inventaire_doublons WHERE id = $1) AS statut, (SELECT preuves FROM inventaire_doublons WHERE id = $1) AS preuves,
+      (SELECT fusionne_dans FROM inventaire WHERE id = $2) AS fusionne_dans, (SELECT inventaire_id FROM annonces_plateforme WHERE id = $3) AS a2_fiche`, [q, f2, a2.annonce]);
+  return { r, e, q, f1, f2, a1, a2, lbc: await vivantes(f1, 'leboncoin') };
+}
 // (d) la question « photo proche » sur un titre en série (3 annonces Leboncoin « Ecusson pm »).
 async function casPhotoProche(suffixe) {
   const serie = `Ecusson pm ${suffixe}`;
@@ -412,12 +450,30 @@ try {
     const x = await casRetrait();
     ok(x.pf?.rattachement?.par === 'auto' && x.pf?.rattachement?.motif === 'photo_identique', 'copie Leboncoin rattachée automatiquement (rapprochement_attacher, photo identique)', x.pf);
     const rl = await retraitDe(x.lbc.job); const rb = await retraitDe(x.beebs.job);
-    ok(!!rl && rl.status === 'pending', 'LE DÉFAUT (c) : vente Vinted → retrait ARMÉ sur la copie rattachée automatiquement, jamais confirmée', rl);
+    ok(!!rl && rl.status === 'pending', 'prod : vente Vinted → retrait ARMÉ sur la copie rattachée automatiquement par PHOTO IDENTIQUE (gardé : décision a)', rl);
     ok(!!rb, 'témoin : retrait armé sur la copie Beebs confirmée (dépôt FillSell)', rb);
   }
   {
     const x = await casRetraitApresFusionAuto();
-    ok(!!x.retrait && !x.q, 'LE DÉFAUT (c) : la copie amenée par la fusion AUTOMATIQUE du moteur est retirée à la vente, sans question', { retrait: x.retrait, q: x.q });
+    ok(!!x.retrait && !x.q, 'prod : la copie amenée par la fusion automatique PHOTO IDENTIQUE du moteur est retirée à la vente (gardé : décision a)', { retrait: x.retrait, q: x.q });
+  }
+  {
+    const x = await casCopieTitre(); av.titre = x;
+    ok(!x.retrait && x.q?.statut === 'proposee', 'prod : copie rattachée automatiquement par le TITRE → aucun retrait, la question « Déjà vendu ? » (retrait_job_prouve)', { retrait: x.retrait, q: x.q });
+  }
+  {
+    const x = await casConfirmeePuisFusionIA(); av.ia = x;
+    ok(x.r?.ok === true && String(x.fiche) === String(x.vin) && !!x.retrait && !x.q,
+      'LE DÉFAUT (c) qui reste : copie confirmée PUIS déplacée par une fusion automatique SANS photo identique (IA) → retrait armé sans question', { r: x.r?.ok, retrait: x.retrait, q: x.q });
+  }
+  {
+    const x = await casAnnonceEnDouble(); av.double = x;
+    ok(x.r?.ok === true && x.lbc === 2 && x.e.statut === 'fusionnee',
+      `LE DÉFAUT (c, 05/11 soir) : « Annonce en double ? » → « Oui » → fusion, la fiche unitaire porte ${x.lbc} annonces Leboncoin`, { r: x.r, e: x.e });
+  }
+  {
+    const x = await casAnnonceEnDouble({ republication: true }); av.doubleRep = x;
+    ok(x.r?.ok === true && x.lbc === 2, 'P16 : « Annonce en double ? » sur une republication prouvée → fusion (voulue le 15/10)', { r: x.r, lbc: x.lbc });
   }
   {
     const x = await casDepotFillSellApresFusionAuto('utilisateur:photo_rapprochement_v3_remise');
@@ -481,13 +537,40 @@ try {
     ok(x.r?.ok === true, 'fiche en série (quantité 5) : INCHANGÉE, la fusion passe', x.r);
   }
 
+  console.log('\n   décision c (05/11 soir) : « Annonce en double ? » → « Oui » refusé sur une fiche unitaire, sauf republication prouvée');
+  {
+    const x = await casAnnonceEnDouble({ republication: true });
+    ok(x.r?.ok === true && x.lbc === 2 && x.e.statut === 'fusionnee' && x.lbc === av.doubleRep.lbc,
+      'décision b : la republication PROUVÉE (même titre, prix, description) se regroupe toujours — deux annonces Leboncoin sur la fiche', { r: x.r?.ok, lbc: x.lbc, e: x.e.statut });
+  }
+  {
+    const x = await casAnnonceEnDouble();
+    ok(x.r?.ok === false && x.r?.reason === 'deux_annonces_meme_plateforme' && JSON.stringify(x.r?.plateformes) === '["leboncoin"]' && x.r?.decision === 'oui',
+      `« Oui » REFUSÉ, motif « ${x.r?.reason} »`, x.r);
+    ok(/^Cette fiche a déjà une annonce Leboncoin en ligne/.test(x.r?.message ?? '') && /deux exemplaires/.test(x.r?.message ?? '') && /Rien n'a été regroupé/.test(x.r?.message ?? ''),
+      `le retour de la RPC porte le motif lisible : « ${x.r?.message} »`);
+    ok(x.lbc === 1 && x.e.fusionne_dans === null && String(x.e.a2_fiche) === String(x.f2), 'rien n\'est regroupé : chaque fiche garde son annonce Leboncoin', x.e);
+    ok(x.e.statut === 'proposee' && x.e.preuves?.fusion_refusee?.motif === 'deux_annonces_meme_plateforme' && x.e.preuves?.fusion_refusee?.message === x.r?.message,
+      'la question reste ouverte et garde le même motif (preuves.fusion_refusee)', x.e.preuves?.fusion_refusee);
+    const non = await decider(x.q, 'non');
+    ok(non?.ok === true && (await un(`SELECT statut FROM inventaire_doublons WHERE id = $1`, [x.q])).statut === 'refusee', '« Non, deux exemplaires » reste possible ensuite', non);
+  }
+  {
+    // v23 (15/10, inchangée) : une personne qui a répondu « Non, deux exemplaires » à un « Annonce en double ? » n'a plus
+    // jamais de republication déduite (rapprochement_republication_prouvee) — Louis duplique ses articles. Son « Oui »
+    // est donc refusé, même sur une annonce publiée deux fois à l'identique.
+    const x = await casAnnonceEnDouble({ republication: true });
+    ok(x.r?.ok === false && x.r?.reason === 'deux_annonces_meme_plateforme' && x.lbc === 1 && x.e.statut === 'proposee',
+      'après un « Non, deux exemplaires » du compte (règle v23) : plus de republication déduite → « Oui » refusé, motif lisible', { r: x.r, lbc: x.lbc });
+  }
+
   console.log('\n   (b) le chemin automatique ne signe plus « utilisateur » ni « manuel »');
   {
     const x = await casV3();
     ok(x.r?.faits?.fusionner === 1 && x.e.par === 'auto:photo_rapprochement_v3 (photo_identique)', `fusion automatique signée « ${x.e.par} »`, { r: x.r, e: x.e });
     ok(x.e.source === 'automatique', `l'annonce déplacée garde sa source « ${x.e.source} » (jamais « manuel »)`);
     ok(x.e.prouve === av.v3.prouve && String(x.e.job_fiche) === String(x.vin), 'retrait_job_prouve : même réponse qu\'avant (ventes et relevés inchangés)', { avant: av.v3.prouve, apres: x.e.prouve });
-    ok((await un(`SELECT public.rattachement_confirme($1) AS r`, [x.a.job])).r === false, 'rattachement_confirme : NON (fusion automatique jamais confirmée)');
+    ok((await un(`SELECT public.rattachement_confirme($1) AS r`, [x.a.job])).r === true, 'rattachement_confirme : OUI (fusion automatique par photo identique = preuve, décision a)');
   }
   {
     const x = await casRetraitApresOui();
@@ -495,34 +578,50 @@ try {
       'le « Oui » de la personne : fusion, « manuel », signée « utilisateur (doublon proposé) » — INCHANGÉ', { r: x.r, source: x.source, par: x.par });
   }
 
-  console.log('\n   (c) jamais un retrait sur un rattachement automatique non confirmé : la vente est montrée à confirmer');
+  console.log('\n   (c) + décision a (05/11 soir) : la photo identique reste une preuve ; jamais un retrait sur un rattachement automatique SANS photo identique non confirmé');
   {
     const n0 = await logs('retrait_refuse_rattachement_automatique');
     const x = await casRetrait();
-    const rl = await retraitDe(x.lbc.job); const rb = await retraitDe(x.beebs.job); const q = await questionCopie(x.lbc.job);
-    ok(!rl, 'vente Vinted : AUCUN retrait sur la copie Leboncoin rattachée automatiquement', rl);
+    const rl = await retraitDe(x.lbc.job); const rb = await retraitDe(x.beebs.job);
+    ok(!!rl && rl.status === 'pending' && rl.preuve === null, 'vente Vinted : retrait ARMÉ comme avant sur la copie Leboncoin rattachée automatiquement par PHOTO IDENTIQUE', rl);
+    ok(!(await questionCopie(x.lbc.job)), 'aucune question « Déjà vendu ? » sur cette copie (son retrait est armé)');
+    ok((await un(`SELECT public.rattachement_confirme($1) AS r`, [x.lbc.job])).r === true, 'rattachement_confirme : OUI (rattachement automatique « photo_identique »)');
     ok(!!rb && rb.status === 'pending', 'témoin : la copie Beebs CONFIRMÉE (dépôt FillSell) est retirée comme avant', rb);
-    ok(q?.statut === 'proposee' && q.preuves?.rattachement_automatique === true && q.preuves?.platform === 'leboncoin'
-      && q.preuves?.annonce_id === x.lbc.annonce && q.preuves?.vendu_sur === 'vinted',
-      'la copie devient la question « Déjà vendu ? » (copie_non_prouvee, rattachement_automatique), vendue sur Vinted', q?.preuves);
-    ok(!(await questionCopie(x.beebs.job)), 'aucune question sur la copie confirmée (son retrait est armé)');
-    ok((await logs('retrait_refuse_rattachement_automatique')) === n0, 'armer_retraits_copies ne la propose même pas (aucune trace de refus)');
-    // Un appel direct (enregistrer_vente_atomique, cross_post_jobs_publie_sur_article_vendu…) : refusé, tracé.
-    const d = (await un(`SELECT public.armer_retrait_job($1, 'preuve_appel_direct', '0') AS d`, [x.lbc.job])).d;
-    ok(d === null && (await logs('retrait_refuse_rattachement_automatique')) === n0 + 1, 'appel direct d\'armer_retrait_job : refusé, trace « retrait_refuse_rattachement_automatique »');
-    // La personne confirme : « Oui, la retirer » sur l'annonce montrée → le retrait part.
-    const r = await decider(q.id, 'oui', x.lbc.annonce);
-    const rl2 = await retraitDe(x.lbc.job);
-    const pf = (await un(`SELECT platform_fields FROM cross_post_jobs WHERE id = $1`, [x.lbc.job])).platform_fields;
-    ok(r?.ok === true && r?.retraits === 1 && rl2?.status === 'pending' && rl2?.preuve === 'geste_deja_vendu'
-      && pf?.rattachement?.par === 'utilisateur' && pf?.rattachement?.motif === 'meme_article_confirme',
-      '« Oui, la retirer » : rattachement confirmé par la personne, retrait armé (preuve = son geste)', { r, rl2, ratt: pf?.rattachement });
-    ok((await un(`SELECT public.rattachement_confirme($1) AS r`, [x.lbc.job])).r === true, 'rattachement_confirme : OUI après le geste');
+    ok((await logs('retrait_refuse_rattachement_automatique')) === n0, 'aucune trace de refus');
   }
   {
     const x = await casRetraitApresFusionAuto();
-    ok(!x.retrait && x.q?.statut === 'proposee' && x.q?.preuves?.rattachement_automatique === true,
-      'copie amenée par la fusion AUTOMATIQUE du moteur : aucun retrait, la question « Déjà vendu ? »', { retrait: x.retrait, q: x.q?.preuves });
+    ok(!!x.retrait && x.retrait.status === 'pending' && !x.q, 'copie amenée par la fusion automatique PHOTO IDENTIQUE du moteur (« auto:… (photo_identique) ») : retirée comme avant, aucune question', { retrait: x.retrait, q: x.q });
+  }
+  {
+    const n0 = await logs('retrait_refuse_rattachement_automatique');
+    const x = await casCopieTitre();
+    ok(!x.retrait && x.q?.statut === 'proposee' && x.q?.preuves?.rattachement_automatique === true && x.q?.preuves?.platform === 'leboncoin'
+      && x.q?.preuves?.annonce_id === x.a.annonce && x.q?.preuves?.vendu_sur === 'vinted',
+      'copie rattachée automatiquement par le TITRE : aucun retrait, la question « Déjà vendu ? » (comme avant), marquée rattachement_automatique', { retrait: x.retrait, q: x.q?.preuves });
+    ok((await un(`SELECT public.rattachement_confirme($1) AS r`, [x.a.job])).r === false, 'rattachement_confirme : NON (automatique sans photo identique)');
+    // Un appel direct (enregistrer_vente_atomique, cross_post_jobs_publie_sur_article_vendu…) : refusé.
+    const d = (await un(`SELECT public.armer_retrait_job($1, 'preuve_appel_direct', '0') AS d`, [x.a.job])).d;
+    ok(d === null && !(await retraitDe(x.a.job)), 'appel direct d\'armer_retrait_job : refusé (retrait_job_prouve l\'arrête déjà)', { d, n: (await logs('retrait_refuse_rattachement_automatique')) - n0 });
+    // La personne confirme : « Oui, la retirer » sur l'annonce montrée → le retrait part.
+    const r = await decider(x.q.id, 'oui', x.a.annonce);
+    const rl2 = await retraitDe(x.a.job);
+    const pf = (await un(`SELECT platform_fields FROM cross_post_jobs WHERE id = $1`, [x.a.job])).platform_fields;
+    ok(r?.ok === true && r?.retraits === 1 && rl2?.status === 'pending' && rl2?.preuve === 'geste_deja_vendu'
+      && pf?.rattachement?.par === 'utilisateur' && pf?.rattachement?.motif === 'meme_article_confirme',
+      '« Oui, la retirer » : rattachement confirmé par la personne, retrait armé (preuve = son geste)', { r, rl2, ratt: pf?.rattachement });
+    ok((await un(`SELECT public.rattachement_confirme($1) AS r`, [x.a.job])).r === true, 'rattachement_confirme : OUI après le geste');
+  }
+  {
+    const n0 = await logs('retrait_refuse_rattachement_automatique');
+    const x = await casConfirmeePuisFusionIA();
+    ok(x.r?.ok === true && String(x.fiche) === String(x.vin) && !x.retrait && x.q?.statut === 'proposee' && x.q?.preuves?.rattachement_automatique === true,
+      'copie confirmée PUIS déplacée par une fusion automatique SANS photo identique (IA) : plus de retrait, la question « Déjà vendu ? »', { r: x.r?.ok, retrait: x.retrait, q: x.q?.preuves });
+    ok(av.ia.retrait && !x.retrait, 'le seul chemin qui change aujourd\'hui (0 en prod le 05/11 soir) : retrait avant → question après');
+    ok((await un(`SELECT public.retrait_job_prouve($1) AS p, public.rattachement_confirme($1) AS c`, [x.a.job])).p === true
+      && (await un(`SELECT public.rattachement_confirme($1) AS c`, [x.a.job])).c === false, 'retrait_job_prouve la croit prouvée (inchangée) ; rattachement_confirme : NON');
+    const d = (await un(`SELECT public.armer_retrait_job($1, 'preuve_appel_direct', '0') AS d`, [x.a.job])).d;
+    ok(d === null && (await logs('retrait_refuse_rattachement_automatique')) === n0 + 1, 'appel direct d\'armer_retrait_job : refusé, trace « retrait_refuse_rattachement_automatique »');
   }
   {
     const x = await casRetraitApresOui();

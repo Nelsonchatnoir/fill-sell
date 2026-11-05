@@ -81,6 +81,13 @@ export function construireNoeuds(donnees, photosDe, { maxPhotos = 6, paresseux =
     N.push(fab({ id: 'A' + a.id, pf: a.platform, titre: a.titre, prix: a.prix, taille: a.taille, marque: a.marque,
       vendu: false, ref: a, dn: a.desc_h ?? '', lot: a.desc_lot === true, nRef: urls.length, rp: repPermis }, urls, photosDe));
   }
+  // (05/11, Nico) un titre EN SÉRIE : ≥ 3 nœuds d'UNE plateforme au même titre normalisé (par plateforme : un objet
+  // publié partout porte partout son titre sans être une série ; comme titre_en_serie en base). Lu par evaluer (x.serie).
+  // Une normalisation par nœud (la passe en tranches reconstruit les nœuds à chaque invocation).
+  const titres = new Map();
+  const cles = N.map((n) => { const t = normCommeLaBase(n.titre); return t ? n.pf + '|' + t : ''; });
+  for (const k of cles) if (k) titres.set(k, (titres.get(k) ?? 0) + 1);
+  N.forEach((n, i) => { n.serie = !!cles[i] && titres.get(cles[i]) >= 3; });
   return N;
 }
 function mk(n) {
@@ -191,14 +198,21 @@ export function evaluer(x, y, S = SEUILS) {
   if (distinctifs.length) {
     return { niveau: 'rien', motif: 'attribut_distinctif_' + distinctifs.join('_'), ph, photo, prixR, sim: t.sim, wj: t.wj, conflits: c };
   }
+  // ⛔ (05/11, Nico) Jamais de rattachement AUTOMATIQUE sur un titre en série (≥ 3 nœuds d'une plateforme au même titre
+  // normalisé : x.serie, posé par rapprocher) ni entre deux titres sans aucun mot commun : la photo seule ne départage
+  // pas (écussons ronds sur fond blanc, assopmfrance) → le doute, donc la question. Et sur une photo seulement PROCHE,
+  // un titre en série ne fait même pas une question (comme titre_en_serie / releve_poser_question en base).
+  const enSerie = !!(x.serie || y.serie);
+  const sansMotCommun = (t.sim?.communs ?? 0) === 0;
+  const garde = enSerie ? 'titre_en_serie' : sansMotCommun ? 'titres_sans_mot_commun' : '';
   if (photo === 'multi') {
-    if (!c.length && t.accordFaible) { niveau = 'fort'; motif = 'photo_multi'; } else { niveau = 'doute'; motif = 'photo_multi_' + (c.join('_') || 'titre_different'); }
+    if (!c.length && t.accordFaible && !garde) { niveau = 'fort'; motif = 'photo_multi'; } else { niveau = 'doute'; motif = 'photo_multi_' + (c.join('_') || garde || 'titre_different'); }
   } else if (photo === 'quasi') {
-    if (!c.length && t.accordMoyen) { niveau = 'fort'; motif = 'photo_quasi'; } else { niveau = 'doute'; motif = 'photo_quasi_' + (c.join('_') || 'titre_different'); }
+    if (!c.length && t.accordMoyen && !garde) { niveau = 'fort'; motif = 'photo_quasi'; } else { niveau = 'doute'; motif = 'photo_quasi_' + (c.join('_') || garde || 'titre_different'); }
   } else if (photo === 'une') {
-    if (!c.length && t.accordFort) { niveau = 'fort'; motif = 'photo_une'; }
-    else if (t.accordFaible) { niveau = 'doute'; motif = 'photo_une_' + (c.join('_') || 'titre_faible'); }
-  } else if (photo === 'proche' && !c.length && t.accordFaible) {
+    if (!c.length && t.accordFort && !garde) { niveau = 'fort'; motif = 'photo_une'; }
+    else if (t.accordFaible) { niveau = 'doute'; motif = 'photo_une_' + (c.join('_') || garde || 'titre_faible'); }
+  } else if (photo === 'proche' && !c.length && t.accordFaible && !enSerie) {
     niveau = 'doute'; motif = 'photo_proche';
   } else if (!c.length && t.titreSansPhoto && t.ty !== false && t.ma !== false && (prixR == null || prixR <= 2)) {
     niveau = 'doute'; motif = 'titre_sans_photo';

@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { premierePhoto } from '../components/GalleryPhoto';
 import { track } from '../analytics/analytics';
-import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu, estQuestionCopie, texteQuestionCopie, annonceARetirer, nomPlateforme, rangerDansLeStock } from '../utils/doublons';
+import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu, estQuestionCopie, texteQuestionCopie, annonceARetirer, nomPlateforme, rangerDansLeStock, motifRefusDoublon } from '../utils/doublons';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
 
 const prixLisible = (v, fr) => (v == null || v === '' || !Number.isFinite(Number(v))
@@ -165,6 +165,15 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
       setInfo(fr ? "Cette annonce n'est plus en ligne : rien à retirer." : 'This listing is no longer online: nothing to remove.');
       setTraitees((v) => new Set([...v, paire.id]));
       onDecision?.();
+      return;
+    }
+    // (05/11 soir, Nico) Un « Oui » refusé par la base (une fiche unitaire ne porte jamais deux annonces de la même
+    // plateforme — « Annonce en double ? » comprise —, sauf republication prouvée) : le MOTIF rendu par la base,
+    // jamais « Réponse non enregistrée ». Rien n'est regroupé, la question reste là : « Non » reste possible.
+    const motifRefus = motifRefusDoublon(r, paire, fr);
+    if (motifRefus) {
+      setInfo(motifRefus);
+      track('doublon_decision', { decision, resultat: r?.reason ?? 'refus' });
       return;
     }
     if (!r?.ok && r?.reason !== 'deja_tranchee') {

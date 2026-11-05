@@ -6,6 +6,9 @@
 //   (c) un retrait de copie n'est jamais armé sur un rattachement automatique non confirmé (rattachement_confirme) : la
 //       copie devient la question « Déjà vendu ? » ;
 //   (d) plus de question « photo proche » sur un titre en série (titre_en_serie, releve_poser_question).
+// Décisions de Nico du 05/11 soir : (a) une PHOTO IDENTIQUE reste une preuve (rattachement_confirme l'accepte, comme
+// retrait_job_prouve) ; (b) P16 gardée ; (c) « Annonce en double ? » → « Oui » refusé sur une fiche unitaire, motif
+// lisible ; (d) le moteur (moteur.js) ne rattache plus automatiquement un titre en série ni deux titres sans mot commun.
 // La preuve de bout en bout (Postgres jetable, AVANT / APRÈS / INVERSE) : scripts/preuve-rattachement-regles.mjs.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -78,7 +81,9 @@ ok(/j\.status = 'published'/.test(blocA) && /NOT EXISTS \(SELECT 1 FROM annonces
   'dépôt publié sans annonce relevée (hors Vinted) compté une fois');
 ok(/g\.disparu_le IS NULL/.test(blocA) && /vinted_remise_en_ligne\(g\.id, a\.id\)/.test(blocA) && /vinted_retraits_successifs\(g\.id, a\.id\)/.test(blocA),
   'Vinted : l\'identité en ligne ; l\'échange d\'une remise en ligne n\'est pas un doublon');
-ok(/rapprochement_republication_prouvee\(x\.annonce, y\.annonce\)/.test(blocA), 'seule exception : la republication PROUVÉE (P16, 15/10)');
+ok(/rapprochement_republication_prouvee\(x\.annonce, y\.annonce\)/.test(blocA), 'seule exception : la republication PROUVÉE (P16, 15/10 ; gardée le 05/11 soir, b)');
+ok(/'message', 'Cette fiche a déjà une annonce '/.test(blocA) && /Rien n''a été regroupé\.'\);/.test(blocA),
+  'décision c : le motif lisible commence par « Cette fiche a déjà une annonce <plateforme> en ligne… » (lu tel quel par l\'écran Doublons)');
 const idd = fonction(MIG, 'inventaire_doublon_decider');
 ok((idd.match(/'fusion_refusee', jsonb_build_object\(/g) ?? []).length === 2 && (idd.match(/WHERE id = d\.id AND statut = 'proposee';/g) ?? []).length === 2,
   'inventaire_doublon_decider : sur ce refus, la question reste « proposee » et porte sa raison (les deux chemins du « Oui »)');
@@ -110,21 +115,34 @@ console.log('\n5. (c) Jamais un retrait sur un rattachement automatique non conf
 const rc = fonction(MIG, 'rattachement_confirme');
 const listeGestes = rc.match(/COALESCE\(f\.par, ''\) NOT IN \((.*)\)\s*$/m)?.[1] ?? '';
 const gestes = [...listeGestes.matchAll(/'([^']*)'/g)].map((x) => x[1]);
-const fusionAuto = (par) => !gestes.includes(par) && !/^regle:identifiant/.test(par);
-ok(JSON.stringify(gestes) === JSON.stringify(['utilisateur', 'utilisateur (doublon proposé)']) && /NOT LIKE 'regle:identifiant%'/.test(rc),
+// Les clauses NOT LIKE de la fusion (identifiant, photo) → expressions régulières (LIKE, échappement \).
+const likesRc = [...sansCommentaires(rc).matchAll(/COALESCE\(f\.par, ''\) NOT LIKE '([^']*)'/g)].map((x) => x[1]);
+const reRc = likesRc.map(likeVersRegex);
+const fusionAuto = (par) => !gestes.includes(par) && !reRc.some((re) => re.test(par));
+ok(JSON.stringify(gestes) === JSON.stringify(['utilisateur', 'utilisateur (doublon proposé)']) && likesRc.includes('regle:identifiant%'),
   'fusion de la personne = « utilisateur » ou « utilisateur (doublon proposé) » ; « regle:identifiant… » = un identifiant');
-// Les `par` RÉELS relevés en prod le 05/11 (inventaire_fusions, 20 valeurs).
-const AUTO = ['utilisateur:photo_rapprochement_v3', 'utilisateur:photo_rapprochement_v3_remise', 'utilisateur:photo_go_nico_3009',
+ok(JSON.stringify(likesRc) === JSON.stringify(['regle:identifiant%', 'utilisateur:photo\\_%', '%photo\\_identique)']),
+  `décision a : la photo identique est une preuve — clauses ${likesRc.join(' · ')}`);
+// Les `par` RÉELS relevés en prod le 05/11 soir (inventaire_fusions, 20 valeurs) et les trois marques neuves du moteur.
+const PHOTO = ['utilisateur:photo_rapprochement_v3', 'utilisateur:photo_rapprochement_v3_remise', 'utilisateur:photo_go_nico_3009',
   'utilisateur:photo_rattrapage_0710', 'utilisateur:photo_auto', 'utilisateur:photo_rapprochement_v3_main', 'utilisateur:photo_go_nico_2410',
-  'utilisateur:photo_go_nico_0910', 'ia (doublon proposé)', 'auto (doublon certain : photo_identique)', 'auto (doublon certain : titre_exact_prix_egal)',
-  'recensement 25/09 : remise en ligne Vinted (remise_en_ligne_titre_identique)', 'recensement 25/09 : remise en ligne Vinted (photo_identique)',
-  'recensement 25/09 : doublon certain (photo_identique)', 'recensement 25/09 : remise en ligne Vinted, titre voisin (photo_identique)',
-  'support (check du 25/09 : doublons créés par le relevé sur de fausses ventes)', ...marques];
+  'utilisateur:photo_go_nico_0910', 'auto (doublon certain : photo_identique)', 'recensement 25/09 : remise en ligne Vinted (photo_identique)',
+  'recensement 25/09 : doublon certain (photo_identique)', 'recensement 25/09 : remise en ligne Vinted, titre voisin (photo_identique)', ...marques];
+const AUTO = ['ia (doublon proposé)', 'auto (doublon certain : titre_exact_prix_egal)',
+  'recensement 25/09 : remise en ligne Vinted (remise_en_ligne_titre_identique)',
+  'support (check du 25/09 : doublons créés par le relevé sur de fausses ventes)',
+  // chemins automatiques à venir, jamais une preuve
+  'auto:titre_rapprochement_v3', 'auto (doublon certain : photo_identique_proche)', 'utilisateur:titre_auto', ''];
 const GESTES = ['utilisateur', 'utilisateur (doublon proposé)', 'regle:identifiant_avant_fiche', 'regle:identifiant_avant_fiche (vente en double, décision de Nico 27/10)'];
-for (const p of AUTO) ok(fusionAuto(p), `automatique : ${p}`);
+for (const p of PHOTO) ok(!fusionAuto(p) && preuveRjp(p), `photo identique = confirmée (comme retrait_job_prouve) : ${p}`);
+for (const p of AUTO) ok(fusionAuto(p), `automatique sans photo identique : ${p || '(vide)'}`);
 for (const p of GESTES) ok(!fusionAuto(p), `confirmée  : ${p}`);
-ok(/\{rattachement,par\}', ''\) <> 'auto'/.test(rc) && /\{rattachement,import\}', ''\) = 'true'/.test(rc) && /= 'identifiant_depot_clos'/.test(rc),
-  'lien d\'origine : « auto » (ressemblance) non confirmé, sauf import (fiche née de l\'annonce) ou identifiant');
+// Mesure du 05/11 soir : toute fusion réelle refusée par rattachement_confirme l'est déjà par retrait_job_prouve.
+for (const p of AUTO.slice(0, 4)) ok(!preuveRjp(p), `déjà refusée par retrait_job_prouve (aucun retrait ne change de chemin) : ${p}`);
+ok(/\{rattachement,par\}', ''\) <> 'auto'/.test(rc) && /\{rattachement,import\}', ''\) = 'true'/.test(rc)
+  && /\{rattachement,motif\}', ''\) IN \('identifiant_depot_clos', 'photo_identique'\)/.test(rc),
+  'lien d\'origine : « auto » non confirmé, sauf import (fiche née de l\'annonce), identifiant ou PHOTO IDENTIQUE (décision a)');
+ok(/IN \('identifiant_depot_clos', 'photo_identique'\)/.test(rjp ?? ''), 'retrait_job_prouve accepte les mêmes motifs de rattachement (photo_identique, identifiant)');
 ok(/SELECT \(COALESCE\(j\.platform_fields ->> 'source', ''\) <> 'releve' AND \(j\.platform_fields -> 'rattachement'\) IS NULL\)\n\s+OR \(/.test(rc),
   'limite voulue : le dépôt de FillSell (ni relevé, ni rattachement) reste confirmé — sans annonce relevée, il ne pourrait pas devenir la question');
 ok(/meme_article_confirme/.test(rc) && /\{rattachement,confirme,le\}/.test(rc) && /'-infinity'::timestamptz/.test(rc),
@@ -158,6 +176,63 @@ const { normCommeLaBase } = await import('../supabase/functions/_shared/rapproch
 const sqlNorm = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'o').replace(/Œ/g, 'O').replace(/æ/g, 'a').replace(/Æ/g, 'A')
   .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 for (const t of ['Ecusson pm', 'Écusson  PM', 'ECUSSON-pm !']) ok(normCommeLaBase(t) === 'ecusson pm' && sqlNorm(t) === 'ecusson pm', `« ${t} » → « ecusson pm » (moteur et base)`);
+
+console.log('\n7. Décision d (05/11 soir) : le moteur ne rattache jamais automatiquement un titre en série ni deux titres sans mot commun');
+{
+  const M = await import('../supabase/functions/_shared/rapprochement/moteur.js');
+  const { photoDepuisEmpreinte } = await import('../supabase/functions/_shared/rapprochement/photos.js');
+  // Des empreintes fabriquées (comme moteur-rattachement) : une « photo » = une graine ; `flips` bits d'écart.
+  const bitsDe = (graine, flips = 0) => {
+    let x = 0x9e3779b9 ^ graine; const out = [];
+    for (let i = 0; i < 64; i++) { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; out.push((x >>> 16) & 1); }
+    for (let i = 0; i < flips; i++) out[(i * 7) % 64] ^= 1;
+    return out.join('');
+  };
+  const E = new Map();
+  const photo = (nom, graine, flips = 0) => {
+    const u = `https://cdn.test/${nom}.jpg`;
+    E.set(u, { url: u, dhash: bitsDe(graine, flips), phash: bitsDe(graine + 1000, flips),
+      variantes: Object.fromEntries(['c70', 'p85', 'g45', 'g60', 'g35'].map((k, i) => [k, [bitsDe(graine + 10 * (i + 1), flips), bitsDe(graine + 10 * (i + 1) + 1000, flips)]])) });
+    return u;
+  };
+  const photosDe = (urls) => urls.map((u) => photoDepuisEmpreinte(E.get(u))).filter(Boolean);
+  const fiche = (id, titre, photos) => ({ id: String(id), titre, prix: 5, statut: 'stock', origine: 'vinted_sync', photos, created_at: '2026-10-07T10:00:00Z',
+    quantite: 1, vinted_item_id: String(900000 + id), intact: true });
+  const annonce = (id, platform, titre, photos) => ({ id: String(id), platform, listing_id: String(id), url: `https://${platform}.test/${id}`, titre, prix: 5,
+    photo_url: photos[0], photos, inventaire_id: null, run_id: 'r1', en_ligne: true, geste: true });
+  const jouer = (fiches, annonces, x, y) => {
+    const d = { fiches, annonces, fusions: [], doublons: [], dette_beebs: false, import_ouvert: true, geste_recent: true };
+    const N = M.construireNoeuds(d, photosDe); M.pesee(N);
+    const e = M.evaluer(N.find((n) => n.id === x), N.find((n) => n.id === y));
+    const R = M.rapprocher(N, { forces: M.forcesDe(d) });
+    return { e, decision: R.dec.get(y)?.decision, N };
+  };
+  const serie = ['Ecusson pm', 'Ecusson pm', 'Ecusson pm'];
+  // A — photo identique (3 photos) ET mots communs : rattachée automatiquement, comme avant.
+  const A = jouer([fiche(1, 'Jupe bleu marine taille M', [photo('j1', 11), photo('j2', 12), photo('j3', 13)])],
+    [annonce('a1', 'leboncoin', 'Jupe bleu marine taille M', [photo('j1b', 11, 2), photo('j2b', 12, 2), photo('j3b', 13, 2)])], 'F1', 'Aa1');
+  ok(A.e.niveau === 'fort' && A.e.motif === 'photo_multi' && A.decision === 'fusion_base', `photo identique + mot commun → automatique comme avant (${A.e.motif} → ${A.decision})`);
+  // B — même photo, mot commun, mais un titre EN SÉRIE (3 annonces Leboncoin « Ecusson pm ») : la question.
+  const B = jouer([fiche(2, 'Ecusson police municipale Aubagne', [photo('e1', 21), photo('e2', 22)])],
+    serie.map((t, i) => annonce(`b${i + 1}`, 'leboncoin', t, i === 0 ? [photo('e1b', 21, 2), photo('e2b', 22, 2)] : [photo(`x${i}a`, 300 + i), photo(`x${i}b`, 310 + i)])), 'F2', 'Ab1');
+  ok(B.N.find((n) => n.id === 'Ab1').serie === true && B.N.find((n) => n.id === 'F2').serie === false, 'titre en série : ≥ 3 nœuds d\'UNE plateforme au même titre normalisé');
+  ok(B.e.niveau === 'doute' && B.e.motif === 'photo_multi_titre_en_serie' && B.decision !== 'fusion_base', `titre en série + photo identique → jamais automatique (${B.e.motif} → ${B.decision})`);
+  // C — même photo, AUCUN mot commun (pull / sweat : même famille, accord faible) : la question.
+  const C = jouer([fiche(3, 'Pull Zara', [photo('p1', 31), photo('p2', 32)])], [annonce('c1', 'leboncoin', 'Sweat Kiabi', [photo('p1b', 31, 2), photo('p2b', 32, 2)])], 'F3', 'Ac1');
+  ok(C.e.sim.communs === 0 && C.e.niveau === 'doute' && C.e.motif === 'photo_multi_titres_sans_mot_commun' && C.decision !== 'fusion_base',
+    `aucun mot commun + photo identique → jamais automatique (${C.e.motif} → ${C.decision})`);
+  // D — photo seulement PROCHE + titre en série : pas même une question (comme titre_en_serie en base).
+  const D = jouer([fiche(4, 'Ecusson brodé Albator', [photo('d1', 41)])],
+    serie.map((t, i) => annonce(`d${i + 1}`, 'leboncoin', t, [i === 0 ? photo('d1b', 41, 10) : photo(`y${i}`, 400 + i)])), 'F4', 'Ad1');
+  ok(D.e.photo === 'proche' && D.e.niveau === 'rien', `photo proche + titre en série → rien (ni rattachement ni question) — niveau « ${D.e.niveau} »`);
+  // D' — photo PROCHE, titres uniques : la question reste.
+  const D2 = jouer([fiche(5, 'Ecusson brodé Albator', [photo('f1', 51)])], [annonce('f1', 'leboncoin', 'Ecusson pompier', [photo('f1b', 51, 10)])], 'F5', 'Af1');
+  ok(D2.e.photo === 'proche' && D2.e.niveau === 'doute' && D2.e.motif === 'photo_proche', 'témoin : photo proche, titres uniques → le doute (la question) comme avant');
+  // Par plateforme : un objet publié sur 3 plateformes (3 fois son titre) n'est pas une série.
+  const P = jouer([fiche(6, 'Robe Sézane Gaby', [photo('r1', 61), photo('r2', 62)])],
+    ['leboncoin', 'beebs', 'ebay'].map((pf, i) => annonce(`r${i + 1}`, pf, 'Robe Sézane Gaby', [photo(`r1${pf}`, 61, 2), photo(`r2${pf}`, 62, 2)])), 'F6', 'Ar1');
+  ok(P.N.every((n) => n.serie === false) && P.e.niveau === 'fort', 'un même titre sur trois plateformes n\'est pas une série : le rattachement automatique reste');
+}
 
 console.log(ko ? `\n✗ rattachement-regles : ${ko} échec(s) sur ${n}` : `\n✓ rattachement-regles : ${n}/${n}`);
 process.exit(ko ? 1 : 0);

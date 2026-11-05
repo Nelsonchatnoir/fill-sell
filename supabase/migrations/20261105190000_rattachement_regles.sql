@@ -9,6 +9,22 @@
 -- seulement sur un vrai geste de la personne ; (c) un retrait de copie n'est jamais armé sur un rattachement automatique
 -- non confirmé — la copie devient la question « Déjà vendu ? » (mécanisme du 06/10 : copie_non_prouvee) ; (d) la
 -- question « photo proche » n'est plus posée sur un titre en série (≥ 3 annonces d'une plateforme au même titre).
+-- ⛔ DÉCISIONS DE NICO DU 05/11 SOIR (cette version) :
+--   a) NON pour l'instant : une PHOTO IDENTIQUE reste une preuve. Un rattachement automatique « photo_identique »
+--      (moteur v3, rapprochement_attacher) et une fusion automatique par photo identique (« …(photo_identique) »,
+--      « utilisateur:photo_… ») comptent comme CONFIRMÉS : les retraits de copie s'y arment comme aujourd'hui. Seuls
+--      les rattachements automatiques SANS photo identique (titre, IA…), jamais confirmés par un geste, ne déclenchent
+--      plus de retrait : la copie devient « Déjà vendu ? ». Mesuré en prod le 05/11 soir (lecture seule, état du jour) :
+--      0 des 1 588 retraits armés en 30 jours et 0 des 116 188 dépôts prouvés des fiches en stock ne changent de chemin
+--      (la version de l'après-midi en changeait 273 — 9 par jour, 37 le 30/10 — et 10 503) : aujourd'hui toute fusion ou
+--      tout rattachement automatique sans photo identique est déjà refusé par retrait_job_prouve ; rattachement_confirme
+--      reste la garde des chemins automatiques à venir et d'une copie confirmée puis déplacée par une fusion automatique.
+--   b) Oui : l'exception « republication prouvée » (P16, deux annonces d'une plateforme sur une fiche) est gardée.
+--   c) Oui : « Annonce en double ? » → « Oui » est refusé sur une fiche unitaire (2e annonce de la même plateforme),
+--      sauf republication prouvée — c'est la garde (a) d'inventaire_fusionner_pour ; la question reste ouverte avec son
+--      motif lisible (preuves.fusion_refusee, et le retour de la RPC que l'écran Doublons affiche).
+--   d) Oui : le moteur (_shared/rapprochement/moteur.js, fonction edge rapprochement) ne rattache plus jamais
+--      automatiquement sur un titre en série ni entre deux titres sans mot commun (hors de ce fichier).
 -- 1. inventaire_fusionner_pour : (a) refus « deux_annonces_meme_plateforme » (message lisible ; exception inchangée :
 --    la republication PROUVÉE, P16) ; (b) « manuel » seulement sur le geste ('utilisateur', 'utilisateur (…)') ;
 --    accepte les marques automatiques « auto:photo_rapprochement_v3… (photo_identique) ».
@@ -16,10 +32,12 @@
 -- 3. rapprochement_v3_appliquer : ses trois fusions automatiques signent « auto:… (photo_identique) » (avant
 --    « utilisateur:… ») — retrait_job_prouve les reconnaît comme avant (« …photo_identique) ») : ventes, relevés,
 --    messagerie INCHANGÉS (retrait_job_prouve n'est pas réécrite).
--- 4. rattachement_confirme (NEUVE) : la définition de « confirmé ». armer_retrait_job_pour (sauf p_preuve_geste),
---    armer_retraits_copies (les deux boucles) et poser_questions_copies_non_prouvees s'en servent.
+-- 4. rattachement_confirme (NEUVE) : la définition de « confirmé » (photo identique comprise, décision a).
+--    armer_retrait_job_pour (sauf p_preuve_geste), armer_retraits_copies (les deux boucles) et
+--    poser_questions_copies_non_prouvees s'en servent.
 -- 5. titre_en_serie (NEUVE) + releve_poser_question : (d), trace usage_logs 'question_photo_proche_ecartee'.
--- Définitions de départ lues EN PROD le 05/11 (pg_get_functiondef), md5 sans CR :
+-- Définitions de départ lues EN PROD le 05/11 (pg_get_functiondef), md5 sans CR — relues le 05/11 soir, après les
+-- migrations 20261105170000 et 20261105180000 : INCHANGÉES (retrait_job_prouve aussi : aa37decdd369f3b7bb8438f62004b418) :
 --   inventaire_fusionner_pour            9bcfcd661b1561731fe2ab33e7a5a136
 --   inventaire_doublon_decider           3a9d7674e6c14d8df66e65063a1fff51
 --   rapprochement_v3_appliquer           f417a5e0eead76135922c03d6c05b494
@@ -40,16 +58,25 @@ CREATE OR REPLACE FUNCTION public.rattachement_confirme(p_job uuid)
  SET search_path TO 'public', 'pg_temp'
 AS $function$
   -- ⛔ (05/11, Nico) Un retrait de copie n'est jamais armé sur un rattachement AUTOMATIQUE non confirmé.
-  -- CONFIRMÉ = aucune ressemblance jugée par une machine ne relie ce dépôt à sa fiche :
-  --   · le lien d'origine n'est pas une ressemblance : dépôt de FillSell pour la fiche (aucun rattachement),
-  --     annonce qui a fait naître la fiche (rattachement.import), identifiant (identifiant_depot_clos), rattachement à
-  --     la main ou « Oui, la retirer » (rattachement.par = 'utilisateur', motif meme_article_confirme) ;
-  --   · ET aucune fusion AUTOMATIQUE active ne l'a amené sur sa fiche (depuis la confirmation de la personne, s'il y
-  --     en a une). Fusion de la personne = 'utilisateur' (fusion à la main) ou 'utilisateur (doublon proposé)' (son
-  --     « Oui ») ; 'regle:identifiant…' = un identifiant. Toute autre est automatique : moteur v3 « auto:… »,
-  --     anciennes « utilisateur:photo_… », « ia (…) », « recensement … », « auto (…) », « support (…) ».
-  -- NON CONFIRMÉ : rattachement.par = 'auto' sur une ressemblance (photo_identique, titre_exact…) ou déplacé par une
-  -- fusion automatique. Rien d'autre n'en dépend : retrait_job_prouve (ventes, relevés, messagerie) est inchangée.
+  -- (05/11 soir, décision a de Nico : « une PHOTO IDENTIQUE reste une preuve ») CONFIRMÉ = seule une preuve relie ce
+  -- dépôt à sa fiche :
+  --   · le lien d'origine : dépôt de FillSell pour la fiche (aucun rattachement), annonce qui a fait naître la fiche
+  --     (rattachement.import), identifiant (identifiant_depot_clos), PHOTO IDENTIQUE (rattachement automatique
+  --     « photo_identique » : moteur v3 / rapprochement_attacher), rattachement à la main ou « Oui, la retirer »
+  --     (rattachement.par = 'utilisateur', motif meme_article_confirme) ;
+  --   · ET aucune fusion AUTOMATIQUE SANS PHOTO IDENTIQUE active ne l'a amené sur sa fiche (depuis la confirmation de
+  --     la personne, s'il y en a une). Preuves : la personne — 'utilisateur' (fusion à la main), 'utilisateur (doublon
+  --     proposé)' (son « Oui ») ; un identifiant — 'regle:identifiant…' ; la photo identique — « …(photo_identique) »
+  --     (moteur v3 depuis le 05/11, doublon certain, recensement du 25/09) et « utilisateur:photo_… » (moteur v3 avant
+  --     le 05/11, fusion photo du 30/09, rattrapage du 07/10, go de Nico sur photo). Toute autre est automatique sans
+  --     photo identique : « ia (…) », « auto (doublon certain : titre_exact_prix_egal) », « recensement … (remise_en_
+  --     ligne_titre_identique) », « support (…) » — et tout chemin automatique à venir.
+  -- NON CONFIRMÉ : rattachement.par = 'auto' sur autre chose qu'une photo identique (titre_exact, reparation_2609_suivi_
+  -- orphelin, releve_fiche_vendue…) ou déplacé par une fusion automatique sans photo identique. Rien d'autre n'en
+  -- dépend : retrait_job_prouve (ventes, relevés, messagerie) est inchangée. Mesuré le 05/11 soir : en prod, toute
+  -- copie non confirmée ainsi est déjà refusée par retrait_job_prouve (0 retrait sur 30 jours ne change de chemin) ;
+  -- cette garde vaut pour les chemins automatiques à venir et pour la copie confirmée puis déplacée par une fusion
+  -- automatique sans photo identique (retrait_job_prouve la croit encore prouvée).
   -- LIMITE VOULUE : le DÉPÔT DE FILLSELL lui-même (ni relevé, ni rattachement) reste confirmé même déplacé par une
   -- fusion automatique — il n'a pas d'annonce relevée, il ne peut pas devenir la question « Déjà vendu ? » et
   -- resterait en ligne en silence (05/11 : 976 dépôts Vinted ainsi, sur 42 comptes, presque tous des remises en
@@ -58,12 +85,14 @@ AS $function$
     SELECT (COALESCE(j.platform_fields ->> 'source', '') <> 'releve' AND (j.platform_fields -> 'rattachement') IS NULL)
         OR ((COALESCE(j.platform_fields #>> '{rattachement,par}', '') <> 'auto'
              OR COALESCE(j.platform_fields #>> '{rattachement,import}', '') = 'true'
-             OR COALESCE(j.platform_fields #>> '{rattachement,motif}', '') = 'identifiant_depot_clos')
+             OR COALESCE(j.platform_fields #>> '{rattachement,motif}', '') IN ('identifiant_depot_clos', 'photo_identique'))
        AND NOT EXISTS (
              SELECT 1 FROM inventaire_fusions f
               WHERE f.user_id = j.user_id AND f.defait_le IS NULL
                 AND COALESCE(f.par, '') NOT IN ('utilisateur', 'utilisateur (doublon proposé)')
                 AND COALESCE(f.par, '') NOT LIKE 'regle:identifiant%'
+                AND COALESCE(f.par, '') NOT LIKE 'utilisateur:photo\_%'      -- (05/11 soir, a) photo : moteur v3, 30/09, 07/10, go de Nico
+                AND COALESCE(f.par, '') NOT LIKE '%photo\_identique)'        -- (05/11 soir, a) photo identique (06/10, retrait_job_prouve)
                 AND jsonb_typeof(f.deplacements -> 'cross_post_jobs') = 'array'
                 AND (f.deplacements -> 'cross_post_jobs') ? j.id::text
                 AND f.created_at > COALESCE(
@@ -159,7 +188,9 @@ BEGIN
   -- représente (hors Vinted) ; Vinted : l'identité en ligne de la fiche (vinted_item_id, disparu_le vide) — l'échange
   -- d'une remise en ligne (vinted_remise_en_ligne / vinted_retraits_successifs) n'est pas un doublon. Seule exception,
   -- inchangée : la republication PROUVÉE (P16, 15/10 : rapprochement_republication_prouvee — même titre, prix,
-  -- description, ni lot ni quantité ; la même annonce publiée deux fois, voulue par Nico).
+  -- description, ni lot ni quantité ; la même annonce publiée deux fois, voulue par Nico ; gardée le 05/11 soir, b).
+  -- (05/11 soir, décision c) Vaut aussi pour « Annonce en double ? » → « Oui » (inventaire_doublon_decider) : refusé
+  -- sur une fiche unitaire, sauf republication prouvée. Le message est lu tel quel par l'écran Doublons.
   IF COALESCE(g.quantite, 1) <= 1 THEN
     WITH l AS (
       SELECT CASE WHEN ap.inventaire_id = p_garde THEN 'g' ELSE 'a' END AS cote, ap.platform, btrim(ap.listing_id) AS lid, ap.id AS annonce
@@ -188,11 +219,13 @@ BEGIN
                                            OR COALESCE(vinted_retraits_successifs(g.id, a.id), false)));
     IF v_conflits IS NOT NULL THEN
       RETURN jsonb_build_object('ok', false, 'reason', 'deux_annonces_meme_plateforme', 'plateformes', v_conflits,
-        'message', 'Rien n''a été regroupé : les deux fiches ont chacune une annonce en ligne sur '
+        'message', 'Cette fiche a déjà une annonce '
                    || (SELECT string_agg(CASE p WHEN 'leboncoin' THEN 'Leboncoin' WHEN 'ebay' THEN 'eBay' WHEN 'beebs' THEN 'Beebs'
-                                                WHEN 'depop' THEN 'Depop' WHEN 'vinted' THEN 'Vinted' WHEN 'opla' THEN 'Opla' ELSE p END, ', ')
+                                                WHEN 'depop' THEN 'Depop' WHEN 'vinted' THEN 'Vinted' WHEN 'opla' THEN 'Opla' ELSE p END, ' et une annonce ')
                          FROM jsonb_array_elements_text(v_conflits) p)
-                   || '. Deux annonces d''une même plateforme, ce sont deux exemplaires.');
+                   || ' en ligne, et l''autre fiche en '
+                   || CASE WHEN jsonb_array_length(v_conflits) > 1 THEN 'a d''autres' ELSE 'a une autre' END
+                   || ' : deux annonces d''une même plateforme, ce sont deux exemplaires. Rien n''a été regroupé.');
     END IF;
   END IF;
 
@@ -521,6 +554,8 @@ BEGIN
     END IF;
     r := inventaire_fusionner_pour(v_user, d.garde, d.absorbe, 'utilisateur (doublon proposé)');
     -- (05/11, Nico) deux annonces d'une même plateforme : rien n'est regroupé, la question reste ouverte, sa raison est écrite.
+    -- (05/11 soir, décision c) « Annonce en double ? » → « Oui » passe ici : refusé sur une fiche unitaire, sauf
+    -- republication prouvée ; l'écran Doublons montre r.message (sinon preuves.fusion_refusee.message).
     IF r ->> 'reason' = 'deux_annonces_meme_plateforme' THEN
       UPDATE inventaire_doublons
          SET preuves = COALESCE(preuves, '{}'::jsonb) || jsonb_build_object('fusion_refusee', jsonb_build_object(
@@ -984,7 +1019,8 @@ begin
   -- ⛔ (05/11, Nico — assopmfrance) UN RETRAIT DE COPIE N'EST JAMAIS ARMÉ SUR UN RATTACHEMENT AUTOMATIQUE NON CONFIRMÉ
   -- (rattachement_confirme) : rien n'est retiré, la copie devient la question « Déjà vendu ? » (poser_questions_copies_
   -- non_prouvees, appelée par armer_retraits_copies). Le « Oui, la retirer » de la personne sur CETTE annonce
-  -- (p_preuve_geste) est la confirmation : il passe.
+  -- (p_preuve_geste) est la confirmation : il passe. (05/11 soir, décision a) Une PHOTO IDENTIQUE reste une preuve :
+  -- un rattachement ou une fusion automatique par photo identique est confirmé, le retrait s'arme comme avant.
   if not coalesce(p_preuve_geste, false) and not public.rattachement_confirme(j.id) then
     insert into public.usage_logs (user_id, feature, metadata)
     values (j.user_id, 'retrait_refuse_rattachement_automatique', jsonb_build_object(
@@ -1265,7 +1301,8 @@ BEGIN
      -- vendu ? », jamais le silence (les deux restaient en vente après la vente).
      AND (public.fiche_annonces_vivantes(v_inv.id, j.platform) >= 2
           OR (NOT public.retrait_job_prouve(j.id) AND public.fiche_annonces_vivantes(v_inv.id, j.platform) < 2)
-          -- (05/11, Nico) une copie rattachée AUTOMATIQUEMENT et jamais confirmée : la question, jamais le retrait
+          -- (05/11, Nico) une copie rattachée AUTOMATIQUEMENT sans photo identique et jamais confirmée : la question,
+          -- jamais le retrait (05/11 soir, décision a : la photo identique reste une preuve)
           OR NOT public.rattachement_confirme(j.id))
      AND NOT EXISTS (SELECT 1 FROM cross_post_jobs d
                       WHERE d.user_id = j.user_id AND d.inventaire_id = j.inventaire_id AND d.platform = j.platform

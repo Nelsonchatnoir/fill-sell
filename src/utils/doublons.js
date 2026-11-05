@@ -170,6 +170,32 @@ export function texteQuestionCopie(d, fr = true) {
   return `“${titre}” ${vendu ? `sold on ${vendu}` : 'is sold'}. Your ${annonce} listing with the same name: is it the same item?`;
 }
 
+/**
+ * (05/11 soir, Nico) Le MOTIF d'un « Oui » refusé par la base, lisible — jamais « Réponse non enregistrée » :
+ * une fiche unitaire ne porte jamais deux annonces de la même plateforme (sauf republication prouvée), « Annonce en
+ * double ? » comprise. Le texte est celui que rend la RPC (inventaire_doublon_decider ← inventaire_fusionner_pour :
+ * « Cette fiche a déjà une annonce Leboncoin en ligne… »), sinon celui gardé dans la question
+ * (preuves.fusion_refusee.message), sinon recomposé depuis les plateformes (et en anglais, toujours recomposé).
+ * null : pas un refus connu (un message technique n'est jamais montré).
+ */
+export const REFUS_LISIBLES = Object.freeze(['deux_annonces_meme_plateforme']);
+export function motifRefusDoublon(r, d, fr = true) {
+  if (!r || r.ok) return null;
+  const garde = d?.preuves?.fusion_refusee ?? null;
+  const reason = r.reason ?? null;
+  if (!REFUS_LISIBLES.includes(reason)) return null;
+  const texte = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  if (fr && texte(r.message)) return texte(r.message);
+  if (fr && garde?.motif === reason && texte(garde.message)) return texte(garde.message);
+  const codes = Array.isArray(r.plateformes) && r.plateformes.length ? r.plateformes
+    : Array.isArray(garde?.plateformes) ? garde.plateformes : [];
+  const noms = codes.map(nomPlateforme).filter(Boolean);
+  if (fr) {
+    return `Cette fiche a déjà une annonce ${noms.length ? noms.join(' et une annonce ') : 'sur cette plateforme'} en ligne, et l'autre fiche en ${noms.length > 1 ? "a d'autres" : 'a une autre'} : deux annonces d'une même plateforme, ce sont deux exemplaires. Rien n'a été regroupé.`;
+  }
+  return `This item already has a ${noms.length ? noms.join(' and a ') : 'same-platform'} listing online, and the other item has ${noms.length > 1 ? 'others' : 'another one'}: two listings on the same platform are two copies. Nothing was merged.`;
+}
+
 /** Ce qui rapproche les deux fiches, en mots simples (les preuves du serveur). */
 export function raisonsDoublon(preuves, fr = true) {
   const s = preuves?.signaux ?? {};
