@@ -26,9 +26,16 @@ export function PileLogos({ lang = 'fr', plateformes = [], etats = {}, taille = 
   // Une plateforme ajoutée depuis (09/10) prend son nom de la configuration
   // (stockFiltres.LIBELLE_PLATEFORME), jamais d'une ligne écrite ici.
   const noms = plateformes.map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
-  const liste = noms.length > 1 ? `${noms.slice(0, -1).join(', ')} ${fr ? 'et' : 'and'} ${noms[noms.length - 1]}` : noms[0];
+  // (05/11, point 6 a) Une plateforme en vérification (etats[p].verif) n'est jamais dite « en ligne » : « X vérifie ton annonce ».
+  const joindre = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} ${fr ? 'et' : 'and'} ${l[l.length - 1]}` : l[0]);
+  const nomsEnLigne = plateformes.filter((p) => !etats[p]?.verif).map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
+  const nomsVerif = plateformes.filter((p) => etats[p]?.verif).map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
+  const etiquette = [
+    nomsEnLigne.length ? `${fr ? 'En ligne sur' : 'Live on'} ${joindre(nomsEnLigne)}` : null,
+    ...nomsVerif.map((n) => (fr ? `${n} vérifie ton annonce` : `${n} is reviewing your listing`)),
+  ].filter(Boolean).join(' · ');
   return (
-    <span role="img" aria-label={`${fr ? 'En ligne sur' : 'Live on'} ${liste}`} style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+    <span role="img" aria-label={etiquette || noms.join(', ')} style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
       {visibles.map((p, k) => {
         const e = etats[p] ?? {};
         return (

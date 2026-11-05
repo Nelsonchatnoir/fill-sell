@@ -9,6 +9,7 @@
 // profil beta_flags.inventaire_multi_pf) — l'app ne PROPOSE rien de ce que le
 // serveur refuserait, et n'annonce rien qui n'existe pas encore.
 import { supabase } from '../lib/supabase';
+import { compterEnVenteDuReleve } from './vintedSync.js';
 import { PLATEFORMES_STOCK } from './stockFiltres';
 import { indexerRelevesVides } from '../annonces/releveVide';
 import { indexerRetraits, annonceRetiree } from '../annonces/retraits.js';
@@ -231,7 +232,10 @@ export async function lireDernierRunVinted(userId) {
     .order('finished_at', { ascending: false, nullsFirst: false })
     .limit(1);
   if (error) return null;
-  return (data ?? [])[0] ?? null;
+  const run = (data ?? [])[0] ?? null;
+  // (05/11, point 6 c) Le relevé Vinted lit tout le dressing, vendues comprises : la tuile ne compte que les annonces EN VENTE.
+  if (run) run.en_vente = await compterEnVenteDuReleve(userId, run).catch(() => null);
+  return run;
 }
 
 // La règle « retirée par nous » vit dans annonces/retraits.js (pure, testée :

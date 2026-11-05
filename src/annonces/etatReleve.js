@@ -241,10 +241,14 @@ export function etatTuile({ run, vinted = false, etatVinted = null, T, fr, pip }
     };
   }
   if (fini) {
-    const n = Number(run.items_vus ?? 0);
+    // (05/11, point 6 c) Vinted : le relevé lit aussi les vendues encore affichées — on dit les annonces EN VENTE (relevées
+    // « active »), ou « articles lus » si ce compte n'est pas lisible ; jamais « annonces » pour un total qui les mélange.
+    const vinted = run.platform === 'vinted' || run.kind === 'dressing';
+    const enVente = vinted && Number.isFinite(run.en_vente) ? run.en_vente : null;
+    const n = enVente ?? Number(run.items_vus ?? 0);
     return {
       n: Number.isFinite(n) ? n : 0,
-      mot: T.motAnnonces,
+      mot: !vinted ? T.motAnnonces : (enVente != null ? T.motEnVente : T.motArticlesLus),
       depuis: depuisCourt(fini, fr),
       pip: pip.pipOk,
       phase: 'fait',

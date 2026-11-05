@@ -21,4 +21,7 @@ CREATE TABLE IF NOT EXISTS public.support_mails (
 CREATE INDEX IF NOT EXISTS support_mails_recu_le ON public.support_mails (recu_le DESC);
 ALTER TABLE public.support_mails ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.support_mails FROM PUBLIC, anon, authenticated;
+-- droits : serveur seulement pour support_mails (le Worker écrit par la clé de service ; aucun client ne lit ni n'écrit).
+GRANT ALL ON TABLE public.support_mails TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE public.support_mails_id_seq TO service_role;
 COMMIT;

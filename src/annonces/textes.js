@@ -45,6 +45,8 @@ const FR = {
 
   // ── Les tuiles : un nombre, un mot ───────────────────────────────────────
   motAnnonces: 'annonces',
+  motEnVente: 'en vente',
+  motArticlesLus: 'articles lus',
   motAConnecter: 'à connecter',
   motAAutoriser: 'à autoriser',
   motEnCours: 'en cours…',
@@ -244,6 +246,8 @@ const EN = {
   ctaExtension: 'Extension required',
 
   motAnnonces: 'listings',
+  motEnVente: 'for sale',
+  motArticlesLus: 'items read',
   motAConnecter: 'to connect',
   motAAutoriser: 'to allow',
   motEnCours: 'running…',

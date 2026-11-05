@@ -10066,7 +10066,7 @@ const StockTab = memo(function StockTab({
     const favsPf=statsPf.some(x=>x.favoris!=null)?statsPf.reduce((t,x)=>t+(x.favoris??0),0):null;
     const vues=(item.vinted_view_count==null&&vuesPf==null)?null:(item.vinted_view_count??0)+(vuesPf??0);
     const favs=(item.vinted_favourite_count==null&&favsPf==null)?null:(item.vinted_favourite_count??0)+(favsPf??0);
-    return { invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, enPauseAutoJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, logosJumelles, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
+    return { enVerification, invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, enPauseAutoJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, logosJumelles, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
   };
 
   // ── LA PASTILLE D'UN ARTICLE — COURTE, SANS ÉMOJI (03/10) ─────────────────
@@ -10539,7 +10539,8 @@ const StockTab = memo(function StockTab({
       const masque = d.vintedMasquee && p === 'vinted';
       const retrait = d.removalState[p] === 'removing';
       const moderation = (p === 'beebs' || p === 'leboncoin') && enVerificationPlateforme(d.latestPubByPlatform?.[p]);
-      etats[p] = { attenue: gele || masque || retrait, desature: moderation };
+      // (05/11, point 6 a) en vérification au sens de la règle unique (marqueur pas_encore_visible) : jamais « en ligne ».
+      etats[p] = { attenue: gele || masque || retrait, desature: moderation, verif: (d.enVerification ?? []).includes(p) };
     }
     // (20/10, Louis) Copie de la fiche jumelle (compte relié) : atténuée — elle existe, pas chez ce compte.
     for (const p of d.logosJumelles ?? []) etats[p] = { attenue: true, desature: false };
