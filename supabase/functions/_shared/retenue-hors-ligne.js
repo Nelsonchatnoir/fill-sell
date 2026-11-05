@@ -30,9 +30,28 @@
 //     Mesuré : une annonce Leboncoin en relecture depuis 17:08 retenait 24
 //     republications Beebs et 29 Depop pendant des heures.
 
+//  4. (05/11 soir, lot « Ouverture du Cloud » — défauts vus au palier 2 sur cloud-2, correctif demandé par Nico)
+//     LA RÈGLE DEVIENT : une seule annonce hors ligne PAR PLATEFORME (comme Vinted depuis toujours), et JAMAIS LE MÊME
+//     ARTICLE hors ligne sur deux plateformes à la fois.
+//     · Le groupe Leboncoin-Beebs-Depop (règle 1) faisait passer les republications une par une, TOUTES plateformes
+//       confondues : 16 republications en 2 h au palier 2 (13:06 → 15:14), une Beebs ou Depop de 3 à 9 min bloquant
+//       toutes les autres. Désormais trois articles DIFFÉRENTS peuvent être recréés en parallèle, un par plateforme.
+//     · « Retenue levée trop tôt » (05/11 10:17:27) : la règle 3 libérait le groupe dès que l'annonce Leboncoin du
+//       Mickey attendait sa relecture → le Mickey a été retiré de Depop aussi (10:19:44) : le même article hors ligne
+//       sur deux plateformes jusqu'à ~10:28. Désormais une annonce hors ligne — en recréation OU en relecture — retient
+//       toujours le MÊME ARTICLE (inventaire_id) sur les autres plateformes, et sa plateforme ; jamais les autres
+//       articles des autres plateformes.
+
 import { depotPeutEtrePartiDepuis } from './recreation-deja-partie.js';
 
-export const GROUPE_RETRAIT_REDEPOT = ['leboncoin', 'beebs', 'depop'];
+// (05/11 soir, règle 4) Plus de groupe : chaque plateforme pour elle-même (gardé exporté, vide, pour les lecteurs anciens).
+export const GROUPE_RETRAIT_REDEPOT = Object.freeze([]);
+
+/** (05/11 soir, règle 4) Deux tâches portent-elles le MÊME article ? (pure) — inventaire_id connu et égal. */
+export function memeArticle(a, b) {
+  const x = a?.inventaire_id, y = b?.inventaire_id;
+  return x != null && y != null && String(x) !== '' && String(x) === String(y);
+}
 
 export const MESSAGE_EN_FILE =
   'En file : ta republication passera à son tour, une à la fois. Ton annonce est toujours en ligne.';
@@ -50,10 +69,10 @@ export function attendSaRelecture(h) {
 // annonce hors ligne sur `platform` (`frere` : la republication hors ligne,
 // quand on l'a — une annonce qui attend sa relecture ne retient que la sienne).
 /** @param {unknown} platform @param {any} [frere] */
+// (05/11 soir, règle 4) Sa plateforme seule : le même article sur les autres plateformes est retenu par memeArticle.
+// eslint-disable-next-line no-unused-vars
 export function plateformesRetenuesPar(platform, frere = null) {
-  const p = String(platform || '');
-  if (frere && attendSaRelecture(frere)) return [p];
-  return GROUPE_RETRAIT_REDEPOT.includes(p) ? [...GROUPE_RETRAIT_REDEPOT] : [p];
+  return [String(platform || '')];
 }
 
 // Le frère hors ligne qui retient `job` (ou null). Même plateforme d'abord.
@@ -64,20 +83,21 @@ export function frereHorsLigne(job, horsLigne) {
   const autres = liste.filter((h) => String(h?.id ?? '') !== id);
   const meme = autres.find((h) => String(h?.platform ?? '') === pf);
   if (meme) return meme;
-  if (!GROUPE_RETRAIT_REDEPOT.includes(pf)) return null;
-  return autres.find((h) => GROUPE_RETRAIT_REDEPOT.includes(String(h?.platform ?? '')) && !attendSaRelecture(h)) ?? null;
+  // (05/11 soir, règle 4) Le MÊME article hors ligne sur une autre plateforme (en recréation ou en relecture) retient.
+  return autres.find((h) => memeArticle(h, job)) ?? null;
 }
 
 // Les ids des republications hors ligne qui retiennent ENCORE une
 // republication de `platform` (même plateforme, ou groupe hors relecture) :
 // c'est l'ensemble à passer à retenueLevee pour une marque de `platform`.
 /** @param {unknown} platform @param {any[]} horsLigne */
-export function idsQuiRetiennent(platform, horsLigne) {
+export function idsQuiRetiennent(platform, horsLigne, inventaireId = null) {
   const p = String(platform || '');
   const ids = new Set();
   for (const h of Array.isArray(horsLigne) ? horsLigne : []) {
     const hp = String(h?.platform ?? '');
-    if (hp === p || (GROUPE_RETRAIT_REDEPOT.includes(p) && GROUPE_RETRAIT_REDEPOT.includes(hp) && !attendSaRelecture(h))) {
+    // (05/11 soir, règle 4) Sa plateforme, ou le même article (marque d'une republication de cet article).
+    if (hp === p || memeArticle(h, { inventaire_id: inventaireId })) {
       ids.add(String(h?.id ?? ''));
     }
   }

@@ -3,21 +3,27 @@
 // qui se lève dès que l'annonce retirée est revenue.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, idsQuiRetiennent, attendSaRelecture, MESSAGE_EN_FILE } from '../supabase/functions/_shared/retenue-hors-ligne.js';
+import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, idsQuiRetiennent, attendSaRelecture, memeArticle, MESSAGE_EN_FILE } from '../supabase/functions/_shared/retenue-hors-ligne.js';
 
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n++; };
 const T0 = Date.parse('2026-10-15T14:18:00Z');
 
 // 1. Le groupe Leboncoin / Beebs / Depop.
 const bopIt = { id: 'b1', platform: 'beebs' };
-ok(frereHorsLigne({ id: 'l1', platform: 'leboncoin' }, [bopIt])?.id === 'b1', 'Beebs hors ligne retient un retrait Leboncoin');
-ok(frereHorsLigne({ id: 'd1', platform: 'depop' }, [bopIt])?.id === 'b1', 'Beebs hors ligne retient un retrait Depop');
+// (05/11 soir, règle 4 — correctif demandé par Nico) Plus de groupe : un AUTRE article d'une autre plateforme part.
+ok(frereHorsLigne({ id: 'l1', platform: 'leboncoin' }, [bopIt]) === null, 'Beebs hors ligne ne retient plus le retrait Leboncoin d’un AUTRE article');
+ok(frereHorsLigne({ id: 'd1', platform: 'depop' }, [bopIt]) === null, 'ni le retrait Depop d’un autre article');
+// … mais le MÊME article n'est jamais hors ligne sur deux plateformes à la fois (Vinted compris).
+const bopItArticle = { ...bopIt, inventaire_id: 7 };
+ok(frereHorsLigne({ id: 'l1', platform: 'leboncoin', inventaire_id: 7 }, [bopItArticle])?.id === 'b1', 'le MÊME article : Leboncoin retenu par Beebs');
+ok(frereHorsLigne({ id: 'v1', platform: 'vinted', inventaire_id: 7 }, [bopItArticle])?.id === 'b1', 'le MÊME article : Vinted retenu aussi');
+ok(memeArticle({ inventaire_id: 7 }, { inventaire_id: '7' }) && !memeArticle({ inventaire_id: null }, { inventaire_id: null }), 'memeArticle : identifiant connu et égal seulement');
 ok(frereHorsLigne({ id: 'v1', platform: 'vinted' }, [bopIt]) === null, 'Vinted n’est jamais retenu par Beebs');
 ok(frereHorsLigne({ id: 'b2', platform: 'beebs' }, [{ id: 'v9', platform: 'vinted' }]) === null, 'Beebs n’est jamais retenu par Vinted');
 ok(frereHorsLigne({ id: 'v2', platform: 'vinted' }, [{ id: 'v9', platform: 'vinted' }])?.id === 'v9', 'Vinted reste retenu par Vinted (comme avant)');
 ok(frereHorsLigne({ id: 'b1', platform: 'beebs' }, [bopIt]) === null, 'un job ne se retient pas lui-même');
 ok(frereHorsLigne({ id: 'b2', platform: 'beebs' }, [{ id: 'l9', platform: 'leboncoin' }, { id: 'b9', platform: 'beebs' }])?.id === 'b9', 'même plateforme d’abord');
-ok(JSON.stringify(plateformesRetenuesPar('beebs')) === JSON.stringify(['leboncoin', 'beebs', 'depop']), 'groupe Beebs');
+ok(JSON.stringify(plateformesRetenuesPar('beebs')) === JSON.stringify(['beebs']), 'Beebs : sa plateforme seule (plus de groupe)');
 ok(JSON.stringify(plateformesRetenuesPar('vinted')) === JSON.stringify(['vinted']), 'Vinted seul');
 
 // 2. La retenue se lève quand le frère est revenu.
@@ -39,9 +45,9 @@ ok(/Ton annonce est toujours en ligne/.test(MESSAGE_EN_FILE) && !/n'est pas enco
 const gpj = readFileSync(new URL('../supabase/functions/get-pending-jobs/index.ts', import.meta.url), 'utf8');
 ok(/from "\.\.\/_shared\/retenue-hors-ligne\.js"/.test(gpj), 'gpj importe la règle');
 ok(/const frere = frereHorsLigne\(j,/.test(gpj), 'gpj retient par le groupe');
-ok(/\.in\("platform", plateformesRetenuesPar\(String\(frere\["platform"\]\), frere\)\)/.test(gpj), 'les autres en file reçoivent le motif sur tout le groupe (sauf frère en relecture)');
+ok(gpj.includes('.or(`platform.eq.${plateformesRetenuesPar(String(frere["platform"]), frere)[0]}${frere["inventaire_id"] != null ? `,inventaire_id.eq.${frere["inventaire_id"]}` : ""}`)'), 'les autres en file : sa plateforme et le MÊME article (règle 4 du 05/11)');
 ok(/retenueLevee\(pfM, idsHorsLigne, Date\.now\(\)\)/.test(gpj) && /update\(\{ error: MESSAGE_EN_FILE/.test(gpj), 'gpj lève les retenues périmées');
-ok(/const idsHorsLigne = idsQuiRetiennent\(String\(m\["platform"\] \?\? ""\), /.test(gpj) && /\.select\("id, platform, error, platform_fields"\)/.test(gpj), 'la levée se juge par plateforme de la marque');
+ok(gpj.includes('const idsHorsLigne = idsQuiRetiennent(String(m["platform"] ?? ""), (horsLigne ?? []) as Array<Record<string, unknown>>, m["inventaire_id"] ?? null);') && gpj.includes('.select("id, platform, error, platform_fields, inventaire_id")'), 'la levée se juge par plateforme de la marque ET par article (règle 4)');
 
 // 4. (26/10, Johan Désiré) Une annonce qui attend sa RELECTURE ne retient que SA plateforme.
 // Son essai de recréation s'est arrêté sur /deposer-une-annonce/options après le retrait : garde anti-doublon.
@@ -60,9 +66,15 @@ ok(!attendSaRelecture({ ...jeanLee, platform_fields: { ...jeanLee.platform_field
 ok(frereHorsLigne({ id: 'b5', platform: 'beebs' }, [jeanLee]) === null, 'Beebs n’est plus retenu par une annonce Leboncoin en relecture');
 ok(frereHorsLigne({ id: 'd5', platform: 'depop' }, [jeanLee]) === null, 'Depop non plus');
 ok(frereHorsLigne({ id: 'l9', platform: 'leboncoin' }, [jeanLee])?.id === 'l7', 'Leboncoin reste retenu : jamais deux annonces hors ligne sur la même plateforme');
-ok(frereHorsLigne({ id: 'b5', platform: 'beebs' }, [jeanLee, lbcEnRecreation])?.id === 'l8', 'une autre annonce du groupe en vraie recréation retient toujours');
+ok(frereHorsLigne({ id: 'b5', platform: 'beebs' }, [jeanLee, lbcEnRecreation]) === null, '(règle 4) une annonce Leboncoin en recréation ne retient plus les AUTRES articles de Beebs');
+// (05/11 soir) « Retenue levée trop tôt » : le Mickey attendait sa relecture sur Leboncoin, sa republication Depop est
+// partie (10:19:44) → le même article hors ligne sur deux plateformes. Désormais, même en relecture, il retient son article.
+const mickeyLbc = { ...jeanLee, id: 'l10', inventaire_id: 55 };
+ok(frereHorsLigne({ id: 'd10', platform: 'depop', inventaire_id: 55 }, [mickeyLbc])?.id === 'l10', 'le MÊME article en relecture sur Leboncoin retient sa republication Depop');
+ok(idsQuiRetiennent('depop', [mickeyLbc], 55).has('l10'), 'et sa marque Depop ne se lève pas tant qu’il est hors ligne');
+ok(retenueLevee({ republish_step: 'captured', retenue_hors_ligne: { job: 'l10', titre: 'Mickey' } }, idsQuiRetiennent('depop', [mickeyLbc], 55), T0) === null, 'retenue du même article : jamais levée trop tôt');
 ok(JSON.stringify(plateformesRetenuesPar('leboncoin', jeanLee)) === JSON.stringify(['leboncoin']), 'motif posé sur Leboncoin seul');
-ok(JSON.stringify(plateformesRetenuesPar('leboncoin', lbcEnRecreation)) === JSON.stringify(['leboncoin', 'beebs', 'depop']), 'sinon sur tout le groupe (inchangé)');
+ok(JSON.stringify(plateformesRetenuesPar('leboncoin', lbcEnRecreation)) === JSON.stringify(['leboncoin']), '(règle 4) en recréation aussi : sa plateforme seule');
 ok(!idsQuiRetiennent('beebs', [jeanLee]).has('l7') && idsQuiRetiennent('leboncoin', [jeanLee]).has('l7'), 'idsQuiRetiennent : par plateforme de la marque');
 const marqueBeebs = { republish_step: 'captured', retenue_hors_ligne: { job: 'l7', titre: 'Jean Lee' } };
 ok(retenueLevee(marqueBeebs, idsQuiRetiennent('beebs', [jeanLee]), T0)?.retirer.includes('retenue_hors_ligne'), 'les marques Beebs posées par Jean Lee se lèvent au passage suivant');

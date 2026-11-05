@@ -13797,13 +13797,13 @@ serve(async (req) => {
         // la retire de la file).
         // (02/11) Sans republication en attente au compte (compteurs du signal), cette lecture rendait 0 ligne.
         const { data: marques } = !jobsPeutExister(["pending"], ["republish"]) ? { data: [] as Array<Record<string, unknown>> } : await adminR.from("cross_post_jobs")
-          .select("id, platform, error, platform_fields")
+          .select("id, platform, error, platform_fields, inventaire_id")
           .eq("user_id", user.id).eq("action", "republish").eq("status", "pending")
           .not("platform_fields->retenue_hors_ligne", "is", null)
           .limit(50);
         if (!aRetenir && !(marques ?? []).length) throw new Error("__rien_a_retenir__");
         const { data: horsLigneRetirees, error: hErr } = await adminR.from("cross_post_jobs")
-          .select("id, platform, title, platform_fields")
+          .select("id, platform, title, platform_fields, inventaire_id")
           .eq("user_id", user.id).eq("action", "republish").in("status", ["pending", "processing"])
           .eq("platform_fields->>republish_step", "deleted")
           .order("created_at", { ascending: true }).limit(50);
@@ -13816,7 +13816,7 @@ serve(async (req) => {
         // (marqueur, ou trace écrite : retraitEngage) retient comme une étape 'deleted' ; elle-même va au bout
         // (exemptée plus bas) et n'est jamais retenue par une autre.
         const { data: horsLigneEnvoyees } = await adminR.from("cross_post_jobs")
-          .select("id, platform, title, error, created_at, platform_listing_id, listing_url, platform_fields")
+          .select("id, platform, title, error, created_at, platform_listing_id, listing_url, platform_fields, inventaire_id")
           .eq("user_id", user.id).eq("action", "republish").in("status", ["pending", "processing"])
           .eq("platform_fields->>republish_step", "captured")
           .not("platform_fields->republish_suppression_envoyee", "is", null)
@@ -13839,7 +13839,8 @@ serve(async (req) => {
           // (une annonce qui attend sa relecture ne retient plus que la sienne — _shared/retenue-hors-ligne.js, règle 3).
           for (const m of ((marques ?? []) as Array<Record<string, unknown>>)) {
             const pfM = (m["platform_fields"] as Record<string, unknown> | null) ?? {};
-            const idsHorsLigne = idsQuiRetiennent(String(m["platform"] ?? ""), (horsLigne ?? []) as Array<Record<string, unknown>>);
+            // (05/11 soir, règle 4) Sa plateforme, ou le MÊME article sur une autre plateforme.
+            const idsHorsLigne = idsQuiRetiennent(String(m["platform"] ?? ""), (horsLigne ?? []) as Array<Record<string, unknown>>, m["inventaire_id"] ?? null);
             const levee = retenueLevee(pfM, idsHorsLigne, Date.now());
             if (!levee) continue;
             const pfW: Record<string, unknown> = { ...pfM, ...levee.champs };
@@ -13898,7 +13899,8 @@ serve(async (req) => {
           for (const frere of ((horsLigne ?? []) as Array<Record<string, unknown>>)) {
             const { data: autres } = await adminR.from("cross_post_jobs")
               .select("id, platform, error, platform_fields")
-              .eq("user_id", user.id).in("platform", plateformesRetenuesPar(String(frere["platform"]), frere)).eq("action", "republish")
+              // (05/11 soir, règle 4) Sa plateforme, et le MÊME article sur les autres plateformes (jamais les autres articles).
+              .eq("user_id", user.id).or(`platform.eq.${plateformesRetenuesPar(String(frere["platform"]), frere)[0]}${frere["inventaire_id"] != null ? `,inventaire_id.eq.${frere["inventaire_id"]}` : ""}`).eq("action", "republish")
               .eq("status", "pending").eq("platform_fields->>republish_step", "captured")
               .neq("id", String(frere["id"])).limit(50);
             const titre = String(frere["title"] ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
