@@ -1497,7 +1497,7 @@ function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
         className={"fab-new-btn" + (isRec ? " listening" : "") + (isThink ? " thinking" : "")}
         onClick={onClick}
         disabled={isThink}
-        aria-label="Parler à l'IA"
+        aria-label={lang === 'en' ? 'Talk to the AI' : "Parler à l'IA"}
         style={{touchAction:'manipulation'}}
       >
         {isThink
@@ -4460,7 +4460,7 @@ export default function App({ loginOnly = false }){
       if(result.error)throw new Error(result.error);
       setLotDistributed(result);
     }catch(e){
-      setToast({visible:true,message:"❌ "+(e.message||"Erreur répartition")});
+      setToast({visible:true,message:"❌ "+(e.message||(lang==='en'?"Distribution error":"Erreur répartition"))});
       setTimeout(()=>setToast({visible:false,message:""}),3000);
     }
     setLotDistributing(false);
@@ -6360,6 +6360,9 @@ export default function App({ loginOnly = false }){
     if(PARASITE_RE.test(titre)) return 'totaux/résumés';
     return null;
   }
+  // La raison telle qu'on l'AFFICHE : en anglais, son libellé ; la clé française
+  // (compteurs skipCounts) ne change pas, et le français s'affiche tel quel.
+  const raisonParasiteAffichee=(raison)=>lang==='en'?({'prix manquant':'missing price','titre invalide':'invalid title','totaux/résumés':'totals/summaries'}[raison]??raison):raison;
 
   // Helper : construit le titre depuis mapping.titres (ÉTAPE 4)
   function buildTitre(r, titresCols){
@@ -6489,7 +6492,7 @@ export default function App({ loginOnly = false }){
         }
 
         if(!allRows.length){
-          setImportMsg("Aucune donnée valide trouvée dans le fichier.");
+          setImportMsg(lang==='en'?"No valid data found in the file.":"Aucune donnée valide trouvée dans le fichier.");
           return;
         }
 
@@ -6507,8 +6510,8 @@ export default function App({ loginOnly = false }){
         console.log('[Import] Filtered:',cleanRows.length,'kept,',ignoredCount,'skipped',skipCounts);
 
         if(!cleanRows.length){
-          const detail=Object.entries(skipCounts).map(([k,v])=>`${v} ${k}`).join(', ');
-          setImportMsg(`Aucune ligne valide après filtrage (${detail}).`);
+          const detail=Object.entries(skipCounts).map(([k,v])=>`${v} ${raisonParasiteAffichee(k)}`).join(', ');
+          setImportMsg(lang==='en'?`No valid rows after filtering (${detail}).`:`Aucune ligne valide après filtrage (${detail}).`);
           return;
         }
 
@@ -6516,7 +6519,7 @@ export default function App({ loginOnly = false }){
         setImportMsg("");
       }catch(err){
         console.error('[Import] Error:',err);
-        setImportMsg("Erreur lecture fichier : "+err.message);
+        setImportMsg((lang==='en'?"File read error: ":"Erreur lecture fichier : ")+err.message);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -6583,7 +6586,7 @@ export default function App({ loginOnly = false }){
     console.log('[Import] Inserting',toInsert.length,'rows — sample:',toInsert[0]);
 
     const{data,error}=await supabase.from('inventaire').insert(toInsert).select();
-    if(error){setImportLoading(false);setImportMsg("Erreur import : "+error.message);return;}
+    if(error){setImportLoading(false);setImportMsg((lang==='en'?"Import error: ":"Erreur import : ")+error.message);return;}
 
     // Insère aussi dans ventes les lignes "vendu" (depuis data = retour Supabase avec vrais ids)
     const ventesRows=(data||[])
@@ -6617,7 +6620,7 @@ export default function App({ loginOnly = false }){
     await fetchAll(user.id);
     setImportLoading(false);
     setImportModal(null);
-    setImportMsg(`✅ ${data?.length||0} article(s) importé(s) avec succès.`);
+    setImportMsg(lang==='en'?`✅ ${data?.length||0} item(s) imported successfully.`:`✅ ${data?.length||0} article(s) importé(s) avec succès.`);
     setTimeout(()=>setImportMsg(""),4000);
   }
 
@@ -6750,10 +6753,10 @@ export default function App({ loginOnly = false }){
         if(navigator.canShare&&navigator.canShare({files:[file]})){
           await navigator.share({files:[file],title:'Export FillSell'});
         }else{
-          alert('Export disponible sur la version web : fillsell.app');
+          alert(lang==='en'?'Export available on the web version: fillsell.app':'Export disponible sur la version web : fillsell.app');
         }
       }catch(e){
-        if(e?.name!=='AbortError')alert('Export disponible sur la version web : fillsell.app');
+        if(e?.name!=='AbortError')alert(lang==='en'?'Export available on the web version: fillsell.app':'Export disponible sur la version web : fillsell.app');
       }
     }else{
       XLSX.writeFile(wb,filename,{cellStyles:true});
@@ -7079,7 +7082,7 @@ export default function App({ loginOnly = false }){
   async function handleLogin(){
     if(isSigningIn||isSigningUp)return;
     setLoginError("");
-    if(!emailRef.current?.value||!passwordRef.current?.value){setLoginError("Remplis email et mot de passe");return;}
+    if(!emailRef.current?.value||!passwordRef.current?.value){const _llt=localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en');setLoginError(_llt==='en'?"Fill in your email and password":"Remplis email et mot de passe");return;}
     setIsSigningIn(true);
     try{
       const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
@@ -7587,11 +7590,11 @@ export default function App({ loginOnly = false }){
           {!forgotMode&&(
             <>
               <div style={{position:"relative",width:"100%"}}>
-                <input type={showPassword?"text":"password"} placeholder="Mot de passe" ref={passwordRef} defaultValue=""
+                <input type={showPassword?"text":"password"} placeholder={fr_?"Mot de passe":"Password"} ref={passwordRef} defaultValue=""
                   onKeyDown={e=>e.key==="Enter"&&handleLogin()}
                   style={{padding:"13px 16px",paddingRight:46,borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
                 <button type="button" onClick={()=>setShowPassword(s=>!s)}
-                  aria-label={showPassword?"Masquer le mot de passe":"Afficher le mot de passe"}
+                  aria-label={showPassword?(fr_?"Masquer le mot de passe":"Hide password"):(fr_?"Afficher le mot de passe":"Show password")}
                   style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",padding:4,cursor:"pointer",color:UI.mute2,display:"flex",alignItems:"center"}}>
                   {showPassword?<EyeOff size={18}/>:<Eye size={18}/>}
                 </button>
@@ -8693,7 +8696,7 @@ export default function App({ loginOnly = false }){
             // complète (cf. CLAUDE.md). Aucune logique nouvelle ici.
             <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} onClick={()=>setShowPremiumModal(true)} />
           ):null}
-          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Réglages" aria-label="Réglages" className="tb-icon-btn-light"><Settings size={20} strokeWidth={1.8} aria-hidden="true"/></button>
+          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title={lang==='en'?"Settings":"Réglages"} aria-label={lang==='en'?"Settings":"Réglages"} className="tb-icon-btn-light"><Settings size={20} strokeWidth={1.8} aria-hidden="true"/></button>
         </div>
       </div>
 
@@ -9327,7 +9330,7 @@ export default function App({ loginOnly = false }){
                     <option value="Sport">Sport</option>
                     <option value="Auto-Moto">{typeLabel('Auto-Moto',lang)}</option>
                     <option value="Beauté">{typeLabel('Beauté',lang)}</option>
-                    <option value="Musique">Musique</option>
+                    <option value="Musique">{typeLabel('Musique',lang)}</option>
                     <option value="Collection">Collection</option>
                     <option value="Multimédia">{typeLabel('Multimédia',lang)}</option>
                     <option value="Jardin">{typeLabel('Jardin',lang)}</option>
@@ -9789,9 +9792,9 @@ export default function App({ loginOnly = false }){
             {/* Lignes ignorées */}
             {importModal.ignoredCount>0&&(
               <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#92400E",marginBottom:12,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                <span style={{fontWeight:700}}>⚠️ {importModal.ignoredCount} ligne{importModal.ignoredCount>1?"s":""} ignorée{importModal.ignoredCount>1?"s":""} :</span>
+                <span style={{fontWeight:700}}>{lang==='en'?<>⚠️ {importModal.ignoredCount} row{importModal.ignoredCount>1?"s":""} skipped:</>:<>⚠️ {importModal.ignoredCount} ligne{importModal.ignoredCount>1?"s":""} ignorée{importModal.ignoredCount>1?"s":""} :</>}</span>
                 {Object.entries(importModal.skipCounts).map(([reason,count])=>(
-                  <span key={reason} style={{background:"#FEF3C7",borderRadius:6,padding:"2px 8px",fontWeight:600}}>{count} {reason}</span>
+                  <span key={reason} style={{background:"#FEF3C7",borderRadius:6,padding:"2px 8px",fontWeight:600}}>{count} {raisonParasiteAffichee(reason)}</span>
                 ))}
               </div>
             )}
@@ -9799,7 +9802,7 @@ export default function App({ loginOnly = false }){
             {/* Aperçu 3 premières lignes avec valeurs calculées */}
             <div style={{marginBottom:16}}>
               <div style={{fontSize:11,fontWeight:700,color:C.label,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>
-                Aperçu ({importModal.rows.length} ligne{importModal.rows.length>1?"s":""} au total)
+                {lang==='en'?<>Preview ({importModal.rows.length} row{importModal.rows.length>1?"s":""} in total)</>:<>Aperçu ({importModal.rows.length} ligne{importModal.rows.length>1?"s":""} au total)</>}
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 {importModal.preview.map((row,i)=>{
@@ -9810,8 +9813,8 @@ export default function App({ loginOnly = false }){
                   return(
                     <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:8,padding:"8px 12px",background:C.rowBg,borderRadius:10,fontSize:11,alignItems:"center"}}>
                       <span style={{fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nom}</span>
-                      <span style={{color:C.sub,whiteSpace:"nowrap"}}>Achat : {buy}</span>
-                      <span style={{color:C.sub,whiteSpace:"nowrap"}}>Vente : {sell}</span>
+                      <span style={{color:C.sub,whiteSpace:"nowrap"}}>{lang==='en'?'Buy: ':'Achat : '}{buy}</span>
+                      <span style={{color:C.sub,whiteSpace:"nowrap"}}>{lang==='en'?'Sell: ':'Vente : '}{sell}</span>
                       <span style={{color:statVal==="vendu"?C.green:C.orange,fontWeight:600,whiteSpace:"nowrap"}}>{statVal}</span>
                     </div>
                   );

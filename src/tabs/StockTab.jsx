@@ -10988,7 +10988,7 @@ const StockTab = memo(function StockTab({
             <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
           )}
           <div>
-            <Field label={t('fieldNom')} value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon={iconeChamp(Tag)}/>
+            <Field label={t('fieldNom')} value={iTitle} set={setITitle} placeholder={lang==='en'?"Ex: Air Max 90, Slim jeans, Clothing lot...":"Ex: Air Max 90, Jean slim, Lot vêtements..."} icon={iconeChamp(Tag)}/>
             <BoutonDictee valeur={iTitle} onChange={setITitle} lang={lang}/>
             {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{t('fieldNomHint')}</div>}
           </div>
