@@ -1274,3 +1274,10 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 1 (9cdr9rm4rn, Beeb
   attente (`borneReleveAttendu`) ; la cadence de 6 h de nos demandes ne change pas.
 - Un redépôt raté sur une coupure de NOTRE authentification : reprise dans 1 min, anti-doublon armé
   (`_shared/republication-hors-ligne.js`).
+
+## 05/11 matin — Annonce partie, article vendu
+- Republier une annonce qu'on sait partie (vendue, ou absente établie) est refusé À LA SOURCE, bouton de l'app compris
+  (migration 20261105110000, en attente du feu vert) — la file automatique l'écartait déjà.
+- Une republication d'un article vendu (statut vendu OU quantité ≤ 0) est RETENUE needs_user « article_vendu », jamais
+  annulée (règle du 25/09, get-pending-jobs ; handler-watch aligné le 05/11) : si la vente n'a pas eu lieu, la personne la
+  défait et relance.

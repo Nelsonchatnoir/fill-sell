@@ -11,10 +11,9 @@
 //      veille (releve_est_veille, telle que la DERNIÈRE migration la définit) — un nouveau déclencheur oublié rougit ici ;
 //   2. le miroir de l'app (src/utils/declencheursReleve.js) est EXACTEMENT la liste de la base ;
 //   3. get-pending-jobs dit une visite de contrôle non posée, même sans erreur, et ne la sert plus « devant ».
-// ⚠ À TRANCHER PAR NICO (05/11) : 'reprise_connexion' (handler-watch) et 'serveur:levee_antirobot' (get-pending-jobs)
-//   sont refusés par la même garde depuis sa création (05/10) — leurs relevés n'ont plus jamais été écrits. Les ouvrir
-//   relancerait des relevés automatiques endormis depuis un mois : décision, pas correctif. Listés ici pour ne rougir
-//   que sur un déclencheur NOUVEAU.
+// (05/11, décision de Nico — migration 20261105110000) 'reprise_connexion' (handler-watch) et 'serveur:levee_antirobot'
+//   (get-pending-jobs), refusés par la même garde depuis le 05/10, sont rouverts comme relevés de veille : plus aucune
+//   exception ici, TOUT déclencheur écrit par le serveur doit passer la garde.
 // ═══════════════════════════════════════════════════════════════════════════
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -23,7 +22,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lire = (p) => readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 const { DECLENCHEURS_VEILLE } = await import(pathToFileURL(join(ROOT, "src/utils/declencheursReleve.js")).href);
-const A_TRANCHER = ["reprise_connexion", "serveur:levee_antirobot"];
 
 let ko = 0;
 const ok = (cond, nom, detail = "") => { if (!cond) ko++; console.log(`  ${cond ? "ok  " : "KO  "} ${nom}${cond ? "" : `   ← ${detail}`}`); };
@@ -39,7 +37,7 @@ const liste = [...(bloc.match(/IN \(([\s\S]*?)\)/)?.[1] ?? "").matchAll(/'([^']*
 const GESTE_RE = /^(bouton|bouton_distant|app)(:redemande)?$/;   // releve_est_geste, définition de prod
 
 console.log(`\n[1] tout déclencheur écrit par le serveur passe la garde (releve_est_veille de ${derniere})`);
-ok(liste.length >= 9 && liste.includes("controle_blocage_lbc"), `la liste de la base porte la visite de contrôle (${liste.length} déclencheurs)`, liste.join(","));
+ok(liste.length >= 11 && ["controle_blocage_lbc", "reprise_connexion", "serveur:levee_antirobot"].every((d) => liste.includes(d)), `la liste de la base porte la visite de contrôle (${liste.length} déclencheurs)`, liste.join(","));
 const fichiers = [];
 (function parcourir(d) {
   for (const e of readdirSync(d, { withFileTypes: true })) {
@@ -63,7 +61,6 @@ for (const f of fichiers) {
 }
 ok(ecrits.has("controle_blocage_lbc") && ecrits.size >= 8, `déclencheurs écrits relevés dans le code (${ecrits.size})`, [...ecrits.keys()].join(","));
 for (const [d, ou] of ecrits) {
-  if (A_TRANCHER.includes(d)) { console.log(`  ⚠    ${d} : refusé par la garde depuis le 05/10 — à trancher par Nico (${ou.join(", ")})`); continue; }
   ok(GESTE_RE.test(d) || liste.includes(d), `${d} : passe la garde`, `ni geste ni veille — garde_releve_sans_geste l'avalerait EN SILENCE (${ou.join(", ")})`);
 }
 

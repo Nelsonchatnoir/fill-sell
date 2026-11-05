@@ -735,3 +735,12 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 3, 4, 5.
   « serveur » pendant une pause).
 - Délégation : quand le compte de travail est en pause Leboncoin, le propriétaire lit « Leboncoin y a restreint
   l'accès… » (`messageTacheDelegueeEnPause`), jamais « ouvre l'extension ».
+
+## 05/11 matin — Délégation Leboncoin : la chaîne entière, et l'alerte quand elle recoince
+- `selftest:delegation-leboncoin-chaine` suit retrait, republication et relevé du propriétaire jusqu'à l'extension de
+  l'exécutant, la pause de l'exécutant, la levée (visite acceptée par la base, servie sans « devant », lancée en
+  bouton_distant) et la reprise.
+- Une file arrêtée alors que l'extension qui doit la faire (celle du compte, ou l'exécutant d'une délégation valide) est
+  ouverte remonte en ROUGE dans l'ops-digest (support@fillsell.app) : `_shared/attente-extension-active.js`,
+  `selftest:attente-extension-active`. Pas signalés : file qui avance, ordinateur éteint (ou pas vu depuis 24 h), tâche
+  programmée, file en pause voulue, republication automatique pas engagée (créneau).

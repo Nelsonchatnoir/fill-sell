@@ -271,5 +271,22 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
       && /champsPauseAttenteMaj \} from "\.\.\/_shared\/relance-apres-maj\.js"/.test(hw));
 }
 
+{
+  // (05/11, point 5 — abenjemaa) Une republication d'un article VENDU : retenue « article vendu » (règle du 25/09),
+  // jamais annulée, jamais « repartira toute seule ».
+  const { readFileSync } = await import("node:fs");
+  const hw = readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const iv = hw.indexOf("(05/11, point 5 — abenjemaa, 79db9102)");
+  const blocV = hw.slice(iv, iv + 2200);
+  ok("   handler-watch : article vendu (statut vendu OU quantité ≤ 0) → needs_user « article_vendu », jamais cancelled",
+    iv > 0 && /fV\.statut === "vendu" \|\| \(fV\.quantite != null && Number\(fV\.quantite\) <= 0\)/.test(blocV)
+      && /pfV\.needs_user_source = "article_vendu";/.test(blocV)
+      && /\.update\(\{ error: MESSAGE_REPUBLICATION_ARTICLE_VENDU, platform_fields: pfV \}\)\s*\.eq\("id", String\(j\.id\)\)\.eq\("status", "needs_user"\)/.test(blocV)
+      && !/status: "cancelled"/.test(blocV));
+  const { MESSAGE_REPUBLICATION_ARTICLE_VENDU: mv } = await import("../supabase/functions/_shared/relance-apres-maj.js");
+  ok("   le message dit comment défaire une vente erronée, jamais « annulée » ni « repartira toute seule »",
+    /Si la vente n'a pas eu lieu, corrige-la dans l'app/.test(mv) && !/annul|repartira/i.test(mv), mv);
+}
+
 console.log(ko ? `\n[selftest:relance-apres-maj] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:relance-apres-maj] OK");
 process.exit(ko ? 1 : 0);

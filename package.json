@@ -111,6 +111,8 @@
     "selftest:auth-indisponible": "node scripts/auth-indisponible-selftest.mjs",
     "selftest:barre-job-position": "node scripts/barre-job-position-selftest.mjs",
     "selftest:releve-veille-miroir": "node scripts/releve-veille-miroir-selftest.mjs",
+    "selftest:attente-extension-active": "node scripts/attente-extension-active-selftest.mjs",
+    "selftest:delegation-leboncoin-chaine": "node scripts/delegation-leboncoin-chaine-selftest.mjs",
     "selftest:capture-libelle": "node scripts/capture-libelle-selftest.mjs",
     "selftest:relance-apres-maj": "node scripts/relance-apres-maj-selftest.mjs",
     "selftest:vinted-taille-eu-nu-serveur": "node scripts/vinted-taille-eu-nu-serveur-selftest.mjs",

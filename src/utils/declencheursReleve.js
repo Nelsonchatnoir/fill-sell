@@ -23,6 +23,11 @@ export const DECLENCHEURS_VEILLE = [
   // 25/10, et la visite de contrôle d'une pause Leboncoin (migration 20261105010000) — lectures seules du serveur.
   'serveur:lecture_origine',
   'controle_blocage_lbc',
+  // (05/11, décision de Nico — migration 20261105110000) deux relevés du serveur refusés en silence depuis le 05/10,
+  // rouverts comme lectures seules : le relevé repris au retour de la connexion, le dressing à la levée d'une pause
+  // anti-robot Vinted.
+  'reprise_connexion',
+  'serveur:levee_antirobot',
 ];
 
 export function estReleveDeVeille(declencheur) {

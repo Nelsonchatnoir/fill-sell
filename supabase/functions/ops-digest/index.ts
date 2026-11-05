@@ -6,6 +6,8 @@ import { retenueServeurDuJob } from "../../../src/utils/retenueServeur.js";
 import { anomaliesVentesProuvees, lignesVentesProuvees } from "../_shared/ventes-prouvees.js";
 // (24/10, lot « zéro blocage », C3) La sentinelle des arrêts de NOTRE fait.
 import { sentinelleArrets } from "../_shared/cause-blocage.js";
+// (05/11, Nico — louis-seller / Amiral) Une file arrêtée alors que l'extension qui doit la faire est ouverte.
+import { ATTENTE_ALERTE_MS, PLATEFORMES_EXTENSION, executantsDeclares, filesArretees, ligneFileArretee } from "../_shared/attente-extension-active.js";
 
 // ops-digest — digest quotidien des anomalies cross_post_jobs, envoyé à
 // support@fillsell.app UNIQUEMENT s'il y a au moins une ligne (silence = sain).
@@ -580,6 +582,74 @@ serve(async (req) => {
     pendingBloques.push(`Relevé des pending anciens illisible (${String((e as Error)?.message ?? e)}).`);
   }
 
+  // 12 bis. (05/11, Nico — louis-seller / Amiral) FILES ARRÊTÉES ALORS QUE L'EXTENSION QUI DOIT LES FAIRE EST OUVERTE.
+  // Le retrait 69f89a6d a attendu du 03/11 au 05/11 : Leboncoin de louis-seller passe par l'extension d'Amiral
+  // (délégation), ouverte tout du long, mais en pause — et la section 12 ne connaît ni la délégation ni l'extension
+  // active. La règle et ses exclusions (file qui avance, ordinateur éteint, tâche programmée) : _shared/attente-extension-active.js.
+  // Coût : les pending de plus de 6 h (index status), les profils concernés, puis les départs des 8 derniers jours des
+  // seuls comptes suspects — une fois par jour.
+  const filesArreteesLignes: string[] = [];
+  let filesArreteesBilan = "";
+  try {
+    const borne = new Date(now - ATTENTE_ALERTE_MS).toISOString();
+    const enFile: Array<Record<string, unknown>> = [];
+    for (let page = 0; page < 20; page++) {
+      const { data, error } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, platform, action, status, error, created_at, next_action_after:platform_fields->>next_action_after, "
+          + "republish_source:platform_fields->>republish_source, republish_step:platform_fields->>republish_step, "
+          + "deleted_at:platform_fields->>deleted_at, republish_suppression_envoyee:platform_fields->republish_suppression_envoyee")
+        .eq("status", "pending").in("platform", PLATEFORMES_EXTENSION).lt("created_at", borne)
+        .order("created_at", { ascending: true }).range(page * 1000, page * 1000 + 999);
+      if (error) throw new Error(error.message);
+      // Le juge lit platform_fields : seules les clés utiles sont lues, recomposées ici.
+      for (const j of (data ?? []) as unknown as Array<Record<string, unknown>>) {
+        const { republish_source, republish_step, deleted_at, republish_suppression_envoyee, ...reste } = j;
+        enFile.push({ ...reste, platform_fields: { republish_source, republish_step, deleted_at, republish_suppression_envoyee } });
+      }
+      if (!data || data.length < 1000) break;
+    }
+    const profils = new Map<string, Record<string, unknown>>();
+    const lireProfils = async (ids: string[]) => {
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data, error } = await supabase.from("profiles")
+          .select("id, username, email, extension_last_seen_at, beta_flags, file_pause:platform_settings->file_pause").in("id", ids.slice(i, i + 200));
+        if (error) throw new Error(error.message);
+        for (const p of (data ?? []) as Array<Record<string, unknown>>) {
+          const { file_pause, ...reste } = p;
+          profils.set(String(p.id), { ...reste, platform_settings: { file_pause } });
+        }
+      }
+    };
+    await lireProfils([...new Set(enFile.map((j) => String(j.user_id)))]);
+    await lireProfils(executantsDeclares(profils).filter((id: string) => !profils.has(id)));
+    // Premier tri sans les départs : les comptes dont l'extension a tourné 6 h après l'échéance.
+    const suspects = filesArretees({ jobs: enFile, profils, derniersDeparts: new Map(), maintenant: now }).arretees;
+    const derniersDeparts = new Map<string, number>();
+    const comptes = [...new Set(suspects.map((a: { proprietaire: string }) => a.proprietaire))];
+    const depuis8j = new Date(now - 8 * 86_400_000).toISOString();
+    for (let i = 0; i < comptes.length; i += 100) {
+      for (let page = 0; page < 10; page++) {
+        const { data, error } = await supabase.from("cross_post_jobs")
+          .select("user_id, platform, ps:platform_fields->>processing_since")
+          .in("user_id", comptes.slice(i, i + 100)).gte("platform_fields->>processing_since", depuis8j)
+          .range(page * 1000, page * 1000 + 999);
+        if (error) throw new Error(error.message);
+        for (const d of (data ?? []) as Array<Record<string, unknown>>) {
+          const t = Date.parse(String(d.ps ?? ""));
+          const cle = `${d.user_id}|${d.platform}`;
+          if (Number.isFinite(t) && t > (derniersDeparts.get(cle) ?? 0)) derniersDeparts.set(cle, t);
+        }
+        if (!data || data.length < 1000) break;
+      }
+    }
+    const r = filesArretees({ jobs: enFile, profils, derniersDeparts, maintenant: now });
+    for (const a of r.arretees) filesArreteesLignes.push(ligneFileArretee(a));
+    filesArreteesBilan = `${enFile.length} tâche(s) en file depuis plus de 6 h lues · non signalés ici : ${r.attentesVoulues} attente(s) `
+      + `voulue(s) (file en pause, créneau), ${r.filesQuiAvancent} file(s) qui avancent, ${r.extensionsFermees} compte(s) à l'ordinateur éteint.`;
+  } catch (e) {
+    filesArreteesLignes.push(`Relevé des files arrêtées illisible (${String((e as Error)?.message ?? e)}) — à revérifier.`);
+  }
+
   // 13. JOBS QUI BRÛLENT LEURS TENTATIVES EN SILENCE (2026-09-07) ───────────
   // Un échec récupérable est ré-armé en 'pending' avec needsUserAttempts + 1
   // (rearmBounded, 5 essais espacés 5/15/30/60 min). Tant qu'il reste pending,
@@ -1101,6 +1171,7 @@ serve(async (req) => {
     dressings_croises: dressingsCroises.length,
     pending_bloques: pendingBloques.length,
     retenues_serveur: retenuesServeur.length,
+    files_arretees: filesArreteesLignes.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -1120,6 +1191,20 @@ serve(async (req) => {
     <p style="margin:0 0 12px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
       cross_post_jobs, relevé du ${new Date().toISOString()}
     </p>
+    ${
+    filesArreteesLignes.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
+      🔴 Files arrêtées alors que l'extension est ouverte (${filesArreteesLignes.length} compte${filesArreteesLignes.length > 1 ? "s" : ""})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Tâches en file depuis plus de 6 h, extension qui doit les faire (celle du compte, ou l'exécutant d'une délégation
+      Leboncoin) vue plus de 6 h après, et rien parti sur ce compte et cette plateforme dans les 6 h d'avant : la file ne
+      les distribue plus. Défaut chez nous jusqu'à preuve du contraire. ${esc(filesArreteesBilan)}
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${filesArreteesLignes.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
     ${
     counts.ventes_prouvees === 0 && !(Number(ventesVeille?.enregistrees_24h ?? 0) > 0) ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${ventesAnomalies.length ? "#B91C1C" : "#111827"};">
@@ -1480,7 +1565,7 @@ serve(async (req) => {
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      subject: `${filesArreteesLignes.length ? `🔴 Files arrêtées (extension ouverte) : ${filesArreteesLignes.length} — ` : ""}${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     }),
   });

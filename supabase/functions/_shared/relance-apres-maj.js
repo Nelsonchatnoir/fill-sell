@@ -256,9 +256,11 @@ export function messageAttenteMaj(job, regle) {
 // attente_maj_extension, l'ancien message archivé, un message neutre et vrai, sans heure. Une fois : une tâche déjà en
 // pause pour cette cause n'est jamais réécrite (null). Quand le poste a le build, champsRelance la relance, une fois.
 // (05/11, point 5) Une republication arrêtée dont la fiche est VENDUE n'est jamais relancée : close (handler-watch).
+// (05/11) La règle de Nico du 25/09 (get-pending-jobs) : un job d'un article vendu est RETENU en needs_user « article
+// vendu », jamais annulé — si la vente n'a pas eu lieu, on la défait et on relance ; rien n'est perdu.
 export const MESSAGE_REPUBLICATION_ARTICLE_VENDU =
-  "Republication annulée : cet article est vendu (sa fiche est marquée vendue dans ton stock). " +
-  "Rien n'a été retiré ni republié ; la vente est suivie à part, comme les autres.";
+  "Cet article est marqué vendu : on ne le republie pas, pour ne jamais le vendre deux fois. Rien n'a été retiré ni " +
+  "republié. Si la vente n'a pas eu lieu, corrige-la dans l'app (supprime la vente ou remets une quantité), puis relance.";
 export const MESSAGES_PAUSE_ATTENTE = Object.freeze({
   publish: "Ta publication est en pause, rien n'a été publié : elle repart toute seule dès que l'extension FillSell de " +
     "ton ordinateur est à jour. Rien à faire.",

@@ -447,3 +447,15 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 7 et § 8.
   erreur (05/11 : visite de contrôle Leboncoin, 690 refus par jour pour un compte). `.select("id")` sur l'insertion et un
   journal quand rien n'est écrit. Selftest `releve-veille-miroir` (rougit sur tout déclencheur neuf).
 - Une fonction SQL appliquée depuis Windows porte des CRLF dans son corps : comparer `pg_get_functiondef` sans `\r`.
+
+## 05/11 — Relevés du serveur rouverts, republication d'une annonce partie refusée à la source (20261105110000)
+- 'reprise_connexion' et 'serveur:levee_antirobot' : relevés de VEILLE (ils lisent, n'importent rien — seul
+  `releve_est_geste` ouvre l'import). Le premier reste coupé dans handler-watch (`RELANCE_AUTOMATIQUE_RELEVE`).
+- `spend_coins_and_republish` : une annonce vendue (relevé `transaction_plateforme 'sold'`, ou dépôt publié `sale_signal
+  'sold'`) ou absente établie que rien n'a revue → refus `annonce_introuvable` + `motif` (`annonce_vendue` /
+  `annonce_partie`), message bilingue, AVANT tout décompte. Un seul juge, `republication_annonce_partie()` (SECURITY
+  INVOKER, fermée aux clients). Motif d'article : la file automatique passe au candidat suivant.
+- Preuve : `PREUVE_PG=embarque node scripts/preuve-releves-rouverts-republication-partie.mjs` (52 contrôles, définitions
+  de prod, inverse au md5 près).
+- Réparer un état de pause sans toucher un job : `platform_settings_fusionner(chemin, patch, p_supprimer)` retire une clé
+  (`p_supprimer`), jamais un `UPDATE profiles` direct.

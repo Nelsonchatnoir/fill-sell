@@ -23,7 +23,10 @@ const lire = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\r\n'
 
 console.log('\n1. Geste ou veille : les trois côtés disent la même chose');
 const GESTES = ['bouton', 'bouton_distant', 'app', 'app:redemande', 'bouton_distant:redemande'];
-const COUPES = ['serveur:premier_releve', 'reprise', 'reprise_connexion', 'serveur:reprise_absente', 'serveur:levee_antirobot', 'reprise:redemande', 'serveur:premier_releve:redemande', null];
+// (05/11, décision de Nico — migration 20261105110000) 'reprise_connexion' et 'serveur:levee_antirobot' sortent des coupés :
+// relevés de VEILLE (lecture seule, aucun import) ; leurs « :redemande » restent coupées.
+const COUPES = ['serveur:premier_releve', 'reprise', 'serveur:reprise_absente', 'reprise:redemande', 'serveur:premier_releve:redemande',
+  'reprise_connexion:redemande', 'serveur:levee_antirobot:redemande', null];
 ok('la veille ne compte aucun geste', GESTES.every((d) => !estReleveDeVeille(d)));
 ok('les déclencheurs coupés ne sont pas de la veille', COUPES.every((d) => !estReleveDeVeille(d)));
 const bg = lire('chrome-extension/background.js');

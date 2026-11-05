@@ -5427,18 +5427,21 @@ serve(async (req) => {
         .map((p) => [p.id, p.extension_build]));
       for (const j of cands) {
         // (05/11, point 5 — abenjemaa, 79db9102) La fiche (même inventaire_id) est VENDUE : une republication n'a plus
-        // d'objet, quel que soit le poste. Elle était sautée en silence, gardant « repartira toute seule » à vie :
-        // close, rien de retiré ni de republié, la trace archivée.
+        // d'objet, quel que soit le poste. Elle était sautée en silence, gardant « repartira toute seule » à vie.
+        // Règle de Nico du 25/09 (get-pending-jobs) : RETENUE en needs_user « article vendu », jamais annulée — si la
+        // vente n'a pas eu lieu, la personne la défait et relance. Vendu = statut 'vendu' OU quantité ≤ 0, comme là-bas.
         if (j.action === "republish" && j.inventaire_id) {
-          const { data: artV } = await supabase.from("inventaire").select("statut").eq("id", j.inventaire_id).maybeSingle();
-          if ((artV as { statut?: string } | null)?.statut === "vendu") {
+          const { data: artV } = await supabase.from("inventaire").select("statut, quantite").eq("id", j.inventaire_id).maybeSingle();
+          const fV = artV as { statut?: string; quantite?: number | null } | null;
+          if (fV && (fV.statut === "vendu" || (fV.quantite != null && Number(fV.quantite) <= 0))) {
             const pfV = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
             pfV.erreurs_archivees = archiverErreur(pfV.erreurs_archivees, j.error as string, "needs_user", "handler-watch (article vendu : republication sans objet)");
-            pfV.republication_article_vendu = { le: new Date(now).toISOString(), pose_par: "handler-watch (relance après mise à jour)" };
-            const { data: close } = await supabase.from("cross_post_jobs")
-              .update({ status: "cancelled", error: MESSAGE_REPUBLICATION_ARTICLE_VENDU, platform_fields: pfV })
+            pfV.needs_user_source = "article_vendu";
+            pfV.article_vendu = { le: new Date(now).toISOString(), statut: fV.statut ?? null, quantite: fV.quantite ?? null, pose_par: "handler-watch (relance après mise à jour)" };
+            const { data: retenu } = await supabase.from("cross_post_jobs")
+              .update({ error: MESSAGE_REPUBLICATION_ARTICLE_VENDU, platform_fields: pfV })
               .eq("id", String(j.id)).eq("status", "needs_user").select("id");
-            if ((close ?? []).length) console.log(`[handler-watch] job ${j.id} (${j.platform}/republish) : fiche ${j.inventaire_id} vendue → republication close (rien retiré ni republié)`);
+            if ((retenu ?? []).length) console.log(`[handler-watch] job ${j.id} (${j.platform}/republish) : fiche ${j.inventaire_id} vendue → RETENUE needs_user « article vendu » (rien retiré ni republié)`);
             continue;
           }
         }
