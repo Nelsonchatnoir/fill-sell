@@ -156,7 +156,7 @@ export function pauseLbcProlongee({ maintenant = new Date().toISOString() } = {}
   return { derniere_preuve: maintenant, essai_apres: new Date(Date.parse(maintenant) + ATTENTE_RESTREINT_MS).toISOString() };
 }
 
-export function creerVerifications({ config, base, navigateurs, postes, coffre = null, connexionsOuvertes, journal, alertes = null, pausesMessagerie = null }) {
+export function creerVerifications({ config, base, navigateurs, postes, coffre = null, connexionsOuvertes, journal, alertes = null, pausesMessagerie = null, relanceTaches = null }) {
   // Le fichier d'origine (01/11, essai de 48 h) : les blocages en cours y sont, il ne change pas de place.
   const dossier = `${config.dossierEtat || '/srv/fillsell-cloud/etat'}/endurance`;
   const fichier = `${dossier}/blocages.json`;
@@ -342,21 +342,41 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     return b;
   }
 
-  /** Une plateforme rouverte (vérification résolue, connexion vérifiée, essai réussi) : tout ce que le blocage retenait repart. */
+  /**
+   * Une plateforme rouverte (vérification résolue, connexion vérifiée, essai réussi, vérification de l'appareil passée
+   * seule) : tout ce que le blocage retenait repart. (05/11 soir, point 9) Même SANS blocage ouvert sur le Cloud, une
+   * preuve d'accès lève les pauses de la plateforme et relance ses tâches : le 05/11, le 403 Beebs de 02:48:44 avait mis
+   * la messagerie en pause 6 h sans aucun blocage du Cloud, et la vérification passée seule à 02:48:48 ne la levait pas.
+   */
   async function resolue(user, plateforme, { par = 'connexion', le = new Date().toISOString() } = {}) {
     await lire();
     const ouverts = enCours(user).filter((b) => b.plateforme === plateforme);
-    if (!ouverts.length) return false;
-    for (const b of ouverts) { b.debloquee_le = le; b.resolue_le = le; b.resolue_par = par; }
-    await garder();
-    await dire({ evenement: 'plateforme_debloquee', user: court(user), plateforme, debloquee_le: le, par });
-    journal.info('verification_resolue', { user, plateforme, par });
-    await sur('publication', () => publier(user, plateforme));
-    await sur('liberation', () => libererTaches(user, plateforme));
+    if (ouverts.length) {
+      for (const b of ouverts) { b.debloquee_le = le; b.resolue_le = le; b.resolue_par = par; }
+      await garder();
+      await dire({ evenement: 'plateforme_debloquee', user: court(user), plateforme, debloquee_le: le, par });
+      journal.info('verification_resolue', { user, plateforme, par });
+      await sur('publication', () => publier(user, plateforme));
+      await sur('liberation', () => libererTaches(user, plateforme));
+    }
     if (plateforme === 'leboncoin') await sur('pause_lbc', () => pauseLbc(user, 'lever', `cloud (${par})`));
     // (04/11 soir, règle de Nico) Une résolution réussie lève aussi la pause de sa messagerie et la coupure de sa veille
     // des commandes (base et extension) : sinon la plateforme rouverte resterait muette jusqu'à 24 h.
     if (pausesMessagerie) await sur('pauses_messagerie', () => pausesMessagerie.lever(user, [plateforme], { raison: `resolution (${par})` }));
+    // (05/11 soir, point 9) Les tâches que l'anti-robot avait espacées repartent TOUT DE SUITE (relanceTaches.js).
+    if (relanceTaches) await sur('relance_taches', () => relanceTaches.relancer(user, plateforme, { par }));
+    return ouverts.length > 0;
+  }
+
+  /**
+   * (05/11 soir, point 9 — règle de Nico) UNE VÉRIFICATION DE L'APPAREIL PASSÉE SEULE (DataDome a répondu « redirect » à
+   * son /interstitial/, lu par le veilleur réseau des onglets de travail) vaut preuve d'accès : la plateforme est traitée
+   * comme rouverte — pauses levées, tâches relancées. Une glissière (« captcha ») n'est jamais une preuve.
+   */
+  async function verificationPassee(user, plateforme, { le = new Date().toISOString() } = {}) {
+    if (!user || !plateforme) return false;
+    journal.info('verification_passee_seule', { user, plateforme, le });
+    await resolue(user, plateforme, { par: 'verification_passee_seule', le });
     return true;
   }
 
@@ -505,7 +525,7 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
   }
 
   return {
-    charger, releve, bloquer, requalifier, revenue, resolue, sessionFermee, rouvrir, ajouter, plateformesBloquees, blocageDe,
+    charger, releve, bloquer, requalifier, revenue, resolue, verificationPassee, sessionFermee, rouvrir, ajouter, plateformesBloquees, blocageDe,
     aTache: (id) => (blocages ?? []).some((b) => b.tache === id),
     ecouter: (f) => { ecouteurs.push(f); },
     surSansPlateforme: (f) => { sansPlateforme = f; },

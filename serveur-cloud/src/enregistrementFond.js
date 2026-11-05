@@ -41,24 +41,48 @@ export function lieuOnglet(url) {
   catch { return { hote: String(url ?? '').slice(0, 40), chemin: '' }; }
 }
 
+/**
+ * (05/11 soir, point 9) L'issue d'une « Vérification de l'appareil » DataDome (pure : testée) : 'passee' quand le POST de
+ * son /interstitial/ répond view « redirect », 'glissiere' quand il répond « captcha », null sinon (autre adresse, réponse
+ * illisible). Jamais une valeur de cookie lue ni gardée.
+ */
+export function issueVerificationAppareil(url, texte) {
+  let chemin = '';
+  try { const u = new URL(String(url)); if (!/(^|.)captcha-delivery.com$/i.test(u.hostname)) return null; chemin = u.pathname.toLowerCase(); } catch { return null; }
+  if (!chemin.startsWith('/interstitial')) return null;
+  let j = null;
+  try { j = JSON.parse(String(texte ?? '')); } catch { return null; }
+  const vue = String(j?.view ?? '').toLowerCase();
+  return vue === 'redirect' ? 'passee' : vue === 'captcha' ? 'glissiere' : null;
+}
+
+/** La plateforme d'un cadre DataDome (pure) : celle de son paramètre referer, ou null. */
+export function plateformeDuCadre(url) {
+  try { const ref = new URL(String(url)).searchParams.get('referer'); const p = ref ? suiviDe(ref) : null; return p && p !== 'datadome' ? p : null; } catch { return null; }
+}
+
 /** Les types de cible attachés au niveau du navigateur (les cadres viennent par l'auto-attache de leur page). */
 export const typesSuivis = ({ serviceWorker = false } = {}) => new Set(['page', ...(serviceWorker ? ['service_worker'] : [])]);
 
-export function creerEnregistrementFond({ config, journal, maintenant = () => Date.now(), ecrireFichier = appendFile, creerDossier = mkdir }) {
+export function creerEnregistrementFond({ config, journal, maintenant = () => Date.now(), ecrireFichier = appendFile, creerDossier = mkdir, surDataDome = null }) {
   const actifs = new Map();   // user → { arreter }
   const types = typesSuivis({ serviceWorker: config?.enregistrementFondSw === true });
 
   /** Commence à suivre le navigateur ouvert d'un compte (h = handle de navigateurs.ouvrir). */
   async function suivre(user, h) {
-    if (!config?.enregistrementFond || !config?.dossierEtat || !h?.cdp || actifs.has(user)) return false;
+    // (05/11 soir, point 9) Hors essai (ENREGISTREMENT_FOND absent), le MODE LÉGER : seules les requêtes DataDome sont
+    // suivies, rien n'est écrit sur le disque ; il ne sert qu'à voir une vérification de l'appareil passée seule.
+    const complet = config?.enregistrementFond === true && !!config?.dossierEtat;
+    if ((!complet && typeof surDataDome !== 'function') || !h?.cdp || actifs.has(user)) return false;
     const { cdp } = h;
     const sessions = new Map();     // sessionId → { cadre, targetId }
     const cibles = new Map();       // targetId → { type, url, sessionId }
     const requetes = new Map();     // sessionId:requestId → requête suivie en cours
     const extras = new Map();       // sessionId:requestId → { envoyes, recus }
     let fichier = null, lignes = 0, plafond = false;
-    let file = creerDossier(`${config.dossierEtat}/essais`, { recursive: true }).catch(() => {});
+    let file = complet ? creerDossier(`${config.dossierEtat}/essais`, { recursive: true }).catch(() => {}) : Promise.resolve();
     const ecrire = (o) => {
+      if (!complet) return;
       const f = fichierFond(config.dossierEtat, user, maintenant());
       if (f !== fichier) { fichier = f; lignes = 0; plafond = false; }
       if (plafond) return;
@@ -77,8 +101,8 @@ export function creerEnregistrementFond({ config, journal, maintenant = () => Da
       ecrire({ ...ligneRequete({ ...r, ...x, ...extra, id: cle.split(':').pop(), publicite: estPublicite(r.url) }), suivi: r.suivi, cible: r.cible });
     };
 
-    async function brancher(sessionId, nom, targetId) {
-      sessions.set(sessionId, { cadre: nom, targetId });
+    async function brancher(sessionId, nom, targetId, url = null) {
+      sessions.set(sessionId, { cadre: nom, targetId, url });
       await cdp.send('Network.enable', {}, sessionId);
       // Les cadres hors processus (DataDome sur un autre domaine) : attachés à leur tour, jamais mis en pause.
       if (nom !== 'service_worker') await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sessionId);
@@ -89,11 +113,24 @@ export function creerEnregistrementFond({ config, journal, maintenant = () => Da
       try {
         const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: t.targetId, flatten: true });
         cibles.set(t.targetId, { type: t.type, url: t.url, sessionId });
-        await brancher(sessionId, t.type === 'page' ? 'page' : 'service_worker', t.targetId);
+        await brancher(sessionId, t.type === 'page' ? 'page' : 'service_worker', t.targetId, t.url);
       } catch (e) {
         cibles.delete(t.targetId);
         journal?.alerte?.('enregistrement_fond_attache_echec', { user, type: t.type, erreur: String(e.message).slice(0, 120) });
       }
+    }
+
+    // (05/11 soir, point 9) Le verdict d'une « Vérification de l'appareil » : la plateforme vient de l'adresse du cadre
+    // (paramètre referer), sinon de la page qui le porte ; rien n'est dit sur un doute.
+    function signalerDataDome(r, texte, sessionId) {
+      if (typeof surDataDome !== 'function') return;
+      const issue = issueVerificationAppareil(r?.url, texte);
+      if (!issue) return;
+      const s = sessions.get(sessionId);
+      const page = [...cibles.values()].find((c) => c.sessionId && sessions.get(c.sessionId)?.targetId === s?.targetId && c.type === 'page');
+      const plateforme = plateformeDuCadre(s?.url) ?? plateformeDuCadre(r?.url) ?? suiviDe(page?.url) ?? null;
+      if (!plateforme || plateforme === 'datadome') return;
+      try { Promise.resolve(surDataDome(user, { plateforme, issue, le: new Date(maintenant()).toISOString() })).catch(() => {}); } catch { /* jamais bloquant */ }
     }
 
     function surMessage(m) {
@@ -124,7 +161,7 @@ export function creerEnregistrementFond({ config, journal, maintenant = () => Da
       if (!m.sessionId || !sessions.has(m.sessionId)) return;
       // ── Un cadre d'une page suivie ──
       if (m.method === 'Target.attachedToTarget' && p.sessionId && p.targetInfo?.type === 'iframe') {
-        brancher(p.sessionId, hoteDe(p.targetInfo.url) || 'cadre', sessions.get(m.sessionId).targetId).catch(() => {});
+        brancher(p.sessionId, hoteDe(p.targetInfo.url) || 'cadre', sessions.get(m.sessionId).targetId, p.targetInfo.url).catch(() => {});
         return;
       }
       if (m.method === 'Target.detachedFromTarget' && p.sessionId) { sessions.delete(p.sessionId); return; }
@@ -134,7 +171,7 @@ export function creerEnregistrementFond({ config, journal, maintenant = () => Da
         const url = p.request?.url;
         if (p.redirectResponse && requetes.has(cle)) finir(cle, { http: p.redirectResponse.status, echec: 'redirection' });
         const suivi = suiviDe(url);
-        if (!suivi) return;
+        if (!suivi || (!complet && suivi !== 'datadome')) return;
         const s = sessions.get(m.sessionId);
         requetes.set(cle, { le: quand(p), cadre: s.cadre, url, methode: p.request?.method, type: p.type ?? null, suivi,
           cible: String(s.targetId ?? '').slice(0, 8),
@@ -149,7 +186,11 @@ export function creerEnregistrementFond({ config, journal, maintenant = () => Da
         const r = requetes.get(cle);
         if (r.suivi === 'datadome' && ['XHR', 'Fetch'].includes(r.type)) {
           cdp.send('Network.getResponseBody', { requestId: p.requestId }, m.sessionId)
-            .then((b) => finir(cle, { reponse: reponseDataDomeMasquee(b?.base64Encoded ? Buffer.from(b.body, 'base64').toString('utf8') : b?.body) }))
+            .then((b) => {
+              const texte = b?.base64Encoded ? Buffer.from(b.body, 'base64').toString('utf8') : b?.body;
+              signalerDataDome(r, texte, m.sessionId);
+              finir(cle, { reponse: reponseDataDomeMasquee(texte) });
+            })
             .catch(() => finir(cle, { reponse: 'illisible' }));
           return;
         }
@@ -188,7 +229,7 @@ export function creerEnregistrementFond({ config, journal, maintenant = () => Da
     } catch (e) {
       journal?.alerte?.('enregistrement_fond_echec', { user, erreur: String(e.message).slice(0, 160) });
     }
-    journal?.info?.('enregistrement_fond_ouvert', { user, fichier: fichierFond(config.dossierEtat, user, maintenant()) });
+    journal?.info?.('enregistrement_fond_ouvert', complet ? { user, fichier: fichierFond(config.dossierEtat, user, maintenant()) } : { user, mode: 'leger_datadome' });
     return true;
   }
 

@@ -208,7 +208,27 @@ globalThis.__fillsellVerrouCloud = {
     }
     return out;
   },
-};`;
+  // (05/11 soir, point 9) Appelé par l'orchestrateur (relanceTaches.js, EXPRESSION_RELANCER) quand une plateforme est
+  // rouverte : un passage de la file TOUT DE SUITE, au lieu d'attendre l'alarme de 2 min. Le passage lui-même garde ses
+  // règles (verrou des tâches, cadence) : rien n'est forcé, rien ne part deux fois.
+  relancer: () => {
+    if (typeof pollAndProcessJobs !== "function") return false;
+    try { pollAndProcessJobs(); return true; } catch { return false; }
+  },
+  // (05/11 soir, point 12) LA VIDANGE avant un arrêt de l'orchestrateur (serveur-cloud/src/vidange.js) : plus aucune
+  // NOUVELLE tâche n'est prise (le passage de la file est sauté) ; celle en cours va au bout. Levée au redémarrage
+  // (navigateur neuf) ou par drainer(false).
+  drainer: (oui) => { vidangeCloud = oui === true; return true; },
+  enVidange: () => vidangeCloud,
+};
+let vidangeCloud = false;
+const pollSansVidangeCloud = typeof pollAndProcessJobs === "function" ? pollAndProcessJobs : null;
+if (pollSansVidangeCloud) {
+  globalThis.pollAndProcessJobs = function pollAvecVidangeCloud(...args) {
+    if (vidangeCloud) { console.log("[cloud] vidange en cours : aucune nouvelle tâche prise"); return; }
+    return pollSansVidangeCloud.apply(this, args);
+  };
+}`;
 
 // (02/11 soir, décision de Nico) LES ONGLETS DE TRAVAIL SANS TÂCHE SONT FERMÉS. Mesuré le 02/11 (rapport
 // machine-cloud-3010 § 26) : le navigateur Cloud d'un compte garde chargés ses quatre onglets de travail entre deux tâches

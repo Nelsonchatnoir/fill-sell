@@ -105,9 +105,11 @@ export function faitsEchec({ facture, abonnement = null, estCloud = false }) {
     lien_facture: contexte === 'souscription' ? null : lienFacture(facture),
     relance_le: prochaine != null && contexte !== 'souscription' ? new Date(prochaine * 1000).toISOString() : null,
     // (29/10) Un palier past_due n'est plus ouvert (litAbonnementStripe.paye) : « ton abonnement reste
-    // actif » ne se dit plus que d'un abonnement active, ou d'une option Cloud past_due (règle inchangée).
-    abonnement_actif: contexte === 'renouvellement'
-      && (abonnement?.status === 'active' || (abonnement?.status === 'past_due' && estCloud === true)),
+    // actif » ne se dit plus que d'un abonnement active.
+    // (05/11 soir, lot « Ouverture du Cloud ») L'OPTION CLOUD AUSSI : depuis le 03/11 (point 4 de Nico,
+    // cloud-option.js litAbonnementStripe), un Cloud past_due s'ARRÊTE tout de suite — le mail ne peut plus lui
+    // dire « ton abonnement reste actif » (il le disait encore : faux depuis le 03/11).
+    abonnement_actif: contexte === 'renouvellement' && abonnement?.status === 'active',
     offre: estCloud ? 'cloud' : null,
   };
 }

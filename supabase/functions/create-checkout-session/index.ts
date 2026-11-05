@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec, refusDoubleAbonnement, messageDoubleAbonnement } from "../_shared/paiement-stripe.js";
-import { estAbonnementCloud, essaiCloudPermis, parametresCheckoutCloud, sessionEstCloud, ESSAI_CLOUD_JOURS } from "../_shared/cloud-option.js";
+import { estAbonnementCloud, essaiCloudPermis, parametresCheckoutCloud, sessionEstCloud, ESSAI_CLOUD_JOURS, cloudVivantDuProfil } from "../_shared/cloud-option.js";
 // (30/10, lot D point 2) L'abonnement Google relu chez Google (lecture seule) avant de refuser un paiement web.
 import { jetonGooglePlay } from "../_shared/google-play-token.ts";
 import { abonnementGoogleActif } from "../_shared/droits-canaux.js";
@@ -361,7 +361,8 @@ serve(async (req) => {
         // Champ « code promo » au Checkout (2026-07-26) — geste commercial
         // possible via les promotion codes du dashboard Stripe.
         allow_promotion_codes: true,
-        success_url: "https://fillsell.app/success",
+        // (05/11 soir) La page de retour dit CE qui a été acheté (elle disait « plan Premium » pour tout).
+        success_url: "https://fillsell.app/success?produit=pack&session_id={CHECKOUT_SESSION_ID}",
         cancel_url: "https://fillsell.app/cancel",
         ...(packCustomerId
           ? { customer: packCustomerId }
@@ -400,8 +401,10 @@ serve(async (req) => {
         });
       }
       const { data: profilCloud } = await supabase
-        .from("profiles").select("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut").eq("id", authUser.id).single();
-      if (profilCloud?.is_cloud === true && profilCloud?.cloud_canal && profilCloud.cloud_canal !== "stripe") {
+        .from("profiles").select("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", authUser.id).single();
+      // (05/11 soir, lot « Ouverture du Cloud », point 4) Un Cloud VIVANT sur un autre canal — payé OU en essai en
+      // cours (avant : is_cloud seul, l'essai d'une boutique laissait ouvrir un second abonnement Stripe).
+      if (cloudVivantDuProfil(profilCloud) && profilCloud?.cloud_canal && profilCloud.cloud_canal !== "stripe") {
         // Déjà pris dans l'App Store ou Google Play : jamais un second abonnement.
         return new Response(JSON.stringify({ already_cloud: true, canal: profilCloud.cloud_canal }), {
           headers: { "Content-Type": "application/json", ...CORS },
@@ -453,7 +456,8 @@ serve(async (req) => {
       const sessionCloud = await stripe.checkout.sessions.create({
         ...base,
         customer: clientCloud,
-        success_url: "https://fillsell.app/success",
+        // (05/11 soir, lot « Ouverture du Cloud », point 5) Le retour dit « ton Cloud démarre » (jamais « plan Premium »).
+        success_url: `https://fillsell.app/success?produit=cloud${essai ? "&essai=1" : ""}&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: "https://fillsell.app/cancel?session_id={CHECKOUT_SESSION_ID}",
         ...(carte_3ds === true ? {
           payment_method_options: { card: { request_three_d_secure: "any" } },
@@ -725,7 +729,8 @@ serve(async (req) => {
       // in situ ci-dessus n'est PAS concerné : subscriptions.update, aucune
       // session Checkout (une remise là-bas passerait par `discounts`).
       allow_promotion_codes: true,
-      success_url: "https://fillsell.app/success",
+      // (05/11 soir) La page de retour dit le palier acheté (elle disait « plan Premium » même pour Pro et Business).
+      success_url: `https://fillsell.app/success?produit=${encodeURIComponent(planType)}&session_id={CHECKOUT_SESSION_ID}`,
       // (01/10) Le retour porte la session : /cancel en lit la cause
       // (action "diagnostic") et propose un autre moyen de paiement.
       cancel_url: "https://fillsell.app/cancel?session_id={CHECKOUT_SESSION_ID}",

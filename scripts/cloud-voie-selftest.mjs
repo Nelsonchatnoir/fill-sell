@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PLATEFORMES_CLOUD_VOIE, drapeauALire, jobsSelonDrapeauCloud } from '../supabase/functions/_shared/cloud-voie.js';
+import { PLATEFORMES_CLOUD_VOIE, drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif } from '../supabase/functions/_shared/cloud-voie.js';
 
 const racine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let n = 0, ko = 0;
@@ -33,7 +33,7 @@ ok(drapeauALire({ cloudVoie: null, posteCloud: true, jobs }) === false, 'jamais 
 
 console.log('\n2. Branchement dans get-pending-jobs');
 const gpj = readFileSync(path.join(racine, 'supabase', 'functions', 'get-pending-jobs', 'index.ts'), 'utf8');
-ok(gpj.includes('import { drapeauALire, jobsSelonDrapeauCloud } from "../_shared/cloud-voie.js";'), 'le module partagé est importé');
+ok(/import \{ drapeauALire, jobsSelonDrapeauCloud(, [A-Za-z, ]+)? \} from "\.\.\/_shared\/cloud-voie\.js";/.test(gpj), 'le module partagé est importé');
 ok(gpj.includes('.select("extension_postes, cloud_voie")'), 'le drapeau est lu avec les postes (aucune lecture de plus par poll)');
 const iVoie = gpj.indexOf('out = jobsSelonDrapeauCloud(out, { cloudVoie, posteCloud });');
 const iReserve = gpj.indexOf('admin.rpc("reserver_jobs_extension"');
@@ -84,6 +84,21 @@ console.log('\n3. Le poste Cloud reconnu par update-job-status (prendre_job)');
   const iEcriture = ujs.indexOf('p_reservation: reservation.reservation, p_avant: reservation.statut');
   ok(iBranche > 0 && iBranche < iPrendre && iPrendre < iMaj && iMaj < iEcriture,
     'après prendre_job, l’écriture finale part de « processing » (sinon : 409 « le job a changé ») ');
+}
+
+// (05/11 soir, lot « Ouverture du Cloud », point 13) Le poste Cloud d'un compte au Cloud INACTIF ne reçoit rien ;
+// l'ordinateur garde alors toutes ses tâches (jamais une tâche servie à personne).
+{
+  const jobsC = [{ id: 'v', platform: 'vinted' }, { id: 'b', platform: 'beebs' }];
+  ok(ids(jobsPourPosteCloud(jobsC, { cloudVoie: false })) === '', 'point 13 : drapeau faux → le poste Cloud ne reçoit rien');
+  ok(ids(jobsPourPosteCloud(jobsC, { cloudVoie: true })) === 'v,b', 'point 13 : drapeau vrai → le poste Cloud reçoit comme avant');
+  ok(ids(jobsPourPosteCloud(jobsC, { cloudVoie: null })) === 'v,b', 'point 13 : drapeau illisible → comme avant (jamais privé sur un doute)');
+  ok(routageCloudActif({ cloudVoie: false }) === false && routageCloudActif({ cloudVoie: true }) === true && routageCloudActif({ cloudVoie: null }) === true,
+    'point 13 : le routage vers le poste Cloud ne vaut que si le Cloud du compte est actif (ou illisible)');
+  const gpjP13 = readFileSync(path.join(racine, 'supabase', 'functions', 'get-pending-jobs', 'index.ts'), 'utf8');
+  const iPoste = gpjP13.indexOf('out = jobsPourPosteCloud(out, { cloudVoie });');
+  const iRoutage = gpjP13.indexOf('if (posteCloud || (cloudVivant && routageCloudActif({ cloudVoie }))) {');
+  ok(iPoste > 0 && iRoutage > iPoste, 'point 13 : get-pending-jobs applique la règle du poste AVANT le routage, et le routage la garde');
 }
 
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);

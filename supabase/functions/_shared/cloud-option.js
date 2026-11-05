@@ -62,6 +62,17 @@ const instant = (v) => {
 const iso = (t) => (t == null ? null : new Date(t).toISOString());
 const secondesIso = (s) => (typeof s === "number" && s > 0 ? new Date(s * 1000).toISOString() : null);
 
+/** (05/11 soir) Le compte est-il en ESSAI Cloud en cours (commencé, non arrêté, pas fini) ? (pure, colonnes du profil) */
+export function essaiEnCoursDuProfil(profil, maintenant = Date.now()) {
+  const fin = instant(profil?.cloud_essai_fin);
+  const now = instant(maintenant) ?? Date.now();
+  return profil?.is_cloud !== true && profil?.cloud_essai_debut != null && fin != null && now < fin && profil?.cloud_essai_arrete !== true;
+}
+/** (05/11 soir) Le compte porte-t-il un Cloud VIVANT (payé, ou en essai en cours) ? (pure, colonnes du profil) */
+export function cloudVivantDuProfil(profil, maintenant = Date.now()) {
+  return profil?.is_cloud === true || essaiEnCoursDuProfil(profil, maintenant);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. L'ÉTAT CLOUD D'UN COMPTE
 // ═══════════════════════════════════════════════════════════════════════════
@@ -350,6 +361,13 @@ export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintena
     return { update: null, motif: "reference_autre_canal_ou_remplacee" };
   }
   const now = instant(maintenant) ?? Date.now();
+  // (05/11 soir, lot « Ouverture du Cloud », point 4) UN SEUL CLOUD VIVANT PAR COMPTE, TOUS CANAUX : un achat arrivé
+  // d'une boutique pendant qu'un AUTRE canal porte un Cloud vivant (payé, ou en essai non arrêté) n'écrase plus rien —
+  // avant, il remplaçait cloud_canal / cloud_ref, et les événements du premier canal (qui continuait de facturer)
+  // étaient ensuite ignorés. L'appelant journalise le motif : un double abonnement est à rembourser par le support.
+  if (sens === "on" && !sien && cloudVivantDuProfil(profil, now)) {
+    return { update: null, motif: "cloud_deja_actif_autre_canal" };
+  }
   /** @type {Record<string, any>} */
   const update = {};
   let motif = null;
@@ -375,6 +393,12 @@ export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintena
   } else if (sens === "off") {
     update.is_cloud = false;
     update.cloud_periode_fin = lecture?.fin ?? null;
+    // (05/11 soir, point 3) Un « off » PENDANT l'essai (remboursement, révocation, mise en attente) arrête l'essai tout
+    // de suite : avant, seul is_cloud passait à faux et l'essai continuait jusqu'à sa date de fin (le Cloud tournait).
+    if (essaiEnCoursDuProfil(profil, now)) {
+      update.cloud_essai_arrete = true;
+      update.cloud_essai_fin = new Date(now).toISOString();
+    }
   } else if (sens === "annulation") {
     const fin = instant(profil?.cloud_essai_fin);
     const enEssai = profil?.is_cloud !== true && profil?.cloud_essai_debut != null && fin != null && now < fin && profil?.cloud_essai_arrete !== true;

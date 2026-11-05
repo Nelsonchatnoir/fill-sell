@@ -32,3 +32,22 @@ export function jobsSelonDrapeauCloud(jobs, { cloudVoie, posteCloud }) {
   if (posteCloud || cloudVoie !== true) return liste;
   return liste.filter((j) => !PLATEFORMES_CLOUD_VOIE.includes(String(j?.platform)));
 }
+
+/**
+ * (05/11 soir, lot « Ouverture du Cloud », point 13 — le trou laissé ouvert le 03/11, REPRISE Cloud) LE POSTE CLOUD
+ * D'UN COMPTE DONT LE CLOUD N'EST PLUS ACTIF NE REÇOIT RIEN. Le drapeau faux (fin d'essai sans paiement, période de
+ * grâce, arrêt, impayé) rend les tâches à l'ordinateur ; le navigateur Cloud peut encore être ouvert pendant la grâce
+ * (sessions gardées), il ne doit plus rien exécuter. Illisible (null) : comme avant (jamais un poste privé sur un doute).
+ */
+export function jobsPourPosteCloud(jobs, { cloudVoie }) {
+  const liste = Array.isArray(jobs) ? jobs : [];
+  return cloudVoie === false ? [] : liste;
+}
+
+/**
+ * (05/11 soir, point 13) Le ROUTAGE « une plateforme connectée au Cloud va au seul poste Cloud » ne vaut que si le
+ * Cloud du compte est actif : drapeau faux → l'ordinateur garde toutes ses tâches (sinon, la tâche n'irait à personne).
+ */
+export function routageCloudActif({ cloudVoie }) {
+  return cloudVoie !== false;
+}

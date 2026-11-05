@@ -75,6 +75,9 @@ export function lireConfig(env = process.env) {
     // ── Rythme ──────────────────────────────────────────────────────────────
     tickPlanificateurS: lireEntier(env.TICK_PLANIFICATEUR_S, 60),
     tickEntretienMin: lireEntier(env.TICK_ENTRETIEN_MIN, 60),
+    // (05/11 soir, point 12) La vidange à l'arrêt (vidange.js) : au plus DRAIN_MAX_S secondes pour laisser finir les tâches
+    // en cours ; le délai d'arrêt du conteneur (stop_grace_period, docker-compose.yml) est réglé au-dessus.
+    drainMaxS: lireEntier(env.DRAIN_MAX_S, 600),
     // (04/11 soir, essai GPU) 0 = ce serveur ne tient PAS le pool (purges, contrôles, visites, échéances, achats,
     // alertes) : seul le pare-feu de ses navigateurs suit le pool (entretien.js). Un seul serveur tient le pool.
     entretienPool: lireBool(env.ENTRETIEN_POOL, true),

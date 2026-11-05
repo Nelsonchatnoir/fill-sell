@@ -29,6 +29,10 @@ import { creerFlotte, capaciteServeur } from './flotte.js';
 import { tailleEnMo } from './navigateur.js';
 import { creerEnregistrementFond } from './enregistrementFond.js';
 import { creerPausesMessagerie } from './pausesMessagerie.js';
+import { creerRelanceTaches } from './relanceTaches.js';
+import { creerVidange } from './vidange.js';
+import { idExtensionDepuisCle } from './sessionFillsell.js';
+import { readFile, appendFile, mkdir } from 'node:fs/promises';
 
 const configLue = lireConfig();
 // (03/11, point 1) LA CAPACITÉ : NAVIGATEURS_MAX s'il est réglé ; sinon ⌊(mémoire de l'hôte − socle) / plafond d'un
@@ -50,8 +54,12 @@ const regles = await chargerRegles();
 
 let connexions = null;
 let endurance = null;
-// (04/11 soir, essai GPU) L'enregistrement de fond : actif sur ENREGISTREMENT_FOND=1 seulement (sinon il ne fait rien).
-const enregistrementFond = creerEnregistrementFond({ config, journal });
+// (04/11 soir, essai GPU) L'enregistrement de fond : complet sur ENREGISTREMENT_FOND=1. (05/11 soir, point 9) Sinon, son
+// MODE LÉGER, toujours actif : seules les réponses DataDome sont lues, rien n'est écrit ; une « Vérification de l'appareil »
+// passée seule rouvre sa plateforme (verifications.verificationPassee : pauses levées, tâches relancées).
+let verificationsRef = null;
+const enregistrementFond = creerEnregistrementFond({ config, journal,
+  surDataDome: (user, d) => (d?.issue === 'passee' ? verificationsRef?.verificationPassee(user, d.plateforme, { le: d.le }) : null) });
 // (04/11 soir, règle de Nico) Les pauses de la messagerie et de la veille des commandes : levées par une résolution réussie
 // (verifications.js) et par un changement de machine ou d'IP (postes.js).
 const pausesMessagerie = creerPausesMessagerie({ config, base, navigateurs, journal });
@@ -59,7 +67,19 @@ const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journa
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), arretEndurance: () => endurance?.arretee() ?? null });
 // (02/11) Les vérifications anti-robot : une règle du PRODUIT, toujours active (verifications.js) — un blocage n'arrête
 // que sa plateforme ; « Résoudre la vérification » la rouvre ; l'essai de 48 h en garde seulement le journal.
-const verifications = creerVerifications({ config, base, navigateurs, postes, coffre, journal, alertes, pausesMessagerie,
+// (05/11 soir, point 9) Une plateforme rouverte : ses tâches espacées par l'anti-robot repartent tout de suite.
+let idExtensionCloud = null;
+const relanceTaches = creerRelanceTaches({ base, navigateurs, journal, idExtension: async () => {
+  if (idExtensionCloud) return idExtensionCloud;
+  const man = JSON.parse(await readFile(`${config.dossierExtension}/manifest.json`, 'utf8'));
+  idExtensionCloud = man.key ? idExtensionDepuisCle(man.key) : null;
+  return idExtensionCloud;
+} });
+const verifications = creerVerifications({ config, base, navigateurs, postes, coffre, journal, alertes, pausesMessagerie, relanceTaches,
+  connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
+verificationsRef = verifications;
+// (05/11 soir, point 12) La vidange à l'arrêt : plus aucune nouvelle tâche, celles en cours vont au bout (vidange.js).
+const vidange = creerVidange({ base, navigateurs, journal, idExtension: relanceTaches.idExtension,
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
 // (01/11) Une connexion vérifiée (compte lu) est notée dans le journal de l'essai de 48 h : ses heures partent de là.
 // (02/11) Et elle rouvre sa plateforme si elle était en vérification (verifications.resolue, par l'essai ou sans lui).
@@ -126,6 +146,19 @@ const t2 = setInterval(tourEntretien, config.tickEntretienMin * 60_000);
 const t3 = setInterval(() => (endurance ? endurance.releveCadres() : verifications.releve()).catch((e) => journal.alerte('verifications_releve_echec', { erreur: e.message })), 60_000);
 // (03/11) La flotte : décision toutes les 10 min (plan à blanc tant que les interrupteurs sont coupés).
 const t5 = setInterval(() => flotte.tour().catch((e) => journal.alerte('flotte_tour_echec', { erreur: e.message })), 10 * 60_000);
+// (05/11 soir, point 11) LA MESURE DES COUPURES DU RELAIS : chaque heure, une ligne par compte ouvert (compteurs du jour
+// et des 6 précédents, par plateforme : echecs rendus à Chrome, reprises au réessai, secours) dans etat/coupures-relais.jsonl.
+async function noterCoupuresRelais() {
+  const lignes = [];
+  for (const u of navigateurs.ouverts()) {
+    const e = await navigateurs.etatRelais?.(u).catch(() => null);
+    if (e?.coupures) lignes.push(JSON.stringify({ le: new Date().toISOString(), user: String(u).slice(0, 8), coupures: e.coupures }));
+  }
+  if (!lignes.length) return;
+  await mkdir(config.dossierEtat, { recursive: true }).catch(() => {});
+  await appendFile(`${config.dossierEtat}/coupures-relais.jsonl`, `${lignes.join('\n')}\n`, { mode: 0o600 });
+}
+const t6 = setInterval(() => noterCoupuresRelais().catch((e) => journal.alerte('coupures_relais_echec', { erreur: e.message })), 60 * 60_000);
 const t4 = endurance ? setInterval(() => endurance.mesure().catch((e) => journal.alerte('endurance_mesure_echec', { erreur: e.message })), 10 * 60_000) : null;
 if (endurance) setTimeout(() => endurance.mesure().catch(() => {}), 120_000);
 setTimeout(tourPlanificateur, 5_000);
@@ -133,7 +166,10 @@ setTimeout(tourEntretien, 60_000);
 
 async function arreter(signal) {
   journal.info('arret', { signal });
-  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5);
+  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5); clearInterval(t6);
+  await noterCoupuresRelais().catch(() => {});
+  // (05/11 soir, point 12) Un déploiement ne coupe rien en cours : la vidange d'abord, la fermeture ensuite.
+  await vidange.vider({ maxMs: config.drainMaxS * 1000 }).catch((e) => journal.alerte('vidange_echec', { erreur: String(e?.message ?? e) }));
   connexions.fermerTout();
   for (const u of navigateurs.ouverts()) await postes.fermer(u, 'arret_orchestrateur').catch(() => {});
   await serveur.fermer().catch(() => {});

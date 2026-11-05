@@ -70,7 +70,7 @@ titre('Les faits transmis à email-tunnel');
   const ra = faitsEchec({ facture: facture({ lines: { data: [ligne(FIN_ESSAI + MOIS)] } }), abonnement: abo({ status: 'active', metadata: {} }) });
   ok(ra.abonnement_actif === true, 'renouvellement, abonnement relu « active » : « actif »');
   const rc = faitsEchec({ facture: facture({ lines: { data: [ligne(FIN_ESSAI + MOIS)] } }), abonnement: abo({ status: 'past_due' }), estCloud: true });
-  ok(rc.contexte === 'renouvellement' && rc.abonnement_actif === true && rc.offre === 'cloud', 'option Cloud past_due au renouvellement : « actif » (règle Cloud inchangée)');
+  ok(rc.contexte === 'renouvellement' && rc.abonnement_actif === false && rc.offre === 'cloud', 'option Cloud past_due au renouvellement : plus jamais « actif » (05/11 : un Cloud impayé s’arrête tout de suite depuis le 03/11)');
   ok(r.relance_le === new Date((FIN_ESSAI + 3 * 86_400) * 1000).toISOString(), 'relance = next_payment_attempt (ISO)');
   const r2 = faitsEchec({ facture: facture({ lines: { data: [ligne(FIN_ESSAI + MOIS)] }, next_payment_attempt: null }), abonnement: abo({ status: 'unpaid' }) });
   ok(r2.abonnement_actif === false && r2.relance_le === null, 'unpaid, sans prochaine tentative : ni « actif », ni relance');

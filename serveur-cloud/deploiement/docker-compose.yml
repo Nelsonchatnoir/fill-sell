@@ -16,7 +16,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /srv/fillsell-cloud:/srv/fillsell-cloud
-    stop_grace_period: 3m
+    # (05/11 soir, point 12) La vidange à l'arrêt laisse finir les tâches en cours (DRAIN_MAX_S, 10 min) : le délai doit
+    # rester AU-DESSUS, sinon Docker tuerait l'orchestrateur au milieu d'une republication.
+    stop_grace_period: 12m
     logging:
       driver: json-file
       options: { max-size: "20m", max-file: "5" }

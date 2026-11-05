@@ -41,7 +41,7 @@ import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
-import { drapeauALire, jobsSelonDrapeauCloud } from "../_shared/cloud-voie.js";
+import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif } from "../_shared/cloud-voie.js";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
@@ -13720,6 +13720,13 @@ serve(async (req) => {
     if (posteCloud && out.some((j) => !PLATEFORMES_POSTE_CLOUD.includes(String(j.platform)))) {
       out = out.filter((j) => PLATEFORMES_POSTE_CLOUD.includes(String(j.platform)));
     }
+    // (05/11 soir, point 13) Le Cloud du compte n'est plus actif (drapeau faux : fin d'essai, grâce, arrêt, impayé) :
+    // son poste ne reçoit RIEN — les tâches retournent à l'ordinateur (_shared/cloud-voie.js, jobsPourPosteCloud).
+    if (posteCloud && !includeProcessing && !includeNeedsUser && out.length) {
+      const avantPoste = out.length;
+      out = jobsPourPosteCloud(out, { cloudVoie });
+      if (out.length !== avantPoste) console.log(`[get-pending-jobs] userId=${user.id} : poste Cloud d'un compte au Cloud inactif — ${avantPoste} job(s) laissé(s) à l'ordinateur`);
+    }
     // ══ (30/10, lot D) LE CLOUD NE VA JAMAIS PLUS VITE QUE L'EXTENSION : UNE PLATEFORME, UN EXÉCUTANT ═══════════
     // Un compte qui a le Cloud ET un ordinateur allumé aurait deux exécutants servis en même temps sur la même
     // plateforme — deux fois le débit de l'extension. Règle : une plateforme CONNECTÉE au Cloud (coffre) est servie
@@ -13747,7 +13754,7 @@ serve(async (req) => {
     if (!includeProcessing && !includeNeedsUser && out.length) {
       const cloudVivant = Object.entries(postesDuCompte).some(([sid, p]) => sid !== sessionId
         && /-cloud$/.test(String(p?.build ?? "")) && Date.now() - Date.parse(String(p?.le ?? "")) < 5 * 60_000);
-      if (posteCloud || cloudVivant) {
+      if (posteCloud || (cloudVivant && routageCloudActif({ cloudVoie }))) {
         try {
           // cloud_coffre est fermé aux clients (RLS, aucun droit) : lu par le service, la colonne `plateforme` seule.
           const adminCoffre = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);

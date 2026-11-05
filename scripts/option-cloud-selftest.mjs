@@ -203,7 +203,26 @@ console.log("7. UN SEUL ESSAI PAR COMPTE FILLSELL, TOUS CANAUX");
 
   const apresGoogle = { cloud_canal: "google", cloud_ref: "tokG", cloud_essai_debut: new Date(T0 - 3 * J).toISOString(), cloud_essai_fin: new Date(T0 + 4 * J).toISOString(), is_cloud: false };
   const r3 = ecritureCloudStore({ canal: "apple", lecture: introApple, sens: "on", ref: "A9", profil: apresGoogle, maintenant: T0 });
-  ok(r3.motif === "essai_deja_pris" && r3.update.cloud_essai_debut === undefined, "essai Google PUIS tentative Apple → semaine Apple NON activée");
+  // (05/11 soir, lot « Ouverture du Cloud », point 4) Pendant un essai Google EN COURS, l'achat Apple n'écrase plus rien
+  // (avant : cloud_canal passait à apple et les événements Google étaient ensuite ignorés) — le premier canal garde la
+  // main, le doublon est dit (à rembourser par le support).
+  ok(r3.update === null && r3.motif === "cloud_deja_actif_autre_canal", "essai Google EN COURS PUIS achat Apple → rien d'écrasé, doublon dit");
+  // Essai Google FINI (sans paiement) puis achat Apple : l'ancienne règle tient (semaine Apple non activée).
+  const googleFini = { ...apresGoogle, cloud_essai_fin: new Date(T0 - 1 * J).toISOString() };
+  const r3b = ecritureCloudStore({ canal: "apple", lecture: introApple, sens: "on", ref: "A9", profil: googleFini, maintenant: T0 });
+  ok(r3b.motif === "essai_deja_pris" && r3b.update.cloud_essai_debut === undefined, "essai Google FINI PUIS tentative Apple → semaine Apple NON activée");
+  // Un Cloud Stripe PAYÉ puis un achat Google : rien d'écrasé.
+  const r3c = ecritureCloudStore({ canal: "google", lecture: introApple, sens: "on", ref: "tokX", profil: { cloud_canal: "stripe", cloud_ref: "sub_1", is_cloud: true }, maintenant: T0 });
+  ok(r3c.update === null && r3c.motif === "cloud_deja_actif_autre_canal", "Cloud Stripe payé PUIS achat Google → rien d'écrasé");
+  // (05/11 soir, point 3) Un « off » PENDANT l'essai (remboursement, révocation) arrête l'essai tout de suite.
+  const enEssaiApple = { cloud_canal: "apple", cloud_ref: "A1", cloud_essai_debut: new Date(T0 - 2 * J).toISOString(), cloud_essai_fin: new Date(T0 + 5 * J).toISOString(), is_cloud: false };
+  const rOff = ecritureCloudStore({ canal: "apple", lecture: introApple, sens: "off", ref: "A1", profil: enEssaiApple, maintenant: T0 });
+  ok(rOff.update.is_cloud === false && rOff.update.cloud_essai_arrete === true && Date.parse(rOff.update.cloud_essai_fin) === T0, "off PENDANT l'essai → essai arrêté sur-le-champ");
+  ok(etatCloud({ ...enEssaiApple, ...rOff.update }, T0 + 1000).actif === false, "… et le Cloud ne tourne plus");
+  const rOffPaye = ecritureCloudStore({ canal: "apple", lecture: introApple, sens: "off", ref: "A1", profil: { ...enEssaiApple, is_cloud: true }, maintenant: T0 });
+  ok(rOffPaye.update.cloud_essai_arrete === undefined, "off d'un Cloud PAYÉ : l'essai passé n'est pas réécrit");
+  const ccs = (await import("node:fs")).readFileSync(new URL("../supabase/functions/create-checkout-session/index.ts", import.meta.url), "utf8");
+  ok(ccs.includes("if (cloudVivantDuProfil(profilCloud) && profilCloud?.cloud_canal && profilCloud.cloud_canal !== \"stripe\") {"), "Stripe : un Cloud en ESSAI sur une boutique bloque aussi un second abonnement");
   const essaiApple2 = lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, { startTime: new Date(T0).toISOString(), lineItems: [{ expiryTime: new Date(T0 + 7 * J).toISOString(), offerDetails: { offerId: OFFRE_ESSAI_CLOUD_GOOGLE } }] }, 4);
   const r4 = ecritureCloudStore({ canal: "google", lecture: essaiApple2, sens: "on", ref: "tokX", profil: apresApple, maintenant: T0 });
   ok(r4.motif === "essai_deja_pris", "essai Apple PUIS tentative Google → NON activée");

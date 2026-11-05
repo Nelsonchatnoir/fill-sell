@@ -610,5 +610,15 @@ export function creerNavigateurs({ config, docker, journal }) {
     return memoireReelleMo(await docker.stats(nomConteneur(user)).catch(() => null));
   }
 
-  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, memoire, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
+  /** (05/11 soir, point 11) L'état du relais d'un navigateur Chrome (permises, refus, régies, coupures par jour), ou null. */
+  async function etatRelais(user) {
+    const h = ouverts.get(user);
+    if (!h || h.moteur !== 'chrome' || !h.jetonControle) return null;
+    try {
+      const r = await fetch(`http://${h.ip}:${PORT_CONTROLE_RELAIS}/etat`, { headers: { 'X-Jeton': h.jetonControle }, signal: AbortSignal.timeout(4000) });
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  }
+
+  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, memoire, etatRelais, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
 }
