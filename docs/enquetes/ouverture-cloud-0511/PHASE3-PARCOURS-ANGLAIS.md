@@ -27,3 +27,9 @@ Nico. Tout ce qui se voit sans compte peut être relu par Claude (navigateur iso
 - Les consignes envoyées à l'IA (Lens) : rédigées en français, la réponse suit la langue de la plateforme.
 - La télémétrie, les journaux, les colonnes de la base.
 - Les conditions du Cloud : la version anglaise est une traduction POUR INFORMATION, le français fait foi.
+
+## Relu par Claude, sans compte (05/11 23:00, build servi 1d2ce40)
+`node scripts/i18n/captures-sans-compte-anglais.mjs` — WebKit au format iPhone 15, réglé en anglais (en-US, fuseau
+New York), profil jetable, aucune connexion : connexion / inscription, retour de paiement (Cloud en essai, Premium),
+paiement annulé, nouveau mot de passe, mentions légales — **aucun mot de français repéré** sur les six pages ; captures
+dans `build/captures-anglais/` (non suivies par git).
