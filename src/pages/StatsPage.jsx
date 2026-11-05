@@ -37,6 +37,8 @@ function KpiCard({ label, value, sub, color, progress }) {
 }
 
 const MONTHS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+// (05/11 soir, phase 3) Les mêmes mois en anglais.
+const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 const PERIODS = [
   { val:'7d',  fr:'7 jours',   en:'7 days' },
@@ -56,6 +58,7 @@ function filterByPeriod(arr, period) {
 }
 
 export default function StatsPage({ sales, items, isPremium, triggerCheckout, onBack, t, tpl, lang='fr' }) {
+  const MOIS = lang === 'en' ? MONTHS_EN : MONTHS;
   const tr = t || (k=>k);
   const fmt = lang==='en'
     ? n => '$' + (n * EUR_TO_USD).toFixed(2)
@@ -136,7 +139,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
     const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
     const m=d.getMonth();const y=d.getFullYear();
     const ms=ventesComptables.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
-    return{name:MONTHS[m],profit:ms.reduce((a,s)=>a+s.margin,0)};
+    return{name:MOIS[m],profit:ms.reduce((a,s)=>a+s.margin,0)};
   });
 
   const lineData = {
@@ -234,7 +237,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
           )}
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
-            <KpiCard label={tr('meilleurMois')} value={bestMonthEntry?`${MONTHS[bestMonthEntry.month]} ${bestMonthEntry.year}`:"-"} sub={bestMonthEntry?`+${fmt(bestMonthEntry.profit)}`:undefined} color="#1D9E75"/>
+            <KpiCard label={tr('meilleurMois')} value={bestMonthEntry?`${MOIS[bestMonthEntry.month]} ${bestMonthEntry.year}`:"-"} sub={bestMonthEntry?`+${fmt(bestMonthEntry.profit)}`:undefined} color="#1D9E75"/>
             {avgDelay!==null
               ? <KpiCard label={tr('delaiMoyen')} value={`${avgDelay} ${tr('jours')}`} color="#6B7280" sub={tr('entreAchatVente')} progress={sellRate}/>
               : <KpiCard label={tr('delaiMoyen')} value="—" color="#6B7280" sub={tr('donneesInsuffisantes')} progress={sellRate}/>
@@ -263,7 +266,7 @@ export default function StatsPage({ sales, items, isPremium, triggerCheckout, on
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                        <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6",marginTop:1}}>{d.getDate()} {MONTHS[d.getMonth()]} {d.getFullYear()}</div>
+                        <div style={{fontSize:11,fontWeight:600,color:"#A3A9A6",marginTop:1}}>{d.getDate()} {MOIS[d.getMonth()]} {d.getFullYear()}</div>
                       </div>
                       <div style={{textAlign:"right",flexShrink:0}}>
                         <div style={{fontWeight:700,fontSize:14,color:"#1D9E75"}}>+{fmt(s.margin)}</div>

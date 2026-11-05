@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import useSeo from '../lib/seo';
+import { languePage } from './languePage';
 
 // ============================================================================
 // Désinscription des emails marketing — page PUBLIQUE (13/09/2026)
@@ -31,7 +32,9 @@ const C = {
 };
 
 export default function Desinscription() {
-  useSeo({ path: '/desinscription', title: 'Désinscription — FillSell', robots: 'noindex' });
+  // (05/11 soir, phase 3) La langue de la page : ?lang (lien d'un mail anglais), puis le réglage de l'app, puis le navigateur.
+  const en = languePage() === 'en';
+  useSeo({ path: '/desinscription', title: en ? 'Unsubscribe — FillSell' : 'Désinscription — FillSell', robots: 'noindex' });
 
   const [etat, setEtat] = useState('chargement'); // chargement | ok | invalide | erreur
   const [desinscrit, setDesinscrit] = useState(false);
@@ -94,10 +97,19 @@ export default function Desinscription() {
         </div>
 
         {etat === 'chargement' && (
-          <p style={{ color: C.gris, fontSize: 15, margin: 0 }}>Un instant…</p>
+          <p style={{ color: C.gris, fontSize: 15, margin: 0 }}>{en ? 'One moment…' : 'Un instant…'}</p>
         )}
 
-        {etat === 'invalide' && (
+        {etat === 'invalide' && (en ? (
+          <>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: C.titre, margin: '0 0 12px' }}>This link is no longer valid</h1>
+            <p style={{ fontSize: 15, lineHeight: 1.6, color: C.texte, margin: 0 }}>
+              Your mail app may have cut it. Write to us at{' '}
+              <a href="mailto:support@fillsell.app" style={{ color: C.vertFonce }}>support@fillsell.app</a>{' '}
+              and we'll take you off the list by hand.
+            </p>
+          </>
+        ) : (
           <>
             <h1 style={{ fontSize: 24, fontWeight: 700, color: C.titre, margin: '0 0 12px' }}>Ce lien n'est plus valable</h1>
             <p style={{ fontSize: 15, lineHeight: 1.6, color: C.texte, margin: 0 }}>
@@ -106,9 +118,18 @@ export default function Desinscription() {
               et on te retire de la liste à la main.
             </p>
           </>
-        )}
+        ))}
 
-        {etat === 'erreur' && (
+        {etat === 'erreur' && (en ? (
+          <>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: C.titre, margin: '0 0 12px' }}>That didn't work</h1>
+            <p style={{ fontSize: 15, lineHeight: 1.6, color: C.texte, margin: 0 }}>
+              We couldn't save your request. Try again in a moment, or write to us at{' '}
+              <a href="mailto:support@fillsell.app" style={{ color: C.vertFonce }}>support@fillsell.app</a>:
+              we'll handle it by hand.
+            </p>
+          </>
+        ) : (
           <>
             <h1 style={{ fontSize: 24, fontWeight: 700, color: C.titre, margin: '0 0 12px' }}>Ça n'a pas marché</h1>
             <p style={{ fontSize: 15, lineHeight: 1.6, color: C.texte, margin: 0 }}>
@@ -117,30 +138,39 @@ export default function Desinscription() {
               on s'en occupe manuellement.
             </p>
           </>
-        )}
+        ))}
 
         {etat === 'ok' && desinscrit && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <span style={{ width: 10, height: 10, borderRadius: 5, background: C.vert, display: 'inline-block' }} />
               <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.3, textTransform: 'uppercase', color: C.vertFonce }}>
-                C'est fait
+                {en ? 'Done' : "C'est fait"}
               </span>
             </div>
             <h1 style={{ fontSize: 26, fontWeight: 700, color: C.titre, margin: '0 0 14px', letterSpacing: '-0.02em' }}>
-              Tu es désinscrit
+              {en ? "You're unsubscribed" : 'Tu es désinscrit'}
             </h1>
+            {en ? (
+              <p style={{ fontSize: 16, lineHeight: 1.65, color: C.texte, margin: '0 0 10px' }}>
+                {emailMasque ? <><strong>{emailMasque}</strong> will no longer receive</> : 'You will no longer receive'}{' '}
+                reminder, campaign or product news emails from us.
+              </p>
+            ) : (
             <p style={{ fontSize: 16, lineHeight: 1.65, color: C.texte, margin: '0 0 10px' }}>
               {emailMasque ? <><strong>{emailMasque}</strong> ne recevra plus</> : 'Tu ne recevras plus'}{' '}
               d'emails de relance, de campagne ni d'annonce produit de notre part.
             </p>
+            )}
             <p style={{ fontSize: 15, lineHeight: 1.6, color: C.gris, margin: '0 0 26px' }}>
-              Les messages liés à ton compte — réponse à une question, sécurité,
+              {en
+                ? 'Messages about your account — answers to a question, security, billing — keep coming: they answer your own requests.'
+                : <>Les messages liés à ton compte — réponse à une question, sécurité,
               facturation — continuent d'arriver : ils répondent à tes propres
-              demandes.
+              demandes.</>}
             </p>
             <button onClick={basculer} disabled={enCours} style={{ padding: '13px 24px', background: '#FFFFFF', color: C.vertFonce, border: '1px solid #C9DED6', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: enCours ? 'default' : 'pointer', opacity: enCours ? 0.6 : 1 }}>
-              {enCours ? 'Un instant…' : 'Me réabonner'}
+              {enCours ? (en ? 'One moment…' : 'Un instant…') : (en ? 'Subscribe again' : 'Me réabonner')}
             </button>
           </>
         )}
@@ -148,15 +178,22 @@ export default function Desinscription() {
         {etat === 'ok' && !desinscrit && (
           <>
             <h1 style={{ fontSize: 26, fontWeight: 700, color: C.titre, margin: '0 0 14px', letterSpacing: '-0.02em' }}>
-              Tu es réabonné
+              {en ? "You're subscribed again" : 'Tu es réabonné'}
             </h1>
+            {en ? (
+              <p style={{ fontSize: 16, lineHeight: 1.65, color: C.texte, margin: '0 0 26px' }}>
+                {emailMasque ? <><strong>{emailMasque}</strong> will receive</> : 'You will receive'}{' '}
+                our emails again. You can leave whenever you like, this link stays valid.
+              </p>
+            ) : (
             <p style={{ fontSize: 16, lineHeight: 1.65, color: C.texte, margin: '0 0 26px' }}>
               {emailMasque ? <><strong>{emailMasque}</strong> recevra</> : 'Tu recevras'}{' '}
               de nouveau nos emails. Tu peux repartir quand tu veux, ce lien
               reste valable.
             </p>
+            )}
             <button onClick={basculer} disabled={enCours} style={{ padding: '13px 24px', background: C.vert, color: '#fff', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: enCours ? 'default' : 'pointer', opacity: enCours ? 0.6 : 1 }}>
-              {enCours ? 'Un instant…' : 'Me désinscrire'}
+              {enCours ? (en ? 'One moment…' : 'Un instant…') : (en ? 'Unsubscribe' : 'Me désinscrire')}
             </button>
           </>
         )}

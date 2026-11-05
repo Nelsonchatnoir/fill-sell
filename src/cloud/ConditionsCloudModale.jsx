@@ -11,10 +11,12 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { conditionsCloud, CGU_CLOUD_VERSION } from './conditionsCloud';
+// (05/11 soir, phase 3) La langue de l'app (fs_lang, sinon celle du téléphone) : la traduction anglaise pour information.
+import { languePage } from '../pages/languePage';
 import { C, BLANC, DEGRADE_TEAL, POLICE } from './theme';
 
 export default function ConditionsCloudModale({ onFini }) {
-  const T = conditionsCloud();
+  const T = conditionsCloud(languePage());
   const [coche, setCoche] = useState(false);
   const [etat, setEtat] = useState('lecture');   // lecture | envoi | echec
   async function accepter() {

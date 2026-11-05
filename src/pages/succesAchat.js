@@ -5,33 +5,45 @@
 // Pur : testé par scripts/succes-achat-selftest.mjs.
 import { CLOUD_ESSAI_JOURS } from '../utils/palier.js';
 
-/** Le message de la page de retour (pure). `params` : URLSearchParams ou objet { produit, essai }. */
-export function messageSucces(params) {
+// (05/11 soir, phase 3 point 1) Les mêmes messages en anglais : `lang` = 'en' (pages/languePage.js) ; le français reste
+// mot pour mot celui d'avant.
+const EN = {
+  cloudTitre: 'Your FillSell Cloud is starting',
+  cloudEssai: (j) => `Your ${j}-day free trial starts now: nothing is charged before it ends. Your machine, your IP address and your browser are being set up (usually under 2 minutes).`,
+  cloudPaye: 'Your subscription is active. Your machine, your IP address and your browser are being set up (usually under 2 minutes).',
+  cloudSuite: 'Then connect your marketplaces from the app ("Sign in").',
+  actif: 'Your subscription is active: your new quotas are available right away.',
+  annulable: 'Cancel anytime, in 1 click',
+};
+
+/** Le message de la page de retour (pure). `params` : URLSearchParams ou objet { produit, essai } ; `lang` : 'fr' | 'en'. */
+export function messageSucces(params, lang = 'fr') {
+  const en = lang === 'en';
   const lire = (k) => (typeof params?.get === 'function' ? params.get(k) : params?.[k]) ?? null;
   const produit = String(lire('produit') ?? '').toLowerCase();
   const essai = String(lire('essai') ?? '') === '1';
   if (produit === 'cloud') {
     return {
-      produit, titre: 'Ton FillSell Cloud démarre',
+      produit, titre: en ? EN.cloudTitre : 'Ton FillSell Cloud démarre',
       texte: essai
-        ? `Ton essai gratuit de ${CLOUD_ESSAI_JOURS} jours commence : rien n'est prélevé avant sa fin. Ta machine, ton adresse IP et ton navigateur se préparent (en général moins de 2 minutes).`
-        : 'Ton abonnement est actif. Ta machine, ton adresse IP et ton navigateur se préparent (en général moins de 2 minutes).',
-      suite: 'Ensuite, connecte tes plateformes depuis l\'app (« Me connecter »).',
+        ? (en ? EN.cloudEssai(CLOUD_ESSAI_JOURS) : `Ton essai gratuit de ${CLOUD_ESSAI_JOURS} jours commence : rien n'est prélevé avant sa fin. Ta machine, ton adresse IP et ton navigateur se préparent (en général moins de 2 minutes).`)
+        : (en ? EN.cloudPaye : 'Ton abonnement est actif. Ta machine, ton adresse IP et ton navigateur se préparent (en général moins de 2 minutes).'),
+      suite: en ? EN.cloudSuite : 'Ensuite, connecte tes plateformes depuis l\'app (« Me connecter »).',
       // Une valeur d'achat n'est comptée que pour un vrai paiement (un essai ne rapporte rien ce jour-là).
       valeur: essai ? null : 24.99,
     };
   }
   if (produit === 'standard' || produit === 'premium') {
-    return { produit: 'standard', titre: 'Bienvenue sur le plan Premium !', texte: 'Ton abonnement est actif : tes nouveaux quotas sont disponibles tout de suite.', suite: 'Annulable à tout moment, en 1 clic', valeur: 12.99 };
+    return { produit: 'standard', titre: en ? 'Welcome to the Premium plan!' : 'Bienvenue sur le plan Premium !', texte: en ? EN.actif : 'Ton abonnement est actif : tes nouveaux quotas sont disponibles tout de suite.', suite: en ? EN.annulable : 'Annulable à tout moment, en 1 clic', valeur: 12.99 };
   }
   if (produit === 'pro') {
-    return { produit, titre: 'Bienvenue sur le plan Pro !', texte: 'Ton abonnement est actif : tes nouveaux quotas sont disponibles tout de suite.', suite: 'Annulable à tout moment, en 1 clic', valeur: null };
+    return { produit, titre: en ? 'Welcome to the Pro plan!' : 'Bienvenue sur le plan Pro !', texte: en ? EN.actif : 'Ton abonnement est actif : tes nouveaux quotas sont disponibles tout de suite.', suite: en ? EN.annulable : 'Annulable à tout moment, en 1 clic', valeur: null };
   }
   if (produit === 'business') {
-    return { produit, titre: 'Bienvenue sur FillSell Business !', texte: 'Ton abonnement est actif : tes nouveaux quotas sont disponibles tout de suite.', suite: 'Annulable à tout moment, en 1 clic', valeur: null };
+    return { produit, titre: en ? 'Welcome to FillSell Business!' : 'Bienvenue sur FillSell Business !', texte: en ? EN.actif : 'Ton abonnement est actif : tes nouveaux quotas sont disponibles tout de suite.', suite: en ? EN.annulable : 'Annulable à tout moment, en 1 clic', valeur: null };
   }
   if (produit === 'pack') {
-    return { produit, titre: 'Achat confirmé !', texte: 'Merci : ton achat est crédité sur ton compte.', suite: null, valeur: null };
+    return { produit, titre: en ? 'Purchase confirmed!' : 'Achat confirmé !', texte: en ? 'Thank you: your purchase has been credited to your account.' : 'Merci : ton achat est crédité sur ton compte.', suite: null, valeur: null };
   }
-  return { produit: null, titre: 'Paiement confirmé', texte: 'Merci : ton achat est bien enregistré.', suite: null, valeur: null };
+  return { produit: null, titre: en ? 'Payment confirmed' : 'Paiement confirmé', texte: en ? 'Thank you: your purchase has been recorded.' : 'Merci : ton achat est bien enregistré.', suite: null, valeur: null };
 }

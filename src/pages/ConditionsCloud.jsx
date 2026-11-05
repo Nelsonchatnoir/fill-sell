@@ -9,6 +9,7 @@ import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { CLOUD_OFFER_ENABLED, chargerTemoinCloud } from '../config/cloudOffer';
 import { conditionsCloud } from '../cloud/conditionsCloud';
+import { languePage } from './languePage';
 import { C, BLANC, POLICE } from '../cloud/theme';
 
 export default function ConditionsCloud() {
@@ -31,7 +32,8 @@ export default function ConditionsCloud() {
   }, []);
   if (acces === 'non') return <Navigate to="/app" replace />;
   if (acces !== 'oui') return null;
-  const T = conditionsCloud();
+  // (05/11 soir, phase 3) ?lang, puis le réglage de l'app, puis le navigateur : la traduction anglaise pour information.
+  const T = conditionsCloud(languePage());
   return (
     <main style={{ minHeight: '100vh', background: C.canvas, fontFamily: POLICE, padding: '24px 16px 48px' }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>

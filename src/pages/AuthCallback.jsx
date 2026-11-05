@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { consumePostLoginTarget } from "../lib/postLoginRedirect";
 import { UI, Loader } from "../components/ui";
 import useSeo from "../lib/seo";
+import { languePage } from "./languePage";
 
 // Atterrissage OAuth web (Apple, Google, tout provider Supabase) — flux PKCE.
 // Le provider redirige ici avec ?code=… ; le client supabase (flowType pkce,
@@ -14,8 +15,10 @@ import useSeo from "../lib/seo";
 export default function AuthCallback() {
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  // (05/11 soir, phase 3) La langue de la page : ?lang, puis le réglage de l'app, puis celle du navigateur.
+  const en = languePage() === "en";
   // Atterrissage OAuth : jamais à indexer.
-  useSeo({ path: "/auth/callback", title: "Connexion — FillSell", robots: "noindex" });
+  useSeo({ path: "/auth/callback", title: en ? "Signing in — FillSell" : "Connexion — FillSell", robots: "noindex" });
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +48,7 @@ export default function AuthCallback() {
         const { data: { session: apres } } = await supabase.auth.getSession();
         if (cancelled) return;
         if (apres) { arrivee(); return; }
-        setError("Connexion impossible. Réessaie depuis la page de connexion.");
+        setError(en ? "Sign-in failed. Try again from the sign-in page." : "Connexion impossible. Réessaie depuis la page de connexion.");
         return;
       }
       // Sans code (navigation SPA vers cette route) : la session en place
@@ -53,7 +56,7 @@ export default function AuthCallback() {
       const { data: { session } } = await supabase.auth.getSession();
       if (cancelled) return;
       if (session) { arrivee(); return; }
-      setError("Connexion impossible. Réessaie depuis la page de connexion.");
+      setError(en ? "Sign-in failed. Try again from the sign-in page." : "Connexion impossible. Réessaie depuis la page de connexion.");
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,13 +67,13 @@ export default function AuthCallback() {
       {!error ? (
         <>
           <Loader size={36} thickness={3} />
-          <div style={{ fontSize: 15, fontWeight: 600, color: UI.ink }}>Connexion en cours…</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: UI.ink }}>{en ? "Signing in…" : "Connexion en cours…"}</div>
         </>
       ) : (
         <>
           <div style={{ fontSize: 15, fontWeight: 600, color: UI.ink, textAlign: "center" }}>{error}</div>
           <span onClick={() => navigate("/login", { replace: true })} style={{ fontSize: 14, color: UI.teal, cursor: "pointer", textDecoration: "underline" }}>
-            ← Retour à la connexion
+            {en ? "← Back to sign-in" : "← Retour à la connexion"}
           </span>
         </>
       )}

@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import useSeo from "../lib/seo";
 import { UI } from "../components/ui";
+import { languePage } from "./languePage";
 
 // Atterrissage après le consentement eBay (lot 0, 05/09/2026). La fonction
 // ebay-oauth-callback a déjà tout fait (échange du code, stockage) et renvoie
@@ -16,15 +17,32 @@ const MOTIFS = {
   invalid_grant: "eBay a refusé le code reçu (déjà utilisé ou expiré)",
   parametres_absents: "eBay n'a rien renvoyé",
 };
+// (05/11 soir, phase 3) Les mêmes motifs en anglais.
+const MOTIFS_EN = {
+  state_expire: "the request expired (more than 15 minutes between the click and the return)",
+  state_signature: "the request did not come from FillSell",
+  state_illisible: "the request could not be read",
+  config_incomplete: "the eBay connection is not set up on FillSell's side yet",
+  stockage: "saving failed on FillSell's side",
+  invalid_grant: "eBay refused the code it sent (already used or expired)",
+  parametres_absents: "eBay sent nothing back",
+};
 
 export default function EbayRetour() {
   const navigate = useNavigate();
-  useSeo({ path: "/ebay/retour", title: "Connexion eBay — FillSell", robots: "noindex" });
+  // (05/11 soir, phase 3) La langue de la page : ?lang, puis le réglage de l'app, puis celle du navigateur.
+  const en = languePage() === "en";
+  useSeo({ path: "/ebay/retour", title: en ? "eBay connection — FillSell" : "Connexion eBay — FillSell", robots: "noindex" });
   const params = new URLSearchParams(window.location.search);
   const etat = params.get("etat") ?? "erreur";
   const motif = params.get("motif") ?? "";
 
-  const contenu = etat === "ok"
+  const contenu = en ? (etat === "ok"
+    ? { emoji: "✅", titre: "eBay account connected", texte: "FillSell can now read the status of your seller account. You'll find the connection in Settings, eBay section." }
+    : etat === "refus"
+      ? { emoji: "↩️", titre: "Connection declined", texte: "You declined access on eBay: nothing was saved. You can start again whenever you like from Settings." }
+      : { emoji: "⚠️", titre: "The connection did not go through", texte: `Nothing was saved${MOTIFS_EN[motif] ? `: ${MOTIFS_EN[motif]}` : ""}. Start again from FillSell's Settings.` })
+    : etat === "ok"
     ? { emoji: "✅", titre: "Compte eBay connecté", texte: "FillSell peut maintenant lire l'état de ton compte vendeur. Tu retrouves la connexion dans les Paramètres, section eBay." }
     : etat === "refus"
       ? { emoji: "↩️", titre: "Connexion refusée", texte: "Tu as refusé l'accès chez eBay : rien n'a été enregistré. Tu peux recommencer quand tu veux depuis les Paramètres." }
@@ -40,10 +58,10 @@ export default function EbayRetour() {
           onClick={() => navigate("/app", { replace: true })}
           style={{ width: "100%", padding: 14, border: "none", borderRadius: 14, background: `linear-gradient(120deg,${UI.teal},${UI.tealDeep})`, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
         >
-          Ouvrir FillSell →
+          {en ? "Open FillSell →" : "Ouvrir FillSell →"}
         </button>
         <div style={{ fontSize: 11.5, color: UI.mute, marginTop: 14, lineHeight: 1.5 }}>
-          Sur téléphone : referme simplement cette page et reviens dans l'app.
+          {en ? "On a phone: just close this page and go back to the app." : "Sur téléphone : referme simplement cette page et reviens dans l'app."}
         </div>
       </div>
     </div>

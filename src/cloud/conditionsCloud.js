@@ -73,8 +73,63 @@ const FR = {
   echec: "Ton acceptation n'a pas pu être enregistrée. Réessaie dans un instant : rien n'a été demandé à ta carte.",
 };
 
-/** Les conditions (le texte juridique n'existe qu'en français pour l'instant : la version anglaise suivra sa validation). */
-export const conditionsCloud = () => FR;
+// (05/11 soir, lot « Ouverture du Cloud », phase 3 point 1 — « traduction anglaise : absolument tout ») LA VERSION
+// ANGLAISE, POUR INFORMATION : traduction fidèle du texte français ci-dessus, qui seul fait foi (il le dit en tête). Même
+// VERSION acceptée (CGU_CLOUD_VERSION) : la traduction ne change pas le texte en vigueur. À relire par Nico avec le
+// français. Le Cloud n'est vendu qu'en France (config/cloudOffer.js) : cette version sert une interface réglée en anglais.
+const EN = {
+  titre: 'FillSell Cloud terms of use',
+  version: `Version of ${CGU_CLOUD_VERSION.split('-').reverse().join('/')} — English translation for information only; the French version prevails.`,
+  articles: [
+    { t: '1. The service', ps: [
+      'The FillSell Cloud option ("the Cloud") is a FillSell service. From FillSell\'s servers, without your computer being on, the Cloud does what the FillSell Chrome extension does on a computer: publishing, reposting and withdrawing your listings, reading your online listings and detecting your sales, 24 hours a day, in a browser reserved for your account.',
+      'It works for each marketplace you connect from the "Sign in" screen (Vinted, Leboncoin, Beebs, Depop). eBay goes through its official connection, as without the Cloud.',
+      'The Cloud has no volumes of its own: it applies those of your FillSell plan, free or paid, with the same limits, the same reposting pace and the same protections as the extension. It never goes faster. If the extension also runs on your computer, each task is done only once, by one or the other.',
+    ] },
+    { t: '2. What FillSell does on your marketplace accounts', ps: [
+      'In your own sessions, and only for the tasks you start or schedule in FillSell, the Cloud browser: creates your listings with the content of your item cards (title, description, photos, price, attributes); reposts a listing by deleting it and then recreating it, at your plan\'s pace, and never recreates it if the marketplace has not confirmed the deletion; withdraws a listing when you ask, or when the item is sold elsewhere, after the safety pause provided before any deletion; reads your listings and the status of your sales to keep your stock up to date.',
+      'It only sends a message to a buyer when you have written it yourself in FillSell. It never changes your contact details, your password or your payment methods on a marketplace, and never buys anything there.',
+      'If a marketplace asks for a verification or reports a restriction, the Cloud stops on that marketplace and tells you in the app. It never tries to get around a verification.',
+    ] },
+    { t: '3. Your connections and their encryption', ps: [
+      'You connect each marketplace yourself, from the app\'s "Sign in" screen. It only opens the marketplace\'s sign-in page, in phone format, with no address bar and no free browsing. The image of the page reaches you live; what you type is sent to the marketplace without being recorded or logged. FillSell never knows or keeps your passwords.',
+      'Once you are signed in, the marketplace sets its session cookies. FillSell encrypts them (AES-256-GCM) with a key that exists only on the Cloud servers; FillSell\'s database keeps only an encrypted version. These connections are used only for the tasks of article 2. Stopping the Cloud erases them; you can also close them at any time from the marketplace (password change, sign-out of all devices).',
+      'The Cloud browsers are hosted by Hetzner Online GmbH (Germany, European Union). They go out to the Internet through French IP addresses supplied by IPRoyal Services FZE LLC (United Arab Emirates); the address used for your account may change over time.',
+    ] },
+    { t: '4. Your responsibility towards the marketplaces', ps: [
+      'You remain the author of, and solely responsible for, your listings, their content, their prices and the sales you make. You undertake to comply with the terms of use of each marketplace you connect to the Cloud.',
+      'Each marketplace sets its own rules, in particular on automation and on connections from servers, and may change them at any time. A marketplace may ask for a verification, limit, suspend or close an account, including because a service such as the Cloud is used. By activating the Cloud, you accept this risk. FillSell applies the extension\'s protections to reduce it (limits, pace, pause before deletion, stop on restriction), but cannot rule it out and is not liable for a marketplace\'s decisions. FillSell is not affiliated with any marketplace.',
+    ] },
+    { t: '5. No guarantee of sale', ps: [
+      'The Cloud carries out tasks. It guarantees neither the visibility of your listings, nor a number of views, nor a sale, nor a price. It depends on the marketplaces, which may change their pages or refuse access from FillSell\'s servers: a task may then be delayed or fail, and the app tells you. FillSell uses reasonable means to keep the Cloud running continuously, with no guarantee of result or of permanent availability.',
+    ] },
+    { t: '6. Price and 7-day trial', ps: [
+      'The Cloud costs €24.99 including VAT per month, on the web (bank card, payment handled by Stripe), in the App Store and in Google Play. It is a subscription separate from the plans: it can be taken alone, with the free plan, or on top of a paid plan; cancelling a plan does not stop the Cloud.',
+      'The first 7 days are free. A payment method is required to start the trial; nothing is charged during the trial. The end date of the trial and the amount charged afterwards are shown before the payment method is saved. Without cancellation before the end of the trial, the subscription starts: €24.99 is charged, then every month on the same date. At the latest the day before the trial ends, a reminder is sent to you in the app and by email.',
+      'One trial per person: a trial already taken with the same account, the same device, the same card or the same marketplace account does not open a second one; the Cloud then remains available without a trial. In the App Store and Google Play, the trial is offered by the store, on the terms it shows.',
+    ] },
+    { t: '7. Cancellation', ps: [
+      'On the web, you cancel from the app (Settings › Subscription › FillSell Cloud). During the trial, the stop is immediate and nothing is charged. After the trial, the Cloud stays active until the end of the paid month, then stops; nothing is charged afterwards. A subscription taken in the App Store or Google Play is cancelled in the store\'s subscription settings. The right of withdrawal provided for in article 6 of the Terms of Sale applies.',
+      'FillSell may suspend the Cloud of an account in case of use contrary to these terms or to a marketplace\'s rules; it informs you.',
+    ] },
+    { t: '8. Your data', ps: [
+      'To run the Cloud, FillSell keeps: your encrypted marketplace connections; the profile of the browser reserved for your account; a FillSell session specific to that browser (no password); the log of your connections through "Sign in" (date, marketplace, success), for 90 days; the history of the IP addresses used for your account, whose identifier is erased after 12 months; and, for the one-trial-per-person rule, irreversible fingerprints (HMAC-SHA256) of the device, of the card (fingerprint supplied by Stripe, never its number) and of the marketplace accounts, kept 12 months after the trial.',
+      'When the Cloud stops (end of the trial without a subscription, cancellation, account deletion), FillSell erases the browser, its profile, your encrypted connections and its FillSell session, at the latest 3 days after the end. Details are in the privacy policy (article 4.8).',
+    ] },
+    { t: '9. Acceptance and changes', ps: [
+      'Activating the Cloud requires accepting these terms. FillSell records the date and the version accepted. A new version is shown to you and must be accepted to keep using the Cloud. FillSell\'s Terms and Conditions and Terms of Sale apply to everything these terms do not cover.',
+    ] },
+  ],
+  case: 'I have read and accept the FillSell Cloud terms of use, including the risk of my accounts being restricted by the marketplaces.',
+  accepter: 'I accept and continue',
+  annuler: 'Cancel',
+  lire: 'Read the full terms',
+  enregistrement: 'Saving your acceptance…',
+  echec: 'Your acceptance could not be saved. Try again in a moment: nothing was asked of your card.',
+};
+
+/** Les conditions : le français fait foi ; `lang` = 'en' rend la traduction pour information. */
+export const conditionsCloud = (lang = 'fr') => (lang === 'en' ? EN : FR);
 
 /** La version acceptée vaut-elle la version en vigueur ? (pur) */
 export const conditionsAcceptees = (profil) => String(profil?.cloud_cgu_version ?? '') === CGU_CLOUD_VERSION;

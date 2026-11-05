@@ -4,15 +4,18 @@ import { track } from '../analytics/analytics';
 import useSeo from '../lib/seo';
 import { oublierOffre } from '../lib/offreMail';
 import { messageSucces } from './succesAchat';
+import { languePage } from './languePage';
 
 export default function Success(){
   const nav = useNavigate();
+  // (05/11 soir, phase 3) La langue de la page : ?lang, puis le réglage de l'app, puis celle du navigateur.
+  const lang = languePage();
   // (05/11 soir) Ce qui a été acheté (create-checkout-session passe ?produit=… ; essai=1 pour un Cloud en essai).
-  const m = messageSucces(new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''));
+  const m = messageSucces(new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''), lang);
 
   // Page de retour Stripe : jamais à indexer (sans ça elle hérite du
   // canonical + title de la home posés par index.html).
-  useSeo({ path: '/success', title: 'Paiement confirmé — FillSell', robots: 'noindex' });
+  useSeo({ path: '/success', title: lang === 'en' ? 'Payment confirmed — FillSell' : 'Paiement confirmé — FillSell', robots: 'noindex' });
 
   useEffect(() => {
     const sessionId = new URLSearchParams(window.location.search).get('session_id') || '';
@@ -36,7 +39,7 @@ export default function Success(){
         <div style={{fontSize:16,color:"rgba(255,255,255,0.85)",marginBottom:12,lineHeight:1.6}}>{m.texte}</div>
         <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",marginBottom:40,fontWeight:600}}>{m.suite ?? ''}</div>
         <button onClick={()=>nav("/app")} style={{width:"100%",padding:"16px",background:"#fff",color:"#3EACA0",border:"none",borderRadius:14,fontSize:16,fontWeight:700,cursor:"pointer",boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
-          Accéder à l'app →
+          {lang === 'en' ? 'Go to the app →' : "Accéder à l'app →"}
         </button>
       </div>
     </div>

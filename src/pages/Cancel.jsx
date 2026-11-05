@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from "react-router-dom";
 import { supabase } from '../lib/supabase';
 import useSeo from '../lib/seo';
+import { languePage } from './languePage';
 
 // ── CE QUE LA PERSONNE LIT EN REVENANT DE LA PAGE DE PAIEMENT (01/10/2026) ──
 // Avant : « Paiement annulé · Tu peux réessayer à tout moment », quoi qu'il se
@@ -42,8 +43,9 @@ const CAUSES_AVEC_CARTE = new Set(['authentification', 'radar', 'klarna', 'banqu
 export default function Cancel(){
   const nav = useNavigate();
   // Page de retour Stripe : jamais à indexer.
-  useSeo({ path: '/cancel', title: 'Paiement annulé — FillSell', robots: 'noindex' });
-  const lang = (() => { try { return localStorage.getItem('fs_lang') === 'en' ? 'en' : 'fr'; } catch { return 'fr'; } })();
+  // (05/11 soir, phase 3) La langue de la page : ?lang, puis le réglage de l'app, puis celle du navigateur.
+  const lang = languePage();
+  useSeo({ path: '/cancel', title: lang === 'en' ? 'Payment cancelled — FillSell' : 'Paiement annulé — FillSell', robots: 'noindex' });
   const T = TEXTES[lang];
   const sessionId = new URLSearchParams(window.location.search).get('session_id') || '';
   const [diag, setDiag] = useState(sessionId ? null : { cause: 'annule', plan: null });
