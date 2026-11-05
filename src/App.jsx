@@ -5432,7 +5432,7 @@ export default function App({ loginOnly = false }){
         if(error)throw await erreurAvecRaison(error);
       }else{
         await enregistrerVenteArticle({userId:user.id,article:art,prix,
-          quantite:1,plateforme:'ailleurs'});
+          quantite:1,plateforme:'ailleurs',lang});
       }
       track('confirm_sale_disparue',{via_job:!!(jobsVifs&&jobsVifs.length)});
       await fetchAll(user.id,{silencieux:true});
@@ -5527,7 +5527,7 @@ export default function App({ loginOnly = false }){
     setSellModal(p=>p?{...p,enregistrement:true}:p);
     try{
       await enregistrerVenteArticle({userId:user.id,article:item,prix:svUnit,
-        frais:sfUnit,quantite:qVendue,plateforme:sellModal.plateforme});
+        frais:sfUnit,quantite:qVendue,plateforme:sellModal.plateforme,lang});
       if(sellModal.rememberFees)localStorage.setItem('savedFees',String(sf));
       track('mark_sold',{quantite:qVendue});
       setSellModal(null);
@@ -7724,7 +7724,7 @@ export default function App({ loginOnly = false }){
       const sf=parseFloat(String(frais??0).replace(",","."))||0;
       const qVendue=Math.max(1,Math.min(quantite_vendue||1,item.quantite??1));
       await enregistrerVenteArticle({userId:user.id,article:item,prix:sv,frais:sf,
-        quantite:qVendue,plateforme:plateforme||'ailleurs'});
+        quantite:qVendue,plateforme:plateforme||'ailleurs',lang});
       await fetchAll(user.id);
     },
     deleteItem:(id)=>delItem(id),
