@@ -376,7 +376,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
     dernierReleve.current = Date.now();
     setChargement(true); setErreurChargement('');
     try {
-      const r = await lireEtatEbay('checklist');
+      const r = await lireEtatEbay('checklist', langue);
       setEtat(r.etat ?? null);
       setChecklist(r.checklist ?? null);
     } catch (e) {
@@ -542,7 +542,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
     if (services) return;
     setBusy('services');
     try {
-      const r = await agirEbay('services_livraison');
+      const r = await agirEbay('services_livraison', {}, langue);
       setServices({ familles: r?.familles ?? [], plafond: r?.plafond ?? 4 });
     } catch (e) {
       console.warn('[ebay-compte] modes d\'envoi illisibles —', e?.message ?? e);
@@ -596,7 +596,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
       const r = await agirEbay('poser_livraison', {
         services: choix.map((c) => ({ code: c.code, frais_eur: String(c.frais ?? '0').replace(',', '.') })),
         delai_jours: picker.delai,
-      });
+      }, langue);
       if (r.etat) setEtat(r.etat);
       if (r.checklist) setChecklist(r.checklist);
       if (r.detail?.id) {
@@ -616,7 +616,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   const connecter = async () => {
     setBusy('connexion'); setErreurAction('');
     try {
-      const { url } = await demarrerConnexionEbay();
+      const { url } = await demarrerConnexionEbay(langue);
       if (!url) throw new Error(t.erreurGenerique);
       await ouvrirConsentementEbay(url);
     } catch (e) {
@@ -631,7 +631,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   const agir = async (action, params, cle) => {
     setBusy(cle ?? action); setErreurAction('');
     try {
-      const r = await agirEbay(action, params);
+      const r = await agirEbay(action, params, langue);
       if (r.etat) setEtat(r.etat);
       if (r.checklist) setChecklist(r.checklist);
       if (action === 'deconnecter') { setChecklist(null); setConfirmDeco(false); setCreation(null); setStatutCreation(null); }
@@ -670,7 +670,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
     setBusy(`creer_${type}`); setErreurAction('');
     setStatutCreation({ type, etat: 'envoi', message: t.creationEnCours });
     try {
-      const r = await agirEbay('creer_politique', { type, options: { nom, retours: source.retours } });
+      const r = await agirEbay('creer_politique', { type, options: { nom, retours: source.retours } }, langue);
       if (r.etat) setEtat(r.etat);
       if (r.checklist) setChecklist(r.checklist);
       setCreation(null);

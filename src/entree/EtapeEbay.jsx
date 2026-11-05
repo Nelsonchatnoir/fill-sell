@@ -23,7 +23,7 @@ export default function EtapeEbay({ c, T, onSuivant }) {
     setEtat('en_cours');
     setErreur(null);
     try {
-      const r = await demarrerConnexionEbay();
+      const r = await demarrerConnexionEbay(c.lang === 'en' ? 'en' : 'fr');
       // EbayCompteSection lit `url` ; le repli couvre une réponse plus
       // ancienne sans rien supposer de neuf côté fonction.
       const url = r?.url ?? r?.consent_url ?? null;
