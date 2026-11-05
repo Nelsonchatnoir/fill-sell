@@ -234,3 +234,11 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   Pas de zip avant la décision de Nico.
 - Paquet depuis un worktree : remettre l'arbre en LF avant la suite (`git rm --cached -r -q . && git -c core.autocrlf=false
   reset -q --hard <sha>`), sinon faux rouges CRLF ; une suite à la fois (4 tranches parallèles = arrêt mémoire).
+
+## 05/11 soir — 0.6.175 préparée, sans zip : session Leboncoin partagée (décision de Nico)
+- La 0.6.174 + la règle « session Leboncoin partagée » (`docs/regles/plateformes.md` § 05/11 soir) : un relevé, un
+  budget de pages d'annonce, aucune lecture de routine la nuit, pour tout navigateur qui exécute Leboncoin pour un autre
+  compte (délégation). Compte seul : rien ne change. Selftest `lbc-session-partagee-rythme` (24 h simulées).
+- Manifest 0.6.175 ; `FILLSELL_BUILD` daté du 05/11 soir. EXTENSION_LAST_COMMIT à recaler APRÈS le commit de l'extension
+  (horodatage UTC LU, dans un commit qui ne touche pas `chrome-extension/`) ; EXTENSION_MIN_BUILD non touché ; aucun
+  changement serveur requis.

@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-05-soir (0.6.175 : session Leboncoin partagée par plusieurs comptes FillSell (délégation) — un seul relevé « Mes annonces » et une seule lecture des ventes pour tous ses comptes, relevés quotidiens alignés, lectures de routine des pages d'annonce sur un seul budget (60 par heure), aucune lecture de routine la nuit 23:00–07:00 heure de Paris) — précédent : 0.6.170 à 0.6.174 (voir docs/regles/extension-et-versions.md) — précédent : " +
   "2026-11-02-nuit (0.6.169 : un rechargement ou une mise à jour de l'extension ne crée plus de fenêtre de travail en laissant l'ancienne — fenêtre du registre gardée avec ses onglets de plateforme sans fragment, ids des onglets de travail durables, vieille fenêtre perdue reconnue sur preuve et fermée ; une fenêtre n'est fermée que sûrement à nous) — précédent : " +
   "2026-11-02-soir (0.6.168 :Leboncoin, dépôt interrompu à l'arrivée = brouillon jeté par le chemin officiel, redépôt aussitôt ; état d'une tâche : une republication retenue derrière l'annonce d'une autre plateforme le dit, jamais « nouvel essai automatique ») — précédent : " +
   "2026-11-02-lot-a (0.6.167 : aucun corps REST ne part avec un demi-caractère — relevé Depop de laurankoole en HTTP 400 — et le titre Depop se coupe par caractère ; état d'une tâche : l'ordinateur éteint passe avant « nouvel essai automatique ») · " +
@@ -5185,6 +5186,8 @@ async function processJob(rawJob, accessToken) {
   travailEnCours = { job: String(rawJob?.id ?? ""), plateforme: String(rawJob?.platform ?? ""), depuis: new Date().toISOString() };
   dernierProgresFlux = Date.now();   // (31/10, lot F) un job qui commence est un progrès du flux
   const job = sanitizeJob(rawJob);
+  // (05/11 soir, 0.6.175) Un geste Leboncoin change la boutique : une lecture partagée d'avant ne sert plus personne.
+  if (job.platform === "leboncoin") noterGesteLbc();
   // (0.6.106) Un job Vinted travaille sur le domaine où la personne est
   // connectée (vinted.fr sauf vendeur étranger qui a autorisé le sien).
   if (job.platform === "vinted") {
@@ -13427,6 +13430,7 @@ async function lireDisjoncteursLecture() {
   catch { return {}; }
 }
 async function armerDisjoncteurLecture(platform) {
+  if (platform === "leboncoin") noterGesteLbc();   // (0.6.175) un anti-robot : une lecture partagée d'avant ne sert plus
   try {
     const tous = await lireDisjoncteursLecture();
     const prec = tous[platform] ?? null;
@@ -19668,6 +19672,15 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     }
     return { ok: false, reason: "ferme" };
   }
+  // (05/11 soir, 0.6.175) Session Leboncoin partagée par plusieurs comptes FillSell : jamais deux lectures de « Mes
+  // annonces » dans la même fenêtre. Une lecture fraîche de la session sert ce compte (aucune requête à Leboncoin) ; une
+  // lecture ratée n'est pas refaite pour lui (une commande servie reste en file, reprise à un poll suivant) ; le relevé
+  // quotidien jamais la nuit, et aligné sur la lecture quotidienne de la session. En pause, rien n'est repris : la
+  // visite de contrôle lit vraiment. Compte seul : rien de tout cela.
+  const lbcPartagee = platform === "leboncoin" && await sessionLbcPartagee();
+  if (lbcPartagee && declencheur === "cron" && !runId && estNuitParis()) return { ok: false, reason: "nuit_session_partagee" };
+  const lecturePartagee = lbcPartagee && !(await leboncoinEnPause()) ? lectureLbcPartageeFraiche("annonces") : null;
+  if (lecturePartagee && !lecturePartagee.reutilisable) return { ok: false, reason: "lecture_partagee_recente" };
   releveEnCours = true;
   // Les longues lectures injectées ne maintiennent pas le worker MV3 vivant
   // (Albert, 28/09 — 8b6f539, remis le 03/10 avec le point 31). Ceci ne
@@ -19691,7 +19704,8 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
           `vinted_sync_runs?user_id=eq.${userId}&kind=eq.annonces&platform=eq.${platform}&status=in.(done,incomplete)&select=finished_at&order=finished_at.desc&limit=1`, token,
         ).catch(() => null);
         const t = Date.parse(derniers?.[0]?.finished_at ?? "");
-        if (Number.isFinite(t) && Date.now() - t < RELEVE_CADENCE_CRON_MS) return { ok: false, reason: "cadence" };
+        const cadenceMs = lbcPartagee ? cadenceCronLbcPartagee(lecturePartagee, RELEVE_CADENCE_CRON_MS) : RELEVE_CADENCE_CRON_MS;
+        if (Number.isFinite(t) && Date.now() - t < cadenceMs) return { ok: false, reason: "cadence" };
       }
       const r = await restRequest("vinted_sync_runs", token, {
         method: "POST", headers: { Prefer: "return=representation" },
@@ -19700,8 +19714,16 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       run = Array.isArray(r) && r.length ? r[0] : null;
       if (!run) return { ok: false, reason: "run_non_cree" };
     }
-    console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
-    const { annonces, complet, erreur, illisibles, absente, vide, defilement, annonce } = await releverAnnoncesPlateforme(platform, { token, userId });
+    console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »` +
+      (lecturePartagee ? ` — lecture de la session partagée reprise (faite il y a ${Math.round((Date.now() - lecturePartagee.at) / 1000)} s, aucune requête à Leboncoin)` : ""));
+    const debutLecture = Date.now();
+    // La tentative est notée AVANT la lecture : une lecture qui casse en route n'est pas refaite pour un autre compte.
+    if (lbcPartagee && !lecturePartagee) noterLectureLbcPartagee("annonces", { at: debutLecture, declencheur, compte: userId, resultat: null, reutilisable: false });
+    const lu = lecturePartagee ? lecturePartagee.resultat : await releverAnnoncesPlateforme(platform, { token, userId });
+    if (lbcPartagee && !lecturePartagee) {
+      noterLectureLbcPartagee("annonces", { at: debutLecture, declencheur, compte: userId, resultat: lu, reutilisable: releveLbcReutilisable(lu) });
+    }
+    const { annonces, complet, erreur, illisibles, absente, vide, defilement, annonce } = lu;
     // Le nombre lu s'écrit DÈS la liste reçue (8b6f539, remis le 03/10) : la
     // base date ce progrès (progres_le) et le chien de garde voit un relevé
     // qui avance — avant, rien jusqu'au PATCH final.
@@ -19910,7 +19932,9 @@ function demanderRelevePourRattachement(platform) {
 // Alarme quotidienne : une plateforme par passage, celles où le compte a des
 // dépôts en ligne OU des annonces relevées qui attendent encore leur
 // rattachement (sinon il n'y a rien à rattacher).
-async function releverQuotidien() {
+// (05/11 soir, 0.6.175) `seulement` : une plateforme (le relevé quotidien Leboncoin d'une session partagée, rattrapé ou
+// aligné par le cycle délégué — relevesQuotidiensLbcDuCompteExtension). Sans lui : l'alarme quotidienne, comme avant.
+async function releverQuotidien({ seulement = null } = {}) {
   const session = await getValidSession();
   if (!session?.access_token) return;
   const token = session.access_token;
@@ -19926,6 +19950,7 @@ async function releverQuotidien() {
     if (Array.isArray(liste)) ecartees = liste.map(String);
   } catch { /* illisible : on relève comme avant */ }
   for (const platform of RELEVE_PLATEFORMES) {
+    if (seulement && platform !== seulement) continue;
     if (ecartees.includes(platform)) continue;
     if (platform === "depop" && !(await depopAccesAccorde())) continue;
     if (platform === "opla" && await oplaSortieActive()) continue; // (11/10) sortie d'Opla : plus relevée
@@ -19954,7 +19979,10 @@ async function releverQuotidien() {
   // quotidien du relevé de stock. Et SANS la garde « au moins un dépôt » qui
   // précède : c'est tout l'objet du chantier — une vente peut porter sur une
   // annonce qu'on n'a jamais publiée.
-  await releverVentesQuotidien().catch((e) => console.error("[ventes][cron]", e?.message ?? e));
+  await releverVentesQuotidien({ seulement }).catch((e) => console.error("[ventes][cron]", e?.message ?? e));
+  // (05/11 soir, 0.6.175) La lecture quotidienne d'une session Leboncoin partagée sert aussi les comptes qu'elle exécute :
+  // leur cycle passe tout de suite derrière (alignés, aucune lecture Leboncoin de plus). Rien sans délégation.
+  if (!seulement && marqueLecturesCronLbc() !== null) lancerCycleDelegue();
 }
 
 
@@ -20807,15 +20835,26 @@ async function lancerReleveVentes({ platform, declencheur = "cron", session: ses
   // (0.6.164) La cadence du compte délégué est la sienne (jamais celle du compte de l'extension, sur le même appareil).
   const cleEtat = sessionFournie ? `${platform}@${userId}` : platform;
   try {
+    // (05/11 soir, 0.6.175) Session Leboncoin partagée par plusieurs comptes FillSell : UNE lecture de la liste des
+    // ventes sert tous ses comptes pendant la fenêtre (une lecture ratée n'est pas refaite pour un autre) ; le relevé
+    // quotidien jamais la nuit, et aligné sur la lecture quotidienne de la session. Compte seul : rien ne change.
+    const lbcPartagee = platform === "leboncoin" && await sessionLbcPartagee();
+    const ventesPartagees = lbcPartagee ? lectureLbcPartageeFraiche("ventes") : null;
     if (declencheur === "cron") {
+      if (lbcPartagee && estNuitParis()) return { ok: false, reason: "nuit_session_partagee" };
       const t = Number(etat?.[cleEtat]?.dernierAt);
-      if (Number.isFinite(t) && Date.now() - t < VENTES_CADENCE_MS) return { ok: false, reason: "cadence" };
+      const cadenceMs = lbcPartagee ? cadenceCronLbcPartagee(ventesPartagees, VENTES_CADENCE_MS) : VENTES_CADENCE_MS;
+      if (Number.isFinite(t) && Date.now() - t < cadenceMs) return { ok: false, reason: "cadence" };
     }
+    if (ventesPartagees && !ventesPartagees.reutilisable) return { ok: false, reason: "lecture_partagee_recente" };
     const connues = await refsVentesConnues(token, userId, platform);
+    if (ventesPartagees) console.log(`[ventes][leboncoin] (${declencheur}) lecture de la session partagée reprise (faite il y a ${Math.round((Date.now() - ventesPartagees.at) / 1000)} s, aucune requête à Leboncoin)`);
     // ⛔ Chaque plateforme NOMMÉE (09/10) : le repli était Opla — une plateforme
     // ajoutée sans sa branche aurait lu les ventes d'Opla.
     const lecture = platform === "vinted" ? await lireVentesVinted(connues)
-      : platform === "leboncoin" ? await lireVentesLeboncoin(connues)
+      : platform === "leboncoin" ? (ventesPartagees ? ventesPartagees.resultat
+        : lbcPartagee ? await lireVentesLeboncoinDeLaSession(connues, { userId, declencheur })
+        : await lireVentesLeboncoin(connues))
       : platform === "depop" ? await lireVentesDepopOnglet()
       : platform === "opla" ? await lireVentesOpla(connues)
       : { ok: false, rows: [], motif: `plateforme sans lecteur de ventes : ${platform}` };
@@ -20979,10 +21018,11 @@ async function lancerReleveVentes({ platform, declencheur = "cron", session: ses
 // Après le relevé de stock quotidien : les ventes, une plateforme à la fois.
 // Aucune cadence propre, aucun minuteur de plus — on se greffe sur le passage
 // existant, comme le veilleur Opla se greffe sur checkPublishedListings.
-async function releverVentesQuotidien() {
+async function releverVentesQuotidien({ seulement = null } = {}) {
   const session = await getValidSession();
   if (!session?.access_token) return;
   for (const platform of VENTES_PLATEFORMES) {
+    if (seulement && platform !== seulement) continue;   // (0.6.175) cf. releverQuotidien
     await lancerReleveVentes({ platform, declencheur: "cron" })
       .catch((e) => console.error("[ventes][cron]", e?.message ?? e));
   }
@@ -23425,6 +23465,8 @@ function refusLeboncoinDuResultat(outcome) {
 }
 function noterBlocageLbcServeur(b) {
   blocageLbcServeur = b && typeof b === "object" && b.etat && b.etat !== "libre" ? { ...b, vu_le: Date.now() } : null;
+  // (0.6.175) Leboncoin en pause : une lecture partagée d'avant la pause ne sert plus personne (la visite lit vraiment).
+  if (blocageLbcServeur && blocageLbcServeur.etat !== "delegue") noterGesteLbc();
   chrome.storage.local.set({ fillsell_blocage_lbc: blocageLbcServeur }).catch(() => {});
 }
 async function leboncoinEnPause() {
@@ -23484,6 +23526,211 @@ function noterDelegationsServies(liste) {
   }
   delegationsServies = neuves;
   chrome.storage.local.set({ [DELEGATIONS_LBC_KEY]: neuves }).catch(() => {});
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SESSION LEBONCOIN PARTAGÉE : UN SEUL RYTHME POUR TOUS SES COMPTES (05/11 soir, 0.6.175 — décision de Nico)
+// ══════════════════════════════════════════════════════════════════════════════
+// Une session Leboncoin qui sert PLUSIEURS comptes FillSell (ce navigateur exécute Leboncoin pour au moins un autre
+// compte : délégation, rep.delegations) se lit comme celle d'UN compte. Mesuré le 05/11 chez Louis (louis@ttfamily.fr,
+// exécutant pour louis-seller@ttfamily.fr) : 277 + 110 annonces relues chacune toutes les 2 h, ≈ 190 lectures de page
+// par heure jour et nuit (≈ 3 fois un compte seul comparable) ; « Mes annonces » lu deux fois en 30 s (01/11 21:26:03
+// puis 21:26:35 ; 02/11 05:40:58 puis 05:41:26) ; Leboncoin a restreint ce compte plusieurs fois (403).
+// RÈGLE, pour toute session partagée — un compte seul garde tout à l'identique :
+//   1. UNE lecture de « Mes annonces » (et UNE lecture de la liste des ventes) sert tous les comptes de la session
+//      pendant LBC_PARTAGE_FENETRE_MS, sauf geste Leboncoin, anti-robot ou pause depuis ; une lecture ratée n'est pas
+//      refaite pour un autre compte dans la même fenêtre. Le relevé quotidien et le relevé des ventes de chaque compte
+//      s'alignent sur la lecture quotidienne de la session (même moment, aucune requête Leboncoin de plus).
+//   2. Les lectures de routine des pages d'annonce (checkPublishedListings) ont UN budget pour toutes les annonces
+//      Leboncoin de la session : LBC_PARTAGE_LECTURES_HEURE par heure, LBC_PARTAGE_RAFALE au plus d'un coup (ce que
+//      lit un compte seul en un cycle), réparti entre ses comptes au prorata de leurs annonces (partBudgetLbc : aucun
+//      compte n'affame l'autre) ; chaque annonce au plus toutes les max(2 h, annonces de la session ÷ budget).
+//      Budget : le compte seul comparable de l'enquête (sebastien64310, 452 annonces) lisait 127 pages en 2 h ≈ 64/h ;
+//      les comptes seuls actifs de 345 à 455 annonces lus le 05/11 à 20:38 : 55/h (jocabroc8) et 83/h
+//      (beautyandthedress) → 60 par heure, soit 2 par poll de 2 min. Louis (387 annonces) : chaque annonce toutes les
+//      6 h 27 au lieu de 2 h ; 60 lectures par heure au plus de 07:00 à 23:00, aucune la nuit.
+//   3. La nuit (LBC_NUIT_DEBUT_H à LBC_NUIT_FIN_H, heure de Paris ; l'extension n'avait aucune définition de la nuit :
+//      23:00–07:00) : aucune lecture de routine — pages d'annonce, relevé quotidien, relevé des ventes.
+// Jamais touchés : la veille des transactions Leboncoin (10 min) et les relectures qu'elle désigne, les relevés servis
+// par le serveur ou demandés par la personne, les gestes (publication, retrait, republication) et leur cadence.
+const LBC_PARTAGE_FENETRE_MS = 15 * 60_000;      // une lecture de la session sert tous ses comptes pendant 15 min
+const LBC_PARTAGE_ALIGNE_MS = 60 * 60_000;       // un compte relevé depuis moins d'1 h ne se réaligne pas
+const LBC_PARTAGE_LECTURES_HEURE = 60;           // lectures de routine des pages d'annonce par heure, tous comptes
+const LBC_PARTAGE_RAFALE = SALE_CHECK_MAX_PER_CYCLE;
+const LBC_NUIT_DEBUT_H = 23;                     // heure de Paris
+const LBC_NUIT_FIN_H = 7;
+const LBC_PARTAGE_BUDGET_KEY = "fillsell_lbc_partage_budget";
+const LBC_PARTAGE_ANNONCES_KEY = "fillsell_lbc_partage_annonces";
+const LBC_PARTAGE_COMPTE_MAJ_MS = 60 * 60_000;   // le nombre d'annonces d'un compte : recompté au plus une fois l'heure
+const LBC_PARTAGE_COMPTE_VALIDE_MS = 24 * 3600_000;
+const lecturesLbcPartagees = { annonces: null, ventes: null };   // { at, declencheur, compte, resultat, reutilisable }
+let gesteLbcLe = 0;                              // dernier geste, anti-robot ou pause Leboncoin vu sur ce navigateur
+let budgetsLbcPartage = null;                    // { compte: { jetons, le } } — miroir de LBC_PARTAGE_BUDGET_KEY
+const alignementDelegue = new Map();             // compte délégué → marque des lectures quotidiennes déjà reprises
+let alignementCompteExtension = "";
+let cronCompteExtensionTenteLe = 0;
+
+/** L'heure (0-23) à Paris, ou null si illisible. */
+function heureParis(ms = Date.now()) {
+  try {
+    const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "numeric", hourCycle: "h23" }).formatToParts(new Date(ms));
+    const h = Number(parts.find((p) => p.type === "hour")?.value);
+    return Number.isInteger(h) && h >= 0 && h <= 23 ? h : null;
+  } catch { return null; }
+}
+/** La nuit, heure de Paris (23:00–07:00). Heure illisible : pas la nuit (le budget tient quand même). */
+function estNuitParis(ms = Date.now()) {
+  const h = heureParis(ms);
+  return h != null && (h >= LBC_NUIT_DEBUT_H || h < LBC_NUIT_FIN_H);
+}
+/** Les comptes pour lesquels CE navigateur exécute Leboncoin : la mémoire, sinon le stockage (réveil du worker). */
+async function comptesDeleguesLbc() {
+  if (delegationsServies.length) return delegationsServies.map((d) => d.compte);
+  try {
+    const l = (await chrome.storage.local.get(DELEGATIONS_LBC_KEY))?.[DELEGATIONS_LBC_KEY];
+    return Array.isArray(l) ? l.map((d) => String(d?.compte ?? "").toLowerCase()).filter((c) => UUID_DELEGUE_RE.test(c)) : [];
+  } catch { return []; }
+}
+/** La session Leboncoin de ce navigateur sert-elle plusieurs comptes FillSell ? */
+async function sessionLbcPartagee() {
+  return (await comptesDeleguesLbc()).length > 0;
+}
+/** Tous les comptes de la session : celui de l'extension et ceux qu'elle exécute. */
+async function comptesSessionLbc() {
+  const own = await getValidSession().catch(() => null);
+  const moi = own?.access_token ? decodeJwtSub(own.access_token) : null;
+  return [...new Set([moi, ...(await comptesDeleguesLbc())].filter(Boolean))];
+}
+/** Un geste Leboncoin (tâche), un anti-robot ou une pause : une lecture partagée d'avant ne sert plus personne. */
+function noterGesteLbc(ms = Date.now()) {
+  gesteLbcLe = Math.max(gesteLbcLe, ms);
+}
+/** La lecture partagée de ce type encore utilisable (dans la fenêtre, après le dernier geste), ou null. */
+function lectureLbcPartageeFraiche(type, maintenant = Date.now()) {
+  const e = lecturesLbcPartagees[type];
+  if (!e || !Number.isFinite(e.at)) return null;
+  if (maintenant < e.at || maintenant - e.at >= LBC_PARTAGE_FENETRE_MS || gesteLbcLe >= e.at) {
+    lecturesLbcPartagees[type] = null;   // plus personne ne la reprendra : la mémoire est rendue
+    return null;
+  }
+  return e;
+}
+function noterLectureLbcPartagee(type, { at, declencheur, compte, resultat, reutilisable }) {
+  lecturesLbcPartagees[type] = { at, declencheur: String(declencheur ?? ""), compte: compte ?? null, resultat, reutilisable: reutilisable === true };
+}
+/** Un relevé « Mes annonces » qui peut servir un autre compte : des annonces lues ou une boutique vide dite, jamais un mur. */
+function releveLbcReutilisable(r) {
+  return Boolean(r) && r.absente !== true && ((Array.isArray(r.annonces) && r.annonces.length > 0) || Boolean(r.vide));
+}
+/** La cadence du relevé quotidien d'un compte de la session : 1 h quand une lecture quotidienne fraîche l'attend (aligné). */
+function cadenceCronLbcPartagee(partage, cadenceNormaleMs) {
+  return partage?.reutilisable === true && partage.declencheur === "cron" ? Math.min(LBC_PARTAGE_ALIGNE_MS, cadenceNormaleMs) : cadenceNormaleMs;
+}
+/** La marque des lectures quotidiennes fraîches de la session (null s'il n'y en a pas) : chaque compte s'y aligne une fois. */
+function marqueLecturesCronLbc(maintenant = Date.now()) {
+  const m = ["annonces", "ventes"].map((t) => {
+    const e = lectureLbcPartageeFraiche(t, maintenant);
+    return e?.reutilisable && e.declencheur === "cron" ? `${t}@${e.at}` : "";
+  }).filter(Boolean).join("|");
+  return m || null;
+}
+/** L'intervalle entre deux lectures de routine d'une même annonce de la session : 2 h, ou plus pour tenir le budget. */
+function intervalleLectureLbcPartagee(annoncesSession) {
+  const n = Math.max(0, Number(annoncesSession) || 0);
+  return Math.max(SALE_CHECK_MIN_INTERVAL_MS, Math.ceil((n / LBC_PARTAGE_LECTURES_HEURE) * 3600_000));
+}
+/** Le seau de lectures d'un compte (pur) : il se remplit de `parHeure` par heure, `rafale` au plus. */
+function remplirJetonsLbcPartage(etat, maintenant, { parHeure = LBC_PARTAGE_LECTURES_HEURE, rafale = LBC_PARTAGE_RAFALE } = {}) {
+  const le = Number(etat?.le), j = Number(etat?.jetons);
+  if (!Number.isFinite(le) || !Number.isFinite(j)) return { jetons: rafale, le: maintenant };
+  if (maintenant <= le) return { jetons: Math.min(rafale, j), le: maintenant };
+  return { jetons: Math.min(rafale, j + ((maintenant - le) / 3600_000) * parHeure), le: maintenant };
+}
+/** La part du budget de la session qui revient à un compte (pur) : au prorata de ses annonces Leboncoin, pour que chaque
+ *  annonce de la session soit relue au même rythme, quel que soit son compte (jamais un compte qui affame l'autre). */
+function partBudgetLbc(annoncesCompte, annoncesSession, comptes) {
+  const n = Math.max(0, Number(annoncesCompte) || 0), N = Math.max(0, Number(annoncesSession) || 0);
+  const part = N > 0 ? Math.min(1, n / N) : 1 / Math.max(1, Number(comptes) || 1);
+  return { parHeure: LBC_PARTAGE_LECTURES_HEURE * part, rafale: Math.max(1, Math.round(LBC_PARTAGE_RAFALE * part)) };
+}
+async function chargerBudgetsLbcPartage() {
+  if (budgetsLbcPartage) return budgetsLbcPartage;
+  try { budgetsLbcPartage = (await chrome.storage.local.get(LBC_PARTAGE_BUDGET_KEY))?.[LBC_PARTAGE_BUDGET_KEY] ?? {}; } catch { budgetsLbcPartage = {}; }
+  if (!budgetsLbcPartage || typeof budgetsLbcPartage !== "object") budgetsLbcPartage = {};
+  return budgetsLbcPartage;
+}
+/** Les lectures que la part de ce compte permet maintenant (sans en prendre). */
+async function jetonsLbcPartage(partage, maintenant = Date.now()) {
+  const tous = await chargerBudgetsLbcPartage();
+  return remplirJetonsLbcPartage(tous[partage.compte], maintenant, partage).jetons;
+}
+/** Prend une lecture sur la part de ce compte. `forcer` (relecture désignée par la veille) : jamais refusée, mais comptée. */
+async function prendreJetonLbcPartage(partage, { forcer = false, maintenant = Date.now() } = {}) {
+  const tous = await chargerBudgetsLbcPartage();
+  const e = remplirJetonsLbcPartage(tous[partage.compte], maintenant, partage);
+  const pris = e.jetons >= 1 || forcer === true;
+  if (pris) e.jetons = Math.max(-partage.rafale, e.jetons - 1);
+  tous[partage.compte] = e;
+  try { await chrome.storage.local.set({ [LBC_PARTAGE_BUDGET_KEY]: tous }); } catch { /* le miroir en mémoire tient */ }
+  return pris;
+}
+/** Les annonces Leboncoin en ligne de la session : chaque compte compté avec SON jeton, au plus une fois l'heure, gardé
+ *  24 h. Rend { total, duCompte, comptes } ; un compte pas encore compté pèse 0 (le budget tient quand même). */
+async function annoncesLbcDeLaSession(session, maintenant = Date.now()) {
+  const moi = session?.access_token ? decodeJwtSub(session.access_token) : null;
+  let parCompte = {};
+  try { parCompte = (await chrome.storage.local.get(LBC_PARTAGE_ANNONCES_KEY))?.[LBC_PARTAGE_ANNONCES_KEY] ?? {}; } catch { parCompte = {}; }
+  if (moi && !(maintenant - Number(parCompte[moi]?.le) < LBC_PARTAGE_COMPTE_MAJ_MS)) {
+    const rows = await restRequest(
+      `cross_post_jobs?select=id&user_id=eq.${moi}&platform=eq.leboncoin&status=eq.published&action=in.(publish,republish)` +
+        "&listing_url=not.is.null&limit=1000", session.access_token).catch(() => null);
+    if (Array.isArray(rows)) {
+      parCompte = { ...parCompte, [moi]: { n: rows.length, le: maintenant } };
+      try { await chrome.storage.local.set({ [LBC_PARTAGE_ANNONCES_KEY]: parCompte }); } catch { /* recompté au prochain passage */ }
+    }
+  }
+  const comptes = [...new Set([...(await comptesSessionLbc()), moi].filter(Boolean))];
+  const nDe = (c) => { const e = parCompte[c]; return e && maintenant - Number(e.le) < LBC_PARTAGE_COMPTE_VALIDE_MS ? Math.max(0, Number(e.n) || 0) : 0; };
+  return { total: comptes.reduce((s, c) => s + nDe(c), 0), duCompte: moi ? nDe(moi) : 0, comptes: comptes.length };
+}
+/** Le rythme de la session partagée pour CE passage de la veille (ce compte) ; null = session d'un seul compte. */
+async function rythmeLbcPartage(session, maintenant = Date.now()) {
+  if (!(await sessionLbcPartagee())) return null;
+  const compte = session?.access_token ? decodeJwtSub(session.access_token) : null;
+  if (!compte) return null;
+  const a = await annoncesLbcDeLaSession(session, maintenant).catch(() => ({ total: 0, duCompte: 0, comptes: 2 }));
+  return { compte, nuit: estNuitParis(maintenant), intervalleMs: intervalleLectureLbcPartagee(a.total), annonces: a.total,
+    annoncesDuCompte: a.duCompte, ...partBudgetLbc(a.duCompte, a.total, a.comptes) };
+}
+/** La liste des ventes Leboncoin de la session, lue UNE fois pour tous ses comptes. Une vente s'enregistre sur UN compte de
+ *  la session : la lecture s'arrête à la première page qu'ils connaissent déjà en entier, à eux tous. */
+async function lireVentesLeboncoinDeLaSession(connues, { userId, declencheur }) {
+  const toutes = new Set(connues);
+  for (const compte of await comptesSessionLbc()) {
+    if (compte === userId) continue;
+    const s = await sessionDuCompte(compte).catch(() => null);
+    if (!s?.access_token || decodeJwtSub(s.access_token) !== compte) continue;
+    for (const ref of await refsVentesConnues(s.access_token, compte, "leboncoin").catch(() => new Set())) toutes.add(ref);
+  }
+  const at = Date.now();
+  noterLectureLbcPartagee("ventes", { at, declencheur, compte: userId, resultat: null, reutilisable: false });   // la tentative d'abord
+  const lecture = await lireVentesLeboncoin(toutes);
+  noterLectureLbcPartagee("ventes", { at, declencheur, compte: userId, resultat: lecture,
+    reutilisable: lecture?.ok === true || (Array.isArray(lecture?.rows) && lecture.rows.length > 0) });
+  return lecture;
+}
+/** Le relevé quotidien et les ventes Leboncoin du compte de CE navigateur, quand sa session sert d'autres comptes :
+ *  repris d'une lecture quotidienne faite pour un autre compte (aligné), et, avec `mener`, tentés d'eux-mêmes une fois
+ *  l'heure (cadence de 20 h — une alarme quotidienne tombée la nuit est rattrapée au matin). Jamais la nuit. */
+async function relevesQuotidiensLbcDuCompteExtension({ mener = false } = {}) {
+  if (majPlanifiee || estNuitParis()) return;
+  const marque = marqueLecturesCronLbc();
+  const aligner = marque !== null && marque !== alignementCompteExtension;
+  if (!aligner && !(mener && Date.now() - cronCompteExtensionTenteLe >= DELEGUE_CRON_ESSAI_MS)) return;
+  if (aligner) alignementCompteExtension = marque;
+  else cronCompteExtensionTenteLe = Date.now();
+  await releverQuotidien({ seulement: "leboncoin" });
+  alignementCompteExtension = marqueLecturesCronLbc() ?? alignementCompteExtension;   // sa propre lecture : pas reprise pour lui
 }
 
 /** La session du flux en cours : celle du compte délégué pendant son cycle, sinon celle de l'extension. */
@@ -23583,6 +23830,10 @@ async function cycleDelegueLbc() {
     console.log("[delegation] Leboncoin en pause sur ce navigateur — aucun travail délégué ce cycle");
     return;
   }
+  // (05/11 soir, 0.6.175) La session sert plusieurs comptes : le relevé quotidien Leboncoin du compte de ce navigateur
+  // d'abord (rattrapé au matin si l'alarme est tombée la nuit), pour que les comptes délégués s'y alignent dans ce cycle.
+  await relevesQuotidiensLbcDuCompteExtension({ mener: true })
+    .catch((e) => console.warn("[delegation][quotidien]", String(e?.message ?? e)));
   for (const d of delegationsServies) {
     const sD = await sessionDeleguee(own.access_token, d.compte);
     if (!sD?.access_token) continue;
@@ -23596,6 +23847,9 @@ async function cycleDelegueLbc() {
       travailEnCours = null;
     }
   }
+  // Puis l'inverse : la lecture du jour faite pour un compte délégué sert aussi le compte de ce navigateur (aligné).
+  await relevesQuotidiensLbcDuCompteExtension()
+    .catch((e) => console.warn("[delegation][quotidien]", String(e?.message ?? e)));
 }
 
 async function cycleDelegueUnCompte(own, sD, d) {
@@ -23667,14 +23921,25 @@ async function cycleDelegueUnCompte(own, sD, d) {
       .catch((e) => ({ ok: false, reason: String(e?.message ?? e) }));
     console.log(`[delegation][veille] Leboncoin de ${d.compte.slice(0, 8)} : commande neuve vue → relevé ${r?.ok ? "fait" : (r?.reason ?? "?")}`);
   }
-  // La détection de vente par annonce (comme le cycle de l'extension), sur ses seules annonces Leboncoin.
+  // La détection de vente par annonce (comme le cycle de l'extension), sur ses seules annonces Leboncoin — au budget et
+  // au rythme de la session partagée (0.6.175 : checkPublishedListings, rythmeLbcPartage).
   await checkPublishedListings(sD, { plateforme: "leboncoin" }).catch((e) => console.warn("[delegation][annonces]", String(e?.message ?? e)));
-  if (Date.now() - (cronDelegueTenteLe.get(d.compte) ?? 0) >= DELEGUE_CRON_ESSAI_MS) {
-    cronDelegueTenteLe.set(d.compte, Date.now());
+  // (05/11 soir, 0.6.175) Relevé quotidien et ventes du compte délégué : ALIGNÉS sur la lecture quotidienne de la
+  // session (faite pour le compte de ce navigateur ou pour un autre délégué) dès qu'elle existe — aucune lecture
+  // Leboncoin de plus ; sinon tentés une fois l'heure (sa cadence de 20 h). Jamais la nuit (lancerRelevePlateforme et
+  // lancerReleveVentes en jugent).
+  const marqueQuotidienne = marqueLecturesCronLbc();
+  const aAligner = marqueQuotidienne !== null && alignementDelegue.get(d.compte) !== marqueQuotidienne;
+  if (aAligner || Date.now() - (cronDelegueTenteLe.get(d.compte) ?? 0) >= DELEGUE_CRON_ESSAI_MS) {
+    if (aAligner) alignementDelegue.set(d.compte, marqueQuotidienne);
+    else cronDelegueTenteLe.set(d.compte, Date.now());
     await lancerRelevePlateforme({ platform: "leboncoin", declencheur: "cron", session: sD })
       .catch((e) => console.warn("[delegation][cron]", String(e?.message ?? e)));
     await lancerReleveVentes({ platform: "leboncoin", declencheur: "cron", session: sD })
       .catch((e) => console.warn("[delegation][ventes]", String(e?.message ?? e)));
+    // Sa propre lecture (s'il a mené) ne se reprend pas pour lui au cycle suivant.
+    const apres = marqueLecturesCronLbc();
+    if (apres !== null) alignementDelegue.set(d.compte, apres);
   }
 }
 
@@ -24506,8 +24771,14 @@ async function checkPublishedListings(session, { plateforme = null } = {}) {
   // vieux last_checked_at et occuperaient la fenêtre des 60 au détriment des
   // autres plateformes.
   const sansOpla = await oplaSortieActive();
-  try {
-    jobs = await restRequest(
+  // (05/11 soir, 0.6.175) Session Leboncoin partagée par plusieurs comptes FillSell (délégation) : les annonces Leboncoin
+  // de TOUS ses comptes ont UN budget (rythmeLbcPartage) — chaque annonce au plus toutes les max(2 h, annonces de la
+  // session ÷ budget), LBC_PARTAGE_LECTURES_HEURE pages par heure, aucune la nuit (sauf une relecture désignée par la
+  // veille des transactions). Elles sont lues À PART : au rythme partagé, leurs vieilles dates ne prennent jamais la
+  // fenêtre des 60 aux autres plateformes. Compte seul (partage null) : la lecture d'avant, à l'identique.
+  const lbcLue = plateforme ? plateforme === "leboncoin" : filtreDelegation === "";
+  const partage = lbcLue ? await rythmeLbcPartage(session).catch(() => null) : null;
+  const lirePublies = (filtre) => restRequest(
       "cross_post_jobs" +
         // La colonne `action` est LUE (2026-09-07) : c'est elle qui distingue
         // la grâce d'un publish (2 h) de celle d'une republication (12 h),
@@ -24518,7 +24789,7 @@ async function checkPublishedListings(session, { plateforme = null } = {}) {
         // ligne — sans lui, un article republié sortait de la détection de
         // vente (le publish d'origine est clos 'cancelled' à la suppression).
         "&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null" +
-        (sansOpla ? "&platform=neq.opla" : "") + filtreDelegation +
+        (sansOpla ? "&platform=neq.opla" : "") + filtre +
         // limit 30 → 60 (2026-08-24, point F) : la fenêtre de 30 pouvait être
         // entièrement occupée par des jobs en délai de grâce ou en
         // temporisation « unknown » un jour de gros lot — les annonces dues
@@ -24528,6 +24799,15 @@ async function checkPublishedListings(session, { plateforme = null } = {}) {
         "&order=last_checked_at.asc.nullsfirst&limit=60",
       session.access_token
     );
+  try {
+    if (!partage) {
+      jobs = await lirePublies(filtreDelegation);
+    } else {
+      const autres = plateforme ? [] : await lirePublies("&platform=neq.leboncoin");
+      const lbc = partage.nuit ? [] : await lirePublies("&platform=eq.leboncoin");
+      const lueLe = (j) => { const t = Date.parse(j?.last_checked_at ?? ""); return Number.isFinite(t) ? t : -Infinity; };
+      jobs = [...(autres ?? []), ...(lbc ?? [])].sort((a, b) => lueLe(a) - lueLe(b));
+    }
   } catch (e) {
     console.error("[background] Lecture des jobs published:", String(e?.message ?? e));
     return;
@@ -24572,10 +24852,16 @@ async function checkPublishedListings(session, { plateforme = null } = {}) {
     .filter((j) => !(sansOpla && j?.platform === "opla"));
   const idsPrio = new Set(prioritaires.map((j) => j.id));
   if (prioritaires.length) console.log(`[background] Détection : ${prioritaires.length} annonce(s) relue(s) en priorité (commande neuve)`);
+  // (0.6.175) Session partagée : une annonce Leboncoin attend l'intervalle de la session (jamais moins que sa règle), et
+  // il n'en entre dans ce passage que ce que le budget permet — les autres plateformes gardent leurs places.
+  const delaiDe = (j) => (partage && j.platform === "leboncoin" ? Math.max(dueDelayMs(j), partage.intervalleMs) : dueDelayMs(j));
+  const placesLbc = partage ? Math.max(0, Math.floor(await jetonsLbcPartage(partage).catch(() => 0))) : Infinity;
+  let lbcRetenues = 0;
   const due = [...prioritaires, ...(jobs ?? [])
     .filter((j) => !idsPrio.has(j.id))
     .filter((j) => !inGrace(j))
-    .filter((j) => !j.last_checked_at || now - Date.parse(j.last_checked_at) > dueDelayMs(j))]
+    .filter((j) => !j.last_checked_at || now - Date.parse(j.last_checked_at) > delaiDe(j))
+    .filter((j) => !(partage && j.platform === "leboncoin") || lbcRetenues++ < placesLbc)]
     .slice(0, SALE_CHECK_MAX_PER_CYCLE);
   if (!due.length) return;
 
@@ -24604,6 +24890,14 @@ async function checkPublishedListings(session, { plateforme = null } = {}) {
   for (let i = 0; i < dueOuverts.length; i++) {
     const job = dueOuverts[i];
     if (coupees.has(job.platform)) continue;
+    // (0.6.175) Session partagée : chaque page Leboncoin se prend au budget de la session (le compte de ce navigateur et
+    // ses comptes délégués) ; budget épuisé → rien de lu ni de tamponné, le passage suivant reprend. Une relecture
+    // désignée par la veille des transactions passe toujours (comptée).
+    if (partage && job.platform === "leboncoin" && !(await prendreJetonLbcPartage(partage, { forcer: idsPrio.has(job.id) }))) {
+      coupees.add(job.platform);
+      console.log(`[background] Détection : budget Leboncoin de la session partagée atteint (${Math.round(partage.parHeure)} pages/h pour ce compte, ${LBC_PARTAGE_LECTURES_HEURE}/h pour la session) — la suite au prochain passage`);
+      continue;
+    }
     let { state, price, en_verification: enVerification, exact: lectureExacte, raison: raisonLecture } = await checkListingState(job.listing_url, job.platform, {
       routine: true, publieLe: job.published_at ?? job.created_at ?? null,
       revueLe: job.platform_fields?.revue_en_ligne_par_releve?.at ?? null,

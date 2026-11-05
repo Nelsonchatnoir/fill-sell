@@ -760,3 +760,24 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 3, 4, 5.
   feuilles consommables de Femmes > Beauté et Hommes > Soins ; jamais les accessoires ; 153 laissée au titre). Case
   Leboncoin grisée dans l'app (lbcCategoryStatus) avec la raison ; filet get-pending-jobs (republication pas engagée close,
   publication en needs_user). Jamais un rayon faux (« Décoration »).
+
+## ⛔ 05/11 soir (décision de Nico) — Session Leboncoin PARTAGÉE (délégation) : un relevé, un budget, pas de nuit (0.6.175)
+Pour TOUT navigateur dont la session Leboncoin sert plusieurs comptes FillSell (il exécute Leboncoin pour au moins un
+autre compte : `rep.delegations`) ; un compte seul garde tout à l'identique. Code : bloc « SESSION LEBONCOIN PARTAGÉE »
+de `chrome-extension/background.js` ; selftest `lbc-session-partagee-rythme`. Mesure d'origine (Louis, 05/11) : 277 + 110
+annonces relues toutes les 2 h, ≈ 190 pages par heure jour et nuit ; « Mes annonces » lu deux fois en 30 s.
+- **Un relevé** : une lecture de « Mes annonces » (et de la liste des ventes) sert tous les comptes de la session pendant
+  15 min, sauf tâche Leboncoin, anti-robot ou pause depuis ; une lecture ratée n'est pas refaite pour un autre compte
+  dans la fenêtre (une commande servie reste en file). Relevé quotidien et ventes de chaque compte ALIGNÉS sur la lecture
+  quotidienne de la session (un compte relevé depuis ≥ 1 h la reprend, sans requête) ; la lecture des ventes s'arrête
+  sur les commandes connues de TOUS les comptes de la session.
+- **Un budget** : pages d'annonce de routine (checkPublishedListings) à 60 par heure pour toute la session (rafale 8),
+  réparties au prorata des annonces de chaque compte ; chaque annonce au plus toutes les max(2 h, annonces ÷ 60) — Louis,
+  387 annonces : 6 h 27. Leboncoin lu à part (la fenêtre des 60 n'est jamais prise aux autres plateformes). Base du
+  chiffre : sebastien64310 (452 annonces) 127 pages en 2 h ≈ 64/h ; jocabroc8 55/h, beautyandthedress 83/h (05/11 20:38).
+- **Pas de nuit** (23:00–07:00 heure de Paris ; l'extension n'avait aucune définition de la nuit) : ni pages de routine,
+  ni relevé quotidien, ni relevé des ventes. Jamais touchés : veille des transactions (10 min) et les relectures qu'elle
+  désigne, relevés servis ou demandés, gestes (publication, retrait, republication) et leur cadence, sonde de session.
+- Ventes : payées par Leboncoin (veille des transactions, relevé) — aucun effet ; « Vendu » posé à la main (main propre)
+  — vu par la page de l'annonce jusqu'à 6 h 27 après le jour (≈ 3 h en moyenne ; avant ≤ 2 h, ≈ 1 h), au plus ≈ 14 h
+  après s'il est posé le soir (nuit puis rattrapage du matin) ; le relevé quotidien le voit aussi.
