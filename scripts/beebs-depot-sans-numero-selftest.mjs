@@ -136,7 +136,7 @@ ok(/L'ancienne annonce, elle, avait été retirée par cette republication/.test
 
 console.log('\n5. Le câblage (handler-watch)');
 const hw = lire('supabase/functions/handler-watch/index.ts');
-ok(/\r?\nconst JUGER_BEEBS_SANS_NUMERO = false;\r?\n/.test(hw), 'interrupteur JUGER_BEEBS_SANS_NUMERO = false (prêt à allumer : 6 fermetures relues sur Beebs ; allumage = feu vert explicite de Nico)');
+ok(/\r?\nconst JUGER_BEEBS_SANS_NUMERO = true;\r?\n/.test(hw), 'interrupteur JUGER_BEEBS_SANS_NUMERO = true (ALLUMÉ le 05/11 au soir, feu vert explicite de Nico)');
 ok(/\nconst JUGER_ANNONCES_PUBLIEES_DISPARUES = false;\n/.test(hw), 'la règle « annonce publiée disparue » reste coupée');
 ok(hw.includes('if (JUGER_BEEBS_SANS_NUMERO && new Date().getUTCMinutes() >= 42 && new Date().getUTCMinutes() < 45) {'), 'une fois par heure, minutes 42 à 44');
 const autresMinutes = [...hw.matchAll(/getUTCMinutes\(\) (>=|<) (\d+)/g)].map((m) => Number(m[2]));

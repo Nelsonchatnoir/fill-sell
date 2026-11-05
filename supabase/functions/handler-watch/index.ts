@@ -140,11 +140,11 @@ const RELANCE_AUTOMATIQUE_DRESSING_VINTED = false;   // (05/11, A4) les relevés
 // platform_listing_id (l'annonce en ligne) — 24 annonces vivantes closes à 16:33. Rallumer sur décision de Nico seulement.
 const JUGER_ANNONCES_PUBLIEES_DISPARUES = false;
 // (05/11, point 6 a, règle de Nico) Un dépôt Beebs sans numéro ni lien n'est plus « En ligne » à vie : jugé par la règle
-// des retraits sans numéro (_shared/beebs-depot-sans-numero.js). PRÊT À ALLUMER (05/11 soir, clôture) :
-// 6 fermetures de la simulation relues sur Beebs (recherche publique : aucune annonce au même titre et au même prix) ; le
-// déploiement qui l'allume attend le feu vert explicite de Nico ; fenêtre portée à 14 jours (Beebs a gardé une annonce
-// invisible ~9,4 jours). Simulation : scripts/simulation-beebs-sans-numero.mjs.
-const JUGER_BEEBS_SANS_NUMERO = false;
+// des retraits sans numéro (_shared/beebs-depot-sans-numero.js). ALLUMÉ le 05/11 au soir (feu vert explicite de Nico) après
+// 6 fermetures de la simulation relues sur Beebs (recherche publique : aucune annonce au même titre et au même prix) ;
+// fenêtre de 14 jours (Beebs a gardé une annonce invisible ~9,4 jours). Simulation : scripts/simulation-beebs-sans-numero.mjs.
+// Couper = remettre false et redéployer handler-watch.
+const JUGER_BEEBS_SANS_NUMERO = true;
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
