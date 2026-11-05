@@ -47,4 +47,14 @@ ok(paysDuVendeur({ paysCompte: paysDuCompte({ jobs: [{ platform: 'beebs' }] }), 
   && eq(plateformesFermeesParPays({ pays: paysDuVendeur({ paysCompte: paysDuCompte({ jobs: [{ platform: 'beebs' }] }), fuseau: 'Europe/London' }) }), []),
   'une vendeuse Beebs installée à Londres garde toutes ses plateformes');
 
+// 5. Câblage dans l'app : les plateformes fermées du compte (déjà lues partout) reçoivent la règle du pays ; rien n'est lu
+// pour un téléphone hors pays anglophone ; la langue de l'app va au profil (mails et notifications).
+const app = (await import('node:fs')).readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+ok(/import \{ paysAnglophoneDuFuseau, paysDuVendeur, paysDuCompte, plateformesFermeesParPays, clesAOuvrir \} from '\.\.\/supabase\/functions\/_shared\/plateformes-pays\.js';/.test(app), 'App importe la règle');
+ok(/const paysTelephone=paysAnglophoneDuFuseau\(fuseau\);\s*if\(!paysTelephone\)\{setPaysPlateformes\(\{pays:null,ouvertes:\[\]\}\);return undefined;\}/.test(app), 'téléphone hors pays anglophone : rien n’est lu, rien ne change');
+ok(/if\(motifAdresse==='france'\)\{setPaysPlateformes\(\{pays:'FR',ouvertes:\[\]\}\);return undefined;\}/.test(app), 'adresse de remise française : France, sans lecture');
+ok(/\.catch\(\(\)=>\{if\(vivant\)setPaysPlateformes\(\{pays:paysTelephone,ouvertes:\[\]\}\);\}\)/.test(app), 'lecture ratée : masqué (garde-fou)');
+ok(/\.\.\.plateformesFermeesHorsFrance\(\{rue:settingsLbcRue,code_postal:settingsLbcCp,ville:settingsLbcVille\}\),\.\.\.plateformesFermeesParPays\(paysPlateformes\)/.test(app), 'plateformesFermees = adresse hors de France ∪ règle du pays');
+ok(/supabase\.from\('profiles'\)\.update\(\{lang\}\)\.eq\('id',user\.id\)\.or\(`lang\.is\.null,lang\.neq\.\$\{lang\}`\)/.test(app), 'la langue de l’app va au profil, seulement quand elle diffère');
+
 console.log(`✓ selftest:plateformes-pays — ${n} assertions`);

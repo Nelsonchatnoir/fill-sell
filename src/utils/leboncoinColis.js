@@ -33,9 +33,10 @@
 
 /** Les TROIS formats de Leboncoin, avec le texte que la plateforme affiche. */
 export const LBC_FORMATS = [
-  { valeur: 'Petit', aide: 'Tient dans une enveloppe, jusqu’à 46 cm.' },
-  { valeur: 'Moyen', aide: 'Tient dans un carton standard, jusqu’à 150 cm de développé.' },
-  { valeur: 'Volumineux', aide: 'Tient dans une voiture ou une camionnette, plus de 150 cm de développé.' },
+  // (05/11, phase 3 point 1) `aideEn` : le même texte pour l'app en anglais. `valeur` reste celle de Leboncoin.
+  { valeur: 'Petit', aide: 'Tient dans une enveloppe, jusqu’à 46 cm.', aideEn: 'Fits in an envelope, up to 46 cm.' },
+  { valeur: 'Moyen', aide: 'Tient dans un carton standard, jusqu’à 150 cm de développé.', aideEn: 'Fits in a standard box, up to 150 cm (length + width + height).' },
+  { valeur: 'Volumineux', aide: 'Tient dans une voiture ou une camionnette, plus de 150 cm de développé.', aideEn: 'Fits in a car or a van, over 150 cm (length + width + height).' },
 ];
 
 /**
@@ -74,14 +75,16 @@ export function formatLeboncoin(formatColis) {
  * un vendeur (domicile vs point relais).
  */
 export const LBC_TRANSPORTEURS = [
-  { cle: 'courrier_suivi', nom: 'Courrier suivi', kgMax: 2, remise: 'Domicile',
-    contrainte: 'Limité à 3 cm d’épaisseur' },
-  { cle: 'shop2shop', nom: 'Shop2Shop by Chronopost', kgMax: 20, remise: 'Magasin & Locker',
-    contrainte: 'L + l + h ≤ 150 cm, ou le côté le plus long ≤ 100 cm' },
-  { cle: 'mondial_relay', nom: 'Mondial Relay', kgMax: 30, remise: 'Magasin & Locker',
-    contrainte: 'L + l + h ≤ 150 cm, et le côté le plus long ≤ 120 cm' },
-  { cle: 'colissimo', nom: 'Colissimo', kgMax: 30, remise: 'Domicile',
-    contrainte: 'L + l + h ≤ 150 cm, ou le côté le plus long ≤ 100 cm' },
+  // (05/11, phase 3 point 1) `remiseEn`, `contrainteEn` : les mêmes textes pour l'app en anglais. `nom` (coché par
+  // l'extension) et `cle` ne changent pas.
+  { cle: 'courrier_suivi', nom: 'Courrier suivi', kgMax: 2, remise: 'Domicile', remiseEn: 'Home',
+    contrainte: 'Limité à 3 cm d’épaisseur', contrainteEn: '3 cm thick max' },
+  { cle: 'shop2shop', nom: 'Shop2Shop by Chronopost', kgMax: 20, remise: 'Magasin & Locker', remiseEn: 'Shop & locker',
+    contrainte: 'L + l + h ≤ 150 cm, ou le côté le plus long ≤ 100 cm', contrainteEn: 'L + W + H ≤ 150 cm, or longest side ≤ 100 cm' },
+  { cle: 'mondial_relay', nom: 'Mondial Relay', kgMax: 30, remise: 'Magasin & Locker', remiseEn: 'Shop & locker',
+    contrainte: 'L + l + h ≤ 150 cm, et le côté le plus long ≤ 120 cm', contrainteEn: 'L + W + H ≤ 150 cm, and longest side ≤ 120 cm' },
+  { cle: 'colissimo', nom: 'Colissimo', kgMax: 30, remise: 'Domicile', remiseEn: 'Home',
+    contrainte: 'L + l + h ≤ 150 cm, ou le côté le plus long ≤ 100 cm', contrainteEn: 'L + W + H ≤ 150 cm, or longest side ≤ 100 cm' },
 ];
 
 // ── RELEVÉ LIVE DU 04/10/2026 (formulaire de dépôt, compte de Nico) ─────────

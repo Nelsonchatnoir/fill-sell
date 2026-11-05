@@ -48,6 +48,13 @@ const DIT_LA_FICHE = [
   { motif: /^maternite/,  classe: 'adulte', sexe: 'F', mot: 'Maternité' },
 ];
 
+/** (05/11, phase 3 point 1) Les mots ci-dessus dans la phrase ANGLAISE (libellés de genre de l'app en anglais,
+ *  i18n/translations.js : Women, Men, Kids, Girl, Boy, Baby). Affichage seul : rien n'est comparé à ces mots. */
+const CAMPS_EN = {
+  'garçon': 'boys', 'fille': 'girls', 'bébé': 'baby', 'enfant': 'kids', 'homme': 'men', 'femme': 'women',
+  'Garçon': 'Boy', 'Fille': 'Girl', 'Bébé': 'Baby', 'Enfant': 'Kids', 'Homme': 'Men', 'Femme': 'Women', 'Maternité': 'Maternity',
+};
+
 /** Le marqueur porté par le chemin du rayon. Le PLUS PRÉCIS gagne : un chemin
  *  « Mode › Garçon › Vêtements (garçon) » dit garçon, pas seulement enfant. */
 export function marqueurDuRayon(chemin) {
@@ -115,9 +122,11 @@ export function phraseIncoherence(inc, lang = 'fr') {
       : `Ce rayon a des tailles ${inc.rayon}, et ta fiche en donne une ${inc.fiche}. C'est souvent le signe qu'il a été rangé trop jeune ou trop vieux — vérifie que c'est le bon.`;
   }
   if (lang === 'en') {
+    const rayon = CAMPS_EN[inc.rayon] ?? inc.rayon;
+    const fiche = CAMPS_EN[inc.fiche] ?? inc.fiche;
     return inc.motif === 'age'
-      ? `This aisle is a “${inc.rayon}” one, and your item says “${inc.fiche}”. Sizes and shipping differ — check it's the right aisle.`
-      : `This aisle is a “${inc.rayon}” one, and your item says “${inc.fiche}”. Check it's the right aisle.`;
+      ? `This aisle is a “${rayon}” one, and your item says “${fiche}”. Sizes and shipping differ — check it's the right aisle.`
+      : `This aisle is a “${rayon}” one, and your item says “${fiche}”. Check it's the right aisle.`;
   }
   return inc.motif === 'age'
     ? `Ce rayon est un rayon « ${inc.rayon} », et ta fiche dit « ${inc.fiche} ». Les tailles et la livraison n'y sont pas les mêmes — vérifie que c'est le bon.`

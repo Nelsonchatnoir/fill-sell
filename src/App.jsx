@@ -214,7 +214,8 @@ import { usePropositionPush } from './notifications/usePropositionPush';
 import { useSortieOpla } from './hooks/useSortieOpla';
 import { etatBascule } from './utils/basculeOplaDepop.js';
 // (25/10, décision de Nico) Leboncoin réservé aux adresses de remise en France.
-import { plateformesFermeesHorsFrance } from '../supabase/functions/_shared/lbc-adresse-france.js';
+import { plateformesFermeesHorsFrance, adresseLbcHorsFrance } from '../supabase/functions/_shared/lbc-adresse-france.js';
+import { paysAnglophoneDuFuseau, paysDuVendeur, paysDuCompte, plateformesFermeesParPays, clesAOuvrir } from '../supabase/functions/_shared/plateformes-pays.js';
 // (25/10, balayage des erreurs visibles, règle 2) La pastille de l'onglet Stock suit la règle de « À régler ».
 import { articlesARegler, plateformesHorsJeu } from './utils/erreursVisibles';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
@@ -2702,10 +2703,50 @@ export default function App({ loginOnly = false }){
   // postal absent de la base officielle française ferme Leboncoin (_shared/lbc-adresse-france.js). Elles sortent
   // de tout ce qui se propose (utils/stockFiltres.plateformesDuCompte) ; pas d'adresse = rien de fermé. Ici,
   // APRÈS les états qu'il lit (TDZ).
+  // ── LES PLATEFORMES PAR PAYS ANGLOPHONE (05/11 soir, lot « Ouverture du Cloud », phase 3 point 2, ordre de Nico) ──
+  // Téléphone réglé sur un pays anglophone suivi (États-Unis, Royaume-Uni, Irlande, Canada, Australie, Nouvelle-Zélande)
+  // et AUCUNE trace française du compte (adresse de remise française, annonce Leboncoin ou Beebs, annonce sur un site en
+  // .fr) : Leboncoin et Beebs sont masqués, Vinted / eBay / Depop aussi tant que coin_config `<plateforme>_pays_<cc>` ≠ 1
+  // (posé après une preuve réelle). France, zone euro, fuseau inconnu : rien n'est lu, rien ne change
+  // (_shared/plateformes-pays.js, scripts/plateformes-pays-selftest.mjs). Une lecture ratée = masqué (garde-fou de Nico :
+  // jamais proposé cassé), sauf adresse de remise française.
+  const [paysPlateformes,setPaysPlateformes]=useState({pays:null,ouvertes:[]});
+  useEffect(()=>{
+    if(!user?.id)return undefined;
+    let fuseau=null;try{fuseau=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch{/* fuseau illisible : rien ne change */}
+    const paysTelephone=paysAnglophoneDuFuseau(fuseau);
+    if(!paysTelephone){setPaysPlateformes({pays:null,ouvertes:[]});return undefined;}
+    const motifAdresse=adresseLbcHorsFrance({rue:settingsLbcRue,code_postal:settingsLbcCp,ville:settingsLbcVille}).motif;
+    if(motifAdresse==='france'){setPaysPlateformes({pays:'FR',ouvertes:[]});return undefined;}
+    let vivant=true;
+    (async()=>{
+      const {data:trace,error:e1}=await supabase.from('cross_post_jobs').select('platform, listing_url').eq('user_id',user.id)
+        .or('platform.in.(leboncoin,beebs),listing_url.ilike.*.fr/*').limit(1);
+      if(e1)throw e1;
+      const pays=paysDuVendeur({paysCompte:paysDuCompte({motifAdresse,jobs:trace??[]}),fuseau});
+      const cles=clesAOuvrir(pays);
+      let ouvertes=[];
+      if(cles.length){
+        const {data,error:e2}=await supabase.from('coin_config').select('key, value').in('key',cles);
+        if(e2)throw e2;
+        ouvertes=(data??[]).filter(r=>Number(r.value)===1).map(r=>r.key);
+      }
+      if(vivant)setPaysPlateformes({pays,ouvertes});
+    })().catch(()=>{if(vivant)setPaysPlateformes({pays:paysTelephone,ouvertes:[]});});
+    return()=>{vivant=false;};
+  },[user?.id,settingsLbcRue,settingsLbcCp,settingsLbcVille]);
   const plateformesFermees=useMemo(
-    ()=>plateformesFermeesHorsFrance({rue:settingsLbcRue,code_postal:settingsLbcCp,ville:settingsLbcVille}),
-    [settingsLbcRue,settingsLbcCp,settingsLbcVille],
+    ()=>[...new Set([...plateformesFermeesHorsFrance({rue:settingsLbcRue,code_postal:settingsLbcCp,ville:settingsLbcVille}),...plateformesFermeesParPays(paysPlateformes)])],
+    [settingsLbcRue,settingsLbcCp,settingsLbcVille,paysPlateformes],
   );
+  // ── LA LANGUE DU PROFIL (05/11 soir, phase 3 point 1) ──
+  // Les mails et les notifications de vente suivent profiles.lang, qui valait « fr » pour TOUS les comptes : la langue
+  // de l'app ne vivait que dans fs_lang. Écrite quand elle diffère seulement (aucune ligne inchangée réécrite) ; la
+  // colonne est modifiable par le compte lui-même (droits du 16/09), sans migration.
+  useEffect(()=>{
+    if(!user?.id||(lang!=='en'&&lang!=='fr'))return;
+    supabase.from('profiles').update({lang}).eq('id',user.id).or(`lang.is.null,lang.neq.${lang}`).then(()=>{},()=>{});
+  },[user?.id,lang]);
   const [showBugReport,setShowBugReport]=useState(false);
   const [bugMessage,setBugMessage]=useState("");
   // (25/10) Le même formulaire sert « Contacter le support » (une question) et « Signaler un bug ».

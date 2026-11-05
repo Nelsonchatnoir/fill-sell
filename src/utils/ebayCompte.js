@@ -37,11 +37,13 @@ async function lireJetonSession() {
   }
 }
 
-async function appeler(nom, body) {
+// (05/11, phase 3 point 1) `lang` : les messages d'erreur montrés à l'écran, en anglais quand l'app l'est — le
+// français ne change pas d'un caractère (défaut 'fr').
+async function appeler(nom, body, lang = 'fr') {
   const action = body?.action ?? nom;
   console.info(`${TRACE} → ${nom} (${action})`);
   const token = await lireJetonSession();
-  if (!token) throw new Error('Session FillSell introuvable : recharge la page puis réessaie.');
+  if (!token) throw new Error(lang === 'en' ? 'FillSell session not found: reload the page and try again.' : 'Session FillSell introuvable : recharge la page puis réessaie.');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), DELAI_APPEL_MS);
   let r;
@@ -56,8 +58,8 @@ async function appeler(nom, body) {
     const timeout = e?.name === 'AbortError';
     console.warn(`${TRACE} ✗ ${nom} (${action}) — ${timeout ? 'délai dépassé' : 'réseau'} :`, e?.message ?? e);
     throw new Error(timeout
-      ? `FillSell n'a pas répondu en ${DELAI_APPEL_MS / 1000} s. Réessaie dans un instant.`
-      : `Appel impossible (réseau) : ${e?.message ?? e}`);
+      ? (lang === 'en' ? `FillSell didn't answer within ${DELAI_APPEL_MS / 1000} s. Try again in a moment.` : `FillSell n'a pas répondu en ${DELAI_APPEL_MS / 1000} s. Réessaie dans un instant.`)
+      : (lang === 'en' ? `Couldn't reach FillSell (network): ${e?.message ?? e}` : `Appel impossible (réseau) : ${e?.message ?? e}`));
   } finally {
     clearTimeout(timer);
   }
@@ -68,16 +70,16 @@ async function appeler(nom, body) {
 }
 
 // URL de consentement eBay pour l'utilisateur courant (state signé côté serveur).
-export const demarrerConnexionEbay = () => appeler('ebay-oauth-start');
+export const demarrerConnexionEbay = (lang = 'fr') => appeler('ebay-oauth-start', undefined, lang);
 
 // { etat } sans appel eBay ; { etat, checklist } avec relevé Account API.
-export const lireEtatEbay = (action = 'statut') => appeler('ebay-account', { action });
+export const lireEtatEbay = (action = 'statut', lang = 'fr') => appeler('ebay-account', { action }, lang);
 
 // choisir_politique { type, id } · creer_politique { type, options } ·
 // activer_politiques · deconnecter · services_livraison (liste vivante des
 // modes d'envoi eBay FR) · detail_politique { type, id } (lecture seule du
 // contenu) · poser_livraison { services:[{code, frais_eur}], delai_jours }
-export const agirEbay = (action, params = {}) => appeler('ebay-account', { action, ...params });
+export const agirEbay = (action, params = {}, lang = 'fr') => appeler('ebay-account', { action, ...params }, lang);
 
 // Ouvre l'écran de consentement : plein écran sur le web (eBay revient sur
 // /ebay/retour), navigateur système sur natif (le retour atterrit sur la page

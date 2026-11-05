@@ -4,7 +4,9 @@ import { supabase } from '../lib/supabase';
 import { codePlateformeVente } from './venteModale.js';
 
 const attentes = new Map();
-export async function enregistrerVenteArticle({ userId, article, prix, frais = 0, quantite = 1, plateforme, cle },
+// (05/11, phase 3 point 1) `lang` : les messages d'erreur montrés à l'écran, en anglais quand l'app l'est ; le
+// français ne change pas (défaut 'fr').
+export async function enregistrerVenteArticle({ userId, article, prix, frais = 0, quantite = 1, plateforme, cle, lang = 'fr' },
   { client = supabase, stockage, uuid = () => crypto.randomUUID() } = {}) {
   if (stockage === undefined) {
     try { stockage = globalThis.localStorage; } catch { /* stockage désactivé */ }
@@ -26,10 +28,10 @@ export async function enregistrerVenteArticle({ userId, article, prix, frais = 0
     p_quantite_attendue: quantiteAttendue, p_plateforme: codePlateformeVente(plateforme),
   });
   // Une erreur de transport ne prouve pas l'échec du serveur : garder la clé.
-  if (error) throw new Error("La confirmation n'est pas arrivée. Réessaie : la vente ne sera pas comptée deux fois.");
-  if (!data || typeof data.ok !== 'boolean') throw new Error('La confirmation de vente est indisponible. Réessaie.');
+  if (error) throw new Error(lang === 'en' ? "The confirmation didn't come through. Try again: the sale won't be counted twice." : "La confirmation n'est pas arrivée. Réessaie : la vente ne sera pas comptée deux fois.");
+  if (!data || typeof data.ok !== 'boolean') throw new Error(lang === 'en' ? 'The sale confirmation is unavailable. Try again.' : 'La confirmation de vente est indisponible. Réessaie.');
   attentes.delete(emplacement);
   try { stockage?.removeItem(emplacement); } catch { /* reçu conservé côté serveur */ }
-  if (!data.ok) throw new Error(data.reason || 'La vente doit être vérifiée avant de continuer.');
+  if (!data.ok) throw new Error(data.reason || (lang === 'en' ? 'The sale needs to be checked before going further.' : 'La vente doit être vérifiée avant de continuer.'));
   return data;
 }

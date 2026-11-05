@@ -103,8 +103,15 @@ export function relanceRefusBeebs(job) {
   return { verdict: e === String(refus.empreinte_contenu).trim() ? "meme_contenu" : "contenu_modifie", refus };
 }
 
-/** Le motif du job retenu par le serveur (needs_user « refus_beebs_meme_contenu »). */
-export function messageRefusBeebsMemeContenu(job) {
+/** Le motif du job retenu par le serveur (needs_user « refus_beebs_meme_contenu »). (05/11, phase 3 point 1) `lang` :
+ *  le même motif en anglais ; défaut 'fr', le texte français ne change pas. */
+export function messageRefusBeebsMemeContenu(job, lang = "fr") {
+  if (lang === "en") {
+    const quoiEn = job?.action === "republish" ? "the new listing" : "this listing";
+    return `Beebs refused ${quoiEn} at its review (Beebs doesn't say why), and it would go out again unchanged: `
+      + "same title, same description, same photos, same category — Beebs would refuse it again. Nothing was sent to "
+      + "Beebs, nothing was counted. Change the text, photos or category first, then relaunch.";
+  }
   const quoi = job?.action === "republish" ? "la nouvelle annonce" : "cette annonce";
   return `Beebs a refusé ${quoi} à sa vérification (Beebs ne dit pas pourquoi), et elle repartirait à l'identique : `
     + "même titre, même description, mêmes photos, même rayon — Beebs la refuserait de même. Rien n'a été envoyé à "

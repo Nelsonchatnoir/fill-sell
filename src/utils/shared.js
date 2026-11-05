@@ -2577,10 +2577,11 @@ export const SKELETON_ITEMS=[
   {title:'Sac Kelly Hermès',     type:'Mode',       marque:'Hermès',  buy:125, qty:1,  days:1},
   {title:'Jean Levis 501',       type:'Mode',       marque:'Levis',   buy:15,  qty:1,  days:null},
 ];
+// (05/11, phase 3 point 1) `titleEn` : le titre de l'exemple quand l'app est en anglais (Ventes vides, StockTab).
 export const SKELETON_SOLD=[
-  {title:'Jean Levis 501',       type:'Mode',       marque:'Levis',   buy:15, sell:38, margin:23, marginPct:61},
-  {title:'Perceuse Makita 18V',  type:'High-Tech',  marque:'Makita',  buy:45, sell:89, margin:44, marginPct:49},
-  {title:'Paquet Pokémon ×5',    type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
+  {title:'Jean Levis 501',       titleEn:'Levis 501 jeans',  type:'Mode',       marque:'Levis',   buy:15, sell:38, margin:23, marginPct:61},
+  {title:'Perceuse Makita 18V',  titleEn:'Makita 18V drill', type:'High-Tech',  marque:'Makita',  buy:45, sell:89, margin:44, marginPct:49},
+  {title:'Paquet Pokémon ×5',    titleEn:'Pokémon pack ×5',  type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
 ];
 
 const VOICE_EXAMPLES_FR_RAW = [
