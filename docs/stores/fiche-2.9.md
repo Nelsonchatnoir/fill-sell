@@ -107,3 +107,14 @@ EN :
 - Your queue shows the time of each step of a repost.
 - In France: FillSell Cloud, the option that posts for you even with your computer off (7-day free trial).
 - A notification for every sale, and many fixes.
+
+## Google Play (05/11 soir) — brouillons enregistrés, rien envoyé (publication gérée ACTIVÉE)
+- Publication gérée : ACTIVÉE (elle était désactivée) — rien ne sort sans « Publier les modifications » de Nico.
+- Fiche par défaut fr-FR : nom « FillSell – Crosslisting » (était « FillSell ») ; description : « En France, avec
+  FillSell Cloud, plus besoin d'ordinateur… » (le reste inchangé : Depop, mentions d'abonnement Google Play et liens
+  confidentialité / conditions déjà présents).
+- Traduction en-US : nom « FillSell – Crosslisting » ; description courte « One photo, one listing, posted to all your
+  marketplaces. » (nommait Leboncoin et Beebs) ; description : « The marketplaces depend on your country: in France,
+  Vinted, Leboncoin, eBay, Beebs and Depop; elsewhere, FillSell only shows those that work in your country. » et « In
+  France, with FillSell Cloud, no computer needed… ».
+- URL de confidentialité (Contenu de l'app) : https://fillsell.app/legal — inchangée (la page suit la langue).
