@@ -438,6 +438,8 @@
     "selftest:lbc-interdits": "node --import ./scripts/loader-ext.mjs scripts/lbc-interdits-selftest.mjs",
     "selftest:retrait-vente-prouvee": "node scripts/retrait-vente-prouvee-selftest.mjs",
     "selftest:visite-controle-lbc": "node scripts/visite-controle-lbc-selftest.mjs",
+    "selftest:affichage-en-ligne": "node --import ./scripts/loader-ext.mjs scripts/affichage-en-ligne-selftest.mjs",
+    "selftest:remise-en-vente-chemins": "node scripts/remise-en-vente-chemins-selftest.mjs",
     "selftest:vente-relevee-sans-annonce": "node scripts/vente-relevee-sans-annonce-selftest.mjs",
     "selftest:depot-muet": "node scripts/depot-muet-selftest.mjs",
     "selftest:recreation-cause-levee": "node scripts/recreation-cause-levee-selftest.mjs",

@@ -17,6 +17,7 @@
 // FillSell (computeRemovalInfo.publishedActive + listing_url), aucune
 // republication vivante sur cette plateforme, aucune aboutie depuis 24 h.
 import { computeRemovalInfo, vintedMasqueeMalgreJobs, estGeleLivres, estArretUtilisateur } from './publicationState';
+import { plateformesEnVerification } from "./enVerification.js";
 import { attenteAutomatique } from '../../supabase/functions/_shared/etat-job.js';
 import { republierArticleVinted } from './vintedSync';
 import { PLATEFORMES_STOCK, plateformesDuCompte } from './stockFiltres';
@@ -79,7 +80,13 @@ export function repubEtatPlateforme(item, jobsAll, platform) {
   } else {
     if (!item || item.disparu_le || item.statut === 'vendu') return 'ineligible';
     const { publishedActive, latestPubByPlatform } = computeRemovalInfo(jobs);
+    const enVerification = plateformesEnVerification(publishedActive, latestPubByPlatform);
     if (!publishedActive.includes(platform)) return 'ineligible';
+    // (05/11, point 6 a) Une annonce encore EN VÉRIFICATION chez la plateforme n'est pas en ligne : jamais « Remonter »
+    // (c'est ainsi que 5 republications ont été créées le 31/10 sur des annonces refusées par Beebs).
+    if (enVerification.includes(platform)) return 'ineligible';
+    // Opla est quittée (10/10) : jamais de republication.
+    if (platform === 'opla') return 'ineligible';
     // Sans lien, le retrait ne saurait pas cibler : pas republiable (Beebs en
     // vérification, URL jamais captée…).
     if (!String(latestPubByPlatform[platform]?.listing_url ?? '').trim()) return 'ineligible';

@@ -107,7 +107,23 @@ console.log("\n[E] ops-digest : la section rouge");
   ok(/republish_source:platform_fields->>republish_source/.test(od) && /file_pause:platform_settings->file_pause/.test(od) && /beta_flags/.test(od),
     "lit ce que le juge consulte : platform_fields utiles, file_pause, délégation");
   ok(/executantsDeclares\(profils\)/.test(od), "relit les exécutants des délégations");
-  ok(/\.gte\("platform_fields->>processing_since", depuis8j\)/.test(od), "derniers départs : processing_since des seuls comptes suspects");
+  // (05/11, point 8 b) le départ se lit aussi sur les traces qui ne s'effacent pas (publication, retrait fait).
+  ok(/platform_fields->>processing_since\.gte\.\$\{depuis8j\},published_at\.gte\.\$\{depuis8j\},platform_fields->>deleted_at\.gte\.\$\{depuis8j\}/.test(od),
+    "derniers départs : processing_since, publication ou retrait fait, des seuls comptes suspects");
+  // (05/11, point 8 c et d) « ouverte » = un passage dans l'heure ; une pause Leboncoin n'est jamais une file arrêtée.
+  ok(M.VU_RECEMMENT_MS === 3600_000, "extension « ouverte » : un passage dans l'heure (plus 24 h)");
+  ok(M.pauseLeboncoinActive({ platform_settings: { leboncoin: { blocage_acces: { depuis: "2026-11-04T12:36:52Z" } } } })
+    && !M.pauseLeboncoinActive({ platform_settings: { leboncoin: { blocage_acces: { depuis: "x", leve_le: "y" } } } })
+    && !M.pauseLeboncoinActive({ platform_settings: {} }), "pause Leboncoin en cours : reconnue (levée ou absente : non)");
+  {
+    const T = Date.parse("2026-11-05T15:00:00Z");
+    const jobLbc = { id: "g1", user_id: "g", platform: "leboncoin", action: "publish", status: "pending", created_at: "2026-11-04T12:00:00Z", platform_fields: {} };
+    const pr = new Map([["g", { username: "goulven", extension_last_seen_at: "2026-11-05T14:55:00Z", platform_settings: { leboncoin: { blocage_acces: { depuis: "2026-11-04T12:36:52Z" } } } }]]);
+    const r = M.filesArretees({ jobs: [jobLbc], profils: pr, derniersDeparts: new Map(), maintenant: T });
+    ok(r.arretees.length === 0 && r.attentesVoulues === 1, "Leboncoin en pause chez goulventroad : attente de la plateforme, pas de rouge", JSON.stringify(r));
+    const pr2 = new Map([["g", { username: "x", extension_last_seen_at: "2026-11-05T04:00:00Z", platform_settings: {} }]]);
+    ok(M.filesArretees({ jobs: [jobLbc], profils: pr2, derniersDeparts: new Map(), maintenant: T }).arretees.length === 0, "extension muette depuis 11 h : pas « ouverte », pas de rouge");
+  }
   ok(/range\(page \* 1000, page \* 1000 \+ 999\)/.test(od), "lu par pages (PostgREST coupe à 1 000 lignes)");
 }
 

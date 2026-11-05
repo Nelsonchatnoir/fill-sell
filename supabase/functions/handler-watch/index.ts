@@ -62,7 +62,7 @@ import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 // (05/11, A4) Relevés de veille au retour de la connexion : Leboncoin, Beebs, Depop, lecture seule.
 import { FENETRE_ARRETS_MS, PLATEFORMES_VEILLE_REPRISE, STATUTS_ARRET_RELEVE, ligneReleveDeVeille, murConnexionVeille, relevesDeVeilleAReposer } from "../_shared/releves-de-veille.js";
-import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, pfAnnonceEnVerification, PLATEFORMES_RELEVEES, POSES_PAR_DISPARUE } from "../_shared/annonce-publiee-disparue.js";
+import { decisionAnnoncePubliee, identifiantAnnoncePubliee, patchAnnoncePublieeDisparue, pfAnnonceEnVerification, PLATEFORMES_RELEVEES, POSES_PAR_DISPARUE } from "../_shared/annonce-publiee-disparue.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs, constats404Beebs, deuxConstats404Prouvent } from "../_shared/beebs-preuve-retrait.js";
 // (25/10, règle de Nico) Un retrait sur une annonce déjà absente se clôt seul : `deleted` + deja_absente.
 import { numeroAnnonceDuJob, jugerRetraitDejaAbsent, champsRetraitDejaAbsent, copiesAClore, clotureCopie } from "../_shared/retrait-deja-absent.js";
@@ -6559,7 +6559,10 @@ async function jugerAnnoncesPublieesDisparues(supabase: any, tranche: number) {
     fiches.push(...(data ?? []));
   }
   const ficheDe = new Map(fiches.map((f) => [String(f.id), f]));
-  const ident = (j: unknown) => String(identifiantAnnonceJob(j) ?? "").trim();
+  // (05/11 16:33, INCIDENT — décision de Nico) L'annonce EN LIGNE du dépôt publié (platform_listing_id), jamais l'ancienne
+  // d'une republication (platform_fields.vinted_item_id, que lit identifiantAnnonceJob) : 24 republications Vinted vivantes
+  // closes à 16:33 sur les vues de l'annonce qu'elles avaient retirée. Traces, relevés et décision lisent ce numéro-là.
+  const ident = (j: unknown) => String(identifiantAnnoncePubliee(j) ?? "").trim();
   // Autres plateformes : la ligne du relevé, par identifiant exact.
   const autres = [...new Set(jobs.filter((j) => j.platform !== "vinted").map(ident).filter(Boolean))];
   // deno-lint-ignore no-explicit-any

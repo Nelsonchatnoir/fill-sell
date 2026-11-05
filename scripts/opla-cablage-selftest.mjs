@@ -68,7 +68,8 @@ console.log('\n1. Opla est vraiment branchée côté DONNÉES');
   // Un job opla 'published' doit entrer dans l'état de l'article — sinon
   // l'écran Stock serait aveugle à la 5e plateforme le jour de l'ouverture.
   const e = etatPlateformes([job('vinted'), job('opla')], 'fr');
-  ok('un job opla publié compte comme « en ligne »', e.enLigne.includes('opla'), e.enLigne);
+  // (05/11, règle de Nico) Opla est QUITTÉE (10/10) : un dépôt Opla publié n'est plus jamais « en ligne » ni « occupé ».
+  ok('un job opla publié ne compte plus « en ligne » (Opla quittée)', !e.enLigne.includes('opla') && !e.occupees.includes('opla'), e.enLigne);
 
   // Le TRI vit dans annoncesEncoreEnLigne (ORDRE_PLATEFORMES), pas dans
   // etatPlateformes qui rend l'ordre des jobs. C'est cette fonction-là qu'il

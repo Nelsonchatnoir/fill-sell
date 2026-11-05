@@ -690,7 +690,7 @@ export async function lireDerniereSyncReussie(userId) {
   if (!userId) return null;
   const { data, error } = await supabase
     .from('vinted_sync_runs')
-    .select('id,finished_at,declencheur,vinted_login,items_vus')
+    .select('id,started_at,finished_at,declencheur,vinted_login,items_vus')
     .eq('user_id', userId)
     .eq('kind', 'dressing')
     .eq('status', 'done')
@@ -698,5 +698,22 @@ export async function lireDerniereSyncReussie(userId) {
     .order('finished_at', { ascending: false })
     .limit(1);
   if (error) return null;
-  return data?.[0] ?? null;
+  const run = data?.[0] ?? null;
+  if (!run) return null;
+  // (05/11, point 6 c — règle de Nico) Le compteur de la boutique ne compte que les annonces RÉELLEMENT en vente : le
+  // relevé lit tout le dressing, vendues comprises (louis-seller : 279 lues = 267 en vente + 12 vendues encore affichées).
+  // Les annonces relevées « active » pendant CE relevé (une lecture comptée, sans les lignes). Illisible → rien d'inventé.
+  run.en_vente = await compterEnVenteDuReleve(userId, run).catch(() => null);
+  return run;
+}
+
+/** Le nombre d'annonces Vinted relevées « active » pendant un relevé du dressing (null si illisible). */
+export async function compterEnVenteDuReleve(userId, run) {
+  const debut = Date.parse(run?.started_at ?? ''), fin = Date.parse(run?.finished_at ?? '');
+  if (!userId || !Number.isFinite(debut) || !Number.isFinite(fin)) return null;
+  const { count, error } = await supabase.from('vinted_listing_snapshots')
+    .select('vinted_item_id', { count: 'exact', head: true })
+    .eq('user_id', userId).eq('status', 'active')
+    .gte('captured_at', new Date(debut - 60_000).toISOString()).lte('captured_at', new Date(fin + 60_000).toISOString());
+  return error || !Number.isFinite(count) ? null : count;
 }

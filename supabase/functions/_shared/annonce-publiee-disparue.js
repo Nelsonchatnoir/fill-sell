@@ -24,13 +24,43 @@
 //    (spend_coins_and_republish : dernier dépôt « published »), aucune tâche ne repart en boucle dessus. La fiche
 //    n'est jamais marquée vendue ici (la vente a son propre circuit) ; ses autres plateformes ne bougent pas.
 // Pur (Node + Deno) : scripts/annonce-publiee-disparue-selftest.mjs.
+//
+// (05/11 16:33, INCIDENT — décision de Nico) LE JUGE LIT L'ANNONCE EN LIGNE, JAMAIS L'ANCIENNE. La règle a clos 24
+// republications Vinted VIVANTES (2189c4d8 ×12, 8a2eba68 ×8, f8aa02a5 ×3, f0acd3af ×1) : elle identifiait l'annonce par
+// identifiantAnnonceJob, qui lit d'abord platform_fields.vinted_item_id — pour une republication, l'ANCIENNE annonce, retirée
+// par la republication elle-même — au lieu de platform_listing_id, l'annonce EN LIGNE. Exemple : republication fbe12f96,
+// en ligne 10577905434 (vue « active » au relevé complet du 05/11 00:23), jugée sur 10534381485 (retirée le 28/10, absente
+// des relevés depuis) → « absente de 2 relevés ». identifiantAnnonceJob reste juste pour une republication EN PAUSE pas
+// encore recréée (vinted_item_id y est la cible) ; le juge des annonces PUBLIÉES a son identifiant, ci-dessous, utilisé
+// partout (handler-watch : traces, relevés ; ici : garde « identifiant inconnu » et décision).
+// Simulation du parc en lecture seule : scripts/simulation-annonces-publiees-disparues.mjs.
 
-import { decisionIntrouvable, identifiantAnnonceJob, messageDisparueConfirmee } from './introuvable-a-confirmer.js';
+import { decisionIntrouvable, messageDisparueConfirmee } from './introuvable-a-confirmer.js';
 
 export const PLATEFORMES_RELEVEES = ['vinted', 'leboncoin', 'beebs', 'depop'];
 
 const t = (v) => { const x = Date.parse(String(v ?? '')); return Number.isFinite(x) ? x : NaN; };
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', depop: 'Depop' };
+
+/**
+ * L'identifiant de l'annonce EN LIGNE d'un dépôt publié (05/11, décision de Nico) — jamais l'ancienne d'une republication.
+ * Vinted : platform_listing_id, sinon le numéro du lien (/items/<n>), et platform_fields.vinted_item_id seulement pour un
+ * dépôt « publish » qui n'a ni l'un ni l'autre (il n'a pas d'ancienne annonce). Autres plateformes : platform_listing_id,
+ * sinon le lien (inchangé : identifiantAnnonceJob les lisait déjà dans cet ordre).
+ * @param {any} job
+ * @returns {string | null}
+ */
+export function identifiantAnnoncePubliee(job) {
+  const pf = job?.platform_fields ?? {};
+  const enLigne = String(job?.platform_listing_id ?? '').trim();
+  if (String(job?.platform ?? '') === 'vinted') {
+    const brut = enLigne
+      || (String(job?.listing_url ?? '').match(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1] ?? '')
+      || (String(job?.action ?? '') === 'publish' ? String(pf.vinted_item_id ?? '').trim() : '');
+    return /^\d+$/.test(brut) ? brut : null;
+  }
+  return enLigne || String(job?.listing_url ?? '').trim() || null;
+}
 
 /** La « lecture ratée » d'une annonce publiée : la détection de vente l'a déclarée non vérifiable (check_unresolved). */
 export function lectureRateeAnnoncePubliee(job) {
@@ -51,17 +81,18 @@ export function decisionAnnoncePubliee({ job, fiche = null, vu = null, annonce =
   if (String(job?.status ?? '') !== 'published' || !['publish', 'republish'].includes(String(job?.action ?? ''))) {
     return { decision: 'attendre', raison: "pas une annonce publiée" };
   }
-  if (!identifiantAnnonceJob(job)) return { decision: 'attendre', raison: "identifiant exact de l'annonce inconnu" };
+  const ident = identifiantAnnoncePubliee(job);
+  if (!ident) return { decision: 'attendre', raison: "identifiant exact de l'annonce en ligne inconnu" };
   const lecture = lectureRateeAnnoncePubliee(job);
   if (!lecture) return { decision: 'attendre', raison: 'aucune lecture ratée à répétition' };
   // Beebs : relevée dans l'onglet « en vérification » (et pas disparue depuis) → jamais « disparue ».
   if (annonce && String(annonce.statut_plateforme ?? '') === 'en_verification' && !(t(annonce.disparu_le) > t(annonce.vu_le))) {
     return { decision: 'en_verification', raison: `relevée « en vérification » chez ${NOMS[platform] ?? platform} le ${String(annonce.vu_le ?? '?')}` };
   }
-  const d = decisionIntrouvable({
-    job: { ...job, platform_fields: { ...(job.platform_fields ?? {}), introuvable_a_confirmer: { depuis: lecture, premiere: lecture } } },
-    fiche, vu, annonce, runs, boutique, creeLe,
-  });
+  // decisionIntrouvable raisonne sur l'annonce EN LIGNE : sa garde « identifiant inconnu » lit vinted_item_id (Vinted).
+  const pfJuge = { ...(job.platform_fields ?? {}), introuvable_a_confirmer: { depuis: lecture, premiere: lecture } };
+  if (platform === 'vinted') pfJuge.vinted_item_id = ident;
+  const d = decisionIntrouvable({ job: { ...job, platform_fields: pfJuge }, fiche, vu, annonce, runs, boutique, creeLe });
   if (d.decision === 'confirmer') {
     // Une annonce Vinted MASQUÉE ou en brouillon par la personne n'est pas disparue : elle peut revenir d'un clic. Seules
     // l'absence prouvée, la vente et la fermeture closent (simulé sur la prod le 05/11 : 31 annonces « hidden » épargnées).

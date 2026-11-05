@@ -22,7 +22,9 @@ import { estFileEnPause, jobRetenuParPause } from "./file-pause.js";
 import { retraitEngage } from "./retenue-creneau.js";
 
 export const ATTENTE_ALERTE_MS = 6 * 3600_000;
-export const VU_RECEMMENT_MS = 24 * 3600_000;
+// (05/11, point 8 — faux positif c) « Ouverte » = un passage dans l'heure : une extension muette depuis 10 à 18 h n'est
+// pas « ouverte » (c'était 24 h).
+export const VU_RECEMMENT_MS = 3600_000;
 export const PLATEFORMES_EXTENSION = ["vinted", "leboncoin", "beebs", "depop"];
 export const ACTIONS_SUIVIES = ["publish", "republish", "delete"];
 
@@ -88,6 +90,12 @@ export function executantsDeclares(profils) {
  *                     récent du compte sur la plateforme, toutes tâches confondues).
  * @returns {{ arretees: any[], filesQuiAvancent: number, extensionsFermees: number, attentesVoulues: number }}
  */
+/** (05/11, point 8 d) Une pause Leboncoin en cours (blocage_acces posé, pas encore levé) sur ce profil. */
+export function pauseLeboncoinActive(profil) {
+  const b = profil?.platform_settings?.leboncoin?.blocage_acces;
+  return Boolean(b && typeof b === "object" && !b.leve_le);
+}
+
 export function filesArretees({ jobs, profils, derniersDeparts, maintenant = Date.now() }) {
   const groupes = new Map();
   let attentesVoulues = 0;
@@ -112,6 +120,9 @@ export function filesArretees({ jobs, profils, derniersDeparts, maintenant = Dat
     // L'extension n'a pas tourné 6 h après l'échéance, ou pas depuis 24 h : l'ordinateur est éteint (pas une file
     // arrêtée par nous — la section « pending > 48 h » le dit).
     if (vu == null || vu < g.echeance + ATTENTE_ALERTE_MS || maintenant - vu > VU_RECEMMENT_MS) { extensionsFermees++; continue; }
+    // (05/11, point 8 — faux positif d) Leboncoin en PAUSE chez le compte qui exécute (restriction de Leboncoin, visite de
+    // contrôle du serveur) : une attente de la plateforme, jamais une file arrêtée par nous.
+    if (g.plateforme === "leboncoin" && pauseLeboncoinActive(ex.profil)) { attentesVoulues += g.jobs.length; continue; }
     const depart = derniersDeparts.get(g.cle) ?? null;
     // Quelque chose est parti dans les 6 h qui précèdent sa dernière visite : la file avance (cadence, une à la fois).
     if (depart != null && depart >= vu - ATTENTE_ALERTE_MS) { filesQuiAvancent++; continue; }

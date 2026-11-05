@@ -36,6 +36,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { computeRemovalInfo, vintedPresenceArticle } from './publicationState';
+import { plateformesEnVerification } from "./enVerification.js";
 import { natureNeedsUser, republicationAnnonceDisparue } from './shared';
 import { libellesChampsDemandes } from './etatsPublication';
 import { plateformesJumelles } from './copiesJumelles';
@@ -232,9 +233,14 @@ export function champManquant(job, lang = 'fr') {
  */
 export function etatPlateformes(jobs, lang = 'fr', item = null) {
   const liste = Array.isArray(jobs) ? jobs : [];
-  const { publishedActive } = computeRemovalInfo(liste);
-  let enLigne = Array.isArray(publishedActive) ? publishedActive.slice() : [];
-  let occupees = enLigne.slice();
+  const { publishedActive, latestPubByPlatform } = computeRemovalInfo(liste);
+  const enVerification = plateformesEnVerification(publishedActive, latestPubByPlatform);
+  // (05/11, point 6 b — règle de Nico) Opla est QUITTÉE (10/10) : plus aucun dépôt Opla n'est « en ligne » ni « occupé »
+  // nulle part (Stock, Tableau, Statistiques), pour tous les comptes.
+  const actives = (Array.isArray(publishedActive) ? publishedActive : []).filter((p) => p !== 'opla');
+  let occupees = actives.slice();
+  // (05/11, point 6 a) En vérification chez la plateforme : occupée (jamais de doublon), jamais « en ligne ».
+  let enLigne = actives.filter((p) => !enVerification.includes(p));
   if (item) {
     // Vinted sur l'ARTICLE (cf. bandeau de tête) — les trois autres
     // plateformes restent strictement computeRemovalInfo.
@@ -290,6 +296,8 @@ export function etatPlateformes(jobs, lang = 'fr', item = null) {
   return {
     enLigne,
     occupees,
+    // (05/11, point 6 a) les plateformes où l'annonce attend la vérification de la plateforme (occupées, pas en ligne).
+    enVerification: enVerification.filter((p) => occupees.includes(p)),
     aCompleter: [...aCompleter.values()],
     enEchec: [...enEchec.values()],
     enConfirmation: [...enConfirmation.values()],

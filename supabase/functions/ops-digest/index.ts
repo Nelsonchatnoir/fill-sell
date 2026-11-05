@@ -613,11 +613,11 @@ serve(async (req) => {
     const lireProfils = async (ids: string[]) => {
       for (let i = 0; i < ids.length; i += 200) {
         const { data, error } = await supabase.from("profiles")
-          .select("id, username, email, extension_last_seen_at, beta_flags, file_pause:platform_settings->file_pause").in("id", ids.slice(i, i + 200));
+          .select("id, username, email, extension_last_seen_at, beta_flags, file_pause:platform_settings->file_pause, blocage_lbc:platform_settings->leboncoin->blocage_acces").in("id", ids.slice(i, i + 200));
         if (error) throw new Error(error.message);
         for (const p of (data ?? []) as Array<Record<string, unknown>>) {
-          const { file_pause, ...reste } = p;
-          profils.set(String(p.id), { ...reste, platform_settings: { file_pause } });
+          const { file_pause, blocage_lbc, ...reste } = p;
+          profils.set(String(p.id), { ...reste, platform_settings: { file_pause, leboncoin: { blocage_acces: blocage_lbc ?? null } } });
         }
       }
     };
@@ -631,12 +631,15 @@ serve(async (req) => {
     for (let i = 0; i < comptes.length; i += 100) {
       for (let page = 0; page < 10; page++) {
         const { data, error } = await supabase.from("cross_post_jobs")
-          .select("user_id, platform, ps:platform_fields->>processing_since")
-          .in("user_id", comptes.slice(i, i + 100)).gte("platform_fields->>processing_since", depuis8j)
+          // (05/11, point 8 — faux positif b) processing_since s'efface à chaque remise en file : le départ se lit aussi sur
+          // les traces qui ne s'effacent pas — l'heure de publication et l'heure du retrait fait.
+          .select("user_id, platform, ps:platform_fields->>processing_since, pub:published_at, del:platform_fields->>deleted_at")
+          .in("user_id", comptes.slice(i, i + 100))
+          .or(`platform_fields->>processing_since.gte.${depuis8j},published_at.gte.${depuis8j},platform_fields->>deleted_at.gte.${depuis8j}`)
           .range(page * 1000, page * 1000 + 999);
         if (error) throw new Error(error.message);
         for (const d of (data ?? []) as Array<Record<string, unknown>>) {
-          const t = Date.parse(String(d.ps ?? ""));
+          const t = Math.max(...[d.ps, d.pub, d.del].map((x) => Date.parse(String(x ?? ""))).filter(Number.isFinite), -Infinity);
           const cle = `${d.user_id}|${d.platform}`;
           if (Number.isFinite(t) && t > (derniersDeparts.get(cle) ?? 0)) derniersDeparts.set(cle, t);
         }

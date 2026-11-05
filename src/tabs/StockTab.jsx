@@ -1,4 +1,5 @@
 import { memo, useState, useEffect, useMemo, useRef, useCallback, startTransition } from 'react';
+import { plateformesEnVerification } from "../utils/enVerification.js";
 import { questionOplaFinale } from '../../supabase/functions/_shared/opla-questions.js';
 // (02/10) Sortie d'Opla : une publication/republication Opla ne se relance plus.
 import { estPublicationOpla, MESSAGE_OPLA_INDISPONIBLE, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
@@ -4308,9 +4309,17 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       if (!Number.isFinite(fini)) return fr ? 'Jamais synchronisée' : 'Never synced';
       const vus = Number(derniereReussie?.items_vus ?? 0);
       const login = typeof derniereReussie?.vinted_login === 'string' && derniereReussie.vinted_login.trim() ? derniereReussie.vinted_login.trim() : null;
+      // (05/11, point 6 c) Seules les annonces EN VENTE (relevées « active ») ; les vendues que Vinted affiche encore, à part.
+      // Sans le compte « en vente » (lecture illisible), on dit « articles lus », jamais « annonces ».
+      const enVente = Number.isFinite(derniereReussie?.en_vente) ? derniereReussie.en_vente : null;
+      const vendues = enVente != null && vus > enVente ? vus - enVente : 0;
+      const compte = enVente != null
+        ? (fr ? `${enVente} en vente${vendues ? ` · ${vendues} vendue${vendues > 1 ? 's' : ''} encore affichée${vendues > 1 ? 's' : ''}` : ''}`
+              : `${enVente} for sale${vendues ? ` · ${vendues} sold still shown` : ''}`)
+        : (fr ? `${vus} article${vus > 1 ? 's' : ''} lu${vus > 1 ? 's' : ''}` : `${vus} item${vus > 1 ? 's' : ''} read`);
       return fr
-        ? `Synchronisé ${depuisTexte(fini)} · ${vus} annonce${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`
-        : `Synced ${depuisTexte(fini)} · ${vus} listing${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`;
+        ? `Synchronisé ${depuisTexte(fini)} · ${compte}${login ? ` · @${login}` : ''}`
+        : `Synced ${depuisTexte(fini)} · ${compte}${login ? ` · @${login}` : ''}`;
     })();
     return (
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -9208,7 +9217,9 @@ const StockTab = memo(function StockTab({
   // (comptesStock), les mêmes setters, les mêmes conditions d'apparition. La
   // liste rendue est exactement celle d'avant — c'est une refonte de
   // présentation.
-  const qteStock=(l)=>(l??[]).reduce((a,i)=>a+(i.quantite||1),0);
+  // (05/11, point 6 c — règle de Nico) Une quantité aberrante (≥ 1000 : « stock illimité » d'un article en série, 9999)
+  // compte pour UN article : elle ne gonfle plus le total de l'en-tête (« 10 267 articles » chez Louis).
+  const qteStock=(l)=>(l??[]).reduce((a,i)=>a+(Number(i.quantite)>=1000?1:(i.quantite||1)),0);
 
   // ── LES MARQUES CHOISIES — UNE LISTE (2026-09-18) ─────────────────────────
   // Même ceinture que dans App.jsx : une chaîne d'avant le passage au multiple
@@ -9963,6 +9974,7 @@ const StockTab = memo(function StockTab({
     // modal de retrait (computeRemovalInfo, en tête de fichier) —
     // un seul calcul, jamais deux vérités carte/modal.
     const {removalState,publishedActive,latestPubByPlatform}=computeRemovalInfo(jobsAll);
+    const enVerification=plateformesEnVerification(publishedActive,latestPubByPlatform);
     // ── Article DISPARU de Vinted (2026-08-05) ────────────────
     // `disparu_le` = la sync du dressing n'a pas retrouvé
     // l'annonce sur Vinted (vérifié en réel : l'id Vinted rend
@@ -10022,13 +10034,17 @@ const StockTab = memo(function StockTab({
     // bouton « En ligne (n/N) » restent sur logosEnLigne : la
     // plateforme est occupée par une annonce EXISTANTE — la
     // rouvrir à « Publier » créerait un doublon.
-    const enLigne=logosEnLigne.some(p=>!(p==="vinted"&&vintedMasquee));
+    // (05/11, point 6 — règles de Nico) Un dépôt Beebs/Leboncoin EN VÉRIFICATION (« Beebs vérifie ton annonce ») n'est
+    // jamais « En ligne » ; Opla est quittée : son logo ne rend jamais la pastille verte. Le logo reste (plateforme
+    // occupée : jamais de 2e dépôt, retrait après vente toujours visé).
+    const pasAchetable=p=>enVerification.includes(p)||p==="opla";
+    const enLigne=logosEnLigne.some(p=>!(p==="vinted"&&vintedMasquee)&&!pasAchetable(p));
     // Compteur de plateformes réellement en ligne PARMI celles du
     // compte (plateformesCompte, Opla comprise quand elle est
     // ouverte) : pilote le 3e état du bouton (n/N = plus rien à
     // publier). Une annonce sur une plateforme refermée reste dans
     // les pastilles (logosEnLigne) mais ne compte pas ici.
-    const nbEnLigne=[...logosEnLigne,...logosJumelles].filter(p=>plateformesCompte.includes(p)).length;
+    const nbEnLigne=[...logosEnLigne,...logosJumelles].filter(p=>plateformesCompte.includes(p)&&!pasAchetable(p)).length;
     const toutEnLigne=nbEnLigne>=plateformesCompte.length;
     // Plateformes où l'article n'est PAS en ligne (2026-09-01,
     // audit onboarding) : portées par le bouton « Publier » en
