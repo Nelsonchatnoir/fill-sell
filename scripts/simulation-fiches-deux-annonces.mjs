@@ -22,6 +22,13 @@
 // (_shared/rapprochement/photos.js, comparerPhotos) ; ≤ 4 = identiques (SEUILS.quasi), > 12 = différentes (SEUILS.proche).
 // Population : annonces_plateforme ni disparues, ni retirées, ni ignorées, rattachées à une fiche non fusionnée de
 // quantité ≤ 1 ; un couple = (fiche, plateforme) avec ≥ 2 numéros d'annonce distincts. Rien n'est écrit.
+// ⛔ (05/11 soir, correction — faux positif « Robe ethnique » de misscat801, signalé par Nico : tout y était retiré) Une
+// annonce sans date de disparition n'est pas forcément en ligne : Beebs ne date jamais une absence (règle du 25/10), et
+// un retrait déclaré par la personne (« je l'ai retirée moi-même ») ou fait par une republication laisse la ligne sans
+// disparu_le. AVANT les classes : une annonce n'est VIVANTE que si le DERNIER relevé du compte sur la plateforme l'a vue
+// (vu_le ≥ ce relevé − 24 h). Un couple dont moins de deux annonces sont ainsi vivantes est rangé à part (« ne vit
+// plus » : retirées, ou compte sans relevé récent — à vérifier sur la plateforme), Opla à part aussi (« invérifiable » :
+// quittée le 10/10, plus aucun relevé). Ni l'un ni l'autre n'est une paire vivante ; jamais en rouge.
 //
 //   node scripts/simulation-fiches-deux-annonces.mjs [--json <fichier>] [--md <fichier>] [--extraction <fichier.json>]
 //     --json : le détail complet en JSON ; --md : le rapport Markdown (classes, comptes, exemples, liste complète) ;
@@ -98,7 +105,7 @@ SELECT jsonb_build_object(
              SELECT e #>> '{}' u, o FROM jsonb_array_elements(CASE WHEN jsonb_typeof(a.capture -> 'photos') = 'array' THEN a.capture -> 'photos' ELSE '[]'::jsonb END) WITH ORDINALITY x(e, o)
               WHERE jsonb_typeof(e) = 'string' LIMIT 6) z WHERE z.u ~ '^https://'),
           CASE WHEN a.photo_url ~ '^https://' THEN jsonb_build_array(regexp_replace(a.photo_url, 'rule=ad-(thumb|small|medium)', 'rule=ad-large')) ELSE '[]'::jsonb END),
-      'job', (SELECT jsonb_build_object('id', j.id, 'action', j.action, 'status', j.status, 'cree', j.created_at,
+      'job', (SELECT jsonb_build_object('id', j.id, 'action', j.action, 'status', j.status, 'cree', j.created_at, 'erreur', left(j.error, 120),
                  'source', j.platform_fields ->> 'source', 'republish_step', j.platform_fields ->> 'republish_step')
                 FROM cross_post_jobs j WHERE j.id = a.job_id),
       'rapprochements', (SELECT jsonb_agg(jsonb_build_object('decision', r.decision, 'par', r.par, 'motif', r.detail ->> 'motif',
@@ -115,6 +122,7 @@ SELECT jsonb_build_object(
     FROM cross_post_jobs j WHERE j.inventaire_id = c.inventaire_id AND j.platform = c.platform),
   'ventes', (SELECT jsonb_agg(jsonb_build_object('plateforme', COALESCE(v.plateforme_code, v.plateforme), 'le', v.created_at, 'statut', v.statut))
     FROM ventes v WHERE v.inventaire_id = c.inventaire_id),
+  'derniere_vue_compte', (SELECT max(x.vu_le) FROM annonces_plateforme x WHERE x.user_id = i.user_id AND x.platform = c.platform),
   'refus_deux_exemplaires', EXISTS (SELECT 1 FROM inventaire_doublons d WHERE d.user_id = i.user_id AND d.motif = 'annonce_en_double'
                                      AND d.statut = 'refusee' AND d.decide_par = 'utilisateur')
 ) AS x
@@ -172,8 +180,35 @@ const ms = (t) => (t ? Date.parse(t) : NaN);
 const COALESCE_SOURCE = (job) => String(job?.source ?? '');   // '' = dépôt de FillSell (aucune source « releve »)
 const enCours = (s) => ['pending', 'processing', 'needs_user'].includes(s);
 
+export const MARGE_DERNIER_RELEVE_MS = 24 * 3600_000;   // vue dans les 24 h avant le dernier relevé du compte : vivante
+export const COMPTE_SANS_RELEVE_MS = 7 * 86_400_000;    // plus aucun relevé de la plateforme depuis 7 jours : à vérifier sur place
+/** Vue au DERNIER relevé du compte sur la plateforme (l'annonce la plus récemment vue du compte, à 24 h près). */
+export function vueAuDernierReleve(a, derniere) {
+  const d = ms(derniere);
+  return Number.isFinite(d) && Number.isFinite(ms(a.vu)) && ms(a.vu) >= d - MARGE_DERNIER_RELEVE_MS;
+}
+/** Avant les classes : Opla (quittée le 10/10) et les couples dont moins de deux annonces vivent au dernier relevé. */
+export function horsPaireVivante(c, lu = new Date()) {
+  const A = c.annonces ?? [];
+  const der = c.derniere_vue_compte ?? null;
+  const vues = (a) => `${a.listing_id} vue le ${h(a.vu)}${a.job?.erreur ? ` (dépôt ${a.job.status} : « ${a.job.erreur} »)` : ''}`;
+  if (c.platform === 'opla') {
+    return { classe: 'inverifiable', motif: 'Opla quittée le 10/10 : plus aucun relevé, invérifiable d\'ici',
+      preuve: `dernier relevé Opla du compte le ${h(der)} ; ${A.map(vues).join(', ')}` };
+  }
+  const vivantes = A.filter((a) => vueAuDernierReleve(a, der));
+  if (vivantes.length >= 2) return null;
+  const sansReleve = Number.isFinite(ms(der)) && lu.getTime() - ms(der) > COMPTE_SANS_RELEVE_MS;
+  return { classe: 'non_revues',
+    motif: sansReleve ? 'absentes du dernier relevé du compte, qui date de plus de 7 jours : la paire ne vivait déjà plus à cette date'
+      : 'absentes du dernier relevé du compte : retirées ou disparues, la paire ne vit plus',
+    preuve: `dernier relevé ${c.platform} du compte le ${h(der)} ; vivantes à ce relevé : ${vivantes.map((a) => a.listing_id).join(', ') || 'aucune'} ; ${A.map(vues).join(', ')}` };
+}
+
 /** Range un couple. `photosDe(annonce)` rend les photos prêtes à comparer (photos.js). */
-export function classer(c, photosDe) {
+export function classer(c, photosDe, lu = new Date()) {
+  const hors = horsPaireVivante(c, lu);
+  if (hors) return hors;
   const A = c.annonces;
   const paires = [];
   for (let i = 0; i < A.length; i++) for (let j = i + 1; j < A.length; j++) {
@@ -275,7 +310,10 @@ export const CLASSES = [
   ['serie', 'Séries (plusieurs exemplaires)'],
   ['erreur', 'Vraies erreurs (deux objets différents)'],
   ['a_verifier', 'À vérifier'],
+  ['non_revues', 'Ne vivent plus (absentes du dernier relevé du compte) — hors paires vivantes'],
+  ['inverifiable', 'Invérifiables (Opla quittée le 10/10) — hors paires vivantes'],
 ];
+const PAIRES_VIVANTES = new Set(['republication', 'serie', 'erreur', 'a_verifier']);
 
 // ── PROGRAMME ────────────────────────────────────────────────────────────────────────────────────────────────────────
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -293,7 +331,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
   const E = new Map(empreintes.map((r) => [r.url, P.photoDepuisEmpreinte(r)]));
   const photosDe = (a) => (a.photos ?? []).map((u) => E.get(u)).filter(Boolean);
-  const res = couples.map((c) => ({ c, ...classer(c, photosDe) }));
+  const res = couples.map((c) => ({ c, ...classer(c, photosDe, lu) }));
   const parClasse = Object.fromEntries(CLASSES.map(([k]) => [k, res.filter((r) => r.classe === k)]));
   const comptes = (l) => { const m = new Map(); for (const r of l) m.set(r.c.compte, (m.get(r.c.compte) ?? 0) + 1); return [...m].sort((a, b) => b[1] - a[1]); };
   const motifs = (l) => { const m = new Map(); for (const r of l) m.set(r.motif, (m.get(r.motif) ?? 0) + 1); return [...m].sort((a, b) => b[1] - a[1]); };
@@ -326,7 +364,12 @@ function markdown(res, parClasse, comptes, motifs, lu, nEmp) {
     const l = parClasse[k];
     L.push(`| ${nom} | ${l.length} | ${new Set(l.map((r) => r.c.user_id)).size} | ${l.filter((r) => r.c.fiche.statut === 'vendu').length} | ${motifs(l).map(([m, n]) => `${n} × ${m}`).join(' ; ')} |`);
   }
-  const vendues = res.filter((r) => r.c.fiche.statut === 'vendu');
+  const vendues = res.filter((r) => r.c.fiche.statut === 'vendu' && PAIRES_VIVANTES.has(r.classe));
+  const vendHors = res.filter((r) => r.c.fiche.statut === 'vendu' && !PAIRES_VIVANTES.has(r.classe));
+  if (vendHors.length) {
+    L.push('', `${vendHors.length} couple(s) sur une fiche vendue rangé(s) HORS des paires vivantes (jamais en rouge) :`, '');
+    for (const r of vendHors) L.push(`- ${r.c.compte} · ${r.c.platform} · fiche ${r.c.fiche_id} « ${r.c.fiche.titre} » — ${r.motif} — ${r.preuve}`);
+  }
   if (vendues.length) {
     L.push('', `**⚠ ${vendues.length} couples sur une fiche déjà VENDUE**, deux annonces encore en ligne sur la plateforme (à regarder en premier : `
       + `aucune n'est retirée par la règle « deux exemplaires » d'armer_retraits_copies) :`, '');
@@ -349,6 +392,10 @@ function markdown(res, parClasse, comptes, motifs, lu, nEmp) {
     + 'Jamais quand l\'une des deux est un dépôt ou une republication de FillSell : FillSell a alors mis une 2e annonce en ligne à côté '
     + 'd\'une annonce encore vivante — classée « à vérifier » (risque de double vente).');
   L.push('5. **À vérifier** — tout le reste : la preuve manque.', '');
+  L.push('Avant ces cinq règles (correction du 05/11 soir) : une annonce n\'est vivante que si le DERNIER relevé du compte sur la '
+    + 'plateforme l\'a vue (à 24 h près) — Beebs ne date jamais une absence, un retrait déclaré par la personne ou fait par une '
+    + 'republication laisse la ligne sans date de disparition. Un couple à moins de deux annonces vivantes « ne vit plus » ; Opla '
+    + '(quittée le 10/10) est « invérifiable ». Ni l\'un ni l\'autre n\'est une paire vivante, jamais en rouge.', '');
   L.push('Photos : module du moteur (`_shared/rapprochement/photos.js`, `comparerPhotos`, meilleure lecture dHash/pHash et variantes) ; '
     + '≤ 4 = identiques, > 12 = différentes. « Rattachée par » : la personne (son « Oui » ou un rattachement à la main), identifiant '
     + '(dépôt FillSell), automatique (moteur).', '');

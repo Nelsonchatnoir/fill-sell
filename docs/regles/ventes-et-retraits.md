@@ -535,3 +535,18 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   (`/api/consumergoods/proxy/v2/pages/transactions/<n°>`, `item.id`), avant l'envoi, une fois par appareil, 16 au plus par
   passage, arriéré de 30 jours. Avec lui, enregistrer_ventes_relevees range la vente chez le compte relié qui POSSÈDE
   l'annonce (plus jamais « le premier qui relève »). Une vente groupée (bundle) n'est jamais rattachée.
+
+## ⛔ 05/11 soir — VENDU QUELQUE PART = RETIRÉ PARTOUT (règle de Nico ; rapport `docs/enquetes/rattachements-0511/VENDU-RETIRE-PARTOUT.md`)
+- Toutes plateformes ; les articles en plusieurs exemplaires et les séries ne sont JAMAIS concernés. Une pièce unique vendue
+  ne laisse AUCUNE annonce vivante en silence : dépôt prouvé → retrait d'office (avec ou sans numéro : par le lien) ;
+  sinon la question « Déjà vendu ? », dont le « Oui » retire L'ANNONCE MONTRÉE par son numéro et son lien — jamais le
+  numéro d'un autre dépôt, jamais sur un titre seul (règles du 05/11 : `rattachement_confirme`, photo identique = preuve).
+- Cas réel : le Doudou de nicolas.menar (vendu sur Vinted le 06/10) — dépôt Leboncoin 13627ae2 au numéro d'une AUTRE
+  annonce (« Lot 2 doudous » 3267000921), l'annonce déposée 3274924341 sans retrait ni question ; Beebs d23190b7 (sans
+  numéro) : question posée, jamais répondue. Le numéro vide n'est pas la cause.
+- Migration `20261105240000_vendu_retire_partout` **PRÉPARÉE, NON APPLIQUÉE** (inverse dans `supabase/rollbacks/`) :
+  `poser_questions_copies_non_prouvees` (chaque annonce relevée vivante qu'aucun dépôt publié ne porte sous SON numéro
+  devient la question), `inventaire_doublon_decider` (le « Oui » retire l'annonce montrée), `armer_retrait_annonce_pour`
+  (neuve, sur le seul geste de la personne). Preuve jetable `scripts/preuve-vendu-retire-partout.mjs` (72/72), selftest
+  `vendu-retire-partout` (61/61). Une vente PASSÉE n'est reprise par aucun chemin automatique (voulu) : relance par la même
+  fonction (question) ou `armer_retrait_job_pour` (dépôt prouvé), sur liste relue par Nico.
