@@ -10,6 +10,11 @@ import { sentinelleArrets } from "../_shared/cause-blocage.js";
 import { ATTENTE_ALERTE_MS, PLATEFORMES_EXTENSION, executantsDeclares, filesArretees, ligneFileArretee } from "../_shared/attente-extension-active.js";
 // (05/11, R3) Les retraits non terminés > 24 h jugés : rouge (double vente possible), orange (geste attendu), blanc.
 import { classerRetraitsEnRetard, jugerRetraitEnRetard, numeroAnnonce, sujetAvecDoubleVente } from "../_shared/retraits-en-retard.js";
+// (05/11 soir, clôture, décision de Nico : « donne 5 rouges prouvés, ou coupe R3 ») COUPÉ : sur 5 rouges relus sur les
+// plateformes, 3 vrais (Beebs 34042975, Leboncoin 3297644264 et 3287013710 encore en vente) et 2 faux (Leboncoin 3299230866
+// « désactivée », eBay 176726068488 « introuvable ») : le juge croit en ligne une annonce que le relevé n'a pas revue depuis.
+// Le digest repart sur la liste brute d'avant (aucun retrait perdu de vue). Rallumer = true, après correction.
+const CLASSER_RETRAITS_EN_RETARD = false;
 
 // ops-digest — digest quotidien des anomalies cross_post_jobs, envoyé à
 // support@fillsell.app UNIQUEMENT s'il y a au moins une ligne (silence = sain).
@@ -282,7 +287,7 @@ serve(async (req) => {
     .range(0, 999);
   let retraits: Classement | null = null;
   let retraitsIllisibles: string | null = null;
-  if (!e3) {
+  if (!e3 && CLASSER_RETRAITS_EN_RETARD) {
     try {
       retraits = await classerRetraitsDuJour(supabase, (deletesOverdue ?? []) as unknown as Array<Record<string, unknown>>, now);
     } catch (e) {
