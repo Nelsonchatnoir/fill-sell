@@ -21,36 +21,37 @@ let ko = 0, n = 0;
 const ok = (c, quoi, detail = '') => { n++; if (c) console.log(`  ✓ ${quoi}`); else { ko++; console.log(`  ✗ ${quoi}${detail ? `   ← ${detail}` : ''}`); } };
 
 const J = 86_400_000;
+const W = M.BEEBS_ATTENTE_MAX_MS / J; // la fenêtre du juge, en jours (14 depuis le 05/11 soir)
 const T0 = Date.parse('2026-10-20T08:00:00Z'); // le dépôt
-const MAINTENANT = T0 + 8 * J;
+const MAINTENANT = T0 + (W + 1) * J;
 const iso = (t) => new Date(t).toISOString();
 const releve = (t, { tot = 30, vus = tot, statut = 'done', page = tot, uid = null } = {}) => ({ status: statut, started_at: iso(t), finished_at: iso(t + 120_000),
   items_vus: vus, total_entries: tot, vinted_user_id: uid,
   erreur: `[défilement] page : ${page} annonce(s) affichée(s) (1 défilement(s), la page n'en affichait pas plus) | index public Beebs : ${tot} annonce(s) en ligne, ${tot} lue(s) au total` });
-const DEUX = [releve(T0 + 7.5 * J), releve(T0 + 7.9 * J)];
+const DEUX = [releve(T0 + (W + 0.5) * J), releve(T0 + (W + 0.9) * J)];
 const depot = (extra = {}) => ({ id: '11111111-aaaa-4bbb-8ccc-000000000001', user_id: 'de63ca45-63d9-4a3c-b65a-d1345acd8b2e', platform: 'beebs', action: 'publish', status: 'published',
   title: 'Jeu PS4 Hitman', price: '12', inventaire_id: 1001, platform_listing_id: null, listing_url: null, vu_en_ligne_le: null,
   created_at: iso(T0 - 60_000), published_at: iso(T0), error: null, platform_fields: { lien_en_attente: { depuis: iso(T0) } }, ...extra });
 // Le compte : des annonces en ligne, toutes reliées par leur NUMÉRO à d'autres dépôts et d'autres fiches.
 const ligne = (num, extra = {}) => ({ listing_id: String(num), url: `https://www.beebs.app/fr/p/${num}`, titre: `Article ${num}`, prix: 9,
-  job_id: `job-${num}`, inventaire_id: 2000 + (num % 1000), source_rapprochement: 'job', vu_le: iso(T0 + 7.9 * J + 60_000),
+  job_id: `job-${num}`, inventaire_id: 2000 + (num % 1000), source_rapprochement: 'job', vu_le: iso(T0 + (W + 0.9) * J + 60_000),
   disparu_le: null, retiree_le: null, statut_plateforme: 'en_ligne', created_at: iso(T0 - 20 * J), ...extra });
 const COMPTE = Array.from({ length: 30 }, (_, k) => ligne(34100000 + k));
 const juger = (job, ctx = {}) => M.jugerDepotBeebsSansNumero(job, { releves: DEUX, annonces: COMPTE, maintenant: MAINTENANT, ...ctx });
 
 console.log('1. Les cas de la règle');
 const v8 = juger(depot());
-ok(v8?.verdict === 'jamais_en_ligne' && v8.releves.length === 2, '8 jours + 2 relevés complets après les 7 jours, tout est relié ailleurs → jugé « jamais en ligne »', JSON.stringify(v8));
+ok(v8?.verdict === 'jamais_en_ligne' && v8.releves.length === 2, 'fenêtre + 1 jour, 2 relevés complets après la fenêtre, tout est relié ailleurs → jugé « jamais en ligne »', JSON.stringify(v8));
 ok(v8.releves[0].started_at < v8.releves[1].started_at && v8.depot_le === iso(T0), 'les deux relevés datés (plus ancien d’abord), la date du dépôt');
-const v6 = M.jugerDepotBeebsSansNumero(depot(), { releves: DEUX, annonces: COMPTE, maintenant: T0 + 6 * J });
-ok(v6?.verdict === 'attente' && v6.motif === 'moderation_beebs', '6 jours → attendre (fenêtre de modération Beebs)', JSON.stringify(v6));
-const v1 = juger(depot(), { releves: [releve(T0 + 7.9 * J)] });
+const v6 = M.jugerDepotBeebsSansNumero(depot(), { releves: DEUX, annonces: COMPTE, maintenant: T0 + (W - 1) * J });
+ok(v6?.verdict === 'attente' && v6.motif === 'moderation_beebs', 'fenêtre − 1 jour → attendre (Beebs peut garder une annonce invisible ~9,4 jours)', JSON.stringify(v6));
+const v1 = juger(depot(), { releves: [releve(T0 + (W + 0.9) * J)] });
 ok(v1?.verdict === 'attente' && v1.motif === 'releves_insuffisants', '1 seul relevé complet → attendre', JSON.stringify(v1));
 const vMod = juger(depot(), { releves: [releve(T0 + 2 * J), releve(T0 + 3 * J)] });
 ok(vMod?.verdict === 'attente' && vMod.motif === 'releves_insuffisants', 'deux relevés complets faits PENDANT la modération → ils ne prouvent rien, attendre', JSON.stringify(vMod));
-const vRate = juger(depot(), { releves: [...DEUX, { status: 'failed', started_at: iso(T0 + 7.95 * J), items_vus: 3, total_entries: 30, erreur: '[incomplet]' }] });
+const vRate = juger(depot(), { releves: [...DEUX, { status: 'failed', started_at: iso(T0 + (W + 0.95) * J), items_vus: 3, total_entries: 30, erreur: '[incomplet]' }] });
 ok(vRate?.verdict === 'attente' && vRate.motif === 'releves_insuffisants', 'le dernier relevé a raté : les deux derniers ne sont plus complets → attendre');
-const vIncomplet = juger(depot(), { releves: [releve(T0 + 7.5 * J), releve(T0 + 7.9 * J, { vus: 12 })] });
+const vIncomplet = juger(depot(), { releves: [releve(T0 + (W + 0.5) * J), releve(T0 + (W + 0.9) * J, { vus: 12 })] });
 ok(vIncomplet?.verdict === 'attente', 'un relevé 12/30 n’est pas complet → attendre');
 // Libre, mais NUMÉROTÉE AVANT le dépôt (34099990 < 34100029, vue 20 jours avant) : jugerRetraitIntrouvable l'exclut — le titre et le prix font douter.
 const libreMeme = ligne(34099990, { titre: 'jeu ps4 HITMAN !', prix: '12.00', job_id: null, inventaire_id: null, source_rapprochement: null, created_at: iso(T0 - 30 * J) });
@@ -88,13 +89,13 @@ ok(juger(depot(), { annonces: [...COMPTE, moteurAutreFiche] })?.motif === 'meme_
 const numeroAutreFiche = ligne(34300006, { titre: 'Jeu PS4 Hitman', prix: 12, job_id: 'job-y', inventaire_id: 4243, source_rapprochement: 'job' });
 ok(juger(depot(), { annonces: [...COMPTE, numeroAutreFiche] })?.verdict === 'jamais_en_ligne', 'même titre et même prix, mais reliée par son NUMÉRO à un autre dépôt (deux exemplaires) → ne retient rien');
 // 7373c96c (05/11) : 285 annonces en ligne le 30/10, puis deux relevés « index public Beebs : 0 », « disparues 0 ».
-const effondre = Array.from({ length: 40 }, (_, k) => ligne(34050000 + k, { vu_le: iso(T0 + 6 * J) }));
+const effondre = Array.from({ length: 40 }, (_, k) => ligne(34050000 + k, { vu_le: iso(T0 + (W - 1) * J) }));
 const vEff = juger(depot(), { annonces: [...effondre, ligne(34100001)] });
 ok(vEff?.verdict === 'attente' && vEff.motif === 'releves_partiels' && vEff.non_revues === 40, 'relevés qui n’ont pas revu le compte (40 lignes vivantes non revues, 1 revue) → aucune absence ne se conclut', JSON.stringify(vEff));
-const quelques = Array.from({ length: 5 }, (_, k) => ligne(34050000 + k, { vu_le: iso(T0 + 6 * J) }));
+const quelques = Array.from({ length: 5 }, (_, k) => ligne(34050000 + k, { vu_le: iso(T0 + (W - 1) * J) }));
 ok(juger(depot(), { annonces: [...COMPTE, ...quelques] })?.verdict === 'jamais_en_ligne', '5 lignes vivantes non revues sur 35 (l’ordinaire : XEWER 6/34) → ne retient rien');
 ok(juger(depot(), { retraitActif: true })?.motif === 'retrait_en_cours', 'un retrait Beebs du dépôt en file → son juge (get-pending-jobs) tranche, ici on attend');
-const vComptes = juger(depot(), { releves: [releve(T0 + 7.5 * J, { uid: 'A' }), releve(T0 + 7.9 * J, { uid: 'B' })] });
+const vComptes = juger(depot(), { releves: [releve(T0 + (W + 0.5) * J, { uid: 'A' }), releve(T0 + (W + 0.9) * J, { uid: 'B' })] });
 ok(vComptes?.verdict === 'attente' && vComptes.motif === 'deux_comptes_beebs', 'deux relevés de deux comptes Beebs différents → attendre');
 const rep = depot({ action: 'republish', platform_fields: { old_platform_listing_id: '34100003', old_listing_url: 'https://www.beebs.app/fr/p/34100003', deleted_at: iso(T0) } });
 const ancienneVue = juger(rep, { annonces: COMPTE.map((a) => (a.listing_id === '34100003' ? { ...a, job_id: 'job-source', inventaire_id: 9999 } : a)) });
@@ -103,10 +104,10 @@ const repJugee = juger(rep, { annonces: COMPTE.filter((a) => a.listing_id !== '3
 ok(repJugee?.verdict === 'jamais_en_ligne', 'republication, ancienne annonce absente des relevés → jugée');
 
 console.log('\n3. Le même juge que les retraits sans numéro');
-const seul = RI.jugerRetraitIntrouvable({ action: 'delete', platform: 'beebs', created_at: iso(T0 + 7 * J), platform_listing_id: null, listing_url: null },
+const seul = RI.jugerRetraitIntrouvable({ action: 'delete', platform: 'beebs', created_at: iso(T0 + W * J), platform_listing_id: null, listing_url: null },
   { releves: DEUX, annonces: COMPTE, depotId: depot().id, depotLe: iso(T0), maintenant: MAINTENANT });
 ok(seul?.verdict === 'deja_retire' && JSON.stringify(seul.releves) === JSON.stringify(v8.releves_fr), 'jugerRetraitIntrouvable, appelé tel quel, rend le même verdict et les mêmes relevés');
-ok(M.BEEBS_ATTENTE_MAX_MS === 7 * 24 * 60 * 60 * 1000, 'la fenêtre : 7 jours');
+ok(M.BEEBS_ATTENTE_MAX_MS === 14 * 24 * 60 * 60 * 1000, 'la fenêtre : 14 jours (deux fois la modération Beebs ; 7b9d8a71 invisible ~9,4 jours)');
 ok(/const ATTENTE_MAX_MS = 7 \* 24 \* 60 \* 60 \* 1000;/.test(lire('supabase/functions/get-pending-jobs/index.ts')), 'la même que ATTENTE_MAX_MS de get-pending-jobs');
 const src = lire('supabase/functions/_shared/beebs-depot-sans-numero.js');
 ok(/from "\.\/retrait-introuvable\.js"/.test(src) && /jugerRetraitIntrouvable\(/.test(src) && /candidatesDuDepot\(job, lignes/.test(src),
@@ -135,7 +136,7 @@ ok(/L'ancienne annonce, elle, avait été retirée par cette republication/.test
 
 console.log('\n5. Le câblage (handler-watch)');
 const hw = lire('supabase/functions/handler-watch/index.ts');
-ok(/\nconst JUGER_BEEBS_SANS_NUMERO = false;\n/.test(hw), 'interrupteur JUGER_BEEBS_SANS_NUMERO = false (COUPÉ : Nico l’allume après la simulation)');
+ok(/\r?\nconst JUGER_BEEBS_SANS_NUMERO = false;\r?\n/.test(hw), 'interrupteur JUGER_BEEBS_SANS_NUMERO = false (prêt à allumer : 6 fermetures relues sur Beebs ; allumage = feu vert explicite de Nico)');
 ok(/\nconst JUGER_ANNONCES_PUBLIEES_DISPARUES = false;\n/.test(hw), 'la règle « annonce publiée disparue » reste coupée');
 ok(hw.includes('if (JUGER_BEEBS_SANS_NUMERO && new Date().getUTCMinutes() >= 42 && new Date().getUTCMinutes() < 45) {'), 'une fois par heure, minutes 42 à 44');
 const autresMinutes = [...hw.matchAll(/getUTCMinutes\(\) (>=|<) (\d+)/g)].map((m) => Number(m[2]));

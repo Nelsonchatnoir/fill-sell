@@ -10,9 +10,9 @@
 //
 // LE JUGE — le MÊME que celui des retraits sans numéro (get-pending-jobs → _shared/retrait-introuvable.js), sans
 // retrait : jugerRetraitIntrouvable, appelé tel quel pour CE dépôt (depotId, depotLe), sur les relevés Beebs du compte.
-//   1. Plus de 7 jours depuis le dépôt (la fenêtre de modération Beebs : SORTIE_VERIFICATION_REFUS_MS = la constante
+//   1. Plus de 14 jours depuis le dépôt (deux fois (la fenêtre de modération Beebs : SORTIE_VERIFICATION_REFUS_MS = la constante
 //      ATTENTE_MAX_MS de get-pending-jobs, 7 j) ;
-//   2. les DEUX derniers relevés Beebs qui ont tourné sont COMPLETS (releveComplet) et commencés APRÈS ces 7 jours —
+//   2. les DEUX derniers relevés Beebs qui ont tourné sont COMPLETS (releveComplet) et commencés APRÈS ces 14 jours —
 //      un relevé fait pendant la modération ne prouve rien (29/10 : une annonce n'y est ni dans l'index ni dans
 //      « en vérification ») ; un relevé raté parmi les deux derniers : on attend le suivant ;
 //   3. aucune annonce vue par ces deux relevés ne peut être lui (jugerRetraitIntrouvable : chacune est reliée par son
@@ -41,8 +41,10 @@ import { jugerRetraitIntrouvable, releveComplet } from "./retrait-introuvable.js
 import { candidatesDuDepot } from "./depot-sans-numero.js";
 import { SORTIE_VERIFICATION_REFUS_MS, releveVoitToutEnLigne } from "./beebs-sortie-verification.js";
 
-/** 7 jours : la fenêtre de modération Beebs (= ATTENTE_MAX_MS de get-pending-jobs, = SORTIE_VERIFICATION_REFUS_MS). */
-export const BEEBS_ATTENTE_MAX_MS = SORTIE_VERIFICATION_REFUS_MS;
+/** 14 jours (05/11 soir, clôture du terminal « Problèmes ») : DEUX fois la fenêtre de modération Beebs (SORTIE_VERIFICATION_REFUS_MS,
+ *  7 jours) — Beebs a gardé une annonce invisible ~9,4 jours avant de la montrer (7b9d8a71 / 34237930) : à 7 jours, le juge
+ *  aurait pu fermer un dépôt encore en modération. Le doute attend. */
+export const BEEBS_ATTENTE_MAX_MS = 2 * SORTIE_VERIFICATION_REFUS_MS;
 export const POSE_PAR_SANS_NUMERO = "handler-watch (dépôt Beebs sans numéro)";
 export const REGLE_SANS_NUMERO = "beebs_depot_sans_numero_0511";
 export const MESSAGE_JAMAIS_EN_LIGNE_SANS_NUMERO =
