@@ -165,5 +165,17 @@ console.log("\n[6] ni l'ordre ni la logique des étapes ne changent");
   ok(pub.etape === "action" && pub.reprise === true && pub.fraction > 0, "une publication suit la même règle");
 }
 
+console.log("\n[bandeau « En cours » du Stock] (05/11, capture de Nico à 10:20 : « 0 sur 3 », barre vide, la file à 72 % et 79 %)");
+{
+  const st = lire("src/tabs/StockTab.jsx");
+  const i = st.indexOf("const pisteActif=pisteJob(activite.actif,{...(ctxBarres??{}),lang});");
+  ok(i > 0, "le bandeau calcule la barre du job qu'il nomme avec pisteJob (étape lue en base), comme la file");
+  ok(/<BarreProgression key=\{activite\.actif\.id\} seulePiste lang=\{lang\} \{\.\.\.pisteActif\}\/>/.test(st),
+    "une barre par job (key), toutes les entrées de pisteJob : reprise, position, depuis — posée dès l'affichage");
+  ok(!/fraction=\{activite\.faites\/activite\.total\}/.test(st), "plus jamais le seul compte des plateformes finies (0 % tant que rien n'est FINI)");
+  const f = lire("src/components/FileDesJobs.jsx");
+  ok(/\{\.\.\.pisteJob\(job, ctx\)\}/.test(f), "la file : la même fonction (pisteJob) — même chiffre au même instant");
+}
+
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ la barre d'un job : même chiffre partout, posée dès l'affichage, jamais en recul");

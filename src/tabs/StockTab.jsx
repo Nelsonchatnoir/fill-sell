@@ -62,7 +62,7 @@ import { useAchatsAnnules, achatsAnnulesAMontrer, lireMasquesAchatsAnnules, masq
 import { messageFileEnPause } from '../../supabase/functions/_shared/file-pause.js';
 import BarreJobCarte from '../components/BarreJobCarte';
 import BarreProgression from '../components/BarreProgression';
-import { articleDeJob, pisteJob, etapesJob, motifRetraitParPlateforme } from '../utils/barresJobs';
+import { articleDeJob, pisteJob, motifRetraitParPlateforme } from '../utils/barresJobs';
 // (16/10) Les six mots de l'état d'un job, les mêmes partout.
 import { LIBELLES, attenteAutomatique } from '../../supabase/functions/_shared/etat-job.js';
 // (18/10, lot 3) La raison d'une attente automatique, dans les mots de la file des jobs.
@@ -10631,11 +10631,13 @@ const StockTab = memo(function StockTab({
               // (15/10 soir, Nico) Plus aucune estimation (« ~15-21 min ») : ça fait fuir.
               const estimation=null;
               // (24/10, décision de Nico) Plus de limite par jour : la carte n'a plus de phrase de limite.
-              // (01/10) La barre du lot : « N sur M » réel, puis un glissement
-              // doux vers le suivant pendant que l'actif travaille — jamais au
-              // delà. Ordinateur muet : elle s'immobilise (le compteur dit le
-              // reste). Le pas attendu est la durée réelle d'un job de ce type.
-              const dureeUnJob=etapesJob(activite.actif,lang).reduce((s,e)=>s+(e.duree||0),0)||120;
+              // (05/11, Nico — capture du 05/11 10:20 : « 0 sur 3 », barre vide, la file à 72 % et 79 %, et la barre
+              // repartie au début en revenant sur l'app) LA barre du job que la carte NOMME (sa photo, « Leboncoin ·
+              // republication ») : la même que sa ligne dans la file — pisteJob, étape lue en base (positionJob), posée
+              // dès l'affichage, jamais remise à 0 (une instance par job : key). « N sur M » reste le compte de la
+              // fournée. Avant : fraction = faites/total, glissement compté depuis l'affichage — 0 % tant qu'aucune
+              // plateforme n'était FINIE, et retour au début à chaque réouverture.
+              const pisteActif=pisteJob(activite.actif,{...(ctxBarres??{}),lang});
               const typeMot=activite.actif.action==='republish'
                 ?(lang==='fr'?'republication':'repost')
                 :(lang==='fr'?'dépôt':'listing');
@@ -10677,9 +10679,7 @@ const StockTab = memo(function StockTab({
                     <ChevronRight size={16} style={{flexShrink:0,color:"#8A8578"}}/>
                   </div>
                   <div style={{marginTop:11}}>
-                    <BarreProgression seulePiste lang={lang}
-                      fraction={activite.faites/activite.total} pas={1/activite.total} dureePas={dureeUnJob}
-                      etat={activite.hbMuet?'pause':'en_cours'}/>
+                    <BarreProgression key={activite.actif.id} seulePiste lang={lang} {...pisteActif}/>
                   </div>
                 </button>
               );

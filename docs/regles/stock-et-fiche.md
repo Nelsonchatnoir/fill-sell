@@ -81,3 +81,11 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
   dès l'affichage (piste `reprise`), jamais remontée depuis 0 ; une portion par phase écrite en base, jamais de débord,
   jamais en recul (essai raté = posé sur CAP_ESSAI). Un départ de plus de 6 h reste un départ. Ni l'ordre ni la logique
   des étapes ne changent. Selftest `barre-job-position`.
+
+## 05/11 matin — Le bandeau « En cours » du Stock : la barre du job qu'il nomme
+- La barre du bandeau (photo, « Leboncoin · republication », « N sur M ») est celle du job NOMMÉ : `pisteJob` (étape lue en
+  base, `positionJob`), la même que sa ligne dans « Ta file », une instance par job (`key`). « N sur M » reste le compte
+  de la fournée. Avant : `fraction = faites/total` + glissement compté depuis l'affichage — 0 % tant qu'aucune plateforme
+  n'était FINIE (Nico, 05/11 10:20 : « 0 sur 3 », barre vide, la file à 72 % et 79 %), retour au début à chaque
+  réouverture. Vu sur le vrai écran (WebKit iPhone, profil isolé) : bandeau 0 % face à 46 % dans la file avant le
+  correctif. Selftest `barre-job-position` (bandeau).
