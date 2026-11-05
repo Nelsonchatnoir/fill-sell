@@ -137,7 +137,7 @@ import BandeauCloudReconnexion from './cloud/BandeauCloudReconnexion';
 import BandeauLeboncoinPause from './components/BandeauLeboncoinPause';
 import { creerAchatCloud } from './cloud/achatCloud';
 import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
-import { cloudOfferVisible, cloudConnexionVisible, chargerTemoinCloud } from './config/cloudOffer';
+import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud } from './config/cloudOffer';
 import ConditionsCloudModale from './cloud/ConditionsCloudModale';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
@@ -3381,7 +3381,7 @@ export default function App({ loginOnly = false }){
     paiementsAndroidCoupes:()=>paiementsAndroidCoupes(supabase),
   }):null;
   async function lancerAchatCloud(origine='non_precisee'){
-    if(!achatCloud||!cloudOfferVisible(user?.id))return;
+    if(!achatCloud||!cloudOffreVendable(user?.id))return;
     logTunnel('cloud_cta_click',{origine,declencheur:'clic'});
     const r=await achatCloud.acheter(origine);
     if(r?.message)toastCloud(r.message);
@@ -9918,11 +9918,11 @@ export default function App({ loginOnly = false }){
         onUpgrade={(tier,opts)=>{
           setConversionModal(m=>({...m,open:false}));
           // (05/10) 2e argument { cloud } : seulement drapeau levé (ConversionModal ne l'envoie pas sinon).
-          if(opts?.cloud===true&&cloudOfferVisible(user?.id)){formulePuisCloud(tier,conversionModal.origine??'modale_plan');return;}
+          if(opts?.cloud===true&&cloudOffreVendable(user?.id)){formulePuisCloud(tier,conversionModal.origine??'modale_plan');return;}
           startTierCheckout(tier,conversionModal.origine??'modale_plan');
         }}
-        onCloudSeul={cloudOfferVisible(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_seul');}:null}
-        onAjouterCloud={cloudOfferVisible(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_ajout');}:null}
+        onCloudSeul={cloudOffreVendable(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_seul');}:null}
+        onAjouterCloud={cloudOffreVendable(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_ajout');}:null}
         trigger={conversionModal.trigger}
         lang={lang}
         isPremium={isPremium}
@@ -10555,7 +10555,7 @@ export default function App({ loginOnly = false }){
           // (04/11, lot 3) « Ton plan » de la grille à 3 jauges, et l'essai Cloud par le chemin EXISTANT
           // (achatCloud.acheter : conditions, place, Stripe ou boutique) — null tant que le Cloud est fermé.
           palier={palier}
-          essaiCloud={cloudOfferVisible(user.id)&&achatCloud?(origine)=>{logTunnel('cloud_cta_click',{origine,declencheur:'clic'});return achatCloud.acheter(origine);}:null}
+          essaiCloud={cloudOffreVendable(user.id)&&achatCloud?(origine)=>{logTunnel('cloud_cta_click',{origine,declencheur:'clic'});return achatCloud.acheter(origine);}:null}
           onDone={(dest)=>{
             onboardingFiniRef.current=true;
             setShowOnboardingFlow(false);

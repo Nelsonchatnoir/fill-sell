@@ -109,10 +109,11 @@ try {
 
   console.log('\n5. Le câblage dans App');
   const app = lire('src/App.jsx');
-  ok(/onCloudSeul=\{cloudOfferVisible\(user\?\.id\)\?/.test(app) && /onAjouterCloud=\{cloudOfferVisible\(user\?\.id\)\?/.test(app), 'onCloudSeul / onAjouterCloud : seulement drapeau levé');
+  // (05/11 soir, phase 3 point 3) La vente du Cloud : drapeau levé ET téléphone en France, ou témoin (cloudOffreVendable).
+  ok(/onCloudSeul=\{cloudOffreVendable\(user\?\.id\)\?/.test(app) && /onAjouterCloud=\{cloudOffreVendable\(user\?\.id\)\?/.test(app), 'onCloudSeul / onAjouterCloud : seulement drapeau levé (et en France, ou témoin)');
   ok(/actions=\{actionsCloud\}/.test(app) && /actionsCloud=\{actionsCloud\}/.test(app), 'HoteCloud et Réglages reçoivent les gestes (arrêter compris)');
   ok(/meConnecterOuvert&&user&&cloudConnexionVisible\(user\.id\)/.test(app), '« Me connecter » monté seulement pour un témoin ou drapeau levé');
-  ok(/if\(opts\?\.cloud===true&&cloudOfferVisible\(user\?\.id\)\)/.test(app), 'formule + option : seulement drapeau levé, sinon le parcours d\'avant, mot pour mot');
+  ok(/if\(opts\?\.cloud===true&&cloudOffreVendable\(user\?\.id\)\)/.test(app), 'formule + option : seulement drapeau levé (et en France, ou témoin), sinon le parcours d\'avant, mot pour mot');
   const ecran = lire('src/cloud/MeConnecterCloud.jsx');
   ok(/wss:\/\/\$\{CLOUD_DOMAINE\}\/connexion\/ws/.test(ecran) && !/location\.href|window\.open/.test(ecran), 'l\'écran ouvre la seule connexion (aucune navigation, aucun lien libre)');
   ok(/ebayVoieApiDuCompte/.test(ecran) && /demarrerConnexionEbay/.test(ecran), 'eBay : la connexion officielle (API), jamais le navigateur Cloud');

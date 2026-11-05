@@ -38,7 +38,7 @@ import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienEx
 // 2e voie « Je n'ai pas d'ordinateur » (Cloud, conception du 04/10) — derrière
 // son drapeau (config/cloudOffer.js) : baissé, elle ne rend rien.
 import VoieSansOrdinateur from '../cloud/VoieSansOrdinateur';
-import { cloudOfferVisible } from '../config/cloudOffer';
+import { cloudOffreVendable } from '../config/cloudOffer';
 import { textesCloud } from '../cloud/textes';
 
 const C = {
@@ -80,7 +80,8 @@ export default function ExtensionPitchScreen({
   // (04/10, conception) L'option « Sans ordinateur » est-elle proposée ? —
   // drapeau config/cloudOffer.js, baissé : la section eBay dit ce qu'elle
   // disait, mot pour mot, et la 2e voie ne se rend pas.
-  const optionSansOrdi = cloudOfferVisible(userId);
+  // (05/11 soir, phase 3 point 3) L'option sans ordinateur se propose en France seulement (et aux témoins).
+  const optionSansOrdi = cloudOffreVendable(userId);
   const isMobile = useIsMobile();
   const onComputer = !Capacitor.isNativePlatform() && !isMobile;
   const { envoi, secondesRestantes, envoyer } = useEnvoiLienExtension(lang);

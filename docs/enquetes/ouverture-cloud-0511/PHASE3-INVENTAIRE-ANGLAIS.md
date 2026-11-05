@@ -34,3 +34,16 @@ parcours sur un téléphone réglé en anglais (ordre de Nico).
 3. Stock, publication, fiche (App.jsx, StockTab, ListingPreviewScreen, publication/) ;
 4. Tableau et Statistiques (src/ecrans) ;
 5. pages restantes, conditions du Cloud (texte juridique : version anglaise « pour information », le français fait foi).
+
+## Point 3 — le Cloud ne se vend qu'en France (05/11 22:45, web au push ; app avec la 2.9)
+- `src/config/cloudOffer.js` : `cloudOffreVendable(userId)` = témoin (Nico, comptes de relecture) OU (offre ouverte ET
+  téléphone en France). Pays du téléphone = fuseau horaire (`Europe/Paris` ; Monaco, Belgique, Royaume-Uni, États-Unis… =
+  pas la France ; inconnu = pas la France). `PAYS_CLOUD_OUVERTS = ['FR']` : un pays s'y ajoute après une preuve réelle
+  avec une IP de ce pays.
+- Bornés : l'achat (lancerAchatCloud), formule + Cloud, Cloud seul, ajout, l'essai du parcours d'entrée, l'offre de la
+  feuille des formules, la 2e voie, l'option de l'écran de l'extension. Inchangés (un abonné à l'étranger garde tout) :
+  état et fin d'essai (HoteCloud), Réglages, « Me connecter », arrêt et reprise.
+- Aujourd'hui (drapeau baissé) rien ne change pour personne : seuls les témoins voient l'offre, partout — le relecteur
+  Apple (États-Unis) peut l'acheter. Prix des boutiques inchangés.
+- Selftests : cloud-pays (18) neuf ; cloud-achat et onboarding-trois-jauges adaptés (la vente lit cloudOffreVendable) ;
+  cloud-ecrans, cloud-executant, cloud-me-connecter, cloud-prix-nom, telephone-ebay-sans-ordinateur verts ; build vert.

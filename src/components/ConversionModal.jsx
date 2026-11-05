@@ -9,7 +9,7 @@ import { PALIERS, palierDesDrapeaux, nomDuPalier } from '../utils/palier';
 // Option « Sans ordinateur » (Cloud, conception du 04/10/2026) — derrière
 // cloudOfferVisible() : drapeau baissé, rien de ce qui suit n'est rendu et
 // onUpgrade(tier) part exactement comme avant (un seul argument).
-import { cloudOfferVisible } from '../config/cloudOffer';
+import { cloudOffreVendable } from '../config/cloudOffer';
 import InterrupteurCloud, { LigneCloudModale, PrixAvecCloud, CarteAjoutCloud, SectionFreeCloud } from '../cloud/InterrupteurCloud';
 import { useCloudProfil } from '../cloud/useCloudProfil';
 import { offreCloudPourModale } from '../cloud/regles';
@@ -1093,7 +1093,8 @@ export default function ConversionModal({
   // alors à l'identique. L'état du compte (essai déjà pris, option active…)
   // se lit dans une requête À PART (useCloudProfil) : illisible = rien montré.
   // Ouverte depuis la 2e voie (trigger 'cloud') : l'interrupteur arrive coché.
-  const cloudVisible = cloudOfferVisible(userId);
+  // (05/11 soir, phase 3 point 3) L'offre du Cloud ne se montre qu'en France (et aux témoins) : cloudOffreVendable.
+  const cloudVisible = cloudOffreVendable(userId);
   const lectureCloud = useCloudProfil(userId, { actif: Boolean(isOpen && cloudVisible) });
   const offreCloud = cloudVisible ? offreCloudPourModale(lectureCloud) : null;
   const [avecCloud, setAvecCloud] = useState(false);

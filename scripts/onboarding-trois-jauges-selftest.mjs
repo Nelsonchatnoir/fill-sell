@@ -369,7 +369,8 @@ try {
     ok(neufs.length === 0, 'aucun mot neuf dans le parcours entier rendu à chaque étape (fr, en, téléphone, ordinateur), même avec palier et achat passés par l’hôte', neufs.slice(0, 6).join(' | '));
     ok(vus.size >= 16, `les étapes d'avant sont bien atteintes (${vus.size} titres vus sur 16)`, [...vus].join(', '));
     const ctxSrc = sansCommentaires(lire('src/entree/useCloudEntree.js'));
-    ok(/const ouvert = Boolean\(surTelephone && userId && typeof essaiCloud === 'function' && cloudOfferVisible\(userId\)\);/.test(ctxSrc)
+    // (05/11 soir, phase 3 point 3) cloudOffreVendable : drapeau levé ET téléphone en France, ou témoin.
+    ok(/const ouvert = Boolean\(surTelephone && userId && typeof essaiCloud === 'function' && cloudOffreVendable\(userId\)\);/.test(ctxSrc)
       && /useCloudProfil\(userId, \{ actif: ouvert \}\)/.test(ctxSrc) && /useDisponibiliteCloud\(\{ actif: ouvert \}\)/.test(ctxSrc),
     'la voie Cloud ne lit rien tant qu’elle est fermée (téléphone + cloudOfferVisible + achat fourni)');
     const uce = sansCommentaires(lire('src/entree/useContexteEntree.js'));
@@ -393,7 +394,7 @@ try {
     ok(/zIndex: c\.cloud\?\.achat\?\.etat === 'en_cours' \? Z_PENDANT_ACHAT_CLOUD : Z_PARCOURS/.test(coque) && /Z_PARCOURS = 9980/.test(coque) && zAchat < zCond && zAchat > 1100,
       `pendant l'achat seulement, le parcours passe sous la case des conditions du Cloud (${zAchat} < ${zCond}), sinon 9980 comme avant`);
     const app = lire('src/App.jsx');
-    ok(/essaiCloud=\{cloudOfferVisible\(user\.id\)&&achatCloud\?\(origine\)=>\{logTunnel\('cloud_cta_click',\{origine,declencheur:'clic'\}\);return achatCloud\.acheter\(origine\);\}:null\}/.test(app) && /palier=\{palier\}/.test(app),
+    ok(/essaiCloud=\{cloudOffreVendable\(user\.id\)&&achatCloud\?\(origine\)=>\{logTunnel\('cloud_cta_click',\{origine,declencheur:'clic'\}\);return achatCloud\.acheter\(origine\);\}:null\}/.test(app) && /palier=\{palier\}/.test(app),
       'App : l’achat de l’essai passe par achatCloud.acheter (le chemin existant), null tant que le Cloud est fermé ; aucun paiement réécrit');
     const cloudSrc = sansCommentaires(lire('src/entree/useCloudEntree.js') + lire('src/entree/EtapeCloud.jsx'));
     ok(!/create-checkout-session|purchasePremium|cloud_essai_preparer_moi|validate-google-purchase/.test(cloudSrc), 'aucun appel de paiement dans src/entree/ (ni Stripe, ni boutique, ni préparation)');

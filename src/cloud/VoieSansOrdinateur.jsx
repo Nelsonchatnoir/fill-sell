@@ -25,7 +25,7 @@ import { useState } from 'react';
 import { Cloud, ChevronRight } from 'lucide-react';
 import { C, MENTHE, BLANC } from './theme';
 import { textesCloud } from './textes';
-import { cloudOfferVisible } from '../config/cloudOffer';
+import { cloudOffreVendable } from '../config/cloudOffer';
 import { useCloudProfil } from './useCloudProfil';
 import { voieCloud, dateLongue, finEssaiSiOnCommence } from './regles';
 import { ouvrirOffreCloud, garderDemande } from './offreCloud';
@@ -121,7 +121,8 @@ export function CarteVoieCloud({ lang = 'fr', essai = true, variante = 'carte', 
 // `sansEbay` : l'hôte dit déjà qu'eBay part sans ordinateur (le mur) — la
 // carte ne le répète pas.
 export default function VoieSansOrdinateur({ lang = 'fr', userId = null, origine, variante = 'carte', style, sansEbay = false }) {
-  const visible = cloudOfferVisible(userId);
+  // (05/11 soir, phase 3 point 3) La 2e voie VEND le Cloud : en France seulement (et aux témoins).
+  const visible = cloudOffreVendable(userId);
   const lecture = useCloudProfil(userId, { actif: visible && variante !== 'page' });
   if (!visible) return null;
   if (variante === 'page') {

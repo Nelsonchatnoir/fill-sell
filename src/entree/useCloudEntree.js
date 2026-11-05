@@ -21,7 +21,7 @@
 //    connexions, une après chaque page de connexion refermée.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { cloudOfferVisible, CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
+import { cloudOffreVendable, CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
 import { useCloudProfil } from '../cloud/useCloudProfil';
 import { useDisponibiliteCloud, venteFermee } from '../cloud/useDisponibiliteCloud';
 import { voieCloud } from '../cloud/regles';
@@ -33,7 +33,7 @@ import { parcoursCloud, datesEssai, dateCourte } from './regles';
 const CX_LECTURE = Object.freeze({ etat: 'lecture', etats: null, verifs: [], isoles: [], ebayRelie: null });
 
 export function useCloudEntree({ userId, lang, surTelephone, voie, essaiCloud, plateformesFermees = [] }) {
-  const ouvert = Boolean(surTelephone && userId && typeof essaiCloud === 'function' && cloudOfferVisible(userId));
+  const ouvert = Boolean(surTelephone && userId && typeof essaiCloud === 'function' && cloudOffreVendable(userId));
   const lecture = useCloudProfil(userId, { actif: ouvert });
   const vente = useDisponibiliteCloud({ actif: ouvert });
   const relireCloud = lecture.relire;

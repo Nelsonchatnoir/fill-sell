@@ -72,6 +72,34 @@ const estTemoin = (userId) => userId != null && (CLOUD_OFFRE_TEMOINS.includes(us
 // sans retoucher les appelants.
 export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED || estTemoin(userId);
 
+// (05/11 soir, lot « Ouverture du Cloud », PHASE 3 point 3 — ordre de Nico, corrigé à 21:53) LE CLOUD SE VEND EN
+// FRANCE SEULEMENT : un vendeur étranger ne passe jamais par une IP française (anti-robot, restriction de compte,
+// redirections de site selon l'IP). Un pays s'ouvrira après une preuve réelle avec une IP DE CE PAYS (IPRoyal par pays,
+// même plafond d'achat) : il s'ajoute alors à PAYS_CLOUD_OUVERTS. Le pays se lit sur le téléphone (fuseau horaire, comme
+// pour la zone euro : utils/vintedEtrangerApp.js) ; inconnu = pas la France. Les témoins (Nico, comptes de relecture
+// Apple et Google) voient l'offre partout : le relecteur Apple, aux États-Unis, doit pouvoir l'acheter.
+// ⛔ Seule la VENTE est bornée (achat, essai, offre dans les feuilles) : un compte qui a déjà le Cloud garde ses écrans
+// — état, « Me connecter », arrêt, reprise — où qu'il soit (cloudOfferVisible, inchangé). Les prix des boutiques ne
+// bougent pas (ordre de Nico) : l'offre est seulement masquée hors de France.
+export const PAYS_CLOUD_OUVERTS = Object.freeze(['FR']);
+const FUSEAUX_PAYS_CLOUD = Object.freeze({ 'Europe/Paris': 'FR' });
+/** Le pays du téléphone pour le Cloud (fuseau horaire IANA), ou null (inconnu, ou pays sans Cloud). */
+export function paysDuTelephoneCloud(fuseau) {
+  let f = fuseau;
+  if (f === undefined) {
+    try { f = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { f = null; }
+  }
+  return FUSEAUX_PAYS_CLOUD[String(f ?? '').trim()] ?? null;
+}
+/** La règle (pure, testée : scripts/cloud-pays-selftest.mjs) : témoin partout ; sinon l'offre ouverte ET un pays ouvert. */
+export function cloudVendableDansLePays({ temoin = false, ouvert = false, pays = null } = {}) {
+  if (temoin) return true;
+  return Boolean(ouvert) && PAYS_CLOUD_OUVERTS.includes(pays);
+}
+/** Le point de décision de la VENTE du Cloud (achat, essai, offre) : à la place de cloudOfferVisible sur ces gestes-là. */
+export const cloudOffreVendable = (userId, fuseau = undefined) =>
+  cloudVendableDansLePays({ temoin: estTemoin(userId), ouvert: CLOUD_OFFER_ENABLED, pays: paysDuTelephoneCloud(fuseau) });
+
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
 // Le serveur qui ouvre la page de connexion dans le navigateur Cloud du compte
 // (orchestrateur, serveur-cloud/, derrière Caddy).
