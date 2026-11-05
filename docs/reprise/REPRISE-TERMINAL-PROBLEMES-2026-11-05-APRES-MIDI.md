@@ -47,3 +47,16 @@ Suite de `REPRISE-TERMINAL-PROBLEMES-2026-11-05.md` (matin). État de prod : `do
 > Reprends le terminal « Problèmes » : lis `docs/reprise/REPRISE-TERMINAL-PROBLEMES-2026-11-05-APRES-MIDI.md` puis
 > `docs/agents/etat-2026-10-01.md` (sections 05/11). Relis `git status` et `npx supabase functions list`. Le déploiement
 > commun et la migration 20261105110000 attendent ma confirmation sur le terminal Cloud.
+
+## 05/11 soir (après 16:00) — état exact
+- Déployé : migration 20261105110000 ; get-pending-jobs v332, update-job-status v172, handler-watch v163 (juge corrigé,
+  règle « annonce publiée disparue » COUPÉE), extension-session v14, ops-digest v49 ; web 3d06bef.
+- Données réparées (sauvegarde + inverse) : vente 458084 → Amiral ; 24 republications Vinted rendues (17:11) ; Albator
+  défusionné (17:54) ; 3 doublons de ventes fondus (17:56).
+- PRÉPARÉ, NON APPLIQUÉ (feu vert nommé de Nico) : 20261105170000 remise en vente des séries (B) ; 20261105180000 mail à
+  chaque vente (5b/A5 ; décision sur la règle de rafale) ; 20261105190000 règles de rattachement (A3, agent, en cours) ;
+  20261105200000 archive support_mails + Worker cloudflare/email-support (point 4).
+- À valider par Nico : rallumage du juge « annonce publiée disparue » (simulation : 21 closes, 7 comptes).
+- Reste : 5a R1 (Beebs : mur de connexion jamais dit pendant un retrait) et R3 (digest : juger chaque retrait en retard) ;
+  16 B (dépôts Beebs sans numéro jugés par la règle commune) ; point 7 (un relevé pour les deux comptes de Louis : effet à
+  valider avant) ; tuile « Opla » prouvée par selftest seulement (aucun dépôt Opla sur le compte de Nico).
