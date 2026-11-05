@@ -60,6 +60,7 @@ import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_sh
 import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
 import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
+import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, PLATEFORMES_RELEVEES } from "../_shared/annonce-publiee-disparue.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs, constats404Beebs, deuxConstats404Prouvent } from "../_shared/beebs-preuve-retrait.js";
 // (25/10, règle de Nico) Un retrait sur une annonce déjà absente se clôt seul : `deleted` + deja_absente.
 import { numeroAnnonceDuJob, jugerRetraitDejaAbsent, champsRetraitDejaAbsent, copiesAClore, clotureCopie } from "../_shared/retrait-deja-absent.js";
@@ -3613,6 +3614,10 @@ serve(async (req) => {
           const { data: maj } = await supabase.from("cross_post_jobs").update({ status: "cancelled", error: (d as { vendue?: boolean }).vendue ? messageVendueLue(j.platform) : messageDisparueConfirmee(j.platform), platform_fields: pf })
             .eq("id", j.id).eq("status", "needs_user").select("id");
           if (maj?.length) introuvablesClos++;
+          // (05/11, règle de Nico) La même preuve clôt les dépôts PUBLIÉS de cette annonce : plus jamais revisitée par la
+          // détection de vente, plus jamais source d'une republication (Beebs 34283901 : close le 02/11 18:44, encore
+          // « published » et republiée le 05/11 10:29).
+          if (maj?.length) await fermerDepotsPubliesDeLAnnonce(supabase, userId, j, { decision: "disparue", vendue: Boolean((d as { vendue?: boolean }).vendue), raison: d.raison }).catch(() => 0);
         } else if (d.decision === "persistant") {
           pf.needs_user_source = SOURCE_INTROUVABLE_PERSISTANT;
           await supabase.from("cross_post_jobs").update({ error: messagePersistant(j.platform), platform_fields: pf })
@@ -3709,6 +3714,19 @@ serve(async (req) => {
     if (introuvablesRepris || introuvablesClos || introuvablesBoutique || introuvablesRelevesDemandes) console.log(`[handler-watch] introuvable à confirmer : ${introuvablesRepris} repris (relevé en ligne), ${introuvablesClos} clos (relevé sans l'annonce), ${introuvablesBoutique} en attente de leur boutique, ${introuvablesRelevesDemandes} relevé(s) demandé(s)`);
   } catch (e) {
     console.error("[handler-watch] introuvable à confirmer :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (05/11, règle de Nico) UNE ANNONCE PUBLIÉE CONFIRMÉE DISPARUE N'EST PLUS JAMAIS REVISITÉE ══
+  // _shared/annonce-publiee-disparue.js. Une fois par heure (minutes 33 à 35), un seizième des annonces publiées que la
+  // détection de vente n'arrive plus à lire (check_unresolved), tournant sur l'identifiant : chaque annonce est jugée
+  // environ une fois par jour, en une dizaine de lectures groupées. Aucune visite de plateforme, aucun relevé demandé.
+  if (new Date().getUTCMinutes() >= 33 && new Date().getUTCMinutes() < 36) {
+    try {
+      const r = await jugerAnnoncesPublieesDisparues(supabase, new Date().getUTCHours() % 16);
+      if (r.closes || r.en_verification) console.log(`[handler-watch] annonces publiées : ${r.jugees} jugées, ${r.closes} closes (disparues ou vendues, preuve des relevés), ${r.en_verification} en vérification chez la plateforme`);
+    } catch (e) {
+      console.error("[handler-watch] annonces publiées disparues :", (e as Error)?.message ?? e);
+    }
   }
 
   // ══ (18/10, lot 3) LEBONCOIN REFUSE LE CONTENU : JAMAIS LE MÊME TEXTE DEUX FOIS ══
@@ -6589,4 +6607,130 @@ async function ecrireRetraitDejaAbsent(supabase: any, j: Record<string, unknown>
     console.warn(`[handler-watch] retrait ${String(j.id).slice(0, 8)} déjà absent : copie non close — ${String((e as Error)?.message ?? e).slice(0, 160)}`);
   }
   return true;
+}
+
+// ══ (05/11, règle de Nico) UNE ANNONCE PUBLIÉE CONFIRMÉE DISPARUE N'EST PLUS JAMAIS REVISITÉE ═════════════════════════
+// Lectures groupées (PostgREST coupe à 1 000 lignes : par pages ; les `in()` par lots de 150).
+// deno-lint-ignore no-explicit-any
+async function lirePagesDisparues(construire: () => any, max = 5000): Promise<any[]> {
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (let de = 0; de < max; de += 1000) {
+    const { data, error } = await construire().range(de, de + 999);
+    if (error) throw new Error(error.message);
+    out.push(...(data ?? []));
+    if ((data ?? []).length < 1000) break;
+  }
+  return out;
+}
+const parLots = <T>(liste: T[], n = 150): T[][] => Array.from({ length: Math.ceil(liste.length / n) }, (_, i) => liste.slice(i * n, i * n + n));
+
+/** Les dépôts PUBLIÉS d'une annonce confirmée disparue (même compte, plateforme, identifiant) : clos. Rend le nombre clos. */
+// deno-lint-ignore no-explicit-any
+async function fermerDepotsPubliesDeLAnnonce(supabase: any, userId: string, job: any, decision: { decision: string; vendue?: boolean; raison?: string }): Promise<number> {
+  const ident = String(identifiantAnnonceJob(job) ?? job?.platform_listing_id ?? "").trim();
+  if (!ident || !PLATEFORMES_RELEVEES.includes(String(job?.platform ?? ""))) return 0;
+  const { data: pubs } = await supabase.from("cross_post_jobs").select("id, platform, platform_fields")
+    .eq("user_id", userId).eq("platform", job.platform).eq("status", "published").in("action", ["publish", "republish"])
+    .eq("platform_listing_id", ident).limit(20);
+  let n = 0;
+  // deno-lint-ignore no-explicit-any
+  for (const p of (pubs ?? []) as any[]) {
+    const { data: maj } = await supabase.from("cross_post_jobs")
+      .update(patchAnnoncePublieeDisparue(p, decision, { posePar: "handler-watch (republication en pause confirmée disparue)" }))
+      .eq("id", p.id).eq("status", "published").select("id");
+    if (maj?.length) n++;
+  }
+  if (n) console.log(`[handler-watch] annonce ${job.platform} ${ident} confirmée disparue : ${n} dépôt(s) publié(s) clos`);
+  return n;
+}
+
+/**
+ * Un seizième (`tranche` 0..15, sur le premier chiffre de l'identifiant) des annonces publiées non vérifiables
+ * (check_unresolved) : jugées par decisionAnnoncePubliee sur les relevés et traces du compte ; « disparue » → close.
+ */
+// deno-lint-ignore no-explicit-any
+async function jugerAnnoncesPublieesDisparues(supabase: any, tranche: number) {
+  const hex = "0123456789abcdef";
+  const de = `${hex[tranche]}0000000-0000-0000-0000-000000000000`;
+  const a = tranche < 15 ? `${hex[tranche + 1]}0000000-0000-0000-0000-000000000000` : null;
+  const res = { jugees: 0, closes: 0, en_verification: 0 };
+  let q = supabase.from("cross_post_jobs")
+    .select("id, user_id, platform, action, status, inventaire_id, platform_listing_id, listing_url, created_at, published_at, platform_fields")
+    .eq("status", "published").in("action", ["publish", "republish"]).in("platform", PLATEFORMES_RELEVEES)
+    .eq("platform_fields->>check_unresolved", "true").not("listing_url", "is", null).gte("id", de);
+  if (a) q = q.lt("id", a);
+  const { data: lus, error } = await q.order("id").limit(400);
+  if (error) throw new Error(error.message);
+  // deno-lint-ignore no-explicit-any
+  const jobs = (lus ?? []) as any[];
+  if (!jobs.length) return res;
+  const users = [...new Set(jobs.map((j) => String(j.user_id)))];
+  const depuis = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  // deno-lint-ignore no-explicit-any
+  const runs: any[] = [];
+  for (const lot of parLots(users, 60)) {
+    runs.push(...await lirePagesDisparues(() => supabase.from("vinted_sync_runs")
+      .select("user_id, platform, kind, status, started_at, finished_at, vinted_user_id, items_vus, total_entries, erreur")
+      .in("user_id", lot).eq("status", "done").in("kind", ["dressing", "annonces"]).in("platform", PLATEFORMES_RELEVEES)
+      .gt("items_vus", 0).gt("started_at", depuis).order("started_at", { ascending: false })));
+  }
+  const invIds = [...new Set(jobs.map((j) => j.inventaire_id).filter((x) => x != null).map(String))];
+  // deno-lint-ignore no-explicit-any
+  const fiches: any[] = [];
+  for (const lot of parLots(invIds)) {
+    const { data, error: e } = await supabase.from("inventaire").select("id, statut, vinted_account_id").in("id", lot);
+    if (e) throw new Error(e.message);
+    fiches.push(...(data ?? []));
+  }
+  const ficheDe = new Map(fiches.map((f) => [String(f.id), f]));
+  const ident = (j: unknown) => String(identifiantAnnonceJob(j) ?? "").trim();
+  // Autres plateformes : la ligne du relevé, par identifiant exact.
+  const autres = [...new Set(jobs.filter((j) => j.platform !== "vinted").map(ident).filter(Boolean))];
+  // deno-lint-ignore no-explicit-any
+  const annonceDe = new Map<string, any>();
+  for (const lot of parLots(autres)) {
+    const { data, error: e } = await supabase.from("annonces_plateforme")
+      .select("user_id, platform, listing_id, vu_le, statut_plateforme, disparu_le, transaction_plateforme, transaction_lue_le")
+      .in("user_id", users).in("listing_id", lot);
+    if (e) throw new Error(e.message);
+    // deno-lint-ignore no-explicit-any
+    for (const x of (data ?? []) as any[]) annonceDe.set(`${x.user_id}:${x.platform}:${x.listing_id}`, x);
+  }
+  // Vinted : la trace la plus récente de l'annonce (son relevé du jour, la fiche qui porte ce numéro).
+  const itemsV = [...new Set(jobs.filter((j) => j.platform === "vinted").map(ident).filter(Boolean))];
+  const traceV = new Map<string, { vu_le: string; statut: string }>();
+  const garder = (k: string, le: unknown, st: unknown) => {
+    const q2 = Date.parse(String(le ?? "")); if (!Number.isFinite(q2)) return;
+    const av = traceV.get(k); if (!av || q2 > Date.parse(av.vu_le)) traceV.set(k, { vu_le: String(le), statut: String(st ?? "") });
+  };
+  for (const lot of parLots(itemsV)) {
+    const [rS, rF] = await Promise.all([
+      supabase.from("vinted_listing_snapshots").select("user_id, vinted_item_id, captured_at, status")
+        .in("user_id", users).in("vinted_item_id", lot).gte("captured_on", depuis.slice(0, 10)).order("captured_at", { ascending: false }).limit(5000),
+      supabase.from("inventaire").select("user_id, vinted_item_id, last_synced_at, vinted_status").in("user_id", users).in("vinted_item_id", lot).limit(2000),
+    ]);
+    if (rS.error || rF.error) throw new Error((rS.error ?? rF.error).message);
+    // deno-lint-ignore no-explicit-any
+    for (const s of (rS.data ?? []) as any[]) garder(`${s.user_id}:${s.vinted_item_id}`, s.captured_at, s.status);
+    // deno-lint-ignore no-explicit-any
+    for (const f of (rF.data ?? []) as any[]) garder(`${f.user_id}:${f.vinted_item_id}`, f.last_synced_at, f.vinted_status);
+  }
+  for (const j of jobs) {
+    res.jugees++;
+    const fiche = ficheDe.get(String(j.inventaire_id)) ?? null;
+    const id = ident(j);
+    const vu = j.platform === "vinted" ? traceV.get(`${j.user_id}:${id}`) ?? null : null;
+    const annonce = j.platform !== "vinted" ? annonceDe.get(`${j.user_id}:${j.platform}:${id}`) ?? null : null;
+    const boutique = j.platform === "vinted"
+      ? (String(j.platform_fields?.vinted_account_id ?? "").trim() || String(fiche?.vinted_account_id ?? "").trim() || null) : null;
+    const d = decisionAnnoncePubliee({ job: j, fiche, vu, annonce, runs: runs.filter((r) => r.user_id === j.user_id && r.platform === j.platform), boutique, creeLe: j.published_at ?? j.created_at });
+    if (d.decision === "en_verification") { res.en_verification++; continue; }
+    if (d.decision !== "disparue") continue;
+    const { data: maj } = await supabase.from("cross_post_jobs")
+      .update(patchAnnoncePublieeDisparue(j, d, { posePar: "handler-watch (annonce publiée confirmée disparue)" }))
+      .eq("id", j.id).eq("status", "published").select("id");
+    if (maj?.length) { res.closes++; console.log(`[handler-watch] annonce publiée ${String(j.id).slice(0, 8)} (${j.platform} ${id}) close : ${d.raison}`); }
+  }
+  return res;
 }

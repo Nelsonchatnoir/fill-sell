@@ -464,7 +464,13 @@ cas rouges (jeton Leboncoin expiré entre retrait et redépôt, compte Vinted ba
 2. noter l'heure de chaque étape d'une republication (prise, retrait, chaque essai de redépôt, en ligne) ;
 3. (ajouté par Nico le 05/11 matin, après le rapport de 08:00) une vérification RÉUSSIE — passée seule ou après un « Résoudre »
    — lève tout de suite la pause de la plateforme concernée, messagerie ET jobs (cas du 05/11 : vérification Beebs passée seule
-   à 02:48:48, messagerie restée en pause jusqu'à 08:48:44).
+   à 02:48:48, messagerie restée en pause jusqu'à 08:48:44) ;
+4. (Nico, 05/11 midi) redépôt Leboncoin pris puis rendu en 4 s, deux fois, avant de passer : annonce hors ligne 10 à 20 min
+   (§ 16, défaut 1) ;
+5. (Nico, 05/11 midi) retenue « une annonce hors ligne à la fois » levée trop tôt : Mickey hors ligne sur Depop ET Leboncoin
+   de 10:19 à 10:28 (§ 16, défaut 2) ;
+6. (Nico, 05/11 midi) preuve RÉELLE, sur le vrai écran, de l'affichage « À reconnecter » / « Me reconnecter » (d41332e : prouvé
+   par les selftests seulement).
 
 **Rapport de 08:00 (05/11, dressé à 08:0x ; nuit du 04/11 21:00 au 05/11 08:00, lecture seule : `blocages.json` inchangé
 depuis 04/11 21:38, `fond-f44b5917-2026-11-0{4,5}.jsonl` — 43 771 requêtes —, journaux de l'orchestrateur et du conteneur,
@@ -538,3 +544,42 @@ court + jeton long) :
   (règle : geste attendu dont l'erreur technique est ce refus ; sauvegarde `_backup_0511_cloud_verrou_jeton` ; INVERSE).
 - Selftests : cloud-extension (renouvellement, refus, conversion de la tâche, même fonction que l'orchestrateur), orchestrateur
   serveur-cloud 149/149 (règle des jetons, coffre « à reconnecter » réellement écrit, profil vide intact).
+
+**Preuve réelle du correctif d41332e (déployé sur cloud-2 SEULEMENT à 11:51 ; rejoint le déploiement de production prévu après
+18:00, décision de Nico)** : 11:53:01 UNE visite de l'accueil Beebs (vérification de l'appareil passée seule, `redirect`),
+jeton renouvelé en 9,2 s (`renouvellements[0].issue = renouvele`), aucun refus du verrou ensuite. Veste publiée sur Beebs 11:54:18
+(34300243), Jean Lee 11:55:33 (34300248), Mickey republié 12:39:38 (34300468 ; retrait 12:31:48 confirmé par « Mes annonces »
+12:33:07 ; 7 min 50 s hors ligne). Pages publiques des 3 nouvelles annonces en 404 : Beebs les tient « en vérification »
+(modération ; le t-shirt Adidas republié le 04/11 est visible le 05/11). ⚠ l'ancienne page 34284626 encore servie en public à
+12:46 avec « Ajouter au panier » alors qu'elle est sortie de « Mes annonces » (cache de Beebs ?) — à revérifier.
+
+**Décisions de Nico (05/11 ~12:50)** : le 403 de 11:59:27 (page 404 de 33640171) n'est pas un signe anti-robot ; on continue.
+Beebs : pas de titre neutre à 999 € ; les republications Beebs du palier 2 portent sur ses vraies annonces. Chrome du PC : pas
+connecté à Beebs (page de connexion) — « Mes annonces » ne peut pas y être lu sans lui.
+
+**T-shirt femme Beebs 34283901 : ni vendu, ni retiré par FillSell** — preuves : aucune ligne `ventes`, aucune transaction Beebs ;
+jamais vue dans « Mes annonces » (aucune ligne `annonces_plateforme`, ni en ligne ni en vérification) depuis sa publication le
+02/11 17:20 ; page publique jamais lisible (job ee55be2d « Impossible de vérifier » dès sa première vérification) ; absente de
+5 relevés complets de Beebs depuis (02/11 23:51, 03/11 00:52, 03/11 23:43, 04/11 21:41…) ; titre « TEST » (refusé par la
+modération Beebs, constaté le 05/10). Elle a disparu côté Beebs ; la republication du palier 1 l'a trouvée absente et s'est
+mise en pause sans rien retirer.
+
+**Défaut 4 — une annonce disparue revisitée et republiée en boucle (corrigé, ordre de Nico)** : `_shared/annonce-publiee-disparue.js`
++ handler-watch (une fois par heure, un seizième des annonces non vérifiables, lectures groupées) : une annonce publiée que la
+détection de vente ne lit plus (check_unresolved) est jugée par la règle des relevés du 15/10-25/10 (decisionIntrouvable : absente
+de DEUX relevés complets de ses annonces depuis sa dernière vue, dont un après la lecture ratée ; ou vendue / fermée ; jamais sur
+une lecture seule, un 403, une erreur réseau ni une page 404 — Beebs répond 404 pour une annonce « en vérification ») ; disparue
+→ tous ses dépôts publiés passent « cancelled » (message de la preuve, « FillSell ne la vérifie plus et ne la republie plus ») :
+plus relue par la détection de vente, plus source d'une republication. Une republication en pause confirmée disparue clôt aussi les
+dépôts publiés de la même annonce. Vinted « masquée » (hidden/draft) : pas disparue. Simulé sur la prod (lecture seule, 5 017
+annonces non vérifiables, 83 comptes) : 22 closes (11 Vinted absentes, 4 Vinted vendues, 4 Beebs TEST de Nico dont 34283901,
+3 Leboncoin), 2 « en vérification » chez Beebs (dont 33640171 Medik8 de Nico, en vérification depuis le 26/10 : JAMAIS close),
+le reste attend. NON DÉPLOYÉ : handler-watch part avec le déploiement de production de 18:00 (il porte aussi des changements non
+déployés de l'autre terminal, 2c9c876). Selftest annonce-publiee-disparue (20).
+
+**Palier 2 lancé 13:06:43** (fonction de l'app sous le compte de Nico) : Vinted ×5 et Depop ×5 (fiches TEST 999 € : T-shirt homme,
+T-shirt femme, Veste lot F, Jean Lee, Lot de 2 t-shirts), Leboncoin ×3 (T-shirt homme, Veste lot F, Jean Lee ; Lot de 2 t-shirts
+et Veste lot H publiés 13:01/13:03 sans lien encore — Leboncoin le rend après sa validation : lancés dès que le lien arrive), Beebs
+×5 (vraies annonces de Nico : gants Quechua 34280542, hoodie Nike 34239738, livre Huxley 34239760, t-shirt Picture bleu marine
+34095479, sweat Tommy 34005631). Préparé par 2 publications TEST (Lot de 2 t-shirts sur Vinted/Depop/Leboncoin, Veste lot H sur
+Leboncoin) pour avoir 5 annonces différentes par plateforme (règle « une republication par annonce et par jour » gardée).
