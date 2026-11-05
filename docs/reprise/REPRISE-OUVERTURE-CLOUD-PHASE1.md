@@ -67,6 +67,12 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
   achetable, 7 articles ajoutés, cloud-2), Google `googlereview@fillsell.app` (témoin, jamais offert, cloud-2) ; notes des
   relecteurs prêtes (`docs/stores/notes-relecteurs-2.9.md`) ; déclarations de données préparées
   (`docs/stores/donnees-2.9.md`, à saisir avec la soumission ; GTM chargé dans l'app native : à trancher).
+- ⛔ ARRÊT DU 05/11 À 23:10 (bloqué sur Nico — « s'arrêter pour le dire dès qu'on bloque ») : la suite de la phase 3
+  attend (1) la preuve du parcours connecté en anglais sur un téléphone (`docs/enquetes/ouverture-cloud-0511/
+  PHASE3-PARCOURS-ANGLAIS.md`), (2) deux décisions (export Excel en anglais ? canal Android « Ventes » ?), (3) un compte
+  de test dans un pays anglophone pour PROUVER une plateforme (sinon tout reste masqué hors de France). Bilan :
+  `docs/enquetes/ouverture-cloud-0511/PHASE3-INVENTAIRE-ANGLAIS.md` § « Bilan ». Puis, dans l'ordre de Nico : captures
+  pro, binaire 2.9 (Codemagic), déclarations de données saisies, soumission (sorties MANUELLES déjà réglées).
 - Phase 3 (05/11 21:55 → ) : point 1 — inventaire (`scripts/i18n/inventaire-francais.mjs`, ~637 textes d'écran) ; lot 1
   traduit (637eb7b : pages de paiement, compte, désinscription, retour eBay, conditions du Cloud en anglais pour
   information) ; lots 2-4 en cours (App/Stock/messagerie/entrée ; composants/publication/réglages ; utils) ; ⚠ les mails
