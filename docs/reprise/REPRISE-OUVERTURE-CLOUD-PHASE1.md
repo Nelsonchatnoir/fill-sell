@@ -59,10 +59,23 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
 - Phase 2 : nom choisi par Nico à 21:37 = « FillSell – Crosslisting » (FR et EN, App Store et Google Play ; sous-titres
   gardés : FR « Assistant IA pour revendeurs », EN inchangé) ; mots-clés Apple FR « cross-post, cross-listing,
   multi-plateformes, revente, annonces », EN « crosslist, cross-post, reseller, multi-platform, listing, resale » (aucun
-  nom de plateforme ni de marque). À faire : saisie des noms et mots-clés, textes FR/EN, EULA et confidentialité (liens
-  en fin de description et dans les champs dédiés ; écran d'achat conforme Apple), déclarations de données, notes des
-  relecteurs, localisation de l'abonnement Cloud. Constat ASC : statut DSA « non-commerçant » déclaré pour l'app (à
-  revoir par Nico : abonnements payants).
+  nom de plateforme ni de marque). Constat ASC : statut DSA « non-commerçant » déclaré pour l'app (à revoir par Nico).
+  FAIT (05/11 22:00-23:50) : ASC — nom FR/EN, mots-clés FR/EN, descriptions et nouveautés FR/EN (`docs/stores/fiche-2.9.md`),
+  URL de confidentialité par langue, sortie MANUELLE ; Play — publication gérée ACTIVÉE, nom fr-FR et en-US, fiche
+  anglaise sans promettre Leboncoin/Beebs hors de France ; écran d'achat : mentions d'abonnement + liens EULA / conditions
+  / confidentialité (a8f43e5) ; comptes de relecture : DEUX (décision de 22:55) — Apple `test@fillsell.app` (témoin
+  achetable, 7 articles ajoutés, cloud-2), Google `googlereview@fillsell.app` (témoin, jamais offert, cloud-2) ; notes des
+  relecteurs prêtes (`docs/stores/notes-relecteurs-2.9.md`) ; déclarations de données préparées
+  (`docs/stores/donnees-2.9.md`, à saisir avec la soumission ; GTM chargé dans l'app native : à trancher).
+- Phase 3 (05/11 22:25 → ) : point 1 — inventaire (`scripts/i18n/inventaire-francais.mjs`, ~637 textes d'écran) ; lot 1
+  traduit (637eb7b : pages de paiement, compte, désinscription, retour eBay, conditions du Cloud en anglais pour
+  information) ; lots 2-4 en cours (App/Stock/messagerie/entrée ; composants/publication/réglages ; utils) ; ⚠ les mails
+  et les notifications suivent `profiles.lang`, qui vaut « fr » pour TOUS les comptes (la langue de l'app ne vit que
+  dans fs_lang) : à synchroniser (colonne modifiable par le compte, sans migration). Point 3 FAIT (d64c79a) : le Cloud
+  ne se vend qu'en France. Point 2 : la règle (`_shared/plateformes-pays.js`, 7a5c776 : US, GB, IE, CA, AU, NZ ;
+  Leboncoin et Beebs masqués hors de France ; Vinted/eBay/Depop masqués tant que `<plateforme>_pays_<cc>` ≠ 1) — à câbler
+  dans App (plateformesFermees) ; vraies pages lues : vinted.com (USD), vinted.co.uk, vinted.ie, Depop mondial, eBay
+  partout ; AUCUNE plateforme prouvée hors de France (pas de compte de test dans ces pays).
 
 ## Règles du lot (rappel)
 - Corriger la règle, pas le cas ; selftests + au plus un essai réel par point ; commit + push à chaque point (code et
