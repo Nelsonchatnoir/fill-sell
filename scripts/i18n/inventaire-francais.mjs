@@ -30,6 +30,13 @@ const ATTRIBUTS_TECHNIQUES = /^(className|style|id|key|href|src|type|name|role|d
 const OUTILS_FR = new Set(['le', 'la', 'les', 'des', 'du', 'une', 'est', 'sont', 'pas', 'pour', 'avec', 'sans', 'dans', 'ton', 'ta', 'tes', 'vos', 'votre', 'nos', 'notre', 'cette', 'ces', 'qui', 'que', 'aussi', 'mais', 'donc', 'tu', 'te', 'toi', 'nous', 'vous', 'elle', 'ils', 'elles', 'leur', 'leurs', 'aux', 'au', 'sur', 'sous', 'puis', 'encore', 'jamais', 'rien', 'tout', 'tous', 'toutes', 'chaque', 'mon', 'ma', 'mes', 'son', 'sa', 'ses', 'ou', 'et', 'un', 'de', 'par', 'en', 'ne', 'se', 'ce', 'si']);
 const OUTILS_EN = new Set(['the', 'and', 'you', 'your', 'to', 'of', 'is', 'are', 'with', 'for', 'on', 'in', 'this', 'that', 'it', 'be', 'not', 'no', 'from', 'at', 'by', 'as', 'an', 'a', 'or', 'will', 'can', 'has', 'have', 'was', 'were', 'all', 'any', 'one', 'when', 'what', 'which', 'here', 'there', 'they', 'them', 'their', 'we', 'our', 'my', 'me', 'do', 'does', 'did', 'yet', 'just', 'only', 'more', 'than', 'then', 'into', 'out', 'up', 'about']);
 const MOTIF_TECHNIQUE = /\\[bdswBDSW]|[|^$]|\(\?|\[\^|\{\d/;
+// (05/11 soir) Des libellés courts sans accent (« Mot de passe », « Erreur de connexion », « Annuler ») passaient au
+// travers : des mots d'interface SEULEMENT français comptent comme un indice de plus.
+const MOTS_UI_FR = new Set(['mot', 'passe', 'erreur', 'connexion', 'annuler', 'valider', 'fermer', 'retour', 'suivant', 'enregistrer', 'supprimer',
+  'modifier', 'ajouter', 'rechercher', 'chargement', 'connecte', 'connecter', 'inscription', 'compte', 'abonnement', 'paiement', 'achat', 'vente', 'ventes',
+  'annonce', 'annonces', 'article', 'articles', 'plateforme', 'plateformes', 'reessaie', 'oui', 'non', 'merci', 'bienvenue', 'aucun', 'aucune', 'envoyer',
+  'continuer', 'terminer', 'ouvrir', 'voir', 'tout', 'tous', 'publier', 'republier', 'retirer', 'synchroniser', 'reglages', 'parametres', 'aide', 'jours',
+  'mois', 'semaine', 'heure', 'heures', 'minutes', 'prix', 'marge', 'stock', 'photos', 'titre', 'taille', 'couleur', 'marque', 'etat', 'neuf', 'lot']);
 function estFrancais(s) {
   const t = String(s ?? '').replace(/\s+/g, ' ').trim();
   if (t.length < 3) return false;
@@ -38,7 +45,7 @@ function estFrancais(s) {
   if (!/[a-zA-ZÀ-ÿ]{2}/.test(t)) return false;
   if (MOTIF_TECHNIQUE.test(t)) return false;                              // motif de recherche, expression régulière
   const mots = t.toLowerCase().replace(/[’']/g, ' ').split(/[^a-zà-ÿœæ]+/).filter(Boolean);
-  const fr = mots.filter((m) => OUTILS_FR.has(m)).length + (ACCENTS.test(t) ? 2 : 0);
+  const fr = mots.filter((m) => OUTILS_FR.has(m) || MOTS_UI_FR.has(m)).length + (ACCENTS.test(t) ? 2 : 0);
   const en = mots.filter((m) => OUTILS_EN.has(m)).length;
   if (en >= 2 && en >= fr) return false;
   if (ACCENTS.test(t) && /[a-zà-ÿ]{3}/i.test(t)) return true;

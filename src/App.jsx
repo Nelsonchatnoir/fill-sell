@@ -6885,7 +6885,7 @@ export default function App({ loginOnly = false }){
       }
     } catch (e) {
       console.error(`OAuth ${provider} error:`, e);
-      setLoginError(e.message || 'Erreur de connexion');
+      setLoginError(e.message || (lang==='en' ? 'Sign-in error' : 'Erreur de connexion'));
     }
   };
 
@@ -6914,7 +6914,7 @@ export default function App({ loginOnly = false }){
         }
       } catch (e) {
         console.error('OAuth deep link error:', e);
-        setLoginError(e.message || 'Erreur de connexion');
+        setLoginError(e.message || (lang==='en' ? 'Sign-in error' : 'Erreur de connexion'));
       }
     });
     return () => { subPromise.then(s => s.remove()).catch(() => {}); };
@@ -7720,7 +7720,7 @@ export default function App({ loginOnly = false }){
     markSold:(item)=>markSold(item),
     confirmSellDirect:async(item,prix_vente,frais=0,quantite_vendue=1,plateforme=null)=>{
       const sv=parseFloat(String(prix_vente??0).replace(",","."))||0;
-      if(!sv||sv<=0)throw new Error("Prix vente invalide");
+      if(!sv||sv<=0)throw new Error(lang==="en"?"Invalid sale price":"Prix vente invalide");
       const sf=parseFloat(String(frais??0).replace(",","."))||0;
       const qVendue=Math.max(1,Math.min(quantite_vendue||1,item.quantite??1));
       await enregistrerVenteArticle({userId:user.id,article:item,prix:sv,frais:sf,
