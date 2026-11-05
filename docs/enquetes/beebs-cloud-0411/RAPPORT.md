@@ -631,3 +631,36 @@ les republications du jour : Mickey 34300468, gants 34300674, hoodie 34300745) ;
 Medik8 (33640171) ; les fiches TEST Veste 34300243 et Jean Lee 34300248 n'y sont plus — retirées par Beebs. Depop : la
 republication du « T-shirt homme TEST » (sans taille Depop) annulée avant tout retrait (`annulee_par.avant` gardé), remplacée
 par « TEST FillSell 30/10 — Veste » publiée sur Depop puis republiée (13:54:57).
+
+**Palier 2 — bilan (lancé 13:06:43, essai clos 15:45 sur décision de Nico ; vérifié sur les pages publiques depuis le Chrome du
+PC : nouvelle annonce 200, ancienne 404/410)** — hors ligne = retrait → remise en ligne :
+- **Vinted 5/5** : 10 s, 23 s, 11 s, 19 s, 15 s ; 5 nouvelles en ligne (999 €), 5 anciennes 404. Aucun doublon.
+- **Depop 5/5** : 3 min 00, 6 min 04, 6 min 03, 4 min 33, 3 min 48 ; nouvelles 200 (999 €), anciennes 404. Aucun doublon.
+- **Beebs 5/5** (vraies annonces) : 4 min 34, 6 min 48, 5 min 28, 3 min 23, 9 min 23 ; nouvelles en ligne (« Mes annonces » et page
+  publique 200). ⚠ Les ANCIENNES pages restent servies en public 1 à 2 h après le retrait (200, « Ajouter au panier ») alors
+  qu'elles ne sont plus dans « Mes annonces » (cache de Beebs : Mickey 34284626 retiré à 12:31, encore 200 à 12:46, 404 à 14:40).
+  Achat possible ou non : non vérifié (il faudrait acheter).
+- **Leboncoin 1/5** : Veste lot F 6 min 01 (ancienne 410, nouvelle 200). Jean Lee : retiré 14:21:54, redéposé 14:26:05 (adsubmit
+  201, annonce 3302754094) mais le canal de l'extension coupé avant la page de confirmation → relecture 14:35 « incertaine »
+  alors que le numéro rendu par l'adsubmit EST celui relu → geste attendu inutile (défaut) ; 3302754094 en 410 en public (en
+  validation chez Leboncoin ?). T-shirt homme : pas commencé — 15:38:05 le pré-vol du formulaire (AVANT tout retrait) n'a pas pu
+  télécharger la photo 1 (photo hébergée hors FillSell, article importé, ou réseau — une coupure du relais sur Leboncoin à
+  15:37:01) → nouvel essai à 16:08 ; rien retiré. Lot de 2 t-shirts et Veste lot H : publiés 13:01/13:03, jamais apparus dans
+  « Mes annonces » ni dotés d'un lien → republication impossible (Leboncoin retient ou refuse les titres « TEST » ?).
+- **Pourquoi si lent** : (1) get-pending-jobs ne laisse qu'UNE annonce hors ligne à la fois, TOUTES plateformes confondues
+  (« republication retenue — l'annonce du job X est hors ligne ») : les 20 passent l'une après l'autre ; une republication Beebs
+  ou Depop tient 3 à 9 min, Leboncoin attend toutes les autres ; (2) Leboncoin : retenue par plateforme tant que Jean Lee était
+  hors ligne (13:23-13:35) ; (3) le report de 30 min après le pré-vol raté. Durée du palier : 13:06 → 15:14 pour 16 republications
+  faites.
+- **Anti-robot** : aucun pendant le palier 2 (dernier signe : vérification Beebs passée seule 11:53:06 ; 403 sur la page 404 de
+  33640171 à 11:59:27, non compté par Nico). **Coupures du relais** sur la journée : 4 (Leboncoin 10:46, 11:17, 15:37 ;
+  Vinted 13:09), une ressource chacune, sans effet (sauf peut-être la photo de 15:38).
+- **Mémoire du navigateur** (conteneur, `memoire-2026-11-05.csv`) : repos 1,11 Go (pointe 1,20) ; palier 1 moy. 1,01 Go,
+  pointe 1,36 Go ; palier 2 moy. 1,04 Go, pointe 1,34 Go (anonyme max 0,91 Go, 20 processus Chrome) ; limite 2 Go ; pointe depuis
+  11:51 : 1,59 Go. Dimensionnement : ~1,5 Go par compte actif, 2 Go de marge.
+- **Étapes détaillées** (retrait, photos, recréation, confirmation) : non notées par le serveur — c'est le point 2 des finitions
+  Cloud ; seuls le retrait et la remise en ligne sont datés ci-dessus.
+- **Coût** : machine depuis le 04/11 17:26, 22 h 20 × 0,3136 € HT ≈ 7,0 € HT (toujours facturée jusqu'à l'ordre de Nico) + IP 4 $.
+- Clôture 15:45 : enregistreurs arrêtés (mémoire, alarmes), fichiers de test effacés sur cloud-1 et cloud-2 ; le compte de Nico
+  reste sur cloud-2 (ses jobs continuent normalement) ; `ENREGISTREMENT_FOND=1` reste dans la configuration jusqu'au prochain
+  déploiement.

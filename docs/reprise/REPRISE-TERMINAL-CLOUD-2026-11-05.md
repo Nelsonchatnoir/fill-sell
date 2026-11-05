@@ -53,8 +53,14 @@ où on en est, ce qui est commité, déployé ou pas, ce qui attend Nico, et com
   `set_config('request.jwt.claims', …)` + `role authenticated`). eBay : la fonction ne republie pas eBay (`invalid_platform`).
 - **d41332e** : Beebs était fermé par NOTRE verrou (jeton court expiré, jeton long là) — preuve réelle 11:53 (une visite de
   l'accueil, jeton renouvelé en 9 s), Veste et Jean Lee publiées sur Beebs, Mickey republié.
-- Palier 2 (13:06:43, + Depop Veste 30/10 13:54:57) : Vinted 5, Depop 5, Leboncoin 3 (+2 dont le lien attend la validation
-  Leboncoin), Beebs 5 (vraies annonces de Nico). Résultats et mesures : RAPPORT § 16.
+- Palier 2 (13:06:43 → essai CLOS 15:45 sur décision de Nico) : Vinted 5/5 (10 à 23 s hors ligne), Depop 5/5 (3 à 6 min),
+  Beebs 5/5 vraies annonces (3 à 9 min), Leboncoin 1/5 (Veste lot F 6 min ; Jean Lee bloqué en geste attendu alors que le
+  numéro de l'adsubmit prouve le redépôt — défaut ; T-shirt homme : pré-vol photo raté 15:38, nouvel essai 16:08, rien retiré ;
+  Lot de 2 t-shirts et Veste lot H jamais apparus chez Leboncoin). Aucun doublon Vinted/Depop ; Beebs : anciennes pages encore
+  servies 1-2 h (cache). Lent parce qu'UNE annonce hors ligne à la fois, toutes plateformes confondues. Mémoire : pointe 1,36 Go
+  (limite 2 Go). Coût ≈ 7,0 € HT + IP 4 $ au 05/11 15:45. Détail : RAPPORT § 16 « Palier 2 — bilan ».
+- ⚠ Jobs encore ouverts sur le compte de Nico après la clôture : Leboncoin Jean Lee (5e4201ba, geste attendu — l'annonce
+  3302754094 est bien le redépôt : même numéro que l'adsubmit 201) et Leboncoin T-shirt homme (32e12d08, nouvel essai 16:08).
 - Les fiches TEST sur Beebs sont retirées par la modération Beebs (absentes de « Mes annonces », relu le 05/11 vers 13:50
   dans le navigateur de cloud-2) ; les vraies annonces republiées sont dans « Mes annonces > en ligne » aussitôt, leur page
   publique arrive plus tard (cache de Beebs).
@@ -66,11 +72,11 @@ où on en est, ce qui est commité, déployé ou pas, ce qui attend Nico, et com
 3) seulement ensuite `COMPTES_AUTORISES` de cloud-1 = le compte de Nico. ⛔ Dans l'autre ordre, cloud-1 purgerait les sessions
 du profil (le coffre commun est vidé pour l'essai). Jamais `cloud_ip_liberer` sur le compte de Nico ; aucune purge.
 
-## 4. Ce qui tourne sur cloud-2 (à arrêter à la clôture de l'essai)
+## 4. Sur cloud-2 après la clôture (05/11 15:45)
 
-- `/usr/local/bin/fs-memoire.sh` (mémoire du navigateur toutes les 5 s → `etat/essais/memoire-2026-11-05.csv`, borné 12 h) ;
-- `/usr/local/bin/fs-alarmes.py` + `docker compose logs -f` (→ `etat/essais/alarmes-2026-11-05.log`, borné 12 h) ;
-- arrêt : `pkill -f fs-memoire.sh; pkill -f fs-alarmes.py; pkill -f "compose logs -f"`.
+- Enregistreurs de l'essai ARRÊTÉS (`/usr/local/bin/fs-memoire.sh`, `/usr/local/bin/fs-alarmes.py`) ; leurs fichiers restent :
+  `etat/essais/memoire-2026-11-05.csv`, `etat/essais/alarmes-2026-11-05.log`. Fichiers de test (suites) effacés sur les deux serveurs.
+- Reste allumé : `ENREGISTREMENT_FOND=1` (configuration de l'orchestrateur, ~30 Mo/jour) — à retirer au prochain déploiement.
 - Lire l'état réel : `etat/endurance/blocages.json`, `etat/essais/fond-f44b5917-<jour>.jsonl`, `docker compose logs orchestrateur`
   (dans `/srv/fillsell-cloud/deploiement`) ; base : `cloud_coffre`, `cloud_postes`, `messagerie_releves`, `cross_post_jobs`.
 
