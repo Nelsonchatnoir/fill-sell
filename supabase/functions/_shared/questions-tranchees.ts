@@ -42,6 +42,7 @@ import { reponseMarqueDepop, champsApresMarqueDepop, QUESTION_MARQUE_DEPOP } fro
 import { archiverErreur } from "./erreurs-archivees.js";
 import { titreSymbolesATrancher } from "./titre-symboles-vinted.js";
 import { titreMajusculesATrancher } from "./casse-titre.js";
+import { titreInvisiblesATrancher } from "./caracteres-invisibles.js";
 import { colisRepublicationATrancher } from "./vinted-colis-tranche.js";
 import { estQuestionColisPublication, catalogueDuJob, formatDominantDuRayon, colisPublicationATrancher, repereSansAccord } from "./vinted-colis-categorie.js";
 
@@ -329,6 +330,17 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
     const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: r.platform_fields })
       .eq("id", j.id).eq("status", "needs_user").select("id");
     if (data?.length) (n as Record<string, number>).titre_majuscules = ((n as Record<string, number>).titre_majuscules ?? 0) + 1;
+  }
+  // ── 10. (05/11, point 6 — Smail Lachkar, ee5fc232) Vinted refusait un caractère INVISIBLE du titre ──
+  // (« caractères spéciaux (​) », copié avec le texte d'une annonce importée) : la personne ne peut pas le voir, la
+  // question n'a pas lieu d'être. Le titre sans lui, rangé comme une réponse (_shared/caracteres-invisibles.js) ;
+  // une passe par job, compare-and-swap sur needs_user.
+  for (const j of liste) {
+    const r = titreInvisiblesATrancher(j, maintenant);
+    if (!r) continue;
+    const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: r.platform_fields })
+      .eq("id", j.id).eq("status", "needs_user").select("id");
+    if (data?.length) (n as Record<string, number>).titre_invisibles = ((n as Record<string, number>).titre_invisibles ?? 0) + 1;
   }
   // ── 9. (25/10, Nico) Vinted « Format du colis » d'une republication : FillSell tranche ──
   // « Corrige pour que ces republications passent sans rien demander. » (_shared/vinted-colis-tranche.js)

@@ -744,3 +744,11 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 3, 4, 5.
   ouverte remonte en ROUGE dans l'ops-digest (support@fillsell.app) : `_shared/attente-extension-active.js`,
   `selftest:attente-extension-active`. Pas signalés : file qui avance, ordinateur éteint (ou pas vu depuis 24 h), tâche
   programmée, file en pause voulue, republication automatique pas engagée (créneau).
+
+## 05/11 midi — Leboncoin : ventes lues par les transactions ; Beebs : « reçue puis retirée »
+- L'API des transactions Leboncoin ne donne AUCUN numéro d'annonce : ses ventes (`source releve`, `commande_ref`) ne se
+  rattachent jamais et peuvent doubler une vente déjà enregistrée par l'annonce (« Article vendu », numéro). En
+  délégation, elles s'écrivent chez le compte qui relève. Correctif proposé le 05/11 (image de la transaction ↔ photo
+  de l'annonce, numéro exact) : en attente de Nico — ne pas compter ces ventes comme preuves.
+- Beebs : un numéro vu « en vérification » au dépôt puis absent de deux relevés complets = retrait par la modération
+  de Beebs (XEWER, louis-seller) ; comparer avec les dépôts acceptés du même jour avant de conclure.

@@ -257,6 +257,7 @@ import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLe
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
 import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
+import { jobSansInvisibles } from "../_shared/caracteres-invisibles.js";
 // (02/11, facture Supabase) coin_config relu seulement quand sa version (signal_poll) a changé.
 import { configUne, configPlusieurs, configPrefixe } from "../_shared/coin-config-cache.js";
 import { refusAuthentification } from "../_shared/auth-indisponible.js";
@@ -14548,6 +14549,10 @@ serve(async (req) => {
       } catch (_e) { lectureFondBeebs = null; /* jamais un point de panne */ }
     }
 
+    // (05/11, point 6 — Smail Lachkar) Les caractères INVISIBLES (largeur nulle, marques de sens, contrôles) ne partent
+    // jamais : titre, description et textes de recréation nettoyés au service, toutes plateformes, toute extension
+    // (la fiche ne change pas). Vinted refusait « caractères spéciaux (​) » pour un U+200B copié d'une annonce importée.
+    out = out.map((j) => jobSansInvisibles(j) as typeof j);
     // (01/11, Jocabroc) Vinted reçoit les 20 premières photos du job, jamais plus : au-delà, l'extension attendait des
     // photos que Vinted refuse et annulait la publication. Les autres plateformes gardent toutes leurs photos.
     out = out.map((j) => jobDansLaLimitePhotos(j) as typeof j);

@@ -112,6 +112,7 @@
     "selftest:barre-job-position": "node scripts/barre-job-position-selftest.mjs",
     "selftest:releve-veille-miroir": "node scripts/releve-veille-miroir-selftest.mjs",
     "selftest:attente-extension-active": "node scripts/attente-extension-active-selftest.mjs",
+    "selftest:caracteres-invisibles": "node scripts/caracteres-invisibles-selftest.mjs",
     "selftest:delegation-leboncoin-chaine": "node scripts/delegation-leboncoin-chaine-selftest.mjs",
     "selftest:capture-libelle": "node scripts/capture-libelle-selftest.mjs",
     "selftest:relance-apres-maj": "node scripts/relance-apres-maj-selftest.mjs",

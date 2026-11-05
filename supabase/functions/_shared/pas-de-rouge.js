@@ -54,6 +54,8 @@ export { CANAL_RE };
 import { repriseTitreSymbolesVinted } from "./titre-symboles-vinted.js";
 // (25/10, décision de Nico) Titre « trop de lettres majuscules » : la casse normale, une reprise (bloc 0 ter).
 import { repriseTitreMajuscules } from "./casse-titre.js";
+// (05/11, point 6 — Smail Lachkar) Un titre refusé pour un caractère INVISIBLE repart sans lui, tout seul.
+import { repriseTitreInvisibles, messageRepriseInvisibles } from "./caracteres-invisibles.js";
 // (25/10, boncoin59300) Ce qu'un retrait en reprise a le droit de dire de son annonce : lu sur des champs, jamais deviné.
 import { indiceEtatRetrait } from "./retrait-deja-absent.js";
 // (28/10, point 11) Le mur « configuration vendeur » de Depop : une seule source (pur, sans import).
@@ -553,6 +555,17 @@ function classerEchecSansRegleRetrait(arg) {
     // seulement si ce titre dit autre chose que ce que Vinted a reçu ; sinon,
     // ou au deuxième refus, la question « Titre » ci-dessous, comme avant.
     if (refus && refus.champ === "title") {
+      // (05/11, point 6 — Smail Lachkar, ee5fc232) « caractères spéciaux (​) » : les caractères refusés sont TOUS
+      // invisibles (copiés avec le texte d'une annonce importée) — notre envoi, jamais la personne. Le titre sans eux,
+      // rangé comme une réponse, une fois par job (_shared/caracteres-invisibles.js).
+      const invisibles = repriseTitreInvisibles({ titre: arg.titre, pf, motifRefus: refus.texte });
+      if (invisibles) {
+        return {
+          verdict: "reprise", statut: "pending", motif: "vinted_titre_invisibles", dansMinutes: 1,
+          pf: invisibles.pf,
+          message: messageRepriseInvisibles(acte(action).replace(/^la /, "La ")),
+        };
+      }
       const assagi = arg.titreDejaAssagi ? null
         : repriseTitreSymbolesVinted({ titre: arg.titre, pf, motifRefus: refus.texte });
       if (assagi) {

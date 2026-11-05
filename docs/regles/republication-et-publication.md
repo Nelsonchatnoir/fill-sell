@@ -1281,3 +1281,10 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 1 (9cdr9rm4rn, Beeb
 - Une republication d'un article vendu (statut vendu OU quantité ≤ 0) est RETENUE needs_user « article_vendu », jamais
   annulée (règle du 25/09, get-pending-jobs ; handler-watch aligné le 05/11) : si la vente n'a pas eu lieu, la personne la
   défait et relance.
+
+## 05/11 midi — Caractères invisibles : jamais envoyés
+- Titre et description perdent leurs caractères invisibles (largeur nulle hors emoji, marques de sens, contrôles, trait
+  d'union conditionnel) ; espaces spéciales → ordinaires ; accents, ponctuation, emojis intacts ; retours à la ligne
+  d'un titre : règle Vinted du 25/10 inchangée. Au service (get-pending-jobs, toute extension) et avant de taper
+  (extension 0.6.173). La fiche ne change pas. Un refus Vinted pour un caractère invisible repart seul, une fois.
+  Selftest `caracteres-invisibles`.

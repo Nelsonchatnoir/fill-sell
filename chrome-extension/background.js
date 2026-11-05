@@ -4984,8 +4984,46 @@ function assagirSymbolesVinted(titre, { marque = null } = {}) {
   return masques.length ? t.replace(/Zfsmarque(\d+)qZ/g, (x, i) => masques[Number(i)] ?? x) : t;
 }
 
+// ── (05/11, 0.6.173 — Smail Lachkar, ee5fc232) LES CARACTÈRES INVISIBLES NE PARTENT JAMAIS ─────────────────────
+// Un titre importé d'une annonce Leboncoin commençait par une espace de largeur nulle (U+200B) : Vinted le refusait
+// (« caractères spéciaux (​) ») et la personne devait réécrire un titre dont elle ne voyait pas le défaut. Avant tout
+// dépôt (publication ET recréation : construireJobRecreation passe par sanitizeJob), titre ET description perdent leurs
+// caractères invisibles (largeur nulle hors emoji, marques de sens, contrôles, trait d'union conditionnel) ; les espaces
+// spéciales deviennent ordinaires. Accents, ponctuation, emojis de la description, ZWJ entre deux emojis : intacts.
+// Corps de même comportement que supabase/functions/_shared/caracteres-invisibles.js (nettoyer) — le serveur nettoie
+// aussi au service ; selftest caracteres-invisibles compare les deux.
+const PICTO_ENVOI = /\p{Extended_Pictographic}/u;
+function nettoyerInvisibles(texte, multiligne) {
+  const estEmoji = (ch) => {
+    if (!ch) return false;
+    const c = ch.codePointAt(0);
+    if (c === 0xFE0F || (c >= 0x1F3FB && c <= 0x1F3FF)) return true;
+    return PICTO_ENVOI.test(ch);
+  };
+  const src = Array.from(String(texte ?? "").replace(/\r\n?/g, "\n"));
+  let out = "";
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    const c = ch.codePointAt(0);
+    if (c === 0x200D && estEmoji(src[i - 1]) && estEmoji(src[i + 1])) { out += ch; continue; }
+    if ((c >= 0x200B && c <= 0x200D) || (c >= 0x2060 && c <= 0x2064) || c === 0xFEFF
+      || c === 0x200E || c === 0x200F || c === 0x061C || (c >= 0x202A && c <= 0x202E) || (c >= 0x2066 && c <= 0x2069)
+      || c === 0x00AD || c === 0x180E || (c >= 0xFFF9 && c <= 0xFFFB)
+      || (c < 0x20 && c !== 0x09 && c !== 0x0A && c !== 0x0D) || c === 0x7F || (c >= 0x80 && c <= 0x9F)) continue;
+    if (c === 0x00A0 || c === 0x202F || (c >= 0x2000 && c <= 0x200A) || c === 0x205F || c === 0x3000 || c === 0x1680 || c === 0x09) { out += " "; continue; }
+    if (c === 0x2028 || c === 0x2029 || c === 0x0A) { out += "\n"; continue; }
+    out += ch;
+  }
+  if (!multiligne) return out.replace(/ {2,}/g, " ").trim();
+  return out.split("\n").map((l) => l.replace(/ +$/, "")).join("\n").trim();
+}
+
 function sanitizeJob(job) {
-  let title = stripEmoji(job.title);
+  const description = job.description == null ? job.description : nettoyerInvisibles(job.description, true);
+  if (description !== job.description) console.log(`[background] Description : caractère(s) invisible(s) retiré(s) avant le dépôt (job ${job.id})`);
+  const titreVisible = job.title == null ? job.title : nettoyerInvisibles(job.title, false);
+  if (titreVisible !== job.title) console.log(`[background] Titre : caractère(s) invisible(s) retiré(s) avant le dépôt : ${JSON.stringify(job.title)} → "${titreVisible}"`);
+  let title = stripEmoji(titreVisible);
   if (job.platform === "vinted") {
     // (25/10) Un saut de ligne devient une espace AVANT le dépôt (publication ET
     // recréation) : le champ Titre de Vinted le supprime sans rien mettre à la
@@ -5010,9 +5048,9 @@ function sanitizeJob(job) {
       title = calme;
     }
   }
-  if (title === job.title) return job;
+  if (title === job.title && description === job.description) return job;
   if (stripEmoji(job.title) !== job.title) console.log(`[background] Titre nettoyé (emoji retirés) : "${job.title}" → "${title}"`);
-  return { ...job, title };
+  return { ...job, title, description };
 }
 
 // ── CANAL COUPÉ : LA SIGNATURE CHROME, DEUX FORMULATIONS ────────────────────
