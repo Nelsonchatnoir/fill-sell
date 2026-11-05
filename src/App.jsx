@@ -2567,11 +2567,11 @@ export default function App({ loginOnly = false }){
     if(!bandeauOpla&&!avis.carte) return null;
     return(
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
-        {bandeauOpla&&<BandeauSortieOpla variante={sortieOpla.variante} onCompris={sortieOpla.compris}/>}
-        {avis.carte&&<CarteAvis url={avis.carte.url} onChoix={avis.choisir}/>}
+        {bandeauOpla&&<BandeauSortieOpla variante={sortieOpla.variante} onCompris={sortieOpla.compris} lang={lang}/>}
+        {avis.carte&&<CarteAvis url={avis.carte.url} onChoix={avis.choisir} lang={lang}/>}
       </div>
     );
-  },[bandeauOpla,sortieOpla.variante,sortieOpla.compris,avis.carte,avis.choisir]);
+  },[bandeauOpla,sortieOpla.variante,sortieOpla.compris,avis.carte,avis.choisir,lang]);
   // Plus aucune case n'est grisée pour Opla : le motif reste pour les
   // appelants qui le lisent encore, il ne sert plus à rien de visible.
   const oplaMotifGrise='fermee';

@@ -303,7 +303,7 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
                         <SelectField style={{ flex:1 }} value={ef.type ?? item.type ?? item.categorie ?? ''}
                           onChange={e => setEdits(prev => ({ ...prev, [idx]: { ...prev[idx], editFields: { ...ef, type: e.target.value } } }))}>
                           <option value="">{en ? 'Category' : 'Catégorie'}</option>
-                          {CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                          {CATS.map(c => <option key={c} value={c}>{typeLabel(c, lang)}</option>)}
                         </SelectField>
                       </div>
                       <ConfirmBar>

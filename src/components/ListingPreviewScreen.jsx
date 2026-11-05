@@ -1845,7 +1845,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
             style={{ aspectRatio:"1", borderRadius:12, overflow:"hidden", border:`1px solid ${T.border}`, position:"relative", cursor:"pointer", ...tile.style }}
           >
             <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", pointerEvents:"none" }} />
-            {photos.length > 1 && <DragHandle bind={drag.handleProps(i)} />}
+            {photos.length > 1 && <DragHandle bind={drag.handleProps(i)} lang={lang} />}
             {photoOption !== "original" && i >= MAX_RETOUCHED && (
               <span style={{
                 position:"absolute", left:5, bottom:5, background:"rgba(16,32,27,0.72)", color:"#fff",
@@ -3309,7 +3309,8 @@ const OTHER_SENTINEL = "__fs_other__";
 // celle de la plateforme — un état Vinted d'une page anglaise s'affiche
 // « Très bon état » et part « Very good ». Par défaut : la valeur elle-même.
 const libelleIdentite = (v) => v;
-export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase, tailleTexte = 13, libre: texteLibre = false, libelle = libelleIdentite }) {
+// `lang` (05/11, phase 3) : 'en' = les mots de l'écran en anglais ; absent = le français, à l'identique.
+export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, lang, idBase, tailleTexte = 13, libre: texteLibre = false, libelle = libelleIdentite }) {
   const vals = Array.isArray(allowedValues) ? allowedValues : [];
   const n = vals.length;
   const [libre, setLibre] = useState(false);
@@ -3347,7 +3348,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
         <option value="">—</option>
         {horsListe && <option value={value}>{libelle(value)}</option>}
         {vals.map(v => <option key={v} value={v}>{libelle(v)}</option>)}
-        {!strict && <option value={OTHER_SENTINEL}>Autre valeur…</option>}
+        {!strict && <option value={OTHER_SENTINEL}>{lang === "en" ? "Other value…" : "Autre valeur…"}</option>}
       </select>
     );
   }
@@ -3368,7 +3369,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
         <option value="">—</option>
         {horsListe && <option value={value}>{libelle(value)}</option>}
         {vals.map(v => <option key={v} value={v}>{libelle(v)}</option>)}
-        {!strict && <option value={OTHER_SENTINEL}>Autre valeur…</option>}
+        {!strict && <option value={OTHER_SENTINEL}>{lang === "en" ? "Other value…" : "Autre valeur…"}</option>}
       </select>
     );
   }
@@ -3379,7 +3380,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
       {libre && n > 0 && (
         <button type="button" data-retour-liste="1" onClick={() => setLibre(false)}
           style={{ marginTop:6, padding:"4px 2px", background:"none", border:"none", font:"inherit", fontSize:12.5, fontWeight:700, color:T.ink, textDecoration:"underline", cursor:"pointer", textAlign:"left" }}>
-          ↩ Revenir à la liste ({n} choix)
+          {lang === "en" ? `↩ Back to the list (${n} option${n > 1 ? "s" : ""})` : <>↩ Revenir à la liste ({n} choix)</>}
         </button>
       )}
     </>
@@ -4134,6 +4135,7 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
                     }}
                     T={T}
                     idBase={`gen-${gp}-${aspectSlug(a.key)}`}
+                    lang={lang}
                   />
                 </div>
               );
@@ -4164,6 +4166,7 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
                   }}
                   T={T}
                   idBase={`ebay-${aspectSlug(a.name)}`}
+                  lang={lang}
                 />
               </div>
             ))}

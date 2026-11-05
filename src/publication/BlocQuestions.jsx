@@ -239,6 +239,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
                   T={TN}
                   tailleTexte={16}
                   idBase="fsn-shared-couleur"
+                  lang={m.lang}
                 />
               )) : field.type === "select" ? enPuces(
                 // (26/10 nuit) En puces : les VALEURS du sélecteur (dans son ordre, groupes à plat).
@@ -313,6 +314,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
                   T={TN}
                   tailleTexte={16}
                   idBase="fsn-taille-commune"
+                  lang={m.lang}
                 />)}
               </div>
             );
@@ -340,6 +342,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
                     T={TN}
                     tailleTexte={16}
                     idBase={`fsn-taille-${gp}`}
+                    lang={m.lang}
                   />)}
                 </div>
               ))}
@@ -442,6 +445,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
                 T={TN}
                 tailleTexte={16}
                 idBase={`fsn-gen-${gp}-${slug(a.key)}`}
+                lang={m.lang}
               />)}
               {gp === "vinted" && a.key === "isbn" && (
                 <button type="button" className={`fsn-choice${a.value === ISBN_ABSENT ? " fsn-choice--on" : ""}`} style={{ alignSelf: "flex-start" }}
@@ -518,6 +522,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
               T={TN}
               tailleTexte={16}
               idBase={`fsn-mem-${slug(k)}`}
+              lang={m.lang}
             />
           </div>
         ))}
@@ -548,6 +553,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
                       T={TN}
                       tailleTexte={16}
                       idBase={`fsn-ebay-dim-${slug(a.name)}`}
+                      lang={m.lang}
                     />
                   </div>
                 ))}
@@ -586,6 +592,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
               T={TN}
               tailleTexte={16}
               idBase={`fsn-ebay-${slug(a.name)}`}
+              lang={m.lang}
             />)}
           </div>
         ))}

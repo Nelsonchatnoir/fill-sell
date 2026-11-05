@@ -1994,6 +1994,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
             strict={listeCertifieeComplete || questionCouleurVinted}
             onChange={setValue}
             T={NU_T}
+            lang={lang}
             idBase={`nu-${job.id}`}
             libelle={libelleOption(f)}
           />
@@ -2039,6 +2040,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
                 strict={false}
                 onChange={(v) => setValeursSup((prev) => ({ ...prev, [c.field_key]: v }))}
                 T={NU_T}
+                lang={lang}
                 idBase={`nu-${job.id}-${c.field_key}`}
                 libelle={libelleOption(c)}
               />

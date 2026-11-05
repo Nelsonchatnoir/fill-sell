@@ -32,7 +32,7 @@ const branchesDatalist = (avi.match(/<datalist id=/g) ?? []).length;
 verifier(branchesDatalist === 1 && /if \(texteLibre && !strict && n > 0\)/.test(avi), 'un seul <datalist> : le champ À RECHERCHE (marque, saisie libre par nature) — jamais une liste à choisir', `${branchesDatalist} datalist`);
 verifier(/if \(n > 30 && !libre\) \{[\s\S]{0,400}<select/.test(avi), 'une liste de plus de 30 valeurs : un vrai sélecteur');
 verifier(/\{libre && n > 0 && \([\s\S]{0,300}onClick=\{\(\) => setLibre\(false\)\}[\s\S]{0,400}Revenir à la liste/.test(avi), '« Autre valeur… » garde un retour vers la liste');
-verifier(/\{!strict && <option value=\{OTHER_SENTINEL\}>Autre valeur…<\/option>\}/.test(avi), '« Autre valeur… » seulement hors liste fermée');
+verifier(/\{!strict && <option value=\{OTHER_SENTINEL\}>\{lang === "en" \? "Other value…" : "Autre valeur…"\}<\/option>\}/.test(avi), '« Autre valeur… » seulement hors liste fermée');
 
 console.log('\n2. Une liste qui fait foi : sélecteur fermé');
 verifier(/strict=\{faitFoi\}/.test(lire('src/publication/BlocQuestions.jsx')), 'BlocQuestions : strict quand la liste fait foi');

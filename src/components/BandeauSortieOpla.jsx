@@ -16,36 +16,67 @@ import { OPLA_SORTIE } from '../../supabase/functions/_shared/opla-sortie.js';
 import { toucherLeger } from '../utils/retourHaptique';
 import './CarteInfo.css';
 
+// (05/11, lot « Ouverture du Cloud », phase 3) Le même bandeau en anglais : `lang` absent ou 'fr' = le français,
+// à l'identique. La date anglaise se lit sur la même constante (OPLA_SORTIE.LE).
+const DATE_SORTIE_EN = new Date(`${OPLA_SORTIE.LE}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 const TEXTES_BANDEAU_OPLA = Object.freeze({
-  relie: Object.freeze({
-    pastille: 'Changement de plateforme',
-    titre: 'Opla : on arrête la publication',
-    texte: `Opla demande désormais une somme importante pour garder son accès. On a refusé : ce n'est pas à toi de payer pour ça. À partir du ${OPLA_SORTIE.DATE_TEXTE}, FillSell ne publie et ne republie plus sur Opla.`,
-    lignes: [
-      { ton: 'continue', icone: RefreshCw, texte: 'Tes annonces Opla restent synchronisées' },
-      { ton: 'continue', icone: ShieldCheck, texte: 'Ventes détectées, copies retirées ailleurs' },
-      { ton: 'arret', icone: Ban, texte: 'Plus de publication ni de remise en avant' },
-    ],
-    pied: 'Vinted, Leboncoin, eBay et Beebs continuent normalement.',
-    bouton: "J'ai compris",
+  fr: Object.freeze({
+    relie: Object.freeze({
+      pastille: 'Changement de plateforme',
+      titre: 'Opla : on arrête la publication',
+      texte: `Opla demande désormais une somme importante pour garder son accès. On a refusé : ce n'est pas à toi de payer pour ça. À partir du ${OPLA_SORTIE.DATE_TEXTE}, FillSell ne publie et ne republie plus sur Opla.`,
+      lignes: [
+        { ton: 'continue', icone: RefreshCw, texte: 'Tes annonces Opla restent synchronisées' },
+        { ton: 'continue', icone: ShieldCheck, texte: 'Ventes détectées, copies retirées ailleurs' },
+        { ton: 'arret', icone: Ban, texte: 'Plus de publication ni de remise en avant' },
+      ],
+      pied: 'Vinted, Leboncoin, eBay et Beebs continuent normalement.',
+      bouton: "J'ai compris",
+    }),
+    general: Object.freeze({
+      pastille: 'Changement de plateforme',
+      titre: 'Opla quitte FillSell',
+      texte: "Opla demande désormais une somme importante pour rester accessible depuis FillSell. On a refusé : ce n'est pas à toi de payer pour ça, et on ne fera pas grimper le prix de ton abonnement pour eux.",
+      lignes: [
+        { ton: 'continue', icone: Check, texte: 'Vinted, Leboncoin, eBay et Beebs continuent normalement' },
+        { ton: 'continue', icone: Sparkles, texte: 'De nouvelles plateformes arrivent' },
+      ],
+      pied: null,
+      bouton: "J'ai compris",
+    }),
   }),
-  general: Object.freeze({
-    pastille: 'Changement de plateforme',
-    titre: 'Opla quitte FillSell',
-    texte: "Opla demande désormais une somme importante pour rester accessible depuis FillSell. On a refusé : ce n'est pas à toi de payer pour ça, et on ne fera pas grimper le prix de ton abonnement pour eux.",
-    lignes: [
-      { ton: 'continue', icone: Check, texte: 'Vinted, Leboncoin, eBay et Beebs continuent normalement' },
-      { ton: 'continue', icone: Sparkles, texte: 'De nouvelles plateformes arrivent' },
-    ],
-    pied: null,
-    bouton: "J'ai compris",
+  en: Object.freeze({
+    relie: Object.freeze({
+      pastille: 'Platform change',
+      titre: 'Opla: we’re stopping publishing there',
+      texte: `Opla now asks for a large fee to keep its access. We said no: it’s not up to you to pay for that. From ${DATE_SORTIE_EN}, FillSell no longer publishes or reposts on Opla.`,
+      lignes: [
+        { ton: 'continue', icone: RefreshCw, texte: 'Your Opla listings stay synced' },
+        { ton: 'continue', icone: ShieldCheck, texte: 'Sales detected, copies removed elsewhere' },
+        { ton: 'arret', icone: Ban, texte: 'No more publishing or reposting' },
+      ],
+      pied: 'Vinted, Leboncoin, eBay and Beebs carry on as usual.',
+      bouton: 'Got it',
+    }),
+    general: Object.freeze({
+      pastille: 'Platform change',
+      titre: 'Opla is leaving FillSell',
+      texte: 'Opla now asks for a large fee to stay reachable from FillSell. We said no: it’s not up to you to pay for that, and we won’t raise your subscription price for them.',
+      lignes: [
+        { ton: 'continue', icone: Check, texte: 'Vinted, Leboncoin, eBay and Beebs carry on as usual' },
+        { ton: 'continue', icone: Sparkles, texte: 'New platforms are on the way' },
+      ],
+      pied: null,
+      bouton: 'Got it',
+    }),
   }),
 });
 
-export default function BandeauSortieOpla({ variante = 'relie', onCompris }) {
+export default function BandeauSortieOpla({ variante = 'relie', onCompris, lang = 'fr' }) {
   const idTitre = useId();
   const [sortie, setSortie] = useState(false);
-  const T = TEXTES_BANDEAU_OPLA[variante] ?? TEXTES_BANDEAU_OPLA.general;
+  const textes = TEXTES_BANDEAU_OPLA[lang === 'en' ? 'en' : 'fr'];
+  const T = textes[variante] ?? textes.general;
   const compris = () => {
     toucherLeger();
     setSortie(true);

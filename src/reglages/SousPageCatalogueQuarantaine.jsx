@@ -91,22 +91,33 @@ function dateCourte(v) {
 const CONTENU_ANNONCE = /^(photo|photos|image|images|picture|pictures|media|title|titre|description|price|prix)$/i;
 const CLE_BRUTE = /^[a-z0-9]+(_[a-z0-9]+)+$/;
 
-/** Pourquoi cette ligne ne peut pas être validée, ou null si elle le peut. */
-function motifNonValidable(r) {
+/** Pourquoi cette ligne ne peut pas être validée, ou null si elle le peut. `lang` (05/11) : 'en' = la phrase en
+ *  anglais ; absent = le français, à l'identique. */
+function motifNonValidable(r, lang = 'fr') {
+  const en = lang === 'en';
   if (CONTENU_ANNONCE.test(String(r.field_key ?? ''))) {
-    return "c'est le contenu de l'annonce (photo, titre, description, prix), pas une caractéristique — il est déjà demandé ailleurs et ne peut pas devenir une question";
+    return en
+      ? "it's the listing's content (photo, title, description, price), not a feature — it's already asked for elsewhere and can't become a question"
+      : "c'est le contenu de l'annonce (photo, titre, description, prix), pas une caractéristique — il est déjà demandé ailleurs et ne peut pas devenir une question";
   }
   if (r.field_label && r.field_label === r.field_key && CLE_BRUTE.test(r.field_label)) {
-    return "la plateforme n'a jamais donné de libellé lisible à ce champ — on ne peut pas poser une question intitulée « " + r.field_key + " »";
+    return en
+      ? `the platform never gave this field a readable label — we can't ask a question titled “${r.field_key}”`
+      : "la plateforme n'a jamais donné de libellé lisible à ce champ — on ne peut pas poser une question intitulée « " + r.field_key + " »";
   }
   if (r.platform !== 'leboncoin') return null;
   if (LBC_CLES_INTERDITES.includes(r.field_key)) {
-    return "ce champ n'existe pas sur le formulaire particulier de Leboncoin — il ne peut jamais être requis (garde du 16/09)";
+    return en
+      ? "this field doesn't exist on Leboncoin's private-seller form — it can never be required (guard of 16/09)"
+      : "ce champ n'existe pas sur le formulaire particulier de Leboncoin — il ne peut jamais être requis (garde du 16/09)";
   }
-  return "le gel Leboncoin du 16/09 interdit de rendre un champ obligatoire ici — à lever séparément";
+  return en
+    ? "the Leboncoin freeze of 16/09 forbids making a field required here — to be lifted separately"
+    : "le gel Leboncoin du 16/09 interdit de rendre un champ obligatoire ici — à lever séparément";
 }
 
 export default function SousPageCatalogueQuarantaine({ c, T }) {
+  const en = c.lang === 'en';
   const [lignes, setLignes] = useState(null);
   const [enCours, setEnCours] = useState(null);
   const [message, setMessage] = useState(null);
@@ -199,7 +210,7 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
       temoins: r.observateurs.size, decided_at: new Date().toISOString(),
     }, { onConflict: 'platform,category_key,field_key' });
     if (error) {
-      setMessage({ ton: 'ko', texte: `La décision n'a pas été enregistrée : ${error.message}. La ligne reste dans la file.` });
+      setMessage({ ton: 'ko', texte: en ? `The decision wasn't saved: ${error.message}. The line stays in the list.` : `La décision n'a pas été enregistrée : ${error.message}. La ligne reste dans la file.` });
       return false;
     }
     await supabase.from('usage_logs').insert({
@@ -224,12 +235,12 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
       .eq('platform', r.platform).eq('category_key', r.category_key).eq('field_key', r.field_key)
       .select('required');
     const passe = !error && Array.isArray(data) && data.length > 0 && data[0]?.required === true;
-    if (error) setMessage({ ton: 'ko', texte: `« ${r.field_label} » n'a pas été enregistré : ${error.message}` });
+    if (error) setMessage({ ton: 'ko', texte: en ? `“${r.field_label}” wasn't saved: ${error.message}` : `« ${r.field_label} » n'a pas été enregistré : ${error.message}` });
     else if (!passe) {
-      setMessage({ ton: 'ko', texte: `« ${r.field_label} » n'est pas passé : une garde en base l'a remis à « pas obligatoire ». La ligne reste dans la file.` });
+      setMessage({ ton: 'ko', texte: en ? `“${r.field_label}” didn't go through: a database guard set it back to “not required”. The line stays in the list.` : `« ${r.field_label} » n'est pas passé : une garde en base l'a remis à « pas obligatoire ». La ligne reste dans la file.` });
     } else {
       await tracer(r, 'valide', 'requis');
-      setMessage({ ton: 'ok', texte: `« ${r.field_label} » est maintenant demandé sur ${NOMS_PF[r.platform] ?? r.platform} — ${r.category_key}.` });
+      setMessage({ ton: 'ok', texte: en ? `“${r.field_label}” is now asked for on ${NOMS_PF[r.platform] ?? r.platform} — ${r.category_key}.` : `« ${r.field_label} » est maintenant demandé sur ${NOMS_PF[r.platform] ?? r.platform} — ${r.category_key}.` });
       setLignes(await lire());
     }
     setEnCours(null);
@@ -243,7 +254,7 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
     //    nouvelle observation.
     const pose = await tracer(r, 'refuse', null);
     if (!pose) { setEnCours(null); return; }   // écriture refusée : la file ne bouge pas
-    setMessage({ ton: 'ok', texte: `« ${r.field_label} » ne sera plus proposé. Il n'est pas demandé aux utilisateurs.` });
+    setMessage({ ton: 'ok', texte: en ? `“${r.field_label}” won't be suggested any more. It isn't asked of users.` : `« ${r.field_label} » ne sera plus proposé. Il n'est pas demandé aux utilisateurs.` });
     setLignes(await lire());
     setEnCours(null);
   }
@@ -270,7 +281,7 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
 
       {lignes.map((r) => {
         const k = cle(r);
-        const bloque = motifNonValidable(r);
+        const bloque = motifNonValidable(r, c.lang);
         const valeurs = Array.isArray(r.allowed_values) ? r.allowed_values : [];
         const occupe = enCours === k;
         return (

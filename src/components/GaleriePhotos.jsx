@@ -31,9 +31,9 @@ const T = {
   amber:  "#B45309",
 };
 
-export function DragHandle({ bind }) {
+export function DragHandle({ bind, lang }) {
   return (
-    <button aria-label="Réordonner" {...bind}>
+    <button aria-label={lang === "en" ? "Reorder" : "Réordonner"} {...bind}>
       <GripVertical size={13} />
     </button>
   );
@@ -117,7 +117,7 @@ export default function GaleriePhotos({
               style={{ aspectRatio:"1", borderRadius:12, overflow:"hidden", position:"relative", background:T.card, border:`1px solid ${T.border}`, ...tile.style }}
             >
               <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", pointerEvents:"none" }} />
-              {count > 1 && <DragHandle bind={drag.handleProps(i)} />}
+              {count > 1 && <DragHandle bind={drag.handleProps(i)} lang={lang} />}
               {i === 0 && count > 1 && <CoverBadge lang={lang} />}
               {removable && (
                 <button

@@ -191,7 +191,7 @@ export default function LivraisonDuLot({
                 <span className={`fsn-check${on ? " fsn-check--on" : ""}`} aria-hidden="true">{on ? "✓" : ""}</span>
                 <span className="fsn-grow">
                   <b style={{ fontSize: 13.5 }}>{t.nom}</b>
-                  <small style={{ display: "block" }}>{en ? `Up to ${t.kgMax} kg · ${t.remise}` : `Jusqu'à ${t.kgMax} kg · ${t.remise}`}{t.cle === "courrier_suivi" ? (en ? " · 3 cm thick max" : " · 3 cm d'épaisseur au plus") : ""}</small>
+                  <small style={{ display: "block" }}>{en ? `Up to ${t.kgMax} kg · ${t.remiseEn ?? t.remise}` : `Jusqu'à ${t.kgMax} kg · ${t.remise}`}{t.cle === "courrier_suivi" ? (en ? " · 3 cm thick max" : " · 3 cm d'épaisseur au plus") : ""}</small>
                   {on && tropLourds.length > 0 && (
                     <small style={{ display: "block", color: "#92400E" }}>{en
                       ? `Too heavy for ${tropLourds.length} item${tropLourds.length > 1 ? "s" : ""}: not ticked for ${tropLourds.length > 1 ? "them" : "it"}.`
@@ -210,7 +210,7 @@ export default function LivraisonDuLot({
               {en ? "Estimated by Leboncoin" : "Estimé par Leboncoin"}
             </button>
             {LBC_FORMATS.map((f) => (
-              <button key={f.valeur} type="button" title={f.aide} className={`fsn-choice${livraison.format === f.valeur ? " fsn-choice--on" : ""}`}
+              <button key={f.valeur} type="button" title={en ? (f.aideEn ?? f.aide) : f.aide} className={`fsn-choice${livraison.format === f.valeur ? " fsn-choice--on" : ""}`}
                 onClick={() => poserFormat(f.valeur)}>{f.valeur}</button>
             ))}
           </div>

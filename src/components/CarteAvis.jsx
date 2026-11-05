@@ -12,18 +12,29 @@ import { Sparkles, Star } from 'lucide-react';
 import { toucherLeger } from '../utils/retourHaptique';
 import './CarteInfo.css';
 
+// (05/11, lot « Ouverture du Cloud », phase 3) La même carte en anglais : `lang` absent ou 'fr' = le français,
+// à l'identique.
 const TEXTES_CARTE_AVIS = Object.freeze({
-  titre: '10 actions, zéro accroc',
-  texte: 'Si FillSell te fait gagner du temps, ton avis nous aide énormément.',
-  principal: 'Laisser un avis',
-  plusTard: 'Plus tard',
-  dejaFait: "C'est déjà fait",
+  fr: Object.freeze({
+    titre: '10 actions, zéro accroc',
+    texte: 'Si FillSell te fait gagner du temps, ton avis nous aide énormément.',
+    principal: 'Laisser un avis',
+    plusTard: 'Plus tard',
+    dejaFait: "C'est déjà fait",
+  }),
+  en: Object.freeze({
+    titre: '10 actions, zero hiccups',
+    texte: 'If FillSell saves you time, your review helps us a lot.',
+    principal: 'Leave a review',
+    plusTard: 'Later',
+    dejaFait: 'Already done',
+  }),
 });
 
-export default function CarteAvis({ url, onChoix }) {
+export default function CarteAvis({ url, onChoix, lang = 'fr' }) {
   const idTitre = useId();
   const [sortie, setSortie] = useState(false);
-  const T = TEXTES_CARTE_AVIS;
+  const T = TEXTES_CARTE_AVIS[lang === 'en' ? 'en' : 'fr'];
   const partir = (choix) => {
     toucherLeger();
     setSortie(true);

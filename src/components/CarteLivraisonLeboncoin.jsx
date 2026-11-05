@@ -59,6 +59,9 @@ const MOTS = {
     poidsAide: 'This is the item’s weight: it is kept on the item. In grams, if you know it: Leboncoin then picks the right bracket. Without it, Leboncoin estimates it.',
     poidsResume: (g) => `Weight: ${g} g`,
     poidsPlaceholder: 'e.g. 650',
+    // (05/11, phase 3) Le détail d'un transporteur : les textes anglais de utils/leboncoinColis.js (remiseEn,
+    // contrainteEn) ; absents, les mots de Leboncoin tels quels.
+    detailTransporteur: (t) => `Up to ${t.kgMax} kg · ${t.remiseEn ?? t.remise} · ${t.contrainteEn ?? t.contrainte}`,
   },
 };
 
@@ -122,7 +125,7 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
             {LBC_FORMATS.map((f) => {
               const actif = format === f.valeur;
               return (
-                <button key={f.valeur} type="button" title={f.aide}
+                <button key={f.valeur} type="button" title={lang === 'en' ? (f.aideEn ?? f.aide) : f.aide}
                   onClick={() => {
                     // Le sélecteur « Format du colis » de la copie et ces puces
                     // écrivent désormais LA MÊME clé : ils ne peuvent plus se
@@ -175,7 +178,7 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: UI.ink }}>{t.nom}</span>
                   <span style={{ ...st.petit, display: 'block', marginTop: 1 }}>
-                    {`Jusqu’à ${t.kgMax} kg · ${t.remise} · ${t.contrainte}`}
+                    {lang === 'en' ? T.detailTransporteur(t) : `Jusqu’à ${t.kgMax} kg · ${t.remise} · ${t.contrainte}`}
                   </span>
                   {horsBornes && (
                     <span style={{ fontSize: 11, color: '#92400E', display: 'block', marginTop: 2 }}>{T.horsBornes}</span>

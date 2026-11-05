@@ -180,7 +180,7 @@ function SectionPlateforme({ m, p, en, poids, deDefaut = false, poserPoids, reti
                 m.noterReponseQuestion?.(p, neuf.ligne, v);
                 if (neuf.ligne?.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(p, neuf.ligne.dedicatedTarget, v);
                 else m.setPlatformAspect?.(p, neuf.ligne?.key, v);
-              }}>{en ? `Set the condition to “${v}”` : `Passer l'état en « ${v} »`}</button>
+              }}>{en ? `Set the condition to “${ETATS_EN[v] ?? v}”` : `Passer l'état en « ${v} »`}</button>
             ))}
             <button type="button" className="fsn-choice" onClick={() => setOuvert("rayon")}>{en ? "Change category" : "Changer de rayon"}</button>
           </div>

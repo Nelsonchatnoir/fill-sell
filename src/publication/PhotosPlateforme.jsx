@@ -73,7 +73,7 @@ export default function PhotosPlateforme({ platform, toutes, choix, onChange, T,
               return (
                 <div key={u} data-photo-idx={i} style={{ ...tuile, ...t.style }}>
                   <img src={u} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }} />
-                  {selection.length > 1 && <DragHandle bind={drag.handleProps(i)} />}
+                  {selection.length > 1 && <DragHandle bind={drag.handleProps(i)} lang={lang} />}
                   {i === 0 && selection.length > 1 && <CoverBadge lang={lang} />}
                   <button type="button" aria-label={lang === "en" ? "Remove" : "Retirer"}
                     onClick={() => (selection.length > 1 ? poser(selection.filter((x) => x !== u)) : setAlerte(M.garde))}

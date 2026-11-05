@@ -13,6 +13,9 @@ import { listerMemoire, oublierEntree, viderMemoire } from '../utils/memoireCham
 
 const NOMS = { leboncoin: 'Leboncoin', ebay: 'eBay', vinted: 'Vinted', beebs: 'Beebs', depop: 'Depop' };
 const LIBELLES = { clothing_type: 'Univers', shoe_type: 'Univers', accessories_univers: 'Univers', 'Département': 'Département' };
+// (05/11, phase 3) En anglais : « Univers » garde le nom du champ Leboncoin, le Département eBay se dit
+// « Department » (comme dans la note de la section, textes.js).
+const LIBELLES_EN = { ...LIBELLES, 'Département': 'Department' };
 
 export default function MemoireRayons({ c, T }) {
   const userId = c.user?.id ?? null;
@@ -64,7 +67,7 @@ export default function MemoireRayons({ c, T }) {
               <div key={`${l.plateforme}|${l.compte}|${l.categorie}|${l.champ}`} className="rg-ligne" style={{ minHeight: 60, gap: 12 }}>
                 <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ fontSize: 15, fontWeight: 500, color: R.ink }}>
-                    {LIBELLES[l.champ] ?? l.champ} · {NOMS[l.plateforme] ?? l.plateforme} : « {l.valeur} »
+                    {(c.lang === 'en' ? LIBELLES_EN : LIBELLES)[l.champ] ?? l.champ} · {NOMS[l.plateforme] ?? l.plateforme} : « {l.valeur} »
                   </span>
                   <span style={{ fontSize: 12, lineHeight: '17px', color: R.texteSecondaire, overflowWrap: 'anywhere' }}>
                     {l.categorie}{date(l.repondu_le) ? ` · ${date(l.repondu_le)}` : ''}
