@@ -18,8 +18,10 @@ const pub = (platform, o = {}) => ({ id: `${platform}-1`, platform, action: "pub
 
 console.log("a) Beebs / Leboncoin en vérification");
 const verifBeebs = pub("beebs", { platform_fields: { pas_encore_visible: { regle: "releve_en_verification_0511" } } });
-const sansLien = pub("leboncoin", { listing_url: null });
-ok(estEnVerification(verifBeebs) && estEnVerification(sansLien), "marqueur pas_encore_visible ou lien absent → en vérification");
+const sansLien = pub("leboncoin", { listing_url: null, platform_fields: { pas_encore_visible: { regle: "test" } } });
+const lbcSansLienEnLigne = pub("leboncoin", { id: "lbc-2", listing_url: null });
+ok(estEnVerification(verifBeebs) && estEnVerification(sansLien), "marqueur pas_encore_visible → en vérification");
+ok(!estEnVerification(lbcSansLienEnLigne), "Leboncoin publiée SANS lien enregistré et sans marqueur → en ligne (062f992c, vue en ligne au relevé)");
 ok(!estEnVerification(pub("beebs")) && !estEnVerification(pub("vinted", { listing_url: null })), "lien + pas de marqueur → en ligne ; Vinted jamais concerné");
 const r = computeRemovalInfo([verifBeebs, pub("vinted")]);
 ok(r.publishedActive.includes("beebs") && plateformesEnVerification(r.publishedActive, r.latestPubByPlatform).join() === "beebs", "Beebs reste publiée (retrait visé) ET en vérification");

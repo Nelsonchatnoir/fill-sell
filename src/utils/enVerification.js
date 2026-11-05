@@ -4,10 +4,12 @@
 // l'affichage et les comptes « en ligne » la retirent : « Beebs vérifie ton annonce ». Module de l'app seul (l'extension
 // embarque publicationState.js : il ne bouge pas).
 
-/** Un dépôt Beebs ou Leboncoin publié mais pas encore achetable (même règle que la ligne « Beebs vérifie ton annonce »). */
+/** Un dépôt Beebs ou Leboncoin publié mais pas encore achetable : le marqueur pas_encore_visible, posé par le relevé ou
+ * le serveur quand la plateforme ne montre pas (encore) l'annonce, et retiré dès qu'elle est vue en ligne. Jamais la seule
+ * absence de lien : 233 dépôts Leboncoin publiés n'ont pas de lien enregistré, et le relevé en voit en ligne (05/11). */
 export function estEnVerification(job) {
   if (!job || !['beebs', 'leboncoin'].includes(job.platform)) return false;
-  return !job.listing_url || Boolean(job.platform_fields?.pas_encore_visible);
+  return Boolean(job.platform_fields?.pas_encore_visible);
 }
 
 /** Les plateformes publiées (publishedActive) dont la dernière publication est en vérification. */
