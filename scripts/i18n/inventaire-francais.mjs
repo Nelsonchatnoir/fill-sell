@@ -73,6 +73,15 @@ function gardeParLaLangue(chemin, code, declarateursEn) {
       if (k === 'fr' || k === 'en' || k === 'FR' || k === 'EN') return true;
     }
     if (n.type === 'SwitchCase' && n.test && /['"](fr|en)['"]/.test(code.slice(n.test.start, n.test.end))) return true;
+    // Une paire bilingue passée à un appel : L('Mois par mois', 'Month by month'), tr(fr, en)… — le 1er argument
+    // français est gardé quand le 2e est un texte qui n'est pas du français.
+    if ((n.type === 'CallExpression' || n.type === 'OptionalCallExpression') && p.listKey === 'arguments' && p.key === 0 && n.arguments.length >= 2) {
+      const second = n.arguments[1];
+      const texte2 = second?.type === 'StringLiteral' ? second.value
+        : second?.type === 'TemplateLiteral' ? second.quasis.map((q) => q.value.cooked ?? '').join(' ')
+          : second?.type === 'JSXElement' || second?.type === 'JSXFragment' ? code.slice(second.start, second.end) : null;
+      if (texte2 != null && !estFrancais(texte2)) return true;
+    }
     p = parent;
   }
   return false;
