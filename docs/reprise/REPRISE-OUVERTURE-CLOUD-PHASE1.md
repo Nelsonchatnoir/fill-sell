@@ -44,6 +44,37 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
 4. **IP de secours (point 11)** : partagée = comptes reliés (déconseillé) ; par compte = coût double ; décider sur la
    mesure des coupures (`etat/coupures-relais.jsonl`, une fois déployé).
 
+5. **Déploiement sur cloud-2 (points 9, 11, 12 + correctif « en vérification » 2a4b388)** : REFUSÉ par le garde-fou de la
+   session (« Production Deploy ») à 21:10 — il faut l'autorisation NOMMÉE de Nico (« déploie le serveur Cloud sur
+   cloud-2 »). Prêt : copie Cloud construite `build/extension-cloud` (BUILD_ID 2026-11-05T19:04:26Z+d426d23.p92769f2-cloud,
+   même base d426d23 que la copie en service), commande `bash serveur-cloud/outils/deployer.sh 5.9.80.213
+   cloud-2.fillsell.app` (arbre propre), à lancer quand aucune tâche n'est « processing » (relu à 21:05 : 0).
+6. **Fonctions à déployer sur ordre** (rien déployé) : `get-pending-jobs` (point 13, petit) ; `stripe-webhook`,
+   `apple-iap-webhook`, `google-play-webhook`, `validate-apple-receipt`, `validate-google-purchase` (règles boutiques,
+   mail d'impayé) ; `create-checkout-session` (page de retour, garde du doublon) — ⚠ elle porte AUSSI les changements
+   du 04/11 (c3a4aff : Cloud 24,99 €, nom, conditions 2026-11-04) laissés en attente de l'ouverture : la déployer = les
+   publier aussi.
+7. **Plafond d'achat d'IP (point 6, STOP)** : proposé **100 $ / mois** (aujourd'hui 60 $). Calcul : IP dédiée IPRoyal
+   France = 4 $ / 30 j ; parc actuel ~8 IP (≈ 32 $/mois de renouvellements) ; un AX42 tient ~30 à 45 comptes → à
+   pleine charge ~50 IP (≈ 200 $/mois) ; 100 $ couvrent les renouvellements + ~15 comptes neufs le premier mois, et
+   bornent un emballement. Achat automatique : reste COUPÉ (`cloud_ip_achats_auto` = 0) jusqu'au feu vert de Nico.
+8. **Compte de démo des relecteurs (point 22)** : « avec le Cloud actif » contredit « seul le compte de Nico est sur
+   le Cloud » — décision de Nico (le mettre sur cloud-2, ou un Cloud « actif » sans navigateur pour la relecture).
+
+## Ce qui reste (phase 1), dans l'ordre proposé
+- 2 et 17 : parcours Stripe en mode test (prix 24,99 € de test, essai, fin d'essai par horloge de test, résiliation,
+  carte refusée) — attend l'accès au mode test.
+- 3/4 preuves réelles Apple (bac à sable) et Google (licence de test) — attendent le binaire 2.9 et le téléphone de Nico.
+- 5 : écran d'attente dans l'app après paiement (le bandeau dit « FillSell Cloud est arrêté » tant que le poste n'existe
+  pas — `src/cloud/executant.js`, cause « jamais ») ; mesure réelle du délai (attribution ~2 min au pire selon le code :
+  planificateur 60 s, extension 2 min).
+- 7 : serveur plein (la vente refuse déjà « complet » à la préparation ; Stripe et les boutiques ne revérifient pas
+  la place au paiement) ; 8 : « Me connecter » (liste blanche existante ; `auth.`/`accounts.`/`api.` permis sur tous les
+  chemins — à resserrer) ; 10 : heure de chaque étape d'une republication ; 13 : preuve de concurrence sur Postgres
+  jetable ; 15 : audit des défauts (Jean Lee, annonces TEST, cache Beebs, une annonce hors ligne à la fois = règle du
+  15/10 « groupe Leboncoin-Beebs-Depop », redépôt rendu en 4 s, retenue levée trop tôt = règle 3 du 26/10 qui libère
+  le groupe quand l'annonce attend sa relecture, « À reconnecter » à l'écran).
+
 ## Reprendre
 Lire ce fichier puis le rapport ; `git status` (dossier partagé) ; relire l'état réel (base, cloud-2, consoles) avant
 d'affirmer quoi que ce soit. Phrase de reprise : « Reprends le lot Ouverture du Cloud, phase 1, depuis
