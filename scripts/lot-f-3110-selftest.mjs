@@ -371,5 +371,14 @@ function passer(donnees, mode = "normal") {
   ok(plan.some((x) => x.type === "attacher" && x.annonce === "a-nouvelle" && x.motif === "republication"), "republication identique (v23) : rattachée automatiquement, comme avant");
 }
 
+// (05/11, point 18) Une republication « cible absente » retenue se clôt après DEUX relevés probants distincts.
+ok(RC.RELEVES_POUR_CLORE_CIBLE_ABSENTE === 2, "18 : deux relevés probants pour clore");
+ok(RC.relevesCibleAbsente(null, "r1", "X").length === 1, "18 : premier relevé sans la cible → 1, retenue");
+ok(RC.relevesCibleAbsente({ cible: "X", releve: "r1" }, "r1", "X").length === 1, "18 : le même relevé relu → toujours 1 (jamais compté deux fois)");
+ok(RC.relevesCibleAbsente({ cible: "X", releves: ["r1"] }, "r2", "X").length === 2, "18 : un second relevé distinct → 2, close");
+ok(RC.relevesCibleAbsente({ cible: "Y", releves: ["r1", "r2"] }, "r3", "X").length === 1, "18 : la marque d'une autre cible ne compte pas");
+ok(/n'est plus en ligne : deux relevés complets/.test(RC.messageCibleAbsenteConfirmee("leboncoin", "3292104989")) && /rien n'a été retiré ni recréé/.test(RC.messageCibleAbsenteConfirmee("leboncoin", "3292104989")),
+  "18 : le message dit la preuve et que rien n'a été touché");
+
 console.log(`\n${rouges ? "✗" : "✓"} lot F : ${verts} vérification(s), ${rouges} rouge(s)`);
 process.exit(rouges ? 1 : 0);

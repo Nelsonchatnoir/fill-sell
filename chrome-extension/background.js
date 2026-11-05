@@ -4666,12 +4666,16 @@ async function pollAndProcessJobsUnlocked() {
   // (pastille « hors ligne » de l'app) et RATTRAPABLE (balayage 72 h de
   // handler-watch → needs_user si vraiment coincé) : on borne, on n'oublie pas.
   const DELETED_HANG_DEMOTE = 3;
+  // (05/11, point 10 — Louis : 15 à 20 min entre la vente et le retrait des copies) UN RETRAIT PASSE AVANT TOUT : une
+  // copie encore en ligne d'un article vendu, c'est une double vente possible. Rang -1, devant les publications et même
+  // les republications à l'étape « deleted ». L'ordre seul change, jamais la cadence ni le nombre de visites.
   const prioriteRepub = (j) => {
+    if (j.action === "delete") return -1;
     if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") {
       const hang = Number(j.platform_fields?.deleted_hang_count) || 0;
       return hang >= DELETED_HANG_DEMOTE ? 3 : 0;
     }
-    if (j.action === "publish" || j.action === "delete") return 1;
+    if (j.action === "publish") return 1;
     return 2;
   };
   jobs = jobs
@@ -20342,6 +20346,58 @@ async function arriereVentesVintedSansArticle(token, userId) {
 }
 const VENTES_PAGES_MAX = 40;                 // borne dure de pagination
 const LBC_VENTES_PAGE = 100;
+// (05/11, point 10A — Louis) LE NUMÉRO D'ANNONCE D'UNE VENTE LEBONCOIN. La liste des transactions n'en donne aucun ; le
+// DÉTAIL d'une transaction (/api/consumergoods/proxy/v2/pages/transactions/<n°> — l'appel que fait la page de Leboncoin
+// quand on ouvre une vente) rend item.id = le numéro de l'annonce vendue. Vérifié le 05/11 sur le compte de Nico (lecture
+// seule) : 321188533 → 3152401428, 359085469 → 3261819062, annonces désactivées après la vente. Avec lui, la vente se
+// rattache par son identifiant, et entre deux comptes reliés qui partagent un compte Leboncoin elle va au compte qui
+// POSSÈDE l'annonce (enregistrer_ventes_relevees) — jamais plus au premier qui relève (vente 458084, point 12).
+// Cadencé comme le détail Vinted : 8 par injection, 16 par passage, 0,9–2,1 s entre deux, et seulement pour une vente
+// neuve ou l'arriéré des 30 derniers jours encore sans numéro. Une vente groupée (bundle) n'est jamais détaillée.
+const LBC_DETAIL_PAR_RUN = 16;
+const LBC_DETAIL_PAR_INJECTION = 8;
+const LBC_ARRIERE_JOURS = 30;
+async function arriereVentesLeboncoinSansAnnonce(token, userId) {
+  const depuis = new Date(Date.now() - LBC_ARRIERE_JOURS * 86_400_000).toISOString();
+  const rows = await restRequest(`ventes?user_id=eq.${userId}&plateforme_code=eq.leboncoin&source=eq.releve` +
+    `&inventaire_id=is.null&annonce_id=is.null&commande_ref=not.is.null&vendu_le=gte.${encodeURIComponent(depuis)}` +
+    `&select=commande_ref,titre,prix_vente,vendu_le,statut&order=vendu_le.desc.nullslast&limit=50`, token).catch(() => null);
+  return Array.isArray(rows)
+    ? rows.filter((r) => /^\d+$/.test(String(r?.commande_ref ?? ""))).map((r) => ({
+        ref: String(r.commande_ref), titre: r.titre ?? null,
+        prix: Number.isFinite(Number(r.prix_vente)) ? Number(r.prix_vente) : null, devise: "EUR",
+        vendu_le: r.vendu_le ?? null, statut: "done", listing_id: null, url: null, frais: null, lot: false,
+      }))
+    : [];
+}
+async function lireDetailsVentesLeboncoin(refs) {
+  await assurerJetonLeboncoin().catch(() => null);
+  return executerDansOngletPlateforme("leboncoin", async (liste) => {
+    const tok = localStorage.getItem("luat");
+    if (!tok) return { ok: false, motif: "jeton_absent" };
+    const ck = (typeof document === "object" && document && document.cookie) || "";
+    const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
+    const vs = lc("cnfdVisitorId"), ru = lc("rollout_user_id"), ev = lc("experiment_visitor_id"), eu = lc("experiment_user_id");
+    const xp = { version: 1, ...(vs && { rollout_visitor_id: vs }), ...(ru && { rollout_user_id: ru }), ...(ev && { experiment_visitor_id: ev }), ...(eu && { experiment_user_id: eu }) };
+    const H = { Authorization: `Bearer ${tok}`, "x-lbc-experiment": btoa(JSON.stringify(xp)), "Content-Type": "application/json" };
+    const numeros = {}; const echecs = [];
+    for (const ref of liste) {
+      await new Promise((r) => setTimeout(r, 900 + Math.random() * 1200));
+      let http = 0, j = null;
+      try {
+        const r = await fetch(`https://api.leboncoin.fr/api/consumergoods/proxy/v2/pages/transactions/${encodeURIComponent(ref)}`, { headers: H, credentials: "include" });
+        http = r.status;
+        if (http === 200) j = await r.json();
+      } catch { /* réseau : repris au prochain passage */ }
+      // Un 403/429 (anti-robot) arrête le paquet : on ne force jamais.
+      if (http === 403 || http === 429) { echecs.push({ ref, http }); break; }
+      const id = j?.item?.id != null ? String(j.item.id) : "";
+      if (http === 200 && /^\d{6,}$/.test(id) && String(j?.item?.type ?? "ad") !== "bundle") numeros[ref] = id;
+      else echecs.push({ ref, http });
+    }
+    return { ok: true, numeros, echecs };
+  }, [refs]);
+}
 const OPLA_VENTES_PAGE = 50;
 let releveVentesEnCours = false;
 
@@ -20775,7 +20831,41 @@ async function lancerReleveVentes({ platform, declencheur = "cron", session: ses
       return { ok: false, reason: lecture?.motif ?? "illisible" };
     }
 
-    let bilan = await envoyerVentesRelevees(token, platform, lecture.rows ?? []);
+    // (05/11, point 10A — Louis) LEBONCOIN : le numéro d'annonce AVANT l'envoi (lireDetailsVentesLeboncoin), pour que la
+    // vente se rattache par son identifiant et aille au compte qui possède l'annonce. Mémoire PAR APPAREIL (le compte
+    // Leboncoin est le même pour un compte et son délégué) : une transaction n'est détaillée qu'une fois ; un refus
+    // ordinaire (404…) deux fois au plus ; un 403/429 arrête le passage. Sans numéro, la ligne part comme avant.
+    let lignesVentes = lecture.rows ?? [];
+    let detailLbcTrace = null;
+    if (platform === "leboncoin") {
+      const numeros = { ...(etat.leboncoin_numeros ?? {}) };
+      const ratees = { ...(etat.leboncoin_numeros_ratees ?? {}) };
+      const arriereLbc = await arriereVentesLeboncoinSansAnnonce(token, userId).catch(() => []);
+      const dansLecture = new Set(lignesVentes.map((r) => r?.ref));
+      const arriereHors = arriereLbc.filter((r) => !dansLecture.has(r.ref));
+      const aLire = [...new Set([...lignesVentes.filter((r) => r?.ref && !r.lot), ...arriereHors].map((r) => r.ref))]
+        .filter((ref) => !numeros[ref] && (ratees[ref] ?? 0) < 2);
+      const file = aLire.slice(0, LBC_DETAIL_PAR_RUN);
+      let lus = 0, echecs = 0, arret = null;
+      for (let i = 0; i < file.length && !arret; i += LBC_DETAIL_PAR_INJECTION) {
+        const det = await lireDetailsVentesLeboncoin(file.slice(i, i + LBC_DETAIL_PAR_INJECTION));
+        if (!det?.ok) { arret = det?.motif ?? "illisible"; break; }
+        for (const [ref, id] of Object.entries(det.numeros ?? {})) { numeros[ref] = id; lus++; }
+        for (const e of det.echecs ?? []) {
+          echecs++;
+          if (e.http === 403 || e.http === 429) arret = `http_${e.http}`;
+          else if (e.http) ratees[e.ref] = (ratees[e.ref] ?? 0) + 1;
+        }
+      }
+      const avecNumero = (r) => (numeros[r.ref] && !r.lot ? { ...r, listing_id: numeros[r.ref] } : r);
+      lignesVentes = [...lignesVentes.map(avecNumero), ...arriereHors.filter((r) => numeros[r.ref]).map(avecNumero)];
+      const borner = (o) => Object.fromEntries(Object.entries(o).slice(-3000));
+      etat.leboncoin_numeros = borner(numeros);
+      etat.leboncoin_numeros_ratees = borner(ratees);
+      detailLbcTrace = { lus, echecs, arret, en_attente: Math.max(0, aLire.length - file.length), arriere: arriereLbc.length };
+      if (file.length) console.log(`[ventes][leboncoin] numéros d'annonce : ${lus} lu(s), ${echecs} échec(s)${arret ? ` — arrêt ${arret}` : ""}, ${detailLbcTrace.en_attente} en attente`);
+    }
+    let bilan = await envoyerVentesRelevees(token, platform, lignesVentes);
     // (17/10, R2 b) le bilan de chaque envoi, tous paquets du détail compris.
     const bilansDetail = [];
     let detailTrace = null;
@@ -20867,7 +20957,7 @@ async function lancerReleveVentes({ platform, declencheur = "cron", session: ses
     await ecrireEtatVentes(etat);
     tracerReleveVentes(token, userId, {
       plateforme: platform, declencheur, lues: lecture.rows?.length ?? 0, pages: lecture?.pages ?? null,
-      motif: lecture?.motif ?? null, bilan: cumulerBilansVentes([bilan, ...bilansDetail]), detail: detailTrace,
+      motif: lecture?.motif ?? null, bilan: cumulerBilansVentes([bilan, ...bilansDetail]), detail: detailTrace ?? detailLbcTrace,
       ...(platform === "vinted" ? { annulees_observees: lecture?.annuleesObservees ?? null } : {}),
     });
     console.log(
@@ -24090,6 +24180,13 @@ async function releverMessagerieBeta(session) {
       await noterEchecReleveMessagerie(platform, "depop_acces", token);
       continue;
     }
+    // (05/11, point 15 — Louis, « Accès temporairement restreint ») UNE PAUSE LEBONCOIN ARRÊTE TOUT, la messagerie
+    // comprise : pendant la pause d'Amiral (02/11 18:10 → 05/11 09:51), 25 conversations relues par l'API. Et un compte qui
+    // délègue Leboncoin ne la relit jamais (le compte Leboncoin est relu par l'exécutant) : un compte Leboncoin = un rythme.
+    if (platform === "leboncoin" && ((await leboncoinEnPause()) || (await leboncoinDelegueAilleurs()))) {
+      e.dernierMotif = "leboncoin_en_pause_ou_delegue";
+      continue;
+    }
     let aut = null;
     try { aut = await rpcMessagerie("messagerie_releve_autorise", { p_platform: platform }, token); } catch { aut = null; }
     if (!aut?.autorise) {
@@ -24395,8 +24492,13 @@ async function checkPublishedListings(session, { plateforme = null } = {}) {
   let jobs;
   // (01/11, 0.6.164) `plateforme` : le compte de travail délégué ne relit que SES annonces Leboncoin ; un poste dont le
   // compte délègue Leboncoin ne relit plus aucune page Leboncoin. Sans délégation : la lecture d'avant, à l'identique.
+  // (05/11, point 15 — Louis) Une PAUSE Leboncoin arrête aussi les lectures de routine des pages d'annonce Leboncoin
+  // (~186 par heure chez Louis, nuit comprise, pause ou pas) : pendant la pause, seule la visite de contrôle du serveur
+  // lit Leboncoin. Le compte délégué tourne sur le Leboncoin de l'exécutant : même pause, même arrêt.
+  const lbcEnPause = await leboncoinEnPause();
+  if (plateforme === "leboncoin" && lbcEnPause) return;
   const filtreDelegation = plateforme ? `&platform=eq.${encodeURIComponent(plateforme)}`
-    : ((await leboncoinDelegueAilleurs()) ? "&platform=neq.leboncoin" : "");
+    : ((lbcEnPause || (await leboncoinDelegueAilleurs())) ? "&platform=neq.leboncoin" : "");
   // (18/10, lot 4) Une annonce Beebs disparue pendant ce cycle → la page des ventes est relue à la fin.
   let ventesBeebsALire = false;
   // (11/10) Sortie d'Opla : aucune annonce Opla n'est plus relue. Écartées DÈS

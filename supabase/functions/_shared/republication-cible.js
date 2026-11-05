@@ -90,3 +90,19 @@ export function messageCibleAbsente(platform, cible) {
   return `En pause, rien n'a été retiré : l'annonce ${nomPlateformeCible(platform)} n° ${cible} n'est plus dans ta liste au dernier relevé. ` +
     "FillSell ne remet pas en ligne une annonce sans savoir si elle a été vendue, retirée ou remise en ligne autrement.";
 }
+
+// (05/11, point 18) DEUX RELEVÉS PROBANTS sans la cible → la republication retenue se clôt (get-pending-jobs).
+export const RELEVES_POUR_CLORE_CIBLE_ABSENTE = 2;
+/** Les relevés probants DISTINCTS qui n'ont pas vu la cible (marque cible_absente_releve), le dernier compris (5 au plus). */
+export function relevesCibleAbsente(marque, releveId, cible) {
+  const m = marque && typeof marque === "object" ? marque : {};
+  const memeCible = String(m.cible ?? cible ?? "") === String(cible ?? "");
+  const avant = memeCible ? (Array.isArray(m.releves) ? m.releves : (m.releve ? [m.releve] : [])) : [];
+  const ids = [...avant, releveId].map((x) => (x == null ? "" : String(x))).filter(Boolean);
+  return [...new Set(ids)].slice(-5);
+}
+/** Le texte de la republication close : l'annonce n'est plus en ligne (deux relevés), rien n'a été touché. */
+export function messageCibleAbsenteConfirmee(platform, cible) {
+  return `Ton annonce ${nomPlateformeCible(platform)} n° ${cible} n'est plus en ligne : deux relevés complets de tes annonces ne l'ont pas vue. ` +
+    "Cette republication est close, rien n'a été retiré ni recréé. Si l'article est toujours à vendre, publie-le de nouveau depuis le Stock.";
+}

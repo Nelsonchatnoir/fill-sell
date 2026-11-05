@@ -19,7 +19,10 @@ const ps = { leboncoin: { blocage_acces: blocagePose({}, { signe: "datadome", so
 ok(etatBlocageLbc(ps, T0 + 3600_000).etat === "bloque" && etatBlocageLbc(ps, T0 + 2 * 3600_000).etat === "essai", "bloqué 1 h après, contrôle dû à 2 h");
 ok(!/eb\.etat === "essai" && lbc\.length/.test(gpj) && !/jobId: garde/.test(gpj), "get-pending-jobs : l'essai ne sert JAMAIS une tâche");
 ok(gpj.includes('declencheur: "controle_blocage_lbc"') && gpj.includes("if (!releveLbc && eb.etat === \"essai\" && essaiPossible) {"), "aucun relevé en file : le serveur pose la visite de contrôle (lecture seule)");
-ok(gpj.includes('if (st === "done" && !/\\[incomplet\\]/.test(texteE)) verdict = "passe";'), "relevé lu en entier = Leboncoin répond → levée, la file repart d'elle-même");
+// (05/11, point 19) Le juge de la visite est la règle partagée verdictVisiteControleLbc (blocage-leboncoin.js).
+const blocLbc = lire("supabase/functions/_shared/blocage-leboncoin.js");
+ok(gpj.includes("const vV = verdictVisiteControleLbc(st, texteE);") && blocLbc.includes('if (st === "done" && !/\\[incomplet\\]/.test(t)) return { verdict: "passe" };'),
+  "relevé lu en entier = Leboncoin répond → levée, la file repart d'elle-même");
 
 console.log("\n1 bis. UNE LECTURE RÉUSSIE NE PROUVE PAS LA PUBLICATION : RECHUTES ESPACÉES (garde-fou de Nico)");
 {

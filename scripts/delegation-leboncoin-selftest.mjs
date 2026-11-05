@@ -161,7 +161,8 @@ ok(BG.includes('const cleEtat = sessionFournie ? `${platform}@${userId}` : platf
 ok(/if \(subAncien && delegationsServies\.some\(\(d\) => d\.compte === subAncien\)\) \{/.test(BG),
   'D11. un jeton délégué expiré se rafraîchit dans SA clé, jamais dans celle de l\'extension');
 ok(BG.includes('const filtreDelegation = plateforme ? `&platform=eq.${encodeURIComponent(plateforme)}`')
-  && BG.includes(': ((await leboncoinDelegueAilleurs()) ? "&platform=neq.leboncoin" : "");')
+  // (05/11, point 15) la pause Leboncoin écarte aussi les pages Leboncoin (compte et délégué).
+  && BG.includes(': ((lbcEnPause || (await leboncoinDelegueAilleurs())) ? "&platform=neq.leboncoin" : "");')
   && /checkPublishedListings\(sD, \{ plateforme: "leboncoin" \}\)/.test(cyc) && /await checkPublishedListings\(session\)\.catch/.test(BG),
   'D12. détection de vente par annonce : le compte délégué ne relit que ses annonces Leboncoin ; un poste qui délègue n\'ouvre plus aucune page Leboncoin ; sinon inchangée');
 

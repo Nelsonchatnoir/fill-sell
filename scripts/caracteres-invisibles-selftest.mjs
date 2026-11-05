@@ -86,7 +86,9 @@ console.log("\n[B] l'envoi : get-pending-jobs et l'extension");
   const sj = bg.slice(bg.indexOf("function sanitizeJob(job) {"), bg.indexOf("\n}\n", bg.indexOf("function sanitizeJob(job) {")));
   ok(/nettoyerInvisibles\(job\.description, true\)/.test(sj) && /nettoyerInvisibles\(job\.title, false\)/.test(sj) && /return \{ \.\.\.job, title, description \};/.test(sj),
     "extension : sanitizeJob nettoie titre ET description (publication et recréation y passent)");
-  ok(JSON.parse(lire("chrome-extension/manifest.json")).version === "0.6.173", "dans la 0.6.173");
+  // Le nettoyage est entré dans la 0.6.173 : toute version suivante le porte (05/11 après-midi : 0.6.174).
+  const versionExt = JSON.parse(lire("chrome-extension/manifest.json")).version.split(".").map(Number);
+  ok(versionExt[0] > 0 || versionExt[1] > 6 || (versionExt[1] === 6 && versionExt[2] >= 173), "dans la 0.6.173 et les suivantes", versionExt.join("."));
 }
 
 console.log("\n[C] le refus de Vinted pour un caractère invisible repart tout seul");

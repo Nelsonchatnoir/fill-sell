@@ -60,6 +60,8 @@ import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_sh
 import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
 import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
+// (05/11, A4) Relevés de veille au retour de la connexion : Leboncoin, Beebs, Depop, lecture seule.
+import { FENETRE_ARRETS_MS, PLATEFORMES_VEILLE_REPRISE, STATUTS_ARRET_RELEVE, ligneReleveDeVeille, murConnexionVeille, relevesDeVeilleAReposer } from "../_shared/releves-de-veille.js";
 import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, pfAnnonceEnVerification, PLATEFORMES_RELEVEES, POSES_PAR_DISPARUE } from "../_shared/annonce-publiee-disparue.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs, constats404Beebs, deuxConstats404Prouvent } from "../_shared/beebs-preuve-retrait.js";
 // (25/10, règle de Nico) Un retrait sur une annonce déjà absente se clôt seul : `deleted` + deja_absente.
@@ -131,7 +133,7 @@ const BROKEN_MIN = 2;       // S2 : nb d'échecs minimum pour une signature « r
 // deux reprises « au retour de la connexion » (annonces et dressing Vinted)
 // sont coupées. La garde en base (garde_releve_sans_geste) refuse de toute
 // façon ces lignes ; on ne les pose plus du tout.
-const RELANCE_AUTOMATIQUE_RELEVE = false;
+const RELANCE_AUTOMATIQUE_DRESSING_VINTED = false;   // (05/11, A4) les relevés d'annonces Leboncoin, Beebs, Depop sont rallumés (releves-de-veille.js) ; le dressing Vinted, non.
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
@@ -4367,195 +4369,63 @@ serve(async (req) => {
   //    cadence et son index unique d'unicité ; le remettre en file demande de
   //    passer par `demander_sync_dressing`, pas par un INSERT. Chantier à part.
   let relevesRepris = 0;
-  // (05/10, règle de Nico) Un relevé ne démarre que sur « Synchroniser » :
-  // plus de reprise automatique au retour de la connexion (cf. RELANCE_AUTOMATIQUE_RELEVE).
-  if (RELANCE_AUTOMATIQUE_RELEVE) try {
-    const PF_RELEVE = ["leboncoin", "beebs", "ebay", "opla", "depop"];
-    const depuis = new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString();
+  // (05/11, décision de Nico — A4) RALLUMÉ pour Leboncoin, Beebs et Depop, en LECTURE SEULE : 'reprise_connexion' est un
+  // relevé de VEILLE (releve_est_veille, migration 20261105110000) — ventes et état des annonces, aucun import, aucune
+  // création d'article ; la règle du 05/10 reste entière. eBay (API) et Opla (quittée) hors du code ; jamais pendant une
+  // pause Leboncoin. La règle, pure et testée : _shared/releves-de-veille.js (scripts/releves-de-veille-selftest.mjs) ;
+  // les gardes d'avant le 05/10 inchangées (sonde fraîche et postérieure au mur, rien en file, 15 min, 3 par épisode).
+  try {
+    const depuis = new Date(Date.now() - FENETRE_ARRETS_MS).toISOString();
     const { data: arretes } = await supabase
       .from("vinted_sync_runs")
       .select("id, user_id, platform, status, erreur, finished_at")
       .eq("kind", "annonces")
-      .in("status", ["absente", "failed", "expired"])
-      .in("platform", PF_RELEVE)
+      .in("status", [...STATUTS_ARRET_RELEVE])
+      .in("platform", [...PLATEFORMES_VEILLE_REPRISE])
       .gte("finished_at", depuis)
       .order("finished_at", { ascending: false })
       .limit(1000);
-    // Le mur, reconnu sur le texte que NOS relevés écrivent — jamais une
-    // heuristique. Miroir de `murConnexionReleve` (src/annonces/etatReleve.js).
-    const estMur = (e: unknown) => {
-      const t = String(e ?? "").toLowerCase();
-      return t.includes("page de connexion") || t.includes("opla non accord");
-    };
-    // Le PLUS RÉCENT par (compte, plateforme) : la liste est déjà triée du plus
-    // récent au plus ancien, le premier vu fait foi. Un run plus récent qui
-    // n'est PAS un mur (il a réussi, ou il a échoué autrement) gagne donc, et
-    // la plateforme sort des candidats — c'est voulu.
-    const dernier = new Map<string, { id: string; user_id: string; platform: string; finished_at: string; mur: boolean; alignee?: boolean }>();
+    // Le PLUS RÉCENT arrêt par (compte, plateforme) fait foi (relevesDeVeilleAReposer) : tous les arrêts lui sont donnés.
     // deno-lint-ignore no-explicit-any
-    for (const r of ((arretes ?? []) as any[])) {
-      const cle = `${r.user_id}|${r.platform}`;
-      if (dernier.has(cle)) continue;
-      dernier.set(cle, {
-        id: String(r.id), user_id: String(r.user_id), platform: String(r.platform),
-        finished_at: String(r.finished_at ?? ""), mur: estMur(r.erreur),
-      });
-    }
-    const candidats = [...dernier.values()].filter((c) => c.mur && c.finished_at);
-
-    if (candidats.length) {
-      const ids = [...new Set(candidats.map((c) => c.user_id))];
-      const profilsPar = new Map<string, { sessions: Record<string, unknown>; extVue: string | null }>();
+    const arrets = (arretes ?? []) as any[];
+    const ids = [...new Set(arrets.filter((r) => murConnexionVeille(r.erreur)).map((r) => String(r.user_id)))];
+    if (ids.length) {
+      const profils = new Map<string, { sessions: Record<string, unknown>; extVue: string | null; ps: Record<string, unknown> }>();
+      // deno-lint-ignore no-explicit-any
+      const historique: any[] = [];
       for (let i = 0; i < ids.length; i += 200) {
-        const { data: profs } = await supabase
-          .from("profiles").select("id, extension_sessions, extension_last_seen_at").in("id", ids.slice(i, i + 200));
+        const lot = ids.slice(i, i + 200);
+        const { data: profs } = await supabase.from("profiles")
+          .select("id, extension_sessions, extension_last_seen_at, platform_settings").in("id", lot);
         // deno-lint-ignore no-explicit-any
         for (const p of ((profs ?? []) as any[])) {
-          profilsPar.set(String(p.id), {
+          profils.set(String(p.id), {
             sessions: (p.extension_sessions ?? {}) as Record<string, unknown>,
             extVue: p.extension_last_seen_at ?? null,
+            ps: (p.platform_settings ?? {}) as Record<string, unknown>,
           });
         }
+        const { data: histo } = await supabase.from("vinted_sync_runs")
+          .select("user_id, platform, status, declencheur, queued_at, started_at, finished_at")
+          .eq("kind", "annonces").in("user_id", lot).in("platform", [...PLATEFORMES_VEILLE_REPRISE])
+          .gte("started_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString()).limit(2000);
+        historique.push(...(histo ?? []));
+        // Les lignes ENCORE EN FILE peuvent n'avoir ni started_at ni finished_at : relues à part.
+        const { data: enFile } = await supabase.from("vinted_sync_runs").select("user_id, platform, status")
+          .eq("kind", "annonces").in("user_id", lot).in("status", ["queued", "running"]).limit(1000);
+        historique.push(...(enFile ?? []));
       }
-
-      // ══ LA SONDE DOIT RÉPONDRE À LA QUESTION POSÉE (2026-09-22, le soir) ══
-      // Première version : on lisait `extension_sessions.ebay`, qui teste la
-      // porte de la PUBLICATION (/sl/prelist/suggest). Le relevé, lui, charge
-      // le Hub vendeur (/sh/lst/active). Un compte frappé par le step-up de
-      // sécurité passe la première et bute sur le second : 11 relevés remis en
-      // file, 6 revenus dans la minute sur le même mur.
-      // L'extension 0.6.54 sonde le Hub à part et écrit `ebay_hub`. On le lit
-      // EN PRIORITÉ pour eBay ; sans lui (extension plus ancienne) on retombe
-      // sur `ebay`, mais la reprise reste alors PLAFONNÉE — voir plus bas.
-      const cleSonde = (s: Record<string, unknown>, pf: string) =>
-        (pf === "ebay" && s.ebay_hub !== undefined ? "ebay_hub" : pf);
-      const maintenant = Date.now();
-      const murLeve = candidats.filter((c) => {
-        const prof = profilsPar.get(c.user_id);
-        if (!prof || !prof.extVue) return false;              // extension jamais vue
-        const s = prof.sessions ?? {};
-        const cle = cleSonde(s, c.platform);
-        if (s[cle] !== true) return false;                    // pas connecté, ou inconnu
-        const brut = (s.checked_at_par_plateforme as Record<string, string> | undefined)?.[cle]
-          ?? (s.checked_at_par_plateforme as Record<string, string> | undefined)?.[c.platform]
-          ?? (s.checked_at as string | undefined) ?? null;
-        const vu = brut ? Date.parse(brut) : NaN;
-        if (!Number.isFinite(vu)) return false;
-        if (maintenant - vu > (FRAICHEUR_SONDE_MS[c.platform] ?? 60 * 60_000)) return false;  // trop vieille
-        const arret = Date.parse(c.finished_at);
-        if (!Number.isFinite(arret) || vu <= arret) return false;   // rien de neuf depuis le mur
-        // La sonde répond-elle à la question du RELEVÉ ? Si oui, la reprise
-        // peut aboutir et n'a pas à être plafonnée.
-        c.alignee = cle !== c.platform || c.platform !== "ebay";
-        return true;
-      });
-
-      if (murLeve.length) {
-        // ── TOUT L'HISTORIQUE UTILE, EN UNE LECTURE ───────────────────────
-        // Trois faits par (compte, plateforme) : un run en file ou en cours
-        // (interdit d'en poser un second, c'est l'index métier de la RPC), la
-        // date du dernier relevé RÉUSSI (cadence de 15 min), et le nombre de
-        // reprises AUTOMATIQUES déjà faites depuis ce dernier succès.
-        //
-        // ⛔ UNE REPRISE PAR ÉPISODE, ET UNE SEULE (2026-09-22, le soir même).
-        //    Mesuré à la première salve : 11 relevés eBay/Opla remis en file,
-        //    6 revenus dans la minute sur EXACTEMENT le même mur (« session
-        //    ebay : page de connexion »). La sonde `extension_sessions.ebay`
-        //    dit « connecté » — et elle n'a pas tort : le compte eBay est
-        //    ouvert. C'est « Mes annonces » qui redemande une connexion.
-        //    Sans cette garde, chaque rafraîchissement de sonde (toutes les
-        //    heures) reposerait la même demande, indéfiniment : la promesse
-        //    « ça repart tout seul » deviendrait un martèlement, et c'est
-        //    exactement ce que l'anti-robot des plateformes guette.
-        //    Une tentative automatique par épisode. Le bouton « Me connecter »
-        //    reste, lui, disponible autant de fois que la personne le veut —
-        //    un geste humain n'est pas un cron.
-        const idsLeves = [...new Set(murLeve.map((c) => c.user_id))];
-        const actifs = new Set<string>();
-        const reussiA = new Map<string, number>();
-        const repriseDepuis = new Map<string, number[]>();
-        for (let i = 0; i < idsLeves.length; i += 200) {
-          const { data: histo } = await supabase
-            .from("vinted_sync_runs")
-            .select("user_id, platform, status, declencheur, queued_at, started_at, finished_at")
-            .eq("kind", "annonces")
-            .in("user_id", idsLeves.slice(i, i + 200))
-            .gte("started_at", new Date(maintenant - 30 * 24 * 60 * 60_000).toISOString())
-            .limit(2000);
-          // Les lignes ENCORE EN FILE n'ont ni started_at ni finished_at utile
-          // selon les chemins : on les relit à part plutôt que de risquer
-          // qu'un filtre de date les écarte et qu'on en empile une seconde.
-          const { data: enFile } = await supabase
-            .from("vinted_sync_runs")
-            .select("user_id, platform")
-            .eq("kind", "annonces")
-            .in("user_id", idsLeves.slice(i, i + 200))
-            .in("status", ["queued", "running"])
-            .limit(1000);
-          // deno-lint-ignore no-explicit-any
-          for (const r of ((enFile ?? []) as any[])) actifs.add(`${r.user_id}|${r.platform}`);
-          // deno-lint-ignore no-explicit-any
-          for (const r of ((histo ?? []) as any[])) {
-            const cle = `${r.user_id}|${r.platform}`;
-            if (r.status === "queued" || r.status === "running") { actifs.add(cle); continue; }
-            if (r.status === "done") {
-              const t = Date.parse(String(r.finished_at ?? ""));
-              if (Number.isFinite(t) && t > (reussiA.get(cle) ?? 0)) reussiA.set(cle, t);
-            }
-            if (String(r.declencheur ?? "") === "reprise_connexion") {
-              const t = Date.parse(String(r.queued_at ?? r.started_at ?? ""));
-              if (Number.isFinite(t)) repriseDepuis.set(cle, [...(repriseDepuis.get(cle) ?? []), t]);
-            }
-          }
-        }
-
-        // L'interrupteur serveur, compte par compte — la RPC le vérifie, nous
-        // aussi. Un seul appel par compte, pas par plateforme.
-        const ouvertePar = new Map<string, boolean>();
-        for (const uid of idsLeves) {
-          try {
-            const { data } = await supabase.rpc("sync_multi_ouverte_pour", { p_user: uid });
-            ouvertePar.set(uid, data === true);
-          } catch { ouvertePar.set(uid, false); }
-        }
-
-        for (const c of murLeve) {
-          const cle = `${c.user_id}|${c.platform}`;
-          if (!ouvertePar.get(c.user_id)) continue;
-          if (actifs.has(cle)) continue;
-          const reussi = reussiA.get(cle) ?? 0;
-          // (25/09) Un relevé RÉUSSI après ce mur : il n'y a plus de mur à
-          // lever. La sélection ne lisait que absente/failed/expired, donc un
-          // done postérieur ne retirait pas le candidat, et le plafond, compté
-          // depuis le dernier succès, repartait à zéro à chaque done : xxewwer
-          // 86 relevés Opla en 72 h (85 réussis), Louis 43 eBay, 27 LBC en 8 h
-          // chez nicolas.svobodny — une boucle serveur, invisible.
-          if (reussi && reussi > Date.parse(c.finished_at)) continue;
-          if (reussi && maintenant - reussi < 15 * 60_000) continue;     // cadence
-          // L'ÉPISODE court depuis le dernier relevé réussi — ou depuis
-          // toujours si cette plateforme n'a jamais rien rendu.
-          // ⛔ LE PLAFOND DÉPEND DE CE QUE LA SONDE A VRAIMENT VU (22/09) :
-          //   · sonde ALIGNÉE sur la porte du relevé → la reprise PEUT
-          //     aboutir. Plafond large (3 par épisode) : on tient la promesse
-          //     « ça repart tout seul » sans jamais devenir illimité, parce
-          //     qu'une sonde juste peut quand même se tromper.
-          //   · sonde de repli (eBay sans `ebay_hub`, extension < 0.6.54) →
-          //     UNE seule tentative par épisode. C'est la garde du 22/09, et
-          //     elle reste tant qu'on ne sait pas si la porte s'ouvre.
-          const plafond = c.alignee ? 3 : 1;
-          if ((repriseDepuis.get(cle) ?? []).filter((t) => t > reussi).length >= plafond) continue;
-          const { data: pose } = await supabase
-            .from("vinted_sync_runs")
-            .insert({
-              user_id: c.user_id, kind: "annonces", platform: c.platform,
-              status: "queued", declencheur: "reprise_connexion",
-              queued_at: new Date().toISOString(),
-            })
-            .select("id");
-          if (pose?.length) {
-            relevesRepris++;
-            console.log(`[handler-watch] relevé ${c.platform} de ${c.user_id} : session revenue → remis en file (mur du ${c.finished_at})`);
-          }
+      // L'interrupteur serveur, compte par compte (la RPC demander_sync_plateforme le vérifie, nous aussi).
+      const ouverte = new Map<string, boolean>();
+      for (const uid of ids) {
+        try { const { data } = await supabase.rpc("sync_multi_ouverte_pour", { p_user: uid }); ouverte.set(uid, data === true); }
+        catch { ouverte.set(uid, false); }
+      }
+      for (const c of relevesDeVeilleAReposer({ arrets: arrets.filter((r) => ids.includes(String(r.user_id))), historique, profils, ouverte })) {
+        const { data: pose } = await supabase.from("vinted_sync_runs").insert(ligneReleveDeVeille(c)).select("id");
+        if (pose?.length) {
+          relevesRepris++;
+          console.log(`[handler-watch] relevé de veille ${c.platform} de ${c.user_id} : session revenue → reposé en lecture seule (mur du ${c.mur_du})`);
         }
       }
     }
@@ -4580,7 +4450,7 @@ serve(async (req) => {
   //    même si la sonde est alignée. Un geste humain peut insister ; un cron,
   //    non.
   let dressingsRepris = 0;
-  if (RELANCE_AUTOMATIQUE_RELEVE) try {
+  if (RELANCE_AUTOMATIQUE_DRESSING_VINTED) try {
     const depuis = new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString();
     const { data: runsDressing } = await supabase
       .from("vinted_sync_runs")

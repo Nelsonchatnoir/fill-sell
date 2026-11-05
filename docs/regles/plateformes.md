@@ -752,3 +752,11 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 3, 4, 5.
   de l'annonce, numéro exact) : en attente de Nico — ne pas compter ces ventes comme preuves.
 - Beebs : un numéro vu « en vérification » au dépôt puis absent de deux relevés complets = retrait par la modération
   de Beebs (XEWER, louis-seller) ; comparer avec les dépôts acceptés du même jour avant de conclure.
+
+## Leboncoin interdit cosmétique, médicament, parapharmacie (05/11, point 6 — Dylan62)
+- Règle Leboncoin relue le 05/11/2026 (https://assistance.leboncoin.info/hc/fr/articles/360000030540, « Les produits
+  interdits ») : « Cosmétique, médicament et parapharmacie ». Aucune catégorie Beauté chez Leboncoin.
+- Source CERTAINE en plus du titre (règle du 11/08) : la catégorie Vinted de la fiche (`_shared/lbc-interdits.js`,
+  feuilles consommables de Femmes > Beauté et Hommes > Soins ; jamais les accessoires ; 153 laissée au titre). Case
+  Leboncoin grisée dans l'app (lbcCategoryStatus) avec la raison ; filet get-pending-jobs (republication pas engagée close,
+  publication en needs_user). Jamais un rayon faux (« Décoration »).

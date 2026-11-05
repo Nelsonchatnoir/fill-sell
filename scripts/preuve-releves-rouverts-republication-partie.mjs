@@ -2,9 +2,11 @@
 // décisions de Nico) :
 //   1. 'reprise_connexion' et 'serveur:levee_antirobot' passent la garde des relevés comme relevés de VEILLE (ils
 //      n'importent rien : releve_est_geste inchangée) ; rien d'autre n'est ouvert ;
-//   2. spend_coins_and_republish refuse, AVANT tout décompte, une annonce qu'on sait partie (vendue sur sa plateforme,
-//      ou absente établie que rien n'a revue) — la règle de republish_planifiee_candidats, un seul juge :
-//      republication_annonce_partie() ; une annonce saine ou revue depuis passe comme avant ;
+//   2. spend_coins_and_republish refuse, AVANT tout décompte, une annonce qu'on sait partie — vente prouvée, ou absence
+//      CONFIRMÉE par le juge des relevés (7c48b8c, handler-watch ; get-pending-jobs « deux relevés complets par
+//      boutique ») que rien n'a revue : republication_annonce_partie() lit leurs verdicts. Garde-fou de Nico (05/11) :
+//      un doute (sale_signal 'unavailable'), une lecture seule (sonde publique), une marque sans juge, une annonce
+//      Vinted masquée, une annonce revue depuis ne refusent JAMAIS ;
 //   3. l'inverse rend les deux définitions de prod à l'identique (md5) et retire l'aide.
 //
 //   PREUVE_PG=embarque node scripts/preuve-releves-rouverts-republication-partie.mjs   (Postgres 17 jetable sur le PC)
@@ -120,7 +122,10 @@ const SIG_SCAR = 'public.spend_coins_and_republish(bigint,text,text,numeric,text
 // fonction s'arrête alors sur « republish_en_cours » — le contrôle qui suit immédiatement l'endroit du refus neuf :
 // avant la migration, elle y arrive en passant la vente sans la voir ; après, elle refuse avant.
 let invSuivant = 1000;
-async function article({ signal = null, depuis = null, vuLe = null, transaction = null, disparue = false } = {}) {
+// (05/11, garde-fou de Nico) `verdict` = la marque annonce_disparue telle que SES AUTEURS l'écrivent, posée sur un job clos
+// de la même annonce (`verdictAction` : la republication en pause, ou le dépôt publié clos par 7c48b8c).
+const IL_Y_A_4_JOURS = () => new Date(Date.now() - 4 * 86400_000).toISOString();
+async function article({ signal = null, depuis = null, vuLe = null, transaction = null, verdict = null, verdictAction = 'republish' } = {}) {
   const inv = invSuivant++;
   const lid = String(3293617000 + inv);
   await c.query(`INSERT INTO public.inventaire (id, user_id, statut, titre) VALUES ($1, $2, 'stock', 'Playmobil')`, [inv, U]);
@@ -130,9 +135,10 @@ async function article({ signal = null, depuis = null, vuLe = null, transaction 
   await c.query(`INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, status, action, title, listing_url, platform_listing_id, published_at, created_at, platform_fields)
     VALUES ($1, $2, 'leboncoin', 'published', 'publish', 'Playmobil', $3, $4, now() - interval '10 days', now() - interval '10 days', $5)`,
     [U, inv, `https://www.leboncoin.fr/ad/jeux_jouets/${lid}`, lid, pf]);
-  if (disparue) {
+  if (verdict) {
     await c.query(`INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, status, action, title, platform_listing_id, created_at, platform_fields)
-      VALUES ($1, $2, 'leboncoin', 'cancelled', 'republish', 'Playmobil', $3, now() - interval '4 days', jsonb_build_object('annonce_disparue', jsonb_build_object('at', (now() - interval '4 days')::text)))`, [U, inv, lid]);
+      VALUES ($1, $2, 'leboncoin', 'cancelled', $3, 'Playmobil', $4, now() - interval '4 days', jsonb_build_object('annonce_disparue', $5::jsonb))`,
+      [U, inv, verdictAction, lid, JSON.stringify(verdict)]);
   }
   await c.query(`INSERT INTO public.annonces_plateforme (user_id, platform, listing_id, url, vu_le, transaction_plateforme) VALUES ($1, 'leboncoin', $2, $3, $4, $5)`,
     [U, lid, `https://www.leboncoin.fr/ad/jeux_jouets/${lid}`, vuLe ?? new Date(Date.now() - 5 * 86400_000).toISOString(), transaction]);
@@ -200,21 +206,37 @@ END;
 $function$`);
   await c.query(`CREATE TRIGGER garde_releve_sans_geste BEFORE INSERT ON public.vinted_sync_runs FOR EACH ROW EXECUTE FUNCTION garde_releve_sans_geste()`);
 
+  const hier = () => new Date(Date.now() - 86400_000).toISOString();
   const cas = {
     vendue_signal: await article({ signal: 'sold' }),
     vendue_releve: await article({ transaction: 'sold' }),
-    partie: await article({ signal: 'unavailable', depuis: new Date(Date.now() - 2 * 86400_000).toISOString() }),
-    revue_depuis: await article({ signal: 'unavailable', depuis: new Date(Date.now() - 2 * 86400_000).toISOString(), vuLe: new Date(Date.now() - 3600_000).toISOString() }),
-    disparue: await article({ disparue: true }),
+    // Absence CONFIRMÉE, écrite par le juge des relevés (decisionIntrouvable) — handler-watch, republication en pause :
+    disparue: await article({ verdict: { at: IL_Y_A_4_JOURS(), motif: 'absente de 2 relevés complets depuis sa dernière vue, dont 1 après la lecture', pose_par: 'handler-watch (introuvable confirmé par un relevé)' } }),
+    // … 7c48b8c, l'annonce publiée close (dépôt publié clos ; un autre dépôt publié porte encore le numéro) :
+    disparue_publiee: await article({ verdictAction: 'publish', verdict: { at: IL_Y_A_4_JOURS(), motif: 'absente de 2 relevés complets depuis sa dernière vue, dont 1 après la lecture', vendue: false, pose_par: 'handler-watch (annonce publiée confirmée disparue)' } }),
+    vendue_juge: await article({ verdictAction: 'publish', verdict: { at: IL_Y_A_4_JOURS(), motif: 'relevée vendue après la lecture', vendue: true, pose_par: 'handler-watch (annonce publiée confirmée disparue)' } }),
+    // … get-pending-jobs, deux relevés complets par boutique (la marque porte « le », pas « at ») :
+    deux_releves_boutique: await article({ verdict: { le: IL_Y_A_4_JOURS(), par: 'deux_releves_complets_par_boutique', boutiques: ['@b'], pose_par: 'get-pending-jobs (republication : annonce absente de toutes les boutiques)' } }),
+    // … get-pending-jobs, republication « cible absente » de deux relevés probants (05/11, point 18) :
+    deux_releves_probants: await article({ verdict: { at: IL_Y_A_4_JOURS(), par: 'deux_releves_probants', releves: ['r1', 'r2'], cible: 'x', pose_par: 'get-pending-jobs (republication : cible absente de deux relevés probants)' } }),
+    // JAMAIS « partie » : un doute, une lecture seule, une marque sans auteur confirmé, une annonce masquée, revue depuis.
+    doute_unavailable: await article({ signal: 'unavailable', depuis: new Date(Date.now() - 2 * 86400_000).toISOString() }),
+    sonde_publique: await article({ verdict: { at: IL_Y_A_4_JOURS(), par: 'sonde publique serveur' } }),
+    suppression_refusee: await article({ verdict: { at: IL_Y_A_4_JOURS(), etat: 'inconnu', pose_par: "update-job-status (suppression refusée, annonce plus en ligne : rien recréé, alerte « Vendue ? »)" } }),
+    marque_sans_auteur: await article({ verdict: { at: IL_Y_A_4_JOURS() } }),
+    vinted_masquee: await article({ verdict: { at: IL_Y_A_4_JOURS(), motif: 'relevée « hidden » après la lecture', pose_par: 'handler-watch (introuvable confirmé par un relevé)' } }),
+    revue_depuis: await article({ verdict: { at: IL_Y_A_4_JOURS(), motif: 'absente de 2 relevés complets depuis sa dernière vue, dont 1 après la lecture', pose_par: 'handler-watch (introuvable confirmé par un relevé)' }, vuLe: hier() }),
     saine: await article(),
   };
+  const PARTIES = ['vendue_signal', 'vendue_releve', 'disparue', 'disparue_publiee', 'vendue_juge', 'deux_releves_boutique', 'deux_releves_probants'];
+  const JAMAIS = ['doute_unavailable', 'sonde_publique', 'suppression_refusee', 'marque_sans_auteur', 'vinted_masquee', 'revue_depuis', 'saine'];
 
   console.log('\n1. AVANT (prod du 05/11)');
   ok(await md5De(SIG_VEILLE) === MD5_VEILLE_PROD, `releve_est_veille identique à la prod (md5 ${MD5_VEILLE_PROD})`, await md5De(SIG_VEILLE));
   ok(await md5De(SIG_SCAR) === MD5_SCAR_PROD, `spend_coins_and_republish identique à la prod (md5 ${MD5_SCAR_PROD})`, await md5De(SIG_SCAR));
   ok(await poser('reprise_connexion') === 0 && await poser('reprise_connexion', 'dressing') === 0, 'reprise_connexion : avalé sans un mot (annonces et dressing)');
   ok(await poser('serveur:levee_antirobot', 'dressing') === 0, 'serveur:levee_antirobot : avalé sans un mot');
-  for (const k of ['vendue_signal', 'vendue_releve', 'partie', 'disparue']) {
+  for (const k of PARTIES) {
     const r = await republier(cas[k].inv);
     ok(r.reason === 'republish_en_cours', `${k} : la fonction passe l'annonce partie sans la voir (va jusqu'au témoin : ${r.reason})`, JSON.stringify(r));
   }
@@ -236,13 +258,15 @@ $function$`);
   ok(f.provolatile === 'i', 'releve_est_veille toujours IMMUTABLE');
 
   const avant = await compte();
-  const attendu = { vendue_signal: 'annonce_vendue', vendue_releve: 'annonce_vendue', partie: 'annonce_partie', disparue: 'annonce_partie' };
+  const attendu = { vendue_signal: 'annonce_vendue', vendue_releve: 'annonce_vendue', disparue: 'annonce_partie',
+    disparue_publiee: 'annonce_partie', vendue_juge: 'annonce_vendue', deux_releves_boutique: 'annonce_partie', deux_releves_probants: 'annonce_partie' };
   for (const [k, motif] of Object.entries(attendu)) {
     const r = await republier(cas[k].inv);
     ok(r.allowed === false && r.reason === 'annonce_introuvable' && r.motif === motif && r.annonce === cas[k].lid,
       `${k} : refusée à la source (${r.reason} / ${r.motif}) — « ${r.message} »`, JSON.stringify(r));
   }
-  for (const k of ['revue_depuis', 'saine']) {
+  // Le garde-fou de Nico : un doute, une lecture seule, une marque sans juge, une annonce masquée ne refusent JAMAIS.
+  for (const k of JAMAIS) {
     const r = await republier(cas[k].inv);
     ok(r.reason === 'republish_en_cours', `${k} : passe comme avant (jusqu'au témoin : ${r.reason})`, JSON.stringify(r));
   }
@@ -253,6 +277,8 @@ $function$`);
   const juge = async (u, inv, lid) => (await c.query(`SELECT public.republication_annonce_partie($1, $2, 'leboncoin', $3) AS m`, [u, inv, lid])).rows[0].m;
   ok(await juge(U, cas.vendue_signal.inv, cas.vendue_signal.lid) === 'annonce_vendue', 'juge : vendue (signal du dépôt)');
   ok(await juge(U, cas.saine.inv, cas.saine.lid) === null, 'juge : saine → rien');
+  for (const [k, motif] of Object.entries(attendu)) ok(await juge(U, cas[k].inv, cas[k].lid) === motif, `juge seul : ${k} → ${motif}`);
+  for (const k of JAMAIS) ok(await juge(U, cas[k].inv, cas[k].lid) === null, `juge seul : ${k} → rien (jamais sur un doute, une lecture seule, une pause)`);
   ok(await juge(U, cas.vendue_signal.inv, null) === null && await juge(U, cas.vendue_signal.inv, '  ') === null, 'juge : identifiant absent → rien');
   ok(await juge(AUTRE, cas.vendue_signal.inv, cas.vendue_signal.lid) === null, "juge : l'annonce d'un AUTRE compte n'est jamais lue");
   ok(await juge(U, cas.vendue_releve.inv, ` ${cas.vendue_releve.lid} `) === 'annonce_vendue', 'juge : identifiant entouré de blancs → même réponse');
@@ -265,7 +291,7 @@ $function$`);
   await c.query(`GRANT EXECUTE ON FUNCTION public.spend_coins_and_republish(bigint,text,text,numeric,text) TO authenticated`);
   await c.query('SET ROLE authenticated');
   let rClient = null;
-  try { rClient = await republier(cas.partie.inv); } catch (e) { rClient = { erreur: e.message }; }
+  try { rClient = await republier(cas.disparue.inv); } catch (e) { rClient = { erreur: e.message }; }
   await c.query('RESET ROLE');
   ok(rClient?.motif === 'annonce_partie', "appelée par l'app (client connecté), spend_coins_and_republish refuse bien", JSON.stringify(rClient));
 

@@ -111,5 +111,12 @@ console.log("\n[E] ops-digest : la section rouge");
   ok(/range\(page \* 1000, page \* 1000 \+ 999\)/.test(od), "lu par pages (PostgREST coupe à 1 000 lignes)");
 }
 
+// (05/11, point 18 — faux positif : doriane af37fa49) Une publication programmée pas encore servie attend sa plage : voulue.
+ok(M.attenteVoulue({ action: "publish", platform_fields: { programmee: true } }, null) === "programmee", "publication programmée en attente de sa plage → attente voulue");
+ok(M.attenteVoulue({ action: "publish", platform_fields: { programmee: true, programmee_servie_le: "2026-11-05T13:00:00Z" } }, null) === null, "programmée DÉJÀ servie et toujours en file → plus une attente voulue");
+const od = readFileSync(join(ROOT, "supabase/functions/ops-digest/index.ts"), "utf8");
+ok(/programmee:platform_fields->programmee, programmee_servie_le:platform_fields->>programmee_servie_le/.test(od) && /platform_fields: \{ [^}]*programmee, programmee_servie_le \}/.test(od),
+  "ops-digest lit les deux clés de la publication programmée");
+
 console.log(ko ? `\n✗ ${ko} échec(s) sur ${n}` : `\n✓ ${n}/${n} — une file arrêtée alors que l'extension est ouverte remonte en rouge`);
 process.exit(ko ? 1 : 0);

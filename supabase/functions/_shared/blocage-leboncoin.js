@@ -80,6 +80,22 @@ export function signeBlocageLbc(texte) {
   return null;
 }
 
+// (05/11, point 19 — 25caeedd) LA VISITE DE CONTRÔLE REND TOUJOURS UN VERDICT. Une visite finie sans liste (« Mes annonces »
+// n'a pas rendu sa liste, jeton non renouvelé, page de connexion) et sans signe connu laissait l'essai OUVERT : le compteur
+// n'avançait pas, et quand la session Leboncoin était fermée, la pause ne pouvait jamais se lever et rien ne disait
+// « reconnecte-toi ». Désormais : lue en entier → passée ; un signe de blocage → refusée (ce signe) ; finie autrement
+// (failed / absente / expired) → refusée, signe « session_fermee » si le texte dit la connexion, sinon « visite_sans_liste ».
+export const SESSION_FERMEE_LBC_RE = /page de connexion|renvoie vers la connexion|jeton non renouvel|jeton_non_rendu|aucune session leboncoin/i;
+/** @param {unknown} statut @param {unknown} texte @returns {{ verdict: "passe" | "refuse" | null, signe?: string }} */
+export function verdictVisiteControleLbc(statut, texte) {
+  const st = String(statut ?? ""), t = String(texte ?? "");
+  if (st === "done" && !/\[incomplet\]/.test(t)) return { verdict: "passe" };
+  const signe = signeBlocageLbc(t);
+  if (signe) return { verdict: "refuse", signe };
+  if (["done", "failed", "absente", "expired"].includes(st)) return { verdict: "refuse", signe: SESSION_FERMEE_LBC_RE.test(t) ? "session_fermee" : "visite_sans_liste" };
+  return { verdict: null };   // en file, en cours : on attend
+}
+
 /** Le blocage posé sur le compte (platform_settings), ou null. */
 export function blocageLbc(ps) {
   const lbc = objet(objet(ps)?.leboncoin);
@@ -181,6 +197,8 @@ export function blocageArchive(b, { maintenant = new Date().toISOString() } = {}
 /** (03/11, point 7) La tête du message dit CE QUE Leboncoin a montré (signe du blocage) — jamais « Accès temporairement
  *  restreint » pour une vérification anti-robot ou un refus 403 (02/11 : DataDome, le message disait « restreint »). */
 function teteBlocageLbc(signe, quand) {
+  if (signe === "session_fermee") return `Leboncoin ne montre plus ta liste d'annonces sur ta connexion${quand} : ta session Leboncoin semble fermée`;
+  if (signe === "visite_sans_liste") return `Leboncoin n'a pas rendu ta liste d'annonces à la dernière vérification${quand}`;
   if (signe === "datadome" || signe === "verification_antirobot") {
     return `Leboncoin affiche une vérification anti-robot sur ta connexion${quand}`;
   }
@@ -202,7 +220,9 @@ export function messageBlocageLbc(nav = null, depuisIso = null, signe = null) {
     "TOUTES ses actions Leboncoin sur ton compte — publications, republications, retraits, relevés et détection des ventes — " +
     "pour ne pas aggraver le blocage. Rien n'a été touché. Tant que la pause dure, une vente Leboncoin n'est pas vue par " +
     "FillSell et une annonce Leboncoin d'un article vendu ailleurs n'est pas retirée : fais-le toi-même sur Leboncoin. " +
-    `Ouvre leboncoin.fr ${dans} : quand la page s'affiche normalement, appuie sur « Leboncoin remarche » dans FillSell ` +
+    (signe === "session_fermee"
+      ? `Ouvre leboncoin.fr ${dans} et connecte-toi à ton compte Leboncoin, puis appuie sur « Leboncoin remarche » dans FillSell `
+      : `Ouvre leboncoin.fr ${dans} : quand la page s'affiche normalement, appuie sur « Leboncoin remarche » dans FillSell `) +
     "(sinon FillSell revérifie lui-même de temps en temps, par une simple lecture, sans rien publier), et la reprise se fera doucement.";
 }
 

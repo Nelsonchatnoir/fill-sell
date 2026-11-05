@@ -525,3 +525,13 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   puis « Vendu ») date une vente. Une annonce déposée par FillSell n'est pas concernée. `check-listing-status` refuse la
   confirmation avec la raison (`_shared/lbc-vendu-avant-suivi.js`, selftest `lbc-vendu-avant-suivi`) ; la migration
   ci-dessus fait taire la règle de la transaction (`vendu_avant_suivi`) et écarte le drapeau de la veille avant écriture.
+
+## Vente → retrait, et ventes Leboncoin (05/11, points 10, 10A, 12 — Louis)
+- Un retrait armé par une vente PROUVÉE (la vente de la fiche porte le numéro de commande/transaction de la plateforme)
+  est servi sans l'attente de 10 min (`_shared/retrait-vente-prouvee.js`, get-pending-jobs) ; le « Vendu » cliqué à la main
+  garde ses 10 min (annulation). L'extension (0.6.174) passe un retrait avant toute autre tâche ; dans une file Leboncoin
+  espacée (reprise prudente, délégation), les retraits d'abord. Aucune visite de plus.
+- Le numéro d'annonce d'une vente Leboncoin se lit dans le DÉTAIL de la transaction
+  (`/api/consumergoods/proxy/v2/pages/transactions/<n°>`, `item.id`), avant l'envoi, une fois par appareil, 16 au plus par
+  passage, arriéré de 30 jours. Avec lui, enregistrer_ventes_relevees range la vente chez le compte relié qui POSSÈDE
+  l'annonce (plus jamais « le premier qui relève »). Une vente groupée (bundle) n'est jamais rattachée.

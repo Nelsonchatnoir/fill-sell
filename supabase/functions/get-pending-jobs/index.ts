@@ -1,6 +1,6 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
-import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente } from "../_shared/republication-cible.js";
+import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente, relevesCibleAbsente, messageCibleAbsenteConfirmee, RELEVES_POUR_CLORE_CIBLE_ABSENTE } from "../_shared/republication-cible.js";
 import { retraitDeLaRepublication, clotureRepublicationParRetrait, STATUTS_RETRAIT_VIVANT } from "../_shared/republication-retrait.js";
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
@@ -200,11 +200,15 @@ import { titreSansSautDeLigne, titreAUnSautDeLigne } from "../_shared/titre-copi
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
+// (05/11, point 6) Leboncoin interdit cosmétique, médicament, parapharmacie : catégorie Vinted certaine (même fichier que l'app).
+import { verdictLbcInterdit, messageLbcInterdit } from "../_shared/lbc-interdits.js";
+// (05/11, point 10) Une vente prouvée retire ses copies sans l'attente de 10 min.
+import { retraitDeVenteEnAttente, venteProuveePourRetrait, retraitServiSansAttente, retraitsDabord } from "../_shared/retrait-vente-prouvee.js";
 import { lireParLots } from "../_shared/par-lots.ts";
 import { teteDeFile } from "../_shared/tete-de-file.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
-import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree } from "../_shared/blocage-leboncoin.js";
+import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree, verdictVisiteControleLbc } from "../_shared/blocage-leboncoin.js";
 import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc, gardeVirtuelleLbc, lbcVirtuelAutorise } from "../_shared/poste-virtuel.js";
 import { executantLbcDeclare, nomExecutantLbc, comptesExecutesLbc, delegationLbcValide, etatLePlusPrudent, messageDelegationLbc, messageTacheDelegueeEnAttente, messageTacheDelegueeEnPause, PLATEFORME_DELEGUEE } from "../_shared/delegation-leboncoin.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
@@ -3427,8 +3431,25 @@ serve(async (req) => {
             retires.add(String(j.id));
             const marque = pfV["cible_absente_releve"] as Record<string, unknown> | undefined;
             const msgA = messageCibleAbsente(pfJ, cibleId);
+            // (05/11, point 18 — Srideals, audreyakim, Jocabroc, ayoub : retenues sans fin, 25 relevés probants pour l'une)
+            // ABSENTE DE DEUX RELEVÉS PROBANTS (relevés distincts, la cible connue avant eux, aucune autre annonce en ligne
+            // sur la fiche) : l'annonce n'est plus en ligne. La republication se CLÔT, rien n'est retiré ni recréé, et le
+            // verdict (annonce_disparue, par « deux_releves_probants ») est celui que lit republication_annonce_partie :
+            // la suivante est refusée à la source. Deux annonces en ligne sur la fiche (doute) : jamais close.
+            const relevesVus = relevesCibleAbsente(marque, releveV?.id ?? null, cibleId);
+            if (v.motif === "cible_absente_du_releve" && relevesVus.length >= RELEVES_POUR_CLORE_CIBLE_ABSENTE) {
+              const maintenantC = new Date().toISOString();
+              pfV["annonce_disparue"] = { at: maintenantC, par: "deux_releves_probants", releves: relevesVus, cible: cibleId,
+                pose_par: "get-pending-jobs (republication : cible absente de deux relevés probants)" };
+              if (j.error) pfV["erreurs_archivees"] = archiverErreur(pfV["erreurs_archivees"], j.error, "pending", "get-pending-jobs (cible absente de deux relevés probants : close)");
+              const { data: majD } = await adminC.from("cross_post_jobs")
+                .update({ status: "cancelled", error: messageCibleAbsenteConfirmee(pfJ, cibleId), platform_fields: pfV })
+                .eq("id", String(j.id)).eq("status", "pending").select("id");
+              if ((majD ?? []).length) console.log(`[get-pending-jobs] userId=${user.id} : republication ${pfJ} ${String(j.id).slice(0, 8)} CLOSE — ${cibleId} absente de ${relevesVus.length} relevés probants`);
+              continue;
+            }
             if (marque && typeof marque === "object" && marque["releve"] === (releveV?.id ?? null) && String(j.error ?? "") === msgA) continue;
-            pfV["cible_absente_releve"] = { cible: cibleId, releve: releveV?.id ?? null, releve_le: releveV?.started_at ?? null, le: new Date().toISOString() };
+            pfV["cible_absente_releve"] = { cible: cibleId, releve: releveV?.id ?? null, releve_le: releveV?.started_at ?? null, le: new Date().toISOString(), releves: relevesVus };
             if (j.error && String(j.error) !== msgA) pfV["erreurs_archivees"] = archiverErreur(pfV["erreurs_archivees"], j.error, "pending", "get-pending-jobs (cible absente du relevé)");
             await adminC.from("cross_post_jobs").update({ error: msgA, platform_fields: pfV }).eq("id", String(j.id)).eq("status", "pending");
             console.log(`[get-pending-jobs] userId=${user.id} : republication ${pfJ} ${String(j.id).slice(0, 8)} RETENUE — ${cibleId} absente du relevé ${String(releveV?.id ?? "").slice(0, 8)}, aucune annonce plus récente sur la fiche ; rien retiré`);
@@ -8747,6 +8768,57 @@ serve(async (req) => {
       }
     }
 
+    // ── ARTICLES QUE LEBONCOIN INTERDIT (05/11, point 6 — Dylan62) ──────────
+    // Filet serveur de la case grisée dans l'app (lbcCategoryStatus) : MÊME fichier de règles
+    // (_shared/lbc-interdits.js), MÊME matière — la catégorie Vinted de la fiche (source certaine), jamais le titre,
+    // jamais l'IA. Un coffret de soins parti en « Maison & Jardin > Décoration » : jamais un rayon faux. Comme Depop
+    // (24/10, B7) : une republication pas encore engagée (rien retiré) est CLOSE avec la phrase de la règle, l'annonce
+    // en ligne intacte ; une publication passe en needs_user — rien n'est envoyé. Best-effort, jamais un point de panne.
+    let heldLbcInterdit = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const depotsLbc = out.filter((j) =>
+        j.platform === "leboncoin" && (j.action === "publish" || j.action === "republish") && j.inventaire_id != null);
+      if (depotsLbc.length) {
+        try {
+          const ids = [...new Set(depotsLbc.map((j) => j.inventaire_id))];
+          const { data: arts } = await lireParLots((lot) => userClient
+            .from("inventaire").select("id, vinted_catalog_id").in("id", lot), ids);
+          const parArticle = new Map<string, Record<string, unknown>>();
+          for (const a of (arts ?? []) as Record<string, unknown>[]) parArticle.set(String(a.id), a);
+          const aRetenir = new Set<string>();
+          for (const j of depotsLbc) {
+            const verdict = verdictLbcInterdit(parArticle.get(String(j.inventaire_id)) ?? null);
+            if (!verdict) continue;
+            const pf = ((j.platform_fields as Record<string, unknown> | null) ?? {});
+            const lbcInterdit = { ...verdict, depuis: new Date().toISOString(), source: "get-pending-jobs" };
+            const republicationIntacte = j.action === "republish" && !retraitEngage(j);
+            const { data: maj } = republicationIntacte
+              ? await userClient.from("cross_post_jobs")
+                .update({
+                  status: "cancelled",
+                  error: `Republication Leboncoin non lancée : ${messageLbcInterdit(verdict, "fr")} Ton annonce Leboncoin est intacte, rien n'a été retiré.`,
+                  platform_fields: { ...pf, lbc_interdit: lbcInterdit },
+                })
+                .eq("id", j.id).eq("status", "pending").select("id")
+              : await userClient.from("cross_post_jobs")
+                .update({
+                  status: "needs_user",
+                  error: `${messageLbcInterdit(verdict, "fr")} Rien n'a été envoyé à Leboncoin.`,
+                  platform_fields: { ...pf, lbc_interdit: lbcInterdit },
+                })
+                .eq("id", j.id).eq("status", "pending").select("id");
+            aRetenir.add(String(j.id));
+            console.log(`[get-pending-jobs] dépôt leboncoin ${String(j.id).slice(0, 8)} (${j.action}) : catalogue Vinted ${verdict.vinted_catalog_id} interdit par Leboncoin — ${republicationIntacte ? "republication close" : "needs_user"}${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
+          }
+          if (aRetenir.size) {
+            const avant = out.length;
+            out = out.filter((j) => !aRetenir.has(String(j.id)));
+            heldLbcInterdit = avant - out.length;
+          }
+        } catch (_e) { /* best-effort : jamais un point de panne — le job est servi */ }
+      }
+    }
+
     // ══ ON N'ÉCRIT JAMAIS SUR LA BOUTIQUE D'UN AUTRE (2026-09-22) ═══════════
     //
     // 🚨 L'INCIDENT DU 22/09. remialbertholl a supprimé 41 articles de SON stock
@@ -9828,6 +9900,7 @@ serve(async (req) => {
       (heldRetraitSansLien ? `, ${heldRetraitSansLien} retrait(s) retenu(s) (sans lien : attente, jamais par titre)` : "") +
       (aspectsPoses ? `, ${aspectsPoses} job(s) ebay complété(s) (aspects obligatoires posés depuis le référentiel)` : "") +
       (heldBeebsInterdit ? `, ${heldBeebsInterdit} dépôt(s) beebs → needs_user (article refusé par le catalogue Beebs)` : "") +
+      (heldLbcInterdit ? `, ${heldLbcInterdit} dépôt(s) leboncoin retenus (article interdit par Leboncoin)` : "") +
       (heldDepopInterdit ? `, ${heldDepopInterdit} dépôt(s) depop → needs_user (catégorie interdite par Depop)` : "") +
       (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : "") +
       (isbnDeduits ? `, ${isbnDeduits} ISBN déduit(s) sans rien demander` : "") +
@@ -13587,6 +13660,34 @@ serve(async (req) => {
       out = servis;
     }
 
+    // ══ (05/11, point 10 — Louis : 15 à 20 min entre la vente et le retrait) UNE VENTE PROUVÉE RETIRE SES COPIES TOUT DE
+    // SUITE ═════════════════════════════════════════════════════════════════════
+    // armer_retraits_copies pose 10 min d'attente sur TOUT retrait de vente (20260926203051 : laisser annuler un « Vendu »
+    // cliqué par erreur) — mesuré chez Louis : 14 ventes, aucun retrait pris avant 10 min. Une vente PROUVÉE par la
+    // plateforme — la vente de la fiche porte le numéro de commande ou de transaction de la plateforme — n'a rien à
+    // annuler : son retrait est servi sans attendre (_shared/retrait-vente-prouvee.js). Le « Vendu » cliqué à la main
+    // (aucun numéro) garde ses 10 min. Rien n'est écrit en base : seule l'heure servie change ; aucune visite de plus.
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const enAttente = out.filter((j) => retraitDeVenteEnAttente(j as Record<string, unknown>));
+      if (enAttente.length) {
+        try {
+          const ids = [...new Set(enAttente.map((j) => j.inventaire_id))];
+          // Ici, `out` ne porte que les tâches de CE compte (les tâches déléguées s'ajoutent plus loin).
+          const { data: vp } = await lireParLots((lot) => userClient.from("ventes")
+            .select("user_id, inventaire_id, created_at, commande_ref").eq("user_id", user.id)
+            .in("inventaire_id", lot).not("commande_ref", "is", null), ids);
+          const prouves = new Set(enAttente.filter((j) => venteProuveePourRetrait({ ...(j as Record<string, unknown>), user_id: user.id },
+            (vp ?? []) as Array<Record<string, unknown>>)).map((j) => String(j.id)));
+          if (prouves.size) {
+            out = out.map((j) => (prouves.has(String(j.id)) ? retraitServiSansAttente(j as Record<string, unknown>) as typeof j : j));
+            console.log(`[get-pending-jobs] userId=${user.id} : ${prouves.size} retrait(s) de vente PROUVÉE servi(s) sans l'attente de 10 min`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] retraits de vente prouvée : ${String((e as Error)?.message ?? e)} — l'attente d'avant s'applique`);
+        }
+      }
+    }
+
     // ══ UNE TÂCHE EN ATTENTE PROGRAMMÉE N'EST PAS SERVIE (04/10) ═════════════
     // jennifer.cot 9923ee78 : une republication seule, next_action_after dans
     // 6 h, servie à CHAQUE passage (le filtre des attentes ne jouait que pour
@@ -13839,6 +13940,7 @@ serve(async (req) => {
           ? bEnCours.essai as Record<string, unknown> : null;
         if (bEnCours && !bEnCours.leve_le && essaiEnCours) {
           let verdict: "passe" | "refuse" | null = null;
+          let signeVisite: string | null = null;
           if (essaiEnCours.job_id) {
             const { data: jE } = await adminB.from("cross_post_jobs").select("status, error").eq("id", String(essaiEnCours.job_id)).maybeSingle();
             const st = String((jE as Record<string, unknown> | null)?.status ?? "");
@@ -13851,11 +13953,14 @@ serve(async (req) => {
             // (03/11, point 7) Un relevé lu en entier (« done », pas « [incomplet] ») = Leboncoin répond : PASSÉ, même si
             // une de ses relances a vu un 403. Sinon, un signe de blocage dans son texte = refusé.
             const texteE = String((rE as Record<string, unknown> | null)?.erreur ?? "");
-            if (st === "done" && !/\[incomplet\]/.test(texteE)) verdict = "passe";
-            else if (signeBlocageLbc(texteE)) verdict = "refuse";
+            // (05/11, point 19 — 25caeedd) Toujours un verdict : une visite FINIE sans liste est un refus nommé (session
+            // fermée, ou liste non rendue) — l'essai ne reste plus ouvert, et une session fermée dit « reconnecte-toi ».
+            const vV = verdictVisiteControleLbc(st, texteE);
+            verdict = vV.verdict;
+            signeVisite = vV.signe ?? null;
           }
           if (verdict) {
-            const nb = verdict === "passe" ? blocageLeve(bEnCours, { par: "get-pending-jobs (essai passé)" }) : blocageEssaiRefuse(bEnCours, { signe: null });
+            const nb = verdict === "passe" ? blocageLeve(bEnCours, { par: "get-pending-jobs (essai passé)" }) : blocageEssaiRefuse(bEnCours, { signe: signeVisite });
             await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nb, p_user: user.id });
             psB = { ...psB, leboncoin: { ...((psB.leboncoin ?? {}) as Record<string, unknown>), blocage_acces: nb } };
             console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — essai ${verdict === "passe" ? "PASSÉ : blocage levé, reprise prudente 6 h" : "REFUSÉ : prochaine visite de contrôle dans 2 h"}`);
@@ -13871,8 +13976,9 @@ serve(async (req) => {
           const { error: eA } = await adminB.rpc("platform_settings_fusionner", { p_chemin: ["leboncoin"], p_patch: arch.patch, p_supprimer: arch.supprimer, p_user: user.id });
           console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — reprise prudente finie (levé le ${String(eb.blocage.leve_le ?? "?")}) : blocage rangé${eA ? ` — ÉCHEC : ${eA.message}` : ""}`);
         } else if (eb.etat !== "libre" && eb.blocage) {
-          const lbc = out.filter((j) => j.platform === "leboncoin")
-            .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+          // (05/11, point 10 — Louis) Dans « une action toutes les 10 min », un RETRAIT passe d'abord (double vente possible) :
+          // le 01/11, le retrait Leboncoin d'une vente a attendu 45 min derrière trois republications. Ordre seul, cadence intacte.
+          const lbc = out.filter((j) => j.platform === "leboncoin").sort(retraitsDabord);
           let garde: string | null = null;
           // (03/11, point 7 — règle de Nico) Pendant une restriction, JAMAIS une action pour « essayer » : l'essai est une
           // VISITE DE CONTRÔLE légère, le relevé « Mes annonces » (lecture seule), plus bas. Une action ne part qu'après la
@@ -13963,8 +14069,7 @@ serve(async (req) => {
         const ebA = etatBlocageLbc(((profA as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>) as
           { etat: string; blocage: Record<string, unknown> | null; prete?: boolean };
         if (ebA.etat !== "libre" && ebA.blocage) {
-          const lbcA = out.filter((j) => j.platform === PLATEFORME_DELEGUEE)
-            .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+          const lbcA = out.filter((j) => j.platform === PLATEFORME_DELEGUEE).sort(retraitsDabord);   // (05/11, point 10) retraits d'abord
           let gardeA: string | null = null;
           // (04/11 nuit, règle de Nico) Une annonce déjà retirée part tout de suite, même chez l'exécutant (voir plus haut).
           const retireesA = ebA.etat === "reprise" ? lbcA.filter((j) => annonceDejaRetiree(j)) : [];
@@ -14595,6 +14700,7 @@ serve(async (req) => {
       // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
       // parce que l'article tombe sous les règles du catalogue Beebs.
       beebs_interdits: heldBeebsInterdit,
+      lbc_interdits: heldLbcInterdit,
       // depop_interdits (09/10 soir) : dépôts Depop d'une catégorie interdite par Depop.
       depop_interdits: heldDepopInterdit,
       beebs_sans_identifiant_retenus: heldBeebsSansIdentifiant,

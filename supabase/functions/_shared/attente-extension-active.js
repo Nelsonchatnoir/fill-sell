@@ -38,14 +38,17 @@ export function echeanceMs(job, maintenant = Date.now()) {
   return apres != null ? Math.max(cree, apres) : cree;
 }
 
-/** Une attente VOULUE (pas une file arrêtée) : la personne a mis sa file en pause, ou une republication automatique
- * attend son créneau (pas encore engagée). `profilProprietaire` porte platform_settings (au moins file_pause). */
+/** Une attente VOULUE (pas une file arrêtée) : la personne a mis sa file en pause, une republication automatique
+ * attend son créneau (pas encore engagée), ou une publication programmée attend sa plage. `profilProprietaire` porte platform_settings (au moins file_pause). */
 export function attenteVoulue(job, profilProprietaire) {
   if (estFileEnPause(profilProprietaire?.platform_settings) && jobRetenuParPause(job)) return "pause_voulue";
   const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   if (String(job?.action ?? "") === "republish" && pf.republish_source === "auto" && pf.republish_step !== "deleted" && !retraitEngage(job)) {
     return "creneau";
   }
+  // (05/11, point 18 — faux positif : doriane) Une PUBLICATION PROGRAMMÉE pas encore servie attend sa plage horaire et
+  // son espacement (publication-programmee.js) : c'est voulu, jamais une file arrêtée.
+  if (pf.programmee === true && !pf.programmee_servie_le) return "programmee";
   return null;
 }
 

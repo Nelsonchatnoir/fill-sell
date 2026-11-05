@@ -35,7 +35,10 @@ function copieImportable(rel, nomTmp) {
     .replace(/from "\.\/lbcCategories"/g, 'from "./.lbcCategories.selftest.tmp.mjs"')
     // (22/10 soir) lbcCategories lit src/utils/oeuvreDArt.js : la copie temporaire vit dans scripts/, on pointe
     // l'original (module sans dépendance, importable tel quel).
-    .replace(/from "\.\/oeuvreDArt\.js"/g, `from "${pathToFileURL(join(ROOT, "src", "utils", "oeuvreDArt.js")).href}"`);
+    .replace(/from "\.\/oeuvreDArt\.js"/g, `from "${pathToFileURL(join(ROOT, "src", "utils", "oeuvreDArt.js")).href}"`)
+    // (05/11, point 6) lbcCategories lit aussi la règle commune Leboncoin (catégorie Vinted) : l'original, tel quel.
+    .replace(/from "\.\.\/\.\.\/supabase\/functions\/_shared\/lbc-interdits\.js"/g,
+      `from "${pathToFileURL(join(ROOT, "supabase", "functions", "_shared", "lbc-interdits.js")).href}"`);
   const p = join(ROOT, "scripts", nomTmp);
   fs.writeFileSync(p, src);
   tmps.push(p);

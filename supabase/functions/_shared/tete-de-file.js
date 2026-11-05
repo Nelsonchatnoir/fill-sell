@@ -12,8 +12,8 @@
 // et leur compteur repart (reserver_jobs_extension, p_tete, migration
 // 20261015020000).
 // L'ordre est CELUI DE L'EXTENSION (background.js, pollAndProcessJobsUnlocked,
-// prioriteRepub) : republication à l'étape « deleted » d'abord (la plus ancienne
-// suppression en tête), puis publications et retraits, puis les autres
+// prioriteRepub) : les retraits d'abord (05/11), puis republication à l'étape « deleted » (la plus ancienne
+// suppression en tête), puis publications, puis les autres
 // republications, puis les « deleted » reléguées (≥ 3 blocages) ; à égalité,
 // l'ordre de la file servie. ES module sans import (Deno + node).
 
@@ -21,11 +21,13 @@ export const DELETED_HANG_DEMOTE = 3;
 
 function priorite(j) {
   const pf = (j && typeof j.platform_fields === "object" && j.platform_fields) || {};
+  // (05/11, point 10) Un retrait passe avant tout (double vente possible) — même règle que l'extension 0.6.174.
+  if (j?.action === "delete") return -1;
   if (j?.action === "republish" && pf.republish_step === "deleted") {
     const hang = Number(pf.deleted_hang_count) || 0;
     return hang >= DELETED_HANG_DEMOTE ? 3 : 0;
   }
-  if (j?.action === "publish" || j?.action === "delete") return 1;
+  if (j?.action === "publish") return 1;
   return 2;
 }
 

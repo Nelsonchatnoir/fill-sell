@@ -51,7 +51,10 @@ ok('base : même liste de veille', DECLENCHEURS_VEILLE.every((d) => migVeille.in
 ok('filtre PostgREST : déclencheur absent gardé, veille écartée', FILTRE_SANS_VEILLE.startsWith('declencheur.is.null,declencheur.not.in.(') && DECLENCHEURS_VEILLE.every((d) => FILTRE_SANS_VEILLE.includes(`"${d}"`)));
 ok('extension : interrupteur des reprises automatiques éteint', bg.includes('const REPRISE_AUTOMATIQUE_RELEVE = false;'));
 const hw = lire('supabase/functions/handler-watch/index.ts');
-ok('handler-watch : reprise au retour de la connexion éteinte', hw.includes('const RELANCE_AUTOMATIQUE_RELEVE = false;'));
+// (05/11, décision de Nico — A4) La reprise des relevés d'ANNONCES au retour de la connexion est rallumée pour Leboncoin,
+// Beebs et Depop, en lecture seule (_shared/releves-de-veille.js) ; celle du dressing Vinted reste éteinte.
+ok('handler-watch : reprise du dressing Vinted au retour de la connexion éteinte', hw.includes('const RELANCE_AUTOMATIQUE_DRESSING_VINTED = false;'));
+ok('handler-watch : reprise des relevés d\'annonces = relevés de VEILLE de la règle (Leboncoin, Beebs, Depop)', hw.includes('relevesDeVeilleAReposer({'));
 
 console.log('\n2. La situation lue sur chaque fin');
 const cas = [

@@ -1,4 +1,6 @@
 import { estOeuvreDArt } from "./oeuvreDArt.js";
+// (05/11, point 6) La catégorie Vinted de la fiche, source CERTAINE — le même fichier que le filet de get-pending-jobs.
+import { verdictLbcInterdit } from "../../supabase/functions/_shared/lbc-interdits.js";
 // Mapping icône objet (detectObjectIcon) → catégorie Leboncoin [racine, feuille].
 //
 // Arbre PLAT (2 niveaux, 13 racines, ~89 feuilles) relevé par navigation réelle
@@ -361,6 +363,9 @@ export function estCosmetiqueInterditeLbc(icon, article) {
  *   appelant qui ne connaît pas l'article ne peut déclencher un blocage.
  */
 export function lbcCategoryStatus(icon, article = null) {
+  // (05/11, point 6 — Dylan62) Une feuille de soin CONSOMMABLE du catalogue Vinted (coffret « Soins du corps ») est
+  // interdite quelle que soit l'icône : jamais un rayon faux (« Décoration ») — _shared/lbc-interdits.js.
+  if (article && verdictLbcInterdit(article)) return "prohibited";
   if (article && estCosmetiqueInterditeLbc(icon, article)) return "prohibited";
   if (!Object.prototype.hasOwnProperty.call(LBC_CATEGORIES, icon)) return "unmapped";
   return LBC_CATEGORIES[icon] ? "supported" : "unavailable";

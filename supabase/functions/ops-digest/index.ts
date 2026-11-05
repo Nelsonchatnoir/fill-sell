@@ -597,14 +597,15 @@ serve(async (req) => {
       const { data, error } = await supabase.from("cross_post_jobs")
         .select("id, user_id, platform, action, status, error, created_at, next_action_after:platform_fields->>next_action_after, "
           + "republish_source:platform_fields->>republish_source, republish_step:platform_fields->>republish_step, "
-          + "deleted_at:platform_fields->>deleted_at, republish_suppression_envoyee:platform_fields->republish_suppression_envoyee")
+          + "deleted_at:platform_fields->>deleted_at, republish_suppression_envoyee:platform_fields->republish_suppression_envoyee, "
+          + "programmee:platform_fields->programmee, programmee_servie_le:platform_fields->>programmee_servie_le")
         .eq("status", "pending").in("platform", PLATEFORMES_EXTENSION).lt("created_at", borne)
         .order("created_at", { ascending: true }).range(page * 1000, page * 1000 + 999);
       if (error) throw new Error(error.message);
       // Le juge lit platform_fields : seules les clés utiles sont lues, recomposées ici.
       for (const j of (data ?? []) as unknown as Array<Record<string, unknown>>) {
-        const { republish_source, republish_step, deleted_at, republish_suppression_envoyee, ...reste } = j;
-        enFile.push({ ...reste, platform_fields: { republish_source, republish_step, deleted_at, republish_suppression_envoyee } });
+        const { republish_source, republish_step, deleted_at, republish_suppression_envoyee, programmee, programmee_servie_le, ...reste } = j;
+        enFile.push({ ...reste, platform_fields: { republish_source, republish_step, deleted_at, republish_suppression_envoyee, programmee, programmee_servie_le } });
       }
       if (!data || data.length < 1000) break;
     }

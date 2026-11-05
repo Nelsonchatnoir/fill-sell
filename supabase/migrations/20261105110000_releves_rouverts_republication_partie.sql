@@ -8,9 +8,10 @@
 --    releve_est_geste ouvre l'import : rapprocher_releve, sync du dressing ≥ 0.6.99, inventaire_ecarte_import_sync —
 --    inchangés). La cadence reste jugée par garde_cadence_sync_runs / un_seul_actif, inchangés.
 -- 2. spend_coins_and_republish (le bouton « Republier » de l'app, et la file automatique qui l'appelle) refuse une
---    annonce qu'on sait partie — vendue sur sa plateforme, ou absente établie que rien n'a revue —, comme
---    republish_planifiee_candidats le faisait déjà pour la file automatique : un seul juge,
---    republication_annonce_partie(). Refus avant tout décompte (rien n'est débité), motif d'article.
+--    annonce qu'on sait partie — vente prouvée, ou absence CONFIRMÉE par le juge des relevés (7c48b8c) que rien n'a
+--    revue — : republication_annonce_partie() lit ses verdicts, elle ne juge rien elle-même (garde-fou de Nico du
+--    05/11 : jamais sur un doute, une lecture ratée, un 403, un 404 Beebs « en vérification » ou une pause). Refus
+--    avant tout décompte (rien n'est débité), motif d'article. republish_planifiee_candidats n'est pas touchée.
 -- Définitions de départ lues EN PROD le 05/11 (pg_get_functiondef) : releve_est_veille (après 20261105010000,
 -- md5 sans CR 3c9435a12577af8631b2c32d2f66a597), spend_coins_and_republish (md5 sans CR 534784e42ff7fc5573dade28d1061155).
 -- ⛔ Aucune donnée touchée. Inverse : supabase/rollbacks/20261105110000_releves_rouverts_republication_partie_INVERSE.sql.
@@ -33,36 +34,53 @@ CREATE OR REPLACE FUNCTION public.republication_annonce_partie(p_user uuid, p_in
  STABLE
  SET search_path TO 'public', 'pg_temp'
 AS $function$
-  -- Les deux motifs de republish_planifiee_candidats (24/10 A4 et 23/10 point 3), mot pour mot, sur l'identifiant donné :
-  --   'annonce_vendue'  : le relevé a lu la vente sur CET identifiant (transaction_plateforme 'sold'), ou le dépôt publié
-  --                       qui le porte a le signal 'sold' ;
-  --   'annonce_partie'  : absence établie (signal 'unavailable', ou republication close « disparue ») sur CET identifiant,
-  --                       et aucun relevé ne l'a revu depuis — un relevé qui le revoit lève la garde de lui-même.
-  -- NULL : rien ne dit que l'annonce est partie (identifiant inconnu compris).
+  -- (05/11, garde-fou de Nico) UN SEUL JUGE, celui des relevés : decisionIntrouvable (_shared/introuvable-a-confirmer.js),
+  -- appliqué par handler-watch aux republications en pause et aux annonces publiées (_shared/annonce-publiee-disparue.js,
+  -- 7c48b8c), et les règles « deux relevés complets par boutique » (Vinted) et « deux relevés probants » (republication
+  -- retenue « cible absente », Leboncoin / Depop) de get-pending-jobs. Cette fonction ne juge RIEN : elle
+  -- lit les verdicts qu'ils ont écrits (annonce_disparue), sur CET identifiant exact.
+  --   'annonce_vendue' : vente prouvée — le relevé a lu la vente (transaction_plateforme 'sold'), la page a été lue
+  --                      « vendue » (sale_signal 'sold' du dépôt publié : preuve positive, jamais un doute), ou le juge a
+  --                      clos l'annonce vendue ;
+  --   'annonce_partie' : absence CONFIRMÉE — le juge a clos l'annonce (absente de deux relevés complets depuis sa dernière
+  --                      vue, ou relevée fermée) et aucun relevé ne l'a revue depuis (un relevé qui la revoit lève la garde).
+  -- Jamais sur : un doute (sale_signal 'unavailable'), une lecture seule (sonde publique, 403, erreur réseau, 404 Beebs
+  -- « en vérification »), une pause, une annonce Vinted masquée ou en brouillon (« hidden », « draft » : 7c48b8c).
+  -- NULL : rien ne prouve que l'annonce est partie (identifiant inconnu compris).
+  -- Garde de cohérence : scripts/annonce-partie-un-seul-juge-selftest.mjs (les auteurs nommés ici écrivent bien ces
+  -- verdicts ; aucun autre auteur n'est lu).
+  WITH lid AS (SELECT NULLIF(btrim(COALESCE(p_listing_id, '')), '') AS id),
+  verdicts AS (
+    SELECT x.platform_fields -> 'annonce_disparue' AS v, x.created_at
+      FROM cross_post_jobs x, lid
+     WHERE x.user_id = p_user AND x.inventaire_id = p_inventaire_id AND x.platform = p_platform
+       AND NULLIF(trim(x.platform_listing_id), '') = lid.id
+       AND jsonb_typeof(x.platform_fields -> 'annonce_disparue') = 'object'
+       AND (COALESCE(x.platform_fields #>> '{annonce_disparue,pose_par}', '') LIKE 'handler-watch (%'
+            OR COALESCE(x.platform_fields #>> '{annonce_disparue,par}', '') IN ('deux_releves_complets_par_boutique', 'deux_releves_probants'))
+       AND COALESCE(x.platform_fields #>> '{annonce_disparue,motif}', '') !~ '« (hidden|draft) »'
+  )
   SELECT CASE
-    WHEN NULLIF(btrim(COALESCE(p_listing_id, '')), '') IS NULL THEN NULL
+    WHEN (SELECT id FROM lid) IS NULL THEN NULL
     WHEN EXISTS (
-      SELECT 1 FROM annonces_plateforme a
-       WHERE a.user_id = p_user AND a.platform = p_platform AND a.listing_id = btrim(p_listing_id)
+      SELECT 1 FROM annonces_plateforme a, lid
+       WHERE a.user_id = p_user AND a.platform = p_platform AND a.listing_id = lid.id
          AND a.transaction_plateforme = 'sold')
       OR EXISTS (
-      SELECT 1 FROM cross_post_jobs x
+      SELECT 1 FROM cross_post_jobs x, lid
        WHERE x.user_id = p_user AND x.inventaire_id = p_inventaire_id AND x.platform = p_platform
-         AND NULLIF(trim(x.platform_listing_id), '') = btrim(p_listing_id)
+         AND NULLIF(trim(x.platform_listing_id), '') = lid.id
          AND x.status = 'published' AND x.platform_fields ->> 'sale_signal' = 'sold')
+      OR EXISTS (
+      SELECT 1 FROM verdicts d
+       WHERE COALESCE(d.v ->> 'vendue', '') = 'true' OR COALESCE(d.v ->> 'motif', '') ~* '(vendue|sold)')
     THEN 'annonce_vendue'
     WHEN EXISTS (
-      SELECT 1 FROM cross_post_jobs x
-       WHERE x.user_id = p_user AND x.inventaire_id = p_inventaire_id AND x.platform = p_platform
-         AND NULLIF(trim(x.platform_listing_id), '') = btrim(p_listing_id)
-         AND ((x.status = 'published' AND x.platform_fields ->> 'sale_signal' = 'unavailable')
-              OR (x.action = 'republish' AND x.platform_fields ? 'annonce_disparue'))
-         AND NOT EXISTS (
-           SELECT 1 FROM annonces_plateforme a
-            WHERE a.user_id = p_user AND a.platform = p_platform AND a.listing_id = btrim(p_listing_id)
-              AND a.vu_le > COALESCE(public._ts_ou_null(x.platform_fields ->> 'unavailable_since'),
-                                     public._ts_ou_null(x.platform_fields #>> '{annonce_disparue,at}'),
-                                     x.created_at)))
+      SELECT 1 FROM verdicts d
+       WHERE NOT EXISTS (
+         SELECT 1 FROM annonces_plateforme a, lid
+          WHERE a.user_id = p_user AND a.platform = p_platform AND a.listing_id = lid.id
+            AND a.vu_le > COALESCE(public._ts_ou_null(d.v ->> 'at'), public._ts_ou_null(d.v ->> 'le'), d.created_at)))
     THEN 'annonce_partie'
     ELSE NULL
   END
@@ -280,10 +298,9 @@ BEGIN
     END IF;
 
     -- ── (05/11, décision de Nico) UNE ANNONCE QU'ON SAIT PARTIE NE SE REPUBLIE PAS : refus à la source, rien décompté ──
-    -- La republication automatique l'écartait déjà (republish_planifiee_candidats : « annonce_vendue »,
-    -- « annonce_introuvable ») ; le bouton « Republier » de l'app la créait quand même (sale_signal retiré de la copie),
-    -- puis elle s'arrêtait « introuvable » ou attendait sans fin. Même règle, un seul juge :
-    -- republication_annonce_partie(). Motif d'article (la file automatique passe au candidat suivant).
+    -- Le bouton « Republier » de l'app la créait quand même (sale_signal retiré de la copie), puis elle s'arrêtait
+    -- « introuvable » ou attendait sans fin. Le juge est celui des relevés (7c48b8c) : republication_annonce_partie()
+    -- lit ses verdicts, jamais un doute. Motif d'article (la file automatique passe au candidat suivant).
     v_partie := public.republication_annonce_partie(v_user, p_inventaire_id, v_platform, v_lid);
     IF v_partie IS NOT NULL THEN
       RETURN jsonb_build_object('allowed', false, 'reason', 'annonce_introuvable', 'motif', v_partie,
@@ -292,12 +309,12 @@ BEGIN
           WHEN COALESCE(v_prof.lang, 'fr') = 'en' AND v_partie = 'annonce_vendue'
             THEN 'Repost not started: this ' || initcap(v_platform) || ' listing is sold. Nothing was used from your plan.'
           WHEN COALESCE(v_prof.lang, 'fr') = 'en'
-            THEN 'Repost not started: this ' || initcap(v_platform) || ' listing is no longer online (no sync has seen it again). '
-              || 'Nothing was used from your plan. « Sync » reads it again.'
+            THEN 'Repost not started: this ' || initcap(v_platform) || ' listing is no longer online (confirmed by your syncs, '
+              || 'not seen since). Nothing was used from your plan. « Sync » reads it again.'
           WHEN v_partie = 'annonce_vendue'
             THEN 'Republication pas lancée : cette annonce ' || initcap(v_platform) || ' est vendue. Rien n''a été décompté.'
-          ELSE 'Republication pas lancée : cette annonce ' || initcap(v_platform) || ' n''est plus en ligne (aucun relevé ne l''a revue). '
-            || 'Rien n''a été décompté. « Synchroniser » la relit.' END);
+          ELSE 'Republication pas lancée : cette annonce ' || initcap(v_platform) || ' n''est plus en ligne (confirmé par les relevés, '
+            || 'pas revue depuis). Rien n''a été décompté. « Synchroniser » la relit.' END);
     END IF;
 
     IF EXISTS (
