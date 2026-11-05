@@ -461,7 +461,10 @@ cas rouges (jeton Leboncoin expiré entre retrait et redépôt, compte Vinted ba
 **À garder pour le prompt « finitions Cloud » (APRÈS l'essai, pas avant)** :
 1. après un « Résoudre » réussi, relancer tout de suite les jobs de la plateforme (la republication Leboncoin est restée à
    l'arrêt de 21:38 à 21:56) ;
-2. noter l'heure de chaque étape d'une republication (prise, retrait, chaque essai de redépôt, en ligne).
+2. noter l'heure de chaque étape d'une republication (prise, retrait, chaque essai de redépôt, en ligne) ;
+3. (ajouté par Nico le 05/11 matin, après le rapport de 08:00) une vérification RÉUSSIE — passée seule ou après un « Résoudre »
+   — lève tout de suite la pause de la plateforme concernée, messagerie ET jobs (cas du 05/11 : vérification Beebs passée seule
+   à 02:48:48, messagerie restée en pause jusqu'à 08:48:44).
 
 **Rapport de 08:00 (05/11, dressé à 08:0x ; nuit du 04/11 21:00 au 05/11 08:00, lecture seule : `blocages.json` inchangé
 depuis 04/11 21:38, `fond-f44b5917-2026-11-0{4,5}.jsonl` — 43 771 requêtes —, journaux de l'orchestrateur et du conteneur,
