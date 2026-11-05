@@ -105,7 +105,7 @@ console.log("\n[D] la pause se lève : visite posée, acceptée par la base, ser
   ok(enCours.etat === "bloque" && enCours.essai_en_cours === true, "visite servie : on attend son résultat (2 h au plus)");
   const leve = B.blocageLeve(servi, { par: "visite de contrôle", maintenant: new Date(tEssai + 120_000).toISOString() });
   const rep = B.etatBlocageLbc(ps(leve), tEssai + 180_000);
-  ok(rep.etat === "reprise" && !B.lecturesExtensionEnPause(rep.etat), "visite réussie : reprise prudente, lectures et cycle délégué rouverts");
+  ok(rep.etat === "libre" && !B.lecturesExtensionEnPause(rep.etat), "visite réussie : libre tout de suite (reprise prudente supprimée, 05/11), lectures et cycle délégué rouverts");
   ok(B.etatBlocageLbc(ps(leve), tEssai + 120_000 + B.REPRISE_PRUDENTE_MS + 60_000).etat === "libre", "la reprise prudente finie : libre");
 }
 

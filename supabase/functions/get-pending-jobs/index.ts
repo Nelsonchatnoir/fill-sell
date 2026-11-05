@@ -574,6 +574,9 @@ async function oplaRelieDuCompte(admin: any, userId: string): Promise<boolean | 
 // ne change pas (le poll n'écrit jamais ces colonnes ; tout changement incrémente la version dans sa transaction).
 const CACHE_PROFIL = new Map<string, { v: number; beta_flags?: Record<string, unknown> | null; palier?: unknown }>();
 
+// (05/11 17:25, décision de Nico) La reprise par paliers après une restriction Vinted est supprimée (rythme normal dès la levée).
+const REPRISE_PAR_PALIERS_VINTED = false;
+
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const corsOrigin = isAllowedOrigin(origin) ? origin : "https://fillsell.app";
@@ -2891,7 +2894,9 @@ serve(async (req) => {
     // Désormais, une tâche Vinted retenue par la restriction (pas_de_rouge compte_restreint / _echu) ne repart qu'au
     // rythme de coin_config.vinted_reprise_restriction_jour par jour de Paris (défaut 10), UNE à la fois (une par
     // poll), marquée reprise_restriction_jour ; le reste attend le lendemain, sans rien perdre. Illisible → servi.
-    if (!includeProcessing && !includeNeedsUser && out.length) {
+    // ⛔ (05/11 17:25, DÉCISION DE NICO) SUPPRIMÉ : plus aucune reprise ralentie après une pause, sur aucune plateforme —
+    // la levée rend le rythme normal d'un compte jamais mis en pause (REPRISE_PAR_PALIERS_VINTED = false).
+    if (REPRISE_PAR_PALIERS_VINTED && !includeProcessing && !includeNeedsUser && out.length) {
       try {
         // (29/10, lot B 4.10) _shared/reprise-apres-restriction.js : pas-de-rouge compte_restreint(_echu) OU retenue par
         // la garde du serveur (restriction_compte, sans pas_de_rouge) ; seulement fin passée et échéance venue (jamais

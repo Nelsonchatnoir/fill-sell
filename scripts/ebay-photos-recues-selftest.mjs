@@ -232,8 +232,9 @@ console.log("\nR3 Le compte pas encore ouvert à la vente : un mur par compte, u
     && !Number.isFinite(V.murVendeurEbayVuLe(retenu, T)), "une retenue porte le geste du compte, jamais un mur VU");
   ok(V.attendVendeurEbay(retenu) && V.attendVendeurEbay(mur) && V.attentesVendeurEbay([retenu, mur])[0] === mur, "les tâches en attente : le mur vu et la retenue, la plus ancienne d'abord");
   const pfRep = V.champsRepriseVendeurEbay(pfRet, 2, T, "selftest");
-  ok(!V.attendVendeurEbay({ ...retenu, platform_fields: pfRep }) && pfRep.next_action_after === new Date(T + 90_000).toISOString() && !pfRep.needs_user_source,
-    "relâchée : plus en attente, espacée de 45 s par rang");
+  // (05/11, décision de Nico) plus aucun espacement après la levée : toutes repartent tout de suite.
+  ok(!V.attendVendeurEbay({ ...retenu, platform_fields: pfRep }) && pfRep.next_action_after === new Date(T).toISOString() && !pfRep.needs_user_source,
+    "relâchée : plus en attente, repart tout de suite (aucun espacement, décision du 05/11)");
   ok(!V.attendVendeurEbay({ ...retenu, platform_fields: { ...pfRet, needsUserField: { field_key: "Taille" } } }), "une vraie question de champ garde sa ligne");
   ok(/doit d'abord être ouvert à la vente \(inscription vendeur eBay\)/.test(V.MESSAGE_VENDEUR_EBAY) && /Rien n'a été publié/.test(V.MESSAGE_VENDEUR_EBAY),
     "le message vrai : « ton compte eBay doit d'abord être ouvert à la vente (inscription vendeur eBay) », rien publié");

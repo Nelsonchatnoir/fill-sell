@@ -24,7 +24,8 @@
 
 export const MOTIF_LBC_IDENTITE = "lbc_escrow_identite";
 export const ECLAIREUR_INTERVALLE_MS = 12 * 3_600_000;
-export const ESPACEMENT_REPRISE_MS = 45_000;
+// (05/11 17:25, décision de Nico) Plus aucun espacement après la levée d'une pause : rythme normal (était 45 s par tâche).
+export const ESPACEMENT_REPRISE_MS = 0;
 export const FENETRE_IDENTITE_MS = 30 * 86_400_000;
 export const URL_INFOS_LBC = "https://www.leboncoin.fr/account/private-details";
 

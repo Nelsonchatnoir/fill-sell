@@ -33,7 +33,7 @@ const b0 = blocagePose({}, { signe: "acces_temporairement_restreint", source: "t
 const bE = blocageAvecEssai(b0, { jobId: "", maintenant: iso(T0 + ESSAI_APRES_MS + 60_000) });
 const L = T0 + ESSAI_APRES_MS + 3 * 60_000;
 const bL = blocageLeve(bE, { par: "test", maintenant: iso(L) });
-t(etatBlocageLbc({ leboncoin: { blocage_acces: bL } }, L + 1000).etat === "reprise", "essai passé : reprise prudente");
+t(etatBlocageLbc({ leboncoin: { blocage_acces: bL } }, L + 1000).etat === "libre", "essai passé : libre tout de suite (reprise prudente supprimée, 05/11)");
 t(lecturesExtensionEnPause("reprise") === false, "reprise : l'extension relit les ventes (veille des commandes, relevé des ventes)");
 t(lecturesExtensionEnPause("bloque") === true && lecturesExtensionEnPause("essai") === true, "pause et essai : lectures coupées");
 // Refus APRÈS la levée : avant le correctif, la fusion gardait leve_le → état « reprise », pas de pause.

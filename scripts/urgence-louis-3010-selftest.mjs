@@ -50,10 +50,10 @@ t(etatBlocageLbc({ leboncoin: { blocage_acces: bRef } }, T0 + 2 * ESSAI_APRES_MS
 const L = T0 + ESSAI_APRES_MS + 600_000;
 const bLeve = blocageLeve(bEssai, { par: "test", maintenant: iso(L) });
 const e1 = etatBlocageLbc({ leboncoin: { blocage_acces: bLeve } }, L + 1000);
-t(e1.etat === "reprise" && e1.prete === true, "levé : reprise prudente, une action prête");
+t(e1.etat === "libre", "levé : libre tout de suite, rythme normal (reprise prudente supprimée, décision de Nico du 05/11)");
 const bLeve2 = { ...bLeve, derniere_action_reprise: iso(L + 1000) };
-t(etatBlocageLbc({ leboncoin: { blocage_acces: bLeve2 } }, L + 5 * 60_000).prete === false, "reprise : pas deux actions en 10 min");
-t(etatBlocageLbc({ leboncoin: { blocage_acces: bLeve2 } }, L + 1000 + ESPACEMENT_REPRISE_MS).prete === true, "reprise : une action toutes les 10 min");
+t(etatBlocageLbc({ leboncoin: { blocage_acces: bLeve2 } }, L + 5 * 60_000).etat === "libre", "levé : aucune attente entre deux actions (plus d'« une action toutes les 10 min »)");
+t(REPRISE_PRUDENTE_MS === 0, "la reprise prudente n'existe plus (REPRISE_PRUDENTE_MS = 0)");
 t(etatBlocageLbc({ leboncoin: { blocage_acces: bLeve2 } }, L + REPRISE_PRUDENTE_MS + 1).etat === "libre", "6 h après la levée : libre");
 const b2 = blocagePose(ps1, { signe: "http_403", source: "test", maintenant: iso(T0 + 3600_000) });
 t(b2.depuis === b1.depuis && b2.preuves === 2, "un second refus prolonge sans changer le début");

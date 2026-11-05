@@ -36,7 +36,8 @@ export const FENETRE_MUR_EBAY_MS = 30 * 86_400_000;
 // Écart entre deux éclaireurs automatiques (minutes), selon le nombre déjà lancés pour le compte.
 export const DELAIS_ECLAIREUR_EBAY_MIN = Object.freeze([60, 180, 360, 720, 1440]);
 export const ECLAIREUR_FRAIS_MS = 30 * 60_000;
-export const ESPACEMENT_REPRISE_MS = 45_000;
+// (05/11 17:25, décision de Nico) Plus aucun espacement après la levée d'une pause : rythme normal (était 45 s par tâche).
+export const ESPACEMENT_REPRISE_MS = 0;
 export const RETENUES_PAR_PASSAGE = 40;
 
 export const MESSAGE_VENDEUR_EBAY =

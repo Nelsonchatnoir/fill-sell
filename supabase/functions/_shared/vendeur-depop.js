@@ -38,7 +38,8 @@ export const MOTIF_VENDEUR_DEPOP = "depop_vendeur_a_configurer";
 export const SOURCE_VENDEUR_DEPOP = "depop_vendeur";
 // Écart entre deux éclaireurs (minutes), selon le nombre déjà lancés pour le compte.
 export const DELAIS_ECLAIREUR_MIN = Object.freeze([15, 30, 60, 60, 180, 180, 360]);
-export const ESPACEMENT_REPRISE_MS = 45_000;
+// (05/11 17:25, décision de Nico) Plus aucun espacement après la levée d'une pause : rythme normal (était 45 s par tâche).
+export const ESPACEMENT_REPRISE_MS = 0;
 export const FENETRE_VENDEUR_DEPOP_MS = 30 * 86_400_000;
 // Un éclaireur relancé (geste, relance, handler-watch) reste servi malgré le mur pendant ce délai.
 export const ECLAIREUR_FRAIS_MS = 30 * 60_000;

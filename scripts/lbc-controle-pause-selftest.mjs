@@ -34,7 +34,7 @@ console.log("\n1 bis. UNE LECTURE RÉUSSIE NE PROUVE PAS LA PUBLICATION : RECHUT
   let t = T0 + 2 * H;
   const rechuter = () => {
     const leve = blocageLeve({ ...b, essai: { releve_id: "r", le: iso(t) } }, { par: "test", maintenant: iso(t + 60_000) });
-    ok(etatBlocageLbc(vers(leve), t + 120_000).etat === "reprise", "visite passée : reprise prudente");
+    ok(etatBlocageLbc(vers(leve), t + 120_000).etat === "libre", "visite passée : libre tout de suite (reprise prudente supprimée, décision de Nico du 05/11)");
     b = blocagePose(vers(leve), { signe: "datadome", source: "publication refusée", maintenant: iso(t + 10 * 60_000) });
     return Date.parse(b.essai_apres) - (t + 10 * 60_000);
   };

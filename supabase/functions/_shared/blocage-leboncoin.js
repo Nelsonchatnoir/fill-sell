@@ -33,7 +33,10 @@
 
 export const CHEMIN_BLOCAGE_LBC = ["leboncoin", "blocage_acces"];
 export const ESSAI_APRES_MS = 2 * 3600_000;   // (03/11, point 7) une visite de contrôle toutes les 2 h (24 h avant)
-export const REPRISE_PRUDENTE_MS = 6 * 3600_000;
+// (05/11 17:20, DÉCISION DE NICO) LA REPRISE PRUDENTE EST SUPPRIMÉE : dès la levée, le compte reprend EXACTEMENT le rythme
+// d'un compte jamais mis en pause (ni « une action toutes les 10 min », ni 6 h de reprise). 0 = l'état « reprise » n'existe
+// plus : etatBlocageLbc rend « libre » dès leve_le, et get-pending-jobs range le blocage au passage suivant.
+export const REPRISE_PRUDENTE_MS = 0;
 // (03/11, point 7 — garde-fou de Nico) UNE LECTURE RÉUSSIE NE PROUVE PAS QUE LA PUBLICATION EST DÉBLOQUÉE. Si la visite
 // de contrôle passe (levée) mais qu'une action est de nouveau refusée pendant la reprise prudente, c'est une RECHUTE :
 // la visite suivante s'espace — 2 h à la première rechute, 6 h à la deuxième, 24 h ensuite — au lieu de reprendre
