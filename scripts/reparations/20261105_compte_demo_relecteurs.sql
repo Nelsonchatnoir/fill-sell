@@ -46,6 +46,7 @@ CREATE TABLE public._backup_0511_compte_demo_relecteurs AS
   UNION ALL
   SELECT 'article', i.id::text, to_jsonb(i), now()
     FROM public.inventaire i WHERE i.user_id = '953c1ca6-4851-41e7-b2b0-fb2a18551815';
+ALTER TABLE public._backup_0511_compte_demo_relecteurs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public._backup_0511_compte_demo_relecteurs FROM PUBLIC, anon, authenticated;
 
 UPDATE public.profiles SET beta_flags = COALESCE(beta_flags, '{}'::jsonb) || '{"cloud": true}'::jsonb
