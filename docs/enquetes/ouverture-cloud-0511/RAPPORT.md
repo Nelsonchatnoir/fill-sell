@@ -138,6 +138,24 @@ déduit d'une mémoire. Reprise : `docs/reprise/REPRISE-OUVERTURE-CLOUD-PHASE1.m
   noté après un autre déclencheur, borne 30, ordre des déclencheurs de prod, coût mesuré 8 µs par écriture, inverse) ;
   `npm run selftest:heures-etapes-republication` (22). À appliquer sur feu vert NOMMÉ de Nico.
 
+## Décision b — le parcours Stripe du Cloud en MODE TEST, de bout en bout (05/11 21:27, 19/19 vert)
+- Accès : la Stripe CLI (1.55.8, installée par winget) autorisée par Nico dans son Chrome à 21:24 (« FillSell ·
+  sandbox », mode test : `livemode: false` relu) — aucune clé n'est passée par Nico ni par un fichier ; jamais `--live`.
+- `node scripts/stripe-test/parcours-cloud-test.mjs` (STRIPE_CLI = chemin de stripe.exe) : prix Cloud de TEST
+  `price_1UYXDEQZRA77vrWJaIrZUgWy` (24,99 €, essai 7 j), horloges de test, cartes par leurs jetons `pm_card_…`, rejoués
+  dans NOTRE code de décision (cloud-option.js, paiement-echoue.js) :
+  1-2. essai de 7 jours (trialing, rien prélevé, Cloud actif sans palier ouvert) → fin d'essai : abonnement actif,
+       première facture 24,99 € payée, Cloud payé ;
+  5. remboursement de 24,99 € (succeeded) puis arrêt : Cloud coupé ;
+  3. résiliation pendant l'essai : arrêt immédiat, essai marqué pris (pas de second), rien prélevé même après la date ;
+  4. carte refusée à la fin de l'essai (`pm_card_chargeCustomerFail`) : past_due, Cloud arrêté tout de suite, facture de
+     24,99 € ouverte, le mail d'impayé ne dit pas « reste actif » ;
+  6. (point 7) Stripe accepte les paramètres EXACTS de production de la page de paiement (expiration à 31 min) ; une page
+     expirée n'a plus de lien de paiement.
+- Rapport : `build/parcours-cloud-test.json` (ignoré par git). Les horloges et clients de test sont effacés à la fin.
+  Correctifs du banc à cette occasion : `--confirm` pour les suppressions par la CLI ; le paiement d'une facture relu
+  par `invoice_payments` (API 2025 et après : plus de `payment_intent` sur la facture).
+
 ## Point 7 — serveur plein au moment du paiement (05/11 21:35 ; fonction de paiement NON déployée — jour d'ouverture)
 - Relu en prod (lecture seule) : la PRÉPARATION (`cloud_essai_preparer_moi`, appelée par l'app AVANT Stripe, l'App
   Store ou Google Play) refuse « complet » quand il n'y a plus de place serveur (`cloud_vente_etat` : capacité des

@@ -45,7 +45,8 @@ async function stripe(methode, chemin, corps = null) {
   if (viaCli) {
     // La Stripe CLI : mode TEST par défaut (jamais --live) ; les paramètres en -d (requête pour un GET, corps sinon).
     const [base, requete] = chemin.split('?');
-    const args = [methode.toLowerCase(), `/v1/${base}`];
+    // « delete » demande une confirmation au clavier (EOF sans terminal) : --confirm, la suppression étant voulue.
+    const args = [methode.toLowerCase(), `/v1/${base}`, ...(methode === 'DELETE' ? ['--confirm'] : [])];
     for (const [k, v] of [...new URLSearchParams(requete ?? '').entries(), ...enForm(corps ?? {})]) args.push('-d', `${k}=${v}`);
     const r = spawnSync(CLI, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     let j = null;
@@ -76,6 +77,8 @@ async function avancer(horloge, t) {
 }
 
 let n = 0, ko = 0;
+// Les objets de TEST créés par le banc, effacés à la fin (une horloge de test emporte ses clients et abonnements).
+const aEffacer = { horloges: [], clients: [] };
 const journal = [];
 const ok = (c, m, detail) => { n++; journal.push({ ok: !!c, m, detail: detail ?? null }); console.log(`  ${c ? '✓' : '✗'} ${m}`); if (!c) ko++; };
 
@@ -102,6 +105,7 @@ async function clientEnEssai(prix, jetonCarte, nom) {
   const base = parametresCheckoutCloud({ prixCloud: prix.id, essai: true, userId: `banc-${nom}` });
   const sub = await stripe('POST', 'subscriptions', { customer: client.id, items: [{ price: prix.id }],
     trial_period_days: base.subscription_data.trial_period_days, metadata: base.subscription_data.metadata });
+  aEffacer.horloges.push(horloge.id);
   return { horloge: horloge.id, t0, client: client.id, sub };
 }
 
@@ -137,9 +141,17 @@ console.log('\n1-2. Essai de 7 jours, puis passage au payant (carte de test pm_c
   ok(b.profil.is_cloud === true && b.etat.actif === true, 'passage au payant : Cloud actif, payé');
   // 5. Remboursement de cette première facture, puis arrêt de l'abonnement (geste du support).
   console.log('\n5. Remboursement (geste du support), puis arrêt');
-  const pi = payee?.payment_intent ?? payee?.payments?.data?.[0]?.payment?.payment_intent ?? null;
+  // Le paiement de la facture : champ payment_intent (anciennes versions de l'API) ou, depuis 2025, les « invoice
+  // payments » (non développés dans une liste) — relus à part ; à défaut, le débit du client.
+  let pi = payee?.payment_intent ?? payee?.payments?.data?.[0]?.payment?.payment_intent ?? null;
+  if (!pi && payee) {
+    const ip = await stripe('GET', `invoice_payments?invoice=${payee.id}&limit=3`).catch(() => null);
+    pi = ip?.data?.find((x) => x?.status === 'paid')?.payment?.payment_intent ?? ip?.data?.[0]?.payment?.payment_intent ?? null;
+  }
+  let charge = null;
+  if (!pi) charge = (await stripe('GET', `charges?customer=${c.client}&limit=3`).catch(() => null))?.data?.find((x) => x.paid && x.amount === 2499)?.id ?? null;
   let rembourse = null;
-  if (pi) rembourse = await stripe('POST', 'refunds', { payment_intent: typeof pi === 'string' ? pi : pi.id, metadata: { banc: 'parcours-cloud-test' } });
+  if (pi || charge) rembourse = await stripe('POST', 'refunds', { ...(pi ? { payment_intent: typeof pi === 'string' ? pi : pi.id } : { charge }), metadata: { banc: 'parcours-cloud-test' } });
   ok(rembourse?.status === 'succeeded' && rembourse.amount === 2499, `remboursement de 24,99 € (${rembourse?.status ?? 'aucun paiement trouvé'})`);
   await stripe('DELETE', `subscriptions/${c.sub.id}`);
   const r = await profilApres(c.client, prix, c.sub.trial_end + 7200, b.profil);
@@ -176,11 +188,12 @@ console.log('\n4. Paiement refusé à la fin de l’essai (carte de test pm_card
   ok(f.abonnement_actif === false && f.offre === 'cloud', 'le mail d’impayé ne dit pas « reste actif »');
 }
 
-// 5. (point 7, serveur plein au paiement) La page de paiement du Cloud expire avec la place gardée : Stripe accepte les
+// 6. (point 7, serveur plein au paiement) La page de paiement du Cloud expire avec la place gardée : Stripe accepte les
 // paramètres EXACTS de production (expires_at à 31 min) et une page expirée ne se paie plus.
-console.log('\n5. Page de paiement Cloud : expire avec la place gardée (31 min), une page expirée ne se paie plus');
+console.log('\n6. Page de paiement Cloud : expire avec la place gardée (31 min), une page expirée ne se paie plus');
 {
   const client = await stripe('POST', 'customers', { email: 'banc-cloud-page@exemple.invalid', metadata: { banc: 'parcours-cloud-test' } });
+  aEffacer.clients.push(client.id);
   const base = parametresCheckoutCloud({ prixCloud: prix.id, essai: true, userId: 'banc-page' });
   const s = await stripe('POST', 'checkout/sessions', { ...base, customer: client.id,
     success_url: 'https://fillsell.app/success?produit=cloud&essai=1&session_id={CHECKOUT_SESSION_ID}', cancel_url: 'https://fillsell.app/cancel' });
@@ -189,7 +202,11 @@ console.log('\n5. Page de paiement Cloud : expire avec la place gardée (31 min)
   ok(e.status === 'expired' && !e.url, 'expirée : plus de lien de paiement (la personne repasse par l’app et la place est relue)');
 }
 
-const rapport ={ le: new Date().toISOString(), prix_test: prix.id, controles: n, echecs: ko, journal };
+// Ménage du mode test : les horloges (et ce qu'elles portent), le client de la page.
+for (const h of aEffacer.horloges) await stripe('DELETE', `test_helpers/test_clocks/${h}`).catch((e) => console.log(`  (horloge ${h} non effacée : ${e.message.slice(0, 80)})`));
+for (const c of aEffacer.clients) await stripe('DELETE', `customers/${c}`).catch(() => {});
+
+const rapport = { le: new Date().toISOString(), prix_test: prix.id, controles: n, echecs: ko, journal };
 mkdirSync(`${RACINE}build`, { recursive: true });
 writeFileSync(`${RACINE}build/parcours-cloud-test.json`, JSON.stringify(rapport, null, 2));
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles. Rapport : build/parcours-cloud-test.json`);
