@@ -7,7 +7,12 @@ import { planifierPostes, resumerJobs } from './planificateur.js';
 import { nouveauProfilId, DOMAINES_VERROU, tailleEnMo } from './navigateur.js';
 import { lireComptesDuServeur } from './flotte.js';
 import { changementDePoste } from './pausesMessagerie.js';
-import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
+import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims, evaluerDansExtension } from './sessionFillsell.js';
+
+// (05/11) Lu dans le service worker de l'extension Cloud (verrou des plateformes, build-extension-cloud.mjs) : les
+// plateformes à reconnecter, déjà relues contre les cookies du moment. Une copie de l'extension sans ce verrou rend {}.
+export const EXPRESSION_RECONNEXIONS_CLOUD = '(globalThis.__fillsellVerrouCloud && typeof globalThis.__fillsellVerrouCloud.reconnexions === "function")'
+  + ' ? globalThis.__fillsellVerrouCloud.reconnexions() : {}';
 
 /** Une adresse sur un domaine de la plateforme (pure) — les onglets à fermer quand elle est bloquée. */
 export function surPlateforme(url, plateforme) {
@@ -179,9 +184,32 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     return fait;
   }
 
+  /**
+   * (05/11, règle de Nico) Les plateformes que le verrou de l'extension Cloud n'a pas pu rouvrir (jeton court non
+   * renouvelé par la visite du site, ou session fermée) — lues dans le service worker s'il tourne (jamais réveillé pour
+   * ça), et seulement celles qui ne sont toujours pas « connectee » (expressionReconnexionsCloud). {} si rien à dire.
+   */
+  async function reconnexionsExtension(h) {
+    const id = await extensionId().catch(() => null);
+    if (!id || !h?.cdp) return {};
+    const cibles = (await h.cdp.send('Target.getTargets').catch(() => null))?.targetInfos ?? [];
+    if (!cibles.some((t) => t.type === 'service_worker' && String(t.url).startsWith(`chrome-extension://${id}/`))) return {};
+    const r = await evaluerDansExtension(h.cdp, id, EXPRESSION_RECONNEXIONS_CLOUD).catch(() => null);
+    return r && typeof r === 'object' ? r : {};
+  }
+
   async function sauvegarder(user, h) {
     const { cookies } = await h.cdp.send('Storage.getCookies');
     const bilan = await coffre.sauvegarderCookies(user, cookies);
+    // (05/11) Une connexion que l'exécutant n'a pas pu renouveler se dit « à reconnecter » dans l'app (même vérité que
+    // le verrou) : avant, l'app disait « Connecté » pendant que le verrou refusait tout (Beebs, 05/11 11:20).
+    for (const [p, r] of Object.entries(await reconnexionsExtension(h))) {
+      if (!PLATEFORMES_CLOUD.includes(p) || String(bilan[p] ?? '').startsWith('a_reconnecter')) continue;
+      const fait = await coffre.aReconnecter(user, p, { cause: String(r?.cause ?? 'jeton_non_renouvele') }).catch((e) => {
+        journal.alerte('reconnexion_coffre_echec', { user, plateforme: p, erreur: e.message }); return false;
+      });
+      if (fait) { bilan[p] = 'a_reconnecter'; journal.alerte('reconnexion_requise', { user, plateforme: p, cause: r?.cause ?? null, le: r?.le ?? null }); }
+    }
     const session = await relireSession(user, h);
     dernieresSauvegardes.set(user, Date.now());
     return { ...bilan, fillsell: session ? 'relue' : 'absente' };

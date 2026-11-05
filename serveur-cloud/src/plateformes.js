@@ -1,5 +1,6 @@
 // Les plateformes servies par le Cloud — ce que l'orchestrateur sait d'elles.
 // Pur (aucun réseau) : testé par tests/plateformes.test.mjs.
+import { etatJetonsConnexion } from './jetonsConnexion.js';
 //
 //   · Vinted, Leboncoin, Beebs, Depop (30/10) passent par le NAVIGATEUR Cloud (notre extension) ;
 //   · eBay passe par l'API existante (connexion officielle eBay, ebay-oauth) :
@@ -147,33 +148,27 @@ const dePlateforme = (cookies, plateforme) => {
 };
 
 /**
- * Connectée POUR DE VRAI d'après les cookies (règle du prototype, éprouvée le
- * 26/09) : Vinted = jeton d'accès PORTANT un utilisateur + refresh token (un
- * visiteur invité ne compte pas) ; Leboncoin = __Secure-Login ; Beebs = jeton
- * d'accès portant un utilisateur NON invité (à confirmer au test réel : en cas
- * de doute, la sonde de page fait foi — sondeConnexionBeebs).
+ * L'état de connexion d'une plateforme d'après les cookies du navigateur (CDP) : « connectee », « a_renouveler » ou
+ * « absente » — la règle UNIQUE de jetonsConnexion.js, la même que le verrou de l'extension Cloud (05/11).
  */
-export function estConnectee(cookies, plateforme) {
-  const de = dePlateforme(cookies, plateforme);
-  if (plateforme === 'vinted') {
-    const at = de.find((c) => c.name === 'access_token_web');
-    const sub = at ? claimsJwt(at.value)?.sub : null;
-    return Boolean(sub) && de.some((c) => c.name === 'refresh_token_web');
-  }
-  if (plateforme === 'leboncoin') return de.some((c) => c.name === '__Secure-Login' && String(c.value ?? '').length > 0);
-  if (plateforme === 'beebs') {
-    const at = de.find((c) => c.name === 'access_token');
-    const cl = at ? claimsJwt(at.value) : null;
-    if (!cl) return false;
-    const role = String(cl.role ?? cl.type ?? cl.user_type ?? '').toLowerCase();
-    // (30/10, essai du PC de Nico) Beebs donne à TOUT visiteur un jeton Firebase anonyme (provider_id « anonymous »,
-    // firebase.sign_in_provider « anonymous ») : « Me connecter » se fermait sur « connecté » 2 s après l'ouverture.
-    const anonyme = [cl.provider_id, cl.firebase?.sign_in_provider].some((p) => String(p ?? '').toLowerCase() === 'anonymous');
-    return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !anonyme && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
-  }
-  // (30/10) Depop : le cookie access_token (même règle que l'extension, sonderSessionDepop : absent = session fermée).
-  if (plateforme === 'depop') return de.some((c) => c.name === 'access_token' && String(c.value ?? '').trim().length > 0);
-  return false;
+export function etatConnexion(cookies, plateforme, maintenant = Date.now()) {
+  const de = dePlateforme(cookies, plateforme).map((c) => ({ name: c.name, value: c.value, expires: c.session ? null : c.expires }));
+  return etatJetonsConnexion(de, plateforme, maintenant).etat;
+}
+
+/**
+ * Connectée d'après les cookies (05/11, règle de Nico) : tant que le jeton LONG est là (Vinted refresh_token_web, Beebs
+ * refresh_token), même si le jeton court a expiré — l'exécutant le renouvelle par une visite normale du site. Un jeton
+ * court « invité / anonyme » = session fermée (26/09 Vinted, 30/10 Beebs : « Me connecter » se fermait sur « connecté »
+ * 2 s après l'ouverture). Leboncoin = __Secure-Login ; Depop = access_token.
+ */
+export function estConnectee(cookies, plateforme, maintenant = Date.now()) {
+  return etatConnexion(cookies, plateforme, maintenant) !== 'absente';
+}
+
+/** Connectée ET prête (jeton court valable) : le déclencheur de la lecture du compte dans « Me connecter ». */
+export function connexionComplete(cookies, plateforme, maintenant = Date.now()) {
+  return etatConnexion(cookies, plateforme, maintenant) === 'connectee';
 }
 
 /** L'identifiant du compte de plateforme (pour le verrou d'essai), ou null. Jamais journalisé. */

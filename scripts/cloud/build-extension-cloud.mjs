@@ -30,6 +30,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // (04/11 soir, règle de Nico) Les lectures de fond Leboncoin faites comme la page (aussi appliqué au PC, chrome-extension/).
 import { patcherBackgroundLeboncoin, patcherMessagerieLeboncoin, patcherContentLeboncoin } from '../leboncoin-comme-la-page.mjs';
+// (05/11, règle de Nico) La règle « connectée » de l'orchestrateur, injectée telle quelle dans le verrou de la copie Cloud.
+import { etatJetonsConnexion, NOMS_JETONS_CONNEXION } from '../../serveur-cloud/src/jetonsConnexion.js';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SORTIE = path.join(RACINE, 'build', 'extension-cloud');
@@ -55,33 +57,35 @@ const L = (a) => '[' + a.map((x) => JSON.stringify(x)).join(', ') + ']';
 // refresh_token). Beebs était dit « non connecté » par ce verrou alors que sa session était là : 14 visites refusées,
 // la republication Beebs de Nico jamais commencée (« lecture_impossible »). chrome.cookies.get({ url, name }) les rend :
 // chaque cookie de connexion se lit aussi par son adresse (www, le domaine, auth.).
-export const SOURCE_CONNEXION_CLOUD = `async function connexionCloudPresente(pf) {
+// (05/11, règle de Nico) La règle n'est plus RECOPIÉE ici : c'est la fonction de l'orchestrateur elle-même
+// (etatJetonsConnexion, serveur-cloud/src/jetonsConnexion.js), injectée telle quelle — l'écran (coffre) et ce verrou
+// lisent la même vérité. Connectée = jeton LONG vivant ; jeton court absent = « a_renouveler » (le verrou le renouvelle).
+export const SOURCE_CONNEXION_CLOUD = `${etatJetonsConnexion.toString()}
+const NOMS_JETONS_CLOUD = ${JSON.stringify(NOMS_JETONS_CONNEXION)};
+async function cookiesConnexionCloud(pf) {
   const domaine = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", beebs: "beebs.app", depop: "depop.com" }[pf];
-  if (!domaine) return false;
+  if (!domaine) return [];
   const cookies = await chrome.cookies.getAll({ domain: domaine }).catch(() => []);
   const origines = ["https://www." + domaine + "/", "https://" + domaine + "/", "https://auth." + domaine + "/"];
-  const val = async (nom) => {
-    const c = (cookies ?? []).find((x) => x.name === nom);
-    if (c) return String(c.value ?? "").trim();
-    if (typeof chrome.cookies.get !== "function") return "";
-    for (const url of origines) {
-      const x = await chrome.cookies.get({ url, name: nom }).catch(() => null);
-      if (x && String(x.value ?? "").trim()) return String(x.value).trim();
+  const vu = (x) => Boolean(x) && String(x.value ?? "").trim().length > 0;
+  const lus = [];
+  for (const nom of NOMS_JETONS_CLOUD[pf] ?? []) {
+    let c = (cookies ?? []).find((x) => x.name === nom && vu(x)) ?? null;
+    if (!c && typeof chrome.cookies.get === "function") {
+      for (const url of origines) {
+        const x = await chrome.cookies.get({ url, name: nom }).catch(() => null);
+        if (vu(x)) { c = x; break; }
+      }
     }
-    return "";
-  };
-  const jwt = (v) => { try { return JSON.parse(atob(String(v).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); } catch { return null; } };
-  if (pf === "vinted") return Boolean(jwt(await val("access_token_web"))?.sub) && (await val("refresh_token_web")).length > 0;
-  if (pf === "leboncoin") return (await val("__Secure-Login")).length > 0;
-  if (pf === "beebs") {
-    const cl = jwt(await val("access_token"));
-    if (!cl) return false;
-    const role = String(cl.role ?? cl.type ?? cl.user_type ?? "").toLowerCase();
-    const anonyme = [cl.provider_id, cl.firebase?.sign_in_provider].some((p) => String(p ?? "").toLowerCase() === "anonymous");
-    return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !anonyme && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
+    if (c) lus.push({ name: nom, value: String(c.value).trim(), expires: c.session ? null : (Number(c.expirationDate) || null) });
   }
-  if (pf === "depop") return (await val("access_token")).length > 0;
-  return false;
+  return lus;
+}
+async function etatConnexionCloud(pf) {
+  return etatJetonsConnexion(await cookiesConnexionCloud(pf), pf).etat;
+}
+async function connexionCloudPresente(pf) {
+  return (await etatConnexionCloud(pf)) !== "absente";
 }`;
 
 // (01/11, règle de Nico du 30/10 portée sur le moteur steel) LE VERROU DES PLATEFORMES DANS LA COPIE CLOUD : une
@@ -92,23 +96,79 @@ export const SOURCE_CONNEXION_CLOUD = `async function connexionCloudPresente(pf)
 // le 01/11 les trois pages ouvertes par l'extension avant toute connexion (Vinted, Leboncoin, Beebs : ERR_BLOCKED_BY_CLIENT)
 // mais n'est pas prouvé sur les requêtes du service worker ; celui-ci les couvre, avec les onglets et les fenêtres.
 // Exporté pour l'autotest, qui l'exécute avec un faux `chrome` et un faux `fetch`.
+// (05/11, règle de Nico — Beebs bloqué par ce verrou depuis ~03:50, 4 tâches refusées toutes les 15 min, l'app disant
+// « Connecté ») LE JETON COURT SE RENOUVELLE, IL NE FERME PAS LA PLATEFORME :
+//   · « connectee » → passe ; « a_renouveler » (jeton long vivant, jeton court absent) → AVANT de travailler, UNE visite
+//     normale de l'accueil du site dans un onglet de fond (le site renouvelle lui-même son jeton court ; aucun mot de
+//     passe, aucun login automatique), au plus RENOUVELLEMENT_CLOUD.attenteMs, une seule à la fois par plateforme ;
+//     jeton court revenu → la requête passe ;
+//   · sinon (session fermée, ou jeton long refusé) : refus « demande une reconnexion », noté (verrouCloud.reconnexion,
+//     un seul nouvel essai de visite toutes les reessaiMs) — l'orchestrateur le lit et passe la plateforme « à
+//     reconnecter » dans l'app (postes.js) ; la tâche refusée devient un geste attendu « Connexion X requise »
+//     (reconnexionCloudPourJob), jamais un échec repris toutes les 15 min.
+export const RENOUVELLEMENT_CLOUD = Object.freeze({ attenteMs: 45_000, pasMs: 1_000, reessaiMs: 10 * 60_000 });
+export const ACCUEIL_RENOUVELLEMENT_CLOUD = Object.freeze({ vinted: 'https://www.vinted.fr/', beebs: 'https://www.beebs.app/' });
 export const SOURCE_VERROU_CLOUD = `const VERROU_DOMAINES_CLOUD = { vinted: ["vinted.fr", "vinted.com", "vinted.net"], leboncoin: ["leboncoin.fr"], beebs: ["beebs.app"], depop: ["depop.com"] };
-const verrouCloud = { bloquees: 0, derniere: null, onglets: false };
+const RENOUVELLEMENT_CLOUD = ${JSON.stringify(RENOUVELLEMENT_CLOUD)};
+const ACCUEIL_RENOUVELLEMENT_CLOUD = ${JSON.stringify(ACCUEIL_RENOUVELLEMENT_CLOUD)};
+const verrouCloud = { bloquees: 0, derniere: null, onglets: false, renouvellements: [], reconnexion: {} };
+const ongletSansVerrouCloud = chrome.tabs.create.bind(chrome.tabs);
+const renouvellementsCloud = {};
 function plateformeVerrouCloud(url) {
   let h = "";
   try { h = new URL(String(url)).hostname.toLowerCase(); } catch { return null; }
   for (const [pf, domaines] of Object.entries(VERROU_DOMAINES_CLOUD)) if (domaines.some((d) => h === d || h.endsWith("." + d))) return pf;
   return null;
 }
+function renouvelerConnexionCloud(pf) {
+  if (renouvellementsCloud[pf]) return renouvellementsCloud[pf];
+  const accueil = ACCUEIL_RENOUVELLEMENT_CLOUD[pf];
+  const echec = verrouCloud.reconnexion[pf];
+  if (!accueil || (echec && Date.now() - Date.parse(echec.le) < RENOUVELLEMENT_CLOUD.reessaiMs)) return Promise.resolve(false);
+  renouvellementsCloud[pf] = (async () => {
+    const debut = Date.now();
+    let onglet = null;
+    let issue = "jeton_non_renouvele";
+    try {
+      onglet = await ongletSansVerrouCloud({ url: accueil, active: false });
+      while (Date.now() - debut < RENOUVELLEMENT_CLOUD.attenteMs) {
+        await new Promise((ok) => setTimeout(ok, RENOUVELLEMENT_CLOUD.pasMs));
+        if ((await etatConnexionCloud(pf).catch(() => "absente")) === "connectee") { issue = "renouvele"; break; }
+      }
+      if (issue !== "renouvele" && (await etatConnexionCloud(pf).catch(() => "absente")) === "absente") issue = "session_fermee";
+    } catch { issue = "jeton_non_renouvele"; }
+    finally {
+      if (onglet?.id != null) await chrome.tabs.remove(onglet.id).catch(() => {});
+      delete renouvellementsCloud[pf];
+    }
+    verrouCloud.renouvellements = [...verrouCloud.renouvellements.slice(-9), { plateforme: pf, le: new Date(debut).toISOString(), issue, duree_ms: Date.now() - debut }];
+    if (issue === "renouvele") { delete verrouCloud.reconnexion[pf]; return true; }
+    verrouCloud.reconnexion[pf] = { le: new Date().toISOString(), cause: issue };
+    return false;
+  })();
+  return renouvellementsCloud[pf];
+}
 async function verrouCloudRefuse(url) {
   const pf = plateformeVerrouCloud(url);
   if (!pf) return null;
-  return (await connexionCloudPresente(pf).catch(() => false)) ? null : pf;
+  const etat = await etatConnexionCloud(pf).catch(() => "absente");
+  if (etat === "connectee") { delete verrouCloud.reconnexion[pf]; return null; }
+  if (etat === "a_renouveler" && (await renouvelerConnexionCloud(pf).catch(() => false))) return null;
+  if (etat === "absente" && !verrouCloud.reconnexion[pf]) verrouCloud.reconnexion[pf] = { le: new Date().toISOString(), cause: "session_fermee" };
+  return pf;
 }
 function refusVerrouCloud(pf) {
   verrouCloud.bloquees++;
   verrouCloud.derniere = { plateforme: pf, le: new Date().toISOString() };
-  return new TypeError("FillSell Cloud : " + pf + " n'est pas connecté dans ce navigateur, aucune visite");
+  return new TypeError("FillSell Cloud : " + pf + " demande une reconnexion (session fermée ou jeton non renouvelé), aucune visite");
+}
+const NOMS_PLATEFORMES_CLOUD = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", depop: "Depop" };
+function reconnexionCloudPourJob(status, extra) {
+  const m = /FillSell Cloud : (vinted|leboncoin|beebs|depop) demande une reconnexion/.exec(String(extra?.error ?? ""));
+  if (!m || !["failed", "pending", "retry", "needs_user"].includes(status)) return { status, extra };
+  const nom = NOMS_PLATEFORMES_CLOUD[m[1]];
+  return { status: "needs_user", extra: { ...extra, error: "Connexion " + nom + " requise : FillSell Cloud n'a pas pu renouveler ta connexion " + nom
+    + " par une visite du site. Ouvre « Me connecter » et reconnecte " + nom + " : la tâche repartira." } };
 }
 const fetchSansVerrouCloud = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async function fetch(entree, options) {
@@ -135,7 +195,20 @@ verrouCloud.onglets = [
   envelopperVerrouCloud(chrome.tabs, "update", (a) => (typeof a[0] === "object" && a[0] ? a[0] : a[1])?.url),
   envelopperVerrouCloud(chrome.windows, "create", (a) => a[0]?.url),
 ].every(Boolean);
-globalThis.__fillsellVerrouCloud = { etat: () => ({ ...verrouCloud, fetch: globalThis.fetch !== fetchSansVerrouCloud }), refuse: verrouCloudRefuse };`;
+globalThis.__fillsellVerrouCloud = {
+  etat: () => ({ ...verrouCloud, fetch: globalThis.fetch !== fetchSansVerrouCloud }),
+  refuse: verrouCloudRefuse,
+  // (05/11) Lu par l'orchestrateur (postes.js, EXPRESSION_RECONNEXIONS_CLOUD) : les plateformes à reconnecter, relues
+  // contre les cookies du moment (une plateforme redevenue « connectee » — reconnectée par la personne — est oubliée).
+  reconnexions: async () => {
+    const out = {};
+    for (const [pf, r] of Object.entries(verrouCloud.reconnexion)) {
+      if ((await etatConnexionCloud(pf).catch(() => "absente")) === "connectee") delete verrouCloud.reconnexion[pf];
+      else out[pf] = r;
+    }
+    return out;
+  },
+};`;
 
 // (02/11 soir, décision de Nico) LES ONGLETS DE TRAVAIL SANS TÂCHE SONT FERMÉS. Mesuré le 02/11 (rapport
 // machine-cloud-3010 § 26) : le navigateur Cloud d'un compte garde chargés ses quatre onglets de travail entre deux tâches
@@ -299,6 +372,10 @@ export function patcherBackground(bg) {
     '  await cleanupOrphanWorkTabs().catch((e) =>',
     '  await fermerOngletsTravailInactifsCloud().catch((e) => console.warn("[cloud] fermeture des onglets sans tâche :", String(e?.message ?? e)));\n'
     + '  await cleanupOrphanWorkTabs().catch((e) =>');
+  patch('connexion à refaire : la tâche refusée par le verrou devient un geste attendu (05/11)',
+    'function updateJobStatus(accessToken, jobId, status, extra = {}) {',
+    'function updateJobStatus(accessToken, jobId, status, extra = {}) {\n'
+    + '  ({ status, extra } = reconnexionCloudPourJob(status, extra)); // Cloud (05/11) : « Connexion X requise », jamais un échec repris');
   patch('jobs : plateformes du Cloud seulement (le serveur filtre aussi)',
     '    jobs = rep.jobs;',
     '    jobs = (Array.isArray(rep.jobs) ? rep.jobs : []).filter((j) => CLOUD_PLATEFORMES.includes(j.platform));');

@@ -495,3 +495,46 @@ compteurs du relais `/etat`, base)** :
   Nico jusqu'au 03/12, `cloud_ip_achats_auto = 0`.
 - Coût à 08:00 : machine ~14 h 40 × 0,3136 € HT ≈ 4,6 € HT + IP 4 $ ; projeté à 18:00 ≈ 7,7 € HT + 4 $ (sous le plafond de 15 €).
 - Rien de grave : aucun compte restreint, aucune connexion perdue → pas de retour sur cloud-1.
+
+## 16. Tests de publication et de republication sur cloud-2 (05/11, ordre de Nico : la tenue est validée par la nuit)
+
+**Palier 1 lancé 10:28 → 10:35** (compte de Nico, fiches TEST à 999 € « ne pas acheter ») : republications par la fonction de
+l'app (`spend_coins_and_republish`, sous son compte) — Vinted et Depop « Paris 2024 », Beebs et Leboncoin « T-shirt femme
+Picture 30/10 » (« Paris 2024 » refusée sur ces deux-là : `annonce_introuvable`, son dernier dépôt FillSell n'a pas de lien) ;
+eBay : `invalid_platform` (l'app ne republie pas eBay). Publications « Veste lot F » et « Jean Lee » sur les 5 plateformes par
+l'écran de l'app dans le Chrome de Nico (session déjà ouverte, aucun login ; photos telles quelles ; matière eBay « Polyester »).
+Mesures sur cloud-2 (lecture seule) : `etat/essais/memoire-2026-11-05.csv` (5 s), `etat/essais/alarmes-2026-11-05.log`.
+
+**Défaut 1 — redépôt Leboncoin en boucle (non corrigé, constaté deux fois)** : après le retrait, l'exécutant prend le redépôt et
+le rend en 4 s sans déposer ; get-pending-jobs y voit « un essai commencé après le retrait, sans fin relevée » et exige un
+relevé avant tout redépôt — Mickey : retrait 10:12:16, prises 10:15:28 et 10:23:28 rendues, déposé au 3e passage (10:31),
+~20 min hors ligne ; T-shirt femme : retrait 10:52:37, prise 10:57:27 rendue, en ligne 11:02:58 (~10 min 20 s).
+**Défaut 2 — retenue levée trop tôt (non corrigé)** : 10:17:27 « retenue levée sur 40091531 (l'annonce du job 177a50cd est
+revenue) » alors que l'annonce Leboncoin du Mickey était encore hors ligne → Depop retiré 10:19:44 : deux annonces hors ligne
+en même temps jusqu'à ~10:28.
+
+**Défaut 3 — Beebs fermé par NOTRE verrou (corrigé, ordre de Nico 11:2x)** : plus aucune requête Beebs depuis 02:48:52 ; à
+11:17 le navigateur n'avait plus l'`access_token` de Beebs (~1 h, effacé par Chrome à son expiration) mais gardait le
+`refresh_token` (jusqu'en 2027). Le verrou de l'extension Cloud ne regardait que le jeton court : « beebs n'est pas connecté
+dans ce navigateur, aucune visite » — y compris la visite qui l'aurait renouvelé. Les 4 tâches Beebs refusées toutes les
+15 min (2 publications passées « à relancer » après 3 essais), et l'app affichait « Connecté » sans aucun bouton (capture de
+11:20) : `cloud_coffre_ecrire` refuse EN SILENCE de passer une ligne connectée à « non connectée » (garde du 26/09), donc le
+« à reconnecter » de l'orchestrateur n'arrivait jamais en base. Correction (règle générale, toutes les plateformes à jeton
+court + jeton long) :
+- `serveur-cloud/src/jetonsConnexion.js` : UNE règle — « connectee » (jeton long + jeton court valable), « a_renouveler »
+  (jeton long vivant, jeton court absent — effacé par Chrome à son expiration), « absente » (pas de jeton long, ou jeton court invité/anonyme). Connectée =
+  tout sauf « absente ». Le coffre (donc l'app) et le verrou exécutent LA MÊME fonction (injectée telle quelle dans la copie
+  Cloud de l'extension) ; « Me connecter » ne lit le compte qu'avec un jeton court valable (`connexionComplete`).
+- Verrou de l'extension Cloud (`build-extension-cloud.mjs`) : « a_renouveler » → UNE visite normale de l'accueil du site dans
+  un onglet de fond (Beebs, Vinted ; le site renouvelle lui-même son jeton ; ni mot de passe ni login), 45 s au plus, une à la
+  fois par plateforme, puis la requête passe. Échec (jeton long refusé, session fermée) → refus « demande une reconnexion »,
+  noté, un seul nouvel essai toutes les 10 min ; la tâche refusée devient un geste attendu « Connexion X requise »
+  (`reconnexionCloudPourJob` dans `updateJobStatus`), jamais un échec repris toutes les 15 min.
+- Orchestrateur : « à reconnecter » écrit pour de vrai (`coffre.aReconnecter`, écriture directe, seulement si la plateforme a
+  encore des cookies dans le profil — un profil vidé ne touche à rien, garde du 26/09) ; à chaque sauvegarde (10 min), les
+  reconnexions demandées par le verrou sont lues dans le service worker (`EXPRESSION_RECONNEXIONS_CLOUD`) → l'app affiche
+  « À reconnecter » et « Me reconnecter » (écran et bandeau existants), get-pending-jobs ne sert plus la plateforme.
+- Les 2 publications passées « à relancer » sous l'ancien verrou : `scripts/reparations/20261105_cloud_verrou_jeton_court_relance.sql`
+  (règle : geste attendu dont l'erreur technique est ce refus ; sauvegarde `_backup_0511_cloud_verrou_jeton` ; INVERSE).
+- Selftests : cloud-extension (renouvellement, refus, conversion de la tâche, même fonction que l'orchestrateur), orchestrateur
+  serveur-cloud 149/149 (règle des jetons, coffre « à reconnecter » réellement écrit, profil vide intact).

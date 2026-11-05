@@ -92,12 +92,14 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
       const connue = avant?.[p]?.connecte === true;
       if (!estConnectee(cookies, p)) {
         // (30/10, lot D) Une connexion FAITE qui a lâché (la plateforme a fermé la session) se dit « à reconnecter » :
-        // le drapeau `connecte` passe à faux, une fois — avant, il restait vrai pour toujours. Une plateforme jamais
-        // connectée (aucune ligne au coffre) ne crée rien.
-        if (connue) {
-          await ecrire(user, p, { le: new Date().toISOString(), cookies: [], session_fermee: true }, false);
-          bilan[p] = 'a_reconnecter';
-        } else bilan[p] = 'absente';
+        // le drapeau `connecte` passe à faux, une fois. Une plateforme jamais connectée (aucune ligne au coffre) ne crée rien.
+        // (05/11) Cette écriture passait par cloud_coffre_ecrire, qui REFUSE en silence de passer une ligne connectée à
+        // « non connectée » (garde du 26/09, profil vidé) : l'app disait « Connecté » pour toujours (Beebs, capture de
+        // 11:20). Elle est désormais directe (aReconnecter) — et seulement quand la plateforme a encore des cookies dans
+        // le profil (navigateur vivant, session fermée) : un profil sans aucun cookie de la plateforme (vidé, lecture
+        // partielle à la fermeture) ne touche pas au coffre, comme le voulait la garde du 26/09.
+        if (connue && de.length) bilan[p] = (await aReconnecter(user, p, { cause: 'session_fermee' })) ? 'a_reconnecter' : 'inchangee';
+        else bilan[p] = connue ? 'profil_sans_cookies' : 'absente';
         continue;
       }
       if (!connue && !verifiees.includes(p)) { bilan[p] = 'non_verifiee'; continue; }
@@ -151,5 +153,21 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
     return true;
   }
 
-  return { lire, ecrire, vider, sauvegarderCookies, cookiesARestaurer, bloquer };
+  /**
+   * (05/11, règle de Nico) UNE CONNEXION À REFAIRE SE DIT : la ligne connectée passe « à reconnecter » (l'app affiche
+   * « Me reconnecter » et son bandeau ; get-pending-jobs ne sert plus ses tâches au poste Cloud). Causes : la session
+   * fermée (plus de jeton long dans le profil), ou le jeton court que l'exécutant n'a pas pu renouveler par une visite
+   * du site (jeton long refusé — noté par le verrou de l'extension, postes.js). Écriture DIRECTE, seulement sur une ligne
+   * encore connectée et non bloquée (cloud_coffre_ecrire refuse ce passage, garde du 26/09). Rend vrai si la ligne a changé.
+   */
+  async function aReconnecter(user, plateforme, { cause = 'session_fermee', le = new Date().toISOString() } = {}) {
+    const objet = { le, cookies: [], session_fermee: true, cause };
+    const { chiffre, iv } = chiffrer(objet, cleBuf, { user, plateforme });
+    const { data, error } = await base.from('cloud_coffre').update({ chiffre, iv, cle_version: cleVersion, connecte: false, maj_le: le })
+      .eq('user_id', user).eq('plateforme', plateforme).eq('connecte', true).select('plateforme');
+    if (error) throw new Error(`cloud_coffre (à reconnecter) : ${error.message}`);
+    return (data ?? []).length > 0;
+  }
+
+  return { lire, ecrire, vider, sauvegarderCookies, cookiesARestaurer, bloquer, aReconnecter };
 }

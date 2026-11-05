@@ -350,19 +350,72 @@ test('(30/10) coffre : une connexion faite qui lâche passe « à reconnecter »
   const lignes = new Map();
   const base = {
     async rpc(nom, a) {
-      if (nom === 'cloud_coffre_ecrire') { lignes.set(a.p_plateforme, { plateforme: a.p_plateforme, chiffre: a.p_chiffre, iv: a.p_iv, cle_version: a.p_cle_version, connecte: a.p_connecte, maj_le: 'x' }); return { data: true, error: null }; }
+      // Comme en base (garde du 26/09) : cloud_coffre_ecrire ne passe JAMAIS une ligne connectée à « non connectée ».
+      if (nom === 'cloud_coffre_ecrire') {
+        if (!a.p_connecte && lignes.get(a.p_plateforme)?.connecte) return { data: null, error: null };
+        lignes.set(a.p_plateforme, { plateforme: a.p_plateforme, chiffre: a.p_chiffre, iv: a.p_iv, cle_version: a.p_cle_version, connecte: a.p_connecte, maj_le: 'x' }); return { data: true, error: null };
+      }
       if (nom === 'cloud_coffre_lire') return { data: [...lignes.values()], error: null };
       return { data: null, error: null };
+    },
+    // (05/11) L'écriture directe d'aReconnecter : update … eq(user) eq(plateforme) eq(connecte, true) select.
+    from() {
+      const filtre = {}; let patch = null;
+      const q = { update(p) { patch = p; return q; }, eq(k, v) { filtre[k] = v; return q; },
+        async select() {
+          const l = lignes.get(filtre.plateforme);
+          if (!l || (filtre.connecte === true && !l.connecte)) return { data: [], error: null };
+          Object.assign(l, patch); return { data: [{ plateforme: filtre.plateforme }], error: null };
+        } };
+      return q;
     },
   };
   const coffre = creerCoffre({ base, cle: randomBytes(32).toString('base64') });
   const lbc = [{ domain: '.leboncoin.fr', name: '__Secure-Login', value: 'jeton' }];
   let b = await coffre.sauvegarderCookies('u', lbc, { verifiees: ['leboncoin'] });
   assert.match(b.leboncoin, /sauvegardee/); assert.equal(b.vinted, 'absente'); assert.equal(lignes.has('vinted'), false);
+  // (05/11) Un profil SANS AUCUN cookie de la plateforme (vidé, lecture partielle à la fermeture) ne touche à rien (garde 26/09).
   b = await coffre.sauvegarderCookies('u', []);
+  assert.equal(b.leboncoin, 'profil_sans_cookies'); assert.equal(lignes.get('leboncoin').connecte, true);
+  // Navigateur vivant, session fermée (ses autres cookies sont là) : « à reconnecter » ÉCRIT pour de vrai — avant le 05/11,
+  // cloud_coffre_ecrire le refusait en silence et l'app disait « Connecté » pour toujours.
+  b = await coffre.sauvegarderCookies('u', [{ domain: '.leboncoin.fr', name: 'datadome', value: 'd' }]);
   assert.equal(b.leboncoin, 'a_reconnecter'); assert.equal(lignes.get('leboncoin').connecte, false);
-  b = await coffre.sauvegarderCookies('u', []);
+  b = await coffre.sauvegarderCookies('u', [{ domain: '.leboncoin.fr', name: 'datadome', value: 'd' }]);
   assert.equal(b.leboncoin, 'absente', 'une seule écriture : la ligne dit déjà « à reconnecter »');
+});
+
+test('(05/11, règle de Nico) une seule vérité « connectée » : jeton LONG vivant ; jeton court échu = à renouveler', async () => {
+  const { etatJetonsConnexion } = await import('../src/jetonsConnexion.js');
+  const { etatConnexion, connexionComplete } = await import('../src/plateformes.js');
+  const jwt = (o) => `e30.${Buffer.from(JSON.stringify(o)).toString('base64url')}.sig`;
+  const T = Date.parse('2026-11-05T11:17:00Z'); const s = Math.floor(T / 1000);
+  const refreshBeebs = { domain: 'www.beebs.app', name: 'refresh_token', value: 'opaque', expires: s + 365 * 86400 };
+  // Le cas du 05/11 à 11:17 : refresh_token seul (access_token échu, effacé par Chrome).
+  assert.equal(etatConnexion([refreshBeebs], 'beebs', T), 'a_renouveler');
+  assert.equal(estConnectee([refreshBeebs], 'beebs', T), true, 'Beebs reste CONNECTÉE (l’app disait vrai ; le verrou avait tort)');
+  assert.equal(connexionComplete([refreshBeebs], 'beebs', T), false, '« Me connecter » ne lit le compte qu’avec un jeton court valable');
+  const court = (exp, extra = {}) => ({ domain: 'www.beebs.app', name: 'access_token', value: jwt({ sub: 'u1', exp, ...extra }) });
+  assert.equal(etatConnexion([refreshBeebs, court(s + 3600)], 'beebs', T), 'connectee');
+  assert.equal(etatConnexion([refreshBeebs, court(s - 30)], 'beebs', T), 'connectee', 'jeton court encore là (échu) : comme avant le 05/11, la page le renouvelle');
+  assert.equal(etatConnexion([refreshBeebs, court(s + 3600, { provider_id: 'anonymous' })], 'beebs', T), 'absente', 'jeton anonyme = session fermée');
+  assert.equal(etatConnexion([{ ...refreshBeebs, expires: s - 1 }], 'beebs', T), 'absente', 'jeton long échu = absente');
+  assert.equal(etatConnexion([{ ...refreshBeebs, session: true, expires: -1 }], 'beebs', T), 'a_renouveler', 'cookie de session : vivant');
+  const vrt = (o) => [{ domain: '.vinted.fr', name: 'refresh_token_web', value: 'r' }, ...(o ? [{ domain: '.vinted.fr', name: 'access_token_web', value: jwt(o) }] : [])];
+  assert.equal(etatConnexion(vrt(null), 'vinted', T), 'a_renouveler');
+  assert.equal(etatConnexion(vrt({ sub: 7, exp: s + 3600 }), 'vinted', T), 'connectee');
+  assert.equal(etatConnexion(vrt({ sub: 7, exp: s - 10 }), 'vinted', T), 'connectee', 'Vinted : jeton d’accès échu mais présent = comme avant (aucune visite de plus)');
+  assert.equal(etatConnexion(vrt({ exp: s + 3600 }), 'vinted', T), 'absente', 'jeton sans utilisateur = invité');
+  assert.equal(etatConnexion([{ domain: '.leboncoin.fr', name: '__Secure-Login', value: 'x' }], 'leboncoin', T), 'connectee', 'Leboncoin : jamais « à renouveler »');
+  assert.equal(etatJetonsConnexion([], 'ebay').etat, 'absente');
+});
+
+test('(05/11) postes : une reconnexion demandée par le verrou de l’extension passe la plateforme « à reconnecter »', async () => {
+  const { EXPRESSION_RECONNEXIONS_CLOUD } = await import('../src/postes.js');
+  assert.match(EXPRESSION_RECONNEXIONS_CLOUD, /__fillsellVerrouCloud\.reconnexions\(\)/);
+  // Une copie de l'extension sans le verrou neuf rend {} : rien n'est écrit.
+  assert.deepEqual(new Function('globalThis', `return ${EXPRESSION_RECONNEXIONS_CLOUD};`)({}), {});
+  assert.deepEqual(new Function('globalThis', `return ${EXPRESSION_RECONNEXIONS_CLOUD};`)({ __fillsellVerrouCloud: { reconnexions: () => ({ beebs: { cause: 'x' } }) } }), { beebs: { cause: 'x' } });
 });
 
 test('(30/10) rotation : un compte dont le Cloud est fini est PURGÉ (navigateur, profil, coffre, session) — au plus tard grâce + 1 h', async () => {

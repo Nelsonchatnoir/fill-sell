@@ -32,7 +32,7 @@
 //   après la glissière : arrêtée, l'équipe prévenue) · 'restreint' (rien à glisser) · 'session_fermee' · 'rien'.
 //   Seule CETTE page joint la plateforme (exception du verrou par cadre, navigateur.js) ; jamais de résolution
 //   automatique.
-import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estConnectee, identifiantCompte,
+import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estConnectee, connexionComplete, identifiantCompte,
   retourDeclare, expressionLectureCompte, verdictLectureCompte, expressionAcces, pageDeResolution, navigationResolution,
   EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT, EXPRESSION_COOKIES, EXPRESSION_REFUSER_COOKIES } from './plateformes.js';
 import { etatVisible } from './verifications.js';
@@ -615,7 +615,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         else if (e0?.captcha) avis('glisser', txt.glisser(def.nom));
       }
       const { cookies } = await cdp.send('Storage.getCookies');
-      if (!estConnectee(cookies, plateforme)) {
+      // (05/11) Strict ici : le jeton COURT valable aussi (un jeton long seul ne déclenche pas la lecture du compte).
+      if (!connexionComplete(cookies, plateforme)) {
         if (manuel) etat('info', txt.pasConnecte(def.nom));
         return;
       }

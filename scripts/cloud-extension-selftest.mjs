@@ -28,7 +28,7 @@ const man = JSON.parse(readFileSync(path.join(racine, 'chrome-extension', 'manif
 
 console.log('\n1. Les patchs du background');
 const { bg: bg2, appliques } = patcherBackground(bg);
-ok(appliques.length === 20, `20 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
+ok(appliques.length === 21, `21 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
 const tmp = mkdtempSync(path.join(tmpdir(), 'fs-cloud-'));
 try {
   writeFileSync(path.join(tmp, 'bg.js'), bg2);
@@ -81,6 +81,18 @@ ok(!bg.includes('connexionCloudPresente'), 'la sonde de l’extension du parc (b
     'Beebs : le jeton invisible à getAll (sans « Secure ») est lu par son adresse → connectée');
   ok(await verifierCache('beebs', [], []) === false, 'Beebs sans jeton nulle part : non connectée');
   ok(await verifierCache('leboncoin', [], [{ domain: 'auth.leboncoin.fr', name: '__Secure-Login', value: 'a' }]) === true, 'Leboncoin : __Secure-Login de auth.leboncoin.fr lu par son adresse');
+  // (05/11, règle de Nico) Connectée = jeton LONG vivant : le cas de Beebs à 11:17 (refresh_token, plus d'access_token).
+  const refreshBeebs = { domain: 'www.beebs.app', name: 'refresh_token', value: 'opaque-460' };
+  ok(await verifierCache('beebs', [], [refreshBeebs]) === true, 'Beebs, refresh_token seul (access_token échu, effacé par Chrome) : CONNECTÉE (à renouveler) — le cas du 05/11');
+  ok(await verifierCache('beebs', [], [refreshBeebs, { domain: 'www.beebs.app', name: 'access_token', value: jwt({ sub: 'u1', provider_id: 'anonymous' }) }]) === false,
+    'Beebs, refresh_token + jeton ANONYME : session fermée → non connectée');
+  ok(await verifier('vinted', [{ domain: 'vinted.fr', name: 'refresh_token_web', value: 'r' }]) === true, 'Vinted, refresh_token_web seul (jeton d’accès échu) : connectée (à renouveler)');
+  ok(await verifier('vinted', [{ domain: 'vinted.fr', name: 'refresh_token_web', value: 'r' }, { domain: 'vinted.fr', name: 'access_token_web', value: jwt({ anon: 1 }) }]) === false,
+    'Vinted, refresh + jeton sans utilisateur (invité) : non connectée');
+  ok(await verifier('vinted', [{ domain: 'vinted.fr', name: 'refresh_token_web', value: 'r', expirationDate: 1 }]) === false, 'un jeton long ÉCHU ne compte pas');
+  // Même vérité que l'orchestrateur : c'est SA fonction qui est injectée.
+  const { etatJetonsConnexion } = await import('../serveur-cloud/src/jetonsConnexion.js');
+  ok(SOURCE_CONNEXION_CLOUD.startsWith(etatJetonsConnexion.toString()), 'le verrou exécute la fonction de l’orchestrateur (jetonsConnexion.js), pas une copie');
 }
 
 // (01/11) LE VERROU DES PLATEFORMES dans la copie Cloud : fetch, onglets et fenêtres ouverts par l'extension
@@ -101,7 +113,7 @@ ok(!bg.includes('verrouCloud'), 'l’extension du parc (bureau) : aucun verrou, 
   const v = new Function('chrome', 'atob', 'globalThis', `${SOURCE_CONNEXION_CLOUD}\n${SOURCE_VERROU_CLOUD}\nreturn globalThis.__fillsellVerrouCloud;`)(
     chrome, (s) => Buffer.from(s, 'base64').toString('binary'), globalFaux);
   const essayer = (p) => p.then(() => 'passe', (e) => `refuse:${e.message}`);
-  ok(await essayer(globalFaux.fetch('https://www.beebs.app/fr/api/x')) === "refuse:FillSell Cloud : beebs n'est pas connecté dans ce navigateur, aucune visite" && !parti.length,
+  ok(await essayer(globalFaux.fetch('https://www.beebs.app/fr/api/x')) === "refuse:FillSell Cloud : beebs demande une reconnexion (session fermée ou jeton non renouvelé), aucune visite" && !parti.length,
     'fetch vers Beebs non connecté : refusé AVANT le réseau (rien n’est parti)');
   ok(await essayer(globalFaux.fetch('https://www.leboncoin.fr/ad/1')) === 'passe' && parti.at(-1) === 'https://www.leboncoin.fr/ad/1', 'fetch vers Leboncoin connecté : passe tel quel');
   ok(await essayer(globalFaux.fetch('https://tojihnuawsoohlolangc.supabase.co/rest/v1/x')) === 'passe', 'fetch vers FillSell (Supabase) : jamais touché');
@@ -113,6 +125,67 @@ ok(!bg.includes('verrouCloud'), 'l’extension du parc (bureau) : aucun verrou, 
   const e = v.etat();
   ok(e.fetch === true && e.onglets === true && e.bloquees === 5 && e.derniere?.plateforme === 'beebs', `état du verrou lisible (${JSON.stringify({ bloquees: e.bloquees, onglets: e.onglets })})`);
   ok(await v.refuse('https://www.leboncoin.fr/') === null && await v.refuse('https://www.vinted.fr/') === 'vinted' && await v.refuse('https://example.com/') === null, 'décision lisible sans requête (outil de vérification)');
+}
+
+// (05/11, règle de Nico) LE JETON COURT SE RENOUVELLE PAR UNE VISITE DU SITE, IL NE FERME PAS LA PLATEFORME — exécuté
+// contre un faux Chrome où « le site » repose (ou non) l'access_token quand son accueil est chargé.
+{
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const jwt = (o) => `e30.${b64(o)}.sig`;
+  const { RENOUVELLEMENT_CLOUD } = await import('./cloud/build-extension-cloud.mjs');
+  const banc = (siteRenouvelle) => {
+    const cookies = [{ domain: 'www.beebs.app', name: 'refresh_token', value: 'opaque' }];
+    const parti = [], ouverts = [], fermes = [];
+    const chrome = {
+      cookies: {
+        getAll: async ({ domain }) => cookies.filter((c) => c.domain === domain),
+        get: async ({ url, name }) => cookies.find((c) => url.includes(c.domain) && c.name === name) ?? null,
+      },
+      tabs: {
+        create: async (p) => {
+          ouverts.push(p.url);
+          if (siteRenouvelle && /beebs\.app/.test(p.url)) setTimeout(() => cookies.push({ domain: 'www.beebs.app', name: 'access_token', value: jwt({ sub: 'u1', exp: Math.floor(Date.now() / 1000) + 3600 }) }), 30);
+          return { id: ouverts.length };
+        },
+        update: async (id, p) => ({ id }), remove: async (id) => { fermes.push(id); },
+      },
+      windows: { create: async () => ({ id: 9 }) },
+    };
+    const globalFaux = { fetch: async (u) => { parti.push(String(u)); return { ok: true, status: 200 }; } };
+    const source = SOURCE_VERROU_CLOUD.replace(JSON.stringify(RENOUVELLEMENT_CLOUD), JSON.stringify({ attenteMs: 400, pasMs: 20, reessaiMs: 60_000 }));
+    const v = new Function('chrome', 'atob', 'globalThis', `${SOURCE_CONNEXION_CLOUD}\n${source}\nreturn { v: globalThis.__fillsellVerrouCloud, job: reconnexionCloudPourJob };`)(
+      chrome, (s) => Buffer.from(s, 'base64').toString('binary'), globalFaux);
+    return { ...v, chrome, globalFaux, parti, ouverts, fermes };
+  };
+  const essayer = (p) => p.then(() => 'passe', (e) => `refuse:${e.message}`);
+  {
+    const b = banc(true);
+    const [r1, r2] = await Promise.all([essayer(b.globalFaux.fetch('https://api.beebs.app/users/v3/me')), essayer(b.globalFaux.fetch('https://www.beebs.app/fr/account'))]);
+    ok(r1 === 'passe' && r2 === 'passe' && b.parti.length === 2, 'Beebs à renouveler : les requêtes PASSENT après le renouvellement (le cas des 4 tâches du 05/11)');
+    ok(b.ouverts.length === 1 && b.ouverts[0] === 'https://www.beebs.app/' && b.fermes.length === 1,
+      'UNE seule visite de l’accueil (deux requêtes simultanées), onglet de fond refermé ensuite');
+    const e = b.v.etat();
+    ok(e.renouvellements.length === 1 && e.renouvellements[0].issue === 'renouvele' && !Object.keys(e.reconnexion).length && e.bloquees === 0,
+      `renouvellement noté (${JSON.stringify(e.renouvellements[0]?.issue)}), aucune reconnexion demandée`);
+    ok(await essayer(b.globalFaux.fetch('https://api.beebs.app/x')) === 'passe' && b.ouverts.length === 1, 'jeton court revenu : plus aucune visite de renouvellement');
+  }
+  {
+    const b = banc(false);
+    const r = await essayer(b.globalFaux.fetch('https://api.beebs.app/users/v3/me'));
+    ok(r.startsWith('refuse:FillSell Cloud : beebs demande une reconnexion') && !b.parti.length && b.ouverts.length === 1,
+      'renouvellement REFUSÉ par le site (jeton long refusé) : la requête est refusée, rien n’est parti');
+    const rec = await b.v.reconnexions();
+    ok(rec.beebs?.cause === 'jeton_non_renouvele', `l’orchestrateur lit la reconnexion à demander (${JSON.stringify(rec)})`);
+    ok((await essayer(b.globalFaux.fetch('https://api.beebs.app/x'))).startsWith('refuse:') && b.ouverts.length === 1,
+      'pas de nouvelle visite avant reessaiMs (aucune rafale de visites)');
+    const conv = b.job('failed', { error: r.slice(7) });
+    ok(conv.status === 'needs_user' && /^Connexion Beebs requise : /.test(conv.extra.error),
+      `la tâche refusée devient un GESTE ATTENDU « Connexion Beebs requise » (${conv.status}), jamais un échec repris toutes les 15 min`);
+    const autre = b.job('failed', { error: 'Prix manquant' });
+    ok(autre.status === 'failed' && autre.extra.error === 'Prix manquant' && b.job('published', { error: r.slice(7) }).status === 'published',
+      'les autres échecs, et une publication réussie : intacts');
+  }
+  ok(bg2.includes('({ status, extra } = reconnexionCloudPourJob(status, extra));'), 'updateJobStatus de la copie Cloud : la conversion est posée');
 }
 
 // (02/11 soir, décision de Nico) Les onglets de travail sans tâche sont FERMÉS en fin de cycle — exécuté ici contre
