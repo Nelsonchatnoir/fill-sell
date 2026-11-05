@@ -186,6 +186,13 @@ ok(!bg.includes('verrouCloud'), 'l’extension du parc (bureau) : aucun verrou, 
       'les autres échecs, et une publication réussie : intacts');
   }
   ok(bg2.includes('({ status, extra } = reconnexionCloudPourJob(status, extra));'), 'updateJobStatus de la copie Cloud : la conversion est posée');
+  // (05/11) La capture des fiches saute les annonces « en vérification » : déjà dans chrome-extension/ (rien à poser) ; posée
+  // par le patch sur une base qui ne la porte pas encore (copie construite sur d426d23).
+  const sansSaut = bg.replace(/^ *if \(String\(a\?\.statut \?\? ""\) === "en_verification"\) continue;\r?\n/m, '');
+  const { bg: bg3, appliques: ap3 } = patcherBackground(sansSaut);
+  ok(bg2.split('if (String(a?.statut ?? "") === "en_verification") continue;').length === 2 && sansSaut !== bg
+    && ap3.length === 22 && bg3.split('if (String(a?.statut ?? "") === "en_verification") continue;').length === 2,
+    'capture des fiches : une annonce « en vérification » jamais ouverte — une seule fois, que la base la porte ou non');
 }
 
 // (02/11 soir, décision de Nico) Les onglets de travail sans tâche sont FERMÉS en fin de cycle — exécuté ici contre

@@ -4,7 +4,7 @@
 // les annonces du compte, page publique 404, republiée encore le 05/11 10:29 ; et 33640171 (Medik8, « en vérification »
 // chez Beebs depuis le 26/10) relue sans fin, page 404 par construction.
 import fs from "node:fs";
-import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, lectureRateeAnnoncePubliee, PLATEFORMES_RELEVEES } from "../supabase/functions/_shared/annonce-publiee-disparue.js";
+import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, lectureRateeAnnoncePubliee, pfAnnonceEnVerification, PLATEFORMES_RELEVEES, POSES_PAR_DISPARUE } from "../supabase/functions/_shared/annonce-publiee-disparue.js";
 
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
@@ -27,6 +27,27 @@ console.log("\n1. LE CAS DU 05/11 : CONFIRMÉE DISPARUE, CLOSE, PLUS JAMAIS REVI
   ok(p.status === "cancelled" && /FillSell n'a rien retiré/.test(p.error) && /ne la vérifie plus et ne la republie plus/.test(p.error),
     "close « cancelled » : la détection de vente (jobs « published ») ne la relit plus, la republication ne la prend plus pour source");
   ok(p.platform_fields.annonce_disparue?.at === "2026-11-05T12:00:00Z" && p.platform_fields.check_unresolved === true, "preuve gardée (annonce_disparue), traces d'origine intactes");
+  // (05/11, garde-fou de Nico) La clôture s'annule : l'état d'avant est gardé, l'INVERSE le rend.
+  const avecErreur = job({ error: "Impossible de vérifier cette annonce sur Beebs" });
+  const p2 = patchAnnoncePublieeDisparue(avecErreur, d);
+  ok(p2.platform_fields.annonce_disparue.avant?.status === "published" && p2.platform_fields.annonce_disparue.avant?.error === "Impossible de vérifier cette annonce sur Beebs"
+    && POSES_PAR_DISPARUE.includes(p2.platform_fields.annonce_disparue.pose_par), "l'état d'avant (statut, message) est gardé dans la marque");
+  const inverse = lire("scripts/reparations/20261105_regle_annonces_publiees_disparues_INVERSE.sql");
+  ok(POSES_PAR_DISPARUE.every((m) => inverse.includes(`'${m}'`)) && inverse.includes("SET status = COALESCE(j.platform_fields->'annonce_disparue'->'avant'->>'status', 'published')")
+    && inverse.includes("platform_fields = j.platform_fields - 'annonce_disparue'") && inverse.includes("_backup_annonces_disparues_inverse"),
+    "INVERSE : seulement les marques de cette règle, état d'avant rendu, sauvegarde avant d'écrire");
+}
+
+console.log("\n1 bis. (05/11) « EN VÉRIFICATION » : L'APP DIT « BEEBS VÉRIFIE TON ANNONCE », PAS « EN LIGNE »");
+{
+  const pf = pfAnnonceEnVerification(job({ platform_listing_id: "33640171" }), { vu_le: "2026-11-05T10:59:27Z" }, { at: "2026-11-05T14:00:00Z" });
+  ok(pf?.pas_encore_visible?.regle === "releve_en_verification_0511" && pf.pas_encore_visible.depuis === "2026-11-05T10:59:27Z" && pf.check_unresolved === true,
+    "marqueur pas_encore_visible posé (lu par l'app : logo désaturé, « Beebs vérifie ton annonce »)");
+  ok(pfAnnonceEnVerification(job({ platform_fields: { pas_encore_visible: { regle: "jamais_vue_en_ligne_2010" } } }), { vu_le: "x" }) === null,
+    "déjà marquée : rien n'est réécrit (aucune ligne inchangée réécrite)");
+  const app = lire("src/tabs/StockTab.jsx");
+  ok(app.includes("const enVerificationPlateforme = (job) => !!job && (!job.listing_url || !!job.platform_fields?.pas_encore_visible);")
+    && app.includes('"Beebs vérifie ton annonce avant de la mettre en ligne."'), "l'app lit ce marqueur (StockTab : enVerificationPlateforme, phrase « Beebs vérifie »)");
 }
 
 console.log("\n2. GARDE-FOUS : JAMAIS SUR UNE SEULE LECTURE, UN 403, UNE ERREUR RÉSEAU OU UN 404 BEEBS « EN VÉRIFICATION »");
@@ -63,12 +84,13 @@ ok(decisionAnnoncePubliee({ job: job(), fiche: { statut: "vendu" }, runs: [] }).
 console.log("\n3. HANDLER-WATCH : LA RÈGLE BRANCHÉE, BORNÉE, EN COMPARE-AND-SET");
 {
   const hw = lire("supabase/functions/handler-watch/index.ts");
-  ok(hw.includes('import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, PLATEFORMES_RELEVEES } from "../_shared/annonce-publiee-disparue.js";'), "module importé");
+  ok(hw.includes('import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, pfAnnonceEnVerification, PLATEFORMES_RELEVEES, POSES_PAR_DISPARUE } from "../_shared/annonce-publiee-disparue.js";'), "module importé");
   ok(hw.includes("new Date().getUTCMinutes() >= 33 && new Date().getUTCMinutes() < 36") && hw.includes("jugerAnnoncesPublieesDisparues(supabase, new Date().getUTCHours() % 16)"),
     "une fois par heure, un seizième des annonces (chaque annonce jugée ~1 fois par jour)");
   ok(hw.includes('.eq("platform_fields->>check_unresolved", "true").not("listing_url", "is", null).gte("id", de);') && hw.includes(".order(\"id\").limit(400)"),
     "candidates : seulement les annonces publiées non vérifiables, lot borné à 400");
-  ok((hw.match(/\.eq\("id", (?:j|p)\.id\)\.eq\("status", "published"\)\.select\("id"\)/g) ?? []).length === 2, "clôture en compare-and-set sur « published » (jamais une ligne qui a bougé)");
+  ok((hw.match(/\.eq\("id", (?:j|p)\.id\)\.eq\("status", "published"\)\.select\("id"\)/g) ?? []).length === 3,
+    "clôture et marqueur « en vérification » en compare-and-set sur « published » (jamais une ligne qui a bougé)");
   ok(hw.includes("if (maj?.length) await fermerDepotsPubliesDeLAnnonce(supabase, userId, j,"),
     "une republication en pause confirmée disparue clôt aussi les dépôts publiés de la MÊME annonce (34283901 : republiée le 05/11 malgré la clôture du 02/11)");
   ok(hw.includes("async function lirePagesDisparues(") && hw.includes(".range(de, de + 999)"), "lectures par pages (PostgREST coupe à 1 000)");

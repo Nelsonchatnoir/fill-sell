@@ -583,3 +583,51 @@ et Veste lot H publiés 13:01/13:03 sans lien encore — Leboncoin le rend aprè
 ×5 (vraies annonces de Nico : gants Quechua 34280542, hoodie Nike 34239738, livre Huxley 34239760, t-shirt Picture bleu marine
 34095479, sweat Tommy 34005631). Préparé par 2 publications TEST (Lot de 2 t-shirts sur Vinted/Depop/Leboncoin, Veste lot H sur
 Leboncoin) pour avoir 5 annonces différentes par plateforme (règle « une republication par annonce et par jour » gardée).
+
+**Décisions de Nico (05/11 ~13:50)** : on n'attend pas 18:00 — l'essai se clôt dès le palier 2 fait et vérifié ; le palier 3
+va aux finitions Cloud ; le déploiement commun est fait par le terminal « Problèmes », une seule fois.
+
+**Avant le déploiement : les annonces que la règle « annonce publiée disparue » closerait** (simulation sur la prod en
+lecture seule, données du 05/11 ~12:40 ; comptes désignés par le début de leur identifiant ; clôture annulable :
+`scripts/reparations/20261105_regle_annonces_publiees_disparues_INVERSE.sql` rend statut et message d'avant, gardés dans
+`annonce_disparue.avant`) — 22 closes, 2 « en vérification » jamais closes :
+1. compte ef28a8e1 — vinted 9749348351 — « Casquette cycliste E.Leclerc Tour de France pois r » — VENDUE (fiche vendue).
+2. compte ef28a8e1 — vinted 9512164436 — « Ceinture fine cuir effet croco rose boucle rectang » — VENDUE (fiche vendue).
+3. compte f44b5917 — beebs 34283901 — « TEST FillSell 30/10 — T-shirt femme Picture blanc » — absente de 5 relevés complets depuis sa dernière vue (02/11 17:20) : 02/11 18:49, 03/11 00:52, 04/11 00:44, 04/11 21:39…
+4. compte 63b80b36 — vinted 10106248039 — « Lot 3 lunettes de natation Arena neuves » — absente de 2 relevés complets depuis sa dernière vue (26/09 16:36) : 13/10 16:46, 14/10 16:46.
+5. compte f44b5917 — beebs 34270410 — « TEST FillSell 31/10 lot H — Veste noir et gris tai » — absente de 12 relevés complets depuis sa dernière vue (31/10 11:46) : 31/10 12:08, 31/10 12:08, 31/10 12:46, 31/10 13:20…
+6. compte 3cdff3e7 — vinted 10241462218 — « Titre : Magazine Disney Club Vacances N°12 - Dingo » — absente de 5 relevés complets depuis sa dernière vue (11/10 18:17) : 13/10 20:08, 17/10 10:13, 19/10 12:36, 20/10 12:46…
+7. compte 197618d0 — beebs 34095302 — « Louis Vuitton Neverfull MM Monogram, intérieur rou » — EN VÉRIFICATION chez Beebs → jamais close.
+8. compte faf5021a — vinted 10440342234 — « Rangement Noir et Jaune pour 12 pots et 12 couverc » — absente de 14 relevés complets depuis sa dernière vue (20/10 22:05) : 22/10 22:05, 23/10 17:12, 25/10 01:23, 25/10 20:53…
+9. compte faf5021a — vinted 10269420655 — « 12 adaptateurs Jaune pour pots La Laitière – Seb M » — absente de 24 relevés complets depuis sa dernière vue (06/10 17:24) : 08/10 00:03, 08/10 20:12, 09/10 20:12, 10/10 20:41…
+10. compte faf5021a — vinted 10269407046 — « Rangement Noir et Rouge pour 12 pots et 12 couverc » — absente de 24 relevés complets depuis sa dernière vue (06/10 17:23) : mêmes relevés que 9.
+11. compte faf5021a — vinted 10269434580 — « Rangement Noir pour 12 pots et 12 couvercles pour » — absente de 24 relevés complets depuis sa dernière vue (06/10 17:25) : mêmes relevés que 9.
+12. compte faf5021a — vinted 10269393336 — « Rangement Gris et Rose pour 12 pots et 12 couvercl » — absente de 24 relevés complets depuis sa dernière vue (06/10 17:22) : mêmes relevés que 9.
+13. compte f44b5917 — beebs 34268419 — « TEST FillSell 30/10 — Veste noir et gris taille M » — absente de 14 relevés complets depuis sa dernière vue (30/10 22:24) : 31/10 02:25, 31/10 06:27, 31/10 12:08, 31/10 12:08…
+14. compte aaf6059c — leboncoin 3286285760 — « Don piano droit » — absente de 3 relevés complets depuis sa dernière vue (15/10 10:51) : 29/10 11:10, 29/10 15:19, 01/11 18:23.
+15. compte aaf6059c — leboncoin 2954815327 — « Vase verre en forme de botte » — absente de 7 relevés complets depuis sa dernière vue (08/10 02:18) : 12/10 11:35, 12/10 12:04, 14/10 16:22, 15/10 10:50…
+16. compte f8aa02a5 — vinted 10337973777 — « Casquette TESLA blanche avec logo noir – Style ten » — VENDUE (relevée « sold » après la lecture).
+17. compte aaf6059c — leboncoin 2881105365 — « Pare choc arrière r25 gtx » — absente de 7 relevés complets depuis sa dernière vue (08/10 02:18) : mêmes relevés que 15.
+18. compte f44b5917 — beebs 34267794 — « TEST FillSell 30/10 — Lot de 2 t-shirts Picture ho » — absente de 15 relevés complets depuis sa dernière vue (30/10 20:22) : 30/10 21:54, 31/10 02:25, 31/10 06:27, 31/10 12:08…
+19. compte faf5021a — vinted 10269245779 — « 12 adaptateurs Rouge pour pots La Laitière – Seb M » — absente de 24 relevés complets depuis sa dernière vue (06/10 17:11) : mêmes relevés que 9.
+20. compte faf5021a — vinted 10326592795 — « Rangement Bleu Ciel pour 12 pots et 12 couvercles » — absente de 14 relevés complets depuis sa dernière vue (20/10 22:05) : mêmes relevés que 8.
+21. compte faf5021a — vinted 10269377101 — « Rangement Blanc et Rouge pour 12 pots et 12 couver » — absente de 24 relevés complets depuis sa dernière vue (06/10 17:21) : mêmes relevés que 9.
+22. compte f44b5917 — beebs 33640171 — « Medik8 Liquid Peptides Advanced MP - Sérum anti-ri » — EN VÉRIFICATION chez Beebs → jamais close.
+23. compte faf5021a — vinted 10269274366 — « Rangement Gris pour 12 pots et 12 couvercles pour » — absente de 24 relevés complets depuis sa dernière vue (06/10 17:14) : mêmes relevés que 9.
+24. compte 2189c4d8 — vinted 10310253099 — « Cravate Café Coton beige marron bleu » — VENDUE (relevée « sold » après la lecture).
+
+**Annonces « en vérification » chez Beebs (règle de Nico, 05/11 ~13:50)** : la relecture qui produisait le 403 était la
+CAPTURE DES FICHES du relevé (`choisirCapturesARefaire`) — une annonce rattachée jamais capturée passe en tête de chaque
+relevé ; « en vérification », sa page publique est 404 → capture ratée → en tête au relevé suivant (sérum Medik8 33640171 :
+04/11 21:39, 05/11 02:44 et 11:59). Corrigé : une annonce relevée « en vérification » n'est jamais ouverte pour sa capture
+(`chrome-extension/background.js`, prochain paquet CWS ; copie Cloud par patch) — elle l'est une fois en ligne ; la détection
+de vente la relit au plus toutes les 24 h (non vérifiable). L'app : marqueur `pas_encore_visible` (« Beebs vérifie ton annonce
+avant de la mettre en ligne », logo désaturé) — déjà posé sur 33640171 (règle du 20/10) ; handler-watch le pose désormais sur
+toute annonce publiée relevée « en vérification ». Selftests capture-fraicheur (7 bis), cloud-extension (98),
+annonce-publiee-disparue (25).
+
+**« Mes annonces » Beebs lu dans le navigateur de cloud-2 (05/11 ~13:50, lecture seule, ordre de Nico)** : en ligne 13 (dont
+les republications du jour : Mickey 34300468, gants 34300674, hoodie 34300745) ; en cours de vérification : le seul sérum
+Medik8 (33640171) ; les fiches TEST Veste 34300243 et Jean Lee 34300248 n'y sont plus — retirées par Beebs. Depop : la
+republication du « T-shirt homme TEST » (sans taille Depop) annulée avant tout retrait (`annulee_par.avant` gardé), remplacée
+par « TEST FillSell 30/10 — Veste » publiée sur Depop puis republiée (13:54:57).

@@ -60,7 +60,7 @@ import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_sh
 import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
 import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
-import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, PLATEFORMES_RELEVEES } from "../_shared/annonce-publiee-disparue.js";
+import { decisionAnnoncePubliee, patchAnnoncePublieeDisparue, pfAnnonceEnVerification, PLATEFORMES_RELEVEES, POSES_PAR_DISPARUE } from "../_shared/annonce-publiee-disparue.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs, constats404Beebs, deuxConstats404Prouvent } from "../_shared/beebs-preuve-retrait.js";
 // (25/10, règle de Nico) Un retrait sur une annonce déjà absente se clôt seul : `deleted` + deja_absente.
 import { numeroAnnonceDuJob, jugerRetraitDejaAbsent, champsRetraitDejaAbsent, copiesAClore, clotureCopie } from "../_shared/retrait-deja-absent.js";
@@ -6630,14 +6630,14 @@ const parLots = <T>(liste: T[], n = 150): T[][] => Array.from({ length: Math.cei
 async function fermerDepotsPubliesDeLAnnonce(supabase: any, userId: string, job: any, decision: { decision: string; vendue?: boolean; raison?: string }): Promise<number> {
   const ident = String(identifiantAnnonceJob(job) ?? job?.platform_listing_id ?? "").trim();
   if (!ident || !PLATEFORMES_RELEVEES.includes(String(job?.platform ?? ""))) return 0;
-  const { data: pubs } = await supabase.from("cross_post_jobs").select("id, platform, platform_fields")
+  const { data: pubs } = await supabase.from("cross_post_jobs").select("id, platform, status, error, platform_fields")
     .eq("user_id", userId).eq("platform", job.platform).eq("status", "published").in("action", ["publish", "republish"])
     .eq("platform_listing_id", ident).limit(20);
   let n = 0;
   // deno-lint-ignore no-explicit-any
   for (const p of (pubs ?? []) as any[]) {
     const { data: maj } = await supabase.from("cross_post_jobs")
-      .update(patchAnnoncePublieeDisparue(p, decision, { posePar: "handler-watch (republication en pause confirmée disparue)" }))
+      .update(patchAnnoncePublieeDisparue(p, decision, { posePar: POSES_PAR_DISPARUE[1] }))
       .eq("id", p.id).eq("status", "published").select("id");
     if (maj?.length) n++;
   }
@@ -6656,7 +6656,7 @@ async function jugerAnnoncesPublieesDisparues(supabase: any, tranche: number) {
   const a = tranche < 15 ? `${hex[tranche + 1]}0000000-0000-0000-0000-000000000000` : null;
   const res = { jugees: 0, closes: 0, en_verification: 0 };
   let q = supabase.from("cross_post_jobs")
-    .select("id, user_id, platform, action, status, inventaire_id, platform_listing_id, listing_url, created_at, published_at, platform_fields")
+    .select("id, user_id, platform, action, status, error, inventaire_id, platform_listing_id, listing_url, created_at, published_at, platform_fields")
     .eq("status", "published").in("action", ["publish", "republish"]).in("platform", PLATEFORMES_RELEVEES)
     .eq("platform_fields->>check_unresolved", "true").not("listing_url", "is", null).gte("id", de);
   if (a) q = q.lt("id", a);
@@ -6725,10 +6725,16 @@ async function jugerAnnoncesPublieesDisparues(supabase: any, tranche: number) {
     const boutique = j.platform === "vinted"
       ? (String(j.platform_fields?.vinted_account_id ?? "").trim() || String(fiche?.vinted_account_id ?? "").trim() || null) : null;
     const d = decisionAnnoncePubliee({ job: j, fiche, vu, annonce, runs: runs.filter((r) => r.user_id === j.user_id && r.platform === j.platform), boutique, creeLe: j.published_at ?? j.created_at });
-    if (d.decision === "en_verification") { res.en_verification++; continue; }
+    if (d.decision === "en_verification") {
+      res.en_verification++;
+      // L'app dit « Beebs vérifie ton annonce », pas « en ligne » (marqueur posé une fois, jamais réécrit à l'identique).
+      const pfV = pfAnnonceEnVerification(j, annonce);
+      if (pfV) await supabase.from("cross_post_jobs").update({ platform_fields: pfV }).eq("id", j.id).eq("status", "published").select("id");
+      continue;
+    }
     if (d.decision !== "disparue") continue;
     const { data: maj } = await supabase.from("cross_post_jobs")
-      .update(patchAnnoncePublieeDisparue(j, d, { posePar: "handler-watch (annonce publiée confirmée disparue)" }))
+      .update(patchAnnoncePublieeDisparue(j, d, { posePar: POSES_PAR_DISPARUE[0] }))
       .eq("id", j.id).eq("status", "published").select("id");
     if (maj?.length) { res.closes++; console.log(`[handler-watch] annonce publiée ${String(j.id).slice(0, 8)} (${j.platform} ${id}) close : ${d.raison}`); }
   }

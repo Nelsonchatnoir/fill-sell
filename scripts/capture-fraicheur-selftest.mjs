@@ -210,6 +210,20 @@ console.log("\n7. LES FICHES À UNE PHOTO D'ABORD (04/10, Louis — photos Beebs
     sansFiche.une_photo === 0 && sansFiche.jamais === 1 && sansFiche.pris.length === 1);
 }
 
+console.log("\n7 bis. (05/11, règle de Nico) UNE ANNONCE « EN VÉRIFICATION » N'EST JAMAIS OUVERTE POUR SA CAPTURE");
+{
+  // Le sérum Medik8 de Nico (Beebs 33640171) : rattaché, jamais capturé, « en vérification » depuis le 26/10 — passait en
+  // tête de chaque relevé, page 404 et deux 403 à chaque fois.
+  const medik8 = { ...annonce(33640171), statut: "en_verification" };
+  const r = choisirCapturesARefaire([medik8, annonce(8)],
+    [{ listing_id: "33640171", capture_le: null, inventaire_id: 1793010362917, ligne: null }, { listing_id: "8", capture_le: null, inventaire_id: 42, ligne: null }], MAINTENANT);
+  ok("en vérification : pas ouverte (ni « une photo », ni « jamais ») ; les autres inchangées",
+    !r.pris.some((a) => String(a.listing_id) === "33640171") && r.pris.length === 1 && String(r.pris[0].listing_id) === "8" && r.une_photo === 1);
+  const enLigne = choisirCapturesARefaire([{ ...annonce(33640171), statut: "en_ligne" }],
+    [{ listing_id: "33640171", capture_le: null, inventaire_id: 1793010362917, ligne: null }], MAINTENANT);
+  ok("une fois EN LIGNE, elle est capturée comme avant (en tête, fiche à une photo)", enLigne.une_photo === 1 && enLigne.pris.length === 1);
+}
+
 console.log("\n8. LA PAGE BEEBS LUE SANS NAVIGUER (lecture de même origine)");
 {
   ok("lireHtmlMemeOrigine : même origine seulement, page de CETTE annonce, données présentes",

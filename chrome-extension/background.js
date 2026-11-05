@@ -19405,6 +19405,11 @@ function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   // avant une modification connue (qui garde sa place juste derrière).
   const unePhoto = [], jamais = [], changees = [], perimees = [];
   for (const a of annonces) {
+    // (05/11, règle de Nico) Une annonce « en vérification » chez la plateforme (Beebs : onglet « En cours de vérification »)
+    // n'a pas de page publique — 404 par construction : jamais ouverte pour sa capture, elle le sera une fois en ligne.
+    // Avant : rattachée et jamais capturée, elle passait EN TÊTE de chaque relevé (sérum Medik8 33640171, en vérification
+    // depuis le 26/10 : une page 404 et deux 403 à chaque relevé, 04/11 21:39, 05/11 02:44 et 11:59).
+    if (String(a?.statut ?? "") === "en_verification") continue;
     const r = parId.get(String(a.listing_id));
     if (r && !r.capture_le && r.inventaire_id != null) { unePhoto.push(a); continue; }
     if (!r || !r.capture_le) { jamais.push(a); continue; }

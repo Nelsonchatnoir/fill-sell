@@ -376,6 +376,16 @@ export function patcherBackground(bg) {
     'function updateJobStatus(accessToken, jobId, status, extra = {}) {',
     'function updateJobStatus(accessToken, jobId, status, extra = {}) {\n'
     + '  ({ status, extra } = reconnexionCloudPourJob(status, extra)); // Cloud (05/11) : « Connexion X requise », jamais un échec repris');
+  // (05/11, règle de Nico) La capture des fiches du relevé saute les annonces « en vérification » (page publique 404 par
+  // construction) — la même ligne que chrome-extension/background.js ; posée ici quand la base de la copie (--extension=)
+  // ne la porte pas encore.
+  const SAUT_CAPTURE_VERIFICATION = 'if (String(a?.statut ?? "") === "en_verification") continue;';
+  if (!bg.includes(SAUT_CAPTURE_VERIFICATION)) {
+    patch('capture des fiches : jamais une annonce « en vérification » (05/11)',
+      '    if (r && !r.capture_le && r.inventaire_id != null) { unePhoto.push(a); continue; }',
+      `    ${SAUT_CAPTURE_VERIFICATION} // Cloud (05/11) : page publique 404 par construction\n`
+      + '    if (r && !r.capture_le && r.inventaire_id != null) { unePhoto.push(a); continue; }');
+  }
   patch('jobs : plateformes du Cloud seulement (le serveur filtre aussi)',
     '    jobs = rep.jobs;',
     '    jobs = (Array.isArray(rep.jobs) ? rep.jobs : []).filter((j) => CLOUD_PLATEFORMES.includes(j.platform));');

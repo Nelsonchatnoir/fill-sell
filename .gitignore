@@ -75,6 +75,9 @@ fillsell-backups/
 # + inverse), jamais une sauvegarde de base ; le retour d'un essai ne doit pas vivre que sur un poste. Les autres .sql de
 # scripts/reparations/ restent ignorés (cas clients).
 !scripts/reparations/*_cloud_*.sql
+# (05/11, garde-fou de Nico) …et l'INVERSE d'une RÈGLE (pas d'un cas client) : le code qui annule ce qu'une règle a fait
+# (_regle_ dans le nom), versionné avec elle.
+!scripts/reparations/*_regle_*.sql
 
 # send-relance : SUPPRIMEE de la prod ET du depot le 20/09/2026.
 # Elle avait ete exclue d ici parce qu elle portait ~110 adresses reelles ;

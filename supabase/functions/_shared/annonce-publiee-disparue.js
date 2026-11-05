@@ -82,9 +82,33 @@ export function messageAnnoncePublieeDisparue(platform, vendue = false) {
   return messageDisparueConfirmee(platform) + ' FillSell ne la vérifie plus et ne la republie plus.';
 }
 
-/** Le patch d'un job publié clos (pur) : compare-and-set sur « published » côté appelant. */
-export function patchAnnoncePublieeDisparue(job, decision, { at = new Date().toISOString(), posePar = 'handler-watch' } = {}) {
+/** Les deux marques de cette règle (l'INVERSE ne rend que celles-là). */
+export const POSES_PAR_DISPARUE = Object.freeze([
+  'handler-watch (annonce publiée confirmée disparue)',
+  'handler-watch (republication en pause confirmée disparue)',
+]);
+
+/**
+ * Le patch d'un job publié clos (pur) : compare-and-set sur « published » côté appelant. (05/11, garde-fou de Nico) La
+ * clôture s'annule : l'état d'avant (statut, message) est gardé dans la marque — l'INVERSE
+ * (scripts/reparations/20261105_regle_annonces_publiees_disparues_INVERSE.sql) le rend tel quel.
+ */
+export function patchAnnoncePublieeDisparue(job, decision, { at = new Date().toISOString(), posePar = POSES_PAR_DISPARUE[0] } = {}) {
   const pf = { ...(job?.platform_fields ?? {}) };
-  pf.annonce_disparue = { at, motif: decision?.raison ?? null, vendue: Boolean(decision?.vendue), pose_par: posePar };
+  pf.annonce_disparue = {
+    at, motif: decision?.raison ?? null, vendue: Boolean(decision?.vendue), pose_par: posePar,
+    avant: { status: String(job?.status ?? 'published'), error: job?.error ?? null },
+  };
   return { status: 'cancelled', error: messageAnnoncePublieeDisparue(String(job?.platform ?? ''), Boolean(decision?.vendue)), platform_fields: pf };
+}
+
+/**
+ * (05/11, règle de Nico) Une annonce relevée « en vérification » chez la plateforme : l'app dit « Beebs vérifie ton
+ * annonce », pas « en ligne » (marqueur pas_encore_visible, lu par StockTab — enVerificationPlateforme). Rend les
+ * platform_fields à écrire, ou null quand le marqueur est déjà là (aucune ligne inchangée réécrite).
+ */
+export function pfAnnonceEnVerification(job, annonce, { at = new Date().toISOString() } = {}) {
+  const pf = job?.platform_fields ?? {};
+  if (pf.pas_encore_visible) return null;
+  return { ...pf, pas_encore_visible: { regle: 'releve_en_verification_0511', depuis: annonce?.vu_le ?? at, derniere: at } };
 }
