@@ -163,12 +163,12 @@ import {
   vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   vintedExigeUneTaille, vintedObjetSansTaille, VINTED_TAILLES_JOUETS,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
-  tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic,
+  tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic, pointureHorsGrille,
   clePositionnelleBeebs, tailleHomonymeBeebs, modelesVintedPourLaMarque, modelesVintedDuRelevé, modeleLuDansLeTexte,
 } from "../publication/moteur/listes";
 // (25/10 soir, décisions de Nico) Les champs requis qui se remplissent seuls quand une source fiable existe — sinon la
 // question, comme avant (jamais une valeur devinée).
-import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto, tailleMontreAuto } from "../../supabase/functions/_shared/champs-requis-auto.js";
+import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto, tailleMontreAuto, tailleUniqueAccessoire } from "../../supabase/functions/_shared/champs-requis-auto.js";
 import { tailleBagueDuTexte } from "../../supabase/functions/_shared/taille-bague-du-texte.js";
 import { pointureDuTexte } from "../../supabase/functions/_shared/pointure-du-texte.js";
 import { estChampChaussures } from "../../supabase/functions/_shared/taille-du-texte.js";
@@ -4518,7 +4518,7 @@ const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 // sinon « Autre »), l'âge (écrit, PEGI, livre adulte), la taille d'un bijou qui n'est pas une bague (« Ajustable »)
 // (champs-requis-auto.js). Rien de sûr → null : la question reste, comme avant. Pur.
 // Sources tracées (option_du_texte) ; la valeur est posée sur la COPIE, jamais sur la fiche.
-const CHAMP_REQUIS_VERS_COPIE = new Set(["objet_sans_taille", "pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
+const CHAMP_REQUIS_VERS_COPIE = new Set(["objet_sans_taille", "accessoire_sans_taille", "pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
 function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "" }) {
   if (!Array.isArray(allowedValues) || !allowedValues.length) return null;
   const nom = `${key ?? ""} ${label ?? ""}`;
@@ -4547,6 +4547,12 @@ function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, 
       const unique = allowedValues.find((v) => /^taille unique$/i.test(String(v).trim()));
       if (unique) return { valeur: unique, source: "objet_sans_taille", motif: "objet de la branche des jouets : taille unique" };
     }
+    // (05/11 soir, demande de Nico — PMF Vito) Un ACCESSOIRE SANS TAILLE (casquette, chapeau, bonnet, sac, écharpe,
+    // lunettes, parapluie, portefeuille…), sur toutes les plateformes : ni la fiche, ni la copie, ni le texte ne disent
+    // une taille → l'option « taille unique » de LA grille du rayon (champs-requis-auto.js, tailleUniqueAccessoire).
+    // Une taille écrite (« Medium-Large », « taille 58 ») n'est jamais recouverte : la question, une fois.
+    const acc = tailleUniqueAccessoire({ chemin: cheminListe, textes, allowedValues, tailleFiche });
+    if (acc?.valeur) return acc;
   }
   if (platform !== "beebs") return null;
   const lib = String(label ?? key ?? "").trim();
@@ -5704,7 +5710,28 @@ export default function ListingPreviewScreen({
     // « Mascarade », couleur « crème »). Cf. estCosmetiqueInterditeLbc.
     return getPlatformSupport(icon, articlePourCompat);
   }, [initialListing, articlePourCompat]);
+  // ── (05/11 soir, demande de Nico) QUI A DÉCOCHÉ ? ──────────────────────────────────────────────────────────────
+  // Les journaux « plateforme_decochee » disaient « par : moteur » dès qu'aucun geste n'avait eu lieu DANS le bloc de
+  // questions — même quand la personne avait décoché la case elle-même. Désormais les SEULS retraits du moteur (rayon
+  // fermé, pause, déjà en ligne, eBay inutilisable, plateforme fermée au compte) sont notés ici, avec leur motif ; tout
+  // autre décochage est celui de la personne. Le motif sert aussi à l'écran (« Retirée : … ») : jamais un retrait muet.
+  const decocheParMoteurRef = useRef({});
+  const [decocheesParMoteur, setDecocheesParMoteur] = useState({});
+  const noterDecochageMoteur = (plateformes, motif) => {
+    const retirees = [...plateformes].filter(p => selected.has(p));
+    if (!retirees.length) return;
+    for (const p of retirees) decocheParMoteurRef.current[p] = motif;
+    setDecocheesParMoteur(prev => ({ ...prev, ...Object.fromEntries(retirees.map(p => [p, motif])) }));
+  };
+  // Une plateforme recochée n'est plus « retirée par le moteur ».
   useEffect(() => {
+    const encore = Object.keys(decocheParMoteurRef.current).filter(p => selected.has(p));
+    if (!encore.length) return;
+    for (const p of encore) delete decocheParMoteurRef.current[p];
+    setDecocheesParMoteur(prev => Object.fromEntries(Object.entries(prev).filter(([p]) => !selected.has(p))));
+  }, [selected]);
+  useEffect(() => {
+    noterDecochageMoteur([...selected].filter(p => categorieFermee(platformSupport[p])), "categorie_fermee");
     setSelected(prev => {
       // La porte (CATEGORIE_FERMEE) : on ne décoche que ce qui est RÉELLEMENT
       // fermé — branche absente sur la plateforme, ou produit interdit. Un
@@ -5713,7 +5740,7 @@ export default function ListingPreviewScreen({
       const next = new Set([...prev].filter(p => !categorieFermee(platformSupport[p])));
       return next.size === prev.size ? prev : next;
     });
-  }, [platformSupport]);
+  }, [platformSupport]); // eslint-disable-line react-hooks/exhaustive-deps
   // Plateforme en PAUSE (platform_health, 2026-09-09) : elle sort de la
   // sélection séance tenante, comme une catégorie non supportée — la case est
   // grisée dans StepPhotos et le RPC refuserait de toute façon (platform_paused).
@@ -5722,35 +5749,39 @@ export default function ListingPreviewScreen({
   useEffect(() => {
     if (!pausedKey) return;
     const enPause = new Set(pausedKey.split(","));
+    noterDecochageMoteur(enPause, "pause");
     setSelected(prev => {
       const next = new Set([...prev].filter(p => !enPause.has(p)));
       return next.size === prev.size ? prev : next;
     });
-  }, [pausedKey]);
+  }, [pausedKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Même filet pour les plateformes déjà en ligne OU en file : si l'une d'elles
   // bascule en "published" (ou si la relecture révèle un job pending) pendant
   // que le stepper est ouvert, elle sort de la sélection séance tenante. Aucun
   // job ne peut partir vers une annonce existante ou déjà en file.
   useEffect(() => {
+    noterDecochageMoteur(lockedSet, "deja_en_ligne_ou_en_file");
     setSelected(prev => {
       const next = new Set([...prev].filter(p => !lockedSet.has(p)));
       return next.size === prev.size ? prev : next;
     });
-  }, [lockedSet]);
+  }, [lockedSet]); // eslint-disable-line react-hooks/exhaustive-deps
   // Même filet pour eBay quand le compte n'est pas utilisable : la case est
   // grisée, elle ne doit pas rester COCHÉE derrière (elle l'est par défaut,
   // PLATFORMS_DEFAULT contient "ebay", et un brouillon repris la remet). Le
   // décochage se fait dès que la lecture a tranché — jamais avant.
   useEffect(() => {
     if (!ebayBloque) return;
+    noterDecochageMoteur(["ebay"], "ebay_inutilisable");
     setSelected(prev => (prev.has("ebay") ? new Set([...prev].filter(p => p !== "ebay")) : prev));
-  }, [ebayBloque]);
+  }, [ebayBloque]); // eslint-disable-line react-hooks/exhaustive-deps
   // (25/10) Même filet pour une plateforme FERMÉE à ce compte (Leboncoin d'une adresse de remise hors de France) :
   // elle n'a pas de case, elle ne reste jamais cochée derrière (fiche reprise, copie appliquée, adresse lue après).
   useEffect(() => {
     if (!plateformesFermees.length) return;
+    noterDecochageMoteur(plateformesFermees, "fermee_au_compte");
     setSelected(prev => ([...prev].some(p => plateformesFermees.includes(p)) ? new Set([...prev].filter(p => !plateformesFermees.includes(p))) : prev));
-  }, [plateformesFermees, selected]);
+  }, [plateformesFermees, selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Modale de conversion (solde d'unités insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
@@ -8261,6 +8292,16 @@ export default function ListingPreviewScreen({
           });
           if (p?.valeur) return { ...manquant, deduit: { valeur: p.valeur, source: p.source === "fiche" ? "pointure_de_la_fiche" : "pointure_du_texte" } };
         }
+        // (05/11 soir, demande de Nico) Un accessoire sans taille (casquette, sac…) : la taille unique de la liste eBay,
+        // quand ni la fiche ni le texte n'en disent une (champs-requis-auto.js, tailleUniqueAccessoire).
+        else {
+          const a = initialListing?.attributs?.taille;
+          const acc = tailleUniqueAccessoire({
+            chemin: pf.ebayCategoryPath ?? null, textes: textesVendeurEbay, allowedValues,
+            tailleFiche: String(pf.taille || initialListing?.taille || (a && typeof a === "object" ? a.v : a) || ""),
+          });
+          if (acc?.valeur) return { ...manquant, deduit: { valeur: acc.valeur, source: acc.source } };
+        }
       }
       // (25/10 soir, décision 2b de Nico — prudence : une matière inventée = litige « non conforme ») LA MATIÈRE EXIGÉE
       // PAR eBAY : la composition LUE sur l'étiquette (Lens, avec pourcentages), sinon la valeur NEUTRE de la liste de
@@ -8454,7 +8495,8 @@ export default function ListingPreviewScreen({
         toSet[a.name] = a.deduit.valeur;
         // (19/10) La taille dite par le texte : sa question partagée de ce rendu n'en est pas une.
         // (25/10 soir) La pointure (fiche ou texte) aussi.
-        if (a.deduit.source === "taille_du_texte" || String(a.deduit.source).startsWith("pointure_")) tailleDuTexteEnVol.current.add("ebay");
+        // (05/11 soir) La taille unique d'un accessoire sans taille aussi.
+        if (a.deduit.source === "taille_du_texte" || a.deduit.source === "accessoire_sans_taille" || String(a.deduit.source).startsWith("pointure_")) tailleDuTexteEnVol.current.add("ebay");
         const repose = aspectDefaultsPoses.current.has(a.name);
         noterPose(a);
         if (a.deduit.source === "memoire" && !repose) noterPoseMemoire("ebay", a, a.deduit, ebayPreviewCategoryId ?? null);
@@ -9277,11 +9319,16 @@ export default function ListingPreviewScreen({
             // (champsDuRayon) applique exactement ce jugement.
             const verdict = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform) });
             if (!verdict.dans && target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
+              // (05/11 soir, demande de Nico — PMF Vito) Une POINTURE connue que la grille de CE rayon n'a pas (« 36,5 »
+              // sur une grille d'entiers, « 37 » sur une grille homme qui commence à 38) : la question dit POURQUOI, lu dans
+              // la grille (moteur/listes.pointureHorsGrille), et met les deux voisines en tête — jamais choisies pour elle.
+              const horsGrille = pointureHorsGrille({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform), lang: lang === "en" ? "en" : "fr" });
               return {
                 key, label, state: "invalid", value: src, dedicatedTarget: target,
                 suggested: verdict.suggested, inputType: r.input_type,
                 blocking: horsListeBloque({ regle: "nouvelle", platform, key, inputType: r.input_type, allowedValues, suggested: verdict.suggested }),
-                allowedValues,
+                allowedValues: horsGrille?.candidats?.length ? listeCandidatsDabord(allowedValues, horsGrille.candidats) : allowedValues,
+                ...(horsGrille ? { horsGrille } : {}),
               };
             }
             return { key, label, state: "ok", value: src, allowedValues, inputType: r.input_type, dedicatedTarget: target };
@@ -9915,6 +9962,14 @@ export default function ListingPreviewScreen({
         // question : elle l'a abandonnée (33 des 41 questions eBay restantes de
         // la semaine du 11/10 ont fini sans annonce eBay). Issue à part,
         // `plateforme_decochee` (moteur/regles, issueQuestionDisparue).
+        // (05/11 soir) Une plateforme décochée l'a été par la PERSONNE (case, « Continuer sans X », « Ne pas publier
+        // sur X ») sauf si le moteur l'a retirée lui-même (noterDecochageMoteur) : `par` le dit, `decoche_par` aussi
+        // avec le motif du moteur. Avant, « par : moteur » voulait seulement dire « aucun geste dans le bloc ».
+        if (!selected.has(vu.platform)) {
+          Object.assign(suite, decocheParMoteurRef.current[vu.platform]
+            ? { par: "moteur", decoche_par: `moteur:${decocheParMoteurRef.current[vu.platform]}` }
+            : { par: "personne", decoche_par: "personne" });
+        }
         const issue = issueQuestionDisparue({ plateformeCochee: selected.has(vu.platform), rayonChange });
         logChampBloquant(issue, issue === "retiree" ? { ...vu, ...suite, categorie_apres: catApres } : { ...vu, ...suite });
       }
@@ -11799,6 +11854,13 @@ export default function ListingPreviewScreen({
     // attend la réponse (plus de questions sur l'icône), le clic aussi — jamais
     // un départ sur une catégorie que personne ne connaît encore (filet : 20 s).
     ebayAttendLePrecalcul ||
+    // (05/11 soir, demande de Nico — PMF Vito : 5 publications parties sans Beebs ou Vinted en 2 h, « Pointure »,
+    // « Taille » demandées puis la publication partie quand même) JAMAIS DE PLATEFORME PERDUE EN SILENCE. Un champ du
+    // rayon qui reste vraiment nécessaire (Vinted / Leboncoin / Beebs) grise le bouton comme un champ partagé : la
+    // question est posée, une fois, et la plateforme ne part sans lui que par un geste de la personne (« Continuer
+    // sans X », plateformesRetirables). Avant (règle 2 du 03/09), elle était retirée au clic et les autres partaient.
+    // Nouveau stepper seulement (l'ancien garde son encart et sa règle).
+    (variante === "nouvelle" && plateformesBloqueesChamps.length > 0) ||
     // (25/09) Un rayon À CHOISIR (refusé, aucun rayon sûr à sa place) : la
     // plateforme attend la réponse, comme pour un champ obligatoire — on la
     // choisit, ou on décoche la plateforme. (05/10) Aussi quand AUCUN mot
@@ -12271,6 +12333,9 @@ export default function ListingPreviewScreen({
     ...missingSharedFieldsDetailed.flatMap(f => f.platforms ?? []),
     // (09/10 soir) « Continuer sans Depop » quand ses frais de port manquent.
     ...(portDepopManquant ? ["depop"] : []),
+    // (05/11 soir) « Continuer sans Beebs » quand un champ de SON rayon attend une réponse (le bouton est gris : la
+    // personne répond, ou laisse la plateforme d'un geste — jamais en silence).
+    ...(variante === "nouvelle" ? plateformesBloqueesChamps : []),
   ])].filter(p => selected.has(p));
   // Par plateforme cochée, les questions qui la retiennent — pour sa ligne de
   // « Confirmer » (« Attend une réponse : Taille, Département »), au lieu de
@@ -12435,6 +12500,8 @@ export default function ListingPreviewScreen({
     inventoryFull, stockCount, stockLimitCfg,
     lbcPhotoCap, lbcAdresseManquante, jumeaux, descriptionMentions, descriptionVideVinted,
     exclusionsPrevues, plateformesRetirables, questionsParPlateforme,
+    // (05/11 soir) Les plateformes retirées par le MOTEUR, et pourquoi (EcranConfirmer le dit sur leur ligne).
+    decocheesParMoteur,
     // (23/10, point 4) Faux tant que le moteur n'est pas au repos : « Confirmer » ne montre encore aucune question.
     questionsAuRepos,
     // (25/09) Le rayon à choisir, posé sur « Confirmer » avec ses candidats.

@@ -1288,3 +1288,35 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 1 (9cdr9rm4rn, Beeb
   d'un titre : règle Vinted du 25/10 inchangée. Au service (get-pending-jobs, toute extension) et avant de taper
   (extension 0.6.173). La fiche ne change pas. Un refus Vinted pour un caractère invisible repart seul, une fois.
   Selftest `caracteres-invisibles`.
+
+## ⛔ 05/11 soir (PMF Vito, assopmfrance) — taille et pointure : lues, demandées UNE fois, jamais une plateforme perdue en silence (demande de Nico)
+- **Constat** (`usage_logs` `champ_requis_bloquant`, 05/11 17:27 → 19:23) : 8 fiches, 5 publications parties sans Beebs ou
+  Vinted, 1 fiche abandonnée. Pas une régression récente : une copie qui PORTE une taille absente de la grille d'une
+  plateforme (« 36.5 » sur Beebs « Baskets (fille) », grille d'entiers ; « EU 37 » sur les rayons homme Vinted et Beebs qui
+  commencent à 38 ; « Medium-Large » d'une casquette) devient une question du RAYON, qui ne grisait pas le bouton (règle 2
+  du 03/09, 63673bf) : la plateforme sortait au clic. Seule une copie VIDE donnait la question partagée (le contre-exemple).
+- **Bouton** (nouveau stepper) : un champ de rayon bloquant grise Publier comme un champ partagé ; « Continuer sans X »
+  (`plateformesRetirables`) est le seul chemin sans la plateforme. L'ancien stepper garde la règle 2.
+- **Pointure du texte** (`_shared/pointure-du-texte.js`) : « T36,5 », « T 42 » ; une pointure UK / US écrite À CÔTÉ d'une
+  pointure européenne explicite ne la rend plus douteuse (« Taille 36,5 (US 4.5Y) » → 36,5) ; un nombre collé à UK / US
+  n'est jamais lu ; une demi-pointure écrite seule (« 42.5 ») en filet — jamais suivie d'une unité, jamais précédée d'une
+  mesure (semelle, prix), ignorée hors des bornes du public. Inchangé : un entier nu jamais lu (« 39Thirty », « lot de
+  12 », années), une demi-pointure jamais arrondie, une seule valeur.
+- **Taille en lettres** (`_shared/taille-du-texte.js`) : « taille M », « Size: XL » → l'option de la grille, en DERNIER
+  recours (FR, W, âge écrits passent devant ; « M/L » = doute ; jamais face à une copie qui porte une taille chiffrée).
+  Le serveur (handler-watch R5, `taille-question-auto`) la lira à son prochain déploiement.
+- **Accessoire sans taille** (`_shared/champs-requis-auto.js`, `tailleUniqueAccessoire`) : casquette, chapeau, bonnet, sac,
+  pochette, écharpe, lunettes, parapluie, portefeuille, valise → l'option « taille unique » de LA grille quand ni la fiche,
+  ni la copie, ni le texte n'en disent (Vinted, Beebs, Leboncoin, eBay). Jamais : ceinture, gants, vêtement, chaussure,
+  bijou, montre ; jamais par-dessus « Medium-Large », « taille 58 », « 3 ans ».
+- **Pointure hors grille, dite** (`moteur/listes.pointureHorsGrille`, BlocQuestions) : « La grille de ce rayon va de 38 à
+  52 : 37 n'y figure pas. Vérifie le rayon… » ; « Ce rayon n'a que des pointures entières : 36,5 n'y figure pas. Choisis
+  (36 ou 37)… » — les voisines en tête, jamais choisies par nous.
+- **Un contenant de bijoux n'est jamais un bijou** (`src/utils/shared.js`, `zonesContenantBijoux`) : boîte, coffret, écrin,
+  présentoir, range-, porte-, arbre, organiseur à bijoux, boîte à montres → jamais 💍 ni ⌚ ; icône 🏠, type Maison
+  (Beebs : aucun rayon « Bijoux »). Un bijou nommé hors du contenant (« Bague dans son écrin ») reste un bijou.
+- **Qui a décoché** : `plateforme_decochee` porte `par` (personne | moteur) et `decoche_par` (motif du moteur :
+  `categorie_fermee`, `pause`, `deja_en_ligne_ou_en_file`, `ebay_inutilisable`, `fermee_au_compte`) ; une plateforme retirée
+  par le moteur le dit sur sa ligne de « Confirmer » (« Retirée par FillSell : … »).
+- Selftest `champs-requis-partages` (les 6 fiches réelles et le contre-exemple) ; `champs-requis-auto` adapté (« UK 8 /
+  EU 42 » → 42).

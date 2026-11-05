@@ -293,6 +293,10 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
                     ? (en ? `“${brut}” can't be written as is on ${noms}: choose once, it's written for each.` : `« ${brut} » ne s'écrit pas tel quel sur ${noms} : choisis une fois, on l'écrit pour chacune.`)
                     : (en ? `Required on ${noms}: choose once, it's written for each.` : `Exigée sur ${noms} : choisis une fois, on l'écrit pour chacune.`)}
                 </div>}
+                {/* (05/11 soir) Pourquoi la pointure connue n'entre pas (grille d'entiers, bornes du rayon) — une fois par motif. */}
+                {[...new Set(qt.lignes.map(({ a }) => a.horsGrille?.motif).filter(Boolean))].map((motif) => (
+                  <div key={`hg:${motif}`} className="fsn-q-why">{motif}</div>
+                ))}
                 {enPuces(qt.communes, commune, (v) => {
                     for (const { gp, a } of qt.lignes) ecrireTaille(gp, a, tailleDansGrille(v, a.allowedValues)?.valeur ?? v);
                     m.noterReponseFicheValeur?.("taille", v);
@@ -324,6 +328,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
               {qt.lignes.map(({ gp, a, candidats }) => (
                 <div key={`t:${gp}`} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <div className="fsn-row fsn-row--between"><span className="fsn-q-why">{NOM(gp)}</span><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>{aspectBloquant(a) ? (en ? "to choose" : "à choisir") : "✓"}</Puce></div>
+                  {a.horsGrille?.motif ? <span className="fsn-q-why">{a.horsGrille.motif}</span> : null}
                   {enPuces(candidats.length ? listeCandidatsDabord(a.allowedValues, candidats) : a.allowedValues,
                     a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value, (v) => repondreTaille(gp, a, v),
                   <AspectValueInput
@@ -413,7 +418,8 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
                 {gp === "vinted" && a.key === "isbn"
                   ? (en ? "Vinted requires the ISBN of a book — on the back, under the barcode (978… or 979…)." : "Vinted exige l'ISBN d'un livre — au dos, sous le code-barres (978… ou 979…).")
                   : a.state === "invalid"
-                  ? (en ? `“${a.value}” is not in the list this platform accepts.` : `« ${a.value} » n'est pas dans la liste que cette plateforme accepte.`)
+                  // (05/11 soir) Une pointure connue hors de la grille de ce rayon : on dit pourquoi (moteur/listes.pointureHorsGrille).
+                  ? (a.horsGrille?.motif ?? (en ? `“${a.value}” is not in the list this platform accepts.` : `« ${a.value} » n'est pas dans la liste que cette plateforme accepte.`))
                   : (a.allowedValues?.length
                       ? (en ? "Required here — the values come from its form." : "Exigé ici — les valeurs viennent de son formulaire.")
                       : (en ? "Required here — free text." : "Exigé ici — texte libre."))}

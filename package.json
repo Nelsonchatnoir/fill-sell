@@ -446,6 +446,7 @@
     "selftest:mail-a-chaque-vente": "node scripts/mail-a-chaque-vente-selftest.mjs",
     "selftest:rafale-recapitulatif": "node scripts/rafale-recapitulatif-selftest.mjs",
     "selftest:lbc-session-partagee-rythme": "node scripts/lbc-session-partagee-rythme-selftest.mjs",
+    "selftest:champs-requis-partages": "node --import ./scripts/loader-ext.mjs scripts/champs-requis-partages-selftest.mjs",
     "selftest:lbc-session-partagee-rythme": "node scripts/lbc-session-partagee-rythme-selftest.mjs",
     "selftest:rattachement-regles": "node scripts/rattachement-regles-selftest.mjs",
     "selftest:doublon-motif-refus": "node --import ./scripts/loader-ext.mjs scripts/doublon-motif-refus-selftest.mjs",

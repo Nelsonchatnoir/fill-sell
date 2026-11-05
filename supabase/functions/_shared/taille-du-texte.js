@@ -112,6 +112,14 @@ const RE_ANS_TRANCHE = /(?<![\p{L}\p{N}.,])(\d{1,2})\s?(?:-|–|\/|à|a|et|ou)\s
 const DUREE_APRES = /^\s?(?:de\s+(?:garantie|vie|plus)|d['’]\s?(?:utilisation|usage|âge|age)|et\s+demi|plus\s+tard|apr[eè]s)/iu;
 const ANS_MIN = 2, ANS_MAX = 16;
 const L_MIN = 26, L_MAX = 38;
+// (05/11 soir, demande de Nico — « taille M » écrit dans le titre) LA TAILLE EN LETTRES collée au mot « taille »
+// (« Pull taille M », « Size: XL », « taglia S ») : lue en DERNIER recours — un FR, un W, un âge écrits passent devant,
+// à l'identique d'avant —, une seule lettre dans tous les textes, placée par la grille (« M » → « M / 38 / 10 »).
+// ⛔ Jamais « T M » ni une lettre seule (« S » d'un mot), jamais « taille M/L » (deux tailles : doute), jamais « taille
+// s'adapte ».
+const LETTRES = "xxxs|xxs|xs|s|m|l|xl|xxl|xxxl|[2-5]xl";
+const RE_LETTRE = new RegExp(`(?<![\\p{L}\\p{N}])(?:taille|size|talla|taglia)\\s?[:.]?\\s?(${LETTRES})(?![\\p{L}\\p{N}'’])`, "giu");
+const RE_LETTRE_APRES = new RegExp(`^\\s?[/–-]\\s?(?:${LETTRES}|\\d)(?![\\p{L}])`, "iu");
 
 /**
  * Ce que les textes du vendeur disent de la taille.
@@ -121,12 +129,17 @@ const L_MIN = 26, L_MAX = 38;
  * @returns {{ fr:number[], w:number[], wHorsTable:number[], mois:number[], ans:number[], doute:string|null }}
  */
 export function lireTaillesDuTexte(textes, contexte = {}) {
-  const fr = new Set(), w = new Set(), wHors = new Set(), mois = new Set(), ans = new Set();
+  const fr = new Set(), w = new Set(), wHors = new Set(), mois = new Set(), ans = new Set(), lettres = new Set();
   const wAmbigus = new Map();   // « 32/34 » : W32 L34 ou fourchette FR 32-34
   let doute = null;
+  let douteLettre = null;       // (05/11 soir) « taille M/L » : ne compte que si rien d'autre n'est écrit
   for (const brut of (Array.isArray(textes) ? textes : [textes])) {
     const t = nfc(brut);
     if (!t.trim()) continue;
+    for (const m of t.matchAll(RE_LETTRE)) {
+      if (RE_LETTRE_APRES.test(t.slice(m.index + m[0].length, m.index + m[0].length + 6))) { douteLettre ??= `deux tailles « ${t.slice(m.index, m.index + m[0].length + 4).trim()} »`; continue; }
+      lettres.add(m[1].toUpperCase());
+    }
     if (contexte?.bas) {
       for (const m of t.matchAll(RE_PAIRE_WL)) {
         const a = Number(m[1]), b = Number(m[2]);
@@ -199,7 +212,7 @@ export function lireTaillesDuTexte(textes, contexte = {}) {
   }
   // « 32/34 » ne se lit W32 que si le texte écrit lui-même « W32 » ; sinon c'est peut-être la fourchette FR 32-34.
   for (const [a, ecrit] of wAmbigus) if (!w.has(a)) doute ??= `« ${ecrit} » : W${a} L${a + 2} ou fourchette ${a}-${a + 2}`;
-  return { fr: [...fr], w: [...w], wHorsTable: [...wHors], mois: [...mois], ans: [...ans], doute };
+  return { fr: [...fr], w: [...w], wHorsTable: [...wHors], mois: [...mois], ans: [...ans], doute, lettres: [...lettres], douteLettre };
 }
 
 // Le signal d'UNE valeur (la taille de la fiche, ou de la copie) :
@@ -266,6 +279,10 @@ function signalDuTexte(textes, contexte = {}) {
   if (l.wHorsTable.length) return { doute: `W${l.wHorsTable[0]} absent de la table publiée par Vinted` };
   if (frDesW.length > 1) return { doute: `plusieurs tours de taille (${l.w.map((x) => `W${x}`).join(", ")})` };
   if (frDesW.length === 1) return { fr: frDesW[0], w: l.w, source: "w" };
+  // (05/11 soir) Rien de chiffré : la taille en lettres collée à « taille » (une seule, jamais « M/L »).
+  if (l.douteLettre) return { doute: l.douteLettre };
+  if (l.lettres.length > 1) return { doute: `plusieurs tailles en lettres (${l.lettres.join(", ")})` };
+  if (l.lettres.length === 1) return { lettre: l.lettres[0], source: "lettre" };
   return null;
 }
 
@@ -359,6 +376,31 @@ const TOUR_DE_AVANT = /tour\s+de\s+$/iu;
 // « Taille unique / L », « TU - M » : une seconde taille collée à la première.
 const RE_UNIQUE_PUIS_TAILLE = /^\s?[/-]\s?(?:\d{2}|x{0,4}s|s|m|l|x{1,4}l|\dxl)(?![\p{L}\p{N}])/iu;
 
+/**
+ * (05/11 soir) Les textes du vendeur disent-ils UNE taille, quelle qu'elle soit (« taille 58 », « T M », « FR 40 »,
+ * « 24 mois », « Medium-Large ») ? Mêmes lectures que la règle de la taille unique ci-dessous, rien de plus — sert à
+ * ne JAMAIS poser « Taille unique » d'office sur un article dont le vendeur a écrit une taille (champs-requis-auto.js).
+ * @returns {string|null} ce qui a été lu, ou null
+ */
+export function tailleEcriteDansLeTexte(textes, chemin = null) {
+  const sig = signalDuTexte(textes, { enfant: contexteEnfant(chemin) });
+  if (sig) return sig.doute ?? (sig.fr ? `FR ${sig.fr}` : sig.lettre ?? (sig.ans ? `${sig.ans} ans` : sig.mois ? `${sig.mois} mois` : "taille"));
+  for (const brut of (Array.isArray(textes) ? textes : [textes])) {
+    const t = nfc(brut);
+    // Un âge écrit (« 3 ans », « 6-12 mois ») : une taille d'enfant, même hors d'un rayon enfant — prudence.
+    const age = /(?<![\p{L}\p{N}.,])\d{1,2}\s?(?:-|–|\/|à|a)?\s?(?:\d{1,2}\s?)?(?:mois|ans?)(?![\p{L}\p{N}])/iu.exec(t);
+    if (age) return age[0].trim();
+    for (const m of t.matchAll(RE_AUTRE_TAILLE)) {
+      if (TOUR_DE_AVANT.test(t.slice(Math.max(0, m.index - 10), m.index))) continue;
+      return m[0].trim();
+    }
+    // « Medium », « Large », « Small-Medium », « S-M », « M/L » écrits en clair (casquettes ajustées, gants).
+    const lettresEnClair = /(?<![\p{L}\p{N}])(?:(?:extra[\s-]?)?(?:small|medium|large)(?:[\s/-]+(?:extra[\s-]?)?(?:small|medium|large))*|(?:xxs|xs|s|m|l|xl|xxl)\s?[/-]\s?(?:xs|s|m|l|xl|xxl|xxxl))(?![\p{L}\p{N}])/iu.exec(t);
+    if (lettresEnClair) return lettresEnClair[0].trim();
+  }
+  return null;
+}
+
 // Ce que les textes disent d'une taille unique : { mot } | { doute } | null.
 function uniqueDansLeTexte(textes) {
   let mot = null;
@@ -391,7 +433,7 @@ export function tailleUniqueDuVendeur({ valeur = "", textes = [], opts }) {
   if (!copie && !lu) return undefined;
   if (lu?.doute) return { doute: lu.doute };
   const texte = signalDuTexte(textes);
-  if (texte) return { doute: texte.doute ?? `une taille unique et une autre taille (${texte.fr ? `FR ${texte.fr}` : `${texte.mois} mois`})` };
+  if (texte) return { doute: texte.doute ?? `une taille unique et une autre taille (${texte.fr ? `FR ${texte.fr}` : texte.lettre ? texte.lettre : texte.ans ? `${texte.ans} ans` : `${texte.mois} mois`})` };
   for (const brut of (Array.isArray(textes) ? textes : [textes])) {
     const t = nfc(brut);
     for (const m of t.matchAll(RE_AUTRE_TAILLE)) {
@@ -418,7 +460,7 @@ export function tailleUniqueDuVendeur({ valeur = "", textes = [], opts }) {
  *   son jugement, childSizes compris) ; par défaut tailles.js + parenthèses ;
  *   `champ`, `chemin` : la clé ou le libellé du champ, le rayon (une pointure,
  *   un rayon de chaussures : jamais).
- * @returns {{ valeur:string, motif:string, regle:"fr"|"w"|"mois"|"unique" } | { doute:string } | null}
+ * @returns {{ valeur:string, motif:string, regle:"fr"|"w"|"mois"|"ans"|"lettre"|"unique" } | { doute:string } | null}
  */
 export function tailleDuTexte({ valeur = "", textes = [], grille, placer = null, champ = null, chemin = null }) {
   if (estChampChaussures(champ, chemin)) return null;
@@ -434,7 +476,10 @@ export function tailleDuTexte({ valeur = "", textes = [], grille, placer = null,
   const fiche = lireValeur(valeur, contexte);
   if (fiche?.illisible) return null;            // la fiche dit autre chose : jamais recouverte
   if (fiche?.doute) return { doute: fiche.doute };
-  const texte = signalDuTexte(textes, contexte);
+  const texteLu = signalDuTexte(textes, contexte);
+  // (05/11 soir) La taille en lettres du texte ne vaut que pour une copie VIDE : face à une taille chiffrée de la
+  // copie, elle ne compte pas (la règle d'avant joue, à l'identique).
+  const texte = fiche && texteLu && "lettre" in texteLu ? null : texteLu;
   if (texte?.doute) return { doute: texte.doute };
   const sig = fiche ?? texte;
   if (!sig) return null;
@@ -445,7 +490,11 @@ export function tailleDuTexte({ valeur = "", textes = [], grille, placer = null,
     if (!meme) return { doute: `la fiche dit « ${nfc(valeur).trim()} », le texte une autre taille` };
   }
   let candidats, regle, motif;
-  if ("mois" in sig) {
+  if ("lettre" in sig) {
+    candidats = [sig.lettre];
+    regle = "lettre";
+    motif = `taille ${sig.lettre} écrite`;
+  } else if ("mois" in sig) {
     candidats = [`${sig.mois} mois`];
     regle = "mois";
     motif = `${sig.mois} mois`;

@@ -75,7 +75,10 @@ ok(pt({ textes: ["Adidas Courtsmash taille 37 1/3"], chemin: "Femmes > Chaussure
 ok(pt({ textes: ["Basket Puma de taille 40,5 cm"], chemin: "Femmes > Chaussures" }) === null, "« taille 40,5 cm » : une longueur, jamais relue « 40 »");
 ok(pt({ textes: ["Bottes pointure 28-29"], chemin: "Enfants > Chaussures" }) === "doute", "deux pointures (« 28-29 ») → doute");
 ok(pt({ textes: ["porté 2 fois, 31 €, lot de 3"], chemin: "Enfants > Chaussures" }) === null, "un nombre seul (prix, fois, lot) n'est jamais pris");
-ok(pt({ textes: ["UK 8 / EU 42"], chemin: "Hommes > Chaussures" }) === "doute", "UK / US écrits à côté → doute (on ne convertit pas)");
+// (05/11 soir, demande de Nico — « Taille 36,5 (US 4.5Y) ») Une pointure UK / US écrite À CÔTÉ ne rend plus douteuse
+// l'européenne écrite explicitement ; le nombre collé à UK / US n'est jamais lu, jamais converti.
+ok(pt({ textes: ["UK 8 / EU 42"], chemin: "Hommes > Chaussures" }) === "42", "UK 8 écrit à côté de « EU 42 » → 42 (l'européenne explicite ; UK jamais converti)");
+ok(pt({ textes: ["UK 8"], chemin: "Hommes > Chaussures" }) === null && pt({ textes: ["Nike taille 42 US"], chemin: "Hommes > Chaussures" }) === null, "seule une pointure UK / US écrite (« UK 8 », « taille 42 US ») → rien (jamais convertie)");
 ok(pt({ textes: ["pointure 42"], chemin: "Enfants > Chaussures" }) === "doute", "pointure adulte sur un rayon enfant → doute");
 ok(pt({ textes: ["pointure 38"], chemin: "Chaussures" }) === "doute", "public du rayon inconnu → doute");
 ok(pt({ valeurFiche: "38", textes: ["taille 39"], chemin: "Femmes > Chaussures" }) === "doute", "la fiche et le texte se contredisent → doute");

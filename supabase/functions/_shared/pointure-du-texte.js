@@ -17,6 +17,16 @@
 //   · « 37 et demi », « 37,5 », « 37 1/2 », « 37½ » = 37,5 ;
 //   · la valeur rendue est une option EXACTE de la grille de la plateforme (placer) ; aucune option → rien.
 // La fiche n'est jamais réécrite : seule la valeur servie à la plateforme, tracée (motif lisible).
+//
+// (05/11 soir, demande de Nico — PMF Vito : « Nike Court Borough Low 2 blanches T36,5 », description « Taille 36,5
+// (US 4.5Y) » : la pointure était écrite deux fois et la question est quand même partie) TROIS LECTURES EN PLUS, mêmes
+// garde-fous (public du rayon, une seule valeur, demi-pointure jamais arrondie, option EXACTE de la grille) :
+//   · « T36,5 », « T 42 », « T.38 » : la lettre T collée au nombre (l'écriture des titres Vinted) ;
+//   · une pointure UK / US écrite À CÔTÉ d'une pointure européenne explicite ne la rend plus douteuse : l'européenne
+//     est lue (« Taille 36,5 (US 4.5Y) » → 36,5) ; un nombre COLLÉ à UK / US (« 42 US », « US 10 ») n'est jamais lu ;
+//   · une DEMI-pointure écrite seule (« 36,5 », « 42.5 », « 37½ ») — jamais un entier seul (prix, lot, année,
+//     « 39Thirty ») —, seulement quand aucun nombre collé à un mot explicite ne parle, jamais suivie d'une unité
+//     (cm, mm, €…) ni précédée d'une mesure (semelle, longueur, prix…), et ignorée hors des bornes du public.
 // ES module pur (Deno + Node + Vite), sans dépendance.
 
 const nfc = (t) => String(t ?? "").normalize("NFC");
@@ -41,7 +51,8 @@ export function publicDuRayon(chemin) {
 // Un nombre de pointure : « 31 », « 37.5 », « 37,5 », « 37 1/2 », « 37½ ».
 const NOMBRE = "(\\d{2})(?:\\s?(?:[.,]5|½|1/2|et\\s?demie?))?";
 // Les mots explicites, suivis (au plus) d'un deux-points ou d'un tiret, puis du nombre.
-const MOTS = "pointures?|p\\.?|taille|taglia|talla|gr(?:o|ö|oe)(?:ss|ß)e|maat|eu\\s?size|eu";
+// (05/11 soir) « t\.? » : « T36,5 », « T 42 », « T.38 » (un champ de chaussures seulement — l'appelant le garantit).
+const MOTS = "pointures?|p\\.?|t\\.?|taille|taglia|talla|gr(?:o|ö|oe)(?:ss|ß)e|maat|eu\\s?size|eu";
 // (?![.,]\d) : jamais un morceau d'un nombre plus long (« 40,5 cm » ne se relit pas « 40 » en revenant en arrière).
 const RE_POINTURE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${MOTS})\\s?[:=-]?\\s?${NOMBRE}(?![\\d\\p{L}])(?![.,]\\d)(?!\\s?(?:cm|mm|€|eur\\b|euros?\\b|ans?\\b|mois\\b|kg|g\\b|%))`, "giu");
 // Une pointure en tiers (Adidas : « 37 1/3 », « 38 2/3 », « 37⅓ ») : jamais arrondie, jamais lue — doute.
@@ -50,6 +61,13 @@ const RE_TIERS = new RegExp(`(?<![\\p{L}\\p{N}])(?:${MOTS})\\s?[:=-]?\\s?\\d{2}\
 const RE_ALTERNATIVE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${MOTS})\\s?[:=-]?\\s?\\d{2}(?:[.,]5)?\\s?(?:/|-|–|ou|et|à|a|or)\\s?\\d{2}(?![\\d])`, "giu");
 // Une pointure d'un autre système, à côté : jamais convertie.
 const RE_AUTRE_SYSTEME = /(?<![\p{L}\p{N}])(?:uk|us|usa)\s?\d{1,2}(?:[.,]5)?(?![\d])|(?<![\p{L}\p{N}])(?:uk|us)\s?(?:size|taille)/giu;
+// (05/11 soir) Un nombre COLLÉ à un autre système (« taille 42 US », « 9 UK ») n'est pas une pointure européenne.
+const SYSTEME_APRES = /^\s?(?:uk|us|usa|jp|cm)(?![\p{L}])/iu;
+const SYSTEME_AVANT = /(?:^|[^\p{L}\p{N}])(?:uk|us|usa|jp)\s?[:=-]?\s?$/iu;
+// (05/11 soir) La demi-pointure écrite seule : « 36,5 », « 42.5 », « 37½ », « 37 1/2 » — jamais un entier.
+const RE_DEMI_NUE = /(?<![\p{L}\p{N}.,/])(\d{2})(?:[.,]5|\s?½|\s1\/2)(?![\d\p{L}])(?![.,]\d)(?!\s?(?:cm|mm|€|eur\b|euros?\b|kg|g\b|%|"|''|ml\b|ans?\b|mois\b|x\b|×))/gu;
+// … jamais précédée d'une mesure ou d'un prix (« semelle 26,5 », « prix : 36,5 »).
+const MESURE_AVANT = /(?:prix|€|eur|euros?|semelle|longueur|long|largeur|hauteur|talon|mesure|tour|poids|diam[eè]tre|x|×)\s*[:=]?\s*$/iu;
 
 const valeurNombre = (txt) => {
   const m = /(\d{2})(?:\s?(?:[.,](5)|(½)|(1\/2)|(et\s?demie?)))?/i.exec(txt);
@@ -57,9 +75,15 @@ const valeurNombre = (txt) => {
   return Number(m[1]) + (m[2] || m[3] || m[4] || m[5] ? 0.5 : 0);
 };
 
-/** Les pointures écrites dans des textes (pur) : { valeurs:number[], autreSysteme:boolean, alternative:boolean, tiers:boolean }. */
+/**
+ * Les pointures écrites dans des textes (pur) :
+ * { valeurs:number[], demiNues:number[], autreSysteme:boolean, alternative:boolean, tiers:boolean }.
+ * `valeurs` : les nombres collés à un mot explicite (jamais un nombre collé à UK / US) ; `demiNues` : les
+ * demi-pointures écrites seules (05/11 soir) — un filet que l'appelant ne lit que si `valeurs` est vide.
+ */
 export function lirePointuresDuTexte(textes) {
   const valeurs = [];
+  const demiNues = [];
   let autreSysteme = false, alternative = false, tiers = false;
   for (const t of (Array.isArray(textes) ? textes : [textes])) {
     const s = nfc(t);
@@ -70,12 +94,21 @@ export function lirePointuresDuTexte(textes) {
     RE_ALTERNATIVE.lastIndex = 0;
     if (RE_TIERS.test(s)) tiers = true;
     for (const m of s.matchAll(RE_POINTURE)) {
+      // (05/11 soir) « taille 42 US », « T 9 UK » : le nombre appartient à un autre système — jamais lu.
+      if (SYSTEME_APRES.test(s.slice(m.index + m[0].length, m.index + m[0].length + 6))) continue;
       // « P » seul exige la forme serrée « P31 » / « P 31 » / « P.31 » et un nombre de pointure (pas « P 2 »).
       const v = valeurNombre(m[0].slice(m[0].search(/\d/)));
       if (v != null) valeurs.push(v);
     }
+    for (const m of s.matchAll(RE_DEMI_NUE)) {
+      const avant = s.slice(Math.max(0, m.index - 16), m.index);
+      if (MESURE_AVANT.test(avant) || SYSTEME_AVANT.test(avant)) continue;
+      if (SYSTEME_APRES.test(s.slice(m.index + m[0].length, m.index + m[0].length + 6))) continue;
+      const v = valeurNombre(m[0]);
+      if (v != null) demiNues.push(v);
+    }
   }
-  return { valeurs: [...new Set(valeurs)], autreSysteme, alternative, tiers };
+  return { valeurs: [...new Set(valeurs)], demiNues: [...new Set(demiNues)], autreSysteme, alternative, tiers };
 }
 
 const formats = (v) => {
@@ -116,8 +149,18 @@ export function pointureDuTexte({ valeurFiche = "", textes = [], chemin = null, 
   }
   if (f) return null;   // une valeur de fiche qu'on ne sait pas lire (« UK 8 », « M ») n'est jamais recouverte
   // 2. Le texte : un seul nombre collé à un mot explicite, cohérent avec le public du rayon.
-  if (!lu.valeurs.length) return null;
-  if (lu.autreSysteme) return { doute: "une pointure d'un autre système (UK, US) est écrite à côté" };
+  // (05/11 soir) Une pointure UK / US écrite À CÔTÉ ne rend plus douteuse l'européenne écrite explicitement (« Taille
+  // 36,5 (US 4.5Y) ») : le nombre collé à UK / US n'est jamais lu (lirePointuresDuTexte) — on ne convertit toujours rien.
+  if (!lu.valeurs.length) {
+    // (05/11 soir) Le filet : une seule DEMI-pointure écrite seule, dans les bornes du public du rayon.
+    if (!borne) return null;
+    const demis = lu.demiNues.filter(dansBorne);
+    if (!demis.length) return null;
+    if (lu.alternative || lu.tiers) return { doute: "deux pointures possibles écrites (fourchette, alternative ou tiers)" };
+    if (demis.length > 1) return { doute: `plusieurs demi-pointures dans le texte (${demis.join(", ")})` };
+    const placeDemi = placerPointure(demis[0], grille);
+    return placeDemi ? { valeur: placeDemi, motif: `pointure ${String(demis[0]).replace(".", ",")} écrite par le vendeur`, source: "texte" } : null;
+  }
   if (lu.alternative) return { doute: "deux pointures possibles écrites (fourchette ou alternative)" };
   if (lu.tiers) return { doute: "pointure en tiers (1/3, 2/3) : jamais arrondie" };
   if (lu.valeurs.length > 1) return { doute: `plusieurs pointures dans le texte (${lu.valeurs.join(", ")})` };

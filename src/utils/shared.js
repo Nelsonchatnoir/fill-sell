@@ -1187,8 +1187,14 @@ export function detectType(titre,marque){
   return base;
 }
 
+// (05/11 soir, Nico — « Boîte à bijoux », PMF Vito : fiche rangée en « Mode ») Un contenant de bijoux est un objet de
+// la maison : ses mots-bijoux ne font jamais le TYPE (même règle que l'icône, zonesContenantBijoux).
+const CONTENANT_BIJOUX_TYPE = /(?<![\p{L}\p{N}])(?:bo[iî]tes?|coffrets?|coffres?|[ée]crins?|pr[ée]sentoirs?|organiseurs?|organisateurs?|plateaux?|arbres?|range|porte|rangements?)[\s-]*(?:(?:[àa]|de|d['’]|pour|aux|des)\s*)?(?:(?:les|vos|tes|mes|ses)\s+)?(?:bijou[xs]?|bagues?|colliers?|bracelets?|montres?|boucles?.?d.?oreilles?|pendentifs?)(?![\p{L}\p{N}])/giu;
+const POUR_BIJOUX_TYPE = /(?<![\p{L}\p{N}])(?:pour|ranger)\s+(?:(?:les|vos|tes|mes|des|ses)\s+)?(?:bijou[xs]?|bagues?|colliers?|bracelets?|montres?|boucles?.?d.?oreilles?|pendentifs?)(?:\s*(?:,|et|ou|&|\/)\s*(?:(?:les|vos|tes|mes|des)\s+)?(?:bijou[xs]?|bagues?|colliers?|bracelets?|montres?|boucles?.?d.?oreilles?|pendentifs?))*(?![\p{L}\p{N}])/giu;
 function detectTypeBase(titre,marque){
-  const t=((titre||'')+' '+(marque||'')).toLowerCase();
+  const brut=((titre||'')+' '+(marque||'')).toLowerCase();
+  const sansContenant=brut.replace(CONTENANT_BIJOUX_TYPE,' rangement déco ');
+  const t=sansContenant===brut ? brut : sansContenant.replace(POUR_BIJOUX_TYPE,' ');
   // ⚠️ CATÉGORIE "Luxe" SUPPRIMÉE le 2026-07-17. L'ancien 1er test renvoyait
   // 'Luxe' dès qu'une marque « premium » figurait dans le texte — MAIS la liste
   // incluait des marques NON luxe (Ralph Lauren, Lacoste, Tommy, Boss, Armani),
@@ -1509,6 +1515,14 @@ const OBJECT_ICON_RULES = [
   // (« Collier pendentif buste ») reste un bijou. Mesuré le 03/10 sur les
   // 82 000 fiches du parc : ce seul titre mêle les deux familles.
   [/(?<!(?:statues?|statuettes?|sculptures?|(?<![\p{L}\p{N}])bustes?)(?![\p{L}\p{N}])[^]*)(?:bijou|collier|bracelet|(?<![\p{L}\p{N}])bagues?(?![\p{L}\p{N}])|boucle[sx]?.?d.?oreille|pendentif|broche)/iu, '💍'],
+  // (05/11 soir, Nico — « Boîte à bijoux artisanale Liban – Coffret en bois marqueterie », PMF Vito : rangée chez
+  // Beebs en « Bijoux (femme) », une taille de BAGUE demandée) UN CONTENANT DE BIJOUX N'EST JAMAIS UN BIJOU. Les
+  // mots-bijoux d'un contenant (« boîte à bijoux », « écrin à bague », « présentoir à colliers », « range-bijoux »,
+  // « porte-bijoux », « boîte à montres ») ne choisissent jamais le rayon (zonesContenantBijoux, plus bas) ; le
+  // contenant est un objet de la MAISON (Vinted : Maison › Décoration › Rangement › « Coffres à bijoux »). Placée
+  // APRÈS 💍 : un bijou nommé hors du contenant (« Bague argent dans son écrin », « Coffret bijoux collier et
+  // boucles ») reste un bijou.
+  [/(?:bo[iî]tes?|coffrets?|coffres?|[ée]crins?|pr[ée]sentoirs?|organiseurs?|organisateurs?|plateaux?|arbres?|range|porte|rangements?)[\s-]*(?:(?:[àa]|de|d['’]|pour|aux|des)\s*)?(?:(?:les|vos|tes|mes|ses)\s+)?(?:bijou|bagues?|colliers?|bracelets?|montres?|boucles?.?d.?oreilles?|pendentifs?)/iu, '🏠'],
   // Accessoires ajoutés le 2026-07-09 (backlog T3) — feuilles Vinted réelles.
   [/ceinture(?!.{0,10}(?:lombaire|à.?outils|de.?sécurité))/i, '🪢'],
   [/parapluie|ombrelle/i, '☂️'],
@@ -1958,6 +1972,31 @@ export function zonesObjetAccessoireTexte(t){
   }
   return z;
 }
+// ── (05/11 soir, Nico — « Boîte à bijoux », PMF Vito) UN CONTENANT DE BIJOUX N'EST JAMAIS UN BIJOU ──────────────
+// Même mécanisme que l'accessoire du 18/10 : les mots-bijoux RANGÉS par un contenant (« boîte à bijoux », « écrin à
+// bague », « coffret à bijoux », « présentoir à colliers et bracelets », « range-bijoux », « porte-bijoux », « arbre à
+// bijoux », « boîte à montres », et, dans un texte qui nomme un tel contenant, « … pour colliers et bagues ») ne
+// choisissent jamais l'icône : ni 💍, ni ⌚. Un bijou nommé AILLEURS dans le texte (« Bague argent dans son écrin »,
+// « Coffret bijoux Swarovski collier et boucles ») reste l'article. Texte comparable (minuscules, sans accents).
+const CONTENANT_BIJOUX = "boites?|coffrets?|coffres?|ecrins?|presentoirs?|organiseurs?|organisateurs?|plateaux?|arbres?|supports?|rangements?|range|porte|vide[\\s-]?poches?|trousses?|valisettes?|mallettes?";
+const BIJOUX_RANGES = "bijou[xs]?|bagues?|colliers?|bracelets?|montres?|boucles?\\s?d['’ ]?\\s?oreilles?|pendentifs?|broches?|chaines?";
+const LISTE_BIJOUX = `(?:${BIJOUX_RANGES})(?:\\s*(?:,|et|ou|&|/)\\s*(?:(?:les|vos|tes|mes|des)\\s+)?(?:${BIJOUX_RANGES}))*`;
+const RE_CONTENANT_BIJOUX = new RegExp(`(?<![a-z0-9])(?:${CONTENANT_BIJOUX})[\\s-]*(?:(?:a|de|d['’]|pour|aux|des|en)\\s*)?(?:(?:les|vos|tes|mes|ses)\\s+)?(${LISTE_BIJOUX})(?![a-z0-9])`, "gd");
+const RE_POUR_BIJOUX = new RegExp(`(?<![a-z0-9])(?:pour|ranger|range)\\s+(?:(?:les|vos|tes|mes|des|ses)\\s+)?(${LISTE_BIJOUX})(?![a-z0-9])`, "gd");
+/** Les mots-bijoux rangés par un contenant, dans un texte comparable : [{ debut, fin }]. */
+export function zonesContenantBijoux(t){
+  const x=String(t??'');
+  const z=[];
+  for(const m of x.matchAll(RE_CONTENANT_BIJOUX)) z.push({ debut: m.indices[1][0], fin: m.indices[1][1] });
+  if(!z.length) return z;
+  for(const m of x.matchAll(RE_POUR_BIJOUX)) z.push({ debut: m.indices[1][0], fin: m.indices[1][1] });
+  return z;
+}
+/** Le texte nomme-t-il un CONTENANT de bijoux dont aucun bijou n'est l'article ? (détection de l'icône seule) */
+export function estContenantDeBijoux(titre, description){
+  return detectObjectKeywordDetail(titre, description)?.contenantBijoux === true;
+}
+
 const _reglesGlobales=new Map();
 function premiereHorsObjetAccessoire(re, t, zones){
   if(!zones.length) return re.exec(t);
@@ -2041,13 +2080,17 @@ function detectObjectKeywordDetailBase(titre, description){
   // priorité, pas la position du mot dans le texte).
   const regles=reglesComparables();
   const tTitre=SANS_ACCENTS(denoise(titre));
-  const zTitre=zonesObjetAccessoireTexte(tTitre);
-  for(const [re,icon] of regles){ const m=premiereHorsObjetAccessoire(re,tTitre,zTitre); if(m) return { icon, mot: motDe(m), passe: 1 }; }
+  // (05/11 soir) Les mots-bijoux d'un contenant (« boîte à bijoux ») ne choisissent jamais l'icône.
+  const zBijouxTitre=zonesContenantBijoux(tTitre);
+  const zTitre=[...zonesObjetAccessoireTexte(tTitre), ...zBijouxTitre];
+  const marque=(r)=>(zBijouxTitre.length && r.icon==='🏠' ? { ...r, contenantBijoux: true } : r);
+  for(const [re,icon] of regles){ const m=premiereHorsObjetAccessoire(re,tTitre,zTitre); if(m) return marque({ icon, mot: motDe(m), passe: 1 }); }
   // Passe 2 — titre + description (comportement historique, filet pour les
   // titres sans mot-objet : « Medik8 Crystal Retinal 6 » + desc « crème… »).
   const t=SANS_ACCENTS(denoise((titre||'')+' '+(description||'')));
-  const zT=zonesObjetAccessoireTexte(t);
-  for(const [re,icon] of regles){ const m=premiereHorsObjetAccessoire(re,t,zT); if(m) return { icon, mot: motDe(m), passe: 2 }; }
+  const zBijoux=zonesContenantBijoux(t);
+  const zT=[...zonesObjetAccessoireTexte(t), ...zBijoux];
+  for(const [re,icon] of regles){ const m=premiereHorsObjetAccessoire(re,t,zT); if(m) return (zBijoux.length && icon==='🏠') ? { icon, mot: motDe(m), passe: 2, contenantBijoux: true } : { icon, mot: motDe(m), passe: 2 }; }
   return null;
 }
 

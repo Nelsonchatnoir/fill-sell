@@ -6,7 +6,10 @@
 // Diagnostic (7 jours au 25/10) : 418 questions sur 26 comptes, dont Beebs Taille 135, Beebs Âge 52, Beebs Matière 11,
 // eBay Matière 8 (docs/enquetes/soir-2510/CHAMPS-REQUIS.md). Chaque fonction est PURE et rend
 // { valeur, source, motif } (posée, jamais bloquante, tracée « option_du_texte »), { doute } ou null (question).
-// La pointure vit dans pointure-du-texte.js. ES module pur (Deno + Node + Vite), sans dépendance.
+// La pointure vit dans pointure-du-texte.js. ES module pur (Deno + Node + Vite) ; seule dépendance, relative : le
+// dictionnaire des tailles (taille-du-texte.js → tailles.js), pour la taille unique des accessoires (05/11 soir).
+
+import { estTailleUniqueEcrite, tailleEcriteDansLeTexte } from "./taille-du-texte.js";
 
 const nfc = (t) => String(t ?? "").normalize("NFC");
 const plier = (t) => nfc(t).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[’']/g, "'");
@@ -219,6 +222,30 @@ export function tailleMontreAuto({ chemin = null, textes = [], allowedValues = [
     return { valeur: tr.v, source: "diametre_ecrit", motif: `diamètre du boîtier écrit par le vendeur (${d} mm)` };
   }
   return { valeur: unique, source: "montre_sans_diametre", motif: "aucun diamètre de boîtier écrit : la taille unique de la grille" };
+}
+
+// ── g) LES ACCESSOIRES SANS TAILLE → « Taille unique » (05/11 soir, demande de Nico — PMF Vito) ─────────────────────
+// Une casquette, un chapeau, un bonnet, un sac, une pochette, une écharpe, des lunettes, un parapluie, un portefeuille,
+// une valise n'ont pas de taille à dire. Quand le RAYON en exige une (Vinted « Casquettes », Beebs « Chapeaux et
+// casquettes (homme) »…) et que ni la fiche, ni la copie, ni le texte n'en disent (l'appelant ne vient ici qu'à ce
+// moment, et on le revérifie), l'option « taille unique » de LA grille du rayon, telle qu'elle l'écrit (« Taille
+// unique », « Taille Unique », « Universel », « One size » — le dictionnaire de tailles.js, jamais recopié) — une seule.
+// ⛔ Jamais par-dessus une taille écrite par le vendeur (« Medium-Large », « taille 58 », « T M », « 24 mois ») ou
+//    portée par la fiche ; jamais un vêtement, une chaussure, une ceinture ou des gants (leur taille compte), un bijou
+//    (« Ajustable » a sa règle), une montre (son diamètre a sa règle) ; une grille sans option unique, ou à deux options
+//    uniques → null : la question, comme avant.
+const RAYON_SANS_TAILLE = /\b(casquettes?|chapeaux?|bonnets?|bobs?|berets?|bandeaux?|sacs?|sacoches?|pochettes?|cabas|besaces?|cartables?|portefeuilles?|porte-?monnaies?|porte-?cartes?|echarpes?|foulards?|etoles?|chales?|lunettes?|parapluies?|valises?|bagages?)\b/;
+const RAYON_AVEC_TAILLE = /\b(ceintures?|gants?|moufles?|chaussures?|bottes?|baskets?|chaussettes?|collants?|bijoux|bagues?|montres?|vetements?|pyjamas?|maillots?|deguisements?)\b/;
+/** @returns {{valeur:string, source:string, motif:string} | null} */
+export function tailleUniqueAccessoire({ chemin = null, textes = [], allowedValues = [], tailleFiche = "" } = {}) {
+  const liste = (Array.isArray(chemin) ? chemin.map(String).join(" > ") : String(chemin ?? "")).split(/\s*[>›]\s*/);
+  const feuille = plier(String(liste[liste.length - 1] ?? "")).trim();
+  if (!feuille || !RAYON_SANS_TAILLE.test(feuille) || RAYON_AVEC_TAILLE.test(feuille)) return null;
+  if (nfc(tailleFiche).trim() && !estTailleUniqueEcrite(tailleFiche)) return null;   // la fiche dit une taille
+  if (tailleEcriteDansLeTexte(Array.isArray(textes) ? textes : [textes], chemin)) return null; // le vendeur en a écrit une
+  const uniques = [...new Set((Array.isArray(allowedValues) ? allowedValues : []).map((v) => String(v).trim()).filter(estTailleUniqueEcrite))];
+  if (uniques.length !== 1) return null;
+  return { valeur: uniques[0], source: "accessoire_sans_taille", motif: `${nfc(liste[liste.length - 1]).trim()} : un accessoire sans taille, la taille unique de la grille` };
 }
 
 // ── b) MATIÈRE eBAY (prudence : une matière inventée = litige « non conforme ») ──────────────────────────────────

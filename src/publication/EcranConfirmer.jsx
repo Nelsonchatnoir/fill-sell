@@ -36,6 +36,14 @@ const LIBELLE_MOTIF = {
   en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer", hors_france: "France-only addresses" },
 };
 
+// (05/11 soir) Pourquoi FillSell a retiré une plateforme de la sélection (ListingPreviewScreen, noterDecochageMoteur).
+// La pause, le « déjà en ligne » et la plateforme fermée au compte ont déjà leur carte ou leur ligne : seuls ceux-ci
+// se disent ici.
+const LIBELLE_RETRAIT = {
+  fr: { categorie_fermee: "aucun rayon pour cet article ici (ou produit refusé)", ebay_inutilisable: "ton compte eBay n'est pas utilisable pour l'instant" },
+  en: { categorie_fermee: "no category for this item here (or product refused)", ebay_inutilisable: "your eBay account can't be used right now" },
+};
+
 export default function EcranConfirmer({ m }) {
   const en = m.lang === "en";
   const L = LIBELLE_MOTIF[en ? "en" : "fr"];
@@ -215,6 +223,11 @@ export default function EcranConfirmer({ m }) {
               sous = en ? "Signed in — ready" : "Connectée — prête"; ton = "ok";
             } else if (cochee) {
               sous = en ? "Ready" : "Prête"; ton = "ok";
+            } else if (m.decocheesParMoteur?.[p] && LIBELLE_RETRAIT[en ? "en" : "fr"][m.decocheesParMoteur[p]]) {
+              // (05/11 soir, demande de Nico) Une plateforme que FillSell a retirée elle-même le dit sur sa ligne —
+              // jamais un « Non cochée » muet qui ressemble à un oubli de la personne.
+              sous = (en ? "Removed by FillSell: " : "Retirée par FillSell : ") + LIBELLE_RETRAIT[en ? "en" : "fr"][m.decocheesParMoteur[p]];
+              ton = "geste";
             } else {
               sous = en ? "Not selected — tap to add" : "Non cochée — appuie pour l'ajouter"; ton = null;
             }

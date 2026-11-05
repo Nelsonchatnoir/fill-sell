@@ -256,6 +256,46 @@ export function pointureNuePourEu(valeur, allowedValues) {
   return nues.length === 1 ? nues[0] : null;
 }
 
+// ── (05/11 soir, demande de Nico — PMF Vito) POURQUOI UNE POINTURE CONNUE N'ENTRE PAS DANS LA GRILLE DU RAYON ────────
+// « Nike Court Borough T36,5 » rangée en Beebs « Baskets (fille) » : la grille n'a que des pointures ENTIÈRES (15 … 41) ;
+// « Converse All Star » en « Baskets (homme) » chez Vinted et Beebs : la grille commence à 38, la pointure est 37. La
+// question partait sans rien dire (« « 36.5 » n'est pas dans la liste »), et la personne publiait sans la plateforme.
+// RÈGLE : on DIT pourquoi, lu dans LA grille du rayon (aucune table à nous) — une pointure hors des bornes de la grille
+// (« de 38 à 52 ») : vérifier le rayon ou la pointure ; une demi-pointure face à une grille d'entiers : choisir la
+// pointure à publier (les deux voisines en tête de liste) ou changer de rayon. ⛔ Rien n'est choisi à la place de la
+// personne : une demi-pointure n'est JAMAIS arrondie par nous (règle du 25/10).
+/** { motif, candidats:string[] } ou null (pas une pointure lisible, ou la grille la porte). */
+export function pointureHorsGrille({ platform, key, value, allowedValues, cheminCategorie = null, lang = "fr" }) {
+  if (!estChampPointure(platform, key, cheminCategorie)) return null;
+  const m = /^(?:eur?\s*)?(\d{2}(?:\.5)?)$/.exec(normAspectVal(value));
+  if (!m) return null;
+  const v = Number(m[1]);
+  const vals = (Array.isArray(allowedValues) ? allowedValues : []).map((x) => String(x ?? "").trim()).filter(Boolean);
+  const nums = vals.map((a) => ({ a, n: pointureNue(normAspectVal(a).replace(/^eur?\s*/, "")) })).filter((x) => x.n != null)
+    .map((x) => ({ a: x.a, n: Number(x.n) }));
+  if (nums.length < 3 || nums.some((x) => x.n === v)) return null;
+  const min = Math.min(...nums.map((x) => x.n)), max = Math.max(...nums.map((x) => x.n));
+  const ecrite = String(v).replace(".", lang === "en" ? "." : ",");
+  if (v < min || v > max) {
+    return {
+      candidats: [],
+      motif: lang === "en"
+        ? `This category's sizes go from ${min} to ${max}: ${ecrite} isn't one of them. Check the category (women, men, kids) or the size.`
+        : `La grille de ce rayon va de ${min} à ${max} : ${ecrite} n'y figure pas. Vérifie le rayon (femme, homme, enfant) ou la pointure.`,
+    };
+  }
+  if (!Number.isInteger(v) && nums.every((x) => Number.isInteger(x.n))) {
+    const voisines = nums.filter((x) => x.n === Math.floor(v) || x.n === Math.ceil(v)).map((x) => x.a);
+    return {
+      candidats: voisines,
+      motif: lang === "en"
+        ? `This category only has whole sizes: ${ecrite} isn't one of them. Choose the size to publish (${voisines.join(" or ")}), or change the category.`
+        : `Ce rayon n'a que des pointures entières : ${ecrite} n'y figure pas. Choisis la pointure à publier (${voisines.join(" ou ")}), ou change de rayon.`,
+    };
+  }
+  return null;
+}
+
 // ── (24/10 soir, décision 5 de Nico — pyjama d'alizeed48) LES HOMONYMES « TAILLE » DE BEEBS ──────────────────────
 // Certains rayons Beebs affichent DEUX champs « Taille » : le catalogue les relève « Taille [attributes.women_bras] »
 // (Pyjamas femme : une liste de soutiens-gorge 75A…115L ET les lettres XXS…9XL) ou « Taille [attributes.size_men_shirt] »
