@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- RÈGLE DE NICO (05/11) : UN MAIL (ET UN PUSH) À CHAQUE VENTE DÉTECTÉE, TOUT DE SUITE ; UNE VENTE = UN MAIL, JAMAIS DEUX
 -- ═══════════════════════════════════════════════════════════════════════════
--- PRÉPARÉE, NON APPLIQUÉE : feu vert NOMMÉ de Nico requis. Preuve : PREUVE_PG=embarque node scripts/preuve-mail-a-chaque-vente.mjs
+-- APPLIQUÉE le 05/11 à 20:27:11 (feu vert nommé de Nico, C' gardé). Preuve : PREUVE_PG=embarque node scripts/preuve-mail-a-chaque-vente.mjs
 -- (Postgres jetable, schéma public de prod lu en lecture seule) ; selftest statique : npm run selftest:mail-a-chaque-vente.
 -- Diagnostic (prod, lecture seule, 05/11) :
 --  A. push_trg_job (déclencheur cross_post_jobs_push_vendu), branche hors Vinted : « old.last_checked_at NULL ou > 24 h →

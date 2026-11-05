@@ -159,7 +159,10 @@ console.log('\n5. Parade doublon eBay : une vente = une note, deux commandes = d
 const iParadeV = ven.indexOf("if v_pf = 'ebay' and exists (");
 const iNoteV = ven.indexOf("perform public.push_noter(new.user_id, 'commande'");
 const paradeV = iParadeV > 0 ? ven.slice(iParadeV, iNoteV) : '';
-ok(iParadeV > iSuivie && iParadeV < iNoteV && /\)\) then\s*return new;\s*end if;\s*$/.test(paradeV), 'relevé : la parade eBay passe AVANT la note (return new)');
+// (05/11 soir, décision d de Nico, migration 20261105220000) Une parade qui écarte une note laisse UNE trace usage_logs
+// « vente_notification_ecartee » juste avant son return new — et rien d'autre (aucune note, aucun envoi).
+const TRACE = String.raw`(?:insert into public\.usage_logs \(user_id, feature, metadata\)\s*values \(new\.user_id, 'vente_notification_ecartee', jsonb_build_object\([^;]*\)\);\s*)?`;
+ok(iParadeV > iSuivie && iParadeV < iNoteV && new RegExp(String.raw`\)\) then\s*${TRACE}return new;\s*end if;\s*$`).test(paradeV), 'relevé : la parade eBay passe AVANT la note (return new ; au plus la trace « vente_notification_ecartee » avant)');
 ok(/o\.vente_id is distinct from new\.id/.test(paradeV), '… jamais sa propre note');
 ok(/o\.cles && array\['commande:ebay:' \|\| nullif\(btrim\(coalesce\(new\.commande_ref, ''\)\), ''\)\]/.test(paradeV), '(1) la même commande (clé commande:ebay:<ref>)');
 ok(/j\.platform_fields #>> '\{vente_commande_ebay,commande\}' = new\.commande_ref/.test(paradeV) && /j\.platform_fields #>> '\{sale_evidence,order_id\}' = split_part\(new\.commande_ref, ':', 1\)/.test(paradeV)
@@ -175,8 +178,8 @@ ok(/o\.part_le is not null or o\.statut in \('en_envoi', 'envoyee', 'declaree'\)
   'une note compte si elle est partie, déclarée, ou en attente d\'une décision qui viendra (job « vendu ») — jamais une note ignorée ou doublon');
 const iParadeJ = job.indexOf("if v_pf = 'ebay' and exists (");
 const paradeJ = iParadeJ > 0 ? job.slice(iParadeJ, job.indexOf('end if;', iParadeJ) + 7) : '';
-ok(iParadeJ > job.indexOf("if v_pf is distinct from 'vinted' then") && iParadeJ < iPorte && /then\s*return new;\s*end if;$/.test(paradeJ),
-  'job (l\'autre sens) : la parade eBay passe AVANT la fraîcheur (aucune preuve de session posée pour rien)');
+ok(iParadeJ > job.indexOf("if v_pf is distinct from 'vinted' then") && iParadeJ < iPorte && new RegExp(String.raw`then\s*${TRACE}return new;\s*end if;$`).test(paradeJ),
+  'job (l\'autre sens) : la parade eBay passe AVANT la fraîcheur (aucune preuve de session posée pour rien ; au plus la trace avant le return new)');
 ok(/o\.job_id is null/.test(paradeJ) && /'commande:ebay:' \|\| nullif\(btrim\(coalesce\(new\.platform_fields #>> '\{vente_commande_ebay,commande\}', ''\)\), ''\)/.test(paradeJ),
   'job : la commande que ebay_commande_appliquer pose (vente_commande_ebay) déjà notée par le relevé');
 ok(/o\.cles && array\['annonce:ebay:' \|\| v_annonce\]\s+and \(split_part\(coalesce\(o\.commande_ref, ''\), ':', 1\)\s+= nullif\(btrim\(coalesce\(new\.platform_fields #>> '\{sale_evidence,order_id\}', ''\)\), ''\)/.test(paradeJ),

@@ -443,6 +443,7 @@
     "selftest:affichage-en-ligne": "node --import ./scripts/loader-ext.mjs scripts/affichage-en-ligne-selftest.mjs",
     "selftest:remise-en-vente-chemins": "node scripts/remise-en-vente-chemins-selftest.mjs",
     "selftest:mail-a-chaque-vente": "node scripts/mail-a-chaque-vente-selftest.mjs",
+    "selftest:rafale-recapitulatif": "node scripts/rafale-recapitulatif-selftest.mjs",
     "selftest:rattachement-regles": "node scripts/rattachement-regles-selftest.mjs",
     "selftest:doublon-motif-refus": "node --import ./scripts/loader-ext.mjs scripts/doublon-motif-refus-selftest.mjs",
     "selftest:retraits-en-retard": "node scripts/retraits-en-retard-selftest.mjs",

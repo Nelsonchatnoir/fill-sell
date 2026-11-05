@@ -629,6 +629,82 @@ function eurosPrix(n: number, lang: Langue): string {
   return lang === "fr" ? `${c.replace(".", ",")} €` : `€${c}`;
 }
 
+// ---------------------------------------------------------------------------
+// (05/11 soir, décision c de Nico) Une RAFALE de ventes (8 ou plus en 5 minutes) : UN mail récapitulatif.
+// Avant : aucun mail (« rattrapage de masse »). Mêmes lignes et même ton que mailVentes ; une vente encore « à
+// confirmer » le dit sur sa ligne. Une seule vente dans le récapitulatif : push-ventes envoie mailVentes, à
+// l'identique d'une vente seule.
+// ---------------------------------------------------------------------------
+export interface VenteRafale extends VenteAnnoncee {
+  /** Vente repérée, pas encore enregistrée : à confirmer dans l'app. */
+  aConfirmer?: boolean;
+}
+
+export function mailRafale(ctx: { ventes: VenteRafale[] }, lang: Langue): MailPret {
+  const fr = lang === "fr";
+  const n = ctx.ventes.length;
+  const lignes = ctx.ventes.map((v) => {
+    const titre = String(v.titre ?? "").trim() || (fr ? "Ton article" : "Your item");
+    const ou = v.plateforme === "ailleurs"
+      ? (fr ? "vendu ailleurs" : "sold elsewhere")
+      : plateformesEnClair([v.plateforme], lang);
+    const aConfirmer = v.aConfirmer ? (fr ? " (à confirmer)" : " (to confirm)") : "";
+    // (16/10, C1) Prix de vente inconnu : aucun montant, aucun bénéfice — jamais « vendu 0 € ».
+    if (!prixVenteConnu(v)) {
+      return v.plateforme === "ailleurs"
+        ? `« ${titre} » — ${ou}${aConfirmer}`
+        : `« ${titre} » — ${ou} : ${fr ? "vendu" : "sold"}${aConfirmer}`;
+    }
+    const prix = v.prixVente as number;
+    const argent = v.benefice === null
+      ? (fr ? `vendu ${eurosPrix(prix, lang)}` : `sold for ${eurosPrix(prix, lang)}`)
+      : (fr
+        ? `vendu ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} de bénéfice`
+        : `sold for ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} profit`);
+    return `« ${titre} » — ${ou} : ${argent}${aConfirmer}`;
+  });
+  const sansPrixAchat = ctx.ventes.some((v) => prixVenteConnu(v) && v.benefice === null);
+  const nbAConfirmer = ctx.ventes.filter((v) => v.aConfirmer).length;
+  const sujet = fr ? `${n} ventes d'un coup sur ton compte 🎉` : `${n} sales at once on your account 🎉`;
+
+  const corps = [
+    paragraphe(fr ? "Salut," : "Hi,"),
+    paragraphe(fr
+      ? `Bonne nouvelle, ${n} ventes sont arrivées d'un coup sur ton compte. Les voici, toutes dans ce seul mail :`
+      : `Good news, ${n} sales just came in at once on your account. Here they are, all in this one email:`),
+    listePuces(lignes),
+    ...(nbAConfirmer > 0
+      ? [paragraphe(fr
+        ? (nbAConfirmer > 1
+          ? "Celles marquées « à confirmer » ont été repérées mais pas encore enregistrées : confirme-les dans FillSell, tu choisis ensuite de remettre l'article en vente ou non."
+          : "Celle marquée « à confirmer » a été repérée mais pas encore enregistrée : confirme-la dans FillSell, tu choisis ensuite de remettre l'article en vente ou non.")
+        : (nbAConfirmer > 1
+          ? "The ones marked “to confirm” were spotted but not recorded yet: confirm them in FillSell, then choose whether to list the items again."
+          : "The one marked “to confirm” was spotted but not recorded yet: confirm it in FillSell, then choose whether to list the item again."))]
+      : []),
+    ...(sansPrixAchat
+      ? [paragraphe(fr
+        ? "Ajoute le prix d'achat d'un article dans FillSell pour connaître ton bénéfice."
+        : "Add an item's purchase price in FillSell to see your profit.")]
+      : []),
+    boutonPrincipal(nbAConfirmer > 0 ? (fr ? "Confirmer les ventes" : "Confirm the sales") : (fr ? "Ouvrir FillSell" : "Open FillSell"),
+      URL_VENTES_A_CONFIRMER),
+  ];
+
+  return {
+    sujet,
+    html: mail({
+      lang,
+      titre: sujet,
+      preheader: fr ? `${n} ventes, un seul mail.` : `${n} sales, one email.`,
+      corps,
+      raisonEnvoi: fr
+        ? "Tu reçois ce message parce que plusieurs ventes ont été repérées en même temps sur ton compte FillSell."
+        : "You're getting this message because several sales were spotted at the same time on your FillSell account.",
+    }),
+  };
+}
+
 export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
   const fr = lang === "fr";
   const n = ctx.ventes.length;

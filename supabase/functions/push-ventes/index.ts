@@ -1,14 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import {
   type Appareil, APNS_HOTES, type BilanNote, type ConfigApns, type ConfigFcm, envoyerApns, envoyerFcm, envoyerNote,
-  lireConfigFcm, prixVenteConnu, resumerPourLaBase,
+  lireConfigFcm, messageVente, prixVenteConnu, resumerPourLaBase,
 } from "../_shared/push-envoi.ts";
 // (25/10, point 3 de Nico) « Vente annulée — <titre> : remettre en vente ? » : le texte, pur (selftest push-annulation).
 import { langueNotif, messageAnnulation } from "../_shared/push-annulation.js";
 import { envoyerEmail } from "../_shared/desinscription.ts";
-import { langue, mailVentes } from "../_shared/emails-fillsell.ts";
+import { langue, mailRafale, mailVentes } from "../_shared/emails-fillsell.ts";
 // (24/10, lot « zéro blocage », A9) Les ventes d'un même passage partent dans UN mail.
 import { groupesDeMail } from "../_shared/ventes-un-mail.js";
+// (05/11 soir, décision c de Nico) Une rafale (8 ventes ou plus en 5 min) : UN mail et UN push récapitulatifs.
+import { articlesDeLaLigne, lignesRafale, messageRafale, nombreDeVentes } from "../_shared/ventes-rafale.js";
 import { margeUnitaire, prixAchatNum } from "../../../src/utils/comptabilite.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -31,6 +33,8 @@ type NoteServie = {
   email?: string | null; lang?: string | null; plateforme?: string | null; titre?: string | null;
   prix?: number | string | null; inventaire_id?: number | null; a_decider?: boolean;
   articles?: ArticleNote[] | null;
+  // (05/11 soir) La note récapitulative d'une rafale (origine 'rafale') : ses ventes sont dans `articles`.
+  recap?: boolean;
 } & Record<string, unknown>;
 
 type VerdictMail = { statut: "envoye" | "deja_envoye" | "a_reessayer" | "echec" | "sans_adresse"; motif?: string };
@@ -146,6 +150,51 @@ async function envoyerMailVentesGroupe(
     break;
   }
   return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (05/11 soir, décision c de Nico) UNE RAFALE = UN MAIL RÉCAPITULATIF, UN SEUL
+// ═══════════════════════════════════════════════════════════════════════════
+// La base (push_ventes_a_envoyer, migration 20261105220000) sert UNE note récapitulative par rafale ('recap': true) :
+// ses ventes prêtes sont ses `articles` (une ligne par note décidée, _shared/ventes-rafale.js). Ici : UN mail, réservé
+// sous la clé de la note récapitulative (`vente:<id>`, index email_logs_vente_unique — un second passage, ou un
+// second appel simultané, trouve la réservation : « deja_envoye », rien ne repart). Les notes des ventes de la
+// rafale ne sont JAMAIS servies à l'unité (la base les a closes) : aucun mail par vente en plus du récapitulatif.
+// Une seule vente dans le récapitulatif (les autres doublons, démenties ou anciennes) : le mail d'une vente seule.
+async function envoyerMailRafale(
+  // deno-lint-ignore no-explicit-any
+  admin: any, n: NoteServie,
+): Promise<VerdictMail> {
+  const adresse = String(n.email ?? "").trim();
+  if (!adresse) return { statut: "sans_adresse" };
+  const ventes = (await Promise.all(lignesRafale(n.articles).map(async (l) => {
+    const lignes = await Promise.all((articlesDeLaLigne(l) as ArticleNote[]).map((a) => ligneDuMail(admin, a, String(l.plateforme ?? ""))));
+    return lignes.map((x) => ({ ...x, aConfirmer: l.a_decider === true }));
+  }))).flat();
+  if (!ventes.length) return { statut: "echec", motif: "recapitulatif_vide" };
+  const lang = langue(n.lang);
+  const { sujet, html } = ventes.length === 1
+    ? mailVentes({ ventes, retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: ventes[0].aConfirmer }, lang)
+    : mailRafale({ ventes }, lang);
+  const r = await envoyerEmail({
+    to: adresse, subject: sujet, html, type: `vente:${n.id}`,
+    userId: n.user_id, categorie: "support", dedup: "reservation",
+  });
+  if (r.envoye) return { statut: "envoye" };
+  if (r.motif === "deja_envoye") return { statut: "deja_envoye" };
+  return { statut: "a_reessayer", motif: String(r.motif ?? "inconnu").slice(0, 120) };
+}
+
+// Le push du récapitulatif : UN par rafale (la chaîne fait un push par note servie). Une seule vente : le push d'une vente.
+function messageDuRecap(n: NoteServie, lang: string) {
+  const lignes = lignesRafale(n.articles);
+  if (nombreDeVentes(lignes) !== 1) return messageRafale(n, lang);
+  const l = lignes[0];
+  const a = articlesDeLaLigne(l)[0] as ArticleNote;
+  return messageVente({
+    id: n.id, plateforme: l.plateforme, titre: a?.titre ?? l.titre, prix: a?.prix ?? l.prix, devise: l.devise,
+    inventaire_id: a?.inventaire_id ?? l.inventaire_id, vente_id: l.vente_id,
+  }, lang);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -361,8 +410,13 @@ Deno.serve(async (req) => {
     // passage suivant (trois essais au plus, base).
     const anciennes = new Set<number>();
     const aReprendre = new Set<number>();
+    // (05/11 soir, décision c de Nico) Le récapitulatif d'une rafale passe la MÊME garde, vente par vente : chaque
+    // ligne porte sa note (« note ») ; une ligne ancienne sort du récapitulatif, un récapitulatif vide ne part pas.
+    const membresRecap = notes.filter((n) => n.recap === true)
+      .flatMap((n) => lignesRafale(n.articles).map((l) => Number(l.note))).filter((x) => Number.isFinite(x) && x > 0);
+    const membresAnciens = new Set<number>();
     try {
-      const { data: lignes } = await admin.from("push_ventes").select("id, user_id, cles, job_id, vendu_le, preuve_recente").in("id", notes.map((n) => n.id));
+      const { data: lignes } = await admin.from("push_ventes").select("id, user_id, cles, job_id, vendu_le, preuve_recente").in("id", [...notes.map((n) => n.id), ...membresRecap]);
       if (!lignes) throw new Error("notes illisibles");
       const parNote = new Map<number, { user: string; items: string[]; job: string | null; prouvee: boolean }>();
       for (const l of lignes as Array<{ id: number; user_id: string; cles: string[] | null; job_id: string | null; vendu_le: string | null; preuve_recente: string | null }>) {
@@ -401,12 +455,21 @@ Deno.serve(async (req) => {
           if (!recente) anciennes.add(id);
         }
       }
+      // (05/11 soir) Les lignes anciennes d'un récapitulatif en sortent ; vide, il ne part pas (« vente_ancienne »).
+      for (const m of membresRecap) if (anciennes.delete(m)) membresAnciens.add(m);
+      for (const n of notes) {
+        if (n.recap !== true) continue;
+        const gardees = lignesRafale(n.articles).filter((l) => !membresAnciens.has(Number(l.note)));
+        if (gardees.length) n.articles = gardees as unknown as ArticleNote[];
+        else anciennes.add(Number(n.id));
+      }
     } catch (e) {
       rapport.erreurs.push(`ventes anciennes : ${String((e as Error)?.message ?? e).slice(0, 120)}`);
       // Rien n'est prouvé : aucune note Vinted sans commande lue (vente_id) ne
-      // part à ce passage.
+      // part à ce passage — ni un récapitulatif qui en liste une.
       for (const n of notes) {
         if (String(n.plateforme ?? "") === "vinted" && n.vente_id == null) aReprendre.add(Number(n.id));
+        if (n.recap === true && lignesRafale(n.articles).some((l) => l.plateforme === "vinted" && l.vente_id == null)) aReprendre.add(Number(n.id));
       }
     }
     if (aReprendre.size) {
@@ -434,6 +497,10 @@ Deno.serve(async (req) => {
       notes.splice(0, notes.length, ...notes.filter((n) => !anciennes.has(Number(n.id))));
       if (!notes.length) continue;
     }
+    // (05/11 soir, décision c de Nico) Les récapitulatifs de rafale partent à part : UN push et UN mail chacun,
+    // jamais par le chemin (ni le groupe) des ventes seules.
+    const recaps = notes.filter((n) => n.recap === true);
+    if (recaps.length) notes.splice(0, notes.length, ...notes.filter((n) => n.recap !== true));
 
     // Le push, pour les notes qui ont un téléphone (langue servie par la base,
     // fr par défaut). `push` absent = ancienne définition : un appareil suffit.
@@ -461,7 +528,21 @@ Deno.serve(async (req) => {
       }])));
       for (const [id, v] of verdicts) mails.set(id, v);
     }));
-    const appareils = aPousser.flatMap((n) => n.appareils ?? []);
+    const recapsPousses = recaps.filter((n) => (n.push ?? (n.appareils ?? []).length > 0) === true);
+    await Promise.all(recaps.map(async (n) => {
+      const lang = n.lang === "en" ? "en" : "fr";
+      if (recapsPousses.includes(n)) {
+        bilans.push(await envoyerNote(fetch, cfgApns, cfgFcm, n as never, lang, Date.now(), messageDuRecap(n, lang)).catch((e) => ({
+          id: n.id, statut: "a_reessayer" as const, motif: `exception: ${String(e?.message ?? e).slice(0, 80)}`, resultat: [],
+        })));
+      }
+      if (n.mail === true) {
+        mails.set(n.id, await envoyerMailRafale(admin, n).catch((e) => ({
+          statut: "a_reessayer" as const, motif: `exception: ${String(e?.message ?? e).slice(0, 80)}`,
+        })));
+      }
+    }));
+    const appareils = [...aPousser, ...recapsPousses].flatMap((n) => n.appareils ?? []);
     const resume = resumerPourLaBase(bilans, appareils) as ReturnType<typeof resumerPourLaBase> & { notes: Array<Record<string, unknown>> };
     const parId = new Map<number, Record<string, unknown>>(resume.notes.map((x) => [Number(x.id), x]));
     for (const [id, v] of mails) {
@@ -483,8 +564,9 @@ Deno.serve(async (req) => {
       else if (v.statut === "sans_adresse") rapport.mails_sans_adresse++;
       else rapport.mails_a_reessayer++;
     }
-    console.log(`[push-ventes] ${JSON.stringify(notes.map((n) => ({
+    console.log(`[push-ventes] ${JSON.stringify([...notes, ...recaps].map((n) => ({
       id: n.id, push: bilans.find((b) => b.id === n.id)?.statut ?? null, mail: mails.get(n.id)?.statut ?? null,
+      ...(n.recap === true ? { recap: nombreDeVentes(lignesRafale(n.articles)) } : {}),
     })))}`);
     if (finirApres) break;
   }
