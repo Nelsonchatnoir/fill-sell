@@ -1,6 +1,6 @@
 # Notes pour les relecteurs Apple et Google — version 2.9 (à coller par Nico, mot de passe compris)
 
-DEUX comptes (décision de Nico du 05/11 à 22:55 : « Deux comptes, Cloud jamais offert ») — Google ne peut ni acheter
+DEUX comptes (décision de Nico du 05/11 à 22:05 : « Deux comptes, Cloud jamais offert ») — Google ne peut ni acheter
 ni prendre d'essai, Apple doit pouvoir acheter :
 - **Apple : test@fillsell.app** (d6a9e726, déjà saisi dans App Store Connect — rien à ressaisir chez Apple). 22:12 :
   témoin Cloud (offre visible et ACHETABLE en bac à sable), 7 articles de démo ajoutés (les 60 d'avant gardés), Premium

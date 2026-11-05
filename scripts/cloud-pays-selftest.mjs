@@ -1,4 +1,4 @@
-// selftest:cloud-pays — (05/11 soir, lot « Ouverture du Cloud », PHASE 3 point 3, ordre de Nico corrigé à 21:53) le
+// selftest:cloud-pays — (05/11 soir, lot « Ouverture du Cloud », PHASE 3 point 3, ordre de Nico corrigé à 21:44) le
 // Cloud ne se VEND qu'en France : un vendeur étranger ne passe jamais par une IP française. Les témoins (Nico, comptes
 // de relecture) le voient partout ; un compte qui a déjà le Cloud garde ses écrans (état, connexion, arrêt) où qu'il soit.
 import assert from 'node:assert/strict';

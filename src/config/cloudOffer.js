@@ -72,7 +72,7 @@ const estTemoin = (userId) => userId != null && (CLOUD_OFFRE_TEMOINS.includes(us
 // sans retoucher les appelants.
 export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED || estTemoin(userId);
 
-// (05/11 soir, lot « Ouverture du Cloud », PHASE 3 point 3 — ordre de Nico, corrigé à 21:53) LE CLOUD SE VEND EN
+// (05/11 soir, lot « Ouverture du Cloud », PHASE 3 point 3 — ordre de Nico, corrigé à 21:44) LE CLOUD SE VEND EN
 // FRANCE SEULEMENT : un vendeur étranger ne passe jamais par une IP française (anti-robot, restriction de compte,
 // redirections de site selon l'IP). Un pays s'ouvrira après une preuve réelle avec une IP DE CE PAYS (IPRoyal par pays,
 // même plafond d'achat) : il s'ajoute alors à PAYS_CLOUD_OUVERTS. Le pays se lit sur le téléphone (fuseau horaire, comme

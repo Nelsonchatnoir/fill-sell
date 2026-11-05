@@ -10,7 +10,7 @@ Textes SAISIS dans App Store Connect (version 2.9, non soumise) le 05/11 au soir
 - EN : vu hors de France, il ne promet ni Leboncoin ni Beebs ni le Cloud ailleurs qu'en France (phase 3 : une
   plateforme absente d'un pays y est masquée) — ⚠ la liste EN des plateformes se relit à la FIN de la phase 3, selon
   les plateformes PROUVÉES par pays (Vinted aux États-Unis, notamment, à vérifier sur les vraies pages).
-Nom (décision de Nico, 05/11 21:37) : « FillSell – Crosslisting » en FR et en EN ; sous-titres gardés (FR « Assistant IA
+Nom (décision de Nico, 05/11 21:33) : « FillSell – Crosslisting » en FR et en EN ; sous-titres gardés (FR « Assistant IA
 pour revendeurs », EN « AI Inventory & Profit ») ; mots-clés FR « cross-post,cross-listing,multi-plateformes,revente,
 annonces », EN « crosslist,cross-post,reseller,multi-platform,listing,resale » (aucun nom de plateforme ni de marque).
 

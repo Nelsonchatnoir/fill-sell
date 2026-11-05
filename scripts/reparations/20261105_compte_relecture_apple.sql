@@ -1,8 +1,8 @@
--- (05/11 soir, lot « Ouverture du Cloud », décision g précisée par Nico à 22:55 : « Deux comptes, Cloud jamais offert »)
+-- (05/11 soir, lot « Ouverture du Cloud », décision g précisée par Nico à 22:05 : « Deux comptes, Cloud jamais offert »)
 -- LE COMPTE DE RELECTURE APPLE : test@fillsell.app (d6a9e726-b6f1-4b7f-a927-2487668d6d96, créé le 16/04, déjà saisi
 -- dans App Store Connect — rien à ressaisir chez Apple). Google garde googlereview@fillsell.app
 -- (scripts/reparations/20261105_compte_demo_relecteurs.sql) : le relecteur Google ne peut ni acheter ni prendre d'essai.
--- Relu le 05/11 à 22:56 (lecture seule) : Premium offert (is_premium, is_comped), beta_flags {}, Cloud jamais pris, 60
+-- Relu le 05/11 à 22:06 (lecture seule) : Premium offert (is_premium, is_comped), beta_flags {}, Cloud jamais pris, 60
 -- articles (14 en stock, 46 vendus, AUCUNE photo), 0 job, aucun poste ni IP Cloud.
 -- Ce que fait le script (rien d'autre) :
 --   1. sauvegarde : public._backup_0511_compte_relecture_apple (beta_flags d'avant ; les identifiants des articles ajoutés) ;

@@ -184,8 +184,8 @@ déduit d'une mémoire. Reprise : `docs/reprise/REPRISE-OUVERTURE-CLOUD-PHASE1.m
   À compléter en phase 2 : tailles exactes iPhone Duo et iPad (sections repliées), durée et format des aperçus vidéo
   (aide Apple liée depuis la page).
 
-## Phase 2 — nom, textes, EULA, confidentialité (05/11 21:45-22:30)
-- Nom (décision de Nico, 21:37) SAISI dans App Store Connect, FR et EN : « FillSell – Crosslisting » (Informations sur
+## Phase 2 — nom, textes, EULA, confidentialité (05/11 21:45-22:10)
+- Nom (décision de Nico, 21:33) SAISI dans App Store Connect, FR et EN : « FillSell – Crosslisting » (Informations sur
   l'app, « Modifiée » : part avec la 2.9) ; sous-titres gardés. Mots-clés de la 2.9 : EN
   `crosslist,cross-post,reseller,multi-platform,listing,resale` (avant : …vinted,ebay,ai), FR
   `cross-post,cross-listing,multi-plateformes,revente,annonces` (avant : …vinted,leboncoin,ebay,ia).

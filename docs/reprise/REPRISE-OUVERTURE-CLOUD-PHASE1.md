@@ -3,7 +3,7 @@
 Le détail, point par point, avec les preuves : `docs/enquetes/ouverture-cloud-0511/RAPPORT.md`. Ce fichier dit OÙ on en
 est, ce qui attend Nico, et comment reprendre. Heures de Paris.
 
-## ⛔ ORDRE DES PHASES — ordre de Nico du 05/11 à 21:42 (à relire à CHAQUE reprise)
+## ⛔ ORDRE DES PHASES — ordre de Nico du 05/11 à 21:41 (à relire à CHAQUE reprise)
 - Phase 1 : inchangée.
 - Phase 2 : inchangée, SAUF les captures, le binaire 2.9 et la soumission, DÉPLACÉS à la fin de la phase 3. Restent en
   phase 2 : textes FR/EN, EULA, confidentialité, déclarations de données (et le compte de démo, les notes des relecteurs).
@@ -13,7 +13,7 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
   constante : rien de cassé en France, zéro régression, recherches sur les VRAIES pages, et s'arrêter pour le dire dès
   qu'on bloque.
 
-### PHASE 3 — pays anglophones (texte de Nico, 05/11 21:42)
+### PHASE 3 — pays anglophones (texte de Nico, 05/11 21:41)
 1. **Traduction anglaise : absolument tout.**
    - Inventaire d'abord : tous les textes de l'app non traduits (clés manquantes et textes codés en dur, il en restait
      ~548 fin septembre), plus les mails, les notifications push, les messages d'erreur, les écrans de paiement et
@@ -30,7 +30,7 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
      Règle eBay déjà validée : le site eBay du compte du vendeur, jamais ebay.fr pour un étranger.
    - GARDE-FOU : une plateforme non prouvée dans un pays reste MASQUÉE, jamais proposée cassée. Dire à Nico lesquelles
      sont prouvées et lesquelles restent fermées.
-3. **Cloud hors de France** (CORRECTION de Nico, 05/11 21:53 — remplace l'ancien point 3 « hors zone euro ») :
+3. **Cloud hors de France** (CORRECTION de Nico, 05/11 21:44 — remplace l'ancien point 3 « hors zone euro ») :
    À l'ouverture, Cloud proposé seulement en FRANCE, pas dans toute la zone euro. Un vendeur étranger ne doit jamais
    passer par une IP française (risque anti-robot et restriction de compte, redirections de site selon l'IP). Préparer
    l'ouverture pays par pays avec une IP DU PAYS DU VENDEUR (IPRoyal par pays), chaque pays ouvert seulement après une
@@ -50,24 +50,24 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
   annonce hors ligne par plateforme » et « retenue levée trop tôt » corrigés (1a20f0e) — ⚠ get-pending-jobs de `main`
   les porte, avec le point 13 : le prochain déploiement de get-pending-jobs, par n'importe quel terminal, les publie.
   Fonctions de paiement : prouvées, NON déployées → jour d'ouverture (`docs/reprise/JOUR-OUVERTURE-CLOUD.md`, décision j).
-- Compte de démo (décision g, précisée à 21:37) : googlereview@fillsell.app (953c1ca6) RÉUTILISÉ — 21:40 script
+- Compte de démo (décision g, précisée à 21:33) : googlereview@fillsell.app (953c1ca6) RÉUTILISÉ — 21:40 script
   `scripts/reparations/20261105_compte_demo_relecteurs.sql` (+ inverse ; sauvegarde `_backup_0511_compte_demo_relecteurs`) :
   témoin Cloud (beta_flags.cloud), offre ACHETABLE en bac à sable, rien offert, Premium intact, 7 articles de démo
   propres ; 21:41 ajouté à `COMPTES_AUTORISES` de cloud-2 (copie d'avant : `/srv/fillsell-cloud/.env.avant-demo-0511`),
   orchestrateur relancé, navigateur de Nico rouvert seul. Reste : le texte des notes des relecteurs (Nico y met le mot
   de passe).
-- Phase 2 : nom choisi par Nico à 21:37 = « FillSell – Crosslisting » (FR et EN, App Store et Google Play ; sous-titres
+- Phase 2 : nom choisi par Nico à 21:33 = « FillSell – Crosslisting » (FR et EN, App Store et Google Play ; sous-titres
   gardés : FR « Assistant IA pour revendeurs », EN inchangé) ; mots-clés Apple FR « cross-post, cross-listing,
   multi-plateformes, revente, annonces », EN « crosslist, cross-post, reseller, multi-platform, listing, resale » (aucun
   nom de plateforme ni de marque). Constat ASC : statut DSA « non-commerçant » déclaré pour l'app (à revoir par Nico).
-  FAIT (05/11 22:00-23:50) : ASC — nom FR/EN, mots-clés FR/EN, descriptions et nouveautés FR/EN (`docs/stores/fiche-2.9.md`),
+  FAIT (05/11 21:45-22:35) : ASC — nom FR/EN, mots-clés FR/EN, descriptions et nouveautés FR/EN (`docs/stores/fiche-2.9.md`),
   URL de confidentialité par langue, sortie MANUELLE ; Play — publication gérée ACTIVÉE, nom fr-FR et en-US, fiche
   anglaise sans promettre Leboncoin/Beebs hors de France ; écran d'achat : mentions d'abonnement + liens EULA / conditions
-  / confidentialité (a8f43e5) ; comptes de relecture : DEUX (décision de 22:55) — Apple `test@fillsell.app` (témoin
+  / confidentialité (a8f43e5) ; comptes de relecture : DEUX (décision de 22:05) — Apple `test@fillsell.app` (témoin
   achetable, 7 articles ajoutés, cloud-2), Google `googlereview@fillsell.app` (témoin, jamais offert, cloud-2) ; notes des
   relecteurs prêtes (`docs/stores/notes-relecteurs-2.9.md`) ; déclarations de données préparées
   (`docs/stores/donnees-2.9.md`, à saisir avec la soumission ; GTM chargé dans l'app native : à trancher).
-- Phase 3 (05/11 22:25 → ) : point 1 — inventaire (`scripts/i18n/inventaire-francais.mjs`, ~637 textes d'écran) ; lot 1
+- Phase 3 (05/11 21:55 → ) : point 1 — inventaire (`scripts/i18n/inventaire-francais.mjs`, ~637 textes d'écran) ; lot 1
   traduit (637eb7b : pages de paiement, compte, désinscription, retour eBay, conditions du Cloud en anglais pour
   information) ; lots 2-4 en cours (App/Stock/messagerie/entrée ; composants/publication/réglages ; utils) ; ⚠ les mails
   et les notifications suivent `profiles.lang`, qui vaut « fr » pour TOUS les comptes (la langue de l'app ne vit que
@@ -76,6 +76,9 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
   Leboncoin et Beebs masqués hors de France ; Vinted/eBay/Depop masqués tant que `<plateforme>_pays_<cc>` ≠ 1) — à câbler
   dans App (plateformesFermees) ; vraies pages lues : vinted.com (USD), vinted.co.uk, vinted.ie, Depop mondial, eBay
   partout ; AUCUNE plateforme prouvée hors de France (pas de compte de test dans ces pays).
+
+⚠ Heures : les messages de commit poussés entre 22:30 et 22:45 portent des heures SURESTIMÉES (« 23:20 », « 23:40 », « 23:50 »,
+« 00:00 », « 06/11 00:10 ») ; les vraies heures de Paris sont dans les docs (corrigées sur les horodatages du transcript).
 
 ## Règles du lot (rappel)
 - Corriger la règle, pas le cas ; selftests + au plus un essai réel par point ; commit + push à chaque point (code et

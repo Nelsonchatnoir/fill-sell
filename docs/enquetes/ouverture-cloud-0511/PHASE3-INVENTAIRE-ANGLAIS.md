@@ -1,4 +1,4 @@
-# Phase 3, point 1 — inventaire de ce qui n'est pas en anglais (05/11/2026, 22:25)
+# Phase 3, point 1 — inventaire de ce qui n'est pas en anglais (05/11/2026, 22:20)
 
 Outil : `node scripts/i18n/inventaire-francais.mjs [--json fichier]` — relit tout `src/` (490 fichiers, 135 726 lignes)
 avec un vrai analyseur JavaScript : chaque chaîne ou texte d'écran en français qui n'est gardé par AUCUNE langue (ni
@@ -35,7 +35,7 @@ parcours sur un téléphone réglé en anglais (ordre de Nico).
 4. Tableau et Statistiques (src/ecrans) ;
 5. pages restantes, conditions du Cloud (texte juridique : version anglaise « pour information », le français fait foi).
 
-## Point 3 — le Cloud ne se vend qu'en France (05/11 22:45, web au push ; app avec la 2.9)
+## Point 3 — le Cloud ne se vend qu'en France (05/11 22:25, web au push ; app avec la 2.9)
 - `src/config/cloudOffer.js` : `cloudOffreVendable(userId)` = témoin (Nico, comptes de relecture) OU (offre ouverte ET
   téléphone en France). Pays du téléphone = fuseau horaire (`Europe/Paris` ; Monaco, Belgique, Royaume-Uni, États-Unis… =
   pas la France ; inconnu = pas la France). `PAYS_CLOUD_OUVERTS = ['FR']` : un pays s'y ajoute après une preuve réelle
