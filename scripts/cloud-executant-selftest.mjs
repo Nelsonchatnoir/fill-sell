@@ -77,7 +77,7 @@ ok(PLATEFORMES_CLOUD.every((p) => contrainte.includes(`'${p}'::text`)) && contra
   ok(essai?.cause === 'arret_essai' && essai.depuis === '2026-11-01T21:57:24.000Z', 'arrêt de l’essai : la cause et l’heure');
   ok(executantArrete({ cloudVoie: true, executant: ex({ etat: 'eteint', arrete_le: new Date(T0 - 60_000).toISOString() }), maintenant: T0 }) === null, 'éteint depuis 1 min (redémarrage, changement d’IP) : rien');
   ok(executantArrete({ cloudVoie: true, executant: ex({ etat: 'eteint', arrete_le: new Date(T0 - 10 * 60_000).toISOString() }), maintenant: T0 })?.cause === 'eteint', 'éteint depuis 10 min : arrêté');
-  ok(executantArrete({ cloudVoie: true, executant: {}, maintenant: T0 })?.cause === 'jamais', 'jamais démarré : dit');
+  ok(executantArrete({ cloudVoie: true, executant: {}, maintenant: T0 })?.cause === 'demarrage', '(05/11 soir, point 5) poste pas encore créé (juste après le paiement) : « démarre », jamais « arrêté »');
   // Les mots (textesConnexion importe le palier sans extension : relus en texte, comme le reste de ce fichier).
   const tx = lire('src/cloud/textesConnexion.js');
   ok(tx.split('executantArreteTitre: (depuis) =>').length === 3 && tx.split('executantArreteTexte: (cause) =>').length === 3, 'fr et en : titre avec l’heure, texte de la cause');

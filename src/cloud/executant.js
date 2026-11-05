@@ -57,12 +57,14 @@ export const MUET_MS = 25 * 60_000;
 export const ETEINT_MS = 5 * 60_000;
 /**
  * L'exécutant Cloud est-il arrêté ? (pur) — seulement quand le Cloud exécute les tâches du compte (cloud_voie).
- * Rend null (il tourne, ou rien à dire) ou { depuis: iso|null, cause: 'arret_essai'|'muet'|'eteint'|'jamais' }.
+ * Rend null (il tourne, ou rien à dire) ou { depuis: iso|null, cause: 'arret_essai'|'muet'|'eteint'|'demarrage' }.
  */
 export function executantArrete({ cloudVoie, executant, maintenant = Date.now() }) {
   if (cloudVoie !== true || !executant || typeof executant !== 'object') return null;
   const po = executant.poste ?? null;
-  if (!po?.etat) return { depuis: null, cause: 'jamais' };
+  // (05/11 soir, lot « Ouverture du Cloud », point 5) Juste après le paiement, le poste n'existe pas encore (machine, IP et
+  // navigateur se préparent, ~2 min au pire) : c'est un DÉMARRAGE, jamais « FillSell Cloud est arrêté ».
+  if (!po?.etat) return { depuis: null, cause: 'demarrage' };
   const t = (iso) => { const x = Date.parse(String(iso ?? '')); return Number.isFinite(x) ? x : null; };
   if (po.etat === 'actif' || po.etat === 'demarrage') {
     const vu = t(po.derniere_activite) ?? t(po.maj_le);

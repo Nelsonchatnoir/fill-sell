@@ -393,6 +393,7 @@
     "selftest:retrait-vendu-jamais-silencieux": "node scripts/retrait-vendu-jamais-silencieux-selftest.mjs",
     "selftest:droits-canaux": "node scripts/droits-canaux-selftest.mjs",
     "selftest:cloud-executant": "node scripts/cloud-executant-selftest.mjs",
+    "selftest:paiements-non-regression": "node scripts/paiements-non-regression-selftest.mjs",
     "selftest:succes-achat": "node scripts/succes-achat-selftest.mjs",
     "selftest:cloud-voie": "node scripts/cloud-voie-selftest.mjs",
     "selftest:cloud-me-connecter": "node scripts/cloud-me-connecter-selftest.mjs",

@@ -45,6 +45,18 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
         supabase.rpc('cloud_executant_moi'),
       ]);
       const a = errExec ? null : executantArrete({ cloudVoie: p?.cloud_voie === true, executant });
+      // (05/11 soir, point 5) Le démarrage : depuis quand il est vu sur cet appareil (au-delà de 10 min : « plus long que
+      // prévu, l'équipe est prévenue »). Une commodité locale : illisible ou effacé, on repart de maintenant.
+      let long = false;
+      try {
+        const cle = `fs_cloud_demarrage_vu_${userId}`;
+        if (a?.cause === 'demarrage') {
+          const vu = Number(localStorage.getItem(cle)) || Date.now();
+          localStorage.setItem(cle, String(vu));
+          long = Date.now() - vu > 10 * 60_000;
+        } else localStorage.removeItem(cle);
+      } catch { /* mode privé */ }
+      if (a) a.long = long;
       // L'heure se met en mots à la LECTURE (jamais pendant le rendu).
       setArret(a ? { ...a, depuisTexte: a.depuis ? quandParis(a.depuis, Date.now(), lang) : null } : null);
       const fermees = fermeesCle ? fermeesCle.split(',') : [];
@@ -77,6 +89,18 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
   }
   if (ouvert || masque || (!aRefaire.length && !arret && !verifs.length)) return null;
   const noms = aRefaire.map((p) => p.nom);
+  if (arret?.cause === 'demarrage') {
+    return (
+      <div role="status" aria-live="polite" data-cloud-demarrage={arret.long ? 'long' : ''} style={{
+        position: 'fixed', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom) + 84px)', zIndex: 1050,
+        maxWidth: 540, margin: '0 auto', padding: '12px 14px', borderRadius: 14, background: BLANC,
+        border: `1px solid ${C.teal}`, boxShadow: '0 6px 24px rgba(16,32,27,.14)', fontFamily: POLICE,
+      }}>
+        <div style={{ fontWeight: 700, color: C.ink, fontSize: 14.5 }}>{T.executantDemarreTitre}</div>
+        <div style={{ fontSize: 13, color: C.mute2, marginTop: 4, lineHeight: 1.4 }}>{T.executantDemarreTexte(arret.long)}</div>
+      </div>
+    );
+  }
   if (arret) {
     return (
       <div role="status" aria-live="polite" data-cloud-executant-arrete="" style={{

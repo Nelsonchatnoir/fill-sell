@@ -33,6 +33,11 @@ const FR = {
   bandeauTexte: (noms) => { const l = listeNoms(noms); return `Ouvre « Me reconnecter » : reconnecte-toi ou résous la vérification demandée. Tes tâches ${l.join(', ')} attendent : rien n'est publié ni retiré sur ${l.length > 1 ? 'ces plateformes' : 'cette plateforme'} en attendant.`; },
   // (01/11, 23:10, demande de Nico) L'exécutant Cloud arrêté : la personne le sait, avec l'heure.
   executantArreteTitre: (depuis) => (depuis ? `FillSell Cloud est arrêté (${depuis})` : 'FillSell Cloud est arrêté'),
+  // (05/11 soir, point 5) Juste après le paiement : le poste se prépare (jamais « arrêté »).
+  executantDemarreTitre: 'Ton FillSell Cloud démarre',
+  executantDemarreTexte: (long) => (long
+    ? "La préparation prend plus de temps que prévu : l'équipe FillSell est prévenue. Tes tâches attendent, rien n'est perdu."
+    : 'Ta machine, ton adresse IP et ton navigateur se préparent (en général moins de 2 minutes). Ensuite, connecte tes plateformes ici.'),
   executantArreteTexte: (cause) => `${cause === 'muet' ? 'Ton exécutant ne donne plus signe de vie.' : cause === 'arret_essai' ? "Ton exécutant s'est arrêté sur une vérification anti-robot." : 'Ton exécutant ne tourne plus.'} Tes tâches du Cloud attendent : rien n'est publié ni retiré tant qu'il ne repart pas.`,
   plusTard: 'Plus tard',
   // (02/11, demande de Nico) « Résoudre la vérification » : une vérification soluble à la main (glissière) dans le
@@ -100,6 +105,10 @@ const EN = {
   bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)} were disconnected from FillSell Cloud` : `${l[0] ?? 'A platform'} was disconnected from FillSell Cloud`; },
   bandeauTexte: (noms) => { const l = listeNoms(noms); return `Open "Sign in again": sign in or solve the check you're asked for. Your ${l.join(', ')} tasks are waiting: nothing is posted or removed on ${l.length > 1 ? 'these platforms' : 'this platform'} until then.`; },
   executantArreteTitre: (depuis) => (depuis ? `FillSell Cloud has stopped (${depuis})` : 'FillSell Cloud has stopped'),
+  executantDemarreTitre: 'Your FillSell Cloud is starting',
+  executantDemarreTexte: (long) => (long
+    ? 'Setup is taking longer than usual: the FillSell team has been alerted. Your tasks are waiting, nothing is lost.'
+    : 'Your machine, IP address and browser are being set up (usually under 2 minutes). Then connect your platforms here.'),
   executantArreteTexte: (cause) => `${cause === 'muet' ? 'Your runner has gone silent.' : cause === 'arret_essai' ? 'Your runner stopped on an anti-bot check.' : 'Your runner is no longer running.'} Your Cloud tasks are waiting: nothing is posted or removed until it starts again.`,
   plusTard: 'Later',
   resoudre: 'Solve the check',

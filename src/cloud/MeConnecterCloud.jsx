@@ -205,15 +205,18 @@ function EtatExecutant({ T, lang }) {
       if (error) { setE('echec'); return; }
       // (01/11, 23:10) Arrêté pour de vrai (éteint, arrêt de l'essai, muet depuis 25 min) : lu ICI, l'heure mise en mots ici.
       const a = executantArrete({ cloudVoie: true, executant: data ?? {} });
-      setE({ ...(data ?? {}), arretTexte: a ? T.executantArreteTitre(a.depuis ? quandParis(a.depuis, Date.now(), lang) : null) : null });
+      // (05/11 soir, point 5) Le poste se prépare (juste après le paiement) : « démarre », jamais « arrêté ».
+      const demarre = a?.cause === 'demarrage';
+      setE({ ...(data ?? {}), demarre, arretTexte: a && !demarre ? T.executantArreteTitre(a.depuis ? quandParis(a.depuis, Date.now(), lang) : null) : null });
     }, () => { if (!mort) setE('echec'); });
     return () => { mort = true; };
   }, [T, lang]);
   if (e === 'echec') return null;
   const brut = e ? phraseExecutant(e, { lang }) : null;
   // Arrêté pour de vrai : jamais « en pause, il repart dès qu'une tâche attend ».
-  const p = brut && e?.arretTexte ? { ...brut, etat: 'erreur', titre: e.arretTexte } : brut;
-  const couleur = p?.etat === 'en_marche' ? C.teal : p?.etat === 'erreur' ? C.amberInk : C.faint;
+  const p = e?.demarre ? { etat: 'demarrage', titre: T.executantDemarreTitre, detail: [T.executantDemarreTexte(false)] }
+    : brut && e?.arretTexte ? { ...brut, etat: 'erreur', titre: e.arretTexte } : brut;
+  const couleur = p?.etat === 'en_marche' || p?.etat === 'demarrage' ? C.teal : p?.etat === 'erreur' ? C.amberInk : C.faint;
   return (
     <section aria-live="polite" style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 14, background: BLANC, border: `1px solid ${C.border}` }}>
       <div style={{ fontWeight: 700, color: C.ink, fontSize: 15 }}>{T.executantTitre}</div>
