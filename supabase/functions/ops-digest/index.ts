@@ -8,6 +8,8 @@ import { anomaliesVentesProuvees, lignesVentesProuvees } from "../_shared/ventes
 import { sentinelleArrets } from "../_shared/cause-blocage.js";
 // (05/11, Nico — louis-seller / Amiral) Une file arrêtée alors que l'extension qui doit la faire est ouverte.
 import { ATTENTE_ALERTE_MS, PLATEFORMES_EXTENSION, executantsDeclares, filesArretees, ligneFileArretee } from "../_shared/attente-extension-active.js";
+// (05/11, R3) Les retraits non terminés > 24 h jugés : rouge (double vente possible), orange (geste attendu), blanc.
+import { classerRetraitsEnRetard, jugerRetraitEnRetard, numeroAnnonce, sujetAvecDoubleVente } from "../_shared/retraits-en-retard.js";
 
 // ops-digest — digest quotidien des anomalies cross_post_jobs, envoyé à
 // support@fillsell.app UNIQUEMENT s'il y a au moins une ligne (silence = sain).
@@ -81,6 +83,127 @@ function jobRow(j: Job, extra?: string): string {
   </li>`;
 }
 
+// ── (05/11, R3) LES RETRAITS NON TERMINÉS > 24 H, JUGÉS UN PAR UN ─────────────────────────────────────────────────
+// Le 05/11 : 34 lignes toutes « risque de double vente », dont 20 sans aucun risque et des postes muets depuis août
+// réécrits chaque jour — les 8 vrais risques noyés. Le juge (_shared/retraits-en-retard.js) lit ce qui existe déjà :
+// la fiche et ses ventes, le dépôt visé (arme_par.depot), les annonces relevées du MÊME numéro, le dernier instantané
+// Vinted, les profils (extension, pause Leboncoin, délégation). Lecture seule, lots bornés (100 à 200 par .in(), pages
+// de 1 000, 100 instantanés Vinted au plus), une fois par jour.
+type Classement = ReturnType<typeof classerRetraitsEnRetard>;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function classerRetraitsDuJour(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- le client typé sans schéma ne se passe pas en paramètre (TS2345)
+  supabase: any,
+  jobs: Array<Record<string, unknown>>,
+  maintenant: number,
+): Promise<Classement> {
+  const lots = <T>(arr: T[], n: number): T[][] => { const r: T[][] = []; for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n)); return r; };
+  const pfDe = (j: Record<string, unknown>) => ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+  const users = [...new Set(jobs.map((j) => String(j.user_id ?? "")).filter(Boolean))];
+  const invIds = [...new Set(jobs.map((j) => j.inventaire_id).filter((v) => v != null).map((v) => String(v)))];
+  const depots = [...new Set(jobs.map((j) => String(((pfDe(j).arme_par ?? {}) as Record<string, unknown>).depot ?? "")).filter((d) => UUID_RE.test(d)))];
+
+  // Les fiches et leurs ventes.
+  const fiches = new Map<string, Record<string, unknown>>();
+  const ventes = new Map<string, Array<Record<string, unknown>>>();
+  // Les comptes de chaque lot seulement (index user_id, inventaire_id ; adresse de requête bornée).
+  const usersDesFiches = (lot: string[]) => [...new Set(jobs.filter((j) => j.inventaire_id != null && lot.includes(String(j.inventaire_id))).map((j) => String(j.user_id)))];
+  for (const lot of lots(invIds, 100)) {
+    const { data, error } = await supabase.from("inventaire").select("id, statut, quantite, titre").in("id", lot);
+    if (error) throw new Error(`inventaire : ${error.message}`);
+    for (const f of (data ?? []) as Array<Record<string, unknown>>) fiches.set(String(f.id), f);
+    for (let page = 0; page < 5; page++) {
+      const { data: vs, error: ev } = await supabase.from("ventes").select("inventaire_id, vendu_le, created_at, plateforme")
+        .in("user_id", usersDesFiches(lot)).in("inventaire_id", lot).range(page * 1000, page * 1000 + 999);
+      if (ev) throw new Error(`ventes : ${ev.message}`);
+      for (const v of (vs ?? []) as Array<Record<string, unknown>>) {
+        const k = String(v.inventaire_id);
+        ventes.set(k, [...(ventes.get(k) ?? []), v]);
+      }
+      if (!vs || vs.length < 1000) break;
+    }
+  }
+  // Les dépôts visés : vu en ligne, sale_signal, pas encore visible (seules ces clés de platform_fields).
+  const sources = new Map<string, Record<string, unknown>>();
+  for (const lot of lots(depots, 200)) {
+    const { data, error } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, status, listing_url, platform_listing_id, vu_en_ligne_le, sale_signal:platform_fields->>sale_signal, "
+        + "unavailable_since:platform_fields->>unavailable_since, pas_encore_visible:platform_fields->pas_encore_visible")
+      .in("id", lot);
+    if (error) throw new Error(`dépôts : ${error.message}`);
+    for (const s of (data ?? []) as unknown as Array<Record<string, unknown>>) sources.set(String(s.id), s);
+  }
+  // Les annonces relevées du MÊME numéro (celui du retrait, et celui du dépôt) : index (user_id, platform, listing_id).
+  const numerosDe = (j: Record<string, unknown>): string[] => {
+    const s = sources.get(String(((pfDe(j).arme_par ?? {}) as Record<string, unknown>).depot ?? ""));
+    const ns = [numeroAnnonce(j)];
+    if (s && s.platform === j.platform) ns.push(numeroAnnonce(s));
+    return [...new Set(ns.filter((n): n is string => typeof n === "string" && n !== ""))];
+  };
+  const annonces = new Map<string, Array<Record<string, unknown>>>();
+  for (const lotU of lots(users, 100)) {
+    // Les numéros des seuls comptes du lot (adresse de requête bornée).
+    const numeros = [...new Set(jobs.filter((j) => lotU.includes(String(j.user_id))).flatMap(numerosDe))];
+    for (const lotN of lots(numeros, 100)) {
+      for (let page = 0; page < 5; page++) {
+        const { data, error } = await supabase.from("annonces_plateforme")
+          .select("user_id, platform, listing_id, statut_plateforme, vu_le, disparu_le, retiree_le")
+          .in("user_id", lotU).in("listing_id", lotN).range(page * 1000, page * 1000 + 999);
+        if (error) throw new Error(`annonces : ${error.message}`);
+        for (const a of (data ?? []) as Array<Record<string, unknown>>) {
+          const k = `${a.user_id}|${a.platform}|${a.listing_id}`;
+          annonces.set(k, [...(annonces.get(k) ?? []), a]);
+        }
+        if (!data || data.length < 1000) break;
+      }
+    }
+  }
+  // Le dernier instantané Vinted de chaque annonce Vinted visée (index user_id, vinted_item_id, captured_at desc).
+  const instantanes = new Map<string, Record<string, unknown>>();
+  const vinted = [...new Set(jobs.filter((j) => j.platform === "vinted").map((j) => `${j.user_id}|${numeroAnnonce(j) ?? ""}`)
+    .filter((k) => !k.endsWith("|")))].slice(0, 100);
+  for (const lot of lots(vinted, 10)) {
+    await Promise.all(lot.map(async (k) => {
+      const [u, item] = k.split("|");
+      const { data, error } = await supabase.from("vinted_listing_snapshots").select("status, captured_at")
+        .eq("user_id", u).eq("vinted_item_id", item).order("captured_at", { ascending: false }).limit(1);
+      if (error) throw new Error(`instantanés Vinted : ${error.message}`);
+      if (data && data[0]) instantanes.set(k, data[0] as Record<string, unknown>);
+    }));
+  }
+  // Les profils : propriétaires, puis exécutants des délégations Leboncoin.
+  const profils = new Map<string, Record<string, unknown>>();
+  const lireProfils = async (ids: string[]) => {
+    for (const lot of lots(ids, 200)) {
+      const { data, error } = await supabase.from("profiles")
+        .select("id, username, email, extension_last_seen_at, beta_flags, blocage_lbc:platform_settings->leboncoin->blocage_acces").in("id", lot);
+      if (error) throw new Error(`profils : ${error.message}`);
+      for (const p of (data ?? []) as Array<Record<string, unknown>>) {
+        const { blocage_lbc, ...reste } = p;
+        profils.set(String(p.id), { ...reste, platform_settings: { leboncoin: { blocage_acces: blocage_lbc ?? null } } });
+      }
+    }
+  };
+  await lireProfils(users);
+  await lireProfils(executantsDeclares(profils).filter((id: string) => !profils.has(id)));
+
+  const jugements = jobs.map((job) => {
+    const inv = job.inventaire_id != null ? String(job.inventaire_id) : null;
+    const source = sources.get(String(((pfDe(job).arme_par ?? {}) as Record<string, unknown>).depot ?? "")) ?? null;
+    return jugerRetraitEnRetard({
+      job,
+      fiche: inv ? fiches.get(inv) ?? null : null,
+      ventes: inv ? ventes.get(inv) ?? [] : [],
+      source,
+      annonces: numerosDe(job).flatMap((n) => annonces.get(`${job.user_id}|${job.platform}|${n}`) ?? []),
+      snapshotVinted: job.platform === "vinted" ? instantanes.get(`${job.user_id}|${numeroAnnonce(job) ?? ""}`) ?? null : null,
+      profils,
+      maintenant,
+    });
+  });
+  return classerRetraitsEnRetard(jugements, maintenant);
+}
+
 function section(title: string, jobs: Job[], extraFor?: (j: Job) => string): string {
   if (jobs.length === 0) return "";
   return `
@@ -147,13 +270,27 @@ serve(async (req) => {
   // 3. Deletes non terminés > 24 h (risque de double vente). (05/10) needs_user
   // compris : un retrait qui attend une reconnexion laisse l'annonce en ligne
   // (Joséphine, 8 retraits Opla) — il manquait ici.
+  // (05/11, R3) Chacun est JUGÉ (classerRetraitsDuJour) : rouge = article vendu dont l'annonce est vue en ligne à la
+  // vente ou après ; orange = geste attendu de la personne ; blanc = sans risque (une ligne par compte et motif).
   const { data: deletesOverdue, error: e3 } = await supabase
     .from("cross_post_jobs")
-    .select(JOB_COLUMNS)
+    .select(`${JOB_COLUMNS}, user_id, inventaire_id, platform_listing_id`)
     .eq("action", "delete")
     .in("status", ["pending", "processing", "needs_user", "failed"])
     .lt("created_at", iso24h)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .range(0, 999);
+  let retraits: Classement | null = null;
+  let retraitsIllisibles: string | null = null;
+  if (!e3) {
+    try {
+      retraits = await classerRetraitsDuJour(supabase, (deletesOverdue ?? []) as unknown as Array<Record<string, unknown>>, now);
+    } catch (e) {
+      // Jamais une panne du digest : la liste brute d'avant, avec la cause.
+      retraitsIllisibles = String((e as Error)?.message ?? e);
+      console.error("[ops-digest] classement des retraits illisible :", retraitsIllisibles);
+    }
+  }
 
   // 3 bis. (04/10, Nico) Boucles techniques ARRÊTÉES : un job qui a refait le
   // même échec (onglet muet, canal coupé) jusqu'au seuil sort de la boucle
@@ -1160,7 +1297,8 @@ serve(async (req) => {
     tentatives_en_cours: tentativesEnCours.length,
     failed_24h: (failed ?? []).length,
     stuck_processing: stuck.length,
-    delete_overdue: (deletesOverdue ?? []).length,
+    // (05/11, R3) Seuls le rouge et l'orange sont des anomalies ; le blanc (sans risque) ne fait jamais partir le digest.
+    delete_overdue: retraits ? retraits.rouges.length + retraits.oranges.length : (deletesOverdue ?? []).length,
     boucles_techniques: (boucles ?? []).length,
     beebs_unavailable_7d: beebsWatch.length,
     iap_alerts: iapAlerts.length,
@@ -1195,6 +1333,45 @@ serve(async (req) => {
     <p style="margin:0 0 12px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
       cross_post_jobs, relevé du ${new Date().toISOString()}
     </p>
+    ${
+    !retraits ? section(
+      `🔴 Retraits (delete) non terminés > 24 h — risque de double vente${retraitsIllisibles ? ` (classement illisible : ${retraitsIllisibles.slice(0, 120)})` : ""}`,
+      (deletesOverdue ?? []) as Job[],
+    ) : `
+    ${retraits.rouges.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
+      🔴 Double vente possible — retraits non terminés > 24 h d'articles vendus encore en ligne (${retraits.rouges.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Fiche « vendu », annonce vue en ligne après la vente ou au plus 48 h avant, et aucune preuve plus récente ne la dit
+      retirée : un acheteur peut la payer. À traiter le jour même (prévenir la personne, retirer l'annonce).
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${retraits.lignesRouges.map((a: string) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`}
+    ${retraits.oranges.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#92400E;">
+      🟠 Retraits non terminés > 24 h — geste attendu de la personne (${retraits.oranges.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Un mur nommé (connexion, pause Leboncoin, boutique Vinted, autorisation Depop…) que « À régler » lui montre ;
+      sans mur ni preuve récente en ligne, le retrait n'avance pas : à regarder chez nous.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${retraits.lignesOranges.map((a: string) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#92400E;">${esc(a)}</li>`).join("")}
+    </ul>`}
+    ${retraits.blancs.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#6B7280;">
+      ⚪ Retraits non terminés > 24 h sans risque de double vente (${retraits.blancs.length} retrait${retraits.blancs.length > 1 ? "s" : ""}, ${retraits.lignesBlanches.length} ligne${retraits.lignesBlanches.length > 1 ? "s" : ""})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Poste muet depuis plus de 30 jours (une ligne par compte), suppression sans vente, dépôt Beebs jamais en ligne,
+      annonce déjà indisponible, poste éteint. Pour mémoire : ils ne font jamais partir ce mail.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${retraits.lignesBlanches.map((a: string) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:12px;line-height:1.5;color:#6B7280;">${esc(a)}</li>`).join("")}
+    </ul>`}`
+  }
     ${
     filesArreteesLignes.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
@@ -1367,12 +1544,6 @@ serve(async (req) => {
         const b = (j.platform_fields?.boucle_technique ?? {}) as Record<string, unknown>;
         return `${esc(b.signature)} × ${esc(b.essais)} — build ${esc(b.build)} — depuis ${esc(b.depuis)}`;
       },
-    )
-  }
-    ${
-    section(
-      "🔴 Retraits (delete) non terminés > 24 h — risque de double vente",
-      (deletesOverdue ?? []) as Job[],
     )
   }
     ${
@@ -1565,13 +1736,17 @@ serve(async (req) => {
       "Content-Type": "application/json",
       Authorization: `Bearer ${resendKey}`,
     },
-    body: JSON.stringify({
+    // (05/11, R3) L'objet commence par « 🔴 Double vente possible : N » quand un retrait en retard est un risque réel
+    // (sujetAvecDoubleVente) ; le reste de l'objet est inchangé.
+    body: JSON.stringify(((mail: { from: string; to: string[]; subject: string; html: string }) => ({
+      ...mail, subject: sujetAvecDoubleVente(mail.subject, retraits?.rouges.length ?? 0),
+    }))({
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
       subject: `${filesArreteesLignes.length ? `🔴 Files arrêtées (extension ouverte) : ${filesArreteesLignes.length} — ` : ""}${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
-    }),
+    })),
   });
 
   if (!res.ok) {

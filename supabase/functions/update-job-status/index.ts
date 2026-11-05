@@ -2667,7 +2667,20 @@ serve(async (req) => {
         : "";
       const finBodyS = finBodyS0?.tab_url ? finBodyS0 : (urlRepriseS ? { ...(finBodyS0 ?? {}), tab_url: urlRepriseS } : finBodyS0);
       const peutEtreUnMur = !nommeUnChampS && estPageDeConnexionQuelconque(finBodyS?.tab_url);
-      if (parLeTexte || peutEtreUnMur) {
+      // ══════════════════════════════════════════════════════════════════
+      // TROISIÈME DÉCLENCHEUR : LE MUR LU DANS « MES ANNONCES » BEEBS PENDANT UN RETRAIT (05/11, R1)
+      // ══════════════════════════════════════════════════════════════════
+      // f3aec8cc (d8b07167, « Peignoir spiderman », Beebs 34042975, vendu le 31/10) : la lecture de « Mes annonces »
+      // faite pendant le retrait a été renvoyée vers beebs.app/fr/auth sur ses deux onglets (beebs.js nomme le mur :
+      // onglets[].mur = "connexion"), mais le rapport disait « Page de l'annonce sans bouton « Supprimer l'annonce »…
+      // nouvel essai… rien à faire » — ni le texte ni l'adresse de fin ne déclenchaient l'attente : 4 tentatives
+      // brûlées, la personne jamais prévenue, l'annonce relue EN LIGNE. Côté serveur, pour toutes les extensions
+      // installées : ce mur — lu par CE rapport, aucun onglet lu, aucune suppression envoyée
+      // (_shared/retraits-en-retard.js, murConnexionBeebsDeCeRapport) — entre dans le même chemin que les deux autres
+      // (preuve de session bonne → refus passager ; sinon attente de session, aucune tentative consommée, « En attente
+      // de ta connexion à Beebs… risque de double vente »). Un retrait Beebs seulement.
+      const murLectureBeebsS = nommeUnChampS ? null : murConnexionBeebsDeCeRapport(pfBodyS, brutVerdict);
+      if (parLeTexte || peutEtreUnMur || murLectureBeebsS) {
         try {
           const { data: jrow } = await userClient
             .from("cross_post_jobs")
@@ -2681,7 +2694,9 @@ serve(async (req) => {
           const finS = finBodyS ?? derniereFinDeJob(pfBaseS);
           const parLAdresse = !nommeUnChampS
             && estPageDeConnexionPlateforme(jrow?.platform, finS?.tab_url);
-          if (jrow?.platform && (parLeTexte || parLAdresse)) {
+          const parLaLecture = murLectureBeebsS != null && jrow?.platform === "beebs" && jrow?.action === "delete"
+            && !pfBaseS.beebs_suppression_envoyee;
+          if (jrow?.platform && (parLeTexte || parLAdresse || parLaLecture)) {
             const pfBase = pfBaseS;
             const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
               ? body.platform_fields : pfBase) as Record<string, unknown>;
@@ -2784,7 +2799,7 @@ serve(async (req) => {
                 motif: brutVerdict ? brutVerdict.slice(0, 300) : null,
                 // Ce qui a tranché : le texte du verdict, ou l'adresse de la
                 // page de fin. La distinction se relit en SQL.
-                reconnu_par: parLeTexte ? "texte du verdict" : "adresse de fin",
+                reconnu_par: parLeTexte ? "texte du verdict" : parLAdresse ? "adresse de fin" : "lecture de « Mes annonces » (mur de connexion)",
                 page_de_fin: parLAdresse ? String(finS?.tab_url ?? "").slice(0, 300) : null,
                 pose_par: "update-job-status (session morte = attente)",
               },
@@ -5654,3 +5669,4 @@ import { CHEMIN_BLOCAGE_LBC, signeBlocageLbc, blocagePose, clesARetirerAuBlocage
 import { adresseRefuseeAvantRetrait, publicationAvecLaMemeAdresse, messageAdresseChezNous, PUBLICATION_PREUVE_JOURS, prochaineAdresseLbc, messageAutreAdresseLbc, messageRueIntrouvableLbc } from "../_shared/lbc-voie-des-reglages.js";
 import { urlConditionsVintedRelevee, messageConditionsVinted } from "../_shared/vinted-conditions.js";
 import { retraitEngage } from "../_shared/retenue-creneau.js";
+import { murConnexionBeebsDeCeRapport } from "../_shared/retraits-en-retard.js";
