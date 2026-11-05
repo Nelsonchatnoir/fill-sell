@@ -51,8 +51,9 @@ Ce terminal est fermé. Tout ce qui reste est listé ici. L'état de prod détai
    sebastien64310 surtout), 20 titres différents mais photos identiques, 17 titres reformulés, 13 même titre à prix
    différent, 12 autres. Simulation corrigée le 05/11 soir (une annonce n'est vivante que si le dernier relevé l'a vue) :
    79 « à vérifier » restent. Rien n'y a été touché.
-3. **Juge Beebs sans numéro** : suivre la première tranche (22:42-22:44 le 05/11, puis chaque heure) — 49 fermetures
-   attendues ; le couper = `JUGER_BEEBS_SANS_NUMERO = false` + déployer handler-watch.
+3. **Juge Beebs sans numéro** : premier passage le 05/11 de 22:42:11 à 22:42:14 — 49 dépôts fermés « jamais mis en ligne »
+   sur les 6 comptes de la simulation (afeef3c7, b0cb8def, de63ca45, eacbe32c, f66531a7, f8aa02a5), comme prévu. Le couper =
+   `JUGER_BEEBS_SANS_NUMERO = false` + déployer handler-watch.
 4. **R3** : à rallumer seulement si le juge relit l'annonce (ou exige un relevé récent) avant de dire « rouge ».
 5. **Louis** : vérifier au matin du 06/11 que les 7 ventes en série sont prouvées et que les premières remises repartent.
 6. **6 mails à support@ encore dans le spam Gmail** (avant le filtre) : un vrai client du 15/10 (« Erreur compte synchro
