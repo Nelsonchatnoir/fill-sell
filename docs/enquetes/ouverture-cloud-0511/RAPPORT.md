@@ -22,7 +22,7 @@ déduit d'une mémoire. Reprise : `docs/reprise/REPRISE-OUVERTURE-CLOUD-PHASE1.m
   durée est bien 7 jours. Prix du forfait : **24,99 EUR dans les 23 pays euro lus**, France comprise.
   Capture : `C:\Users\nicol\AppData\Local\Temp\claude-chrome-screenshots-10nIs2\screenshot-1793902474793-23.jpg`.
 
-- **Apple (lu puis réglé dans App Store Connect, 20:15-20:25, Nico connecté)** : abonnement `app.fillsell.cloud.sub`
+- **Apple (lu puis réglé dans App Store Connect, 19:37-19:50, Nico connecté)** : abonnement `app.fillsell.cloud.sub`
   (Apple ID 6819067675, groupe « FillSell Cloud » 22440194, niveau 1, 1 mois, état « Finaliser avant soumission »).
   Trouvé : prix **20,00 €** dans les pays euro, **AUCUNE offre d'introduction** (« Offres d'introduction (0) » : l'essai
   d'une semaine rempli le 04/10 n'avait jamais été confirmé). Fait :
@@ -118,7 +118,27 @@ déduit d'une mémoire. Reprise : `docs/reprise/REPRISE-OUVERTURE-CLOUD-PHASE1.m
 - Preuves : tests de la vidange (tâche finie au 3e relevé → 10 s d'attente ; tâche qui ne finit pas → rendue au bout du
   délai avec alerte ; rien d'ouvert → rien attendu ; délai d'arrêt du conteneur au-dessus).
 
-## (Phase 2, point 19 — premières lectures, faites pendant la suite des selftests) Formats lus dans App Store Connect, 05/11 20:45
+## Point 10 — l'heure de chaque étape d'une republication (05/11 21:15 ; migration PRÉPARÉE, NON APPLIQUÉE)
+- Déjà fait par l'autre terminal (28eb107, 743f7f6, 05/11) : la position de la barre se lit en base — même chiffre sur la
+  carte du Stock, dans la file, la feuille ; posée dès l'affichage, jamais remise à zéro, jamais en recul. Rien retouché.
+- Manquait : l'HEURE de chaque étape. La base ne gardait que la dernière (processing_since repart à chaque essai ;
+  deleted_at et recreated_at viennent de l'horloge du poste ; rien ne disait quand la tâche avait été prise).
+- Règle (migration `20261105230000_journal_etapes_republication.sql`, inverse dans `supabase/rollbacks/`) : un
+  déclencheur BEFORE `zz_journal_etapes_republication` (nommé pour passer APRÈS les 25 déclencheurs BEFORE de la prod)
+  note dans `platform_fields.journal_etapes` chaque passage d'étape (`republish_step` ou statut) d'une republication, à
+  l'heure du SERVEUR, quel que soit l'écrivain (ordinateur, Cloud, fonctions, crons) ; 30 entrées au plus ; le journal
+  est tenu par la base (une copie ancienne ou un objet neuf écrits par un client ne l'effacent ni ne le réécrivent).
+- Affichage (web au push ; app avec le binaire 2.9) : dans « Ta file », sous la barre « En cours » et sur chaque ligne,
+  « En file 20:58 · Prise 21:01 · Copie faite 21:02 · Ancienne retirée 21:05 · De retour en ligne 21:11 » — heures
+  PASSÉES de Paris (depuisQuand), jamais promises. Sans journal (avant la migration), les horodatages déjà écrits
+  (created_at, captured_at, deleted_at, recreated_at / published_at) : les heures se voient dès ce push.
+- Preuves : `node scripts/preuve-journal-etapes-republication.mjs` — Postgres jetable avec les définitions de PROD de
+  reserver_jobs_extension, controler_job_extension, ecrire_statut_job_extension, prendre_job : 21/21 (prise ordinateur
+  et Cloud notées, battement sans entrée, journal forgé ignoré, objet neuf sans journal → historique gardé, état FINAL
+  noté après un autre déclencheur, borne 30, ordre des déclencheurs de prod, coût mesuré 8 µs par écriture, inverse) ;
+  `npm run selftest:heures-etapes-republication` (22). À appliquer sur feu vert NOMMÉ de Nico.
+
+## (Phase 2, point 19 — premières lectures, faites pendant la suite des selftests) Formats lus dans App Store Connect, 05/11 19:51
 - Fiche de la version 2.9 (ASC, « Gestionnaire des visuels », langue Anglais (États-Unis)) : OBLIGATOIRE = « iPhone avec
   Dynamic Island (écran moyen) », écrans 6,1 ou 6,3 pouces — captures **1179 × 2556 ou 1206 × 2622** (portrait ; ou le
   paysage), 10 au plus ; aperçus vidéo **886 × 1920** (ou 1920 × 886), 3 au plus. FACULTATIF : iPhone avec Dynamic

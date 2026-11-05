@@ -22,7 +22,7 @@
 // jamais sur la suite : un job qui n'a pas commencé ne remplit pas la barre.
 // ⛔ AFFICHAGE PUR : aucune logique de job ne change ici.
 
-import { situationJob, nomPlateforme, etapeRepublication, parNosServeurs, libelleAction, sansEstimation } from "./fileDesJobs.js";
+import { situationJob, nomPlateforme, etapeRepublication, parNosServeurs, libelleAction, sansEstimation, depuisQuand } from "./fileDesJobs.js";
 import { urlsPhotos } from "./photos.js";
 import { plagesDe, PLAFOND } from "./progression.js";
 // (02/11 soir, Nico) Compte Cloud : ses tâches sont faites par FillSell Cloud — les mots du Cloud, jamais « ton ordinateur ».
@@ -343,6 +343,68 @@ function pisteSansPosition(job, ctx = {}) {
   if (s.groupe === "en_pause") return { ...base, etape: step === "captured" ? "attente" : "file", etat: "pause", phrasePause: s.raison };
   const etape = step === "captured" ? "attente" : "file";
   return { ...base, etape, etat: "en_cours", depuis: depuisPlausible(job?.created_at, maintenant) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// L'HEURE DE CHAQUE ÉTAPE D'UNE REPUBLICATION (05/11 soir, lot « Ouverture du Cloud », point 10)
+// ═══════════════════════════════════════════════════════════════════════════
+// Des heures PASSÉES, jamais promises (règle du 15/10 : aucune heure annoncée). Source : le journal tenu par la base
+// (platform_fields.journal_etapes, déclencheur zz_journal_etapes_republication, horloge du serveur) — pour chaque étape,
+// le DERNIER passage dans cette étape (un nouvel essai depuis le début recommence l'histoire). Une republication d'avant
+// le journal retombe sur les horodatages déjà écrits (created_at, republish_snapshot.captured_at, deleted_at,
+// recreated_at / published_at) ; « Prise » n'existe qu'avec le journal (processing_since ne garde que le dernier essai).
+const ETAPES_HEURES = [
+  { cle: "file", fr: "En file", en: "Queued" },
+  { cle: "prise", fr: "Prise", en: "Started" },
+  { cle: "captured", fr: "Copie faite", en: "Copy saved" },
+  { cle: "deleted", fr: "Ancienne retirée", en: "Old one removed" },
+  { cle: "recreated", fr: "De retour en ligne", en: "Back online" },
+];
+const ORDRE_ETAPE = { a_capturer: 0, captured: 1, deleted: 2, recreated: 3 };
+
+/**
+ * Les heures des étapes franchies par une republication (pure) : [{ cle, libelle, le (ms), heure (« 21:04 », « hier
+ * 23:58 »…) }], dans l'ordre des étapes ; [] pour une publication ou un retrait.
+ */
+export function heuresEtapes(job, opts = {}) {
+  if (job?.action !== "republish") return [];
+  const lang = opts.lang === "en" ? "en" : "fr";
+  const maintenant = opts.maintenant ?? Date.now();
+  const pf = pfDe(job);
+  const step = etapeRepublication(job);
+  const t = {};
+  const journal = Array.isArray(pf.journal_etapes) ? pf.journal_etapes.filter((e) => e && typeof e === "object") : [];
+  if (journal.length) {
+    // Le dernier passage dans chaque étape ; une remise à « a_capturer » recommence l'histoire.
+    let avant = null;
+    for (const e of journal) {
+      const le = depuisPlausible(e.le, maintenant);
+      if (!Number.isFinite(le)) continue;
+      const etape = String(e.etape ?? "a_capturer");
+      if (etape !== avant) {
+        if (etape === "a_capturer") { delete t.prise; delete t.captured; delete t.deleted; delete t.recreated; t.file = le; }
+        else if (etape in ORDRE_ETAPE) t[etape] = le;
+      }
+      if (etape === "a_capturer" && e.statut === "processing" && !Number.isFinite(t.prise)) t.prise = le;
+      avant = etape;
+    }
+  }
+  t.file ??= depuisPlausible(job?.created_at, maintenant);
+  const ordre = ORDRE_ETAPE[step] ?? 0;
+  if (ordre >= 1) t.captured ??= depuisPlausible(pf.republish_snapshot?.captured_at, maintenant);
+  if (ordre >= 2) t.deleted ??= depuisPlausible(pf.deleted_at, maintenant);
+  if (ordre >= 3) t.recreated ??= depuisPlausible(pf.recreated_at, maintenant) ?? depuisPlausible(job?.published_at, maintenant);
+  // Une étape que la republication n'a pas (encore) atteinte n'a pas d'heure, même notée par un essai précédent.
+  for (const k of ["captured", "deleted", "recreated"]) if (ORDRE_ETAPE[k] > ordre) delete t[k];
+  return ETAPES_HEURES
+    .filter((e) => Number.isFinite(t[e.cle]))
+    .map((e) => ({ cle: e.cle, libelle: e[lang], le: t[e.cle], heure: depuisQuand(t[e.cle], maintenant, lang) }));
+}
+
+/** Une ligne lisible : « En file 20:58 · Prise 21:01 · Copie faite 21:02 » ; "" s'il n'y a rien à dire. */
+export function phraseHeuresEtapes(job, opts = {}) {
+  const h = heuresEtapes(job, opts);
+  return h.length >= 2 ? h.map((x) => `${x.libelle} ${x.heure}`).join(" · ") : "";
 }
 
 // Prix lisible quand la fiche en porte un (jamais « 0 € » pour un prix vide).

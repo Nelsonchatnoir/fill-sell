@@ -30,7 +30,7 @@ import BarreProgression from "./BarreProgression";
 import GalleryPhoto, { premierePhoto } from "./GalleryPhoto";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { lireFile, phraseCompteurs, libelleAction, libelleEtat } from "../utils/fileDesJobs";
-import { pisteJob, articleDeJob } from "../utils/barresJobs";
+import { pisteJob, articleDeJob, phraseHeuresEtapes } from "../utils/barresJobs";
 import { fraicheurExtension } from "../utils/shared";
 import { useOplaAcces } from "../utils/oplaAcces";
 import { MOTIFS } from "../utils/connexionPlateformes";
@@ -166,7 +166,20 @@ function useGlisserPourAnnuler(actif) {
   return { decalage, ouvert: decalage <= -PANNEAU_ANNULER, fermer: () => setDecalage(0), handlers, glisse };
 }
 
-function LigneFile({ job, item, situation, lang, geste, boutiques = null, boutiqueDefaut = null, supabase = null, annulable = false, onAnnuler = null }) {
+// (05/11 soir, lot « Ouverture du Cloud », point 10) L'heure de chaque étape franchie par une republication — passée,
+// jamais promise : « En file 20:58 · Prise 21:01 · Copie faite 21:02 » (utils/barresJobs.js, heuresEtapes).
+function HeuresEtapes({ job, lang, maintenant, style = null }) {
+  const phrase = phraseHeuresEtapes(job, { lang, maintenant });
+  if (!phrase) return null;
+  return (
+    <div data-heures-etapes="" style={{ display: "flex", alignItems: "flex-start", gap: 5, fontSize: 11.5, lineHeight: 1.45, color: T.faint, ...style }}>
+      <Clock size={12} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{phrase}</span>
+    </div>
+  );
+}
+
+function LigneFile({ job, item, situation, lang, geste, boutiques = null, boutiqueDefaut = null, supabase = null, annulable = false, onAnnuler = null, maintenant = null }) {
   const fr = lang !== "en";
   // (15/10 soir) Publication Vinted d'un compte à plusieurs boutiques : où elle part, et le changer.
   const prevue = boutiquePrevue(job, boutiques, boutiqueDefaut);
@@ -207,6 +220,7 @@ function LigneFile({ job, item, situation, lang, geste, boutiques = null, boutiq
           {Icone && <Icone size={13} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: 1.5 }} aria-hidden="true" />}
           <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{situation.raison}</span>
         </div>
+        <HeuresEtapes job={job} lang={lang} maintenant={maintenant ?? Date.now()} style={{ marginTop: 4 }} />
         {geste && <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>{geste}</div>}
         {confirmer && (
           <div role="group" aria-label={fr ? "Confirmer l'annulation" : "Confirm cancellation"}
@@ -397,6 +411,7 @@ export default function FileDesJobs({
                 article={articleDeJob(job, ficheDe(job), { lang, formaterPrix })}
                 {...pisteJob(job, ctx)}
               />
+              <HeuresEtapes job={job} lang={lang} maintenant={ctx.maintenant} style={{ marginTop: 8 }} />
             </div>
           ) : (
             <LigneFile
@@ -410,6 +425,7 @@ export default function FileDesJobs({
               supabase={supabase}
               annulable={Boolean(supabase && userId) && jobAnnulable(job)}
               onAnnuler={(j) => annuler([j])}
+              maintenant={ctx.maintenant}
               geste={s.cle !== "a_toi" ? null
                 : situation.motif === "opla" && userId
                   ? <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />

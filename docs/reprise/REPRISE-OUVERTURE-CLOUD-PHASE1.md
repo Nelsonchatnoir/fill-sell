@@ -14,7 +14,7 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
 - Une migration ne s'applique que sur un feu vert de Nico qui la NOMME (mémoire validation-migration-explicite).
 
 ## Accès (05/11 soir)
-- Play Console : connecté. App Store Connect : connecté par Nico à 20:10. Stripe : connecteur en mode RÉEL seulement,
+- Play Console : connecté. App Store Connect : connecté par Nico à 19:37. Stripe : connecteur en mode RÉEL seulement,
   tableau de bord NON connecté → le mode test est injoignable tant que Nico ne s'y connecte pas (ou ne pose pas
   `STRIPE_SECRET_KEY_TEST` / `STRIPE_WEBHOOK_SECRET_TEST` lui-même).
 
@@ -45,10 +45,10 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
    mesure des coupures (`etat/coupures-relais.jsonl`, une fois déployé).
 
 5. **Déploiement sur cloud-2 (points 9, 11, 12 + correctif « en vérification » 2a4b388)** : REFUSÉ par le garde-fou de la
-   session (« Production Deploy ») à 21:10 — il faut l'autorisation NOMMÉE de Nico (« déploie le serveur Cloud sur
+   session (« Production Deploy ») à 20:06 — il faut l'autorisation NOMMÉE de Nico (« déploie le serveur Cloud sur
    cloud-2 »). Prêt : copie Cloud construite `build/extension-cloud` (BUILD_ID 2026-11-05T19:04:26Z+d426d23.p92769f2-cloud,
    même base d426d23 que la copie en service), commande `bash serveur-cloud/outils/deployer.sh 5.9.80.213
-   cloud-2.fillsell.app` (arbre propre), à lancer quand aucune tâche n'est « processing » (relu à 21:05 : 0).
+   cloud-2.fillsell.app` (arbre propre), à lancer quand aucune tâche n'est « processing » (relu à 20:05 : 0).
 6. **Fonctions à déployer sur ordre** (rien déployé) : `get-pending-jobs` (point 13, petit) ; `stripe-webhook`,
    `apple-iap-webhook`, `google-play-webhook`, `validate-apple-receipt`, `validate-google-purchase` (règles boutiques,
    mail d'impayé) ; `create-checkout-session` (page de retour, garde du doublon) — ⚠ elle porte AUSSI les changements
