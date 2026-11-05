@@ -275,10 +275,20 @@ export function essaiCloudPermis(p, abonnementsStripe = [], prix = {}) {
     estAbonnementCloud(s, prix) && (s?.trial_start != null || s?.metadata?.essai_cloud === "1"));
 }
 
+// (05/11 soir, lot « Ouverture du Cloud », point 7 — serveur plein au paiement) La page de paiement Stripe du Cloud
+// EXPIRE avec la place gardée par la préparation (cloud_essai_preparer_moi : IP réservée 30 min,
+// cloud_param('reservation_min')) — Stripe garde sinon une session ouverte 24 h, payable longtemps après que la place est partie.
+// 31 min : le minimum de Stripe est 30 min après la création (marge d'horloge). Une session expirée se refait depuis
+// l'app, qui repasse par la préparation (place relue : « complet » → liste d'attente, rien demandé à la carte). Le reste
+// (paiement dans la dernière minute, achat Apple / Google après la réservation) : compte actif sans place → l'écran dit
+// « démarre » puis « plus long que prévu, l'équipe est prévenue », l'orchestrateur alerte (« Capacité atteinte »).
+export const EXPIRATION_CHECKOUT_CLOUD_S = 31 * 60;
+
 /** Les paramètres de la session Checkout de l'abonnement Cloud (carte obligatoire, essai 7 j si permis). */
-export function parametresCheckoutCloud({ prixCloud, essai, userId }) {
+export function parametresCheckoutCloud({ prixCloud, essai, userId, maintenant = Date.now() }) {
   const metadata = { option: "cloud", plan_type: "cloud", essai_cloud: essai ? "1" : "0", fillsell_user_id: userId ?? "" };
   return {
+    expires_at: Math.floor(maintenant / 1000) + EXPIRATION_CHECKOUT_CLOUD_S,
     mode: "subscription",
     line_items: [{ price: prixCloud, quantity: 1 }],
     payment_method_collection: "always",

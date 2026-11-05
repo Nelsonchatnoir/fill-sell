@@ -138,6 +138,24 @@ déduit d'une mémoire. Reprise : `docs/reprise/REPRISE-OUVERTURE-CLOUD-PHASE1.m
   noté après un autre déclencheur, borne 30, ordre des déclencheurs de prod, coût mesuré 8 µs par écriture, inverse) ;
   `npm run selftest:heures-etapes-republication` (22). À appliquer sur feu vert NOMMÉ de Nico.
 
+## Point 7 — serveur plein au moment du paiement (05/11 21:35 ; fonction de paiement NON déployée — jour d'ouverture)
+- Relu en prod (lecture seule) : la PRÉPARATION (`cloud_essai_preparer_moi`, appelée par l'app AVANT Stripe, l'App
+  Store ou Google Play) refuse « complet » quand il n'y a plus de place serveur (`cloud_vente_etat` : capacité des
+  serveurs vivants − comptes servis − places gardées), inscrit sur la liste d'attente, et sinon RÉSERVE une IP 30 min
+  (`cloud_param('reservation_min')`) qui compte comme place prise. Le trou : la page de paiement Stripe restait ouverte
+  24 h (défaut de Stripe) — payable longtemps après que la place était partie.
+- Correctif (`_shared/cloud-option.js`, `parametresCheckoutCloud`) : la session Checkout du Cloud EXPIRE 31 min après sa
+  création (minimum de Stripe : 30 min) ; une page expirée ne se paie plus, la personne repasse par l'app et la place est
+  relue. create-checkout-session n'a pas une ligne de plus (le paramètre vient du module partagé) : la non-régression
+  des paliers reste verte (12/12).
+- Le reste, déjà tenu : un paiement dans la dernière minute, ou un achat Apple / Google après la réservation, donne un
+  compte actif sans place → l'écran dit « Ton FillSell Cloud démarre » puis, après 10 min, « plus long que prévu,
+  l'équipe est prévenue » (63effea), et l'orchestrateur alerte (« Capacité atteinte : N compte(s) attendent un
+  navigateur », « compte(s) Cloud actif(s) SANS IP »), avec l'alerte « Places Cloud sous le seuil » de la flotte.
+- Preuves : `npm run selftest:option-cloud` (expiration à 31 min, bornes de Stripe) ; banc Stripe en mode test, parcours
+  5 (Stripe accepte les paramètres EXACTS de production, une page expirée n'a plus de lien de paiement) — à passer avec
+  la Stripe CLI autorisée.
+
 ## (Phase 2, point 19 — premières lectures, faites pendant la suite des selftests) Formats lus dans App Store Connect, 05/11 19:51
 - Fiche de la version 2.9 (ASC, « Gestionnaire des visuels », langue Anglais (États-Unis)) : OBLIGATOIRE = « iPhone avec
   Dynamic Island (écran moyen) », écrans 6,1 ou 6,3 pouces — captures **1179 × 2556 ou 1206 × 2622** (portrait ; ou le

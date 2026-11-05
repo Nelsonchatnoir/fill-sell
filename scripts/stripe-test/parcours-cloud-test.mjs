@@ -2,15 +2,18 @@
 // SANS RIEN DÉPLOYER : de vrais objets Stripe du MODE TEST (horloge de test pour avancer le temps, cartes de test par leurs
 // jetons pm_card_… — jamais un numéro de carte tapé), rejoués dans NOTRE code de décision, celui du webhook
 // (supabase/functions/_shared/cloud-option.js : drapeauxDepuisStripe → miseAJourProfilDepuisStripe → etatCloud) et du
-// mail d'impayé (_shared/paiement-echoue.js). Cinq parcours : essai de 7 jours, passage au payant, résiliation pendant
-// l'essai, paiement refusé, remboursement.
+// mail d'impayé (_shared/paiement-echoue.js). Six parcours : essai de 7 jours, passage au payant, résiliation pendant
+// l'essai, paiement refusé, remboursement, et (point 7) la page de paiement qui expire avec la place gardée.
 //
-//   STRIPE_TEST_KEY=sk_test_… node scripts/stripe-test/parcours-cloud-test.mjs
-//   (ou la clé seule dans le fichier .stripe-test.key à la racine — ignoré par git, posé par Nico lui-même)
+//   node scripts/stripe-test/parcours-cloud-test.mjs            (par la Stripe CLI appariée par « stripe login » : mode
+//                                                               TEST par défaut, jamais --live ; la clé ne passe pas ici)
+//   STRIPE_CLI=<chemin de stripe.exe> …                         (si la CLI n'est pas dans le PATH)
+//   STRIPE_TEST_KEY=sk_test_… …  ou le fichier .stripe-test.key (repli : une clé de TEST posée par Nico)
 //
-// ⛔ Refuse toute clé qui n'est pas une clé de TEST (sk_test_ / rk_test_) : jamais le mode réel. Rien n'est écrit en base
-// FillSell : les profils sont calculés en mémoire, comme le webhook les écrirait.
+// ⛔ Jamais le mode réel : une clé non « test » est refusée, la CLI n'est jamais lancée avec --live, et tout objet rendu
+// avec livemode = true arrête le banc. Rien n'est écrit en base FillSell : les profils sont calculés en mémoire.
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   ESSAI_CLOUD_JOURS, drapeauxDepuisStripe, miseAJourProfilDepuisStripe, etatCloud, parametresCheckoutCloud,
@@ -19,9 +22,15 @@ import { faitsEchec } from '../../supabase/functions/_shared/paiement-echoue.js'
 
 const RACINE = fileURLToPath(new URL('../../', import.meta.url));
 const cle = (process.env.STRIPE_TEST_KEY || (existsSync(`${RACINE}.stripe-test.key`) ? readFileSync(`${RACINE}.stripe-test.key`, 'utf8') : '')).trim();
-if (!/^(sk|rk)_test_[A-Za-z0-9]+$/.test(cle)) {
-  console.error('Clé de TEST Stripe absente ou refusée : STRIPE_TEST_KEY=sk_test_… ou le fichier .stripe-test.key (jamais une clé réelle).');
+const CLI = process.env.STRIPE_CLI || 'stripe';
+const viaCli = !cle;
+if (cle && !/^(sk|rk)_test_[A-Za-z0-9]+$/.test(cle)) {
+  console.error('Clé refusée : seule une clé de TEST (sk_test_ / rk_test_) est acceptée, jamais une clé réelle.');
   process.exit(2);
+}
+if (viaCli) {
+  const v = spawnSync(CLI, ['version'], { encoding: 'utf8' });
+  if (v.status !== 0) { console.error('Ni clé de TEST ni Stripe CLI utilisable (stripe login).'); process.exit(2); }
 }
 
 // ── Stripe, en formulaire (aucune dépendance) ──
@@ -33,6 +42,18 @@ const enForm = (o, pre = '') => Object.entries(o ?? {}).flatMap(([k, v]) => {
   return [[n, String(v)]];
 });
 async function stripe(methode, chemin, corps = null) {
+  if (viaCli) {
+    // La Stripe CLI : mode TEST par défaut (jamais --live) ; les paramètres en -d (requête pour un GET, corps sinon).
+    const [base, requete] = chemin.split('?');
+    const args = [methode.toLowerCase(), `/v1/${base}`];
+    for (const [k, v] of [...new URLSearchParams(requete ?? '').entries(), ...enForm(corps ?? {})]) args.push('-d', `${k}=${v}`);
+    const r = spawnSync(CLI, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    let j = null;
+    try { j = JSON.parse(r.stdout); } catch { throw new Error(`stripe ${args[0]} ${args[1]} → ${String(r.stderr || r.stdout).slice(0, 200)}`); }
+    if (j?.error) throw new Error(`${methode} ${chemin} → ${j.error.message ?? j.error.type}`);
+    if (j?.livemode === true) throw new Error('objet en mode RÉEL rendu : arrêt immédiat');
+    return j;
+  }
   const r = await fetch(`https://api.stripe.com/v1/${chemin}`, {
     method: methode,
     headers: { Authorization: `Bearer ${cle}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': '2026-03-25.dahlia' },
@@ -155,7 +176,20 @@ console.log('\n4. Paiement refusé à la fin de l’essai (carte de test pm_card
   ok(f.abonnement_actif === false && f.offre === 'cloud', 'le mail d’impayé ne dit pas « reste actif »');
 }
 
-const rapport = { le: new Date().toISOString(), prix_test: prix.id, controles: n, echecs: ko, journal };
+// 5. (point 7, serveur plein au paiement) La page de paiement du Cloud expire avec la place gardée : Stripe accepte les
+// paramètres EXACTS de production (expires_at à 31 min) et une page expirée ne se paie plus.
+console.log('\n5. Page de paiement Cloud : expire avec la place gardée (31 min), une page expirée ne se paie plus');
+{
+  const client = await stripe('POST', 'customers', { email: 'banc-cloud-page@exemple.invalid', metadata: { banc: 'parcours-cloud-test' } });
+  const base = parametresCheckoutCloud({ prixCloud: prix.id, essai: true, userId: 'banc-page' });
+  const s = await stripe('POST', 'checkout/sessions', { ...base, customer: client.id,
+    success_url: 'https://fillsell.app/success?produit=cloud&essai=1&session_id={CHECKOUT_SESSION_ID}', cancel_url: 'https://fillsell.app/cancel' });
+  ok(s.status === 'open' && s.expires_at === base.expires_at, `session ouverte, expiration acceptée par Stripe (${new Date(s.expires_at * 1000).toISOString()})`);
+  const e = await stripe('POST', `checkout/sessions/${s.id}/expire`);
+  ok(e.status === 'expired' && !e.url, 'expirée : plus de lien de paiement (la personne repasse par l’app et la place est relue)');
+}
+
+const rapport ={ le: new Date().toISOString(), prix_test: prix.id, controles: n, echecs: ko, journal };
 mkdirSync(`${RACINE}build`, { recursive: true });
 writeFileSync(`${RACINE}build/parcours-cloud-test.json`, JSON.stringify(rapport, null, 2));
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles. Rapport : build/parcours-cloud-test.json`);

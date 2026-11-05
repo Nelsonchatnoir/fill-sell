@@ -136,6 +136,12 @@ ok(essaiCloudPermis({}, [sub('p', 'canceled', ['price_std'], { trial_start: 1 })
   ok(sessionEstCloud({ metadata: p.metadata }) && !sessionEstCloud({ metadata: { plan_type: 'pro' } }), 'une session Cloud ne sert jamais une demande de palier');
   const q = parametresCheckoutCloud({ prixCloud: 'price_cloud', essai: false, userId: 'u1' });
   ok(!('trial_period_days' in q.subscription_data), 'essai déjà pris : payé tout de suite');
+  // (05/11 soir, point 7) La page de paiement expire avec la place gardée (31 min ; Stripe : entre 30 min et 24 h).
+  const t0 = Date.parse('2026-11-05T20:00:00Z');
+  const r = parametresCheckoutCloud({ prixCloud: 'price_cloud', essai: true, userId: 'u1', maintenant: t0 });
+  ok(r.expires_at === t0 / 1000 + 31 * 60, 'Checkout Cloud : expire 31 min après sa création (la place est gardée 30 min)');
+  ok(r.expires_at - t0 / 1000 >= 30 * 60 && r.expires_at - t0 / 1000 <= 24 * 3600, 'dans les bornes de Stripe (30 min à 24 h)');
+  ok(Math.abs(parametresCheckoutCloud({ prixCloud: 'p', essai: false, userId: 'u' }).expires_at - (Math.floor(Date.now() / 1000) + 31 * 60)) <= 2, 'sans horloge donnée : maintenant');
 }
 
 console.log('4. Apple — app.fillsell.cloud.sub');
