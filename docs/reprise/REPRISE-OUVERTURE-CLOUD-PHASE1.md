@@ -3,6 +3,62 @@
 Le détail, point par point, avec les preuves : `docs/enquetes/ouverture-cloud-0511/RAPPORT.md`. Ce fichier dit OÙ on en
 est, ce qui attend Nico, et comment reprendre. Heures de Paris.
 
+## ⛔ ORDRE DES PHASES — ordre de Nico du 05/11 à 21:42 (à relire à CHAQUE reprise)
+- Phase 1 : inchangée.
+- Phase 2 : inchangée, SAUF les captures, le binaire 2.9 et la soumission, DÉPLACÉS à la fin de la phase 3. Restent en
+  phase 2 : textes FR/EN, EULA, confidentialité, déclarations de données (et le compte de démo, les notes des relecteurs).
+- Phase 3 « pays anglophones » (ci-dessous), PUIS captures pro, binaire 2.9 par Codemagic et soumission (sortie MANUELLE
+  chez Apple et Google, comme prévu).
+- Contexte (Nico) : la fiche anglaise part avec la 2.9, et un utilisateur a déjà payé en dollars le 23/10. Règle
+  constante : rien de cassé en France, zéro régression, recherches sur les VRAIES pages, et s'arrêter pour le dire dès
+  qu'on bloque.
+
+### PHASE 3 — pays anglophones (texte de Nico, 05/11 21:42)
+1. **Traduction anglaise : absolument tout.**
+   - Inventaire d'abord : tous les textes de l'app non traduits (clés manquantes et textes codés en dur, il en restait
+     ~548 fin septembre), plus les mails, les notifications push, les messages d'erreur, les écrans de paiement et
+     d'attente du Cloud, et les textes rédigés par Lens.
+   - Puis traduction complète. Preuve : parcours entier sur un téléphone réglé en anglais, de l'inscription jusqu'au
+     paiement, sans un seul mot de français.
+2. **Plateformes par pays** (ce qu'un pays n'a pas est MASQUÉ, pas seulement refusé).
+   - France : inchangé.
+   - États-Unis : Vinted (site américain, s'il existe et fonctionne : à vérifier sur les vraies pages), eBay.com, Depop
+     (version US). Leboncoin et Beebs masqués.
+   - Royaume-Uni : Vinted UK, eBay.co.uk, Depop. Leboncoin et Beebs masqués.
+   - Autres pays anglophones : même logique selon ce qui existe vraiment chez eux.
+   - Pays lu sur le compte connecté ou le téléphone, comme pour la zone euro (interrupteur par pays dans coin_config).
+     Règle eBay déjà validée : le site eBay du compte du vendeur, jamais ebay.fr pour un étranger.
+   - GARDE-FOU : une plateforme non prouvée dans un pays reste MASQUÉE, jamais proposée cassée. Dire à Nico lesquelles
+     sont prouvées et lesquelles restent fermées.
+3. **Cloud hors zone euro** : à l'ouverture, Cloud proposé seulement dans la zone euro (prix 24,99 €, IP du relais
+   pensées pour l'Europe). Ailleurs, l'offre Cloud n'est pas affichée.
+4. **Priorités** : 1 et 3 sont nécessaires AVANT le binaire. Pour 2, ce qui passe par le serveur peut suivre sans
+   retarder la soumission ; ce qui doit être dans le binaire y entre. Si 2 retarde la 2.9 de plus d'un jour : s'arrêter et
+   le dire avant de continuer. Rapport court et en clair : traduit / masqué / prouvé / reste.
+
+## Où on en est (05/11 21:45 — remplace le tableau plus bas, daté de 21:15)
+- Phase 1 : déployé sur cloud-2 (61fb7dd : points 9, 11, 12, IP de secours allumée, alerte 80 % du plafond d'IP) ;
+  Stripe réel : prix Cloud 24,99 € `price_1UYWNmQZRA77vrWJZIWshl1B` (secret rebranché, ancien prix archivé) ; banc Stripe
+  en MODE TEST 19/19 vert (21:27, CLI autorisée par Nico) ; écran d'attente après paiement (63effea, web) ; point 7
+  serveur plein (e1428de : page Stripe expirée à 31 min) ; point 10 heures des étapes (848ce11 : affichage web, migration
+  20261105230000 PRÉPARÉE, NON APPLIQUÉE — feu vert nommé) ; point 13 preuve de concurrence verte ; point 15 « une seule
+  annonce hors ligne par plateforme » et « retenue levée trop tôt » corrigés (1a20f0e) — ⚠ get-pending-jobs de `main`
+  les porte, avec le point 13 : le prochain déploiement de get-pending-jobs, par n'importe quel terminal, les publie.
+  Fonctions de paiement : prouvées, NON déployées → jour d'ouverture (`docs/reprise/JOUR-OUVERTURE-CLOUD.md`, décision j).
+- Compte de démo (décision g, précisée à 21:37) : googlereview@fillsell.app (953c1ca6) RÉUTILISÉ — 21:40 script
+  `scripts/reparations/20261105_compte_demo_relecteurs.sql` (+ inverse ; sauvegarde `_backup_0511_compte_demo_relecteurs`) :
+  témoin Cloud (beta_flags.cloud), offre ACHETABLE en bac à sable, rien offert, Premium intact, 7 articles de démo
+  propres ; 21:41 ajouté à `COMPTES_AUTORISES` de cloud-2 (copie d'avant : `/srv/fillsell-cloud/.env.avant-demo-0511`),
+  orchestrateur relancé, navigateur de Nico rouvert seul. Reste : le texte des notes des relecteurs (Nico y met le mot
+  de passe).
+- Phase 2 : nom choisi par Nico à 21:37 = « FillSell – Crosslisting » (FR et EN, App Store et Google Play ; sous-titres
+  gardés : FR « Assistant IA pour revendeurs », EN inchangé) ; mots-clés Apple FR « cross-post, cross-listing,
+  multi-plateformes, revente, annonces », EN « crosslist, cross-post, reseller, multi-platform, listing, resale » (aucun
+  nom de plateforme ni de marque). À faire : saisie des noms et mots-clés, textes FR/EN, EULA et confidentialité (liens
+  en fin de description et dans les champs dédiés ; écran d'achat conforme Apple), déclarations de données, notes des
+  relecteurs, localisation de l'abonnement Cloud. Constat ASC : statut DSA « non-commerçant » déclaré pour l'app (à
+  revoir par Nico : abonnements payants).
+
 ## Règles du lot (rappel)
 - Corriger la règle, pas le cas ; selftests + au plus un essai réel par point ; commit + push à chaque point (code et
   docs ensemble ; `git commit --only <fichiers>` — un autre terminal, « Problèmes » = fill-and-sell-44, travaille dans le
