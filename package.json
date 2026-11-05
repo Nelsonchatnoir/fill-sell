@@ -114,6 +114,7 @@
     "selftest:mentions-abonnement": "node scripts/mentions-abonnement-selftest.mjs",
     "selftest:cloud-pays": "node scripts/cloud-pays-selftest.mjs",
     "selftest:pages-anglais": "node scripts/pages-anglais-selftest.mjs",
+    "selftest:plateformes-pays": "node scripts/plateformes-pays-selftest.mjs",
     "selftest:releve-veille-miroir": "node scripts/releve-veille-miroir-selftest.mjs",
     "selftest:attente-extension-active": "node scripts/attente-extension-active-selftest.mjs",
     "selftest:caracteres-invisibles": "node scripts/caracteres-invisibles-selftest.mjs",
