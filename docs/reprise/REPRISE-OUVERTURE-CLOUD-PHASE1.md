@@ -30,8 +30,13 @@ est, ce qui attend Nico, et comment reprendre. Heures de Paris.
      Règle eBay déjà validée : le site eBay du compte du vendeur, jamais ebay.fr pour un étranger.
    - GARDE-FOU : une plateforme non prouvée dans un pays reste MASQUÉE, jamais proposée cassée. Dire à Nico lesquelles
      sont prouvées et lesquelles restent fermées.
-3. **Cloud hors zone euro** : à l'ouverture, Cloud proposé seulement dans la zone euro (prix 24,99 €, IP du relais
-   pensées pour l'Europe). Ailleurs, l'offre Cloud n'est pas affichée.
+3. **Cloud hors de France** (CORRECTION de Nico, 05/11 21:53 — remplace l'ancien point 3 « hors zone euro ») :
+   À l'ouverture, Cloud proposé seulement en FRANCE, pas dans toute la zone euro. Un vendeur étranger ne doit jamais
+   passer par une IP française (risque anti-robot et restriction de compte, redirections de site selon l'IP). Préparer
+   l'ouverture pays par pays avec une IP DU PAYS DU VENDEUR (IPRoyal par pays), chaque pays ouvert seulement après une
+   preuve réelle, dans le même plafond d'achat d'IP (100 $/mois, alerte à 80 %). Hors France, l'offre Cloud n'est pas
+   affichée pour l'instant. Les prix déjà enregistrés dans les stores pour les pays euro restent tels quels : on masque
+   seulement l'offre dans l'app hors de France.
 4. **Priorités** : 1 et 3 sont nécessaires AVANT le binaire. Pour 2, ce qui passe par le serveur peut suivre sans
    retarder la soumission ; ce qui doit être dans le binaire y entre. Si 2 retarde la 2.9 de plus d'un jour : s'arrêter et
    le dire avant de continuer. Rapport court et en clair : traduit / masqué / prouvé / reste.
