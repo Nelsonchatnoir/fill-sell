@@ -9,6 +9,7 @@
 // (la clé RESEND_API_KEY des fonctions) — jamais vers support@, qui passerait par le transfert en panne.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+import { decoderMotsMime } from "../_shared/mime-mots.js";
 
 const ALERTE_DIRECTE = "nicolas.svobodny@gmail.com";
 const MAX_CORPS = 120_000;            // octets du corps JSON (l'extrait est borné à 20 000 caractères par le Worker)
@@ -51,7 +52,8 @@ serve(async (req) => {
     const { count } = await admin.from("support_mails").select("id", { count: "exact", head: true }).gte("recu_le", depuis);
     if ((count ?? 0) >= MAX_PAR_HEURE) return json({ error: "trop de mails cette heure" }, 429);
     const { data, error } = await admin.from("support_mails").insert({
-      de: texte(b.de, 500), enveloppe_de: texte(b.enveloppe_de, 500), a, sujet: texte(b.sujet, 500),
+      // (05/11 soir) Le sujet et l'expéditeur arrivent tels que dans l'en-tête (« =?UTF-8?Q?…?= ») : décodés avant l'archive.
+      de: texte(decoderMotsMime(b.de), 500), enveloppe_de: texte(b.enveloppe_de, 500), a, sujet: texte(decoderMotsMime(b.sujet), 500),
       message_id: texte(b.message_id, 500), taille: Number.isFinite(Number(b.taille)) ? Math.trunc(Number(b.taille)) : null,
       extrait: texte(b.extrait, 20_000), transfert: "en_cours",
     }).select("id").single();
@@ -74,7 +76,7 @@ serve(async (req) => {
     }
     let alerte = false;
     if (!ok && (note || !(id > 0))) {
-      alerte = await alerter(`🔴 support@ : transfert ÉCHOUÉ — ${String(b.sujet ?? "").slice(0, 60)}`,
+      alerte = await alerter(`🔴 support@ : transfert ÉCHOUÉ — ${String(decoderMotsMime(b.sujet) ?? "").slice(0, 60)}`,
         `De : ${String(b.de ?? "?")}\nErreur : ${erreur ?? "?"}\n` +
         (note ? `Le mail est archivé dans support_mails (${id}).` : "Le mail n'a PAS pu être archivé."));
     }

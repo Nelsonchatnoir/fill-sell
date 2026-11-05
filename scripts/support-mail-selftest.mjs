@@ -51,5 +51,12 @@ ok(/\.eq\("transfert", "en_cours"\)\.gte\("recu_le"/.test(f), "une note seulemen
 ok(/ALERTE_DIRECTE/.test(f) && !/to: \[\s*"support@fillsell\.app"/.test(f) && /MAX_ALERTES_PAR_HEURE = 5/.test(f), "alerte directe à la boîte de Nico, jamais vers support@, 5 par heure au plus");
 ok(!/\.select\("\*"\)|\.from\("support_mails"\)\.select\("(?!id)/.test(f), "la fonction ne rend jamais le contenu d'un mail (seulement l'identifiant)");
 
+console.log("\n4. Le sujet encodé (RFC 2047) est décodé avant l'archive");
+const { decoderMotsMime } = await import("../supabase/functions/_shared/mime-mots.js");
+ok(decoderMotsMime("=?UTF-8?Q?Test_r=C3=A9ception_support_=E2=80=94_05?= =?UTF-8?Q?/11?=") === "Test réception support — 05/11", "Q en deux mots collés (le mail de test du 05/11 22:02)");
+ok(decoderMotsMime("=?utf-8?B?UsOpcG9uc2Ugw6AgdG9uIG1haWw=?=") === "Réponse à ton mail" && decoderMotsMime("=?iso-8859-1?Q?Caf=E9?=") === "Café", "B (base64) et ISO-8859-1");
+ok(decoderMotsMime("Sujet normal") === "Sujet normal" && decoderMotsMime(null) === null && decoderMotsMime("=?inconnu?Q?x?=") === "=?inconnu?Q?x?=", "texte normal, vide, jeu inconnu : inchangés, jamais d'exception");
+ok(/sujet: texte\(decoderMotsMime\(b\.sujet\), 500\)/.test(f) && /de: texte\(decoderMotsMime\(b\.de\), 500\)/.test(f), "la fonction archive le sujet et l'expéditeur décodés");
+
 console.log(ko ? `\n✗ ${ko} échec(s) sur ${n}` : `\n✓ ${n}/${n} — mails de support`);
 process.exit(ko ? 1 : 0);
