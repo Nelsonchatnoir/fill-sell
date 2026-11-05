@@ -502,6 +502,58 @@ compteurs du relais `/etat`, base)** :
 - Coût à 08:00 : machine ~14 h 40 × 0,3136 € HT ≈ 4,6 € HT + IP 4 $ ; projeté à 18:00 ≈ 7,7 € HT + 4 $ (sous le plafond de 15 €).
 - Rien de grave : aucun compte restreint, aucune connexion perdue → pas de retour sur cloud-1.
 
+**Rapport de 18:00 et VERDICT (05/11, dressé à 18:0x ; TOUTE la durée, 04/11 18:35 → 05/11 18:00 ; lecture seule :
+`blocages.json` inchangé depuis le 04/11 21:38:18, `fond-f44b5917-2026-11-0{4,5}.jsonl` — 85 230 requêtes de plateformes —,
+journal de l'orchestrateur, base)** — les paliers de publication (08:00-15:45) sont au § 16 ; ici, les blocages seulement :
+- **Vinted** : aucune glissière, aucun 403 sur toute la durée. 24 × 401 = jeton d'accès échu → renouvelé (normal) ; 1 × 503
+  du serveur Vinted (10:44:02, `vas/bumps/minimum_price`, sans suite). Aucune connexion perdue ; messagerie lue 17:51:12.
+- **Leboncoin** : 2 glissières, toutes deux le 04/11 au soir (18:58:34, 20:30:33 : cause au verdict), AUCUNE depuis la
+  correction du veilleur (22:18:12) : 49 672 requêtes, 0 × 403, 0 cadre DataDome en 19 h 40. Journée : 2 × 401 à 09:41:56
+  (messagerie, transactions ; jeton de la page échu) → page rechargée 09:43:26, `authorize` 302 → `token` 200 → tout en 200
+  (renouvellement normal). Aucune connexion perdue ; messagerie lue 17:51:13, sans pause. Sans lien avec un refus : job
+  32e12d08 (T-shirt homme) pré-vol du formulaire « illisible » à 17:46:04, AVANT le retrait (rien retiré).
+- **Depop** : aucune glissière, aucune connexion perdue. 151 × 403 non bloquants sur la durée (52 depuis 08:00, dernier
+  17:21:19) : capteurs `/vwdj/…` et pré-vols OPTIONS de `webapi.depop.com`, pages en 200. Messagerie lue 17:57:20.
+- **Beebs** : aucune glissière sur toute la durée ; vérification de l'appareil passée SEULE trois fois (`redirect` : 04/11
+  18:44:16 à la connexion, 05/11 02:48:48, 11:53:06). 9 × 403 non bloquants, en 5 épisodes : 4 sur la page publique du sérum
+  Medik8 33640171 « en vérification » (404 par construction) ouverte par la capture des fiches du relevé — 04/11 21:40:00,
+  05/11 02:44:30, 11:59:27 et **16:00:19** (relevé 15:59:35-16:00:25 : 6 fiches en 200, puis 33640171 → `users/v3/me` et
+  `carts/myCarts` en 403, page 404) — et 02:48:44 (veille des commandes). La correction 2a4b388 (la capture saute « en
+  vérification ») n'est PAS sur cloud-2 (copie Cloud 0.6.169-cloud du 05/11 11:51, sans la ligne) : elle part au prochain
+  déploiement Cloud. Les trois points à confirmer (ordre de Nico au rapport de 08:00) :
+  1. pause Beebs levée à 08:48:44 : OUI, par son échéance (`messagerie_releves.pause_jusqu_au`, jamais reconduite ; le 403
+     de 16:00:19 n'en a pas posé) — pas par la vérification réussie de 02:48:48 (finitions, point 3) ;
+  2. reprise des lectures Beebs : PAS à 08:48 — aucune requête Beebs de 02:48:52 à 11:53:01 (9 h 04) ; après 08:48:44,
+     c'est NOTRE verrou qui refusait tout (jeton court effacé par Chrome, jeton long valable : défaut 3 du § 16) ; reprise
+     réelle 11:53:01 (d41332e), puis 270 à 370 requêtes Beebs par heure jusqu'à 18:00 ; messagerie lue 17:53:14
+     (`telephone_non_verifie` = état du compte, pas un blocage) ;
+  3. relevé de 17:41 : pas lancé, sans objet — deux relevés complets plus tôt (11:59:11-11:59:47 `introuvable_a_confirmer`,
+     15:59:35-16:00:25 `veilleur` ; 14 annonces vues chacun) ; les 20 h repartent du dernier → prochain relevé quotidien
+     Beebs le 06/11 vers 12:00.
+- **Machine** : coffre « connecté » sur les 4 plateformes (17:54:56) ; `cloud_verification` absente partout ; navigateur
+  jamais redémarré depuis 11:51:53 ; orchestrateur sans alerte (entretien horaire seul) ; relais : 4 coupures d'une ressource
+  chacune depuis 08:00 (Leboncoin 10:46, 11:17, 15:37 ; Vinted 13:09), aucune depuis. cloud-1 : 0 compte. IP 42 → Nico
+  (échéance 04/12), IP 39 réservée à Nico jusqu'au 03/12, `cloud_ip_achats_auto = 0`.
+- **VERDICT : on garde la recette** (vraie puce Intel + Google Chrome officiel + IP neuve). Une seule plateforme a bloqué :
+  **Leboncoin, le 04/11 à 18:58:34 et 20:30:33**, dans un onglet de fond, même suite les deux fois (enregistrement de fond) :
+  « mes annonces » rechargée (18:58:21 / 20:30:21) → la PAGE appelle `api/account/v2/members/me/account` → **200**
+  (18:58:21.583 / 20:30:21.862), avec une vingtaine d'appels d'API en 200 et `dd.leboncoin.fr/js/` 200 → 13 s / 11 s plus
+  tard, la veille des commandes rappelle le MÊME point d'accès, mêmes cookies, sans les en-têtes du client de la page
+  (`x-lbc-experiment`, `Content-Type`) → **403** + `datadome` neuf (18:58:34.906 / 20:30:33.356) → cadre
+  `geo.captcha-delivery.com/captcha/` 54 / 47 ms après. Notre requête, pas la machine (même refus sur cloud-1 le 04/11 à
+  14:45). Corrigée le 04/11 soir (lectures « comme la page », b62e1d5) : depuis 22:18, 19 h 40 sans glissière nulle part, sans
+  403 Leboncoin ni Vinted ; Beebs : 403 non bloquants seulement, cause connue, correction écrite. Aucun compte restreint,
+  aucune connexion perdue sur toute la durée.
+- **Coût réel** : machine facturée à l'heure depuis le 04/11 17:26 → 18:00 = 24 h 34 × 0,3136 € HT ≈ **7,70 € HT**
+  (toujours facturée), + IP 42 **4 $** ; sous le plafond de 15 € de l'essai.
+- **Deux choix, à Nico SEUL (rien rendu, rien basculé)** :
+  1. **garder cloud-2** : 195,70 € HT/mois au plus (0,3136 € HT/h, plafonné) ; le compte de Nico y reste tel quel ;
+  2. **la rendre et remettre son compte sur cloud-1** (bloc « 04/11 soir » de `docs/cloud/REPRISE.md`, dans CET ordre) :
+     `docker compose stop orchestrateur` sur cloud-2 → `20261104_cloud_essai_gpu_bascule_nico_INVERSE.sql` (:ip_neuve = 42 ;
+     coffre restauré, poste et IP 39 rendus) → cloud-1 `COMPTES_AUTORISES=f44b5917-…` + orchestrateur relancé → seulement
+     ensuite la résiliation (`POST /server/3104939/cancellation`, `cancellation_date=now`). ⛔ Dans un autre ordre, cloud-1
+     purgerait les sessions du profil. cloud-1 n'a pas de puce graphique : la recette ne l'y suit pas.
+
 ## 16. Tests de publication et de republication sur cloud-2 (05/11, ordre de Nico : la tenue est validée par la nuit)
 
 **Palier 1 lancé 10:28 → 10:35** (compte de Nico, fiches TEST à 999 € « ne pas acheter ») : republications par la fonction de
