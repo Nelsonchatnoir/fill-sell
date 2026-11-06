@@ -107,6 +107,22 @@ export function alerteCapacite({ comptes, capacite, mesure = null, seuilPct = SE
   return { atteint: raisons.length > 0, raisons, taux, seuilPct, mesure_fraiche: Boolean(h) };
 }
 
+/**
+ * (06/11 soir, règle de Nico : « quand ces conditions sont réunies, l'alerte me le dit, et je décide ») Le texte de
+ * l'alerte de passage à 30 comptes (pure : testée), d'après une ligne de la vue cloud_passage_30 ; null si les conditions
+ * ne sont pas TOUTES réunies ou si le serveur a déjà 30 places.
+ */
+export function textePassage30(l, capacite) {
+  if (!l?.conditions_reunies || !(Number(capacite) < 30)) return null;
+  const pct = (a, b) => (Number(b) > 0 ? Math.round((100 * Number(a)) / Number(b)) : '?');
+  return `Passage à 30 comptes possible sur ${l.serveur} (aujourd'hui ${capacite}) : toutes les conditions de la règle sont réunies sur 7 jours — `
+    + `${l.comptes_p20} comptes ou plus sur 80 % des fenêtres (${l.fenetres}) ; mémoire projetée ${Math.round(Number(l.mem_proj_p95_mo) / 1024)} Go `
+    + `(${pct(l.mem_proj_p95_mo, l.total)} %) ; processeur projeté ${l.cpu_proj_p95_pct} % ; puce projetée ${l.puce_proj_p95_pct} % ; `
+    + `${l.jobs} jobs, ${pct(l.rates, l.jobs)} % ratés, p95 ${l.duree_p95_s} s ; bridage ${l.bride_med} (référence ${l.bride_med_reference}) ; `
+    + `signes ${l.signes_par_compte_jour} par compte et par jour (référence ${l.signes_par_compte_jour_reference}), aucune restriction ni blocage. `
+    + `Décision de Nico : NAVIGATEURS_MAX=30 (docs/cloud/REPRISE.md, « Passer de 15 à 30 »).`;
+}
+
 /** Le nom du prochain serveur (pure) : cloud-<plus grand numéro + 1>, au moins cloud-2. */
 export function prochainNomServeur(serveurs) {
   const n = Math.max(1, ...(serveurs ?? []).map((s) => numeroServeur(s?.nom) ?? 0));
@@ -322,6 +338,8 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
   let absente = false;
   let derniereAlerteSeuil = 0;
   let derniereAlerteCapacite = 0;
+  let derniereLecturePassage = 0;
+  let derniereAlertePassage = 0;
   let dernierPlanJournalise = '';
 
   /** (06/11 soir) Le rendu connu : le dernier lu dans un navigateur, sinon etat/rendu-serveur.json (relu à chaque fois). */
@@ -336,6 +354,14 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
     try {
       const { data, error } = await base.from('cloud_mesures').select('le, hote').eq('serveur', config.serveurNom)
         .order('le', { ascending: false }).limit(1);
+      return error ? null : (data?.[0] ?? null);
+    } catch { return null; }
+  }
+
+  /** (06/11 soir) La ligne de CE serveur dans cloud_passage_30 ; null tant que la migration 20261106210000 n'est pas en base. */
+  async function lirePassage30() {
+    try {
+      const { data, error } = await base.from('cloud_passage_30').select('*').eq('serveur', config.serveurNom).limit(1);
       return error ? null : (data?.[0] ?? null);
     } catch { return null; }
   }
@@ -443,6 +469,18 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
       await alertes?.signaler('serveur', `Capacité de ${config.serveurNom} : seuil de ${capacite.seuilPct} % atteint — ${capacite.raisons.join(', ')} `
         + `(${dernierBattement?.comptes ?? '?'} comptes pour ${config.navigateursMax}). Marche à suivre : docs/cloud/REPRISE.md, « Ajouter un serveur ».`,
       { capacite });
+    }
+    // (06/11 soir) La règle de passage à 30 comptes (vue cloud_passage_30) : lue une fois par heure tant que ce serveur a
+    // moins de 30 places ; une alerte quand TOUTES les conditions sont réunies, un rappel au plus par 24 h. Nico décide.
+    if (config.navigateursMax < 30 && maintenant() - derniereLecturePassage >= 3600_000) {
+      derniereLecturePassage = maintenant();
+      const ligne = await lirePassage30();
+      const texte = textePassage30(ligne, config.navigateursMax);
+      if (texte && maintenant() - derniereAlertePassage >= 24 * 3600_000) {
+        derniereAlertePassage = maintenant();
+        journal.alerte('passage_30_possible', { serveur: config.serveurNom });
+        await alertes?.signaler('serveur', texte, { passage_30: ligne });
+      }
     }
     if (!decision.creer) return { decision };
     const prep = await preparer(decision, r);

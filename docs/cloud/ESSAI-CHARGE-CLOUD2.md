@@ -88,7 +88,7 @@ Tous les chiffres ci-dessous sont mesurés avec l'ANCIENNE page (`charge.html`, 
 - Décision de Nico (~18:30) : essai ARRÊTÉ ; ni page animée ni page fixe (`charge-reelle.html`, écrite, jamais lancée, retirée).
   L'essai représentatif (vrai code de l'extension, copies locales, rythme réel) a été chiffré (1,5 à 2 jours) puis ÉCARTÉ par
   Nico (~18:45) : pas d'annonces de test ; la charge se mesure EN RÉEL, utilisateur par utilisateur (agent fillsell-mesure,
-  vues cloud_charge_heures / cloud_charge_comptes, alerte de capacité à 65 %) — docs/cloud/REPRISE.md, bloc « 07/11 MATIN ».
+  vues cloud_charge_heures / cloud_charge_comptes, alerte de capacité à 65 %) — docs/cloud/REPRISE.md, bloc « ENCHAÎNEMENT ».
 
 ## 5. Garde-fous
 - Le compte de Nico est le seul compte réel sur la machine : un palier qui le gêne (bridage, lenteur d'une tâche,

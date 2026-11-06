@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { creerEnregistrementFond, issueVerificationAppareil, plateformeDuCadre } from '../src/enregistrementFond.js';
+import { creerEnregistrementFond, issueVerificationAppareil, plateformeDuCadre, defiDataDome } from '../src/enregistrementFond.js';
 import { patchRelance, erreurApresRelance, creerRelanceTaches, MARQUES_ATTENTE_ANTIROBOT, EXPRESSION_RELANCER } from '../src/relanceTaches.js';
 import { creerVerifications } from '../src/verifications.js';
 
@@ -334,4 +334,27 @@ test('point 8 — Me connecter : connexion par Google, Apple, Facebook, Kiabi in
   assert.equal(navigationPermise('beebs', 'https://www.beebs.app/fr/auth'), true);
   assert.equal(navigationPermise('depop', 'http://www.depop.com/login/'), false, 'jamais en clair');
   assert.equal(navigationPermise('vinted', 'https://www.google.com/search?q=x'), false, 'Google hors connexion : jamais');
+});
+
+test('06/11 soir — chaque défi DataDome qui s’ouvre est dit (signes anti-robot par compte), sans rien lire ni écrire', async () => {
+  assert.equal(defiDataDome('https://geo.captcha-delivery.com/captcha/?initialCid=a&t=fe&referer=https%3A%2F%2Fwww.leboncoin.fr%2F', 'Document'), 'captcha');
+  assert.equal(defiDataDome('https://geo.captcha-delivery.com/interstitial/?initialCid=a', 'Document'), 'interstitial');
+  assert.equal(defiDataDome('https://geo.captcha-delivery.com/interstitial/', 'XHR'), null, 'l’envoi du verdict n’est pas un défi de plus');
+  assert.equal(defiDataDome('https://ct.captcha-delivery.com/i.js', 'Script'), null);
+  assert.equal(defiDataDome('https://www.leboncoin.fr/captcha', 'Document'), null, 'une autre adresse');
+  assert.equal(defiDataDome('pas une adresse', 'Document'), null);
+  const vus = []; const ecrit = [];
+  const cdp = fauxCdp({ cibles: [{ targetId: 'T1', type: 'page', url: 'https://www.leboncoin.fr/compte/part/mes-annonces' }] });
+  const f = creerEnregistrementFond({ config: {}, journal: muet, ecrireFichier: async (fi, l) => { ecrit.push(l); },
+    surDefiDataDome: (user, d) => { vus.push([user, d]); } });
+  assert.equal(await f.suivre(U, { cdp, moteur: 'chrome' }), true, 'actif en mode léger dès que le compteur de défis est branché');
+  cdp.emettre({ method: 'Network.requestWillBeSent', sessionId: 'S1', params: { requestId: 'r1', type: 'Document',
+    request: { url: 'https://geo.captcha-delivery.com/captcha/?initialCid=a&referer=https%3A%2F%2Fwww.leboncoin.fr%2F', method: 'GET' } } });
+  cdp.emettre({ method: 'Network.requestWillBeSent', sessionId: 'S1', params: { requestId: 'r2', type: 'Script', request: { url: 'https://ct.captcha-delivery.com/c.js', method: 'GET' } } });
+  cdp.emettre({ method: 'Network.requestWillBeSent', sessionId: 'S1', params: { requestId: 'r3', type: 'Fetch', request: { url: 'https://api.leboncoin.fr/api/x', method: 'GET' } } });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(vus, [[U, { plateforme: 'leboncoin', defi: 'captcha' }]]);
+  assert.deepEqual(ecrit, [], 'rien sur le disque');
+  for (const interdit of ['Runtime.enable', 'Page.enable', 'Runtime.evaluate']) assert.ok(!cdp.appels.some((a) => a[0] === interdit), interdit);
+  f.arreter(U, 'fermeture');
 });

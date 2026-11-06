@@ -64,7 +64,22 @@ export function plateformeDuCadre(url) {
 /** Les types de cible attachés au niveau du navigateur (les cadres viennent par l'auto-attache de leur page). */
 export const typesSuivis = ({ serviceWorker = false } = {}) => new Set(['page', ...(serviceWorker ? ['service_worker'] : [])]);
 
-export function creerEnregistrementFond({ config, journal, maintenant = () => Date.now(), ecrireFichier = appendFile, creerDossier = mkdir, surDataDome = null }) {
+/**
+ * (06/11 soir) Un DÉFI DataDome qui s'ouvre (pure : testée) : le chargement d'une PAGE ou d'un CADRE de captcha-delivery.com
+ * sur /captcha (glissière ou blocage) ou /interstitial (vérification de l'appareil) → 'captcha' | 'interstitial' ; null pour
+ * tout le reste (scripts, polices, l'envoi du verdict en XHR, une autre adresse).
+ */
+export function defiDataDome(url, type) {
+  if (type !== 'Document') return null;
+  try {
+    const u = new URL(String(url));
+    if (!/(^|\.)captcha-delivery\.com$/i.test(u.hostname)) return null;
+    const c = u.pathname.toLowerCase();
+    return c.startsWith('/captcha') ? 'captcha' : c.startsWith('/interstitial') ? 'interstitial' : null;
+  } catch { return null; }
+}
+
+export function creerEnregistrementFond({ config, journal, maintenant = () => Date.now(), ecrireFichier = appendFile, creerDossier = mkdir, surDataDome = null, surDefiDataDome = null }) {
   const actifs = new Map();   // user → { arreter }
   const types = typesSuivis({ serviceWorker: config?.enregistrementFondSw === true });
 
@@ -73,7 +88,7 @@ export function creerEnregistrementFond({ config, journal, maintenant = () => Da
     // (05/11 soir, point 9) Hors essai (ENREGISTREMENT_FOND absent), le MODE LÉGER : seules les requêtes DataDome sont
     // suivies, rien n'est écrit sur le disque ; il ne sert qu'à voir une vérification de l'appareil passée seule.
     const complet = config?.enregistrementFond === true && !!config?.dossierEtat;
-    if ((!complet && typeof surDataDome !== 'function') || !h?.cdp || actifs.has(user)) return false;
+    if ((!complet && typeof surDataDome !== 'function' && typeof surDefiDataDome !== 'function') || !h?.cdp || actifs.has(user)) return false;
     const { cdp } = h;
     const sessions = new Map();     // sessionId → { cadre, targetId }
     const cibles = new Map();       // targetId → { type, url, sessionId }
@@ -173,6 +188,14 @@ export function creerEnregistrementFond({ config, journal, maintenant = () => Da
         const suivi = suiviDe(url);
         if (!suivi || (!complet && suivi !== 'datadome')) return;
         const s = sessions.get(m.sessionId);
+        // (06/11 soir, demande de Nico : les signes anti-robot PAR COMPTE) Un défi DataDome qui s'ouvre (page ou cadre) :
+        // dit une fois, sans rien lire de la page (cloud_charge_comptes le compte, jour par jour).
+        const defi = defiDataDome(url, p.type);
+        if (defi && typeof surDefiDataDome === 'function') {
+          const page = [...cibles.values()].find((c) => c.sessionId && sessions.get(c.sessionId)?.targetId === s.targetId && c.type === 'page');
+          const plateforme = plateformeDuCadre(url) ?? suiviDe(page?.url) ?? null;
+          try { Promise.resolve(surDefiDataDome(user, { plateforme: plateforme === 'datadome' ? null : plateforme, defi })).catch(() => {}); } catch { /* jamais bloquant */ }
+        }
         requetes.set(cle, { le: quand(p), cadre: s.cadre, url, methode: p.request?.method, type: p.type ?? null, suivi,
           cible: String(s.targetId ?? '').slice(0, 8),
           ...(suivi === 'datadome' ? { parametres: parametresSansValeur(url), corps: p.request?.postData != null ? String(p.request.postData).length : (p.request?.hasPostData ? 'present' : null) } : {}) });

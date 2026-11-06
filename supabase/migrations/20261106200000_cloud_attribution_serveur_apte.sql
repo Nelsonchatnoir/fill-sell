@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- FillSell Cloud — L'ATTRIBUTION D'UN COMPTE À UN SERVEUR, CORRIGÉE À LA RACINE (06/11/2026 soir, ordre de Nico)
--- PRÉPARÉE, NON APPLIQUÉE (06/11 soir) : feu vert NOMMÉ de Nico requis, après relecture du SQL complet ; ordre et moment : docs/cloud/REPRISE.md, bloc « 07/11 MATIN ».
+-- PRÉPARÉE, NON APPLIQUÉE (06/11 soir) : feu vert NOMMÉ de Nico requis, après relecture du SQL complet ; ordre et moment : docs/cloud/REPRISE.md, bloc « ENCHAÎNEMENT ».
 --
 -- Le piège (lu le 06/11 dans cloud_serveur_choisir, migration 20261103201000) : quand le serveur d'un compte ne bat plus
 -- depuis 15 min, le compte part au serveur vivant le plus libre, QUEL QU'IL SOIT — le 06/11, cloud-1 (Chromium sans

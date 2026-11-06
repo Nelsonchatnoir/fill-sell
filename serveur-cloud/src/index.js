@@ -59,7 +59,9 @@ let endurance = null;
 // passée seule rouvre sa plateforme (verifications.verificationPassee : pauses levées, tâches relancées).
 let verificationsRef = null;
 const enregistrementFond = creerEnregistrementFond({ config, journal,
-  surDataDome: (user, d) => (d?.issue === 'passee' ? verificationsRef?.verificationPassee(user, d.plateforme, { le: d.le }) : null) });
+  surDataDome: (user, d) => (d?.issue === 'passee' ? verificationsRef?.verificationPassee(user, d.plateforme, { le: d.le }) : null),
+  // (06/11 soir) Chaque défi DataDome qui s'ouvre, dit dans le journal : l'agent de mesure le compte par compte et par jour.
+  surDefiDataDome: (user, d) => journal.info('datadome_vu', { user, plateforme: d?.plateforme ?? null, defi: d?.defi ?? null }) });
 // (04/11 soir, règle de Nico) Les pauses de la messagerie et de la veille des commandes : levées par une résolution réussie
 // (verifications.js) et par un changement de machine ou d'IP (postes.js).
 const pausesMessagerie = creerPausesMessagerie({ config, base, navigateurs, journal });

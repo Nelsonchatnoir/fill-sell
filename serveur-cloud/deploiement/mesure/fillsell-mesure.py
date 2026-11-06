@@ -156,6 +156,69 @@ def resumer(points):
     return h, comptes
 
 
+# (06/11 soir, demande de Nico : « je veux voir monter le risque de plusieurs comptes à la même empreinte avant qu'il
+# coûte un compte ») LES SIGNES ANTI-ROBOT par compte, lus dans le journal de l'orchestrateur sur la fenêtre (rien d'autre) :
+#   datadome (un défi DataDome qui s'ouvre : datadome_vu), verification_appareil (passée seule, ou qui dure), glissiere,
+#   restriction, blocage (verification_plateforme_bloquee selon sa nature, connexion_acces_restreint, verification_sans_plateforme).
+# Le journal de l'orchestrateur ne garde que les 8 premiers caractères d'un compte (src/journal.js) : la clé d'un signe.
+RE_COMPTE = re.compile(r'^[0-9a-f]{8}(-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$')
+NATURES = {'glissiere': 'glissiere', 'bloque': 'blocage', 'restreint': 'restriction', 'verification': 'verification_appareil'}
+
+
+def signe_de(o):
+    """La catégorie d'un événement du journal, ou None (pure)."""
+    e = o.get('evenement')
+    if e == 'datadome_vu':
+        return 'datadome'
+    if e == 'verification_passee_seule':
+        return 'verification_appareil'
+    if e == 'connexion_acces_restreint':
+        return 'restriction'
+    if e == 'verification_sans_plateforme':
+        return 'blocage'
+    if e == 'verification_plateforme_bloquee':
+        return NATURES.get(o.get('nature'), 'blocage')
+    return None
+
+
+def compter_signes(lignes):
+    """{compte: {catégorie: nombre}} à partir des lignes du journal (pure)."""
+    par = {}
+    for l in lignes:
+        i = l.find('{')
+        if i < 0:
+            continue
+        try:
+            o = json.loads(l[i:])
+        except ValueError:
+            continue
+        c, u = signe_de(o), str(o.get('user') or '')
+        if c and RE_COMPTE.match(u):
+            d = par.setdefault(u[:8], {})
+            d[c] = d.get(c, 0) + 1
+    return par
+
+
+def signes_du_journal(depuis, jusqu_a):
+    """Les signes de la fenêtre [depuis, jusqu_a[ (secondes depuis l'époque) ; {} si l'orchestrateur est introuvable."""
+    nom = subprocess.run(['docker', 'ps', '--filter', 'label=com.docker.compose.service=orchestrateur', '--format', '{{.Names}}'],
+                         capture_output=True, text=True, timeout=20).stdout.split()
+    if not nom:
+        return {}
+    iso = lambda t: time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(t))
+    r = subprocess.run(['docker', 'logs', '--since', iso(depuis), '--until', iso(jusqu_a), nom[0]], capture_output=True, text=True, timeout=60)
+    return compter_signes((r.stdout + '\n' + r.stderr).splitlines())
+
+
+def avec_signes(comptes, signes):
+    """Les signes joints aux comptes, par leur préfixe ; un compte qui a des signes sans mesure dans la fenêtre garde ses
+    signes sous son préfixe (les vues comptent par les 8 premiers caractères)."""
+    for p, d in signes.items():
+        u = next((x for x in comptes if x.startswith(p)), p)
+        comptes.setdefault(u, {})['signes'] = d
+    return comptes
+
+
 def envoyer(serveur, hote, comptes):
     e = lire_env()
     url, cle = e.get('SUPABASE_URL', '').rstrip('/'), e.get('SUPABASE_SERVICE_ROLE_KEY', '')
@@ -173,14 +236,16 @@ def main():
     if not re.match(r'^[a-z0-9][a-z0-9-]{0,40}$', serveur):
         print('REFUS : SERVEUR_NOM absent ou illisible dans le .env', file=sys.stderr); sys.exit(1)
     if '--essai' in sys.argv:   # une fenêtre courte, affichée, RIEN envoyé (vérification à l'installation)
+        t0 = time.time() - 24 * 3600
         points = [releve()]
         for _ in range(6):
             time.sleep(10); points.append(releve())
         hote, comptes = resumer(points)
+        comptes = avec_signes(comptes, signes_du_journal(t0, time.time()))   # l'essai lit les signes des dernières 24 h
         print(json.dumps({'serveur': serveur, 'hote': hote, 'comptes': comptes}, ensure_ascii=False, indent=1))
         return
     points = [releve()]
-    debut = time.monotonic()
+    debut, debut_mur = time.monotonic(), time.time()
     while True:
         time.sleep(PAS_S)
         try:
@@ -189,11 +254,16 @@ def main():
             print(f'relevé raté : {x}', file=sys.stderr)
         if time.monotonic() - debut >= FENETRE_S and len(points) >= 2:
             hote, comptes = resumer(points)
+            fin_mur = time.time()
+            try:
+                comptes = avec_signes(comptes, signes_du_journal(debut_mur, fin_mur))
+            except Exception as x:   # un journal illisible ne coupe jamais la mesure
+                print(f'signes illisibles : {str(x)[:200]}', file=sys.stderr)
             try:
                 envoyer(serveur, hote, comptes)
             except Exception as x:
                 print(f'envoi raté : {str(x)[:200]}', file=sys.stderr)
-            points, debut = points[-1:], time.monotonic()
+            points, debut, debut_mur = points[-1:], time.monotonic(), fin_mur
 
 
 if __name__ == '__main__':

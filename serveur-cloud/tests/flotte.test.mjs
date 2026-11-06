@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   capaciteServeur, planFlotte, prochainNomServeur, domaineDuServeur, typeDepuisCode, lieuDepuisCode, envPourNouveauServeur,
   amorcePour, cloudInitPour, corpsCreationHetzner, resumePlan, lireComptesDuServeur, creerFlotte, USER_DATA_MAX,
-  CREATION_EN_COURS_MS, serviceDuServeur, alerteCapacite, SEUIL_CAPACITE_PCT,
+  CREATION_EN_COURS_MS, serviceDuServeur, alerteCapacite, SEUIL_CAPACITE_PCT, textePassage30,
 } from '../src/flotte.js';
 
 const T = Date.parse('2026-11-03T18:00:00Z');
@@ -308,4 +308,46 @@ test('capacité dans le tour : une alerte (support@ par alertes.signaler), puis 
   const g = creerFlotte({ config: configFlotte({ navigateursMax: 40 }), base: sansTable, navigateurs: { ouverts: () => [] }, journal: journal(),
     alertes: { signaler: async () => { throw new Error('aucune alerte attendue'); } }, hetzner: hetznerQuiRefuseTout(), cloudflare: { disponible: false }, lireFichier: fichiers });
   await g.battre(); await g.tour();
+});
+
+// ── (06/11 soir, règle de Nico) passer de 15 à 30 comptes : l'alerte dit quand TOUTES les conditions sont réunies ──
+const LIGNE_30 = { serveur: 'cloud-2', conditions_reunies: true, comptes_p20: 10, fenetres: 2000, mem_proj_p95_mo: 43500, total: 64076,
+  cpu_proj_p95_pct: 45, puce_proj_p95_pct: 15, jobs: 120, rates: 3, duree_p95_s: 144, bride_med: 0.12, bride_med_reference: 0.1,
+  signes_par_compte_jour: 0.994, signes_par_compte_jour_reference: 1.08 };
+
+test('passage à 30 : le texte dit chaque chiffre de la règle ; rien si une condition manque ou si le serveur a déjà 30 places', () => {
+  const t = textePassage30(LIGNE_30, 15);
+  assert.match(t, /^Passage à 30 comptes possible sur cloud-2 \(aujourd'hui 15\)/);
+  for (const m of [/mémoire projetée 42 Go \(68 %\)/, /processeur projeté 45 %/, /puce projetée 15 %/, /120 jobs, 3 % ratés, p95 144 s/,
+    /signes 0\.994 par compte et par jour \(référence 1\.08\)/, /NAVIGATEURS_MAX=30/]) assert.match(t, m);
+  assert.equal(textePassage30({ ...LIGNE_30, conditions_reunies: false }, 15), null);
+  assert.equal(textePassage30(LIGNE_30, 30), null, 'déjà 30');
+  assert.equal(textePassage30(null, 15), null, 'vue absente');
+});
+
+test('passage à 30 dans le tour : lu une fois par heure, une alerte puis un rappel au plus par 24 h ; rien au-delà de 30 places', async () => {
+  let t = Date.parse('2026-11-14T08:00:00Z'); let lectures = 0; let ligne = { ...LIGNE_30, conditions_reunies: false };
+  const { base } = fausseBase({ serveurs: pleins, coin: { cloud_places_seuil: 0 }, places: 10 });
+  const from = base.from;
+  base.from = (table) => (table === 'cloud_passage_30'
+    ? { select: () => ({ eq: () => ({ limit: async () => { lectures++; return { data: [ligne], error: null }; } }) }) } : from(table));
+  const alertes = [];
+  const f = creerFlotte({ config: configFlotte({ navigateursMax: 15 }), base, navigateurs: { ouverts: () => [] }, journal: journal(),
+    alertes: { signaler: async (n, texte) => alertes.push(texte) }, hetzner: hetznerQuiRefuseTout(), cloudflare: { disponible: false },
+    lireFichier: fichiers, maintenant: () => t });
+  await f.battre(); await f.tour();
+  assert.equal(lectures, 1); assert.equal(alertes.filter((x) => /^Passage à 30/.test(x)).length, 0, 'conditions non réunies : rien');
+  ligne = LIGNE_30; t += 10 * 60_000; await f.tour();
+  assert.equal(lectures, 1, 'pas relue avant une heure');
+  t += 3600_000; await f.tour();
+  assert.equal(lectures, 2); assert.equal(alertes.filter((x) => /^Passage à 30/.test(x)).length, 1);
+  t += 3600_000; await f.tour();
+  assert.equal(alertes.filter((x) => /^Passage à 30/.test(x)).length, 1, 'pas de rappel avant 24 h');
+  t += 24 * 3600_000; await f.tour();
+  assert.equal(alertes.filter((x) => /^Passage à 30/.test(x)).length, 2, 'rappel au bout de 24 h');
+  const g = creerFlotte({ config: configFlotte({ navigateursMax: 30 }), base, navigateurs: { ouverts: () => [] }, journal: journal(),
+    alertes: { signaler: async (n, texte) => alertes.push(texte) }, hetzner: hetznerQuiRefuseTout(), cloudflare: { disponible: false },
+    lireFichier: fichiers, maintenant: () => t });
+  const avant = lectures; await g.battre(); await g.tour();
+  assert.equal(lectures, avant, 'à 30 places, la vue n’est même plus lue');
 });

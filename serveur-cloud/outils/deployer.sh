@@ -7,6 +7,7 @@
 #   bash serveur-cloud/outils/deployer.sh <ip_du_serveur> [domaine]
 #   SERVEUR_NOM=cloud-3 bash serveur-cloud/outils/deployer.sh <ip> cloud-3.fillsell.app   (06/11 : serveur NEUF, nom exigé)
 #   ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh <ip> <domaine>   (06/11 soir : l'orchestrateur, rien d'autre)
+#   EXTENSION_SEULE=1 bash serveur-cloud/outils/deployer.sh <ip> <domaine>      (06/11 soir : la copie Cloud de l’extension, un redémarrage)
 #   DESTINATIONS_PROXY="81.181.239.136:12323" bash serveur-cloud/outils/deployer.sh …   (01/11 : sorties des navigateurs)
 #   (03/11) DESTINATIONS_PROXY n'est plus qu'un repli : l'orchestrateur tient la liste à jour (pareFeu.js).
 #
@@ -72,6 +73,38 @@ cd /srv/fillsell-cloud/deploiement
 VERSION_ORCHESTRATEUR="$SHA" DOMAINE="$DOMAINE" docker compose up -d --no-deps orchestrateur
 echo "après : $SHA ; image Chrome $(sed -n 's/^IMAGE_CHROME=//p' /srv/fillsell-cloud/.env) ; CRX $(md5sum /srv/fillsell-cloud/extension-crx/fillsell-cloud.crx | cut -c1-12)"
 DISTANT_ORCH
+  echo "santé : $(curl -s --max-time 20 "https://$DOMAINE/sante" || echo 'pas encore')"
+  exit 0
+fi
+# (06/11 soir, décision de Nico : « monte la copie Cloud de l'extension en un seul geste ») EXTENSION_SEULE=1 : la copie Cloud
+# de l'extension construite depuis le COMMIT (git archive, jamais l'arbre de travail partagé), son CRX signé SUR le serveur
+# avec l'image Chrome EN PLACE (aucune image reconstruite), puis UN redémarrage de l'orchestrateur — sa vidange laisse finir
+# une tâche en cours, et chaque navigateur se rouvre sur la copie neuve (cache du script de fond effacé, rafraichirExtension…).
+if [ "${EXTENSION_SEULE:-0}" = 1 ]; then
+  [ "$NOM_EN_PLACE" != "<aucun .env>" ] || { echo "REFUS : EXTENSION_SEULE sur un serveur neuf (déploiement complet d'abord)" >&2; exit 1; }
+  node scripts/cloud/build-extension-cloud.mjs --commit="$(git rev-parse HEAD)" || { echo "REFUS : copie Cloud non construite" >&2; exit 1; }
+  PAQUET="$RACINE/build/cloud-paquet-$SHA-extension"
+  rm -rf "$PAQUET" && mkdir -p "$PAQUET" && cp -r build/extension-cloud "$PAQUET/extension"
+  echo "→ envoi de la copie Cloud ($SHA)"
+  $SSH "mkdir -p /srv/fillsell-cloud/paquets && rm -rf /srv/fillsell-cloud/paquets/$SHA-extension"
+  scp -i "$CLE" -q -r "$PAQUET" "root@$IP:/srv/fillsell-cloud/paquets/$SHA-extension"
+  $SSH bash -s -- "$SHA" <<'DISTANT_EXT'
+set -euo pipefail
+SHA="$1"; P="/srv/fillsell-cloud/paquets/$SHA-extension"; C=/srv/fillsell-cloud/extension-crx
+IMG=$(sed -n 's/^IMAGE_CHROME=//p' /srv/fillsell-cloud/.env | tail -1)
+[ -n "$IMG" ] && docker image inspect "$IMG" >/dev/null 2>&1 || { echo "REFUS : image Chrome en place introuvable" >&2; exit 1; }
+[ -f /srv/fillsell-cloud/cle-extension-cloud.pem ] || { echo "REFUS : clé de signature de la copie Cloud absente" >&2; exit 1; }
+echo "avant : $(grep -o "version='[^']*'" $C/update.xml) ; image Chrome $IMG ; orchestrateur $(sed -n 's/^VERSION_ORCHESTRATEUR=//p' /srv/fillsell-cloud/deploiement/.env)"
+mkdir -p /srv/fillsell-cloud/archives && cp -p $C/fillsell-cloud.crx $C/update.xml /srv/fillsell-cloud/archives/ 2>/dev/null || true
+VERSION_CRX=$(( ($(date +%s) - 1767225600) / 600 % 65535 ))
+docker run --rm -u 0 --network none --entrypoint /empaqueter-extension.sh -e VERSION_CRX="$VERSION_CRX" \
+  -v "$P/extension:/ext-src:ro" -v /srv/fillsell-cloud/cle-extension-cloud.pem:/cle.pem:ro -v "$C:/out" "$IMG"
+rm -rf /srv/fillsell-cloud/extension.nouvelle && cp -r "$P/extension" /srv/fillsell-cloud/extension.nouvelle
+rm -rf /srv/fillsell-cloud/extension.ancienne && mv /srv/fillsell-cloud/extension /srv/fillsell-cloud/extension.ancienne 2>/dev/null || true
+mv /srv/fillsell-cloud/extension.nouvelle /srv/fillsell-cloud/extension
+echo "après : $(grep -o "version='[^']*'" $C/update.xml) ; $(grep -o '"version_name": *"[^"]*"' /srv/fillsell-cloud/extension/manifest.json)"
+cd /srv/fillsell-cloud/deploiement && docker compose restart orchestrateur
+DISTANT_EXT
   echo "santé : $(curl -s --max-time 20 "https://$DOMAINE/sante" || echo 'pas encore')"
   exit 0
 fi
