@@ -87,10 +87,21 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
   Google « jeton_mal_forme » sur fillsell-6cd47 → **les deux clés acceptées**, rien envoyé à personne. Corrigé au passage
   dans `binaires.mjs` : la CLI exige `--yes` (secrets, net.http_post) et écrit « Warning/Target » sur stderr, qui collé
   après le JSON rendait le diagnostic illisible. Reste : bloc C (Pub/Sub) de `docs/push/CLES-NICO.md`, non demandé.
-- **TestFlight** : build 2.9.161 (2611061217) « VALID » mais `MISSING_EXPORT_COMPLIANCE` (interne et externe) au 06/11
-  14:00 — conformité à l'exportation = geste de Nico ; ensuite, vérifier « disponible pour les testeurs internes ».
+- **TestFlight** : build 2.9.161 (2611061217) « VALID » mais `MISSING_EXPORT_COMPLIANCE` jusqu'à 14:18 ; conformité
+  faite par Nico (14:30, `usesNonExemptEncryption: false`) → relu 14:28 par l'API : **interne `IN_BETA_TESTING`**, les deux
+  groupes internes (« Testeurs internes », « Testeurs internes Ornella », 1 testeur chacun, accès à tous les builds) le
+  contiennent ; externe `READY_FOR_BETA_SUBMISSION` (RIEN soumis à la vérification bêta) ; expire le 04/02/2027.
 - **DSA** : décision de Nico (tableaux ci-dessus) ; mails relus le 06/11 vers 14:05 : aucune alerte neuve (le mail Google
   « déclarez votre statut de professionnel » date du 04/11).
+- **Compte de Nico « témoin » dans TestFlight** (demande de 14:3x) : il l'est DÉJÀ (`beta_flags.cloud = true` depuis le
+  30/10 ; 3 témoins : Nico + les deux comptes de relecture). Son Cloud est vivant (« offert ») : il voit son Cloud en
+  marche, jamais l'offre d'essai. Grille trois jauges : aucun témoin par compte n'existe (interrupteur global
+  `coin_config.grille_trois_jauges` = 0, qui règle aussi les vrais quotas). **Décision de Nico : son compte tel quel,
+  pas de grille** — rien écrit. Interrupteurs relus : `CLOUD_OFFER_ENABLED = false`, `cloud_offre_ouverte` absent (fermé),
+  `grille_trois_jauges` = 0. Paiement réel impossible pour le Cloud sur ce compte : Stripe répond `already_cloud`
+  (Cloud vivant sur un autre canal), Apple/Google ignorent l'achat (`cloud_deja_actif_autre_canal`) ; dans TestFlight
+  tout achat passe en bac à sable. ⚠ Un achat de FORMULE en bac à sable (ou « Restaurer ») dans TestFlight écrit quand
+  même les drapeaux de palier du vrai profil (`validate-apple-receipt` accepte les reçus bac à sable) : ne pas les toucher.
 - **OTA 2.9.162** (alignement des binaires, PRÉPARÉE, NON PUBLIÉE — feu vert de Nico) : voir § 7.
 
 ## 7. OTA 2.9.162 — remettre l'IPA et l'AAB 2.9.161 au même niveau (à publier sur feu vert de Nico seulement)
