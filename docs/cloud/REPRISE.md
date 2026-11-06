@@ -1,39 +1,44 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-## ⛔ ENCHAÎNEMENT (décisions de Nico du 06/11 ~19:20) — plus de « demain matin » : chaque étape part dès que ses conditions sont réunies
+## ⛔ ÉTAT DU CLOUD AU 06/11/2026 21:35 — l'enchaînement a–d est FAIT (décisions de Nico du 06/11 soir)
 `SSH1` = `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@178.105.24.16` (cloud-1) ; `SSH2` = `… root@5.9.80.213` (cloud-2).
-Nico ne tape rien et ne vérifie rien : Claude fait et vérifie tout, sans attendre Nico entre les étapes, SAUF pour les
-feux verts nommés des deux migrations. L'observation se fait pendant la relecture des boutiques (≥ 48 h). Avant chaque
-étape : `git status`, `docker ps`, l'état en base.
-- **a. FAIT 06/11 19:27:43** — cloud-1 lâche le pool : `.env` sauvegardé (`archives/env-avant-0611-pool-vers-cloud2`),
-  `ENTRETIEN_POOL=0`, orchestrateur ARRÊTÉ (« unless-stopped » : il ne repart pas seul ; caddy laissé). Inverse : `.env`
-  remis, `cd /srv/fillsell-cloud/deploiement && docker compose start orchestrateur`. Le pool n'est tenu par PERSONNE jusqu'à
-  l'étape c (aucune échéance avant le 29/11).
-- **b. EN ATTENTE** — dès que le terminal « problèmes » a poussé l'ordre des photos (`20261106230000_ordre_photos_article.sql`
-  et sa correction de `selftest:remise-en-vente-chemins`) : `git pull`, suite complète par petits morceaux, **602/602 avec
-  les deux travaux réunis** ; sinon on s'arrête et on le dit à Nico. Puis commit + push du lot Cloud.
-- **c. EN ATTENTE des deux feux verts NOMMÉS de Nico** (`20261106200000`, `20261106210000`) ET d'un moment sans tâche
-  « processing » du compte de Nico : sauvegarde des deux `.env` de cloud-2 (`archives/env-avant-…`,
-  `archives/deploiement-env-avant-…`, VERSION_ORCHESTRATEUR=61fb7ddd6e2a) ; `.env` : `ENREGISTREMENT_FOND=0`,
-  `ENREGISTREMENT_CONNEXIONS=0`, `ALERTES_MAIL=1`, `ENDURANCE=0`, `ENTRETIEN_POOL=1`, `IPROYAL_ACHATS_AUTORISES=1`,
-  `NAVIGATEURS_MAX=15` ; `ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh 5.9.80.213 cloud-2.fillsell.app`
-  (depuis un arbre propre au commit poussé : l'orchestrateur seul, image Chrome et copie 0.6.169 inchangées, LE redémarrage
-  unique) ; puis les deux migrations (`npx supabase db query --linked -f …` + `migration repair --status applied`), puis
-  l'agent de mesure (`fillsell-mesure.py` → `/srv/fillsell-cloud/mesure/`, `.service` → `/etc/systemd/system/`, `--essai`,
-  `systemctl enable --now fillsell-mesure`). Relire : battement (`cloud_serveurs.details->'service'` apte), entretien du pool
-  sur cloud-2 (sans `"pool":"coupe"`), aucune vérification anti-robot, une ligne dans `cloud_mesures`, `cloud_serveur_choisir`
-  (Nico) = cloud-2. Inverses : les deux `.env` remis + `docker compose up -d --no-deps orchestrateur` ; migrations :
-  `supabase/rollbacks/<version>_…_INVERSE.sql` ; agent : `systemctl disable --now fillsell-mesure`.
-- **d. Après c vérifié** — la copie Cloud de l'extension de 0.6.169 à **0.6.175**, en UN geste, à un moment sans tâche
-  « processing » du compte de Nico : `EXTENSION_SEULE=1 bash serveur-cloud/outils/deployer.sh 5.9.80.213 cloud-2.fillsell.app`
-  (copie construite depuis le commit — essayée le 06/11 : 0.6.175-cloud, tous les correctifs Cloud appliqués ; CRX signé
-  sur le serveur avec l'image Chrome en place ; ancien CRX gardé dans `archives/` ; un redémarrage de l'orchestrateur, qui
-  laisse finir une tâche en cours). Le compte de relecture Apple voit la même version que le parc. Relire le compte de
-  Nico : version de l'extension dans son navigateur, une publication, une republication, aucune vérification anti-robot.
-  Inverse : remettre `archives/fillsell-cloud.crx` + `update.xml`, `extension.ancienne` → `extension`, redémarrer.
-- **e.** Ensuite la mesure tourne seule ; Claude la lit à chaque check news (requêtes ci-dessous).
+- **cloud-2** (seul serveur qui sert) : orchestrateur **b381d51077ad** (21:08:43, « orchestrateur seul ») ; image Chrome
+  **fillsell-chrome:61fb7ddd6e2a** (inchangée) ; copie Cloud de l'extension **0.6.175.44618** (`0.6.175-cloud`, BUILD_ID
+  `2026-11-06T20:19:59Z+b381d51-cloud`, posée à 21:20, profil de Nico : seule la 0.6.175 installée) ; `.env` :
+  `NAVIGATEURS_MAX=15`, `ENDURANCE=0`, `ENTRETIEN_POOL=1` (le pool est tenu par cloud-2 depuis 21:09:47),
+  `IPROYAL_ACHATS_AUTORISES=1`, `ALERTES_MAIL=1`, `ENREGISTREMENT_FOND=0` (mode léger, rien sur le disque depuis 21:08:42),
+  `ENREGISTREMENT_CONNEXIONS=0`. Déclare au battement `service.apte = true` (rendu « Mesa Intel(R) Graphics (RPL-S) »,
+  `logiciel: false`). Agent **fillsell-mesure** actif depuis 21:13:43 (première ligne de `cloud_mesures` à 21:18:45).
+  Sauvegardes : `archives/env-avant-0611-etape-c`, `archives/deploiement-env-avant-0611-etape-c` (61fb7ddd6e2a),
+  `archives/fillsell-cloud.crx` + `update.xml` (0.6.169.44468), `/srv/fillsell-cloud/extension.ancienne`.
+- **Base** : migrations **20261106210000** (mesures, 21:10:43) puis **20261106200000** (attribution, 21:11:28, APRÈS avoir
+  lu `apte = true` — condition de Nico) appliquées et inscrites (`migration repair`), feux verts nommés de Nico.
+  Relu : Nico sur cloud-2 (aucune origine notée), `cloud_places_libres()` = 14, `cloud_charge_heures` reçoit ses lignes.
+- **cloud-1** : orchestrateur ARRÊTÉ depuis 19:27:43, `ENTRETIEN_POOL=0` (`archives/env-avant-0611-pool-vers-cloud2`) ;
+  ne bat plus (vu 19:27:35) → jamais choisi. Retrait (« retire ») et suppression Hetzner : après l'observation, sur feu
+  vert de Nico.
+- **Compte de Nico** après les deux redémarrages : navigateur rouvert 21:08:50 puis 21:20:24, coffre repris du profil (4
+  plateformes), 0 signe anti-robot ; la republication Leboncoin en attente (créée le 05/11) prise par la 0.6.175 à 21:28,
+  reportée par la cadence à 22:00:35 (aucune attente anti-robot notée) — **à relire au prochain check** : sa publication.
+- **À suivre** : l'extension du parc passe en 0.6.176 (terminal « Problèmes ») → la copie Cloud suit, en un geste
+  (`EXTENSION_SEULE=1 bash serveur-cloud/outils/deployer.sh 5.9.80.213 cloud-2.fillsell.app`), pour que le compte de
+  relecture Apple voie la même version que le parc. L'état de prod (`docs/agents/etat-2026-10-01.md`) reçoit ces lignes
+  quand l'autre terminal aura commité ses modifications en cours de ce fichier.
+
+## L'ENCHAÎNEMENT (décisions de Nico du 06/11 ~19:20) — pour l'histoire et les inverses
+- **a. FAIT 19:27:43** — cloud-1 lâche le pool : `.env` sauvegardé, `ENTRETIEN_POOL=0`, orchestrateur ARRÊTÉ. Inverse :
+  `.env` remis, `cd /srv/fillsell-cloud/deploiement && docker compose start orchestrateur`.
+- **b. FAIT** — ordre des photos (3e7ec79) poussé par le terminal « Problèmes » ; suite complète **603/603** verte avec
+  les deux travaux réunis ; lot Cloud b381d51 commité ; poussé par Claude sur ordre de Nico avec 173f5f6 du terminal
+  « Problèmes » (`3e7ec79..b381d51`, son propre push avait été refusé par son garde-fou).
+- **c. FAIT 21:08 → 21:19** — détail ci-dessus. Inverses : les deux `.env` remis + `docker compose up -d --no-deps
+  orchestrateur` ; migrations : `supabase/rollbacks/<version>_…_INVERSE.sql` ; agent : `systemctl disable --now fillsell-mesure`.
+- **d. FAIT 21:20** — `EXTENSION_SEULE=1 …/deployer.sh` (vidange vide, un redémarrage). Inverse : remettre
+  `archives/fillsell-cloud.crx` + `update.xml`, `extension.ancienne` → `extension`, `docker compose restart orchestrateur`.
+- **e. EN COURS** — la mesure tourne seule ; Claude la lit à chaque check news (requêtes ci-dessous).
 - Après l'observation, sur feu vert de Nico : `cloud_serveurs` cloud-1 → « retire » (script de réparation + inverse, à
   écrire), puis suppression du serveur Hetzner ; premier utilisateur choisi, ajouté seul à `COMPTES_AUTORISES`.
+
 
 ## LA CHARGE SE MESURE EN RÉEL (décisions de Nico, 06/11 soir : plus d'essai synthétique, des utilisateurs ajoutés un par un)
 - **Base de calcul = cloud-2 SEULEMENT** (correction de Nico, 06/11 ~19:20 : les mesures de cloud-1, autre machine, autre
