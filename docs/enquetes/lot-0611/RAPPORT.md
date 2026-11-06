@@ -16,7 +16,7 @@ Heures de Paris. Règles durables : `docs/regles/ventes-et-retraits.md` § 06/11
   replanterait toutes les 30 min) ; la relance automatique, une fois, quand le poste a le build ; les adaptations de
   capacité (un champ en plus servi à un poste récent).
 - Selftest `aucune-retenue-par-version` ; 9 selftests adaptés.
-- Tâche de Marta MELE 2fd83d73 (pause « build_min_requis » depuis le 29/10, son poste avait le build depuis le 02/11) :
+- Tâche de Marta MELE 2fd83d73 (pause « build_min_requis » depuis le 29/10, son poste avait le build depuis le 02/11) — 11:00 :
   relancée par le circuit normal (`scripts/reparations/20261106_relance_marta_pause_version.mjs`, règle
   `vinted_categorie_page_etrangere_publish_en_pause`, `champsRelance`). Seule tâche en pause pour ce motif.
 
@@ -66,7 +66,20 @@ Heures de Paris. Règles durables : `docs/regles/ventes-et-retraits.md` § 06/11
   (24/10, « STOP »), alertes internes « Paiement échoué » nivake03 (23/10) et nadegemarcelin78 (09/10).
 - Laissés : 2 invitations TestFlight « AdsGPT … OpenAI OpenAds Campaign » (22/10) — leurre non sollicité.
 
-## 10. Champs requis : trois choix (rien appliqué) — voir le rapport de session.
+## 10. Champs requis : trois choix à trancher (rien appliqué)
+- (a) **Le rayon des autres plateformes suit-il le public choisi sur Vinted ?** Aujourd'hui Beebs, eBay et Leboncoin
+  prennent le genre écrit par la rédaction (IA) ; quand la personne choisit « Femme » sur Vinted pour une chaussure que
+  l'IA a dite « homme », les autres plateformes restent sur un rayon homme (grille qui commence au 38) et reposent la
+  question. Recommandation : OUI, le choix explicite de la personne prime sur la supposition de l'IA, pour toutes les
+  plateformes — seulement quand c'est un vrai choix (pas une valeur par défaut).
+- (b) **Casquette « Medium-Large » → « taille unique » ?** La règle « accessoire sans taille » ne remplace jamais une
+  taille écrite. Recommandation : NON en général (« Medium-Large » est une vraie taille de casquette ajustée) ; OUI
+  seulement quand la grille du rayon n'a QUE « taille unique » (la seule valeur possible), la taille réelle restant dans
+  le titre/la description.
+- (c) **Une pointure posée par la rédaction sans source → traitée comme vide ?** Recommandation : OUI — une pointure que
+  ni la personne, ni le titre, ni la description, ni la fiche ne donnent est une invention : la question partagée est
+  posée une fois (règle « jamais inventé »).
+- Essai réel prévu (scénario de 484818a) : fiches TEST chaussures homme et femme, à faire après la décision.
 
 ## 11. Retrait Leboncoin en boucle (Cédric GRIZSTYLE)
 - Annonce 3303036848 republiée le 05/11 à 22:27, vendue sur Vinted (retrait armé 22:31), vue « active » au tableau de bord
