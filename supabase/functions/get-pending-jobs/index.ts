@@ -79,7 +79,7 @@ import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee, attenteSessionServeur } from "../_shared/attente-session.js";
 import { arbreVintedDuCompte, cheminVintedPourArbre, cheminVintedTouche } from "../_shared/vinted-arbre-compte.js";
-import { remiseAAttendre, annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, PLATEFORMES_REMISE_APRES_DISPARITION } from "../_shared/remise-en-vente-attente.js";
+import { decisionSerie, serieDuJob } from "../_shared/serie-un-par-un.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import {
   MOTIF_LBC_A_PAYER, MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE, comptesLbcProParType,
@@ -4543,30 +4543,79 @@ serve(async (req) => {
       }
     }
 
-    // ══ (06/11, Nico, règle A — Louis, 7 remises refusées par Leboncoin) LEBONCOIN : LA REMISE EN VENTE ATTEND QUE
-    // L'ANNONCE VENDUE SOIT HORS LIGNE ══ (_shared/remise-en-vente-attente.js) Leboncoin refuse un dépôt identique à une
-    // annonce encore active ; une annonce sous transaction le reste des jours. La tâche de remise n'est servie qu'une fois
-    // l'annonce vendue relevée hors ligne : d'ici là pending, intacte, SANS message, et elle part d'elle-même. Exécution
-    // seulement ; lecture ratée → rien de retenu (comportement d'avant).
-    let heldRemisesLbc = 0;
-    if (!includeProcessing && !includeNeedsUser && out.some((j) => remiseAAttendre(j))) {
+    // ══ (06/11 soir, décision de Nico) RÈGLE A RETIRÉE : une remise en vente Leboncoin part tout de suite, comme en
+    // octobre (la retenir tant que l'annonce vendue restait visible la bloquait sans fin : Leboncoin garde une annonce
+    // vendue affichée même après la réception). La rafale du 06/11 au matin (7 ventes d'Amiral découvertes d'un coup
+    // après une restriction) se rattrape par une SÉRIE posée par réparation : UNE tâche à la fois, chacune vue en ligne
+    // avant la suivante, intervalle tenu, arrêt au premier refus (_shared/serie-un-par-un.js). Exécution seulement ;
+    // tenue = pending, intacte, sans écriture ; lecture ratée → les tâches de série sont TENUES (jamais une rafale). ══
+    let heldSerie = 0;
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => serieDuJob(j))) {
+      const enSerie = out.filter((j) => serieDuJob(j));
       try {
-        const remises = out.filter((j) => remiseAAttendre(j));
-        const numeros = [...new Set(remises.map((j) => annonceVendueDeLaRemise(j) as string))];
-        const { data: lignesV, error: eV } = await userClient.from("annonces_plateforme")
-          .select("listing_id, platform, disparu_le, retiree_le, ignoree_le, statut_plateforme")
-          .eq("user_id", user.id).in("platform", [...PLATEFORMES_REMISE_APRES_DISPARITION]).in("listing_id", numeros.slice(0, 150));
-        if (eV) throw new Error(eV.message);
-        const enLigne = new Set(((lignesV ?? []) as Array<Record<string, unknown>>)
-          .filter((l) => annonceVendueEncoreEnLigne(l as never)).map((l) => `${l.platform}:${String(l.listing_id).trim()}`));
-        const retenuesR = new Set(remises.filter((j) => enLigne.has(`${j.platform}:${annonceVendueDeLaRemise(j)}`)).map((j) => String(j.id)));
-        if (retenuesR.size) {
-          heldRemisesLbc = retenuesR.size;
-          out = out.filter((j) => !retenuesR.has(String(j.id)));
-          console.log(`[get-pending-jobs] userId=${user.id} : ${retenuesR.size} remise(s) en vente Leboncoin retenue(s) — l'annonce vendue est encore en ligne (pending, sans message)`);
+        const series = [...new Set(enSerie.map((j) => (serieDuJob(j) as { serie: string }).serie))];
+        const { data: membresB, error: eM } = await userClient.from("cross_post_jobs")
+          .select("id, status, platform, platform_listing_id, published_at, vu_en_ligne_le, platform_fields")
+          .eq("user_id", user.id).in("platform_fields->serie_un_par_un->>serie", series).limit(200);
+        if (eM) throw new Error(eM.message);
+        const membres = (membresB ?? []) as Array<Record<string, unknown>>;
+        const plateformes = [...new Set(membres.map((m) => String(m.platform ?? "")).filter(Boolean))];
+        // Les relevés de ces plateformes pour ce compte : le dernier fini, et s'il y en a un en file.
+        const { data: runsB, error: eR } = await userClient.from("vinted_sync_runs")
+          .select("id, platform, status, started_at").eq("user_id", user.id).in("platform", plateformes)
+          .order("queued_at", { ascending: false }).limit(40);
+        if (eR) throw new Error(eR.message);
+        const runs = (runsB ?? []) as Array<Record<string, unknown>>;
+        const runParId = new Map(runs.map((r) => [String(r.id), r]));
+        // Vue en ligne par un relevé commencé après le dépôt : la ligne de l'annonce, revue par ce relevé, vivante.
+        const publies = membres.filter((m) => m.status === "published" && String(m.platform_listing_id ?? "").trim());
+        const vuesParReleve = new Set<string>();
+        if (publies.length) {
+          const { data: lignesB } = await userClient.from("annonces_plateforme")
+            .select("platform, listing_id, run_id, statut_plateforme, disparu_le, retiree_le")
+            .eq("user_id", user.id).in("listing_id", publies.map((m) => String(m.platform_listing_id).trim()));
+          for (const m of publies) {
+            const l = ((lignesB ?? []) as Array<Record<string, unknown>>).find((x) => x.platform === m.platform && String(x.listing_id) === String(m.platform_listing_id).trim());
+            const run = l?.run_id ? runParId.get(String(l.run_id)) : null;
+            if (l && run && run.status === "done" && !l.disparu_le && !l.retiree_le
+                && ["en_ligne", "en_verification"].includes(String(l.statut_plateforme ?? ""))
+                && Date.parse(String(run.started_at ?? "")) > Date.parse(String(m.published_at ?? ""))) vuesParReleve.add(String(m.id));
+          }
         }
+        const tenues = new Set<string>();
+        const demandees = new Set<string>();
+        for (const serie of series) {
+          const aServir = enSerie.filter((j) => (serieDuJob(j) as { serie: string }).serie === serie)
+            .sort((a, b) => (serieDuJob(a) as { rang: number }).rang - (serieDuJob(b) as { rang: number }).rang);
+          let unePartie = false;
+          for (const j of aServir) {
+            const plateforme = String(j.platform ?? "");
+            const runsPf = runs.filter((r) => r.platform === plateforme);
+            const fini = runsPf.find((r) => r.status === "done" && r.started_at);
+            const d = decisionSerie(j, membres, {
+              vuesParReleve, maintenant: Date.now(),
+              dernierReleveMs: fini ? Date.parse(String(fini.started_at)) : null,
+              releveEnFile: runsPf.some((r) => r.status === "queued" || r.status === "running"),
+            }) as { servir: boolean; motif: string; demanderReleve?: boolean };
+            if (d.servir && !unePartie) { unePartie = true; continue; }
+            tenues.add(String(j.id));
+            if (d.demanderReleve && !demandees.has(plateforme)) {
+              demandees.add(plateforme);
+              const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
+                user_id: user.id, kind: "annonces", platform: plateforme, status: "queued",
+                declencheur: "serveur:verif_redepot", queued_at: new Date().toISOString(),
+              });
+              console.log(`[get-pending-jobs] série ${serie} : relevé ${plateforme} demandé pour voir le dépôt précédent en ligne${qErr ? ` (refusé : ${qErr.message})` : ""}`);
+            }
+            console.log(`[get-pending-jobs] série ${serie} : tâche ${String(j.id).slice(0, 8)} (rang ${(serieDuJob(j) as { rang: number }).rang}) tenue — ${d.servir ? "une autre de la série part déjà" : d.motif}`);
+          }
+        }
+        if (tenues.size) { heldSerie = tenues.size; out = out.filter((j) => !tenues.has(String(j.id))); }
       } catch (e) {
-        console.warn(`[get-pending-jobs] remises Leboncoin : ${String((e as Error)?.message ?? e)} — rien de retenu`);
+        const ids = new Set(enSerie.map((j) => String(j.id)));
+        heldSerie = ids.size;
+        out = out.filter((j) => !ids.has(String(j.id)));
+        console.warn(`[get-pending-jobs] séries : ${String((e as Error)?.message ?? e)} — ${ids.size} tâche(s) de série TENUE(S) (jamais une rafale)`);
       }
     }
 

@@ -585,7 +585,7 @@ Récit et preuves : `docs/enquetes/lot-0611/RAPPORT.md`.
   « déjà absent » prouvé à la main : la clôture du serveur (`champsRetraitDejaAbsent` + `clotureCopie`), jamais un statut
   écrit seul (`scripts/reparations/20261106_retrait_lbc_cedric_clos.mjs`).
 
-## ⛔ 06/11 après-midi — Leboncoin : remise en vente APRÈS la disparition (règle A) ; jamais « published » refusée (règle B)
+## ⛔ 06/11 après-midi — Leboncoin : remise en vente APRÈS la disparition (règle A, RETIRÉE le 06/11 soir — voir plus bas) ; jamais « published » refusée (règle B)
 Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - **Règle A — la remise en vente Leboncoin n'est déposée qu'une fois l'annonce vendue réellement hors ligne.** Avant :
   la vente (transaction « Achat en cours ») était enregistrée à 07:15 et la remise déposée à 07:22-07:29 alors que
@@ -615,3 +615,22 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   n'arme que les fiches vendues) ; gardes en base au moment d'écrire : fiche en stock, un seul exemplaire, non fusionnée,
   annonce vivante sans transaction, annonce GARDÉE vivante, aucun retrait ouvert ; lecture « en vente » de la page juste
   avant, écrite sur la tâche (`lecture_avant_retrait`). Script `scripts/reparations/20261106_couples_vrais_retraits.mjs`.
+
+## ⛔ 06/11 soir — RÈGLE A RETIRÉE (décision de Nico) ; série « une par une » pour rattraper une rafale ; règle B gardée
+- **La règle A ci-dessus est RETIRÉE** (get-pending-jobs, `_shared/remise-en-vente-attente.js` et son selftest supprimés) :
+  une remise en vente Leboncoin part tout de suite après la vente, comme en octobre (06/10 Bleu Ciel et Gris 8 min après
+  la vente, 09/10 Noir et Blanc 1 min, 10/10 Rouge et Bleu Ciel 2 min — toutes parues alors que l'annonce vendue était
+  encore visible). La retenir tant que l'annonce vendue est visible la bloquait sans fin : Leboncoin garde l'annonce
+  vendue affichée même après la réception. Le refus du 06/11 au matin venait de la RAFALE (7 ventes d'Amiral découvertes
+  d'un coup après une restriction d'accès, 7 dépôts presque identiques en 7 minutes) — cas exceptionnel.
+- **Règle B gardée** : un dépôt Leboncoin refusé à la modération n'est jamais « published ».
+- **Rattraper une rafale = une SÉRIE posée par réparation** (`_shared/serie-un-par-un.js`, marqueur
+  `platform_fields.serie_un_par_un = { serie, rang, intervalle_min, le }`, jamais posé tout seul) : get-pending-jobs ne
+  sert qu'UNE tâche de la série à la fois ; la suivante attend que toutes les précédentes soient « published » ET vues en
+  ligne après leur dépôt (veille `vu_en_ligne_le`, ou relevé complet commencé après le dépôt qui la voit vivante), et
+  `intervalle_min` depuis le dépôt précédent ; une tâche « failed »/« needs_user » ou un dépôt refusé noté après le début
+  de la série (règle B) ARRÊTE tout ; une tâche annulée sort de la série. Dépôt pas encore vu 45 min après : UN relevé
+  « Mes annonces » demandé (`serveur:verif_redepot`, lecture seule), au plus un toutes les 45 min. Lecture ratée = tâches
+  de série tenues (jamais une rafale). Le blocage d'accès Leboncoin du compte reste au-dessus de tout.
+  Selftest `serie-un-par-un`.
+- Jamais de texte ni de photos modifiés pour passer le contrôle des doublons de Leboncoin.

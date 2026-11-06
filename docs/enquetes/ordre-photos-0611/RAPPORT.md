@@ -107,3 +107,16 @@ Par plateforme :
   pour une couverture fausse (Alizee 1), jamais pour l'ordre intérieur seul (DeadRoz 8).
 - Ordre proposé : (1) eBay sur place ; (2) Leboncoin sur place (Alizee, DeadRoz) ; (3) Beebs ; (4) Depop, Vinted
   pour l'avenir.
+
+## 6. Exécution (06/11 soir, feux verts de Nico)
+- Suite complète 603/603 verte (par morceaux) ; migration appliquée 19:39 ; republier-photos-lbc v8 ; poussé 3e7ec79.
+- **eBay, sur place** : fonction `remise-ordre-photos-ebay` v1 (rôle de service seulement, refuse une clé client : 403
+  vérifié) ; le périmètre est recalculé à chaque passage (hors the_closet72, hors choix pour eBay). Simulation : 1 annonce
+  (Ornella, 307172283859), en ligne = ordre de notre dépôt → remise dans l'ordre de l'article à 20:07 (« photos »).
+  Relecture : périmètre vide. À vérifier au prochain check : couverture eBay = photo `_1`.
+- **Leboncoin : PAS lancé.** Périmètre : Alizee 1 (3285834507, couverture fausse), DeadRoz 4 (couverture juste, ordre
+  intérieur). Aucun geste d'extension ne sait modifier une annonce Leboncoin sur place aujourd'hui : il faut une nouvelle
+  version (lecture de l'ordre en ligne par les empreintes, modification de l'ordre seul, vérification), essayée sur une
+  annonce de test de Nico ≥ 999 €, puis la mise à jour de l'extension chez Alizee et DeadRoz.
+- Beebs (DeadRoz 4), Vinted, Depop : non touchés (Beebs : aucun chemin sur place ; Vinted, Depop : aucune annonce dans
+  les écarts restants).

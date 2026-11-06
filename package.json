@@ -141,7 +141,7 @@
     "selftest:ebay-eclaireur-attente": "node scripts/ebay-eclaireur-attente-selftest.mjs",
     "selftest:ebay-retours": "node scripts/ebay-retours-selftest.mjs",
     "selftest:attente-session-serveur": "node scripts/attente-session-serveur-selftest.mjs",
-    "selftest:remise-en-vente-attente": "node scripts/remise-en-vente-attente-selftest.mjs",
+    "selftest:serie-un-par-un": "node scripts/serie-un-par-un-selftest.mjs",
     "selftest:depot-lbc-jamais-en-ligne": "node scripts/depot-lbc-jamais-en-ligne-selftest.mjs",
     "selftest:vinted-accessoires-de-mode": "node scripts/vinted-accessoires-de-mode-selftest.mjs",
     "selftest:vinted-arbre-compte": "node scripts/vinted-arbre-compte-selftest.mjs",

@@ -35,7 +35,7 @@ const vrai = (v) => v === true || v === "true";
 /**
  * Les photos d'un job remises dans l'ordre de l'article (ou le job tel quel).
  * @param {unknown[]} photosJob      les photos du job ({type,url} ou chaînes)
- * @param {unknown[]} photosArticle  inventaire.photos
+ * @param {unknown[] | null | undefined} photosArticle  inventaire.photos
  * @param {Record<string, unknown> | null} [pf]  platform_fields du job (photos_choisies, lbcPhotosCapped)
  * @returns le MÊME tableau quand rien ne change, sinon un nouveau
  */

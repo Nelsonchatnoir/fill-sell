@@ -15,8 +15,8 @@
 //   LIGNE (200, active). La lecture de la page (3) les écarte : elle n'y a rien vu manquer.
 // L'EFFET :
 //   · une REMISE EN VENTE (platform_fields.remise_en_vente) repart : pending, sans message, numéro et lien du dépôt
-//     refusé retirés (gardés dans depot_refuse_lbc) — la règle A (_shared/remise-en-vente-attente.js) la retient tant
-//     que l'annonce vendue est en ligne, puis la redépose : jamais de doublon ;
+//     refusé retirés (gardés dans depot_refuse_lbc) ; (06/11 soir) la règle A est RETIRÉE (décision de Nico) : la remise
+//     repart au passage suivant, et une remise de SÉRIE (_shared/serie-un-par-un.js) qui a un dépôt refusé arrête la série ;
 //   · toute autre publication : « failed », message vrai, la publication rendue (refund_publish_unconfirmed, comme le
 //     juge Beebs), plus de « Vendue ? » (le signal de la veille est retiré).
 // Pur (Deno + Node) : scripts/depot-lbc-jamais-en-ligne-selftest.mjs.
