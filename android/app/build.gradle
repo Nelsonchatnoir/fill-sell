@@ -114,8 +114,8 @@ android {
         // un binaire numéroté sous le canal recevrait l'OTA plus ancienne que lui (Capgo, « Updates Under Native: No ») ;
         // prochaine OTA ≥ 2.9.162.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
-        versionCode 33
-        versionName "2.9.161"
+        versionCode 34
+        versionName "2.9.163"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

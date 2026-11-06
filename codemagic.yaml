@@ -116,7 +116,10 @@ workflows:
           # (25/10) 2.9.115 : même version que package.json (scripts/binaires.mjs vérifie l alignement) ; OTA suivante ≥ 2.9.116.
           # (06/11) 2.9.161 : le binaire 2.9 des stores, AU-DESSUS de l'OTA servie (2.9.160), sinon le canal lui servirait
           # un code plus ancien que le sien ; la version App Store porte le même numéro ; OTA suivante ≥ 2.9.162.
-          cd ios/App && agvtool new-marketing-version 2.9.161 && agvtool new-version -all $BUILD_NUMBER
+          # (06/11 soir, décision de Nico) 2.9.163 : LE binaire soumis, complet dès l'installation (interrupteurs
+          # serveur, splash qui couvre la mise à jour du premier lancement) — au-dessus de l'OTA 2.9.162 servie aux
+          # binaires en ligne ; OTA suivante ≥ 2.9.164 (sinon le canal ne lui servirait rien de plus récent).
+          cd ios/App && agvtool new-marketing-version 2.9.163 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles

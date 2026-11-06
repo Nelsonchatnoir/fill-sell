@@ -61,7 +61,7 @@ const DOSSIERS = [DOSSIER_CLES, TELECHARGEMENTS].filter((d) => existsSync(d));
 // (25/10) La version des binaires est celle de package.json (2.9.62 jamais fabriquée) : le commit de version aligne
 // android/app/build.gradle (versionName) et codemagic.yaml (agvtool) ; l'étape A refuse tout écart.
 const VERSION = JSON.parse(readFileSync(path.join(RACINE, 'package.json'), 'utf8')).version;
-const VERSION_CODE = 33;
+const VERSION_CODE = 34;
 const PAQUET = 'app.fillsell.app';
 const EQUIPE_APPLE = 'BQ379Y93X3';
 const DEPUIS = new Date('2026-10-06T00:00:00+02:00').getTime();
