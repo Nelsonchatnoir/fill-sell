@@ -215,7 +215,7 @@ des fonctions (projet `tojihnuawsoohlolangc`).
   quand on touche leur sujet ; `selftest:imports-epingles` pour les fonctions).
 - Captures d'écran sans session : `scripts/apercu/` (vite + playwright).
 - **OTA Capgo** (manuel ; jamais d'un worktree) : canal lu → version montée
-  (`package.json` + lock) → **commit** → `npm run build` → `bundle upload` →
+  (`package.json` + lock) → **commit** → `npm run build` → `bundle upload … --delta` (toujours, 06/11) →
   canal relu ; pas à pas : `docs/agents/pieges.md` (Déploiement). Une OTA ne
   change que le JS ; binaires natifs : iOS Codemagic, Android AAB à la main.
 

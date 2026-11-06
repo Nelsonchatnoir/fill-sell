@@ -118,3 +118,46 @@ Gestes (dossier principal, jamais un worktree ; `docs/agents/pieges.md` § Dépl
 4. `npx @capgo/cli bundle upload --channel production --bundle 2.9.162 --path dist` ; relire le canal.
 Pourquoi pas fait aujourd'hui : l'arbre partagé n'est pas propre (terminal « Problèmes » en cours), et un numéro monté
 sans être publié serait pris par la prochaine OTA d'un autre terminal (sans le feu vert de Nico).
+
+## 8. Soir du 06/11 — décisions de Nico : binaire final 2.9.163, OTA 2.9.162 en delta, flash, AX42-2
+- **OTA 2.9.162 PUBLIÉE 15:53** (feu vert de Nico, après les 4 commits de « Problèmes » sur main) : bundle
+  `2026-11-06T14:46:08Z+b331681`, `--delta` (161 fichiers), canal `production` relu = 2.9.162. Selftests avant
+  publication : 600/600 (13 morceaux, 15:23-15:50). Réception par les téléphones en 2.8 : pas encore visible dans les
+  statistiques Capgo du jour (16 appareils sur 2.9.160 à 15:55) — à relire. Désormais TOUTES les OTA en `--delta`
+  (`docs/agents/pieges.md`, AGENTS.md, REPRISE.md).
+- **Le flash à chaque ouverture (point 5) — la vraie cause** : ce n'était PAS le bundle embarqué (le natif Capgo 8.51.2
+  charge l'OTA courante dès la première page : lu dans le code iOS/Android du plugin et de Capacitor). C'était le code
+  servi : `StockTab` partait de `syncMultiOuverte = false` à chaque montage, affichait l'ANCIENNE carte « Tu vends déjà
+  sur Vinted ? / Synchroniser mes annonces Vinted » le temps de lire `coin_config.sync_multi_ouverte` (= 1, ouvert à
+  tous), puis basculait sur la nouvelle. Corrigé (9b17486) : lecture commune au démarrage, rien dans l'emplacement tant
+  que l'interrupteur n'est pas su. Prouvé en ligne (e81bc5e, WebKit isolé, compte de démo) : le Stock montre la
+  nouvelle carte. Second défaut trouvé : au PREMIER lancement d'un binaire neuf, App.jsx cachait le splash avant le
+  rechargement de Capgo (web embarqué visible puis rechargement) — `src/natif/splashDemarrage.js` garde le splash
+  jusqu'à « appReady », au plus 10 s.
+- **Point 1 — ouverture sous les seuls interrupteurs serveur** (9b17486) : `src/config/interrupteurs.js` lit en UNE
+  requête au chargement d'App.jsx `cloud_offre_ouverte`, `grille_trois_jauges`, `sync_multi_ouverte`,
+  `republication_multi_ouverte` ; fermé tant que rien n'est lu, en cas d'échec ou au-delà de 4 s. `CLOUD_OFFER_ENABLED`
+  SUPPRIMÉ : l'offre suit `coin_config.cloud_offre_ouverte` (le même que create-checkout-session). Ouvrir le Cloud à
+  tous = `insert into coin_config (key, value) values ('cloud_offre_ouverte', 1)` ; refermer = 0 ; ni OTA ni binaire.
+  Selftest `interrupteurs-ouverture` (32 contrôles) ; suite complète 602/602 (16:04-16:26).
+- **Binaire final 2.9.163** (au-dessus de l'OTA 2.9.162 ; OTA suivante ≥ 2.9.164) :
+  - Android : `build/AAB-A-TELEVERSER-2.9.163-vc34/fillsell-android-2.9.163-versionCode34-e81bc5e.aab` (Firebase,
+    notifications, signé par la clé habituelle, web `2026-11-06T15:30:41Z+e81bc5e`, Capgo `atInstall`,
+    `launchAutoHide:false`) + APK d'essai `build/APK-ESSAI-2.9.163/` ;
+  - iOS : Codemagic **176** lancé 16:30 sur e81bc5e, en attente d'une machine macOS gratuite (11/500 minutes
+    consommées) — à relire ; puis conformité à l'exportation (Info.plist sans `ITSAppUsesNonExemptEncryption` : geste
+    de Nico à chaque build).
+  - Rien soumis aux stores.
+- **Test TestFlight du point 1** (sur le build 176, quand il est dans TestFlight) — scripts prouvés 6/6 sur Postgres
+  jetable : phase A « fermé » `scripts/reparations/20261106_essai_testflight_temoin_cloud_nico_ferme.sql` (retire
+  `beta_flags.cloud` du compte de Nico ; son Cloud continue côté serveur), installation neuve → aucun écran Cloud ;
+  phase B « ouvert pour lui seul » = son `_INVERSE` → installation neuve → le Cloud apparaît au premier lancement.
+  Interrupteur global jamais touché.
+- **Clés rangées** (point 7) : `C:\Users\nicol\Documents\FillSell-cles\` (clé Firebase + 4 fichiers .p8) ; plus rien
+  dans Téléchargements ; `binaires.mjs` les y cherche (puis dans Téléchargements). `apple-key.p8` (racine du dépôt,
+  ignorée par git, = DYF87JYZ89) laissée : `apple-lookup-subscriptions.ts` la lit.
+- **Push « Problèmes »** (point 2) : fdefb12 poussé par lui, READY ; 66c9619 + b331681 poussés avec mes commits
+  (fdefb12..b331681), puis b3f6d0e par lui.
+- **AX42** : AX42-1 (B20261106-3543538) ANNULÉE par Hetzner 16:10 (« several weeks »), sans frais. AX42-2 (HEL1) :
+  « usually within a few minutes » (page du 04/11) mais **187,30 € HT/mois + 94,00 € HT d'installation** (API Robot)
+  > plafonds de Nico (99 / 49) → NON commandé, montants donnés à Nico.

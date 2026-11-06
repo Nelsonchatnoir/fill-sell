@@ -15,6 +15,10 @@ dans un fichier puis `npx supabase db query --linked -f <fichier>` (jamais une �
 ## ⛔ DÉCISIONS DE NICO DU 06/11 APRÈS-MIDI — elles PRIMENT sur le reste de ce document
 Hetzner (06/11 11:56, ticket 2026110503039457) : « refaites exactement la même commande, nous l'accepterons » — Nico
 la repasse lui-même. Robot relu le 06/11 vers 14:10 : seul cloud-2 (3104939) ; AX42 pas encore livré.
+**06/11 16:10 : AX42-1 (B20261106-3543538) ANNULÉE par Hetzner** (délai « several weeks »), sans frais. AX42-2 (même
+Ryzen 7 PRO 8700GE, 64 Go ECC) à HEL1 : « usually within a few minutes » mais **187,30 € HT/mois + 94,00 € HT
+d'installation** (API Robot, 16:3x) > plafonds de Nico (99 / 49) → NON commandé ; décision de Nico attendue. À la
+livraison d'un serveur : tout ce document vaut (nom cloud-3, Ubuntu 24.04, contrôles, bascule de Nico).
 1. Essai **OUI**, seuils du § 6.3 **tels quels**, réinstallation en **Ubuntu 24.04** (comme cloud-2).
 2. **PAS Ornella** : c'est le **COMPTE DE NICO** qui passe sur cloud-3 dès que cloud-3 a passé ses contrôles (A10 pare-feu,
    A11 Chrome par la Radeon et non SwiftShader, A12 battement sans compte), pour qu'il teste lui-même. cloud-2 GARDE les

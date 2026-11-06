@@ -858,7 +858,7 @@ fin se vérifie (§ 4.3), elle ne se suppose pas. Ordre :
 4. 179+ selftests, `npm run build:essai`, puis
    `preuve-identite-compte-ordinaire.mjs --version <canal>` → **IDENTIQUE** ;
 5. version montée (package.json + lock), commit, UN push, `npm run build`,
-   `npx @capgo/cli bundle upload --channel production --bundle <v> --path dist`,
+   `npx @capgo/cli bundle upload --channel production --bundle <v> --path dist --delta` (toujours delta, 06/11),
    relecture du canal. Rien d'autre : ni fonction, ni drapeau.
 
 ### 4.2 Le serveur de test — CRÉÉ, DÉPLOYÉ, PRÊT (05/10, 15:10 Paris)

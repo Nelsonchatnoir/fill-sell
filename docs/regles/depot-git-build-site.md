@@ -15,6 +15,7 @@
 - Git (migrations inscrites, push direct sur main) (ex-L669-673)
 - ⛔ Un seul push sur main par lot (ex-L674-686)
 - ⛔ Écran blanc : le build avant le code (ex-L687-724)
+- ⛔ Interrupteurs d'ouverture sur le serveur, jamais dans le bundle (06/11 soir)
 
 <!-- ex-CLAUDE.md L396-398 : Selftests (compte et morceaux mis de côté) -->
 - **Selftests** : 151 dans package.json + 37 scripts non câblés, 0 rouge (04/10). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
@@ -188,3 +189,17 @@ avec une phrase, les autres continuent — jamais tout l'écran.
   HTML servie les porte aussi (selftest `dom-traduit`). Prouvé le 29/10 dans un Chrome en italien : en prod, icône et
   bulle « Tradurre la pagina? » ; version corrigée : ni l'une ni l'autre, rendu identique au pixel sur téléphone.
   La garde du DOM reste (autres extensions qui touchent au DOM).
+
+## ⛔ 06/11 soir — les interrupteurs d'OUVERTURE vivent sur le serveur, jamais dans le bundle (décision de Nico)
+« Le binaire soumis doit être complet dès l'installation » : une ouverture (Cloud, grille à 3 jauges, relevés et
+republications multi-plateformes) est une clé de `coin_config`, lue UNE fois au démarrage par
+`src/config/interrupteurs.js` (`lireInterrupteurs(supabase)` au chargement d'App.jsx), jamais une constante
+(`CLOUD_OFFER_ENABLED` supprimé : `cloud_offre_ouverte`, le même interrupteur que create-checkout-session).
+- Valeur sûre : FERMÉ tant que la réponse n'est pas là, en cas d'échec, et au-delà de 4 s (jamais d'écran bloqué).
+- ⛔ Un écran qui choisit entre deux interfaces selon un interrupteur ne rend RIEN tant que `interrupteursConnus()` est
+  faux — jamais l'ancienne interface « en attendant ». Le 06/11, la carte Vinted de septembre s'affichait ~0,25 s à
+  chaque ouverture du Stock parce que `StockTab` partait de `false` (« le flash à chaque ouverture » vu par Nico).
+- Une nouvelle clé d'ouverture s'ajoute à `CLES_OUVERTURE` (une seule requête au démarrage) ; selftest
+  `interrupteurs-ouverture`.
+- Premier lancement d'un binaire neuf : le splash couvre la mise à jour Capgo (`src/natif/splashDemarrage.js`, au plus
+  10 s) ; les OTA partent TOUJOURS en `--delta` (`docs/agents/pieges.md`).

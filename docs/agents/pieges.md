@@ -36,7 +36,10 @@ Claude sont dans `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\m
      du canal (numéro de bundle = cette version) ;
   3. **commiter** : `npm run build` REFUSE un arbre sale (01/10) ;
   4. `npm run build` ;
-  5. `npx @capgo/cli bundle upload --channel production --bundle <version> --path dist` ;
+  5. `npx @capgo/cli bundle upload --channel production --bundle <version> --path dist --delta` —
+     ⛔ (06/11/2026, décision de Nico) **TOUJOURS `--delta`** : le téléphone ne télécharge que les fichiers changés
+     (bundle de 16 Mo en zip complet = mise à jour du premier lancement trop lente, abandonnée au-delà du splash) ;
+     2.9.162 = première OTA en delta (161 fichiers, envoi 15:53) ;
   6. relire le canal. Un numéro consommé ne se réutilise jamais (même si
      l'envoi s'est figé) ; **ne jamais rebuilder un `dist/` déjà empreint**
      pour le renvoyer : nouveau numéro, nouveau commit, nouveau build.

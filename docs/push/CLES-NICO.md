@@ -3,7 +3,8 @@
 > **06/11/2026 après-midi : blocs A, B et D FAITS.** Firebase fillsell-6cd47 (google-services.json + clé du compte de
 > service), clé APNs **J8G395AA93** (la SEULE clé APNs du PC : DYF87JYZ89, W7MZC3YK99 et ZYC7ZAG2GL sont refusées par
 > APNs), secrets `APNS_*` + `FCM_SERVICE_ACCOUNT` posés et prouvés sur jeton factice (Apple « BadDeviceToken », Google
-> « jeton_mal_forme ») ; binaires 2.9.161 faits (AAB vc33, Codemagic 175). Pour reposer les clés seules :
+> « jeton_mal_forme ») ; binaires 2.9.161 faits (AAB vc33, Codemagic 175). **Clés RANGÉES le 06/11 au soir dans
+> `C:\Users\nicol\Documents\FillSell-cles\`** (hors Téléchargements, hors dépôt) ; `binaires.mjs` les y cherche. Pour reposer les clés seules :
 > `node scripts/binaires.mjs --cles-seules --cle-apns=<.p8>`. Reste : bloc C (Pub/Sub) et le test sur l'iPhone.
 
 > Écrit le 06/10/2026, remis à jour le 25/10/2026 (lot du matin). Rien de ce qui suit n'a encore été fait : au 25/10,
