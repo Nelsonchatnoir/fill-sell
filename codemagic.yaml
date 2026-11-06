@@ -7,9 +7,15 @@ workflows:
       xcode: latest
       vars:
         BUNDLE_ID: app.fillsell.app
+      # (06/11) Le profil est désigné PAR SA RÉFÉRENCE : Codemagic gardait la copie d'avril de « FillSell AppStore »
+      # (sans Push) ; le binaire demande aps-environment et l'archivage échouait (build 174, code 65). Le profil
+      # régénéré le 06/11 (Push, In-App Purchase, Sign In with Apple) a été récupéré du portail Apple sous la
+      # référence fillsell_appstore_push. Un profil régénéré chez Apple = « Fetch profiles » dans Codemagic.
       ios_signing:
-        distribution_type: app_store
-        bundle_identifier: app.fillsell.app
+        provisioning_profiles:
+          - fillsell_appstore_push
+        certificates:
+          - FillSell Distribution
     integrations:
       app_store_connect: Codemagic
     scripts:
