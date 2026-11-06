@@ -11,7 +11,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, msDuBuild, messageAttenteMaj,
-  champsPauseAttenteMaj, sourceDeRegle,
+  champsPauseAttenteMaj, sourceDeRegle, PAUSE_ATTENTE_ABANDONNEE, MESSAGES_PAUSE_ATTENTE,
 } from "../supabase/functions/_shared/relance-apres-maj.js";
 import { attenteAutomatique, etatJob, porteUneEstimation } from "../supabase/functions/_shared/etat-job.js";
 
@@ -226,49 +226,38 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   ok("   republication déjà retirée : jamais", regleDeRelance({ ...REP, platform_fields: { ...REP.platform_fields, republish_step: "deleted" } }) === null);
   ok("   Leboncoin : jamais", regleDeRelance({ ...MARTA, platform: "leboncoin" }) === null);
 
-  // (29/10, complément 4.1) Poste SOUS la 0.6.153 (le sien : 0.6.149, éteint depuis le 28/10 13:32) : la question fausse
-  // n'est plus montrée (y répondre casserait la pose par identifiants) — EN PAUSE automatique, message neutre et vrai.
-  console.log("   — en attendant la 0.6.153 : en pause, question retirée —");
-  const pause = champsPauseAttenteMaj(MARTA, r, { maintenant: "2026-10-29T18:00:00Z" });
-  const pp = pause?.platform_fields ?? {};
-  ok("   en pause : needs_user_source « build_min_requis », build_min_requis = 0.6.153",
-    pp.needs_user_source === "build_min_requis" && pp.build_min_requis === "2026-10-29T13:49:28Z", JSON.stringify(pp));
-  ok("   « En pause » (etat-job : build_min_requis → mise_a_jour)", attenteAutomatique({ ...MARTA, platform_fields: pp }) === "mise_a_jour"
-    && etatJob({ ...MARTA, error: pause?.error, platform_fields: pp }).etat === "en_pause");
-  ok("   message neutre et vrai, sans heure ni « Relance »",
-    pause?.error === "Ta publication est en pause, rien n'a été publié : elle repart toute seule dès que l'extension FillSell de ton ordinateur est à jour. Rien à faire."
-      && !porteUneEstimation(pause?.error) && !/[Rr]elance/.test(pause?.error ?? ""), pause?.error);
-  ok("   la question fausse retirée (plus de « Compléter »), gardée sous attente_maj_extension",
-    !pp.needsUserField && pp.attente_maj_extension?.question?.allowed_values?.join() === RACINES_IT.join()
-      && pp.attente_maj_extension.cle === r.cle && pp.attente_maj_extension.source_avant === "prevol_negatif");
-  ok("   l'ancien message archivé", (pp.erreurs_archivees ?? []).some((e) => /ne propose pas « Électronique »/.test(String(e?.erreur ?? e?.message ?? JSON.stringify(e)))), JSON.stringify(pp.erreurs_archivees));
-  ok("   identifiants et compteur intacts (aucune tentative consommée)", pp.vinted_ids?.catalog_id === 3026 && pp.needsUserAttempts === 0);
-  const enPause = { ...MARTA, error: pause?.error, platform_fields: pp };
-  ok("   en pause : une fois, jamais réécrite", champsPauseAttenteMaj(enPause, regleDeRelance(enPause), { maintenant: "2026-10-29T18:03:00Z" }) === null);
+  // (29/10, complément 4.1) Poste SOUS la 0.6.153 : la tâche passait EN PAUSE (needs_user_source « build_min_requis »).
+  // ⛔ (06/11, Nico : version minimum abandonnée) PLUS JAMAIS : aucune pause pour le build du poste — la tâche garde son
+  // état ordinaire (sa question), et la relance unique part quand le poste a le build.
+  console.log("   — (06/11) poste sous la 0.6.153 : plus de pause, la tâche garde son état —");
+  ok("   (06/11) aucune pause : champsPauseAttenteMaj rend null (publication, republication, règles d'avant)",
+    PAUSE_ATTENTE_ABANDONNEE === true && champsPauseAttenteMaj(MARTA, r, { maintenant: "2026-10-29T18:00:00Z" }) === null
+      && champsPauseAttenteMaj(REP, regleDeRelance(REP), { maintenant: "2026-10-29T18:00:00Z" }) === null
+      && champsPauseAttenteMaj(GLOWIK, regleDeRelance(GLOWIK)) === null);
+  // Une pause posée AVANT le 06/11 (la vraie de 2fd83d73, relue en base le 06/11) se relance encore par « …_en_pause ».
+  const enPause = { ...MARTA, error: MESSAGES_PAUSE_ATTENTE.publish, platform_fields: {
+    ...MARTA.platform_fields, needsUserField: undefined, needs_user_source: "build_min_requis", build_min_requis: "2026-10-29T13:49:28Z",
+    attente_maj_extension: { cle: r.cle, le: "2026-10-29T19:24:05.026Z", version: "0.6.153", source_avant: "prevol_negatif", question: MARTA.platform_fields.needsUserField },
+  } };
   const rp = regleDeRelance(enPause);
-  ok("   en pause : retrouvée sous son nouveau motif (requête du balayage : build_min_requis)",
+  ok("   pause d'avant le 06/11 : retrouvée sous son motif (requête du balayage : build_min_requis)",
     rp?.cle === "vinted_categorie_page_etrangere_publish_en_pause" && sourceDeRegle(rp) === "build_min_requis" && rp.buildMin === r.buildMin, JSON.stringify(rp));
-  ok("   poste toujours en 0.6.149 : rien ne bouge", posteALeBuild("2026-10-28T09:52:53Z+9ca925f", rp) === false && messageAttenteMaj(enPause, rp) === null);
-  const pfR = champsRelance(enPause, rp, { maintenant: "2026-10-30T09:00:00Z", extensionBuild: "2026-10-29T14:10:00Z+abcdef0" });
-  ok("   poste à la 0.6.153 : la relance unique part (pause levée, build_min_requis gardé, question lisible)",
-    !pfR.needs_user_source && pfR.build_min_requis === "2026-10-29T13:49:28Z" && pfR.relance_apres_maj?.cle === rp.cle
+  ok("   « En pause » d'avant : etat-job la lit encore (build_min_requis → mise_a_jour)", attenteAutomatique(enPause) === "mise_a_jour");
+  ok("   poste toujours en 0.6.149 : pas de relance (rien de nouveau n'est posé)", posteALeBuild("2026-10-28T09:52:53Z+9ca925f", rp) === false && messageAttenteMaj(enPause, rp) === null);
+  const pfR = champsRelance(enPause, rp, { maintenant: "2026-10-30T09:00:00Z", extensionBuild: "2026-11-02T20:10:27Z+02b1390" });
+  ok("   poste à la 0.6.153 ou plus (le sien : 2026-11-02, 0.6.16x) : la relance unique part (pause levée, question lisible)",
+    !pfR.needs_user_source && pfR.relance_apres_maj?.cle === rp.cle
       && pfR.relance_apres_maj.question_levee?.allowed_values?.join() === RACINES_IT.join());
   ok("   puis plus jamais", regleDeRelance({ ...enPause, platform_fields: { ...pfR, needs_user_source: "build_min_requis" } }) === null);
-  ok("   republication : la pause dit « AVANT toute suppression »",
-    /AVANT toute suppression/.test(champsPauseAttenteMaj(REP, regleDeRelance(REP), { maintenant: "2026-10-29T18:00:00Z" })?.error ?? ""));
   ok("   une autre pause « build_min_requis » (autre cause) : jamais prise pour celle-ci",
     regleDeRelance({ ...MARTA, platform_fields: { ...MARTA.platform_fields, needs_user_source: "build_min_requis", attente_maj_extension: { cle: "autre" } } }) === null);
-  ok("   les règles d'avant (sans pauseAttente) : aucune pause", champsPauseAttenteMaj(GLOWIK, regleDeRelance(GLOWIK)) === null);
-  // Le câblage : handler-watch pose la pause (compare-and-swap sur needs_user) AVANT le message d'attente, et ne relance pas.
+  // Le câblage : handler-watch ne pose plus aucune pause sous le build.
   const { readFileSync } = await import("node:fs");
-  const hw = readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const hw = readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8").split("\r\n").join("\n");
   const ib = hw.indexOf("if (!posteALeBuild(eb, regle)) {");
   const blocHw = hw.slice(ib, ib + 1800);
-  ok("   handler-watch : la pause posée (needs_user gardé), puis `continue` — jamais une relance sous le build",
-    ib > 0 && /const pauseMaj = champsPauseAttenteMaj\(j, regle, \{ maintenant: new Date\(now\)\.toISOString\(\) \}\);/.test(blocHw)
-      && /\.update\(pauseMaj\)\.eq\("id", String\(j\.id\)\)\.eq\("status", "needs_user"\)/.test(blocHw)
-      && blocHw.indexOf("champsPauseAttenteMaj(") < blocHw.indexOf("messageAttenteMaj(j, regle)")
-      && /champsPauseAttenteMaj \} from "\.\.\/_shared\/relance-apres-maj\.js"/.test(hw));
+  ok("   (06/11) handler-watch : plus aucun appel à champsPauseAttenteMaj, le message d'attente seul sous le build",
+    ib > 0 && !hw.includes("champsPauseAttenteMaj(") && !hw.includes(".update(pauseMaj)") && blocHw.includes("messageAttenteMaj(j, regle)"));
 }
 
 {

@@ -283,16 +283,26 @@ export function causeLeveePourRelance(job, extensionBuild = undefined, { ignorer
   for (const c of CAUSES_LEVEES_PAR_LE_SERVEUR) {
     if (!c.plateformes.includes(job.platform)) continue;
     if (!(c.sources ?? [SOURCE_RECREATION_BLOQUEE]).includes(String(pf.needs_user_source ?? ""))) continue;
-    if (pf.recreation_relancee && pf.recreation_relancee[c.code]) continue; // une fois par cause
-    // (28/10) le poste n'a pas encore le correctif ; (02/11) `ignorerBuild` : la cause qui ATTEND le poste (le message le dit)
-    if (!ignorerBuild && !posteAuBuildDeLaCause(c, extensionBuild)) continue;
+    // (06/11, Nico : version minimum abandonnée) La relance ne dépend plus du build du poste : une fois par cause,
+    // tout de suite. Une cause corrigée par l'EXTENSION (buildMin) relancée sur un poste SOUS ce build (sous_build)
+    // garde UNE relance de plus, quand le poste a le build (reprise_au_build) — `ignorerBuild` (02/11) : la cause qui
+    // attend encore ce poste (le message le dit).
+    const deja = pf.recreation_relancee ? pf.recreation_relancee[c.code] : null;
+    if (deja && !(c.buildMin && deja.sous_build === true && !deja.reprise_au_build
+      && (ignorerBuild || posteAuBuildDeLaCause(c, extensionBuild)))) continue;
     if (c.signature.test(textes) && (!c.condition || c.condition(job))) return c;
   }
   return null;
 }
 
-/** Le platform_fields du job remis en file pour cette cause (pur). */
-export function champsRelanceCauseLevee(pf0 = {}, cause, maintenant = new Date().toISOString()) {
+/**
+ * Le platform_fields du job remis en file pour cette cause (pur).
+ * @param {any} [pf0]
+ * @param {any} cause
+ * @param {string} [maintenant]
+ * @param {{ extensionBuild?: string | null }} [opts] le build du poste du compte (06/11 : trace « sous_build »)
+ */
+export function champsRelanceCauseLevee(pf0 = {}, cause, maintenant = new Date().toISOString(), { extensionBuild = undefined } = {}) {
   const pf = { ...pf0 };
   pf.recreation_essais_avant_relance = {
     le: maintenant,
@@ -304,11 +314,18 @@ export function champsRelanceCauseLevee(pf0 = {}, cause, maintenant = new Date()
   delete pf.recreation_reprises; delete pf.recreation_reprise; delete pf.recreation_tentee;
   delete pf.recreation_bloquee; delete pf.needs_user_source; delete pf.next_action_after; delete pf.processing_since;
   delete pf.pas_de_rouge; delete pf.error_technique;
-  pf.recreation_relancee = { ...(pf.recreation_relancee ?? {}), [cause.code]: { le: maintenant, par: "handler-watch", correctif: cause.correctif } };
+  const deja = pf.recreation_relancee ? pf.recreation_relancee[cause.code] : null;
+  pf.recreation_relancee = { ...(pf.recreation_relancee ?? {}), [cause.code]: deja
+    // (06/11) La relance de plus, au build : tracée, jamais une troisième.
+    ? { ...deja, reprise_au_build: { le: maintenant, build: String(extensionBuild ?? "").slice(0, 48) || null } }
+    : { le: maintenant, par: "handler-watch", correctif: cause.correctif,
+      ...(cause.buildMin ? { sous_build: !posteAuBuildDeLaCause(cause, extensionBuild) } : {}) } };
   // (29/10 soir, lot A point 7 — thibault.andrieux, deux postes : 0.6.152 et un vieux 0.6.149) Une cause corrigée par
   // l'EXTENSION n'est levée que sur le build du poste du compte (profiles.extension_build) ; le job relancé doit alors
   // n'être servi qu'à un poste qui a ce build (garde `build_min_requis` de get-pending-jobs) — sinon le vieux poste
   // le reprend, retombe sur le même mur, et la relance unique est perdue. Jamais abaissé.
+  // (06/11, Nico : version minimum abandonnée) `build_min_requis` n'est plus qu'une trace (aucun filtre ne le lit) :
+  // une relance faite sous le build en garde une seconde, au build (causeLeveePourRelance).
   if (cause.buildMin && !(msBuild(pf.build_min_requis) >= Date.parse(cause.buildMin))) pf.build_min_requis = cause.buildMin;
   return pf;
 }

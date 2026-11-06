@@ -42,12 +42,15 @@ const re = new RegExp(ligneRegex.slice(1, ligneRegex.lastIndexOf("/,")));
 const detailReel = "« Taille » : la fiche porte « L » mais la valeur n'a pas pu être posée sur la page — panne de remplissage, PAS une donnée manquante (relancer, ou attendre le correctif)";
 ok(re.test(detailReel), "la regex de horsListe trouve le texte réel (elle ne le trouvait jamais)");
 
-console.log("\n3. AUCUN RETRAIT BEEBS PAR UN POSTE QUI DEVINE UNE TAILLE");
+console.log("\n3. (06/11, Nico : version minimum abandonnée) PLUS DE RETENUE BEEBS PAR BUILD");
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-ok(/const posteSansIaTaille = buildMsDe\(buildDuPoll\) >= buildMsDe\(BUILD_BEEBS_ADRESSE_STRICTE\);/.test(gpj)
-  && /poserRetenueServeur\(\(j\.platform_fields \?\? \{\}\) as Record<string, unknown>, RETENUE_EXTENSION_A_JOUR/.test(gpj)
-  && /leverRetenueServeur\(pfJ, maintenantIso, `poste \$\{buildDuPoll\.slice\(0, 40\)\}`\)/.test(gpj),
-  "republication Beebs avant retrait : retenue (nommée) pour un poste < 0.6.83, levée dès un poste à jour");
+// Avant le 06/11 : une republication Beebs pas encore retirée était retenue pour un poste < 0.6.83 (il devinait la
+// taille). Désormais servie à tout poste (une vieille extension fait ce qu'elle savait faire) ; la retenue déjà
+// posée se lève pour tout poste.
+ok(!gpj.includes("const posteSansIaTaille")
+  && !gpj.includes("poserRetenueServeur((j.platform_fields ?? {}) as Record<string, unknown>, RETENUE_EXTENSION_A_JOUR")
+  && gpj.includes("leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)} (06/11 : version minimum abandonnée)`)"),
+  "republication Beebs avant retrait : plus de retenue « poste < 0.6.83 », la retenue posée se lève pour tout poste");
 const ph = phraseRetenueServeur(true, { plateforme: "Beebs", motif: RETENUE_EXTENSION_A_JOUR });
 ok(/mise à jour de l'extension/.test(ph.titre) && /intacte sur Beebs/.test(ph.detail) && /ferme Chrome complètement puis rouvre-le/.test(ph.detail), "la carte dit l'attente, la plateforme, le geste");
 ok(/intacte sur Beebs/.test(phraseRetenueServeur(true, { plateforme: "Beebs" }).detail), "les autres retenues nomment aussi la bonne plateforme (plus « Vinted » partout)");

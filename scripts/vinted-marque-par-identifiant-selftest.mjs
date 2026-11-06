@@ -333,13 +333,14 @@ console.log("\n6. SERVEUR : PREUVE DU PARC, RÉARMEMENT, L'ANNONCE GAGNE, « EN 
 }
 ok(/appliquerMarqueRetenue\(j, retenues as Record<string, unknown>, new Date\(\), \{ annonceParIdentifiant: posteMarqueParId \}\)/.test(gpj), "get-pending-jobs : marque retenue sans effet pour un poste à jour");
 ok(/import \{ BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, envoiMarqueProuve, enPauseMarqueParId, marqueAIdentifiantCapturee \} from "\.\.\/_shared\/vinted-marque-par-id\.js";/.test(gpj), "get-pending-jobs lit la règle partagée");
-ok(/const posteAJourMarque = buildMsDe\(buildDuPoll\) >= buildMsDe\(BUILD_VINTED_MARQUE_PAR_ID\);/.test(gpj)
-  && /if \(posteAJourMarque\) \{[\s\S]{0,300}marqueProuvee = await envoiMarqueProuveParc\(admin\);/.test(gpj), "la preuve n'est lue que pour un poste qui porte le correctif");
-ok(/if \(!relaches\.has\(String\(j\.id\)\) && enPauseMarqueParId\(j\) && !\(posteAJourMarque && marqueProuvee\)\) \{ retenusMarque\.add/.test(gpj), "une pause n'est resservie qu'avec la preuve, à un poste à jour — ou relâchée (24/10)");
-// (24/10, lot « zéro blocage », A3) Une pause « marque » n'est jamais permanente.
-ok(/const raison = id && duCatalogue\.has\(id\) \? "marque_du_catalogue" : \(posteChaine \? "chaine_de_repli" : null\);/.test(gpj)
+// (06/11, Nico : version minimum abandonnée) Plus aucune condition de build : la preuve est lue pour tout poste.
+ok(!gpj.includes("const posteAJourMarque") && /marqueProuvee = await envoiMarqueProuveParc\(admin\);/.test(gpj),
+  "(06/11) la preuve du parc est lue pour tout poste (un poste ancien ignore le drapeau)");
+ok(/if \(!relaches\.has\(String\(j\.id\)\) && enPauseMarqueParId\(j\) && !marqueProuvee\) \{ retenusMarque\.add/.test(gpj), "une pause n'est resservie qu'avec la preuve — ou relâchée (24/10), pour tout poste (06/11)");
+// (24/10, lot « zéro blocage », A3) Une pause « marque » n'est jamais permanente. (06/11) Jamais « pas ce poste ».
+ok(/const raison = id && duCatalogue\.has\(id\) \? "marque_du_catalogue" : \(posteChaine \? "chaine_de_repli" : "version_minimum_abandonnee"\);/.test(gpj)
   && /Date\.now\(\) - t < 6 \* 3_600_000/.test(gpj) && /\.eq\("action", "republish"\)\.eq\("status", "published"\)/.test(gpj),
-  "(24/10) pause relâchée : marque du catalogue (reprise avec succès par le parc, 30 j) ou poste à la chaîne de repli ; au plus toutes les 6 h");
+  "(24/10) pause relâchée : marque du catalogue, chaîne de repli, ou (06/11) tout autre poste ; au plus toutes les 6 h");
 ok(/if \(marqueProuvee\) j\.platform_fields = \{ \.\.\.pfM, marque_injection_prouvee: true \};/.test(gpj), "marque_injection_prouvee servi seulement sur preuve");
 ok(/else if \("marque_injection_prouvee" in pfM\) \{\s*const \{ marque_injection_prouvee: _perime, \.\.\.reste \} = pfM;\s*j\.platform_fields = reste;/.test(gpj),
   "un drapeau resté en base (preuve révoquée) est retiré de la copie servie");

@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 06/11 — version minimum abandonnée définitivement : aucune retenue par build (en fin de fichier)
 - 04/11 soir — un poste lent garde sa première page (patience apprise) ; Vinted « conditions d'utilisation » nommé (en fin de fichier)
 - « Servi » — versions servies (extension, web, OTA, fonctions) (ex-L277-295)
 - 06/10 soir — un échec qu'une extension corrige repart seul (ex-L323-328)
@@ -242,3 +243,21 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Manifest 0.6.175 ; `FILLSELL_BUILD` daté du 05/11 soir. EXTENSION_LAST_COMMIT à recaler APRÈS le commit de l'extension
   (horodatage UTC LU, dans un commit qui ne touche pas `chrome-extension/`) ; EXTENSION_MIN_BUILD non touché ; aucun
   changement serveur requis.
+
+## ⛔ 06/11 — version minimum ABANDONNÉE DÉFINITIVEMENT (décision de Nico)
+- `EXTENSION_MIN_BUILD` ne se pose JAMAIS plus (valeur figée au 2026-10-17T18:16:49Z, 0.6.124) ; il ne nourrit que le
+  bandeau d'INFORMATION de l'app (« une nouvelle version existe : ta file continue de tourner »). `package-extension.mjs`
+  ne dit plus de le poser ; 0.6.175 ajoutée à ALREADY_PUBLISHED (servie la nuit du 05 au 06/11).
+- Supprimé : la porte « poste sous le seuil » de get-pending-jobs (file vide + `extension_update_required`), le 409
+  « Mets l'extension à jour » d'update-job-status, le filtre par job `build_min_requis` (le champ reste une trace),
+  les retenues par build (Beebs < 0.6.83 et < 0.6.95, colis Vinted < 0.6.84, preuves de retrait < 0.6.80, Opla < 0.6.74,
+  ISBN « mise à jour », pause marque réservée au poste à jour), la pause `pauseAttente` (needs_user_source
+  « build_min_requis ») de handler-watch, l'écran « En pause — mise à jour de l'extension » de l'app.
+- Reste (ce n'est pas une retenue) : les relances UNE fois quand le poste a le build (relance-apres-maj, correctifs
+  d'extension, livres gelés) ; une remise en ligne bloquée se relance tout de suite, quel que soit le build, et garde
+  UNE relance de plus au build si la première a eu lieu sous le build ; les adaptations de capacité (champ servi en plus
+  à un poste récent). Une pause posée avant le 06/11 se relance par « …_en_pause » quand le poste a le build.
+- Exception gardée : `posteApresDefaut` — un job arrêté par une exception de NOTRE code n'est pas rendu au build qui a
+  planté (update-job-status le remet en pending +30 min, sans compteur : sans cette garde, le même build replanterait
+  toutes les 30 min, sans fin) ; même famille : les dépôts eBay d'un poste dont le build a prouvé « retours non posés ».
+- Garde-fou : `npm run selftest:aucune-retenue-par-version` (toute comparaison nouvelle du build du poll doit être nommée).

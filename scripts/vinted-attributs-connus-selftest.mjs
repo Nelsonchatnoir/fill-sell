@@ -134,14 +134,26 @@ const xewer = {
 };
 const avant = new Date(Date.parse(BUILD) - 86_400_000).toISOString().replace(/\.\d{3}Z$/, "Z");
 const apres = new Date(Date.parse(BUILD) + 3600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
-ok(R.causeLeveePourRelance(xewer, `${avant}+be4a6aa`) === null, "poste en 0.6.165 (sans le correctif) : pas encore relancée");
+// (06/11, Nico : version minimum abandonnée) La relance ne dépend plus du build : un poste en 0.6.165 est relancé
+// tout de suite (sous_build), et garde UNE relance de plus quand il a le build qui corrige.
+const cSous = R.causeLeveePourRelance(xewer, `${avant}+be4a6aa`);
+ok(cSous?.code === "vinted_attribut_connu_non_pose", "(06/11) poste en 0.6.165 (sans le correctif) : relancée quand même", String(cSous?.code));
+const pfSous = cSous ? R.champsRelanceCauseLevee(xewer.platform_fields, cSous, "2026-11-02T11:00:00Z", { extensionBuild: `${avant}+be4a6aa` }) : {};
+ok(pfSous.recreation_relancee?.vinted_attribut_connu_non_pose?.sous_build === true, "(06/11) relance tracée « sous le build »");
+const retombee = { ...xewer, platform_fields: { ...xewer.platform_fields, ...pfSous, needs_user_source: "recreation_bloquee" } };
+ok(R.causeLeveePourRelance(retombee, `${avant}+be4a6aa`) === null, "(06/11) retombée sur le même poste ancien : pas de boucle");
+const cAuBuild = R.causeLeveePourRelance(retombee, `${apres}+abcdef0`);
+ok(cAuBuild?.code === "vinted_attribut_connu_non_pose", "(06/11) le poste a le build : UNE relance de plus");
+const pfAuBuild = cAuBuild ? R.champsRelanceCauseLevee(retombee.platform_fields, cAuBuild, "2026-11-02T13:00:00Z", { extensionBuild: `${apres}+abcdef0` }) : {};
+ok(R.causeLeveePourRelance({ ...xewer, platform_fields: { ...pfAuBuild, needs_user_source: "recreation_bloquee" } }, `${apres}+abcdef0`) === null,
+  "(06/11) jamais une troisième");
 const c = R.causeLeveePourRelance(xewer, `${apres}+abcdef0`);
 ok(c?.code === "vinted_attribut_connu_non_pose", "poste au build qui corrige : relancée une fois (cause vinted_attribut_connu_non_pose)", String(c?.code));
-const pf = c ? R.champsRelanceCauseLevee(xewer.platform_fields, c, "2026-11-02T12:00:00Z") : {};
+const pf = c ? R.champsRelanceCauseLevee(xewer.platform_fields, c, "2026-11-02T12:00:00Z", { extensionBuild: `${apres}+abcdef0` }) : {};
 ok(pf.republish_step === "deleted" && pf.recreation_relancee?.vinted_attribut_connu_non_pose && pf.build_min_requis === BUILD && !pf.needs_user_source,
-  "relancée : étape gardée, marquée une fois, servie seulement à un poste au build qui corrige");
+  "relancée : étape gardée, marquée une fois (build_min_requis : une trace, plus une porte)");
 ok(R.causeLeveePourRelance({ ...xewer, platform_fields: { ...xewer.platform_fields, ...pf, needs_user_source: "recreation_bloquee" } }, `${apres}+abcdef0`)?.code !== "vinted_attribut_connu_non_pose",
-  "⛔ une fois : si elle retombe, cette cause ne la relance plus");
+  "⛔ une fois (relancée au build) : si elle retombe, cette cause ne la relance plus");
 ok(R.causeLeveePourRelance({ ...xewer, platform_fields: { ...xewer.platform_fields, vintedAspects: {} } }, `${apres}+abcdef0`) === null,
   "valeur exigée INCONNUE de la tâche : pas cette cause (la question reste à la personne)");
 ok(R.causeLeveePourRelance({ ...xewer, platform_fields: { ...xewer.platform_fields, selling_restriction: { n: 1 } } }, `${apres}+abcdef0`) === null,

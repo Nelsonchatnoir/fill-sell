@@ -271,7 +271,7 @@ const tablesReelles = (o = {}) => ({
   const corps = hw.slice(hw.indexOf("async function jugerAnnoncesPublieesDisparues("), hw.indexOf("\n}\n", hw.indexOf("async function jugerAnnoncesPublieesDisparues(")));
   ok(corps.includes('const ident = (j: unknown) => String(identifiantAnnoncePubliee(j) ?? "").trim();') && !corps.includes("identifiantAnnonceJob("),
     "handler-watch : traces, relevés et décision du juge lisent identifiantAnnoncePubliee, jamais identifiantAnnonceJob");
-  ok(hw.includes("const JUGER_ANNONCES_PUBLIEES_DISPARUES = false;"), "la règle reste COUPÉE en prod (décision de Nico) : JUGER_ANNONCES_PUBLIEES_DISPARUES = false");
+  ok(hw.includes("const JUGER_ANNONCES_PUBLIEES_DISPARUES = true;"), "la règle est RALLUMÉE (06/11, condition de Nico « zéro faux » remplie) : JUGER_ANNONCES_PUBLIEES_DISPARUES = true");
 }
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");
 process.exit(ko ? 1 : 0);

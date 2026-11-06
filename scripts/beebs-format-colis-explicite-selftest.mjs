@@ -84,9 +84,12 @@ const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
 const blocS = gpj.slice(gpj.indexOf("BEEBS : LE FORMAT DE COLIS À POSER EST DIT À L'EXTENSION"), gpj.indexOf("OPLA : UN PRIX AU-DESSUS DE SON PLAFOND"));
 ok(/pfJ\.format_colis_explicite = f\.titre;/.test(blocS), "get-pending-jobs pose format_colis_explicite");
 ok(/needsUserResolved \?\? \{\}\) as Record<string, unknown>\)\.format_colis/.test(blocS), "la réponse de la personne n'est jamais remplacée");
-ok(/avantRetraitB && !posteFormatExplicite/.test(blocS) && /version_min: "0\.6\.95"/.test(blocS), "poste < 0.6.95 : republication pas encore retirée retenue, annonce intacte");
-ok(/build_min \?\? ""\) === BUILD_BEEBS_FORMAT_EXPLICITE/.test(blocS) && /if \(minRetenue !== BUILD_BEEBS_ADRESSE_STRICTE\) continue;/.test(gpj),
-  "chaque retenue « mise à jour » ne lève que la sienne (pas de va-et-vient)");
+// (06/11, Nico : version minimum abandonnée) Plus aucune retenue par build : le format part à tout poste (un poste
+// plus ancien que la 0.6.95 l'ignore), et toute retenue « extension_a_mettre_a_jour » déjà posée se lève pour tout poste.
+ok(!blocS.includes("posteFormatExplicite") && !blocS.includes("poserRetenueServeur(pfJ, RETENUE_EXTENSION_A_JOUR") && !blocS.includes('version_min: "0.6.95"'),
+  "(06/11) aucune retenue « poste < 0.6.95 » : la republication part à tout poste");
+ok(blocS.includes("if (retenueServeurDe(pfJ)?.motif === RETENUE_EXTENSION_A_JOUR) {") && blocS.includes("leverRetenueServeur(pfJ, maintenantIso"),
+  "(06/11) la retenue « mise à jour » déjà posée se lève pour tout poste");
 const corr = lire("supabase/functions/_shared/correctifs-extension.js");
 // Le commit de la 0.6.95 : EXTENSION_LAST_COMMIT tant qu'elle était la
 // dernière, puis la ligne « (avant : '…' = 0.6.95 » quand une version plus

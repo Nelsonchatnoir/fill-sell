@@ -567,17 +567,9 @@ serve(async (req) => {
     // — get-pending-jobs ne sert que celles-là à un tel poste. Sans ça,
     // l'annonce resterait hors ligne et la mise à jour de l'extension, qui
     // attend qu'aucune republication ne soit à 'deleted', ne passerait jamais.
-    if (status === "processing" && !posteExtensionCompatible(body.handler_build)) {
-      const { data: enCours, error: lecture } = await userClient.from("cross_post_jobs")
-        .select("status, action, platform_fields").eq("id", jobId).maybeSingle();
-      if (lecture) return json({ error: "Le début du travail ne peut pas être vérifié. Réessaie au prochain passage." }, 503);
-      const recreationCommencee = enCours?.status === "pending" && enCours?.action === "republish"
-        && String(((enCours?.platform_fields ?? {}) as Record<string, unknown>)["republish_step"] ?? "") === "deleted";
-      if (enCours?.status !== "processing" && !recreationCommencee) return json({
-        error: "Mets l’extension FillSell à jour (ferme Chrome complètement puis rouvre-le) avant de démarrer cette tâche. Aucun retrait n’est autorisé.",
-        extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
-      }, 409);
-    }
+    // (06/11, Nico : version minimum abandonnée) Le refus 409 « Mets l'extension à jour » d'un poste sous le seuil
+    // est RETIRÉ : tout poste démarre ce qu'il a reçu ; la réservation du poste (controler_job_extension, plus bas)
+    // reste la seule garde du démarrage.
 
     // Point C : contrôle avant toute écriture et surtout avant l'ACK processing
     // attendu par les anciennes extensions avant d'agir sur les plateformes.
@@ -1082,10 +1074,13 @@ serve(async (req) => {
               // avant tout retrait (question fermée). Un poste plus ancien ne
               // sait pas poser la question : le job attend un poste qui la
               // porte (build_min_requis), annonce intacte, aucun geste avant.
+              // (06/11, Nico : version minimum abandonnée) build_min_requis n'est plus qu'une trace : le job est servi
+              // à tout poste. Repris dans 6 h (next_action_after) — jamais une boucle d'un poste qui ne sait pas
+              // poser la question.
               if (seulColis && colisAbsent) {
                 statutEffectif = "pending";
                 champsACompleter = null;
-                pfColisADemander = { build_min_requis: BUILD_COLIS_DEMANDE };
+                pfColisADemander = { build_min_requis: BUILD_COLIS_DEMANDE, next_action_after: new Date(Date.now() + 6 * 3_600_000).toISOString() };
               }
               // Colis HORS de notre table de formats (id connu, libellé inconnu) :
               // on ne le devine jamais ; le message ne promet plus de correctif.
@@ -2180,6 +2175,35 @@ serve(async (req) => {
           console.error("[update-job-status] retrait Leboncoin vue acheteur :", (e as Error)?.message ?? e);
           pfRetraitVerif = null;
         }
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // (06/11, Nico, point 11 — Cédric GRIZSTYLE 1b7be2d6) RETRAIT LEBONCOIN : 410 DANS LA FENÊTRE DE MODÉRATION = ATTENTE
+    // ══════════════════════════════════════════════════════════════════════
+    // _shared/lbc-retrait-moderation.js. Un 410/404 lu moins de 2 h après le dépôt FillSell (lecture_etat_retrait,
+    // raison « moderation_recente ») n'est ni « hors ligne » (la modération ne se distingue pas d'un retrait sur la page)
+    // ni un essai raté : pending, compteur de la base, relecture toutes les 15 min. La fenêtre passée, le 410 clôt le
+    // retrait sans message (extension : cloreRetraitDejaAbsent) ; revenue en ligne, l'annonce est retirée.
+    if (!pfRetraitVerif && !pfCanalCoupe && (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
+        && body.platform_fields && typeof body.platform_fields === "object" && lecture410Moderation(body.platform_fields)) {
+      try {
+        const { data: jrowM } = await userClient.from("cross_post_jobs")
+          .select("action, platform, platform_fields").eq("id", jobId).maybeSingle();
+        const attenteM = attenteModerationLbc({
+          job: jrowM as { action?: string; platform?: string } | null,
+          pfBase: ((jrowM?.platform_fields ?? {}) as Record<string, unknown>),
+          pfCorps: body.platform_fields as Record<string, unknown>,
+        });
+        if (attenteM) {
+          pfRetraitVerif = attenteM.pf;
+          statutEffectif = "pending";
+          messageEffectif = attenteM.message;
+          raisonRequalif = attenteM.raison;
+        }
+      } catch (e) {
+        console.error("[update-job-status] retrait Leboncoin en modération :", (e as Error)?.message ?? e);
+        pfRetraitVerif = null;
       }
     }
 
@@ -5659,9 +5683,10 @@ serve(async (req) => {
     return json({ error: msg }, 500);
   }
 });
-import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
+// (06/11, Nico : version minimum abandonnée) version-min-extension.js n'est plus importé ici : aucun refus par build.
 import { questionOplaFinale } from "../_shared/opla-questions.js";
 import { vueVisiteurLbc, messageVueVisiteurLbc, delaiVueVisiteurMin } from "../_shared/lbc-vue-visiteur.js";
+import { lecture410Moderation, attenteModerationLbc } from "../_shared/lbc-retrait-moderation.js";
 import { defautFillsell, messageDefautFillsell } from "../_shared/defaut-fillsell.js";
 import { pauseRayonMoteur } from "../_shared/rayon-moteur-attendu.js";
 import { navigateurDeLaRequete, nomCourtSur, nommerLeNavigateur } from "../_shared/navigateur-poste.js";

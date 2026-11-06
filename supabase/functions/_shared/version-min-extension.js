@@ -1,3 +1,7 @@
+// ⛔ (06/11, Nico : version minimum ABANDONNÉE DÉFINITIVEMENT) Cette valeur ne se relève JAMAIS plus, et le serveur
+// ne s'en sert plus : aucun poste n'est refusé, retenu ni mis en pause pour son build (get-pending-jobs,
+// update-job-status, handler-watch — scripts/aucune-retenue-par-version-selftest.mjs). Elle ne nourrit plus que le
+// bandeau d'INFORMATION de l'app (« une nouvelle version existe »).
 // Dernier minimum déjà publié. Ne le relever qu'après acceptation CWS.
 // Une seule valeur pour le serveur et le bandeau de l'app.
 // (02/10) 0.6.81 (73c4929), servie par le CWS depuis le 30/09 au soir : relevé

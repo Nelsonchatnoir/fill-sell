@@ -550,3 +550,30 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   (neuve, sur le seul geste de la personne). Preuve jetable `scripts/preuve-vendu-retire-partout.mjs` (72/72), selftest
   `vendu-retire-partout` (61/61). Une vente PASSÉE n'est reprise par aucun chemin automatique (voulu) : relance par la même
   fonction (question) ou `armer_retrait_job_pour` (dépôt prouvé), sur liste relue par Nico.
+
+## 06/11 — Lot de Nico (11 points) : retraits, « Oui », ventes en série
+Récit et preuves : `docs/enquetes/lot-0611/RAPPORT.md`.
+- **Retrait Leboncoin, 410 dans la fenêtre de modération = attente, pas un essai** (point 11, Cédric GRIZSTYLE 1b7be2d6) :
+  une annonce « désactivée » ou introuvable (410/404) est HORS LIGNE et clôt le retrait sans message (extension :
+  `cloreRetraitDejaAbsent`, inchangé). Leboncoin ne distingue PAS la modération d'un retrait (même 410, même « Cette
+  annonce est désactivée » ; le tableau de bord vendeur dit « active »), d'où la garde de l'extension : un 410 lu moins de
+  2 h après le dépôt FillSell est « inconnu ». Ces lectures ne consomment plus d'essai (`_shared/lbc-retrait-moderation.js`,
+  update-job-status) : pending, compteur de la base, relecture 15 min, bornée à 6 h ; la fenêtre passée le 410 clôt. Avant :
+  les 5 essais (5/15/30/60 min) tombaient tous dans les 2 h → rouge « retire-la à la main ». Selftest `lbc-retrait-moderation`.
+- **Un « Oui » arme le retrait quel que soit l'auteur légitime** (point 4) : la décision et ses gardes sont UNE fonction
+  (`inventaire_doublon_decider_corps`, compte lu sur la QUESTION, jamais sur la session) ; deux entrées : l'app
+  (`inventaire_doublon_decider`, la personne sur sa session, inchangée) et l'équipe sur ordre
+  (`inventaire_doublon_decider_pour`, service seulement, auteur NOMMÉ écrit dans `preuves.repondu_par`, decide_par
+  « utilisateur »). Jamais en se faisant passer pour la personne (claims). L'IA n'est pas un auteur de retrait.
+  Migration `20261106100000` **PRÉPARÉE, NON APPLIQUÉE** (feu vert nommé de Nico) ; banc jetable 30/30.
+- **Lecture fraîche d'une vente Leboncoin** (point 8, Louis) : « déjà prouvée » = `sale_signal` sold AVEC `sale_evidence`
+  du même numéro (le test de `leboncoin_transaction_noter`) ; un « Vendu » lu sur la page, sans preuve, n'arrête plus la
+  preuve de la transaction. Migration `20261106110000` **PRÉPARÉE, NON APPLIQUÉE** ; banc 11/11.
+- **1 c, version étroite** (point 5) : `fiche_annonces_vivantes` n'écarte qu'une annonce Leboncoin sous transaction dont
+  la vente est DÉJÀ enregistrée (reçu `ventes_operations` « annonce:leboncoin:<n°> »). Migration `20261106120000`
+  **PRÉPARÉE, NON APPLIQUÉE** ; ⛔ jamais avec la version large `20261105210000`. Preuve réelle :
+  `scripts/essais/20261106120000_cas_reels.sql` ; banc 10/10.
+- Retrait armé « par le circuit normal » hors session de la personne : `armer_retrait_annonce_pour(<annonce>, …, true)`
+  après relecture de l'annonce (scripts `scripts/reparations/20261106_doudou_lbc_retraits.sql`) ; clôture d'un retrait
+  « déjà absent » prouvé à la main : la clôture du serveur (`champsRetraitDejaAbsent` + `clotureCopie`), jamais un statut
+  écrit seul (`scripts/reparations/20261106_retrait_lbc_cedric_clos.mjs`).

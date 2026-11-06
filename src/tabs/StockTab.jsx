@@ -40,7 +40,7 @@ import InstallExtensionCta from '../components/InstallExtensionCta';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
 import { palierDesDrapeaux, aAuMoins } from '../utils/palier';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
-import { phraseMiseAJourExtension } from '../utils/extensionAJour';
+// (06/11, Nico : version minimum abandonnée) phraseMiseAJourExtension n'est plus importée : aucune pastille « mise à jour ».
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
 import { retraitsBloquesParConnexion, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits, articlesVendusEncoreEnLigne, detailArticleVenduEnLigne, retraitsHorsArticlesVendus, retraitsEnAttenteParArticle } from '../utils/retraitsBloques';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
@@ -8982,7 +8982,8 @@ const StockTab = memo(function StockTab({
     programmation: Boolean(programmationDuCompte.reglage),
     boutiques: (boutiquesVinted?.length ?? 0) >= 1 ? { connectee: boutiqueConnectee, liste: boutiquesVinted, origines: originesBoutique } : null,
     // (03/10, point 25) Poste trop ancien : la file attend la mise à jour (même règle que le bandeau).
-    extensionAMettreAJour: extensionStatus?.outdated === true,
+    // (06/11, Nico : version minimum abandonnée) Plus jamais : le serveur sert tout poste, la file n'attend rien.
+    extensionAMettreAJour: false,
     // (02/11 soir) Compte Cloud : barres, file et raisons disent FillSell Cloud.
     cloud: compteCloud,
     plateformeDuJob: (id) => plateformeParJob.get(String(id)) ?? null };
@@ -10119,8 +10120,7 @@ const StockTab = memo(function StockTab({
       const horsFraicheur = extFraicheur.etat === "eteinte" || extFraicheur.etat === "inactive" || extFraicheur.etat === "session_expiree";
       const plusVieux = Math.min(...d.pendingJobs.map((j) => Date.parse(j.created_at)).filter(Number.isFinite));
       const joursAttente = Number.isFinite(plusVieux) ? Math.floor((Date.now() - plusVieux) / 86400000) : 0;
-      const majRequise = extensionStatus?.outdated === true && d.pendingJobs.some((j) => j.voie !== 'api' && !parLeCloud(j, compteCloud));
-      if (majRequise) return { ...pastilleCourte({ genre: 'maj' }, lang), titre: phraseMiseAJourExtension(lang), onTap: () => setJobStatusItem(item), horsLigne: false, aRegler: true };
+      // (06/11, Nico : version minimum abandonnée) Plus de pastille « En pause — mise à jour » : rien n'attend le build.
       if (horsFraicheur && compteCloud && d.pendingJobs.every((j) => j.voie === 'api' || parLeCloud(j, true))) {
         return { ...pastilleCourte({ genre: 'attente', jours: 0 }, lang),
           titre: fr ? "En attente de FillSell Cloud — il ne répond pas pour l'instant, ça repart tout seul." : "Waiting for FillSell Cloud — it is not responding right now, it resumes on its own.",

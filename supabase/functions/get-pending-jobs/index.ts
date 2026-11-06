@@ -8,16 +8,12 @@ import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
-import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
+// (06/11, Nico : version minimum abandonnée) Plus d'import de version-min-extension.js : aucun poste n'est refusé,
+// retenu ni mis en pause pour son build (scripts/aucune-retenue-par-version-selftest.mjs).
 // (18/10, lot 5 — hu.anastasia) La pause anti-robot quand Vinted refuse la LECTURE des annonces de sa boutique.
 import { ANTIROBOT_LECTURES_MSG, refusSurSaBoutique, retenuParPauseLectures, signalPauseLectures } from "../_shared/pause-antirobot-vinted.js";
-// (02/10) Le message d'un poste sous le seuil : simple, et vrai — la file
-// attend, rien n'est perdu, elle repart seule après la mise à jour.
 // (30/10, lot D point 1) Plafond dur des lectures d'origine par relevé (hors Vinted) : 3 relevés terminés en 24 h.
 const LECTURE_ORIGINE_RELEVES_MAX = 3;
-const MESSAGE_MISE_A_JOUR_EXTENSION =
-  // (03/10, point 24) Le geste le plus simple d'abord : fermer Chrome et le rouvrir.
-  "Mets l’extension FillSell à jour : ferme Chrome complètement puis rouvre-le — ta file reprendra toute seule après la mise à jour. Tes annonces restent en ligne.";
 import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, importVintedExactParAnnonce, idAnnonceVintedExact, verifierBoutiquePublicationVinted, boutiqueChoisieVersId } from "../_shared/identite-boutique.js";
 import { boutiquePublicationVinted } from "../_shared/boutique-publication-vinted.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -217,7 +213,7 @@ import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
 // L'ISBN capturé non standard (2026-10-01, carhoa) : (25/10, décision de Nico)
 // il part tel quel dès que le poste sait le remettre — plus de preuve valeur
 // par valeur (module JS, le même que son autotest).
-import { estIsbnCaptureNonStandard, valeurIsbnCapturee, posteRemetIsbnCapture, attenteIsbnCapture, valeursIsbnRefusees, MESSAGE_ISBN_MISE_A_JOUR, MESSAGE_ISBN_A_VERIFIER } from "../_shared/isbn-capture-preuve.js";
+import { estIsbnCaptureNonStandard, valeurIsbnCapturee, posteRemetIsbnCapture, attenteIsbnCapture, valeursIsbnRefusees, MESSAGE_ISBN_A_VERIFIER } from "../_shared/isbn-capture-preuve.js";
 import { RETENUE_ISBN_CAPTURE, RETENUE_BOUTIQUE_INCONNUE, RETENUE_EXTENSION_A_JOUR, RETENUE_ANNONCE_PARTAGEE, retenueServeurDe, poserRetenueServeur, leverRetenueServeur } from "../../../src/utils/retenueServeur.js";
 import {
   type AspectRow,
@@ -1212,35 +1208,11 @@ serve(async (req) => {
     // Point F : contrôler CE poste avant toute distribution ou réservation.
     // Le profil est une télémétrie partagée, pas l'identité du demandeur.
     // Les lectures du popup restent compatibles avec toutes les versions.
-    // ── (02/10) SOUS LE SEUIL, UNE SEULE EXCEPTION : LE TRAVAIL DÉJÀ COMMENCÉ ──
-    // Une republication à l'étape 'deleted' a DÉJÀ retiré l'annonce : sa
-    // recréation est un travail commencé (même règle qu'update-job-status, « un
-    // travail déjà commencé peut finir »). La refuser bloquerait deux choses :
-    // l'annonce resterait hors ligne, ET la mise à jour de l'extension, qui
-    // n'est prise au repos que si aucune republication n'est à 'deleted'
-    // (raisonsDeNePasRecharger, de la 0.6.66 à la 0.6.81). Relevé le 01/10 au
-    // soir : nivake03 (0b54edbc, 0.6.80) et ltouze (61a5de40, 0.6.79).
-    // Rien d'autre n'est servi à un poste sous le seuil ; sans recréation en
-    // attente, la réponse reste celle d'avant, sans aucune autre lecture.
-    let posteSousMinimum = false;
-    if (!includeProcessing && !includeNeedsUser && !posteExtensionCompatible(buildDuPoll)) {
-      let recreationsEnAttente = 0;
-      try {
-        const { count } = await userClient.from("cross_post_jobs")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending").eq("voie", "extension").eq("action", "republish")
-          .eq("platform_fields->>republish_step", "deleted");
-        recreationsEnAttente = count ?? 0;
-      } catch (_e) { /* lecture manquée : rien n'est servi, comme avant */ }
-      if (!recreationsEnAttente) {
-        return json({ jobs: [], sync_commands: [], connexion_commands: [],
-          extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
-          message: MESSAGE_MISE_A_JOUR_EXTENSION,
-        });
-      }
-      posteSousMinimum = true;
-      console.log(`[get-pending-jobs] userId=${user.id} : poste sous le seuil (${buildDuPoll || "build absent"}) — ${recreationsEnAttente} recréation(s) à l'étape 'deleted' servie(s) SEULES (annonce déjà retirée), rien d'autre`);
-    }
+    // ── (06/11, Nico : version minimum abandonnée) AUCUN POSTE N'EST REFUSÉ POUR SON BUILD ──
+    // Ici vivait la porte « sous le seuil » (02/10) : un poste plus ancien qu'EXTENSION_MIN_BUILD recevait une file
+    // vide et « mets à jour » (seules ses recréations à 'deleted' passaient). Abandonnée définitivement : tout poste
+    // reçoit sa file, une vieille extension continue de faire tout ce qu'elle savait faire. Le bandeau de l'app peut
+    // dire qu'une mise à jour existe ; rien ne retient une tâche pour le build du poste.
 
     // ══ (02/11, facture Supabase) UN COMPTE SANS JOB ARRÊTÉ NE BALAIE PAS LES ARRÊTÉS ══════════════════════════════
     // Neuf balayages ci-dessous (marqués « aDesArretes ») ne lisent QUE des jobs needs_user / failed du compte. Le 02/11,
@@ -1810,29 +1782,9 @@ serve(async (req) => {
     // par l'ancienne règle (« on réessaie tout seuls vers 10:59 ») referait le
     // même POST sans format sur un poste < 0.6.84. Il attend désormais un poste
     // qui porte le correctif, avec le vrai motif (_shared/vinted-colis.js).
-    if (!includeProcessing && !includeNeedsUser && buildMsDe(buildDuPoll) < buildMsDe(BUILD_COLIS_DANS_ENVOI)) {
-      try {
-        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const { data: colisEnFile } = await admin.from("cross_post_jobs")
-          .select("id, action, error, handler_build, platform_fields")
-          .eq("user_id", user.id).eq("status", "pending").eq("platform", "vinted")
-          .filter("platform_fields->server_required_fields", "cs", JSON.stringify([{ key: "package_size" }]))
-          .is("platform_fields->build_min_requis", null)
-          .limit(20);
-        let n = 0;
-        for (const j of (colisEnFile ?? []) as Array<{ id: string; action: string; error: string | null; handler_build: string | null; platform_fields: Record<string, unknown> | null }>) {
-          if (!(buildMsDe(j.handler_build) < buildMsDe(BUILD_COLIS_DANS_ENVOI))) continue;
-          const pfK = { ...(j.platform_fields ?? {}), build_min_requis: BUILD_COLIS_DANS_ENVOI };
-          const { data: maj } = await admin.from("cross_post_jobs")
-            .update({ error: messageColisAttendMiseAJour(j.action), platform_fields: pfK })
-            .eq("id", j.id).eq("status", "pending").select("id");
-          n += (maj ?? []).length;
-        }
-        if (n) console.log(`[get-pending-jobs] userId=${user.id} : ${n} job(s) Vinted refusés « format de colis » mis en attente d'un poste ≥ ${VERSION_COLIS_DANS_ENVOI}`);
-      } catch (e) {
-        console.warn(`[get-pending-jobs] refus format de colis en file : ${String((e as Error)?.message ?? e)} — rien de modifié`);
-      }
-    }
+    // (06/11, Nico : version minimum abandonnée) Retiré : ce bloc mettait ces jobs en attente d'un poste ≥ 0.6.84
+    // (build_min_requis). Ils sont servis à tout poste ; un poste ancien refait ce qu'il savait faire, et un refus
+    // de Vinted suit le circuit ordinaire (pas-de-rouge, reprises bornées).
 
     // ══ « PLUSIEURS ANNONCES IDENTIQUES » : LES FAITS TRANCHENT, PAS LE TITRE ══
     // (02/10, nivake03 0b54edbc / 9cdr9rm4rn 6afed5b9 —
@@ -3590,12 +3542,7 @@ serve(async (req) => {
         }
       }
     }
-    // (02/10) Poste sous le seuil : seules les recréations à 'deleted' (cf.
-    // l'exception plus haut). Toutes les gardes qui suivent s'y appliquent.
-    if (posteSousMinimum) {
-      out = out.filter((j) => j.action === "republish"
-        && String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "") === "deleted");
-    }
+    // (06/11, Nico : version minimum abandonnée) Plus de filtre « poste sous le seuil » ici : tout est servi.
 
     // Les retraits Vinted directs et les retraits/republications Beebs exigent
     // les preuves locales livrées ensemble : vérification juste avant le DELETE
@@ -3606,20 +3553,14 @@ serve(async (req) => {
     // elle aussi sur la boutique ouverte dans Chrome. Les opérations réellement
     // incompatibles attendent avec un motif explicite, sans boucle et sans
     // relèvement du minimum général.
+    // (06/11, Nico : version minimum abandonnée) Plus aucune retenue ici : un poste sans la capacité
+    // `preuves_retraits_point1_v1` (< 0.6.80) reçoit ses retraits comme avant la 0.6.80. Seul reste le nettoyage
+    // du motif d'attente déjà écrit sur des jobs (il ne dirait plus vrai), pour tout poste.
     const MOTIF_ATTENTE_PREUVES_POINT1 =
       "Cette opération attend l’extension FillSell 0.6.80, qui vérifie l’annonce avant de la retirer. L’annonce reste intacte ; les nouvelles publications continuent normalement.";
-    let heldPreuvesRetraitsPoint1 = 0;
+    const heldPreuvesRetraitsPoint1 = 0;
     if (!includeProcessing && !includeNeedsUser) {
-      const exigeExtensionPoint1 = (j: { platform: string; action: string }) =>
-        (j.platform === "vinted" && j.action === "delete") ||
-        (j.platform === "beebs" && (j.action === "delete" || j.action === "republish"));
-
-      // Nettoie aussi les republications Vinted qui avaient été retenues par
-      // erreur : elles sont désormais servies aux 0.6.79 sans remise en file.
-      const aNettoyer = out.filter((j) =>
-        j.error === MOTIF_ATTENTE_PREUVES_POINT1 &&
-        (preuvesRetraitsPoint1 || !exigeExtensionPoint1(j))
-      );
+      const aNettoyer = out.filter((j) => j.error === MOTIF_ATTENTE_PREUVES_POINT1);
       if (aNettoyer.length) {
         const ids = aNettoyer.map((j) => String(j.id));
         // (15/10) Par lots de 150 identifiants de job (uuid, 37 caractères chacun).
@@ -3631,28 +3572,6 @@ serve(async (req) => {
         } else {
           const nettoyesIds = new Set((nettoyes ?? []).map((m) => String(m.id)));
           for (const j of aNettoyer) if (nettoyesIds.has(String(j.id))) j.error = null;
-        }
-      }
-
-      if (!preuvesRetraitsPoint1) {
-        const retenus = out.filter(exigeExtensionPoint1);
-        heldPreuvesRetraitsPoint1 = retenus.length;
-        if (retenus.length) {
-          const sansMotif = retenus.filter((j) => !String(j.error ?? "").trim());
-          if (sansMotif.length) {
-            const ids = sansMotif.map((j) => String(j.id));
-            const { data: marques, error: erreurMotif } = await lireParLots((lot) => userClient.from("cross_post_jobs")
-              .update({ error: MOTIF_ATTENTE_PREUVES_POINT1 })
-              .in("id", lot).eq("status", "pending").is("error", null).select("id"), ids, 150);
-            if (erreurMotif) {
-              console.warn(`[get-pending-jobs] motif d’attente Point 1 non écrit : ${erreurMotif.message}`);
-            } else {
-              const marquesIds = new Set((marques ?? []).map((m) => String(m.id)));
-              for (const j of sansMotif) if (marquesIds.has(String(j.id))) j.error = MOTIF_ATTENTE_PREUVES_POINT1;
-            }
-          }
-          const idsRetenus = new Set(retenus.map((j) => String(j.id)));
-          out = out.filter((j) => !idsRetenus.has(String(j.id)));
         }
       }
     }
@@ -4009,17 +3928,9 @@ serve(async (req) => {
     // profil Chrome du même compte, resté sur l'ancien build, le reprendrait
     // pour échouer de la même façon. Build illisible = ancien build : retenu.
     // TOUS LES MODES : le popup d'un ancien poste ne doit pas le lancer non plus.
+    // (06/11, Nico : version minimum abandonnée) Ce filtre est RETIRÉ : `build_min_requis` n'est plus qu'une trace
+    // (le build qui porte le correctif), jamais une porte — tout poste reçoit le job.
     {
-      const avantCorrectif = out.length;
-      out = out.filter((j) => {
-        const min = String(((j.platform_fields ?? {}) as Record<string, unknown>).build_min_requis ?? "");
-        if (!min) return true;
-        const b = buildMsDe(buildDuPoll);
-        return Number.isFinite(b) && b >= buildMsDe(min);
-      });
-      if (out.length !== avantCorrectif) {
-        console.log(`[get-pending-jobs] userId=${user.id} : ${avantCorrectif - out.length} job(s) réarmé(s) par un correctif retenu(s) — poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » plus ancien que le correctif`);
-      }
       // (02/10 soir, point 3 — _shared/defaut-fillsell.js) Un job arrêté par une
       // exception de NOTRE code n'est rendu qu'à un poste PLUS RÉCENT que le
       // build qui a planté : le même code replanterait à l'identique.
@@ -4039,6 +3950,8 @@ serve(async (req) => {
     // (jamais d'IA pour une taille, la question est posée AVANT le retrait).
     // Plus ancien : retenue nommée, annonce intacte, levée dès un poste à jour.
     // Exécution seulement ; une lecture ou une écriture ratée ne retient rien d'autre.
+    // (06/11, Nico : version minimum abandonnée) Plus aucune retenue posée : la republication Beebs est servie à tout
+    // poste. Une retenue « extension_a_mettre_a_jour » déjà posée (0.6.83 OU 0.6.95) est levée pour TOUT poste.
     if (!includeProcessing && !includeNeedsUser) {
       const avantRetrait = (j: Record<string, unknown>) => {
         const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
@@ -4046,32 +3959,16 @@ serve(async (req) => {
       };
       const beebsAvantRetrait = out.filter((j) => avantRetrait(j as Record<string, unknown>));
       if (beebsAvantRetrait.length) {
-        const posteSansIaTaille = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_BEEBS_ADRESSE_STRICTE);
         try {
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const maintenantIso = new Date().toISOString();
-          if (!posteSansIaTaille) {
-            for (const j of beebsAvantRetrait) {
-              const pfPose = poserRetenueServeur((j.platform_fields ?? {}) as Record<string, unknown>, RETENUE_EXTENSION_A_JOUR, maintenantIso,
-                { build_poste: buildDuPoll.slice(0, 60) || null, build_min: BUILD_BEEBS_ADRESSE_STRICTE, version_min: "0.6.83" });
-              if (pfPose) await admin.from("cross_post_jobs").update({ platform_fields: pfPose }).eq("id", j.id as string).eq("status", "pending");
-            }
-            const ids = new Set(beebsAvantRetrait.map((j) => String(j.id)));
-            out = out.filter((j) => !ids.has(String(j.id)));
-            console.log(`[get-pending-jobs] userId=${user.id} : ${ids.size} republication(s) Beebs retenue(s) avant tout retrait — poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » < 0.6.83 (il devinerait la taille)`);
-          } else {
-            for (const j of beebsAvantRetrait) {
-              const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
-              if (retenueServeurDe(pfJ)?.motif !== RETENUE_EXTENSION_A_JOUR) continue;
-              // (04/10) Seulement SA retenue (0.6.83) : celle du format de colis
-              // (0.6.95, bloc suivant) se lève là-bas, sur son propre seuil.
-              const minRetenue = String(((pfJ.retenue_serveur ?? {}) as Record<string, unknown>).build_min ?? BUILD_BEEBS_ADRESSE_STRICTE);
-              if (minRetenue !== BUILD_BEEBS_ADRESSE_STRICTE) continue;
-              const leve = leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)}`);
-              if (leve) {
-                await admin.from("cross_post_jobs").update({ platform_fields: leve }).eq("id", j.id as string).eq("status", "pending");
-                j.platform_fields = leve;
-              }
+          for (const j of beebsAvantRetrait) {
+            const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+            if (retenueServeurDe(pfJ)?.motif !== RETENUE_EXTENSION_A_JOUR) continue;
+            const leve = leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)} (06/11 : version minimum abandonnée)`);
+            if (leve) {
+              await admin.from("cross_post_jobs").update({ platform_fields: leve }).eq("id", j.id as string).eq("status", "pending");
+              j.platform_fields = leve;
             }
           }
         } catch (e) {
@@ -4111,15 +4008,14 @@ serve(async (req) => {
             const fid = String(a.capture?.["format_colis_id"] ?? "").trim();
             if (fid && !formatIdDe.has(k)) formatIdDe.set(k, fid);
           }
-          const posteFormatExplicite = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_BEEBS_FORMAT_EXPLICITE);
-          const retenus = new Set<string>();
+          // (06/11, Nico : version minimum abandonnée) `format_colis_explicite` est servi à tout poste (un poste plus
+          // ancien que la 0.6.95 l'ignore et garde le pré-remplissage, comme il le faisait) : plus aucune retenue, et
+          // celle déjà posée se lève pour tout poste.
           const maintenantIso = new Date().toISOString();
           for (const j of beebsJobs) {
             let pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
-            // Poste à jour : SA retenue (format de colis, 0.6.95) se lève.
-            if (posteFormatExplicite && retenueServeurDe(pfJ)?.motif === RETENUE_EXTENSION_A_JOUR
-                && String(((pfJ.retenue_serveur ?? {}) as Record<string, unknown>).build_min ?? "") === BUILD_BEEBS_FORMAT_EXPLICITE) {
-              const leve = leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)}`);
+            if (retenueServeurDe(pfJ)?.motif === RETENUE_EXTENSION_A_JOUR) {
+              const leve = leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)} (06/11 : version minimum abandonnée)`);
               if (leve) {
                 await admin.from("cross_post_jobs").update({ platform_fields: leve }).eq("id", j.id as string).eq("status", "pending");
                 pfJ = { ...leve };
@@ -4141,17 +4037,6 @@ serve(async (req) => {
             pfJ.format_colis_explicite = f.titre;
             pfJ.format_colis_explicite_source = f.source;
             j.platform_fields = pfJ;
-            const avantRetraitB = j.action === "republish" && String(pfJ.republish_step ?? "") !== "deleted" && !pfJ.deleted_at;
-            if (avantRetraitB && !posteFormatExplicite) {
-              const pfPose = poserRetenueServeur(pfJ, RETENUE_EXTENSION_A_JOUR, maintenantIso,
-                { build_poste: buildDuPoll.slice(0, 60) || null, build_min: BUILD_BEEBS_FORMAT_EXPLICITE, version_min: "0.6.95", format_a_reproduire: f.titre });
-              if (pfPose) await admin.from("cross_post_jobs").update({ platform_fields: pfPose }).eq("id", j.id as string).eq("status", "pending");
-              retenus.add(String(j.id));
-            }
-          }
-          if (retenus.size) {
-            out = out.filter((j) => !retenus.has(String(j.id)));
-            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Beebs retenue(s) avant tout retrait — format connu à reproduire, poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » < 0.6.95`);
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] format de colis Beebs : ${String((e as Error)?.message ?? e)} — distribution normale`);
@@ -4314,35 +4199,12 @@ serve(async (req) => {
       const republiablesVinted = out.filter((j) => j.platform === "vinted" && j.action === "republish"
         && String(((j.platform_fields ?? {}) as Record<string, unknown>).republish_step ?? "a_capturer") !== "deleted");
       if (republiablesVinted.length) {
-        const posteAJourColis = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_COLIS_DANS_ENVOI);
+        // (06/11, Nico : version minimum abandonnée) La branche « poste PLUS ANCIEN : retenue dans un rayon sans
+        // format » est retirée : tout poste reçoit ses republications (un poste ancien ignore
+        // `colis_injection_prouvee` et fait ce qu'il savait faire) ; la retenue déjà posée se lève pour tout poste.
         try {
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-          if (!posteAJourColis) {
-            const rayons = await rayonsVintedSansColis(admin);
-            const invIds = [...new Set(republiablesVinted.map((j) => j.inventaire_id).filter((v) => v != null))];
-            const catInv = new Map<string, string>();
-            if (rayons.size && invIds.length) {
-              const { data: invs } = await lireParLots((lot) => admin.from("inventaire").select("id, vinted_catalog_id").in("id", lot), invIds);
-              for (const r of (invs ?? []) as Array<{ id: number; vinted_catalog_id: number | null }>) {
-                if (r.vinted_catalog_id != null) catInv.set(String(r.id), String(r.vinted_catalog_id));
-              }
-            }
-            const retenus = new Set<string>();
-            const maintenantIso = new Date().toISOString();
-            for (const j of republiablesVinted) {
-              const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
-              const snapCat = String(((pfJ.republish_snapshot ?? {}) as Record<string, unknown>).catalog_id ?? "");
-              const cat = snapCat || catInv.get(String(j.inventaire_id)) || "";
-              if (!cat || !rayons.has(cat)) continue;
-              retenus.add(String(j.id));
-              const pfPose = poserRetenueServeur(pfJ, RETENUE_COLIS_ANCIEN_POSTE, maintenantIso, { rayon: cat, build_min: BUILD_COLIS_DANS_ENVOI });
-              if (pfPose) await admin.from("cross_post_jobs").update({ platform_fields: pfPose }).eq("id", j.id as string).eq("status", "pending");
-            }
-            if (retenus.size) {
-              out = out.filter((j) => !retenus.has(String(j.id)));
-              console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted retenue(s) — rayon où Vinted exige un format de colis que son formulaire ne propose plus, poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » < ${VERSION_COLIS_DANS_ENVOI}`);
-            }
-          } else {
+          {
             const prouve = await envoiColisProuveParc(admin);
             const maintenantIso = new Date().toISOString();
             for (const j of republiablesVinted) {
@@ -4385,9 +4247,11 @@ serve(async (req) => {
       const republiablesMarque = out.filter((j) => j.platform === "vinted" && j.action === "republish"
         && String(((j.platform_fields ?? {}) as Record<string, unknown>).republish_step ?? "a_capturer") !== "deleted");
       if (republiablesMarque.length) {
-        const posteAJourMarque = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_VINTED_MARQUE_PAR_ID);
+        // (06/11, Nico : version minimum abandonnée) Plus aucune condition de build ici : la preuve du parc est lue
+        // pour tout poste (un poste ancien ignore `marque_injection_prouvee`), et une pause « marque » se relâche
+        // pour tout poste (ci-dessous). Seule reste la pause de cause plateforme (marque non prouvée), relâchée 6 h.
         let marqueProuvee = false;
-        if (posteAJourMarque) {
+        {
           try {
             const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
             marqueProuvee = await envoiMarqueProuveParc(admin);
@@ -4405,7 +4269,7 @@ serve(async (req) => {
         //     (30 jours) → resservie à tout poste ;
         //   · sinon : resservie au poste qui porte la chaîne de repli (ligne libre dans toutes les langues,
         //     « Sans marque » quand le rayon l'accepte — BUILD_VINTED_MARQUE_CHAINE), jamais aux autres.
-        const enPause = republiablesMarque.filter((j) => enPauseMarqueParId(j) && !(posteAJourMarque && marqueProuvee));
+        const enPause = republiablesMarque.filter((j) => enPauseMarqueParId(j) && !marqueProuvee);
         const relaches = new Map<string, string>();
         if (enPause.length) {
           try {
@@ -4434,8 +4298,8 @@ serve(async (req) => {
             }
             for (const j of aRelire) {
               const id = idMarque(j as unknown as Record<string, unknown>);
-              const raison = id && duCatalogue.has(id) ? "marque_du_catalogue" : (posteChaine ? "chaine_de_repli" : null);
-              if (!raison) continue;
+              // (06/11) Plus jamais « pas ce poste » : un poste sans la chaîne de repli est resservi aussi.
+              const raison = id && duCatalogue.has(id) ? "marque_du_catalogue" : (posteChaine ? "chaine_de_repli" : "version_minimum_abandonnee");
               const pfR = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
               const pause = pfR.pause_marque_par_id;
               delete pfR.pause_marque_par_id;
@@ -4452,7 +4316,7 @@ serve(async (req) => {
         }
         const retenusMarque = new Set<string>();
         for (const j of republiablesMarque) {
-          if (!relaches.has(String(j.id)) && enPauseMarqueParId(j) && !(posteAJourMarque && marqueProuvee)) { retenusMarque.add(String(j.id)); continue; }
+          if (!relaches.has(String(j.id)) && enPauseMarqueParId(j) && !marqueProuvee) { retenusMarque.add(String(j.id)); continue; }
           const pfM = (j.platform_fields ?? {}) as Record<string, unknown>;
           if (marqueProuvee) j.platform_fields = { ...pfM, marque_injection_prouvee: true };
           // Le drapeau n'est jamais une donnée : l'extension réécrit la copie
@@ -4465,7 +4329,7 @@ serve(async (req) => {
         }
         if (retenusMarque.size) {
           out = out.filter((j) => !retenusMarque.has(String(j.id)));
-          console.log(`[get-pending-jobs] userId=${user.id} : ${retenusMarque.size} republication(s) Vinted en pause « marque par identifiant » retenue(s) — ${posteAJourMarque ? "envoi direct pas encore prouvé" : `poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » sans le correctif`}`);
+          console.log(`[get-pending-jobs] userId=${user.id} : ${retenusMarque.size} republication(s) Vinted en pause « marque par identifiant » retenue(s) — envoi direct pas encore prouvé`);
         }
       }
     }
@@ -5420,20 +5284,8 @@ serve(async (req) => {
     // refuse à coup sûr et elle se relance seule toutes les 5 à 30 min. On ne
     // la lui sert pas (aucune écriture) ; elle part dès qu'un poste porte le
     // build qui reprend marque et taille de l'annonce en ligne.
-    if (buildMsDe(buildDuPoll) < buildMsDe(BUILD_OPLA_REPUBLICATION_SUR_ANNONCE) || !buildDuPoll) {
-      const avantOpla = out.length;
-      out = out.filter((j) => {
-        if (j.platform !== "opla" || j.action !== "republish") return true;
-        const pfO = (j.platform_fields ?? {}) as Record<string, unknown>;
-        const sansMarque = !String(pfO.marque ?? "").trim();
-        const tailleRefusee = /exige une taille/i.test(String((j as Record<string, unknown>).error ?? ""))
-          && !pfO.oplaSizeChoice && !String(pfO.taille ?? "").trim();
-        return !(sansMarque || tailleRefusee);
-      });
-      if (out.length !== avantOpla) {
-        console.log(`[get-pending-jobs] userId=${user.id} ${avantOpla - out.length} republication(s) Opla sans marque/taille retenue(s) : poste ${buildDuPoll || "sans build"} < 0.6.74`);
-      }
-    }
+    // (06/11, Nico : version minimum abandonnée) Retenue retirée (Opla est quittée depuis le 10/10 : ses jobs sont
+    // clos plus haut ; plus rien n'est retenu pour le build du poste).
 
     // ── UN POSTE QUI VIENT DE VOIR LE MUR D'UNE PLATEFORME LA LAISSE À UN AUTRE
     //    POSTE DU COMPTE (2026-09-27, Louis) ─────────────────────────────────
@@ -9260,8 +9112,9 @@ serve(async (req) => {
           // Le disjoncteur n'est lu que si le poste remet au moins une des valeurs exposées (sinon tout
           // est retenu de toute façon) : les republications Vinted de CE compte qui ont reçu un refus sur
           // « isbn » — deux lectures bornées au compte (index user_id), jamais tout cross_post_jobs.
+          // (06/11, Nico : version minimum abandonnée) Lu pour tout poste : le build ne retient plus rien.
           let refusDuCompte = new Set<string>();
-          if (exposes.some((j) => posteRemetIsbnCapture(valeurDe(j), buildDuPoll))) {
+          {
             const champsRefus = "status, handler_build, platform_fields->last_diagnostic, platform_fields->server_required_fields, " +
               "isbn_copie:platform_fields->republish_snapshot->>isbn, isbn_reponse:platform_fields->vintedAspects->>isbn";
             const refusDe = () => userClient.from("cross_post_jobs").select(champsRefus)
@@ -9317,7 +9170,9 @@ serve(async (req) => {
             parAttente[attente] = (parAttente[attente] ?? 0) + 1;
             const detail = {
               isbn_capture: v, attente,
-              message: attente === "mise_a_jour_extension" ? MESSAGE_ISBN_MISE_A_JOUR : MESSAGE_ISBN_A_VERIFIER,
+              // (06/11, Nico : version minimum abandonnée) Plus d'attente « mise_a_jour_extension » : la seule retenue
+              // ISBN qui reste attend une vérification (refus du compte, forme non remise).
+              message: MESSAGE_ISBN_A_VERIFIER,
             };
             // Datée une fois ; réécrite seulement quand ce qu'elle attend change (la phrase reste vraie).
             const actuelle = (pf["retenue_serveur"] && typeof pf["retenue_serveur"] === "object")
@@ -14688,11 +14543,7 @@ serve(async (req) => {
       lecture_fond: lectureFond,
       // (25/10 soir, 0.6.145) Beebs en arrière-plan : les photos lues sur la page de l'annonce (null : rien de servi).
       lecture_fond_beebs: lectureFondBeebs,
-      // (02/10) Poste sous le seuil servi de ses seules recréations à 'deleted'.
-      ...(posteSousMinimum ? {
-        extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
-        message: MESSAGE_MISE_A_JOUR_EXTENSION,
-      } : {}),
+      // (06/11, Nico : version minimum abandonnée) Jamais `extension_update_required` : aucun poste n'est arrêté.
       annonces_en_attente: annoncesAttente,
       sync_command: syncCommand,
       sync_commands_annonces: syncCommandsAnnonces,

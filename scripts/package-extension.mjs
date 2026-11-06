@@ -262,7 +262,10 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // servies (0.6.156 jamais téléversée). EXTENSION_MIN_BUILD NON touché. La suivante est la 0.6.159 (0.6.158 : build d'essai local).
 // 0.6.159 ajoutée le 30/10 (lot E) : ACCEPTÉE et SERVIE par le Chrome Web Store — relue en base le 30/10 (thecloset72000 :
 // profiles.extension_build 2026-10-29T22:28:02Z+6e59937, tâches sous « v0.6.159 »). EXTENSION_MIN_BUILD NON touché. La suivante est la 0.6.160.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43', '0.6.44', '0.6.45', '0.6.46', '0.6.47', '0.6.48', '0.6.49', '0.6.52', '0.6.53', '0.6.54', '0.6.58', '0.6.60', '0.6.61', '0.6.62', '0.6.63', '0.6.64', '0.6.65', '0.6.66', '0.6.67', '0.6.68', '0.6.69', '0.6.75', '0.6.76', '0.6.77', '0.6.79', '0.6.80', '0.6.81', '0.6.82', '0.6.83', '0.6.84', '0.6.85', '0.6.86', '0.6.87', '0.6.88', '0.6.89', '0.6.90', '0.6.91', '0.6.92', '0.6.93', '0.6.94', '0.6.100', '0.6.102', '0.6.104', '0.6.106', '0.6.109', '0.6.110', '0.6.111', '0.6.112', '0.6.114', '0.6.124', '0.6.125', '0.6.128', '0.6.131', '0.6.141', '0.6.144', '0.6.148', '0.6.149', '0.6.152', '0.6.153', '0.6.157', '0.6.159', '0.6.161', '0.6.163', '0.6.164', '0.6.165', '0.6.166', '0.6.169', '0.6.172'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43', '0.6.44', '0.6.45', '0.6.46', '0.6.47', '0.6.48', '0.6.49', '0.6.52', '0.6.53', '0.6.54', '0.6.58', '0.6.60', '0.6.61', '0.6.62', '0.6.63', '0.6.64', '0.6.65', '0.6.66', '0.6.67', '0.6.68', '0.6.69', '0.6.75', '0.6.76', '0.6.77', '0.6.79', '0.6.80', '0.6.81', '0.6.82', '0.6.83', '0.6.84', '0.6.85', '0.6.86', '0.6.87', '0.6.88', '0.6.89', '0.6.90', '0.6.91', '0.6.92', '0.6.93', '0.6.94', '0.6.100', '0.6.102', '0.6.104', '0.6.106', '0.6.109', '0.6.110', '0.6.111', '0.6.112', '0.6.114', '0.6.124', '0.6.125', '0.6.128', '0.6.131', '0.6.141', '0.6.144', '0.6.148', '0.6.149', '0.6.152', '0.6.153', '0.6.157', '0.6.159', '0.6.161', '0.6.163', '0.6.164', '0.6.165', '0.6.166', '0.6.169', '0.6.172', '0.6.175'];
+// 0.6.175 ajoutée le 06/11 (ordre de Nico) : zip build/CWS-0.6.175-A-TELEVERSER (BUILD_ID 2026-11-05T20:38:34Z+1354a1d),
+// SERVIE — des comptes ont tourné en 0.6.175 la nuit du 05 au 06/11. EXTENSION_MIN_BUILD ne se pose JAMAIS (décision de
+// Nico du 06/11 : version minimum abandonnée définitivement).
 // 0.6.172 ajoutée le 05/11 au bump 0.6.173 : zip build/CWS-0.6.172-A-TELEVERSER (BUILD_ID 2026-11-04T22:07:23Z+f153ea3)
 // TÉLÉVERSÉ par Nico le 04/11 au soir (« la 0.6.172 vient d'être téléversée ») — numéro mort dès le téléversement
 // (doctrine 0.6.6). La 0.6.173 porte : le compte bloqué par Vinted nommé dès le dépôt, l'Auth indisponible (503
@@ -651,13 +654,9 @@ console.log(`  chemin           : ${zipPath}`);
 //    BUILD_ID de paquet. La seule valeur juste est donc celle du ZIP qu'on
 //    vient de produire — l'horodatage du dernier commit ne désigne aucun
 //    paquet installable.
-const minBuildAViser = buildId.split('+')[0];
-console.log(`\n  Après une publication ACCEPTÉE, DEUX gestes dans scripts/ :`);
-console.log(`    1. ajouter "${manifest.version}" à ALREADY_PUBLISHED (package-extension.mjs) ;`);
-console.log(`    2. dans build-id.mjs, poser EXTENSION_MIN_BUILD = '${minBuildAViser}'`);
-console.log(`       — le BUILD_ID DE CE ZIP, jamais EXTENSION_LAST_COMMIT`);
-console.log(`       (${EXTENSION_LAST_COMMIT}, qui ne désigne aucun paquet installable).`);
-console.log(`       Valeur actuelle : ${EXTENSION_MIN_BUILD}. Puis pousser le web : c'est CE`);
-console.log(`       geste qui allume la bannière « extension obsolète ».`);
-console.log(`       Tant qu'il n'est pas fait, personne n'est prévenu ; fait trop tôt, tout`);
-console.log(`       le parc voit un bandeau sans version à installer (vécu le 29/07).`);
+// ⛔ (06/11, Nico : version minimum abandonnée DÉFINITIVEMENT) La consigne de fin « EXTENSION_MIN_BUILD := le BUILD_ID de ce zip »
+//    est RETIRÉE : EXTENSION_MIN_BUILD ne se pose JAMAIS, ni aujourd'hui ni plus tard. Le serveur ne retient plus rien
+//    pour le build du poste ; une vieille extension continue de faire ce qu'elle savait faire.
+console.log(`\n  Après une publication ACCEPTÉE, UN geste dans scripts/ :`);
+console.log(`    ajouter "${manifest.version}" à ALREADY_PUBLISHED (package-extension.mjs).`);
+console.log(`    ⛔ EXTENSION_MIN_BUILD ne se pose JAMAIS (décision de Nico du 06/11) — valeur actuelle ${EXTENSION_MIN_BUILD}, inchangée.`);

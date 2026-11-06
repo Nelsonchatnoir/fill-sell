@@ -8822,9 +8822,11 @@ export default function App({ loginOnly = false }){
               (promotion de MIN_BUILD jamais faite pour ces deux versions). */}
           <div style={{flex:1,lineHeight:1.45,minWidth:0}}>
             <div style={{fontWeight:600}}>
+              {/* (06/11, Nico : version minimum abandonnée) Le bandeau INFORME : la file tourne avec toute version,
+                  il ne dit jamais qu'elle attend la mise à jour. */}
               {lang==='fr'
-                ?"Mets à jour l’extension FillSell sur ton ordinateur : ta file reprendra toute seule après la mise à jour."
-                :"Update the FillSell extension on your computer: your queue will resume on its own after the update."}
+                ?"Une nouvelle version de l’extension FillSell existe : ta file continue de tourner, la mise à jour apporte les derniers correctifs."
+                :"A new version of the FillSell extension is available: your queue keeps running, the update brings the latest fixes."}
             </div>
             <div style={{marginTop:4,fontWeight:500,opacity:0.85,fontSize:12.5}}>
               {lang==='fr'

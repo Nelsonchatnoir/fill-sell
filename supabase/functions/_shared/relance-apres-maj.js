@@ -176,6 +176,9 @@ export const RELANCES_APRES_MAJ = [
   // `pauseAttente` : tant que le poste est SOUS la 0.6.153, la question fausse n'est plus montrée (y répondre casserait
   // la pose par identifiants) — la tâche passe EN PAUSE (needs_user_source « build_min_requis », champsPauseAttenteMaj),
   // et l'entrée « …_en_pause » la retrouve sous ce motif pour la relancer, une fois, dès que le poste a le build.
+  // (06/11, Nico : version minimum abandonnée) Plus de pause : `pauseAttente` ne fait plus rien (champsPauseAttenteMaj
+  // rend null) ; la question reste à la personne, la relance unique part au build ; « …_en_pause » relance les
+  // tâches mises en pause avant le 06/11.
   ...["publish", "republish"].flatMap((action) => [...["prevol_negatif", "champ_a_choisir"].map((source) => ({
     cle: `${PREFIXE_PAGE_ETRANGERE}${action}_${source}`,
     platform: "vinted",
@@ -261,6 +264,8 @@ export function messageAttenteMaj(job, regle) {
 export const MESSAGE_REPUBLICATION_ARTICLE_VENDU =
   "Cet article est marqué vendu : on ne le republie pas, pour ne jamais le vendre deux fois. Rien n'a été retiré ni " +
   "republié. Si la vente n'a pas eu lieu, corrige-la dans l'app (supprime la vente ou remets une quantité), puis relance.";
+/** (06/11, Nico : version minimum abandonnée) Plus jamais de pause « build_min_requis ». */
+export const PAUSE_ATTENTE_ABANDONNEE = true;
 export const MESSAGES_PAUSE_ATTENTE = Object.freeze({
   publish: "Ta publication est en pause, rien n'a été publié : elle repart toute seule dès que l'extension FillSell de " +
     "ton ordinateur est à jour. Rien à faire.",
@@ -268,25 +273,12 @@ export const MESSAGES_PAUSE_ATTENTE = Object.freeze({
     "seule dès que l'extension FillSell de ton ordinateur est à jour. Rien à faire.",
 });
 /** @returns {{ error: string, platform_fields: Record<string, unknown> } | null} l'écriture de la pause, ou null (rien à écrire) */
+// ⛔ (06/11, Nico : version minimum abandonnée) PLUS AUCUNE PAUSE : rend toujours null (plus appelée par handler-watch).
+// Aucune tâche n'est mise en pause parce que le poste a un build ancien ; elle garde son état ordinaire, et la relance
+// unique (champsRelance) part quand le poste a le build. Les pauses posées avant le 06/11 se relancent par « …_en_pause ».
+// deno-lint-ignore no-unused-vars
 export function champsPauseAttenteMaj(job, regle, { maintenant = new Date().toISOString() } = {}) {
-  if (!regle?.pauseAttente || job?.status !== "needs_user") return null;
-  const pf0 = job?.platform_fields ?? {};
-  const deja = pf0.needs_user_source === "build_min_requis" && pf0.attente_maj_extension?.cle
-    && String(pf0.attente_maj_extension.cle).startsWith(String(regle.cle).replace(/_(prevol_negatif|champ_a_choisir|en_pause)$/, ""));
-  if (deja) return null;
-  const message = MESSAGES_PAUSE_ATTENTE[job.action] ?? MESSAGES_PAUSE_ATTENTE.publish;
-  const pf = { ...pf0 };
-  const question = pf.needsUserField && typeof pf.needsUserField === "object" ? pf.needsUserField : null;
-  for (const k of ["needsUserField", "needsUserFields", "champs_a_completer", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pf[k];
-  pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, "needs_user", `handler-watch (en pause jusqu'à l'extension ${regle.version})`);
-  pf.attente_maj_extension = {
-    le: maintenant, cle: regle.cle, version: regle.version, source_avant: pf0.needs_user_source ?? null,
-    ...(question ? { question } : (pf0.attente_maj_extension?.question ? { question: pf0.attente_maj_extension.question } : {})),
-    pose_par: `handler-watch (poste sous l'extension ${regle.version} : question retirée, pause automatique)`,
-  };
-  pf.needs_user_source = "build_min_requis";
-  if (regle.buildMin && !(msDuBuild(pf.build_min_requis) >= Date.parse(regle.buildMin))) pf.build_min_requis = regle.buildMin;
-  return { error: message, platform_fields: pf };
+  return null;
 }
 
 // Le poste a-t-il le build qui corrige ? (build absent ou illisible : non)

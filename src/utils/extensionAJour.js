@@ -13,16 +13,15 @@
 // que le serveur (posteExtensionCompatible) : un build connu, plus ancien que
 // le minimum, vu dans les 30 derniers jours (au-delà, l'ordinateur est
 // éteint — c'est un autre message).
-import { posteExtensionCompatible } from "../../supabase/functions/_shared/version-min-extension.js";
-
-const TRENTE_JOURS_MS = 30 * 24 * 3600_000;
-
-/** true = le poste connu est trop ancien : sa file attend la mise à jour. */
+// ⛔ (06/11, Nico : version minimum abandonnée) Le serveur ne retient PLUS RIEN pour le build du poste :
+// extensionAMettreAJour rend toujours false (aucun « en pause : mise à jour ») ; le bandeau d'App informe seulement.
+/** true = le poste connu est trop ancien : sa file attend la mise à jour.
+ *  ⛔ (06/11, Nico : version minimum abandonnée) TOUJOURS false : le serveur sert sa file à tout poste, quel que soit
+ *  son build — aucune tâche n'attend la mise à jour, aucun écran ne doit le dire. Le bandeau d'App (une mise à jour
+ *  existe) reste : il informe, il ne dit jamais que la file attend. */
+// eslint-disable-next-line no-unused-vars
 export function extensionAMettreAJour({ build = null, lastSeenAt = null, maintenant = Date.now() } = {}) {
-  if (!build) return false;
-  const vu = Date.parse(String(lastSeenAt ?? ""));
-  if (!Number.isFinite(vu) || maintenant - vu > TRENTE_JOURS_MS) return false;
-  return !posteExtensionCompatible(build);
+  return false;
 }
 
 /** Le geste, en une phrase (fr/en) — le même partout. */

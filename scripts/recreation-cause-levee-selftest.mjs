@@ -5,7 +5,7 @@
 // retirée à 15:02, 5 redépôts refusés « Ajouter au moins 5 caractères »
 // (description vide dans la copie, 182 caractères sur la fiche), sortie de la
 // file à 17:03 (needs_user « recreation_bloquee »).
-import { causeLeveePourRelance, champsRelanceCauseLevee, messageRelanceCauseLevee, essaisRates,
+import { causeLeveePourRelance, champsRelanceCauseLevee, messageRelanceCauseLevee, messageRecreationBloquee, essaisRates,
   decisionRecreationBloquee, SOURCE_RECREATION_BLOQUEE } from "../supabase/functions/_shared/recreation-bloquee.js";
 import fs from "node:fs";
 
@@ -63,11 +63,26 @@ console.log("\n4. (28/10) MENUS « BLOOM » DE VINTED : LA REMISE EN LIGNE REPAR
     error: "Ton annonce a été retirée de Vinted et FillSell n'a pas réussi à la remettre en ligne (3 essais).",
     platform_fields: { needs_user_source: SOURCE_RECREATION_BLOQUEE, republish_step: "deleted",
       error_technique: { brut: "COULEUR INTROUVABLE : la couleur [\"Noir\"] existe bien chez Vinted mais n'a pas pu être posée sur le formulaire" } } };
-  ok(causeLeveePourRelance(thibault, "2026-10-28T09:52:53Z+9ca925f") === null, "poste en 0.6.149 : pas encore (même mur)");
-  ok(causeLeveePourRelance(thibault, null) === null, "build du poste inconnu : non");
+  // (06/11, Nico : version minimum abandonnée) La relance ne dépend plus du build : 0.6.149 et build inconnu relancés
+  // tout de suite, tracés « sous le build » — UNE relance de plus quand le poste a le build, jamais une troisième.
+  const cAncien = causeLeveePourRelance(thibault, "2026-10-28T09:52:53Z+9ca925f");
+  ok(cAncien?.code === "vinted_menus_bloom", "(06/11) poste en 0.6.149 : relancée quand même (plus de retenue par build)");
+  ok(causeLeveePourRelance(thibault, null)?.code === "vinted_menus_bloom", "(06/11) build du poste inconnu : relancée aussi");
+  const pfAncien = champsRelanceCauseLevee(thibault.platform_fields, cAncien, "2026-10-29T07:00:00Z", { extensionBuild: "2026-10-28T09:52:53Z+9ca925f" });
+  ok(pfAncien.recreation_relancee?.vinted_menus_bloom?.sous_build === true, "(06/11) relance tracée « sous le build »");
+  const retombee = { ...thibault, platform_fields: { ...thibault.platform_fields, recreation_relancee: pfAncien.recreation_relancee } };
+  ok(causeLeveePourRelance(retombee, "2026-10-28T09:52:53Z+9ca925f") === null, "(06/11) retombée, même poste ancien : rien (pas de boucle)");
+  const cAuBuild = causeLeveePourRelance(retombee, "2026-10-28T21:51:44Z+f567f2e");
+  ok(cAuBuild?.code === "vinted_menus_bloom", "(06/11) le poste passe en 0.6.152 : UNE relance de plus");
+  const pfAuBuild = champsRelanceCauseLevee(retombee.platform_fields, cAuBuild, "2026-10-29T09:00:00Z", { extensionBuild: "2026-10-28T21:51:44Z+f567f2e" });
+  ok(Boolean(pfAuBuild.recreation_relancee?.vinted_menus_bloom?.reprise_au_build)
+    && causeLeveePourRelance({ ...thibault, platform_fields: { ...thibault.platform_fields, recreation_relancee: pfAuBuild.recreation_relancee } }, "2026-10-28T21:51:44Z+f567f2e") === null,
+    "(06/11) tracée « reprise_au_build », jamais une troisième");
+  ok(messageRecreationBloquee(retombee, { causeEnAttente: causeLeveePourRelance(retombee, null, { ignorerBuild: true }) }) !== null,
+    "(06/11) retombée sous le build : le message de la remise en ligne bloquée se calcule (cause en attente du poste)");
   const c = causeLeveePourRelance(thibault, "2026-10-28T21:51:44Z+f567f2e");
   ok(c?.code === "vinted_menus_bloom", "poste en 0.6.152 : relancée");
-  const pf = champsRelanceCauseLevee(thibault.platform_fields, c, "2026-10-29T08:00:00Z");
+  const pf = champsRelanceCauseLevee(thibault.platform_fields, c, "2026-10-29T08:00:00Z", { extensionBuild: "2026-10-28T21:51:44Z+f567f2e" });
   ok(pf.republish_step === "deleted" && !pf.needs_user_source && Boolean(pf.recreation_relancee?.vinted_menus_bloom),
     "étape gardée, attente levée, marquée « une fois par cause »");
   ok(causeLeveePourRelance({ ...thibault, platform_fields: { ...thibault.platform_fields, recreation_relancee: pf.recreation_relancee } },
@@ -81,7 +96,9 @@ console.log("\n5. (29/10, lot A point 2) ATTRIBUTS DE L'ANNONCE D'ORIGINE : LA Q
   const thibault = { id: "dca41766", action: "republish", status: "needs_user", platform: "vinted", title: "Samsung player start 2 # téléphone portable",
     error: "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement : Vinted exige « Modèle », « Espace de stockage ». Rien n'est perdu.",
     platform_fields: { needs_user_source: "champ_a_choisir", republish_step: "deleted", recreation_relancee: { vinted_menus_bloom: { le: "2026-10-29T08:05:00Z" } } } };
-  ok(causeLeveePourRelance(thibault, "2026-10-28T21:51:44Z+f567f2e") === null, "poste en 0.6.152 (sans la pose des identifiants) : pas encore");
+  // (06/11, Nico : version minimum abandonnée) Plus « pas encore » : relancée tout de suite, sous le build.
+  ok(causeLeveePourRelance(thibault, "2026-10-28T21:51:44Z+f567f2e")?.code === "vinted_attributs_origine",
+    "(06/11) poste en 0.6.152 (sans la pose des identifiants) : la question repart quand même");
   const c = causeLeveePourRelance(thibault, "2026-10-29T14:10:00Z+abcdef0");
   ok(c?.code === "vinted_attributs_origine", "poste au build qui pose modèle et attributs d'origine : la question repart une fois");
   const pf = champsRelanceCauseLevee(thibault.platform_fields, c, "2026-10-29T15:00:00Z");

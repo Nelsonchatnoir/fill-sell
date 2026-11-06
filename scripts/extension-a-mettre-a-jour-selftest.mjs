@@ -1,11 +1,15 @@
-// Autotest — un poste trop ancien : ce que la personne voit (03/10, point 25)
+// Autotest — un poste trop ancien : ce que la personne voit (03/10, point 25 ; règle changée le 06/11)
 //   npm run selftest:extension-a-mettre-a-jour
 //
 // geronimo0550, extension 0.6.79, Chrome allumé jusqu'à 01:49 : ses 7
 // publications du 02/10 au soir ne sont jamais parties — depuis le 02/10, le
-// serveur ne sert RIEN à un poste plus ancien que la 0.6.81 (sauf une remise
+// serveur ne servait RIEN à un poste plus ancien que la 0.6.81 (sauf une remise
 // en ligne commencée). L'écran disait « Dans la file — Chrome la prend à son
 // tour », la carte « En cours… ». Elles sont parties dès la 0.6.89.
+//
+// ⛔ (06/11, Nico : version minimum ABANDONNÉE DÉFINITIVEMENT) Le serveur sert sa file à tout poste, quel que soit
+// son build : aucune tâche n'attend la mise à jour. Aucun écran ne dit donc « En pause — mise à jour de l'extension » ;
+// le bandeau d'App peut seulement INFORMER qu'une nouvelle version existe, sans jamais dire que la file attend.
 import fs from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -15,57 +19,41 @@ const lire = (p) => fs.readFileSync(join(ROOT, p), "utf8").split("\r\n").join("\
 const imp = (p) => import(pathToFileURL(join(ROOT, p)).href);
 const { extensionAMettreAJour, phraseMiseAJourExtension } = await imp("src/utils/extensionAJour.js");
 const { situationJob } = await imp("src/utils/fileDesJobs.js");
-const { EXTENSION_MIN_BUILD } = await imp("supabase/functions/_shared/version-min-extension.js");
+const { EXTENSION_MIN_BUILD, posteExtensionCompatible } = await imp("supabase/functions/_shared/version-min-extension.js");
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
 
-console.log("\n1. LA RÈGLE : CELLE DU SERVEUR ET DU BANDEAU");
+console.log("\n1. LA RÈGLE (06/11) : AUCUNE TÂCHE N'ATTEND LA MISE À JOUR");
 const T = Date.parse("2026-10-02T23:30:00Z");
 const B0679 = "2026-09-28T21:44:46Z+52b214b · v0.6.79";   // le build RÉEL de geronimo0550
 const B0689 = "2026-10-02T21:10:00Z+1a49399 · v0.6.89";
 const B06124 = "2026-10-17T18:16:49Z+ced6cfd · v0.6.124";
-// (18/10, ordre de Nico) Le minimum est la 0.6.124 (servie par le Store) : la 0.6.89 devient ancienne.
-ok(EXTENSION_MIN_BUILD === "2026-10-17T18:16:49Z", "minimum du serveur relu (0.6.124)");
-ok(extensionAMettreAJour({ build: B0679, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === true, "0.6.79 vue ce soir : trop ancienne");
-ok(extensionAMettreAJour({ build: B0689, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === true, "0.6.89 : trop ancienne depuis le 18/10");
-ok(extensionAMettreAJour({ build: B06124, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === false, "0.6.124 : à jour");
-ok(extensionAMettreAJour({ build: B0679, lastSeenAt: "2026-08-01T10:00:00Z", maintenant: T }) === false, "vue il y a plus de 30 jours : c'est « ordinateur éteint », un autre message");
-ok(extensionAMettreAJour({ build: null, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === false, "build inconnu : on n'affirme rien");
+// La valeur ne bouge plus (elle ne nourrit que le bandeau d'information) : jamais relevée à la 0.6.175.
+ok(EXTENSION_MIN_BUILD === "2026-10-17T18:16:49Z", "EXTENSION_MIN_BUILD inchangé (0.6.124) — ne se pose JAMAIS plus");
+ok(posteExtensionCompatible(B0679) === false && posteExtensionCompatible(B06124) === true, "le bandeau sait encore qu'une version plus récente existe");
+for (const [b, nom] of [[B0679, "0.6.79"], [B0689, "0.6.89"], [B06124, "0.6.124"], [null, "build inconnu"]]) {
+  ok(extensionAMettreAJour({ build: b, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === false, `${nom} : sa file n'attend rien`);
+}
 
-console.log("\n2. LA FILE ET LES BARRES DISENT LA MISE À JOUR, JAMAIS « SON TOUR »");
+console.log("\n2. LA FILE ET LES BARRES : « À SON TOUR », JAMAIS « EN PAUSE — MISE À JOUR »");
 const job = (x) => ({ id: "j", inventaire_id: 1, platform: "vinted", action: "publish", status: "pending", created_at: "2026-10-02T21:00:00Z", platform_fields: {}, voie: "extension", ...x });
-const ctx = { maintenant: T, lang: "fr", extension: { etat: "vivante" }, extensionAMettreAJour: true };
-const s = situationJob(job({}), ctx);
-ok(s.groupe === "en_pause" && s.motif === "mise_a_jour" && s.raison === phraseMiseAJourExtension("fr"), "publication en file : « En attente de la mise à jour de l'extension : ferme Chrome… »", s.raison);
-ok(/ferme Chrome complètement puis rouvre-le/.test(phraseMiseAJourExtension("fr")), "avec le geste le plus simple");
-ok(situationJob(job({ platform: "ebay", voie: "api" }), ctx).motif !== "mise_a_jour", "eBay par nos serveurs : pas concerné");
-ok(situationJob(job({ action: "republish", platform_fields: { republish_step: "deleted", deleted_at: "2026-10-02T23:20:00Z" } }), ctx).groupe === "en_cours",
-  "une remise en ligne commencée reste servie (exception du serveur) : en cours");
-ok(situationJob(job({}), { ...ctx, extensionAMettreAJour: false }).raison === "En file : elle partira à son tour", "poste à jour : comportement d'avant");
+const ctx = { maintenant: T, lang: "fr", extension: { etat: "vivante" }, extensionAMettreAJour: extensionAMettreAJour({ build: B0679, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) };
+ok(situationJob(job({}), ctx).raison === "En file : elle partira à son tour", "publication en file sur un poste en 0.6.79 : « elle partira à son tour »", situationJob(job({}), ctx).raison);
+ok(situationJob(job({}), ctx).motif !== "mise_a_jour", "jamais le motif « mise_a_jour »");
+// La phrase reste pour les tâches mises en pause AVANT le 06/11 (needs_user_source « build_min_requis »), relancées par handler-watch.
+ok(/ferme Chrome complètement puis rouvre-le/.test(phraseMiseAJourExtension("fr")), "la phrase d'avant reste lisible (pauses posées avant le 06/11)");
 
 console.log("\n3. CHAQUE ÉCRAN");
 const stock = lire("src/tabs/StockTab.jsx");
-// (02/11 soir) + le drapeau Cloud du compte juste après (ses tâches ne dépendent pas de l'extension du PC).
-ok(/extensionAMettreAJour: extensionStatus\?\.outdated === true,\s*(\/\/[^\n]*\n\s*)*cloud: compteCloud,/.test(stock), "le Stock passe l'état aux barres et à la file");
-// (03/10, refonte du Stock) La pastille de la carte vit dans src/stock/regles.js
-// (pastilleCourte, genre « maj ») ; la CONDITION reste lue dans StockTab, au mot près.
-const { pastilleCourte } = await imp("src/stock/regles.js");
-ok(/const majRequise = extensionStatus\?\.outdated === true && d\.pendingJobs\.some\(\(j\) => j\.voie !== 'api' && !parLeCloud\(j, compteCloud\)\);/.test(stock)
-  && /if \(majRequise\) return \{ \.\.\.pastilleCourte\(\{ genre: 'maj' \}, lang\)/.test(stock)
-  && pastilleCourte({ genre: "maj" }, "fr").texte === "En pause",
-  "la carte : « En pause » (mise à jour de l'extension, état unique du 16/10), plus « En cours… »");
-const conf = lire("src/publication/EcranConfirmer.jsx");
-ok(/\{m\.extensionAMettreAJour && voies\.extension\.some\(p => verdict\.partent\.includes\(p\)\) && \(/.test(conf) && /ne partira qu'après la mise à jour : ferme Chrome complètement sur ton ordinateur, puis rouvre-le\./.test(conf),
-  "AVANT de publier : ce qui ne partira qu'après la mise à jour, et le geste");
-const suivi = lire("src/publication/EcranSuivi.jsx");
-// (02/11 soir) Une tâche faite par FillSell Cloud (parCloud) ne dit jamais la mise à jour de l'extension du PC.
-ok(/if \(!parApi && !parCloud && m\.extensionAMettreAJour\) return \{ texte: phraseMiseAJourExtension\(m\.lang\) \+ "\.",/.test(suivi) && /extensionAMettreAJour: m\.extensionAMettreAJour === true, cloud, programmation: Boolean\(programmation\.reglage\),/.test(suivi),
-  "le suivi après publication : la ligne et la barre");
-const lps = lire("src/components/ListingPreviewScreen.jsx");
-ok(/extensionAMettreAJour: extensionAMettreAJour\(\{ build: extBuildRelu, lastSeenAt: extensionVueLe \}\),/.test(lps) && /\.select\("extension_last_seen_at, extension_build"\)/.test(lps),
-  "le parcours relit le build du poste (même lecture que la fraîcheur)");
+ok(/extensionAMettreAJour: false,\s*(\/\/[^\n]*\n\s*)*cloud: compteCloud,/.test(stock), "le Stock ne passe plus « poste trop ancien » aux barres et à la file");
+ok(!stock.includes("const majRequise") && !stock.includes("pastilleCourte({ genre: 'maj' }"), "la carte ne dit plus « En pause » pour la mise à jour");
 const fdj = lire("src/components/FileDesJobs.jsx");
-ok(/majExtension = extensionAMettreAJour\(\{ build: prof\?\.extension_build \?\? null, lastSeenAt: prof\?\.extension_last_seen_at \?\? null \}\);/.test(fdj), "la file ouverte hors du Stock aussi");
+const lps = lire("src/components/ListingPreviewScreen.jsx");
+ok(fdj.includes("extensionAMettreAJour(") && lps.includes("extensionAMettreAJour("), "la file et le parcours passent par extensionAMettreAJour (toujours false)");
+const app = lire("src/App.jsx");
+ok(!app.includes("ta file reprendra toute seule après la mise à jour") && !app.includes("your queue will resume on its own after the update"),
+  "le bandeau d'App ne dit plus que la file attend la mise à jour (fr et en)");
+ok(app.includes("ta file continue de tourner") && app.includes("your queue keeps running"), "le bandeau INFORME : la file continue de tourner (fr et en)");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
-console.log("\n✓ poste trop ancien : chaque écran dit la mise à jour et son geste");
+console.log("\n✓ (06/11) poste ancien : sa file part, aucun écran ne dit qu'elle attend la mise à jour");

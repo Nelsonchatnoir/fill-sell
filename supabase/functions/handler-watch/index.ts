@@ -12,7 +12,7 @@ import { grilleDuDernierEchecTaille, normaliserTaille, tailleAServir } from "../
 // update-job-status — une remise en pending automatique n'efface plus le motif.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // (06/10, Glowik) Un échec qu'une extension corrige repart dès que le poste l'a.
-import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj, champsPauseAttenteMaj } from "../_shared/relance-apres-maj.js";
+import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj } from "../_shared/relance-apres-maj.js";
 import { MESSAGE_REPUBLICATION_ARTICLE_VENDU } from "../_shared/relance-apres-maj.js";
 import { motifsCaptureIncomplete, seulementLibellesIrresolus, repriseCaptureLibelle } from "../_shared/capture-libelle.js";
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
@@ -138,7 +138,12 @@ const RELANCE_AUTOMATIQUE_DRESSING_VINTED = false;   // (05/11, A4) les relevés
 // (05/11 16:52, INCIDENT) Règle « annonce publiée confirmée disparue » (7c48b8c) COUPÉE : pour une REPUBLICATION Vinted publiée,
 // le juge lisait platform_fields.vinted_item_id (l'ANCIENNE annonce, retirée par la republication elle-même) au lieu de
 // platform_listing_id (l'annonce en ligne) — 24 annonces vivantes closes à 16:33. Rallumer sur décision de Nico seulement.
-const JUGER_ANNONCES_PUBLIEES_DISPARUES = false;
+// (06/11, point 6 — RALLUMÉE sur la condition de Nico : « zéro faux » à la simulation et sur de vraies republications)
+// Simulation du 06/11 ~10:20 (vrai code du juge, vraie prod, lecture seule) : 5 082 jugées, 17 fermetures — les 17 relues
+// une par une sur leur plateforme (Vinted : 11 « 404 », 3 « Vendu » ; Leboncoin : 3 « 410 désactivée ») ; 596 vraies
+// republications Vinted dont l'ancienne annonce ≠ celle en ligne (390 des comptes de l'incident) : toutes « attendre »,
+// jugées sur le numéro EN LIGNE (identifiantAnnoncePubliee). Couper = remettre false et redéployer handler-watch.
+const JUGER_ANNONCES_PUBLIEES_DISPARUES = true;
 // (05/11, point 6 a, règle de Nico) Un dépôt Beebs sans numéro ni lien n'est plus « En ligne » à vie : jugé par la règle
 // des retraits sans numéro (_shared/beebs-depot-sans-numero.js). ALLUMÉ le 05/11 au soir (feu vert explicite de Nico) après
 // 6 fermetures de la simulation relues sur Beebs (recherche publique : aucune annonce au même titre et au même prix) ;
@@ -3141,6 +3146,8 @@ serve(async (req) => {
       .eq("platform_fields->>republish_step", "deleted")
       .order("created_at", { ascending: true }).limit(50);
     // (28/10) Une cause corrigée par l'EXTENSION (buildMin) n'est levée que pour un poste qui a ce build.
+    // (06/11, Nico : version minimum abandonnée) Plus maintenant : la cause se lève pour tout poste, une fois ; le
+    // build du poste ne sert qu'à tracer si la relance a eu lieu sous le build (une seconde relance, au build).
     // deno-lint-ignore no-explicit-any
     const uidsBloquees = [...new Set(((bloquees ?? []) as any[]).map((j) => String(j.user_id)))];
     const { data: profsBloquees } = uidsBloquees.length
@@ -3166,7 +3173,8 @@ serve(async (req) => {
           .eq("id", j.id).eq("status", "needs_user");
         continue;
       }
-      const pf = champsRelanceCauseLevee(j.platform_fields ?? {}, cause, new Date().toISOString()) as Record<string, unknown>;
+      const pf = champsRelanceCauseLevee(j.platform_fields ?? {}, cause, new Date().toISOString(),
+        { extensionBuild: buildBloquee.get(String(j.user_id)) ?? null }) as Record<string, unknown>;
       if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, `handler-watch (cause levée : ${cause.code})`);
       const { data: maj } = await supabase.from("cross_post_jobs")
         .update({ status: "pending", error: messageRelanceCauseLevee(j), platform_fields: pf })
@@ -5362,14 +5370,9 @@ serve(async (req) => {
         if (!posteALeBuild(eb, regle)) {
           // le poste n'a pas encore le correctif. (28/10) Une règle `messageAttente` le DIT, une fois par texte, sans
           // relancer ni toucher au compteur : jamais « Relance » qui retomberait sur le même mur.
-          // (29/10, lot B 4.1) Une règle `pauseAttente` met la tâche EN PAUSE (needs_user_source build_min_requis,
-          // build_min_requis posé, question fausse retirée, ancien message archivé) — une fois, rien de réécrit ensuite.
-          const pauseMaj = champsPauseAttenteMaj(j, regle, { maintenant: new Date(now).toISOString() });
-          if (pauseMaj) {
-            await supabase.from("cross_post_jobs").update(pauseMaj).eq("id", String(j.id)).eq("status", "needs_user").select("id");
-            console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) : poste sous l'extension ${regle.version} (${regle.cle}) → en pause « build_min_requis », question retirée`);
-            continue;
-          }
+          // (29/10, lot B 4.1) Une règle `pauseAttente` mettait ici la tâche EN PAUSE (needs_user_source build_min_requis).
+          // (06/11, Nico : version minimum abandonnée) PLUS JAMAIS : la tâche reste dans son état ordinaire (sa
+          // question, son arrêt) ; la relance unique ci-dessous part quand le poste a le build.
           const attente = messageAttenteMaj(j, regle);
           if (attente && j.error !== attente) {
             const pfA = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };

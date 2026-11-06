@@ -504,3 +504,11 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   toutes les écritures REST de l'extension, toutes plateformes) ; `depopPremiereLigne` coupe par point de code.
   Selftest `selftest:releve-demi-caractere`. Livré par l'extension 0.6.167 (après l'examen de la 0.6.166) : le relevé
   repasse seul au premier passage du poste mis à jour, rien à réparer en base.
+
+## 06/11 — Juge « annonce publiée disparue » RALLUMÉ (point 6, condition de Nico : zéro faux)
+- Simulation du 06/11 ~10:20 (`scripts/simulation-annonces-publiees-disparues.mjs`, vrai code, vraie prod, lecture
+  seule) : 5 082 annonces publiées jugées, 17 fermetures, relues une par une sur leur plateforme (Vinted 11 « 404 », 3
+  « Vendu » ; Leboncoin 3 « 410 désactivée ») ; 596 vraies republications Vinted dont l'ancienne annonce ≠ celle en ligne
+  (390 des comptes de l'incident du 05/11) : toutes « attendre », jugées sur le numéro EN LIGNE.
+- `JUGER_ANNONCES_PUBLIEES_DISPARUES = true` (handler-watch). Couper = false + redéployer handler-watch.
+- Tri photo par photo des couples « à vérifier » (lecture seule) : `docs/enquetes/rattachements-0511/TRI-PHOTOS-79.md`.

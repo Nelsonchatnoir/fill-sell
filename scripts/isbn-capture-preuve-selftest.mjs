@@ -150,13 +150,14 @@ ok(valeurIsbnRefuseeParJob(refus({}, { last_diagnostic: { quoi: 'x "field":"isbn
 }
 
 console.log("\n10. Ce que la retenue attend — et la phrase, jamais « mets à jour »");
-ok(attenteIsbnCapture("0000000000", B141, new Set()) === "mise_a_jour_extension", "10 zéros sur 0.6.141 : attend le poste à jour");
+// (06/11, Nico : version minimum abandonnée) Le build du poste ne retient plus rien : jamais « mise_a_jour_extension ».
+ok(attenteIsbnCapture("0000000000", B141, new Set()) === null, "(06/11) 10 zéros sur 0.6.141 : elle PART (le poste fait ce qu'il savait faire)");
 ok(attenteIsbnCapture("0000000000", B143, new Set()) === null, "10 zéros sur le paquet qui les remet : elle PART");
 ok(attenteIsbnCapture("0000000000000", B141, new Set()) === null, "13 zéros sur 0.6.141 : elle part (plus de preuve valeur par valeur)");
 ok(attenteIsbnCapture("1111111111111", B141, new Set()) === null, "une valeur jamais vue chez Vinted part aussi : la valeur d'origine, telle quelle");
 ok(attenteIsbnCapture("0000000000000", B141, new Set(["0000000000000"])) === "refus_vinted_du_compte", "refusée sur ce compte : retenue, annonce intacte");
 ok(attenteIsbnCapture("00", B143, new Set()) === "forme_non_remise", "« 00 » : jamais (ni 10 ni 13 caractères)");
-ok(attenteIsbnCapture("0000000000000", B069, new Set()) === "mise_a_jour_extension", "13 zéros sur 0.6.69 : attend le poste à jour");
+ok(attenteIsbnCapture("0000000000000", B069, new Set()) === null, "(06/11) 13 zéros sur 0.6.69 : elle PART aussi");
 const MET_A_JOUR_RE = /mets?[- ]la à jour|mets à jour|mettre à jour|ferme Chrome/i;
 ok(/^En file : cette republication part dès que ton extension FillSell se sera mise à jour toute seule — rien à faire\./.test(MESSAGE_ISBN_MISE_A_JOUR)
   && /intacte/.test(MESSAGE_ISBN_MISE_A_JOUR) && !MET_A_JOUR_RE.test(MESSAGE_ISBN_MISE_A_JOUR), "poste trop ancien : « En file … toute seule — rien à faire », annonce intacte, aucun geste");
@@ -164,7 +165,7 @@ ok(!MET_A_JOUR_RE.test(MESSAGE_ISBN_A_VERIFIER) && /intacte/.test(MESSAGE_ISBN_A
 {
   // Les 30 retenues réelles (toutes « 0000000000 ») : 0.6.141 → retenues, message vrai ; paquet 0.6.143 → toutes partent.
   const trente = Array.from({ length: 30 }, () => "0000000000");
-  ok(trente.every((v) => attenteIsbnCapture(v, B141, new Set()) === "mise_a_jour_extension"), "les 30 sur 0.6.141 : retenues, « En file »");
+  ok(trente.every((v) => attenteIsbnCapture(v, B141, new Set()) === null), "(06/11) les 30 sur 0.6.141 : servies (plus de retenue par build)");
   ok(trente.every((v) => attenteIsbnCapture(v, B143, new Set()) === null), "les 30 sur le paquet 0.6.143 : toutes servies (levée au premier poll)");
 }
 
@@ -193,12 +194,12 @@ console.log("\n12. get-pending-jobs : la garde est posteRemetIsbnCapture && !ref
   const gpj = readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
   const debut = gpj.indexOf("let heldIsbnCapture = 0;");
   const bloc = gpj.slice(debut, gpj.indexOf("let heldPipeline = 0;", debut));
-  ok(debut > 0 && bloc.includes("attenteIsbnCapture(v, buildDuPoll, refusDuCompte)") && bloc.includes("posteRemetIsbnCapture(valeurDe(j), buildDuPoll)"),
-    "la garde : ce que le poste remet, et le disjoncteur du compte");
+  ok(debut > 0 && bloc.includes("attenteIsbnCapture(v, buildDuPoll, refusDuCompte)") && !bloc.includes("posteRemetIsbnCapture(valeurDe(j), buildDuPoll)"),
+    "(06/11) la garde : le disjoncteur du compte, lu pour tout poste (plus de condition de build)");
   ok(!/valeursProuvees\(|PREUVES_ISBN_CAPTURE|\["banc_isbn_capture"\]|republish_snapshot->>isbn\.in\./.test(gpj), "plus de preuve valeur par valeur, plus de banc, plus de balayage de cross_post_jobs");
   ok(/\.eq\("user_id", user\.id\)\.eq\("platform", "vinted"\)\.eq\("action", "republish"\)\.neq\("status", "published"\)/.test(bloc), "les refus se lisent sur CE compte seulement");
   ok(/if \(!attente && refusIsbnIllisible\) \{ retenus\.add\(String\(j\.id\)\); continue; \}/.test(bloc), "lecture en échec : retenue CE passage, rien écrit");
-  ok(bloc.includes('attente === "mise_a_jour_extension" ? MESSAGE_ISBN_MISE_A_JOUR : MESSAGE_ISBN_A_VERIFIER'), "le message de la retenue dit ce qu'elle attend");
+  ok(bloc.includes("message: MESSAGE_ISBN_A_VERIFIER,") && !bloc.includes("MESSAGE_ISBN_MISE_A_JOUR"), "(06/11) le message de la retenue : une vérification, jamais la mise à jour");
   ok(bloc.includes('leverRetenueServeur(pf, maintenant, "poste_remet_la_valeur")'), "levée seule au premier poll d'un poste à jour");
   ok(/normalizeIsbn\(snap\?\.isbn\)\.ok \|\| posteIsbnTelQuel\(snap\?\.isbn\)/.test(gpj) && /texte\(snap\?\.isbn\) && posteIsbnTelQuel\(snap\?\.isbn\)/.test(gpj)
     && /const posteIsbnTelQuel = \(isbn: unknown\) => posteRemetIsbnCapture\(isbn, buildDuPoll\);/.test(gpj),

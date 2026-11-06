@@ -184,14 +184,15 @@ export const MESSAGE_ISBN_A_VERIFIER =
   "Ton annonce est intacte sur Vinted, rien n'a été retiré.";
 
 /**
- * Pourquoi la retenue tient, pour ce poste et ce compte :
- * "mise_a_jour_extension" (forme remise par un build plus récent que le poste),
+ * Pourquoi la retenue tient, pour ce compte :
  * "refus_vinted_du_compte" (disjoncteur), "forme_non_remise" (ni 10 ni 13 caractères), ou null (elle part).
+ * (06/11, Nico : version minimum abandonnée) Plus jamais "mise_a_jour_extension" : le build du poste ne retient
+ * rien — un poste qui ne remet pas la valeur fait ce qu'il savait faire. `build` reste dans la signature (appelants).
  */
+// deno-lint-ignore no-unused-vars
 export function attenteIsbnCapture(brut, build, refusDuCompte) {
   const v = valeurIsbnCapturee(brut);
   if (!formeIsbnCapture(v)) return "forme_non_remise";
-  if (!posteRemetIsbnCapture(v, build)) return "mise_a_jour_extension";
   if (refusDuCompte instanceof Set && refusDuCompte.has(v)) return "refus_vinted_du_compte";
   return null;
 }

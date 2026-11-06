@@ -36,7 +36,9 @@ console.log("\n2. « METS À JOUR » DIT LE GESTE LE PLUS SIMPLE");
 const app = lire("src/App.jsx");
 ok(/Le plus simple : <strong>ferme Chrome complètement, puis rouvre-le<\/strong>/.test(app), "bandeau de l'app : fermer Chrome et le rouvrir, d'abord");
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-ok(/"Mets l’extension FillSell à jour : ferme Chrome complètement puis rouvre-le — ta file reprendra toute seule après la mise à jour\. Tes annonces restent en ligne\.";/.test(gpj), "réponse du serveur au poste sous le seuil");
+// (06/11, Nico : version minimum abandonnée) Plus de « poste sous le seuil » : le serveur ne répond jamais « mets à jour ».
+ok(!gpj.includes("extension_update_required: true") && !gpj.includes("ta file reprendra toute seule après la mise à jour"),
+  "(06/11) le serveur ne dit jamais « mets à jour » ni « ta file reprendra » : aucun poste n'est arrêté");
 const bg = lire("chrome-extension/background.js");
 ok(/if \(rep\.extension_update_required\) \{\s+chrome\.storage\.local\.set\(\{ fillsell_maj_requise:/.test(bg) && /verifierMiseAJourSiDue\(\{ urgent: true \}\)/.test(bg),
   "extension 0.6.90 : retient l'exigence et demande la mise à jour à Chrome sans attendre 2 h");
