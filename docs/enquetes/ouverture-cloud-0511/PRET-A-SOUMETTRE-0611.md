@@ -34,7 +34,7 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
 | Description | Depop oui, Opla non, Cloud « En France » | corrigée 06/11 : « Vinted, eBay or Depop (and, in France, Leboncoin and Beebs) », « cinq plateformes » et « LBC et eBay : bientôt » retirés | brouillon enregistré |
 | Captures téléphone | 8 neuves, dans l'ordre | 8 neuves (EN), dans l'ordre | brouillon enregistré |
 | Bannière 1024×500 | « Crée une fois. Vends partout. » | « List once. Sell everywhere. » | brouillon enregistré |
-| Vidéo | — | — | ⏳ URL YouTube : compte YouTube de Nico (fichiers prêts) |
+| Vidéo | youtube.com/watch?v=nPXOWMjW_AE (non répertoriée) | youtube.com/watch?v=9nqPNDN33yA (non répertoriée) | brouillon enregistré (vidéo verticale 1080×1920 : YouTube la classe en Short) |
 | Icône | inchangée | | ok |
 | Catégorie / tags | Productivité ; Finances perso, Outils, Productivité, Shopping | | inchangé |
 | Coordonnées | support@fillsell.app, site | | inchangé |
@@ -58,7 +58,6 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
 
 ## 4. Restes (qui, pourquoi)
 - Nico : pièce justificative DSA Apple ; code SMS Google ; conditions Firebase (le garde-fou refuse que Claude accepte
-  des conditions) ; clé APNs « FillSell Push » et clé privée Firebase (création de secrets refusée à Claude) ; vidéo
-  YouTube ; pousser main (2 commits du terminal « Problèmes » en attente).
+  des conditions) ; clé APNs « FillSell Push » et clé privée Firebase (création de secrets refusée à Claude) ; pousser main (2 commits du terminal « Problèmes » en attente).
 - Après les clés : `npm run binaires` (AAB 2.9.161 + Codemagic → TestFlight), téléversement en piste interne, essais
   avec les comptes de relecture (TestFlight / piste interne : identifiants = geste de Nico).
