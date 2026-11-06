@@ -264,7 +264,10 @@ if (!sansAndroid) {
   ok('cap sync android : projet natif à jour, arbre toujours propre');
 
   const env = { JAVA_HOME };
-  if (lancer('gradlew.bat', ['clean', 'bundleRelease', 'assembleRelease', '--console=plain'], { cwd: path.join(RACINE, 'android'), env }).code !== 0) stop('Gradle a échoué (voir ci-dessus).');
+  // (06/11 soir) Chemin COMPLET : avec NoDefaultCurrentDirectoryInExePath (posé dans certains terminaux), cmd ne cherche
+  // plus « gradlew.bat » dans le dossier courant — « n'est pas reconnu en tant que commande interne ».
+  const gradlew = `"${path.join(RACINE, 'android', 'gradlew.bat')}"`;
+  if (lancer(gradlew, ['clean', 'bundleRelease', 'assembleRelease', '--console=plain'], { cwd: path.join(RACINE, 'android'), env }).code !== 0) stop('Gradle a échoué (voir ci-dessus).');
   const aab = path.join(RACINE, 'android/app/build/outputs/bundle/release/app-release.aab');
   const apk = path.join(RACINE, 'android/app/build/outputs/apk/release/app-release.apk');
   if (!existsSync(aab)) stop(`AAB introuvable : ${aab}`);
