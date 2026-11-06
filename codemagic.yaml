@@ -102,7 +102,9 @@ workflows:
           # bloc B). Aligné sur package.json 2.9.62 et Android 2.9.62 / versionCode 33.
           # Plancher des OTA : la suivante sera 2.9.63 ou au-dessus.
           # (25/10) 2.9.115 : même version que package.json (scripts/binaires.mjs vérifie l alignement) ; OTA suivante ≥ 2.9.116.
-          cd ios/App && agvtool new-marketing-version 2.9.115 && agvtool new-version -all $BUILD_NUMBER
+          # (06/11) 2.9.161 : le binaire 2.9 des stores, AU-DESSUS de l'OTA servie (2.9.160), sinon le canal lui servirait
+          # un code plus ancien que le sien ; la version App Store porte le même numéro ; OTA suivante ≥ 2.9.162.
+          cd ios/App && agvtool new-marketing-version 2.9.161 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles

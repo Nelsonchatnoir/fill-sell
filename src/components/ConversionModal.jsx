@@ -191,7 +191,8 @@ export function ToutesOffresBlock({ fr, grille = false }) {
   const items = [
     // (06/10 soir, Nico) L'import marche depuis TOUTES les plateformes, pas seulement Vinted.
     fr ? 'Import de tes annonces depuis toutes tes plateformes' : 'Import your listings from all your platforms',
-    fr ? 'Publication sur Vinted, Leboncoin, eBay & Beebs' : 'Publishing on Vinted, Leboncoin, eBay & Beebs',
+    // (06/11) Depop, ouverte à tous depuis le 10/10, manquait à la liste.
+    fr ? 'Publication sur Vinted, Leboncoin, eBay, Beebs & Depop' : 'Publishing on Vinted, Leboncoin, eBay, Beebs & Depop',
     fr ? 'Commandes vocales' : 'Voice commands',
     fr ? 'Retrait automatique partout après une vente' : 'Automatic removal everywhere after a sale',
   ];

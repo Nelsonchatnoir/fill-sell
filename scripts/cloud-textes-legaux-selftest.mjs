@@ -79,7 +79,8 @@ ok(!/\bproxy\b/i.test(fr), 'pas de jargon « proxy » en français');
 
 console.log('\n3. et 4. /legal, interrupteur baissé puis levé');
 const cfg = lire('src/config/cloudOffer.js');
-ok(/export const CLOUD_TEXTES_LEGAUX = CLOUD_OFFER_ENABLED;/.test(cfg), 'CLOUD_TEXTES_LEGAUX suit le drapeau de l’offre (jamais les témoins)');
+// (06/11, ordre de Nico) Les textes sont PUBLIÉS seuls, avant l'offre (abonnement soumis à Apple) ; l'offre reste fermée.
+ok(/export const CLOUD_TEXTES_LEGAUX = true;/.test(cfg) && /export const CLOUD_OFFER_ENABLED = false;/.test(cfg), 'CLOUD_TEXTES_LEGAUX levé seul (06/11), l’offre toujours fermée');
 globalThis.document ??= { body: {}, getElementById: () => null };
 const stockage = new Map();
 globalThis.localStorage = { getItem: (k) => stockage.get(k) ?? null, setItem: (k, v) => stockage.set(k, v), removeItem: (k) => stockage.delete(k) };
@@ -92,11 +93,13 @@ async function rendreLegal(ouvert) {
   const vite = await createServer({
     root: ROOT, configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
-    plugins: ouvert ? [{
-      name: 'textes-legaux-ouverts', enforce: 'pre',
-      resolveId(src, importer) { return importer?.replace(/\\/g, '/').endsWith('/src/pages/Legal.jsx') && /config\/cloudOffer(\.js)?$/.test(src) ? '\0cloud-textes-ouverts' : null; },
-      load(id) { return id === '\0cloud-textes-ouverts' ? 'export const CLOUD_TEXTES_LEGAUX = true;' : null; },
-    }] : [],
+    // L'interrupteur est FORCÉ dans les deux cas (baissé : la page d'avant ; levé : les textes) — le réglage réel est
+    // relu plus haut.
+    plugins: [{
+      name: 'textes-legaux-forces', enforce: 'pre',
+      resolveId(src, importer) { return importer?.replace(/\\/g, '/').endsWith('/src/pages/Legal.jsx') && /config\/cloudOffer(\.js)?$/.test(src) ? '\0cloud-textes-forces' : null; },
+      load(id) { return id === '\0cloud-textes-forces' ? `export const CLOUD_TEXTES_LEGAUX = ${ouvert};` : null; },
+    }],
   });
   try {
     const L = await vite.ssrLoadModule('/src/pages/Legal.jsx');

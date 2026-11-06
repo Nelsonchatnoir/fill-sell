@@ -95,7 +95,9 @@ try {
   console.log('1. L’interrupteur : à 0, rien ne change');
   ok(!('grille_trois_jauges' in REPLI) && !J.grilleActiveConfig(REPLI), 'COIN_CONFIG_FALLBACK ne porte PAS grille_trois_jauges : config illisible → la feuille d’avant');
   ok(Object.keys(REPLI).every((k) => !k.startsWith('jauge_')), 'aucune clé jauge_* ajoutée au repli');
-  const NEUFS = [/Vends plus, en faisant moins/, /Comment on compte/, /Depop/, /Pour démarrer, sans payer/, /Pour vendre plus, toi-même/,
+  // (06/11) Depop est nommée aussi dans le bloc d'aujourd'hui (« eBay, Beebs & Depop ») : seule la liste de la grille
+  // (« Beebs et Depop ») reste un texte neuf.
+  const NEUFS = [/Vends plus, en faisant moins/, /Comment on compte/, /Beebs et Depop/,/Pour démarrer, sans payer/, /Pour vendre plus, toi-même/,
     /Pour que ça tourne tout seul/, /Pour publier sans compter/, /Bordereaux Vinted/, /Tout illimité/, /Voir toutes les formules/,
     /Laisse FillSell travailler pour toi/, /Publie sans compter/, /Aujourd'hui :/, /Attendre le/, /Aussi dans ton plan/, /remontées/,
     /scans Lens/, /Pas maintenant/];
@@ -130,7 +132,7 @@ try {
   }
   {
     const free = modale('free');
-    ok(/Tu es en Free/.test(free) && /Débloque tout FillSell\./.test(free) && /Publication sur Vinted, Leboncoin, eBay & Beebs/.test(free)
+    ok(/Tu es en Free/.test(free) && /Débloque tout FillSell\./.test(free) && /Publication sur Vinted, Leboncoin, eBay, Beebs & Depop/.test(free)
       && /Import de tes annonces depuis toutes tes plateformes/.test(free) && /5 annonces créées et publiées sur toutes tes plateformes par mois/.test(free)
       && /50 republications par mois/.test(free) && /Passer Premium/.test(free) && /Passer Pro/.test(free) && /Non merci/.test(free),
     'à 0, Free : « Débloque tout FillSell. », le bloc et les lignes d’aujourd’hui', free.slice(0, 400));

@@ -24,7 +24,22 @@ Google : données chiffrées en transit — oui ; demande de suppression — oui
 vérifier sur le binaire 2.9) ; aucune donnée partagée avec des tiers à des fins publicitaires ; sous-traitants
 (Supabase, Hetzner, IPRoyal, Anthropic, OpenAI, Stripe, Resend) = « transfert à un prestataire », non déclaré comme partage.
 
-## Points ouverts (à trancher avant la saisie)
+## SAISI le 06/11/2026 (lot « Prêt à soumettre »)
+- Apple (Confidentialité de l'app) : PUBLIÉ — 13 types, tous liés à l'identité, aucun pistage : e-mail (fonctionnalité,
+  analyses, marketing du développeur), adresse physique (adresse d'expédition Leboncoin/Beebs des Réglages),
+  interaction, autres infos financières, photos, audio, assistance, autre contenu, identifiant utilisateur
+  (fonctionnalité, analyses), identifiant de l'appareil, historique d'achats, autres diagnostics, autres types (sessions
+  du Cloud). Tout « Fonctionnalité de l'app » sauf mention.
+- Google (Sécurité des données) : ENREGISTRÉ, NON envoyé (publication gérée) — 14 types « collectés » (nom, e-mail,
+  ID utilisateur, adresse, autres infos personnelles = sessions et comptes de plateforme hachés du Cloud, historique
+  d'achats, autres infos financières, autres messages, photos et audio « partagés » comme avant, diagnostics,
+  interactions, autre contenu, ID de l'appareil) ; suppression du compte DANS l'app = oui, lien
+  https://fillsell.app/legal#confidentialite. Fichier importé : `build/visuels-stores/securite-donnees-google-2.9.csv`.
+- GTM : déjà absent de l'app native depuis le 10/10 (`scripts/vite-plugin-natif-sans-google.mjs`, build natif et OTA :
+  0 balise Google relue dans `dist/index.html`) ; sur le site, sous consentement (`selftest:site-balises`, 225).
+  Le suivi d'acquisition (`src/utils/acquisition.js`) est interne et ne dépend pas de GTM. Point fermé.
+
+## Points ouverts (à trancher avant la saisie) — état au 05/11, fermés le 06/11 (ci-dessus)
 - **GTM dans l'app native** : `index.html` charge Google Tag Manager (GTM-TJNKL6T5) sans condition — donc aussi dans
   l'app iOS/Android. Selon les balises du conteneur (GA4 ? Google Ads ? Meta ?), il faut soit le couper dans l'app native
   (le plus simple), soit déclarer les données de Google (et, s'il y a de la publicité, le pistage + la demande ATT).

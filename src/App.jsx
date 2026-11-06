@@ -23,6 +23,9 @@ import { poserSourceSurProfil } from './utils/acquisition';
 // irréversibles (retrait, suppression) vont en BASE — cf. journalRetraits.js.
 import { logRetrait, logSuppressionArticle, CHEMINS_RETRAIT } from './utils/journalRetraits';
 import { erreurAvecRaison } from './utils/raisonRefus';
+// (06/11, phase 3) Motif d'une vente refusée (français, serveur) lu en anglais ; textes de l'export dans la langue de l'app.
+import { traduireMessageServeur } from './utils/messagesServeur';
+import { textesExport } from './utils/exportTextes';
 import { pixelInscription } from './utils/metaPixel';
 import { fileUnique, auPlus, uneFoisPar, noterEtape } from './utils/chargementBorne';
 import EcranChargementLong from './components/EcranChargementLong';
@@ -6669,7 +6672,9 @@ export default function App({ loginOnly = false }){
   async function handleExport(){
     const today=new Date().toISOString().split("T")[0];
     const wb=XLSX.utils.book_new();
-    const FULL_MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+    // (06/11, phase 3) Les textes de l'export dans la langue de l'app (utils/exportTextes.js) : en français, mot pour mot ceux d'avant.
+    const TX=textesExport(lang);
+    const FULL_MONTHS=TX.mois;
 
     const HS={fill:{patternType:"solid",fgColor:{rgb:"1D9E75"}},font:{bold:true,color:{rgb:"FFFFFF"},sz:11},alignment:{horizontal:"center",vertical:"center"}};
     const RS=[{fill:{patternType:"solid",fgColor:{rgb:"FFFFFF"}}},{fill:{patternType:"solid",fgColor:{rgb:"F5F6F5"}}}];
@@ -6685,7 +6690,7 @@ export default function App({ loginOnly = false }){
       monthGroups[key].rows.push(item);
     });
 
-    const MONTH_HEADERS=['Nom','Marque','Catégorie','Description','Quantité','Prix achat','Frais','Prix vente','Bénéfice','Marge %','Emplacement','Date vente'];
+    const MONTH_HEADERS=TX.colonnesVentes;
     const MONTH_COLS=[{wch:28},{wch:14},{wch:14},{wch:28},{wch:9},{wch:12},{wch:10},{wch:12},{wch:12},{wch:10},{wch:14},{wch:12}];
     const summaryData=[];
 
@@ -6714,7 +6719,7 @@ export default function App({ loginOnly = false }){
           {v:parseFloat(margin.toFixed(2)),t:'n',s:{...rs,font:{color:{rgb:margin>=0?"1D9E75":"DC2626"}}}},
           {v:parseFloat((item.marginPct||0).toFixed(1)),t:'n',s:rs},
           {v:item.emplacement||'',t:'s',s:rs},
-          {v:item.date?new Date(item.date).toLocaleDateString('fr-FR'):'',t:'s',s:rs},
+          {v:item.date?new Date(item.date).toLocaleDateString(TX.locale):'',t:'s',s:rs},
         ]);
       });
 
@@ -6738,7 +6743,7 @@ export default function App({ loginOnly = false }){
     });
 
     // Récapitulatif
-    const RECAP_HEADERS=['Mois','Nb ventes','CA total (€)','Bénéfice total (€)','Marge moyenne (%)'];
+    const RECAP_HEADERS=TX.colonnesRecap;
     const recapAoa=[RECAP_HEADERS.map(h=>({v:h,t:'s',s:HS}))];
     let gSell=0,gMargin=0,gCount=0;
     summaryData.forEach(({label,count,totSell,totMargin,avgPct},idx)=>{
@@ -6761,10 +6766,10 @@ export default function App({ loginOnly = false }){
     ]);
     const recapWs=XLSX.utils.aoa_to_sheet(recapAoa);
     recapWs['!cols']=[{wch:18},{wch:10},{wch:14},{wch:18},{wch:16}];
-    XLSX.utils.book_append_sheet(wb,recapWs,'Récapitulatif');
+    XLSX.utils.book_append_sheet(wb,recapWs,TX.feuilleRecap);
 
     // Inventaire (stock actuel)
-    const INV_HEADERS=['Nom','Marque','Catégorie','Description','Quantité','Prix achat unit.','Total investi','Emplacement','Date ajout'];
+    const INV_HEADERS=TX.colonnesInventaire;
     const invAoa=[INV_HEADERS.map(h=>({v:h,t:'s',s:HS}))];
     stock.forEach((item,idx)=>{
       const rs=RS[idx%2];
@@ -6778,12 +6783,12 @@ export default function App({ loginOnly = false }){
         {v:parseFloat((item.buy||0).toFixed(2)),t:'n',s:rs},
         {v:parseFloat(((item.buy||0)*qty).toFixed(2)),t:'n',s:rs},
         {v:item.emplacement||'',t:'s',s:rs},
-        {v:item.date_ajout?new Date(item.date_ajout).toLocaleDateString('fr-FR'):'',t:'s',s:rs},
+        {v:item.date_ajout?new Date(item.date_ajout).toLocaleDateString(TX.locale):'',t:'s',s:rs},
       ]);
     });
     const invWs=XLSX.utils.aoa_to_sheet(invAoa);
     invWs['!cols']=[{wch:28},{wch:14},{wch:14},{wch:28},{wch:9},{wch:14},{wch:13},{wch:14},{wch:12}];
-    XLSX.utils.book_append_sheet(wb,invWs,'Inventaire');
+    XLSX.utils.book_append_sheet(wb,invWs,TX.feuilleInventaire);
 
     const filename=`fillsell-export-${today}.xlsx`;
     if(isNative){
@@ -6792,7 +6797,7 @@ export default function App({ loginOnly = false }){
         const blob=new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
         const file=new File([blob],filename,{type:blob.type});
         if(navigator.canShare&&navigator.canShare({files:[file]})){
-          await navigator.share({files:[file],title:'Export FillSell'});
+          await navigator.share({files:[file],title:TX.titrePartage});
         }else{
           alert(lang==='en'?'Export available on the web version: fillsell.app':'Export disponible sur la version web : fillsell.app');
         }
@@ -10317,7 +10322,7 @@ export default function App({ loginOnly = false }){
                       </div>
                     )}
                     {venteSuppr.err&&(
-                      <div style={{fontSize:12,color:UI.negative,fontWeight:600}}>{venteSuppr.err}</div>
+                      <div style={{fontSize:12,color:UI.negative,fontWeight:600}}>{traduireMessageServeur(venteSuppr.err,lang)}</div>
                     )}
                   </div>
                 ):sonde?.statut==='encours'?(

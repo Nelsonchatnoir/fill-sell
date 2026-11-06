@@ -25,6 +25,7 @@ import { messagePlafondRepublicationGratuit } from './jourRemise';
 // (24/10, lot « zéro blocage », B7) Un article que Depop refuse n'entre jamais en file de republication.
 import { depopInterdit } from './platformCompat.js';
 import { detectObjectIcon } from './shared.js';
+import { traduireMessageServeur } from './messagesServeur.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : tout sauf eBay —
 // eBay reste HORS republication (garde-fou du 17/09), rien d'autre n'est exclu.
@@ -157,7 +158,8 @@ export async function republierArticle(supabase, { platform, inventaireId, vinte
 export function messageRefusRepublication(res, lang = 'fr', platform = res?.platform ?? 'vinted') {
   const fr = lang !== 'en';
   const nom = LABEL_PLATEFORME[platform] ?? platform;
-  if (res?.message) return res.message;
+  // (06/11, phase 3 point 1 — suite) Le texte du serveur est écrit en français : lu en anglais quand l'app l'est.
+  if (res?.message) return traduireMessageServeur(res.message, fr ? 'fr' : 'en');
   const M = {
     extension_trop_ancienne: fr
       ? (platform === 'vinted'
@@ -181,5 +183,5 @@ export function messageRefusRepublication(res, lang = 'fr', platform = res?.plat
     invalid_platform: fr ? 'Plateforme inconnue.' : 'Unknown platform.',
     invalid_item: fr ? 'Article introuvable.' : 'Item not found.',
   };
-  return M[res?.reason] ?? res?.error ?? (fr ? 'Republication impossible.' : 'Repost failed.');
+  return M[res?.reason] ?? traduireMessageServeur(res?.error, fr ? 'fr' : 'en') ?? (fr ? 'Republication impossible.' : 'Repost failed.');
 }

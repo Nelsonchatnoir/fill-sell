@@ -1,4 +1,6 @@
 import { createPortal } from 'react-dom';
+import { traduireMessageServeur } from '../utils/messagesServeur';
+import { langueDeLApp } from '../utils/langueApp';
 
 // ⛔ PORTAIL SUR document.body — OBLIGATOIRE, ET C'EST LE PLUS GRAVE DES TROIS
 // (2026-09-18). Rendu dans l'arbre d'App, ce toast vit sous `.app-root`, qui
@@ -19,7 +21,12 @@ import { createPortal } from 'react-dom';
 // gouttières de 16 px ; au-delà, le texte passe à la ligne, centré. Un message
 // court tient sur une ligne plus étroite que le plafond : rendu identique au
 // pixel près (vérifié en capture, 320 et 390 px).
+// (06/11, phase 3 point 1 — suite) Le toast porte aussi des phrases du SERVEUR, écrites en français (motif d'une
+// vente refusée renvoyé par check-listing-status, raison d'une fonction SQL) : lues en anglais quand l'app l'est
+// (utils/messagesServeur.js, langue de l'app = utils/langueApp.js). En français, le message passe tel quel.
 export default function Toast({ message, visible }) {
+  const lang = langueDeLApp();
+  const affiche = lang === 'en' ? traduireMessageServeur(message, 'en') : message;
   return createPortal(
     <div style={{
       position:"fixed",
@@ -44,7 +51,7 @@ export default function Toast({ message, visible }) {
       overflowWrap:"break-word",
       textAlign:"center",
     }}>
-      {message}
+      {affiche}
     </div>,
     document.body,
   );

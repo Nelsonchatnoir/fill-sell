@@ -13,6 +13,8 @@ import Feuille from './Feuille';
 import { S } from './jetons';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
+// (06/11, phase 3 point 1 — suite) Les erreurs d'ebay-account sont écrites en français : lues en anglais quand l'app l'est.
+import { traduireMessageServeur } from '../utils/messagesServeur';
 
 const MOTS = {
   fr: {
@@ -63,7 +65,7 @@ export function FeuilleConditionsEbay({ lang = 'fr', onFermer, onFait }) {
     let vivant = true;
     supabase.functions.invoke('ebay-account', { body: { action: 'proposer_conditions' } }).then(({ data }) => {
       if (!vivant) return;
-      if (!data?.proposition) { setMessage({ ok: false, texte: data?.error || M.reseau }); return; }
+      if (!data?.proposition) { setMessage({ ok: false, texte: traduireMessageServeur(data?.error, lang) || M.reseau }); return; }
       const p = data.proposition;
       setProp(p);
       setServices((p.livraison?.services ?? []).map((s) => ({ ...s, frais: s.frais == null ? '' : String(s.frais).replace('.', lang === 'en' ? '.' : ',') })));
@@ -97,7 +99,7 @@ export function FeuilleConditionsEbay({ lang = 'fr', onFermer, onFait }) {
         retours,
       } });
       if (error && !data) { setMessage({ ok: false, texte: M.reseau }); return; }
-      if (!data?.ok) { setMessage({ ok: false, texte: data?.error || M.reseau }); return; }
+      if (!data?.ok) { setMessage({ ok: false, texte: traduireMessageServeur(data?.error, lang) || M.reseau }); return; }
       setFini(true);
       setMessage({ ok: true, texte: M.fait });
       onFait?.();

@@ -25,9 +25,12 @@ Remplace, pour l'ouverture, `docs/cloud/mise-en-ligne.md` (05/10 : prix 20 €, 
 ## 0. La veille (Nico)
 - [ ] Apple : la version 2.9 et l'abonnement « FillSell Cloud » APPROUVÉS, sortie MANUELLE (« Publier manuellement
       cette version ») → statut « En attente de publication par le développeur ». « Paid Applications Schedule » signé.
+      (06/11 : contrat accepté à 10:2x, actif jusqu'au 13/04/2027 ; abonnement Cloud SOUMIS SEUL à 10:37, « En attente
+      de vérification » — `docs/enquetes/ouverture-cloud-0511/PRET-A-SOUMETTRE-0611.md`.)
 - [ ] Google : la release 2.9 de production APPROUVÉE en « publication gérée » (Vue d'ensemble de la publication :
       « Modifications prêtes à être publiées »), déclaration IA faite.
-- [ ] Textes légaux (CGV art. 7, CGU 3.9, confidentialité 4.7/4.8 — `src/cloud/textesLegaux.js`) validés ; accord de
+- [x] Textes légaux (CGV art. 7 avec « Territoire : France », CGU 3.9, confidentialité 4.7/4.8 — `src/cloud/textesLegaux.js`)
+      PUBLIÉS sur /legal le 06/11 (ordre de Nico : `CLOUD_TEXTES_LEGAUX = true`, l'offre reste fermée). Reste : accord de
       sous-traitance Hetzner conclu (`docs/cloud/confidentialite.md` § 4).
 - [ ] Place : `select public.cloud_places_libres();` ≥ le nombre de clients attendus le premier jour (sinon commander
       le 2e serveur AVANT) ; pool d'IP : `select public.cloud_pool_etat();` (attribuables ≥ `cloud_ip_stock_min`).
@@ -69,15 +72,19 @@ paiement Stripe du Cloud expire avec la réservation de la place (30 min) ; ⚠ 
   le plan d'achat sous la triple garde ; l'alerte « 80 % » ne part qu'au seuil (une fois par mois).
 - Retour arrière : `cloud_ip_achats_auto` = 0 (le plafond peut rester à 100).
 
-## 4. La grille à trois jauges
+## 4. La grille à trois jauges — ⛔ À FAIRE APRÈS L'ÉTAPE 7, PAS ICI (ordre de Nico du 06/11 : « elles s'allument avec
+##    le binaire, pas avant »)
+- L'interrupteur est lu par le serveur (quotas_etat) ET par l'écran (web, OTA, binaire) : levé avant la sortie des
+  binaires et de l'OTA, les règles de quotas changeraient sous un écran qui montre encore l'ancienne grille (l'OTA
+  2.9.160 servie aujourd'hui ne porte pas la grille). On le lève donc juste APRÈS l'étape 7 (OTA servie), le même jour.
 - Geste : `update public.coin_config set value = 1, updated_at = now() where key = 'grille_trois_jauges';`
 - Vérification : `quotas_etat` lu sous le compte de Nico (publications, annonces, Lens) ; l'écran des formules montre les
   trois jauges (web, puis app après l'OTA).
 - Retour arrière : la même clé à 0.
 
 ## 5. Le drapeau de l'offre (web au push)
-- Geste : `src/config/cloudOffer.js` : `CLOUD_OFFER_ENABLED = true` (les textes légaux suivent :
-  `CLOUD_TEXTES_LEGAUX = CLOUD_OFFER_ENABLED`) ; `scripts/cloud-ecrans-selftest.mjs` : retirer les DEUX lignes du
+- Geste : `src/config/cloudOffer.js` : `CLOUD_OFFER_ENABLED = true` (les textes légaux sont déjà publiés depuis le
+  06/11 : `CLOUD_TEXTES_LEGAUX = true`, le selftest cloud-textes-legaux exige aujourd'hui l'offre FERMÉE — l'adapter) ; `scripts/cloud-ecrans-selftest.mjs` : retirer les DEUX lignes du
   fil-piège « le drapeau Cloud est BAISSÉ », elles seules ; `npm run selftest:cloud-ecrans`,
   `selftest:cloud-textes-legaux`, `npm run build:essai` ; commit, UN push (Vercel).
 - Vérification : `curl https://fillsell.app/build.json` = le commit du push ; `/legal` montre CGV art. 7, CGU 3.9,

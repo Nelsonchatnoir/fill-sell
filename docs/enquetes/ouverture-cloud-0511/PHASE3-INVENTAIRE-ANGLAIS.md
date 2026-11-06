@@ -70,3 +70,10 @@ parcours sur un téléphone réglé en anglais (ordre de Nico).
   même contenu, motif d'une vente refusée, erreurs des fonctions eBay) : à traduire à l'affichage (humanizeJobError) ;
   (4) les vocabulaires des plateformes et les consignes de l'IA restent en français tant qu'aucune plateforme anglophone
   n'est ouverte (point 2).
+- **06/11 (lot « Prêt à soumettre »)** : (2) FAIT — export Excel en anglais (`src/utils/exportTextes.js`) et canal
+  Android « Sales » (`pushVentes.canalVentes`), le français mot pour mot (`selftest:export-et-canal-anglais`) ;
+  (3) FAIT — messages écrits en base traduits À L'AFFICHAGE (`src/utils/messagesServeur.js`, 182 entrées : jobs,
+  fonctions SQL, ventes refusées, eBay ; 253 gabarits / 20 531 jobs des 30 derniers jours couverts, 39 gabarits rares
+  laissés tels quels) — texte en base inchangé, français identique octet pour octet
+  (`selftest:messages-serveur-anglais`). Restent : la preuve connectée sur un vrai téléphone (identifiants : geste de
+  Nico) et le popup de l'extension (hors lot).

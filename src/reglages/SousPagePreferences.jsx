@@ -18,6 +18,8 @@ import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { CLE_REGLAGE_ALERTES } from '../utils/alertesCompte';
 // (06/10) Notifications de ventes : ne rend RIEN sans le module natif.
 import ReglageNotifications from '../notifications/ReglageNotifications';
+// (06/11, phase 3) Le canal Android « Ventes » suit la langue de l'app : renommé au changement de langue (id inchangé).
+import { nommerCanalVentes } from '../notifications/pushVentes';
 // (18/10 nuit, point 1) Les réponses retenues par rayon : voir, oublier, vider.
 import MemoireRayons from './MemoireRayons';
 // (26/10, D3) Titre, description et prix : écrits par FillSell (défaut) ou à la demande (« Générer »).
@@ -102,7 +104,7 @@ export default function SousPagePreferences({ c, T }) {
             <SegmentedPills
               options={['fr', 'en']}
               value={c.lang}
-              onChange={(l) => { track('change_language', { language: l }); c.setLang(l); }}
+              onChange={(l) => { track('change_language', { language: l }); c.setLang(l); nommerCanalVentes(l).catch(() => {}); }}
               labelFn={(l) => l.toUpperCase()}
               taille="lg"
             />

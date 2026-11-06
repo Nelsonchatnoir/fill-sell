@@ -9,6 +9,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { etatCompteEbay } from '../../supabase/functions/_shared/ebay-etat-compte.js';
+import { traduireMessageServeur } from './messagesServeur.js';
 
 const TRACE = '[ebay-compte]';
 const DELAI_SESSION_MS = 8000;
@@ -65,7 +66,9 @@ async function appeler(nom, body, lang = 'fr') {
   }
   const json = await r.json().catch(() => ({}));
   console.info(`${TRACE} ← ${nom} (${action}) HTTP ${r.status}`);
-  if (!r.ok) throw new Error(json?.error ?? `HTTP ${r.status}`);
+  // (06/11, phase 3 point 1 — suite) L'erreur rendue par la fonction eBay est écrite en français : lue en anglais
+  // quand l'app l'est (utils/messagesServeur.js) ; en français, la même phrase qu'avant.
+  if (!r.ok) throw new Error(traduireMessageServeur(json?.error, lang) ?? `HTTP ${r.status}`);
   return json;
 }
 

@@ -7,6 +7,8 @@ import { oeuvreDArt, estOeuvreDArt } from './oeuvreDArt.js';
 import { sansEstimation } from '../../supabase/functions/_shared/etat-job.js';
 // (02/11 soir) Compte Cloud : le texte d'une tâche faite par le Cloud (jamais « ton navigateur », « ton ordinateur »).
 import { parLeCloud, compteCourantEstCloud, texteTacheCloud } from '../cloud/voieCloud.js';
+// (06/11, phase 3 point 1 — suite) Les phrases françaises écrites en base, lues en anglais à l'affichage.
+import { traduireMessageServeur } from './messagesServeur.js';
 
 export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -576,7 +578,11 @@ export function humanizeJobError(job, lang = 'fr') {
   if (typeof t === 'string' && parLeCloud(job, compteCourantEstCloud())) {
     t = texteTacheCloud(t, HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (lang === 'en' ? 'the platform' : 'la plateforme'), lang);
   }
-  return typeof t === 'string' ? sansEstimation(t) : t;
+  if (typeof t !== 'string') return t;
+  t = sansEstimation(t);
+  // (06/11, phase 3 point 1 — suite) Une phrase écrite EN FRANÇAIS en base (serveur, SQL, extension) et passée
+  // telle quelle : lue en anglais quand l'app l'est (utils/messagesServeur.js). En français, rien n'est appelé.
+  return lang === 'en' ? traduireMessageServeur(t, 'en') : t;
 }
 function humanizeJobErrorBrut(job, lang = 'fr') {
   // États Vinted d'une page étrangère (« Very good »…) : affichés dans la langue
@@ -993,7 +999,10 @@ export function jobErrorSansFaussePromesse(job, lang = 'fr') {
       || (job?.platform === 'ebay' && texteEbayLisible(raw, job, lang === 'en'))) {
     return humanizeJobError(job, lang);
   }
-  if (!JOB_STATUS_TERMINAL.has(job?.status) || !PROMESSE_MARQUEUR_RE.test(raw)) return raw;
+  if (!JOB_STATUS_TERMINAL.has(job?.status) || !PROMESSE_MARQUEUR_RE.test(raw)) {
+    // (06/11, phase 3 point 1 — suite) Le brut d'un job vivant, lu en anglais quand l'app l'est ; français inchangé.
+    return lang === 'en' ? traduireMessageServeur(raw, 'en') : raw;
+  }
   return humanizeJobError(job, lang);
 }
 

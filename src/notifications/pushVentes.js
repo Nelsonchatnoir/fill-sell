@@ -17,6 +17,7 @@
 // connexion et à l'ouverture de l'app, c'est tout.
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
+import { langueDeLApp } from '../utils/langueApp';
 
 const NOM_PLUGIN = 'PushNotifications';
 const CLE_JETON = 'fillsell:push:jeton';
@@ -42,13 +43,38 @@ export function pushDisponible() {
   }
 }
 
+// ⛔ (06/11) Le module natif voyage dans une BOÎTE ({ p }), jamais nu à travers une promesse : un plugin Capacitor est
+// un Proxy qui répond à TOUTE propriété, `then` compris (@capacitor/core, registerPlugin). Rendu par un `.then` ou un
+// `async`, il est pris pour une promesse : `p.then(resolve, reject)` part vers le natif (« then() is not implemented »)
+// et ni resolve ni reject n'est jamais appelé — `await plugin()` ne rendait JAMAIS la main sur un vrai téléphone, et
+// aucun jeton n'aurait été enregistré (scripts/push-plugin-proxy-selftest.mjs le prouve avec le vrai @capacitor/core).
 let promessePlugin = null;
-function plugin() {
+function boitePlugin() {
   if (!pushDisponible()) return Promise.resolve(null);
   promessePlugin ??= import('@capacitor/push-notifications')
-    .then((m) => m.PushNotifications ?? null)
+    .then((m) => (m.PushNotifications ? { p: m.PushNotifications } : null))
     .catch(() => null);
   return promessePlugin;
+}
+/** Le module natif, ou null. À lire tel quel (`const p = await plugin()`) : la boîte est ouverte ici, hors promesse. */
+async function plugin() {
+  const boite = await boitePlugin();
+  return boite ? new PluginPush(boite.p) : null;
+}
+// Une façade NON « thenable » : elle ne transmet que les méthodes dont l'app se sert (aucune propriété `then`).
+class PluginPush {
+  constructor(p) { this.natif = p; }
+  checkPermissions() { return this.natif.checkPermissions(); }
+  requestPermissions() { return this.natif.requestPermissions(); }
+  register() { return this.natif.register(); }
+  unregister() { return this.natif.unregister(); }
+  addListener(nom, fn) { return this.natif.addListener(nom, fn); }
+  removeAllListeners() { return this.natif.removeAllListeners(); }
+  createChannel(c) { return this.natif.createChannel(c); }
+  deleteChannel(c) { return this.natif.deleteChannel(c); }
+  listChannels() { return this.natif.listChannels(); }
+  getDeliveredNotifications() { return this.natif.getDeliveredNotifications(); }
+  removeAllDeliveredNotifications() { return this.natif.removeAllDeliveredNotifications(); }
 }
 
 /** 'granted' | 'denied' | 'prompt' | 'indisponible' */
@@ -84,6 +110,48 @@ function ouvrir(donnees) {
   if (surOuvrir) surOuvrir(donnees); else ouvertureEnAttente = donnees;
 }
 
+// ── Le canal Android « Ventes » ─────────────────────────────────────────────
+// (06/11, lot « Ouverture du Cloud », phase 3 — décision de Nico) Le nom du canal (et sa description), que la
+// personne lit dans les réglages de notifications d'Android, suit la langue de l'app : « Ventes » mot pour mot en
+// français, « Sales » en anglais. Android garde le nom donné à la création, mais un nouvel appel createChannel avec
+// le MÊME id le renomme. L'id ('ventes', visé par le serveur : android.notification.channel_id) et l'importance ne
+// changent JAMAIS — seuls le nom et la description suivent la langue.
+export const CANAL_VENTES_ID = 'ventes';
+const NOMS_CANAL_VENTES = {
+  fr: { name: 'Ventes', description: 'Une notification à chaque vente' },
+  en: { name: 'Sales', description: 'A notification for each sale' },
+};
+/** Le canal tel qu'il est passé à createChannel (pur : lu par le selftest). */
+export function canalVentes(lang = 'fr') {
+  const n = NOMS_CANAL_VENTES[lang === 'en' ? 'en' : 'fr'];
+  return {
+    id: CANAL_VENTES_ID, name: n.name, description: n.description,
+    importance: 4, visibility: 1, sound: 'default', vibration: true,
+  };
+}
+let canalNommeEn = null; // la langue du dernier nom posé dans cette session
+/**
+ * Crée le canal, ou le renomme quand la langue de l'app change (Réglages › Préférences). Android seulement, module
+ * natif présent seulement (pushDisponible) ; un même nom n'est pas reposé deux fois dans une session. Jamais
+ * d'exception.
+ */
+export async function nommerCanalVentes(lang) {
+  const l = lang === 'en' ? 'en' : 'fr';
+  if (canalNommeEn === l) return true;
+  let estAndroid = false;
+  try { estAndroid = Capacitor.getPlatform() === 'android'; } catch { estAndroid = false; }
+  if (!estAndroid) return false;
+  const p = await plugin();
+  if (!p) return false;
+  try {
+    await p.createChannel(canalVentes(l));
+    canalNommeEn = l;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Le jeton ────────────────────────────────────────────────────────────────
 let ecoutes = false;
 let contexte = { versionApp: null };
@@ -107,11 +175,8 @@ async function brancherEcoutes(p) {
     await p.addListener('registrationError', (e) => { console.warn('[push] jeton refusé par le système :', e?.error ?? e); });
     await p.addListener('pushNotificationActionPerformed', (a) => { ouvrir(a?.notification?.data ?? null); });
     if (Capacitor.getPlatform() === 'android') {
-      // Le canal que vise le serveur (android.notification.channel_id).
-      await p.createChannel({
-        id: 'ventes', name: 'Ventes', description: 'Une notification à chaque vente',
-        importance: 4, visibility: 1, sound: 'default', vibration: true,
-      }).catch(() => {});
+      // Le canal que vise le serveur (android.notification.channel_id), nommé dans la langue de l'app.
+      await nommerCanalVentes(langueDeLApp());
     }
   } catch (e) {
     ecoutes = false;

@@ -396,7 +396,7 @@ export default function Legal() {
                 (CGU 3.4 : 50 republications PAR MOIS en Free), puis le 16/10
                 (8.2 et 8.5 : messagerie, commandes et bordereaux, bêta), puis le
                 24/10 (CGV 3.4 : clause du maximum par jour de chaque plan retirée, décision de Nico). */}
-            {en ? 'Last updated: October 24, 2026' : 'Dernière mise à jour : 24 octobre 2026'}
+            {en ? 'Last updated: November 6, 2026' : 'Dernière mise à jour : 6 novembre 2026'}
           </p>
         </div>
 

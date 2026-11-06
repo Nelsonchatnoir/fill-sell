@@ -110,9 +110,12 @@ android {
         // (package.json 2.9.62) ; prochaine OTA ≥ 2.9.63.
         // (25/10) versionName 2.9.115, versionCode 33 inchangé (jamais fabriqué ni envoyé) : le binaire des notifications
         // suit la version de package.json (scripts/binaires.mjs) ; prochaine OTA ≥ 2.9.116.
+        // (06/11) versionName 2.9.161, versionCode 33 : le binaire 2.9 des stores, AU-DESSUS de l'OTA servie (2.9.160) —
+        // un binaire numéroté sous le canal recevrait l'OTA plus ancienne que lui (Capgo, « Updates Under Native: No ») ;
+        // prochaine OTA ≥ 2.9.162.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
         versionCode 33
-        versionName "2.9.115"
+        versionName "2.9.161"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

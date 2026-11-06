@@ -16,6 +16,12 @@
 - 02/10 soir — ventes : annonce_id = la preuve (ex-L444-446)
 - 16/10 — lire une vente : plateforme normalisée, marge % au prix > 0, « Sans plateforme », tri par date
 - 16/10 soir — le prix d'une vente née d'un job ; jamais « vendu 0 € » (C1)
+- 06/11 — ⛔ un plugin Capacitor ne passe JAMAIS nu à travers une promesse : c'est un Proxy qui répond à `then` ;
+  rendu par `.then(...)` ou une fonction `async`, il est pris pour une promesse et `await` ne rend plus la main sur
+  un vrai téléphone (« X.then() is not implemented », rejet orphelin). pushVentes.js le faisait : aucun jeton ne se
+  serait jamais enregistré avec le binaire 2.9. Règle : le module voyage dans une boîte (`{ p }`) ou derrière une
+  façade sans `then` (`PluginPush`). Preuve avec le vrai @capacitor/core : `npm run selftest:push-plugin-proxy`.
+  Le canal Android « Ventes » suit la langue de l'app (« Sales » en anglais, id `ventes` inchangé).
 
 <!-- ex-CLAUDE.md L123-137 : 11/10 — une annonce vendue ne se signale qu'une fois -->
 - **⛔ UNE ANNONCE VENDUE NE SE SIGNALE QU'UNE FOIS (11/10, Louis)** : le « doublon »

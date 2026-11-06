@@ -35,7 +35,10 @@ export const CLOUD_OFFER_ENABLED = false;
 // même jour, par ce seul interrupteur. Page publique, sans compte : jamais
 // ouverts aux seuls témoins (règle du 15/09 : un service non ouvert ne
 // s'annonce pas). À lever seul, plus tôt, uniquement si la revue Apple l'exige.
-export const CLOUD_TEXTES_LEGAUX = CLOUD_OFFER_ENABLED;
+// (06/11/2026, ordre de Nico) LEVÉ SEUL, avant l'offre : l'abonnement FillSell Cloud est soumis à Apple (06/11 10:37)
+// et le relecteur l'achète — les conditions qu'il accepte doivent être publiques. L'offre, elle, reste fermée
+// (CLOUD_OFFER_ENABLED) : seuls les témoins la voient.
+export const CLOUD_TEXTES_LEGAUX = true;
 
 // (05/10) Comptes TÉMOINS de l'OFFRE (paiement compris) avant l'ouverture : le
 // compte de démonstration remis à la revue Apple (le premier abonnement d'un

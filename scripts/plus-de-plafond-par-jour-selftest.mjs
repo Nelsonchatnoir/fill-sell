@@ -93,6 +93,7 @@ ok(/republications d'affilée — les \$\{restantes\} suivantes reprennent \$\{r
 ok(/const NOMBRE_JOUR_MAX = 1000;/.test(rp) && /plafond_jour: r \? nombreChoisi\(r\.plafond_jour\) : nombreChoisi\(legacy\?\.plafond_jour\),/.test(rp)
   && /appliquer\(\{ plafond_jour: null \}\)/.test(rp) && !/plafond_palier|restants_compte|PLAFOND_ILLIMITE/.test(rp),
   'module planifié : nombre par jour facultatif (« Sans limite »), aucun maximum de palier');
-ok(/Dernière mise à jour : 24 octobre 2026/.test(legal) && /Last updated: October 24, 2026/.test(legal), 'CGV : la date suit la clause retirée');
+// (06/11) La date a suivi la clause retirée (24/10), puis la publication des textes du Cloud (06/11) : jamais avant le 24/10.
+ok(/Dernière mise à jour : 6 novembre 2026/.test(legal) && /Last updated: November 6, 2026/.test(legal), 'CGV : la date suit la clause retirée (24/10) puis les textes du Cloud (06/11)');
 
 console.log(`\n✓ plus-de-plafond-par-jour : ${n} contrôles verts`);
