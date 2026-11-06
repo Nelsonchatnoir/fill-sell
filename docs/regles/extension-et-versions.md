@@ -268,3 +268,5 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   `_shared/marque-compatible.js` dans `content-scripts/leboncoin.js` (selftest `marque-compatible`).
 - La série des remises de Louis (rangs « SEB ») attend ce build (`exige_version` de la série, propre à la réparation —
   aucune retenue générale par version).
+- Livrable : `build/CWS-0.6.176-A-TELEVERSER/fillsell-extension-0.6.176-cws.zip` (BUILD_ID `2026-11-06T20:36:04Z+3becc6d`,
+  604 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-06T20:35:35Z (618edc4). À téléverser par-dessus la 0.6.175.
