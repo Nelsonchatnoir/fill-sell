@@ -24,7 +24,7 @@ import { Capacitor } from '@capacitor/core';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { lireCapaciteSyncCompte, demanderSyncDressingServeur, lireDernierRunDressing } from '../utils/vintedSync';
-import { lireSyncMultiOuverte, demanderRelevePlateforme, lireDerniersRunsReleve } from '../utils/syncPlateformes';
+import { lireSyncMultiOuverte, syncMultiOuverteConnue, demanderRelevePlateforme, lireDerniersRunsReleve } from '../utils/syncPlateformes';
 import { murConnexionReleve } from '../annonces/etatReleve';
 import { useEnvoiLienExtension } from '../hooks/useEnvoiLienExtension';
 import { plateformesFermeesHorsFrance } from '../../supabase/functions/_shared/lbc-adresse-france.js';
@@ -134,7 +134,8 @@ export function useContexteEntree({ lang, user, demanderPseudo, palier = 'gratui
 
   const [choix, setChoix] = useState(() => lireJSON(ENTREE_CHOIX_KEY, { plateformes: [], debute: false }));
   const [extensionVue, setExtensionVue] = useState(false);
-  const [syncMultiOuverte, setSyncMultiOuverte] = useState(false);
+  // (06/11 soir) Ce que le démarrage a déjà lu (config/interrupteurs.js), jamais « fermé » par défaut.
+  const [syncMultiOuverte, setSyncMultiOuverte] = useState(() => syncMultiOuverteConnue() === true);
   const [releve, setReleve] = useState(() => (lireJSON(ENTREE_RELEVE_KEY, false) ? { etat: 'en_file' } : { etat: 'idle' }));
   const [ebayRelie, setEbayRelie] = useState(false);
   // ── CE QUE LE PREMIER RELEVÉ A DONNÉ (2026-09-22) ─────────────────────────

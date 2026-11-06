@@ -93,6 +93,13 @@ const config: CapacitorConfig = {
       // rend la main, l'app démarre sur le bundle embarqué, et la mise à jour
       // s'appliquera au prochain passage en arrière-plan — le comportement
       // d'avant, jamais un blocage.
+      // ⚠️ (06/11 soir, lecture du code natif du plugin 8.51.2) Cette borne et le
+      // loader ne s'arment QU'AU PASSAGE EN ARRIÈRE-PLAN, jamais au lancement à
+      // froid ; et App.jsx cachait le splash au premier rendu, donc AVANT la
+      // mise à jour directe du premier lancement (web embarqué visible, puis
+      // rechargement). Le premier lancement est désormais tenu par
+      // src/natif/splashDemarrage.js : splash gardé jusqu'à « appReady » de
+      // Capgo, au plus 10 s, puis toute mise à jour tardive attend l'arrière-plan.
       autoSplashscreenTimeout: 10000,
       // Le canal doit EXISTER sous ce nom exact côté Capgo, sinon le serveur
       // ne renvoie jamais de bundle et les updates ne partent tout simplement

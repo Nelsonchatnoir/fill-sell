@@ -9,6 +9,7 @@
 // profil beta_flags.inventaire_multi_pf) — l'app ne PROPOSE rien de ce que le
 // serveur refuserait, et n'annonce rien qui n'existe pas encore.
 import { supabase } from '../lib/supabase';
+import { lireInterrupteurs, interrupteurOuvert } from '../config/interrupteurs.js';
 import { compterEnVenteDuReleve } from './vintedSync.js';
 import { PLATEFORMES_STOCK } from './stockFiltres';
 import { indexerRelevesVides } from '../annonces/releveVide';
@@ -26,11 +27,11 @@ export const PLATEFORMES_RELEVE = PLATEFORMES_STOCK.filter((p) => p !== 'vinted'
 export const LABEL_RELEVE = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
 
 // L'interrupteur, FAIL-CLOSED : clé absente, illisible, lecture ratée → fermé.
+// (06/11 soir) Lu UNE fois au démarrage avec les autres interrupteurs d'ouverture (config/interrupteurs.js) : plus
+// une requête par écran, et l'écran qui l'attend sait le dire « pas encore lu » (syncMultiOuverteConnue).
 export async function lireSyncMultiOuverte(userId) {
-  try {
-    const { data, error } = await supabase.from('coin_config').select('value').eq('key', 'sync_multi_ouverte').maybeSingle();
-    if (!error && Number(data?.value) === 1) return true;
-  } catch { /* fermé */ }
+  await lireInterrupteurs(supabase);
+  if (interrupteurOuvert('sync_multi_ouverte')) return true;
   if (!userId) return false;
   try {
     const { data, error } = await supabase.from('profiles').select('beta_flags').eq('id', userId).maybeSingle();
@@ -38,6 +39,9 @@ export async function lireSyncMultiOuverte(userId) {
   } catch { /* colonne absente = fermé */ }
   return false;
 }
+/** (06/11 soir) Sans attendre : true si l'interrupteur commun est DÉJÀ lu ouvert, sinon null (« pas encore su » : le
+ *  drapeau du compte reste à lire). Un écran qui part de null n'affiche ni l'ancienne ni la nouvelle carte. */
+export const syncMultiOuverteConnue = () => (interrupteurOuvert('sync_multi_ouverte') ? true : null);
 
 // (06/10) Au clic « Synchroniser » : les plateformes choisies (« Où tu
 // vends ? », platform_settings.plateformes_vendeur) et l'état des sessions

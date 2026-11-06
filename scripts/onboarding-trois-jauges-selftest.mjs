@@ -344,7 +344,7 @@ try {
   // ── 5. Rien de neuf à 0 ────────────────────────────────────────────────────────────────────────────────────
   console.log('\n5. À 0 et Cloud fermé : le parcours d’avant, sans un mot neuf');
   {
-    ok(CFG.CLOUD_OFFER_ENABLED === false && CFG.cloudOfferVisible('u1') === false, 'le Cloud est fermé (CLOUD_OFFER_ENABLED = false, aucun témoin)');
+    ok(!('CLOUD_OFFER_ENABLED' in CFG) && CFG.cloudOffreOuverte() === false && CFG.cloudOfferVisible('u1') === false, 'le Cloud est fermé (interrupteur serveur non lu, aucun témoin)');
     const NEUF = /Comment tu veux publier|Rien à payer avant|Connecte tes comptes|Ton plan|Ce que tu as chaque mois|Remonte tes annonces en un geste|Finalement, je n.ai pas d.ordinateur|Extension Chrome · gratuite|aucune jauge|depuis nos serveurs|How do you want to post|Your Free plan|Bump your listings in one tap/;
     const vus = new Set();
     let neufs = [];

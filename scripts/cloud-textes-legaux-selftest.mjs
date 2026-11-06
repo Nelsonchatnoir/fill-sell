@@ -80,7 +80,7 @@ ok(!/\bproxy\b/i.test(fr), 'pas de jargon « proxy » en français');
 console.log('\n3. et 4. /legal, interrupteur baissé puis levé');
 const cfg = lire('src/config/cloudOffer.js');
 // (06/11, ordre de Nico) Les textes sont PUBLIÉS seuls, avant l'offre (abonnement soumis à Apple) ; l'offre reste fermée.
-ok(/export const CLOUD_TEXTES_LEGAUX = true;/.test(cfg) && /export const CLOUD_OFFER_ENABLED = false;/.test(cfg), 'CLOUD_TEXTES_LEGAUX levé seul (06/11), l’offre toujours fermée');
+ok(/export const CLOUD_TEXTES_LEGAUX = true;/.test(cfg) && !/export const CLOUD_OFFER_ENABLED/.test(cfg) && /cloudOffreOuverte = \(\) => interrupteurOuvert\(CLE_OUVERTURE_CLOUD\)/.test(cfg), 'CLOUD_TEXTES_LEGAUX levé seul (06/11), l’offre suit l’interrupteur serveur (fermé)');
 globalThis.document ??= { body: {}, getElementById: () => null };
 const stockage = new Map();
 globalThis.localStorage = { getItem: (k) => stockage.get(k) ?? null, setItem: (k, v) => stockage.set(k, v), removeItem: (k) => stockage.delete(k) };

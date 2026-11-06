@@ -80,7 +80,7 @@ try {
   ok(A.identifiantAppareil({ getItem: () => { throw new Error('privé'); } }) === '', 'stockage refusé → vide (la base répond « appareil_inconnu » : sans essai, jamais un faux verrou)');
 
   console.log('\n3. Les drapeaux');
-  ok(C.CLOUD_OFFER_ENABLED === false && C.cloudOfferVisible('x') === false, 'drapeau baissé : offre fermée à tous (hors témoins)');
+  ok(!('CLOUD_OFFER_ENABLED' in C) && C.cloudOffreOuverte() === false && C.cloudOfferVisible('x') === false, 'interrupteur serveur non lu (= fermé) : offre fermée à tous (hors témoins)');
   // (30/10, lot D, Nico : « drapeau PAR COMPTE ») Aucun identifiant écrit en dur : un témoin porte
   // profiles.beta_flags.cloud = true, lu par chargerTemoinCloud. Personne d'autre.
   const NICO = 'f44b5917-bccc-4431-ba41-f40571a2ed18';

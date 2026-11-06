@@ -3,17 +3,19 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // ⛔ NON PUBLIÉE tant que Nico n'a pas validé le texte : la page exige d'être connecté ET d'être un compte témoin
 // du Cloud (drapeau par compte, profiles.beta_flags.cloud) — tout autre visiteur est renvoyé vers l'app, la page
-// n'est jamais indexée. À l'ouverture du Cloud, elle se rend à tous (CLOUD_OFFER_ENABLED, config/cloudOffer.js).
+// n'est jamais indexée. À l'ouverture du Cloud, elle se rend à tous (interrupteur serveur coin_config.cloud_offre_ouverte,
+// lu par config/interrupteurs.js — 06/11 soir : plus de drapeau figé dans le bundle).
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CLOUD_OFFER_ENABLED, chargerTemoinCloud } from '../config/cloudOffer';
+import { cloudOffreOuverte, chargerTemoinCloud } from '../config/cloudOffer';
+import { lireInterrupteurs } from '../config/interrupteurs';
 import { conditionsCloud } from '../cloud/conditionsCloud';
 import { languePage } from './languePage';
 import { C, BLANC, POLICE } from '../cloud/theme';
 
 export default function ConditionsCloud() {
-  const [acces, setAcces] = useState(CLOUD_OFFER_ENABLED ? 'oui' : 'lecture');
+  const [acces, setAcces] = useState(cloudOffreOuverte() ? 'oui' : 'lecture');
   useEffect(() => {
     const meta = document.createElement('meta');
     meta.name = 'robots'; meta.content = 'noindex, nofollow';
@@ -22,10 +24,11 @@ export default function ConditionsCloud() {
     return () => { meta.remove(); };
   }, []);
   useEffect(() => {
-    if (CLOUD_OFFER_ENABLED) return undefined;
+    if (cloudOffreOuverte()) return undefined;
     let mort = false;
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const oui = session?.user?.id ? await chargerTemoinCloud(supabase, session.user.id) : false;
+    // L'interrupteur serveur d'abord (ouvert à tous), puis le drapeau du compte (témoin).
+    lireInterrupteurs(supabase).then(() => supabase.auth.getSession()).then(async ({ data: { session } }) => {
+      const oui = cloudOffreOuverte() || (session?.user?.id ? await chargerTemoinCloud(supabase, session.user.id) : false);
       if (!mort) setAcces(oui ? 'oui' : 'non');
     }).catch(() => { if (!mort) setAcces('non'); });
     return () => { mort = true; };

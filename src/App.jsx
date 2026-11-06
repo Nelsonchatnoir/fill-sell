@@ -6,6 +6,8 @@ const AppleSignIn = registerPlugin('AppleSignIn');
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import { cacherSplashAuBonMoment } from './natif/splashDemarrage';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, PRODUCT_IDS } from './lib/iap';
 import { classerIssueAchat } from './lib/issueAchat';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
@@ -74,6 +76,10 @@ function effacerAttenteConfirmation(){
 const APP_BUILD_ID = typeof __FILLSELL_APP_BUILD__ !== 'undefined' ? __FILLSELL_APP_BUILD__ : null;
 // Les exceptions et promesses rejetées non rattrapées sont signalées au serveur (5 par onglet au plus).
 ecouterEchecsNonRattrapes();
+// (06/11 soir, décision de Nico) Les interrupteurs d'OUVERTURE (Cloud, grille, relevés multi-plateformes) : lus UNE fois,
+// dès le chargement de ce module — avant le premier rendu de l'app, en parallèle de la session. Fermés tant qu'ils ne
+// sont pas revenus (config/interrupteurs.js).
+lireInterrupteurs(supabase);
 // (29/10, point 10) Un DOM touché par un tiers (traduction du navigateur…) ne lève plus : signalé une fois, avec la
 // langue. Et l'app ne se laisse plus traduire (décision de Nico, 29/10 soir) : index.html le déclare, et ce geste le
 // repose si un tiers l'a retiré (utils/domTraduit.js).
@@ -141,6 +147,7 @@ import BandeauLeboncoinPause from './components/BandeauLeboncoinPause';
 import { creerAchatCloud } from './cloud/achatCloud';
 import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
 import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud } from './config/cloudOffer';
+import { lireInterrupteurs, ecouterInterrupteurs, interrupteursConnus } from './config/interrupteurs';
 import ConditionsCloudModale from './cloud/ConditionsCloudModale';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
@@ -1938,15 +1945,13 @@ function marquerScanVu(id){
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // Splash natif : hide() au premier render = durée exacte du splash ;
-  // launchShowDuration (2000 ms) ne sert plus que de PLAFOND de sécurité si ce
-  // render n'arrive jamais. Sur Android 12+ le fondu vient de
-  // launchFadeOutDuration (capacitor.config.ts) et ce paramètre est ignoré
-  // (warning logcat bénin) ; iOS l'utilise.
+  // Splash natif : caché au premier render, SAUF au premier lancement d'un binaire neuf sur le web embarqué, où il
+  // couvre le rechargement de Capgo vers l'OTA plus récente (au plus 10 s) — natif/splashDemarrage.js (06/11 soir,
+  // point 5 de Nico : jamais une ancienne version à l'écran, jamais d'écran bloqué). Sur Android 12+ le fondu vient
+  // de launchFadeOutDuration (capacitor.config.ts) ; iOS utilise fadeOutDuration.
   useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      SplashScreen.hide({ fadeOutDuration: 350 }).catch(() => {});
-    }
+    cacherSplashAuBonMoment({ natif: Capacitor.isNativePlatform(), SplashScreen, CapacitorUpdater, CapacitorApp, stockage: localStorage })
+      .catch(() => { SplashScreen.hide({ fadeOutDuration: 350 }).catch(() => {}); });
   }, []);
   const [authMode, setAuthMode] = useState(() => searchParams.get('mode') === 'signup' ? 'signup' : 'login');
   const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
@@ -2690,6 +2695,14 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{let mort=false;setTemoinCloud(false);if(!user?.id)return undefined;
     chargerTemoinCloud(supabase,user.id).then((oui)=>{if(!mort)setTemoinCloud(oui);});
     return ()=>{mort=true;};},[user?.id]);
+  // (06/11 soir) Les interrupteurs d'ouverture lus au démarrage (config/interrupteurs.js) : à leur arrivée, l'app se
+  // redessine — cloudOfferVisible / cloudOffreVendable relisent l'interrupteur à chaque rendu.
+  const [,setInterrupteursLus]=useState(0);
+  useEffect(()=>{
+    const stop=ecouterInterrupteurs(()=>setInterrupteursLus((n)=>n+1));
+    if(interrupteursConnus())setInterrupteursLus((n)=>n+1);
+    return stop;
+  },[]);
   // (30/10, lot D) La case des conditions d'utilisation du Cloud, avant toute carte (promesse résolue par la modale).
   const [conditionsCloudOuvertes,setConditionsCloudOuvertes]=useState(null);
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :

@@ -1,3 +1,5 @@
+import { interrupteurOuvert } from './interrupteurs.js';
+
 // ── Drapeau UNIQUE de l'option « FillSell Cloud » (sans ordinateur) — 04/10/2026 ──
 //
 // CONCEPTION, NON LIVRÉE. Sur le modèle de businessOffer.js : UNE constante,
@@ -28,7 +30,14 @@
 //      `actions.arreter`) — on ne vend pas un essai qu'on ne sait pas arrêter.
 //      scripts/cloud-ecrans-selftest.mjs refuse le drapeau levé sans elle ;
 //   5. le navigateur Cloud tourne vraiment (pool d'adresses, docs/cloud/).
-export const CLOUD_OFFER_ENABLED = false;
+// (06/11/2026 soir, décision de Nico : « le binaire soumis doit être complet dès l'installation ») PLUS DE DRAPEAU
+// FIGÉ DANS LE BUNDLE : l'ouverture du Cloud est l'interrupteur SERVEUR coin_config.cloud_offre_ouverte — le même que
+// create-checkout-session lit déjà —, lu au démarrage par config/interrupteurs.js. Pas encore lu, illisible, absent ou
+// ≠ 1 = FERMÉ. Ouvrir à tous = `insert into coin_config (key, value) values ('cloud_offre_ouverte', 1)` (les cinq
+// conditions ci-dessus restent la règle) ; refermer = value 0. Ni OTA, ni binaire.
+export const CLE_OUVERTURE_CLOUD = 'cloud_offre_ouverte';
+/** L'offre Cloud est-elle ouverte à tous (interrupteur serveur lu) ? Faux tant qu'il n'est pas lu. */
+export const cloudOffreOuverte = () => interrupteurOuvert(CLE_OUVERTURE_CLOUD);
 
 // (05/10) Les textes légaux de l'option (CGV article 7, CGU 3.9, confidentialité
 // 4.7 et 4.8 — src/cloud/textesLegaux.js) : publiés sur /legal AVEC l'offre, le
@@ -73,7 +82,7 @@ const estTemoin = (userId) => userId != null && (CLOUD_OFFRE_TEMOINS.includes(us
 // LE point de décision. Le paramètre `userId` est gardé (même signature que
 // businessOfferVisible) : c'est lui qui ouvre l'option aux comptes témoins
 // sans retoucher les appelants.
-export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED || estTemoin(userId);
+export const cloudOfferVisible = (userId) => cloudOffreOuverte() || estTemoin(userId);
 
 // (05/11 soir, lot « Ouverture du Cloud », PHASE 3 point 3 — ordre de Nico, corrigé à 21:44) LE CLOUD SE VEND EN
 // FRANCE SEULEMENT : un vendeur étranger ne passe jamais par une IP française (anti-robot, restriction de compte,
@@ -101,7 +110,7 @@ export function cloudVendableDansLePays({ temoin = false, ouvert = false, pays =
 }
 /** Le point de décision de la VENTE du Cloud (achat, essai, offre) : à la place de cloudOfferVisible sur ces gestes-là. */
 export const cloudOffreVendable = (userId, fuseau = undefined) =>
-  cloudVendableDansLePays({ temoin: estTemoin(userId), ouvert: CLOUD_OFFER_ENABLED, pays: paysDuTelephoneCloud(fuseau) });
+  cloudVendableDansLePays({ temoin: estTemoin(userId), ouvert: cloudOffreOuverte(), pays: paysDuTelephoneCloud(fuseau) });
 
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
 // Le serveur qui ouvre la page de connexion dans le navigateur Cloud du compte

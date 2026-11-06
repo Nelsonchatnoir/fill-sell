@@ -49,20 +49,20 @@ const net = (s) => String(s).replace(NBSP, ' ');
 
 // ── 1. Le drapeau ────────────────────────────────────────────────────────────
 const cfg = await charger('src/config/cloudOffer.js');
-// ⚠️ FIL-PIÈGE VOLONTAIRE : ces deux lignes tombent le jour où le drapeau se
-// lève. C'est voulu — ce jour-là, on relit les cinq conditions de
-// config/cloudOffer.js, puis on retire ces deux lignes (et seulement elles :
-// les contrôles « drapeau levé » ci-dessous prennent le relais).
-verifier(cfg.CLOUD_OFFER_ENABLED === false, 'le drapeau Cloud est BAISSÉ (conception, non livrée — fil-piège, cf. ci-dessus)');
+// (06/11 soir, décision de Nico) Plus de drapeau figé dans le bundle : l'ouverture est l'interrupteur serveur
+// coin_config.cloud_offre_ouverte, FERMÉ tant qu'il n'est pas lu (ici, sous Node : jamais lu).
+verifier(!('CLOUD_OFFER_ENABLED' in cfg) && cfg.cloudOffreOuverte() === false, 'plus de drapeau figé : l’offre suit l’interrupteur serveur, fermé tant qu’il n’est pas lu');
 verifier(cfg.cloudOfferVisible('n-importe-qui') === false && cfg.cloudOfferVisible(null) === false, 'cloudOfferVisible() répond non à tout le monde');
 const app = lignesDeCode(lire('src/App.jsx'));
 const montageHote = app.match(/<HoteCloud[\s\S]*?\/>/)?.[0] ?? '';
 verifier(Boolean(montageHote), 'App monte HoteCloud (le seul point de montage Cloud)');
-if (cfg.CLOUD_OFFER_ENABLED) {
-  verifier(/actions=\{[\s\S]*arreter/.test(montageHote), 'drapeau levé : HoteCloud reçoit actions.arreter (on ne vend pas un essai qu’on ne sait pas arrêter)', montageHote);
-  verifier(/onUpgrade=\{\(tier,\s*\w+\)/.test(app), 'drapeau levé : l’hôte de la feuille lit le 2e argument d’onUpgrade (le choix Cloud)');
-  verifier(/onCloudSeul=\{/.test(app), 'drapeau levé : l’hôte de la feuille sait prendre Free + Sans ordinateur (onCloudSeul)');
-}
+// Le serveur peut ouvrir à tout moment, sans OTA : les conditions d'ouverture sont exigées DÈS MAINTENANT.
+// (06/11 soir) Le montage passe la variable actionsCloud : on lit sa définition (jamais vérifié avant : le drapeau
+// était baissé et ce contrôle ne tournait pas).
+const defActions = app.match(/const actionsCloud=[\s\S]*?\n {2}\};/)?.[0] ?? '';
+verifier((/actions=\{[\s\S]*arreter/.test(montageHote) || (/actions=\{actionsCloud\}/.test(montageHote) && /\barreter:\s*async/.test(defActions))), 'ouverture possible côté serveur : HoteCloud reçoit actions.arreter (on ne vend pas un essai qu’on ne sait pas arrêter)', montageHote);
+verifier(/onUpgrade=\{\(tier,\s*\w+\)/.test(app), 'ouverture possible côté serveur : l’hôte de la feuille lit le 2e argument d’onUpgrade (le choix Cloud)');
+verifier(/onCloudSeul=\{/.test(app), 'ouverture possible côté serveur : l’hôte de la feuille sait prendre Free + Sans ordinateur (onCloudSeul)');
 
 // ── 2. Drapeau baissé : l'appel d'onUpgrade reste à un argument ─────────────
 const modale = lignesDeCode(lire('src/components/ConversionModal.jsx'));
@@ -250,7 +250,7 @@ try {
   const RT = await vite.ssrLoadModule('/src/reglages/textes.js');
 
   // ── 7a. Drapeau baissé : rien ne change ──────────────────────────────────
-  if (!cfg.CLOUD_OFFER_ENABLED) {
+  if (!cfg.cloudOffreOuverte()) {
     const modaleFree = texte(h(CM.default, { isOpen: true, onClose() {}, onUpgrade() {}, lang: 'fr', userId: 'u1' }));
     verifier(/Débloque tout FillSell\./.test(modaleFree) && /Passer Premium/.test(modaleFree), 'drapeau baissé : la feuille des formules se rend comme avant', modaleFree.slice(0, 200));
     verifier(!/FillSell Cloud|\+ 24,99 €|7 jours d.essai/.test(modaleFree), 'drapeau baissé : aucune trace de l’option dans la feuille');

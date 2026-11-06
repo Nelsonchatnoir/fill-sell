@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.162",
+  "version": "2.9.163",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -75,6 +75,7 @@
     "preuve:boutique-a-confirmer": "node scripts/apercu/capture-boutique-confirmer.mjs",
     "selftest:push-plugin-absent": "node --import ./scripts/loader-ext.mjs scripts/push-plugin-absent-selftest.mjs",
     "selftest:push-plugin-proxy": "node scripts/push-plugin-proxy-selftest.mjs",
+    "selftest:interrupteurs-ouverture": "node scripts/interrupteurs-ouverture-selftest.mjs",
     "selftest:push-envoi": "deno run scripts/push-envoi-selftest.ts",
     "preuve:push-ventes": "node scripts/push/preuve-push-ventes.mjs",
     "push:essai": "node scripts/push/essai-notification.mjs",

@@ -117,7 +117,8 @@ import { attendVendeurDepop, attentesVendeurDepop, champsEclaireur as champsEcla
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
 //    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
 import { murConnexionReleve, situationFinReleve } from '../annonces/etatReleve';
-import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle, lireDatesRelevees } from '../utils/syncPlateformes';
+import { lireSyncMultiOuverte, syncMultiOuverteConnue, lireStatsAnnoncesParArticle, lireDatesRelevees } from '../utils/syncPlateformes';
+import { lireInterrupteurs, interrupteurOuvert } from '../config/interrupteurs';
 // (31/10, lot H — XEWER) Depuis quand l'annonce est en ligne, plateforme par plateforme : UNE règle de date, celle de
 // l'éligibilité à la republication automatique.
 import { miseEnLigneAffichee, indexerDatesRelevees, datesParPlateforme } from '../../supabase/functions/_shared/mise-en-ligne.js';
@@ -6552,11 +6553,16 @@ const StockTab = memo(function StockTab({
   // Vinted seul, rien ne change pour personne). Ouvrir / fermer tout le parc =
   // une ligne SQL. La RPC porte la même porte côté serveur : l'app ne fait que
   // ne pas PROPOSER ce que le serveur refuserait.
-  const [multiOuverte, setMultiOuverte] = useState(false);
-  const [syncMultiOuverte, setSyncMultiOuverte] = useState(false);
+  // (06/11 soir, le flash signalé par Nico) Les deux interrupteurs partent de ce que le démarrage a DÉJÀ lu
+  // (config/interrupteurs.js) — plus jamais de « fermé » par défaut le temps d'une requête : la carte Vinted de
+  // septembre s'affichait ~0,25 s à chaque ouverture du Stock avant la bonne. syncMultiOuverte vaut null tant qu'on ne
+  // sait pas : l'emplacement reste VIDE (ni l'ancienne ni la nouvelle carte), le reste du Stock s'affiche.
+  const [multiOuverte, setMultiOuverte] = useState(() => interrupteurOuvert('republication_multi_ouverte'));
+  const [syncMultiOuverte, setSyncMultiOuverte] = useState(() => syncMultiOuverteConnue());
   useEffect(() => {
     let annule = false;
-    lireSyncMultiOuverte(user?.id).then((v) => { if (!annule) setSyncMultiOuverte(v === true); }).catch(() => {});
+    lireSyncMultiOuverte(user?.id).then((v) => { if (!annule) setSyncMultiOuverte(v === true); })
+      .catch(() => { if (!annule) setSyncMultiOuverte(false); });
     return () => { annule = true; };
   }, [user?.id]);
   // Vues / favoris par plateforme (18/09) : relus au montage puis toutes les
@@ -6573,8 +6579,8 @@ const StockTab = memo(function StockTab({
   }, [user?.id, syncMultiOuverte]);
   useEffect(() => {
     let annule = false;
-    supabase.from('coin_config').select('value').eq('key', 'republication_multi_ouverte').maybeSingle()
-      .then(({ data, error }) => { if (!annule) setMultiOuverte(!error && Number(data?.value) === 1); })
+    lireInterrupteurs(supabase)
+      .then(() => { if (!annule) setMultiOuverte(interrupteurOuvert('republication_multi_ouverte')); })
       .catch(() => { if (!annule) setMultiOuverte(false); });
     return () => { annule = true; };
   }, []);
@@ -10737,7 +10743,7 @@ const StockTab = memo(function StockTab({
           </div>
         )}
         <div style={{marginTop:16}}>
-          {syncMultiOuverte ? (
+          {syncMultiOuverte === null ? null : syncMultiOuverte ? (
             <BlocSynchro
               lang={lang} user={user} isNative={isNative} items={items} itemsAVerifier={itemsAVerifier} ouvert={syncMultiOuverte}
               plateformes={plateformesDeReleve(plateformesOuvertes,oplaRelie).filter(p=>!plateformesFermees.includes(p))}

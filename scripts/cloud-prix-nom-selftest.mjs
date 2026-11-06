@@ -233,7 +233,7 @@ titre('5 bis. « le Cloud » ou « l’option FillSell Cloud », jamais « optio
 
 // ── 6. Rien d'autre ne bouge ─────────────────────────────────────────────────
 titre('6. Rien d’autre ne bouge');
-ok(CFG.CLOUD_OFFER_ENABLED === false && CFG.cloudOfferVisible('n-importe-qui') === false, 'CLOUD_OFFER_ENABLED reste à false : personne ne voit l’offre');
+ok(!('CLOUD_OFFER_ENABLED' in CFG) && CFG.cloudOffreOuverte() === false && CFG.cloudOfferVisible('n-importe-qui') === false, 'interrupteur serveur fermé (non lu) : personne ne voit l’offre');
 ok(PAL.CLOUD_ESSAI_JOURS === 7 && POOL.ESSAI_JOURS === 7, 'essai : 7 jours (inchangé)');
 
 console.log(ko ? `\n✗ cloud-prix-nom : ${ko} rouge(s) sur ${n}` : `\n✓ cloud-prix-nom : ${n} contrôles verts, 0 rouges`);
