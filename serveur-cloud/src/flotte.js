@@ -62,6 +62,51 @@ const ordreNoms = (a, b) => {
 export const estVivant = (s, maintenant = Date.now()) => s?.etat === 'actif' && Number.isFinite(Date.parse(s?.vu_le ?? ''))
   && maintenant - Date.parse(s.vu_le) < VIVANT_MS;
 
+/**
+ * (06/11 soir, règle de Nico : « un compte ne doit JAMAIS être attribué à un serveur incapable de le servir ») CE QUE CE
+ * SERVEUR PEUT SERVIR, déclaré à chaque battement (details.service) et lu par cloud_serveur_choisir (pure : testée) :
+ *   · apte      : il peut RECEVOIR un compte — Chrome officiel, puce allumée, rendu réel LU dans un de ses navigateurs
+ *                 (ou par la vérification hors réseau d'un serveur neuf : etat/rendu-serveur.json), jamais logiciel ;
+ *   · incapable : il ne doit plus GARDER ses comptes — moteur sans Chrome officiel, puce coupée, rendu logiciel lu
+ *                 (un rendu encore inconnu, juste après un démarrage, n'est PAS une incapacité) ;
+ *   · comptes   : « tous », ou la liste COMPTES_AUTORISES (un compte hors liste ne lui est jamais attribué).
+ */
+export function serviceDuServeur({ config, rendu = null }) {
+  const raisons = [];
+  if (config?.moteurNavigateur !== 'chrome') raisons.push('moteur_sans_chrome_officiel');
+  if (config?.navigateurGpu !== true) raisons.push('sans_puce');
+  if (!rendu?.rendu) raisons.push('rendu_inconnu');
+  else if (rendu.logiciel) raisons.push('rendu_logiciel');
+  const liste = (config?.comptesAutorises ?? []).filter((u) => /^[0-9a-f-]{36}$/i.test(u));
+  return {
+    v: 1, apte: raisons.length === 0, incapable: raisons.some((r) => r !== 'rendu_inconnu'), raisons,
+    moteur: config?.moteurNavigateur ?? null, puce: config?.navigateurGpu === true,
+    rendu: rendu?.rendu ?? null, rendu_le: rendu?.le ?? null, rendu_source: rendu?.source ?? null,
+    comptes: (config?.comptesAutorises ?? []).length ? liste : 'tous',
+  };
+}
+
+/**
+ * (06/11 soir, décision de Nico : « alerte vers support@ quand le serveur atteint 60 à 70 % de sa capacité réelle »)
+ * L'ALERTE DE CAPACITÉ (pure : testée) — atteinte dès qu'UN taux dépasse le seuil (coin_config cloud_capacite_alerte_pct,
+ * 65 par défaut) : comptes servis / NAVIGATEURS_MAX ; et, par la dernière mesure de l'hôte (cloud_mesures, agent
+ * fillsell-mesure, fraîche de moins de 15 min) : mémoire utilisée (hors cache récupérable), processeur et puce moyens
+ * sur 5 min. Une mesure absente ou vieille ne déclenche rien (elle n'est que dite : mesure_fraiche = false).
+ */
+export const SEUIL_CAPACITE_PCT = 65;
+export function alerteCapacite({ comptes, capacite, mesure = null, seuilPct = SEUIL_CAPACITE_PCT, maintenant = Date.now() }) {
+  const taux = {};
+  if (Number(capacite) > 0 && Number.isFinite(Number(comptes))) taux.comptes = Math.round((100 * Number(comptes)) / Number(capacite));
+  const h = mesure && Date.parse(mesure.le) > maintenant - 15 * 60_000 ? mesure.hote ?? {} : null;
+  if (h) {
+    for (const [nom, cle] of [['memoire', 'mem_utilisee_max_pct'], ['processeur', 'cpu_moy_pct'], ['puce', 'puce_moy_pct']]) {
+      if (h[cle] != null && Number.isFinite(Number(h[cle]))) taux[nom] = Number(h[cle]);
+    }
+  }
+  const raisons = Object.entries(taux).filter(([, v]) => v >= seuilPct).map(([k, v]) => `${k} ${Math.round(v)} %`);
+  return { atteint: raisons.length > 0, raisons, taux, seuilPct, mesure_fraiche: Boolean(h) };
+}
+
 /** Le nom du prochain serveur (pure) : cloud-<plus grand numéro + 1>, au moins cloud-2. */
 export function prochainNomServeur(serveurs) {
   const n = Math.max(1, ...(serveurs ?? []).map((s) => numeroServeur(s?.nom) ?? 0));
@@ -276,13 +321,31 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
   let dernierBattement = null;
   let absente = false;
   let derniereAlerteSeuil = 0;
+  let derniereAlerteCapacite = 0;
   let dernierPlanJournalise = '';
 
+  /** (06/11 soir) Le rendu connu : le dernier lu dans un navigateur, sinon etat/rendu-serveur.json (relu à chaque fois). */
+  async function renduConnu() {
+    const r = navigateurs.dernierRendu?.();
+    if (r) return r;
+    try { return JSON.parse(await lireFichier(`${config.dossierEtat}/rendu-serveur.json`)); } catch { return null; }
+  }
+
+  /** (06/11 soir) La dernière mesure de l'hôte (cloud_mesures) ; null tant que la migration 20261106210000 n'est pas en base. */
+  async function derniereMesure() {
+    try {
+      const { data, error } = await base.from('cloud_mesures').select('le, hote').eq('serveur', config.serveurNom)
+        .order('le', { ascending: false }).limit(1);
+      return error ? null : (data?.[0] ?? null);
+    } catch { return null; }
+  }
+
   async function battre() {
+    const service = serviceDuServeur({ config, rendu: await renduConnu() });
     const { data, error } = await base.rpc('cloud_serveur_battre', {
       p_nom: config.serveurNom, p_domaine: config.domaine, p_ipv4: config.serveurIpv4 || null,
       p_capacite: config.navigateursMax, p_ouverts: navigateurs.ouverts().length,
-      p_details: { capacite_auto: config.navigateursMaxAuto === true, memoire_navigateur: config.memoireNavigateur },
+      p_details: { capacite_auto: config.navigateursMaxAuto === true, memoire_navigateur: config.memoireNavigateur, service },
     });
     if (error) {
       if (fonctionAbsente(error)) { if (!absente) journal.info('flotte_absente', { raison: 'migration 20261103201000 pas encore en base' }); absente = true; return null; }
@@ -295,10 +358,11 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
 
   async function reglages() {
     const { data } = await base.from('coin_config').select('key, value')
-      .in('key', ['cloud_places_seuil', 'cloud_serveurs_auto', 'cloud_serveur_type', 'cloud_serveur_lieu']);
+      .in('key', ['cloud_places_seuil', 'cloud_serveurs_auto', 'cloud_serveur_type', 'cloud_serveur_lieu', 'cloud_capacite_alerte_pct']);
     const v = Object.fromEntries((data ?? []).map((l) => [l.key, Number(l.value)]));
     return {
       seuil: Number.isFinite(v.cloud_places_seuil) ? v.cloud_places_seuil : 2,
+      capaciteAlertePct: v.cloud_capacite_alerte_pct >= 10 && v.cloud_capacite_alerte_pct <= 100 ? v.cloud_capacite_alerte_pct : SEUIL_CAPACITE_PCT,
       auto: v.cloud_serveurs_auto === 1,
       type: typeDepuisCode(v.cloud_serveur_type), lieu: lieuDepuisCode(v.cloud_serveur_lieu),
     };
@@ -369,6 +433,16 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
     }
     if (decision.raison === 'creation_bloquee') {
       await alertes?.signaler('serveur', `Création de serveur Cloud bloquée depuis plus de 45 min : ${decision.enCreation.join(', ')}.`);
+    }
+    // (06/11 soir) La capacité RÉELLE de ce serveur : une alerte, puis un rappel au plus toutes les 6 h tant qu'elle tient.
+    const capacite = alerteCapacite({ comptes: dernierBattement?.comptes, capacite: config.navigateursMax, mesure: await derniereMesure(),
+      seuilPct: r.capaciteAlertePct, maintenant: maintenant() });
+    if (capacite.atteint && maintenant() - derniereAlerteCapacite >= 6 * 3600_000) {
+      derniereAlerteCapacite = maintenant();
+      journal.alerte('capacite_seuil', { serveur: config.serveurNom, ...capacite });
+      await alertes?.signaler('serveur', `Capacité de ${config.serveurNom} : seuil de ${capacite.seuilPct} % atteint — ${capacite.raisons.join(', ')} `
+        + `(${dernierBattement?.comptes ?? '?'} comptes pour ${config.navigateursMax}). Marche à suivre : docs/cloud/REPRISE.md, « Ajouter un serveur ».`,
+      { capacite });
     }
     if (!decision.creer) return { decision };
     const prep = await preparer(decision, r);

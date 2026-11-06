@@ -1,0 +1,17 @@
+# (06/11/2026 soir) La mesure continue d'un serveur Cloud (lecture seule de l'hôte) → public.cloud_mesures toutes les 5 min.
+# Posée par outils/deployer.sh (déploiement complet) ; sur cloud-2 à la main (docs/cloud/REPRISE.md, 07/11 matin).
+# Vérifier : journalctl -u fillsell-mesure --since -15min ; essai sans envoi : python3 /srv/fillsell-cloud/mesure/fillsell-mesure.py --essai
+[Unit]
+Description=FillSell Cloud - mesure continue de la charge (lecture seule)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /srv/fillsell-cloud/mesure/fillsell-mesure.py
+Nice=10
+MemoryMax=128M
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

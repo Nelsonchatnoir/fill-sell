@@ -17,7 +17,7 @@ import { createClient } from '@supabase/supabase-js';
 import { lireConfig } from '../src/config.js';
 import * as journal from '../src/journal.js';
 import { creerDocker } from '../src/docker.js';
-import { creerNavigateurs } from '../src/navigateur.js';
+import { creerNavigateurs, renduDepuisSystemInfo } from '../src/navigateur.js';
 import { creerConnexions } from '../src/connexion.js';
 import { signerTicket } from '../src/tickets.js';
 
@@ -112,6 +112,11 @@ async function verifierPuce() {
     puce: { appareils: (info?.gpu?.devices ?? []).map((d) => `${d.vendorString} ${d.deviceString}`.trim()), rendu: info?.gpu?.auxAttributes?.glRenderer ?? null,
       webgl: info?.gpu?.featureStatus?.webgl ?? null, gpu_compositing: info?.gpu?.featureStatus?.gpu_compositing ?? null },
     page: JSON.parse(v?.result?.value ?? 'null') };
+  // (06/11 soir, règle d'attribution) La QUALIFICATION d'un serveur neuf : son rendu réel, lu hors réseau, déclaré par la
+  // flotte au battement suivant (serviceDuServeur) — sans lui, la base ne lui attribue aucun compte.
+  const rendu = renduDepuisSystemInfo(info, { source: 'verification_hors_reseau' });
+  if (rendu) await writeFile(`${config.dossierEtat}/rendu-serveur.json`, `${JSON.stringify(rendu)}\n`);
+  bilan.verification.rendu_serveur = rendu;
 }
 
 try {

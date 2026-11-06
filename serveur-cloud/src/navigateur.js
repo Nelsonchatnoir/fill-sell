@@ -351,9 +351,34 @@ export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBee
   };
 }
 
+/**
+ * (06/11 soir) Le rendu d'un Chrome, depuis SystemInfo.getInfo (pure : testée) : { rendu, webgl, composition, logiciel,
+ * le, source }, ou null si la puce n'est pas encore lue (processus graphique pas démarré). LOGICIEL = SwiftShader,
+ * llvmpipe ou softpipe, ou WebGL / la composition que Chrome ne fait pas par la puce — le rendu que DataDome bloque
+ * (Leboncoin, Beebs : 30/10).
+ */
+export function renduDepuisSystemInfo(info, { source = 'navigateur', le = new Date().toISOString() } = {}) {
+  const g = info?.gpu;
+  const rendu = String(g?.auxAttributes?.glRenderer || g?.devices?.[0]?.deviceString || '').trim();
+  const webgl = String(g?.featureStatus?.webgl ?? '');
+  const composition = String(g?.featureStatus?.gpu_compositing ?? '');
+  if (!rendu && !webgl) return null;
+  const logiciel = /swiftshader|llvmpipe|softpipe|software/i.test(rendu)
+    || (webgl !== '' && (!/^enabled/.test(webgl) || /software/.test(webgl)))
+    || (composition !== '' && !/^enabled/.test(composition));
+  return { rendu: rendu.slice(0, 200), webgl, composition, logiciel, le, source };
+}
+
+/** Le rendu d'un navigateur ouvert : SystemInfo.getInfo sur la session du NAVIGATEUR (aucune page), ou null. */
+export async function lireRenduNavigateur(cdp, opts = {}) {
+  const info = await Promise.resolve().then(() => cdp.send('SystemInfo.getInfo')).catch(() => null);
+  return renduDepuisSystemInfo(info, opts);
+}
+
 export function creerNavigateurs({ config, docker, journal }) {
   const chrome = config.moteurNavigateur === 'chrome';
   const ouverts = new Map(); // user → { cdp, ip, conteneur, profilId, ouvertLe }
+  let dernierRendu = null;   // (06/11 soir) le dernier rendu lu dans un navigateur de CE serveur (renduDepuisSystemInfo)
 
   const ipDe = (inspect) => inspect?.NetworkSettings?.Networks?.[config.reseauDocker]?.IPAddress || null;
 
@@ -465,6 +490,28 @@ export function creerNavigateurs({ config, docker, journal }) {
     return { cdp, ip, nom, navigateur: version.Browser };
   }
 
+  /**
+   * (06/11 soir, règle d'attribution de Nico) LE RENDU RÉEL du serveur : lu par SystemInfo.getInfo au niveau du
+   * NAVIGATEUR (aucune page, aucun onglet, rien de visible par un site ni par l'extension), 5 s puis 20 s après
+   * l'ouverture (le processus graphique de Chrome démarre après lui). Gardé ici et dans etat/rendu-serveur.json :
+   * la flotte le déclare à chaque battement (serviceDuServeur), et la base n'attribue un compte qu'à un serveur au vrai rendu.
+   * Jamais une cause d'échec d'ouverture.
+   */
+  function lireRenduApresOuverture(user, h) {
+    const essayer = async (delaiMs) => {
+      await new Promise((r) => setTimeout(r, delaiMs).unref?.());
+      if (ouverts.get(user) !== h) return true;
+      const r = await lireRenduNavigateur(h.cdp);
+      if (!r) return false;
+      dernierRendu = r;
+      h.rendu = r;
+      await writeFile(`${config.dossierEtat}/rendu-serveur.json`, `${JSON.stringify(r)}\n`).catch(() => {});
+      if (r.logiciel) journal.alerte('rendu_logiciel', { user, rendu: r.rendu, webgl: r.webgl, composition: r.composition });
+      return true;
+    };
+    (async () => { if (!(await essayer(5_000))) await essayer(15_000); })().catch(() => {});
+  }
+
   /** Démarre le navigateur du compte, sur SON proxy et SON profil. Rend { cdp, ip, … }. */
   async function ouvrir(user, { proxyUrl, proxyBeebs = null, proxySecours = null, profilId, permises = [] }) {
     if (ouverts.has(user)) return ouverts.get(user);
@@ -480,6 +527,7 @@ export function creerNavigateurs({ config, docker, journal }) {
       await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
       ouverts.set(user, h);
       journal.info('navigateur_ouvert', { user, conteneur: nom, moteur: 'chrome', navigateur });
+      lireRenduApresOuverture(user, h);
       return h;
     }
     // (02/11) L'empreinte FIGÉE : vérifiée AVANT toute recréation de conteneur (sinon l'ancien serait déjà détruit).
@@ -622,5 +670,6 @@ export function creerNavigateurs({ config, docker, journal }) {
     } catch { return null; }
   }
 
-  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, memoire, etatRelais, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
+  return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, memoire, etatRelais, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()],
+    dernierRendu: () => dernierRendu };
 }

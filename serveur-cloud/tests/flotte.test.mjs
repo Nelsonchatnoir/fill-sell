@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   capaciteServeur, planFlotte, prochainNomServeur, domaineDuServeur, typeDepuisCode, lieuDepuisCode, envPourNouveauServeur,
   amorcePour, cloudInitPour, corpsCreationHetzner, resumePlan, lireComptesDuServeur, creerFlotte, USER_DATA_MAX,
-  CREATION_EN_COURS_MS,
+  CREATION_EN_COURS_MS, serviceDuServeur, alerteCapacite, SEUIL_CAPACITE_PCT,
 } from '../src/flotte.js';
 
 const T = Date.parse('2026-11-03T18:00:00Z');
@@ -193,4 +193,119 @@ test('battement : avant la migration, dit une fois et ne casse rien', async () =
   assert.equal(await f.battre(), null); assert.equal(await f.battre(), null);
   assert.equal(j.l.filter((x) => x[1] === 'flotte_absente').length, 1);
   assert.deepEqual(await f.tour(), { absente: true });
+});
+
+// ── (06/11 soir, règle d'attribution de Nico) ce que le serveur déclare pouvoir servir ─────────────────────────────
+const INFO_CLOUD2 = { gpu: { devices: [{ deviceString: 'ANGLE (Intel, Mesa Intel(R) Graphics (RPL-S), OpenGL 4.6 (Core Profile) Mesa 25.2.8-0ubuntu0.24.04.4)' }],
+  auxAttributes: { glRenderer: 'ANGLE (Intel, Mesa Intel(R) Graphics (RPL-S), OpenGL 4.6 (Core Profile) Mesa 25.2.8-0ubuntu0.24.04.4)' },
+  featureStatus: { webgl: 'enabled', gpu_compositing: 'enabled', video_encode: 'disabled_software' } } };   // relu sur cloud-2 le 06/11 18:12
+const INFO_STEEL = { gpu: { auxAttributes: { glRenderer: 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)' },
+  featureStatus: { webgl: 'enabled', gpu_compositing: 'enabled' } } };
+const CHROME_PUCE = { moteurNavigateur: 'chrome', navigateurGpu: true, comptesAutorises: [] };
+const NICO = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
+
+test('rendu lu par SystemInfo : la vraie puce de cloud-2 ; SwiftShader, llvmpipe, WebGL ou composition logiciels = LOGICIEL', async () => {
+  const { renduDepuisSystemInfo } = await import('../src/navigateur.js');
+  const r = renduDepuisSystemInfo(INFO_CLOUD2, { le: 'L' });
+  assert.equal(r.logiciel, false, 'video_encode logiciel ne compte pas'); assert.match(r.rendu, /RPL-S/); assert.equal(r.le, 'L'); assert.equal(r.source, 'navigateur');
+  assert.equal(renduDepuisSystemInfo(INFO_STEEL).logiciel, true, 'SwiftShader (cloud-1)');
+  assert.equal(renduDepuisSystemInfo({ gpu: { auxAttributes: { glRenderer: 'llvmpipe (LLVM 17.0.6, 256 bits)' }, featureStatus: { webgl: 'enabled', gpu_compositing: 'enabled' } } }).logiciel, true);
+  assert.equal(renduDepuisSystemInfo({ gpu: { auxAttributes: { glRenderer: 'ANGLE (Intel, Mesa)' }, featureStatus: { webgl: 'unavailable_software', gpu_compositing: 'enabled' } } }).logiciel, true);
+  assert.equal(renduDepuisSystemInfo({ gpu: { auxAttributes: { glRenderer: 'ANGLE (Intel, Mesa)' }, featureStatus: { webgl: 'enabled', gpu_compositing: 'disabled_software' } } }).logiciel, true);
+  assert.equal(renduDepuisSystemInfo(null), null); assert.equal(renduDepuisSystemInfo({ gpu: { featureStatus: {} } }), null, 'puce pas encore lue');
+});
+
+test('service déclaré : apte seulement avec Chrome officiel, puce et rendu réel ; incapable sans eux ; rendu inconnu ≠ incapable', async () => {
+  const { renduDepuisSystemInfo } = await import('../src/navigateur.js');
+  const reel = renduDepuisSystemInfo(INFO_CLOUD2, { le: 'L' }); const logiciel = renduDepuisSystemInfo(INFO_STEEL);
+  let s = serviceDuServeur({ config: { ...CHROME_PUCE, comptesAutorises: [NICO, 'pas-un-uuid'] }, rendu: reel });
+  assert.deepEqual([s.apte, s.incapable, s.raisons], [true, false, []]); assert.deepEqual(s.comptes, [NICO], 'liste fermée, uuid seulement');
+  assert.equal(s.rendu_le, 'L');
+  assert.equal(serviceDuServeur({ config: CHROME_PUCE, rendu: reel }).comptes, 'tous', 'COMPTES_AUTORISES vide = tous');
+  s = serviceDuServeur({ config: CHROME_PUCE, rendu: null });
+  assert.deepEqual([s.apte, s.incapable, s.raisons], [false, false, ['rendu_inconnu']], 'juste après un démarrage : ne reçoit rien, garde ses comptes');
+  s = serviceDuServeur({ config: CHROME_PUCE, rendu: logiciel });
+  assert.deepEqual([s.apte, s.incapable, s.raisons], [false, true, ['rendu_logiciel']]);
+  s = serviceDuServeur({ config: { moteurNavigateur: 'steel', navigateurGpu: false, comptesAutorises: ['00000000-0000-0000-0000-000000000000'] }, rendu: null });
+  assert.deepEqual([s.apte, s.incapable], [false, true], 'cloud-1 : steel, sans puce');
+  assert.deepEqual(s.raisons, ['moteur_sans_chrome_officiel', 'sans_puce', 'rendu_inconnu']);
+  assert.equal(serviceDuServeur({ config: { ...CHROME_PUCE, navigateurGpu: false }, rendu: reel }).incapable, true, 'puce coupée');
+});
+
+test('battement : la déclaration part dans details.service — rendu du navigateur, sinon etat/rendu-serveur.json', async () => {
+  const { renduDepuisSystemInfo } = await import('../src/navigateur.js');
+  const reel = renduDepuisSystemInfo(INFO_CLOUD2, { le: 'L' });
+  const conf = configFlotte({ ...CHROME_PUCE, comptesAutorises: [NICO], dossierEtat: '/etat' });
+  let { base, rpc } = fausseBase({ serveurs: [] });
+  let f = creerFlotte({ config: conf, base, navigateurs: { ouverts: () => [], dernierRendu: () => reel }, journal: journal(), alertes: null,
+    hetzner: hetznerQuiRefuseTout(), cloudflare: { disponible: false }, lireFichier: fichiers });
+  await f.battre();
+  let d = rpc.find(([n]) => n === 'cloud_serveur_battre')[1].p_details;
+  assert.equal(d.service.apte, true); assert.deepEqual(d.service.comptes, [NICO]); assert.equal(d.capacite_auto, false, 'le reste du battement inchangé');
+  ({ base, rpc } = fausseBase({ serveurs: [] }));
+  const lus = [];
+  f = creerFlotte({ config: conf, base, navigateurs: { ouverts: () => [] }, journal: journal(), alertes: null, hetzner: hetznerQuiRefuseTout(),
+    cloudflare: { disponible: false }, lireFichier: (p) => { lus.push(p); return p === '/etat/rendu-serveur.json' ? Promise.resolve(JSON.stringify({ ...reel, source: 'verification_hors_reseau' })) : fichiers(p); } });
+  await f.battre();
+  d = rpc.find(([n]) => n === 'cloud_serveur_battre')[1].p_details;
+  assert.equal(d.service.apte, true); assert.equal(d.service.rendu_source, 'verification_hors_reseau'); assert.ok(lus.includes('/etat/rendu-serveur.json'));
+  ({ base, rpc } = fausseBase({ serveurs: [] }));
+  f = creerFlotte({ config: conf, base, navigateurs: { ouverts: () => [] }, journal: journal(), alertes: null, hetzner: hetznerQuiRefuseTout(),
+    cloudflare: { disponible: false }, lireFichier: fichiers });
+  await f.battre();
+  d = rpc.find(([n]) => n === 'cloud_serveur_battre')[1].p_details;
+  assert.deepEqual([d.service.apte, d.service.incapable], [false, false], 'aucun rendu connu : ne reçoit rien, ne perd rien');
+});
+
+test('rendu d’un navigateur ouvert : un seul appel SystemInfo.getInfo, sans session de page ; une erreur = inconnu', async () => {
+  const { lireRenduNavigateur } = await import('../src/navigateur.js');
+  const appels = [];
+  const r = await lireRenduNavigateur({ send: async (m, p, s) => { appels.push([m, p, s]); return INFO_CLOUD2; } });
+  assert.equal(r.logiciel, false); assert.deepEqual(appels, [['SystemInfo.getInfo', undefined, undefined]], 'niveau navigateur : aucune page');
+  assert.equal(await lireRenduNavigateur({ send: async () => { throw new Error('fermé'); } }), null);
+  assert.equal(await lireRenduNavigateur({ send: () => { throw new Error('synchrone'); } }), null);
+});
+
+// ── (06/11 soir, décision de Nico) l'alerte de capacité réelle ──────────────────────────────────────────────────
+test('capacité : seuil 65 % par défaut — comptes / NAVIGATEURS_MAX, puis mémoire, processeur, puce de la mesure fraîche', () => {
+  const T0 = Date.parse('2026-11-07T08:00:00Z');
+  const mesure = (o = {}, ilYa = 60_000) => ({ le: new Date(T0 - ilYa).toISOString(), hote: { mem_utilisee_max_pct: 30, cpu_moy_pct: 10, puce_moy_pct: 2, ...o } });
+  assert.equal(SEUIL_CAPACITE_PCT, 65);
+  let r = alerteCapacite({ comptes: 9, capacite: 15, mesure: mesure(), maintenant: T0 });
+  assert.equal(r.atteint, false, '9 / 15 = 60 %'); assert.equal(r.taux.comptes, 60); assert.equal(r.mesure_fraiche, true);
+  r = alerteCapacite({ comptes: 10, capacite: 15, mesure: mesure(), maintenant: T0 });
+  assert.deepEqual([r.atteint, r.raisons], [true, ['comptes 67 %']], '10 / 15 : l’alerte de NAVIGATEURS_MAX = 15');
+  r = alerteCapacite({ comptes: 3, capacite: 15, mesure: mesure({ mem_utilisee_max_pct: 66.2, puce_moy_pct: 70 }), maintenant: T0 });
+  assert.deepEqual(r.raisons, ['memoire 66 %', 'puce 70 %'], 'la mesure réelle déclenche même avec peu de comptes');
+  r = alerteCapacite({ comptes: 3, capacite: 15, mesure: mesure({ cpu_moy_pct: 90 }, 20 * 60_000), maintenant: T0 });
+  assert.deepEqual([r.atteint, r.mesure_fraiche], [false, false], 'mesure de plus de 15 min : ignorée');
+  r = alerteCapacite({ comptes: 3, capacite: 15, mesure: mesure({ cpu_moy_pct: 61 }), seuilPct: 60, maintenant: T0 });
+  assert.deepEqual(r.raisons, ['processeur 61 %'], 'seuil réglable (coin_config cloud_capacite_alerte_pct)');
+  assert.equal(alerteCapacite({ comptes: null, capacite: 0, mesure: null }).atteint, false, 'rien de connu : rien');
+});
+
+test('capacité dans le tour : une alerte (support@ par alertes.signaler), puis plus rien pendant 6 h ; sans table de mesures, rien ne casse', async () => {
+  let t = Date.parse('2026-11-07T08:00:00Z');
+  const mesureLigne = { le: new Date(t - 60_000).toISOString(), hote: { mem_utilisee_max_pct: 20, cpu_moy_pct: 5, puce_moy_pct: 1 } };
+  const { base } = fausseBase({ serveurs: pleins, coin: { cloud_places_seuil: 0, cloud_capacite_alerte_pct: 65 }, places: 10 });
+  const from = base.from;
+  base.from = (table) => (table === 'cloud_mesures'
+    ? { select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [mesureLigne], error: null }) }) }) }) } : from(table));
+  const alertes = []; const j = journal();
+  const f = creerFlotte({ config: configFlotte({ navigateursMax: 4 }), base, navigateurs: { ouverts: () => [] }, journal: j,
+    alertes: { signaler: async (n, texte, d) => alertes.push([n, texte, d]) }, hetzner: hetznerQuiRefuseTout(), cloudflare: { disponible: false },
+    lireFichier: fichiers, maintenant: () => t });
+  await f.battre();   // la fausse base rend 3 comptes : 3 / 4 = 75 %
+  await f.tour();
+  const cap = alertes.filter(([, x]) => /^Capacité de cloud-1 : seuil de 65 % atteint — comptes 75 %/.test(x));
+  assert.equal(cap.length, 1); assert.match(cap[0][1], /REPRISE\.md, « Ajouter un serveur »/); assert.equal(cap[0][0], 'serveur');
+  assert.ok(j.l.some((x) => x[1] === 'capacite_seuil'));
+  t += 3600_000; await f.tour();
+  assert.equal(alertes.filter(([, x]) => /^Capacité/.test(x)).length, 1, 'pas de rappel avant 6 h');
+  t += 5 * 3600_000; await f.tour();
+  assert.equal(alertes.filter(([, x]) => /^Capacité/.test(x)).length, 2, 'rappel au bout de 6 h');
+  const { base: sansTable } = fausseBase({ serveurs: pleins, coin: { cloud_places_seuil: 0 } });
+  const g = creerFlotte({ config: configFlotte({ navigateursMax: 40 }), base: sansTable, navigateurs: { ouverts: () => [] }, journal: journal(),
+    alertes: { signaler: async () => { throw new Error('aucune alerte attendue'); } }, hetzner: hetznerQuiRefuseTout(), cloudflare: { disponible: false }, lireFichier: fichiers });
+  await g.battre(); await g.tour();
 });

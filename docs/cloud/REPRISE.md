@@ -1,5 +1,99 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 07/11/2026 MATIN — LA MARCHE À SUIVRE (décisions de Nico du 06/11 soir) — RIEN appliqué le 06/11
+`SSH1` = `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@178.105.24.16` (cloud-1) ; `SSH2` = `… root@5.9.80.213` (cloud-2).
+Nico ne tape rien et ne vérifie rien : Claude fait et vérifie tout. Chaque étape a son inverse ; aucune ne part sans relire
+d'abord `git status`, `docker ps` et l'état en base.
+1. **cloud-1 lâche le pool** (avant cloud-2 ; jamais deux entretiens du même pool) : `.env` sauvegardé
+   (`archives/env-avant-0711`), `ENTRETIEN_POOL=0`, puis `cd /srv/fillsell-cloud/deploiement && docker compose stop
+   orchestrateur` (il ne sert personne ; « unless-stopped » : il ne repart pas seul). Vérifier : `cloud_serveurs.vu_le` de
+   cloud-1 vieillit (> 5 min = plus jamais choisi). Inverse : `.env` remis, `docker compose start orchestrateur`.
+2. **cloud-2, LE redémarrage unique**, à un moment où AUCUNE tâche du compte de Nico (ni des comptes de relecture) n'est
+   « processing » (lu en base juste avant) :
+   - sauvegardes : `/srv/fillsell-cloud/.env` → `archives/env-avant-0711`, `deploiement/.env` → `archives/deploiement-env-avant-0711`
+     (VERSION_ORCHESTRATEUR=61fb7ddd6e2a) ;
+   - `.env` : `ENREGISTREMENT_FOND=0`, `ENREGISTREMENT_CONNEXIONS=0`, `ALERTES_MAIL=1`, `ENDURANCE=0`, `ENTRETIEN_POOL=1`,
+     `IPROYAL_ACHATS_AUTORISES=1`, `NAVIGATEURS_MAX=15` ;
+   - depuis un arbre propre au commit poussé le 06/11 : `ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh
+     5.9.80.213 cloud-2.fillsell.app` — l'orchestrateur seul (déclaration du service au battement, rendu lu à l'ouverture,
+     alerte de capacité) ; image Chrome et copie Cloud de l'extension (0.6.169) INCHANGÉES (le script les affiche avant et
+     après) ; le conteneur recréé relit le `.env` : c'est le seul redémarrage (le navigateur de Nico se ferme et se rouvre,
+     même profil, même empreinte) ;
+   - vérifier : `demarrage` (capacité 15, 3 comptes autorisés), navigateur de Nico rouvert, `etat/rendu-serveur.json`
+     (`logiciel: false`), `cloud_serveurs.details->'service'` de cloud-2 `apte: true`, entretien SANS `"pool":"coupe"`,
+     plus aucune ligne ajoutée à `etat/essais/fond-*.jsonl`, aucun `verification_*` ;
+   - inverse : les deux `.env` remis, `cd deploiement && docker compose up -d --no-deps orchestrateur`.
+3. **Migrations** (feu vert NOMMÉ de Nico sur chacune, après relecture du SQL complet) : `20261106200000` (attribution,
+   APRÈS l'étape 2 : cloud-2 doit déjà se déclarer apte) puis `20261106210000` (mesures). `npx supabase db query --linked -f
+   supabase/migrations/<fichier>` + `npx supabase migration repair --linked --status applied <version>`. Vérifier :
+   `cloud_serveur_choisir(Nico)` = cloud-2, `cloud_places_libres()` = 15 − comptes servis − places gardées, tables et vues
+   présentes. Inverses : `supabase/rollbacks/<version>_…_INVERSE.sql`. Preuves sur Postgres jetable :
+   `PREUVE_PG=embarque node scripts/cloud/preuve-attribution-serveur-apte.mjs` (38/38) et `…/preuve-mesures-charge.mjs` (17/17).
+4. **Agent de mesure sur cloud-2** (après la migration 20261106210000) : `serveur-cloud/deploiement/mesure/fillsell-mesure.py`
+   → `/srv/fillsell-cloud/mesure/`, `fillsell-mesure.service` → `/etc/systemd/system/` ; `python3 … --essai` (une minute,
+   rien envoyé) ; `systemctl enable --now fillsell-mesure` ; 5 min plus tard, une ligne dans `cloud_mesures`.
+5. **24 h d'observation** sur le compte de Nico (dont le chemin `ENDURANCE=0`, jamais tourné en prod) : chaque check news lit
+   `cloud_charge_heures` et `cloud_charge_comptes`, le journal (`verification_*`, `capacite_seuil`, `entretien`), les alertes.
+6. **Après les 24 h, sur feu vert de Nico** : `cloud_serveurs` cloud-1 → « retire » (script de réparation + inverse, à
+   écrire), puis suppression du serveur Hetzner par Nico (ou par Claude sur son ordre) ; ensuite, SÉPARÉMENT, la copie Cloud
+   de l'extension en 0.6.175 ; puis le premier utilisateur choisi, ajouté seul à `COMPTES_AUTORISES`.
+
+## LA CHARGE SE MESURE EN RÉEL (décision de Nico, 06/11 soir : plus d'essai synthétique, des utilisateurs ajoutés un par un)
+- **NAVIGATEURS_MAX = 15** au départ (la moitié des 30 de la règle des 2 Gio). Pourquoi : mémoire mesurée d'un compte
+  1,26-1,36 Go (pointe noyau 1,66 Go ; 2,9 Go vus sur cloud-1 le 03/11 avant le blocage des régies) → 15 comptes ≈ 21 à
+  30 Go sur 62 ; processeur : chaque compte pointe à son plafond de 1,5 fil pendant une publication → 15 × 1,5 = 22,5 fils
+  sur 32 même si TOUS publient ensemble ; la puce et l'écran X partagés n'ont JAMAIS été mesurés avec plusieurs vrais
+  comptes ; et 15 comptes partagent la même empreinte matérielle (même puce, même rendu) face à DataDome — jamais vu.
+  On le relève quand les mesures réelles le permettent (décision de Nico).
+- **Mesure continue** : agent `fillsell-mesure` de l'hôte (lecture seule ; relevé toutes les 30 s, une ligne toutes les
+  5 min dans `public.cloud_mesures`) : par compte, mémoire (médiane, max, non récupérable), processeur (fils), puce (temps du
+  moteur de rendu de SON processus graphique, fdinfo i915), bridage, oom ; l'hôte : processeur, mémoire, puce.
+  **Lire à chaque check news** : `select * from cloud_charge_heures order by heure desc limit 24;` (par serveur et par heure :
+  hôte, mémoire par compte, pointes, jobs du Cloud faits / ratés / annulés, durée médiane et p95) et
+  `select * from cloud_charge_comptes where jour = (now() at time zone 'Europe/Paris')::date;` (compte par compte).
+- **Alerte de capacité** (support@, `ALERTES_MAIL=1`, une alerte puis un rappel au plus toutes les 6 h) : dès qu'UN taux
+  atteint **65 %** (`coin_config.cloud_capacite_alerte_pct`, absent = 65) — comptes servis / NAVIGATEURS_MAX (10 sur 15),
+  mémoire utilisée de l'hôte, processeur ou puce moyens sur 5 min. Elle dit « Marche à suivre : docs/cloud/REPRISE.md,
+  « Ajouter un serveur » » : c'est la section ci-dessous.
+
+## AJOUTER UN SERVEUR (quand l'alerte de capacité tombe) — rien ne s'achète sans l'accord écrit de Nico
+1. **Choisir** (Robot, lecture : `GET /order/server_market/product`) une enchère Hetzner disponible tout de suite, comme
+   cloud-2 : Intel AVEC puce intégrée (i5/i7/i9 de 12e-13e génération, UHD 770 ; JAMAIS un « F », qui n'a pas de puce ; pas
+   de carte graphique dédiée), ≥ 64 Go, ≥ 20 fils, FSN1 ou NBG1, facturée à l'heure avec plafond. Règle de Nico (30/10) :
+   tout vérifier sur CE produit (puce listée, Ubuntu 24.04 par installimage, prix, IPv4 1,70 € HT) et le dire AVANT de commander.
+2. **Commander** sur accord écrit de Nico : `POST /order/server_market/transaction` avec `test=true`, puis réelle (clé SSH
+   `fillsell_cloud_ed25519`). Nom : cloud-N (le suivant), domaine `cloud-N.fillsell.app` (A → l'IP, nuage gris ; le jeton
+   Cloudflare de `secrets.env` a expiré le 12/10 : un jeton neuf ou l'enregistrement posé par Nico).
+3. **Installer** comme cloud-2 (`docs/enquetes/beebs-cloud-0411/RAPPORT.md` § 15-16) : système de secours → installimage
+   Ubuntu 24.04 → `serveur-cloud/deploiement/gpu/preparer-poste-gpu.sh` (sortie HDMI forcée, Xorg, Mesa ; `glxinfo` doit
+   nommer la puce Intel).
+4. **Déployer** : `SERVEUR_NOM=cloud-N bash serveur-cloud/outils/deployer.sh <ip> cloud-N.fillsell.app` → `.env` FERMÉ
+   (aucun compte, pas d'entretien du pool), pare-feu, agent de mesure. Poser : `NAVIGATEUR_GPU=1`, `GPU_GROUPES` (groupes
+   video et render de l'hôte), `NAVIGATEURS_MAX=15`, `ENTRETIEN_POOL=0` (cloud-2 tient le pool), `ALERTES_MAIL=1`,
+   `ENDURANCE=0`, `ENREGISTREMENT_FOND=0`, `ENREGISTREMENT_CONNEXIONS=0` ; `docker compose up -d --force-recreate orchestrateur`.
+5. **Qualifier, sans aucune plateforme** : `docker compose exec -T orchestrateur node outils/essai-me-connecter.mjs
+   00000000-0000-4000-8000-000000000000 /tmp/verification --verifier` (profil jetable, proxy mort) → WebGL = la puce Intel,
+   jamais SwiftShader ; l'outil écrit `etat/rendu-serveur.json` → au battement suivant, `cloud_serveurs.details.service.apte`
+   = true. Sans cette preuve, la base ne lui attribue AUCUN compte (règle du 06/11).
+6. **Ouvrir** : `COMPTES_AUTORISES` (liste, un par un) selon Nico. Les comptes de cloud-2 y restent (jamais déplacés tant
+   que cloud-2 vit et les sert) ; les nouveaux vont au serveur apte le plus libre. Lire `cloud_charge_heures` des deux.
+
+## 06/11/2026 soir — ce qui a mené à ce plan (essai de charge arrêté, facture Hetzner, cloud-1)
+- **Essai de charge** (17:37 → 18:26) ARRÊTÉ par Nico : la page de charge animée (18 % de la puce par faux navigateur,
+  0 % pour un vrai compte) ne mesurait rien de réel ; puis plus d'essai du tout (décision de 18:45) : la charge se mesure
+  en réel. Chiffres : `docs/cloud/ESSAI-CHARGE-CLOUD2.md` § 6. cloud-2 relu à 18:26 = son état de 17:37.
+- **Facture Hetzner récurrente** (API Cloud `/pricing` + API Robot, 06/11 vers 17:40 ; aucune facture lue) : cloud-1 cx43
+  15,99 € HT + IPv4 0,50 € HT = **16,49 € HT / 19,79 € TTC** par mois ; cloud-2 enchère 3104939 194,00 € HT (0,3109 €/h,
+  plafond lu à la commande) + IPv4 1,70 € HT = **195,70 € HT / 234,84 € TTC** ; total **212,19 € HT / 254,63 € TTC**.
+  Rien d'autre (IPv6, pare-feu, trafic gratuits). Le jeton Cloud ne voit que le projet « fillsell-cloud ».
+- **cloud-1** (cce5eba, Chromium sans puce) ne servait personne et tenait l'entretien horaire du pool (achats IPRoyal
+  autorisés). ⛔ Le piège de `cloud_serveur_choisir` (cloud-2 muet 15 min → comptes partis sur cloud-1, qui ne les sert
+  pas, et ils y restaient) : corrigé à la racine (migration 20261106200000 + déclaration au battement, ci-dessus).
+  Pool : 8 IP vivantes, IP 42 de Nico jusqu'au 04/12 18:08, premières échéances le 29/11.
+- **Orchestrateur** : depuis 61fb7dd, aucun commit dans `serveur-cloud/src` avant le 06/11 soir ; ceux du 06/11 soir
+  (déclaration du service, rendu, alerte de capacité) partent par le « mode orchestrateur seul ». Copie Cloud de
+  l'extension : 0.6.169-cloud (figée sur d426d23), parc en 0.6.175.
+
 ## ⛔ 06/11/2026 soir — DÉCISION DE NICO : cloud-2 EST LE SERVEUR DE L'OUVERTURE (à lire EN PREMIER)
 - **L'AX42 et cloud-3 sont ABANDONNÉS pour l'instant** (AX42-1 annulée par Hetzner, délai de plusieurs semaines ;
   AX42-2 à 187,30 € HT/mois refusé ; rien commandé). `docs/cloud/ESSAI-AX42.md` et les scripts
@@ -12,15 +106,16 @@
   test@fillsell.app (d6a9e726, déjà dans la liste) ; 2. le compte de Nico (f44b5917, déjà servi : IP 42) ; 3. les 3 à 5
   utilisateurs choisis par Nico (identifiants ajoutés UN par UN sur son ordre). Le compte de relecture Google
   (953c1ca6) est aussi dans la liste.
-- **À trancher par Nico AVANT le premier utilisateur choisi** (réglages d'ESSAI encore en place sur cloud-2, lus le 06/11) :
+- (TRANCHÉ par Nico le 06/11 soir : voir le bloc « 07/11 MATIN » en tête ; ce qui suit est l'état lu avant.)
+  **À trancher par Nico AVANT le premier utilisateur choisi** (réglages d'ESSAI encore en place sur cloud-2, lus le 06/11) :
   `ENREGISTREMENT_FOND=1` et `ENREGISTREMENT_CONNEXIONS=1` (enregistrement des requêtes : à couper pour de vrais
   utilisateurs ?), `ALERTES_MAIL=0`, `ENTRETIEN_POOL=0` (le pool d'IP — purges, contrôles, alertes — est tenu par
   cloud-1, qui bat encore avec une capacité de 7 sans servir personne : le garder pour le pool, ou le retirer
   (`cloud_serveurs` « retire » + `ENTRETIEN_POOL=1` sur cloud-2) ; tant qu'il bat, un compte peut y être attribué si
   cloud-2 manque de battement 15 min) ; orchestrateur de cloud-2 = `61fb7ddd6e2a` (les correctifs serveur postérieurs ne
   sont pas déployés dessus : relire `git log 61fb7dd..HEAD -- serveur-cloud` avant l'ouverture).
-- **Essai de charge** de cloud-2 PRÉPARÉ, NON LANCÉ (feu vert de Nico) : `docs/cloud/ESSAI-CHARGE-CLOUD2.md`
-  (paliers de 20 min jusqu'à 45 navigateurs ; processeur, mémoire ET puce — intel-gpu-tools installé le 06/11 vers 17:15).
+- **Essai de charge** de cloud-2 : lancé le 06/11 17:37, ARRÊTÉ par Nico à 18:25 (page synthétique) ; plus d'essai, la
+  charge se mesure en réel : `docs/cloud/ESSAI-CHARGE-CLOUD2.md` § 6 et le bloc « 07/11 MATIN » en tête.
 - L'ouverture elle-même = l'interrupteur `coin_config.cloud_offre_ouverte` (06/11 soir : plus de drapeau dans l'app).
 
 ## ⛔ 04/11/2026 soir → 05/11 18:00 — ESSAI « RECETTE DE PROD » SUR cloud-2 (machine à vraie puce) (à lire EN PREMIER)

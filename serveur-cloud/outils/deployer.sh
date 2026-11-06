@@ -6,6 +6,7 @@
 #
 #   bash serveur-cloud/outils/deployer.sh <ip_du_serveur> [domaine]
 #   SERVEUR_NOM=cloud-3 bash serveur-cloud/outils/deployer.sh <ip> cloud-3.fillsell.app   (06/11 : serveur NEUF, nom exigé)
+#   ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh <ip> <domaine>   (06/11 soir : l'orchestrateur, rien d'autre)
 #   DESTINATIONS_PROXY="81.181.239.136:12323" bash serveur-cloud/outils/deployer.sh …   (01/11 : sorties des navigateurs)
 #   (03/11) DESTINATIONS_PROXY n'est plus qu'un repli : l'orchestrateur tient la liste à jour (pareFeu.js).
 #
@@ -45,6 +46,34 @@ elif [ -n "$SERVEUR_NOM" ] && [ "$SERVEUR_NOM" != "$NOM_EN_PLACE" ]; then
   echo "REFUS : $IP s'appelle « $NOM_EN_PLACE » dans son .env, pas « $SERVEUR_NOM »." >&2; exit 1
 else
   echo "→ serveur en place : $NOM_EN_PLACE ($DOMAINE)"
+fi
+# (06/11 soir, décision de Nico : « l'extension du Cloud séparément, pour savoir d'où vient le problème ») ORCHESTRATEUR_SEUL=1 :
+# l'image de l'orchestrateur (src, public, lib, outils) et RIEN d'autre — ni l'image Chrome, ni la copie Cloud de
+# l'extension (CRX et version inchangés : un déploiement complet la renumérote), ni Caddy, ni le pare-feu, ni le .env du
+# serveur. Serveur en place seulement. Un seul redémarrage : celui de l'orchestrateur.
+if [ "${ORCHESTRATEUR_SEUL:-0}" = 1 ]; then
+  [ "$NOM_EN_PLACE" != "<aucun .env>" ] || { echo "REFUS : ORCHESTRATEUR_SEUL sur un serveur neuf (déploiement complet d'abord)" >&2; exit 1; }
+  PAQUET="$RACINE/build/cloud-paquet-$SHA-orchestrateur"
+  rm -rf "$PAQUET" && mkdir -p "$PAQUET/lib" "$PAQUET/public"
+  cp -r serveur-cloud/{package.json,package-lock.json,Dockerfile,src,outils} "$PAQUET/"
+  cp serveur-cloud/public/* "$PAQUET/public/"
+  cp supabase/functions/_shared/cloud-pool.js "$PAQUET/lib/cloud-pool.js"
+  cp src/cloud/connexion/clientConnexion.js "$PAQUET/public/clientConnexion.js"
+  echo "→ envoi du paquet $SHA (orchestrateur seul)"
+  $SSH "mkdir -p /srv/fillsell-cloud/paquets && rm -rf /srv/fillsell-cloud/paquets/$SHA-orchestrateur"
+  scp -i "$CLE" -q -r "$PAQUET" "root@$IP:/srv/fillsell-cloud/paquets/$SHA-orchestrateur"
+  $SSH bash -s -- "$SHA" "$DOMAINE" <<'DISTANT_ORCH'
+set -euo pipefail
+SHA="$1"; DOMAINE="$2"; P="/srv/fillsell-cloud/paquets/$SHA-orchestrateur"
+echo "avant : $(sed -n 's/^VERSION_ORCHESTRATEUR=//p' /srv/fillsell-cloud/deploiement/.env) ; image Chrome $(sed -n 's/^IMAGE_CHROME=//p' /srv/fillsell-cloud/.env) ; CRX $(md5sum /srv/fillsell-cloud/extension-crx/fillsell-cloud.crx | cut -c1-12)"
+docker build -q -t "fillsell-orchestrateur:$SHA" "$P" >/dev/null
+printf 'VERSION_ORCHESTRATEUR=%s\nDOMAINE=%s\n' "$SHA" "$DOMAINE" > /srv/fillsell-cloud/deploiement/.env
+cd /srv/fillsell-cloud/deploiement
+VERSION_ORCHESTRATEUR="$SHA" DOMAINE="$DOMAINE" docker compose up -d --no-deps orchestrateur
+echo "après : $SHA ; image Chrome $(sed -n 's/^IMAGE_CHROME=//p' /srv/fillsell-cloud/.env) ; CRX $(md5sum /srv/fillsell-cloud/extension-crx/fillsell-cloud.crx | cut -c1-12)"
+DISTANT_ORCH
+  echo "santé : $(curl -s --max-time 20 "https://$DOMAINE/sante" || echo 'pas encore')"
+  exit 0
 fi
 IMAGE_STEEL="$(grep -o 'ghcr.io/steel-dev/steel-browser@sha256:[0-9a-f]\{64\}' serveur-cloud/src/navigateur.js | head -1)"
 [ -n "$IMAGE_STEEL" ] || { echo "REFUS : image steel épinglée introuvable dans src/navigateur.js" >&2; exit 1; }
@@ -109,6 +138,16 @@ if [ -d "$P/deploiement/systemd" ]; then
   systemctl daemon-reload
   systemctl enable fillsell-pare-feu.service >/dev/null 2>&1 || true
   systemctl enable --now fillsell-pare-feu-maj.path >/dev/null 2>&1
+fi
+# (06/11 soir) La mesure continue (lecture seule de l'hôte → public.cloud_mesures, toutes les 5 min) : un serveur mesure
+# dès son premier déploiement (la charge se mesure en réel, compte par compte ; l'alerte de capacité la lit).
+if [ -f "$P/deploiement/mesure/fillsell-mesure.py" ]; then
+  mkdir -p /srv/fillsell-cloud/mesure
+  cp "$P/deploiement/mesure/fillsell-mesure.py" /srv/fillsell-cloud/mesure/
+  cp "$P/deploiement/mesure/fillsell-mesure.service" /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable fillsell-mesure.service >/dev/null 2>&1
+  systemctl restart fillsell-mesure.service
 fi
 # (05/10) Les variables du fichier compose (version déployée, domaine), lues
 # toutes seules par `docker compose` dans ce dossier : sans elles, tout
