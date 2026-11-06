@@ -1,0 +1,21 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><title>Charge cloud-2</title>
+<!-- (06/11/2026) Page des navigateurs de CHARGE (docs/cloud/ESSAI-CHARGE-CLOUD2.md) : ouverte en file:// dans un conteneur sans
+     réseau sortant, sans compte, sans plateforme. Elle anime l'écran (canvas 2D + 60 éléments animés : un majorant de ce
+     qu'une page de plateforme demande à la puce) et garde un lest de mémoire (#lest=<Mo>, 750 par défaut ≈ la mémoire non
+     récupérable médiane d'un vrai compte, 745 Mo le 05/11). Le titre porte le rendu WebGL et un compteur d'images. -->
+<style>body{margin:0;overflow:hidden;font:14px sans-serif}.b{position:absolute;width:140px;height:90px;border-radius:12px;
+background:linear-gradient(45deg,#d33,#33d);box-shadow:0 6px 18px rgba(0,0,0,.4);animation:m 4s ease-in-out infinite alternate}
+@keyframes m{to{transform:translate(800px,420px) rotate(360deg)}}</style>
+<canvas id="c" width="1366" height="768" style="position:absolute;inset:0"></canvas>
+<script>
+const mo = Number((location.hash.match(/lest=(\d+)/) || [])[1] || 750), lest = [];
+for (let k = 0; k < mo / 8; k++) { const a = new Float64Array(1048576); a.fill(k); lest.push(a); }
+for (let k = 0; k < 60; k++) { const d = document.createElement('div'); d.className = 'b'; d.style.left = (k * 37 % 1100) + 'px';
+  d.style.top = (k * 53 % 600) + 'px'; d.style.animationDelay = (-k / 15) + 's'; document.body.appendChild(d); }
+const g = document.createElement('canvas').getContext('webgl'), e = g && g.getExtension('WEBGL_debug_renderer_info');
+const rendu = e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'sans WebGL';
+const x = document.getElementById('c').getContext('2d'); let t = 0;
+(function f() { t++; x.clearRect(0, 0, 1366, 768); for (let k = 0; k < 400; k++) { x.fillStyle = 'hsl(' + ((k + t) % 360) + ',70%,50%)';
+  x.beginPath(); x.arc((k * 97 + t * 3) % 1366, (k * 61 + t * 2) % 768, 8, 0, 6.283); x.fill(); } requestAnimationFrame(f); })();
+setInterval(() => { document.title = 'Charge cloud-2 | ' + rendu + ' | ' + t; }, 1000);
+</script></html>

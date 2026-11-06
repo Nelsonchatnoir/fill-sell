@@ -2,7 +2,9 @@
 
 Heures de Paris. Tout ce qui suit a été LU (API d'App Store Connect depuis la session ouverte, Play Console, base, code)
 au moment indiqué. Ordre de Nico : seul l'abonnement Cloud se soumet ; la 2.9 (Apple) et la version Google attendent
-l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
+l'AX42, un test réel sur ce serveur, puis le feu vert de Nico. **(06/11 soir, décision de Nico) L'AX42 est abandonné :
+cloud-2 est le serveur de l'ouverture ; la soumission n'attend PLUS aucun serveur — seulement le binaire final 2.9.163
+(§ 8) et le feu vert de Nico.**
 
 ## 1. Apple — App Store Connect (app 6762152785, version 2.9 « À finaliser avant soumission », sortie MANUELLE)
 | Champ | FR | EN | État |

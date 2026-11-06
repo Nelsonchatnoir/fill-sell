@@ -1,5 +1,9 @@
 # FillSell Cloud — l'ESSAI RÉEL DE L'AX42 (cloud-3), à lancer dès que Hetzner le livre
 
+> ⛔ **06/11/2026 soir, décision de Nico : ESSAI ABANDONNÉ POUR L'INSTANT.** cloud-2 est le serveur de l'ouverture
+> (`docs/cloud/REPRISE.md`, bloc du 06/11 soir) ; rien n'attend plus l'AX42. Ce plan et les scripts
+> `20261106_cloud_essai_ax42_*` restent valables pour un futur serveur (nom cloud-3, Ubuntu 24.04, mêmes contrôles).
+
 Écrit le 06/11/2026 vers 11:00 (heure de Paris), d'après le code du dépôt (`serveur-cloud/`, commit serveur **61fb7dd**,
 le même que cloud-2) et les rapports `docs/enquetes/beebs-cloud-0411/RAPPORT.md` § 13, 15, 16 et
 `docs/enquetes/ouverture-cloud-0511/RAPPORT.md` points 9, 11, 12, 14, 16. **Rien de ce qui suit n'est fait.**

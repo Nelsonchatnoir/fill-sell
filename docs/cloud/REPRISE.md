@@ -1,5 +1,28 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## ⛔ 06/11/2026 soir — DÉCISION DE NICO : cloud-2 EST LE SERVEUR DE L'OUVERTURE (à lire EN PREMIER)
+- **L'AX42 et cloud-3 sont ABANDONNÉS pour l'instant** (AX42-1 annulée par Hetzner, délai de plusieurs semaines ;
+  AX42-2 à 187,30 € HT/mois refusé ; rien commandé). `docs/cloud/ESSAI-AX42.md` et les scripts
+  `20261106_cloud_essai_ax42_*` restent pour plus tard. **Rien n'attend plus un nouveau serveur, ni la soumission Apple.**
+- **cloud-2** = enchère Hetzner 3104939, 5.9.80.213, `cloud-2.fillsell.app`, Intel i9-13900 (32 fils), 62 Gio, UHD 770
+  (Chrome par la vraie puce, recette validée le 05/11 : `docs/enquetes/beebs-cloud-0411/RAPPORT.md` § 15-16), facturé à
+  l'heure, **195,70 € HT/mois au plus** ; capacité automatique 30 comptes (règle des 2 Gio réservés). Server Auction
+  relue le 06/11 17:09 (Robot) : AUCUNE offre avec puce intégrée et ≥ 24 fils ne bat son coût par compte.
+- **Ordre des comptes servis** (`COMPTES_AUTORISES` de cloud-2, jamais vide) : 1. compte de relecture Apple
+  test@fillsell.app (d6a9e726, déjà dans la liste) ; 2. le compte de Nico (f44b5917, déjà servi : IP 42) ; 3. les 3 à 5
+  utilisateurs choisis par Nico (identifiants ajoutés UN par UN sur son ordre). Le compte de relecture Google
+  (953c1ca6) est aussi dans la liste.
+- **À trancher par Nico AVANT le premier utilisateur choisi** (réglages d'ESSAI encore en place sur cloud-2, lus le 06/11) :
+  `ENREGISTREMENT_FOND=1` et `ENREGISTREMENT_CONNEXIONS=1` (enregistrement des requêtes : à couper pour de vrais
+  utilisateurs ?), `ALERTES_MAIL=0`, `ENTRETIEN_POOL=0` (le pool d'IP — purges, contrôles, alertes — est tenu par
+  cloud-1, qui bat encore avec une capacité de 7 sans servir personne : le garder pour le pool, ou le retirer
+  (`cloud_serveurs` « retire » + `ENTRETIEN_POOL=1` sur cloud-2) ; tant qu'il bat, un compte peut y être attribué si
+  cloud-2 manque de battement 15 min) ; orchestrateur de cloud-2 = `61fb7ddd6e2a` (les correctifs serveur postérieurs ne
+  sont pas déployés dessus : relire `git log 61fb7dd..HEAD -- serveur-cloud` avant l'ouverture).
+- **Essai de charge** de cloud-2 PRÉPARÉ, NON LANCÉ (feu vert de Nico) : `docs/cloud/ESSAI-CHARGE-CLOUD2.md`
+  (paliers de 20 min jusqu'à 45 navigateurs ; processeur, mémoire ET puce — intel-gpu-tools installé le 06/11 vers 17:15).
+- L'ouverture elle-même = l'interrupteur `coin_config.cloud_offre_ouverte` (06/11 soir : plus de drapeau dans l'app).
+
 ## ⛔ 04/11/2026 soir → 05/11 18:00 — ESSAI « RECETTE DE PROD » SUR cloud-2 (machine à vraie puce) (à lire EN PREMIER)
 Détail et état : `docs/enquetes/beebs-cloud-0411/RAPPORT.md` § 15.
 - cloud-2 = enchère Hetzner 3104939 (5.9.80.213, i9-13900, UHD 770), Ubuntu 24.04 + Google Chrome officiel par la puce,
