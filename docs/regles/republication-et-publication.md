@@ -1355,3 +1355,21 @@ attentes de session de handler-watch (sonde fraîche, « connecté », postérie
 échéance (`attentePoseeParLeServeur`, handler-watch v170, 13:14) — sinon les tâches qui attendent leur créneau après la
 reconnexion gardaient le message. Mesuré le 06/11 12:48 : 121 tâches de Guillaume avec le message (sonde « déconnecté »
 depuis le 05/11 07:15). Selftest `attente-session-serveur`.
+
+## 06/11 — L'ordre des photos de l'article fait foi, partout (the_closet72 ; rapport `docs/enquetes/ordre-photos-0611/RAPPORT.md`)
+- **Règle** (`_shared/ordre-photos.js`, jumeau SQL exact `public.photos_ordre_article`) : l'ordre de `inventaire.photos`
+  fait foi ; un ordre CHOISI pour une plateforme (`photos_choisies`) le remplace pour elle ; un dépôt plafonné
+  (`lbcPhotosCapped`, quota gratuit Leboncoin) garde les N premières de l'article ; sinon le job garde SES photos (rien
+  d'ajouté, rien de retiré) dans l'ordre de l'article ; doute (photo absente de l'article, doublon, URL illisible) = job
+  tel quel. Seul l'ordre change : les entrées (type, retouche) restent celles du job.
+- S'applique à : republication (`spend_coins_and_republish`, autres que Vinted), remise en vente (`remises_en_vente_tick`),
+  republication « avec toutes tes photos » (`republier-photos-lbc`), et — déclencheur `inventaire_ordre_photos_vers_taches`
+  — aux tâches pas encore parties (pending, needs_user, failed) quand l'ordre de l'article change (Stock › Modifier,
+  publication qui réordonne). Jamais une tâche en cours, jamais une annonce en ligne, aucune ligne inchangée réécrite.
+  Migration `20261106230000_ordre_photos_article` (appliquée le 06/11 à 19:39).
+- Vinted en republication : recréation depuis la CAPTURE de l'annonce en ligne (inchangé) — ce qui est en ligne repart.
+- ⛔ Annonces DÉJÀ en ligne : aucune remise en ordre automatique sans feu vert ; avant toute remise en ordre, lire
+  l'ordre réellement en ligne (empreintes d'image) : déjà bon → rien ; modifié par la personne sur la plateforme
+  (≠ notre dépôt) → on n'y touche pas ; jamais une modification de la personne écrasée. Sur place quand la plateforme
+  le permet (eBay API : `ebay-account › modifier_annonce`), hors quota.
+- Verrou : `npm run selftest:ordre-photos` (publication, lot, 5 plateformes, limites, republication ; Postgres jetable).

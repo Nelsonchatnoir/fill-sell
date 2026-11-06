@@ -16,6 +16,7 @@
 // Le commit de l'extension qui lit le gratuit sur la nouvelle page (66352f9, lot E, EXTENSION_LAST_COMMIT) : tout build
 // construit depuis le porte (0.6.160 jamais téléversée, 0.6.161, copie Cloud 0.6.160-cloud).
 import { TRACES_DE_RETRAIT_RE } from "./retenue-creneau.js";
+import { photosDansLOrdreDeLArticle } from "./ordre-photos.js";
 
 export const BUILD_PHOTOS_LBC = "2026-10-30T16:30:40Z";
 
@@ -103,7 +104,10 @@ export function ligneRepublicationPhotos(src, { photosFiche = null, maintenant =
   const am = annonceLbcAmputee(src);
   const photosJob = Array.isArray(src.photos) ? src.photos : [];
   const photosF = Array.isArray(photosFiche) ? photosFiche : [];
-  const photos = photosJob.length >= (am?.fiche ?? 0) || photosJob.length >= photosF.length ? photosJob : photosF;
+  const photosSource = photosJob.length >= (am?.fiche ?? 0) || photosJob.length >= photosF.length ? photosJob : photosF;
+  // (06/11, the_closet72) Dans l'ORDRE DE LA FICHE (_shared/ordre-photos.js) — sauf un choix fait pour Leboncoin. Jamais
+  // plafonnée ici : la nouvelle page relit le nombre de photos gratuites.
+  const photos = photosDansLOrdreDeLArticle(photosSource, photosF, { photos_choisies: objet(src.platform_fields)?.photos_choisies });
   const pf0 = { ...(objet(src.platform_fields) ?? {}) };
   for (const k of CLES_TRANSITOIRES) delete pf0[k];
   // (04/11, 9cdr9rm4rn) Aucune trace de retrait du dépôt précédent : même règle par préfixes que la base

@@ -105,10 +105,11 @@ ok(/'sale_signal', 'sold'/.test(noter) && /'platform', 'leboncoin', 'listing_id'
 const dossier = 'supabase/migrations';
 const fichiers = fs.readdirSync(new URL(`../${dossier}`, import.meta.url)).filter((f) => f.endsWith('.sql')).sort();
 const derniere = new Map();
+const parFichier = new Map();
 const declencheurs = [];
 for (const f of fichiers) {
   const s = lire(`${dossier}/${f}`);
-  for (const [nom, d] of definitions(s)) derniere.set(nom, { f, corps: sansCommentaires(d.corps) });
+  for (const [nom, d] of definitions(s)) { derniere.set(nom, { f, corps: sansCommentaires(d.corps) }); parFichier.set(`${f}|${nom}`, sansCommentaires(d.corps)); }
   for (const m of sansCommentaires(s).matchAll(/CREATE\s+TRIGGER\s+([a-z0-9_]+)\s+([\s\S]*?)EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:public\.)?([a-z0-9_]+)/gi)) declencheurs.push({ f, nom: m[1], def: m[2], fn: m[3] });
 }
 const corps = (nom) => derniere.get(nom)?.corps ?? '';
@@ -117,10 +118,19 @@ ok(/COALESCE\(j\.platform_fields ->> 'source', ''\) = 'releve'/.test(imp) && /CO
   `annonce_importee (${derniere.get('annonce_importee')?.f}) lit source « releve » / rattachement.import : l'annonce importée par le relevé`, imp.trim().slice(0, 300));
 
 console.log('\n3. La chaîne jusqu\'au point final, puis la remise (dernière définition de chaque fonction dans les migrations)');
-ok(derniere.get('leboncoin_transaction_noter')?.f === '20261105170000_remise_en_vente_series_leboncoin.sql'
-  && derniere.get('remises_en_vente_tick')?.f === '20261105170000_remise_en_vente_series_leboncoin.sql'
-  && derniere.get('vente_transaction_annulee_leboncoin')?.f === '20261105170000_remise_en_vente_series_leboncoin.sql',
-  'les trois fonctions ont leur dernière définition dans la migration 20261105170000 (aucune réécriture plus récente ne la défait)',
+// (06/11, ordre des photos) remises_en_vente_tick est redéfinie par 20261106230000_ordre_photos_article (définition de
+// prod du 06/11 = celle de 20261105170000, plus les photos du job vendu dans l'ordre de la fiche) : acceptée SEULEMENT si
+// son corps est celui de 20261105170000 au seul remplacement près de l'expression des photos — rien d'autre ne la défait.
+const M1105 = '20261105170000_remise_en_vente_series_leboncoin.sql';
+const M0611 = '20261106230000_ordre_photos_article.sql';
+const plat = (t) => String(t ?? '').replace(/\s+/g, ' ').trim();
+const tickOrdrePhotos = derniere.get('remises_en_vente_tick')?.f === M0611
+  && plat(parFichier.get(`${M0611}|remises_en_vente_tick`)).replace(
+    'THEN public.photos_ordre_article(j.photos, i.photos, j.platform_fields)', 'THEN j.photos') === plat(parFichier.get(`${M1105}|remises_en_vente_tick`));
+ok(derniere.get('leboncoin_transaction_noter')?.f === M1105
+  && (derniere.get('remises_en_vente_tick')?.f === M1105 || tickOrdrePhotos)
+  && derniere.get('vente_transaction_annulee_leboncoin')?.f === M1105,
+  'les trois fonctions ont leur dernière définition dans la migration 20261105170000 (aucune réécriture plus récente ne la défait ; remises_en_vente_tick : 20261106230000 = 20261105170000 + l\'ordre des photos, rien d\'autre)',
   NOMS.map((x) => `${x}: ${derniere.get(x)?.f}`).join(' ; '));
 const vpae = corps('ventes_prouvees_a_enregistrer');
 ok(/sale_evidence,listing_id\}' = btrim\(c\.platform_listing_id\)/.test(vpae) && /sale_evidence,platform\}' = c\.platform/.test(vpae)
