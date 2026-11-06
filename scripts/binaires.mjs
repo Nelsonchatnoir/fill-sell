@@ -54,6 +54,10 @@ import { fileURLToPath } from 'node:url';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TELECHARGEMENTS = 'C:\\Users\\nicol\\Downloads';
+// (06/11, ordre de Nico) Les clés (compte de service Firebase, .p8) sont RANGÉES hors de Téléchargements et hors du
+// dépôt ; les fichiers se cherchent dans ce dossier PUIS dans Téléchargements (google-services.json, nouveau téléchargement).
+const DOSSIER_CLES = 'C:\\Users\\nicol\\Documents\\FillSell-cles';
+const DOSSIERS = [DOSSIER_CLES, TELECHARGEMENTS].filter((d) => existsSync(d));
 // (25/10) La version des binaires est celle de package.json (2.9.62 jamais fabriquée) : le commit de version aligne
 // android/app/build.gradle (versionName) et codemagic.yaml (agvtool) ; l'étape A refuse tout écart.
 const VERSION = JSON.parse(readFileSync(path.join(RACINE, 'package.json'), 'utf8')).version;
@@ -90,7 +94,7 @@ const git = (...a) => lancer('git', a, { muet: true }).sortie.trim();
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const lireJson = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
 const plusRecent = (fichiers) => fichiers.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
-const dans = (re) => readdirSync(TELECHARGEMENTS).filter((n) => re.test(n)).map((n) => path.join(TELECHARGEMENTS, n));
+const dans = (re) => DOSSIERS.flatMap((d) => readdirSync(d).filter((n) => re.test(n)).map((n) => path.join(d, n)));
 
 /** Une requête SQL sur la prod (CLI liée), lignes JSON. */
 function sql(requete) {
@@ -134,8 +138,8 @@ ok(`versions alignées : package.json ${VERSION}, Android ${VERSION}/vc${VERSION
 }
 
 // ── B. Les trois fichiers ───────────────────────────────────────────────────
-etape(`B. Les fichiers dans ${TELECHARGEMENTS}`);
-if (!existsSync(TELECHARGEMENTS)) stop(`dossier introuvable : ${TELECHARGEMENTS}`);
+etape(`B. Les fichiers dans ${DOSSIERS.join(' et ')}`);
+if (!DOSSIERS.length) stop(`dossiers introuvables : ${DOSSIER_CLES}, ${TELECHARGEMENTS}`);
 
 const fGs = plusRecent(dans(/^google-services( \(\d+\))?\.json$/i));
 if (!fGs) stop(`google-services.json absent de ${TELECHARGEMENTS}.`, 'docs/push/CLES-NICO.md, bloc A, étape 3 (« Télécharger google-services.json »).');
