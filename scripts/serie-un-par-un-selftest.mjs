@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { decisionSerie, serieDuJob, CLE_SERIE, RELEVE_APRES_MIN } = await import(pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/serie-un-par-un.js')).href);
+const { decisionSerie, serieDuJob, CLE_SERIE, RELEVE_APRES_MIN, versionAvant } = await import(pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/serie-un-par-un.js')).href);
 const lire = (f) => readFileSync(path.join(RACINE, f), 'utf8').replace(/\r\n/g, '\n');
 
 let ko = 0;
@@ -63,6 +63,16 @@ console.log('3. Arrêt au premier refus');
   ok(decisionSerie(annulee[1], annulee, { maintenant: T(1) }).servir, 'une tâche annulée sort de la série (ni refus, ni étape)');
 }
 
+console.log("3b. Une tâche de la série qui attend un correctif de l'extension (06/11 soir, Louis « SEB »)");
+{
+  const exige = (rang, extra = {}) => ({ ...tache(rang, extra.status ?? 'pending', extra), platform_fields: { [CLE_SERIE]: { serie: 'louis', rang, intervalle_min: 60, le: DEBUT, exige_version: '0.6.176' } } });
+  ok(versionAvant('0.6.175', '0.6.176') && !versionAvant('0.6.176', '0.6.176') && !versionAvant('0.7.0', '0.6.176') && versionAvant('', '0.6.176'), 'versions comparées nombre par nombre ; illisible = avant');
+  const m = [exige(1)];
+  ok(!decisionSerie(m[0], m, { maintenant: T(1), version: '0.6.175' }).servir && /attend_extension/.test(decisionSerie(m[0], m, { maintenant: T(1), version: '0.6.175' }).motif), 'poste en 0.6.175 : la tâche attend la 0.6.176 (sans arrêter la série)');
+  ok(decisionSerie(m[0], m, { maintenant: T(1), version: '0.6.176' }).servir, 'poste en 0.6.176 : elle part');
+  ok(decisionSerie(tache(1), [tache(1)], { maintenant: T(1), version: '0.6.100' }).servir, 'sans exige_version : aucune retenue par version (abandonnée le 06/11)');
+}
+
 console.log('4. Branchement : get-pending-jobs, règle A retirée');
 {
   const g = lire('supabase/functions/get-pending-jobs/index.ts');
@@ -71,6 +81,9 @@ console.log('4. Branchement : get-pending-jobs, règle A retirée');
   ok(!/remise-en-vente-attente/.test(g) && !/remiseAAttendre|annonceVendueEncoreEnLigne/.test(g), 'règle A retirée : plus aucune retenue « annonce vendue encore en ligne »');
   ok(!existsSync(path.join(RACINE, 'supabase/functions/_shared/remise-en-vente-attente.js')), 'son module est retiré');
   ok(/depot-lbc-jamais-en-ligne/.test(lire('supabase/functions/handler-watch/index.ts')), 'règle B gardée (handler-watch juge toujours les dépôts jamais en ligne)');
+  ok(g.slice(g.indexOf('decisionSerie(') - 4000, g.indexOf('decisionSerie(')).includes('.order("queued_at", { ascending: false, nullsFirst: false }).limit(40)'),
+    'relevés lus du plus récent, les vieux relevés sans queued_at jamais en tête (06/11 : un relevé demandé à chaque passage)');
+  ok(/version,\n\s*\}\) as \{ servir: boolean/.test(g), 'la version du poste est passée à la décision');
 }
 
 console.log(ko ? `\n${ko} KO` : '\nTout est vert.');

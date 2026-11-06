@@ -40,7 +40,8 @@ export function serieDuJob(job) {
   const rang = Number(s.rang);
   const intervalle = Number(s.intervalle_min);
   if (!serie || !Number.isInteger(rang) || rang < 1) return null;
-  return { serie, rang, intervalle_min: Number.isFinite(intervalle) && intervalle >= 0 ? intervalle : 60, le: s.le ?? null };
+  const exige = /^\d+\.\d+\.\d+$/.test(String(s.exige_version ?? "")) ? String(s.exige_version) : null;
+  return { serie, rang, intervalle_min: Number.isFinite(intervalle) && intervalle >= 0 ? intervalle : 60, le: s.le ?? null, exige_version: exige };
 }
 
 /** Un dépôt refusé noté APRÈS le début de la série (règle B) ? */
@@ -56,13 +57,17 @@ function refuseeDepuis(job, debutMs) {
  * dernier relevé « fini » de la plateforme pour ce compte ; releveEnFile : un relevé de la plateforme est déjà en file.
  * @param {Record<string, any>} job  la tâche (pending) à servir ou non
  * @param {Array<Record<string, any>>} membres  toutes les tâches de la même série (même compte), elle comprise
- * @param {{ vuesParReleve?: Set<string>, dernierReleveMs?: number | null, releveEnFile?: boolean, maintenant?: number }} [o]
+ * @param {{ vuesParReleve?: Set<string>, dernierReleveMs?: number | null, releveEnFile?: boolean, maintenant?: number, version?: string }} [o]
+ *   version : la version de l'extension du poste qui demande (« 0.6.176 »).
  * @returns {{ servir: boolean, motif: string, demanderReleve?: boolean }}
  */
 export function decisionSerie(job, membres, o = {}) {
-  const { vuesParReleve = new Set(), dernierReleveMs = null, releveEnFile = false, maintenant = Date.now() } = o;
+  const { vuesParReleve = new Set(), dernierReleveMs = null, releveEnFile = false, maintenant = Date.now(), version = "" } = o;
   const s = serieDuJob(job);
   if (!s) return { servir: true, motif: "hors_serie" };
+  // (06/11 soir, Louis « SEB ») Une tâche de la série qui a besoin d'un correctif de l'extension l'attend : propre à la
+  // série posée par réparation (exige_version), jamais une retenue générale par version (abandonnée le 06/11).
+  if (s.exige_version && versionAvant(version, s.exige_version)) return { servir: false, motif: `attend_extension_${s.exige_version}` };
   const debut = ms(s.le);
   const meme = (membres ?? []).filter((m) => serieDuJob(m)?.serie === s.serie);
   const arret = meme.find((m) => ARRET.has(String(m.status ?? "")) || refuseeDepuis(m, debut));
@@ -85,4 +90,14 @@ export function decisionSerie(job, membres, o = {}) {
     if (depot != null && maintenant < depot + s.intervalle_min * 60_000) return { servir: false, motif: "intervalle" };
   }
   return { servir: true, motif: "a_son_tour" };
+}
+
+/** « 0.6.175 » est-elle avant « 0.6.176 » ? Une version illisible est avant (rien ne part sur un poste inconnu). */
+export function versionAvant(v, exigee) {
+  const a = String(v ?? "").match(/^(\d+)\.(\d+)\.(\d+)/);
+  const b = String(exigee ?? "").match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!b) return false;
+  if (!a) return true;
+  for (let i = 1; i <= 3; i++) { if (Number(a[i]) !== Number(b[i])) return Number(a[i]) < Number(b[i]); }
+  return false;
 }

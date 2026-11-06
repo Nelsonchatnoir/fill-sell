@@ -1241,6 +1241,9 @@ async function fillListingForm(job) {
   // (15/10, 0.6.113) Le texte de l'article : une marque devinée par Leboncoin
   // n'est gardée que si l'article la NOMME (cf. marquePreRemplieNonCitee).
   TEXTE_ARTICLE_LBC = normalizeFuzzy(`${job.title ?? ""} ${job.description ?? ""}`);
+  // (06/11 soir, 0.6.176) Titre et description BRUTS : la ponctuation dit où s'arrête « pour … SEB » (marque-compatible).
+  TITRE_ARTICLE_LBC = String(job.title ?? "");
+  DESCRIPTION_ARTICLE_LBC = String(job.description ?? "");
   // Champs OBLIGATOIRES (au sens du code existant, pas d'une liste inventée)
   // qu'on n'a pas su remplir. Deux seulement sont documentés comme bloquants
   // par des dry-runs réels : l'univers du rayon Mode ("Veuillez choisir un
@@ -4426,6 +4429,8 @@ const VALEURS_NON_RECONNUES = {};
 let REJOUE_ANNONCE_D_ORIGINE = false;
 // (15/10, 0.6.113) Titre + description de l'article en cours (normalisés).
 let TEXTE_ARTICLE_LBC = "";
+let TITRE_ARTICLE_LBC = "";
+let DESCRIPTION_ARTICLE_LBC = "";
 
 // ── LA MARQUE DEVINÉE PAR LEBONCOIN (15/10, 0.6.113 — point 7) ───────────────
 // Ornella 495e9ffc (11/10) : « Support de fond photo télescopique », sans
@@ -4444,8 +4449,91 @@ function marqueConsole(labelSelector) {
 }
 function marqueCiteeDansLArticle(marque) {
   const m = normalizeFuzzy(String(marque ?? ""));
+  // (06/11 soir, 0.6.176 — décision de Nico, Louis « SEB ») Une marque que l'article ne cite QUE comme celle d'un appareil
+  // auquel il s'adapte (« pour yaourtière Multidélices de chez SEB ») n'est PAS nommée par l'article : le pré-rempli de
+  // Leboncoin n'est jamais gardé, « Sans marque » est posé (Leboncoin refuse une marque sur un produit qui n'est pas d'elle).
+  if (marqueSeulementCompatible(String(marque ?? ""), TITRE_ARTICLE_LBC, DESCRIPTION_ARTICLE_LBC)) return false;
   return !!m && !!TEXTE_ARTICLE_LBC && containsAsWords(TEXTE_ARTICLE_LBC, m);
 }
+
+// ── (06/11 soir, 0.6.176) UN ARTICLE « POUR » UNE MARQUE NE PREND JAMAIS CETTE MARQUE ────────────────────────────────
+// Copie identique de supabase/functions/_shared/marque-compatible.js (scripts/marque-compatible-selftest.mjs).
+// ⟦marque-compatible:début⟧
+const MC_GENERIQUE = /^(autres?|sans marque|marque generique|generique|non renseignee?|ne s'applique pas|inconnue?|indeterminee?|aucune)$/;
+const MC_FORT = new Set(["compatible", "compatibles", "compatibilite", "adapte", "adaptee", "adaptes", "adaptees", "adaptable", "adaptables",
+  "convient", "conviennent", "s'adapte", "s'adaptent", "s'adaptant"]);
+const MC_PREPOSITIONS = new Set(["pour", "de", "a", "sur", "avec", "au", "aux", "for"]);
+const MC_POSSESSIFS = new Set(["votre", "vos", "ton", "ta", "tes", "your"]);
+const MC_PARTICIPES = new Set(["concu", "concue", "concus", "concues", "prevu", "prevue", "prevus", "prevues", "fait", "faite", "faits", "faites",
+  "destine", "destinee", "destines", "destinees", "special", "speciale", "speciaux", "speciales"]);
+const MC_PUBLIC = new Set(["femme", "femmes", "homme", "hommes", "enfant", "enfants", "fille", "filles", "garcon", "garcons", "bebe", "bebes",
+  "ado", "ados", "adolescent", "adolescente", "adulte", "adultes", "mixte", "elle", "lui", "dame", "dames", "men", "women", "kids",
+  "chien", "chiens", "chiot", "chiots", "chat", "chats", "chaton", "chatons", "animal", "animaux", "cheval", "chevaux", "lapin", "lapins",
+  "oiseau", "oiseaux", "rongeur", "rongeurs", "dogs", "cats"]);
+// « Craquez pour CE sac Longchamp » : le démonstratif désigne l'objet lui-même ; un article (« pour le Thermomix ») non.
+const MC_DEMONSTRATIFS = new Set(["ce", "cet", "cette", "ces"]);
+const MC_FENETRE = 6;
+// Un JEU vidéo se range sous la marque de sa console (« Zelda pour Nintendo Game Boy », « … for Wii U Nintendo ») :
+// jamais une marque de compatibilité. Un ACCESSOIRE de console (housse, manette, chargeur…) reste soumis à la règle.
+const MC_CONSOLES = new Set(["nintendo", "sony", "playstation", "microsoft", "xbox", "sega", "atari"]);
+const MC_JEU = /(^|[^a-z])(jeu|jeux|game|games|umd|cartouche|cartouches|pal|ntsc)([^a-z]|$)/;
+const MC_ACCESSOIRE = /(^|[^a-z])(housse|housses|coque|coques|etui|etuis|manette|manettes|chargeur|chargeurs|support|supports|protection|cable|cables|socle|station|sacoche|grip|skin|stickers?|accessoires?)([^a-z]|$)/;
+
+function mcSansAccents(s) {
+  return String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\u2019`]/g, "'");
+}
+/** Les propositions d'un texte, chacune en mots (minuscules, sans accents). */
+function mcPropositions(texte) {
+  return mcSansAccents(texte)
+    .split(/[.;!?:()[\]{}|\n\r•·]+|[^\u0000-\u024f\s'\u2019\-\u2013\u2014,/&+]+/u)
+    .map((p) => p.split(/[\s,/&+\-\u2013\u2014]+/).map((m) => m.replace(/^'+|'+$/g, "")).filter(Boolean))
+    .filter((mots) => mots.length);
+}
+/** Le mot d'indice i fait-il de ce qui suit une compatibilité ? */
+function mcMarqueur(mots, i) {
+  const m = mots[i];
+  if (MC_FORT.has(m)) return true;
+  if ((m === "pour" || m === "for") && !MC_PUBLIC.has(mots[i + 1] ?? "") && !MC_DEMONSTRATIFS.has(mots[i + 1] ?? "")) return true;
+  if (MC_POSSESSIFS.has(m) && MC_PREPOSITIONS.has(mots[i - 1] ?? "")) return true;
+  if (MC_PARTICIPES.has(m) && (mots[i + 1] === "pour" || mots[i + 1] === "a" || mots[i + 1] === "aux")) return true;
+  return false;
+}
+
+/** Une marque « générique » (Sans marque, Autre, Marque générique…) : jamais une marque de compatibilité. */
+function marqueGenerique(marque) {
+  return MC_GENERIQUE.test(mcSansAccents(marque).trim());
+}
+
+/**
+ * La marque n'est-elle citée, dans ces textes, QUE comme celle d'un appareil auquel l'article s'adapte ?
+ * Faux si elle n'est pas citée du tout (rien n'est déduit), ou citée au moins une fois comme celle de l'objet.
+ * @param {string} marque
+ * @param {...string} textes  titre, description…
+ */
+function marqueSeulementCompatible(marque, ...textes) {
+  if (!marque || marqueGenerique(marque)) return false;
+  // Lu sur le TITRE (ce qu'est l'objet) : une description de jeu parle souvent de sa « protection » ou de son « support ».
+  const titreMc = mcSansAccents(textes[0] ?? "");
+  if (MC_CONSOLES.has(mcSansAccents(marque).trim()) && MC_JEU.test(titreMc) && !MC_ACCESSOIRE.test(titreMc)) return false;
+  const cible = mcSansAccents(marque).split(/[\s,/&+\-\u2013\u2014]+/).map((m) => m.replace(/^'+|'+$/g, "")).filter(Boolean);
+  if (!cible.length) return false;
+  let citee = 0;
+  for (const texte of textes) {
+    for (const mots of mcPropositions(texte)) {
+      for (let i = 0; i + cible.length <= mots.length; i++) {
+        if (!cible.every((c, k) => mots[i + k] === c)) continue;
+        citee++;
+        let compatible = false;
+        for (let j = i - 1; j >= 0 && j >= i - 1 - MC_FENETRE; j--) {
+          if (mcMarqueur(mots, j)) { compatible = true; break; }
+        }
+        if (!compatible) return false;
+      }
+    }
+  }
+  return citee > 0;
+}
+// ⟦marque-compatible:fin⟧
 
 // ⟦prerempli-ia:début⟧ (26/10, étape 4 — règle de Nico : « la valeur qui colle à l'article gagne ; jamais une valeur qui
 // mène à un blocage quand l'autre aurait passé ») QUAND LEBONCOIN A PRÉ-REMPLI ET QUE NOTRE VALEUR VIENT DE L'IA.
@@ -4592,7 +4680,10 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     const marquePreRemplieNonCitee = fieldName === "marque" && !estMarqueConsole && !!prefilled
       && !estValeurGenerique(prefilled) && !marqueCiteeDansLArticle(prefilled);
     // (29/10) Marque : le pré-rempli ÉGAL à la nôtre (marquesEgales : « ChicMe » = « Chic Me ») convient aussi.
-    const prefilledConvient = prefilled && (etatExact
+    // (06/11 soir, 0.6.176) Un pré-rempli de marque que l'article ne cite que comme marque de compatibilité ne convient
+    // jamais, même s'il est égal à notre valeur (un job d'avant le correctif du serveur pouvait porter « SEB »).
+    const prefilledCompat = fieldName === "marque" && !!prefilled && marqueSeulementCompatible(prefilled, TITRE_ARTICLE_LBC, DESCRIPTION_ARTICLE_LBC);
+    const prefilledConvient = prefilled && !prefilledCompat && (etatExact
       ? etatLeboncoinExactParmi(rawList, [prefilled]) != null
       : prefilledMatchesTarget(prefilled, rawValue) || (fieldName === "marque" && marquesEgales(prefilled, rawValue)));
     if (prefilledConvient) {

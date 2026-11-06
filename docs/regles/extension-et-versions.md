@@ -261,3 +261,10 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   planté (update-job-status le remet en pending +30 min, sans compteur : sans cette garde, le même build replanterait
   toutes les 30 min, sans fin) ; même famille : les dépôts eBay d'un poste dont le build a prouvé « retours non posés ».
 - Garde-fou : `npm run selftest:aucune-retenue-par-version` (toute comparaison nouvelle du build du poll doit être nommée).
+
+## 06/11 soir — 0.6.176 : la marque de compatibilité n'est plus jamais gardée (Louis, « SEB », décision de Nico)
+- La 0.6.175 + Leboncoin : un pré-rempli de marque que l'article ne cite que « pour… » (compatibilité) n'est plus jamais
+  gardé ; « Sans marque » est posé par son identifiant (`docs/regles/plateformes.md` § 06/11 soir). Copie identique de
+  `_shared/marque-compatible.js` dans `content-scripts/leboncoin.js` (selftest `marque-compatible`).
+- La série des remises de Louis (rangs « SEB ») attend ce build (`exige_version` de la série, propre à la réparation —
+  aucune retenue générale par version).

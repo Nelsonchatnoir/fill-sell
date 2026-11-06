@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-06-soir (0.6.176 : Leboncoin, une marque que l'article ne cite que comme celle d'un appareil auquel il s'adapte (« pour yaourtière … de chez SEB ») n'est plus jamais gardée pré-remplie : « Sans marque » est posé — précédent : " +
   "2026-11-05-soir (0.6.175 : session Leboncoin partagée par plusieurs comptes FillSell (délégation) — un seul relevé « Mes annonces » et une seule lecture des ventes pour tous ses comptes, relevés quotidiens alignés, lectures de routine des pages d'annonce sur un seul budget (60 par heure), aucune lecture de routine la nuit 23:00–07:00 heure de Paris) — précédent : 0.6.170 à 0.6.174 (voir docs/regles/extension-et-versions.md) — précédent : " +
   "2026-11-02-nuit (0.6.169 : un rechargement ou une mise à jour de l'extension ne crée plus de fenêtre de travail en laissant l'ancienne — fenêtre du registre gardée avec ses onglets de plateforme sans fragment, ids des onglets de travail durables, vieille fenêtre perdue reconnue sur preuve et fermée ; une fenêtre n'est fermée que sûrement à nous) — précédent : " +
   "2026-11-02-soir (0.6.168 :Leboncoin, dépôt interrompu à l'arrivée = brouillon jeté par le chemin officiel, redépôt aussitôt ; état d'une tâche : une republication retenue derrière l'annonce d'une autre plateforme le dit, jamais « nouvel essai automatique ») — précédent : " +

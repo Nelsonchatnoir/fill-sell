@@ -65,6 +65,7 @@ import { CLES_ARTICLE_ECRITES, CLES_ARTICLE_LUES, CLES_OFFRE_ECRITES, CLES_OFFRE
 import { completerAspectsIA, estAspectDeTaille, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { appelTrading } from "../_shared/ebay-trading-releve.ts";
+import { jobSansMarqueDeCompatibilite } from "../_shared/marque-compatible.js";
 import { motifAnnonceDisparueEbay, raisonFinDepuisXml, relanceDepuisXml } from "../_shared/ebay-disparue-motif.js";
 import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, sourcesACloreApresRetraitTrading, clotureSourceRetiree,
   refusGetItemDefinitif, annonceSupprimeeParEbay } from "../_shared/ebay-retrait-trading.js";
@@ -4005,7 +4006,11 @@ Deno.serve(async (req) => {
     // Claim atomique : seul celui qui fait passer pending → processing traite.
     // processing_since posé À LA PRISE (même clé que handler-watch) : c'est
     // lui que lit le chien de garde. Effacé par marquer() à la conclusion.
-    const pfPrise = { ...(brut.platform_fields ?? {}), processing_since: new Date().toISOString(),
+    // (06/11 soir, décision de Nico — Louis, « SEB ») Une marque que l'article ne cite que comme celle d'un appareil auquel
+    // il s'adapte (« pour », « compatible »…) part en « Sans marque » (marque et caractéristique « Marque »), notée à la
+    // prise (platform_fields.marque_compatible_retiree) : _shared/marque-compatible.js, même règle que get-pending-jobs.
+    const pfMarque = (jobSansMarqueDeCompatibilite(brut as unknown as Record<string, unknown>) as { platform_fields?: Record<string, unknown> }).platform_fields ?? brut.platform_fields;
+    const pfPrise = { ...(pfMarque ?? {}), processing_since: new Date().toISOString(),
       ...(programmation?.aMarquer.has(String(brut.id)) ? { programmee_servie_le: new Date().toISOString() } : {}) };
     // .eq("voie", "api") (27/09) : la prise elle-même exige la voie — un job
     // ne peut pas être pris par le worker s'il appartient à l'extension.

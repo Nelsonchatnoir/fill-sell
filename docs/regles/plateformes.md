@@ -839,3 +839,22 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   particulier : GetUser (voie API, `seller_state.type_vendeur`) sinon une annonce eBay en ligne du compte par l'API
   Browse (`seller.sellerAccountType`, `_shared/ebay-type-vendeur.ts`) ; illisible → jamais. ⚠ L'extension ne pose
   toujours pas les retours sur le formulaire : le choix est rangé pour le compte (comme avant).
+
+## ⛔ 06/11 soir (décision de Nico) — Un article « pour » une marque ne prend JAMAIS cette marque (Louis, « SEB »)
+- Cause (essai réel de Louis, 3303702852 acceptée en retirant SEUL la marque) : ses rangements imprimés en 3D sont
+  COMPATIBLES avec la yaourtière SEB Multidélices ; Leboncoin pré-remplit « SEB » (lu dans le texte) et la 0.6.175 le
+  gardait (« notre valeur Sans marque est un repli générique », marque « nommée par l'article ») ; une fiche importée
+  portait même « SEB ». Leboncoin refuse désormais une marque déclarée sur un produit qui n'est pas d'elle.
+- Règle (`_shared/marque-compatible.js`, toutes plateformes, publication comme republication) : une marque que le titre
+  et la description ne citent QUE derrière « pour », « compatible (avec) », « adapté à », « s'adapte sur », « convient
+  à », « conçu / prévu / fait pour », « de / pour / à / sur votre… » (6 mots au plus, même proposition) part en « Sans
+  marque ». Citée au moins une fois comme celle de l'objet (« Yaourtière SEB ») : gardée. « pour » + public (femme,
+  enfant, chiens…) ou démonstratif (« pour ce sac ») : pas une compatibilité. Jeu vidéo (titre : jeu, game, PAL…) sous
+  une marque de console : gardée. Marque non citée : rien n'est déduit.
+- Branchements : get-pending-jobs (chaque tâche servie, trace `platform_fields.marque_compatible_retiree`, écrite une
+  fois), ebay-api-worker (à la prise), extension Leboncoin 0.6.176 (copie identique de la règle : un pré-rempli de
+  compatibilité n'est jamais « nommé par l'article » ni « convenable » → « Sans marque » posé par identifiant).
+  Texte, photos, fiche : jamais touchés. Selftest `marque-compatible`.
+- Mesure du 06/11 21:00 : 94 annonces en ligne ou en file, 7 comptes (Louis 84), aucune marque écrite par la personne
+  elle-même (relevés Leboncoin, Beebs, Vinted). Refus de modération Leboncoin notés depuis le 25/10 : 8, dont 5 avec
+  cette cause (tous chez Louis).

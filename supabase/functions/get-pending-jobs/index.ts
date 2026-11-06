@@ -260,6 +260,7 @@ import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
 import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
 import { jobSansInvisibles } from "../_shared/caracteres-invisibles.js";
+import { jobSansMarqueDeCompatibilite, CLE_MARQUE_RETIREE } from "../_shared/marque-compatible.js";
 // (02/11, facture Supabase) coin_config relu seulement quand sa version (signal_poll) a changé.
 import { configUne, configPlusieurs, configPrefixe } from "../_shared/coin-config-cache.js";
 import { refusAuthentification } from "../_shared/auth-indisponible.js";
@@ -4563,7 +4564,7 @@ serve(async (req) => {
         // Les relevés de ces plateformes pour ce compte : le dernier fini, et s'il y en a un en file.
         const { data: runsB, error: eR } = await userClient.from("vinted_sync_runs")
           .select("id, platform, status, started_at").eq("user_id", user.id).in("platform", plateformes)
-          .order("queued_at", { ascending: false }).limit(40);
+          .order("queued_at", { ascending: false, nullsFirst: false }).limit(40); // (06/11 21:10) jamais les vieux relevés sans queued_at en tête
         if (eR) throw new Error(eR.message);
         const runs = (runsB ?? []) as Array<Record<string, unknown>>;
         const runParId = new Map(runs.map((r) => [String(r.id), r]));
@@ -4596,6 +4597,7 @@ serve(async (req) => {
               vuesParReleve, maintenant: Date.now(),
               dernierReleveMs: fini ? Date.parse(String(fini.started_at)) : null,
               releveEnFile: runsPf.some((r) => r.status === "queued" || r.status === "running"),
+              version,
             }) as { servir: boolean; motif: string; demanderReleve?: boolean };
             if (d.servir && !unePartie) { unePartie = true; continue; }
             tenues.add(String(j.id));
@@ -14663,6 +14665,36 @@ serve(async (req) => {
     // (05/11, point 6 — Smail Lachkar) Les caractères INVISIBLES (largeur nulle, marques de sens, contrôles) ne partent
     // jamais : titre, description et textes de recréation nettoyés au service, toutes plateformes, toute extension
     // (la fiche ne change pas). Vinted refusait « caractères spéciaux (​) » pour un U+200B copié d'une annonce importée.
+    // (06/11 soir, décision de Nico — Louis, « SEB ») UN ARTICLE « POUR » UNE MARQUE NE PREND JAMAIS CETTE MARQUE : toutes
+    // plateformes, publication comme republication, la marque que l'article ne cite que comme celle d'un appareil auquel il
+    // s'adapte part en « Sans marque » (_shared/marque-compatible.js) ; texte, photos et fiche intacts. Noté UNE fois sur la
+    // tâche (platform_fields.marque_compatible_retiree, par_le_vendeur si la fiche dit que la personne l'a écrite).
+    // Jamais un point de panne : une lecture ou une écriture ratée laisse la copie servie corrigée.
+    {
+      const changes = out.map((j) => [j, jobSansMarqueDeCompatibilite(j)] as const).filter(([a, b]) => a !== b);
+      if (changes.length) {
+        const adminM = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        let manuelles = new Set<string>();
+        try {
+          const ids = [...new Set(changes.map(([j]) => j.inventaire_id).filter((x) => x != null))];
+          if (ids.length) {
+            const { data: fichesM } = await adminM.from("inventaire").select("id, attributs").eq("user_id", user.id).in("id", ids.slice(0, 60));
+            manuelles = new Set(((fichesM ?? []) as Array<Record<string, unknown>>)
+              .filter((f) => ((f.attributs as Record<string, any> | null)?.marque?.source ?? "") === "manuel").map((f) => String(f.id)));
+          }
+        } catch (_e) { /* la trace dira par_le_vendeur: false */ }
+        const remplace = new Map<string, unknown>();
+        for (const [j] of changes) {
+          const nouveau = jobSansMarqueDeCompatibilite(j, { parLeVendeur: manuelles.has(String(j.inventaire_id)) }) as typeof j;
+          remplace.set(String(j.id), nouveau);
+          const pfN = (nouveau.platform_fields ?? {}) as Record<string, unknown>;
+          const { error: eM } = await adminM.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfN) })
+            .eq("id", String(j.id)).eq("status", String(j.status ?? "pending"));
+          console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${String(j.platform)}) : marque « ${String((pfN[CLE_MARQUE_RETIREE] as Record<string, unknown>)?.marque ?? "")} » retirée — marque de compatibilité${eM ? ` (trace non écrite : ${eM.message})` : ""}`);
+        }
+        out = out.map((j) => (remplace.get(String(j.id)) ?? j) as typeof j);
+      }
+    }
     out = out.map((j) => jobSansInvisibles(j) as typeof j);
     // (01/11, Jocabroc) Vinted reçoit les 20 premières photos du job, jamais plus : au-delà, l'extension attendait des
     // photos que Vinted refuse et annulait la publication. Les autres plateformes gardent toutes leurs photos.
