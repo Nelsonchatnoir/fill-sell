@@ -61,7 +61,8 @@ import {
 } from "../_shared/vendeur-depop.js";
 // (25/10, N6, R2, R3) eBay par l'extension : le manquant nommé au refus du brouillon (retours, photos),
 // les retours choisis pour le compte, et le compte enfin ouvert à la vente qui relâche les tâches en attente.
-import { classeRefusBrouillonEbay, retoursChoisisDuCompte } from "../_shared/ebay-brouillon-refus.js";
+import { classeRefusBrouillonEbay, retoursChoisisDuCompte, retoursChoisisDuJob } from "../_shared/ebay-brouillon-refus.js";
+import { typeVendeurEbayDuCompte } from "../_shared/ebay-type-vendeur.ts";
 import { SOURCE_VENDEUR_EBAY, attentesVendeurEbay, champsRepriseVendeurEbay } from "../_shared/vendeur-ebay.js";
 import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION, constats404Beebs, constats404DuRetraitBeebs, attente404Beebs, messageRetraitBeebs404, messageRetraitBeebsApresEnvoi404 } from "../_shared/beebs-preuve-retrait.js";
 // (25/10, règle de Nico) Un retrait sur une annonce déjà absente est un retrait fait : étiquette lue sur les champs.
@@ -4351,6 +4352,19 @@ serve(async (req) => {
           }
           if (ebayRefusNommeAPoser) retoursEbayChoix = retoursChoisisDuCompte((prof as { platform_settings?: unknown } | null)?.platform_settings ?? null);
         } catch (_e) { /* la sonde est un renfort, jamais un prérequis */ }
+        // (06/11, Nico, point 5) La question des retours ne propose « Pas de retour » qu'au compte qu'eBay dit
+        // particulier — lu chez eBay (GetUser de la voie API, sinon une annonce eBay en ligne du compte par l'API
+        // Browse : _shared/ebay-type-vendeur.ts) ; illisible → jamais. Lu seulement quand la question va partir.
+        let typeVendeurEbay: string | null = null;
+        if (ebayRefusNommeAPoser && !retoursEbayChoix && !retoursChoisisDuJob((pfIn ?? {}) as never)
+            && classeRefusBrouillonEbay({ brut: typeof body.error === "string" ? body.error : "", pf: (pfIn ?? {}) as Record<string, unknown> }) === "retours") {
+          const serviceKeyT = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+          if (serviceKeyT) {
+            const lu = await typeVendeurEbayDuCompte(createClient(Deno.env.get("SUPABASE_URL")!, serviceKeyT), user.id);
+            typeVendeurEbay = lu.type;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — question des retours eBay : vendeur ${lu.type ?? "illisible"} (${lu.source})`);
+          }
+        }
         // (26/10 nuit, point 5) L'empreinte du texte Leboncoin SERVI (titre et description nettoyés, comme
         // get-pending-jobs) : celui que Leboncoin vient de refuser — jamais renvoyé tel quel.
         let empreinteLbcServie: string | null = null;
@@ -4397,6 +4411,8 @@ serve(async (req) => {
             || ((jPdr?.platform_fields ?? {}) as Record<string, unknown>)["titre_casse_corrigee"]),
           // (25/10, N6) Le choix de retours eBay du compte (null : la question part).
           retoursEbayChoix,
+          // (06/11, point 5) Le type de vendeur lu chez eBay : « Pas de retour » seulement pour un particulier.
+          typeVendeurEbay,
           // (26/10 nuit, point 5) Le texte servi vient d'être refusé : son empreinte, jamais « nettoyage changé ».
           ...(empreinteLbcServie ? { empreinteTexteServi: empreinteLbcServie, nettoyageModifie: false } : {}),
         });

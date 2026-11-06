@@ -143,6 +143,7 @@
     "selftest:remise-en-vente-attente": "node scripts/remise-en-vente-attente-selftest.mjs",
     "selftest:depot-lbc-jamais-en-ligne": "node scripts/depot-lbc-jamais-en-ligne-selftest.mjs",
     "selftest:vinted-accessoires-de-mode": "node scripts/vinted-accessoires-de-mode-selftest.mjs",
+    "selftest:vinted-arbre-compte": "node scripts/vinted-arbre-compte-selftest.mjs",
     "selftest:ebay-modes-envoi-metadata": "deno run --allow-read --allow-env scripts/ebay-modes-envoi-metadata-selftest.ts",
     "selftest:vinted-pays": "deno run scripts/vinted-pays-selftest.ts",
     "selftest:vinted-ids-publication": "deno run --allow-read scripts/vinted-ids-publication-selftest.ts",

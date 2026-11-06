@@ -95,6 +95,7 @@ import { urlsAnnonce } from "../_shared/depot-sans-numero.js";
 import { BEEBS_ATTENTE_MAX_MS, POSE_PAR_SANS_NUMERO, jugerDepotBeebsSansNumero, patchDepotBeebsJamaisEnLigne, patchApresRemboursement } from "../_shared/beebs-depot-sans-numero.js";
 import { jugerDepotLbcJamaisEnLigne, patchDepotLbcJamaisEnLigne, estRemiseEnVente, POSE_PAR_JAMAIS_EN_LIGNE_LBC } from "../_shared/depot-lbc-jamais-en-ligne.js";
 import { attentePoseeParLeServeur } from "../_shared/attente-session.js";
+import { cheminVintedPourArbre } from "../_shared/vinted-arbre-compte.js";
 import {
   SOURCE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE, attendVendeurEbay, attentesVendeurEbay, dernierMurVendeurEbay,
   compteEbayVendDepuis, champsRepriseVendeurEbay, eclaireurVendeurEbayEnAttente, champsEclaireurEnAttenteVendeurEbay,
@@ -5271,6 +5272,43 @@ serve(async (req) => {
   } catch (e) {
     console.error("[handler-watch] configuration vendeur Depop:", (e as Error)?.message ?? e);
   }
+
+  // ── VINTED : UN RAYON REFUSÉ PAR LA BASCULE DE L'ARBRE REPART DANS L'ARBRE DU COMPTE (06/11, décision de Nico, point 4) ──
+  // Vinted bascule son arbre compte par compte (_shared/vinted-arbre-compte.js). Une publication arrêtée sur « Vinted ne
+  // propose pas « Accessoires » » (le compte est sur le NOUVEL arbre) ou « … « Accessoires de mode » » (ANCIEN arbre) dit
+  // elle-même l'arbre de son compte : si son chemin a un équivalent dans cet arbre (même identifiant, même libellé ;
+  // genre de la fiche pour l'ancien), elle repart seule avec lui — une seule fois (trace categoryPath_selon_arbre).
+  // Sans équivalent (« Autres accessoires »…) : la question reste. 30 j, 100 au plus, compare-and-swap sur needs_user.
+  let vintedArbreRepris = 0;
+  try {
+    const { data: refusV } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, status, error, platform_fields")
+      .eq("platform", "vinted").eq("action", "publish").eq("status", "needs_user")
+      .ilike("error", "Vinted ne propose pas « Accessoires%")
+      .gte("created_at", new Date(now - 30 * 86_400_000).toISOString())
+      .limit(100);
+    for (const j of (refusV ?? []) as Array<Record<string, unknown>>) {
+      const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (pf.categoryPath_selon_arbre) continue;
+      const arbre = /« Accessoires de mode »/.test(String(j.error ?? "")) ? "ancien" : "nouveau";
+      const chemin = cheminVintedPourArbre(pf.categoryPath as never, arbre, (pf.genre ?? pf.univers ?? null) as never) as string[] | null;
+      if (!chemin) continue;
+      const { needsUserField: _f, needsUserFields: _fs, needs_user_source: _s, next_action_after: _n, ...reste } = pf;
+      const pfN: Record<string, unknown> = { ...reste, categoryPath: chemin,
+        categoryPath_selon_arbre: { arbre, indice: "refus du formulaire du compte", avant: pf.categoryPath, le: new Date(now).toISOString(), par: "handler-watch" } };
+      pfN.erreurs_archivees = archiverErreur(pfN.erreurs_archivees as never, j.error as string, "needs_user", "handler-watch (chemin Vinted selon l'arbre du compte)");
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "pending", error: null, platform_fields: pfN })
+        .eq("id", String(j.id)).eq("status", "needs_user").select("id");
+      if ((maj ?? []).length) {
+        vintedArbreRepris++;
+        console.log(`[handler-watch] Vinted ${String(j.id).slice(0, 8)} : rayon refusé par la bascule → repart dans l'arbre ${arbre} du compte (${chemin.join(" > ")})`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] chemin Vinted selon l'arbre du compte:", (e as Error)?.message ?? e);
+  }
+  if (vintedArbreRepris) console.log(`[handler-watch] Vinted, rayons repris dans l'arbre du compte : ${vintedArbreRepris}`);
 
   // ── eBay : LE COMPTE N'EST PAS ENCORE OUVERT À LA VENTE — LA PREUVE, SINON L'ÉCLAIREUR (06/11, Nico, point 5) ──
   // ayadi007 : 10 publications eBay en attente du geste (paiements eBay à terminer), AUCUNE en file — l'éclaireur de

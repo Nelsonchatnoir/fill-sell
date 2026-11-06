@@ -78,6 +78,7 @@ import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-se
 import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee, attenteSessionServeur } from "../_shared/attente-session.js";
+import { arbreVintedDuCompte, cheminVintedPourArbre, cheminVintedTouche } from "../_shared/vinted-arbre-compte.js";
 import { remiseAAttendre, annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, PLATEFORMES_REMISE_APRES_DISPARITION } from "../_shared/remise-en-vente-attente.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import {
@@ -11949,6 +11950,44 @@ serve(async (req) => {
       if (titresTemperes) console.log(`[get-pending-jobs] user=${user.id} titres Vinted tempérés (majuscules, symboles) : ${titresTemperes}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] tempérage des titres Vinted : ${String((e as Error)?.message ?? e)} — titres servis tels quels`);
+    }
+
+    // ── (06/11, décision de Nico, point 4) VINTED : LE CHEMIN DE CATÉGORIE SELON L'ARBRE RÉEL DU COMPTE ──
+    // _shared/vinted-arbre-compte.js. Vinted bascule son arbre compte par compte (« Accessoires » → racine « Accessoires
+    // de mode », sacs et chapeaux remontés). Une publication Vinted servie dont le chemin est dans la zone qui a changé
+    // part dans l'arbre du COMPTE, lu dans ce que Vinted lui a montré : le catalog_id du formulaire d'édition de ses
+    // republications (republish_snapshot, jamais vinted_ids que l'app peut poser) et ses refus « Vinted ne propose pas
+    // « Accessoires » », 30 jours, une lecture bornée, seulement si un tel job est servi. Arbre inconnu, genre inconnu,
+    // aucun équivalent → rien ne change. Réponse seulement (aucune écriture) ; la trace part avec le job.
+    try {
+      const touchesV = (out as unknown as Array<Record<string, unknown>>).filter((j) => j.platform === "vinted" && j.action === "publish"
+        && cheminVintedTouche(((j.platform_fields ?? {}) as Record<string, unknown>)["categoryPath"] as never));
+      if (touchesV.length) {
+        const { data: indicesV } = await userClient.from("cross_post_jobs")
+          .select("created_at, error, cat_snap:platform_fields->republish_snapshot->>catalog_id")
+          .eq("user_id", user.id).eq("platform", "vinted")
+          .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+          .order("created_at", { ascending: false }).limit(500);
+        const lu = arbreVintedDuCompte(((indicesV ?? []) as Array<Record<string, unknown>>).flatMap((r) => [
+          { catalog_id: r.cat_snap as never, le: r.created_at as never },
+          { erreur: r.error as never, le: r.created_at as never },
+        ])) as { arbre: "nouveau" | "ancien" | null; le?: string; source?: string };
+        let traduits = 0;
+        if (lu.arbre) {
+          for (const j of touchesV) {
+            const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+            const nouveauChemin = cheminVintedPourArbre(pfJ["categoryPath"] as never, lu.arbre, (pfJ["genre"] ?? pfJ["univers"] ?? null) as never);
+            if (!nouveauChemin) continue;
+            j.platform_fields = { ...pfJ, categoryPath: nouveauChemin,
+              categoryPath_selon_arbre: { arbre: lu.arbre, indice: lu.source ?? null, indice_le: lu.le ?? null, avant: pfJ["categoryPath"] } };
+            traduits++;
+            console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} : chemin traduit pour l'arbre ${lu.arbre} du compte (${lu.source}) → ${nouveauChemin.join(" > ")}`);
+          }
+        }
+        if (!traduits) console.log(`[get-pending-jobs] user=${user.id} : ${touchesV.length} publication(s) Vinted dans la zone de la bascule, arbre du compte ${lu.arbre ?? "inconnu"} — chemins servis tels quels`);
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] chemin Vinted selon l'arbre du compte : ${String((e as Error)?.message ?? e)} — chemins servis tels quels`);
     }
 
     // ── (25/10, N3) UN TITRE VINTED SERVI N'A JAMAIS DE SAUT DE LIGNE (Vincent A., job 9138772c) ──

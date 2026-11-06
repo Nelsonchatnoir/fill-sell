@@ -47,3 +47,14 @@ export function optionsRetoursEbay(choix, typeVendeur) {
   const jours = DUREES_RETOURS_EBAY.includes(j) ? j : DUREE_RETOURS_DEFAUT;
   return { retours: `acceptes_${jours}`, retours_jours: jours };
 }
+
+/**
+ * (06/11, Nico, point 5) Le type de vendeur que dit une annonce eBay lue par l'API Browse (seller.sellerAccountType :
+ * « BUSINESS » = professionnel, « INDIVIDUAL » = particulier) — la voie extension n'a pas de connexion API pour GetUser.
+ */
+export function typeVendeurEbayDeBrowse(item) {
+  const t = String(item?.seller?.sellerAccountType ?? "").toUpperCase();
+  if (t === "BUSINESS") return "professionnel";
+  if (t === "INDIVIDUAL") return "particulier";
+  return null;
+}

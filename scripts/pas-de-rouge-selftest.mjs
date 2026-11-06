@@ -300,16 +300,24 @@ console.log("\n── 11. eBay : le manquant que nomme le refus du brouillon (25
   const q = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 1, reprises: 0, pf: apiRetours });
   ok(q.verdict === "a_toi" && q.statut === "needs_user" && q.motif === "ebay_retours_a_choisir" && q.source === "ebay_retours_a_choisir" && !q.dansMinutes,
     `lemonde-glad : « Conditions des retours nationaux » → la question, sans reprise (${q.motif}/${q.statut})`);
+  // (06/11, Nico, points 4 et 5) 14, 30, 60 jours ; « Pas de retour » seulement pour un compte qu'eBay dit particulier.
+  const libs = (codes) => JSON.stringify(R.OPTIONS_RETOURS_EBAY.filter((o) => codes.includes(o.code)).map((o) => o.libelle));
   ok(q.champ?.input_type === "selection_only" && q.champ?.options_completes === true && q.champ?.target?.root === null && q.champ?.target?.key === "ebay_retours_choix"
-    && JSON.stringify(q.champ?.allowed_values) === JSON.stringify(R.OPTIONS_RETOURS_EBAY.map((o) => o.libelle)),
-    "la liste fermée des deux options, rangée à la racine (ebay_retours_choix)");
+    && JSON.stringify(q.champ?.allowed_values) === libs(["acceptes_14", "acceptes_30", "acceptes_60"]),
+    "la liste fermée, rangée à la racine (ebay_retours_choix) : vendeur inconnu → 14, 30, 60 jours, jamais « Pas de retour »");
+  const qPart = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 1, reprises: 0, pf: apiRetours, typeVendeurEbay: "particulier" });
+  const qPro = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 1, reprises: 0, pf: apiRetours, typeVendeurEbay: "professionnel" });
+  ok(JSON.stringify(qPart.champ?.allowed_values) === libs(["acceptes_14", "acceptes_30", "acceptes_60", "refuses"])
+    && JSON.stringify(qPro.champ?.allowed_values) === libs(["acceptes_14", "acceptes_30", "acceptes_60"]),
+    "particulier lu chez eBay → « Pas de retour » en plus ; professionnel → jamais");
   const ecs = readFileSync(new URL("../src/components/EbayCompteSection.jsx", import.meta.url), "utf8");
   const lib = (cle) => (new RegExp(`${cle}: '((?:[^'\\\\]|\\\\.)*)'`).exec(ecs)?.[1] ?? "").replace(/\\'/g, "'");
-  // (06/11, point 4) retoursAcceptes est une fonction de la durée : la question dit « 30 jours », comme retoursAcceptes(30).
-  const acc = (/retoursAcceptes: \(j\) => `((?:[^`\\]|\\.)*)`/.exec(ecs)?.[1] ?? "").replace("${j}", "30");
-  ok(acc === R.OPTIONS_RETOURS_EBAY[0].libelle && lib("retoursRefuses") === R.OPTIONS_RETOURS_EBAY[1].libelle
-    && R.codeRetours("Pas de retour (vendeurs particuliers seulement)") === "refuses",
-    "les libellés sont ceux de l'écran Compte eBay, mot pour mot (retoursAcceptes(30), retoursRefuses) ; l'ancien reste lu");
+  // retoursAcceptes est une fonction de la durée : la question dit « 14/30/60 jours », comme retoursAcceptes(j).
+  const acc = (j) => (/retoursAcceptes: \(j\) => `((?:[^`\\]|\\.)*)`/.exec(ecs)?.[1] ?? "").replace("${j}", String(j));
+  const libDe = (code) => R.OPTIONS_RETOURS_EBAY.find((o) => o.code === code)?.libelle;
+  ok([14, 30, 60].every((j) => acc(j) === libDe(`acceptes_${j}`)) && lib("retoursRefuses") === libDe("refuses")
+    && R.codeRetours("Pas de retour (vendeurs particuliers seulement)") === "refuses" && R.codeRetours(acc(14)) === "acceptes_14",
+    "les libellés sont ceux de l'écran Compte eBay, mot pour mot (retoursAcceptes(14|30|60), retoursRefuses) ; l'ancien reste lu");
   ok(/ne les choisit jamais à ta place/.test(q.message) && /ci-dessous/.test(q.message) && /toutes tes annonces eBay/.test(q.message) && !VOCAB_RE.test(q.message),
     "le message : FillSell ne choisit jamais, le geste ci-dessous, pour toutes les annonces — sans jargon");
   const qBrut = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 5, reprises: 2, pf: {} });

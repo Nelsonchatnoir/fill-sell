@@ -50,5 +50,21 @@ ok("plus aucune liste figée « 30 jours / pas de retour »", !ui.includes("[['a
 ok("les deux listes viennent de choixRetoursEbay(type lu)", (ui.match(/choixRetoursEbay\(typeVendeurEbay\)/g) ?? []).length === 2 && /const typeVendeurEbay = checklist\?\.type_vendeur \?\? null;/.test(ui));
 ok("l'envoi passe par optionsRetoursEbay (durée comprise)", /options: \{ nom, \.\.\.\(type === 'return' \? optionsRetoursEbay\(source\.retours, typeVendeurEbay\)/.test(ui));
 
+console.log("6. Voie extension (06/11, point 5) : le type lu sur une annonce eBay du compte (API Browse)");
+const { typeVendeurEbayDeBrowse } = await import("../supabase/functions/_shared/ebay-retours.js");
+const BR = await import("../supabase/functions/_shared/ebay-brouillon-refus.js");
+ok("BUSINESS → professionnel, INDIVIDUAL → particulier, rien → inconnu",
+  typeVendeurEbayDeBrowse({ seller: { sellerAccountType: "BUSINESS" } }) === "professionnel"
+  && typeVendeurEbayDeBrowse({ seller: { sellerAccountType: "INDIVIDUAL" } }) === "particulier" && typeVendeurEbayDeBrowse({}) === null);
+ok("la question de la voie extension a les mêmes choix que l'écran (codes), « Pas de retour » seulement au particulier",
+  eq(BR.optionsRetoursDuCompte("particulier").map((o) => o.code), choixRetoursEbay("particulier").map((c) => c.valeur))
+  && eq(BR.optionsRetoursDuCompte(null).map((o) => o.code), choixRetoursEbay(null).map((c) => c.valeur))
+  && eq(BR.optionsRetoursDuCompte("professionnel").map((o) => o.code), choixRetoursEbay("professionnel").map((c) => c.valeur)));
+const uj = readFileSync(join(ROOT, "supabase/functions/update-job-status/index.ts"), "utf8");
+const tvs = readFileSync(join(ROOT, "supabase/functions/_shared/ebay-type-vendeur.ts"), "utf8");
+ok("update-job-status lit le type quand la question des retours part, et le passe à la question",
+  /typeVendeurEbayDuCompte\(createClient\(/.test(uj) && /retoursEbayChoix,\s*\n[^\n]*\n\s*typeVendeurEbay,/.test(uj));
+ok("le type vient de GetUser (voie API) sinon d'une annonce en ligne par Browse", /seller_state\?\.type_vendeur/.test(tvs) && /get_item_by_legacy_id/.test(tvs));
+
 console.log(ko ? `\n${ko} KO` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

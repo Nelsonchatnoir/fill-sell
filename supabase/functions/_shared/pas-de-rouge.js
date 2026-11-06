@@ -62,7 +62,7 @@ import { indiceEtatRetrait } from "./retrait-deja-absent.js";
 import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP } from "./vendeur-depop.js";
 // (25/10, N6 et R2) eBay voie clic : le manquant qu'eBay nomme au refus du brouillon (retours, photos).
 import {
-  classeRefusBrouillonEbay, SOURCE_RETOURS_EBAY, CHAMP_RETOURS_EBAY, MOTIF_PHOTOS_EBAY, REPRISES_PHOTOS_MAX,
+  classeRefusBrouillonEbay, SOURCE_RETOURS_EBAY, champRetoursEbay, MOTIF_PHOTOS_EBAY, REPRISES_PHOTOS_MAX,
   retoursChoisisDuJob, messageRetoursAChoisir, messageRetoursNonPoses, messagePhotosReprise, messagePhotosArret, defautFillsellEbay,
 } from "./ebay-brouillon-refus.js";
 
@@ -985,7 +985,8 @@ function classerEchecSansRegleRetrait(arg) {
       if (!choix) {
         return {
           verdict: "a_toi", statut: "needs_user", motif: SOURCE_RETOURS_EBAY, source: SOURCE_RETOURS_EBAY,
-          champ: { ...CHAMP_RETOURS_EBAY, allowed_values: [...CHAMP_RETOURS_EBAY.allowed_values], target: { ...CHAMP_RETOURS_EBAY.target } },
+          // (06/11, point 5) « Pas de retour » seulement pour un compte qu'eBay dit particulier (arg.typeVendeurEbay).
+          champ: champRetoursEbay(arg.typeVendeurEbay ?? null),
           message: messageRetoursAChoisir(action),
         };
       }

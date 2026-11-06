@@ -46,23 +46,36 @@ export const MOTIF_PHOTOS_EBAY = "ebay_photos_non_recues";
 export const ANCRE_PHOTOS_NON_RECUES = "Photos non reçues par eBay";
 export const REPRISES_PHOTOS_MAX = 2;
 
-// Les deux options de l'écran Compte eBay, mot pour mot (EbayCompteSection.jsx : retoursAcceptes(30), retoursRefuses).
-// (06/11, point 4) « Pas de retour » y dit maintenant « compte eBay de particulier » ; l'ancien libellé reste lu.
+// Les options de l'écran Compte eBay, mot pour mot (EbayCompteSection.jsx : retoursAcceptes(14 | 30 | 60), retoursRefuses ;
+// durées de _shared/ebay-retours.js, le selftest les compare). (06/11, Nico, points 4 et 5) « Pas de retour » n'est
+// proposé QU'à un compte qu'eBay dit particulier (lu chez eBay : _shared/ebay-type-vendeur.ts) ; illisible → jamais.
+// L'ancien libellé (« vendeurs particuliers seulement ») reste lu en réponse.
+const ACCEPTES = (j) => `Acceptés sous ${j} jours, frais de retour à l'acheteur`; // estimation-ok: politique eBay (réglage), pas une attente
 export const OPTIONS_RETOURS_EBAY = Object.freeze([
-  Object.freeze({ code: "acceptes_30", libelle: "Acceptés sous 30 jours, frais de retour à l'acheteur" }), // estimation-ok: politique eBay (réglage), pas une attente
+  Object.freeze({ code: "acceptes_14", libelle: ACCEPTES(14) }),
+  Object.freeze({ code: "acceptes_30", libelle: ACCEPTES(30) }),
+  Object.freeze({ code: "acceptes_60", libelle: ACCEPTES(60) }),
   Object.freeze({ code: "refuses", libelle: "Pas de retour (compte eBay de particulier)" }),
 ]);
 
-/** La question (needsUserField) : liste fermée des deux options, réponse rangée à la racine. */
-export const CHAMP_RETOURS_EBAY = Object.freeze({
-  platform: "ebay",
-  field_key: "ebay_retours_choix",
-  field_label: "Retours eBay (pour toutes tes annonces)",
-  allowed_values: OPTIONS_RETOURS_EBAY.map((o) => o.libelle),
-  input_type: "selection_only",
-  options_completes: true,
-  target: { root: null, key: "ebay_retours_choix" },
-});
+/** Les options proposées à CE compte : « Pas de retour » seulement si eBay le dit particulier. */
+export const optionsRetoursDuCompte = (typeVendeur = null) =>
+  OPTIONS_RETOURS_EBAY.filter((o) => o.code !== "refuses" || typeVendeur === "particulier");
+
+/** La question (needsUserField) du compte : liste fermée, réponse rangée à la racine. */
+export function champRetoursEbay(typeVendeur = null) {
+  return {
+    platform: "ebay",
+    field_key: "ebay_retours_choix",
+    field_label: "Retours eBay (pour toutes tes annonces)",
+    allowed_values: optionsRetoursDuCompte(typeVendeur).map((o) => o.libelle),
+    input_type: "selection_only",
+    options_completes: true,
+    target: { root: null, key: "ebay_retours_choix" },
+  };
+}
+/** Type de vendeur inconnu : sans « Pas de retour ». */
+export const CHAMP_RETOURS_EBAY = Object.freeze(champRetoursEbay(null));
 
 const pfDe = (pf) => (pf && typeof pf === "object" ? pf : {});
 
