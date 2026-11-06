@@ -89,5 +89,23 @@ console.log('C. Branchements');
   ok(/TITRE_ARTICLE_LBC = String\(job\.title \?\? ""\);/.test(lbc) && /DESCRIPTION_ARTICLE_LBC = String\(job\.description \?\? ""\);/.test(lbc), 'extension : titre et description bruts posés à chaque dépôt');
 }
 
+console.log('D. « À régler » : la marque écrite par la personne, retirée à la publication');
+{
+  const { articlesMarqueRetireeParLeVendeur: aR, ligneMarqueRetiree } = await import(pathToFileURL(path.join(RACINE, 'src/utils/marqueRetireeVendeur.js')).href);
+  const trace = (parLeVendeur) => ({ marque: 'SEB', par_le_vendeur: parLeVendeur });
+  const jobs = { 1: [{ action: 'publish', platform: 'leboncoin', platform_fields: { marque_compatible_retiree: trace(true) } }],
+    2: [{ action: 'publish', platform: 'vinted', platform_fields: { marque_compatible_retiree: trace(false) } }],
+    3: [{ action: 'publish', platform: 'leboncoin', platform_fields: { marque_compatible_retiree: trace(true) } }],
+    4: [{ action: 'delete', platform: 'leboncoin', platform_fields: { marque_compatible_retiree: trace(true) } }] };
+  const items = [{ id: 1, title: 'Rangement pour yaourtière', marque: 'seb' }, { id: 2, title: 'Autre', marque: 'SEB' },
+    { id: 3, title: 'Corrigé', marque: '' }, { id: 4, title: 'Retrait', marque: 'SEB' }, { id: 5, title: 'Vendu', marque: 'SEB', statut: 'vendu' }];
+  const l = aR({ items, jobsByInventaire: jobs });
+  ok(l.length === 1 && l[0].inventaireId === '1' && l[0].plateformes.join() === 'leboncoin', 'une ligne : marque écrite par la personne, encore sur la fiche ; jamais pour une marque reprise d\'un relevé, une fiche corrigée, un retrait', l);
+  ok(/Marque « SEB » retirée à la publication \(Leboncoin\)/.test(ligneMarqueRetiree(l[0], 'fr').detail) && /Ton texte n'est pas touché/.test(ligneMarqueRetiree(l[0], 'fr').detail), 'le texte dit quelle marque, où, et que son texte n\'est pas touché');
+  const stock = lire('src/tabs/StockTab.jsx');
+  ok(/articlesMarqueRetireeParLeVendeur\(\{ items, jobsByInventaire \}\)/.test(stock) && /cle: `marque_retiree:\$\{a\.inventaireId\}`/.test(stock) && /\+ marquesRetirees\.length \+ nbAlertesCompte \+ nbVentesAnnulees;/.test(stock),
+    'Stock : la ligne est dans « À régler », comptée, et ouvre la fiche de l\'article');
+}
+
 console.log(ko ? `\n${ko} KO — une marque de compatibilité peut repartir : ne pas livrer.` : '\nTout est vert.');
 process.exit(ko ? 1 : 0);

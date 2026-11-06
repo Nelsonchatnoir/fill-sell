@@ -51,3 +51,27 @@ Les traces `platform_fields.warnings` des dépôts Leboncoin de la série :
   `queued_at` passaient en tête du tri. v345 : au plus un relevé toutes les 45 min tant qu'un dépôt attend.
 - Nouvel ordre (21:15) : rangs 2-7 (rangements et adaptateurs SEB) attendent l'extension 0.6.176 chez Louis ; rangs 8-9
   (Zombicide) en dernier. Au moins 60 min entre deux dépôts, chacun vu en ligne avant le suivant, arrêt au premier refus.
+
+## 5. Suite du 06/11 ~22:10 (retour de Nico)
+- `ebay-api-worker` **v115** déployé à 22:07 sur ordre explicite (`--no-verify-jwt`, avant v114) ; il refuse un appel sans
+  secret (401, vérifié).
+- Ligne « À régler » (marque écrite par la personne, retirée à la publication) : `src/utils/marqueRetireeVendeur.js` +
+  `StockTab` (une ligne par article, ouvre sa fiche, disparaît quand la fiche ne porte plus la marque) — pour l'OTA
+  ≥ 2.9.164, non publiée (le web la reçoit au push, comme tout `src/`). 0 cas aujourd'hui.
+
+## 6. Les 2 inserts Zombicide refusés le 06/11 au matin (lecture seule)
+- Identiques à l'octet d'un dépôt à l'autre, refusés comme acceptés : titre, description (empreintes md5), prix (10 € /
+  8 €), mêmes 4 fichiers photo, rayon « Loisirs › Jeux & Jouets », état, matière, âge, type de jouet, adresse (Oignies).
+- Acceptés avant : 19/09, 06/10 (premières publications) et 02/10, 18-19/10, 28/10, 30/10 (REPUBLICATIONS : l'ancienne
+  annonce retirée AVANT le dépôt). Refusés le 06/11 : des REMISES EN VENTE déposées pendant que l'annonce vendue,
+  IDENTIQUE (mêmes titre, description, prix, photos — vérifié), était encore ACTIVE sur le compte : 3298021777 et
+  3297234692, « active », transaction « pending » au relevé de 19:09, toujours au relevé de 22:01.
+- Seules autres différences : la marque posée explicitement « Sans marque » (identifiant `no_brand`, absente des traces
+  d'avant) ; la couleur « Jaune » ajoutée sur le jaune ; 4 photos au lieu de 3 sur le dépôt jaune du 30/10.
+- ⚠ Les remises d'octobre citées comme passées « alors que l'annonce vendue était encore visible » sont en fait parties
+  APRÈS sa disparition du relevé : 06/10 vendue disparue 08:48 → remise 17:05 ; 08/10 08:59 → 09/10 22:50 ; 10/10 08:33 →
+  11:35 (mêmes titre, description et photos que la vendue). Aucune remise acceptée n'a été déposée pendant que
+  l'annonce vendue identique était active.
+- Conséquence pour la série : ses remises « SEB » ont, elles aussi, leur annonce vendue identique encore active. La série
+  ne va au rang 2 que si 3303702852 (rang 1, modifiée par Louis) est VUE en ligne : pas vue au relevé de 22:01 ; si elle
+  ne paraît pas, rien d'autre ne part. La règle A retirée ce soir retenait exactement ce cas, pour tous les comptes.

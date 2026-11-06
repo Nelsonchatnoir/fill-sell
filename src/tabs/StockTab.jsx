@@ -43,6 +43,7 @@ import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFi
 // (06/11, Nico : version minimum abandonnée) phraseMiseAJourExtension n'est plus importée : aucune pastille « mise à jour ».
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
 import { retraitsBloquesParConnexion, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits, articlesVendusEncoreEnLigne, detailArticleVenduEnLigne, retraitsHorsArticlesVendus, retraitsEnAttenteParArticle } from '../utils/retraitsBloques';
+import { articlesMarqueRetireeParLeVendeur, ligneMarqueRetiree } from '../utils/marqueRetireeVendeur';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import { useOplaAcces, phraseAccesOpla, parcageDepasse } from '../utils/oplaAcces';
@@ -7563,6 +7564,9 @@ const StockTab = memo(function StockTab({
     [retraitsBloques, pendingRemovals, fichesToutes],
   );
   const retraitsAutres = useMemo(() => retraitsHorsArticlesVendus(retraitsBloques, vendusEnLigne), [retraitsBloques, vendusEnLigne]);
+  // (06/11 soir, Nico — Louis « SEB ») La marque que la personne a écrite sur un accessoire « pour » cette marque a été
+  // retirée à la publication (serveur) : une ligne par article dans « À régler », jusqu'à ce que la fiche ne la porte plus.
+  const marquesRetirees = useMemo(() => articlesMarqueRetireeParLeVendeur({ items, jobsByInventaire }), [items, jobsByInventaire]);
   // Annonces à retirer d'un article dont la fiche n'existe plus : groupées
   // comme l'ancien bandeau (article, sinon titre), dans l'écran des retraits.
   const aRetirerSansFiche = useMemo(() => {
@@ -9488,7 +9492,7 @@ const StockTab = memo(function StockTab({
   const nbAlertesCompte = alertesDuCompte.length ? 1 : 0; // (18/10) session perdue / compte restreint : une ligne
   // (24/10 nuit, Nico) « Vente annulée — Remettre en vente ? » : dans « À régler », comptée tant qu'un appui est attendu.
   const nbVentesAnnulees = (Array.isArray(ventesAnnulees) ? ventesAnnulees : []).filter((v) => v?.etat === 'proposee').length;
-  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + nbForfaitLbc + nbVendeurDepop + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne + nbAlertesCompte + nbVentesAnnulees;
+  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + nbForfaitLbc + nbVendeurDepop + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne + marquesRetirees.length + nbAlertesCompte + nbVentesAnnulees;
   // (18/10) Une ligne PAR boutique qui n'est plus surveillée, comptée en plus
   // (le compte ci-dessus et l'ordre des lignes d'avant ne bougent pas).
   const nbNonSurveillees = nonSurveillees.length;
@@ -9530,6 +9534,13 @@ const StockTab = memo(function StockTab({
     { cle: 'retraits', n: nbRetraitsAutres, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
       ...((retraitsAutres.parPlateforme ?? []).length && retraitsAutres.parPlateforme.every((g) => g.mur === 'verification_beebs') ? { ton: 'regler' } : {}),
       onOuvrir: () => setGesteOuvert('retraits') },
+    // (06/11 soir) Une marque écrite par la personne, retirée à la publication (article « pour » cette marque) : une ligne
+    // par article, le tap ouvre SA fiche (« Modifier ») ; son texte n'est jamais touché.
+    ...marquesRetirees.map((a) => ({
+      cle: `marque_retiree:${a.inventaireId}`, groupe: 'marque_retiree', article: true, n: 1, ton: 'regler',
+      ...ligneMarqueRetiree(a, lang),
+      onOuvrir: () => { setGesteOuvert(null); setMenuArticleId(a.inventaireId); },
+    })),
     // (24/10 nuit, Nico) Une vente annulée : l'article est revenu au stock, un appui le remet en vente partout.
     { cle: 'ventes_annulees', n: nbVentesAnnulees,
       titre: lang === 'fr' ? (nbVentesAnnulees > 1 ? 'Ventes annulées — Remettre en vente ?' : 'Vente annulée — Remettre en vente ?') : (nbVentesAnnulees > 1 ? 'Sales cancelled — list again?' : 'Sale cancelled — list again?'),
