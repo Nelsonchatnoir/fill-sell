@@ -202,3 +202,14 @@ barème. Aucune annonce eBay en ligne à 15:00.
 ## 6. Vérifications
 - Règle B (14:48) : les 4 dépôts « failed » ; rien à rendre (aucune réservation).
 - Louis : aucun relevé depuis 10:19 → ventes 3297299585 / 3280443604 pas encore enregistrées ; 7 remises retenues.
+
+# Décisions de Nico de 15:10
+1. Poussé 10f31e8..fdefb12 ; Vercel PRÊT (fdefb12 servi par fillsell.app) ; chaînes témoins des points 4 a/b/c, 8, 9,
+   du sélecteur Vinted et de l'écran des retours lues dans le bundle servi.
+2. n° 20 : 3285616924 (77,30 €) relu en vente 15:10, retrait armé 15:13 ; 3295344632 gardé.
+3. n° 22 : republication b3cb7da0 close (pas de réservation), 33923195 relu en vente, retrait armé 15:13 ; 33939379
+   gardé. Aucun message à la personne.
+4. Vinted, chemin selon l'arbre du compte : voir `docs/regles/plateformes.md`. Simulation sur les 24 publications Vinted
+   ouvertes : 2 dans la zone — 85016145 (compte basculé, refus « Accessoires ») : reprise attendue au passage de handler-watch v177 ;
+   9ca7860d (arbre inconnu) inchangé.
+5. Retours eBay, voie extension : 14/30/60 ; « Pas de retour » seulement au particulier lu chez eBay.

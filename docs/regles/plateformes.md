@@ -826,3 +826,16 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   basculé, un accessoire publié passe par la question de l'extension (les vrais rayons du compte). Les annonces publiées
   gardent leur rayon (Vinted laisse l'ancien sur la page ; la republication relit le catalog_id réel — 55 republications
   réussies en 48 h sur ces fiches).
+- **(15:10, décision de Nico) Vinted : le chemin selon l'arbre RÉEL du compte** — `_shared/vinted-arbre-compte.js` :
+  table ancien ↔ nouvel arbre (26 déplacés par identifiant, 43 accessoires par libellé, renommages de Vinted compris ;
+  7 sans équivalent jamais traduits). L'arbre du compte = le plus récent de ce que Vinted lui a montré : catalog_id du
+  formulaire d'édition de ses republications (`republish_snapshot`, jamais `vinted_ids`) ou refus « Vinted ne propose
+  pas « Accessoires » » (nouvel arbre) / « « Accessoires de mode » » (ancien). get-pending-jobs traduit au service
+  (publication seule, réponse seule, trace `categoryPath_selon_arbre`) ; handler-watch reprend UNE fois une publication
+  arrêtée sur ce refus si son chemin a un équivalent (genre de la fiche pour l'ancien arbre). Inconnu → rien ne change.
+  Selftest `vinted-arbre-compte`.
+- **(15:10, décision de Nico) Retours eBay, voie extension** : la question « Retours eBay » (`champRetoursEbay`,
+  `_shared/ebay-brouillon-refus.js`) propose 14, 30, 60 jours, et « Pas de retour » seulement si le compte est lu
+  particulier : GetUser (voie API, `seller_state.type_vendeur`) sinon une annonce eBay en ligne du compte par l'API
+  Browse (`seller.sellerAccountType`, `_shared/ebay-type-vendeur.ts`) ; illisible → jamais. ⚠ L'extension ne pose
+  toujours pas les retours sur le formulaire : le choix est rangé pour le compte (comme avant).
