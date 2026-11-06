@@ -91,7 +91,7 @@ import { poidsLbcManquantPour } from "../utils/choixPoidsLeboncoin";
 import { resoudrePublication, signatureResolution, resolutionARetenter, cheminFourreToutLbc, textesFrDeLaPublication } from "../utils/resolutionPublication";
 // Le rayon : le lire pour l'afficher, et REPOSER le choix de la personne
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
-import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi, questionsRayonOuvertes } from "../utils/rayonPublication";
+import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi, questionsRayonOuvertes, copiesAuPublicChoisi, publicDuRayonVinted } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
 // (30/10, lot E) Sur la carte de chaque plateforme : ses photos (choix, ordre, limite) et, pour Leboncoin, la ville.
 import PhotosPlateforme from "../publication/PhotosPlateforme";
@@ -168,9 +168,11 @@ import {
 } from "../publication/moteur/listes";
 // (25/10 soir, décisions de Nico) Les champs requis qui se remplissent seuls quand une source fiable existe — sinon la
 // question, comme avant (jamais une valeur devinée).
-import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto, tailleMontreAuto, tailleUniqueAccessoire } from "../../supabase/functions/_shared/champs-requis-auto.js";
+import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto, tailleMontreAuto, tailleUniqueAccessoire, tailleUniqueSeuleDeLaGrille } from "../../supabase/functions/_shared/champs-requis-auto.js";
+// (06/11, Nico, point 9) Un aspect eBay exigé que le texte du vendeur dit déjà (mesure nommée, option écrite).
+import { aspectDuTexte } from "../../supabase/functions/_shared/aspect-du-texte.js";
 import { tailleBagueDuTexte } from "../../supabase/functions/_shared/taille-bague-du-texte.js";
-import { pointureDuTexte } from "../../supabase/functions/_shared/pointure-du-texte.js";
+import { pointureDuTexte, pointureRedactionSourcee } from "../../supabase/functions/_shared/pointure-du-texte.js";
 import { estChampChaussures } from "../../supabase/functions/_shared/taille-du-texte.js";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
 import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
@@ -4521,7 +4523,7 @@ const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 // sinon « Autre »), l'âge (écrit, PEGI, livre adulte), la taille d'un bijou qui n'est pas une bague (« Ajustable »)
 // (champs-requis-auto.js). Rien de sûr → null : la question reste, comme avant. Pur.
 // Sources tracées (option_du_texte) ; la valeur est posée sur la COPIE, jamais sur la fiche.
-const CHAMP_REQUIS_VERS_COPIE = new Set(["objet_sans_taille", "accessoire_sans_taille", "pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
+const CHAMP_REQUIS_VERS_COPIE = new Set(["objet_sans_taille", "accessoire_sans_taille", "grille_taille_unique_seule", "pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
 function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "" }) {
   if (!Array.isArray(allowedValues) || !allowedValues.length) return null;
   const nom = `${key ?? ""} ${label ?? ""}`;
@@ -4534,6 +4536,10 @@ function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, 
   // (26/10 nuit, point 1 — la G-Shock de Nico) Une MONTRE, sur Vinted comme sur Beebs : la « Taille » est le diamètre
   // du boîtier — écrit par le vendeur, sinon « Taille unique » de la grille (champs-requis-auto.js, tailleMontreAuto).
   if (/^(taille|size)$/i.test(String(label ?? "").trim()) || /^size$/i.test(String(key ?? "").trim())) {
+    // (06/11, Nico, point 4 b) Une grille qui n'offre QUE la taille unique : la seule valeur possible, quelle que soit la
+    // taille écrite (qui reste dans le texte) — champs-requis-auto.js, tailleUniqueSeuleDeLaGrille.
+    const seule = tailleUniqueSeuleDeLaGrille({ allowedValues });
+    if (seule) return seule;
     const m = tailleMontreAuto({ chemin: cheminListe, textes, allowedValues });
     if (m?.valeur) return m;
     if (m?.doute) return null;
@@ -6782,6 +6788,36 @@ export default function ListingPreviewScreen({
       // La marque de la fiche comble une copie vide AVANT le calcul des
       // valeurs communes (03/10) : la rédaction n'a rien su lire, la fiche sait.
       Object.assign(initialEdited, comblerMarqueFiche(initialEdited));
+      // ── (06/11, Nico, point 4 c — reco validée) UNE POINTURE ÉCRITE PAR L'IA SANS SOURCE COMPTE COMME VIDE ──────────
+      // Une chaussure : la pointure qu'une copie porte au sortir de la rédaction n'est gardée que si une source RÉELLE
+      // écrit la même (la fiche de la personne, son titre, sa description, une étiquette lue par Lens) —
+      // _shared/pointure-du-texte.js, pointureRedactionSourcee. Sinon la copie la perd : la valeur commune reste vide
+      // et la question partagée « Pointure » est posée UNE fois (missingSharedFields) ; la pointure de la fiche ou du
+      // texte se pose ensuite seule, comme avant. Trace sur la copie (pointure_ia_ecartee).
+      {
+        const attrsF = initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : {};
+        const vAttr = (c) => { const x = attrsF?.[c]; return x && typeof x === "object" ? x.v : x; };
+        const cheminV = attrsF?.categorie_vinted?.chemin ?? attrsF?.categorie_vinted?.v?.chemin;
+        const chemins = [
+          initialListing?.categorie, initialListing?.titre, ...(Array.isArray(cheminV) ? cheminV : []),
+          ...platforms.flatMap((p) => Object.entries(initialEdited[p]?.platform_fields ?? {})
+            .filter(([k, v]) => /categorypath$/i.test(k) && Array.isArray(v)).flatMap(([, v]) => v)),
+        ].filter(Boolean).map(String);
+        if (estChampChaussures("", chemins)) {
+          const sources = {
+            valeurFiche: String(initialListing?.taille || vAttr("taille") || ""),
+            valeurLue: String(lensPourChamps?.attributs_visibles?.taille ?? lensPourChamps?.attributs_visibles?.pointure ?? ""),
+            textes: [initialListing?.titre ?? "", initialListing?.description ?? ""],
+          };
+          for (const p of platforms) {
+            const pfP = initialEdited[p]?.platform_fields;
+            const v = String(pfP?.taille ?? "").trim();
+            if (!v || pointureRedactionSourcee({ valeur: v, ...sources })) continue;
+            pfP.pointure_ia_ecartee = { valeur: v, motif: "pointure de la rédaction sans source réelle (fiche, texte, étiquette)" };
+            pfP.taille = "";
+          }
+        }
+      }
       const shared = { taille:"", couleur:"", matiere:"", marque:"" };
       for (const key of SHARED_FIELD_KEYS) {
         const values = SHARED_PROPAGATION[key]
@@ -6855,6 +6891,9 @@ export default function ListingPreviewScreen({
   // retiré fait revenir la question). Hors de ce cas, elle reste null : rien
   // ne change.
   const [refusVuPour, setRefusVuPour] = useState(null);
+  // (06/11, point 4 a) Le public du rayon Vinted CHOISI : quand il change, les rayons des autres plateformes sont recalculés
+  // avec le genre qu'il vient de leur donner (une fois par choix, jamais à la frappe).
+  const publicChoisiVinted = publicDuRayonVinted(edited?.vinted?.rayon_choisi?.chemin)?.genre ?? null;
   const relanceApresRefus = refusVuPour && refusVuPour === platformListings
     ? `${objetDuRayonChoisi(edited) ?? ""}|${detectObjectKeywordDetail(textesFrDeLaPublication({ initialListing, edited }).titre, "")?.mot ?? ""}`
     : null;
@@ -6949,7 +6988,7 @@ export default function ListingPreviewScreen({
     // (05/10, point 6) `relanceApresRefus` ne bouge QUE pour un objet non
     //    reconnu, quand un rayon est choisi (cf. plus haut) : null sinon.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platformListings, relanceApresRefus]);
+  }, [platformListings, relanceApresRefus, publicChoisiVinted]);
 
   // ── Champs partagés : setter propagateur + garde générique (Sujet 4) ──────
   // Écrit la source canonique ET la propage aux copies plateformes non
@@ -7141,9 +7180,12 @@ export default function ListingPreviewScreen({
     [resolutionAffichee, edited, selected]);
   // Le choix (ou son retrait) vit sur la COPIE, à côté des champs : il survit
   // au brouillon et à la fiche en base, et la résolution ne le voit jamais.
-  const choisirRayon = (platform, choix) => setEdited(prev => (
-    prev[platform] ? { ...prev, [platform]: { ...prev[platform], rayon_choisi: choix } } : prev
-  ));
+  // (06/11, Nico, point 4 a) Le rayon VINTED choisi par la personne porte son public : il prime sur le genre deviné des
+  // autres copies (utils/rayonPublication.js, copiesAuPublicChoisi) — le geste, jamais une valeur par défaut.
+  const choisirRayon = (platform, choix) => setEdited(prev => {
+    const suivant = prev[platform] ? { ...prev, [platform]: { ...prev[platform], rayon_choisi: choix } } : prev;
+    return platform === "vinted" && suivant !== prev ? copiesAuPublicChoisi(suivant) : suivant;
+  });
 
 
   // ══ LA VALEUR GÉNÉRALE, DE BOUT EN BOUT (2026-09-21) ══════════════════════
@@ -8246,7 +8288,10 @@ export default function ListingPreviewScreen({
             // Marque (17/10, Nico) : jamais rapprochée d'une voisine (estChampMarque) ;
             // hors d'une liste qui fait foi, la personne choisit.
             // (19/10) Avec le texte du vendeur : W → FR, FR écrit, âge en mois.
-            suggested: src.key === "taille" ? tailleDansListeEbay(sendVal, allowedValues, { textes: textesVendeurEbay, champ: name, chemin: pf.ebayCategoryPath ?? null })
+            // (06/11, point 4 b) Une grille eBay qui n'offre QUE la taille unique : elle, posée sur la copie eBay seule
+            // (setEbaySharedField : la taille écrite reste celle des autres plateformes et du texte).
+            suggested: src.key === "taille" ? (tailleUniqueSeuleDeLaGrille({ allowedValues })?.valeur
+              ?? tailleDansListeEbay(sendVal, allowedValues, { textes: textesVendeurEbay, champ: name, chemin: pf.ebayCategoryPath ?? null }))
               : estChampMarque("ebay", name) ? null : nearestAllowedValue(sendVal, allowedValues),
             // `blocking` (2026-07-29, doctrine « liste = suggestion ») : seule
             // une liste QUI FAIT FOI grise le CTA. eBay SELECTION_ONLY = eBay
@@ -8283,6 +8328,9 @@ export default function ListingPreviewScreen({
       // la dit (« FR40 », « W30 », « 24M ») : l'option de la liste, une seule,
       // jamais en cas de doute (moteur/listes.tailleDansListeEbay).
       if (src?.key === "taille" && allowedValues?.length) {
+        // (06/11, point 4 b) La grille n'offre que la taille unique : la seule valeur possible.
+        const seule = tailleUniqueSeuleDeLaGrille({ allowedValues });
+        if (seule) return { ...manquant, deduit: { valeur: seule.valeur, source: seule.source } };
         const t = tailleDansListeEbay("", allowedValues, { textes: textesVendeurEbay, champ: name, chemin: pf.ebayCategoryPath ?? null });
         if (t) return { ...manquant, deduit: { valeur: t, source: "taille_du_texte" } };
         // (25/10 soir, décision de Nico) La POINTURE d'une chaussure : la fiche, puis un nombre collé à un mot explicite,
@@ -8352,6 +8400,14 @@ export default function ListingPreviewScreen({
         // (18/10, lot 2) La correspondance APPRISE sur les annonces acceptées (champ allumé par la base).
         const app = propositionApprise(manquant, apprisesParPf?.ebay);
         if (app?.etat === "actif") return { ...manquant, deduit: { valeur: app.valeur, source: app.source } };
+      }
+      // (06/11, Nico, point 9 — ayadi007 : « Type » 11205, « Longueur » 54235) L'ASPECT EXIGÉ QUE LE VENDEUR A DÉJÀ ÉCRIT :
+      // une mesure NOMMÉE (« Longueur : 60 cm », « L x l x H : 60 x 40 x 70 cm ») recalée sur l'option exacte, ou une option
+      // écrite en toutes lettres (« Imprimante 3D »). Le texte du VENDEUR seulement (sa fiche, et le titre de la copie
+      // eBay) : jamais la description rédigée par l'IA (règle 4 c : jamais une valeur inventée). Rien → la question.
+      if (!src?.key && allowedValues?.length) {
+        const lu = aspectDuTexte({ name, allowedValues, textes: [initialListing?.titre ?? "", initialListing?.description ?? "", edited.ebay?.title ?? ""] });
+        if (lu?.valeur) return { ...manquant, deduit: { valeur: lu.valeur, source: lu.source } };
       }
       // (18/10, eBay ÷ 5) LA RÉPONSE DE L'IA DÉJÀ REÇUE POUR CETTE CATÉGORIE :
       // « Nom du jeu vidéo » (Harvest Life), « Type » (Boîtier reflex
@@ -8499,7 +8555,7 @@ export default function ListingPreviewScreen({
         // (19/10) La taille dite par le texte : sa question partagée de ce rendu n'en est pas une.
         // (25/10 soir) La pointure (fiche ou texte) aussi.
         // (05/11 soir) La taille unique d'un accessoire sans taille aussi.
-        if (a.deduit.source === "taille_du_texte" || a.deduit.source === "accessoire_sans_taille" || String(a.deduit.source).startsWith("pointure_")) tailleDuTexteEnVol.current.add("ebay");
+        if (a.deduit.source === "taille_du_texte" || a.deduit.source === "accessoire_sans_taille" || a.deduit.source === "grille_taille_unique_seule" || String(a.deduit.source).startsWith("pointure_")) tailleDuTexteEnVol.current.add("ebay");
         const repose = aspectDefaultsPoses.current.has(a.name);
         noterPose(a);
         if (a.deduit.source === "memoire" && !repose) noterPoseMemoire("ebay", a, a.deduit, ebayPreviewCategoryId ?? null);
@@ -9326,10 +9382,14 @@ export default function ListingPreviewScreen({
               // sur une grille d'entiers, « 37 » sur une grille homme qui commence à 38) : la question dit POURQUOI, lu dans
               // la grille (moteur/listes.pointureHorsGrille), et met les deux voisines en tête — jamais choisies pour elle.
               const horsGrille = pointureHorsGrille({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform), lang: lang === "en" ? "en" : "fr" });
+              // (06/11, Nico, point 4 b) Une vraie taille (« Medium-Large ») sur une grille qui n'offre QUE la taille unique :
+              // la seule valeur possible, posée sur la copie de CETTE plateforme (la taille écrite reste dans le texte).
+              const seuleT = estChampTaille(platform, key) ? tailleUniqueSeuleDeLaGrille({ allowedValues }) : null;
+              const suggereT = seuleT?.valeur ?? verdict.suggested;
               return {
                 key, label, state: "invalid", value: src, dedicatedTarget: target,
-                suggested: verdict.suggested, inputType: r.input_type,
-                blocking: horsListeBloque({ regle: "nouvelle", platform, key, inputType: r.input_type, allowedValues, suggested: verdict.suggested }),
+                suggested: suggereT, inputType: r.input_type,
+                blocking: seuleT ? false : horsListeBloque({ regle: "nouvelle", platform, key, inputType: r.input_type, allowedValues, suggested: verdict.suggested }),
                 allowedValues: horsGrille?.candidats?.length ? listeCandidatsDabord(allowedValues, horsGrille.candidats) : allowedValues,
                 ...(horsGrille ? { horsGrille } : {}),
               };

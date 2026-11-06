@@ -16,6 +16,8 @@
 // (« Modèle : Rugged Wear »). Jamais l'IA, jamais un défaut, jamais par-dessus une valeur de la fiche ou de la personne,
 // jamais une taille (elles ont leur propre règle, tailleAssemblee).
 import { texteComparable, valeurDeListeCorrespondante } from "./texte-comparable.ts";
+// (06/11, Nico, point 9) La même règle que l'encart eBay du web : mesure nommée, option écrite en toutes lettres.
+import { aspectDuTexte } from "./aspect-du-texte.js";
 
 export interface AspectDuCatalogue { name: string; mode?: string | null; allowedValues?: string[]; required?: boolean }
 export interface AspectLu { valeur: string; preuve: string }
@@ -129,6 +131,14 @@ export function aspectsLusDansLeTexte(catalogue: AspectDuCatalogue[], titre: unk
     poser(parNom("Style de jambe"), v, `« ${jambe[1]} »`);
   }
   if (/\b(jeans?|denim)\b/i.test(t)) poser(parNom("Textile"), "Jean", `« ${(/\b(jeans?|denim)\b/i.exec(t) ?? [""])[0]} »`);
+  // 3. (06/11, Nico, point 9 — ayadi007) Tout aspect à liste encore vide que le texte DIT : une mesure nommée
+  //    (« Longueur : 60 cm », « L x l x H : 60 x 40 x 70 cm ») recalée sur l'option exacte, ou une option écrite en toutes
+  //    lettres (« Imprimante 3D ») — _shared/aspect-du-texte.js, la règle du web. Rien de sûr → rien (la question).
+  for (const a of cat) {
+    if (lus[a.name] || !Array.isArray(a.allowedValues) || !a.allowedValues.length) continue;
+    const r = aspectDuTexte({ name: a.name, allowedValues: a.allowedValues, textes: [t, d] }) as { valeur?: string; preuve?: string } | null;
+    if (r?.valeur) lus[a.name] = { valeur: r.valeur, preuve: r.preuve ?? "texte" };
+  }
   return lus;
 }
 

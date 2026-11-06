@@ -115,40 +115,26 @@ const MODE_ADULTE = {
   // "Sacs" est un niveau 2 séparé côté Femme, tout est sous
   // Accessoires > Sacs et sacoches côté Homme — pas de "Sacs à main" homme,
   // équivalent le plus proche = Sacs à bandoulière) ─────────────────────────
-  "👜": { Femme: ["Femmes", "Sacs", "Sacs à main"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Sacs à bandoulière"] },
-  "👛": { Femme: ["Femmes", "Sacs", "Porte-monnaie"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Porte-monnaie"] },
-  "🎒": { Femme: ["Femmes", "Sacs", "Sacs à dos"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Sacs à dos"] },
+  // (06/11, Nico, point 8) Vinted a retiré le niveau « Accessoires » : les sacs Homme sont sous Hommes > Sacs et sacoches
+  // (arbre vivant /api/v2/item_upload/catalogs relu le 06/11 : #247, #248, #246, #2961, #1799, #1862).
+  "👜": { Femme: ["Femmes", "Sacs", "Sacs à main"], Homme: ["Hommes", "Sacs et sacoches", "Sacs à bandoulière"] },
+  "👛": { Femme: ["Femmes", "Sacs", "Porte-monnaie"], Homme: ["Hommes", "Sacs et sacoches", "Porte-monnaie"] },
+  "🎒": { Femme: ["Femmes", "Sacs", "Sacs à dos"], Homme: ["Hommes", "Sacs et sacoches", "Sacs à dos"] },
   // 🎽 (sac de sport/gym) : désambiguïsé de 👜 dans shared.js — feuille
   // dédiée des deux côtés, même asymétrie structurelle que les autres sacs.
-  "🎽": { Femme: ["Femmes", "Sacs", "Sacs de sport"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Sacs de sport"] },
+  "🎽": { Femme: ["Femmes", "Sacs", "Sacs de sport"], Homme: ["Hommes", "Sacs et sacoches", "Sacs de sport"] },
   // Ajouts 2026-07-09 (backlog T2/T3) — feuilles exactes relevées dans
   // l'arbre archivé, même asymétrie structurelle Femme/Homme que ci-dessus.
-  "👝": { Femme: ["Femmes", "Sacs", "Sacs banane"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Sacs banane"] },
+  "👝": { Femme: ["Femmes", "Sacs", "Sacs banane"], Homme: ["Hommes", "Sacs et sacoches", "Sacs banane"] },
   // Valise : pas de feuille "Bagages et valises" côté Femme — "Sacs de
   // voyage" est l'équivalent le plus proche (DÉFAUT ASSUMÉ léger).
-  "🧳": { Femme: ["Femmes", "Sacs", "Sacs de voyage"], Homme: ["Hommes", "Accessoires", "Sacs et sacoches", "Bagages et valises"] },
+  "🧳": { Femme: ["Femmes", "Sacs", "Sacs de voyage"], Homme: ["Hommes", "Sacs et sacoches", "Bagages et valises"] },
 
   // ── Accessoires ───────────────────────────────────────────────────────────
-  "🧣": { Femme: ["Femmes", "Accessoires", "Écharpes et châles"], Homme: ["Hommes", "Accessoires", "Écharpes et châles"] },
-  "🧤": { Femme: ["Femmes", "Accessoires", "Gants"], Homme: ["Hommes", "Accessoires", "Gants"] },
-  // ⚠️ Piège de libellé confirmé par l'arbre : "Chapeaux & casquettes" (avec
-  // esperluette) côté Femme, mais "Chapeaux et casquettes" (avec "et") côté
-  // Homme — l'ancien chemin Homme par analogie était cassé.
-  "🧢": { Femme: ["Femmes", "Accessoires", "Chapeaux & casquettes", "Casquettes"], Homme: ["Hommes", "Accessoires", "Chapeaux et casquettes", "Casquettes"] },
-  "🕶️": { Femme: ["Femmes", "Accessoires", "Lunettes de soleil"], Homme: ["Hommes", "Accessoires", "Lunettes de soleil"] },
-  "⌚": { Femme: ["Femmes", "Accessoires", "Montres"], Homme: ["Hommes", "Accessoires", "Montres"] },
-  // DÉFAUT ASSUMÉ : la regex couvre collier/bracelet/bague/boucle d'oreille/
-  // pendentif/broche — chacun est sa propre feuille distincte chez Vinted ;
-  // on retombe sur la feuille générique de chaque arbre plutôt que de
-  // deviner un type précis.
-  "💍": { Femme: ["Femmes", "Accessoires", "Bijoux", "Autres bijoux"], Homme: ["Hommes", "Accessoires", "Bijoux", "Autre"] },
-  // Ajouts 2026-07-09 (backlog T3) — accessoires à feuille exacte. Parapluies
-  // et Porte-clés n'existent QUE côté Femmes (vérifié : 1 seul hit dans tout
-  // l'arbre) ; Cravates et nœuds papillons n'existe QUE côté Hommes.
-  "🪢": { Femme: ["Femmes", "Accessoires", "Ceintures"], Homme: ["Hommes", "Accessoires", "Ceintures"] },
-  "🎀": { Femme: null, Homme: ["Hommes", "Accessoires", "Cravates et nœuds papillons"] },
-  "☂️": { Femme: ["Femmes", "Accessoires", "Parapluies"], Homme: null },
-  "🗝️": { Femme: ["Femmes", "Accessoires", "Porte-clés"], Homme: null },
+  // (06/11, Nico, point 8) Chapeaux et casquettes : sous la racine du genre (#230 Femmes, #287 Hommes). Écharpes, gants,
+  // lunettes, montres, bijoux, ceintures, cravates, parapluies, porte-clés : la racine SANS GENRE « Accessoires de mode »
+  // (#5496) — dans HORS_MODE plus bas (plus aucune question de genre pour eux).
+  "🧢": { Femme: ["Femmes", "Chapeaux et casquettes", "Casquettes"], Homme: ["Hommes", "Chapeaux et casquettes", "Casquettes"] },
   // Lingerie/nuit (T3) : DÉFAUT ASSUMÉ par genre — la regex 🩲 couvre
   // pyjama/soutien-gorge/culotte/caleçon/boxer ; côté Femme "Pyjamas et
   // tenues de nuit" pris comme dominant (Soutiens-gorge/Culottes = sœurs),
@@ -245,24 +231,17 @@ const MODE_ENFANT = {
   // ── Sacs (une seule feuille « Sacs et sacs à dos » par genre — pas de
   // granularité sac à main/banane/voyage côté enfant) ───────────────────────
   "👜": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
-  "👛": { Fille: [...FI, "Accessoires", "Porte-monnaie"], Garçon: [...GA, "Accessoires", "Porte-monnaie"] },
+  // (06/11, point 8) Plus de niveau « Accessoires » chez les enfants (#1584, #1745).
+  "👛": { Fille: [...FI, "Porte-monnaie"], Garçon: [...GA, "Porte-monnaie"] },
   "🎒": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
   "🎽": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
   "🧳": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
   "👝": { Fille: [...FI, "Sacs et sacs à dos"], Garçon: [...GA, "Sacs et sacs à dos"] },
 
   // ── Accessoires ───────────────────────────────────────────────────────────
-  "🧣": { Fille: [...FI, "Accessoires", "Écharpes et châles"], Garçon: [...GA, "Accessoires", "Écharpes et châles"] },
-  "🧤": { Fille: [...FI, "Accessoires", "Gants"], Garçon: [...GA, "Accessoires", "Gants"] },
-  "🧢": { Fille: [...FI, "Accessoires", "Casquettes et chapeaux"], Garçon: [...GA, "Accessoires", "Casquettes et chapeaux"] },
-  // DÉFAUT ASSUMÉ léger : pas de feuille Lunettes ni Montres côté enfant
-  // (vérifié dans les deux listes Accessoires) → bac générique.
-  "🕶️": { Fille: [...FI, "Accessoires", "Autres accessoires"], Garçon: [...GA, "Accessoires", "Autres accessoires"] },
-  "⌚": { Fille: [...FI, "Accessoires", "Autres accessoires"], Garçon: [...GA, "Accessoires", "Autres accessoires"] },
-  // Bijoux : feuille réelle côté fille uniquement.
-  "💍": { Fille: [...FI, "Accessoires", "Bijoux"], Garçon: [...GA, "Accessoires", "Autres accessoires"] },
-  "🪢": { Fille: [...FI, "Accessoires", "Ceintures"], Garçon: [...GA, "Accessoires", "Ceintures"] },
-  "🎀": { Fille: null, Garçon: [...GA, "Accessoires", "Nœuds papillon et cravattes"] },
+  // (06/11, point 8) Chapeaux et casquettes : feuille directe sous le genre (#1577 filles). Les autres accessoires
+  // (écharpes, gants, lunettes, montres, bijoux, ceintures, cravates) : racine sans genre « Accessoires de mode » (HORS_MODE).
+  "🧢": { Fille: [...FI, "Chapeaux et casquettes"], Garçon: [...GA, "Chapeaux et casquettes"] },
 };
 
 // Catégories SANS niveau genre. Racines réelles du FORMULAIRE, RE-RELEVÉES
@@ -302,6 +281,19 @@ const MODE_ENFANT = {
 // pêche, yoga...) ont toutes été résolues via l'arbre complet en juillet
 // 2026 — voir chaque entrée.
 const HORS_MODE = {
+  // ── (06/11, Nico, point 8) « ACCESSOIRES DE MODE », RACINE SANS GENRE (#5496), arbre vivant relu le 06/11 : le niveau
+  // « Accessoires » a disparu des rayons Femmes, Hommes et Enfants (Jean-Luc LASSARAT : « Vinted ne propose pas
+  // « Accessoires » à cet endroit »). Femmes, hommes et enfants y vont tous. Bijoux : feuille choisie par le titre
+  // (BIJOUX_PAR_TITRE), sinon la question — jamais une feuille devinée.
+  "🧣": ["Accessoires de mode", "Écharpes et châles"],
+  "🧤": ["Accessoires de mode", "Gants"],
+  "🕶️": ["Accessoires de mode", "Lunettes de soleil"],
+  "⌚": ["Accessoires de mode", "Montres"],
+  "🪢": ["Accessoires de mode", "Ceintures"],
+  "🎀": ["Accessoires de mode", "Cravates et nœuds papillon"],
+  "☂️": ["Accessoires de mode", "Parapluies"],
+  "🗝️": ["Accessoires de mode", "Porte-clés"],
+  "💍": null,
   // ── Électronique ──────────────────────────────────────────────────────────
   // DÉFAUT ASSUMÉ : conflate téléphone ET tablette (même icône côté
   // detectObjectIcon). Une feuille tablette existe désormais (Électronique >
@@ -703,6 +695,7 @@ export function vintedGenreRequired(icon) {
 // existe réellement. 🎵 n'y est pas et n'y sera pas : Vinted n'a que les
 // SUPPORTS (CD/vinyles), aucun instrument — son "unavailable" est vrai.
 const SANS_FEUILLE_DEFAUT = new Set([
+  "💍", // (06/11, point 8) Accessoires de mode > Bijoux existe ; sans mot du titre (bague, collier…), aucune feuille sûre : la question
   "🏠", // Maison — branche réelle, aucune feuille fourre-tout (vérifié : les
         // 124 « Autre(s) » de l'arbre sont tous sous les racines Mode)
   "⚡", // Électroménager — Petits appareils de cuisine + Entretien existent ;
@@ -849,7 +842,29 @@ export const VINTED_ENFANT_AFFINAGES = [
   },
 ];
 
+// (06/11, point 8) La feuille de bijou que le TITRE nomme (Accessoires de mode > Bijoux, #5498 : il n'y a plus de
+// feuille « Autres bijoux ») — sinon null : la question (statut no_default). Mot entier, accents compris ; la plus
+// précise d'abord (« boucles d'oreilles » avant « bagues », « bracelet de cheville » avant « bracelet »).
+const MOT = (corps) => new RegExp("(^|[^a-zà-ÿ])(" + corps + ")(?![a-zà-ÿ])", "i");
+const BIJOUX_PAR_TITRE = [
+  [MOT("boucles? d['’ ]?oreilles?|cr[ée]oles?|puces? d['’ ]?oreilles?"), "Boucles d'oreilles"],
+  [MOT("bracelets? de cheville|chevill[iè]res?"), "Bracelets de cheville"],
+  [MOT("boutons? de manchettes?"), "Boutons de manchette"],
+  [MOT("parures?|ensembles? de bijoux"), "Ensembles de bijoux"],
+  [MOT("bagues?|alliances?|chevali[èe]res?"), "Bagues"],
+  [MOT("colliers?|ras[- ]de[- ]cou|sautoirs?"), "Colliers"],
+  [MOT("bracelets?|joncs?|gourmettes?"), "Bracelets"],
+  [MOT("pendentifs?|charms?|m[ée]daillons?"), "Charms et pendentifs"],
+  [MOT("broches?"), "Broches"],
+  [MOT("piercings?|bijoux? de corps"), "Bijoux de corps"],
+];
+export function feuilleBijouVinted(titre = "") {
+  for (const [re, feuille] of BIJOUX_PAR_TITRE) if (re.test(String(titre))) return ["Accessoires de mode", "Bijoux", feuille];
+  return null;
+}
+
 export function getVintedCategoryPath(icon, genre, titre = "") {
+  if (icon === "💍") return feuilleBijouVinted(titre);
   // HORS_MODE d'abord : ces catégories n'ont pas de niveau genre (racines
   // confirmées : Maison/Électronique/Divertissement/Loisirs et collections/
   // Sport), donc pas besoin d'attendre platform_fields.genre pour elles.

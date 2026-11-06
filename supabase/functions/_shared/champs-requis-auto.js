@@ -248,6 +248,21 @@ export function tailleUniqueAccessoire({ chemin = null, textes = [], allowedValu
   return { valeur: uniques[0], source: "accessoire_sans_taille", motif: `${nfc(liste[liste.length - 1]).trim()} : un accessoire sans taille, la taille unique de la grille` };
 }
 
+// ── g bis) (06/11, Nico, point 4 b — reco validée) UNE VRAIE TAILLE RESTE UNE TAILLE ; « TAILLE UNIQUE » SEULEMENT SI
+// LA GRILLE DU RAYON N'OFFRE QUE ÇA ──────────────────────────────────────────────────────────────────────────────────
+// « Medium-Large » d'une casquette, « taille 58 » d'un chapeau, « 3 ans » : une taille écrite ne devient jamais « taille
+// unique » quand la grille propose des tailles (la question, une fois — règle g ci-dessus, inchangée). Mais quand la
+// grille de CE rayon n'a QUE « taille unique » (toutes ses options sont la taille unique : « Taille unique »,
+// « Universel », « One size »… — le dictionnaire de tailles.js), il n'y a rien à demander : c'est la seule valeur que la
+// plateforme accepte, quelle que soit la taille écrite, qui reste dans le titre et la description (la fiche ne change
+// pas : la valeur est posée sur la COPIE de cette plateforme seule).
+/** @returns {{valeur:string, source:string, motif:string} | null} */
+export function tailleUniqueSeuleDeLaGrille({ allowedValues = [] } = {}) {
+  const opts = [...new Set((Array.isArray(allowedValues) ? allowedValues : []).map((v) => String(v ?? "").trim()).filter(Boolean))];
+  if (!opts.length || !opts.every(estTailleUniqueEcrite)) return null;
+  return { valeur: opts[0], source: "grille_taille_unique_seule", motif: "la grille de ce rayon n'offre que la taille unique" };
+}
+
 // ── b) MATIÈRE eBAY (prudence : une matière inventée = litige « non conforme ») ──────────────────────────────────
 // Lens ne donne AUCUNE confiance pour la matière (sa confiance est celle de l'identification entière) : le seul signal
 // SÛR est une COMPOSITION LUE sur l'étiquette, avec un pourcentage (« 70% coton, 30% nylon » : 73 scans sur 678 en

@@ -114,7 +114,8 @@ const lps = src("src/components/ListingPreviewScreen.jsx");
 }
 ok(/const relanceApresRefus = refusVuPour && refusVuPour === platformListings\s*\n?\s*\? `\$\{objetDuRayonChoisi\(edited\) \?\? ""\}\|/.test(lps),
   "relance : clé = l'objet du rayon choisi (et le mot du titre), seulement pour une rédaction qui a connu le refus");
-ok(/\}, \[platformListings, relanceApresRefus\]\);/.test(lps), "le pré-calcul repart quand cette clé change (jamais à la frappe)");
+// (06/11, point 4 a) Et quand le public du rayon Vinted CHOISI change (une fois par choix, jamais à la frappe).
+ok(/\}, \[platformListings, relanceApresRefus, publicChoisiVinted\]\);/.test(lps), "le pré-calcul repart quand cette clé change (jamais à la frappe)");
 ok(/if \(refusAfficheRef\.current\?\.empreinte === empreinte\) \{\s*\n\s*setResolutionAffichee\(refusAfficheRef\.current\.resolution\);/.test(lps),
   "le même refus ne relance pas une seconde résolution : il se ré-affiche (un choix retiré fait revenir la question)");
 ok(/if \(resolutionPrevolRef\.current\?\.empreinte === empreinte\) \{[\s\S]{0,400}setResolutionAffichee\(resolutionPrevolRef\.current\.resolution\);/.test(lps),

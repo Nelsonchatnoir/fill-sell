@@ -170,3 +170,23 @@ export function pointureDuTexte({ valeurFiche = "", textes = [], chemin = null, 
   const place = placerPointure(v, grille);
   return place ? { valeur: place, motif: `pointure ${String(v).replace(".", ",")} écrite par le vendeur`, source: "texte" } : null;
 }
+
+// ── (06/11, Nico, point 4 c — reco validée) UNE POINTURE ÉCRITE PAR L'IA SANS SOURCE COMPTE COMME VIDE ─────────────────
+// La rédaction (IA) pose parfois une pointure qu'aucune source ne porte : ni la personne (sa fiche), ni son titre, ni sa
+// description, ni une étiquette lue (Lens). La copie n'étant pas vide, la question partagée « Pointure » ne se posait pas
+// et une pointure inventée partait. LA RÈGLE : une pointure de la rédaction n'est gardée que si une source RÉELLE écrit
+// CETTE pointure (la même valeur, au demi près : jamais convertie, jamais arrondie) ; sinon elle compte comme vide, et la
+// question partagée est posée UNE fois (la pointure de la fiche ou du texte se pose ensuite seule, pointureDuTexte).
+// Une valeur qui n'a pas l'air d'une pointure européenne (« M », « UK 8 ») n'est pas jugée ici : inchangée.
+const nombrePointure = (v) => {
+  const m = /^(?:eu|eur|pointure|taille|t)?\s?[:.]?\s?(\d{2}(?:[.,]5)?)$/i.exec(nfc(v).trim());
+  return m ? Number(m[1].replace(",", ".")) : null;
+};
+/** @returns {boolean} true = la pointure de la rédaction a une source réelle (ou n'est pas une pointure à juger). */
+export function pointureRedactionSourcee({ valeur = "", valeurFiche = "", valeurLue = "", textes = [] } = {}) {
+  const v = nombrePointure(valeur);
+  if (v == null) return true;
+  if ([valeurFiche, valeurLue].some((s) => nombrePointure(s) === v)) return true;
+  const lu = lirePointuresDuTexte(textes);
+  return lu.valeurs.includes(v) || lu.demiNues.includes(v);
+}

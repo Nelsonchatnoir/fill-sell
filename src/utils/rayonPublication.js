@@ -184,6 +184,72 @@ export function objetDuRayonChoisi(edited) {
   return null;
 }
 
+/** ── (06/11, Nico, point 4 a — reco validée) LE PUBLIC CHOISI PAR LA PERSONNE SUR VINTED PRIME SUR LE GENRE DEVINÉ ──
+ *  Quand la personne CHOISIT elle-même son rayon Vinted (`edited.vinted.rayon_choisi`, son geste — jamais une valeur
+ *  par défaut ni une proposition de l'IA), le public que ce rayon nomme (Femmes, Hommes, Enfants › filles / garçons)
+ *  devient celui des autres copies : le genre d'eBay, Beebs, Depop et Opla, l'univers de Leboncoin — seulement quand le
+ *  genre deviné le CONTREDIT (Homme contre Femmes, adulte contre enfant, fille contre garçon) ou manque / vaut
+ *  « Mixte ». Un genre compatible (« Bébé » sous « Enfants › Bébé filles ») est gardé ; une copie dont la personne a
+ *  choisi le rayon garde son choix ; un rayon sans public (jouets, maison) ne change rien. La trace (`genre_du_choix`,
+ *  avec le genre d'avant) permet de tout rétablir quand le choix Vinted est retiré. La résolution, elle, ne lit jamais
+ *  le choix : elle lit le genre des copies, comme avant. Pur (scripts/public-choisi-vinted-selftest.mjs). */
+const plierRayon = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+export function publicDuRayonVinted(chemin) {
+  if (!Array.isArray(chemin) || !chemin.length) return null;
+  const racine = plierRayon(chemin[0]);
+  const tout = plierRayon(chemin.join(" > "));
+  if (/^femmes?$/.test(racine)) return { age: "adulte", sexe: "f", genre: "Femme", univers: "Femme" };
+  if (/^hommes?$/.test(racine)) return { age: "adulte", sexe: "m", genre: "Homme", univers: "Homme" };
+  if (/^enfants?$/.test(racine)) {
+    if (/\bfilles?\b/.test(tout)) return { age: "enfant", sexe: "f", genre: "Fille", univers: "Enfant" };
+    if (/\bgarcons?\b/.test(tout)) return { age: "enfant", sexe: "m", genre: "Garçon", univers: "Enfant" };
+  }
+  return null;
+}
+const PUBLIC_DU_GENRE = {
+  femme: { age: "adulte", sexe: "f" }, homme: { age: "adulte", sexe: "m" }, fille: { age: "enfant", sexe: "f" },
+  garcon: { age: "enfant", sexe: "m" }, bebe: { age: "enfant", sexe: null }, enfant: { age: "enfant", sexe: null },
+  maternite: { age: "adulte", sexe: "f" },
+};
+/** Le genre (ou l'univers) deviné contredit-il le public choisi ? Vide, « Mixte » ou inconnu : oui (à remplir). */
+export function genreContreditLePublic(genre, pub) {
+  const g = PUBLIC_DU_GENRE[plierRayon(genre)];
+  if (!g) return true;
+  if (g.age !== pub.age) return true;
+  return Boolean(g.sexe && pub.sexe && g.sexe !== pub.sexe);
+}
+const GENRES_ACCEPTES = { beebs: ["Femme", "Homme", "Fille", "Garçon", "Bébé"] };
+/** Les copies, le public du rayon Vinted choisi appliqué (ou le genre d'avant rétabli si le choix est retiré). */
+export function copiesAuPublicChoisi(edited, maintenantIso = new Date().toISOString()) {
+  if (!edited || typeof edited !== "object") return edited;
+  const chemin = edited.vinted?.rayon_choisi?.chemin;
+  const pub = publicDuRayonVinted(chemin);
+  const sortie = { ...edited };
+  for (const p of Object.keys(edited)) {
+    if (p === "vinted" || !edited[p] || edited[p]?.rayon_choisi?.chemin?.length) continue;
+    const pf = edited[p].platform_fields;
+    if (!pf || typeof pf !== "object") continue;
+    const cle = p === "leboncoin" ? "univers" : (["ebay", "beebs", "depop", "opla"].includes(p) ? "genre" : null);
+    if (!cle) continue;
+    const trace = pf.genre_du_choix && typeof pf.genre_du_choix === "object" ? pf.genre_du_choix : null;
+    if (!pub) {
+      // Le choix Vinted retiré (ou sans public) : le genre d'avant revient, si c'est bien nous qui l'avions changé.
+      if (trace && pf[cle] === trace.genre) {
+        const { genre_du_choix: _t, ...reste } = pf;
+        sortie[p] = { ...edited[p], platform_fields: { ...reste, [cle]: trace.avant ?? "" } };
+      }
+      continue;
+    }
+    const cible = cle === "univers" ? pub.univers : pub.genre;
+    if (cle === "univers" && !String(pf.univers ?? "").trim()) continue; // Leboncoin : seulement un univers déjà posé
+    if (GENRES_ACCEPTES[p] && !GENRES_ACCEPTES[p].includes(cible)) continue;
+    if (pf[cle] === cible || !genreContreditLePublic(pf[cle], pub)) continue;
+    sortie[p] = { ...edited[p], platform_fields: { ...pf, [cle]: cible,
+      genre_du_choix: { de: "vinted", chemin: chemin.map(String), genre: cible, avant: trace ? trace.avant : (pf[cle] ?? null), le: maintenantIso } } };
+  }
+  return sortie;
+}
+
 /** Les plateformes sur lesquelles la personne a choisi son rayon. */
 export function plateformesAvecRayonChoisi(edited) {
   return Object.keys(edited ?? {}).filter(p => edited[p]?.rayon_choisi?.chemin?.length);
