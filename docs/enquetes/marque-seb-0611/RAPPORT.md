@@ -47,7 +47,7 @@ Les traces `platform_fields.warnings` des dépôts Leboncoin de la série :
 - 3303702852 (rang 1) : modifiée par Louis (sans SEB), acceptée selon son mail de 20:40 ; **pas encore vue** par les
   relevés de 20:55 à 21:12 (toujours en modération ?). La série attend de la voir en ligne ; le job est déjà « published ».
 - ⚠ **Défaut de mon code, corrigé à 21:13** : la v344 redemandait un relevé « Mes annonces » à chaque passage de son
-  extension (~toutes les 2 min, 20:55 → 21:12, une trentaine de relevés de 400 annonces) — les vieux relevés sans
+  extension (~toutes les 2 min : 10 relevés « Mes annonces » de 400 annonces de 20:55 à 21:12, au lieu d'un) — les vieux relevés sans
   `queued_at` passaient en tête du tri. v345 : au plus un relevé toutes les 45 min tant qu'un dépôt attend.
 - Nouvel ordre (21:15) : rangs 2-7 (rangements et adaptateurs SEB) attendent l'extension 0.6.176 chez Louis ; rangs 8-9
   (Zombicide) en dernier. Au moins 60 min entre deux dépôts, chacun vu en ligne avant le suivant, arrêt au premier refus.
