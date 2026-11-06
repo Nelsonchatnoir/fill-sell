@@ -93,6 +93,12 @@ import { lienDepuisId } from "../_shared/annonce-lien.ts";
 import { titreNommeAnnonce, decisionAlignementTitre, CONTRADICTION_IDENTITE_RE } from "../_shared/titre-aligne.js";
 import { urlsAnnonce } from "../_shared/depot-sans-numero.js";
 import { BEEBS_ATTENTE_MAX_MS, POSE_PAR_SANS_NUMERO, jugerDepotBeebsSansNumero, patchDepotBeebsJamaisEnLigne, patchApresRemboursement } from "../_shared/beebs-depot-sans-numero.js";
+import { jugerDepotLbcJamaisEnLigne, patchDepotLbcJamaisEnLigne, estRemiseEnVente, POSE_PAR_JAMAIS_EN_LIGNE_LBC } from "../_shared/depot-lbc-jamais-en-ligne.js";
+import { attentePoseeParLeServeur } from "../_shared/attente-session.js";
+import {
+  SOURCE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE, attendVendeurEbay, attentesVendeurEbay, dernierMurVendeurEbay,
+  compteEbayVendDepuis, champsRepriseVendeurEbay, eclaireurVendeurEbayEnAttente, champsEclaireurEnAttenteVendeurEbay,
+} from "../_shared/vendeur-ebay.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -150,6 +156,11 @@ const JUGER_ANNONCES_PUBLIEES_DISPARUES = true;
 // fenêtre de 14 jours (Beebs a gardé une annonce invisible ~9,4 jours). Simulation : scripts/simulation-beebs-sans-numero.mjs.
 // Couper = remettre false et redéployer handler-watch.
 const JUGER_BEEBS_SANS_NUMERO = true;
+// (06/11, Nico, règle B — Louis, 7 remises refusées par Leboncoin) Un dépôt Leboncoin que Leboncoin n'a jamais mis en ligne
+// (jamais relevé + deux relevés complets + page lue absente, _shared/depot-lbc-jamais-en-ligne.js) n'est plus « published » :
+// une remise en vente repart (règle A), une publication est « failed » et rendue. Simulation du 06/11 : 4 dépôts sur le
+// parc (inandup33 ×3, jocabroc8 ×1), relus 410 sur Leboncoin — zéro faux. Couper = false + redéployer handler-watch.
+const JUGER_LBC_JAMAIS_EN_LIGNE = true;
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
@@ -3755,6 +3766,15 @@ serve(async (req) => {
   // _shared/beebs-depot-sans-numero.js (jugerBeebsDepotsSansNumero, plus bas). Une fois par heure (minutes 42 à 44,
   // libres : les blocs au quart d'heure occupent 0-11 de chaque quart, l'autre bloc horaire 33-35), 200 dépôts au plus,
   // lectures groupées, aucune visite de plateforme ; seules les fermetures écrivent. COUPÉ : JUGER_BEEBS_SANS_NUMERO.
+  // (06/11, règle B) Les dépôts Leboncoin jamais mis en ligne : une fois par heure, minutes 48 à 50 (UTC).
+  if (JUGER_LBC_JAMAIS_EN_LIGNE && new Date().getUTCMinutes() >= 48 && new Date().getUTCMinutes() < 51) {
+    try {
+      const r = await jugerDepotsLbcJamaisEnLigne(supabase);
+      if (r.candidats) console.log(`[handler-watch] Leboncoin, dépôts jamais mis en ligne (page ${r.page + 1}/${r.pages}) : ${r.jugees} jugé(s) sur ${r.candidats}, ${r.remises} remise(s) relancée(s), ${r.echouees} publication(s) « failed » (${r.rendues} rendue(s)), en attente ${JSON.stringify(r.attente)}`);
+    } catch (e) {
+      console.error("[handler-watch] dépôts Leboncoin jamais mis en ligne :", (e as Error)?.message ?? e);
+    }
+  }
   if (JUGER_BEEBS_SANS_NUMERO && new Date().getUTCMinutes() >= 42 && new Date().getUTCMinutes() < 45) {
     try {
       const r = await jugerBeebsDepotsSansNumero(supabase);
@@ -4328,6 +4348,9 @@ serve(async (req) => {
       if (!ATTENTE_SESSION_RE.test(String(j.error ?? ""))) return false;
       const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
       const echeance = Date.parse(String(pf.next_action_after ?? ""));
+      // (06/11, point 10) L'attente posée par get-pending-jobs (session connue morte) n'a pas d'échéance : levée de même,
+      // sinon les tâches qui attendent leur créneau après la reconnexion gardent « En attente de ta connexion ».
+      if (attentePoseeParLeServeur(pf)) return true;
       // Sans échéance en cours, le job repart déjà tout seul : rien à lever.
       return Number.isFinite(echeance) && echeance > Date.now();
     });
@@ -5247,6 +5270,85 @@ serve(async (req) => {
     if (vendeurDepopEclaireurs || vendeurDepopReprises) console.log(`[handler-watch] configuration vendeur Depop : ${vendeurDepopEclaireurs} éclaireur(s), ${vendeurDepopReprises} reprise(s)`);
   } catch (e) {
     console.error("[handler-watch] configuration vendeur Depop:", (e as Error)?.message ?? e);
+  }
+
+  // ── eBay : LE COMPTE N'EST PAS ENCORE OUVERT À LA VENTE — LA PREUVE, SINON L'ÉCLAIREUR (06/11, Nico, point 5) ──
+  // ayadi007 : 10 publications eBay en attente du geste (paiements eBay à terminer), AUCUNE en file — l'éclaireur de
+  // get-pending-jobs (decisionVendeurEbay) ne se choisit que parmi les dépôts en file : rien ne repartait, même le
+  // compte prêt. Même patron que Depop (_shared/vendeur-ebay.js, eclaireurVendeurEbayEnAttente). Par compte :
+  // 1. une publication eBay (toute voie) faite après le dernier mur VU → toutes repartent (espacées comme get-pending-jobs) ;
+  // 2. sinon, poste vu dans les 30 min : la plus ancienne repart (pending, éclaireur), au barème, jamais deux à la fois.
+  // ⛔ Source EXACTE, 30 j, 500 tâches lues, 10 comptes par passage, compare-and-swap sur needs_user.
+  let vendeurEbayEclaireurs = 0;
+  let vendeurEbayReprises = 0;
+  try {
+    const { data: mursE } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, status, action, platform, voie, error, created_at, published_at, handler_build, platform_fields")
+      .eq("status", "needs_user").eq("platform", "ebay")
+      .eq("platform_fields->>needs_user_source", SOURCE_VENDEUR_EBAY)
+      .gte("created_at", new Date(now - FENETRE_MUR_EBAY_MS).toISOString())
+      .limit(500);
+    const parCompteE = new Map<string, Array<Record<string, unknown>>>();
+    for (const j of ((mursE ?? []) as Array<Record<string, unknown>>).filter((x) => attendVendeurEbay(x as never))) {
+      const u = String(j.user_id);
+      if (!parCompteE.has(u)) parCompteE.set(u, []);
+      parCompteE.get(u)!.push(j);
+    }
+    const tousE = [...parCompteE.keys()];
+    if (tousE.length) {
+      const { data: profsE } = await supabase.from("profiles").select("id, extension_last_seen_at").in("id", tousE);
+      const vuE = new Map(((profsE ?? []) as Array<Record<string, unknown>>).map((p) => [String(p.id), Date.parse(String(p.extension_last_seen_at ?? ""))]));
+      const tenteLeE = (u: string) => Math.max(dernierMurVendeurEbay(parCompteE.get(u) as never[], now),
+        ...(parCompteE.get(u) ?? []).map((j) => Date.parse(String(((j.platform_fields ?? {}) as { vendeur_ebay?: { eclaireur_le?: string } }).vendeur_ebay?.eclaireur_le ?? "")) || -Infinity));
+      const comptesE = tousE.sort((a, b) => tenteLeE(a) - tenteLeE(b)).slice(0, 10);
+      // Les autres jobs eBay récents de ces comptes, TOUS statuts : en file ou en cours (un éclaireur en route), publiés
+      // (la preuve), et ceux qu'un autre mur a garés — leur trace d'éclaireur garde la mémoire du barème. (06/11 13:54-14:09,
+      // 9bcc16d0 : chaque éclaireur garé en « Connecte ton compte eBay » sortait de la lecture, le suivant partait 3 min
+      // après — 6 essais en 15 min, rien créé chez eBay.)
+      const { data: autresE } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, status, action, platform, voie, handler_build, created_at, published_at, vendeur_ebay:platform_fields->vendeur_ebay")
+        .eq("platform", "ebay").in("user_id", comptesE).in("action", ["publish", "republish"])
+        .gte("created_at", new Date(now - FENETRE_MUR_EBAY_MS).toISOString())
+        .limit(1000);
+      const autresJobsE = ((autresE ?? []) as Array<Record<string, unknown>>)
+        .map((r): Record<string, unknown> => ({ ...r, platform_fields: { vendeur_ebay: r.vendeur_ebay ?? null } }));
+      for (const u of comptesE) {
+        const enAttente = attentesVendeurEbay(parCompteE.get(u) as never[]) as Array<Record<string, unknown>>;
+        if (!enAttente.length) continue;
+        const autresU = autresJobsE.filter((r) => String(r.user_id) === u);
+        const murU = dernierMurVendeurEbay([...enAttente, ...autresU] as never[], now);
+        if (Number.isFinite(murU) && compteEbayVendDepuis(autresU as never[], murU)) {
+          let k = 0;
+          for (const j of enAttente.slice(0, RETENUES_PAR_PASSAGE)) {
+            const pf = champsRepriseVendeurEbay(j.platform_fields as Record<string, unknown>, k, now, "handler-watch (le compte eBay vend)") as Record<string, unknown>;
+            pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error as string, "needs_user", "handler-watch (compte eBay ouvert à la vente)");
+            const { data: maj } = await supabase.from("cross_post_jobs")
+              .update({ status: "pending", error: null, platform_fields: pf })
+              .eq("id", String(j.id)).eq("status", "needs_user").select("id");
+            if ((maj ?? []).length) { vendeurEbayReprises++; k++; }
+          }
+          if (k) console.log(`[handler-watch] compte ${u.slice(0, 8)} : le compte eBay vend (publication après le mur) → ${k} publication(s) relâchée(s)`);
+          continue;
+        }
+        const vu = vuE.get(u) ?? NaN;
+        if (!Number.isFinite(vu) || now - vu > 30 * 60_000) continue; // poste éteint : rien à tenter
+        const ecl = eclaireurVendeurEbayEnAttente(enAttente as never[], now, autresU as never[]) as Record<string, unknown> | null;
+        if (!ecl) continue;
+        const pf = champsEclaireurEnAttenteVendeurEbay(ecl.platform_fields as Record<string, unknown>, new Date(now).toISOString(), "handler-watch (barème)") as Record<string, unknown>;
+        pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, ecl.error as string, "needs_user", "handler-watch (éclaireur : le compte eBay vend-il ?)");
+        const { data: maj } = await supabase.from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_fields: pf })
+          .eq("id", String(ecl.id)).eq("status", "needs_user").select("id");
+        if ((maj ?? []).length) {
+          vendeurEbayEclaireurs++;
+          console.log(`[handler-watch] compte ${u.slice(0, 8)} : éclaireur eBay ${String(ecl.id).slice(0, 8)} relancé (${enAttente.length} en attente du compte vendeur eBay)`);
+        }
+      }
+    }
+    if (vendeurEbayEclaireurs || vendeurEbayReprises) console.log(`[handler-watch] compte vendeur eBay : ${vendeurEbayEclaireurs} éclaireur(s), ${vendeurEbayReprises} reprise(s)`);
+  } catch (e) {
+    console.error("[handler-watch] compte vendeur eBay:", (e as Error)?.message ?? e);
   }
 
   // ── UN ARRÊT « ONGLET MUET » REPART QUAND SA CAUSE EST LEVÉE (06/10) ──────
@@ -6649,6 +6751,80 @@ async function jugerAnnoncesPublieesDisparues(supabase: any, tranche: number) {
 // relevés Beebs depuis le plus ancien dépôt du lot, annonces Beebs du compte (toutes : le plancher des numéros se lit
 // sur les disparues), retraits Beebs en file. Écriture : la fermeture seule (compare-and-set), puis la publication rendue
 // (refund_publish_unconfirmed, idempotent) et son résultat noté. 50 fermetures au plus par passage.
+// (06/11, Nico, règle B) LES DÉPÔTS LEBONCOIN JAMAIS MIS EN LIGNE. Candidats : dépôts Leboncoin « published » des 120
+// derniers jours que la veille a lus absents (sale_signal « unavailable »), imports du relevé écartés DANS la requête
+// (mesuré au premier passage, 06/11 12:48 : 171 imports sur une page de 200, et les dépôts prouvés de fin septembre
+// hors de l'ancienne fenêtre de 30 jours — rien jugé). Une page de 200 au plus, tournante à l'heure (comme le juge
+// Beebs). Lectures groupées par lots de 50 comptes (numéros revus au relevé, relevés du compte depuis le plus ancien
+// dépôt, par pages) ; écriture : la seule clôture, compare-and-set sur « published » et le numéro. 50 au plus par passage.
+const LBC_JAMAIS_EN_LIGNE_PAGE = 200;
+const LBC_JAMAIS_EN_LIGNE_JOURS = 120;
+// deno-lint-ignore no-explicit-any
+async function jugerDepotsLbcJamaisEnLigne(supabase: any, page: number | null = null) {
+  const res = { candidats: 0, pages: 1, page: 0, jugees: 0, remises: 0, echouees: 0, rendues: 0, attente: {} as Record<string, number> };
+  // deno-lint-ignore no-explicit-any
+  const depots = (cols: string, opts?: Record<string, unknown>): any => supabase.from("cross_post_jobs").select(cols, opts)
+    .eq("platform", "leboncoin").eq("status", "published").in("action", ["publish", "republish"])
+    .eq("platform_fields->>sale_signal", "unavailable").not("platform_listing_id", "is", null)
+    .gte("published_at", new Date(Date.now() - LBC_JAMAIS_EN_LIGNE_JOURS * 86_400_000).toISOString())
+    .or("handler_build.is.null,handler_build.neq.releve-annonces")
+    .or("platform_fields->>source.is.null,platform_fields->>source.neq.releve");
+  const { count, error: eCount } = await depots("id", { count: "exact", head: true });
+  if (eCount) throw new Error(eCount.message);
+  res.candidats = Number(count) || 0;
+  if (!res.candidats) return res;
+  res.pages = Math.max(1, Math.ceil(res.candidats / LBC_JAMAIS_EN_LIGNE_PAGE));
+  res.page = page ?? Math.floor(Date.now() / 3_600_000) % res.pages;
+  const { data: lus, error } = await depots("id, user_id, platform, action, status, error, platform_listing_id, listing_url, published_at, handler_build, platform_fields")
+    .order("published_at", { ascending: true }).order("id", { ascending: true })
+    .range(res.page * LBC_JAMAIS_EN_LIGNE_PAGE, res.page * LBC_JAMAIS_EN_LIGNE_PAGE + LBC_JAMAIS_EN_LIGNE_PAGE - 1);
+  if (error) throw new Error(error.message);
+  const jobs = (lus ?? []) as Array<Record<string, any>>;
+  const vueDe = new Map<string, Record<string, any>>();
+  const relevesDe = new Map<string, Array<Record<string, any>>>();
+  for (const lot of parLots([...new Set(jobs.map((j) => String(j.user_id)))], 50)) {
+    const duLot = jobs.filter((j) => lot.includes(String(j.user_id)));
+    const plusAncien = Math.min(...duLot.map((j) => Date.parse(String(j.published_at)) || Date.now()));
+    const [vues, runs] = await Promise.all([
+      lirePagesDisparues(() => supabase.from("annonces_plateforme").select("id, user_id, listing_id, vu_le")
+        .eq("platform", "leboncoin").in("user_id", lot).in("listing_id", [...new Set(duLot.map((j) => String(j.platform_listing_id).trim()))])
+        .order("id", { ascending: true })),
+      // Du plus ancien au plus récent : une lecture coupée au plafond ne perd que les relevés tardifs — le juge attend alors.
+      lirePagesDisparues(() => supabase.from("vinted_sync_runs").select("id, user_id, platform, kind, status, started_at, items_vus, total_entries, erreur")
+        .in("user_id", lot).eq("platform", "leboncoin").eq("kind", "annonces").gte("started_at", new Date(plusAncien).toISOString())
+        .order("started_at", { ascending: true }).order("id", { ascending: true })),
+    ]);
+    // Plusieurs lignes pour un numéro : la plus récemment vue compte.
+    for (const v of vues) {
+      const k = `${v.user_id}:${String(v.listing_id).trim()}`;
+      if (!vueDe.has(k) || (Date.parse(String(v.vu_le)) || 0) > (Date.parse(String(vueDe.get(k)!.vu_le)) || 0)) vueDe.set(k, v);
+    }
+    for (const r of runs) { const k = String(r.user_id); if (!relevesDe.has(k)) relevesDe.set(k, []); relevesDe.get(k)!.push(r); }
+  }
+  for (const j of jobs) {
+    if (res.remises + res.echouees >= 50) { res.attente.plafond_du_passage = (res.attente.plafond_du_passage ?? 0) + 1; continue; }
+    const vue = vueDe.get(`${j.user_id}:${String(j.platform_listing_id).trim()}`) ?? null;
+    const v = jugerDepotLbcJamaisEnLigne(j, { vue, releves: relevesDe.get(String(j.user_id)) ?? [], maintenant: Date.now() });
+    res.jugees++;
+    if (v.decision !== "jamais_en_ligne") { res.attente[v.raison] = (res.attente[v.raison] ?? 0) + 1; continue; }
+    const patch = patchDepotLbcJamaisEnLigne(j, v);
+    if (j.error) patch.platform_fields.erreurs_archivees = archiverErreur(patch.platform_fields.erreurs_archivees, j.error as string, "published", POSE_PAR_JAMAIS_EN_LIGNE_LBC);
+    const { data: maj } = await supabase.from("cross_post_jobs").update(patch)
+      .eq("id", j.id).eq("status", "published").eq("platform_listing_id", String(j.platform_listing_id)).select("id");
+    if (!maj?.length) continue;
+    if (estRemiseEnVente(j)) { res.remises++; console.log(`[handler-watch] remise en vente Leboncoin ${String(j.id).slice(0, 8)} : le dépôt ${j.platform_listing_id} n'a jamais été mis en ligne par Leboncoin → repart (pending, règle A)`); continue; }
+    res.echouees++;
+    // La publication est rendue par le chemin existant (idempotent), comme le juge Beebs : dépôt Leboncoin jamais en ligne.
+    if (j.action === "publish") {
+      const { data: ref, error: refErr } = await supabase.rpc("refund_publish_unconfirmed", { p_job: j.id });
+      if (refErr) console.warn(`[handler-watch] dépôt Leboncoin ${String(j.id).slice(0, 8)} jamais mis en ligne par Leboncoin : publication non rendue — ${refErr.message}`);
+      else if (Number(ref?.rembourse) > 0 || ref?.raison === "deja_rembourse") res.rendues++;
+    }
+    console.log(`[handler-watch] dépôt Leboncoin ${String(j.id).slice(0, 8)} (${j.platform_listing_id}) : jamais mis en ligne par Leboncoin → « failed »`);
+  }
+  return res;
+}
+
 const BEEBS_SANS_NUMERO_PAGE = 200;
 const BEEBS_SANS_NUMERO_FERMETURES_MAX = 50;
 // deno-lint-ignore no-explicit-any

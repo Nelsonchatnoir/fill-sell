@@ -123,6 +123,18 @@ export function compteVendeurEbayInactif(action: string): string {
 /** Le marqueur posé sur le job — nommé, donc mesurable et filtrable en base. */
 export const SOURCE_EBAY_COMPTE_VENDEUR_INACTIF = "ebay_compte_vendeur_inactif";
 
+// (06/11, Nico, point 7 — ayadi007) Le même mur sur l'onboarding des PAIEMENTS eBay (ebaypayonboardingweb.ebay.com,
+// account-status-error) : le geste est dans les paiements du compte vendeur, chez eBay. Rien n'a été mis en vente.
+export function paiementsVendeurEbay(action: string): string {
+  const quoi = action === "republish" ? "la republication" : "la publication";
+  return (
+    "eBay bloque la mise en vente : la configuration des paiements de ton compte vendeur eBay est à terminer (eBay a " +
+    "affiché sa page d'état du compte de paiement au moment de publier). Connecte-toi à eBay sur ton ordinateur, ouvre " +
+    "Mon eBay → Paiements et fais ce qu'eBay demande (identité, coordonnées bancaires) ; si eBay affiche une erreur, " +
+    `contacte le service client eBay. Rien n'a été publié ; ${quoi} repartira ensuite.`
+  );
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OPLA : UN SEUL MESSAGE, UN SEUL BOUTON (2026-09-23)

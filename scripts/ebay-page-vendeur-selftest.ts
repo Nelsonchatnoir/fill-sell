@@ -13,7 +13,7 @@
 // sur les 408 jobs qui en portent une. Aucune ne doit matcher — un faux
 // positif arrêterait un job qui n'a rien à voir avec le mur.
 
-import { estPageInscriptionVendeurEbay } from "../supabase/functions/_shared/ebay-page-vendeur.ts";
+import { estPageInscriptionVendeurEbay, estPagePaiementsVendeurEbay } from "../supabase/functions/_shared/ebay-page-vendeur.ts";
 
 let ko = 0;
 const ok = (attendu: boolean, u: unknown, pourquoi: string) => {
@@ -57,6 +57,22 @@ ok(false, "", "chaîne vide");
 ok(false, null, "null");
 ok(false, undefined, "absent");
 ok(false, 42, "pas une chaîne");
+
+console.log("=== 5. (06/11, ayadi007) L'ONBOARDING DES PAIEMENTS eBay : le même mur, un autre hôte ===");
+const okP = (attendu: boolean, u: unknown, pourquoi: string) => {
+  const rendu = estPagePaiementsVendeurEbay(u);
+  const bon = rendu === attendu;
+  if (!bon) ko++;
+  console.log(`  ${bon ? "ok  " : "⚠ KO"} ${String(u) || "(vide)"} → ${rendu} — ${pourquoi}`);
+};
+okP(true, "https://ebaypayonboardingweb.ebay.com/account-status-error/", "RELEVÉ en prod, ayadi007 (5 fins du Dimplex 20023afa)");
+okP(true, "https://ebaypayonboardingweb.ebay.fr/", "même hôte, autre extension");
+okP(false, "https://ebaypayonboardingweb.ebay.com.exemple.com/account-status-error/", "sous-domaine trompeur");
+okP(false, "https://onboardweb.ebay.fr/onboard-revamped/", "l'inscription vendeur : l'autre fonction");
+okP(false, "https://www.ebay.fr/lstng/error", "erreur de dépôt générique");
+okP(false, "https://www.ebay.fr/sh/lst/active", "Seller Hub");
+okP(false, null, "absent");
+ok(false, "https://ebaypayonboardingweb.ebay.com/account-status-error/", "l'inscription vendeur ne le prend pas : chaque mur son message");
 
 console.log(ko ? `\n⚠ ${ko} CAS EN ECHEC` : "\n✓ TOUS LES CAS PASSENT");
 if (ko) Deno.exit(1);

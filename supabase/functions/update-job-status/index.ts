@@ -10,6 +10,7 @@ import { accidentAvantRetrait, coupureSeule, prochaineRepriseAvantRetrait, MESSA
 // la logique qui les déclenche (même convention que src/*/textes.js).
 import {
   compteVendeurEbayInactif,
+  paiementsVendeurEbay,
   connexionEbayRequise,
   fuiteDeDeveloppeur,
   motsAspectAveugle,
@@ -18,7 +19,7 @@ import {
   type SourceCategorie,
 } from "../_shared/textes-jobs.ts";
 import { compteEbayApiConnecte, SOURCE_EBAY_CONNEXION_REQUISE } from "../_shared/ebay-voie.ts";
-import { estPageInscriptionVendeurEbay } from "../_shared/ebay-page-vendeur.ts";
+import { estPageInscriptionVendeurEbay, estPagePaiementsVendeurEbay } from "../_shared/ebay-page-vendeur.ts";
 import { murMiseANiveauEbay, miseANiveauVendeurEbay } from "../_shared/ebay-mise-a-niveau.js";
 import {
   derniereFinDeJob,
@@ -1182,7 +1183,10 @@ serve(async (req) => {
             // MISE À NIVEAU du compte vendeur (/fpa/upgrade, pré-vol). Reconnue
             // à sa signature, toutes versions d'extension confondues — avant,
             // la route dans le texte faisait tomber le message dans G5.
-            const pageInscription = estPageInscriptionVendeurEbay(atEnd?.tab_url);
+            // (06/11, Nico, point 7 — ayadi007) L'onboarding des PAIEMENTS eBay (ebaypayonboardingweb.ebay.com) est le même
+            // mur, sur un autre hôte : _shared/ebay-page-vendeur.ts (estPagePaiementsVendeurEbay), message à part.
+            const pagePaiements = estPagePaiementsVendeurEbay(atEnd?.tab_url);
+            const pageInscription = pagePaiements || estPageInscriptionVendeurEbay(atEnd?.tab_url);
             const miseANiveau = !pageInscription &&
               murMiseANiveauEbay({ error: body.error, platform_fields: pfBody ?? pfBase });
             if (pageInscription || miseANiveau) {
@@ -1218,16 +1222,20 @@ serve(async (req) => {
                   tab_url: String(atEnd?.tab_url ?? "").slice(0, 300),
                   fill_step: atEnd?.fill_step == null ? null : String(atEnd.fill_step).slice(0, 80),
                   verdict_extension: typeof body.error === "string" ? body.error.slice(0, 600) : null,
-                  ...(miseANiveau ? { mur: "mise_a_niveau" } : {}),
+                  ...(miseANiveau ? { mur: "mise_a_niveau" } : pagePaiements ? { mur: "paiements" } : {}),
                   pose_par: miseANiveau
                     ? "update-job-status (eBay exige une mise à niveau du compte vendeur, /fpa/upgrade)"
-                    : "update-job-status (page d'inscription vendeur eBay = mur, pas un incident Chrome)",
+                    : pagePaiements
+                      ? "update-job-status (onboarding des paiements eBay = mur, pas un incident Chrome)"
+                      : "update-job-status (page d'inscription vendeur eBay = mur, pas un incident Chrome)",
                 },
               };
               statutEffectif = "needs_user";
               messageEffectif = miseANiveau
                 ? miseANiveauVendeurEbay(String(jrow.action ?? "publish"))
-                : compteVendeurEbayInactif(String(jrow.action ?? "publish"));
+                : pagePaiements
+                  ? paiementsVendeurEbay(String(jrow.action ?? "publish"))
+                  : compteVendeurEbayInactif(String(jrow.action ?? "publish"));
               raisonRequalif = miseANiveau
                 ? "eBay exige une mise à niveau du compte vendeur (/fpa/upgrade) : needs_user, reprises automatiques arrêtées"
                 : `compte eBay pas encore vendeur (page ${String(atEnd?.tab_url ?? "?")}) : ` +

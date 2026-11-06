@@ -29,7 +29,7 @@ import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, attentesVendeurDepop, messageVendeurDepop, derniereObservationMur, estEclaireurFrais, champsRetenue } from "../_shared/vendeur-depop.js";
 // (25/10, R3 et N6) eBay par l'extension : le compte pas encore ouvert à la vente, les conditions de retour du compte.
 import {
-  MESSAGE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE as RETENUES_VENDEUR_EBAY, estDepotEbayExtension, dernierMurVendeurEbay,
+  messageRetenueVendeurEbay, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE as RETENUES_VENDEUR_EBAY, estDepotEbayExtension, dernierMurVendeurEbay,
   attentesVendeurEbay, decisionVendeurEbay, champsRetenueVendeurEbay, champsEclaireurVendeurEbay, champsRepriseVendeurEbay,
 } from "../_shared/vendeur-ebay.js";
 import { SOURCE_RETOURS_EBAY, OPTIONS_RETOURS_EBAY, retoursChoisisDuCompte, retoursChoisisDuJob } from "../_shared/ebay-brouillon-refus.js";
@@ -77,7 +77,8 @@ import { correctionTient } from "../_shared/correction-tracee.js";
 import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-service.js";
 import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
-import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
+import { attenteSessionEncoreEspacee, attenteSessionServeur } from "../_shared/attente-session.js";
+import { remiseAAttendre, annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, PLATEFORMES_REMISE_APRES_DISPARITION } from "../_shared/remise-en-vente-attente.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import {
   MOTIF_LBC_A_PAYER, MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE, comptesLbcProParType,
@@ -4541,6 +4542,33 @@ serve(async (req) => {
       }
     }
 
+    // ══ (06/11, Nico, règle A — Louis, 7 remises refusées par Leboncoin) LEBONCOIN : LA REMISE EN VENTE ATTEND QUE
+    // L'ANNONCE VENDUE SOIT HORS LIGNE ══ (_shared/remise-en-vente-attente.js) Leboncoin refuse un dépôt identique à une
+    // annonce encore active ; une annonce sous transaction le reste des jours. La tâche de remise n'est servie qu'une fois
+    // l'annonce vendue relevée hors ligne : d'ici là pending, intacte, SANS message, et elle part d'elle-même. Exécution
+    // seulement ; lecture ratée → rien de retenu (comportement d'avant).
+    let heldRemisesLbc = 0;
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => remiseAAttendre(j))) {
+      try {
+        const remises = out.filter((j) => remiseAAttendre(j));
+        const numeros = [...new Set(remises.map((j) => annonceVendueDeLaRemise(j) as string))];
+        const { data: lignesV, error: eV } = await userClient.from("annonces_plateforme")
+          .select("listing_id, platform, disparu_le, retiree_le, ignoree_le, statut_plateforme")
+          .eq("user_id", user.id).in("platform", [...PLATEFORMES_REMISE_APRES_DISPARITION]).in("listing_id", numeros.slice(0, 150));
+        if (eV) throw new Error(eV.message);
+        const enLigne = new Set(((lignesV ?? []) as Array<Record<string, unknown>>)
+          .filter((l) => annonceVendueEncoreEnLigne(l as never)).map((l) => `${l.platform}:${String(l.listing_id).trim()}`));
+        const retenuesR = new Set(remises.filter((j) => enLigne.has(`${j.platform}:${annonceVendueDeLaRemise(j)}`)).map((j) => String(j.id)));
+        if (retenuesR.size) {
+          heldRemisesLbc = retenuesR.size;
+          out = out.filter((j) => !retenuesR.has(String(j.id)));
+          console.log(`[get-pending-jobs] userId=${user.id} : ${retenuesR.size} remise(s) en vente Leboncoin retenue(s) — l'annonce vendue est encore en ligne (pending, sans message)`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] remises Leboncoin : ${String((e as Error)?.message ?? e)} — rien de retenu`);
+      }
+    }
+
     // ── SESSION PLATEFORME CONNUE MORTE = ATTENTE, JAMAIS UNE TENTATIVE ─────
     // (2026-09-10 soir, cas Ornella.) 17 jobs Beebs sont morts sur
     // beebs.app/fr/auth en brûlant leurs 5 tentatives espacées, alors que
@@ -4626,6 +4654,25 @@ serve(async (req) => {
             }
             heldSession = aRetenir.size;
             if (heldSession) {
+              // (06/11, Nico, point 10 — Guillaume JEHLY) Une tâche retenue par une déconnexion porte le message et le
+              // marqueur de l'attente de session (_shared/attente-session.js, attenteSessionServeur) : l'app le montre
+              // sur l'article, handler-watch l'efface à la reconnexion. Jamais réécrite si elle le porte déjà ; 50 par
+              // passage au plus (les suivantes au poll suivant).
+              let marquees = 0;
+              for (const j of out) {
+                if (marquees >= 50) break;
+                if (!aRetenir.has(String(j.id))) continue;
+                const m = mortes.get(String(j.platform));
+                const att = attenteSessionServeur(j as never, {
+                  observeeLe: m ? new Date(m.observeeLe).toISOString() : null, navigateur: navCourtRequete,
+                }) as { error: string; platform_fields: Record<string, unknown> } | null;
+                if (!att) continue;
+                const { data: majS } = await userClient.from("cross_post_jobs")
+                  .update({ error: att.error, platform_fields: pfAPersister(att.platform_fields) })
+                  .eq("id", String(j.id)).eq("status", "pending").select("id");
+                if ((majS ?? []).length) marquees++;
+              }
+              if (marquees) console.log(`[get-pending-jobs] userId=${user.id} : ${marquees} tâche(s) retenue(s) par une session morte — message « En attente de ta connexion » posé`);
               out = out.filter((j) => !aRetenir.has(String(j.id)));
               sessionsPause = detail;
               console.log(
@@ -4839,16 +4886,18 @@ serve(async (req) => {
               servi.platform_fields = pfS;
             }
             const retenusE = d.retenir as Array<Record<string, unknown>>;
+            // (06/11, Nico, point 7) Le message du DERNIER mur vu : paiements eBay ou inscription vendeur.
+            const messageE = messageRetenueVendeurEbay(jobsE as never[], maintenantE);
             let posesE = 0;
             for (const j of retenusE) {
               if (posesE >= RETENUES_VENDEUR_EBAY) break;
               const pfV = champsRetenueVendeurEbay((j.platform_fields ?? {}) as Record<string, unknown>, new Date(maintenantE).toISOString()) as Record<string, unknown>;
               const erreurV = (j as { error?: string | null }).error ?? null;
-              if (erreurV && erreurV !== MESSAGE_VENDEUR_EBAY) {
+              if (erreurV && erreurV !== messageE) {
                 pfV.erreurs_archivees = archiverErreur(pfV.erreurs_archivees, erreurV, "pending", "get-pending-jobs (compte eBay pas encore ouvert à la vente)");
               }
               const { data: majV } = await userClient.from("cross_post_jobs")
-                .update({ status: "needs_user", error: MESSAGE_VENDEUR_EBAY, platform_fields: pfAPersister(pfV) })
+                .update({ status: "needs_user", error: messageE, platform_fields: pfAPersister(pfV) })
                 .eq("id", String(j.id)).eq("status", "pending").select("id");
               posesE += (majV ?? []).length;
             }

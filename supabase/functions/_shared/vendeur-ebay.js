@@ -45,6 +45,15 @@ export const MESSAGE_VENDEUR_EBAY =
   "vers son inscription vendeur. Termine-la une seule fois sur ebay.fr, sur ton ordinateur : tes publications eBay repartiront " +
   "ensuite toutes seules (ou relance celle-ci quand c'est fait). Rien n'a été publié.";
 
+// (06/11, Nico, point 7 — ayadi007) Le même mur sur l'onboarding des PAIEMENTS eBay (compte_vendeur_inactif.mur =
+// « paiements », _shared/ebay-page-vendeur.ts) : les tâches retenues derrière lui disent CE geste-là. Même texte que
+// paiementsVendeurEbay("publish") de textes-jobs.ts (ce module reste sans import).
+export const MESSAGE_PAIEMENTS_EBAY =
+  "eBay bloque la mise en vente : la configuration des paiements de ton compte vendeur eBay est à terminer (eBay a " +
+  "affiché sa page d'état du compte de paiement au moment de publier). Connecte-toi à eBay sur ton ordinateur, ouvre " +
+  "Mon eBay → Paiements et fais ce qu'eBay demande (identité, coordonnées bancaires) ; si eBay affiche une erreur, " +
+  "contacte le service client eBay. Rien n'a été publié ; la publication repartira ensuite.";
+
 const pfDe = (job) => (job && job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {});
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
 const civ = (job) => { const c = pfDe(job).compte_vendeur_inactif; return c && typeof c === "object" ? c : {}; };
@@ -67,6 +76,13 @@ function murVu(job) {
 export function murVendeurEbayVuLe(job, maintenant = Date.now()) {
   const t = murVu(job);
   return Number.isFinite(t) && maintenant - t < FENETRE_MUR_EBAY_MS ? t : NaN;
+}
+
+/** Le message des tâches retenues : celui du DERNIER mur vu du compte (paiements ou inscription vendeur). */
+export function messageRetenueVendeurEbay(jobs, maintenant = Date.now()) {
+  let dernier = null; let t = -Infinity;
+  for (const j of Array.isArray(jobs) ? jobs : []) { const v = murVendeurEbayVuLe(j, maintenant); if (Number.isFinite(v) && v > t) { t = v; dernier = j; } }
+  return dernier && civ(dernier).mur === "paiements" ? MESSAGE_PAIEMENTS_EBAY : MESSAGE_VENDEUR_EBAY;
 }
 
 /** Le dernier mur VU parmi ces jobs (ms), -Infinity sinon. */
@@ -164,5 +180,44 @@ export function champsRepriseVendeurEbay(pf, k, maintenantMs, par) {
   out.next_action_after = new Date(maintenantMs + k * ESPACEMENT_REPRISE_MS).toISOString();
   const { n: _n, ...reste } = out.vendeur_ebay && typeof out.vendeur_ebay === "object" ? out.vendeur_ebay : {};
   out.vendeur_ebay = { ...reste, reprise_le: new Date(maintenantMs).toISOString(), par };
+  return out;
+}
+
+// ── (06/11, Nico, point 5 — ayadi007) L'ÉCLAIREUR PRIS DANS LES TÂCHES EN ATTENTE ─────────────────────────────────────
+// decisionVendeurEbay (get-pending-jobs) ne choisit l'éclaireur que parmi les dépôts eBay EN FILE : quand toutes les
+// publications du compte attendent déjà le geste (needs_user), il n'y en a plus aucun — rien ne repartait jamais, même
+// le compte prêt (mesuré le 06/11 : 4 comptes, 25 tâches, dont certaines depuis le 28/10). handler-watch (patron de
+// _shared/vendeur-depop.js) : la preuve (une publication eBay après le dernier mur) relâche tout ; sinon la plus
+// ancienne repart seule, au barème (DELAIS_ECLAIREUR_EBAY_MIN depuis le dernier mur ou éclaireur), jamais deux à la
+// fois, jamais quand un dépôt eBay du compte est déjà en file (get-pending-jobs s'en charge).
+
+/**
+ * @param {any[]} jobs les tâches eBay du compte en attente (needs_user)
+ * @param {number} maintenant
+ * @param {any[]} autres les autres jobs eBay récents du compte (en file, en cours, publiés)
+ * @returns {any|null} la tâche à relancer comme éclaireur, ou null
+ */
+export function eclaireurVendeurEbayEnAttente(jobs, maintenant = Date.now(), autres = []) {
+  const l = attentesVendeurEbay(jobs);
+  if (!l.length) return null;
+  const aut = Array.isArray(autres) ? autres : [];
+  if (aut.some((j) => estDepotEbayExtension(j) && ["pending", "processing"].includes(String(j.status ?? "")))) return null;
+  const tous = [...l, ...aut];
+  const mur = dernierMurVendeurEbay(tous, maintenant);
+  if (!Number.isFinite(mur) || compteEbayVendDepuis(tous, mur)) return null;
+  const n = Math.max(0, ...tous.map((j) => Number(pfDe(j).vendeur_ebay?.n) || 0));
+  const lances = tous.map((j) => ms(pfDe(j).vendeur_ebay?.eclaireur_le)).filter(Number.isFinite);
+  const dernier = Math.max(mur, ...lances);
+  const ecart = DELAIS_ECLAIREUR_EBAY_MIN[Math.min(n, DELAIS_ECLAIREUR_EBAY_MIN.length - 1)] * 60_000;
+  return maintenant - dernier >= ecart ? l[0] : null;
+}
+
+/** Les platform_fields de l'éclaireur relancé depuis l'attente (pending ; get-pending-jobs le sert : estEclaireurEbayFrais). */
+export function champsEclaireurEnAttenteVendeurEbay(pf, maintenantIso, par) {
+  const out = { ...(pf ?? {}) };
+  for (const c of CLES_ATTENTE) delete out[c];
+  out.needsUserAttempts = 0;
+  const v = out.vendeur_ebay && typeof out.vendeur_ebay === "object" ? out.vendeur_ebay : {};
+  out.vendeur_ebay = { ...v, eclaireur_le: maintenantIso, n: (Number(v.n) || 0) + 1, par };
   return out;
 }

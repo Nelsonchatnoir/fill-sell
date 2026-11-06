@@ -240,8 +240,10 @@ console.log("\nR3 Le compte pas encore ouvert à la vente : un mur par compte, u
     "le message vrai : « ton compte eBay doit d'abord être ouvert à la vente (inscription vendeur eBay) », rien publié");
   const GPJ = lire("supabase/functions/get-pending-jobs/index.ts");
   ok(/decisionVendeurEbay\(out\.filter\(\(j\) => estDepotEbayExtension\(j as never\)\) as never\[\], jobsE as never\[\], maintenantE\)/.test(GPJ)
-    && /update\(\{ status: "needs_user", error: MESSAGE_VENDEUR_EBAY, platform_fields: pfAPersister\(pfV\) \}\)\s*\.eq\("id", String\(j\.id\)\)\.eq\("status", "pending"\)/.test(GPJ),
-    "get-pending-jobs : la décision, puis la retenue en compare-and-swap sur pending");
+    // (06/11, point 7) Le message est celui du DERNIER mur vu (paiements eBay ou inscription vendeur) : messageRetenueVendeurEbay.
+    && /update\(\{ status: "needs_user", error: messageE, platform_fields: pfAPersister\(pfV\) \}\)\s*\.eq\("id", String\(j\.id\)\)\.eq\("status", "pending"\)/.test(GPJ)
+    && /const messageE = messageRetenueVendeurEbay\(jobsE as never\[\], maintenantE\);/.test(GPJ),
+    "get-pending-jobs : la décision, puis la retenue en compare-and-swap sur pending (message du dernier mur)");
   const UJS = lire("supabase/functions/update-job-status/index.ts");
   ok(/if \(statutEffectif === "published"\) \{[\s\S]{0,700}eq\("platform_fields->>needs_user_source", SOURCE_VENDEUR_EBAY\)[\s\S]{0,600}champsRepriseVendeurEbay\(/.test(UJS),
     "update-job-status : une publication eBay faite relâche les tâches en attente");

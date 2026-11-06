@@ -47,3 +47,58 @@ export function attenteSessionEncoreEspacee(job, sessions, maintenant = Date.now
   }
   return maintenant < derniere + delaiAttenteSessionMin(att.observations) * 60_000;
 }
+
+// ── (06/11, Nico, point 10 — Guillaume JEHLY, 122 republications Leboncoin muettes) UNE TÂCHE RETENUE PAR UNE
+// DÉCONNEXION PORTE LE MESSAGE, TOUJOURS ─────────────────────────────────────────────────────────────────────────────
+// get-pending-jobs retient (« session plateforme connue morte ») les tâches d'une plateforme dont la session est vue
+// morte — « pending, intactes, aucune écriture » : rien ne le disait sur la tâche, et l'alerte de compte de l'app
+// s'efface dès que la sonde a plus de 3 h (utils/sessionsPlateformes, fraîcheur) alors que la retenue continue. Résultat :
+// des tâches à l'arrêt depuis la veille, sans un mot. LA RÈGLE : une tâche retenue pour cette cause reçoit le message et
+// le marqueur de l'attente de session de l'extension (même ancre « En attente de ta connexion à », attente_session) —
+// l'app le montre sur l'article, et handler-watch l'efface seul dès que la session est revue connectée. Une tâche qui le
+// porte déjà n'est jamais réécrite. Pur (Deno + Node).
+const LABELS_SESSION = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", depop: "Depop", opla: "Opla" };
+export const ATTENTE_SESSION_POSE_PAR_SERVEUR = "get-pending-jobs (session connue morte)";
+
+/**
+ * L'attente posée par le serveur (sans échéance) ? handler-watch la lève comme celle de l'extension dès que la sonde revoit
+ * la session connectée — sans quoi les tâches qui attendent leur créneau après la reconnexion garderaient le message.
+ */
+export function attentePoseeParLeServeur(pf) {
+  const att = pf && typeof pf === "object" ? pf.attente_session : null;
+  return !!att && typeof att === "object" && att.pose_par === ATTENTE_SESSION_POSE_PAR_SERVEUR;
+}
+
+/**
+ * Le message et les champs d'une tâche retenue par une session connue morte, ou null (déjà marquée : rien à écrire).
+ * @param {{ action?: string, platform?: string, error?: string|null, platform_fields?: Record<string, unknown>|null }} job
+ * @param {{ observeeLe?: string|null, navigateur?: string|null, maintenantIso?: string }} [o]
+ */
+export function attenteSessionServeur(job, { observeeLe = null, navigateur = null, maintenantIso = new Date().toISOString() } = {}) {
+  const pf = job?.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
+  if (ATTENTE_SESSION_RE.test(String(job?.error ?? "")) && pf.attente_session && typeof pf.attente_session === "object") return null;
+  const pfm = String(job?.platform ?? "");
+  const label = LABELS_SESSION[pfm] ?? pfm;
+  const nav = String(navigateur ?? "").trim() || "ton navigateur";
+  const quoi = job?.action === "delete" ? "le retrait de l'annonce" : job?.action === "republish" ? "la republication" : "la publication";
+  const error = job?.action === "delete"
+    ? `En attente de ta connexion à ${label} dans ${nav} : ton article est vendu mais son annonce est encore en ligne sur ` +
+      `${label} (risque de double vente). Connecte-toi à ${label} sur ton ordinateur : le retrait repartira tout seul.`
+    : `En attente de ta connexion à ${label} dans ${nav} : ${label} est déconnecté sur ton ordinateur. Connecte-toi à ` +
+      `${label} : ${quoi} repartira toute seule. Aucune tentative consommée.`;
+  const prec = pf.attente_session && typeof pf.attente_session === "object" ? pf.attente_session : null;
+  return {
+    error,
+    platform_fields: {
+      ...pf,
+      attente_session: {
+        platform: pfm,
+        depuis: typeof prec?.depuis === "string" ? prec.depuis : (observeeLe ?? maintenantIso),
+        observations: Number(prec?.observations) || 0,
+        derniere: maintenantIso,
+        motif: "session connue morte (relevée par l'extension) — tâche retenue par le serveur",
+        pose_par: ATTENTE_SESSION_POSE_PAR_SERVEUR,
+      },
+    },
+  };
+}

@@ -45,3 +45,23 @@ export function estPageInscriptionVendeurEbay(u: unknown): boolean {
     return false;
   }
 }
+
+// ── (06/11, Nico, point 7 — ayadi007, Business) LES PAIEMENTS DU COMPTE VENDEUR, MÊME MUR ─────────────────────────────
+// Ses 4 publications eBay (20023afa, aaf5f3d9, 18eb6c21, ada8ff7e) : à CHAQUE clic « Mettre en vente » (5 fins relevées pour
+// le Dimplex, 06/11 11:21 → 11:45), eBay détourne l'onglet vers ebaypayonboardingweb.ebay.com/account-status-error/ — la
+// configuration des PAIEMENTS du compte vendeur, en erreur. Le changement de domaine ferme le canal de l'extension
+// (« The page keeping the extension port is moved into back/forward cache ») : pris pour une mise en veille de Chrome,
+// « rien à faire de ton côté », reprises sans fin contre un mur qui ne tombe pas tout seul. C'est le MÊME mur que
+// l'inscription vendeur (21/09), sur un autre hôte : tout ce que sert l'hôte de l'onboarding des paiements eBay est ce
+// mur, quel que soit le chemin. Message à part : le geste est dans les paiements du compte (paiementsVendeurEbay).
+/** L'adresse est-elle une page de l'onboarding des PAIEMENTS du compte vendeur eBay ? */
+export function estPagePaiementsVendeurEbay(u: unknown): boolean {
+  if (typeof u !== "string" || !u) return false;
+  try {
+    const h = new URL(u).hostname.toLowerCase();
+    if (!/(^|\.)ebay\.[a-z]{2,3}(\.[a-z]{2,3})?$/.test(h)) return false;
+    return /^ebaypayonboardingweb\./.test(h);
+  } catch {
+    return false;
+  }
+}
