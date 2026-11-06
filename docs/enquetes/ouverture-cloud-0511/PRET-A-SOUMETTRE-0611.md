@@ -22,9 +22,9 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
 | Confidentialité de l'app | 13 types publiés 06/11 | | fait (docs/stores/donnees-2.9.md) |
 | Notes relecteurs + compte | test@fillsell.app (mot de passe déjà saisi), notes 06/11 collées | | fait |
 | Contrat « Paid Applications » | nouvelle version ACCEPTÉE 06/11, actif jusqu'au 13/04/2027 | | fait |
-| Statut DSA | « commerçant » choisi, coordonnées saisies, e-mail validé | | ⏳ pièce justificative à charger par Nico |
+| Statut DSA | en vigueur : « pas commerçant » (16/04) ; le passage en « commerçant » n'a pas été enregistré (500 ×3, formulaire revenu vide le 06/11 vers 13:00) | | ⏳ Nico : ressaisir + codes e-mail/téléphone + avis SIRENE (build/stores/avis-situation-sirene-928578434.pdf) |
 | Abonnements | Premium, Pro, Pro2, Premium Founder, Business : APPROVED ; **Cloud : WAITING_FOR_REVIEW** (soumis 10:37) | | fait |
-| Binaire 2.9.161 | — | — | ⏳ Codemagic après le push (clé APNs = serveur seulement) |
+| Binaire 2.9.161 | — | — | ⏳ Codemagic 172/173 refusés (lock réécrit par npm install) ; relancer après a459538 (npm ci) |
 
 ## 2. Google — Play Console (app 4973021343170715891, publication gérée ACTIVÉE)
 | Champ | fr-FR | en-US | État |
@@ -44,7 +44,7 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
 | Déclaration IA | aucune déclaration « IA » proposée dans Contenu de l'application (10 déclarations, toutes traitées) | | rien à remplir aujourd'hui |
 | Statut professionnel | « compte professionnel » choisi, coordonnées du profil de paiement | | ⏳ code SMS à saisir par Nico |
 | Abonnements | Premium, Pro, Business actifs ; Cloud actif (forfait mensuel, essai 7 j) + traduction en-US ajoutée 06/11 | | fait |
-| AAB 2.9.161 (vc 33) | — | — | ⏳ google-services.json (bloc A Firebase) |
+| AAB 2.9.161 (vc 33) | — | — | fait 06/11 : build/AAB-A-TELEVERSER-2.9.161-vc33/ (a61d0ec, Firebase, même clé que 2.9.38) ; piste interne : BROUILLON enregistré, aucun testeur, rien envoyé |
 
 ## 3. Code et base (06/11)
 - Textes légaux du Cloud PUBLIÉS sur /legal (`CLOUD_TEXTES_LEGAUX = true`, offre toujours fermée) + clause « Territoire :
@@ -61,3 +61,10 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
   des conditions) ; clé APNs « FillSell Push » et clé privée Firebase (création de secrets refusée à Claude) ; pousser main (2 commits du terminal « Problèmes » en attente).
 - Après les clés : `npm run binaires` (AAB 2.9.161 + Codemagic → TestFlight), téléversement en piste interne, essais
   avec les comptes de relecture (TestFlight / piste interne : identifiants = geste de Nico).
+
+## 5. Suite du 06/11 après-midi
+- Parcours connecté EN ANGLAIS prouvé sur le compte de démo test@fillsell.app (WebKit iPhone isolé, session par lien à
+  usage unique côté serveur, révoquée ensuite) : Board, AI Stock, Sales, Stats en anglais ; reste trouvé et corrigé :
+  la pastille « Sans plateforme » (Sales). Trouvé : ce compte affiche des dinars serbes (RSD) — script
+  scripts/reparations/20261106_compte_relecture_apple_euro.sql prêt, non appliqué (garde-fou : à lancer par Nico).
+- Web : site bloqué sur 8bd22d6 de 05/11 23:04 à 06/11 12:30 (lock) ; règle npm ci (a459538).

@@ -5,6 +5,7 @@
 # un worktree » vise l'OTA Capgo, pas ce serveur). Appelé par lancer-serveur-test.mjs.
 #
 #   bash serveur-cloud/outils/deployer.sh <ip_du_serveur> [domaine]
+#   SERVEUR_NOM=cloud-3 bash serveur-cloud/outils/deployer.sh <ip> cloud-3.fillsell.app   (06/11 : serveur NEUF, nom exigé)
 #   DESTINATIONS_PROXY="81.181.239.136:12323" bash serveur-cloud/outils/deployer.sh …   (01/11 : sorties des navigateurs)
 #   (03/11) DESTINATIONS_PROXY n'est plus qu'un repli : l'orchestrateur tient la liste à jour (pareFeu.js).
 #
@@ -12,7 +13,8 @@
 #    « Me connecter » + extension Cloud construite par scripts/cloud/build-extension-cloud.mjs) ;
 # 2. l'envoie, construit l'orchestrateur ; (01/11) le navigateur = steel-browser PUBLIÉ, épinglé
 #    (IMAGE_STEEL_ESSAI_0111 de src/navigateur.js, l'essai qui a passé) : plus d'image dérivée construite ici ;
-# 3. premier déploiement : écrit /srv/fillsell-cloud/.env (clés Supabase lues
+# 3. premier déploiement : écrit /srv/fillsell-cloud/.env FERMÉ au nom donné (06/11 : outils/env-premier.sh — jamais
+#    env.exemple tel quel, qui disait cloud-1) (clés Supabase lues
 #    par la CLI sans affichage ; clé des tickets tirée SUR le serveur ; (01/11) clé du coffre et jeton IPRoyal
 #    repris de secrets.env (SECRETS_ENV) par l'entrée standard, jamais affichés — sinon une clé neuve tirée là) ;
 # 4. rejoue le pare-feu des navigateurs, relance docker compose.
@@ -27,6 +29,23 @@ if [ -n "$(git status --porcelain -- serveur-cloud supabase/functions/_shared/cl
   echo "REFUS : fichiers non commités dans serveur-cloud/ ou leurs sources." >&2; exit 1
 fi
 SHA="$(git rev-parse --short=12 HEAD)"
+# (06/11, avant l'AX42) Le NOM du serveur, lu AVANT tout envoi. Sans .env, le premier déploiement installait env.exemple
+# tel quel : la machine neuve battait sous le nom de cloud-1 (domaine de cloud-1 réécrit dans cloud_serveurs), servait
+# Nico et tenait le pool avec lui. Serveur neuf : SERVEUR_NOM exigé, .env FERMÉ (outils/env-premier.sh). Serveur en
+# place : le nom donné doit être celui de son .env, et un .env sans nom est refusé (config.js retomberait sur cloud-1).
+SERVEUR_NOM="${SERVEUR_NOM:-}"
+NOM_EN_PLACE="$($SSH 'if [ -f /srv/fillsell-cloud/.env ]; then sed -n "s/^SERVEUR_NOM=//p" /srv/fillsell-cloud/.env | head -1; else echo "<aucun .env>"; fi' | tr -d '\r')"
+if [ "$NOM_EN_PLACE" = "<aucun .env>" ]; then
+  [ -n "$SERVEUR_NOM" ] || { echo "REFUS : premier déploiement sur $IP (aucun .env) — nomme le serveur : SERVEUR_NOM=cloud-3 bash $0 $IP <domaine>. Son .env sera FERMÉ (aucun compte, pas d'entretien du pool)." >&2; exit 1; }
+  case "$SERVEUR_NOM" in *[!a-z0-9-]*|-*) echo "REFUS : nom de serveur « $SERVEUR_NOM » (minuscules, chiffres, tirets)" >&2; exit 1 ;; esac
+  echo "→ serveur NEUF : $SERVEUR_NOM ($DOMAINE), .env fermé"
+elif [ -z "$NOM_EN_PLACE" ]; then
+  echo "REFUS : le .env de $IP n'a pas de SERVEUR_NOM (l'orchestrateur se prendrait pour cloud-1) — à poser à la main." >&2; exit 1
+elif [ -n "$SERVEUR_NOM" ] && [ "$SERVEUR_NOM" != "$NOM_EN_PLACE" ]; then
+  echo "REFUS : $IP s'appelle « $NOM_EN_PLACE » dans son .env, pas « $SERVEUR_NOM »." >&2; exit 1
+else
+  echo "→ serveur en place : $NOM_EN_PLACE ($DOMAINE)"
+fi
 IMAGE_STEEL="$(grep -o 'ghcr.io/steel-dev/steel-browser@sha256:[0-9a-f]\{64\}' serveur-cloud/src/navigateur.js | head -1)"
 [ -n "$IMAGE_STEEL" ] || { echo "REFUS : image steel épinglée introuvable dans src/navigateur.js" >&2; exit 1; }
 SECRETS="${SECRETS_ENV:-/c/Users/nicol/fillsell-cloud-proto/secrets.env}"
@@ -44,10 +63,11 @@ $SSH "mkdir -p /srv/fillsell-cloud/paquets && rm -rf /srv/fillsell-cloud/paquets
 scp -i "$CLE" -q -r "$PAQUET" "root@$IP:/srv/fillsell-cloud/paquets/$SHA"
 
 echo "→ images, extension, configuration, pare-feu"
-$SSH bash -s -- "$SHA" "$DOMAINE" "$IMAGE_STEEL" "${DESTINATIONS_PROXY:-}" <<'DISTANT'
+$SSH bash -s -- "$SHA" "$DOMAINE" "$IMAGE_STEEL" "${SERVEUR_NOM:--}" "${DESTINATIONS_PROXY:-}" <<'DISTANT'
 set -euo pipefail
-# (04/11 soir) ${4:-} : ssh recolle les arguments en une ligne, un DESTINATIONS_PROXY vide y disparaît (set -u l'arrêtait).
-SHA="$1"; DOMAINE="$2"; IMAGE_STEEL="$3"; DESTINATIONS="${4:-}"; P="/srv/fillsell-cloud/paquets/$SHA"
+# (04/11 soir) ${5:-} : ssh recolle les arguments en une ligne, un DESTINATIONS_PROXY vide y disparaît (set -u l'arrêtait) ;
+# c'est pourquoi il passe EN DERNIER, et pourquoi un nom absent voyage sous la forme « - » (06/11).
+SHA="$1"; DOMAINE="$2"; IMAGE_STEEL="$3"; NOM="$4"; DESTINATIONS="${5:-}"; P="/srv/fillsell-cloud/paquets/$SHA"
 docker image inspect "$IMAGE_STEEL" >/dev/null 2>&1 || docker pull -q "$IMAGE_STEEL" >/dev/null
 docker build -q -t "fillsell-orchestrateur:$SHA" "$P" >/dev/null
 # (30/10, lot D) Le navigateur Google Chrome officiel et l'extension Cloud SIGNÉE (installation par stratégie
@@ -99,9 +119,10 @@ printf 'VERSION_ORCHESTRATEUR=%s\nDOMAINE=%s\n' "$SHA" "$DOMAINE" > /srv/fillsel
 mkdir -p /srv/fillsell-cloud/caddy/data /srv/fillsell-cloud/caddy/config /srv/fillsell-cloud/profils /srv/fillsell-cloud/etat
 ENV=/srv/fillsell-cloud/.env
 if [ ! -f "$ENV" ]; then
-  cp "$P/deploiement/env.exemple" "$ENV"; chmod 600 "$ENV"
-  # (01/11) La clé du coffre n'est PAS tirée ici : elle vient de secrets.env (étape suivante), sinon elle y est tirée.
-  sed -i "s#^TICKETS_CLE=.*#TICKETS_CLE=$(openssl rand -base64 32)#" "$ENV"
+  # (06/11) Jamais env.exemple tel quel (cloud-1, compte de Nico, pool tenu) : un .env FERMÉ au nom donné, clé des
+  # tickets tirée sur place. (01/11) La clé du coffre n'est PAS tirée ici : elle vient de secrets.env (étape suivante).
+  [ "$NOM" != "-" ] || { echo "REFUS : aucun .env sur ce serveur et aucun nom donné (SERVEUR_NOM)" >&2; exit 1; }
+  sh "$P/outils/env-premier.sh" "$P/deploiement/env.exemple" "$ENV" "$NOM"
 fi
 sed -i "s#^IMAGE_NAVIGATEUR=.*#IMAGE_NAVIGATEUR=$IMAGE_STEEL#; s#^DOMAINE=.*#DOMAINE=$DOMAINE#" "$ENV"
 # (30/10) Le moteur Chrome : l'image du jour (le moteur reste steel tant que l'extension signée n'existe pas).

@@ -277,6 +277,9 @@ async function executer() {
   // 2.5 La copie Cloud de l'extension (commit courant), puis le déploiement.
   titre('Déploiement');
   if (lancer(process.execPath, [path.join(RACINE, 'scripts', 'cloud', 'build-extension-cloud.mjs')]).code !== 0) arret('copie Cloud de l’extension refusée');
+  // (06/11) deployer.sh exige le nom d'un serveur neuf (son .env est alors FERMÉ : outils/env-premier.sh) — celui du
+  // serveur Hetzner sans « fillsell- » (fillsell-cloud-1 → cloud-1) ; COMPTES_AUTORISES est reposé au § 2.6.
+  process.env.SERVEUR_NOM ||= NOM.replace(/^fillsell-/, '');
   if (lancer(BASH, [path.join('serveur-cloud', 'outils', 'deployer.sh'), ip, domaine]).code !== 0) arret('deployer.sh a échoué (voir ci-dessus)');
 
   // 2.6 Le jeton IPRoyal au .env du serveur (lectures d'échéances), par l'entrée standard ; achats et alertes restent COUPÉS.

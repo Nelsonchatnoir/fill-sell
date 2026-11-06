@@ -23,7 +23,7 @@ import { lireToutesPages } from '../utils/lireToutesPages';
 import { ENCRE2, DISCRET, PECHE_ENCRE, libellePct } from '../ecrans/pleins/jetons';
 import {
   plateformeVente, plateformesPresentes, venteDeLaPlateforme, grouperParMois, margeMoyenne,
-  margePctVente, prixAchatZero, totalEncaisse, jourDeVente, CODES_PLATEFORME_VENTE,
+  margePctVente, prixAchatZero, totalEncaisse, jourDeVente, CODES_PLATEFORME_VENTE, CLE_SANS_PLATEFORME,
 } from '../utils/ventesStats';
 import { motVendu, jourCourt, MOIS_LONGS_FR, MOIS_LONGS_EN } from '../utils/accordVendu';
 
@@ -1262,7 +1262,8 @@ const VentesTab = memo(function VentesTab({
               <button key={pl.cle} type="button" onClick={()=>choisirPlateforme(on?'toutes':pl.cle)} aria-pressed={on}
                 style={{...pastille,padding:'0 14px 0 10px',border:on?'1px solid transparent':`1px solid ${UI.border}`,background:on?UI.ink:'#fff',color:on?'#fff':UI.ink}}>
                 {CODES_PLATEFORME_VENTE.includes(pl.code)&&<PlatformLogo platform={pl.code} size={18}/>}
-                {pl.code==='ailleurs'?(fr?'Ailleurs':'Elsewhere'):pl.libelle}
+                {/* (06/11) « Sans plateforme » restait en français dans l'app en anglais (parcours connecté du compte de démo). */}
+                {pl.code==='ailleurs'?(fr?'Ailleurs':'Elsewhere'):pl.code===CLE_SANS_PLATEFORME?(fr?'Sans plateforme':'No platform'):pl.libelle}
               </button>
             );
           })}

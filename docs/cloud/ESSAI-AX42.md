@@ -165,7 +165,9 @@ Sous le pilote X `amdgpu`, les sorties s'appellent souvent autrement (`HDMI-A-0`
 ⛔ `deployer.sh` copie `env.exemple` quand `/srv/fillsell-cloud/.env` n'existe pas, puis lance l'orchestrateur avec
 `SERVEUR_NOM=cloud-1`, `COMPTES_AUTORISES=` le compte de Nico et `ENTRETIEN_POOL=1` : la nouvelle machine battrait sous le
 nom de cloud-1 (domaine de cloud-1 réécrit dans `cloud_serveurs`) et tiendrait le pool en même temps que lui. Le `.env`
-est donc écrit à la main AVANT.
+est donc écrit à la main AVANT. (06/11 : CORRIGÉ dans le dépôt — `deployer.sh` refuse un serveur sans `.env` si
+`SERVEUR_NOM` n'est pas donné, écrit alors un `.env` FERMÉ par `outils/env-premier.sh`, et refuse un nom différent de
+celui du `.env` en place ; `selftest:deployer-nom-serveur`. A7 reste utile pour les autres réglages de l'essai.)
 - Commandes :
   ```bash
   SSH3 'mkdir -p /srv/fillsell-cloud/deploiement && test ! -e /srv/fillsell-cloud/.env && echo "aucun .env : bien"'
@@ -208,7 +210,7 @@ d'abord que c'est la même que celle de cloud-2 (empreintes seulement).
   ```bash
   cd /c/Users/nicol/fill-and-sell && git status --porcelain -- serveur-cloud supabase/functions/_shared/cloud-pool.js src/cloud/connexion
   git log -1 --format=%h -- serveur-cloud            # = le commit de cloud-2 (2.2)
-  bash serveur-cloud/outils/deployer.sh <IP> cloud-3.fillsell.app
+  SERVEUR_NOM=cloud-3 bash serveur-cloud/outils/deployer.sh <IP> cloud-3.fillsell.app   # refus si le .env dit autre chose
   ```
 - Vérification : la sortie dit `déployé : <sha> sur cloud-3.fillsell.app`, « clé du coffre reprise de secrets.env,
   version N », « jeton IPRoyal repris », « clés Supabase posées », puis `santé : {…}` ;
@@ -546,7 +548,7 @@ sur l'ordre NOMMÉ de Nico, critères du § 6.3 verts, et toujours dans CET ordr
 ## 11. Pièges vus en lisant le code (pour cet essai et pour la suite)
 
 - **Premier déploiement d'un serveur neuf** : `deployer.sh` installe `env.exemple` tel quel (`SERVEUR_NOM=cloud-1`,
-  compte de Nico, `ENTRETIEN_POOL=1`) quand le `.env` manque — d'où A7. À corriger dans le dépôt avant tout 4e serveur.
+  compte de Nico, `ENTRETIEN_POOL=1`) quand le `.env` manque — d'où A7. CORRIGÉ le 06/11 (nom exigé, `.env` fermé : `outils/env-premier.sh`).
 - **Clé du coffre** : un serveur dont `COFFRE_CLE` diffère réécrirait le coffre commun avec une clé que les autres ne
   lisent pas — d'où A8 (le déploiement ne recopie pas non plus `COFFRE_CLES_ANCIENNES`).
 - **Purge et flotte** : la purge (entretien du serveur qui tient le pool) ne détruit que le profil présent sur SON
