@@ -168,7 +168,7 @@ relu à 12:48). Aucun faux, règle laissée allumée.
 # Lot n° 2, suite (retour de Nico de 13:20)
 
 ## 1. Tests et push
-Suite complète par morceaux (10 familles, 600 selftests, 14:26-14:54) : 0 rouge sur le code final (deux rouges dus à
+Suite complète par morceaux (10 familles, 600 selftests, 14:26-14:54 ; relancée 15:31-16:03 après les points 4-5 du retour de 15:10 : 601, 0 rouge) : 0 rouge sur le code final (deux rouges dus à
 mes changements de libellé des retours eBay, corrigés et relancés). build:essai vert, lint sans erreur nouvelle.
 
 ## 2. Les 62 couples — feu vert pour 56 (65 annonces)
@@ -210,6 +210,7 @@ barème. Aucune annonce eBay en ligne à 15:00.
 3. n° 22 : republication b3cb7da0 close (pas de réservation), 33923195 relu en vente, retrait armé 15:13 ; 33939379
    gardé. Aucun message à la personne.
 4. Vinted, chemin selon l'arbre du compte : voir `docs/regles/plateformes.md`. Simulation sur les 24 publications Vinted
-   ouvertes : 2 dans la zone — 85016145 (compte basculé, refus « Accessoires ») : reprise attendue au passage de handler-watch v177 ;
+   ouvertes : 2 dans la zone — 85016145 (compte basculé, refus « Accessoires ») : reprise par handler-watch v177 à 15:33
+   avec « Accessoires de mode > Bijoux > Bracelets », PUBLIÉE 15:35 (n° 10689269146) ;
    9ca7860d (arbre inconnu) inchangé.
 5. Retours eBay, voie extension : 14/30/60 ; « Pas de retour » seulement au particulier lu chez eBay.
