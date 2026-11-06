@@ -1,9 +1,76 @@
-# Reprise — terminal « Problèmes », clôture du 05/11/2026 (mise à jour ≈ 22:45, heure de Paris)
+# Reprise — terminal « Problèmes » (mise à jour du 06/11/2026, 17:40, heure de Paris)
 
-Ce terminal est fermé. Tout ce qui reste est listé ici. L'état de prod détaillé : `docs/agents/etat-2026-10-01.md`
-(sections « 05/11 »).
+Ce terminal est fermé. § 0 = ce qui reste OUVERT au 06/11 au soir (à reprendre en premier) ; §§ 1-4 = clôture du 05/11,
+gardée pour l'historique. Récit du 06/11 : `docs/enquetes/lot-0611/RAPPORT.md` ; état de prod :
+`docs/agents/etat-2026-10-01.md` (sections « 06/11 »).
 
-## 1. Fait et en prod ce soir
+## 0. Ouvert au 06/11 au soir (relu en base de 17:36 à 17:40)
+
+Fonctions du lot, déployées l'après-midi et pas redéployées depuis : get-pending-jobs (15:30:35), update-job-status
+(15:30:58), handler-watch (15:31:05), ebay-account (14:11:05), ebay-api-worker (12:31:38). Numéros : le RAPPORT et
+l'état disent v341 / v180 / v177 / v30 / v112 (relus à 15:31) ; `functions list` de 17:40 affiche 343 / 182 / 179 / 32 /
+114 pour les MÊMES déploiements (même heure, chemin d'entrée `_341`, `_180`…). Identifier un déploiement par son heure.
+
+**1. Retraits des couples « vrais » : 27 faits, 20 en attente sur 47** (45 du lot + n° 20 + n° 22).
+- Les 20 sont `pending`, voie extension, sans erreur : chacun part quand l'extension de son compte repasse. Rien à
+  réarmer, rien à forcer. Avant tout geste neuf sur l'un d'eux : relire l'annonce EN VENTE (règle des couples).
+- Par compte (dernier passage de l'extension) :
+  - Srideals (7153db13), eBay ×9 : 820285486592, 820285488550, 820285490088, 820285507441, 820287270026,
+    820287273237, 820287278635, 820293053095, 820293059700 — extension vue le 05/11 12:18.
+  - Dylan Fontaine (379aa8a7) : Beebs ×4 (34284975, 34285121, 34297626, 34297633) et Leboncoin ×2 (3285616924 = n° 20,
+    3286667636) — 05/11 23:09.
+  - piochel cathy (7804bb4a), Beebs ×3 : 34092671, 34139502, 34139642 — 20/10 20:02.
+  - Djibril Ziate (9e8c49a0), Beebs ×1 : 34005625 — 04/10 18:26 (extension absente depuis un mois : ce retrait peut ne
+    jamais partir ; le doublon reste en vente tant qu'il ne revient pas).
+  - Joe0410 (afeef3c7), Beebs ×1 : 33923195 = n° 22 (republication b3cb7da0 close à 15:13) — 04/11 22:50.
+- Suivi : `public._backup_0611_couples_retraits` (colonne `retrait_cree`) joint à `cross_post_jobs`. Inverse (annule
+  les retraits encore en attente) : `scripts/reparations/20261106_couples_vrais_retraits_INVERSE.sql`.
+- Garde-fous de Nico, toujours valables : jamais les séries ni les articles en plusieurs exemplaires, jamais les 13
+  indécidables, rien en dehors de la liste (`docs/enquetes/rattachements-0511/ACTIONS-62-VRAIS.md`).
+
+**2. Louis (faf5021a, Leboncoin) : ventes 3297299585 et 3280443604, et ses 9 remises — À VÉRIFIER.**
+- Un relevé « Mes annonces » est passé vers 17:27 (280 annonces vues) : les 9 annonces vendues y sont encore
+  « active » → la règle A retient toujours les 7 remises de ce matin (1089e37e, 18af38a2, 6e6cd97d, 7ef7d84f, 9e3f4b0a,
+  cc247496, fdda158a : `pending`, aucun numéro). C'est le comportement attendu.
+- Les 2 ventes NE SONT PAS enregistrées : jobs edf17fe7 (3297299585) et b02dca17 (3280443604) toujours
+  « published », `sale_signal` = sold, SANS `sale_evidence`. Le relevé de 17:27 n'a relu ni la capture ni la transaction
+  (`capture_le` et `transaction_lue_le` restent à 10:19) ; or la lecture fraîche (migration 20261106110000) exige une
+  lecture de la transaction de moins d'une heure, plus récente que la précédente. Leurs 2 remises n'existent donc pas
+  encore.
+- À vérifier, dans l'ordre : (a) à la prochaine lecture des transactions de Louis, les 2 ventes enregistrées (preuve =
+  CE numéro) ; (b) leurs 2 remises créées et retenues comme les 7 ; (c) les 9 remises parties SEULES quand les anciennes
+  annonces ont disparu du relevé, sans aucun refus « annonce identique ».
+- Si aucune lecture de transaction ne passe d'ici le 07/11 au matin : chercher QUAND l'extension relit les transactions
+  Leboncoin (le relevé de 17:27 ne l'a pas fait) avant tout script. Aucun mail à Louis.
+
+**3. ayadi007 (cfdfda6f, eBay par l'extension) : 10 publications bloquées par eBay, 1 annulée.**
+- 10 `needs_user` « eBay bloque la mise en vente : la configuration des paiements de ton compte… » (mur « paiements »,
+  page `ebaypayonboardingweb`) ; 1 `cancelled` (chaise e4eaae70 : « Cet exemplaire a été vendu »). Aucune annonce eBay en
+  ligne, rien créé chez eBay. Un mail lui a été envoyé à 13:42 pour terminer ses paiements.
+- La reprise est automatique : handler-watch relance un éclaireur au barème (60, 180, 360, 720, 1440 min ; premier
+  13:54, retenu non servi) ; dès qu'UNE publication passe, toutes repartent. À vérifier alors : chacune en ligne chez
+  eBay, sans doublon. Refonte de fond NON déployée ; Leboncoin et Vinted non touchés chez lui (consigne de Nico).
+
+**4. Jean-Luc LASSARAT, Vinted : « Hommes > Accessoires > Autres » sans équivalent dans le nouvel arbre.**
+- Le chemin selon l'arbre du compte (`_shared/vinted-arbre-compte.js`) ne traduit jamais ce rayon (7 rayons sans
+  équivalent) : sa tâche dca7193f (éponge auto) garde sa question de rayon. Elle repart par le
+  circuit normal quand il choisit un rayon. Rien à faire de notre côté ; ne pas deviner un rayon pour lui.
+
+**5. Retours eBay de la voie extension : choix enregistré, PAS inscrit sur le formulaire eBay.**
+- La question « Retours eBay » (update-job-status) propose désormais 14 / 30 / 60 jours, et « Pas de retour » au seul
+  vendeur particulier (type lu par GetUser si le compte a l'API, sinon par Browse sur une annonce eBay en ligne du
+  compte ; illisible = pas de « Pas de retour »). Le choix est enregistré pour le compte, comme avant.
+- Mais l'extension ne pose TOUJOURS PAS les retours sur le formulaire eBay : ce qu'eBay applique reste le réglage du
+  compte chez eBay. Défaut ancien, non corrigé : à décider par Nico (geste de l'extension = nouvelle version CWS).
+- Aucun essai réel : aucune question « retours » n'est partie depuis le déploiement (0 ligne à 17:40). La première
+  prouvera la lecture du type (log update-job-status « question des retours eBay : vendeur … »).
+- Pascal Caffray (b731ae0f) : ne pas relancer sa tâche, ne pas lui écrire — Nico lui répond.
+
+## 1. Fait et en prod le 05/11 au soir
+
+Depuis, réglés le 06/11 : § 2 « 1 c » (migration 20261106120000 appliquée 12:07) ; § 2 « 4 » (règle « annonce publiée
+disparue » allumée, 2 fermetures justes à 11:33 et 12:33) ; § 3.5 Louis (remplacé par le § 0.2) ; § 3.7 champs requis
+a / b / c (en ligne avec fdefb12). Le reste des §§ 2-3 n'a pas été relu le 06/11.
 
 | Sujet | Ce qui tourne | Preuve |
 |---|---|---|
@@ -67,4 +134,5 @@ Ce terminal est fermé. Tout ce qui reste est listé ici. L'état de prod détai
 
 ## 4. Fichiers non commités
 
-Aucun : tout est commité et poussé (dernier commit du terminal : voir `git log`).
+Aucun de ce terminal : tout est commité et poussé (voir `git log`).
+`serveur-cloud/outils/charge/garde-charge.sh` (non suivi, 06/11 17:40) est au terminal Cloud : ne pas y toucher.
