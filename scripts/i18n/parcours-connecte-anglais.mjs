@@ -89,8 +89,11 @@ async function capturer(nom) {
   const phrases = texte.split(/(?<=[.!?…])\s+|\n/).map((s) => s.trim()).filter((s) => s && MOTS_FR.test(s)).slice(0, 15);
   const fichier = `${String(++n).padStart(2, '0')}-${nom}.png`;
   await page.screenshot({ path: join(DOSSIER, fichier), fullPage: true });
-  bilan.push({ ecran: nom, fichier, francais: phrases });
-  console.log(`${phrases.length ? '✗' : '✓'} ${fichier}${phrases.length ? ` — ${phrases.length} phrase(s) en français : ${phrases.slice(0, 3).join(' | ').slice(0, 240)}` : ''}`);
+  // (06/11) Les devises affichées : le compte de démo montrait des dinars serbes (RSD) ; un relecteur doit voir des euros.
+  const devises = {};
+  for (const m of texte.match(/€|\bEUR\b|\bRSD\b|\bdin\.?|\$|£/g) ?? []) devises[m] = (devises[m] ?? 0) + 1;
+  bilan.push({ ecran: nom, fichier, francais: phrases, devises });
+  console.log(`${phrases.length ? '✗' : '✓'} ${fichier} ${JSON.stringify(devises)}${phrases.length ? ` — ${phrases.length} phrase(s) en français : ${phrases.slice(0, 3).join(' | ').slice(0, 240)}` : ''}`);
 }
 try {
   await page.goto(demo ? 'https://fillsell.app/app' : 'https://fillsell.app/login', { waitUntil: 'networkidle', timeout: 60_000 }).catch(() => {});

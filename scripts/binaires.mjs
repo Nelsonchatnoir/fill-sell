@@ -39,6 +39,8 @@
 //      CODEMAGIC_API_TOKEN) ; sinon le script écrit les 3 clics.
 //
 // Options : --sans-ios · --sans-android · --cle-apns=<chemin du .p8>
+//   --cles-seules : étapes B, C, D seulement (fichiers, secrets, preuve chez Apple et Google) — ni dépôt, ni binaire :
+//   les clés se posent sur un arbre partagé et sale quand les binaires sont déjà faits (06/11, 2.9.161).
 // Les fichiers de Téléchargements ne sont ni déplacés ni effacés.
 // ════════════════════════════════════════════════════════════════════════════
 import { spawnSync } from 'node:child_process';
@@ -66,6 +68,7 @@ const ARGS = process.argv.slice(2);
 const opt = (nom) => ARGS.find((a) => a.startsWith(`--${nom}=`))?.split('=').slice(1).join('=');
 const sansIos = ARGS.includes('--sans-ios');
 const sansAndroid = ARGS.includes('--sans-android');
+const clesSeules = ARGS.includes('--cles-seules');
 
 const bilan = [];
 const ok = (t) => { bilan.push(`✓ ${t}`); console.log(`  ✓ ${t}`); };
@@ -81,7 +84,7 @@ function lancer(cmd, args, { cwd = RACINE, env, muet = false, entree } = {}) {
     cwd, encoding: 'utf8', shell: true, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024, input: entree,
   });
   if (!muet && r.status !== 0) console.log(String(r.stdout ?? '').slice(-3000), String(r.stderr ?? '').slice(-3000));
-  return { code: r.status, sortie: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+  return { code: r.status, sortie: `${r.stdout ?? ''}${r.stderr ?? ''}`, stdout: String(r.stdout ?? '') };
 }
 const git = (...a) => lancer('git', a, { muet: true }).sortie.trim();
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -94,22 +97,28 @@ function sql(requete) {
   const dossier = mkdtempSync(path.join(tmpdir(), 'binaires-sql-'));
   const f = path.join(dossier, 'q.sql');
   writeFileSync(f, requete);
-  const r = lancer('npx', ['supabase', 'db', 'query', '--linked', '-f', `"${f}"`, '-o', 'json'], { muet: true });
+  // (06/11) --yes : sans lui, la CLI refuse toute écriture lancée par un script (le diagnostic passe par net.http_post).
+  const r = lancer('npx', ['supabase', 'db', 'query', '--linked', '--yes', '-f', `"${f}"`, '-o', 'json'], { muet: true });
   rmSync(dossier, { recursive: true, force: true });
-  const i = r.sortie.indexOf('{');
-  try { return JSON.parse(r.sortie.slice(i)).rows ?? []; } catch { return null; }
+  // (06/11) stdout SEUL : la CLI écrit « Warning … / Target … » sur stderr, qui collé après le JSON le rendait illisible.
+  const i = r.stdout.indexOf('{');
+  try { return JSON.parse(r.stdout.slice(i)).rows ?? []; } catch { return null; }
 }
 
 console.log(`Binaires ${VERSION} (versionCode ${VERSION_CODE}) — notifications de ventes`);
 
 // ── A. Le dépôt ─────────────────────────────────────────────────────────────
+let court = '—';
+if (clesSeules) {
+  console.log('\n(--cles-seules) étapes B, C, D seulement : ni dépôt, ni binaire.');
+} else {
 etape('A. Le dépôt');
 if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'main') stop('la branche courante n\'est pas main.', 'git checkout main');
 if (git('status', '--porcelain')) stop(`des fichiers modifiés traînent :\n${git('status', '--short')}`, 'le binaire doit sortir d\'un arbre propre (le build web refuse sinon).');
 lancer('git', ['fetch', 'origin', 'main'], { muet: true });
 const tete = git('rev-parse', 'HEAD');
 if (tete !== git('rev-parse', 'origin/main')) stop('main n\'est pas identique à origin/main (commit non poussé, ou retard).', 'git pull --ff-only (ou pousser les commits) puis relancer.');
-const court = tete.slice(0, 7);
+court = tete.slice(0, 7);
 ok(`main propre et poussé (${court})`);
 const pkg = lireJson(path.join(RACINE, 'package.json'));
 const gradle = readFileSync(path.join(RACINE, 'android/app/build.gradle'), 'utf8');
@@ -122,6 +131,7 @@ if (!new RegExp(`versionCode ${VERSION_CODE}\\b`).test(gradle) || !gradle.includ
 if (!codemagic.includes(`agvtool new-marketing-version ${VERSION}`)) stop(`codemagic.yaml ne fige pas la version iOS ${VERSION}.`);
 if (!codemagic.includes('<key>aps-environment</key>')) stop('codemagic.yaml ne pose pas aps-environment (pas de jeton iOS sans lui).');
 ok(`versions alignées : package.json ${VERSION}, Android ${VERSION}/vc${VERSION_CODE}, iOS ${VERSION} (aps-environment posé)`);
+}
 
 // ── B. Les trois fichiers ───────────────────────────────────────────────────
 etape(`B. Les fichiers dans ${TELECHARGEMENTS}`);
@@ -183,7 +193,7 @@ etape('C. Les secrets Supabase');
     `APNS_PRIVATE_KEY='${p8.replace(/\r?\n/g, '\\n')}'`,
     `FCM_SERVICE_ACCOUNT='${JSON.stringify(sa)}'`,
   ].join('\n') + '\n');
-  const r = lancer('npx', ['supabase', 'secrets', 'set', '--env-file', `"${f}"`], { muet: true });
+  const r = lancer('npx', ['supabase', 'secrets', 'set', '--yes', '--env-file', `"${f}"`], { muet: true });
   rmSync(dossier, { recursive: true, force: true });
   if (r.code !== 0) stop(`supabase secrets set a échoué :\n${r.sortie.slice(-800)}`);
   const liste = lancer('npx', ['supabase', 'secrets', 'list'], { muet: true }).sortie;
@@ -224,6 +234,11 @@ etape('D. Les clés éprouvées chez Apple et chez Google (jeton factice, rien n
         : 'vérifier la clé du compte de service (bloc A, étape 4), puis relancer.');
   }
   ok(`Google accepte le compte de service du projet « ${diag.fcm.projet} » (réponse sur jeton factice : ${diag.fcm.motif})`);
+}
+if (clesSeules) {
+  console.log('\n════════ BILAN (--cles-seules) ════════');
+  console.log('Clés                  : posées en secrets ET acceptées par Apple et Google');
+  process.exit(0);
 }
 
 // ── E. L'AAB ────────────────────────────────────────────────────────────────

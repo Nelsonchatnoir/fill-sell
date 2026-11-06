@@ -22,7 +22,7 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
 | Confidentialité de l'app | 13 types publiés 06/11 | | fait (docs/stores/donnees-2.9.md) |
 | Notes relecteurs + compte | test@fillsell.app (mot de passe déjà saisi), notes 06/11 collées | | fait |
 | Contrat « Paid Applications » | nouvelle version ACCEPTÉE 06/11, actif jusqu'au 13/04/2027 | | fait |
-| Statut DSA | en vigueur : « pas commerçant » (16/04) ; le passage en « commerçant » n'a pas été enregistré (500 ×3, formulaire revenu vide le 06/11 vers 13:00) | | ⏳ Nico : ressaisir + codes e-mail/téléphone + avis SIRENE (build/stores/avis-situation-sirene-928578434.pdf) |
+| Statut DSA | en vigueur : « pas commerçant » (16/04) | | **DÉCISION DE NICO (06/11 après-midi) : on reste « non commerçant »**, déclaration du 16/04 inchangée, rien à faire ; toute alerte Apple à ce sujet lui est signalée |
 | Abonnements | Premium, Pro, Pro2, Premium Founder, Business : APPROVED ; **Cloud : WAITING_FOR_REVIEW** (soumis 10:37) | | fait |
 | Binaire 2.9.161 | — | — | fait 06/11 13:20 : Codemagic 175 (dbd9f34) ENVOYÉ, build 2611061217, non soumis ; 172-174 refusés (lock, puis profil sans Push) |
 
@@ -42,7 +42,7 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
 | Accès à l'app | googlereview@fillsell.app (mot de passe inchangé) + notes 06/11 | | enregistré, non envoyé |
 | Classification, cible, annonces… | 21/06/2026 | | inchangés |
 | Déclaration IA | aucune déclaration « IA » proposée dans Contenu de l'application (10 déclarations, toutes traitées) | | rien à remplir aujourd'hui |
-| Statut professionnel | « compte professionnel » choisi, coordonnées du profil de paiement | | ⏳ code SMS à saisir par Nico |
+| Statut professionnel | « compte professionnel » choisi le 06/11 matin, NON validé (code SMS jamais saisi) | | **DÉCISION DE NICO (06/11 après-midi) : on n'y touche pas** — aucun code SMS demandé ; toute alerte Google à ce sujet lui est signalée |
 | Abonnements | Premium, Pro, Business actifs ; Cloud actif (forfait mensuel, essai 7 j) + traduction en-US ajoutée 06/11 | | fait |
 | AAB 2.9.161 (vc 33) | — | — | fait 06/11 : build/AAB-A-TELEVERSER-2.9.161-vc33/ (a61d0ec, Firebase, même clé que 2.9.38) ; piste interne : BROUILLON enregistré, aucun testeur, rien envoyé |
 
@@ -57,8 +57,9 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
 - Binaire : versions alignées 2.9.161 (package.json, Android vc 33, Codemagic) — au-dessus de l'OTA servie (2.9.160).
 
 ## 4. Restes (qui, pourquoi)
-- Nico : pièce justificative DSA Apple ; code SMS Google ; conditions Firebase (le garde-fou refuse que Claude accepte
-  des conditions) ; clé APNs « FillSell Push » et clé privée Firebase (création de secrets refusée à Claude) ; pousser main (2 commits du terminal « Problèmes » en attente).
+- ~~Nico : pièce justificative DSA Apple ; code SMS Google~~ (06/11 après-midi : décision de Nico, on reste « non
+  commerçant » / statut pro Google non touché) ; conditions Firebase (le garde-fou refuse que Claude accepte
+  des conditions) ; ~~clé APNs « FillSell Push » et clé privée Firebase~~ (06/11 après-midi : posées et prouvées, § 6) ; pousser main (2 commits du terminal « Problèmes » en attente).
 - Après les clés : `npm run binaires` (AAB 2.9.161 + Codemagic → TestFlight), téléversement en piste interne, essais
   avec les comptes de relecture (TestFlight / piste interne : identifiants = geste de Nico).
 
@@ -68,3 +69,41 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
   la pastille « Sans plateforme » (Sales). Trouvé : ce compte affiche des dinars serbes (RSD) — script
   scripts/reparations/20261106_compte_relecture_apple_euro.sql prêt, non appliqué (garde-fou : à lancer par Nico).
 - Web : site bloqué sur 8bd22d6 de 05/11 23:04 à 06/11 12:30 (lock) ; règle npm ci (a459538).
+
+## 6. Session du 06/11 après-midi (Nico absent, autorisations écrites dans sa consigne)
+- **Euro** (autorisation 1) : `20261106_compte_relecture_apple_euro.sql` APPLIQUÉ vers 13:50 — test@fillsell.app RSD → EUR,
+  sauvegarde `_backup_0611_relecture_apple_devise` (« RSD »), plus aucun compte en RSD. Preuve à l'écran : parcours
+  connecté isolé (WebKit iPhone, lien à usage unique révoqué ensuite, lecture seule) `node scripts/i18n/parcours-connecte-anglais.mjs
+  --lien-demo build/captures-euro-relecture` → 7 écrans, « € » partout (Stats : « 7 832,70 € »), **0 RSD** (le script
+  relève désormais les devises vues par écran). Reste visible : les montants s'écrivent à la française (« 7 832,70 € »)
+  même en anglais (`formatCurrency`) — sans effet sur la devise, noté pour plus tard.
+- **Clés des notifications** (autorisations 2-4) : clé privée du compte de service Firebase GÉNÉRÉE dans la console
+  (projet fillsell-6cd47, `firebase-adminsdk-fbsvc@…`, fichier dans Téléchargements, jamais dans git). Les 5 fichiers .p8
+  du PC éprouvés chez Apple (JWT, jeton d'appareil factice) : **seule AuthKey_J8G395AA93 (06/11 matin) est une clé APNs**
+  (« BadDeviceToken » en production ET en bac à sable) ; DYF87JYZ89 (= `apple-key.p8` du dépôt), W7MZC3YK99 et
+  SubscriptionKey_ZYC7ZAG2GL : « InvalidProviderToken ». Secrets posés : `APNS_KEY_ID`, `APNS_PRIVATE_KEY`,
+  `APNS_TEAM_ID`, `APNS_TOPIC`, `FCM_SERVICE_ACCOUNT` (`node scripts/binaires.mjs --cles-seules --cle-apns=…`, option
+  neuve : étapes B-C-D seulement) ; preuve par push-ventes v17 (`diagnostic: "cles"`) : Apple « BadDeviceToken »,
+  Google « jeton_mal_forme » sur fillsell-6cd47 → **les deux clés acceptées**, rien envoyé à personne. Corrigé au passage
+  dans `binaires.mjs` : la CLI exige `--yes` (secrets, net.http_post) et écrit « Warning/Target » sur stderr, qui collé
+  après le JSON rendait le diagnostic illisible. Reste : bloc C (Pub/Sub) de `docs/push/CLES-NICO.md`, non demandé.
+- **TestFlight** : build 2.9.161 (2611061217) « VALID » mais `MISSING_EXPORT_COMPLIANCE` (interne et externe) au 06/11
+  14:00 — conformité à l'exportation = geste de Nico ; ensuite, vérifier « disponible pour les testeurs internes ».
+- **DSA** : décision de Nico (tableaux ci-dessus) ; mails relus le 06/11 vers 14:05 : aucune alerte neuve (le mail Google
+  « déclarez votre statut de professionnel » date du 04/11).
+- **OTA 2.9.162** (alignement des binaires, PRÉPARÉE, NON PUBLIÉE — feu vert de Nico) : voir § 7.
+
+## 7. OTA 2.9.162 — remettre l'IPA et l'AAB 2.9.161 au même niveau (à publier sur feu vert de Nico seulement)
+Pourquoi : l'AAB 2.9.161 embarque le web de a61d0ec, l'IPA (Codemagic 175) celui de dbd9f34 (avec « Sans plateforme »
+traduit, 0997268) ; le canal `production` sert 2.9.160 avec « Updates Under Native : No » : les binaires 2.9.161 gardent
+leur web embarqué. Une OTA 2.9.162 donne le MÊME web (celui de `main` au moment du build) aux deux binaires — et à tous
+les téléphones du canal `production` (c'est pour cela qu'elle attend Nico).
+Gestes (dossier principal, jamais un worktree ; `docs/agents/pieges.md` § Déploiement) :
+1. `npx @capgo/cli channel list` → `production` = 2.9.160 (relu le 06/11 vers 14:15) ;
+2. arbre PROPRE (aucun terminal en cours : `npm run build` refuse sinon) ; `package.json` + `package-lock.json` → 2.9.162,
+   commit seul (`git commit --only package.json package-lock.json`) ; ⚠ `binaires.mjs` refusera ensuite un nouveau binaire
+   tant que `build.gradle`/`codemagic.yaml` disent 2.9.161 (attendu : un binaire neuf = un numéro neuf) ;
+3. `npm run build` puis `curl -s https://fillsell.app/build.json` comparé à `dist/build.json` (même commit, sans `-dirty`) ;
+4. `npx @capgo/cli bundle upload --channel production --bundle 2.9.162 --path dist` ; relire le canal.
+Pourquoi pas fait aujourd'hui : l'arbre partagé n'est pas propre (terminal « Problèmes » en cours), et un numéro monté
+sans être publié serait pris par la prochaine OTA d'un autre terminal (sans le feu vert de Nico).

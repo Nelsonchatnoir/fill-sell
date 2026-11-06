@@ -12,6 +12,35 @@ root@<IP>` ; `SSH2` = `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@5.9.80.213` (cl
 dans un fichier puis `npx supabase db query --linked -f <fichier>` (jamais une écriture sous ce nom). Nom retenu :
 **cloud-3** / **cloud-3.fillsell.app** (cloud-1 = `cloud.fillsell.app`, cloud-2 = `cloud-2.fillsell.app`).
 
+## ⛔ DÉCISIONS DE NICO DU 06/11 APRÈS-MIDI — elles PRIMENT sur le reste de ce document
+Hetzner (06/11 11:56, ticket 2026110503039457) : « refaites exactement la même commande, nous l'accepterons » — Nico
+la repasse lui-même. Robot relu le 06/11 vers 14:10 : seul cloud-2 (3104939) ; AX42 pas encore livré.
+1. Essai **OUI**, seuils du § 6.3 **tels quels**, réinstallation en **Ubuntu 24.04** (comme cloud-2).
+2. **PAS Ornella** : c'est le **COMPTE DE NICO** qui passe sur cloud-3 dès que cloud-3 a passé ses contrôles (A10 pare-feu,
+   A11 Chrome par la Radeon et non SwiftShader, A12 battement sans compte), pour qu'il teste lui-même. cloud-2 GARDE les
+   comptes de relecture (Apple d6a9e726, Google 953c1ca6) comme référence. Donc : B1 → `COMPTES_AUTORISES` de cloud-3 =
+   **Nico seul** (f44b5917-…), posé à l'étape 2 du § 8 ; B2-B4 (IP et connexions d'Ornella) sans objet : Nico garde
+   l'IP 42 et ses connexions (coffre commun, non touché) ; B3 remplacé par le § 8 ci-dessous ; l'étape C se fait sur le
+   compte de Nico (annonces à 999 €, ses photos).
+3. **DNS** `cloud-3.fillsell.app` : Claude le pose lui-même dans le Chrome de Nico dès que l'IP est connue (un
+   enregistrement A, nuage GRIS, aucun AAAA).
+4. **Beebs** : « dépôt reçu par Beebs (numéro, en vérification) » vaut preuve ; jamais une vraie annonce d'un utilisateur.
+5. Scripts de réparation ÉCRITS le 06/11 (chacun avec son INVERSE), appliqués sur feu vert :
+   - (b) bascule de Nico cloud-2 → cloud-3 : `scripts/reparations/20261106_cloud_essai_ax42_bascule_nico.sql` (+ `_INVERSE`) —
+     **feu vert donné** : à appliquer quand cloud-3 a passé ses contrôles, dans l'ORDRE du § 8 (cloud-2 lâche, script,
+     cloud-3 reprend). Coffre jamais touché, IP 42 inchangée, profil neuf sur cloud-3, profil de cloud-2 intact (secours) ;
+   - (c) retrait de cloud-3 : `scripts/reparations/20261106_cloud_essai_ax42_retrait_cloud3.sql` (+ `_INVERSE`) ;
+   - (a) Ornella : sans objet (décision 2).
+   Preuve sur Postgres JETABLE, fonctions `cloud_serveur_battre` / `cloud_serveur_choisir` de la PROD :
+   `PREUVE_PG=embarque node scripts/cloud/preuve-bascule-ax42.mjs` → **30/30** (gardes, aller, retour, retrait, battement
+   qui laisse « retire »).
+6. Relevé de 5 s en parallèle sur cloud-2 : **OUI** (§ 6.1, copié sur cloud-2 le temps de l'essai).
+Déploiement : `SERVEUR_NOM=cloud-3`, puis les deux contrôles (puce graphique active ; Chrome qui l'utilise, jamais
+SwiftShader), puis l'essai. Lectures du jour J faites le 06/11 vers 14:10 : cloud-2 = orchestrateur `61fb7ddd6e2a`,
+`MEMOIRE_NAVIGATEUR=2g`, `GPU_GROUPES=44,993`, `COFFRE_CLE_VERSION=2`, aucune `COFFRE_CLES_ANCIENNES` ; copie Cloud
+`2026-11-05T19:05:12Z+d426d23.p92769f2-cloud` = celle de `build/extension-cloud` ; serveur du dépôt `0997268` (seuls
+`outils/deployer.sh`, `env-premier.sh`, `lancer-serveur-test.mjs` ont changé depuis 61fb7dd : orchestrateur identique).
+
 ## 0. En une page
 
 | Jour | Étape | Qui | Durée |
