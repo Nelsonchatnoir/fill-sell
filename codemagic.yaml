@@ -13,10 +13,16 @@ workflows:
     integrations:
       app_store_connect: Codemagic
     scripts:
+      # (06/11) npm ci, jamais npm install : npm install réécrivait package-lock.json — version 2.9.161 absente du
+      # lock (build 172), puis, lock aligné, npm 10 de cette machine (Node 22) qui retire les champs « libc » écrits
+      # par npm 11 (build 173) — l'arbre devenait « sale » et npm run build refusait. npm ci n'écrit jamais le lock
+      # et s'arrête net s'il ne suit pas package.json (selftest:installation-stricte).
       - name: Install dependencies
-        script: npm install
+        script: npm ci
       - name: Build web app
         script: |
+          # (06/11) set -e : un build refusé arrête CETTE étape (le 173 a continué jusqu'à « Sync Capacitor »).
+          set -e
           rm -rf node_modules/.vite
           npm run build
           # Images de partage social (Open Graph) : utiles au WEB, inutiles dans

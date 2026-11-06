@@ -115,6 +115,9 @@ const pkg = lireJson(path.join(RACINE, 'package.json'));
 const gradle = readFileSync(path.join(RACINE, 'android/app/build.gradle'), 'utf8');
 const codemagic = readFileSync(path.join(RACINE, 'codemagic.yaml'), 'utf8');
 if (pkg?.version !== VERSION) stop(`package.json est en ${pkg?.version}, pas ${VERSION}.`);
+// (06/11) Le lock monte AVEC package.json : sinon npm réécrit le lock au build, l'arbre devient sale et Vercel refuse.
+const lock = lireJson(path.join(RACINE, 'package-lock.json'));
+if (lock?.version !== VERSION || lock?.packages?.['']?.version !== VERSION) stop(`package-lock.json n'est pas en ${VERSION}.`, 'npm install --package-lock-only, puis committer le lock avec package.json.');
 if (!new RegExp(`versionCode ${VERSION_CODE}\\b`).test(gradle) || !gradle.includes(`versionName "${VERSION}"`)) stop(`android/app/build.gradle n'est pas en ${VERSION} / versionCode ${VERSION_CODE}.`);
 if (!codemagic.includes(`agvtool new-marketing-version ${VERSION}`)) stop(`codemagic.yaml ne fige pas la version iOS ${VERSION}.`);
 if (!codemagic.includes('<key>aps-environment</key>')) stop('codemagic.yaml ne pose pas aps-environment (pas de jeton iOS sans lui).');

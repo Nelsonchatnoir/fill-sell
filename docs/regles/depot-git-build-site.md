@@ -131,7 +131,13 @@ autre le 18/09 pour avoir cherché dans les fichiers d'abord :
    `curl https://fillsell.app/build.json` : elle dit quel commit tourne
    vraiment chez la personne (jamais `-dirty` depuis le 01/10 : `npm run
    build` REFUSE un arbre sale — Vercel comme OTA — et nomme les fichiers ;
-   `package.json` et `package-lock.json` montent ENSEMBLE ; simple
+   `package.json` et `package-lock.json` montent ENSEMBLE — (06/11) les builds
+   s'installent par `npm ci` (`vercel.json` installCommand, `codemagic.yaml`),
+   qui n'écrit jamais le lock et s'arrête net s'il ne suit pas (npm 10 de Codemagic
+   retirait aussi les champs « libc » d'un lock écrit par npm 11) ; incident :
+   2.9.161 sans son lock, Vercel fbb309f (12:11) et 6cd8b6e (12:25) en ERREUR,
+   site resté sur 8bd22d6 (05/11 23:04) jusqu'à a61d0ec (06/11 12:30) ;
+   `selftest:installation-stricte`, étape A de `npm run binaires` ; simple
    vérification de compilation : `npm run build:essai`, jamais servi) ;
 2. **un rechargement forcé** — si l'écran revient, c'était un chunk périmé et
    il n'y a rien à corriger dans le code ;
