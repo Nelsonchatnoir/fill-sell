@@ -5,6 +5,7 @@ import { demarrerConnexionEbay, lireEtatEbay, agirEbay, ouvrirConsentementEbay }
 import EbayParcours from './EbayParcours';
 import { LIENS_EBAY, motsEbay } from '../utils/ebayParcours';
 import { etatCompteEbay } from '../../supabase/functions/_shared/ebay-etat-compte.js';
+import { choixRetoursEbay, optionsRetoursEbay } from '../../supabase/functions/_shared/ebay-retours.js';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
 
@@ -130,8 +131,8 @@ const T = {
     jours: (n) => `${n} jour${n > 1 ? 's' : ''}`,
     paiementNote: 'Paiement immédiat à l\'achat (paiements gérés par eBay).',
     retoursMode: 'Retours',
-    retoursAcceptes: 'Acceptés sous 30 jours, frais de retour à l\'acheteur', // estimation-ok: politique eBay (réglage), pas une attente
-    retoursRefuses: 'Pas de retour (vendeurs particuliers seulement)',
+    retoursAcceptes: (j) => `Acceptés sous ${j} jours, frais de retour à l'acheteur`, // estimation-ok: politique eBay (réglage), pas une attente
+    retoursRefuses: 'Pas de retour (compte eBay de particulier)',
     creee: (nom) => `Politique « ${nom} » créée chez eBay et retenue pour FillSell.`,
     // ── Transporteurs (07/09) ──────────────────────────────────────────────
     transporteurs: 'Mes transporteurs',
@@ -245,8 +246,8 @@ const T = {
     jours: (n) => `${n} day${n > 1 ? 's' : ''}`,
     paiementNote: 'Immediate payment at purchase (eBay managed payments).',
     retoursMode: 'Returns',
-    retoursAcceptes: 'Accepted within 30 days, buyer pays return shipping', // estimation-ok: eBay policy (setting)
-    retoursRefuses: 'No returns (private sellers only)',
+    retoursAcceptes: (j) => `Accepted within ${j} days, buyer pays return shipping`, // estimation-ok: eBay policy (setting)
+    retoursRefuses: 'No returns (private eBay account)',
     creee: (nom) => `Policy “${nom}” created at eBay and selected for FillSell.`,
     transporteurs: 'My shipping methods',
     transporteursIntro: 'Choose how you ship. Buyers will see these options on all your eBay listings.',
@@ -339,6 +340,8 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   const userId = user?.id ?? null;
   const [etat, setEtat] = useState(null);         // vue publique du compte (jamais de jeton)
   const [checklist, setChecklist] = useState(null);
+  // (06/11, point 4) Le type de vendeur lu chez eBay par le serveur (GetUser) : « Pas de retour » seulement pour un particulier.
+  const typeVendeurEbay = checklist?.type_vendeur ?? null;
   const [chargement, setChargement] = useState(false);
   const [busy, setBusy] = useState(null);         // action en cours (clé)
   const [erreurChargement, setErreurChargement] = useState('');
@@ -670,7 +673,9 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
     setBusy(`creer_${type}`); setErreurAction('');
     setStatutCreation({ type, etat: 'envoi', message: t.creationEnCours });
     try {
-      const r = await agirEbay('creer_politique', { type, options: { nom, retours: source.retours } }, langue);
+      // (06/11, point 4) Le choix de l'écran part tel quel : retours + durée (14, 30, 60) ; jamais « pas de retour »
+      // pour un compte qu'eBay ne dit pas particulier (le serveur le refuse aussi).
+      const r = await agirEbay('creer_politique', { type, options: { nom, ...(type === 'return' ? optionsRetoursEbay(source.retours, typeVendeurEbay) : { retours: source.retours }) } }, langue);
       if (r.etat) setEtat(r.etat);
       if (r.checklist) setChecklist(r.checklist);
       setCreation(null);
@@ -727,7 +732,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
         <>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.retoursMode}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {[['acceptes_30', t.retoursAcceptes], ['refuses', t.retoursRefuses]].map(([v, l]) => (
+            {choixRetoursEbay(typeVendeurEbay).map(({ valeur: v, jours }) => [v, jours ? t.retoursAcceptes(jours) : t.retoursRefuses]).map(([v, l]) => (
               <button type="button" key={v} onClick={() => setCreation((c) => ({ ...c, retours: v }))} style={{ ...boutonCreux(false), textAlign: 'left', ...(creation.retours === v ? selection : {}) }}>{l}</button>
             ))}
           </div>
@@ -1000,7 +1005,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
               on le pose ici, déjà tranché sur la valeur la plus courante. */}
           {cle === 'politique_retours' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {[['acceptes_30', t.retoursAcceptes], ['refuses', t.retoursRefuses]].map(([v, l]) => (
+              {choixRetoursEbay(typeVendeurEbay).map(({ valeur: v, jours }) => [v, jours ? t.retoursAcceptes(jours) : t.retoursRefuses]).map(([v, l]) => (
                 <button type="button" key={v} disabled={busy != null}
                   onClick={() => setCreation({ type, nom: NOMS_DEFAUT[type], retours: v })}
                   style={{ ...boutonCreux(busy != null), textAlign: 'left', ...(retours === v ? selection : {}) }}>

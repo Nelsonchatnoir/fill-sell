@@ -46,10 +46,11 @@ export const MOTIF_PHOTOS_EBAY = "ebay_photos_non_recues";
 export const ANCRE_PHOTOS_NON_RECUES = "Photos non reçues par eBay";
 export const REPRISES_PHOTOS_MAX = 2;
 
-// Les deux options de l'écran Compte eBay, mot pour mot (EbayCompteSection.jsx, ~133-134).
+// Les deux options de l'écran Compte eBay, mot pour mot (EbayCompteSection.jsx : retoursAcceptes(30), retoursRefuses).
+// (06/11, point 4) « Pas de retour » y dit maintenant « compte eBay de particulier » ; l'ancien libellé reste lu.
 export const OPTIONS_RETOURS_EBAY = Object.freeze([
   Object.freeze({ code: "acceptes_30", libelle: "Acceptés sous 30 jours, frais de retour à l'acheteur" }), // estimation-ok: politique eBay (réglage), pas une attente
-  Object.freeze({ code: "refuses", libelle: "Pas de retour (vendeurs particuliers seulement)" }),
+  Object.freeze({ code: "refuses", libelle: "Pas de retour (compte eBay de particulier)" }),
 ]);
 
 /** La question (needsUserField) : liste fermée des deux options, réponse rangée à la racine. */
@@ -122,7 +123,9 @@ export function codeRetours(valeur) {
   const v = String(valeur ?? "").trim();
   if (!v) return null;
   const o = OPTIONS_RETOURS_EBAY.find((x) => x.code === v || x.libelle.toLowerCase() === v.toLowerCase());
-  return o ? o.code : null;
+  if (o) return o.code;
+  // Réponses données avant le 06/11 (ancien libellé de l'écran).
+  return v.toLowerCase() === "pas de retour (vendeurs particuliers seulement)" ? "refuses" : null;
 }
 
 /** Le choix du COMPTE (platform_settings.ebay.retours_voie_clic.choix), ou null. */

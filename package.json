@@ -138,6 +138,7 @@
     "selftest:ebay-page-vendeur": "deno run scripts/ebay-page-vendeur-selftest.ts",
     "selftest:ebay-paiements-mur": "node scripts/ebay-paiements-mur-selftest.mjs",
     "selftest:ebay-eclaireur-attente": "node scripts/ebay-eclaireur-attente-selftest.mjs",
+    "selftest:ebay-retours": "node scripts/ebay-retours-selftest.mjs",
     "selftest:attente-session-serveur": "node scripts/attente-session-serveur-selftest.mjs",
     "selftest:remise-en-vente-attente": "node scripts/remise-en-vente-attente-selftest.mjs",
     "selftest:depot-lbc-jamais-en-ligne": "node scripts/depot-lbc-jamais-en-ligne-selftest.mjs",

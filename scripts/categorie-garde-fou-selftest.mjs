@@ -53,9 +53,11 @@ for (const p of tmps) fs.unlinkSync(p);
 
 console.log("1. Table des catalogues Vinted (relevé live du 07/09) :");
 const t = mode.tailleTablesMode();
-check("511 identifiants « vêtements »", t.vetements === 511, `(${t.vetements})`);
+check("512 identifiants « vêtements » (511 du 07/09 + Jupes 5523, 06/11)", t.vetements === 512, `(${t.vetements})`);
 check("71 identifiants « chaussures »", t.chaussures === 71, `(${t.chaussures})`);
-check("86 identifiants « sacs et accessoires »", t.sacs_access === 86, `(${t.sacs_access})`);
+check("111 identifiants « sacs et accessoires » (86 du 07/09 + Accessoires de mode 5496, 06/11)", t.sacs_access === 111, `(${t.sacs_access})`);
+// (06/11) Accessoires de mode : racine sans genre, nouveaux identifiants ; les anciens (Femmes/Hommes > Accessoires) restent.
+for (const id of [5496, 5498, 5541, 5546, 5555, 5569, 5570, 1187, 82, 20, 97]) check(`catalog ${id} → sacs_access`, mode.brancheModeDuCatalogue(id) === "sacs_access", `(${mode.brancheModeDuCatalogue(id)})`);
 // Racines des 9 branches mode, relevées une par une sur l'API du formulaire.
 for (const [id, attendu] of [[4, "vetements"], [2050, "vetements"], [1195, "vetements"], [1194, "vetements"],
                              [16, "chaussures"], [1231, "chaussures"],

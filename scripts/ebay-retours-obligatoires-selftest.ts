@@ -98,8 +98,10 @@ ok(appels.length === 3 && appels[0] < iCond && appels.slice(1).every((i) => (i >
 
 console.log("6. CE QUE L'APP DIT");
 const sec = await lire("src/components/EbayCompteSection.jsx");
-ok(/retoursRefuses: 'Pas de retour \(vendeurs particuliers seulement\)'/.test(sec) && /retoursRefuses: 'No returns \(private sellers only\)'/.test(sec),
-  "le bouton « Pas de retour » dit qu'il est réservé aux vendeurs particuliers");
+// (06/11, Nico, point 4) Le bouton n'est plus qu'au compte qu'eBay dit particulier (choixRetoursEbay) ; son libellé le dit.
+ok(/retoursRefuses: 'Pas de retour \(compte eBay de particulier\)'/.test(sec) && /retoursRefuses: 'No returns \(private eBay account\)'/.test(sec)
+  && /choixRetoursEbay\(typeVendeurEbay\)/.test(sec),
+  "le bouton « Pas de retour » est réservé au compte eBay de particulier (et le dit)");
 const parc = await lire("src/utils/ebayParcours.js");
 ok(/« Pas de retour » est réservé aux vendeurs particuliers : eBay oblige les vendeurs professionnels à accepter les retours\./.test(parc),
   "l'étape « retours » du parcours le dit aussi");

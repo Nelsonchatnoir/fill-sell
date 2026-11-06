@@ -90,6 +90,7 @@ import { aspectsCategorie } from "../_shared/ebay-publication.ts";
 // (04/11, point 4) « Créer mes conditions eBay » : les réglages lus sur les annonces du vendeur.
 import { appelTrading, erreurTrading, valeur as valeurXml } from "../_shared/ebay-trading-releve.ts";
 import { conditionsDeLAnnonce, identifiantsActifs, proposerConditions } from "../_shared/ebay-conditions-proposees.ts";
+import { DUREES_RETOURS_EBAY, pasDeRetourPermis, typeVendeurEbayDuXml } from "../_shared/ebay-retours.js";
 
 // localhost:5177 : le serveur de développement des essais réels (session déjà
 // ouverte) — même statut que 5173 ; le JWT reste exigé, CORS n'est pas la garde.
@@ -161,14 +162,31 @@ async function lieuExpeditionEtat(admin: SupabaseClient, userId: string): Promis
   }
 }
 
+// (06/11, Nico, point 4 — Pascal Caffray) Le type de vendeur LU chez eBay (Trading GetUser, SellerBusinessType) :
+// "professionnel", "particulier" ou null (illisible). « Pas de retour » n'est permis qu'à un particulier
+// (_shared/ebay-retours.js) : eBay le refuse aux professionnels (25002) — à la publication, jamais à la création.
+async function lireTypeVendeurEbay(env: EbayEnv, token: string): Promise<string | null> {
+  try {
+    const r = await appelTrading(env, token, "GetUser", "<DetailLevel>ReturnAll</DetailLevel>");
+    if (r.http !== 200 || erreurTrading(r.xml)) return null;
+    return typeVendeurEbayDuXml(r.xml);
+  } catch {
+    return null;
+  }
+}
+const MESSAGE_PAS_DE_RETOUR_INTERDIT =
+  "eBay oblige les vendeurs professionnels à accepter les retours (14 jours au moins) : « Pas de retour » n'est possible " +
+  "que pour un compte eBay de particulier. Choisis une durée de retour (14, 30 ou 60 jours).";
+
 async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: string, userId: string) {
-  const [priv, prog, liv, pai, ret, lieu] = await Promise.all([
+  const [priv, prog, liv, pai, ret, lieu, typeVendeur] = await Promise.all([
     appelEbay(env, token, "/sell/account/v1/privilege"),
     appelEbay(env, token, "/sell/account/v1/program/get_opted_in_programs"),
     listerPolitiques(env, token, "fulfillment"),
     listerPolitiques(env, token, "payment"),
     listerPolitiques(env, token, "return"),
     lieuExpeditionEtat(admin, userId),
+    lireTypeVendeurEbay(env, token),
   ]);
 
   // Inscription vendeur
@@ -196,7 +214,7 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
     { cle: "politiques_activees", etat: programme },
     { cle: "politique_livraison", etat: livraison.etat, existantes: livraison.liste },
     { cle: "politique_paiement", etat: paiement.etat, existantes: paiement.liste },
-    { cle: "politique_retours", etat: retours.etat, existantes: retours.liste },
+    { cle: "politique_retours", etat: retours.etat, existantes: retours.liste, type_vendeur: typeVendeur },
     { cle: "lieu_expedition", etat: lieu },
   ];
   const affichees = lignes.filter((l) => l.etat !== "inconnu");
@@ -216,6 +234,7 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
     },
     lieu_expedition: lieu === "inconnu" ? null : lieu === "ok",
     selling_limit: sellingLimit,
+    type_vendeur: typeVendeur,
     indeterminees,
     http,
     // Drapeau LU PAR LE TRIGGER cross_post_jobs_voie_ebay (migration
@@ -233,7 +252,7 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
     at: new Date().toISOString(),
   };
   await admin.from("ebay_accounts").update({ seller_state: sellerState, seller_state_at: sellerState.at }).eq("user_id", userId);
-  return { lignes: affichees, indeterminees, selling_limit: sellingLimit, http, at: sellerState.at };
+  return { lignes: affichees, indeterminees, selling_limit: sellingLimit, type_vendeur: typeVendeur, http, at: sellerState.at };
 }
 
 // ── Corps de création — minimaux, lisibles, marketplace FR ──────────────────
@@ -647,6 +666,11 @@ Deno.serve(async (req) => {
       try { services = await listerServicesLivraison(env, token); } catch { services = []; }
       const proposition = proposerConditions(lues, services, PLAFOND_SERVICES_DOMESTIQUES);
       const checklist = await releverChecklist(admin, env, token, user.id);
+      // (06/11, point 4) « Non acceptés » n'est jamais proposé à un compte qu'eBay ne dit pas particulier.
+      const propRet = (proposition as { retours?: { acceptes?: boolean; jours?: number } }).retours;
+      if (propRet && propRet.acceptes === false && !pasDeRetourPermis(checklist.type_vendeur)) {
+        (proposition as { retours?: unknown }).retours = { acceptes: true, jours: 30 };
+      }
       const { compte } = await lireCompte(admin, user.id);
       console.log(`[ebay-account] proposer_conditions user=${user.id} source=${proposition.source} annonces=${proposition.annonces_lues} services=${proposition.livraison.services.map((x) => x.code).join(",")}`);
       return json({ proposition, etat: etatPublic(compte), checklist, site_ebay: siteEbay });
@@ -655,6 +679,9 @@ Deno.serve(async (req) => {
     if (action === "creer_conditions") {
       const liv = (body.livraison && typeof body.livraison === "object" ? body.livraison : {}) as Record<string, unknown>;
       const ret = (body.retours && typeof body.retours === "object" ? body.retours : {}) as Record<string, unknown>;
+      if (ret.acceptes === false && !pasDeRetourPermis(await lireTypeVendeurEbay(env, token))) {
+        return json({ error: MESSAGE_PAS_DE_RETOUR_INTERDIT }, 400);
+      }
       const brut = Array.isArray(liv.services) ? liv.services as Array<Record<string, unknown>> : [];
       if (!brut.length) return json({ error: "Choisis au moins un mode d'envoi." }, 400);
       if (brut.length > PLAFOND_SERVICES_DOMESTIQUES) return json({ error: `eBay accepte au maximum ${PLAFOND_SERVICES_DOMESTIQUES} modes d'envoi.` }, 400);
@@ -916,6 +943,18 @@ Deno.serve(async (req) => {
       // À JOUR (PUT, corps complet : c'est la nôtre, adressée par son nom) ;
       // sinon on la crée. Une politique faite par le vendeur, sous un autre
       // nom, n'est jamais touchée.
+      if (type === "return") {
+        // (06/11, point 4) « Pas de retour » seulement pour un compte qu'eBay dit particulier ; la durée choisie part
+        // telle quelle (14, 30, 60), jamais remplacée en silence.
+        const tv = options.retours === "refuses" ? await lireTypeVendeurEbay(env, token) : null;
+        if (options.retours === "refuses" && !pasDeRetourPermis(tv)) {
+          console.log(`[ebay-account] retours « refusés » écartés user=${user.id} type_vendeur=${tv ?? "inconnu"}`);
+          return json({ error: MESSAGE_PAS_DE_RETOUR_INTERDIT, type_vendeur: tv }, 400);
+        }
+        if (options.retours !== "refuses" && options.retours_jours != null && !DUREES_RETOURS_EBAY.includes(Number(options.retours_jours))) {
+          return json({ error: "Durée de retour non acceptée : 14, 30 ou 60 jours." }, 400);
+        }
+      }
       const corps = corpsCreation(type, options, serviceCode);
       let idExistant = "";
       if (type !== "fulfillment") {
@@ -933,7 +972,7 @@ Deno.serve(async (req) => {
       if (!id) return json({ error: "eBay a répondu sans identifiant de politique." }, 502);
       await admin.from("ebay_accounts").update({ [TYPES[type].colonne]: id }).eq("user_id", user.id);
       // Le choix est journalisé : le 15/10, il a fallu le déduire de la taille de la requête.
-      console.log(`[ebay-account] politique ${type} ${idExistant ? "maj" : "creation"}=${id} user=${user.id}${type === "return" ? ` retours=${String(options.retours ?? "acceptes_30")}` : ""}`);
+      console.log(`[ebay-account] politique ${type} ${idExistant ? "maj" : "creation"}=${id} user=${user.id}${type === "return" ? ` retours=${String(options.retours ?? "acceptes_30")} jours=${String(options.retours_jours ?? "défaut")}` : ""}`);
       // (17/10) Retours de nouveau retenus après un refus d'eBay : les
       // publications parquées repartent (le compte est peut-être prêt).
       await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});

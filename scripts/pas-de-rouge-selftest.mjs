@@ -305,8 +305,11 @@ console.log("\n── 11. eBay : le manquant que nomme le refus du brouillon (25
     "la liste fermée des deux options, rangée à la racine (ebay_retours_choix)");
   const ecs = readFileSync(new URL("../src/components/EbayCompteSection.jsx", import.meta.url), "utf8");
   const lib = (cle) => (new RegExp(`${cle}: '((?:[^'\\\\]|\\\\.)*)'`).exec(ecs)?.[1] ?? "").replace(/\\'/g, "'");
-  ok(lib("retoursAcceptes") === R.OPTIONS_RETOURS_EBAY[0].libelle && lib("retoursRefuses") === R.OPTIONS_RETOURS_EBAY[1].libelle,
-    "les libellés sont ceux de l'écran Compte eBay, mot pour mot (retoursAcceptes, retoursRefuses)");
+  // (06/11, point 4) retoursAcceptes est une fonction de la durée : la question dit « 30 jours », comme retoursAcceptes(30).
+  const acc = (/retoursAcceptes: \(j\) => `((?:[^`\\]|\\.)*)`/.exec(ecs)?.[1] ?? "").replace("${j}", "30");
+  ok(acc === R.OPTIONS_RETOURS_EBAY[0].libelle && lib("retoursRefuses") === R.OPTIONS_RETOURS_EBAY[1].libelle
+    && R.codeRetours("Pas de retour (vendeurs particuliers seulement)") === "refuses",
+    "les libellés sont ceux de l'écran Compte eBay, mot pour mot (retoursAcceptes(30), retoursRefuses) ; l'ancien reste lu");
   ok(/ne les choisit jamais à ta place/.test(q.message) && /ci-dessous/.test(q.message) && /toutes tes annonces eBay/.test(q.message) && !VOCAB_RE.test(q.message),
     "le message : FillSell ne choisit jamais, le geste ci-dessous, pour toutes les annonces — sans jargon");
   const qBrut = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 5, reprises: 2, pf: {} });
