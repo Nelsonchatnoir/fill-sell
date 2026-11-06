@@ -1320,3 +1320,38 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 1 (9cdr9rm4rn, Beeb
   par le moteur le dit sur sa ligne de « Confirmer » (« Retirée par FillSell : … »).
 - Selftest `champs-requis-partages` (les 6 fiches réelles et le contre-exemple) ; `champs-requis-auto` adapté (« UK 8 /
   EU 42 » → 42).
+
+## 06/11 — Champs requis : les trois recos validées par Nico (point 4) ; aspects eBay déduits du texte (point 9)
+- **4 a — le public choisi par la personne sur Vinted prime** : quand la personne CHOISIT son rayon Vinted (son geste,
+  `edited.vinted.rayon_choisi`), le public qu'il nomme (Femmes, Hommes, Enfants › filles / garçons) devient le genre
+  d'eBay, Beebs, Depop, Opla et l'univers de Leboncoin — seulement si le genre deviné le contredit, manque ou vaut
+  « Mixte » ; un genre compatible (« Bébé » sous « Bébé filles ») reste ; une copie dont la personne a choisi le rayon
+  garde le sien ; retirer le choix rétablit le genre d'avant (`genre_du_choix`). Les rayons affichés sont recalculés
+  une fois par choix. `src/utils/rayonPublication.js` (copiesAuPublicChoisi) ; selftest `public-choisi-vinted`.
+- **4 b — une vraie taille reste une taille** : « taille unique » n'est posée par-dessus une taille écrite que si la
+  grille du rayon n'offre QUE la taille unique (la seule valeur possible ; la taille écrite reste dans le texte, la
+  valeur part sur la copie de cette plateforme seule) — `tailleUniqueSeuleDeLaGrille` (champs-requis-auto.js), lignes de
+  rayon et encart eBay ; la règle « accessoire sans taille » (05/11) est inchangée. Selftest `champs-requis-0611`.
+- **4 c — une pointure écrite par l'IA sans source compte comme vide** : à la génération, pour une chaussure, la pointure
+  d'une copie n'est gardée que si la fiche, le titre ou la description du vendeur, ou une étiquette lue (Lens) écrit la
+  même (`pointureRedactionSourcee`, pointure-du-texte.js) ; sinon la copie la perd (trace `pointure_ia_ecartee`) et la
+  question partagée « Pointure » est posée une fois.
+- **9 — un aspect eBay exigé que le vendeur a écrit** (ayadi007 : « Type » 11205, « Longueur » 54235) : une MESURE
+  nommée (« Longueur : 60 cm », « H 70 cm », « L x l x H : 60 x 40 x 70 cm ») convertie et recalée sur l'option EXACTE
+  de la liste, ou une option écrite en toutes lettres (mot entier, la plus précise) ; un triple sans ordre nommé
+  (« 60x40x70cm »), deux mesures différentes, une option vague ou rien → la question. Web (encart eBay, texte du vendeur
+  seulement : fiche + titre de la copie) et serveur (voie API, `ebay-aspects-du-texte.ts`) : `_shared/aspect-du-texte.js` ;
+  selftest `aspect-du-texte`. Les deux cas d'ayadi007 n'avaient rien d'écrit (chaise sans dimension ; « scanner …
+  portable » ≠ « Scanner portatif et compact ») : la question y reste, juste.
+
+## 06/11 après-midi — Toute tâche bloquée par une déconnexion porte le message (lot n° 2, point 10)
+Guillaume JEHLY : 123 republications Leboncoin arrêtées SANS message — la retenue « session connue morte » de
+get-pending-jobs (session relevée morte par l'extension) les gardait en pending muettes. Règle : la retenue pose le
+message d'attente de session (`attenteSessionServeur`, `_shared/attente-session.js` : « En attente de ta connexion à
+<plateforme> dans <navigateur> … repartira toute seule. Aucune tentative consommée. » ; retrait : risque de double vente)
+et le marqueur `platform_fields.attente_session` (pose_par « get-pending-jobs (session connue morte) »), 50 tâches au plus
+par passage, compare-and-set sur pending, jamais réécrit à l'identique. Le message tombe à la reconnexion : la levée des
+attentes de session de handler-watch (sonde fraîche, « connecté », postérieure à la pose) prend aussi cette attente SANS
+échéance (`attentePoseeParLeServeur`, handler-watch v170, 13:14) — sinon les tâches qui attendent leur créneau après la
+reconnexion gardaient le message. Mesuré le 06/11 12:48 : 121 tâches de Guillaume avec le message (sonde « déconnecté »
+depuis le 05/11 07:15). Selftest `attente-session-serveur`.

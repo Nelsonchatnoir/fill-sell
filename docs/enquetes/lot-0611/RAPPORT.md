@@ -90,3 +90,115 @@ Heures de Paris. Règles durables : `docs/regles/ventes-et-retraits.md` § 06/11
 - Retrait de Cédric clos à 10:08 par la clôture du serveur (« déjà hors ligne ») : page relue 410 à 09:57, 11 h 30 après
   le dépôt ; copie publiée f21124c0 close « pas une vente » (`scripts/reparations/20261106_retrait_lbc_cedric_clos.mjs`,
   sauvegarde `_backup_0611_retrait_lbc_cedric`, inverse).
+
+---
+
+# Lot n° 2 du 06/11/2026 (après-midi) — feux verts 1-6, points 7-13, complément « séries de Louis »
+
+## Migrations (feux verts nommés)
+- `20261106100000` appliquée ; preuve réelle 12:07:12 : la question 60621113 (copie Beebs 34032772 du Doudou de
+  nicolas.menar), « Oui » de l'équipe par `inventaire_doublon_decider_pour`, auteur nommé dans `preuves.repondu_par`,
+  la copie déjà retirée → « caduque », aucun second retrait.
+- `20261106120000` appliquée 12:07 : sur 12 022 fiches avec une annonce Leboncoin vivante, 152 passent de 1 à 0, aucune
+  ne franchit le seuil 2 → aucune décision ne change.
+- `20261106110000` appliquée 12:08 : le déclencheur de lecture fraîche vérifié en prod ; 3297299585 (« Rangement Noir
+  et Gris ») et 3280443604 (« Rangement Blanc ») attendent le prochain relevé de Louis (dernier : 10:19).
+
+## Point 4 — champs requis (a, b, c) et point 9 — aspects eBay
+Voir `docs/regles/republication-et-publication.md` § 06/11. ebay-api-worker v110, ebay-account v27 (12:31).
+
+## Point 5 — Nicolas THOBOIS
+Désinscrit de tous les envois marketing (`email_destinataires` + trace `marketing_optout`, comme `desinscrire()`) ;
+le support n'est jamais filtré. Script `scripts/reparations/20261106_thobois_desinscription.sql` (+ INVERSE).
+
+## Point 6 — AdsGPT
+Les 2 invitations restent dans le spam ; rien fait.
+
+## Point 7 — ayadi007 (Business), publications eBay
+- Cause : PAS le cache. eBay redirige le formulaire de mise en vente vers son onboarding des paiements
+  (hôte `ebaypayonboardingweb.ebay.*`, `account-status-error`) : la configuration des paiements de son compte vendeur n'est
+  pas terminée. Aucune publication ne peut aboutir avant qu'il la termine sur eBay (Mon eBay → Paiements).
+- Pourquoi le correctif existant ne le couvrait pas : il reconnaissait la page d'INSCRIPTION vendeur, pas la page des
+  paiements ; l'extension voyait une page inattendue et la tâche repartait (incident Chrome).
+- Règle pour tous : la page d'arrivée prime — une page eBay de paiements = mur « paiements » (message vrai, rien publié),
+  comme le compte vendeur inactif ; l'éclaireur relâche tout dès qu'une publication eBay aboutit. update-job-status v176,
+  get-pending-jobs v337. Refonte de fond NON déployée ; Leboncoin et Vinted non touchés.
+- État à 13:05 : 11 publications eBay (créées 11:16-12:19) au mur, toutes needs_user avec le message, aucun numéro,
+  rien créé chez eBay. AUCUNE n'est en ligne : impossible tant qu'eBay bloque son compte.
+
+## Point 8 — Jean-Luc LASSARAT, Vinted « Accessoires »
+Règle corrigée pour tous les accessoires (`docs/regles/plateformes.md` § 06/11 après-midi). Son article (éponge auto)
+n'a pas de rayon Vinted : sa tâche dca7193f n'est pas touchée et repart par le circuit normal quand il choisit le
+rayon. Reste : régénérer le sélecteur de rayon depuis l'arbre vivant.
+
+## Point 10 — Guillaume JEHLY
+Toute tâche retenue pour une session morte porte le message (`docs/regles/republication-et-publication.md`) ;
+121 de ses tâches l'avaient à 12:48. Le message tombe seul quand la session est revue connectée (handler-watch v170,
+13:14 : sans cela, les tâches qui attendent leur créneau après la reconnexion le gardaient).
+
+## Point 11 — les 62 couples « vrais »
+Rien touché. Actions préparées : `docs/enquetes/rattachements-0511/ACTIONS-62-VRAIS.md` — 56 couples à retirer
+(65 annonces), 4 déjà résolus, 2 à trancher (n° 20 dylan.fontaine13, n° 22 josephinecerni). Les 13 indécidables
+restent intacts. Validation de Nico avant toute action.
+
+## Point 12 — Pascal Caffray (diagnostic, aucun mail)
+Compte 3b7e2361, eBay par l'API (fluxen62), aucune règle de retours (`return_policy_id` NULL). Chez nous : « pas de
+retour » est proposé alors qu'eBay l'interdit aux pros (erreur 25002), et `src/components/EbayCompteSection.jsx` ne
+propose que 30 jours ou « pas de retour » quand le serveur accepte 14/30/60 (défaut ouvert) ; le « nom en double »
+était le bug corrigé le 17/10 (cf0a017). Chez lui : créer une règle de retours (14 ou 30 jours) et la choisir, puis
+relancer (job b731ae0f, annulé le 31/10).
+
+## Point 13 — « annonce publiée disparue » depuis 11:33
+2 fermetures, 2 justes : 11:33 Vinted 10269377101 ; 12:33 Leboncoin 2954815327 (410 « Cette annonce est désactivée »
+relu à 12:48). Aucun faux, règle laissée allumée.
+
+## Complément — séries de Louis (compte Amiral)
+- Règles A et B : `docs/regles/ventes-et-retraits.md` § 06/11 après-midi.
+- Les 7 remises refusées : 3303252818, 3303253000, 3303253213, 3303253491, 3303253691, 3303253932, 3303254205 (dépôts de
+  07:22-07:29), toutes 410 relues à 12:20 — jamais parues. Remises en pending 12:29 (script
+  `20261106_louis_remises_refusees_lbc`, dépôt refusé gardé dans `depots_refuses_lbc`), retenues par la règle A à 12:47
+  (les 9 annonces vendues encore « active » sur Leboncoin) ; elles partiront seules, sans doublon, quand le relevé les
+  verra partir.
+- Le parc : 4 autres dépôts « published » refusés, sur 2 comptes : inandup33 ×3 (3280170490, 3280174176, 3282746279)
+  et jocabroc8 ×1 (3279731310), tous relus en 410. La règle B v169 les fermera (« failed », publication rendue).
+  76 autres dépôts jamais vus restent impossibles à trancher (preuves incomplètes) : rien fait.
+- Premier passage de la règle B (v168, 12:48) : 200 jugés, rien fermé (page remplie d'imports, fenêtre de 30 jours) ;
+  corrigé en v169 (12:57), simulation sur tout le parc = exactement ces 4.
+
+# Lot n° 2, suite (retour de Nico de 13:20)
+
+## 1. Tests et push
+Suite complète par morceaux (10 familles, 600 selftests, 14:26-14:54) : 0 rouge sur le code final (deux rouges dus à
+mes changements de libellé des retours eBay, corrigés et relancés). build:essai vert, lint sans erreur nouvelle.
+
+## 2. Les 62 couples — feu vert pour 56 (65 annonces)
+- Exclus par le garde-fou « plusieurs exemplaires » (le tri le dit lui-même : neufs, catalogue, timbres) : n° 1, 2, 3,
+  6, 12, 21, 23, 32, 34, 40, 44, 45, 75 (13 couples, 16 annonces). Jamais touchés : n° 20, 22, les 13 indécidables.
+- Relus en vente juste avant (Chrome de Nico, lecture seule), annonce gardée comprise : eBay 14:10-14:20, Beebs
+  14:21-14:23, Leboncoin et Depop 14:24-14:25. Écartés à la relecture : Beebs 34139465 (n° 41) déjà hors ligne (404) ;
+  n° 57, 59, 69 (sebastien64310) : l'annonce GARDÉE est hors ligne (404) → le doublon est la seule annonce en vente,
+  rien retiré.
+- **45 retraits armés** (39 couples) : eBay 17 (benjamin.ployer 6, boncoin59300 1, quartierdeschineurs 1, nino57270 9),
+  Beebs 24, Leboncoin 2 (n° 16, 50), Depop 2 (n° 58, 73) — pending, voie extension, par
+  `scripts/reparations/20261106_couples_vrais_retraits_{ebay,beebs,lbcdepop}.sql` (+ INVERSE ; heure de lecture du lot
+  eBay corrigée à 14:22 : `_ebay_heure.sql`).
+- n° 20 (dylan.fontaine13, Leboncoin, Psykokwak) et n° 22 (josephinecerni, Beebs, lot bonnets) : non touchés.
+
+## 3. Sélecteur de rayon Vinted
+Régénéré depuis l'arbre vivant (2 874 nœuds, 2 462 feuilles ; détail : `docs/regles/plateformes.md` § 06/11 fin
+d'après-midi). 23 ajoutées, 50 retirées, 26 déplacées ; aucun rayon valable aujourd'hui n'a disparu. Annonces publiées :
+rayon gardé (Vinted laisse l'ancien sur la page ; 55 republications réussies en 48 h sur ces fiches). ⚠ Bascule de
+Vinted compte par compte (6 comptes encore sur l'ancien arbre).
+
+## 4. Retours eBay
+Type de vendeur lu chez eBay ; « pas de retour » jamais proposé ni accepté hors particulier ; 14/30/60 jours, la durée
+choisie part telle quelle (selftest `ebay-retours`). ebay-account v30 (14:11). Tâche b731ae0f non relancée, aucun mail.
+
+## 5. ayadi007
+Ses 10 publications eBay attendaient le geste, aucune en file : rien ne serait reparti même son compte prêt. Corrigé
+(éclaireur de handler-watch au barème) ; premier éclaireur 13:54, non servi dans ses 30 min, retenu ; suivant au
+barème. Aucune annonce eBay en ligne à 15:00.
+
+## 6. Vérifications
+- Règle B (14:48) : les 4 dépôts « failed » ; rien à rendre (aucune réservation).
+- Louis : aucun relevé depuis 10:19 → ventes 3297299585 / 3280443604 pas encore enregistrées ; 7 remises retenues.

@@ -571,15 +571,47 @@ Récit et preuves : `docs/enquetes/lot-0611/RAPPORT.md`.
   (`inventaire_doublon_decider`, la personne sur sa session, inchangée) et l'équipe sur ordre
   (`inventaire_doublon_decider_pour`, service seulement, auteur NOMMÉ écrit dans `preuves.repondu_par`, decide_par
   « utilisateur »). Jamais en se faisant passer pour la personne (claims). L'IA n'est pas un auteur de retrait.
-  Migration `20261106100000` **PRÉPARÉE, NON APPLIQUÉE** (feu vert nommé de Nico) ; banc jetable 30/30.
+  Migration `20261106100000` **APPLIQUÉE le 06/11** (feu vert nommé de Nico) ; banc jetable 30/30 ; prouvée sur un vrai cas
+  à 12:07:12 (question 60621113 de Doudou : le « Oui » de l'équipe passe par l'entrée, la copie déjà retirée → « caduque »).
 - **Lecture fraîche d'une vente Leboncoin** (point 8, Louis) : « déjà prouvée » = `sale_signal` sold AVEC `sale_evidence`
   du même numéro (le test de `leboncoin_transaction_noter`) ; un « Vendu » lu sur la page, sans preuve, n'arrête plus la
-  preuve de la transaction. Migration `20261106110000` **PRÉPARÉE, NON APPLIQUÉE** ; banc 11/11.
+  preuve de la transaction. Migration `20261106110000` **APPLIQUÉE le 06/11 à 12:08** ; banc 11/11.
 - **1 c, version étroite** (point 5) : `fiche_annonces_vivantes` n'écarte qu'une annonce Leboncoin sous transaction dont
   la vente est DÉJÀ enregistrée (reçu `ventes_operations` « annonce:leboncoin:<n°> »). Migration `20261106120000`
-  **PRÉPARÉE, NON APPLIQUÉE** ; ⛔ jamais avec la version large `20261105210000`. Preuve réelle :
+  **APPLIQUÉE le 06/11 à 12:07** (152 fiches de 1 à 0, aucune au seuil 2) ; ⛔ jamais avec la version large `20261105210000`. Preuve réelle :
   `scripts/essais/20261106120000_cas_reels.sql` ; banc 10/10.
 - Retrait armé « par le circuit normal » hors session de la personne : `armer_retrait_annonce_pour(<annonce>, …, true)`
   après relecture de l'annonce (scripts `scripts/reparations/20261106_doudou_lbc_retraits.sql`) ; clôture d'un retrait
   « déjà absent » prouvé à la main : la clôture du serveur (`champsRetraitDejaAbsent` + `clotureCopie`), jamais un statut
   écrit seul (`scripts/reparations/20261106_retrait_lbc_cedric_clos.mjs`).
+
+## ⛔ 06/11 après-midi — Leboncoin : remise en vente APRÈS la disparition (règle A) ; jamais « published » refusée (règle B)
+Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
+- **Règle A — la remise en vente Leboncoin n'est déposée qu'une fois l'annonce vendue réellement hors ligne.** Avant :
+  la vente (transaction « Achat en cours ») était enregistrée à 07:15 et la remise déposée à 07:22-07:29 alors que
+  l'annonce vendue était encore « active » sur Leboncoin (elle le reste des jours sous transaction) ; Leboncoin refuse un
+  dépôt identique à une annonce en ligne (contrôle automatique) → 7 dépôts jamais parus, « published » chez nous. Après :
+  get-pending-jobs (avant la retenue de session) lit `annonces_plateforme` du numéro `remise_en_vente.annonce_vendue` ;
+  tant qu'elle est `en_ligne`/`en_verification` sans `disparu_le`/`retiree_le`/`ignoree_le`, la tâche n'est PAS servie :
+  pending, intacte, SANS message, aucune écriture ; elle part d'elle-même au premier poll après le relevé qui la voit
+  partir. Aucune ligne relevée = inconnue = servie. `_shared/remise-en-vente-attente.js` ; selftest `remise-en-vente-attente`.
+  « Transaction Leboncoin pending = vente payée » INCHANGÉ : la vente s'enregistre tout de suite, seule la remise attend.
+  Autres plateformes vérifiées : Vinted, Beebs, Depop marquent l'annonce « vendue » et acceptent une annonce semblable ;
+  eBay clôt l'annonce à la vente → la règle ne joue que sur Leboncoin (`PLATEFORMES_REMISE_APRES_DISPARITION`).
+- **Règle B — un dépôt Leboncoin refusé à la modération ne reste jamais « published ».** Juge pur
+  `_shared/depot-lbc-jamais-en-ligne.js`, TROIS preuves ensemble (une seule ne suffit jamais) : (1) numéro jamais vu par un
+  relevé depuis le dépôt ; (2) deux relevés COMPLETS commencés après dépôt + 2 h, le premier dans les 24 h ; (3) page lue
+  absente par la veille (`sale_signal` « unavailable ») après dépôt + 2 h. ⛔ Mesuré : les relevés seuls donnaient des
+  faux (3 dépôts de jocabroc8 jamais relevés mais EN LIGNE). Effet : une remise en vente repart (pending, numéro du dépôt
+  refusé gardé dans `depots_refuses_lbc`, puis règle A — jamais de doublon) ; toute autre publication passe « failed »
+  avec un message vrai et la publication est rendue (`refund_publish_unconfirmed`). handler-watch, une fois par heure
+  (minutes 48-50 UTC), `JUGER_LBC_JAMAIS_EN_LIGNE` : candidats des 120 derniers jours, imports du relevé écartés DANS la
+  requête, page de 200 tournante à l'heure, 50 clôtures au plus, compare-and-set sur « published » et le numéro.
+  ⚠ Premier passage (v168, 12:48) : rien jugé d'utile — 171 imports remplissaient une page de 200 non ordonnée et les
+  dépôts prouvés (30/09-05/10) étaient hors d'une fenêtre de 30 jours ; corrigé en v169 (12:57). Selftest
+  `depot-lbc-jamais-en-ligne`. Simulation sur tout le parc (06/11 13:00) : 4 dépôts, ceux déjà relus en 410.
+- **Couples « vrais » (une fiche, deux annonces vivantes du même article sur une plateforme)** : l'annonce de trop se
+  retire par une tâche de retrait qui la vise par SON numéro et SON lien (comme `armer_retrait_annonce_pour`, qui
+  n'arme que les fiches vendues) ; gardes en base au moment d'écrire : fiche en stock, un seul exemplaire, non fusionnée,
+  annonce vivante sans transaction, annonce GARDÉE vivante, aucun retrait ouvert ; lecture « en vente » de la page juste
+  avant, écrite sur la tâche (`lecture_avant_retrait`). Script `scripts/reparations/20261106_couples_vrais_retraits.mjs`.

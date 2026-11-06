@@ -781,3 +781,48 @@ annonces relues toutes les 2 h, ≈ 190 pages par heure jour et nuit ; « Mes an
 - Ventes : payées par Leboncoin (veille des transactions, relevé) — aucun effet ; « Vendu » posé à la main (main propre)
   — vu par la page de l'annonce jusqu'à 6 h 27 après le jour (≈ 3 h en moyenne ; avant ≤ 2 h, ≈ 1 h), au plus ≈ 14 h
   après s'il est posé le soir (nuit puis rattrapage du matin) ; le relevé quotidien le voit aussi.
+
+## 06/11 après-midi — eBay : le mur « paiements » ; Vinted : « Accessoires de mode » est une racine (lot n° 2)
+Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
+- **eBay, configuration des paiements du compte vendeur non terminée** (ayadi007, Business, 4 publications) : eBay
+  redirige le formulaire de mise en vente vers son onboarding des paiements (`ebaypayonboardingweb.ebay.<tld>`,
+  `account-status-error`). Ce n'est NI le cache (bfcache) NI une page d'inscription vendeur ordinaire. La page d'arrivée
+  est reconnue (`estPagePaiementsVendeurEbay`, `_shared/ebay-page-vendeur.ts`) et fait poser le même mur que le compte
+  vendeur inactif (needs_user `ebay_compte_vendeur_inactif`, mur « paiements ») avec un message vrai
+  (`paiementsVendeurEbay`, textes-jobs : « Mon eBay → Paiements … Rien n'a été publié ») ; get-pending-jobs montre le
+  message du DERNIER mur vu (`messageRetenueVendeurEbay`, `_shared/vendeur-ebay.js`) ; l'éclaireur relâche tout dès
+  qu'une publication eBay aboutit. Selftests `ebay-paiements-mur`, `ebay-page-vendeur` (section 5).
+- **Vinted a retiré le niveau « Accessoires »** (Jean-Luc LASSARAT : « Vinted ne propose pas « Accessoires » à cet
+  endroit ») — arbre VIVANT relu le 06/11 (`/api/v2/item_upload/catalogs`, 2 874 nœuds) : racine « Accessoires de mode »
+  #5496 SANS genre (écharpes, gants, lunettes de soleil, montres, ceintures, cravates, parapluies, porte-clés, bijoux
+  #5498) ; sacs Homme sous « Hommes > Sacs et sacoches » #94 ; casquettes sous « Femmes/Hommes > Chapeaux et casquettes ».
+  `src/utils/vintedCategories.js` : plus aucun segment « Accessoires » ; les bijoux prennent la feuille que le TITRE nomme
+  (`feuilleBijouVinted`, mot entier, la plus précise d'abord), sinon la question (statut no_default, plus de feuille
+  « Autres bijoux » devinée). Selftest `vinted-accessoires-de-mode` (chemins contrôlés sur les ids vivants).
+  ⚠ Reste périmé : le sélecteur de rayon (`src/utils/arbres/vintedFeuilles.js`, généré de `docs/vinted-catalog-tree.txt`
+  de juillet) — à régénérer depuis l'arbre vivant (proposé, non fait).
+
+## 06/11 fin d'après-midi — eBay : l'éclaireur des publications en attente ; les retours selon le compte ; Vinted régénéré
+- **Toutes les publications eBay d'un compte attendent le geste (mur « compte vendeur » ou « paiements »)** : l'éclaireur
+  de get-pending-jobs ne se choisit que parmi les dépôts EN FILE — aucun ne repartait jamais. handler-watch (patron
+  Depop) : preuve (publication eBay après le dernier mur) → tout repart ; sinon, poste vu dans les 30 min, la plus
+  ancienne repart seule au barème (60, 180, 360, 720, 1440 min), jamais deux à la fois, jamais à côté d'un dépôt en file.
+  ⛔ La mémoire du barème lit TOUS les jobs eBay récents du compte, quel que soit leur statut (v173 : un éclaireur garé
+  par un autre mur sortait de la lecture → 6 essais en 15 min chez 9bcc16d0 ; corrigé v175). `eclaireurVendeurEbayEnAttente`
+  (`_shared/vendeur-ebay.js`) ; selftest `ebay-eclaireur-attente`.
+- **Retours eBay (Pascal Caffray)** : le type de vendeur est LU chez eBay (Trading GetUser, SellerBusinessType :
+  Commercial = professionnel, Private = particulier, autre = inconnu ; checklist `type_vendeur`). « Pas de retour »
+  n'est proposé — et accepté par ebay-account (creer_politique, creer_conditions, proposer_conditions) — qu'à un compte
+  qu'eBay dit particulier ; l'écran propose 14, 30, 60 jours et envoie la durée choisie (`retours_jours`), que
+  corpsCreation pose telle quelle (returnPeriod). `_shared/ebay-retours.js` ; selftest `ebay-retours`. ⚠ Reste : la
+  question « Retours eBay » de la voie extension (`_shared/ebay-brouillon-refus.js`) propose encore « Pas de retour »
+  (sans connexion API, le type n'est pas lisible ; l'extension ne sait poser que 30 jours ou rien) — à décider.
+- **Vinted : sélecteur régénéré depuis l'arbre VIVANT du 06/11** (`docs/vinted-catalog-tree.txt` reconstruit = 09/09 +
+  diff ligne à ligne lu dans la page, empreinte FNV identique à l'arbre servi ; `node scripts/gen-arbres-feuilles.mjs` → `vintedFeuilles.js`
+  2 462 feuilles). 23 ajoutées (racine « Accessoires de mode »), 50 retirées (Accessoires Femmes/Hommes/Enfants, « Autres
+  accessoires », « Autres bijoux »), 26 déplacées (même id : chapeaux, sacs Homme, porte-monnaie enfants). Autorité
+  « Mode » (`vintedCatalogMode.js`) : +26 ids, aucun retiré (les fiches gardent les anciens). ⚠ Vinted bascule COMPTE PAR
+  COMPTE : sur 48 h, 6 comptes republiaient encore avec l'ancien arbre, 7 avec le nouveau — sur un compte pas encore
+  basculé, un accessoire publié passe par la question de l'extension (les vrais rayons du compte). Les annonces publiées
+  gardent leur rayon (Vinted laisse l'ancien sur la page ; la republication relit le catalog_id réel — 55 republications
+  réussies en 48 h sur ces fiches).
