@@ -24,7 +24,7 @@ l'AX42, un test réel sur ce serveur, puis le feu vert de Nico.
 | Contrat « Paid Applications » | nouvelle version ACCEPTÉE 06/11, actif jusqu'au 13/04/2027 | | fait |
 | Statut DSA | en vigueur : « pas commerçant » (16/04) ; le passage en « commerçant » n'a pas été enregistré (500 ×3, formulaire revenu vide le 06/11 vers 13:00) | | ⏳ Nico : ressaisir + codes e-mail/téléphone + avis SIRENE (build/stores/avis-situation-sirene-928578434.pdf) |
 | Abonnements | Premium, Pro, Pro2, Premium Founder, Business : APPROVED ; **Cloud : WAITING_FOR_REVIEW** (soumis 10:37) | | fait |
-| Binaire 2.9.161 | — | — | ⏳ Codemagic 172/173 refusés (lock réécrit par npm install) ; relancer après a459538 (npm ci) |
+| Binaire 2.9.161 | — | — | fait 06/11 13:20 : Codemagic 175 (dbd9f34) ENVOYÉ, build 2611061217, non soumis ; 172-174 refusés (lock, puis profil sans Push) |
 
 ## 2. Google — Play Console (app 4973021343170715891, publication gérée ACTIVÉE)
 | Champ | fr-FR | en-US | État |
