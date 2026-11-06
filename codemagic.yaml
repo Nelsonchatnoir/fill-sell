@@ -173,4 +173,7 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        # (06/11, ordre de Nico) Envoi sur App Store Connect SEULEMENT : le build arrive dans TestFlight pour les
+        # testeurs INTERNES (aucune vérification). `true` le soumettrait à la vérification bêta d'Apple — rien ne se
+        # soumet avant l'essai Hetzner et le feu vert de Nico.
+        submit_to_testflight: false
