@@ -161,16 +161,17 @@ const FR = {
   suspenduTexte: 'Le Cloud est en pause : il repart dès que tu reprends une formule.',
   termineTexte: (date) => `Essai terminé le ${date}. Le Cloud n'est plus actif, et rien n'a été facturé pour lui.`,
   arreteTexte: (date) => `Essai arrêté le ${date}. Le Cloud n'est plus actif, et rien n'a été facturé pour lui.`,
-  termineSuite: "L'extension sur ton ordinateur et eBay continuent comme avant.",
+  // (08/11, Nico) Jamais « comme avant » ni « repassent » : un client Cloud n'a peut-être aucun ordinateur.
+  termineSuite: "Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur. eBay n'est pas concerné.",
   termineCta: `Ajouter le Cloud · ${PRIX}/mois`,
   meConnecter: 'Connecter mes plateformes',
   arreter: 'Arrêter le Cloud',
   arreterTitre: 'Arrêter FillSell Cloud ?',
   // Pendant l'essai : effet IMMÉDIAT, rien facturé. Payée : jusqu'à la fin de période.
-  arreterEssai: (nom) => `Il s'arrête tout de suite, et rien n'est facturé pour lui. Tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension, sur ton ordinateur. ${nom ? `Ta formule ${nom}` : 'Ton plan Free'} ne change pas.`,
+  arreterEssai: (nom) => `Il s'arrête tout de suite, et rien n'est facturé pour lui. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur. ${nom ? `Ta formule ${nom}` : 'Ton plan Free'} ne change pas.`,
   arreterPaye: (date) => (date
-    ? `Il tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite. Après cette date, tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension, sur ton ordinateur.`
-    : "Il tourne jusqu'à la fin de la période payée, puis s'arrête : rien ne sera prélevé ensuite. Tes annonces Vinted, Leboncoin, Beebs et Depop repasseront alors par l'extension, sur ton ordinateur."),
+    ? `Il tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite. Après cette date, sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.`
+    : "Il tourne jusqu'à la fin de la période payée, puis s'arrête : rien ne sera prélevé ensuite. Sans FillSell Cloud, tes publications passent alors par l'extension FillSell, sur ton ordinateur."),
   arreterConfirmer: 'Arrêter',
   arreterAnnuler: 'Garder',
   // (07/11 soir, essai TestFlight de Nico) Un Cloud pris sur l'App Store ou Google Play : c'est la BOUTIQUE qui
@@ -203,7 +204,7 @@ const FR = {
   veilleArreter: 'Arrêter le Cloud',
   veilleNote: (nom) => `Dans les deux cas, ${taFormule(nom)} ne change pas, et l'extension comme eBay restent possibles.`,
   veilleBascule: (date, heure) => `Le ${date} à ${heure} · +${PRIX}/mois`,
-  veilleArretee: "C'est arrêté. Rien ne sera facturé pour le Cloud, et tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension.",
+  veilleArretee: "C'est arrêté. Rien ne sera facturé pour le Cloud. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.",
   veilleArretEchec: "L'arrêt n'a pas pu se faire. Réessaie dans un instant.",
   // (07/11 soir) Cloud pris sur l'App Store ou Google Play : la boutique arrête, FillSell suit — jamais « rien n'est facturé ».
   veilleTexteBoutique: (date, heure, voie) => (voie === 'google'
@@ -216,7 +217,7 @@ const FR = {
   finTexte: "Le Cloud n'est plus actif. Rien n'a été facturé pour lui.",
   finArreteTitre: "Ce qui s'arrête",
   finArrete: [
-    "Tes annonces Vinted, Leboncoin, Beebs et Depop ne partent plus ordinateur éteint : publication, republication, retrait et ventes repassent par l'extension, sur ton ordinateur.",
+    "Tes annonces Vinted, Leboncoin, Beebs et Depop ne partent plus ordinateur éteint : sans FillSell Cloud, publication, republication, retrait et ventes passent par l'extension FillSell, sur ton ordinateur.",
   ],
   finContinueTitre: 'Ce qui continue',
   finContinue: (nom) => [
@@ -241,7 +242,7 @@ const FR = {
   // (03/11, point 3) Le Cloud arrêté (résiliation, impayé) : les tâches repassent par l'extension.
   arretKicker: 'FillSell Cloud',
   arretTitre: 'FillSell Cloud est arrêté',
-  arretTexte: "Tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension FillSell, sur ton ordinateur : publication, republication, retrait et ventes, quand il est allumé.",
+  arretTexte: "Sans FillSell Cloud, publication, republication, retrait et ventes passent par l'extension FillSell, sur ton ordinateur, quand il est allumé.",
   arretCtaReprendre: `Reprendre FillSell Cloud · ${PRIX}/mois`,
   arretCtaExtension: "Installer ou ouvrir l'extension sur mon ordinateur",
   fermer: 'Fermer',
@@ -332,15 +333,15 @@ const EN = {
   suspenduTexte: 'The Cloud is paused: it restarts as soon as you pick a plan again.',
   termineTexte: (date) => `Trial ended on ${date}. The Cloud is off, and nothing was billed for it.`,
   arreteTexte: (date) => `Trial stopped on ${date}. The Cloud is off, and nothing was billed for it.`,
-  termineSuite: 'The extension on your computer and eBay keep working as before.',
+  termineSuite: 'Without FillSell Cloud, your listings go through the FillSell extension, on your computer. eBay is not affected.',
   termineCta: `Add the Cloud · ${PRIX_EN}/mo`,
   meConnecter: 'Connect my platforms',
   arreter: 'Stop the Cloud',
   arreterTitre: 'Stop FillSell Cloud?',
-  arreterEssai: (nom) => `It stops right away, and nothing is billed for it. Your Vinted, Leboncoin, Beebs and Depop listings go back through the extension, on your computer. ${nom ? `Your ${nom} plan` : 'Your Free plan'} does not change.`,
+  arreterEssai: (nom) => `It stops right away, and nothing is billed for it. Without FillSell Cloud, your listings go through the FillSell extension, on your computer. ${nom ? `Your ${nom} plan` : 'Your Free plan'} does not change.`,
   arreterPaye: (date) => (date
-    ? `It runs until ${date}, then stops: nothing will be charged after that. After that date, your Vinted, Leboncoin, Beebs and Depop listings go back through the extension, on your computer.`
-    : 'It runs until the end of the paid period, then stops: nothing will be charged after that. Your Vinted, Leboncoin, Beebs and Depop listings will then go back through the extension, on your computer.'),
+    ? `It runs until ${date}, then stops: nothing will be charged after that. After that, without FillSell Cloud, your listings go through the FillSell extension, on your computer.`
+    : 'It runs until the end of the paid period, then stops: nothing will be charged after that. After that, without FillSell Cloud, your listings go through the FillSell extension, on your computer.'),
   arreterConfirmer: 'Stop',
   arreterAnnuler: 'Keep',
   arreterBoutique: (voie) => (voie === 'google'
@@ -367,7 +368,7 @@ const EN = {
   veilleArreter: 'Stop the Cloud',
   veilleNote: (nom) => `Either way, ${yourPlan(nom)} does not change, and the extension and eBay remain available.`,
   veilleBascule: (date, heure) => `${date} at ${heure} · +${PRIX_EN}/mo`,
-  veilleArretee: 'It is stopped. Nothing will be billed for the Cloud, and your Vinted, Leboncoin, Beebs and Depop listings go back through the extension.',
+  veilleArretee: 'It is stopped. Nothing will be billed for the Cloud. Without FillSell Cloud, your listings go through the FillSell extension, on your computer.',
   veilleArretEchec: 'The Cloud could not be stopped. Try again in a moment.',
   veilleTexteBoutique: (date, heure, voie) => (voie === 'google'
     ? `Your free trial ends on ${date} at ${heure}. Your Cloud was bought on Google Play: to stop it, go to your Google Play subscriptions, and FillSell will show it as soon as Google confirms it.`
@@ -378,7 +379,7 @@ const EN = {
   finTexte: 'The Cloud is off. Nothing was billed for it.',
   finArreteTitre: 'What stops',
   finArrete: [
-    'Your Vinted, Leboncoin, Beebs and Depop listings no longer go out with your computer off: posting, reposting, removal and sales go back through the extension, on your computer.',
+    'Your Vinted, Leboncoin, Beebs and Depop listings no longer go out with your computer off: without FillSell Cloud, posting, reposting, removal and sales go through the FillSell extension, on your computer.',
   ],
   finContinueTitre: 'What continues',
   finContinue: (nom) => [
@@ -399,7 +400,7 @@ const EN = {
   placeLibreCta: 'Start FillSell Cloud',
   arretKicker: 'FillSell Cloud',
   arretTitre: 'FillSell Cloud is off',
-  arretTexte: 'Your Vinted, Leboncoin, Beebs and Depop listings go back through the FillSell extension on your computer: posting, reposting, removal and sales, while it is on.',
+  arretTexte: 'Without FillSell Cloud, posting, reposting, removal and sales go through the FillSell extension, on your computer, while it is on.',
   arretCtaReprendre: `Restart FillSell Cloud · ${PRIX_EN}/mo`,
   arretCtaExtension: 'Install or open the extension on my computer',
   fermer: 'Close',

@@ -260,7 +260,7 @@ const TEXTES = {
     relance: (d) => `Sinon, Stripe retentera le paiement le ${d}.`,
     actif: "Ton abonnement reste actif pour l'instant.",
     // (08/11) FillSell Cloud impayé : il est en pause (règle du 03/11) et repart seul au paiement — même phrase qu'Apple / Google.
-    pauseCloud: "En attendant, FillSell Cloud est en pause : tes annonces repassent par l'extension FillSell, sur ton ordinateur. Dès que le paiement passe, il repart tout seul.",
+    pauseCloud: "En attendant, FillSell Cloud est en pause. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur. Dès que le paiement passe, FillSell Cloud repart tout seul.",
     sansLien: 'Réponds à ce mail : on te renvoie le lien pour régler la facture.',
     bouton: { app: 'Ouvrir FillSell', valider: 'Valider le paiement', regler: 'Régler la facture' },
     fin: 'Si ça bloque encore, réponds à ce mail.',
@@ -305,7 +305,7 @@ const TEXTES = {
     reglerExpiree1: "Pay this invoice on Stripe's secure page, with another card.",
     relance: (d) => `Otherwise, Stripe will try the payment again on ${d}.`,
     actif: 'Your subscription stays active for now.',
-    pauseCloud: 'Meanwhile, FillSell Cloud is paused: your listings go back through the FillSell extension on your computer. As soon as the payment goes through, it starts again on its own.',
+    pauseCloud: 'Meanwhile, FillSell Cloud is paused. Without FillSell Cloud, your listings go through the FillSell extension, on your computer. As soon as the payment goes through, FillSell Cloud starts again on its own.',
     sansLien: "Just reply to this email and we'll send you the link to pay the invoice.",
     bouton: { app: 'Open FillSell', valider: 'Confirm the payment', regler: 'Pay the invoice' },
     fin: 'If it still fails, just reply to this email.',

@@ -293,6 +293,11 @@ marge de 100 % sur du vent, indétectable ensuite.
   `https://apps.apple.com/account/subscriptions`, `https://play.google.com/store/account/subscriptions?sku=app.fillsell.cloud.sub&package=app.fillsell.app`).
   ⛔ Jamais « rien n'est facturé » : FillSell ne peut pas le promettre pour une boutique.
 - Un seul nom : « FillSell Cloud » (ni « option », ni « add-on », ni « Sans ordinateur »), dans chaque sujet et corps.
+- ⛔ (08/11, Nico) Jamais « on publie pour toi », « on te fait ça », ni aucun « on » qui exécute à la place de la
+  personne : c'est FillSell Cloud (ou l'extension) qui publie — « FillSell Cloud publie et republie tes annonces ».
+  Jamais « tes annonces repassent par l'extension » ni « comme avant » : un client Cloud n'a peut-être aucun
+  ordinateur. La phrase vraie pour tous : « Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur
+  ton ordinateur. » Vaut pour tous les mails Cloud et tous les textes Cloud de l'app (selftest:cloud-resiliation-mails).
 - Le paiement échoué du Cloud n'existe que pour Stripe (Apple et Google relancent eux-mêmes) ; jamais « reste actif »
   pour le Cloud. ~~Aucun mail aujourd'hui pour : début d'essai, arrêt (Stripe : pas d'accusé), renouvellement réussi.~~
   **Remplacé le 08/11 (ordre de Nico, actif au jour J étape 1)** : six mails Cloud — début d'essai, veille, paiement fait,

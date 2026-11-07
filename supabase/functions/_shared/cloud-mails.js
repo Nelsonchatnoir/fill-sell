@@ -186,14 +186,16 @@ const FR = {
   },
   bouton: { stripe: 'Ouvrir FillSell', apple: 'Gérer mon abonnement Apple', google: 'Gérer mon abonnement Google Play', inconnu: 'Ouvrir FillSell' },
   raison: "Tu reçois ce message parce que tu as un abonnement FillSell Cloud. C'est une information sur ta facturation : elle t'est envoyée même si tu t'es désinscrit des actualités de FillSell.",
-  extension: "Tes annonces repassent par l'extension FillSell, sur ton ordinateur, comme avant.",
+  // (08/11, Nico) Vrai pour TOUT client, même sans ordinateur : jamais « repassent », jamais « comme avant ».
+  extension: "Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.",
   formule: "Ta formule FillSell ne change pas.",
   accuse: "Ce message est l'accusé de réception de ta demande. Garde-le.",
   essai_debut: {
     sujet: 'Ton essai FillSell Cloud a commencé',
     titre: 'Ton essai FillSell Cloud a commencé',
     preheader: (q) => (q ? `Il est gratuit jusqu'au ${q}.` : "Il est gratuit jusqu'à la fin de l'essai."),
-    intro: "Ton essai gratuit de FillSell Cloud a commencé : on publie et on republie pour toi, même quand ton ordinateur est éteint.",
+    // (08/11, Nico) C'est FillSell Cloud qui publie — jamais « on publie pour toi ».
+    intro: "Ton essai gratuit de FillSell Cloud a commencé : FillSell Cloud publie et republie tes annonces, même quand ton ordinateur est éteint.",
     connecter: 'Pour démarrer, connecte tes plateformes dans FillSell : Réglages → Abonnement → FillSell Cloud → Connecter mes plateformes.',
     fin: (q) => (q ? `L'essai est gratuit jusqu'au ${q} (heure de Paris).` : "L'essai est gratuit jusqu'à sa date de fin, affichée dans FillSell (Réglages → Abonnement)."),
     suite: {
@@ -253,7 +255,7 @@ const FR = {
       inconnu: "L'arrêt de FillSell Cloud est enregistré.",
     },
     fin: (j) => (j ? `Il continue jusqu'au ${j}, la fin de la période déjà payée, puis il s'arrête. Rien ne sera prélevé ensuite.` : "Il continue jusqu'à la fin de la période déjà payée, puis il s'arrête. Rien ne sera prélevé ensuite."),
-    apres: "Après cette date, tes annonces repassent par l'extension FillSell, sur ton ordinateur.",
+    apres: "Après cette date, sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.",
     garder: {
       stripe: (j) => `Tu changes d'avis ? Dans FillSell, Réglages → Abonnement → Garder le Cloud${j ? `, avant le ${j}` : ''} : rien ne sera coupé.`,
       apple: (j) => `Tu changes d'avis ? Remets le renouvellement dans tes abonnements Apple${j ? ` avant le ${j}` : ''} : rien ne sera coupé.`,
@@ -269,7 +271,7 @@ const FR = {
       fin_essai: { apple: "Ton essai est terminé, mais Apple n'a pas réussi à prélever le premier mois de FillSell Cloud.", google: "Ton essai est terminé, mais Google Play n'a pas réussi à prélever le premier mois de FillSell Cloud." },
       renouvellement: { apple: "Apple n'a pas réussi à prélever le renouvellement de FillSell Cloud.", google: "Google Play n'a pas réussi à prélever le renouvellement de FillSell Cloud." },
     },
-    pause: "En attendant, FillSell Cloud est en pause : tes annonces repassent par l'extension FillSell, sur ton ordinateur.",
+    pause: "En attendant, FillSell Cloud est en pause. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.",
     relancer: {
       apple: 'Pour le relancer, mets à jour ton moyen de paiement chez Apple (sur l’iPhone : Réglages → ton nom → Paiement et livraison). Dès que le paiement passe, FillSell Cloud repart tout seul.',
       google: 'Pour le relancer, mets à jour ton moyen de paiement chez Google Play (Play Store → ton profil → Paiements et abonnements → Modes de paiement). Dès que le paiement passe, FillSell Cloud repart tout seul.',
@@ -288,14 +290,14 @@ const EN = {
   },
   bouton: { stripe: 'Open FillSell', apple: 'Manage my Apple subscription', google: 'Manage my Google Play subscription', inconnu: 'Open FillSell' },
   raison: 'You are getting this email because you have a FillSell Cloud subscription. It is billing information, so it is sent even if you unsubscribed from FillSell news.',
-  extension: 'Your listings go back through the FillSell extension on your computer, as before.',
+  extension: 'Without FillSell Cloud, your listings go through the FillSell extension, on your computer.',
   formule: 'Your FillSell plan does not change.',
   accuse: 'This email is the acknowledgement of your request. Keep it.',
   essai_debut: {
     sujet: 'Your FillSell Cloud trial has started',
     titre: 'Your FillSell Cloud trial has started',
     preheader: (q) => (q ? `It is free until ${q}.` : 'It is free until the end of the trial.'),
-    intro: 'Your free FillSell Cloud trial has started: we list and relist for you, even when your computer is off.',
+    intro: 'Your free FillSell Cloud trial has started: FillSell Cloud lists and relists your items, even when your computer is off.',
     connecter: 'To get going, connect your platforms in FillSell: Settings → Subscription → FillSell Cloud → Connect my platforms.',
     fin: (q) => (q ? `The trial is free until ${q} (Paris time).` : 'The trial is free until its end date, shown in FillSell (Settings → Subscription).'),
     suite: {
@@ -355,7 +357,7 @@ const EN = {
       inconnu: 'Stopping FillSell Cloud is recorded.',
     },
     fin: (j) => (j ? `It keeps running until ${j}, the end of the period already paid for, then it stops. Nothing is charged after that.` : 'It keeps running until the end of the period already paid for, then it stops. Nothing is charged after that.'),
-    apres: 'After that date, your listings go back through the FillSell extension on your computer.',
+    apres: 'After that date, without FillSell Cloud, your listings go through the FillSell extension, on your computer.',
     garder: {
       stripe: (j) => `Changed your mind? In FillSell, Settings → Subscription → Keep the Cloud${j ? `, before ${j}` : ''}: nothing will be cut off.`,
       apple: (j) => `Changed your mind? Turn renewal back on in your Apple subscriptions${j ? ` before ${j}` : ''}: nothing will be cut off.`,
@@ -371,7 +373,7 @@ const EN = {
       fin_essai: { apple: "Your trial is over, but Apple couldn't charge the first month of FillSell Cloud.", google: "Your trial is over, but Google Play couldn't charge the first month of FillSell Cloud." },
       renouvellement: { apple: "Apple couldn't charge the renewal of FillSell Cloud.", google: "Google Play couldn't charge the renewal of FillSell Cloud." },
     },
-    pause: 'Meanwhile, FillSell Cloud is paused: your listings go back through the FillSell extension on your computer.',
+    pause: 'Meanwhile, FillSell Cloud is paused. Without FillSell Cloud, your listings go through the FillSell extension, on your computer.',
     relancer: {
       apple: 'To restart it, update your payment method with Apple (on iPhone: Settings → your name → Payment & Shipping). As soon as the payment goes through, FillSell Cloud starts again on its own.',
       google: 'To restart it, update your payment method with Google Play (Play Store → your profile → Payments & subscriptions → Payment methods). As soon as the payment goes through, FillSell Cloud starts again on its own.',

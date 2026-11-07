@@ -149,6 +149,35 @@ ok(fr('impaye', 'apple').paragraphes.some((p) => /Paiement et livraison/.test(p)
 ok(tous.every(({ t, lang }) => t.paragraphes[0] === (lang === 'en' ? 'Hi,' : 'Salut,')), 'chaque mail commence par « Salut, » / « Hi, »');
 const veille = texteRappel({ lang: 'fr', finIso: iso(T0 + 5 * J), canal: 'apple', prix: PRIX });
 ok(veille.paragraphes[0] === 'Salut,' && /FillSell Cloud/.test(veille.sujet), 'la veille, alignée : « Salut, » et « FillSell Cloud »');
+// (08/11, deux corrections de Nico) 1. Jamais « on » qui exécute à la place de la personne : c'est FillSell Cloud (ou
+// l'extension) qui publie. 2. Jamais « repassent par l'extension » / « comme avant » : un client Cloud n'a peut-être
+// aucun ordinateur — la phrase vraie pour tous : « Sans FillSell Cloud, tes publications passent par l'extension… ».
+const ON_EXECUTE = /pour toi|\bfor you\b|\bon (publie|republie|poste|met en ligne|s'occupe)|\bwe (list|relist|post|repost|publish|handle)/i;
+// « ton compte repasse en Free » (la formule) n'est pas visé : seul le retour supposé vers l'extension l'est.
+const SUPPOSE_EXTENSION = /comme avant|as before|repass\w* par l.extension|go(es)? back through|will then go back/i;
+const veilles = ['stripe', 'apple', 'google'].flatMap((c) => ['fr', 'en'].map((l) => texteRappel({ lang: l, finIso: iso(T0 + 5 * J), canal: c, prix: PRIX })));
+const { texteEchec } = await import('../supabase/functions/_shared/paiement-echoue.js');
+const impayesStripe = ['fr', 'en'].flatMap((l) => ['renouvellement', 'fin_essai'].map((ctx) => texteEchec({ lang: l, cause: 'carte_refusee', contexte: ctx, lienFacture: 'https://invoice.stripe.com/i/x', offre: 'cloud' })));
+const textesMails = [...tous.map(({ t }) => [t.sujet, t.preheader, ...t.paragraphes].join(' ')),
+  ...veilles.map((t) => [t.sujet, t.preheader, ...t.paragraphes].join(' ')),
+  ...impayesStripe.map((t) => [t.sujet, t.preheader, t.intro, t.encadre, ...t.suite].join(' '))];
+const fautifs = textesMails.filter((x) => ON_EXECUTE.test(x) || SUPPOSE_EXTENSION.test(x));
+ok(fautifs.length === 0 && textesMails.length === 38, `les ${textesMails.length} mails Cloud (6 événements × canaux × langues, veille, impayé Stripe) : jamais « on publie pour toi », jamais « repassent » / « comme avant »`, fautifs.map((x) => x.slice(0, 160)));
+ok(fr('essai_debut', 'stripe').paragraphes[1] === 'Ton essai gratuit de FillSell Cloud a commencé : FillSell Cloud publie et republie tes annonces, même quand ton ordinateur est éteint.',
+  'début d\'essai : « FillSell Cloud publie et republie tes annonces, même quand ton ordinateur est éteint »');
+ok(['arret_essai', 'arret_programme', 'impaye'].every((ev) => ['apple', 'google'].every((c) => fr(ev, c).paragraphes.some((p) => /[Ss]ans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur\./.test(p))))
+  && impayesStripe.filter((t) => !/^Hi/.test(t.salut)).every((t) => t.suite.some((p) => /Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur\./.test(p))),
+  'arrêts et impayés : « Sans FillSell Cloud, tes publications passent par l\'extension FillSell, sur ton ordinateur. » (vrai même sans ordinateur)');
+{
+  const { textesCloud } = await import('../src/cloud/textes.js');
+  const { textesConnexion } = await import('../src/cloud/textesConnexion.js');
+  const valeurs = (o) => Object.entries(o).flatMap(([k, v]) => (typeof v === 'string' ? [[k, v]] : typeof v === 'function' ? [[k, String(v('X', 'Y', 'Z') ?? '')], [k, String(v(null, null, null) ?? '')]]
+    : Array.isArray(v) ? v.map((x) => [k, String(x)]) : v && typeof v === 'object' ? valeurs(v) : []));
+  const app = ['fr', 'en'].flatMap((l) => [...valeurs(textesCloud(l)), ...valeurs(textesConnexion(l))]);
+  // « kept for you » (une place gardée pour la personne) n'exécute rien à sa place : seul « on » qui publie est visé.
+  const fautesApp = app.filter(([, v]) => /pour toi|\bon (publie|republie|poste|s'occupe)|\bwe (list|relist|post|repost|publish)/i.test(v) || SUPPOSE_EXTENSION.test(v));
+  ok(app.length > 200 && fautesApp.length === 0, `textes Cloud de l'app (${app.length} phrases fr/en) : même règle`, fautesApp.map(([k, v]) => `${k}: ${v.slice(0, 120)}`));
+}
 const rendu = E.mailCloud({ ...fr('arret_programme', 'stripe'), lang: 'fr' });
 ok(/Nico/.test(rendu.html) && /FillSell/.test(rendu.html) && !/désinscri(re|ption)<\/a>/i.test(rendu.html) && rendu.sujet === fr('arret_programme', 'stripe').sujet, 'mise en page : signée Nico / FillSell, aucun lien de désinscription (facturation)');
 
