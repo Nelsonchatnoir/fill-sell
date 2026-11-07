@@ -15,8 +15,15 @@
 //      aucune IP n'est contrôlée ni visitée tant que la preuve ne porte pas sa sortie ;
 //   3 bis. la REQUALIFICATION : une IP disponible au refus de plateforme non prouvé reçoit UNE visite de contrôle de
 //      cette plateforme (au plus une par heure ; controle.js), dont le verdict lève ou prouve le refus ;
-//   4 bis. la LIVRAISON des commandes, le RENOUVELLEMENT et l'ACHAT sous le stock visé — sous la triple garde
-//      (approvisionnement.js) ; sans elle, une proposition (alerte).
+//   4 bis. la LIVRAISON des commandes, le RENOUVELLEMENT et l'ACHAT sous le stock visé — sous leurs gardes
+//      (approvisionnement.js) ; sans elles, une proposition (alerte).
+// (07/11, décisions de Nico)
+//   1. « IP toujours d'avance » : le stock visé = la MARGE (cloud_ip_marge) + l'attente ; et entre deux entretiens, le
+//      RÉAPPROVISIONNEMENT RAPIDE (reapprovisionnerVite, toutes les REAPPRO_RAPIDE_MIN minutes) : lecture de trois petites
+//      tables, livraison et contrôle d'entrée des IP achetées, achat dès qu'il manque des IP — mêmes gardes, jamais en
+//      même temps qu'un entretien (un seul verrou), jamais une boucle (garde du nombre, pause d'une heure après un échec) ;
+//   3. le SOLDE IPRoyal : l'alerte part sous la dépense prévue sur 14 jours (regles.seuilSoldeProjete) et dit combien
+//      recharger ; en paiement par carte, l'alerte est celle de la carte (absente, expirée, expire dans 45 jours).
 import { mkdir } from 'node:fs/promises';
 import { nouveauProfilId } from './navigateur.js';
 import { claims } from './sessionFillsell.js';
@@ -24,10 +31,44 @@ import { creerPareFeu, sortieOuverte } from './pareFeu.js';
 import { creerApprovisionnement, dateIproyal } from './approvisionnement.js';
 
 export const VISITE_ESPACEMENT_MS = 3600_000;   // (03/11) au plus une visite de contrôle de plateforme par heure
+const COLONNES_IPS = 'id, commande, ip, port, etat, user_id, dernier_user_id, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus, rebut_critere, rebut_le';
 
 export function creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp,
   pareFeu = creerPareFeu({ config, journal }), approvisionnement = creerApprovisionnement({ base, iproyal, alertes, journal, regles }) }) {
   let derniereVisite = 0;
+  let occupe = false;            // (07/11) UN verrou : l'entretien et le réapprovisionnement rapide ne courent jamais ensemble
+  let dernierLambda = null;      // (07/11) le λ du dernier entretien (le réapprovisionnement rapide ne relit pas les essais)
+
+  async function lireIps() {
+    const { data: ips, error } = await base.from('cloud_ips').select(COLONNES_IPS);
+    if (error) throw new Error(`cloud_ips : ${error.message}`);
+    return (ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') }));
+  }
+  /** (07/11) Le registre des dépenses des 30 derniers jours (petite table) : rythme d'achat, prix, anti-boucle. */
+  async function lireRegistre(maintenant = Date.now()) {
+    const q = base.from('cloud_ip_commandes').select('id, nature, quantite, statut, prix_usd, demandee_le, ip_id, details');
+    const { data, error } = await (typeof q.gte === 'function' ? q.gte('demandee_le', new Date(maintenant - 30 * 86_400_000).toISOString()) : q);
+    return error ? [] : (data ?? []);
+  }
+  /** (07/11) Le prix d'UNE IP 30 jours : le catalogue IPRoyal, sinon le registre, sinon PARAMETRES. */
+  async function prixIp(registre) {
+    if (iproyal?.disponible && iproyal.catalogueIsp) {
+      const p = await iproyal.catalogueIsp().then((c) => Number(c?.prixUnitaireUsd)).catch(() => NaN);
+      if (p > 0) return p;
+    }
+    return regles.prixIpDuRegistre?.(registre) ?? regles.PARAMETRES?.prixIpUsd30j ?? 5.4;
+  }
+  /** Le contrôle d'une IP (entrée ou sortie de repos), depuis un navigateur neuf ; le verdict va à la base. */
+  async function controlerIp(i, nature) {
+    const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: i.id });
+    if (!proxyUrl) return false;
+    const c = await controles.controler({ ipId: i.id, ip: i.ip, proxyUrl }).catch((e) => { journal.erreur('controle_echec', { ip_id: i.id, erreur: e.message }); return null; });
+    if (!c) return true;
+    const rpc = nature === 'entree' ? 'cloud_ip_controle_entree' : 'cloud_ip_remettre_en_pool';
+    const { data } = await base.rpc(rpc, { p_ip: i.id, p_controle: c });
+    journal.info('controle_applique', { ip_id: i.id, nature, ok: data?.ok === true, manques: data?.manques ?? [] });
+    return true;
+  }
   /** (04/11) Les plateformes dont les visites de contrôle sont coupées (coin_config) ; « * » = lecture ratée, toutes. */
   async function visitesCoupees() {
     const coupees = new Set();
@@ -135,7 +176,14 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     return purges.length;
   }
 
+  /** (07/11) L'entretien horaire, sous le verrou partagé avec le réapprovisionnement rapide. */
   async function tour() {
+    if (occupe) return { occupe: true };
+    occupe = true;
+    try { return await tourSansVerrou(); } finally { occupe = false; }
+  }
+
+  async function tourSansVerrou() {
     const bilan = {};
     // (04/11 soir, essai GPU) ENTRETIEN_POOL=0 : un SECOND serveur (l'essai) ne tient pas le pool — cloud-1 le fait. Seul
     // le pare-feu de SES navigateurs suit le pool (étape 0) : aucune purge, aucun contrôle, aucune visite, aucune échéance,
@@ -147,9 +195,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       bilan.base = e1;
     } else bilan.pool = 'coupe';
 
-    const { data: ips } = await base.from('cloud_ips')
-      .select('id, commande, ip, port, etat, user_id, dernier_user_id, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus');
-    const toutes = (ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') }));
+    let toutes = await lireIps();
 
     // 0. (03/11) Le pare-feu des navigateurs suit le pool : la liste écrite, l'hôte la rejoue (aucun redéploiement).
     //    Les IP qu'un navigateur ouvert utilise restent permises quoi qu'il arrive.
@@ -188,14 +234,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       if (controlesFaits >= 2) break;
       // (03/11) Jamais un contrôle par une sortie que le pare-feu n'a pas encore ouverte : il échouerait et jetterait l'IP.
       if (!sortiePermise(i)) { journal.info('controle_reporte_pare_feu', { ip_id: i.id, nature }); continue; }
-      const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: i.id });
-      if (!proxyUrl) continue;
-      controlesFaits++;
-      const c = await controles.controler({ ipId: i.id, ip: i.ip, proxyUrl }).catch((e) => { journal.erreur('controle_echec', { ip_id: i.id, erreur: e.message }); return null; });
-      if (!c) continue;
-      const rpc = nature === 'entree' ? 'cloud_ip_controle_entree' : 'cloud_ip_remettre_en_pool';
-      const { data } = await base.rpc(rpc, { p_ip: i.id, p_controle: c });
-      journal.info('controle_applique', { ip_id: i.id, nature, ok: data?.ok === true, manques: data?.manques ?? [] });
+      if (await controlerIp(i, nature)) controlesFaits++;
     }
     bilan.controles = controlesFaits;
 
@@ -240,8 +279,18 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
         } catch (e) { journal.alerte('echeance_illisible', { ip_id: i.id, erreur: e.message }); }
       }
     }
-    // (30/10, lot D) Le solde du fournisseur (lecture seule) : alerte s'il passe sous le seuil, aucun achat.
-    bilan.solde = await fournisseurIp?.verifierSolde().catch((e2) => { journal.alerte('solde_echec', { erreur: e2.message }); return null; }) ?? null;
+    // (07/11) Les réglages (marge, interrupteurs, moyen de paiement), le registre des 30 derniers jours, l'état du pool.
+    const g = await approvisionnement.gardes().catch((e) => { journal.alerte('gardes_illisibles', { erreur: e.message }); return null; });
+    const registre = await lireRegistre().catch(() => []);
+    let { data: etat } = await base.rpc('cloud_pool_etat');
+    // (30/10, lot D ; 07/11, décision 3) Le solde du fournisseur (lecture seule, aucune recharge) : l'alerte part sous la
+    // dépense prévue sur 14 jours ; en paiement par CARTE, c'est la carte qui est surveillée (et le solde si elle manque).
+    bilan.carte = g?.paiementCarte ? await approvisionnement.verifierCarte?.(g).catch((e2) => { journal.alerte('carte_echec', { erreur: e2.message }); return null; }) ?? null : null;
+    const projection = regles.seuilSoldeProjete
+      ? regles.seuilSoldeProjete({ ips: toutes, registre, marge: g?.marge ?? regles.PARAMETRES?.ipMarge, enAttente: etat?.en_attente ?? 0, prixIpUsd: await prixIp(registre) })
+      : null;
+    bilan.solde = await fournisseurIp?.verifierSolde(Date.now(), { projection, alerter: bilan.carte?.mode !== 'carte' })
+      .catch((e2) => { journal.alerte('solde_echec', { erreur: e2.message }); return null; }) ?? null;
     // En ROTATION, un compte n'attend jamais une IP dédiée : pas de plan d'achat ni d'alerte « pool vide ».
     if (await fournisseurIp?.rotationActive().catch(() => false)) {
       bilan.rotation = true;
@@ -251,16 +300,19 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     }
     // 4 bis. (03/11) Les commandes livrées entrent au pool (contrôle d'entrée au tour suivant, sortie ouverte d'abord).
     bilan.livraisons = (await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; }))?.livrees ?? null;
-    const { data: etat } = await base.rpc('cloud_pool_etat');
-    const g = await (approvisionnement.gardesEtSeuil ?? approvisionnement.gardes)().catch((e) => { journal.alerte('gardes_illisibles', { erreur: e.message }); return null; });
-    const plan = regles.planDuJour({ ips: toutes, lambda: regles.lambdaMesure(etat?.essais_7j ?? 0),
+    // (07/11) Une livraison a fermé des commandes et ajouté des IP : le pool et l'état sont RELUS — sinon le plan ne
+    // verrait ni la commande (fermée) ni ses IP (lues avant) et rachèterait ce qui vient d'arriver.
+    if (bilan.livraisons > 0) { toutes = await lireIps(); ({ data: etat } = await base.rpc('cloud_pool_etat')); }
+    dernierLambda = regles.lambdaMesure(etat?.essais_7j ?? 0);
+    const plan = regles.planDuJour({ ips: toutes, lambda: dernierLambda,
       enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0,
-      stockMin: g?.stockMin ?? regles.PARAMETRES?.ipStockMin });
-    bilan.plan = { renouveler: plan.renouveler.length, laisserExpirer: plan.laisserExpirer.length, aCommander: plan.aCommander, niveau: plan.niveau, vise: plan.vise };
-    // (03/11) Renouveler puis acheter, sous la triple garde ; sans elle, une proposition (approvisionnement.js).
+      marge: g?.marge ?? regles.PARAMETRES?.ipMarge, comptesSansPlace: etat?.comptes_sans_place ?? null });
+    bilan.plan = { renouveler: plan.renouveler.length, laisserExpirer: plan.laisserExpirer.length, aCommander: plan.aCommander, niveau: plan.niveau, vise: plan.vise,
+      garde: plan.garde ? { comptees: plan.garde.comptees, borne: plan.garde.borne, ok: plan.garde.ok } : null };
+    // (03/11) Renouveler puis acheter, sous leurs gardes ; sans elles, une proposition (approvisionnement.js).
     if (g && (plan.renouveler.length || plan.aCommander > 0)) {
       const soldeVivant = bilan.solde ? { ...bilan.solde } : null;
-      bilan.renouvellements = await approvisionnement.renouveler(plan, toutes, g, soldeVivant)
+      bilan.renouvellements = await approvisionnement.renouveler(plan, toutes, g, soldeVivant, { registre })
         .catch((e) => { journal.erreur('renouvellements_echec', { erreur: e.message }); return null; });
       bilan.achat = await approvisionnement.acheter(plan, g, soldeVivant)
         .catch((e) => { journal.erreur('achat_echec', { erreur: e.message }); return null; });
@@ -275,10 +327,80 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
         : `Pool ${decision.niveau === 'vide' ? 'VIDE' : 'presque vide'} : ${etat?.attribuables_essai ?? 0} IP libre(s), ${etat?.en_attente ?? 0} personne(s) attendent une place.`, { etat });
     }
     if ((etat?.purges_en_retard ?? 0) > 0) await alertes.signaler('serveur', `${etat.purges_en_retard} purge(s) en retard de plus d'une heure.`);
+    // (07/11) La garde du nombre ne compte pas le rebut : une série d'IP jetées serait une boucle qu'elle ne voit pas — elle
+    // est DITE ici ; au contrôle d'ENTRÉE, au-delà de PARAMETRES.ipRebutsEntreeMax en 24 h, l'achat automatique se suspend.
+    if ((etat?.rebuts_24h ?? 0) >= 2) await alertes.signaler('serveur', `${etat.rebuts_24h} IP envoyées au rebut en 24 h (dont ${plan.rebutsEntree24h ?? '?'} au contrôle d'entrée) : à partir de ${regles.PARAMETRES?.ipRebutsEntreeMax ?? 3} au contrôle d'entrée, l'achat automatique se suspend 24 h. Relire cloud_ip_evenements.`);
     bilan.etat = { attribuables: etat?.attribuables_essai, en_attente: etat?.en_attente, sans_place: etat?.comptes_sans_place };
     journal.info('entretien', bilan);
     return bilan;
   }
 
-  return { tour, purger, purgerComptesInactifs };
+  /** (07/11) Les IP des achats en cours (registre : « demandee », « en_cours ») — une petite table. */
+  async function achatsEnCours() {
+    const { data, error } = await base.from('cloud_ip_commandes').select('quantite').eq('nature', 'achat').in('statut', ['demandee', 'en_cours']);
+    if (error) throw new Error(`cloud_ip_commandes : ${error.message}`);
+    return (data ?? []).reduce((n, c) => n + (Number(c.quantite) || 0), 0);
+  }
+  async function personnesEnAttente() {
+    const { count, error } = await base.from('cloud_attente').select('user_id', { count: 'exact', head: true });
+    if (error) throw new Error(`cloud_attente : ${error.message}`);
+    return Number(count) || 0;
+  }
+
+  /**
+   * (07/11, décision 1 de Nico : « IP toujours d'avance ; la liste d'attente n'est qu'un filet ») LE RÉAPPROVISIONNEMENT
+   * RAPIDE — toutes les REAPPRO_RAPIDE_MIN minutes (index.js). Rien sans IPROYAL_ACHATS_AUTORISES=1 (aucune lecture) ni
+   * sans cloud_ip_achats_auto = 1 ; sinon trois petites lectures (cloud_ips, achats en cours, attente). Puis, seulement
+   * s'il y a lieu : la livraison des commandes en cours (IPRoyal), le pare-feu et le contrôle d'entrée d'UNE IP achetée
+   * (elle devient attribuable sans attendre l'heure), et l'achat de ce qui manque à la marge — mêmes gardes que
+   * l'entretien (garde du nombre en JS et en base, pause d'une heure après un échec). Jamais pendant un entretien (même
+   * verrou) ; jamais deux achats ensemble (le verrou ici, la base sous verrou entre serveurs).
+   */
+  async function reapprovisionnerVite() {
+    if (config?.entretienPool === false) return { pool: 'coupe' };
+    if (iproyal?.achatsAutorises !== true) return { coupe: 'serveur' };
+    if (occupe) return { occupe: true };
+    occupe = true;
+    try {
+      const g = await approvisionnement.gardes();
+      if (!g?.envAutorise || !g?.achatsAuto) return { coupe: 'interrupteur' };
+      if (await fournisseurIp?.rotationActive?.().catch(() => false)) return { rotation: true };
+      const bilan = {};
+      let toutes = await lireIps();
+      let enCommande = await achatsEnCours();
+      if (enCommande > 0) {
+        bilan.livraisons = (await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; }))?.livrees ?? 0;
+        if (bilan.livraisons > 0) { toutes = await lireIps(); enCommande = await achatsEnCours(); }
+      }
+      const achetees = toutes.filter((i) => i.etat === 'achetee');
+      if (achetees.length && controles?.controler) {
+        const enUsage = (navigateurs?.ouverts?.() ?? []).map((u) => navigateurs.ouvert?.(u)?.ipId).filter((x) => x != null);
+        const pf = await pareFeu.synchroniser(toutes, { enUsage }).catch((e) => { journal.alerte('pare_feu_synchro_echec', { erreur: e.message }); return null; });
+        const appliquees = pf?.appliquees ?? await pareFeu.appliquees().catch(() => null);
+        const i = achetees.find((x) => appliquees && sortieOuverte(appliquees, x.ip, x.port ?? 12323));
+        if (i && await controlerIp(i, 'entree')) { bilan.controle = i.id; toutes = await lireIps(); }
+      }
+      const lambda = dernierLambda ?? regles.lambdaMesure(0);
+      const avant = regles.planDuJour({ ips: toutes, lambda, enAttente: await personnesEnAttente(), commandesEnCours: enCommande, marge: g.marge });
+      if (avant.aCommander <= 0) {
+        if (Object.keys(bilan).length) journal.info('reappro_rapide', { ...bilan, aCommander: 0 });
+        return { ...bilan, aCommander: 0 };
+      }
+      // Il manque des IP : l'état du pool (comptes actifs sans IP) porte la garde du nombre ; puis l'achat.
+      const { data: etat, error } = await base.rpc('cloud_pool_etat');
+      if (error) throw new Error(`cloud_pool_etat : ${error.message}`);
+      const plan = regles.planDuJour({ ips: toutes, lambda, enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? enCommande,
+        marge: g.marge, comptesSansPlace: etat?.comptes_sans_place ?? null });
+      bilan.aCommander = plan.aCommander;
+      if (plan.aCommander > 0) {
+        const solde = await fournisseurIp?.solde?.().catch(() => null) ?? null;
+        bilan.achat = await approvisionnement.acheter(plan, g, solde ? { ...solde } : null);
+      }
+      journal.info('reappro_rapide', { ...bilan, vise: plan.vise, projete: plan.projete,
+        garde: plan.garde ? { comptees: plan.garde.comptees, borne: plan.garde.borne, ok: plan.garde.ok } : null });
+      return bilan;
+    } finally { occupe = false; }
+  }
+
+  return { tour, purger, purgerComptesInactifs, reapprovisionnerVite };
 }

@@ -35,11 +35,16 @@ import { idExtensionDepuisCle } from './sessionFillsell.js';
 import { readFile, appendFile, mkdir } from 'node:fs/promises';
 
 const configLue = lireConfig();
-// (03/11, point 1) LA CAPACITÉ : NAVIGATEURS_MAX s'il est réglé ; sinon ⌊(mémoire de l'hôte − socle) / plafond d'un
-// navigateur⌋ (flotte.js, capaciteServeur) — un serveur neuf de la flotte se règle seul.
-const config = Object.freeze({ ...configLue, navigateursMaxAuto: configLue.navigateursMaxRegle == null,
-  navigateursMax: capaciteServeur({ totalMo: totalmem() / 1048576, socleMo: configLue.socleMo, plafondMo: tailleEnMo(configLue.memoireNavigateur),
-    reglage: configLue.navigateursMaxRegle, repli: configLue.navigateursMax }) });
+// (03/11, point 1) LA CAPACITÉ : NAVIGATEURS_MAX s'il est réglé (FIXE) ; sinon AUTOMATIQUE. (07/11, décision 4 de Nico)
+// Automatique = mesurée : elle part de CAPACITE_DEPART (15) et monte seule sur les mesures réelles (flotte.js,
+// capaciteMesuree), jamais au-delà de CAPACITE_PLAFOND (30) ni de la capacité THÉORIQUE ⌊(mémoire de l'hôte − socle) /
+// plafond d'un navigateur⌋ (capaciteServeur) — un serveur neuf de la flotte se règle seul.
+const capaciteTheorique = capaciteServeur({ totalMo: totalmem() / 1048576, socleMo: configLue.socleMo, plafondMo: tailleEnMo(configLue.memoireNavigateur),
+  reglage: null, repli: configLue.navigateursMax });
+const capaciteAuto = configLue.navigateursMaxRegle == null;
+const config = Object.freeze({ ...configLue, navigateursMaxAuto: capaciteAuto, capaciteTheorique,
+  navigateursMax: capaciteAuto ? Math.max(1, Math.min(configLue.capaciteDepart, configLue.capacitePlafond, capaciteTheorique))
+    : capaciteServeur({ reglage: configLue.navigateursMaxRegle }) });
 const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false, autoRefreshToken: false } });
 const docker = creerDocker({ socket: config.socketDocker });
 const navigateurs = creerNavigateurs({ config, docker, journal });
@@ -65,7 +70,11 @@ const enregistrementFond = creerEnregistrementFond({ config, journal,
 // (04/11 soir, règle de Nico) Les pauses de la messagerie et de la veille des commandes : levées par une résolution réussie
 // (verifications.js) et par un changement de machine ou d'IP (postes.js).
 const pausesMessagerie = creerPausesMessagerie({ config, base, navigateurs, journal });
+// (03/11, points 1 et 5) La flotte : battement, places, montée en charge (création COUPÉE sans le GO de Nico).
+// (07/11, décision 4) Elle tient aussi la CAPACITÉ DU MOMENT (mesurée), lue par le planificateur à chaque tour.
+const flotte = creerFlotte({ config, base, navigateurs, journal, alertes });
 const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp, enregistrementFond, pausesMessagerie,
+  capacite: () => flotte.capacite(),
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), arretEndurance: () => endurance?.arretee() ?? null });
 // (02/11) Les vérifications anti-robot : une règle du PRODUIT, toujours active (verifications.js) — un blocage n'arrête
 // que sa plateforme ; « Résoudre la vérification » la rouvre ; l'essai de 48 h en garde seulement le journal.
@@ -90,8 +99,6 @@ connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journa
     if (endurance) endurance.connexionVerifiee(e).catch(() => {});
     else verifications.resolue(e.user, e.plateforme, { par: 'connexion', le: e.le }).catch(() => {});
   } });
-// (03/11, points 1 et 5) La flotte : battement, places, montée en charge (création COUPÉE sans le GO de Nico).
-const flotte = creerFlotte({ config, base, navigateurs, journal, alertes });
 const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp });
 // (01/11) L'essai de 48 h (ENDURANCE=1) : mesures toutes les 10 min, arrêt au premier blocage.
 if (config.endurance) {
@@ -111,8 +118,12 @@ for (const c of await docker.lister()) {
 }
 
 await serveur.ecouter();
+// (07/11, décision 4) La capacité mesurée AVANT le premier tour du planificateur : après un redémarrage, jamais moins de
+// places que de comptes déjà servis (les mesures des 24 h précédentes comptent).
+await flotte.evaluerCapacite().catch((e) => journal.alerte('capacite_evaluation_echec', { erreur: e.message }));
 journal.info('demarrage', { serveur: config.serveurNom, port: config.port, comptes_autorises: config.comptesAutorises.length || 'tous',
-  capacite: config.navigateursMax, capacite_auto: config.navigateursMaxAuto });
+  capacite: flotte.capacite(), capacite_auto: config.navigateursMaxAuto, capacite_theorique: config.capaciteTheorique,
+  reappro_rapide_min: config.reapproRapideMin });
 
 // (05/10) Serveur déployé AVANT la migration du socle (GO de Nico) : dit une
 // fois, puis une tentative toutes les 10 min au lieu de chaque minute (socle.js).
@@ -134,16 +145,34 @@ async function tourPlanificateur() {
   } finally { enCours = false; }
 }
 let entretienEnCours = false;
+let reprise = null;
 async function tourEntretien() {
   if (entretienEnCours || gardeEntretien.passer()) return;
   entretienEnCours = true;
-  try { await entretien.tour(); gardeEntretien.present(); } catch (e) {
+  try {
+    const r = await entretien.tour();
+    gardeEntretien.present();
+    // (07/11) Le réapprovisionnement rapide tenait le verrou (un achat attend sa livraison) : l'entretien repasse dans
+    // 3 minutes, jamais sauté pour une heure.
+    if (r?.occupe && !reprise) reprise = setTimeout(() => { reprise = null; tourEntretien(); }, 3 * 60_000);
+  } catch (e) {
     if (!gardeEntretien.noter(e)) journal.erreur('entretien_echec', { erreur: e.message });
   } finally { entretienEnCours = false; }
+}
+// (07/11, décision 1 de Nico) LE RÉAPPROVISIONNEMENT RAPIDE DES IP : toutes les REAPPRO_RAPIDE_MIN minutes, une lecture de
+// trois petites tables (rien du tout sans IPROYAL_ACHATS_AUTORISES=1 et cloud_ip_achats_auto = 1), un achat seulement s'il
+// manque des IP à la marge. Même verrou que l'entretien (entretien.js) ; une erreur est journalisée, jamais rejouée en boucle.
+async function tourReappro() {
+  if (entretienEnCours || gardeEntretien.passer()) return;
+  try {
+    const r = await entretien.reapprovisionnerVite();
+    if (r?.achat) journal.info('reappro_rapide_achat', { achat: r.achat, aCommander: r.aCommander });
+  } catch (e) { journal.alerte('reappro_rapide_echec', { erreur: e.message }); }
 }
 
 const t1 = setInterval(tourPlanificateur, config.tickPlanificateurS * 1000);
 const t2 = setInterval(tourEntretien, config.tickEntretienMin * 60_000);
+const t7 = config.reapproRapideMin > 0 ? setInterval(tourReappro, config.reapproRapideMin * 60_000) : null;
 // (02/11) Chaque minute, essai ou pas : les cadres DataDome, les pauses de l'app, l'essai des 24 h d'un accès restreint.
 const t3 = setInterval(() => (endurance ? endurance.releveCadres() : verifications.releve()).catch((e) => journal.alerte('verifications_releve_echec', { erreur: e.message })), 60_000);
 // (03/11) La flotte : décision toutes les 10 min (plan à blanc tant que les interrupteurs sont coupés).
@@ -168,7 +197,8 @@ setTimeout(tourEntretien, 60_000);
 
 async function arreter(signal) {
   journal.info('arret', { signal });
-  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5); clearInterval(t6);
+  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5); clearInterval(t6); clearInterval(t7);
+  if (reprise) clearTimeout(reprise);
   await noterCoupuresRelais().catch(() => {});
   // (05/11 soir, point 12) Un déploiement ne coupe rien en cours : la vidange d'abord, la fermeture ensuite.
   await vidange.vider({ maxMs: config.drainMaxS * 1000 }).catch((e) => journal.alerte('vidange_echec', { erreur: String(e?.message ?? e) }));

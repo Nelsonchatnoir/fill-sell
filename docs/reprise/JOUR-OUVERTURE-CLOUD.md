@@ -1,5 +1,29 @@
 # Jour d'ouverture de FillSell Cloud — la liste, dans l'ordre (décision j de Nico, 05/11/2026)
 
+## ⛔ 07/11/2026 soir — PROCÉDURE DU JOUR J EXÉCUTÉE PAR CLAUDE SEUL, sur « on ouvre » de Nico (prime sur la suite)
+Préalables (relus avant de commencer, sinon on s'arrête) : les deux stores ont approuvé 2.9.164 et Nico l'a publiée ;
+migration 20261107180000 appliquée et orchestrateur « marge + garde en nombre + capacité mesurée » sur cloud-2 (relus) ;
+`main` propre et poussé ; aucune tâche « processing » sur cloud-2. Chaque étape : geste → vérification → la moindre
+différence = retour arrière de l'étape et arrêt. Heures de Paris notées au fur et à mesure dans docs/cloud/REPRISE.md.
+1. **Fonctions de paiement, une passe** (autorisation nommée du 07/11 : create-checkout-session, stripe-webhook,
+   apple-iap-webhook, cancel-subscription, validate-google-purchase ; validate-apple-receipt déjà en v40) :
+   `node scripts/cloud/deployer-fonctions-cloud.mjs` (plan) puis `--go` limité à ces cinq (les autres de la liste du
+   script — email-tunnel, google-play-webhook, get-pending-jobs — seulement sur un oui de Nico). Vérif : version +1 et
+   verify_jwt inchangé pour chacune, 15 min de journaux sans erreur, Stripe `pending_webhooks` 0. Retour : redéployer
+   chaque fonction depuis `914b1e5` avec le même verify_jwt (§ 1).
+2. **IP automatiques** : `cloud_ip_achats_auto` = 1 (+ `cloud_ip_paiement_carte` = 1 si Nico a choisi la carte ; sinon
+   solde rechargé d'abord). Vérif : au plus 5 min après, journal `reappro_rapide` : stock = marge (3) + inscrits, garde
+   en nombre respectée ; aucune alerte « garde ». Retour : `cloud_ip_achats_auto` = 0.
+3. **cloud-2 ouvert à tous** : liste `COMPTES_AUTORISES` vidée (geste exact plus bas, « Ordre du jour J » 3). Vérif :
+   journal `demarrage` « comptes_autorises: tous », `details.service.comptes` = tous, navigateur de Nico rouvert.
+   Retour : archive `.env`, `up -d --no-deps --force-recreate orchestrateur`.
+4. **Interrupteur** `cloud_offre_ouverte` = 1. Vérif : `cloud_vente_etat` d'un compte ordinaire = vente possible,
+   places = min(serveur, IP) ; l'offre visible dans un navigateur isolé. Retour : la clé à 0.
+5. **OTA 2.9.164 en `--delta`** (§ 7 ; numéro au-dessus du canal). Vérif : canal relu, `build.json` du bundle = commit.
+   Retour : bundle précédent remis sur `production`.
+6. **Grille trois jauges** = 1 (§ 4). Vérif : quotas_etat et écran. Retour : 0.
+Puis 2 h de surveillance (§ 8) : ventes, places, IP achetées, alertes support@.
+
 ## ⛔ 07/11/2026 — DÉCISIONS DE NICO ET PASSE PRÉPARÉE (rien allumé) — prime sur la suite de ce fichier
 Décisions (07/11 ~10:28) : toute personne qui paie le Cloud a sa place AUTOMATIQUEMENT, dans la limite des places du
 serveur, sans liste tenue à la main ; aucun régime spécial pour les abonnés au-delà de 400 publications (les nouveaux

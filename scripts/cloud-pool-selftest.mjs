@@ -224,16 +224,18 @@ titre('10. (03/11, point 2 de Nico) L\'approvisionnement : stock minimum, refus 
 {
   const M = await import('../supabase/functions/_shared/cloud-pool.js');
   const sqlAppro = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261103202000_cloud_ip_approvisionnement.sql', import.meta.url)), 'utf8');
-  ok(M.stockVise({ seuilCommande: 1, stockMin: 2 }) === 2 && M.stockVise({ seuilCommande: 4, stockMin: 2, enAttente: 1 }) === 5,
-    'le stock visé ne descend jamais sous cloud_ip_stock_min, plus une IP par personne qui attend');
+  // (07/11, décision 1 de Nico) Le stock visé = la MARGE (cloud_ip_marge, 3) + une IP par personne qui attend ; le λ ne
+  // fixe plus la cible d'achat.
+  ok(M.stockVise({ marge: 2 }) === 2 && M.stockVise({ marge: 3, enAttente: 1 }) === 4 && M.stockVise({}) === M.PARAMETRES.ipMarge && M.PARAMETRES.ipMarge === 3,
+    'le stock visé = la marge (3 par défaut), plus une IP par personne qui attend');
   const d = (id, refus) => ({ id, etat: 'disponible', expire_le: iso(T0 + 25 * J), attributions: 0, refus });
-  const pl = M.planDuJour({ ips: [d(1, { beebs: { prouvee: true } }), d(2, {})], lambda: 0.5, stockMin: 2, maintenant: T0 });
+  const pl = M.planDuJour({ ips: [d(1, { beebs: { prouvee: true } }), d(2, {})], lambda: 0.5, marge: 2, maintenant: T0 });
   ok(pl.projete === 1 && pl.aCommander === 1 && pl.attribuables === 1, 'une IP au refus PROUVÉ ne compte pas dans le stock');
   // (04/11 soir, décision de Nico) Refus NON prouvé : plus jamais renouvelée, sauf réservée (l'IP du retour d'un compte).
   const e = (id, refus, x = {}) => ({ id, etat: 'disponible', expire_le: iso(T0 + 2 * J), attributions: 0, refus, ...x });
   const pr = M.planDuJour({ ips: [e(1, { beebs: { prouvee: false } }), e(2, { beebs: { prouvee: false } }, { reserve_pour: 'u', reserve_jusqu_au: iso(T0 + 2 * J) }),
     e(3, {}), e(4, { beebs: { prouvee: false } }, { reserve_pour: 'v', reserve_jusqu_au: iso(T0 - J) }),
-    { ...e(5, { beebs: { prouvee: false } }), etat: 'attribuee_client', user_id: 'w' }], lambda: 0.5, stockMin: 3, maintenant: T0 });
+    { ...e(5, { beebs: { prouvee: false } }), etat: 'attribuee_client', user_id: 'w' }], lambda: 0.5, marge: 3, maintenant: T0 });
   ok(pr.laisserExpirer.includes(1) && pr.laisserExpirer.includes(4) && !pr.renouveler.includes(1) && !pr.renouveler.includes(4),
     'une IP au refus NON prouvé (ou à la réservation échue) n\'est plus renouvelée');
   ok(pr.renouveler.includes(2) && pr.renouveler.includes(3) && pr.renouveler.includes(5),
@@ -243,16 +245,28 @@ titre('10. (03/11, point 2 de Nico) L\'approvisionnement : stock minimum, refus 
   ok(M.effetSignalement('blocage_anti_robot') === 'refus_plateforme' && M.effetSignalement('liste_noire') === 'rebut',
     'un blocage de plateforme = un refus sur ELLE ; les causes prouvées restent des rebuts');
   ok(/IF p_critere IN \('blocage_anti_robot', 'captcha_repete'\) THEN/.test(sqlAppro), 'SQL : cloud_ip_signaler dit la même chose');
-  const g = { montantUsd: 29.4, envAutorise: true, interrupteur: true, budgetUsd: 60, depenseMoisUsd: 0, soldeUsd: 50 };
+  // (07/11, décision 2 de Nico) Plus de plafond en dollars : la garde du NOMBRE pour l'achat, l'anti-boucle pour la prolongation.
+  const garde = M.gardePour({ vivantes: 1, en_commande: 0, comptes: 1, marge: 3, attente: 0 }, 3);
+  const g = { montantUsd: 29.4, envAutorise: true, interrupteur: true, garde, soldeUsd: 50 };
   ok(M.deciderDepense(g).faire === true && M.deciderDepense({ ...g, envAutorise: false }).raison === 'achats_coupes_serveur'
     && M.deciderDepense({ ...g, interrupteur: false }).raison === 'interrupteur_coupe'
-    && M.deciderDepense({ ...g, depenseMoisUsd: 40 }).raison === 'plafond' && M.deciderDepense({ ...g, soldeUsd: 3 }).raison === 'solde_insuffisant',
-    'une dépense ne part que sous la triple garde (serveur, interrupteur, plafond) et si le solde la couvre');
+    && M.deciderDepense({ ...g, garde: M.gardePour(garde, 4) }).raison === 'garde_nombre'
+    && M.deciderDepense({ ...g, garde: null }).raison === 'garde_illisible'
+    && M.deciderDepense({ ...g, depenseMoisUsd: 5000, budgetUsd: 60 }).faire === true
+    && M.deciderDepense({ ...g, soldeUsd: 3 }).raison === 'solde_insuffisant' && M.deciderDepense({ ...g, soldeUsd: 3, paiement: 'carte' }).faire === true,
+    'une dépense ne part que sous ses gardes (serveur, interrupteur, NOMBRE) et si le solde la couvre (ou par carte) — aucun plafond en dollars');
+  ok(M.deciderDepense({ montantUsd: 4, envAutorise: true, interrupteur: true, soldeUsd: 50 }).faire === true
+    && M.deciderDepense({ montantUsd: 4, envAutorise: true, interrupteur: true, soldeUsd: 50, dejaProlongee: true }).raison === 'prolongation_recente',
+    'une prolongation n\'est jamais bornée par le nombre ; seule une deuxième prolongation en 15 jours est refusée');
+  const pg = M.planDuJour({ ips: [{ ...d(9, {}), etat: 'attribuee_client', user_id: 'u' }], lambda: 0.5, marge: 3, comptesSansPlace: 0, maintenant: T0 });
+  ok(pg.aCommander === 3 && pg.garde?.ok === true && pg.garde.comptees === 4 && pg.garde.borne === 4,
+    'le plan porte sa garde : un achat que le plan demande passe toujours (1 compte, marge 3 : 3 IP, comptées 4 = borne 4)');
   ok(/\('cloud_ip_achats_auto', 0\)/.test(sqlAppro) && /\('cloud_ip_renouvellement_auto', 0\)/.test(sqlAppro),
     'SQL : les interrupteurs d\'achat et de renouvellement naissent COUPÉS');
-  ok(new RegExp(`\\('cloud_ip_stock_min', ${M.PARAMETRES.ipStockMin}\\)`).test(sqlAppro)
-    && new RegExp(`\\('cloud_ip_budget_mensuel_usd', ${M.PARAMETRES.ipBudgetMensuelUsd}\\)`).test(sqlAppro),
-    `SQL : stock minimum ${M.PARAMETRES.ipStockMin}, plafond ${M.PARAMETRES.ipBudgetMensuelUsd} $ — mêmes défauts que PARAMETRES`);
+  const sql07 = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261107180000_cloud_ip_marge_garde_nombre.sql', import.meta.url)), 'utf8');
+  ok(new RegExp(`\\('cloud_ip_marge', ${M.PARAMETRES.ipMarge}\\)`).test(sql07) && new RegExp(`cloud_param\\('ip_marge', ${M.PARAMETRES.ipMarge}\\)`).test(sql07)
+    && !/cloud_param\('ip_budget_mensuel_usd'/.test(sql07) && /\('cloud_ip_paiement_carte', 0\)/.test(sql07),
+    `SQL (07/11) : marge ${M.PARAMETRES.ipMarge} — même défaut que PARAMETRES ; plus de plafond en dollars ; paiement né au solde`);
 }
 
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);

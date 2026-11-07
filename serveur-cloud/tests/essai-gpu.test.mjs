@@ -210,14 +210,15 @@ test('enregistrement de fond : onglets et requêtes des plateformes / DataDome, 
   assert.equal(await rien.suivre('u', { cdp: fauxCdp() }), false);
 });
 
-test('achat d’IP : sur ACCORD ÉCRIT, l’interrupteur à 0 ne bloque plus — serveur, plafond, solde et registre tiennent', async () => {
-  const faire = ({ params = { ip_achats_auto: 0, ip_budget_mensuel_usd: 60 }, depense = 8, achatsAutorises = true } = {}) => {
+test('achat d’IP : sur ACCORD ÉCRIT, l’interrupteur à 0 ne bloque plus — serveur, garde du nombre (relue en base), solde et registre tiennent', async () => {
+  // (07/11, décision 2) Plus de plafond en dollars : la garde du nombre, relue en base (cloud_ip_garde_nombre), à la place.
+  const faire = ({ params = { ip_achats_auto: 0 }, garde = { vivantes: 1, en_commande: 0, comptes: 1, marge: 3, attente: 0 }, achatsAutorises = true } = {}) => {
     const appels = [], inseres = [], gestes = [];
     const base = {
       async rpc(nom, a) {
         appels.push(nom);
         if (nom === 'cloud_param') return { data: params[a.p_cle] ?? a.p_defaut, error: null };
-        if (nom === 'cloud_ip_depenses_mois') return { data: depense, error: null };
+        if (nom === 'cloud_ip_garde_nombre') return garde ? { data: regles.gardePour(garde, a.p_quantite), error: null } : { data: null, error: { message: 'absente' } };
         if (nom === 'cloud_ip_depense_ouvrir') return { data: { ok: false, raison: 'interrupteur_coupe' }, error: null };
         return { data: true, error: null };
       },
@@ -251,14 +252,18 @@ test('achat d’IP : sur ACCORD ÉCRIT, l’interrupteur à 0 ne bloque plus —
   assert.match(ligne.go_par, /^accord écrit de Nico : /); assert.equal(ligne.details.accord_ecrit, accord);
   assert.deepEqual(ok.gestes, [['commander', 1]]);
   assert.ok(!ok.appels.includes('cloud_ip_depense_ouvrir'), 'le registre automatique (qui refuserait) n’est pas appelé');
-  // L'accord ne lève RIEN d'autre : serveur sans autorisation, plafond atteint, solde court.
+  assert.ok(ok.appels.includes('cloud_ip_garde_nombre'), 'la garde du nombre relue en base avant le registre');
+  // L'accord ne lève RIEN d'autre : serveur sans autorisation, garde du nombre (en base), solde court.
   const serveur = faire({ achatsAutorises: false });
   assert.equal((await serveur.a.acheter(un, await serveur.a.gardes(), { montant: 25 }, { accordEcrit: accord })).raison, 'achats_coupes_serveur');
-  const plafond = faire({ depense: 58 });
-  assert.equal((await plafond.a.acheter(un, await plafond.a.gardes(), { montant: 25 }, { accordEcrit: accord })).raison, 'plafond');
+  const nombre = faire({ garde: { vivantes: 8, en_commande: 0, comptes: 1, marge: 3, attente: 0 } });
+  assert.equal((await nombre.a.acheter(un, await nombre.a.gardes(), { montant: 25 }, { accordEcrit: accord })).raison, 'garde_nombre',
+    '8 IP pour 1 compte + marge 3 : refusé même sur accord (relever cloud_ip_marge pour acheter au-delà)');
+  const illisible = faire({ garde: null });
+  assert.equal((await illisible.a.acheter(un, await illisible.a.gardes(), { montant: 25 }, { accordEcrit: accord })).raison, 'garde_illisible');
   const solde = faire();
   assert.equal((await solde.a.acheter(un, await solde.a.gardes(), { montant: 3 }, { accordEcrit: accord })).raison, 'solde_insuffisant');
-  for (const x of [serveur, plafond, solde]) { assert.deepEqual(x.gestes, []); assert.deepEqual(x.inseres, []); }
+  for (const x of [serveur, nombre, illisible, solde]) { assert.deepEqual(x.gestes, []); assert.deepEqual(x.inseres, []); }
 });
 
 // ── (04/11 soir, règle de Nico) Les pauses de la messagerie et de la veille des commandes ─────────────────────────────
@@ -311,4 +316,12 @@ test('lever en base : la pause seule (résolution), la pause et sa mémoire (cha
   assert.deepEqual(appels[1].patch, { pause_jusqu_au: null, bloque_le: null });
   assert.deepEqual(appels[1].filtres[1], ['in', 'platform', ['vinted', 'leboncoin', 'beebs', 'depop']]);
   assert.deepEqual(appels[1].filtres[2], ['or', 'pause_jusqu_au.gt.T,bloque_le.not.is.null']);
+});
+
+test('(07/11, décisions 1 et 4) configuration : capacité mesurée (départ 15, plafond 30, +5) et réapprovisionnement rapide (5 min) par défaut', () => {
+  const c = lireConfig(ENV);
+  assert.deepEqual([c.capaciteDepart, c.capacitePlafond, c.capaciteAvance, c.reapproRapideMin, c.navigateursMaxRegle], [15, 30, 5, 5, null]);
+  const d = lireConfig({ ...ENV, CAPACITE_DEPART: '12', CAPACITE_PLAFOND: '25', CAPACITE_AVANCE: '3', REAPPRO_RAPIDE_MIN: '0', NAVIGATEURS_MAX: '15' });
+  assert.deepEqual([d.capaciteDepart, d.capacitePlafond, d.capaciteAvance, d.reapproRapideMin, d.navigateursMaxRegle], [12, 25, 3, 0, 15],
+    'NAVIGATEURS_MAX réglé : capacité FIXE ; REAPPRO_RAPIDE_MIN=0 : coupé');
 });

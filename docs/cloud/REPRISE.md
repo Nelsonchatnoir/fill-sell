@@ -1,5 +1,29 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 07/11/2026 ~16:00 — architecture de l'ouverture (ordres de Nico) : l'app gère places, IP et capacité seule
+- **validate-apple-receipt DÉPLOYÉE** 14:5x (autorisation nommée) : v39 → v40, verify_jwt true relu après, 401 sans
+  jeton. Retour : redéployer depuis 514c9cb (même verify_jwt).
+- **IP, code prêt, NON appliqué** (migration 20261107180000_cloud_ip_marge_garde_nombre : feu vert NOMMÉ de Nico
+  requis ; orchestrateur à déployer ensuite) : stock visé = `cloud_ip_marge` (3) + inscrits en attente ; réappro rapide
+  toutes les 5 min (coupé tant que `cloud_ip_achats_auto` = 0) ; renouvellement des IP clients et de marge par le même
+  plan ; plus de plafond en dollars → garde en NOMBRE (IP vivantes + commandées + demandées ≤ comptes Cloud + marge +
+  inscrits), en JS et en SQL sous le verrou (sûr à plusieurs serveurs), alerte support@ si elle bloque ; renouvellements
+  hors garde, anti-boucle 15 j ; pause après 3 rebuts d'entrée en 24 h. Solde IPRoyal : alerte à la dépense prévue sur
+  14 jours (aujourd'hui ≈ 24 $ prévus pour 21,15 $ : elle partirait). Carte : l'API IPRoyal ne recharge PAS le solde,
+  mais paie achats et renouvellements par carte enregistrée (`card_id`) — 3 cartes sur le compte (2029/4, 2031/12 ×2) ;
+  mode `cloud_ip_paiement_carte` (0 par défaut = solde). Banc jetable 49/49, tests serveur 184/184, cloud-pool 117.
+- **Capacité mesurée** : `NAVIGATEURS_MAX` vide + `CAPACITE_DEPART=15`, `CAPACITE_PLAFOND=30` sur cloud-2 → capacité
+  réévaluée chaque heure sur 24 h de mesures (mémoire, CPU, GPU ; jamais plus de 5 comptes au-dessus du mesuré ; pas de
+  hausse après un blocage ou un manque de mémoire) ; alerte à 80 % (`cloud_capacite_alerte_pct`). Mesures du 07/11 :
+  1 295 Mo par compte, mémoire = 33 comptes. Aucun serveur commandé seul (`cloud_serveurs_auto` 0, prouvé par test).
+  Remplace ici les mentions « alerte 65 % » et « Nico décide 15 → 30 ».
+- **Ordre de mise en service** (après le feu vert) : commit + push ; migration (`db query --yes` + `migration repair`) ;
+  `.env` de cloud-2 (archive puis `NAVIGATEURS_MAX=` + CAPACITE_*) ; `ORCHESTRATEUR_SEUL=1 …/deployer.sh` ; copie
+  Cloud 0.6.178 (`EXTENSION_SEULE=1`, refusée tant que serveur-cloud/ n'est pas commité). Retours : rapport de l'agent
+  repris dans le commit.
+- **Preuves en réel** : `docs/reprise/ESSAIS-BAC-A-SABLE-CLOUD.md` (après la soumission ; paiement, mots de passe et
+  vente = gestes de Nico). **Jour J** : procédure en tête de `docs/reprise/JOUR-OUVERTURE-CLOUD.md`.
+
 ## 07/11/2026 ~14:00 — places = min(serveur, IP) APPLIQUÉ ; restauration du Cloud ; cloud.fillsell.app RETIRÉ ; copie 0.6.177
 - **Places = LEAST(places serveur, IP attribuables)** (feu vert NOMMÉ de Nico) : migration `20261107170000_cloud_places_min_ip`
   APPLIQUÉE 13:41 (`db query --linked --yes -f` + `migration repair … applied`), corps réécrit depuis `pg_get_functiondef`

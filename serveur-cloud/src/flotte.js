@@ -3,7 +3,9 @@
 //   · battre()  : chaque minute, ce serveur se déclare (cloud_serveur_battre) — capacité, navigateurs ouverts ;
 //   · lireComptesDuServeur : ce que CE serveur sert (cloud_comptes_du_serveur ; repli sur cloud_comptes_a_servir tant
 //     que la migration 20261103201000 n'est pas en base) ;
-//   · capaciteServeur : sans NAVIGATEURS_MAX, la capacité vient de la mémoire de l'hôte et du plafond d'un navigateur ;
+//   · capaciteServeur : sans NAVIGATEURS_MAX, la capacité THÉORIQUE vient de la mémoire de l'hôte et du plafond d'un
+//     navigateur ; (07/11, décision 4) la capacité du moment vient des MESURES RÉELLES (capaciteMesuree) : départ 15, elle
+//     monte seule jusqu'à 30 tant que les mesures le permettent ; alerte à 80 % ; jamais un serveur commandé seul ;
 //   · tour()    : toutes les 10 min, la décision pure planFlotte. Sous le seuil de places libres, le serveur DOYEN
 //     (le plus ancien nom vivant) prépare UN serveur neuf : corps exact de l'appel Hetzner, cloud-init (socle, .env,
 //     paquet), DNS. ⛔ DOUBLE INTERRUPTEUR : rien n'est créé sans HETZNER_CREATION_AUTORISEE=1 (env) ET
@@ -87,13 +89,57 @@ export function serviceDuServeur({ config, rendu = null }) {
 }
 
 /**
- * (06/11 soir, décision de Nico : « alerte vers support@ quand le serveur atteint 60 à 70 % de sa capacité réelle »)
- * L'ALERTE DE CAPACITÉ (pure : testée) — atteinte dès qu'UN taux dépasse le seuil (coin_config cloud_capacite_alerte_pct,
- * 65 par défaut) : comptes servis / NAVIGATEURS_MAX ; et, par la dernière mesure de l'hôte (cloud_mesures, agent
+ * (06/11 soir, décision de Nico : « alerte vers support@ quand le serveur atteint 60 à 70 % de sa capacité réelle » ;
+ * 07/11, décision 4 : à 80 %) L'ALERTE DE CAPACITÉ (pure : testée) — atteinte dès qu'UN taux dépasse le seuil
+ * (coin_config cloud_capacite_alerte_pct, 80 par défaut) : comptes servis / capacité (la capacité ATTEIGNABLE mesurée en
+ * capacité automatique, NAVIGATEURS_MAX sinon) ; et, par la dernière mesure de l'hôte (cloud_mesures, agent
  * fillsell-mesure, fraîche de moins de 15 min) : mémoire utilisée (hors cache récupérable), processeur et puce moyens
  * sur 5 min. Une mesure absente ou vieille ne déclenche rien (elle n'est que dite : mesure_fraiche = false).
  */
-export const SEUIL_CAPACITE_PCT = 65;
+export const SEUIL_CAPACITE_PCT = 80;
+
+/**
+ * (07/11, décision 4 de Nico : « la capacité vient des mesures réelles, jusqu'à 30 comptes ; 14-15 n'était qu'un réglage
+ * de départ ; elle monte seule tant que les mesures le permettent ») LA CAPACITÉ MESURÉE (pure : testée).
+ * `mesures` = cloud_capacite_mesures(serveur, 24) : sur 24 h de fenêtres de 5 min — fenetres, comptes_max (le plus de
+ * comptes ouverts ensemble), mem_compte_p95_mo, et les PROJECTIONS par fenêtre au 5e centile (= au 95e de la charge) :
+ *   n_mem  = comptes + min(70 % de la mémoire − mémoire utilisée, mémoire disponible − 6 Gio) / mémoire p95 d'un compte ;
+ *   n_cpu  = comptes × 60 / processeur p95 de l'hôte ;  n_puce = comptes × 60 / puce p95 (mêmes limites que la règle
+ *            chiffrée du 06/11, docs/cloud/REPRISE.md) ;
+ *   graves_7j (restrictions, blocages) et oom (24 h).
+ * La règle :
+ *   atteignable = min(plafond (CAPACITE_PLAFOND, 30), théorique (mémoire / plafond d'un navigateur), projections) ;
+ *   cible       = min(atteignable, max(départ, comptes_max + avance)) — jamais plus de `avance` comptes au-delà de ce
+ *                 qui a été RÉELLEMENT mesuré : la capacité monte avec les vrais comptes, palier par palier ;
+ *   retenue     : un signe grave (restriction, blocage) sur 7 jours, ou un oom sur 24 h → aucune hausse (une baisse reste
+ *                 possible) ;
+ *   jamais sous les comptes déjà servis (aucun compte n'est retiré d'un serveur par une baisse : seule la vente s'arrête) ;
+ *   mesures insuffisantes (< 12 h sur 24, aucun compte mesuré, fonction absente) → la capacité du moment (départ au
+ *   démarrage), rien ne monte.
+ */
+export const FENETRES_MIN_CAPACITE = 144;
+const nombre = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+export function capaciteMesuree({ depart, plafond, theorique = null, avance = 5, actuelle = null, comptesServis = 0, mesures = null,
+  fenetresMin = FENETRES_MIN_CAPACITE }) {
+  const borneHaute = Math.max(1, Math.min(Number(plafond) || 1, nombre(theorique) ?? Infinity));
+  const plancher = Math.max(0, Math.floor(Number(comptesServis) || 0));
+  const dep = Math.min(Math.max(1, Math.floor(Number(depart) || 1)), borneHaute);
+  const act = nombre(actuelle) ?? dep;
+  const m = mesures ?? {};
+  if (!(Number(m.fenetres) >= fenetresMin) || !(Number(m.mem_compte_p95_mo) > 0) || nombre(m.n_mem) == null) {
+    const c = Math.max(Math.min(act, borneHaute), plancher);
+    return { capacite: c, atteignable: c, raison: 'mesures_insuffisantes', projection: null, observe: nombre(m.comptes_max) };
+  }
+  const projection = Math.max(0, Math.floor(Math.min(nombre(m.n_mem), nombre(m.n_cpu) ?? Infinity, nombre(m.n_puce) ?? Infinity)));
+  const atteignable = Math.min(borneHaute, projection);
+  const observe = Math.max(0, Math.floor(Number(m.comptes_max) || 0));
+  let cible = Math.min(atteignable, Math.max(dep, observe + Math.max(1, Math.floor(Number(avance) || 1))));
+  let raison = cible > act ? 'mesures_hausse' : cible < act ? 'mesures_baisse' : 'stable';
+  const retenue = Number(m.graves_7j) > 0 || Number(m.oom) > 0;
+  if (retenue && cible > act) { cible = Math.min(act, atteignable); raison = 'retenue_signes'; }
+  return { capacite: Math.max(cible, plancher), atteignable: Math.max(retenue ? Math.min(act, atteignable) : atteignable, plancher),
+    raison, projection, observe, retenue };
+}
 export function alerteCapacite({ comptes, capacite, mesure = null, seuilPct = SEUIL_CAPACITE_PCT, maintenant = Date.now() }) {
   const taux = {};
   if (Number(capacite) > 0 && Number.isFinite(Number(comptes))) taux.comptes = Math.round((100 * Number(comptes)) / Number(capacite));
@@ -341,6 +387,40 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
   let derniereLecturePassage = 0;
   let derniereAlertePassage = 0;
   let dernierPlanJournalise = '';
+  // (07/11, décision 4) LA CAPACITÉ DU MOMENT : fixe (NAVIGATEURS_MAX) ou mesurée (capaciteMesuree, relue chaque heure).
+  const auto = config.navigateursMaxAuto === true;
+  let capaciteCourante = Math.max(0, Number(config.navigateursMax) || 0);
+  let etatCapacite = { capacite: capaciteCourante, atteignable: capaciteCourante, raison: auto ? 'depart' : 'fixe' };
+  let derniereEvaluation = 0;
+
+  /**
+   * (07/11, décision 4) La capacité réévaluée sur les MESURES (cloud_capacite_mesures, 24 h) ; au démarrage (avant le
+   * premier tour du planificateur) puis une fois par heure. Un changement est journalisé et dit à support@.
+   */
+  async function evaluerCapacite() {
+    if (!auto) return etatCapacite;
+    derniereEvaluation = maintenant();
+    let mesures = null;
+    try {
+      const { data, error } = await base.rpc('cloud_capacite_mesures', { p_serveur: config.serveurNom, p_heures: 24 });
+      mesures = error ? null : data;
+    } catch { mesures = null; }
+    let comptesServis = dernierBattement?.comptes;
+    if (!Number.isFinite(Number(comptesServis))) {
+      comptesServis = (await lireComptesDuServeur(base, config.serveurNom).catch(() => null))?.comptes?.length ?? 0;
+    }
+    const r = capaciteMesuree({ depart: config.capaciteDepart ?? 15, plafond: config.capacitePlafond ?? 30, theorique: config.capaciteTheorique ?? null,
+      avance: config.capaciteAvance ?? 5, actuelle: capaciteCourante, comptesServis, mesures });
+    const avant = capaciteCourante;
+    capaciteCourante = r.capacite;
+    etatCapacite = { ...r, comptes: Number(comptesServis) || 0, mesures_le: mesures?.derniere_le ?? null };
+    if (r.capacite !== avant) {
+      journal.alerte('capacite_changee', { serveur: config.serveurNom, avant, apres: r.capacite, ...etatCapacite });
+      await alertes?.signaler('serveur', `Capacité de ${config.serveurNom} : ${avant} → ${r.capacite} comptes (${r.raison} ; mesurée atteignable ${r.atteignable}, `
+        + `${r.observe ?? '?'} comptes au plus sur 24 h, plafond ${config.capacitePlafond ?? 30}). Aucun geste à faire.`, { capacite: etatCapacite });
+    }
+    return etatCapacite;
+  }
 
   /** (06/11 soir) Le rendu connu : le dernier lu dans un navigateur, sinon etat/rendu-serveur.json (relu à chaque fois). */
   async function renduConnu() {
@@ -370,8 +450,10 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
     const service = serviceDuServeur({ config, rendu: await renduConnu() });
     const { data, error } = await base.rpc('cloud_serveur_battre', {
       p_nom: config.serveurNom, p_domaine: config.domaine, p_ipv4: config.serveurIpv4 || null,
-      p_capacite: config.navigateursMax, p_ouverts: navigateurs.ouverts().length,
-      p_details: { capacite_auto: config.navigateursMaxAuto === true, memoire_navigateur: config.memoireNavigateur, service },
+      p_capacite: capaciteCourante, p_ouverts: navigateurs.ouverts().length,
+      p_details: { capacite_auto: auto, memoire_navigateur: config.memoireNavigateur, service,
+        ...(auto ? { capacite: { raison: etatCapacite.raison, atteignable: etatCapacite.atteignable, depart: config.capaciteDepart ?? 15,
+          plafond: config.capacitePlafond ?? 30 } } : {}) },
     });
     if (error) {
       if (fonctionAbsente(error)) { if (!absente) journal.info('flotte_absente', { raison: 'migration 20261103201000 pas encore en base' }); absente = true; return null; }
@@ -460,22 +542,28 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
     if (decision.raison === 'creation_bloquee') {
       await alertes?.signaler('serveur', `Création de serveur Cloud bloquée depuis plus de 45 min : ${decision.enCreation.join(', ')}.`);
     }
-    // (06/11 soir) La capacité RÉELLE de ce serveur : une alerte, puis un rappel au plus toutes les 6 h tant qu'elle tient.
-    const capacite = alerteCapacite({ comptes: dernierBattement?.comptes, capacite: config.navigateursMax, mesure: await derniereMesure(),
+    // (07/11, décision 4) La capacité mesurée, relue une fois par heure (la première fois : au démarrage, index.js).
+    if (auto && maintenant() - derniereEvaluation >= 3600_000) await evaluerCapacite().catch((e) => journal.alerte('capacite_evaluation_echec', { erreur: e.message }));
+    // (06/11 soir ; 07/11 : 80 %, sur la capacité ATTEIGNABLE) La capacité RÉELLE de ce serveur : une alerte, puis un
+    // rappel au plus toutes les 6 h tant qu'elle tient. Aucun serveur n'est commandé par elle : Nico décide.
+    const capaciteReelle = auto ? etatCapacite.atteignable : capaciteCourante;
+    const capacite = alerteCapacite({ comptes: dernierBattement?.comptes, capacite: capaciteReelle, mesure: await derniereMesure(),
       seuilPct: r.capaciteAlertePct, maintenant: maintenant() });
     if (capacite.atteint && maintenant() - derniereAlerteCapacite >= 6 * 3600_000) {
       derniereAlerteCapacite = maintenant();
       journal.alerte('capacite_seuil', { serveur: config.serveurNom, ...capacite });
       await alertes?.signaler('serveur', `Capacité de ${config.serveurNom} : seuil de ${capacite.seuilPct} % atteint — ${capacite.raisons.join(', ')} `
-        + `(${dernierBattement?.comptes ?? '?'} comptes pour ${config.navigateursMax}). Marche à suivre : docs/cloud/REPRISE.md, « Ajouter un serveur ».`,
+        + `(${dernierBattement?.comptes ?? '?'} comptes pour ${capaciteReelle}${auto ? ` mesurés atteignables, ${capaciteCourante} ouverts à la vente` : ''}). `
+        + 'Marche à suivre : docs/cloud/REPRISE.md, « Ajouter un serveur » (aucun serveur n\'est commandé automatiquement).',
       { capacite });
     }
     // (06/11 soir) La règle de passage à 30 comptes (vue cloud_passage_30) : lue une fois par heure tant que ce serveur a
     // moins de 30 places ; une alerte quand TOUTES les conditions sont réunies, un rappel au plus par 24 h. Nico décide.
-    if (config.navigateursMax < 30 && maintenant() - derniereLecturePassage >= 3600_000) {
+    // (07/11, décision 4) Seulement en capacité FIXE (NAVIGATEURS_MAX) : la capacité mesurée monte seule.
+    if (!auto && capaciteCourante < 30 && maintenant() - derniereLecturePassage >= 3600_000) {
       derniereLecturePassage = maintenant();
       const ligne = await lirePassage30();
-      const texte = textePassage30(ligne, config.navigateursMax);
+      const texte = textePassage30(ligne, capaciteCourante);
       if (texte && maintenant() - derniereAlertePassage >= 24 * 3600_000) {
         derniereAlertePassage = maintenant();
         journal.alerte('passage_30_possible', { serveur: config.serveurNom });
@@ -498,5 +586,6 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
     return { decision, plan: resumePlan(prep.plan), fait };
   }
 
-  return { battre, tour, preparer, dernierBattement: () => dernierBattement };
+  return { battre, tour, preparer, evaluerCapacite, dernierBattement: () => dernierBattement,
+    capacite: () => capaciteCourante, etatCapacite: () => etatCapacite };
 }

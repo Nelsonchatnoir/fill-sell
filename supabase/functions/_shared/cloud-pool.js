@@ -89,9 +89,14 @@ export const PARAMETRES = Object.freeze({
   commissionApple: 0.15,       // Small Business Program
   commissionGoogle: 0.15,
   // (03/11, point 2 de Nico) L'approvisionnement — SQL : cloud_param(...), coin_config cloud_<clé>
-  ipStockMin: 2,               // ip_stock_min : IP disponibles attribuables à un ESSAI gardées en stock
-  ipBudgetMensuelUsd: 60,      // ip_budget_mensuel_usd : plafond des dépenses IPRoyal du mois (achats + prolongations)
+  // (07/11, décisions 1 et 2 de Nico) « IP toujours d'avance » : la MARGE remplace le stock minimum (cloud_ip_stock_min,
+  // plus lu par l'orchestrateur) ; « plus de plafond en dollars » : cloud_ip_budget_mensuel_usd n'est plus lu — la seule
+  // garde de l'achat est le NOMBRE (gardeNombre = cloud_ip_garde_nombre en base).
+  ipMarge: 3,                  // ip_marge : IP d'avance sur les comptes Cloud (attribuables à un nouveau compte), réglable en base
   ipAchatMax: 10,              // ip_achat_max : au plus N IP par commande automatique
+  ipProlongationEspacementJours: 15, // ip_prolongation_espacement_jours : une commande n'est jamais prolongée deux fois en N jours (anti-boucle)
+  ipRebutsEntreeMax: 3,        // (07/11) N IP refusées au contrôle d'ENTRÉE en 24 h : l'achat automatique se suspend (la garde du nombre ne compte pas le rebut)
+  soldeHorizonJours: 14,       // (07/11, décision 3) le solde IPRoyal doit couvrir les dépenses prévues sur N jours
   refusRevisiteJours: 14,      // refus_revisite_jours : un refus PROUVÉ est revisité après N jours
 });
 
@@ -291,20 +296,118 @@ export const CRITERES_PAR_PLATEFORME = Object.freeze(['blocage_anti_robot', 'cap
 export const effetSignalement = (critere) => (CRITERES_PAR_PLATEFORME.includes(critere) ? 'refus_plateforme' : 'rebut');
 
 /**
- * (03/11, point 2 de Nico) UNE DÉPENSE IPRoyal (achat ou prolongation) PART-ELLE ? (pure — miroir de
- * cloud_ip_depense_ouvrir, plus la garde du serveur et le solde). Dans cet ordre :
+ * (03/11, point 2 de Nico ; 07/11, décision 2 : plus de plafond en dollars) UNE DÉPENSE IPRoyal (achat ou prolongation)
+ * PART-ELLE ? (pure — miroir de cloud_ip_depense_ouvrir, plus la garde du serveur et le solde). Dans cet ordre :
  *   prix_illisible · achats_coupes_serveur (IPROYAL_ACHATS_AUTORISES) · interrupteur_coupe (coin_config) ·
- *   plafond (cloud_ip_budget_mensuel_usd) · solde_insuffisant · ok.
+ *   garde_illisible / garde_nombre (ACHAT seulement : `garde` = gardeNombre ; une prolongation ne passe jamais `garde`) ·
+ *   prolongation_recente (PROLONGATION seulement : `dejaProlongee` vrai, voir prolongationRecente) ·
+ *   solde_insuffisant (paiement par le SOLDE seulement — une carte n'est pas bornée par le solde) · ok.
  */
-export function deciderDepense({ montantUsd, envAutorise = false, interrupteur = false, budgetUsd = 0, depenseMoisUsd = 0, soldeUsd = null }) {
+export function deciderDepense({ montantUsd, envAutorise = false, interrupteur = false, garde = undefined, dejaProlongee = false,
+  rebutsEntree = 0, soldeUsd = null, paiement = 'solde', p = PARAMETRES }) {
   const m = Number(montantUsd);
   if (!Number.isFinite(m) || m <= 0) return { faire: false, raison: 'prix_illisible' };
   if (envAutorise !== true) return { faire: false, raison: 'achats_coupes_serveur' };
   if (interrupteur !== true) return { faire: false, raison: 'interrupteur_coupe' };
-  const b = Number(budgetUsd), d = Number(depenseMoisUsd) || 0;
-  if (!(b > 0) || d + m > b + 1e-9) return { faire: false, raison: 'plafond' };
-  if (!Number.isFinite(Number(soldeUsd)) || Number(soldeUsd) + 1e-9 < m) return { faire: false, raison: 'solde_insuffisant' };
+  if (garde !== undefined) {
+    if (!garde || !Number.isFinite(Number(garde.comptees)) || !Number.isFinite(Number(garde.borne))) return { faire: false, raison: 'garde_illisible' };
+    if (garde.ok !== true) return { faire: false, raison: 'garde_nombre' };
+    // (07/11) Le rebut n'entre pas dans la garde : une série d'IP livrées puis refusées au contrôle d'entrée (achat →
+    // rebut → rachat) la contournerait. Au-delà de ipRebutsEntreeMax en 24 h, l'achat automatique se suspend (dit).
+    if ((Number(rebutsEntree) || 0) >= p.ipRebutsEntreeMax) return { faire: false, raison: 'rebuts_controle' };
+  }
+  if (dejaProlongee === true) return { faire: false, raison: 'prolongation_recente' };
+  if (paiement !== 'carte' && (!Number.isFinite(Number(soldeUsd)) || Number(soldeUsd) + 1e-9 < m)) return { faire: false, raison: 'solde_insuffisant' };
   return { faire: true, raison: 'ok' };
+}
+
+/**
+ * (07/11, décision 2 de Nico) LA GARDE DU NOMBRE — la seule garde de l'achat (pure ; miroir EXACT de
+ * cloud_ip_garde_nombre, appelée par cloud_ip_depense_ouvrir sous le verrou de la dépense) :
+ *   comptées = IP attribuées (essai, client)
+ *            + IP du pool (achetee, disponible) qui COUVRENT un essai (≥ 7 + grâce + marge d'expiration jours de vie),
+ *              non usées (attributions < attributions_max), sans refus PROUVÉ
+ *            + IP en commande (achats « demandee » / « en_cours ») + IP demandées ;
+ *   borne    = comptes Cloud (actifs, ou titulaires d'une IP — la grâce) + marge + personnes en attente.
+ * Elle compte un SOUS-ENSEMBLE de ce que compte planDuJour (jamais le repos, jamais une IP qui expire bientôt) : un achat
+ * que le plan demande (vise = marge + attente) passe toujours ; seule une boucle (IP ou commandes qui s'empilent) bute.
+ * Jamais sur une prolongation (une IP gardée n'ajoute rien). `comptesSansPlace` = cloud_pool_etat.comptes_sans_place
+ * (comptes actifs sans IP) : comptes = titulaires distincts + comptes sans place.
+ */
+export function gardeNombre({ ips, comptesSansPlace, enAttente = 0, enCommande = 0, quantite = 0, marge = PARAMETRES.ipMarge,
+  maintenant = Date.now(), p = PARAMETRES }) {
+  const now = instant(maintenant);
+  const liste = Array.isArray(ips) ? ips : [];
+  const couverture = (ESSAI_JOURS + p.graceJours + p.margeExpirationJours) * JOUR_MS;
+  const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
+  const vivantes = liste.filter((ip) => ETATS_ATTRIBUES.includes(ip.etat)
+    || ((ip.etat === 'achetee' || ip.etat === 'disponible') && instant(ip.expire_le) != null && instant(ip.expire_le) - now >= couverture
+      && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus))).length;
+  const titulaires = new Set(liste.filter((ip) => ip.user_id != null && ETATS_ATTRIBUES.includes(ip.etat)).map((ip) => String(ip.user_id))).size;
+  const sansPlace = comptesSansPlace == null || comptesSansPlace === '' ? NaN : Number(comptesSansPlace);
+  if (!Number.isFinite(sansPlace) || sansPlace < 0) return null;   // illisible : l'achat est refusé (garde_illisible)
+  const r = { vivantes, en_commande: entier(enCommande), comptes: titulaires + Math.floor(sansPlace), marge: entier(marge), attente: entier(enAttente) };
+  return gardePour(r, quantite);
+}
+/** (07/11) Les IP envoyées au rebut par le CONTRÔLE D'ENTRÉE dans les `heures` dernières heures (pure). */
+export function rebutsEntreeRecents(ips, maintenant = Date.now(), heures = 24) {
+  const now = instant(maintenant);
+  return (Array.isArray(ips) ? ips : []).filter((ip) => ip?.rebut_critere === 'controle_entree' && instant(ip.rebut_le) != null
+    && now - instant(ip.rebut_le) <= heures * HEURE_MS).length;
+}
+
+/** La même garde pour `quantite` IP demandées (pure) : comptées, borne, ok. */
+export function gardePour(g, quantite) {
+  if (!g) return null;
+  const demandees = Math.max(0, Math.floor(Number(quantite) || 0));
+  const comptees = g.vivantes + g.en_commande + demandees;
+  const borne = g.comptes + g.marge + g.attente;
+  return { ...g, demandees, comptees, borne, ok: comptees <= borne };
+}
+
+/**
+ * (07/11) ANTI-BOUCLE DES PROLONGATIONS (pure ; miroir de cloud_ip_depense_ouvrir) : la même commande IPRoyal (ou la même
+ * IP) déjà prolongée — dépense non échouée — depuis moins de `jours` jours. Une prolongation ajoute 30 jours et la
+ * suivante se décide au plus tôt 10 jours avant l'échéance : jamais deux en 15 jours, sauf une boucle.
+ */
+export function prolongationRecente({ registre, commande, ip = null, maintenant = Date.now(), jours = PARAMETRES.ipProlongationEspacementJours }) {
+  const now = instant(maintenant);
+  return (Array.isArray(registre) ? registre : []).some((d) => d?.nature === 'prolongation' && !['echec', 'remboursee'].includes(d.statut)
+    && instant(d.demandee_le) != null && instant(d.demandee_le) > now - jours * JOUR_MS
+    && ((commande != null && String(d.details?.commande ?? '') === String(commande)) || (ip != null && Number(d.ip_id) === Number(ip))));
+}
+
+/**
+ * (07/11, décision 3 de Nico) LE SEUIL DU SOLDE IPRoyal = la dépense prévue sur `horizon` jours au rythme réel (pure) :
+ *   renouvellements : les IP attribuées qui échoient dans l'horizon + les IP du stock renouvelables qui échoient dans
+ *                     l'horizon, au plus (marge + attente) — le plan ne renouvelle le stock que jusqu'à sa cible ;
+ *   achats          : le rythme des 30 derniers jours (IP achetées, dépenses non échouées) ramené à l'horizon, jamais moins
+ *                     que la marge ;
+ *   seuil = (renouvellements + achats) × prix d'une IP. `registre` = lignes de cloud_ip_commandes.
+ */
+export function seuilSoldeProjete({ ips, registre = [], marge = PARAMETRES.ipMarge, enAttente = 0, prixIpUsd, maintenant = Date.now(),
+  horizonJours = PARAMETRES.soldeHorizonJours, p = PARAMETRES }) {
+  const now = instant(maintenant);
+  const limite = now + horizonJours * JOUR_MS;
+  const liste = Array.isArray(ips) ? ips : [];
+  const echoit = (ip) => instant(ip.expire_le) != null && instant(ip.expire_le) > now && instant(ip.expire_le) <= limite;
+  const attribuees = liste.filter((ip) => ETATS_ATTRIBUES.includes(ip.etat) && echoit(ip)).length;
+  const stock = liste.filter((ip) => ['achetee', 'disponible', 'repos'].includes(ip.etat) && echoit(ip)
+    && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !(refusee(ip.refus) && !reservee(ip, now))).length;
+  const cible = Math.max(0, Math.floor(Number(marge) || 0)) + Math.max(0, Math.floor(Number(enAttente) || 0));
+  const renouvellements = attribuees + Math.min(stock, cible);
+  const achetees30 = (Array.isArray(registre) ? registre : []).filter((d) => d?.nature === 'achat' && !['echec', 'remboursee'].includes(d.statut)
+    && instant(d.demandee_le) != null && instant(d.demandee_le) > now - 30 * JOUR_MS).reduce((n, d) => n + (Number(d.quantite) || 0), 0);
+  const achats = Math.max(plafond((achetees30 * horizonJours) / 30), Math.max(0, Math.floor(Number(marge) || 0)));
+  const prix = Number(prixIpUsd) > 0 ? Number(prixIpUsd) : p.prixIpUsd30j;
+  return { seuilUsd: r2((renouvellements + achats) * prix), renouvellements, achats, prixIpUsd: prix, horizonJours };
+}
+
+/** (07/11) Le prix d'UNE IP pour 30 jours lu au registre (la dernière dépense non échouée, prix / quantité), ou null. */
+export function prixIpDuRegistre(registre) {
+  const l = (Array.isArray(registre) ? registre : []).filter((d) => !['echec', 'remboursee'].includes(d?.statut) && Number(d?.prix_usd) > 0 && Number(d?.quantite) > 0)
+    .sort((a, b) => (instant(b.demandee_le) ?? 0) - (instant(a.demandee_le) ?? 0))[0];
+  return l ? r2(Number(l.prix_usd) / Number(l.quantite)) : null;
 }
 
 /** Le solde couvre-t-il la prochaine dépense ? (pure ; solde illisible = non) */
@@ -396,11 +499,12 @@ export function taillePoolCible({ lambda, conversion, clients = 0, departsClient
 //     le pool en a besoin ; sinon elle expire (payer son repos pour rien) ;
 //   · une IP libre en SURPLUS n'est pas renouvelée ;
 //   · ce qui manque est COMMANDÉ — ⛔ jamais sans le GO de Nico : (03/11) l'orchestrateur
-//     n'achète et ne prolonge que sous la TRIPLE garde (IPROYAL_ACHATS_AUTORISES=1 sur le
-//     serveur, coin_config cloud_ip_achats_auto / cloud_ip_renouvellement_auto = 1, plafond
-//     cloud_ip_budget_mensuel_usd — deciderDepense) ; sinon aCommander reste une proposition ;
-//   · (03/11) le stock visé ne descend jamais sous cloud_ip_stock_min (stockVise) ; une IP
-//     au refus PROUVÉ ne compte pas dans le stock.
+//     n'achète et ne prolonge que sous ses gardes (IPROYAL_ACHATS_AUTORISES=1 sur le serveur,
+//     coin_config cloud_ip_achats_auto / cloud_ip_renouvellement_auto = 1 ; (07/11) la garde du
+//     NOMBRE pour un achat, l'anti-boucle pour une prolongation — deciderDepense) ; sinon
+//     aCommander reste une proposition ;
+//   · (07/11, décision 1) le stock visé = la MARGE (cloud_ip_marge) + les personnes en attente ;
+//     une IP au refus PROUVÉ ne compte pas dans le stock.
 //   · (04/11 soir, décision de Nico) une IP du pool au refus de plateforme NON prouvé sert encore
 //     tant qu'elle vit, mais n'est plus jamais renouvelée, SAUF si elle est RÉSERVÉE à un compte
 //     (l'IP du retour d'un compte : la 39 pendant l'essai GPU). Une IP attribuée reste renouvelée
@@ -423,21 +527,28 @@ export const reservee = (ip, now) => Boolean(ip?.reserve_pour)
   && (ip.reserve_jusqu_au == null || !(instant(ip.reserve_jusqu_au) < now));
 
 /**
- * (03/11, point 2 de Nico) Le stock visé : le seuil de commande calculé (λ), jamais sous le STOCK MINIMUM
- * (cloud_ip_stock_min), plus une IP par personne qui attend une place.
+ * (07/11, décision 1 de Nico : « IP toujours d'avance ») Le stock visé = la MARGE (coin_config cloud_ip_marge, 3 au
+ * départ) — des IP attribuables d'avance sur les comptes Cloud, chacun tenant déjà la sienne — plus une IP par personne
+ * qui attend une place (un futur compte). Le seuil λ (seuils) ne fixe plus la cible d'achat : le réapprovisionnement
+ * rapide (toutes les quelques minutes) remplace la sécurité d'un jour de délai ; il ne sert plus qu'à l'alerte
+ * « presque vide ». Même cible que la borne de la garde du nombre (gardeNombre) : jamais un achat que la garde refuse.
  */
-export function stockVise({ seuilCommande, stockMin = PARAMETRES.ipStockMin, enAttente = 0 }) {
-  return Math.max(Math.max(0, Math.floor(Number(seuilCommande) || 0)), Math.max(0, Math.floor(Number(stockMin) || 0)))
-    + Math.max(0, Math.floor(Number(enAttente) || 0));
+export function stockVise({ marge = PARAMETRES.ipMarge, enAttente = 0 } = {}) {
+  return Math.max(0, Math.floor(Number(marge) || 0)) + Math.max(0, Math.floor(Number(enAttente) || 0));
 }
 
-export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, stockMin = PARAMETRES.ipStockMin, maintenant = Date.now(), p = PARAMETRES }) {
+/**
+ * `marge` : coin_config cloud_ip_marge ; `comptesSansPlace` : cloud_pool_etat.comptes_sans_place — avec lui, le plan
+ * porte sa garde du nombre (`garde`, pour aCommander IP) ; sans lui, garde = null (l'achat automatique est alors refusé).
+ */
+export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, marge = PARAMETRES.ipMarge, comptesSansPlace = null,
+  maintenant = Date.now(), p = PARAMETRES }) {
   const now = instant(maintenant);
   const s = seuils({ lambda, p });
   const H = (p.delaiAchatJours + p.periodeDecisionJours) * JOUR_MS;
   const N = p.renouvellementAvantJours * JOUR_MS;
   const couvertureEssai = (ESSAI_JOURS + p.graceJours + p.margeExpirationJours) * JOUR_MS;
-  const vise = stockVise({ seuilCommande: s.commande, stockMin, enAttente });
+  const vise = stockVise({ marge, enAttente });
   let projete = Math.max(0, Math.floor(Number(commandesEnCours) || 0));
   const renouveler = [], laisserExpirer = [], attendre = [], candidats = [];
   for (const ip of Array.isArray(ips) ? ips : []) {
@@ -469,7 +580,10 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, s
   const attribuables = (Array.isArray(ips) ? ips : []).filter((ip) => ip.etat === 'disponible' && !refusProuve(ip.refus)
     && ipAttribuable(ip, { nature: 'essai', maintenant: now, p })).length;
   const niveau = niveauPool({ attribuables, arrivantes: commandesEnCours, seuilAlerte: s.alerte });
-  return { seuils: s, vise, projete, renouveler, laisserExpirer, attendre, aCommander, attribuables, niveau };
+  const garde = comptesSansPlace == null ? null
+    : gardeNombre({ ips, comptesSansPlace, enAttente, enCommande: commandesEnCours, quantite: aCommander, marge, maintenant: now, p });
+  return { seuils: s, vise, projete, renouveler, laisserExpirer, attendre, aCommander, attribuables, niveau, garde,
+    rebutsEntree24h: rebutsEntreeRecents(ips, now) };
 }
 
 /** 'vide' (aucune IP attribuable à un essai) | 'presque_vide' | null. */

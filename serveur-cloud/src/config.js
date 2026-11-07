@@ -110,8 +110,18 @@ export function lireConfig(env = process.env) {
     //    liste fermée (test sur le compte de Nico seulement) ─────────────────
     comptesAutorises: String(env.COMPTES_AUTORISES ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     // ── (03/11, points 1 et 5 de Nico) LA FLOTTE (flotte.js) ────────────────
-    // NAVIGATEURS_MAX vide = capacité AUTOMATIQUE : ⌊(mémoire de l'hôte − socle) / MEMOIRE_NAVIGATEUR⌋ (index.js).
+    // NAVIGATEURS_MAX vide = capacité AUTOMATIQUE. (07/11, décision 4 de Nico) Elle vient des MESURES RÉELLES (flotte.js,
+    // capaciteMesuree, cloud_capacite_mesures) : CAPACITE_DEPART au démarrage, puis elle monte seule tant que les mesures
+    // le permettent, jamais au-delà de CAPACITE_PLAFOND ni de ⌊(mémoire de l'hôte − socle) / MEMOIRE_NAVIGATEUR⌋, jamais
+    // plus de CAPACITE_AVANCE comptes au-dessus du plus grand nombre de comptes réellement mesuré (24 h).
+    // NAVIGATEURS_MAX réglé = capacité FIXE (comme avant le 07/11).
     navigateursMaxRegle: env.NAVIGATEURS_MAX == null || String(env.NAVIGATEURS_MAX).trim() === '' ? null : lireEntier(env.NAVIGATEURS_MAX, null),
+    capaciteDepart: Math.max(1, lireEntier(env.CAPACITE_DEPART, 15)),
+    capacitePlafond: Math.max(1, lireEntier(env.CAPACITE_PLAFOND, 30)),
+    capaciteAvance: Math.max(1, lireEntier(env.CAPACITE_AVANCE, 5)),
+    // (07/11, décision 1 de Nico) Le réapprovisionnement rapide des IP (entretien.reapprovisionnerVite) : toutes les N
+    // minutes ; 0 = coupé (l'entretien horaire seul).
+    reapproRapideMin: Math.max(0, lireEntier(env.REAPPRO_RAPIDE_MIN, 5)),
     socleMo: lireEntier(env.SOCLE_MO, 700),
     serveurIpv4: env.SERVEUR_IPV4?.trim() || '',
     // ⛔ Création automatique d'un serveur Hetzner : COUPÉE tant que Nico n'a pas dit GO (et coin_config

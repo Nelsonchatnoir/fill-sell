@@ -43,6 +43,8 @@ export function redemarrerPourMemoire({ mo, seuilMo, enCours = 0, connexion = fa
 }
 
 export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null,
+  // (07/11, décision 4) La capacité du moment : mesurée (flotte.capacite), sinon NAVIGATEURS_MAX.
+  capacite = () => config.navigateursMax,
   enregistrementFond = null, pausesMessagerie = null }) {
   const dernieresFins = new Map();
   const dernieresSauvegardes = new Map();
@@ -306,7 +308,7 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     const decision = planifierPostes({
       comptes, ouverts, jobs: resumerJobs(lignes), connexions: connexionsOuvertes(), dernieresFins,
       delaiMin, cpuPct: await lireCpu(), cpuPause: config.cpuPauseAuDessus,
-      navigateursMax: config.navigateursMax, sessionMinimaleMin: config.sessionMinimaleMin,
+      navigateursMax: capacite(), sessionMinimaleMin: config.sessionMinimaleMin,
     });
     const parUser = new Map(comptes.map((c) => [c.user_id, c]));
     // Une IP remplacée (signalée → rebut, une autre attribuée) : le navigateur
@@ -347,7 +349,7 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       await noter(u, 'actif', { vu: new Date().toISOString() });
     }
     if (decision.refuses.some((r) => r.raison === 'capacite')) {
-      await alertes?.signaler('serveur', `Capacité atteinte : ${decision.refuses.length} compte(s) attendent un navigateur (max ${config.navigateursMax}).`);
+      await alertes?.signaler('serveur', `Capacité atteinte : ${decision.refuses.length} compte(s) attendent un navigateur (max ${capacite()}).`);
     }
     return { comptes: comptes.length, ouverts: navigateurs.ouverts().length, ...decision };
   }

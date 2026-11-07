@@ -277,10 +277,11 @@ test('point 11 — le relais retente sur place une panne passagère, jamais un r
   await new Promise((ok) => echo.close(ok));
 });
 
-// ── Décisions de Nico du 05/11 soir : IP de secours allumée (h) ; plafond d'achat d'IP 100 $, alerte à 80 % (d) ──
+// ── Décisions de Nico du 05/11 soir : IP de secours allumée (h) ; plafond d'achat d'IP 100 $, alerte à 80 % (d) — (d) retiré
+// le 07/11 (décision 2 : plus de plafond en dollars, la garde du nombre à la place) ──
 import { choisirIpSecours } from '../src/fournisseurIp.js';
 import { specConteneurChrome } from '../src/navigateur.js';
-import { alerteSeuilPlafond, moisParis, SEUIL_ALERTE_PLAFOND } from '../src/approvisionnement.js';
+import * as approvisionnementModule from '../src/approvisionnement.js';
 
 test('(h) l’IP de secours d’un compte = l’IP qui lui est RÉSERVÉE, jamais celle d’un autre compte', () => {
   const t = Date.parse('2026-11-05T21:00:00Z');
@@ -303,15 +304,12 @@ test('(h) l’IP de secours d’un compte = l’IP qui lui est RÉSERVÉE, jamai
   assert.ok(!sans.Env.some((e) => e.startsWith('PROXY_SECOURS=')), 'une adresse mal formée n’est jamais donnée au relais');
 });
 
-test('(d) plafond d’achat d’IP : alerte à 80 %, une fois par mois', () => {
-  assert.equal(SEUIL_ALERTE_PLAFOND, 0.8);
-  const mois = moisParis(Date.parse('2026-11-05T21:00:00Z'));
-  assert.equal(mois, '2026-11');
-  assert.equal(alerteSeuilPlafond({ budgetUsd: 100, depenseMoisUsd: 79.99, mois, dejaDitPour: null }), false);
-  assert.equal(alerteSeuilPlafond({ budgetUsd: 100, depenseMoisUsd: 80, mois, dejaDitPour: null }), true);
-  assert.equal(alerteSeuilPlafond({ budgetUsd: 100, depenseMoisUsd: 96, mois, dejaDitPour: '2026-11' }), false, 'déjà dite ce mois-ci');
-  assert.equal(alerteSeuilPlafond({ budgetUsd: 100, depenseMoisUsd: 96, mois: '2026-12', dejaDitPour: '2026-11' }), true, 'mois suivant : redite');
-  assert.equal(alerteSeuilPlafond({ budgetUsd: 0, depenseMoisUsd: 50, mois, dejaDitPour: null }), false, 'plafond non posé : rien (et aucun achat ne part)');
+test('(d, remplacé le 07/11 — décision 2 de Nico : « plus de plafond en dollars ») ni plafond du mois, ni alerte des 80 % : la garde du nombre', async () => {
+  for (const k of ['SEUIL_ALERTE_PLAFOND', 'alerteSeuilPlafond', 'moisParis']) assert.ok(!(k in approvisionnementModule), `${k} retiré`);
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/approvisionnement.js', import.meta.url), 'utf8');
+  assert.ok(!/param\('ip_budget_mensuel_usd'/.test(src) && !/cloud_ip_depenses_mois/.test(src), 'le plafond n’est plus lu ni recalculé');
+  assert.match(approvisionnementModule.raisonLisible('garde_nombre'), /comptes Cloud \+ marge \+ attente/);
 });
 
 // ── Point 8 : « Me connecter » — la page de connexion, ses fournisseurs (Google, Apple, Facebook, Kiabi) COMME

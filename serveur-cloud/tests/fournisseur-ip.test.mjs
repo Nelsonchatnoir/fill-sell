@@ -76,8 +76,23 @@ test('verifierSolde : lecture seule, alerte « solde bas », jamais d’achat', 
   const alertes = []; const iproyal = { disponible: true, async solde() { return { montant: 3.5, devise: 'USD' }; }, prolonger() { throw new Error('jamais'); } };
   const f = creerFournisseurIp({ config: { iproyalSoldeAlerte: 5 }, base: baseFausse({ rotation: 1 }), iproyal, journal, alertes: { async signaler(n, m) { alertes.push(m); } } });
   const s = await f.verifierSolde(t0);
-  assert.equal(s.sous_le_seuil, true); assert.equal(alertes.length, 1); assert.match(alertes[0], /Aucun achat fait/);
+  assert.equal(s.sous_le_seuil, true); assert.equal(alertes.length, 1); assert.match(alertes[0], /Recharger d'au moins 2 \$ \(aucune recharge automatique\)/);
   await f.verifierSolde(t0 + H); assert.equal(alertes.length, 1, 'une fois par jour');
+});
+
+test('(07/11, décision 3) verifierSolde : le seuil = la dépense prévue sur 14 jours (jamais sous IPROYAL_SOLDE_ALERTE), l’alerte dit combien recharger ; muette en paiement par carte', async () => {
+  const alertes = [];
+  const iproyal = { disponible: true, async solde() { return { montant: 21.15, devise: 'USD' }; } };
+  const f = creerFournisseurIp({ config: { iproyalSoldeAlerte: 5 }, base: baseFausse({ rotation: 1 }), iproyal, journal, alertes: { async signaler(n, m, d) { alertes.push([m, d]); } } });
+  const projection = { seuilUsd: 36, renouvellements: 3, achats: 6, prixIpUsd: 4, horizonJours: 14 };
+  const s = await f.verifierSolde(t0, { projection });
+  assert.deepEqual([s.seuil, s.sous_le_seuil], [36, true], '21,15 $ < 36 $ : l’ancien seuil (5 $) n’aurait rien dit');
+  assert.equal(alertes.length, 1);
+  assert.match(alertes[0][0], /^Solde IPRoyal 21\.15 USD : moins que les dépenses prévues sur 14 jours \(36\.00 \$ : 3 renouvellement\(s\) et 6 achat\(s\) d'IP à 4\.00 \$\)\. Recharger d'au moins 15 \$/);
+  assert.equal(alertes[0][1].a_recharger_usd, 15);
+  assert.equal((await f.verifierSolde(t0, { projection: { ...projection, seuilUsd: 2 } })).seuil, 5, 'jamais sous le plancher IPROYAL_SOLDE_ALERTE');
+  const g = creerFournisseurIp({ config: { iproyalSoldeAlerte: 5 }, base: baseFausse({ rotation: 1 }), iproyal, journal, alertes: { async signaler() { throw new Error('muette'); } } });
+  assert.equal((await g.verifierSolde(t0, { projection, alerter: false })).sous_le_seuil, true, 'paiement par carte : le solde est lu, rien n’est dit');
 });
 
 test('UN seul module parle de la sortie des navigateurs', () => {

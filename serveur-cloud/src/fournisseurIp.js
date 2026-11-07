@@ -152,16 +152,28 @@ export function creerFournisseurIp({ config, base, iproyal, journal, alertes }) 
     try { return await iproyal.solde(); } catch (e) { journal.alerte('solde_illisible', { erreur: e.message }); return null; }
   }
 
-  /** Alerte « solde bas » (support@, par la porte d'envoi unique), au plus une fois par jour. Aucun achat. */
-  async function verifierSolde(maintenant = Date.now()) {
+  /**
+   * Alerte « solde bas » (support@, par la porte d'envoi unique), au plus une fois par jour. Aucun achat, aucune recharge
+   * (le solde IPRoyal ne se recharge pas par l'API). (07/11, décision 3 de Nico) `projection` (regles.seuilSoldeProjete) :
+   * le seuil = la dépense prévue sur 14 jours au rythme réel, jamais sous IPROYAL_SOLDE_ALERTE ; l'alerte dit combien
+   * recharger. `alerter: false` (paiement par carte) : le solde est lu, rien n'est dit.
+   */
+  async function verifierSolde(maintenant = Date.now(), { projection = null, alerter = true } = {}) {
     const s = await solde();
     if (!s) return null;
-    const seuil = config.iproyalSoldeAlerte ?? 5;
-    if (alerteSolde(s.montant, seuil, derniereAlerteSolde, maintenant)) {
+    const plancher = config.iproyalSoldeAlerte ?? 5;
+    const seuil = Math.max(plancher, Number(projection?.seuilUsd) || 0);
+    if (alerter && alerteSolde(s.montant, seuil, derniereAlerteSolde, maintenant)) {
       derniereAlerteSolde = maintenant;
-      await alertes?.signaler('serveur', `Solde IPRoyal bas : ${s.montant.toFixed(2)} ${s.devise} (seuil ${seuil}). Aucun achat fait : ton accord est nécessaire.`, { solde: s });
+      const manque = Math.ceil(seuil - s.montant);
+      await alertes?.signaler('serveur', projection
+        ? `Solde IPRoyal ${s.montant.toFixed(2)} ${s.devise} : moins que les dépenses prévues sur ${projection.horizonJours} jours (${seuil.toFixed(2)} $ : `
+          + `${projection.renouvellements} renouvellement(s) et ${projection.achats} achat(s) d'IP à ${Number(projection.prixIpUsd).toFixed(2)} $). `
+          + `Recharger d'au moins ${manque} $ sur le tableau de bord IPRoyal (aucune recharge automatique).`
+        : `Solde IPRoyal bas : ${s.montant.toFixed(2)} ${s.devise} (seuil ${seuil}). Recharger d'au moins ${manque} $ (aucune recharge automatique).`,
+      { solde: s, seuil_usd: seuil, a_recharger_usd: manque, projection });
     }
-    return { ...s, seuil, sous_le_seuil: s.montant < seuil };
+    return { ...s, seuil, sous_le_seuil: s.montant < seuil, ...(projection ? { projection } : {}) };
   }
 
   return { proxyPour, solde, verifierSolde, rotationActive };
