@@ -1,5 +1,42 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 07/11/2026 ~17:10 — décisions de Nico appliquées : migration IP, orchestrateur, carte …9699
+- **Migration 20261107180000 APPLIQUÉE 17:08:37** (feu vert NOMMÉ de Nico) : `db query --linked --yes -f` +
+  `migration repair … applied` ; les 7 corps de prod relus avant = fixtures `prod-0711-ip-garde` (identiques) ;
+  `cloud_pool_etat` relu avant / après (après : `marge` 3, `garde` {vivantes 8, borne 4, ok false}, `paiement_carte`) ;
+  droits = postgres + service_role seulement. Inverse : `supabase/rollbacks/20261107180000_…_INVERSE.sql`.
+- **Orchestrateur cloud-2 = acb9a561b5e1** (17:11, `ORCHESTRATEUR_SEUL=1`, avant b381d51077ad, image gardée) ;
+  `.env` archivé `/srv/fillsell-cloud/.env.avant-capacite-0711-1710` puis `NAVIGATEURS_MAX=` + `CAPACITE_DEPART=15`,
+  `CAPACITE_PLAFOND=30`, `CAPACITE_AVANCE=5`. Journal `demarrage` : capacite 15, capacite_auto true, théorique 30,
+  reappro_rapide_min 5. Navigateur de Nico rouvert en 7 s. Retour : remettre l'archive en `.env`, puis
+  `VERSION_ORCHESTRATEUR=b381d51077ad DOMAINE=cloud-2.fillsell.app docker compose up -d --no-deps orchestrateur`.
+- **Paiement des IP par CARTE** (choix de Nico : « la carte qui finit par 9699 », précisé ~17:40 « elle expire le
+  04/29 ») : `cloud_ip_paiement_carte` = 1, `cloud_ip_carte_id` = **410814** (…9699, fin 2029-04). Posé d'abord à 17:12
+  sur 441087 (l'autre …9699, fin 2031-12), corrigé ~17:20 ; …2922 = id 417985.
+- **Binaire 2.9.164** : `npm run binaires` vert sur 7e54e5f (AAB vc35 18,2 Mo, sha256 44a4180174778d03…, signé par la clé
+  habituelle) ; iOS = Codemagic 177 (17:22, main 7e54e5f, IPA 10,79 Mo). **Play** : AAB déposé SANS geste de Nico
+  (copie temporaire dans le seau privé `cloud-paquets/temp-play/`, lien signé 10 min lu par la page de la console,
+  posé sur son champ de fichier ; même empreinte ; copie effacée aussitôt) ; release de production 2.9.164 (brouillon
+  2.9.163 repris, 100 %, notes FR/EN inchangées ; 2 avertissements bénins : désobscurcissement, symboles natifs) ;
+  **14 modifications ENVOYÉES pour examen ~17:25** (release + fiches FR/EN + sécurité des données) ; publication gérée
+  ACTIVÉE : rien ne sort avant que Nico publie.
+- **Apple** : version ASC e2d4830c renommée 2.9.163 → **2.9.164** (iris, 200) ; build **2611071623** (Codemagic 177,
+  2.9.164, VALID) RATTACHÉ (204, relu). Fiche relue : notes FR/EN, texte promotionnel, mots-clés, description (Cloud
+  cité), 8 captures × 4 formats × 2 langues (toutes livrées), compte de démonstration et contact posés, notes de relecture
+  (Cloud cité). Reste à Nico : conformité à l'exportation (`usesNonExemptEncryption` vide) + « Ajouter pour vérification ».
+- **Étanchéité entre clients (point 16)** : relevé en lecture seule — profils, IP, coffre, session FillSell, tickets
+  séparés (code + tests + base) ; NON étanches : réseau entre navigateurs (pont sans `enable_icc=false`, `br_netfilter`
+  absent, DevTools 0.0.0.0:9223 sans authentification joignable d'un conteneur à l'autre) et écran X `:0` partagé en
+  mode GPU. Correctif réseau en préparation (worktree, rien déployé) ; écran X = décision de Nico. Point 16 BLOQUANT. Entretien 17:12:14 (avant correction) :
+  `carte` = « carte …9699 (stripe, fin 2031-12) », plan aCommander 0 (garde 8 > 4), renouveler 0.
+  Achats toujours COUPÉS (`cloud_ip_achats_auto` 0) jusqu'au jour J étape 2. Retour : `cloud_ip_paiement_carte` = 0.
+- **Pause après 3 rebuts d'entrée en 24 h** (OK de Nico sous condition) : fenêtre glissante (`rebutsEntreeRecents`,
+  24 h) → reprise seule (prouvé : 3 rebuts il y a 1 h → `rebuts_controle` ; il y a 24 h → `ok`) ; tant qu'elle bloque,
+  `dire()` → alerte support@ « Dépense IPRoyal BLOQUÉE (IP refusées au contrôle d'entrée en série…) », rappel horaire ;
+  un compte Cloud actif sans IP → alerte `sans_place` à chaque entretien. Renouvellements jamais soumis à la garde.
+- **Jour J** : email-tunnel, google-play-webhook, get-pending-jobs ajoutées (oui de Nico), depuis `main` à jour
+  seulement, get-pending-jobs jamais écrasée (comparée à `main` avant) — procédure en tête de JOUR-OUVERTURE-CLOUD.md.
+
 ## 07/11/2026 ~16:00 — architecture de l'ouverture (ordres de Nico) : l'app gère places, IP et capacité seule
 - **validate-apple-receipt DÉPLOYÉE** 14:5x (autorisation nommée) : v39 → v40, verify_jwt true relu après, 401 sans
   jeton. Retour : redéployer depuis 514c9cb (même verify_jwt).

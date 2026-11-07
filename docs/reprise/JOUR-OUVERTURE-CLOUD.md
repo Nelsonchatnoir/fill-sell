@@ -2,18 +2,32 @@
 
 ## ⛔ 07/11/2026 soir — PROCÉDURE DU JOUR J EXÉCUTÉE PAR CLAUDE SEUL, sur « on ouvre » de Nico (prime sur la suite)
 Préalables (relus avant de commencer, sinon on s'arrête) : les deux stores ont approuvé 2.9.164 et Nico l'a publiée ;
-migration 20261107180000 appliquée et orchestrateur « marge + garde en nombre + capacité mesurée » sur cloud-2 (relus) ;
+migration 20261107180000 appliquée (FAIT 07/11 17:08, feu vert nommé) et orchestrateur « marge + garde en nombre +
+capacité mesurée » sur cloud-2 (FAIT 07/11 17:11, acb9a561b5e1 ; avant b381d51077ad) — relus le jour J ;
 `main` propre et poussé ; aucune tâche « processing » sur cloud-2. Chaque étape : geste → vérification → la moindre
 différence = retour arrière de l'étape et arrêt. Heures de Paris notées au fur et à mesure dans docs/cloud/REPRISE.md.
-1. **Fonctions de paiement, une passe** (autorisation nommée du 07/11 : create-checkout-session, stripe-webhook,
-   apple-iap-webhook, cancel-subscription, validate-google-purchase ; validate-apple-receipt déjà en v40) :
-   `node scripts/cloud/deployer-fonctions-cloud.mjs` (plan) puis `--go` limité à ces cinq (les autres de la liste du
-   script — email-tunnel, google-play-webhook, get-pending-jobs — seulement sur un oui de Nico). Vérif : version +1 et
-   verify_jwt inchangé pour chacune, 15 min de journaux sans erreur, Stripe `pending_webhooks` 0. Retour : redéployer
-   chaque fonction depuis `914b1e5` avec le même verify_jwt (§ 1).
-2. **IP automatiques** : `cloud_ip_achats_auto` = 1 (+ `cloud_ip_paiement_carte` = 1 si Nico a choisi la carte ; sinon
-   solde rechargé d'abord). Vérif : au plus 5 min après, journal `reappro_rapide` : stock = marge (3) + inscrits, garde
-   en nombre respectée ; aucune alerte « garde ». Retour : `cloud_ip_achats_auto` = 0.
+1. **Fonctions de paiement, une passe** (autorisations nommées du 07/11 : create-checkout-session, stripe-webhook,
+   apple-iap-webhook, cancel-subscription, validate-google-purchase ; puis, OUI de Nico du 07/11 ~17:00 : email-tunnel,
+   google-play-webhook, get-pending-jobs ; validate-apple-receipt déjà en v40, jamais redéployée ici) :
+   a. **`main` à jour SEULEMENT** (ordre de Nico) : `git fetch origin` puis `git status -sb` = `## main...origin/main`
+      sans « ahead » ni « behind », `git status --short supabase/functions` vide. Sinon : arrêt.
+   b. Versions et verify_jwt des 8 lues et notées AVANT (`npx supabase functions list`).
+   c. **get-pending-jobs n'est jamais écrasée** (redéployée par PROBLÈMES le 07/11 : règle A, Ciddjy…) :
+      `npx supabase functions download get-pending-jobs --use-api` dans un dossier vide du scratchpad, puis comparaison
+      avec `supabase/functions/get-pending-jobs` et les `_shared` qu'elle importe. Identique à `main` → elle n'est PAS
+      redéployée (déjà à jour). Différente → arrêt, diff montré à Nico et à PROBLÈMES ; rien n'est déployé pour elle.
+   d. `node scripts/cloud/deployer-fonctions-cloud.mjs` (plan), puis `--go --seulement
+      email-tunnel,stripe-webhook,apple-iap-webhook,google-play-webhook,validate-google-purchase,cancel-subscription,create-checkout-session`
+      (+ `get-pending-jobs` seulement si c. l'a permis). Le script garde l'ordre de sa liste (email-tunnel en tête).
+   Vérif : versions et verify_jwt relus APRÈS (version +1, verify_jwt inchangé pour chacune), 15 min de journaux sans
+   erreur, Stripe `pending_webhooks` 0. Retour : redéployer chaque fonction depuis `914b1e5` avec le même verify_jwt
+   (§ 1) ; get-pending-jobs n'est jamais touchée par ce retour.
+2. **IP automatiques** : `cloud_ip_achats_auto` = 1. Le paiement par carte est DÉJÀ en service depuis le 07/11 17:12
+   (choix de Nico : `cloud_ip_paiement_carte` = 1, `cloud_ip_carte_id` = 410814 = carte …9699 fin 2029-04 ; l'autre
+   …9699, id 441087, fin 2031-12, n'est PAS celle de Nico). Vérif : au plus 5 min après, journal `reappro_rapide` : stock = marge (3) +
+   inscrits, garde en nombre respectée, entretien `carte.mode` = « carte » ; aucune alerte « garde ». Retour :
+   `cloud_ip_achats_auto` = 0. (Le 07/11 17:12 la garde lit 8 IP vivantes pour une borne de 4 : les 7 IP libres
+   suffisent, aucun achat avant qu'elles soient attribuées ou expirées.)
 3. **cloud-2 ouvert à tous** : liste `COMPTES_AUTORISES` vidée (geste exact plus bas, « Ordre du jour J » 3). Vérif :
    journal `demarrage` « comptes_autorises: tous », `details.service.comptes` = tous, navigateur de Nico rouvert.
    Retour : archive `.env`, `up -d --no-deps --force-recreate orchestrateur`.
