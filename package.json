@@ -108,6 +108,7 @@
     "selftest:ecarts-0411": "node --import ./scripts/loader-ext.mjs scripts/ecarts-0411-selftest.mjs",
     "selftest:onboarding-trois-jauges": "node scripts/onboarding-trois-jauges-selftest.mjs",
     "selftest:cloud-prix-nom": "node --import ./scripts/loader-ext.mjs scripts/cloud-prix-nom-selftest.mjs",
+    "selftest:cloud-mails-canaux": "node scripts/cloud-mails-canaux-selftest.mjs",
     "selftest:montants-anglais": "node --import ./scripts/loader-ext.mjs scripts/montants-anglais-selftest.mjs",
     "selftest:lbc-categorie-racines": "node scripts/lbc-categorie-racines-selftest.mjs",
     "selftest:vinted-retrait-mur-compte-bloque": "node scripts/vinted-retrait-mur-compte-bloque-selftest.mjs",

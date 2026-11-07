@@ -6,16 +6,18 @@
 // déjà payé, fini, ni deux fois), quand (créneau J-2 → J-1, de jour, une place
 // libre dans le plafond de 2 mails par 24 h, puis il part quoi qu'il arrive au
 // dernier créneau, toujours avant la fin), le texte fr / en (date de Paris,
-// prix, comment arrêter, aucune désinscription : information de facturation),
-// et qu'il dit la même chose que l'app (prix) et que la proposition SQL (le
-// type entre dans l'index one-shot) et qu'email-tunnel l'envoie bien comme ça.
+// prix LU À LA SOURCE ou aucun, comment arrêter selon le canal, aucune
+// désinscription : information de facturation), qu'il dit la même chose que la
+// proposition SQL (le type entre dans l'index one-shot) et qu'email-tunnel
+// l'envoie bien comme ça. (07/11 soir) Le détail mail × canal :
+// scripts/cloud-mails-canaux-selftest.mjs.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import * as VEILLE from '../supabase/functions/_shared/cloud-rappel-veille.js';
 import {
-  TYPE_RAPPEL, CATEGORIE_RAPPEL, DEDUP_RAPPEL, PRIX_AFFICHE, PRESETS, PARAMETRES_RAPPEL,
+  TYPE_RAPPEL, CATEGORIE_RAPPEL, DEDUP_RAPPEL, PRESETS, PARAMETRES_RAPPEL,
   fenetreRequete, decisionRappel, dateFin, texteRappel,
 } from '../supabase/functions/_shared/cloud-rappel-veille.js';
-import { CLOUD_PRIX_AFFICHE } from '../src/utils/palier.js';
 
 let ko = 0;
 const ok = (c, m) => { if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}`); } };
@@ -28,7 +30,7 @@ const dec = (o) => decisionRappel({ profil: profil(), heureParis: 10, mails24h: 
 
 titre('0. Le contrat');
 ok(TYPE_RAPPEL === 'cloud_essai_veille' && CATEGORIE_RAPPEL === 'support' && DEDUP_RAPPEL === 'reservation', 'type cloud_essai_veille, catégorie support (facturation), envoi en réservation (un seul)');
-ok(PRIX_AFFICHE === CLOUD_PRIX_AFFICHE, `prix = CLOUD_PRIX_AFFICHE de l'app (${CLOUD_PRIX_AFFICHE})`);
+ok(!('PRIX_AFFICHE' in VEILLE), '(07/11 soir) plus aucun prix écrit dans le module : le montant vient de la source du canal');
 ok(PARAMETRES_RAPPEL.ouvertureAvantFinH === 48 && PARAMETRES_RAPPEL.forcageAvantFinH === 24, 'créneau par défaut : J-2 → J-1 (décision de Nico)');
 ok(PRESETS.mastercard.ouvertureAvantFinH === 96 && PRESETS.mastercard.forcageAvantFinH === 72, 'préréglage Mastercard prêt : 3 à 7 jours avant la fin');
 ok(PARAMETRES_RAPPEL.plafond24h === Number.POSITIVE_INFINITY, 'aucun plafond de mails (06/10, Nico : un mail automatique n\'est jamais retenu)');
@@ -76,16 +78,23 @@ ok(decisionRappel({ profil: profil(), heureParis: 10, mails24h: 0, maintenant: F
 titre('3. Le texte — fr / en, heure de Paris, aucune désinscription');
 ok(dateFin(iso(FIN), 'fr') === 'mardi 13 octobre à 18h00' && dateFin(iso(FIN), 'en') === 'Tuesday 13 October at 18:00', 'date de fin en heure de Paris (« mardi 13 octobre à 18h00 »)');
 ok(dateFin('2026-12-01T07:05:00Z', 'fr') === 'mardi 1 décembre à 08h05', 'heure d\'hiver comprise (UTC+1)');
-const fr = texteRappel({ lang: 'fr', finIso: iso(FIN) });
+const net = (s) => String(s).replace(/[  ]/g, ' ');
+const PRIX_LU = { montant: 31.49, devise: 'EUR' };      // un montant que seule la source peut avoir donné
+const fr = texteRappel({ lang: 'fr', finIso: iso(FIN), canal: 'stripe', prix: PRIX_LU });
 ok(fr.sujet === 'Ton essai FillSell Cloud se termine le mardi 13 octobre à 18h00', `sujet : « ${fr.sujet} »`);
-ok(fr.paragraphes.some((p) => p.includes('24,99 € par mois')) && fr.paragraphes.some((p) => p.includes('Réglages → Abonnement')) && fr.paragraphes.some((p) => p.includes('rien n\'est facturé')),
-  'le prix, comment arrêter (Réglages → Abonnement), et qu\'un arrêt ne coûte rien');
+ok(fr.paragraphes.some((p) => net(p).includes('31,49 € par mois')) && fr.paragraphes.some((p) => p.includes('Réglages → Abonnement')),
+  'Stripe : le prix LU (31,49 € ici), comment arrêter (Réglages → Abonnement)');
+ok(!/rien n'est factur|rien ne sera factur/.test(JSON.stringify(fr)), '(07/11 soir) plus jamais « rien n\'est facturé » : l\'arrêt annule l\'abonnement chez Stripe, sans promesse');
+const sansPrix = texteRappel({ lang: 'fr', finIso: iso(FIN), canal: 'apple', prix: null });
+ok(!/\d+,\d{2}/.test(JSON.stringify(sansPrix)) && !/€/.test(JSON.stringify(sansPrix)), 'source muette → aucun montant, aucun « € »');
 ok(fr.lienDesinscription === null && fr.categorie === 'support' && /facturation/.test(fr.raisonEnvoi) && /désinscrit/.test(fr.raisonEnvoi), 'aucun lien de désinscription : information de facturation, dit pourquoi');
 ok(!/pépite/i.test(JSON.stringify(fr)), 'aucun « pépite » (vocabulaire : quotas)');
-const en = texteRappel({ lang: 'en', finIso: iso(FIN), carteFin: '4242' });
-ok(en.sujet.startsWith('Your FillSell Cloud trial ends on Tuesday 13 October') && en.paragraphes.some((p) => p.includes('ending in 4242')), 'anglais, et les 4 derniers chiffres de la carte quand le flux de paiement les donne');
-ok(!JSON.stringify(texteRappel({ lang: 'fr', finIso: iso(FIN), carteFin: 'abcd' })).includes('abcd'), 'chiffres de carte illisibles → jamais affichés');
-ok(texteRappel({ lang: 'de', finIso: iso(FIN) }).sujet === fr.sujet, 'langue inconnue → français');
+const en = texteRappel({ lang: 'en', finIso: iso(FIN), canal: 'stripe', prix: PRIX_LU, carteFin: '4242' });
+ok(en.sujet.startsWith('Your FillSell Cloud trial ends on Tuesday 13 October') && en.paragraphes.some((p) => p.includes('ending in 4242')) && en.paragraphes.some((p) => p.includes('€31.49 a month')),
+  'anglais (« €31.49 a month »), et les 4 derniers chiffres de la carte quand le flux de paiement les donne');
+ok(!JSON.stringify(texteRappel({ lang: 'en', finIso: iso(FIN), canal: 'apple', prix: PRIX_LU, carteFin: '4242' })).includes('4242'), 'Apple : jamais de chiffres de carte (la carte est chez Apple)');
+ok(!JSON.stringify(texteRappel({ lang: 'fr', finIso: iso(FIN), canal: 'stripe', carteFin: 'abcd' })).includes('abcd'), 'chiffres de carte illisibles → jamais affichés');
+ok(texteRappel({ lang: 'de', finIso: iso(FIN), canal: 'stripe', prix: PRIX_LU }).sujet === fr.sujet, 'langue inconnue → français');
 
 console.log(ko ? `\n${ko} échec(s)` : '\nTout est vert.');
 process.exit(ko ? 1 : 0);

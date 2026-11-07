@@ -6,8 +6,9 @@
 // Décisions de Nico (03/11) : le Cloud coûte 24,99 € par mois PARTOUT (Stripe, Apple app.fillsell.cloud.sub,
 // Google cloud-monthly) — jamais un prix affiché différent du prix facturé ; l'option s'appelle « FillSell Cloud »,
 // « sans ordinateur » est sa PROMESSE, jamais son nom. Ce test prouve, sans réseau ni base :
-//   1. CLOUD_PRIX_AFFICHE = '24,99 €' ; PRIX_AFFICHE de cloud-pool.js et de cloud-rappel-veille.js identiques ;
-//      le calcul de marge (prixTtcEur) et le repli du MRR (PRIX_MENSUELS_TTC.cloud) suivent ce prix ;
+//   1. CLOUD_PRIX_AFFICHE = '24,99 €' ; PRIX_AFFICHE de cloud-pool.js identique ; le calcul de marge (prixTtcEur)
+//      et le repli du MRR (PRIX_MENSUELS_TTC.cloud) suivent ce prix ; (07/11 soir) le mail de la veille n'écrit
+//      AUCUN prix : il écrit celui que la source du canal a donné (cloud-prix.js), sinon aucun ;
 //   2. aucun « 20 € » qui parle du Cloud dans src/, supabase/functions/ et site/ (code, textes ET commentaires) :
 //      partout, un « 20 € » à moins de 3 lignes d'un mot du Cloud ; dans les fichiers du Cloud, tout « 20 € ».
 //      Seul un COMMENTAIRE qui dit « ancien » peut citer l'ancien prix (l'histoire d'un libellé remplacé) ;
@@ -56,15 +57,19 @@ const PRIX = PAL.CLOUD_PRIX_AFFICHE;
 const PRIX_NUM = Number(String(PRIX).replace(/[^\d,]/g, '').replace(',', '.'));
 ok(PRIX === '24,99 €', `CLOUD_PRIX_AFFICHE = '24,99 €' (src/utils/palier.js)`, PRIX);
 ok(POOL.PRIX_AFFICHE === PRIX, `PRIX_AFFICHE de cloud-pool.js = CLOUD_PRIX_AFFICHE`, POOL.PRIX_AFFICHE);
-ok(VEILLE.PRIX_AFFICHE === PRIX, `PRIX_AFFICHE de cloud-rappel-veille.js = CLOUD_PRIX_AFFICHE`, VEILLE.PRIX_AFFICHE);
+ok(!('PRIX_AFFICHE' in VEILLE), '(07/11 soir) cloud-rappel-veille.js n’écrit plus aucun prix (le mail lit celui de la source du canal)');
 ok(PRIX_NUM === 24.99 && POOL.PARAMETRES.prixTtcEur === PRIX_NUM, `la marge se calcule sur le prix affiché (prixTtcEur = ${POOL.PARAMETRES.prixTtcEur})`);
 ok(POOL.fraisPaiement({ canal: 'stripe' }).ttcEur === PRIX_NUM && POOL.fraisPaiement({ canal: 'apple' }).ttcEur === PRIX_NUM && POOL.fraisPaiement({ canal: 'google' }).ttcEur === PRIX_NUM,
   'frais de paiement : les trois canaux partent du même prix TTC');
 ok(MRR.PRIX_MENSUELS_TTC.cloud === PRIX_NUM, `le repli du MRR (mrr.js, PRIX_MENSUELS_TTC.cloud) = ${MRR.PRIX_MENSUELS_TTC.cloud}`);
 {
-  const fr = VEILLE.texteRappel({ lang: 'fr', finIso: '2026-11-13T17:00:00Z' });
-  const en = VEILLE.texteRappel({ lang: 'en', finIso: '2026-11-13T17:00:00Z' });
-  ok(fr.paragraphes.some((p) => p.includes(`${PRIX} par mois`)) && en.paragraphes.some((p) => p.includes(`${PRIX} a month`)), 'le mail de la veille dit 24,99 € (fr et en)');
+  // Le prix configuré sur les trois canaux, tel que la source le rend (24,99 EUR) → le mail le dit, au format de la langue.
+  const lu = { montant: PRIX_NUM, devise: 'EUR' };
+  const fr = VEILLE.texteRappel({ lang: 'fr', finIso: '2026-11-13T17:00:00Z', canal: 'apple', prix: lu });
+  const en = VEILLE.texteRappel({ lang: 'en', finIso: '2026-11-13T17:00:00Z', canal: 'apple', prix: lu });
+  ok(fr.paragraphes.some((p) => net(p).includes(`${PRIX} par mois`)) && en.paragraphes.some((p) => p.includes(`${PAL.CLOUD_PRIX_AFFICHE_EN} a month`)), 'le mail de la veille, nourri par la source (24,99 EUR), dit 24,99 € (fr) / €24.99 (en)');
+  const muet = VEILLE.texteRappel({ lang: 'fr', finIso: '2026-11-13T17:00:00Z', canal: 'apple', prix: null });
+  ok(!/€|\d+,\d{2}/.test(net(JSON.stringify(muet))), 'source muette → le mail de la veille ne cite aucun montant (jamais un prix écrit en dur)');
 }
 
 // ── 2. Aucun « 20 € » du Cloud ──────────────────────────────────────────────
@@ -173,7 +178,10 @@ titre('5. Le nom : « FillSell Cloud » ; « sans ordinateur » est la promesse'
     'textesConnexion.js': [phrases(CX.textesConnexion('fr')), phrases(CX.textesConnexion('en'))],
     'textesLegaux.js': [phrases(LEG.textesLegauxCloud('fr')), phrases(LEG.textesLegauxCloud('en'))],
     'conditionsCloud.js': [phrases(COND.conditionsCloud()), []],
-    'mail de la veille': [phrases(VEILLE.texteRappel({ lang: 'fr', finIso: '2026-11-13T17:00:00Z' })), phrases(VEILLE.texteRappel({ lang: 'en', finIso: '2026-11-13T17:00:00Z', carteFin: '4242' }))],
+    'mail de la veille': [
+      ['apple', 'google', 'stripe', null].flatMap((canal) => phrases(VEILLE.texteRappel({ lang: 'fr', finIso: '2026-11-13T17:00:00Z', canal, prix: { montant: 24.99, devise: 'EUR' } }))),
+      ['apple', 'google', 'stripe', null].flatMap((canal) => phrases(VEILLE.texteRappel({ lang: 'en', finIso: '2026-11-13T17:00:00Z', canal, carteFin: '4242' }))),
+    ],
   };
   for (const [quoi, [fr, en]] of Object.entries(textes)) {
     const f = [...fr.filter((p) => NOM_FR.test(p)), ...en.filter((p) => NOM_EN.test(p))];
@@ -214,6 +222,30 @@ titre('5 bis. « le Cloud » ou « l’option FillSell Cloud », jamais « optio
   for (const [quoi, [fr, en]] of Object.entries(lots)) {
     const f = [...fr.filter((p) => OPTION_SEULE.test(p)), ...en.filter((p) => ADDON_SEUL.test(p))];
     ok(fr.length > 0 && f.length === 0, `${quoi} : jamais « option » seul (fr) ni « add-on » seul (en)`, f.join(' | '));
+  }
+  // (07/11 soir, ordre de Nico : « un seul nom partout ») LES MAILS du Cloud, plus strict encore : ni « option »
+  // (même suivi du nom), ni « add-on », ni « Sans ordinateur » / « No computer » — « FillSell Cloud », et c'est tout.
+  // Chaque canal (Apple, Google, Stripe, inconnu), prix lu ou source muette ; le paiement échoué Cloud, chaque contexte × cause.
+  {
+    const PE = await charger('supabase/functions/_shared/paiement-echoue.js');
+    const veille = (lang) => ['apple', 'google', 'stripe', null].flatMap((canal) => [{ montant: 24.99, devise: 'EUR' }, null]
+      .flatMap((prix) => phrases(VEILLE.texteRappel({ lang, finIso: '2026-11-13T17:00:00Z', canal, prix, carteFin: '4242' }))));
+    const echec = (lang) => PE.CONTEXTES.flatMap((contexte) => PE.CAUSES.flatMap((cause) => [true, false].flatMap((actif) =>
+      phrases(PE.texteEchec({ lang, cause, contexte, lienFacture: 'https://invoice.stripe.com/i/x', relanceLe: '2026-11-11T09:00:00Z', abonnementActif: actif, offre: 'cloud' })))));
+    const NOM_INTERDIT = /\boption\b|\badd-on\b|sans ordinateur|no computer/i;
+    for (const [quoi, phr] of Object.entries({ 'mail de la veille': [...veille('fr'), ...veille('en')], 'mail paiement échoué (Cloud)': [...echec('fr'), ...echec('en')] })) {
+      const f = phr.filter((p) => NOM_INTERDIT.test(p));
+      ok(phr.length > 20 && f.length === 0, `${quoi} : ni « option », ni « add-on », ni « Sans ordinateur » (${phr.length} phrases)`, [...new Set(f)].join(' | '));
+    }
+    const sujets = [...['fr', 'en'].flatMap((lang) => ['apple', 'google', 'stripe', null].map((canal) => VEILLE.texteRappel({ lang, finIso: '2026-11-13T17:00:00Z', canal }).sujet)),
+      ...['fr', 'en'].flatMap((lang) => PE.CONTEXTES.flatMap((contexte) => PE.CAUSES.map((cause) => PE.texteEchec({ lang, cause, contexte, offre: 'cloud' }).sujet)))];
+    ok(sujets.every((s) => s.includes('FillSell Cloud')), `chaque sujet de mail du Cloud nomme « FillSell Cloud » (${sujets.length} sujets)`, sujets.filter((s) => !s.includes('FillSell Cloud')).join(' | '));
+    // Les messages de la page « Me connecter » servis par le serveur Cloud (serveur-cloud/src/connexion.js, MESSAGES).
+    const cx = lire('serveur-cloud/src/connexion.js');
+    const bloc = cx.slice(cx.indexOf('export const MESSAGES'), cx.indexOf('\n});', cx.indexOf('export const MESSAGES')));
+    const chaines = [...bloc.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n').matchAll(/(['`])((?:\\.|(?!\1)[^\\\n])*)\1/g)].map((m) => m[2]).filter((s) => /\s/.test(s));
+    const fautesSrv = chaines.filter((s) => NOM_INTERDIT.test(s));
+    ok(chaines.length > 40 && fautesSrv.length === 0, `serveur Cloud (« Me connecter ») : ni « option », ni « add-on », ni « Sans ordinateur » (${chaines.length} messages)`, fautesSrv.join(' | '));
   }
   // Les chaînes écrites dans les écrans du Cloud, la feuille des offres, les Réglages et l'onboarding (hors commentaires).
   const sources = ['src/components/ConversionModal.jsx', 'src/components/ExtensionPitchScreen.jsx', 'src/cloud/BlocCloudReglages.jsx', 'src/cloud/InterrupteurCloud.jsx',

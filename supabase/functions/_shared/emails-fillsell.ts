@@ -38,6 +38,7 @@ import {
 } from "./email-template.ts";
 import { plateformesEnClair, toutesLesPlateformes } from "./plateformes.ts";
 import { texteEchec } from "./paiement-echoue.js";
+import { texteRappel } from "./cloud-rappel-veille.js";
 
 export type Langue = "fr" | "en";
 
@@ -572,6 +573,50 @@ export function mailPaiementEchoue(e: EchecPourMail): MailPret {
       titre: t.titre,
       preheader: t.preheader,
       corps,
+      raisonEnvoi: t.raisonEnvoi,
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 7 bis. cloud_essai_veille — la veille de la fin de l'essai FillSell Cloud
+// ---------------------------------------------------------------------------
+// (07/11/2026 soir, essai bac à sable Apple de Nico) Le texte vit dans
+// _shared/cloud-rappel-veille.js (canal, prix lu à la source, arrêt) ; ici, la
+// mise en page seulement — la même qu'email-tunnel faisait à la main (titre,
+// préheader, paragraphes, un bouton, signature « Nico », aucun lien de
+// désinscription : information de facturation). email-tunnel l'appelle ;
+// scripts/apercu/mails-cloud.mjs rend les aperçus par CETTE fonction.
+// ⛔ Exception assumée à la règle « aucun prix » de l'en-tête : le montant de
+// ce mail n'est jamais écrit ici, il est LU chez le canal qui prélève
+// (_shared/cloud-prix.js) ; source muette → aucune somme.
+
+export interface RappelVeilleCloud {
+  lang: Langue;
+  finIso: string;
+  /** profiles.cloud_canal : stripe | apple | google. */
+  canal?: string | null;
+  /** Le prix de la prochaine échéance, LU à la source ; null → aucun montant écrit. */
+  prix?: { montant: number; devise: string } | null;
+  /** Stripe : les 4 derniers chiffres de la carte, s'ils sont connus. */
+  carteFin?: string | null;
+}
+
+export function mailRappelVeilleCloud(r: RappelVeilleCloud): MailPret {
+  const t = texteRappel({
+    lang: r.lang,
+    finIso: r.finIso,
+    canal: r.canal ?? null,
+    prix: r.prix ?? null,
+    carteFin: r.carteFin ?? null,
+  });
+  return {
+    sujet: t.sujet,
+    html: mail({
+      lang: r.lang,
+      titre: t.titre,
+      preheader: t.preheader,
+      corps: [...t.paragraphes.map((x: string) => paragraphe(x)), boutonPrincipal(t.bouton.texte, t.bouton.url)],
       raisonEnvoi: t.raisonEnvoi,
     }),
   };

@@ -14,20 +14,22 @@ import {
   mailCommentCaMarche,
   mailLienExtension,
   mailPaiementEchoue,
+  mailRappelVeilleCloud,
   mailRelanceJobs,
   mailResiliation,
   type CausePaiement,
   type ContextePaiement,
 } from "../_shared/emails-fillsell.ts";
-import { boutonPrincipal, paragraphe, renderEmail } from "../_shared/email-template.ts";
+import { paragraphe, renderEmail } from "../_shared/email-template.ts";
 import {
   CATEGORIE_RAPPEL,
   DEDUP_RAPPEL,
   decisionRappel,
   fenetreRequete,
-  texteRappel,
   TYPE_RAPPEL,
 } from "../_shared/cloud-rappel-veille.js";
+// (07/11 soir) Le prix du mail de la veille : lu chez le canal qui prélève (Stripe, Apple, Google), jamais écrit en dur.
+import { lecteurPrixCloud } from "../_shared/cloud-prix-source.ts";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -1000,6 +1002,30 @@ serve(async (req) => {
         { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
       );
     }
+    if (template === "cloud_veille") {
+      // (07/11 soir) Aperçu du mail de la veille FillSell Cloud, envoyé à l'adresse de TEST seulement.
+      //   {"test_canal":"apple"|"google"|"stripe"} : le texte de ce canal ;
+      //   {"test_user_id":"…"} : le canal ET le prix LUS pour ce compte (cloud_canal, cloud_ref → la source), comme
+      //   le vrai passage — la réponse dit la lecture. Sans compte : aucun prix lu → le texte SANS montant.
+      let canalTest = typeof body?.test_canal === "string" ? body.test_canal : null;
+      let lu: Record<string, unknown> | null = null;
+      let prixTest: { montant: number; devise: string } | null = null;
+      if (typeof body?.test_user_id === "string" && body.test_user_id) {
+        const { data: pc } = await supabase.from("profiles").select("cloud_canal, cloud_ref").eq("id", body.test_user_id).maybeSingle();
+        canalTest = (pc?.cloud_canal as string | null) ?? canalTest;
+        const l = await lecteurPrixCloud()(pc?.cloud_canal ?? null, pc?.cloud_ref ?? null);
+        lu = { canal: l.canal, prix: l.prix, renouvelle: l.renouvelle, source: l.source, raison: l.raison, environnement: l.environnement ?? null };
+        prixTest = l.prix;
+      }
+      const m = mailRappelVeilleCloud({
+        lang: langTest, finIso: new Date(Date.now() + 30 * 3_600_000).toISOString(), canal: canalTest, prix: prixTest,
+      });
+      const ok = await apercu("cloud_veille", m.sujet, m.html);
+      return new Response(
+        JSON.stringify({ test: true, template, lang: langTest, canal: canalTest, prix_lu: lu, sent, errors, resend: resendTrace }),
+        { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
     if (template === "relance_1" || template === "relance_2") {
       // Aperçu des deux relances avec un jeu d'essai — dont un slug INCONNU,
       // pour vérifier de visu que la garde de _shared/plateformes.ts ne le
@@ -1484,8 +1510,18 @@ serve(async (req) => {
     // (06/10) Le récapitulatif des ventes ne passe plus ici : un mail par
     // vente, tout de suite, par push-ventes.
 
-    // ── Mail de la VEILLE de fin d'essai « Sans ordinateur » (04/10, PROPOSITION) ──
+    // ── Mail de la VEILLE de fin d'essai FillSell Cloud (04/10, PROPOSITION) ──
     // Règles : _shared/cloud-rappel-veille.js (testées, selftest:cloud-rappel-veille).
+    // (07/11 soir, essai bac à sable Apple de Nico) LE CANAL FAIT LE TEXTE ET LE PRIX :
+    //   · le prix de la prochaine échéance est LU chez le canal qui prélève
+    //     (cloud_canal + cloud_ref → _shared/cloud-prix-source.ts : abonnement
+    //     Stripe, renouvellement signé d'Apple, subscriptionsv2 de Google), juste
+    //     avant l'envoi ; source muette → mail SANS montant (jamais un faux) ;
+    //   · la source dit « ne renouvelle pas » (résilié chez la boutique, arrêt
+    //     prévu chez Stripe) → aucun rappel : rien ne sera prélevé ;
+    //   · texte et mise en page : mailRappelVeilleCloud (_shared/emails-fillsell.ts),
+    //     selftest:cloud-mails-canaux (chaque canal × chaque langue).
+    // dry_run : rien n'est envoyé, la réponse dit le prix lu (ou pourquoi la source est muette).
     // Information de facturation : catégorie 'support', type one-shot
     // cloud_essai_veille (index email_logs_one_shot_unique, PROPOSITION SQL § 9),
     // envoi en réservation. Il COMPTE dans le plafond de 2 mails / 24 h : il
@@ -1499,17 +1535,26 @@ serve(async (req) => {
       const { finApres, finAvant } = fenetreRequete(maintenant);
       const { data: profils, error: garde } = await supabase
         .from("profiles")
-        .select("id, email, lang, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete")
+        .select("id, email, lang, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_canal, cloud_ref")
         .gt("cloud_essai_fin", finApres)
         .lte("cloud_essai_fin", finAvant)
         .not("cloud_essai_debut", "is", null)
+        .order("cloud_essai_fin", { ascending: true })   // la fin la plus proche d'abord (07/11 : lectures bornées)
         .limit(200);
       if (garde) return { garde: "colonnes_cloud_absentes_ou_illisibles", detail: String(garde.message).slice(0, 160) };
+      // (07/11 soir) Lectures du prix BORNÉES par passage : au plus LECTURES_PRIX_MAX appels de source et
+      // BUDGET_PRIX_MS de temps mural ; au-delà, le rappel attend le passage suivant (une heure plus tard — le
+      // créneau dure 48 h). CPU : une signature ES256 (Apple) et une RS256 (Google) par passage, le reste est de l'attente.
+      const LECTURES_PRIX_MAX = 20;
+      const BUDGET_PRIX_MS = 60_000;
+      let lecturesPrix = 0;
       const h = heureParis();
       const envoyes: string[] = [];
       const attentes: Record<string, number> = {};
       const rien: Record<string, number> = {};
       const compter = (o: Record<string, number>, k: string) => { o[k] = (o[k] ?? 0) + 1; };
+      const lirePrix = lecteurPrixCloud();
+      const prixLus: Record<string, unknown>[] = [];
       for (const p of (profils ?? []) as Array<Record<string, unknown>>) {
         const uid = String(p.id);
         // Déjà envoyé ? Lecture illisible → on n'envoie pas (échec fermé).
@@ -1526,23 +1571,23 @@ serve(async (req) => {
           heureParis: h, maintenant,
         });
         if (d.action !== "envoyer") { compter(d.action === "rien" ? rien : attentes, d.raison); continue; }
+        // Le prix À LA SOURCE (lecture seule, ≤ 5 s par appel, jamais d'exception).
+        if (lecturesPrix >= LECTURES_PRIX_MAX || Date.now() - maintenant > BUDGET_PRIX_MS) { compter(attentes, "lectures_prix_bornees"); continue; }
+        lecturesPrix++;
+        const lu = await lirePrix(p.cloud_canal, p.cloud_ref);
+        prixLus.push({ user_id: uid, canal: lu.canal, prix: lu.prix, renouvelle: lu.renouvelle, source: lu.source, raison: lu.raison, environnement: lu.environnement ?? null });
+        if (lu.renouvelle === false) { compter(rien, "ne_renouvelle_pas_a_la_source"); continue; }
         if (dry) { envoyes.push(`${uid}:${d.raison}`); continue; }
         const lang = langue(p.lang);
-        const t = texteRappel({ lang, finIso: String(p.cloud_essai_fin) });
-        const html = renderEmail({
-          titre: t.titre, surtitre: "", preheader: t.preheader,
-          corps: [...t.paragraphes.map((x: string) => paragraphe(x)), boutonPrincipal(t.bouton.texte, t.bouton.url)],
-          formuleFin: "", signatureNom: "Nico", signatureRole: "FillSell",
-          raisonEnvoi: t.raisonEnvoi, lienDesinscription: "", langue: lang,
-        });
+        const m = mailRappelVeilleCloud({ lang, finIso: String(p.cloud_essai_fin), canal: (p.cloud_canal as string | null) ?? null, prix: lu.prix });
         const r = await envoyer({
-          to: String(p.email), subject: t.sujet, html, userId: uid,
+          to: String(p.email), subject: m.sujet, html: m.html, userId: uid,
           type: TYPE_RAPPEL, categorie: CATEGORIE_RAPPEL as "support", dedup: DEDUP_RAPPEL as "reservation",
         });
         if (r.envoye) envoyes.push(`${uid}:${d.raison}`);
         else compter(attentes, `envoi_${r.motif ?? "echec"}`);
       }
-      return { lus: profils?.length ?? 0, envoyes, attentes, rien, dry_run: dry };
+      return { lus: profils?.length ?? 0, envoyes, attentes, rien, prix_lus: prixLus, dry_run: dry };
     }
     let veilleCloud: Record<string, unknown> | null = null;
     try {

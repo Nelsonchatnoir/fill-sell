@@ -46,8 +46,9 @@ export const CLOUD_ESSAI_JOURS = 7;
 // (03/11, décision de Nico) 24,99 € par mois partout (Stripe, Apple
 // app.fillsell.cloud.sub, Google cloud-monthly) : jamais un prix affiché
 // différent du prix facturé. MÊME valeur : PRIX_AFFICHE de
-// supabase/functions/_shared/cloud-pool.js et cloud-rappel-veille.js
-// (contrôlé par scripts/cloud-prix-nom-selftest.mjs).
+// supabase/functions/_shared/cloud-pool.js (contrôlé par
+// scripts/cloud-prix-nom-selftest.mjs). (07/11 soir) Les MAILS, eux, n'écrivent
+// plus ce prix : ils lisent celui du canal qui prélève (_shared/cloud-prix.js).
 export const CLOUD_PRIX_AFFICHE = '24,99 €';
 // (07/11, décision de Nico) Le MÊME prix, écrit à l'anglaise pour les textes anglais de l'app (« €24.99 ») —
 // dérivé de CLOUD_PRIX_AFFICHE, jamais écrit en dur : un changement de prix suit tout seul.

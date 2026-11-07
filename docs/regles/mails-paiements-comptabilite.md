@@ -279,3 +279,22 @@ marge de 100 % sur du vent, indétectable ensuite.
 - Garde-fous par jour (heure de Paris) : publications 2 000, remontées 2 000, annonces 800 ; message de pause honnête,
   jamais une offre ; aucun plafond mensuel caché. Retouches IA et voix : hors des 3 jauges.
 - Preuve : `PREUVE_PG=embarque node scripts/quotas/preuve-trois-jauges.mjs` ; selftest `trois-jauges`.
+
+## ⛔ (07/11 soir, essai bac à sable Apple de Nico) Mails FillSell Cloud : prix LU À LA SOURCE, texte PAR CANAL, un seul nom
+- Aucun montant écrit en dur dans un mail du Cloud. Le rappel de la veille (`cloud_essai_veille`, email-tunnel) lit le
+  prix de la prochaine échéance chez le canal qui prélève, juste avant l'envoi (`_shared/cloud-prix.js`, branché par
+  `_shared/cloud-prix-source.ts`) : Stripe = l'abonnement `cloud_ref` (prix de ses éléments, mensuel, sans remise) ;
+  Apple = Get All Subscription Statuses, **renouvellement signé** (`renewalPrice` + `currency`) — jamais le prix de la
+  transaction d'essai, qui vaut 0 ; Google = `subscriptionsv2.lineItems[].autoRenewingPlan.recurringPrice`. Source
+  muette (panne, délai de 5 s, remise, changement de prix, offre à l'échéance) → phrase SANS montant. Source qui dit
+  « ne renouvelle pas » → aucun rappel. Lectures bornées : 20 appels et 60 s par passage, fin la plus proche d'abord.
+- Le texte dépend du canal : « la carte que tu as enregistrée » et l'arrêt dans Réglages → Abonnement = Stripe SEUL ;
+  Apple / Google Play prélèvent sur le moyen de paiement de leur compte, et la résiliation se fait chez eux (bouton direct :
+  `https://apps.apple.com/account/subscriptions`, `https://play.google.com/store/account/subscriptions?sku=app.fillsell.cloud.sub&package=app.fillsell.app`).
+  ⛔ Jamais « rien n'est facturé » : FillSell ne peut pas le promettre pour une boutique.
+- Un seul nom : « FillSell Cloud » (ni « option », ni « add-on », ni « Sans ordinateur »), dans chaque sujet et corps.
+- Le paiement échoué du Cloud n'existe que pour Stripe (Apple et Google relancent eux-mêmes) ; jamais « reste actif »
+  pour le Cloud. Aucun mail aujourd'hui pour : début d'essai, arrêt (Stripe : pas d'accusé), renouvellement réussi.
+- Preuves : `npm run selftest:cloud-mails-canaux` (mail × canal, rendus par le vrai code), `selftest:cloud-prix-nom`
+  (nom étendu aux mails et au serveur Cloud) ; aperçus : `node scripts/apercu/mails-cloud.mjs <dossier>` ; aperçu
+  envoyé à l'adresse de test SEULEMENT : email-tunnel `test_template: "cloud_veille"` (+ `test_user_id` = prix lu).

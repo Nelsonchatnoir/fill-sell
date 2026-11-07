@@ -28,8 +28,13 @@
 //       – « Stripe retentera le paiement » seulement si la facture porte une
 //         prochaine tentative (next_payment_attempt), jamais pour un 3D Secure
 //         ni une carte expirée (la même carte échouerait encore).
-//       – « ton abonnement reste actif » seulement au renouvellement, et si
-//         Stripe dit l'abonnement active (ou past_due pour l'option Cloud).
+//       – « ton abonnement reste actif » seulement au renouvellement d'un
+//         FORFAIT, et si Stripe dit l'abonnement active ; jamais pour
+//         FillSell Cloud (un Cloud impayé s'arrête, 03/11).
+//   · (07/11 soir) FillSell Cloud se nomme « FillSell Cloud » dans chaque
+//     variante (sujet, intro, geste) ; ce mail ne part que pour Stripe :
+//     Apple et Google relancent eux-mêmes leurs impayés (aucun appel de
+//     signalerPaiementEchoue dans leurs webhooks — selftest:cloud-mails-canaux).
 //         (29/10) Un palier past_due n'est plus gardé (stripe-webhook) : le
 //         mail ne le promet plus.
 
@@ -215,8 +220,9 @@ export function dateRelance(iso, lang = 'fr') {
 const TEXTES = {
   fr: {
     sujet: { echec: "Ton paiement n'a pas abouti", validation: 'Ton paiement attend ta validation' },
+    sujetCloud: { echec: "Ton paiement FillSell Cloud n'a pas abouti", validation: 'Ton paiement FillSell Cloud attend ta validation' },
     sujetEssai: {
-      cloud: { echec: "Fin de ton essai Cloud : le paiement n'a pas abouti", validation: 'Fin de ton essai Cloud : ta banque attend ta validation' },
+      cloud: { echec: "Fin de ton essai FillSell Cloud : le paiement n'a pas abouti", validation: 'Fin de ton essai FillSell Cloud : ta banque attend ta validation' },
       autre: { echec: "Fin de ton essai : le paiement n'a pas abouti", validation: 'Fin de ton essai : ta banque attend ta validation' },
     },
     preheader: "Rien n'a été débité.",
@@ -226,6 +232,15 @@ const TEXTES = {
       renouvellement: "Ton abonnement n'a pas pu être renouvelé.",
       fin_essai: { cloud: "Ton essai FillSell Cloud est terminé et le paiement n'a pas abouti.", autre: "Ton essai gratuit est terminé et le paiement n'a pas abouti." },
     },
+    // (07/11 soir, ordre de Nico : un seul nom, « FillSell Cloud ») L'abonnement Cloud se nomme ; il ne se reprend pas
+    // en « choisissant une formule » (une formule = un forfait).
+    introCloud: {
+      souscription: "Ton abonnement FillSell Cloud n'a pas pu démarrer : le paiement s'est arrêté en route.",
+      renouvellement: "Ton abonnement FillSell Cloud n'a pas pu être renouvelé.",
+    },
+    souscriptionCloud3ds: "Pour réessayer, ouvre FillSell et reprends FillSell Cloud : la page de paiement s'ouvre, et tu valides avec ta banque (souvent dans son application).",
+    souscriptionCloud: 'Pour réessayer, ouvre FillSell et reprends FillSell Cloud : tu peux payer avec la même carte ou une autre.',
+    souscriptionCloudExpiree: 'Pour réessayer, ouvre FillSell et reprends FillSell Cloud : tu pourras payer avec une autre carte.',
     cause: {
       '3ds': "Ta banque demande une validation (3D Secure) avant de débiter, et elle n'a pas encore été faite. Rien n'a été débité.",
       carte_refusee: "Ta banque a refusé le paiement. Rien n'a été débité.",
@@ -235,7 +250,7 @@ const TEXTES = {
     souscription3ds: "Pour réessayer, ouvre FillSell et choisis à nouveau ta formule : la page de paiement s'ouvre, et tu valides avec ta banque (souvent dans son application).",
     souscription: "Pour réessayer, ouvre FillSell et choisis à nouveau ta formule : tu peux payer avec la même carte ou une autre.",
     souscriptionExpiree: "Pour réessayer, ouvre FillSell et choisis à nouveau ta formule : tu pourras payer avec une autre carte.",
-    pourContinuer: { cloud: "Pour continuer avec l'option Cloud, ", autre: 'Pour continuer ton abonnement, ' },
+    pourContinuer: { cloud: 'Pour continuer avec FillSell Cloud, ', autre: 'Pour continuer ton abonnement, ' },
     valider: "valide le paiement sur la page sécurisée de Stripe : le bouton ci-dessous l'ouvre, et tu confirmes avec ta banque (souvent dans son application).",
     regler: 'règle la facture sur la page sécurisée de Stripe, avec ta carte ou une autre.',
     reglerExpiree: 'règle la facture sur la page sécurisée de Stripe, avec une autre carte.',
@@ -251,8 +266,9 @@ const TEXTES = {
   },
   en: {
     sujet: { echec: "Your payment didn't go through", validation: 'Your payment needs your confirmation' },
+    sujetCloud: { echec: "Your FillSell Cloud payment didn't go through", validation: 'Your FillSell Cloud payment needs your confirmation' },
     sujetEssai: {
-      cloud: { echec: "Your Cloud trial has ended: the payment didn't go through", validation: 'Your Cloud trial has ended: your bank needs your confirmation' },
+      cloud: { echec: "Your FillSell Cloud trial has ended: the payment didn't go through", validation: 'Your FillSell Cloud trial has ended: your bank needs your confirmation' },
       autre: { echec: "Your trial has ended: the payment didn't go through", validation: 'Your trial has ended: your bank needs your confirmation' },
     },
     preheader: 'Nothing was charged.',
@@ -262,6 +278,13 @@ const TEXTES = {
       renouvellement: "Your subscription couldn't be renewed.",
       fin_essai: { cloud: "Your FillSell Cloud trial has ended and the payment didn't go through.", autre: "Your free trial has ended and the payment didn't go through." },
     },
+    introCloud: {
+      souscription: "Your FillSell Cloud subscription couldn't start: the payment stopped along the way.",
+      renouvellement: "Your FillSell Cloud subscription couldn't be renewed.",
+    },
+    souscriptionCloud3ds: 'To try again, open FillSell and start FillSell Cloud again: the payment page opens, then approve the payment with your bank (often in its app).',
+    souscriptionCloud: 'To try again, open FillSell and start FillSell Cloud again: you can pay with the same card or another one.',
+    souscriptionCloudExpiree: 'To try again, open FillSell and start FillSell Cloud again: you can pay with another card.',
     cause: {
       '3ds': "Your bank asks for a confirmation (3D Secure) before charging, and it hasn't been done yet. Nothing was charged.",
       carte_refusee: 'Your bank declined the payment. Nothing was charged.',
@@ -271,7 +294,7 @@ const TEXTES = {
     souscription3ds: 'To try again, open FillSell and pick your plan again: the payment page opens, then approve the payment with your bank (often in its app).',
     souscription: 'To try again, open FillSell and pick your plan again: you can pay with the same card or another one.',
     souscriptionExpiree: 'To try again, open FillSell and pick your plan again: you can pay with another card.',
-    pourContinuer: { cloud: 'To keep the Cloud option, ', autre: 'To keep your subscription, ' },
+    pourContinuer: { cloud: 'To keep FillSell Cloud, ', autre: 'To keep your subscription, ' },
     valider: "confirm the payment on Stripe's secure page: the button below opens it, then approve it with your bank (often in its app).",
     regler: "pay the invoice on Stripe's secure page, with your card or another one.",
     reglerExpiree: "pay the invoice on Stripe's secure page, with another card.",
@@ -304,16 +327,19 @@ export function texteEchec({
   const validation = c === '3ds';
   const url = ctx === 'souscription' ? null : lienStripeSur(lien);
 
+  const cloud = essai === 'cloud';
   const sujet = ctx === 'fin_essai'
     ? T.sujetEssai[essai][validation ? 'validation' : 'echec']
-    : T.sujet[validation ? 'validation' : 'echec'];
-  const intro = ctx === 'fin_essai' ? T.intro.fin_essai[essai] : T.intro[ctx];
+    : (cloud ? T.sujetCloud : T.sujet)[validation ? 'validation' : 'echec'];
+  const intro = ctx === 'fin_essai' ? T.intro.fin_essai[essai] : cloud ? T.introCloud[ctx] : T.intro[ctx];
 
   const suite = [];
   let bouton = null;
   let fin = T.fin;
   if (ctx === 'souscription') {
-    suite.push(validation ? T.souscription3ds : c === 'carte_expiree' ? T.souscriptionExpiree : T.souscription);
+    suite.push(cloud
+      ? (validation ? T.souscriptionCloud3ds : c === 'carte_expiree' ? T.souscriptionCloudExpiree : T.souscriptionCloud)
+      : (validation ? T.souscription3ds : c === 'carte_expiree' ? T.souscriptionExpiree : T.souscription));
     bouton = { texte: T.bouton.app, url: LIEN_APP };
   } else if (!url) {
     // Pas de page Stripe réglable (facture déjà close, lien illisible) : aucun
@@ -329,7 +355,10 @@ export function texteEchec({
   if (ctx !== 'souscription' && relanceLe && (c === 'carte_refusee' || c === 'autre')) {
     suite.push(T.relance(dateRelance(relanceLe, lang === 'en' ? 'en' : 'fr')));
   }
-  if (ctx === 'renouvellement' && abonnementActif === true) suite.push(T.actif);
+  // (07/11 soir) FillSell Cloud : jamais « reste actif » — un Cloud impayé s'arrête tout de suite depuis le 03/11
+  // (cloud-option.js, litAbonnementStripe). Dit ICI, au texte, et plus seulement par les faits de stripe-webhook :
+  // une version de stripe-webhook d'avant le 05/11 (faitsEchec : active | past_due) ne peut plus le faire écrire.
+  if (ctx === 'renouvellement' && abonnementActif === true && !cloud) suite.push(T.actif);
 
   return {
     sujet, titre: sujet, preheader: T.preheader, salut: T.salut, intro,
