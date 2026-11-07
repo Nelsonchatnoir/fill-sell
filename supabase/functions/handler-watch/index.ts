@@ -179,8 +179,9 @@ const JUGER_LBC_JAMAIS_EN_LIGNE = true;
 // (07/11, Nico — doriane-henri, Anne-Hélène) Un dépôt Vinted dont le relevé a retrouvé l'annonce (numéro lu par le dépôt
 // lui-même, refusé parce qu'une fiche NEUVE de la synchro le portait) n'est plus « failed » : clos « vendu », question
 // « Est-ce le même article ? », puis recollé après le « Oui » (_shared/depot-retrouve-releve.js). COUPÉ jusqu'au feu vert
-// de Nico après la simulation (scripts/simulation-depot-retrouve-releve.mjs). Allumer = true + redéployer handler-watch.
-const JUGER_DEPOTS_RETROUVES = false;
+// de Nico après la simulation (scripts/simulation-depot-retrouve-releve.mjs). ALLUMÉ le 07/11 vers 21:10 (feu vert nommé
+// de Nico après la simulation du 07/11 20:40 : 3 dépôts jugés, 2 écritures). Retour arrière : false + redéployer.
+const JUGER_DEPOTS_RETROUVES = true;
 // Le rattachement AUTOMATIQUE d'une fiche neuve née APRÈS le dépôt et intacte (décision « rattacher » du juge) demande une
 // écriture atomique en base (public.depot_retrouve_rattacher : fermer le suivi, passer l'identité Vinted, fondre la fiche
 // neuve, journal inventaire_fusions, recoller) — fonction NON écrite le 07/11 (0 cas sur 30 jours : les trois dépôts

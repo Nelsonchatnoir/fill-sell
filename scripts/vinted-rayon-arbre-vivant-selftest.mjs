@@ -162,8 +162,10 @@ const jobVinted = (allowed, extra = {}) => ({
     platform_fields: { needsUserField: { field_key: "category" } } };
   const entree = C.CORRECTIFS_EXTENSION.find((c) => c.cle === "vinted_rayon_refuse_au_compte");
   ok(entree && entree.buildMin === C.BUILD_VINTED_RAYON_REFUSE_AU_COMPTE, "entrée « vinted_rayon_refuse_au_compte » présente");
-  ok(C.correctifPourJob(fb)?.cle !== "vinted_rayon_refuse_au_compte" && !C.posteAJour("2026-11-08T00:00:00Z+abc", entree), "buildMin vide : inerte (aucun job, aucun poste)");
-  ok(C.correctifPourJob(fb, [{ ...entree, buildMin: "2026-11-07T23:00:00Z" }])?.cle === "vinted_rayon_refuse_au_compte", "buildMin posé au zip : fb90b403 repart une fois");
+  // (07/11 20:56) buildMin posé au BUILD_ID du zip 0.6.179 (2026-11-07T19:56:30Z+3c365ba).
+  ok(entree?.buildMin === "2026-11-07T19:56:30Z", "buildMin = BUILD_ID du paquet 0.6.179");
+  ok(C.correctifPourJob(fb)?.cle === "vinted_rayon_refuse_au_compte", "fb90b403 (build 0.6.166) repart une fois");
+  ok(C.posteAJour("2026-11-07T19:56:30Z+3c365ba", entree) && !C.posteAJour("2026-11-07T14:34:17Z+bef6d20", entree), "poste 0.6.179 à jour ; poste 0.6.178 non");
 }
 
 // ═══ C. L'EXTENSION : LA DESCENTE (selectCategory, VRAI code) SUR UN PANNEAU SIMULÉ ═══════════════════════════

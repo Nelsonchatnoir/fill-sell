@@ -140,9 +140,9 @@ export const BUILD_LBC_PREREMPLI_IA = "2026-10-26T07:44:08Z"; // BUILD_ID du paq
 // (07/11 soir, Sonia d538188f) Critères Leboncoin affichés après la réception des photos (0.6.178) : BUILD_ID du paquet.
 export const BUILD_LBC_CRITERES_APRES_PHOTOS = "2026-11-07T14:34:17Z"; // BUILD_ID du paquet 0.6.178 (2026-11-07T14:34:17Z+bef6d20)
 // (07/11 nuit, point 2 — e95e8b9d, « Rasoir vintage » fb90b403) Le rayon refusé au compte Pro (400 « category ») devient
-// une question de RAYON (0.6.179). VIDE tant que ce paquet n'est pas empaqueté : posée au BUILD_ID du zip
-// (npm run package:extension) — d'ici là l'entrée est inerte (buildMsDe("") = NaN : aucun job, aucun poste).
-export const BUILD_VINTED_RAYON_REFUSE_AU_COMPTE = "";
+// une question de RAYON (0.6.179). Posée au BUILD_ID du zip (npm run package:extension, 07/11 20:56) : un poste à ce
+// build ou plus récent reprend les jobs arrêtés sur ce refus, une fois.
+export const BUILD_VINTED_RAYON_REFUSE_AU_COMPTE = "2026-11-07T19:56:30Z"; // BUILD_ID du paquet 0.6.179 (2026-11-07T19:56:30Z+3c365ba)
 
 export const CORRECTIFS_EXTENSION = [
   {

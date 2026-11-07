@@ -295,6 +295,18 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   610 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-07T14:33:26Z (a1a6856). Seul zip à téléverser (contient la 0.6.177,
   rangée dans `build/anciens-zips/EN-TELEVERSEMENT-0711-CWS-0.6.177`).
 
+## 07/11 nuit — 0.6.179 : lot du soir + urgence Goulvenk (rapport `docs/enquetes/lot-0711/RAPPORT.md` § Lot du 07/11 nuit, § Goulvenk)
+- La 0.6.178 + : Leboncoin, « compte vu » seulement avec un jeton `luat` non expiré ; aucune requête de la veille des
+  commandes ni du relevé des ventes avec un jeton périmé ; porte de connexion du relevé confirmée deux fois (1,2 s) et
+  nommée dans le run (règle : `docs/regles/plateformes.md` § « 07/11 soir (urgence Goulvenk) »). Vinted : rayon de
+  l'ancien arbre (arbre vivant), rayon refusé aux comptes Pro → question de rayon, référent des disparitions du
+  dressing. Beebs : preuve de retrait d'une republication (deux 404 à 6 h au moins).
+- Relance au build : `vinted_rayon_refuse_au_compte` (`_shared/correctifs-extension.js`,
+  `BUILD_VINTED_RAYON_REFUSE_AU_COMPTE` = 2026-11-07T19:56:30Z).
+- Livrable : `build/CWS-0.6.179-A-TELEVERSER/fillsell-extension-0.6.179-cws.zip` (BUILD_ID `2026-11-07T19:56:30Z+3c365ba`,
+  613 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-07T19:56:07Z (72a36f2). Seul zip à téléverser (contient la
+  0.6.178, rangée dans `build/anciens-zips/CWS-0.6.178-A-TELEVERSER`).
+
 ## 07/11 soir — essai TestFlight de Nico : jamais le bandeau « Mettre à jour l'extension » à un client Cloud
 - `extBannerVisible` (App.jsx) = `bandeauMajExtensionVisible` (`src/cloud/voieCloud.js`) : extension « périmée » ET état
   Cloud lu (`useEtatCompteCloud`) ET pas client Cloud. Cause vue le 07/11 : le poste Cloud rafraîchit

@@ -181,7 +181,7 @@ ok("messages : jamais « AVANT DE REPUBLIER », toujours le numéro", !/AVANT/.t
 console.log("8. Branchement (handler-watch) : borné, coupé par défaut, compare-and-set, question par releve_poser_question");
 const hw = readFileSync(join(ROOT, "supabase/functions/handler-watch/index.ts"), "utf8").replace(/\r\n/g, "\n"); // fins de ligne neutres (CRLF après un checkout Windows, core.autocrlf)
 ok("import du module", /from "\.\.\/_shared\/depot-retrouve-releve\.js"/.test(hw));
-ok("interrupteur JUGER_DEPOTS_RETROUVES, coupé par défaut (Nico l'allume après la simulation)", /const JUGER_DEPOTS_RETROUVES = false;/.test(hw));
+ok("interrupteur JUGER_DEPOTS_RETROUVES allumé (feu vert nommé de Nico du 07/11 après la simulation)", /const JUGER_DEPOTS_RETROUVES = true;/.test(hw));
 ok("RPC de rattachement derrière son propre interrupteur (migration non appliquée)", /const DEPOT_RETROUVE_RATTACHER_RPC = false;/.test(hw) && /rpc\("depot_retrouve_rattacher"/.test(hw));
 ok("appel dans le créneau libre de chaque heure (minutes 12 à 14 UTC)", /JUGER_DEPOTS_RETROUVES && new Date\(\)\.getUTCMinutes\(\) >= 12 && new Date\(\)\.getUTCMinutes\(\) < 15/.test(hw));
 const debutCorps = hw.indexOf("async function jugerDepotsRetrouvesParReleve");
