@@ -1,5 +1,37 @@
 # Jour d'ouverture de FillSell Cloud — la liste, dans l'ordre (décision j de Nico, 05/11/2026)
 
+## ⛔ 07/11/2026 — DÉCISIONS DE NICO ET PASSE PRÉPARÉE (rien allumé) — prime sur la suite de ce fichier
+Décisions (07/11 ~10:28) : toute personne qui paie le Cloud a sa place AUTOMATIQUEMENT, dans la limite des places du
+serveur, sans liste tenue à la main ; aucun régime spécial pour les abonnés au-delà de 400 publications (les nouveaux
+quotas valent pour tous quand la grille s'allume) ; achats d'IP COUPÉS, rallumés avant le 8e client Cloud (pool relu le
+07/11 : 7 IP libres) ; cloud-1 RETIRÉ (base « retire » 10:34, serveur Hetzner supprimé 10:34:52) ; RGPD Hetzner : rien.
+Déjà fait, relu le 07/11 : prix Stripe 24,99 € actif / 20 € archivé ; Apple Cloud APPROVED 24,99 € ; Google
+`cloud-monthly` actif 24,99 €, essai 7 j.
+- **Le piège qui impose l'ordre** : la vente (`cloud_vente_etat` → `cloud_places_libres()`, relue en prod le 07/11) ne
+  compte que les places des serveurs aptes ; elle ne lit JAMAIS `COMPTES_AUTORISES`. Allumer l'offre avec une liste
+  sur cloud-2 = une personne hors liste paie, sa place est comptée, et le serveur ne lui ouvre jamais de navigateur.
+  Donc : **liste vidée AVANT l'interrupteur**, et l'interrupteur coupé AVANT toute remise d'une liste. Liste vide =
+  « tous » partout (`config.js`, `connexion.js:179`, `postes.js:294`, `flotte.js:85` déclare `comptes: 'tous'`).
+- **Ordre du jour J** (après l'approbation des deux stores, feu vert « on ouvre » de Nico) :
+  1. fonctions de paiement (§ 1 plus bas) ;
+  2. binaires publiés par Nico (§ 6) ; OTA ≥ 2.9.164 en `--delta` (§ 7) ;
+  3. **cloud-2 ouvert à tous** (aucune tâche « processing » : la vidange attend 10 min au plus) :
+     `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@5.9.80.213 'cp -p /srv/fillsell-cloud/.env /srv/fillsell-cloud/archives/env-avant-ouverture-$(date +%Y%m%d-%H%M) && sed -i "s/^COMPTES_AUTORISES=.*/COMPTES_AUTORISES=/" /srv/fillsell-cloud/.env && cd /srv/fillsell-cloud/deploiement && docker compose up -d --no-deps --force-recreate orchestrateur'`
+     Vérifier : journal `demarrage` → `"comptes_autorises":"tous"` ; au battement suivant
+     `cloud_serveurs.details->'service'->>'comptes'` = `tous` et `apte` = true ; navigateur de Nico rouvert ;
+     `/sante` ok. Retour : remettre l'archive `.env` (liste `f44b5917…,953c1ca6…,d6a9e726…`, relue le 07/11),
+     même commande `up -d --no-deps --force-recreate` — et SEULEMENT après l'interrupteur coupé (étape 4 inverse).
+  4. **l'interrupteur** :
+     `insert into public.coin_config (key, value) values ('cloud_offre_ouverte', 1) on conflict (key) do update set value = 1, updated_at = now();`
+     (`npx supabase db query --linked --yes -f <fichier>` ; le déclencheur coin_config_trace garde l'avant/après).
+     Vérifier : `cloud_vente_etat` d'un compte ordinaire = `vente_possible` true, `places` = 14 ; l'offre visible dans
+     un navigateur ISOLÉ (jamais la session de Nico). Retour : la même clé à 0 (l'offre disparaît ; les clients gardent
+     leur option).
+  5. grille trois jauges = 1 APRÈS l'OTA (§ 4), même jour ;
+  6. avant le 8e client : `cloud_ip_achats_auto` = 1 (+ plafond `cloud_ip_budget_mensuel_usd`, § 3), sur ordre de Nico.
+- **Limite** : `NAVIGATEURS_MAX=15` sur cloud-2 (places = 14 + Nico) ; au-delà, la vente répond « complet » et propose
+  la liste d'attente (jamais un paiement sans place) ; l'alerte de capacité part à 65 % (10 comptes).
+
 Une étape à la fois, depuis le dossier PRINCIPAL `C:\Users\nicol\fill-and-sell` (jamais un worktree), sur `main` à jour
 et propre (`git status` relu : dossier partagé). Chaque étape : le geste, la VÉRIFICATION, le RETOUR ARRIÈRE. La moindre
 différence à une vérification arrête la passe : on revient en arrière sur l'étape, on ne passe pas à la suivante.

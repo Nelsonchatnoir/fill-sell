@@ -10,6 +10,18 @@
 - Google : fiche FR/EN complète mais en BROUILLON (étape « Avis » : déclaration des éléments IA = geste de Nico) ; AAB
   vc34 NON importé ; production = vc31 (2.9.10, 24/09) ; Cloud `cloud-monthly` actif 24,99 €, essai `cloud-trial-3d` = 7 j.
 - Détail : notes du terminal Cloud du 07/11 (rapport à Nico).
+- 10:30-11:00 (ordres de Nico) — Apple : écran de Nico resté sur l'ancien chargement (ASC ne se rafraîchit pas seul) ;
+  relu par l'API et rechargé : 2.9.163, build 2611061542, textes promotionnels FR/EN présents. **En-tête de page produit**
+  (facultatif, affiché à partir d'iOS 27, relu avec la version) FAIT FR et EN : 3840 × 1646, sans transparence, texte
+  dans la zone sûre centrée, vrais écrans Lens et Tableau, aucun nom de plateforme (`build/visuels-stores/apple/<fr|en>/entete/`,
+  script dans les notes du terminal) ; relu après rechargement « 1 sur 1 » dans les deux langues. Captures : 8 par taille
+  (6,9", 6,5", 6,3", iPad 13") × FR/EN, toutes COMPLETE ; 3 vidéos par langue. Rien soumis.
+- Google : description FR/EN corrigée (retirés : « Leboncoin et eBay : bientôt », la grille chiffrée « Free : 5
+  annonces… » et la phrase du décompte avant publication ; remplacés par le paragraphe des formules de la fiche Apple 2.9),
+  déclaration IA « Ne pas signaler » (captures, bannière et vidéo = vrais écrans de l'app ; musique synthétisée par code),
+  « Enregistrer » → 13 modifications prêtes, contrôles rapides passés. Release de production n° 11 en BROUILLON : nom
+  2.9.163, notes FR (321) / EN (294). **AAB vc34 NON déposé** : 18 Mo > limite de l'outil de téléversement (10 Mo) et
+  la page ne peut lire un fichier local qu'avec l'autorisation Chrome « réseau local », non accordée → dépôt par Nico.
 
 Heures de Paris. Tout ce qui suit a été LU (API d'App Store Connect depuis la session ouverte, Play Console, base, code)
 au moment indiqué. Ordre de Nico : seul l'abonnement Cloud se soumet ; la 2.9 (Apple) et la version Google attendent

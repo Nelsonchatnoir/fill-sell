@@ -1,5 +1,21 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 07/11/2026 10:35 — cloud-1 RETIRÉ ET SUPPRIMÉ (ordre de Nico) ; passe d'ouverture préparée
+- Base 10:34:05 : `scripts/reparations/20261107_cloud1_retire.sql` (preuve Postgres jetable 13/13 :
+  `PREUVE_PG=embarque node scripts/cloud/preuve-retrait-cloud1.mjs`) → cloud-1 `etat = 'retire'`, ligne d'avant dans
+  `public._backup_0711_cloud1_serveur` ; relu : 0 compte, 0 job, cloud-2 « actif » 14 places. Inverse :
+  `…_cloud1_retire_INVERSE.sql` (sans objet : le serveur n'existe plus).
+- Hetzner 10:34:35 → 10:34:52 : serveur 168804683 (cx43) SUPPRIMÉ (SSH ne répond plus, relu) ; pas d'IP flottante, de
+  volume ni d'instantané. **IPv4 178.105.24.16 GARDÉE** (« cloud-1-ipv4-gardee-dns-cloud-fillsell-app », ≈ 0,50 € HT/mois) :
+  le DNS `cloud.fillsell.app` pointe encore dessus et l'app se replie sur `wss://cloud.fillsell.app` avec le jeton de
+  session quand `cloud_serveur_moi` ne rend pas de domaine (`src/cloud/MeConnecterCloud.jsx:38`,
+  `CLOUD_DOMAINE` de `src/config/cloudOffer.js`) : une IP rendue à Hetzner pourrait recevoir ces jetons. Restes, dans
+  l'ordre : (1) Nico : Cloudflare › fillsell.app › DNS, enregistrement A `cloud` supprimé ou pointé sur 5.9.80.213 ;
+  (2) code : repli `CLOUD_DOMAINE` retiré (src/ — avec un lot, pas pendant le travail du terminal PROBLÈMES) ;
+  (3) puis IP gardée supprimée (Hetzner Cloud › Networking › Primary IPs).
+- Les procédures « retour vers cloud-1 » plus bas n'ont plus d'objet. Ouverture automatique (décision du 07/11) :
+  `docs/reprise/JOUR-OUVERTURE-CLOUD.md`, bloc du 07/11 (liste vidée AVANT l'interrupteur).
+
 ## 07/11/2026 10:20 — copie Cloud 0.6.176, nuit du compte de Nico relue (terminal Cloud)
 - **Copie Cloud de l'extension = 0.6.176.44695** (`0.6.176-cloud`, BUILD_ID `2026-11-07T09:18:22Z+7eb60f6-cloud`), posée
   10:18:35 par `EXTENSION_SEULE=1 …/deployer.sh` (vidange vide, navigateur de Nico rouvert 10:18:42, coffre 4 plateformes,
