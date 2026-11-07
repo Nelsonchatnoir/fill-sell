@@ -1,5 +1,27 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 07/11/2026 10:20 — copie Cloud 0.6.176, nuit du compte de Nico relue (terminal Cloud)
+- **Copie Cloud de l'extension = 0.6.176.44695** (`0.6.176-cloud`, BUILD_ID `2026-11-07T09:18:22Z+7eb60f6-cloud`), posée
+  10:18:35 par `EXTENSION_SEULE=1 …/deployer.sh` (vidange vide, navigateur de Nico rouvert 10:18:42, coffre 4 plateformes,
+  `profiles.extension_version` relu = 0.6.176.44695 à 10:18:50). Inverse : `archives/fillsell-cloud.crx` + `update.xml`
+  (0.6.175.44618), `extension.ancienne` → `extension`, `docker compose restart orchestrateur`. Parc relu : 50 comptes en
+  0.6.176, 36 en 0.6.175. ⚠ La vidange a dit « 0 tâche » alors qu'un pré-vol Leboncoin tournait (verdict écrit à
+  10:18:34.9, navigateur fermé à 10:18:35.4) : un pré-vol (job encore `pending`) n'est pas vu par la vidange — sans
+  dégât ici (rien n'est retiré avant le verdict), à regarder.
+- **Republication Leboncoin 32e12d08 (Nico)** : « illisible » à 09:14, 09:46, 10:18 = ni anti-robot ni lecture ratée par
+  hasard : ses 3 photos sont sur `images1.vinted.net`, que `urlToFile` (content script Leboncoin) lit SOUS LE CORS DE LA
+  PAGE ; le CDN de Vinted ne répond `Access-Control-Allow-Origin` qu'à `https://www.vinted.fr` (relu au curl : rien pour
+  `https://www.leboncoin.fr`) → « Failed to fetch » aux 6 essais → pré-vol « illisible » → +30 min, à l'infini (aucun
+  essai consommé). RÈGLE, pas cas : depuis toujours, **0 job Leboncoin à photos Vinted publié** (32 annulés, 22 en
+  attente, 5 comptes) ; le message promet un rapatriement qui n'existe pas (`photos_a_rapatrier = false`). Rien corrigé
+  (rapport demandé) ; correctif à décider par Nico.
+- **Signes anti-robot « de 03:00 »** = UN défi Beebs à **04:15:42** (heure de Paris ; 03:15 UTC) : `datadome_vu`
+  (interstitiel) puis `verification_passee_seule` 5 s plus tard, compté deux fois par l'agent (datadome +
+  vérification de l'appareil). Aucun job : visite de fond de la messagerie / des commandes Beebs (8 à 16 min).
+- **Mémoire du compte** (cloud_charge_heures) : max 1 001 Mo (22h) → 1 314 (03h) → 1 197 (04h) → 1 334-1 338 de 07h à
+  10h, non récupérable médian 720 → 1 010 → 800-910 : montée de chauffe après le redémarrage de 21:20 puis plateau dans la
+  fourchette de référence (1,26-1,36 Go) ; pas de fuite visible sur 13 h (à relire sur 48 h).
+
 ## ⛔ ÉTAT DU CLOUD AU 06/11/2026 21:35 — l'enchaînement a–d est FAIT (décisions de Nico du 06/11 soir)
 `SSH1` = `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@178.105.24.16` (cloud-1) ; `SSH2` = `… root@5.9.80.213` (cloud-2).
 - **cloud-2** (seul serveur qui sert) : orchestrateur **b381d51077ad** (21:08:43, « orchestrateur seul ») ; image Chrome

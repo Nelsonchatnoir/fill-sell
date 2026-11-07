@@ -1,5 +1,16 @@
 # Lot « Prêt à soumettre » (06/11/2026) — état des stores, champ par champ, et ce qui reste
 
+## 07/11 09:55-10:17 — relu et complété par l'API (rien soumis, rien publié)
+- Apple : la version en préparation s'appelait **2.9.161** → renommée **2.9.163** et build **2.9.163 (2611061542)**
+  rattaché (VALID, conformité faite par Nico) ; **texte promotionnel** écrit (FR : « Vinted, Leboncoin, eBay, Beebs, Depop.
+  FillSell relève tes annonces déjà en ligne, rédige tes fiches depuis une photo et retire les copies dès qu'un article se
+  vend. » ; EN : « Vinted, eBay, Depop — plus Leboncoin and Beebs in France. FillSell scans your listings online, writes a
+  listing from one photo and pulls the copies once an item sells. »). Tout le reste était rempli (l'écran n'affiche que
+  les caractères restants). Abonnement Cloud : APPROVED, 24,99 €, essai 1 semaine. En ligne : 2.8 (24/09).
+- Google : fiche FR/EN complète mais en BROUILLON (étape « Avis » : déclaration des éléments IA = geste de Nico) ; AAB
+  vc34 NON importé ; production = vc31 (2.9.10, 24/09) ; Cloud `cloud-monthly` actif 24,99 €, essai `cloud-trial-3d` = 7 j.
+- Détail : notes du terminal Cloud du 07/11 (rapport à Nico).
+
 Heures de Paris. Tout ce qui suit a été LU (API d'App Store Connect depuis la session ouverte, Play Console, base, code)
 au moment indiqué. Ordre de Nico : seul l'abonnement Cloud se soumet ; la 2.9 (Apple) et la version Google attendent
 l'AX42, un test réel sur ce serveur, puis le feu vert de Nico. **(06/11 soir, décision de Nico) L'AX42 est abandonné :
