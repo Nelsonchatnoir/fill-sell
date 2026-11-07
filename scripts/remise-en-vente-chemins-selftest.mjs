@@ -174,6 +174,16 @@ ok(/INSERT INTO remises_en_vente/.test(corps('cross_post_jobs_vendu_remise_en_ve
 const tick = corps('remises_en_vente_tick');
 ok(/INSERT INTO cross_post_jobs[\s\S]{0,400}?VALUES \(r\.user_id, r\.inventaire_id, r\.platform, 'pending', 'publish'/.test(tick) && /'remise_en_vente',\s*jsonb_build_object\('apres_vente_job', j\.id/.test(tick)
   && /remise_en_vente_champs\(j\.platform_fields\)/.test(tick), 'remises_en_vente_tick crée le dépôt « publish » à l\'identique (remise_en_vente_champs, marqueur remise_en_vente)');
+// (07/11 soir, 7e7f0769 — migration 20261107193300) La copie d'une remise ne reprend AUCUNE trace du cycle de l'annonce
+// vendue : la dernière définition de remise_en_vente_champs passe par republication_sans_traces et retire depot_parti*,
+// canal_coupe*, reconciliation, new_vinted_item_id — sans rien perdre de sa liste d'avant.
+const champsRemise = corps('remise_en_vente_champs');
+ok(/public\.republication_sans_traces\(jsonb_build_object\(e\.key, e\.value\)\) \? e\.key/.test(champsRemise)
+  && /e\.key !~ '\^\(depot_parti\|canal_coupe\|reconciliation\$\|new_vinted_item_id\$\)'/.test(champsRemise)
+  && /\^\(source\|rattachement\|check_\|work_window\|/.test(champsRemise)
+  && /new_listing\|vinted_item_id\|item_id\|marque_traduite\|colis_au_service\|livraison_au_service\)'\)/.test(champsRemise),
+  `remise_en_vente_champs (${derniere.get('remise_en_vente_champs')?.f}) : aucune trace du cycle de l'annonce vendue (republication_sans_traces + depot_parti, canal_coupe, reconciliation, new_vinted_item_id), liste d'avant gardée`,
+  champsRemise.trim().slice(-400));
 
 console.log('\n4. remises_en_vente_tick : les deux corrections');
 const iEnLigne = tick.indexOf("v_motif := 'annonce_vendue_encore_en_ligne'");

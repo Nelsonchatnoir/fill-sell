@@ -148,7 +148,8 @@ console.log("\n2. LE LECTEUR DE PAGE NOMME LE MUR (lirePageIdentifiantsBeebs, ex
   // (18/10) L'empreinte du jour précède ; celle du mur nommé reste dans la chaîne. (24/10, 0.6.133 : vendue-sur-beebs en tête.)
   // (25/10) 404-deux-constats en tête (retrait prouvé par deux constats « page 404 » à 6 h d'écart).
   // (26/10 nuit) adresse-sans-rue (point 14c) puis correction-tracee (point 12) en tête ; les précédentes restent.
-  ok(/^const BEEBS_BUILD = "2026-10-26-adresse-sans-rue .*2026-10-26-correction-tracee .*2026-10-25-404-deux-constats .*2026-10-24-vendue-sur-beebs .*2026-10-18-marque-exacte .*2026-10-17-mur-nomme /m.test(beebs), "empreinte du content script à jour");
+  // (07/11 nuit, 0.6.179) republication-preuve-par-la-page en tête ; les précédentes restent, dans le même ordre.
+  ok(/^const BEEBS_BUILD = "(?:2026-11-07-nuit-republication-preuve-par-la-page .*)?2026-10-26-adresse-sans-rue .*2026-10-26-correction-tracee.*2026-10-25-404-deux-constats .*2026-10-24-vendue-sur-beebs .*2026-10-18-marque-exacte .*2026-10-17-mur-nomme /m.test(beebs), "empreinte du content script à jour");
 }
 
 console.log("\n3. LE CÂBLAGE DU RELEVÉ (background.js)");

@@ -54,7 +54,7 @@ import { republicationIsbnALire, messageRequisRepublication } from "../_shared/i
 import { estDepotJamaisVuEnEchec, ficheSansObjet, decisionDepotJamaisVu, messageDepotJamaisVuSansObjet, champsDepotJamaisVuSansObjet } from "../_shared/depot-jamais-vu-sans-objet.js";
 // (07/11, famille 6a) La republication arrêtée sur « le prix manque » repart seule dès qu'un prix est sur la fiche.
 import { decisionPrixCopie, champsRelancePrixCopie, PLATEFORMES_PRIX_DE_LA_TACHE } from "../_shared/prix-copie-republication.js";
-import { rayonRefuseDuJob, resoudreRayonRefuse, feuillesCandidates, pfApresRayon, questionRayonRefuse, messageRayonAChoisir, genresDuRayonVinted, CLE_REPONSE_RAYON, ESSAIS_RAYON_MAX } from "../_shared/rayon-refuse-moteur.js";
+import { rayonRefuseDuJob, resoudreRayonRefuse, feuillesCandidates, pfApresRayon, questionRayonRefuse, messageRayonAChoisir, genresDuRayonVinted, rayonMoteurARejuger, CLE_REPONSE_RAYON, ESSAIS_RAYON_MAX } from "../_shared/rayon-refuse-moteur.js";
 import { horsModeDepop } from "../../../src/utils/depopCategories.js";
 import { detectObjectIcon } from "../../../src/utils/shared.js";
 import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_shared/poste-extension.ts";
@@ -95,6 +95,8 @@ import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
 import { CHEMIN_BLOCAGE_LBC, blocageLbc, blocagePose, signeBlocageLbc, clesARetirerAuBlocage } from "../_shared/blocage-leboncoin.js";
+// (07/11 soir, Goulvenk) Un relevé arrêté sur la page de connexion n'est jamais une restriction par un simple 403.
+import { signeBlocageHorsConnexionLbc } from "../_shared/blocage-leboncoin.js";
 import { trancherQuestions } from "../_shared/questions-tranchees.ts";
 import { jobDeLaPauseRayon, pfQuestionApresPause, entreeMoteurDuJob } from "../_shared/rayon-moteur-attendu.js";
 import { depotMuetDepuis } from "../_shared/depot-muet.js";
@@ -105,6 +107,7 @@ import { titreNommeAnnonce, decisionAlignementTitre, CONTRADICTION_IDENTITE_RE }
 import { urlsAnnonce } from "../_shared/depot-sans-numero.js";
 import { BEEBS_ATTENTE_MAX_MS, POSE_PAR_SANS_NUMERO, jugerDepotBeebsSansNumero, patchDepotBeebsJamaisEnLigne, patchApresRemboursement } from "../_shared/beebs-depot-sans-numero.js";
 import { jugerDepotLbcJamaisEnLigne, patchDepotLbcJamaisEnLigne, estRemiseEnVente, POSE_PAR_JAMAIS_EN_LIGNE_LBC } from "../_shared/depot-lbc-jamais-en-ligne.js";
+import { FENETRE_DEPOT_RETROUVE_MS, MOTIF_QUESTION_DEPOT_RETROUVE, POSE_PAR_DEPOT_RETROUVE, estDepotAJuger as estDepotRetrouveAJuger, numeroLuAuDepot, jugerDepotRetrouve, patchDepotEnQuestion, patchDepotVendu, patchRecollage, patchJumeauClos, preuvesQuestion } from "../_shared/depot-retrouve-releve.js";
 import { attentePoseeParLeServeur } from "../_shared/attente-session.js";
 import { cheminVintedPourArbre } from "../_shared/vinted-arbre-compte.js";
 import {
@@ -173,6 +176,16 @@ const JUGER_BEEBS_SANS_NUMERO = true;
 // une remise en vente repart (règle A), une publication est « failed » et rendue. Simulation du 06/11 : 4 dépôts sur le
 // parc (inandup33 ×3, jocabroc8 ×1), relus 410 sur Leboncoin — zéro faux. Couper = false + redéployer handler-watch.
 const JUGER_LBC_JAMAIS_EN_LIGNE = true;
+// (07/11, Nico — doriane-henri, Anne-Hélène) Un dépôt Vinted dont le relevé a retrouvé l'annonce (numéro lu par le dépôt
+// lui-même, refusé parce qu'une fiche NEUVE de la synchro le portait) n'est plus « failed » : clos « vendu », question
+// « Est-ce le même article ? », puis recollé après le « Oui » (_shared/depot-retrouve-releve.js). COUPÉ jusqu'au feu vert
+// de Nico après la simulation (scripts/simulation-depot-retrouve-releve.mjs). Allumer = true + redéployer handler-watch.
+const JUGER_DEPOTS_RETROUVES = false;
+// Le rattachement AUTOMATIQUE d'une fiche neuve née APRÈS le dépôt et intacte (décision « rattacher » du juge) demande une
+// écriture atomique en base (public.depot_retrouve_rattacher : fermer le suivi, passer l'identité Vinted, fondre la fiche
+// neuve, journal inventaire_fusions, recoller) — fonction NON écrite le 07/11 (0 cas sur 30 jours : les trois dépôts
+// retrouvés avaient une fiche neuve née AVANT eux). Tant qu'elle n'existe pas, ce cas pose la question (voie sûre).
+const DEPOT_RETROUVE_RATTACHER_RPC = false;
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
@@ -2699,7 +2712,9 @@ serve(async (req) => {
         const rm = (j.platform_fields ?? {}).rayon_moteur;
         // Une question de dernier recours déjà posée attend la personne.
         if (rm?.doute && j.status === "needs_user" && (j.platform_fields ?? {}).needsUserField?.field_key === CLE_REPONSE_RAYON) return false;
-        return Number(rm?.essais ?? 0) < ESSAIS_RAYON_MAX || !!rm?.chemin;
+        // (07/11 nuit, point 1) + un doute « aucune_feuille » que le moteur sait désormais trancher (rayon de l'ancien
+        // arbre : tout l'arbre vivant) se rejuge une fois (rayonMoteurARejuger) — jamais une boucle (motif réécrit).
+        return Number(rm?.essais ?? 0) < ESSAIS_RAYON_MAX || !!rm?.chemin || rayonMoteurARejuger(rm, plan);
       })
       .slice(0, 8);
     const urlIA = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
@@ -3624,7 +3639,9 @@ serve(async (req) => {
       // (03/11, point 7) Un relevé fini « done » a LU Leboncoin en entier : un 403 vu dans une de ses relances (texte
       // « relances : … http_403 ») n'est pas une restriction (faux positif du 01/11 : relevé 6/6 lu, compte mis en pause).
       if (String(r.status ?? "") === "done" && !/\[incomplet\]/.test(String(r.erreur ?? ""))) continue;
-      const signe = signeBlocageLbc(r.erreur);
+      // (07/11 soir, Goulvenk) Arrêté sur la page de connexion : session fermée (circuit connexion), jamais une pause
+      // « restriction » sur le 403 du jeton périmé de ses relances. Les signes vus sur la page (anti-robot) comptent.
+      const signe = signeBlocageHorsConnexionLbc(r.erreur);
       if (!signe) continue;
       const p = preuves.get(r.user_id);
       if (!p || r.finished_at > p.le) preuves.set(r.user_id, { le: r.finished_at, signe, source: "relevé Leboncoin", detail: String(r.erreur).slice(0, 200) });
@@ -4019,6 +4036,20 @@ serve(async (req) => {
       if (r.fermees || r.jugees) console.log(`[handler-watch] Beebs, dépôts sans numéro : ${r.jugees} jugé(s) (page ${r.page + 1}/${r.pages}), ${r.fermees} fermé(s) « jamais mis en ligne », ${r.rendues} publication(s) rendue(s), en attente ${JSON.stringify(r.attente)}`);
     } catch (e) {
       console.error("[handler-watch] dépôts Beebs sans numéro :", (e as Error)?.message ?? e);
+    }
+  }
+
+  // ══ (07/11, Nico) UN DÉPÔT VINTED DONT L'ANNONCE EST RETROUVÉE PAR LE RELEVÉ N'EST JAMAIS « FAILED » ══
+  // _shared/depot-retrouve-releve.js (jugerDepotsRetrouvesParReleve, plus bas). Une fois par heure, minutes 12 à 14 (UTC,
+  // le seul créneau libre de chaque quart : 27-29 et 57-59 aux dépôts sans objet, 42-44 au juge Beebs), 30 jours, une
+  // page de 100 dépôts au plus (ceux qui portent un numéro lu au dépôt), lectures groupées, 30 écritures au plus.
+  // COUPÉ : JUGER_DEPOTS_RETROUVES.
+  if (JUGER_DEPOTS_RETROUVES && new Date().getUTCMinutes() >= 12 && new Date().getUTCMinutes() < 15) {
+    try {
+      const r = await jugerDepotsRetrouvesParReleve(supabase);
+      if (r.candidats) console.log(`[handler-watch] dépôts Vinted retrouvés par le relevé : ${r.jugees} jugé(s) sur ${r.candidats}, ${r.vendues} clos (annonce vendue), ${r.questions} question(s) posée(s), ${r.en_question} dépôt(s) en question, ${r.recolles} recollé(s) (${r.jumeaux_clos} suivi(s) clos), ${r.rattaches} rattaché(s), en attente ${JSON.stringify(r.attente)}`);
+    } catch (e) {
+      console.error("[handler-watch] dépôts Vinted retrouvés par le relevé :", (e as Error)?.message ?? e);
     }
   }
 
@@ -7186,6 +7217,165 @@ async function jugerDepotsLbcJamaisEnLigne(supabase: any, page: number | null = 
       else if (Number(ref?.rembourse) > 0 || ref?.raison === "deja_rembourse") res.rendues++;
     }
     console.log(`[handler-watch] dépôt Leboncoin ${String(j.id).slice(0, 8)} (${j.platform_listing_id}) : jamais mis en ligne par Leboncoin → « failed »`);
+  }
+  return res;
+}
+
+// ══ (07/11, Nico — doriane-henri, Anne-Hélène, XEWER) UN DÉPÔT VINTED DONT L'ANNONCE EST RETROUVÉE PAR LE RELEVÉ ═════════
+// Candidats : dépôts Vinted (publish) des 30 derniers jours, « failed », « published » sans lien ni numéro, ou « cancelled »,
+// qui portent un numéro LU AU DÉPÔT (republier.nouvel_item, lien_refuse) — une page de 100 au plus. Lectures groupées par
+// lots (PostgREST coupe à 1 000 lignes : in() par 150). Le juge (pur) décide ; ici, les seules écritures, compare-and-set
+// sur le statut lu : clôture « vendue », question (releve_poser_question, une fois par paire) + dépôt « cancelled » au
+// message vrai, recollage (« published », lien, numéro) après clôture du job de suivi de la même annonce. 30 au plus.
+// (Placé AVANT le juge Beebs : son selftest compte les écritures de jugerBeebsDepotsSansNumero jusqu'à la fin du fichier.)
+const DEPOTS_RETROUVES_PAGE = 100;
+const DEPOTS_RETROUVES_ECRITURES_MAX = 30;
+// deno-lint-ignore no-explicit-any
+async function jugerDepotsRetrouvesParReleve(supabase: any) {
+  const res = { candidats: 0, jugees: 0, vendues: 0, questions: 0, en_question: 0, recolles: 0, jumeaux_clos: 0, rattaches: 0, attente: {} as Record<string, number> };
+  const compter = (raison: string) => { res.attente[raison] = (res.attente[raison] ?? 0) + 1; };
+  const depuis = new Date(Date.now() - FENETRE_DEPOT_RETROUVE_MS).toISOString();
+  const { data: lus, error } = await supabase.from("cross_post_jobs")
+    .select("id, user_id, platform, action, status, error, inventaire_id, listing_url, platform_listing_id, created_at, published_at, handler_build, photos, platform_fields")
+    .eq("platform", "vinted").eq("action", "publish").in("status", ["failed", "published", "cancelled"]).gte("created_at", depuis)
+    .or("platform_fields->lien_refuse.not.is.null,platform_fields->republier->nouvel_item.not.is.null")
+    .order("created_at", { ascending: true }).limit(DEPOTS_RETROUVES_PAGE);
+  if (error) throw new Error(error.message);
+  // deno-lint-ignore no-explicit-any
+  const jobs = ((lus ?? []) as any[]).filter((j) => estDepotRetrouveAJuger(j) && numeroLuAuDepot(j).numero);
+  res.candidats = jobs.length;
+  if (!jobs.length) return res;
+  const users = [...new Set(jobs.map((j) => String(j.user_id)))];
+  const numeros = [...new Set(jobs.map((j) => String(numeroLuAuDepot(j).numero)))];
+  // deno-lint-ignore no-explicit-any
+  const lire = async (construire: (lot: string[]) => any, ids: string[], n = 150): Promise<any[]> => {
+    // deno-lint-ignore no-explicit-any
+    const out: any[] = [];
+    for (const lot of parLots(ids, n)) {
+      const { data, error: e } = await construire(lot);
+      if (e) throw new Error(e.message);
+      out.push(...(data ?? []));
+    }
+    return out;
+  };
+  const COLS_FICHE = "id, user_id, origine, statut, quantite, fusionne_dans, vinted_item_id, vinted_status, vinted_account_id, disparu_le, prix_achat, prix_achat_inconnu, prix_vente_change_par, prix_vente_change_le, poids_change_par, poids_change_le, attributs, photos, created_at, first_seen_at, titre";
+  const fichesDepot = await lire((lot) => supabase.from("inventaire").select(COLS_FICHE).in("id", lot),
+    [...new Set(jobs.map((j) => String(j.inventaire_id)))]);
+  const porteuses = await lire((lot) => supabase.from("inventaire").select(COLS_FICHE).in("user_id", users).in("vinted_item_id", lot).is("fusionne_dans", null), numeros);
+  const ficheDe = new Map(fichesDepot.map((f) => [String(f.id), f]));
+  const porteuseDe = new Map(porteuses.map((f) => [`${f.user_id}:${f.vinted_item_id}`, f]));
+  const toutes = [...new Set([...fichesDepot, ...porteuses].map((f) => String(f.id)))];
+  const idsPorteuses = [...new Set(porteuses.map((f) => String(f.id)))];
+  const jobsFiches = await lire((lot) => supabase.from("cross_post_jobs")
+    .select("id, inventaire_id, platform, action, status, platform_listing_id, listing_url, handler_build, platform_fields").in("inventaire_id", lot).limit(1000), toutes, 20);
+  const ventesFiches = await lire((lot) => supabase.from("ventes").select("id, inventaire_id, annonce_id, vendu_le, date").in("inventaire_id", lot), idsPorteuses);
+  const ventesNumeros = await lire((lot) => supabase.from("ventes").select("id, inventaire_id, annonce_id, vendu_le, date").in("user_id", users).in("annonce_id", lot), numeros);
+  // deno-lint-ignore no-explicit-any
+  const presences = async (table: string, extra?: (q: any) => any) => {
+    const lignes = await lire((lot) => { const q = supabase.from(table).select("inventaire_id").in("inventaire_id", lot); return extra ? extra(q) : q; }, idsPorteuses);
+    const m = new Map<string, number>();
+    for (const l of lignes) m.set(String(l.inventaire_id), (m.get(String(l.inventaire_id)) ?? 0) + 1);
+    return m;
+  };
+  const annoncesP = await presences("annonces_plateforme", (q) => q.is("disparu_le", null));
+  const pushP = await presences("push_ventes");
+  const remisesP = await presences("remises_en_vente");
+  const fichesAnnonceP = await presences("fiches_annonce");
+  const questions = await lire((lot) => supabase.from("inventaire_doublons").select("garde, absorbe, statut").in("user_id", users).in("garde", lot), toutes);
+  const questionDe = (a: unknown, b: unknown) => questions.find((q) => (String(q.garde) === String(a) && String(q.absorbe) === String(b))
+    || (String(q.garde) === String(b) && String(q.absorbe) === String(a))) ?? null;
+
+  let ecritures = 0;
+  for (const j of jobs) {
+    const n = String(numeroLuAuDepot(j).numero);
+    const ficheDepot = ficheDe.get(String(j.inventaire_id)) ?? null;
+    const porteuse = porteuseDe.get(`${j.user_id}:${n}`) ?? null;
+    const jobsDe = (id: unknown) => jobsFiches.filter((x) => String(x.inventaire_id) === String(id));
+    const jobsPorteuse = porteuse ? jobsDe(porteuse.id) : [];
+    const engages = [...new Set([...jobsDe(j.inventaire_id), ...jobsPorteuse])].filter((x) => String(x.id) !== String(j.id)
+      && x.platform === "vinted" && ["pending", "processing", "needs_user"].includes(String(x.status)));
+    const ventesAnnonce = porteuse ? [...ventesFiches.filter((v) => String(v.inventaire_id) === String(porteuse.id)),
+      ...ventesNumeros.filter((v) => String(v.annonce_id) === n && String(v.inventaire_id) !== String(porteuse.id))] : [];
+    // Le « Oui » pourrait-il réunir les deux fiches ? La fiche du dépôt ne porte pas une AUTRE annonce Vinted vivante
+    // (sinon : la remise en ligne après une vente annulée prouvée, vinted_remise_apres_annulation), et la fiche neuve
+    // n'a aucune annonce d'une autre plateforme (inventaire_fusionner_pour refuse deux annonces d'une même plateforme).
+    let unionPossible = false;
+    if (ficheDepot && porteuse && String(ficheDepot.id) !== String(porteuse.id) && !(annoncesP.get(String(porteuse.id)) ?? 0)) {
+      const autre = String(ficheDepot.vinted_item_id ?? "").trim();
+      if (!autre || autre === n || ficheDepot.disparu_le) unionPossible = true;
+      else {
+        const { data: ok, error: eU } = await supabase.rpc("vinted_remise_apres_annulation", { p_retiree: Number(ficheDepot.id), p_vivante: Number(porteuse.id) });
+        unionPossible = !eU && ok === true;
+      }
+    }
+    // deno-lint-ignore no-explicit-any
+    const v: any = jugerDepotRetrouve({
+      job: j, ficheDepot, porteuse, jobsPorteuse, ventesAnnonce, jobsEngages: engages, unionPossible,
+      question: porteuse && ficheDepot ? questionDe(ficheDepot.id, porteuse.id) : null,
+      donneesPorteuse: porteuse ? { annoncesPlateforme: annoncesP.get(String(porteuse.id)) ?? 0, pushVentes: pushP.get(String(porteuse.id)) ?? 0,
+        remisesEnVente: remisesP.get(String(porteuse.id)) ?? 0, ficheAnnonce: fichesAnnonceP.get(String(porteuse.id)) ?? 0 } : undefined,
+    });
+    res.jugees++;
+    if (ecritures >= DEPOTS_RETROUVES_ECRITURES_MAX && ["vendue", "question", "question_deja_posee", "recoller", "rattacher"].includes(v.decision)) { compter("plafond_du_passage"); continue; }
+    // Les écritures sur le dépôt : compare-and-set sur le statut lu (et « sans lien » pour un dépôt publié).
+    // deno-lint-ignore no-explicit-any
+    const ecrireDepot = async (patch: any): Promise<boolean> => {
+      if (!patch) return false;
+      const archivees = archiverErreur(patch.platform_fields?.erreurs_archivees, j.error, j.status, POSE_PAR_DEPOT_RETROUVE);
+      if (archivees !== patch.platform_fields?.erreurs_archivees) patch.platform_fields = { ...patch.platform_fields, erreurs_archivees: archivees };
+      let q = supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", j.status);
+      if (j.status === "published") q = q.is("listing_url", null).is("platform_listing_id", null);
+      const { data: maj, error: eM } = await q.select("id");
+      if (eM) { console.warn(`[handler-watch] dépôt retrouvé ${String(j.id).slice(0, 8)} : écriture refusée — ${eM.message}`); return false; }
+      if (maj?.length) ecritures++;
+      return Boolean(maj?.length);
+    };
+    if (v.decision === "vendue") {
+      if (await ecrireDepot(patchDepotVendu(j, v))) {
+        res.vendues++;
+        console.log(`[handler-watch] dépôt retrouvé ${String(j.id).slice(0, 8)} : annonce Vinted ${n} vendue (vente ${v.vente?.id}, fiche ${porteuse?.id}) → dépôt clos, la vente reste une`);
+      }
+      continue;
+    }
+    let decision = v.decision;
+    if (decision === "rattacher" && !DEPOT_RETROUVE_RATTACHER_RPC) decision = "question";
+    if (decision === "rattacher") {
+      const { data: r, error: eR } = await supabase.rpc("depot_retrouve_rattacher", { p_job: j.id, p_fiche_neuve: Number(porteuse.id) });
+      if (eR || !r?.ok) { compter(`rattachement_refuse:${eR?.message ?? r?.reason ?? "?"}`.slice(0, 80)); continue; }
+      ecritures++; res.rattaches++;
+      console.log(`[handler-watch] dépôt retrouvé ${String(j.id).slice(0, 8)} : annonce Vinted ${n} rattachée à la fiche du dépôt ${ficheDepot.id} (fiche neuve ${porteuse.id} fondue) ${JSON.stringify(r)}`);
+      continue;
+    }
+    if (decision === "question" || decision === "question_deja_posee") {
+      if (decision === "question") {
+        const { data: posee, error: eQ } = await supabase.rpc("releve_poser_question", {
+          p_user: j.user_id, p_existante: Number(ficheDepot.id), p_nouvelle: Number(porteuse.id), p_motif: MOTIF_QUESTION_DEPOT_RETROUVE, p_preuves: preuvesQuestion(j, v),
+        });
+        if (eQ || posee !== true) { compter(`question_non_posee:${eQ?.message ?? "deja_tranchee"}`.slice(0, 80)); continue; }
+        res.questions++; ecritures++;
+        console.log(`[handler-watch] dépôt retrouvé ${String(j.id).slice(0, 8)} : annonce Vinted ${n} sur la fiche ${porteuse.id} → « Est-ce le même article ? » (fiche du dépôt ${ficheDepot.id}, ${v.raison})`);
+      }
+      // Un dépôt arrêté par la personne n'est jamais réécrit (questionSeule) : la question seule.
+      if (!v.questionSeule && await ecrireDepot(patchDepotEnQuestion(j, { ...v, decision }))) res.en_question++;
+      continue;
+    }
+    if (v.decision === "recoller") {
+      let jumeauxOk = true;
+      for (const id of v.jumeaux ?? []) {
+        const jumeau = jobsPorteuse.find((x) => String(x.id) === String(id));
+        const { data: clos, error: eJ } = await supabase.from("cross_post_jobs").update(patchJumeauClos(jumeau, v, j.id))
+          .eq("id", id).eq("status", "published").eq("platform_listing_id", n).select("id");
+        if (eJ || !clos?.length) { jumeauxOk = false; break; }
+        res.jumeaux_clos++;
+      }
+      if (!jumeauxOk) { compter("suivi_pas_clos"); continue; }
+      if (await ecrireDepot(patchRecollage(j, v))) {
+        res.recolles++;
+        console.log(`[handler-watch] dépôt retrouvé ${String(j.id).slice(0, 8)} : recollé à l'annonce Vinted ${n} (${v.lien}), suivi(s) clos ${JSON.stringify(v.jumeaux ?? [])}`);
+      }
+      continue;
+    }
+    compter(`${v.decision}:${v.raison}`);
   }
   return res;
 }

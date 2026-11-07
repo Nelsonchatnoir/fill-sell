@@ -14,7 +14,9 @@ const ms = (v) => { const t = Date.parse(String(v ?? '')); return Number.isFinit
 
 /**
  * L'état du bandeau : null (rien à montrer : pas de pause, ou pause levée — reprise prudente), sinon
- * { depuis, demande } — demande = un essai déjà demandé que le serveur n'a pas encore tranché.
+ * { depuis, demande, sessionFermee } — demande = un essai déjà demandé que le serveur n'a pas encore tranché ;
+ * sessionFermee = (07/11, Goulvenk) la dernière visite a vu la page de connexion (signe « session_fermee »,
+ * _shared/blocage-leboncoin.js) : le bandeau dit « connecte-toi à Leboncoin », jamais « Leboncoin a restreint l'accès ».
  * @param {unknown} platformSettings
  */
 export function pauseLeboncoin(platformSettings) {
@@ -23,7 +25,7 @@ export function pauseLeboncoin(platformSettings) {
   if (Number.isFinite(ms(b.leve_le))) return null;   // levé : reprise prudente, plus de pause à montrer
   const demande = ms(b.essai_demande_le);
   const preuve = ms(b.derniere_preuve) || ms(b.depuis) || 0;
-  return { depuis: b.depuis, demande: Number.isFinite(demande) && demande > preuve };
+  return { depuis: b.depuis, demande: Number.isFinite(demande) && demande > preuve, sessionFermee: String(b.signe ?? '') === 'session_fermee' };
 }
 
 /** Le patch de platform_settings_fusionner sur ['leboncoin', 'blocage_acces'] — seulement si la pause tient encore. */
@@ -37,6 +39,8 @@ export const TEXTES_PAUSE_LBC = {
   fr: {
     titre: 'Leboncoin est en pause sur ton compte',
     texte: (depuis) => `Leboncoin a restreint l'accès depuis ta connexion${depuis ? ` (${depuis})` : ''} : FillSell a tout mis en pause sur Leboncoin pour ne pas aggraver le blocage. Ouvre leboncoin.fr dans ton navigateur : si la page s'affiche normalement, appuie sur « Leboncoin remarche ».`,
+    titreSession: 'Connecte-toi à Leboncoin sur ton ordinateur',
+    texteSession: (depuis) => `Ta session Leboncoin semble fermée${depuis ? ` (${depuis})` : ''} : FillSell attend ta connexion pour reprendre sur Leboncoin. Ouvre leboncoin.fr dans Chrome sur ton ordinateur, connecte-toi à ton compte, puis appuie sur « Leboncoin remarche ».`,
     bouton: 'Leboncoin remarche',
     demande: 'C\'est noté : au prochain passage de ton ordinateur, FillSell fait UNE visite de contrôle sur Leboncoin (une simple lecture, rien n\'est publié). Si Leboncoin répond normalement, ta file repart d\'elle-même, doucement ; sinon la pause continue et FillSell revérifiera seul, sans rien publier.',
     dejaDemande: 'Contrôle demandé : FillSell fait UNE visite de contrôle sur Leboncoin (une simple lecture) au prochain passage de ton ordinateur.',
@@ -47,6 +51,8 @@ export const TEXTES_PAUSE_LBC = {
   en: {
     titre: 'Leboncoin is paused on your account',
     texte: (depuis) => `Leboncoin restricted access from your connection${depuis ? ` (${depuis})` : ''}: FillSell paused everything on Leboncoin so the block doesn't get worse. Open leboncoin.fr in your browser: if the page shows normally, tap “Leboncoin works again”.`,
+    titreSession: 'Log in to Leboncoin on your computer',
+    texteSession: (depuis) => `Your Leboncoin session seems closed${depuis ? ` (${depuis})` : ''}: FillSell is waiting for you to log in before resuming on Leboncoin. Open leboncoin.fr in Chrome on your computer, log in to your account, then tap “Leboncoin works again”.`,
     bouton: 'Leboncoin works again',
     demande: 'Noted: on your computer\'s next check, FillSell makes ONE control visit to Leboncoin (a simple read, nothing is posted). If Leboncoin answers normally, your queue resumes on its own, gently; otherwise the pause goes on and FillSell will check again on its own, posting nothing.',
     dejaDemande: 'Check requested: FillSell makes ONE control visit to Leboncoin (a simple read) on your computer\'s next check.',

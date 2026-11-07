@@ -5430,7 +5430,9 @@ serve(async (req) => {
     // sert plus rien de Leboncoin jusqu'à l'essai. Lecture de la tâche seulement quand le texte porte un signe.
     try {
       const texteB = [typeof body.error === "string" ? body.error : "", typeof patch.error === "string" ? patch.error : ""].join(" | ");
-      const signeB = signeBlocageLbc(texteB);
+      // (07/11 soir, Goulvenk) Une tâche arrêtée sur le mur de CONNEXION passe par le circuit connexion : le 403 du jeton
+      // périmé à côté n'est jamais une restriction (_shared/blocage-leboncoin.js, signeBlocageHorsConnexionLbc).
+      const signeB = signeBlocageHorsConnexionLbc(texteB);
       if (signeB) {
         const { data: jB } = await userClient.from("cross_post_jobs").select("platform").eq("id", jobId).maybeSingle();
         if ((jB as { platform?: string } | null)?.platform === "leboncoin") {
@@ -5769,6 +5771,7 @@ import { defautFillsell, messageDefautFillsell } from "../_shared/defaut-fillsel
 import { pauseRayonMoteur } from "../_shared/rayon-moteur-attendu.js";
 import { navigateurDeLaRequete, nomCourtSur, nommerLeNavigateur } from "../_shared/navigateur-poste.js";
 import { CHEMIN_BLOCAGE_LBC, signeBlocageLbc, blocagePose, clesARetirerAuBlocage } from "../_shared/blocage-leboncoin.js";
+import { signeBlocageHorsConnexionLbc } from "../_shared/blocage-leboncoin.js";
 import { adresseRefuseeAvantRetrait, publicationAvecLaMemeAdresse, messageAdresseChezNous, PUBLICATION_PREUVE_JOURS, prochaineAdresseLbc, messageAutreAdresseLbc, messageRueIntrouvableLbc } from "../_shared/lbc-voie-des-reglages.js";
 import { urlConditionsVintedRelevee, messageConditionsVinted } from "../_shared/vinted-conditions.js";
 import { retraitEngage } from "../_shared/retenue-creneau.js";

@@ -59,6 +59,16 @@ export function attenteSessionEncoreEspacee(job, sessions, maintenant = Date.now
 // porte déjà n'est jamais réécrite. Pur (Deno + Node).
 const LABELS_SESSION = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", depop: "Depop", opla: "Opla" };
 export const ATTENTE_SESSION_POSE_PAR_SERVEUR = "get-pending-jobs (session connue morte)";
+// (07/11 soir, Goulvenk) La pause Leboncoin dont la visite de contrôle a vu la page de connexion (_shared/blocage-leboncoin.js,
+// blocageSessionFermee) : même message, même marqueur — l'app dit « À toi de jouer : connecte-toi à Leboncoin sur ton
+// ordinateur ». Ce marqueur-ci n'est PAS levé par handler-watch sur une simple sonde : seule la levée de la pause (visite
+// passée, relevé ou dépôt réussi) le retire (get-pending-jobs).
+export const ATTENTE_SESSION_POSE_PAR_PAUSE_LBC = "get-pending-jobs (pause Leboncoin : session fermée)";
+/** Le marqueur posé par la pause Leboncoin sur une session fermée ? */
+export function attentePoseeParLaPauseLbc(pf) {
+  const att = pf && typeof pf === "object" ? pf.attente_session : null;
+  return !!att && typeof att === "object" && att.pose_par === ATTENTE_SESSION_POSE_PAR_PAUSE_LBC;
+}
 
 /**
  * L'attente posée par le serveur (sans échéance) ? handler-watch la lève comme celle de l'extension dès que la sonde revoit
@@ -72,9 +82,10 @@ export function attentePoseeParLeServeur(pf) {
 /**
  * Le message et les champs d'une tâche retenue par une session connue morte, ou null (déjà marquée : rien à écrire).
  * @param {{ action?: string, platform?: string, error?: string|null, platform_fields?: Record<string, unknown>|null }} job
- * @param {{ observeeLe?: string|null, navigateur?: string|null, maintenantIso?: string }} [o]
+ * @param {{ observeeLe?: string|null, navigateur?: string|null, maintenantIso?: string, posePar?: string, motif?: string }} [o]
  */
-export function attenteSessionServeur(job, { observeeLe = null, navigateur = null, maintenantIso = new Date().toISOString() } = {}) {
+export function attenteSessionServeur(job, { observeeLe = null, navigateur = null, maintenantIso = new Date().toISOString(),
+  posePar = ATTENTE_SESSION_POSE_PAR_SERVEUR, motif = "session connue morte (relevée par l'extension) — tâche retenue par le serveur" } = {}) {
   const pf = job?.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
   if (ATTENTE_SESSION_RE.test(String(job?.error ?? "")) && pf.attente_session && typeof pf.attente_session === "object") return null;
   const pfm = String(job?.platform ?? "");
@@ -96,8 +107,8 @@ export function attenteSessionServeur(job, { observeeLe = null, navigateur = nul
         depuis: typeof prec?.depuis === "string" ? prec.depuis : (observeeLe ?? maintenantIso),
         observations: Number(prec?.observations) || 0,
         derniere: maintenantIso,
-        motif: "session connue morte (relevée par l'extension) — tâche retenue par le serveur",
-        pose_par: ATTENTE_SESSION_POSE_PAR_SERVEUR,
+        motif,
+        pose_par: posePar,
       },
     },
   };

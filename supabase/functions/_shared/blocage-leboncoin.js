@@ -83,6 +83,66 @@ export function signeBlocageLbc(texte) {
   return null;
 }
 
+// ── (07/11 soir, Goulvenk — tout le parc) UNE SESSION FERMÉE N'EST JAMAIS UNE RESTRICTION ─────────────────────────────
+// Goulvenk (Pro) : session Leboncoin fermée dans son Chrome le 06/11 vers 00:25 (relevé des ventes « compte_absent_de_la_page »),
+// veille des commandes en 403 à 01:33 (le jeton de la page, une heure après) → pause « restriction » ; puis 9 visites de
+// contrôle en 26 h, toutes « session leboncoin : page de connexion », et ses tâches affichaient « En pause : nouvel essai
+// automatique, rien à faire » pendant que rien ne pouvait repartir sans lui ; sa synchro de 18:10 restait « queued » ;
+// revu connecté à 19:11, la visite n'est partie qu'à 19:40 (lue 17/17, pause levée à 19:42). LA RÈGLE :
+//   1. un texte qui dit le mur de CONNEXION (page de connexion vue par l'onglet, « Connexion Leboncoin requise »…) n'est
+//      jamais une preuve de restriction par un simple 403 : avec une session fermée, l'API refuse le jeton périmé de la
+//      page en 403. Seuls les signes vus SUR LA PAGE (anti-robot, « Accès temporairement restreint ») restent des signes ;
+//   2. une pause dont la dernière visite a vu la page de connexion (signe « session_fermee ») passe par le circuit
+//      CONNEXION : tâches « En attente de ta connexion à Leboncoin… » (À toi de jouer), jamais « nouvel essai automatique » ;
+//   3. elle ne dure jamais contre une preuve : un relevé Leboncoin lu en entier ou un dépôt Leboncoin réussi APRÈS la
+//      dernière preuve la LÈVE (contrePreuvePauseLbc) ; le compte revu connecté par l'extension après la dernière visite
+//      rend la visite de contrôle due TOUT DE SUITE (une toutes les 30 min au plus : jamais de rafale) ;
+//   4. une synchro Leboncoin demandée par la personne pendant la pause EST la visite de contrôle (lecture seule) : elle
+//      part au passage suivant, jamais muette en file.
+export const SIGNE_SESSION_FERMEE = "session_fermee";
+export const ESSAI_SUR_PREUVE_MIN_MS = 30 * 60_000;
+// Le mur de connexion écrit par NOS lecteurs et handlers (relevé, garde de dépôt, attente de session) — jamais un texte
+// de Leboncoin deviné.
+const MUR_CONNEXION_LBC_RE = /page de connexion|renvoie vers la connexion|non renouvel[ée] \(session_fermee\)|Connexion Leboncoin requise|En attente de ta connexion à Leboncoin|mur de connexion/i;
+/** Le texte dit-il le mur de connexion de Leboncoin (session fermée) ? @param {unknown} texte */
+export function murConnexionLbc(texte) {
+  return MUR_CONNEXION_LBC_RE.test(String(texte ?? ""));
+}
+/** Le signe de blocage d'un texte qui peut dire le mur de connexion : un 403 à côté de la page de connexion est le jeton
+ *  périmé d'une session fermée, jamais une restriction (règle 1) ; les signes vus sur la page restent.
+ * @param {unknown} texte @returns {string | null} */
+export function signeBlocageHorsConnexionLbc(texte) {
+  const signe = signeBlocageLbc(texte);
+  if (signe === "http_403" && murConnexionLbc(texte)) return null;
+  return signe;
+}
+/** La pause tient-elle sur une session fermée (dernière visite : page de connexion) ? */
+export function blocageSessionFermee(b) {
+  return !!b && typeof b === "object" && !b.leve_le && String(b.signe ?? "") === SIGNE_SESSION_FERMEE;
+}
+/**
+ * (règle 3) Une preuve que Leboncoin répond APRÈS la dernière preuve de la pause : { par, le } ou null.
+ * @param {any} b le blocage (blocage_acces)
+ * @param {{ releveReussiLe?: string | null, depotReussiLe?: string | null }} o — fin du dernier relevé Leboncoin lu en
+ *   entier (done, pas « [incomplet] »), date du dernier dépôt Leboncoin publié par l'extension
+ */
+export function contrePreuvePauseLbc(b, { releveReussiLe = null, depotReussiLe = null } = {}) {
+  if (!b || typeof b !== "object" || b.leve_le) return null;
+  const borne = ms(b.derniere_preuve) || ms(b.depuis);
+  if (!Number.isFinite(borne)) return null;
+  const r = ms(releveReussiLe), d = ms(depotReussiLe);
+  if (Number.isFinite(r) && r > borne) return { par: "relevé Leboncoin lu en entier après la pause", le: new Date(r).toISOString() };
+  if (Number.isFinite(d) && d > borne) return { par: "dépôt Leboncoin réussi après la pause", le: new Date(d).toISOString() };
+  return null;
+}
+/** (règle 3) L'heure où l'extension a revu le compte Leboncoin connecté (extension_sessions), ou null. */
+export function sessionLbcRevueLe(sessions) {
+  const s = objet(sessions);
+  if (!s || s.leboncoin !== true) return null;
+  const le = ms(objet(s.checked_at_par_plateforme)?.leboncoin ?? s.checked_at);
+  return Number.isFinite(le) ? new Date(le).toISOString() : null;
+}
+
 // (05/11, point 19 — 25caeedd) LA VISITE DE CONTRÔLE REND TOUJOURS UN VERDICT. Une visite finie sans liste (« Mes annonces »
 // n'a pas rendu sa liste, jeton non renouvelé, page de connexion) et sans signe connu laissait l'essai OUVERT : le compteur
 // n'avançait pas, et quand la session Leboncoin était fermée, la pause ne pouvait jamais se lever et rien ne disait
@@ -93,7 +153,8 @@ export const SESSION_FERMEE_LBC_RE = /page de connexion|renvoie vers la connexio
 export function verdictVisiteControleLbc(statut, texte) {
   const st = String(statut ?? ""), t = String(texte ?? "");
   if (st === "done" && !/\[incomplet\]/.test(t)) return { verdict: "passe" };
-  const signe = signeBlocageLbc(t);
+  // (07/11 soir, règle 1) La page de connexion vue par la visite bat un 403 de ses relances (jeton périmé).
+  const signe = signeBlocageHorsConnexionLbc(t);
   if (signe) return { verdict: "refuse", signe };
   if (["done", "failed", "absente", "expired"].includes(st)) return { verdict: "refuse", signe: SESSION_FERMEE_LBC_RE.test(t) ? "session_fermee" : "visite_sans_liste" };
   return { verdict: null };   // en file, en cours : on attend
@@ -110,7 +171,10 @@ export function blocageLbc(ps) {
  *   « libre » | « bloque » (rien ne part) | « essai » (une seule action peut partir) | « reprise » (une action toutes
  *   les 10 min au plus).
  */
-export function etatBlocageLbc(ps, maintenant = Date.now()) {
+// (07/11 soir, règles 3 et 4) `o` (facultatif, get-pending-jobs) : { synchroDemandee: une synchro Leboncoin de la
+// personne attend en file — elle EST la visite ; sessionRevueLe: l'extension a revu le compte connecté à cette heure }.
+// Rendu « essai » + `par` (« synchro_demandee » | « session_revue ») ; sans `o`, à l'identique d'avant.
+export function etatBlocageLbc(ps, maintenant = Date.now(), o = {}) {
   const b = blocageLbc(ps);
   if (!b) return { etat: "libre", blocage: null };
   const leve = ms(b.leve_le);
@@ -131,12 +195,24 @@ export function etatBlocageLbc(ps, maintenant = Date.now()) {
     const prochain = (Number.isFinite(le) ? le : maintenant) + delaiControleLbc(b);
     const demandeApres = ms(b.essai_demande_le);
     if (maintenant >= prochain || (Number.isFinite(demandeApres) && Number.isFinite(le) && demandeApres > le)) return { etat: "essai", blocage: b };
+    // (07/11 soir, règle 4) Visite servie jamais prise depuis 2 h : la synchro de la personne la remplace.
+    if (o?.synchroDemandee === true) return { etat: "essai", blocage: b, par: "synchro_demandee" };
     return { etat: "bloque", blocage: b };
   }
   const essaiApres = ms(b.essai_apres) || (ms(b.depuis) + delaiControleLbc(b));
   const demande = ms(b.essai_demande_le);
   if ((Number.isFinite(essaiApres) && maintenant >= essaiApres) || (Number.isFinite(demande) && demande > (ms(b.derniere_preuve) || 0))) {
     return { etat: "essai", blocage: b };
+  }
+  // (07/11 soir, règle 4) La synchro demandée par la personne pendant la pause part : elle EST la visite (lecture seule).
+  // Une fois servie, elle n'est plus en file : une demande = une visite, jamais une boucle.
+  if (o?.synchroDemandee === true) return { etat: "essai", blocage: b, par: "synchro_demandee" };
+  // (07/11 soir, règle 3) Pause sur une session fermée, compte revu connecté APRÈS la dernière visite refusée : la visite
+  // est due tout de suite — 30 min au moins après la précédente (jamais de rafale sur un « connecté » qui ment).
+  const revue = ms(o?.sessionRevueLe);
+  if (blocageSessionFermee(b) && Number.isFinite(revue) && revue > (ms(b.derniere_preuve) || ms(b.depuis) || 0)
+      && maintenant - (ms(essai?.le) || 0) >= ESSAI_SUR_PREUVE_MIN_MS) {
+    return { etat: "essai", blocage: b, par: "session_revue" };
   }
   return { etat: "bloque", blocage: b };
 }

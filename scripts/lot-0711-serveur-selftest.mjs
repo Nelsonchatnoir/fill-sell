@@ -108,5 +108,13 @@ console.log("8. (07/11 soir, Nico) Taille : la fiche fait foi ; une tranche de l
   ok(R(job("10 ans"), "12 ans")?.valeur === "10 ans / 140 cm", "sans choix de la personne (source inconnue) : l'ordre d'avant, inchangé");
 }
 
+console.log("9. (07/11 nuit, Marta f1c4a0e0) Les libellés exacts de la palette de vinted.it");
+{
+  const { normalizeVintedColors: n } = await import("../src/utils/vintedColors.js");
+  ok(n("Blu marino").colors.join() === "Marine" && n("Borgogna").colors.join() === "Bordeaux" && n("Chiaro").colors.join() === "Transparence",
+    "« Blu marino » → Marine, « Borgogna » → Bordeaux, « Chiaro » → Transparence");
+  ok(n("Blu chiaro").colors.join() === "Bleu" && n("Blu").colors.join() === "Bleu" && n("Nero").colors.join() === "Noir", "le reste inchangé (« Blu chiaro » reste Bleu)");
+}
+
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

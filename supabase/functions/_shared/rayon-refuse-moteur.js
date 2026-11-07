@@ -36,6 +36,7 @@ import { CATALOGUE_VINTED_COMPTES } from "./vinted-catalogue-comptes.js";
 import { langueEtrangereDesRacines } from "./vinted-pays.ts";
 import { FEUILLES as FEUILLES_BEEBS } from "../../../src/utils/arbres/beebsFeuilles.js";
 import { FEUILLES as FEUILLES_LBC } from "../../../src/utils/arbres/leboncoinFeuilles.js";
+import { PAIRES_ARBRES_VINTED, IDS_ANCIEN_ARBRE } from "./vinted-arbre-compte.js";
 
 export const SEPARATEUR_RAYON = " › ";
 export const ESSAIS_RAYON_MAX = 3;
@@ -87,6 +88,141 @@ function feuillesVintedSous(id) {
   const kids = enfants.get(id) ?? [];
   if (!kids.length) return [id];
   return kids.flatMap((k) => feuillesVintedSous(k));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (07/11 nuit, point 1 — 9256e3ae, job dca7193f) UN RAYON DE L'ANCIEN ARBRE SUR UN COMPTE BASCULÉ
+// ═══════════════════════════════════════════════════════════════════════════
+// « Éponge anti-buée pour voiture » publiée en « Hommes › Accessoires › Autres » (99, choisi par la personne) sur un
+// compte que Vinted a basculé sur son nouvel arbre (« Hommes » n'y propose plus que Vêtements, Chaussures, Sacs et
+// sacoches, Chapeaux et casquettes, Soins). 99 n'a AUCUN équivalent (PAIRES_ARBRES_VINTED) ; le moteur ne cherchait que
+// SOUS le rayon d'origine — une feuille morte : « aucune_feuille » —, la question de l'extension partait avec les rayons
+// du niveau « Hommes », la personne a pris « Sacs et sacoches », et la question suivante proposait dix sacs.
+// LA RÈGLE (tous les comptes) : un chemin qui passe par un nœud que la bascule a RETIRÉ (feuille de IDS_ANCIEN_ARBRE, ou
+// nœud dont toutes les feuilles sont retirées ou déplacées ailleurs) se cherche dans TOUT l'arbre VIVANT du compte basculé :
+//   · un équivalent sûr (même identifiant pour un rayon déplacé, même libellé pour un accessoire) → posé seul ;
+//   · sinon l'IA, en deux temps (la branche — ce qu'elle contient montré —, puis la feuille dans la branche) ;
+//   · sinon la question de FEUILLES (chemins complets), avec la sortie « Abandonner Vinted pour cet article » nommée.
+// Jamais un rayon de l'ancien arbre proposé à un compte basculé ; jamais quand la page du compte montre encore le niveau
+// retiré (compte resté sur l'ancien arbre : la question de l'extension reste la bonne).
+const cleCheminVinted = (c) => (Array.isArray(c) ? c : String(c ?? "").split(" > "))
+  .map((s) => norm(s).replace(/\s*&\s*/g, " et ")).join(" > ");
+let vivantVinted = null;
+function arbreVivantVinted() {
+  if (vivantVinted) return vivantVinted;
+  const { parId, enfants } = arbreVinted();
+  const versNouveau = new Map(PAIRES_ARBRES_VINTED.map(([a, n]) => [cleCheminVinted(a), n.split(" > ")]));
+  // Le nouveau chemin de chaque feuille gardée (déplacée ou renommée), null pour une feuille retirée.
+  const destin = new Map();
+  for (const id of parId.keys()) {
+    if ((enfants.get(id) ?? []).length) continue;
+    if (IDS_ANCIEN_ARBRE.has(id)) { destin.set(id, null); continue; }
+    const chemin = cheminVintedDe(id);
+    destin.set(id, versNouveau.get(cleCheminVinted(chemin)) ?? chemin);
+  }
+  // Un nœud intermédiaire est MORT quand aucune de ses feuilles ne vit encore sous lui (retirée, ou déplacée ailleurs).
+  const morts = new Set();
+  for (const id of parId.keys()) {
+    if (!(enfants.get(id) ?? []).length) continue;
+    const prefixe = cleCheminVinted(cheminVintedDe(id));
+    const vit = feuillesVintedSous(id).some((f) => {
+      const d = destin.get(f);
+      return d != null && cleCheminVinted(d).startsWith(prefixe + " > ");
+    });
+    if (!vit) morts.add(id);
+  }
+  // Les feuilles vivantes : jamais retirées, jamais restées sous un nœud mort (chemin traduit quand il a bougé).
+  const feuilles = [];
+  for (const [id, d] of destin) {
+    if (d == null) continue;
+    const ancetreMort = (() => { let n = parId.get(parId.get(id)?.parent); while (n) { if (morts.has(n.id)) return true; n = parId.get(n.parent); } return false; })();
+    if (ancetreMort && cleCheminVinted(d) === cleCheminVinted(cheminVintedDe(id))) continue;
+    feuilles.push({ chemin: d.slice(), id: String(id) });
+  }
+  vivantVinted = { morts, feuilles, destin };
+  return vivantVinted;
+}
+
+/** Les identifiants des nœuds d'un chemin de libellés (du haut vers le bas), ou null. */
+function idsDuCheminVinted(chemin) {
+  const { parId, enfants } = arbreVinted();
+  const ids = [];
+  let courant = 0;
+  for (const libelle of chemin) {
+    const suivant = (enfants.get(courant) ?? []).find((id) => norm(parId.get(id)?.libelle) === norm(libelle));
+    if (suivant == null) return null;
+    ids.push(suivant);
+    courant = suivant;
+  }
+  return ids;
+}
+
+/** L'indice du premier niveau RETIRÉ par la bascule dans ce chemin (-1 : chemin vivant). */
+export function niveauMortVinted(chemin) {
+  const ids = Array.isArray(chemin) && chemin.length ? idsDuCheminVinted(chemin) : null;
+  if (!ids) return -1;
+  const { morts } = arbreVivantVinted();
+  return ids.findIndex((id) => morts.has(id) || IDS_ANCIEN_ARBRE.has(id));
+}
+
+/** L'équivalent sûr d'une feuille de l'ancien arbre dans l'arbre vivant (même id déplacé, même libellé), ou null. */
+function equivalentVivantVinted(chemin) {
+  const ids = idsDuCheminVinted(chemin);
+  const id = ids?.[ids.length - 1];
+  if (id == null) return null;
+  const { enfants } = arbreVinted();
+  if ((enfants.get(id) ?? []).length) return null; // un nœud intermédiaire n'a pas d'équivalent unique
+  // Rayon DÉPLACÉ (sacs, chapeaux…) : même identifiant, nouveau chemin.
+  const d = arbreVivantVinted().destin.get(id);
+  if (d && cleCheminVinted(d) !== cleCheminVinted(cheminVintedDe(id))) return { chemin: d.slice(), id: String(id) };
+  // Accessoire RETIRÉ remplacé sous « Accessoires de mode » : même libellé, nouvel identifiant.
+  const versNouveau = new Map(PAIRES_ARBRES_VINTED.map(([a, n]) => [cleCheminVinted(a), n.split(" > ")]));
+  const n = versNouveau.get(cleCheminVinted(cheminVintedDe(id)));
+  if (!n) return null;
+  const idNouveau = noeudVintedDuChemin(n);
+  if (idNouveau == null || (enfants.get(idNouveau) ?? []).length) return null;
+  return { chemin: n.slice(), id: String(idNouveau) };
+}
+
+/** Les feuilles de l'arbre VIVANT (compte basculé) : chemins complets, identifiants. */
+export function feuillesArbreVivantVinted() {
+  return arbreVivantVinted().feuilles.map((f) => ({ chemin: f.chemin.slice(), id: f.id }));
+}
+
+// Les sous-niveaux de chaque nœud, dans l'arbre vivant et dans l'arbre relevé (ancien) : clé = chemin du parent.
+let niveauxVinted = null;
+function niveauxDesArbresVinted() {
+  if (niveauxVinted) return niveauxVinted;
+  const ajouter = (m, chemin) => {
+    for (let k = 0; k < chemin.length; k++) {
+      const p = cleCheminVinted(chemin.slice(0, k));
+      if (!m.has(p)) m.set(p, new Set());
+      m.get(p).add(norm(chemin[k]).replace(/\s*&\s*/g, " et "));
+    }
+  };
+  const nouveau = new Map();
+  for (const f of arbreVivantVinted().feuilles) ajouter(nouveau, f.chemin);
+  const ancien = new Map();
+  for (const id of arbreVinted().parId.keys()) ajouter(ancien, cheminVintedDe(id));
+  niveauxVinted = { nouveau, ancien };
+  return niveauxVinted;
+}
+
+/**
+ * Les rayons qu'une page Vinted a montrés à un niveau (allowed_values de la question de l'extension) sont-ils ceux
+ * d'un niveau du NOUVEL arbre que l'ancien n'a pas ? Preuve que le compte est basculé — jamais une supposition :
+ * liste vide, rayon inconnu de nos relevés, ou niveau identique dans l'ancien arbre → non.
+ */
+export function pageDuNouvelArbreVinted(options) {
+  const vus = [...new Set((Array.isArray(options) ? options : []).map((o) => norm(o).replace(/\s*&\s*/g, " et ")).filter(Boolean))];
+  if (vus.length < 2) return false;
+  const { nouveau, ancien } = niveauxDesArbresVinted();
+  for (const [p, enfants] of nouveau) {
+    if (!vus.every((v) => enfants.has(v))) continue;
+    const a = ancien.get(p);
+    if (!a || !vus.every((v) => a.has(v))) return true;
+  }
+  return false;
 }
 
 // ── Leboncoin : les rayons d'OBJETS seulement (ni emploi, ni immobilier, ni
@@ -166,12 +302,20 @@ export function feuillesCandidates({ plateforme = "", base = [], genre = null, t
   if (plateforme === "vinted") {
     const id = noeudVintedDuChemin(b);
     if (id == null || !b.length) return [];
-    feuilles = feuillesVintedSous(id).filter((f) => f !== id).map((f) => ({ chemin: cheminVintedDe(f), id: String(f) }));
-    // Le catalogue VIVANT fait foi : quand Vinted a dit quels sous-rayons il
-    // propose sous ce niveau, une feuille de notre relevé hors de cette liste
-    // n'est jamais candidate (relevé du 25/09 périmé sur ce point).
-    const vivants = Array.isArray(enfantsVivants) ? new Set(enfantsVivants.map(norm)) : null;
-    if (vivants && vivants.size) feuilles = feuilles.filter((f) => vivants.has(norm(f.chemin[b.length])));
+    if (niveauMortVinted(b) >= 0 && !Array.isArray(enfantsVivants)) {
+      // (07/11 nuit, point 1) Chemin de l'ancien arbre sur un compte basculé (plan « rayon disparu » : enfantsVivants
+      // null) : l'équivalent sûr s'il existe, sinon TOUT l'arbre vivant (jamais « sous » une branche morte). Un compte
+      // resté sur l'ancien arbre (plan d'avant : enfantsVivants lus sur sa page) garde la règle d'avant ci-dessous.
+      const eq = equivalentVivantVinted(b);
+      feuilles = eq ? [eq] : feuillesArbreVivantVinted();
+    } else {
+      feuilles = feuillesVintedSous(id).filter((f) => f !== id).map((f) => ({ chemin: cheminVintedDe(f), id: String(f) }));
+      // Le catalogue VIVANT fait foi : quand Vinted a dit quels sous-rayons il
+      // propose sous ce niveau, une feuille de notre relevé hors de cette liste
+      // n'est jamais candidate (relevé du 25/09 périmé sur ce point).
+      const vivants = Array.isArray(enfantsVivants) ? new Set(enfantsVivants.map(norm)) : null;
+      if (vivants && vivants.size) feuilles = feuilles.filter((f) => vivants.has(norm(f.chemin[b.length])));
+    }
   } else if (plateforme === "beebs" || plateforme === "leboncoin") {
     const toutes = plateforme === "beebs" ? FEUILLES_BEEBS : FEUILLES_LBC.filter((f) =>
       !LBC_HORS_OBJETS.test(f.chemin[0]) && !LBC_FEUILLES_HORS_OBJETS.has(f.chemin.join(" > ")));
@@ -185,6 +329,8 @@ export function feuillesCandidates({ plateforme = "", base = [], genre = null, t
   if (Array.isArray(exclure) && exclure.length) {
     const x = exclure.map(norm).join(" | ");
     feuilles = feuilles.filter((f) => f.chemin.map(norm).join(" | ") !== x);
+    // (07/11 nuit) Vinted : les rayons les plus proches du refusé d'abord (une question plafonnée à 600 garde les bons).
+    if (plateforme === "vinted") feuilles = trierParProximite(feuilles, exclure);
   }
   // Le genre lu sur la fiche n'est jamais contredit : une feuille d'un AUTRE
   // genre est retirée (une feuille sans genre reste).
@@ -204,9 +350,71 @@ export function feuillesCandidates({ plateforme = "", base = [], genre = null, t
 
 /** Le chemin relatif au rayon d'origine, tel qu'il est proposé dans la question. */
 export function libelleFeuille(chemin, base) {
-  const b = Array.isArray(base) ? base.length : 0;
+  // (07/11 nuit, point 1) Relatif au rayon d'origine seulement quand il en est le préfixe : une feuille de l'arbre
+  // vivant cherchée hors d'une branche morte se lit en entier (« Maison › Entretien de la maison › … »).
+  const b = Array.isArray(base) && base.length && base.length < chemin.length
+    && base.every((s, i) => norm(chemin[i]) === norm(s)) ? base.length : 0;
   const reste = chemin.slice(b);
   return (reste.length ? reste : chemin).join(SEPARATEUR_RAYON);
+}
+
+/** Les feuilles les plus proches d'un chemin d'abord (plus long préfixe commun), l'ordre de l'arbre ensuite. */
+function trierParProximite(feuilles, chemin) {
+  const ref = (Array.isArray(chemin) ? chemin : []).map(norm);
+  const commun = (c) => { let n = 0; while (n < c.length && n < ref.length && norm(c[n]) === ref[n]) n++; return n; };
+  return feuilles.map((f, i) => ({ f, i, n: commun(f.chemin) })).sort((a, b) => b.n - a.n || a.i - b.i).map((x) => x.f);
+}
+
+/**
+ * (07/11 nuit, point 1) L'arbre VIVANT entier, en deux temps : la BRANCHE (deux premiers niveaux, ce qu'elle contient
+ * montré — consigne « le plus proche », comme la descente de l'app), puis la FEUILLE dans la branche (consigne
+ * ordinaire : null est une bonne réponse). Jamais une feuille hors de nos listes. Le doute rend les feuilles de la
+ * branche retenue (ou, sans branche, celles de la racine d'origine) : la question qui suit reste lisible.
+ */
+async function descenteArbreVivantVinted({ feuilles, base, titre, attributsIA, user_id }, appelerIA) {
+  const cle = (c) => c.map(norm).join(" | ");
+  const racineOrigine = Array.isArray(base) && base.length ? norm(base[0]) : null;
+  const repli = (() => {
+    const r = racineOrigine ? feuilles.filter((f) => norm(f.chemin[0]) === racineOrigine) : [];
+    return (r.length ? r : feuilles).slice(0, 600);
+  })();
+  const branches = new Map();
+  for (const f of feuilles) {
+    const tete = f.chemin.slice(0, 2);
+    const k = cle(tete);
+    if (!branches.has(k)) branches.set(k, { chemin: tete, sous: new Set() });
+    if (f.chemin.length > 2) branches.get(k).sous.add(f.chemin[2]);
+  }
+  const candidatsBranches = [...branches.values()].map((b) => ({ chemin: b.chemin, ...(b.sous.size ? { sous: [...b.sous].slice(0, 30) } : {}) }));
+  let rep1 = null;
+  try {
+    rep1 = await appelerIA({
+      titre: String(titre ?? "").slice(0, 200), attributs: attributsIA, consigne: "plus_proche",
+      candidats: { vinted: candidatsBranches }, max_candidats: candidatsBranches.length, user_id,
+    });
+  } catch (e) {
+    return { doute: true, motif: "ia_indisponible", iaIndisponible: true, detail: String(e?.message ?? e).slice(0, 120), feuilles: repli };
+  }
+  if (rep1?.motif === "ia_indisponible") return { doute: true, motif: "ia_indisponible", iaIndisponible: true, feuilles: repli };
+  const c1 = rep1?.choix?.vinted;
+  const branche = Array.isArray(c1?.chemin) ? candidatsBranches.find((b) => cle(b.chemin) === cle(c1.chemin)) : null;
+  if (!branche) return { doute: true, motif: "ia_sans_branche", feuilles: repli };
+  const dansBranche = feuilles.filter((f) => cle(f.chemin.slice(0, branche.chemin.length)) === cle(branche.chemin));
+  let rep2 = null;
+  try {
+    rep2 = await appelerIA({
+      titre: String(titre ?? "").slice(0, 200), attributs: attributsIA,
+      candidats: { vinted: dansBranche.map((f) => ({ chemin: f.chemin, ...(f.id ? { id: f.id } : {}) })) },
+      max_candidats: dansBranche.length, user_id,
+    });
+  } catch (e) {
+    return { doute: true, motif: "ia_indisponible", iaIndisponible: true, detail: String(e?.message ?? e).slice(0, 120), feuilles: dansBranche };
+  }
+  if (rep2?.motif === "ia_indisponible") return { doute: true, motif: "ia_indisponible", iaIndisponible: true, feuilles: dansBranche };
+  const c2 = rep2?.choix?.vinted;
+  const f = Array.isArray(c2?.chemin) ? dansBranche.find((x) => cle(x.chemin) === cle(c2.chemin)) : null;
+  if (!f) return { doute: true, motif: c2 ? "hors_liste" : "ia_sans_choix", feuilles: dansBranche };
+  return { chemin: f.chemin, id: f.id, source: "ia_arbre_vivant", branche: branche.chemin, feuilles: dansBranche };
 }
 
 /**
@@ -218,20 +426,32 @@ export async function resoudreRayonRefuse(entree, appelerIA) {
   const { plateforme, base, titre, description, objet, marque, genre, taille, user_id, enfantsVivants, exclure, genresPossibles } = entree;
   const feuilles = feuillesCandidates({ plateforme, base, genre, titre, enfantsVivants, exclure, genresPossibles });
   if (!feuilles.length) return { doute: true, motif: "aucune_feuille", feuilles };
+  // (07/11 nuit, point 2) Vinted refuse le rayon AUX COMPTES PRO (exclure = le rayon refusé, seul cas Vinted qui en
+  // porte un) : ce n'est pas une affaire de catalogue, c'est une règle de Vinted pour ce compte — le moteur ne
+  // contourne jamais une interdiction en rangeant l'article ailleurs à sa place. La personne choisit (autre rayon, ou
+  // Vinted abandonné) ; les rayons les plus proches du refusé en tête.
+  if (plateforme === "vinted" && Array.isArray(exclure) && exclure.length) {
+    return { doute: true, motif: "choix_de_la_personne", feuilles: trierParProximite(feuilles, exclure) };
+  }
   if (feuilles.length === 1) return { chemin: feuilles[0].chemin, id: feuilles[0].id, source: "seule_feuille", feuilles };
-  if (feuilles.length > 600) return { doute: true, motif: "trop_de_feuilles", feuilles };
+  const attributsIA = {
+    "objet identifié": String(objet ?? "").trim() || null,
+    description: String(description ?? "").replace(/\s+/g, " ").trim() || null,
+    marque: String(marque ?? "").trim() || null,
+    genre: String(genre ?? "").trim() || null,
+    taille: String(taille ?? "").trim() || null,
+    "rayon d'origine": Array.isArray(base) && base.length ? base.join(" > ") : null,
+  };
+  if (feuilles.length > 600) {
+    // (07/11 nuit, point 1) L'arbre vivant entier (≈ 2 500 feuilles) ne tient pas dans une question : deux temps.
+    if (plateforme === "vinted") return descenteArbreVivantVinted({ feuilles, base, titre, attributsIA, user_id }, appelerIA);
+    return { doute: true, motif: "trop_de_feuilles", feuilles };
+  }
   let rep = null;
   try {
     rep = await appelerIA({
       titre: String(titre ?? "").slice(0, 200),
-      attributs: {
-        "objet identifié": String(objet ?? "").trim() || null,
-        description: String(description ?? "").replace(/\s+/g, " ").trim() || null,
-        marque: String(marque ?? "").trim() || null,
-        genre: String(genre ?? "").trim() || null,
-        taille: String(taille ?? "").trim() || null,
-        "rayon d'origine": Array.isArray(base) && base.length ? base.join(" > ") : null,
-      },
+      attributs: attributsIA,
       candidats: { [plateforme]: feuilles.map((f) => ({ chemin: f.chemin, ...(f.id ? { id: f.id } : {}) })) },
       max_candidats: feuilles.length,
       user_id,
@@ -265,7 +485,7 @@ export function questionRayonRefuse({ plateforme = "", base = [], feuilles = [],
     allowed_values: feuilles.slice(0, 600).map((f) => libelleFeuille(f.chemin, base)),
     target: { root: null, key: cleChamp },
     rayon_base: Array.isArray(base) ? base : [],
-    raison: raison === RAISON_RAYON_ABSENT ? RAISON_RAYON_ABSENT : RAISON_RAYON_REFUSE,
+    raison: [RAISON_RAYON_ABSENT, RAISON_RAYON_DISPARU, RAISON_RAYON_INTERDIT_PRO, RAISON_RAYON_REFUSE_AU_COMPTE].includes(raison) ? raison : RAISON_RAYON_REFUSE,
   };
 }
 
@@ -279,7 +499,16 @@ export function cheminDeLaReponse({ plateforme = "", base = [], reponse = "" } =
   if (!r) return null;
   const feuilles = feuillesCandidates({ plateforme, base });
   const f = feuilles.find((x) => norm(libelleFeuille(x.chemin, base)) === norm(r));
-  return f ? { chemin: f.chemin, id: f.id } : null;
+  if (f) return { chemin: f.chemin, id: f.id };
+  // (07/11 nuit, point 1) Une question posée AVANT ce correctif sur un rayon de l'ancien arbre (compte resté sur
+  // l'ancien arbre : feuilles SOUS le rayon, libellés relatifs) se retraduit toujours : jamais une réponse perdue.
+  if (plateforme === "vinted" && niveauMortVinted(base) >= 0) {
+    const id = noeudVintedDuChemin(base);
+    const avant = id == null ? [] : feuillesVintedSous(id).filter((x) => x !== id).map((x) => ({ chemin: cheminVintedDe(x), id: String(x) }));
+    const g = avant.find((x) => norm(libelleFeuille(x.chemin, base)) === norm(r));
+    if (g) return { chemin: g.chemin, id: g.id };
+  }
+  return null;
 }
 
 // ── LE CAS D'UN JOB, ET CE QUI S'ÉCRIT ──────────────────────────────────────
@@ -297,6 +526,18 @@ const CHAMP_RAYON = { vinted: "categoryPath", beebs: "beebsCategoryPath", lebonc
 // désormais lequel des deux cas c'est.
 export const RAISON_RAYON_REFUSE = "rayon_refuse_par_la_plateforme";
 export const RAISON_RAYON_ABSENT = "rayon_absent_de_la_copie";
+// (07/11 nuit, point 1) Publication Vinted dont le rayon n'existe plus dans l'arbre du compte (bascule de Vinted).
+export const RAISON_RAYON_DISPARU = "rayon_disparu_de_l_arbre_du_compte";
+// (07/11 nuit, point 2) Publication Vinted refusée par Vinted parce que le compte est Pro (« Les utilisateurs Vinted Pro
+// ne peuvent pas ajouter d'articles dans ce catalogue ») : la personne choisit, jamais le moteur.
+export const RAISON_RAYON_INTERDIT_PRO = "rayon_interdit_aux_comptes_pro";
+// La marque que l'extension (≥ 0.6.179) pose sur sa question « categoryLevelChoice » quand Vinted a refusé le rayon au
+// compte Pro (needsUserField.raison, 60 caractères au plus — markNeedsUser) : miroir de vinted.js / background.js.
+export const RAISON_NU_INTERDIT_PRO = "rayon_interdit_pro";
+// Même refus du rayon au compte, sans la mention « Pro » dans le texte de Vinted (autre langue, autre motif) : même
+// traitement, message sans « Pro ».
+export const RAISON_RAYON_REFUSE_AU_COMPTE = "rayon_refuse_au_compte";
+export const RAISON_NU_REFUSE_AU_COMPTE = "rayon_refuse_au_compte";
 
 /** Le chemin le plus profond de `chemin` qui existe dans l'arbre Vinted. */
 function prefixeVintedConnu(chemin) {
@@ -328,6 +569,25 @@ export function rayonRefuseDuJob(job) {
     const brut = job.action === "republish" ? snap.categoryPath : pf.categoryPath;
     const base = prefixeVintedConnu(brut);
     if (!base.length) return null;
+    // (07/11 nuit, point 2) Rayon interdit aux comptes Pro (marque de l'extension) : publication seulement. La question
+    // part sur les feuilles de la même racine (les plus proches d'abord), le rayon refusé exclu ; jamais un choix du
+    // moteur (resoudreRayonRefuse : exclure ⇒ la personne). Une republication garde le message vrai, sans question.
+    if ([RAISON_NU_INTERDIT_PRO, RAISON_NU_REFUSE_AU_COMPTE].includes(String(nf.raison ?? ""))) {
+      if (job.action !== "publish") return null;
+      const raison = String(nf.raison) === RAISON_NU_INTERDIT_PRO ? RAISON_RAYON_INTERDIT_PRO : RAISON_RAYON_REFUSE_AU_COMPTE;
+      return { plateforme: "vinted", base: base.slice(0, 1), raison, exclure: base, enfantsVivants: null };
+    }
+    // (07/11 nuit, point 1) Chemin de l'ancien arbre (niveau retiré par la bascule) sur une page PROUVÉE du nouvel arbre
+    // (pageDuNouvelArbreVinted) : tout l'arbre vivant (enfantsVivants null — c'est ce qui le dit à feuillesCandidates).
+    // Page de l'ancien arbre (le niveau retiré s'y voit encore) ou preuve absente : la règle d'avant, à l'identique.
+    const mort = niveauMortVinted(base);
+    if (mort >= 0) {
+      const vus = new Set((Array.isArray(nf.allowed_values) ? nf.allowed_values : []).map(norm));
+      if (!vus.has(norm(base[mort])) && pageDuNouvelArbreVinted(nf.allowed_values)) {
+        return { plateforme: "vinted", base, raison: job.action === "publish" ? RAISON_RAYON_DISPARU : RAISON_RAYON_REFUSE, enfantsVivants: null };
+      }
+      return { plateforme: "vinted", base, raison: RAISON_RAYON_REFUSE, enfantsVivants: Array.isArray(nf.allowed_values) ? nf.allowed_values : [] };
+    }
     return { plateforme: "vinted", base, raison: RAISON_RAYON_REFUSE, enfantsVivants: Array.isArray(nf.allowed_values) ? nf.allowed_values : null };
   }
   if (job?.platform === "beebs" && job.action === "republish" && job.status === "needs_user") {
@@ -386,6 +646,22 @@ export function pfApresRayon(job, choix, { plateforme = "", base = [], source = 
 /** Le message du job quand le moteur n'a pas pu trancher (dernier recours). */
 export function messageRayonAChoisir(plateforme, base, raison = RAISON_RAYON_REFUSE) {
   const nom = { vinted: "Vinted", beebs: "Beebs", leboncoin: "Leboncoin" }[plateforme] ?? plateforme;
+  // (07/11 nuit) Publications Vinted seulement (rayonRefuseDuJob) : la sortie « Abandonner Vinted pour cet article »
+  // existe dans la même fenêtre (StockTab, NeedsUserModal — abandonPossible : publication arrêtée, rien en ligne).
+  const sortie = "Si tu ne veux pas de cet article sur Vinted : « Abandonner Vinted pour cet article », dans la même fenêtre.";
+  if (raison === RAISON_RAYON_DISPARU) {
+    const quoi = Array.isArray(base) && base.length ? ` « ${base.join(" › ")} »` : "";
+    return `Publication en pause, rien n'est parti sur Vinted : ton compte Vinted n'a plus la catégorie${quoi} (Vinted a réorganisé son catalogue), `
+      + "et FillSell n'a pas trouvé seul où ranger cet article. Choisis sa catégorie Vinted dans l'app (fiche de l'article, bouton « ✋ Compléter ») : "
+      + `la publication repartira toute seule. ${sortie}`;
+  }
+  if (raison === RAISON_RAYON_INTERDIT_PRO || raison === RAISON_RAYON_REFUSE_AU_COMPTE) {
+    return (raison === RAISON_RAYON_INTERDIT_PRO
+      ? "Vinted n'autorise pas les comptes Pro à vendre dans le rayon choisi pour cet article : rien n'a été publié. "
+      : "Vinted refuse le rayon choisi pour cet article à ton compte : rien n'a été publié. ")
+      + "Choisis un autre rayon Vinted dans l'app (fiche de l'article, bouton « ✋ Compléter ») : la publication repartira toute seule. "
+      + sortie;
+  }
   // (25/10, chaouidz) Rayon ABSENT de la copie : la plateforme n'a rien refusé — le dire.
   if (raison === RAISON_RAYON_ABSENT) {
     const quoi = { beebs: "le rayon Beebs", leboncoin: "la catégorie Leboncoin" }[plateforme] ?? `la catégorie ${nom}`;
@@ -396,4 +672,19 @@ export function messageRayonAChoisir(plateforme, base, raison = RAISON_RAYON_REF
   const ou = Array.isArray(base) && base.length ? ` de « ${base.join(" › ")} »` : "";
   return `Republication en pause AVANT toute suppression — ton annonce est intacte sur ${nom}. ${nom} n'accepte plus la catégorie de cette annonce, `
     + `et FillSell n'a pas pu choisir seul la bonne sous-catégorie${ou}. Choisis-la dans l'app (fiche de l'article, bouton « ✋ Compléter ») : la republication repartira toute seule.`;
+}
+
+/**
+ * (07/11 nuit, point 1 — dca7193f) Un doute « aucune_feuille » posé AVANT que le moteur ne sache chercher hors d'une
+ * branche morte se rejuge UNE fois quand il a désormais des feuilles pour ce même rayon (handler-watch, balayage des
+ * questions posées : sans cette porte, le compteur d'essais déjà plein laissait la question de l'extension — dix sacs
+ * pour une éponge — à la personne). Le rejugement réécrit rayon_moteur (motif nouveau, essais au-delà du plafond) :
+ * jamais une boucle. Pur.
+ * @param {any} rm  platform_fields.rayon_moteur du job
+ * @param {{ plateforme: string, base: string[], enfantsVivants?: string[]|null, exclure?: string[]|null } | null} plan
+ */
+export function rayonMoteurARejuger(rm, plan) {
+  if (!rm || typeof rm !== "object" || !rm.doute || rm.motif !== "aucune_feuille" || !plan) return false;
+  if (Array.isArray(rm.base) && rm.base.join(" > ") !== (plan.base ?? []).join(" > ")) return false;
+  return feuillesCandidates({ plateforme: plan.plateforme, base: plan.base, enfantsVivants: plan.enfantsVivants ?? null, exclure: plan.exclure ?? null }).length > 0;
 }

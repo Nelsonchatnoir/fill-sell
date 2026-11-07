@@ -69,8 +69,9 @@ export default function BandeauLeboncoinPause({ userId, lang = 'fr' }) {
       maxWidth: 540, margin: '0 auto', padding: '12px 14px', borderRadius: 14, background: BLANC,
       border: `1px solid ${C.amber}`, boxShadow: '0 6px 24px rgba(16,32,27,.14)', fontFamily: POLICE,
     }}>
-      {etat !== 'finie' && <div style={{ fontWeight: 700, color: C.ink, fontSize: 14.5 }}>{T.titre}</div>}
-      <div style={{ fontSize: 13, color: C.mute2, marginTop: 4, lineHeight: 1.4 }}>{phrase ?? T.texte(quandParis(pause?.depuis, lang))}</div>
+      {/* (07/11, Goulvenk) Session fermée : « connecte-toi », jamais « Leboncoin a restreint l'accès ». */}
+      {etat !== 'finie' && <div style={{ fontWeight: 700, color: C.ink, fontSize: 14.5 }}>{pause?.sessionFermee ? T.titreSession : T.titre}</div>}
+      <div style={{ fontSize: 13, color: C.mute2, marginTop: 4, lineHeight: 1.4 }}>{phrase ?? (pause?.sessionFermee ? T.texteSession : T.texte)(quandParis(pause?.depuis, lang))}</div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         {pause && !pause.demande && etat !== 'demande' && (
           <button type="button" data-lbc-bouton="remarche" disabled={etat === 'envoi'} onClick={demander}

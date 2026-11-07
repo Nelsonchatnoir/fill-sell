@@ -12,6 +12,8 @@ import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
+// (07/11 soir, décision de Nico — Marta MELE) Qui a posé la couleur en ligne : nous → la couleur de la fiche.
+import { couleurDeLaFicheALaRepublication } from "../_shared/couleur-posee-par-nous.js";
 // (06/11, Nico : version minimum abandonnée) Plus d'import de version-min-extension.js : aucun poste n'est refusé,
 // retenu ni mis en pause pour son build (scripts/aucune-retenue-par-version-selftest.mjs).
 // (18/10, lot 5 — hu.anastasia) La pause anti-robot quand Vinted refuse la LECTURE des annonces de sa boutique.
@@ -213,6 +215,9 @@ import { teteDeFile } from "../_shared/tete-de-file.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
 import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree, verdictVisiteControleLbc } from "../_shared/blocage-leboncoin.js";
+// (07/11 soir, Goulvenk) Une session fermée passe par le circuit connexion ; une preuve lève la pause ; la synchro de la personne est la visite.
+import { blocageSessionFermee, contrePreuvePauseLbc, sessionLbcRevueLe } from "../_shared/blocage-leboncoin.js";
+import { ATTENTE_SESSION_POSE_PAR_PAUSE_LBC, attentePoseeParLaPauseLbc } from "../_shared/attente-session.js";
 import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc, gardeVirtuelleLbc, lbcVirtuelAutorise } from "../_shared/poste-virtuel.js";
 import { executantLbcDeclare, nomExecutantLbc, comptesExecutesLbc, delegationLbcValide, etatLePlusPrudent, messageDelegationLbc, messageTacheDelegueeEnAttente, messageTacheDelegueeEnPause, PLATEFORME_DELEGUEE } from "../_shared/delegation-leboncoin.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
@@ -3176,6 +3181,132 @@ serve(async (req) => {
           console.warn(`[get-pending-jobs] capture corrigée : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
         }
         if (retenuesPhotos.size) out = out.filter((j) => !retenuesPhotos.has(String(j.id)));
+      }
+    }
+
+    // ══ VINTED : QUI A POSÉ LA COULEUR EN LIGNE ? NOUS → LA COULEUR DE LA FICHE (07/11 soir, décision de Nico) ══
+    // (_shared/couleur-posee-par-nous.js — Marta MELE : b9460406 recréée en 5 « Rosa » au lieu de 24 « Rosa » ;
+    // f1c4a0e0 publiée en 9 « Blu » au lieu de 27 « Blu marino »). Une republication recrée l'annonce depuis sa
+    // capture : quand l'annonce en ligne a été DÉPOSÉE PAR FILLSELL, que c'est ce dépôt qui a posé une couleur autre
+    // que celle qu'il devait remettre, et qu'aucune lecture ne montre de changement depuis, la capture reprend la
+    // couleur de référence (identifiants et libellés) AVANT d'être servie — étape 'captured' (avant la une-passe :
+    // l'annonce est encore en ligne) comme 'deleted' (la recréation relit la capture en base). Sinon la couleur en
+    // ligne, comme avant. Jugé une fois par capture (couleur_de_la_fiche.capture_id), 10 jobs par passage, lectures
+    // groupées ; illisible → servi comme avant, jamais un point de panne.
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const pfCF = (j: Record<string, unknown>) => (j.platform_fields ?? {}) as Record<string, unknown>;
+      const aJugerCF = out.filter((j) => {
+        const pf = pfCF(j as unknown as Record<string, unknown>);
+        return j.platform === "vinted" && String(j.action) === "republish" && j.status === "pending" && j.inventaire_id != null
+          && ["captured", "deleted"].includes(String(pf.republish_step ?? "")) && /^\d+$/.test(String(pf.capture_id ?? ""))
+          && /^\d+$/.test(String(pf.vinted_item_id ?? ""))
+          && String(((pf.couleur_de_la_fiche ?? {}) as Record<string, unknown>).capture_id ?? "") !== String(pf.capture_id);
+      }).slice(0, 10);
+      if (aJugerCF.length) {
+        try {
+          const adminCF = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          // Bornées par aJugerCF (10 jobs au plus) : jamais une lecture de masse.
+          const numerosCF = [...new Set(aJugerCF.map((j) => String(pfCF(j as unknown as Record<string, unknown>).vinted_item_id)))];
+          const fichesIdsCF = [...new Set(aJugerCF.map((j) => Number(j.inventaire_id)))];
+          const [{ data: depotsCF }, { data: lecturesCF }, { data: fichesCF }] = await Promise.all([
+            adminCF.from("cross_post_jobs")
+              .select("id, action, status, published_at, platform_listing_id, handler_build, couleur:platform_fields->couleur, " +
+                "colors:platform_fields->colors, vinted_ids:platform_fields->vinted_ids, va:platform_fields->vintedAspects, " +
+                "uf:platform_fields->republish_user_fields, cf:platform_fields->republish_couleur_fournie, " +
+                "csq:platform_fields->couleur_sans_question, cap_id:platform_fields->>capture_id, " +
+                "s1:platform_fields->republish_snapshot->color1_id, s2:platform_fields->republish_snapshot->color2_id, " +
+                "scoul:platform_fields->republish_snapshot->couleurs")
+              .eq("user_id", user.id).eq("platform", "vinted").in("action", ["publish", "republish"])
+              .in("platform_listing_id", numerosCF).not("published_at", "is", null).limit(100),
+            adminCF.from("vinted_republish_captures").select("id, vinted_item_id, captured_at, couleurs:libelles->couleurs, " +
+              "c1:payload->natif->color1_id, c2:payload->natif->color2_id, l1:payload->natif->color1, l2:payload->natif->color2")
+              .eq("user_id", user.id).in("vinted_item_id", numerosCF).order("captured_at", { ascending: true }).limit(200),
+            adminCF.from("inventaire").select("id, attributs")
+              .eq("user_id", user.id).in("id", fichesIdsCF),
+          ]);
+          // Le dépôt FillSell de chaque annonce : le dernier publié sous ce numéro (jamais une ligne « sync-dressing »).
+          const depotDe = new Map<string, Record<string, unknown>>();
+          for (const d of ((depotsCF ?? []) as unknown as Array<Record<string, unknown>>)) {
+            if (/sync-dressing/i.test(String(d.handler_build ?? ""))) continue;
+            const n = String(d.platform_listing_id);
+            const prec = depotDe.get(n);
+            if (!prec || Date.parse(String(d.published_at)) > Date.parse(String(prec.published_at))) depotDe.set(n, d);
+          }
+          // Les captures, en couleurs seulement (la forme que lit le module : libelles.couleurs, natif.color*).
+          const formeCF = (c: Record<string, unknown>) => ({ id: c.id, vinted_item_id: c.vinted_item_id, captured_at: c.captured_at,
+            libelles: { couleurs: c.couleurs ?? null }, natif: { color1_id: c.c1 ?? null, color2_id: c.c2 ?? null, color1: c.l1 ?? null, color2: c.l2 ?? null } });
+          const capturesCF = ((lecturesCF ?? []) as unknown as Array<Record<string, unknown>>).map(formeCF);
+          // Une republication déposée sans couleur sur sa copie : la capture qu'elle a utilisée (lue seulement si besoin).
+          const capDepotIds = [...depotDe.values()].filter((d) => d.action === "republish" && d.s1 == null && /^\d+$/.test(String(d.cap_id ?? "")))
+            .map((d) => Number(d.cap_id));
+          const capDepot = new Map<string, Record<string, unknown>>();
+          if (capDepotIds.length) {
+            const { data: cd } = await adminCF.from("vinted_republish_captures").select("id, vinted_item_id, captured_at, couleurs:libelles->couleurs, " +
+              "c1:payload->natif->color1_id, c2:payload->natif->color2_id, l1:payload->natif->color1, l2:payload->natif->color2")
+              .eq("user_id", user.id).in("id", capDepotIds);
+            for (const c of ((cd ?? []) as unknown as Array<Record<string, unknown>>)) capDepot.set(String(c.id), formeCF(c));
+          }
+          const ficheCF = new Map(((fichesCF ?? []) as Array<Record<string, unknown>>).map((f) => [String(f.id), f]));
+          for (const j of aJugerCF) {
+            const pf = { ...pfCF(j as unknown as Record<string, unknown>) };
+            const capId = String(pf.capture_id);
+            const numero = String(pf.vinted_item_id);
+            const capture = capturesCF.find((c) => String(c.id) === capId);
+            if (!capture) continue; // capture d'un autre numéro (illisible ici) : servie telle quelle, jugée au passage suivant
+            const d = depotDe.get(numero) ?? null;
+            const depot = d ? {
+              id: d.id, action: d.action, published_at: d.published_at, platform_listing_id: d.platform_listing_id, handler_build: d.handler_build,
+              platform_fields: { couleur: d.couleur, colors: d.colors, vinted_ids: d.vinted_ids, vintedAspects: d.va, republish_user_fields: d.uf,
+                republish_couleur_fournie: d.cf, couleur_sans_question: d.csq, capture_id: d.cap_id,
+                republish_snapshot: { color1_id: d.s1, color2_id: d.s2, couleurs: d.scoul } },
+            } : null;
+            const v = couleurDeLaFicheALaRepublication({
+              capture, depot, depotCapture: d ? capDepot.get(String(d.cap_id ?? "")) ?? null : null,
+              lectures: capturesCF.filter((c) => String(c.vinted_item_id) === numero),
+              fiche: ficheCF.get(String(j.inventaire_id)) ?? null,
+            }) as { verdict: string; motif: string; en_ligne: { ids: number[]; libelles: string[] }; reference?: number[];
+              depot?: string; natif?: Record<string, unknown>; libelles?: Record<string, unknown> };
+            const trace: Record<string, unknown> = { capture_id: Number(capId), verdict: v.verdict, motif: v.motif, en_ligne: v.en_ligne,
+              ...(v.reference ? { reference: v.reference } : {}), ...(v.depot ? { depot: v.depot } : {}),
+              le: new Date().toISOString(), pose_par: "get-pending-jobs (_shared/couleur-posee-par-nous.js)" };
+            if (v.verdict === "fiche" && v.natif && v.libelles) {
+              // La capture entière est relue (payload, libellés) pour n'en changer QUE la couleur.
+              const { data: capPleine } = await adminCF.from("vinted_republish_captures").select("payload, libelles")
+                .eq("id", Number(capId)).eq("user_id", user.id).maybeSingle();
+              const payload = ((capPleine as { payload?: unknown } | null)?.payload ?? null) as Record<string, unknown> | null;
+              if (!payload) continue;
+              const natifPlein = ((payload.natif && typeof payload.natif === "object") ? payload.natif : {}) as Record<string, unknown>;
+              const libPleins = (((capPleine as { libelles?: unknown }).libelles && typeof (capPleine as { libelles?: unknown }).libelles === "object")
+                ? (capPleine as { libelles: Record<string, unknown> }).libelles : {}) as Record<string, unknown>;
+              const { error: errCF } = await adminCF.from("vinted_republish_captures")
+                .update({
+                  libelles: { ...libPleins, couleurs: v.libelles.couleurs },
+                  payload: { ...payload, natif: { ...natifPlein, color1_id: v.natif.color1_id, color2_id: v.natif.color2_id ?? null,
+                    color1: v.natif.color1 ?? null, color2: v.natif.color2 ?? null } },
+                })
+                .eq("id", Number(capId)).eq("user_id", user.id);
+              if (errCF) { console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} : couleur de la fiche non posée — ${errCF.message}`); continue; }
+            }
+            // Sur le job : la trace, et la copie (affichage, référence du prochain dépôt) quand la couleur change.
+            const { data: frais } = await adminCF.from("cross_post_jobs").select("platform_fields").eq("id", String(j.id)).eq("status", "pending").maybeSingle();
+            const pfBase = ((frais as { platform_fields?: unknown } | null)?.platform_fields ?? null) as Record<string, unknown> | null;
+            if (!pfBase) continue;
+            const ajout: Record<string, unknown> = { couleur_de_la_fiche: trace };
+            if (v.verdict === "fiche" && v.natif && pfBase.republish_snapshot && typeof pfBase.republish_snapshot === "object") {
+              ajout.republish_snapshot = { ...(pfBase.republish_snapshot as Record<string, unknown>), color1_id: v.natif.color1_id,
+                color2_id: v.natif.color2_id ?? null, couleurs: (v.libelles as Record<string, unknown>).couleurs };
+            }
+            await adminCF.from("cross_post_jobs").update({ platform_fields: pfAPersister({ ...pfBase, ...ajout }) })
+              .eq("id", String(j.id)).eq("status", "pending");
+            j.platform_fields = { ...pf, ...ajout };
+            if (v.verdict === "fiche") {
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : couleur posée par notre dépôt ${v.depot} ` +
+                `(${v.en_ligne.ids.join("+")}) ≠ couleur à remettre → ${(v.reference ?? []).join("+")} « ${((v.libelles as Record<string, unknown>).couleurs as string[]).join(", ")} » (${v.motif})`);
+            }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] couleur de la fiche : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+        }
       }
     }
 
@@ -14225,6 +14356,43 @@ serve(async (req) => {
         betaFlagsLbc = ((profB as { beta_flags?: Record<string, unknown> } | null)?.beta_flags ?? null) as Record<string, unknown> | null;
         let psB = ((profB as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>;
         const adminB = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        // ── (07/11 soir, Goulvenk — règle 3) UNE PAUSE NE DURE JAMAIS CONTRE UNE PREUVE ──────────────────────────────
+        // (_shared/blocage-leboncoin.js, contrePreuvePauseLbc) Un relevé Leboncoin lu en entier, ou un dépôt Leboncoin
+        // publié par l'extension, APRÈS la dernière preuve de la pause = Leboncoin répond sur cette session : levée.
+        // Deux lectures bornées (1 ligne chacune), seulement pour un compte en pause (rare). Illisible → rien ne change.
+        {
+          const bP = blocageLbc(psB) as Record<string, unknown> | null;
+          const borneP = String(bP?.derniere_preuve ?? bP?.depuis ?? "");
+          if (bP && !bP.leve_le && borneP) {
+            try {
+              const [{ data: rP }, { data: jP }] = await Promise.all([
+                adminB.from("vinted_sync_runs").select("finished_at, erreur").eq("user_id", user.id).eq("platform", "leboncoin")
+                  .eq("kind", "annonces").eq("status", "done").gt("finished_at", borneP)
+                  .order("finished_at", { ascending: false }).limit(3),
+                adminB.from("cross_post_jobs").select("published_at, source:platform_fields->>source").eq("user_id", user.id).eq("platform", "leboncoin")
+                  .in("action", ["publish", "republish"]).eq("status", "published").gt("published_at", borneP)
+                  .not("handler_build", "is", null).not("handler_build", "ilike", "releve%")
+                  .order("published_at", { ascending: false }).limit(5),
+              ]);
+              // Un dépôt FAIT par l'extension : jamais une annonce importée par un relevé (source « releve »).
+              const depotP = ((jP ?? []) as Array<Record<string, unknown>>).find((j) => String(j.source ?? "") !== "releve");
+              // Lu en entier : « done » sans « [incomplet] » (même juge que la visite, verdictVisiteControleLbc).
+              const relevePleinP = ((rP ?? []) as Array<Record<string, unknown>>).find((r) => !/\[incomplet\]/.test(String(r.erreur ?? "")));
+              const preuveP = contrePreuvePauseLbc(bP, {
+                releveReussiLe: (relevePleinP?.finished_at as string | undefined) ?? null,
+                depotReussiLe: (depotP?.published_at as string | undefined) ?? null,
+              }) as { par: string; le: string } | null;
+              if (preuveP) {
+                const nbP = blocageLeve(bP, { par: `get-pending-jobs (${preuveP.par}, ${preuveP.le})` });
+                const { error: eP } = await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nbP, p_user: user.id });
+                if (!eP) psB = { ...psB, leboncoin: { ...((psB.leboncoin ?? {}) as Record<string, unknown>), blocage_acces: nbP } };
+                console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — pause LEVÉE sur preuve (${preuveP.par}, ${preuveP.le})${eP ? ` — ÉCHEC : ${eP.message}` : ""}`);
+              }
+            } catch (e) {
+              console.warn(`[get-pending-jobs] userId=${user.id} : preuve contre la pause Leboncoin illisible (${String((e as Error)?.message ?? e)}) — rien ne change`);
+            }
+          }
+        }
         // L'essai servi a-t-il rendu son verdict ? (job : publié / refusé ; relevé : fini sans refus / refusé)
         const bEnCours = blocageLbc(psB) as Record<string, unknown> | null;
         const essaiEnCours = (bEnCours?.essai && typeof bEnCours.essai === "object" && !(bEnCours.essai as Record<string, unknown>).issue)
@@ -14257,7 +14425,20 @@ serve(async (req) => {
             console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — essai ${verdict === "passe" ? "PASSÉ : blocage levé, reprise prudente 6 h" : "REFUSÉ : prochaine visite de contrôle dans 2 h"}`);
           }
         }
-        const eb = etatBlocageLbc(psB) as { etat: string; blocage: Record<string, unknown> | null; prete?: boolean };
+        // (07/11 soir, Goulvenk — règles 3 et 4) La synchro Leboncoin demandée par la personne (en file) EST la visite de
+        // contrôle ; le compte revu connecté par l'extension après la dernière visite refusée « session fermée » rend la
+        // visite due tout de suite (30 min au moins après la précédente). Rien de cela sans pause en cours.
+        const synchroPersonneLbc = syncCommandsAnnonces.find((c) => c.platform === "leboncoin" && syncDemandeeParLaPersonne(c.declencheur)) ?? null;
+        // Le « connecté » de l'extension n'est lu que pour une pause sur session fermée (rare) : une ligne, une colonne.
+        let sessionsLbcB: unknown = null;
+        if (blocageSessionFermee(blocageLbc(psB))) {
+          const { data: profS } = await userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          sessionsLbcB = (profS as { extension_sessions?: unknown } | null)?.extension_sessions ?? null;
+        }
+        const eb = etatBlocageLbc(psB, Date.now(), {
+          synchroDemandee: !!synchroPersonneLbc,
+          sessionRevueLe: sessionLbcRevueLe(sessionsLbcB),
+        }) as { etat: string; blocage: Record<string, unknown> | null; prete?: boolean; par?: string };
         // (31/10, lot J 1) Un poste en machine virtuelle ne fait jamais Leboncoin (bloc suivant) : il ne fait donc
         // jamais l'essai — désigné chez lui, l'essai ne partait pas et comptait pour un refus muet.
         const essaiPossible = posteCloud || !gardeVirtuelleLbc(renduDuPoll(body), betaFlagsLbc);
@@ -14266,6 +14447,32 @@ serve(async (req) => {
           const arch = blocageArchive(eb.blocage);
           const { error: eA } = await adminB.rpc("platform_settings_fusionner", { p_chemin: ["leboncoin"], p_patch: arch.patch, p_supprimer: arch.supprimer, p_user: user.id });
           console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — reprise prudente finie (levé le ${String(eb.blocage.leve_le ?? "?")}) : blocage rangé${eA ? ` — ÉCHEC : ${eA.message}` : ""}`);
+          // (07/11 soir, Goulvenk — règle 2) La pause levée, l'attente de connexion qu'ELLE avait posée part (message
+          // archivé) : les tâches repartent « En file », jamais « connecte-toi » une fois Leboncoin relu. Seules les
+          // tâches qui portent SON marqueur (40 au plus) ; une attente posée par un autre circuit n'est pas touchée.
+          try {
+            const { data: marqueesL } = await adminB.from("cross_post_jobs").select("id, error, platform_fields")
+              .eq("user_id", user.id).eq("platform", "leboncoin").eq("status", "pending")
+              .eq("platform_fields->attente_session->>pose_par", ATTENTE_SESSION_POSE_PAR_PAUSE_LBC).limit(40);
+            let rendues = 0;
+            for (const m of ((marqueesL ?? []) as Array<Record<string, unknown>>)) {
+              const pfM = { ...((m.platform_fields ?? {}) as Record<string, unknown>) };
+              if (!attentePoseeParLaPauseLbc(pfM)) continue;
+              delete pfM.attente_session;
+              if (m.error) pfM.erreurs_archivees = archiverErreur(pfM.erreurs_archivees, m.error, "pending", "get-pending-jobs (pause Leboncoin levée : Leboncoin relu)");
+              pfM.pause_lbc_levee = { le: new Date().toISOString(), par: String(eb.blocage.leve_par ?? "levée") };
+              const { data: majL } = await adminB.from("cross_post_jobs").update({ error: null, platform_fields: pfAPersister(pfM) })
+                .eq("id", String(m.id)).eq("status", "pending").select("id");
+              if ((majL ?? []).length) {
+                rendues++;
+                const ji = out.find((j) => String(j.id) === String(m.id));
+                if (ji) { ji.error = null; ji.platform_fields = pfM; }
+              }
+            }
+            if (rendues) console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — pause levée : ${rendues} tâche(s) quittent « En attente de ta connexion »`);
+          } catch (e) {
+            console.warn(`[get-pending-jobs] userId=${user.id} : attentes de la pause Leboncoin non retirées (${String((e as Error)?.message ?? e)})`);
+          }
         } else if (eb.etat !== "libre" && eb.blocage) {
           // (05/11, point 10 — Louis) Dans « une action toutes les 10 min », un RETRAIT passe d'abord (double vente possible) :
           // le 01/11, le retrait Leboncoin d'une vente a attendu 45 min derrière trois republications. Ordre seul, cadence intacte.
@@ -14287,7 +14494,29 @@ serve(async (req) => {
           if (retenus.length) {
             const ids = new Set(retenus.map((j) => String(j.id)));
             out = out.filter((j) => !ids.has(String(j.id)));
-            if (eb.etat !== "reprise") {
+            if (eb.etat !== "reprise" && blocageSessionFermee(eb.blocage)) {
+              // (07/11 soir, Goulvenk — règle 2) La dernière visite a vu la page de connexion : c'est le circuit CONNEXION
+              // (« En attente de ta connexion à Leboncoin… », attente_session — l'app : « À toi de jouer : connecte-toi
+              // à Leboncoin sur ton ordinateur »), jamais « nouvel essai automatique, rien à faire ». Une tâche qui le
+              // porte déjà n'est pas réécrite (attenteSessionServeur rend null) ; 40 par passage au plus.
+              let ecritsC = 0;
+              for (const j of retenus) {
+                if (ecritsC >= 40) break;
+                const att = attenteSessionServeur(j as never, {
+                  observeeLe: String(eb.blocage.derniere_preuve ?? eb.blocage.depuis ?? "") || null, navigateur: navCourtRequete,
+                  posePar: ATTENTE_SESSION_POSE_PAR_PAUSE_LBC,
+                  motif: "pause Leboncoin : la visite de contrôle a vu la page de connexion (session fermée) — tâche retenue jusqu'à la reconnexion",
+                }) as { error: string; platform_fields: Record<string, unknown> } | null;
+                if (!att) continue;
+                const pfJ = { ...att.platform_fields };
+                if (j.error) pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error, "pending", "get-pending-jobs (pause Leboncoin : session fermée → attente de connexion)");
+                pfJ.attente_blocage_lbc = { depuis: eb.blocage.depuis ?? null, pose_le: new Date().toISOString(), session_fermee: true };
+                const { data: majC } = await adminB.from("cross_post_jobs").update({ error: att.error, platform_fields: pfAPersister(pfJ) })
+                  .eq("id", String(j.id)).eq("status", "pending").select("id");
+                if ((majC ?? []).length) ecritsC++;
+              }
+              if (ecritsC) console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — session fermée (dernière visite : page de connexion) : ${ecritsC} tâche(s) en « En attente de ta connexion à Leboncoin »`);
+            } else if (eb.etat !== "reprise") {
               const msgB = messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""), String(eb.blocage.signe ?? "") || null);
               let ecrits = 0;
               for (const j of retenus) {
@@ -14295,6 +14524,8 @@ serve(async (req) => {
                 const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
                 if (j.error) pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error, "pending", "get-pending-jobs (Leboncoin restreint l'accès : pause du compte)");
                 pfJ.attente_blocage_lbc = { depuis: eb.blocage.depuis ?? null, pose_le: new Date().toISOString() };
+                // (07/11 soir) Une restriction revenue après une session fermée : l'attente de connexion de la pause part.
+                if (attentePoseeParLaPauseLbc(pfJ)) delete pfJ.attente_session;
                 await adminB.from("cross_post_jobs").update({ error: msgB, platform_fields: pfAPersister(pfJ) }).eq("id", String(j.id)).eq("status", "pending");
                 ecrits++;
               }
@@ -14303,7 +14534,8 @@ serve(async (req) => {
           }
           // Relevés Leboncoin : jamais pendant le blocage ; à l'essai, le relevé en file EST l'essai quand aucune tâche ne
           // l'est ; en reprise, seulement quand aucune action n'est partie.
-          let releveLbc = syncCommandsAnnonces.find((c) => c.platform === "leboncoin") ?? null;
+          // (07/11 soir, règle 4) La synchro de la personne d'abord : c'est elle qui fait la visite.
+          let releveLbc = synchroPersonneLbc ?? syncCommandsAnnonces.find((c) => c.platform === "leboncoin") ?? null;
           // (03/11, point 7) La visite de contrôle due et aucun relevé Leboncoin en file : le serveur en pose UN (lecture
           // seule, déclencheur controle_blocage_lbc) — sinon la pause durait sans jamais être retestée.
           if (!releveLbc && eb.etat === "essai" && essaiPossible) {
@@ -14328,9 +14560,12 @@ serve(async (req) => {
             await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
               p_patch: { ...blocageAvecEssai(eb.blocage, { jobId: "" }), essai: { releve_id: idControle, le: new Date().toISOString(), controle: true } }, p_user: user.id });
             syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin" || c.id === idControle);
-            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin bloqué — VISITE DE CONTRÔLE par le relevé ${idControle.slice(0, 8)} (lecture seule, aucune action)`);
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin bloqué — VISITE DE CONTRÔLE par le relevé ${idControle.slice(0, 8)} (lecture seule, aucune action)${eb.par === "synchro_demandee" ? " — la synchro demandée par la personne" : eb.par === "session_revue" ? " — compte revu connecté par l'extension après la dernière visite" : ""}`);
           } else if (releveLbc && !(eb.etat === "reprise" && eb.prete && !garde)) {
             syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin");
+            // (07/11 soir, règle 4) Une synchro de la personne qui attend se dit (une visite en cours la précède, ou ce
+            // poste est une machine virtuelle) : elle part au passage suivant, ou sur un autre poste du compte.
+            if (synchroPersonneLbc) console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin ${eb.etat} — synchro de la personne ${synchroPersonneLbc.id.slice(0, 8)} en attente (${!essaiPossible ? "poste en machine virtuelle : un autre poste du compte la fera" : "une visite de contrôle est déjà en cours : elle part juste après son verdict"})`);
           }
           // (31/10, lot J 1) Essai réussi → reprise : l'extension n'est plus en pause (veille des commandes, relevé des
           // ventes, liens manquants) ; seules les actions restent espacées, ici. Absent = libre pour toute extension.

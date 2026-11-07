@@ -34,5 +34,20 @@ ok(!/setInterval/.test(b), "jamais de relecture en boucle");
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 ok(app.includes("{user&&<BandeauLeboncoinPause userId={user.id} lang={lang}/>}"), "monté dans l'app (PC et téléphone)");
 
+console.log("\n4. (07/11, Goulvenk) SESSION FERMÉE : « CONNECTE-TOI », JAMAIS « RESTREINT »");
+const fermee = pauseLeboncoin(ps({ depuis: DEPUIS, derniere_preuve: DEPUIS, signe: "session_fermee" }));
+ok(fermee?.sessionFermee === true, "signe « session_fermee » → bandeau de connexion");
+ok(pauseLeboncoin(ps({ depuis: DEPUIS, signe: "http_403" }))?.sessionFermee === false && pauseLeboncoin(ps({ depuis: DEPUIS, signe: "datadome" }))?.sessionFermee === false,
+  "une restriction (403, anti-robot) garde son bandeau");
+for (const l of ["fr", "en"]) {
+  const T = TEXTES_PAUSE_LBC[l];
+  const txt = T.texteSession("depuis le 06/11 à 01:33");
+  ok(typeof T.titreSession === "string" && !/restrei|restrict/i.test(T.titreSession + txt) && /leboncoin\.fr/.test(txt) && txt.includes(l === "fr" ? "« Leboncoin remarche »" : "“Leboncoin works again”"),
+    `${l} : connexion à Leboncoin, sans « restreint », avec le bouton promis`);
+}
+ok(TEXTES_PAUSE_LBC.fr.titreSession === "Connecte-toi à Leboncoin sur ton ordinateur", "le titre dit exactement le circuit connexion");
+ok(b.includes("pause?.sessionFermee ? T.titreSession : T.titre") && b.includes("(pause?.sessionFermee ? T.texteSession : T.texte)("), "le bandeau choisit le texte selon le signe");
+ok(messageBlocageLbc("Chrome", DEPUIS, "session_fermee").includes("connecte-toi à ton compte Leboncoin"), "le message des tâches dit la même chose");
+
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");
 process.exit(ko ? 1 : 0);

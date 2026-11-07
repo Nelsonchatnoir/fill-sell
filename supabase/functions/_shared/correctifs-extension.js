@@ -139,6 +139,10 @@ export const BUILD_VINTED_MARQUE_CREEE = "2026-10-26T00:53:28Z";
 export const BUILD_LBC_PREREMPLI_IA = "2026-10-26T07:44:08Z"; // BUILD_ID du paquet 0.6.146 refait le 26/10 (2026-10-26T07:44:08Z+4ade5e1)
 // (07/11 soir, Sonia d538188f) Critères Leboncoin affichés après la réception des photos (0.6.178) : BUILD_ID du paquet.
 export const BUILD_LBC_CRITERES_APRES_PHOTOS = "2026-11-07T14:34:17Z"; // BUILD_ID du paquet 0.6.178 (2026-11-07T14:34:17Z+bef6d20)
+// (07/11 nuit, point 2 — e95e8b9d, « Rasoir vintage » fb90b403) Le rayon refusé au compte Pro (400 « category ») devient
+// une question de RAYON (0.6.179). VIDE tant que ce paquet n'est pas empaqueté : posée au BUILD_ID du zip
+// (npm run package:extension) — d'ici là l'entrée est inerte (buildMsDe("") = NaN : aucun job, aucun poste).
+export const BUILD_VINTED_RAYON_REFUSE_AU_COMPTE = "";
 
 export const CORRECTIFS_EXTENSION = [
   {
@@ -362,6 +366,22 @@ export const CORRECTIFS_EXTENSION = [
     motif: "critères Leboncoin affichés après la réception des photos : attente réglée sur leur poids, PNG lourds allégés en JPEG",
     condition: (job) => /Le wizard n'est pas passé à l'aperçu/.test(JSON.stringify([job?.error ?? "", job?.platform_fields?.error_technique ?? ""])),
     clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
+  },
+  {
+    // (07/11 nuit, point 2 — e95e8b9d, fb90b403) Vinted refuse le RAYON au compte Pro (« Les utilisateurs Vinted Pro ne
+    // peuvent pas ajouter d'articles dans ce catalogue », 400 field « category ») : les postes ≤ 0.6.178 en faisaient une
+    // question « category » sur vintedAspects (un champ qui n'existe pas) — la réponse ne changeait rien. Rien n'a été
+    // créé (400). Le job repart UNE fois vers un poste 0.6.179 : le même refus y devient la question de RAYON (le serveur
+    // la remplit des rayons de la même racine, la personne choisit — jamais le moteur — ou abandonne Vinted). Un essai
+    // refusé de plus chez Vinted (aucun dépôt), c'est le prix de la question juste ; jamais une relance au-delà.
+    cle: "vinted_rayon_refuse_au_compte",
+    platform: "vinted",
+    actions: ["publish"],
+    signature: /ne peuvent pas ajouter d'articles dans ce catalogue|Champ exigé par Vinted : category\b|"field":"category"/,
+    buildMin: BUILD_VINTED_RAYON_REFUSE_AU_COMPTE,
+    version: "0.6.179",
+    motif: "rayon refusé au compte Pro par Vinted : une question de rayon (autre rayon, ou Vinted abandonné), plus jamais « renseigne category »",
+    clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user", "server_required_fields"],
   },
 ];
 

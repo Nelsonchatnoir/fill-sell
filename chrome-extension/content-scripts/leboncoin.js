@@ -1124,10 +1124,24 @@ function murConnexionDepotLbc() {
 // message que Beebs (FILLSELL_SESSION_COMPTE_VU) ; on ne parle QUE pour un
 // compte connecté, jamais pour dire « déconnecté » (c'est la garde qui le
 // voit). Cadre principal seulement, une lecture ~5 s après le chargement.
+// (07/11 soir, Goulvenk — 0.6.179) UN JETON PÉRIMÉ NE PROUVE AUCUNE SESSION : `luat` peut RESTER dans le stockage de
+// www.leboncoin.fr quand la session Leboncoin se ferme (la page le renouvelle, elle ne l'efface pas forcément), et ce
+// signal — la seule source du « Leboncoin connectée » de l'extension pendant une pause (aucune sonde Leboncoin) — ne
+// regardait que sa PRÉSENCE. Au chargement, une session VIVANTE renouvelle son jeton (2 h de vie) dans la seconde : on
+// ne parle que pour un jeton encore valable (≥ 60 s), comme jetonLeboncoinValable (background.js). Le serveur s'en sert
+// désormais pour avancer la visite de contrôle d'une pause « session fermée ». Jeton sans date lisible : comme avant.
+function jetonLuatValable(brut, maintenantMs = Date.now()) {
+  if (!brut) return false;
+  try {
+    const charge = JSON.parse(atob(String(brut).split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const exp = Number(charge?.exp);
+    return !Number.isFinite(exp) || exp * 1000 > maintenantMs + 60_000;
+  } catch { return true; }
+}
 if (window.top === window && typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
   setTimeout(() => {
     let jeton = false;
-    try { jeton = !!window.localStorage.getItem("luat"); } catch (_e) { jeton = false; }
+    try { jeton = jetonLuatValable(window.localStorage.getItem("luat")); } catch (_e) { jeton = false; }
     if (!jeton) return;
     try { chrome.runtime.sendMessage({ type: "FILLSELL_SESSION_COMPTE_VU", platform: "leboncoin" }).catch(() => null); }
     catch (_e) { /* contexte d'extension invalidé : sans conséquence */ }

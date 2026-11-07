@@ -872,3 +872,27 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   (banc du parc : 680 identiques, 2 corrigées, 0 régression).
 - (07/11 soir) Beebs : le bandeau « Voir dans l'appli / Télécharger l'application » de la fiche n'est plus lu comme un
   attribut (0.6.178). Une annonce d'origine SANS Taille/Âge garde la question (aucune valeur devinée).
+
+## ⛔ 07/11 soir (urgence Goulvenk) — Leboncoin : une session FERMÉE n'est jamais une restriction (rapport `docs/enquetes/lot-0711/RAPPORT.md` § « Goulvenk »)
+- Constat (lu en base) : pause posée le 06/11 à 01:33 sur un 403 de la veille des commandes, une heure après un relevé
+  des ventes « compte absent de la page » ; ses 9 visites de contrôle ont lu « page de connexion » ; l'app disait
+  « nouvel essai automatique, rien à faire » ; sa synchro de 18:10 restait en file sans un mot. Le contrôle disait vrai
+  (session fermée jusqu'à sa reconnexion vers 19:11) ; c'est la RÈGLE autour qui était fausse.
+- Règle (`_shared/blocage-leboncoin.js`, toutes versions, tous comptes) :
+  1. un 403 à côté du mur de CONNEXION (`murConnexionLbc` : « page de connexion », « Connexion Leboncoin requise »,
+     « En attente de ta connexion à Leboncoin »…) n'est jamais une restriction (`signeBlocageHorsConnexionLbc`, appelé
+     par handler-watch et update-job-status) ; les signes vus sur la page (anti-robot, « Accès temporairement
+     restreint ») restent des signes ;
+  2. pause dont la dernière visite a vu la page de connexion (signe `session_fermee`) → les tâches retenues passent par
+     le CIRCUIT CONNEXION (`attente_session`, marqueur `ATTENTE_SESSION_POSE_PAR_PAUSE_LBC`) : l'app dit « À toi de
+     jouer : connecte-toi à Leboncoin sur ton ordinateur », le bandeau `BandeauLeboncoinPause` dit « Connecte-toi à
+     Leboncoin sur ton ordinateur », jamais « restreint », jamais « rien à faire » ; levée de la pause = marqueur retiré ;
+  3. une pause ne dure jamais contre une preuve : relevé Leboncoin lu en entier, ou dépôt publié par l'extension, APRÈS
+     la dernière preuve → pause levée (`contrePreuvePauseLbc`) ;
+  4. la synchro Leboncoin demandée par la personne pendant la pause EST la visite de contrôle (jamais muette en file) ;
+     le compte revu connecté par l'extension après la dernière visite refusée rend la visite due tout de suite, au
+     plus une toutes les 30 min (`ESSAI_SUR_PREUVE_MIN_MS`) — jamais pour une restriction anti-robot.
+- Extension 0.6.179 : « compte vu » seulement avec un jeton `luat` non expiré (`leboncoin.js`, `jetonLuatValable`) ;
+  aucune requête de la veille des commandes ni du relevé des ventes avec un jeton périmé (« jeton_expire ») ; la porte de
+  connexion du relevé est confirmée deux fois à 1,2 s et nommée dans le run.
+- Selftests : `lbc-session-fermee-circuit-connexion` (rejoue la chaîne de Goulvenk), `bouton-leboncoin-remarche` § 4.

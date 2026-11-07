@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-30-pour-qui-avant-taille (0.6.161 : « Accessoires de mode › Montres » — « Pour qui ? » posé AVANT la taille, qui en dépend ; déclencheur accessory_department-size-single-grid-input reconnu ; Brave nommé) · 2026-10-30-matieres-etiquette (0.6.160 : la composition de l'étiquette — fields.matieres, « Coton, Polyester, Élasthanne » — cochée matière par matière, 3 au plus, jamais la plus longue de la liste ni une matière à la place d'une autre) · 2026-10-28-rayon-par-identifiant (0.6.152 : un libellé du chemin introuvable — « Jewellery » sous « Accessoires de mode » — et l'identifiant du rayon connu : le rayon posé par identifiants avant la question, jamais par-dessus un choix de la personne) · 2026-10-28-langue-page-ouverte (0.6.151 : page Vinted non française dont le pays du compte n'est pas lu — sonde muette, jeton expiré — catégorie, état et couleurs posés par identifiants quand la langue de la page est ouverte par le serveur, vinted_ids_langues_ouvertes) · 2026-10-28-menus-bloom (0.6.150 : Vinted a remplacé ses menus — Catégorie, Marque, Taille, État, Couleur, Matériau — par des boutons « bloom » dont la valeur ne vit que dans le span « --value » ; toute relecture passe par valeurChampVinted, la grille de tailles à puces est trouvée) · 2026-10-26-modele-repli (modèle : une ligne de repli demandée telle quelle — « Mon modèle ne figure pas dans la liste », « Je ne connais pas le nom du modèle » — se choisit, à l'exact, et la valeur posée est relue ; le modèle d'une capture compte au contrôle avant retrait même sans valeur reposable) · 2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-11-07-nuit (0.6.179 : un choix de rayon de la personne coupe la queue héritée de l'ancien arbre — feuille posée, niveau retiré repris, sinon la descente continue sous le choix et la question suivante porte le chemin corrigé ; un rayon refusé au compte Pro (400 « category ») devient une question de rayon, jamais « renseigne category ») · 2026-10-30-pour-qui-avant-taille (0.6.161 : « Accessoires de mode › Montres » — « Pour qui ? » posé AVANT la taille, qui en dépend ; déclencheur accessory_department-size-single-grid-input reconnu ; Brave nommé) · 2026-10-30-matieres-etiquette (0.6.160 : la composition de l'étiquette — fields.matieres, « Coton, Polyester, Élasthanne » — cochée matière par matière, 3 au plus, jamais la plus longue de la liste ni une matière à la place d'une autre) · 2026-10-28-rayon-par-identifiant (0.6.152 : un libellé du chemin introuvable — « Jewellery » sous « Accessoires de mode » — et l'identifiant du rayon connu : le rayon posé par identifiants avant la question, jamais par-dessus un choix de la personne) · 2026-10-28-langue-page-ouverte (0.6.151 : page Vinted non française dont le pays du compte n'est pas lu — sonde muette, jeton expiré — catégorie, état et couleurs posés par identifiants quand la langue de la page est ouverte par le serveur, vinted_ids_langues_ouvertes) · 2026-10-28-menus-bloom (0.6.150 : Vinted a remplacé ses menus — Catégorie, Marque, Taille, État, Couleur, Matériau — par des boutons « bloom » dont la valeur ne vit que dans le span « --value » ; toute relecture passe par valeurChampVinted, la grille de tailles à puces est trouvée) · 2026-10-26-modele-repli (modèle : une ligne de repli demandée telle quelle — « Mon modèle ne figure pas dans la liste », « Je ne connais pas le nom du modèle » — se choisit, à l'exact, et la valeur posée est relue ; le modèle d'une capture compte au contrôle avant retrait même sans valeur reposable) · 2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -83,6 +83,9 @@ const VINTED_SERVER_FIELD_LABELS = {
   size: "Taille",
   material: "Matière",
   catalog_id: "Catégorie",
+  // (07/11 nuit, point 2 — e95e8b9d) Le refus d'un RAYON au compte (« Les utilisateurs Vinted Pro ne peuvent pas
+  // ajouter d'articles dans ce catalogue ») arrive sous ce nom : jamais « renseigne « category » ».
+  category: "Catégorie",
   price: "Prix",
   title: "Titre",
   description: "Description",
@@ -3933,6 +3936,8 @@ async function remplirFormulaireVinted(job) {
         ...(e.needsUserField ? { needsUserField: e.needsUserField } : {}),
         error: String(e?.message ?? e),
         ...(diagnostic ? { diagnostic } : {}),
+        // (07/11 nuit, point 1) Le chemin corrigé par le choix de la personne (l'arrière-plan en fait celui de la publication).
+        ...(Array.isArray(e?.cheminApresChoix) && e.cheminApresChoix.length ? { cheminApresChoix: e.cheminApresChoix.map(String) } : {}),
       };
     }
     throw e;
@@ -5691,6 +5696,34 @@ async function remplirFormulaireVinted(job) {
         "le formulaire est resté sur /items/new",
         ...(diagnosticsRecreation.length ? [diagnosticsRecreation.join(" || ")] : []),
       ].filter(Boolean).join(" || ").slice(0, 2000);
+      // ── (07/11 nuit, point 2 — e95e8b9d, « Rasoir vintage ») LE RAYON REFUSÉ AU COMPTE ─────────────────────────────
+      // HTTP 400 {"field":"category","value":"Les utilisateurs Vinted Pro ne peuvent pas ajouter d'articles dans ce
+      // catalogue"} : rien n'a été créé, et aucune valeur de champ n'y peut rien — c'est le RAYON que Vinted refuse à ce
+      // compte. Avant : « Champ exigé par Vinted : category. À faire : renseigne « category » dans la copie Vinted de
+      // l'app » (un champ qui n'existe pas), deux questions « État » d'abord. Désormais le message vrai, et le
+      // résultat le dit (rayonRefuseAuCompte) : l'arrière-plan en fait une question de RAYON (publication), le serveur
+      // la remplit des rayons possibles — la personne choisit un autre rayon, ou abandonne Vinted pour cet article.
+      const refusRayon = serverRequired.find((f) => String(f.key) === "category");
+      if (refusRayon) {
+        const valeurRefus = String(refusRayon.message ?? "").replace(/\s+/g, " ").trim();
+        const pro = /\bpro\b/i.test(valeurRefus);
+        const chemin = (Array.isArray(fields?.categoryPath) ? fields.categoryPath : []).map(String);
+        const rayonTxt = chemin.length ? ` « ${chemin.join(" › ")} »` : "";
+        return {
+          success: false,
+          error: (pro
+            ? `Vinted n'autorise pas les comptes Pro à vendre dans le rayon${rayonTxt} : l'annonce n'a PAS été créée.`
+            : `Vinted refuse le rayon${rayonTxt} pour ton compte (« ${valeurRefus.slice(0, 160)} ») : l'annonce n'a PAS été créée.`)
+            + " Choisis un autre rayon Vinted pour cet article, ou ne le publie pas sur Vinted.",
+          rayonRefuseAuCompte: { pro, message: valeurRefus.slice(0, 300), chemin },
+          warnings,
+          serverRequired,
+          preuveEchec: "refus_serveur",
+          diagnostic: diagRefus,
+          discoveredRequired: requiredState.discovered,
+          ...(onePassDeleted ? { deleted: true } : {}),
+        };
+      }
       return {
         success: false,
         error: dimensionsColis
@@ -9044,9 +9077,120 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
   // (29/10, lot B 4.1) Les racines affichées au niveau 0 (lues une fois, DOM seulement) : elles disent la langue de la
   // page quand un niveau plus bas est introuvable (« Sport » trouvé tel quel sur une page italienne, puis « Cyclisme »).
   let racinesPage = null;
+  // ── (07/11 nuit, point 1 — 9256e3ae, job dca7193f) LE CHOIX DE LA PERSONNE COUPE LA QUEUE HÉRITÉE ──────────────────
+  // « Hommes › Accessoires › Autres » (ancien arbre) sur un compte basculé : la personne a remplacé « Accessoires » par
+  // « Sacs et sacoches », la descente gardait « Autres » derrière — introuvable sous les sacs, et la question suivante
+  // proposait dix sacs pour une éponge de voiture. Désormais, sous un niveau SUBSTITUÉ par la personne :
+  //   · le choix est une feuille → la queue héritée est coupée, la feuille est posée ;
+  //   · le libellé suivant est introuvable sous le choix → un libellé plus bas de la queue affiché ici (Vinted a retiré
+  //     un niveau) reprend la descente ; sinon la queue est COUPÉE au niveau substitué et la descente continue sous le
+  //     choix (même échelle qu'un rayon devenu intermédiaire : un seul sous-niveau, suggestion de Vinted, sinon la
+  //     question des sous-niveaux RÉELS) ;
+  //   · un libellé suivant trouvé (Vinted a seulement renommé le niveau) → la queue sert, comme avant.
+  // Une question posée après un choix de la personne porte le chemin ainsi corrigé (cheminApresChoix) : l'arrière-plan
+  // en fait le chemin de la publication, la réponse suivante s'y ajoute au lieu de remplacer la précédente.
+  // Sans choix de la personne, rien ne change.
+  let niveauSubstitue = null;
+  let cheminChoisiParLaPersonne = false;
+  let reprisesQueue = 0; // borne : jamais plus de 3 reprises de la queue par descente
+  const avecCheminApresChoix = (err) => {
+    if (cheminChoisiParLaPersonne && err && typeof err === "object") err.cheminApresChoix = path.slice();
+    return err;
+  };
+  // Les sous-niveaux du nœud affiché (ses enfants sont à l'écran) : le libellé à ajouter au chemin, ou la question.
+  const echelleSousNiveaux = async (levelLabel) => {
+    const sousNiveaux = await visibleCatalogChoices();
+    // ── ÉCHELLE DE DESCENTE AUTOMATIQUE (2026-09-04) ──────────────────────
+    // Vinted affine son arbre : une catégorie sur laquelle une annonce a été
+    // créée devient un niveau INTERMÉDIAIRE, et le dépôt n'est plus accepté
+    // dessus. Mesuré ce jour : 6 des 444 catégories du parc sont dans ce cas
+    // (Jupes, Baskets, Jeux et jouets, Figurines et accessoires, Éclairage,
+    // Cartes à collectionner) — et ça s'étendra, ce sont des rayons majeurs.
+    //
+    // ⛔ GARDE-FOU DE PÉRIMÈTRE : tout ce qui suit ne s'exécute QUE dans cette
+    // branche, c'est-à-dire quand le chemin capturé s'arrête sur un nœud QUI A
+    // DES ENFANTS. Une catégorie feuille n'y entre jamais : mesuré sur les 748
+    // republications réussies des 7 derniers jours, ZÉRO y serait passée. Pas
+    // un appel, pas une branche de plus sur le chemin qui marche.
+    //
+    // BARREAU 1 — UN SEUL SOUS-NIVEAU : il n'y a rien à arbitrer, la
+    // destination est unique. On descend, sans rien demander.
+    // ⛔ Et SEULEMENT dans ce cas : à deux sous-niveaux ou plus, on ne prend
+    // JAMAIS le premier venu. Une mauvaise catégorie Vinted, c'est une
+    // annonce invisible ou refusée — le barreau 3 tranche à la place.
+    if (sousNiveaux.length === 1) {
+      choixConsomme = true; // la place du choix utilisateur est prise
+      console.log(
+        `[vinted] catégorie : « ${levelLabel} » est devenu intermédiaire et n'a qu'un seul sous-niveau ` +
+        `(« ${sousNiveaux[0]} ») — descente automatique, aucune ambiguïté.`
+      );
+      return sousNiveaux[0];
+    }
+    // BARREAU 2 — DÉPARTAGE PAR LA SUGGESTION DE VINTED.
+    // Relevé en réel le 2026-09-04 sur le cas d'origine (photo de « La cascade
+    // lumineuse Hatchimals » montée sur un dépôt, aucune annonce créée) :
+    //   catalog-suggestion-3313 « Sets de jeux »
+    //     — Enfants > Jeux et jouets > Figurines et accessoires
+    //   catalog-suggestion-3366 « Autres jeux et jouets électroniques »
+    // 3313 EST l'un des trois enfants de 1730. Les deux sont des radios SANS
+    // chevron, donc des feuilles, et le fil d'Ariane le confirme.
+    // Photo SEULE suffit ; ajouter le titre ne change ni le nombre ni les ids.
+    //
+    // ⛔ LA RÈGLE, INCHANGÉE : on n'accepte une suggestion QUE si son id
+    // appartient aux ENFANTS du nœud courant, et seulement s'il n'y en a
+    // qu'une. Jamais pour naviguer, jamais à un autre niveau. C'est ce qui
+    // protège du cas documenté le 06/08, où une suggestion dupliquait une
+    // RACINE : hors de l'ensemble des enfants, elle est ignorée.
+    // Deux suggestions valides ⇒ ambigu ⇒ on ne tranche pas, barreau 3.
+    const idsEnfants = await visibleCatalogChildIds();
+    const retenues = [...new Set(
+      suggestionsVinted.filter((s) => idsEnfants.has(s.id)).map((s) => s.libelle)
+    )];
+    if (retenues.length === 1) {
+      choixConsomme = true;
+      console.log(
+        `[vinted] catégorie : « ${levelLabel} » est devenu intermédiaire — Vinted suggère ` +
+        `« ${retenues[0]} », qui est l'un de ses sous-niveaux. Descente sur la suggestion de la plateforme.`
+      );
+      return retenues[0];
+    }
+    if (retenues.length > 1) {
+      console.warn(
+        `[vinted] catégorie : ${retenues.length} suggestions Vinted valides sous « ${levelLabel} » ` +
+        `(${retenues.join(", ")}) — ambigu, on ne tranche pas : choix laissé à l'utilisateur.`
+      );
+    }
+    //
+    // BARREAU 3 — plusieurs sous-niveaux et rien pour trancher : l'utilisateur
+    // choisit, sur la liste RÉELLE que Vinted vient d'afficher. Le
+    // needsUserField ci-dessous est complet (choix fermé, cible
+    // categoryLevelChoice) : jamais un message nu avec un bouton qui boucle.
+    throw avecCheminApresChoix(erreurCategorie(
+      `le chemin s'arrête sur un niveau intermédiaire (« ${levelLabel} »)`,
+      `le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +
+      `Sous-niveaux proposés par Vinted: ${JSON.stringify(sousNiveaux)}. ` +
+      `Ajouter le niveau terminal manquant dans vintedCategories.js.`,
+      // Même repli à choix que « niveau introuvable » (2026-08-29) : les
+      // sous-niveaux réels viennent d'être révélés — l'utilisateur tranche,
+      // le job repart, le choix s'ajoute en bout de chemin.
+      sousNiveaux.length ? {
+        needsUser: true,
+        message:
+          `Le catalogue Vinted demande une sous-catégorie plus précise sous « ${levelLabel} ». ` +
+          "Choisis-la parmi celles que Vinted propose — ton annonce partira ensuite toute seule.",
+        needsUserField: {
+          field_key: "categoryLevelChoice",
+          field_label: "Catégorie Vinted",
+          allowed_values: sousNiveaux,
+          input_type: "selection_only",
+          target: { root: null, key: "categoryLevelChoice" },
+        },
+      } : null
+    ));
+  };
   for (let i = 0; i < path.length; i++) {
     let levelLabel = path[i];
-    const isLast = i === path.length - 1;
+    let isLast = i === path.length - 1;
     // Niveau racine : match EXACT exigé (libellés courts et connus, repli
     // includes() dangereux — cf. waitForStableCatalogOption). Aux niveaux
     // suivants le repli reste permis (libellés composés type « Robes midi »).
@@ -9076,8 +9220,31 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
           choixConsomme = true;
           levelLabel = choixUtilisateur;
           path[i] = choixUtilisateur;
+          niveauSubstitue = i;
+          cheminChoisiParLaPersonne = true;
           console.log(`[vinted] catégorie : niveau ${i} remplacé par le choix utilisateur « ${choixUtilisateur} »`);
         } catch { match = null; }
+      }
+      // (07/11 nuit, point 1) Sous un niveau substitué par la personne, le libellé hérité introuvable : niveau retiré
+      // (un libellé plus bas de la queue est affiché ici) ou autre branche (queue coupée, la descente continue sous le
+      // choix). Seulement quand le panneau montre des options : un panneau vide garde ses sorties d'avant.
+      if (!match && niveauSubstitue != null && niveauSubstitue === i - 1 && reprisesQueue < 3) {
+        reprisesQueue++;
+        const optionsIci = await visibleCatalogChoices().catch(() => []);
+        if (optionsIci.length) {
+          const reste = path.slice(i + 1);
+          const k = reste.findIndex((l) => optionsIci.some((o) => normalizeFuzzy(o) === normalizeFuzzy(l)));
+          if (k >= 0) {
+            console.log(`[vinted] catégorie : « ${levelLabel} » absent sous le choix « ${path[i - 1]} », « ${reste[k]} » affiché — niveau retiré par Vinted, la descente reprend sur lui`);
+            path.splice(i, k + 1);
+          } else {
+            console.log(`[vinted] catégorie : queue héritée ${JSON.stringify(path.slice(i))} absente sous le choix « ${path[i - 1]} » — coupée, la descente continue sous ce choix`);
+            path.length = i;
+            path.push(await echelleSousNiveaux(path[i - 1]));
+          }
+          i--;
+          continue;
+        }
       }
       // ── LE FILET GÉNÉRIQUE : UN PANNEAU VIDE EST PEUT-ÊTRE UN PANNEAU
       //    FERMÉ (2026-09-18, correctif 2) ───────────────────────────────────
@@ -9180,7 +9347,7 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
         //    le job repart et la valeur choisie est substituée au niveau
         //    échoué (bloc 1 ci-dessus). La catégorie vient de l'arbre du
         //    moment : elle existe toujours dans Vinted, jamais devinée.
-        throw erreurCategorie(
+        throw avecCheminApresChoix(erreurCategorie(
           `niveau « ${levelLabel} » introuvable`,
           `niveau "${levelLabel}" introuvable (chemin ${JSON.stringify(path)}). ` +
           `Options affichées par Vinted à ce niveau: ${JSON.stringify(options)}. ` +
@@ -9198,7 +9365,7 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
               target: { root: null, key: "categoryLevelChoice" },
             },
           }
-        );
+        ));
       }
     }
     // (29/10, lot B 4.1) Niveau 0 trouvé : ses racines, lues une fois (aucun clic, aucun appel) — cf. racinesPage.
@@ -9237,6 +9404,12 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
     // Deux causes possibles, indécidables sans les annexes du diagnostic :
     // mapping trop profond (rare : le même chemin peut réussir par ailleurs),
     // ou état du panneau inattendu (pré-sélection, rendu partiel).
+    // (07/11 nuit, point 1) Le choix de la personne À CE niveau est une feuille : la queue héritée est coupée.
+    if (!isLast && !hasChevron && niveauSubstitue === i) {
+      console.log(`[vinted] catégorie : le choix « ${levelLabel} » est une feuille — queue héritée ${JSON.stringify(path.slice(i + 1))} coupée`);
+      path.length = i + 1;
+      isLast = true;
+    }
     if (!isLast && !hasChevron) {
       // ── Repli à CHOIX (2026-09-03, chantier « plus aucun échec ») ─────────
       // Cet échec partait SEC (failed) alors que la liste réelle du panneau
@@ -9244,7 +9417,7 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
       // tranche parmi ce que Vinted affiche VRAIMENT, le choix est substitué
       // à ce niveau à la relance (categoryLevelChoice, bloc 1 plus haut).
       const optionsVisibles = await visibleCatalogChoices();
-      throw erreurCategorie(
+      throw avecCheminApresChoix(erreurCategorie(
         `le niveau « ${levelLabel} » ne propose pas les sous-niveaux attendus`,
         `"${levelLabel}" affiché sans sous-niveaux (pas de chevron, vérifié 4×, suggestions exclues) alors que ` +
         `le chemin continue avec ${JSON.stringify(path.slice(i + 1))}. ` +
@@ -9263,7 +9436,7 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
             target: { root: null, key: "categoryLevelChoice" },
           },
         } : null
-      );
+      ));
     }
 
     // Dernier niveau du chemin mais encore un chevron : profondeur
@@ -9277,100 +9450,13 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
       // sélectionne parmi les sous-niveaux qui viennent d'être révélés.
       if (choixUtilisateur && !choixConsomme) {
         choixConsomme = true;
+        cheminChoisiParLaPersonne = true;
         path.push(choixUtilisateur);
         console.log(`[vinted] catégorie : niveau terminal complété par le choix utilisateur « ${choixUtilisateur} »`);
         continue;
       }
-      const sousNiveaux = await visibleCatalogChoices();
-      // ── ÉCHELLE DE DESCENTE AUTOMATIQUE (2026-09-04) ──────────────────────
-      // Vinted affine son arbre : une catégorie sur laquelle une annonce a été
-      // créée devient un niveau INTERMÉDIAIRE, et le dépôt n'est plus accepté
-      // dessus. Mesuré ce jour : 6 des 444 catégories du parc sont dans ce cas
-      // (Jupes, Baskets, Jeux et jouets, Figurines et accessoires, Éclairage,
-      // Cartes à collectionner) — et ça s'étendra, ce sont des rayons majeurs.
-      //
-      // ⛔ GARDE-FOU DE PÉRIMÈTRE : tout ce qui suit ne s'exécute QUE dans cette
-      // branche, c'est-à-dire quand le chemin capturé s'arrête sur un nœud QUI A
-      // DES ENFANTS. Une catégorie feuille n'y entre jamais : mesuré sur les 748
-      // republications réussies des 7 derniers jours, ZÉRO y serait passée. Pas
-      // un appel, pas une branche de plus sur le chemin qui marche.
-      //
-      // BARREAU 1 — UN SEUL SOUS-NIVEAU : il n'y a rien à arbitrer, la
-      // destination est unique. On descend, sans rien demander.
-      // ⛔ Et SEULEMENT dans ce cas : à deux sous-niveaux ou plus, on ne prend
-      // JAMAIS le premier venu. Une mauvaise catégorie Vinted, c'est une
-      // annonce invisible ou refusée — le barreau 3 tranche à la place.
-      if (sousNiveaux.length === 1) {
-        choixConsomme = true; // la place du choix utilisateur est prise
-        path.push(sousNiveaux[0]);
-        console.log(
-          `[vinted] catégorie : « ${levelLabel} » est devenu intermédiaire et n'a qu'un seul sous-niveau ` +
-          `(« ${sousNiveaux[0]} ») — descente automatique, aucune ambiguïté.`
-        );
-        continue;
-      }
-      // BARREAU 2 — DÉPARTAGE PAR LA SUGGESTION DE VINTED.
-      // Relevé en réel le 2026-09-04 sur le cas d'origine (photo de « La cascade
-      // lumineuse Hatchimals » montée sur un dépôt, aucune annonce créée) :
-      //   catalog-suggestion-3313 « Sets de jeux »
-      //     — Enfants > Jeux et jouets > Figurines et accessoires
-      //   catalog-suggestion-3366 « Autres jeux et jouets électroniques »
-      // 3313 EST l'un des trois enfants de 1730. Les deux sont des radios SANS
-      // chevron, donc des feuilles, et le fil d'Ariane le confirme.
-      // Photo SEULE suffit ; ajouter le titre ne change ni le nombre ni les ids.
-      //
-      // ⛔ LA RÈGLE, INCHANGÉE : on n'accepte une suggestion QUE si son id
-      // appartient aux ENFANTS du nœud courant, et seulement s'il n'y en a
-      // qu'une. Jamais pour naviguer, jamais à un autre niveau. C'est ce qui
-      // protège du cas documenté le 06/08, où une suggestion dupliquait une
-      // RACINE : hors de l'ensemble des enfants, elle est ignorée.
-      // Deux suggestions valides ⇒ ambigu ⇒ on ne tranche pas, barreau 3.
-      const idsEnfants = await visibleCatalogChildIds();
-      const retenues = [...new Set(
-        suggestionsVinted.filter((s) => idsEnfants.has(s.id)).map((s) => s.libelle)
-      )];
-      if (retenues.length === 1) {
-        choixConsomme = true;
-        path.push(retenues[0]);
-        console.log(
-          `[vinted] catégorie : « ${levelLabel} » est devenu intermédiaire — Vinted suggère ` +
-          `« ${retenues[0]} », qui est l'un de ses sous-niveaux. Descente sur la suggestion de la plateforme.`
-        );
-        continue;
-      }
-      if (retenues.length > 1) {
-        console.warn(
-          `[vinted] catégorie : ${retenues.length} suggestions Vinted valides sous « ${levelLabel} » ` +
-          `(${retenues.join(", ")}) — ambigu, on ne tranche pas : choix laissé à l'utilisateur.`
-        );
-      }
-      //
-      // BARREAU 3 — plusieurs sous-niveaux et rien pour trancher : l'utilisateur
-      // choisit, sur la liste RÉELLE que Vinted vient d'afficher. Le
-      // needsUserField ci-dessous est complet (choix fermé, cible
-      // categoryLevelChoice) : jamais un message nu avec un bouton qui boucle.
-      throw erreurCategorie(
-        `le chemin s'arrête sur un niveau intermédiaire (« ${levelLabel} »)`,
-        `le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +
-        `Sous-niveaux proposés par Vinted: ${JSON.stringify(sousNiveaux)}. ` +
-        `Ajouter le niveau terminal manquant dans vintedCategories.js.`,
-        // Même repli à choix que « niveau introuvable » (2026-08-29) : les
-        // sous-niveaux réels viennent d'être révélés — l'utilisateur tranche,
-        // le job repart, le choix s'ajoute en bout de chemin.
-        sousNiveaux.length ? {
-          needsUser: true,
-          message:
-            `Le catalogue Vinted demande une sous-catégorie plus précise sous « ${levelLabel} ». ` +
-            "Choisis-la parmi celles que Vinted propose — ton annonce partira ensuite toute seule.",
-          needsUserField: {
-            field_key: "categoryLevelChoice",
-            field_label: "Catégorie Vinted",
-            allowed_values: sousNiveaux,
-            input_type: "selection_only",
-            target: { root: null, key: "categoryLevelChoice" },
-          },
-        } : null
-      );
+      path.push(await echelleSousNiveaux(levelLabel));
+      continue;
     }
 
     await humanPause();

@@ -12,10 +12,17 @@ let ko = 0, n = 0;
 const ok = (c, nom, d = "") => { n++; if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
 const lire = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
-const MIGRATION = "supabase/migrations/20261105110000_releves_rouverts_republication_partie.sql";
+// (07/11 soir) La DERNIÈRE définition du dépôt (ordre des fichiers) : 20261105110000, puis 20261107193200 (déclaration
+// « je l'ai retirée moi-même » et constat de deux relevés probants, lus eux aussi sans rien juger).
+const DOSSIER = "supabase/migrations";
+const FICHIERS = fs.readdirSync(new URL(`../${DOSSIER}`, import.meta.url)).filter((f) => f.endsWith(".sql")).sort();
+const MIGRATION = FICHIERS.filter((f) => lire(`${DOSSIER}/${f}`).includes("CREATE OR REPLACE FUNCTION public.republication_annonce_partie"))
+  .map((f) => `${DOSSIER}/${f}`).at(-1);
 const sql = lire(MIGRATION);
-const corps = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.republication_annonce_partie"), sql.indexOf("REVOKE ALL ON FUNCTION public.republication_annonce_partie"));
+const debut = sql.indexOf("CREATE OR REPLACE FUNCTION public.republication_annonce_partie");
+const corps = sql.slice(debut, sql.indexOf("$function$;", debut));
 const code = corps.split("\n").filter((l) => !/^\s*--/.test(l)).join("\n");
+console.log(`(définition lue : ${MIGRATION})`);
 
 console.log("1. La SQL lit les verdicts, rien d'autre");
 ok(/LIKE 'handler-watch \(%'/.test(code), "auteurs lus : handler-watch (…) — le juge des relevés");
@@ -86,6 +93,36 @@ for (const p of sources) {
   if (p.endsWith("get-pending-jobs/index.ts")) continue;
   ok(!lire(p).includes('"deux_releves_probants"'), `${p} : n'écrit pas la marque « deux relevés probants »`);
 }
+
+console.log("\n2 bis. (07/11 soir) Les deux constats lus en plus — confirmés, jamais un doute");
+const nouveau = /constats AS \(/.test(code);
+ok(!nouveau || (/x\.status = 'cancelled'/.test(code)
+  && code.includes("x.error IN ('Réponse dans l''app : « je l''ai retirée moi-même » — pas une vente',")
+  && code.includes("'Annonce retirée par le vendeur (confirmé dans l''app)')")),
+  "la déclaration : un job « cancelled » portant EXACTEMENT un des deux libellés de la réponse de la personne");
+const msgApp = /const MSG_REPONSE_RETIREE =\s*\n?\s*"([^"]+)"/.exec(lire("src/App.jsx"))?.[1] ?? "";
+ok(!nouveau || (msgApp && code.includes(`'${msgApp.replace(/'/g, "''")}'`)), "… le libellé est celui que l'app écrit (src/App.jsx MSG_REPONSE_RETIREE)", msgApp);
+const derniere = (re) => FICHIERS.map((f) => lire(`${DOSSIER}/${f}`)).filter((t) => re.test(t)).at(-1) ?? "";
+const decl = derniere(/CREATE TRIGGER cross_post_jobs_declaration_retiree_ferme_retraits/);
+ok(!nouveau || (decl.includes("Réponse dans l''app : « je l''ai retirée moi-même » — pas une vente") && decl.includes("Annonce retirée par le vendeur (confirmé dans l''app)")),
+  "… les deux mêmes libellés que le déclencheur cross_post_jobs_declaration_retiree_ferme_retraits");
+ok(!nouveau || (/jsonb_typeof\(x\.platform_fields -> 'absence_releves'\) = 'object'/.test(code)
+  && /absence_releves,listing_id\}', ''\)\) = lid\.id/.test(code) && /absence_releves,premier\}/.test(code) && /absence_releves,second\}/.test(code)
+  && /x\.inventaire_id = p_inventaire_id AND x\.platform = p_platform\s+AND jsonb_typeof\(x\.platform_fields -> 'absence_releves'\)/.test(code)),
+  "le constat absence_releves : CE numéro, deux relevés nommés (premier, second), sur un dépôt de CETTE fiche (index de la fiche)");
+ok(!nouveau || /a\.vu_le >= c\.depuis/.test(code), "… un relevé qui revoit l'annonce depuis le repère lève la garde");
+const constater = derniere(/CREATE OR REPLACE FUNCTION public\.constater_absences_releve/);
+ok(!nouveau || (/IF NOT releve_preuve_absence\(p_run\)/.test(constater) && /AND releve_preuve_absence\(s\.id\)/.test(constater)
+  && /'absence_releves',jsonb_build_object\('premier',precedent\.id,'second',r\.id,'listing_id',a\.listing_id/.test(constater)),
+  "… posé par constater_absences_releve seulement après DEUX relevés probants distincts (releve_preuve_absence, le sien et le précédent)");
+let ecrivains = 0;
+for (const p of sources) {
+  const actif = lire(p).split("\n").filter((l) => !/^\s*(\/\/|\*)/.test(l)).join("\n");
+  if (/absence_releves\s*=(?!=)|\[\s*["']absence_releves["']\s*\]\s*=(?!=)|["']absence_releves["']\s*:|\babsence_releves\s*:/.test(actif)) {
+    ecrivains++; ok(false, `${p} écrit absence_releves`, "seul constater_absences_releve (SQL) pose ce constat : relire sa preuve avant que la SQL le lise");
+  }
+}
+ok(ecrivains === 0, `fonctions edge (${sources.length} fichiers) : aucune n'écrit le constat absence_releves`);
 
 console.log("\n3. Les lectures seules ne signent jamais comme le juge");
 const ujs = lire("supabase/functions/update-job-status/index.ts");

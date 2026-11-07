@@ -656,10 +656,11 @@ log("D. Beebs — capture de la fiche : le bandeau « Voir dans l’appli / L’
 // ═══ C. VERSION ═══════════════════════════════════════════════════════════════
 log("C. Version");
 {
-  assert.equal(manifest.version, "0.6.178");
-  assert.match(bg, /^const FILLSELL_BUILD =\n {2}"2026-11-07-soir \(0\.6\.178 :/m);
+  // (0.6.179) Le paquet suivant porte la 0.6.178 : version ≥ 0.6.178, la 0.6.178 toujours décrite dans FILLSELL_BUILD.
+  assert.ok(String(manifest.version).localeCompare("0.6.178", undefined, { numeric: true }) >= 0, `manifest ≥ 0.6.178 (lu : ${manifest.version})`);
+  assert.match(bg, /^ {2}"2026-11-07-soir \(0\.6\.178 :/m);
   assert.match(lbc, /^const LEBONCOIN_BUILD = "2026-11-07-soir-photos-lourdes \(0\.6\.178 :/m);
-  ok("manifest 0.6.178 ; FILLSELL_BUILD et LEBONCOIN_BUILD datés du 07/11 soir");
+  ok(`manifest ${manifest.version} (≥ 0.6.178) ; la 0.6.178 datée du 07/11 soir dans FILLSELL_BUILD et LEBONCOIN_BUILD`);
 }
 
 log(`\n✓ extension 0.6.178 : ${n} contrôles verts`);

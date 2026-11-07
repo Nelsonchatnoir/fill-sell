@@ -166,6 +166,9 @@ const VINTED_COLOR_VARIANTS = {
   "lilla": "Lila",
   "azzurro": "Bleu clair", "celeste": "Bleu clair", "hellblau": "Bleu clair", "lichtblauw": "Bleu clair", "azul claro": "Bleu clair",
   "blu": "Bleu", "azul": "Bleu", "blau": "Bleu", "blauw": "Bleu",
+  // (07/11, Marta — f1c4a0e0) Les libellés EXACTS de la palette de vinted.it (29 couleurs relevées le 07/11) : « Blu marino »
+  // partait « Bleu » par le scan des mots. « Chiaro » (32, Transparence) seul, jamais comme mot (« Blu chiaro » reste Bleu).
+  "blu marino": "Marine", "borgogna": "Bordeaux", "chiaro": "Transparence",
   "blu navy": "Marine", "blu scuro": "Marine", "blu notte": "Marine", "azul marino": "Marine", "dunkelblau": "Marine", "marineblau": "Marine", "donkerblauw": "Marine", "azul-marinho": "Marine",
   "turchese": "Turquoise", "turquesa": "Turquoise", "türkis": "Turquoise", "turkoois": "Turquoise",
   "menta": "Menthe", "munt": "Menthe",
@@ -187,7 +190,7 @@ const VINTED_COLOR_VARIANTS = {
 // de couleur hors contexte (« or », « body » — le code serveur de Beige —,
 // « clear », « various », « multi ») n'y entrent pas : seules, elles valent ;
 // au milieu d'une phrase (« Body suit black »), jamais.
-const PAS_EN_MOT = new Set(["or", "body", "clear", "various", "multi"]);
+const PAS_EN_MOT = new Set(["or", "body", "clear", "various", "multi", "chiaro"]);
 const VARIANTES_PAR_MOTS = Object.keys(VINTED_COLOR_VARIANTS)
   .filter((k) => k.length > 2 && !PAS_EN_MOT.has(k))
   .sort((a, b) => b.split(/[\s-]+/).length - a.split(/[\s-]+/).length || b.length - a.length);

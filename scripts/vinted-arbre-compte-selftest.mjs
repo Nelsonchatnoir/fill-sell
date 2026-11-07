@@ -18,7 +18,7 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const c = (s) => s.split(" > ");
 
 console.log("1. La table colle à l'arbre vivant (docs/vinted-catalog-tree.txt, 06/11)");
-const L = readFileSync(join(ROOT, "docs/vinted-catalog-tree.txt"), "utf8").split("\n").filter(Boolean);
+const L = readFileSync(join(ROOT, "docs/vinted-catalog-tree.txt"), "utf8").replace(/\r\n/g, "\n").split("\n").filter(Boolean);
 const vivantes = new Set(); const ids = new Set(); const pile = [];
 for (const l of L) { const d = l.match(/^ */)[0].length / 2; const m = l.trim().match(/^(.+?)  \[id=(\d+)\]/); pile.length = d; pile.push(m[1]); ids.add(Number(m[2])); if (l.includes("[FEUILLE]")) vivantes.add(pile.join(" > ")); }
 ok(`${PAIRES_ARBRES_VINTED.length} paires : chaque chemin NOUVEAU est une feuille vivante`, PAIRES_ARBRES_VINTED.every(([, n]) => vivantes.has(n)),
@@ -51,11 +51,11 @@ ok("aucun indice (identifiants hors de la zone) → inconnu", arbreVintedDuCompt
 ok("zone de la bascule : un chemin hors zone n'est jamais lu", cheminVintedTouche(c("Femmes > Accessoires > Montres")) && cheminVintedTouche(c("Accessoires de mode > Montres")) && !cheminVintedTouche(c("Maison > Textiles > Rideaux")));
 
 console.log("5. Branchements");
-const gpj = readFileSync(join(ROOT, "supabase/functions/get-pending-jobs/index.ts"), "utf8");
+const gpj = readFileSync(join(ROOT, "supabase/functions/get-pending-jobs/index.ts"), "utf8").replace(/\r\n/g, "\n"); // fins de ligne neutres (CRLF après un checkout Windows, core.autocrlf)
 const bloc = gpj.slice(gpj.indexOf("VINTED : LE CHEMIN DE CATÉGORIE SELON L'ARBRE RÉEL DU COMPTE"), gpj.indexOf("chemins servis tels quels`);\n    }"));
 ok("get-pending-jobs : publication seulement, indices = republish_snapshot + refus (jamais vinted_ids), réponse seulement",
   /j\.action === "publish"/.test(bloc) && /republish_snapshot->>catalog_id/.test(bloc) && !/vinted_ids/.test(bloc.replace(/jamais vinted_ids/g, "")) && !/\.update\(/.test(bloc));
-const hw = readFileSync(join(ROOT, "supabase/functions/handler-watch/index.ts"), "utf8");
+const hw = readFileSync(join(ROOT, "supabase/functions/handler-watch/index.ts"), "utf8").replace(/\r\n/g, "\n");
 const blocHw = hw.slice(hw.indexOf("VINTED : UN RAYON REFUSÉ PAR LA BASCULE"), hw.indexOf("Vinted, rayons repris dans l'arbre du compte"));
 ok("handler-watch : refus de la bascule repris UNE fois, compare-and-swap sur needs_user",
   /if \(pf\.categoryPath_selon_arbre\) continue;/.test(blocHw) && /\.eq\("id", String\(j\.id\)\)\.eq\("status", "needs_user"\)/.test(blocHw) && /\.limit\(100\)/.test(blocHw));

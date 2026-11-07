@@ -149,3 +149,41 @@ Enquêtes en lecture seule (base, code, journaux, page publique Leboncoin lue de
   f1c4a0e0 (27 de la fiche, 9 en ligne), 4 annonces disparues, « Rosa » 5/24, libellés italiens de vintedColors.js.
 - Balayage du rouge (parc actif 173 comptes) : « cassé chez nous » 79 (14:06) → 45 (17:31), 0 apparu, aucun taux en
   baisse (sortie : scratchpad balayage-apres2-20261107-1731).
+
+## Lot du 07/11 nuit (décisions de Nico après le rapport du soir)
+- Marta, couleurs : b9460406 et f1c4a0e0 ont été posées par NOUS (envoi 24 relu 5 « Rosa » ; envoi 9 « Bleu » faute du
+  libellé « Blu marino »). Règle `_shared/couleur-posee-par-nous.js` (tous comptes) : annonce déposée par FillSell,
+  couleur différente de la référence, aucun changement prouvé par la personne → la couleur de la FICHE part. Parc :
+  2 changements (→ 24 et 27). `vintedColors.js` : « Blu marino », « Borgogna », « Chiaro » (exact seulement).
+- Marta, « 3 annonces remises par elle » : INEXACT — ce sont NOS republications du 02/11 depuis des fiches eBay ; chaque
+  article a deux fiches et deux annonces depuis le 24/10 (lot eBay → Vinted), photos différentes : aucune question sans
+  rapprochement sur le titre (interdit). La 4e (Gundam EXA) : même cas. Décision à prendre.
+- Vinted réussis restés « failed » (doriane-henri, Anne-Hélène ; + XEWER) : remises après vente annulée, l'annonce
+  remise par la personne était déjà portée par une fiche neuve de la synchro ; lien refusé puis faux échec du cron.
+  Règle `_shared/depot-retrouve-releve.js` (handler-watch, interrupteur `JUGER_DEPOTS_RETROUVES`) + migration 193100
+  (le cron ne conclut plus « jamais retrouvée » quand le numéro est connu).
+- Extension 0.6.179 : rayon de l'ancien arbre Vinted (arbre vivant), rayon interdit aux comptes Pro (question de rayon),
+  disparitions du dressing (référent = dernier relevé qui a marqué ; report d'un relevé), preuve de retrait Beebs pour
+  une republication (deux 404 à ≥ 6 h).
+- Migrations préparées : 193100 (lien refusé ≠ échec), 193200 (republication refusée sur déclaration « retirée » ou
+  absence prouvée), 193300 (remise sans traces héritées).
+
+## Goulvenk — pause Leboncoin (urgence du 07/11 soir)
+- Constat lu en base (521b7f89, Pro, extension 0.6.176) : pause posée le 06/11 à 01:33:39 sur un 403 de la veille des
+  commandes (0.6.175), une heure après un relevé des ventes « compte_absent_de_la_page » (00:25) ; 9 visites de contrôle
+  du 06/11 15:39 au 07/11 17:38, toutes « absente » « [incomplet] session leboncoin : page de connexion ». Tâches :
+  « … ta session Leboncoin semble fermée… », mais l'app affichait « nouvel essai automatique, rien à faire »
+  (etat-job.js, pending + erreur = « essai »). Sa synchro de 18:10 (6f4e9f94) : annoncée « servie » puis retirée de la
+  réponse sans un mot par le bloc de pause. Le « Connectée » de l'extension (19:11:27) vient du content-script
+  Leboncoin, qui signalait un compte dès que le jeton `luat` était PRÉSENT, expiré ou non.
+- Cause : la session était VRAIMENT fermée (≈ 06/11 00:25 → reconnexion ≈ 07/11 19:11). Trois défauts de règle :
+  session fermée traitée comme une restriction (le 403 = jeton périmé) ; synchro de la personne avalée ; après la
+  reconnexion, attente de la cadence de 2 h (29 min perdues).
+- Déblocage (code d'avant, lu en base) : 19:39:59 visite due, servie par sa synchro 6f4e9f94 (done 19:40:52, 17/17) ;
+  19:42:00 pause levée (« get-pending-jobs (essai passé) ») ; « LEGO Editions 43019 Football » (53665705) publiée à
+  19:43:50, Sweat Nike (3d8a5e20) 19:44:59.
+- Correctif (règle, tous comptes) : `docs/regles/plateformes.md` § « 07/11 soir (urgence Goulvenk) ». Serveur :
+  blocage-leboncoin.js, attente-session.js, get-pending-jobs, handler-watch, update-job-status ; app : bandeau
+  « Connecte-toi à Leboncoin sur ton ordinateur » ; extension 0.6.179 (jeton expiré = pas de compte, aucune requête
+  avec un jeton périmé). Selftest `lbc-session-fermee-circuit-connexion` 46/46 (rejoue sa chaîne : AVANT « rien à
+  faire », APRÈS « À toi de jouer : connecte-toi… » ; synchro de 18:10 = visite ; « connecté » de 19:11 → visite 19:12).

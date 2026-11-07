@@ -223,7 +223,9 @@ const ctx = (constats = []) => ({ constats404: constats, suppressionEnvoyee: { l
     "après l'envoi non prouvé : l'heure, la vue en ligne d'avant et le résumé de la lecture remontent au background", JSON.stringify({ ...c, error: undefined }).slice(0, 300));
 }
 const dl = bj.slice(bj.indexOf("async function deleteListing(job)"), bj.indexOf("// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER"));
-ok(/const envoiDuJob = job\?\.action === "delete" \? suppressionEnvoyeeDuJob\(job, idCible\) : null;/.test(dl)
+// (07/11 nuit, point 4 — décision de Nico) l'envoi est lu pour un retrait ET pour une republication dont la suppression
+// est partie (selftest:beebs-republication-preuve-page) ; le retrait garde exactement sa règle.
+ok(/const envoiDuJob = \["delete", "republish"\]\.includes\(String\(job\?\.action \?\? ""\)\) \? suppressionEnvoyeeDuJob\(job, idCible\) : null;/.test(dl)
   && /apresEnvoi \? "apres_suppression" : "deja_absente"/.test(dl) && (dl.match(/return sortieAbsente\(preuve\);/g) ?? []).length === 2,
   "deleteListing : l'envoi du retrait lu ; absente après NOTRE envoi = « apres_suppression » (retirée par FillSell, jamais la garde de modération)");
 

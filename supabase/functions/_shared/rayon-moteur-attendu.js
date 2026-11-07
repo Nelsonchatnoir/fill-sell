@@ -18,7 +18,7 @@
 // ⛔ Jamais à l'étape « deleted » (l'annonce est hors ligne : la question part, comme avant), jamais après
 //    une réponse de la personne, jamais quand le moteur est déjà passé sur ce job (rayon_moteur).
 // Pur (Deno + Node).
-import { rayonRefuseDuJob } from "./rayon-refuse-moteur.js";
+import { rayonRefuseDuJob, RAISON_RAYON_DISPARU, RAISON_RAYON_INTERDIT_PRO, RAISON_RAYON_REFUSE_AU_COMPTE } from "./rayon-refuse-moteur.js";
 
 export const ATTENTE_RAYON_MOTEUR_MIN = 6;
 export const CLE_PAUSE_RAYON = "rayon_moteur_attendu";
@@ -26,7 +26,19 @@ const TICKS = ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
 
 /** Le message affiché pendant la pause (le job est en file, rien à faire). */
-export function messagePauseRayonMoteur(action) {
+export function messagePauseRayonMoteur(action, raison = null) {
+  // (07/11 nuit, points 1 et 2) Le message de la pause dit la vraie raison quand ce n'est pas un niveau devenu
+  // intermédiaire : rayon disparu de l'arbre du compte (FillSell le choisit), rayon interdit aux comptes Pro (la
+  // personne choisira : la question arrive avec les rayons possibles).
+  if (raison === RAISON_RAYON_DISPARU) {
+    return "Publication en attente : ton compte Vinted n'a plus la catégorie de cet article (Vinted a réorganisé son catalogue). FillSell la choisit d'après ta fiche, rien à faire.";
+  }
+  if (raison === RAISON_RAYON_INTERDIT_PRO) {
+    return "Publication en attente, rien n'a été publié : Vinted n'autorise pas les comptes Pro dans le rayon choisi. FillSell prépare la liste des autres rayons : tu choisiras dans l'app.";
+  }
+  if (raison === RAISON_RAYON_REFUSE_AU_COMPTE) {
+    return "Publication en attente, rien n'a été publié : Vinted refuse le rayon choisi à ton compte. FillSell prépare la liste des autres rayons : tu choisiras dans l'app.";
+  }
   return action === "republish"
     ? "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted demande une catégorie plus précise : FillSell la choisit d'après ta fiche, rien à faire."
     : "Publication en attente : Vinted demande une catégorie plus précise. FillSell la choisit d'après ta fiche, rien à faire.";
@@ -56,7 +68,8 @@ export function pauseRayonMoteur({ platform = "", action = "", pfIn = null, pfEn
   if (action === "republish" && ((pf.republish_step ?? base.republish_step) !== "captured" || pf.deleted_at || base.deleted_at)) return null;
   if (objet(pf.rayon_moteur) || objet(base.rayon_moteur)) return null; // le moteur est déjà passé sur ce job
   if (String(pf.categoryLevelChoice ?? "").trim() || String(pf.needsUserResolved?.categoryLevelChoice ?? "").trim()) return null; // une réponse de la personne
-  if (!rayonRefuseDuJob({ platform, action, status: "needs_user", platform_fields: pf })) return null;
+  const plan = rayonRefuseDuJob({ platform, action, status: "needs_user", platform_fields: pf });
+  if (!plan) return null;
   const jusquA = new Date(maintenant.getTime() + ATTENTE_RAYON_MOTEUR_MIN * 60_000).toISOString();
   const np = { ...pf };
   for (const k of ["needsUserField", "needsUserFields", "champs_a_completer", "needs_user_source", ...TICKS, "processing_since"]) delete np[k];
@@ -70,7 +83,7 @@ export function pauseRayonMoteur({ platform = "", action = "", pfIn = null, pfEn
     message: typeof message === "string" ? message.slice(0, 600) : null,
     pose_par: "update-job-status (question « sous-catégorie » mise de côté pour le moteur)",
   };
-  return { pause: true, pf: np, message: messagePauseRayonMoteur(action), jusqu_a: jusquA };
+  return { pause: true, pf: np, message: messagePauseRayonMoteur(action, plan.raison), jusqu_a: jusquA };
 }
 
 /**

@@ -122,10 +122,31 @@ export const REGLE_SUPPRESSION_ENVOYEE_404 = "suppression_envoyee_deux_404";
 /** Le fait « suppression envoyée » d'un retrait (bien formé : date, vue en ligne avant l'envoi), ou null. */
 export function suppressionEnvoyeeBeebs(pf, numero = null) {
   const s = pf && typeof pf === "object" ? pf.beebs_suppression_envoyee : null;
-  if (!s || typeof s !== "object" || !Number.isFinite(ms(s.le))) return null;
-  if (!s.vue_en_ligne_avant || typeof s.vue_en_ligne_avant !== "object") return null;
-  if (numero && String(s.numero ?? "").trim() && String(s.numero).trim() !== String(numero)) return null;
-  return { le: new Date(ms(s.le)).toISOString(), numero: String(s.numero ?? numero ?? ""), vue_en_ligne_avant: s.vue_en_ligne_avant };
+  if (s && typeof s === "object" && Number.isFinite(ms(s.le)) && s.vue_en_ligne_avant && typeof s.vue_en_ligne_avant === "object") {
+    if (numero && String(s.numero ?? "").trim() && String(s.numero).trim() !== String(numero)) return null;
+    return { le: new Date(ms(s.le)).toISOString(), numero: String(s.numero ?? numero ?? ""), vue_en_ligne_avant: s.vue_en_ligne_avant };
+  }
+  return suppressionEnvoyeeRepublicationBeebs(pf, numero);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (07/11 nuit, point 4 — 7373c96c, republication 1a323b66) LA PREUVE PAR LA PAGE VAUT AUSSI POUR UNE REPUBLICATION
+// ═══════════════════════════════════════════════════════════════════════════
+// « Jean Levi's 514 » : suppression envoyée le 26/10 08:12 par la republication, page 404 depuis le 26/10 20:21, « Mes
+// annonces » illisible pour ce compte — la preuve « suppression envoyée + deux 404 à 6 h » ne valait que pour un retrait
+// (beebs.js ne la cherchait que pour action=delete, la republication ne gardait aucun constat) : 52 vérifications, puis
+// une question « l'origine n'existe plus » posée à la main. LA RÈGLE : après un envoi, seule une vente PROUVÉE clôt ;
+// sinon la preuve par la page mène au redépôt. Une republication d'avant la 0.6.179 ne gardait l'envoi que dans son
+// marqueur republish_suppression_envoyee { at, annonce } — écrit seulement après une suppression confirmée dans le
+// dialogue (bouton « Supprimer l'annonce » d'une annonce EN LIGNE) : il vaut envoi pour le numéro EXACT qu'il nomme.
+// Miroir de beebs.js (suppressionEnvoyeeDuJob). Un retrait (action delete) ne porte jamais ce marqueur : rien n'y change.
+export function suppressionEnvoyeeRepublicationBeebs(pf, numero = null) {
+  const r = pf && typeof pf === "object" ? pf.republish_suppression_envoyee : null;
+  if (!r || typeof r !== "object" || !Number.isFinite(ms(r.at))) return null;
+  const nomme = String(r.annonce ?? "").match(/(\d{6,})/)?.[1] ?? null;
+  if (!nomme || (numero && nomme !== String(numero))) return null;
+  const le = new Date(ms(r.at)).toISOString();
+  return { le, numero: nomme, vue_en_ligne_avant: { par: "republication (suppression confirmée dans le dialogue)", le } };
 }
 
 /** Les dates (ISO, croissantes) des constats « page 404 » sans fiche postérieurs à l'envoi (en vérification lue ou non). */

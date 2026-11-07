@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-07-nuit (0.6.179 : Vinted — un choix de rayon de la personne coupe la queue héritée de l'ancien arbre et la question suivante porte le chemin corrigé (la réponse s'y ajoute) ; un rayon refusé au compte Pro (400 « category ») devient une question de RAYON, jamais « renseigne category » ; relevé du dressing : le référent du marquage des disparitions est le dernier relevé du même compte qui a réellement marqué, et « sans recoupement » à identité prouvée reporte d'un relevé au lieu de renoncer ; Beebs — une republication dont la suppression est partie garde ses constats « page 404 » et son envoi, et se prouve par la page comme un retrait — précédent : " +
   "2026-11-07-soir (0.6.178 : la borne de remplissage vaut pour TOUS les comptes — sans port, le message FILL_LISTING porte sa borne (300 s, inchangée) et un identifiant : la page arme son échéance, l'arrière-plan la prévient à sa borne (FILLSELL_ABANDON_REMPLISSAGE) et plus rien n'est cliqué ensuite (Beebs, Vinted, Leboncoin) ; un job qui demande une borne (fill_borne_ms) passe par le port même port éteint, borne jamais plus courte qu'aujourd'hui ; Leboncoin : l'attente des critères suit le poids des photos envoyées (30 à 120 s) et les PNG de plus de 300 Ko partent allégés en JPEG ; Beebs : le bandeau de l'application (« Voir dans l’appli », « L’appli tout-en-un ») n'est plus lu comme un attribut de la fiche — précédent : " +
   "2026-11-07 (0.6.177 : une borne de remplissage dépassée prévient la page, qui ne clique plus « Mettre en vente » / « Publier » / le Continuer final — rien n'est envoyé que personne ne lira (Beebs, Vinted, Leboncoin) ; phases du remplissage Beebs marquées et relayées, la borne dit la vraie dernière phase ; borne adaptative platform_fields.fill_borne_ms bornée à [10, 25] min ; un contrôle avant retrait plus long que 0,7 × la borne ne retire rien (Beebs, Leboncoin, Depop) ; Vinted : rayon « neuf seulement » = attente de la personne sans reprise, dimensions du colis jamais demandées, couleur aux identifiants connus posée au POST si la page l'a laissée vide et relue après fermeture, couleur vide d'une republication = arrêt avant retrait, référentiels relus sur accroc réseau ; Leboncoin : statuts du relevé comptés par annonce unique) — précédent : " +
   "2026-11-06-soir (0.6.176 : Leboncoin, une marque que l'article ne cite que comme celle d'un appareil auquel il s'adapte (« pour yaourtière … de chez SEB ») n'est plus jamais gardée pré-remplie : « Sans marque » est posé — précédent : " +
@@ -5900,6 +5901,25 @@ async function processJob(rawJob, accessToken) {
       //     page changée…) : comportement HISTORIQUE inchangé — ré-armement
       //     borné (MAX_NEEDS_USER_RETRIES) puis 'failed'.
       if (result.needsUserField?.field_key && result.needsUserField?.field_label) {
+        // (07/11 nuit, point 1 — 9256e3ae, dca7193f) Vinted, publication : la descente a appliqué le choix de rayon de la
+        // personne (niveau remplacé, queue héritée coupée, ou sous-niveau ajouté) puis pose une nouvelle question. Le
+        // chemin ainsi corrigé DEVIENT celui de la publication (l'ancien gardé en trace) et le choix consommé s'efface :
+        // la réponse suivante s'ajoute à ce chemin au lieu de remplacer la précédente — jamais une boucle entre deux
+        // questions. Jamais une recréation (sa copie fait foi), jamais sans chemin rendu par la page.
+        if (job.platform === "vinted" && (job.action ?? "publish") === "publish" && !job.platform_fields?.republish_recreation
+            && result.needsUserField.field_key === "categoryLevelChoice"
+            && Array.isArray(result.cheminApresChoix) && result.cheminApresChoix.length) {
+          const pfChoix = { ...(job.platform_fields ?? {}) };
+          pfChoix.categoryPath_avant_choix = pfChoix.categoryPath_avant_choix ?? pfChoix.categoryPath ?? null;
+          pfChoix.choix_rayon_applique = {
+            valeur: String(pfChoix.categoryLevelChoice ?? "").slice(0, 120) || null,
+            chemin: result.cheminApresChoix.map(String).slice(0, 8),
+            le: new Date().toISOString(),
+          };
+          pfChoix.categoryPath = result.cheminApresChoix.map(String).slice(0, 8);
+          delete pfChoix.categoryLevelChoice;
+          job.platform_fields = pfChoix;
+        }
         await markNeedsUser(accessToken, job, result);
         return { status: "needsUser", error: result.error };
       }
@@ -6437,8 +6457,38 @@ async function processJob(rawJob, accessToken) {
         //    « Ajoute une hauteur, une largeur, une longueur ») ne se choisissent
         //    nulle part dans l'app et l'extension ne les relit pas : la question
         //    sur vintedAspects.parcel_dimensions_height n'avait aucune issue.
+        // (07/11 nuit, point 2 — e95e8b9d) Vinted refuse le RAYON à ce compte (400 « category », « Les utilisateurs Vinted
+        // Pro ne peuvent pas ajouter d'articles dans ce catalogue ») : ni « renseigne « category » », ni un échec sec. Une
+        // question de RAYON (categoryLevelChoice marquée raison « rayon_interdit_pro ») : le serveur la remplit des rayons
+        // possibles (_shared/rayon-refuse-moteur.js — la personne choisit, jamais le moteur ; « Abandonner Vinted pour cet
+        // article » reste la sortie). Publication seulement : une recréation garde son chemin (message vrai, needs_user).
+        if (job.platform === "vinted" && result.rayonRefuseAuCompte && (job.action ?? "publish") === "publish"
+            && !job.platform_fields?.republish_recreation) {
+          const refusCompte = result.rayonRefuseAuCompte;
+          job.platform_fields = {
+            ...job.platform_fields,
+            vinted_rayon_refuse_au_compte: {
+              pro: refusCompte.pro === true, message: String(refusCompte.message ?? "").slice(0, 300),
+              chemin: Array.isArray(refusCompte.chemin) ? refusCompte.chemin.map(String).slice(0, 8) : null,
+              le: new Date().toISOString(),
+            },
+          };
+          await markNeedsUser(accessToken, job, {
+            error: base,
+            needsUserField: {
+              field_key: "categoryLevelChoice",
+              field_label: "Catégorie Vinted",
+              allowed_values: [],
+              input_type: "selection_only",
+              target: { root: null, key: "categoryLevelChoice" },
+              raison: refusCompte.pro === true ? "rayon_interdit_pro" : "rayon_refuse_au_compte",
+            },
+          });
+          return { status: "needsUser", error: base };
+        }
+        // (07/11 nuit, point 2) « category » : le rayon, jamais un champ à choisir dans une modale.
         const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id", "package_size",
-          "parcel_dimensions_height", "parcel_dimensions_width", "parcel_dimensions_length"]);
+          "parcel_dimensions_height", "parcel_dimensions_width", "parcel_dimensions_length", "category"]);
         const champ = job.platform === "vinted"
           ? result.serverRequired.find((f) => f?.key && !NON_RESOLUBLES.has(String(f.key)))
           : null;
@@ -18336,7 +18386,27 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       // connecté n'est PAS un relevé vide — il est INCOMPLET (aucune disparition
       // ne sera datée dessus).
       const tab = await chrome.tabs.get(tabId).catch(() => null);
-      if (tab?.url && /\/(?:connexion|login|signin|auth|identification)/i.test(tab.url)) {
+      // ── (07/11 soir, Goulvenk — 0.6.179) LEBONCOIN : LA PORTE VUE DEUX FOIS, NOMMÉE, AVEC CE QUE L'ADRESSE A DIT ──
+      // Ce coup d'œil unique concluait « page de connexion » sans dire où (9 visites de contrôle de Goulvenk, aucune
+      // adresse, aucun motif de l'adresse dans le run) et sans la confirmation de 1,2 s des deux autres chemins
+      // (pageConnexionLeboncoinConfirmee) : un passage éclair par auth.leboncoin.fr ne ferme rien. Leboncoin : la porte
+      // doit être ENCORE là 1,2 s plus tard ; sinon la lecture continue (le chemin d'après sait conclure). Le run dit
+      // l'endroit (domaine + chemin, jamais la requête) et les motifs de l'adresse. Les autres plateformes : à l'identique.
+      const PORTE_RELEVE_RE = /\/(?:connexion|login|signin|auth|identification)/i;
+      let porteLbc = null;
+      if (platform === "leboncoin" && tab?.url && PORTE_RELEVE_RE.test(tab.url)) {
+        await sleep(1200);
+        const encore = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? "";
+        if (PORTE_RELEVE_RE.test(encore)) { try { const u = new URL(encore); porteLbc = u.hostname + u.pathname; } catch { porteLbc = "connexion"; } }
+      }
+      if (tab?.url && PORTE_RELEVE_RE.test(tab.url) && (platform !== "leboncoin" || porteLbc)) {
+        if (platform === "leboncoin") {
+          return { annonces: [...annonces.values()], complet: false, absente: true,
+            erreur: `session leboncoin : page de connexion (« Mes annonces » s'ouvre sur la connexion de Leboncoin [${porteLbc}])`
+              // « réponse 403 », jamais « http_403 » : à côté de la page de connexion c'est le jeton périmé, pas une
+              // restriction — un serveur pas encore à jour (signeBlocageLbc) en ferait une pause.
+              + (motifsAdresse ? ` · [adresse] ${String(motifsAdresse).replace(/\bhttp_(\d{3})\b/gi, "réponse $1").slice(0, 300)}` : "") };
+        }
         // `absente` : pas de session sur cette plateforme dans ce Chrome —
         // pas de compte, ou déconnecté. Ce n'est pas un relevé raté, il n'y a
         // rien à relever. Ne vaut que si RIEN n'a été collecté (le mur peut
@@ -20751,6 +20821,11 @@ async function lireVentesLeboncoin(connues) {
   return executerDansOngletPlateforme("leboncoin", async (perPage, pagesMax, refsConnues) => {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent" };
+    // (07/11 soir, Goulvenk — 0.6.179) Jeton périmé : aucune requête (même règle que la veille des commandes).
+    try {
+      const exp = Number(JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))?.exp);
+      if (Number.isFinite(exp) && exp * 1000 < Date.now() + 30_000) return { ok: false, motif: "jeton_expire" };
+    } catch { /* jeton illisible : la lecture se fait comme avant */ }
     const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
       const ck = (typeof document === "object" && document && document.cookie) || "";
       const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
@@ -21266,6 +21341,95 @@ async function boutiqueEncoreAConfirmer(userId, token) {
     motif: `le dressing ouvert dans ${VO.navigateurCourt()} est toujours @${ident.login ?? ident.user_id}, refusé au relevé ${dernier.id} — décision attendue dans l'app (« c'est ma boutique » ou changer de compte Vinted)`,
     login: ident.login ?? null, user_id: ident.user_id,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (07/11 nuit, point 3 — compte 90d11dae) LE MARQUAGE DES DISPARITIONS NE SE PERD PLUS
+// ═══════════════════════════════════════════════════════════════════════════
+// La personne a vidé son dressing (12 → 1 article entre le 27/10 10:20 et le 28/10 09:19). Le relevé du 28/10 :
+// identité prouvée (même compte que le référent, aucun run d'un autre compte entre deux), mais aucune intersection
+// entre les 12 connus et le seul article vu (un neuf) → garde (d) « mauvais compte possible », rien marqué. Le relevé
+// suivant prenait CE run pour référent (« dernier run done ») : la fenêtre partait du 28/10, les 11 annonces vues
+// pour la dernière fois le 27/10 en sortaient — immarquables à jamais (8 republications « introuvables à confirmer »).
+// LA RÈGLE :
+//   · le référent est le dernier relevé de MÊME identité qui a RÉELLEMENT marqué (un « [note] disparitions non
+//     marquées » ne compte que s'il dit un rodage : premier relevé, compte d'avant inconnu, changement de compte) ;
+//     la fenêtre part de lui, et la garde d'intercalation (autre compte depuis lui) couvre toute la fenêtre ;
+//   · l'identité étant prouvée, (d) ne dit plus « mauvais compte » : elle REPORTE d'un relevé (le run note le report,
+//     il n'est pas un référent) ; au relevé suivant, les disparus absents des DEUX relevés sont marqués ;
+//   · la garde (e) (effondrement) est inchangée. Échec fermé partout : le doute ne marque rien.
+const MOTIF_RODAGE_DISPARITIONS_RE = /aucun run terminé en référence|compte du dernier run inconnu|changement de compte Vinted/;
+
+/** Ce run « done » a-t-il réellement marqué (ou seulement rodé) ? Lu dans sa [note] « disparitions non marquées ». */
+function runAMarqueLesDisparitions(r) {
+  if (!r || r.status !== "done") return false;
+  const m = String(r.erreur ?? "").match(/disparitions non marquées — ([^\n]*)/);
+  return !m || MOTIF_RODAGE_DISPARITIONS_RE.test(m[1]);
+}
+
+/**
+ * Le référent du marquage (runs du compte, du plus récent au plus ancien) : { referent, relevePrecedent } ou { motif }.
+ * relevePrecedent : le relevé complet de même identité le plus récent fait APRÈS le référent (il n'a pas marqué).
+ */
+function choisirReferentDisparitions(recents, idActuel, loginActuel = null) {
+  const runs = Array.isArray(recents) ? recents : [];
+  if (!idActuel) return { motif: "identité du compte Vinted inconnue ce run : marquage impossible à scoper" };
+  const dernierDone = runs.find((r) => r.status === "done");
+  if (!dernierDone) return { motif: "aucun run terminé en référence (première sync) : rien à marquer ce run" };
+  if (!dernierDone.vinted_user_id) {
+    return { motif: "compte du dernier run inconnu (run antérieur à la trace d'identité) : rodage, marquage au prochain run" };
+  }
+  if (String(dernierDone.vinted_user_id) !== idActuel) {
+    const ancien = dernierDone.vinted_login ? `@${dernierDone.vinted_login}` : `le compte ${dernierDone.vinted_user_id}`;
+    const nouveau = loginActuel ? `@${loginActuel}` : `le compte ${idActuel}`;
+    return { motif: `changement de compte Vinted (${ancien} → ${nouveau}) : sync normale, aucune disparition marquée` };
+  }
+  const memeCompte = (r) => r.vinted_user_id && String(r.vinted_user_id) === idActuel;
+  const referent = runs.find((r) => r.status === "done" && memeCompte(r) && runAMarqueLesDisparitions(r));
+  if (!referent) {
+    return { motif: "aucun relevé récent de ce compte n'a marqué ses disparitions (reports successifs) : périmètre sans référence, aucun marquage" };
+  }
+  const bordure = Date.parse(referent.started_at) - 30 * 60_000;
+  const intercale = runs.find((r) =>
+    r.id !== referent.id && Date.parse(r.started_at) >= bordure &&
+    (Number(r.items_vus) || 0) > 0 &&
+    (!r.vinted_user_id || String(r.vinted_user_id) !== idActuel));
+  if (intercale) {
+    return { motif: "run d'un autre compte (ou non identifié) depuis le dernier relevé : périmètre invérifiable, aucun marquage" };
+  }
+  const relevePrecedent = runs.find((r) => r.status === "done" && memeCompte(r) && r.id !== referent.id
+    && Date.parse(r.started_at) > Date.parse(referent.started_at)) ?? null;
+  return { referent, relevePrecedent };
+}
+
+/**
+ * Les gardes (d)/(e) sur les disparus d'un relevé dont l'identité est prouvée : { aMarquer } ou { motif } (+ note).
+ * (d) sans recoupement : reporté d'un relevé ; au relevé suivant, seuls les disparus ABSENTS des deux relevés
+ *     (dernière vue avant le départ du relevé précédent, 5 min de marge) sont marqués.
+ * (e) effondrement : plus de max(20, 40 % des connus) d'une passe → aucun marquage (inchangé).
+ */
+function decisionMarquageDisparitions({ connus = [], vus = new Set(), disparus = [], relevePrecedent = null } = {}) {
+  const vusSet = vus instanceof Set ? vus : new Set(vus ?? []);
+  if (!disparus.length) return { aMarquer: [] };
+  let aMarquer = disparus;
+  let note = null;
+  const recoupement = connus.some((r) => r.vinted_item_id && vusSet.has(r.vinted_item_id));
+  if (!recoupement) {
+    const depart = Date.parse(String(relevePrecedent?.started_at ?? ""));
+    const confirmes = Number.isFinite(depart)
+      ? disparus.filter((d) => Date.parse(String(d.last_synced_at ?? "")) < depart - 5 * 60_000)
+      : [];
+    if (!confirmes.length) {
+      return { motif: `dressing sans recoupement avec l'inventaire (${connus.length} connu(s), ${vusSet.size} vu(s)) — même compte prouvé : marquage reporté au prochain relevé (deux relevés sans ces annonces)` };
+    }
+    aMarquer = confirmes;
+    note = `dressing sans recoupement, même compte prouvé : ${confirmes.length} annonce(s) absente(s) de deux relevés (dont celui du ${relevePrecedent.started_at}) — marquées`;
+  }
+  const plafond = Math.max(20, Math.ceil(connus.length * 0.4));
+  if (aMarquer.length > plafond) {
+    return { motif: `effondrement suspect : ${aMarquer.length} disparition(s) à marquer sur ${connus.length} connu(s), plafond ${plafond} — aucun marquage` };
+  }
+  return { aMarquer, ...(note ? { note } : {}) };
 }
 
 async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repriseAuto = false, repriseVeille = false, commandeId = null) {
@@ -22246,35 +22410,22 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       // alternent leurs boutiques ne sont plus marqués automatiquement — la
       // revue des disparus reste leur chemin.
       let fenetreConnusIso = null;
+      // (07/11 nuit, point 3) Le relevé complet de même identité fait APRÈS le référent sans avoir marqué (report de la
+      // garde (d)) : les disparus qu'il n'a pas vus non plus sont confirmés par deux relevés.
+      let relevePrecedentDisparitions = null;
       try {
         const recents = await restRequest(
           `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&id=neq.${run.id}` +
-          `&order=started_at.desc&limit=15&select=id,status,vinted_user_id,vinted_login,started_at,items_vus`,
+          `&order=started_at.desc&limit=30&select=id,status,vinted_user_id,vinted_login,started_at,items_vus,erreur`,
           token, { headers: { Prefer: "return=representation" } },
         );
-        const referent = (recents ?? []).find((r) => r.status === "done");
         const idActuel = ident?.userId ? String(ident.userId) : null;
-        if (!idActuel) {
-          motifSautDisparitions = "identité du compte Vinted inconnue ce run : marquage impossible à scoper";
-        } else if (!referent) {
-          motifSautDisparitions = "aucun run terminé en référence (première sync) : rien à marquer ce run";
-        } else if (!referent.vinted_user_id) {
-          motifSautDisparitions = "compte du dernier run inconnu (run antérieur à la trace d'identité) : rodage, marquage au prochain run";
-        } else if (String(referent.vinted_user_id) !== idActuel) {
-          const ancien = referent.vinted_login ? `@${referent.vinted_login}` : `le compte ${referent.vinted_user_id}`;
-          const nouveau = ident.login ? `@${ident.login}` : `le compte ${idActuel}`;
-          motifSautDisparitions = `changement de compte Vinted (${ancien} → ${nouveau}) : sync normale, aucune disparition marquée`;
+        const choix = choisirReferentDisparitions(recents ?? [], idActuel, ident?.login ?? null);
+        if (choix.motif) {
+          motifSautDisparitions = choix.motif;
         } else {
-          const bordure = Date.parse(referent.started_at) - 30 * 60_000;
-          const intercale = (recents ?? []).find((r) =>
-            r.id !== referent.id && Date.parse(r.started_at) >= bordure &&
-            (Number(r.items_vus) || 0) > 0 &&
-            (!r.vinted_user_id || String(r.vinted_user_id) !== idActuel));
-          if (intercale) {
-            motifSautDisparitions = "run d'un autre compte (ou non identifié) depuis le dernier relevé : périmètre invérifiable, aucun marquage";
-          } else {
-            fenetreConnusIso = new Date(Date.parse(referent.started_at) - 5 * 60_000).toISOString();
-          }
+          fenetreConnusIso = new Date(Date.parse(choix.referent.started_at) - 5 * 60_000).toISOString();
+          relevePrecedentDisparitions = choix.relevePrecedent;
         }
       } catch (e) {
         motifSautDisparitions = `historique des runs illisible (${String(e?.message ?? e).slice(0, 120)}) : aucun marquage`;
@@ -22290,7 +22441,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
           const page = await restRequest(
             `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null` +
             `&last_synced_at=gte.${encodeURIComponent(fenetreConnusIso)}` +
-            `&select=id,vinted_item_id&order=id.asc&limit=${PAGE_CONNUS}&offset=${offset}`,
+            `&select=id,vinted_item_id,last_synced_at&order=id.asc&limit=${PAGE_CONNUS}&offset=${offset}`,
             token, { headers: { Prefer: "return=representation" } },
           );
           connus.push(...(page ?? []));
@@ -22348,24 +22499,23 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       //     parole. Résidu ASSUMÉ : un vrai retrait massif au-delà du plafond
       //     ne sera plus daté automatiquement — constatable par la [note],
       //     le run suivant un retour à la normale marquera.
+      // (07/11 nuit, point 3) Ce qui sera réellement marqué : les gardes (d)/(e) de decisionMarquageDisparitions.
+      let aMarquer = disparus;
       if (disparus.length) {
-        const recoupement = (connus ?? []).some((r) => r.vinted_item_id && vusCetteSync.has(r.vinted_item_id));
-        const plafond = Math.max(20, Math.ceil((connus?.length ?? 0) * 0.4));
-        if (!recoupement) {
-          motifSautDisparitions = `dressing sans recoupement avec l'inventaire (${connus.length} connu(s), ${vusCetteSync.size} vu(s)) — mauvais compte Vinted possible, aucun marquage`;
-        } else if (disparus.length > plafond) {
-          motifSautDisparitions = `effondrement suspect : ${disparus.length} disparition(s) à marquer sur ${connus.length} connu(s), plafond ${plafond} — aucun marquage`;
-        }
+        const decision = decisionMarquageDisparitions({ connus: connus ?? [], vus: vusCetteSync, disparus, relevePrecedent: relevePrecedentDisparitions });
+        if (decision.motif) motifSautDisparitions = decision.motif;
+        else aMarquer = decision.aMarquer;
+        if (decision.note) console.log(`[sync-dressing] ${decision.note}`);
         if (motifSautDisparitions) console.warn(`[sync-dressing] disparitions NON marquées — ${motifSautDisparitions}`);
       }
 
       if (!motifSautDisparitions) {
-        for (const d of disparus) {
+        for (const d of aMarquer) {
           await restRequest(`inventaire?id=eq.${d.id}`, token, {
             method: "PATCH", body: JSON.stringify({ disparu_le: new Date().toISOString() }),
           }).catch(() => {});
         }
-        if (disparus.length) console.log(`[sync-dressing] ${disparus.length} annonce(s) disparue(s), datées (aucune suppression)`);
+        if (aMarquer.length) console.log(`[sync-dressing] ${aMarquer.length} annonce(s) disparue(s), datées (aucune suppression)`);
       }
     } catch (e) {
       console.warn("[sync-dressing] marquage des disparus:", e?.message ?? e);
@@ -23382,6 +23532,13 @@ async function lireCommandesRecentes(platform, typeConnu = null) {
   return executerDansOngletPlateforme("leboncoin", async (perPage, typeConnu) => {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent", requetes: 0 };
+    // (07/11 soir, Goulvenk — 0.6.179) Un jeton PÉRIMÉ (session fermée, renouvellement raté ou en pause) : AUCUNE requête.
+    // L'API refusait ce jeton en 403, et ce 403 mettait le compte en pause « restriction » (06/11 01:33) alors que la
+    // session était seulement fermée. Jeton illisible : comme avant.
+    try {
+      const exp = Number(JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))?.exp);
+      if (Number.isFinite(exp) && exp * 1000 < Date.now() + 30_000) return { ok: false, motif: "jeton_expire", requetes: 0 };
+    } catch { /* jeton illisible : la lecture se fait comme avant */ }
     const H = (() => { // (04/11 soir, règle de Nico) requête du client de la page Leboncoin
       const ck = (typeof document === "object" && document && document.cookie) || "";
       const lc = (n) => { const m = ck.match(new RegExp("(^| )" + n + "=([^;]+)")); return m ? m[2] : undefined; };
@@ -27257,7 +27414,10 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
   // Motif SANS parenthèse imbriquée ni code HTTP (06/09) : le champ exigé
   // quand Vinted l'a nommé, sinon le message d'échec rendu lisible.
   const champsExiges = (result?.serverRequired ?? []).map((f) => f?.label).filter(Boolean);
-  const motif = champsExiges.length
+  // (07/11 nuit, point 2) Le rayon refusé au compte se dit tel quel (jamais « Vinted exige « Catégorie » »).
+  const motif = result?.rayonRefuseAuCompte
+    ? motifLisible(result?.error ?? "Vinted refuse ce rayon à ton compte", 200)
+    : champsExiges.length
     ? `Vinted exige « ${champsExiges.join(" », « ")} »`
     : motifLisible(result?.error ?? "raison inconnue", 200);
   const messageFinal =
@@ -27269,7 +27429,7 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
   // title/description/price/photos/catalog_id/package_size_id ne se corrige
   // pas dans une modale. (07/11) Ni les dimensions du colis (parcel_dimensions_*).
   const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id", "package_size",
-    "parcel_dimensions_height", "parcel_dimensions_width", "parcel_dimensions_length"]);
+    "parcel_dimensions_height", "parcel_dimensions_width", "parcel_dimensions_length", "category"]);
   const champ = (result?.serverRequired ?? []).find((f) => f?.key && !NON_RESOLUBLES.has(String(f.key)));
   if (champ) {
     job.platform_fields = pf;
@@ -28881,6 +29041,18 @@ async function relirePreuveRetraitBeebs(tabId, idCible, envoyeeLe) {
 // la preuve. Le passage suivant relit d'abord (« déjà absente ») et ne renvoie
 // la suppression que si l'annonce est encore là avec son bouton.
 const SUPPRESSION_NON_PROUVEE_DELAIS_MIN = [5, 10, 20, 30, 60];
+// (07/11 nuit, point 4) L'heure à laquelle un second constat « page 404 » prouverait le retrait Beebs : 6 h (et 2 min)
+// après le premier constat postérieur à l'envoi de la suppression (beebs_suppression_envoyee, sinon le marqueur de la
+// republication) — NaN sans constat ni envoi. Miroir de attente404Beebs (_shared/beebs-preuve-retrait.js).
+function secondConstatBeebsLe(pf) {
+  const envoi = Date.parse(String(pf?.beebs_suppression_envoyee?.le ?? pf?.republish_suppression_envoyee?.at ?? ""));
+  if (!Number.isFinite(envoi)) return NaN;
+  const t = (Array.isArray(pf?.beebs_404_constats) ? pf.beebs_404_constats : [])
+    .filter((c) => c && c.page_http === 404 && c.produit === false && Date.parse(String(c.le ?? "")) > envoi)
+    .map((c) => Date.parse(String(c.le))).sort((a, b) => a - b);
+  if (!t.length || (t.length >= 2 && t[t.length - 1] - t[0] >= 6 * 3600_000)) return NaN;
+  return t[0] + 6 * 3600_000 + 2 * 60_000;
+}
 async function rearmerSuppressionNonProuvee(accessToken, job, errorMsg) {
   // Même garde que rearmBounded : jamais par-dessus une annulation.
   const actuel = await jobStatusNow(accessToken, job.id);
@@ -28894,6 +29066,12 @@ async function rearmerSuppressionNonProuvee(accessToken, job, errorMsg) {
   const delaiMin = SUPPRESSION_NON_PROUVEE_DELAIS_MIN[Math.min(n - 1, SUPPRESSION_NON_PROUVEE_DELAIS_MIN.length - 1)];
   pf.suppression_non_prouvee = { n, depuis: pf.suppression_non_prouvee?.depuis ?? new Date().toISOString(), dernier: new Date().toISOString() };
   pf.next_action_after = new Date(Date.now() + delaiMin * 60000).toISOString();
+  // (07/11 nuit, point 4) Beebs : une page 404 déjà constatée après l'envoi — la preuve attend un second constat au moins
+  // 6 h après le premier : rien ne sert de relire avant (jamais plus tôt que l'espacement ordinaire).
+  if (job.platform === "beebs") {
+    const t2 = secondConstatBeebsLe(pf);
+    if (Number.isFinite(t2) && t2 > Date.parse(pf.next_action_after)) pf.next_action_after = new Date(t2).toISOString();
+  }
   const base = String(errorMsg ?? "").trim();
   console.warn(`[background] Job ${job.id} : suppression envoyée, pas encore prouvée (${n}) — nouvelle vérification dans ~${delaiMin} min, aucun essai consommé`);
   await updateJobStatus(accessToken, job.id, "pending", {
@@ -29391,6 +29569,36 @@ async function processRepublishJobPlateforme(job, accessToken) {
       }
     }
     dernierGesteRepublishAt = Date.now();
+    // ── (07/11 nuit, point 4 — 7373c96c, republication 1a323b66) BEEBS : LES CONSTATS ET L'ENVOI SONT GARDÉS ICI AUSSI ──
+    // Le retrait simple (processDeleteJob) gardait les constats « page 404 » de chaque essai et l'envoi de la
+    // suppression ; la republication, rien : suppression envoyée le 26/10, page en 404 depuis, « Mes annonces » illisible
+    // pour ce compte — 52 vérifications « suppression non prouvée », chacune repartie d'un premier constat. Mêmes clés,
+    // même copie mémoire (rearmerSuppressionNonProuvee et l'étape « deleted » la relisent) : beebs.js en fait la preuve
+    // « suppression envoyée + deux pages 404 à 6 h d'écart après l'envoi » (REGLE_SUPPRESSION_ENVOYEE_404).
+    if (job.platform === "beebs" && result) {
+      const pfB = { ...(job.platform_fields ?? {}) };
+      let changeB = false;
+      if (Array.isArray(result.beebs404Constats)) {
+        if (result.beebs404Constats.length) pfB.beebs_404_constats = result.beebs404Constats.slice(-6);
+        else delete pfB.beebs_404_constats;
+        changeB = true;
+      }
+      if (result.suppressionEnvoyee === true && Number.isFinite(Date.parse(String(result.suppressionEnvoyeeLe ?? "")))) {
+        pfB.beebs_suppression_envoyee = { le: String(result.suppressionEnvoyeeLe), numero: numeroAnnonceRetrait(job),
+          vue_en_ligne_avant: result.suppressionVueEnLigneAvant ?? null, pose_par: "extension (republication)" };
+        changeB = true;
+      } else if (result.suppressionEnvoyeeLevee === true && pfB.beebs_suppression_envoyee) {
+        delete pfB.beebs_suppression_envoyee;
+        changeB = true;
+      }
+      const lu = result.lectureMesAnnonces;
+      const cleLu = (l) => JSON.stringify([l?.verdict ?? null, l?.onglets ?? null]);
+      if (lu && Array.isArray(lu.onglets) && cleLu(lu) !== cleLu(pfB.beebs_lecture_mes_annonces)) {
+        pfB.beebs_lecture_mes_annonces = lu;
+        changeB = true;
+      }
+      if (changeB) job.platform_fields = pfB;
+    }
     const pfApres = { ...pf, ...(job.platform_fields ?? {}) };
 
     // (0.6.104, Louis) Beebs : suppression envoyée, pas encore prouvée — on
