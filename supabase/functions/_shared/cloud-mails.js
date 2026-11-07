@@ -222,7 +222,9 @@ const FR = {
       inconnu: () => 'Le paiement de ton abonnement est passé.',
     },
     prochaine: (j) => `Prochaine échéance : ${j}.`,
-    arret: (ou) => `Tu peux l'arrêter quand tu veux ${ou} : il tourne alors jusqu'à la fin de la période déjà payée, et rien n'est prélevé ensuite.`,
+    // (08/11, Nico) « rien n'est prélevé ensuite » : une promesse que FillSell ne tient que pour Stripe (il annule lui-même) ;
+    // pour Apple / Google, c'est la boutique qui le confirme au moment de l'arrêt (mail d'arrêt programmé).
+    arret: (ou, stripe) => `Tu peux l'arrêter quand tu veux ${ou} : il tourne alors jusqu'à la fin de la période déjà payée${stripe ? ", et rien n'est prélevé ensuite" : ''}.`,
     preheader: (p) => (p ? `Paiement reçu : ${p}.` : 'Ton paiement est passé.'),
   },
   arret_essai: {
@@ -324,7 +326,7 @@ const EN = {
       inconnu: () => 'Your subscription payment went through.',
     },
     prochaine: (j) => `Next payment: ${j}.`,
-    arret: (ou) => `You can stop it whenever you like ${ou}: it then runs until the end of the period already paid for, and nothing is charged after that.`,
+    arret: (ou, stripe) => `You can stop it whenever you like ${ou}: it then runs until the end of the period already paid for${stripe ? ', and nothing is charged after that' : ''}.`,
     preheader: (p) => (p ? `Payment received: ${p}.` : 'Your payment went through.'),
   },
   arret_essai: {
@@ -410,7 +412,7 @@ export function texteMailCloud({ evenement, lang = 'fr', canal = null, faits = {
     const j = jourParis(faits.prochaineIso, L);
     const E = T.paiement;
     return { ...base, sujet: E.sujet[ctx], titre: E.titre[ctx], preheader: E.preheader(p), prixAffiche: p, bouton,
-      paragraphes: [T.salut, E.intro[ctx], E.montant[c](p), ...(j ? [E.prochaine(j)] : []), E.arret(T.ouArreter[c])] };
+      paragraphes: [T.salut, E.intro[ctx], E.montant[c](p), ...(j ? [E.prochaine(j)] : []), E.arret(T.ouArreter[c], c === 'stripe')] };
   }
   if (evenement === 'arret_essai') {
     if (faits.aucunPrelevement !== true) return null;   // jamais « aucun prélèvement » sans la confirmation de la boutique

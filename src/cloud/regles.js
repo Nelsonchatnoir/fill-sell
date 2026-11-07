@@ -109,3 +109,26 @@ export function ecranApresCloud(cloud, profil, maintenant = Date.now()) {
   if ((cloud.etat === 'essai_termine' || cloud.etat === 'aucun') && profil?.cloud_canal) return 'arrete';
   return null;
 }
+
+// (08/11, ordre de Nico) Ce que dit la feuille de la veille APRÈS le geste « Arrêter » — jamais « c'est arrêté » ni
+// « rien ne sera prélevé » avant la CONFIRMATION : pour Apple / Google, celle de la boutique (son webhook, relu en base :
+// essai arrêté, sans refus de verrou) ; pour Stripe, la réponse de cancel-subscription (aucun_prelevement : annulé avant
+// la fin de l'essai, factures à 0). Rend la clé du texte (textes.js) :
+//   'boutique_ouverte'        — les abonnements de la boutique ont été ouverts, sa confirmation est attendue ;
+//   'arrete_sans_prelevement' — arrêt CONFIRMÉ, rien ne sera prélevé ;
+//   'arrete'                  — Stripe a arrêté, mais ses factures n'ont pas été relues : on n'en dit pas plus ;
+//   'rien'                    — aucun abonnement en cours (le message du serveur) ;
+//   null                      — pas encore de geste abouti.
+export function issueVeilleArret({ etat, arretConfirme = false, aucunPrelevement = false } = {}) {
+  if (etat === 'boutique') return arretConfirme === true ? 'arrete_sans_prelevement' : 'boutique_ouverte';
+  if (etat === 'arretee') return aucunPrelevement === true || arretConfirme === true ? 'arrete_sans_prelevement' : 'arrete';
+  if (etat === 'rien') return 'rien';
+  return null;
+}
+
+/** (08/11) L'arrêt d'un ESSAI est-il confirmé en base ? Essai arrêté, et pas par un verrou d'essai (carte, compte de
+ *  plateforme) — un verrou arrête l'essai FillSell sans couper l'abonnement de la boutique. */
+export const arretEssaiConfirme = (cloud, profil) => cloud?.essaiArrete === true && !profil?.cloud_essai_refus;
+
+/** (08/11) Les relectures après l'ouverture des abonnements d'une boutique : quatre, puis plus rien (jamais une boucle). */
+export const RELECTURES_APRES_BOUTIQUE_MS = Object.freeze([3_000, 10_000, 30_000, 60_000]);

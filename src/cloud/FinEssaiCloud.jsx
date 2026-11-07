@@ -16,12 +16,12 @@
 // ⛔ Mêmes règles que la feuille des formules : palette `C`, police Space
 //    Grotesk, portail sur document.body (WebKit, cf. ConversionModal), texte
 //    à 4,5:1 minimum, jamais de diagnostic à l'écran.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Cloud } from 'lucide-react';
 import { C, MENTHE, BLANC, DEGRADE_TEAL, POLICE } from './theme';
 import { textesCloud } from './textes';
-import { dateLongue, heureDe } from './regles';
+import { dateLongue, heureDe, issueVeilleArret, RELECTURES_APRES_BOUTIQUE_MS } from './regles';
 import { voieArretCloud, voieBoutique } from './achatCloud';
 
 const ANIM = `
@@ -99,16 +99,25 @@ const bouton = (plein) => ({
  * Google Play s'arrête dans la boutique : la feuille le dit, ouvre ses abonnements, et ne dit JAMAIS « c'est arrêté »
  * ni « rien n'est facturé » avant que la boutique l'ait confirmé.
  */
-export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nomPalier = null, actions = {}, onFermer, canal = null, plateforme = 'web' }) {
+// (08/11, ordre de Nico) Après « Arrêter » : la boutique ouverte → « Tu as ouvert tes abonnements Apple ; dès qu'Apple
+// nous confirme l'arrêt, c'est réglé », puis, à la CONFIRMATION (relue en base : quatre relectures au plus,
+// RELECTURES_APRES_BOUTIQUE_MS, jamais une boucle), « C'est arrêté. Rien ne sera prélevé. » Stripe : « rien ne sera
+// prélevé » seulement si cancel-subscription l'a relu chez Stripe. Aucun abonnement trouvé : le message du serveur.
+// arretConfirme : arretEssaiConfirme(cloud, profil) (cloud/regles.js), calculé par l'hôte ; relire : la relecture de
+// l'état Cloud de l'hôte ; onSuivi : l'hôte garde la feuille montée pendant le suivi (l'essai arrêté n'est plus « la
+// veille »).
+export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nomPalier = null, actions = {}, onFermer, canal = null, plateforme = 'web', arretConfirme = false, relire = null, onSuivi = null }) {
   const T = textesCloud(lang);
-  const [etat, setEtat] = useState('question'); // 'question' | 'en_cours' | 'arretee' | 'boutique' | 'echec'
-  const date = dateLongue(cloud?.essaiFin, lang);
-  const heure = heureDe(cloud?.essaiFin, lang);
+  const [etat, setEtat] = useState('question'); // 'question' | 'en_cours' | 'arretee' | 'boutique' | 'rien' | 'echec'
+  // La date et l'heure de la bascule, figées à l'ouverture : l'arrêt ramène la fin d'essai à « maintenant ».
+  const [fige] = useState(() => ({ date: dateLongue(cloud?.essaiFin, lang), heure: heureDe(cloud?.essaiFin, lang) }));
+  const { date, heure } = fige;
   const voie = voieArretCloud(canal, plateforme);
   const boutique = voieBoutique(voie);
   // (08/11) L'échec d'ouverture des abonnements de la boutique dit le chemin EXACT (message de l'hôte) ; le bouton
   // d'arrêt reste là pour réessayer.
   const [messageEchec, setMessageEchec] = useState(null);
+  const [reponse, setReponse] = useState(null);
 
   const arreter = async () => {
     if (typeof actions.arreter !== 'function' || etat === 'en_cours') return;
@@ -116,13 +125,27 @@ export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nom
     try {
       const r = await actions.arreter({ canal });
       setMessageEchec(r?.ok === false && boutique && r?.message ? r.message : null);
-      setEtat(r?.ok === false ? 'echec' : r?.etat === 'boutique' ? 'boutique' : 'arretee');
+      setReponse(r ?? null);
+      const suite = r?.ok === false ? 'echec' : r?.etat === 'boutique' ? 'boutique' : r?.etat === 'rien' ? 'rien' : 'arretee';
+      if (suite !== 'echec') onSuivi?.();
+      setEtat(suite);
     } catch {
       setMessageEchec(null);
       setEtat('echec');
     }
   };
-  const fini = etat === 'arretee' || etat === 'boutique';
+  // La confirmation de la boutique arrive par son webhook : quelques relectures, puis plus rien.
+  useEffect(() => {
+    if (etat !== 'boutique' || arretConfirme || typeof relire !== 'function') return undefined;
+    const minuteries = RELECTURES_APRES_BOUTIQUE_MS.map((ms) => setTimeout(() => relire(), ms));
+    return () => minuteries.forEach(clearTimeout);
+  }, [etat, arretConfirme, relire]);
+  const fini = etat === 'arretee' || etat === 'boutique' || etat === 'rien';
+  const issue = issueVeilleArret({ etat, arretConfirme, aucunPrelevement: reponse?.aucun_prelevement === true });
+  const texteIssue = issue === 'boutique_ouverte' ? T.veilleBoutiqueOuverte(voie)
+    : issue === 'arrete_sans_prelevement' ? T.veilleArreteeConfirmee
+      : issue === 'rien' ? (reponse?.message ?? T.veilleArretee)
+        : T.veilleArretee;
 
   return (
     <Feuille onFermer={onFermer} etiquette={T.veilleTitre(quand, heure)}>
@@ -130,7 +153,7 @@ export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nom
         <EnTete kicker={T.veilleKicker} titre={T.veilleTitre(quand, heure)} />
 
         {fini ? (
-          <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{etat === 'boutique' ? T.arretBoutiqueAttente(voie) : T.veilleArretee}</p>
+          <p data-zone="issue" data-issue={issue ?? ''} style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{texteIssue}</p>
         ) : (
           <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '13px 14px', marginBottom: 14 }}>
             <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{boutique ? T.veilleTexteBoutique(date, heure, voie) : T.veilleTexte(date, heure, nomPalier)}</p>

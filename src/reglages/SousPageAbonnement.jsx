@@ -30,6 +30,7 @@ import { grilleActive } from '../utils/jauges';
 // lui-même le drapeau (config/cloudOffer.js) : baissé, il ne rend rien.
 import { BlocCloudReglagesLu, MentionCloudResiliation } from '../cloud/BlocCloudReglages';
 import { useCloudReglages } from '../cloud/useCloudProfil';
+import { RELECTURES_APRES_BOUTIQUE_MS } from '../cloud/regles';
 
 // Point d'entrée tracé, dans le vocabulaire du tunnel (App.jsx) : sans lui,
 // `premium_cta_click` et `offers_modal_open` retombent sur 'non_precisee' et
@@ -52,8 +53,9 @@ const LIEN_GOOGLE_ACHATS = 'https://play.google.com/store/account/orderhistory';
 // (05/10) Les gestes d'argent de l'option Sans ordinateur relisent l'état
 // Cloud APRÈS coup (un arrêt, une reprise) : le bloc dit ce que dit le serveur.
 // (07/11 soir) Abonnements de la boutique ouverts (Apple, Google) : c'est son webhook qui change l'état, quelques
-// secondes après. UNE relecture de plus, 8 s plus tard (bornée : une par geste, jamais une boucle).
-const RELECTURE_BOUTIQUE_MS = 8000;
+// secondes après. (08/11) Quatre relectures de plus, à 3, 10, 30 et 60 s (RELECTURES_APRES_BOUTIQUE_MS, cloud/regles.js :
+// les mêmes que la feuille de la veille ; bornées, jamais une boucle) — le bloc passe à « Essai arrêté » dès que la
+// boutique a confirmé, sans attendre qu'on rouvre la page.
 function avecRelecture(actions, relire) {
   const out = {};
   for (const [k, f] of Object.entries(actions ?? {})) {
@@ -61,7 +63,7 @@ function avecRelecture(actions, relire) {
       let r;
       try { r = await f(...a); return r; } finally {
         relire?.();
-        if (r?.etat === 'boutique') setTimeout(() => relire?.(), RELECTURE_BOUTIQUE_MS);
+        if (r?.etat === 'boutique') RELECTURES_APRES_BOUTIQUE_MS.forEach((ms) => setTimeout(() => relire?.(), ms));
       }
     };
   }

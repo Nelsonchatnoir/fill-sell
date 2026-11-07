@@ -327,7 +327,8 @@ try {
   const rFreePaye = reg(P.cloudDuProfil({ is_cloud: true }, n), null);
   verifier(/Actif/.test(rFreePaye) && /Avec ton plan Free/.test(rFreePaye) && !/En pause/.test(rFreePaye), 'Réglages, Free + Sans ordinateur payée : active (plus jamais « en pause »)', rFreePaye);
   const rFin = reg(P.cloudDuProfil({ is_premium: true, cloud_essai_debut: '2026-09-30T06:00:00Z', cloud_essai_fin: '2026-10-07T06:00:00Z' }, n), 'Premium');
-  verifier(/Essai terminé le 7 octobre/.test(rFin) && /rien n.a été facturé/.test(rFin) && /Ajouter le Cloud · 24,99 €\/mois/.test(rFin), 'Réglages, essai terminé : rien facturé, proposer de l’ajouter', rFin);
+  // (08/11, Nico) Fin d'essai NATURELLE : aucune boutique n'a rien confirmé — jamais « rien n'a été facturé » ici.
+  verifier(/Essai terminé le 7 octobre/.test(rFin) && !/rien n.a été facturé/.test(rFin) && /Ajouter le Cloud · 24,99 €\/mois/.test(rFin), 'Réglages, essai terminé : sans promesse de facturation (rien de confirmé), proposer de l’ajouter', rFin);
   const rArrete = reg(P.cloudDuProfil({ cloud_essai_debut: '2026-10-05T06:00:00Z', cloud_essai_fin: '2026-10-08T09:00:00Z', cloud_essai_arrete: true }, n), null);
   verifier(/Essai arrêté/.test(rArrete) && /Essai arrêté le 8 octobre/.test(rArrete) && /Ajouter le Cloud/.test(rArrete), 'Réglages, essai arrêté (Free) : la date réelle de l’arrêt, et l’ajouter reste possible', rArrete);
   const rSans = reg(essaiDe('2026-10-15T05:00:00Z'), 'Premium', {});

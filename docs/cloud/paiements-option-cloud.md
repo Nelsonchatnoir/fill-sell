@@ -105,6 +105,12 @@ chemin exact reste à l'écran (« Réglages › ton nom › Abonnements › Fil
 repli silencieux vers une page web. « Arrêter » / « Garder » existent pour TOUT client Cloud vivant, même offre refermée
 (`useCloudReglages`, `actionsCloud`). Après un arrêt Stripe, l'app dit « aucun prélèvement » seulement si la réponse
 porte `aucun_prelevement: true` (abonnement annulé avant la fin de l'essai ET toutes ses factures à 0, relus chez Stripe).
+(08/11, vérification de Nico) Feuille de la veille après « Arrêter » (`cloud/regles.js`, `issueVeilleArret`) : boutique
+ouverte → « Tu as ouvert tes abonnements Apple. Dès qu'Apple nous confirme l'arrêt, c'est réglé. » ; à la confirmation
+(webhook relu en base : essai arrêté sans verrou, `arretEssaiConfirme` ; 4 relectures à 3/10/30/60 s, aussi dans
+Réglages) → « C'est arrêté. Rien ne sera prélevé. » ; Stripe sans factures relues → « C'est arrêté. » seul ; rien trouvé →
+le message du serveur. Fin d'essai NATURELLE : « Essai terminé le … Le Cloud n'est plus actif. » (plus de « rien n'a été
+facturé », que rien ne confirme) ; mail de paiement : « rien n'est prélevé ensuite » pour Stripe seulement.
 
 **Règles d'arrêt** (`_shared/cloud-option.js`, `ecritureCloudStore`) :
 - pendant l'essai (essai FillSell en cours) → arrêt IMMÉDIAT : `cloud_essai_arrete`, fin ramenée à maintenant → le

@@ -26,7 +26,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cloudOfferVisible } from '../config/cloudOffer';
 import { useCloudProfil } from './useCloudProfil';
 import { ecouterOffreCloud, reprendreDemande } from './offreCloud';
-import { rappelVeilleDu, ecranApresCloud } from './regles';
+import { rappelVeilleDu, ecranApresCloud, arretEssaiConfirme } from './regles';
 import { RappelVeilleFinEssai, EcranEssaiTermine, EcranCloudArrete, BandeauPlaceLibre } from './FinEssaiCloud';
 import { useDisponibiliteCloud } from './useDisponibiliteCloud';
 import { nomDuPalier, palierDuProfil } from '../utils/palier';
@@ -40,6 +40,9 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   const lecture = useCloudProfil(userId, { actif: visible });
   const vente = useDisponibiliteCloud({ actif: Boolean(visible && userId) });
   const [ferme, setFerme] = useState(null);
+  // (08/11) La feuille de la veille SUIT un arrêt demandé (boutique ouverte, ou Stripe) : elle reste montée jusqu'à ce
+  // que la personne la ferme, même quand l'essai arrêté n'est plus « la veille » — c'est là qu'elle lit la confirmation.
+  const [suiviVeille, setSuiviVeille] = useState(null);   // { cle, quand }
   const ouvrirRef = useRef(onOuvrirOffres);
   useEffect(() => { ouvrirRef.current = onOuvrirOffres; }, [onOuvrirOffres]);
 
@@ -71,14 +74,16 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   const cleEssai = cloud.essaiFin ? String(cloud.essaiFin) : 'sans_date';
 
   // 2. La veille.
-  const quand = rappelVeilleDu(cloud, lecture.luLe);
-  const cleVeille = `fs_cloud_veille_${userId}_${cleEssai}`;
+  const cleVeille = suiviVeille?.cle ?? `fs_cloud_veille_${userId}_${cleEssai}`;
+  const quand = rappelVeilleDu(cloud, lecture.luLe) ?? suiviVeille?.quand ?? null;
   if (quand && ferme !== cleVeille && !dejaVu(cleVeille)) {
     return (
       <RappelVeilleFinEssai
         lang={lang} cloud={cloud} quand={quand} nomPalier={nomPalier} actions={actions}
         canal={lecture.profil?.cloud_canal ?? null} plateforme={plateforme}
-        onFermer={() => { marquerVu(cleVeille); setFerme(cleVeille); lecture.relire(); }}
+        arretConfirme={arretEssaiConfirme(cloud, lecture.profil)} relire={lecture.relire}
+        onSuivi={() => setSuiviVeille((s) => s ?? { cle: cleVeille, quand })}
+        onFermer={() => { marquerVu(cleVeille); setFerme(cleVeille); setSuiviVeille(null); lecture.relire(); }}
       />
     );
   }

@@ -13,6 +13,7 @@ import {
   EVENEMENTS_MAIL, montantStripe, finPeriodeStripe,
 } from '../supabase/functions/_shared/cloud-mails.js';
 import { texteRappel } from '../supabase/functions/_shared/cloud-rappel-veille.js';
+import { readFileSync } from 'node:fs';
 
 const E = await import('../supabase/functions/_shared/emails-fillsell.ts');
 
@@ -177,6 +178,48 @@ ok(['arret_essai', 'arret_programme', 'impaye'].every((ev) => ['apple', 'google'
   // « kept for you » (une place gardée pour la personne) n'exécute rien à sa place : seul « on » qui publie est visé.
   const fautesApp = app.filter(([, v]) => /pour toi|\bon (publie|republie|poste|s'occupe)|\bwe (list|relist|post|repost|publish)/i.test(v) || SUPPOSE_EXTENSION.test(v));
   ok(app.length > 200 && fautesApp.length === 0, `textes Cloud de l'app (${app.length} phrases fr/en) : même règle`, fautesApp.map(([k, v]) => `${k}: ${v.slice(0, 120)}`));
+}
+// (08/11, vérification de Nico) Jamais « c'est arrêté » ni « rien ne sera facturé / prélevé » pour Apple ou Google tant
+// que la boutique n'a pas confirmé la coupure : mails d'AVANT la confirmation, textes de l'app montrés avant elle, et
+// la feuille de la veille (issueVeilleArret) ; Stripe : seulement sur sa réponse relue (aucun_prelevement).
+{
+  const AFFIRME = /rien n.est (factur|prélev)|rien ne sera (factur|prélev)|rien n.a été (factur|prélev)|aucun prélèvement|c.est arrêté|nothing (is|will be|was) (billed|charged)|no charge|it is stopped/i;
+  const avantConfirmation = tous.filter(({ ev, canal }) => ['essai_debut', 'paiement', 'impaye'].includes(ev) && canal !== 'stripe')
+    .map(({ ev, canal, lang, t }) => [`${ev}·${canal}·${lang}`, [t.sujet, t.preheader, ...t.paragraphes].join(' ')])
+    .concat(['apple', 'google'].flatMap((c) => ['fr', 'en'].map((l) => { const v = texteRappel({ lang: l, finIso: iso(T0 + 5 * J), canal: c, prix: PRIX }); return [`veille·${c}·${l}`, [v.sujet, ...v.paragraphes].join(' ')]; })));
+  const fauxMails = avantConfirmation.filter(([, x]) => AFFIRME.test(x));
+  ok(avantConfirmation.length === 16 && fauxMails.length === 0, `mails Apple / Google d'AVANT la confirmation (${avantConfirmation.length}) : ni « c'est arrêté » ni « rien ne sera prélevé »`, fauxMails.map(([k, x]) => `${k}: ${x.slice(0, 140)}`));
+  ok(['arret_essai', 'arret_programme'].every((ev) => ['apple', 'google'].every((c) => AFFIRME.test(fr(ev, c).paragraphes.join(' ')))),
+    'les mails d\'APRÈS la confirmation (arrêt pendant / après l\'essai) le disent — ils ne partent que sur la confirmation de la boutique');
+  ok(!AFFIRME.test(fr('paiement', 'apple').paragraphes.join(' ')) && /rien n'est prélevé ensuite/.test(fr('paiement', 'stripe').paragraphes.join(' ')),
+    'mail de paiement : « rien n\'est prélevé ensuite » pour Stripe seulement (FillSell annule lui-même), jamais promis pour Apple / Google');
+  const { textesCloud } = await import('../src/cloud/textes.js');
+  const { textesConnexion } = await import('../src/cloud/textesConnexion.js');
+  const R = await import('../src/cloud/regles.js');
+  const avantApp = ['fr', 'en'].flatMap((l) => {
+    const Tc = textesCloud(l); const Tx = textesConnexion(l);
+    return ['apple', 'google', 'apple_ailleurs'].flatMap((v) => [
+      ['arreterBoutique', Tc.arreterBoutique(v)], ['arretBoutiqueAttente', Tc.arretBoutiqueAttente(v)], ['veilleTexteBoutique', Tc.veilleTexteBoutique('15 novembre', '11h00', v)],
+      ['veilleBoutiqueOuverte', Tc.veilleBoutiqueOuverte(v)], ['arretBoutique', Tx.arretBoutique(v)], ['repriseBoutique', Tx.repriseBoutique(v)], ['arretBoutiqueEchec', Tx.arretBoutiqueEchec(v)],
+    ]).concat([['termineTexte', Tc.termineTexte('15 novembre')], ['finTexte', Tc.finTexte]]);
+  });
+  const fauxApp = avantApp.filter(([, x]) => AFFIRME.test(x));
+  ok(fauxApp.length === 0 && avantApp.length === 46, `textes de l'app montrés AVANT une confirmation (${avantApp.length}, fr/en) : ni « c'est arrêté » ni « rien ne sera facturé »`, fauxApp);
+  ok(/C'est arrêté\. Rien ne sera prélevé\./.test(textesCloud('fr').veilleArreteeConfirmee) && /Tu as ouvert tes abonnements Apple\. Dès qu'Apple nous confirme l'arrêt, c'est réglé\./.test(textesCloud('fr').veilleBoutiqueOuverte('apple')),
+    'feuille de la veille : « Tu as ouvert tes abonnements Apple. Dès qu\'Apple nous confirme l\'arrêt, c\'est réglé. » puis « C\'est arrêté. Rien ne sera prélevé. »');
+  ok(['fr', 'en'].every((l) => !/rien ne sera|nothing will be/i.test(textesCloud(l).veilleArretee)), 'Stripe sans factures relues : « C\'est arrêté. » seul, aucune promesse sur le prélèvement');
+  const I = R.issueVeilleArret;
+  ok(I({ etat: 'boutique', arretConfirme: false }) === 'boutique_ouverte' && I({ etat: 'boutique', arretConfirme: true }) === 'arrete_sans_prelevement'
+    && I({ etat: 'arretee', aucunPrelevement: true }) === 'arrete_sans_prelevement' && I({ etat: 'arretee', aucunPrelevement: false }) === 'arrete'
+    && I({ etat: 'rien' }) === 'rien' && I({ etat: 'question' }) === null && I({ etat: 'echec', arretConfirme: true }) === null,
+    'feuille de la veille : boutique ouverte → on attend ; confirmée (webhook relu) → « rien ne sera prélevé » ; Stripe sans factures relues → « c\'est arrêté » seul ; rien trouvé → le message du serveur');
+  ok(R.arretEssaiConfirme({ essaiArrete: true }, { cloud_essai_refus: null }) === true && R.arretEssaiConfirme({ essaiArrete: true }, { cloud_essai_refus: 'compte_plateforme_deja_vu' }) === false
+    && R.arretEssaiConfirme({ essaiArrete: false }, {}) === false,
+    'confirmation en base : essai arrêté ET pas par un verrou d\'essai (un verrou ne coupe pas l\'abonnement de la boutique)');
+  ok(R.RELECTURES_APRES_BOUTIQUE_MS.length === 4 && R.RELECTURES_APRES_BOUTIQUE_MS.at(-1) <= 60_000, 'relectures après la boutique : quatre, la dernière à 60 s, puis plus rien');
+  const sources = ['src/cloud/FinEssaiCloud.jsx', 'src/reglages/SousPageAbonnement.jsx'].map((f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'));
+  ok(sources.every((s) => /RELECTURES_APRES_BOUTIQUE_MS/.test(s) && !/setInterval/.test(s)) && /issueVeilleArret\(/.test(sources[0]) && /arretEssaiConfirme\(cloud, lecture\.profil\)/.test(readFileSync(new URL('../src/cloud/HoteCloud.jsx', import.meta.url), 'utf8')),
+    'branchés : la feuille de la veille et Réglages relisent par RELECTURES_APRES_BOUTIQUE_MS (aucun setInterval), l\'hôte passe la confirmation lue en base');
 }
 const rendu = E.mailCloud({ ...fr('arret_programme', 'stripe'), lang: 'fr' });
 ok(/Nico/.test(rendu.html) && /FillSell/.test(rendu.html) && !/désinscri(re|ption)<\/a>/i.test(rendu.html) && rendu.sujet === fr('arret_programme', 'stripe').sujet, 'mise en page : signée Nico / FillSell, aucun lien de désinscription (facturation)');

@@ -267,7 +267,8 @@ titre('5 bis. « le Cloud » ou « l’option FillSell Cloud », jamais « optio
     && EN.arreter === 'Stop the Cloud' && EN.garderOption === 'Keep the Cloud', '« Arrêter le Cloud », « Garder le Cloud », « Arrêter aussi le Cloud » (en : « Stop the Cloud »)');
   ok(net(FR.carteDemandee('10 novembre')) === "Carte demandée, rien n'est prélevé pour le Cloud avant le 10 novembre." && net(FR.frise('10 novembre')[0].quoi) === "Carte demandée, rien n'est prélevé pour le Cloud."
     && net(FR.frise('10 novembre')[1].quoi) === `Le Cloud passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.`, '« rien n’est prélevé pour le Cloud », « Le Cloud passe à 24,99 €/mois » (masculin)');
-  ok(FR.etatAucun === 'Pas activé' && FR.etatPaye === 'Actif' && /n'est plus actif, et rien n'a été facturé pour lui/.test(FR.termineTexte('7 octobre')), 'les accords : « le Cloud », masculin (« Pas activé », « Actif », « pour lui »)');
+  // (08/11) « pour lui » se lit sur l'essai ARRÊTÉ (confirmé) : la fin naturelle ne promet plus rien sur la facturation.
+  ok(FR.etatAucun === 'Pas activé' && FR.etatPaye === 'Actif' && /n'est plus actif, et rien n'a été facturé pour lui/.test(FR.arreteTexte('7 octobre')), 'les accords : « le Cloud », masculin (« Pas activé », « Actif », « pour lui »)');
   ok(/« le Cloud »/.test(COND.conditionsCloud().articles[0].ps[0]) && /^L'option FillSell Cloud/.test(COND.conditionsCloud().articles[0].ps[0]), 'conditions, article 1 : « L’option FillSell Cloud (« le Cloud ») est un service de FillSell »');
   ok(CFG.CGU_CLOUD_VERSION === '2026-11-04' && SRV.CGU_CLOUD_VERSION === CFG.CGU_CLOUD_VERSION, 'la version des conditions reste 2026-11-04, la même des deux côtés (rien publié depuis)');
 }

@@ -159,7 +159,10 @@ const FR = {
   garderOption: 'Garder le Cloud',
   // Plus rendu depuis CLOUD_EXIGE_UN_PALIER = false (gardé pour l'interrupteur de palier.js).
   suspenduTexte: 'Le Cloud est en pause : il repart dès que tu reprends une formule.',
-  termineTexte: (date) => `Essai terminé le ${date}. Le Cloud n'est plus actif, et rien n'a été facturé pour lui.`,
+  // (08/11, Nico) Fin d'essai NATURELLE : aucune boutique n'a confirmé quoi que ce soit (Apple ou Google peuvent avoir
+  // prélevé sans que leur webhook soit encore arrivé) — jamais « rien n'a été facturé » ici. L'essai ARRÊTÉ, lui, l'est
+  // sur la confirmation de la boutique (arreteTexte).
+  termineTexte: (date) => `Essai terminé le ${date}. Le Cloud n'est plus actif.`,
   arreteTexte: (date) => `Essai arrêté le ${date}. Le Cloud n'est plus actif, et rien n'a été facturé pour lui.`,
   // (08/11, Nico) Jamais « comme avant » ni « repassent » : un client Cloud n'a peut-être aucun ordinateur.
   termineSuite: "Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur. eBay n'est pas concerné.",
@@ -204,7 +207,13 @@ const FR = {
   veilleArreter: 'Arrêter le Cloud',
   veilleNote: (nom) => `Dans les deux cas, ${taFormule(nom)} ne change pas, et l'extension comme eBay restent possibles.`,
   veilleBascule: (date, heure) => `Le ${date} à ${heure} · +${PRIX}/mois`,
-  veilleArretee: "C'est arrêté. Rien ne sera facturé pour le Cloud. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.",
+  // (08/11, Nico) Après « Arrêter » dans la feuille de la veille (cloud/regles.js, issueVeilleArret) : la boutique ouverte,
+  // on attend SA confirmation ; « rien ne sera prélevé » seulement une fois l'arrêt confirmé (boutique ou Stripe).
+  veilleBoutiqueOuverte: (voie) => (voie === 'google'
+    ? "Tu as ouvert tes abonnements Google Play. Dès que Google nous confirme l'arrêt, c'est réglé."
+    : "Tu as ouvert tes abonnements Apple. Dès qu'Apple nous confirme l'arrêt, c'est réglé."),
+  veilleArreteeConfirmee: "C'est arrêté. Rien ne sera prélevé. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.",
+  veilleArretee: "C'est arrêté. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.",
   veilleArretEchec: "L'arrêt n'a pas pu se faire. Réessaie dans un instant.",
   // (07/11 soir) Cloud pris sur l'App Store ou Google Play : la boutique arrête, FillSell suit — jamais « rien n'est facturé ».
   veilleTexteBoutique: (date, heure, voie) => (voie === 'google'
@@ -214,7 +223,7 @@ const FR = {
   // ── Après la fin de l'essai (non converti) ───────────────────────────────
   finKicker: 'FillSell Cloud',
   finTitre: 'Ton essai est terminé',
-  finTexte: "Le Cloud n'est plus actif. Rien n'a été facturé pour lui.",
+  finTexte: "Le Cloud n'est plus actif.",
   finArreteTitre: "Ce qui s'arrête",
   finArrete: [
     "Tes annonces Vinted, Leboncoin, Beebs et Depop ne partent plus ordinateur éteint : sans FillSell Cloud, publication, republication, retrait et ventes passent par l'extension FillSell, sur ton ordinateur.",
@@ -331,7 +340,7 @@ const EN = {
   arretPrevuTexte: (date) => `The Cloud runs until ${date}, then stops: nothing will be charged after that.`,
   garderOption: 'Keep the Cloud',
   suspenduTexte: 'The Cloud is paused: it restarts as soon as you pick a plan again.',
-  termineTexte: (date) => `Trial ended on ${date}. The Cloud is off, and nothing was billed for it.`,
+  termineTexte: (date) => `Trial ended on ${date}. The Cloud is off.`,
   arreteTexte: (date) => `Trial stopped on ${date}. The Cloud is off, and nothing was billed for it.`,
   termineSuite: 'Without FillSell Cloud, your listings go through the FillSell extension, on your computer. eBay is not affected.',
   termineCta: `Add the Cloud · ${PRIX_EN}/mo`,
@@ -368,7 +377,11 @@ const EN = {
   veilleArreter: 'Stop the Cloud',
   veilleNote: (nom) => `Either way, ${yourPlan(nom)} does not change, and the extension and eBay remain available.`,
   veilleBascule: (date, heure) => `${date} at ${heure} · +${PRIX_EN}/mo`,
-  veilleArretee: 'It is stopped. Nothing will be billed for the Cloud. Without FillSell Cloud, your listings go through the FillSell extension, on your computer.',
+  veilleBoutiqueOuverte: (voie) => (voie === 'google'
+    ? 'You opened your Google Play subscriptions. As soon as Google confirms the cancellation to us, it is done.'
+    : 'You opened your Apple subscriptions. As soon as Apple confirms the cancellation to us, it is done.'),
+  veilleArreteeConfirmee: 'It is stopped. Nothing will be charged. Without FillSell Cloud, your listings go through the FillSell extension, on your computer.',
+  veilleArretee: 'It is stopped. Without FillSell Cloud, your listings go through the FillSell extension, on your computer.',
   veilleArretEchec: 'The Cloud could not be stopped. Try again in a moment.',
   veilleTexteBoutique: (date, heure, voie) => (voie === 'google'
     ? `Your free trial ends on ${date} at ${heure}. Your Cloud was bought on Google Play: to stop it, go to your Google Play subscriptions, and FillSell will show it as soon as Google confirms it.`
@@ -376,7 +389,7 @@ const EN = {
 
   finKicker: 'FillSell Cloud',
   finTitre: 'Your trial has ended',
-  finTexte: 'The Cloud is off. Nothing was billed for it.',
+  finTexte: 'The Cloud is off.',
   finArreteTitre: 'What stops',
   finArrete: [
     'Your Vinted, Leboncoin, Beebs and Depop listings no longer go out with your computer off: without FillSell Cloud, posting, reposting, removal and sales go through the FillSell extension, on your computer.',
