@@ -142,3 +142,10 @@ Enquêtes en lecture seule (base, code, journaux, page publique Leboncoin lue de
 - Vérifié en prod le 07/11 : Ciddjy 17:03 — 49342549 rattachée à 34309782, 3 retraits armés (34309820, 34309865,
   34309939) ; Louis 17:16 — rangs 1-4 remis en attente (dépôts refusés archivés), les 9 rangs retenus par la règle A
   (toutes leurs vendues encore affichées) ; migration B : 77 → 51 propositions ouvertes.
+- Marta (preuve en lecture, sans dépôt) : catalogue des couleurs de vinted.it lu en public (29 identifiants, identiques
+  à la France, libellés seuls différents) ; la 0.6.178 exécutée sur les 30 republications en attente envoie toujours la
+  couleur de la capture (138 exécutions, aucune fausse). NON prouvés sans page connectée : le vrai menu de vinted.it et la
+  clé du POST → retenue Vinted hors France MAINTENUE. Points à trancher : b9460406 (24 d'origine, 5 remise le 25/10),
+  f1c4a0e0 (27 de la fiche, 9 en ligne), 4 annonces disparues, « Rosa » 5/24, libellés italiens de vintedColors.js.
+- Balayage du rouge (parc actif 173 comptes) : « cassé chez nous » 79 (14:06) → 45 (17:31), 0 apparu, aucun taux en
+  baisse (sortie : scratchpad balayage-apres2-20261107-1731).
