@@ -129,7 +129,7 @@ ok("eBay : suggestion et copie vide lisent les textes du vendeur", ecran.include
 ok("carte du rayon : textes passés (StepGeneration → CarteRayon → classerChamps)", ecran.includes('textes={[ficheTexte?.titre ?? "", ficheTexte?.description ?? "", e.title ?? "", e.description ?? ""]}')
   && lire("src/components/CarteRayon.jsx").includes("cheminCategorie: rayon?.chemin ?? null, textes: textesCle ? JSON.parse(textesCle) : null }"));
 const hw = lire("supabase/functions/handler-watch/index.ts");
-ok("handler-watch : titre et description lus et passés", hw.includes('platform_fields, title, description")') && hw.includes("taille:attributs->taille->>v, titre, description") && hw.includes("reponseTailleAuto(j as never, art?.taille ?? null, textes)"));
+ok("handler-watch : titre et description lus et passés", hw.includes('platform_fields, title, description")') && /taille:attributs->taille->>v, (taille_source:attributs->taille->>source, )?titre, description/.test(hw) && /reponseTailleAuto\(j as never, art\?\.taille \?\? null, textes(, \{ sourceFiche: art\?\.taille_source \?\? null \})?\)/.test(hw));
 ok("aucun appel IA dans la règle", !/fetch\(|anthropic|claude/i.test(lire("supabase/functions/_shared/taille-du-texte.js").replace(/\/\/.*$/gm, "")));
 const pkg = JSON.parse(lire("package.json"));
 ok("selftest inscrit au package.json", pkg.scripts["selftest:tailles-titre"] === "node scripts/tailles-titre-selftest.mjs");

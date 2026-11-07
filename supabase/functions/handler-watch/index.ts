@@ -5834,10 +5834,10 @@ serve(async (req) => {
       .filter((j) => !((j.platform_fields ?? {}) as Record<string, unknown>).taille_convertie_serveur)
       .slice(0, 40);
     const invIds = [...new Set(cands.map((j) => j.inventaire_id).filter((v) => v != null))] as number[];
-    const fiches = new Map<string, { statut?: string; disparu_le?: string | null; fusionne_dans?: number | null; taille?: string | null; titre?: string | null; description?: string | null }>();
+    const fiches = new Map<string, { statut?: string; disparu_le?: string | null; fusionne_dans?: number | null; taille?: string | null; taille_source?: string | null; titre?: string | null; description?: string | null }>();
     if (invIds.length) {
       const { data: invs } = await supabase
-        .from("inventaire").select("id, statut, disparu_le, fusionne_dans, taille:attributs->taille->>v, titre, description")
+        .from("inventaire").select("id, statut, disparu_le, fusionne_dans, taille:attributs->taille->>v, taille_source:attributs->taille->>source, titre, description")
         .in("id", invIds);
       for (const r of (invs ?? []) as Array<Record<string, unknown>>) fiches.set(String(r.id), r as never);
     }
@@ -5847,7 +5847,7 @@ serve(async (req) => {
       // (19/10) Les textes du vendeur (fiche, puis copie) : la taille qu'ils
       // disent avec la copie (« 24M » → « 24 mois (86-94 cm) »), sinon rien.
       const textes = [art?.titre, art?.description, j.title, j.description].map((t) => String(t ?? "").slice(0, 4000));
-      const rep = reponseTailleAuto(j as never, art?.taille ?? null, textes);
+      const rep = reponseTailleAuto(j as never, art?.taille ?? null, textes, { sourceFiche: art?.taille_source ?? null });
       if (!rep) continue;
       const pf = champsApresReponseTaille(j.platform_fields as Record<string, unknown>, rep, new Date(now).toISOString()) as Record<string, unknown>;
       pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error as string, "needs_user", `handler-watch (taille « ${rep.brut} » → « ${rep.valeur} », ${rep.regle})`);

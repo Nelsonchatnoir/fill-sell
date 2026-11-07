@@ -96,5 +96,17 @@ console.log("7. (07/11 soir, Nico) Vinted hors de France : aucun retrait pour re
   ok(/out = out\.filter\(\(j\) => !retenuesHorsFr\.has\(String\(j\.id\)\)\)/.test(gpj) && !/\.update\(/.test(bloc), "retenue = non servie, sans aucune écriture");
 }
 
+console.log("8. (07/11 soir, Nico) Taille : la fiche fait foi ; une tranche de la fiche face à des années seules → borne haute");
+{
+  const { reponseTailleAuto: R } = await import("../supabase/functions/_shared/taille-question-auto.js");
+  const G = ["8 ans / 128 cm", "9 ans / 134 cm", "10 ans / 140 cm", "11 ans / 146 cm", "12 ans / 152 cm", "13 ans / 158 cm"];
+  const job = (taille) => ({ status: "needs_user", platform: "vinted", platform_fields: { taille, needsUserField: { field_key: "size", allowed_values: G, target: { key: "taille" } } } });
+  ok(R(job("11-12 yrs"), "10 ans (128-140 cm)", null, { sourceFiche: "manuel" })?.valeur === "10 ans / 140 cm",
+    "c7c382b7 : la personne a choisi « 10 ans » sur la fiche, l'étiquette dit « 11-12 yrs » → 10 ans / 140 cm (jamais l'étiquette contre son choix)");
+  ok(R(job("11-12 yrs"), "11-12 ans", null, { sourceFiche: "manuel" })?.valeur === "12 ans / 152 cm", "la fiche porte « 11-12 ans » → borne haute « 12 ans »");
+  ok(R(job("11-12 yrs"), null, null, {}) === null, "une tranche lue sur l'étiquette seule (copie) : jamais tranchée");
+  ok(R(job("10 ans"), "12 ans")?.valeur === "10 ans / 140 cm", "sans choix de la personne (source inconnue) : l'ordre d'avant, inchangé");
+}
+
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

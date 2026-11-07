@@ -40,8 +40,9 @@ export function estQuestionTaille(f) {
  * @param {{status?:string, platform?:string, platform_fields?:object}} job
  * @param {string|null} tailleFiche — inventaire.attributs.taille.v (repli)
  * @param {unknown[]|null} textes — titre et description (job, fiche) ; absent : R0 → R4 seules
+ * @param {{ sourceFiche?: string|null }} [opts] — la source de la taille de la fiche (« manuel » : choisie par la personne)
  */
-export function reponseTailleAuto(job, tailleFiche = null, textes = null) {
+export function reponseTailleAuto(job, tailleFiche = null, textes = null, { sourceFiche = null } = {}) {
   if (!job || job.status !== "needs_user") return null;
   const pf = job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
   if (pf.taille_convertie_serveur) return null; // une fois
@@ -49,7 +50,10 @@ export function reponseTailleAuto(job, tailleFiche = null, textes = null) {
   if (!estQuestionTaille(f)) return null;
   const ebay = pf.ebayAspects && typeof pf.ebayAspects === "object" ? pf.ebayAspects : {};
   const vintedA = pf.vintedAspects && typeof pf.vintedAspects === "object" ? pf.vintedAspects : {};
-  const brut = [pf.taille, ebay.Taille, ebay.Pointure, vintedA.size, tailleFiche]
+  // (07/11 soir, décision de Nico — c7c382b7) LA FICHE FAIT FOI quand la personne y a CHOISI la taille (source « manuel ») :
+  // jamais l'étiquette lue sur photo (copie « 11-12 yrs ») contre son choix (« 10 ans »). Sinon, l'ordre d'avant.
+  const ficheChoisie = String(tailleFiche ?? "").trim() && String(sourceFiche ?? "") === "manuel" ? String(tailleFiche).trim() : "";
+  const brut = [ficheChoisie, pf.taille, ebay.Taille, ebay.Pointure, vintedA.size, tailleFiche]
     .map((v) => String(v ?? "").trim()).find(Boolean) ?? "";
   if (!brut && !textes && !(String(job.platform ?? "") === "vinted" && vintedObjetSansTaille(pf.categoryPath ?? []))) return null;
   const branche = brancheDeTaille(
@@ -57,6 +61,15 @@ export function reponseTailleAuto(job, tailleFiche = null, textes = null) {
     pf.ebayCategoryPath ?? [], String(ebay["Département"] ?? ""), String(pf.genre ?? ""),
   );
   let r = brut ? tailleDeService(brut, f.allowed_values, { branche }) : null;
+  // (07/11 soir, décision de Nico) La FICHE porte elle-même une tranche d'âge (« 11-12 ans ») et la grille n'a que des années
+  // seules : la borne HAUTE (« 12 ans »). Seulement la valeur de la fiche, jamais une étiquette de la copie.
+  if (!r && String(tailleFiche ?? "").trim() && brut === String(tailleFiche).trim()) {
+    const t = /^\s*(\d{1,2})\s*(?:-|\u2013|à|a|\/)\s*(\d{1,2})\s*(ans?|years?|yrs?|y)\b/i.exec(brut);
+    if (t && Number(t[2]) > Number(t[1])) {
+      const h = tailleDeService(`${t[2]} ans`, f.allowed_values, { branche });
+      if (h) r = { valeur: h.valeur, motif: `tranche « ${brut} » de la fiche face à une grille d'années seules : borne haute (${h.motif})`, regle: "R9" };
+    }
+  }
   if (!r && textes) {
     const chemin = [pf.categoryPath, pf.oplaCategoryPath, pf.beebsCategoryPath, pf.lbcCategoryPath, pf.ebayCategoryPath]
       .find((c) => Array.isArray(c) && c.length) ?? null;
