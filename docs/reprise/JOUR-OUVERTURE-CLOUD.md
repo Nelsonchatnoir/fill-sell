@@ -1,6 +1,6 @@
 # Jour d'ouverture de FillSell Cloud — la liste, dans l'ordre (décision j de Nico, 05/11/2026)
 
-## ⛔ PROCÉDURE DU JOUR J POUR UNE NOUVELLE SESSION (mise à jour le 07/11/2026 ~20:00) — prime sur tout le reste
+## ⛔ PROCÉDURE DU JOUR J POUR UNE NOUVELLE SESSION (mise à jour le 07/11/2026 ~20:00 ; 08/11 : étape 1.0 registre des mails, mails Cloud, OTA) — prime sur tout le reste
 Déclencheur : Nico écrit « On ouvre ». La session exécute SEULE, dans l'ordre, une étape à la fois : geste → vérification
 → la moindre différence = retour arrière de CETTE étape et arrêt, dit à Nico. Heures de Paris notées au fur et à mesure
 dans docs/cloud/REPRISE.md (bloc daté en tête). Aucun mail client, aucune écriture chez Stripe. Raccourcis :
@@ -23,6 +23,14 @@ dans docs/cloud/REPRISE.md (bloc daté en tête). Aucun mail client, aucune écr
    (`coin_config.cloud_offre_ouverte` absente ou 0).
 
 ### 1. Fonctions edge depuis main à jour (autorisations nommées de Nico du 07/11)
+0. **(08/11) Migration du registre des mails Cloud, AVANT les fonctions** — feu vert NOMMÉ de Nico requis (« applique
+   20261108090000 ») : `npx supabase db query --linked --yes -f supabase/migrations/20261108090000_cloud_mails_registre.sql`
+   puis `npx supabase migration repair --linked --status applied 20261108090000`. Vérif (lecture) :
+   `select relrowsecurity from pg_class where oid = 'public.cloud_mails'::regclass` = true ;
+   `select has_table_privilege('anon','public.cloud_mails','SELECT')` = false. Essai jetable fait le 08/11
+   (`PREUVE_PG=embarque node scripts/cloud/preuve-resiliation-mails.mjs`, 24/24). Sans elle, les fonctions ne
+   cassent rien mais n'envoient AUCUN mail Cloud d'événement (registre illisible = échec fermé, journalisé).
+   Retour : `supabase/rollbacks/20261108090000_cloud_mails_registre_INVERSE.sql` (après le retour des fonctions).
 a. Versions et verify_jwt notés AVANT : `npx supabase functions list` (email-tunnel, stripe-webhook, apple-iap-webhook,
    google-play-webhook, validate-google-purchase, validate-apple-receipt, cancel-subscription, create-checkout-session,
    get-pending-jobs).
@@ -35,9 +43,21 @@ c. `node scripts/cloud/deployer-fonctions-cloud.mjs` (plan) puis `--go --seuleme
    email-tunnel = les mails Cloud au VRAI prix du canal, texte selon le canal, « FillSell Cloud » (619dd8e ; la v82 en
    service envoie encore « 20 € » et « option Sans ordinateur ») ; cancel-subscription = l'arrêt du Cloud par Stripe
    seulement (la v53 en service ignore `option:'cloud'` et toucherait la FORMULE d'un client Stripe — ad7c6e8).
+   **(08/11, résiliation + mails)** les MAILS CLOUD D'ÉVÉNEMENT partent avec ces fonctions, et seulement à partir de là :
+   début d'essai, paiement fait, arrêt pendant l'essai (« aucun prélèvement » SEULEMENT sur la confirmation de la
+   boutique), arrêt programmé, impayé Apple / Google — un par événement (registre `cloud_mails`, étape 0) ; la veille
+   (email-tunnel) alignée ; l'impayé Stripe dit « en pause, repart tout seul ». Règles d'arrêt : une notification
+   rejouée n'écrit rien ; « essai ou période payée » lu aussi chez la boutique ; un paiement reçu après la coupure garde
+   l'arrêt programmé ; Google RESTARTED = reprise (jamais un second essai). Détail : docs/cloud/paiements-option-cloud.md.
 d. Vérif : versions +1, verify_jwt inchangés, 15 min de journaux sans erreur, Stripe `pending_webhooks` 0 ; email-tunnel :
-   `job_relaunch` en `dry_run` → la réponse contient `prix_lus`. Retour : redéployer chaque fonction depuis le commit
-   d'avant (noté en a.) avec le même verify_jwt ; get-pending-jobs n'est jamais touchée par ce retour.
+   `job_relaunch` en `dry_run` → la réponse contient `prix_lus`. (08/11) Puis, pour les trois canaux, sans téléphone :
+   App Store Connect › FillSell › Notifications du serveur App Store › « Demander une notification de test » (ou
+   `POST /inApps/v1/notifications/test` sur l'environnement de test) et Play Console › Monétisation › « Envoyer une
+   notification de test » → une ligne `TEST` / `testNotification` dans `stores_notifications_journal` (le tuyau arrive à
+   la NOUVELLE version) ; Stripe : `node scripts/stripe-test/resiliation-cloud-test.mjs` reste vert (mode test). Au
+   premier vrai essai Cloud : une ligne `cloud_mails` (`essai_debut`) et sa ligne `email_logs` `cloud_essai_debut`.
+   Retour : redéployer chaque fonction depuis le commit d'avant (noté en a.) avec le même verify_jwt ; get-pending-jobs
+   n'est jamais touchée par ce retour.
 
 ### 2. Orchestrateur de cloud-2 depuis main (textes du serveur, garde de cloisonnement)
 `ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh 5.9.80.213 cloud-2.fillsell.app`. Vérif : journal `demarrage`
@@ -70,6 +90,11 @@ b. OTA : le binaire en boutique est 2.9.164 (commit noté dans REPRISE.md). Si m
    prend **2.9.165** : commit de version (package.json + lock), puis `--delta` depuis le dossier principal (jamais un
    worktree), docs/agents/pieges.md § Déploiement. Vérif : canal `production` relu = 2.9.165 ; `build.json` du bundle =
    le commit. Retour : le bundle d'avant remis sur `production`.
+   (08/11) L'OTA 2.9.165 apporte aussi : « Arrêter le Cloud » ouvre DIRECTEMENT la feuille Abonnements d'Apple (iPhone)
+   ou la page d'abonnements du Play Store (Android), sans écran intermédiaire ; si elle ne s'ouvre pas, le chemin exact
+   reste affiché avec « Réessayer » ; « Arrêter » et « Garder » restent offerts à tout client Cloud même si
+   `cloud_offre_ouverte` est remis à 0 ; après un arrêt Stripe, « aucun prélèvement » seulement si Stripe l'a confirmé.
+   Le binaire 2.9.164 (build 2611071917) porte déjà l'arrêt par la boutique (feuille Apple en deux temps), pas ces finitions.
 
 ### 7. Grille à trois jauges (et les nouvelles feuilles d'entrée, qu'elle allume)
 `grille_trois_jauges` = 1 (§ 4). Vérif : `quotas_etat` et l'écran (web, puis app après l'OTA). Retour : 0.

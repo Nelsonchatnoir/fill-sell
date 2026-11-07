@@ -95,13 +95,26 @@ rmSync(tmp, { recursive: true, force: true });
 ok(ecarts.length === 0, `décisions de paliers identiques à la base ${BASE} sur ${grille} scénarios (Stripe, mails d'échec, boutiques)`, JSON.stringify(ecarts.slice(0, 5)));
 
 // ── 2. Les fonctions de paiement des paliers : octet pour octet ──
-const INCHANGEES = ['supabase/functions/stripe-webhook/index.ts', 'supabase/functions/cancel-subscription/index.ts', 'supabase/functions/stripe-portal/index.ts',
-  'supabase/functions/apple-iap-webhook/index.ts', 'supabase/functions/google-play-webhook/index.ts',
+const INCHANGEES = ['supabase/functions/stripe-portal/index.ts',
   'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/validate-coin-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'];
 for (const f of INCHANGEES) {
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   ok(diff.trim() === '', `${f.replace('supabase/functions/', '')} : inchangée depuis ${BASE}`, diff.slice(0, 300));
+}
+// ── 2 bis. (08/11, résiliation et mails Cloud, ordre de Nico) Quatre fonctions changent SEULEMENT dans leurs branches
+// Cloud : chaque ligne changée (hors commentaires) est l'une des lignes RELUES une à une le 08/11 et inscrites dans
+// scripts/fixtures/paiements-lignes-cloud-0811.json (imports des mails Cloud, réservation et envoi d'un mail d'événement,
+// lecture du renouvellement signé du produit Cloud, arrêt d'essai Stripe relu avec ses factures, RESTARTED Google =
+// reprise). Toute AUTRE ligne changée — un chemin de palier — rend ce contrôle rouge.
+const LIGNES_CLOUD = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-cloud-0811.json'), 'utf8'));
+for (const [f, permises] of Object.entries(LIGNES_CLOUD)) {
+  let diff = '';
+  try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
+  const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
+  const restant = [...permises];
+  const horsCloud = changees.filter((l) => { const i = restant.indexOf(l); if (i < 0) return true; restant.splice(i, 1); return false; });
+  ok(horsCloud.length === 0, `${f.replace('supabase/functions/', '')} : seules les ${permises.length} lignes Cloud relues le 08/11 changent depuis ${BASE} (aucun chemin de palier)`, horsCloud.slice(0, 4).join(' | '));
 }
 
 // ── 3. create-checkout-session : seulement la page de retour et la garde du Cloud ──

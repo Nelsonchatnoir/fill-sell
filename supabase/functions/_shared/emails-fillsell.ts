@@ -623,6 +623,36 @@ export function mailRappelVeilleCloud(r: RappelVeilleCloud): MailPret {
 }
 
 // ---------------------------------------------------------------------------
+// 7 ter. Les mails FillSell Cloud d'un événement de paiement (08/11/2026)
+// ---------------------------------------------------------------------------
+// Début d'essai, paiement fait, arrêt pendant l'essai, arrêt programmé, impayé Apple / Google. Le texte vit dans
+// _shared/cloud-mails.js (événements, canal, prix lu à la source) ; ici, la mise en page seulement — la même que la
+// veille : titre, préheader, paragraphes, un bouton, signature « Nico », aucun lien de désinscription (information
+// de facturation, catégorie 'support'). Le premier paragraphe (« Salut, ») est rendu comme les autres.
+export interface TexteMailCloud {
+  lang: Langue;
+  sujet: string;
+  titre: string;
+  preheader: string;
+  paragraphes: string[];
+  bouton?: { texte: string; url: string } | null;
+  raisonEnvoi: string;
+}
+
+export function mailCloud(t: TexteMailCloud): MailPret {
+  return {
+    sujet: t.sujet,
+    html: mail({
+      lang: t.lang,
+      titre: t.titre,
+      preheader: t.preheader,
+      corps: [...t.paragraphes.map((x) => paragraphe(x)), ...(t.bouton ? [boutonPrincipal(t.bouton.texte, t.bouton.url)] : [])],
+      raisonEnvoi: t.raisonEnvoi,
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // 8. ventes_du_jour — le récapitulatif des ventes (25/09/2026)
 // ---------------------------------------------------------------------------
 // Remplace le mail « Vendu sur X 🎉 » envoyé à CHAQUE vente (type

@@ -1,5 +1,21 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 08/11/2026 — DERNIÈRES FINITIONS : résiliation + mails (code poussé, RIEN déployé, migration PRÉPARÉE)
+- **Bouton « Arrêter » muet (TestFlight 07/11)** : cause relue dans les journaux — 2 taps (18:02:33 et 18:02:52 UTC,
+  compte 5322fa18) envoyés à cancel-subscription v53, qui ignore `option:'cloud'` et répond `{ success: true }` ; le build
+  alors installé (2611071623, 7e54e5f) demandait toujours au serveur. Correction ad7c6e8 (voie de la boutique) CONTENUE
+  dans le build soumis 2611071917 (65396fd, ancêtre vérifié) ; le canal OTA `production` sert 2.9.162 avec « Updates Under
+  Native: No » → le binaire 2.9.164 exécute bien son propre code. Finitions (ouverture directe, échec dit + « Réessayer »,
+  arrêt toujours offert à un client Cloud) : OTA 2.9.165 du jour J (étape 6b).
+- **Serveur** (main, à déployer au jour J étape 1) : règles d'arrêt (rejeu = rien écrit, essai/payé lu chez la boutique,
+  paiement après coupure garde l'arrêt, Google RESTARTED = reprise) ; 5 mails d'événement + veille alignée + impayé Stripe
+  « en pause » ; registre `cloud_mails` = migration **20261108090000 PRÉPARÉE, NON APPLIQUÉE** (feu vert nommé, étape 1.0).
+- **Preuves** : selftest cloud-resiliation-mails 80/80 ; Postgres jetable avec les vraies fonctions de prod 24/24
+  (`scripts/cloud/preuve-resiliation-mails.mjs`, fixture `prod-0811-cloud-arret.sql`) ; banc Stripe MODE TEST 13/13
+  (`scripts/stripe-test/resiliation-cloud-test.mjs`, horloges effacées) ; essai d'exécution Deno de la colle des mails ;
+  non-régression des paiements 13/13. NON prouvé en réel : achat bac à sable Apple / Google + annulation (il faut un
+  appareil) — jour J : notifications de test Apple et Play après l'étape 1.
+
 ## 07/11/2026 19:08 → 20:30 — PASSE FINALE de Nico (terminal CLOUD clos ensuite)
 - **Étanchéité (point 16) FAITE ET PROUVÉE** avec les 2 vrais navigateurs (Nico 172.31.0.2, Nicotest 172.31.0.3) :
   avant 19:08 Nicotest → pilotage DevTools de Nico = 200 (et l'inverse) ; étape A (pare-feu, 19:08:33, archive

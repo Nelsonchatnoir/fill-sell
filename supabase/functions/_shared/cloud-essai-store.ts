@@ -7,7 +7,9 @@
 // Socle absent (migration non appliquée) ou lecture en échec : comportement
 // d'avant, à l'identique — jamais un point de panne d'un paiement.
 // deno-lint-ignore-file no-explicit-any
-export const COLONNES_CLOUD_STORE = "cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete";
+// (08/11, résiliation) + la période payée et l'arrêt programmé (un arrêt déjà écrit ne se réécrit pas) ; l'adresse et
+// la langue servent aux mails Cloud (_shared/cloud-mails-envoi.ts), jamais à la décision.
+export const COLONNES_CLOUD_STORE = "cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode, email, lang";
 
 export async function profilCloudPourStore(admin: any, userId: string | null | undefined): Promise<Record<string, unknown>> {
   if (!userId) return {};

@@ -95,6 +95,39 @@ modifier la durée, un identifiant ne se renomme jamais.
 - `cloud_etat(uuid, timestamptz)` / `cloud_etat_moi()` : même état que
   `cloudDuProfil`, indépendant du palier.
 
+## Résiliation et mails d'événement (08/11/2026, ordre de Nico — NON déployé : jour J, étape 1)
+
+**Arrêter, par canal** (`src/cloud/achatCloud.js`, `BlocCloudReglages.jsx`) : Apple vu sur iPhone/iPad → « Arrêter le
+Cloud » ouvre DIRECTEMENT la feuille Abonnements du système (`AppStore.showManageSubscriptions`, la seule qui montre
+aussi un abonnement TestFlight) ; Google sur Android → la page d'abonnements du Play Store pour l'app (intention native),
+puis le lien Play du produit Cloud ; Stripe → `cancel-subscription` (confirmation en deux temps). Rien ne s'ouvre → le
+chemin exact reste à l'écran (« Réglages › ton nom › Abonnements › FillSell Cloud ») avec « Réessayer » — jamais un
+repli silencieux vers une page web. « Arrêter » / « Garder » existent pour TOUT client Cloud vivant, même offre refermée
+(`useCloudReglages`, `actionsCloud`). Après un arrêt Stripe, l'app dit « aucun prélèvement » seulement si la réponse
+porte `aucun_prelevement: true` (abonnement annulé avant la fin de l'essai ET toutes ses factures à 0, relus chez Stripe).
+
+**Règles d'arrêt** (`_shared/cloud-option.js`, `ecritureCloudStore`) :
+- pendant l'essai (essai FillSell en cours) → arrêt IMMÉDIAT : `cloud_essai_arrete`, fin ramenée à maintenant → le
+  déclencheur `profiles_cloud_pool` met l'IP au repos et éteint `cloud_voie` (tâches rendues à l'extension) dans la même
+  transaction ; l'orchestrateur ferme le navigateur au tour suivant (60 s ; un job déjà en cours finit d'abord) ;
+- payé → arrêt programmé (`cloud_arret_fin_periode`, `cloud_periode_fin`) ; coupure réelle à l'expiration (Apple
+  EXPIRED, Google 13, Stripe `customer.subscription.deleted`) ; remboursement / révocation → coupure immédiate ;
+- essai FillSell fini (grâce) mais la boutique encore dans sa période d'essai → arrêté (place et IP rendues) ;
+- coupure reçue APRÈS le prélèvement → période payée ; le paiement reçu ensuite GARDE l'arrêt (`renouvellementAuto`) ;
+- même coupure rejouée → rien d'écrit (`essai_deja_arrete`, `arret_deja_programme`) ;
+- reprise (Apple AUTO_RENEW_ENABLED, Google 7 RESTARTED, Stripe « Garder le Cloud ») → arrêt levé, rien d'autre ; un essai
+  déjà arrêté ne rouvre pas sans paiement réel (jamais un second essai gratuit ; Stripe : `essaiCloudPermis`).
+
+**Mails** (`_shared/cloud-mails.js` textes et événements, `_shared/cloud-mails-envoi.ts` envoi, `mailCloud` mise en page) :
+`essai_debut`, `paiement`, `arret_essai`, `arret_programme`, `impaye` (Apple / Google ; Stripe garde `paiement-echoue.js`),
+plus la veille (`cloud-rappel-veille.js`). Type `cloud_<événement>`, catégorie `support`. UN mail par événement : clé
+réservée dans `public.cloud_mails` (migration 20261108090000) avant l'envoi, libérée si l'envoi échoue. Prix : facture
+Stripe (payée ou à venir, remise comprise), transaction / renouvellement signés d'Apple, prix récurrent Google — sinon
+aucune somme. « Aucun prélèvement » seulement sur la confirmation de la boutique. Preuves : `selftest:cloud-resiliation-mails`
+(80), `scripts/cloud/preuve-resiliation-mails.mjs` (Postgres jetable, vraies fonctions de prod, 24),
+`scripts/stripe-test/resiliation-cloud-test.mjs` (mode test Stripe, 13), `selftest:paiements-non-regression` (seules les
+lignes Cloud relues changent dans les 4 fonctions de paiement).
+
 ## Avant tout déploiement
 
 La passe complète, dans l'ordre : `docs/cloud/mise-en-ligne.md` (migrations

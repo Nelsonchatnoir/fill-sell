@@ -222,15 +222,23 @@ try {
     'iPhone, Cloud Apple : on dit où l\'arrêter et que FillSell le verra dès qu\'Apple l\'aura confirmé — jamais « c\'est arrêté » ni « rien n\'est facturé »', iosApple.r.message);
   ok(iosApple.journal.map((j) => j.ev).join(',') === 'cloud_arret_clic,cloud_arret_issue' && iosApple.journal[0].meta.canal === 'apple' && iosApple.journal[1].meta.etat === 'boutique',
     'le geste laisse sa trace (usage_logs cloud_arret_clic puis cloud_arret_issue) — le 07/11, aucune ligne nulle part', JSON.stringify(iosApple.journal));
+  // (08/11, ordre de Nico) iPhone : la feuille du SYSTÈME seulement — plus de repli silencieux vers une page web ; si
+  // elle refuse, l'échec est DIT avec le chemin exact (l'écran propose « Réessayer »), sans appel au serveur.
   const iosRefus = await arretSur({ platform: 'ios', canal: 'apple', gerer: 'refus' });
-  ok(iosRefus.gerer === 1 && iosRefus.liens[0] === A.LIEN_APPLE && iosRefus.r.etat === 'boutique' && iosRefus.fetch.length === 0, 'iPhone, feuille native refusée : la page d\'abonnements de l\'App Store s\'ouvre (repli)');
-  const iosEchec = await arretSur({ platform: 'ios', canal: 'apple', gerer: 'refus', lienEchoue: true });
-  ok(iosEchec.r.etat === 'erreur' && /Réglages › ton nom › Abonnements/.test(iosEchec.r.message), 'rien ne s\'ouvre : on dit où aller (Réglages › ton nom › Abonnements), jamais un silence', iosEchec.r.message);
+  ok(iosRefus.gerer === 1 && iosRefus.liens.length === 0 && iosRefus.r.etat === 'erreur' && iosRefus.r.voie === 'apple' && iosRefus.fetch.length === 0
+    && /Réglages › ton nom › Abonnements › FillSell Cloud/.test(iosRefus.r.message) && /réessaie/.test(iosRefus.r.message),
+    'iPhone, feuille native refusée : jamais une page web en silence — le chemin exact (Réglages › ton nom › Abonnements › FillSell Cloud) et « réessaie »', iosRefus.r.message);
+  const iosSansModule = await arretSur({ platform: 'ios', canal: 'apple', gerer: null });
+  ok(iosSansModule.r.etat === 'erreur' && iosSansModule.liens.length === 0 && /Réglages › ton nom › Abonnements/.test(iosSansModule.r.message), 'iPhone sans module natif : l\'échec est dit, jamais un silence', iosSansModule.r.message);
   const androidGoogle = await arretSur({ platform: 'android', canal: 'google' });
-  ok(androidGoogle.liens[0] === A.LIEN_GOOGLE && androidGoogle.fetch.length === 0 && androidGoogle.r.etat === 'boutique' && /Google Play/.test(androidGoogle.r.message) && !SANS_PROMESSE.test(androidGoogle.r.message),
-    'Android, Cloud Google : la page d\'abonnements de Play (produit Cloud), aucun appel au serveur, aucune promesse', androidGoogle.r.message);
-  const androidRepli = await arretSur({ platform: 'android', canal: 'google', lienEchoue: true });
-  ok(androidRepli.gerer === 1 && androidRepli.r.etat === 'boutique', 'Android, lien refusé : la page d\'abonnements du module natif');
+  ok(androidGoogle.gerer === 1 && androidGoogle.liens.length === 0 && androidGoogle.fetch.length === 0 && androidGoogle.r.etat === 'boutique' && /Google Play/.test(androidGoogle.r.message) && !SANS_PROMESSE.test(androidGoogle.r.message),
+    'Android, Cloud Google : la page d\'abonnements du Play Store pour l\'app (intention native), aucun appel au serveur, aucune promesse', androidGoogle.r.message);
+  const androidRepli = await arretSur({ platform: 'android', canal: 'google', gerer: 'refus' });
+  ok(androidRepli.gerer === 1 && androidRepli.liens[0] === A.LIEN_GOOGLE && androidRepli.r.etat === 'boutique', 'Android, intention refusée : le lien Play du produit Cloud');
+  const androidEchec = await arretSur({ platform: 'android', canal: 'google', gerer: 'refus', lienEchoue: true });
+  ok(androidEchec.r.etat === 'erreur' && /Paiements et abonnements › Abonnements › FillSell Cloud/.test(androidEchec.r.message), 'Android, rien ne s\'ouvre : le chemin exact, jamais un silence', androidEchec.r.message);
+  const webGoogle = await arretSur({ platform: 'web', canal: 'google' });
+  ok(webGoogle.gerer === 0 && webGoogle.liens[0] === A.LIEN_GOOGLE && webGoogle.r.etat === 'boutique', 'web, Cloud Google : le lien Play du produit Cloud');
   const webApple = await arretSur({ platform: 'web', canal: 'apple' });
   ok(webApple.liens.length === 0 && webApple.gerer === 0 && webApple.fetch.length === 0 && webApple.r.voie === 'apple_ailleurs' && /iPhone ou ton iPad/.test(webApple.r.message),
     'web, Cloud Apple : rien à ouvrir ici, on dit où l\'arrêter (iPhone / iPad), aucun appel au serveur', webApple.r.message);
@@ -241,6 +249,12 @@ try {
     'Stripe, serveur d\'avant l\'option (v53 : { success: true } sans « option ») : JAMAIS pris pour un arrêt — on le dit', v53.r.message);
   const essaiStripe = await arretSur({ platform: 'web', canal: 'stripe', reponse: { success: true, option: 'cloud', essai_arrete: true } });
   ok(essaiStripe.r.etat === 'ok' && essaiStripe.r.essai_arrete === true && essaiStripe.gerer === 0 && essaiStripe.liens.length === 0, 'Stripe : cancel-subscription { option: \'cloud\' } arrête vraiment (essai arrêté, confirmé par le serveur)');
+  // (08/11) « aucun prélèvement » à l'écran SEULEMENT si la réponse de Stripe (relue par cancel-subscription) le porte.
+  ok(!/prélèvement/.test(essaiStripe.r.message ?? ''), 'Stripe, essai arrêté SANS la confirmation des factures : l\'app ne dit pas « aucun prélèvement »', essaiStripe.r.message);
+  const essaiConfirme = await arretSur({ platform: 'web', canal: 'stripe', reponse: { success: true, option: 'cloud', essai_arrete: true, aucun_prelevement: true } });
+  ok(essaiConfirme.r.etat === 'ok' && /aucun prélèvement/.test(essaiConfirme.r.message), 'Stripe, essai arrêté ET factures à 0 relues chez Stripe : « aucun prélèvement »', essaiConfirme.r.message);
+  const programme = await arretSur({ platform: 'web', canal: 'stripe', reponse: { success: true, option: 'cloud', period_end: '08/12/2026' } });
+  ok(programme.r.etat === 'ok' && /jusqu'au 08\/12\/2026/.test(programme.r.message), 'Stripe, période payée : la date de fin confirmée par Stripe est dite', programme.r.message);
   const deja = await arretSur({ platform: 'web', canal: 'stripe', reponse: { success: true, option: 'cloud', deja: true } });
   ok(deja.r.etat === 'rien' && /rien à arrêter/.test(deja.r.message), 'Stripe, aucun abonnement en cours : on le dit (avant : un succès muet)');
   const auServeur = await arretSur({ platform: 'ios', canal: undefined, canalBase: null, reponse: { success: false, error: 'resilier_dans_la_boutique', canal: 'apple' } });

@@ -294,7 +294,15 @@ marge de 100 % sur du vent, indétectable ensuite.
   ⛔ Jamais « rien n'est facturé » : FillSell ne peut pas le promettre pour une boutique.
 - Un seul nom : « FillSell Cloud » (ni « option », ni « add-on », ni « Sans ordinateur »), dans chaque sujet et corps.
 - Le paiement échoué du Cloud n'existe que pour Stripe (Apple et Google relancent eux-mêmes) ; jamais « reste actif »
-  pour le Cloud. Aucun mail aujourd'hui pour : début d'essai, arrêt (Stripe : pas d'accusé), renouvellement réussi.
+  pour le Cloud. ~~Aucun mail aujourd'hui pour : début d'essai, arrêt (Stripe : pas d'accusé), renouvellement réussi.~~
+  **Remplacé le 08/11 (ordre de Nico, actif au jour J étape 1)** : six mails Cloud — début d'essai, veille, paiement fait,
+  arrêt pendant l'essai, arrêt programmé, impayé (Stripe : `paiement-echoue.js`, qui dit « en pause, repart tout seul » ;
+  Apple DID_FAIL_TO_RENEW et Google ON_HOLD / IN_GRACE_PERIOD : `_shared/cloud-mails.js`). UN mail par événement : la clé
+  (compte, événement, abonnement + facture / transaction / date) est réservée dans `public.cloud_mails` AVANT l'envoi ;
+  registre illisible = aucun mail. « Aucun prélèvement » SEULEMENT quand la boutique l'a confirmé (Stripe : annulé avant
+  la fin de l'essai et factures à 0 ; Apple : `autoRenewStatus` 0 sur la transaction d'essai ; Google : renouvellement
+  coupé en phase d'essai). Stripe : les mails d'arrêt servent d'accusé de réception (L215-1-1). Le montant d'un paiement
+  est celui PAYÉ (facture Stripe, transaction Apple, prix récurrent Google hors remise), jamais un prix écrit.
 - Preuves : `npm run selftest:cloud-mails-canaux` (mail × canal, rendus par le vrai code), `selftest:cloud-prix-nom`
   (nom étendu aux mails et au serveur Cloud) ; aperçus : `node scripts/apercu/mails-cloud.mjs <dossier>` ; aperçu
   envoyé à l'adresse de test SEULEMENT : email-tunnel `test_template: "cloud_veille"` (+ `test_user_id` = prix lu).

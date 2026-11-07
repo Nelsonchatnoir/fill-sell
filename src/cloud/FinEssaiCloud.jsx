@@ -106,14 +106,19 @@ export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nom
   const heure = heureDe(cloud?.essaiFin, lang);
   const voie = voieArretCloud(canal, plateforme);
   const boutique = voieBoutique(voie);
+  // (08/11) L'échec d'ouverture des abonnements de la boutique dit le chemin EXACT (message de l'hôte) ; le bouton
+  // d'arrêt reste là pour réessayer.
+  const [messageEchec, setMessageEchec] = useState(null);
 
   const arreter = async () => {
     if (typeof actions.arreter !== 'function' || etat === 'en_cours') return;
     setEtat('en_cours');
     try {
       const r = await actions.arreter({ canal });
+      setMessageEchec(r?.ok === false && boutique && r?.message ? r.message : null);
       setEtat(r?.ok === false ? 'echec' : r?.etat === 'boutique' ? 'boutique' : 'arretee');
     } catch {
+      setMessageEchec(null);
       setEtat('echec');
     }
   };
@@ -138,7 +143,7 @@ export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nom
 
         {etat === 'echec' && (
           <p role="status" style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.5, fontWeight: 600, color: '#7A4A0B', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: '10px 12px' }}>
-            {T.veilleArretEchec}
+            {messageEchec ?? T.veilleArretEchec}
           </p>
         )}
 

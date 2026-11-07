@@ -97,9 +97,15 @@ const FR = {
     : voie === 'apple_ailleurs'
       ? "Ton Cloud a été pris sur l'App Store : il s'arrête depuis ton iPhone ou ton iPad (Réglages › ton nom › Abonnements). FillSell le verra dès qu'Apple aura confirmé l'arrêt."
       : "Arrête FillSell Cloud dans tes abonnements Apple. FillSell le verra dès qu'Apple aura confirmé l'arrêt."),
+  // (08/11, ordre de Nico) Jamais muet : le chemin EXACT, et l'écran propose « Réessayer » (BlocCloudReglages).
   arretBoutiqueEchec: (voie) => (voie === 'google'
-    ? "Tes abonnements Google Play n'ont pas pu s'ouvrir. Ouvre Google Play › Paiements et abonnements › Abonnements."
-    : "Tes abonnements Apple n'ont pas pu s'ouvrir. Ouvre Réglages › ton nom › Abonnements sur ton iPhone ou ton iPad."),
+    ? "Tes abonnements Google Play n'ont pas pu s'ouvrir. Ouvre le Play Store › ton profil › Paiements et abonnements › Abonnements › FillSell Cloud, ou réessaie."
+    : "Tes abonnements Apple n'ont pas pu s'ouvrir. Ouvre Réglages › ton nom › Abonnements › FillSell Cloud sur ton iPhone ou ton iPad, ou réessaie."),
+  reessayer: 'Réessayer',
+  // (08/11) Après un arrêt Stripe, ce que Stripe a confirmé (cancel-subscription relit l'abonnement et ses factures).
+  arretEssaiConfirme: "FillSell Cloud est arrêté. L'essai est annulé chez Stripe : aucun prélèvement.",
+  arretEssaiFait: "FillSell Cloud est arrêté.",
+  arretProgrammeConfirme: (date) => `C'est noté : FillSell Cloud continue jusqu'au ${date}, puis s'arrête. Rien ne sera prélevé ensuite.`,
   repriseBoutique: (voie) => (voie === 'google'
     ? "Le Cloud se garde dans tes abonnements Google Play. FillSell le verra dès que Google l'aura confirmé."
     : "Le Cloud se garde dans tes abonnements Apple (Réglages › ton nom › Abonnements). FillSell le verra dès qu'Apple l'aura confirmé."),
@@ -179,8 +185,12 @@ const EN = {
       ? 'Your Cloud was bought on the App Store: it stops from your iPhone or iPad (Settings › your name › Subscriptions). FillSell will show it as soon as Apple confirms it.'
       : 'Stop FillSell Cloud in your Apple subscriptions. FillSell will show it as soon as Apple confirms it.'),
   arretBoutiqueEchec: (voie) => (voie === 'google'
-    ? "Your Google Play subscriptions couldn't open. Open Google Play › Payments & subscriptions › Subscriptions."
-    : "Your Apple subscriptions couldn't open. Open Settings › your name › Subscriptions on your iPhone or iPad."),
+    ? "Your Google Play subscriptions couldn't open. Open the Play Store › your profile › Payments & subscriptions › Subscriptions › FillSell Cloud, or try again."
+    : "Your Apple subscriptions couldn't open. Open Settings › your name › Subscriptions › FillSell Cloud on your iPhone or iPad, or try again."),
+  reessayer: 'Try again',
+  arretEssaiConfirme: 'FillSell Cloud is stopped. The trial is cancelled at Stripe: no charge.',
+  arretEssaiFait: "FillSell Cloud is stopped.",
+  arretProgrammeConfirme: (date) => `Noted: FillSell Cloud keeps running until ${date}, then stops. Nothing is charged after that.`,
   repriseBoutique: (voie) => (voie === 'google'
     ? 'The Cloud is kept from your Google Play subscriptions. FillSell will show it as soon as Google confirms it.'
     : 'The Cloud is kept from your Apple subscriptions (Settings › your name › Subscriptions). FillSell will show it as soon as Apple confirms it.'),

@@ -129,6 +129,9 @@ export default function BlocCloudReglages({
   // (07/11 soir) Le geste en cours (un seul à la fois) ; la boutique ouverte, en attente de sa confirmation.
   const [enCoursLocal, setEnCoursLocal] = useState(false);
   const [attenteBoutique, setAttenteBoutique] = useState(null);
+  // (08/11, ordre de Nico) Les abonnements de la boutique n'ont pas pu s'ouvrir : le message (chemin exact) RESTE à
+  // l'écran avec un second bouton qui réessaie — jamais un écran muet, jamais un toast qui disparaît seul.
+  const [echecBoutique, setEchecBoutique] = useState(null);
   const voie = voieArretCloud(canal, plateforme);
   const enCours = arretEnCours || enCoursLocal;
   const lancerArret = async () => {
@@ -136,11 +139,16 @@ export default function BlocCloudReglages({
     setEnCoursLocal(true);
     try {
       const r = await actions.arreter({ canal });
-      if (r?.etat === 'boutique') { setAttenteBoutique(r.voie ?? voie); setConfirmer(false); }
+      if (r?.etat === 'boutique') { setAttenteBoutique(r.voie ?? voie); setEchecBoutique(null); setConfirmer(false); }
+      else if (r?.etat === 'erreur' && voieBoutique(r?.voie ?? voie)) { setEchecBoutique({ voie: r?.voie ?? voie, message: r?.message ?? Tc.arretBoutiqueEchec(r?.voie ?? voie) }); setConfirmer(false); }
     } catch { /* l'hôte a déjà dit l'échec */ } finally {
       setEnCoursLocal(false);
     }
   };
+  // (08/11, ordre de Nico) Cloud pris sur l'App Store (vu sur iPhone / iPad) ou Google Play : « Arrêter le Cloud » ouvre
+  // DIRECTEMENT la feuille d'abonnements de la boutique — c'est elle qui demande la confirmation. Stripe (FillSell
+  // arrête) et Apple vu ailleurs (rien à ouvrir ici) gardent la confirmation en deux temps qui dit ce qui change.
+  const ouvreLaBoutique = voie === 'apple' || voie === 'google';
   // « Arrêter aussi l'option » (résiliation) : ouvre la confirmation, une fois
   // par demande — ajustement d'état pendant le rendu, motif React documenté.
   const [demandeVue, setDemandeVue] = useState(arretDemande);
@@ -262,14 +270,21 @@ export default function BlocCloudReglages({
       {/* « Arrêter le Cloud » — visible, jamais caché sous un menu, et confirmé
           en deux temps : la phrase dit ce qui change AVANT le geste. */}
       {peutArreter && (!confirmer ? (
-        <Bouton ton="danger-creux" onClick={() => setConfirmer(true)} style={{ width: '100%', minHeight: 50 }}>{T.arreter}</Bouton>
+        <Bouton ton="danger-creux" onClick={ouvreLaBoutique ? lancerArret : () => setConfirmer(true)} enCours={ouvreLaBoutique && enCours} style={{ width: '100%', minHeight: 50 }}>{T.arreter}</Bouton>
       ) : (
         <div ref={arretRef}>
           <ConfirmationArretCloud lang={lang} cloud={cloud} nomPalier={nomPalier} voie={voie} enCours={enCours} onArreter={lancerArret} onAnnuler={() => setConfirmer(false)} />
         </div>
       ))}
+      {/* Les abonnements de la boutique ne se sont pas ouverts : le chemin exact, et un second bouton qui réessaie. */}
+      {echecBoutique && peutArreter && !confirmer && (
+        <div data-cloud="arret-echec" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Note>{echecBoutique.message}</Note>
+          <Bouton ton="creux" onClick={lancerArret} enCours={enCours} style={{ width: '100%' }}>{Tc.reessayer}</Bouton>
+        </div>
+      )}
       {/* La boutique ouverte : on attend SA confirmation (webhook) — rien n'a changé chez nous. */}
-      {attenteBoutique && peutArreter && !confirmer && <Note>{T.arretBoutiqueAttente(attenteBoutique)}</Note>}
+      {attenteBoutique && !echecBoutique && peutArreter && !confirmer && <Note>{T.arretBoutiqueAttente(attenteBoutique)}</Note>}
       {/* La note se tait pendant la confirmation, qui dit déjà la même chose. */}
       {etat === 'essai' && !confirmer && <Note>{T.essaiNote(nomPalier)}</Note>}
     </Groupe>

@@ -316,14 +316,26 @@ export function sessionEstCloud(s) {
  * offre d'introduction (offerType 1, gratuite) ; la conversion arrive en
  * DID_RENEW sans offerType.
  */
-export function lectureCloudApple(tx) {
+export function lectureCloudApple(tx, renouvellement = null) {
   if (tx?.productId !== PRODUIT_CLOUD_APPLE) return null;
   const essai = Number(tx?.offerType) === 1 && (tx?.offerDiscountType == null || tx?.offerDiscountType === "FREE_TRIAL");
+  // (08/11, résiliation) Ce qu'Apple dit EN PLUS, pour l'arrêt et les mails : le renouvellement automatique
+  // (signedRenewalInfo.autoRenewStatus, vérifié par l'appelant — 0 = coupé : Apple ne prélèvera pas), la période EN
+  // COURS est-elle l'essai gratuit (la transaction de la notification est la dernière : offre d'introduction
+  // gratuite), et le montant RÉELLEMENT payé pour cette transaction (price, en millièmes, offre comprise ; 0 pendant
+  // l'essai) — jamais un prix écrit en dur.
+  const ar = renouvellement?.autoRenewStatus;
+  const milli = typeof tx?.price === "number" && Number.isFinite(tx.price) ? tx.price : null;
+  const devise = typeof tx?.currency === "string" ? tx.currency.toUpperCase() : null;
   return {
     essai,
     debut: iso(instant(tx?.purchaseDate)),
     fin: iso(instant(tx?.expiresDate)),
     original: tx?.originalTransactionId ?? null,
+    transaction: tx?.transactionId != null ? String(tx.transactionId) : null,
+    renouvellementAuto: ar === 1 ? true : ar === 0 ? false : null,
+    phaseEssai: essai,
+    montantPaye: milli != null && milli > 0 && devise && /^[A-Z]{3}$/.test(devise) ? { montant: milli / 1000, devise } : null,
   };
 }
 
@@ -345,14 +357,28 @@ export function lectureCloudGoogle(subscriptionId, purchase, notificationType = 
   const debut = iso(instant(purchase?.startTime));
   const fin = iso(instant(ligne?.expiryTime));
   let essai = false;
+  // (08/11, résiliation) La période EN COURS est-elle l'essai gratuit, quel que soit le type de la notification (un
+  // CANCELED pendant l'essai porte le type 3) : la phase d'offre de Google quand elle est donnée (offerPhase.freeTrial),
+  // sinon l'offre d'essai sur la ligne ET une première période d'au plus 8 jours (après un renouvellement payé, la
+  // ligne court au-delà).
+  const d = instant(debut); const f = instant(fin);
+  const premierePeriodeCourte = d != null && f != null && f - d <= (ESSAI_CLOUD_JOURS + 1) * JOUR_MS;
+  const phase = ligne?.offerPhase ?? null;
+  const phaseEssai = phase && typeof phase === "object"
+    ? phase.freeTrial != null
+    : offre === OFFRE_ESSAI_CLOUD_GOOGLE && premierePeriodeCourte;
   if (offre === OFFRE_ESSAI_CLOUD_GOOGLE) {
     if (notificationType != null) essai = Number(notificationType) === GOOGLE_PURCHASED;
-    else {
-      const d = instant(debut); const f = instant(fin);
-      essai = d != null && f != null && f - d <= (ESSAI_CLOUD_JOURS + 1) * JOUR_MS;
-    }
+    else essai = premierePeriodeCourte;
   }
-  return { essai, debut, fin, offre };
+  const plan = ligne?.autoRenewingPlan ?? null;
+  const etat = typeof purchase?.subscriptionState === "string" ? purchase.subscriptionState : null;
+  const renouvellementAuto = typeof plan?.autoRenewEnabled === "boolean" ? plan.autoRenewEnabled
+    : (etat === "SUBSCRIPTION_STATE_CANCELED" || etat === "SUBSCRIPTION_STATE_EXPIRED") ? false : null;
+  return {
+    essai, debut, fin, offre, phaseEssai, renouvellementAuto, etat,
+    transaction: (purchase?.latestOrderId ?? ligne?.latestSuccessfulOrderId ?? null) || null,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -385,7 +411,10 @@ export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintena
     update.cloud_canal = canal;
     update.cloud_ref = ref ?? null;
     update.cloud_periode_fin = lecture?.fin ?? null;
-    update.cloud_arret_fin_periode = false;
+    // (08/11, résiliation) L'arrêt programmé suit la BOUTIQUE : un paiement (DID_RENEW, RENEWED) reçu APRÈS la coupure
+    // du renouvellement — notifications dans le désordre, ou coupure juste après le prélèvement — garde l'arrêt prévu
+    // (avant : remis à faux, et le Cloud aurait continué au-delà de la période payée). Inconnu → pas d'arrêt prévu.
+    update.cloud_arret_fin_periode = lecture?.renouvellementAuto === false;
     if (lecture?.essai) {
       update.is_cloud = false;
       const v = verdictEssaiStore(profil, canal, ref);
@@ -410,15 +439,37 @@ export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintena
       update.cloud_essai_fin = new Date(now).toISOString();
     }
   } else if (sens === "annulation") {
+    // (08/11, résiliation — ordre de Nico) Qui décide « essai » ou « période payée » : l'essai EN COURS chez FillSell
+    // d'abord, puis la période en cours chez la BOUTIQUE (lecture.phaseEssai : transaction d'essai chez Apple, phase
+    // d'essai chez Google). Une coupure reçue après le prélèvement est une période payée. Un arrêt déjà écrit (même
+    // notification rejouée, ou deux notifications pour la même coupure) n'écrit RIEN : un seul arrêt, une seule
+    // libération d'IP, un seul mail.
     const fin = instant(profil?.cloud_essai_fin);
-    const enEssai = profil?.is_cloud !== true && profil?.cloud_essai_debut != null && fin != null && now < fin && profil?.cloud_essai_arrete !== true;
+    const enEssai = essaiEnCoursDuProfil(profil, now);
     if (enEssai) {
-      // Arrêt PENDANT l'essai : effet IMMÉDIAT, rien facturé (la personne vient
-      // de couper le renouvellement, le store ne débitera pas).
+      // Arrêt PENDANT l'essai : effet IMMÉDIAT (la personne vient de couper le renouvellement, la boutique ne
+      // prélèvera pas — elle le dit dans sa notification).
       update.cloud_essai_arrete = true;
       update.cloud_essai_fin = new Date(now).toISOString();
-    } else {
+    } else if (profil?.is_cloud === true) {
       // Payée : tourne jusqu'à la fin de la période, puis s'arrête.
+      const finPeriode = lecture?.fin ?? profil?.cloud_periode_fin ?? null;
+      if (profil?.cloud_arret_fin_periode === true && instant(finPeriode) === instant(profil?.cloud_periode_fin)) {
+        return { update: null, motif: "arret_deja_programme" };
+      }
+      update.cloud_arret_fin_periode = true;
+      if (lecture?.fin) update.cloud_periode_fin = lecture.fin;
+    } else if (profil?.cloud_essai_arrete === true) {
+      return { update: null, motif: "essai_deja_arrete" };
+    } else if (lecture?.phaseEssai === true) {
+      // L'essai FillSell est fini (délai de grâce) mais la boutique est encore dans sa période d'essai : rien ne sera
+      // prélevé. On l'arrête (fin d'essai gardée si elle est déjà passée) : la place et l'IP partent tout de suite.
+      if (profil?.cloud_essai_debut == null) return { update: null, motif: "rien_a_arreter" };
+      update.cloud_essai_arrete = true;
+      if (fin == null || fin > now) update.cloud_essai_fin = new Date(now).toISOString();
+    } else {
+      // La boutique a déjà prélevé (période payée pas encore écrite chez nous) : l'arrêt est programmé, le paiement qui
+      // arrive ensuite le garde (sens « on », renouvellementAuto faux).
       update.cloud_arret_fin_periode = true;
       if (lecture?.fin) update.cloud_periode_fin = lecture.fin;
     }

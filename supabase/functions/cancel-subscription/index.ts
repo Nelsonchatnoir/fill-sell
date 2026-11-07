@@ -4,6 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { envoyerEmail } from "../_shared/desinscription.ts";
 import { dateSeuleParis, langue, mailResiliation } from "../_shared/emails-fillsell.ts";
 import { estAbonnementCloud } from "../_shared/cloud-option.js";
+import { evenementArretStripe } from "../_shared/cloud-mails.js";
+import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
 
 // (04/10) L'option Cloud est un abonnement Stripe À PART. Sans corps (appel
 // historique) : résiliation du PALIER, jamais de l'abonnement Cloud.
@@ -218,8 +220,10 @@ serve(async (req) => {
       }
       // Aligné sur palier.js : arrêtée PENDANT l'essai → effet IMMÉDIAT, rien
       // facturé ; arrêtée une fois PAYÉE → tourne jusqu'à la fin de la période.
+      // (08/11, ordre de Nico) La FORMULE n'est jamais touchée ici : seul l'abonnement Cloud (cloudVivant) est annulé
+      // ou programmé ; is_premium / is_pro / is_business ne sont ni lus pour décider ni écrits.
       if (cloudVivant.status === "trialing") {
-        await stripe.subscriptions.cancel(cloudVivant.id);
+        const annule = await stripe.subscriptions.cancel(cloudVivant.id);
         const maintenant = new Date().toISOString();
         await supabaseAdmin.from("profiles").update({
           is_cloud: false,
@@ -227,8 +231,19 @@ serve(async (req) => {
           cloud_essai_fin: maintenant,
           cloud_arret_fin_periode: false,
         }).eq("id", user.id);
-        console.log(`[cancel-subscription] essai Cloud ${cloudVivant.id} arrêté tout de suite (rien facturé)`);
-        return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true }), {
+        // « Aucun prélèvement » : seulement ce que STRIPE montre — abonnement annulé avant la fin de l'essai, toutes ses
+        // factures à 0. Sinon l'app et le mail n'en disent rien.
+        let evenements: ReturnType<typeof evenementArretStripe> = [];
+        try {
+          const factures = await stripe.invoices.list({ subscription: cloudVivant.id, limit: 20 });
+          evenements = evenementArretStripe(annule, factures.data);
+        } catch (e) {
+          console.error(`[cancel-subscription] factures de ${cloudVivant.id} illisibles : ${(e as Error)?.message ?? e}`);
+        }
+        const aucunPrelevement = evenements.some((e) => e.evenement === "arret_essai");
+        console.log(`[cancel-subscription] essai Cloud ${cloudVivant.id} arrêté tout de suite (statut Stripe ${annule.status}, aucun prélèvement confirmé : ${aucunPrelevement})`);
+        await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements, journal: "[cancel-subscription]" });
+        return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true, aucun_prelevement: aucunPrelevement }), {
           headers: { ...CORS, "Content-Type": "application/json" },
         });
       }
@@ -239,6 +254,8 @@ serve(async (req) => {
         cloud_periode_fin: finCloud ? new Date(finCloud * 1000).toISOString() : null,
       }).eq("id", user.id);
       console.log(`[cancel-subscription] Cloud ${cloudVivant.id} arrêté à la fin de la période payée`);
+      // Le mail d'arrêt programmé (accusé de réception, L215-1-1) : même clé que le webhook (un seul mail).
+      await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements: evenementArretStripe(fini), journal: "[cancel-subscription]" });
       return new Response(JSON.stringify({ success: true, option: "cloud", period_end: finCloud ? dateSeuleParis(new Date(finCloud * 1000)) : null }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });

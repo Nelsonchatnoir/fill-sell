@@ -105,11 +105,12 @@ for (const st of ['past_due', 'unpaid', 'incomplete', 'incomplete_expired']) {
   const apple = fs.readFileSync(new URL('../supabase/functions/apple-iap-webhook/index.ts', import.meta.url), 'utf8');
   const off = /const PREMIUM_OFF\s*=\s*\[([^\]]*)\]/.exec(apple)?.[1] ?? '';
   ok(/"DID_FAIL_TO_RENEW"/.test(off) && /"EXPIRED"/.test(off), 'Apple : DID_FAIL_TO_RENEW (renouvellement refusé) coupe le Cloud (PREMIUM_OFF, branche Cloud)');
-  ok(/lectureCloudApple\(tx\)[\s\S]{0,600}PREMIUM_OFF\.includes\(notificationType\)\) sens = "off"/.test(apple), 'Apple : la branche Cloud lit bien PREMIUM_OFF');
+  ok(/lectureCloudApple\(tx, renouvCloud\)[\s\S]{0,600}PREMIUM_OFF\.includes\(notificationType\)\) sens = "off"/.test(apple), 'Apple : la branche Cloud lit bien PREMIUM_OFF');
   const google = fs.readFileSync(new URL('../supabase/functions/google-play-webhook/index.ts', import.meta.url), 'utf8');
   const offG = (/const PREMIUM_OFF_TYPES\s*=\s*\[([^\]]*)\]/.exec(google)?.[1] ?? '').split(',').map((x) => Number(x.trim()));
   ok(offG.includes(5) && offG.includes(6), 'Google : ON_HOLD (5) et IN_GRACE_PERIOD (6) coupent (PREMIUM_OFF_TYPES)');
-  ok(/const sens = notificationType === CANCELED_TYPE \? "annulation" : isPremium \? "on" : "off"/.test(google), 'Google : la branche Cloud suit isPremium (impayé = off)');
+  // (08/11) 7 = RESTARTED est une REPRISE (arrêt programmé levé), jamais un paiement ; le reste suit isPremium.
+  ok(/const sens = notificationType === CANCELED_TYPE \? "annulation" : notificationType === RESTARTED_TYPE \? "reprise" : isPremium \? "on" : "off"/.test(google), 'Google : la branche Cloud suit isPremium (impayé = off), RESTARTED = reprise');
 }
 {
   const d = drapeauxDepuisStripe([sub('p1', 'active', ['price_std'], { cancel_at_period_end: false }), cloud('c1', 'active', { cancel_at_period_end: true })], PRIX);

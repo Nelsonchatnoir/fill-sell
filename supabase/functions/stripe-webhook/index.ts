@@ -4,6 +4,9 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue } from "../_shared/payment-notify.ts";
 import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud } from "../_shared/cloud-option.js";
+import { evenementArretStripe, evenementDebutStripe, evenementPaiementStripe, montantStripe } from "../_shared/cloud-mails.js";
+import { mailsCloud, type EvenementCloud } from "../_shared/cloud-mails-envoi.ts";
+import { prixDepuisStripe } from "../_shared/cloud-prix.js";
 import { faitsEchec, decisionMailEchec, causeDuPaiement } from "../_shared/paiement-echoue.js";
 import { palierDeFacture } from "../_shared/paiement-stripe.js";
 import { palierDuProfil } from "../_shared/palier.js";
@@ -150,6 +153,19 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
     "unpaid subs:", (subs ?? []).filter((s: Stripe.Subscription) => ["past_due", "unpaid", "incomplete"].includes(s.status)).length,
     "→", JSON.stringify(update)
   );
+}
+
+// (08/11) Les mails Cloud d'un client Stripe (début d'essai, paiement, arrêt) : le compte retrouvé par son client
+// Stripe, un mail par événement (registre cloud_mails). Jamais bloquant.
+// deno-lint-ignore no-explicit-any
+async function mailsCloudDuClient(supabase: any, customerId: string, evenements: EvenementCloud[]) {
+  if (!evenements?.length) return;
+  const { data: p } = await supabase.from("profiles").select("id, email, lang").eq("stripe_customer_id", customerId).maybeSingle();
+  if (!p?.id) {
+    console.warn(`[webhook] mails Cloud : aucun compte pour le client ${customerId}`);
+    return;
+  }
+  await mailsCloud(supabase, { userId: p.id, email: p.email ?? null, lang: p.lang ?? null, canal: "stripe", evenements, journal: "[webhook]" });
 }
 
 // ── LE SIGNAL D'UN ÉCHEC ACQUIS (09/10/2026) ─────────────────────────────────
@@ -435,10 +451,12 @@ serve(async (req) => {
         // pour que l'app la dise. Best-effort sur la LECTURE de la carte (une
         // carte illisible ne bloque pas un client), jamais sur le verdict.
         let carteRefusee = false;
+        let subEssai: Stripe.Subscription | null = null;
         if (session.metadata?.essai_cloud === "1" && session.subscription) {
           try {
             const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
             const sub = await stripe.subscriptions.retrieve(subId, { expand: ["default_payment_method"] });
+            subEssai = sub;
             let pm = sub.default_payment_method as Stripe.PaymentMethod | string | null;
             if (!pm || typeof pm === "string") {
               const client = await stripe.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] }) as Stripe.Customer;
@@ -465,6 +483,25 @@ serve(async (req) => {
           await supabase.from("profiles").update({ cloud_essai_refus: "carte_deja_vue" }).eq("id", qui.id);
         }
         console.log(`[webhook] abonnement Cloud créé → user=${qui.id} session=${session.id} essai=${session.metadata?.essai_cloud ?? "?"}${carteRefusee ? " (refusé : carte déjà vue)" : ""}`);
+        // (08/11) Le mail de début d'essai (un seul : registre cloud_mails, clé = l'abonnement), au prix de la PREMIÈRE
+        // échéance lu chez Stripe (facture à venir, remise comprise ; sinon le prix de l'abonnement). Un essai refusé
+        // par le verrou carte n'en reçoit pas. Une souscription payée sans essai : son mail part de invoice.paid.
+        if (!carteRefusee && subEssai) {
+          const subLu = subEssai;
+          await mailsCloud(supabase, {
+            userId: qui.id, canal: "stripe", evenements: evenementDebutStripe(subLu), journal: "[webhook]",
+            lirePrix: async () => {
+              try {
+                const aVenir = await stripe.invoices.retrieveUpcoming({ subscription: subLu.id });
+                const m = montantStripe(Number(aVenir?.amount_due), aVenir?.currency);
+                if (m) return m;
+              } catch (e) {
+                console.warn(`[webhook] facture à venir de ${subLu.id} illisible : ${(e as Error)?.message ?? e}`);
+              }
+              return prixDepuisStripe(subLu).prix;
+            },
+          });
+        }
       } else {
         console.error(`[webhook] session Cloud ${session.id} : compte introuvable (user=${cible ?? "?"}, email=${email ?? "?"})`);
         await alerterPaiementNonCredite({
@@ -618,6 +655,8 @@ serve(async (req) => {
         if (estAbonnementCloud(sub, prixConnus())) {
           await recomputeStripeFlags(supabase, customerId);
           console.log(`[webhook] facture Cloud ${invoice.id} (${sub.id}, statut ${sub.status}, ${invoice.amount_paid ?? "?"} ${invoice.currency ?? ""}) : colonnes Cloud relues, aucun quota`);
+          // (08/11) Prélèvement fait (montant PAYÉ de la facture, remise comprise) : un mail par facture.
+          await mailsCloudDuClient(supabase, customerId, evenementPaiementStripe(invoice, sub));
           return new Response(JSON.stringify({ received: true, cloud: true }), {
             headers: { "Content-Type": "application/json" },
           });
@@ -780,16 +819,25 @@ serve(async (req) => {
     if (estAbonnementCloud(subscription, prixConnus())) {
       // Arrêt demandé PENDANT l’essai (portail Stripe, dashboard) : effet immédiat,
       // comme le bouton de l’app (palier.js : rien facturé, l’essai s’arrête).
+      let evenementsArret: EvenementCloud[] = [];
       if (status === "trialing" && cancelAtPeriodEnd) {
         try {
-          await stripe.subscriptions.cancel(subscription.id);
+          const annule = await stripe.subscriptions.cancel(subscription.id);
           console.log(`[webhook] essai Cloud ${subscription.id} arrêté tout de suite (résiliation pendant l’essai)`);
+          // (08/11) « Aucun prélèvement » seulement si Stripe le MONTRE : abonnement annulé avant la fin de l'essai,
+          // toutes ses factures à 0.
+          const factures = await stripe.invoices.list({ subscription: subscription.id, limit: 20 });
+          evenementsArret = evenementArretStripe(annule, factures.data);
         } catch (e) {
           console.error(`[webhook] arrêt immédiat de l’essai Cloud ${subscription.id} impossible : ${(e as Error)?.message ?? e}`);
         }
+      } else if (status === "active" && cancelAtPeriodEnd && precedent.cancel_at_period_end === false) {
+        // Arrêt programmé posé hors de l'app (portail) : même mail que cancel-subscription, même clé (un seul).
+        evenementsArret = evenementArretStripe(subscription);
       }
       console.log(`[webhook] abonnement Cloud ${subscription.id} mis à jour (statut ${status}, annulation ${cancelAtPeriodEnd}) → relecture`);
       await recomputeStripeFlags(supabase, customerId);
+      await mailsCloudDuClient(supabase, customerId, evenementsArret);
       return new Response(JSON.stringify({ received: true, cloud: true }), {
         headers: { "Content-Type": "application/json" },
       });

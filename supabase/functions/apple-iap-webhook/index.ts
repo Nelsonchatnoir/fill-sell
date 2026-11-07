@@ -5,8 +5,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 // avant déploiement : empreinte de la racine Apple G3 = la constante, chaîne WWDR G6 → G3 vérifiée, inverse refusé.
 import * as x509 from "npm:@peculiar/x509@1.9.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore, signalerRemboursementStore } from "../_shared/payment-notify.ts";
-import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
+import { lectureCloudApple, ecritureCloudStore, PRODUIT_CLOUD_APPLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
+import { evenementsBoutique } from "../_shared/cloud-mails.js";
+import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
+import { prixDepuisAppleRenouvellement } from "../_shared/cloud-prix.js";
 import { decisionApple, ligneJournal, finPeriodeAEcrire, isoOuNull, natureRemboursementApple } from "../_shared/notifications-stores.js";
 import { palierDuProfil } from "../_shared/palier.js";
 
@@ -253,10 +256,18 @@ serve(async (req) => {
         if (renewalToken && renewalProductId && lectureCloudApple({ productId: renewalProductId })) {
           const profilCloud = await profilCloudPourStore(supabaseAdmin, renewalToken);
           const renewalDate = renewal.renewalDate as number | undefined;
+          // (08/11, résiliation) Le renouvellement signé (vérifié ci-dessus) EST la confirmation d'Apple : autoRenewStatus 0
+          // = Apple ne prélèvera pas. Sans transaction, la période en cours (essai ou payée) se lit sur le profil.
+          const lectureRenouv = {
+            fin: renewalDate != null ? new Date(renewalDate).toISOString() : null,
+            renouvellementAuto: autoRenewStatus === 1 ? true : autoRenewStatus === 0 ? false : null,
+            phaseEssai: null,
+          };
+          const sensRenouv = autoRenewStatus === 1 ? "reprise" : "annulation";
           const { update, motif } = ecritureCloudStore({
             canal: "apple",
-            lecture: { fin: renewalDate != null ? new Date(renewalDate).toISOString() : null },
-            sens: autoRenewStatus === 1 ? "reprise" : "annulation",
+            lecture: lectureRenouv,
+            sens: sensRenouv,
             ref: renewalOriginalTxId ?? null,
             profil: profilCloud ?? {},
           });
@@ -274,6 +285,11 @@ serve(async (req) => {
             });
           }
           console.log(`[apple-iap-webhook] Cloud DID_CHANGE_RENEWAL_STATUS autoRenew=${autoRenewStatus} → userId=${renewalToken}`, JSON.stringify(update));
+          await mailsCloud(supabaseAdmin, {
+            userId: renewalToken, email: (profilCloud?.email as string | null) ?? null, lang: (profilCloud?.lang as string | null) ?? null, canal: "apple",
+            evenements: evenementsBoutique({ canal: "apple", nature: sensRenouv, avant: profilCloud ?? {}, update, lecture: lectureRenouv, ref: renewalOriginalTxId ?? null }),
+            journal: "[apple-iap-webhook]",
+          });
           return new Response(JSON.stringify({ ok: true, cloud: true }), {
             status: 200, headers: { "Content-Type": "application/json" },
           });
@@ -416,18 +432,23 @@ serve(async (req) => {
     // palier ni aux quotas : essai (offerType 1) → dates d'essai ; payé →
     // is_cloud ; expiré / remboursé → option retirée. Cloud continue si le
     // palier tombe. Règles : _shared/cloud-option.js.
-    const lectureCloud = lectureCloudApple(tx);
+    // (08/11, résiliation) Le renouvellement signé, VÉRIFIÉ, lu une fois : la coupure du renouvellement (confirmation
+    // d'Apple : il ne prélèvera pas), et le prix de la prochaine échéance pour le mail de début d'essai.
+    let renouvCloud: Record<string, unknown> | null = null;
+    if (tx.productId === PRODUIT_CLOUD_APPLE && signedRenewalInfo) {
+      try {
+        renouvCloud = await verifyAndDecodeJWS(signedRenewalInfo);
+      } catch {
+        console.warn("[apple-iap-webhook] Cloud : signedRenewalInfo illisible");
+      }
+    }
+    const lectureCloud = lectureCloudApple(tx, renouvCloud);
     if (lectureCloud) {
       let sens: "on" | "off" | "annulation" | "reprise" | null = null;
       if (PREMIUM_ON.includes(notificationType)) sens = "on";
       else if (PREMIUM_OFF.includes(notificationType)) sens = "off";
-      else if (notificationType === "DID_CHANGE_RENEWAL_STATUS" && signedRenewalInfo) {
-        try {
-          const renewal = await verifyAndDecodeJWS(signedRenewalInfo);
-          sens = renewal.autoRenewStatus === 1 ? "reprise" : "annulation";
-        } catch {
-          console.warn("[apple-iap-webhook] Cloud : signedRenewalInfo illisible");
-        }
+      else if (notificationType === "DID_CHANGE_RENEWAL_STATUS" && renouvCloud) {
+        sens = renouvCloud.autoRenewStatus === 1 ? "reprise" : "annulation";
       }
       if (!sens) {
         console.log(`[apple-iap-webhook] Cloud : type ${notificationType} sans effet — skipped`);
@@ -456,6 +477,17 @@ serve(async (req) => {
         });
       }
       console.log(`[apple-iap-webhook] Cloud ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${appAccountToken} product=${productId}`, JSON.stringify(update));
+      // (08/11) Le mail de l'événement, un seul (registre cloud_mails) : début d'essai, paiement, arrêt, impayé.
+      const nature = notificationType === "SUBSCRIBED" ? "debut"
+        : notificationType === "DID_RENEW" || notificationType === "RESUBSCRIBE" ? "paiement"
+        : notificationType === "DID_FAIL_TO_RENEW" ? "impaye"
+        : sens === "annulation" || sens === "reprise" ? sens : "fin";
+      await mailsCloud(supabaseAdmin, {
+        userId: appAccountToken, email: (profilCloud?.email as string | null) ?? null, lang: (profilCloud?.lang as string | null) ?? null, canal: "apple",
+        evenements: evenementsBoutique({ canal: "apple", nature, avant: profilCloud ?? {}, update, lecture: lectureCloud, ref: originalTransactionId ?? null }),
+        lirePrix: async () => prixDepuisAppleRenouvellement(renouvCloud).prix,
+        journal: "[apple-iap-webhook]",
+      });
       return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });

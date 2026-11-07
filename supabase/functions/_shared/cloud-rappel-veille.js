@@ -173,7 +173,7 @@ const TEXTES = {
       google: 'Si tu ne veux pas continuer, résilie avant cette date dans tes abonnements Google Play (le bouton ci-dessous les ouvre ; dans l\'application Play Store : ton profil → Paiements et abonnements → Abonnements). C\'est Google qui gère cet abonnement : la résiliation se fait chez Google Play, et c\'est Google qui la confirme.',
       inconnu: 'Si tu ne veux pas continuer, arrête-le avant cette date là où tu l\'as pris : dans FillSell (Réglages → Abonnement) pour un paiement par carte sur le site, ou dans tes abonnements Apple ou Google Play pour un achat dans l\'application.',
     },
-    forfait: 'Ton forfait FillSell n\'est pas concerné : ce message ne parle que de FillSell Cloud.',
+    forfait: 'Ta formule FillSell ne change pas : ce message ne parle que de FillSell Cloud.',
     preheader: (prix) => (prix ? `Si tu ne fais rien, FillSell Cloud continue à ${prix} par mois.` : 'Si tu ne fais rien, FillSell Cloud devient payant à la fin de l\'essai.'),
     bouton: { stripe: 'Ouvrir FillSell', apple: 'Gérer mon abonnement Apple', google: 'Gérer mon abonnement Google Play', inconnu: 'Ouvrir FillSell' },
     raison: 'Tu reçois cet e-mail parce que tu as commencé un essai de FillSell Cloud. C\'est une information sur ta facturation : elle t\'est envoyée même si tu t\'es désinscrit des actualités de FillSell.',
@@ -233,7 +233,8 @@ export function texteRappel({ lang = 'fr', finIso, canal = null, prix = null, ca
     sujet: T.sujet(quand),
     preheader: T.preheader(montant),
     titre: T.titre,
-    paragraphes: [T.fin(quand), T.suite[c](montant, carte), T.arret[c], T.forfait],
+    // (08/11) Aligné sur les autres mails Cloud (_shared/cloud-mails.js) : « Salut, » en tête, signé Nico / FillSell.
+    paragraphes: [en ? 'Hi,' : 'Salut,', T.fin(quand), T.suite[c](montant, carte), T.arret[c], T.forfait],
     bouton: { texte: T.bouton[c], url: LIENS_BOUTON[c] },
     raisonEnvoi: T.raison,
     lienDesinscription: null,

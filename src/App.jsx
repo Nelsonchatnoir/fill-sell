@@ -3499,8 +3499,12 @@ export default function App({ loginOnly = false }){
     ...(cloudOfferVisible(user.id)&&achatCloud?{
       essayer:()=>lancerAchatCloud('reglages_cloud'),
       ajouter:()=>lancerAchatCloud('reglages_cloud'),
-      // (07/11 soir) { canal } : profiles.cloud_canal lu par l'écran (Apple / Google → la boutique, Stripe → le serveur).
-      // ok = le geste a abouti, jamais « le Cloud est arrêté » : etat 'boutique' = c'est la boutique qui confirmera.
+    }:{}),
+    // (07/11 soir) { canal } : profiles.cloud_canal lu par l'écran (Apple / Google → la boutique, Stripe → le serveur).
+    // ok = le geste a abouti, jamais « le Cloud est arrêté » : etat 'boutique' = c'est la boutique qui confirmera.
+    // (08/11) Arrêter et garder ne dépendent JAMAIS de l'offre : un client Cloud peut toujours arrêter, offre refermée
+    // comprise (le bloc ne se montre hors offre qu'à un Cloud vivant — useCloudReglages).
+    ...(achatCloud?{
       arreter:async(opts)=>{const r=await achatCloud.arreter({canal:opts?.canal});if(r?.message)toastCloud(r.message);return{ok:r?.etat==='ok'||r?.etat==='boutique'||r?.etat==='rien',...r};},
       reprendre:async(opts)=>{const r=await achatCloud.reprendre({canal:opts?.canal});if(r?.message)toastCloud(r.message);return{ok:r?.etat==='ok'||r?.etat==='boutique',...r};},
     }:{}),

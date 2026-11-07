@@ -59,6 +59,10 @@ export function lireReponseArret(d, { reprendre = false, platform = 'web' } = {}
   }
   if (d?.success === true && d?.option === 'cloud') {
     if (d.deja === true && !reprendre) return { etat: 'rien', message: T.arretRien };
+    // (08/11) Ce que Stripe a CONFIRMÉ, et rien de plus : « aucun prélèvement » seulement si la réponse le porte
+    // (abonnement annulé avant la fin de l'essai, factures à 0, relu chez Stripe par cancel-subscription).
+    if (!reprendre && d.essai_arrete === true) return { etat: 'ok', ...d, message: d.aucun_prelevement === true ? T.arretEssaiConfirme : T.arretEssaiFait };
+    if (!reprendre && d.period_end) return { etat: 'ok', ...d, message: T.arretProgrammeConfirme(d.period_end) };
     return { etat: 'ok', ...d };
   }
   if (d?.success === true) return { etat: 'non_confirme', message: T.arretNonConfirme };
@@ -218,23 +222,25 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     }
   }
 
-  /** Ouvre les abonnements de la boutique. Rend vrai si quelque chose s'est ouvert (rien pour 'apple_ailleurs'). */
+  /**
+   * Ouvre les abonnements de la boutique. Rend vrai si quelque chose s'est ouvert (rien pour 'apple_ailleurs') ; LÈVE si
+   * rien n'a pu s'ouvrir (l'écran dit alors le chemin exact et propose de réessayer — jamais muet).
+   * (08/11, ordre de Nico) iPhone / iPad : la feuille « Abonnements » du SYSTÈME (StoreKit, AppStore.showManageSubscriptions),
+   * la seule qui montre aussi un abonnement pris en TestFlight — plus de repli silencieux vers une page web. Android :
+   * la page d'abonnements du Play Store pour l'app (intention native du module), puis le lien Play du produit Cloud.
+   */
   async function ouvrirAbonnementsBoutique(voie) {
     if (voie === 'apple') {
-      // iPhone / iPad : la feuille « Abonnements » d'Apple, DANS l'app (StoreKit) ; le module natif refuse → la page
-      // d'abonnements de l'App Store.
-      if (typeof gererAbonnements === 'function') {
-        try { await gererAbonnements(); return true; } catch (e) { console.warn('[cloud] feuille d’abonnements Apple :', e?.message ?? e); }
-      }
-      await ouvrirLien(LIEN_APPLE);
+      if (typeof gererAbonnements !== 'function') throw new Error('feuille_abonnements_absente');
+      await gererAbonnements();
       return true;
     }
     if (voie === 'google') {
-      // La page d'abonnements de Google Play, sur le produit Cloud ; échec sur Android → la page du module natif.
-      try { await ouvrirLien(LIEN_GOOGLE); return true; } catch (e) {
-        if (platform === 'android' && typeof gererAbonnements === 'function') { await gererAbonnements(); return true; }
-        throw e;
+      if (platform === 'android' && typeof gererAbonnements === 'function') {
+        try { await gererAbonnements(); return true; } catch (e) { console.warn('[cloud] abonnements Google Play (module) :', e?.message ?? e); }
       }
+      await ouvrirLien(LIEN_GOOGLE);
+      return true;
     }
     return false;
   }

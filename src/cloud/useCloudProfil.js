@@ -83,8 +83,17 @@ export function useCloudProfil(userId, { actif = true } = {}) {
 export function useCloudReglages(c) {
   // (05/10) Un compte TÉMOIN (test réel, config/cloudOffer.js) voit l'état de
   // son option et « Me connecter » ; l'offre, elle, reste fermée pour lui.
-  const visible = cloudOfferVisible(c?.user?.id) || cloudConnexionVisible(c?.user?.id);
-  const lecture = useCloudProfil(c?.user?.id, { actif: visible });
-  return visible ? lecture : INACTIF;
+  // (08/11, résiliation — la règle, pas le cas) UN CLIENT CLOUD PEUT TOUJOURS ARRÊTER SON CLOUD, offre ouverte ou
+  // refermée : l'interrupteur cloud_offre_ouverte remis à 0 (retour arrière du jour J) cachait le bloc ET « Arrêter » à
+  // des clients qui gardent leur abonnement — un client Stripe n'avait alors plus aucun moyen de l'arrêter. La page
+  // Réglages › Abonnement lit donc l'état Cloud pour tout compte connecté (UNE lecture par clé primaire à l'ouverture de
+  // la page, la même que lorsque l'offre est ouverte) ; hors offre, le bloc n'apparaît que pour un Cloud vivant (essai
+  // ou payé), sans aucun geste d'achat.
+  const id = c?.user?.id;
+  const visible = cloudOfferVisible(id) || cloudConnexionVisible(id);
+  const lecture = useCloudProfil(id, { actif: Boolean(id) });
+  if (visible) return lecture;
+  if (lecture.etat === 'ok' && (lecture.cloud?.etat === 'essai' || lecture.cloud?.etat === 'paye')) return { ...lecture, horsOffre: true };
+  return INACTIF;
 }
 const INACTIF = Object.freeze({ etat: 'inactif', cloud: null, profil: null, luLe: null, relire: () => {} });

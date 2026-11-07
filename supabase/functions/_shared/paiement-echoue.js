@@ -259,6 +259,8 @@ const TEXTES = {
     reglerExpiree1: 'Règle cette facture sur la page sécurisée de Stripe, avec une autre carte.',
     relance: (d) => `Sinon, Stripe retentera le paiement le ${d}.`,
     actif: "Ton abonnement reste actif pour l'instant.",
+    // (08/11) FillSell Cloud impayé : il est en pause (règle du 03/11) et repart seul au paiement — même phrase qu'Apple / Google.
+    pauseCloud: "En attendant, FillSell Cloud est en pause : tes annonces repassent par l'extension FillSell, sur ton ordinateur. Dès que le paiement passe, il repart tout seul.",
     sansLien: 'Réponds à ce mail : on te renvoie le lien pour régler la facture.',
     bouton: { app: 'Ouvrir FillSell', valider: 'Valider le paiement', regler: 'Régler la facture' },
     fin: 'Si ça bloque encore, réponds à ce mail.',
@@ -303,6 +305,7 @@ const TEXTES = {
     reglerExpiree1: "Pay this invoice on Stripe's secure page, with another card.",
     relance: (d) => `Otherwise, Stripe will try the payment again on ${d}.`,
     actif: 'Your subscription stays active for now.',
+    pauseCloud: 'Meanwhile, FillSell Cloud is paused: your listings go back through the FillSell extension on your computer. As soon as the payment goes through, it starts again on its own.',
     sansLien: "Just reply to this email and we'll send you the link to pay the invoice.",
     bouton: { app: 'Open FillSell', valider: 'Confirm the payment', regler: 'Pay the invoice' },
     fin: 'If it still fails, just reply to this email.',
@@ -359,6 +362,7 @@ export function texteEchec({
   // (cloud-option.js, litAbonnementStripe). Dit ICI, au texte, et plus seulement par les faits de stripe-webhook :
   // une version de stripe-webhook d'avant le 05/11 (faitsEchec : active | past_due) ne peut plus le faire écrire.
   if (ctx === 'renouvellement' && abonnementActif === true && !cloud) suite.push(T.actif);
+  if (ctx !== 'souscription' && cloud) suite.push(T.pauseCloud);
 
   return {
     sujet, titre: sujet, preheader: T.preheader, salut: T.salut, intro,

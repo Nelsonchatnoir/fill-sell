@@ -5,6 +5,9 @@ import { decisionGoogle, decisionGoogleRemboursement, ligneJournal, lireEnvelopp
 import { palierDuProfil } from "../_shared/palier.js";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
+import { evenementsBoutique } from "../_shared/cloud-mails.js";
+import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
+import { prixDepuisGoogle } from "../_shared/cloud-prix.js";
 import { verifierJetonPubSub } from "../_shared/pubsub-oidc.ts";
 // (31/10, lot I point 7) Filet : un abonnement « on » encore non confirmé l'est par le serveur (remboursement à 72 h sinon).
 import { accuserAbonnementGoogle } from "../_shared/google-accuse-abonnement.js";
@@ -497,7 +500,11 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
     // Les règles sont dans _shared/cloud-option.js.
     const lectureCloud = lectureCloudGoogle(subscriptionId, purchase, notificationType);
     if (lectureCloud) {
-      const sens = notificationType === CANCELED_TYPE ? "annulation" : isPremium ? "on" : "off";
+      // (08/11, résiliation) 7 = SUBSCRIPTION_RESTARTED (renouvellement remis avant la fin de la période) : une REPRISE —
+      // l'arrêt programmé est levé, rien d'autre. Avant, il passait pour un paiement (is_cloud vrai) : remis pendant un
+      // essai déjà arrêté, il rouvrait le Cloud sans paiement. Le Cloud repart au premier paiement réel (2 = RENEWED).
+      const RESTARTED_TYPE = 7;
+      const sens = notificationType === CANCELED_TYPE ? "annulation" : notificationType === RESTARTED_TYPE ? "reprise" : isPremium ? "on" : "off";
       const profilCloud = await profilCloudPourStore(supabaseAdmin, userId);
       const { update, motif } = ecritureCloudStore({
         canal: "google", lecture: lectureCloud, sens, ref: purchaseToken, profil: profilCloud ?? {},
@@ -521,6 +528,18 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       console.log(`[google-play-webhook] Cloud type=${notificationType} ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${userId}`, JSON.stringify(update));
       ctx.maj.effet_applique = `cloud_${sens}`;
       if (sens === "on") await accuserAbonnementGoogle({ packageName, productId: subscriptionId, purchaseToken, purchase, accessToken });
+      // (08/11) Le mail de l'événement, un seul (registre cloud_mails) : 4 = début, 1 / 2 = paiement, 3 = arrêt
+      // (renouvellement coupé : la confirmation de Google), 5 / 6 = impayé.
+      const nature = notificationType === 4 ? "debut"
+        : notificationType === 1 || notificationType === 2 ? "paiement"
+        : notificationType === 5 || notificationType === 6 ? "impaye"
+        : sens === "annulation" || sens === "reprise" ? sens : "fin";
+      await mailsCloud(supabaseAdmin, {
+        userId, email: (profilCloud?.email as string | null) ?? null, lang: (profilCloud?.lang as string | null) ?? null, canal: "google",
+        evenements: evenementsBoutique({ canal: "google", nature, avant: profilCloud ?? {}, update, lecture: lectureCloud, ref: purchaseToken }),
+        lirePrix: async () => prixDepuisGoogle(purchase).prix,
+        journal: "[google-play-webhook]",
+      });
       return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
