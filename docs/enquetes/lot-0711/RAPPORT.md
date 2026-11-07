@@ -139,3 +139,6 @@ Enquêtes en lecture seule (base, code, journaux, page publique Leboncoin lue de
 - Point 6 (nouveaux rouges) : Sonia = photos PNG lourdes (critères LBC après réception) → 0.6.178 + relance au build ;
   tailles eBay (E1/E2) ; correctifs serveur du balayage (dépôts jamais vus sur article vendu/supprimé, prix de la
   fiche, ISBN des republications, taille Depop, « A x B cm », relevés d'absence).
+- Vérifié en prod le 07/11 : Ciddjy 17:03 — 49342549 rattachée à 34309782, 3 retraits armés (34309820, 34309865,
+  34309939) ; Louis 17:16 — rangs 1-4 remis en attente (dépôts refusés archivés), les 9 rangs retenus par la règle A
+  (toutes leurs vendues encore affichées) ; migration B : 77 → 51 propositions ouvertes.
