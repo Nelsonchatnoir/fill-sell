@@ -95,3 +95,12 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
   d'erreur, relances : un fait nouveau la fait revenir ; une relance l'efface) ; autres lignes → `platform_settings.
   a_regler_retires` (RPC platform_settings_fusionner, 200 lignes, 90 jours). Rien n'est supprimé, annulé ni retiré.
   Module `src/utils/retraitARegler.js`, selftest `a-regler-retirer`.
+
+## 07/11 soir — essai TestFlight de Nico : la carte « Synchronisation » en cours
+- « N plateformes sur M » vient de la MÊME liste que les lignes affichées dessous (relevés du serveur,
+  `synchro_avancement.releves`) : `compteSynchroEnCours` (`src/annonces/etatReleve.js`) ; sans cette liste, la vague de
+  l'app (`lireVague`), comme avant. « Faite » = relevé fini (done, incomplete), la même règle que la coche de la ligne
+  (`releveAvancementFini`). Vu le 07/11 : « 0 plateforme sur 2 » au-dessus de 3 lignes (Vinted à reconnecter, hors vague).
+- Client FillSell Cloud (`useCompteCloud`, `profiles.cloud_voie` — la règle du Stock, de la file, du suivi) : la carte en
+  cours dit « FillSell Cloud travaille pendant ce temps, même ordinateur éteint. » et « Synchronisation en attente de
+  FillSell Cloud », jamais « ton ordinateur ». Selftest `essai-testflight-0711`.

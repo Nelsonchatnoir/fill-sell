@@ -194,6 +194,11 @@ export const findActivePlayPremiumSub = async (lowerIds = [PRODUCT_IDS.sub, PROD
   return tx?.purchaseToken ?? null;
 };
 
+// (07/11 soir, essai TestFlight de Nico) La feuille « Abonnements » de la boutique, ouverte par l'app : iOS →
+// AppStore.showManageSubscriptions (StoreKit, dans l'app) ; Android → la page d'abonnements de Google Play du paquet.
+// Une app n'annule jamais un abonnement Apple ou Google : c'est la personne qui l'arrête là, la boutique nous le dit.
+export const gererAbonnementsBoutique = () => NativePurchases.manageSubscriptions();
+
 // Le `try { … } catch (e) { throw e }` qui enveloppait ce corps est retiré : il
 // rattrapait pour relancer à l'identique, donc il ne faisait rien. Les erreurs
 // remontent exactement comme avant, à l'appelant.

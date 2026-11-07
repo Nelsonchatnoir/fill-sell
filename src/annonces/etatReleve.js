@@ -350,6 +350,20 @@ export function lireVague({ plateformes, runs, runVinted, etatVinted }) {
   };
 }
 
+// ── LE COMPTE DE LA CARTE EN COURS (07/11 soir, essai TestFlight de Nico) ─────
+// « 0 plateforme sur 2 » au-dessus d'une liste de 3 lignes (Beebs en attente, Leboncoin en cours, Vinted à
+// reconnecter) : le compte venait de la vague lue par l'app (lireVague : une plateforme qui n'a pas démarré n'en est
+// pas membre — Vinted à reconnecter), la liste des relevés lus par le SERVEUR (synchro_avancement.releves). Le compte
+// vient désormais de la MÊME liste que celle affichée quand le serveur la rend ; sinon, de la vague (comme avant).
+// Une ligne « faite » = un relevé fini (done, incomplete), comme la coche de la ligne (releveAvancementFini).
+export const releveAvancementFini = (x) => x?.status === 'done' || x?.status === 'incomplete';
+export function compteSynchroEnCours({ vague, releves }) {
+  if (Array.isArray(releves) && releves.length > 0) {
+    return { faites: releves.filter(releveAvancementFini).length, total: releves.length };
+  }
+  return { faites: vague?.faites?.length ?? 0, total: vague?.total ?? 0 };
+}
+
 // ── LA LIGNE D'ÉTAT AU REPOS ────────────────────────────────────────────────
 // Le « dernier relevé », c'est le PLUS RÉCENT des relevés réussis (Vinted
 // comprise) ; le nombre, c'est la SOMME de ce que chaque dernier relevé réussi

@@ -29,6 +29,10 @@
 //                      gardé tant que l'interrupteur existe dans palier.js.)
 // « Arrêter » se confirme en deux temps, comme la résiliation : la phrase dit
 // ce qui change (tout de suite, ou à la fin de la période) AVANT le geste.
+// (07/11 soir, essai TestFlight de Nico) Cloud pris sur l'App Store ou Google Play (profiles.cloud_canal) : la
+// confirmation dit OÙ l'arrêter et que FillSell le verra dès que la boutique l'aura confirmé ; son bouton ouvre les
+// abonnements de la boutique (achatCloud.js, voieArretCloud). Jamais « tout de suite », jamais « rien n'est facturé »
+// avant la confirmation de la boutique. Le geste reçoit le canal ({ canal }), jamais l'événement du clic.
 //
 // ⛔ Toute date vient de l'essai réel (essaiFin), de la période payée
 //    (periodeFin / arretPrevuLe) ou, avant l'essai, de maintenant + 7 jours.
@@ -44,6 +48,7 @@ import { textesCloud } from './textes';
 import { textesConnexion } from './textesConnexion';
 import { dateLongue, heureDe, jourDEssai, finEssaiSiOnCommence } from './regles';
 import { DEGRADE_TEAL } from './theme';
+import { voieArretCloud, voieBoutique } from './achatCloud';
 
 function Glyphe() {
   return (
@@ -108,10 +113,12 @@ const PLEIN = { width: '100%', background: DEGRADE_TEAL };
  * maintenant : l'instant de la lecture (date d'un essai pas encore ouvert)
  * arretDemande : compteur — quand il change, la confirmation d'arrêt s'ouvre
  *                (le lien « Arrêter aussi l'option » de la résiliation)
+ * canal      : profiles.cloud_canal ('apple' | 'google' | 'stripe' | null) — qui facture, donc qui arrête
+ * plateforme : 'ios' | 'android' | 'web' (Capacitor.getPlatform) — la feuille Apple ne s'ouvre que sur iPhone / iPad
  */
 export default function BlocCloudReglages({
   lang = 'fr', cloud, lecture = 'ok', nomPalier = null, actions = {}, arretEnCours = false,
-  quotaFree = null, maintenant, arretDemande = 0, refus = null,
+  quotaFree = null, maintenant, arretDemande = 0, refus = null, canal = null, plateforme = 'web',
 }) {
   const T = textesCloud(lang);
   // (05/10) Essai refusé APRÈS coup (carte ou compte de plateforme déjà vus) : on le DIT.
@@ -119,6 +126,21 @@ export default function BlocCloudReglages({
   const phraseRefus = refus === 'carte_deja_vue' ? Tc.refusCarte : refus === 'compte_plateforme_deja_vu' ? Tc.refusComptePlateforme : null;
   const [confirmer, setConfirmer] = useState(false);
   const [horloge] = useState(() => Date.now());
+  // (07/11 soir) Le geste en cours (un seul à la fois) ; la boutique ouverte, en attente de sa confirmation.
+  const [enCoursLocal, setEnCoursLocal] = useState(false);
+  const [attenteBoutique, setAttenteBoutique] = useState(null);
+  const voie = voieArretCloud(canal, plateforme);
+  const enCours = arretEnCours || enCoursLocal;
+  const lancerArret = async () => {
+    if (enCours || typeof actions.arreter !== 'function') return;
+    setEnCoursLocal(true);
+    try {
+      const r = await actions.arreter({ canal });
+      if (r?.etat === 'boutique') { setAttenteBoutique(r.voie ?? voie); setConfirmer(false); }
+    } catch { /* l'hôte a déjà dit l'échec */ } finally {
+      setEnCoursLocal(false);
+    }
+  };
   // « Arrêter aussi l'option » (résiliation) : ouvre la confirmation, une fois
   // par demande — ajustement d'état pendant le rendu, motif React documenté.
   const [demandeVue, setDemandeVue] = useState(arretDemande);
@@ -212,7 +234,7 @@ export default function BlocCloudReglages({
           {etat === 'paye' && arretPrevu && (
             <>
               <p style={pTexte}>{T.arretPrevuTexte(arretPrevu)}</p>
-              {actions.reprendre && <Bouton ton="creux" onClick={actions.reprendre} style={{ width: '100%' }}>{T.garderOption}</Bouton>}
+              {actions.reprendre && <Bouton ton="creux" onClick={() => actions.reprendre({ canal })} style={{ width: '100%' }}>{T.garderOption}</Bouton>}
             </>
           )}
 
@@ -243,23 +265,45 @@ export default function BlocCloudReglages({
         <Bouton ton="danger-creux" onClick={() => setConfirmer(true)} style={{ width: '100%', minHeight: 50 }}>{T.arreter}</Bouton>
       ) : (
         <div ref={arretRef}>
-          <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div data-cloud="arret">
-              <div style={{ fontSize: 15, fontWeight: 700, color: R.ink }}>{T.arreterTitre}</div>
-              <p style={{ ...pTexte, marginTop: 4 }}>
-                {etat === 'essai' ? T.arreterEssai(nomPalier) : T.arreterPaye(cloud.periodeFin ? dateLongue(cloud.periodeFin, lang) : null)}
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Bouton ton="danger-plein" onClick={actions.arreter} enCours={arretEnCours}>{arretEnCours ? '…' : T.arreterConfirmer}</Bouton>
-              <Bouton ton="creux" onClick={() => setConfirmer(false)} disabled={arretEnCours}>{T.arreterAnnuler}</Bouton>
-            </div>
-          </Carte>
+          <ConfirmationArretCloud lang={lang} cloud={cloud} nomPalier={nomPalier} voie={voie} enCours={enCours} onArreter={lancerArret} onAnnuler={() => setConfirmer(false)} />
         </div>
       ))}
+      {/* La boutique ouverte : on attend SA confirmation (webhook) — rien n'a changé chez nous. */}
+      {attenteBoutique && peutArreter && !confirmer && <Note>{T.arretBoutiqueAttente(attenteBoutique)}</Note>}
       {/* La note se tait pendant la confirmation, qui dit déjà la même chose. */}
       {etat === 'essai' && !confirmer && <Note>{T.essaiNote(nomPalier)}</Note>}
     </Groupe>
+  );
+}
+
+/**
+ * (07/11 soir) La confirmation « Arrêter FillSell Cloud ? » — à part pour être rendue et prouvée seule
+ * (scripts/cloud-ecrans-selftest.mjs, 7c ter). `voie` : voieArretCloud(canal, plateforme) (cloud/achatCloud.js).
+ *   · boutique (Apple, Google) : où l'arrêter, et que FillSell le verra dès qu'elle l'aura confirmé ; le bouton ouvre ses
+ *     abonnements (Apple vu ailleurs que sur iPhone / iPad : pas de bouton, la phrase dit où) ;
+ *   · Stripe (ou canal inconnu) : la phrase d'avant, mot pour mot — c'est FillSell qui arrête, le serveur confirme.
+ */
+export function ConfirmationArretCloud({ lang = 'fr', cloud, nomPalier = null, voie = 'serveur', enCours = false, onArreter, onAnnuler }) {
+  const T = textesCloud(lang);
+  const boutique = voieBoutique(voie);
+  const etat = cloud?.etat;
+  return (
+    <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div data-cloud="arret" data-voie={voie}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: R.ink }}>{T.arreterTitre}</div>
+        <p style={{ ...pTexte, marginTop: 4 }}>
+          {boutique ? T.arreterBoutique(voie)
+            : etat === 'essai' ? T.arreterEssai(nomPalier) : T.arreterPaye(cloud?.periodeFin ? dateLongue(cloud.periodeFin, lang) : null)}
+        </p>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {/* Apple vu ailleurs que sur iPhone / iPad : rien à ouvrir ici, la phrase dit où. */}
+        {voie !== 'apple_ailleurs' && (
+          <Bouton ton="danger-plein" onClick={onArreter} enCours={enCours}>{enCours ? '…' : boutique ? T.arreterBoutiqueCta(voie) : T.arreterConfirmer}</Bouton>
+        )}
+        <Bouton ton="creux" onClick={onAnnuler} disabled={enCours}>{voie === 'apple_ailleurs' ? T.arreterBoutiqueFermer : T.arreterAnnuler}</Bouton>
+      </div>
+    </Carte>
   );
 }
 
@@ -285,6 +329,8 @@ export function BlocCloudReglagesLu({ c, lecture, actions, arretDemande = 0 }) {
       maintenant={lecture.luLe ?? undefined}
       refus={lecture.profil?.cloud_essai_refus ?? null}
       arretDemande={arretDemande}
+      canal={lecture.profil?.cloud_canal ?? null}
+      plateforme={c?.plateforme ?? 'web'}
     />
   );
 }

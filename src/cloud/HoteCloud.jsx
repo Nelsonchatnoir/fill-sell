@@ -34,7 +34,8 @@ import { nomDuPalier, palierDuProfil } from '../utils/palier';
 const dejaVu = (cle) => { try { return localStorage.getItem(cle) === '1'; } catch { return false; } };
 const marquerVu = (cle) => { try { localStorage.setItem(cle, '1'); } catch { /* affichage seul */ } };
 
-export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions = {} }) {
+// (07/11 soir) `plateforme` : Capacitor.getPlatform() — la veille dit où arrêter un Cloud pris dans une boutique.
+export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions = {}, plateforme = 'web' }) {
   const visible = cloudOfferVisible(userId);
   const lecture = useCloudProfil(userId, { actif: visible });
   const vente = useDisponibiliteCloud({ actif: Boolean(visible && userId) });
@@ -76,6 +77,7 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
     return (
       <RappelVeilleFinEssai
         lang={lang} cloud={cloud} quand={quand} nomPalier={nomPalier} actions={actions}
+        canal={lecture.profil?.cloud_canal ?? null} plateforme={plateforme}
         onFermer={() => { marquerVu(cleVeille); setFerme(cleVeille); lecture.relire(); }}
       />
     );

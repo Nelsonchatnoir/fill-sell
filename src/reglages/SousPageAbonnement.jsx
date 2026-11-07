@@ -44,15 +44,26 @@ const ORIGINE = 'reglages_abonnement';
 
 const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
 const LIEN_APPLE_ACHATS = 'https://reportaproblem.apple.com/';
+// (07/11 soir) Ce lien est celui de la FORMULE (bande « Google gère ton abonnement ») ; le Cloud s'arrête par son
+// propre lien (produit app.fillsell.cloud.sub, cloud/achatCloud.js), ouvert par « Arrêter le Cloud ».
 const LIEN_GOOGLE = 'https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app';
 const LIEN_GOOGLE_ACHATS = 'https://play.google.com/store/account/orderhistory';
 
 // (05/10) Les gestes d'argent de l'option Sans ordinateur relisent l'état
 // Cloud APRÈS coup (un arrêt, une reprise) : le bloc dit ce que dit le serveur.
+// (07/11 soir) Abonnements de la boutique ouverts (Apple, Google) : c'est son webhook qui change l'état, quelques
+// secondes après. UNE relecture de plus, 8 s plus tard (bornée : une par geste, jamais une boucle).
+const RELECTURE_BOUTIQUE_MS = 8000;
 function avecRelecture(actions, relire) {
   const out = {};
   for (const [k, f] of Object.entries(actions ?? {})) {
-    out[k] = typeof f !== 'function' ? f : async (...a) => { try { return await f(...a); } finally { relire?.(); } };
+    out[k] = typeof f !== 'function' ? f : async (...a) => {
+      let r;
+      try { r = await f(...a); return r; } finally {
+        relire?.();
+        if (r?.etat === 'boutique') setTimeout(() => relire?.(), RELECTURE_BOUTIQUE_MS);
+      }
+    };
   }
   return out;
 }

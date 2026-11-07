@@ -344,6 +344,29 @@ try {
     && texte(h(BR.MentionCloudResiliation, { lang: 'fr', lecture: { etat: 'inactif', cloud: null } })) === '',
   'résiliation : rien sans option active, rien si l’arrêt est déjà prévu, rien sans lecture');
 
+  // ── 7c ter. (07/11 soir, essai TestFlight de Nico) La confirmation d'arrêt suit le CANAL qui facture ─────────
+  // La confirmation rendue seule (BlocCloudReglages la monte après « Arrêter le Cloud »), avec la voie du canal.
+  const AC = await vite.ssrLoadModule('/src/cloud/achatCloud.js');
+  const confirmation = (cloud, canal, plateforme, nom = 'Premium') => texte(h(BR.ConfirmationArretCloud, { lang: 'fr', cloud, nomPalier: nom, voie: AC.voieArretCloud(canal, plateforme), onArreter() {}, onAnnuler() {} }));
+  const blocSrc = lire('src/cloud/BlocCloudReglages.jsx');
+  verifier(/<ConfirmationArretCloud lang=\{lang\} cloud=\{cloud\} nomPalier=\{nomPalier\} voie=\{voie\} enCours=\{enCours\} onArreter=\{lancerArret\}/.test(blocSrc) && /const voie = voieArretCloud\(canal, plateforme\);/.test(blocSrc),
+    'Réglages : la confirmation montée est celle-ci, avec la voie du canal lu (profiles.cloud_canal)');
+  const PROMESSES = /tout de suite|rien n.est factur|rien ne sera prélevé|c.est arrêté/i;
+  const cApple = confirmation(essaiDe('2026-10-15T05:00:00Z'), 'apple', 'ios');
+  verifier(/Arrêter FillSell Cloud \?/.test(cApple) && /pris sur l.App Store : c.est Apple qui l.arrête, pas FillSell/.test(cApple) && /Ouvrir mes abonnements Apple/.test(cApple)
+    && /dès qu.Apple aura confirmé l.arrêt/.test(cApple) && !PROMESSES.test(cApple), 'arrêt, Cloud Apple sur iPhone : où l’arrêter, le bouton ouvre les abonnements Apple, aucune promesse avant Apple', cApple);
+  const cApplePaye = confirmation(P.cloudDuProfil({ is_cloud: true, cloud_periode_fin: '2026-10-31T23:00:00Z' }, n), 'apple', 'ios', null);
+  verifier(/Ouvrir mes abonnements Apple/.test(cApplePaye) && !PROMESSES.test(cApplePaye), 'arrêt, Cloud Apple payé : pas plus de promesse (« rien ne sera prélevé » est la boutique qui le dira)', cApplePaye);
+  const cGoogle = confirmation(essaiDe('2026-10-15T05:00:00Z'), 'google', 'android');
+  verifier(/pris sur Google Play : c.est Google qui l.arrête/.test(cGoogle) && /Ouvrir mes abonnements Google Play/.test(cGoogle) && !PROMESSES.test(cGoogle), 'arrêt, Cloud Google : la page d’abonnements de Play, aucune promesse', cGoogle);
+  const cAilleurs = confirmation(essaiDe('2026-10-15T05:00:00Z'), 'apple', 'web');
+  verifier(/Réglages › ton nom › Abonnements/.test(cAilleurs) && !/Ouvrir mes abonnements/.test(cAilleurs) && /Fermer/.test(cAilleurs) && !PROMESSES.test(cAilleurs), 'arrêt, Cloud Apple vu sur le web : la phrase dit où (iPhone / iPad), aucun bouton qui ne mène nulle part', cAilleurs);
+  const cStripe = confirmation(essaiDe('2026-10-15T05:00:00Z'), 'stripe', 'web');
+  verifier(/Il s.arrête tout de suite, et rien n.est facturé pour lui/.test(cStripe) && /Arrêter/.test(cStripe) && !/abonnements Apple|Google Play/.test(cStripe), 'arrêt, Cloud Stripe : la confirmation d’avant, mot pour mot (c’est FillSell qui arrête, le serveur le confirme)', cStripe);
+  sansMotsInterdits([cApple, cApplePaye, cGoogle, cAilleurs, cStripe].join(' '), 'arrêt par canal');
+  const veilleApple = texte(h(FE.RappelVeilleFinEssai, { lang: 'fr', cloud: essaiDe('2026-10-11T05:30:00Z'), quand: 'demain', nomPalier: 'Premium', canal: 'apple', plateforme: 'ios', actions: { arreter: async () => ({ ok: true, etat: 'boutique', voie: 'apple' }) }, onFermer() {} }));
+  verifier(/pris sur l.App Store/.test(veilleApple) && /Ouvrir mes abonnements Apple/.test(veilleApple) && !/rien n.est facturé/.test(veilleApple), 'la veille, Cloud Apple : où l’arrêter, jamais « rien n’est facturé »', veilleApple);
+
   // ── 7d. La fin d'essai ───────────────────────────────────────────────────
   const veille = texte(h(FE.RappelVeilleFinEssai, { lang: 'fr', cloud: essaiDe('2026-10-11T05:30:00Z'), quand: 'demain', nomPalier: 'Premium', actions: { arreter: async () => ({ ok: true }) }, onFermer() {} }));
   verifier(/Demain, le Cloud passe à 24,99 €\/mois/.test(veille) && /11 octobre à 07:30/.test(veille) && /Garder le Cloud/.test(veille) && /Arrêter le Cloud/.test(veille), 'la veille : titre, date, heure, garder / arrêter', veille);

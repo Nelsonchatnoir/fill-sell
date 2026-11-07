@@ -294,3 +294,11 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Livrable : `build/CWS-0.6.178-A-TELEVERSER/fillsell-extension-0.6.178-cws.zip` (BUILD_ID `2026-11-07T14:34:17Z+bef6d20`,
   610 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-07T14:33:26Z (a1a6856). Seul zip à téléverser (contient la 0.6.177,
   rangée dans `build/anciens-zips/EN-TELEVERSEMENT-0711-CWS-0.6.177`).
+
+## 07/11 soir — essai TestFlight de Nico : jamais le bandeau « Mettre à jour l'extension » à un client Cloud
+- `extBannerVisible` (App.jsx) = `bandeauMajExtensionVisible` (`src/cloud/voieCloud.js`) : extension « périmée » ET état
+  Cloud lu (`useEtatCompteCloud`) ET pas client Cloud. Cause vue le 07/11 : le poste Cloud rafraîchit
+  `profiles.extension_last_seen_at` à chaque relève (`get-pending-jobs`, sans toucher `extension_build`), et un vieux
+  `extension_build` d'ordinateur (22/07) suffisait à allumer le bandeau — jusque sur l'iPhone. Côté serveur, le « vu il y
+  a moins de 30 jours » reste pollué par le poste Cloud (non corrigé : `get-pending-jobs`, décision à prendre).
+  Selftest `essai-testflight-0711`.

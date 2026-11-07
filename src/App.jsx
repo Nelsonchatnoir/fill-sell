@@ -8,7 +8,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { cacherSplashAuBonMoment } from './natif/splashDemarrage';
-import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, PRODUCT_IDS } from './lib/iap';
+import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, PRODUCT_IDS, gererAbonnementsBoutique } from './lib/iap';
 import { classerIssueAchat } from './lib/issueAchat';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
@@ -147,6 +147,8 @@ import BandeauLeboncoinPause from './components/BandeauLeboncoinPause';
 import { creerAchatCloud } from './cloud/achatCloud';
 import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
 import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud } from './config/cloudOffer';
+import { useEtatCompteCloud } from './cloud/useCompteCloud';
+import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
 import { lireInterrupteurs, ecouterInterrupteurs, interrupteursConnus } from './config/interrupteurs';
 import ConditionsCloudModale from './cloud/ConditionsCloudModale';
 import StatsPage from './pages/StatsPage';
@@ -2589,7 +2591,12 @@ export default function App({ loginOnly = false }){
   const oplaMotifGrise='fermee';
   // Source UNIQUE de « la bannière est à l'écran » : lue par le rendu ET par
   // le rafraîchissement ci-dessous, pour qu'ils ne puissent pas diverger.
-  const extBannerVisible=extensionOutdated;
+  // (07/11 soir, essai TestFlight de Nico) JAMAIS pour un client FillSell Cloud — même règle « client Cloud » que le
+  // Stock (useCompteCloud : profiles.cloud_voie) ; le poste Cloud rafraîchit extension_last_seen_at, et un vieux
+  // extension_build d'ordinateur suffisait à l'allumer. Tant que l'état Cloud n'est pas lu (porte du Cloud ouverte),
+  // rien ; hors de la porte, comme avant (cloud/voieCloud.js, bandeauMajExtensionVisible).
+  const etatCompteCloud=useEtatCompteCloud(user?.id??null);
+  const extBannerVisible=bandeauMajExtensionVisible({extensionPerimee:extensionOutdated,cloud:etatCompteCloud});
   // ── Rafraîchissement pendant que la bannière est affichée (2026-08-09) ──────
   // extensionBuild n'était écrit QUE par fetchAll. Or la sonde des jobs
   // (plus bas) ne rappelle fetchAll que si l'empreinte des jobs a CHANGÉ, et
@@ -3457,6 +3464,10 @@ export default function App({ loginOnly = false }){
     demanderConditions:()=>new Promise((resolve)=>setConditionsCloudOuvertes({resolve})),
     notifier:toastCloud,
     paiementsAndroidCoupes:()=>paiementsAndroidCoupes(supabase),
+    // (07/11 soir, essai TestFlight de Nico) Apple / Google : la feuille d'abonnements de la boutique (jamais un arrêt
+    // fait par l'app) ; chaque geste d'arrêt laisse sa trace (usage_logs cloud_arret_clic / cloud_arret_issue).
+    gererAbonnements:isNative?gererAbonnementsBoutique:null,
+    journal:(evenement,metadata)=>logTunnel(evenement,metadata),
   }):null;
   async function lancerAchatCloud(origine='non_precisee'){
     if(!achatCloud||!cloudOffreVendable(user?.id))return;
@@ -3488,8 +3499,10 @@ export default function App({ loginOnly = false }){
     ...(cloudOfferVisible(user.id)&&achatCloud?{
       essayer:()=>lancerAchatCloud('reglages_cloud'),
       ajouter:()=>lancerAchatCloud('reglages_cloud'),
-      arreter:async()=>{const r=await achatCloud.arreter();if(r?.message)toastCloud(r.message);return{ok:r?.etat!=='erreur',...r};},
-      reprendre:async()=>{const r=await achatCloud.reprendre();if(r?.message)toastCloud(r.message);return{ok:r?.etat!=='erreur',...r};},
+      // (07/11 soir) { canal } : profiles.cloud_canal lu par l'écran (Apple / Google → la boutique, Stripe → le serveur).
+      // ok = le geste a abouti, jamais « le Cloud est arrêté » : etat 'boutique' = c'est la boutique qui confirmera.
+      arreter:async(opts)=>{const r=await achatCloud.arreter({canal:opts?.canal});if(r?.message)toastCloud(r.message);return{ok:r?.etat==='ok'||r?.etat==='boutique'||r?.etat==='rien',...r};},
+      reprendre:async(opts)=>{const r=await achatCloud.reprendre({canal:opts?.canal});if(r?.message)toastCloud(r.message);return{ok:r?.etat==='ok'||r?.etat==='boutique',...r};},
     }:{}),
     ...(cloudConnexionVisible(user.id)?{meConnecter:()=>ouvrirMeConnecter('reglages')}:{}),
   }:{};
@@ -10059,6 +10072,7 @@ export default function App({ loginOnly = false }){
         lang={lang}
         onOuvrirOffres={(origine)=>{logTunnel('premium_cta_click',{origine,declencheur:'clic',cloud:true});setConversionModal({open:true,trigger:'cloud',origine});}}
         actions={actionsCloud}
+        plateforme={platform}
       />
       {/* « Me connecter » : un bouton par plateforme, la SEULE page de connexion,
           au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}

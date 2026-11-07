@@ -72,4 +72,17 @@ export function useCompteCloud(userId) {
   return Boolean(porte && memoire.get(userId)?.cloud);
 }
 
+/**
+ * (07/11 soir, essai TestFlight de Nico) Le MÊME drapeau, avec « lu » : un écran qui ne doit JAMAIS se montrer à un
+ * client Cloud (le bandeau « Mettre à jour l'extension » : c'est le serveur qui tient sa copie de l'extension) attend
+ * la lecture au lieu de s'afficher le temps qu'elle arrive. Hors de la porte du Cloud : lu tout de suite, jamais Cloud
+ * (aucune requête, rien ne change pour le parc). Lecture ratée : lu, pas Cloud (comme avant).
+ */
+export function useEtatCompteCloud(userId) {
+  const cloud = useCompteCloud(userId);
+  const porte = Boolean(userId && cloudConnexionVisible(userId));
+  const e = porte ? memoire.get(userId) : null;
+  return { cloud, lu: !porte || Boolean(e && (e.lue || Number.isFinite(e.luLe))) };
+}
+
 export { parLeCloud } from './voieCloud.js';

@@ -22,6 +22,17 @@ export function parLeCloud(job, cloud) {
 // FillSell Cloud, la personne n'y a pas accès. Chaque phrase qui l'y envoie est remplacée par le seul geste possible :
 // une connexion → la reconnecter à FillSell Cloud ; une vérification → « Résoudre la vérification » dans l'app ; le
 // reste → rien (le Cloud refait seul). Le compte courant est noté par cloud/useCompteCloud.js (une session = un compte).
+/**
+ * (07/11 soir, essai TestFlight de Nico) LE BANDEAU « METTRE À JOUR L'EXTENSION » (ferme Chrome, chrome://extensions)
+ * ne se montre JAMAIS à un client FillSell Cloud : c'est le serveur qui tient sa copie de l'extension. Pourquoi il se
+ * montrait : l'extension « vue il y a moins de 30 jours » se lit dans profiles.extension_last_seen_at, que le poste
+ * Cloud rafraîchit à chaque relève (get-pending-jobs), alors que profiles.extension_build reste celui d'un vieil
+ * ordinateur. `cloud` = useEtatCompteCloud (cloud/useCompteCloud.js) : tant que ce n'est pas lu, rien (pur, testé).
+ */
+export function bandeauMajExtensionVisible({ extensionPerimee, cloud }) {
+  return extensionPerimee === true && cloud?.lu === true && cloud?.cloud !== true;
+}
+
 let compteCourantCloud = false;
 export const noterCompteCourantCloud = (oui) => { compteCourantCloud = oui === true; };
 export const compteCourantEstCloud = () => compteCourantCloud;

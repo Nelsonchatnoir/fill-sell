@@ -66,6 +66,10 @@ const FR = {
   //    l'app, ça continue ») : cette phrase-là laissait croire que l'app ne
   //    sert à rien.
   enCoursSous: 'Ton ordinateur travaille pendant ce temps.',
+  // (07/11 soir, essai TestFlight de Nico) Un client FillSell Cloud (cloud/useCompteCloud.js, profiles.cloud_voie) :
+  // c'est le Cloud qui travaille, l'ordinateur peut être éteint — jamais « ton ordinateur » sur cette carte.
+  enCoursSousCloud: 'FillSell Cloud travaille pendant ce temps, même ordinateur éteint.',
+  enCoursAttenteCloud: 'Synchronisation en attente de FillSell Cloud',
 
   // ── (07/10) Rattachement avant stock : le rapprochement, son temps, la fin ──
   // Le serveur compare chaque annonce à TOUT le stock avant d'en faire un
@@ -263,6 +267,8 @@ const EN = {
   enCoursAttente: 'Waiting for your computer',
   enCoursRange: 'Filing the listings into your stock.',
   enCoursSous: 'Your computer is working on it right now.',
+  enCoursSousCloud: 'FillSell Cloud is working on it, even with your computer off.',
+  enCoursAttenteCloud: 'Waiting for FillSell Cloud',
 
   rapprochementEnCours: 'Matching your listings',
   rapprochementSous: (n) => (n > 0

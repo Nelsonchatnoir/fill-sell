@@ -26,7 +26,7 @@ import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import InstallExtensionCta from '../components/InstallExtensionCta';
 import { LABEL_RELEVE } from '../utils/syncPlateformes';
 import { useReleveAnnonces } from '../annonces/useReleveAnnonces';
-import { etatTuile, lireVague, lireBilan, ilYA, murConnexionReleve, arretTechniqueReleve, texteSituation } from '../annonces/etatReleve';
+import { etatTuile, lireVague, lireBilan, ilYA, murConnexionReleve, arretTechniqueReleve, texteSituation, compteSynchroEnCours, releveAvancementFini } from '../annonces/etatReleve';
 import { textesAnnonces } from '../annonces/textes';
 import { A, CSS_ANNONCES } from '../annonces/theme';
 import ConstellationReleve from '../annonces/ConstellationReleve';
@@ -46,6 +46,8 @@ import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReu
 import { lireRelevesRecents, lireChoixEtSessions, lireDelegationLbc } from '../utils/syncPlateformes';
 import { etatSession } from '../utils/sessionsPlateformes.js';
 import { demarrerRelecture } from '../utils/relectureBornee';
+// (07/11 soir) « Client Cloud » : la MÊME règle que le reste de l'app (profiles.cloud_voie, une lecture par compte).
+import { useCompteCloud } from '../cloud/useCompteCloud';
 
 // Le point d'une pastille de plateforme : teal = à jour ; ambre = à reprendre
 // ou un geste attend ; gris = jamais synchronisée / pas de compte.
@@ -170,6 +172,9 @@ export default function BlocSynchro({
   const [feuille, setFeuille] = useState(false);
   const [resume, setResume] = useState(false);
   const { fr } = r;
+  // (07/11 soir, essai TestFlight de Nico) Un client FillSell Cloud : la carte en cours dit que c'est le Cloud qui
+  // travaille, jamais « ton ordinateur ».
+  const compteCloud = useCompteCloud(user?.id ?? null);
 
   const vague = useMemo(
     () => lireVague({ plateformes: r.plateformes, runs: r.runs, runVinted: r.runVinted, etatVinted }),
@@ -366,7 +371,7 @@ export default function BlocSynchro({
   // (16/10, Nico) Plus de temps restant : la barre et les lignes par plateforme disent où ça en est.
   const lignesAvancement = enCours && av ? [
     ...(av.releves ?? []).map((x) => {
-      const fini = x.status === 'done' || x.status === 'incomplete';
+      const fini = releveAvancementFini(x);
       const aConnecter = x.status === 'absente' || x.status === 'failed' || x.status === 'expired';
       return {
         cle: `pf-${x.platform}`, platform: x.platform, nom: LABEL_RELEVE[x.platform] ?? x.platform,
@@ -387,6 +392,8 @@ export default function BlocSynchro({
         : ((rap.en_attente ?? 0) + (rap.nouvelles ?? 0) > 0 ? T.ligneLues(Number(rap.traitees ?? 0), Number(rap.traitees ?? 0) + Number(rap.en_attente ?? 0) + Number(rap.nouvelles ?? 0)) : T.ligneEnCours),
     }] : []),
   ] : [];
+  // (07/11 soir) « N plateformes sur M » : la liste affichée (lignesAvancement, relevés du serveur) fait foi.
+  const compteEnCours = compteSynchroEnCours({ vague, releves: av?.releves });
   const occupe = !!r.busy || r.toutBusy;
   const occupeLancer = occupe || enCours;
 
@@ -594,7 +601,8 @@ export default function BlocSynchro({
                 {enCours ? T.titreEnCours : (etatVinted?.cadenceTexte && !quand ? etatVinted.cadenceTexte : (quand ? T.synchronise(quand) : T.sousJamais))}
               </div>
               <div className="sk-une-ligne sk-chiffres" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
-                {enCours ? (vague.active ? T.sousEnCours(vague.faites.length, vague.total) : T.rapprochementEnCours) : (quand ? T.nAnnonces(bilan.total ?? 0) : (etatVinted?.cadenceTexte ?? ''))}
+                {/* (07/11 soir) Le compte vient de la liste affichée dessous (compteSynchroEnCours), jamais d'une autre. */}
+                {enCours ? (vague.active ? T.sousEnCours(compteEnCours.faites, compteEnCours.total) : T.rapprochementEnCours) : (quand ? T.nAnnonces(bilan.total ?? 0) : (etatVinted?.cadenceTexte ?? ''))}
                 {!enCours && etatBouton.lignes.length > 0 && (
                   <ChevronDown size={14} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, transform: detailOuvert ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
                 )}
@@ -655,7 +663,7 @@ export default function BlocSynchro({
               <div style={{ marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 700, color: S.ink, textAlign: 'center' }}>
                 {vague.enCours ? T.enCoursDe(LABEL_RELEVE[vague.enCours] ?? vague.enCours)
                   : rapActif ? T.rapprochementEnCours
-                  : (vague.faites.length === vague.total ? T.enCoursRange : T.enCoursAttente)}
+                  : (vague.faites.length === vague.total ? T.enCoursRange : compteCloud ? T.enCoursAttenteCloud : T.enCoursAttente)}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', width: '100%', height: 8, marginTop: 8, padding: '0 16px', boxSizing: 'border-box' }}>
                 <div role="progressbar" aria-label={fr ? 'Progression de la synchronisation' : 'Sync progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pctAvancement}
@@ -665,7 +673,7 @@ export default function BlocSynchro({
                 </div>
               </div>
               <div style={{ marginTop: 8, fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2, textAlign: 'center' }}>
-                {rapActif && !vague.active ? T.rapprochementSous((rap?.en_attente ?? 0) + (rap?.nouvelles ?? 0)) : T.enCoursSous}
+                {rapActif && !vague.active ? T.rapprochementSous((rap?.en_attente ?? 0) + (rap?.nouvelles ?? 0)) : compteCloud ? T.enCoursSousCloud : T.enCoursSous}
               </div>
               {lignesAvancement.length > 0 && (
                 <ul aria-label={fr ? 'Avancement par plateforme' : 'Progress by platform'} style={{ listStyle: 'none', margin: '12px 0 0', padding: 0, width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>

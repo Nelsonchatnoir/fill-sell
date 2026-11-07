@@ -77,6 +77,19 @@ modifier la durée, un identifiant ne se renomme jamais.
 - `cancel-subscription` : sans corps → le palier seul (jamais Cloud) ;
   `{ option: "cloud" }` → en essai : arrêt IMMÉDIAT, rien facturé ; payé : fin de période ;
   `{ option: "cloud", reprendre: true }` → « Garder l'option » (arrêt prévu levé).
+  ⛔ (07/11 soir, essai TestFlight de Nico) La version servie le 07/11 était la **v53 du 02/10**, d'AVANT ces
+  lignes : elle ignore `option` (sans client Stripe : `is_premium=false` et `{ success: true }` ; avec : l'abonnement
+  ACTIF en tête de liste mis en fin de période + accusé de résiliation de la formule). À redéployer depuis `main`
+  (feu vert de Nico) avant qu'un Cloud Stripe s'arrête depuis l'app.
+- (07/11 soir) **Arrêter / garder le Cloud depuis l'app : le CANAL décide, jamais l'appareil seul**
+  (`src/cloud/achatCloud.js`, `voieArretCloud`) : `cloud_canal = 'apple'` → feuille d'abonnements d'Apple
+  (`NativePurchases.manageSubscriptions`, repli `https://apps.apple.com/account/subscriptions`) ; vu hors iPhone/iPad →
+  la phrase dit où (Réglages › ton nom › Abonnements) ; `'google'` → `https://play.google.com/store/account/
+  subscriptions?sku=app.fillsell.cloud.sub&package=app.fillsell.app` ; `'stripe'` → `cancel-subscription` ; inconnu → le
+  serveur décide. Une app n'annule jamais un abonnement Apple ou Google : notre état suit leurs webhooks. Aucun texte ne
+  promet « tout de suite » ni « rien n'est facturé » avant la confirmation de la boutique. Une réponse sans
+  `option: 'cloud'` n'est jamais prise pour un arrêt. Trace : `usage_logs` `cloud_arret_clic` / `cloud_arret_issue`
+  (`cloud_reprise_*`). Selftests `cloud-achat` § 7, `cloud-ecrans` § 7c ter.
 - `apple-iap-webhook`, `validate-apple-receipt`, `google-play-webhook`,
   `validate-google-purchase` : produit Cloud reconnu, colonnes Cloud seulement.
 - `cloud_etat(uuid, timestamptz)` / `cloud_etat_moi()` : même état que

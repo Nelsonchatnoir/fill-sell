@@ -90,7 +90,22 @@ const FR = {
   restaureAttente: 'Ton abonnement FillSell Cloud est retrouvé : il se réactive dans un instant.',
   restaureEchec: "Ton abonnement FillSell Cloud est retrouvé, mais sa vérification n'a pas abouti. Réessaie dans un instant.",
   arretEchec: "L'arrêt n'a pas pu se faire. Réessaie dans un instant.",
-  arretBoutique: "Ton Cloud a été pris dans la boutique de ton téléphone : il s'arrête dans ses réglages d'abonnements, qui s'ouvrent.",
+  // (07/11 soir, essai TestFlight de Nico) Une app n'annule jamais un abonnement Apple ou Google : on dit OÙ l'arrêter,
+  // et que FillSell le verra dès que la boutique l'aura confirmé — jamais « c'est arrêté » ni « rien n'est facturé ».
+  arretBoutique: (voie) => (voie === 'google'
+    ? "Arrête FillSell Cloud dans tes abonnements Google Play. FillSell le verra dès que Google aura confirmé l'arrêt."
+    : voie === 'apple_ailleurs'
+      ? "Ton Cloud a été pris sur l'App Store : il s'arrête depuis ton iPhone ou ton iPad (Réglages › ton nom › Abonnements). FillSell le verra dès qu'Apple aura confirmé l'arrêt."
+      : "Arrête FillSell Cloud dans tes abonnements Apple. FillSell le verra dès qu'Apple aura confirmé l'arrêt."),
+  arretBoutiqueEchec: (voie) => (voie === 'google'
+    ? "Tes abonnements Google Play n'ont pas pu s'ouvrir. Ouvre Google Play › Paiements et abonnements › Abonnements."
+    : "Tes abonnements Apple n'ont pas pu s'ouvrir. Ouvre Réglages › ton nom › Abonnements sur ton iPhone ou ton iPad."),
+  repriseBoutique: (voie) => (voie === 'google'
+    ? "Le Cloud se garde dans tes abonnements Google Play. FillSell le verra dès que Google l'aura confirmé."
+    : "Le Cloud se garde dans tes abonnements Apple (Réglages › ton nom › Abonnements). FillSell le verra dès qu'Apple l'aura confirmé."),
+  // Le serveur a répondu sans dire qu'il arrêtait le Cloud (fonction d'avant l'option) : on ne dit jamais « c'est fait ».
+  arretNonConfirme: "L'arrêt du Cloud n'a pas été confirmé. Ne réessaie pas : écris au support depuis Réglages, on vérifie ton abonnement avec toi.",
+  arretRien: "Aucun abonnement FillSell Cloud en cours n'a été trouvé : il n'y avait rien à arrêter.",
   refusCarte: "Cette carte a déjà servi à un essai gratuit : l'essai s'est arrêté, rien n'a été prélevé. Tu peux prendre le Cloud sans essai.",
   refusComptePlateforme: "Ce compte de plateforme a déjà servi à un essai gratuit : l'essai s'est arrêté. Tu peux prendre le Cloud sans essai.",
 };
@@ -158,7 +173,19 @@ const EN = {
   restaureAttente: 'Your FillSell Cloud subscription was found: it reactivates in a moment.',
   restaureEchec: "Your FillSell Cloud subscription was found, but it couldn't be verified. Try again in a moment.",
   arretEchec: "The Cloud couldn't be stopped. Try again in a moment.",
-  arretBoutique: 'Your Cloud was bought in your phone\'s app store: it stops in its subscription settings, which are opening.',
+  arretBoutique: (voie) => (voie === 'google'
+    ? 'Stop FillSell Cloud in your Google Play subscriptions. FillSell will show it as soon as Google confirms it.'
+    : voie === 'apple_ailleurs'
+      ? 'Your Cloud was bought on the App Store: it stops from your iPhone or iPad (Settings › your name › Subscriptions). FillSell will show it as soon as Apple confirms it.'
+      : 'Stop FillSell Cloud in your Apple subscriptions. FillSell will show it as soon as Apple confirms it.'),
+  arretBoutiqueEchec: (voie) => (voie === 'google'
+    ? "Your Google Play subscriptions couldn't open. Open Google Play › Payments & subscriptions › Subscriptions."
+    : "Your Apple subscriptions couldn't open. Open Settings › your name › Subscriptions on your iPhone or iPad."),
+  repriseBoutique: (voie) => (voie === 'google'
+    ? 'The Cloud is kept from your Google Play subscriptions. FillSell will show it as soon as Google confirms it.'
+    : 'The Cloud is kept from your Apple subscriptions (Settings › your name › Subscriptions). FillSell will show it as soon as Apple confirms it.'),
+  arretNonConfirme: "Stopping the Cloud wasn't confirmed. Don't try again: write to support from Settings, we'll check your subscription with you.",
+  arretRien: 'No running FillSell Cloud subscription was found: there was nothing to stop.',
   refusCarte: 'This card was already used for a free trial: the trial stopped, nothing was charged. You can take the Cloud without a trial.',
   refusComptePlateforme: 'This platform account was already used for a free trial: the trial stopped. You can take the Cloud without a trial.',
 };

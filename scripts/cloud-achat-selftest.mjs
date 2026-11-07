@@ -185,6 +185,90 @@ try {
   const iUpdate = fnApple.indexOf('.update(update).eq("id", userId)');
   ok(/const seulementCloud = option === "cloud";/.test(fnApple) && iSeul > 0 && iSeul < iStatut, 'serveur Apple, mode « cloud », reçu invalide : on rend la main AVANT d\'écrire is_premium = false');
   ok(iRetourCloud > 0 && iRetourCloud < iUpdate && iUpdate < fnApple.indexOf('if (isFounderPurchase)'), 'serveur Apple, mode « cloud » : seule l\'option s\'écrit, rendu AVANT la formule et le Founder');
+
+  // (07/11 soir, essai TestFlight de Nico) « Arrêter » ne faisait RIEN sur un Cloud pris par Apple : l'app demandait
+  // toujours au serveur, et cancel-subscription v53 (prod, 02/10) ignorait `option: 'cloud'` et répondait
+  // `{ success: true }` (« No Stripe customer — is_premium=false » dans ses journaux, 18:02 UTC). Désormais l'APP
+  // décide par le canal qui facture : Apple / Google → la boutique, Stripe seul → le serveur.
+  console.log('\n7. L\'arrêt suit le canal qui facture (07/11 soir)');
+  ok(A.voieArretCloud('apple', 'ios') === 'apple' && A.voieArretCloud('apple', 'android') === 'apple_ailleurs' && A.voieArretCloud('apple', 'web') === 'apple_ailleurs'
+    && A.voieArretCloud('google', 'android') === 'google' && A.voieArretCloud('google', 'web') === 'google' && A.voieArretCloud('stripe', 'ios') === 'stripe'
+    && A.voieArretCloud(null, 'ios') === 'serveur' && A.voieArretCloud('offert', 'web') === 'serveur', 'la voie : le CANAL décide (Apple → Apple, Google → Google, Stripe → FillSell), l\'appareil seulement pour ouvrir');
+  ok(A.LIEN_GOOGLE === 'https://play.google.com/store/account/subscriptions?sku=app.fillsell.cloud.sub&package=app.fillsell.app', 'Google : la page d\'abonnements de Play, sur le produit Cloud');
+  ok(A.LIEN_APPLE === 'https://apps.apple.com/account/subscriptions', 'Apple : la page d\'abonnements de l\'App Store (repli de la feuille native)');
+  const arretSur = async ({ platform, canalBase = null, reponse = {}, gerer = 'ok', lienEchoue = false, geste = 'arreter', canal }) => {
+    const appels = { fetch: [], liens: [], gerer: 0, journal: [], lectures: 0 };
+    const supabase = {
+      auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) },
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => { appels.lectures++; return { data: { cloud_canal: canalBase }, error: null }; } }) }) }),
+      rpc: async () => ({ data: null }),
+    };
+    const vieuxFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => { appels.fetch.push({ url, corps: JSON.parse(init?.body ?? '{}') }); return { json: async () => reponse }; };
+    try {
+      const achat = A.creerAchatCloud({ supabase, supabaseUrl: 'https://x', supabaseAnonKey: 'k', user: { id: 'u', email: 'e' }, lang: 'fr', platform,
+        purchasePremium: async () => ({}), confirmer: async () => true, notifier: () => {}, paiementsAndroidCoupes: async () => false, demanderConditions: async () => true,
+        ouvrirLien: async (u) => { if (lienEchoue) throw new Error('lien'); appels.liens.push(u); },
+        gererAbonnements: gerer === null ? null : async () => { appels.gerer++; if (gerer === 'refus') throw new Error('refus'); },
+        journal: (ev, meta) => appels.journal.push({ ev, meta }) });
+      appels.r = await achat[geste](canal === undefined ? {} : { canal });
+    } finally { globalThis.fetch = vieuxFetch; }
+    return appels;
+  };
+  const SANS_PROMESSE = /rien n.est factur|tout de suite|imm[ée]diat|c.est arrêté/i;
+  const iosApple = await arretSur({ platform: 'ios', canal: 'apple' });
+  ok(iosApple.gerer === 1 && iosApple.fetch.length === 0 && iosApple.liens.length === 0, 'iPhone, Cloud Apple : la feuille d\'abonnements d\'Apple s\'ouvre (StoreKit) — AUCUN appel au serveur');
+  ok(iosApple.r.etat === 'boutique' && iosApple.r.voie === 'apple' && /abonnements Apple/.test(iosApple.r.message) && /dès qu.Apple aura confirmé/.test(iosApple.r.message) && !SANS_PROMESSE.test(iosApple.r.message),
+    'iPhone, Cloud Apple : on dit où l\'arrêter et que FillSell le verra dès qu\'Apple l\'aura confirmé — jamais « c\'est arrêté » ni « rien n\'est facturé »', iosApple.r.message);
+  ok(iosApple.journal.map((j) => j.ev).join(',') === 'cloud_arret_clic,cloud_arret_issue' && iosApple.journal[0].meta.canal === 'apple' && iosApple.journal[1].meta.etat === 'boutique',
+    'le geste laisse sa trace (usage_logs cloud_arret_clic puis cloud_arret_issue) — le 07/11, aucune ligne nulle part', JSON.stringify(iosApple.journal));
+  const iosRefus = await arretSur({ platform: 'ios', canal: 'apple', gerer: 'refus' });
+  ok(iosRefus.gerer === 1 && iosRefus.liens[0] === A.LIEN_APPLE && iosRefus.r.etat === 'boutique' && iosRefus.fetch.length === 0, 'iPhone, feuille native refusée : la page d\'abonnements de l\'App Store s\'ouvre (repli)');
+  const iosEchec = await arretSur({ platform: 'ios', canal: 'apple', gerer: 'refus', lienEchoue: true });
+  ok(iosEchec.r.etat === 'erreur' && /Réglages › ton nom › Abonnements/.test(iosEchec.r.message), 'rien ne s\'ouvre : on dit où aller (Réglages › ton nom › Abonnements), jamais un silence', iosEchec.r.message);
+  const androidGoogle = await arretSur({ platform: 'android', canal: 'google' });
+  ok(androidGoogle.liens[0] === A.LIEN_GOOGLE && androidGoogle.fetch.length === 0 && androidGoogle.r.etat === 'boutique' && /Google Play/.test(androidGoogle.r.message) && !SANS_PROMESSE.test(androidGoogle.r.message),
+    'Android, Cloud Google : la page d\'abonnements de Play (produit Cloud), aucun appel au serveur, aucune promesse', androidGoogle.r.message);
+  const androidRepli = await arretSur({ platform: 'android', canal: 'google', lienEchoue: true });
+  ok(androidRepli.gerer === 1 && androidRepli.r.etat === 'boutique', 'Android, lien refusé : la page d\'abonnements du module natif');
+  const webApple = await arretSur({ platform: 'web', canal: 'apple' });
+  ok(webApple.liens.length === 0 && webApple.gerer === 0 && webApple.fetch.length === 0 && webApple.r.voie === 'apple_ailleurs' && /iPhone ou ton iPad/.test(webApple.r.message),
+    'web, Cloud Apple : rien à ouvrir ici, on dit où l\'arrêter (iPhone / iPad), aucun appel au serveur', webApple.r.message);
+  const lu = await arretSur({ platform: 'ios', canalBase: 'apple' });
+  ok(lu.lectures === 1 && lu.gerer === 1 && lu.fetch.length === 0, 'canal non transmis par l\'écran : relu en base (profiles.cloud_canal) au moment du geste');
+  const v53 = await arretSur({ platform: 'web', canal: 'stripe', reponse: { success: true, period_end: null } });
+  ok(v53.fetch[0]?.url === 'https://x/functions/v1/cancel-subscription' && v53.fetch[0].corps.option === 'cloud' && v53.r.etat === 'non_confirme' && /pas été confirmé/.test(v53.r.message),
+    'Stripe, serveur d\'avant l\'option (v53 : { success: true } sans « option ») : JAMAIS pris pour un arrêt — on le dit', v53.r.message);
+  const essaiStripe = await arretSur({ platform: 'web', canal: 'stripe', reponse: { success: true, option: 'cloud', essai_arrete: true } });
+  ok(essaiStripe.r.etat === 'ok' && essaiStripe.r.essai_arrete === true && essaiStripe.gerer === 0 && essaiStripe.liens.length === 0, 'Stripe : cancel-subscription { option: \'cloud\' } arrête vraiment (essai arrêté, confirmé par le serveur)');
+  const deja = await arretSur({ platform: 'web', canal: 'stripe', reponse: { success: true, option: 'cloud', deja: true } });
+  ok(deja.r.etat === 'rien' && /rien à arrêter/.test(deja.r.message), 'Stripe, aucun abonnement en cours : on le dit (avant : un succès muet)');
+  const auServeur = await arretSur({ platform: 'ios', canal: undefined, canalBase: null, reponse: { success: false, error: 'resilier_dans_la_boutique', canal: 'apple' } });
+  ok(auServeur.fetch.length === 1 && auServeur.gerer === 1 && auServeur.r.etat === 'boutique', 'canal illisible : le serveur décide ; s\'il dit « boutique », la boutique s\'ouvre');
+  const erreur = await arretSur({ platform: 'web', canal: 'stripe', reponse: { error: 'x' } });
+  ok(erreur.r.etat === 'erreur' && /Réessaie/.test(erreur.r.message), 'Stripe, erreur du serveur : l\'échec est dit');
+  const garde = await arretSur({ platform: 'ios', canal: 'apple', geste: 'reprendre' });
+  ok(garde.gerer === 1 && garde.fetch.length === 0 && /se garde dans tes abonnements Apple/.test(garde.r.message) && garde.journal[0].ev === 'cloud_reprise_clic',
+    '« Garder le Cloud » d\'un Cloud Apple : dans la boutique, jamais par le serveur (v53 aurait mis is_premium à faux)', garde.r.message);
+  const gardeStripe = await arretSur({ platform: 'web', canal: 'stripe', geste: 'reprendre', reponse: { success: true, option: 'cloud', reprise: true } });
+  ok(gardeStripe.fetch[0]?.corps.reprendre === true && gardeStripe.r.etat === 'ok', '« Garder le Cloud » Stripe : cancel-subscription { reprendre: true }, comme avant');
+  for (const lang of ['fr', 'en']) {
+    const TT = Tx.textesConnexion(lang);
+    const phrases = ['apple', 'google', 'apple_ailleurs'].flatMap((v) => [TT.arretBoutique(v), TT.repriseBoutique(v)]);
+    ok(phrases.every((p) => !SANS_PROMESSE.test(p) && !/nothing (is|will be) (billed|charged)|right away|immediately|it is stopped/i.test(p)) && phrases.every((p) => /FillSell/.test(p)),
+      `${lang} : les messages de la boutique ne promettent ni l'arrêt immédiat ni « rien facturé » ; ils disent que FillSell suivra`, phrases.join(' | '));
+  }
+  const appArret = lire('src/App.jsx');
+  ok(/gererAbonnements:isNative\?gererAbonnementsBoutique:null,/.test(appArret) && /journal:\(evenement,metadata\)=>logTunnel\(evenement,metadata\),/.test(appArret), 'App : la feuille native des boutiques et la trace du geste sont branchées');
+  ok(/arreter:async\(opts\)=>\{const r=await achatCloud\.arreter\(\{canal:opts\?\.canal\}\);/.test(appArret) && /reprendre:async\(opts\)=>\{const r=await achatCloud\.reprendre\(\{canal:opts\?\.canal\}\);/.test(appArret), 'App : le canal de l\'écran passe jusqu\'à l\'achat');
+  ok(/export const gererAbonnementsBoutique = \(\) => NativePurchases\.manageSubscriptions\(\);/.test(lire('src/lib/iap.js')), 'iap.js : NativePurchases.manageSubscriptions (iOS : AppStore.showManageSubscriptions)');
+  const bloc = lire('src/cloud/BlocCloudReglages.jsx');
+  ok(/await actions\.arreter\(\{ canal \}\)/.test(bloc) && /onClick=\{\(\) => actions\.reprendre\(\{ canal \}\)\}/.test(bloc) && !/onClick=\{actions\.(arreter|reprendre)\}/.test(bloc),
+    'Réglages : le geste reçoit le canal, jamais l\'événement du clic');
+  ok(/canal=\{lecture\.profil\?\.cloud_canal \?\? null\}/.test(bloc) && /plateforme=\{c\?\.plateforme \?\? 'web'\}/.test(bloc), 'Réglages : le canal vient de la lecture Cloud (useCloudReglages), la plateforme de l\'hôte');
+  const veille = lire('src/cloud/FinEssaiCloud.jsx'), hote = lire('src/cloud/HoteCloud.jsx');
+  ok(/await actions\.arreter\(\{ canal \}\)/.test(veille) && /r\?\.etat === 'boutique' \? 'boutique'/.test(veille) && /canal=\{lecture\.profil\?\.cloud_canal \?\? null\} plateforme=\{plateforme\}/.test(hote),
+    'la veille de la fin d\'essai : même voie, et « boutique » n\'est jamais « c\'est arrêté »');
 } finally {
   await vite.close();
 }

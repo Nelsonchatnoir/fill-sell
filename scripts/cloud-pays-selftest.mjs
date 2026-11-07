@@ -30,7 +30,7 @@ ok(/if\(!achatCloud\|\|!cloudOffreVendable\(user\?\.id\)\)return;/.test(app), 'A
 ok(/opts\?\.cloud===true&&cloudOffreVendable\(user\?\.id\)/.test(app) && /onCloudSeul=\{cloudOffreVendable\(user\?\.id\)\?/.test(app)
   && /onAjouterCloud=\{cloudOffreVendable\(user\?\.id\)\?/.test(app) && /essaiCloud=\{cloudOffreVendable\(user\.id\)&&achatCloud\?/.test(app),
   'App : formule + Cloud, Cloud seul, ajout, essai du parcours d’entrée — bornés');
-ok(/\.\.\.\(cloudOfferVisible\(user\.id\)&&achatCloud\?\{\s*essayer:/.test(app) && /arreter:async\(\)=>/.test(app),
+ok(/\.\.\.\(cloudOfferVisible\(user\.id\)&&achatCloud\?\{\s*essayer:/.test(app) && /arreter:async\((opts)?\)=>/.test(app), // (07/11 soir) le geste reçoit { canal } de l'écran
   'App : l’arrêt et la reprise restent ouverts à un compte qui a le Cloud, où qu’il soit');
 ok(/const cloudVisible = cloudOffreVendable\(userId\);/.test(lire('src/components/ConversionModal.jsx')), 'feuille des formules : offre bornée');
 ok(/cloudOffreVendable\(userId\)\);/.test(lire('src/entree/useCloudEntree.js')), 'parcours d’entrée : voie Cloud bornée');

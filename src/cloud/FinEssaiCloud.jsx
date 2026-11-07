@@ -22,6 +22,7 @@ import { Cloud } from 'lucide-react';
 import { C, MENTHE, BLANC, DEGRADE_TEAL, POLICE } from './theme';
 import { textesCloud } from './textes';
 import { dateLongue, heureDe } from './regles';
+import { voieArretCloud, voieBoutique } from './achatCloud';
 
 const ANIM = `
 @keyframes fsCloudMonte { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -93,35 +94,41 @@ const bouton = (plein) => ({
 /**
  * La veille de la fin d'essai.
  * cloud : cloudDuProfil(…) en état 'essai' ; quand : 'demain' | 'aujourdhui'
- * actions.arreter : () => Promise<{ ok }> — fourni par l'hôte (paiement).
+ * actions.arreter : ({ canal }) => Promise<{ ok, etat, voie }> — fourni par l'hôte (paiement).
+ * canal / plateforme (07/11 soir) : profiles.cloud_canal et Capacitor.getPlatform — un Cloud pris sur l'App Store ou
+ * Google Play s'arrête dans la boutique : la feuille le dit, ouvre ses abonnements, et ne dit JAMAIS « c'est arrêté »
+ * ni « rien n'est facturé » avant que la boutique l'ait confirmé.
  */
-export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nomPalier = null, actions = {}, onFermer }) {
+export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nomPalier = null, actions = {}, onFermer, canal = null, plateforme = 'web' }) {
   const T = textesCloud(lang);
-  const [etat, setEtat] = useState('question'); // 'question' | 'en_cours' | 'arretee' | 'echec'
+  const [etat, setEtat] = useState('question'); // 'question' | 'en_cours' | 'arretee' | 'boutique' | 'echec'
   const date = dateLongue(cloud?.essaiFin, lang);
   const heure = heureDe(cloud?.essaiFin, lang);
+  const voie = voieArretCloud(canal, plateforme);
+  const boutique = voieBoutique(voie);
 
   const arreter = async () => {
     if (typeof actions.arreter !== 'function' || etat === 'en_cours') return;
     setEtat('en_cours');
     try {
-      const r = await actions.arreter();
-      setEtat(r?.ok === false ? 'echec' : 'arretee');
+      const r = await actions.arreter({ canal });
+      setEtat(r?.ok === false ? 'echec' : r?.etat === 'boutique' ? 'boutique' : 'arretee');
     } catch {
       setEtat('echec');
     }
   };
+  const fini = etat === 'arretee' || etat === 'boutique';
 
   return (
     <Feuille onFermer={onFermer} etiquette={T.veilleTitre(quand, heure)}>
       <div data-cloud="veille">
         <EnTete kicker={T.veilleKicker} titre={T.veilleTitre(quand, heure)} />
 
-        {etat === 'arretee' ? (
-          <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{T.veilleArretee}</p>
+        {fini ? (
+          <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{etat === 'boutique' ? T.arretBoutiqueAttente(voie) : T.veilleArretee}</p>
         ) : (
           <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '13px 14px', marginBottom: 14 }}>
-            <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{T.veilleTexte(date, heure, nomPalier)}</p>
+            <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{boutique ? T.veilleTexteBoutique(date, heure, voie) : T.veilleTexte(date, heure, nomPalier)}</p>
             <div data-zone="bascule" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
               <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: 5, background: C.amber, flexShrink: 0 }} />
               <span style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{T.veilleBascule(date, heure)}</span>
@@ -135,14 +142,15 @@ export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nom
           </p>
         )}
 
-        {etat === 'arretee' ? (
+        {fini ? (
           <button type="button" onClick={onFermer} style={bouton(true)}>{T.fermer}</button>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <button type="button" onClick={onFermer} style={bouton(true)}>{T.veilleGarder}</button>
-            {typeof actions.arreter === 'function' && (
+            {/* Apple vu ailleurs que sur iPhone / iPad : rien à ouvrir ici, le texte dit où l'arrêter. */}
+            {typeof actions.arreter === 'function' && voie !== 'apple_ailleurs' && (
               <button type="button" onClick={arreter} disabled={etat === 'en_cours'} style={{ ...bouton(false), opacity: etat === 'en_cours' ? 0.6 : 1 }}>
-                {etat === 'en_cours' ? '…' : T.veilleArreter}
+                {etat === 'en_cours' ? '…' : boutique ? T.arreterBoutiqueCta(voie) : T.veilleArreter}
               </button>
             )}
           </div>

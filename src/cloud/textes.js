@@ -173,6 +173,20 @@ const FR = {
     : "Il tourne jusqu'à la fin de la période payée, puis s'arrête : rien ne sera prélevé ensuite. Tes annonces Vinted, Leboncoin, Beebs et Depop repasseront alors par l'extension, sur ton ordinateur."),
   arreterConfirmer: 'Arrêter',
   arreterAnnuler: 'Garder',
+  // (07/11 soir, essai TestFlight de Nico) Un Cloud pris sur l'App Store ou Google Play : c'est la BOUTIQUE qui
+  // l'arrête, jamais l'app. Avant le geste, on dit où, et que FillSell le verra dès qu'elle l'aura confirmé — jamais
+  // « tout de suite », jamais « rien n'est facturé » tant qu'elle ne l'a pas confirmé. `voie` : cloud/achatCloud.js.
+  arreterBoutique: (voie) => (voie === 'google'
+    ? "Ton Cloud a été pris sur Google Play : c'est Google qui l'arrête, pas FillSell. Ouvre tes abonnements Google Play ci-dessous, choisis FillSell Cloud, puis résilie-le. FillSell le verra dès que Google aura confirmé l'arrêt."
+    : voie === 'apple_ailleurs'
+      ? "Ton Cloud a été pris sur l'App Store : c'est Apple qui l'arrête, pas FillSell. Sur ton iPhone ou ton iPad, ouvre Réglages › ton nom › Abonnements, choisis FillSell Cloud, puis annule-le. FillSell le verra dès qu'Apple aura confirmé l'arrêt."
+      : "Ton Cloud a été pris sur l'App Store : c'est Apple qui l'arrête, pas FillSell. Ouvre tes abonnements Apple ci-dessous, choisis FillSell Cloud, puis annule-le. FillSell le verra dès qu'Apple aura confirmé l'arrêt."),
+  arreterBoutiqueCta: (voie) => (voie === 'google' ? 'Ouvrir mes abonnements Google Play' : 'Ouvrir mes abonnements Apple'),
+  arreterBoutiqueFermer: 'Fermer',
+  // Après l'ouverture des abonnements : rien n'a encore changé chez nous, on attend la boutique.
+  arretBoutiqueAttente: (voie) => (voie === 'google'
+    ? "Dès que Google aura confirmé l'arrêt, FillSell l'affichera dans Réglages › Abonnement. D'ici là, ton Cloud continue."
+    : "Dès qu'Apple aura confirmé l'arrêt, FillSell l'affichera dans Réglages › Abonnement. D'ici là, ton Cloud continue."),
   // La confirmation « Se désabonner » de la formule, quand l'option est active.
   resiliationCloud: 'FillSell Cloud, lui, continue : ton compte repasse en Free + FillSell Cloud, avec les quotas du plan Free.',
   resiliationCloudLien: 'Arrêter aussi le Cloud',
@@ -191,6 +205,10 @@ const FR = {
   veilleBascule: (date, heure) => `Le ${date} à ${heure} · +${PRIX}/mois`,
   veilleArretee: "C'est arrêté. Rien ne sera facturé pour le Cloud, et tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension.",
   veilleArretEchec: "L'arrêt n'a pas pu se faire. Réessaie dans un instant.",
+  // (07/11 soir) Cloud pris sur l'App Store ou Google Play : la boutique arrête, FillSell suit — jamais « rien n'est facturé ».
+  veilleTexteBoutique: (date, heure, voie) => (voie === 'google'
+    ? `Ton essai gratuit se termine le ${date} à ${heure}. Ton Cloud a été pris sur Google Play : pour l'arrêter, c'est dans tes abonnements Google Play, et FillSell le verra dès que Google l'aura confirmé.`
+    : `Ton essai gratuit se termine le ${date} à ${heure}. Ton Cloud a été pris sur l'App Store : pour l'arrêter, c'est dans tes abonnements Apple, et FillSell le verra dès qu'Apple l'aura confirmé.`),
 
   // ── Après la fin de l'essai (non converti) ───────────────────────────────
   finKicker: 'FillSell Cloud',
@@ -325,6 +343,16 @@ const EN = {
     : 'It runs until the end of the paid period, then stops: nothing will be charged after that. Your Vinted, Leboncoin, Beebs and Depop listings will then go back through the extension, on your computer.'),
   arreterConfirmer: 'Stop',
   arreterAnnuler: 'Keep',
+  arreterBoutique: (voie) => (voie === 'google'
+    ? 'Your Cloud was bought on Google Play: Google stops it, not FillSell. Open your Google Play subscriptions below, pick FillSell Cloud, then cancel it. FillSell will show it as soon as Google confirms it.'
+    : voie === 'apple_ailleurs'
+      ? 'Your Cloud was bought on the App Store: Apple stops it, not FillSell. On your iPhone or iPad, open Settings › your name › Subscriptions, pick FillSell Cloud, then cancel it. FillSell will show it as soon as Apple confirms it.'
+      : 'Your Cloud was bought on the App Store: Apple stops it, not FillSell. Open your Apple subscriptions below, pick FillSell Cloud, then cancel it. FillSell will show it as soon as Apple confirms it.'),
+  arreterBoutiqueCta: (voie) => (voie === 'google' ? 'Open my Google Play subscriptions' : 'Open my Apple subscriptions'),
+  arreterBoutiqueFermer: 'Close',
+  arretBoutiqueAttente: (voie) => (voie === 'google'
+    ? 'As soon as Google confirms it, FillSell will show it in Settings › Subscription. Until then, your Cloud keeps running.'
+    : 'As soon as Apple confirms it, FillSell will show it in Settings › Subscription. Until then, your Cloud keeps running.'),
   resiliationCloud: 'FillSell Cloud keeps running: your account goes back to Free + FillSell Cloud, with the Free plan quotas.',
   resiliationCloudLien: 'Stop the Cloud too',
 
@@ -341,6 +369,9 @@ const EN = {
   veilleBascule: (date, heure) => `${date} at ${heure} · +${PRIX_EN}/mo`,
   veilleArretee: 'It is stopped. Nothing will be billed for the Cloud, and your Vinted, Leboncoin, Beebs and Depop listings go back through the extension.',
   veilleArretEchec: 'The Cloud could not be stopped. Try again in a moment.',
+  veilleTexteBoutique: (date, heure, voie) => (voie === 'google'
+    ? `Your free trial ends on ${date} at ${heure}. Your Cloud was bought on Google Play: to stop it, go to your Google Play subscriptions, and FillSell will show it as soon as Google confirms it.`
+    : `Your free trial ends on ${date} at ${heure}. Your Cloud was bought on the App Store: to stop it, go to your Apple subscriptions, and FillSell will show it as soon as Apple confirms it.`),
 
   finKicker: 'FillSell Cloud',
   finTitre: 'Your trial has ended',
