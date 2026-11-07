@@ -1,5 +1,44 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 07/11/2026 19:08 → 20:30 — PASSE FINALE de Nico (terminal CLOUD clos ensuite)
+- **Étanchéité (point 16) FAITE ET PROUVÉE** avec les 2 vrais navigateurs (Nico 172.31.0.2, Nicotest 172.31.0.3) :
+  avant 19:08 Nicotest → pilotage DevTools de Nico = 200 (et l'inverse) ; étape A (pare-feu, 19:08:33, archive
+  `archives/pare-feu-navigateurs.sh.avant-etancheite`) → refusé dans les 2 sens (`000`, sortie 28), hôte → 200/401 ;
+  étape B (réseau recréé `enable_icc=false`, 19:09:40-19:10:16, coupure du navigateur de Nico 36 s, orchestrateur
+  75d1a0f) → refusé dans les 2 sens, journal `reseau_cloisonnement ok:true complet:true`. Sorties : Nico IP 42
+  (94.194.94.68), Nicotest IP 2 (185.134.194.88). Procédure : docs/cloud/ETANCHEITE-CLOUD2.md.
+- **Nicotest nettoyé** (19:12) : sauvegarde `_backup_0711_nicotest_cloud` ; essai arrêté (fin = 19:12), beta_flags {},
+  onboarded_at NULL, IP 2 au repos jusqu'au 14/11 19:12 (puis de retour seule) ; `.env` d'avant remis
+  (`comptes_autorises: 3`, 19:12:28). Apple : aucune annulation reçue (achat TestFlight introuvable dans les abonnements
+  iOS de Nico) → **migration 20261107200000 APPLIQUÉE 19:35** (feu vert nommé, banc 38/38) : table `cloud_refs_closes`
+  + déclencheur `profiles_zz_cloud_ref_close` ; ref 2000001262935799 close 19:36:04 ; preuve en base (transaction
+  annulée) `ok: true`, Cloud éteint, 0 IP, 0 place. Un nouvel achat (nouvelle ref) passe toujours.
+- **Migration 20261107190000 APPLIQUÉE 19:33:54** (feu vert nommé ; banc 53/53 ; md5 prod = fixtures avant) :
+  colonne `cloud_ips.sante`, grillée jamais attribuable, opérateur atypique en dernier. Orchestrateur 32c0ed5 (19:34),
+  contrôle de santé ALLUMÉ 19:34:58 (`cloud_ip_sante_controle` = 1). Verdicts : 3 saine (NTT, rang 2) 19:40 ; 4 saine
+  (Liberty, rang 1) 19:56 ; 40 SAINE (NTT, rang 2) 20:10 — eBay ouvert, alors que le relevé manuel de 17:38 la trouvait
+  refusée (403 Akamai) ; 1 saine (Orange, rang 0) 20:15 ; 41 saine (Orange) 20:26. Liste réelle (outil
+  `ip-renouvellement-prevu.mjs` sur cloud-2, santé lue en base, 20:26) : RENOUVELÉES 42 (client) 01/12, 39 (réservée
+  Nico) 30/11, 1 et 4 et 41 (marge) 24/11 ; EXPIRENT 3 (NTT, en surplus) 29/11, 40 (NTT, en surplus, jamais comptée)
+  04/12, 2 (santé inconnue, au repos) 29/11 sauf preuve saine avant J-2. Toutes les bornes de Nico tenues →
+  **règle « saines d'abord » ACTIVÉE 20:26:40** (`cloud_ip_renouveler_saines_seulement` = 1). Retour : remettre 0.
+  Achats d'IP toujours coupés (jour J étape 3).
+- **Correctifs** (main, poussés 1251dba..65396fd à 20:13 avec 4d5947b, 75d1a0f, 32c0ed5, 24b405d, ad7c6e8, 619dd8e,
+  0aa2f0d, 65396fd) : arrêt du Cloud par le canal (Apple → feuille Abonnements d'Apple, Google → Play, Stripe →
+  cancel-subscription) ; carte Synchronisation (« FillSell Cloud travaille », total = liste) ; bandeau d'extension jamais
+  pour un client Cloud ; mails Cloud au vrai prix du canal, texte selon le canal, « FillSell Cloud » (email-tunnel à
+  déployer au jour J : la v82 en service envoie encore « 20 € » et « option Sans ordinateur »). Les « nouvelles
+  modales » existent déjà, éteintes derrière `grille_trois_jauges` (jour J étape 7).
+- **Suite complète** sur main propre (lot de PROBLÈMES rangé) : 617/618 ; seul rouge vinted-arbre-compte (« 5.
+  Branchements : get-pending-jobs ») : ses entrées (get-pending-jobs, handler-watch, arbre Vinted, son module) sont
+  inchangées par ces commits ; corrigé par le lot non poussé de PROBLÈMES (sa suite : 621/621).
+- **Binaire 2.9.164 / vc36** (65396fd, Info.plist `ITSAppUsesNonExemptEncryption` = false) : AAB 18,2 Mo sha256
+  dbbb4dac… ; **Play : vc36 envoyée pour examen 20:19** (remplace la vc35, examen relancé, publication gérée) ;
+  **Apple** : 2.9.164 retirée de l'examen 19:23 (DEVELOPER_REJECTED) ; Codemagic 178 (65396fd) → build **2611071917**
+  VALID, `usesNonExemptEncryption` false lu dans le build (aucune conformité demandée) ; rattaché (204) ; notes de version
+  FR/EN sans « l'option » ; **SOUMISE 20:22:49** (soumission 28e98bf3, WAITING_FOR_REVIEW, publication MANUELLE).
+  Web : fillsell.app sert 65396fd (= binaires).
+
 ## 07/11/2026 ~17:10 — décisions de Nico appliquées : migration IP, orchestrateur, carte …9699
 - **Migration 20261107180000 APPLIQUÉE 17:08:37** (feu vert NOMMÉ de Nico) : `db query --linked --yes -f` +
   `migration repair … applied` ; les 7 corps de prod relus avant = fixtures `prod-0711-ip-garde` (identiques) ;
