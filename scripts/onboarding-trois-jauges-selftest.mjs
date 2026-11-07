@@ -79,9 +79,9 @@ try {
   // ── Les contextes ──────────────────────────────────────────────────────────────────────────────────────────
   const LECTURE_ESSAI = { etat: 'ok', cloud: { etat: 'aucun', essaiPris: false, actif: false }, luLe: MAINTENANT, relire() {} };
   const LECTURE_ACTIVE = { etat: 'ok', cloud: { etat: 'essai', essaiPris: true, actif: true, essaiFin: '2026-11-10T12:00:00.000Z' }, luLe: MAINTENANT, relire() {} };
-  const cloudObjet = ({ parcours = false, actif = false, achat = { etat: 'repos', message: null }, fermee = false, inscrit = false, cx = null, lang = 'fr' } = {}) => ({
+  const cloudObjet = ({ parcours = false, actif = false, achat = { etat: 'repos', message: null }, fermee = false, inscrit = false, cx = null, lang = 'fr', places } = {}) => ({
     ouvert: parcours, parcours, actif, lecture: actif ? LECTURE_ACTIVE : LECTURE_ESSAI, offre: actif ? null : { essai: true },
-    vente: { fermee, dispo: fermee ? { vente: false, inscrit, rang: inscrit ? 3 : null } : null, inscrire: async () => true },
+    vente: { fermee, dispo: fermee ? { vente: false, inscrit, rang: inscrit ? 3 : null } : null, inscrire: async () => true, places: fermee ? 0 : (places ?? null) },
     achat, lancerEssai: async () => 'actif',
     dates: R.datesEssai(MAINTENANT, lang),
     essaiFinCourt: actif ? R.dateCourte('2026-11-10T12:00:00.000Z', lang) : null,
@@ -213,9 +213,13 @@ try {
     ok(/Toutes les places FillSell Cloud sont prises/.test(lu('EtapeCloud', cC({ achat: { etat: 'refuse', message: 'Toutes les places FillSell Cloud sont prises pour l\'instant. Rien n\'a été demandé à ta carte.' } }))),
       'essai refusé : le message rendu par l’achat est dit à l’écran (le toast de l’app est sous le parcours)');
     const plein = lu('EtapeCloud', cC({ fermee: true }));
-    ok(/FillSell Cloud Complet pour le moment Toutes les places FillSell Cloud sont prises\. Inscris-toi/.test(plein) && /Être prévenu\(e\) Je préfère utiliser mon ordinateur$/.test(plein)
+    ok(/FillSell Cloud Complet pour le moment Toutes les places FillSell Cloud sont prises\. Inscris-toi/.test(plein) && /M'inscrire sur la liste d'attente Je préfère utiliser mon ordinateur$/.test(plein)
       && !/Commencer|\/mois|Rien à payer|Carte demandée|App Store/.test(plein), 'toutes les places prises : la liste d’attente existante, jamais une vente (ni prix, ni frise, ni bouton d’achat)', plein);
-    ok(/Tu es sur la liste \(n° 3\)/.test(lu('EtapeCloud', cC({ fermee: true, inscrit: true }))), 'liste d’attente : inscrit(e), son rang');
+    ok(/Tu es sur liste d'attente \(n° 3\)/.test(lu('EtapeCloud', cC({ fermee: true, inscrit: true }))), 'liste d’attente : inscrit(e), son rang');
+    // (07/11, décision de Nico) Le compteur : le nombre de la vente, au-dessus du bouton ; rien quand il est inconnu.
+    ok(/14 places restantes Commencer/.test(lu('EtapeCloud', cC({ places: 14 }))) && /1 place restante Commencer/.test(lu('EtapeCloud', cC({ places: 1 })))
+      && !/places? restantes?/.test(lu('EtapeCloud', cC())) && !/places? restantes?/.test(lu('EtapeCloud', cC({ fermee: true }))),
+      'essai : « 14 places restantes » au-dessus du bouton (1 au singulier) ; rien si le nombre est inconnu ou la vente fermée');
     const en = lu('EtapeCloud', { ...cC(), lang: 'en', cloud: cloudObjet({ parcours: true, lang: 'en' }) });
     ok(/Nothing to pay before 10 November/.test(en) && /Monday 9 November/.test(en) && !/novembre|ordinateur|Rien à/.test(en), 'essai en anglais : dates et mots anglais', en.slice(0, 400));
   }
@@ -371,7 +375,7 @@ try {
     const ctxSrc = sansCommentaires(lire('src/entree/useCloudEntree.js'));
     // (05/11 soir, phase 3 point 3) cloudOffreVendable : drapeau levé ET téléphone en France, ou témoin.
     ok(/const ouvert = Boolean\(surTelephone && userId && typeof essaiCloud === 'function' && cloudOffreVendable\(userId\)\);/.test(ctxSrc)
-      && /useCloudProfil\(userId, \{ actif: ouvert \}\)/.test(ctxSrc) && /useDisponibiliteCloud\(\{ actif: ouvert \}\)/.test(ctxSrc),
+      && /useCloudProfil\(userId, \{ actif: ouvert \}\)/.test(ctxSrc) && /useDisponibiliteCloud\(\{ actif: ouvert, relireToutesLesMs: ouvert && !dejaActif \? RELECTURE_PLACES_MS : null \}\)/.test(ctxSrc),
     'la voie Cloud ne lit rien tant qu’elle est fermée (téléphone + cloudOfferVisible + achat fourni)');
     const uce = sansCommentaires(lire('src/entree/useContexteEntree.js'));
     ok(/from\('coin_config'\)\.select\('key, value'\)\.in\('key', CLES_CONFIG_ENTREE\)/.test(uce) && /const grille = grilleActiveConfig\(K\);/.test(uce) && /useState\(null\)/.test(uce),

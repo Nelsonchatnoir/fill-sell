@@ -28,7 +28,7 @@ import { Cloud } from 'lucide-react';
 import { C, MENTHE, BLANC, DEGRADE_TEAL } from './theme';
 import { textesCloud } from './textes';
 import { dateLongue, finEssaiSiOnCommence } from './regles';
-import { useDisponibiliteCloud, venteFermee } from './useDisponibiliteCloud';
+import { useDisponibiliteCloud, venteFermee, placesRestantes, RELECTURE_PLACES_MS } from './useDisponibiliteCloud';
 
 function Glyphe({ taille = 34 }) {
   return (
@@ -108,6 +108,26 @@ const styleBoutonPlein = {
 };
 
 /**
+ * (07/11, décision de Nico) « 14 places restantes » — le nombre de la vente (placesRestantes, lu dans
+ * cloud_disponibilite_moi, relu seul sur l'écran). Rien tant que le nombre n'est pas sûr ; 0 = le bloc « Complet »
+ * s'affiche à la place, jamais « 0 place restante ».
+ */
+export function CompteurPlacesCloud({ dispo, lang = 'fr' }) {
+  const n = placesRestantes(dispo);
+  if (n == null || n <= 0) return null;
+  const T = textesCloud(lang);
+  return (
+    <p data-cloud="places" aria-live="polite" style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', margin: 0,
+      fontSize: 12, fontWeight: 700, lineHeight: 1.3, color: C.tealDeep,
+    }}>
+      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 4, background: C.teal, flexShrink: 0 }} />
+      {T.placesRestantes(n)}
+    </p>
+  );
+}
+
+/**
  * (03/11, point 5 de Nico) À LA PLACE DU BOUTON D'ACHAT quand la vente est fermée (aucune place serveur, aucune IP,
  * ou une file d'attente devant) : « Complet pour le moment » et « Être prévenu(e) » (une notification, jamais un
  * mail ; la place est gardée 24 h). dispo = lireDisponibilite (useDisponibiliteCloud).
@@ -149,7 +169,7 @@ export default function InterrupteurCloud({ offre, coche, onBasculer, lang = 'fr
   // pas sous les yeux, et le rendu reste pur. `maintenant` = horloge de l'aperçu.
   const [horloge] = useState(() => Date.now());
   // (03/11, point 5) La vente est-elle possible ? Lu seulement quand l'interrupteur se montre (porte du Cloud).
-  const vente = useDisponibiliteCloud({ actif: offre?.mode === 'interrupteur' });
+  const vente = useDisponibiliteCloud({ actif: offre?.mode === 'interrupteur', relireToutesLesMs: RELECTURE_PLACES_MS });
   const fermee = venteFermee(vente.dispo);
   // Vente fermée : l'option ne reste jamais cochée (la formule seule part, sans option).
   useEffect(() => { if (fermee && coche) onBasculer?.(false); }, [fermee, coche, onBasculer]);
@@ -190,6 +210,7 @@ export default function InterrupteurCloud({ offre, coche, onBasculer, lang = 'fr
           {freeCompris ? T.sAjouteFree : T.sAjoute}
           {offre.essai && !coche ? <> {T.carteDemandee(dateBascule(lang, now))}</> : null}
         </p>
+        {!fermee && <CompteurPlacesCloud dispo={vente.dispo} lang={lang} />}
       </div>
 
       {fermee && <BlocCompletCloud dispo={vente.dispo} onInscrire={vente.inscrire} lang={lang} />}
@@ -214,7 +235,7 @@ export default function InterrupteurCloud({ offre, coche, onBasculer, lang = 'fr
  */
 export function SectionFreeCloud({ offre, quotaFree, onCloudSeul, lang = 'fr', maintenant }) {
   const [horloge] = useState(() => Date.now());
-  const vente = useDisponibiliteCloud({ actif: offre?.mode === 'interrupteur' && typeof onCloudSeul === 'function' });
+  const vente = useDisponibiliteCloud({ actif: offre?.mode === 'interrupteur' && typeof onCloudSeul === 'function', relireToutesLesMs: RELECTURE_PLACES_MS });
   if (offre?.mode !== 'interrupteur' || typeof onCloudSeul !== 'function') return null;
   const T = textesCloud(lang);
   const n = Number(quotaFree);
@@ -236,9 +257,12 @@ export function SectionFreeCloud({ offre, quotaFree, onCloudSeul, lang = 'fr', m
       {venteFermee(vente.dispo)
         ? <BlocCompletCloud dispo={vente.dispo} onInscrire={vente.inscrire} lang={lang} />
         : (
-          <button type="button" onClick={onCloudSeul} style={{ ...styleBoutonPlein, marginTop: 12 }}>
-            {offre.essai ? T.freeCloudCtaEssai : T.freeCloudCta}
-          </button>
+          <>
+            {placesRestantes(vente.dispo) > 0 && <div style={{ display: 'flex', marginTop: 12 }}><CompteurPlacesCloud dispo={vente.dispo} lang={lang} /></div>}
+            <button type="button" onClick={onCloudSeul} style={{ ...styleBoutonPlein, marginTop: placesRestantes(vente.dispo) > 0 ? 8 : 12 }}>
+              {offre.essai ? T.freeCloudCtaEssai : T.freeCloudCta}
+            </button>
+          </>
         )}
     </div>
   );
@@ -289,7 +313,7 @@ export function PrixAvecCloud({ prix, cloud, sombre = false, taille = 22, lang =
  */
 export function CarteAjoutCloud({ offre, nomPalier, onAjouter, lang = 'fr', maintenant }) {
   const [horloge] = useState(() => Date.now());
-  const vente = useDisponibiliteCloud({ actif: offre?.mode === 'interrupteur' && typeof onAjouter === 'function' });
+  const vente = useDisponibiliteCloud({ actif: offre?.mode === 'interrupteur' && typeof onAjouter === 'function', relireToutesLesMs: RELECTURE_PLACES_MS });
   if (offre?.mode !== 'interrupteur' || typeof onAjouter !== 'function') return null;
   const T = textesCloud(lang);
   return (
@@ -311,9 +335,12 @@ export function CarteAjoutCloud({ offre, nomPalier, onAjouter, lang = 'fr', main
       {venteFermee(vente.dispo)
         ? <BlocCompletCloud dispo={vente.dispo} onInscrire={vente.inscrire} lang={lang} />
         : (
-          <button type="button" onClick={onAjouter} style={{ ...styleBoutonPlein, marginTop: 12 }}>
-            {offre.essai ? T.ajoutCtaEssai : T.ajoutCta}
-          </button>
+          <>
+            {placesRestantes(vente.dispo) > 0 && <div style={{ display: 'flex', marginTop: 12 }}><CompteurPlacesCloud dispo={vente.dispo} lang={lang} /></div>}
+            <button type="button" onClick={onAjouter} style={{ ...styleBoutonPlein, marginTop: placesRestantes(vente.dispo) > 0 ? 8 : 12 }}>
+              {offre.essai ? T.ajoutCtaEssai : T.ajoutCta}
+            </button>
+          </>
         )}
     </div>
   );

@@ -23,7 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { cloudOffreVendable, CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
 import { useCloudProfil } from '../cloud/useCloudProfil';
-import { useDisponibiliteCloud, venteFermee } from '../cloud/useDisponibiliteCloud';
+import { useDisponibiliteCloud, venteFermee, placesRestantes, RELECTURE_PLACES_MS } from '../cloud/useDisponibiliteCloud';
 import { voieCloud } from '../cloud/regles';
 import { textesConnexion } from '../cloud/textesConnexion';
 import { etatConnexion, verificationsCloud, connectesIsoles } from '../cloud/executant';
@@ -35,7 +35,9 @@ const CX_LECTURE = Object.freeze({ etat: 'lecture', etats: null, verifs: [], iso
 export function useCloudEntree({ userId, lang, surTelephone, voie, essaiCloud, plateformesFermees = [] }) {
   const ouvert = Boolean(surTelephone && userId && typeof essaiCloud === 'function' && cloudOffreVendable(userId));
   const lecture = useCloudProfil(userId, { actif: ouvert });
-  const vente = useDisponibiliteCloud({ actif: ouvert });
+  // (07/11) Le compteur de places se relit seul (relecture bornée) tant que l'option n'est pas prise.
+  const dejaActif = lecture.etat === 'ok' && lecture.cloud?.actif === true;
+  const vente = useDisponibiliteCloud({ actif: ouvert, relireToutesLesMs: ouvert && !dejaActif ? RELECTURE_PLACES_MS : null });
   const relireCloud = lecture.relire;
   const relireVente = vente.relire;
   const [achat, setAchat] = useState({ etat: 'repos', message: null });
@@ -116,7 +118,7 @@ export function useCloudEntree({ userId, lang, surTelephone, voie, essaiCloud, p
   return {
     ouvert, parcours, actif,
     lecture, offre: voieCloud(lecture),
-    vente: { fermee: venteFermee(vente.dispo), dispo: vente.dispo, inscrire: vente.inscrire },
+    vente: { fermee: venteFermee(vente.dispo), dispo: vente.dispo, inscrire: vente.inscrire, places: placesRestantes(vente.dispo) },
     achat, lancerEssai,
     // Avant l'essai : maintenant + 7 jours. Pendant : la fin RÉELLE lue en base.
     dates: datesEssai(lecture.luLe ?? horloge, lang),

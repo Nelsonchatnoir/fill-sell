@@ -47,13 +47,39 @@ try {
     'illisible : rien n\'est remplacé (la base refusera de toute façon)');
   ok(D.lireDisponibilite({ vente_possible: true, attente: { place_pour_toi: true, notifie_le: '2026-11-03T10:00:00Z' } }).placePourToi === true, 'la place gardée est lue');
 
-  console.log('\n2. « Complet » et « Être prévenu(e) », rendus');
+  console.log('\n1 bis. (07/11, décision de Nico) Le compteur « 14 places restantes » : le nombre de la VENTE');
+  const lu14 = D.lireDisponibilite({ vente_possible: true, raison: null, places: 14, ip: true });
+  ok(lu14.places === 14 && D.placesRestantes(lu14) === 14, 'places de cloud_vente_etat lues telles quelles (14)');
+  ok([undefined, null, -1, 2.5, 'x'].every((p) => D.lireDisponibilite({ vente_possible: true, places: p }).places === null),
+    'absent ou illisible (−1, 2,5, texte) : inconnu, jamais un 0 inventé');
+  ok(D.placesRestantes(D.lireDisponibilite({ vente_possible: false, raison: 'complet', places: 0 })) === 0
+    && D.placesRestantes(D.lireDisponibilite({ vente_possible: false, raison: 'pool_vide', places: 6 })) === 0,
+    'vente impossible (complet, ou aucune IP alors que le serveur a des places) : 0 — la liste d\'attente, jamais « 6 places »');
+  ok(D.placesRestantes(D.lireDisponibilite({ vente_possible: false, raison: 'deja_client', places: 9 })) === null
+    && D.placesRestantes(null) === null && D.placesRestantes(D.lireDisponibilite({ vente_possible: true })) === null,
+    'déjà client, lecture absente ou nombre inconnu : aucun compteur');
+  const c14 = texte(h(IC.CompteurPlacesCloud, { dispo: lu14, lang: 'fr' }));
+  const c1 = texte(h(IC.CompteurPlacesCloud, { dispo: D.lireDisponibilite({ vente_possible: true, places: 1 }), lang: 'fr' }));
+  const c14en = texte(h(IC.CompteurPlacesCloud, { dispo: lu14, lang: 'en' }));
+  ok(c14 === '14 places restantes' && c1 === '1 place restante' && c14en === '14 spots left', 'rendu : « 14 places restantes », « 1 place restante », « 14 spots left »', `${c14} | ${c1} | ${c14en}`);
+  ok(texte(h(IC.CompteurPlacesCloud, { dispo: D.lireDisponibilite({ vente_possible: false, raison: 'complet', places: 0 }), lang: 'fr' })) === ''
+    && texte(h(IC.CompteurPlacesCloud, { dispo: null, lang: 'fr' })) === '', 'jamais « 0 place restante » (le bloc Complet prend la place), rien avant la lecture');
+  const srcHook = lire('src/cloud/useDisponibiliteCloud.js');
+  const srcIC = lire('src/cloud/InterrupteurCloud.jsx');
+  ok(/demarrerRelecture\(lire, \{ intervalleMs: relireToutesLesMs/.test(srcHook) && !/setInterval/.test(srcHook.replace(/\/\/.*$/gm, '')) && D.RELECTURE_PLACES_MS === 60_000,
+    'il se met à jour seul par la relecture BORNÉE (utils/relectureBornee : onglet visible, une à la fois, ralentie si la base peine), jamais setInterval, une fois par minute');
+  ok((srcIC.match(/relireToutesLesMs: RELECTURE_PLACES_MS/g) ?? []).length === 3 && !/relireToutesLesMs/.test(lire('src/cloud/HoteCloud.jsx')),
+    'relu seul sur les trois blocs d\'offre seulement ; l\'hôte toujours monté (HoteCloud) garde sa lecture unique');
+  ok(/setLu\(\(avant\) => \(dispo \? \{ etat: 'ok', dispo \} : garder\(avant\)\)\)/.test(srcHook), 'une relecture ratée ne remplace jamais le dernier nombre sûr (le compteur ne clignote pas)');
+
+  console.log('\n2. « Complet » et la liste d\'attente, rendus');
   const t1 = texte(h(IC.BlocCompletCloud, { dispo: { vente: false, inscrit: false }, onInscrire: async () => true, lang: 'fr' }));
-  ok(/Complet pour le moment/.test(t1) && /Être prévenu\(e\)/.test(t1) && /notification/.test(t1) && /24 h/.test(t1) && !/mail/i.test(t1), 'pas inscrit(e) : le bouton « Être prévenu(e) », une notification, gardée 24 h', t1);
+  ok(/Complet pour le moment/.test(t1) && /M'inscrire sur la liste d'attente/.test(t1) && /sans rien payer/.test(t1) && /notification/.test(t1) && /24 h/.test(t1) && !/mail/i.test(t1),
+    'pas inscrit(e) : « M\'inscrire sur la liste d\'attente », sans rien payer, une notification, gardée 24 h', t1);
   const t2 = texte(h(IC.BlocCompletCloud, { dispo: { vente: false, inscrit: true, rang: 2 }, onInscrire: async () => true, lang: 'fr' }));
-  ok(/n° 2/.test(t2) && !/Être prévenu\(e\)/.test(t2), 'inscrit(e) : son rang, plus de bouton', t2);
+  ok(/Tu es sur liste d'attente \(n° 2\)/.test(t2) && !/M'inscrire/.test(t2), 'inscrit(e) : « Tu es sur liste d\'attente (n° 2) », plus de bouton', t2);
   const t3 = texte(h(IC.BlocCompletCloud, { dispo: { vente: false, inscrit: false }, onInscrire: async () => true, lang: 'en' }));
-  ok(/Full for now/.test(t3) && /Notify me/.test(t3), 'en anglais', t3);
+  ok(/Full for now/.test(t3) && /Join the waiting list/.test(t3), 'en anglais', t3);
   const offre = { mode: 'interrupteur', essai: true };
   const t4 = texte(h(IC.SectionFreeCloud, { offre, quotaFree: 5, onCloudSeul() {}, lang: 'fr', maintenant: Date.parse('2026-10-10T06:00:00Z') }));
   ok(!/Complet pour le moment/.test(t4), 'avant la lecture (rendu serveur, lecture en cours) : l\'écran d\'avant, à l\'identique', t4);

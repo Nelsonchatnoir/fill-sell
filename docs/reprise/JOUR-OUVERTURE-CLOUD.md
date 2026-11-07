@@ -31,6 +31,9 @@ Déjà fait, relu le 07/11 : prix Stripe 24,99 € actif / 20 € archivé ; App
   6. avant le 8e client : `cloud_ip_achats_auto` = 1 (+ plafond `cloud_ip_budget_mensuel_usd`, § 3), sur ordre de Nico.
 - **Limite** : `NAVIGATEURS_MAX=15` sur cloud-2 (places = 14 + Nico) ; au-delà, la vente répond « complet » et propose
   la liste d'attente (jamais un paiement sans place) ; l'alerte de capacité part à 65 % (10 comptes).
+- **Compteur « N places restantes »** (07/11, web) : il montre les places SERVEUR de la vente. Avec 7 IP pour 14 places
+  et les achats coupés, il passerait de 8 à « Complet » d'un coup : allumer les achats d'IP (étape 6) le jour même, ou
+  la migration « places = min(serveur, IP) » (REPRISE Cloud, bloc ~12:00 du 07/11).
 
 Une étape à la fois, depuis le dossier PRINCIPAL `C:\Users\nicol\fill-and-sell` (jamais un worktree), sur `main` à jour
 et propre (`git status` relu : dossier partagé). Chaque étape : le geste, la VÉRIFICATION, le RETOUR ARRIÈRE. La moindre

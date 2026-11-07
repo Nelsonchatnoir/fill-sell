@@ -142,6 +142,10 @@ export default function EtapeCloud({ c, T, onSuivant, onAller }) {
       cle="cloud"
       pied={(
         <>
+          {/* (07/11, décision de Nico) Les places restantes, lues dans la vente et relues seules ; 0 = la liste d'attente plus haut. */}
+          {!k.actif && k.vente.places > 0 && (
+            <Texte centre style={{ margin: '0 0 8px', fontSize: 12.5, fontWeight: 700, color: E.tealDeep }}><span data-entree="places" aria-live="polite">{TC.placesRestantes(k.vente.places)}</span></Texte>
+          )}
           <BoutonPrimaire onClick={commencer} disabled={enCours}>{libelle}</BoutonPrimaire>
           <Texte centre style={{ margin: '10px 0 0', fontSize: 12 }}>{T.cloudCanal[c.plateforme] ?? T.cloudCanal.web}</Texte>
           {!k.actif && <LienDiscret onClick={ordinateur} style={{ marginTop: 2 }}>{T.cloudOrdinateur}</LienDiscret>}

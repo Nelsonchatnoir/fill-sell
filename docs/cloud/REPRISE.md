@@ -1,5 +1,28 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 07/11/2026 ~12:00 — compteur de places + liste d'attente (web, OTA) ; cloud.fillsell.app NON repointé
+- **Compteur** (décision de Nico) : « 14 places restantes » sur les trois blocs d'offre de la feuille des formules
+  (interrupteur, Free + Cloud, ajout à une formule) et sur l'étape Cloud de l'entrée. Le nombre = `places` de
+  `cloud_vente_etat` (celui de la vente, renvoyé par `cloud_disponibilite_moi`, relu en prod : 14 pour un compte
+  ordinaire, 12 ms la lecture) ; vente impossible (complet, aucune IP) = le bloc « Complet » à la place, jamais « 0 » ;
+  relu seul une fois par minute, onglet visible, par `relectureBornee` (jamais setInterval ; HoteCloud garde sa lecture
+  unique). Liste d'attente (existait depuis le 03/11) : « M'inscrire sur la liste d'attente » (un geste, sans payer)
+  puis « Tu es sur liste d'attente (n° N) » ; prévenu(e) dans l'ordre par push-cloud-place (cron 5 min, place gardée
+  24 h) ; jamais de paiement sans place (cloud_essai_preparer_moi). Code : src/cloud/useDisponibiliteCloud.js,
+  InterrupteurCloud.jsx, textes.js, src/entree/useCloudEntree.js, EtapeCloud.jsx — tout web (OTA), rien de natif ;
+  la notification elle-même n'arrive qu'aux binaires avec le module push (2.9.62+ ; en ligne : iOS 2.8, Android 2.9.10
+  n'en ont pas) — les autres voient le bandeau « place libre » en ouvrant l'app dans les 24 h.
+- ⚠ Écart connu : `places` compte les places SERVEUR ; l'IP n'entre que comme oui/non (`ip`). Pool relu le 07/11 :
+  7 IP libres pour 14 places → sans achats d'IP, le compteur descend de 14 à 8 puis passe à « Complet » (pool_vide).
+  Remède au choix de Nico : achats d'IP rallumés le jour de l'ouverture, ou `places` = min(places, IP attribuables)
+  comme `cloud_attente_places_a_offrir` (migration à préparer, feu vert nommé).
+- **cloud.fillsell.app** : PAS repointé. cloud-2 ne sert que `{$DOMAINE}` = cloud-2.fillsell.app (Caddyfile) : essai
+  `curl --resolve cloud.fillsell.app:443:5.9.80.213` → poignée TLS refusée (code 000). Le serveur, lui, refuserait
+  proprement un compte qui n'est pas à lui (jeton Supabase vérifié, puis attribution à CE serveur, connexion.js).
+  Deux voies, décision de Nico : (a) ajouter `cloud.fillsell.app` au site du Caddyfile de cloud-2 (redémarrage de Caddy
+  seul), puis A `cloud` → 5.9.80.213 (nuage gris), Caddy prend le certificat, relire `/sante` et `/connexion/ws` ;
+  (b) supprimer l'enregistrement et retirer le repli `CLOUD_DOMAINE` de l'app. IPv4 de cloud-1 gardée jusque-là.
+
 ## 07/11/2026 10:35 — cloud-1 RETIRÉ ET SUPPRIMÉ (ordre de Nico) ; passe d'ouverture préparée
 - Base 10:34:05 : `scripts/reparations/20261107_cloud1_retire.sql` (preuve Postgres jetable 13/13 :
   `PREUVE_PG=embarque node scripts/cloud/preuve-retrait-cloud1.mjs`) → cloud-1 `etat = 'retire'`, ligne d'avant dans
