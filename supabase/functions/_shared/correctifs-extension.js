@@ -138,7 +138,7 @@ export const BUILD_VINTED_MARQUE_CREEE = "2026-10-26T00:53:28Z";
 // n'est pas empaqueté : posée au BUILD_ID du zip (npm run package:extension) — un poste plus ancien ne reçoit rien.
 export const BUILD_LBC_PREREMPLI_IA = "2026-10-26T07:44:08Z"; // BUILD_ID du paquet 0.6.146 refait le 26/10 (2026-10-26T07:44:08Z+4ade5e1)
 // (07/11 soir, Sonia d538188f) Critères Leboncoin affichés après la réception des photos (0.6.178) : BUILD_ID du paquet.
-export const BUILD_LBC_CRITERES_APRES_PHOTOS = ""; // VIDE (inerte) jusqu'au zip 0.6.178
+export const BUILD_LBC_CRITERES_APRES_PHOTOS = "2026-11-07T14:34:17Z"; // BUILD_ID du paquet 0.6.178 (2026-11-07T14:34:17Z+bef6d20)
 
 export const CORRECTIFS_EXTENSION = [
   {

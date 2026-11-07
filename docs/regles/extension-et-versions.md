@@ -283,3 +283,14 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Livrable : `build/CWS-0.6.177-A-TELEVERSER/fillsell-extension-0.6.177-cws.zip` (BUILD_ID `2026-11-07T12:31:03Z+11e4acb`,
   607 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-07T12:29:47Z (f22d662). Seul zip à téléverser (remplace la 0.6.176,
   rangée dans `build/anciens-zips/REMPLACEE-PAR-0.6.177-CWS-0.6.176` ; la 0.6.175 publiée y est aussi rangée).
+
+## 07/11 soir — 0.6.178 : décisions de Nico (rapport `docs/enquetes/lot-0711/RAPPORT.md` § Suite)
+- La 0.6.177 + : arrêt à la borne pour TOUS les comptes (message simple : abandon envoyé à l'onglet, garde avant le clic,
+  borne inchangée 300 s ; un job qui porte `fill_borne_ms` passe par le port, borne 10-25 min) ; Leboncoin : attente
+  des critères réglée sur le poids des photos envoyées (30-120 s) et PNG de plus de 300 Ko allégé en JPEG s'il est plus
+  léger (Sonia) ; Beebs : bandeau « Voir dans l'appli » écarté des attributs lus.
+- Relance au build : `lbc_criteres_apres_photos` (`_shared/correctifs-extension.js`, `BUILD_LBC_CRITERES_APRES_PHOTOS`
+  = 2026-11-07T14:34:17Z).
+- Livrable : `build/CWS-0.6.178-A-TELEVERSER/fillsell-extension-0.6.178-cws.zip` (BUILD_ID `2026-11-07T14:34:17Z+bef6d20`,
+  610 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-07T14:33:26Z (a1a6856). Seul zip à téléverser (contient la 0.6.177,
+  rangée dans `build/anciens-zips/EN-TELEVERSEMENT-0711-CWS-0.6.177`).
