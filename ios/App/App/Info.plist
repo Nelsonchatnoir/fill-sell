@@ -22,6 +22,10 @@
 	<string>2.7</string>
 	<key>CFBundleVersion</key>
 	<string>9</string>
+	<!-- (07/11/2026, ordre de Nico) Déclaration de chiffrement posée DANS le build : l'app n'utilise que le chiffrement
+	     exempté (HTTPS du système). App Store Connect ne demande plus la conformité à l'exportation à chaque build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- Scheme custom app.fillsell.app:// — pendant iOS de l'intent-filter
 	     Android (AndroidManifest.xml). Sert UNIQUEMENT au retour OAuth Google
 	     (app.fillsell.app://callback?code=…) ouvert dans SFSafariViewController

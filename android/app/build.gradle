@@ -116,7 +116,9 @@ android {
         // (07/11 soir, ordre de Nico) versionName 2.9.164, versionCode 35 : LE binaire soumis (restauration du Cloud,
         // montants anglais) ; OTA suivante = 2.9.164 du même commit, ou 2.9.165 si du code est venu après.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
-        versionCode 35
+        // (07/11 soir, passe finale de Nico) versionCode 36, même versionName 2.9.164 : remplace la vc35 en examen
+        // (arrêt du Cloud par la boutique, modales, carte Synchronisation, mails Cloud).
+        versionCode 36
         versionName "2.9.164"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
