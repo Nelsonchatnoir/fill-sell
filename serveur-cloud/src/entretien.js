@@ -24,7 +24,17 @@
 //      même temps qu'un entretien (un seul verrou), jamais une boucle (garde du nombre, pause d'une heure après un échec) ;
 //   3. le SOLDE IPRoyal : l'alerte part sous la dépense prévue sur 14 jours (regles.seuilSoldeProjete) et dit combien
 //      recharger ; en paiement par carte, l'alerte est celle de la carte (absente, expirée, expire dans 45 jours).
+// (07/11 soir, ordres 3 et 4 de Nico)
+//   4. LE CONTRÔLE DE SANTÉ des IP libres (controlerSante, toutes les SANTE_IP_MIN minutes, coin_config
+//      cloud_ip_sante_controle = 1) : une IP à la fois (cloud-pool.choisirIpASonder), un Chrome jetable (sante.js), sous le
+//      MÊME verrou que l'entretien et le réapprovisionnement (jamais deux navigateurs de contrôle ensemble), jamais pendant
+//      une pointe de charge ; le verdict va à cloud_ip_sante_noter ; une IP GRILLÉE n'est plus attribuable
+//      (cloud_ip_attribuable) et l'alerte part à support@ ; à chaque entretien, l'alerte « IP saines libres sous la marge ».
+//   3. LA RÈGLE « SAINES D'ABORD » du renouvellement (planDuJour, sainesSeulement) : coin_config
+//      cloud_ip_renouveler_saines_seulement = 1, ET le contrôle de santé allumé (sans lui, aucune santé n'est connue : le
+//      plan d'avant, dit par une alerte).
 import { mkdir } from 'node:fs/promises';
+import { loadavg, cpus } from 'node:os';
 import { nouveauProfilId } from './navigateur.js';
 import { claims } from './sessionFillsell.js';
 import { creerPareFeu, sortieOuverte } from './pareFeu.js';
@@ -32,17 +42,32 @@ import { creerApprovisionnement, dateIproyal } from './approvisionnement.js';
 
 export const VISITE_ESPACEMENT_MS = 3600_000;   // (03/11) au plus une visite de contrôle de plateforme par heure
 const COLONNES_IPS = 'id, commande, ip, port, etat, user_id, dernier_user_id, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus, rebut_critere, rebut_le';
+/** (07/11 soir) La charge de l'hôte (1 min) par processeur — le conteneur voit celle de l'hôte. */
+export const chargeHote = () => loadavg()[0] / Math.max(1, cpus().length);
 
 export function creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp,
-  pareFeu = creerPareFeu({ config, journal }), approvisionnement = creerApprovisionnement({ base, iproyal, alertes, journal, regles }) }) {
+  pareFeu = creerPareFeu({ config, journal }), approvisionnement = creerApprovisionnement({ base, iproyal, alertes, journal, regles }),
+  sante = null, charge = chargeHote }) {
   let derniereVisite = 0;
   let occupe = false;            // (07/11) UN verrou : l'entretien et le réapprovisionnement rapide ne courent jamais ensemble
   let dernierLambda = null;      // (07/11) le λ du dernier entretien (le réapprovisionnement rapide ne relit pas les essais)
+  let santeAbsenteLe = null;     // (07/11 soir) la colonne cloud_ips.sante manquait (migration 20261107190000 pas encore en base)
+  let derniereAlerteMarge = 0;   // (07/11 soir) « saines sous la marge » : un rappel toutes les santeAlerteRappelH heures
+  let derniereAlerteRegle = 0;
 
+  /** Le pool. (07/11 soir) Avec la santé (colonne sante) ; sans elle tant que la migration manque (relu une fois par heure). */
   async function lireIps() {
+    const normaliser = (ips, avecSante) => Object.assign((ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') })), { avecSante });
+    if (santeAbsenteLe == null || Date.now() - santeAbsenteLe > 3600_000) {
+      const { data, error } = await base.from('cloud_ips').select(`${COLONNES_IPS}, sante`);
+      if (!error) { santeAbsenteLe = null; return normaliser(data, true); }
+      if (!/sante/i.test(String(error.message ?? ''))) throw new Error(`cloud_ips : ${error.message}`);
+      if (santeAbsenteLe == null) journal.alerte('sante_colonne_absente', { erreur: error.message });
+      santeAbsenteLe = Date.now();
+    }
     const { data: ips, error } = await base.from('cloud_ips').select(COLONNES_IPS);
     if (error) throw new Error(`cloud_ips : ${error.message}`);
-    return (ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') }));
+    return normaliser(ips, false);
   }
   /** (07/11) Le registre des dépenses des 30 derniers jours (petite table) : rythme d'achat, prix, anti-boucle. */
   async function lireRegistre(maintenant = Date.now()) {
@@ -304,11 +329,25 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     // verrait ni la commande (fermée) ni ses IP (lues avant) et rachèterait ce qui vient d'arriver.
     if (bilan.livraisons > 0) { toutes = await lireIps(); ({ data: etat } = await base.rpc('cloud_pool_etat')); }
     dernierLambda = regles.lambdaMesure(etat?.essais_7j ?? 0);
+    const sainesSeulement = await regleSaines(g, toutes);
     const plan = regles.planDuJour({ ips: toutes, lambda: dernierLambda,
       enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0,
-      marge: g?.marge ?? regles.PARAMETRES?.ipMarge, comptesSansPlace: etat?.comptes_sans_place ?? null });
+      marge: g?.marge ?? regles.PARAMETRES?.ipMarge, comptesSansPlace: etat?.comptes_sans_place ?? null, sainesSeulement });
     bilan.plan = { renouveler: plan.renouveler.length, laisserExpirer: plan.laisserExpirer.length, aCommander: plan.aCommander, niveau: plan.niveau, vise: plan.vise,
-      garde: plan.garde ? { comptees: plan.garde.comptees, borne: plan.garde.borne, ok: plan.garde.ok } : null };
+      garde: plan.garde ? { comptees: plan.garde.comptees, borne: plan.garde.borne, ok: plan.garde.ok } : null,
+      ...(sainesSeulement ? { saines_seulement: true, projete_saines: plan.projeteSaines, a_controler: plan.aControler } : {}) };
+    // (07/11 soir, ordre 4) Le bilan de santé des IP libres et l'alerte « saines sous la marge » (contrôle allumé seulement).
+    if (g?.santeControle && toutes.avecSante && regles.bilanSante) {
+      bilan.sante = regles.bilanSante(toutes, { marge: g.marge });
+      const rappel = (regles.PARAMETRES?.santeAlerteRappelH ?? 6) * 3600_000;
+      if (bilan.sante.sousMarge && Date.now() - derniereAlerteMarge >= rappel) {
+        derniereAlerteMarge = Date.now();
+        const s = bilan.sante;
+        await alertes?.signaler('serveur', `IP saines libres SOUS LA MARGE (contrôle de santé) : ${s.saines} saine(s) pour une marge de ${s.marge} — `
+          + `${s.suspectes} suspecte(s), ${s.inconnues} pas encore contrôlée(s), ${s.grillees} grillée(s) sur ${s.libres} IP libres. `
+          + `${g.achatsAuto ? 'L\'achat automatique reconstitue la marge (cloud_ip_achats_auto = 1).' : 'Achats automatiques COUPÉS (cloud_ip_achats_auto = 0) : la marge ne se reconstitue pas seule.'}`, { sante: s });
+      }
+    }
     // (03/11) Renouveler puis acheter, sous leurs gardes ; sans elles, une proposition (approvisionnement.js).
     if (g && (plan.renouveler.length || plan.aCommander > 0)) {
       const soldeVivant = bilan.solde ? { ...bilan.solde } : null;
@@ -381,7 +420,8 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
         if (i && await controlerIp(i, 'entree')) { bilan.controle = i.id; toutes = await lireIps(); }
       }
       const lambda = dernierLambda ?? regles.lambdaMesure(0);
-      const avant = regles.planDuJour({ ips: toutes, lambda, enAttente: await personnesEnAttente(), commandesEnCours: enCommande, marge: g.marge });
+      const sainesSeulement = await regleSaines(g, toutes);
+      const avant = regles.planDuJour({ ips: toutes, lambda, enAttente: await personnesEnAttente(), commandesEnCours: enCommande, marge: g.marge, sainesSeulement });
       if (avant.aCommander <= 0) {
         if (Object.keys(bilan).length) journal.info('reappro_rapide', { ...bilan, aCommander: 0 });
         return { ...bilan, aCommander: 0 };
@@ -390,7 +430,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       const { data: etat, error } = await base.rpc('cloud_pool_etat');
       if (error) throw new Error(`cloud_pool_etat : ${error.message}`);
       const plan = regles.planDuJour({ ips: toutes, lambda, enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? enCommande,
-        marge: g.marge, comptesSansPlace: etat?.comptes_sans_place ?? null });
+        marge: g.marge, comptesSansPlace: etat?.comptes_sans_place ?? null, sainesSeulement });
       bilan.aCommander = plan.aCommander;
       if (plan.aCommander > 0) {
         const solde = await fournisseurIp?.solde?.().catch(() => null) ?? null;
@@ -402,5 +442,68 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     } finally { occupe = false; }
   }
 
-  return { tour, purger, purgerComptesInactifs, reapprovisionnerVite };
+  /**
+   * (07/11 soir, ordre 3 de Nico) La règle « saines d'abord » s'applique-t-elle ? Le réglage (cloud_ip_renouveler_saines_
+   * seulement = 1) ET le contrôle de santé allumé ET la santé lue en base. Demandée sans eux : la règle d'avant, dite.
+   */
+  async function regleSaines(g, toutes) {
+    if (!g?.sainesSeulement) return false;
+    if (g.santeControle && toutes?.avecSante) return true;
+    if (Date.now() - derniereAlerteRegle >= (regles.PARAMETRES?.santeAlerteRappelH ?? 6) * 3600_000) {
+      derniereAlerteRegle = Date.now();
+      await alertes?.signaler('serveur', `Règle « saines d'abord » demandée (cloud_ip_renouveler_saines_seulement = 1) mais ${!g.santeControle
+        ? 'le contrôle de santé est coupé (cloud_ip_sante_controle = 0)' : 'la colonne cloud_ips.sante manque (migration 20261107190000)'} : aucune santé connue, le renouvellement suit la règle d'avant.`);
+    }
+    return false;
+  }
+
+  /**
+   * (07/11 soir, ordre 4 de Nico : « ce contrôle de santé doit tourner seul, régulièrement, sur toutes les IP libres ; une IP
+   * grillée n'est jamais donnée à un client ») LE CONTRÔLE DE SANTÉ — toutes les SANTE_IP_MIN minutes (index.js). Rien
+   * sans coin_config cloud_ip_sante_controle = 1 (une seule lecture). Sinon, sous le verrou de l'entretien (jamais deux
+   * navigateurs de contrôle ensemble), hors pointe de charge (PARAMETRES.santeChargeMax), UNE IP (choisirIpASonder : libre,
+   * ni réservée ni en usage, sortie ouverte par le pare-feu ; suspectes, jamais contrôlées, puis au plus tard toutes les
+   * 20 h) contrôlée par un Chrome jetable (sante.js) ; la santé suivante (santeSuivante : un échec rend « suspecte », le
+   * même échec relu au moins 30 min plus tard « grillée ») va à cloud_ip_sante_noter. Devenue grillée : alerte support@.
+   */
+  async function controlerSante() {
+    if (config?.entretienPool === false) return { pool: 'coupe' };
+    if (!sante?.verifier || !regles.choisirIpASonder) return { coupe: 'module' };
+    const { data: actif, error } = await base.rpc('cloud_param', { p_cle: 'ip_sante_controle', p_defaut: 0 });
+    if (error || Number(actif) !== 1) return { coupe: 'interrupteur' };
+    if (occupe) return { occupe: true };
+    const c = Number(charge?.());
+    if (Number.isFinite(c) && c > (regles.PARAMETRES?.santeChargeMax ?? 0.7)) {
+      journal.info('sante_reportee_charge', { charge: Math.round(c * 100) / 100 });
+      return { charge: c };
+    }
+    occupe = true;
+    try {
+      const toutes = await lireIps();
+      if (!toutes.avecSante) return { coupe: 'migration_absente' };
+      const appliquees = await pareFeu.appliquees().catch(() => null);
+      const enUsage = (navigateurs?.ouverts?.() ?? []).map((u) => navigateurs.ouvert?.(u)?.ipId).filter((x) => x != null);
+      const choix = regles.choisirIpASonder(toutes, { enUsage,
+        permise: (i) => Boolean(appliquees) && sortieOuverte(appliquees, i.ip, i.port ?? 12323) });
+      if (!choix) return { rien: true };
+      const ip = choix.ip;
+      const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: ip.id });
+      if (!proxyUrl) { journal.alerte('sante_proxy_illisible', { ip_id: ip.id }); return { ip_id: ip.id, raison: 'proxy_illisible' }; }
+      const controle = await sante.verifier({ ipId: ip.id, ip: ip.ip, proxyUrl });
+      const nouvelle = regles.santeSuivante(ip.sante ?? null, controle);
+      const { data: r, error: e2 } = await base.rpc('cloud_ip_sante_noter', { p_ip: ip.id, p_sante: nouvelle });
+      const bilan = { ip_id: ip.id, raison: choix.raison, dues: choix.dues, avant: ip.sante?.verdict ?? null, verdict: nouvelle.verdict,
+        echecs: controle.echecs, inconnus: controle.inconnus, ecrit: r?.ok === true, ...(r?.ok === true ? {} : { refus: r?.raison ?? e2?.message ?? null }) };
+      journal.info('sante_ip', bilan);
+      if (r?.ok === true && nouvelle.verdict === 'grillee' && r.avant !== 'grillee') {
+        const echeance = new Date(ip.expire_le).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
+        await alertes?.signaler('serveur', `IP ${ip.id} (${ip.ip}) GRILLÉE au contrôle de santé : ${nouvelle.echecs.join(', ')} — échec relu par un 2e contrôle `
+          + `(1er le ${nouvelle.suspecte_le}). Elle n'est plus attribuable, ne compte plus dans la marge et ne sera jamais renouvelée : elle expire à son terme (${echeance}, heure de Paris).`,
+        { ip_id: ip.id, sante: { echecs: nouvelle.echecs, suspecte_le: nouvelle.suspecte_le, grillee_le: nouvelle.grillee_le, resume: controle.resume } });
+      }
+      return bilan;
+    } finally { occupe = false; }
+  }
+
+  return { tour, purger, purgerComptesInactifs, reapprovisionnerVite, controlerSante };
 }

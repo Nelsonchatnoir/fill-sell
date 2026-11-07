@@ -90,14 +90,18 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
 
   /** Les gardes et réglages, lus à chaque tour (un changement de coin_config vaut au tour suivant). */
   async function gardes() {
-    const [achatsAuto, renouvAuto, marge, achatMax, paiementCarte, carteId] = await Promise.all([
+    // (07/11 soir, ordres 3 et 4 de Nico) cloud_ip_sante_controle (le contrôle de santé périodique) et
+    // cloud_ip_renouveler_saines_seulement (la règle « saines d'abord ») : 0 par défaut — le comportement d'avant.
+    const [achatsAuto, renouvAuto, marge, achatMax, paiementCarte, carteId, santeControle, sainesSeulement] = await Promise.all([
       param('ip_achats_auto', 0), param('ip_renouvellement_auto', 0), param('ip_marge', regles?.PARAMETRES?.ipMarge ?? 3),
       param('ip_achat_max', regles?.PARAMETRES?.ipAchatMax ?? 10), param('ip_paiement_carte', 0), param('ip_carte_id', 0),
+      param('ip_sante_controle', 0), param('ip_renouveler_saines_seulement', 0),
     ]);
     return {
       envAutorise: iproyal?.achatsAutorises === true, achatsAuto: achatsAuto === 1, renouvAuto: renouvAuto === 1,
       marge: Math.max(0, Math.floor(Number.isFinite(marge) ? marge : 3)), achatMax: Math.max(1, Math.min(50, achatMax || 10)),
       paiementCarte: paiementCarte === 1, carteId: carteId > 0 ? carteId : null,
+      santeControle: santeControle === 1, sainesSeulement: sainesSeulement === 1,
     };
   }
 

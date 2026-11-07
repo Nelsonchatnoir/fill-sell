@@ -269,5 +269,133 @@ titre('10. (03/11, point 2 de Nico) L\'approvisionnement : stock minimum, refus 
     `SQL (07/11) : marge ${M.PARAMETRES.ipMarge} — même défaut que PARAMETRES ; plus de plafond en dollars ; paiement né au solde`);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la règle « saines d\'abord »');
+{
+  const M = await import('../supabase/functions/_shared/cloud-pool.js');
+  const T = Date.parse('2026-11-07T17:00:00Z');
+  const S = (verdict, x = {}) => ({ version: 1, verdict, le: iso(T - 3600_000), ...(verdict === 'saine' ? { saine_le: iso(T - 3600_000) } : {}), ...x });
+  const lib = (id, jours, x = {}) => ({ id, commande: `c${id}`, ip: `10.1.0.${id}`, etat: 'disponible', attributions: 1, refus: {}, expire_le: iso(T + jours * J), ...x });
+  const plan = (ips, o = {}) => M.planDuJour({ ips, lambda: 0.5, marge: 3, sainesSeulement: true, maintenant: T, ...o });
+  // Règle coupée : le plan d'avant (prouvé mot pour mot sur 20 000 pools au hasard contre le HEAD), à une ligne près.
+  const g0 = M.planDuJour({ ips: [lib(1, 5, { sante: S('grillee') }), lib(2, 5)], lambda: 0.5, marge: 3, maintenant: T });
+  ok(g0.laisserExpirer.includes(1) && g0.renouveler.includes(2) && g0.sainesSeulement === false,
+    'règle coupée : le plan d\'avant ; une IP GRILLÉE n\'y est jamais renouvelée (la seule différence, et seulement avec une santé en base)');
+  // Clients et réservée : toujours renouvelées.
+  const c1 = plan([{ ...lib(42, 2), etat: 'attribuee_client', user_id: 'nico' }, lib(39, 2.5, { reserve_pour: 'nico', reserve_jusqu_au: iso(T + 26 * J),
+    refus: { beebs: { prouvee: false, le: iso(T - 4 * J) } }, sante: S('grillee') }),
+  lib(1, 25, { sante: S('saine') }), lib(2, 25, { sante: S('saine') }), lib(3, 25, { sante: S('saine') }), lib(4, 25, { sante: S('saine') })]);
+  ok(c1.renouveler.includes(42) && c1.raisons[42] === 'attribuee', 'client : renouvelée avant son échéance, comme toujours');
+  ok(c1.renouveler.includes(39) && c1.raisons[39] === 'reservee',
+    'réservée (l\'IP gardée de Nico) : TOUJOURS renouvelée — même en surplus, même au refus non prouvé, même jugée grillée');
+  // Saines > marge : seules les meilleures, jusqu'à la marge.
+  const s1 = plan([lib(1, 9, { sante: S('saine') }), lib(2, 8, { sante: S('saine'), attributions: 0 }), lib(3, 9.5, { sante: S('saine') }),
+    lib(4, 9.2, { sante: S('saine') }), lib(5, 25, { sante: S('saine') })]);
+  ok(s1.projeteSaines === 3 && s1.renouveler.length === 2 && s1.renouveler.includes(2) && s1.renouveler.includes(1)
+    && s1.laisserExpirer.includes(4) && s1.laisserExpirer.includes(3) && s1.raisons[3] === 'saine_en_surplus',
+    'saines EN SURPLUS : la 5 vit (25 j) ; on renouvelle les meilleures (la moins usée, puis la plus proche) jusqu\'à 3 saines libres ; les autres expirent');
+  // Saines < marge : toutes les saines, et l'achat de ce qui manque.
+  const s2 = plan([lib(1, 9, { sante: S('saine') }), lib(2, 8, { sante: S('saine') })], { comptesSansPlace: 0 });
+  ok(s2.renouveler.length === 2 && s2.aCommander === 1 && s2.garde?.ok === true,
+    'saines SOUS la marge : toutes renouvelées, l\'achat demande ce qui manque (1) — et la garde du nombre l\'accepte');
+  // Grillée : jamais renouvelée, jamais comptée ; la marge se reconstitue par l'achat.
+  const s3 = plan([lib(1, 25, { sante: S('saine') }), lib(2, 25, { sante: S('saine') }), lib(40, 25, { sante: S('grillee') }), lib(41, 2, { sante: S('grillee') })],
+    { comptesSansPlace: 0 });
+  ok(s3.projete === 2 && s3.projeteSaines === 2 && s3.aCommander === 1 && s3.laisserExpirer.includes(41) && !s3.renouveler.includes(40)
+    && s3.garde.vivantes === 2 && s3.garde.ok === true,
+    'GRILLÉE : ni renouvelée, ni comptée dans la marge, ni dans la garde → l\'achat reconstitue la marge (1) et passe la garde');
+  ok(!M.ipAttribuable(lib(40, 25, { sante: S('grillee') }), { maintenant: T }) && M.ipAttribuable(lib(40, 25, { sante: S('suspecte') }), { maintenant: T })
+    && !M.ipAttribuable({ ...lib(77, 25, { sante: S('grillee') }), etat: 'repos', dernier_user_id: 'u', repos_fin: iso(T - J) }, { userId: 'u', maintenant: T }),
+    'attribution : jamais une grillée (même au repos pour son dernier titulaire) ; une suspecte, encore');
+  // Santé inconnue : contrôlée en priorité ; sans preuve à J-2, pas renouvelée.
+  const s4 = plan([lib(1, 2.5), lib(2, 1.5), lib(3, 2.5, { sante: S('suspecte', { suspecte_le: iso(T - 3600_000), echecs: ['ebay'] }) }),
+    lib(4, 2.5, { sante: S('saine', { saine_le: iso(T - 40 * 3600_000) }) })]);
+  ok(s4.attendre.includes(1) && s4.aControler.includes(1) && s4.laisserExpirer.includes(2) && s4.raisons[2] === 'inconnue_sans_preuve'
+    && s4.aControler.includes(3) && s4.aControler.includes(4) && s4.renouveler.length === 0,
+    'INCONNUE / suspecte / saine trop vieille (40 h) : jamais comptée saine — à contrôler en priorité avant J-2, puis elle expire à son terme');
+  // Refus non prouvé : contredit par un contrôle sain POSTÉRIEUR seulement.
+  const r1 = plan([lib(1, 8, { sante: S('saine'), refus: { beebs: { prouvee: false, le: iso(T - 4 * J) } } }),
+    lib(2, 8, { sante: S('saine'), refus: { beebs: { prouvee: false, le: iso(T - 60_000) } } })]);
+  ok(r1.renouveler.includes(1) && r1.laisserExpirer.includes(2) && r1.raisons[2] === 'refus_non_prouve',
+    'refus Beebs non prouvé du 03/11 puis contrôle sain : renouvelable ; refus noté APRÈS le dernier contrôle sain : la règle du 04/11 (pas renouvelée)');
+  // L'attente élargit la cible.
+  const a1 = plan([lib(1, 8, { sante: S('saine') }), lib(2, 8, { sante: S('saine') }), lib(3, 8, { sante: S('saine') }), lib(4, 8, { sante: S('saine') })], { enAttente: 1 });
+  ok(a1.vise === 4 && a1.renouveler.length === 4, 'personnes en attente : la cible = marge + attente (4), comme gardeNombre et l\'achat');
+  // Propriété : dans la règle « saines », un achat demandé passe toujours la garde (JS) ; jamais une grillée renouvelée.
+  let graine = 5; const h = () => { graine = (graine * 1103515245 + 12345) % 2147483648; return graine / 2147483648; }; const t = (k) => Math.floor(h() * k);
+  let proprietes = 0, achats = 0, grilleesRenouvelees = 0, attribueesOubliees = 0;
+  for (let k = 0; k < 3000; k++) {
+    const ips = [];
+    for (let i = 0; i < t(12); i++) {
+      const etat = ['achetee', 'disponible', 'disponible', 'attribuee_essai', 'attribuee_client', 'repos', 'rebut'][t(7)];
+      ips.push(lib(i + 1, t(38) - 2 + 0.5, { etat, user_id: etat.startsWith('attribuee') ? `u${i}` : null, attributions: t(8),
+        repos_fin: etat === 'repos' ? iso(T + (t(5) - 1) * J) : null, refus: [{}, {}, { beebs: { prouvee: false, le: iso(T - 4 * J) } }, { vinted: { prouvee: true } }][t(4)],
+        sante: [null, S('saine'), S('suspecte', { echecs: ['ebay'] }), S('grillee'), S('inconnue')][t(5)],
+        ...(h() < 0.15 ? { reserve_pour: 'r', reserve_jusqu_au: iso(T + J) } : {}) }));
+    }
+    const p = plan(ips, { marge: t(5), enAttente: t(3), commandesEnCours: t(3), comptesSansPlace: t(3) });
+    if (p.aCommander > 0) { achats++; if (M.gardePour(p.garde, p.aCommander).ok) proprietes++; } else proprietes++;
+    if (p.renouveler.some((id) => { const x = ips.find((y) => y.id === id); return M.grillee(x) && !M.reservee(x, T) && !x.etat.startsWith('attribuee'); })) grilleesRenouvelees++;
+    if (ips.some((x) => x.etat.startsWith('attribuee') && Date.parse(x.expire_le) - T <= 3 * J && !p.renouveler.includes(x.id))) attribueesOubliees++;
+  }
+  ok(proprietes === 3000 && achats > 300 && grilleesRenouvelees === 0 && attribueesOubliees === 0,
+    `3 000 pools au hasard (${achats} achats) : un achat demandé passe toujours la garde ; jamais une grillée libre renouvelée ; jamais une IP de client oubliée`);
+  // La santé : un échec relu une 2e fois, 30 min au moins après le 1er.
+  const c0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['ebay'], inconnus: [] });
+  const cTot = M.santeSuivante(c0, { fait_le: iso(T + 10 * 60_000), echecs: ['ebay'], inconnus: [] });
+  const cG = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['ebay', 'sortie:hebergeur'], inconnus: [] });
+  const cAutre = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['vinted'], inconnus: [] });
+  const cLeve = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: [], inconnus: [] });
+  const cMuet = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: [], inconnus: ['ebay'] });
+  ok(c0.verdict === 'suspecte' && cTot.verdict === 'suspecte' && cTot.suspecte_le === c0.suspecte_le && cG.verdict === 'grillee' && egal(cG.echecs, ['ebay'])
+    && cAutre.verdict === 'suspecte' && cAutre.suspecte_le === iso(T + 31 * 60_000) && cLeve.verdict === 'saine' && cMuet.verdict === 'suspecte',
+    'un échec → suspecte ; relu trop tôt → suspecte ; le MÊME relu 31 min après → grillée ; un autre → suspecte à nouveau ; levé → saine ; muet → reste suspecte');
+  const gS = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: [], inconnus: [] });
+  const sM = M.santeSuivante(M.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: [] }), { fait_le: iso(T + J), echecs: [], inconnus: ['depop'] });
+  ok(gS.verdict === 'grillee' && sM.verdict === 'saine' && sM.saine_le === iso(T) && M.santeConnue({ sante: sM }, T + 30 * 3600_000) === 'saine'
+    && M.santeConnue({ sante: sM }, T + 37 * 3600_000) === 'inconnue' && M.santeConnue({}, T) === 'inconnue',
+    'grillée = définitif ; un contrôle muet garde « saine » sans la rafraîchir : elle vaut 36 h, puis inconnue');
+  // L'IP à contrôler.
+  const pool = [lib(1, 20, { sante: S('saine', { le: iso(T - 21 * 3600_000), saine_le: iso(T - 21 * 3600_000) }) }), lib(2, 25),
+    lib(3, 22, { sante: S('suspecte', { le: iso(T - 40 * 60_000), suspecte_le: iso(T - 40 * 60_000), echecs: ['ebay'] }) }),
+    lib(4, 20, { sante: S('saine') }), lib(39, 26, { reserve_pour: 'nico', reserve_jusqu_au: iso(T + 26 * J) }), { ...lib(42, 27), etat: 'attribuee_client', user_id: 'nico' },
+    lib(40, 26, { sante: S('grillee') }), lib(6, 0.02), lib(7, 20, { etat: 'achetee' })];
+  const o1 = M.choisirIpASonder(pool, { maintenant: T });
+  const o2 = M.choisirIpASonder(pool.filter((x) => x.id !== 3), { maintenant: T });
+  const o3 = M.choisirIpASonder(pool.filter((x) => ![2, 3, 7].includes(x.id)), { maintenant: T });
+  const o4 = M.choisirIpASonder(pool.filter((x) => ![1, 2, 3, 7].includes(x.id)), { maintenant: T });
+  const o5 = M.choisirIpASonder(pool, { maintenant: T, permise: (x) => x.id === 4, enUsage: [] });
+  ok(o1.ip.id === 3 && o1.raison === 'confirmation' && o2.ip.id === 7 && o2.raison === 'jamais_controlee' && o3.ip.id === 1 && o3.raison === 'periodique'
+    && o4 === null && o5 === null && M.choisirIpASonder(pool, { maintenant: T, enUsage: [3, 7, 2, 1] }) === null,
+    'à contrôler : la suspecte (2e lecture) d\'abord, puis la jamais contrôlée (l\'échéance la plus proche), puis la plus vieille (20 h) ; jamais la réservée, l\'attribuée, la grillée, celle qui expire dans l\'heure, une sortie fermée ou une IP en usage');
+  const b = M.bilanSante(pool, { marge: 3, maintenant: T });
+  ok(b.libres === 6 && b.saines === 2 && b.suspectes === 1 && b.grillees === 1 && b.inconnues === 2 && b.sousMarge === false
+    && M.bilanSante(pool.filter((x) => ![2, 7].includes(x.id) && x.id !== 1), { marge: 3, maintenant: T }).sousMarge === true,
+    'bilan des libres (hors réservée, attribuée, échéance sous 3 j) : sous la marge quand même les inconnues ne la rempliraient pas');
+  // La projection sur le pool relu en prod le 07/11 à 17:59 et la vérification manuelle de 17:26-17:40.
+  const L = Date.parse('2026-11-07T16:59:00Z');
+  const B = { beebs: { prouvee: false, le: '2026-11-03T15:37:37Z' } };
+  const sain = { verdict: 'saine', saine_le: '2026-11-07T16:40:00Z', le: '2026-11-07T16:40:00Z' };
+  const prod = [
+    { id: 1, commande: '84458881', etat: 'disponible', attributions: 1, expire_le: '2026-12-04T12:57:45Z', refus: B, sante: sain },
+    { id: 2, commande: '86965910', etat: 'disponible', attributions: 0, expire_le: '2026-11-29T10:37:16Z', refus: B, sante: sain },
+    { id: 3, commande: '87004978', etat: 'disponible', attributions: 1, expire_le: '2026-11-29T20:00:42Z', refus: B, sante: sain },
+    { id: 4, commande: '87277315', etat: 'disponible', attributions: 1, expire_le: '2026-12-02T11:29:07Z', refus: B, sante: sain },
+    { id: 39, commande: '87284262', etat: 'disponible', attributions: 1, expire_le: '2026-12-03T13:09:55Z', refus: B, sante: sain, reserve_pour: 'nico', reserve_jusqu_au: '2026-12-03T13:09:55Z' },
+    { id: 40, commande: '87481742', etat: 'disponible', attributions: 1, expire_le: '2026-12-04T11:03:19Z', refus: B, sante: { verdict: 'grillee', le: '2026-11-07T16:40:00Z' } },
+    { id: 41, commande: '87495735', etat: 'disponible', attributions: 1, expire_le: '2026-12-04T14:08:03Z', refus: B, sante: sain },
+    { id: 42, commande: '87509051', etat: 'attribuee_client', user_id: 'nico', attributions: 1, expire_le: '2026-12-04T17:08:04Z', refus: {} },
+  ];
+  const proj = (sainesSeulement) => Object.fromEntries(M.projeterEcheances({ ips: prod, marge: 3, sainesSeulement, maintenant: L }).map((e) => [e.id, e.evenement]));
+  const pr0 = proj(false); const pr1 = proj(true);
+  ok(egal(pr1, { 1: 'expire', 2: 'renouvelee', 3: 'renouvelee', 4: 'renouvelee', 39: 'renouvelee', 40: 'expire', 41: 'expire', 42: 'renouvelee' })
+    && egal(pr0, { 1: 'expire', 2: 'expire', 3: 'expire', 4: 'expire', 39: 'renouvelee', 40: 'expire', 41: 'expire', 42: 'renouvelee' }),
+    'pool du 07/11 : « saines d\'abord » garde 2, 3, 4 (3 saines libres = la marge) + la 39 de Nico + le client 42, laisse expirer 1, 41 (surplus) et 40 (grillée) ; la règle d\'aujourd\'hui ne garde que 39 et 42');
+  const sql = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261107190000_cloud_ip_sante.sql', import.meta.url)), 'utf8');
+  ok(/\('cloud_ip_sante_controle', 0\)/.test(sql) && /\('cloud_ip_renouveler_saines_seulement', 0\)/.test(sql)
+    && sql.split('\n').filter((l) => !/^\s*--/.test(l) && /AND COALESCE\((p|i)\.sante ->> 'verdict', ''\) <> 'grillee'/.test(l)).length === 2,
+    'SQL (07/11 soir) : les deux réglages naissent à 0 ; attribuable et garde excluent la grillée (miroir de grillee())');
+}
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

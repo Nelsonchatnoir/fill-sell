@@ -21,6 +21,7 @@ import { creerIproyal } from './iproyal.js';
 import { creerFournisseurIp } from './fournisseurIp.js';
 import { creerControles } from './controle.js';
 import { creerEntretien } from './entretien.js';
+import { creerSante } from './sante.js';
 import { chargerRegles } from './regles.js';
 import { creerGardeSocle } from './socle.js';
 import { creerEndurance } from './endurance.js';
@@ -103,7 +104,9 @@ connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journa
     if (endurance) endurance.connexionVerifiee(e).catch(() => {});
     else verifications.resolue(e.user, e.plateforme, { par: 'connexion', le: e.le }).catch(() => {});
   } });
-const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp });
+// (07/11 soir, ordre 4 de Nico) Le contrôle de santé des IP libres : un Chrome jetable de l'image des comptes (sante.js).
+const sante = creerSante({ config, docker, journal });
+const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp, sante });
 // (01/11) L'essai de 48 h (ENDURANCE=1) : mesures toutes les 10 min, arrêt au premier blocage.
 if (config.endurance) {
   endurance = creerEndurance({ config, base, docker, navigateurs, postes, journal, verifications, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
@@ -177,9 +180,17 @@ async function tourReappro() {
   } catch (e) { journal.alerte('reappro_rapide_echec', { erreur: e.message }); }
 }
 
+// (07/11 soir, ordre 4 de Nico) LE CONTRÔLE DE SANTÉ DES IP LIBRES : toutes les SANTE_IP_MIN minutes, une lecture de
+// coin_config (rien d'autre tant que cloud_ip_sante_controle = 0) ; sinon UNE IP due, sous le verrou de l'entretien.
+async function tourSante() {
+  if (entretienEnCours || gardeEntretien.passer()) return;
+  try { await entretien.controlerSante(); } catch (e) { journal.alerte('sante_ip_echec', { erreur: e.message }); }
+}
+
 const t1 = setInterval(tourPlanificateur, config.tickPlanificateurS * 1000);
 const t2 = setInterval(tourEntretien, config.tickEntretienMin * 60_000);
 const t7 = config.reapproRapideMin > 0 ? setInterval(tourReappro, config.reapproRapideMin * 60_000) : null;
+const t8 = config.santeIpMin > 0 ? setInterval(tourSante, config.santeIpMin * 60_000) : null;
 // (02/11) Chaque minute, essai ou pas : les cadres DataDome, les pauses de l'app, l'essai des 24 h d'un accès restreint.
 const t3 = setInterval(() => (endurance ? endurance.releveCadres() : verifications.releve()).catch((e) => journal.alerte('verifications_releve_echec', { erreur: e.message })), 60_000);
 // (03/11) La flotte : décision toutes les 10 min (plan à blanc tant que les interrupteurs sont coupés).
@@ -204,7 +215,7 @@ setTimeout(tourEntretien, 60_000);
 
 async function arreter(signal) {
   journal.info('arret', { signal });
-  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5); clearInterval(t6); clearInterval(t7);
+  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5); clearInterval(t6); clearInterval(t7); clearInterval(t8);
   if (reprise) clearTimeout(reprise);
   await noterCoupuresRelais().catch(() => {});
   // (05/11 soir, point 12) Un déploiement ne coupe rien en cours : la vidange d'abord, la fermeture ensuite.

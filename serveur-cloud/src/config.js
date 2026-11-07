@@ -122,6 +122,9 @@ export function lireConfig(env = process.env) {
     // (07/11, décision 1 de Nico) Le réapprovisionnement rapide des IP (entretien.reapprovisionnerVite) : toutes les N
     // minutes ; 0 = coupé (l'entretien horaire seul).
     reapproRapideMin: Math.max(0, lireEntier(env.REAPPRO_RAPIDE_MIN, 5)),
+    // (07/11 soir, ordre 4 de Nico) Le contrôle de santé des IP libres (entretien.controlerSante) : une IP au plus toutes les
+    // N minutes ; 0 = coupé ici. L'interrupteur qui compte est en base : coin_config cloud_ip_sante_controle (0 par défaut).
+    santeIpMin: Math.max(0, lireEntier(env.SANTE_IP_MIN, 5)),
     socleMo: lireEntier(env.SOCLE_MO, 700),
     serveurIpv4: env.SERVEUR_IPV4?.trim() || '',
     // ⛔ Création automatique d'un serveur Hetzner : COUPÉE tant que Nico n'a pas dit GO (et coin_config

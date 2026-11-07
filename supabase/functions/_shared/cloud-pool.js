@@ -98,6 +98,16 @@ export const PARAMETRES = Object.freeze({
   ipRebutsEntreeMax: 3,        // (07/11) N IP refusées au contrôle d'ENTRÉE en 24 h : l'achat automatique se suspend (la garde du nombre ne compte pas le rebut)
   soldeHorizonJours: 14,       // (07/11, décision 3) le solde IPRoyal doit couvrir les dépenses prévues sur N jours
   refusRevisiteJours: 14,      // refus_revisite_jours : un refus PROUVÉ est revisité après N jours
+  // (07/11 soir, ordres 3 et 4 de Nico) LA SANTÉ DES IP LIBRES — contrôle périodique (serveur-cloud/src/sante.js,
+  // entretien.controlerSante ; coin_config cloud_ip_sante_controle) et règle « saines d'abord » du renouvellement
+  // (planDuJour, coin_config cloud_ip_renouveler_saines_seulement). Colonne cloud_ips.sante (migration 20261107190000).
+  santeIntervalleH: 20,        // une IP libre est recontrôlée au plus tard N h après son dernier contrôle (au moins une fois par 24 h)
+  santeValiditeH: 36,          // un verdict « saine » vaut N h ; au-delà, la santé est INCONNUE (jamais comptée saine)
+  santeConfirmationMin: 30,    // l'échec qui grille une IP est RELU par un 2e contrôle, au moins N min après le 1er (jamais un incident passager)
+  santeRelanceMin: 120,        // un contrôle sans conclusion (page muette, sortie illisible) est refait après N min
+  santeDecisionJours: 2,       // « saines d'abord » : sans preuve de santé à J-N, une IP libre n'est pas renouvelée
+  santeChargeMax: 0.7,         // aucun contrôle quand la charge (1 min) dépasse 70 % des processeurs de l'hôte (pointe)
+  santeAlerteRappelH: 6,       // « IP saines libres sous la marge » : un rappel au plus toutes les N h
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -142,10 +152,17 @@ export function couvertureJusqua({ nature, maintenant = Date.now(), p = PARAMETR
   return now + p.renouvellementAvantJours * JOUR_MS;
 }
 
+/** (07/11 soir, ordre 4 de Nico) Une IP GRILLÉE au contrôle de santé (un échec relu une 2e fois) : jamais donnée à un
+ *  compte, jamais renouvelée, jamais comptée dans la marge ni dans la garde du nombre (= cloud_ips.sante ->> 'verdict'). */
+export function grillee(ip) {
+  return ip?.sante != null && typeof ip.sante === 'object' && ip.sante.verdict === 'grillee';
+}
+
 /** Cette IP peut-elle être donnée à ce compte, maintenant ? (= cloud_ip_attribuable) */
 export function ipAttribuable(ip, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES } = {}) {
   const exp = instant(ip?.expire_le);
   if (exp == null || exp < couvertureJusqua({ nature, maintenant, p })) return false;
+  if (grillee(ip)) return false;   // (07/11 soir) même au repos, même pour son dernier titulaire
   // Au repos : seulement à SON dernier titulaire (aucun autre compte ne l'a vue).
   if (ip.etat === 'repos') return userId != null && ip.dernier_user_id === userId;
   if (ip.etat !== 'disponible') return false;
@@ -326,7 +343,7 @@ export function deciderDepense({ montantUsd, envAutorise = false, interrupteur =
  * cloud_ip_garde_nombre, appelée par cloud_ip_depense_ouvrir sous le verrou de la dépense) :
  *   comptées = IP attribuées (essai, client)
  *            + IP du pool (achetee, disponible) qui COUVRENT un essai (≥ 7 + grâce + marge d'expiration jours de vie),
- *              non usées (attributions < attributions_max), sans refus PROUVÉ
+ *              non usées (attributions < attributions_max), sans refus PROUVÉ, (07/11 soir) jamais GRILLÉES
  *            + IP en commande (achats « demandee » / « en_cours ») + IP demandées ;
  *   borne    = comptes Cloud (actifs, ou titulaires d'une IP — la grâce) + marge + personnes en attente.
  * Elle compte un SOUS-ENSEMBLE de ce que compte planDuJour (jamais le repos, jamais une IP qui expire bientôt) : un achat
@@ -342,7 +359,7 @@ export function gardeNombre({ ips, comptesSansPlace, enAttente = 0, enCommande =
   const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
   const vivantes = liste.filter((ip) => ETATS_ATTRIBUES.includes(ip.etat)
     || ((ip.etat === 'achetee' || ip.etat === 'disponible') && instant(ip.expire_le) != null && instant(ip.expire_le) - now >= couverture
-      && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus))).length;
+      && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !grillee(ip))).length;
   const titulaires = new Set(liste.filter((ip) => ip.user_id != null && ETATS_ATTRIBUES.includes(ip.etat)).map((ip) => String(ip.user_id))).size;
   const sansPlace = comptesSansPlace == null || comptesSansPlace === '' ? NaN : Number(comptesSansPlace);
   if (!Number.isFinite(sansPlace) || sansPlace < 0) return null;   // illisible : l'achat est refusé (garde_illisible)
@@ -393,7 +410,7 @@ export function seuilSoldeProjete({ ips, registre = [], marge = PARAMETRES.ipMar
   const echoit = (ip) => instant(ip.expire_le) != null && instant(ip.expire_le) > now && instant(ip.expire_le) <= limite;
   const attribuees = liste.filter((ip) => ETATS_ATTRIBUES.includes(ip.etat) && echoit(ip)).length;
   const stock = liste.filter((ip) => ['achetee', 'disponible', 'repos'].includes(ip.etat) && echoit(ip)
-    && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !(refusee(ip.refus) && !reservee(ip, now))).length;
+    && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !grillee(ip) && !(refusee(ip.refus) && !reservee(ip, now))).length;
   const cible = Math.max(0, Math.floor(Number(marge) || 0)) + Math.max(0, Math.floor(Number(enAttente) || 0));
   const renouvellements = attribuees + Math.min(stock, cible);
   const achetees30 = (Array.isArray(registre) ? registre : []).filter((d) => d?.nature === 'achat' && !['echec', 'remboursee'].includes(d.statut)
@@ -538,43 +555,120 @@ export function stockVise({ marge = PARAMETRES.ipMarge, enAttente = 0 } = {}) {
 }
 
 /**
+ * (07/11 soir, ordre 4 de Nico) LA SANTÉ CONNUE d'une IP (pure) : 'saine' (dernier contrôle complet passé depuis moins de
+ * santeValiditeH heures), 'suspecte' (un échec vu, pas encore relu), 'grillee' (échec relu : définitif), 'inconnue'
+ * (jamais contrôlée, contrôle sans conclusion, ou « saine » trop ancienne).
+ */
+export function santeConnue(ip, maintenant = Date.now(), p = PARAMETRES) {
+  const s = ip?.sante;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return 'inconnue';
+  if (s.verdict === 'grillee') return 'grillee';
+  if (s.verdict === 'suspecte') return 'suspecte';
+  const sl = instant(s.saine_le);
+  if (s.verdict === 'saine' && sl != null && sl <= instant(maintenant) + 5 * 60_000 && instant(maintenant) - sl <= p.santeValiditeH * HEURE_MS) return 'saine';
+  return 'inconnue';
+}
+
+/** (07/11 soir) Un refus NON prouvé que la santé n'a pas encore contredit : noté APRÈS le dernier contrôle sain (pure). */
+export function refusApresSante(ip) {
+  const sl = instant(ip?.sante?.saine_le);
+  if (!refusee(ip?.refus)) return false;
+  return Object.values(ip.refus).some((r) => r?.prouvee !== true && (sl == null || instant(r?.le) == null || instant(r.le) > sl));
+}
+
+/**
  * `marge` : coin_config cloud_ip_marge ; `comptesSansPlace` : cloud_pool_etat.comptes_sans_place — avec lui, le plan
  * porte sa garde du nombre (`garde`, pour aCommander IP) ; sans lui, garde = null (l'achat automatique est alors refusé).
+ *
+ * (07/11 soir, ordre 3 de Nico : « IP en trop : ne renouvelle que jusqu'à (clients + marge), en gardant les SAINES en
+ * priorité ») `sainesSeulement` (coin_config cloud_ip_renouveler_saines_seulement = 1, ET contrôle de santé allumé —
+ * entretien.js) :
+ *   · IP attribuées (essai, client) : renouvelées avant leur échéance, comme toujours ;
+ *   · IP RÉSERVÉES (reserve_pour, réservation en cours — l'IP gardée de Nico) : TOUJOURS renouvelées avant leur échéance ;
+ *   · IP libres : seules les SAINES (santeConnue) sont renouvelées, les meilleures d'abord (les moins usées, puis
+ *     l'échéance la plus proche), jusqu'à ce que les libres saines vivantes = la marge + l'attente (le même stock visé
+ *     que l'achat) ; une SAINE au refus non prouvé n'est renouvelée que si le contrôle sain est POSTÉRIEUR au refus ;
+ *   · santé INCONNUE ou SUSPECTE : jamais comptée saine ; contrôlée en priorité (`aControler`) ; sans preuve de santé
+ *     à J-santeDecisionJours (2), pas renouvelée — elle expire à son terme ;
+ *   · une IP GRILLÉE n'est JAMAIS renouvelée (aussi hors de la règle) et ne compte jamais dans la marge.
+ * L'ACHAT (aCommander) suit le même stock visé, compté comme la garde du nombre (toute IP libre vivante non grillée,
+ * réservée comprise) : un achat que le plan demande passe toujours la garde — la marge se reconstitue seule quand
+ * cloud_ip_achats_auto = 1. Sans `sainesSeulement`, le plan d'avant, à une ligne près : une IP grillée jamais renouvelée.
+ * `santeDe(ip)` : la santé à juger (défaut santeConnue maintenant ; la projection la fige). `raisons` : id → la raison.
  */
 export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, marge = PARAMETRES.ipMarge, comptesSansPlace = null,
-  maintenant = Date.now(), p = PARAMETRES }) {
+  sainesSeulement = false, santeDe = null, maintenant = Date.now(), p = PARAMETRES }) {
   const now = instant(maintenant);
   const s = seuils({ lambda, p });
   const H = (p.delaiAchatJours + p.periodeDecisionJours) * JOUR_MS;
   const N = p.renouvellementAvantJours * JOUR_MS;
   const couvertureEssai = (ESSAI_JOURS + p.graceJours + p.margeExpirationJours) * JOUR_MS;
   const vise = stockVise({ marge, enAttente });
+  const regle = sainesSeulement === true;
+  const sante = typeof santeDe === 'function' ? santeDe : (ip) => santeConnue(ip, now, p);
   let projete = Math.max(0, Math.floor(Number(commandesEnCours) || 0));
-  const renouveler = [], laisserExpirer = [], attendre = [], candidats = [];
+  let projeteSaines = projete;   // (règle « saines ») les IP en commande arrivent neuves : comptées
+  const renouveler = [], laisserExpirer = [], attendre = [], candidats = [], aControler = [];
+  const raisons = {};
+  const dire = (liste, id, raison) => { liste.push(id); raisons[id] = raison; };
   for (const ip of Array.isArray(ips) ? ips : []) {
     const echeance = instant(ip.expire_le) - now;
     if (ip.etat === 'expiree') continue;
-    if (ip.etat === 'rebut') { if (echeance <= N) laisserExpirer.push(ip.id); continue; }
-    if (ETATS_ATTRIBUES.includes(ip.etat)) { (echeance <= N ? renouveler : attendre).push(ip.id); continue; }
+    if (ip.etat === 'rebut') { if (echeance <= N) dire(laisserExpirer, ip.id, 'rebut'); else raisons[ip.id] = 'rebut'; continue; }
+    if (ETATS_ATTRIBUES.includes(ip.etat)) { dire(echeance <= N ? renouveler : attendre, ip.id, 'attribuee'); continue; }
     // achetee / disponible / repos : le pool
     const usee = (ip.attributions ?? 0) >= p.attributionsMax;
     const prete = PRETE(ip, now, H);
     const couvre = echeance >= couvertureEssai;
     // (03/11) Une IP au refus PROUVÉ (dernier recours) ne compte pas dans le stock ; elle n'est pas renouvelée pour lui.
-    if (refusProuve(ip.refus)) { if (echeance <= N) laisserExpirer.push(ip.id); else attendre.push(ip.id); continue; }
-    // (04/11 soir, décision de Nico) Un refus NON prouvé : l'IP sert encore tant qu'elle vit (stock), mais elle n'est
-    // JAMAIS renouvelée — sauf RÉSERVÉE à un compte (l'IP de son retour).
-    const sansRenouvellement = refusee(ip.refus) && !reservee(ip, now);
-    if (prete && couvre && !usee) { projete++; attendre.push(ip.id); continue; }
-    if (echeance <= N || (prete && !couvre)) {
-      if (usee || !prete || sansRenouvellement) laisserExpirer.push(ip.id); else candidats.push(ip);
+    if (refusProuve(ip.refus)) { dire(echeance <= N ? laisserExpirer : attendre, ip.id, 'refus_prouve'); continue; }
+    const grille = grillee(ip);
+    if (regle) {
+      // (07/11 soir) La règle « saines d'abord ». La RÉSERVÉE d'abord (« jamais la mienne ») : renouvelée quoi qu'il arrive.
+      const res = reservee(ip, now);
+      if (grille && !res) { dire(echeance <= N ? laisserExpirer : attendre, ip.id, 'grillee'); continue; }
+      if (res && grille) { dire(echeance <= N ? renouveler : attendre, ip.id, 'reservee'); continue; }
+      const etatSante = sante(ip);
+      if (prete && couvre && !usee) {
+        projete++;
+        if (!res && (etatSante === 'saine' || (ip.etat === 'achetee' && etatSante === 'inconnue'))) projeteSaines++;
+        dire(attendre, ip.id, res ? 'reservee' : etatSante === 'saine' ? 'saine_vivante' : `${etatSante}_vivante`);
+        if (!res && etatSante !== 'saine' && ip.etat !== 'achetee') aControler.push(ip.id);
+        continue;
+      }
+      if (res) { dire(echeance <= N ? renouveler : attendre, ip.id, 'reservee'); if (echeance <= N) projete++; continue; }
+      if (echeance <= N || (prete && !couvre)) {
+        if (usee) { dire(laisserExpirer, ip.id, 'usee'); continue; }
+        if (!prete) { dire(laisserExpirer, ip.id, 'pas_prete'); continue; }
+        if (etatSante !== 'saine') {
+          if (echeance > p.santeDecisionJours * JOUR_MS) { dire(attendre, ip.id, `${etatSante}_a_controler`); aControler.push(ip.id); }
+          else dire(laisserExpirer, ip.id, `${etatSante}_sans_preuve`);
+          continue;
+        }
+        if (refusApresSante(ip)) { dire(laisserExpirer, ip.id, 'refus_non_prouve'); continue; }
+        candidats.push(ip);
+        continue;
+      }
+      dire(attendre, ip.id, 'pas_encore');
       continue;
     }
-    attendre.push(ip.id);
+    // (04/11 soir, décision de Nico) Un refus NON prouvé : l'IP sert encore tant qu'elle vit (stock), mais elle n'est
+    // JAMAIS renouvelée — sauf RÉSERVÉE à un compte (l'IP de son retour). (07/11 soir) Une IP GRILLÉE : jamais renouvelée.
+    const sansRenouvellement = refusee(ip.refus) && !reservee(ip, now);
+    if (prete && couvre && !usee) { projete++; dire(attendre, ip.id, 'vivante'); continue; }
+    if (echeance <= N || (prete && !couvre)) {
+      if (usee || !prete || sansRenouvellement || grille) {
+        dire(laisserExpirer, ip.id, usee ? 'usee' : !prete ? 'pas_prete' : grille ? 'grillee' : 'refus_non_prouve');
+      } else candidats.push(ip);
+      continue;
+    }
+    dire(attendre, ip.id, 'pas_encore');
   }
   candidats.sort((a, b) => (a.attributions ?? 0) - (b.attributions ?? 0) || instant(a.expire_le) - instant(b.expire_le));
   for (const ip of candidats) {
-    if (projete < vise) { renouveler.push(ip.id); projete++; } else laisserExpirer.push(ip.id);
+    const manque = regle ? projeteSaines < vise : projete < vise;
+    if (manque) { dire(renouveler, ip.id, regle ? 'saine_pour_la_marge' : 'pour_le_stock'); projete++; projeteSaines++; }
+    else dire(laisserExpirer, ip.id, regle ? 'saine_en_surplus' : 'en_surplus');
   }
   const aCommander = Math.max(0, vise - projete);
   const attribuables = (Array.isArray(ips) ? ips : []).filter((ip) => ip.etat === 'disponible' && !refusProuve(ip.refus)
@@ -583,7 +677,151 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
   const garde = comptesSansPlace == null ? null
     : gardeNombre({ ips, comptesSansPlace, enAttente, enCommande: commandesEnCours, quantite: aCommander, marge, maintenant: now, p });
   return { seuils: s, vise, projete, renouveler, laisserExpirer, attendre, aCommander, attribuables, niveau, garde,
-    rebutsEntree24h: rebutsEntreeRecents(ips, now) };
+    rebutsEntree24h: rebutsEntreeRecents(ips, now), sainesSeulement: regle, ...(regle ? { projeteSaines, aControler } : {}), raisons };
+}
+
+/**
+ * (07/11 soir, ordre 4 de Nico) LE BILAN DE SANTÉ DES IP LIBRES (pure) — l'alerte « saines sous la marge » : IP libres
+ * (disponible, achetee, repos fini et purgé ; ni attribuée, ni réservée) qui vivent au-delà de la fenêtre de
+ * renouvellement, comptées par santé. `sousMarge` : saines < marge, une fois toutes contrôlées (sinon : même si toutes les
+ * inconnues étaient saines, la marge ne serait pas atteinte).
+ */
+export function bilanSante(ips, { marge = PARAMETRES.ipMarge, maintenant = Date.now(), p = PARAMETRES } = {}) {
+  const now = instant(maintenant);
+  const N = p.renouvellementAvantJours * JOUR_MS;
+  const r = { libres: 0, saines: 0, suspectes: 0, grillees: 0, inconnues: 0, marge: Math.max(0, Math.floor(Number(marge) || 0)) };
+  for (const ip of Array.isArray(ips) ? ips : []) {
+    if (!ipLibre(ip, now) || reservee(ip, now)) continue;
+    const exp = instant(ip.expire_le);
+    if (exp == null || exp - now <= N) continue;
+    r.libres++;
+    const s = santeConnue(ip, now, p);
+    if (s === 'saine') r.saines++; else if (s === 'suspecte') r.suspectes++; else if (s === 'grillee') r.grillees++; else r.inconnues++;
+  }
+  r.sousMarge = r.inconnues === 0 ? r.saines < r.marge : r.saines + r.inconnues < r.marge;
+  return r;
+}
+
+/** (07/11 soir) Une IP LIBRE (pure) : disponible, achetee, ou au repos fini et purgé ; jamais tenue par un compte. */
+export function ipLibre(ip, maintenant = Date.now()) {
+  if (!ip || ip.user_id != null) return false;
+  if (ip.etat === 'disponible' || ip.etat === 'achetee') return true;
+  return ip.etat === 'repos' && instant(ip.repos_fin) != null && instant(ip.repos_fin) <= instant(maintenant) && Boolean(ip.purge_prouvee_le);
+}
+
+/**
+ * (07/11 soir, ordre 4 de Nico : « ce contrôle de santé doit tourner seul, régulièrement, sur toutes les IP libres »)
+ * L'IP À CONTRÔLER MAINTENANT (pure), ou null — une seule à la fois. Libres seulement (ipLibre), jamais une IP réservée
+ * (l'IP gardée d'un compte, son secours), jamais en usage par un navigateur, jamais grillée (définitif), jamais une IP qui
+ * expire dans l'heure ; sa sortie ouverte par le pare-feu (`permise`). Dans l'ordre :
+ *   0. une SUSPECTE dont le dernier contrôle a au moins santeConfirmationMin (la 2e lecture qui prouve ou lève) ;
+ *   1. une IP jamais contrôlée ;
+ *   2. un contrôle sans conclusion vieux d'au moins santeRelanceMin, ou un refus de plateforme noté après le contrôle ;
+ *   3. un contrôle vieux d'au moins santeIntervalleH ;
+ * à rang égal, l'échéance la plus proche (la décision de renouvellement d'abord), puis le contrôle le plus ancien.
+ */
+export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () => true, enUsage = [], p = PARAMETRES } = {}) {
+  const now = instant(maintenant);
+  const occupees = new Set((enUsage ?? []).map(Number));
+  const dus = [];
+  for (const ip of Array.isArray(ips) ? ips : []) {
+    if (!ipLibre(ip, now) || reservee(ip, now) || grillee(ip) || occupees.has(Number(ip.id))) continue;
+    const exp = instant(ip.expire_le);
+    if (exp == null || exp - now < HEURE_MS || !permise(ip)) continue;
+    const s = ip.sante && typeof ip.sante === 'object' ? ip.sante : {};
+    const le = instant(s.le);
+    const depuis = le == null ? Infinity : now - le;
+    const refusRecent = refusee(ip.refus) && Object.values(ip.refus).some((r) => r?.prouvee !== true && instant(r?.le) != null && (le == null || instant(r.le) > le));
+    let rang = null, raison = null;
+    if (s.verdict === 'suspecte' && depuis >= p.santeConfirmationMin * 60_000) { rang = 0; raison = 'confirmation'; }
+    else if (le == null) { rang = 1; raison = 'jamais_controlee'; }
+    else if ((Array.isArray(s.dernier?.inconnus) && s.dernier.inconnus.length && depuis >= p.santeRelanceMin * 60_000)
+      || (refusRecent && depuis >= p.santeConfirmationMin * 60_000)) { rang = 2; raison = refusRecent ? 'refus_apres_controle' : 'sans_conclusion'; }
+    else if (depuis >= p.santeIntervalleH * HEURE_MS) { rang = 3; raison = 'periodique'; }
+    if (rang != null) dus.push({ ip, rang, raison, le: le ?? -Infinity });
+  }
+  dus.sort((a, b) => a.rang - b.rang || instant(a.ip.expire_le) - instant(b.ip.expire_le) || a.le - b.le || Number(a.ip.id) - Number(b.ip.id));
+  return dus[0] ? { ip: dus[0].ip, raison: dus[0].raison, dues: dus.length } : null;
+}
+
+/**
+ * (07/11 soir, ordre 4 de Nico : « grillée = au moins un échec PROUVÉ, relu une 2e fois avant de conclure ») LA SANTÉ
+ * APRÈS UN CONTRÔLE (pure ; écrite par cloud_ip_sante_noter). `controle` = { fait_le, echecs: [codes], inconnus: [codes],
+ * resume } (sante.js, bilanControle) ; un code d'échec = une plateforme (« ebay ») ou la sortie (« sortie:hebergeur »…),
+ * un code inconnu = une plateforme ou « sortie ».
+ *   · aucun échec, rien d'inconnu → « saine » (saine_le = ce contrôle) ;
+ *   · un échec → « suspecte » ; le même échec relu par un contrôle au moins santeConfirmationMin plus tard → « grillee »
+ *     (définitif : une IP grillée ne redevient jamais saine, elle expire à son terme) ;
+ *   · sans conclusion : une suspecte dont l'échec n'a pas été relu le reste ; sinon la santé d'avant (saine_le inchangé,
+ *     elle vieillit) ou « inconnue ».
+ */
+export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
+  const a = avant && typeof avant === 'object' && !Array.isArray(avant) ? avant : {};
+  const uniques = (l) => [...new Set((Array.isArray(l) ? l : []).map(String).filter(Boolean))].sort();
+  const le = controle?.fait_le ?? null;
+  const t = instant(le);
+  const echecs = uniques(controle?.echecs);
+  const inconnus = uniques(controle?.inconnus);
+  const base = { version: 1, le, controles: (Number(a.controles) || 0) + 1, saine_le: a.saine_le ?? null,
+    dernier: { le, echecs, inconnus, ...(controle?.resume ? { resume: controle.resume } : {}) },
+    precedent: a.dernier ? { le: a.dernier.le ?? null, echecs: a.dernier.echecs ?? [], inconnus: a.dernier.inconnus ?? [] } : null };
+  if (a.verdict === 'grillee') return { ...base, verdict: 'grillee', grillee_le: a.grillee_le ?? null, suspecte_le: a.suspecte_le ?? null, echecs: uniques(a.echecs) };
+  const avantEchecs = a.verdict === 'suspecte' ? uniques(a.echecs) : [];
+  if (echecs.length) {
+    const communs = echecs.filter((e) => avantEchecs.includes(e));
+    const depuis = instant(a.suspecte_le);
+    if (communs.length && depuis != null && t != null && t - depuis >= p.santeConfirmationMin * 60_000) {
+      return { ...base, verdict: 'grillee', grillee_le: le, suspecte_le: a.suspecte_le, echecs: communs };
+    }
+    if (communs.length) return { ...base, verdict: 'suspecte', suspecte_le: a.suspecte_le, echecs };
+    return { ...base, verdict: 'suspecte', suspecte_le: le, echecs };
+  }
+  if (!inconnus.length) return { ...base, verdict: 'saine', saine_le: le, suspecte_le: null, echecs: [] };
+  const nonRelus = avantEchecs.filter((e) => inconnus.includes(e.split(':')[0]));
+  if (nonRelus.length) return { ...base, verdict: 'suspecte', suspecte_le: a.suspecte_le ?? null, echecs: avantEchecs };
+  return { ...base, verdict: base.saine_le ? 'saine' : 'inconnue', suspecte_le: null, echecs: [] };
+}
+
+/**
+ * (07/11 soir, ordre 3 de Nico : « montre-moi la liste des IP qui vont expirer avant d'activer la règle ») LA PROJECTION
+ * (pure) : le plan rejoué heure par heure (pasH) sur `jours` jours, la santé FIGÉE (`santeFigee` : id → verdict ; défaut
+ * santeConnue maintenant), sans nouveau compte, sans achat : une IP renouvelée prend periodeIpJours de plus (toute sa
+ * commande IPRoyal avec elle), une IP non renouvelée à son échéance expire. Rend, par IP, le premier événement :
+ * { id, evenement: 'renouvelee' | 'expire' | 'aucun', le, nouvelle_echeance, raison, avec_sa_commande }.
+ */
+export function projeterEcheances({ ips, marge = PARAMETRES.ipMarge, enAttente = 0, commandesEnCours = 0, sainesSeulement = false,
+  santeFigee = null, maintenant = Date.now(), jours = 45, pasH = 1, p = PARAMETRES }) {
+  const t0 = instant(maintenant);
+  const pool = (Array.isArray(ips) ? ips : []).map((ip) => ({ ...ip }));
+  const figee = new Map(pool.map((ip) => [ip.id, santeFigee?.get?.(ip.id) ?? santeFigee?.[ip.id] ?? santeConnue(ip, t0, p)]));
+  const santeDe = (ip) => figee.get(ip.id) ?? 'inconnue';
+  const evenements = new Map();
+  const derniereRaison = new Map();
+  for (let t = t0; t <= t0 + jours * JOUR_MS; t += pasH * HEURE_MS) {
+    for (const ip of pool) {
+      // ⛔ Une IP attribuée n'expire jamais sous son titulaire (le plan la renouvelle à J-3) : seul le pool expire ici.
+      if (ip.etat === 'expiree' || ETATS_ATTRIBUES.includes(ip.etat) || instant(ip.expire_le) > t) continue;
+      ip.etat = 'expiree';
+      if (!evenements.has(ip.id)) evenements.set(ip.id, { id: ip.id, evenement: 'expire', le: new Date(instant(ip.expire_le)).toISOString(), raison: derniereRaison.get(ip.id) ?? null });
+    }
+    const plan = planDuJour({ ips: pool, lambda: p.lambdaMin, enAttente, commandesEnCours, marge, sainesSeulement, santeDe, maintenant: t, p });
+    for (const [id, r] of Object.entries(plan.raisons)) derniereRaison.set(Number(id), r);
+    for (const id of plan.renouveler) {
+      const ip = pool.find((x) => Number(x.id) === Number(id));
+      if (!ip) continue;
+      const freres = ip.commande ? pool.filter((x) => x.commande === ip.commande && x.etat !== 'expiree') : [ip];
+      for (const x of freres) {
+        const fin = instant(x.expire_le) + p.periodeIpJours * JOUR_MS;
+        if (!evenements.has(x.id)) {
+          evenements.set(x.id, { id: x.id, evenement: 'renouvelee', le: new Date(t).toISOString(), nouvelle_echeance: new Date(fin).toISOString(),
+            raison: plan.raisons[x.id] ?? plan.raisons[id] ?? null, avec_sa_commande: Number(x.id) !== Number(id) });
+        }
+        x.expire_le = new Date(fin).toISOString();
+      }
+    }
+  }
+  return (Array.isArray(ips) ? ips : []).map((ip) => evenements.get(ip.id)
+    ?? { id: ip.id, evenement: ip.etat === 'expiree' ? 'deja_expiree' : 'aucun', le: null, raison: derniereRaison.get(ip.id) ?? null });
 }
 
 /** 'vide' (aucune IP attribuable à un essai) | 'presque_vide' | null. */
