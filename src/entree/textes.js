@@ -16,11 +16,13 @@
 // le 03/11) sont AJOUTÉS en fin d'objet : aucune clé d'avant ne change. ⛔ Ni prix, ni durée d'essai, ni quota
 // écrits ici : le prix vient de CLOUD_PRIX_AFFICHE, la durée de CLOUD_ESSAI_JOURS (utils/palier.js), les volumes
 // de coin_config (passés en paramètre), les noms des plateformes du Cloud de config/cloudOffer.js.
-import { CLOUD_PRIX_AFFICHE, CLOUD_ESSAI_JOURS } from '../utils/palier';
+import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN, CLOUD_ESSAI_JOURS } from '../utils/palier';
 
 // Insécables : « 7 jours », le prix « …/mois » ne se coupent pas en fin de ligne (même règle que cloud/textes.js).
 const NBSP = String.fromCharCode(0xa0);
 const PRIX = CLOUD_PRIX_AFFICHE.replace(/ /g, NBSP);
+// (07/11, décision de Nico) Les textes anglais disent le même prix à l'anglaise (CLOUD_PRIX_AFFICHE_EN).
+const PRIX_EN = CLOUD_PRIX_AFFICHE_EN;
 const J7 = `${CLOUD_ESSAI_JOURS}${NBSP}jours`;
 const D7 = `${CLOUD_ESSAI_JOURS}${NBSP}days`;
 
@@ -385,7 +387,7 @@ const EN = {
   voieCloudP: (noms) => `No computer needed. FillSell posts, bumps and removes your ${noms} listings from its servers, even when everything is off.`,
   voieCloudPlus: ['Nothing to install', 'Sales seen live', 'No commitment'],
   voieCloudCta: `Try ${D7} free`,
-  voieCloudNote: `Then ${PRIX}/mo. Stop it in one tap, we remind you the day before.`,
+  voieCloudNote: `Then ${PRIX_EN}/mo. Stop it in one tap, we remind you the day before.`,
   voieExtK: 'Chrome extension',
   voieExtT: 'On your computer, free',
   voieExtP: 'Installed once in Chrome, it posts your listings with the accounts already signed in. Your computer must be on to post.',
@@ -404,7 +406,7 @@ const EN = {
   cloudFrise: (veille, bascule) => [
     { quand: 'Today', quoi: 'Card required, €0 charged.' },
     { quand: veille, quoi: 'We remind you, in the app and by email.' },
-    { quand: bascule, quoi: `${PRIX}/mo, unless you stop before. No commitment.` },
+    { quand: bascule, quoi: `${PRIX_EN}/mo, unless you stop before. No commitment.` },
   ],
   cloudFait: 'What the Cloud does',
   cloudFaitListe: (noms, quotasFree) => [

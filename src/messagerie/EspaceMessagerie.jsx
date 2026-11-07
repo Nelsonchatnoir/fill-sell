@@ -82,7 +82,7 @@ function Bulle({ m, lang }) {
   const moi = m.sens === 'envoye';
   const plateforme = m.sens === 'plateforme';
   const texte = m.type === 'offre'
-    ? `${fr ? 'Offre' : 'Offer'} ${montantTexte(m.offre_montant, m.offre_devise) ?? ''}${m.offre_statut ? ` · ${m.offre_statut}` : ''}`
+    ? `${fr ? 'Offre' : 'Offer'} ${montantTexte(m.offre_montant, m.offre_devise, lang) ?? ''}${m.offre_statut ? ` · ${m.offre_statut}` : ''}`
     : m.type === 'favori' ? (fr ? 'A mis l’annonce en favori.' : 'Added the listing to favourites.')
     : (m.texte ?? (fr ? '(photo ou message sans texte)' : '(photo or message without text)'));
   return (
@@ -206,7 +206,7 @@ function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMod
       {(conv.inventaire_id || conv.offre_montant != null) && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 4px' }}>
           {conv.inventaire_id ? <span style={{ fontSize: 12, fontWeight: 700, color: '#1B6E62', background: MENTHE, borderRadius: 999, padding: '3px 10px' }}>{fr ? 'Article de ton stock' : 'Item in your stock'}</span> : null}
-          {conv.offre_montant != null ? <span style={{ fontSize: 12, fontWeight: 700, color: '#8A6100', background: '#FFF6E3', borderRadius: 999, padding: '3px 10px' }}>{fr ? 'Offre' : 'Offer'} {montantTexte(conv.offre_montant, conv.offre_devise)}{conv.offre_statut ? ` · ${conv.offre_statut}` : ''}</span> : null}
+          {conv.offre_montant != null ? <span style={{ fontSize: 12, fontWeight: 700, color: '#8A6100', background: '#FFF6E3', borderRadius: 999, padding: '3px 10px' }}>{fr ? 'Offre' : 'Offer'} {montantTexte(conv.offre_montant, conv.offre_devise, lang)}{conv.offre_statut ? ` · ${conv.offre_statut}` : ''}</span> : null}
         </div>
       )}
       {/* (17/10) Les messages suivent la page, qui défile d'un seul tenant : aucun

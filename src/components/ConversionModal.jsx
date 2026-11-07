@@ -138,11 +138,13 @@ export const COIN_CONFIG_FALLBACK = {
 // Italie sont à 74,99 EUR (France re-corrigée à 59,99 € le soir même). Tant
 // que ces deux lignes ne sont pas alignées, l'offre reste masquée — cf.
 // src/config/businessOffer.js, qui porte le relevé complet et les conditions.
+// (07/11, décision de Nico) `priceEn` : le MÊME montant écrit à l'anglaise pour l'écran anglais (« €12.99 »).
 const PLAN_PRICES = {
-  premium:  { price: '12,99 €' },
-  pro:      { price: '29,99 €' },
-  business: { price: '59,99 €' },
+  premium:  { price: '12,99 €', priceEn: '€12.99' },
+  pro:      { price: '29,99 €', priceEn: '€29.99' },
+  business: { price: '59,99 €', priceEn: '€59.99' },
 };
+const prixPlan = (palier, fr) => (fr ? PLAN_PRICES[palier].price : PLAN_PRICES[palier].priceEn);
 
 // (Bascule quotas 02/09 : articlesParMois / coutArticleComplet — les
 // équivalences « ≈ N articles » calculées depuis les prix en unités — sont
@@ -522,9 +524,9 @@ function FreePlanCard({ fr, estMonPlan, K, cloud = null, voieCloud = null }) {
             </span>
           )}
         </span>
-        {cloud && voieCloud ? <PrixAvecCloud prix="0 €" cloud={cloud} encreClaire={C.mute2} lang={fr ? 'fr' : 'en'} /> : (
+        {cloud && voieCloud ? <PrixAvecCloud prix={fr ? "0 €" : "€0"} cloud={cloud} encreClaire={C.mute2} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.mute2, lineHeight: 1 }}>0 €</div>
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.mute2, lineHeight: 1 }}>{fr ? "0 €" : "€0"}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
         )}
@@ -558,9 +560,9 @@ function PremiumPlanCard({ fr, K, onUpgrade, cloud = null }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: grille ? 6 : 14 }}>
         <PremiumBadge />
-        {cloud ? <PrixAvecCloud prix={PLAN_PRICES.premium.price} cloud={cloud} lang={fr ? 'fr' : 'en'} /> : (
+        {cloud ? <PrixAvecCloud prix={prixPlan('premium', fr)} cloud={cloud} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, lineHeight: 1 }}>{PLAN_PRICES.premium.price}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, lineHeight: 1 }}>{prixPlan('premium', fr)}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
         )}
@@ -601,9 +603,9 @@ export function ProPlanCard({ fr, K, onUpgrade, cloud = null }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: grille ? 6 : 14 }}>
         <ProBadge />
-        {cloud ? <PrixAvecCloud prix={PLAN_PRICES.pro.price} cloud={cloud} sombre taille={24} lang={fr ? 'fr' : 'en'} /> : (
+        {cloud ? <PrixAvecCloud prix={prixPlan('pro', fr)} cloud={cloud} sombre taille={24} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: C.paper, lineHeight: 1 }}>{PLAN_PRICES.pro.price}</div>
+          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: C.paper, lineHeight: 1 }}>{prixPlan('pro', fr)}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.6)', marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
         )}
@@ -665,9 +667,9 @@ export function BusinessPlanCard({ fr, K, onUpgrade, cloud = null }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: grille ? 6 : 14 }}>
         <BusinessBadge />
-        {cloud ? <PrixAvecCloud prix={PLAN_PRICES.business.price} cloud={cloud} sombre taille={24} lang={fr ? 'fr' : 'en'} /> : (
+        {cloud ? <PrixAvecCloud prix={prixPlan('business', fr)} cloud={cloud} sombre taille={24} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: C.paper, lineHeight: 1 }}>{PLAN_PRICES.business.price}</div>
+          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: C.paper, lineHeight: 1 }}>{prixPlan('business', fr)}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.6)', marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
         )}

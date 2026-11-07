@@ -24,6 +24,7 @@ import FileAnnoncesADepiler from './FileAnnoncesADepiler';
 import { S, DEGRADE } from '../stock/jetons';
 import { prixAchatConnu } from '../utils/comptabilite';
 import { prixParDefautDuBandeau, retireeProposable } from '../utils/prixBandeauVente';
+import { montantAnglais } from '../utils/montants';
 
 const PLAT = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', vestiaire: 'Vestiaire', opla: 'Opla', depop: 'Depop' };
 
@@ -86,7 +87,7 @@ export default function QuestionsPlusEnLigne({
                   <strong style={{ display: 'block', fontSize: 15, fontWeight: 700 }}>{fr ? 'Annonce remplacée ?' : 'Listing replaced?'}</strong>
                   {fr
                     ? <>« {job.title || 'Article'} » n'est plus à son ancienne adresse sur <strong>{plat}</strong>, mais une annonce au même titre{proposition.prix != null ? ` (${proposition.prix} €)` : ''} est en ligne. C'est la même ?</>
-                    : <>“{job.title || 'Item'}” is no longer at its old address on <strong>{plat}</strong>, but a listing with the same title{proposition.prix != null ? ` (€${proposition.prix})` : ''} is online. Is it the same one?</>}
+                    : <>“{job.title || 'Item'}” is no longer at its old address on <strong>{plat}</strong>, but a listing with the same title{proposition.prix != null ? ` (${montantAnglais(proposition.prix) || `€${proposition.prix}`})` : ''} is online. Is it the same one?</>}
                   {proposition.url && <> <a href={proposition.url} target="_blank" rel="noreferrer" style={{ color: S.tealDeep, fontWeight: 600 }}>{fr ? 'Voir l’annonce' : 'View listing'}</a></>}
                 </div>
               </div>

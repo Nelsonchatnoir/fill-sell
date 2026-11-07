@@ -284,7 +284,7 @@ export default function LivraisonDuLot({
             <button type="button" className="fpd fpd-lien" style={{ padding: 0 }} disabled={gardeDefaut === "en_cours"} onClick={garderPortParDefaut}>
               {gardeDefaut === "rate"
                 ? (en ? "Not saved — try again" : "Pas enregistré — réessaie")
-                : (en ? `Keep ${formaterPort(portLotLu, "en")} € for my next Depop listings` : `Garder ${formaterPort(portLotLu)} € pour mes prochaines annonces Depop`)}
+                : (en ? `Keep €${formaterPort(portLotLu, "en")} for my next Depop listings` : `Garder ${formaterPort(portLotLu)} € pour mes prochaines annonces Depop`)}
             </button>
           )}
           {gardeDefaut === "ok" && (

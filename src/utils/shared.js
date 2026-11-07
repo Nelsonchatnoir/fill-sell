@@ -10,6 +10,9 @@ import { parLeCloud, compteCourantEstCloud, texteTacheCloud } from '../cloud/voi
 // (06/11, phase 3 point 1 — suite) Les phrases françaises écrites en base, lues en anglais à l'affichage.
 import { traduireMessageServeur } from './messagesServeur.js';
 import { sansRienVenduSurVente } from './rienVenduSurVente.js';
+// (07/11, décision de Nico) Les montants en anglais au format anglais (« €1,268.00 »), le français inchangé.
+import { localeDuMontant } from './montants.js';
+import { langueDeLApp } from './langueApp.js';
 
 export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -1164,11 +1167,14 @@ export const CURRENCY_LOCALES = Object.fromEntries(CURRENCY_DATA.map(c=>[c.code,
 export const CURRENCY_SYMBOLS = Object.fromEntries(CURRENCY_DATA.map(c=>[c.code,c.sym]));
 export const CURRENCY_DECIMALS = Object.fromEntries(CURRENCY_DATA.map(c=>[c.code,c.dec]));
 
-export function formatCurrency(amount, currency='EUR', decimals=null) {
+// (07/11, décision de Nico) `lang` : 'en' = format anglais (« €1,268.00 ») pour une devise au format français (EUR…),
+// 'fr' = la locale de la devise, inchangée (« 1 268,00 € »). Absent : la langue de l'app (utils/langueApp.js), pour
+// qu'aucun montant affiché en anglais ne reste au format français — l'appelant qui connaît `lang` le passe.
+export function formatCurrency(amount, currency='EUR', decimals=null, lang=null) {
   const n = Math.round((amount||0)*100)/100;
   const dec = decimals!==null ? decimals : (CURRENCY_DECIMALS[currency]??2);
   try {
-    return new Intl.NumberFormat(CURRENCY_LOCALES[currency]||'fr-FR',{style:'currency',currency,minimumFractionDigits:dec,maximumFractionDigits:dec}).format(n);
+    return new Intl.NumberFormat(localeDuMontant(CURRENCY_LOCALES[currency], lang ?? langueDeLApp()),{style:'currency',currency,minimumFractionDigits:dec,maximumFractionDigits:dec}).format(n);
   } catch {
     const sym = CURRENCY_SYMBOLS[currency]||currency;
     return sym+' '+n.toFixed(dec);

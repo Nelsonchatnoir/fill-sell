@@ -1,5 +1,45 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 07/11/2026 ~14:00 — places = min(serveur, IP) APPLIQUÉ ; restauration du Cloud ; cloud.fillsell.app RETIRÉ ; copie 0.6.177
+- **Places = LEAST(places serveur, IP attribuables)** (feu vert NOMMÉ de Nico) : migration `20261107170000_cloud_places_min_ip`
+  APPLIQUÉE 13:41 (`db query --linked --yes -f` + `migration repair … applied`), corps réécrit depuis `pg_get_functiondef`
+  (md5 prod = fixture avant). Essai jetable `PREUVE_PG=embarque node scripts/essais/20261107170000_banc.mjs` : 24/24 (le
+  défaut, la règle, 6 paiements puis « complet » sans IP réservée, la chaîne d'achat livrée → contrôlée → place, plafond
+  serveur, file, rotation, IP au repos, inverse). Relu en prod : 14 → **6** pour un compte ordinaire (7 IP « disponible »
+  dont l'IP 39 gardée à Nico jusqu'au 03/12) ; liste d'attente 6 ; serveur 14 ; 3,5 ms l'appel. Compteur, vente et liste
+  lisent le même chiffre. Inverse : `supabase/rollbacks/20261107170000_cloud_places_min_ip_INVERSE.sql`.
+- **Achats d'IP** (décision de Nico : rien d'avance, rallumés le jour de l'ouverture, plafond 100 $) : chaîne relue de bout
+  en bout sans rien acheter — entretien horaire de cloud-2 (`planDuJour` : stock visé = max(cloud_ip_stock_min 2, seuil)
+  + inscrits en attente ; ce matin vise 2, attribuables 6, aCommander 0) → triple garde (IPROYAL_ACHATS_AUTORISES = 1 sur
+  cloud-2 relu sans lire les secrets, `cloud_ip_achats_auto` 0, plafond 60 $ à passer à 100) → `cloud_ip_ajouter` → contrôle
+  d'entrée → « disponible » → la place monte (banc D). Prix IPRoyal lus (calculate-pricing, client sans droit d'achat) :
+  1 IP = 4,00 $ / 30 j ; 7 = 21 $ ; 14 = 41,16 $ ; 30 = 88,20 $ (commande groupée). ⚠ Solde IPRoyal **21,15 $** (5 IP) :
+  à recharger avant l'ouverture. ⚠ Les IP du stock au-delà du stock visé ne sont PAS renouvelées (échéances 29/11 → 04/12) :
+  sans client d'ici là, le compteur retombe à 2.
+- **Restaurer les achats** : avant, seule la formule était cherchée (un Cloud pris seul répondait « Aucun achat actif
+  trouvé »). Maintenant `src/lib/restauration.js` (formule active d'abord + option `app.fillsell.cloud.sub`) →
+  `achatCloud.restaurer` (iOS : `validate-apple-receipt` avec `option: 'cloud'`, la formule du profil jamais touchée ;
+  Android : `validate-google-purchase` du produit Cloud) → `cloud_etat_moi` fait foi. ⛔ `validate-apple-receipt` modifiée
+  (v39 en prod, verify_jwt true) : le DÉPLOIEMENT a été refusé au terminal (garde « Production Deploy ») — geste de Nico
+  `npx supabase functions deploy validate-apple-receipt` AVANT toute OTA ou binaire qui porte ce code (sinon un Cloud seul
+  restauré sur iOS écrirait is_premium = false à un compte payé ailleurs).
+- **cloud.fillsell.app — voie (b)** : repli `CLOUD_DOMAINE` retiré de l'app (MeConnecterCloud : serveur du compte illisible
+  → reprise bornée, puis « coupée ») ; `lancer-serveur-test.mjs` n'écrit plus aucun DNS. Rien d'autre ne l'utilisait (app,
+  extension, fonctions, SQL, crons relus). Cloudflare 13:4x : A `cloud` (178.105.24.16) SUPPRIMÉ, relu NXDOMAIN (NS
+  Cloudflare et 1.1.1.1) ; `cloud-2` → 5.9.80.213 intact, /sante ok, certificat cloud-2 valide (02/02/2027), /connexion/ws
+  répond. Hetzner 13:47 : Primary IP 153549647 (178.105.24.16) SUPPRIMÉE par l'API (HTTP 204, relu : 0 Primary IP).
+- **Copie Cloud 0.6.177** : `EXTENSION_SEULE=1 …/deployer.sh` 13:32 (zip du terminal PROBLÈMES, BUILD_ID
+  2026-11-07T12:31:03Z+11e4acb) ; relu `profiles.extension_version` = 0.6.177.44715 (13:53). Inverse : comme le matin.
+- **Montants en anglais** (décision de Nico) : `src/utils/montants.js` (`localeDuMontant` : une devise au format français
+  passe en en-IE quand l'app est en anglais ; `montantAnglais` : « €1,268.50 ») ; `formatCurrency` (shared.js et la copie
+  d'App.jsx) prend `lang` (absent : la langue de l'app) ; prix Cloud anglais = `CLOUD_PRIX_AFFICHE_EN` (« €24.99 »,
+  dérivé du prix français). ~40 écrans relus (Stock, Ventes, tableau de bord, messagerie, publication, lot, eBay, fiche,
+  fusion, entrée, offres, page d'accueil). Français octet pour octet inchangé. Selftest `montants-anglais` (35).
+- **Binaire ou OTA** : tout ce lot est web. Le canal `production` sert 2.9.162 (« Updates Under Native : No ») : un binaire
+  2.9.163 garde son web embarqué (e81bc5e, sans compteur ni restauration du Cloud) tant qu'aucune OTA ≥ 2.9.164 n'est
+  publiée ; avec `atInstall`, une OTA s'applique au premier lancement si elle arrive en moins de 10 s, sinon au passage
+  suivant en arrière-plan. Recommandé : binaire neuf 2.9.164 (AAB vc35 + Codemagic) une fois le lot poussé.
+
 ## 07/11/2026 ~12:00 — compteur de places + liste d'attente (web, OTA) ; cloud.fillsell.app NON repointé
 - **Compteur** (décision de Nico) : « 14 places restantes » sur les trois blocs d'offre de la feuille des formules
   (interrupteur, Free + Cloud, ajout à une formule) et sur l'étape Cloud de l'entrée. Le nombre = `places` de

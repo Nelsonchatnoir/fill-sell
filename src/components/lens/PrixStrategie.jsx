@@ -20,7 +20,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 // Le verdict (« Bon deal ») n'est pas repris : il tombe avec la marge, et le
 // viseur ne demande pas le prix d'achat.
 
-const fmt = (v, currency) => formatCurrency(v, currency, Number.isInteger(v) ? 0 : null);
+const fmt = (v, currency, lang) => formatCurrency(v, currency, Number.isInteger(v) ? 0 : null, lang);
 
 export default function PrixStrategie({ result, strategie, prixAchat = null, lang, currency = 'EUR' }) {
   const { t, tpl } = useTranslation(lang);
@@ -44,12 +44,12 @@ export default function PrixStrategie({ result, strategie, prixAchat = null, lan
         <span className="lns-h">{t('lensPrixRevente')}</span>
         {fourchette && (
           <span className="lns-compte">
-            {tpl('lensMarcheFourchette', { bas: fmt(fourchette.bas, currency), haut: fmt(fourchette.haut, currency) })}
+            {tpl('lensMarcheFourchette', { bas: fmt(fourchette.bas, currency, lang), haut: fmt(fourchette.haut, currency, lang) })}
           </span>
         )}
       </div>
       <div className="lns-prix-ligne">
-        <span className="lns-prix">{niveau === 'aucune' ? `≈ ${fmt(p.prix, currency)}` : fmt(p.prix, currency)}</span>
+        <span className="lns-prix">{niveau === 'aucune' ? `≈ ${fmt(p.prix, currency, lang)}` : fmt(p.prix, currency, lang)}</span>
         <span className="lns-strategie">{tpl('lensTaStrategie', { nom: libelleStrategie(p.strategie, lang) })}</span>
       </div>
       {position != null && (
@@ -72,13 +72,13 @@ export default function PrixStrategie({ result, strategie, prixAchat = null, lan
       {aAchat && (
         <p className="lns-note-prix">
           {tpl('lensMarge', {
-            m: `${marge >= 0 ? '+' : '−'}${fmt(Math.abs(marge), currency)}`,
-            a: fmt(achat, currency),
+            m: `${marge >= 0 ? '+' : '−'}${fmt(Math.abs(marge), currency, lang)}`,
+            a: fmt(achat, currency, lang),
           })}
         </p>
       )}
       {plafond != null && (
-        <p className="lns-note-prix">{tpl('lensAcheteSous', { p: fmt(plafond, currency) })}</p>
+        <p className="lns-note-prix">{tpl('lensAcheteSous', { p: fmt(plafond, currency, lang) })}</p>
       )}
     </div>
   );

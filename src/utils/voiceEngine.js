@@ -1,4 +1,6 @@
 import { supabaseUrl, supabaseAnonKey } from '../lib/supabase.js';
+// (07/11) Les montants des réponses anglaises au format anglais (« €1,268.50 »), le français inchangé.
+import { montantAnglais } from './montants.js';
 
 const norm = s =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim() ?? "";
@@ -606,7 +608,7 @@ function handleQueryStats(task, context) {
       const monthSales = context.sales.filter(s => new Date(s.date || s.created_at) >= startOfMonth);
       const total = sommeMarges(monthSales);
       const monthName = now.toLocaleString(context.lang === "en" ? "en-US" : "fr-FR", { month: "long" });
-      return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, monthName }, message: `${Math.round(total * 100) / 100}€` };
+      return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, monthName }, message: context.lang === "en" ? montantAnglais(Math.round(total * 100) / 100) : `${Math.round(total * 100) / 100}€` };
     }
     case "marge_moyenne": {
       let filtered = [...context.sales];
@@ -628,7 +630,7 @@ function handleQueryStats(task, context) {
       // au prix inconnu (dressing Vinted importé, notamment) sont écartés, pas
       // comptés 0 € — sinon la réponse sous-estime sans le dire.
       const total = stock.filter(aPrixAchat).reduce((a, i) => a + getPrixAchat(i) * Math.max(1, i.quantite || 1), 0);
-      return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, count: stock.length }, message: `${Math.round(total * 100) / 100}€` };
+      return { intent: task.intent, taskData: task.data, status: "success", data: { value: Math.round(total * 100) / 100, metric, count: stock.length }, message: context.lang === "en" ? montantAnglais(Math.round(total * 100) / 100) : `${Math.round(total * 100) / 100}€` };
     }
     case "stock_count": {
       const stock = context.items.filter(i => i.statut !== "vendu" && i.statut !== "sold");
@@ -697,7 +699,7 @@ function handlePlatformStats(task, context) {
     .map(([p, d]) => ({ plateforme: p, count: d.count, invested: Math.round(d.invested * 100) / 100 }))
     .sort((a, b) => b.invested - a.invested);
 
-  const fmtV = n => `${Math.round(n * 100) / 100}€`;
+  const fmtV = n => (lang === 'en' ? montantAnglais(Math.round(n * 100) / 100) : `${Math.round(n * 100) / 100}€`);
   const fmtP = n => `${(Math.round(n * 10) / 10).toFixed(1)}%`;
   const noData = lang === 'en' ? 'No platform data yet' : 'Pas encore de données par plateforme';
 

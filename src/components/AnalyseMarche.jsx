@@ -151,7 +151,7 @@ export default function AnalyseMarche({
   const en = lang === "en";
   const { annonces, count, niveau } = analyseFiabilite(result);
   const { prix, aAchat, marge, pct, verdict } = calculeMarge(result, prixAchat);
-  const prixTxt = formatCurrency(prix ?? 0, currency);
+  const prixTxt = formatCurrency(prix ?? 0, currency, null, lang);
   const bornes = annonces.length
     ? { min: Math.min(...annonces.map((a) => a.prix)), max: Math.max(...annonces.map((a) => a.prix)) }
     : null;
@@ -162,14 +162,14 @@ export default function AnalyseMarche({
   const fiabiliteTexte = () => {
     if (niveau === "solide") {
       return en
-        ? `based on ${count} listings (${formatCurrency(bornes.min, currency)} – ${formatCurrency(bornes.max, currency)})`
-        : `basé sur ${count} annonces (${formatCurrency(bornes.min, currency)} – ${formatCurrency(bornes.max, currency)})`;
+        ? `based on ${count} listings (${formatCurrency(bornes.min, currency, null, lang)} – ${formatCurrency(bornes.max, currency, null, lang)})`
+        : `basé sur ${count} annonces (${formatCurrency(bornes.min, currency, null, lang)} – ${formatCurrency(bornes.max, currency, null, lang)})`;
     }
     const a = annonces[0];
     if (niveau === "fragile") {
       return en
-        ? `Single comparable listing found — not a market range: "${a.titre}" at ${formatCurrency(a.prix, currency)}${a.plateforme ? ` on ${a.plateforme}` : ""}. Double-check the price.`
-        : `Une seule annonce comparable trouvée — pas une fourchette de marché : « ${a.titre} » à ${formatCurrency(a.prix, currency)}${a.plateforme ? ` sur ${a.plateforme}` : ""}. Vérifie le prix.`;
+        ? `Single comparable listing found — not a market range: "${a.titre}" at ${formatCurrency(a.prix, currency, null, lang)}${a.plateforme ? ` on ${a.plateforme}` : ""}. Double-check the price.`
+        : `Une seule annonce comparable trouvée — pas une fourchette de marché : « ${a.titre} » à ${formatCurrency(a.prix, currency, null, lang)}${a.plateforme ? ` sur ${a.plateforme}` : ""}. Vérifie le prix.`;
     }
     // ZÉRO ANNONCE — écrit comme une RÉPONSE, pas comme une excuse (Nico) :
     // ce qu'on ne sait pas, puis ce que l'utilisateur peut faire à la place.
@@ -184,8 +184,8 @@ export default function AnalyseMarche({
       {/* Marge : rappelée ici quand elle est déjà en tête, utile au contrôle. */}
       {aAchat && (
         <Ligne
-          label={en ? `Margin on ${formatCurrency(Number(prixAchat), currency)} paid` : `Marge sur ${formatCurrency(Number(prixAchat), currency)} d'achat`}
-          valeur={`${marge >= 0 ? "+" : "−"}${formatCurrency(Math.abs(marge), currency)}${pct != null ? ` (${marge >= 0 ? "+" : "−"}${Math.abs(pct)} %)` : ""}`}
+          label={en ? `Margin on ${formatCurrency(Number(prixAchat), currency, null, lang)} paid` : `Marge sur ${formatCurrency(Number(prixAchat), currency, null, lang)} d'achat`}
+          valeur={`${marge >= 0 ? "+" : "−"}${formatCurrency(Math.abs(marge), currency, null, lang)}${pct != null ? ` (${marge >= 0 ? "+" : "−"}${Math.abs(pct)} %)` : ""}`}
         />
       )}
       {/* Fourchette bas/moyen/haut : MASQUÉE à zéro annonce — elle dérive d'un
@@ -194,7 +194,7 @@ export default function AnalyseMarche({
         <Ligne
           label={en ? "Market range" : "Fourchette marché"}
           valeur={["bas", "moyen", "haut"]
-            .map((k) => (result.fourchette_marche[k] != null ? formatCurrency(result.fourchette_marche[k], currency) : "—"))
+            .map((k) => (result.fourchette_marche[k] != null ? formatCurrency(result.fourchette_marche[k], currency, null, lang) : "—"))
             .join(" · ")}
         />
       )}
@@ -219,7 +219,7 @@ export default function AnalyseMarche({
             <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, color: C.mute2, lineHeight: 1.4 }}>
               <span>{a.titre}{a.plateforme ? ` · ${a.plateforme}` : ""}</span>
               <span style={{ fontWeight: 700, color: C.ink, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                {formatCurrency(a.prix, currency)}
+                {formatCurrency(a.prix, currency, null, lang)}
               </span>
             </div>
           ))}
@@ -410,8 +410,8 @@ export default function AnalyseMarche({
           </span>
           <span style={{ fontSize: 13, fontWeight: 650, color: vs.fg, fontVariantNumeric: "tabular-nums" }}>
             {marge >= 0
-              ? (en ? `margin +${formatCurrency(marge, currency)}` : `marge +${formatCurrency(marge, currency)}`)
-              : (en ? `loss −${formatCurrency(Math.abs(marge), currency)}` : `perte −${formatCurrency(Math.abs(marge), currency)}`)}
+              ? (en ? `margin +${formatCurrency(marge, currency, null, lang)}` : `marge +${formatCurrency(marge, currency, null, lang)}`)
+              : (en ? `loss −${formatCurrency(Math.abs(marge), currency, null, lang)}` : `perte −${formatCurrency(Math.abs(marge), currency, null, lang)}`)}
             {pct != null ? ` (${marge >= 0 ? "+" : "−"}${Math.abs(pct)} %)` : ""}
           </span>
         </div>
@@ -419,7 +419,7 @@ export default function AnalyseMarche({
       {niveau !== "aucune" && !vs && plafond != null && (
         <div style={{ background: C.buyBg, border: `1px solid ${C.buyBd}`, borderRadius: 12, padding: "11px 13px" }}>
           <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: C.buyFg }}>
-            {en ? `Buy below ${formatCurrency(plafond, currency)}` : `Achète en dessous de ${formatCurrency(plafond, currency)}`}
+            {en ? `Buy below ${formatCurrency(plafond, currency, null, lang)}` : `Achète en dessous de ${formatCurrency(plafond, currency, null, lang)}`}
           </span>
         </div>
       )}

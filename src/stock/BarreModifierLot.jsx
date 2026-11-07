@@ -105,7 +105,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
           )}
           <input className="pa-input" inputMode="decimal" value={saisie} onChange={(e) => { setSaisie(e.target.value); setBilan(null); }}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); appliquer(); } }}
-            placeholder={champ === "quantite" ? "1" : op.endsWith("pct") ? "10 %" : "12,50 €"}
+            placeholder={champ === "quantite" ? "1" : op.endsWith("pct") ? "10 %" : (fr ? "12,50 €" : "€12.50")}
             aria-label={champ === "quantite" ? (fr ? "Nouvelle quantité" : "New quantity") : (fr ? "Valeur" : "Value")} />
           <button type="button" className="apply" disabled={occupe || !plan || !plan.changements.length} onClick={appliquer}>
             {occupe ? "…" : plan && plan.changements.length

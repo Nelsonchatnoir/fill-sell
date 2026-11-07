@@ -8,6 +8,7 @@ import { etatCompteEbay } from '../../supabase/functions/_shared/ebay-etat-compt
 import { choixRetoursEbay, optionsRetoursEbay } from '../../supabase/functions/_shared/ebay-retours.js';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
+import { montantAnglais } from '../utils/montants';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Section « eBay » des Paramètres — LOT 0 (connecter) + LOT 1 (dire ce qui
@@ -717,7 +718,11 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   // « eBay n'autorise pas encore ce compte à vendre » du parcours qui le dit ;
   // sinon une ligne discrète, informative.
   const limite = etatCompte.plafond && !etatCompte.plafond.nul ? etatCompte.plafond : null;
-  const montant = limite?.montant != null ? `${limite.montant.toLocaleString(langue === 'fr' ? 'fr-FR' : 'en-GB')} ${limite.devise ?? ''}`.trim() : null;
+  // (07/11) En anglais, format anglais (« €1,268 ») ; le français inchangé.
+  const montant = limite?.montant != null
+    ? (langue === 'en' && limite.devise ? montantAnglais(limite.montant, { devise: limite.devise })
+      : `${limite.montant.toLocaleString(langue === 'fr' ? 'fr-FR' : 'en-GB')} ${limite.devise ?? ''}`.trim())
+    : null;
 
   const rendreFormulaireCreation = (type) => (
     <div style={{ background: UI.card, border: `1px solid ${UI.border}`, borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -768,7 +773,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
               <div key={s.code} style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: UI.ink }}>{s.libelle}</span>
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: UI.tealDeep }}>
-                  {s.gratuit ? t.gratuitNature : (s.frais_eur != null ? `${Number(s.frais_eur).toFixed(2)} €` : '—')}
+                  {s.gratuit ? t.gratuitNature : (s.frais_eur != null ? (langue === 'en' ? montantAnglais(s.frais_eur, { decimales: 2 }) : `${Number(s.frais_eur).toFixed(2)} €`) : '—')}
                 </span>
                 {delai && <span style={{ fontSize: 11.5, color: UI.mute }}>{delai}</span>}
               </div>

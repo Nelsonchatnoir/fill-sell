@@ -174,9 +174,43 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     return d?.success ? { etat: 'ok', ...d } : { etat: 'erreur', message: T.arretEchec };
   }
 
+  /**
+   * (07/11, Nico) « Restaurer les achats » : l'option retrouvée dans la boutique (prise SEULE, Free + Cloud, ou avec
+   * une formule) est revalidée par le SERVEUR, jamais crue sur parole — iOS : le reçu, avec `option: 'cloud'` (la
+   * formule du profil n'est jamais touchée ; inutile quand la formule vient d'être validée par le même reçu, qui
+   * porte l'option) ; Android : son jeton Google (validate-google-purchase ne touche que l'option pour ce produit).
+   * Puis cloud_etat_moi fait foi. `cloud` : ce que lireRestauration (src/lib/restauration.js) a lu.
+   */
+  async function restaurer(cloud, { recuDejaValide = false } = {}) {
+    if (!cloud?.actif) return { etat: 'aucun' };
+    try {
+      if (platform === 'ios') {
+        if (!recuDejaValide) {
+          if (!cloud.receipt) return { etat: 'erreur', message: T.restaureEchec };
+          const { data, error } = await supabase.functions.invoke('validate-apple-receipt', {
+            body: { receipt: cloud.receipt, userId: user.id, option: 'cloud' } });
+          if (error || data?.success !== true) return { etat: 'erreur', message: T.restaureEchec };
+        }
+      } else if (platform === 'android') {
+        if (!cloud.purchaseToken) return { etat: 'erreur', message: T.restaureEchec };
+        const { error } = await supabase.functions.invoke('validate-google-purchase', {
+          body: { productId: cloud.productId || PRODUIT_CLOUD, purchaseToken: cloud.purchaseToken, userId: user.id } });
+        if (error) return { etat: 'erreur', message: T.restaureEchec };
+      } else {
+        return { etat: 'aucun' };
+      }
+      const ok = await attendreServeur(6, 1500);
+      return ok ? { etat: 'actif', message: T.restaureOk } : { etat: 'attente', message: T.restaureAttente };
+    } catch (e) {
+      console.warn('[cloud] restauration de l’option :', e?.message ?? e);
+      return { etat: 'erreur', message: T.restaureEchec };
+    }
+  }
+
   return {
     acheter,
     inscrireAttente,
+    restaurer,
     /** Arrêter : en essai tout de suite (rien facturé), payée à la fin de la période. */
     arreter: () => appelerArret({ option: 'cloud' }),
     /** Garder l'option alors qu'un arrêt était prévu (Stripe). */

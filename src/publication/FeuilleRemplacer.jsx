@@ -7,6 +7,7 @@
 // proposition côte à côte ; « Garder mon texte » est le geste par défaut (maquette validée le 29/10).
 // Même feuille pour les deux peaux de l'écran de publication (rendue par ListingPreviewScreen, dans `modales`).
 import { createPortal } from "react-dom";
+import { montantAnglais } from "../utils/montants";
 
 const NOMS = {
   fr: { titre: "ton titre", description: "ta description", prix: "ton prix" },
@@ -21,6 +22,8 @@ export default function FeuilleRemplacer({ champ, actuel, propose, note = null, 
   const en = lang === "en";
   const nom = (en ? NOMS.en : NOMS.fr)[champ] ?? (en ? "your text" : "ton texte");
   const suffixePrix = (v) => (champ === "prix" ? ` ${String(v ?? "").trim() ? "€" : ""}` : "");
+  // (07/11) En anglais, le prix s'écrit à l'anglaise (« €12.50 ») ; le français inchangé.
+  const prixAnglais = (v) => { const s = String(v ?? "").trim(); return s ? (montantAnglais(s.replace(",", ".")) || `€${s}`) : ""; };
   const carte = (fond, bord) => ({
     background: fond, border: `1px solid ${bord}`, borderRadius: 14, padding: 12,
     display: "flex", flexDirection: "column", gap: 6,
@@ -45,11 +48,11 @@ export default function FeuilleRemplacer({ champ, actuel, propose, note = null, 
         </span>
         <div style={carte("#FFFFFF", "#E7E3D8")}>
           <span style={etiquette("#5C6560")}>{en ? "Yours" : "Ton texte"}</span>
-          <span style={texte}>{actuel}{suffixePrix(actuel)}</span>
+          <span style={texte}>{en && champ === "prix" ? prixAnglais(actuel) : <>{actuel}{suffixePrix(actuel)}</>}</span>
         </div>
         <div style={carte("#EFF4F2", "#D6E2DE")}>
           <span style={etiquette("#1B6E62")}>{en ? "Suggested by FillSell" : "Proposé par FillSell"}</span>
-          <span style={texte}>{propose}{suffixePrix(propose)}</span>
+          <span style={texte}>{en && champ === "prix" ? prixAnglais(propose) : <>{propose}{suffixePrix(propose)}</>}</span>
           {note ? <span style={{ fontSize: 12, color: "#3A4742" }}>{note}</span> : null}
         </div>
         <button type="button" autoFocus onClick={onGarder}

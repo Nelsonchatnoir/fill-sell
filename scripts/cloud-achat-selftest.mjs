@@ -96,7 +96,8 @@ try {
   ok(await C.chargerTemoinCloud({ from: () => { throw new Error('réseau'); } }, NICO) === false, 'lecture impossible → non (jamais une exception)');
   // (30/10, lot D, Nico : « un bouton Me connecter par plateforme ») — pour le compte témoin, en test.
   ok(C.CLOUD_PLATEFORMES_CONNEXION.map((p) => p.id).join(',') === 'vinted,leboncoin,beebs,depop', 'plateformes proposées au témoin : Vinted, Leboncoin, Beebs, Depop (une ligne chacune, eBay à part)');
-  ok(C.CLOUD_DOMAINE === 'cloud.fillsell.app', 'domaine de l\'écran : cloud.fillsell.app');
+  // (07/11, décision de Nico, voie b) Plus aucun domaine fixe : cloud.fillsell.app n'a plus ni serveur ni DNS.
+  ok(C.CLOUD_DOMAINE === undefined, 'aucun domaine fixe exporté (cloud.fillsell.app retiré, 07/11)');
 
   console.log('\n4. Les mots');
   const INTERDITS = [/Beebs/i, /Opla/i, /p[ée]pite/i, /\bproxy\b/i, /\bIP\b/, /serveur Cloud/i, /formule payante/i, /\bvous\b/i];
@@ -104,7 +105,9 @@ try {
     const T = Tx.textesConnexion(lang);
     const tout = Object.values(T).map((v) => (typeof v === 'function' ? v('appareil_deja_vu') : v)).join(' ');
     ok(INTERDITS.every((r) => !r.test(tout)), `${lang} : aucune plateforme non prouvée, aucune phrase technique, tutoiement`);
-    ok(/24,99.€/.test(T.sansEssai('essai_deja_pris')), `${lang} : le prix est dit (24,99 € TTC)`);
+    // (07/11, décision de Nico) Montants en anglais au format anglais : « €24.99 » en anglais, « 24,99 € » en français.
+    ok(lang === 'en' ? (/€24\.99/.test(T.sansEssai('essai_deja_pris')) && !/24,99/.test(T.sansEssai('essai_deja_pris'))) : /24,99.€/.test(T.sansEssai('essai_deja_pris')),
+      `${lang} : le prix est dit (${lang === 'en' ? '€24.99' : '24,99 €'} TTC)`);
   }
 
   console.log('\n5. Le câblage dans App');
@@ -115,7 +118,11 @@ try {
   ok(/meConnecterOuvert&&user&&cloudConnexionVisible\(user\.id\)/.test(app), '« Me connecter » monté seulement pour un témoin ou drapeau levé');
   ok(/if\(opts\?\.cloud===true&&cloudOffreVendable\(user\?\.id\)\)/.test(app), 'formule + option : seulement drapeau levé (et en France, ou témoin), sinon le parcours d\'avant, mot pour mot');
   const ecran = lire('src/cloud/MeConnecterCloud.jsx');
-  ok(/wss:\/\/\$\{CLOUD_DOMAINE\}\/connexion\/ws/.test(ecran) && !/location\.href|window\.open/.test(ecran), 'l\'écran ouvre la seule connexion (aucune navigation, aucun lien libre)');
+  ok(/wss:\/\/\$\{domaine\}\/connexion\/ws/.test(ecran) && !/location\.href|window\.open/.test(ecran), 'l\'écran ouvre la seule connexion (aucune navigation, aucun lien libre)');
+  // (07/11, voie b) L'adresse = le serveur du compte, jamais un repli : illisible → reprise bornée, comme une coupure.
+  const ecranCode = ecran.replace(/\/\/.*$/gm, '');
+  ok(!/cloud\.fillsell\.app|CLOUD_DOMAINE/.test(ecranCode), 'aucun repli codé vers cloud.fillsell.app (07/11)');
+  ok(/return null;\s*\}/.test(ecranCode) && /if \(!domaine\) \{ if \(!finale\) reprendre\(\); return; \}/.test(ecranCode), 'serveur du compte illisible : aucune adresse, reprise bornée (07/11)');
   ok(/ebayVoieApiDuCompte/.test(ecran) && /demarrerConnexionEbay/.test(ecran), 'eBay : la connexion officielle (API), jamais le navigateur Cloud');
   // Rendu RÉEL de l'écran (React, rendu serveur) : aucune erreur d'exécution, les mots attendus.
   const React = (await import('react')).default;
@@ -126,6 +133,58 @@ try {
   ok(!/Beebs|Opla/.test(html) && /role="dialog"/.test(html), 'aucune plateforme non prouvée ; une fenêtre accessible (dialog)');
   const client = lire('src/cloud/connexion/clientConnexion.js');
   ok(/touchAction: 'none'/.test(client) && /gesturestart/.test(client) && /e\.touches\.length !== 1/.test(client), 'jamais de zoom : un seul doigt, gestes Safari bloqués');
+
+  // (07/11, Nico) « Restaurer les achats » retrouve aussi un Cloud pris seul (Free + Cloud), iOS et Android.
+  console.log('\n6. Restaurer les achats : l\'option Cloud aussi (07/11)');
+  const R = await vite.ssrLoadModule('/src/lib/restauration.js');
+  const FORMULES = ['app.fillsell.premium.sub', 'app.fillsell.premium.standard', 'app.fillsell.pro2.sub', 'app.fillsell.business.sub'];
+  const demain = new Date(Date.now() + 86400000).toISOString(), hier = new Date(Date.now() - 86400000).toISOString();
+  const cloudSeul = R.lireRestauration([{ productIdentifier: 'app.fillsell.cloud.sub', expirationDate: demain, receipt: 'R', purchaseToken: 'G' }], FORMULES);
+  ok(R.PRODUIT_CLOUD_BOUTIQUE === A.PRODUIT_CLOUD, 'le produit lu = le produit vendu (app.fillsell.cloud.sub)');
+  ok(cloudSeul.isPremium === false && cloudSeul.cloud?.actif === true && cloudSeul.cloud.receipt === 'R' && cloudSeul.cloud.purchaseToken === 'G',
+    'Free + Cloud : aucune formule, l\'option ACTIVE est retrouvée (avant : « Aucun achat actif trouvé »)');
+  const lesDeux = R.lireRestauration([{ productIdentifier: 'app.fillsell.cloud.sub', isActive: true }, { productIdentifier: 'app.fillsell.pro2.sub', isActive: true, receipt: 'R2' }], FORMULES);
+  ok(lesDeux.isPremium === true && lesDeux.productId === 'app.fillsell.pro2.sub' && lesDeux.cloud?.actif === true, 'formule + Cloud : les deux retrouvées');
+  ok(R.lireRestauration([{ productIdentifier: 'app.fillsell.cloud.sub', expirationDate: hier }], FORMULES).cloud?.actif === false, 'Cloud échu : retrouvé mais inactif (rien à restaurer)');
+  const deux = R.lireRestauration([{ productIdentifier: 'app.fillsell.premium.sub', expirationDate: hier }, { productIdentifier: 'app.fillsell.business.sub', purchaseState: '1', purchaseToken: 'B' }], FORMULES);
+  ok(deux.isPremium === true && deux.productId === 'app.fillsell.business.sub', 'formule : l\'ACTIVE est choisie avant une ancienne échue (avant : la première trouvée)');
+  ok(R.lireRestauration([], FORMULES).cloud === null && R.lireRestauration(undefined, FORMULES).isPremium === false, 'rien dans la boutique : rien');
+  const restaurerSur = async (platform, cloud, opts) => {
+    const appels = [];
+    const supabase = {
+      functions: { invoke: async (nom, { body }) => { appels.push({ nom, body }); return { data: { success: true }, error: null }; } },
+      rpc: async (nom) => { appels.push({ nom }); return { data: nom === 'cloud_etat_moi' ? { actif: true } : null }; },
+      auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) },
+    };
+    const achat = A.creerAchatCloud({ supabase, supabaseUrl: 'https://x', supabaseAnonKey: 'k', user: { id: 'u', email: 'e' }, lang: 'fr', platform,
+      purchasePremium: async () => ({}), ouvrirLien: async () => {}, confirmer: async () => true, notifier: () => {}, paiementsAndroidCoupes: async () => false, demanderConditions: async () => true });
+    return { r: await achat.restaurer(cloud, opts), appels };
+  };
+  const ios = await restaurerSur('ios', cloudSeul.cloud);
+  ok(ios.appels[0]?.nom === 'validate-apple-receipt' && ios.appels[0].body.option === 'cloud' && ios.appels[0].body.receipt === 'R' && ios.appels[0].body.userId === 'u',
+    'iOS, Cloud seul : le reçu revalidé par le serveur en mode « cloud » (la formule du profil jamais touchée)');
+  ok(ios.r.etat === 'actif' && /restauré/.test(ios.r.message) && ios.appels.some((a) => a.nom === 'cloud_etat_moi'), 'iOS : actif seulement quand le SERVEUR le dit (cloud_etat_moi)');
+  const iosDeja = await restaurerSur('ios', cloudSeul.cloud, { recuDejaValide: true });
+  ok(!iosDeja.appels.some((a) => a.nom === 'validate-apple-receipt') && iosDeja.r.etat === 'actif', 'iOS, formule + Cloud : le reçu déjà validé par la formule (il porte l\'option) — pas de second appel');
+  const android = await restaurerSur('android', cloudSeul.cloud);
+  ok(android.appels[0]?.nom === 'validate-google-purchase' && android.appels[0].body.productId === 'app.fillsell.cloud.sub' && android.appels[0].body.purchaseToken === 'G',
+    'Android : le jeton Google de l\'option revalidé (validate-google-purchase, produit Cloud)');
+  ok(android.r.etat === 'actif', 'Android : actif quand le serveur le dit');
+  ok((await restaurerSur('ios', { actif: false })).r.etat === 'aucun' && (await restaurerSur('web', cloudSeul.cloud)).r.etat === 'aucun', 'rien d\'actif, ou sur le web : rien n\'est appelé');
+  ok((await restaurerSur('android', { actif: true, purchaseToken: null })).r.etat === 'erreur', 'Android sans jeton : erreur dite, jamais un Cloud cru sur parole');
+  const iap = lire('src/lib/iap.js');
+  ok(/return lireRestauration\(purchases, Object\.values\(PRODUCT_IDS\)\);/.test(iap), 'restorePurchases rend la lecture pure (formule ET option)');
+  const appRestaure = lire('src/App.jsx');
+  const corps = appRestaure.slice(appRestaure.indexOf('async function handleIAPRestore'), appRestaure.indexOf('async function handleIAPRestore') + 4000);
+  ok(/achatCloud\.restaurer\(lu\.cloud,\{recuDejaValide:platform==='ios'&&recuValide\}\)/.test(corps), 'le bouton restaure l\'option après la formule');
+  ok(/\}else if\(!lu\.cloud\?\.actif\)\{\s*setToast\(\{visible:true,message:lang==='fr'\?'Aucun achat actif trouvé'/.test(corps), '« Aucun achat actif trouvé » seulement sans formule NI Cloud actif');
+  const fnApple = lire('supabase/functions/validate-apple-receipt/index.ts').replace(/\r\n/g, '\n');
+  const iSeul = fnApple.indexOf('if (seulementCloud) {\n        return');
+  const iStatut = fnApple.indexOf('update({ is_premium: false })');
+  const iRetourCloud = fnApple.indexOf('if (seulementCloud) {\n      // L\'option seule');
+  const iUpdate = fnApple.indexOf('.update(update).eq("id", userId)');
+  ok(/const seulementCloud = option === "cloud";/.test(fnApple) && iSeul > 0 && iSeul < iStatut, 'serveur Apple, mode « cloud », reçu invalide : on rend la main AVANT d\'écrire is_premium = false');
+  ok(iRetourCloud > 0 && iRetourCloud < iUpdate && iUpdate < fnApple.indexOf('if (isFounderPurchase)'), 'serveur Apple, mode « cloud » : seule l\'option s\'écrit, rendu AVANT la formule et le Founder');
 } finally {
   await vite.close();
 }

@@ -7,9 +7,11 @@
 //   2. les fonctions de paiement des paliers sont restées OCTET POUR OCTET (stripe-webhook, cancel-subscription,
 //      stripe-portal, apple-iap-webhook, validate-apple-receipt, google-play-webhook, validate-google-purchase,
 //      validate-coin-purchase, _shared/stripe-rang-vivant.ts) ;
-//   3. create-checkout-session n'a changé QUE sur la page de retour (success_url) et la garde du Cloud.
+//   3. create-checkout-session n'a changé QUE sur la page de retour (success_url) et la garde du Cloud ;
+//   4. (07/11, décision de Nico : « Restaurer les achats » retrouve un Cloud pris seul) validate-apple-receipt n'a changé
+//      QUE par le mode `option: 'cloud'` : sans lui (tous les appels d'avant), le corps est celui de la base.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -94,7 +96,7 @@ ok(ecarts.length === 0, `décisions de paliers identiques à la base ${BASE} sur
 
 // ── 2. Les fonctions de paiement des paliers : octet pour octet ──
 const INCHANGEES = ['supabase/functions/stripe-webhook/index.ts', 'supabase/functions/cancel-subscription/index.ts', 'supabase/functions/stripe-portal/index.ts',
-  'supabase/functions/apple-iap-webhook/index.ts', 'supabase/functions/validate-apple-receipt/index.ts', 'supabase/functions/google-play-webhook/index.ts',
+  'supabase/functions/apple-iap-webhook/index.ts', 'supabase/functions/google-play-webhook/index.ts',
   'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/validate-coin-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'];
 for (const f of INCHANGEES) {
   let diff = '';
@@ -110,6 +112,35 @@ const permises = [/^\/\//, /success_url:/, /cloudVivantDuProfil/, /^\.from\("pro
 const autres = lignes.filter((l) => !permises.some((r) => r.test(l)));
 ok(autres.length === 0, `create-checkout-session : ${lignes.length} lignes changées, toutes sur la page de retour ou la garde du Cloud`, autres.join(' | '));
 ok(lignes.some((l) => /success_url: `https:\/\/fillsell\.app\/success\?produit=\$\{encodeURIComponent\(planType\)\}/.test(l)), 'palier : seule la page de retour change (elle dit le palier acheté)');
+
+// ── 4. validate-apple-receipt : seulement le mode « cloud » (07/11) ──
+const FA = 'supabase/functions/validate-apple-receipt/index.ts';
+const dA = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', FA);
+const lignesA = dA.split('\n').filter((l) => /^[+-](?![+-])/.test(l));
+const retirees = lignesA.filter((l) => l.startsWith('-')).map((l) => l.slice(1).trim()).filter(Boolean);
+const ajoutees = lignesA.filter((l) => l.startsWith('+')).map((l) => l.slice(1).trim()).filter(Boolean);
+const permisesA = [/^\/\//, /^const \{ receipt, userId, option \} = await req\.json\(\);$/, /^const seulementCloud = option === "cloud";$/,
+  /^if \(seulementCloud\) \{$/, /^\}\)?;?$/, /^headers: \{ \.\.\.CORS, "Content-Type": "application\/json" \},$/,
+  /^return new Response\(JSON\.stringify\(\{ success: false, error: "receipt_invalide", is_cloud: false \}\), \{$/,
+  /^return new Response\(JSON\.stringify\(\{ success: true, is_cloud: majCloudLue\?\.is_cloud === true, cloud: txCloud \? \(majCloudLue \? "ecrite" : "ignoree"\) : "absente" \}\), \{$/,
+  /^let majCloudLue: Record<string, unknown> \| null = null;$/, /^majCloudLue = majCloud \?\? null;$/,
+  /^if \(majCloudLue\) await supabaseAdmin\.from\("profiles"\)\.update\(majCloudLue\)\.eq\("id", userId\);$/,
+  /^console\.log\(`\[validate-apple-receipt\] option cloud seule userId=/];
+const autresA = ajoutees.filter((l) => !permisesA.some((r) => r.test(l)));
+ok(retirees.length === 1 && retirees[0] === 'const { receipt, userId } = await req.json();' && autresA.length === 0,
+  `validate-apple-receipt : ${ajoutees.length} lignes ajoutées, toutes du mode « cloud » ; une seule retirée (la lecture du corps)`, [...retirees, '|', ...autresA].join(' | '));
+// Le corps sans le mode « cloud » = celui de la base, au caractère près (paliers, Founder, échéance, option du reçu).
+const sansModeCloud = (t) => t.replace(/\r\n/g, '\n')
+  .replace(/const \{ receipt, userId(, option)? \} = await req\.json\(\);/, '')
+  .replace(/\n[ \t]*\/\/[^\n]*/g, '')
+  .replace(/\n[ \t]*const seulementCloud = option === "cloud";/, '')
+  .replace(/\n[ \t]*let majCloudLue[^\n]*/, '')
+  .replace(/\n[ \t]*majCloudLue = majCloud \?\? null;/, '')
+  .replace(/\n([ \t]*)if \(seulementCloud\) \{[\s\S]*?\n\1\}(?=\n)/g, '');
+const baseA = sansModeCloud(git('show', `${BASE}:${FA}`));
+const aujA = sansModeCloud(readFileSync(path.join(RACINE, FA), 'utf8'));
+ok(baseA === aujA, 'validate-apple-receipt : sans le mode « cloud », le corps est celui de la base (rien d\'autre ne change)',
+  baseA === aujA ? '' : `écart vers ${[...baseA].findIndex((c, i) => c !== aujA[i])}`);
 
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

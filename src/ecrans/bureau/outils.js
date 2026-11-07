@@ -13,8 +13,8 @@ export function formats(lang, currency = 'EUR') {
   return {
     lang,
     L: (fr, en) => (lang === 'en' ? en : fr),
-    eur: (n) => (n == null || !Number.isFinite(Number(n)) ? '—' : formatCurrency(n, currency)),
-    eur0: (n) => (n == null || !Number.isFinite(Number(n)) ? '—' : formatCurrency(Math.round(n), currency, 0)),
+    eur: (n) => (n == null || !Number.isFinite(Number(n)) ? '—' : formatCurrency(n, currency, null, lang)),
+    eur0: (n) => (n == null || !Number.isFinite(Number(n)) ? '—' : formatCurrency(Math.round(n), currency, 0, lang)),
     num,
     pct: (x, d = 1) => (x == null || !Number.isFinite(Number(x)) ? '—' : `${num(x, d)}${nbsp}%`),
     jours: (n) => {

@@ -158,6 +158,9 @@ import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 // detectType + normalizeMarque : source de vérité UNIQUE dans utils/shared.js
 // (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
 import { detectType, normalizeMarque, marqueKey, uuidV4, DESC_MANUELLE_MAX, lirePoidsGrammes } from './utils/shared';
+// (07/11, décision de Nico) Montants en anglais au format anglais (« €1,268.00 ») ; le français inchangé.
+import { localeDuMontant, montantAnglais } from './utils/montants';
+import { langueDeLApp } from './utils/langueApp';
 import { prixAchatConnu, comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA, margeUnitaire } from './utils/comptabilite';
 import { trierVentes } from './utils/ventesStats';
 import { periode as periodeStats, ventesDe as ventesDePeriode } from './utils/tableauStats';
@@ -475,11 +478,12 @@ function getCountryFallback(){
   const map={fr:'FR',en:'US',ja:'JP',ko:'KR',zh:'CN',th:'TH',vi:'VN',id:'ID',ms:'MY',hi:'IN',tr:'TR',ru:'RU',uk:'UA',ar:'SA',he:'IL',pl:'PL',cs:'CZ',hu:'HU',ro:'RO',hr:'HR',bg:'BG',sv:'SE',no:'NO',da:'DK',pt:'PT',es:'ES',de:'DE',it:'IT',nl:'NL'};
   return map[nl.split('-')[0]]??null;
 }
-function formatCurrency(amount,currency='EUR',decimals=null){
+// (07/11) Même règle qu'utils/shared.js formatCurrency : `lang` 'en' = format anglais, absent = la langue de l'app.
+function formatCurrency(amount,currency='EUR',decimals=null,lang=null){
   const n=Math.round((amount||0)*100)/100;
   const dec=decimals!==null?decimals:(CURRENCY_DECIMALS[currency]??2);
   try{
-    return new Intl.NumberFormat(CURRENCY_LOCALES[currency]||'fr-FR',{style:'currency',currency,minimumFractionDigits:dec,maximumFractionDigits:dec}).format(n);
+    return new Intl.NumberFormat(localeDuMontant(CURRENCY_LOCALES[currency],lang??langueDeLApp()),{style:'currency',currency,minimumFractionDigits:dec,maximumFractionDigits:dec}).format(n);
   }catch{
     const sym=CURRENCY_SYMBOLS[currency]||currency;
     return sym+' '+n.toFixed(dec);
@@ -1260,7 +1264,7 @@ function ActivityCurve({sales, lang, currency='EUR'}){
   const area = `${path} L${pts[pts.length-1][0]},${H-P} L${pts[0][0]},${H-P} Z`;
 
   const fmtDate = d => d.toLocaleDateString(lang==='en'?'en-US':'fr-FR', {day:'numeric',month:'short'});
-  const fmtMoney = n => formatCurrency(n, currency);
+  const fmtMoney = n => formatCurrency(n, currency, null, lang);
 
   const handleMove = e => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -2988,7 +2992,7 @@ export default function App({ loginOnly = false }){
   const fabTriggerRef=useRef(null);
 
   const {t}=useTranslation(lang);
-  const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
+  const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec, lang);
   useEffect(()=>{localStorage.setItem('fs_lang',lang);},[lang]);
   useEffect(()=>{localStorage.setItem('fs_currency',currency);},[currency]);
   useEffect(()=>{if(!localStorage.getItem('fs_lang'))localStorage.setItem('fs_lang',lang);},[]);
@@ -3268,16 +3272,23 @@ export default function App({ loginOnly = false }){
 
   async function handleIAPRestore(){
     setIapLoading(true);
+    // (07/11, Nico) L'option FillSell Cloud se restaure AUSSI — prise seule (Free + Cloud) ou avec une formule —, sur
+    // iOS et Android : la formule d'abord (chemin d'avant, inchangé), puis l'option (achatCloud.restaurer : revalidée
+    // par le serveur). Avant : « Aucun achat actif trouvé » pour un Cloud seul. La revue Apple essaie ce bouton.
+    let lu=null;
+    let recuValide=false;   // iOS : la formule validée par le reçu, qui porte aussi l'option
     try{
       // `restaure` et non `isPremium` : le nom d'origine masquait l'état du
       // composant à l'intérieur de tout le bloc.
-      const {isPremium:restaure,receipt,purchaseToken,productId}=await restorePurchases('button');
+      lu=await restorePurchases('button');
+      const {isPremium:restaure,receipt,purchaseToken,productId}=lu;
       if(restaure){
         const estBusiness=productId===PRODUCT_IDS.business;
         const estPro=productId===PRODUCT_IDS.pro||estBusiness; // cumulatif
         if(receipt&&platform==='ios'){
           const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
           if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
+          recuValide=true;
         } else if(platform==='android'){
           // ⛔ Même interdit qu'à l'achat : jamais d'écriture client ici.
           // La restauration Android était cassée à l'identique — elle ne
@@ -3294,7 +3305,7 @@ export default function App({ loginOnly = false }){
         if(!confirme) throw new Error('Premium not confirmed by server');
         monterPalier(estBusiness?'business':estPro?'pro':'premium');
         setShowPremiumWelcome(true);
-      }else{
+      }else if(!lu.cloud?.actif){
         setToast({visible:true,message:lang==='fr'?'Aucun achat actif trouvé':'No active purchase found'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
       }
@@ -3302,6 +3313,7 @@ export default function App({ loginOnly = false }){
       console.error('[IAP] restore failed:',e);
       // Même durcissement qu'à l'achat : un is_premium venu d'ailleurs
       // (comped, Stripe, Apple) ne vaut pas restauration réussie.
+      let releve=false;
       try{
         const{data,error}=await supabase.from('profiles')
           .select('is_premium,is_pro,is_business').eq('id',user.id).maybeSingle();
@@ -3309,11 +3321,20 @@ export default function App({ loginOnly = false }){
         if(data?.is_premium===true){
           monterPalier(palierDuProfil(data));
           setShowPremiumWelcome(true);
-          return;
+          releve=true;
         }
       }catch(err){console.warn('[IAP] relecture après échec restore:',err?.message);}
-      setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la restauration':'❌ Restore failed'});
-      setTimeout(()=>setToast({visible:false,message:''}),3000);
+      if(!releve&&!lu?.cloud?.actif){
+        setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la restauration':'❌ Restore failed'});
+        setTimeout(()=>setToast({visible:false,message:''}),3000);
+      }
+    }
+    try{
+      // (07/11) L'option, chacune pour soi : son échec ne défait pas la formule restaurée, et inversement.
+      if(lu?.cloud?.actif&&achatCloud){
+        const r=await achatCloud.restaurer(lu.cloud,{recuDejaValide:platform==='ios'&&recuValide});
+        if(r?.message)toastCloud(r.message);
+      }
     }finally{setIapLoading(false);}
   }
 
@@ -9756,8 +9777,8 @@ export default function App({ loginOnly = false }){
                   {parseFloat(sellModal.sellPrice)>0&&(
                     <div style={{fontSize:11,color:"#6B7280",textAlign:"center",background:"#F9FAFB",borderRadius:6,padding:"4px 0"}}>
                       {sellModal.prixMode==="total"
-                        ?`= ${(parseFloat(sellModal.sellPrice)/(sellModal.sellQty||1)).toFixed(2)}€ ${lang==='fr'?'/ unité':'/ unit'}`
-                        :`= ${(parseFloat(sellModal.sellPrice)*(sellModal.sellQty||1)).toFixed(2)}€ total`}
+                        ?(lang==='en'?`= ${montantAnglais(parseFloat(sellModal.sellPrice)/(sellModal.sellQty||1),{decimales:2})} / unit`:`= ${(parseFloat(sellModal.sellPrice)/(sellModal.sellQty||1)).toFixed(2)}€ ${lang==='fr'?'/ unité':'/ unit'}`)
+                        :(lang==='en'?`= ${montantAnglais(parseFloat(sellModal.sellPrice)*(sellModal.sellQty||1),{decimales:2})} total`:`= ${(parseFloat(sellModal.sellPrice)*(sellModal.sellQty||1)).toFixed(2)}€ total`)}
                     </div>
                   )}
                 </>

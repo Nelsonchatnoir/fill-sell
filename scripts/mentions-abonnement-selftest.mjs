@@ -20,6 +20,9 @@ const iosEn = mentionsAbonnement({ canal: 'ios', lang: 'en', cloud: true });
 ok(/Auto-renewing subscriptions/.test(iosEn.texte) && /Apple Account/.test(iosEn.texte) && /Settings › your name › Subscriptions/.test(iosEn.texte), 'iOS EN');
 ok(iosEn.liens[1].url === 'https://fillsell.app/legal?lang=en#cgu' && iosEn.liens[2].url === 'https://fillsell.app/legal?lang=en#confidentialite', 'EN : pages en anglais');
 ok(!/[àéèêç]/i.test(iosEn.texte.replace(/24,99 €/, '')) && !/Conditions|Réglages|compte/.test(iosEn.texte), 'EN : aucun mot de français');
+// (07/11, décision de Nico) Montants en anglais au format anglais : « €24.99 », jamais « 24,99 € ».
+ok(/then €24\.99 a month\./.test(iosEn.texte) && !/24,99/.test(iosEn.texte), 'EN : le prix du Cloud à l’anglaise (« then €24.99 a month »)');
+ok(/FillSell Cloud: €24\.99 a month\./.test(mentionsAbonnement({ canal: 'web', lang: 'en', cloud: true, essaiCloud: false }).texte), 'EN, essai déjà pris : « FillSell Cloud: €24.99 a month. »');
 
 const android = mentionsAbonnement({ canal: 'android', lang: 'fr' });
 ok(/compte Google Play/.test(android.texte) && /Play Store › Paiements et abonnements/.test(android.texte), 'Android : Google Play');

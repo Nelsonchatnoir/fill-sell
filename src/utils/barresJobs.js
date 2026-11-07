@@ -25,6 +25,7 @@
 import { situationJob, nomPlateforme, etapeRepublication, parNosServeurs, libelleAction, sansEstimation, depuisQuand } from "./fileDesJobs.js";
 import { urlsPhotos } from "./photos.js";
 import { plagesDe, PLAFOND } from "./progression.js";
+import { LOCALE_MONTANT_ANGLAIS } from "./montants.js";
 // (02/11 soir, Nico) Compte Cloud : ses tâches sont faites par FillSell Cloud — les mots du Cloud, jamais « ton ordinateur ».
 import { parLeCloud } from "../cloud/voieCloud.js";
 
@@ -408,18 +409,19 @@ export function phraseHeuresEtapes(job, opts = {}) {
 }
 
 // Prix lisible quand la fiche en porte un (jamais « 0 € » pour un prix vide).
-function prixLisible(item, formaterPrix) {
+// (07/11) En anglais, format anglais (« €24.99 ») ; le français inchangé (« 24,99 € »).
+function prixLisible(item, formaterPrix, lang = "fr") {
   const n = Number(item?.sell ?? item?.prix_vente);
   if (!Number.isFinite(n) || n <= 0) return null;
   if (formaterPrix) return formaterPrix(n);
-  try { return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n); } catch { return `${n} €`; }
+  try { return new Intl.NumberFormat(lang === "en" ? LOCALE_MONTANT_ANGLAIS : "fr-FR", { style: "currency", currency: "EUR" }).format(n); } catch { return lang === "en" ? `€${n}` : `${n} €`; }
 }
 
 /** La carte d'identité d'un article pour une barre : photo, titre, prix · action. */
 export function articleDeJob(job, item, { lang = "fr", formaterPrix = null, action = null } = {}) {
   const fr = lang !== "en";
   const titre = (item?.title ?? item?.titre ?? job?.title ?? "").trim() || (fr ? "Ton article" : "Your item");
-  const prix = prixLisible(item, formaterPrix);
+  const prix = prixLisible(item, formaterPrix, lang);
   const quoi = action ?? libelleAction(job, lang);
   return {
     photo: item ? (urlsPhotos(item.photos)[0] ?? null) : null,

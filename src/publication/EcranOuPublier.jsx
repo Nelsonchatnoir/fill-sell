@@ -21,6 +21,7 @@ import { NOM } from "./texte";
 import { etatPlateforme } from "./plateformes";
 import { formaterRemiseAZero } from "../reglages/quotas";
 import { nombre, motJauge } from "../utils/jauges";
+import { montantAnglais } from "../utils/montants";
 
 // ═══ (04/11/2026, grille à 3 jauges) LE COÛT AVANT PUBLICATION — maquettes 4.1 à 4.4 ════════════════════════
 // Une mini-jauge : le nom, la barre (ce qu'il restera en sarcelle, la part qui va partir en ambre pâle au bout),
@@ -410,7 +411,7 @@ export default function EcranOuPublier({ m }) {
             <div className="fsn-small">
               <b className="fsn-strong">{en ? "Photos analysed" : "Photos analysées"}</b>{" · "}
               {[m.photoAnalysis.marque, m.photoAnalysis.taille_estimee, m.photoAnalysis.matiere,
-                m.photoAnalysis.prix_vente_suggere != null ? (en ? `suggested ${m.photoAnalysis.prix_vente_suggere} €` : `prix conseillé ${m.photoAnalysis.prix_vente_suggere} €`) : null,
+                m.photoAnalysis.prix_vente_suggere != null ? (en ? `suggested ${montantAnglais(m.photoAnalysis.prix_vente_suggere) || `€${m.photoAnalysis.prix_vente_suggere}`}` : `prix conseillé ${m.photoAnalysis.prix_vente_suggere} €`) : null,
               ].filter(Boolean).join(" · ") || (en ? "fields filled in" : "champs pré-remplis")}
             </div>
           ) : (

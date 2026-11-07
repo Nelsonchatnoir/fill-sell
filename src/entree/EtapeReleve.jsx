@@ -23,10 +23,11 @@ import { textesAnnonces } from '../annonces/textes';
 import { E } from './theme';
 import { Scene, Kicker, Titre, Texte, BoutonPrimaire, LienDiscret, Etat } from './EntreeUI';
 
+// (07/11) `prixEn` : le même montant écrit à l'anglaise pour l'écran anglais.
 const EXEMPLES = [
-  { titre: "Veste en jean Levi's", prix: '38,00 €', teinte: 'linear-gradient(140deg,#DCE3E9,#EDF1F4)', pf: 'vinted' },
-  { titre: 'Console Switch + 2 jeux', prix: '185,00 €', teinte: 'linear-gradient(140deg,#E8E2D4,#F3EFE6)', pf: 'leboncoin' },
-  { titre: 'Poussette Yoyo', prix: '240,00 €', teinte: 'linear-gradient(140deg,#E1E7DE,#F0F3EC)', pf: 'beebs' },
+  { titre: "Veste en jean Levi's", prix: '38,00 €', prixEn: '€38.00', teinte: 'linear-gradient(140deg,#DCE3E9,#EDF1F4)', pf: 'vinted' },
+  { titre: 'Console Switch + 2 jeux', prix: '185,00 €', prixEn: '€185.00', teinte: 'linear-gradient(140deg,#E8E2D4,#F3EFE6)', pf: 'leboncoin' },
+  { titre: 'Poussette Yoyo', prix: '240,00 €', prixEn: '€240.00', teinte: 'linear-gradient(140deg,#E1E7DE,#F0F3EC)', pf: 'beebs' },
 ];
 
 // (04/11/2026, lot 3 — maquette o-releve) AVEC LE CLOUD PRIS (essai ou option active, c.cloudPris), la phrase ne
@@ -94,7 +95,7 @@ export default function EtapeReleve({ c, T, onSuivant }) {
               <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(105deg,transparent 30%,rgba(255,255,255,0.85) 50%,transparent 70%)', animation: 'enBalaye 3.4s ease-in-out infinite', animationDelay: `${k * 0.25}s` }} />
             </span>
             <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: E.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.titre}</span>
-            <span style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: E.ink, fontVariantNumeric: 'tabular-nums' }}>{l.prix}</span>
+            <span style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: E.ink, fontVariantNumeric: 'tabular-nums' }}>{c.lang === 'en' ? l.prixEn : l.prix}</span>
             <PlatformLogo platform={l.pf} size={22} />
           </div>
         ))}

@@ -1,6 +1,7 @@
 import { NativePurchases } from '@capgo/native-purchases';
 import { Capacitor } from '@capacitor/core';
 import { classerIssueAchat } from './issueAchat.js';
+import { lireRestauration } from './restauration.js';
 
 export const PRODUCT_IDS = {
   sub: 'app.fillsell.premium.sub',        // Founder (fermé aux nouveaux, gardé pour restore)
@@ -199,12 +200,11 @@ export const findActivePlayPremiumSub = async (lowerIds = [PRODUCT_IDS.sub, PROD
 // (paramètre `source` retiré le 2026-09-04 : plus aucun corps ne le lisait —
 // c'était le reliquat d'une télémétrie supprimée. Les appelants qui le passent
 // encore ne sont pas affectés, un argument en trop est ignoré en JS.)
+// (07/11, Nico) La lecture est dans src/lib/restauration.js (pure, testée) : la formule ET l'option FillSell Cloud
+// (`cloud`), pour qu'un Cloud pris seul (Free + Cloud) se restaure aussi. getPurchases() sans productType rend les
+// abonnements ET les achats uniques sur Android (doc du module 8.3.3), tout sur iOS.
 export const restorePurchases = async () => {
   await NativePurchases.restorePurchases();
   const { purchases } = await NativePurchases.getPurchases();
-  const allIds = Object.values(PRODUCT_IDS);
-  const tx = purchases?.find(p => allIds.includes(p.productIdentifier));
-  if (!tx) return { isPremium: false, receipt: null, purchaseToken: null, productId: null };
-  const isActive = tx.isActive === true || (tx.expirationDate && new Date(tx.expirationDate) > new Date()) || tx.purchaseState === '1';
-  return { isPremium: !!isActive, receipt: tx.receipt ?? null, purchaseToken: tx.purchaseToken ?? null, productId: tx.productIdentifier ?? null };
+  return lireRestauration(purchases, Object.values(PRODUCT_IDS));
 };

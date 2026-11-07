@@ -24,16 +24,18 @@ Déjà fait, relu le 07/11 : prix Stripe 24,99 € actif / 20 € archivé ; App
   4. **l'interrupteur** :
      `insert into public.coin_config (key, value) values ('cloud_offre_ouverte', 1) on conflict (key) do update set value = 1, updated_at = now();`
      (`npx supabase db query --linked --yes -f <fichier>` ; le déclencheur coin_config_trace garde l'avant/après).
-     Vérifier : `cloud_vente_etat` d'un compte ordinaire = `vente_possible` true, `places` = 14 ; l'offre visible dans
+     Vérifier : `cloud_vente_etat` d'un compte ordinaire = `vente_possible` true, `places` = min(places serveur, IP
+     attribuables) — 6 le 07/11 (migration 20261107170000) ; l'offre visible dans
      un navigateur ISOLÉ (jamais la session de Nico). Retour : la même clé à 0 (l'offre disparaît ; les clients gardent
      leur option).
   5. grille trois jauges = 1 APRÈS l'OTA (§ 4), même jour ;
-  6. avant le 8e client : `cloud_ip_achats_auto` = 1 (+ plafond `cloud_ip_budget_mensuel_usd`, § 3), sur ordre de Nico.
+  6. (décision de Nico du 07/11 après-midi) LE JOUR MÊME de l'ouverture : solde IPRoyal rechargé, plafond 100 $, puis
+     `cloud_ip_achats_auto` = 1 (§ 3) — rien n'est acheté d'avance : l'entretien horaire achète quand le stock passe sous
+     le stock visé (stock_min 2 + inscrits en attente).
 - **Limite** : `NAVIGATEURS_MAX=15` sur cloud-2 (places = 14 + Nico) ; au-delà, la vente répond « complet » et propose
   la liste d'attente (jamais un paiement sans place) ; l'alerte de capacité part à 65 % (10 comptes).
-- **Compteur « N places restantes »** (07/11, web) : il montre les places SERVEUR de la vente. Avec 7 IP pour 14 places
-  et les achats coupés, il passerait de 8 à « Complet » d'un coup : allumer les achats d'IP (étape 6) le jour même, ou
-  la migration « places = min(serveur, IP) » (REPRISE Cloud, bloc ~12:00 du 07/11).
+- **Compteur « N places restantes »** (07/11, web) : depuis la migration 20261107170000 (APPLIQUÉE 13:41, feu vert de
+  Nico), il montre min(places serveur, IP attribuables) — le même chiffre que la vente et la liste d'attente (6 le 07/11).
 
 Une étape à la fois, depuis le dossier PRINCIPAL `C:\Users\nicol\fill-and-sell` (jamais un worktree), sur `main` à jour
 et propre (`git status` relu : dossier partagé). Chaque étape : le geste, la VÉRIFICATION, le RETOUR ARRIÈRE. La moindre
@@ -106,6 +108,12 @@ paiement Stripe du Cloud expire avec la réservation de la place (30 min) ; ⚠ 
 - Vérification : relire les deux clés ; à l'entretien horaire suivant, le journal de l'orchestrateur (`entretien`) montre
   le plan d'achat sous la triple garde ; l'alerte « 80 % » ne part qu'au seuil (une fois par mois).
 - Retour arrière : `cloud_ip_achats_auto` = 0 (le plafond peut rester à 100).
+- (07/11) AVANT : recharger le solde IPRoyal (21,15 $ relus le 07/11 = 5 IP à 4 $). Depuis la migration 20261107170000,
+  les places affichées et vendues = min(places serveur, IP attribuables) : sans IP, « Complet » et liste d'attente ; les
+  inscrits comptent dans le stock visé, l'entretien horaire achète pour eux (une IP livrée puis contrôlée = une place).
+  Coût IPRoyal (07/11) : 4 $/IP/30 j à l'unité ; 7 IP 21 $, 14 IP 41,16 $, 30 IP 88,20 $ par commande groupée.
+- (07/11) Avant l'OTA ou le binaire qui porte la restauration du Cloud : `npx supabase functions deploy
+  validate-apple-receipt` (version et verify_jwt true lus avant/après ; v39 le 07/11).
 
 ## 4. La grille à trois jauges — ⛔ À FAIRE APRÈS L'ÉTAPE 7, PAS ICI (ordre de Nico du 06/11 : « elles s'allument avec
 ##    le binaire, pas avant »)

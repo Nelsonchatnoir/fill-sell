@@ -4,7 +4,7 @@
 // iOS : c'est le contrat choisi dans App Store Connect), les conditions générales et la politique de confidentialité.
 // Les prix des formules sont sur leurs cartes ; le Cloud a sa ligne (essai, prix) seulement quand son offre est montrée.
 // Calcul PUR (testé : scripts/mentions-abonnement-selftest.mjs).
-import { CLOUD_PRIX_AFFICHE } from './palier.js';
+import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from './palier.js';
 
 export const EULA_APPLE = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 const LEGAL = 'https://fillsell.app/legal';
@@ -31,7 +31,7 @@ export function mentionsAbonnement({ canal = 'web', lang = 'fr', cloud = false, 
     : `Abonnements à renouvellement automatique : le prix affiché est ${ou} à la confirmation, puis à chaque période, sauf résiliation au moins 24 h avant son terme (${arreter}).`;
   if (cloud) {
     texte += en
-      ? (essaiCloud ? ` FillSell Cloud: 7-day free trial for a first subscription, then ${CLOUD_PRIX_AFFICHE} a month.` : ` FillSell Cloud: ${CLOUD_PRIX_AFFICHE} a month.`)
+      ? (essaiCloud ? ` FillSell Cloud: 7-day free trial for a first subscription, then ${CLOUD_PRIX_AFFICHE_EN} a month.` : ` FillSell Cloud: ${CLOUD_PRIX_AFFICHE_EN} a month.`)
       : (essaiCloud ? ` FillSell Cloud : 7 jours d'essai gratuit pour un premier abonnement, puis ${CLOUD_PRIX_AFFICHE} par mois.` : ` FillSell Cloud : ${CLOUD_PRIX_AFFICHE} par mois.`);
   }
   const liens = [];

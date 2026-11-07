@@ -201,6 +201,8 @@ import { chargerMemoire, memoireEnCache, abonnerMemoire, retenirReponses } from 
 // en « fantôme » l'app note ce qu'elle aurait posé ; « actif », elle le pose.
 import { chargerApprises, propositionApprise, ligneATrancher, catalogueVintedDeLaFiche, categorieApprise, noterDeduction, PLATEFORMES_APPRISES } from "../publication/moteur/apprises.js";
 import { origineLbcApres } from "../utils/origineLbc.js";
+// (07/11) Les montants affichés en anglais au format anglais (« €24.99 »), le français inchangé.
+import { montantAnglais } from "../utils/montants.js";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -2079,7 +2081,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
                     analysisResult.taille_estimee,
                     analysisResult.matiere,
                     analysisResult.prix_vente_suggere != null
-                      ? (lang === "en" ? `suggested ${analysisResult.prix_vente_suggere} €` : `prix conseillé ${analysisResult.prix_vente_suggere} €`)
+                      ? (lang === "en" ? `suggested ${montantAnglais(analysisResult.prix_vente_suggere) || `€${analysisResult.prix_vente_suggere}`}` : `prix conseillé ${analysisResult.prix_vente_suggere} €`)
                       : null,
                   ].filter(Boolean).join(" · ") || (lang === "en" ? "Fields filled in" : "Champs pré-remplis")}
                 </div>
@@ -2507,7 +2509,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
       ? [{ cle: "redaction", texte: t("stepGenLoadingMsg2"), duree: 15 }]
       : [{ cle: "retouche", texte: t("stepGenLoadingMsg1"), duree: 20 }, { cle: "redaction", texte: t("stepGenLoadingMsg2"), duree: 50 }];
     const etapeRedaction = noRetouch || elapsed >= 20 ? "redaction" : "retouche";
-    const prixLu = price != null && price !== "" && Number.isFinite(Number(price)) ? `${Number(price)} €` : null;
+    const prixLu = price != null && price !== "" && Number.isFinite(Number(price)) ? (lang === "en" ? montantAnglais(price) : `${Number(price)} €`) : null;
     return (
       <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", padding:"24px 0" }}>
         <div style={{ width:"100%", maxWidth:520, margin:"0 auto", background:"#FFFFFF", border:"1px solid #E7E3D8", borderRadius:16, padding:"14px 14px 12px", boxSizing:"border-box" }}>
@@ -2761,7 +2763,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
           const summaryParts = [
             e.title ? (e.title.length > 32 ? e.title.slice(0, 32) + "…" : e.title) : "—",
             etatVal || null,
-            e.price != null && e.price !== "" ? `${e.price}€` : null,
+            e.price != null && e.price !== "" ? (lang === "en" ? (montantAnglais(e.price) || `€${e.price}`) : `${e.price}€`) : null,
           ].filter(Boolean);
           // ── LE MARQUEUR (2026-09-21) ────────────────────────────────────
           // Une carte « suit la valeur générale » ou « a été modifiée à
@@ -3662,7 +3664,7 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
             {jumeauxEnLigne.map(j => (
               <div key={`${j.platform}:${j.url ?? j.titre}`} style={{ fontSize:12.5 }}>
                 <strong>{PLATFORM_LABELS[j.platform] ?? j.platform}</strong>{" · "}
-                {j.titre}{j.prix != null ? ` — ${j.prix} €` : ""}
+                {j.titre}{j.prix != null ? (lang === "en" ? ` — ${montantAnglais(j.prix) || `€${j.prix}`}` : ` — ${j.prix} €`) : ""}
                 {j.url && (
                   <>{" "}<a href={j.url} target="_blank" rel="noopener noreferrer"
                     style={{ color:"#8A6100", fontWeight:700, whiteSpace:"nowrap" }}>

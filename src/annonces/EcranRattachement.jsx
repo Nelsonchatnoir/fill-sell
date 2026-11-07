@@ -29,10 +29,12 @@ import { classerCandidats, chercherDansStock } from './candidats';
 import { motifProposition } from './etatReleve';
 import { textesAnnonces } from './textes';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
+import { montantAnglais } from '../utils/montants';
 
+// (07/11) En anglais, format anglais (« €1,268 », « €12.50 ») ; le français inchangé.
 const prixLisible = (v, fr) => (v == null || v === '' || !Number.isFinite(Number(v))
   ? null
-  : `${Number(v).toLocaleString(fr ? 'fr-FR' : 'en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`);
+  : fr ? `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €` : montantAnglais(v));
 
 const photoDe = (item) => {
   try { return premierePhoto(item?.photos) ?? null; } catch { return null; }

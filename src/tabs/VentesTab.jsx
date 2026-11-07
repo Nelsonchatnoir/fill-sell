@@ -165,7 +165,7 @@ const VentesTab = memo(function VentesTab({
   // (29/10, lot C partie 2) Ouvre la page « À expédier » (EspaceMessagerie) depuis la ligne des bordereaux.
   onOuvrirExpedier=null,
 }) {
-  const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
+  const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec, lang);
   const [filterType, setFilterType] = useState("Tous");
   const fr=lang!=='en';
 

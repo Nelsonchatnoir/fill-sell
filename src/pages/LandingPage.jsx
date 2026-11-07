@@ -131,6 +131,9 @@ function getInitialLang() {
    chaîne française exacte. Une clé absente retombe donc naturellement sur le
    français plutôt que sur du vide. Dictionnaire fourni par le design. */
 const EN = {
+  // (07/11, décision de Nico) Montants en anglais au format anglais.
+  "25 €": "€25",
+  "+486,00 €": "+€486.00",
   "Comment ça marche": "How it works",
   "Synchronisation": "Sync",
   "Synchronisation multi-comptes": "Multi-account sync",

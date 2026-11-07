@@ -39,6 +39,7 @@ import { useCompteCloud } from "../cloud/useCompteCloud";
 import { parLeCloud } from "../cloud/voieCloud";
 import { usePublicationProgrammee } from "../utils/usePublicationProgrammee";
 import { situationJob } from "../utils/fileDesJobs";
+import { montantAnglais } from "../utils/montants";
 
 const LIBELLE_MOTIF = {
   fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse", sans_rayon: "aucun rayon trouvé", rayon_a_choisir: "rayon à choisir — aucun rayon sûr trouvé (rien n’a été débité)", rayon_a_reessayer: "rayon pas trouvé à l'instant — republie pour réessayer", refusee_serveur: "déjà en ligne, en file ou en attente",
@@ -217,7 +218,7 @@ export default function EcranSuivi({ m }) {
   // L'article en tête de barre : la photo retenue, le titre, le prix (même
   // écriture que la carte de l'étape 3) et ce qui se passe.
   const photoArticle = urlPhoto((m.processedPhotos?.[0] ?? m.photos?.[0]) ?? null);
-  const prixArticle = m.price != null && m.price !== "" && Number.isFinite(Number(m.price)) ? `${Number(m.price)} €` : null;
+  const prixArticle = m.price != null && m.price !== "" && Number.isFinite(Number(m.price)) ? (en ? montantAnglais(m.price) : `${Number(m.price)} €`) : null;
   const quoi = plateformes.length > 1
     ? (en ? `Listing on ${plateformes.length} platforms` : `Publication sur ${plateformes.length} plateformes`)
     : (en ? `Listing on ${NOM(plateformes[0])}` : `Publication sur ${NOM(plateformes[0])}`);

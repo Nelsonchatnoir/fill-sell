@@ -15,6 +15,7 @@
 // bordereau en France.
 
 import { urlPhoto, urlsPhotos } from '../utils/photos.js';
+import { LOCALE_MONTANT_ANGLAIS } from '../utils/montants.js';
 
 // (17/10) La vignette d'une conversation ou d'une commande (Vignette.jsx) :
 // la photo de l'annonce, puis les photos de la fiche du stock rattachée — une
@@ -104,10 +105,11 @@ export function dateEtHeure(iso, lang = 'fr') {
   return lang === 'en' ? `${jour} at ${heure}` : `${jour} à ${heure}`;
 }
 
-export function montantTexte(v, devise = 'EUR') {
+// (07/11) En anglais, format anglais (« €1,268.00 ») ; le français inchangé (« 1 268,00 € »).
+export function montantTexte(v, devise = 'EUR', lang = 'fr') {
   const n = Number(v);
   if (v == null || !Number.isFinite(n)) return null;
-  try { return n.toLocaleString('fr-FR', { style: 'currency', currency: devise || 'EUR' }); }
+  try { return n.toLocaleString(lang === 'en' ? LOCALE_MONTANT_ANGLAIS : 'fr-FR', { style: 'currency', currency: devise || 'EUR' }); }
   catch { return `${n.toFixed(2)} ${devise ?? ''}`.trim(); }
 }
 

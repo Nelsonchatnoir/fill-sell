@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFondFige } from '../utils/modale';
 import { lireCouple, apercuReprise, fusionnerArticles } from '../utils/fusionArticles';
+import { montantAnglais } from '../utils/montants';
 
 const P = {
   ink: '#10201B', paper: '#F6F5F1', border: '#E7E3D8', mute: '#8A8578', mute2: '#5C6560',
@@ -146,7 +147,7 @@ export default function FusionArticleModal({ lang, user, item, items = [], onClo
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: '#fff', border: `1px solid ${P.border}`, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
                     <Vignette item={c} taille={34} />
                     <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: P.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
-                    {c.sell != null && <span style={{ fontSize: 12, color: P.mute2, flexShrink: 0 }}>{c.sell} €</span>}
+                    {c.sell != null && <span style={{ fontSize: 12, color: P.mute2, flexShrink: 0 }}>{fr ? <>{c.sell} €</> : montantAnglais(c.sell)}</span>}
                   </button>
                 ))}
                 {candidats.length === 0 && (
@@ -174,7 +175,7 @@ export default function FusionArticleModal({ lang, user, item, items = [], onClo
                         <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: P.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
                         <span style={{ display: 'block', fontSize: 11.5, color: P.mute2 }}>
                           {l?.origine?.startsWith('releve_') ? (fr ? 'venu d’un relevé' : 'from a scan') : (fr ? 'fiche de ton stock' : 'item in your stock')}
-                          {l?.prix_vente != null ? ` · ${l.prix_vente} €` : ''}
+                          {l?.prix_vente != null ? ` · ${fr ? `${l.prix_vente} €` : montantAnglais(l.prix_vente)}` : ''}
                         </span>
                       </span>
                     </button>

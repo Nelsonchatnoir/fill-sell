@@ -5,6 +5,7 @@ export * from "../../supabase/functions/_shared/palier.js";
 // (05/10) Les règles de l'option Cloud ci-dessous (affichage de l'app) en ont
 // besoin ; la même règle côté serveur est cloud_etat (20261004233000).
 import { aAuMoins, palierDuProfil, droitsDuPalier } from "../../supabase/functions/_shared/palier.js";
+import { montantAnglais } from "./montants.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // L'OPTION « FILLSELL CLOUD » — sans ordinateur (conception du 04/10/2026, NON LIVRÉE)
@@ -48,6 +49,9 @@ export const CLOUD_ESSAI_JOURS = 7;
 // supabase/functions/_shared/cloud-pool.js et cloud-rappel-veille.js
 // (contrôlé par scripts/cloud-prix-nom-selftest.mjs).
 export const CLOUD_PRIX_AFFICHE = '24,99 €';
+// (07/11, décision de Nico) Le MÊME prix, écrit à l'anglaise pour les textes anglais de l'app (« €24.99 ») —
+// dérivé de CLOUD_PRIX_AFFICHE, jamais écrit en dur : un changement de prix suit tout seul.
+export const CLOUD_PRIX_AFFICHE_EN = montantAnglais(Number(CLOUD_PRIX_AFFICHE.replace(/[^\d,]/g, '').replace(',', '.')), { decimales: 2 });
 
 const JOUR_MS = 86_400_000;
 const instant = (v) => {

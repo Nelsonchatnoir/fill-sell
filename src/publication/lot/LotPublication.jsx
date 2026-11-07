@@ -99,6 +99,7 @@ import { fusionnerReglages } from "../../utils/reglagesPlateformes";
 import { noterGeste } from "../../utils/dernierGeste";
 import { useChoixPoidsLeboncoin } from "../../utils/useChoixPoidsLeboncoin";
 import { usePublicationProgrammee } from "../../utils/usePublicationProgrammee";
+import { montantAnglais } from "../../utils/montants";
 import {
   cleColisRetenu, grilleColisVinted, chargerGrilleColisRelevee, colisRetenusDuProfil, colisRetenuDuRayon,
   colisVintedDeLaFiche, semerColisRetenus, colisRetenusEnCache, retenirColisVinted,
@@ -2019,7 +2020,7 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
           <div className="fsn-q-t">{en ? `Same item as on ${NOM(j.platform)}?` : `Le même article que sur ${NOM(j.platform)} ?`}</div>
           <div className="fsn-q-why">
             {en ? "A similar listing is already online: " : "Une annonce qui ressemble est déjà en ligne : "}
-            <b>{j.titre}</b>{j.prix != null ? ` — ${j.prix} €` : ""}
+            <b>{j.titre}</b>{j.prix != null ? (en ? ` — ${montantAnglais(j.prix) || `€${j.prix}`}` : ` — ${j.prix} €`) : ""}
             {j.url ? <> · <a href={j.url} target="_blank" rel="noopener noreferrer">{en ? "see it ↗" : "voir ↗"}</a></> : null}
           </div>
           <div className="fsn-btn-row">
@@ -2195,7 +2196,7 @@ export function VueListe({
       const j = q.jumeau;
       return (
         <>
-          <p className="fsq-note">{en ? "A similar listing is already online: " : "Une annonce qui ressemble est déjà en ligne : "}<b>{j.titre}</b>{j.prix != null ? ` — ${j.prix} €` : ""}
+          <p className="fsq-note">{en ? "A similar listing is already online: " : "Une annonce qui ressemble est déjà en ligne : "}<b>{j.titre}</b>{j.prix != null ? (en ? ` — ${montantAnglais(j.prix) || `€${j.prix}`}` : ` — ${j.prix} €`) : ""}
             {j.url ? <> · <a href={j.url} target="_blank" rel="noopener noreferrer">{en ? "see it ↗" : "voir ↗"}</a></> : null}</p>
           <div className="fsn-choices fsq-puces">
             <button type="button" className="fsn-choice" onClick={() => trancherJumeau(id, j.platform, false)}>{en ? "No, another one: publish" : "Non, un autre : publier"}</button>
@@ -2251,7 +2252,7 @@ export function VueListe({
             <span className="fsv-meta">
               {pfs.map((p) => <Logo key={p} platform={p} size={18} />)}
               {ecartees.map((e) => <span key={`x-${e.p}`} className="fsv-barre"><Logo platform={e.p} size={18} desature /></span>)}
-              {prix != null && prix !== "" ? <span className="fsv-px num">{String(prix).replace(".", ",")} €</span> : null}
+              {prix != null && prix !== "" ? <span className="fsv-px num">{en ? (montantAnglais(prix) || `€${prix}`) : <>{String(prix).replace(".", ",")} €</>}</span> : null}
             </span>
           </span>
           <Puce ton={pret ? "ok" : d.photoVide ? "refus" : "geste"}>{pret ? (en ? "Ready" : "Prêt") : premier}</Puce>
@@ -2425,7 +2426,7 @@ export function VueListe({
                       <b>{titreDe(parId.get(ouvert)?.item) || (en ? "Untitled item" : "Article sans titre")}</b>
                       <span className="fsv-meta">
                         {mOuvert ? plateformesDeLArticle(mOuvert).map((p) => <Logo key={p} platform={p} size={18} />) : null}
-                        {mOuvert?.price != null ? <span className="fsv-px num">{String(mOuvert.price).replace(".", ",")} €</span> : null}
+                        {mOuvert?.price != null ? <span className="fsv-px num">{en ? (montantAnglais(mOuvert.price) || `€${mOuvert.price}`) : <>{String(mOuvert.price).replace(".", ",")} €</>}</span> : null}
                       </span>
                     </span>
                   </div>

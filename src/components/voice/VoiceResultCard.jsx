@@ -67,7 +67,7 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
     if (typeof _replaceResult === 'function') _replaceResult(i, patch);
   };
 
-  const fmt = (amount, dec = null) => formatCurrency(amount, currency, dec);
+  const fmt = (amount, dec = null) => formatCurrency(amount, currency, dec, lang);
   const sym = CURRENCY_SYMBOLS[currency] || currency;
   const en = lang === 'en';
   const catEmoji = (c) => (c && c !== 'Autre' ? getTypeStyle(c).emoji : null);

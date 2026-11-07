@@ -3,12 +3,14 @@
 // ordinateur » étant sa promesse). Mêmes règles que textes.js : tutoiement, aucune phrase
 // technique, aucune date ni aucun quota en dur, l'essai sans piège, aucune
 // plateforme promise qui n'est pas prouvée (la liste vient de config/cloudOffer.js).
-import { CLOUD_PRIX_AFFICHE } from '../utils/palier';
+import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from '../utils/palier';
 
 const NBSP = ' ';
 // (01/11) Les noms des plateformes du bandeau : une liste, quoi qu'on passe (un autotest appelle chaque phrase avec une date).
 const listeNoms = (n) => (Array.isArray(n) ? n : []).map(String).filter(Boolean);
 const PRIX = CLOUD_PRIX_AFFICHE.replace(/ /g, NBSP);
+// (07/11, décision de Nico) Les textes anglais disent le même prix à l'anglaise : '€24.99'.
+const PRIX_EN = CLOUD_PRIX_AFFICHE_EN;
 
 const FR = {
   titre: 'Me connecter',
@@ -83,6 +85,10 @@ const FR = {
   achatEchec: "Le paiement du Cloud n'a pas pu s'ouvrir. Rien n'a été prélevé : réessaie dans un instant.",
   achatAttente: 'Paiement reçu : ton Cloud démarre dans un instant.',
   achatOk: 'Cloud actif : connecte maintenant tes plateformes.',
+  // (07/11, Nico) « Restaurer les achats » retrouve aussi l'option Cloud (prise seule ou avec une formule).
+  restaureOk: 'FillSell Cloud restauré : il est actif.',
+  restaureAttente: 'Ton abonnement FillSell Cloud est retrouvé : il se réactive dans un instant.',
+  restaureEchec: "Ton abonnement FillSell Cloud est retrouvé, mais sa vérification n'a pas abouti. Réessaie dans un instant.",
   arretEchec: "L'arrêt n'a pas pu se faire. Réessaie dans un instant.",
   arretBoutique: "Ton Cloud a été pris dans la boutique de ton téléphone : il s'arrête dans ses réglages d'abonnements, qui s'ouvrent.",
   refusCarte: "Cette carte a déjà servi à un essai gratuit : l'essai s'est arrêté, rien n'a été prélevé. Tu peux prendre le Cloud sans essai.",
@@ -143,11 +149,14 @@ const EN = {
   dejaClient: 'The FillSell Cloud add-on is already active on your account.',
   sansEssai: (raison) => `${raison === 'essai_deja_pris'
     ? 'You already used the free trial.'
-    : 'The free trial was already used on this device or platform account.'} The Cloud therefore starts right away, at ${PRIX}/mo, and you can stop it whenever you want. Continue?`,
+    : 'The free trial was already used on this device or platform account.'} The Cloud therefore starts right away, at ${PRIX_EN}/mo, and you can stop it whenever you want. Continue?`,
   sansEssaiStore: 'If your app store shows a free week, the Cloud only runs from the first payment.',
   achatEchec: "The Cloud payment couldn't open. Nothing was charged: try again in a moment.",
   achatAttente: 'Payment received: your Cloud starts in a moment.',
   achatOk: 'Cloud active: now connect your platforms.',
+  restaureOk: 'FillSell Cloud restored: it is active.',
+  restaureAttente: 'Your FillSell Cloud subscription was found: it reactivates in a moment.',
+  restaureEchec: "Your FillSell Cloud subscription was found, but it couldn't be verified. Try again in a moment.",
   arretEchec: "The Cloud couldn't be stopped. Try again in a moment.",
   arretBoutique: 'Your Cloud was bought in your phone\'s app store: it stops in its subscription settings, which are opening.',
   refusCarte: 'This card was already used for a free trial: the trial stopped, nothing was charged. You can take the Cloud without a trial.',

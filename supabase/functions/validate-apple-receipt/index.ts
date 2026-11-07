@@ -77,7 +77,11 @@ serve(async (req) => {
       });
     }
 
-    const { receipt, userId } = await req.json();
+    const { receipt, userId, option } = await req.json();
+    // (07/11, Nico) « Restaurer les achats » d'un Cloud pris SEUL (Free + Cloud) : option « cloud » = seule l'option
+    // du reçu s'écrit ; la formule du profil (is_premium, is_pro, is_business, échéance, Founder) n'est JAMAIS touchée —
+    // une formule prise ailleurs (Stripe, Google) ne doit pas tomber parce que le reçu Apple n'en porte pas.
+    const seulementCloud = option === "cloud";
 
     if (!receipt || !userId) {
       return new Response(JSON.stringify({ error: "receipt et userId requis" }), {
@@ -102,6 +106,11 @@ serve(async (req) => {
 
     if (appleData.status !== 0) {
       console.error("[validate-apple-receipt] Apple status:", appleData.status);
+      if (seulementCloud) {
+        return new Response(JSON.stringify({ success: false, error: "receipt_invalide", is_cloud: false }), {
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
       await supabaseAdmin.from("profiles").update({ is_premium: false }).eq("id", userId);
       return new Response(JSON.stringify({ success: true, is_premium: false }), {
         headers: { ...CORS, "Content-Type": "application/json" },
@@ -157,6 +166,7 @@ serve(async (req) => {
     // récente du produit fait foi ; is_trial_period du reçu historique vaut
     // l'offre d'introduction (essai 1 semaine). Une option portée par un autre
     // canal n'est pas touchée (ecritureCloudStore).
+    let majCloudLue: Record<string, unknown> | null = null;
     const txCloud = inApp
       .filter((tx: any) => lectureCloudApple({ productId: tx.product_id }))
       .sort((a: any, b: any) => parseInt(b.expires_date_ms ?? "0") - parseInt(a.expires_date_ms ?? "0"))[0];
@@ -176,6 +186,15 @@ serve(async (req) => {
       });
       if (majCloud) Object.assign(update, majCloud);
       else console.log(`[validate-apple-receipt] option Cloud du reçu ignorée (${motif})`);
+      majCloudLue = majCloud ?? null;
+    }
+    if (seulementCloud) {
+      // L'option seule : rien d'autre ne s'écrit (ni formule, ni Founder).
+      if (majCloudLue) await supabaseAdmin.from("profiles").update(majCloudLue).eq("id", userId);
+      console.log(`[validate-apple-receipt] option cloud seule userId=${userId} cloud=${txCloud ? (majCloudLue ? "ecrite" : "ignoree") : "absente"}`);
+      return new Response(JSON.stringify({ success: true, is_cloud: majCloudLue?.is_cloud === true, cloud: txCloud ? (majCloudLue ? "ecrite" : "ignoree") : "absente" }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
     }
     await supabaseAdmin.from("profiles").update(update).eq("id", userId);
 

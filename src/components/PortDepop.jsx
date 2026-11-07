@@ -198,7 +198,7 @@ export function CartePortDepop({ m, id = 'port-depop-stepper', zFeuille = 1100 }
         <button type="button" className="fpd-lien fpd" style={{ padding: 0 }} disabled={gardeLe === 'en_cours'} onClick={garder}>
           {gardeLe === 'rate'
             ? (en ? 'Not saved — try again' : 'Pas enregistré — réessaie')
-            : (en ? `Keep ${formaterPort(lu, 'en')} € for my next Depop listings` : `Garder ${formaterPort(lu, 'fr')} € pour mes prochaines annonces Depop`)}
+            : (en ? `Keep €${formaterPort(lu, 'en')} for my next Depop listings` : `Garder ${formaterPort(lu, 'fr')} € pour mes prochaines annonces Depop`)}
         </button>
       )}
       {gardeLe === 'ok' && (

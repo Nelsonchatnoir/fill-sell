@@ -8,12 +8,12 @@
 //
 // Options : --type=cx43 --lieu=fsn1 · --plafond-ip=8 (USD : au-delà, on n'achète pas)
 //           --commande=<n°> (une IP achetée par Nico dans le tableau de bord, au lieu d'en acheter une)
-//           --sans-ip · --sans-mesure · --domaine=<nom> (sinon cloud.fillsell.app si le DNS y pointe, ou <ip>.sslip.io)
+//           --sans-ip · --sans-mesure · --domaine=<nom> (DNS posé par Nico ; sinon <ip>.sslip.io)
 //
 // Secrets : C:\Users\nicol\fillsell-cloud-proto\secrets.env — lus, JAMAIS affichés ni copiés ailleurs :
 //   HCLOUD_TOKEN (obligatoire) · IPROYAL_API_TOKEN (obligatoire, sauf --sans-ip ou --commande seule lecture)
-//   CLOUDFLARE_API_TOKEN (facultatif : « Zone › DNS › Modifier », zone fillsell.app SEULE ; ne touche
-//   QUE l'enregistrement A cloud.fillsell.app, en gris — sinon le DNS est un geste de Nico).
+//   (07/11, décision de Nico, voie b) cloud.fillsell.app est RETIRÉ (ni serveur ni DNS) : l'outil n'écrit plus
+//   aucun DNS et ne lit plus CLOUDFLARE_API_TOKEN ; un nom à soi = geste de Nico (A, nuage gris) puis --domaine.
 // Reprise : relancer la MÊME commande. Ce qui existe est repris — le serveur par son nom, l'IP par
 // cloud-test-etat.json (à côté de secrets.env, aucun secret dedans) — JAMAIS racheté.
 //
@@ -24,7 +24,6 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { promises as dnsP } from 'node:dns';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,8 +34,6 @@ const SECRETS = path.join(DOSSIER, 'secrets.env');
 const ETAT = path.join(DOSSIER, 'cloud-test-etat.json');
 const CLE_SSH = path.join(homedir(), '.ssh', 'fillsell_cloud_ed25519');
 const NICO = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
-const DOMAINE_CLOUD = 'cloud.fillsell.app';
-const ZONE = 'fillsell.app';
 const CURL = 'curlimages/curl:8.11.1';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')).map(([k, v]) => [k, v ?? true]));
@@ -51,7 +48,6 @@ const secrets = Object.fromEntries(readFileSync(SECRETS, 'utf8').split(/\r?\n/)
   .map((l) => l.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
 const HCLOUD = secrets.HCLOUD_TOKEN || '';
 const IPROYAL = secrets.IPROYAL_API_TOKEN || '';
-const CLOUDFLARE = secrets.CLOUDFLARE_API_TOKEN || '';
 
 const etat = existsSync(ETAT) ? JSON.parse(readFileSync(ETAT, 'utf8')) : {};
 const noterEtat = () => writeFileSync(ETAT, `${JSON.stringify(etat, null, 2)}\n`);
@@ -69,7 +65,6 @@ async function json(url, { methode = 'GET', entetes = {}, corps } = {}) {
 }
 const hz = (chemin, o = {}) => json(`https://api.hetzner.cloud/v1${chemin}`, { ...o, entetes: { Authorization: `Bearer ${HCLOUD}` } });
 const ipr = (chemin, o = {}) => json(`https://apid.iproyal.com/v1/reseller${chemin}`, { ...o, entetes: { 'X-Access-Token': IPROYAL } });
-const cf = (chemin, o = {}) => json(`https://api.cloudflare.com/client/v4${chemin}`, { ...o, entetes: { Authorization: `Bearer ${CLOUDFLARE}` } });
 const donnees = (r) => r?.d?.data ?? r?.d;
 
 // Git Bash, jamais le bash de WSL (C:\Windows\System32\bash.exe).
@@ -154,20 +149,7 @@ else {
   }
 }
 
-titre('DNS');
-{
-  const r = await dnsP.resolve4(DOMAINE_CLOUD).catch(() => []);
-  const ipServeur = plan.serveur?.public_net?.ipv4?.ip ?? etat.serveur?.ip ?? null;
-  plan.dnsPret = Boolean(ipServeur && r.includes(ipServeur));
-  console.log(`  ${DOMAINE_CLOUD} → ${r.length ? r.join(', ') : 'aucun enregistrement'}${plan.dnsPret ? ' (= le serveur)' : ''}`);
-  if (CLOUDFLARE) {
-    const v = await cf('/user/tokens/verify');
-    const z = v.ok ? (await cf(`/zones?name=${ZONE}`)).d?.result?.[0] : null;
-    plan.zone = z?.id ?? null;
-    console.log(`  jeton Cloudflare : ${v.ok ? 'valide' : `REFUSÉ (HTTP ${v.statut})`} · zone ${ZONE} : ${plan.zone ? 'accessible' : 'INACCESSIBLE'}`);
-    if (!v.ok || !plan.zone) plan.problemes.push('jeton Cloudflare inutilisable (le retirer de secrets.env, ou le refaire : Zone › DNS › Modifier, zone fillsell.app)');
-  } else console.log('  pas de jeton Cloudflare : le DNS sera le geste de Nico (A « cloud » → IP du serveur, nuage GRIS) ; en attendant, <ip>.sslip.io');
-}
+// (07/11, voie b) Plus de DNS automatique : --domaine=<nom> (posé par Nico) ou <ip>.sslip.io.
 
 titre('Coût du test');
 if (plan.coutServeur) {
@@ -242,26 +224,10 @@ async function executer() {
     return `http://${encodeURIComponent(p.username)}:${encodeURIComponent(p.password)}@${p.ip}:${p.port ?? commande.proxy_data?.ports?.http ?? 12323}`;
   })() : null;
 
-  // 2.3 Le DNS : par le jeton Cloudflare (A cloud.fillsell.app, gris), sinon déjà posé par Nico, sinon sslip.io.
+  // 2.3 Le DNS. (07/11, décision de Nico, voie b) cloud.fillsell.app retiré : aucun enregistrement écrit ici ;
+  // --domaine=<nom> (posé par Nico chez Cloudflare, nuage gris), sinon <ip>.sslip.io.
   titre('DNS');
   let domaine = args.domaine || null;
-  if (!domaine && CLOUDFLARE && plan.zone) {
-    const ex = (await cf(`/zones/${plan.zone}/dns_records?name=${DOMAINE_CLOUD}`)).d?.result ?? [];
-    if (ex.some((r) => r.type !== 'A')) arret(`${DOMAINE_CLOUD} porte déjà un enregistrement ${ex.map((r) => r.type).join(', ')} : on n'y touche pas`);
-    const a = ex.find((r) => r.type === 'A');
-    if (a && a.content !== ip && !args['forcer-dns']) arret(`${DOMAINE_CLOUD} pointe déjà vers ${a.content} (pas ce serveur) : --forcer-dns pour le remplacer`);
-    const corps = { type: 'A', name: DOMAINE_CLOUD, content: ip, ttl: 60, proxied: false, comment: 'FillSell Cloud (serveur de test)' };
-    const w = a ? await cf(`/zones/${plan.zone}/dns_records/${a.id}`, { methode: 'PUT', corps }) : await cf(`/zones/${plan.zone}/dns_records`, { methode: 'POST', corps });
-    if (!w.ok) arret(`Cloudflare refuse l'enregistrement (HTTP ${w.statut})`);
-    console.log(`  ${DOMAINE_CLOUD} → ${ip} (nuage gris) ${a ? 'mis à jour' : 'créé'}`);
-    domaine = DOMAINE_CLOUD;
-  } else if (!domaine && plan.dnsPret) domaine = DOMAINE_CLOUD;
-  if (domaine === DOMAINE_CLOUD) {
-    const resolveur = new dnsP.Resolver(); resolveur.setServers(['1.1.1.1', '8.8.8.8']);
-    let vu = false;
-    for (let i = 0; i < 40 && !vu; i++) { vu = (await resolveur.resolve4(DOMAINE_CLOUD).catch(() => [])).includes(ip); if (!vu) await pause(15_000); }
-    if (!vu) { console.log(`  ${DOMAINE_CLOUD} ne pointe pas encore vers ${ip} : déploiement sur sslip.io, relancer plus tard`); domaine = null; }
-  }
   domaine ??= `${ip.replace(/\./g, '-')}.sslip.io`;
   console.log(`  domaine du déploiement : ${domaine}`);
 

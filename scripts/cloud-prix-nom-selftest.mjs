@@ -148,8 +148,17 @@ titre('5. Le nom : « FillSell Cloud » ; « sans ordinateur » est la promesse'
   const FR = TX.textesCloud('fr'), EN = TX.textesCloud('en');
   ok(FR.nom === 'FillSell Cloud' && EN.nom === 'FillSell Cloud', 'le nom de l’option : « FillSell Cloud » (fr et en)', `${FR.nom} / ${EN.nom}`);
   ok(FR.groupe === 'FillSell Cloud' && EN.groupe === 'FillSell Cloud', 'Réglages › Abonnement : le groupe « FillSell Cloud »');
-  ok(net(FR.libelleInterrupteur) === `FillSell Cloud · sans ordinateur · +${PRIX}/mois` && net(EN.libelleInterrupteur) === `FillSell Cloud · no computer · +${PRIX}/mo`,
-    `l’interrupteur : « FillSell Cloud · sans ordinateur · +${PRIX}/mois »`, `${net(FR.libelleInterrupteur)} / ${net(EN.libelleInterrupteur)}`);
+  ok(net(FR.libelleInterrupteur) === `FillSell Cloud · sans ordinateur · +${PRIX}/mois` && net(EN.libelleInterrupteur) === `FillSell Cloud · no computer · +${PAL.CLOUD_PRIX_AFFICHE_EN}/mo`,
+    `l’interrupteur : « FillSell Cloud · sans ordinateur · +${PRIX}/mois » (en : « +€24.99/mo »)`, `${net(FR.libelleInterrupteur)} / ${net(EN.libelleInterrupteur)}`);
+  // (07/11, décision de Nico) Montants en anglais au format anglais : « €24.99 », dérivé de CLOUD_PRIX_AFFICHE ; le français inchangé.
+  ok(PAL.CLOUD_PRIX_AFFICHE_EN === '€24.99', `CLOUD_PRIX_AFFICHE_EN = '€24.99' (dérivé de CLOUD_PRIX_AFFICHE)`, PAL.CLOUD_PRIX_AFFICHE_EN);
+  {
+    const enTout = [...phrases(EN), ...phrases(CX.textesConnexion('en'))];
+    const avecPrix = enTout.filter((p) => /24[,.]99/.test(p));
+    ok(avecPrix.length >= 10 && avecPrix.every((p) => p.includes('€24.99') && !/24,99/.test(p)), `textes anglais du Cloud (textes.js, textesConnexion.js) : « €24.99 », jamais « 24,99 € » (${avecPrix.length} phrases)`, avecPrix.filter((p) => !p.includes('€24.99')).join(' | '));
+    const frTout = [...phrases(FR), ...phrases(CX.textesConnexion('fr'))].filter((p) => /24[,.]99/.test(p));
+    ok(frTout.length >= 10 && frTout.every((p) => p.includes('24,99 €') && !p.includes('€24.99')), `textes français du Cloud : « 24,99 € » inchangé (${frTout.length} phrases)`);
+  }
   ok(/insécable|NBSP/.test(lire('src/cloud/textes.js')) && FR.libelleInterrupteur.includes(`24,99${String.fromCharCode(0xa0)}€`), 'le prix de l’interrupteur ne se coupe pas (« 24,99 € » insécable)');
   const nommes = ['freeCloudTitre', 'freeCloudCtaEssai', 'voieTitreEssai', 'voieTitre', 'voieCtaEssai', 'arreterTitre', 'veilleKicker', 'finKicker', 'ctaSuffixe', 'prixOptionSous', 'dejaActif'];
   const sansNom = nommes.filter((k) => !phrases(FR[k]).every((p) => p.includes('FillSell Cloud')) || !phrases(EN[k]).every((p) => p.includes('FillSell Cloud')));

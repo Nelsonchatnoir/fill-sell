@@ -1,5 +1,5 @@
 # TLS automatique (Let's Encrypt) pour l'écran « Me connecter ».
-# DOMAINE = cloud.fillsell.app (enregistrement A chez Cloudflare, nuage gris),
+# DOMAINE = <nom>.fillsell.app du serveur, ex. cloud-2.fillsell.app (enregistrement A chez Cloudflare, nuage gris),
 # ou <ip>.sslip.io en attendant.
 {
 	admin off

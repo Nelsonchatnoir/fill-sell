@@ -4,7 +4,7 @@
 #
 #   bash serveur-cloud/outils/installer-serveur.sh <ip_du_serveur>
 #
-# Puis : bash serveur-cloud/outils/deployer.sh <ip> cloud.fillsell.app
+# Puis : bash serveur-cloud/outils/deployer.sh <ip> <nom>.fillsell.app   (ex. cloud-2.fillsell.app ; A posé par Nico, nuage gris)
 set -euo pipefail
 IP="${1:?ip du serveur}"
 CLE="$HOME/.ssh/fillsell_cloud_ed25519"

@@ -11,6 +11,7 @@
 //    règles que la RPC. Si les deux divergeaient, l'écran mentirait sur ce
 //    qu'il s'apprête à faire.
 import { supabase } from '../lib/supabase';
+import { montantAnglais } from './montants';
 
 const CHAMPS = 'id, titre, prix_achat, prix_achat_inconnu, prix_vente, description, marque, photos, attributs, origine, plateforme, created_at, fusionne_dans';
 
@@ -68,7 +69,7 @@ export function apercuReprise(garde, absorbe, fr = true) {
   const absorbeSaitPrix = absorbe.prix_achat != null || absorbe.prix_achat_inconnu === true;
   if (!gardeSaitPrix && absorbeSaitPrix) {
     repris.push({ cle: 'prix_achat', libelle: L.prix_achat,
-      valeur: absorbe.prix_achat != null ? `${absorbe.prix_achat} €` : (fr ? 'inconnu (assumé)' : 'unknown (declared)') });
+      valeur: absorbe.prix_achat != null ? (fr ? `${absorbe.prix_achat} €` : montantAnglais(absorbe.prix_achat)) : (fr ? 'inconnu (assumé)' : 'unknown (declared)') });
   } else if (gardeSaitPrix) {
     conserves.push({ cle: 'prix_achat', libelle: L.prix_achat });
   }

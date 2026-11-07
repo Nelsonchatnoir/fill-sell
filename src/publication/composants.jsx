@@ -5,6 +5,7 @@
 // variables --fs-*. Une carte a UNE gravité (info · geste · refus) et une seule.
 import PlatformLogo from "../components/platform-logos/PlatformLogo";
 import { urlPhoto } from "../utils/photos";
+import { montantAnglais } from "../utils/montants";
 
 /** Une carte. `gravite` : null (blanche) | 'flat' | 'info' | 'geste' | 'refus'. */
 export function Carte({ gravite = null, titre = null, children, style, className = "", ...rest }) {
@@ -50,7 +51,7 @@ export function CarteArticle({ photo = null, titre, sousTitre = null, prix = nul
           {sousTitre ? <div className="fsn-article-s">{sousTitre}</div> : null}
         </div>
         {prix != null && prix !== "" && Number.isFinite(Number(prix))
-          ? <b className="fsn-price num">{Number(prix)} €</b>
+          ? <b className="fsn-price num">{lang === "en" ? montantAnglais(prix) : <>{Number(prix)} €</>}</b>
           : (prixVide ? <span className="fsn-price fsn-price--vide">{prixVide}</span> : null)}
       </div>
       {enfants}

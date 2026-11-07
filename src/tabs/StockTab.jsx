@@ -214,6 +214,8 @@ import { AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours }
 // jobsDuSuivi et lotLePlusRecent (qui appelle suiviDuLot) remplacent l'appel direct d'ici.
 import { PLATEFORMES_LOT, articleSelectionnable, idLotDeJob, CLE_REPRISE_LOT, repriseValable, jobsDuSuivi, lotLePlusRecent } from '../publication/lot/regles';
 import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
+// (07/11, décision de Nico) Les montants affichés en anglais au format anglais (« €1,268.50 »), le français inchangé.
+import { montantAnglais } from '../utils/montants';
 import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   champsServeurSaisissables, needsUserOuvrable, republicationAnnonceDisparue,
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
@@ -5889,7 +5891,7 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
   const bouton = (() => {
     const cible = nomsSel.length === 1 ? (fr ? `sur ${libelleSel}` : `on ${libelleSel}`) : (fr ? `sur ${nomsSel.length} plateformes` : `on ${nomsSel.length} platforms`);
     if (!nomsSel.length) return fr ? 'Choisis au moins une plateforme' : 'Pick at least one platform';
-    if (solo) return fr ? <>Republier {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` à ${prixFinalSolo} €` : ''}{cout && <> · {cout}</>}</> : <>Repost {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` at €${prixFinalSolo}` : ''}{cout && <> · {cout}</>}</>;
+    if (solo) return fr ? <>Republier {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` à ${prixFinalSolo} €` : ''}{cout && <> · {cout}</>}</> : <>Repost {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` at ${montantAnglais(prixFinalSolo) || `€${prixFinalSolo}`}` : ''}{cout && <> · {cout}</>}</>;
     // Le compte affiché est celui des PAIRES article × plateforme qui vont
     // partir (nbEnvois) — c'est ce que la mise en file comptera ensuite. Le
     // nombre d'articles et la cible restent dits entre parenthèses.
@@ -5956,7 +5958,7 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 13, color: '#5C6560', fontWeight: 600 }}>
               {items[0].prixActuel != null
-                ? (fr ? `En ligne sur Vinted à ${items[0].prixActuel} €` : `Live on Vinted at €${items[0].prixActuel}`)
+                ? (fr ? `En ligne sur Vinted à ${items[0].prixActuel} €` : `Live on Vinted at ${montantAnglais(items[0].prixActuel) || `€${items[0].prixActuel}`}`)
                 : (fr ? 'Prix Vinted actuel inconnu' : 'Current Vinted price unknown')}
             </span>
             <input inputMode="decimal" value={prixLibre} onChange={e => setPrixLibre(e.target.value)}
@@ -5976,12 +5978,12 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
         {!solo && pct > 0 && (
           <div style={{ background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#5C6560', lineHeight: 1.55, marginBottom: 12 }}>
             {lotApercu.slice(0, 3).map((a, i) => (
-              <div key={i}>{(a.titre ?? '—')} : {a.avant != null ? `${a.avant} € → ${a.apres} €` : (fr ? 'prix inconnu — gardé' : 'unknown price — kept')}{a.plafonne ? (fr ? ' (plancher)' : ' (floor)') : ''}</div>
+              <div key={i}>{(a.titre ?? '—')} : {a.avant != null ? (fr ? `${a.avant} € → ${a.apres} €` : `${montantAnglais(a.avant) || `€${a.avant}`} → ${montantAnglais(a.apres) || `€${a.apres}`}`) : (fr ? 'prix inconnu — gardé' : 'unknown price — kept')}{a.plafonne ? (fr ? ' (plancher)' : ' (floor)') : ''}</div>
             ))}
             {lotApercu.length > 3 && <div>… {lotApercu.length - 3} {fr ? 'autres' : 'more'}</div>}
             {plafonnes.length > 0 && (
               <div style={{ marginTop: 6, color: '#9A3412', fontWeight: 600 }}>
-                {fr ? `${plafonnes.length} article${plafonnes.length > 1 ? 's' : ''} au plancher de ${REPUB_PLANCHER_EUR} € : ` : `${plafonnes.length} item${plafonnes.length > 1 ? 's' : ''} at the ${REPUB_PLANCHER_EUR} € floor: `}
+                {fr ? `${plafonnes.length} article${plafonnes.length > 1 ? 's' : ''} au plancher de ${REPUB_PLANCHER_EUR} € : ` : `${plafonnes.length} item${plafonnes.length > 1 ? 's' : ''} at the ${montantAnglais(REPUB_PLANCHER_EUR)} floor: `}
                 {plafonnes.slice(0, 3).map(a => a.titre ?? '—').join(' · ')}{plafonnes.length > 3 ? '…' : ''}
               </div>
             )}
@@ -6260,7 +6262,7 @@ const StockTab = memo(function StockTab({
 }) {
   const { t, tpl } = useTranslation(lang);
   const isMobile = useIsMobile(); // P4 : réactif (grille desktop ↔ liste mobile)
-  const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
+  const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec, lang);
   const [zoneEdits, setZoneEdits] = useState({});
   const [publishItem, setPublishItem] = useState(null);
   // La peau du stepper (refonte 24/09) : ancienne par défaut, nouvelle par
@@ -9543,8 +9545,8 @@ const StockTab = memo(function StockTab({
     ...((prixMinN != null || prixMaxN != null) ? [{
       cle: 'prix',
       libelle: prixMinN != null && prixMaxN != null
-        ? (lang === 'fr' ? `${nombreFr(prixMinN)} à ${nombreFr(prixMaxN)} €` : `€${prixMinN} to €${prixMaxN}`)
-        : prixMinN != null ? (lang === 'fr' ? `Dès ${nombreFr(prixMinN)} €` : `From €${prixMinN}`) : (lang === 'fr' ? `Jusqu'à ${nombreFr(prixMaxN)} €` : `Up to €${prixMaxN}`),
+        ? (lang === 'fr' ? `${nombreFr(prixMinN)} à ${nombreFr(prixMaxN)} €` : `${montantAnglais(prixMinN)} to ${montantAnglais(prixMaxN)}`)
+        : prixMinN != null ? (lang === 'fr' ? `Dès ${nombreFr(prixMinN)} €` : `From ${montantAnglais(prixMinN)}`) : (lang === 'fr' ? `Jusqu'à ${nombreFr(prixMaxN)} €` : `Up to ${montantAnglais(prixMaxN)}`),
       onRetirer: () => { setPrixMin(''); setPrixMax(''); setShowAllStock(false); },
     }] : []),
   ];

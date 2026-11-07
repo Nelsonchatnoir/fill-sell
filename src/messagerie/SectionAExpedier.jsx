@@ -95,7 +95,7 @@ function ConfirmationGeneration({ commande: c, action, lang, occupe, onAnnuler, 
   const types = action.types ?? [];
   const [type, setType] = useState(types.includes(1) ? 1 : (types[0] ?? null));
   const geste = GESTES[c.platform] ?? ['Confirmer', 'Confirm'];
-  const meta = [pseudoAffiche(c.platform, c.acheteur_pseudo), montantTexte(c.montant, c.devise), libelleTransporteur(c.transporteur)].filter(Boolean).join(' · ');
+  const meta = [pseudoAffiche(c.platform, c.acheteur_pseudo), montantTexte(c.montant, c.devise, lang), libelleTransporteur(c.transporteur)].filter(Boolean).join(' · ');
   const choix = (types.length > 1 || action.typesSupposes) && type != null ? { type_etiquette: type } : {};
   return (
     <Couche onFermer={occupe ? undefined : onAnnuler}>
@@ -321,7 +321,7 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
         const attente = etatD?.attente === true;
         // Une génération déjà née (en cours, faite, incertaine) : plus jamais le bouton « Générer ».
         const generationNee = demande?.action === 'generer' && ['demandee', 'en_cours', 'generee', 'prete', 'incertaine'].includes(demande.statut);
-        const meta = [pseudoAffiche(c.platform, c.acheteur_pseudo), montantTexte(c.montant, c.devise), c.vendue_le ? (fr ? `vendue ${dateCourte(c.vendue_le, lang)}` : `sold ${dateCourte(c.vendue_le, lang)}`) : null].filter(Boolean).join(' · ');
+        const meta = [pseudoAffiche(c.platform, c.acheteur_pseudo), montantTexte(c.montant, c.devise, lang), c.vendue_le ? (fr ? `vendue ${dateCourte(c.vendue_le, lang)}` : `sold ${dateCourte(c.vendue_le, lang)}`) : null].filter(Boolean).join(' · ');
         const suivi = suiviCommande(c, lang);
         // (17/10) Le geste FillSell en bouton ; la plateforme en dernier recours (lien discret),
         // sauf quand c'est le SEUL geste possible (type 'lien' : il dit pourquoi).

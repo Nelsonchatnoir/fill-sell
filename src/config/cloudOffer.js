@@ -113,9 +113,8 @@ export const cloudOffreVendable = (userId, fuseau = undefined) =>
   cloudVendableDansLePays({ temoin: estTemoin(userId), ouvert: cloudOffreOuverte(), pays: paysDuTelephoneCloud(fuseau) });
 
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
-// Le serveur qui ouvre la page de connexion dans le navigateur Cloud du compte
-// (orchestrateur, serveur-cloud/, derrière Caddy).
-export const CLOUD_DOMAINE = 'cloud.fillsell.app';
+// (07/11, décision de Nico, voie b) CLOUD_DOMAINE retiré : l'adresse vient du serveur du compte (cloud_serveur_moi,
+// src/cloud/MeConnecterCloud.jsx), jamais d'un nom fixe — cloud.fillsell.app n'a plus de serveur ni de DNS.
 // (30/10, lot D) La version en vigueur des conditions d'utilisation du Cloud (src/cloud/conditionsCloud.js) — même
 // valeur que supabase/functions/_shared/cloud-conditions.js. Changer le texte = changer cette version.
 // (04/11) 2026-10-30 → 2026-11-04 : le prix de l'article 6 passe à 24,99 € (décision de Nico du 03/11). Une personne

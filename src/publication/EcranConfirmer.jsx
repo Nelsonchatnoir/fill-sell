@@ -29,6 +29,7 @@ import { libelleStrategie } from "../utils/strategiePrix";
 import CarteRayon from "../components/CarteRayon";
 import { CartePortDepop } from "../components/PortDepop";
 import { CartePoidsLeboncoin } from "../components/PoidsLeboncoin";
+import { montantAnglais } from "../utils/montants";
 
 // (25/10) hors_france : Leboncoin d'une adresse de remise hors de France (moteur/regles.calculerExclusions).
 const LIBELLE_MOTIF = {
@@ -299,7 +300,7 @@ export default function EcranConfirmer({ m }) {
           {m.jumeaux.map(j => (
             <div key={`${j.platform}:${j.url ?? j.titre}`} className="fsn-row">
               <span className="fsn-grow fsn-card-p">
-                <b>{NOM(j.platform)}</b> · {j.titre}{j.prix != null ? ` — ${j.prix} €` : ""}
+                <b>{NOM(j.platform)}</b> · {j.titre}{j.prix != null ? (en ? ` — ${montantAnglais(j.prix) || `€${j.prix}`}` : ` — ${j.prix} €`) : ""}
                 {j.preuve === "photo" ? <span className="fsn-small" style={{ color: "inherit" }}> · {en ? "same photo" : "même photo"}</span> : null}
               </span>
               {j.url && <a href={j.url} target="_blank" rel="noopener noreferrer" style={{ whiteSpace: "nowrap" }}>{en ? "see it ↗" : "voir ↗"}</a>}

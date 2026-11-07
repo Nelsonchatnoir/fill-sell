@@ -6,10 +6,12 @@
 // tant que la question n'est pas tranchée (elles ne sont pas dans `items`).
 import { premierePhoto } from '../components/GalleryPhoto';
 import { S } from './jetons';
+import { montantAnglais } from '../utils/montants';
 
 const MAX_CARTES = 6; // deux rangées de trois sur un téléphone : visibles, sans pousser le stock loin
+// (07/11) En anglais, format anglais (« €1,268 », « €12.50 ») ; le français inchangé.
 const prixLisible = (v, fr) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null
-  : (fr ? `${Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} €` : `€${Number(v)}`));
+  : (fr ? `${Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} €` : montantAnglais(v)));
 
 export default function SectionAVerifier({ lang = 'fr', items = [], onOuvrir = null }) {
   const fr = lang !== 'en';
