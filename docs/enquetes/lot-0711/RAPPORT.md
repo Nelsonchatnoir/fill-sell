@@ -125,3 +125,17 @@ Enquêtes en lecture seule (base, code, journaux, page publique Leboncoin lue de
 - Feu vert sur les migrations 20261107140000 et 20261107150000 (rien appliqué).
 - Point 6 : A, B ou C. Point 5d : saisie des dimensions. Point 7 : retenue Vinted non française. Point 8 : spatule ;
   correctif du rattachement. Point 10 : photo morte dans une republication ; retenue SQL optionnelle.
+
+## Suite du 07/11 après-midi (décisions de Nico)
+- Point 6, option A : règle A rétablie (get-pending-jobs, avant la série) ; les remises de Louis closes/jamais vues
+  (rangs 1-4, dont 3304017454 déposé à 11:25, 410) reviennent en attente (handler-watch) et repartent à la disparition
+  de leur vendue, rang par rang.
+- Point 3 : 0.6.178, arrêt à la borne pour TOUS les comptes ; doublons de Ciddjy PROUVÉS (4 annonces, une par essai,
+  numérotation Beebs) → règle « nos propres dépôts en double » : 34309782 gardée, 3 retraits par le circuit existant.
+- Point 7 (Marta) : retenue de toute republication Vinted d'une page non française avant retrait, jusqu'à la preuve
+  (interrupteur coin_config `vinted_republication_hors_fr_prouvee`, essai : drapeau beta `vinted_essai_hors_fr`).
+- Point 8 : migration B resserrée APPLIQUÉE (feu vert nommé ; 77 → 51 propositions, 26 fermées, spatule et By Zoé
+  ouverts) ; migration C (rattachement = question, jamais fusion) prête, preuve 43/43, NON appliquée.
+- Point 6 (nouveaux rouges) : Sonia = photos PNG lourdes (critères LBC après réception) → 0.6.178 + relance au build ;
+  tailles eBay (E1/E2) ; correctifs serveur du balayage (dépôts jamais vus sur article vendu/supprimé, prix de la
+  fiche, ISBN des republications, taille Depop, « A x B cm », relevés d'absence).

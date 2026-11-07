@@ -116,8 +116,11 @@ function chargerBackground({ keepalive = true } = {}) {
   assert.equal(api.borneEffectiveRemplissage({ platform: "beebs", platform_fields: { fill_borne_ms: 1_200_000 } }), 1_200_000, "port allumé : borne adaptative");
   assert.equal(api.borneEffectiveRemplissage({ platform: "depop", platform_fields: { fill_borne_ms: 1_200_000 } }), 300_000, "Depop (sans écouteur de port) : borne classique 300 s");
   const { api: apiSansPort } = chargerBackground({ keepalive: false });
-  assert.equal(apiSansPort.borneEffectiveRemplissage({ platform: "beebs", platform_fields: { fill_borne_ms: 1_200_000 } }), 300_000, "port éteint : borne classique 300 s");
-  ok("borne adaptative : clamp(fill_borne_ms, 10 min, 25 min) ; borne effective = classique (300 s) sans port ou sur Depop");
+  assert.equal(apiSansPort.borneEffectiveRemplissage({ platform: "beebs", platform_fields: {} }), 300_000, "port éteint, aucune borne demandée : borne classique 300 s");
+  // (0.6.178, décision de Nico : la borne de 20 min pour TOUS les comptes) Un job qui DEMANDE une borne passe par le
+  // port même port éteint — prouvé par scripts/extension-0-6-178-selftest.mjs ; jamais moins que la borne d'aujourd'hui.
+  assert.equal(apiSansPort.borneEffectiveRemplissage({ platform: "beebs", platform_fields: { fill_borne_ms: 1_200_000 } }), 1_200_000, "port éteint, borne demandée : port, 20 min (0.6.178)");
+  ok("borne adaptative : clamp(fill_borne_ms, 10 min, 25 min) ; borne effective = classique (300 s) sans port ni borne demandée, ou sur Depop");
 }
 
 // ── Faux ports reliés (background ↔ page), livraison asynchrone comme Chrome ──
@@ -614,9 +617,10 @@ log("8. Vinted — référentiel relu sur accroc réseau ou 5xx (linda.sidhoum)"
 // ── 9. VERSION ────────────────────────────────────────────────────────────────
 log("9. Version");
 {
-  assert.equal(manifest.version, "0.6.177");
-  assert.match(bg, /^const FILLSELL_BUILD =\n {2}"2026-11-07 \(0\.6\.177 :/m);
-  ok("manifest 0.6.177 ; FILLSELL_BUILD daté du 07/11");
+  // (0.6.178) Le paquet suivant porte la 0.6.177 : version ≥ 0.6.177, la 0.6.177 décrite dans FILLSELL_BUILD.
+  assert.ok(String(manifest.version).localeCompare("0.6.177", undefined, { numeric: true }) >= 0, `manifest ≥ 0.6.177 (lu : ${manifest.version})`);
+  assert.match(bg, /"2026-11-07 \(0\.6\.177 :/);
+  ok(`manifest ${manifest.version} (≥ 0.6.177) ; la 0.6.177 datée du 07/11 dans FILLSELL_BUILD`);
 }
 
 log(`\n✓ extension 0.6.177 : ${n} contrôles verts`);

@@ -139,10 +139,24 @@ const tickVentesAnnulees = (() => {
   for (const l of a) { const at = b.indexOf(l, k); if (at < 0) manquantes.push(l); else k = at + 1; }
   return a.length > 100 && manquantes.length === 1 && /'abandonnees', v_abandons, 'cpu', v_cpu\);/.test(manquantes[0]);
 })();
+// (07/11, Ornella — pull rayé) Puis 20261107160000_remise_apres_annulation_question (= 20261107150000 + l'étape bornée des
+// questions « Est-ce le même article ? ») : acceptée SEULEMENT si 20261107150000 l'était, si chaque ligne de son corps s'y
+// retrouve dans l'ordre (seule change la ligne du bilan) et si ce qu'elle ajoute n'appelle que remise_annulee_questions.
+const M0711b = '20261107160000_remise_apres_annulation_question.sql';
+const tickQuestionsAnnulees = (() => {
+  if (derniere.get('remises_en_vente_tick')?.f !== M0711b || !ordrePhotos0611) return false;
+  const a0 = lignesNettes(parFichier.get(`${M0611}|remises_en_vente_tick`)), a = lignesNettes(parFichier.get(`${M0711}|remises_en_vente_tick`));
+  const b = lignesNettes(parFichier.get(`${M0711b}|remises_en_vente_tick`));
+  const perdues = (x, y) => { let k = 0; const m = []; for (const l of x) { const at = y.indexOf(l, k); if (at < 0) m.push(l); else k = at + 1; } return m; };
+  const p0 = perdues(a0, a), p1 = perdues(a, b);
+  const ajout = b.filter((l) => !a.includes(l)).join('\n');
+  return a.length > 100 && p0.length === 1 && p1.length === 1 && /'hors_stock', v_hors_stock, 'jumelles', v_jumelles\);/.test(p1[0])
+    && /v_questions := public\.remise_annulee_questions\(p_user, 20\);/.test(ajout) && !/INSERT|UPDATE|DELETE|fusionner/i.test(ajout);
+})();
 ok(derniere.get('leboncoin_transaction_noter')?.f === M1105
-  && (derniere.get('remises_en_vente_tick')?.f === M1105 || tickOrdrePhotos || tickVentesAnnulees)
+  && (derniere.get('remises_en_vente_tick')?.f === M1105 || tickOrdrePhotos || tickVentesAnnulees || tickQuestionsAnnulees)
   && derniere.get('vente_transaction_annulee_leboncoin')?.f === M1105,
-  'les trois fonctions ont leur dernière définition dans la migration 20261105170000 (aucune réécriture plus récente ne la défait ; remises_en_vente_tick : 20261106230000 = 20261105170000 + l\'ordre des photos ; 20261107150000 = 20261106230000 + les fermetures des ventes annulées, rien d\'autre)',
+  'les trois fonctions ont leur dernière définition dans la migration 20261105170000 (aucune réécriture plus récente ne la défait ; remises_en_vente_tick : 20261106230000 = 20261105170000 + l\'ordre des photos ; 20261107150000 = 20261106230000 + les fermetures des ventes annulées ; 20261107160000 = 20261107150000 + les questions après annulation, rien d\'autre)',
   NOMS.map((x) => `${x}: ${derniere.get(x)?.f}`).join(' ; '));
 const vpae = corps('ventes_prouvees_a_enregistrer');
 ok(/sale_evidence,listing_id\}' = btrim\(c\.platform_listing_id\)/.test(vpae) && /sale_evidence,platform\}' = c\.platform/.test(vpae)

@@ -96,7 +96,9 @@ const PAR_TEXTE = Object.freeze([
   [/n.a jamais mis cette annonce en ligne|refus[ée]e par sa mod[ée]ration|n.a pas mis cette annonce en ligne|refus[ée]e [àa] la v[ée]rification|n.a donn[ée] aucun motif|n.a rien affich[ée] [àa] FillSell/i, ORIGINE.PLATEFORME, "moderation"],
   // (07/11, point 7 — labrunettedu44) L'annonce d'origine n'a AUCUN prix (déposée sans prix) : une information à
   // donner par la personne, pas un défaut de notre copie (update-job-status, « prix absent de l'origine »).
-  [/n.affiche aucun prix \(elle a [ée]t[ée] d[ée]pos[ée]e sans prix\)/i, ORIGINE.UTILISATEUR, "prix_absent_de_l_origine"],
+  // (07/11, famille 6a) Le message que handler-watch écrit une fois (_shared/prix-copie-republication.js) : ni la copie
+  // ni la fiche n'ont de prix — la même information à donner (un prix sur la fiche, la republication repart seule).
+  [/n.affiche aucun prix \(elle a [ée]t[ée] d[ée]pos[ée]e sans prix\)|ni la copie de ton annonce ni la fiche de l.article n.en ont/i, ORIGINE.UTILISATEUR, "prix_absent_de_l_origine"],
   // ── nous ──
   [/description, le rayon Depop et l.[ée]tat manquent|manquent dans la copie de ton annonce/i, ORIGINE.NOUS, "capture_depop_incomplete"],
   // (07/11, point 7) Le singulier aussi (« le prix manque dans la copie de ton annonce ») : notre copie.

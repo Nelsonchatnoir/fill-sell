@@ -11,6 +11,7 @@ import { grilleDuDernierEchecTaille, normaliserTaille, tailleAServir } from "../
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // update-job-status — une remise en pending automatique n'efface plus le motif.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, decisionRearmementRemise, champsRearmementRemise, FENETRE_REARMEMENT_MS } from "../_shared/remise-en-vente-attente.js";
 // (06/10, Glowik) Un échec qu'une extension corrige repart dès que le poste l'a.
 import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj } from "../_shared/relance-apres-maj.js";
 import { MESSAGE_REPUBLICATION_ARTICLE_VENDU } from "../_shared/relance-apres-maj.js";
@@ -46,6 +47,13 @@ import { decisionRecreationBloquee, messageRecreationBloquee, messageRecreationR
 import { photosPourCouleurIA } from "../_shared/couleur-ia.ts";
 import { resoudreIsbnArticle } from "../_shared/isbn-ia.ts";
 import { ISBN_ABSENT } from "../_shared/vinted-exigences.js";
+// (07/11, famille 6b) Le lecteur d'ISBN des photos prend aussi les republications Vinted arrêtées avant tout retrait.
+import { resoudreIsbn } from "../_shared/isbn.js";
+import { republicationIsbnALire, messageRequisRepublication } from "../_shared/isbn-republication.js";
+// (07/11, famille 5) Un dépôt jamais vu en ligne dont l'article est vendu (ou la fiche supprimée) n'est pas un échec.
+import { estDepotJamaisVuEnEchec, ficheSansObjet, decisionDepotJamaisVu, messageDepotJamaisVuSansObjet, champsDepotJamaisVuSansObjet } from "../_shared/depot-jamais-vu-sans-objet.js";
+// (07/11, famille 6a) La republication arrêtée sur « le prix manque » repart seule dès qu'un prix est sur la fiche.
+import { decisionPrixCopie, champsRelancePrixCopie, PLATEFORMES_PRIX_DE_LA_TACHE } from "../_shared/prix-copie-republication.js";
 import { rayonRefuseDuJob, resoudreRayonRefuse, feuillesCandidates, pfApresRayon, questionRayonRefuse, messageRayonAChoisir, genresDuRayonVinted, CLE_REPONSE_RAYON, ESSAIS_RAYON_MAX } from "../_shared/rayon-refuse-moteur.js";
 import { horsModeDepop } from "../../../src/utils/depopCategories.js";
 import { detectObjectIcon } from "../../../src/utils/shared.js";
@@ -3208,6 +3216,69 @@ serve(async (req) => {
     console.error("[handler-watch] remises en ligne à cause levée :", (e as Error)?.message ?? e);
   }
 
+  // ══ (07/11, décision de Nico — option A) UNE REMISE LEBONCOIN DÉPOSÉE PENDANT QUE SA VENDUE ÉTAIT AFFICHÉE REVIENT EN
+  // ATTENTE ══ (_shared/remise-en-vente-attente.js, decisionRearmementRemise) Close (cancelled / failed) depuis 14 jours au
+  // plus, dépôt jamais vu, vendue identique ENCORE affichée, aucune autre annonce non vendue de la fiche en ligne : la
+  // tâche redevient une remise neuve (dépôt refusé archivé), retenue par la règle A de get-pending-jobs jusqu'à la
+  // disparition de la vendue, puis elle part seule (la série de Louis reprend d'elle-même). 3 fois au plus par tâche.
+  // Coût mesuré le 07/11 : 123 ms (index created_at) → un passage par quart d'heure, 50 tâches au plus.
+  let remisesRearmees = 0;
+  if (new Date().getUTCMinutes() % 15 < 3) {
+    try {
+      const { data: closes } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, inventaire_id, platform, action, status, error, platform_listing_id, listing_url, created_at, published_at, vu_en_ligne_le, platform_fields")
+        .eq("platform", "leboncoin").eq("action", "publish").in("status", ["cancelled", "failed", "published"])
+        .gte("created_at", new Date(Date.now() - FENETRE_REARMEMENT_MS).toISOString())
+        .not("platform_fields->remise_en_vente", "is", null)
+        .limit(50);
+      // deno-lint-ignore no-explicit-any
+      for (const j of (closes ?? []) as any[]) {
+        const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const vendue = annonceVendueDeLaRemise(j);
+        if (!vendue) continue;
+        const lbc = (pfJ.lbc_depot ?? {}) as Record<string, Record<string, unknown> | undefined>;
+        const trace = (pfJ.depot_jamais_en_ligne ?? {}) as Record<string, unknown>;
+        const ids = [...new Set([j.platform_listing_id, lbc.adsubmit?.id, lbc.sans_adsubmit?.id,
+          ...(Array.isArray(trace.identifiants) ? trace.identifiants as unknown[] : [])]
+          .map((x) => String(x ?? "").trim()).filter((x) => /^\d{6,}$/.test(x)))];
+        const { data: lignesN } = await supabase.from("annonces_plateforme")
+          .select("listing_id, statut_plateforme, disparu_le, retiree_le, ignoree_le, job_id")
+          .eq("user_id", j.user_id).eq("platform", "leboncoin").in("listing_id", [vendue, ...ids]);
+        const lignes = (lignesN ?? []) as Array<Record<string, unknown>>;
+        const ligneVendue = lignes.find((l) => String(l.listing_id) === vendue) ?? null;
+        const depotVu = lignes.some((l) => ids.includes(String(l.listing_id)));
+        let autreAnnonceVivante = false;
+        if (j.inventaire_id != null) {
+          const { data: soeurs } = await supabase.from("annonces_plateforme")
+            .select("listing_id, statut_plateforme, disparu_le, retiree_le, transaction_plateforme")
+            .eq("user_id", j.user_id).eq("platform", "leboncoin").eq("inventaire_id", j.inventaire_id)
+            .eq("statut_plateforme", "en_ligne").is("disparu_le", null).is("retiree_le", null).limit(20);
+          autreAnnonceVivante = ((soeurs ?? []) as Array<Record<string, unknown>>).some((s) =>
+            String(s.listing_id) !== vendue && !ids.includes(String(s.listing_id))
+            && !["pending", "sold"].includes(String(s.transaction_plateforme ?? "").toLowerCase()));
+        }
+        const d = decisionRearmementRemise(j, {
+          vendueEncoreAffichee: annonceVendueEncoreEnLigne(ligneVendue as never), depotVu, autreAnnonceVivante,
+        });
+        if (!d.rearmer) continue;
+        const maintenantIso = new Date().toISOString();
+        const pfN = champsRearmementRemise(pfJ, j, maintenantIso) as Record<string, unknown>;
+        if (j.error) pfN.erreurs_archivees = archiverErreur(pfN.erreurs_archivees, j.error, j.status, "handler-watch (règle A : remise remise en attente de la disparition de l'annonce vendue)");
+        const { data: maj, error: mErr } = await supabase.from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_listing_id: null, listing_url: null, published_at: null, vu_en_ligne_le: null, platform_fields: pfN })
+          .eq("id", j.id).eq("status", j.status).select("id");
+        if (mErr) { console.warn(`[handler-watch] règle A : remise ${String(j.id).slice(0, 8)} non remise en attente (${mErr.message})`); continue; }
+        if (maj?.length) {
+          remisesRearmees++;
+          console.log(`[handler-watch] règle A : remise ${String(j.id).slice(0, 8)} (dépôt ${ids.join("/") || "?"} refusé, vendue ${vendue} encore affichée) → en attente, repart seule à sa disparition`);
+        }
+      }
+      if (remisesRearmees) console.log(`[handler-watch] règle A : ${remisesRearmees} remise(s) Leboncoin remise(s) en attente de la disparition de la vendue`);
+    } catch (e) {
+      console.error("[handler-watch] règle A (remises closes) :", (e as Error)?.message ?? e);
+    }
+  }
+
   // ══ L'ISBN D'UN LIVRE SE LIT SUR SES PHOTOS AVANT DE LE DEMANDER (12/10, Morgane) ══
   // (_shared/isbn-ia.ts) Une publication Vinted arrêtée sur l'ISBN (question
   // posée par get-pending-jobs avant tout essai, ou refus 400 « ISBN valide »)
@@ -3221,7 +3292,9 @@ serve(async (req) => {
   try {
     const { data: enIsbn } = await supabase.from("cross_post_jobs")
       .select("id, user_id, platform, action, status, title, error, inventaire_id, platform_fields")
-      .eq("platform", "vinted").eq("action", "publish").eq("status", "needs_user")
+      // (07/11, famille 6b — efec755b) Les REPUBLICATIONS aussi, arrêtées AVANT tout retrait (étape captured,
+      // republicationIsbnALire) : l'ISBN est souvent sur la 4e de couverture photographiée.
+      .eq("platform", "vinted").in("action", ["publish", "republish"]).eq("status", "needs_user")
       .eq("platform_fields->needsUserField->>field_key", "isbn")
       .order("created_at", { ascending: true }).limit(30);
     // À traiter : photos pas encore lues — OU déjà lues, mais Vinted a refusé
@@ -3230,30 +3303,66 @@ serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     const refuseSansIsbn = (pf: any) => pf?.isbn_absent === true || String(pf?.vintedAspects?.isbn ?? "").trim() === ISBN_ABSENT;
     // deno-lint-ignore no-explicit-any
-    const aTraiter = ((enIsbn ?? []) as any[]).filter((j) => !j.platform_fields?.isbn_photos_lu
-      || (refuseSansIsbn(j.platform_fields) && !String(j.error ?? "").startsWith("Vinted a refusé ce livre sans ISBN"))).slice(0, 6);
+    const aTraiter = ((enIsbn ?? []) as any[]).filter((j) => j.action === "publish" || republicationIsbnALire(j))
+      .filter((j) => !j.platform_fields?.isbn_photos_lu
+      || (j.action === "publish" && refuseSansIsbn(j.platform_fields) && !String(j.error ?? "").startsWith("Vinted a refusé ce livre sans ISBN"))).slice(0, 6);
     // deno-lint-ignore no-explicit-any
     for (const j of aTraiter as any[]) {
       const pf = { ...(j.platform_fields ?? {}) };
       const dejaLues = !!pf.isbn_photos_lu;
       const { data: fiche } = dejaLues ? { data: null } : await supabase.from("inventaire").select("titre, description, photos").eq("id", j.inventaire_id).maybeSingle();
+      // (07/11, famille 6b) Une REPUBLICATION : la description de l'annonce d'origine (sa capture, ou la copie) est lue
+      // d'abord, avec celle de la fiche (resoudreIsbn) — trouvé dans un texte, aucune photo n'est envoyée.
+      const estRepublication = j.action === "republish";
+      let descriptionsLues: string[] = [];
+      let isbnDesTextes: { isbn13: string; source: string; trouve: string } | null = null;
+      if (estRepublication && !dejaLues) {
+        let descriptionCapture: string | null = null;
+        if (Number(pf.capture_id) > 0) {
+          const { data: capI } = await supabase.from("vinted_republish_captures").select("description:payload->>description").eq("id", Number(pf.capture_id)).maybeSingle();
+          descriptionCapture = String((capI as { description?: string | null } | null)?.description ?? "").trim() || null;
+        }
+        // deno-lint-ignore no-explicit-any
+        descriptionsLues = [descriptionCapture, (pf.republish_snapshot as any)?.description, (fiche as any)?.description]
+          .map((d) => String(d ?? "").trim()).filter(Boolean);
+        // deno-lint-ignore no-explicit-any
+        isbnDesTextes = resoudreIsbn({ description: descriptionsLues, titre: [(fiche as any)?.titre, j.title] });
+      }
       // deno-lint-ignore no-explicit-any
       const urls = (Array.isArray((fiche as any)?.photos) ? (fiche as any).photos : []).map((p: any) => (typeof p === "string" ? p : p?.url)).filter((u: unknown) => typeof u === "string");
-      const prep = dejaLues ? { sources: [], ecartees: 0 } : await photosPourCouleurIA(urls, Deno.env.get("SUPABASE_URL") ?? "", 4);
-      const r = dejaLues ? { isbn13: null, source: null, motif: "deja_lues" } : await resoudreIsbnArticle(
+      const prep = (dejaLues || isbnDesTextes) ? { sources: [], ecartees: 0 } : await photosPourCouleurIA(urls, Deno.env.get("SUPABASE_URL") ?? "", 4);
+      const r = isbnDesTextes ? { isbn13: isbnDesTextes.isbn13, source: isbnDesTextes.source, motif: null } : dejaLues ? { isbn13: null, source: null, motif: "deja_lues" } : await resoudreIsbnArticle(
         // deno-lint-ignore no-explicit-any
         { images: prep.sources, titre: String((fiche as any)?.titre ?? j.title ?? ""), description: (fiche as any)?.description ?? null },
         { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "" },
       );
       if (!dejaLues) pf.isbn_photos_lu = { le: new Date().toISOString(), photos: prep.sources.length, isbn: r.isbn13, source: r.source, motif: r.motif ?? null, par: "handler-watch" };
       if (r.isbn13) {
-        pf.isbn = r.isbn13;
+        // Une republication : le seul canal que la garde et le geste 1 de get-pending-jobs lisent (vintedAspects.isbn).
+        if (!estRepublication) pf.isbn = r.isbn13;
         pf.vintedAspects = { ...(pf.vintedAspects ?? {}), isbn: r.isbn13 };
         delete pf.isbn_absent; delete pf.needsUserField; delete pf.needs_user_source; delete pf.isbn_a_lire_photos;
         if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (ISBN lu sur les photos, le job repart)");
         const { data: maj } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pf })
           .eq("id", j.id).eq("status", "needs_user").select("id");
         if (maj?.length) { isbnLus++; console.log(`[handler-watch] ISBN ${r.isbn13} lu (${r.source}) pour ${String(j.id).slice(0, 8)} → repart seul`); }
+        continue;
+      }
+      // (07/11, famille 6b) Republication illisible : la question reste celle de la garde de get-pending-jobs (needsUserField
+      // intact — « Ce livre n'a pas d'ISBN » n'y est pas proposé : Vinted exige l'ISBN pour la recréer) ; son message, quand
+      // l'ISBN est seul en question, ne dit que ce qui a été lu (l'annonce, sa description si elle en a une, les photos si
+      // le lecteur a répondu). Écrit une fois (isbn_photos_lu), jamais une ligne inchangée.
+      if (estRepublication) {
+        // deno-lint-ignore no-explicit-any
+        const autresChamps = Array.isArray(pf.needsUserFields) && (pf.needsUserFields as any[]).some((f) => String(f?.field_key ?? "") !== "isbn");
+        const photosLues = prep.sources.length > 0 && ["non_lu", "invalide", "hors_livre", "illisible"].includes(String(r.motif ?? ""));
+        const messageR = autresChamps ? String(j.error ?? "") : messageRequisRepublication({
+          libelles: String(pf.needsUserField?.field_label ?? "ISBN"), onRedemande: true, descriptionLue: descriptionsLues.length > 0, photosLues,
+        });
+        if (j.error && j.error !== messageR) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (republication : ISBN cherché sur les photos)");
+        const { data: majR } = await supabase.from("cross_post_jobs").update({ error: messageR || j.error, platform_fields: pf })
+          .eq("id", j.id).eq("status", "needs_user").select("id");
+        if (majR?.length) isbnQuestions++;
         continue;
       }
       // Illisible : la question complète, sans jargon.
@@ -3275,6 +3384,127 @@ serve(async (req) => {
     if (isbnLus || isbnQuestions) console.log(`[handler-watch] ISBN Vinted : ${isbnLus} lu(s) sur les photos (jobs repartis), ${isbnQuestions} question(s) complétée(s)`);
   } catch (e) {
     console.error("[handler-watch] ISBN sur les photos :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (07/11, famille 5) UN DÉPÔT JAMAIS VU EN LIGNE DONT L'ARTICLE EST VENDU N'EST PAS UN ÉCHEC ══
+  // (_shared/depot-jamais-vu-sans-objet.js) La règle que get-pending-jobs applique désormais à la bascule (« rien à
+  // retirer » d'un retrait armé par la vente), appliquée aux dépôts DÉJÀ « failed » dans cet état : jamais vu en ligne
+  // (deux relevés complets : listing_url_abandon, motif deux_releves_complets ; ni lien, ni numéro, jamais vu), fiche
+  // VENDUE (public.article_vendu) ou SUPPRIMÉE (inventaire_id NULL), et aucune annonce vivante de la fiche (ou reliée au
+  // dépôt) sur la plateforme → « cancelled », message vrai (le constat gardé, rien à faire, « non décomptée » seulement
+  // si le remboursement l'a prouvé), l'erreur d'avant archivée, listing_url_abandon gardé. Fiche en stock, fusionnée,
+  // illisible, ou une annonce vivante : rien ne change. Un passage par demi-heure (minutes 27-29 et 57-59 : créneaux
+  // libres — 42-44 reste au juge des dépôts Beebs sans numéro), 25 dépôts au plus (fenêtre tournante), lectures groupées ;
+  // seules les clôtures écrivent (compare-and-set sur « failed » sans lien ni numéro). Coût mesuré le 07/11 (EXPLAIN
+  // ANALYZE, lecture) : voir le rapport du lot.
+  let depotsSansObjet = 0;
+  const minuteF5 = new Date().getUTCMinutes();
+  if ((minuteF5 >= 27 && minuteF5 < 30) || minuteF5 >= 57) {
+    try {
+      const POSE_F5 = "handler-watch (dépôt jamais vu en ligne : article vendu ou fiche supprimée)";
+      const { data: candF, error: eC } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, inventaire_id, platform, action, status, error, listing_url, platform_listing_id, vu_en_ligne_le, platform_fields")
+        .eq("status", "failed").in("action", ["publish", "republish"])
+        .is("listing_url", null).is("platform_listing_id", null).is("vu_en_ligne_le", null)
+        .eq("platform_fields->listing_url_abandon->>motif", "deux_releves_complets")
+        .order("created_at", { ascending: true }).order("id", { ascending: true }).limit(500);
+      if (eC) throw new Error(eC.message);
+      // deno-lint-ignore no-explicit-any
+      const echecsF = ((candF ?? []) as any[]).filter((j) => estDepotJamaisVuEnEchec(j));
+      const invIdsF = [...new Set(echecsF.map((j) => j.inventaire_id).filter((v) => v != null))] as number[];
+      const fichesF = new Map<string, Record<string, unknown>>();
+      for (const lot of parLots(invIdsF, 200)) {
+        const { data: lusF, error: eF } = await supabase.from("inventaire").select("id, statut, quantite, fusionne_dans").in("id", lot);
+        if (eF) throw new Error(eF.message);
+        for (const f of (lusF ?? []) as Array<Record<string, unknown>>) fichesF.set(String(f.id), f);
+      }
+      const ficheDeF = (j: { inventaire_id?: unknown }) => (j.inventaire_id != null ? fichesF.get(String(j.inventaire_id)) ?? null : null);
+      const sansObjetF = echecsF.filter((j) => ficheSansObjet(j, ficheDeF(j)));
+      // Fenêtre tournante : un dépôt retenu par une annonce vivante ne bloque jamais les suivants.
+      const debutF = sansObjetF.length > 25 ? (Math.floor(Date.now() / 900_000) * 25) % sansObjetF.length : 0;
+      const aJugerF = [...sansObjetF.slice(debutF), ...sansObjetF.slice(0, debutF)].slice(0, 25);
+      if (aJugerF.length) {
+        const usersF = [...new Set(aJugerF.map((j) => String(j.user_id)))];
+        const platsF = [...new Set(aJugerF.map((j) => String(j.platform)))];
+        const invF = [...new Set(aJugerF.map((j) => j.inventaire_id).filter((v) => v != null))];
+        const ouF = [invF.length ? `inventaire_id.in.(${invF.join(",")})` : null, `job_id.in.(${aJugerF.map((j) => String(j.id)).join(",")})`]
+          .filter(Boolean).join(",");
+        const { data: lignesF, error: eL } = await supabase.from("annonces_plateforme")
+          .select("listing_id, user_id, platform, inventaire_id, job_id, statut_plateforme, disparu_le, retiree_le")
+          .in("user_id", usersF).in("platform", platsF).or(ouF).limit(1000);
+        if (eL) throw new Error(eL.message);
+        // Une lecture coupée au plafond ne prouve aucune absence : rien n'est conclu à ce passage.
+        if ((lignesF ?? []).length >= 1000) throw new Error("annonces lues au plafond (1000) — rien conclu");
+        for (const j of aJugerF) {
+          const d = decisionDepotJamaisVu(j, { fiche: ficheDeF(j), annonces: lignesF ?? [] });
+          if (!d.clore) continue;
+          const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+          const refundF = ((pfJ.listing_url_abandon ?? {}) as Record<string, unknown>).refund
+            ?? ((pfJ.jamais_en_ligne ?? {}) as Record<string, unknown>).refund ?? null;
+          const pfN = champsDepotJamaisVuSansObjet(pfJ, { raison: d.raison, maintenant: new Date().toISOString(), par: POSE_F5 }) as Record<string, unknown>;
+          if (j.error) pfN.erreurs_archivees = archiverErreur(pfN.erreurs_archivees, j.error as string, "failed", POSE_F5);
+          const { data: majF, error: eU } = await supabase.from("cross_post_jobs")
+            .update({ status: "cancelled", error: messageDepotJamaisVuSansObjet(String(j.platform), String(d.raison), { refund: refundF }), platform_fields: pfN })
+            .eq("id", j.id).eq("status", "failed").is("listing_url", null).is("platform_listing_id", null).is("vu_en_ligne_le", null).select("id");
+          if (eU) { console.warn(`[handler-watch] dépôt jamais vu ${String(j.id).slice(0, 8)} : non clos (${eU.message})`); continue; }
+          if (majF?.length) {
+            depotsSansObjet++;
+            console.log(`[handler-watch] dépôt ${j.platform} ${String(j.id).slice(0, 8)} jamais vu en ligne, ${d.raison === "supprimee" ? "fiche supprimée" : "article vendu"}, aucune annonce vivante → « cancelled » (rien à faire)`);
+          }
+        }
+      }
+      if (depotsSansObjet) console.log(`[handler-watch] ${depotsSansObjet} dépôt(s) jamais vu(s) en ligne, article vendu ou fiche supprimée : « failed » → « cancelled »`);
+    } catch (e) {
+      console.error("[handler-watch] dépôts jamais vus, article vendu :", (e as Error)?.message ?? e);
+    }
+  }
+
+  // ══ (07/11, famille 6a) LA REPUBLICATION ARRÊTÉE SUR « LE PRIX MANQUE » REPART SEULE DÈS QU'UN PRIX EST SUR LA FICHE ══
+  // (_shared/prix-copie-republication.js) needs_user, republication Leboncoin / Beebs / Depop, seul « le prix » manque au
+  // pré-vol (avant tout retrait), aucun prix sur la tâche : la fiche a un prix → posé sur la tâche (prix_repris_de_la_fiche,
+  // la même trace que get-pending-jobs), « pending », elle repart seule et le pré-vol rejuge ; sinon le message vrai, écrit
+  // UNE fois (jamais une ligne inchangée réécrite). Un passage par demi-heure (minutes 27-29 et 57-59), 50 tâches au plus.
+  let prixRelances = 0, prixMessages = 0;
+  if ((minuteF5 >= 27 && minuteF5 < 30) || minuteF5 >= 57) {
+    try {
+      const { data: candP, error: eP } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, inventaire_id, platform, action, status, error, price, platform_fields")
+        .eq("status", "needs_user").eq("action", "republish").in("platform", [...PLATEFORMES_PRIX_DE_LA_TACHE])
+        .contains("platform_fields", { republish_prevol_manquants: ["le prix"] })
+        .order("created_at", { ascending: true }).limit(50);
+      if (eP) throw new Error(eP.message);
+      // deno-lint-ignore no-explicit-any
+      const jobsP = ((candP ?? []) as any[]).filter((j) => j.inventaire_id != null);
+      const fichesP = new Map<string, Record<string, unknown>>();
+      for (const lot of parLots([...new Set(jobsP.map((j) => Number(j.inventaire_id)))], 200)) {
+        const { data: lusP, error: eF } = await supabase.from("inventaire").select("id, prix_vente, statut, quantite, fusionne_dans, disparu_le").in("id", lot);
+        if (eF) throw new Error(eF.message);
+        for (const f of (lusP ?? []) as Array<Record<string, unknown>>) fichesP.set(String(f.id), f);
+      }
+      for (const j of jobsP) {
+        const d = decisionPrixCopie(j, fichesP.get(String(j.inventaire_id)) ?? null);
+        if (!d || d.action === "rien") continue;
+        const nowIsoP = new Date().toISOString();
+        if (d.action === "relancer") {
+          const pfR = champsRelancePrixCopie(j.platform_fields, d.prix, nowIsoP) as Record<string, unknown>;
+          if (j.error) pfR.erreurs_archivees = archiverErreur(pfR.erreurs_archivees, j.error as string, "needs_user", "handler-watch (prix de la fiche posé sur la republication : elle repart)");
+          const { data: majP, error: eU } = await supabase.from("cross_post_jobs")
+            .update({ status: "pending", error: null, price: d.prix, platform_fields: pfR })
+            .eq("id", j.id).eq("status", "needs_user").select("id");
+          if (eU) { console.warn(`[handler-watch] prix de la fiche ${String(j.id).slice(0, 8)} : non relancée (${eU.message})`); continue; }
+          if (majP?.length) { prixRelances++; console.log(`[handler-watch] republication ${j.platform} ${String(j.id).slice(0, 8)} : prix de la fiche ${d.prix} posé → repart seule`); }
+          continue;
+        }
+        const pfM = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+        if (j.error) pfM.erreurs_archivees = archiverErreur(pfM.erreurs_archivees, j.error as string, "needs_user", "handler-watch (prix absent de la copie et de la fiche : message vrai)");
+        const { data: majM } = await supabase.from("cross_post_jobs").update({ error: d.message, platform_fields: pfM })
+          .eq("id", j.id).eq("status", "needs_user").select("id");
+        if (majM?.length) prixMessages++;
+      }
+      if (prixRelances || prixMessages) console.log(`[handler-watch] « le prix manque » : ${prixRelances} republication(s) relancée(s) avec le prix de la fiche, ${prixMessages} message(s) réécrit(s)`);
+    } catch (e) {
+      console.error("[handler-watch] republications sans prix :", (e as Error)?.message ?? e);
+    }
   }
 
   // ══ UNE REPUBLICATION RECRÉÉE N'ATTEND PLUS PERSONNE (15/10, P3 — Ornella) ══
@@ -5594,7 +5824,9 @@ serve(async (req) => {
       .from("cross_post_jobs")
       .select("id, user_id, inventaire_id, status, action, platform, error, platform_fields, title, description")
       .eq("status", "needs_user")
-      .in("platform_fields->needsUserField->>field_key", ["Taille", "taille", "size", "oplaSizeChoice", "Pointure", "pointure", "shoe_size", "clothing_st"])
+      // (07/11, famille 2 a) « depopTaille » aussi : la question Depop repart seule comme la Vinted — jamais sur le bloc des
+      // tours de taille (W) que seule la personne tranche (reponseTailleDepopSure, _shared/taille-question-auto.js).
+      .in("platform_fields->needsUserField->>field_key", ["Taille", "taille", "size", "oplaSizeChoice", "Pointure", "pointure", "shoe_size", "clothing_st", "depopTaille"])
       .gte("created_at", new Date(now - 30 * 86_400_000).toISOString())
       .limit(60);
     const cands = ((questions ?? []) as Array<Record<string, unknown>>)

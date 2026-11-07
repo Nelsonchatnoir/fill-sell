@@ -73,13 +73,16 @@ console.log("3b. Une tâche de la série qui attend un correctif de l'extension 
   ok(decisionSerie(tache(1), [tache(1)], { maintenant: T(1), version: '0.6.100' }).servir, 'sans exige_version : aucune retenue par version (abandonnée le 06/11)');
 }
 
-console.log('4. Branchement : get-pending-jobs, règle A retirée');
+console.log('4. Branchement : get-pending-jobs, règle A RÉTABLIE (07/11, option A de Nico) avant la série');
 {
   const g = lire('supabase/functions/get-pending-jobs/index.ts');
   ok(/from "\.\.\/_shared\/serie-un-par-un\.js"/.test(g) && /decisionSerie\(/.test(g), 'get-pending-jobs décide par decisionSerie');
   ok(/serveur:verif_redepot/.test(g.slice(g.indexOf('decisionSerie('))), 'le relevé demandé est un relevé serveur de vérification (lecture seule)');
-  ok(!/remise-en-vente-attente/.test(g) && !/remiseAAttendre|annonceVendueEncoreEnLigne/.test(g), 'règle A retirée : plus aucune retenue « annonce vendue encore en ligne »');
-  ok(!existsSync(path.join(RACINE, 'supabase/functions/_shared/remise-en-vente-attente.js')), 'son module est retiré');
+  ok(/remise-en-vente-attente/.test(g) && /remiseAAttendre/.test(g) && /annonceVendueEncoreEnLigne/.test(g),
+    'règle A rétablie : la remise attend que l\'annonce vendue identique ait disparu');
+  ok(existsSync(path.join(RACINE, 'supabase/functions/_shared/remise-en-vente-attente.js'))
+    && g.indexOf('let heldRemisesLbc = 0;') > 0 && g.indexOf('let heldRemisesLbc = 0;') < g.indexOf('let heldSerie = 0;'),
+    'son module est là, et la règle A passe AVANT la série (rang par rang, chacun après la disparition de sa vendue)');
   ok(/depot-lbc-jamais-en-ligne/.test(lire('supabase/functions/handler-watch/index.ts')), 'règle B gardée (handler-watch juge toujours les dépôts jamais en ligne)');
   ok(g.slice(g.indexOf('decisionSerie(') - 4000, g.indexOf('decisionSerie(')).includes('.order("queued_at", { ascending: false, nullsFirst: false }).limit(40)'),
     'relevés lus du plus récent, les vieux relevés sans queued_at jamais en tête (06/11 : un relevé demandé à chaque passage)');

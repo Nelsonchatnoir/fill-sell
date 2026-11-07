@@ -22,6 +22,8 @@ import { resoudreAspectsIA, estAspectDeTaille, tailleRetenueDansLaListe, tailleS
 export { tailleSansPrefixeEuFr };
 import { estSansMarque } from "./marque-absente.js";
 import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
+// (07/11) Le complément eBay de la règle des tailles : l'âge écrit en anglais, le préfixe de pays (cf. tailleServieEbay).
+import { tailleEbayComplement } from "./taille-ebay.js";
 // (30/10, lot E) La matière d'un vêtement = la composition de son étiquette, jamais une matière devinée.
 import { matieresDeLaComposition } from "./composition-matieres.js";
 
@@ -606,11 +608,18 @@ const CHAMP_PAR_ASPECT: Record<string, string> = {
 // par Vinted), nombre français → lettre pour une femme face à une liste sans
 // chiffre, stature entre parenthèses, « Ajustable ». Sur une liste fermée
 // seulement ; la branche vient du Département, du genre ou du rayon.
-export function tailleServieEbay(nomAspect: string, brut: string, liste: string[], pf: PlatformFields, ebayAspects: Record<string, unknown>): string | null {
+// (07/11, Rosa Metra ba0c4d73, constat de Nico) PUIS, seulement si rien n'a répondu, le complément eBay
+// (_shared/taille-ebay.js) : l'âge écrit en anglais dans son écriture française (« 11-12 yrs » → « 11-12 ans »,
+// « 18 months » → « 18 mois »), quel que soit le mode ; le préfixe de pays que la liste n'écrit pas (« 38 EU »,
+// « EU S », « UK 6 » sur « Pointure UK »), liste fermée seulement (`ferme`, vrai par défaut : les autres appelants
+// sont déjà sur une liste fermée). Une taille que la règle traduisait garde EXACTEMENT sa valeur.
+export function tailleServieEbay(nomAspect: string, brut: string, liste: string[], pf: PlatformFields, ebayAspects: Record<string, unknown>, ferme = true): string | null {
   if (!/taille|pointure/i.test(nomAspect)) return null;
   const branche = brancheDeTaille(String(ebayAspects["Département"] ?? ""), String(pf.genre ?? ""),
     Array.isArray(pf.ebayCategoryPath) ? pf.ebayCategoryPath : []);
-  return tailleDeService(brut, liste, { branche })?.valeur ?? null;
+  return tailleDeService(brut, liste, { branche })?.valeur
+    ?? tailleEbayComplement(nomAspect, brut, liste, { ferme })?.valeur
+    ?? null;
 }
 // ── (25/10, N5) LA TAILLE eBAY : LA PERSONNE, LA FICHE, PUIS LA LISTE — JAMAIS UN MOT DU TITRE ──
 // Jobs 98f71143, 1ff48d68, 8d831cf5, c65b3e36, 12854dbb : ebayAspects.Taille portait la réponse de l'IA
@@ -649,7 +658,7 @@ function tailleAssemblee(
     const r = liste.length
       ? (valeurDeListeCorrespondante(fiche, liste)
         ?? (ferme ? tailleSansPrefixeEuFr(a.name, fiche, liste) : null)
-        ?? tailleServieEbay(a.name, fiche, liste, pf, ebayAspects))
+        ?? tailleServieEbay(a.name, fiche, liste, pf, ebayAspects, ferme))
       : null;
     if (r) return { valeur: r, deQui: "fiche", brut: fiche };
   }

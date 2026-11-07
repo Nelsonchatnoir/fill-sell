@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-07-soir (0.6.178 : la borne de remplissage vaut pour TOUS les comptes — sans port, le message FILL_LISTING porte sa borne (300 s, inchangée) et un identifiant : la page arme son échéance, l'arrière-plan la prévient à sa borne (FILLSELL_ABANDON_REMPLISSAGE) et plus rien n'est cliqué ensuite (Beebs, Vinted, Leboncoin) ; un job qui demande une borne (fill_borne_ms) passe par le port même port éteint, borne jamais plus courte qu'aujourd'hui ; Leboncoin : l'attente des critères suit le poids des photos envoyées (30 à 120 s) et les PNG de plus de 300 Ko partent allégés en JPEG ; Beebs : le bandeau de l'application (« Voir dans l’appli », « L’appli tout-en-un ») n'est plus lu comme un attribut de la fiche — précédent : " +
   "2026-11-07 (0.6.177 : une borne de remplissage dépassée prévient la page, qui ne clique plus « Mettre en vente » / « Publier » / le Continuer final — rien n'est envoyé que personne ne lira (Beebs, Vinted, Leboncoin) ; phases du remplissage Beebs marquées et relayées, la borne dit la vraie dernière phase ; borne adaptative platform_fields.fill_borne_ms bornée à [10, 25] min ; un contrôle avant retrait plus long que 0,7 × la borne ne retire rien (Beebs, Leboncoin, Depop) ; Vinted : rayon « neuf seulement » = attente de la personne sans reprise, dimensions du colis jamais demandées, couleur aux identifiants connus posée au POST si la page l'a laissée vide et relue après fermeture, couleur vide d'une republication = arrêt avant retrait, référentiels relus sur accroc réseau ; Leboncoin : statuts du relevé comptés par annonce unique) — précédent : " +
   "2026-11-06-soir (0.6.176 : Leboncoin, une marque que l'article ne cite que comme celle d'un appareil auquel il s'adapte (« pour yaourtière … de chez SEB ») n'est plus jamais gardée pré-remplie : « Sans marque » est posé — précédent : " +
   "2026-11-05-soir (0.6.175 : session Leboncoin partagée par plusieurs comptes FillSell (délégation) — un seul relevé « Mes annonces » et une seule lecture des ventes pour tous ses comptes, relevés quotidiens alignés, lectures de routine des pages d'annonce sur un seul budget (60 par heure), aucune lecture de routine la nuit 23:00–07:00 heure de Paris) — précédent : 0.6.170 à 0.6.174 (voir docs/regles/extension-et-versions.md) — précédent : " +
@@ -19141,6 +19142,16 @@ function capturerFicheEnPage(plateforme, html = null) {
     // reprendreChampsDeLAnnonce n'en comble que les attributs Beebs VIDES de la copie, et le connecteur ne pose
     // une valeur que si le formulaire la propose (sinon la question reste).
     {
+      // ── (07/11 soir, 0.6.178) LE BANDEAU DE L'APPLICATION N'EST PAS UN ATTRIBUT ──
+      // La fiche porte deux encarts publicitaires qui ont la forme d'une ligne libellé / valeur :
+      // « Voir dans l’appli — C’est plus d’économies et moins de chichis. » et « L’appli tout-en-un —
+      // Télécharger l’application ». Ils finissaient dans beebsAspects : 430 republications Beebs sur 499
+      // en 7 jours (3 694 lectures en base). Inertes au remplissage (aucun champ du formulaire ne porte ce
+      // libellé : resoudreChamps n'en trouve aucun), mais une donnée fausse dans la copie. Aucun attribut
+      // Beebs ne parle de l'application (libellés relevés en base : État, Marque, Couleur, Taille,
+      // Matière, Âge, Pointure, Console, Fermeture, Alimentation, Quantité) : écartés au libellé OU à la
+      // valeur. Tout le reste est lu exactement comme avant.
+      const PROMO_APPLI_BEEBS_RE = /\bappli(?:cation)?\b|t[ée]l[ée]charger|moins de chichis/i;
       const paires = {};
       for (const f of feuilles()) {
         const libelle = propre(f.textContent);
@@ -19150,6 +19161,7 @@ function capturerFicheEnPage(plateforme, html = null) {
         if (feuillesDuParent.length !== 2 || feuillesDuParent[0] !== f) continue;
         const valeur = propre(feuillesDuParent[1].textContent);
         if (!valeur || valeur.length > 80 || paires[libelle] !== undefined) continue;
+        if (PROMO_APPLI_BEEBS_RE.test(libelle) || PROMO_APPLI_BEEBS_RE.test(valeur)) continue;
         paires[libelle] = valeur;
       }
       out.attributs_affiches = Object.keys(paires).length ? paires : null;
@@ -32533,10 +32545,27 @@ function borneRemplissageJob(job) {
   if (typeof v !== "number" || !Number.isFinite(v)) return FILL_BORNE_MS;
   return Math.min(FILL_BORNE_MAX_MS, Math.max(FILL_BORNE_MS, v));
 }
+// ── (07/11 soir, 0.6.178 — Nico : « la borne de 20 min pour TOUS les comptes ») ──
+// Le port n'est allumé que pour une partie des comptes (beta_flags.keepalive, coupure
+// récente, remise en ligne à l'étape 'deleted') : ailleurs, fill_borne_ms était ignorée
+// — le chemin classique coupe à 300 s. Or un message simple ne peut pas attendre plus
+// de 5 min (un appel unique d'un worker MV3 au-delà est tué : c'est pour ça que le port
+// existe). Un job qui DEMANDE une borne (platform_fields.fill_borne_ms lisible, posée par
+// le serveur) passe donc par le port, qui bat toutes les 20 s, même port éteint — sa
+// borne vaut max(borne d'aujourd'hui, clamp(fill_borne_ms, 10, 25 min)), jamais moins.
+// Un job sans fill_borne_ms garde EXACTEMENT son chemin d'aujourd'hui.
+function borneDemandeeParLeJob(job) {
+  const v = job?.platform_fields?.fill_borne_ms;
+  return typeof v === "number" && Number.isFinite(v) ? borneRemplissageJob(job) : null;
+}
+function portPourRemplissage(job, { port = keepaliveActif } = {}) {
+  if (PLATEFORMES_SANS_PORT_REMPLISSAGE.has(String(job?.platform ?? ""))) return false;
+  return port === true || borneDemandeeParLeJob(job) !== null;
+}
 // La borne qui s'appliquera VRAIMENT au remplissage de ce job sur ce poste :
-// celle du port (adaptative) quand il est allumé, sinon celle du chemin classique.
+// celle du port (adaptative) quand il sert, sinon celle du chemin classique.
 function borneEffectiveRemplissage(job, { port = keepaliveActif } = {}) {
-  if (!port || PLATEFORMES_SANS_PORT_REMPLISSAGE.has(String(job?.platform ?? ""))) return FILL_BORNE_CLASSIQUE_MS;
+  if (!portPourRemplissage(job, { port })) return FILL_BORNE_CLASSIQUE_MS;
   return borneRemplissageJob(job);
 }
 const FILL_PRET_DELAI_MS = 5_000;
@@ -32647,7 +32676,9 @@ function attendreVerdictSurPort(tabId, job, { connect, fallback, borneMs, mainte
 // de chrome.* et de sendMessageToTab.
 async function remplirAvecPort(tabId, job, deps = {}) {
   const connect = deps.connect ?? ((id, opts) => chrome.tabs.connect(id, opts));
-  const fallback = deps.fallback ?? ((t, m) => sendMessageToTab(t, m));
+  // (07/11 soir, 0.6.178) Le repli (aucun « pret ») passe par le message simple BORNÉ : à 300 s,
+  // la page est prévenue et ne clique plus rien (remplirParMessage).
+  const fallback = deps.fallback ?? ((t, m) => remplirParMessage(t, m?.job ?? job));
   // (07/11) Borne adaptative : platform_fields.fill_borne_ms, bornée à [10, 25] min.
   const borneMs = deps.borneMs ?? borneRemplissageJob(job);
   const maintenant = deps.now ?? (() => Date.now());
@@ -32717,8 +32748,49 @@ function envoyerFillListing(tabId, job) {
     throw e;
   });
 }
+// ── LE MESSAGE SIMPLE AUSSI S'ARRÊTE À LA BORNE (07/11 soir, 0.6.178 — Ciddjy, ayoub) ──
+// Sans port, l'arrière-plan cessait d'attendre à 300 s (« Timeout: pas de réponse du
+// content script ») mais la page continuait jusqu'au clic d'envoi : une annonce que
+// personne ne lisait, puis une seconde au nouvel essai (ayoub, 04/11 : parue 12 min
+// après le « délai dépassé »). Désormais :
+//   · le message porte sa borne (borneMs) et un identifiant de remplissage (fillId) ;
+//     la page arme une échéance locale = réception + borne (jamais AVANT l'arrière-plan,
+//     qui a envoyé plus tôt) et ne clique plus rien au-delà (abandonAvantEnvoi) ;
+//   · à SA borne, l'arrière-plan prévient la page (FILLSELL_ABANDON_REMPLISSAGE, par
+//     chrome.tabs.sendMessage) AVANT de rendre l'échec — même message qu'aujourd'hui ;
+//   · une page qui a abandonné d'elle-même (échéance passée avant que la minuterie de
+//     l'arrière-plan ne sonne) rend la même erreur de borne, jamais un autre verdict.
+// La borne ne change pas (300 s, celle d'aujourd'hui) : un remplissage qui aboutissait
+// avant elle aboutit à l'identique. Content scripts sans écouteur (Depop, eBay, Opla) :
+// les champs de plus sont ignorés, le message d'abandon reste sans effet.
+const FILL_ABANDON_MESSAGE = "FILLSELL_ABANDON_REMPLISSAGE";
+const FILL_ABANDON_DELAI_MS = 3_000;
+const FILL_TIMEOUT_CLASSIQUE = "Timeout: pas de réponse du content script";
+let numeroRemplissageParMessage = 0;
+async function remplirParMessage(tabId, job, deps = {}) {
+  const envoyer = deps.envoyer ?? ((t, m, ms) => sendMessageToTab(t, m, ms));
+  const prevenir = deps.prevenir ?? ((t, m) => sendMessageToTabOnce(t, m, FILL_ABANDON_DELAI_MS));
+  const borneMs = deps.borneMs ?? FILL_BORNE_CLASSIQUE_MS;
+  const jobId = String(job?.id ?? "");
+  const fillId = `${jobId}#${Date.now().toString(36)}.${(++numeroRemplissageParMessage).toString(36)}`;
+  const abandonner = async () => {
+    try { await prevenir(tabId, { type: FILL_ABANDON_MESSAGE, jobId, fillId }); } catch { /* page partie ou muette : son échéance locale tient */ }
+  };
+  let resultat;
+  try {
+    resultat = await envoyer(tabId, { type: "FILL_LISTING", job, borneMs, fillId }, borneMs);
+  } catch (e) {
+    if (String(e?.message ?? e).startsWith(FILL_TIMEOUT_CLASSIQUE)) await abandonner();
+    throw e;
+  }
+  // La page a passé son échéance avant que la minuterie d'ici ne sonne : rien n'est parti,
+  // c'est la borne — le verdict d'aujourd'hui à la borne, au mot près.
+  if (resultat && typeof resultat === "object" && resultat.abandonneAvantEnvoi === true) throw new Error(FILL_TIMEOUT_CLASSIQUE);
+  return resultat;
+}
 function envoyerFillListingBrut(tabId, job) {
-  if (!keepaliveActif) return sendMessageToTab(tabId, { type: "FILL_LISTING", job });
+  // (07/11 soir) Port éteint et job sans borne demandée : le message simple, borné.
+  if (!keepaliveActif && !portPourRemplissage(job)) return remplirParMessage(tabId, job);
   return remplirAvecPort(tabId, job).catch((e) => {
     const msg = String(e?.message ?? e);
     if (msg.startsWith("Timeout:") || msg === CANAL_COUPE_SIGNATURE) throw e;

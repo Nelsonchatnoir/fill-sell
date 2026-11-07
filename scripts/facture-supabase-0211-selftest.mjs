@@ -69,8 +69,8 @@ await cc.configUne(client, 'keepalive_actif', 8);
 ok(lectures === avant + 1, 'version changée : relue');
 const pref = await cc.configPrefixe(client, 'vinted_pays_', 8);
 ok(pref.data.map((r) => r.key).sort().join(',') === 'vintedXpaysYfr,vinted_pays_be', 'configPrefixe : la sémantique exacte de LIKE (« _ » = un caractère)');
-ok((gpj.match(/from\("coin_config"\)/g) ?? []).length === 0 && (gpj.match(/, versionCoinConfig\)/g) ?? []).length === 14,
-  'get-pending-jobs : les 14 lectures de coin_config passent par la version du signal');
+ok((gpj.match(/from\("coin_config"\)/g) ?? []).length === 0 && (gpj.match(/, versionCoinConfig\)/g) ?? []).length === 15,
+  'get-pending-jobs : les 15 lectures de coin_config passent par la version du signal (07/11 : + vinted_republication_hors_fr_prouvee, servie par le cache)');
 ok(gpj.includes('await userClient.rpc("signal_poll", { p_user: user.id });') && gpj.includes('return !eSig && sig && typeof sig === "object" ? sig as SignalCompte : null;'),
   'le signal lu une fois en tête de poll ; illisible → null → tout se lit comme avant');
 ok(gpj.includes('if (!j || typeof j !== "object") return true;'), 'sans compteurs, une lecture n\'est jamais sautée');

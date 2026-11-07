@@ -865,3 +865,10 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - Vinted : un rayon « neuf seulement » pour un article d'occasion se dit dès la première remontée (pas-de-rouge
   `vinted_rayon_neuf_seulement`, jamais de reprise) ; « Vinted exige les dimensions du colis » : FillSell ne sait pas les
   envoyer, la question sur une clé jamais relue tombe, message vrai (décision à prendre : saisie des dimensions).
+- (07/11 soir) Taille eBay : `_shared/taille-ebay.js`, appelé seulement après la règle des tailles. E1 : âge anglais →
+  français, même unité (« 11-12 yrs » → « 11-12 ans », « 18 months » → « 18 mois », « Newborn » → « Naissance ») ;
+  E2, liste fermée seulement : préfixe de pays que la liste n'écrit pas (« 38 EU », « EU S », « UK 6 » sur « Pointure UK »).
+  Jamais mois↔ans ni conversion de pays ; « FR 3 » (numérotation Lacoste) reste une question. Selftest `taille-ebay`
+  (banc du parc : 680 identiques, 2 corrigées, 0 régression).
+- (07/11 soir) Beebs : le bandeau « Voir dans l'appli / Télécharger l'application » de la fiche n'est plus lu comme un
+  attribut (0.6.178). Une annonce d'origine SANS Taille/Âge garde la question (aucune valeur devinée).

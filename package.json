@@ -143,6 +143,7 @@
     "selftest:ebay-retours": "node scripts/ebay-retours-selftest.mjs",
     "selftest:attente-session-serveur": "node scripts/attente-session-serveur-selftest.mjs",
     "selftest:serie-un-par-un": "node scripts/serie-un-par-un-selftest.mjs",
+    "selftest:remise-en-vente-attente": "node scripts/remise-en-vente-attente-selftest.mjs",
     "selftest:marque-compatible": "node scripts/marque-compatible-selftest.mjs",
     "selftest:depot-lbc-jamais-en-ligne": "node scripts/depot-lbc-jamais-en-ligne-selftest.mjs",
     "selftest:vinted-accessoires-de-mode": "node scripts/vinted-accessoires-de-mode-selftest.mjs",
@@ -229,6 +230,7 @@
     "selftest:prevol-republication": "node scripts/prevol-republication-selftest.mjs",
     "selftest:lbc-localisation": "node scripts/lbc-localisation-selftest.mjs",
     "selftest:recreation-deja-partie": "node scripts/recreation-deja-partie-selftest.mjs",
+    "selftest:doublons-de-nos-essais": "node scripts/doublons-de-nos-essais-selftest.mjs",
     "selftest:beebs-vendeur-session": "node scripts/beebs-vendeur-session-selftest.mjs",
     "selftest:candidats-rattachement": "node scripts/candidats-rattachement-selftest.mjs",
     "selftest:releve-compte-vide": "node scripts/releve-compte-vide-selftest.mjs",
@@ -305,6 +307,7 @@
     "selftest:consignes-redaction": "node scripts/consignes-redaction-selftest.mjs",
     "selftest:marque-absente": "deno run --allow-read --allow-env --allow-net scripts/marque-absente-selftest.ts",
     "selftest:tailles-prefixe-age": "deno run --allow-read --allow-env --allow-net scripts/tailles-prefixe-age-selftest.ts",
+    "selftest:taille-ebay": "deno run --allow-read --allow-env --allow-net scripts/taille-ebay-selftest.ts",
     "selftest:beebs-taille-de-la-fiche": "node scripts/beebs-taille-de-la-fiche-selftest.mjs",
     "selftest:lbc-adresse-avant-retrait": "node scripts/lbc-adresse-avant-retrait-selftest.mjs",
     "selftest:lbc-mur-connexion": "node scripts/lbc-mur-connexion-selftest.mjs",
@@ -561,6 +564,7 @@
     "selftest:deduction-apprise": "node scripts/deduction-apprise-selftest.mjs",
     "selftest:extension-0-6-126": "node scripts/extension-0-6-126-selftest.mjs",
     "selftest:extension-0-6-177": "node scripts/extension-0-6-177-selftest.mjs",
+    "selftest:extension-0-6-178": "node scripts/extension-0-6-178-selftest.mjs",
     "selftest:lot-0711-serveur": "node scripts/lot-0711-serveur-selftest.mjs",
     "selftest:puericulture-genre-ebay": "node --import ./scripts/loader-ext.mjs scripts/puericulture-genre-ebay-selftest.mjs",
     "selftest:rien-vendu-sur-vente": "node --import ./scripts/loader-ext.mjs scripts/rien-vendu-sur-vente-selftest.mjs",
@@ -651,7 +655,8 @@
     "selftest:vinted-attributs-origine-post": "node scripts/vinted-attributs-origine-post-selftest.mjs",
     "selftest:vinted-attributs-connus": "node scripts/vinted-attributs-connus-selftest.mjs",
     "selftest:copies-completes-2610": "node scripts/copies-completes-2610-selftest.mjs",
-    "selftest:beebs-depot-sans-numero": "node scripts/beebs-depot-sans-numero-selftest.mjs"
+    "selftest:beebs-depot-sans-numero": "node scripts/beebs-depot-sans-numero-selftest.mjs",
+    "selftest:rouges-parc-0711": "node scripts/rouges-parc-0711-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

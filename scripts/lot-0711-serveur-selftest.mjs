@@ -83,5 +83,18 @@ ok(c7a?.origine === "nous", `« le prix manque dans la copie » : nous (${c7a?.o
 const c7b = causeDuTexte({ texte: "Ton annonce Leboncoin n'affiche aucun prix (elle a été déposée sans prix), et Leboncoin en exige un pour la remettre en ligne.", source: "relancer", platform: "leboncoin" });
 ok(c7b?.origine === "utilisateur", `prix absent de l'origine : une information à donner (${c7b?.origine})`);
 
+console.log("7. (07/11 soir, Nico) Vinted hors de France : aucun retrait pour republication avant la preuve de la couleur");
+{
+  const { readFileSync } = await import("node:fs");
+  const gpj = readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const bloc = gpj.slice(gpj.indexOf("const retenuesHorsFr = new Set<string>();"), gpj.indexOf("if (fermes) console.log("));
+  ok(/configUne\(userClient, "vinted_republication_hors_fr_prouvee", versionCoinConfig\)/.test(gpj) && /Number\(\(cfgPreuveHorsFr/.test(gpj),
+    "interrupteur coin_config vinted_republication_hors_fr_prouvee (absent = retenue)");
+  ok(/const pageNonFrancaise = langue \? langue !== "fr"/.test(bloc), "la langue de la PAGE décide (page belge en français : chemin français)");
+  ok(/!\["deleted", "recreated"\]\.includes\(String\(pf\.republish_step/.test(bloc), "une remise en ligne déjà retirée n'est pas retenue");
+  ok(/vinted_essai_hors_fr === true/.test(bloc), "seul le compte de l'essai (drapeau beta) est servi avant la preuve");
+  ok(/out = out\.filter\(\(j\) => !retenuesHorsFr\.has\(String\(j\.id\)\)\)/.test(gpj) && !/\.update\(/.test(bloc), "retenue = non servie, sans aucune écriture");
+}
+
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

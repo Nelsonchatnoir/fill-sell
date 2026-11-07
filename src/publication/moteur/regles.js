@@ -21,6 +21,7 @@ import { titreVide, couperTitre, titrePourJob } from "../../../supabase/function
 // (25/10, décision de Nico) La limite exacte de Vinted (7 capitales à la suite) : MÊME règle que le serveur.
 import { casseTitre, depasseSeuilMajuscules } from "../../../supabase/functions/_shared/casse-titre.js";
 import { tailleDansGrille, diagnosticTaille, candidatsTaille } from "../../../supabase/functions/_shared/tailles.js";
+import { tailleEbayComplement } from "../../../supabase/functions/_shared/taille-ebay.js";
 import { departementEbayPour } from "./departementEbay.js";
 import { descriptionFidele, lignesEcritesParLaPersonne } from "./descriptionFidele.js";
 import { matieresDeLaComposition } from "../../../supabase/functions/_shared/composition-matieres.js";
@@ -427,9 +428,13 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
     // Taille (02/10, point 11) : le vocabulaire des tailles (« W34 | FR 44 » →
     // « 44 », « XXL » → « 2XL »), jamais un rapprochement par mots sur un
     // nombre — il lisait « 44.5 » comme « 44 ».
+    // (07/11, Rosa Metra ba0c4d73) PUIS, si rien n'a répondu, le complément eBay (même module que le serveur,
+    // _shared/taille-ebay.js) : « 11-12 yrs » → « 11-12 ans » (la copie eBay porte l'option que l'extension
+    // trouvera), préfixe de pays sur une liste qui fait foi. Ce qui passait passe à l'identique.
     const estTaille = known?.labels?.includes("Taille");
+    const complementEbay = () => tailleEbayComplement(aspect.name, val, allowed, { ferme: faitFoi })?.valeur ?? null;
     const nearest = known?.sansRapprochement ? null : estTaille
-      ? (tailleDansGrille(val, allowed)?.valeur ?? (/\d/.test(val) ? null : nearestAllowedValue(val, allowed)))
+      ? (tailleDansGrille(val, allowed)?.valeur ?? (/\d/.test(val) ? complementEbay() : (nearestAllowedValue(val, allowed) ?? complementEbay())))
       : nearestAllowedValue(val, allowed);
     if (nearest) {
       if (known?.set) known.set(nearest);

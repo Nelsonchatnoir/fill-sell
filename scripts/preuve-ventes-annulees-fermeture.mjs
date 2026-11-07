@@ -6,6 +6,9 @@
 //      « deja_en_vente_autre_fiche » ; en ligne ensemble, deux exemplaires apparus la même minute, photos différentes,
 //      autre boutique, apparue avant la vente, plusieurs exemplaires, jumelle hors ligne, jumelle faite dans l'app, titre
 //      seul → la ligne RESTE ;
+//      (07/11, décision de Nico — la preuve SOLIDE) une photo de chaque côté (la spatule), 2 photos communes sur 7 et 9
+//      (le pantalon), une même image en double, une seconde fiche à une photo commune → la ligne RESTE ; 2 photos
+//      communes sur 2 et 3 (le pull rayé) → fermée ;
 //      fiche hors stock (vendue, fondue, effacée) → « plus_en_stock » ;
 //   5. la même garde juste avant l'INSERT (ligne « à faire ») ; une ligne sans jumelle crée toujours sa publication ;
 //   6. ventes_annulees_ne_pas_remettre : la fiche et le compte appelant seulement ; sans session : refus ; droits ;
@@ -356,10 +359,24 @@ try {
   const F11 = await ficheAnnulee(11, { quantite: 2 }); await jumelle(111, F11);
   const F12 = await ficheAnnulee(12); await jumelle(112, F12, { enLigne: false });
   const F13 = await ficheAnnulee(13, { titre: 'Robe portefeuille verte taille 36' }); await jumelle(113, F13, { communes: 0, titre: 'Robe portefeuille verte taille 36' });
-  // F14 : UNE photo de chaque côté, quasi identique ; la jumelle est une annonce Leboncoin (pas Vinted) en ligne → fermée
+  // F14 : UNE photo de chaque côté, quasi identique (la spatule de 02ca0f20) ; la jumelle est une annonce Leboncoin en
+  //       ligne → la ligne RESTE (07/11, décision de Nico : plus jamais « 1 photo suffit »)
   const F14 = await ficheAnnulee(14, { photos: 1 });
   await jumelle(114, F14, { photos: 1, communes: 1, vinted: false, origine: 'releve_leboncoin' });
   await ins('annonces_plateforme', { user_id: U, platform: 'leboncoin', listing_id: '3300000114', inventaire_id: 114, statut_plateforme: 'en_ligne', vu_le: jours(-1) });
+  // F17 : 2 photos communes sur 7 (fiche) et 9 (jumelle) — le pantalon de f0acd3af : une ressemblance → RESTE
+  const F17 = await ficheAnnulee(17, { photos: 7 }); await jumelle(117, F17, { photos: 9, communes: 2 });
+  // F18 : la même image en DOUBLE de chaque côté (deux photos de la fiche quasi identiques entre elles, deux de la
+  //       jumelle aussi) : 2 « photos communes » qui ne sont qu'une image → RESTE
+  const F18 = await ficheAnnulee(18, { photos: 2 });
+  await q(`UPDATE photo_empreintes SET dhash = $1 WHERE url = $2`, [voisin(dhash(180), 1), F18.urls[1]]);
+  await jumelle(118, F18, { photos: 2, communes: 1 });
+  await q(`UPDATE photo_empreintes SET dhash = $1 WHERE url = 'https://images1.vinted.net/t/118-1.jpeg'`, [voisin(dhash(180), 3)]);
+  // F19 : une jumelle solide (3 sur 3) ET une seconde fiche née du relevé avec UNE photo commune → le doute → RESTE
+  const F19 = await ficheAnnulee(19); await jumelle(119, F19);
+  await jumelle(1190, F19, { communes: 1, enLigne: false });
+  // F21 : le pull rayé d'Ornella — fiche à 2 photos, jumelle à 3, les 2 photos de la fiche dans la jumelle → fermée
+  const F21 = await ficheAnnulee(21, { photos: 2 }); const T21 = await jumelle(121, F21, { photos: 3, communes: 2 });
   // F15 : une autre annonce de la fiche vue EN LIGNE après l'apparition de la jumelle (deux exemplaires ?) → reste
   const F15 = await ficheAnnulee(15); await jumelle(115, F15);
   await ins('annonces_plateforme', { user_id: U, platform: 'depop', listing_id: 'depop-15', inventaire_id: 15, statut_plateforme: 'en_ligne', vu_le: jours(-1) });
@@ -385,12 +402,17 @@ try {
     'F6 vendue, F7 fondue, F8 effacée → « plus_en_stock »');
   verifier(restent(await lignesDe(9)) && restent(await lignesDe(10)) && restent(await lignesDe(11)) && restent(await lignesDe(12)) && restent(await lignesDe(13)),
     'F9 autre boutique, F10 apparue avant la vente, F11 deux exemplaires, F12 jumelle hors ligne, F13 titre seul → les lignes restent');
-  verifier(fermees(await lignesDe(14), 'deja_en_vente_autre_fiche'), 'F14 une photo de chaque côté, quasi identique, jumelle en ligne sur Leboncoin → fermée');
+  verifier(restent(await lignesDe(14)), 'F14 une photo de chaque côté (la spatule) → la ligne RESTE (plus jamais « 1 photo suffit »)');
+  verifier(restent(await lignesDe(17)), 'F17 2 photos communes sur 7 et 9 (le pantalon) → la ligne RESTE');
+  verifier(restent(await lignesDe(18)), 'F18 la même image en double de chaque côté → la ligne RESTE');
+  verifier(restent(await lignesDe(19)), 'F19 une jumelle solide ET une seconde fiche à une photo commune → la ligne RESTE (le doute)');
+  verifier(fermees(await lignesDe(21), 'deja_en_vente_autre_fiche'), 'F21 2 photos communes sur 2 et 3 (le pull rayé) → « deja_en_vente_autre_fiche »');
   verifier(restent(await lignesDe(15)), 'F15 une autre annonce de la fiche vue en ligne après la jumelle → la ligne reste');
   verifier(restent(await lignesDe(16)), 'F16 « jumelle » faite dans l\'app (second exemplaire dupliqué à la main) → la ligne reste');
   verifier(restent(await lignesDe(20)), 'V (autre compte, autre boutique) : sa ligne reste');
   const traces = Object.fromEntries((await q(`SELECT metadata FROM usage_logs WHERE feature = 'remise_annulee_fermee_jumelle'`)).map((t) => [t.metadata.inventaire_id, t.metadata]));
-  verifier(Object.keys(traces).length === 3 && traces['1']?.jumelle === String(T1) && traces['1']?.lignes === 3 && traces['2']?.jumelle === String(T2) && traces['14']?.jumelle === '114',
+  verifier(Object.keys(traces).length === 3 && traces['1']?.jumelle === String(T1) && traces['1']?.lignes === 3 && traces['2']?.jumelle === String(T2)
+    && traces['21']?.jumelle === String(T21) && traces['21']?.photos_communes === 2 && !traces['14'],
     `une trace par fiche fermée, jumelle nommée (${Object.values(traces).map((t) => t.inventaire_id + '→' + t.jumelle + ' ' + t.motif).join(', ')})`);
   verifier(bilan.jumelles === 3 && bilan.hors_stock === 3, 'le bilan compte 3 jumelles et 3 lignes hors stock');
   verifier((await q(`SELECT count(*)::int n FROM cross_post_jobs WHERE status = 'pending'`))[0].n === 0, 'aucune publication créée');

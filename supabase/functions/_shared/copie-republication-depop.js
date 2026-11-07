@@ -159,6 +159,44 @@ const CLES_DU_DEPOT = Object.freeze([
   "depopMatieres",
 ]);
 
+// ── (07/11, famille 6c') LA TAILLE DE LA COPIE ────────────────────────────────────────────────────────────────────────
+// La grille Depop du rayon, quand le serveur la connaît : celle d'une question « Taille (Depop) » déjà posée par le
+// formulaire (options complètes), sinon null.
+export function grilleDepopConnue(pf) {
+  const f = pf?.needsUserField;
+  if (!f || String(f.field_key ?? "") !== "depopTaille" || !Array.isArray(f.allowed_values)) return null;
+  const g = f.allowed_values.map((v) => String(v ?? "").trim()).filter(Boolean);
+  return g.length ? g : null;
+}
+const AUTRE_DEPOP = /^(?:other|autres?)$/i;
+const valeurTaille = (v) => String((v && typeof v === "object" ? v.v : v) ?? "").trim();
+/** La taille écrite dans un titre (« … size 33 … », « taille M ») : un seul jeton, ou "". */
+export function tailleDuTitreDepop(titre) {
+  const ms = [...String(titre ?? "").matchAll(/\b(?:size|taille)\s*:?\s*([a-z0-9]{1,4})\b/gi)].map((m) => m[1]);
+  const uniques = [...new Set(ms.map((x) => x.toUpperCase()))];
+  return uniques.length === 1 ? ms[0] : "";
+}
+/**
+ * La taille Depop que la copie d'une republication peut porter, ou null. Une republication remet l'annonce TELLE QU'ELLE
+ * EST : la taille de l'annonce en ligne d'abord.
+ *   1. capture.taille, relevée par l'API Depop (capture.source « api ») : c'est un libellé de SA grille, celui que
+ *      l'annonce affiche — dans la grille connue s'il y en a une ; jamais « Other » ;
+ *   2. sinon, et SEULEMENT si la grille du rayon est connue (question déjà posée) : la taille de la fiche, puis celle du
+ *      titre, qui y figure EXACTEMENT (jamais une voisine, jamais traduite ici — l'extension rejuge la grille).
+ * Rien d'autre : sans source certaine, la copie reste sans taille et le formulaire pose la question, comme avant.
+ * @returns {null | { valeur: string, source: 'annonce_en_ligne'|'fiche'|'titre' }}
+ */
+export function tailleDepopPourLaCopie({ capture = null, fiche = null, titre = "", grille = null } = {}) {
+  const dansGrille = (v) => !grille || grille.includes(v);
+  const cap = valeurTaille(capture?.taille);
+  if (cap && !AUTRE_DEPOP.test(cap) && String(capture?.source ?? "") === "api" && dansGrille(cap)) return { valeur: cap, source: "annonce_en_ligne" };
+  if (!grille) return null;
+  for (const [v, source] of [[valeurTaille(fiche?.taille), "fiche"], [tailleDuTitreDepop(titre), "titre"]]) {
+    if (v && !AUTRE_DEPOP.test(v) && grille.includes(v)) return { valeur: v, source };
+  }
+  return null;
+}
+
 /**
  * La copie complétée d'une republication Depop.
  * @param {{ job: object, depots?: object[], capture?: object|null, fiche?: object|null, le?: string|null }} p
@@ -222,6 +260,13 @@ export function completerCopieDepop({ job, depots = [], capture = null, fiche = 
   }
   // 5. Marque : l'annonce en ligne, quand ni la copie ni le dépôt ne la portent.
   if (vide(pf.depopMarque) && !vide(capture?.marque)) { pf.depopMarque = String(capture.marque).trim(); sources.depopMarque = "annonce_en_ligne"; }
+  // 6. (07/11, famille 6c' — a3002ab6 1fbef555, jean Kaporal « 33 ») La TAILLE, quand ni la copie ni le dépôt FillSell ne
+  // la portent (depopTaille / taille) : sans elle, le formulaire de recréation demandait « Taille (Depop) » alors que
+  // l'annonce en ligne, la fiche et le titre disaient tous « 33 », dans la grille. Voir tailleDepopPourLaCopie.
+  if (vide(pf.depopTaille) && vide(pf.taille)) {
+    const t = tailleDepopPourLaCopie({ capture, fiche, titre: job.title, grille: grilleDepopConnue(pf) });
+    if (t) { pf.depopTaille = t.valeur; sources.depopTaille = t.source; }
+  }
 
   if (!Object.keys(sources).length) return null;
   const apres = champsManquantsCopieDepop({ ...job, description: description ?? job.description, platform_fields: pf });

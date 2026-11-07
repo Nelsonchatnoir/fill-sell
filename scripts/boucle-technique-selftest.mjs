@@ -39,7 +39,11 @@ console.log("\n3. LE REMÈDE : LE PORT DE MAINTIEN EN VIE, COMPTE PAR COMPTE");
 ok(/\["keepalive"\] === true\) keepaliveActif = true;/.test(gpj) && /from\("profiles"\)\.select\("beta_flags"\)/.test(gpj),
   "get-pending-jobs : profiles.beta_flags.keepalive allume le port pour ce compte");
 const bg = lire("chrome-extension/background.js");
-ok(/const FILL_BORNE_MS = 10 \* 60_000;/.test(bg) && /if \(!keepaliveActif\) return sendMessageToTab\(tabId, \{ type: "FILL_LISTING", job \}\);/.test(bg),
+// (0.6.178) Le chemin classique passe par remplirParMessage (même message FILL_LISTING, même borne de 300 s,
+// la page prévenue à la borne) ; un job qui demande une borne (fill_borne_ms) prend le port même éteint.
+ok(/const FILL_BORNE_MS = 10 \* 60_000;/.test(bg) && /const FILL_BORNE_CLASSIQUE_MS = 300_000;/.test(bg)
+  && /if \(!keepaliveActif && !portPourRemplissage\(job\)\) return remplirParMessage\(tabId, job\);/.test(bg)
+  && /const borneMs = deps\.borneMs \?\? FILL_BORNE_CLASSIQUE_MS;/.test(bg),
   "extension : port borné à 10 min, chemin classique (5 min) quand il est éteint");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }

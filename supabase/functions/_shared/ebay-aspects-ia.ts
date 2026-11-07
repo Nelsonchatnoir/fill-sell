@@ -26,6 +26,8 @@ import { questionClaude } from "./claude-cache.ts";
 // (25/10, N5) La taille : la règle des tailles et la taille unique du vendeur.
 import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
 import { tailleUniqueDuVendeur, estTailleUniqueEcrite } from "./taille-du-texte.js";
+// (07/11) Le complément eBay : l'âge écrit en anglais, le préfixe de pays (cf. tailleRetenueDansLaListe).
+import { tailleEbayComplement } from "./taille-ebay.js";
 
 // libre : true = 2e passe de la voie API (remplirAspects) ; "titre" = 2e passe
 // de la voie formulaire (completerAspectsIA) : un aspect par appel, le mot
@@ -114,7 +116,11 @@ export function tailleRetenueDansLaListe(
   if (!liste.length) return { refus: "taille sans liste eBay" };
   const entree = valeurDeListeCorrespondante(s, liste)
     ?? tailleSansPrefixeEuFr(nomAspect, s, liste)
-    ?? (tailleDeService(s, liste, { branche: fiche.branche ?? null })?.valeur ?? null);
+    ?? tailleDeService(s, liste, { branche: fiche.branche ?? null })?.valeur
+    // (07/11) Rien n'a répondu : le complément eBay (_shared/taille-ebay.js) — « 11-12 yrs » → « 11-12 ans »,
+    // « EU S » → « S » ; une entrée de la liste, jamais autre chose.
+    ?? tailleEbayComplement(nomAspect, s, liste, { ferme: true })?.valeur
+    ?? null;
   if (!entree) return { refus: "taille hors de la liste eBay" };
   if (estTailleUniqueEcrite(entree)) {
     const u = tailleUniqueDuVendeur({ valeur: String(fiche.taille ?? ""), textes: (fiche.textes ?? []).map((t) => String(t ?? "")), opts: liste });

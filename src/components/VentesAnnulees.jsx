@@ -16,9 +16,9 @@ import { useState } from 'react';
 import { texteVenteAnnulee } from '../utils/venteAnnulee';
 
 // (07/11, décision de Nico) Le geste « Ne pas remettre en vente » appelle la rpc ventes_annulees_ne_pas_remettre de la
-// migration 20261107150000, PAS ENCORE APPLIQUÉE (feu vert refusé pour ce lot) : le bouton reste caché. À passer à true
-// dans le commit qui applique cette migration — jamais avant (le bouton afficherait une erreur).
-const NE_PAS_REMETTRE_EN_SERVICE = false;
+// migration 20261107150000 (feu vert nommé de Nico, preuve solide seulement) : le bouton est montré. Ce fichier ne part
+// (commit, OTA) qu'APRÈS l'application de cette migration en prod — jamais avant (le bouton afficherait une erreur).
+const NE_PAS_REMETTRE_EN_SERVICE = true;
 
 const P = {
   ink: '#10201B', paper: '#F6F5F1', border: '#E7E3D8', mute2: '#5C6560', teal: '#2F9E90', tealDeep: '#1B6E62', card: '#FFFFFF',

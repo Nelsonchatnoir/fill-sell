@@ -647,3 +647,13 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   candidate, née d'un relevé ; jamais un titre) est vendue ou en ligne ; même garde avant toute création ; bouton « Ne
   pas remettre en vente » (migration 20261107150000, feu vert requis). Le rattachement de la jumelle (double fiche) reste
   à corriger (proposition au rapport).
+
+## ⛔ 07/11 soir — RÈGLE A RÉTABLIE (décision de Nico : option A, feu vert)
+- Leboncoin : une remise en vente n'est SERVIE qu'une fois son annonce vendue IDENTIQUE disparue (relevée disparue,
+  retirée, ou plus relevée en ligne) — get-pending-jobs, `_shared/remise-en-vente-attente.js`, AVANT la série « une par
+  une » (rang par rang, chacun après la disparition de sa vendue). Preuve : 4 remises de Louis déposées vendue affichée,
+  toutes désactivées (410), dont une sans aucune marque. Seul Leboncoin refuse un dépôt identique (Vinted, Beebs, Depop
+  marquent la vendue ; eBay la clôt).
+- Une remise déjà close (cancelled / failed) ou publiée jamais vue depuis 2 h, vendue encore affichée, dépôt jamais vu,
+  aucune autre annonce non vendue de la fiche en ligne → remise en attente (dépôt refusé archivé dans
+  `depots_desactives_regle_a`), 3 fois au plus, 14 jours : handler-watch, un passage par quart d'heure.

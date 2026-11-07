@@ -25,7 +25,7 @@ function navigateurCourtPage() {
   return "ton navigateur";
 }
 
-const LEBONCOIN_BUILD = "2026-11-02-depot-interrompu (0.6.168 : la boîte « interrompre votre dépôt » à l'arrivée sur le dépôt suit le chemin officiel — « Quitter sans enregistrer », redépôt sur formulaire vierge, aucun essai consommé ; jamais « page de dépôt non reconnue » sur Mes annonces) · 2026-10-31-criteres-tardifs (0.6.163 : page « Dites-nous en plus » sans AUCUN champ alors que l'annonce porte des critères — attente prolongée de 30 s au plus, le bas du formulaire ramené à l'écran, l'état de la page noté ; jamais un Continuer sur un formulaire vide) · 2026-10-30-navigateur-reel (0.6.161 : les messages nomment le navigateur réel — Brave, Edge, Opera, sinon « ton navigateur » — jamais « Chrome » écrit en dur) · 2026-10-30-photos-nouvelle-page (0.6.160 : le nombre de photos gratuites lu dans la page — packPhotoConfig du composant photos, monde MAIN — puis sur les libellés de la NOUVELLE page « Cliquez et déposez jusqu'à N photos » ; seule une lecture chiffrée est stable ; quota vraiment illisible et plus de 3 photos : rien ne part, attente « lbc_photos_quota_illisible », jamais 3 photos en silence) · 2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-11-07-soir-photos-lourdes (0.6.178 : les critères « Dites-nous en plus » n’arrivent qu’une fois les photos reçues — l’attente prolongée suit le poids envoyé, 30 s au moins, 120 s au plus, et les PNG de plus de 300 Ko partent allégés en JPEG ; le message simple FILL_LISTING porte sa borne : à la borne, le Continuer final ne part plus) · 2026-11-02-depot-interrompu (0.6.168 : la boîte « interrompre votre dépôt » à l'arrivée sur le dépôt suit le chemin officiel — « Quitter sans enregistrer », redépôt sur formulaire vierge, aucun essai consommé ; jamais « page de dépôt non reconnue » sur Mes annonces) · 2026-10-31-criteres-tardifs (0.6.163 : page « Dites-nous en plus » sans AUCUN champ alors que l'annonce porte des critères — attente prolongée de 30 s au plus, le bas du formulaire ramené à l'écran, l'état de la page noté ; jamais un Continuer sur un formulaire vide) · 2026-10-30-navigateur-reel (0.6.161 : les messages nomment le navigateur réel — Brave, Edge, Opera, sinon « ton navigateur » — jamais « Chrome » écrit en dur) · 2026-10-30-photos-nouvelle-page (0.6.160 : le nombre de photos gratuites lu dans la page — packPhotoConfig du composant photos, monde MAIN — puis sur les libellés de la NOUVELLE page « Cliquez et déposez jusqu'à N photos » ; seule une lecture chiffrée est stable ; quota vraiment illisible et plus de 3 photos : rien ne part, attente « lbc_photos_quota_illisible », jamais 3 photos en silence) · 2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -59,6 +59,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true; // réponse asynchrone
     }
+    // (07/11 soir, 0.6.178) L'arrière-plan a cessé d'attendre ce remplissage (sa borne) :
+    // réponse synchrone, aucun geste — le Continuer final ne partira plus (abandonAvantEnvoi).
+    if (msg?.type === "FILLSELL_ABANDON_REMPLISSAGE") {
+      sendResponse({ ok: abandonParMessage(msg) });
+      return true;
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     // Port de remplissage (2026-09-17) : si CE job est déjà en cours par le
@@ -68,16 +74,34 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       if (enCours?.promesse && enCours.jobId === String(msg.job?.id ?? "")) {
         // (07/11) Repli du port vers le canal classique : quelqu'un attend de nouveau ce remplissage.
         enCours.sansEcoute = false;
-        enCours.promesse.then((r) => sendResponse(r));
+        // (07/11 soir) … et l'attend jusqu'à SA borne, pas au-delà.
+        const borne = armerBorneParMessage(msg);
+        enCours.promesse.then((r) => { lacherBorneParMessage(borne); sendResponse(r); });
+        return true;
+      }
+    }
+    // (07/11 soir) Le même job déjà rempli par message simple dans CETTE page (une seconde
+    // demande pendant le premier remplissage) : on rejoint celui-ci — jamais deux
+    // remplissages, et son échéance comme son abandon restent les siens.
+    {
+      const enCoursMsg = remplissagesParMessage.get(String(msg.job?.id ?? ""));
+      if (enCoursMsg?.promesse) {
+        enCoursMsg.promesse.then((r) => sendResponse(r));
         return true;
       }
     }
 
     etapeCourante = null; // nouveau job : le relevé d'étape repart de zéro
     MARQUE_HORS_LISTE = null; // (18/10) la marque hors liste ne survit jamais à un job
-    fillListingForm(msg.job)
-      .then((result) => sendResponse(joindreBilanPhotosLbc(result)))
-      .catch((err) => sendResponse(reponseEchecInterne(err)));
+    const borne = armerBorneParMessage(msg);
+    const reponse = fillListingForm(msg.job)
+      .then((result) => joindreBilanPhotosLbc(result))
+      .catch((err) => reponseEchecInterne(err));
+    if (borne) {
+      borne.promesse = reponse;
+      reponse.then(() => lacherBorneParMessage(borne));
+    }
+    reponse.then((r) => sendResponse(r));
 
     return true; // réponse asynchrone
   });
@@ -1181,10 +1205,43 @@ function etatRemplissagePublic() {
   if (!r) return null;
   return { jobId: r.jobId, phase: r.phase ?? null, envoye: r.envoye === true, enCours: r.enCours === true, resultat: r.resultat ?? null };
 }
+// ── (07/11 soir, 0.6.178) LE MESSAGE SIMPLE AUSSI A SA BORNE — même code que beebs.js ──
+// Sans port (la plupart des comptes), l'arrière-plan cesse d'attendre FILL_LISTING à SA
+// borne (300 s) et la page continuait jusqu'au Continuer final. Le message porte sa borne
+// (borneMs) et son identifiant (fillId) : échéance locale = réception + borne (jamais avant
+// l'arrière-plan, qui a envoyé plus tôt) ; à sa borne, l'arrière-plan envoie
+// FILLSELL_ABANDON_REMPLISSAGE. Un abandon ne se lève jamais (une seconde demande du même
+// job dans la page rejoint le remplissage en cours, sans rien relancer ni réarmer).
+// Message sans borne (ancien arrière-plan) : rien n'est armé, chemin d'avant.
+const remplissagesParMessage = new Map();
+function armerBorneParMessage(msg, maintenant = Date.now()) {
+  const jobId = String(msg?.job?.id ?? "");
+  const borne = Number(msg?.borneMs);
+  if (!jobId || !Number.isFinite(borne) || borne <= 0) return null;
+  // Un remplissage de ce job déjà abandonné (ou échu) dans cette page le reste : jamais réarmé.
+  const deja = remplissagesParMessage.get(jobId);
+  if (deja && (deja.abandonDemande === true || maintenant > deja.echeance)) return deja;
+  const e = { jobId, fillId: String(msg?.fillId ?? ""), echeance: maintenant + borne, abandonDemande: false, promesse: null };
+  remplissagesParMessage.set(jobId, e);
+  return e;
+}
+function lacherBorneParMessage(e) {
+  if (e && remplissagesParMessage.get(e.jobId) === e) remplissagesParMessage.delete(e.jobId);
+}
+function abandonParMessage(msg) {
+  const e = remplissagesParMessage.get(String(msg?.jobId ?? ""));
+  if (!e || (msg?.fillId && e.fillId && String(msg.fillId) !== e.fillId)) return false;
+  e.abandonDemande = true;
+  return true;
+}
 // (07/11, même règle que beebs.js) L'arrière-plan a abandonné ce remplissage
 // (message « abandon » à la borne) ou le port qui l'attendait s'est fermé sans
 // relève : lu JUSTE avant le Continuer final (adsubmit), rien ne part.
 function abandonAvantEnvoi(jobId) {
+  // (07/11 soir) Le remplissage demandé par message simple : abandon reçu ou échéance passée.
+  const m = remplissagesParMessage.get(String(jobId ?? ""));
+  if (m && m.abandonDemande === true) return "abandon reçu de l'arrière-plan (borne dépassée)";
+  if (m && Date.now() > m.echeance) return "borne du remplissage dépassée : l'arrière-plan n'attend plus ce remplissage";
   const r = globalThis.__fillsellRemplissage;
   if (!r || r.jobId !== String(jobId ?? "") || r.enCours !== true) return null;
   if (r.abandonDemande === true) return "abandon reçu de l'arrière-plan (borne dépassée)";
@@ -2993,6 +3050,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   relayerEtape("photos");
   ETAPES_AVANT_PHOTOS.description = false;
   ETAPES_AVANT_PHOTOS.prix = false;
+  octetsPhotosEnvoyesLbc = 0; // (07/11 soir) le poids des photos de CE remplissage (attente des critères)
   const photoInput = await advanceWizardTo('input[type="file"]', {
     probeMs: 6000, avantContinuer: () => remplirEtapeAvantPhotos(job),
   });
@@ -4208,6 +4266,24 @@ function pageWizardLbc() {
 // ramené à l'écran pour un rendu paresseux) au lieu de cliquer « Continuer » sur un formulaire incomplet ; ce que la
 // page montrait est noté (visibilité, chargements en cours) pour trancher au cas suivant.
 const LBC_SONDE_TARDIVE_MS = 30_000;
+// ── (07/11 soir, 0.6.178 — Sonia, « Polo garçon Lacoste 10 ans », 5 essais, Mode › Vêtements) ──
+// LA CAUSE, MESURÉE : Leboncoin ne montre les critères qu'une fois les photos REÇUES. Depuis le
+// 31/10, sur 5 377 dépôts : photos PNG (photos « améliorées » de l'app, ~2 Mo chacune) → critères
+// en retard ou jamais dans 36 dépôts sur 61 ; photos JPEG (~150-350 Ko) → 5 sur 5 316, dont le seul
+// « jamais » envoyait 13 photos, 7,8 Mo. Le Polo : 3 PNG 1024×1024, 5,6 Mo (le Tee shirt Adidas du
+// même compte, même rayon, 3 JPEG, 465 Ko : passé sans attendre). Une attente fixe de 30 s ne tient
+// pas sur une connexion modeste. LA RÈGLE : l'attente prolongée suit ce qui a été envoyé — au moins
+// 30 s (inchangé jusqu'à 1,5 Mo), 1 s par 50 Ko au-delà, 120 s au plus ; elle s'arrête dès qu'un
+// critère paraît. (Et les PNG lourds partent allégés en JPEG : allegerPhotoLbc.)
+const LBC_SONDE_TARDIVE_MAX_MS = 120_000;
+const LBC_DEBIT_PHOTOS_MIN_OCTETS_S = 50_000;
+// Les octets des photos remises au formulaire par CE remplissage (0 sans photo).
+let octetsPhotosEnvoyesLbc = 0;
+function budgetCriteresTardifsLbc(octets) {
+  const n = Number(octets);
+  const selonPhotos = Number.isFinite(n) && n > 0 ? Math.ceil(n / LBC_DEBIT_PHOTOS_MIN_OCTETS_S) * 1000 : 0;
+  return Math.min(LBC_SONDE_TARDIVE_MAX_MS, Math.max(LBC_SONDE_TARDIVE_MS, selonPhotos));
+}
 function pageSansAucunCritereLbc() {
   return document.querySelectorAll("label[for]").length === 0;
 }
@@ -4221,6 +4297,9 @@ function indicesChargementLbc() {
 async function attendreCriteresTardifsLbc(job, warnings) {
   const t0 = Date.now();
   const avant = indicesChargementLbc();
+  // (07/11 soir) L'attente suit le poids des photos envoyées (30 s au moins, 120 s au plus).
+  const budget = budgetCriteresTardifsLbc(octetsPhotosEnvoyesLbc);
+  const poids = octetsPhotosEnvoyesLbc > 0 ? ` ; photos envoyées : ${Math.round(octetsPhotosEnvoyesLbc / 1024)} Ko` : "";
   for (;;) {
     try {
       const fin = document.querySelector('button[type="submit"], [data-qa-id*="continue" i]') ?? document.body.lastElementChild;
@@ -4234,8 +4313,8 @@ async function attendreCriteresTardifsLbc(job, warnings) {
       try { window.scrollTo(0, 0); } catch { /* idem */ }
       return vu;
     }
-    if (Date.now() - t0 >= LBC_SONDE_TARDIVE_MS) {
-      const note = `critères : toujours aucun champ après ${LBC_SONDE_TARDIVE_MS / 1000} s de plus (avant : ${avant} ; après : ${indicesChargementLbc()})`;
+    if (Date.now() - t0 >= budget) {
+      const note = `critères : toujours aucun champ après ${budget / 1000} s de plus (avant : ${avant} ; après : ${indicesChargementLbc()}${poids})`;
       console.warn(`[leboncoin] ${note}`);
       warnings.push(note);
       return null;
@@ -7285,8 +7364,81 @@ async function lireQuotaPhotosLbcStable(demander = demanderMainLbc) {
   return dernier;
 }
 
+// ── LES PHOTOS PNG LOURDES PARTENT EN JPEG (07/11 soir, 0.6.178 — Sonia, « Polo garçon Lacoste ») ──
+// Une photo « améliorée » par l'app est un PNG d'environ 2 Mo (1024×1024, sans perte) ; la même
+// en JPEG de qualité 0,92 en pèse 5 à 10 fois moins, mêmes dimensions. Leboncoin ne montre les
+// critères qu'une fois les photos reçues (cf. budgetCriteresTardifsLbc) : 3 PNG = 5,6 Mo à
+// envoyer, les critères arrivaient après notre attente et le Continuer partait sur un formulaire
+// vide (5 essais, rien publié). Seuls les PNG de plus de 300 Ko sont touchés ; une transparence
+// devient blanche ; le JPEG n'est gardé que s'il est plus léger ; tout échec, toute lenteur
+// (10 s par photo) → la photo d'origine, telle qu'aujourd'hui. JPEG, WebP et petits PNG :
+// jamais touchés.
+const LBC_PNG_A_ALLEGER_OCTETS = 300_000;
+const LBC_JPEG_QUALITE = 0.92;
+const LBC_ALLEGEMENT_DELAI_MS = 10_000;
+async function pngEnJpegLbc(blob, qualite) {
+  const image = await createImageBitmap(blob);
+  try {
+    const w = image.width, h = image.height;
+    if (!(w > 0 && h > 0)) return null;
+    let toile;
+    if (typeof OffscreenCanvas === "function") toile = new OffscreenCanvas(w, h);
+    else { toile = document.createElement("canvas"); toile.width = w; toile.height = h; }
+    const ctx = toile.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(image, 0, 0);
+    if (typeof toile.convertToBlob === "function") return await toile.convertToBlob({ type: "image/jpeg", quality: qualite });
+    return await new Promise((ok) => toile.toBlob((b) => ok(b), "image/jpeg", qualite));
+  } finally {
+    try { image.close?.(); } catch { /* rien à libérer */ }
+  }
+}
+/** { file, allegee } : le JPEG plus léger d'un PNG lourd, sinon la photo d'origine (allegee: null = non concernée). */
+async function allegerPhotoLbc(file, convertir = pngEnJpegLbc, attendre = sleep) {
+  if (!file || String(file.type ?? "").toLowerCase() !== "image/png" || !(Number(file.size) > LBC_PNG_A_ALLEGER_OCTETS)) {
+    return { file, allegee: null };
+  }
+  try {
+    const jpeg = await Promise.race([
+      Promise.resolve().then(() => convertir(file, LBC_JPEG_QUALITE)),
+      attendre(LBC_ALLEGEMENT_DELAI_MS).then(() => null),
+    ]);
+    if (!jpeg || String(jpeg.type ?? "") !== "image/jpeg" || !(Number(jpeg.size) > 0) || !(Number(jpeg.size) < Number(file.size))) {
+      return { file, allegee: { gardee: "PNG d'origine (conversion sans gain ou sans réponse)" } };
+    }
+    const nom = `${String(file.name || "photo").replace(/\.png$/i, "")}.jpg`;
+    return { file: new File([jpeg], nom, { type: "image/jpeg" }), allegee: { avant: Number(file.size), apres: Number(jpeg.size) } };
+  } catch (e) {
+    return { file, allegee: { gardee: `PNG d'origine (${String(e?.message ?? e).slice(0, 80)})` } };
+  }
+}
+/** Le bilan des photos allégées (pour platform_fields.photos_lbc.allegees), ou null. */
+function bilanAllegementLbc(resultats) {
+  const faits = (Array.isArray(resultats) ? resultats : []).filter((r) => r?.allegee?.avant);
+  const gardees = (Array.isArray(resultats) ? resultats : []).filter((r) => r?.allegee?.gardee).length;
+  if (!faits.length && !gardees) return null;
+  const ko = (n) => Math.round(n / 1024);
+  return {
+    n: faits.length,
+    avant_ko: ko(faits.reduce((s, r) => s + r.allegee.avant, 0)),
+    apres_ko: ko(faits.reduce((s, r) => s + r.allegee.apres, 0)),
+    ...(gardees ? { png_gardes: gardees } : {}),
+  };
+}
+
 async function uploadPhotos(input, photos) {
-  const files = await Promise.all(photos.map((p, i) => urlToFile(p.url, i)));
+  const bruts = await Promise.all(photos.map((p, i) => urlToFile(p.url, i)));
+  // (07/11 soir, 0.6.178) Les PNG lourds allégés en JPEG ; le poids envoyé règle l'attente des critères.
+  const alleges = await Promise.all(bruts.map((f) => allegerPhotoLbc(f)));
+  const files = alleges.map((a) => a.file);
+  octetsPhotosEnvoyesLbc = files.reduce((s, f) => s + (Number(f?.size) || 0), 0);
+  const allegement = bilanAllegementLbc(alleges);
+  if (allegement) {
+    console.log(`[leboncoin] photos : ${allegement.n} PNG allégée(s) en JPEG (${allegement.avant_ko} Ko → ${allegement.apres_ko} Ko)${allegement.png_gardes ? `, ${allegement.png_gardes} gardée(s) en PNG` : ""}`);
+    if (bilanPhotosLbc && typeof bilanPhotosLbc === "object") bilanPhotosLbc.allegees = allegement;
+  }
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
   const vignettesAvant = photoPreviewCount();

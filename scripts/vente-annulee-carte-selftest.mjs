@@ -60,6 +60,11 @@ ok(jum.length > 500 && !/titre/.test(jum.replace(/--.*$/gm, "")) && /bit_count\(
   && /s\.status = 'active' AND s\.captured_at >= c\.apparue/.test(jum) && /LEAST\(t\.created_at, t\.first_seen_at\) > p_apres/.test(jum)
   && jum.includes("AND (t.origine = 'vinted_sync' OR t.origine LIKE 'releve\\_%')"),
   "jumelle prouvée : née d'un relevé, photos (dHash ≤ 4), une seule, jamais en ligne ensemble, apparue après la vente — aucun titre lu");
+// (07/11, décision de Nico) Seules les preuves SOLIDES ferment : plus jamais « 1 photo suffit » (la spatule de 02ca0f20 reste).
+ok(/WHERE cm\.n >= 2 AND cm\.deux_differentes AND k\.nt >= 2 AND k\.nf >= 2 AND 2 \* cm\.n >= k\.nt AND 2 \* cm\.n >= k\.nf/.test(jum)
+  && /bit_count\(q\.td # p\.td\) > 4 AND bit_count\(q\.fd # p\.fd\) > 4/.test(jum) && /AND \(SELECT count\(\*\) FROM communes\) = 1/.test(jum)
+  && !/cm\.n >= 1/.test(jum) && !/<= 1\)/.test(jum.replace(/--.*$/gm, "").replace(/COALESCE\([a-z.]+quantite, 1\) <= 1/g, "")),
+  "preuve solide : ≥ 2 photos de chaque côté, ≥ 2 photos communes différentes, la moitié de chaque fiche, aucune autre ressemblance — jamais une seule photo");
 ok(/motif = 'plus_en_stock'/.test(mig2) && /'vendu_sous_autre_fiche'/.test(mig2) && /'deja_en_vente_autre_fiche'/.test(mig2)
   && /IF v_motif IS NULL AND v_annul THEN\s*\n\s*BEGIN\s*\n\s*v_jum := public\.remise_annulee_jumelle_fermer\(r\.user_id, r\.inventaire_id\);/.test(mig2),
   "tick : hors stock « plus_en_stock », jumelle (avant l'appui ET juste avant de créer la publication)");
@@ -71,5 +76,27 @@ ok(/motif = 'choix_personne'/.test(mig2) && /WHERE r\.user_id = v_user AND r\.in
 ok(/AND i\.fusionne_dans IS NULL AND i\.statut = 'stock' AND COALESCE\(i\.quantite, 1\) > 0/.test(mig2), "l'écran : une fiche hors stock ou fondue ne s'affiche plus");
 ok(!/\bCOMMIT\b|\bBEGIN;/.test(mig2) && /8727977d992fbdf357f76718908554ca/.test(mig2) && /8727977d992fbdf357f76718908554ca/.test(inv2)
   && /DROP FUNCTION IF EXISTS public\.ventes_annulees_ne_pas_remettre\(bigint\);/.test(inv2), "garde md5 de prod, aucun COMMIT, inverse qui retire les fonctions nouvelles");
+
+// (07/11, Ornella — pull rayé) L'article remis en ligne après une vente annulée sous une fiche NEUVE : la QUESTION, jamais
+// une fusion (migration 20261107160000, preuve : scripts/preuve-remise-apres-annulation-question.mjs).
+const mig3 = lire("supabase/migrations/20261107160000_remise_apres_annulation_question.sql");
+const inv3 = lire("supabase/rollbacks/20261107160000_remise_apres_annulation_question_INVERSE.sql");
+const corps = (src, nom) => { const a = src.indexOf(`CREATE OR REPLACE FUNCTION public.${nom}(`); return a < 0 ? "" : src.slice(a, src.indexOf("$function$;", a)); };
+const rp = corps(mig3, "rapprochement_v3_remise_possible"), fp = corps(mig3, "inventaire_fusionner_pour");
+const branche = rp.slice(rp.indexOf("LA REMISE EN LIGNE APRÈS UNE VENTE ANNULÉE"), rp.indexOf("RETURN 'vente_annulee_question';") + 40);
+ok(branche.length > 200 && /RETURN 'vente_annulee_question';/.test(branche) && !/RETURN NULL/.test(branche)
+  && /NOT COALESCE\(public\.vinted_remise_en_ligne\(m\.id, n\.id\), false\)/.test(branche),
+  "remise_possible : la vente annulée rend 'vente_annulee_question' (jamais NULL = jamais la fusion automatique), seulement là où la règle d'avant ne relie rien");
+ok(/v_remise_annulee := v_geste AND COALESCE\(public\.vinted_remise_apres_annulation\(p_garde, p_absorbe\), false\);/.test(fp)
+  && (fp.match(/v_remise_annulee/g) ?? []).length === 4,
+  "inventaire_fusionner_pour : la variante sur le SEUL geste de la personne (« Oui », fusion à la main), lue une fois");
+const neuves = ["vente_annulee_prouvee", "vinted_remise_apres_annulation", "remise_annulee_question_poser", "remise_annulee_questions"].map((x) => corps(mig3, x));
+ok(neuves.every((c) => c.length > 100 && !/inventaire_fusionner|rapprochement_v3_appliquer|armer_retrait|UPDATE |DELETE /.test(c.replace(/--.*$/gm, "")))
+  && /releve_poser_question\(p_user, p_fiche, v_jumelle, 'remise_en_ligne_vente_annulee'/.test(neuves[2]) && /LIMIT GREATEST\(1, LEAST\(COALESCE\(p_limite, 20\), 50\)\)/.test(neuves[3]),
+  "les quatre fonctions nouvelles : aucune fusion, aucun retrait, aucune mise à jour — la question seulement, bornée");
+ok(!/CREATE OR REPLACE FUNCTION public\.(vinted_remise_en_ligne|rapprochement_v3_appliquer|inventaire_doublon_evaluer|inventaire_doublons_pour|doublons_fiches_a_examiner)\(/.test(mig3)
+  && /md5\(v_d\) <> '803a52270730966e7e641a03c6c9164b'/.test(mig3) && /md5\(v_d\) <> 'f457e0714933c5b52d57d4dae3ce3d57'/.test(mig3)
+  && /aee9bcf5f16349c99b5349b60cddffcd/.test(inv3) && /DROP FUNCTION IF EXISTS public\.vente_annulee_prouvee\(uuid, bigint\);/.test(inv3) && !/\bCOMMIT\b|\bBEGIN;/.test(mig3),
+  "C : vinted_remise_en_ligne et ses appelants, appliquer intouchés ; garde md5 (B appliquée, appliquer de prod) ; inverse de prod");
 
 console.log(`vente-annulee-carte-selftest : ${n} contrôles verts`);

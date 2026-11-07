@@ -137,6 +137,8 @@ export const BUILD_VINTED_MARQUE_CREEE = "2026-10-26T00:53:28Z";
 // une question sans bonne réponse. Le paquet suivant départage (leboncoin.js ⟦prerempli-ia⟧). VIDE tant que ce paquet
 // n'est pas empaqueté : posée au BUILD_ID du zip (npm run package:extension) — un poste plus ancien ne reçoit rien.
 export const BUILD_LBC_PREREMPLI_IA = "2026-10-26T07:44:08Z"; // BUILD_ID du paquet 0.6.146 refait le 26/10 (2026-10-26T07:44:08Z+4ade5e1)
+// (07/11 soir, Sonia d538188f) Critères Leboncoin affichés après la réception des photos (0.6.178) : BUILD_ID du paquet.
+export const BUILD_LBC_CRITERES_APRES_PHOTOS = ""; // VIDE (inerte) jusqu'au zip 0.6.178
 
 export const CORRECTIFS_EXTENSION = [
   {
@@ -344,6 +346,21 @@ export const CORRECTIFS_EXTENSION = [
       const w = Array.isArray(pf.warnings) ? pf.warnings : [];
       return w.some((x) => /CONSERVÉ — notre valeur .* venait de l'IA/.test(String(x?.message ?? x ?? "")));
     },
+    clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
+  },
+  {
+    // (07/11 soir, Sonia d538188f « Polo garçon Lacoste 10 ans ») Leboncoin n'affiche les critères qu'une fois les photos
+    // REÇUES : 3 PNG « améliorés » de 5,6 Mo, critères jamais vus en 45 s, 5 essais (PNG : 36 dépôts en retard sur 61 ;
+    // JPEG : 5 sur 5 316). La 0.6.178 règle l'attente sur le poids envoyé et allège un PNG lourd en JPEG. Repart UNE fois
+    // vers un poste qui a ce build ; aucun adsubmit n'est jamais parti (aucun doublon possible).
+    cle: "lbc_criteres_apres_photos",
+    platform: "leboncoin",
+    actions: ["publish"],
+    signature: /critères : toujours aucun champ après \d+ s de plus/,
+    buildMin: BUILD_LBC_CRITERES_APRES_PHOTOS,
+    version: "0.6.178",
+    motif: "critères Leboncoin affichés après la réception des photos : attente réglée sur leur poids, PNG lourds allégés en JPEG",
+    condition: (job) => /Le wizard n'est pas passé à l'aperçu/.test(JSON.stringify([job?.error ?? "", job?.platform_fields?.error_technique ?? ""])),
     clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
   },
 ];

@@ -395,10 +395,14 @@ export function candidatesDepuisRetrait(arg) {
  * Le verdict sur les candidates.
  *   · { verdict: "aucune" }                      → on peut redéposer ;
  *   · { verdict: "certaine", retenue }           → rattachement automatique ;
+ *   · { verdict: "doublons_nos_essais", retenue, aRetirer, essais } → (07/11, `doublons` passé) plusieurs annonces, toutes
+ *     NOS dépôts en double : la plus ancienne rattachée, chacune des autres retirée par le circuit ordinaire
+ *     (doublonsDeNosEssais) ;
  *   · { verdict: "incertaine", raisons, liens }  → needs_user avec les liens.
- * @param {{ candidates: any[], listingIdProuve?: string | null, empreintesCopie?: any[] | null, empreintesParCandidate?: Map<string, any[]> | null }} arg
+ * Sans `doublons`, les verdicts d'avant le 07/11, à l'identique.
+ * @param {{ candidates: any[], listingIdProuve?: string | null, empreintesCopie?: any[] | null, empreintesParCandidate?: Map<string, any[]> | null, doublons?: { essais: any[] | number, fiche: any, deletedAt: any, ancienId?: any, jobId?: any, inventaireId?: any, releveDepuis?: any } | null }} arg
  */
-export function jugerCandidates({ candidates, listingIdProuve = null, empreintesCopie = null, empreintesParCandidate = null }) {
+export function jugerCandidates({ candidates, listingIdProuve = null, empreintesCopie = null, empreintesParCandidate = null, doublons = null }) {
   if (!candidates.length) return { verdict: "aucune" };
   const liens = candidates.map((c) => c.url || c.listing_id).filter(Boolean);
   const preuve = String(listingIdProuve ?? "").trim();
@@ -424,7 +428,17 @@ export function jugerCandidates({ candidates, listingIdProuve = null, empreintes
       return { verdict: "certaine", retenue, preuve: "photos identiques à celles de notre copie", photos: ph.niveaux };
     }
     if (candidates.length > 1) {
-      return { verdict: "incertaine", raisons: [`${candidates.length} annonces apparues depuis le retrait`], liens, photos: ph.niveaux };
+      // (07/11, Ciddjy 49342549) Toutes aux photos de notre copie, pas plus que nos essais suspects, une fiche à un
+      // exemplaire : nos propres dépôts en double (doublonsDeNosEssais). Sinon la question, comme avant.
+      const d = doublons && typeof doublons === "object" ? doublonsDeNosEssais({ candidates, niveaux: ph.niveaux, ...doublons }) : null;
+      if (d?.ok) {
+        return {
+          verdict: "doublons_nos_essais", retenue: d.retenue, aRetirer: d.aRetirer, essais: d.essais, liens,
+          preuve: `${candidates.length} annonces aux photos de notre copie pour ${d.essais} essai(s) suspect(s) de cette remise en ligne, fiche à un exemplaire`,
+          photos: ph.niveaux,
+        };
+      }
+      return { verdict: "incertaine", raisons: [`${candidates.length} annonces apparues depuis le retrait`], liens, photos: ph.niveaux, ...(d ? { doublons_refus: d.raison } : {}) };
     }
     return { verdict: "incertaine", raisons: ["aucun identifiant de dépôt ni photo identique ne prouve que cette annonce est le même exemplaire"], liens, photos: ph.niveaux };
   }
@@ -468,4 +482,253 @@ export function patchRattachementRecreation(pf0, c, { trace = null, preuve = nul
   };
   delete pf.needs_user_source;
   return { status: "published", error: null, published_at: maintenant, platform_listing_id: String(c?.listing_id ?? ""), listing_url: url, platform_fields: pf };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOS PROPRES DÉPÔTS EN DOUBLE : LA PLUS ANCIENNE RESTE, LES AUTRES PARTENT (07/11, Ciddjy 49342549)
+// ═══════════════════════════════════════════════════════════════════════════
+// Beebs, « Lot 4 pantalons garçon 18 mois » (fiche 1790852574684002, UN exemplaire), annonce 34177027 retirée le 07/11 à
+// 06:27 (Paris). Quatre essais de remise en ligne (06:34, 06:54, 07:15, 07:49) arrêtés chacun à la borne de 10 min ;
+// le remplissage CONTINUAIT dans la page jusqu'au clic « Mettre en vente » (0.6.176 et avant). Le relevé de 13:37 voit
+// quatre annonces neuves EN LIGNE : 34309782, 34309820, 34309865, 34309939 — même photo de couverture, à 0 bit de la
+// photo 1 de notre copie (dHash et pHash), et leurs numéros (Beebs numérote tout le site dans l'ordre) tombent chacun
+// dans la fenêtre d'un de nos essais, dans l'ordre. Aucune n'était connue de FillSell. La garde du 25/09 a bien relu
+// avant tout 5e dépôt, et posé la question « 4 annonces apparues depuis le retrait ».
+// LA RÈGLE (Nico, 07/11 : « S'il y en a, c'est l'app qui les détecte et les traite par une RÈGLE, jamais un retrait à
+// la main ») — l'exception à « deux annonces d'une plateforme = deux exemplaires », réservée à la PREUVE que ce sont nos
+// propres dépôts en double. Toutes les conditions, sinon la question d'avant :
+//   · au moins DEUX annonces apparues depuis le retrait (une seule : la cascade d'avant, inchangée) ;
+//   · TOUTES aux photos de NOTRE copie (niveau « meme » de trancherParPhotos, mêmes seuils que le moteur) ;
+//   · leur nombre ≤ le nombre d'essais SUSPECTS de CE job depuis le retrait (essaisSuspectsDepuisRetrait : chacune peut
+//     venir d'un de nos clics, au plus une par essai) ;
+//   · la fiche n'a qu'UN exemplaire (inventaire.quantite ≤ 1 ; NULL vaut 1), n'est ni vendue ni fusionnée ;
+//   · chacune apparue APRÈS le retrait (première vue ≥ retrait ; numéro > l'annonce retirée), inconnue de FillSell
+//     (aucun autre job, aucune autre fiche), en ligne ou en vérification, et vue par le DERNIER relevé complet.
+// Alors la plus ANCIENNE (le plus petit numéro : Beebs et Leboncoin numérotent dans l'ordre) est rattachée à la tâche
+// (comme le verdict « certaine » : étape recreated, lien, numéro) et chacune des autres reçoit un RETRAIT par le circuit
+// ordinaire — un job « delete » sur son numéro exact et son lien, armé comme le doublon_de_republication du 02/10 et du
+// 18/10 (get-pending-jobs, inventaire_rattache_recreation_vinted), motif « doublon_de_nos_essais », tâche source et
+// numéros tracés ; gardes de la base comprises (retrait unique par annonce, annonce vendue, cible remplacée).
+// Pur (Deno + Node) : scripts/doublons-de-nos-essais-selftest.mjs.
+
+/** La borne fixe du remplissage jusqu'à la 0.6.176 (« borne 10 min dépassée »), et la marge de mesure. */
+export const BORNE_REMPLISSAGE_MS = 10 * 60_000;
+const MARGE_BORNE_MS = 30_000;
+const MARGE_SIGNE_AVANT_MS = 2 * 60_000;
+const MARGE_SIGNE_APRES_MS = 5 * 60_000;
+const ECART_ESSAIS_DISTINCTS_MS = 3 * 60_000;
+const COUPE_EN_ROUTE_RE = /coupé en route/i;
+export const MOTIF_DOUBLON_DE_NOS_ESSAIS = "doublon_de_nos_essais";
+
+/**
+ * Les essais de remise en ligne de CE job, depuis le retrait, qui ont PU cliquer l'envoi. Pur.
+ * Les essais se lisent dans le journal du SERVEUR (journal_etapes, trigger zz_journal_etapes_republication : chaque
+ * passage « deleted / processing » = un essai pris par l'extension, jusqu'à l'entrée suivante). Un essai est suspect si :
+ *   · une fin relevée dans sa fenêtre est sur une page d'envoi (Leboncoin : étape « depot »/« options », pages
+ *     options/confirmation ; Beebs : page produit ou de succès) ;
+ *   · Beebs : un brut « muet / borne » (error_technique et ses précédents, recreation_reprise, et celle mise de côté par
+ *     une relance : recreation_essais_avant_relance) est daté dans sa fenêtre ;
+ *   · Beebs : il a duré la borne du remplissage (≥ 10 min − 30 s) sans aboutir — après la borne, le remplissage
+ *     continuait jusqu'au clic (ayoub 04/11, Ciddjy 07/11) ;
+ *   · le marqueur « essai coupé en route » de handler-watch est daté dans sa fenêtre.
+ * Un essai dont la fin est inconnue n'est PAS compté (les fins sont bornées à 8 : compter l'absence gonflerait le
+ * nombre) — en moins, la règle des doublons ne joue pas, et la question reste. Journal absent ou tronqué : les signes
+ * datés d'avant sa première entrée comptent chacun pour un essai (à plus de 3 min l'un de l'autre).
+ * @param {any} platform
+ * @param {any} pf
+ * @returns {Array<{ debut: string, fin: string | null, raison: string }>}
+ */
+export function essaisSuspectsDepuisRetrait(platform, pf) {
+  if (!pf || typeof pf !== "object") return [];
+  const retrait = ms(pf.deleted_at);
+  const urlRe = URL_ENVOI_RE[String(platform ?? "")];
+  if (retrait == null || !urlRe) return [];
+  const sansEtape = PLATEFORMES_SANS_ETAPE_ENVOI.has(String(platform));
+  // 1. Les signes datés d'un envoi possible.
+  const signes = [];
+  const wws = pf.work_window_state && typeof pf.work_window_state === "object" ? pf.work_window_state : {};
+  for (const f of [...(Array.isArray(wws.fins) ? wws.fins : []), ...(wws.at_end ? [wws.at_end] : [])]) {
+    const t = ms(f?.at);
+    if (t == null || t <= retrait) continue;
+    const etape = String(f?.fill_step ?? "");
+    const url = String(f?.tab_url ?? "");
+    if ((platform === "leboncoin" && ETAPES_ENVOI.has(etape)) || urlRe.test(url)) {
+      signes.push({ t, raison: `fin d'essai à l'étape « ${etape || "?"} » sur ${url || "?"}` });
+    }
+  }
+  if (sansEtape) {
+    const et = pf.error_technique && typeof pf.error_technique === "object" ? pf.error_technique : null;
+    const avantRelance = pf.recreation_essais_avant_relance && typeof pf.recreation_essais_avant_relance === "object"
+      ? pf.recreation_essais_avant_relance : null;
+    const traces = [
+      ...(et ? [et, ...(Array.isArray(et.precedents) ? et.precedents : [])] : []),
+      pf.recreation_reprise, avantRelance?.recreation_reprise,
+    ];
+    for (const e of traces) {
+      const t = ms(e?.at);
+      if (t == null || t <= retrait || !ESSAI_MUET_RE.test(String(e?.brut ?? ""))) continue;
+      signes.push({ t, raison: "essai muet ou arrêté à la borne du remplissage" });
+    }
+  }
+  const coupe = pf.recreation_depot_parti && typeof pf.recreation_depot_parti === "object" ? pf.recreation_depot_parti : null;
+  const tc = ms(coupe?.at);
+  if (tc != null && tc > retrait && COUPE_EN_ROUTE_RE.test(String(coupe?.raison ?? ""))) {
+    signes.push({ t: tc, raison: "essai coupé en route (ordinateur muet)" });
+  }
+  // 2. Les essais, lus dans le journal du serveur.
+  const journal = (Array.isArray(pf.journal_etapes) ? pf.journal_etapes : [])
+    .map((e) => ({ t: ms(e?.le), etape: String(e?.etape ?? ""), statut: String(e?.statut ?? "") }))
+    .filter((e) => e.t != null)
+    .sort((a, b) => a.t - b.t);
+  const fenetres = [];
+  for (let i = 0; i < journal.length; i++) {
+    const e = journal[i];
+    if (e.etape !== "deleted" || e.statut !== "processing" || e.t < retrait - MARGE_SIGNE_AVANT_MS) continue;
+    const suite = journal[i + 1] ?? null;
+    const fin = suite ? suite.t : null;
+    fenetres.push({ debut: e.t, fin, suite, haut: (fin ?? e.t + 3 * BORNE_REMPLISSAGE_MS) + MARGE_SIGNE_APRES_MS, signes: [] });
+  }
+  // Chaque signe compte pour UN essai au plus : le dernier commencé avant lui (à 2 min près — heure du poste), jamais
+  // deux fenêtres voisines pour le même signe.
+  const couverts = new Set();
+  for (const s of signes) {
+    const possibles = fenetres.filter((w) => s.t >= w.debut - MARGE_SIGNE_AVANT_MS && s.t <= w.haut);
+    if (!possibles.length) continue;
+    const avant = possibles.filter((w) => w.debut <= s.t);
+    const w = avant.length ? avant[avant.length - 1] : possibles[0];
+    w.signes.push(s);
+    couverts.add(s);
+  }
+  const out = [];
+  for (const w of fenetres) {
+    let raison = w.signes[0]?.raison ?? null;
+    if (!raison && sansEtape && w.fin != null && w.fin - w.debut >= BORNE_REMPLISSAGE_MS - MARGE_BORNE_MS
+      && w.suite.statut !== "published" && w.suite.etape !== "recreated") {
+      raison = "essai arrêté à la borne du remplissage, sans aboutir (le clic a pu partir après)";
+    }
+    if (raison) out.push({ debut: new Date(w.debut).toISOString(), fin: w.fin != null ? new Date(w.fin).toISOString() : null, raison });
+  }
+  // 3. Le journal ne couvre pas tout (absent, ou tronqué à 30 entrées) : un signe d'avant sa première entrée = un essai.
+  const couvreDepuis = journal.length ? journal[0].t : Infinity;
+  let dernier = -Infinity;
+  for (const s of signes.filter((x) => !couverts.has(x) && x.t < couvreDepuis - MARGE_SIGNE_AVANT_MS).sort((a, b) => a.t - b.t)) {
+    if (s.t - dernier <= ECART_ESSAIS_DISTINCTS_MS) continue;
+    dernier = s.t;
+    out.push({ debut: new Date(s.t).toISOString(), fin: null, raison: s.raison });
+  }
+  return out.sort((a, b) => Date.parse(a.debut) - Date.parse(b.debut));
+}
+
+/**
+ * NOS DÉPÔTS EN DOUBLE ? Pur. `{ ok: true, retenue, aRetirer, essais }` quand TOUTES les conditions de la règle tiennent
+ * (en-tête de section), sinon `{ ok: false, raison }` — et la question d'avant.
+ * @param {{ candidates: any[], niveaux: Record<string, string> | null, essais: any[] | number, fiche: any, deletedAt: any, ancienId?: any, jobId?: any, inventaireId?: any, releveDepuis?: any }} arg
+ */
+export function doublonsDeNosEssais({ candidates, niveaux, essais, fiche, deletedAt, ancienId = null, jobId = null, inventaireId = null, releveDepuis = null }) {
+  const non = (raison) => ({ ok: false, raison });
+  const cs = Array.isArray(candidates) ? candidates : [];
+  if (cs.length < 2) return non("une seule annonce apparue : la cascade d'avant");
+  const nEssais = Array.isArray(essais) ? essais.length : (Number.isFinite(Number(essais)) ? Number(essais) : 0);
+  if (cs.length > nEssais) return non(`${cs.length} annonces pour ${nEssais} essai(s) suspect(s) de cette remise en ligne`);
+  if (inventaireId == null) return non("tâche sans fiche");
+  if (!fiche || typeof fiche !== "object") return non("fiche illisible");
+  const q = fiche.quantite == null ? 1 : Number(fiche.quantite);
+  if (!(q <= 1)) return non(`fiche à ${fiche.quantite} exemplaires : deux annonces peuvent être deux exemplaires`);
+  if (fiche.fusionne_dans != null) return non("fiche fusionnée dans une autre");
+  if (String(fiche.statut ?? "") === "vendu") return non("article vendu");
+  const retrait = ms(deletedAt);
+  if (retrait == null) return non("heure du retrait illisible");
+  const ancien = idNum(ancienId);
+  const releve = ms(releveDepuis);
+  for (const c of cs) {
+    const id = txtId(c?.listing_id);
+    if (!NUMERO_RE.test(id)) return non(`numéro d'annonce illisible (${id || "?"})`);
+    const niveau = niveaux && typeof niveaux === "object" ? niveaux[id] : undefined;
+    if (niveau !== "meme") return non(`l'annonce ${id} ne porte pas les photos de notre copie (${niveau ?? "non comparée"})`);
+    if (!/^(en_ligne|en_verification)$/.test(String(c?.statut_plateforme ?? ""))) return non(`l'annonce ${id} n'est pas en ligne (${c?.statut_plateforme ?? "?"})`);
+    const vu = ms(c?.created_at);
+    if (vu == null || vu < retrait) return non(`l'annonce ${id} est apparue avant le retrait`);
+    if (ancien != null && BigInt(id) <= ancien) return non(`l'annonce ${id} est plus ancienne que l'annonce retirée`);
+    if (c?.job_id != null && (jobId == null || txtId(c.job_id) !== txtId(jobId))) return non(`l'annonce ${id} est rattachée à un autre job`);
+    if (c?.inventaire_id != null && String(c.inventaire_id) !== String(inventaireId)) return non(`l'annonce ${id} est rattachée à une autre fiche`);
+    const prop = c?.proposition && typeof c.proposition === "object" ? c.proposition : null;
+    if (prop?.job_id != null && (jobId == null || txtId(prop.job_id) !== txtId(jobId))) return non(`l'annonce ${id} est proposée pour un autre job`);
+    if (releve != null) {
+      const v = ms(c?.vu_le);
+      if (v == null || v < releve - 60_000) return non(`l'annonce ${id} n'a pas été revue par le dernier relevé complet`);
+    }
+  }
+  const tri = [...cs].sort((a, b) => (BigInt(txtId(a.listing_id)) < BigInt(txtId(b.listing_id)) ? -1 : 1));
+  return { ok: true, retenue: tri[0], aRetirer: tri.slice(1), essais: nEssais };
+}
+
+/**
+ * La ligne cross_post_jobs du RETRAIT d'un de nos doublons : le circuit ordinaire (job « delete », numéro exact et lien,
+ * voie extension), armé comme le doublon_de_republication (02/10, 18/10), motif « doublon_de_nos_essais ». Pur.
+ * @param {{ userId: any, job: any, annonce: any, garde: any, numeros?: any[], essais?: number, lien?: string | null, maintenant?: string }} arg
+ */
+export function retraitDoublonDeNosEssais({ userId, job, annonce, garde, numeros = [], essais = 0, lien = null, maintenant = new Date().toISOString() }) {
+  const n = txtId(annonce?.listing_id);
+  return {
+    user_id: userId, inventaire_id: job?.inventaire_id ?? null, platform: String(job?.platform ?? ""),
+    action: "delete", status: "pending", photo_option: "original", voie: "extension",
+    title: String(annonce?.titre ?? job?.title ?? "").slice(0, 200),
+    listing_url: String(lien ?? annonce?.url ?? "") || null, platform_listing_id: n,
+    platform_fields: {
+      arme_par: {
+        chemin: "doublon_de_republication", motif: MOTIF_DOUBLON_DE_NOS_ESSAIS,
+        republication: txtId(job?.id), garde: txtId(garde), numeros: numeros.map(txtId), essais_suspects: essais,
+        preuve: "photos identiques à celles de notre copie, apparue depuis le retrait, pas plus d'annonces que d'essais suspects, fiche à un exemplaire",
+        le: maintenant, pose_par: "get-pending-jobs (redépôt interrompu : doublons de nos propres essais)",
+      },
+    },
+  };
+}
+
+/** Le relevé « annonces » complet qui peut prouver une absence avant redépôt (même lecture que get-pending-jobs, 27/09). */
+export function releveCompletAvantRedepot(r) {
+  const err = String(r?.erreur ?? "");
+  if (r?.status !== "done") return false;
+  if (err.startsWith("[incomplet]")) return false;
+  if (err.includes("n'a pas rendu sa liste") || err.includes("Hub vendeur n'a pas rendu son compteur")) return false;
+  return Number(r?.items_vus ?? 0) > 0 || err.startsWith("[vide]");
+}
+
+// ── LES QUESTIONS DÉJÀ POSÉES SONT REJUGÉES PAR CETTE RÈGLE (bornées) ──────────────────────────────────────────────
+// Une question « recreation_deja_partie » posée avant la règle (ou avant que les photos des annonces aient une
+// empreinte) n'est relue par aucun chemin qui sache trancher des doublons (handler-watch, depot-coupe-tranche.js : « N
+// annonces encore en ligne » → la question reste). get-pending-jobs la rejuge, au plus QUESTIONS_DOUBLONS_PAR_PASSAGE
+// par passage, REJUGES_DOUBLONS_MAX fois par question, espacées de REJUGE_DOUBLONS_ESPACEMENT_MS ; chaque refus est
+// tracé une fois (`doublons_rejuge`) — jamais une ligne réécrite à chaque passage.
+export const QUESTIONS_DOUBLONS_PAR_PASSAGE = 2;
+export const REJUGES_DOUBLONS_MAX = 4;
+export const REJUGE_DOUBLONS_ESPACEMENT_MS = 30 * 60_000;
+const PLATEFORMES_REDEPOT = new Set(["leboncoin", "beebs"]);
+
+/** La question est-elle à rejuger par la règle des doublons de nos essais ? Pur. */
+export function questionDoublonsARejuger(job, maintenant = Date.now()) {
+  if (!job || job.status !== "needs_user" || job.action !== "republish") return false;
+  if (!PLATEFORMES_REDEPOT.has(String(job.platform ?? ""))) return false;
+  if (job.inventaire_id == null) return false;
+  const pf = job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
+  if (pf.needs_user_source !== "recreation_deja_partie" || pf.republish_step !== "deleted" || ms(pf.deleted_at) == null) return false;
+  const q = pf.recreation_deja_partie && typeof pf.recreation_deja_partie === "object" ? pf.recreation_deja_partie : null;
+  if (!q || q.verdict !== "incertaine" || !Array.isArray(q.liens) || q.liens.length < 2) return false;
+  const r = pf.doublons_rejuge && typeof pf.doublons_rejuge === "object" ? pf.doublons_rejuge : null;
+  if (!r || String(r.question ?? "") !== String(q.le ?? "")) return true;
+  if ((Number(r.n) || 0) >= REJUGES_DOUBLONS_MAX) return false;
+  const t = ms(r.le);
+  return t == null || Number(maintenant) - t >= REJUGE_DOUBLONS_ESPACEMENT_MS;
+}
+
+/**
+ * La trace d'un rejugement sans doublons prouvés (la question reste). Pur.
+ * @param {any} pf
+ * @param {{ raison?: string | null, maintenant?: string }} [opts]
+ */
+export function marqueDoublonsRejuge(pf, { raison = null, maintenant = new Date().toISOString() } = {}) {
+  const q = pf?.recreation_deja_partie && typeof pf.recreation_deja_partie === "object" ? pf.recreation_deja_partie : {};
+  const r = pf?.doublons_rejuge && typeof pf.doublons_rejuge === "object" ? pf.doublons_rejuge : null;
+  const memeQuestion = r && String(r.question ?? "") === String(q.le ?? "");
+  return { le: maintenant, question: q.le ?? null, n: (memeQuestion ? Number(r.n) || 0 : 0) + 1, raison: raison ? String(raison).slice(0, 300) : null };
 }

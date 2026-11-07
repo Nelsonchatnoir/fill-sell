@@ -175,6 +175,10 @@ export function tailleDeService(brut, grille, opts = {}) {
   // R6 — une tranche de poids (couches) lue dans une grille en kg.
   const kg = tailleParPoidsKg(valeur, opt);
   if (kg) return { ...kg, regle: "R6" };
+
+  // R8 — (07/11) des dimensions « A x B cm » lues dans une grille en dimensions (housses de couette Vinted).
+  const dim = tailleParDimensions(valeur, opt);
+  if (dim) return { ...dim, regle: "R8" };
   return null;
 }
 
@@ -230,4 +234,80 @@ export function tourDeTailleEnFrancais(brut) {
   if (!tour?.w) return null;
   const fr = FR_PAR_TOUR_DE_TAILLE[tour.w];
   return fr != null ? { valeur: String(fr), motif: `tour de taille W${tour.w} = FR ${fr} (table publiée par Vinted)` } : null;
+}
+
+// ── R8 — LES DIMENSIONS « A x B cm » (07/11, famille 2 — c7c382b7 ff009cba, parure de couette « 260 x 240 cm ») ───────
+// Vinted range les housses de couette dans une grille en DIMENSIONS : « Simple (135-150 cm x 200-220 cm) », « Double
+// (155-190 cm x 200-220 cm) », « Queen Size (200 cm x 200-220 cm) », « King Size (220-240 cm x 220-260 cm) ». L'article
+// écrit ses dimensions (« housse de couette 260 x 240 cm ») : c'est la même mesure (des centimètres), pas une conversion.
+// La règle : l'option EXACTE (mêmes deux mesures, dans un sens ou dans l'autre), sinon la SEULE option dont les deux
+// plages contiennent les deux mesures (dans un sens ou dans l'autre) ; deux options possibles ou aucune → null (la
+// question, avec la grille entière). Jamais « Autre » (une option sans dimensions n'est jamais lue). Une grille n'est
+// « en dimensions » que si au moins deux options en portent.
+const NB_CM = "(\\d{1,3}(?:[.,]\\d+)?)";
+const PLAGE_CM = `${NB_CM}(?:\\s*(?:-|–|—|à|a)\\s*${NB_CM})?\\s*(?:cm)?`;
+const RE_DIMENSIONS_OPTION = new RegExp(`${PLAGE_CM}\\s*[x×*]\\s*${PLAGE_CM}`, "i");
+const nbCm = (s) => Number(String(s).replace(",", "."));
+
+/** Les deux plages d'une option en dimensions (« King Size (220-240 cm x 220-260 cm) »), ou null. */
+export function plagesDimensionsOption(option) {
+  const s = String(option ?? "");
+  if (!/cm/i.test(s)) return null;
+  const m = RE_DIMENSIONS_OPTION.exec(s);
+  if (!m) return null;
+  const p1 = [nbCm(m[1]), m[2] != null ? nbCm(m[2]) : nbCm(m[1])];
+  const p2 = [nbCm(m[3]), m[4] != null ? nbCm(m[4]) : nbCm(m[3])];
+  if (![...p1, ...p2].every((x) => Number.isFinite(x) && x > 0) || p1[0] > p1[1] || p2[0] > p2[1]) return null;
+  return [p1, p2];
+}
+
+/** Les dimensions d'une écriture « 260 x 240 cm » / « 260x240 » / « 260 cm x 240 cm » : { a, b } en cm, ou null. */
+export function lireDimensionsCm(v) {
+  const s = String(v ?? "").trim();
+  const m = /^(\d{1,3}(?:[.,]\d+)?)\s*(?:cm)?\s*[x×*]\s*(\d{1,3}(?:[.,]\d+)?)\s*(?:cm)?$/i.exec(s);
+  if (!m) return null;
+  const a = nbCm(m[1]), b = nbCm(m[2]);
+  return Number.isFinite(a) && Number.isFinite(b) && a >= 10 && b >= 10 ? { a, b } : null;
+}
+
+/** R8 : des dimensions placées dans une grille en dimensions — l'option exacte, sinon la seule qui les contient. */
+export function tailleParDimensions(brut, grille) {
+  const d = lireDimensionsCm(brut);
+  if (!d) return null;
+  const opts = options(grille).filter((o) => !/^(?:autres?|other)$/i.test(o.trim()))
+    .map((o) => ({ o, p: plagesDimensionsOption(o) })).filter((x) => x.p);
+  if (opts.length < 2) return null;
+  const dans = (x, [min, max]) => x >= min && x <= max;
+  const exacte = opts.filter(({ p }) => p[0][0] === p[0][1] && p[1][0] === p[1][1]
+    && ((p[0][0] === d.a && p[1][0] === d.b) || (p[0][0] === d.b && p[1][0] === d.a)));
+  if (exacte.length === 1) return { valeur: exacte[0].o, motif: `dimensions ${d.a} x ${d.b} cm : l'option exacte « ${exacte[0].o} »` };
+  const contenantes = opts.filter(({ p }) => (dans(d.a, p[0]) && dans(d.b, p[1])) || (dans(d.b, p[0]) && dans(d.a, p[1])));
+  if (contenantes.length !== 1) return null;
+  return { valeur: contenantes[0].o, motif: `dimensions ${d.a} x ${d.b} cm : la seule option de la grille qui les contient (« ${contenantes[0].o} »)` };
+}
+
+/** Les dimensions ÉCRITES dans les textes du vendeur (« 260 x 240 cm ») : valeurs distinctes, l'unité « cm » exigée. */
+export function dimensionsDesTextes(textes) {
+  const vues = new Map();
+  for (const t of Array.isArray(textes) ? textes : [textes]) {
+    for (const m of String(t ?? "").matchAll(/(\d{1,3}(?:[.,]\d+)?)\s*(?:cm)?\s*[x×*]\s*(\d{1,3}(?:[.,]\d+)?)\s*cm\b/gi)) {
+      const d = lireDimensionsCm(`${m[1]} x ${m[2]}`);
+      if (d) vues.set(`${d.a}x${d.b}`, `${d.a} x ${d.b} cm`);
+    }
+  }
+  return [...vues.values()];
+}
+
+/**
+ * R8 depuis les textes : chaque dimension écrite est placée dans la grille (tailleParDimensions) ; UNE seule option
+ * répond (les autres dimensions — taies d'oreiller « 63 x 63 cm » — n'en désignent aucune) → elle ; deux options
+ * différentes → null (la question).
+ */
+export function tailleParDimensionsDesTextes(textes, grille) {
+  const reponses = new Map();
+  for (const dims of dimensionsDesTextes(textes)) {
+    const r = tailleParDimensions(dims, grille);
+    if (r && !reponses.has(r.valeur)) reponses.set(r.valeur, { ...r, motif: `le texte écrit « ${dims} » — ${r.motif}` });
+  }
+  return reponses.size === 1 ? [...reponses.values()][0] : null;
 }

@@ -1387,3 +1387,16 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   get-pending-jobs retient le job (rien retiré) jusqu'à la copie chez nous VÉRIFIÉE par handler-watch
   (`_shared/photos-hors-plateforme.js`, `rapatrierPhotoVerifiee`) ; la fiche n'est jamais réécrite (Vinted reste hors du
   rapatriement de masse).
+- (07/11 soir, Nico) Vinted, page NON française (langue lue sur ce que Vinted montre au compte ; inconnue : pays de la
+  sonde hors FR/BE/LU) : aucune republication n'est servie tant qu'elle n'a rien retiré, jusqu'à la preuve de la couleur
+  sur une vraie page non française — interrupteur `coin_config.vinted_republication_hors_fr_prouvee` = 1 (absent = retenue).
+- (07/11 soir) NOS PROPRES DÉPÔTS EN DOUBLE (Ciddjy 49342549 : 4 essais arrêtés à la borne, 4 annonces Beebs en ligne) :
+  ≥ 2 annonces apparues depuis le retrait, TOUTES aux photos de notre copie, pas plus que nos essais suspects
+  (`essaisSuspectsDepuisRetrait`), fiche à un exemplaire, revues par le dernier relevé complet → la plus ancienne
+  rattachée, chacune des autres retirée par le circuit existant (delete, `doublon_de_republication`, motif
+  `doublon_de_nos_essais`) ; sinon la question. Les questions déjà posées sont rejugées par get-pending-jobs (2 par
+  passage, 4 fois, 30 min). Selftest `doublons-de-nos-essais`.
+- (07/11 soir, 0.6.178) L'arrêt à la borne vaut pour TOUS les comptes (message simple : abandon envoyé à l'onglet, garde
+  avant le clic ; un job qui demande `fill_borne_ms` passe par le port, borne 10-25 min). Leboncoin : l'attente des
+  critères suit le poids des photos envoyées (30-120 s) et un PNG de plus de 300 Ko part en JPEG s'il est plus léger
+  (Sonia : 3 PNG, 5,6 Mo, critères jamais affichés en 45 s).

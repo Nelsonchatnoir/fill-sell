@@ -259,7 +259,9 @@ console.log("\n7. MESURES DANS LE RÉSULTAT");
 const fill = corps("fillListingForm");
 ok(/remplissage_mesures: fin\.mesures/.test(fill) && /err\.remplissage_mesures = fin\.mesures/.test(fill), "fillListingForm rend remplissage_mesures (résultat ET erreur)");
 ok(/remplissage_mesures: err\.remplissage_mesures/.test(corps("resultatDepuisErreurRemplissage")), "le canal du port relaie les mesures d'une erreur");
-ok(/\.catch\(\(err\) => sendResponse\(\{[\s\S]{0,400}remplissage_mesures: err\.remplissage_mesures/.test(src), "le canal FILL_LISTING relaie les mesures d'une erreur");
+// (0.6.178) La réponse d'erreur est construite dans le .catch puis rendue par sendResponse (promesse gardée pour la borne).
+ok(/\.catch\(\(err\) => (?:sendResponse\()?\(?\{[\s\S]{0,400}remplissage_mesures: err\.remplissage_mesures/.test(src)
+  && /reponse\.then\(\(r\) => sendResponse\(r\)\);/.test(src), "le canal FILL_LISTING relaie les mesures d'une erreur");
 // (05/10, point 9) Les champs vivent dans instantaneMesures, partagé par la fin
 // de mesure et par l'instantané envoyé avant le clic « Publier ».
 ok(/return instantaneMesures\(m\)/.test(corps("terminerMesuresRemplissage")), "terminerMesuresRemplissage rend l'instantané");

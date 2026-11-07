@@ -363,6 +363,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true; // réponse asynchrone
     }
+    // (07/11 soir, 0.6.178) L'arrière-plan a cessé d'attendre ce remplissage (sa borne) :
+    // réponse synchrone, aucun geste — « Mettre en vente » ne partira plus (abandonAvantEnvoi).
+    if (msg?.type === "FILLSELL_ABANDON_REMPLISSAGE") {
+      sendResponse({ ok: abandonParMessage(msg) });
+      return true;
+    }
     if (msg?.type !== "FILL_LISTING") return;
 
     // Port de remplissage (2026-09-17) : si CE job est déjà en cours par le
@@ -372,18 +378,31 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       if (enCours?.promesse && enCours.jobId === String(msg.job?.id ?? "")) {
         // (07/11) Repli du port vers le canal classique : quelqu'un attend de nouveau ce remplissage.
         enCours.sansEcoute = false;
-        enCours.promesse.then((r) => sendResponse(r));
+        // (07/11 soir) … et l'attend jusqu'à SA borne, pas au-delà.
+        const borne = armerBorneParMessage(msg);
+        enCours.promesse.then((r) => { lacherBorneParMessage(borne); sendResponse(r); });
+        return true;
+      }
+    }
+    // (07/11 soir) Le même job déjà rempli par message simple dans CETTE page (une seconde
+    // demande pendant le premier remplissage) : on rejoint celui-ci — jamais deux
+    // remplissages, et son échéance comme son abandon restent les siens.
+    {
+      const enCoursMsg = remplissagesParMessage.get(String(msg.job?.id ?? ""));
+      if (enCoursMsg?.promesse) {
+        enCoursMsg.promesse.then((r) => sendResponse(r));
         return true;
       }
     }
 
     MARQUE_HORS_LISTE_BEEBS = null; // (18/10) la marque hors liste ne survit jamais à un job
-    fillListingForm(msg.job)
-      .then((result) => sendResponse(result))
+    const borne = armerBorneParMessage(msg);
+    const reponse = fillListingForm(msg.job)
+      .then((result) => result)
       // err.diagnostic (2026-08-06) : annexe technique séparée du message
       // utilisateur — le background la range dans platform_fields.last_diagnostic,
       // jamais dans cross_post_jobs.error (affiché tel quel par l'app).
-      .catch((err) => sendResponse({
+      .catch((err) => ({
         success: false,
         error: String(err?.message ?? err),
         // err.needsUser (2026-09-08) : une erreur LEVÉE peut être un needs_user
@@ -392,6 +411,11 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         ...(err?.needsUser === true ? { needsUser: true } : {}),
         ...(err?.diagnostic ? { diagnostic: String(err.diagnostic) } : {}),
       }));
+    if (borne) {
+      borne.promesse = reponse;
+      reponse.then(() => lacherBorneParMessage(borne));
+    }
+    reponse.then((r) => sendResponse(r));
 
     return true; // réponse asynchrone
   });
@@ -1459,7 +1483,40 @@ let jobIdRemplissageCourant = "";
 // ({type:"abandon"}) ; un port qui suivait ce remplissage et se ferme sans
 // qu'aucun autre ne le reprenne (rattache, canal classique) dit la même chose :
 // plus personne n'attend le résultat. Lu JUSTE avant le clic irréversible.
+// ── (07/11 soir, 0.6.178) LE MESSAGE SIMPLE AUSSI A SA BORNE ─────────────────
+// Sans port (la plupart des comptes), l'arrière-plan cesse d'attendre FILL_LISTING à SA
+// borne (300 s) et la page continuait jusqu'à « Mettre en vente ». Le message porte sa
+// borne (borneMs) et son identifiant (fillId) : échéance locale = réception + borne (jamais
+// avant l'arrière-plan, qui a envoyé plus tôt) ; à sa borne, l'arrière-plan envoie
+// FILLSELL_ABANDON_REMPLISSAGE. Un abandon ne se lève jamais (une seconde demande du même
+// job dans la page rejoint le remplissage en cours, sans rien relancer ni réarmer).
+// Message sans borne (ancien arrière-plan) : rien n'est armé, chemin d'avant.
+const remplissagesParMessage = new Map();
+function armerBorneParMessage(msg, maintenant = Date.now()) {
+  const jobId = String(msg?.job?.id ?? "");
+  const borne = Number(msg?.borneMs);
+  if (!jobId || !Number.isFinite(borne) || borne <= 0) return null;
+  // Un remplissage de ce job déjà abandonné (ou échu) dans cette page le reste : jamais réarmé.
+  const deja = remplissagesParMessage.get(jobId);
+  if (deja && (deja.abandonDemande === true || maintenant > deja.echeance)) return deja;
+  const e = { jobId, fillId: String(msg?.fillId ?? ""), echeance: maintenant + borne, abandonDemande: false, promesse: null };
+  remplissagesParMessage.set(jobId, e);
+  return e;
+}
+function lacherBorneParMessage(e) {
+  if (e && remplissagesParMessage.get(e.jobId) === e) remplissagesParMessage.delete(e.jobId);
+}
+function abandonParMessage(msg) {
+  const e = remplissagesParMessage.get(String(msg?.jobId ?? ""));
+  if (!e || (msg?.fillId && e.fillId && String(msg.fillId) !== e.fillId)) return false;
+  e.abandonDemande = true;
+  return true;
+}
 function abandonAvantEnvoi(jobId) {
+  // (07/11 soir) Le remplissage demandé par message simple : abandon reçu ou échéance passée.
+  const m = remplissagesParMessage.get(String(jobId ?? ""));
+  if (m && m.abandonDemande === true) return "abandon reçu de l'arrière-plan (borne dépassée)";
+  if (m && Date.now() > m.echeance) return "borne du remplissage dépassée : l'arrière-plan n'attend plus ce remplissage";
   const r = globalThis.__fillsellRemplissage;
   if (!r || r.jobId !== String(jobId ?? "") || r.enCours !== true) return null;
   if (r.abandonDemande === true) return "abandon reçu de l'arrière-plan (borne dépassée)";

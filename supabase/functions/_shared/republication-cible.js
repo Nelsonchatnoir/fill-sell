@@ -93,13 +93,35 @@ export function messageCibleAbsente(platform, cible) {
 
 // (05/11, point 18) DEUX RELEVÉS PROBANTS sans la cible → la republication retenue se clôt (get-pending-jobs).
 export const RELEVES_POUR_CLORE_CIBLE_ABSENTE = 2;
-/** Les relevés probants DISTINCTS qui n'ont pas vu la cible (marque cible_absente_releve), le dernier compris (5 au plus). */
-export function relevesCibleAbsente(marque, releveId, cible) {
+/**
+ * Les relevés probants DISTINCTS qui n'ont pas vu la cible (marque cible_absente_releve), le dernier compris (5 au plus).
+ * (07/11, famille 1 C3 — ayoubd72 84bd972d, Leboncoin 3296483096) AMORCÉS par le constat de deux relevés complets déjà
+ * posé sur la tâche (platform_fields.absence_releves : premier, second — constater_absences_releve, deux relevés
+ * probants distincts) quand il vise la MÊME annonce et qu'aucun relevé ne l'a revue depuis (vu_le de la cible antérieur
+ * au constat, ou cible jamais relevée) : la republication créée APRÈS ce constat ne réattend plus deux relevés que le
+ * poste, endormi, ne fait pas. Sans constat (ou un autre numéro, ou revue depuis) : la règle d'avant, à l'identique.
+ * @param {any} marque          platform_fields.cible_absente_releve
+ * @param {any} releveId        le dernier relevé probant (qui ne l'a pas vue)
+ * @param {any} cible           le numéro visé
+ * @param {{ absence?: any, cibleVuLe?: any }} [o]
+ */
+export function relevesCibleAbsente(marque, releveId, cible, { absence = null, cibleVuLe = null } = {}) {
   const m = marque && typeof marque === "object" ? marque : {};
   const memeCible = String(m.cible ?? cible ?? "") === String(cible ?? "");
   const avant = memeCible ? (Array.isArray(m.releves) ? m.releves : (m.releve ? [m.releve] : [])) : [];
-  const ids = [...avant, releveId].map((x) => (x == null ? "" : String(x))).filter(Boolean);
+  const ids = [...amorceAbsence(absence, cible, cibleVuLe), ...avant, releveId].map((x) => (x == null ? "" : String(x))).filter(Boolean);
   return [...new Set(ids)].slice(-5);
+}
+/** Les deux relevés du constat absence_releves, s'il vise CETTE annonce et n'a pas été démenti depuis ; sinon []. */
+function amorceAbsence(absence, cible, cibleVuLe) {
+  const a = absence && typeof absence === "object" ? absence : null;
+  if (!a || !String(cible ?? "").trim() || String(a.listing_id ?? "").trim() !== String(cible).trim()) return [];
+  const premier = String(a.premier ?? "").trim(), second = String(a.second ?? "").trim();
+  if (!premier || !second || premier === second) return [];
+  const le = ts(a.le), vu = ts(cibleVuLe);
+  if (!Number.isFinite(le)) return [];
+  if (Number.isFinite(vu) && vu >= le) return []; // revue en ligne depuis le constat : il ne prouve plus rien
+  return [premier, second];
 }
 /** Le texte de la republication close : l'annonce n'est plus en ligne (deux relevés), rien n'a été touché. */
 export function messageCibleAbsenteConfirmee(platform, cible) {

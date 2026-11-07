@@ -2,6 +2,10 @@ import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
 import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente, relevesCibleAbsente, messageCibleAbsenteConfirmee, RELEVES_POUR_CLORE_CIBLE_ABSENTE } from "../_shared/republication-cible.js";
 import { retraitDeLaRepublication, clotureRepublicationParRetrait, STATUTS_RETRAIT_VIVANT } from "../_shared/republication-retrait.js";
+// (07/11, famille 5) Un dépôt jamais vu en ligne dont l'article est vendu (ou la fiche supprimée) n'est pas un échec.
+import { decisionDepotJamaisVu, messageDepotJamaisVuSansObjet, champsDepotJamaisVuSansObjet } from "../_shared/depot-jamais-vu-sans-objet.js";
+// (07/11, famille 6b) La question d'une republication Vinted ne dit que ce qui a été lu ; l'ISBN se cherche avant.
+import { isbnAvantQuestion, messageRequisRepublication } from "../_shared/isbn-republication.js";
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
 import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
@@ -81,6 +85,7 @@ import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee, attenteSessionServeur } from "../_shared/attente-session.js";
 import { arbreVintedDuCompte, cheminVintedPourArbre, cheminVintedTouche } from "../_shared/vinted-arbre-compte.js";
 import { decisionSerie, serieDuJob } from "../_shared/serie-un-par-un.js";
+import { remiseAAttendre, annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, PLATEFORMES_REMISE_APRES_DISPARITION } from "../_shared/remise-en-vente-attente.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import {
   MOTIF_LBC_A_PAYER, MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE, comptesLbcProParType,
@@ -245,6 +250,8 @@ import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
 import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, idsQuiRetiennent, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { trierCandidatesDepuisRetrait, depotsAutresFiches, fichesDesJobs, numerosVusAvantRetrait, COLONNES_JOBS_AUTRES_FICHES, depotInacheveLbc, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
+// (07/11, Ciddjy 49342549) Nos propres dépôts en double : la plus ancienne rattachée, les autres retirées par le circuit.
+import { essaisSuspectsDepuisRetrait, retraitDoublonDeNosEssais, patchRattachementRecreation, releveCompletAvantRedepot, questionDoublonsARejuger, marqueDoublonsRejuge, MOTIF_DOUBLON_DE_NOS_ESSAIS, QUESTIONS_DOUBLONS_PAR_PASSAGE } from "../_shared/recreation-deja-partie.js";
 import { decisionReleveVerif, motifReleveNonPris, messageReleveNonPris, releveServiDevant } from "../_shared/releve-verif-non-pris.js";
 import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, urlsAnnonce, jugerCycleDepots } from "../_shared/depot-sans-numero.js";
 import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
@@ -1501,7 +1508,7 @@ serve(async (req) => {
           let dep: Record<string, unknown> | null = null;
           if (/^[0-9a-f-]{36}$/i.test(depotId)) {
             const { data } = await admin.from("cross_post_jobs")
-              .select("id, status, listing_url, platform_listing_id, platform_fields, published_at, created_at")
+              .select("id, status, inventaire_id, listing_url, platform_listing_id, platform_fields, published_at, created_at")
               .eq("id", depotId).eq("user_id", user.id).maybeSingle();
             dep = (data ?? null) as Record<string, unknown> | null;
           }
@@ -1547,12 +1554,32 @@ serve(async (req) => {
             .eq("id", j.id as string).eq("status", "needs_user").select("id");
           if ((maj ?? []).length && dep && dep.status === "published" && !String(dep.listing_url ?? "").trim() && !String(dep.platform_listing_id ?? "").trim()) {
             const { data: ref } = await admin.rpc("refund_publish_unconfirmed", { p_job: dep.id });
-            await admin.from("cross_post_jobs").update({
+            // (07/11, famille 5) _shared/depot-jamais-vu-sans-objet.js : article VENDU ou fiche SUPPRIMÉE, et aucune annonce
+            // vivante sur la plateforme → « cancelled », message vrai (rien à faire), jamais « failed ». Doute ou lecture
+            // ratée → l'échec d'avant, mot pour mot.
+            let sansObjet: { clore: boolean; raison?: string } = { clore: false };
+            try {
+              const invDep = (dep as Record<string, unknown>).inventaire_id;
+              const [rF, rV] = await Promise.all([
+                invDep != null ? admin.from("inventaire").select("statut, quantite, fusionne_dans").eq("id", invDep as number).maybeSingle()
+                  : Promise.resolve({ data: null, error: null }),
+                admin.from("annonces_plateforme").select("listing_id, user_id, platform, inventaire_id, job_id, statut_plateforme, disparu_le, retiree_le")
+                  .eq("user_id", user.id).eq("platform", plat)
+                  .or(invDep != null ? `inventaire_id.eq.${invDep},job_id.eq.${dep.id}` : `job_id.eq.${dep.id}`).limit(50),
+              ]);
+              if (!rF.error && !rV.error) sansObjet = decisionDepotJamaisVu({ ...dep, user_id: user.id, platform: plat }, { fiche: rF.data, annonces: rV.data ?? [] });
+            } catch (_e) { /* doute : l'échec d'avant */ }
+            const pfDep = { ...((dep.platform_fields ?? {}) as Record<string, unknown>),
+              listing_url_abandon: { at: new Date().toISOString(), motif: "deux_releves_complets", releves: v.releves, refund: ref ?? null } };
+            await admin.from("cross_post_jobs").update(sansObjet.clore ? {
+              status: "cancelled",
+              error: messageDepotJamaisVuSansObjet(plat, String(sansObjet.raison), { refund: ref ?? null }),
+              platform_fields: champsDepotJamaisVuSansObjet(pfDep, { raison: sansObjet.raison, par: "get-pending-jobs (retrait sans numéro : deux relevés complets)" }),
+            } : {
               status: "failed",
               error: `Publication jamais vue en ligne sur ${plat === "beebs" ? "Beebs" : plat} : deux relevés complets de ton compte ne l'ont pas trouvée, ` +
                 "et nous n'avons jamais eu son numéro. Cette publication ne compte pas dans tes limites.",
-              platform_fields: { ...((dep.platform_fields ?? {}) as Record<string, unknown>),
-                listing_url_abandon: { at: new Date().toISOString(), motif: "deux_releves_complets", releves: v.releves, refund: ref ?? null } },
+              platform_fields: pfDep,
             }).eq("id", dep.id as string).eq("status", "published");
           }
           n2 += (maj ?? []).length;
@@ -3397,7 +3424,9 @@ serve(async (req) => {
             // sur la fiche) : l'annonce n'est plus en ligne. La republication se CLÔT, rien n'est retiré ni recréé, et le
             // verdict (annonce_disparue, par « deux_releves_probants ») est celui que lit republication_annonce_partie :
             // la suivante est refusée à la source. Deux annonces en ligne sur la fiche (doute) : jamais close.
-            const relevesVus = relevesCibleAbsente(marque, releveV?.id ?? null, cibleId);
+            // (07/11, famille 1 C3) amorcés par le constat absence_releves de la même annonce, s'il n'a pas été démenti depuis.
+            const relevesVus = relevesCibleAbsente(marque, releveV?.id ?? null, cibleId,
+              { absence: (pfV["absence_releves"] ?? null) as Record<string, unknown> | null, cibleVuLe: (cible?.vu_le ?? null) as string | null });
             if (v.motif === "cible_absente_du_releve" && relevesVus.length >= RELEVES_POUR_CLORE_CIBLE_ABSENTE) {
               const maintenantC = new Date().toISOString();
               pfV["annonce_disparue"] = { at: maintenantC, par: "deux_releves_probants", releves: relevesVus, cible: cibleId,
@@ -4545,12 +4574,39 @@ serve(async (req) => {
       }
     }
 
-    // ══ (06/11 soir, décision de Nico) RÈGLE A RETIRÉE : une remise en vente Leboncoin part tout de suite, comme en
-    // octobre (la retenir tant que l'annonce vendue restait visible la bloquait sans fin : Leboncoin garde une annonce
-    // vendue affichée même après la réception). La rafale du 06/11 au matin (7 ventes d'Amiral découvertes d'un coup
-    // après une restriction) se rattrape par une SÉRIE posée par réparation : UNE tâche à la fois, chacune vue en ligne
-    // avant la suivante, intervalle tenu, arrêt au premier refus (_shared/serie-un-par-un.js). Exécution seulement ;
-    // tenue = pending, intacte, sans écriture ; lecture ratée → les tâches de série sont TENUES (jamais une rafale). ══
+    // ══ (07/11, décision de Nico : OPTION A, feu vert) RÈGLE A RÉTABLIE — LEBONCOIN : LA REMISE EN VENTE ATTEND QUE
+    // L'ANNONCE VENDUE IDENTIQUE AIT DISPARU ══ (_shared/remise-en-vente-attente.js) Preuve du 07/11 : les 3 remises de
+    // Louis déposées pendant que leur annonce vendue restait affichée (transaction en cours) ont toutes été DÉSACTIVÉES
+    // par Leboncoin (410), y compris 3303867959, partie sans aucune marque SEB : Leboncoin refuse un dépôt identique à une
+    // annonce encore affichée (essai réel du 30/10). La tâche de remise n'est servie qu'une fois l'annonce vendue relevée
+    // hors ligne : d'ici là pending, intacte, SANS message, et elle part d'elle-même. Passe AVANT la série (une tâche de
+    // série retenue ici n'est pas servie, la série attend). Exécution seulement ; lecture ratée → rien de retenu.
+    let heldRemisesLbc = 0;
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => remiseAAttendre(j))) {
+      try {
+        const remises = out.filter((j) => remiseAAttendre(j));
+        const numeros = [...new Set(remises.map((j) => annonceVendueDeLaRemise(j) as string))];
+        const { data: lignesV, error: eV } = await lireParLots((lot) => userClient.from("annonces_plateforme")
+          .select("listing_id, platform, disparu_le, retiree_le, ignoree_le, statut_plateforme")
+          .eq("user_id", user.id).in("platform", [...PLATEFORMES_REMISE_APRES_DISPARITION]).in("listing_id", lot), numeros, 150);
+        if (eV) throw new Error(eV.message);
+        const enLigne = new Set(((lignesV ?? []) as Array<Record<string, unknown>>)
+          .filter((l) => annonceVendueEncoreEnLigne(l as never)).map((l) => `${l.platform}:${String(l.listing_id).trim()}`));
+        const retenuesR = new Set(remises.filter((j) => enLigne.has(`${j.platform}:${annonceVendueDeLaRemise(j)}`)).map((j) => String(j.id)));
+        if (retenuesR.size) {
+          heldRemisesLbc = retenuesR.size;
+          out = out.filter((j) => !retenuesR.has(String(j.id)));
+          console.log(`[get-pending-jobs] userId=${user.id} : ${retenuesR.size} remise(s) en vente Leboncoin retenue(s) — l'annonce vendue est encore en ligne (pending, sans message)`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] remises Leboncoin : ${String((e as Error)?.message ?? e)} — rien de retenu`);
+      }
+    }
+
+    // ══ (06/11 soir, décision de Nico) Séries « une par une » : la rafale du 06/11 au matin (7 ventes d'Amiral découvertes
+    // d'un coup après une restriction) se rattrape par une SÉRIE posée par réparation : UNE tâche à la fois, chacune vue
+    // en ligne avant la suivante, intervalle tenu, arrêt au premier refus (_shared/serie-un-par-un.js). Exécution
+    // seulement ; tenue = pending, intacte, sans écriture ; lecture ratée → les tâches de série sont TENUES. ══
     let heldSerie = 0;
     if (!includeProcessing && !includeNeedsUser && out.some((j) => serieDuJob(j))) {
       const enSerie = out.filter((j) => serieDuJob(j));
@@ -5257,7 +5313,7 @@ serve(async (req) => {
         const ficheDe = new Map<string, Record<string, unknown>>();
         for (const f of (fiches ?? []) as Record<string, unknown>[]) {
           const attr = (f.attributs && typeof f.attributs === "object" ? f.attributs : {}) as Record<string, unknown>;
-          ficheDe.set(String(f.id), { description: f.description ?? null, etat: attr.etat ?? null });
+          ficheDe.set(String(f.id), { description: f.description ?? null, etat: attr.etat ?? null, taille: attr.taille ?? null });
         }
         const maintenant = new Date().toISOString();
         for (const j of aCompleter) {
@@ -6203,6 +6259,137 @@ serve(async (req) => {
       // (29/10, tiblancdeshaut c9fe1ee1) Les jobs du compte sur la plateforme, lus une fois par plateforme et
       // seulement au jugement : leurs numéros et leurs fiches écartent les annonces d'une AUTRE fiche.
       const jobsDuCompte = new Map<string, Array<Record<string, unknown>>>();
+      // 2. Les annonces apparues depuis le retrait, et le verdict (recreation-deja-partie.js jugerCandidates). Partagé
+      // par les remises en ligne en file et par les questions déjà posées (07/11, plus bas). `releveDepuis` : début du
+      // relevé complet qui fait foi (une annonce qu'il n'a pas revue n'est jamais traitée en doublon).
+      const jugerDepuisRetrait = async (j: Record<string, unknown>, pf: Record<string, unknown>, releveDepuis: unknown) => {
+        const plateforme = String(j.platform);
+        const idJ = String(j.id);
+        const court = idJ.slice(0, 8);
+        const ancienId = String(pf["old_platform_listing_id"] ?? "").trim()
+          || (String(pf["old_listing_url"] ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
+        const { data: lignes } = await userClient.from("annonces_plateforme")
+          .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, vu_le, disparu_le, proposition, publiee_le")
+          .eq("platform", plateforme).gte("created_at", String(pf["deleted_at"])).limit(50);
+        // (29/10, tiblancdeshaut c9fe1ee1) Une annonce qu'une AUTRE fiche du compte désigne (numéro d'un de ses jobs,
+        // proposition du relevé, fiche rattachée) n'est pas cette copie : écartée, jamais rattachée
+        // (recreation-deja-partie.js motifAutreFiche). Lecture bornée : 60 jours, 1 000 jobs.
+        let jobsC = jobsDuCompte.get(plateforme);
+        if (!jobsC) {
+          const { data: jc, error: jcErr } = await userClient.from("cross_post_jobs").select(COLONNES_JOBS_AUTRES_FICHES)
+            .eq("user_id", user.id).eq("platform", plateforme)
+            .gte("created_at", new Date(Date.now() - 60 * 86_400_000).toISOString())
+            .order("created_at", { ascending: false }).limit(1000);
+          if (jcErr) console.warn(`[get-pending-jobs] redépôt ${court} : jobs du compte illisibles (${jcErr.message}) — aucune annonce écartée par numéro`);
+          jobsC = (jc ?? []) as unknown as Array<Record<string, unknown>>;
+          jobsDuCompte.set(plateforme, jobsC);
+        }
+        const tri = trierCandidatesDepuisRetrait({
+          jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null,
+          numerosAutres: depotsAutresFiches(jobsC, j.inventaire_id ?? null), fichesJobs: fichesDesJobs(jobsC),
+          // (29/10) Vue avant le retrait (listes « Mes annonces » de nos dépôts Beebs, mise en ligne Leboncoin) : écartée.
+          platform: plateforme, vusAvant: numerosVusAvantRetrait(jobsC, pf["deleted_at"]),
+        });
+        const toutesCandidates = tri.candidates;
+        const ecartees = tri.ecartees;
+        // (29/10, louis 68e39f7c) Le dépôt Leboncoin inachevé d'un essai arrêté sur /options (statut « inactive », aucune
+        // date de mise en ligne) n'est pas en ligne et ne le sera jamais : il ne retient pas le redépôt.
+        const inachevees = toutesCandidates.filter((c: Record<string, unknown>) =>
+          depotInacheveLbc(plateforme, pf, c, { depuis: Date.parse(String(pf["deleted_at"] ?? "")) }));
+        const candidates = toutesCandidates.filter((c: Record<string, unknown>) => !inachevees.includes(c));
+        // Cascade (15/10 soir) : l'identifiant conservé après le dépôt, puis
+        // les photos de NOTRE copie contre celles des candidates (empreintes).
+        const urlsCopie = urlsPhotos(j.photos);
+        const urlsParCandidate = new Map<string, string[]>(candidates.map((c: Record<string, unknown>) => [String(c["listing_id"]),
+          [...new Set([...urlsPhotos((c["capture"] as Record<string, unknown> | null)?.["photos"], 4), ...urlsPhotos([c["photo_url"]], 1)])]]));
+        const toutesUrls = [...new Set([...urlsCopie, ...[...urlsParCandidate.values()].flat()])];
+        const { data: empR } = toutesUrls.length && candidates.length
+          ? await createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
+            .from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutesUrls.slice(0, 200))
+          : { data: [] };
+        const empParUrl = new Map(((empR ?? []) as Array<Record<string, unknown>>).map((e) => [String(e.url), e]));
+        // (07/11, Ciddjy 49342549) Plusieurs annonces : la fiche (exemplaires) est lue pour la règle des doublons de nos
+        // essais. Illisible → null → la question, comme avant.
+        let fiche: Record<string, unknown> | null = null;
+        if (candidates.length >= 2 && j.inventaire_id != null) {
+          const { data: f, error: fErr } = await userClient.from("inventaire").select("quantite, statut, fusionne_dans")
+            .eq("id", j.inventaire_id as number).maybeSingle();
+          fiche = fErr ? null : ((f ?? null) as Record<string, unknown> | null);
+        }
+        const juge = jugerCandidates({
+          candidates,
+          listingIdProuve: String(pf["new_platform_listing_id"] ?? "") || null,
+          empreintesCopie: urlsCopie.map((u) => empParUrl.get(u)).filter(Boolean),
+          empreintesParCandidate: new Map([...urlsParCandidate].map(([id, us]) => [id, us.map((u) => empParUrl.get(u)).filter(Boolean)])),
+          // (07/11) Toutes aux photos de notre copie, pas plus que nos essais suspects, fiche à un exemplaire : nos doublons.
+          doublons: {
+            essais: essaisSuspectsDepuisRetrait(plateforme, pf), fiche, deletedAt: pf["deleted_at"], ancienId,
+            jobId: idJ, inventaireId: j.inventaire_id ?? null, releveDepuis,
+          },
+        }) as Record<string, unknown>;
+        return { juge, candidates, ecartees, inachevees };
+      };
+      // ══ (07/11, Ciddjy 49342549) NOS PROPRES DÉPÔTS EN DOUBLE : LES RETRAITS D'ABORD, PUIS LE RATTACHEMENT ══
+      // recreation-deja-partie.js doublonsDeNosEssais. Chaque annonce en trop reçoit un RETRAIT par le circuit ordinaire
+      // (job « delete », numéro exact et lien, gardes de la base) ; un retrait déjà ouvert sur ce numéro compte. Un seul
+      // retrait non armé → rien n'est rattaché (false : la question, comme avant). Puis la plus ancienne est rattachée
+      // (published, étape recreated), écrit seulement si le job est toujours dans `statutAttendu`.
+      const armerDoublonsEtRattacher = async (j: Record<string, unknown>, pf: Record<string, unknown>, juge: Record<string, unknown>,
+        trace: Record<string, unknown>, statutAttendu: "pending" | "needs_user"): Promise<boolean> => {
+        const idJ = String(j.id);
+        const court = idJ.slice(0, 8);
+        const plateforme = String(j.platform);
+        const garde = (juge.retenue ?? {}) as Record<string, unknown>;
+        const aRetirer = (Array.isArray(juge.aRetirer) ? juge.aRetirer : []) as Array<Record<string, unknown>>;
+        const numeros = [garde, ...aRetirer].map((c) => String(c["listing_id"] ?? ""));
+        const maintenant = new Date().toISOString();
+        const retraits: string[] = [];
+        for (const c of aRetirer) {
+          const n = String(c["listing_id"] ?? "");
+          const { data: deja, error: dErr } = await userClient.from("cross_post_jobs").select("id")
+            .eq("user_id", user.id).eq("platform", plateforme).eq("action", "delete")
+            .not("status", "in", "(cancelled,failed)").eq("platform_listing_id", n).limit(1);
+          if (dErr) {
+            console.warn(`[get-pending-jobs] redépôt ${court} : retraits ouverts illisibles (${dErr.message}) — rien n'est rattaché`);
+            return false;
+          }
+          if ((deja ?? []).length) { retraits.push(String((deja as Array<{ id: string }>)[0].id)); continue; }
+          const ligne = retraitDoublonDeNosEssais({
+            userId: user.id, job: j, annonce: c, garde: garde["listing_id"], numeros, essais: Number(juge.essais) || 0,
+            lien: String(c["url"] ?? "") || lienDepuisId(plateforme, n), maintenant,
+          });
+          const { data: ins, error: eIns } = await userClient.from("cross_post_jobs").insert(ligne).select("id").maybeSingle();
+          if (eIns || !ins) {
+            console.warn(`[get-pending-jobs] redépôt ${court} : retrait du doublon ${n} non armé (${eIns?.message ?? "aucune ligne"}) — rien n'est rattaché, la question reste`);
+            return false;
+          }
+          retraits.push(String((ins as { id: string }).id));
+        }
+        const patch = patchRattachementRecreation(pf, garde, {
+          trace, preuve: String(juge.preuve ?? "photos identiques à celles de notre copie"), photos: juge.photos ?? null,
+          posePar: "get-pending-jobs (redépôt interrompu : doublons de nos propres essais)", maintenant,
+        });
+        const pfN = patch.platform_fields as Record<string, unknown>;
+        pfN["rattachement_recreation"] = {
+          ...((pfN["rattachement_recreation"] ?? {}) as Record<string, unknown>),
+          doublons_de_nos_essais: {
+            motif: MOTIF_DOUBLON_DE_NOS_ESSAIS, garde: String(garde["listing_id"] ?? ""),
+            retires: aRetirer.map((c) => String(c["listing_id"] ?? "")), retraits, essais_suspects: Number(juge.essais) || 0, le: maintenant,
+          },
+        };
+        if (statutAttendu === "needs_user" && j.error) {
+          pfN["erreurs_archivees"] = archiverErreur(pfN["erreurs_archivees"], String(j.error), "needs_user",
+            `get-pending-jobs (doublons de nos essais : ${String(garde["listing_id"] ?? "")} gardée, ${aRetirer.length} retirée(s))`);
+        }
+        const { data: maj, error: wErr } = await userClient.from("cross_post_jobs").update(patch)
+          .eq("id", idJ).eq("status", statutAttendu).select("id");
+        if (wErr || !(maj ?? []).length) {
+          console.warn(`[get-pending-jobs] redépôt ${court} (${plateforme}) : ${retraits.length} retrait(s) de doublon armé(s), rattachement à ${String(garde["listing_id"] ?? "")} non écrit (${wErr?.message ?? `job plus en ${statutAttendu}`})`);
+          return false;
+        }
+        console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : ${numeros.length} annonces = NOS dépôts en double (photos de notre copie, ${Number(juge.essais) || 0} essai(s) suspect(s), fiche à un exemplaire) → ${String(garde["listing_id"] ?? "")} RATTACHÉE (published), ${aRetirer.map((c) => String(c["listing_id"] ?? "")).join(", ")} → retrait(s) armé(s) ${retraits.map((r) => r.slice(0, 8)).join(", ")}`);
+        return true;
+      };
       for (const j of suspects) {
         const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
         const plateforme = String(j.platform);
@@ -6249,13 +6436,8 @@ serve(async (req) => {
           .order("started_at", { ascending: false, nullsFirst: false }).limit(10);
         const liste = (runs ?? []) as Array<Record<string, unknown>>;
         const tSusp = Date.parse(susp.at);
-        const releveComplet = (r: Record<string, unknown>) => {
-          const err = String(r.erreur ?? "");
-          if (r.status !== "done") return false;
-          if (err.startsWith("[incomplet]")) return false;
-          if (err.includes("n'a pas rendu sa liste") || err.includes("Hub vendeur n'a pas rendu son compteur")) return false;
-          return Number(r.items_vus ?? 0) > 0 || err.startsWith("[vide]");
-        };
+        // (07/11) Même lecture, partagée avec les questions rejugées : recreation-deja-partie.js releveCompletAvantRedepot.
+        const releveComplet = (r: Record<string, unknown>) => releveCompletAvantRedepot(r);
         const fait = liste.find((r) => releveComplet(r) && Date.parse(String(r.started_at ?? "")) > tSusp);
         if (!fait) {
           const attenteDepuis = Date.parse(String(pf["recreation_attente_depuis"] ?? "")) || Date.now();
@@ -6323,55 +6505,8 @@ serve(async (req) => {
           continue;
         }
 
-        // 2. Les annonces apparues depuis le retrait.
-        const ancienId = String(pf["old_platform_listing_id"] ?? "").trim()
-          || (String(pf["old_listing_url"] ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
-        const { data: lignes } = await userClient.from("annonces_plateforme")
-          .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, disparu_le, proposition, publiee_le")
-          .eq("platform", plateforme).gte("created_at", String(pf["deleted_at"])).limit(50);
-        // (29/10, tiblancdeshaut c9fe1ee1) Une annonce qu'une AUTRE fiche du compte désigne (numéro d'un de ses jobs,
-        // proposition du relevé, fiche rattachée) n'est pas cette copie : écartée, jamais rattachée
-        // (recreation-deja-partie.js motifAutreFiche). Lecture bornée : 60 jours, 1 000 jobs.
-        let jobsC = jobsDuCompte.get(plateforme);
-        if (!jobsC) {
-          const { data: jc, error: jcErr } = await userClient.from("cross_post_jobs").select(COLONNES_JOBS_AUTRES_FICHES)
-            .eq("user_id", user.id).eq("platform", plateforme)
-            .gte("created_at", new Date(Date.now() - 60 * 86_400_000).toISOString())
-            .order("created_at", { ascending: false }).limit(1000);
-          if (jcErr) console.warn(`[get-pending-jobs] redépôt ${court} : jobs du compte illisibles (${jcErr.message}) — aucune annonce écartée par numéro`);
-          jobsC = (jc ?? []) as unknown as Array<Record<string, unknown>>;
-          jobsDuCompte.set(plateforme, jobsC);
-        }
-        const tri = trierCandidatesDepuisRetrait({
-          jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null,
-          numerosAutres: depotsAutresFiches(jobsC, j.inventaire_id ?? null), fichesJobs: fichesDesJobs(jobsC),
-          // (29/10) Vue avant le retrait (listes « Mes annonces » de nos dépôts Beebs, mise en ligne Leboncoin) : écartée.
-          platform: plateforme, vusAvant: numerosVusAvantRetrait(jobsC, pf["deleted_at"]),
-        });
-        const toutesCandidates = tri.candidates;
-        const ecartees = tri.ecartees;
-        // (29/10, louis 68e39f7c) Le dépôt Leboncoin inachevé d'un essai arrêté sur /options (statut « inactive »,
-        // aucune date de mise en ligne) n'est pas en ligne et ne le sera jamais : il ne retient pas le redépôt.
-        const inachevees = toutesCandidates.filter((c: Record<string, unknown>) =>
-          depotInacheveLbc(plateforme, pf, c, { depuis: Date.parse(String(pf["deleted_at"] ?? "")) }));
-        const candidates = toutesCandidates.filter((c: Record<string, unknown>) => !inachevees.includes(c));
-        // Cascade (15/10 soir) : l'identifiant conservé après le dépôt, puis
-        // les photos de NOTRE copie contre celles des candidates (empreintes).
-        const urlsCopie = urlsPhotos(j.photos);
-        const urlsParCandidate = new Map<string, string[]>(candidates.map((c: Record<string, unknown>) => [String(c["listing_id"]),
-          [...new Set([...urlsPhotos((c["capture"] as Record<string, unknown> | null)?.["photos"], 4), ...urlsPhotos([c["photo_url"]], 1)])]]));
-        const toutesUrls = [...new Set([...urlsCopie, ...[...urlsParCandidate.values()].flat()])];
-        const { data: empR } = toutesUrls.length && candidates.length
-          ? await createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
-            .from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutesUrls.slice(0, 200))
-          : { data: [] };
-        const empParUrl = new Map(((empR ?? []) as Array<Record<string, unknown>>).map((e) => [String(e.url), e]));
-        const juge = jugerCandidates({
-          candidates,
-          listingIdProuve: String(pf["new_platform_listing_id"] ?? "") || null,
-          empreintesCopie: urlsCopie.map((u) => empParUrl.get(u)).filter(Boolean),
-          empreintesParCandidate: new Map([...urlsParCandidate].map(([id, us]) => [id, us.map((u) => empParUrl.get(u)).filter(Boolean)])),
-        });
+        // 2. Les annonces apparues depuis le retrait, et le verdict (jugerDepuisRetrait, plus haut).
+        const { juge, candidates, ecartees, inachevees } = await jugerDepuisRetrait(j, pf, fait.started_at);
         const trace = {
           apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: juge.verdict,
           candidates: candidates.map((c: Record<string, unknown>) => String(c["listing_id"])),
@@ -6388,6 +6523,12 @@ serve(async (req) => {
             console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : relevé ${String(fait.id).slice(0, 8)} postérieur à l'essai suspect, aucune annonce apparue → redépôt autorisé`);
           }
           continue;
+        }
+        // (07/11, Ciddjy 49342549) NOS PROPRES DÉPÔTS EN DOUBLE : la plus ancienne rattachée, les autres retirées par le
+        // circuit ordinaire. Un retrait non armé → la question, comme avant (rien n'est rattaché).
+        if (juge.verdict === "doublons_nos_essais") {
+          if (await armerDoublonsEtRattacher(j, pf, juge, trace, "pending")) continue;
+          Object.assign(juge, { verdict: "incertaine", raisons: [`${candidates.length} annonces apparues depuis le retrait`], doublons_refus: "retrait d'un doublon non armé" });
         }
         if (juge.verdict === "certaine") {
           const c = juge.retenue as Record<string, unknown>;
@@ -6418,9 +6559,58 @@ serve(async (req) => {
           `Une annonce ${nomPf} pourrait correspondre à cet article : ${liens.join(" ; ")}. ` +
           `On ne redépose pas, pour ne jamais la mettre en double (${raisons.join(", ")}). Regarde-la sur ${nomPf} : ` +
           "Confirme dans tes annonces s’il s’agit du même exemplaire. Ne supprime aucune annonce pour résoudre ce doute.",
-          { verdict: "incertaine", liens, raisons, releve: String(fait.id), essai: susp, ...(ecartees.length ? { ecartees } : {}) },
+          { verdict: "incertaine", liens, raisons, releve: String(fait.id), essai: susp, ...(ecartees.length ? { ecartees } : {}),
+            ...(juge.doublons_refus ? { doublons_refus: String(juge.doublons_refus) } : {}) },
         );
       }
+      // ══ (07/11, Ciddjy 49342549) LES QUESTIONS DÉJÀ POSÉES, REJUGÉES PAR LA RÈGLE DES DOUBLONS DE NOS ESSAIS ══
+      // Une question « recreation_deja_partie » à plusieurs liens (posée avant la règle, ou avant que les photos des
+      // annonces aient une empreinte) n'est tranchée par aucun autre chemin (handler-watch : « N annonces encore en
+      // ligne » → la question reste). Relue ici sur le DERNIER relevé complet (commencé après l'essai de la question) :
+      // nos doublons prouvés → les retraits, puis le rattachement (needs_user → published) ; sinon la question reste,
+      // le refus tracé une fois (`doublons_rejuge`). Borné : poll ordinaire seulement, QUESTIONS_DOUBLONS_PAR_PASSAGE
+      // questions par passage, REJUGES_DOUBLONS_MAX fois par question, 30 min d'écart (questionDoublonsARejuger).
+      if (!includeProcessing && !includeNeedsUser) { try {
+        const { data: questionsQ, error: qQErr } = await userClient.from("cross_post_jobs")
+          .select("id, platform, action, status, title, error, inventaire_id, photos, platform_fields")
+          .eq("user_id", user.id).eq("status", "needs_user").eq("action", "republish").in("platform", ["leboncoin", "beebs"])
+          .eq("platform_fields->>needs_user_source", "recreation_deja_partie")
+          .order("created_at", { ascending: true }).limit(20);
+        if (qQErr) console.warn(`[get-pending-jobs] questions « déjà partie » illisibles (${qQErr.message}) — rien de rejugé`);
+        const aRejuger = ((questionsQ ?? []) as Array<Record<string, unknown>>)
+          .filter((q) => questionDoublonsARejuger(q, Date.now())).slice(0, QUESTIONS_DOUBLONS_PAR_PASSAGE);
+        for (const q of aRejuger) {
+          const pfQ = { ...((q.platform_fields ?? {}) as Record<string, unknown>) };
+          const plateformeQ = String(q.platform);
+          const courtQ = String(q.id).slice(0, 8);
+          const questionQ = (pfQ["recreation_deja_partie"] ?? {}) as Record<string, unknown>;
+          const essaiQ = Date.parse(String(((questionQ["essai"] ?? {}) as Record<string, unknown>)["at"] ?? "")) || Date.parse(String(pfQ["deleted_at"] ?? ""));
+          const { data: runsQ } = await userClient.from("vinted_sync_runs")
+            .select("id, status, erreur, items_vus, started_at")
+            .eq("user_id", user.id).eq("kind", "annonces").eq("platform", plateformeQ)
+            .order("started_at", { ascending: false, nullsFirst: false }).limit(10);
+          const dernierQ = ((runsQ ?? []) as Array<Record<string, unknown>>).find((r) => releveCompletAvantRedepot(r)) ?? null;
+          if (!dernierQ || !(Date.parse(String(dernierQ.started_at ?? "")) > essaiQ)) continue; // attendre un relevé complet (rien d'écrit)
+          const { juge: jugeQ, candidates: candQ, ecartees: ecQ } = await jugerDepuisRetrait(q, pfQ, dernierQ.started_at);
+          if (jugeQ.verdict === "doublons_nos_essais") {
+            const traceQ = {
+              apres: new Date(essaiQ).toISOString(), le: new Date().toISOString(), releve: String(dernierQ.id), verdict: jugeQ.verdict,
+              candidates: candQ.map((c: Record<string, unknown>) => String(c["listing_id"])), question: questionQ["le"] ?? null,
+              ...(ecQ.length ? { ecartees: ecQ } : {}),
+            };
+            if (await armerDoublonsEtRattacher(q, pfQ, jugeQ, traceQ, "needs_user")) continue;
+          }
+          const raisonQ = jugeQ.verdict === "doublons_nos_essais" ? "retrait d'un doublon non armé"
+            : String(jugeQ.doublons_refus ?? `verdict « ${String(jugeQ.verdict)} » (${candQ.length} annonce(s) relue(s))`);
+          const pfMarque = { ...pfQ, doublons_rejuge: marqueDoublonsRejuge(pfQ, { raison: raisonQ }) };
+          const { error: mErr } = await userClient.from("cross_post_jobs").update({ platform_fields: pfMarque })
+            .eq("id", String(q.id)).eq("status", "needs_user");
+          console.log(`[get-pending-jobs] question ${courtQ} (${plateformeQ}) rejugée (doublons de nos essais) : ${raisonQ} — la question reste${mErr ? ` (trace non écrite : ${mErr.message})` : ""}`);
+        }
+      } catch (e) {
+        // Jamais un point de panne pour la file : la question reste telle quelle.
+        console.warn(`[get-pending-jobs] questions « déjà partie » rejugées : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      } }
       if (retirerDeLaFile.size) {
         noterRetenuesDeleted(out, retirerDeLaFile);   // (29/10, lot B 4.11)
         out = out.filter((j) => !retirerDeLaFile.has(String(j.id)));
@@ -8535,15 +8725,35 @@ serve(async (req) => {
                 // il ne compte plus dans les limites, l'unité est rendue s'il en a pris une.
                 if (/^[0-9a-f-]{36}$/i.test(depotProuve)) {
                   const { data: dep } = await adminR.from("cross_post_jobs")
-                    .select("id, status, listing_url, platform_listing_id, platform_fields").eq("id", depotProuve).maybeSingle();
+                    .select("id, status, inventaire_id, listing_url, platform_listing_id, platform_fields").eq("id", depotProuve).maybeSingle();
                   if (dep && dep.status === "published" && !String(dep.listing_url ?? "").trim() && !String(dep.platform_listing_id ?? "").trim()) {
                     const { data: ref } = await adminR.rpc("refund_publish_unconfirmed", { p_job: dep.id });
-                    await adminR.from("cross_post_jobs").update({
+                    // (07/11, famille 5) _shared/depot-jamais-vu-sans-objet.js : article VENDU (le retrait vient de la vente)
+                    // ou fiche SUPPRIMÉE, et aucune annonce vivante sur la plateforme → « cancelled », message vrai (rien à
+                    // faire), jamais « failed ». Doute ou lecture ratée → l'échec d'avant, mot pour mot.
+                    let sansObjet: { clore: boolean; raison?: string } = { clore: false };
+                    try {
+                      const invDep = (dep as Record<string, unknown>).inventaire_id;
+                      const [rF, rV] = await Promise.all([
+                        invDep != null ? adminR.from("inventaire").select("statut, quantite, fusionne_dans").eq("id", invDep as number).maybeSingle()
+                          : Promise.resolve({ data: null, error: null }),
+                        adminR.from("annonces_plateforme").select("listing_id, user_id, platform, inventaire_id, job_id, statut_plateforme, disparu_le, retiree_le")
+                          .eq("user_id", user.id).eq("platform", String(d.platform))
+                          .or(invDep != null ? `inventaire_id.eq.${invDep},job_id.eq.${dep.id}` : `job_id.eq.${dep.id}`).limit(50),
+                      ]);
+                      if (!rF.error && !rV.error) sansObjet = decisionDepotJamaisVu({ ...dep, user_id: user.id, platform: String(d.platform) }, { fiche: rF.data, annonces: rV.data ?? [] });
+                    } catch (_e) { /* doute : l'échec d'avant */ }
+                    const pfDep = { ...((dep.platform_fields ?? {}) as Record<string, unknown>),
+                      listing_url_abandon: { at: nowIso, motif: "deux_releves_complets", releves: verdict.releves, refund: ref ?? null } };
+                    await adminR.from("cross_post_jobs").update(sansObjet.clore ? {
+                      status: "cancelled",
+                      error: messageDepotJamaisVuSansObjet(String(d.platform), String(sansObjet.raison), { refund: ref ?? null }),
+                      platform_fields: champsDepotJamaisVuSansObjet(pfDep, { raison: sansObjet.raison, maintenant: nowIso, par: "get-pending-jobs (retrait en attente de lien : deux relevés complets)" }),
+                    } : {
                       status: "failed",
                       error: `Publication jamais vue en ligne sur ${labelDe(d.platform)} : deux relevés complets de ton compte ne l'ont pas trouvée, ` +
                         "et nous n'avons jamais eu son numéro. Cette publication ne compte pas dans tes limites.",
-                      platform_fields: { ...((dep.platform_fields ?? {}) as Record<string, unknown>),
-                        listing_url_abandon: { at: nowIso, motif: "deux_releves_complets", releves: verdict.releves, refund: ref ?? null } },
+                      platform_fields: pfDep,
                     }).eq("id", dep.id).eq("status", "published");
                   }
                 }
@@ -9608,9 +9818,28 @@ serve(async (req) => {
             const aRetenir = new Set<string>();
             for (const j of aJuger) {
               const pf = pfOf(j);
-              const manquants = (requisParCle.get(cleCategorie(pf)!) ?? [])
+              let manquants = (requisParCle.get(cleCategorie(pf)!) ?? [])
                 .filter((r) => !valeurDisponible(j, r.key));
               if (!manquants.length) continue;
+              // (07/11, famille 6b — efec755b) L'ISBN se CHERCHE avant la question (_shared/isbn-republication.js →
+              // resoudreIsbn : la capture, la description de l'annonce d'origine puis celle de la copie, les titres), jamais
+              // par-dessus une réponse de la personne ; trouvé → servi (en mémoire, comme le geste 1). Et la question ne dit
+              // « ni dans sa description » que si une description a été LUE pour ce champ.
+              let descriptionLue = false;
+              if (manquants.some((m) => m.key === "isbn")) {
+                const vaI = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? (pf.vintedAspects as Record<string, unknown>) : {};
+                const lu = isbnAvantQuestion({ va: vaI, snap: snapDe(pf), job: j as unknown as Record<string, unknown> });
+                descriptionLue = lu.descriptionLue;
+                if (lu.trouve) {
+                  j.platform_fields = { ...pf, vintedAspects: { ...vaI, isbn: lu.trouve.isbn13 },
+                    isbn_deduit_serveur: { valeur: lu.trouve.isbn13, trouve: lu.trouve.trouve, source: lu.trouve.source, le: new Date().toISOString() } };
+                  manquants = manquants.filter((m) => m.key !== "isbn");
+                  isbnDeduits++;
+                  console.log(`[get-pending-jobs] republish ${String(j.id).slice(0, 8)} : ISBN ${lu.trouve.isbn13} trouvé avant la question (${lu.trouve.source}) — aucune question posée`);
+                  if (!manquants.length) continue;
+                }
+              }
+              const seulIsbn = manquants.every((m) => m.key === "isbn");
               const premier = manquants[0];
               const libelles = manquants.map((m) => m.label).join(" », « ");
               // ── ON NE POSE PAS TROIS FOIS LA MÊME QUESTION ────────────────
@@ -9630,14 +9859,11 @@ serve(async (req) => {
               // Message écrit à la personne : ce qu'on n'a PAS fait d'abord
               // (« ton annonce est toujours en ligne »), puis ce qu'on demande.
               // C'est l'inverse exact du message d'après-suppression.
-              const message = onRedemande
-                ? `Ton annonce est TOUJOURS EN LIGNE : on ne l'a pas retirée. ` +
-                  `Pour la republier, Vinted réclame « ${libelles} » et on ne l'a trouvé ni sur ton annonce ` +
-                  `ni dans sa description. Complète ce champ et la republication repartira toute seule — ` +
-                  `tant que ce n'est pas fait, rien n'est touché.`
-                : `Ton annonce est TOUJOURS EN LIGNE et elle y reste. On ne sait pas la republier sans ` +
-                  `« ${libelles} », que Vinted exige pour cette catégorie — on ne te le redemande plus. ` +
-                  `Rien n'a été retiré, rien n'est perdu.`;
+              // (07/11, famille 6b) _shared/isbn-republication.js : le texte d'avant, mot pour mot, quand il était vrai (l'ISBN
+              // seul, une description lue) ; sinon il ne dit que ce qui a été cherché (jamais « ni dans sa description » pour
+              // une couleur ou une marque, que la description ne donne pas ici).
+              const message = messageRequisRepublication({ libelles, onRedemande,
+                descriptionLue: seulIsbn && descriptionLue, photosLues: seulIsbn && Boolean(pf.isbn_photos_lu) });
               // ⚠️ Au tour d'arrêt, `needsUserField` doit être RETIRÉ, pas
               // seulement « non reposé » : il traîne dans platform_fields
               // depuis le tour précédent et l'app rouvrirait la modale.
@@ -13542,6 +13768,16 @@ serve(async (req) => {
         // (28/10, mele.marta) Pays du compte non lu (sonde muette) : les langues de page qui suffisent (cf. _shared).
         const languesSansPays = languesOuvertesSansPays(ouverts);
         let etats = 0, autorises = 0, fermes = 0, sansPays = 0;
+        // (07/11, décision de Nico — Marta MELE) TANT QUE LA COULEUR N'EST PAS PROUVÉE SUR UNE VRAIE PAGE VINTED NON
+        // FRANÇAISE, AUCUNE ANNONCE VINTED HORS FRANCE N'EST RETIRÉE POUR REPUBLICATION, chez aucun compte : une
+        // republication Vinted dont la page n'est pas française (langue lue sur ce que Vinted a montré au compte, ou pays
+        // de la sonde) et qui n'a encore rien retiré n'est pas servie — l'annonce reste en ligne, intacte. Interrupteur :
+        // coin_config 'vinted_republication_hors_fr_prouvee' = 1 (posé après la preuve) ; absent ou 0 = retenue.
+        // Une remise en ligne DÉJÀ retirée (étape 'deleted') n'est pas retenue : elle ne retire rien de plus.
+        const { data: cfgPreuveHorsFr } = await configUne(userClient, "vinted_republication_hors_fr_prouvee", versionCoinConfig);
+        const horsFrProuve = Number((cfgPreuveHorsFr as { value?: unknown } | null)?.value) === 1;
+        const retenuesHorsFr = new Set<string>();
+        let essaiHorsFr: boolean | null = null;
         for (const j of jobsVinted) {
           const pf = (j.platform_fields && typeof j.platform_fields === "object")
             ? (j.platform_fields as Record<string, unknown>) : null;
@@ -13580,6 +13816,24 @@ serve(async (req) => {
           // annonce, seul le libellé change. Une page française (langue « fr »
           // ou inconnue) n'est jamais concernée.
           const francaisPageEtrangere = (!pays.length || pays.includes("FR")) && !!langue && langue !== "fr";
+          // (07/11, Marta) La republication d'une page non française qui n'a rien retiré attend la preuve de la couleur.
+          // La langue de la PAGE décide (le chemin fautif est celui des pages non françaises) ; inconnue : le pays de la sonde.
+          // Un compte belge dont la page est en français suit le chemin français, éprouvé (2 501 republications avec couleur).
+          const pageNonFrancaise = langue ? langue !== "fr" : (pays.length > 0 && !pays.includes("FR") && !pays.includes("BE") && !pays.includes("LU"));
+          if (!horsFrProuve && j.action === "republish" && pageNonFrancaise
+              && !["deleted", "recreated"].includes(String(pf.republish_step ?? ""))) {
+            // L'essai réel de la preuve (compte de Nico, annonce ≥ 999 €) : seul un compte au drapeau beta
+            // `vinted_essai_hors_fr` (profiles.beta_flags, fermé en écriture au client) est servi.
+            if (essaiHorsFr === null) {
+              const flagsEssai = betaFlagsDuPoll !== undefined ? betaFlagsDuPoll
+                : ((await userClient.from("profiles").select("beta_flags").eq("id", user.id).maybeSingle()).data?.beta_flags ?? null) as Record<string, unknown> | null;
+              essaiHorsFr = (flagsEssai as Record<string, unknown> | null)?.vinted_essai_hors_fr === true;
+            }
+            if (!essaiHorsFr) {
+              retenuesHorsFr.add(String(j.id));
+              continue;
+            }
+          }
           if (!francaisPageEtrangere) {
             // (28/10, mele.marta 2fd83d73) PAYS NON LU — sonde muette (« jeton_expire_session_ouverte »), publication
             // sans capture : l'autorisation n'est pas servie, mais les langues dont tous les pays sont ouverts le
@@ -13613,6 +13867,10 @@ serve(async (req) => {
           }];
           etats++;
           console.log(`[get-pending-jobs] user=${user.id} job=${String(j.id).slice(0, 8)} : état Vinted servi en ${langue} (status ${statusId} → « ${valeur} »)`);
+        }
+        if (retenuesHorsFr.size) {
+          out = out.filter((j) => !retenuesHorsFr.has(String(j.id)));
+          console.log(`[get-pending-jobs] user=${user.id} : ${retenuesHorsFr.size} republication(s) Vinted d'une page non française retenue(s) AVANT tout retrait — la couleur n'est pas encore prouvée hors de France (annonces en ligne, intactes)`);
         }
         if (fermes) console.log(`[get-pending-jobs] user=${user.id} : ${fermes} job(s) Vinted d'un pays FERMÉ (coin_config vinted_pays_*) — servis comme avant`);
         if (autorises || etats || sansPays) console.log(`[get-pending-jobs] user=${user.id} : zone euro — ${autorises} job(s) autorisé(s) par identifiant, ${etats} état(s) servi(s) dans la langue du compte, ${sansPays} job(s) servi(s) avec les langues ouvertes (pays du compte non lu)`);

@@ -13,10 +13,13 @@
 -- LA RÈGLE (remises_en_vente_tick, avant l'appui ET juste avant de créer la publication) :
 --   A1 fiche hors stock (vendue, quantité 0, fondue, effacée) → la proposition se ferme « plus_en_stock » ;
 --   A2 fiche JUMELLE PROUVÉE (fiche_jumelle_prouvee : même compte, née d'un relevé, même boutique Vinted quand les deux
---      en ont une, apparue APRÈS la vente, ≥ 2 photos quasi identiques — dHash ≤ 4 — ou 1 si un côté n'a qu'une photo,
---      entre les photos de la fiche et de ses dépôts et celles de la jumelle, l'ancienne annonce jamais revue en ligne
---      depuis l'apparition de la jumelle, un seul exemplaire de chaque côté, UNE SEULE jumelle) → TOUTES les plateformes
---      de la remise se ferment :
+--      en ont une, apparue APRÈS la vente, l'ancienne annonce jamais revue en ligne depuis l'apparition de la jumelle, un
+--      seul exemplaire de chaque côté, UNE SEULE jumelle, et la PREUVE SOLIDE des photos — décision de Nico du 07/11 :
+--      chaque fiche porte au moins 2 photos ; au moins 2 photos DIFFÉRENTES de la jumelle sont chacune quasi identiques
+--      (dHash ≤ 4) à une photo DIFFÉRENTE de la fiche ou de ses dépôts ; ces photos communes font au moins la MOITIÉ des
+--      photos de chaque fiche ; aucune autre fiche candidate n'a la moindre photo commune. Plus jamais « 1 photo suffit »
+--      (la spatule de 02ca0f20 : une photo de chaque côté → la ligne RESTE ; le pantalon de f0acd3af : 2 photos communes
+--      sur 7 et 9 → RESTE) → TOUTES les plateformes de la remise se ferment :
 --      jumelle vendue « vendu_sous_autre_fiche », jumelle en stock et en ligne « deja_en_vente_autre_fiche ».
 --      Jamais sur un titre. Doute (deux jumelles, en ligne ensemble, photos différentes) = la ligne reste.
 --   « Ne pas remettre en vente » : ventes_annulees_ne_pas_remettre(p_inventaire) (le compte appelant, CETTE fiche) →
@@ -25,6 +28,8 @@
 -- Ce qui ne change PAS : la remise acceptée d'une fiche sans jumelle (hors quota, relevé attendu, « Republier » Vinted),
 -- les autres remises en vente, la fusion des fiches (aucune fusion, aucune question posée ici), aucun mail, aucun retrait.
 -- CPU : mesuré en lecture le 07/11 sur la prod (48 fiches proposées) : 236 ms pour toutes ; borné à 50 fiches par passage.
+-- Re-mesuré le 07/11 après le seuil solide (EXPLAIN ANALYZE, corps inlinés pour toutes les fiches d'un coup) : ~650 ms,
+-- le même coût que l'ancien seuil mesuré de la même façon (650-726 ms).
 -- Définitions réécrites depuis pg_get_functiondef EN PRODUCTION (07/11 : remises_en_vente_tick md5
 -- 8727977d992fbdf357f76718908554ca, ventes_annulees_a_remettre md5 9dd603b95e08cd6d8c91587be2ad4882) ; inverse :
 -- supabase/rollbacks/20261107150000_ventes_annulees_fermeture_INVERSE.sql ; preuve (Postgres jetable) :
@@ -73,8 +78,15 @@ $function$;
 -- remis en ligne = le doute), l'ancienne annonce (son numéro Vinted, ceux de ses dépôts) a été revue en ligne depuis
 -- l'apparition de t, ou une autre annonce de la fiche a été vue en ligne depuis (en ligne ensemble = deux exemplaires).
 -- t : même compte, non fondue, un exemplaire au plus, née d'un relevé (origine vinted_sync / releve_*), même boutique
--- Vinted quand les deux en ont une, apparue (créée ou vue en premier) APRÈS la vente, numéro Vinted différent ; photos : ≥ 2 photos de t à dHash ≤ 4 d'une photo de la fiche
--- ou de ses dépôts (publish / republish) — 1 suffit si la fiche ou t n'a qu'une photo.
+-- Vinted quand les deux en ont une, apparue (créée ou vue en premier) APRÈS la vente, numéro Vinted différent.
+-- PHOTOS — la preuve SOLIDE (décision de Nico du 07/11 ; « 1 photo suffit » est retiré) :
+--   · la fiche ET t portent chacune au moins 2 photos ;
+--   · au moins 2 photos de t à dHash ≤ 4 d'une photo de la fiche ou de ses dépôts (publish / republish), dont deux
+--     DIFFÉRENTES (dHash > 4 entre elles) appariées à deux photos DIFFÉRENTES de la fiche (une même image en double
+--     ne compte qu'une fois) ;
+--   · ces photos communes font au moins la MOITIÉ des photos de la fiche et de celles de t (2 photos communes sur 7
+--     et 9 : une ressemblance, pas la même annonce — le pantalon de f0acd3af, 07/11) ;
+--   · aucune AUTRE fiche candidate n'a la moindre photo commune (une ressemblance de plus = le doute).
 CREATE OR REPLACE FUNCTION public.fiche_jumelle_prouvee(p_user uuid, p_fiche bigint, p_apres timestamp with time zone)
  RETURNS TABLE(jumelle bigint, motif text, photos_communes integer)
  LANGUAGE sql
@@ -130,17 +142,27 @@ AS $function$
       CROSS JOIN LATERAL (SELECT CASE jsonb_typeof(x) WHEN 'string' THEN x #>> '{}' WHEN 'object' THEN x ->> 'url' END AS url) u
       JOIN public.photo_empreintes pe ON pe.url = u.url AND pe.dhash ~ '^[01]{64}$'
   ),
-  communes AS (
-    SELECT pt.id, LEAST(count(DISTINCT pt.url), count(DISTINCT ef.d)) AS n
+  paires AS (
+    SELECT pt.id, pt.url, pt.d AS td, ef.d AS fd
       FROM photos_t pt JOIN emp_f ef ON bit_count(pt.d # ef.d) <= 4
-     GROUP BY pt.id
+  ),
+  communes AS (
+    SELECT p.id, LEAST(count(DISTINCT p.url), count(DISTINCT p.fd)) AS n,
+           -- deux photos DIFFÉRENTES de t, appariées à deux photos DIFFÉRENTES de la fiche (jamais une image en double)
+           bool_or(EXISTS (SELECT 1 FROM paires q
+                            WHERE q.id = p.id AND q.url <> p.url
+                              AND bit_count(q.td # p.td) > 4 AND bit_count(q.fd # p.fd) > 4)) AS deux_differentes
+      FROM paires p
+     GROUP BY p.id
   ),
   prouvees AS (
     SELECT c.id, c.statut, cm.n
-      FROM cand c JOIN communes cm ON cm.id = c.id, f
-     WHERE (cm.n >= 2
-            OR (cm.n >= 1 AND (jsonb_array_length(CASE WHEN jsonb_typeof(c.photos) = 'array' THEN c.photos ELSE '[]'::jsonb END) <= 1
-                               OR jsonb_array_length(CASE WHEN jsonb_typeof(f.photos) = 'array' THEN f.photos ELSE '[]'::jsonb END) <= 1)))
+      FROM cand c JOIN communes cm ON cm.id = c.id, f,
+           LATERAL (SELECT jsonb_array_length(CASE WHEN jsonb_typeof(c.photos) = 'array' THEN c.photos ELSE '[]'::jsonb END) AS nt,
+                           jsonb_array_length(CASE WHEN jsonb_typeof(f.photos) = 'array' THEN f.photos ELSE '[]'::jsonb END) AS nf) k
+     -- (07/11, décision de Nico) la preuve SOLIDE : ≥ 2 photos de chaque côté, ≥ 2 photos communes DIFFÉRENTES, au moins
+     -- la moitié des photos de chaque fiche ; jamais « 1 photo suffit »
+     WHERE cm.n >= 2 AND cm.deux_differentes AND k.nt >= 2 AND k.nf >= 2 AND 2 * cm.n >= k.nt AND 2 * cm.n >= k.nf
        AND NOT EXISTS (
              SELECT 1 FROM public.vinted_listing_snapshots s
               WHERE s.user_id = p_user AND s.vinted_item_id IN (SELECT a.id FROM anciennes a)
@@ -166,6 +188,8 @@ AS $function$
          p.n::integer AS photos_communes
     FROM prouvees p
    WHERE (SELECT count(*) FROM prouvees) = 1
+     -- une seule fiche, parmi toutes les candidates, a la moindre photo commune (une seconde ressemblance = le doute)
+     AND (SELECT count(*) FROM communes) = 1
 $function$;
 
 -- ── Fermer TOUTES les plateformes d'une remise après vente annulée dont la jumelle est prouvée ──
