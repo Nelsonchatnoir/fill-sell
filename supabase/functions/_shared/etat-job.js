@@ -76,6 +76,13 @@ export const SOURCES_AUTOMATIQUES = Object.freeze({
   lbc_moderation: "lbc_moderation",
 });
 
+// (07/11 nuit) La remise en vente Leboncoin qui attend la disparition de son annonce vendue : les valeurs de
+// _shared/remise-en-vente-attente.js (CLE_ATTENTE_VENDUE, ETATS_RETENUS, BORNE_ATTENTE_VENDUE_MS), RECOPIÉES ici (ce
+// module est recopié tel quel dans l'extension, sans import de plus) — selftest:etat-job vérifie qu'elles sont égales.
+export const CLE_ATTENTE_VENDUE_EJ = "attente_annonce_vendue";
+export const ETATS_ATTENTE_VENDUE_EJ = new Set(["vente_en_cours", "vendue_affichee", "a_relire"]);
+export const BORNE_ATTENTE_VENDUE_MS_EJ = 48 * 3600_000;
+
 // Les motifs TECHNIQUES d'une republication mise en pause avant tout retrait :
 // la reprise sur preuve de handler-watch les relance seule — même liste
 // qu'au serveur (handler-watch, reprise sur preuve).
@@ -269,6 +276,20 @@ export function etatJob(j, ctx = {}) {
       if (cr && cr.dans_creneau === false) return { etat: ETATS.EN_PAUSE, motif: "creneau" };
     }
     if (ctx.plateformesEnPause?.has?.(j.platform)) return { etat: ETATS.EN_PAUSE, motif: "plateforme" };
+    // (07/11 nuit, Louis — point 2 de Nico) Une REMISE EN VENTE Leboncoin retenue parce que son annonce vendue est
+    // encore affichée (get-pending-jobs, _shared/remise-en-vente-attente.js, marqueur attente_annonce_vendue) : jamais
+    // en silence. En pause, la raison nommée ; au-delà de la borne, « À toi de jouer » : supprimer l'annonce vendue sur
+    // Leboncoin (elle partira seule ensuite). Avant : « En file » ou « nouvel essai automatique », 9 remises de Louis.
+    const av = objet(pf[CLE_ATTENTE_VENDUE_EJ]);
+    if (j.platform === "leboncoin" && j.action === "publish" && ETATS_ATTENTE_VENDUE_EJ.has(String(av.etat ?? ""))) {
+      const detail = { annonce: av.annonce_vendue ? String(av.annonce_vendue) : null, etat: String(av.etat) };
+      const depuis = Date.parse(String(av.depuis ?? ""));
+      const maintenantAv = ctx.maintenant ?? Date.now();
+      if (Number.isFinite(depuis) && maintenantAv - depuis >= BORNE_ATTENTE_VENDUE_MS_EJ && av.etat !== "a_relire") {
+        return { etat: ETATS.A_TOI, motif: "remise_vendue_a_retirer", detail };
+      }
+      return { etat: ETATS.EN_PAUSE, motif: `remise_${av.etat}`, detail };
+    }
     // (02/11, dsjhdhayoub — tout le parc) L'ORDINATEUR ÉTEINT (constaté) PRIME SUR « NOUVEL ESSAI AUTOMATIQUE » : 4
     // publications attendaient depuis le 30/10 un Mac en veille ; les 3 sans message disaient « ordinateur éteint »,
     // la 4e — remise en file par handler-watch avec son message « dès que Chrome sera ouvert » — disait « nouvel essai

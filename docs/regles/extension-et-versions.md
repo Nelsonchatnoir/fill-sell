@@ -307,6 +307,14 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   613 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-07T19:56:07Z (72a36f2). Seul zip à téléverser (contient la
   0.6.178, rangée dans `build/anciens-zips/CWS-0.6.178-A-TELEVERSER`).
 
+## 07/11 nuit — 0.6.180 : la remise en vente Leboncoin qui attend sa vendue se dit (rapport `docs/enquetes/louis-remises-lbc-0711/RAPPORT.md`)
+- La 0.6.179 + la recopie de `_shared/etat-job.js` (`chrome-extension/etat-job.js`, générée) : une remise Leboncoin retenue
+  parce que son annonce vendue est encore affichée est « En pause » (achat en cours, « Article vendu », relecture) puis,
+  au-delà de 48 h, « À toi de jouer » (supprimer l'annonce vendue). Rien d'autre ne change dans l'extension.
+- À téléverser AVEC le feu vert du point 2 (get-pending-jobs qui pose la raison) : sans lui, la raison n'est jamais posée
+  et la 0.6.180 se comporte comme la 0.6.179.
+- Livrable : voir l'état de prod (`docs/agents/etat-2026-10-01.md`, § 07/11 nuit Louis) — numéro, BUILD_ID, chemin du zip.
+
 ## 07/11 soir — essai TestFlight de Nico : jamais le bandeau « Mettre à jour l'extension » à un client Cloud
 - `extBannerVisible` (App.jsx) = `bandeauMajExtensionVisible` (`src/cloud/voieCloud.js`) : extension « périmée » ET état
   Cloud lu (`useEtatCompteCloud`) ET pas client Cloud. Cause vue le 07/11 : le poste Cloud rafraîchit

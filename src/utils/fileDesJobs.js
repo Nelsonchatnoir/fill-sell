@@ -128,6 +128,11 @@ const TEXTE = {
     attente_remise: (p, autre, titre) => (autre
       ? `En attente : ${p} repart dès que ton annonce ${autre} est revenue en ligne — rien n'a été retiré`
       : `En attente : ${p} repart dès que ton annonce${titre ? ` « ${titre} »` : ""} retirée sur une autre plateforme est revenue en ligne — rien n'a été retiré`),
+    // (07/11 nuit, Louis — point 2) La remise en vente Leboncoin qui attend la disparition de son annonce vendue.
+    remise_vente_en_cours: (n) => `En pause : l'achat de ton annonce vendue${n ? ` n° ${n}` : ""} est en cours sur Leboncoin, qui la garde affichée et refuse une annonce identique tant qu'elle y est — la remise en vente partira toute seule dès qu'elle aura disparu`,
+    remise_vendue_affichee: (n) => `En pause : Leboncoin affiche encore ton annonce vendue${n ? ` n° ${n}` : ""} (« Article vendu ») et refuse une annonce identique tant qu'elle y est — la remise en vente partira toute seule dès qu'elle aura disparu`,
+    remise_a_relire: (n) => `En pause : FillSell relit tes annonces Leboncoin pour savoir si ton annonce vendue${n ? ` n° ${n}` : ""} est encore affichée — la remise en vente partira toute seule ensuite`,
+    remise_vendue_a_retirer: (n) => `À toi de jouer : Leboncoin affiche toujours ton annonce vendue${n ? ` n° ${n}` : ""} et refuse une annonce identique tant qu'elle y est. Une fois la vente terminée, supprime-la sur Leboncoin (Mes annonces) : la remise en vente partira toute seule`,
   },
   en: {
     tour: "Queued: it goes out in turn",
@@ -172,6 +177,10 @@ const TEXTE = {
       ? `Waiting: ${p} resumes as soon as your ${autre} listing is back online — nothing was removed`
       : `Waiting: ${p} resumes as soon as your listing${titre ? ` “${titre}”` : ""} removed on another platform is back online — nothing was removed`),
     en_cours_serveurs: "In progress on our servers",
+    remise_vente_en_cours: (n) => `Paused: the purchase of your sold listing${n ? ` no. ${n}` : ""} is in progress on Leboncoin, which keeps it displayed and refuses an identical listing while it is there — relisting goes out on its own as soon as it is gone`,
+    remise_vendue_affichee: (n) => `Paused: Leboncoin still shows your sold listing${n ? ` no. ${n}` : ""} (“Article vendu”) and refuses an identical listing while it is there — relisting goes out on its own as soon as it is gone`,
+    remise_a_relire: (n) => `Paused: FillSell is re-reading your Leboncoin listings to know whether your sold listing${n ? ` no. ${n}` : ""} is still displayed — relisting goes out on its own afterwards`,
+    remise_vendue_a_retirer: (n) => `Your move: Leboncoin still shows your sold listing${n ? ` no. ${n}` : ""} and refuses an identical listing while it is there. Once the sale is complete, delete it on Leboncoin (My listings): relisting goes out on its own`,
   },
 };
 
@@ -217,6 +226,10 @@ export function situationJob(j, ctx = {}) {
       raison = T.attente_remise(nom, autre ? nomPlateforme(autre) : null, v.detail?.titre ?? null);
       break;
     }
+    case "remise_vente_en_cours":
+    case "remise_vendue_affichee":
+    case "remise_a_relire":
+    case "remise_vendue_a_retirer": raison = T[v.motif](v.detail?.annonce ?? null); break;
     case "releve": raison = T.releve(nom); break;
     case "technique": raison = T.technique(nom); break;
     case "ecartee": raison = T.ecartee(nom); break;

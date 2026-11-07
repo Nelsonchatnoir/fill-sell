@@ -32,7 +32,13 @@ console.log('2. Un par un, chacun vu en ligne avant le suivant');
 {
   const m = [tache(1), tache(2), tache(3)];
   ok(decisionSerie(m[0], m, { maintenant: T(1) }).servir, 'rang 1 : part');
-  ok(!decisionSerie(m[1], m, { maintenant: T(1) }).servir, 'rang 2 : attend que le rang 1 soit parti');
+  // (07/11 nuit, point 2 de Nico) Une tâche qui ATTEND ne bloque jamais les suivantes : le rang 1 en attente (retenu par
+  // la règle A, ou pas encore servi) ne tient plus le rang 2 ; get-pending-jobs sert le plus petit rang qui peut partir,
+  // un seul par passage (unePartie).
+  ok(decisionSerie(m[1], m, { maintenant: T(1) }).servir, 'rang 2 : le rang 1 qui attend (pending) ne le bloque plus');
+  const enCours = [tache(1, 'processing'), tache(2)];
+  ok(!decisionSerie(enCours[1], enCours, { maintenant: T(1) }).servir && /rang_1_en_cours/.test(decisionSerie(enCours[1], enCours, { maintenant: T(1) }).motif),
+    'rang 1 en cours de dépôt : le rang 2 attend (jamais deux dépôts à la fois)');
   const p1 = [tache(1, 'published', { published_at: iso(5) }), tache(2), tache(3)];
   const d = decisionSerie(p1[1], p1, { maintenant: T(20) });
   ok(!d.servir && /pas_encore_vu_en_ligne/.test(d.motif) && !d.demanderReleve, 'rang 1 parti, pas encore vu : rang 2 attend, pas de relevé avant 45 min', d);
@@ -42,7 +48,17 @@ console.log('2. Un par un, chacun vu en ligne avant le suivant');
   const vu = [tache(1, 'published', { published_at: iso(5), vu_en_ligne_le: iso(25) }), tache(2), tache(3)];
   ok(!decisionSerie(vu[1], vu, { maintenant: T(30) }).servir && decisionSerie(vu[1], vu, { maintenant: T(30) }).motif === 'intervalle', 'vu en ligne (veille) mais moins de 60 min : attend l\'intervalle');
   ok(decisionSerie(vu[1], vu, { maintenant: T(66) }).servir, 'vu en ligne et 60 min passées : rang 2 part');
-  ok(!decisionSerie(vu[2], vu, { maintenant: T(66) }).servir, 'rang 3 : attend le rang 2 (jamais deux à la fois)');
+  const deux = [tache(1, 'published', { published_at: iso(5), vu_en_ligne_le: iso(25) }), tache(2, 'published', { published_at: iso(66) }), tache(3)];
+  ok(!decisionSerie(deux[2], deux, { maintenant: T(70) }).servir && /rang_2_pas_encore_vu/.test(decisionSerie(deux[2], deux, { maintenant: T(70) }).motif),
+    'rang 2 parti, pas encore vu : le rang 3 attend (jamais deux à la fois)');
+  const deuxVu = [deux[0], tache(2, 'published', { published_at: iso(66), vu_en_ligne_le: iso(80) }), tache(3)];
+  ok(!decisionSerie(deuxVu[2], deuxVu, { maintenant: T(100) }).servir && decisionSerie(deuxVu[2], deuxVu, { maintenant: T(100) }).motif === 'intervalle'
+    && decisionSerie(deuxVu[2], deuxVu, { maintenant: T(127) }).servir, "l'intervalle court depuis le DERNIER dépôt de la série (rang 2), pas depuis le rang 1");
+  // Louis, 06/11 22:01 → 07/11 22:18 : rangs 1-4 retenus par la règle A (pending), rang 5 (vendue disparue) servable.
+  const louis = [tache(1, 'pending'), tache(2, 'pending'), tache(3, 'pending'), tache(4, 'pending'), tache(5, 'pending')];
+  ok(decisionSerie(louis[4], louis, { maintenant: T(600) }).servir, 'cas réel de Louis : le rang 5 part même si les rangs 1 à 4 attendent leur vendue (avant : « attend_rang_1 » 24 h)');
+  const avantSerie = [tache(1, 'published', { published_at: '2026-11-06T06:22:00Z' }), tache(2)];
+  ok(decisionSerie(avantSerie[1], avantSerie, { maintenant: T(1) }).servir, "un dépôt d'AVANT le début de la série n'en est pas une étape (ni attente, ni intervalle)");
   const parReleve = [tache(1, 'published', { published_at: iso(5) }), tache(2)];
   ok(decisionSerie(parReleve[1], parReleve, { maintenant: T(70), vuesParReleve: new Set(['job-1']) }).servir, 'vu par un relevé commencé après le dépôt : compte comme vu');
   const vieux = [tache(1, 'published', { published_at: iso(5), vu_en_ligne_le: iso(1) }), tache(2)];
@@ -54,7 +70,9 @@ console.log('3. Arrêt au premier refus');
   const refus = [tache(1, 'published', { published_at: iso(5), vu_en_ligne_le: iso(25) }), tache(2, 'failed'), tache(3)];
   ok(!decisionSerie(refus[2], refus, { maintenant: T(300) }).servir && /serie_arretee/.test(decisionSerie(refus[2], refus, { maintenant: T(300) }).motif), 'une tâche « failed » : plus rien ne part');
   const q = [tache(1, 'needs_user'), tache(2)];
-  ok(!decisionSerie(q[1], q, { maintenant: T(300) }).servir, 'une tâche « needs_user » : plus rien ne part');
+  ok(decisionSerie(q[1], q, { maintenant: T(300) }).servir, 'une tâche « needs_user » (une question) : une attente, la série continue');
+  const qr = [tache(1, 'needs_user', { pf: { needs_user_source: 'lbc_moderation' } }), tache(2)];
+  ok(!decisionSerie(qr[1], qr, { maintenant: T(300) }).servir, 'une tâche « needs_user » sur un REFUS de la plateforme (modération) : plus rien ne part');
   const b = [tache(1, 'pending', { pf: { depots_refuses_lbc: [{ at: iso(10), numero: '1' }] } }), tache(2)];
   ok(!decisionSerie(b[0], b, { maintenant: T(300) }).servir, 'un dépôt refusé noté APRÈS le début de la série (règle B) : arrêt, même pour elle');
   const avant = [tache(1, 'pending', { pf: { depots_refuses_lbc: [{ at: '2026-11-06T11:28:59Z', numero: '3303252818' }] } }), tache(2)];
@@ -78,7 +96,7 @@ console.log('4. Branchement : get-pending-jobs, règle A RÉTABLIE (07/11, optio
   const g = lire('supabase/functions/get-pending-jobs/index.ts');
   ok(/from "\.\.\/_shared\/serie-un-par-un\.js"/.test(g) && /decisionSerie\(/.test(g), 'get-pending-jobs décide par decisionSerie');
   ok(/serveur:verif_redepot/.test(g.slice(g.indexOf('decisionSerie('))), 'le relevé demandé est un relevé serveur de vérification (lecture seule)');
-  ok(/remise-en-vente-attente/.test(g) && /remiseAAttendre/.test(g) && /annonceVendueEncoreEnLigne/.test(g),
+  ok(/remise-en-vente-attente/.test(g) && /remiseAAttendre/.test(g) && /etatAnnonceVendue\(/.test(g),
     'règle A rétablie : la remise attend que l\'annonce vendue identique ait disparu');
   ok(existsSync(path.join(RACINE, 'supabase/functions/_shared/remise-en-vente-attente.js'))
     && g.indexOf('let heldRemisesLbc = 0;') > 0 && g.indexOf('let heldRemisesLbc = 0;') < g.indexOf('let heldSerie = 0;'),

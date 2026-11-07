@@ -11,7 +11,7 @@ import { grilleDuDernierEchecTaille, normaliserTaille, tailleAServir } from "../
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // update-job-status — une remise en pending automatique n'efface plus le motif.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
-import { annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, decisionRearmementRemise, champsRearmementRemise, FENETRE_REARMEMENT_MS } from "../_shared/remise-en-vente-attente.js";
+import { annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, decisionRearmementRemise, champsRearmementRemise, FENETRE_REARMEMENT_MS, decisionRetraitVendueClose } from "../_shared/remise-en-vente-attente.js";
 // (06/10, Glowik) Un échec qu'une extension corrige repart dès que le poste l'a.
 import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj } from "../_shared/relance-apres-maj.js";
 import { MESSAGE_REPUBLICATION_ARTICLE_VENDU } from "../_shared/relance-apres-maj.js";
@@ -187,6 +187,11 @@ const JUGER_DEPOTS_RETROUVES = true;
 // neuve, journal inventaire_fusions, recoller) — fonction NON écrite le 07/11 (0 cas sur 30 jours : les trois dépôts
 // retrouvés avaient une fiche neuve née AVANT eux). Tant qu'elle n'existe pas, ce cas pose la question (voie sûre).
 const DEPOT_RETROUVE_RATTACHER_RPC = false;
+// (07/11 nuit, Nico — Louis) Une fois la vente Leboncoin CLOSE (transaction « sold »), FillSell retire l'annonce vendue
+// encore affichée, puis la remise part (_shared/remise-en-vente-attente.js, decisionRetraitVendueClose). Jamais pendant
+// un achat en cours. Prouvée le 07/11 au soir sur les 4 annonces de Louis (feu vert nommé, une par une). COUPÉ pour tous
+// les comptes jusqu'au feu vert nommé de Nico. Allumer = true + redéployer handler-watch.
+const RETIRER_VENDUES_CLOSES = false;
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
@@ -3292,6 +3297,61 @@ serve(async (req) => {
       if (remisesRearmees) console.log(`[handler-watch] règle A : ${remisesRearmees} remise(s) Leboncoin remise(s) en attente de la disparition de la vendue`);
     } catch (e) {
       console.error("[handler-watch] règle A (remises closes) :", (e as Error)?.message ?? e);
+    }
+  }
+
+  // ══ (07/11 nuit, Nico — Louis) UNE FOIS LA VENTE CLOSE, FILLSELL RETIRE L'ANNONCE VENDUE, PUIS LA REMISE PART ══
+  // (_shared/remise-en-vente-attente.js, decisionRetraitVendueClose ; interrupteur RETIRER_VENDUES_CLOSES) Une remise
+  // Leboncoin en attente dont l'annonce vendue est encore affichée avec une transaction CLOSE (« sold », lue depuis 24 h au
+  // plus) : UNE tâche de retrait de CETTE annonce, par son numéro et son lien (le chemin normal de l'extension). Le
+  // retrait fait (« deleted »), la base note l'annonce retirée et get-pending-jobs sert la remise au passage suivant.
+  // Jamais pendant un achat en cours (« pending »). Un passage par quart d'heure, 20 retraits au plus.
+  let vendusRetires = 0;
+  if (RETIRER_VENDUES_CLOSES && new Date().getUTCMinutes() % 15 >= 5 && new Date().getUTCMinutes() % 15 < 8) {
+    try {
+      const { data: attente } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, inventaire_id, platform, action, status, created_at, platform_fields")
+        .eq("platform", "leboncoin").eq("action", "publish").eq("status", "pending")
+        .not("platform_fields->remise_en_vente", "is", null)
+        .order("created_at", { ascending: true }).limit(50);
+      // deno-lint-ignore no-explicit-any
+      for (const r of (attente ?? []) as any[]) {
+        if (vendusRetires >= 20) break;
+        const vendue = annonceVendueDeLaRemise(r);
+        if (!vendue) continue;
+        const { data: lignesV } = await supabase.from("annonces_plateforme")
+          .select("id, user_id, inventaire_id, job_id, listing_id, url, titre, statut_plateforme, disparu_le, retiree_le, ignoree_le, transaction_plateforme, transaction_lue_le")
+          .eq("user_id", r.user_id).eq("platform", "leboncoin").eq("listing_id", vendue).limit(1);
+        // deno-lint-ignore no-explicit-any
+        const ligne = ((lignesV ?? []) as any[])[0] ?? null;
+        const { data: ouverts } = await supabase.from("cross_post_jobs").select("id")
+          .eq("user_id", r.user_id).eq("platform", "leboncoin").eq("action", "delete")
+          .in("status", ["pending", "processing", "needs_user"]).eq("platform_listing_id", vendue).limit(1);
+        const d = decisionRetraitVendueClose({ remise: r, ligne, retraitOuvert: (ouverts ?? []).length > 0 });
+        if (!d.armer) continue;
+        const url = String(ligne.url ?? "").trim() || null;
+        const { data: cree, error: iErr } = await supabase.from("cross_post_jobs").insert({
+          user_id: r.user_id, inventaire_id: ligne.inventaire_id ?? r.inventaire_id, platform: "leboncoin", action: "delete",
+          status: "pending", photo_option: "original", title: String(ligne.titre ?? "").trim() || null, listing_url: url,
+          platform_listing_id: String(ligne.listing_id).trim(),
+          platform_fields: {
+            arme_par: { chemin: "vendue_close_avant_remise", le: new Date().toISOString(), annonce: ligne.id, depot: ligne.job_id,
+              remise: r.id, pose_par: "handler-watch (remise-en-vente-attente : vente close, l'annonce vendue est retirée avant la remise)" },
+            preuve: "vente_close_transaction_sold",
+            transaction_lue: { valeur: ligne.transaction_plateforme, le: ligne.transaction_lue_le },
+            ...(url ? {} : { removal_url_missing: true }),
+          },
+        }).select("id").maybeSingle();
+        if (iErr || !cree) { console.warn(`[handler-watch] vendue close ${vendue} : retrait non créé (${iErr?.message ?? "?"})`); continue; }
+        await supabase.from("usage_logs").insert({ user_id: r.user_id, feature: "retrait_annonces", metadata: {
+          chemin: "vendue_close_avant_remise", plateformes: ["leboncoin"], n_annonces: 1, n_articles: 1,
+          article_id: String(ligne.inventaire_id ?? r.inventaire_id ?? ""), annonce: ligne.id, listing_id: vendue } });
+        vendusRetires++;
+        console.log(`[handler-watch] vente close : retrait de l'annonce vendue ${vendue} armé (${String((cree as { id: string }).id).slice(0, 8)}) — la remise ${String(r.id).slice(0, 8)} partira après`);
+      }
+      if (vendusRetires) console.log(`[handler-watch] vente close : ${vendusRetires} annonce(s) vendue(s) Leboncoin à retirer avant leur remise`);
+    } catch (e) {
+      console.error("[handler-watch] vente close (retrait des vendues) :", (e as Error)?.message ?? e);
     }
   }
 

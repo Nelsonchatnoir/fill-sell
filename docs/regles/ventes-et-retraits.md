@@ -657,3 +657,28 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
 - Une remise déjà close (cancelled / failed) ou publiée jamais vue depuis 2 h, vendue encore affichée, dépôt jamais vu,
   aucune autre annonce non vendue de la fiche en ligne → remise en attente (dépôt refusé archivé dans
   `depots_desactives_regle_a`), 3 fois au plus, 14 jours : handler-watch, un passage par quart d'heure.
+
+## ⛔ 07/11 nuit — Remise Leboncoin : l'état de l'annonce vendue décide, ça se voit, et la vente close se retire (Louis ; rapport `docs/enquetes/louis-remises-lbc-0711/RAPPORT.md`)
+- **Preuve (07/11)** : le 3e de Louis (vendue 3297440551 supprimée par lui) part dès qu'il sort de la série — 3304491516
+  en ligne et achetable à 22:21 ; les 4 dépôts faits vendue affichée ont tous été désactivés (410). Leboncoin garde une
+  vendue affichée des mois (111 « sold » vues vivantes en 3 jours, 48 publiées il y a plus de deux mois).
+- **États de l'annonce vendue** (`_shared/remise-en-vente-attente.js`, `etatAnnonceVendue`, get-pending-jobs) : hors ligne
+  / inconnue → servie tout de suite ; vente en cours (`pending`), vendue affichée (`sold`), à relire → retenue avec la
+  raison écrite sur la tâche (`attente_annonce_vendue`, seulement quand elle change) ; affichée SANS transaction lue après
+  la remise → l'article est toujours en vente : remise close « cancelled », message vrai, jamais déposée.
+- **Visible et bornée** (`_shared/etat-job.js`, `src/utils/fileDesJobs.js`) : « En pause » avec la raison et le numéro ;
+  après 48 h (`BORNE_ATTENTE_VENDUE_MS`) « À toi de jouer : supprime-la sur Leboncoin » (jamais pour « à relire »).
+- **Relevés réguliers** : un compte dont une remise est retenue reçoit un relevé « Mes annonces » au plus toutes les
+  60 min (`serveur:verif_redepot`, lecture seule, jamais s'il y en a un en file).
+- **Série « une par une »** (`_shared/serie-un-par-un.js`) : un dépôt à la fois sur ce qui est RÉELLEMENT parti (en cours,
+  ou déposé et pas encore vu) ; une tâche qui attend est SAUTÉE ; l'intervalle court depuis le dernier dépôt de la série ;
+  `needs_user` n'arrête la série que sur un refus de la plateforme.
+- **Vente close → FillSell retire l'annonce vendue → la remise part** (`decisionRetraitVendueClose`, handler-watch,
+  interrupteur `RETIRER_VENDUES_CLOSES` — COUPÉ jusqu'au feu vert nommé de Nico) : transaction `sold` lue depuis 24 h au
+  plus, annonce de la remise seulement, un retrait par annonce, 20 par passage ; ⛔ jamais pendant un achat en cours.
+  Fait à la main pour Louis le 07/11 au soir sur feu vert nommé (4 annonces, une par une, page relue avant et après :
+  `scripts/reparations/20261107_louis_retraits_vendues_closes.mjs`).
+- Centre d'aide officiel de Leboncoin (lu le 07/11) : vendeur particulier — annulation automatique seulement sur
+  disponibilité non confirmée (3 j) ou envoi non confirmé (72 h) ; paiement débloqué à la validation (acheteur, ou d'office
+  sous 30 j) ; supprimer une annonce supprime ses options ; toute annonce est supprimée d'office au bout de deux mois.
+  Vendeur Pro : rétractation de 14 jours après réception avant le paiement.

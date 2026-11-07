@@ -137,6 +137,8 @@ const ICONES = {
   boutique: Pause, boutiques_a_ouvrir: Pause, plateforme: Pause, gel: Pause, ecartee: Pause, ebay_etranger: Pause,
   ordinateur: Monitor, ordinateur_session: Monitor, mise_a_jour: Monitor,
   geste: Hand, connexion: Hand, opla: Hand, depop: Hand, pas_partie: Hand,
+  // (07/11 nuit) Remise en vente Leboncoin qui attend la disparition de son annonce vendue.
+  remise_vente_en_cours: Clock, remise_vendue_affichee: Clock, remise_a_relire: ShieldCheck, remise_vendue_a_retirer: Hand,
 };
 
 // (26/10, Nico) Une ligne annulable : glisser vers la gauche révèle « Annuler » (téléphone), et une petite croix,

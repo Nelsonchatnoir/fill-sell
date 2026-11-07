@@ -71,6 +71,13 @@ const cas = [
   [job({ error: "x", platform_fields: { next_action_after: iso(20) } }), "en_pause", "essai", "nouvel essai programmé"],
   [job({ error: "Vinted n'a pas répondu" }), "en_pause", "essai", "une erreur sans échéance : nouvel essai"],
   [job({ platform_fields: { gel_livres_le: iso(-100) }, action: "republish" }), "en_pause", "gel", "gel livres"],
+  // (07/11 nuit, Louis) Remise en vente Leboncoin retenue : son annonce vendue est encore affichée — jamais en silence.
+  [job({ platform: "leboncoin", error: "x", platform_fields: { attente_annonce_vendue: { etat: "vente_en_cours", annonce_vendue: "3297400164", depuis: iso(-60) } } }), "en_pause", "remise_vente_en_cours", "remise : achat en cours sur la vendue (jamais « nouvel essai »)"],
+  [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "vendue_affichee", annonce_vendue: "3298491503", depuis: iso(-60) } } }), "en_pause", "remise_vendue_affichee", "remise : vendue affichée « Article vendu »"],
+  [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "a_relire", annonce_vendue: "1", depuis: iso(-60 * 24 * 9) } } }), "en_pause", "remise_a_relire", "remise : vendue à relire (jamais « à toi » : FillSell relit)"],
+  [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "vendue_affichee", annonce_vendue: "3298491503", depuis: iso(-60 * 49) } } }), "a_toi", "remise_vendue_a_retirer", "remise retenue au-delà de la borne → à toi de jouer (supprimer la vendue)"],
+  [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "vente_en_cours", annonce_vendue: "3297400164", depuis: iso(-60 * 49) } } }), "a_toi", "remise_vendue_a_retirer", "achat en cours au-delà de la borne → à toi de jouer (une fois la vente terminée)"],
+  [job({ platform: "vinted", platform_fields: { attente_annonce_vendue: { etat: "vendue_affichee", depuis: iso(-60) } } }), "en_file", "tour", "la raison ne joue que sur Leboncoin"],
 ];
 for (const [j, etat, motif, titre] of cas) {
   const v = e(j);
@@ -92,6 +99,21 @@ ok(e(job({ action: "republish", platform_fields: { republish_source: "auto" } })
 ok(e(job({ action: "republish", platform_fields: { republish_source: "auto" } }), { ...ctx, creneaux: { vinted: { actif: false } } }).motif === "auto_en_pause", "module auto en pause → en pause");
 ok(e(job({ platform: "opla" }), { ...ctx, oplaAAutoriser: true }).motif === "opla", "Opla à autoriser (verdict serveur) → à toi de jouer");
 ok(E.jobFini(job({ status: "published" })) && !E.jobFini(job({})), "jobFini : fini / vivant");
+{
+  // (07/11 nuit) Les valeurs recopiées dans etat-job.js sont celles de _shared/remise-en-vente-attente.js.
+  const RA = await imp("supabase/functions/_shared/remise-en-vente-attente.js");
+  ok(E.CLE_ATTENTE_VENDUE_EJ === RA.CLE_ATTENTE_VENDUE && E.BORNE_ATTENTE_VENDUE_MS_EJ === RA.BORNE_ATTENTE_VENDUE_MS
+    && [...E.ETATS_ATTENTE_VENDUE_EJ].sort().join() === [...RA.ETATS_RETENUS].sort().join(), "remise en attente : clé, états et borne identiques à remise-en-vente-attente.js");
+  const vendue = job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "vendue_affichee", annonce_vendue: "3298491503", depuis: iso(-60) } } });
+  const s1 = F.situationJob(vendue, { ...ctx, lang: "fr" });
+  ok(/3298491503/.test(s1.raison) && /Article vendu/.test(s1.raison) && /toute seule/.test(s1.raison) && E.sansEstimation(s1.raison) === s1.raison,
+    "la file dit la raison vraie, le numéro de la vendue, sans estimation", s1.raison);
+  const s2 = F.situationJob({ ...vendue, platform_fields: { attente_annonce_vendue: { ...vendue.platform_fields.attente_annonce_vendue, depuis: iso(-60 * 49) } } }, { ...ctx, lang: "fr" });
+  ok(s2.groupe === "a_toi" && /supprime-la sur Leboncoin/.test(s2.raison) && E.sansEstimation(s2.raison) === s2.raison, "après la borne : « À toi de jouer », le geste dit, sans durée", s2.raison);
+  ok(["remise_vente_en_cours", "remise_vendue_affichee", "remise_a_relire", "remise_vendue_a_retirer"].every((m) =>
+    E.sansEstimation(F.situationJob({ ...vendue, platform_fields: { attente_annonce_vendue: { etat: m.replace("remise_", "").replace("vendue_a_retirer", "vendue_affichee"), annonce_vendue: "1", depuis: iso(m === "remise_vendue_a_retirer" ? -60 * 49 : -60) } } }, { ...ctx, lang: "en" }).raison).length > 20),
+    "les quatre phrases existent aussi en anglais, sans estimation");
+}
 
 console.log("3. LE TON SUIT L'ÉTAT");
 ok(E.tonEtat("fait") === "ok" && E.tonEtat("a_toi") === "regler" && E.tonEtat("a_toi", "pas_partie") === "echec" && E.tonEtat("en_pause") === "neutre", "ok / regler / echec (pas partie) / neutre");

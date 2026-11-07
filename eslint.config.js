@@ -11,7 +11,9 @@ export default defineConfig([
   // Capacitor pose dans android/ et ios/ (assets/public : plusieurs Mo par
   // fichier), et les paquets de l'extension et leurs vieilles copies dans
   // build/ — des artefacts non suivis par git, jamais du source.
-  globalIgnores(['dist', 'android', 'ios', 'build']),
+  // (07/11 nuit, point 3 de Nico) Et `.claude/worktrees` : chaque worktree d'agent y est une COPIE complète du dépôt
+  // (avec ses propres dist/, build/, android/…) que `eslint .` parcourait en entier — le lint replantait faute de mémoire.
+  globalIgnores(['dist', 'android', 'ios', 'build', '.claude/worktrees']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

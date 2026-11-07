@@ -87,7 +87,7 @@ import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee, attenteSessionServeur } from "../_shared/attente-session.js";
 import { arbreVintedDuCompte, cheminVintedPourArbre, cheminVintedTouche } from "../_shared/vinted-arbre-compte.js";
 import { decisionSerie, serieDuJob } from "../_shared/serie-un-par-un.js";
-import { remiseAAttendre, annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, PLATEFORMES_REMISE_APRES_DISPARITION } from "../_shared/remise-en-vente-attente.js";
+import { remiseAAttendre, annonceVendueDeLaRemise, PLATEFORMES_REMISE_APRES_DISPARITION, etatAnnonceVendue, ETAT_VENDUE, ETATS_RETENUS, CLE_ATTENTE_VENDUE, marqueAttenteVendue, releveAttenteADemander, messageToujoursEnVente } from "../_shared/remise-en-vente-attente.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import {
   MOTIF_LBC_A_PAYER, MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE, comptesLbcProParType,
@@ -4712,25 +4712,112 @@ serve(async (req) => {
     // annonce encore affichée (essai réel du 30/10). La tâche de remise n'est servie qu'une fois l'annonce vendue relevée
     // hors ligne : d'ici là pending, intacte, SANS message, et elle part d'elle-même. Passe AVANT la série (une tâche de
     // série retenue ici n'est pas servie, la série attend). Exécution seulement ; lecture ratée → rien de retenu.
+    // ══ (07/11 nuit, Louis — point 2 de Nico) CE QUE L'ANNONCE VENDUE EST DÉCIDE DE LA REMISE, ET ÇA SE VOIT ══
+    // (_shared/remise-en-vente-attente.js, etatAnnonceVendue) Avant : retenue « pending, sans message », sans fin
+    // (Leboncoin garde une vendue affichée des mois : 111 « sold » vues vivantes en 3 jours, 48 publiées il y a plus de 2 mois), et sans relevé pour voir la
+    // disparition (le quotidien vient 20 h après le dernier). Maintenant :
+    //   · hors ligne / inconnue → servie TOUT DE SUITE (le marqueur d'attente est levé, une écriture) ;
+    //   · vente en cours / vendue affichée / à relire → retenue, marqueur `attente_annonce_vendue` écrit SEULEMENT quand
+    //     il change (l'app dit pourquoi ; après BORNE_ATTENTE_VENDUE_MS : « À toi de jouer », supprimer la vendue) ;
+    //   · toujours en vente (affichée SANS transaction, lu après la remise) → close « cancelled », message vrai, jamais
+    //     déposée (jamais de doublon d'une annonce active) ;
+    //   · une remise retenue garde un relevé « Mes annonces » au plus toutes les RELEVE_ATTENTE_MIN minutes
+    //     (serveur:verif_redepot, lecture seule, jamais s'il y en a un en file).
+    // Exécution seulement ; écritures en compare-and-set sur « pending » ; lecture ratée → rien de retenu (inchangé).
     let heldRemisesLbc = 0;
     if (!includeProcessing && !includeNeedsUser && out.some((j) => remiseAAttendre(j))) {
+      // 1. Lire les annonces vendues ; lecture ratée → rien de retenu (inchangé).
+      let lignesV: Array<Record<string, unknown>> | null = null;
       try {
-        const remises = out.filter((j) => remiseAAttendre(j));
-        const numeros = [...new Set(remises.map((j) => annonceVendueDeLaRemise(j) as string))];
-        const { data: lignesV, error: eV } = await lireParLots((lot) => userClient.from("annonces_plateforme")
-          .select("listing_id, platform, disparu_le, retiree_le, ignoree_le, statut_plateforme")
+        const numeros = [...new Set(out.filter((j) => remiseAAttendre(j)).map((j) => annonceVendueDeLaRemise(j) as string))];
+        const { data, error: eV } = await lireParLots((lot) => userClient.from("annonces_plateforme")
+          .select("listing_id, platform, disparu_le, retiree_le, ignoree_le, statut_plateforme, transaction_plateforme, transaction_lue_le")
           .eq("user_id", user.id).in("platform", [...PLATEFORMES_REMISE_APRES_DISPARITION]).in("listing_id", lot), numeros, 150);
         if (eV) throw new Error(eV.message);
-        const enLigne = new Set(((lignesV ?? []) as Array<Record<string, unknown>>)
-          .filter((l) => annonceVendueEncoreEnLigne(l as never)).map((l) => `${l.platform}:${String(l.listing_id).trim()}`));
-        const retenuesR = new Set(remises.filter((j) => enLigne.has(`${j.platform}:${annonceVendueDeLaRemise(j)}`)).map((j) => String(j.id)));
-        if (retenuesR.size) {
-          heldRemisesLbc = retenuesR.size;
-          out = out.filter((j) => !retenuesR.has(String(j.id)));
-          console.log(`[get-pending-jobs] userId=${user.id} : ${retenuesR.size} remise(s) en vente Leboncoin retenue(s) — l'annonce vendue est encore en ligne (pending, sans message)`);
-        }
+        lignesV = (data ?? []) as Array<Record<string, unknown>>;
       } catch (e) {
         console.warn(`[get-pending-jobs] remises Leboncoin : ${String((e as Error)?.message ?? e)} — rien de retenu`);
+      }
+      if (lignesV) {
+        // 2. Décider (pur), puis sortir de la file AVANT toute écriture : une écriture ratée ne sert jamais un doublon.
+        const ligneDe = new Map(lignesV.map((l) => [`${l.platform}:${String(l.listing_id).trim()}`, l]));
+        const decisions = out.filter((j) => remiseAAttendre(j)).map((j) => {
+          const annonce = annonceVendueDeLaRemise(j) as string;
+          const ligne = (ligneDe.get(`${j.platform}:${annonce}`) ?? null) as Record<string, unknown> | null;
+          return { j, annonce, ligne, etat: etatAnnonceVendue(ligne as never, j as never) as string };
+        });
+        const retenuesR = new Set(decisions.filter((d) => (ETATS_RETENUS as readonly string[]).includes(d.etat)).map((d) => String(d.j.id)));
+        const aFermer = decisions.filter((d) => d.etat === ETAT_VENDUE.TOUJOURS_EN_VENTE);
+        const sortis = new Set([...retenuesR, ...aFermer.map((d) => String(d.j.id))]);
+        if (sortis.size) out = out.filter((j) => !sortis.has(String(j.id)));
+        heldRemisesLbc = retenuesR.size;
+        // 3. Écrire ce qui change (compare-and-set sur « pending »), une tâche à la fois, chaque erreur isolée.
+        const maintenantIso = new Date().toISOString();
+        let closes = 0;
+        for (const d of decisions) {
+          const court = String(d.j.id).slice(0, 8);
+          const pfJ = (d.j.platform_fields ?? {}) as Record<string, unknown>;
+          try {
+            if (d.etat === ETAT_VENDUE.TOUJOURS_EN_VENTE) {
+              // L'annonce d'origine est ACHETABLE : l'article est toujours en vente, rien à remettre.
+              const pfC: Record<string, unknown> = { ...pfJ, remise_close_toujours_en_vente: { le: maintenantIso, annonce_vendue: d.annonce,
+                statut: d.ligne?.statut_plateforme ?? null, transaction: d.ligne?.transaction_plateforme ?? null,
+                transaction_lue_le: d.ligne?.transaction_lue_le ?? null, pose_par: "get-pending-jobs (remise-en-vente-attente)" } };
+              delete pfC[CLE_ATTENTE_VENDUE];
+              const { data: c, error: cErr } = await userClient.from("cross_post_jobs")
+                .update({ status: "cancelled", error: messageToujoursEnVente(d.annonce), platform_fields: pfAPersister(pfC) })
+                .eq("id", d.j.id as string).eq("status", "pending").select("id");
+              const close = !cErr && (c ?? []).length > 0;
+              if (close) closes++;
+              console.log(`[get-pending-jobs] remise ${court} : l'annonce ${d.annonce} est toujours achetable (transaction « ${String(d.ligne?.transaction_plateforme ?? "")} » lue ${String(d.ligne?.transaction_lue_le ?? "")}) → ${close ? "close, jamais déposée" : `non close (${cErr?.message ?? "statut changé"}), gardée hors de la file`}`);
+            } else if (retenuesR.has(String(d.j.id))) {
+              const marque = marqueAttenteVendue(pfJ, { etat: d.etat, annonce: d.annonce, ligne: d.ligne as never, maintenant: maintenantIso });
+              if (marque) {
+                const pfM = { ...pfJ, [CLE_ATTENTE_VENDUE]: marque };
+                const { error: mErr } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfM) })
+                  .eq("id", d.j.id as string).eq("status", "pending");
+                console.log(`[get-pending-jobs] remise ${court} retenue : annonce vendue ${d.annonce} — ${d.etat}${mErr ? ` (raison non écrite : ${mErr.message})` : " (raison posée)"}`);
+              }
+            } else if (CLE_ATTENTE_VENDUE in pfJ) {
+              // Hors ligne / inconnue : elle part ; la raison d'une attente passée est levée (une écriture, une fois).
+              const pfL: Record<string, unknown> = { ...pfJ, remise_attente_levee: { le: maintenantIso, etat: d.etat, avant: pfJ[CLE_ATTENTE_VENDUE] } };
+              delete pfL[CLE_ATTENTE_VENDUE];
+              const { error: lErr } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfL) })
+                .eq("id", d.j.id as string).eq("status", "pending");
+              if (!lErr) d.j.platform_fields = pfL;
+              console.log(`[get-pending-jobs] remise ${court} : annonce vendue ${d.annonce} ${d.etat} → servie, attente levée${lErr ? ` (non écrite : ${lErr.message})` : ""}`);
+            }
+          } catch (e) {
+            console.warn(`[get-pending-jobs] remise ${court} : ${String((e as Error)?.message ?? e)} (hors de la file si elle attend)`);
+          }
+        }
+        if (sortis.size) {
+          console.log(`[get-pending-jobs] userId=${user.id} : ${retenuesR.size} remise(s) en vente Leboncoin retenue(s) — l'annonce vendue est encore affichée (raison posée sur la tâche)${aFermer.length ? ` ; ${closes}/${aFermer.length} close(s) : annonce d'origine toujours achetable` : ""}`);
+        }
+        // 4. Un compte dont des remises attendent garde des relevés « Mes annonces » réguliers (lecture seule).
+        if (retenuesR.size) {
+          try {
+            const { data: runsA } = await userClient.from("vinted_sync_runs")
+              .select("status, queued_at, started_at").eq("user_id", user.id).eq("kind", "annonces")
+              .in("platform", [...PLATEFORMES_REMISE_APRES_DISPARITION])
+              .order("queued_at", { ascending: false, nullsFirst: false }).limit(20);
+            const runs = (runsA ?? []) as Array<Record<string, unknown>>;
+            const instants = runs.map((r) => Math.max(Date.parse(String(r.started_at ?? "")) || 0, Date.parse(String(r.queued_at ?? "")) || 0)).filter((t) => t > 0);
+            if (releveAttenteADemander({
+              dernierReleveMs: instants.length ? Math.max(...instants) : null,
+              releveEnFile: runs.some((r) => r.status === "queued" || r.status === "running"),
+              maintenant: Date.now(),
+            })) {
+              const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
+                user_id: user.id, kind: "annonces", platform: PLATEFORMES_REMISE_APRES_DISPARITION[0], status: "queued",
+                declencheur: "serveur:verif_redepot", queued_at: new Date().toISOString(),
+              });
+              console.log(`[get-pending-jobs] userId=${user.id} : relevé Leboncoin demandé pour voir disparaître les annonces vendues de ${retenuesR.size} remise(s) en attente${qErr ? ` (refusé : ${qErr.message})` : ""}`);
+            }
+          } catch (e) {
+            console.warn(`[get-pending-jobs] relevé des remises en attente : ${String((e as Error)?.message ?? e)}`);
+          }
+        }
       }
     }
 
