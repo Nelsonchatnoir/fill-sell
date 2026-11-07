@@ -119,7 +119,9 @@ workflows:
           # (06/11 soir, décision de Nico) 2.9.163 : LE binaire soumis, complet dès l'installation (interrupteurs
           # serveur, splash qui couvre la mise à jour du premier lancement) — au-dessus de l'OTA 2.9.162 servie aux
           # binaires en ligne ; OTA suivante ≥ 2.9.164 (sinon le canal ne lui servirait rien de plus récent).
-          cd ios/App && agvtool new-marketing-version 2.9.163 && agvtool new-version -all $BUILD_NUMBER
+          # (07/11 soir, ordre de Nico) 2.9.164 : LE binaire soumis (restauration du Cloud, montants anglais), même
+          # numéro que package.json ; OTA suivante = 2.9.164 du même commit, ou 2.9.165 si du code est venu après.
+          cd ios/App && agvtool new-marketing-version 2.9.164 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles

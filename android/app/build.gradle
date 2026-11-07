@@ -113,9 +113,11 @@ android {
         // (06/11) versionName 2.9.161, versionCode 33 : le binaire 2.9 des stores, AU-DESSUS de l'OTA servie (2.9.160) —
         // un binaire numéroté sous le canal recevrait l'OTA plus ancienne que lui (Capgo, « Updates Under Native: No ») ;
         // prochaine OTA ≥ 2.9.162.
+        // (07/11 soir, ordre de Nico) versionName 2.9.164, versionCode 35 : LE binaire soumis (restauration du Cloud,
+        // montants anglais) ; OTA suivante = 2.9.164 du même commit, ou 2.9.165 si du code est venu après.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
-        versionCode 34
-        versionName "2.9.163"
+        versionCode 35
+        versionName "2.9.164"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
