@@ -858,3 +858,10 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - Mesure du 06/11 21:00 : 94 annonces en ligne ou en file, 7 comptes (Louis 84), aucune marque écrite par la personne
   elle-même (relevés Leboncoin, Beebs, Vinted). Refus de modération Leboncoin notés depuis le 25/10 : 8, dont 5 avec
   cette cause (tous chez Louis).
+
+## 07/11 — eBay puériculture, Vinted « neuf seulement », dimensions du colis (rapport `docs/enquetes/lot-0711/RAPPORT.md` § 4, 5)
+- eBay : la racine « Bébé, puériculture » n'est pas un rayon de genre (`brancheGenre`, src/utils/categorieParMot.js) :
+  un doudou garde 148373 quel que soit le genre. Selftest `puericulture-genre-ebay`.
+- Vinted : un rayon « neuf seulement » pour un article d'occasion se dit dès la première remontée (pas-de-rouge
+  `vinted_rayon_neuf_seulement`, jamais de reprise) ; « Vinted exige les dimensions du colis » : FillSell ne sait pas les
+  envoyer, la question sur une clé jamais relue tombe, message vrai (décision à prendre : saisie des dimensions).

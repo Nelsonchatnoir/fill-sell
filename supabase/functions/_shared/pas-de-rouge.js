@@ -82,6 +82,11 @@ function acte(action) {
 // « Ton annonce est intacte » s'affichait sur une PUBLICATION (il n'y a pas
 // encore d'annonce), et sur une republication dont l'annonce était déjà
 // retirée. Une seule phrase par situation, jamais une phrase figée.
+// (07/11, point 5) Le message de l'extension (rayonNeufSeulementVinted) et d'update-job-status (≤ 0.6.65), mot pour mot.
+export const RAYON_NEUF_SEULEMENT_VINTED_RE = /Le rayon Vinted « ([^»]+) » n['’]accepte que des articles neufs, et ton article est « ([^»]+) »/;
+// (07/11, point 3 — Ciddjy) Le contrôle d'avant retrait trop lent sur ce poste (extension ≥ 0.6.177) : rien n'est retiré.
+export const PREVOL_TROP_LENT_RE = /Contrôle avant retrait trop lent sur ce poste \((\d+) s pour remplir le formulaire, borne (\d+) s\)/;
+
 export function rienTouche(action, pf = {}) {
   // (25/10, boncoin59300) « toujours en ligne » seulement sur preuve (lecture de la page < 24 h) : une page 404
   // n'est pas « en ligne », et on ne le sait pas toujours.
@@ -653,6 +658,41 @@ function classerEchecSansRegleRetrait(arg) {
       verdict: "reprise", statut: "pending", motif: "colis_non_propose", dansMinutes: 30,
       pf: { build_min_requis: BUILD_COLIS_DANS_ENVOI },
       message: messageColisAttendMiseAJour(action),
+    };
+  }
+
+  // ── 0 quinquies. (07/11, point 5 — ayadi007, job 3c8d90a8) VINTED : RAYON « NEUF SEULEMENT » ──────────────────
+  // L'extension LIT le formulaire : le rayon choisi (967 « Accessoires maquillage ») n'offre que « Neuf avec étiquette »,
+  // l'article est « Très bon état » (rayonNeufSeulementVinted, content-scripts/vinted.js). Son message tombait en
+  // « 6. MOTIF INCONNU » : huit remplissages complets (13:46 → 21:31), puis le générique « n'a pas abouti après
+  // plusieurs essais » — la vraie cause ne survivait que dans le brut. Un nouvel essai refait le même mur : jamais de
+  // reprise. La personne choisit un autre rayon (la question « État » serait un mensonge — règle du 24/09).
+  if (platform === "vinted" && (action === "publish" || action === "republish")) {
+    const neufSeul = RAYON_NEUF_SEULEMENT_VINTED_RE.exec(t);
+    if (neufSeul) {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "vinted_rayon_neuf_seulement", source: "relancer",
+        message:
+          `Le rayon Vinted « ${neufSeul[1].trim()} » n'accepte que des articles neufs, et ton article est « ${neufSeul[2].trim()} ». ` +
+          `${rienTouche(action, pf)} Choisis un autre rayon Vinted pour cet article depuis l'app, puis relance la publication.`,
+      };
+    }
+  }
+
+  // ── 0 sexies. (07/11, point 3 — Ciddjy, Beebs) LE CONTRÔLE D'AVANT RETRAIT A ÉTÉ TROP LENT SUR CE POSTE ────────
+  // Le 07/11, le pré-vol du formulaire Beebs a duré 602 s (borne 600 s), l'annonce a été retirée, et chacun des quatre
+  // redépôts a dépassé la borne : l'article est resté hors ligne. L'extension ≥ 0.6.177 ne retire plus quand le pré-vol
+  // dépasse 70 % de la borne : rien n'est touché. Nouvel essai espacé (le poste peut aller mieux), puis la personne.
+  if (action === "republish" && PREVOL_TROP_LENT_RE.test(t)) {
+    const [, secondes] = PREVOL_TROP_LENT_RE.exec(t);
+    const minutes = Math.max(1, Math.round(Number(secondes) / 60));
+    const base = `Ton ordinateur a mis ${minutes} min à remplir le formulaire de ${nom} pendant le contrôle d'avant retrait : ` +
+      `FillSell n'a rien retiré, ton annonce est toujours en ligne.`;
+    // (le `reprise` commun est défini plus bas : l'objet est écrit ici, même forme)
+    if (reprisesFaites < 3) return { verdict: "reprise", statut: "pending", motif: "prevol_trop_lent", message: `${base} Nouvel essai automatique dans 2 h.`, dansMinutes: 120 };
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "prevol_trop_lent", source: "relancer",
+      message: `${base} Ferme puis rouvre ton navigateur sur ton ordinateur (il est peut-être ralenti), puis relance d'un clic ci-dessous.`,
     };
   }
 

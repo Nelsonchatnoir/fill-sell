@@ -17,6 +17,11 @@
 //    « Se reconnecter » d'une boutique qui n'est plus surveillée) : elle n'ouvre
 //    alors aucun écran — le texte dit le risque, le bouton est le seul geste.
 //    Même ligne, mêmes polices ; pas de chevron, pas de nombre.
+// (07/11, Nico) Une ligne peut se RETIRER DE LA LISTE (`onRetirer`, promesse { ok, message? }, et `phraseRetrait`) :
+//    un lien discret sous la ligne, puis la phrase qui dit ce que le geste ne fait pas et « Oui, retirer » /
+//    « Non, garder ». Jamais un bouton dans un bouton : la ligne et son geste sont deux blocs frères. La mémoire et la
+//    règle du fait nouveau vivent ailleurs (utils/retraitARegler, StockTab) : l'écran ne fait que proposer.
+import { useState } from 'react';
 import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound, Store, EyeOff, Wallet, LogIn, Unplug } from 'lucide-react';
 import EcranPlein from './EcranPlein';
 import { S } from './jetons';
@@ -32,6 +37,45 @@ const ROUGES = new Set(['retraits']);
 export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif = true, pied = null }) {
   const fr = lang !== 'en';
   const total = lignes.reduce((t, l) => t + (l.n || 0), 0);
+  // (07/11) « Retirer de la liste » : la ligne armée (sa clé), le geste en cours, le message d'un échec.
+  const [retraitArme, setRetraitArme] = useState(null);
+  const [retraitEnCours, setRetraitEnCours] = useState(false);
+  const [retraitMsg, setRetraitMsg] = useState(null);
+  const retirer = async (l) => {
+    setRetraitEnCours(true); setRetraitMsg(null);
+    let r = null;
+    try { r = await l.onRetirer(); } catch { r = null; }
+    setRetraitEnCours(false);
+    if (r?.ok) { setRetraitArme(null); return; }
+    setRetraitMsg(r?.message ?? (fr ? 'Retrait de la liste impossible — réessaie.' : 'Could not remove it from the list — try again.'));
+  };
+  const blocRetrait = (l) => {
+    if (typeof l.onRetirer !== 'function') return null;
+    if (retraitArme !== l.cle) {
+      return (
+        <button type="button" className="sk-btn" data-retirer={l.cle} onClick={() => { setRetraitArme(l.cle); setRetraitMsg(null); }}
+          style={{ display: 'inline-block', minHeight: 32, padding: '6px 0', border: 'none', background: 'transparent', color: S.ink2, fontSize: 12, lineHeight: '16px', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2, textAlign: 'left' }}>
+          {fr ? 'Retirer de la liste' : 'Remove from the list'}
+        </button>
+      );
+    }
+    return (
+      <div data-retirer-arme={l.cle} style={{ marginTop: 4, padding: 12, borderRadius: 12, background: S.paper, boxShadow: `inset 0 0 0 1px ${S.border}` }}>
+        {l.phraseRetrait && <div style={{ fontSize: 12, lineHeight: '18px', fontWeight: 500, color: S.ink, overflowWrap: 'anywhere' }}>{l.phraseRetrait}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button type="button" className="sk-btn" disabled={retraitEnCours} onClick={() => retirer(l)}
+            style={{ flex: 1, minHeight: 40, borderRadius: 999, border: `1px solid ${S.tealDeep}`, background: '#FFFFFF', color: S.tealDeep, fontSize: 13, fontWeight: 700 }}>
+            {retraitEnCours ? '…' : (fr ? 'Oui, retirer' : 'Yes, remove')}
+          </button>
+          <button type="button" className="sk-btn" disabled={retraitEnCours} onClick={() => { setRetraitArme(null); setRetraitMsg(null); }}
+            style={{ flex: 1, minHeight: 40, borderRadius: 999, border: `1px solid ${S.border}`, background: '#FFFFFF', color: S.ink2, fontSize: 13, fontWeight: 600 }}>
+            {fr ? 'Non, garder' : 'No, keep it'}
+          </button>
+        </div>
+        {retraitMsg && <div style={{ marginTop: 8, fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.rouge }}>{retraitMsg}</div>}
+      </div>
+    );
+  };
   // La phrase dit ce qu'il y a VRAIMENT, rien de plus.
   const present = (...cles) => lignes.some((l) => cles.includes(l.groupe ?? l.cle) && l.n > 0);
   const nbNonSurveillees = lignes.filter((l) => (l.groupe ?? l.cle) === 'non_surveillee' && l.n > 0).length;
@@ -89,13 +133,17 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
                       {l.detail && <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2, marginTop: 2, overflowWrap: 'anywhere' }}>{l.detail}</span>}
                     </span>
                     {l.action}
+                    {blocRetrait(l)}
                   </span>
                 </div>
               );
             }
-            return (
-              <button key={l.cle} type="button" className="sk-btn sk-presse" onClick={l.onOuvrir} data-ligne={l.groupe ?? l.cle}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64, padding: '8px 16px', boxSizing: 'border-box', border: 'none', background: 'transparent', boxShadow: `inset 0 -1px 0 ${S.borderSoft}`, textAlign: 'left', color: S.ink }}>
+            // (07/11) Une ligne qui peut se retirer : la ligne (même bouton qu'avant), puis son geste dessous, dans un
+            // bloc qui porte le séparateur.
+            const retrait = blocRetrait(l);
+            const ligne = (
+              <button key={retrait ? undefined : l.cle} type="button" className="sk-btn sk-presse" onClick={l.onOuvrir} data-ligne={l.groupe ?? l.cle}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64, padding: '8px 16px', boxSizing: 'border-box', border: 'none', background: 'transparent', boxShadow: retrait ? 'none' : `inset 0 -1px 0 ${S.borderSoft}`, textAlign: 'left', color: S.ink }}>
                 <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: rouge ? S.rougeFond : S.ambreFond, color: rouge ? S.rouge : S.ambreEncre }}>
                   <I size={20} strokeWidth={2} aria-hidden="true" />
                 </span>
@@ -108,6 +156,13 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
                 </span>
                 <ChevronRight size={20} color={S.chevron} aria-hidden="true" style={{ flexShrink: 0 }} />
               </button>
+            );
+            if (!retrait) return ligne;
+            return (
+              <div key={l.cle} data-ligne-bloc={l.groupe ?? l.cle} style={{ boxShadow: `inset 0 -1px 0 ${S.borderSoft}` }}>
+                {ligne}
+                <div style={{ padding: '0 16px 10px 68px' }}>{retrait}</div>
+              </div>
             );
           })}
         </div>

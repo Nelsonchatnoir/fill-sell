@@ -66,6 +66,8 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     {
       const enCours = globalThis.__fillsellRemplissage;
       if (enCours?.promesse && enCours.jobId === String(msg.job?.id ?? "")) {
+        // (07/11) Repli du port vers le canal classique : quelqu'un attend de nouveau ce remplissage.
+        enCours.sansEcoute = false;
         enCours.promesse.then((r) => sendResponse(r));
         return true;
       }
@@ -1179,6 +1181,16 @@ function etatRemplissagePublic() {
   if (!r) return null;
   return { jobId: r.jobId, phase: r.phase ?? null, envoye: r.envoye === true, enCours: r.enCours === true, resultat: r.resultat ?? null };
 }
+// (07/11, même règle que beebs.js) L'arrière-plan a abandonné ce remplissage
+// (message « abandon » à la borne) ou le port qui l'attendait s'est fermé sans
+// relève : lu JUSTE avant le Continuer final (adsubmit), rien ne part.
+function abandonAvantEnvoi(jobId) {
+  const r = globalThis.__fillsellRemplissage;
+  if (!r || r.jobId !== String(jobId ?? "") || r.enCours !== true) return null;
+  if (r.abandonDemande === true) return "abandon reçu de l'arrière-plan (borne dépassée)";
+  if (r.sansEcoute === true) return "port de remplissage fermé : plus personne n'attend ce remplissage";
+  return null;
+}
 function lancerRemplissageUnique(job) {
   const jobId = String(job?.id ?? "");
   const r = globalThis.__fillsellRemplissage;
@@ -1196,17 +1208,37 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__
   chrome.runtime.onConnect.addListener((port) => {
     if (port?.name !== FILL_PORT_NOM) return;
     let battement = null;
+    // (07/11) L'état du remplissage que CE port attend (null : port de simple question « etat? »).
+    let suivi = null;
     const envoyer = (m) => { try { port.postMessage(m); } catch { /* port fermé */ } };
+    const lacher = () => {
+      const r = suivi;
+      if (!r) return;
+      suivi = null;
+      r.ecoutes = Math.max(0, (Number(r.ecoutes) || 1) - 1);
+      if (r.ecoutes === 0 && r.enCours === true) r.sansEcoute = true;
+    };
     const suivre = (jobId) => {
       clearInterval(battement);
       battement = setInterval(() => envoyer({ type: "vivant", jobId, phase: globalThis.__fillsellRemplissage?.phase ?? null }), 20_000);
       const r = globalThis.__fillsellRemplissage;
+      if (r && r.jobId === jobId && r !== suivi) {
+        lacher();
+        suivi = r;
+        r.ecoutes = (Number(r.ecoutes) || 0) + 1;
+        r.sansEcoute = false; // quelqu'un attend de nouveau (rattache après la mort du worker)
+      }
       const p = (r && r.jobId === jobId && r.promesse) ? r.promesse : Promise.resolve(null);
       p.then((resultat) => { clearInterval(battement); if (resultat) envoyer({ type: "resultat", jobId, resultat }); });
     };
     port.onMessage.addListener((m) => {
       if (!m) return;
       if (m.type === "etat?") { envoyer({ type: "etat", etat: etatRemplissagePublic() }); return; }
+      if (m.type === "abandon") {
+        const r = globalThis.__fillsellRemplissage;
+        if (r && r.jobId === String(m.jobId ?? "")) r.abandonDemande = true;
+        return;
+      }
       if (m.type === "FILL_LISTING_PORT") {
         const jobId = String(m.job?.id ?? "");
         const r = globalThis.__fillsellRemplissage;
@@ -1218,7 +1250,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__
       }
       if (m.type === "rattache") { suivre(String(m.jobId ?? "")); return; }
     });
-    port.onDisconnect.addListener(() => { clearInterval(battement); /* le remplissage continue ; son résultat reste dans la page */ });
+    // Le remplissage continue ; son résultat reste dans la page. (07/11) Sans plus
+    // aucun auditeur, il ne clique pas le Continuer final (abandonAvantEnvoi).
+    port.onDisconnect.addListener(() => { clearInterval(battement); lacher(); });
   });
 }
 // ── FIN PORT DE REMPLISSAGE CONTENT-SCRIPT ──────────────────────────────────
@@ -1943,6 +1977,23 @@ async function fillListingForm(job) {
 
   console.log("[leboncoin] 🚀 LIVE — Continuer final (« je confirme l'exactitude »)");
   await humanPause(1200, 2400);
+  // ── (07/11, même règle que Beebs) PERSONNE N'ATTEND PLUS CE REMPLISSAGE ──
+  // La borne de l'arrière-plan est dépassée (« abandon ») ou le port qui
+  // l'attendait s'est fermé sans relève : le Continuer final ferait partir un
+  // adsubmit que personne ne lira, puis un second dépôt au prochain essai.
+  {
+    const abandon = abandonAvantEnvoi(job?.id);
+    if (abandon) {
+      console.warn(`[leboncoin] Continuer final NON cliqué — ${abandon}`);
+      return {
+        success: false,
+        abandonneAvantEnvoi: true,
+        error: "Remplissage abandonné avant l'envoi (borne dépassée) : rien n'a été envoyé à Leboncoin.",
+        warnings, unfilledRequired, discoveredRequired: enumerated,
+        diagnostic: `abandon avant le Continuer final : ${abandon}`,
+      };
+    }
+  }
   // ── LA SEULE PREUVE QU'UN CLIC A PRIS, C'EST LA REQUÊTE (2026-09-08) ──────
   // Même doctrine que la famille B eBay : on horodate le clic, et la sonde
   // réseau du background (PROBE_ENDPOINTS.leboncoin : non-GET vers
@@ -7048,7 +7099,7 @@ async function urlToFile(url, index) {
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
         : `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
           "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
-          "FillSell la rapatrie automatiquement et relance la publication toute seule — rien à payer, rien à refaire. " +
+          "FillSell la copie chez lui, la vérifie, puis la publication repart toute seule — rien à payer, rien à refaire. " +
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app.")
     );
   }

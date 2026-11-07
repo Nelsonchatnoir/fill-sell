@@ -634,3 +634,16 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   de série tenues (jamais une rafale). Le blocage d'accès Leboncoin du compte reste au-dessus de tout.
   Selftest `serie-un-par-un`.
 - Jamais de texte ni de photos modifiés pour passer le contrôle des doublons de Leboncoin.
+
+## ⛔ 07/11 — Une annonce VENDUE ne compte jamais comme « en ligne » (Louis ; rapport `docs/enquetes/lot-0711/RAPPORT.md` § 1, 8)
+- Leboncoin garde « active » une annonce vendue (transaction « pending » / « sold »). Aucune garde « l'article est en ligne
+  sous une autre annonce » ne la compte : `annonce_prise_par_une_vente()` (transaction lue, vente enregistrée, job
+  « sold », job publié `sale_signal 'sold'`), dans `trancher_publications_sans_lien`, `depot_jamais_en_ligne_refermer`,
+  `article_en_ligne_ailleurs` (migration 20261107140000, feu vert requis). Une clôture faite à tort se rejuge seule
+  (`depots_clos_sur_annonce_vendue_rejuger`, à chaque relevé, 14 jours). Jamais « rien n'est vendu » sur une remise en
+  vente (SQL `phrase_rien_vendu`, app `utils/rienVenduSurVente.js`).
+- « Ventes annulées » : une proposition « Remettre en vente » se ferme seule quand la fiche quitte le stock ou qu'une
+  fiche JUMELLE PROUVÉE (photos dHash ≤ 4, même boutique, apparue après la vente, jamais en ligne ensemble, une seule
+  candidate, née d'un relevé ; jamais un titre) est vendue ou en ligne ; même garde avant toute création ; bouton « Ne
+  pas remettre en vente » (migration 20261107150000, feu vert requis). Le rattachement de la jumelle (double fiche) reste
+  à corriger (proposition au rapport).

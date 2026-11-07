@@ -30,10 +30,16 @@ import { trancherParPhotos } from "./annonce-partagee.js";
 const ETAPES_ENVOI = new Set(["depot", "options"]);
 const URL_ENVOI_RE = {
   leboncoin: /\/deposer-une-annonce\/(?:options|confirmation)(?:[/?#]|$)/,
-  // Beebs ne relaie pas d'étape : seule la page produit (/fr/p/<id>) dit
-  // qu'un dépôt a abouti.
-  beebs: /beebs\.app\/[a-z]{2}\/p\/\d+/,
+  // Beebs ne relaie pas d'étape : la page produit (/fr/p/<id>) ou la page de succès (/fr/listing/success, où un dépôt
+  // réussi redirige — 07/11, point 3) disent qu'un dépôt a abouti.
+  beebs: /beebs\.app\/[a-z]{2}\/(?:p\/\d+|listing\/success)/,
 };
+// (07/11, point 3 — Ciddjy 49342549, et ayoub 246477ff le 04/11) Un essai Beebs arrêté à la BORNE du remplissage ou sur un
+// canal muet a pu cliquer « Mettre en vente » : après la borne, le remplissage CONTINUAIT dans la page (ayoub : annonce
+// 34296690 parue 12 min après « délai dépassé »). Beebs ne relayait aucune étape (jusqu'à la 0.6.176) : un tel essai est
+// donc SUSPECT, comme pour les publications (depot-sans-numero.js) — les annonces sont relues avant tout redépôt.
+const ESSAI_MUET_RE = /pas de réponse du content script|message channel closed|Receiving end does not exist|borne \d+ min dépassée/i;
+const PLATEFORMES_SANS_ETAPE_ENVOI = new Set(["beebs"]);
 
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : null; };
 
@@ -69,6 +75,16 @@ export function depotPeutEtrePartiDepuis(platform, pf) {
   const debut = ms(wws.at_start?.at);
   if (debut != null && debut > retrait && !fins.some((f) => { const t = ms(f?.at); return t != null && t >= debut; })) {
     if (!dernier || debut > dernier.t) dernier = { t: debut, raison: "essai commencé après le retrait, sans fin relevée" };
+  }
+  // (07/11, point 3) Beebs : un essai arrêté à la borne ou muet depuis le retrait (error_technique et ses précédents).
+  if (PLATEFORMES_SANS_ETAPE_ENVOI.has(platform)) {
+    const et = pf.error_technique && typeof pf.error_technique === "object" ? pf.error_technique : null;
+    const traces = et ? [et, ...(Array.isArray(et.precedents) ? et.precedents : [])] : [];
+    for (const e of traces) {
+      const t = ms(e?.at);
+      if (t == null || t <= retrait || !ESSAI_MUET_RE.test(String(e?.brut ?? ""))) continue;
+      if (!dernier || t > dernier.t) dernier = { t, raison: "essai arrêté sans réponse du formulaire Beebs (le clic « Mettre en vente » a pu partir)" };
+    }
   }
   // Un essai coupé en route (ordinateur muet) : handler-watch pose ce
   // marqueur, faute de savoir où il s'est arrêté.

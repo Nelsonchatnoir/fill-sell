@@ -29,7 +29,7 @@ import {
 import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur, porteUnPrefixeDeJournal, sansIncisesTechniques } from "../_shared/vocabulaire-developpeur.ts";
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
-import { classerEchec, estTailleHorsGrille, restrictionVinted, LBC_REFUS_CONTENU_RE, empreinteTexteServi } from "../_shared/pas-de-rouge.js";
+import { classerEchec, estTailleHorsGrille, restrictionVinted, LBC_REFUS_CONTENU_RE, empreinteTexteServi, RAYON_NEUF_SEULEMENT_VINTED_RE, PREVOL_TROP_LENT_RE } from "../_shared/pas-de-rouge.js";
 import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
 import { marqueIntrouvable, messagePause, SOURCE_INTROUVABLE } from "../_shared/introuvable-a-confirmer.js";
 import { questionEnFrancais } from "../_shared/question-francais.js";
@@ -4132,6 +4132,51 @@ serve(async (req) => {
       }
     }
 
+    // ── (07/11, point 5 — ayadi007, chariot 43b69049) VINTED EXIGE LES DIMENSIONS DU COLIS ─────────────────────────
+    // Le rayon de colis volumineux de Vinted refuse « Grand » (« Ces dimensions sont supérieures aux limites maximales
+    // autorisées ») et demande hauteur, largeur, longueur. Une extension ≤ 0.6.176 posait la question sur la clé brute
+    // (`parcel_dimensions_height`), champ qu'elle ne relit JAMAIS : la réponse ne servait à rien. FillSell ne sait pas
+    // encore envoyer des dimensions (décision à prendre : saisie des dimensions) : la question tombe, le message dit vrai.
+    if (statutEffectif === "needs_user") {
+      const pfD = (pfIn ?? {}) as Record<string, unknown>;
+      const champsD = [pfD["needsUserField"], ...(Array.isArray(pfD["needsUserFields"]) ? pfD["needsUserFields"] as unknown[] : [])]
+        .filter((c) => c && typeof c === "object") as Array<Record<string, unknown>>;
+      const dimension = (c: Record<string, unknown>) => /^parcel_dimensions_/.test(String(c["field_key"] ?? ""))
+        || /^parcel_dimensions_/.test(String(((c["target"] ?? {}) as Record<string, unknown>)["key"] ?? ""));
+      if (champsD.some(dimension)) {
+        if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) erreurTechniqueBrute = body.error;
+        body.error = "Vinted exige les dimensions du colis (hauteur, largeur, longueur) pour ce rayon, et FillSell ne sait pas encore " +
+          "les renseigner : rien n'a été publié. Choisis un autre rayon Vinted pour cet article, ou publie-le toi-même sur Vinted.";
+        delete pfD["needsUserField"]; delete pfD["needsUserFields"]; delete pfD["champs_a_completer"];
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — Vinted exige les dimensions du colis : question retirée (champ jamais relu), message vrai`);
+      }
+    }
+
+    // ── (07/11, point 7 — labrunettedu44, 28c40e78 « Coquillage nacré ») LE PRIX N'EXISTE NULLE PART ────────────────
+    // Le pré-vol de la republication (avant tout retrait) a raison : la copie n'a pas de prix, et Leboncoin refuse un
+    // dépôt sans prix. Mais l'annonce d'origine (déposée en 2021) n'en affiche AUCUN : ni le relevé, ni le job, ni la
+    // fiche n'en ont. « Relance la republication » ne pouvait jamais réussir (même contrôle, même arrêt). Le message
+    // dit la vraie cause et le seul geste utile : un prix sur la fiche (get-pending-jobs le reprend à la relance).
+    if (statutEffectif === "needs_user" && Array.isArray((pfIn ?? {})["republish_prevol_manquants"])
+        && ((pfIn ?? {})["republish_prevol_manquants"] as unknown[]).map(String).includes("le prix")) {
+      try {
+        const { data: jP } = await userClient.from("cross_post_jobs").select("platform, action, price").eq("id", jobId).maybeSingle();
+        const prixJob = Number(jP?.price);
+        if (jP && String(jP.action ?? "") === "republish" && !(Number.isFinite(prixJob) && prixJob > 0)) {
+          const nomPf = ({ leboncoin: "Leboncoin", vinted: "Vinted", beebs: "Beebs", depop: "Depop", ebay: "eBay", opla: "Opla" } as Record<string, string>)[String(jP.platform)] ?? String(jP.platform);
+          if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) erreurTechniqueBrute = body.error;
+          body.error =
+            `Ton annonce ${nomPf} n'affiche aucun prix (elle a été déposée sans prix), et ${nomPf} en exige un pour la remettre en ligne. ` +
+            "Rien n'a été retiré : ton annonce est toujours en ligne. Indique un prix sur la fiche de l'article dans FillSell, " +
+            "puis relance la republication : elle partira avec ce prix.";
+          (pfIn as Record<string, unknown>)["prix_absent_de_l_origine"] = { le: new Date().toISOString(), plateforme: jP.platform };
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — republication ${jP.platform} : aucun prix nulle part (annonce d'origine sans prix) → prix à indiquer sur la fiche`);
+        }
+      } catch (e) {
+        console.error("[update-job-status] prix absent de l'origine :", (e as Error)?.message ?? e);
+      }
+    }
+
     // ══ CHAMP À LISTE FERMÉE : L'OPTION QUE L'ANNONCE NOMME DÉJÀ (2026-09-24) ══
     // Job fc5e4bff (Jocabroc) : Leboncoin demandait « Produit » ; la valeur de
     // l'annonce (« Plat apéritif ») n'était pas dans la liste de l'Univers posé
@@ -4265,6 +4310,15 @@ serve(async (req) => {
     const lbcRefusContenuAPoser = (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
       && typeof body.error === "string" && LBC_REFUS_CONTENU_RE.test(body.error)
       && String((pfIn ?? {})["republish_step"] ?? "") !== "deleted";
+    // (07/11, point 5 — ayadi007, 3c8d90a8) Vinted : le rayon choisi n'accepte que des articles NEUFS et l'article est
+    // d'occasion (rayonNeufSeulementVinted). Chaque essai refait le même mur (huit remplissages complets le 06/11) : le
+    // classement parle dès la première remontée, avec le vrai motif (pas-de-rouge, « vinted_rayon_neuf_seulement »).
+    const vintedRayonNeufAPoser = (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
+      && typeof body.error === "string" && RAYON_NEUF_SEULEMENT_VINTED_RE.test(body.error);
+    // (07/11, point 3 — Ciddjy, Beebs) Le contrôle d'avant retrait a duré trop longtemps sur ce poste (extension ≥ 0.6.177) :
+    // RIEN n'a été retiré. Classé dès la première remontée (reprise espacée, puis la personne) — pas-de-rouge, « prevol_trop_lent ».
+    const prevolTropLentAPoser = (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
+      && typeof body.error === "string" && PREVOL_TROP_LENT_RE.test(body.error);
     // ══ UNE EXCEPTION DE NOTRE CODE EST UN DÉFAUT DE CHEZ NOUS (02/10 soir, point 3) ══
     // (_shared/defaut-fillsell.js) Jamais « illisible », jamais « plateforme » :
     // le job porte defaut_fillsell {build} et attend un poste plus récent
@@ -4311,7 +4365,7 @@ serve(async (req) => {
         }
       }
     }
-    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser || ebayRefusNommeAPoser || lbcRefusContenuAPoser)) {
+    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser || ebayRefusNommeAPoser || lbcRefusContenuAPoser || vintedRayonNeufAPoser || prevolTropLentAPoser)) {
       try {
         // (18/10) `title` : un refus Vinted « trop de symboles » se reprend avec le
         // titre assagi (_shared/titre-symboles-vinted.js), calculé sur le titre du job.

@@ -94,8 +94,13 @@ const PAR_TEXTE = Object.freeze([
   // tes annonces … aux relevés complets du … et du …, et Leboncoin n'a donné aucun motif ». Même classe.
   // (30/10, lot E, migration 20261030230000) Leboncoin : « … n'a rien affiché à FillSell … son motif est dans le mail ». Même classe.
   [/n.a jamais mis cette annonce en ligne|refus[ée]e par sa mod[ée]ration|n.a pas mis cette annonce en ligne|refus[ée]e [àa] la v[ée]rification|n.a donn[ée] aucun motif|n.a rien affich[ée] [àa] FillSell/i, ORIGINE.PLATEFORME, "moderation"],
+  // (07/11, point 7 — labrunettedu44) L'annonce d'origine n'a AUCUN prix (déposée sans prix) : une information à
+  // donner par la personne, pas un défaut de notre copie (update-job-status, « prix absent de l'origine »).
+  [/n.affiche aucun prix \(elle a [ée]t[ée] d[ée]pos[ée]e sans prix\)/i, ORIGINE.UTILISATEUR, "prix_absent_de_l_origine"],
   // ── nous ──
   [/description, le rayon Depop et l.[ée]tat manquent|manquent dans la copie de ton annonce/i, ORIGINE.NOUS, "capture_depop_incomplete"],
+  // (07/11, point 7) Le singulier aussi (« le prix manque dans la copie de ton annonce ») : notre copie.
+  [/manque dans la copie de ton annonce/i, ORIGINE.NOUS, "copie_incomplete"],
   [/frais de port/i, ORIGINE.NOUS, "capture_depop_frais_de_port"],
   [/n.accepte pas (les|ce|cet|cette)|n.accepte pas l.[ée]lectronique|interdit sur (Vinted|Leboncoin|Beebs|eBay|Depop)/i, ORIGINE.NOUS, "article_refuse_entre_en_file"],
   [/n.est plus propos[ée]e par le menu/i, ORIGINE.NOUS, "marque_hors_menu"],

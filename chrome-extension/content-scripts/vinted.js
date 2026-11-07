@@ -105,6 +105,10 @@ const VINTED_SERVER_FIELD_LABELS = {
   video_game_rating: "Classification par âge (PEGI)",
   video_game_platform: "Plateforme de jeu",
   package_size_id: "Format du colis",
+  // (07/11, ayadi007) Rayon de colis volumineux : jamais plus la clé brute dans un message.
+  parcel_dimensions_height: "Hauteur du colis",
+  parcel_dimensions_width: "Largeur du colis",
+  parcel_dimensions_length: "Longueur du colis",
   // (02/10 soir, point 10) Ordinateurs portables — libellés du vrai formulaire.
   computer_ram: "RAM",
   computer_storage_capacity: "Capacité de stockage",
@@ -420,6 +424,25 @@ async function computeVintedRequiredState() {
       });
     }
   }
+  // ── (07/11, Marta MELE) UNE COULEUR VIDE ALORS QUE LA COPIE EN PORTE UNE ──
+  // Trois remises en ligne (page italienne) retirées, puis refusées par Vinted :
+  // 400 « Compila il campo "colore" » — la copie portait color1_id, le champ
+  // était vide au moment du POST. La config dit la couleur facultative, le
+  // serveur l'exige : sur une republication AVANT le retrait (seul cas armé,
+  // cf. couleurAttendueVinted), un champ Couleur présent et relu vide compte
+  // comme un requis vide → la porte arrête AVANT tout retrait. Une couleur
+  // confirmée par ses cases cochées (pré-remplissage de Vinted, déclencheur
+  // vide — cf. selectColors) n'est jamais comptée vide.
+  if (couleurAttendueVinted && !couleurConfirmeeParCasesVinted) {
+    const elCouleur = document.querySelector(vintedFieldSelector("color"));
+    const lue = elCouleur ? (valeurChampVinted(elCouleur).trim() || String(readCommittedValue(elCouleur) ?? "").trim()) : "";
+    if (elCouleur && !lue) {
+      const meta = discovered.find((d) => d.key === "color");
+      const label = meta?.label ?? VINTED_SERVER_FIELD_LABELS.color;
+      if (!meta) discovered.push({ key: "color", label, required: true, inputType: "multi-list", options: paletteCouleursRelevee?.length ? paletteCouleursRelevee : null, source: "dom" });
+      if (!unfilled.includes(label)) unfilled.push(label);
+    }
+  }
   // ── LA GRILLE DES FORMATS DE COLIS DU RAYON (03/10, point 13, Louis) ──────
   // Sur 20 publications Vinted de Louis, 8 étaient dans des rayons dont la
   // grille de formats n'avait jamais été observée (« Petits appareils de
@@ -510,6 +533,9 @@ async function readItemsProbeOutcome() {
         marqueEnvoyee: c?.marqueEnvoyee ?? null,
         // (02/11) attributsPoses : les attributs (annonce d'origine, valeurs connues) que la sonde a dû poser.
         attributsPoses: c?.attributsPoses ?? null,
+        // (07/11) couleurPosee : la couleur que la sonde a dû poser ; couleurEnvoyee : où le corps la portait.
+        couleurPosee: c?.couleurPosee ?? null,
+        couleurEnvoyee: c?.couleurEnvoyee ?? null,
       };
     }
     if (last && refus) break;
@@ -681,6 +707,8 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
     {
       const enCours = globalThis.__fillsellRemplissage;
       if (enCours?.promesse && enCours.jobId === String(msg.job?.id ?? "")) {
+        // (07/11) Repli du port vers le canal classique : quelqu'un attend de nouveau ce remplissage.
+        enCours.sansEcoute = false;
         enCours.promesse.then((r) => sendResponse(r));
         return true;
       }
@@ -1002,6 +1030,35 @@ function armerAttributsConnusPourPost(attrs, catalogId) {
 }
 // Codes qui ont leur propre pose au POST (ISBN, langue, marque) ou leur canal dédié éprouvé : jamais par ce chemin.
 const ATTRIBUTS_CONNUS_HORS_SONDE = new Set(["isbn", "language_book", "brand", "model", "size", "condition", "color", "material", "package_size"]);
+
+// ── (07/11, Marta MELE) LA COULEUR AUX IDENTIFIANTS CONNUS PART DANS L'ENVOI ──
+// Trois remises en ligne italiennes refusées (400 « Compila il campo "colore" »)
+// alors que la copie portait color1_id. La couleur reste hors des deux canaux
+// génériques ci-dessus (ils ne connaissent que item_attributes et poseraient
+// par-dessus un `color_ids` rempli par la page) : elle a SA pose, même canal,
+// même règle que la marque et le colis — la sonde (background.js) ne la pose
+// que si la page n'a posé AUCUNE couleur, dans la clé que le corps porte déjà
+// (`color_ids` s'il l'a, sinon l'entrée { code: "color", ids } d'item_attributes),
+// jamais par-dessus, armement borné à 15 min. Les identifiants sont ceux de
+// l'annonce d'origine (vinted_ids.color_ids, republish_snapshot.color1_id/2)
+// ou ceux que le serveur a lus pour la publication — jamais devinés ; la palette
+// de Vinted est la même dans toutes les langues (« Rosa » = ids 5 et 24 : seul
+// l'id les distingue). Passer null DÉSARME.
+function armerCouleurPourPost(ids) {
+  try {
+    const propres = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2);
+    window.postMessage({ __fillsellArmeCouleur: true, ids: propres.length ? propres : null }, window.location.origin);
+  } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+// Les identifiants de couleur que le job connaît (pur) : vinted_ids.color_ids,
+// sinon les deux emplacements de la copie (republish_snapshot.color1_id/2).
+function idsCouleurConnusDuJob(pf) {
+  const p = pf && typeof pf === "object" ? pf : {};
+  const brut = Array.isArray(p.vinted_ids?.color_ids) && p.vinted_ids.color_ids.length
+    ? p.vinted_ids.color_ids
+    : [p.republish_snapshot?.color1_id, p.republish_snapshot?.color2_id];
+  return [...new Set((brut ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2);
+}
 
 // Ids de langue portés par l'annonce d'origine (republication). Les attributs
 // capturés arrivent bruts dans platform_fields.itemAttributesCaptures — c'est
@@ -1429,6 +1486,14 @@ async function lireDetailArticle(vintedItemId) {
 // Le corps n'est JAMAIS stocké en entier (les catalogues font ~1,5 Mo) : 300
 // caractères suffisent à distinguer 404 / 403 / DataDome / shape changée.
 const _refCache = {};
+// (07/11) Un essai + deux relectures sur un accroc réseau ou un 5xx.
+const REFERENTIEL_VINTED_ESSAIS = 3;
+// Erreur RÉSEAU de fetch (« Failed to fetch », « NetworkError… », « Load failed ») :
+// un TypeError levé par fetch lui-même — jamais une erreur de notre code.
+function estErreurReseauReferentiel(e) {
+  const m = String(e?.message ?? e ?? "");
+  return /Failed to fetch|NetworkError|Network request failed|Load failed|ERR_[A-Z_]+/i.test(m);
+}
 // opts.memoiser=false : lecture propre à UN article (le dto public), qui n'a
 // rien à faire dans un cache à durée de vie de page — l'onglet de travail vit
 // des heures et resservirait le dto d'une autre capture.
@@ -1440,7 +1505,30 @@ async function lireReferentielVinted(cle, chemin, extraire, diag, opts = {}) {
   }
   const trace = { cle, url: chemin };
   try {
-    const r = await fetchBorne(chemin, { headers: { Accept: "application/json" }, credentials: "include" });
+    // ── (07/11, linda.sidhoum) UN ACCROC RÉSEAU NE FAIT PLUS UNE CAPTURE « INCOMPLÈTE » ──
+    // Un seul essai : un « Failed to fetch » ou un 5xx passager sur /size_groups
+    // laissait un identifiant de taille sans libellé, et la capture sortait
+    // « incomplet ». Deux relectures de plus (pause de 1 à 3 s) sur erreur RÉSEAU
+    // ou 5xx seulement — jamais sur un 4xx, une forme inattendue, ni sur la borne
+    // de temps de fetchBorne (déjà longue) ; l'échec n'est jamais mis en cache.
+    let r = null;
+    for (let essai = 1; ; essai++) {
+      let erreurReseau = null;
+      try {
+        r = await fetchBorne(chemin, { headers: { Accept: "application/json" }, credentials: "include" });
+      } catch (e) {
+        if (e?.timeoutBorne === true || !estErreurReseauReferentiel(e)) throw e;
+        erreurReseau = e;
+      }
+      const passager = erreurReseau != null || (r && r.status >= 500);
+      if (!passager) break;
+      if (essai >= REFERENTIEL_VINTED_ESSAIS) {
+        if (erreurReseau) throw erreurReseau;
+        break; // 5xx au dernier essai : rendu tel quel (trace.status), jamais mis en cache
+      }
+      (trace.reprises ??= []).push(erreurReseau ? `réseau : ${String(erreurReseau?.message ?? erreurReseau).slice(0, 60)}` : `http_${r.status}`);
+      await sleep(1000 + Math.floor(Math.random() * 2000));
+    }
     trace.status = r.status;
     trace.content_type = (r.headers.get("content-type") ?? "").split(";")[0] || null;
     const brut = await r.text();
@@ -1756,10 +1844,12 @@ async function selectEtatParId(statusId, warnings) {
 // cochée n'est jamais re-cliquée (cocherOptionSansBasculer) ; une case
 // pré-cochée par Vinted qui n'est pas des nôtres est décochée, comme sur le
 // chemin par libellés. true = au moins une des nôtres est cochée.
-async function selectCouleursParIds(colorIds, warnings) {
+async function selectCouleursParIds(colorIds, warnings, trace = null) {
   const TRIGGER = '#color, [data-testid="color-select-dropdown-input"]';
   const ids = [...new Set((colorIds ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2);
   if (!ids.length) return false;
+  const SEL_COCHEE = '[data-testid^="color-"][role="checkbox"][aria-checked="true"]';
+  const tracer = (ligne) => { try { if (Array.isArray(trace)) trace.push(`couleur par identifiants ${ids.join(", ")} : ${ligne}`); } catch { /* relevé seulement */ } };
   try {
     await openDropdown(TRIGGER);
     const retenues = new Set();
@@ -1771,19 +1861,51 @@ async function selectCouleursParIds(colorIds, warnings) {
       retenues.add(`color-${id}`);
     }
     if (!retenues.size) throw new Error("aucun identifiant de couleur présent dans la palette");
-    for (const cell of document.querySelectorAll('[data-testid^="color-"][role="checkbox"][aria-checked="true"]')) {
+    for (const cell of document.querySelectorAll(SEL_COCHEE)) {
       if (retenues.has(cell.id)) continue;
       await humanPause();
       cell.click();
       warnings.push(`couleur: « ${cell.textContent.trim()} » pré-cochée par Vinted mais absente de l'annonce — retirée`);
     }
-    const cochees = [...document.querySelectorAll('[data-testid^="color-"][role="checkbox"][aria-checked="true"]')].map((c) => c.id);
+    const cochees = [...document.querySelectorAll(SEL_COCHEE)].map((c) => c.id);
     await closeAnyOpenDropdown();
     if (![...retenues].every((r) => cochees.includes(r))) throw new Error(`cases relues ${JSON.stringify(cochees)} ≠ ${JSON.stringify([...retenues])}`);
+    // ── (07/11, Marta MELE) LA VALEUR RETENUE APRÈS FERMETURE ───────────────
+    // Les cases relues panneau OUVERT ne prouvent pas que le champ a retenu la
+    // couleur : trois remises en ligne italiennes sont parties sans couleur
+    // (400 « Compila il campo "colore" ») après une pose « réussie ». Même règle
+    // que selectColors : le déclencheur relu après fermeture ; vide → on rouvre,
+    // les cases cochées font foi (pré-remplissage de Vinted), une case perdue est
+    // recochée UNE fois ; toujours rien → échec (repli par libellé), jamais un
+    // « posée » sur la foi d'un panneau ouvert.
+    const lireDeclencheur = () => {
+      const t = document.querySelector(TRIGGER);
+      return t ? (String(readCommittedValue(t) ?? "").trim() || valeurChampVinted(t).trim()) : "";
+    };
+    let retenue = lireDeclencheur();
+    let parCases = false;
+    if (!retenue) {
+      await openDropdown(TRIGGER);
+      let cocheesApres = new Set([...document.querySelectorAll(SEL_COCHEE)].map((c) => c.id));
+      for (const r of retenues) {
+        if (cocheesApres.has(r)) continue;
+        const el = document.getElementById(r);
+        if (el) { await humanPause(); cocherOptionSansBasculer(el); }
+      }
+      cocheesApres = new Set([...document.querySelectorAll(SEL_COCHEE)].map((c) => c.id));
+      const toutesCochees = [...retenues].every((r) => cocheesApres.has(r));
+      await closeAnyOpenDropdown();
+      retenue = lireDeclencheur();
+      if (!retenue && !toutesCochees) throw new Error("champ Couleur relu VIDE après fermeture, case(s) non retenue(s)");
+      parCases = !retenue;
+    }
+    if (parCases) couleurConfirmeeParCasesVinted = true;
+    tracer(retenue ? `champ relu « ${retenue.slice(0, 40)} » après fermeture` : "champ relu vide après fermeture, case(s) cochée(s) — conservée(s)");
     warnings.push(`couleur: posée par identifiants ${[...retenues].join(", ")} (page Vinted non française)`);
     return true;
   } catch (e) {
     warnings.push(`couleur par id : ${e?.message ?? e} — pose par libellé`);
+    tracer(`échec (${String(e?.message ?? e).slice(0, 120)}) — pose par libellé`);
     await closeAnyOpenDropdown().catch(() => {});
     return false;
   }
@@ -2995,6 +3117,16 @@ function etatRemplissagePublic() {
   if (!r) return null;
   return { jobId: r.jobId, phase: r.phase ?? null, envoye: r.envoye === true, enCours: r.enCours === true, resultat: r.resultat ?? null };
 }
+// (07/11, même règle que beebs.js) L'arrière-plan a abandonné ce remplissage
+// (message « abandon » à la borne) ou le port qui l'attendait s'est fermé sans
+// relève : lu JUSTE avant le clic « Publier », rien ne part.
+function abandonAvantEnvoi(jobId) {
+  const r = globalThis.__fillsellRemplissage;
+  if (!r || r.jobId !== String(jobId ?? "") || r.enCours !== true) return null;
+  if (r.abandonDemande === true) return "abandon reçu de l'arrière-plan (borne dépassée)";
+  if (r.sansEcoute === true) return "port de remplissage fermé : plus personne n'attend ce remplissage";
+  return null;
+}
 function resultatDepuisErreurRemplissage(err) {
   return {
     success: false,
@@ -3025,17 +3157,37 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__
     // manquer ses 20 s et laisser croire au background que la page était
     // morte. battement = fonction d'arrêt.
     let battement = null;
+    // (07/11) L'état du remplissage que CE port attend (null : port de simple question « etat? »).
+    let suivi = null;
     const envoyer = (m) => { try { port.postMessage(m); } catch { /* port fermé */ } };
+    const lacher = () => {
+      const r = suivi;
+      if (!r) return;
+      suivi = null;
+      r.ecoutes = Math.max(0, (Number(r.ecoutes) || 1) - 1);
+      if (r.ecoutes === 0 && r.enCours === true) r.sansEcoute = true;
+    };
     const suivre = (jobId) => {
       battement?.();
       battement = repeterSurWorker(20_000, () => envoyer({ type: "vivant", jobId, phase: globalThis.__fillsellRemplissage?.phase ?? null }));
       const r = globalThis.__fillsellRemplissage;
+      if (r && r.jobId === jobId && r !== suivi) {
+        lacher();
+        suivi = r;
+        r.ecoutes = (Number(r.ecoutes) || 0) + 1;
+        r.sansEcoute = false; // quelqu'un attend de nouveau (rattache après la mort du worker)
+      }
       const p = (r && r.jobId === jobId && r.promesse) ? r.promesse : Promise.resolve(null);
       p.then((resultat) => { battement?.(); if (resultat) envoyer({ type: "resultat", jobId, resultat }); });
     };
     port.onMessage.addListener((m) => {
       if (!m) return;
       if (m.type === "etat?") { envoyer({ type: "etat", etat: etatRemplissagePublic() }); return; }
+      if (m.type === "abandon") {
+        const r = globalThis.__fillsellRemplissage;
+        if (r && r.jobId === String(m.jobId ?? "")) r.abandonDemande = true;
+        return;
+      }
       if (m.type === "FILL_LISTING_PORT") {
         const jobId = String(m.job?.id ?? "");
         const r = globalThis.__fillsellRemplissage;
@@ -3047,7 +3199,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__
       }
       if (m.type === "rattache") { suivre(String(m.jobId ?? "")); return; }
     });
-    port.onDisconnect.addListener(() => { battement?.(); /* le remplissage continue ; son résultat reste dans la page */ });
+    // Le remplissage continue ; son résultat reste dans la page. (07/11) Sans plus
+    // aucun auditeur, il ne cliquera pas « Publier » (abandonAvantEnvoi).
+    port.onDisconnect.addListener(() => { battement?.(); lacher(); });
   });
 }
 // ── FIN PORT DE REMPLISSAGE CONTENT-SCRIPT ──────────────────────────────────
@@ -3551,6 +3705,10 @@ async function remplirFormulaireVinted(job) {
   armerAttributsConnusPourPost(null);
   // (26/10) La marque pré-remplie relevée sur l'article précédent ne parle pas pour celui-ci.
   prefillMarqueVinted = undefined;
+  // (07/11) Couleur par ses identifiants : même raison, même geste ; la porte des requis repart de zéro.
+  armerCouleurPourPost(null);
+  couleurAttendueVinted = false;
+  couleurConfirmeeParCasesVinted = false;
   // { id, titre } quand la marque de l'annonce d'origine part par son
   // identifiant (menu de Vinted muet) : lu par la porte des requis et par la
   // garde de retrait de l'une-passe, plus bas.
@@ -4380,7 +4538,7 @@ async function remplirFormulaireVinted(job) {
   // italien, « Rosa » nomme DEUX couleurs, ids 5 et 24 — relevé du 25/09 :
   // seul l'id les distingue), sauf réponse de l'utilisateur (vintedAspects.color).
   const couleursParId = Array.isArray(idsVinted?.color_ids) && idsVinted.color_ids.length && !_color
-    ? await selectCouleursParIds(idsVinted.color_ids, warnings)
+    ? await selectCouleursParIds(idsVinted.color_ids, warnings, diagnosticsRecreation)
     : false;
   if (couleursParId) {
     // posées et relues par identifiant — rien d'autre à faire ici.
@@ -4442,6 +4600,24 @@ async function remplirFormulaireVinted(job) {
     if (couleur.statut === "posee") {
       console.log(`[vinted] couleur de republication posée : ${couleur.valeur}`);
     }
+  }
+  // ── (07/11, Marta MELE) CE QUE LE CHAMP COULEUR A RETENU, APRÈS L'ÉTAPE ────
+  // Relu panneau FERMÉ et rangé au diagnostic persisté (last_diagnostic, refus
+  // comme succès) : la pose « réussie » de trois remises en ligne italiennes est
+  // partie sans couleur, et rien ne permettait de dire où elle s'était perdue.
+  // Puis la porte des requis est armée : sur une republication AVANT le retrait,
+  // un champ Couleur relu vide alors que la copie en porte une arrête tout.
+  {
+    const copieAUneCouleur = Boolean(fields.colors?.length) || idsCouleurConnusDuJob(fields).length > 0;
+    try {
+      const t = document.querySelector(vintedFieldSelector("color"));
+      if (t && copieAUneCouleur) {
+        const lue = (valeurChampVinted(t).trim() || String(readCommittedValue(t) ?? "").trim()).slice(0, 40);
+        diagnosticsRecreation.push(`couleur ${JSON.stringify(fields.colors ?? []).slice(0, 60)} : champ relu « ${lue || "(vide)"} » après l'étape couleur` +
+          (couleurConfirmeeParCasesVinted ? " (case(s) cochée(s), déclencheur vide)" : ""));
+      }
+    } catch { /* relevé seulement */ }
+    couleurAttendueVinted = Boolean(onePass) && !recreation && copieAUneCouleur;
   }
 
   // (30/10, lot E) La composition de l'étiquette (« Coton, Polyester, Élasthanne ») : chaque matière cochée, 3 au
@@ -5266,11 +5442,36 @@ async function remplirFormulaireVinted(job) {
     }
   }
 
+  // (07/11, Marta MELE) La couleur aux identifiants connus part au POST si la
+  // page n'en a posé AUCUNE (la sonde ne remplit qu'un champ laissé vide). Pas
+  // quand la personne a choisi une couleur dans l'app (vintedAspects.color : son
+  // choix prime sur la copie), ni sur un formulaire sans champ Couleur.
+  if (!_color && document.querySelector(vintedFieldSelector("color"))) {
+    const idsCouleur = idsCouleurConnusDuJob(fields);
+    if (idsCouleur.length) armerCouleurPourPost(idsCouleur);
+  }
+
   // publish.submit (migré au registre — criticité red, clé SANS fallback, §8
   // de l'audit ; l'assert du registre — visible au sens getComputedStyle +
   // enabled — s'applique désormais avant le clic).
   marquerPhase("soumission");
   const publishBtn = await waitForKey("publish.submit");
+  // ── (07/11, même règle que Beebs) PERSONNE N'ATTEND PLUS CE REMPLISSAGE ──
+  // La borne de l'arrière-plan est dépassée (« abandon ») ou le port qui
+  // l'attendait s'est fermé sans relève : publier ferait une annonce que
+  // personne ne lira, puis une seconde au prochain essai. Une-passe dont
+  // l'annonce d'origine vient d'être retirée sous feu vert : chemin inchangé.
+  const abandon = onePassDeleted ? null : abandonAvantEnvoi(job?.id);
+  if (abandon) {
+    console.warn(`[vinted] « Publier » NON cliqué — ${abandon}`);
+    return {
+      success: false,
+      abandonneAvantEnvoi: true,
+      error: "Remplissage abandonné avant l'envoi (borne dépassée) : rien n'a été envoyé à Vinted.",
+      warnings,
+      diagnostic: `abandon avant le clic « Publier » : ${abandon}`,
+    };
+  }
   envoyerInstantaneMesures(job?.id); // (05/10, point 9) avant la redirection qui coupe le canal
   publishBtn.click();
   marquerPhase("envoye", true); // à partir d'ici : dans le doute, on ne renvoie JAMAIS
@@ -5399,7 +5600,14 @@ async function remplirFormulaireVinted(job) {
       // (0.6.84) Le format de colis ne se renseigne nulle part dans l'app : le
       // formulaire de Vinted ne le propose pas (montres, 97). Le dire, sans
       // envoyer la personne chercher un champ qui n'existe pas.
-      const seulColis = serverRequired.length > 0 && serverRequired.every((f) => /^package_size(_id)?$/.test(String(f.key)));
+      // (07/11, ayadi007) Rayon de colis volumineux : Vinted exige les DIMENSIONS du
+      // colis (« Ces dimensions sont supérieures aux limites maximales autorisées »,
+      // « Ajoute une hauteur, une largeur, une longueur »). Ni l'app ni l'extension
+      // ne savent les renseigner : on le dit tel quel, jamais une question sans issue.
+      const CLE_DIMENSION_COLIS_RE = /^parcel_dimensions_(height|width|length)$/;
+      const seulColis = serverRequired.length > 0
+        && serverRequired.every((f) => /^package_size(_id)?$/.test(String(f.key)) || CLE_DIMENSION_COLIS_RE.test(String(f.key)));
+      const dimensionsColis = seulColis && serverRequired.some((f) => CLE_DIMENSION_COLIS_RE.test(String(f.key)));
       // Diagnostic PERSISTÉ (2026-08-28, mur ISBN « Fairy tail » : sur un
       // refus serveur, last_diagnostic restait VIDE — impossible de trancher
       // après coup). URL + statut du refus, ISBN vu dans le CORPS du POST par
@@ -5415,6 +5623,8 @@ async function remplirFormulaireVinted(job) {
         sonde.refus?.marquePosee ? `brand_id POSÉ dans le corps par la sonde (${sonde.refus.marquePosee}, marque de l'annonce d'origine) — la page l'avait laissé vide` : null,
         sonde.refus?.marqueEnvoyee ? `marque dans le corps du POST : ${JSON.stringify(sonde.refus.marqueEnvoyee).slice(0, 160)}` : null,
         sonde.refus?.attributsPoses ? `attributs POSÉS dans le corps par la sonde (${String(sonde.refus.attributsPoses).slice(0, 200)}) — la page les avait laissés vides` : null,
+        sonde.refus?.couleurPosee ? `couleur POSÉE dans le corps par la sonde (${String(sonde.refus.couleurPosee).slice(0, 80)}) — la page l'avait laissée vide` : null,
+        sonde.refus?.couleurEnvoyee ? `couleur dans le corps du POST : ${JSON.stringify(sonde.refus.couleurEnvoyee).slice(0, 160)}` : null,
         sonde.refus?.reponse ? `réponse : ${sonde.refus.reponse}` : null,
         `champs exigés : ${details}`,
         serverRequired.map((f) => {
@@ -5426,11 +5636,16 @@ async function remplirFormulaireVinted(job) {
       ].filter(Boolean).join(" || ").slice(0, 2000);
       return {
         success: false,
-        error: seulColis
+        error: dimensionsColis
+          ? "Vinted exige les dimensions du colis (hauteur, largeur, longueur) pour ce rayon, et FillSell ne sait pas encore les renseigner : rien n'a été publié. Choisis un autre rayon Vinted pour cet article, ou publie-le toi-même sur Vinted."
+          : seulColis
           ? `${messageEchec} Vinted exige le format du colis, que son formulaire ne propose pas pour ce rayon` +
             `${sonde.refus?.colisPose ? ` (format ${sonde.refus.colisPose} envoyé directement, refusé quand même)` : ""}.`
           : `${messageEchec} Champ${serverRequired.length > 1 ? "s" : ""} exigé${serverRequired.length > 1 ? "s" : ""} par Vinted : ${serverRequired.map((f) => f.label).join(", ")}. À faire : ${conseils}, puis relance la publication.`,
-        ...(seulColis ? { colisNonPropose: true } : {}),
+        // Les dimensions ne sont PAS un format de colis absent du formulaire : pas de
+        // reprise « format refusé » toutes les 6 h (colisNonPropose), le message suffit.
+        ...(seulColis && !dimensionsColis ? { colisNonPropose: true } : {}),
+        ...(dimensionsColis ? { dimensionsColisExigees: true } : {}),
         warnings,
         serverRequired,
         // Preuve d'échec NOMMÉE (2026-09-11) : Vinted a répondu un refus,
@@ -7850,6 +8065,11 @@ function rayonNeufSeulementVinted(fields, requiredState, extras = {}) {
   return {
     success: false,
     needsUser: true,
+    // (07/11, ayadi007) Sans champ précis (needsUserField), le background refaisait
+    // 5 essais complets du même formulaire avant de le dire. Seule la personne
+    // change de rayon : attente nommée, needs_user tout de suite, aucune reprise.
+    attenteUtilisateur: true,
+    attenteMotif: "vinted_rayon_neuf_seulement",
     error:
       `Le rayon Vinted « ${rayon} » n'accepte que des articles neufs, et ton article est « ${etat} ». ` +
       "Choisis un autre rayon Vinted pour cet article depuis l'app, puis relance la publication.",
@@ -9110,6 +9330,13 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
 // (background). Avant ça, la ligne "color" du catalogue n'avait JAMAIS
 // d'allowed_values — l'app ne pouvait pas proposer une liste fermée.
 let paletteCouleursRelevee = null;
+// (07/11, Marta MELE) La porte des requis (computeVintedRequiredState) compte
+// une couleur VIDE comme un requis manquant quand la copie en porte une —
+// armé seulement sur une republication AVANT le retrait, APRÈS l'étape couleur.
+// Une couleur confirmée par ses cases cochées (déclencheur vide : pré-remplissage
+// de Vinted) n'est jamais comptée vide. Les deux repartent à zéro à chaque remplissage.
+let couleurAttendueVinted = false;
+let couleurConfirmeeParCasesVinted = false;
 
 // ── UNE OPTION DÉJÀ COCHÉE NE SE RE-CLIQUE PAS (2026-09-10 soir, PROUVÉ) ────
 // Relevé en direct sur /items/new (compte Nico, 21:0x) : sur une option
@@ -9332,6 +9559,7 @@ async function selectColors(colorNames, warnings = []) {
         console.log(`[vinted] ${note}`);
         warnings.push(note);
         await closeAnyOpenDropdown();
+        couleurConfirmeeParCasesVinted = true; // (07/11) la porte des requis ne la compte pas vide
         return true;
       }
       const note = "couleur: cliquée(s) mais champ relu VIDE après fermeture — nouvelle passe";
@@ -9361,7 +9589,10 @@ async function selectColors(colorNames, warnings = []) {
         warnings.push("couleur: aucune case cochée et champ toujours VIDE après la nouvelle passe — pose non retenue par le formulaire");
         return false;
       }
-      if (casesOk) warnings.push("couleur: case(s) cochée(s) après la nouvelle passe — posée(s)");
+      if (casesOk) {
+        warnings.push("couleur: case(s) cochée(s) après la nouvelle passe — posée(s)");
+        couleurConfirmeeParCasesVinted = true; // (07/11) la porte des requis ne la compte pas vide
+      }
     }
   }
   return posees > 0 || !colorNames.length;
@@ -9837,7 +10068,7 @@ async function urlToFile(url, index) {
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
         : `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
           "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
-          "FillSell la rapatrie automatiquement et relance la publication toute seule — rien à payer, rien à refaire. " +
+          "FillSell la copie chez lui, la vérifie, puis la publication repart toute seule — rien à payer, rien à refaire. " +
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app.")
     );
   }

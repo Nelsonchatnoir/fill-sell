@@ -15,6 +15,7 @@
 // rapatrie pas garde son URL d'origine (eBay dira si elle est morte).
 // ═══════════════════════════════════════════════════════════════════════════
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+import { typeImageDesOctets, copieVerifiee } from "./photos-hors-plateforme.js";
 
 export const PHOTO_BUCKET = "listing-photos";
 const PHOTO_MAX_OCTETS = 10 * 1024 * 1024;
@@ -130,6 +131,87 @@ export function estCdnPlateforme(u: unknown): u is string {
     if (CDN_HOTES_EXACTS.includes(h)) return true;
     return CDN_DOMAINES_PLATEFORMES.some((d) => h === d || h.endsWith(`.${d}`));
   } catch { return false; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (07/11, point 10) UNE COPIE PROUVÉE : téléchargée, image, taille > 0, RELUE chez nous
+// ═══════════════════════════════════════════════════════════════════════════
+// Pour les photos d'un job qui part sur une AUTRE plateforme que celle de leur CDN (_shared/photos-hors-plateforme.js,
+// handler-watch) : get-pending-jobs ne sert le job que quand toutes ses photos sont chez nous, et c'est cette
+// fonction qui en apporte la preuve. Mêmes bornes que rapatrierPhoto (15 s, ≤ 10 Mo, deux tentatives sur échec
+// passager), plus : hôte de la LISTE FERMÉE seulement (jamais un proxy), redirection hors liste refusée, type prouvé
+// par les octets (jamais par l'en-tête seul), et la copie relue sur son URL publique (200, image, même taille) avant
+// d'être rendue. `http` porte le statut d'un refus PERMANENT (404, 410, 403…) pour le décompte des photos mortes.
+export interface CopieVerifiee { url: string | null; octets?: number; type?: string; http?: number; motif?: string }
+
+async function relireCopie(publicUrl: string, attendus: number): Promise<{ ok: boolean; motif?: string }> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 10_000);
+  try {
+    // Clé de cache neuve : la relecture ne doit jamais tomber sur une réponse d'avant l'envoi.
+    const cible = `${publicUrl}${publicUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
+    const head = await fetch(cible, { method: "HEAD", signal: ctl.signal });
+    const longueur = head.headers.get("content-length");
+    if (head.status === 200 && longueur != null) {
+      const ok = copieVerifiee({ status: head.status, contentType: head.headers.get("content-type"), taille: Number(longueur), attendus });
+      return ok ? { ok } : { ok, motif: `relecture : ${head.status} ${head.headers.get("content-type")} ${longueur}/${attendus} octets` };
+    }
+    const get = await fetch(cible, { signal: ctl.signal });
+    const octets = get.ok ? (await get.arrayBuffer()).byteLength : 0;
+    const ok = copieVerifiee({ status: get.status, contentType: get.headers.get("content-type"), taille: octets, attendus });
+    return ok ? { ok } : { ok, motif: `relecture : ${get.status} ${get.headers.get("content-type")} ${octets}/${attendus} octets` };
+  } catch (e) {
+    return { ok: false, motif: `relecture : ${(e as Error)?.name === "AbortError" ? "timeout 10s" : String((e as Error)?.message ?? e)}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function rapatrierPhotoVerifiee(admin: SupabaseClient, src: string, dest: string): Promise<CopieVerifiee> {
+  if (!estCdnPlateforme(src)) return { url: null, motif: "hôte hors de la liste des plateformes" };
+  let dernier = "";
+  let http: number | undefined;
+  for (let tentative = 1; tentative <= 2; tentative++) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), PHOTO_TIMEOUT_MS);
+    let transitoire = false;
+    try {
+      const resp = await fetch(src, { signal: ctl.signal });
+      if (resp.url && !estCdnPlateforme(resp.url)) {
+        dernier = "redirigée hors de la liste des plateformes";
+      } else if (!resp.ok) {
+        transitoire = resp.status >= 500 || resp.status === 429 || resp.status === 408;
+        if (!transitoire) http = resp.status;
+        dernier = `HTTP ${resp.status}`;
+      } else {
+        const bytes = new Uint8Array(await resp.arrayBuffer());
+        const type = typeImageDesOctets(bytes);
+        if (!bytes.byteLength || bytes.byteLength > PHOTO_MAX_OCTETS) dernier = `taille hors bornes (${bytes.byteLength} octets)`;
+        else if (!type) dernier = `pas une image (${resp.headers.get("content-type") ?? "type absent"})`;
+        else {
+          const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "image/gif" ? "gif" : type === "image/avif" ? "avif" : "jpg";
+          const path = `${dest}.${ext}`;
+          const { error: upErr } = await admin.storage.from(PHOTO_BUCKET).upload(path, bytes, { contentType: type, upsert: true });
+          if (upErr) { transitoire = true; dernier = `upload : ${upErr.message}`; }
+          else {
+            const publicUrl = admin.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl as string;
+            const relu = await relireCopie(publicUrl, bytes.byteLength);
+            if (relu.ok) return { url: publicUrl, octets: bytes.byteLength, type };
+            transitoire = true;
+            dernier = relu.motif ?? "relecture refusée";
+          }
+        }
+      }
+    } catch (e) {
+      transitoire = true;
+      dernier = (e as Error)?.name === "AbortError" ? `timeout ${PHOTO_TIMEOUT_MS / 1000}s` : String((e as Error)?.message ?? e);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!transitoire) break;
+    if (tentative === 1) await new Promise((r) => setTimeout(r, 400));
+  }
+  return { url: null, motif: dernier, ...(http ? { http } : {}) };
 }
 
 // Les CDN de plateformes AUTRES que Vinted. Le partage est volontaire :

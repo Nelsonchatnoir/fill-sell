@@ -147,9 +147,18 @@ const BRANCHES = [
   [/(^|\W)(enfants?|junior)(\W|$)/i, "enfant"],
 ];
 
+// (07/11, point 4 — nicolas.menar) La RACINE eBay « Bébé, puériculture » n'est pas un rayon de genre : c'est le rayon
+// des objets de puériculture (doudous, biberons, gigoteuses, sièges auto…), pour tous les enfants. Lue comme la branche
+// « bébé », elle était ÉCARTÉE pour un genre Fille, Garçon, Enfant, Femme ou Homme : le « Doudou Simba » (genre Fille)
+// perdait sa seule feuille exacte (148373 « Peluches, doudous ») et partait par l'icône 🧸 en « Jouets et jeux ›
+// Peluches, doudous › Modernes » — eBay le range en puériculture, la garde a tout retenu. Le genre se lit sur le reste
+// du chemin (aucune feuille genrée sous cette racine aujourd'hui : relu sur arbres/ebayFeuilles.js, 99 feuilles).
+const RACINE_PUERICULTURE = /^b[ée]b[ée],\s*pu[ée]riculture$/i;
+
 /** La branche de genre d'un chemin, ou null s'il n'en porte aucune. */
 export function brancheGenre(chemin) {
-  const texte = chemin.join(" > ");
+  const segments = Array.isArray(chemin) && RACINE_PUERICULTURE.test(String(chemin[0] ?? "").trim()) ? chemin.slice(1) : chemin;
+  const texte = segments.join(" > ");
   for (const [re, nom] of BRANCHES) if (re.test(texte)) return nom;
   return null;
 }

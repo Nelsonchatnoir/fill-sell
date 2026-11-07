@@ -124,13 +124,25 @@ console.log('\n3. La chaîne jusqu\'au point final, puis la remise (dernière d�
 const M1105 = '20261105170000_remise_en_vente_series_leboncoin.sql';
 const M0611 = '20261106230000_ordre_photos_article.sql';
 const plat = (t) => String(t ?? '').replace(/\s+/g, ' ').trim();
-const tickOrdrePhotos = derniere.get('remises_en_vente_tick')?.f === M0611
-  && plat(parFichier.get(`${M0611}|remises_en_vente_tick`)).replace(
+const ordrePhotos0611 = plat(parFichier.get(`${M0611}|remises_en_vente_tick`)).replace(
     'THEN public.photos_ordre_article(j.photos, i.photos, j.platform_fields)', 'THEN j.photos') === plat(parFichier.get(`${M1105}|remises_en_vente_tick`));
+const tickOrdrePhotos = derniere.get('remises_en_vente_tick')?.f === M0611 && ordrePhotos0611;
+// (07/11, Ornella) Puis 20261107150000_ventes_annulees_fermeture (prod du 07/11 = 20261106230000) : acceptée SEULEMENT si
+// chaque ligne du corps de 20261106230000 s'y retrouve, dans l'ordre (seule change la ligne du bilan) — ce qu'elle ajoute
+// ne fait que fermer des remises après vente annulée (hors stock, jumelle prouvée) ; rien de la chaîne n'est défait.
+const M0711 = '20261107150000_ventes_annulees_fermeture.sql';
+const lignesNettes = (t) => String(t ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+const tickVentesAnnulees = (() => {
+  if (derniere.get('remises_en_vente_tick')?.f !== M0711 || !ordrePhotos0611) return false;
+  const a = lignesNettes(parFichier.get(`${M0611}|remises_en_vente_tick`)), b = lignesNettes(parFichier.get(`${M0711}|remises_en_vente_tick`));
+  let k = 0; const manquantes = [];
+  for (const l of a) { const at = b.indexOf(l, k); if (at < 0) manquantes.push(l); else k = at + 1; }
+  return a.length > 100 && manquantes.length === 1 && /'abandonnees', v_abandons, 'cpu', v_cpu\);/.test(manquantes[0]);
+})();
 ok(derniere.get('leboncoin_transaction_noter')?.f === M1105
-  && (derniere.get('remises_en_vente_tick')?.f === M1105 || tickOrdrePhotos)
+  && (derniere.get('remises_en_vente_tick')?.f === M1105 || tickOrdrePhotos || tickVentesAnnulees)
   && derniere.get('vente_transaction_annulee_leboncoin')?.f === M1105,
-  'les trois fonctions ont leur dernière définition dans la migration 20261105170000 (aucune réécriture plus récente ne la défait ; remises_en_vente_tick : 20261106230000 = 20261105170000 + l\'ordre des photos, rien d\'autre)',
+  'les trois fonctions ont leur dernière définition dans la migration 20261105170000 (aucune réécriture plus récente ne la défait ; remises_en_vente_tick : 20261106230000 = 20261105170000 + l\'ordre des photos ; 20261107150000 = 20261106230000 + les fermetures des ventes annulées, rien d\'autre)',
   NOMS.map((x) => `${x}: ${derniere.get(x)?.f}`).join(' ; '));
 const vpae = corps('ventes_prouvees_a_enregistrer');
 ok(/sale_evidence,listing_id\}' = btrim\(c\.platform_listing_id\)/.test(vpae) && /sale_evidence,platform\}' = c\.platform/.test(vpae)

@@ -54,6 +54,7 @@ import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js";
 import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
 // (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
 import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";
@@ -11731,6 +11732,30 @@ serve(async (req) => {
             console.log(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : prix ${actuel} → ${enLigne} (celui de l'annonce en ligne)`);
           }
         }
+        // (07/11, point 7 — labrunettedu44, 28c40e78 « Coquillage nacré ») Ni la tâche ni l'annonce relevée n'ont de prix
+        // (annonce Leboncoin de 2021 déposée SANS prix) : le pré-vol arrêtait la republication avant tout retrait, avec raison,
+        // et « relancer » ne pouvait jamais aboutir. Le prix de la FICHE, quand la personne l'a indiqué, devient le prix de
+        // la tâche (dernière source, jamais par-dessus un prix connu). Lot borné à 200 fiches.
+        const sansPrix = (out as unknown as Array<Record<string, unknown>>).filter((j) => j.action === "republish"
+          && !(Number(j.price) > 0) && j.inventaire_id != null
+          && !["deleted", "recreated"].includes(String(pfP(j)["republish_step"] ?? "")));
+        if (sansPrix.length) {
+          const ids = [...new Set(sansPrix.map((j) => Number(j.inventaire_id)).filter((n) => Number.isFinite(n)))].slice(0, 200);
+          const { data: fichesP } = await lireParLots((lot) => userClient.from("inventaire").select("id, prix_vente").in("id", lot), ids, 200);
+          const prixFiche = new Map(((fichesP ?? []) as Array<{ id: number; prix_vente: unknown }>)
+            .map((f) => [Number(f.id), Number(String(f.prix_vente ?? "").replace(",", "."))] as [number, number])
+            .filter(([, p]) => Number.isFinite(p) && p > 0));
+          for (const j of sansPrix) {
+            const p = prixFiche.get(Number(j.inventaire_id));
+            if (p == null) continue;
+            const pf = { ...pfP(j), prix_repris_de_la_fiche: { avant: null, apres: p, source: "fiche de l'article (aucun prix sur l'annonce ni la tâche)", le: new Date().toISOString(), pose_par: "get-pending-jobs" } };
+            const { error: fErr } = await userClient.from("cross_post_jobs").update({ price: p, platform_fields: pfAPersister(pf) }).eq("id", j.id as string);
+            if (fErr) { console.warn(`[get-pending-jobs] prix de la fiche ${String(j.id).slice(0, 8)} non repris (${fErr.message})`); continue; }
+            (j as Record<string, unknown>).price = p;
+            (j as Record<string, unknown>).platform_fields = pf;
+            console.log(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : aucun prix → ${p} (celui de la fiche)`);
+          }
+        }
       } catch (e) {
         console.warn(`[get-pending-jobs] prix de republication : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
       }
@@ -14236,6 +14261,61 @@ serve(async (req) => {
       }
     }
 
+    // ══ (07/11, point 10) LES PHOTOS D'UN JOB QUI PART AILLEURS SONT CHEZ NOUS AVANT DE PARTIR ══
+    // (_shared/photos-hors-plateforme.js) 22 republications Leboncoin (5 comptes) aux photos sur images1.vinted.net
+    // tournaient en « formulaire de recréation illisible » toutes les 30 min : la page leboncoin.fr ne peut pas lire
+    // une photo de Vinted (CORS, mesuré le 07/11), et le filet de handler-watch ne les voyait pas (1 000 lignes lues
+    // sur 2 405). LA RÈGLE : un job dont une photo est sur le CDN d'une AUTRE plateforme que celle visée (Vinted
+    // compris ; Beebs partout, son CDN ne sert aucun CORS) n'est PAS servi — rien retiré, l'annonce d'origine reste
+    // en ligne. Il est marqué (`photos_hors_plateforme`) ; handler-watch copie ses photos chez nous, les relit
+    // (200, image, même taille) et les remet à leur place ; il part au poll suivant. Juste avant la réservation :
+    // seuls les jobs qui partiraient MAINTENANT sont retenus (comptes actifs, bornés par cycle). Écriture seulement
+    // quand la marque ou la phrase change (jamais une ligne inchangée), 40 au plus par poll. La retenue ne dépend
+    // d'aucune écriture : un job aux photos étrangères n'est jamais servi, même si la base refuse la marque.
+    let heldPhotosHorsPlateforme = 0;
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const maintenantPh = new Date().toISOString();
+      const retenusPh = new Set<string>();
+      const aEcrirePh: Array<{ j: Record<string, unknown>; ecrire: { platform_fields: Record<string, unknown>; error?: string | null } }> = [];
+      for (const j of out) {
+        try {
+          const g = gardePhotosHorsPlateforme(j, { maintenant: maintenantPh, retraitEngage: retraitEngage(j) }) as
+            { servir: boolean; ecrire?: { platform_fields: Record<string, unknown>; error?: string | null } };
+          if (!g.servir) retenusPh.add(String(j.id));
+          if (g.ecrire) aEcrirePh.push({ j: j as unknown as Record<string, unknown>, ecrire: g.ecrire });
+        } catch (e) {
+          console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} : garde des photos hors plateforme illisible (${String((e as Error)?.message ?? e)}) — servi comme avant`);
+        }
+      }
+      if (aEcrirePh.length) {
+        try {
+          const adminPh = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          for (const { j, ecrire } of aEcrirePh.slice(0, 40)) {
+            const pfPh = { ...ecrire.platform_fields };
+            const majPh: Record<string, unknown> = {};
+            if (ecrire.error !== undefined && ecrire.error !== (j.error ?? null)) {
+              if (j.error && ecrire.error) {
+                pfPh.erreurs_archivees = archiverErreur(pfPh.erreurs_archivees, j.error, "pending", "get-pending-jobs (photos hors plateforme : copie chez FillSell avant de partir)");
+              }
+              majPh.error = ecrire.error;
+            }
+            majPh.platform_fields = pfAPersister(pfPh);
+            const { data: okPh, error: errPh } = await adminPh.from("cross_post_jobs").update(majPh)
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if (errPh) console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} : marque « photos hors plateforme » non écrite (${errPh.message}) — retenu quand même`);
+            else if (okPh?.length) { j.platform_fields = pfPh; if ("error" in majPh) j.error = majPh.error; }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] photos hors plateforme : écriture illisible (${String((e as Error)?.message ?? e)}) — les jobs concernés restent retenus`);
+        }
+      }
+      if (retenusPh.size) {
+        out = out.filter((j) => !retenusPh.has(String(j.id)));
+        heldPhotosHorsPlateforme = retenusPh.size;
+        console.log(`[get-pending-jobs] userId=${user.id} : ${retenusPh.size} job(s) NON servi(s) — photos sur le CDN d'une autre plateforme, copie chez FillSell demandée (handler-watch), rien retiré`);
+      }
+    }
+
     // Point C : seule la file d'exécution réserve. Le popup reste une lecture.
     // Même forme de réponse pour 0.6.69, 0.6.75 et les versions antérieures.
     if (!includeProcessing && !includeNeedsUser && out.length) {
@@ -14735,6 +14815,9 @@ serve(async (req) => {
       // parce que l'article tombe sous les règles du catalogue Beebs.
       beebs_interdits: heldBeebsInterdit,
       lbc_interdits: heldLbcInterdit,
+      // (07/11, point 10) Jobs retenus à ce poll le temps que leurs photos (CDN d'une autre plateforme) soient copiées
+      // chez FillSell. Information seulement : aucune extension ne le lit.
+      photos_hors_plateforme_retenus: heldPhotosHorsPlateforme,
       // depop_interdits (09/10 soir) : dépôts Depop d'une catégorie interdite par Depop.
       depop_interdits: heldDepopInterdit,
       beebs_sans_identifiant_retenus: heldBeebsSansIdentifiant,

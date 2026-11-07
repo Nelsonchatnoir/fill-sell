@@ -89,3 +89,9 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
   n'était FINIE (Nico, 05/11 10:20 : « 0 sur 3 », barre vide, la file à 72 % et 79 %), retour au début à chaque
   réouverture. Vu sur le vrai écran (WebKit iPhone, profil isolé) : bandeau 0 % face à 46 % dans la file avant le
   correctif. Selftest `barre-job-position` (bandeau).
+
+## 07/11 — « À régler » : toute ligne se retire (rapport `docs/enquetes/lot-0711/RAPPORT.md` § 9)
+- « Retirer de la liste « À régler » » : tâche → `platform_fields.retire_de_a_regler` (statut, numéro, empreinte
+  d'erreur, relances : un fait nouveau la fait revenir ; une relance l'efface) ; autres lignes → `platform_settings.
+  a_regler_retires` (RPC platform_settings_fusionner, 200 lignes, 90 jours). Rien n'est supprimé, annulé ni retiré.
+  Module `src/utils/retraitARegler.js`, selftest `a-regler-retirer`.

@@ -1373,3 +1373,17 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   (≠ notre dépôt) → on n'y touche pas ; jamais une modification de la personne écrasée. Sur place quand la plateforme
   le permet (eBay API : `ebay-account › modifier_annonce`), hors quota.
 - Verrou : `npm run selftest:ordre-photos` (publication, lot, 5 plateformes, limites, republication ; Postgres jetable).
+
+## 07/11 — Borne de remplissage, pré-vol trop lent, prix absent, photos d'une autre plateforme (rapport `docs/enquetes/lot-0711/RAPPORT.md` § 3, 7, 10)
+- Un essai Beebs arrêté à la borne ou muet est SUSPECT : les annonces sont relues avant tout redépôt
+  (`_shared/recreation-deja-partie.js`). Une remise en ligne bloquée par la borne repart seule (cause
+  `remplissage_borne_depassee`, une fois puis une fois au build 0.6.177, `fill_borne_ms` 20 min, relecture d'abord).
+- 0.6.177 : à la borne, « abandon » (aucun clic d'envoi après) ; pré-vol > 70 % de la borne = AUCUN retrait
+  (« Contrôle avant retrait trop lent… », pas-de-rouge `prevol_trop_lent` : reprise 2 h, puis la personne).
+  ⚠ Le port (et donc l'abandon et la borne adaptative) ne vaut que pour les comptes `beta_flags.keepalive`.
+- Prix absent de l'annonce d'origine (relevé, tâche, fiche) : message vrai (update-job-status) ; get-pending-jobs prend
+  le prix de la FICHE en dernière source.
+- Photos sur le CDN d'une AUTRE plateforme que celle visée (Vinted compris ; Beebs partout, son CDN n'a pas de CORS) :
+  get-pending-jobs retient le job (rien retiré) jusqu'à la copie chez nous VÉRIFIÉE par handler-watch
+  (`_shared/photos-hors-plateforme.js`, `rapatrierPhotoVerifiee`) ; la fiche n'est jamais réécrite (Vinted reste hors du
+  rapatriement de masse).

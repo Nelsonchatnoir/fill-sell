@@ -370,6 +370,8 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     {
       const enCours = globalThis.__fillsellRemplissage;
       if (enCours?.promesse && enCours.jobId === String(msg.job?.id ?? "")) {
+        // (07/11) Repli du port vers le canal classique : quelqu'un attend de nouveau ce remplissage.
+        enCours.sansEcoute = false;
         enCours.promesse.then((r) => sendResponse(r));
         return true;
       }
@@ -1431,13 +1433,38 @@ let titreArticleCourant = "";
 // port ouvert. Échec levé → même forme que le canal classique (needsUser borné
 // et diagnostic relayés).
 const FILL_PORT_NOM = "fillsell-remplissage";
+// (07/11, Ciddjy) Les phases du remplissage Beebs n'étaient JAMAIS marquées :
+// « dernière phase : debut » dans tout message de borne, fill_step vide. Chaque
+// phase est désormais (1) notée dans l'état de la page, (2) poussée tout de
+// suite sur le port qui attend (le message de borne dit la vraie dernière
+// phase, sans attendre le battement de 20 s), (3) relayée au background
+// (FILLSELL_FILL_STEP, fire-and-forget, comme vinted.js) — même sans port.
 function marquerPhase(phase, envoye) {
+  if (phase) {
+    try { chrome.runtime?.sendMessage?.({ type: "FILLSELL_FILL_STEP", step: `beebs:${phase}` })?.catch?.(() => {}); } catch { /* relevé seulement */ }
+  }
   try {
     const r = globalThis.__fillsellRemplissage;
-    if (!r) return;
+    // L'état d'un AUTRE job (remplissage précédent sur le même onglet) n'est jamais touché.
+    if (!r || (jobIdRemplissageCourant && r.jobId !== jobIdRemplissageCourant)) return;
     if (phase) r.phase = String(phase);
     if (envoye === true) r.envoye = true;
+    if (phase && typeof r.surPhase === "function") r.surPhase(r.phase);
   } catch { /* jamais bloquant */ }
+}
+// Job du remplissage en cours dans CETTE page (posé en tête de fillListingForm).
+let jobIdRemplissageCourant = "";
+// (07/11, Ciddjy — job 246477ff le 04/11 : annonce parue 12 min après un « délai
+// dépassé ») L'arrière-plan qui abandonne un remplissage le dit sur le port
+// ({type:"abandon"}) ; un port qui suivait ce remplissage et se ferme sans
+// qu'aucun autre ne le reprenne (rattache, canal classique) dit la même chose :
+// plus personne n'attend le résultat. Lu JUSTE avant le clic irréversible.
+function abandonAvantEnvoi(jobId) {
+  const r = globalThis.__fillsellRemplissage;
+  if (!r || r.jobId !== String(jobId ?? "") || r.enCours !== true) return null;
+  if (r.abandonDemande === true) return "abandon reçu de l'arrière-plan (borne dépassée)";
+  if (r.sansEcoute === true) return "port de remplissage fermé : plus personne n'attend ce remplissage";
+  return null;
 }
 function etatRemplissagePublic() {
   const r = globalThis.__fillsellRemplissage;
@@ -1468,17 +1495,42 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__
   chrome.runtime.onConnect.addListener((port) => {
     if (port?.name !== FILL_PORT_NOM) return;
     let battement = null;
+    // (07/11) L'état du remplissage que CE port attend (null : port de simple question « etat? »).
+    let suivi = null;
     const envoyer = (m) => { try { port.postMessage(m); } catch { /* port fermé */ } };
+    const notifierPhase = (phase) => envoyer({ type: "vivant", jobId: suivi?.jobId ?? null, phase: phase ?? null });
+    const lacher = () => {
+      const r = suivi;
+      if (!r) return;
+      suivi = null;
+      r.ecoutes = Math.max(0, (Number(r.ecoutes) || 1) - 1);
+      if (r.surPhase === notifierPhase) r.surPhase = null;
+      if (r.ecoutes === 0 && r.enCours === true) r.sansEcoute = true;
+    };
     const suivre = (jobId) => {
       clearInterval(battement);
       battement = setInterval(() => envoyer({ type: "vivant", jobId, phase: globalThis.__fillsellRemplissage?.phase ?? null }), 20_000);
       const r = globalThis.__fillsellRemplissage;
+      if (r && r.jobId === jobId && r !== suivi) {
+        lacher();
+        suivi = r;
+        r.ecoutes = (Number(r.ecoutes) || 0) + 1;
+        r.sansEcoute = false; // quelqu'un attend de nouveau (rattache après la mort du worker)
+        r.surPhase = notifierPhase;
+        // La phase déjà atteinte (marquée avant ce port, ou avant la mort du worker) part tout de suite.
+        if (r.phase) notifierPhase(r.phase);
+      }
       const p = (r && r.jobId === jobId && r.promesse) ? r.promesse : Promise.resolve(null);
       p.then((resultat) => { clearInterval(battement); if (resultat) envoyer({ type: "resultat", jobId, resultat }); });
     };
     port.onMessage.addListener((m) => {
       if (!m) return;
       if (m.type === "etat?") { envoyer({ type: "etat", etat: etatRemplissagePublic() }); return; }
+      if (m.type === "abandon") {
+        const r = globalThis.__fillsellRemplissage;
+        if (r && r.jobId === String(m.jobId ?? "")) r.abandonDemande = true;
+        return;
+      }
       if (m.type === "FILL_LISTING_PORT") {
         const jobId = String(m.job?.id ?? "");
         const r = globalThis.__fillsellRemplissage;
@@ -1490,13 +1542,16 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__
       }
       if (m.type === "rattache") { suivre(String(m.jobId ?? "")); return; }
     });
-    port.onDisconnect.addListener(() => { clearInterval(battement); /* le remplissage continue ; son résultat reste dans la page */ });
+    // Le remplissage continue ; son résultat reste dans la page. (07/11) Mais s'il
+    // n'a plus aucun auditeur, il ne cliquera pas « Mettre en vente » (abandonAvantEnvoi).
+    port.onDisconnect.addListener(() => { clearInterval(battement); lacher(); });
   });
 }
 // ── FIN PORT DE REMPLISSAGE CONTENT-SCRIPT ──────────────────────────────────
 
 async function fillListingForm(job) {
   titreArticleCourant = String(job?.title ?? "");
+  jobIdRemplissageCourant = String(job?.id ?? "");
   console.log("[beebs] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
   // ── Le bandeau de consentement, AVANT tout le reste ──────────────────────
@@ -1710,8 +1765,12 @@ async function fillListingForm(job) {
     };
   }
 
+  // (07/11) Phases du remplissage : la borne dit où le remplissage en était (marquerPhase).
+  marquerPhase("photos");
   const photoNote = !republishPreflightOnly && job.photos?.length ? await uploadPhotos(job.photos) : null;
+  marquerPhase("titre");
   if (job.title) await fillTextField("#title", job.title);
+  marquerPhase("description");
   if (job.description) await fillTextField("#description", job.description);
 
   // (02/10 soir, point 3) `warnings` est déclaré AVANT la catégorie : la
@@ -1719,6 +1778,7 @@ async function fillListingForm(job) {
   // levait « Cannot access 'o' before initialization » (nom minifié) dès que
   // la recherche tranchait — Jonathan Rabany 6d1a1d3d, pré-vol en boucle.
   const warnings = [];
+  marquerPhase("categorie");
   await selectCategory(fields.beebsCategoryPath, fields, job?.title ?? "");
   if (categorieRechercheRetenue) {
     warnings.push({
@@ -1744,6 +1804,7 @@ async function fillListingForm(job) {
   // sautés en silence (cause probable du dry-run Figurines du 2026-07-09, où
   // le job est remonté dry_run_completed / error:null alors qu'Âge et Matière
   // étaient vides à l'écran). On attend qu'au moins un attribut apparaisse.
+  marquerPhase("champs");
   await waitFor(() => beebsNombreDeChamps() > 2, 8000);
 
   // Nom d'attribut de CHAQUE champ + son référentiel complet, lus sur le fiber
@@ -1869,6 +1930,7 @@ async function fillListingForm(job) {
     // sacs…) : palier historique, inchangé.
     return "Poids jusqu'à 1 kg max";
   };
+  marquerPhase("colis");
   const packageField = findField("Format du colis");
   const formatExplicite = formatColisExplicite(fields, beebsFiberChamps);
   if (packageField) {
@@ -1956,6 +2018,7 @@ async function fillListingForm(job) {
     enumerated.find((e) => e.key === cle)?.field_label ?? libelleHumainDeCle(cle);
   const listeLisible = (cles) => cles.map(nomLisible).join(", ");
 
+  marquerPhase("prix");
   if (job.price != null) await fillPriceField("#price", job.price);
 
   // Adresse de remise (politique A+C, même contrat que Leboncoin) : absente
@@ -1963,6 +2026,7 @@ async function fillListingForm(job) {
   // (26/10 nuit, point 14c) Une adresse sans rue (suggestion = la commune
   // seule) : attente de la personne, nommée — needs_user persisté, aucune
   // reprise à l'identique (rien ne change tant que ses Réglages n'ont pas de rue).
+  marquerPhase("adresse");
   const addressResult = await fillAddress(fields.adresse, warnings);
   if (!addressResult.ok) {
     return {
@@ -2335,6 +2399,7 @@ async function fillListingForm(job) {
   // Numéro exact du dépôt (0.6.80) : les identifiants du compte JUSTE AVANT le
   // clic. Une lecture ratée ne bloque jamais le dépôt — il sortira alors sans
   // numéro, comme avant (cf. lireIdsMesAnnoncesBeebs).
+  marquerPhase("mes_annonces");
   const beebsIdsAvant = await lireIdsMesAnnoncesBeebs()
     .catch((e) => ({ ok: false, ids: [], pages: [], motif: String(e?.message ?? e).slice(0, 120) }));
 
@@ -2348,6 +2413,23 @@ async function fillListingForm(job) {
     ? `bouton « ${String(publishBtn.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40)} »` +
       `${publishBtn.disabled || publishBtn.getAttribute("aria-disabled") === "true" ? " DÉSACTIVÉ" : ""} (${boutonsSubmit} bouton(s) submit)`
     : "AUCUN bouton submit trouvé";
+  // ── (07/11, Ciddjy) PERSONNE N'ATTEND PLUS CE REMPLISSAGE : RIEN NE PART ──
+  // La borne de l'arrière-plan est dépassée (message « abandon ») ou le port qui
+  // l'attendait s'est fermé sans relève : cliquer ferait un dépôt que personne
+  // ne lira, puis un second au prochain essai (job 246477ff, 04/11). Dernier
+  // instant où l'on peut encore ne rien envoyer.
+  const abandon = abandonAvantEnvoi(job.id);
+  if (abandon) {
+    console.warn(`[beebs] « Mettre en vente » NON cliqué — ${abandon}`);
+    return {
+      success: false,
+      abandonneAvantEnvoi: true,
+      error: "Remplissage abandonné avant l'envoi (borne dépassée) : rien n'a été envoyé à Beebs.",
+      warnings, unfilledRequired, discoveredRequired: enumerated,
+      diagnostic: `abandon avant le clic « Mettre en vente » : ${abandon} ; ${etatClic}`,
+    };
+  }
+  marquerPhase("envoi", true); // à partir d'ici : dans le doute, on ne renvoie JAMAIS
   publishBtn?.click();
 
   // ── PREUVE DE DÉPÔT (2026-07-13) ────────────────────────────────────────────
@@ -2363,6 +2445,7 @@ async function fillListingForm(job) {
   // n'est donc ni en ligne ni listée dans « Mes annonces » à cet instant.
   // listingUrl reste null — ce n'est PAS une erreur, la re-capture différée
   // côté background ira le chercher plus tard.
+  marquerPhase("confirmation");
   const proof = await waitForBeebsDeposit();
   if (!proof.ok) {
     // ── CE QUE BEEBS REFUSE, LU SUR LE FORMULAIRE (2026-10-01, Marie) ──────
@@ -5265,7 +5348,7 @@ async function urlToFile(url, index) {
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
         : `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
           "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
-          "FillSell la rapatrie automatiquement et relance la publication toute seule — rien à payer, rien à refaire. " +
+          "FillSell la copie chez lui, la vérifie, puis la publication repart toute seule — rien à payer, rien à refaire. " +
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app.")
     );
   }

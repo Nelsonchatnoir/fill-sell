@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-07 (0.6.177 : une borne de remplissage dépassée prévient la page, qui ne clique plus « Mettre en vente » / « Publier » / le Continuer final — rien n'est envoyé que personne ne lira (Beebs, Vinted, Leboncoin) ; phases du remplissage Beebs marquées et relayées, la borne dit la vraie dernière phase ; borne adaptative platform_fields.fill_borne_ms bornée à [10, 25] min ; un contrôle avant retrait plus long que 0,7 × la borne ne retire rien (Beebs, Leboncoin, Depop) ; Vinted : rayon « neuf seulement » = attente de la personne sans reprise, dimensions du colis jamais demandées, couleur aux identifiants connus posée au POST si la page l'a laissée vide et relue après fermeture, couleur vide d'une republication = arrêt avant retrait, référentiels relus sur accroc réseau ; Leboncoin : statuts du relevé comptés par annonce unique) — précédent : " +
   "2026-11-06-soir (0.6.176 : Leboncoin, une marque que l'article ne cite que comme celle d'un appareil auquel il s'adapte (« pour yaourtière … de chez SEB ») n'est plus jamais gardée pré-remplie : « Sans marque » est posé — précédent : " +
   "2026-11-05-soir (0.6.175 : session Leboncoin partagée par plusieurs comptes FillSell (délégation) — un seul relevé « Mes annonces » et une seule lecture des ventes pour tous ses comptes, relevés quotidiens alignés, lectures de routine des pages d'annonce sur un seul budget (60 par heure), aucune lecture de routine la nuit 23:00–07:00 heure de Paris) — précédent : 0.6.170 à 0.6.174 (voir docs/regles/extension-et-versions.md) — précédent : " +
   "2026-11-02-nuit (0.6.169 : un rechargement ou une mise à jour de l'extension ne crée plus de fenêtre de travail en laissant l'ancienne — fenêtre du registre gardée avec ses onglets de plateforme sans fragment, ids des onglets de travail durables, vieille fenêtre perdue reconnue sur preuve et fermée ; une fenêtre n'est fermée que sûrement à nous) — précédent : " +
@@ -6431,7 +6432,12 @@ async function processJob(rawJob, accessToken) {
         //    choisir un format de colis que le snapshot contenait déjà
         //    (« Petit », package_size_id = 1), pendant que son annonce était
         //    hors ligne. On ne demande JAMAIS ce qu'on possède.
-        const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id", "package_size"]);
+        // (07/11, ayadi007) Les DIMENSIONS du colis (rayon « colis volumineux » :
+        //    « Ajoute une hauteur, une largeur, une longueur ») ne se choisissent
+        //    nulle part dans l'app et l'extension ne les relit pas : la question
+        //    sur vintedAspects.parcel_dimensions_height n'avait aucune issue.
+        const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id", "package_size",
+          "parcel_dimensions_height", "parcel_dimensions_width", "parcel_dimensions_length"]);
         const champ = job.platform === "vinted"
           ? result.serverRequired.find((f) => f?.key && !NON_RESOLUBLES.has(String(f.key)))
           : null;
@@ -11017,6 +11023,83 @@ async function installNetworkProbe(tabId, platform) {
           const avecConnus = corpsAvecAttributsConnus(url, avantConnus ?? body);
           return avecConnus ?? avantConnus;
         };
+        // ══ (07/11, Marta MELE) LA COULEUR CONNUE PAR SES IDENTIFIANTS ══════════
+        // Trois remises en ligne (page italienne) retirées puis refusées : 400
+        // « Compila il campo "colore" », alors que la copie portait color1_id. Le
+        // content script arme les identifiants CONNUS (annonce d'origine, ou ceux
+        // que le serveur a lus pour la publication — vinted.js, armerCouleurPourPost).
+        // Règle : seulement sur la création (corps d'article, catalog_id), seulement
+        // si la page n'a posé AUCUNE couleur (ni `color_ids` rempli, ni entrée color
+        // dans item_attributes), jamais par-dessus ; la couleur va dans la clé que le
+        // corps porte DÉJÀ (`color_ids` s'il l'a), sinon dans item_attributes, forme
+        // { code, ids } des attributs ci-dessus — aucune autre clé inventée. Armement
+        // borné à 15 min. La forme réellement envoyée est relevée à chaque création
+        // (couleurEnvoyeeOf) : c'est la preuve qui manquait.
+        window.__fsCouleurAPoser = null;
+        const couleurArmee = () => {
+          const a = window.__fsCouleurAPoser;
+          if (!Array.isArray(a?.ids) || !a.ids.length) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? a : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeCouleur) return;
+          const ids = [...new Set((Array.isArray(e.data.ids) ? e.data.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2);
+          window.__fsCouleurAPoser = ids.length ? { ids, armeeA: Date.now() } : null;
+        });
+        let dernierePoseCouleur = null;
+        const estEntreeCouleur = (x) => /^colou?r$/i.test(String(x?.code ?? "").trim());
+        const corpsAvecCouleur = (url, body) => {
+          dernierePoseCouleur = null;
+          const a = couleurArmee();
+          if (!a) return null;
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          const cible = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+          if (!("catalog_id" in cible)) return null; // pas le corps d'un article
+          const presents = Array.isArray(cible.item_attributes) ? cible.item_attributes : [];
+          const enAttribut = presents.some((x) => estEntreeCouleur(x) && Array.isArray(x?.ids) && x.ids.length);
+          const enRacine = Array.isArray(cible.color_ids) && cible.color_ids.length > 0;
+          if (enAttribut || enRacine) return null; // la page a posé une couleur : on n'y touche pas
+          let pose;
+          if ("color_ids" in cible) {
+            cible.color_ids = [...a.ids];
+            pose = `color_ids=${a.ids.join("|")}`;
+          } else {
+            cible.item_attributes = [...presents.filter((x) => !estEntreeCouleur(x)), { code: "color", ids: [...a.ids] }];
+            pose = `item_attributes color=${a.ids.join("|")}`;
+          }
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseCouleur = pose;
+            return corrige;
+          } catch { return null; }
+        };
+        // Relevé PASSIF, à chaque création : où le corps envoyé porte la couleur
+        // (clés color* de l'article, entrée color d'item_attributes). Valeurs bornées.
+        const couleurEnvoyeeOf = (url, body) => {
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url)) || typeof body !== "string" || body.charAt(0) !== "{") return null;
+          try {
+            const j = JSON.parse(body);
+            const c = (j?.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+            if (!c || typeof c !== "object" || !("catalog_id" in c)) return null;
+            const vu = {};
+            for (const k of Object.keys(c).filter((k) => /colou?r/i.test(k)).slice(0, 6)) {
+              vu[k] = c[k] !== null && typeof c[k] === "object" ? JSON.stringify(c[k]).slice(0, 60) : String(c[k] ?? "null").slice(0, 60);
+            }
+            const entree = (Array.isArray(c.item_attributes) ? c.item_attributes : []).find(estEntreeCouleur);
+            if (entree) vu["item_attributes.color"] = JSON.stringify(entree.ids ?? null).slice(0, 60);
+            return Object.keys(vu).length ? vu : { aucune: "ni clé color*, ni entrée color" };
+          } catch { return null; }
+        };
+        // (07/11) La couleur ferme la chaîne, APRÈS les attributs : rien à poser si l'un d'eux l'a déjà mise.
+        const corpsPourDepotAvecCouleur = (url, body) => {
+          const avant = corpsPourDepot(url, body);
+          const avecCouleur = corpsAvecCouleur(url, avant ?? body);
+          return avecCouleur ?? avant;
+        };
 
         const origFetch = window.fetch;
         window.fetch = async function (input, init) {
@@ -11028,17 +11111,19 @@ async function installNetworkProbe(tabId, platform) {
           let colisPose = null;
           let marquePosee = null;
           let attributsPoses = null;
+          let couleurPosee = null;
           try {
             // Corps lisible uniquement : un Request porteur d'un flux n'est pas
             // réécrit (angle mort assumé, jamais une publication cassée).
             if (String(init?.method ?? "GET").toUpperCase() !== "GET" && typeof init?.body === "string") {
-              const corrige = corpsPourDepot(url, init.body);
+              const corrige = corpsPourDepotAvecCouleur(url, init.body);
               if (corrige != null) {
                 isbnPose = dernierePoseIsbn;
                 languePosee = dernierePoseLangue;
                 colisPose = dernierePoseColis;
                 marquePosee = dernierePoseMarque;
                 attributsPoses = dernierePoseAttributs;
+                couleurPosee = dernierePoseCouleur;
                 corpsEnvoye = corrige;
                 args = [input, { ...init, body: corrige }];
               }
@@ -11066,6 +11151,9 @@ async function installNetworkProbe(tabId, platform) {
                 // la marque relue dans la réponse (la preuve que Vinted l'a prise).
                 marquePosee,
                 attributsPoses,
+                // (07/11) La couleur posée par la sonde, et la forme où le corps envoyé la porte.
+                couleurPosee,
+                couleurEnvoyee: couleurEnvoyeeOf(url, corpsEnvoye),
                 marqueEnvoyee: marqueEnvoyeeOf(url, corpsEnvoye),
                 marqueRelue: marquePosee ? marqueRelueOf(txt) : null,
                 annonceId: annonceIdOf(txt),
@@ -11087,10 +11175,11 @@ async function installNetworkProbe(tabId, platform) {
           let colisPose = null;
           let marquePosee = null;
           let attributsPoses = null;
+          let couleurPosee = null;
           try {
             if (String(this.__m).toUpperCase() !== "GET" && typeof body === "string") {
-              const corrige = corpsPourDepot(this.__u ?? "", body);
-              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; marquePosee = dernierePoseMarque; attributsPoses = dernierePoseAttributs; }
+              const corrige = corpsPourDepotAvecCouleur(this.__u ?? "", body);
+              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; marquePosee = dernierePoseMarque; attributsPoses = dernierePoseAttributs; couleurPosee = dernierePoseCouleur; }
             }
           } catch { /* idem */ }
           try {
@@ -11110,6 +11199,8 @@ async function installNetworkProbe(tabId, platform) {
                   colisPose,
                   marquePosee,
                   attributsPoses,
+                  couleurPosee,
+                  couleurEnvoyee: couleurEnvoyeeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   marqueEnvoyee: marqueEnvoyeeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   marqueRelue: marquePosee ? marqueRelueOf(corps) : null,
                   annonceId: annonceIdOf(corps),
@@ -20169,7 +20260,10 @@ async function releverLeboncoinParApi() {
     let actives = null, total = null, pages = 0, motif = null;
     // (27/09) Statuts vus, comptés : « 4 en ligne sur 5 annoncées » doit
     // pouvoir dire ce qu'est la cinquième (etmavi987, 26/09).
+    // (07/11, Louis) Comptés sur les identifiants UNIQUES, après la boucle : compter à chaque page comptait aussi les
+    // 10 annonces de chevauchement entre deux pages (« active 440 » pour 400 annonces uniques sur 5 pages).
     const statuts = {};
+    const statutParId = new Map();
     // ── LA PAGE SUIVANTE PART DE CE QUI A ÉTÉ RENDU, PAS DE CE QU'ON A DEMANDÉ
     //    (27/09, jocabroc8) : si le serveur plafonne une réponse en dessous du
     //    « limit » demandé, « moins que demandé » ne veut PAS dire « fin de
@@ -20257,7 +20351,7 @@ async function releverLeboncoinParApi() {
         // Une annonce d'un autre statut n'est pas jetée : elle entre avec un
         // statut « inconnu », donc elle ne sera PAS datée disparue par erreur.
         const actif = String(a?.status ?? "") === "active";
-        statuts[String(a?.status ?? "?")] = (statuts[String(a?.status ?? "?")] ?? 0) + 1;
+        statutParId.set(id, String(a?.status ?? "?"));
         const cents = nombre(a?.price_cents);
         vues.set(id, {
           listing_id: id,
@@ -20292,6 +20386,7 @@ async function releverLeboncoinParApi() {
       await new Promise((r) => setTimeout(r, 700 + Math.random() * 900));
     }
     const liste = [...vues.values()];
+    for (const s of statutParId.values()) statuts[s] = (statuts[s] ?? 0) + 1;
     return {
       ok: liste.length > 0 || (!motif && actives === 0),
       annonces: liste, actives, total, pages, motif, statuts,
@@ -27160,8 +27255,9 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
   // Refus serveur NOMMÉ sur un champ résoluble → le mini-éditeur de l'app peut
   // le trancher. Même liste d'exclusions que le chemin publish : un 400 sur
   // title/description/price/photos/catalog_id/package_size_id ne se corrige
-  // pas dans une modale.
-  const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id", "package_size"]);
+  // pas dans une modale. (07/11) Ni les dimensions du colis (parcel_dimensions_*).
+  const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id", "package_size",
+    "parcel_dimensions_height", "parcel_dimensions_width", "parcel_dimensions_length"]);
   const champ = (result?.serverRequired ?? []).find((f) => f?.key && !NON_RESOLUBLES.has(String(f.key)));
   if (champ) {
     job.platform_fields = pf;
@@ -28254,8 +28350,43 @@ async function prevolFormulaireRecreationBeebs(job) {
       republish_prevol_only: true,
     },
   };
+  // (07/11, Ciddjy) Durée du remplissage mesurée : un contrôle qui frôle la
+  // borne annonce un redépôt qui la dépassera (photos en plus) — cf.
+  // prevolTropLent, la décision de retrait n'en tient compte qu'ici.
+  const debut = Date.now();
   const result = await envoyerFillListing(tabId, jobPrevol);
-  return { tabId, result };
+  return { tabId, result, dureeMs: Date.now() - debut, borneMs: borneEffectiveRemplissage(jobPrevol) };
+}
+
+// ── « ON NE RETIRE PAS CE QU'ON NE SAIT PAS REMETTRE » : LA DURÉE AUSSI (07/11) ──
+// Ciddjy (Beebs) : le contrôle du formulaire avant retrait a pris 602 s, l'annonce
+// a été RETIRÉE, puis chaque redépôt (le même remplissage, photos en plus) a
+// dépassé la borne de 10 min — article hors ligne. Un contrôle qui prend plus de
+// 0,7 × la borne effective du job ne laisse pas la place au redépôt : on ne
+// retire rien, l'étape reste celle d'avant le retrait (le serveur reconnaît le
+// texte, élargit la borne et reprend plus tard). Pur, testé.
+const PREVOL_PART_MAX_DE_LA_BORNE = 0.7;
+function prevolTropLent(dureeMs, borneMs) {
+  const d = Number(dureeMs), b = Number(borneMs);
+  if (!Number.isFinite(d) || !Number.isFinite(b) || d < 0 || b <= 0) return null;
+  if (d <= PREVOL_PART_MAX_DE_LA_BORNE * b) return null;
+  const secondes = Math.round(d / 1000);
+  const borneSec = Math.round(b / 1000);
+  return {
+    secondes, borneSec,
+    message: `Contrôle avant retrait trop lent sur ce poste (${secondes} s pour remplir le formulaire, borne ${borneSec} s) : rien n'a été retiré.`,
+  };
+}
+// Rend l'échec sans toucher republish_step : l'annonce reste en ligne.
+async function rendreEchecPrevolTropLent(accessToken, job, pf, lent, plateforme) {
+  pf.republish_prevol_formulaire = {
+    at: new Date().toISOString(), verdict: "trop_lent", plateforme,
+    duree_s: lent.secondes, borne_s: lent.borneSec, detail: lent.message,
+  };
+  job.platform_fields = pf;
+  await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: lent.message });
+  console.warn(`[republish] job ${job.id} : retrait ${plateforme} REFUSÉ — ${lent.message}`);
+  return { status: "failed", error: lent.message };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -28316,8 +28447,10 @@ async function prevolFormulaireRecreation(job) {
       republish_prevol_only: true,
     },
   });
+  // (07/11) Même mesure que Beebs (prevolTropLent).
+  const debut = Date.now();
   const result = await envoyerFillListing(tabId, jobPrevol);
-  return { tabId, result };
+  return { tabId, result, dureeMs: Date.now() - debut, borneMs: borneEffectiveRemplissage(jobPrevol) };
 }
 
 /** Le verdict d'un pré-vol de recréation Leboncoin/Depop (pur). */
@@ -28340,8 +28473,9 @@ const DOMAINE_PREVOL_RECREATION = { leboncoin: "leboncoin.fr", depop: "depop.com
 // Rend null quand le retrait peut suivre, sinon le résultat de job à rendre.
 async function prevolRecreationAvantRetrait({ accessToken, job, pf, label }) {
   let resultat = null;
+  let dureePrevolMs = null, bornePrevolMs = null;
   try {
-    ({ result: resultat } = await prevolFormulaireRecreation({ ...job, platform_fields: pf }));
+    ({ result: resultat, dureeMs: dureePrevolMs, borneMs: bornePrevolMs } = await prevolFormulaireRecreation({ ...job, platform_fields: pf }));
   } catch (e) {
     resultat = { success: false, error: String(e?.message ?? e) };
     console.warn(`[republish] job ${job.id} : pré-vol complet ${label} injoignable — ${resultat.error}`);
@@ -28351,8 +28485,11 @@ async function prevolRecreationAvantRetrait({ accessToken, job, pf, label }) {
   }
   const verdict = verdictPrevolRecreation(resultat);
   const maintenant = new Date().toISOString();
+  // (07/11) Formulaire remplissable, mais trop lentement pour que le redépôt tienne dans la borne : rien ne sera retiré.
+  const lent = verdict === "ok" ? prevolTropLent(dureePrevolMs, bornePrevolMs) : null;
   tracerGarde(pf, "prevol_formulaire_recreation", {
-    verdict, plateforme: job.platform, etape: "avant_retrait",
+    verdict: lent ? "trop_lent" : verdict, plateforme: job.platform, etape: "avant_retrait",
+    ...(Number.isFinite(dureePrevolMs) ? { duree_s: Math.round(dureePrevolMs / 1000), borne_s: Math.round(Number(bornePrevolMs) / 1000) } : {}),
     champs_verifies: job.platform === "leboncoin"
       ? ["titre", "categorie", "photos", "criteres", "continuer"]
       : ["session", "rayon", "etat", "genre", "marque", "taille", "lieu", "port"],
@@ -28360,6 +28497,7 @@ async function prevolRecreationAvantRetrait({ accessToken, job, pf, label }) {
     ...(resultat?.prevolRecreation && typeof resultat.prevolRecreation === "object" ? { sortie: resultat.prevolRecreation } : {}),
   });
   job.platform_fields = pf;
+  if (lent) return await rendreEchecPrevolTropLent(accessToken, job, pf, lent, job.platform);
   if (verdict === "ok") {
     delete pf.next_action_after;
     pf.republish_prevol_formulaire = { at: maintenant, verdict: "ok", plateforme: job.platform };
@@ -28966,8 +29104,9 @@ async function processRepublishJobPlateforme(job, accessToken) {
     // ── BEEBS : LE VRAI FORMULAIRE DOIT ÊTRE REMPLISSABLE AVANT LE RETRAIT ──
     if (job.platform === "beebs") {
       let resultatPrevol = null;
+      let dureePrevolMs = null, bornePrevolMs = null;
       try {
-        ({ result: resultatPrevol } = await prevolFormulaireRecreationBeebs({ ...job, platform_fields: pf }));
+        ({ result: resultatPrevol, dureeMs: dureePrevolMs, borneMs: bornePrevolMs } = await prevolFormulaireRecreationBeebs({ ...job, platform_fields: pf }));
       } catch (e) {
         console.warn(`[republish] job ${job.id} : pré-vol complet Beebs injoignable — ${String(e?.message ?? e)}`);
       }
@@ -28977,17 +29116,22 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const champs = Array.isArray(resultatPrevol?.unfilledRequired)
         ? resultatPrevol.unfilledRequired.map((x) => String(x)).filter(Boolean) : [];
       const ok = resultatPrevol?.success === true && resultatPrevol?.republishPreflight === true && champs.length === 0;
+      // (07/11, Ciddjy) Remplissable, mais en plus de 0,7 × la borne : le redépôt (photos en plus) ne tiendra pas.
+      const lent = ok ? prevolTropLent(dureePrevolMs, bornePrevolMs) : null;
       // (02/10 soir, point 3) Une exception de NOTRE code (TDZ, TypeError…)
       // n'est jamais « illisible » : c'est un défaut FillSell, nommé comme tel.
       // Le serveur (update-job-status) le garde pour un poste plus récent.
       const defautNotreCode = !ok && EXCEPTION_JS_RE.test(String(resultatPrevol?.error ?? ""));
       tracerGarde(pf, "prevol_formulaire_beebs", {
-        verdict: ok ? "ok" : resultatPrevol?.needsUserField ? "champ_a_choisir" : resultatPrevol?.attenteUtilisateur ? "attente_utilisateur" : defautNotreCode ? "defaut_fillsell" : "illisible",
+        verdict: lent ? "trop_lent" : ok ? "ok" : resultatPrevol?.needsUserField ? "champ_a_choisir" : resultatPrevol?.attenteUtilisateur ? "attente_utilisateur" : defautNotreCode ? "defaut_fillsell" : "illisible",
         plateforme: "beebs", etape: "avant_retrait",
         champs_verifies: ["categorie", "champs_dynamiques", "adresse", "prix"],
         ...(champs.length ? { manquants: champs } : {}),
+        ...(Number.isFinite(dureePrevolMs) ? { duree_s: Math.round(dureePrevolMs / 1000), borne_s: Math.round(Number(bornePrevolMs) / 1000) } : {}),
       });
       job.platform_fields = pf;
+      // ⛔ On ne retire pas ce qu'on ne sait pas remettre À TEMPS : republish_step inchangé, annonce en ligne.
+      if (lent) return await rendreEchecPrevolTropLent(accessToken, job, pf, lent, "beebs");
       if (!ok && resultatPrevol?.needsUserField?.field_key && resultatPrevol?.needsUserField?.field_label) {
         const libelle = String(resultatPrevol.needsUserField.field_label);
         resultatPrevol.error = `Republication Beebs mise en pause AVANT tout retrait : Beebs exige « ${libelle} » pour ce rayon et aucune valeur certaine n'a pu être posée. `
@@ -32372,6 +32516,29 @@ function sendMessageToTabOnce(tabId, message, timeoutMs) {
 // quel onglet demander (recoverStaleProcessingJobs).
 const FILL_PORT_NOM = "fillsell-remplissage";
 const FILL_BORNE_MS = 10 * 60_000;
+// ── BORNE ADAPTATIVE (07/11, Ciddjy — Beebs) ────────────────────────────────
+// Un poste lent dépassait les 10 min à CHAQUE redépôt (remplissage Beebs complet
+// sur un Mac chargé). Le serveur pose platform_fields.fill_borne_ms sur la
+// relance qui suit un dépassement : la borne de CE remplissage devient
+// clamp(fill_borne_ms, 10 min, 25 min). Absent ou illisible → 10 min, comme avant.
+const FILL_BORNE_MAX_MS = 25 * 60_000;
+// Borne du chemin classique (sendMessageToTab, port éteint ou plateforme sans
+// écouteur de port — Depop) : son délai par défaut, inchangé.
+const FILL_BORNE_CLASSIQUE_MS = 300_000;
+// Content scripts SANS écouteur de port (depop.js : FILL_LISTING par message
+// simple) : le port se replie aussitôt sur sendMessageToTab, borne classique.
+const PLATEFORMES_SANS_PORT_REMPLISSAGE = new Set(["depop"]);
+function borneRemplissageJob(job) {
+  const v = job?.platform_fields?.fill_borne_ms;
+  if (typeof v !== "number" || !Number.isFinite(v)) return FILL_BORNE_MS;
+  return Math.min(FILL_BORNE_MAX_MS, Math.max(FILL_BORNE_MS, v));
+}
+// La borne qui s'appliquera VRAIMENT au remplissage de ce job sur ce poste :
+// celle du port (adaptative) quand il est allumé, sinon celle du chemin classique.
+function borneEffectiveRemplissage(job, { port = keepaliveActif } = {}) {
+  if (!port || PLATEFORMES_SANS_PORT_REMPLISSAGE.has(String(job?.platform ?? ""))) return FILL_BORNE_CLASSIQUE_MS;
+  return borneRemplissageJob(job);
+}
 const FILL_PRET_DELAI_MS = 5_000;
 const FILL_CHECKPOINT_KEY = "fillsell_remplissage_en_cours";
 const CANAL_COUPE_SIGNATURE =
@@ -32462,6 +32629,12 @@ function attendreVerdictSurPort(tabId, job, { connect, fallback, borneMs, mainte
       try { port.postMessage({ type: "FILL_LISTING_PORT", job }); } catch { return replier(); }
     }
     timerBorne = setTimeout(() => {
+      // (07/11, Ciddjy — job 246477ff le 04/11 : annonce parue 12 min après un
+      // « délai dépassé ») La page est prévenue AVANT que l'échec soit rendu :
+      // elle n'enverra plus rien (beebs.js, leboncoin.js, vinted.js refusent le
+      // clic de publication quand ce drapeau est posé). Le préfixe du message ne
+      // change pas : le serveur le reconnaît.
+      try { port?.postMessage({ type: "abandon", jobId }); } catch { /* port déjà fermé : la page le voit à la déconnexion */ }
       ko(new Error(
         `Timeout: pas de réponse du content script (borne ${Math.round(borneMs / 60000)} min dépassée, ` +
         `dernière phase : ${dernierePhase ?? "inconnue"})`,
@@ -32475,7 +32648,8 @@ function attendreVerdictSurPort(tabId, job, { connect, fallback, borneMs, mainte
 async function remplirAvecPort(tabId, job, deps = {}) {
   const connect = deps.connect ?? ((id, opts) => chrome.tabs.connect(id, opts));
   const fallback = deps.fallback ?? ((t, m) => sendMessageToTab(t, m));
-  const borneMs = deps.borneMs ?? FILL_BORNE_MS;
+  // (07/11) Borne adaptative : platform_fields.fill_borne_ms, bornée à [10, 25] min.
+  const borneMs = deps.borneMs ?? borneRemplissageJob(job);
   const maintenant = deps.now ?? (() => Date.now());
   const jobId = String(job?.id ?? "");
   // 0. Un remplissage de CE job vit-il déjà dans l'onglet (worker mort puis

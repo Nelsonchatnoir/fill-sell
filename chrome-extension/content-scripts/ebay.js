@@ -2956,7 +2956,7 @@ async function urlToFile(url, index) {
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
         : `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
           "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
-          "FillSell la rapatrie automatiquement et relance la publication toute seule — rien à payer, rien à refaire. " +
+          "FillSell la copie chez lui, la vérifie, puis la publication repart toute seule — rien à payer, rien à refaire. " +
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app.")
     );
   }

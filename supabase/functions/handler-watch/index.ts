@@ -31,7 +31,10 @@ import {
 // seule source, partagée avec generate-listing (elle a divergé une fois : le
 // filet ne connaissait que Vinted et les photos Beebs d'un article importé
 // n'étaient jamais rapatriées, 19/09).
-import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-rapatriement.ts";
+import { estCdnPlateforme, estCdnPlateformeHorsVinted, rapatrierPhotoVerifiee } from "../_shared/photos-rapatriement.ts";
+import {
+  CLE_PHOTOS_HORS_PLATEFORME, photosARapatrierPour, photoARapatrierPour, aEssayerCeCycle, bilanCopiePhotos, nomPlateforme,
+} from "../_shared/photos-hors-plateforme.js";
 import { trancherPhotosMortes } from "../_shared/photos-mortes.js";
 import { rearmerJobsEbayConnexionSiUtilisable, SOURCES_EBAY_REARMABLES } from "../_shared/ebay-voie.ts";
 // Opla : UN message pour l'attente d'autorisation (2026-09-23), partagé.
@@ -2261,12 +2264,16 @@ serve(async (req) => {
       // a fait ou non — jamais l'état de l'annonce, qu'un autre job a pu
       // changer (cas Ritthik du 10/09).
       const etapeRepub = String((pf as Record<string, unknown> | null)?.republish_step ?? "");
+      // (07/11, point 10) La plateforme du JOB, plus « Vinted » en dur : 9 republications LEBONCOIN arrêtées ainsi
+      // (14/10 → 04/11) disaient « Elle n'a rien retiré sur Vinted ». L'app traduit déjà toute plateforme
+      // (src/utils/messagesServeur.js, ${pf()}).
+      const nomPfVeille = nomPlateforme(j.platform) || "la plateforme";
       const msg = j.action === "republish"
         ? (etapeRepub === "deleted"
           ? "Cette republication attendait une réponse depuis plusieurs jours : nous l'avons arrêtée. L'annonce avait déjà " +
-            "été retirée de Vinted et pas encore recréée : relance-la depuis la fiche de l'article pour la recréer, tout est sauvegardé."
+            `été retirée de ${nomPfVeille} et pas encore recréée : relance-la depuis la fiche de l'article pour la recréer, tout est sauvegardé.`
           : "Cette republication attendait une réponse depuis plusieurs jours : nous l'avons arrêtée. Elle n'a rien retiré " +
-            "sur Vinted. Relance-la depuis la fiche de l'article quand tu veux.")
+            `sur ${nomPfVeille}. Relance-la depuis la fiche de l'article quand tu veux.`)
         : j.action === "delete"
           ? "Ce retrait attendait une réponse depuis plusieurs jours : nous l'avons arrêté. Si l'annonce est encore " +
             "en ligne, retire-la sur la plateforme."
@@ -6055,6 +6062,91 @@ serve(async (req) => {
     console.error("[handler-watch] déblocage garde Couleur:", (e as Error)?.message ?? e);
   }
 
+  // ── (07/11, point 10) LES PHOTOS D'UN JOB QUI PART AILLEURS : CHEZ NOUS ET VÉRIFIÉES AVANT DE PARTIR ──
+  // (_shared/photos-hors-plateforme.js) get-pending-jobs ne sert plus un job dont une photo est sur le CDN d'une
+  // AUTRE plateforme que celle visée (Vinted compris, Beebs partout) : il le retient — rien retiré, l'annonce
+  // d'origine reste en ligne — et le marque (`platform_fields.photos_hors_plateforme`). Ici, la FILE de ces jobs :
+  // chaque photo étrangère est copiée dans listing-photos, RELUE chez nous (200, image prouvée par les octets, même
+  // taille — rapatrierPhotoVerifiee), puis remise À SA PLACE dans la copie du job (ordre de l'article, forme
+  // { url, type } gardée). Le job part au poll suivant, avec les URL chez nous.
+  // ⛔ La fiche n'est PAS réécrite : Vinted reste hors du rapatriement de masse (décision du 06/09, affaire de volume) ;
+  //    seule la copie du job qui part change.
+  // Pourquoi ici et pas dans get-pending-jobs : une photo coûte 0,3 à 1 s de réseau (15 s au pire, deux essais) ;
+  // get-pending-jobs répond à chaque poll de chaque poste (≈ 16 appels/min, p50 1,5 s, p95 4,1 s le 07/11) — un
+  // cycle de 3 min ici (p50 9,6 s, p95 14 s), avec un budget, ne ralentit aucun poste.
+  // Bornes : 30 photos et 25 s par cycle, 100 jobs marqués lus (le plus ancien d'abord ; lecture par l'index
+  // (user_id, status), 28 ms mesurés). Une photo qui échoue repasse au cycle suivant ; trois cycles sans aucune
+  // copie → un essai par heure, et la phrase du job le dit. 404/410 sur deux cycles = photo morte : une PUBLICATION
+  // part sans elle (règle du 29/10, _shared/photos-mortes.js), une REPUBLICATION reste en pause (son annonce en ligne
+  // montre encore cette photo). Écriture sous condition (statut pending, photos relues inchangées). Best-effort.
+  const JOBS_PHOTOS_MAX = 30;
+  const JOBS_PHOTOS_DUREE_MS = 25_000;
+  let photosJobsHorsPlateforme = 0;
+  let jobsHorsPlateformeLibres = 0;
+  try {
+    const debutHp = Date.now();
+    const { data: marquesHp, error: errHp } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, inventaire_id, platform, action, status, photos, platform_fields, error")
+      .eq("status", "pending")
+      .in("action", ["publish", "republish"])
+      .not(`platform_fields->${CLE_PHOTOS_HORS_PLATEFORME}`, "is", null)
+      .limit(100);
+    if (errHp) throw new Error(errHp.message);
+    // deno-lint-ignore no-explicit-any
+    const depuisHp = (j: any) => String(j?.platform_fields?.[CLE_PHOTOS_HORS_PLATEFORME]?.depuis ?? "");
+    // deno-lint-ignore no-explicit-any
+    const fileHp = ((marquesHp ?? []) as any[])
+      .filter((j) => aEssayerCeCycle(j, Date.now()))
+      .sort((a, b) => depuisHp(a).localeCompare(depuisHp(b)));
+    let budgetHp = JOBS_PHOTOS_MAX;
+    for (const j of fileHp) {
+      if (budgetHp <= 0 || Date.now() - debutHp > JOBS_PHOTOS_DUREE_MS) break;
+      const cibleHp = String(j.platform ?? "");
+      const urlsHp = [...new Set(photosARapatrierPour(j.photos, cibleHp).map((x: { url: string }) => x.url))] as string[];
+      // Plus rien d'étranger : get-pending-jobs efface la marque au poll suivant.
+      if (!urlsHp.length) continue;
+      const remplacementsHp = new Map<string, string>();
+      const echecsHp: Array<{ url: string; http?: number; motif?: string }> = [];
+      for (const src of urlsHp) {
+        if (budgetHp <= 0 || Date.now() - debutHp > JOBS_PHOTOS_DUREE_MS) break;
+        budgetHp--;
+        const rang = (j.photos as unknown[]).findIndex((p) => urlDePhoto(p) === src) + 1;
+        const r = await rapatrierPhotoVerifiee(supabase, src, `${j.user_id}/rapatrie-job/${j.inventaire_id ?? "job"}/${String(j.id).slice(0, 8)}_${rang}_${Date.now()}`);
+        if (r.url) { remplacementsHp.set(src, r.url); photosJobsHorsPlateforme++; }
+        else echecsHp.push({ url: src, ...(r.http ? { http: r.http } : {}), motif: r.motif });
+      }
+      if (!remplacementsHp.size && !echecsHp.length) continue;
+      // Relu juste avant d'écrire : si la copie du job a changé entre-temps, rien n'est écrit (cycle suivant).
+      const { data: fraisHp } = await supabase
+        .from("cross_post_jobs").select("status, action, platform, photos, platform_fields, error").eq("id", j.id).maybeSingle();
+      if (!fraisHp || fraisHp.status !== "pending" || JSON.stringify(fraisHp.photos) !== JSON.stringify(j.photos)) {
+        console.log(`[handler-watch] job ${j.id}: photos hors plateforme copiées mais le job a changé entre-temps — rien écrit (cycle suivant)`);
+        continue;
+      }
+      const jobFrais = { ...j, ...fraisHp };
+      const bilan = bilanCopiePhotos(jobFrais, remplacementsHp, echecsHp, {
+        maintenant: new Date().toISOString(),
+        retraitEngage: retraitEngage(jobFrais),
+        trancherMortes: (photos: unknown[], mortes: Map<string, number>) =>
+          trancherPhotosMortes({ photos, vivantes: new Map(), mortes, estExterne: (u: string | null) => photoARapatrierPour(u, cibleHp) }),
+      }) as { photos: unknown[]; platform_fields: Record<string, unknown>; error?: string | null; libre: boolean; mortesRetirees: number[] };
+      // deno-lint-ignore no-explicit-any
+      const patchHp: any = { photos: bilan.photos, platform_fields: bilan.platform_fields };
+      if (bilan.error !== undefined) patchHp.error = bilan.error;
+      const { data: majHp, error: upHp } = await supabase
+        .from("cross_post_jobs").update(patchHp).eq("id", j.id).eq("status", "pending").select("id");
+      if (upHp) {
+        console.error(`[handler-watch] job ${j.id}: photos hors plateforme copiées mais écriture refusée — ${upHp.message}`);
+      } else if (majHp?.length) {
+        if (bilan.libre) jobsHorsPlateformeLibres++;
+        console.log(`[handler-watch] job ${j.id} (${cibleHp} ${j.action}) : ${remplacementsHp.size} photo(s) copiée(s) chez nous et vérifiée(s), ${echecsHp.length} en échec${bilan.mortesRetirees.length ? `, photo(s) morte(s) retirée(s) de la copie : ${bilan.mortesRetirees.join(", ")}` : ""} → ${bilan.libre ? "toutes chez nous, servi au prochain poll" : "encore retenu"}`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] photos hors plateforme (jobs sur le point de partir):", (e as Error)?.message ?? e);
+  }
+
   // ── Photos encore HORS FillSell au moment de publier (2026-08-27) ─────────
   // ⚠️ 19/09 : ce filet ne connaissait que le CDN VINTED. Un article importé
   // d'un relevé Beebs/Leboncoin/Opla/eBay garde les URLs de SA plateforme —
@@ -6113,7 +6205,10 @@ serve(async (req) => {
     ]);
     // deno-lint-ignore no-explicit-any
     const candidats = ([...(enAttente ?? []), ...(rates ?? [])] as any[])
-      .filter((j) => Array.isArray(j.photos) && (j.photos as unknown[]).some((p) => estCdnPlateforme(urlDePhoto(p))));
+      .filter((j) => Array.isArray(j.photos) && (j.photos as unknown[]).some((p) => estCdnPlateforme(urlDePhoto(p))))
+      // (07/11, point 10) Un job en attente MARQUÉ par get-pending-jobs appartient à la file du dessus (copie
+      // vérifiée, fiche jamais réécrite) : ce filet ne le touche pas.
+      .filter((j) => !(j.status === "pending" && j.platform_fields?.[CLE_PHOTOS_HORS_PLATEFORME]));
     for (const j of candidats) {
       const pf = { ...(j.platform_fields ?? {}) };
       const balayages = Number(pf.photo_rehost_sweeps ?? 0);
@@ -6444,7 +6539,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_hors_plateforme_copiees: photosJobsHorsPlateforme, jobs_hors_plateforme_libres: jobsHorsPlateformeLibres, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -6499,7 +6594,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_hors_plateforme_copiees: photosJobsHorsPlateforme, jobs_hors_plateforme_libres: jobsHorsPlateformeLibres, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -6553,7 +6648,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_hors_plateforme_copiees: photosJobsHorsPlateforme, jobs_hors_plateforme_libres: jobsHorsPlateformeLibres, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
     headers: { "Content-Type": "application/json" },
   });
 });

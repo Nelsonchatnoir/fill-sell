@@ -27,6 +27,8 @@ import { estArretUtilisateur, estGeleLivres } from "./publicationState.js";
 import { natureNeedsUser } from "./shared.js";
 import { situationJob } from "./fileDesJobs.js";
 import { identifiantAnnonceJob } from "../../supabase/functions/_shared/introuvable-a-confirmer.js";
+import { tacheRetireeDeARegler } from "./retraitARegler.js";
+import { plateformesJumelles } from "./copiesJumelles.js";
 
 const tsDe = (v) => { const t = Date.parse(v ?? ""); return Number.isFinite(t) ? t : 0; };
 const pfDe = (j) => (j?.platform_fields && typeof j.platform_fields === "object" && !Array.isArray(j.platform_fields) ? j.platform_fields : {});
@@ -87,6 +89,19 @@ export function derniersParLigne(jobs) {
 // shared.republicationAnnonceDisparue et etat-job : étape deleted, ou deleted_at posé).
 const republicationApresRetrait = (j) => { const pf = pfDe(j); return pf.republish_step === "deleted" || Boolean(pf.deleted_at); };
 
+/** (07/11, point 4) Une PUBLICATION arrêtée (échec, attente) sur une plateforme où l'article est DÉJÀ en ligne sous
+ *  une AUTRE fiche reliée par une preuve que l'app tient : la fiche jumelle d'un compte relié (comptes_lies, RPC
+ *  copies_fiches_jumelles — utils/copiesJumelles.plateformesJumelles), qui occupe la boutique partagée. Publier là
+ *  ferait le doublon (Louis, 19-20/10) : la ligne n'a plus d'objet. Les autres liens prouvés sont déjà couverts
+ *  ailleurs : une fusion de fiches (doublon tranché « oui » compris) DÉPLACE les tâches sur la fiche gardée
+ *  (inventaire_fusionner) et une fiche vendue ou supprimée sort du stock. ⛔ Jamais un rapprochement sur un titre,
+ *  jamais une vente sur la plateforme (un autre exemplaire peut s'y vendre). ⛔ L'annonce plus ancienne DE LA MÊME
+ *  fiche n'éteint rien ici : c'est le cas « A? » laissé à Nico (selftest:erreurs-visibles, c3e07ca8). */
+export function publicationSansObjet(j, jumelles) {
+  if (!j || actionDe(j) !== "publish" || (j.status !== "failed" && j.status !== "needs_user")) return false;
+  return contient(jumelles, j.platform);
+}
+
 /**
  * LA RÈGLE DE « À RÉGLER » (25/10) — ce job demande-t-il un geste à la personne ?
  *   'completer' : une information, une connexion, une autorisation, un choix qui lui revient ;
@@ -97,14 +112,20 @@ const republicationApresRetrait = (j) => { const pf = pfDe(j); return pf.republi
  *                 récent de sa ligne, plateforme hors jeu, republication arrêtée avant tout retrait (l'annonce
  *                 est intacte : la relancer est un choix, jamais une alerte — l'emplacement dit « Arrêtée »).
  * Les retraits ont leurs propres règles (utils/retraitsBloques) : null ici.
- * opts : jobsDeLArticle (les jobs de la fiche : « le dernier », « dépassé ») ; plateformesHorsJeu (Set ou liste).
+ * (07/11) null aussi : la tâche RETIRÉE de la liste par la personne, tant que rien de nouveau n'est arrivé (même
+ * statut, même numéro, même erreur, aucune relance — utils/retraitARegler.tacheRetireeDeARegler) ; une publication
+ * sur une plateforme où la fiche jumelle d'un compte relié est déjà en ligne (`jumelles`, publicationSansObjet).
+ * opts : jobsDeLArticle (les jobs de la fiche : « le dernier », « dépassé ») ; plateformesHorsJeu (Set ou liste) ;
+ *        jumelles (Set ou liste : copiesJumelles.plateformesJumelles(fiche)).
  */
-export function causeARegler(j, { jobsDeLArticle = null, plateformesHorsJeu: horsJeu = null } = {}) {
+export function causeARegler(j, { jobsDeLArticle = null, plateformesHorsJeu: horsJeu = null, jumelles = null } = {}) {
   if (!j) return null;
   const action = actionDe(j);
   if (action !== "publish" && action !== "republish") return null;
   if (contient(horsJeu, j.platform)) return null;
   if (estArretUtilisateur(j) || estGeleLivres(j)) return null;
+  if (tacheRetireeDeARegler(j)) return null;
+  if (publicationSansObjet(j, jumelles)) return null;
   if (jobsDeLArticle && !estLeDernierDeSaLigne(j, jobsDeLArticle)) return null;
   if (j.status === "needs_user") {
     if (attenteAutomatique(j)) return null;
@@ -136,6 +157,29 @@ export function indexSelonARegler(index, jobsParArticle, { plateformesHorsJeu: h
     const demande = (x) => Boolean(causeARegler(x?.job, { jobsDeLArticle, plateformesHorsJeu: horsJeu }));
     const aCompleter = (e.aCompleter ?? []).filter(demande);
     const enEchec = (e.enEchec ?? []).filter(demande);
+    if (aCompleter.length !== (e.aCompleter ?? []).length || enEchec.length !== (e.enEchec ?? []).length) {
+      index.set(id, { ...e, aCompleter, enEchec });
+    }
+  }
+  return index;
+}
+
+/**
+ * (07/11, point 4) L'index selon « À régler », moins les publications arrêtées sur une plateforme où la fiche
+ * jumelle d'un compte relié est déjà en ligne (publicationSansObjet) — la carte et le filtre disent la même chose
+ * que « À régler ». `items` : les fiches de l'index (elles portent copies_jumelles, App). Rend le même Map.
+ */
+export function indexSansPublicationsJumelles(index, items) {
+  if (!(index instanceof Map) || !Array.isArray(items)) return index;
+  for (const it of items) {
+    const jumelles = plateformesJumelles(it);
+    if (!jumelles.length) continue;
+    const id = String(it.id);
+    const e = index.get(id);
+    if (!e?.aCompleter?.length && !e?.enEchec?.length) continue;
+    const garde = (x) => !publicationSansObjet(x?.job, jumelles);
+    const aCompleter = (e.aCompleter ?? []).filter(garde);
+    const enEchec = (e.enEchec ?? []).filter(garde);
     if (aCompleter.length !== (e.aCompleter ?? []).length || enEchec.length !== (e.enEchec ?? []).length) {
       index.set(id, { ...e, aCompleter, enEchec });
     }

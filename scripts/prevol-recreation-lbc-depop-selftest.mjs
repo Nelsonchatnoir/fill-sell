@@ -70,14 +70,17 @@ ok(`verdict : ${cas.length} cas — preuve seule autorise ; champ → question ;
 const tracerGarde = new Function(`${extraireFonctionJs(bg, "tracerGarde")}\nreturn tracerGarde;`)();
 const domaines = bg.match(/^const DOMAINE_PREVOL_RECREATION = (\{[^\n]*\});$/m)?.[1];
 assert.ok(domaines, "DOMAINE_PREVOL_RECREATION présent");
-function monter(resultatPrevol) {
+// (07/11) Le pré-vol mesuré : un contrôle qui prend plus de 0,7 × la borne ne laisse rien retirer.
+const partMax = bg.match(/^const PREVOL_PART_MAX_DE_LA_BORNE = ([\d.]+);$/m)?.[1];
+assert.ok(partMax, "PREVOL_PART_MAX_DE_LA_BORNE présent");
+function monter(resultatPrevol, mesure = {}) {
   const j = { statuts: [], questions: [], murs: [], attentes: [], prevols: 0 };
   const ctx = {
     prevolFormulaireRecreation: async (job) => {
       j.prevols++;
       j.jobPrevol = job;
       if (resultatPrevol instanceof Error) throw resultatPrevol;
-      return { tabId: 7, result: resultatPrevol };
+      return { tabId: 7, result: resultatPrevol, ...mesure };
     },
     persistDiscoveredAspects: async () => {},
     verdictPrevolRecreation, tracerGarde,
@@ -92,6 +95,9 @@ function monter(resultatPrevol) {
     const { prevolFormulaireRecreation, persistDiscoveredAspects, verdictPrevolRecreation, tracerGarde, markNeedsUser,
       traiterMurDeConnexion, marquerAttenteUtilisateur, updateJobStatus, motifLisible, VO } = ctx;
     const DOMAINE_PREVOL_RECREATION = ${domaines};
+    const PREVOL_PART_MAX_DE_LA_BORNE = ${partMax};
+    ${extraireFonctionJs(bg, "prevolTropLent")}
+    ${extraireFonctionJs(bg, "rendreEchecPrevolTropLent")}
     ${extraireFonctionJs(bg, "prevolRecreationAvantRetrait")}
     return prevolRecreationAvantRetrait;
   `)(ctx);
@@ -147,6 +153,34 @@ try {
     assert.equal(pf.next_action_after, undefined);
     assert.equal(j.statuts.length, 0);
     ok("preuve positive (page suivante affichée) → le retrait peut suivre, trace « ok »");
+  }
+  // c bis. (07/11, Ciddjy) Preuve positive mais contrôle trop lent → rien retiré, échec au texte exact, étape inchangée.
+  {
+    const preuve = { success: true, republishPreflight: true, unfilledRequired: [], discoveredRequired: [] };
+    const { fn, j } = monter(preuve, { dureeMs: 602_000, borneMs: 600_000 });
+    const job = jobVoirememe(); const pf = { ...job.platform_fields };
+    const r = await fn({ accessToken: "t", job, pf, label: "Leboncoin" });
+    const attendu = "Contrôle avant retrait trop lent sur ce poste (602 s pour remplir le formulaire, borne 600 s) : rien n'a été retiré.";
+    assert.equal(r.status, "failed");
+    assert.equal(r.error, attendu);
+    assert.equal(j.statuts.length, 1);
+    assert.equal(j.statuts[0].status, "failed");
+    assert.equal(j.statuts[0].extra.error, attendu);
+    assert.equal(j.statuts[0].extra.platform_fields.republish_step, "captured", "republish_step inchangé : l'annonce reste en ligne");
+    assert.equal(pf.gardes.prevol_formulaire_recreation.verdict, "trop_lent");
+    assert.equal(pf.gardes.prevol_formulaire_recreation.duree_s, 602);
+    assert.equal(pf.republish_prevol_formulaire.verdict, "trop_lent");
+    // 0,7 × 600 s = 420 s : 421 s bloque, 420 s passe ; la borne adaptative (20 min) relève le seuil.
+    const { fn: f2, j: j2 } = monter(preuve, { dureeMs: 421_000, borneMs: 600_000 });
+    assert.equal((await f2({ accessToken: "t", job: jobVoirememe(), pf: {}, label: "Leboncoin" }))?.status, "failed");
+    const { fn: f3, j: j3 } = monter(preuve, { dureeMs: 420_000, borneMs: 600_000 });
+    assert.equal(await f3({ accessToken: "t", job: jobVoirememe(), pf: {}, label: "Leboncoin" }), null);
+    const { fn: f4 } = monter(preuve, { dureeMs: 602_000, borneMs: 1_200_000 });
+    assert.equal(await f4({ accessToken: "t", job: jobVoirememe(), pf: {}, label: "Leboncoin" }), null);
+    const { fn: f5 } = monter(preuve);
+    assert.equal(await f5({ accessToken: "t", job: jobVoirememe(), pf: {}, label: "Leboncoin" }), null, "sans mesure : chemin d'avant");
+    void j2; void j3;
+    ok("pré-vol trop lent (> 0,7 × la borne) → échec « Contrôle avant retrait trop lent … rien n'a été retiré », étape inchangée");
   }
   // d. Session fermée → attente de connexion ; attente utilisateur → needs_user ; brouillon jeté → 1 min.
   {

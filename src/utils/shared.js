@@ -9,6 +9,7 @@ import { sansEstimation } from '../../supabase/functions/_shared/etat-job.js';
 import { parLeCloud, compteCourantEstCloud, texteTacheCloud } from '../cloud/voieCloud.js';
 // (06/11, phase 3 point 1 — suite) Les phrases françaises écrites en base, lues en anglais à l'affichage.
 import { traduireMessageServeur } from './messagesServeur.js';
+import { sansRienVenduSurVente } from './rienVenduSurVente.js';
 
 export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -582,7 +583,8 @@ export function humanizeJobError(job, lang = 'fr') {
   t = sansEstimation(t);
   // (06/11, phase 3 point 1 — suite) Une phrase écrite EN FRANÇAIS en base (serveur, SQL, extension) et passée
   // telle quelle : lue en anglais quand l'app l'est (utils/messagesServeur.js). En français, rien n'est appelé.
-  return lang === 'en' ? traduireMessageServeur(t, 'en') : t;
+  // (07/11, point 1) Jamais « rien n'est vendu » sur une remise en vente : elle suit une vente (utils/rienVenduSurVente.js).
+  return sansRienVenduSurVente(lang === 'en' ? traduireMessageServeur(t, 'en') : t, job);
 }
 function humanizeJobErrorBrut(job, lang = 'fr') {
   // États Vinted d'une page étrangère (« Very good »…) : affichés dans la langue
@@ -1001,7 +1003,8 @@ export function jobErrorSansFaussePromesse(job, lang = 'fr') {
   }
   if (!JOB_STATUS_TERMINAL.has(job?.status) || !PROMESSE_MARQUEUR_RE.test(raw)) {
     // (06/11, phase 3 point 1 — suite) Le brut d'un job vivant, lu en anglais quand l'app l'est ; français inchangé.
-    return lang === 'en' ? traduireMessageServeur(raw, 'en') : raw;
+    // (07/11, point 1) Jamais « rien n'est vendu » sur une remise en vente (utils/rienVenduSurVente.js).
+    return sansRienVenduSurVente(lang === 'en' ? traduireMessageServeur(raw, 'en') : raw, job);
   }
   return humanizeJobError(job, lang);
 }

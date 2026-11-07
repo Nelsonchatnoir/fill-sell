@@ -44,6 +44,7 @@ import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFi
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
 import { retraitsBloquesParConnexion, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits, articlesVendusEncoreEnLigne, detailArticleVenduEnLigne, retraitsHorsArticlesVendus, retraitsEnAttenteParArticle } from '../utils/retraitsBloques';
 import { articlesMarqueRetireeParLeVendeur, ligneMarqueRetiree } from '../utils/marqueRetireeVendeur';
+import { sansRienVenduSurVente } from '../utils/rienVenduSurVente';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import { useOplaAcces, phraseAccesOpla, parcageDepasse } from '../utils/oplaAcces';
@@ -89,7 +90,12 @@ import { plateformesJumelles } from '../utils/copiesJumelles';
 import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
 // (25/10, balayage des erreurs visibles) CE QUI DEMANDE VRAIMENT UN GESTE, une règle pour la carte, « À régler »,
 // le filtre, la modale de statut et la pastille de l'onglet (App.jsx).
-import { causeARegler, jobSupplante, derniersParLigne, republicationLibereeApresArret, pastilleRepublicationEnPause, indexSelonARegler, plateformesHorsJeu as plateformesHorsJeuDe } from '../utils/erreursVisibles';
+import { causeARegler, jobSupplante, derniersParLigne, republicationLibereeApresArret, pastilleRepublicationEnPause, indexSelonARegler, plateformesHorsJeu as plateformesHorsJeuDe, indexSansPublicationsJumelles, publicationSansObjet } from '../utils/erreursVisibles';
+// (07/11, Nico) « À régler » : retirer une ligne de la liste, elle ne revient que sur un fait nouveau.
+import {
+  CLE_RETRAIT_TACHE, CLE_REGLAGE_RETRAITS, retraitTachePossible, champsApresRetraitTache, aUneEntree, ligneRetiree,
+  patchRetraitLigne, patchRemettreLignes, elementJob, phraseRetraitLigne, phraseRetraitTache, LIBELLES_RETRAIT,
+} from '../utils/retraitARegler';
 import { jourRemise, jourRemiseCourt, messagePlafondRepublicationGratuit } from '../utils/jourRemise';
 // (04/11, grille à 3 jauges) Un refus de remontée → le mur Remontées, ou la phrase du garde-fou. Interrupteur à 0 : null.
 import { suiteDuRefus, publicationsRestantes, remiseDuCompte } from '../reglages/refusEtMurs';
@@ -660,6 +666,8 @@ function relanceManuelleInfoDuJob(job, jobsArticle) {
 // le reste part tel quel (catégories, aspects, adresse, genre…), y compris
 // ebay_draft_id — c'est lui qui arme l'anti-doublon pré-dépôt de l'extension.
 const RELANCE_COPIE_CLES_RETIREES = [
+  // (07/11) Le retrait de « À régler » décrit la tâche SOURCE : la copie part neuve, visible si elle bloque.
+  CLE_RETRAIT_TACHE,
   'processing_since', 'next_action_after', 'needsUserAttempts', 'bfcache_rearms',
   'frozenTabRetries', 'last_diagnostic', 'derniere_interruption',
   'work_window_state', 'publish_proof', 'ebay_api_publish', 'warnings',
@@ -1234,7 +1242,7 @@ function ChampAvecUnite({ value, unite, onChange, lang }) {
   );
 }
 
-export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
+export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null, onRetirerDeARegler = null }) {
   if (job.platform === 'opla') job = { ...job, platform_fields: questionOplaFinale(job.platform_fields) };
   useFermetureEchap(onClose);
   // Le champ principal ; à défaut, le premier des champs demandés ensemble
@@ -1252,6 +1260,9 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
   // Sortie propre offerte ici aussi (2026-09-20) : elle se demande, puis se
   // confirme — comme dans la modale d'echec, et pour la meme raison.
   const [abandonArme, setAbandonArme] = useState(false);
+  // (07/11) « Retirer de la liste « À régler » » : demandé, puis confirmé — la tâche n'est pas touchée.
+  const [retraitArme, setRetraitArme] = useState(false);
+  const [retraitEnCours, setRetraitEnCours] = useState(false);
   // ── PLUSIEURS CHAMPS EN UN GESTE (2026-09-17 soir, formulaire Leboncoin PRO)
   // Leboncoin marque « État » ET « Poids du colis » invalides ensemble ; la
   // modale ne demandait que le premier — répondre, relancer, rebuter sur le
@@ -1634,6 +1645,9 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: f.field_key };
       const newPf = { ...pf, needsUserAttempts: 0 };
       delete newPf.needsUserField;
+      // (07/11) Répondre, c'est relancer : un retrait de « À régler » ne survit pas (la tâche redevient visible si
+      // elle bloque encore).
+      delete newPf[CLE_RETRAIT_TACHE];
       // (17/10) La réponse FERME la question : son motif « champ_a_choisir »
       // ne survit pas à la relance. Sinon le mur suivant (« Valider et payer »
       // de Leboncoin chez un pro, 12 dépôts le 14/10) héritait d'une question
@@ -2106,6 +2120,42 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
                   <button onClick={() => setAbandonArme(false)} disabled={saving}
                     style={{ flex:1, padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:12.5, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
                     {lang === "en" ? "No, keep it" : "Non, garder"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {/* (07/11, Nico) RETIRER DE LA LISTE « À RÉGLER » — toujours offert sur une tâche arrêtée, numéro ou lien
+            compris (l'abandon, lui, les refuse). Seule la marque est écrite sur la tâche (utils/retraitARegler) :
+            ni l'article, ni ses autres plateformes, ni aucune annonce ne bougent. */}
+        {onRetirerDeARegler && retraitTachePossible(job).ok && (
+          <div data-retrait-a-regler="" style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${NU_T.border}` }}>
+            {!retraitArme ? (
+              <button onClick={() => setRetraitArme(true)} disabled={saving || retraitEnCours}
+                style={{ width:"100%", padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:12.5, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                {LIBELLES_RETRAIT[lang === "en" ? "en" : "fr"].tache}
+              </button>
+            ) : (
+              <>
+                <div style={{ fontSize:12, color:NU_T.ink, lineHeight:1.5, marginBottom:8 }}>
+                  {phraseRetraitTache(PLATFORM_LABELS[job.platform] ?? job.platform, lang, { numero: Boolean(String(job.platform_listing_id ?? job.listing_url ?? "").trim()) })}
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button disabled={saving || retraitEnCours}
+                    onClick={async () => {
+                      setRetraitEnCours(true); setErrMsg(null);
+                      const r = await onRetirerDeARegler(job);
+                      setRetraitEnCours(false);
+                      if (r?.ok) { onClose(); return; }
+                      setErrMsg(r?.message ?? (lang === "en" ? "Could not remove it from the list — try again." : "Retrait de la liste impossible — réessaie."));
+                    }}
+                    style={{ flex:1, padding:"10px 0", borderRadius:12, border:"1px solid #1B6E62", background:"#fff", color:"#1B6E62", fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                    {retraitEnCours ? "…" : LIBELLES_RETRAIT[lang === "en" ? "en" : "fr"].oui}
+                  </button>
+                  <button onClick={() => setRetraitArme(false)} disabled={saving || retraitEnCours}
+                    style={{ flex:1, padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:12.5, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                    {LIBELLES_RETRAIT[lang === "en" ? "en" : "fr"].non}
                   </button>
                 </div>
               </>
@@ -6978,6 +7028,8 @@ const StockTab = memo(function StockTab({
       ...pfBase,
       republish_user_fields: { ...(pfBase?.republish_user_fields ?? {}), ...fournis },
     };
+    // (07/11) La saisie relance : un retrait de « À régler » ne survit pas.
+    delete pfNext[CLE_RETRAIT_TACHE];
     const { data, error } = await supabase
       .from('cross_post_jobs')
       .update({ platform_fields: pfNext })
@@ -7051,6 +7103,10 @@ const StockTab = memo(function StockTab({
   // « autre compte ». Lue dans la MÊME relecture bornée (10 min, onglet visible) ;
   // une RPC absente (migration pas encore appliquée) n'est plus redemandée.
   const [surveillanceReleves, setSurveillanceReleves] = useState(null);
+  // (07/11, Nico) Les lignes de « À régler » retirées par la personne (platform_settings.a_regler_retires, écrit par
+  // platform_settings_fusionner seulement — utils/retraitARegler) : lues dans la MÊME relecture bornée, aucune
+  // lecture de plus ; remplacées par la réponse de la RPC après chaque geste.
+  const [retraitsLignes, setRetraitsLignes] = useState(null);
   useEffect(() => {
     if (!user?.id) return undefined;
     let rpcAbsente = false;
@@ -7074,6 +7130,7 @@ const StockTab = memo(function StockTab({
       if (error) return false;
       setSessionsCompte(data?.extension_sessions ?? null);
       setReglageAlertes(data?.platform_settings?.[CLE_REGLAGE_ALERTES] ?? null);
+      setRetraitsLignes(data?.platform_settings?.[CLE_REGLAGE_RETRAITS] ?? null);
       setEcarteesCompte(Array.isArray(data?.platform_settings?.plateformes_ecartees) ? data.platform_settings.plateformes_ecartees : null);
       // Après le réglage : « plus aucune alerte » (desactivees) vaut dès la 1re lecture.
       if (surveillance !== undefined) setSurveillanceReleves(surveillance);
@@ -7791,7 +7848,10 @@ const StockTab = memo(function StockTab({
   // (Leboncoin fermé à ce compte, Opla quittée) sortent de « À régler ».
   const attenteAction = useMemo(() => {
     if (!attenteActionLue) return null;
-    const lignes = attenteActionLue.lignes.filter((l) => causeARegler(l.job, { jobsDeLArticle: jobsByInventaire[l.job.inventaire_id] ?? null, plateformesHorsJeu: horsJeu }));
+    const lignes = attenteActionLue.lignes.filter((l) => causeARegler(l.job, { jobsDeLArticle: jobsByInventaire[l.job.inventaire_id] ?? null, plateformesHorsJeu: horsJeu }))
+      // (07/11, point 4) La fiche jumelle d'un compte relié est déjà en ligne sur cette plateforme (lien prouvé,
+      // copies_fiches_jumelles) : la publication n'a plus d'objet (erreursVisibles.publicationSansObjet).
+      .filter((l) => !publicationSansObjet(l.job, plateformesJumelles(fichesParId.get(String(l.job.inventaire_id)))));
     if (lignes.length === attenteActionLue.lignes.length) return attenteActionLue;
     if (!lignes.length) return null;
     const echecs = lignes.filter((l) => l.cause === 'echec').length;
@@ -7800,7 +7860,7 @@ const StockTab = memo(function StockTab({
       gravite: echecs > 0 ? 'echec' : 'completer',
       ids: [...new Set(lignes.map((l) => String(l.job.inventaire_id)))],
     };
-  }, [attenteActionLue, jobsByInventaire, horsJeu]);
+  }, [attenteActionLue, jobsByInventaire, horsJeu, fichesParId]);
   // Les deux feuilles du haut de page. Affichage seul : elles n'écrivent rien,
   // elles rouvrent les portes qui existent déjà.
   const [fileOuverte, setFileOuverte] = useState(false);
@@ -8006,8 +8066,10 @@ const StockTab = memo(function StockTab({
   // « État » de la feuille, pastille « à traiter » de la carte, vue « À régler » — suivent LA règle de « À régler »
   // (utils/erreursVisibles.causeARegler) : jamais une attente automatique, un échec suivi d'une annulation ou
   // dépassé par une republication réussie, une republication arrêtée avant tout retrait, une plateforme hors jeu.
+  // (07/11) Même règle que « À régler » : une tâche retirée de la liste par la personne (causeARegler) et une
+  // publication sur une plateforme où la fiche jumelle d'un compte relié est déjà en ligne n'y comptent plus.
   const indexEtat = useMemo(
-    () => indexSelonARegler(indexEtatStock(stockFiltre, jobsByInventaire, lang), jobsByInventaire, { plateformesHorsJeu: horsJeu }),
+    () => indexSansPublicationsJumelles(indexSelonARegler(indexEtatStock(stockFiltre, jobsByInventaire, lang), jobsByInventaire, { plateformesHorsJeu: horsJeu }), stockFiltre),
     [stockFiltre, jobsByInventaire, lang, horsJeu],
   );
   const comptesStock = useMemo(() => compteursStock(stockFiltre, indexEtat), [stockFiltre, indexEtat]);
@@ -8359,6 +8421,11 @@ const StockTab = memo(function StockTab({
   const [abandonConfirme, setAbandonConfirme] = useState(false);
   const [abandonMsg, setAbandonMsg] = useState(null);
   useEffect(() => { setAbandonConfirme(false); setAbandonMsg(null); }, [failJobModal?.id]);
+  // (07/11, Nico) « Retirer de la liste « À régler » » : demandé, puis confirmé (retirerTacheDeARegler).
+  const [retraitTacheBusy, setRetraitTacheBusy] = useState(false);
+  const [retraitTacheConfirme, setRetraitTacheConfirme] = useState(false);
+  const [retraitTacheMsg, setRetraitTacheMsg] = useState(null);
+  useEffect(() => { setRetraitTacheConfirme(false); setRetraitTacheMsg(null); }, [failJobModal?.id]);
 
   // ── OUBLIER UNE PUBLICATION JAMAIS CONFIRMÉE (2026-09-23 soir) ────────────
   // Un dépôt 'published' SANS lien : la plateforme n'a jamais dit « en ligne ».
@@ -8458,6 +8525,7 @@ const StockTab = memo(function StockTab({
         le: new Date().toISOString(), depuis_statut: job.status, publie_le: job.published_at ?? null,
         identifiant: job.platform_listing_id ?? null, traces_retirees: Object.keys(anciennes),
       };
+      delete pf[CLE_RETRAIT_TACHE]; // (07/11) la tâche repart : un retrait de « À régler » ne survit pas
       pf.needsUserAttempts = 0;
       pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
       pf.derniere_relance_manuelle = new Date().toISOString();
@@ -8557,6 +8625,56 @@ const StockTab = memo(function StockTab({
       setAbandonBusy(false);
     }
   }
+  // ── (07/11, Nico) RETIRER UNE TÂCHE DE « À RÉGLER » ─────────────────────────────────────────────────────────────
+  // Le geste qui manquait quand l'abandon est refusé (la tâche porte un numéro ou un lien — Ornella, Beebs 68427585,
+  // refusée à la vérification, article vendu sous une autre fiche). Il n'écrit QUE la marque
+  // platform_fields.retire_de_a_regler (utils/retraitARegler) : statut, erreur, numéro, lien, article et autres
+  // plateformes ne bougent pas ; aucune annonce n'est retirée, aucun retrait n'est arrêté. La tâche est RELUE juste
+  // avant (la copie mémoire a jusqu'à 20 s de retard), son platform_fields relu est complété (jamais écrasé à
+  // l'aveugle) et l'écriture porte le garde du statut lu : si la tâche a bougé, 0 ligne, on le dit.
+  // Rend { ok, message? } (le mini-éditeur affiche le message lui-même).
+  async function retirerTacheDeARegler(job) {
+    const fr = lang !== 'en';
+    const bouge = fr ? "Cette tâche a déjà changé d'état — ferme et regarde son statut." : 'This job already changed state — close and check its status.';
+    if (retraitTacheBusy || !user?.id || !job?.id) return { ok: false, message: null };
+    setRetraitTacheBusy(true); setRetraitTacheMsg(null);
+    const echec = (message) => { setRetraitTacheMsg(message); return { ok: false, message }; };
+    try {
+      const { data: lu, error: errLu } = await supabase.from('cross_post_jobs')
+        .select('id, inventaire_id, platform, action, status, error, listing_url, platform_listing_id, platform_fields, created_at')
+        .eq('id', job.id).eq('user_id', user.id).maybeSingle();
+      if (errLu || !lu) return echec(fr ? 'Lecture de la tâche impossible — réessaie.' : 'Could not read the job — try again.');
+      if (!retraitTachePossible(lu).ok) return echec(bouge);
+      const pf = champsApresRetraitTache(lu, new Date());
+      const { data, error } = await supabase.from('cross_post_jobs')
+        .update({ platform_fields: pf })
+        .eq('id', lu.id).eq('user_id', user.id).eq('status', lu.status)
+        .select('id');
+      if (error) return echec(fr ? `Retrait de la liste impossible : ${error.message}` : `Could not remove it from the list: ${error.message}`);
+      if (!data?.length) return echec(bouge);
+      // La trace : combien de personnes retirent quoi, et pourquoi — le signal qui dira quels refus corriger.
+      supabase.from('usage_logs').insert({
+        user_id: user.id, feature: 'retrait_a_regler',
+        metadata: { platform: lu.platform, job_id: lu.id, inventaire_id: lu.inventaire_id ?? null, statut: lu.status, numero: lu.platform_listing_id ?? null, motif: String(lu.error ?? '').slice(0, 300) },
+      }).then(({ error: e }) => { if (e) console.warn('[retrait a regler] non journalisé :', e.message); });
+      setJobsByInventaire(prev => {
+        const suivant = {};
+        for (const [inv, liste] of Object.entries(prev)) {
+          suivant[inv] = liste.map(j => (j.id === lu.id
+            ? { ...j, status: lu.status, error: lu.error, listing_url: lu.listing_url, platform_listing_id: lu.platform_listing_id, platform_fields: pf }
+            : j));
+        }
+        return suivant;
+      });
+      setFailJobModal(null);
+      track('retrait_a_regler', { platform: lu.platform });
+      return { ok: true };
+    } catch (e) {
+      return echec(e?.message || (fr ? 'Retrait de la liste impossible — réessaie.' : 'Could not remove it from the list — try again.'));
+    } finally {
+      setRetraitTacheBusy(false);
+    }
+  }
   async function relancerJobEchoue(job, mode = 'repend') {
     if (relanceBusy) return;
     // (02/10, sortie d'Opla) Après la bascule (Opla plus « ouverte »), ni « relancer », ni « relancer par copie » : le
@@ -8599,6 +8717,9 @@ const StockTab = memo(function StockTab({
         if (frais?.platform_fields) pfFrais = frais.platform_fields;
       } catch { /* repli : copie mémoire, comme avant */ }
       const pf = { ...pfFrais };
+      // (07/11) Relancer, c'est un fait nouveau : la tâche sort de « retirée de la liste » (utils/retraitARegler) —
+      // si elle bloque encore, « À régler » la montre de nouveau.
+      delete pf[CLE_RETRAIT_TACHE];
       // Une relance manuelle ANNULE la reprise automatique en attente (elle ne
       // s'y ajoute pas) et ouvre un nouveau cycle de reprises espacées :
       // l'extension repart de zéro sur le budget dd85a95 (5 essais, 5/15/30/60).
@@ -9503,6 +9624,48 @@ const StockTab = memo(function StockTab({
       detail: lang === 'fr' ? 'Un article vendu dont la fiche a été supprimée : retire son annonce pour ne pas le vendre deux fois.' : 'A sold item whose card was deleted: remove its listing so it isn’t sold twice.' };
   const ouvrirModePrixAchat = () => { setGesteOuvert(null); setModePrixAchat(true); setModeBrouillons(false); setModeRepublish(false); setModeLot(false); setPaSel(new Set()); setPaOpenId(null); setPaErr(null); sauterAuxArticles(); };
   const ouvrirModeBrouillons = () => { setGesteOuvert(null); setModeBrouillons(true); setModePrixAchat(false); setModeRepublish(false); setModeLot(false); setShowAllStock(false); sauterAuxArticles(); };
+  // ── (07/11, Nico) « RETIRER DE LA LISTE » : TOUTE LIGNE DE « À RÉGLER », PAR LA PERSONNE ────────────────────────
+  // Chaque ligne qui n'est pas une tâche porte `retrait` : une fonction qui rend ses ÉLÉMENTS (tâches, articles,
+  // questions… avec leur statut), appelée seulement quand il le faut (une entrée mémorisée existe, ou la personne
+  // retire la ligne) — jamais un parcours du stock à chaque rendu. Retirée (utils/retraitARegler.ligneRetiree) : la
+  // ligne passe à n 0 — ni montrée, ni comptée — jusqu'au fait nouveau (un élément qui n'y était pas) ; sinon elle
+  // reçoit le geste (onRetirer) et la phrase qui dit ce qu'il ne fait pas. Mémoire : platform_settings.a_regler_retires
+  // (platform_settings_fusionner seulement, 200 lignes au plus, 90 jours). Aucune donnée d'article, aucune annonce,
+  // aucun retrait n'est touché. Sans `retrait` : 'attente' (chaque tâche se retire dans sa fenêtre, la marque vit sur
+  // la tâche), 'compte_plateforme' et 'plus_en_ligne' (déjà masquables, chacune sa mémoire).
+  const tsFiche = (i) => i?.date_ajout ?? i?.created_at ?? null;
+  // Les articles sans prix d'achat (la règle de nbSansPrix) : un parcours du stock, mémorisé sur ses entrées (31/10).
+  const elementsPrix = useMemo(() => stock.filter((i) => !idsBrouillons.has(String(i.id)) && paIncomplet(i)).map((i) => ({ cle: `i:${i.id}`, ts: i?.date_ajout ?? i?.created_at ?? null })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stock, idsBrouillons, paPatchs]);
+  const retirerLigneDeARegler = async (cle, elements) => {
+    const p = patchRetraitLigne(retraitsLignes, cle, elements, new Date());
+    if (!p) return { ok: false };
+    const { data, error } = await fusionnerReglages(p.chemin, p.patch, p.supprimer);
+    if (error || !data) return { ok: false, message: lang === 'en' ? 'Could not remove it from the list — try again.' : 'Retrait de la liste impossible — réessaie.' };
+    setRetraitsLignes(data[CLE_REGLAGE_RETRAITS] ?? null);
+    const sorte = String(cle).split(':')[0];
+    supabase.from('usage_logs').insert({ user_id: user?.id, feature: 'retrait_a_regler', metadata: { ligne: cle, sorte, n: p.patch[cle]?.n ?? null } })
+      .then(({ error: e }) => { if (e) console.warn('[retrait a regler] non journalisé :', e.message); });
+    track('retrait_a_regler', { ligne: sorte });
+    return { ok: true };
+  };
+  const remettreLignesARegler = async (cles) => {
+    const p = patchRemettreLignes(cles);
+    if (!p) return;
+    const { data, error } = await fusionnerReglages(p.chemin, p.patch, p.supprimer);
+    if (!error && data) setRetraitsLignes(data[CLE_REGLAGE_RETRAITS] ?? null);
+  };
+  // Les retraits restants (fiche en stock ou supprimée) et les annonces à retirer d'un article sans fiche.
+  const elementsRetraits = () => [
+    ...(retraitsAutres.parPlateforme ?? []).flatMap((g) => (g.lignes ?? []).map((l) => elementJob(l.job, g.platform, g.mur))),
+    ...aRetirerSansFiche.flat().map((j) => elementJob(j, 'a_retirer')),
+  ];
+  const avecRetraitLigne = (l) => {
+    if (typeof l.retrait !== 'function' || !(l.n > 0)) return l;
+    if (aUneEntree(retraitsLignes, l.cle) && ligneRetiree(retraitsLignes, l.cle, l.retrait())) return { ...l, n: 0, nRetire: l.n };
+    return { ...l, onRetirer: () => retirerLigneDeARegler(l.cle, l.retrait()), phraseRetrait: phraseRetraitLigne(l.groupe ?? l.cle, lang, { aRetirer: Boolean(l.aRetirerAccord) }) };
+  };
   // (18/10) TOUT EN TÊTE de « À régler » (avant les articles vendus encore en
   // ligne) : une boutique qui n'est plus surveillée depuis plus de 24 h (session
   // fermée, PROUVÉ par les relevés — RPC surveillance_releves). Une vente là-bas
@@ -9516,7 +9679,9 @@ const StockTab = memo(function StockTab({
       <BoutonMeConnecter userId={user?.id} platform={a.platform} motif={a.motif} lang={lang}
         variante="bouton" libelleImpose={libelleReconnexion(a, lang)} />
     ),
-  }));
+    // (07/11) Fait nouveau : un autre motif, ou une nouvelle coupure (autre « depuis »).
+    retrait: () => [`ns:${a.motif ?? ''}:${a.depuis ?? ''}`],
+  })).map(avecRetraitLigne);
   const lignesARegler = [
     // En tête : le seul point où un acheteur peut payer un article déjà parti.
     // (12/10 soir, Nico) Un article vendu encore en ligne = UNE ligne : son
@@ -9527,12 +9692,15 @@ const StockTab = memo(function StockTab({
       titre: a.titre ?? (lang === 'fr' ? 'Article vendu' : 'Sold item'),
       detail: detailArticleVenduEnLigne(a, lang),
       onOuvrir: () => { setGesteOuvert(null); setMenuArticleId(a.inventaireId); },
+      aRetirerAccord: (a.aRetirer ?? []).length > 0,
+      retrait: () => (a.plateformes ?? []).flatMap((p) => (p.jobs ?? []).map((j) => elementJob(j, p.platform, p.mur))),
     })),
     // Le reste des retraits : le tap ouvre « Annonces à retirer », qui porte
     // « Me connecter ».
     // (25/10) Rien que des annonces Beebs en vérification (ni achetables ni supprimables) : ambre, jamais rouge.
     { cle: 'retraits', n: nbRetraitsAutres, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
       ...((retraitsAutres.parPlateforme ?? []).length && retraitsAutres.parPlateforme.every((g) => g.mur === 'verification_beebs') ? { ton: 'regler' } : {}),
+      aRetirerAccord: aRetirerSansFiche.length > 0, retrait: elementsRetraits,
       onOuvrir: () => setGesteOuvert('retraits') },
     // (06/11 soir) Une marque écrite par la personne, retirée à la publication (article « pour » cette marque) : une ligne
     // par article, le tap ouvre SA fiche (« Modifier ») ; son texte n'est jamais touché.
@@ -9540,23 +9708,26 @@ const StockTab = memo(function StockTab({
       cle: `marque_retiree:${a.inventaireId}`, groupe: 'marque_retiree', article: true, n: 1, ton: 'regler',
       ...ligneMarqueRetiree(a, lang),
       onOuvrir: () => { setGesteOuvert(null); setMenuArticleId(a.inventaireId); },
+      retrait: () => [`m:${String(a.marque ?? '').trim().toLowerCase()}`, ...(a.plateformes ?? []).map((p) => `p:${p}`)],
     })),
     // (24/10 nuit, Nico) Une vente annulée : l'article est revenu au stock, un appui le remet en vente partout.
     { cle: 'ventes_annulees', n: nbVentesAnnulees,
       titre: lang === 'fr' ? (nbVentesAnnulees > 1 ? 'Ventes annulées — Remettre en vente ?' : 'Vente annulée — Remettre en vente ?') : (nbVentesAnnulees > 1 ? 'Sales cancelled — list again?' : 'Sale cancelled — list again?'),
       detail: lang === 'fr' ? 'L’article est revenu dans ton stock. Un appui le remet en vente partout où il était, sans doublon.' : 'The item is back in your stock. One tap lists it again wherever it was, without duplicates.',
-      onOuvrir: () => setGesteOuvert('ventes_annulees') },
+      onOuvrir: () => setGesteOuvert('ventes_annulees'),
+      retrait: () => (Array.isArray(ventesAnnulees) ? ventesAnnulees : []).filter((v) => v?.etat === 'proposee')
+        .map((v) => ({ cle: `v:${v.inventaire_id ?? ''}:${v.vente_id ?? v.id ?? ''}`, ts: v.annulee_le ?? v.created_at ?? null })) },
     { cle: 'lbc_identite', n: nbIdentiteLbc, titre: lang === 'fr' ? 'Leboncoin : ton nom et ton prénom' : 'Leboncoin: your first and last name',
       detail: lang === 'fr'
         ? `${identiteLbc.length} annonce${identiteLbc.length > 1 ? 's' : ''} Leboncoin en attente : complète ton compte une fois, elles partent toutes seules.`
         : `${identiteLbc.length} Leboncoin listing${identiteLbc.length > 1 ? 's' : ''} waiting: complete your account once, they go out on their own.`,
-      onOuvrir: () => setGesteOuvert('lbc_identite') },
+      onOuvrir: () => setGesteOuvert('lbc_identite'), retrait: () => identiteLbc.map((j) => elementJob(j)) },
     // (17/10) Leboncoin n'offre plus que « Valider et payer » à ce compte pro : une seule ligne.
     { cle: 'lbc_forfait', n: nbForfaitLbc, titre: lang === 'fr' ? 'Leboncoin : ton forfait pro' : 'Leboncoin: your pro plan',
       detail: lang === 'fr'
         ? `${forfaitLbc.length} annonce${forfaitLbc.length > 1 ? 's' : ''} Leboncoin en attente : Leboncoin demande un paiement pour chaque nouvelle annonce de ton compte pro, et FillSell ne paie jamais à ta place.`
         : `${forfaitLbc.length} Leboncoin listing${forfaitLbc.length > 1 ? 's' : ''} waiting: Leboncoin asks your pro account to pay for every new listing, and FillSell never pays for you.`,
-      onOuvrir: () => setGesteOuvert('lbc_forfait') },
+      onOuvrir: () => setGesteOuvert('lbc_forfait'), retrait: () => forfaitLbc.map((j) => elementJob(j)) },
     // (18/10) Session perdue sur une plateforme, ou compte Vinted restreint : une
     // seule ligne, discrète, masquable (utils/alertesCompte.js).
     { cle: 'compte_plateforme', n: nbAlertesCompte,
@@ -9567,26 +9738,37 @@ const StockTab = memo(function StockTab({
       detail: lang === 'fr'
         ? `${vendeurDepop.length} annonce${vendeurDepop.length > 1 ? 's' : ''} Depop en attente : ajoute ton moyen de paiement sur Depop une fois, elles partent toutes seules.`
         : `${vendeurDepop.length} Depop listing${vendeurDepop.length > 1 ? 's' : ''} waiting: add your payment method on Depop once, they go out on their own.`,
-      onOuvrir: () => setGesteOuvert('vendeur_plateforme') },
+      onOuvrir: () => setGesteOuvert('vendeur_plateforme'), retrait: () => vendeurDepop.map((j) => elementJob(j)) },
     { cle: 'attente', n: nbAttenteAction, titre: lang === 'fr' ? (nbAttenteAction > 1 ? 'Annonces qui attendent ton geste' : 'Annonce qui attend ton geste') : 'Listings waiting on you',
       detail: attenteAction ? [attenteAction.echecs > 0 ? (lang === 'fr' ? `${attenteAction.echecs} pas partie${attenteAction.echecs > 1 ? 's' : ''}` : `${attenteAction.echecs} didn't go out`) : null, attenteAction.aCompleter > 0 ? (lang === 'fr' ? `${attenteAction.aCompleter} à compléter` : `${attenteAction.aCompleter} to complete`) : null].filter(Boolean).join(' · ') : null,
       onOuvrir: () => { setGesteOuvert(null); setAttenteOuverte(true); } },
     { cle: 'a_verifier', n: nbAVerifier, titre: lang === 'fr' ? (nbAVerifier > 1 ? 'Annonces à vérifier' : 'Annonce à vérifier') : 'Listings to check',
       detail: lang === 'fr' ? 'Trouvées sur tes autres plateformes, elles ressemblent à un article de ton stock. Dis-nous si c’est le même : elles entrent alors dans ton stock. Rien n’est perdu, leurs ventes sont suivies.' : 'Found on your other platforms, they look like an item in your stock. Tell us if it’s the same: they then enter your stock. Nothing is lost, their sales are tracked.',
-      onOuvrir: () => { setGesteOuvert(null); aVerifier.ouvrir?.(); } },
+      onOuvrir: () => { setGesteOuvert(null); aVerifier.ouvrir?.(); },
+      // (07/11) Les annonces relevées qui attendent (App) ; à défaut de liste, leur nombre seul.
+      retrait: () => (itemsAVerifier.length ? itemsAVerifier.map((i) => ({ cle: `i:${i.id}`, ts: tsFiche(i) })) : [`n:${nbAVerifier}`]) },
     { cle: 'ventes', n: questionsDejaVendu.length, titre: lang === 'fr' ? 'Déjà vendu ?' : 'Already sold?',
       detail: lang === 'fr' ? 'Un article vendu a peut-être encore une annonce en ligne : réponds pour ne pas le vendre deux fois.' : 'A sold item may still have a listing online: answer to avoid selling it twice.',
-      onOuvrir: () => { setGesteOuvert(null); setEcranDejaVendu(true); } },
+      onOuvrir: () => { setGesteOuvert(null); setEcranDejaVendu(true); },
+      retrait: () => questionsDejaVendu.map((d) => ({ cle: `d:${d.id}`, ts: d.created_at ?? null })) },
     // (12/10 soir) Les annonces qui ne sont plus en ligne : vendue, retirée, ou
     // « je ne sais pas » — toutes plateformes, mêmes questions qu'avant.
     { cle: 'plus_en_ligne', n: nbPlusEnLigne, titre: lang === 'fr' ? (nbPlusEnLigne > 1 ? 'Annonces plus en ligne' : 'Annonce plus en ligne') : (nbPlusEnLigne > 1 ? 'Listings no longer online' : 'Listing no longer online'),
       detail: lang === 'fr' ? 'Vendue, retirée, ou tu ne sais pas : réponds annonce par annonce, rien n’est enregistré sans toi.' : 'Sold, removed, or you don’t know: answer one by one, nothing is recorded without you.',
       onOuvrir: () => setGesteOuvert('plus_en_ligne') },
     { cle: 'prix', n: nbSansPrix, titre: lang === 'fr' ? "Prix d'achat à compléter" : 'Purchase prices to complete',
-      detail: lang === 'fr' ? 'Sans lui, ni marge ni bénéfice ne se calculent.' : 'Without it, neither margin nor profit can be computed.', onOuvrir: ouvrirModePrixAchat },
+      detail: lang === 'fr' ? 'Sans lui, ni marge ni bénéfice ne se calculent.' : 'Without it, neither margin nor profit can be computed.', onOuvrir: ouvrirModePrixAchat,
+      // Fait nouveau : un article sans prix d'achat qui n'y était pas (un prix complété ne la fait pas revenir).
+      retrait: () => elementsPrix },
     { cle: 'brouillons', n: brouillons.length, titre: lang === 'fr' ? (brouillons.length > 1 ? 'Brouillons à finir' : 'Brouillon à finir') : 'Drafts to finish',
-      detail: lang === 'fr' ? 'Annonces préparées, pas encore publiées — déjà décomptées.' : 'Listings prepared, not published yet — already counted.', onOuvrir: ouvrirModeBrouillons },
-  ];
+      detail: lang === 'fr' ? 'Annonces préparées, pas encore publiées — déjà décomptées.' : 'Listings prepared, not published yet — already counted.', onOuvrir: ouvrirModeBrouillons,
+      retrait: () => brouillons.map((b) => ({ cle: `b:${b.item?.id ?? b.inventaire_id}`, ts: b.created_at ?? null })) },
+  ].map(avecRetraitLigne);
+  // (07/11) Le compte de la tuile et ses mots suivent les lignes MONTRÉES (une ligne retirée ne compte plus).
+  const nbRetireesDeLaListe = [...lignesNonSurveillees, ...lignesARegler].reduce((t, l) => t + (l.nRetire || 0), 0);
+  const nbRetraitsMontres = lignesARegler.filter((l) => (l.groupe ?? l.cle) === 'vendus' || l.cle === 'retraits').reduce((t, l) => t + (l.n || 0), 0);
+  const nbNonSurveilleesMontrees = lignesNonSurveillees.filter((l) => l.n > 0).length;
+  const clesRetireesMontrables = [...lignesNonSurveillees, ...lignesARegler].filter((l) => l.nRetire > 0).map((l) => l.cle);
   // ── (15/10, P17) LE GESTE GRATUIT, TOUT DE SUITE ───────────────────────────
   // Mesuré le 15/10 : sur 47 nouveaux inscrits qui ont synchronisé, 23 ont buté
   // sur le mur de quota du lot (13 dans les 10 min) — parce que la sélection
@@ -9616,16 +9798,19 @@ const StockTab = memo(function StockTab({
   const ordreAFaire = offertGratuit.repub > 0 && (gesteRemonter?.n ?? 0) > 0 ? ['remonter', 'publier', 'aRegler'] : null;
   // (05/10) Un retrait bloqué passe avant tout : la tuile le dit, en peu de mots.
   const gesteARegler = { n: nbAReglerTout, onOuvrir: () => setGesteOuvert('a_regler'),
-    ...(nbRetraitsBloques > 0 ? {
+    ...(nbRetraitsMontres > 0 ? {
       court: lang !== 'en' ? 'annonces à retirer' : 'listings to remove',
       long: () => (lang !== 'en' ? 'dont des annonces à retirer' : 'including listings to remove'),
-      aria: (n) => (lang !== 'en' ? `À régler : ${n}, dont ${nbRetraitsBloques} annonce${nbRetraitsBloques > 1 ? 's' : ''} encore en ligne à retirer` : `To fix: ${n}, including ${nbRetraitsBloques} live listing${nbRetraitsBloques > 1 ? 's' : ''} to remove`),
-    } : nbNonSurveillees > 0 ? {
+      aria: (n) => (lang !== 'en' ? `À régler : ${n}, dont ${nbRetraitsMontres} annonce${nbRetraitsMontres > 1 ? 's' : ''} encore en ligne à retirer` : `To fix: ${n}, including ${nbRetraitsMontres} live listing${nbRetraitsMontres > 1 ? 's' : ''} to remove`),
+    } : nbNonSurveilleesMontrees > 0 ? {
       // (18/10) Sinon, une boutique qui n'est plus surveillée : la tuile le dit aussi.
-      court: lang !== 'en' ? (nbNonSurveillees > 1 ? 'boutiques non surveillées' : 'boutique non surveillée') : (nbNonSurveillees > 1 ? 'shops not watched' : 'shop not watched'),
-      long: () => (lang !== 'en' ? (nbNonSurveillees > 1 ? 'dont des boutiques qui ne sont plus surveillées' : 'dont une boutique qui n’est plus surveillée') : (nbNonSurveillees > 1 ? 'including shops no longer watched' : 'including a shop no longer watched')),
-      aria: (n) => (lang !== 'en' ? `À régler : ${n}, dont ${nbNonSurveillees} boutique${nbNonSurveillees > 1 ? 's' : ''} qui ne ${nbNonSurveillees > 1 ? 'sont' : 'est'} plus surveillée${nbNonSurveillees > 1 ? 's' : ''}` : `To fix: ${n}, including ${nbNonSurveillees} shop${nbNonSurveillees > 1 ? 's' : ''} no longer watched`),
+      court: lang !== 'en' ? (nbNonSurveilleesMontrees > 1 ? 'boutiques non surveillées' : 'boutique non surveillée') : (nbNonSurveilleesMontrees > 1 ? 'shops not watched' : 'shop not watched'),
+      long: () => (lang !== 'en' ? (nbNonSurveilleesMontrees > 1 ? 'dont des boutiques qui ne sont plus surveillées' : 'dont une boutique qui n’est plus surveillée') : (nbNonSurveilleesMontrees > 1 ? 'including shops no longer watched' : 'including a shop no longer watched')),
+      aria: (n) => (lang !== 'en' ? `À régler : ${n}, dont ${nbNonSurveilleesMontrees} boutique${nbNonSurveilleesMontrees > 1 ? 's' : ''} qui ne ${nbNonSurveilleesMontrees > 1 ? 'sont' : 'est'} plus surveillée${nbNonSurveilleesMontrees > 1 ? 's' : ''}` : `To fix: ${n}, including ${nbNonSurveilleesMontrees} shop${nbNonSurveilleesMontrees > 1 ? 's' : ''} no longer watched`),
     } : {}) };
+  // (07/11) Les lignes retirées de la liste par la personne ne comptent plus sur la tuile (la somme des lignes
+  // MONTRÉES, la même que l’en-tête de « À régler »).
+  gesteARegler.n = Math.max(0, nbAReglerTout - nbRetireesDeLaListe);
   // « Fermer » l'ajout : jamais pendant une analyse en cours (le pli ne masque
   // jamais du contenu vivant — règle du 09/08) ; un résultat ou une erreur se
   // referment par « Recommencer », comme avant.
@@ -10438,7 +10623,8 @@ const StockTab = memo(function StockTab({
       // que le dépôt sans lien — jamais « plus en ligne », jamais « vendue ? ».
       if (!['beebs', 'leboncoin'].includes(p) && d.latestPubByPlatform?.[p]?.platform_fields?.pas_encore_visible) {
         const nom = PLATFORM_LABELS[p] || p;
-        infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: fr ? `Pas encore visible sur ${nom} : FillSell attend de la voir en ligne, rien n'est vendu.` : `Not visible on ${nom} yet: FillSell is waiting to see it online, nothing is sold.` });
+        // (07/11, point 1) Jamais « rien n'est vendu » sur une remise en vente : elle suit une vente.
+        infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: sansRienVenduSurVente(fr ? `Pas encore visible sur ${nom} : FillSell attend de la voir en ligne, rien n'est vendu.` : `Not visible on ${nom} yet: FillSell is waiting to see it online, nothing is sold.`, d.latestPubByPlatform?.[p]) });
       }
       if ((p === "beebs" || p === "leboncoin") && enVerificationPlateforme(d.latestPubByPlatform?.[p])) {
         // (03/11, point 5) Beebs l'a déjà SORTIE de sa vérification sans la mettre en ligne (pas_encore_visible.sortie_constatee_le,
@@ -10447,8 +10633,8 @@ const StockTab = memo(function StockTab({
         if (Number.isFinite(sortieBeebs)) {
           const le = new Date(sortieBeebs).toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' });
           infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: fr
-            ? `Beebs a sorti ton annonce de sa vérification le ${le} sans la mettre en ligne pour l'instant ; FillSell attend encore de la voir (jusqu'à 7 jours), rien n'est vendu.`
-            : `Beebs took your listing out of review on ${le} without putting it online so far; FillSell is still waiting to see it (up to 7 days), nothing is sold.` });
+            ? sansRienVenduSurVente(`Beebs a sorti ton annonce de sa vérification le ${le} sans la mettre en ligne pour l'instant ; FillSell attend encore de la voir (jusqu'à 7 jours), rien n'est vendu.`, d.latestPubByPlatform?.[p])
+            : sansRienVenduSurVente(`Beebs took your listing out of review on ${le} without putting it online so far; FillSell is still waiting to see it (up to 7 days), nothing is sold.`, d.latestPubByPlatform?.[p]) });
           continue;
         }
         infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: p === 'beebs' ? (fr ? "Beebs vérifie ton annonce avant de la mettre en ligne." : 'Beebs is reviewing your listing before putting it online.') : (fr ? "Leboncoin vérifie ton annonce : ne la republie pas, tu créerais un doublon." : "Leboncoin is reviewing your listing: don't repost it, you'd create a duplicate.") });
@@ -12467,7 +12653,16 @@ const StockTab = memo(function StockTab({
       })()}
       {gesteOuvert==='a_regler'&&(
         <EcranARegler lang={lang} lignes={[...lignesNonSurveillees, ...lignesARegler]} onFermer={()=>setGesteOuvert(null)}
-          pied={plusEnLigne?.nMasquees>0?(
+          pied={<>{clesRetireesMontrables.length>0&&(
+            // (07/11) Les lignes retirées par la personne : dites, et remises d'un appui — jamais perdues.
+            <button type="button" className="sk-btn" data-pied="retirees"
+              onClick={()=>remettreLignesARegler(clesRetireesMontrables)}
+              style={{display:'block',margin:'12px auto 0',padding:'8px 12px',border:'none',background:'transparent',color:SK.tealDeep,fontSize:12,lineHeight:'16px',fontWeight:600}}>
+              {lang==='fr'
+                ?`${clesRetireesMontrables.length} ligne${clesRetireesMontrables.length>1?'s':''} retirée${clesRetireesMontrables.length>1?'s':''} de la liste · les remettre`
+                :`${clesRetireesMontrables.length} line${clesRetireesMontrables.length>1?'s':''} removed from the list · put back`}
+            </button>
+          )}{plusEnLigne?.nMasquees>0?(
             // (12/10 soir) Les alertes « plus en ligne » masquées (« Masquer »,
             // 17/09) restent hors du compte, comme avant : on dit qu'elles
             // existent et on les montre au tap — jamais perdues.
@@ -12478,7 +12673,7 @@ const StockTab = memo(function StockTab({
                 ?`${plusEnLigne.nMasquees} alerte${plusEnLigne.nMasquees>1?'s':''} « plus en ligne » masquée${plusEnLigne.nMasquees>1?'s':''} · afficher`
                 :`${plusEnLigne.nMasquees} hidden “no longer online” alert${plusEnLigne.nMasquees>1?'s':''} · show`}
             </button>
-          ):null}/>
+          ):null}</>}/>
       )}
       {/* (05/10) Retraits bloqués par une connexion : un écran, ouvert depuis
           « À régler » — jamais un bandeau empilé en haut du Stock (Nico).
@@ -12899,6 +13094,42 @@ const StockTab = memo(function StockTab({
                 </div>
               );
             })()}
+            {/* ── (07/11, Nico) RETIRER DE LA LISTE « À RÉGLER » ────────────────
+                Offert sur TOUTE tâche arrêtée qui est dans « À régler », quels que soient la plateforme et le motif —
+                numéro ou lien compris, là où l'abandon refuse (Beebs refusée à la vérification). Seule la marque
+                est écrite sur la tâche (retirerTacheDeARegler) ; la ligne revient sur un fait nouveau. */}
+            {(()=>{
+              if(!retraitTachePossible(failJobModal).ok)return null;
+              if(!causeARegler(failJobModal,{jobsDeLArticle:jobsByInventaire[failJobModal.inventaire_id]??null,plateformesHorsJeu:horsJeu}))return null;
+              const lib=LIBELLES_RETRAIT[lang==="en"?"en":"fr"];
+              const label=PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform;
+              if(!retraitTacheConfirme)return(
+                <button data-retrait-a-regler="" onClick={()=>setRetraitTacheConfirme(true)}
+                  style={{width:"100%",padding:"11px",borderRadius:999,background:"#fff",border:"1px solid #E7E3D8",fontSize:13.5,fontWeight:600,color:"#3A443F",cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>
+                  {lib.tache}
+                </button>
+              );
+              return(
+                <div data-retrait-a-regler="" style={{border:"1px solid #E7E3D8",borderRadius:14,padding:"12px",marginBottom:8,background:"#FAF9F5"}}>
+                  <div style={{fontSize:12.5,color:"#3A443F",lineHeight:1.55,marginBottom:10}}>
+                    {phraseRetraitTache(label,lang,{numero:Boolean(String(failJobModal.platform_listing_id??failJobModal.listing_url??"").trim())})}
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button disabled={retraitTacheBusy} onClick={()=>retirerTacheDeARegler(failJobModal)}
+                      style={{flex:1,padding:"11px",borderRadius:999,border:"1px solid #1B6E62",background:retraitTacheBusy?"#F4F2EC":"#fff",color:"#1B6E62",fontSize:13.5,fontWeight:700,cursor:retraitTacheBusy?"default":"pointer",fontFamily:"inherit"}}>
+                      {retraitTacheBusy?"…":lib.oui}
+                    </button>
+                    <button disabled={retraitTacheBusy} onClick={()=>setRetraitTacheConfirme(false)}
+                      style={{flex:1,padding:"11px",borderRadius:999,border:"1px solid #E7E3D8",background:"#fff",color:"#6B7A75",fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      {lib.non}
+                    </button>
+                  </div>
+                  {retraitTacheMsg&&(
+                    <div style={{fontSize:12,color:"#B0645A",fontWeight:600,textAlign:"center",marginTop:8}}>{retraitTacheMsg}</div>
+                  )}
+                </div>
+              );
+            })()}
             <button onClick={()=>setFailJobModal(null)}
               style={{width:"100%",padding:"11px",borderRadius:999,background:"#fff",border:"1px solid #E7E3D8",fontSize:13.5,fontWeight:600,color:"#6B7A75",cursor:"pointer",fontFamily:"inherit"}}>
               {lang==="en"?"Close":"Fermer"}
@@ -12913,6 +13144,7 @@ const StockTab = memo(function StockTab({
           lang={lang}
           onClose={()=>setNeedsUserJob(null)}
           onAbandonner={abandonnerPlateforme}
+          onRetirerDeARegler={retirerTacheDeARegler}
           onDone={(jobId)=>{
             setNeedsUserJob(null);
             if(jobId){

@@ -136,6 +136,17 @@ export function champsExigesConnus(pf = {}) {
   const va = pf.vintedAspects && typeof pf.vintedAspects === "object" ? pf.vintedAspects : {};
   return champsExigesAuRefus(pf).filter((c) => String(va[c.code] ?? "").trim());
 }
+/**
+ * (07/11, point 7 — Marta MELE, page Vinted en italien) La COULEUR exigée au refus (« Compila il campo "colore" ») alors
+ * que la capture de l'annonce d'origine la porte (republish_snapshot.color1_id) : un défaut de notre envoi, jamais un
+ * geste de la personne. Lue à part de champsExigesConnus (vintedAspects), pour ne pas relancer par la cause du 02/11 sur
+ * un build qui échoue encore.
+ */
+export function couleurExigeeConnue(pf = {}) {
+  if (!champsExigesAuRefus(pf).some((c) => c.code === "color")) return false;
+  const ids = [pf?.republish_snapshot?.color1_id, ...(Array.isArray(pf?.vinted_ids?.color_ids) ? pf.vinted_ids.color_ids : [])];
+  return ids.some((v) => Number.isFinite(Number(v)) && Number(v) > 0);
+}
 
 /**
  * Le message du job sorti de la file.
@@ -154,6 +165,7 @@ export function messageRecreationBloquee(job, { causeEnAttente = null } = {}) {
   const autres = "Tes autres republications, elles, continuent.";
   const champs = champsExigesAuRefus(pf);
   const connus = new Set(champsExigesConnus(pf).map((c) => c.code));
+  if (couleurExigeeConnue(pf)) connus.add("color"); // (07/11, point 7) la couleur de la capture : notre envoi
   const nomme = (c) => `« ${c.libelle} »${c.message ? ` (« ${c.message} »)` : ""}`;
   if (champs.length && connus.size) {
     const notre = champs.filter((c) => connus.has(c.code));
@@ -194,6 +206,10 @@ export const BUILD_ATTRIBUTS_ORIGINE = "2026-10-29T13:30:00Z";
 // (02/11, XEWER) Premier build qui met dans l'envoi Vinted tout attribut exigé et connu (0.6.166) : l'horodatage du
 // commit de l'extension qui le porte (EXTENSION_LAST_COMMIT) — tout build construit depuis le porte.
 export const BUILD_ATTRIBUTS_CONNUS = "2026-11-02T08:48:22Z"; // d2ed09b (0.6.166)
+// (07/11, point 3) Premier build qui lit la borne de remplissage du job (fill_borne_ms), ne retire plus après un pré-vol
+// trop lent et n'envoie plus après la borne (0.6.177) : le 0.6.176 servi date du 06/11 20:36:04Z, la copie Cloud
+// 0.6.176.44695 du 07/11 10:18 (Paris) ; tout build construit après cette heure est un 0.6.177.
+export const BUILD_BORNE_ADAPTATIVE = "2026-11-07T10:30:00Z";
 
 export const CAUSES_LEVEES_PAR_LE_SERVEUR = [
   {
@@ -245,6 +261,37 @@ export const CAUSES_LEVEES_PAR_LE_SERVEUR = [
     condition: (job) => champsExigesConnus(job?.platform_fields ?? {}).length > 0,
     buildMin: BUILD_ATTRIBUTS_CONNUS,
     correctif: "extension 0.6.166+ : un attribut exigé et connu part dans l'envoi Vinted par son identifiant (langue du livre comprise)",
+  },
+  {
+    // (07/11, point 7 — Marta MELE, 3 republications Vinted retirées les 02-03/11, page en italien) Vinted refuse l'envoi
+    // sur la couleur (400 {"field":"color","Compila il campo \"colore\""}) alors que la capture la porte (color1_id) :
+    // le chemin « par identifiants » la laisse vide sans le voir, et `color` n'entre pas au POST. La 0.6.177 la met dans
+    // l'envoi et arrête AVANT le retrait une couleur vide que la copie porte. Relancée une fois, puis une fois au build.
+    code: "vinted_couleur_connue_non_posee",
+    plateformes: ["vinted"],
+    sources: [SOURCE_RECREATION_BLOQUEE, "champ_a_choisir"],
+    signature: /validation_error|colore|couleur|color/i,
+    condition: (job) => couleurExigeeConnue(job?.platform_fields ?? {}),
+    buildMin: BUILD_BORNE_ADAPTATIVE,
+    correctif: "extension 0.6.177+ : la couleur connue par la capture part dans l'envoi Vinted, et une couleur vide arrête AVANT le retrait",
+  },
+  {
+    // (07/11, point 3 — Ciddjy, Beebs 49342549 « Lot 4 pantalons garçon 18 mois ») Retirée à 06:27, quatre redépôts
+    // arrêtés chacun à la BORNE de 10 min du remplissage (« Timeout: pas de réponse du content script (borne 10 min
+    // dépassée…) ») : le poste était devenu lent (pré-vol de 602 s), notre borne est fixe — NOTRE faute, l'annonce restait
+    // hors ligne jusqu'à un geste. Relancée UNE fois tout de suite (puis une fois de plus au build qui lit la borne), avec
+    // une borne élargie à 20 min (fill_borne_ms, lue par l'extension ≥ 0.6.177) et TOUJOURS après une relecture complète
+    // des annonces du compte (recreation_depot_parti : get-pending-jobs relit avant tout redépôt — un remplissage arrêté
+    // à la borne a pu cliquer « Mettre en vente » ; ayoub, 04/11). Jamais quand la cause est le compte.
+    code: "remplissage_borne_depassee",
+    plateformes: ["beebs", "leboncoin"],
+    signature: /pas de réponse du content script|borne \d+ min dépassée/i,
+    champs: (_pf, maintenant) => ({
+      fill_borne_ms: 20 * 60_000,
+      recreation_depot_parti: { at: maintenant, raison: "remise en ligne arrêtée à la borne du remplissage : annonces relues avant tout redépôt" },
+    }),
+    buildMin: BUILD_BORNE_ADAPTATIVE,
+    correctif: "relance avec une borne de remplissage élargie (20 min, extension 0.6.177+), après relecture des annonces du compte",
   },
 ];
 
@@ -327,6 +374,8 @@ export function champsRelanceCauseLevee(pf0 = {}, cause, maintenant = new Date()
   // (06/11, Nico : version minimum abandonnée) `build_min_requis` n'est plus qu'une trace (aucun filtre ne le lit) :
   // une relance faite sous le build en garde une seconde, au build (causeLeveePourRelance).
   if (cause.buildMin && !(msBuild(pf.build_min_requis) >= Date.parse(cause.buildMin))) pf.build_min_requis = cause.buildMin;
+  // (07/11, point 3) Les champs propres à la cause (borne élargie, relecture des annonces avant redépôt).
+  if (typeof cause.champs === "function") Object.assign(pf, cause.champs(pf, maintenant) ?? {});
   return pf;
 }
 

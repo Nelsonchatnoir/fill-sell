@@ -4998,10 +4998,19 @@ export default function App({ loginOnly = false }){
   // son reçu l'en exclut côté base.
   // (24/10 soir, décision de Nico) UN appui remet l'article en vente sur Vinted et partout où il avait été retiré à cause
   // de la vente annulée, hors quota ; la base attend un relevé (déjà remis en ligne par le vendeur → rattaché, rien de republié).
-  async function remettreApresAnnulation(v){
+  // (07/11, Ornella) « Ne pas remettre en vente » (opts.remettre === false) : la base ferme les propositions de CETTE
+  // fiche (rpc ventes_annulees_ne_pas_remettre, motif choix_personne) ; rien n'est publié ni retiré.
+  async function remettreApresAnnulation(v,opts){
     if(v?.inventaire_id==null||venteAnnuleeEnCours!=null)return;
     setVenteAnnuleeEnCours(v.inventaire_id);
     try{
+      if(opts?.remettre===false){
+        const{data,error}=await supabase.rpc('ventes_annulees_ne_pas_remettre',{p_inventaire:v.inventaire_id});
+        if(error||data?.ok!==true)throw new Error(error?.message??data?.motif??'refus');
+        setVentesAnnulees(prev=>prev.map(x=>x.inventaire_id===v.inventaire_id?{...x,etat:'abandonnee',motif:'choix_personne'}:x));
+        logTunnel('ventes_annulees',{action:'remise_refusee',plateformes:(data?.plateformes??[]).join(',')});
+        return;
+      }
       const{data,error}=await supabase.rpc('remettre_en_vente_apres_annulation',{p_inventaire:v.inventaire_id});
       if(error||data?.ok!==true)throw new Error(error?.message??data?.motif??'refus');
       setVentesAnnulees(prev=>prev.map(x=>x.inventaire_id===v.inventaire_id?{...x,etat:'en_cours'}:x));
