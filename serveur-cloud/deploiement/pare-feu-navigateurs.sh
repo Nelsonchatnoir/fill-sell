@@ -12,12 +12,18 @@
 # le temps de brancher la chaîne. Rejoué à chaque démarrage (fillsell-pare-feu.service), à chaque changement de la
 # liste (fillsell-pare-feu-maj.path) et à chaque déploiement. À la fin, la PREUVE pour l'orchestrateur
 # (etat/pare-feu.json, numéro de CE démarrage, destinations APPLIQUÉES) : sans elle, il n'ouvre aucun navigateur.
+# (07/11 soir, ÉTANCHÉITÉ ENTRE CLIENTS — serveur-cloud/src/cloisonnement.js, docs/cloud/ETANCHEITE-CLOUD2.md) Un conteneur
+# ne joint AUCUN autre conteneur, sur aucun port : « -o br-fillsell -j DROP » en tête de FILLSELL-NAV (la ligne
+# « -d 172.31.0.0/24 -j RETURN » laissait passer un client vers le pilotage DevTools 9223 d'un autre), et le pont FILTRÉ
+# (br_netfilter chargé, bridge-nf-call-iptables à 1) — sans lui, deux conteneurs du pont se parlent sans passer par
+# iptables. L'orchestrateur, sur l'hôte, les joint toujours : ses paquets partent de l'hôte (OUTPUT), jamais par FORWARD.
+# Dit dans la preuve : entre_conteneurs = ferme, pont_filtre = 1.
 set -eu
 PONT=br-fillsell
-RESEAU=172.31.0.0/24
 PORTS_PROXY="${PORTS_PROXY:-12321,12323,12324}"
 # (Les chemins ne changent que pour l'autotest : serveur-cloud/tests/ip.test.mjs.)
 ETAT="${FILLSELL_ETAT:-/srv/fillsell-cloud/etat}"
+PONT_SYSCTL="${FILLSELL_PONT_SYSCTL:-/proc/sys/net/bridge}"
 LISTE_ETAT="$ETAT/proxys-permis.txt"
 LISTE_DEPLOIEMENT="${FILLSELL_LISTE_DEPLOIEMENT:-/srv/fillsell-cloud/deploiement/proxys-permis.txt}"
 VERROU="${FILLSELL_VERROU:-/run/fillsell}"
@@ -52,8 +58,12 @@ DESTINATIONS=""
   echo '*filter'
   echo ':FILLSELL-NAV - [0:0]'
   echo '-F FILLSELL-NAV'
+  # (07/11 soir) Un conteneur vers un autre conteneur du pont : refusé EN PREMIER — avant ESTABLISHED (une connexion déjà
+  # ouverte entre deux conteneurs, reprise en cours par conntrack au chargement de br_netfilter, est coupée elle aussi) et
+  # avant toute sortie permise (même sur un port de proxy). Rien de légitime ne passe là : l'orchestrateur parle aux
+  # conteneurs depuis l'hôte (OUTPUT / INPUT), la sortie vers les proxys quitte le pont.
+  echo "-A FILLSELL-NAV -o $PONT -j DROP"
   echo '-A FILLSELL-NAV -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN'
-  echo "-A FILLSELL-NAV -d $RESEAU -j RETURN"
   if [ "$SOURCE" = ports ]; then
     echo "-A FILLSELL-NAV -p tcp -m multiport --dports $PORTS_PROXY -j RETURN"
   else
@@ -83,7 +93,17 @@ fi
 iptables -C INPUT -i "$PONT" -j FILLSELL-NAV-HOTE 2>/dev/null || iptables -I INPUT 1 -i "$PONT" -j FILLSELL-NAV-HOTE
 # IPv6 : aucun navigateur n'en a (pont sans IPv6) ; on ferme quand même.
 ip6tables -C FORWARD -i "$PONT" -j DROP 2>/dev/null || ip6tables -I FORWARD 1 -i "$PONT" -j DROP 2>/dev/null || true
+# (07/11 soir) LE PONT FILTRÉ : le module br_netfilter (Docker le charge aussi pour un réseau à enable_icc=false), puis
+# bridge-nf-call-iptables et -ip6tables à 1 — un paquet d'un conteneur vers un autre traverse alors DOCKER-USER, donc
+# FILLSELL-NAV (« -o br-fillsell -j DROP ») et, en IPv6, le DROP ci-dessus. Jamais une cause d'échec du script : un pont
+# resté non filtré est DIT dans la preuve (pont_filtre = 0), l'orchestrateur alerte et n'ouvre qu'un compte à la fois.
+[ -e "$PONT_SYSCTL/bridge-nf-call-iptables" ] || modprobe br_netfilter 2>/dev/null || true
+for f in bridge-nf-call-iptables bridge-nf-call-ip6tables; do
+  if [ -w "$PONT_SYSCTL/$f" ] && [ "$(cat "$PONT_SYSCTL/$f" 2>/dev/null)" != 1 ]; then echo 1 > "$PONT_SYSCTL/$f" || true; fi
+done
+PONT_FILTRE=$(cat "$PONT_SYSCTL/bridge-nf-call-iptables" 2>/dev/null | tr -dc '01' || true)
+[ "$PONT_FILTRE" = 1 ] || PONT_FILTRE=0
 mkdir -p "$ETAT"
-printf '{"boot_id":"%s","le":"%s","destinations":"%s","source":"%s"}\n' "$(cat "${FILLSELL_BOOT_ID:-/proc/sys/kernel/random/boot_id}")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$DESTINATIONS" "$SOURCE" > "$ETAT/pare-feu.json.tmp"
+printf '{"boot_id":"%s","le":"%s","destinations":"%s","source":"%s","entre_conteneurs":"ferme","pont_filtre":"%s"}\n' "$(cat "${FILLSELL_BOOT_ID:-/proc/sys/kernel/random/boot_id}")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$DESTINATIONS" "$SOURCE" "$PONT_FILTRE" > "$ETAT/pare-feu.json.tmp"
 mv "$ETAT/pare-feu.json.tmp" "$ETAT/pare-feu.json"
-echo "pare-feu des navigateurs : sortie limitée à ${DESTINATIONS} (pont ${PONT}, liste ${SOURCE})"
+echo "pare-feu des navigateurs : sortie limitée à ${DESTINATIONS} (pont ${PONT}, liste ${SOURCE}) ; entre conteneurs : fermé (pont filtré : ${PONT_FILTRE})"

@@ -32,6 +32,7 @@ import { creerPausesMessagerie } from './pausesMessagerie.js';
 import { creerRelanceTaches } from './relanceTaches.js';
 import { creerVidange } from './vidange.js';
 import { idExtensionDepuisCle } from './sessionFillsell.js';
+import { creerCloisonnement } from './cloisonnement.js';
 import { readFile, appendFile, mkdir } from 'node:fs/promises';
 
 const configLue = lireConfig();
@@ -47,10 +48,13 @@ const config = Object.freeze({ ...configLue, navigateursMaxAuto: capaciteAuto, c
     : capaciteServeur({ reglage: configLue.navigateursMaxRegle }) });
 const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false, autoRefreshToken: false } });
 const docker = creerDocker({ socket: config.socketDocker });
-const navigateurs = creerNavigateurs({ config, docker, journal });
+const alertes = creerAlertes({ config, base, journal });
+// (07/11 soir, étanchéité entre clients) Le cloisonnement du réseau des navigateurs : vérifié au démarrage (plus bas) et
+// gardé à chaque ouverture à côté d'un autre compte (cloisonnement.js).
+const cloisonnement = creerCloisonnement({ config, docker, journal, alertes });
+const navigateurs = creerNavigateurs({ config, docker, journal, cloisonnement });
 const coffre = creerCoffre({ base, cle: config.cleCoffre, cleVersion: config.cleCoffreVersion, anciennes: config.clesCoffreAnciennes });
 const sessions = creerSessionsFillsell({ config, base, journal });
-const alertes = creerAlertes({ config, base, journal });
 const iproyal = creerIproyal({ jeton: config.iproyalJeton, achatsAutorises: config.iproyalAchatsAutorises, journal });
 const controles = creerControles({ config, docker, journal });
 // (30/10, lot D) LE module fournisseur d'IP : seul point de contact pour la sortie des navigateurs et le solde.
@@ -107,8 +111,11 @@ if (config.endurance) {
 } else await verifications.charger();
 const serveur = creerServeur({ config, connexions, navigateurs, journal, dossierPublic: fileURLToPath(new URL('../public', import.meta.url)) });
 
-// Le réseau des navigateurs (le pare-feu de l'hôte filtre br-fillsell).
+// Le réseau des navigateurs (le pare-feu de l'hôte filtre br-fillsell). (07/11 soir) Créé CLOISONNÉ (enable_icc=false) ;
+// un réseau déjà là est VÉRIFIÉ : une couche du cloisonnement absente = journal + alerte support@ — jamais recréé ici (la
+// bascule arrête les navigateurs : procédure docs/cloud/ETANCHEITE-CLOUD2.md).
 if (!(await docker.reseau(config.reseauDocker))) await docker.creerReseau(config.reseauDocker, process.env.RESEAU_SOUS_RESEAU || '172.31.0.0/24');
+await cloisonnement.verifierAuDemarrage().catch((e) => journal.alerte('cloisonnement_verification_echec', { erreur: e.message }));
 // Un navigateur resté d'une vie précédente de l'orchestrateur est arrêté : il
 // repartira proprement (coffre, session) au prochain tour.
 for (const c of await docker.lister()) {

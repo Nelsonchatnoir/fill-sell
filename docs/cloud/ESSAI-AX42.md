@@ -266,8 +266,10 @@ d'abord que c'est la même que celle de cloud-2 (empreintes seulement).
         wc -l < /srv/fillsell-cloud/etat/proxys-permis.txt; systemctl is-enabled fillsell-pare-feu.service fillsell-pare-feu-maj.path'
   SSH3 'docker run --rm --network fillsell-cloud curlimages/curl -m 8 -sS -o /dev/null -w "%{http_code}\n" https://www.depop.com/; echo "sortie $?"'
   ```
-- Vérification : `FILLSELL-NAV` = ESTABLISHED, `-d 172.31.0.0/24`, UNE ligne `-d <ip> --dport <port>` par IP vivante du pool,
-  puis `DROP` ; `pare-feu.json` : même `boot_id`, `"source":"etat"`, destinations = les IP du pool ; IPv6 `DROP` ; les deux
+- Vérification : `FILLSELL-NAV` = `-o br-fillsell -j DROP` (07/11 soir : un conteneur ne joint aucun autre — plus de
+  `-d 172.31.0.0/24`), ESTABLISHED, UNE ligne `-d <ip> --dport <port>` par IP vivante du pool,
+  puis `DROP` ; `pare-feu.json` : même `boot_id`, `"source":"etat"`, destinations = les IP du pool, `"entre_conteneurs":"ferme"`,
+  `"pont_filtre":"1"` ; réseau `fillsell-cloud` avec `enable_icc=false` (docs/cloud/ETANCHEITE-CLOUD2.md) ; IPv6 `DROP` ; les deux
   unités `enabled` ; le `curl` ÉCHOUE (nom introuvable ou délai : aucun code HTTP) — aucun contact avec Depop.
 - Échec : `docker compose stop orchestrateur`, `sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh`, relire ;
   aucun compte tant que ce n'est pas vert.

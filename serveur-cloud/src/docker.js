@@ -9,6 +9,24 @@ import http from 'node:http';
 // redémarrait en boucle. 1.44 = Docker 25 et plus ; champs utilisés inchangés.
 export const VERSION_API_DOCKER = '1.44';
 
+// (07/11 soir, étanchéité entre clients — cloisonnement.js) LE RÉSEAU DES NAVIGATEURS naît CLOISONNÉ : le pont br-fillsell
+// (filtré par le pare-feu de l'hôte), et la communication entre conteneurs COUPÉE (enable_icc=false : Docker pose
+// « -i br-fillsell -o br-fillsell -j DROP » et charge br_netfilter). Un réseau déjà créé ne prend pas l'option : il se recrée
+// (procédure docs/cloud/ETANCHEITE-CLOUD2.md).
+export const PONT = 'br-fillsell';
+export const OPTION_PONT = 'com.docker.network.bridge.name';
+export const OPTION_ICC = 'com.docker.network.bridge.enable_icc';
+
+/** Le corps de création du réseau des navigateurs (pur : testé). */
+export function corpsReseau(nom, sousReseau) {
+  return {
+    Name: nom, Driver: 'bridge', CheckDuplicate: true,
+    IPAM: { Config: [{ Subnet: sousReseau }] },
+    Options: { [OPTION_PONT]: PONT, [OPTION_ICC]: 'false' },
+    Labels: { 'fillsell.cloud': '1' },
+  };
+}
+
 export function creerDocker({ socket = '/var/run/docker.sock' } = {}) {
   function appel(methode, chemin, corps, { attendu = [200, 201, 204, 304] } = {}) {
     return new Promise((resoudre, rejeter) => {
@@ -65,12 +83,7 @@ export function creerDocker({ socket = '/var/run/docker.sock' } = {}) {
       try { return await appel('GET', `/networks/${encodeURIComponent(nom)}`); } catch (e) { if (e.statut === 404) return null; throw e; }
     },
     async creerReseau(nom, sousReseau) {
-      return appel('POST', '/networks/create', {
-        Name: nom, Driver: 'bridge', CheckDuplicate: true,
-        IPAM: { Config: [{ Subnet: sousReseau }] },
-        Options: { 'com.docker.network.bridge.name': 'br-fillsell' },
-        Labels: { 'fillsell.cloud': '1' },
-      });
+      return appel('POST', '/networks/create', corpsReseau(nom, sousReseau));
     },
     async stats(nom) {
       try { return await appel('GET', `/containers/${encodeURIComponent(nom)}/stats?stream=false&one-shot=true`); } catch { return null; }

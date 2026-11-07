@@ -279,7 +279,7 @@ cp -r "$P"/deploiement/. /srv/fillsell-cloud/deploiement/
 for u in "$P"/deploiement/systemd/*.service "$P"/deploiement/systemd/*.path "$P"/deploiement/systemd/*.timer; do [ -f "$u" ] && cp "$u" /etc/systemd/system/; done
 if [ -n "$DESTINATIONS" ]; then printf '%s\\n' "$DESTINATIONS" | tr ',' '\\n' > /srv/fillsell-cloud/deploiement/proxys-permis.txt; fi
 printf 'VERSION_ORCHESTRATEUR=%s\\nDOMAINE=%s\\n' "$SHA" "$DOMAINE" > /srv/fillsell-cloud/deploiement/.env
-docker network inspect fillsell-cloud >/dev/null 2>&1 || docker network create --driver bridge --subnet 172.31.0.0/24 -o com.docker.network.bridge.name=br-fillsell fillsell-cloud >/dev/null
+docker network inspect fillsell-cloud >/dev/null 2>&1 || docker network create --driver bridge --subnet 172.31.0.0/24 -o com.docker.network.bridge.name=br-fillsell -o com.docker.network.bridge.enable_icc=false fillsell-cloud >/dev/null
 systemctl daemon-reload
 systemctl enable fillsell-pare-feu.service >/dev/null 2>&1
 for u in "$P"/deploiement/systemd/*.path "$P"/deploiement/systemd/*.timer; do [ -f "$u" ] && systemctl enable --now "$(basename "$u")" >/dev/null 2>&1; done

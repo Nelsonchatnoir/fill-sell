@@ -322,6 +322,16 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       }
     }
     for (const f of decision.fermer) await fermer(f.user, f.raison).catch((e) => journal.erreur('fermeture_echec', { user: f.user, erreur: e.message }));
+    // (07/11 soir, étanchéité entre clients — cloisonnement.js) Réseau des navigateurs NON cloisonné : UN SEUL compte à la
+    // fois, le plus prioritaire ; les autres attendent, refusés « reseau_non_cloisonne » (aucune ouverture tentée, donc ni
+    // erreur rejouée chaque minute ni poste réécrit). Le compte de Nico seul n'est jamais bloqué.
+    if (decision.ouvrir.length && navigateurs.etatCloisonnement) {
+      const v = await navigateurs.etatCloisonnement().catch((e) => ({ ok: false, raisons: [`verification_impossible (${e.message})`] }));
+      if (v && !v.ok) {
+        const place = navigateurs.ouverts().length ? 0 : 1;
+        for (const o of decision.ouvrir.splice(place)) decision.refuses.push({ user: o.user, raison: 'reseau_non_cloisonne' });
+      }
+    }
     for (const o of decision.ouvrir) {
       await ouvrir(o.user, parUser.get(o.user), o.motif).catch((e) => journal.erreur('ouverture_echec', { user: o.user, erreur: e.message }));
     }
@@ -350,6 +360,10 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     }
     if (decision.refuses.some((r) => r.raison === 'capacite')) {
       await alertes?.signaler('serveur', `Capacité atteinte : ${decision.refuses.length} compte(s) attendent un navigateur (max ${capacite()}).`);
+    }
+    const nonCloisonnes = decision.refuses.filter((r) => r.raison === 'reseau_non_cloisonne').length;
+    if (nonCloisonnes) {
+      await alertes?.signaler('serveur', `Réseau des navigateurs non cloisonné : ${nonCloisonnes} compte(s) attendent, un seul compte à la fois (docs/cloud/ETANCHEITE-CLOUD2.md).`);
     }
     return { comptes: comptes.length, ouverts: navigateurs.ouverts().length, ...decision };
   }

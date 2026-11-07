@@ -14,6 +14,7 @@ import * as regles from '../../supabase/functions/_shared/cloud-pool.js';
 import { lireCatalogueIsp, prixDeCalcul, proxiesLivres, creerIproyal, finCarte, choisirCarte, carteLisible } from '../src/iproyal.js';
 import { creerApprovisionnement, dateIproyal, grouperParCommande, alerteCarte, CARTE_ALERTE_JOURS, ECHEC_ACHAT_PAUSE_MS } from '../src/approvisionnement.js';
 import { sortiesDuPool, texteSorties, lireSorties, sortiesAppliquees, sortieOuverte, creerPareFeu } from '../src/pareFeu.js';
+import { verdictCloisonnement } from '../src/cloisonnement.js';
 import { verdictVisite, ACCUEILS_CONTROLE } from '../src/controle.js';
 import { ipDuPool } from '../src/fournisseurIp.js';
 import { creerEntretien } from '../src/entretien.js';
@@ -435,10 +436,13 @@ test('pare-feu : le script de l’hôte (faux iptables) — liste du pool d’ab
     faux('ip6tables', 'exit 0');
     faux('iptables-restore', `echo "restore $*" >> "${log.replace(/\\/g, '/')}"; cat >> "${log.replace(/\\/g, '/')}"`);
     faux('flock', 'exit 0');
+    // (07/11 soir) Le module br_netfilter « chargé » : il fait apparaître les réglages du pont, à 0 (le script les met à 1).
+    const pont = path.join(d, 'pont').replace(/\\/g, '/');
+    faux('modprobe', `echo "modprobe $*" >> "${log.replace(/\\/g, '/')}"; mkdir -p "${pont}"; echo 0 > "${pont}/bridge-nf-call-iptables"; echo 0 > "${pont}/bridge-nf-call-ip6tables"`);
     writeFileSync(path.join(d, 'boot'), 'boot-123\n');
     writeFileSync(path.join(d, 'deploiement.txt'), '176.103.182.215:12323\n');
     const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, FILLSELL_ETAT: etat, FILLSELL_VERROU: path.join(d, 'run'),
-      FILLSELL_LISTE_DEPLOIEMENT: path.join(d, 'deploiement.txt'), FILLSELL_BOOT_ID: path.join(d, 'boot') };
+      FILLSELL_LISTE_DEPLOIEMENT: path.join(d, 'deploiement.txt'), FILLSELL_BOOT_ID: path.join(d, 'boot'), FILLSELL_PONT_SYSCTL: pont };
     // 1. Premier passage, sans liste de l'orchestrateur : la liste du déploiement, la garde DROP posée puis retirée.
     let r = spawnSync('sh', [script], { env, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
@@ -447,8 +451,17 @@ test('pare-feu : le script de l’hôte (faux iptables) — liste du pool d’ab
     assert.match(appels, /restore --noflush/);
     assert.match(appels, /-A FILLSELL-NAV -p tcp -d 176\.103\.182\.215 --dport 12323 -j RETURN/);
     assert.match(appels, /iptables -D DOCKER-USER -i br-fillsell -j DROP/);
+    // (07/11 soir, étanchéité entre clients) Un conteneur vers un autre : DROP en PREMIÈRE règle (avant ESTABLISHED et toute
+    // sortie permise) ; plus aucun « -d 172.31.0.0/24 -j RETURN ».
+    assert.match(appels, /-F FILLSELL-NAV\n-A FILLSELL-NAV -o br-fillsell -j DROP\n-A FILLSELL-NAV -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN\n/);
+    assert.ok(!appels.includes('172.31.0.0/24'), 'le sous-réseau des navigateurs n’est plus jamais permis');
+    assert.match(appels, /modprobe br_netfilter/, 'le pont devient filtré');
+    assert.equal(readFileSync(path.join(d, 'pont', 'bridge-nf-call-iptables'), 'utf8').trim(), '1');
+    assert.equal(readFileSync(path.join(d, 'pont', 'bridge-nf-call-ip6tables'), 'utf8').trim(), '1');
     let preuve = JSON.parse(readFileSync(path.join(etat, 'pare-feu.json'), 'utf8'));
     assert.deepEqual([preuve.boot_id, preuve.destinations, preuve.source], ['boot-123', '176.103.182.215:12323', 'deploiement']);
+    assert.deepEqual([preuve.entre_conteneurs, preuve.pont_filtre], ['ferme', '1']);
+    assert.match(r.stdout, /entre conteneurs : fermé \(pont filtré : 1\)/);
     // 2. La liste de l'orchestrateur, chaîne déjà branchée : une seule transaction, AUCUNE garde (rien n'est coupé).
     writeFileSync(path.join(d, 'branche'), '');
     writeFileSync(log, '');
@@ -461,8 +474,43 @@ test('pare-feu : le script de l’hôte (faux iptables) — liste du pool d’ab
     assert.match(appels, /:FILLSELL-NAV - \[0:0\]\n-F FILLSELL-NAV/);
     assert.match(appels, /94\.194\.94\.233 --dport 12323/);
     assert.ok(!appels.includes('9.9.9.9'), 'ligne invalide ignorée');
+    assert.ok(!appels.includes('modprobe'), 'module déjà chargé : rien à charger');
     preuve = JSON.parse(readFileSync(path.join(etat, 'pare-feu.json'), 'utf8'));
-    assert.deepEqual([preuve.destinations, preuve.source], ['176.103.182.215:12323,94.194.94.233:12323', 'etat']);
+    assert.deepEqual([preuve.destinations, preuve.source, preuve.entre_conteneurs, preuve.pont_filtre], ['176.103.182.215:12323,94.194.94.233:12323', 'etat', 'ferme', '1']);
+    // La preuve lue par l'orchestrateur : le pare-feu seul cloisonne déjà le réseau (même sans enable_icc).
+    const v = verdictCloisonnement({ reseau: { Options: { 'com.docker.network.bridge.name': 'br-fillsell' } }, pontFiltre: '1', preuve: JSON.stringify(preuve), bootId: 'boot-123' });
+    assert.deepEqual([v.ok, v.pareFeu, v.docker], [true, true, false]);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('(07/11 soir) pare-feu : repli par ports, le DROP entre conteneurs passe AVANT les ports des proxys ; br_netfilter introuvable = dit, jamais un échec', { skip: spawnSync('sh', ['-c', 'true']).status !== 0 }, () => {
+  const script = fileURLToPath(new URL('../deploiement/pare-feu-navigateurs.sh', import.meta.url));
+  const d = mkdtempSync(path.join(tmpdir(), 'pfp-'));
+  try {
+    const bin = path.join(d, 'bin'); const etat = path.join(d, 'etat'); mkdirSync(bin); mkdirSync(etat);
+    const log = path.join(d, 'appels.log').replace(/\\/g, '/');
+    const faux = (nom, corps) => { const f = path.join(bin, nom); writeFileSync(f, `#!/bin/sh\n${corps}\n`); chmodSync(f, 0o755); };
+    faux('iptables', `echo "iptables $*" >> "${log}"; case "$*" in *"-C "*) exit 0 ;; esac; exit 0`);
+    faux('ip6tables', 'exit 0');
+    faux('iptables-restore', `cat >> "${log}"`);
+    faux('flock', 'exit 0');
+    faux('modprobe', `echo "modprobe $*" >> "${log}"; exit 1`);   // module introuvable (noyau sans br_netfilter)
+    writeFileSync(path.join(d, 'boot'), 'boot-9\n');
+    const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, FILLSELL_ETAT: etat, FILLSELL_VERROU: path.join(d, 'run'),
+      FILLSELL_LISTE_DEPLOIEMENT: path.join(d, 'aucune.txt'), FILLSELL_BOOT_ID: path.join(d, 'boot'), FILLSELL_PONT_SYSCTL: path.join(d, 'pont').replace(/\\/g, '/') };
+    const r = spawnSync('sh', [script], { env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const regles = readFileSync(log, 'utf8');
+    const iDrop = regles.indexOf('-A FILLSELL-NAV -o br-fillsell -j DROP');
+    const iPorts = regles.indexOf('-A FILLSELL-NAV -p tcp -m multiport --dports 12321,12323,12324 -j RETURN');
+    assert.ok(iDrop >= 0 && iPorts > iDrop, 'un conteneur vers un autre sur un port de proxy reste refusé');
+    assert.match(regles, /modprobe br_netfilter/);
+    const preuve = JSON.parse(readFileSync(path.join(etat, 'pare-feu.json'), 'utf8'));
+    assert.deepEqual([preuve.source, preuve.entre_conteneurs, preuve.pont_filtre], ['ports', 'ferme', '0']);
+    // L'orchestrateur lit le noyau (pont non filtré) : aucune couche ne tient → un seul compte à la fois, et l'alerte.
+    const v = verdictCloisonnement({ reseau: { Options: { 'com.docker.network.bridge.enable_icc': 'false' } }, pontFiltre: '', preuve: JSON.stringify(preuve), bootId: 'boot-9' });
+    assert.equal(v.ok, false);
+    assert.deepEqual(v.raisons, ['pont_non_filtre']);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 

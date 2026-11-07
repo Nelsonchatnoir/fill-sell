@@ -375,9 +375,13 @@ export async function lireRenduNavigateur(cdp, opts = {}) {
   return renduDepuisSystemInfo(info, opts);
 }
 
-export function creerNavigateurs({ config, docker, journal }) {
+export function creerNavigateurs({ config, docker, journal, cloisonnement = null }) {
   const chrome = config.moteurNavigateur === 'chrome';
   const ouverts = new Map(); // user → { cdp, ip, conteneur, profilId, ouvertLe }
+  // (07/11 soir, étanchéité entre clients) Les comptes dont le navigateur S'OUVRE (user → nombre d'ouvertures en cours) :
+  // comptés avec les ouverts par la garde du cloisonnement — deux ouvertures simultanées ne passent jamais l'une à côté de
+  // l'autre sur un réseau non cloisonné.
+  const enOuverture = new Map();
   let dernierRendu = null;   // (06/11 soir) le dernier rendu lu dans un navigateur de CE serveur (renduDepuisSystemInfo)
 
   const ipDe = (inspect) => inspect?.NetworkSettings?.Networks?.[config.reseauDocker]?.IPAddress || null;
@@ -512,8 +516,27 @@ export function creerNavigateurs({ config, docker, journal }) {
     (async () => { if (!(await essayer(5_000))) await essayer(15_000); })().catch(() => {});
   }
 
-  /** Démarre le navigateur du compte, sur SON proxy et SON profil. Rend { cdp, ip, … }. */
-  async function ouvrir(user, { proxyUrl, proxyBeebs = null, proxySecours = null, profilId, permises = [] }) {
+  /**
+   * Démarre le navigateur du compte, sur SON proxy et SON profil. Rend { cdp, ip, … }.
+   * (07/11 soir, étanchéité entre clients) LA GARDE DU CLOISONNEMENT (cloisonnement.js) : à côté d'un autre compte ouvert ou
+   * en train de s'ouvrir, le réseau des navigateurs doit être cloisonné, sinon refus. Les autres sont comptés et ce compte
+   * inscrit dans le MÊME pas synchrone (aucune course entre deux ouvertures) ; seul, un compte n'est jamais refusé.
+   */
+  async function ouvrir(user, options) {
+    if (ouverts.has(user)) return ouverts.get(user);
+    const autres = new Set([...ouverts.keys(), ...enOuverture.keys()]);
+    autres.delete(user);
+    enOuverture.set(user, (enOuverture.get(user) ?? 0) + 1);
+    try {
+      if (cloisonnement) await cloisonnement.exiger(user, autres.size);
+      return await ouvrirCompte(user, options);
+    } finally {
+      const n = (enOuverture.get(user) ?? 1) - 1;
+      if (n > 0) enOuverture.set(user, n); else enOuverture.delete(user);
+    }
+  }
+
+  async function ouvrirCompte(user, { proxyUrl, proxyBeebs = null, proxySecours = null, profilId, permises = [] }) {
     if (ouverts.has(user)) return ouverts.get(user);
     await exigerPareFeu(config);
     if (chrome) {
@@ -671,5 +694,7 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
 
   return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, memoire, etatRelais, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()],
-    dernierRendu: () => dernierRendu };
+    dernierRendu: () => dernierRendu,
+    // (07/11 soir) Le verdict du cloisonnement (cloisonnement.js), lu par le planificateur avant d'ouvrir ; null sans garde.
+    etatCloisonnement: async () => (cloisonnement ? cloisonnement.evaluer() : null) };
 }

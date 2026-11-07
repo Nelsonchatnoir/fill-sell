@@ -153,7 +153,7 @@ writeFileSync(path.join(dossierExtension, 'manifest.json'), JSON.stringify({ key
 const config = { serveurNom: 'cloud-test', dossierExtension, comptesAutorises: [], cpuPauseAuDessus: 50, navigateursMax: 5, sessionMinimaleMin: 8,
   cleTickets: randomBytes(32).toString('base64'), supabaseUrl: 'https://x.supabase.co', cleAnon: 'anon' };
 
-function monter({ comptes, jobs = [] }) {
+function monter({ comptes, jobs = [], alertes = { signaler: async () => {} } }) {
   const base = baseSimulee({ comptes, jobs });
   const nav = navigateurSimule();
   const navigateurs = navigateursSimules(nav);
@@ -167,10 +167,39 @@ function monter({ comptes, jobs = [] }) {
   let connexions = null;
   // (30/10, lot D) La sortie passe par LE module fournisseur (compte à IP dédiée ici : cloud_proxy_identifiants).
   const fournisseurIp = creerFournisseurIp({ config, base, iproyal: null, journal, alertes: { signaler: async () => {} } });
-  const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, fournisseurIp, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), alertes: { signaler: async () => {} } });
+  const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, fournisseurIp, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), alertes });
   connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal });
   return { base, nav, navigateurs, coffre, postes, connexions, fabriquees };
 }
+
+test('(07/11 soir, étanchéité) réseau NON cloisonné : un seul compte à la fois, les autres attendent sans erreur ; cloisonné : tous', async () => {
+  const V = '1f0e0d0c-0b0a-4908-8706-050403020101';
+  const alertes = [];
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'paye', delai_sessions_min: null }, { user_id: V, ip_id: 8, etat_cloud: 'paye', delai_sessions_min: null }],
+    alertes: { signaler: async (...a) => { alertes.push(a); } } });
+  let verdict = { ok: false, raisons: ['pont_non_filtre', 'reseau_sans_enable_icc'] };
+  s.navigateurs.etatCloisonnement = async () => verdict;
+  // (journal.erreur lève dans cette simulation : une ouverture tentée puis refusée ferait échouer le test.)
+  const r1 = await s.postes.tour();
+  assert.deepEqual(r1.ouvrir.map((o) => o.user), [U], 'le premier seul');
+  assert.deepEqual(r1.refuses, [{ user: V, raison: 'reseau_non_cloisonne' }]);
+  assert.deepEqual(s.navigateurs.ouverts(), [U]);
+  assert.ok(!s.base.t.cloud_postes.some((p) => p.user_id === V), 'aucune ouverture tentée pour l’autre : aucun poste écrit');
+  assert.ok(alertes.some(([niveau, texte]) => niveau === 'serveur' && /non cloisonné : 1 compte\(s\) attendent/.test(texte)));
+  const r2 = await s.postes.tour();
+  assert.deepEqual(r2.ouvrir, [], 'un compte déjà ouvert : plus aucune place tant que le réseau n’est pas cloisonné');
+  assert.deepEqual(r2.refuses, [{ user: V, raison: 'reseau_non_cloisonne' }]);
+  verdict = { ok: true, complet: false, raisons: ['reseau_sans_enable_icc'] };
+  const r3 = await s.postes.tour();
+  assert.deepEqual(r3.ouvrir.map((o) => o.user), [V], 'cloisonné (une couche suffit) : le second s’ouvre');
+  assert.equal(s.navigateurs.ouverts().length, 2);
+
+  // Un compte SEUL (le compte de Nico) n'est jamais bloqué, même non cloisonné.
+  const seul = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'paye', delai_sessions_min: null }] });
+  seul.navigateurs.etatCloisonnement = async () => ({ ok: false, raisons: ['pont_non_filtre'] });
+  assert.deepEqual((await seul.postes.tour()).ouvrir.map((o) => o.user), [U]);
+  assert.deepEqual(seul.navigateurs.ouverts(), [U]);
+});
 
 test('poste : ouvert avec le coffre et une session FillSell posée ; jamais rouvert ; fermé après sauvegarde', async () => {
   const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });

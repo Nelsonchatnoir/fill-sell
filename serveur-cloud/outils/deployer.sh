@@ -200,7 +200,12 @@ sed -i "s#^IMAGE_NAVIGATEUR=.*#IMAGE_NAVIGATEUR=$IMAGE_STEEL#; s#^DOMAINE=.*#DOM
 # (30/10) Le moteur Chrome : l'image du jour (le moteur reste steel tant que l'extension signée n'existe pas).
 grep -q '^IMAGE_CHROME=' "$ENV" || echo 'IMAGE_CHROME=' >> "$ENV"
 if [ -s /srv/fillsell-cloud/extension-crx/fillsell-cloud.crx ]; then sed -i "s#^IMAGE_CHROME=.*#IMAGE_CHROME=fillsell-chrome:$SHA#" "$ENV"; fi
-docker network inspect fillsell-cloud >/dev/null 2>&1 || docker network create --driver bridge --subnet 172.31.0.0/24 -o com.docker.network.bridge.name=br-fillsell fillsell-cloud >/dev/null
+# (07/11 soir, étanchéité entre clients) Le réseau des navigateurs naît CLOISONNÉ (enable_icc=false). Un réseau déjà là sans
+# l'option n'est JAMAIS recréé ici (il faudrait arrêter les navigateurs) : c'est dit, la bascule suit
+# docs/cloud/ETANCHEITE-CLOUD2.md ; le pare-feu rejoué ci-dessous ferme déjà le passage d'un conteneur à un autre.
+docker network inspect fillsell-cloud >/dev/null 2>&1 || docker network create --driver bridge --subnet 172.31.0.0/24 -o com.docker.network.bridge.name=br-fillsell -o com.docker.network.bridge.enable_icc=false fillsell-cloud >/dev/null
+[ "$(docker network inspect fillsell-cloud -f '{{index .Options "com.docker.network.bridge.enable_icc"}}' 2>/dev/null)" = false ] \
+  || echo "ATTENTION : réseau fillsell-cloud sans enable_icc=false — bascule à faire (docs/cloud/ETANCHEITE-CLOUD2.md)"
 sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh
 cd /srv/fillsell-cloud/deploiement
 VERSION_ORCHESTRATEUR="$SHA" DOMAINE="$DOMAINE" docker compose up -d

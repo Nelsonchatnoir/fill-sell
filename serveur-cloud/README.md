@@ -16,6 +16,7 @@ le toucher). Ni Opla (sorti le 10/10) ni eBay (par l'API existante).
 | `connexion.js` | L'écran « Me connecter » : la page de connexion de la plateforme, au format mobile, en flux d'images ; gestes et clavier rejoués. Navigation limitée à la connexion (+ Apple / Google / Facebook). Connectée → coffre sauvegardé, compte de plateforme noté (essai unique). |
 | `entretien.js` | Chaque heure : `cloud_pool_entretien()`, **purges prouvées** des IP parties au repos, contrôles d'entrée / de sortie, échéances relues chez IPRoyal, alertes à support@. Aucun achat sans GO. |
 | `cdp.js` | Un client DevTools minimal (une connexion, une session par cible). |
+| `cloisonnement.js` | (07/11 soir) **Étanchéité entre clients** : aucun conteneur ne joint un autre (réseau `enable_icc=false` + `-o br-fillsell -j DROP` du pare-feu, pont filtré par br_netfilter). Vérifié au démarrage (alerte support@ si une couche manque) ; sans aucune couche, un seul compte à la fois. Bascule d'un serveur existant : `docs/cloud/ETANCHEITE-CLOUD2.md`. |
 
 ## Déployer
 
