@@ -7,6 +7,17 @@ import * as regles from '../../supabase/functions/_shared/cloud-pool.js';
 import { mursDe, arreterVisite, verdictPlateforme, verdictSortie, bilanControle, specConteneurSante, creerSante, PLATEFORMES_SANTE, ADRESSES_SORTIE,
   SANTE_DUREE_MIN_MS } from '../src/sante.js';
 import { creerEntretien } from '../src/entretien.js';
+import { asnDe, lireAsCymru, asnOrigineCymru, rangDeLOperateur, operateurDeSortie } from '../src/operateur.js';
+
+// Les réponses DNS de Team Cymru relevées le 07/11 au soir (AS<n>.asn.cymru.com, <ip inversée>.origin.asn.cymru.com).
+const CYMRU = {
+  'AS5511.asn.cymru.com': [['5511 | FR | ripencc | 1996-01-08 | Opentransit - Orange S.A., FR']],
+  'AS6830.asn.cymru.com': [['6830 | NL | ripencc | 1996-11-13 | LibertyGlobal - Liberty Global Europe Holding B.V., NL']],
+  'AS2914.asn.cymru.com': [['2914 | US | arin | 1998-12-07 | NTT-DATA-2914 - NTT America, Inc., US']],
+  'AS12322.asn.cymru.com': [['12322 | FR | ripencc | 1999-03-11 | PROXAD - Free SAS, FR']],
+  '136.239.181.81.origin.asn.cymru.com': [['2914 | 81.181.236.0/22 | RO | ripencc | 2003-02-04']],
+};
+const fauxDns = (journalDns = []) => async (nom) => { journalDns.push(nom); if (CYMRU[nom]) return CYMRU[nom]; throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }); };
 
 const journal = { info() {}, alerte() {}, erreur() {} };
 const J = 86_400_000;
@@ -14,6 +25,36 @@ const iso = (t) => new Date(t).toISOString();
 const HOTE = (pf) => PLATEFORMES_SANTE.find((x) => x.plateforme === pf).hote;
 const page = (hote, x = {}) => ({ hote, pret: true, statut_nav: 200, ...x });
 const suite = (etats, pas = 2500) => etats.map((e, i) => ({ t: (i + 1) * pas, e }));
+
+test('(07/11 soir) l’opérateur de sortie : le pays d’enregistrement de l’AS (Team Cymru), sans liste — français 0, européen 1, hors d’Europe 2', async () => {
+  assert.equal(asnDe('AS2914 NTT America, Inc.'), '2914');
+  assert.equal(asnDe('AS6830 Liberty Global Europe Holding B.V.'), '6830');
+  assert.equal(asnDe('Orange S.A.'), null);
+  assert.deepEqual(lireAsCymru(CYMRU['AS2914.asn.cymru.com']), { as: '2914', pays: 'US', registre: 'arin', nom: 'NTT-DATA-2914 - NTT America, Inc., US' });
+  assert.equal(lireAsCymru([['n’importe quoi']]), null);
+  assert.equal(asnOrigineCymru(CYMRU['136.239.181.81.origin.asn.cymru.com']), '2914');
+  assert.equal(rangDeLOperateur({ pays: 'FR', registre: 'ripencc' }), 0, 'Orange, SFR, Bouygues, Free : AS enregistrés en France');
+  assert.equal(rangDeLOperateur({ pays: 'NL', registre: 'ripencc' }), 1, 'Liberty Global (NL) : européen');
+  assert.equal(rangDeLOperateur({ pays: 'US', registre: 'arin' }), 2, 'NTT America (US, ARIN) : hors d’Europe');
+  assert.equal(rangDeLOperateur({ pays: 'SG', registre: 'apnic' }), 2);
+  assert.equal(rangDeLOperateur({ pays: null, registre: null }), null);
+  // Les 7 IP du 07/11 : la 3 et la 40 (NTT America) au dernier rang, la 2 et la 4 (Liberty Global) au milieu, les autres françaises.
+  for (const [as, rang] of [['AS5511 Orange S.A.', 0], ['AS6830 Liberty Global Europe Holding B.V.', 1], ['AS2914 NTT America, Inc.', 2], ['AS12322 Free SAS', 0]]) {
+    const o = await operateurDeSortie({ ip: '10.0.0.1', asTexte: as, resoudreTxt: fauxDns() });
+    assert.equal(o.rang, rang, as);
+    assert.equal(o.atypique, rang > 0, as);
+  }
+  // Sans « as » lisible : l'origine BGP de l'IP ; rien de lisible : null (jamais une cause d'échec du contrôle).
+  const parOrigine = await operateurDeSortie({ ip: '81.181.239.136', asTexte: null, resoudreTxt: fauxDns() });
+  assert.deepEqual([parOrigine.as, parOrigine.rang, parOrigine.source], ['2914', 2, 'origine_bgp']);
+  assert.equal(await operateurDeSortie({ ip: '10.0.0.2', asTexte: '', resoudreTxt: fauxDns() }), null);
+  const muet = await operateurDeSortie({ ip: '10.0.0.3', asTexte: 'AS64512 Inconnu', resoudreTxt: fauxDns() });
+  assert.deepEqual([muet.as, muet.rang, muet.atypique], ['64512', null, false], 'DNS muet : l’AS seul, rang inconnu (au milieu en base), jamais atypique');
+  const b = bilanControle({ sortie: verdictSortie({ ip: '81.181.239.136', ipApi: { status: 'success', query: '81.181.239.136', countryCode: 'FR', hosting: false, proxy: false, as: 'AS2914 NTT America, Inc.' } }),
+    visites: [{ plateforme: 'vinted', verdict: 'ouverte' }], operateur: parOrigine });
+  assert.deepEqual([b.echecs, b.inconnus, b.operateur.rang], [[], [], 2], 'atypique, mais SAINE : aucun échec');
+  assert.equal(regles.santeSuivante(null, { fait_le: new Date().toISOString(), ...b }).operateur.rang, 2, 'le rang va dans la santé écrite en base');
+});
 
 test('verdict d’une plateforme : la vérification d’appareil de Beebs qui passe seule = ouverte ; eBay 403 = mur ; les murs nets', () => {
   // Beebs (07/11) : /interstitial/ puis 200 seul en moins de 13 s, sans geste.
@@ -138,12 +179,16 @@ test('un contrôle complet (faux Chrome) : la sortie par le relais, une visite p
   const fetchAvant = globalThis.fetch;
   globalThis.fetch = async (u) => { assert.equal(String(u), 'http://172.31.0.99:9223/json/version'); return { json: async () => ({ webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/browser/x' }) }; };
   try {
-    const s = creerSante({ config: CONFIG, docker, journal, connecter: chrome.connecter, horloge: fausseHorloge(), pareFeu: async () => ({ ok: true }),
+    const dns = [];
+    const s = creerSante({ config: CONFIG, docker, journal, connecter: chrome.connecter, horloge: fausseHorloge(), pareFeu: async () => ({ ok: true }), resoudreTxt: fauxDns(dns),
       executer: async (nom, cmd) => { curls.push(cmd); return cmd.at(-1) === ADRESSES_SORTIE.ipApi
         ? 'HTTP {"status":"success","query":"88.151.56.82","countryCode":"FR","hosting":false,"proxy":false}'
         : '{"ip":"88.151.56.82","country":"FR","org":"AS6830 Liberty Global"}'; } });
     const c = await s.verifier({ ipId: 41, ip: '88.151.56.82', proxyUrl: PROXY });
     assert.deepEqual([c.echecs, c.inconnus], [['ebay'], []]);
+    assert.deepEqual([c.operateur.as, c.operateur.pays, c.operateur.rang, c.operateur.atypique, c.operateur.source], ['6830', 'NL', 1, true, 'sortie'],
+      'l’opérateur de sortie : l’AS lu à la sortie, son pays d’enregistrement par le DNS de Team Cymru');
+    assert.deepEqual(dns, ['AS6830.asn.cymru.com'], 'une seule lecture DNS, rien par l’IP contrôlée');
     assert.equal(c.resume.plateformes.beebs.verdict, 'ouverte', 'la vérification d’appareil de Beebs est passée seule');
     assert.deepEqual(chrome.naviguees, ['vinted', 'leboncoin', 'beebs', 'depop', 'ebay'], 'une page d’accueil par plateforme, rien d’autre');
     assert.ok(curls.every((x) => x.includes('-x') && x.includes('http://127.0.0.1:3128')), 'la sortie lue À TRAVERS le relais du conteneur');

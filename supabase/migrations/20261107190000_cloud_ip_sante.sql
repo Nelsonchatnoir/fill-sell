@@ -21,12 +21,20 @@
 -- 5. cloud_ip_sante_noter(p_ip, p_sante) — service_role seul : verdict lisible, IP du pool (jamais tenue par un compte,
 --    jamais au rebut ni expirée), « grillee » définitive (jamais rabaissée), 16 Ko au plus ; un changement de verdict va au
 --    journal de l'IP (cloud_ip_evenements, nature « visite_controle », details.sante).
--- SANS DONNÉE DE SANTÉ (colonne vide), cloud_ip_attribuable et cloud_ip_garde_nombre rendent EXACTEMENT ce qu'elles
--- rendaient (prouvé par le banc, ligne à ligne).
+-- 6. (07/11 soir, borne de Nico : « la 3 est donnée en dernier » — la RÈGLE, pas le cas) L'OPÉRATEUR DE SORTIE : le
+--    contrôle de santé note dans sante.operateur le rang de l'opérateur qui annonce l'IP — 0 = AS enregistré en France,
+--    1 = ailleurs en Europe (RIPE NCC), 2 = hors d'Europe (ARIN, APNIC, LACNIC, AFRINIC) ; lu par le DNS public de Team
+--    Cymru (pays d'enregistrement de l'AS), sans liste à tenir (serveur-cloud/src/operateur.js). Une IP « atypique » (rang
+--    1 ou 2) reste saine et attribuable mais passe EN DERNIER : cloud_ip_rang_operateur (inconnu = 1, au milieu) entre dans
+--    l'ordre de cloud_ip_attribuer et de cloud_ip_reserver, après le refus prouvé (dernier recours, inchangé) et avant
+--    « sans refus d'abord » — ordre d'avant inchangé entre IP de même rang (le banc le prouve, choix à choix).
+-- SANS DONNÉE DE SANTÉ (colonne vide), cloud_ip_attribuable, cloud_ip_garde_nombre, cloud_ip_attribuer et
+-- cloud_ip_reserver rendent EXACTEMENT ce qu'elles rendaient (prouvé par le banc, ligne à ligne et choix à choix).
 --
--- Réécrites DEPUIS pg_get_functiondef de la prod du 07/11 ~17:45 (fixtures : scripts/essais/fixtures/prod-0711-ip-sante/,
--- md5 prod relus : cloud_ip_attribuable d58146e2…, cloud_ip_garde_nombre 713528bb…, à la fin de ligne près) :
--- cloud_ip_attribuable, cloud_ip_garde_nombre. Signatures, retours et droits INCHANGÉS (CREATE OR REPLACE garde les GRANT).
+-- Réécrites DEPUIS pg_get_functiondef de la prod (fixtures : scripts/essais/fixtures/prod-0711-ip-sante/, lues à ~17:45 et
+-- RELUES à ~19:20 : md5 identiques — cloud_ip_attribuable d58146e2…, cloud_ip_garde_nombre 713528bb…, cloud_ip_attribuer
+-- 5dd065ee…, cloud_ip_reserver 065e95e4…, à la fin de ligne près) : cloud_ip_attribuable, cloud_ip_garde_nombre,
+-- cloud_ip_attribuer, cloud_ip_reserver. Signatures, retours et droits INCHANGÉS (CREATE OR REPLACE garde les GRANT).
 -- Coût : une colonne nullable (aucune réécriture de la table, 10 lignes), un test jsonb de plus par IP lue.
 -- Inverse : supabase/rollbacks/20261107190000_cloud_ip_sante_INVERSE.sql. Idempotente. db push INTERDIT.
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -141,6 +149,99 @@ BEGIN
 END;
 $function$;
 
--- ═══ 6. Droits : rien pour le client, tout pour le serveur ═════════════════
+-- ═══ 6. L'opérateur de sortie : l'IP atypique en dernier (miroir EXACT : regles.rangOperateur, choisirIp) ═══
+CREATE OR REPLACE FUNCTION public.cloud_ip_rang_operateur(p_sante jsonb)
+ RETURNS integer
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT CASE WHEN jsonb_typeof(p_sante -> 'operateur' -> 'rang') = 'number'
+               AND (p_sante -> 'operateur' ->> 'rang') IN ('0', '1', '2')
+              THEN (p_sante -> 'operateur' ->> 'rang')::integer
+              ELSE 1 END;
+$function$;
+
+-- Réécrite depuis la prod (07/11, relue ~19:20). Change : l'ordre des disponibles — « cloud_ip_refus_prouve(i.refus),
+-- cloud_ip_rang_operateur(i.sante), (i.refus = '{}') DESC » au lieu de « (i.refus = '{}') DESC, cloud_ip_refus_prouve »
+-- (le même ordre pour le refus : sans refus, puis non prouvé, puis prouvé en dernier recours ; l'opérateur entre les deux).
+CREATE OR REPLACE FUNCTION public.cloud_ip_attribuer(p_user uuid, p_nature text)
+ RETURNS bigint
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_ip bigint;
+  v_retour boolean := false;
+BEGIN
+  IF p_user IS NULL OR p_nature NOT IN ('essai', 'client') THEN RAISE EXCEPTION 'cloud_ip_attribuer : appel invalide'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('cloud_ip:' || p_user::text, 0));
+  SELECT id INTO v_ip FROM public.cloud_ips WHERE user_id = p_user;
+  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
+  SELECT id INTO v_ip FROM public.cloud_ips i
+   WHERE i.etat = 'repos' AND i.dernier_user_id = p_user AND public.cloud_ip_attribuable(i, p_user, p_nature)
+   ORDER BY i.liberee_le DESC LIMIT 1 FOR UPDATE SKIP LOCKED;
+  v_retour := v_ip IS NOT NULL;
+  IF v_ip IS NULL THEN
+    SELECT id INTO v_ip FROM public.cloud_ips i
+     WHERE i.etat = 'disponible' AND public.cloud_ip_attribuable(i, p_user, p_nature)
+     ORDER BY (i.reserve_pour = p_user) DESC NULLS LAST, public.cloud_ip_refus_prouve(i.refus),
+              public.cloud_ip_rang_operateur(i.sante), (i.refus = '{}'::jsonb) DESC,
+              i.expire_le, i.attributions, i.id
+     LIMIT 1 FOR UPDATE SKIP LOCKED;
+  END IF;
+  IF v_ip IS NULL THEN RETURN NULL; END IF;
+  UPDATE public.cloud_ips SET reserve_pour = NULL, reserve_jusqu_au = NULL WHERE reserve_pour = p_user AND id <> v_ip;
+  UPDATE public.cloud_ips
+     SET etat = 'attribuee_' || p_nature, user_id = p_user,
+         attributions = attributions + CASE WHEN dernier_user_id IS DISTINCT FROM p_user THEN 1 ELSE 0 END,
+         dernier_user_id = p_user, derniere_origine = p_nature,
+         reserve_pour = NULL, reserve_jusqu_au = NULL,
+         attribuee_le = now(), liberee_le = NULL, repos_fin = NULL,
+         purge_preuve = NULL, purge_prouvee_le = NULL, maj_le = now()
+   WHERE id = v_ip;
+  PERFORM public.cloud_journal(v_ip, CASE WHEN v_retour THEN 'retour_meme_compte' ELSE 'attribution' END, p_user,
+          jsonb_build_object('nature', p_nature));
+  RETURN v_ip;
+END;
+$function$;
+
+-- Réécrite depuis la prod (07/11, relue ~19:20). Change : le même ordre que cloud_ip_attribuer.
+CREATE OR REPLACE FUNCTION public.cloud_ip_reserver(p_user uuid)
+ RETURNS bigint
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_ip bigint;
+BEGIN
+  IF p_user IS NULL THEN RETURN NULL; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('cloud_ip:' || p_user::text, 0));
+  SELECT id INTO v_ip FROM public.cloud_ips WHERE user_id = p_user;
+  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
+  SELECT id INTO v_ip FROM public.cloud_ips i
+   WHERE i.etat = 'repos' AND i.dernier_user_id = p_user AND public.cloud_ip_attribuable(i, p_user, 'essai')
+   ORDER BY i.liberee_le DESC LIMIT 1 FOR UPDATE SKIP LOCKED;
+  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;   -- la sienne : rien à réserver, personne d'autre ne la prend
+  SELECT id INTO v_ip FROM public.cloud_ips i
+   WHERE i.etat = 'disponible' AND public.cloud_ip_attribuable(i, p_user, 'essai')
+   ORDER BY (i.reserve_pour = p_user) DESC NULLS LAST, public.cloud_ip_refus_prouve(i.refus),
+            public.cloud_ip_rang_operateur(i.sante), (i.refus = '{}'::jsonb) DESC,
+            i.expire_le, i.attributions, i.id
+   LIMIT 1 FOR UPDATE SKIP LOCKED;
+  IF v_ip IS NULL THEN RETURN NULL; END IF;
+  UPDATE public.cloud_ips SET reserve_pour = NULL, reserve_jusqu_au = NULL WHERE reserve_pour = p_user AND id <> v_ip;
+  UPDATE public.cloud_ips
+     SET reserve_pour = p_user, reserve_jusqu_au = now() + make_interval(mins => public.cloud_param('reservation_min', 30)), maj_le = now()
+   WHERE id = v_ip;
+  PERFORM public.cloud_journal(v_ip, 'reservation', p_user, '{}'::jsonb);
+  RETURN v_ip;
+END;
+$function$;
+
+-- ═══ 7. Droits : rien pour le client, tout pour le serveur ═════════════════
 REVOKE ALL ON FUNCTION public.cloud_ip_sante_noter(bigint, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.cloud_ip_sante_noter(bigint, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION public.cloud_ip_rang_operateur(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cloud_ip_rang_operateur(jsonb) TO service_role;

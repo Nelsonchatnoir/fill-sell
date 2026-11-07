@@ -11,6 +11,10 @@
 //      une IP GRILLÉE jamais attribuée (essai, client, retour au même compte, réservation) ni comptée par la garde, une
 //      SUSPECTE encore attribuable ; le MIROIR JS (ipAttribuable, gardeNombre) égal au SQL sur 300 pools au hasard, et
 //      « un achat que le plan demande passe toujours la garde » dans les deux règles (d'aujourd'hui, « saines d'abord ») ;
+//      (07/11 soir, « la 3 est donnée en dernier ») L'OPÉRATEUR DE SORTIE : l'ordre de cloud_ip_attribuer et de
+//      cloud_ip_reserver — sans santé, le choix d'avant à chaque fois (300 pools, contre les corps de la prod) ; avec les
+//      opérateurs relevés le 07/11 (Orange FR, Liberty Global NL, NTT America US), la 3 donnée en dernier ; le miroir JS
+//      (choisirIp) = cloud_ip_attribuer ;
 //   C. l'INVERSE rend les corps de la prod mot pour mot ; la migration se rejoue.
 import pg from 'pg';
 import { readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -123,9 +127,27 @@ const attribuables = async () => (await c.query(`SELECT i.id, u.n AS u, n.n AS n
   FROM public.cloud_ips i CROSS JOIN (VALUES ('essai'), ('client')) n(n) WHERE i.dernier_user_id IS NOT NULL
   ORDER BY 1, 2, 3`)).rows.map((r) => `${r.id}/${r.u}/${r.nature}=${r.a}`).join(' ');
 const ipsJs = async () => (await c.query(`SELECT id, commande, etat, user_id, dernier_user_id, expire_le, attributions, reserve_pour, reserve_jusqu_au,
-  repos_fin, purge_prouvee_le, refus, ${(await un(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'cloud_ips' AND column_name = 'sante'`)).n ? 'sante' : 'NULL::jsonb AS sante'}
+  liberee_le, repos_fin, purge_prouvee_le, refus, ${(await un(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'cloud_ips' AND column_name = 'sante'`)).n ? 'sante' : 'NULL::jsonb AS sante'}
   FROM public.cloud_ips`)).rows.map((i) => ({ ...i, expire_le: i.expire_le?.toISOString(), reserve_jusqu_au: i.reserve_jusqu_au?.toISOString() ?? null,
-  repos_fin: i.repos_fin?.toISOString() ?? null, purge_prouvee_le: i.purge_prouvee_le?.toISOString() ?? null, user_id: i.user_id ?? null }));
+  liberee_le: i.liberee_le?.toISOString() ?? null, repos_fin: i.repos_fin?.toISOString() ?? null, purge_prouvee_le: i.purge_prouvee_le?.toISOString() ?? null, user_id: i.user_id ?? null }));
+// (07/11 soir) Le choix de cloud_ip_attribuer / cloud_ip_reserver, sans rien garder (transaction annulée) ; et la suite des choix.
+const choix = async (user, nature = 'essai', fonction = 'cloud_ip_attribuer') => {
+  await c.query('BEGIN');
+  try { return (await un(fonction === 'cloud_ip_reserver' || fonction === 'cloud_ip_reserver_avant' ? `SELECT public.${fonction}($1) AS id` : `SELECT public.${fonction}($1, $2) AS id`,
+    fonction.startsWith('cloud_ip_reserver') ? [user] : [user, nature])).id; } finally { await c.query('ROLLBACK'); }
+};
+const suiteDesChoix = async (fonction = 'cloud_ip_attribuer') => {
+  const ordre = [];
+  await c.query('BEGIN');
+  try {
+    for (let k = 0; k < 12; k++) {
+      const id = (await un(`SELECT public.${fonction}($1, 'essai') AS id`, [U(300 + k)])).id;
+      if (id == null) break;
+      ordre.push(Number(id));
+    }
+  } finally { await c.query('ROLLBACK'); }
+  return ordre;
+};
 const SAINE = (le = new Date().toISOString()) => ({ version: 1, verdict: 'saine', le, saine_le: le, echecs: [], controles: 1 });
 
 try {
@@ -137,13 +159,17 @@ try {
       const sig = (await un(`SELECT pg_get_function_identity_arguments(oid) AS a FROM pg_proc WHERE proname = $1`, [f])).a;
       await c.query(`REVOKE ALL ON FUNCTION public.${f}(${sig}) FROM PUBLIC; GRANT EXECUTE ON FUNCTION public.${f}(${sig}) TO service_role;`);
     });
+  for (const f of ['cloud_ip_attribuer', 'cloud_ip_reserver']) await c.query(`${lire(`${FIX}/${f}.sql`).replace(`public.${f}(`, `public.${f}_avant(`)};`);
   await c.query(ETAT);
 
   // ── A. AVANT — la prod du 07/11 ──────────────────────────────────────────────────────────────────────────────
   const avantAttrib = await attribuables();
   const avantGarde = await garde(0);
   const avantEtat = await etatPool();
-  const aclAvant = (await c.query(`SELECT proname, proacl::text AS a FROM pg_proc WHERE proname IN ('cloud_ip_attribuable', 'cloud_ip_garde_nombre') ORDER BY 1`)).rows;
+  const aclAvant = (await c.query(`SELECT proname, proacl::text AS a FROM pg_proc WHERE proname IN ('cloud_ip_attribuable', 'cloud_ip_garde_nombre', 'cloud_ip_attribuer', 'cloud_ip_reserver') ORDER BY 1`)).rows;
+  const ordreAvant = await suiteDesChoix();
+  verifier('A. AVANT : les essais successifs reçoivent 2, 3, 4, 40, 1, 41 (l\'échéance d\'abord) — la 3 (NTT America) DEUXIÈME, la 40 grillée donnée',
+    JSON.stringify(ordreAvant) === JSON.stringify([2, 3, 4, 40, 1, 41]), JSON.stringify(ordreAvant));
   verifier('A. AVANT : l\'IP 40 (eBay 403 Akamai, grillée à la vérification de 17:26-17:40) est attribuable à un nouvel essai — le défaut',
     (await un(`SELECT public.cloud_ip_attribuable(i, $1, 'essai') AS a FROM public.cloud_ips i WHERE id = 40`, [U(1)])).a === true);
   verifier('A. AVANT : 6 IP attribuables (1, 2, 3, 4, 40, 41 ; la 39 est réservée à Nico), garde : 8 vivantes, borne 4',
@@ -163,13 +189,18 @@ try {
   const acl = (await un(`SELECT proacl::text AS a FROM pg_proc WHERE proname = 'cloud_ip_sante_noter'`)).a;
   verifier('B0. cloud_ip_sante_noter : service_role seul (ni PUBLIC, ni anon, ni authenticated)',
     /service_role=X/.test(acl) && !/(^|[{,])=X|anon|authenticated/.test(acl), acl);
-  const aclApres = (await c.query(`SELECT proname, proacl::text AS a FROM pg_proc WHERE proname IN ('cloud_ip_attribuable', 'cloud_ip_garde_nombre') ORDER BY 1`)).rows;
-  verifier('B0. cloud_ip_attribuable et cloud_ip_garde_nombre : droits INCHANGÉS', JSON.stringify(aclAvant) === JSON.stringify(aclApres), JSON.stringify([aclAvant, aclApres]));
+  const aclRang = (await un(`SELECT proacl::text AS a FROM pg_proc WHERE proname = 'cloud_ip_rang_operateur'`)).a;
+  verifier('B0. cloud_ip_rang_operateur : service_role seul', /service_role=X/.test(aclRang) && !/(^|[{,])=X|anon|authenticated/.test(aclRang), aclRang);
+  const aclApres = (await c.query(`SELECT proname, proacl::text AS a FROM pg_proc WHERE proname IN ('cloud_ip_attribuable', 'cloud_ip_garde_nombre', 'cloud_ip_attribuer', 'cloud_ip_reserver') ORDER BY 1`)).rows;
+  verifier('B0. cloud_ip_attribuable, cloud_ip_garde_nombre, cloud_ip_attribuer, cloud_ip_reserver : droits INCHANGÉS', JSON.stringify(aclAvant) === JSON.stringify(aclApres), JSON.stringify([aclAvant, aclApres]));
 
   // B1. Sans aucune santé : rien ne change
   verifier('B1. sans santé en base : cloud_ip_attribuable rend EXACTEMENT la même chose (chaque IP × compte × nature)', (await attribuables()) === avantAttrib);
   verifier('B1. … cloud_ip_garde_nombre identique', JSON.stringify(await garde(0)) === JSON.stringify(avantGarde));
   verifier('B1. … cloud_pool_etat identique (clé par clé)', JSON.stringify(await etatPool()) === JSON.stringify(avantEtat));
+  verifier('B1. … cloud_ip_attribuer : la même suite de choix (2, 3, 4, 40, 1, 41)', JSON.stringify(await suiteDesChoix()) === JSON.stringify(ordreAvant));
+  verifier('B1. … cloud_ip_reserver : le même choix que le corps de la prod', Number(await choix(U(1), null, 'cloud_ip_reserver')) === Number(await choix(U(1), null, 'cloud_ip_reserver_avant'))
+    && Number(await choix(NICO, null, 'cloud_ip_reserver')) === Number(await choix(NICO, null, 'cloud_ip_reserver_avant')));
 
   // B2. L'écriture du verdict
   let r = await noter(1, {});
@@ -242,11 +273,47 @@ try {
   verifier('B4. … saine, elle lui revient (inchangé)', (await un(`SELECT public.cloud_ip_attribuable(i, $1, 'essai') AS a FROM public.cloud_ips i WHERE id = 77`, [U(2)])).a === true);
   await c.query('ROLLBACK');
 
+  // B6. (07/11 soir, « la 3 est donnée en dernier ») L'OPÉRATEUR DE SORTIE — la règle, sur les opérateurs relevés le 07/11
+  //     (ip-api « as », Team Cymru) : 1, 39, 41 → AS5511 Orange (FR, rang 0) ; 2, 4 → AS6830 Liberty Global (NL, rang 1) ;
+  //     3, 40 → AS2914 NTT America (US, rang 2).
+  const OP = { 0: { as: '5511', pays: 'FR', registre: 'ripencc', rang: 0 }, 1: { as: '6830', pays: 'NL', registre: 'ripencc', rang: 1 },
+    2: { as: '2914', pays: 'US', registre: 'arin', rang: 2 } };
+  for (const [id, rang] of Object.entries({ 1: 0, 39: 0, 41: 0, 2: 1, 4: 1, 3: 2, 40: 2 })) {
+    await c.query(`UPDATE public.cloud_ips SET sante = COALESCE(sante, '{"verdict":"saine"}'::jsonb) || jsonb_build_object('operateur', $2::jsonb) WHERE id = $1`,
+      [Number(id), JSON.stringify(OP[rang])]);
+  }
+  let ordre = await suiteDesChoix();
+  verifier('B6. APRÈS : 1, 41 (Orange, FR), puis 2, 4 (Liberty Global, NL), puis la 3 (NTT America, US) EN DERNIER ; la 40 (grillée) jamais',
+    JSON.stringify(ordre) === JSON.stringify([1, 41, 2, 4, 3]), JSON.stringify(ordre));
+  verifier('B6. … cloud_ip_reserver prend aussi la française d\'abord (la 1)', Number(await choix(U(1), null, 'cloud_ip_reserver')) === 1);
+  const rangs = (await c.query(`SELECT public.cloud_ip_rang_operateur(x::jsonb) AS r FROM unnest(ARRAY[
+    '{"operateur":{"rang":0}}', '{"operateur":{"rang":2}}', '{"operateur":{"rang":"2"}}', '{"operateur":{"rang":7}}', '{"operateur":{"rang":1.5}}', '{}', NULL]) x`)).rows.map((x) => x.r);
+  verifier('B6. cloud_ip_rang_operateur : 0 et 2 lus ; texte, hors bornes, décimal, absent, NULL → 1 (inconnu, au milieu)', JSON.stringify(rangs) === '[0,2,1,1,1,1,1]', JSON.stringify(rangs));
+  await c.query(`UPDATE public.cloud_ips SET refus = '{}' WHERE id = 3`);
+  ordre = await suiteDesChoix();
+  verifier('B6. l\'opérateur passe AVANT le refus non prouvé : la 3 sans refus reste après les françaises au refus Beebs non prouvé',
+    JSON.stringify(ordre) === JSON.stringify([1, 41, 2, 4, 3]), JSON.stringify(ordre));
+  await c.query(`UPDATE public.cloud_ips SET refus = '{"beebs":{"prouvee":true}}' WHERE id = 1`);
+  ordre = await suiteDesChoix();
+  verifier('B6. … mais un refus PROUVÉ reste le dernier recours, après l\'IP atypique (inchangé) : 41, 2, 4, 3, puis la 1',
+    JSON.stringify(ordre) === JSON.stringify([41, 2, 4, 3, 1]), JSON.stringify(ordre));
+  await c.query(`UPDATE public.cloud_ips SET refus = ${REFUS_BEEBS} WHERE id IN (1, 3)`);
+  const ipsB6 = await ipsJs();
+  const jsB6 = [];
+  for (const u of [U(301), U(302), U(303), U(304), U(305), U(306)]) {
+    const x = regles.choisirIp(ipsB6, { userId: u, nature: 'essai', maintenant: Date.now() });
+    if (!x) break;
+    jsB6.push(Number(x.id));
+    ipsB6.find((y) => y.id === x.id).etat = 'attribuee_essai';
+  }
+  verifier('B6. le miroir JS (choisirIp) donne la même suite : 1, 41, 2, 4, 3', JSON.stringify(jsB6) === JSON.stringify([1, 41, 2, 4, 3]), JSON.stringify(jsB6));
+
   // B5. LE MIROIR JS ET LA GARDE, 300 pools tirés au hasard (santé comprise)
   let graine = 19;
   const hasard = () => { graine = (graine * 1103515245 + 12345) % 2147483648; return graine / 2147483648; };
   const tirer = (n) => Math.floor(hasard() * n);
   let attribEgaux = 0, attribTotal = 0, gardesEgales = 0, proprietes = 0, achatsDemandes = 0, achatsRegle = 0, grilleesVues = 0;
+  let choixEgaux = 0, choixTotal = 0, choixNonVides = 0, avantEgaux = 0, avantTotal = 0, rangsVus = 0;
   const divergences = [];
   const SANTES = [null, null, { verdict: 'saine', saine_le: new Date().toISOString(), le: new Date().toISOString() }, { verdict: 'suspecte', le: new Date().toISOString(), suspecte_le: new Date().toISOString(), echecs: ['ebay'] },
     { verdict: 'grillee', le: new Date().toISOString(), grillee_le: new Date().toISOString(), echecs: ['ebay'] }, { verdict: 'inconnue', le: new Date().toISOString() }];
@@ -267,17 +334,19 @@ try {
       const jours = tirer(38) - 3 + 0.5;
       const refus = [{}, {}, {}, { beebs: { prouvee: false, le: '2026-11-03T00:00:00Z' } }, { vinted: { prouvee: true } }][tirer(5)];
       const reserve = hasard() < 0.15 && profils.length ? profils[tirer(profils.length)] : null;
-      const sante = SANTES[tirer(SANTES.length)];
+      const s0 = SANTES[tirer(SANTES.length)];
+      const sante = s0 ? { ...s0, ...(hasard() < 0.7 ? { operateur: { rang: tirer(3) } } : {}) } : null;
+      if (sante?.operateur) rangsVus++;
       if (sante?.verdict === 'grillee') grilleesVues++;
       await c.query(`INSERT INTO public.cloud_ips (commande, ip, etat, user_id, dernier_user_id, attributions, expire_le, liberee_le, repos_fin, purge_prouvee_le, refus,
           reserve_pour, reserve_jusqu_au, rebut_critere, rebut_le, sante)
         VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(secs => $7::float8 * 86400),
-          CASE WHEN $3 = 'repos' THEN now() - interval '8 days' END, CASE WHEN $3 = 'repos' THEN now() + make_interval(secs => $8::float8 * 86400) END,
+          CASE WHEN $3 = 'repos' THEN now() - make_interval(secs => $12::float8 * 86400) END, CASE WHEN $3 = 'repos' THEN now() + make_interval(secs => $8::float8 * 86400) END,
           CASE WHEN $3 = 'repos' AND $8::float8 < 0 THEN now() - interval '1 hour' END, $9::jsonb, $10,
           CASE WHEN $10::uuid IS NULL THEN NULL ELSE now() + interval '20 minutes' END,
           CASE WHEN $3 = 'rebut' THEN 'manuel' END, CASE WHEN $3 = 'rebut' THEN now() END, $11::jsonb)`,
       [`h${k}-${i}`, `10.${k % 250}.${i}.1`, etat, user, user ?? (profils.length ? profils[tirer(profils.length)] : null), tirer(8), jours, tirer(9) - 2 + 0.5,
-        JSON.stringify(refus), reserve, sante ? JSON.stringify(sante) : null]);
+        JSON.stringify(refus), reserve, sante ? JSON.stringify(sante) : null, 7.5 + hasard() * 2]);
     }
     for (let i = 0, n = tirer(4); i < n && i < profils.length; i++) await c.query(`INSERT INTO public.cloud_attente (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [profils[i]]);
     for (let i = 0, n = tirer(3); i < n; i++) {
@@ -310,10 +379,32 @@ try {
         if ((await garde(plan.aCommander)).ok === true) proprietes++; else if (divergences.length < 6) divergences.push({ k, sainesSeulement, aCommander: plan.aCommander });
       } else proprietes++;
     }
+    // (07/11 soir) L'attribution : le miroir JS (choisirIp) = cloud_ip_attribuer ; puis, sans santé, le choix d'avant (corps de la prod).
+    const comptes = [U(999), ...profils.slice(0, 2)];
+    for (const u of comptes) for (const nature of ['essai', 'client']) {
+      choixTotal++;
+      const js = regles.choisirIp(ips, { userId: u, nature, maintenant: Date.now() })?.id ?? null;
+      const sqlId = await choix(u, nature);
+      if (sqlId != null) choixNonVides++;
+      if (Number(js) === Number(sqlId) || (js == null && sqlId == null)) choixEgaux++; else if (divergences.length < 8) divergences.push({ k, u, nature, js, sql: sqlId });
+    }
+    await c.query('UPDATE public.cloud_ips SET sante = NULL');
+    for (const u of comptes) for (const nature of ['essai', 'client']) {
+      avantTotal++;
+      const a = await choix(u, nature, 'cloud_ip_attribuer_avant'); const b = await choix(u, nature);
+      if (String(a) === String(b)) avantEgaux++; else if (divergences.length < 8) divergences.push({ k, u, nature, avant: a, apres: b });
+    }
+    if (String(await choix(comptes[0], null, 'cloud_ip_reserver_avant')) === String(await choix(comptes[0], null, 'cloud_ip_reserver'))) avantEgaux++;
+    else if (divergences.length < 8) divergences.push({ k, reserver: true });
+    avantTotal++;
   }
   verifier(`B5. le miroir JS (regles.ipAttribuable) = cloud_ip_attribuable sur 300 pools, santé comprise (${attribEgaux}/${attribTotal}, ${grilleesVues} IP grillées tirées)`,
     attribEgaux === attribTotal && attribTotal > 3000 && grilleesVues > 100, JSON.stringify(divergences));
   verifier(`B5. le miroir JS (regles.gardeNombre) = cloud_ip_garde_nombre (${gardesEgales}/300)`, gardesEgales === 300, JSON.stringify(divergences));
+  verifier(`B5. le miroir JS (regles.choisirIp) = cloud_ip_attribuer, opérateurs compris (${choixEgaux}/${choixTotal} choix, ${choixNonVides} non vides, ${rangsVus} IP au rang relevé)`,
+    choixEgaux === choixTotal && choixNonVides > 600 && rangsVus > 200, JSON.stringify(divergences));
+  verifier(`B5. sans santé : cloud_ip_attribuer et cloud_ip_reserver = les corps de la prod, choix à choix (${avantEgaux}/${avantTotal})`,
+    avantEgaux === avantTotal && avantTotal > 1500, JSON.stringify(divergences));
   verifier(`B5. « un achat que le plan demande passe toujours la garde » : règle d'aujourd'hui (${achatsDemandes} achats) ET « saines d'abord » (${achatsRegle}) — 600/600`,
     proprietes === 600 && achatsDemandes > 30 && achatsRegle > 30, JSON.stringify(divergences));
 
@@ -321,12 +412,12 @@ try {
   await c.query(ETAT);
   await c.query(`UPDATE public.cloud_ips SET sante = '{"verdict":"grillee","le":"2026-11-07T17:40:00Z"}' WHERE id = 40`);
   await c.query(lire(INVERSE));
-  for (const f of ['cloud_ip_attribuable', 'cloud_ip_garde_nombre']) {
+  for (const f of ['cloud_ip_attribuable', 'cloud_ip_garde_nombre', 'cloud_ip_attribuer', 'cloud_ip_reserver']) {
     const corps = (await un(`SELECT pg_get_functiondef(p.oid) AS d FROM pg_proc p WHERE proname = $1`, [f])).d.replace(/\r\n/g, '\n').trim();
     verifier(`C. INVERSE : ${f} = le corps de la prod, mot pour mot`, corps === lire(`${FIX}/${f}.sql`).trim());
   }
-  verifier('C. INVERSE : cloud_ip_sante_noter retirée, la colonne sante et sa contrainte retirées, les deux réglages retirés',
-    (await un(`SELECT count(*)::int AS n FROM pg_proc WHERE proname = 'cloud_ip_sante_noter'`)).n === 0
+  verifier('C. INVERSE : cloud_ip_sante_noter et cloud_ip_rang_operateur retirées, la colonne sante et sa contrainte retirées, les deux réglages retirés',
+    (await un(`SELECT count(*)::int AS n FROM pg_proc WHERE proname IN ('cloud_ip_sante_noter', 'cloud_ip_rang_operateur')`)).n === 0
     && (await un(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'cloud_ips' AND column_name = 'sante'`)).n === 0
     && (await un(`SELECT count(*)::int AS n FROM pg_constraint WHERE conname = 'cloud_ips_sante_lisible'`)).n === 0
     && (await un(`SELECT count(*)::int AS n FROM public.coin_config WHERE key IN ('cloud_ip_sante_controle', 'cloud_ip_renouveler_saines_seulement')`)).n === 0);

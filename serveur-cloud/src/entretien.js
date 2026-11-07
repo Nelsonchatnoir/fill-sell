@@ -493,7 +493,9 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       const nouvelle = regles.santeSuivante(ip.sante ?? null, controle);
       const { data: r, error: e2 } = await base.rpc('cloud_ip_sante_noter', { p_ip: ip.id, p_sante: nouvelle });
       const bilan = { ip_id: ip.id, raison: choix.raison, dues: choix.dues, avant: ip.sante?.verdict ?? null, verdict: nouvelle.verdict,
-        echecs: controle.echecs, inconnus: controle.inconnus, ecrit: r?.ok === true, ...(r?.ok === true ? {} : { refus: r?.raison ?? e2?.message ?? null }) };
+        echecs: controle.echecs, inconnus: controle.inconnus, ecrit: r?.ok === true, ...(r?.ok === true ? {} : { refus: r?.raison ?? e2?.message ?? null }),
+        // (07/11 soir) L'opérateur de sortie : une IP atypique (non française) reste saine, elle passe en dernier.
+        operateur: nouvelle.operateur ? { as: nouvelle.operateur.as, pays: nouvelle.operateur.pays, rang: nouvelle.operateur.rang } : null };
       journal.info('sante_ip', bilan);
       if (r?.ok === true && nouvelle.verdict === 'grillee' && r.avant !== 'grillee') {
         const echeance = new Date(ip.expire_le).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });

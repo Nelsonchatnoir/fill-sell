@@ -11,10 +11,14 @@
 //        node serveur-cloud/outils/ip-renouvellement-prevu.mjs --fichier %TEMP%\pool-ip.json
 //   2. Sur le serveur, une fois l'orchestrateur déployé avec ce code (clé de service de son environnement, lectures seules) :
 //        cd /srv/fillsell-cloud && docker compose exec -T orchestrateur node outils/ip-renouvellement-prevu.mjs
+// (07/11 soir, « la 3 est donnée en dernier ») L'OPÉRATEUR DE SORTIE de chaque IP (rang 0 français, 1 européen, 2 hors
+// d'Europe : l'atypique passe en dernier) : celui relevé par le contrôle de santé ; à défaut, lu ici en LECTURE SEULE par le
+// DNS public de Team Cymru (origine BGP de l'IP, puis pays d'enregistrement de l'AS — operateur.js) ; --sans-dns pour s'en passer.
 // Options : --sante 1=saine,40=grillee (verdicts relevés à la main, « saine » datée de maintenant — avant que le contrôle
 // périodique n'ait écrit en base) ; --marge N ; --jours N ; --json (sortie machine).
 import { readFileSync } from 'node:fs';
 import { chargerRegles } from '../src/regles.js';
+import { operateurDeSortie } from '../src/operateur.js';
 
 const args = process.argv.slice(2);
 const opt = (nom) => { const i = args.indexOf(`--${nom}`); return i >= 0 ? args[i + 1] : null; };
@@ -60,15 +64,25 @@ const ips = donnees.ips.map((i) => {
   }
   return ip;
 });
+// L'opérateur de sortie : celui de la santé en base ; sinon lu par DNS (lecture seule), jamais pour une IP expirée.
+for (const ip of ips) {
+  if (ip.etat === 'expiree' || ip.sante?.operateur || args.includes('--sans-dns')) continue;
+  const op = await operateurDeSortie({ ip: ip.ip }).catch(() => null);
+  if (op) ip.sante = { ...(ip.sante ?? {}), operateur: { ...op, lu_par: 'outil' } };
+}
+const libelleOperateur = (i) => { const o = i.sante?.operateur; if (!o) return 'opérateur inconnu';
+  return `AS${o.as} ${o.pays ?? '?'} — ${o.rang === 0 ? 'français' : o.rang === 1 ? 'européen, ATYPIQUE' : o.rang === 2 ? 'hors d’Europe, ATYPIQUE (en dernier)' : 'rang inconnu'}`; };
 const commun = { ips, marge, enAttente: Number(donnees.en_attente) || 0, commandesEnCours: Number(donnees.commandes_en_cours) || 0, maintenant, jours };
 const aujourdhui = new Map(regles.projeterEcheances({ ...commun, sainesSeulement: false }).map((e) => [e.id, e]));
 const saines = new Map(regles.projeterEcheances({ ...commun, sainesSeulement: true }).map((e) => [e.id, e]));
-const inconnues = ips.filter((i) => regles.ipLibre(i, maintenant) && !regles.reservee(i, maintenant)
+// Les libres de santé non prouvée — et celles au REPOS qui en sortent assez tôt pour être contrôlées avant leur J-2.
+const libreBientot = (i) => regles.ipLibre(i, maintenant) || (i.etat === 'repos' && i.user_id == null && Date.parse(i.repos_fin ?? '') + 2 * 86_400_000 < Date.parse(i.expire_le));
+const inconnues = ips.filter((i) => libreBientot(i) && !regles.reservee(i, maintenant)
   && ['inconnue', 'suspecte'].includes(regles.santeConnue(i, maintenant)));
 // L'hypothèse « les inconnues sont saines » : un contrôle sain daté de maintenant (il contredit aussi les refus plus anciens).
 const siSaines = inconnues.length
   ? new Map(regles.projeterEcheances({ ...commun, sainesSeulement: true,
-    ips: ips.map((i) => (inconnues.includes(i) ? { ...i, sante: { verdict: 'saine', saine_le: new Date(maintenant).toISOString() } } : i)) })
+    ips: ips.map((i) => (inconnues.includes(i) ? { ...i, sante: { ...(i.sante ?? {}), verdict: 'saine', saine_le: new Date(maintenant).toISOString() } } : i)) })
     .map((e) => [e.id, e]))
   : null;
 
@@ -79,6 +93,7 @@ const titulaire = (i) => (i.etat === 'attribuee_client' ? 'client' : i.etat === 
   : regles.reservee(i, maintenant) ? `réservée jusqu'au ${paris(i.reserve_jusqu_au)}` : '');
 const lignes = ips.filter((i) => i.etat !== 'expiree').map((i) => ({
   id: i.id, ip: i.ip, etat: i.etat, expire_le: i.expire_le, echeance: paris(i.expire_le), titulaire: titulaire(i),
+  operateur: libelleOperateur(i),
   sante: `${['attribuee_essai', 'attribuee_client'].includes(i.etat) ? 'non contrôlée (tenue par un compte)'
     : `${regles.santeConnue(i, maintenant)}${i.sante?.manuel ? ' (relevé à la main)' : ''}${regles.reservee(i, maintenant) ? ' (réservée : jamais contrôlée seule)' : ''}`}${regles.refusee(i.refus) ? ` · refus ${Object.keys(i.refus).join('/')}${regles.refusProuve(i.refus) ? ' prouvé' : ' non prouvé'}` : ''}`,
   aujourdhui: aujourdhui.get(i.id), saines: saines.get(i.id), si_saines: siSaines?.get(i.id) ?? null,
@@ -91,7 +106,7 @@ if (args.includes('--json')) {
     + `réglages : renouvellement auto ${donnees.coin?.cloud_ip_renouvellement_auto ?? '?'}, saines d'abord ${donnees.coin?.cloud_ip_renouveler_saines_seulement ?? 'absent (0)'}, `
     + `contrôle de santé ${donnees.coin?.cloud_ip_sante_controle ?? 'absent (0)'}. Projection sur ${jours} jours, santé figée, sans nouveau compte ni achat.\n`);
   for (const l of lignes) {
-    console.log(`IP ${l.id} · ${l.ip} · ${l.etat}${l.titulaire ? ` (${l.titulaire})` : ''} · échéance ${l.echeance} · santé ${l.sante}`);
+    console.log(`IP ${l.id} · ${l.ip} · ${l.etat}${l.titulaire ? ` (${l.titulaire})` : ''} · échéance ${l.echeance} · santé ${l.sante} · ${l.operateur}`);
     console.log(`    règle d'aujourd'hui : ${decision(l.aujourdhui)}${l.aujourdhui?.raison ? ` [${l.aujourdhui.raison}]` : ''}`);
     console.log(`    règle « saines »    : ${decision(l.saines)}${l.saines?.raison ? ` [${l.saines.raison}]` : ''}`);
     if (l.si_saines && JSON.stringify(l.si_saines) !== JSON.stringify(l.saines)) console.log(`    … si les IP de santé inconnue se révèlent saines : ${decision(l.si_saines)}`);

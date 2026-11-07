@@ -158,6 +158,19 @@ export function grillee(ip) {
   return ip?.sante != null && typeof ip.sante === 'object' && ip.sante.verdict === 'grillee';
 }
 
+/**
+ * (07/11 soir, borne de Nico : « la 3 est donnée en dernier ») LE RANG DE L'OPÉRATEUR DE SORTIE (= cloud_ip_rang_operateur) :
+ * 0 = AS enregistré en France, 1 = ailleurs en Europe (RIPE NCC), 2 = hors d'Europe — relevé par le contrôle de santé
+ * (serveur-cloud/src/operateur.js) dans sante.operateur.rang ; inconnu = 1 (au milieu). Plus le rang est haut, plus l'IP
+ * passe tard : à l'attribution (choisirIp) et parmi les saines gardées pour la marge (planDuJour, règle « saines »).
+ */
+export function rangOperateur(ip) {
+  const r = ip?.sante?.operateur?.rang;
+  return Number.isInteger(r) && r >= 0 && r <= 2 ? r : 1;
+}
+/** (07/11 soir) Une IP « atypique » : sortie connue, par un opérateur qui n'est pas français (rang 1 ou 2). Saine et attribuable, en dernier. */
+export const operateurAtypique = (ip) => Number.isInteger(ip?.sante?.operateur?.rang) && ip.sante.operateur.rang > 0;
+
 /** Cette IP peut-elle être donnée à ce compte, maintenant ? (= cloud_ip_attribuable) */
 export function ipAttribuable(ip, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES } = {}) {
   const exp = instant(ip?.expire_le);
@@ -175,7 +188,9 @@ export function ipAttribuable(ip, { nature = 'essai', userId = null, maintenant 
  *  0. le compte en tient déjà une → la même (idempotent) ;
  *  1. sa propre IP au repos (la plus récemment libérée) ;
  *  2. SA réservation, puis la disponible qui expire le plus tôt tout en couvrant
- *     (FEFO), la moins usée à égalité. */
+ *     (FEFO), la moins usée à égalité.
+ *  (07/11 soir) Au rang 2 : le refus PROUVÉ en dernier recours (inchangé), puis l'opérateur de sortie (rangOperateur :
+ *  français, européen, hors d'Europe — l'IP atypique en dernier), puis sans refus d'abord. */
 export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES } = {}) {
   const liste = Array.isArray(ips) ? ips : [];
   if (userId != null) {
@@ -187,11 +202,14 @@ export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = D
     .sort((a, b) => instant(b.liberee_le) - instant(a.liberee_le));
   if (siennes.length) return siennes[0];
   // (03/11) Puis sans refus de plateforme d'abord, un refus non prouvé ensuite, un refus prouvé en dernier recours.
+  // (07/11 soir) Entre les deux : l'opérateur de sortie — une IP atypique passe après toutes celles d'un opérateur
+  // français (même ordre qu'avant pour le refus : prouvé en dernier, puis sans refus d'abord).
   const sansRefus = (ip) => !ip.refus || typeof ip.refus !== 'object' || Object.keys(ip.refus).length === 0;
   const dispo = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, ctx))
     .sort((a, b) => Number(b.reserve_pour === userId && userId != null) - Number(a.reserve_pour === userId && userId != null)
-      || Number(sansRefus(b)) - Number(sansRefus(a))
       || Number(refusProuve(a.refus)) - Number(refusProuve(b.refus))
+      || rangOperateur(a) - rangOperateur(b)
+      || Number(sansRefus(b)) - Number(sansRefus(a))
       || instant(a.expire_le) - instant(b.expire_le)
       || (a.attributions ?? 0) - (b.attributions ?? 0)
       || Number(a.id) - Number(b.id));
@@ -585,7 +603,8 @@ export function refusApresSante(ip) {
  * entretien.js) :
  *   · IP attribuées (essai, client) : renouvelées avant leur échéance, comme toujours ;
  *   · IP RÉSERVÉES (reserve_pour, réservation en cours — l'IP gardée de Nico) : TOUJOURS renouvelées avant leur échéance ;
- *   · IP libres : seules les SAINES (santeConnue) sont renouvelées, les meilleures d'abord (les moins usées, puis
+ *   · IP libres : seules les SAINES (santeConnue) sont renouvelées, les meilleures d'abord ((07/11 soir) l'opérateur de
+ *     sortie — français, européen, hors d'Europe : une saine ATYPIQUE en dernier —, puis les moins usées, puis
  *     l'échéance la plus proche), jusqu'à ce que les libres saines vivantes = la marge + l'attente (le même stock visé
  *     que l'achat) ; une SAINE au refus non prouvé n'est renouvelée que si le contrôle sain est POSTÉRIEUR au refus ;
  *   · santé INCONNUE ou SUSPECTE : jamais comptée saine ; contrôlée en priorité (`aControler`) ; sans preuve de santé
@@ -664,7 +683,10 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
     }
     dire(attendre, ip.id, 'pas_encore');
   }
-  candidats.sort((a, b) => (a.attributions ?? 0) - (b.attributions ?? 0) || instant(a.expire_le) - instant(b.expire_le));
+  // (07/11 soir) Règle « saines » : l'opérateur de sortie d'abord (une saine atypique est gardée en dernier), puis l'usure,
+  // puis l'échéance. Règle coupée : l'ordre d'avant.
+  candidats.sort((a, b) => (regle ? rangOperateur(a) - rangOperateur(b) : 0)
+    || (a.attributions ?? 0) - (b.attributions ?? 0) || instant(a.expire_le) - instant(b.expire_le));
   for (const ip of candidats) {
     const manque = regle ? projeteSaines < vise : projete < vise;
     if (manque) { dire(renouveler, ip.id, regle ? 'saine_pour_la_marge' : 'pour_le_stock'); projete++; projeteSaines++; }
@@ -762,9 +784,12 @@ export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
   const t = instant(le);
   const echecs = uniques(controle?.echecs);
   const inconnus = uniques(controle?.inconnus);
+  // (07/11 soir) L'opérateur de sortie relevé (rangOperateur) : celui de ce contrôle s'il est lisible, sinon celui d'avant.
+  const op = controle?.operateur && Number.isInteger(controle.operateur.rang) ? controle.operateur : (a.operateur ?? controle?.operateur ?? null);
   const base = { version: 1, le, controles: (Number(a.controles) || 0) + 1, saine_le: a.saine_le ?? null,
     dernier: { le, echecs, inconnus, ...(controle?.resume ? { resume: controle.resume } : {}) },
-    precedent: a.dernier ? { le: a.dernier.le ?? null, echecs: a.dernier.echecs ?? [], inconnus: a.dernier.inconnus ?? [] } : null };
+    precedent: a.dernier ? { le: a.dernier.le ?? null, echecs: a.dernier.echecs ?? [], inconnus: a.dernier.inconnus ?? [] } : null,
+    ...(op ? { operateur: op } : {}) };
   if (a.verdict === 'grillee') return { ...base, verdict: 'grillee', grillee_le: a.grillee_le ?? null, suspecte_le: a.suspecte_le ?? null, echecs: uniques(a.echecs) };
   const avantEchecs = a.verdict === 'suspecte' ? uniques(a.echecs) : [];
   if (echecs.length) {

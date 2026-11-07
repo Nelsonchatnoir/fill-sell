@@ -24,6 +24,7 @@ import { connecterCdp, attacher } from './cdp.js';
 import { specConteneurChrome, exigerPareFeu } from './navigateur.js';
 import { TEXTE_ACCES_RESTREINT } from './plateformes.js';
 import { VERSION_API_DOCKER } from './docker.js';
+import { operateurDeSortie } from './operateur.js';
 
 /** Les 5 plateformes de la définition de Nico, la page d'accueil de chacune (la seule ouverte). */
 export const PLATEFORMES_SANTE = Object.freeze([
@@ -138,8 +139,11 @@ export function verdictSortie({ ip, ipinfo = null, ipApi = null }) {
     resume: { ip: sortie, pays, org: a?.org ?? i?.org ?? null, as: a?.as ?? null, hebergeur: a?.hosting ?? null, proxy: a?.proxy ?? null, mobile: a?.mobile ?? null } };
 }
 
-/** Le bilan d'un contrôle (pure) : échecs et inconnus (codes de cloud-pool.santeSuivante), et un résumé court pour la base. */
-export function bilanControle({ sortie, visites = [], nonVisitees = [] }) {
+/**
+ * Le bilan d'un contrôle (pure) : échecs et inconnus (codes de cloud-pool.santeSuivante), un résumé court pour la base et
+ * (07/11 soir) l'OPÉRATEUR de sortie (operateur.js) — il ne rend jamais une IP malsaine : il la range (atypique = en dernier).
+ */
+export function bilanControle({ sortie, visites = [], nonVisitees = [], operateur = null }) {
   const echecs = [...(sortie?.echecs ?? [])];
   const inconnus = sortie?.inconnu ? ['sortie'] : [];
   const plateformes = {};
@@ -150,7 +154,7 @@ export function bilanControle({ sortie, visites = [], nonVisitees = [] }) {
     else if (v.verdict !== 'ouverte') inconnus.push(v.plateforme);
   }
   for (const pf of nonVisitees) { inconnus.push(pf); plateformes[pf] = { verdict: 'non_visitee' }; }
-  return { echecs, inconnus, resume: { sortie: sortie?.resume ?? null, plateformes } };
+  return { echecs, inconnus, resume: { sortie: sortie?.resume ?? null, plateformes }, ...(operateur ? { operateur } : {}) };
 }
 
 /**
@@ -197,7 +201,7 @@ export function executerParSocket(socket) {
  * (tests) : executer (curl dans le conteneur), connecter (CDP), horloge { maintenant, attendre }.
  */
 export function creerSante({ config, docker, journal, executer = null, connecter = connecterCdp, horloge = { maintenant: () => Date.now(), attendre: pause },
-  pareFeu = exigerPareFeu, plateformes = PLATEFORMES_SANTE }) {
+  pareFeu = exigerPareFeu, plateformes = PLATEFORMES_SANTE, resoudreTxt = undefined }) {
   const exec = executer ?? executerParSocket(config.socketDocker);
 
   async function visiter(cdp, def) {
@@ -260,7 +264,10 @@ export function creerSante({ config, docker, journal, executer = null, connecter
       if (!version?.webSocketDebuggerUrl) throw new Error('Chrome muet (port de pilotage)');
       // 1. La sortie, par le relais du conteneur (le même chemin que Chrome).
       const curl = (u) => exec(nom, ['curl', '-sS', '-m', '20', '-x', 'http://127.0.0.1:3128', '-H', 'Accept: application/json', u]).catch(() => '');
-      const sortie = verdictSortie({ ip, ipinfo: jsonDe(await curl(ADRESSES_SORTIE.ipinfo)), ipApi: jsonDe(await curl(ADRESSES_SORTIE.ipApi)) });
+      const ipinfo = jsonDe(await curl(ADRESSES_SORTIE.ipinfo));
+      const sortie = verdictSortie({ ip, ipinfo, ipApi: jsonDe(await curl(ADRESSES_SORTIE.ipApi)) });
+      // (07/11 soir) L'opérateur de sortie (operateur.js : pays d'enregistrement de l'AS, DNS Team Cymru) — jamais un échec.
+      const operateur = await operateurDeSortie({ ip, asTexte: sortie.resume?.as ?? ipinfo?.org ?? null, resoudreTxt }).catch(() => null);
       // 2. Les plateformes, une à la fois (un onglet neuf chacune, refermé après).
       cdp = await connecter(String(version.webSocketDebuggerUrl).replace(/^ws:\/\/[^/]+/, `ws://${adr}:9223`), { delaiAppelMs: 60_000 });
       const visites = [];
@@ -269,9 +276,10 @@ export function creerSante({ config, docker, journal, executer = null, connecter
         catch (e) { visites.push({ plateforme: def.plateforme, verdict: 'indeterminee', murs: [], vus: [], erreur: String(e.message).slice(0, 120) }); }
         await horloge.attendre(1500);
       }
-      const bilan = bilanControle({ sortie, visites });
+      const bilan = bilanControle({ sortie, visites, operateur });
       const r = { fait_le: new Date(horloge.maintenant()).toISOString(), ...bilan, duree_ms: horloge.maintenant() - debut };
       journal.info('sante_controle', { ip_id: ipId, echecs: r.echecs, inconnus: r.inconnus, duree_ms: r.duree_ms,
+        operateur: operateur ? { as: operateur.as, pays: operateur.pays, rang: operateur.rang } : null,
         plateformes: Object.fromEntries(visites.map((v) => [v.plateforme, v.verdict])) });
       return r;
     } finally {

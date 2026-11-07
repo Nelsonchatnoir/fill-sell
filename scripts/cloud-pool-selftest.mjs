@@ -397,5 +397,63 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
     'SQL (07/11 soir) : les deux réglages naissent à 0 ; attribuable et garde excluent la grillée (miroir de grillee())');
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+titre('12. (07/11 soir, « la 3 est donnée en dernier ») L\'opérateur de sortie : l\'IP atypique en dernier');
+{
+  const M = await import('../supabase/functions/_shared/cloud-pool.js');
+  const T = Date.parse('2026-11-07T19:30:00Z');
+  const OP = (rang) => ({ as: ['5511', '6830', '2914'][rang], pays: ['FR', 'NL', 'US'][rang], registre: ['ripencc', 'ripencc', 'arin'][rang], rang });
+  const S = (rang, x = {}) => ({ version: 1, verdict: 'saine', le: iso(T - 3600_000), saine_le: iso(T - 3600_000), ...(rang == null ? {} : { operateur: OP(rang) }), ...x });
+  const lib = (id, jours, x = {}) => ({ id, commande: `c${id}`, etat: 'disponible', attributions: 1, refus: {}, expire_le: iso(T + jours * J), ...x });
+  ok(M.rangOperateur({ sante: S(0) }) === 0 && M.rangOperateur({ sante: S(2) }) === 2 && M.rangOperateur({ sante: S(null) }) === 1 && M.rangOperateur({}) === 1
+    && M.rangOperateur({ sante: { operateur: { rang: '2' } } }) === 1 && M.rangOperateur({ sante: { operateur: { rang: 7 } } }) === 1,
+    'rang : 0 français, 1 européen, 2 hors d\'Europe ; inconnu ou illisible = 1 (au milieu), comme cloud_ip_rang_operateur');
+  ok(!M.operateurAtypique({ sante: S(0) }) && M.operateurAtypique({ sante: S(1) }) && M.operateurAtypique({ sante: S(2) }) && !M.operateurAtypique({ sante: S(null) }),
+    'atypique = opérateur connu et non français (Liberty Global NL, NTT America US) ; jamais sur un inconnu');
+  ok(M.ipAttribuable(lib(3, 25, { sante: S(2) }), { maintenant: T }) && M.santeConnue({ sante: S(2) }, T) === 'saine',
+    'une IP atypique reste SAINE et ATTRIBUABLE');
+  // L'attribution : la 3 en dernier ; sans opérateur connu, l'ordre d'avant (prouvé contre le HEAD : 120 000 choix).
+  const pool = [lib(2, 21.7, { sante: S(1) }), lib(3, 22.1, { sante: S(2) }), lib(4, 24.7, { sante: S(1) }), lib(1, 26.8, { sante: S(0) }), lib(41, 26.85, { sante: S(0) })];
+  const suite = (ips) => { const l = ips.map((x) => ({ ...x })); const o = []; for (;;) { const x = M.choisirIp(l, { userId: `u${o.length}`, maintenant: T }); if (!x) break; o.push(x.id); x.etat = 'attribuee_essai'; x.user_id = `u${o.length - 1}`; } return o; };
+  ok(egal(suite(pool), [1, 41, 2, 4, 3]) && egal(suite(pool.map((x) => ({ ...x, sante: S(null) }))), [2, 3, 4, 1, 41]),
+    'attribution : 1, 41 (Orange FR), 2, 4 (Liberty NL), puis la 3 (NTT US) EN DERNIER ; sans opérateur connu : l\'échéance d\'abord, comme avant');
+  ok(M.choisirIp([lib(1, 26, { sante: S(0), refus: { beebs: { prouvee: false } } }), lib(3, 22, { sante: S(2) })], { userId: 'u', maintenant: T }).id === 1
+    && M.choisirIp([lib(1, 26, { sante: S(0), refus: { beebs: { prouvee: true } } }), lib(3, 22, { sante: S(2) })], { userId: 'u', maintenant: T }).id === 3
+    && M.choisirIp([lib(3, 22, { sante: S(2), reserve_pour: 'u', reserve_jusqu_au: iso(T + J) }), lib(1, 26, { sante: S(0) })], { userId: 'u', maintenant: T }).id === 3,
+    'l\'opérateur passe avant le refus non prouvé, après le refus PROUVÉ (dernier recours) et après SA réservation');
+  // Le renouvellement « saines » : la saine atypique gardée en dernier.
+  const r = M.planDuJour({ ips: [lib(1, 8, { sante: S(0) }), lib(3, 7, { sante: S(2), attributions: 0 }), lib(4, 8.5, { sante: S(1) }), lib(41, 9, { sante: S(0) })],
+    lambda: 0.5, marge: 3, sainesSeulement: true, maintenant: T });
+  ok(egal([...r.renouveler].sort(), [1, 4, 41]) && r.laisserExpirer.includes(3) && r.raisons[3] === 'saine_en_surplus',
+    'renouvellement « saines » : la 3 (NTT, pourtant la moins usée et la plus proche) est la saine laissée en surplus — l\'opérateur d\'abord');
+  const r0 = M.planDuJour({ ips: [lib(1, 8, { sante: S(0) }), lib(3, 7, { sante: S(2), attributions: 0 }), lib(4, 8.5, { sante: S(1) }), lib(41, 9, { sante: S(0) })],
+    lambda: 0.5, marge: 3, maintenant: T });
+  ok(r0.renouveler.includes(3), 'règle coupée : l\'ordre d\'avant (l\'opérateur ne range rien)');
+  // La santé garde l'opérateur relevé ; un relevé illisible ne l'efface pas.
+  const s1 = M.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: [], operateur: OP(2) });
+  const s2 = M.santeSuivante(s1, { fait_le: iso(T + J), echecs: [], inconnus: [], operateur: { as: '2914', rang: null } });
+  const s3 = M.santeSuivante(s2, { fait_le: iso(T + 2 * J), echecs: ['ebay'], inconnus: [] });
+  ok(s1.operateur.rang === 2 && s2.operateur.rang === 2 && s3.operateur.rang === 2 && s3.verdict === 'suspecte',
+    'santeSuivante : l\'opérateur relevé est gardé ; un relevé illisible (DNS muet) ou absent ne l\'efface pas');
+  // Le pool relu en prod le 07/11 ~19:30 (la 2 au repos jusqu'au 14/11), verdicts 1, 3, 4, 41 saines, 40 grillée, 39 réservée saine.
+  const B = { beebs: { prouvee: false, le: '2026-11-03T15:37:37Z' } };
+  const L = Date.parse('2026-11-07T18:30:00Z');
+  const sain = (rang) => ({ verdict: 'saine', saine_le: '2026-11-07T18:30:00Z', le: '2026-11-07T18:30:00Z', operateur: OP(rang) });
+  const prod = [
+    { id: 1, commande: '84458881', etat: 'disponible', attributions: 1, expire_le: '2026-12-04T12:57:45Z', refus: B, sante: sain(0) },
+    { id: 2, commande: '86965910', etat: 'repos', attributions: 1, dernier_user_id: 'nicotest', liberee_le: '2026-11-07T18:12:00Z', repos_fin: '2026-11-14T18:12:00Z',
+      expire_le: '2026-11-29T10:37:16Z', refus: B },
+    { id: 3, commande: '87004978', etat: 'disponible', attributions: 1, expire_le: '2026-11-29T20:00:42Z', refus: B, sante: sain(2) },
+    { id: 4, commande: '87277315', etat: 'disponible', attributions: 1, expire_le: '2026-12-02T11:29:07Z', refus: B, sante: sain(1) },
+    { id: 39, commande: '87284262', etat: 'disponible', attributions: 1, expire_le: '2026-12-03T13:09:55Z', refus: B, sante: sain(0), reserve_pour: 'nico', reserve_jusqu_au: '2026-12-03T13:09:55Z' },
+    { id: 40, commande: '87481742', etat: 'disponible', attributions: 1, expire_le: '2026-12-04T11:03:19Z', refus: B, sante: { verdict: 'grillee', le: '2026-11-07T18:30:00Z', operateur: OP(2) } },
+    { id: 41, commande: '87495735', etat: 'disponible', attributions: 1, expire_le: '2026-12-04T14:08:03Z', refus: B, sante: sain(0) },
+    { id: 42, commande: '87509051', etat: 'attribuee_client', user_id: 'nico', attributions: 1, expire_le: '2026-12-04T17:08:04Z', refus: {} },
+  ];
+  const pr = Object.fromEntries(M.projeterEcheances({ ips: prod, marge: 3, sainesSeulement: true, maintenant: L }).map((e) => [e.id, e.evenement]));
+  ok(egal(pr, { 1: 'renouvelee', 2: 'expire', 3: 'expire', 4: 'renouvelee', 39: 'renouvelee', 40: 'expire', 41: 'renouvelee', 42: 'renouvelee' }),
+    'pool du 07/11 soir : 39 et le client 42 renouvelés ; la marge = 1, 41 (Orange) + 4 (Liberty) ; la 3 (NTT) expire, la 40 grillée expire, la 2 (au repos, santé inconnue) expire');
+}
+
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);
