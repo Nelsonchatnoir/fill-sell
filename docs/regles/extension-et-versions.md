@@ -270,3 +270,16 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   aucune retenue générale par version).
 - Livrable : `build/CWS-0.6.176-A-TELEVERSER/fillsell-extension-0.6.176-cws.zip` (BUILD_ID `2026-11-06T20:36:04Z+3becc6d`,
   604 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-06T20:35:35Z (618edc4). À téléverser par-dessus la 0.6.175.
+
+## 07/11 — 0.6.177 : lot « Problèmes » points 1-10 (rapport `docs/enquetes/lot-0711/RAPPORT.md`)
+- La 0.6.176 + : borne de remplissage (« abandon » : aucun clic d'envoi après la borne ; phases Beebs relayées ; borne
+  `fill_borne_ms` 10-25 min ; pré-vol > 70 % de la borne = AUCUN retrait) — ⚠ port seulement pour `beta_flags.keepalive` ;
+  couleur Vinted (relue après fermeture, posée au POST quand la page la laisse vide, vide alors que la copie en porte une =
+  arrêt AVANT retrait) ; référentiels Vinted relus 2 fois sur erreur réseau/5xx ; dimensions de colis Vinted non
+  résolubles (message vrai) ; rayon « neuf seulement » = attente de la personne sans réessais ; statuts du relevé
+  Leboncoin comptés sur identifiants uniques ; texte des photos hors FillSell rendu vrai (copie serveur vérifiée).
+- Causes levées serveur qui l'attendent : `remplissage_borne_depassee`, `vinted_couleur_connue_non_posee`
+  (`BUILD_BORNE_ADAPTATIVE` = 2026-11-07T10:30:00Z, `_shared/recreation-bloquee.js`).
+- Livrable : `build/CWS-0.6.177-A-TELEVERSER/fillsell-extension-0.6.177-cws.zip` (BUILD_ID `2026-11-07T12:31:03Z+11e4acb`,
+  607 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-07T12:29:47Z (f22d662). Seul zip à téléverser (remplace la 0.6.176,
+  rangée dans `build/anciens-zips/REMPLACEE-PAR-0.6.177-CWS-0.6.176` ; la 0.6.175 publiée y est aussi rangée).
