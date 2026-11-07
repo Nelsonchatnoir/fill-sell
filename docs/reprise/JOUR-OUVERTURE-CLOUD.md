@@ -1,6 +1,86 @@
 # Jour d'ouverture de FillSell Cloud — la liste, dans l'ordre (décision j de Nico, 05/11/2026)
 
-## ⛔ 07/11/2026 soir — PROCÉDURE DU JOUR J EXÉCUTÉE PAR CLAUDE SEUL, sur « on ouvre » de Nico (prime sur la suite)
+## ⛔ PROCÉDURE DU JOUR J POUR UNE NOUVELLE SESSION (mise à jour le 07/11/2026 ~20:00) — prime sur tout le reste
+Déclencheur : Nico écrit « On ouvre ». La session exécute SEULE, dans l'ordre, une étape à la fois : geste → vérification
+→ la moindre différence = retour arrière de CETTE étape et arrêt, dit à Nico. Heures de Paris notées au fur et à mesure
+dans docs/cloud/REPRISE.md (bloc daté en tête). Aucun mail client, aucune écriture chez Stripe. Raccourcis :
+`SSH2` = `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@5.9.80.213` ; lecture base = `npx supabase db query --linked
+--read-only -f <fichier>` (une requête par fichier) ; écriture = `--yes`.
+
+### P. Prérequis — tous relus AVANT la 1re étape, sinon on s'arrête et on le dit à Nico
+1. **Boutiques** : Apple a APPROUVÉ la version 2.9.164 (App Store Connect, iris `appStoreVersions` de l'app
+   6762152785 : `appStoreState` = `PENDING_DEVELOPER_RELEASE`, `releaseType` = `MANUAL`) ; Google a approuvé la vc36 et
+   Nico l'a PUBLIÉE sur Play (production 2.9.164 / vc36 « Disponible sur Google Play »). La publication Apple se fait à
+   l'étape 6 (si la session App Store Connect de Chrome a expiré : Nico se reconnecte, rien d'autre).
+2. **Étanchéité entre clients prouvée** (faite le 07/11 19:08-19:10, docs/cloud/ETANCHEITE-CLOUD2.md) : la relire —
+   `SSH2 'docker network inspect fillsell-cloud -f "{{json .Options}}"'` contient `enable_icc":"false"` ; journal
+   `reseau_cloisonnement` `"ok":true,"complet":true` au dernier démarrage ; le « test réel » de
+   docs/cloud/ETANCHEITE-CLOUD2.md § 3 (conteneur jetable → `000`, hôte → `200`/`401`).
+3. **Suite complète verte sur main** et **main poussé** : `git fetch origin`, `git status -sb` = `## main...origin/main`
+   sans ahead/behind ; la dernière suite complète notée dans REPRISE.md est verte (sinon la relancer, en tranches si la
+   mémoire du poste manque).
+4. **Rien en cours** : aucune tâche `processing` du compte de Nico ; aucune vente Cloud ouverte
+   (`coin_config.cloud_offre_ouverte` absente ou 0).
+
+### 1. Fonctions edge depuis main à jour (autorisations nommées de Nico du 07/11)
+a. Versions et verify_jwt notés AVANT : `npx supabase functions list` (email-tunnel, stripe-webhook, apple-iap-webhook,
+   google-play-webhook, validate-google-purchase, validate-apple-receipt, cancel-subscription, create-checkout-session,
+   get-pending-jobs).
+b. **get-pending-jobs comparée d'abord, jamais écrasée** : `npx supabase functions download get-pending-jobs --use-api`
+   dans un dossier vide du scratchpad, comparée à `supabase/functions/get-pending-jobs` + les `_shared` qu'elle importe.
+   Identique → pas redéployée. Différente → arrêt pour elle seule, diff montré à Nico et à PROBLÈMES.
+c. `node scripts/cloud/deployer-fonctions-cloud.mjs` (plan) puis `--go --seulement
+   email-tunnel,stripe-webhook,apple-iap-webhook,google-play-webhook,validate-google-purchase,cancel-subscription,create-checkout-session`
+   (le script garde son ordre : email-tunnel en tête ; il relit et garde chaque verify_jwt). Ce que ça apporte :
+   email-tunnel = les mails Cloud au VRAI prix du canal, texte selon le canal, « FillSell Cloud » (619dd8e ; la v82 en
+   service envoie encore « 20 € » et « option Sans ordinateur ») ; cancel-subscription = l'arrêt du Cloud par Stripe
+   seulement (la v53 en service ignore `option:'cloud'` et toucherait la FORMULE d'un client Stripe — ad7c6e8).
+d. Vérif : versions +1, verify_jwt inchangés, 15 min de journaux sans erreur, Stripe `pending_webhooks` 0 ; email-tunnel :
+   `job_relaunch` en `dry_run` → la réponse contient `prix_lus`. Retour : redéployer chaque fonction depuis le commit
+   d'avant (noté en a.) avec le même verify_jwt ; get-pending-jobs n'est jamais touchée par ce retour.
+
+### 2. Orchestrateur de cloud-2 depuis main (textes du serveur, garde de cloisonnement)
+`ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh 5.9.80.213 cloud-2.fillsell.app`. Vérif : journal `demarrage`
++ `reseau_cloisonnement ok:true complet:true` ; navigateur de Nico rouvert ; `/sante` ok. Retour : `VERSION_ORCHESTRATEUR`
+d'avant (affichée par le script) puis `docker compose up -d --no-deps orchestrateur`.
+
+### 3. Achats d'IP automatiques
+`cloud_ip_achats_auto` = 1 (carte …9699 fin 2029-04 déjà en service : `cloud_ip_paiement_carte` = 1,
+`cloud_ip_carte_id` = 410814 ; garde en nombre, marge 3). Vérif : ≤ 5 min, journal `reappro_rapide` ; entretien
+`carte.mode` = « carte » ; `cloud_pool_etat().garde` cohérent ; aucune alerte « garde ». Retour : `cloud_ip_achats_auto` = 0.
+Santé des IP : contrôle allumé depuis le 07/11 19:34 (`cloud_ip_sante_controle` = 1) ; règle « saines d'abord »
+(`cloud_ip_renouveler_saines_seulement`) : voir son état dans REPRISE.md (activée seulement dans les bornes de Nico :
+39 et IP clients jamais expirées, 40 jamais comptée, IP « atypique » donnée en dernier).
+
+### 4. cloud-2 ouvert à tous (AVANT l'interrupteur : la vente ne lit jamais COMPTES_AUTORISES)
+`SSH2 'cp -p /srv/fillsell-cloud/.env /srv/fillsell-cloud/archives/env-avant-ouverture-$(date +%Y%m%d-%H%M) && sed -i "s/^COMPTES_AUTORISES=.*/COMPTES_AUTORISES=/" /srv/fillsell-cloud/.env && cd /srv/fillsell-cloud/deploiement && docker compose up -d --no-deps --force-recreate orchestrateur'`.
+Vérif : `demarrage` → `"comptes_autorises":"tous"` ; `cloud_serveurs.details->'service'->>'comptes'` = `tous`, `apte` ;
+navigateur de Nico rouvert ; `/sante` ok. Retour : l'archive `.env` remise (liste f44b5917…,953c1ca6…,d6a9e726…) + même
+`up -d --force-recreate`.
+
+### 5. Interrupteur de la vente
+`insert into coin_config (key, value) values ('cloud_offre_ouverte', 1) on conflict (key) do update set value = 1`.
+Vérif : `cloud_vente_etat(<compte ordinaire>)` = vente possible, places = min(serveur, IP) ; l'offre visible dans un
+navigateur isolé (web). Retour : la clé à 0 (AVANT toute remise d'une liste à l'étape 4).
+
+### 6. Publication Apple + OTA
+a. Apple : `POST /iris/v1/appStoreVersionReleaseRequests` sur la version 2.9.164 (ou le bouton « Publier cette version »
+   si la session iris refuse) ; relu : `READY_FOR_SALE`.
+b. OTA : le binaire en boutique est 2.9.164 (commit noté dans REPRISE.md). Si main a avancé depuis (cas normal), l'OTA
+   prend **2.9.165** : commit de version (package.json + lock), puis `--delta` depuis le dossier principal (jamais un
+   worktree), docs/agents/pieges.md § Déploiement. Vérif : canal `production` relu = 2.9.165 ; `build.json` du bundle =
+   le commit. Retour : le bundle d'avant remis sur `production`.
+
+### 7. Grille à trois jauges (et les nouvelles feuilles d'entrée, qu'elle allume)
+`grille_trois_jauges` = 1 (§ 4). Vérif : `quotas_etat` et l'écran (web, puis app après l'OTA). Retour : 0.
+
+### 8. Deux heures de surveillance (§ 8)
+Ventes Cloud, places, IP achetées et renouvelées, alertes support@, journaux des fonctions de l'étape 1.
+
+À savoir : la référence Apple bac à sable de Nicotest (2000001262935799) est CLOSE (`cloud_refs_closes`, migration
+20261107200000) : ses renouvellements de test ne rallument jamais son Cloud — rien à faire.
+
+## (Archive) 07/11/2026 soir — première version de la procédure (remplacée par le bloc ci-dessus)
 Préalables (relus avant de commencer, sinon on s'arrête) : les deux stores ont approuvé 2.9.164 et Nico l'a publiée ;
 migration 20261107180000 appliquée (FAIT 07/11 17:08, feu vert nommé) et orchestrateur « marge + garde en nombre +
 capacité mesurée » sur cloud-2 (FAIT 07/11 17:11, acb9a561b5e1 ; avant b381d51077ad) — relus le jour J ;
