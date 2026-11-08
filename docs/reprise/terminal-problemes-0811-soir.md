@@ -1,5 +1,8 @@
 # Reprise — terminal « Problèmes », lot de Nico du 08/11 après-midi et soir (13 points)
 
+> ⏩ Suite (08/11 nuit, points 1-6) : `docs/reprise/terminal-problemes-0811-nuit.md`. La 0.6.182 est PUBLIÉE (32 comptes) ;
+> le seul zip à téléverser est désormais `build/CWS-0.6.183-A-TELEVERSER/fillsell-extension-0.6.183-cws.zip`.
+
 Rapport complet : `docs/enquetes/lot-0811-apres-midi/RAPPORT.md`. État de prod : `docs/agents/etat-2026-10-01.md`
 (sections « 08/11 après-midi » et « 08/11 soir »). Heures de Paris.
 

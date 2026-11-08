@@ -79,6 +79,19 @@ Suite de `docs/reprise/terminal-problemes-0811-soir.md`. Heures de Paris. État 
   — `_bloque_en_vol` depuis le 08/11 10:36 (Vinted 254, Leboncoin 255, Beebs 235 en vol). File : 730 pending, 138
   publiées, 6 annulées. Rien touché.
 
-## Ce qui reste à faire dans ce lot
-- Déployer handler-watch, update-job-status (+ fonctions eBay du point 3) ; versions et verify_jwt lus avant/après.
-- Extension 0.6.183 : un seul zip `build/CWS-0.6.183-A-TELEVERSER/` (remplace la 0.6.182 si elle n'est pas téléversée).
+## En service (08/11 23:10, autorisation nommée de Nico)
+- handler-watch v186 (avant v185, false), update-job-status v187 (avant v186, false), ebay-api-worker v120 (avant v119,
+  false), ebay-account v36 (avant v35, true), generate-listing v137 (avant v136, true). Code : 904bacb. Retour : f975a16.
+
+## Ce qui attend
+- **Chrome Web Store** : Nico téléverse `build/CWS-0.6.183-A-TELEVERSER/fillsell-extension-0.6.183-cws.zip`
+  (BUILD_ID 2026-11-08T22:09:14Z+6c84532) — SEUL zip. Après acceptation : « 0.6.183 » dans ALREADY_PUBLISHED. Les points
+  1 (refus Beebs nommé) et 4 (retrait en vérification = attente) n'agissent sur les postes qu'avec elle.
+- **Copie Cloud 0.6.183-cloud** : autorisation nommée de Nico (jamais sans).
+- **Point 6** : décision de Nico sur la confirmation renforcée d'un gros lot, et sur les créneaux du manuel.
+- **Julian** : rien relancé ; ses 5 jobs restent « à toi ». Au prochain essai sous 0.6.183, le vrai motif s'écrit.
+
+## À vérifier demain
+- Logann / ayadi007 : second relevé demandé (`vinted_sync_runs.declencheur = serveur:introuvable_a_confirmer`), puis
+  clôture « plus en ligne » (cancelled + annonce_disparue) ; Logann seulement quand son poste se rallume.
+- ccffd8ef (eBay, « 24 mois ») : la question repart seule avec « 2 ans ».
