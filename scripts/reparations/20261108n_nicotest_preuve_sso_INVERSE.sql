@@ -29,7 +29,9 @@ UPDATE public.cloud_ips i
  WHERE b.quoi = 'ip' AND (b.ligne ->> 'id')::bigint = i.id
    AND (i.user_id = '5322fa18-c194-458b-a222-7ee4093c4968' OR i.dernier_user_id = '5322fa18-c194-458b-a222-7ee4093c4968')
    AND (i.etat IS DISTINCT FROM b.ligne ->> 'etat' OR i.user_id IS DISTINCT FROM NULLIF(b.ligne ->> 'user_id', '')::uuid
-        OR i.attributions IS DISTINCT FROM (b.ligne ->> 'attributions')::int);
+        OR i.attributions IS DISTINCT FROM (b.ligne ->> 'attributions')::int
+        OR i.repos_fin IS DISTINCT FROM (b.ligne ->> 'repos_fin')::timestamptz
+        OR i.liberee_le IS DISTINCT FROM (b.ligne ->> 'liberee_le')::timestamptz);
 SELECT p.is_cloud, p.cloud_voie, p.cloud_ref IS NOT NULL AS ref_remise, (public.cloud_etat(p.id) ->> 'etat') AS etat,
        (SELECT count(*) FROM public.cloud_ips WHERE user_id = p.id) AS ip_attribuees,
        (SELECT count(*) FROM public.cloud_postes WHERE user_id = p.id) AS postes,
