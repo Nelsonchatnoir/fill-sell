@@ -667,14 +667,16 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   raison écrite sur la tâche (`attente_annonce_vendue`, seulement quand elle change) ; affichée SANS transaction lue après
   la remise → l'article est toujours en vente : remise close « cancelled », message vrai, jamais déposée.
 - **Visible et bornée** (`_shared/etat-job.js`, `src/utils/fileDesJobs.js`) : « En pause » avec la raison et le numéro ;
-  après 48 h (`BORNE_ATTENTE_VENDUE_MS`) « À toi de jouer : supprime-la sur Leboncoin » (jamais pour « à relire »).
+  après 48 h (`BORNE_ATTENTE_VENDUE_MS`) « À toi de jouer : supprime-la sur Leboncoin » — vente CLOSE seulement ; ⛔ jamais pendant un achat en cours (08/11,
+  Nico : rien n'est vérifié d'une suppression pendant une vente pas finie), l'app dit « achat en cours chez Leboncoin —
+  l'article repartira quand la vente sera terminée » ; jamais pour « à relire ».
 - **Relevés réguliers** : un compte dont une remise est retenue reçoit un relevé « Mes annonces » au plus toutes les
   60 min (`serveur:verif_redepot`, lecture seule, jamais s'il y en a un en file).
 - **Série « une par une »** (`_shared/serie-un-par-un.js`) : un dépôt à la fois sur ce qui est RÉELLEMENT parti (en cours,
   ou déposé et pas encore vu) ; une tâche qui attend est SAUTÉE ; l'intervalle court depuis le dernier dépôt de la série ;
   `needs_user` n'arrête la série que sur un refus de la plateforme.
 - **Vente close → FillSell retire l'annonce vendue → la remise part** (`decisionRetraitVendueClose`, handler-watch,
-  interrupteur `RETIRER_VENDUES_CLOSES` — COUPÉ jusqu'au feu vert nommé de Nico) : transaction `sold` lue depuis 24 h au
+  interrupteur `RETIRER_VENDUES_CLOSES` — ALLUMÉ le 08/11 pour tous les comptes, feu vert nommé de Nico) : transaction `sold` lue depuis 24 h au
   plus, annonce de la remise seulement, un retrait par annonce, 20 par passage ; ⛔ jamais pendant un achat en cours.
   Fait à la main pour Louis le 07/11 au soir sur feu vert nommé (4 annonces, une par une, page relue avant et après :
   `scripts/reparations/20261107_louis_retraits_vendues_closes.mjs`).

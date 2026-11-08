@@ -139,7 +139,8 @@ export const ETATS_RETENUS = Object.freeze([ETAT_VENDUE.VENTE_EN_COURS, ETAT_VEN
 // les RELEVE_ATTENTE_MIN minutes, jamais s'il y en a déjà un en file (sans lui, le relevé quotidien vient 20 h après le
 // dernier : Louis, aucun relevé du 07/11 17:42 au lendemain).
 export const RELEVE_ATTENTE_MIN = 60;
-// La borne : une remise retenue depuis BORNE_ATTENTE_VENDUE_MS passe « À toi de jouer » (supprimer l'annonce vendue
+// La borne : une remise retenue depuis BORNE_ATTENTE_VENDUE_MS, vente CLOSE (« sold ») seulement — ⛔ jamais pendant un
+// achat en cours (08/11, Nico) —, passe « À toi de jouer » (supprimer l'annonce vendue
 // sur Leboncoin) — elle ne reste jamais en pause sans fin. La même valeur est recopiée dans etat-job.js (selftest).
 export const BORNE_ATTENTE_VENDUE_MS = 48 * 3600_000;
 
@@ -201,7 +202,7 @@ export function messageToujoursEnVente(annonce) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Feu vert nommé de Nico pour Louis (4 annonces « Article vendu », retirées une par une le 07/11 au soir par
 // scripts/reparations/20261107_louis_retraits_vendues_closes.mjs). LA RÈGLE, pour tous les comptes (handler-watch,
-// interrupteur RETIRER_VENDUES_CLOSES — COUPÉ jusqu'au feu vert nommé de Nico) : une remise Leboncoin en attente dont
+// interrupteur RETIRER_VENDUES_CLOSES — ALLUMÉ le 08/11, feu vert nommé de Nico) : une remise Leboncoin en attente dont
 // l'annonce vendue est encore affichée avec une transaction CLOSE (« sold » : « Article vendu » sur la page) fait armer
 // UNE tâche de retrait de CETTE annonce, par son numéro et son lien (chemin normal de l'extension). Le retrait fait
 // (« deleted »), la base note l'annonce retirée, la règle A sert la remise au passage suivant.

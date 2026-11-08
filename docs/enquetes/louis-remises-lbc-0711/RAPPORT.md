@@ -105,7 +105,7 @@ Règle : `docs/regles/ventes-et-retraits.md` § « 07/11 nuit ».
   - l'app dit « En pause : achat en cours / Leboncoin affiche encore ton annonce vendue n° … » ;
   - après 48 h : « À toi de jouer : … supprime-la sur Leboncoin » (etat-job.js, recopié dans l'extension 0.6.180).
 - **Retrait par FillSell de la vendue une fois la vente close** : codé (handler-watch, `decisionRetraitVendueClose`),
-  interrupteur `RETIRER_VENDUES_CLOSES` COUPÉ.
+  interrupteur `RETIRER_VENDUES_CLOSES` COUPÉ, puis ALLUMÉ le 08/11 (feu vert nommé, § Suite du 08/11).
   - Gardes : transaction « sold » lue depuis 24 h au plus, jamais « pending », annonce de la remise seulement, un
     retrait par annonce, 20 par passage.
   - Simulation en lecture sur tout le parc (07/11 à 22:56) : seules les remises de Louis attendent, et la règle

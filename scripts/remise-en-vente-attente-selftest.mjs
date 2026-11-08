@@ -144,7 +144,7 @@ console.log("6. (07/11 nuit, Nico) Une fois la vente close, FillSell retire l'an
     && !dec({ remise: rem({ platform: "vinted" }), ligne: lig() }).armer && !dec({ remise: rem({ platform_fields: {} }), ligne: lig() }).armer);
   ok("aucune ligne relevée : rien", !dec({ remise: rem(), ligne: null }).armer);
   const HW2 = readFileSync(join(ROOT, "supabase/functions/handler-watch/index.ts"), "utf8").replace(/\r\n/g, "\n");
-  ok("handler-watch : interrupteur RETIRER_VENDUES_CLOSES COUPÉ (feu vert nommé de Nico)", /const RETIRER_VENDUES_CLOSES = false;/.test(HW2));
+  ok("handler-watch : interrupteur RETIRER_VENDUES_CLOSES ALLUMÉ (feu vert nommé de Nico du 08/11)", /const RETIRER_VENDUES_CLOSES = true;/.test(HW2));
   const blocV = HW2.slice(HW2.indexOf("let vendusRetires = 0;"), HW2.indexOf("let vendusRetires = 0;") + 5000);
   ok("handler-watch : décide par decisionRetraitVendueClose, arme UNE tâche « delete » par numéro et lien, 20 au plus, un passage par quart d'heure",
     /if \(RETIRER_VENDUES_CLOSES && /.test(blocV) && /decisionRetraitVendueClose\(\{ remise: r, ligne, retraitOuvert/.test(blocV)

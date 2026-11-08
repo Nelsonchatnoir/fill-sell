@@ -1173,14 +1173,16 @@ function etatJob(j, ctx = {}) {
     if (ctx.plateformesEnPause?.has?.(j.platform)) return { etat: ETATS.EN_PAUSE, motif: "plateforme" };
     // (07/11 nuit, Louis — point 2 de Nico) Une REMISE EN VENTE Leboncoin retenue parce que son annonce vendue est
     // encore affichée (get-pending-jobs, _shared/remise-en-vente-attente.js, marqueur attente_annonce_vendue) : jamais
-    // en silence. En pause, la raison nommée ; au-delà de la borne, « À toi de jouer » : supprimer l'annonce vendue sur
-    // Leboncoin (elle partira seule ensuite). Avant : « En file » ou « nouvel essai automatique », 9 remises de Louis.
+    // en silence. En pause, la raison nommée ; au-delà de la borne, et SEULEMENT quand la vente est close (« sold »),
+    // « À toi de jouer » : supprimer l'annonce vendue sur Leboncoin (elle partira seule ensuite). ⛔ (08/11, Nico) JAMAIS
+    // pendant un achat en cours : ce qu'une suppression fait à une vente pas finie (paiement, acheteur) n'est pas vérifié —
+    // l'app dit seulement la vérité. Avant : « En file » ou « nouvel essai automatique », 9 remises de Louis.
     const av = objet(pf[CLE_ATTENTE_VENDUE_EJ]);
     if (j.platform === "leboncoin" && j.action === "publish" && ETATS_ATTENTE_VENDUE_EJ.has(String(av.etat ?? ""))) {
       const detail = { annonce: av.annonce_vendue ? String(av.annonce_vendue) : null, etat: String(av.etat) };
       const depuis = Date.parse(String(av.depuis ?? ""));
       const maintenantAv = ctx.maintenant ?? Date.now();
-      if (Number.isFinite(depuis) && maintenantAv - depuis >= BORNE_ATTENTE_VENDUE_MS_EJ && av.etat !== "a_relire") {
+      if (Number.isFinite(depuis) && maintenantAv - depuis >= BORNE_ATTENTE_VENDUE_MS_EJ && av.etat === "vendue_affichee") {
         return { etat: ETATS.A_TOI, motif: "remise_vendue_a_retirer", detail };
       }
       return { etat: ETATS.EN_PAUSE, motif: `remise_${av.etat}`, detail };

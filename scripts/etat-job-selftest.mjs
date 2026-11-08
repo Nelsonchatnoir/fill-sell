@@ -76,7 +76,8 @@ const cas = [
   [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "vendue_affichee", annonce_vendue: "3298491503", depuis: iso(-60) } } }), "en_pause", "remise_vendue_affichee", "remise : vendue affichée « Article vendu »"],
   [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "a_relire", annonce_vendue: "1", depuis: iso(-60 * 24 * 9) } } }), "en_pause", "remise_a_relire", "remise : vendue à relire (jamais « à toi » : FillSell relit)"],
   [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "vendue_affichee", annonce_vendue: "3298491503", depuis: iso(-60 * 49) } } }), "a_toi", "remise_vendue_a_retirer", "remise retenue au-delà de la borne → à toi de jouer (supprimer la vendue)"],
-  [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "vente_en_cours", annonce_vendue: "3297400164", depuis: iso(-60 * 49) } } }), "a_toi", "remise_vendue_a_retirer", "achat en cours au-delà de la borne → à toi de jouer (une fois la vente terminée)"],
+  // ⛔ (08/11, Nico) JAMAIS « supprime-la » pendant un achat en cours, même au-delà de la borne : la vérité seule.
+  [job({ platform: "leboncoin", platform_fields: { attente_annonce_vendue: { etat: "vente_en_cours", annonce_vendue: "3297400164", depuis: iso(-60 * 24 * 30) } } }), "en_pause", "remise_vente_en_cours", "achat en cours, même 30 jours après → en pause (jamais « à toi de jouer »)"],
   [job({ platform: "vinted", platform_fields: { attente_annonce_vendue: { etat: "vendue_affichee", depuis: iso(-60) } } }), "en_file", "tour", "la raison ne joue que sur Leboncoin"],
 ];
 for (const [j, etat, motif, titre] of cas) {
@@ -109,7 +110,16 @@ ok(E.jobFini(job({ status: "published" })) && !E.jobFini(job({})), "jobFini : fi
   ok(/3298491503/.test(s1.raison) && /Article vendu/.test(s1.raison) && /toute seule/.test(s1.raison) && E.sansEstimation(s1.raison) === s1.raison,
     "la file dit la raison vraie, le numéro de la vendue, sans estimation", s1.raison);
   const s2 = F.situationJob({ ...vendue, platform_fields: { attente_annonce_vendue: { ...vendue.platform_fields.attente_annonce_vendue, depuis: iso(-60 * 49) } } }, { ...ctx, lang: "fr" });
-  ok(s2.groupe === "a_toi" && /supprime-la sur Leboncoin/.test(s2.raison) && E.sansEstimation(s2.raison) === s2.raison, "après la borne : « À toi de jouer », le geste dit, sans durée", s2.raison);
+  ok(s2.groupe === "a_toi" && /Supprime-la sur Leboncoin/.test(s2.raison) && /vente est terminée/.test(s2.raison) && E.sansEstimation(s2.raison) === s2.raison, "après la borne : « À toi de jouer », le geste dit, sans durée", s2.raison);
+  // (08/11, Nico) Pendant un achat en cours : « achat en cours chez Leboncoin — l'article repartira quand la vente sera
+  // terminée », à toute ancienneté, en français comme en anglais — jamais « supprime », jamais « À toi de jouer ».
+  for (const age of [-60, -60 * 49, -60 * 24 * 30]) {
+    const enCours = { ...vendue, platform_fields: { attente_annonce_vendue: { etat: "vente_en_cours", annonce_vendue: "3297400164", depuis: iso(age) } } };
+    const fr = F.situationJob(enCours, { ...ctx, lang: "fr" }), en = F.situationJob(enCours, { ...ctx, lang: "en" });
+    ok(fr.groupe === "en_pause" && fr.raison === "En pause : achat en cours chez Leboncoin — l'article repartira quand la vente sera terminée"
+      && !/supprim|À toi/i.test(fr.raison) && en.groupe === "en_pause" && !/delete|your move/i.test(en.raison),
+      `achat en cours (${Math.round(-age / 60)} h) : la vérité seule, jamais « supprime-la »`, `${fr.groupe} « ${fr.raison} » / « ${en.raison} »`);
+  }
   ok(["remise_vente_en_cours", "remise_vendue_affichee", "remise_a_relire", "remise_vendue_a_retirer"].every((m) =>
     E.sansEstimation(F.situationJob({ ...vendue, platform_fields: { attente_annonce_vendue: { etat: m.replace("remise_", "").replace("vendue_a_retirer", "vendue_affichee"), annonce_vendue: "1", depuis: iso(m === "remise_vendue_a_retirer" ? -60 * 49 : -60) } } }, { ...ctx, lang: "en" }).raison).length > 20),
     "les quatre phrases existent aussi en anglais, sans estimation");

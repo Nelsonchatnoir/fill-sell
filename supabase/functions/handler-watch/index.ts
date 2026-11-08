@@ -191,7 +191,8 @@ const DEPOT_RETROUVE_RATTACHER_RPC = false;
 // encore affichée, puis la remise part (_shared/remise-en-vente-attente.js, decisionRetraitVendueClose). Jamais pendant
 // un achat en cours. Prouvée le 07/11 au soir sur les 4 annonces de Louis (feu vert nommé, une par une). COUPÉ pour tous
 // les comptes jusqu'au feu vert nommé de Nico. Allumer = true + redéployer handler-watch.
-const RETIRER_VENDUES_CLOSES = false;
+// ALLUMÉ le 08/11 pour tous les comptes (feu vert nommé de Nico, garde « jamais pendant un achat en cours »).
+const RETIRER_VENDUES_CLOSES = true;
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
