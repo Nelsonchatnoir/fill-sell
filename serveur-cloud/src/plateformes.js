@@ -339,7 +339,10 @@ const TROUVER_REFUS_COOKIES = `const racines = [document];
   for (let i = 0; i < racines.length && i < 60; i++) for (const el of racines[i].querySelectorAll('*')) if (el.shadowRoot && !racines.includes(el.shadowRoot)) racines.push(el.shadowRoot);
   const visible = (b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   const refus = racines.flatMap((r) => [...r.querySelectorAll('button, [role=button], a')]).find((b) => visible(b)
-    && (/axeptio_btn_dismiss/i.test(b.id || '') || /^(non merci|tout refuser|refuser( tout)?|je refuse|continuer sans accepter)$/i.test(String(b.innerText || b.textContent || '').trim())));`;
+    && (/axeptio_btn_dismiss|onetrust-reject-all-handler|didomi-notice-disagree-button/i.test(b.id || '') || /^(non merci|tout refuser|refuser( tout)?|je refuse|continuer sans accepter|cookies requis uniquement|uniquement les cookies (requis|nécessaires|necessaires)|refuser et fermer)$/i.test(String(b.innerText || b.textContent || '').trim())));`;
+// (08/11/2026 nuit, preuve jade60890) La fenêtre de confidentialité de Vinted (OneTrust) couvre tout l'écran de connexion
+// sur un poste neuf ; son refus s'appelle « Cookies requis uniquement » (#onetrust-reject-all-handler) : l'ancienne liste
+// ne le trouvait pas (« Refuser les cookies » de l'écran FillSell sans effet, journal : clique:false à 21:55:56).
 export const EXPRESSION_COOKIES = `(() => { ${TROUVER_REFUS_COOKIES} return { refus: Boolean(refus) }; })()`;
 export const EXPRESSION_REFUSER_COOKIES = `(() => { ${TROUVER_REFUS_COOKIES} if (!refus) return { clique: false }; refus.click(); return { clique: true }; })()`;
 

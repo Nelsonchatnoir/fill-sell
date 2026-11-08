@@ -76,6 +76,10 @@ const pageConnexion = (await pages()).find((p) => p.url.includes(HOTES[plateform
 sortie.page = pageConnexion ? await lirePage(pageConnexion, `/tmp/sso-${plateforme}-page.jpg`) : null;
 
 if (motif && pageConnexion) {
+  // Comme la personne : le bandeau de cookies de la plateforme se refuse d'abord (bouton de l'écran FillSell → { t:'cookies' }).
+  ws.send(JSON.stringify({ t: 'cookies' }));
+  await attendre(2500);
+  sortie.pagesAvant = (await pages()).map((p) => p.url.replace(/\?.*$/, '').slice(0, 120));
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: pageConnexion.targetId, flatten: true });
   const r = await cdp.send('Runtime.evaluate', {
     returnByValue: true,
