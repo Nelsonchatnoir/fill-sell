@@ -315,9 +315,42 @@ export async function demanderSyncDressingServeur() {
     // Distinct d'une vraie panne — l'appelant sait retomber sur l'ancien
     // comportement au lieu d'afficher une erreur à l'utilisateur.
     const absente = error.code === 'PGRST202' || /function .*demander_sync_dressing/i.test(error.message ?? '');
+    if (!absente) {
+      // (08/11, ayadi007) Le déclencheur garde_cadence_sync_runs refuse l'INSERT par une EXCEPTION « SYNC_CADENCE »
+      // que demander_sync_dressing ne rattrape pas : c'est un refus de cadence, jamais une panne d'envoi. Il se dit
+      // comme la cadence, avec l'heure où la synchro repart.
+      const cadence = refusCadenceDepuisErreur(error.message);
+      if (cadence) return cadence;
+    }
     return { ok: false, reason: absente ? 'rpc_absente' : 'erreur', message: error.message };
   }
   return data ?? { ok: false, reason: 'erreur' };
+}
+
+// « SYNC_CADENCE: dressing synchronisé il y a moins de 15 min (dernier run done: 2026-11-08 09:53:23.434+00) » →
+// { ok: false, reason: 'cadence', lu_le } (la DERNIÈRE LECTURE de Vinted, un fait passé) ; tout autre texte → null.
+// Fonction PURE (selftest:sync-refus-cadence).
+export function refusCadenceDepuisErreur(message) {
+  const m = /SYNC_CADENCE\b[^(]*(?:\(dernier run done:\s*([^)]+)\))?/i.exec(String(message ?? ''));
+  if (!m) return null;
+  // « 2026-11-08 09:53:23.434+00 » (texte Postgres) → ISO lisible par Date.parse.
+  const iso = String(m[1] ?? '').trim().replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
+  const lu = Date.parse(iso);
+  return { ok: false, reason: 'cadence', lu_le: Number.isFinite(lu) ? new Date(lu).toISOString() : null };
+}
+
+// Le POURQUOI d'un refus de cadence, pour l'écran : « il y a 8 min » — un fait daté AU PASSÉ, jamais une heure prévue
+// (règle de Nico du 16/10, selftest:aucune-estimation). Lit `lu_le` (refus rattrapé ci-dessus) ou, depuis
+// demander_sync_dressing, `prochaine_dans_min` (le reste des 15 min : lu il y a 15 − n). Rien de lisible → null.
+// Fonction PURE (selftest:sync-refus-cadence).
+export function texteLectureRecente(r, lang = 'fr', maintenant = Date.now()) {
+  const fr = lang !== 'en';
+  let lu = Date.parse(r?.lu_le ?? '');
+  const reste = Number(r?.prochaine_dans_min);
+  if (!Number.isFinite(lu) && Number.isFinite(reste) && reste > 0) lu = maintenant - (SYNC_CADENCE_MANUELLE_MS - reste * 60_000);
+  if (!Number.isFinite(lu)) return null;
+  const ilYa = Math.max(1, Math.round((maintenant - lu) / 60_000));
+  return fr ? `il y a ${ilYa} min` : `${ilYa} min ago`;
 }
 
 // ── Détail d'un article Vinted à l'unité (2026-08-03 soir) ──────────────────

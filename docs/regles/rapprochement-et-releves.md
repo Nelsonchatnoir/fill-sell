@@ -512,3 +512,21 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   (390 des comptes de l'incident du 05/11) : toutes « attendre », jugées sur le numéro EN LIGNE.
 - `JUGER_ANNONCES_PUBLIEES_DISPARUES = true` (handler-watch). Couper = false + redéployer handler-watch.
 - Tri photo par photo des couples « à vérifier » (lecture seule) : `docs/enquetes/rattachements-0511/TRI-PHOTOS-79.md`.
+
+## ⛔ 08/11 (ayadi007) — jamais d'import sur un relevé ancien ; « Réinitialiser » clôt ses lignes ; un compte changé ne fait pas N « Vendue ? » (rapport `docs/enquetes/ayadi-0811/RAPPORT.md`)
+- Une annonce SANS fiche que le DERNIER relevé terminé (« done ») de sa plateforme n'a pas revue (`perimee` :
+  `rapprochement_v3_lire`, run_id ≠ le sien et `vu_le` < son début − 10 min) n'entre jamais au stock et ne se rattache
+  pas (`moteur.js`, `construireNoeuds`) — la règle eBay du 26/10, pour toutes les plateformes. Une annonce rattachée
+  reste lue comme avant. Cas : 116 annonces Leboncoin d'un compte bloqué réimportées deux fois après « Réinitialiser ».
+- « Réinitialiser mon inventaire » (`supprimer_mon_stock_sans_retrait`) clôt AVANT d'effacer les lignes de ses fiches
+  (publiées, publications en file, republications pas encore engagées) ; jamais un retrait, une tâche « processing », une
+  republication « deleted »/« recreated », une ligne vendue ; toujours aucun retrait. Une annonce n'a qu'UNE ligne
+  vivante : une ligne rattachée publiée ou vendue clôt ses doubles SANS fiche au numéro exact
+  (`lignes_sans_fiche_clore`, déclencheurs `cross_post_jobs_une_ligne_par_annonce(_maj)`).
+- Un relevé probant qui ne revoit rien de ce qui était connu (≥ 5 annonces absentes, aucune annonce vue par les deux
+  relevés connue avant leur dernière vue) ne date rien et ne pose aucun « Vendue ? » : motif `compte_change_ou_vide`,
+  trace `usage_logs.releve_compte_change` (compte Leboncoin changé ou bloqué, tout republié d'un coup).
+- FillSell ne connaît qu'UN compte Leboncoin à la fois (la session du Chrome de l'extension) et n'en garde pas le numéro ;
+  ne jamais l'écrire dans `vinted_sync_runs.vinted_user_id` (lu comme compte Vinted par `cloud_essai_preparer_moi`).
+- Migrations `20261108141000`, `20261108143000`, `20261108144000` (+ `rapprochement` à redéployer pour `moteur.js`) :
+  PRÉPARÉES, NON APPLIQUÉES au 08/11 (feu vert). Preuve : `scripts/preuve-ayadi-0811.mjs` (54/54).

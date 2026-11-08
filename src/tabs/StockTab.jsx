@@ -253,7 +253,7 @@ import {
   lireDernierRunDressing, lireDerniereSyncReussie,
   confirmerBoutiqueVinted, lireBoutiqueConnectee,
   DETAIL_VERSION_MIN,
-  republishVisiblePour, relancerRepublishVinted,
+  republishVisiblePour, relancerRepublishVinted, texteLectureRecente,
 } from '../utils/vintedSync';
 import { decisionDemarrage, decisionQuestionBoutique, attentesDeConnexion, jobAttendConnexion, texteConnecteToi } from '../annonces/synchroniser.js';
 import { lirePrixAnnoncesVinted } from '../utils/prixAnnoncesVinted.js';
@@ -3864,6 +3864,7 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       track('vinted_sync_dressing', { source, reprise: dejaSync, voie: 'file' });
       return;
     }
+    if (r?.reason === 'cadence') supabase.rpc('synchro_relancer_rangement').then(() => {}, () => {});   // (08/11) jamais un cul-de-sac
     setMessage({ ton: r?.reason === 'deja_en_attente' ? 'vert' : 'orange', texte: texteRefusFile(r) });
   };
 
@@ -3892,15 +3893,21 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       return;
     }
     if (r?.reason === 'sync_en_cours') { setSuivi(true); return; }
+    // (08/11, ayadi007) Un refus de cadence n'est jamais un cul-de-sac : comme la ceinture de `lancer`, l'appui relance
+    // le rangement de ce qui a été lu (rien n'est relu sur Vinted).
+    if (r?.reason === 'cadence') supabase.rpc('synchro_relancer_rangement').then(() => {}, () => {});
     setMessage({ ton: 'orange', texte: texteRefusFile(r) });
   };
 
   function texteRefusFile(r) {
     return (() => {
       if (r?.reason === 'cadence') {
+        // (08/11, ayadi007) Le refus dit POURQUOI, par un fait daté au passé (« lues il y a 8 min ») — jamais une heure
+        // prévue (règle de Nico du 16/10). L'appui relance le rangement de ce qui a été lu (synchro_relancer_rangement).
+        const ilYa = texteLectureRecente(r, lang);
         return fr
-          ? 'Tes annonces Vinted viennent d\'être synchronisées — tu pourras resynchroniser un peu plus tard.'
-          : 'Your Vinted listings were just synced — you can sync again a little later.';
+          ? `Tes annonces Vinted ont été lues${ilYa ? ` ${ilYa}` : ' à l\'instant'} : ton stock est rangé à partir de cette lecture. Tu pourras resynchroniser un peu plus tard.`
+          : `Your Vinted listings were read${ilYa ? ` ${ilYa}` : ' just now'}: your stock is being sorted from that read. You can sync again a little later.`;
       }
       if (r?.reason === 'deja_en_attente') {
         return fr

@@ -74,6 +74,12 @@ export function construireNoeuds(donnees, photosDe, { maxPhotos = 6, paresseux =
     if (!PLATEFORMES_RELEVE.includes(a.platform)) continue;
     if (a.ignoree_par_utilisateur) continue;           // (5) définitif
     if (a.hors_liste || a.ebay_bloque) continue;        // jamais rien sur un relevé non probant
+    // (08/11, ayadi007) Une annonce SANS fiche que le DERNIER relevé terminé de sa plateforme n'a pas revue
+    // (rapprochement_v3_lire : `perimee`) n'entre jamais au stock ni ne se rattache : « jamais d'import sur un relevé
+    // ancien » (26/10), pour toutes les plateformes. Cas fondateur : après « Réinitialiser », 116 annonces Leboncoin vues
+    // le 07/11 à 20:59 réimportées à 11:04 et 11:28 alors que les relevés du jour lisaient 0 annonce (compte bloqué ou
+    // changé). Une annonce déjà rattachée reste lue comme avant (preuves du graphe).
+    if (a.perimee === true && !a.inventaire_id) continue;
     // (v23) dn : la clé de la description (rapprochement_v3_lire : desc_h, rendue
     // seulement pour 20 caractères et plus) ; lot : « lot / plusieurs / au choix » ;
     // nRef : les photos que l'annonce porte (une photo sans empreinte se voit).
