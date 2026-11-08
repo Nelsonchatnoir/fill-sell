@@ -41,6 +41,8 @@
 // Options : --sans-ios · --sans-android · --cle-apns=<chemin du .p8>
 //   --cles-seules : étapes B, C, D seulement (fichiers, secrets, preuve chez Apple et Google) — ni dépôt, ni binaire :
 //   les clés se posent sur un arbre partagé et sale quand les binaires sont déjà faits (06/11, 2.9.161).
+//   --aab-seul : étapes A, B (lecture des fichiers), E seulement — ni secrets réécrits en prod, ni preuve chez Apple et
+//   Google, ni iOS : un AAB refait sans toucher à rien d'autre (08/11 soir, vc37 refaite avec l'updater 8.51.2).
 // Les fichiers de Téléchargements ne sont ni déplacés ni effacés.
 // ════════════════════════════════════════════════════════════════════════════
 import { spawnSync } from 'node:child_process';
@@ -73,6 +75,8 @@ const opt = (nom) => ARGS.find((a) => a.startsWith(`--${nom}=`))?.split('=').sli
 const sansIos = ARGS.includes('--sans-ios');
 const sansAndroid = ARGS.includes('--sans-android');
 const clesSeules = ARGS.includes('--cles-seules');
+const aabSeul = ARGS.includes('--aab-seul');
+if (aabSeul && (clesSeules || sansAndroid)) { console.log('--aab-seul ne se combine ni avec --cles-seules ni avec --sans-android.'); process.exit(1); }
 
 const bilan = [];
 const ok = (t) => { bilan.push(`✓ ${t}`); console.log(`  ✓ ${t}`); };
@@ -184,8 +188,9 @@ try {
 ok(`${path.basename(fP8)} : clé Apple P-256 lisible, Key ID ${keyId}, équipe ${EQUIPE_APPLE}`);
 
 // ── C. Les secrets ──────────────────────────────────────────────────────────
+if (aabSeul) console.log('\n(--aab-seul) C et D sautées : secrets de prod NON réécrits, aucune preuve chez Apple et Google.');
+if (!aabSeul) {
 etape('C. Les secrets Supabase');
-{
   const dossier = mkdtempSync(path.join(tmpdir(), 'binaires-secrets-'));
   const f = path.join(dossier, 'push.env');
   // Valeurs entre apostrophes : lues telles quelles (aucun échappement). Les
@@ -207,8 +212,8 @@ etape('C. Les secrets Supabase');
 }
 
 // ── D. La preuve chez Apple et chez Google ──────────────────────────────────
+if (!aabSeul) {
 etape('D. Les clés éprouvées chez Apple et chez Google (jeton factice, rien n\'est envoyé)');
-{
   let diag = null;
   for (let essai = 1; essai <= 4 && !diag?.apns?.cle_acceptee; essai++) {
     await dormir(essai === 1 ? 6000 : 10000); // le temps que les fonctions relisent les secrets
@@ -338,8 +343,8 @@ if (!sansAndroid) {
 }
 
 // ── F. iOS ──────────────────────────────────────────────────────────────────
-let ios = 'non lancé (--sans-ios)';
-if (!sansIos) {
+let ios = aabSeul ? 'non lancé (--aab-seul)' : 'non lancé (--sans-ios)';
+if (!sansIos && !aabSeul) {
   etape(`F. iOS ${VERSION} (Codemagic → TestFlight)`);
   const fJeton = path.join(TELECHARGEMENTS, 'codemagic-token.txt');
   const jeton = process.env.CODEMAGIC_API_TOKEN || (existsSync(fJeton) ? readFileSync(fJeton, 'utf8').trim() : '');
@@ -387,7 +392,7 @@ if (!sansIos) {
 // ── Bilan ───────────────────────────────────────────────────────────────────
 console.log('\n════════ BILAN ════════');
 console.log(`Commit                : ${court} (main, poussé)`);
-console.log('Clés                  : posées en secrets ET acceptées par Apple et Google');
+console.log(aabSeul ? 'Clés                  : lues seulement (--aab-seul), secrets de prod inchangés' : 'Clés                  : posées en secrets ET acceptées par Apple et Google');
 if (aabFinal) console.log(`Android à téléverser  : ${aabFinal}\n                        (Play Console › Production › Créer une release)`);
 if (apkFinal) console.log(`APK d'essai           : ${apkFinal}`);
 console.log(`iOS                   : ${ios}`);

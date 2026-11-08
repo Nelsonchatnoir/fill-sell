@@ -4,6 +4,25 @@ Rédigé le 08/11 vers 20:15 (heure de Paris), à la demande de Nico, pour une s
 terminé** (dernière mise à jour : 08/11 20:4x, migration 20261108200000 appliquée). Tout ce qui suit a été relu
 en prod au moment d'écrire, sauf mention contraire.
 
+## 0. Décisions de Nico du 08/11 soir (2e session) — avancement, point par point
+1. **OTA / écart Capgo — RÉGLÉ** : @capgo/capacitor-updater **revenu en 8.51.2** (retour de 7c82602). Preuves : le JS
+   du module est identique entre 8.51.2 et 8.53.1 (seuls les noms de variables des `catch` diffèrent ; le natif seul
+   change) ; les 3 280 appareils lus chez Capgo (API `/device`, curseur) sont TOUS en 8.51.2 (aucun 8.52.1/8.53.1 :
+   la vc37 en 8.53.1 n'a jamais été installée) ; `bundle compatibility --channel production` : 9/9 modules compatibles.
+   La 8.53.1 n'apportait que des statistiques plus justes (faux « download_fail ») : rien d'indispensable, et l'iPhone
+   (pas de binaire neuf) restait de toute façon en 8.51.2. Garde : **`npm run ota`** (`scripts/ota/publier-ota.mjs`,
+   règles `scripts/ota/regles-ota.mjs`, `selftest:ota-garde` 30/30) refuse tout module natif différent du canal, une
+   version ≤ canal ou ≤ binaire (2.9.167 refusée), un arbre sale/non poussé/worktree ; envoie `--delta
+   --fail-on-incompatible`, CLI épinglé 8.101.1. `npm run binaires -- --aab-seul` : AAB refait sans réécrire les
+   secrets de prod. ⚠️ `npm install` RETIRE les paquets posés en `--no-save` (embedded-postgres, pg : bancs jetables) →
+   `npm i --no-save embedded-postgres@17.10.0-beta.17 pg@8.16.3` (selftest:ordre-photos rouge sinon).
+3. **Landing + modales (toile https://claude.ai/artifact/W3TVVFa8FtcwKpuPvyq9Nu) — FAIT, version 6** : vrais logos
+   (icônes des apps = celles des mails, `public/email/logo-*.png` ; App Store = pomme du badge officiel ; Google Play =
+   triangle du badge officiel `site/medias/badges`) devant chaque plateforme ou store cité : liste du Cloud, pastilles
+   iPhone/Android, ligne eBay, option Cloud, liste commune des tarifs, exemples des fiches (landing et app). Logo et nom
+   insécables. Défauts vus et corrigés : chiffre « 1 500 / 1 200 / illimitées » sous l'icône ⓘ (tuiles), libellé
+   « publications » collé au bord (tuiles de la landing). Vérifié : bureau 1536, téléphone 375, artboard App 390.
+
 ## 1. L'état en service
 
 | Quoi | État |

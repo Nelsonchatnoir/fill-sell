@@ -30,19 +30,27 @@ Claude sont dans `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\m
   `prj_b4IGAvYAsSOILXCHAwSK9jdKhO4h`, équipe `team_6VMFSj9PjuWgI8flaRhUjcrV`) vers
   le déploiement précédent, puis le correctif (`import { x as y }`). Garde :
   `selftest:imports-jamais-masques` (tout `src/`).
-- **OTA Capgo, pas à pas** (déplacé d'`AGENTS.md` § 3.1 le 04/10, taille) :
+- **OTA Capgo, pas à pas** (déplacé d'`AGENTS.md` § 3.1 le 04/10, taille ; **`npm run ota` depuis le 08/11**) :
   1. lire le canal : `npx @capgo/cli channel list` (numéro servi sur `production`) ;
   2. monter `"version"` dans `package.json` ET `package-lock.json` au-dessus
-     du canal (numéro de bundle = cette version) ;
-  3. **commiter** : `npm run build` REFUSE un arbre sale (01/10) ;
-  4. `npm run build` ;
-  5. `npx @capgo/cli bundle upload --channel production --bundle <version> --path dist --delta` —
+     du canal ET du dernier binaire (Android `versionName`, iOS `codemagic.yaml`) ;
+  3. **commiter et pousser** : `npm run build` REFUSE un arbre sale (01/10) ;
+  4. `npm run ota -- --essai` (tous les contrôles + build, aucun envoi), puis `npm run ota` : refuse un arbre sale, non
+     poussé, un worktree, une version ≤ canal ou ≤ binaire, **un module natif différent du bundle en service** (Capgo
+     `bundle compatibility`, CLI épinglé), un build qui ne porte pas le commit exact ; envoie en
+     `--delta --fail-on-incompatible` ; relit le canal. Règles : `scripts/ota/regles-ota.mjs`, `selftest:ota-garde`.
      ⛔ (06/11/2026, décision de Nico) **TOUJOURS `--delta`** : le téléphone ne télécharge que les fichiers changés
      (bundle de 16 Mo en zip complet = mise à jour du premier lancement trop lente, abandonnée au-delà du splash) ;
      2.9.162 = première OTA en delta (161 fichiers, envoi 15:53) ;
-  6. relire le canal. Un numéro consommé ne se réutilise jamais (même si
+  5. Un numéro consommé ne se réutilise jamais (même si
      l'envoi s'est figé) ; **ne jamais rebuilder un `dist/` déjà empreint**
      pour le renvoyer : nouveau numéro, nouveau commit, nouveau build.
+- ⛔ **Module natif (plugin Capacitor) = jamais monté pour un seul binaire** (08/11 soir) : l'OTA se construit depuis le
+  MÊME `package.json`. @capgo/capacitor-updater monté 8.51.2 → 8.53.1 pour l'AAB vc37 (7c82602) = Capgo « incompatible »
+  et plus aucune OTA possible ; or les 3 280 appareils lus chez Capgo (API `/device`, `plugin_version`) étaient TOUS en
+  8.51.2 (iPhone 2.8.0/2.9.164, Android 2.9.10…), et le JS du module est identique entre les deux versions (seul le
+  natif change). Remède : retour en 8.51.2 partout, AAB vc37 refait. Monter un module natif = décision de Nico, avec
+  un binaire neuf pour CHAQUE plateforme et un canal qui ne sert ce binaire qu'à lui.
   Binaires natifs (rares, sur décision) : iOS par Codemagic
   (`codemagic.yaml`), Android : AAB à la main (Gradle).
 - **OTA** : ordre bump version → **commit** → build → upload. Builder avant de
