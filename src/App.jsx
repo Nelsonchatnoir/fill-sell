@@ -15,11 +15,13 @@ import { track } from './analytics/analytics';
 // (16/10, bêta messages + bordereaux) Drapeau et compteurs (une lecture hors
 // bêta, puis plus rien) ; l'espace « Messages · À expédier » n'est chargé
 // qu'à l'ouverture, par un compte bêta.
-import { lazy as lazyMessagerie, Suspense as SuspenseMessagerie } from "react";
+import { Suspense as SuspenseMessagerie } from "react";
+// (08/11, point 7 — doriane-henri) Import paresseux sûr pendant un changement de version (utils/lazySur.js).
+import { lazySur } from "./utils/lazySur";
 import { useMessagerieBeta } from './messagerie/useMessagerieBeta';
 import { useEcranMessagerie } from './messagerie/useEcranMessagerie';
 import BarreMessagerie from './messagerie/BarreMessagerie';
-const EspaceMessagerie = lazyMessagerie(() => import('./messagerie/EspaceMessagerie'));
+const EspaceMessagerie = lazySur(() => import('./messagerie/EspaceMessagerie'));
 import { poserSourceSurProfil } from './utils/acquisition';
 // ⚠️ PAS track() : celui-ci n'écrit que dans le dataLayer GTM. Les gestes
 // irréversibles (retrait, suppression) vont en BASE — cf. journalRetraits.js.

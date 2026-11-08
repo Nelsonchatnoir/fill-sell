@@ -45,6 +45,52 @@ import { jobAnnulable, bilanAnnulation, questionAnnulation, annulerJobs } from "
 // (02/11 soir, Nico) Compte Cloud : les mots du Cloud ; et, ouverte seule (écran de suivi), la publication programmée.
 import { useCompteCloud } from "../cloud/useCompteCloud";
 import { usePublicationProgrammee } from "../utils/usePublicationProgrammee";
+// (08/11, point 1 f de Nico) L'avancement de la file de republication, par plateforme (le serveur le calcule).
+import { phraseAvancement } from "../../supabase/functions/_shared/avancement-republication.js";
+
+const NOMS_PF = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", depop: "Depop", ebay: "eBay", opla: "Opla" };
+
+// (08/11, point 1 f) « La file avance » : par plateforme, combien sont passées depuis le début du lot, combien
+// restent, le rythme constaté et la fin estimée en temps de poste allumé. Rien d'affiché sans republication en file.
+function AvancementRepublication({ avancement, lang, cloud }) {
+  const fr = lang !== "en";
+  const pfs = Object.entries(avancement?.plateformes ?? {}).filter(([, a]) => (a?.restantes ?? 0) + (a?.a_toi ?? 0) > 0);
+  if (!pfs.length) return null;
+  return (
+    <div role="status" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 12, background: T.paper, border: `1px solid ${T.lineSoft}` }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: T.ink }}>
+        {fr ? "Tes republications avancent" : "Your reposts are moving"}
+        {avancement?.total ? <span style={{ fontWeight: 500, color: T.mute }}>{fr
+          ? ` · ${avancement.total.faites} faite${avancement.total.faites > 1 ? "s" : ""}, ${avancement.total.restantes} restante${avancement.total.restantes > 1 ? "s" : ""}`
+          : ` · ${avancement.total.faites} done, ${avancement.total.restantes} to go`}</span> : null}
+      </div>
+      {pfs.map(([pf, a]) => {
+        const p = phraseAvancement(a, { lang, cloud });
+        const total = (a.faites ?? 0) + (a.restantes ?? 0);
+        const part = total > 0 ? Math.round(((a.faites ?? 0) / total) * 100) : 0;
+        return (
+          <div key={pf} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <PlatformLogo platform={pf} size={18} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, lineHeight: 1.45, color: T.ink }}>
+                <strong>{NOMS_PF[pf] ?? pf}</strong> · {p?.texte}
+              </div>
+              <div aria-hidden="true" style={{ height: 4, borderRadius: 999, background: T.lineSoft, marginTop: 4, overflow: "hidden" }}>
+                <div style={{ width: `${part}%`, height: "100%", background: T.tealDeep }} />
+              </div>
+              {p?.fin && <div style={{ fontSize: 11.5, lineHeight: 1.45, color: T.mute, marginTop: 3 }}>{p.fin}</div>}
+            </div>
+          </div>
+        );
+      })}
+      <div style={{ fontSize: 11, lineHeight: 1.45, color: T.faint }}>
+        {fr
+          ? "Chaque plateforme avance à son rythme, sans attendre les autres. Mettre en pause puis reprendre n'accélère rien : la file repart au même rythme."
+          : "Each platform moves at its own pace, without waiting for the others. Pausing then resuming doesn't speed anything up."}
+      </div>
+    </div>
+  );
+}
 
 const T = {
   ink: "#10201B", mute: "#5C6560", faint: "#8A8578",
@@ -119,7 +165,7 @@ function useRetenuesRepublication({ supabase, actif }) {
     const lire = async () => {
       try {
         const { data, error } = await supabase.functions.invoke("get-pending-jobs", { body: { plafond_only: true } });
-        if (vivant && !error) setEtat({ plafond: data?.plafond_republish ?? null, creneaux: data?.creneaux_republish ?? null });
+        if (vivant && !error) setEtat({ plafond: data?.plafond_republish ?? null, creneaux: data?.creneaux_republish ?? null, avancement: data?.avancement_republication ?? null });
       } catch { /* inconnu : rien d'affiché */ }
     };
     lire();
@@ -388,6 +434,7 @@ export default function FileDesJobs({
           )}
         </div>
       </div>
+      <AvancementRepublication avancement={retenues?.avancement ?? null} lang={lang} cloud={ctx.cloud === true} />
       {retourAnnulation && (
         <div role="status" style={{ fontSize: 12, lineHeight: 1.5, padding: "0 4px", color: retourAnnulation.erreur ? T.redInk : T.tealDeep, fontWeight: 600 }}>
           {retourAnnulation.erreur ?? (fr

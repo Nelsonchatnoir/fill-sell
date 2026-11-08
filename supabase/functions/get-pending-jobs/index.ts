@@ -1,5 +1,8 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
+import { pauseParPlateforme, pauseDEnsemble } from "../_shared/pause-respiration.js";
+import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, MSG_LBC_IDENTITE_RETENUE, dernierMurIdentite, candidatRetenueIdentite, partagerCandidatsIdentite, champsRetenueIdentite } from "../_shared/lbc-identite.js";
+import { avancementRepublication } from "../_shared/avancement-republication.js";
 import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente, relevesCibleAbsente, messageCibleAbsenteConfirmee, RELEVES_POUR_CLORE_CIBLE_ABSENTE } from "../_shared/republication-cible.js";
 import { retraitDeLaRepublication, clotureRepublicationParRetrait, STATUTS_RETRAIT_VIVANT } from "../_shared/republication-retrait.js";
 // (07/11, famille 5) Un dépôt jamais vu en ligne dont l'article est vendu (ou la fiche supprimée) n'est pas un échec.
@@ -837,7 +840,10 @@ serve(async (req) => {
       return retenusLbcLus;
     };
 
-    const etatRetenueRepublish = async () => {
+    // (08/11, point 1 de Nico) `plateformesEnFile` : les plateformes qui ont une republication qui attend — la
+    // forme d'ensemble (applis installées) ne dit « en pause » que si TOUTES sont en pause. La retenue réelle se
+    // lit dans `par_plateforme` (_shared/pause-respiration.js).
+    const etatRetenueRepublish = async (plateformesEnFile: string[] = []) => {
       // Une seule lecture pour les deux réglages de la pause.
       const cfg = new Map<string, number>();
       const { data: cfgRows } = await configPlusieurs(userClient, [
@@ -867,22 +873,19 @@ serve(async (req) => {
       // sous-comptée → pas de pause : on ne retient jamais sur une lecture
       // incomplète.
       const depuis = new Date(Date.now() - 96 * 3600_000).toISOString();
+      // (08/11, point 1) La plateforme est lue avec l'heure : la séquence se compte plateforme par plateforme.
       const { data: faitsRows } = await userClient
         .from("cross_post_jobs")
-        .select("published_at")
+        .select("published_at, platform")
         .eq("action", "republish")
         .eq("status", "published")
         .gte("published_at", depuis)
         .order("published_at", { ascending: false })
         .limit(1000);
-      // Du plus RÉCENT au plus ancien : l'ordre dont la séquence a besoin.
-      // Re-trié ici et pas seulement côté PostgREST — la marche arrière du
-      // calcul ne doit dépendre d'aucun ordre supposé.
-      const horodatages = (faitsRows ?? [])
-        .map((r: { published_at: string | null }) => Date.parse(r.published_at ?? ""))
-        .filter((t: number) => Number.isFinite(t))
-        .sort((a: number, b: number) => b - a);
-      const faits = horodatages.filter((t) => jourParis(t) === aujourdhui).length;
+      const lignesFaites = (faitsRows ?? []) as Array<{ published_at: string | null; platform: string | null }>;
+      const faits = lignesFaites
+        .map((r) => Date.parse(r.published_at ?? ""))
+        .filter((t) => Number.isFinite(t) && jourParis(t) === aujourdhui).length;
 
       // ── SÉQUENCE ET PAUSE DE RESPIRATION ─────────────────────────────────
       // « 50 d'affilée » ne s'appuie sur AUCUN état stocké : la séquence est
@@ -896,31 +899,27 @@ serve(async (req) => {
       // figé, la retenue se lève exactement à dernier + durée, et la
       // republication suivante rouvre une séquence neuve (son écart au
       // dernier est >= à la durée). Aucun état à écrire, aucune dérive.
+      // (08/11, décision de Nico : « chaque plateforme a sa propre file et sa propre cadence ») La séquence se
+      // compte PLATEFORME PAR PLATEFORME (_shared/pause-respiration.js) : 50 Vinted d'affilée mettent Vinted seul en
+      // pause, Leboncoin et Beebs continuent. Pour une plateforme, rien ne change (mêmes 50, mêmes 2 h, même lecture).
       const pauseApres = positif("republish_pause_apres");
       const pauseDureeMs = (positif("republish_pause_duree_min") ?? 0) * 60_000;
-      let sequence = 0;
-      let finPause: number | null = null;
-      if (pauseApres !== null && pauseDureeMs > 0 && horodatages.length > 0) {
-        sequence = 1;
-        for (let i = 1; i < horodatages.length; i++) {
-          if (horodatages[i - 1] - horodatages[i] >= pauseDureeMs) break;
-          sequence++;
-        }
-        if (sequence >= pauseApres && Date.now() - horodatages[0] < pauseDureeMs) {
-          finPause = horodatages[0] + pauseDureeMs;
-        }
-      }
-      const retenuePause = finPause !== null;
+      const parPlateforme = pauseParPlateforme(lignesFaites, { pauseApres: pauseApres ?? 0, pauseDureeMs, maintenant: Date.now() }) as
+        Record<string, { sequence: number; retenue: boolean; reprise: string | null }>;
+      const ensemble = pauseDEnsemble(parPlateforme, plateformesEnFile) as { retenue: boolean; reprise: string | null; sequence: number };
       return {
         // (24/10) Plus de plafond par jour : `limite` et `palier` restent dans la
         // forme de la réponse pour les versions installées, toujours null.
-        limite: null as number | null, faits, palier: null as string | null, sequence,
+        limite: null as number | null, faits, palier: null as string | null, sequence: ensemble.sequence,
         pause_apres: pauseApres, pause_duree_min: pauseDureeMs > 0 ? pauseDureeMs / 60_000 : null,
-        retenue: retenuePause,
-        motif: retenuePause ? "pause" : null,
+        // Forme d'ensemble (applis installées) : vraie seulement si TOUTES les plateformes en file sont en pause.
+        retenue: ensemble.retenue,
+        motif: ensemble.retenue ? "pause" : null,
         jour: aujourdhui,
         // Instant où la pause se lève ; null hors pause (plus de « minuit »).
-        reprise: retenuePause ? new Date(finPause as number).toISOString() : null,
+        reprise: ensemble.reprise,
+        // (08/11) La vérité par plateforme : { vinted: { sequence, retenue, reprise }, … }.
+        par_plateforme: parPlateforme,
       };
     };
 
@@ -992,11 +991,51 @@ serve(async (req) => {
       // pour que la carte d'un job retenu annonce l'heure de SA plateforme.
       const creneaux = await lireCreneaux();
       const creneau = creneaux["vinted"] ?? null;
+      // (08/11, point 1 f de Nico) L'AVANCEMENT DE LA FILE DE REPUBLICATION, par plateforme : passées depuis le début
+      // du lot, restantes, rythme constaté, fin estimée (_shared/avancement-republication.js). Lectures bornées au
+      // compte (RLS) : la file par pages de 1000 (5 au plus), un comptage exact par plateforme, 200 publications
+      // récentes pour le rythme. Tolérant : une lecture ratée → null, l'app n'affiche rien de plus.
+      let avancement: Record<string, unknown> | null = null;
+      let pfEnFile: string[] = [];
+      let plafondLu: Awaited<ReturnType<typeof etatRetenueRepublish>> | null = null;
       try {
-        return json({ plafond_republish: await etatRetenueRepublish(), annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux });
+        const enFile: Array<{ platform: string; created_at: string; status: string }> = [];
+        for (let page = 0; page < 5; page++) {
+          const { data: lot, error: eL } = await userClient.from("cross_post_jobs").select("platform, created_at, status")
+            .eq("action", "republish").in("status", ["pending", "processing", "needs_user"])
+            .order("created_at", { ascending: true }).range(page * 1000, page * 1000 + 999);
+          if (eL) throw eL;
+          enFile.push(...((lot ?? []) as typeof enFile));
+          if ((lot ?? []).length < 1000) break;
+        }
+        if (enFile.length) {
+          const debutParPf = new Map<string, string>();
+          for (const j of enFile) if (!debutParPf.has(j.platform)) debutParPf.set(j.platform, j.created_at);
+          const faitesLotParPf: Record<string, number> = {};
+          await Promise.all([...debutParPf].map(async ([pf, debut]) => {
+            const { count } = await userClient.from("cross_post_jobs").select("id", { count: "exact", head: true })
+              .eq("action", "republish").eq("status", "published").eq("platform", pf)
+              .gte("created_at", new Date(Date.parse(debut) - 1000).toISOString());
+            if (Number.isFinite(count)) faitesLotParPf[pf] = Number(count);
+          }));
+          const { data: recentes } = await userClient.from("cross_post_jobs").select("platform, created_at, published_at")
+            .eq("action", "republish").eq("status", "published")
+            .gte("published_at", new Date(Date.now() - 24 * 3600_000).toISOString())
+            .order("published_at", { ascending: false }).limit(200);
+          // Les réglages de la pause : ceux qu'etatRetenueRepublish vient de lire (une seule lecture de coin_config).
+          pfEnFile = [...new Set(enFile.filter((j) => j.status !== "needs_user").map((j) => j.platform))];
+          plafondLu = await etatRetenueRepublish(pfEnFile);
+          avancement = avancementRepublication({
+            enFile, faites: recentes ?? [], faitesLotParPf, maintenant: Date.now(),
+            pauseApres: Number(plafondLu?.pause_apres ?? 0) || 0, pauseDureeMin: Number(plafondLu?.pause_duree_min ?? 0) || 0,
+          }) as Record<string, unknown> | null;
+        }
+      } catch (_e) { avancement = null; }
+      try {
+        return json({ plafond_republish: plafondLu ?? await etatRetenueRepublish(pfEnFile), annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux, avancement_republication: avancement });
       } catch (_e) {
         // L'app masque le bandeau sur null : jamais un bandeau sur une panne.
-        return json({ plafond_republish: null, annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux });
+        return json({ plafond_republish: null, annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux, avancement_republication: avancement });
       }
     }
 
@@ -6008,6 +6047,59 @@ serve(async (req) => {
       }
     }
 
+    // ══ (08/11, point 6 de Nico — Rosa Metra) LEBONCOIN ATTEND NOM ET PRÉNOM : SEUL L'ÉCLAIREUR PART ══════════
+    // Jumelle de la porte « forfait » ci-dessus (règle : _shared/lbc-identite.js). Tant que le compte a un mur
+    // d'identité VU par Leboncoin depuis moins de 30 j et qu'aucune publication Leboncoin n'est passée depuis, ses
+    // publications et ses republications pas encore retirées ne partent plus : elles rejoignent la carte du compte
+    // (needs_user « lbc_identite », retenue avant essai), aucune visite de Leboncoin. Seul l'éclaireur relancé APRÈS le
+    // dernier mur (« C'est fait » de la carte, ou handler-watch toutes les 12 h) est servi, un à la fois.
+    // Coût : rien sans tâche Leboncoin dans la réponse ; sinon une lecture bornée (index user_id+status).
+    // Best-effort : lecture ou écriture illisible → distribution d'avant.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const candidatsId = out.filter((j) => candidatRetenueIdentite(j as never));
+        if (candidatsId.length) {
+          const { data: mursId } = await userClient.from("cross_post_jobs")
+            .select("id, created_at, platform_fields->last_diagnostic")
+            .eq("user_id", user.id).eq("platform", "leboncoin").eq("status", "needs_user")
+            .eq("platform_fields->last_diagnostic->>quoi", MOTIF_LBC_IDENTITE)
+            .gte("created_at", new Date(Date.now() - FENETRE_IDENTITE_MS).toISOString())
+            .limit(200);
+          const murs = ((mursId ?? []) as Array<{ id: string; created_at: string; last_diagnostic: unknown }>)
+            .map((m) => ({ id: m.id, created_at: m.created_at, platform_fields: { last_diagnostic: m.last_diagnostic } }));
+          const dernierMur = dernierMurIdentite(murs as never[]) as number | null;
+          if (dernierMur) {
+            const { data: passeeId } = await userClient.from("cross_post_jobs").select("id")
+              .eq("user_id", user.id).eq("platform", "leboncoin").eq("status", "published")
+              .gt("published_at", new Date(dernierMur).toISOString()).limit(1);
+            if (!(passeeId ?? []).length) {
+              const { servis, retenus } = partagerCandidatsIdentite(candidatsId as never[], dernierMur) as
+                { servis: Array<Record<string, unknown>>; retenus: Array<Record<string, unknown>> };
+              const maintenantIso = new Date().toISOString();
+              const idsRetenus = new Set<string>();
+              for (const j of retenus.slice(0, 40)) {
+                const pf = champsRetenueIdentite(j.platform_fields as Record<string, unknown>, maintenantIso) as Record<string, unknown>;
+                if (j.error) pf["erreurs_archivees"] = archiverErreur(pf["erreurs_archivees"], j.error as string, "pending", "get-pending-jobs (retenue avant essai : Leboncoin attend nom et prénom sur le compte)");
+                const { error: uErr } = await userClient.from("cross_post_jobs")
+                  .update({ status: "needs_user", error: MSG_LBC_IDENTITE_RETENUE, platform_fields: pf })
+                  .eq("id", String(j.id)).eq("status", "pending");
+                if (uErr) console.warn(`[get-pending-jobs] mur identité Leboncoin : retenue du job ${String(j.id).slice(0, 8)} non écrite (${uErr.message}) — retenu quand même pour ce poll`);
+                idsRetenus.add(String(j.id));
+              }
+              for (const j of retenus.slice(40)) idsRetenus.add(String(j.id));   // au-delà de 40 : retenus sans écriture ce poll
+              out = out.filter((j) => !idsRetenus.has(String(j.id)));
+              if (idsRetenus.size) {
+                console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin attend nom et prénom (dernier mur ${new Date(dernierMur).toISOString()}) → ` +
+                  `${idsRetenus.size} tâche(s) retenue(s) avant essai${servis.length ? `, éclaireur ${String(servis[0].id).slice(0, 8)} servi` : ""}`);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] mur identité Leboncoin : ${String((e as Error)?.message ?? e)} — distribution normale`);
+      }
+    }
+
     // ══ UNE REPUBLICATION D'ANNONCE EN LIGNE A FORCÉMENT UNE CATÉGORIE ══════
     // (2026-09-19) Les jobs de republication sont écrits par la RPC
     // spend_coins_and_republish, qui ne pose aucun platform_fields : un
@@ -7985,12 +8077,17 @@ serve(async (req) => {
     let retenueRepublish: Awaited<ReturnType<typeof etatRetenueRepublish>> | null = null;
     if (!includeProcessing && !includeNeedsUser && out.some((j) => j.action === "republish")) {
       try {
-        retenueRepublish = await etatRetenueRepublish();
-        if (retenueRepublish.retenue) {
+        retenueRepublish = await etatRetenueRepublish([...new Set(out.filter((j) => j.action === "republish").map((j) => String(j.platform)))]);
+        // (08/11, point 1 de Nico) La pause se lit PAR PLATEFORME : seules les republications des plateformes en pause
+        // sont retenues ; les autres plateformes avancent.
+        const parPfPause = (retenueRepublish.par_plateforme ?? {}) as Record<string, { retenue?: boolean; reprise?: string | null; sequence?: number }>;
+        const pfEnPause = new Set(Object.entries(parPfPause).filter(([, e]) => e?.retenue === true).map(([pf]) => pf));
+        if (pfEnPause.size) {
           const avant = out.length;
           // (08/10, Louis) suppression envoyée = retrait engagé : jamais retenue non plus.
           out = out.filter((j) =>
             j.action !== "republish" ||
+            !pfEnPause.has(String(j.platform)) ||
             (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "deleted" ||
             retraitEngage(j));
           heldRepublish = avant - out.length;
@@ -8014,26 +8111,30 @@ serve(async (req) => {
           const RETENUE_TRACE_MAX = 40;
           try {
             const p = retenueRepublish;
-            const trace = {
+            // (08/11) La trace porte la reprise de SA plateforme.
+            const traceDe = (pfJ: string) => ({
               at: new Date().toISOString(),
-              motif: p.motif, faits: p.faits, sequence: p.sequence, reprise: p.reprise ?? null,
-            };
+              motif: "pause", faits: p.faits, sequence: parPfPause[pfJ]?.sequence ?? p.sequence, reprise: parPfPause[pfJ]?.reprise ?? null,
+              plateforme: pfJ,
+            });
             const aTracer = (jobs ?? [])
               .filter((j) => j.action === "republish"
+                && pfEnPause.has(String(j.platform))
                 && (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] !== "deleted"
                 && !retraitEngage(j))
               .filter((j) => {
                 const r = ((j.platform_fields ?? {}) as Record<string, unknown>)["retenue_republication"] as
                   Record<string, unknown> | undefined;
-                return !r || r.motif !== trace.motif || r.reprise !== trace.reprise;
+                const t = traceDe(String(j.platform));
+                return !r || r.motif !== t.motif || r.reprise !== t.reprise;
               })
               .slice(0, RETENUE_TRACE_MAX);
             for (const j of aTracer) {
-              const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>), retenue_republication: trace };
+              const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>), retenue_republication: traceDe(String(j.platform)) };
               await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id);
             }
             if (aTracer.length) {
-              console.log(`[get-pending-jobs] userId=${user.id} : retenue tracée sur ${aTracer.length} job(s) (motif=${p.motif}, reprise=${p.reprise})`);
+              console.log(`[get-pending-jobs] userId=${user.id} : retenue tracée sur ${aTracer.length} job(s) (motif=pause, plateformes en pause : ${[...pfEnPause].map((x) => `${x} → ${parPfPause[x]?.reprise ?? "?"}`).join(", ")})`);
             }
           } catch (e) {
             console.warn("[get-pending-jobs] trace de retenue non écrite (sans effet sur la retenue) :", (e as Error)?.message ?? e);
@@ -8041,10 +8142,10 @@ serve(async (req) => {
           if (heldRepublish) {
             const p = retenueRepublish;
             console.log(
-              `[get-pending-jobs] userId=${user.id} : retenue republish (motif=${p.motif}, ` +
-              `${p.faits} aujourd'hui (Paris), séquence ${p.sequence}` +
-              (p.pause_apres !== null ? `/${p.pause_apres}` : "") +
-              `) → ${heldRepublish} republish retenu(s) en pending jusqu'à ${p.reprise} (étape 'deleted' exemptée)`,
+              `[get-pending-jobs] userId=${user.id} : retenue republish PAR PLATEFORME (pause, ` +
+              `${p.faits} aujourd'hui (Paris) ; ` +
+              [...pfEnPause].map((x) => `${x} séquence ${parPfPause[x]?.sequence ?? "?"}${p.pause_apres !== null ? `/${p.pause_apres}` : ""} jusqu'à ${parPfPause[x]?.reprise ?? "?"}`).join(", ") +
+              `) → ${heldRepublish} republish retenu(s) en pending (étape 'deleted' exemptée ; les autres plateformes servies)`,
             );
           }
         }
@@ -8065,11 +8166,15 @@ serve(async (req) => {
     if (!includeProcessing && !includeNeedsUser && retenueRepublish?.retenue !== true) {
       try {
         const maintenantMs = Date.now();
+        // (08/11) La pause se lit par plateforme : la trace d'une plateforme qui n'est PAS en pause se lève (y compris
+        // une trace posée par l'ancienne pause commune, avant le déploiement du 08/11).
+        const parPfLue = (retenueRepublish?.par_plateforme ?? null) as Record<string, { retenue?: boolean }> | null;
         const perimees = (jobs ?? []).filter((j) => {
           if (j.action !== "republish" || j.status !== "pending") return false;
           const r = ((j.platform_fields ?? {}) as Record<string, unknown>)["retenue_republication"] as Record<string, unknown> | undefined;
           if (!r || typeof r !== "object") return false;
           if (r.motif === "plafond") return true;
+          if (parPfLue && parPfLue[String(j.platform)]?.retenue !== true) return true;
           const reprise = Date.parse(String(r.reprise ?? ""));
           return !Number.isFinite(reprise) || reprise <= maintenantMs;
         }).slice(0, 40);

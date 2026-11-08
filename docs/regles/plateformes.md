@@ -896,3 +896,23 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   aucune requête de la veille des commandes ni du relevé des ventes avec un jeton périmé (« jeton_expire ») ; la porte de
   connexion du relevé est confirmée deux fois à 1,2 s et nommée dans le run.
 - Selftests : `lbc-session-fermee-circuit-connexion` (rejoue la chaîne de Goulvenk), `bouton-leboncoin-remarche` § 4.
+
+## ⛔ 08/11 (point 2 de Nico) — eBay : un texte de vendeur ne doit jamais ressembler à du code (rapport `docs/enquetes/lot-0811-apres-midi/RAPPORT.md` § 2)
+- Cas : Sébastien (8d59f147, CD « Mort Shuman — collection Expression (PolyGram) »), refus 25002 à `publishOffer`
+  « Votre annonce ne peut pas contenir de code JavaScript… » [0=DESCRIPTION]. eBay cherche des MOTIFS de code dans le
+  texte, avec ou sans espace : `expression (`, `replace (`, `eval (`, `cookie (`, `.cookie`. Notre HTML (`<p>`, `<br>`,
+  entités, `<` toujours échappé) n'y est pour rien.
+- Règle (`sansContenuActifEbay`, `_shared/ebay-publication.ts`, dans `descriptionEbay` : ebay-api-worker et ebay-account) :
+  le mot est entouré d'un `<span>` neutre et la parenthèse (ou le point) part en entité — le texte VISIBLE est identique,
+  aucun caractère invisible ajouté, le motif ne se forme ni dans le HTML brut, ni balises retirées, ni entités
+  décodées. Voie extension (formulaire eBay) non touchée : 0 refus de ce type en 30 jours sur 10 053 publications.
+- Selftest `ebay-contenu-actif`.
+
+## 08/11 (point 5 de Nico) — Vinted : la ligne de repli du « Modèle » est PROUVÉE
+- Essai réel sur le compte de Nico (nelsonchatnoir), annonce 10719554551 « TEST FillSell Samsung » à 999 €, Téléphones
+  portables > Samsung : « Mon modèle ne figure pas dans la liste » (groupe « Autre/Inconnu ») ouvre « Autre modèle —
+  Suggérer un modèle manquant » ; le formulaire affiche alors « Autre » et Vinted ACCEPTE l'annonce (« Article en
+  vente »). Les clés de traduction de Vinted le disent : `item_upload.model.other_options.other` = « Mon modèle ne figure
+  pas dans la liste », `item_upload.model.other_options.unknown` = « Je ne connais pas le nom du modèle »
+  (`item_upload.model.unknown` = « Inconnu »). La correspondance « other » ↔ « Mon modèle ne figure pas dans la liste »
+  (`VINTED_MODELE_REPLI_PAR_TYPE`, 26/10) n'est plus une hypothèse. Le blocage reste gardé jusqu'à la décision de Nico.

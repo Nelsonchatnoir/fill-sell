@@ -4735,6 +4735,30 @@ export default function ListingPreviewScreen({
   const photosAnalyseesRef = useRef(draft?.photosAnalysees ?? null);
 
   const [step, setStep]         = useState(draft?.step ?? 0);
+  // (08/11, point 10 de Nico — Stéphanie Durand, 07/11 18:11) Un parcours de publication FERMÉ SANS PUBLIER se trace :
+  // le stepper ne journalisait que les refus du serveur, jamais une sortie — impossible de dire à quel écran la personne
+  // s'est arrêtée ni ce qui la bloquait. Une ligne action_app_ratee « stepper_ferme » (étape, plateformes cochées),
+  // à la fermeture comme au rechargement de la page (pagehide). Rien quand une publication est partie.
+  const publiePartieRef = useRef(false);
+  const traceStepperRef = useRef({ step: draft?.step ?? 0, plateformes: [] });
+  traceStepperRef.current.step = step;
+  useEffect(() => {
+    const ouvertLe = Date.now();
+    let trace = false;
+    const tracer = (comment) => {
+      if (trace || publiePartieRef.current) return;
+      trace = true;
+      const t = traceStepperRef.current;
+      try {
+        signalerActionRatee({ action: "stepper_ferme", motif: "sans_publier", userId: userId ?? null,
+          details: { etape: t.step, plateformes: (t.plateformes ?? []).join(",") || null, duree_s: Math.round((Date.now() - ouvertLe) / 1000), comment, fiche: inventaireId ?? null } });
+      } catch { /* une trace : jamais un point de panne */ }
+    };
+    const surPagehide = () => tracer("page_quittee");
+    window.addEventListener("pagehide", surPagehide);
+    return () => { window.removeEventListener("pagehide", surPagehide); tracer("ferme"); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Carte de copie à ouvrir en revenant au step Génération (garde
   // « description Vinted vide », 2026-09-12) : consommée par StepGeneration.
   const [carteAOuvrir, setCarteAOuvrir] = useState(null);
@@ -5521,6 +5545,7 @@ export default function ListingPreviewScreen({
       .filter(p => !plateformesFermees.includes(p))
       .filter(p => !lockedSet.has(p)),
   ));
+  traceStepperRef.current.plateformes = [...selected];   // (08/11, point 10) pour la trace « stepper_ferme »
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   // (04/11, grille à 3 jauges) Le CODE du dernier refus de spend_coins_and_publish (pubRes.reason), à côté de sa
@@ -11425,6 +11450,8 @@ export default function ListingPreviewScreen({
         break;
       }
       // (25/10, Jocabroc) Chaque refus ou erreur de publication est signalé au serveur (motif, version de l'app).
+      // (08/11, point 10) Publication acceptée par le serveur : la fermeture du parcours n'est plus une sortie à tracer.
+      if (!pubErr && pubRes && pubRes.allowed !== false) publiePartieRef.current = true;
       if (pubErr) signalerActionRatee({ action: "publier", motif: "rpc_erreur", details: { message: String(pubErr.message ?? "").slice(0, 160) } });
       else if (pubRes?.allowed === false) signalerActionRatee({ action: "publier", motif: String(pubRes.reason ?? "refus"), details: { plateformes: Array.isArray(pubRes.platforms) ? pubRes.platforms.join(",") : null } });
       // Le vrai motif en clair (refonte) ; l'ancien stepper garde le générique.

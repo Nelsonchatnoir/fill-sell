@@ -22,7 +22,8 @@
 // (photo de l'annonce, sinon la fiche rattachée, sinon une icône) ; l'écran de
 // confirmation est une Couche (portail sur body, barre du bas masquée) — sur
 // iPhone, ses boutons passaient sous la barre du bas.
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazySur } from '../utils/lazySur';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
 import Icone from '../ecrans/Icone';
@@ -34,8 +35,8 @@ import Couche from './Couche';
 import Vignette from './Vignette';
 // L'aperçu et « Tout imprimer » (pdf.js, pdf-lib derrière) ne se chargent qu'à l'usage :
 // rien de plus à l'ouverture des Ventes, pour personne.
-const ApercuBordereau = lazy(() => import('./impression/ApercuBordereau.jsx'));
-const BoutonToutImprimer = lazy(() => import('./impression/ToutImprimer.jsx').then((m) => ({ default: m.BoutonToutImprimer })));
+const ApercuBordereau = lazySur(() => import('./impression/ApercuBordereau.jsx'));
+const BoutonToutImprimer = lazySur(() => import('./impression/ToutImprimer.jsx').then((m) => m && { default: m.BoutonToutImprimer }));
 
 const ENCRE2 = '#5C6560';
 const LIGNE = '#EFECE6';

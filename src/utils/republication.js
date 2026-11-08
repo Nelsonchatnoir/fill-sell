@@ -153,6 +153,52 @@ export async function republierArticle(supabase, { platform, inventaireId, vinte
   return { success: true, job_id: data?.job_id ?? null, price: data?.price ?? null, platform };
 }
 
+// ── (08/11, point 8 de Nico — XEWER) UNE COUPURE RÉSEAU N'EST PAS UN REFUS, ET JAMAIS UNE TÂCHE PERDUE ───────────────
+// Le 07/11 à 18:17, lot de 31 republications Leboncoin lancé du téléphone (Android) : l'app est passée en arrière-plan
+// pendant la boucle, Android a coupé le réseau ; la 31e (fiche 1789717143519005) a rendu « TypeError: Failed to fetch »,
+// rangée dans les refus, jamais rejouée — aucune republication créée. Désormais : une coupure (la demande n'a pas
+// atteint le serveur) attend le retour de l'app au premier plan et du réseau, puis rejoue la MÊME cible, 3 fois au plus.
+// Sans danger : le serveur refuse un doublon (« republish_en_cours ») ; après une coupure, ce refus veut dire que la
+// première demande était arrivée → le job existant est repris, comme un succès.
+export const COUPURE_RESEAU_RE = /Failed to fetch|Load failed|NetworkError|Network request failed|network connection was lost/i;
+export function estCoupureReseau(res) {
+  return Boolean(res) && res.success === false && !res.reason && COUPURE_RESEAU_RE.test(String(res.error ?? ''));
+}
+function attendreRetourAuPremierPlan(maxMs = 120_000) {
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    const tic = () => {
+      const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+      const enLigne = typeof navigator === 'undefined' || navigator.onLine !== false;
+      if ((visible && enLigne) || Date.now() - t0 > maxMs) { resolve(visible && enLigne); return; }
+      setTimeout(tic, 1000);
+    };
+    tic();
+  });
+}
+export async function republierAvecReprise(supabase, params, {
+  essais = 3, attendre = attendreRetourAuPremierPlan, pause = (ms) => new Promise((r) => setTimeout(r, ms)),
+} = {}) {
+  let res = await republierArticle(supabase, params);
+  let coupures = 0;
+  while (estCoupureReseau(res) && coupures < essais) {
+    coupures++;
+    await attendre();
+    await pause(1000 * coupures);
+    res = await republierArticle(supabase, params);
+    if (res?.success === false && res?.reason === 'republish_en_cours') {
+      try {
+        const { data } = await supabase.from('cross_post_jobs').select('id')
+          .eq('inventaire_id', params.inventaireId).eq('platform', params.platform ?? 'vinted').eq('action', 'republish')
+          .in('status', ['pending', 'processing']).order('created_at', { ascending: false }).limit(1);
+        if (data?.[0]?.id) return { success: true, job_id: data[0].id, platform: params.platform ?? 'vinted', repris_apres_coupure: true };
+      } catch { /* relecture impossible : le refus est rendu tel quel */ }
+    }
+  }
+  if (estCoupureReseau(res)) return { ...res, reason: 'coupure_reseau', coupures };
+  return coupures ? { ...res, coupures } : res;
+}
+
 // Le refus, en mots — UNE table pour toutes les plateformes. `res.message`
 // (serveur) prime quand il existe : il est écrit pour être lu.
 export function messageRefusRepublication(res, lang = 'fr', platform = res?.platform ?? 'vinted') {
@@ -169,6 +215,8 @@ export function messageRefusRepublication(res, lang = 'fr', platform = res?.plat
         ? 'The extension on your computer needs version 0.5.0 or newer to repost.'
         : `Reposting on ${nom} needs extension 0.6.42 or newer: Chrome updates it on its own, try again a bit later.`),
     republish_en_cours: fr ? `Une republication est déjà en cours sur ${nom} pour cet article.` : `A repost is already running on ${nom} for this item.`,
+    // (08/11, point 8) Trois essais après une coupure réseau, sans réponse : rien n'a été mis en file, rien n'a été débité.
+    coupure_reseau: fr ? `Connexion coupée pendant l'envoi : cet article n'a pas été mis en file sur ${nom} (rien n'a été débité). Relance-le.` : `Connection lost while sending: this item was not queued on ${nom} (nothing was charged). Send it again.`,
     cadence_24h: fr ? `Déjà republié sur ${nom} il y a moins de 24 h — une republication par annonce et par jour.` : `Already reposted on ${nom} less than 24 h ago — one repost per listing per day.`,
     // (05/10) Le gratuit : 50 par mois, la phrase dit le jour où elles reviennent.
     plafond_republication_free: messagePlafondRepublicationGratuit(res, fr ? 'fr' : 'en'),

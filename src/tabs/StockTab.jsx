@@ -87,7 +87,7 @@ import { computeRemovalInfo, vintedMasqueeMalgreJobs, vintedPresenceArticle, rep
 import { plateformesJumelles } from '../utils/copiesJumelles';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
-import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
+import { plateformesRepubliables, republierArticle, republierAvecReprise, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
 // (25/10, balayage des erreurs visibles) CE QUI DEMANDE VRAIMENT UN GESTE, une règle pour la carte, « À régler »,
 // le filtre, la modale de statut et la pastille de l'onglet (App.jsx).
 import { causeARegler, jobSupplante, derniersParLigne, republicationLibereeApresArret, pastilleRepublicationEnPause, indexSelonARegler, plateformesHorsJeu as plateformesHorsJeuDe, indexSansPublicationsJumelles, publicationSansObjet } from '../utils/erreursVisibles';
@@ -6927,7 +6927,8 @@ const StockTab = memo(function StockTab({
       const { item, prix, platform = 'vinted' } = cibles[i];
       const nomArticle = platform === 'vinted' ? item.title : `${item.title} (${LABEL_PF[platform] ?? platform})`;
       try {
-        const res = await republierArticle(supabase, {
+        // (08/11, point 8) Une coupure réseau (app en arrière-plan) se rejoue au retour, jamais une tâche perdue.
+        const res = await republierAvecReprise(supabase, {
           platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix,
         });
         if (res.success) {

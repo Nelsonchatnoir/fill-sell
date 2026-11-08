@@ -58,15 +58,19 @@ ok(E.trim().endsWith('ROLLBACK;') && !/^COMMIT;$/m.test(E), 'essai : transaction
 
 console.log('2. get-pending-jobs');
 const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
-const iEtat = gpj.indexOf('const etatRetenueRepublish = async () => {');
+// (08/11, point 1 de Nico) La pause se compte PAR PLATEFORME : la fonction reçoit les plateformes en file.
+const iEtat = gpj.indexOf('const etatRetenueRepublish = async (plateformesEnFile: string[] = []) => {');
 const blocEtat = iEtat > 0 ? gpj.slice(iEtat, gpj.indexOf('\n    };', iEtat)) : '';
 // (02/11) La liste peut finir par « ], versionCoinConfig); » (coin_config lu par sa version, _shared/coin-config-cache.js).
 ok(blocEtat && /"republish_pause_apres",\r?\n\s+"republish_pause_duree_min",\r?\n\s+\](?:, versionCoinConfig)?\);/.test(blocEtat) && !/"republish_plafond_jour/.test(gpj),
   'la retenue ne lit que les deux clés de la pause ; plus aucune clé de plafond dans le fichier');
-ok(/retenue: retenuePause,/.test(blocEtat) && /motif: retenuePause \? "pause" : null,/.test(blocEtat)
-  && /reprise: retenuePause \? new Date\(finPause as number\)\.toISOString\(\) : null,/.test(blocEtat) && /limite: null as number \| null/.test(blocEtat),
-  'un seul motif (pause), reprise null hors pause, `limite` toujours null pour les versions installées');
-ok(/if \(sequence >= pauseApres && Date\.now\(\) - horodatages\[0\] < pauseDureeMs\) \{/.test(blocEtat), 'la pause après N d’affilée garde sa règle');
+ok(/retenue: ensemble\.retenue,/.test(blocEtat) && /motif: ensemble\.retenue \? "pause" : null,/.test(blocEtat)
+  && /reprise: ensemble\.reprise,/.test(blocEtat) && /par_plateforme: parPlateforme,/.test(blocEtat) && /limite: null as number \| null/.test(blocEtat),
+  'un seul motif (pause), reprise null hors pause, `limite` toujours null pour les versions installées ; la vérité par plateforme à côté');
+const pr = lire('supabase/functions/_shared/pause-respiration.js');
+ok(/pauseParPlateforme\(lignesFaites,/.test(blocEtat) && /if \(h\[i - 1\] - h\[i\] >= pauseDureeMs\) break;/.test(pr)
+  && /sequence >= pauseApres && maintenant - h\[0\] < pauseDureeMs \? h\[0\] \+ pauseDureeMs : null/.test(pr),
+  'la pause après N d’affilée garde sa règle (08/11 : comptée plateforme par plateforme, _shared/pause-respiration.js)');
 const iLevee = gpj.indexOf('UNE TRACE DE RETENUE PÉRIMÉE SE LÈVE');
 const levee = iLevee > 0 ? gpj.slice(iLevee, iLevee + 2800) : '';
 ok(/retenueRepublish\?\.retenue !== true/.test(levee) && /if \(r\.motif === "plafond"\) return true;/.test(levee) && /reprise <= maintenantMs/.test(levee)

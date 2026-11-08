@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-08-apres-midi (0.6.181 : l'espacement de 2 min entre deux gestes de republication est compté PAR PLATEFORME — Vinted, Leboncoin, Beebs et Depop avancent ensemble, chacune à son rythme d'avant ; un retrait né pendant un cycle l'arrête entre deux tâches et un poll repart — précédent : " +
   "2026-11-07-nuit-louis (0.6.180 : état d'une tâche — une remise en vente Leboncoin retenue parce que son annonce vendue est encore affichée le dit (achat en cours, « Article vendu », relecture) et, au-delà de la borne, « À toi de jouer : supprime-la sur Leboncoin » ; recopie de _shared/etat-job.js, rien d'autre ne change — précédent : " +
   "2026-11-07-nuit (0.6.179 : Vinted — un choix de rayon de la personne coupe la queue héritée de l'ancien arbre et la question suivante porte le chemin corrigé (la réponse s'y ajoute) ; un rayon refusé au compte Pro (400 « category ») devient une question de RAYON, jamais « renseigne category » ; relevé du dressing : le référent du marquage des disparitions est le dernier relevé du même compte qui a réellement marqué, et « sans recoupement » à identité prouvée reporte d'un relevé au lieu de renoncer ; Beebs — une republication dont la suppression est partie garde ses constats « page 404 » et son envoi, et se prouve par la page comme un retrait — précédent : " +
   "2026-11-07-soir (0.6.178 : la borne de remplissage vaut pour TOUS les comptes — sans port, le message FILL_LISTING porte sa borne (300 s, inchangée) et un identifiant : la page arme son échéance, l'arrière-plan la prévient à sa borne (FILLSELL_ABANDON_REMPLISSAGE) et plus rien n'est cliqué ensuite (Beebs, Vinted, Leboncoin) ; un job qui demande une borne (fill_borne_ms) passe par le port même port éteint, borne jamais plus courte qu'aujourd'hui ; Leboncoin : l'attente des critères suit le poids des photos envoyées (30 à 120 s) et les PNG de plus de 300 Ko partent allégés en JPEG ; Beebs : le bandeau de l'application (« Voir dans l’appli », « L’appli tout-en-un ») n'est plus lu comme un attribut de la fiche — précédent : " +
@@ -3221,6 +3222,27 @@ function retraitEngageJob(job) {
   return pf.republish_step === "deleted" || Boolean(pf.deleted_at)
     || Boolean(pf.republish_suppression_envoyee && !suppressionEnvoyeeHeritee(job));
 }
+// (08/11, point 1) Un retrait (vente) NÉ depuis le début du cycle en cours, absent de ce cycle : son id, sinon null.
+// Lu au plus toutes les 45 s (une requête bornée à 3 lignes, RLS du compte) ; un retrait ne coupe qu'UN cycle.
+// Illisible → null : le cycle continue comme avant.
+const retraitsQuiOntCoupe = new Set();
+let retraitNeLuLe = 0;
+async function retraitNeDepuisLeCycle(token, idsDuCycle) {
+  if (Date.now() - retraitNeLuLe < 45_000) return null;
+  retraitNeLuLe = Date.now();
+  const depuis = new Date(Math.max(0, (Number(debutDernierPoll) || Date.now()) - 5_000)).toISOString();
+  const rows = await restRequest(
+    `cross_post_jobs?select=id&action=eq.delete&status=eq.pending&created_at=gt.${encodeURIComponent(depuis)}&order=created_at.asc&limit=3`,
+    token,
+  );
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const id = String(r?.id ?? "");
+    if (!id || idsDuCycle.has(id) || retraitsQuiOntCoupe.has(id)) continue;
+    retraitsQuiOntCoupe.add(id);
+    return id;
+  }
+  return null;
+}
 /** La pause et la synchro demandée, relues au plus toutes les 20 s (RPC file_etat_poste). Illisible → rien ne change. */
 async function etatFileEntreDeuxTaches(token) {
   const local = syncDemandeeLocale && Date.now() - syncDemandeeLocale < 10 * 60_000;
@@ -4715,11 +4737,27 @@ async function pollAndProcessJobsUnlocked() {
   let lbcRefusCeCycle = null;
   // (22/10 soir, 0.6.130, point 5) Une synchro demandée pendant ce cycle : les publications restantes attendent.
   let synchroPasseDevant = false;
+  // (08/11, point 1 — les plateformes avancent ensemble) Un cycle peut maintenant enchaîner une republication par
+  // plateforme : il dure plus longtemps. Un RETRAIT né PENDANT le cycle (une vente : double vente possible) ne
+  // l'attend jamais — le cycle s'arrête entre deux tâches et un poll repart tout de suite (le serveur sert les
+  // retraits en tête). Une seule fois par retrait (retraitsQuiOntCoupe) : un retrait que le serveur retient
+  // (annonce sœur hors ligne…) ne coupe pas les cycles suivants.
+  let retraitPasseDevant = false;
+  const idsDuCycle = new Set(jobs.map((j) => String(j.id)));
   // Séquentiel : un onglet de publication à la fois, avec une pause entre
   // chaque job (FILLSELL_CONFIG.JOB_DELAY_MS) pour ne pas enchaîner les
   // onglets trop vite.
   for (let i = 0; i < jobs.length; i++) {
     const job = jobs[i];
+    if (i > 0 && job.action !== "delete") {
+      const neuf = await retraitNeDepuisLeCycle(session.access_token, idsDuCycle).catch(() => null);
+      if (neuf) {
+        retraitPasseDevant = true;
+        console.warn(`[background] retrait ${neuf} né pendant ce cycle (vente) : les ${jobs.length - i} tâche(s) restantes restent en file, un poll repart tout de suite`);
+        demanderRepoll({ raison: "retrait", cle: `retrait:${neuf}`, geste: true });
+        break;
+      }
+    }
     // (29/10, lot C 1 — 0.6.159) Une lecture qu'une personne attend passe entre deux tâches, jamais derrière la file.
     await drainerLecturesPrioritaires("entre_taches").catch(() => {});
     if (job.platform === "leboncoin" && (lbcRefusCeCycle || await leboncoinEnPause())) {
@@ -4810,6 +4848,11 @@ async function pollAndProcessJobsUnlocked() {
   // (re-captures, veilleur, republication automatique) — la nouvelle version
   // s'en chargera au cycle suivant.
   if (majPlanifiee) {
+    await cleanupOrphanWorkTabs().catch(() => {});
+    return;
+  }
+  // (08/11, point 1) Un retrait né pendant le cycle : la maintenance de fond attend le cycle suivant, le poll repart.
+  if (retraitPasseDevant) {
     await cleanupOrphanWorkTabs().catch(() => {});
     return;
   }
@@ -26641,7 +26684,20 @@ const REPUBLISH_DRY_RUN = false;
 // next_action_after (2-5 min entre suppression et recréation d'un même
 // article), le rythme réel est de quelques gestes par tranche de 5 minutes.
 const REPUBLISH_ESPACEMENT_MS = 2 * 60 * 1000;
-let dernierGesteRepublishAt = 0;
+// ⛔ (08/11, point 1 de Nico — Joséphine, 826 republications en file) L'ESPACEMENT EST COMPTÉ PAR PLATEFORME.
+// Il était GLOBAL : un geste Leboncoin réarmait l'attente de Vinted et de Beebs. Une seule republication passait par
+// cycle de poll, toutes plateformes confondues (08/11 : 47 en 5 h 30, une toutes les ~7 min, 3 plateformes en file).
+// Désormais chaque plateforme compte SES 2 minutes depuis SON dernier geste : une republication Vinted n'attend plus
+// jamais un geste Leboncoin, Beebs ou Depop. Le rythme d'UNE plateforme ne change pas (mêmes 2 min, même capture
+// avant le retrait, même poll de 2 min) ; l'extension garde UNE action à la fois (verrou de flux, un onglet de
+// travail) : rien de plus n'est ouvert en même temps, le poste n'est pas plus chargé.
+const dernierGesteRepublishParPlateforme = new Map();
+function noterGesteRepublish(platform) {
+  dernierGesteRepublishParPlateforme.set(String(platform ?? ""), Date.now());
+}
+function espacementRepublishEnCours(platform) {
+  return Date.now() - (dernierGesteRepublishParPlateforme.get(String(platform ?? "")) ?? 0) < REPUBLISH_ESPACEMENT_MS;
+}
 
 // Prix de la recréation — UNE seule résolution, utilisée AUX DEUX BOUTS :
 // éprouvée AVANT la suppression (l'annonce est encore en ligne, on peut encore
@@ -29120,7 +29176,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
 
   // Mêmes portes de cadence que Vinted : espacement entre gestes, attente
   // programmée (pause après retrait, reprise espacée, attente de session).
-  if (Date.now() - dernierGesteRepublishAt < REPUBLISH_ESPACEMENT_MS) {
+  if (espacementRepublishEnCours(job.platform)) {
     return { status: "skipped", error: "espacement entre gestes de republication" };
   }
   if (pf.next_action_after && Date.now() < Date.parse(pf.next_action_after) && !(await attenteSessionLeveeLocalement(job))) {
@@ -29553,7 +29609,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
       ({ result, tabId: tabRetrait } = await executerRetraitViaHandler(job, accessToken));
     } catch (e) {
       const msg = String(e?.message ?? e);
-      dernierGesteRepublishAt = Date.now();
+      noterGesteRepublish(job.platform);
       if (/message channel closed|Receiving end does not exist/i.test(msg)) {
         // Canal coupé PAR la navigation du retrait : l'état réel tranche
         // (sauf Beebs, 03/10 : la page publique ne prouve rien, on reprend).
@@ -29569,7 +29625,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
         return { status: "retry", error: msg };
       }
     }
-    dernierGesteRepublishAt = Date.now();
+    noterGesteRepublish(job.platform);
     // ── (07/11 nuit, point 4 — 7373c96c, republication 1a323b66) BEEBS : LES CONSTATS ET L'ENVOI SONT GARDÉS ICI AUSSI ──
     // Le retrait simple (processDeleteJob) gardait les constats « page 404 » de chaque essai et l'envoi de la
     // suppression ; la republication, rien : suppression envoyée le 26/10, page en 404 depuis, « Mes annonces » illisible
@@ -29609,7 +29665,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const idCible = String(job.platform_listing_id ?? "").trim()
         || (String(job.listing_url ?? "").match(/\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
       const relue = await relirePreuveRetraitBeebs(tabRetrait, idCible, result.suppressionEnvoyeeLe);
-      dernierGesteRepublishAt = Date.now();
+      noterGesteRepublish(job.platform);
       if (relue.verdict === "absente" && relue.preuveRetrait) {
         result = { ...result, success: true, reprise: false, suppressionEnvoyee: false, preuveRetrait: relue.preuveRetrait,
           trace: [...(result.trace ?? []), ...(relue.trace ?? []).slice(-3), `preuve relue par le background (${relue.lectures} lecture(s))`] };
@@ -29723,7 +29779,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
     };
     delete jobRecreation.platform_fields.next_action_after;
     const resultat = await processJob(jobRecreation, accessToken);
-    dernierGesteRepublishAt = Date.now();
+    noterGesteRepublish(job.platform);
 
     if (resultat?.status === "published") {
       // update-job-status a écrit published + nouvelle URL/id : on ne le
@@ -29864,7 +29920,7 @@ async function processRepublishJob(job, accessToken) {
 
   // Espacement entre gestes + attente programmée suppression→recréation.
   // 'skipped' laisse le job en pending : le prochain poll le reprendra.
-  if (Date.now() - dernierGesteRepublishAt < REPUBLISH_ESPACEMENT_MS) {
+  if (espacementRepublishEnCours(job.platform)) {
     return { status: "skipped", error: "espacement entre gestes de republication" };
   }
   if (pf.next_action_after && Date.now() < Date.parse(pf.next_action_after)) {
@@ -30643,7 +30699,7 @@ async function processRepublishJob(job, accessToken) {
       } finally {
         remplissagesUnePasseAttendus.delete(job.id);
       }
-      dernierGesteRepublishAt = Date.now();
+      noterGesteRepublish(job.platform);
       reporterMesuresRemplissage(pf, jobRecreation);
 
       // La suppression a-t-elle eu lieu ? Deux témoins concordants : le
@@ -31337,7 +31393,7 @@ async function processRepublishJob(job, accessToken) {
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
-      dernierGesteRepublishAt = Date.now();
+      noterGesteRepublish(job.platform);
       reporterMesuresRemplissage(pf, jobRecreation);
 
       return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);

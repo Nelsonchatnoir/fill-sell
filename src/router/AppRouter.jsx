@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
+// (08/11, point 7) Imports paresseux sûrs pendant un changement de version (utils/lazySur.js).
+import { lazySur } from "../utils/lazySur";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "../lib/supabase";
 import { rememberPostLoginTarget } from "../lib/postLoginRedirect";
@@ -26,18 +28,18 @@ import AuthConfirm from "../pages/AuthConfirm";
 // effacerait le paramètre. Cf. src/lib/offreMail.js.
 capterOffre();
 
-const App = lazy(() => import("../App"));
-const Legal = lazy(() => import("../pages/Legal"));
+const App = lazySur(() => import("../App"));
+const Legal = lazySur(() => import("../pages/Legal"));
 // (30/10, lot D) Les conditions du Cloud : comptes témoins seulement tant que Nico n'a pas validé le texte.
-const ConditionsCloud = lazy(() => import("../pages/ConditionsCloud"));
-const BlogList = lazy(() => import("../pages/BlogList"));
-const BlogPost = lazy(() => import("../pages/BlogPost"));
-const ExtensionPage = lazy(() => import("../pages/ExtensionPage"));
-const EbayRetour = lazy(() => import("../pages/EbayRetour"));
-const Desinscription = lazy(() => import("../pages/Desinscription"));
-const DemoBarreProgression = lazy(() => import("../pages/DemoBarreProgression"));
+const ConditionsCloud = lazySur(() => import("../pages/ConditionsCloud"));
+const BlogList = lazySur(() => import("../pages/BlogList"));
+const BlogPost = lazySur(() => import("../pages/BlogPost"));
+const ExtensionPage = lazySur(() => import("../pages/ExtensionPage"));
+const EbayRetour = lazySur(() => import("../pages/EbayRetour"));
+const Desinscription = lazySur(() => import("../pages/Desinscription"));
+const DemoBarreProgression = lazySur(() => import("../pages/DemoBarreProgression"));
 // (25/10 nuit) Les maquettes de l'étape 2 du lot : réservées au compte de Nico (la page renvoie tout autre compte sur l'accueil).
-const MaquettesLot = lazy(() => import("../pages/MaquettesLot"));
+const MaquettesLot = lazySur(() => import("../pages/MaquettesLot"));
 
 // ── Un jeton d'authentification n'atterrit JAMAIS sur la landing (16/09) ─────
 // Le lien de confirmation d'inscription part avec redirect_to = SITE_URL, donc

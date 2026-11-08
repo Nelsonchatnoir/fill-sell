@@ -998,11 +998,31 @@ export async function emplacementMarchand(admin: SupabaseClient, env: EbayEnv, t
 export function titreEbay(titre: string): string {
   return String(titre ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
 }
+// ── (08/11, point 2 de Nico — Sébastien, job 8d59f147) LE FILTRE « CONTENU ACTIF » D'EBAY LIT LE TEXTE ──────────
+// « Compilation de la collection Expression (PolyGram) » : refus 25002 à publishOffer, deux fois (14:16, 14:22) —
+// « Votre annonce ne peut pas contenir de code JavaScript (".cookie", "cookie(", "replace(", IFRAME, META ou includes) »,
+// paramètre DESCRIPTION. Notre HTML n'y est pour rien (<p>, <br>, entités ; `<` toujours échappé : aucune balise ne
+// peut se former, 1 446 publications API passées avec lui). eBay cherche des MOTIFS DE CODE dans le texte, avec ou sans
+// espace : `expression (` (CSS d'Internet Explorer), `replace (`, `eval (`, `cookie (`, `.cookie`. Le texte VISIBLE ne
+// change pas : le mot est entouré d'un <span> neutre et la parenthèse part en entité (&#40;) — le motif ne se forme
+// ni dans le HTML brut, ni une fois les balises retirées, ni une fois les entités décodées. Aucun caractère ajouté ni
+// retiré (règle des invisibles du 05/11 : rien d'invisible n'est envoyé). « rapide ( », « JavaScript », « cookie »
+// comme simple mot passent tels quels (passés chez eBay).
+// Sans limite de mot : « medieval (French Edition) » contient `eval (` (une fiche du parc).
+const MOT_CODE_PARENTHESE_EBAY = /(expression|replace|eval|cookie)(\s*)\(/gi;
+const POINT_COOKIE_EBAY = /\.(\s*)(cookie)/gi;
+export function sansContenuActifEbay(html: string): string {
+  return String(html ?? "")
+    .replace(MOT_CODE_PARENTHESE_EBAY, (_m, mot: string, esp: string) => `<span>${mot}</span>${esp}&#40;`)
+    .replace(POINT_COOKIE_EBAY, (_m, esp: string, mot: string) => `&#46;${esp}<span>${mot}</span>`);
+}
 export function descriptionEbay(description: string, titre: string): string {
   const d = String(description ?? "").trim() || String(titre ?? "").trim();
   // Texte brut → HTML minimal (eBay affiche listingDescription en HTML).
   const echap = d.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return `<p>${echap.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>`.slice(0, 4000);
+  const html = sansContenuActifEbay(`<p>${echap.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>`);
+  // Coupé à 4000 : jamais une balise ni une entité coupée en deux.
+  return html.slice(0, 4000).replace(/<[^>]*$/, "").replace(/&[#a-z0-9]*$/i, "");
 }
 // Photos d'un job ou d'un article : objets { type, url } (forme garantie par
 // l'app, cf. src/utils/photos.js) OU chaînes nues (URLs CDN Vinted écrites par

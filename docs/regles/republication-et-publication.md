@@ -1407,3 +1407,42 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - (08/11, ayadi007) « Synchroniser » sur un stock VIDE n'est jamais refusé par la cadence de 15 min, déclencheur
   `garde_cadence_sync_runs` compris (migration `20261108140000`, APPLIQUÉE le 08/11) ; un refus de cadence se dit par un fait au
   passé (« lues il y a N min ») et relance le rangement — jamais « La demande n'a pas pu être envoyée ».
+
+## ⛔ 08/11 après-midi (décision de Nico, point 1) — LES PLATEFORMES AVANCENT ENSEMBLE, CHACUNE À SON RYTHME (rapport `docs/enquetes/lot-0811-apres-midi/RAPPORT.md` § 1)
+- Cas fondateur : Joséphine (josephinecerni, Pro), 874 republications le 04/11 22:07 (Beebs, Leboncoin, Vinted) : 47
+  publiées le 08/11 en 5 h 30, UNE par cycle de poll toutes plateformes confondues.
+- **Extension (0.6.181)** : l'espacement de 2 min entre deux gestes de republication (retrait, recréation) est compté PAR
+  PLATEFORME (`noterGesteRepublish` / `espacementRepublishEnCours`, background.js). Il était global (`dernierGesteRepublishAt`) :
+  un geste Leboncoin faisait attendre Vinted et Beebs. Le rythme d'UNE plateforme ne change pas (mêmes 2 min, capture
+  avant retrait, poll de 2 min). L'extension garde UNE action à la fois (verrou de flux, un onglet) : rien de plus n'est
+  ouvert en même temps. Un retrait (vente) né pendant un cycle l'arrête entre deux tâches et un poll repart
+  (`retraitNeDepuisLeCycle`, une fois par retrait, lecture bornée toutes les 45 s).
+- **Serveur (get-pending-jobs)** : la pause de respiration (50 d'affilée → 2 h, règle du 04/09) se compte PLATEFORME PAR
+  PLATEFORME (`_shared/pause-respiration.js`) : 50 Vinted d'affilée mettent Vinted seul en pause. Forme d'ensemble
+  (`plafond_republish.retenue`, applis installées) : vraie seulement si TOUTES les plateformes en file sont en pause ;
+  la vérité est dans `plafond_republish.par_plateforme` (lue par `_shared/etat-job.js`).
+- **Rythme d'une plateforme** : INCHANGÉ. Recherche du 08/11 (Clemz, VintedCRM, Crosslist, Vendoo, Closo…) : aucune
+  preuve qu'un rythme plus rapide soit sans risque pour Vinted, Leboncoin, Beebs ou Depop ; les CGU de Vinted interdisent
+  la suppression-remise en ligne en lot quel que soit le rythme ; un compte de client restreint fin août (96 en un jour).
+- **« Ta file » montre l'avancement** (exception NOMMÉE à « aucun temps estimé » du 16/10, décision de Nico du 08/11) :
+  par plateforme, faites depuis le début du lot, restantes, rythme CONSTATÉ (temps de poste actif, écarts > 45 min
+  exclus), fin estimée en temps d'ordinateur allumé (ou de FillSell Cloud), pauses de 2 h comprises ; moins de 4
+  republications constatées → aucune estimation (`_shared/avancement-republication.js`, get-pending-jobs `plafond_only`
+  → `avancement_republication`, `src/components/FileDesJobs.jsx`).
+- **Pause → reprise n'accélère rien** (prouvé le 08/11 : chaque republication « juste après une reprise » avait commencé
+  20 à 60 s AVANT ; rythme identique avec ou sans les ~50 pauses). Rien à corriger ; l'écran le dit.
+- Selftest `republication-plateformes-paralleles`.
+
+## 08/11 après-midi (points 6, 8, 10) — mur d'identité Leboncoin, coupure réseau d'un lot, parcours fermé sans publier
+- **Leboncoin attend nom et prénom** (Rosa Metra) : tant qu'un mur d'identité VU par Leboncoin a moins de 30 j et
+  qu'aucune publication Leboncoin n'est passée depuis, get-pending-jobs ne sert plus que l'éclaireur (relancé APRÈS le
+  dernier mur : « C'est fait » ou handler-watch / 12 h) ; les autres publications et republications pas encore retirées
+  rejoignent la carte du compte (needs_user `lbc_identite`, `retenue_avant_essai`), aucune visite de Leboncoin
+  (`_shared/lbc-identite.js`, jumelle de la porte « forfait »). Selftest `lbc-identite-carte` § 5.
+- **Lot de republications et coupure réseau** (XEWER, 07/11 18:17, app Android en arrière-plan) : une coupure
+  (« Failed to fetch ») attend le retour au premier plan et rejoue la même cible, 3 fois au plus ; « déjà en cours »
+  après une coupure = le job existant (jamais un doublon) ; sinon motif `coupure_reseau` dit en clair
+  (`republierAvecReprise`, `src/utils/republication.js`).
+- **Parcours de publication fermé sans publier** : une ligne `action_app_ratee` « stepper_ferme » (étape, plateformes,
+  durée), y compris au rechargement — pour savoir où et pourquoi on s'arrête (Stéphanie Durand, 07/11 18:11).
+- Selftest `lot-0811-app`.

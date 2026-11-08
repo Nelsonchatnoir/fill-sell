@@ -1010,9 +1010,14 @@ const etapeRepublication = (j) => {
 const parNosServeurs = (j) => j?.voie === "api";
 
 // « En attente de ta connexion à … » : le job bute sur une session fermée.
-const attendConnexion = (j) => j?.status === "pending"
-  && Boolean(pfDe(j).attente_session)
-  && /^En attente de ta connexion à /i.test(String(j?.error ?? ""));
+// (08/11, point 4 de Nico — jumiss44, retrait 90056625) Le retrait (ou la republication) Vinted SANS SESSION porte
+// le marqueur `attente_connexion` et « Connecte-toi à Vinted sur ton ordinateur… » (update-job-status, handler-watch) :
+// c'est le même circuit. L'app le disait « En pause · nouvel essai automatique, rien à faire » — un article VENDU resté
+// en ligne sur Vinted du 06/11 au 08/11, la session Vinted absente du navigateur (relevés du dressing : « aucune
+// session Vinted dans Microsoft Edge »). Désormais : « À toi de jouer : connecte-toi ».
+const attendConnexion = (j) => j?.status === "pending" && (
+  (Boolean(pfDe(j).attente_session) && /^En attente de ta connexion à /i.test(String(j?.error ?? "")))
+  || (Boolean(pfDe(j).attente_connexion) && /^Connecte-toi à /i.test(String(j?.error ?? ""))));
 
 /** Une attente AUTOMATIQUE d'un needs_user (en pause), ou null (à toi de jouer). */
 function attenteAutomatique(j) {
@@ -1164,7 +1169,10 @@ function etatJob(j, ctx = {}) {
     const boutique = objet(pf.attente_boutique);
     if (boutique.login || pf.attente_boutique === true) return { etat: ETATS.EN_PAUSE, motif: "boutique", detail: { login: boutique.login ?? null } };
     if (j.action === "republish") {
-      const pl = ctx.plafond;
+      // (08/11, point 1 de Nico) La pause de respiration se lit PAR PLATEFORME quand le serveur la donne
+      // (plafond.par_plateforme) : une republication Leboncoin n'est jamais dite « en pause » parce que Vinted l'est.
+      const parPf = ctx.plafond?.par_plateforme && typeof ctx.plafond.par_plateforme === "object" ? ctx.plafond.par_plateforme : null;
+      const pl = parPf ? (parPf[j.platform]?.retenue === true ? { retenue: true, motif: "pause" } : null) : ctx.plafond;
       if (pl?.retenue) return { etat: ETATS.EN_PAUSE, motif: pl.motif === "pause" ? "rythme" : "limite_jour" };
       const cr = pf.republish_source === "auto" ? ctx.creneaux?.[j.platform] : null;
       if (cr && cr.actif === false) return { etat: ETATS.EN_PAUSE, motif: "auto_en_pause" };

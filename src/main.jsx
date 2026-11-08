@@ -76,6 +76,10 @@ window.addEventListener('vite:preloadError', (evt) => {
     const dernier = Number(sessionStorage.getItem(CLE_RECHARGE_CHUNK) || 0)
     if (Date.now() - dernier < 10000) return // on vient d'essayer : on n'insiste pas
     sessionStorage.setItem(CLE_RECHARGE_CHUNK, String(Date.now()))
+    // (08/11, point 7 — doriane-henri) Annulé, l'événement fait RÉSOUDRE l'import avec `undefined` (Vite 8) : les
+    // imports paresseux passent par utils/lazySur.js, qui attend en silence tant que ce repère est posé — plus de
+    // « Cannot read properties of undefined (reading 'default') », plus d'écran blanc avant le rechargement.
+    window.__fillsellRechargeVersion = Date.now()
     evt.preventDefault() // sinon la rejection non gérée part aussi en console
     console.warn('[build] chunk absent (déploiement en cours) — rechargement')
     window.location.reload()
@@ -90,6 +94,12 @@ window.addEventListener('vite:preloadError', (evt) => {
 // fil vers l'écran fautif — pour le journal (utils/actionRatee.js), puis le geste par défaut de React (reportError →
 // événement « error » de window, que le journal écoute déjà).
 const signalerErreurNonRattrapee = (erreur, info) => {
+  // (08/11, point 7) Pendant un rechargement de version, une erreur née d'un chunk absent n'est ni une panne ni un
+  // geste raté : la page repart sur la nouvelle version dans l'instant. Rien n'est journalisé.
+  try {
+    const t = Number(window.__fillsellRechargeVersion || 0)
+    if (t > 0 && Date.now() - t < 60000) return
+  } catch { /* rien */ }
   try { window.__fillsellPileComposants = String(info?.componentStack ?? '').slice(0, 600) || null } catch { /* rien */ }
   if (typeof window.reportError === 'function') window.reportError(erreur)
   else setTimeout(() => { throw erreur })

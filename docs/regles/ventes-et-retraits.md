@@ -684,3 +684,12 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   disponibilité non confirmée (3 j) ou envoi non confirmé (72 h) ; paiement débloqué à la validation (acheteur, ou d'office
   sous 30 j) ; supprimer une annonce supprime ses options ; toute annonce est supprimée d'office au bout de deux mois.
   Vendeur Pro : rétractation de 14 jours après réception avant le paiement.
+
+## ⛔ 08/11 (point 4 de Nico — jumiss44) — un retrait Vinted sans session dit « À toi de jouer : connecte-toi »
+- Retrait 90056625 (article vendu le 06/11 19:35, annonce Vinted 10558533076 encore en ligne) : la session Vinted était
+  absente du navigateur (Edge) depuis le 06/11 (relevés du dressing : « aucune session Vinted dans Microsoft Edge ») ;
+  le retrait attendait, juste (jamais retiré sans prouver le compte), avec « Connecte-toi à Vinted… » et le marqueur
+  `attente_connexion` — mais l'app le rangeait « En pause · nouvel essai automatique, rien à faire ». Le 08/11 après
+  09:37, l'ordinateur était éteint (aucun poll).
+- Règle : `attendConnexion` (`_shared/etat-job.js`, recopié dans l'extension) reconnaît aussi `attente_connexion` +
+  « Connecte-toi à … » → « À toi de jouer » (connexion), comme `attente_session`. Selftest `etat-job`.

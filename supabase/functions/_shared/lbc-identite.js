@@ -80,3 +80,57 @@ export function champsReprise(pf, k, maintenantMs) {
   out.identite_lbc = { ...(out.identite_lbc ?? {}), reprise_le: new Date(maintenantMs).toISOString(), par: "eclaireur_publie" };
   return out;
 }
+
+// ── (08/11, point 6 de Nico — Rosa Metra) TANT QUE LE MUR TIENT, SEUL L'ÉCLAIREUR PART ─────────────────────────────
+// Rosa : 22 publications au mur « nom et prénom » ; chaque nouvelle publication Leboncoin (11 créées après le 31/10),
+// et chaque tâche remise en file, rouvrait le formulaire de dépôt et revenait au même mur — des visites inutiles sur
+// Leboncoin (anti-robot), aucune chance de passer. Règle (get-pending-jobs, jumelle de la porte « forfait » du 17/10) :
+// tant que le compte a un mur d'identité VU depuis moins de 30 j et qu'aucune publication Leboncoin n'est passée
+// depuis, ses publications (et ses republications pas encore retirées) ne partent plus : elles rejoignent la carte du
+// compte (needs_user, motif du mur, « retenue avant essai »), aucune visite. Seul l'éclaireur (identite_lbc.eclaireur_le
+// posé APRÈS le dernier mur : « C'est fait » de la carte, ou handler-watch toutes les 12 h) est servi, un à la fois ;
+// s'il passe, handler-watch relâche toutes les autres (champsReprise).
+export const MSG_LBC_IDENTITE_RETENUE =
+  "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la Transaction sécurisée) : " +
+  "tant qu'ils manquent, aucune publication Leboncoin ne peut être validée. Complète-les sur leboncoin.fr (informations " +
+  "de ton compte) : cette publication partira toute seule ensuite. Rien n'a été envoyé à Leboncoin.";
+
+/** L'instant du dernier mur VU PAR LEBONCOIN (ms), ou null. Une retenue avant essai (posée ici) n'est pas un mur vu :
+ *  sinon chaque retenue repousserait le mur au-delà de l'éclaireur, qui ne partirait plus jamais. */
+export function dernierMurIdentite(murs) {
+  const t = (Array.isArray(murs) ? murs : []).map((m) => {
+    const d = pfDe(m).last_diagnostic;
+    if (d && typeof d === "object" && d.retenue_avant_essai) return 0;
+    return Date.parse(String((d && typeof d === "object" ? d.at : null) ?? "")) || Date.parse(String(m?.created_at ?? "")) || 0;
+  }).filter((x) => x > 0);
+  return t.length ? Math.max(...t) : null;
+}
+
+/** Une tâche Leboncoin que le mur concerne : publication, ou republication dont rien n'est encore retiré. */
+export function candidatRetenueIdentite(job) {
+  if (!job || job.platform !== "leboncoin") return false;
+  const a = String(job.action ?? "publish");
+  if (a === "publish") return true;
+  if (a !== "republish") return false;
+  const pf = pfDe(job);
+  return !["deleted", "recreated"].includes(String(pf.republish_step ?? "")) && !pf.deleted_at && !pf.republish_suppression_envoyee;
+}
+
+/** { servis: [l'éclaireur relancé après le dernier mur, un au plus], retenus: [les autres] }. */
+export function partagerCandidatsIdentite(candidats, dernierMurMs) {
+  const l = (Array.isArray(candidats) ? candidats : []).filter(candidatRetenueIdentite);
+  const eclaireurs = l.filter((j) => (Date.parse(String(pfDe(j).identite_lbc?.eclaireur_le ?? "")) || 0) > (dernierMurMs ?? 0));
+  const servis = eclaireurs.slice(0, 1);
+  const ids = new Set(servis.map((j) => String(j.id)));
+  return { servis, retenus: l.filter((j) => !ids.has(String(j.id))) };
+}
+
+/** Les platform_fields d'une tâche retenue avant tout essai (elle rejoint la carte du compte). */
+export function champsRetenueIdentite(pf, maintenantIso) {
+  const out = { ...(pf ?? {}) };
+  for (const k of ["processing_since", "next_action_after"]) delete out[k];
+  out.needs_user_source = "lbc_identite";
+  out.last_diagnostic = { quoi: MOTIF_LBC_IDENTITE, at: maintenantIso, retenue_avant_essai: true, detail: MSG_LBC_IDENTITE_RETENUE };
+  out.identite_lbc = { ...(out.identite_lbc ?? {}), retenue_le: maintenantIso };
+  return out;
+}

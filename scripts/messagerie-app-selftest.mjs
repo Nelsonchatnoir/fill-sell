@@ -63,7 +63,8 @@ await cas("App : la barre et l'espace ne se rendent que pour un compte bêta ou 
     && /ouvrirMessagerieArticle:\(id\)=>setEspaceMessagerie\(\{onglet:'messages',article:id\}\)/.test(APP)
     && /messagerie=\{messagerieStock\}/.test(APP), "Stock : null hors bêta");
   assert.ok(/messagerieBeta=\{messagerie\.beta\|\|messagerie\.bordereaux\}/.test(APP), "Ventes : « À expédier » pour la bêta et les bordereaux Vinted ouverts");
-  assert.ok(/lazyMessagerie\(\(\) => import\('\.\/messagerie\/EspaceMessagerie'\)\)/.test(APP), "espace chargé à la demande");
+  // (08/11, point 7) Chargé à la demande par lazySur (import sûr pendant un changement de version, utils/lazySur.js).
+  assert.ok(/lazySur\(\(\) => import\('\.\/messagerie\/EspaceMessagerie'\)\)/.test(APP), "espace chargé à la demande");
 });
 
 await cas("Stock et Ventes : indicateur et section derrière le drapeau", () => {

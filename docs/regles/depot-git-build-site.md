@@ -203,3 +203,12 @@ republications multi-plateformes) est une clé de `coin_config`, lue UNE fois au
   `interrupteurs-ouverture`.
 - Premier lancement d'un binaire neuf : le splash couvre la mise à jour Capgo (`src/natif/splashDemarrage.js`, au plus
   10 s) ; les OTA partent TOUJOURS en `--delta` (`docs/agents/pieges.md`).
+
+## ⛔ 08/11 (point 7 de Nico — doriane-henri) — un chunk absent pendant un changement de version ne plante plus
+- Cause prouvée (07/11 20:37, Edge) : onglet sur 7e54e5f, déploiement 65396fd à 20:12, ouverture de la Messagerie
+  (import paresseux) → chunk absent → `vite:preloadError` annulé par main.jsx → Vite (8.0.3) RÉSOUT l'import avec
+  `undefined` → `TypeError: … reading 'default'`, racine démontée (écran blanc ~1 s, ligne exception_js), puis rechargement.
+- Règle : tout import paresseux passe par `src/utils/lazySur.js` (`lazySur`) : un module vide pendant un rechargement de
+  version (`window.__fillsellRechargeVersion`, posé par main.jsx avant `preventDefault`) ne se résout jamais (Suspense
+  garde son fallback) ; l'erreur d'un chunk absent n'est pas journalisée pendant le rechargement. Jamais de boucle (10 s,
+  inchangé). Plus aucun `lazy(() => import(...))` hors de lazySur (selftest `lot-0811-app`).

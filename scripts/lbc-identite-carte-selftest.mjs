@@ -68,5 +68,35 @@ ok(/if \(!Number\.isFinite\(vu\) \|\| now - \(vu as number\) > 24 \* 3_600_000\)
 ok(/pub >= le && !il\?\.libere_le/.test(hw) && /champsReprise\(j\.platform_fields/.test(hw), "éclaireur publié → toutes les autres repartent, une fois");
 ok(/if \(traites >= 10\) break;/.test(hw), "10 comptes par passage au plus");
 
+console.log("\n5. (08/11, point 6 — Rosa Metra) TANT QUE LE MUR TIENT, SEUL L'ÉCLAIREUR PART (get-pending-jobs)");
+{
+  const I = await import("../supabase/functions/_shared/lbc-identite.js");
+  const mur = (id, at, o = {}) => ({ id, platform: "leboncoin", action: "publish", status: "needs_user", created_at: "2026-11-06T14:45:00Z",
+    platform_fields: { needs_user_source: "relancer", last_diagnostic: { quoi: I.MOTIF_LBC_IDENTITE, at, ...o } } });
+  const murs = [mur("b627a1b8", "2026-11-08T10:51:58Z"), mur("3cb286eb", "2026-11-08T10:39:00Z"), mur("x-retenue", "2026-11-08T14:00:00Z", { retenue_avant_essai: true })];
+  const dernier = I.dernierMurIdentite(murs);
+  ok(dernier === Date.parse("2026-11-08T10:51:58Z"), "le dernier mur VU par Leboncoin (une retenue avant essai n'en est pas un)");
+  const pending = (id, o = {}) => ({ id, platform: "leboncoin", action: "publish", status: "pending", created_at: "2026-11-08T13:00:00Z", platform_fields: { ...o } });
+  const eclaireur = pending("f736bffc", { identite_lbc: { eclaireur_le: "2026-11-08T21:21:01Z" } });
+  const ancien = pending("vieux", { identite_lbc: { eclaireur_le: "2026-11-07T21:21:01Z" } });
+  const neuve = pending("neuve");
+  const repEngagee = { ...pending("rep-engagee", { republish_step: "deleted" }), action: "republish" };
+  const repLibre = { ...pending("rep-libre", { republish_step: "captured" }), action: "republish" };
+  const { servis, retenus } = I.partagerCandidatsIdentite([neuve, eclaireur, ancien, repEngagee, repLibre], dernier);
+  ok(servis.length === 1 && servis[0].id === "f736bffc", "seul l'éclaireur relancé APRÈS le dernier mur part");
+  ok(retenus.map((j) => j.id).sort().join() === "neuve,rep-libre,vieux", "la nouvelle publication, l'ancien éclaireur et la republication pas encore retirée sont retenus");
+  ok(!I.candidatRetenueIdentite(repEngagee), "une republication déjà retirée va au bout (jamais retenue)");
+  const pf = I.champsRetenueIdentite({ processing_since: "x", erreurs_archivees: [1] }, "2026-11-08T15:00:00Z");
+  ok(I.attendIdentiteLbc({ id: "neuve", platform: "leboncoin", action: "publish", status: "needs_user", platform_fields: pf }),
+    "la retenue rejoint la carte du compte (même motif) : « C'est fait » et l'éclaireur de handler-watch la relâchent");
+  ok(pf.needs_user_source === "lbc_identite" && pf.last_diagnostic.retenue_avant_essai === true && !pf.processing_since && pf.erreurs_archivees.length === 1,
+    "source propre (jamais « relancer »), marquée « retenue avant essai », historique gardé");
+  ok(/nom et ton prénom sur ton compte vendeur/.test(I.MSG_LBC_IDENTITE_RETENUE) && /Rien n'a été envoyé à Leboncoin/.test(I.MSG_LBC_IDENTITE_RETENUE),
+    "le message garde la tournure que l'app reconnaît et dit que rien n'est parti");
+  const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
+  ok(/const dernierMur = dernierMurIdentite\(murs as never\[\]\) as number \| null;/.test(gpj) && /\.gt\("published_at", new Date\(dernierMur\)\.toISOString\(\)\)\.limit\(1\);/.test(gpj)
+    && /partagerCandidatsIdentite\(candidatsId as never\[\], dernierMur\)/.test(gpj), "get-pending-jobs applique la porte (mur vu < 30 j, aucune publication passée depuis)");
+}
+
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ Leboncoin nom et prénom : une carte par compte, tout est vert");
 process.exit(ko ? 1 : 0);
