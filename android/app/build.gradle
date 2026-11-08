@@ -118,8 +118,11 @@ android {
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
         // (07/11 soir, passe finale de Nico) versionCode 36, même versionName 2.9.164 : remplace la vc35 en examen
         // (arrêt du Cloud par la boutique, modales, carte Synchronisation, mails Cloud).
-        versionCode 36
-        versionName "2.9.164"
+        // (08/11 soir, refus Google de la vc36 : « Currency differences with prominent display price ») versionCode 37 /
+        // versionName 2.9.167 : les prix affichés viennent de Google Play Billing (lib/prixBoutique.js). Natif inchangé ;
+        // prochaine OTA ≥ 2.9.168.
+        versionCode 37
+        versionName "2.9.167"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
