@@ -4,6 +4,43 @@ Rédigé le 08/11 vers 20:15 (heure de Paris), à la demande de Nico, pour une s
 terminé** (dernière mise à jour : 08/11 20:4x, migration 20261108200000 appliquée). Tout ce qui suit a été relu
 en prod au moment d'écrire, sauf mention contraire.
 
+## 00. URGENCES DE LA NUIT (08/11, après 22:30) — jade60890 perdue, poste Cloud pris pour une extension
+**A. « Boucle » Vinted (jade60890, iPhone, essai Apple 22:15:23 → arrêté 22:18)** — CORRIGÉ, DÉPLOYÉ, PROUVÉ.
+- Cause (journal orchestrateur 21:15:50-56 UTC) : « Continuer avec Google » de Vinted ouvre `www.vinted.fr/web/api/auth/
+  google_authorize`, chemin absent de la liste de Vinted → refusé à chaque toucher (« Cette page n'est pas la connexion »),
+  5 touchers en 6 s → garde anti-boucle → fermeture « réessaie plus tard ». Leboncoin : « Continuer avec Apple », page Apple
+  affichée (retour déclaré 22:16:12), fermée 17 s plus tard à l'étape mot de passe Apple (abandon, écran sain). Beebs :
+  page OK (DataDome seul), « Continuer avec Google » → fenêtre Google rendue en 1366×767 sur l'iPhone (illisible), 13
+  touchers, abandon. Alerte support@ : rien parti (4391256 ne couvrait que l'échec d'OUVERTURE).
+- Correctif (f975a16 + 35ae0ec, orchestrateur 35ae0ec7b81d sur cloud-2, tests 206/206 dont la course 304369a) :
+  `CHEMIN_AUTH_PLATEFORME` (API d'authentification des plateformes permises) ; refus < 4 s après un toucher = retour à la
+  page + alerte, jamais une boucle ; vraie boucle = 2 nouveaux essais propres (purge + rechargement) avant le message final
+  « l'équipe est prévenue » (plus jamais « réessaie plus tard ») ; `etat('erreur')` → alerte support@ ; fenêtres de
+  connexion sociale ouvertes par une page de bureau = format téléphone ; « Refuser les cookies » reconnaît OneTrust de
+  Vinted (« Cookies requis uniquement »).
+- Preuve sur poste NEUF (Nicotest servi à la main, `scripts/reparations/20261108n_nicotest_preuve_sso*.sql`, nettoyé et
+  vérifié : IP 2 au repos du 14/11, 0 poste, 0 coffre ; outil `serveur-cloud/outils/essai-connexion-sso.mjs`) : Vinted →
+  Google « Accéder à l'application Vinted » 390×844 ; Leboncoin → Apple « app leboncoin » 390×844 ; Beebs → Google
+  « Accéder à l'application Beebs » 390×844 (`vue_fenetre_telephone`) ; Depop : page de connexion stable. Aucun identifiant.
+  Vinted ouvert 3 fois (1re et 2e : le bandeau OneTrust couvrait l'écran et notre refus ne le fermait pas — 2e défaut trouvé).
+- hoosslocal@gmail.com = Nicotest (5322fa18) : ses connexions 19:49-19:57 (« remplacee », « navigateur_ferme ») = la preuve
+  de la session précédente ; « essai_deja_pris » 19:42 = attendu. Parcours normal, aucun défaut.
+**B. Poste Cloud pris pour une extension** — CORRIGÉ À LA RACINE (migration + get-pending-jobs).
+- Cause : get-pending-jobs horodatait `extension_last_seen_at` pour le poste Cloud (capacité `poste_cloud`, build
+  « …-cloud » dans extension_postes). Jade : 22:18:35 posé par son poste qui s'éteignait (Cloud arrêté 22:18:09) →
+  « extension vue » au parcours d'entrée (22:18:58) → voie extension, relevés Vinted/Leboncoin/Beebs « queued ».
+- Correctif : migration **20261108230000** (banc jetable 13/13, APPLIQUÉE + repair) : colonne `extension_ordinateur_vu_le`
+  (vraie extension seule), comptes au Cloud arrêté remis d'aplomb PAR LA RÈGLE, déclencheur à l'arrêt du Cloud ; inverse
+  `supabase/rollbacks/20261108230000_*`. get-pending-jobs : un poste Cloud ne signe que si cloud_voie ; une vraie extension
+  signe aussi extension_ordinateur_vu_le. `selftest:poste-cloud-pas-extension` 13/13.
+- Comptes remis d'aplomb par la règle : **jade60890** (mal aiguillée : 3 relevés en attente, l'app lui dit maintenant
+  « Extension requise » / installer l'extension), **wtk8jnmnnf** (Cloud arrêté, aucun relevé en attente), Nicotest. Nico et
+  Virginie (Cloud actif) : inchangés, leurs postes Cloud continuent de prendre leurs jobs.
+**C. Pool d'IP sous la marge (22:52:35)** : 2 IP saines libres (3, 40 ; la 39 est réservée à Nico) pour une marge de 3 ;
+  IP au repos 7 j : 4 (Jade, 15/11), 1 (wtk8, 15/11), 2 (Nicotest, 14/11) ; 5 et 6 expirées. Aucun achat : l'achat auto
+  ne part que sous cloud_ip_stock_min = 2. Levier proposé à Nico (non fait) : une IP dont le compte n'a JAMAIS réussi une
+  connexion repasse « disponible » après sa purge, sans repos (IP 4 et 1 → 4 libres).
+
 ## 0. Décisions de Nico du 08/11 soir (2e session) — avancement, point par point
 1. **OTA / écart Capgo — RÉGLÉ** : @capgo/capacitor-updater **revenu en 8.51.2** (retour de 7c82602). Preuves : le JS
    du module est identique entre 8.51.2 et 8.53.1 (seuls les noms de variables des `catch` diffèrent ; le natif seul

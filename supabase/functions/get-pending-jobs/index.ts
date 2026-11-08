@@ -1252,7 +1252,19 @@ serve(async (req) => {
       if (version) await admin.rpc("noter_version_extension", { p_user_id: user.id, p_version: version });
       // (01/11) Le compte de travail délégué n'est pas « l'extension du compte » : ni sa présence, ni son build, ni sa
       // mise à jour en attente ne remplacent ceux des postes du propriétaire (alertes « ordinateur éteint » intactes).
-      if (!delegationLbc) await admin.from("profiles").update(patch).eq("id", user.id);
+      // (08/11/2026 nuit, URGENT jade60890) LE POSTE CLOUD N'EST PAS UNE EXTENSION. Son appel ne signe « quelqu'un fait
+      // les tâches de ce compte » (extension_last_seen_at) QUE si le Cloud du compte est ACTIF (cloud_voie) : le poste de
+      // Jade, qui s'éteignait à 22:18:35 (Cloud arrêté à 22:18:09), l'avait fait passer pour une extension installée et
+      // le parcours d'entrée l'a envoyée vers la voie extension. Il n'écrit JAMAIS extension_ordinateur_vu_le, le signe
+      // de vie de la VRAIE extension (migration 20261108230000), que seule une vraie extension pose ici.
+      if (!delegationLbc) {
+        if (posteCloud) {
+          await admin.from("profiles").update(patch).eq("id", user.id).eq("cloud_voie", true);
+        } else {
+          patch.extension_ordinateur_vu_le = patch.extension_last_seen_at;
+          await admin.from("profiles").update(patch).eq("id", user.id);
+        }
+      }
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
 
     // 28/09 16:46 : appel périodique des ventes automatiques retiré après

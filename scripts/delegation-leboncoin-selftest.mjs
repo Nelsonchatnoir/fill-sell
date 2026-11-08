@@ -77,7 +77,8 @@ ok(/if \(executant && delegationLbcValide\(\{ proprietaire: user\.id, flagsPropr
   && /for \(const compte of comptesExecutesLbc\(flagsP\)\)/.test(bloc0),
   'B3. propriétaire et exécutant reconnus seulement sur une délégation valide (sinon null / liste vide → comme avant)');
 const nDelegue = (GPJ.match(/delegationLbc/g) ?? []).length;
-ok(GPJ.includes('if (!delegationLbc) await admin.from("profiles").update(patch).eq("id", user.id);')
+// (08/11 nuit, jade60890) La même garde, en bloc : le poste Cloud ne signe que pour un Cloud actif ; jamais pour un compte délégué.
+ok(/if \(!delegationLbc\) \{\s*if \(posteCloud\) \{\s*await admin\.from\("profiles"\)\.update\(patch\)\.eq\("id", user\.id\)\.eq\("cloud_voie", true\);\s*\} else \{[^}]*await admin\.from\("profiles"\)\.update\(patch\)\.eq\("id", user\.id\);\s*\}\s*\}/.test(GPJ)
   && GPJ.includes('if (posteAvecOpla && !delegationLbc) {') && GPJ.includes('if (posteAvecDepop && !delegationLbc) {')
   && GPJ.includes('if (delegationLbc) (patchPoste as Record<string, unknown>).delegation = {'),
   'B4. compte de travail : poste marqué, ni présence/build du propriétaire, ni relance Opla/Depop');
