@@ -43,8 +43,20 @@ ws.on('error', (e) => evenements.push({ ms: Date.now() - t0, quoi: 'ws_erreur', 
 
 // Laisser la page s'ouvrir (DataDome compris).
 await attendre(14_000);
-const version = await (await fetch(`http://${ip}:9223/json/version`, { signal: AbortSignal.timeout(3000) })).json();
-const cdp = await connecterCdp(String(version.webSocketDebuggerUrl).replace(/^ws:\/\/[^/]+/, `ws://${ip}:9223`), { delaiAppelMs: 20_000 });
+// `auto` : l'adresse du navigateur du compte, lue au moteur Docker (socket monté dans l'orchestrateur), lecture seule.
+const ipNav = ip !== 'auto' ? ip : await new Promise((ok) => {
+  import('node:http').then(({ request }) => {
+    const r = request({ socketPath: '/var/run/docker.sock', path: `/containers/fs-nav-${user}/json` }, (res) => {
+      let s = ''; res.on('data', (d) => { s += d; }); res.on('end', () => {
+        try { const n = JSON.parse(s).NetworkSettings?.Networks ?? {}; ok(Object.values(n).map((x) => x.IPAddress).find(Boolean) ?? null); } catch { ok(null); }
+      });
+    });
+    r.on('error', () => ok(null)); r.end();
+  });
+});
+if (!ipNav) { console.log(JSON.stringify({ plateforme, erreur: 'navigateur_introuvable', evenements })); process.exit(1); }
+const version = await (await fetch(`http://${ipNav}:9223/json/version`, { signal: AbortSignal.timeout(3000) })).json();
+const cdp = await connecterCdp(String(version.webSocketDebuggerUrl).replace(/^ws:\/\/[^/]+/, `ws://${ipNav}:9223`), { delaiAppelMs: 20_000 });
 const lirePage = async (cibleT, fichier) => {
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: cibleT.targetId, flatten: true });
   const r = await cdp.send('Runtime.evaluate', {
