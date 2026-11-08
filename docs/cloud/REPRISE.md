@@ -19,9 +19,14 @@
   standard-monthly, Pro pro-monthly, Business business-monthly, Cloud cloud-monthly) ; l'app est distribuée dans 178 :
   3 pays sans facturation Google (l'app y montre « … », aucun achat). Essai Cloud `cloud-trial-3d` = 7 jours (le nom
   seul dit 3), nouveaux clients de cet abonnement. Premium : offre essai-7-jours INACTIVE.
-- **Binaire** : 2.9.167 / versionCode 37 (33c8c1a), AAB 18,2 Mo sha256 db9f781f…ffff, signature = vc36 ;
-  `build/AAB-A-TELEVERSER-2.9.167-vc37/fillsell-android-2.9.167-versionCode37-33c8c1a.aab` (seul) ; anciens AAB
-  rangés dans `build/AAB-PERIMES/`. iPhone : pas de nouveau binaire Apple (le module lit déjà les prix) → OTA.
+- **Binaire** : 2.9.167 / versionCode 37, RECONSTRUIT sur 7c82602 avec @capgo/capacitor-updater **8.53.1** (point 12 de
+  Nico : la 8.51.2 envoie de faux « download_fail », corrigé en 8.53.0 ; 8.53.1 = 19 jours de recul, sans les verrous
+  httpsOnly/builtinMinimum de la 8.54). AAB 18,1 Mo sha256 98a662f4…d3f2, signature = vc36 ;
+  `build/AAB-A-TELEVERSER-2.9.167-vc37/fillsell-android-2.9.167-versionCode37-7c82602.aab` (seul ; celui de 33c8c1a,
+  jamais livré, est dans `build/AAB-PERIMES/`). ⚠️ Le module Android annonce « 8.52.1 » à Capgo (constante PLUGIN_VERSION
+  pas montée en amont, même en 8.54.2) : le tableau de bord Capgo peut encore le classer « ancien ». iPhone : pas de
+  nouveau binaire Apple (le module lit déjà les prix) → OTA ; Capgo signale l'updater « incompatible » avec le canal
+  (natif changé) : l'OTA reste servie aux anciens binaires (canal en blocage « major »), à relire avant l'OTA.
 - **OTA** : rien publié ; la prochaine OTA (commune Cloud + Problèmes) doit être **≥ 2.9.168** (2.9.167 = le binaire).
 
 ## 08/11/2026 soir — URGENT U1-U6 (premier vrai client Cloud sans écran de connexion)
