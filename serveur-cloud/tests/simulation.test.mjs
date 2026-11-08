@@ -168,7 +168,7 @@ function monter({ comptes, jobs = [], alertes = { signaler: async () => {} } }) 
   // (30/10, lot D) La sortie passe par LE module fournisseur (compte à IP dédiée ici : cloud_proxy_identifiants).
   const fournisseurIp = creerFournisseurIp({ config, base, iproyal: null, journal, alertes: { signaler: async () => {} } });
   const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, fournisseurIp, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), alertes });
-  connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal });
+  connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal, alertes });
   return { base, nav, navigateurs, coffre, postes, connexions, fabriquees };
 }
 
@@ -246,6 +246,33 @@ test('(08/11 soir, urgence) poste neuf ouvert EN MÊME TEMPS par « Me connecter
   assert.equal(fermetures, 0, 'aucune fermeture « echec_ouverture » : le lien CDP reste ouvert');
   // Une fois ouvert, un nouvel appel ne rouvre rien (le navigateur ouvert est rendu par l'appelant, comme connexion.js).
   assert.equal(s.navigateurs.ouvert(U), a);
+});
+
+test('(08/11 soir, ordre de Nico) « Me connecter » qui tombe en « erreur » : alerte IMMÉDIATE à support@ (compte, plateforme, cause), jamais au client', async () => {
+  const signalees = [];
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }],
+    alertes: { signaler: async (...a) => { signalees.push(a); return { envoye: true }; } } });
+  // L'ouverture du poste échoue (comme le 08/11 à 19:01 : « CDP : connexion fermée »).
+  s.navigateurs.ouvrir = async () => { throw new Error('CDP : connexion fermée'); };
+  const recus = [];
+  const ws = { readyState: 1, bufferedAmount: 0, ecouteurs: {}, on(e, f) { this.ecouteurs[e] = f; },
+    send(d) { recus.push(typeof d === 'string' ? JSON.parse(d) : { binaire: d }); }, close() { this.readyState = 3; this.ecouteurs.close?.(); } };
+  s.connexions.brancher(ws, 'https://fillsell.app');
+  const ticket = signerTicket({ user: U }, config.cleTickets);
+  // (journal.erreur lève dans cette simulation : on le neutralise le temps du geste, l'erreur EST le sujet.)
+  const erreurAvant = journal.erreur;
+  journal.erreur = () => {};
+  try {
+    await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'ouvrir', ticket, plateforme: 'leboncoin', largeur: 390, hauteur: 780, dpr: 3 })), false);
+    await attendre(20);
+  } finally { journal.erreur = erreurAvant; }
+  assert.ok(recus.some((m) => m.t === 'etat' && m.etape === 'erreur'), 'l’écran dit l’erreur');
+  assert.equal(signalees.length, 1, 'une alerte, tout de suite');
+  const [niveau, texte, details] = signalees[0];
+  assert.equal(niveau, 'serveur');
+  assert.match(texte, /« Me connecter » leboncoin en erreur — compte 0f0e0d0c : CDP : connexion fermée/);
+  assert.equal(details.user, U);
+  assert.equal(details.plateforme, 'leboncoin');
 });
 
 test('poste : un job « processing » garde son navigateur, même compte inactif', async () => {

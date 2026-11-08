@@ -173,7 +173,7 @@ export const MESSAGES = Object.freeze({
   },
 });
 
-export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null, verifications = null }) {
+export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null, verifications = null, alertes = null }) {
   const actives = new Map(); // user → vue
 
   async function compteServi(user) {
@@ -213,8 +213,10 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         clearTimeout(attenteOuverture);
         const lang = m.lang === 'en' ? 'en' : 'fr';
         const txt = MESSAGES[lang];
+        let userAlerte = null;
         try {
           const user = await authentifier(m);
+          userAlerte = user;
           if (!user) { envoyer({ t: 'etat', etape: 'non_autorise', message: txt.non_autorise }); return ws.close(4401); }
           if (!PLATEFORMES_CLOUD.includes(m.plateforme)) return ws.close(4400, 'plateforme');
           const compte = await compteServi(user);
@@ -242,6 +244,11 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         } catch (e) {
           journal.erreur('connexion_ouverture_echec', { erreur: e.message });
           envoyer({ t: 'etat', etape: 'erreur', message: MESSAGES[m.lang === 'en' ? 'en' : 'fr'].erreur });
+          // (08/11 soir, ordre de Nico) Une connexion qui tombe en « erreur » prévient support@fillsell.app TOUT DE SUITE
+          // (alertes.js : envoyer_mail_ponctuel, catégorie support ; au plus un mail par heure pour le même compte et la même
+          // plateforme). Jamais un mail au client. Ne retarde ni ne bloque la fermeture.
+          Promise.resolve(alertes?.signaler('serveur', `« Me connecter » ${String(m.plateforme ?? '?')} en erreur — compte ${String(userAlerte ?? '?').slice(0, 8)} : ${String(e.message).slice(0, 160)}`,
+            { user: userAlerte, plateforme: m.plateforme ?? null, erreur: String(e.message).slice(0, 300) })).catch(() => {});
           vue?.fermer('erreur');
           ws.close(4500);
         }

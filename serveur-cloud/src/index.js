@@ -99,7 +99,7 @@ const vidange = creerVidange({ base, navigateurs, journal, idExtension: relanceT
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
 // (01/11) Une connexion vérifiée (compte lu) est notée dans le journal de l'essai de 48 h : ses heures partent de là.
 // (02/11) Et elle rouvre sa plateforme si elle était en vérification (verifications.resolue, par l'essai ou sans lui).
-connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal, verifications,
+connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal, verifications, alertes,
   surVerifiee: (e) => {
     if (endurance) endurance.connexionVerifiee(e).catch(() => {});
     else verifications.resolue(e.user, e.plateforme, { par: 'connexion', le: e.le }).catch(() => {});
