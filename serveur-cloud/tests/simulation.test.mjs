@@ -227,6 +227,27 @@ test('poste : ouvert avec le coffre et une session FillSell posée ; jamais rouv
   assert.equal(s.base.t.cloud_postes.find((p) => p.user_id === U).etat, 'eteint');
 });
 
+test('(08/11 soir, urgence) poste neuf ouvert EN MÊME TEMPS par « Me connecter » et le planificateur : une seule ouverture, un seul navigateur, aucune erreur', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  // Comme en prod : le navigateur met du temps à démarrer, et une seconde fabrication de session dans l'heure est refusée.
+  const ouvrirReel = s.navigateurs.ouvrir.bind(s.navigateurs);
+  let ouvertures = 0;
+  s.navigateurs.ouvrir = async (u, o) => { ouvertures += 1; await new Promise((r) => setTimeout(r, 30)); return ouvrirReel(u, o); };
+  let fermetures = 0;
+  const fermerReel = s.navigateurs.fermer.bind(s.navigateurs);
+  s.navigateurs.fermer = async (u, raison) => { fermetures += 1; return fermerReel(u, raison); };
+  const vues = new Set();
+  const compte = { user_id: U, ip_id: 7, etat_cloud: 'essai', plateformes_connectees: [] };
+  const [a, b] = await Promise.all([s.postes.ouvrir(U, compte, 'connexion'), s.postes.ouvrir(U, compte, 'connexion')]);
+  vues.add(a); vues.add(b);
+  assert.equal(ouvertures, 1, 'un seul démarrage du navigateur, même appelé deux fois en même temps');
+  assert.equal(vues.size, 1, 'les deux appelants reçoivent le MÊME navigateur');
+  assert.equal(s.fabriquees.length, 1, 'une seule session FillSell fabriquée (jamais « déjà une dans l’heure »)');
+  assert.equal(fermetures, 0, 'aucune fermeture « echec_ouverture » : le lien CDP reste ouvert');
+  // Une fois ouvert, un nouvel appel ne rouvre rien (le navigateur ouvert est rendu par l'appelant, comme connexion.js).
+  assert.equal(s.navigateurs.ouvert(U), a);
+});
+
 test('poste : un job « processing » garde son navigateur, même compte inactif', async () => {
   const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'paye', delai_sessions_min: null }],
     jobs: [{ user_id: U, status: 'processing', action: 'publish', platform: 'vinted', voie: 'extension', platform_fields: {} }] });

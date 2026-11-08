@@ -217,7 +217,22 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     return { ...bilan, fillsell: session ? 'relue' : 'absente' };
   }
 
-  async function ouvrir(user, compte, motif) {
+  // (08/11 soir, URGENCE — client wtk8jnmnnf, Leboncoin en « erreur » au bout de 3 s) UNE SEULE OUVERTURE PAR COMPTE À LA
+  // FOIS. Le poste d'un compte neuf n'était pas encore ouvert : l'écran « Me connecter » (connexion.js, demarrer) et le
+  // planificateur (tour, motif « connexion ») l'ont ouvert EN MÊME TEMPS (deux « navigateur_ouvert » à 140 ms). La
+  // seconde ouverture a voulu fabriquer une session FillSell (« déjà une dans l'heure »), a échoué, et sa fermeture
+  // (« echec_ouverture ») a coupé le navigateur de la première : « CDP : connexion fermée ». Désormais, un second appel
+  // pendant une ouverture ATTEND la même et reçoit le même navigateur (testé : simulation.test.mjs).
+  const ouverturesEnVol = new Map();
+  function ouvrir(user, compte, motif) {
+    const enVol = ouverturesEnVol.get(user);
+    if (enVol) return enVol;
+    const p = ouvrirUneFois(user, compte, motif).finally(() => { if (ouverturesEnVol.get(user) === p) ouverturesEnVol.delete(user); });
+    ouverturesEnVol.set(user, p);
+    return p;
+  }
+
+  async function ouvrirUneFois(user, compte, motif) {
     // (01/11) L'essai de 48 h arrêté au premier blocage (endurance.js) : plus aucune ouverture, « Me connecter » compris.
     if (arretEndurance()) throw new Error('essai arrêté au premier blocage (etat/endurance/arret.json)');
     const poste = await lirePoste(user);
