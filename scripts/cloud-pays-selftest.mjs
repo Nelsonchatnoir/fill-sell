@@ -28,7 +28,7 @@ ok(paysDuTelephoneCloud(null) === null && paysDuTelephoneCloud('') === null, 'fu
 // 3. Câblage : la VENTE passe par cloudOffreVendable ; l'état, la connexion, l'arrêt et la reprise restent ouverts.
 const app = lire('src/App.jsx');
 ok(/if\(!achatCloud\|\|!cloudOffreVendable\(user\?\.id\)\)return;/.test(app), 'App : l’achat du Cloud (lancerAchatCloud) est borné au pays');
-ok(/opts\?\.cloud===true&&cloudOffreVendable\(user\?\.id\)/.test(app) && /onCloudSeul=\{cloudOffreVendable\(user\?\.id\)\?/.test(app)
+ok(/opts\?\.cloudEnsuite===true&&cloudOffreVendable\(user\?\.id\)/.test(app) && /onCloudSeul=\{cloudOffreVendable\(user\?\.id\)\?/.test(app)
   && /onAjouterCloud=\{cloudOffreVendable\(user\?\.id\)\?/.test(app) && /essaiCloud=\{cloudOffreVendable\(user\.id\)&&achatCloud\?/.test(app),
   'App : formule + Cloud, Cloud seul, ajout, essai du parcours d’entrée — bornés');
 ok(/\.\.\.\(cloudOfferVisible\(user\.id\)&&achatCloud\?\{\s*essayer:/.test(app) && /arreter:async\((opts)?\)=>/.test(app), // (07/11 soir) le geste reçoit { canal } de l'écran

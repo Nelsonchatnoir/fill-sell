@@ -69,7 +69,8 @@ const modale = lignesDeCode(lire('src/components/ConversionModal.jsx'));
 verifier(/const offreCloud = cloudVisible \? offreCloudPourModale\(lectureCloud\) : null;/.test(modale), 'feuille : sans drapeau, offreCloud vaut null');
 // (08/11, point 0 de Nico : « formule + Cloud » n'achetait que la formule) La carte d'un palier n'achète que CE palier :
 // plus jamais onUpgrade(tier, { cloud }), aucune carte payante ne reçoit le Cloud, l'interrupteur ne sert qu'à Free.
-verifier(!/onUpgrade\(tier, \{ cloud/.test(modale) && /\.\.\.contexteDeLogs\(\) \}\);\s*onUpgrade\(tier\);\s*\};\s*const basculerCloud/.test(modale), 'feuille : une carte payante appelle onUpgrade(tier), jamais avec le Cloud');
+verifier(!/onUpgrade\(tier, \{ cloud:/.test(modale) && /\.\.\.contexteDeLogs\(\) \}\);\s*if \(voieFree && avecCloud\) onUpgrade\(tier, \{ cloudEnsuite: true \}\);\s*else onUpgrade\(tier\);\s*\};\s*const basculerCloud/.test(modale),
+  'feuille : une carte payante achète SA formule ; FillSell Cloud coché (interrupteur visible) = l’étape 2 après, jamais dans le même achat');
 verifier(/<PremiumPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale) && /<ProPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale)
   && /<BusinessPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale) && /<BusinessPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{choisirPalier\} cloud=\{null\} \/>/.test(modale),
   'feuille : Premium, Pro, Business jamais « + FillSell Cloud » (prix ni bouton)');

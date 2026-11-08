@@ -1,5 +1,24 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 08/11/2026 après-midi — « FORMULE + CLOUD » CASSÉ (constat de Nico 14:23) : points 0 à 3
+- **Point 0 (14:49-14:51)** : le parcours combiné n'achetait QUE la formule, sur les 3 canaux (formule, puis la feuille des
+  offres rouverte). Aucun vrai client touché depuis 13:29 (seul Nicotest ; aucun checkout Stripe réel ; aucune
+  notification Google). « Passer … + FillSell Cloud » retiré (08a9e66) : web au push, OTA **2.9.166** publiée 14:51.
+- **Point 1** (commit ci-dessous, OTA commune à venir sur feu vert) : deux achats nommés — la carte achète sa formule ;
+  Cloud coché → intention gardée 1 h (`src/cloud/cloudEnsuite.js`) → la fenêtre « Bienvenue » propose « Étape 2 sur 2 :
+  FillSell Cloud » (« Ajouter » / « Plus tard ») → issue TOUJOURS dite (`ResultatCloudEnsuite.jsx`) : ajouté, paiement
+  reçu, ou « n'a pas été ajouté — ta formule reste active ». Web : même fenêtre au retour de Stripe. Preuves :
+  `selftest:cloud-apres-formule` (40), banc Stripe MODE TEST `node scripts/stripe-test/formule-puis-cloud-test.mjs` 11/11
+  (Pro seul = pas de Cloud ; étape 2 = 2e abonnement, Pro + essai ; étape 2 abandonnée ou refusée = Pro intact). Apple
+  bac à sable : à faire sur TestFlight après l'OTA (Nicotest, voir plus bas).
+- **Point 2** : « Bienvenue dans FillSell Pro / Premium / Business » lit coin_config et montre CorpsCarteGrille (annonces,
+  publications, remontées, Lens, retouches) ; plus de « 120 annonces créées et publiées / 5 000 republications ». Reste
+  l'ancienne grille dans `src/pages/Legal.jsx` (CGV/CGU, décision de Nico) et `src/pages/LandingPage.jsx` (filet).
+- **Point 3** : « 14 places » = seulement pour un compte qui a DÉJÀ son IP (Nicotest, IP 2 au repos) : cloud_vente_etat
+  y prenait toutes les places du serveur. Ordinaire : 5, juste. Migration **20261108160000** PRÉPARÉE, NON APPLIQUÉE
+  (feu vert nommé) : places = LEAST(serveur, IP libres + la sienne) ; banc jetable 12/12
+  (`PREUVE_PG=embarque node scripts/essais/20261108160000_banc.mjs`) ; inverse dans `supabase/rollbacks/`.
+
 ## 08/11/2026 — JOUR J : OUVERTURE (procédure en tête de docs/reprise/JOUR-OUVERTURE-CLOUD.md, « On ouvre » de Nico)
 - **Android sans la vc36 (12:45)** : la vc36 est encore en examen chez Google, le binaire Android en ligne est la 2.9.10
   (vc31). a) l'OTA s'y installe : canal Capgo `production` (Android oui, « Auto Update » major, « Updates Under

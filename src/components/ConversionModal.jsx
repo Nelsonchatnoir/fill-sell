@@ -1184,7 +1184,10 @@ export default function ConversionModal({
     logModale('offers_modal_tier_click', { tier, origine: origine ?? 'non_precisee', trigger, view, ...(choixCloud ? { cloud: avecCloud } : {}),
       ouverture: ouvertureRef.current.id, duree_ms: ouvertureRef.current.le ? Date.now() - ouvertureRef.current.le : null, ...contexteDeLogs() });
     // (08/11, point 0) La carte d'un palier achète CE palier, et rien d'autre : plus jamais onUpgrade(tier, { cloud }).
-    onUpgrade(tier);
+    // (08/11, point 1) FillSell Cloud coché (interrupteur VISIBLE, voie Free) : l'hôte proposera l'étape 2 — son propre
+    // achat — une fois la formule active (cloud/cloudEnsuite.js). Le bouton de la carte ne promet rien de plus.
+    if (voieFree && avecCloud) onUpgrade(tier, { cloudEnsuite: true });
+    else onUpgrade(tier);
   };
   const basculerCloud = (v) => {
     setAvecCloud(v);

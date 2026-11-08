@@ -136,7 +136,8 @@ import { plateformesReserveesParRepublication, vintedRemplaceeParUneEnLigne } fr
 // pose la bonne question (« c'est la même ? ») au lieu de « vendue ? ».
 import { lirePropositionsParJob, deciderRapprochement } from './utils/syncPlateformes';
 import Toast from './components/Toast';
-import ConversionModal, { COIN_CONFIG_FALLBACK } from './components/ConversionModal';
+import ConversionModal, { COIN_CONFIG_FALLBACK, CorpsCarteGrille } from './components/ConversionModal';
+import ResultatCloudEnsuite from './cloud/ResultatCloudEnsuite';
 import { businessOfferVisible } from './config/businessOffer';
 // Option « Sans ordinateur » (Cloud, conception du 04/10) : UN point de montage,
 // qui regarde lui-même son drapeau (config/cloudOffer.js) — baissé, rien.
@@ -149,7 +150,7 @@ import MeConnecterCloud from './cloud/MeConnecterCloud';
 import BandeauCloudReconnexion from './cloud/BandeauCloudReconnexion';
 import BandeauLeboncoinPause from './components/BandeauLeboncoinPause';
 import { creerAchatCloud } from './cloud/achatCloud';
-import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
+import { garderCloudEnsuite, lireCloudEnsuite, effacerCloudEnsuite, issueCloudEnsuite, textesCloudEnsuite } from './cloud/cloudEnsuite';
 import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud, noterBinaireCloud } from './config/cloudOffer';
 import { useEtatCompteCloud } from './cloud/useCompteCloud';
 import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
@@ -208,7 +209,7 @@ import { RenduPlusEnLigne } from './stock/renduVivant';
 import DatesEnLigne, { ResumeDatesEnLigne } from './stock/DatesEnLigne';
 import ReglagesPage from './reglages/ReglagesPage';
 // (04/11, grille à 3 jauges) La pastille de l'en-tête et les refus → murs. Interrupteur à 0 : rien ne change.
-import { grilleActive, jaugesDuCompte, jaugeLaPlusProche, motJauge, nombre as nombreJauge } from './utils/jauges';
+import { grilleActive, grilleActiveConfig, jaugesDuCompte, jaugeLaPlusProche, motJauge, nombre as nombreJauge } from './utils/jauges';
 import { murDeLaJauge, suiteDuRefus, remiseDuCompte } from './reglages/refusEtMurs';
 // (04/11) La remise à zéro d'un payant, tant que quotas_etat ne la rend pas : coin_wallets.next_grant_at (RLS « own wallet read »).
 import { lireProchaineRemiseAZero } from './reglages/quotas';
@@ -238,7 +239,7 @@ import { paysAnglophoneDuFuseau, paysDuVendeur, paysDuCompte, plateformesFermees
 // (25/10, balayage des erreurs visibles, règle 2) La pastille de l'onglet Stock suit la règle de « À régler ».
 import { articlesARegler, plateformesHorsJeu } from './utils/erreursVisibles';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
-import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier';
+import { palierDuProfil, droitsDuPalier, palierLePlusHaut, aAuMoins, CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from './utils/palier';
 import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
 import { prixParDefautDuBandeau, preuveDeVente } from './utils/prixBandeauVente';
 import { dansLaBoutique } from './utils/filtreBoutique';
@@ -1393,9 +1394,31 @@ function AvgDaysChart({filtered, items, lang}) {
 // appelé pour Premium, Pro et Business). Tant qu'elle n'affichait aucun
 // chiffre, la confusion était sans conséquence ; depuis qu'elle annonce des
 // volumes, elle DOIT savoir lequel a été acheté.
-function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
+// (08/11/2026, point 2 de Nico) Avec la grille à 3 jauges, la fenêtre dit EXACTEMENT la grille du palier — annonces,
+// publications, remontées, Lens, retouches — par CorpsCarteGrille (le corps des cartes de la feuille des offres et de
+// « Ton plan » : une seule source), lue dans coin_config comme les quotas réels (repli : COIN_CONFIG_FALLBACK, comme la
+// feuille, si la lecture échoue). Avant : « 120 annonces créées et publiées », « 5 000 republications par mois ».
+// (08/11, point 1) `etapeCloud` : FillSell Cloud avait été coché → ÉTAPE 2 nommée (« Ajouter FillSell Cloud » /
+// « Plus tard ») ; jamais un Cloud supposé acheté avec la formule.
+function PremiumWelcomeModal({ lang, onClose, tier = 'premium', etapeCloud = false, onAjouterCloud = null }) {
   const pro = tier === 'pro';
   const business = tier === 'business';
+  const fr = lang !== 'en';
+  const [config, setConfig] = useState(null);
+  useEffect(() => {
+    let annule = false;
+    supabase.from('coin_config').select('key, value').then(({ data, error }) => {
+      if (annule) return;
+      if (error || !data?.length) { setConfig(COIN_CONFIG_FALLBACK); return; }
+      const m = {};
+      for (const r of data) m[r.key] = r.value;
+      setConfig({ ...COIN_CONFIG_FALLBACK, ...m });
+    }, () => { if (!annule) setConfig(COIN_CONFIG_FALLBACK); });
+    return () => { annule = true; };
+  }, []);
+  const grille = config ? grilleActiveConfig(config) : false;
+  const TE = textesCloudEnsuite(lang);
+  const etape2 = Boolean(etapeCloud && typeof onAjouterCloud === 'function');
   // Nettoyage unités (02/09 soir) : la modale parlait encore en unités et
   // en prix par scan — elle parle désormais les volumes du forfait, pris dans
   // COIN_CONFIG_FALLBACK, la MÊME constante de repli que les cartes de plan
@@ -1404,7 +1427,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
   // partagée plutôt qu'une lecture réseau ; toute divergence se corrige DANS
   // COIN_CONFIG_FALLBACK, jamais ici. Mêmes phrases que lignesDiff (« Stock
   // illimité » retiré des cartes le 02/09, il ne revient pas ici).
-  const K = COIN_CONFIG_FALLBACK;
+  const K = config ?? COIN_CONFIG_FALLBACK;
   const suffixe = business ? 'business' : pro ? 'pro' : 'premium';
   const annonces = K[`quota_annonces_${suffixe}`];
   const retouches = K[`quota_retouche_${suffixe}`];
@@ -1466,18 +1489,38 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
           <div style={{fontSize:22,fontWeight:600,color:'#fff',letterSpacing:'-0.03em',lineHeight:1.25,marginBottom:8}}>{title}</div>
           <div style={{fontSize:13,color:'rgba(255,255,255,0.88)',fontWeight:600}}>{subtitle}</div>
         </div>
-        <div style={{padding:'20px 20px 0',display:'flex',flexDirection:'column',gap:8}}>
-          {PERKS.map(({icon,label},i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'#fff',borderRadius:14,border:'1px solid rgba(47,158,144,0.15)',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
-              <span style={{fontSize:18,flexShrink:0}}>{icon}</span>
-              <span style={{fontSize:13,fontWeight:700,color:UI.ink,lineHeight:1.3,flex:1}}>{label}</span>
-              <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(120deg,#2F9E90,#1B6E62)',color:'#fff',fontSize:10,fontWeight:700}}>✓</span>
+        {!config ? (
+          // La grille arrive (une lecture) : une place réservée, jamais un chiffre faux affiché en attendant.
+          <div data-bienvenue-attente="1" aria-hidden="true" style={{minHeight:180}} />
+        ) : grille ? (
+          <div data-bienvenue-grille={suffixe} style={{padding:'18px 20px 0',maxHeight:'46vh',overflowY:'auto'}}>
+            <CorpsCarteGrille fr={fr} palier={suffixe} K={K} margeBas={0} />
+          </div>
+        ) : (
+          <div style={{padding:'20px 20px 0',display:'flex',flexDirection:'column',gap:8}}>
+            {PERKS.map(({icon,label},i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'#fff',borderRadius:14,border:'1px solid rgba(47,158,144,0.15)',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+                <span style={{fontSize:18,flexShrink:0}}>{icon}</span>
+                <span style={{fontSize:13,fontWeight:700,color:UI.ink,lineHeight:1.3,flex:1}}>{label}</span>
+                <span style={{flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(120deg,#2F9E90,#1B6E62)',color:'#fff',fontSize:10,fontWeight:700}}>✓</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {etape2 ? (
+          <div data-bienvenue-etape-cloud="1" style={{padding:20,display:'flex',flexDirection:'column',gap:10}}>
+            <div style={{background:'#fff',border:'1.5px solid #2F9E90',borderRadius:16,padding:'14px 16px'}}>
+              <div style={{fontSize:14.5,fontWeight:700,color:UI.ink,marginBottom:6}}>{TE.etapeTitre}</div>
+              <div style={{fontSize:13,lineHeight:1.5,fontWeight:600,color:'#4D5752'}}>{TE.etapeTexte(nomPalier, fr ? CLOUD_PRIX_AFFICHE : CLOUD_PRIX_AFFICHE_EN)}</div>
             </div>
-          ))}
-        </div>
-        <div style={{padding:20}}>
-          <PremiumButton onClick={onClose}>{cta}</PremiumButton>
-        </div>
+            <PremiumButton onClick={onAjouterCloud}>{TE.etapeCta}</PremiumButton>
+            <button type="button" onClick={onClose} style={{minHeight:44,border:'none',background:'none',color:'#1B6E62',fontSize:14,fontWeight:700,fontFamily:'inherit',cursor:'pointer'}}>{TE.etapePlusTard}</button>
+          </div>
+        ) : (
+          <div style={{padding:20}}>
+            <PremiumButton onClick={onClose}>{cta}</PremiumButton>
+          </div>
+        )}
       </div>
     </div>
   ),document.body);
@@ -3491,17 +3534,29 @@ export default function App({ loginOnly = false }){
     setMeConnecterOuvert(true);
     setTimeout(()=>{if(typeof document!=='undefined'&&!document.querySelector('[data-cloud-me-connecter]'))logTunnel('cloud_me_connecter_muet',{origine});},1500);
   }
-  // « Formule + Sans ordinateur » : la formule d'abord (son parcours, inchangé),
-  // puis la feuille propose l'option à ajouter — jamais deux paiements d'un geste.
-  // Web : Stripe recharge la page, la demande est gardée une heure (offreCloud).
-  function formulePuisCloud(tier,origine){
-    garderDemande('apres_formule');
-    Promise.resolve(startTierCheckout(tier,origine)).then(()=>{
-      if(!isNative)return;   // web : la page est partie chez Stripe, la demande attend le retour
-      const g=reprendreDemande();
-      if(g)ouvrirOffreCloud(g);
-    }).catch(()=>{});
+  // (08/11, points 0 et 1 de Nico) « Formule + FillSell Cloud » : DEUX achats nommés, l'un après l'autre. L'ancien
+  // parcours (la formule, puis la feuille des offres rouverte en silence) laissait croire au Cloud : retiré.
+  // Étape 2 : lancée depuis la fenêtre « Bienvenue » (ÉtapeCloudEnsuite), son issue TOUJOURS dite (ResultatCloudEnsuite).
+  const [resultatCloudEnsuite,setResultatCloudEnsuite]=useState(null);
+  async function lancerCloudEnsuite(tier){
+    effacerCloudEnsuite();
+    let r;
+    if(!achatCloud||!cloudOffreVendable(user?.id))r={etat:'refuse'};
+    else{
+      logTunnel('cloud_cta_click',{origine:'apres_formule',declencheur:'clic'});
+      try{r=await achatCloud.acheter('apres_formule');}catch{r={etat:'erreur'};}
+    }
+    const issue=issueCloudEnsuite(r,tier,lang);
+    if(issue){logTunnel('cloud_apres_formule_issue',{tier,issue:issue.cle,etat:r?.etat??null});setResultatCloudEnsuite(issue);}
   }
+  // Web : Stripe a rechargé la page. Formule active ET FillSell Cloud coché il y a moins d'une heure → la même
+  // fenêtre « Bienvenue » (grille + étape 2) que sur iPhone et Android, au retour dans l'app.
+  useEffect(()=>{
+    if(isNative||!user?.id)return;
+    const i=lireCloudEnsuite();
+    if(i&&aAuMoins(palier,i.tier))setShowPremiumWelcome(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id,palier]);
   const actionsCloud=user?{
     ...(cloudOfferVisible(user.id)&&achatCloud?{
       essayer:()=>lancerAchatCloud('reglages_cloud'),
@@ -10035,8 +10090,10 @@ export default function App({ loginOnly = false }){
         onClose={()=>setConversionModal(m=>({...m,open:false}))}
         onUpgrade={(tier,opts)=>{
           setConversionModal(m=>({...m,open:false}));
-          // (05/10) 2e argument { cloud } : seulement drapeau levé (ConversionModal ne l'envoie pas sinon).
-          if(opts?.cloud===true&&cloudOffreVendable(user?.id)){formulePuisCloud(tier,conversionModal.origine??'modale_plan');return;}
+          // (08/11, point 1) { cloudEnsuite } : FillSell Cloud coché → l'étape 2 sera proposée APRÈS la formule (fenêtre
+          // « Bienvenue ») ; sinon une intention ancienne est effacée. La carte n'achète jamais que sa formule.
+          if(opts?.cloudEnsuite===true&&cloudOffreVendable(user?.id))garderCloudEnsuite({tier,origine:conversionModal.origine??'modale_plan'});
+          else effacerCloudEnsuite();
           startTierCheckout(tier,conversionModal.origine??'modale_plan');
         }}
         onCloudSeul={cloudOffreVendable(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_seul');}:null}
@@ -10103,7 +10160,17 @@ export default function App({ loginOnly = false }){
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
       {showPremiumWelcome&&(
-        <PremiumWelcomeModal lang={lang} tier={palier==='gratuit'?'premium':palier} onClose={()=>setShowPremiumWelcome(false)}/>
+        <PremiumWelcomeModal lang={lang} tier={palier==='gratuit'?'premium':palier}
+          etapeCloud={Boolean(achatCloud&&cloudOffreVendable(user?.id)&&lireCloudEnsuite())}
+          onAjouterCloud={()=>{setShowPremiumWelcome(false);lancerCloudEnsuite(palier==='gratuit'?'premium':palier);}}
+          onClose={()=>{effacerCloudEnsuite();setShowPremiumWelcome(false);}}/>
+      )}
+      {/* (08/11, point 1) L'issue de l'étape 2 « Ajouter FillSell Cloud », TOUJOURS dite : ajouté, paiement reçu, ou
+          « FillSell Cloud n'a pas été ajouté. Ta formule reste active. » */}
+      {resultatCloudEnsuite&&(
+        <ResultatCloudEnsuite issue={resultatCloudEnsuite} lang={lang}
+          onConnecter={()=>{setResultatCloudEnsuite(null);ouvrirMeConnecter('apres_formule');}}
+          onFermer={()=>setResultatCloudEnsuite(null)}/>
       )}
 
       {/* ── MODALE « MON PLAN » (badge du header) ──

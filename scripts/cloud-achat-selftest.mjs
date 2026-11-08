@@ -116,7 +116,9 @@ try {
   ok(/onCloudSeul=\{cloudOffreVendable\(user\?\.id\)\?/.test(app) && /onAjouterCloud=\{cloudOffreVendable\(user\?\.id\)\?/.test(app), 'onCloudSeul / onAjouterCloud : seulement drapeau levé (et en France, ou témoin)');
   ok(/actions=\{actionsCloud\}/.test(app) && /actionsCloud=\{actionsCloud\}/.test(app), 'HoteCloud et Réglages reçoivent les gestes (arrêter compris)');
   ok(/meConnecterOuvert&&user&&cloudConnexionVisible\(user\.id\)/.test(app), '« Me connecter » monté seulement pour un témoin ou drapeau levé');
-  ok(/if\(opts\?\.cloud===true&&cloudOffreVendable\(user\?\.id\)\)/.test(app), 'formule + option : seulement drapeau levé (et en France, ou témoin), sinon le parcours d\'avant, mot pour mot');
+  // (08/11, points 0 et 1 de Nico) Plus de « formule + option » d'un geste : la formule seule, puis l'étape 2 nommée.
+  ok(!/formulePuisCloud/.test(app) && /if\(opts\?\.cloudEnsuite===true&&cloudOffreVendable\(user\?\.id\)\)garderCloudEnsuite\(/.test(app),
+    'formule puis Cloud : la formule seule, l’intention gardée pour l’étape 2 (drapeau levé, en France ou témoin)');
   const ecran = lire('src/cloud/MeConnecterCloud.jsx');
   ok(/wss:\/\/\$\{domaine\}\/connexion\/ws/.test(ecran) && !/location\.href|window\.open/.test(ecran), 'l\'écran ouvre la seule connexion (aucune navigation, aucun lien libre)');
   // (07/11, voie b) L'adresse = le serveur du compte, jamais un repli : illisible → reprise bornée, comme une coupure.
