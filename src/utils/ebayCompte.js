@@ -10,6 +10,8 @@ import { Browser } from '@capacitor/browser';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { etatCompteEbay } from '../../supabase/functions/_shared/ebay-etat-compte.js';
 import { traduireMessageServeur } from './messagesServeur.js';
+import { lireConnexionsCloud } from '../cloud/connexionsCloud.js';
+import { PLATEFORMES_CLOUD } from '../cloud/voieCloud.js';
 
 const TRACE = '[ebay-compte]';
 const DELAI_SESSION_MS = 8000;
@@ -156,9 +158,15 @@ export function motifEbayInutilisable(etat) {
 // tout le reste (Vinted, Leboncoin, Beebs) passe par l'extension, toujours.
 // Le jour où une deuxième bascule, c'est ici qu'on l'ajoute — et les popups,
 // encarts et textes d'attente suivent sans être retouchés.
-export function repartirParVoie(plateformes, ebayVoieApiReelle) {
+//
+// (08/11/2026, urgent U3 de Nico) LA DEUXIÈME BASCULE : FillSell Cloud. Pour un client Cloud (profiles.cloud_voie, publié
+// par l'app : cloud/connexionsCloud.js), Vinted, Leboncoin, Beebs et Depop partent aussi de nos serveurs — aucun texte
+// « ordinateur allumé », aucun rappel d'extension. `cloud` : imposé par l'appelant, sinon l'état publié (hors app : non).
+export function repartirParVoie(plateformes, ebayVoieApiReelle, cloud = null) {
   const lot = [...new Set(plateformes ?? [])];
-  const serveur = ebayVoieApiReelle ? lot.filter((p) => p === 'ebay') : [];
+  let parCloud = cloud;
+  if (parCloud == null) { try { parCloud = lireConnexionsCloud().clientCloud === true; } catch { parCloud = false; } }
+  const serveur = lot.filter((p) => (p === 'ebay' && ebayVoieApiReelle) || (parCloud && PLATEFORMES_CLOUD.includes(p)));
   const extension = lot.filter((p) => !serveur.includes(p));
   return { serveur, extension, toutServeur: lot.length > 0 && extension.length === 0, mixte: serveur.length > 0 && extension.length > 0 };
 }

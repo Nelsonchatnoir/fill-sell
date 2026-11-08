@@ -155,6 +155,10 @@ import { creerAchatCloud } from './cloud/achatCloud';
 import { garderCloudEnsuite, lireCloudEnsuite, effacerCloudEnsuite, issueCloudEnsuite, textesCloudEnsuite } from './cloud/cloudEnsuite';
 import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud, noterBinaireCloud } from './config/cloudOffer';
 import { useEtatCompteCloud } from './cloud/useCompteCloud';
+// (08/11, urgent U1-U4) Connecter les plateformes choisies : écran ouvert tout seul, carte Tableau/Stock, Synchroniser.
+import { useConnexionsCloud } from './cloud/useConnexionsCloud';
+import CarteConnexionCloud from './cloud/CarteConnexionCloud';
+import { ouvrirConnexionToutSeul, carteConnexionVisible, publierConnexionsCloud, poserOuvreurConnexionCloud } from './cloud/connexionsCloud';
 import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
 import { lireInterrupteurs, ecouterInterrupteurs, interrupteursConnus } from './config/interrupteurs';
 import ConditionsCloudModale from './cloud/ConditionsCloudModale';
@@ -2818,6 +2822,70 @@ export default function App({ loginOnly = false }){
     ()=>[...new Set([...plateformesFermeesHorsFrance({rue:settingsLbcRue,code_postal:settingsLbcCp,ville:settingsLbcVille}),...plateformesFermeesParPays(paysPlateformes)])],
     [settingsLbcRue,settingsLbcCp,settingsLbcVille,paysPlateformes],
   );
+  // ── (08/11, urgent U1-U4 de Nico, premier vrai client Cloud) ─────────────
+  // Un client FillSell Cloud (essai ou payé : profiles.cloud_voie) ne voit JAMAIS ce qui demande un ordinateur (carte
+  // « installer l'extension », écrans de l'extension) : pour lui, « jamais vue » ne veut rien dire (U3). Tant que son
+  // état Cloud n'est pas lu (porte du Cloud ouverte) : inconnu, rien n'est montré.
+  const clientCloud=etatCompteCloud.cloud===true;
+  const extensionNeverSeenEcran=clientCloud?false:(etatCompteCloud.lu?extensionNeverSeen:null);
+  // L'avancement de ses connexions (plateformes choisies au parcours d'entrée) : carte du Tableau et du Stock (U2),
+  // écran ouvert tout seul après le début de l'essai (U1), « Synchroniser » sans connexion (U4).
+  // Retour de Stripe (page /success du Cloud → /app?connexion=cloud) : l'écran de connexion s'ouvre DIRECTEMENT, même
+  // si le webhook de Stripe n'a pas encore posé cloud_voie (le compte n'est pas encore « Cloud » pour l'app).
+  const [retourStripeCx]=useState(()=>{try{return new URL(window.location.href).searchParams.get('connexion')==='cloud';}catch{return false;}});
+  useEffect(()=>{
+    if(!retourStripeCx)return;
+    try{const u=new URL(window.location.href);u.searchParams.delete('connexion');window.history.replaceState(window.history.state,'',u.pathname+u.search+u.hash);}catch{/* adresse illisible */}
+  },[retourStripeCx]);
+  const demandeCxRef=useRef(retourStripeCx);
+  const cxCloud=useConnexionsCloud(user?.id??null,clientCloud||retourStripeCx,plateformesFermees);
+  const [cxOrigine,setCxOrigine]=useState(null);
+  const porteCx=Boolean(user?.id&&cloudConnexionVisible(user.id));
+  useEffect(()=>{
+    if(!user?.id||!porteCx||meConnecterOuvert||showOnboardingFlow)return;
+    const demande=demandeCxRef.current===true;
+    // Retour de Stripe : on attend la lecture des plateformes choisies (ou son échec) pour ouvrir le BON écran.
+    if(demande&&!cxCloud.lu&&!cxCloud.echec)return;
+    const cle=`fs_cloud_cx_auto_${user.id}`;
+    let deja=false;try{deja=Boolean(localStorage.getItem(cle));}catch{/* stockage indisponible */}
+    const ouvrir=demande
+      ?!(cxCloud.lu&&cxCloud.avancement?.toutes)
+      :ouvrirConnexionToutSeul({clientCloud,lu:cxCloud.lu,avancement:cxCloud.avancement,dejaOuvert:deja,parcoursEntree:showOnboardingFlow});
+    demandeCxRef.current=false;
+    if(!ouvrir)return;
+    try{localStorage.setItem(cle,String(Date.now()));}catch{/* stockage indisponible */}
+    const origine=demande?'retour_stripe':'auto';
+    logTunnel('cloud_connexion_auto',{origine,connectees:cxCloud.avancement?.connectees??null,total:cxCloud.avancement?.total??null});
+    setCxOrigine(origine);
+    ouvrirMeConnecter(origine);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id,porteCx,clientCloud,cxCloud.lu,cxCloud.echec,cxCloud.avancement,showOnboardingFlow,meConnecterOuvert]);
+  // U4 : « Synchroniser » d'un client Cloud vers une plateforme qui n'est pas connectée → rien ne part, l'écran de
+  // connexion s'ouvre, « pas encore connecté » est dit. L'état est publié pour le Stock (connexionsCloud.js).
+  useEffect(()=>{
+    publierConnexionsCloud({clientCloud,lu:cxCloud.lu,etats:cxCloud.etats,isoles:cxCloud.isoles,avancement:cxCloud.avancement});
+  },[clientCloud,cxCloud.lu,cxCloud.etats,cxCloud.isoles,cxCloud.avancement]);
+  // U5 : chaque plateforme CONNECTÉE laisse sa trace (usage_logs « cloud_connexion_plateforme »), une fois par appareil —
+  // la chaîne essai démarré (profiles.cloud_essai_debut) → écran vu (cloud_me_connecter_ouvert, cloud_connexion_auto)
+  // → plateformes connectées se lit en base.
+  useEffect(()=>{
+    if(!user?.id||!clientCloud||!cxCloud.lu||!cxCloud.avancement)return;
+    const a=cxCloud.avancement;
+    const connectees=cxCloud.plateformes.filter((p)=>!a.aConnecter.some((x)=>x.id===p.id)).map((p)=>p.id);
+    const cle=`fs_cloud_cx_vues_${user.id}`;
+    let avant=[];try{const v=JSON.parse(localStorage.getItem(cle)||'[]');if(Array.isArray(v))avant=v;}catch{/* stockage illisible */}
+    const neuves=connectees.filter((p)=>!avant.includes(p));
+    if(!neuves.length)return;
+    try{localStorage.setItem(cle,JSON.stringify([...new Set([...avant,...connectees])]));}catch{/* stockage indisponible */}
+    for(const p of neuves)logTunnel('cloud_connexion_plateforme',{plateforme:p,connectees:a.connectees,total:a.total});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id,clientCloud,cxCloud.lu,cxCloud.avancement]);
+  useEffect(()=>{
+    if(!porteCx){poserOuvreurConnexionCloud(null);return undefined;}
+    poserOuvreurConnexionCloud((o)=>{setCxOrigine(o);ouvrirMeConnecter(o);});
+    return ()=>poserOuvreurConnexionCloud(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[porteCx,user?.id]);
   // ── LA LANGUE DU PROFIL (05/11 soir, phase 3 point 1) ──
   // Les mails et les notifications de vente suivent profiles.lang, qui valait « fr » pour TOUS les comptes : la langue
   // de l'app ne vivait que dans fs_lang. Écrite quand elle diffère seulement (aucune ligne inchangée réécrite) ; la
@@ -8972,6 +9040,15 @@ export default function App({ loginOnly = false }){
 
       <div ref={scrollRef} className={(messagerie.beta||messagerie.bordereaux)&&espaceMessagerie?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"} data-bureau-large={!isNative&&(tab===0||tab===4)?"1":undefined} style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
 
+        {/* (08/11, urgent U2 de Nico) Un client FillSell Cloud dont une plateforme CHOISIE n'est pas connectée : la carte
+            « Connecte tes comptes pour démarrer FillSell Cloud », en haut du Tableau et du Stock, avec l'avancement. Elle
+            ouvre l'écran de connexion — qui ne vit plus seulement dans les Réglages. */}
+        {porteCx&&(tab===0||(tab===1&&!espaceMessagerie))&&!meConnecterOuvert&&carteConnexionVisible({clientCloud,lu:cxCloud.lu,avancement:cxCloud.avancement})&&(
+          <CarteConnexionCloud key={tab===0?'tableau':'stock'} ou={tab===0?'tableau':'stock'} avancement={cxCloud.avancement} lang={lang}
+            journal={logTunnel}
+            onConnecter={()=>{const o=tab===0?'carte_tableau':'carte_stock';setCxOrigine(o);ouvrirMeConnecter(o);}}/>
+        )}
+
         {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.
             En tête de la zone des bandeaux (Stock compris) ; le lien du mail
             « Vendu » y mène. Rien quand il n'y a rien. */}
@@ -9208,7 +9285,7 @@ export default function App({ loginOnly = false }){
             openUpgradeModal={openUpgradeModal}
             setTab={setTab}
             EmptyStateDashboard={EmptyStateDashboard}
-            extensionAbsente={extensionNeverSeen===true}
+            extensionAbsente={extensionNeverSeenEcran===true}
             onExtensionInfo={()=>setShowExtensionInfo(true)}
             photosParInventaire={photosParInventaire}
             entete={enteteTableauDeBord}
@@ -9227,7 +9304,7 @@ export default function App({ loginOnly = false }){
             ventesAnnulees={ventesAnnulees} venteAnnuleeEnCours={venteAnnuleeEnCours} onRemettreVenteAnnulee={gestesStock.onRemettreVenteAnnulee}
             gesteDemande={gesteStockDemande} onGesteDemandeVu={gesteStockDemandeVu}
             extensionStatus={extensionStatusStock}
-            extensionNeverSeen={extensionNeverSeen}
+            extensionNeverSeen={extensionNeverSeenEcran}
             ebayCompte={ebayCompte}
             plateformesVisibles={plateformesVisiblesEffectives}
             plateformesOuvertes={plateformesOuvertes}
@@ -9345,7 +9422,7 @@ export default function App({ loginOnly = false }){
             lensInventaireId={lensInventaireId}
             resetLensParcours={resetLensParcours}
             onStepperOpenChange={setListingStepperOpen}
-            extensionNeverSeen={extensionNeverSeen}
+            extensionNeverSeen={extensionNeverSeenEcran}
             extensionLastSeenAt={extensionLastSeenAt}
             // (29/10, lot B 1.2-1.5) Refonte de Lens : l'enchaînement « ouvrir l'annonce dès la fin de l'analyse »,
             // l'historique (rouvrir un scan, ouvrir la fiche au Stock), le quota atteint (ajout à la main, relecture
@@ -9365,7 +9442,7 @@ export default function App({ loginOnly = false }){
             showAllSales={showAllSales} setShowAllSales={setShowAllSales}
             iapLoading={iapLoading}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
-            extensionAbsente={extensionNeverSeen===true}
+            extensionAbsente={extensionNeverSeenEcran===true}
             onExtensionInfo={()=>setShowExtensionInfo(true)}
             oplaFermee={oplaFermee}
             delSale={delSale} setTab={setTab} setEditItem={setEditItem}
@@ -10147,7 +10224,8 @@ export default function App({ loginOnly = false }){
       {/* « Me connecter » : un bouton par plateforme, la SEULE page de connexion,
           au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}
       {meConnecterOuvert&&user&&cloudConnexionVisible(user.id)&&(
-        <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>setMeConnecterOuvert(false)} plateformesFermees={plateformesFermees}/>
+        <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>{setMeConnecterOuvert(false);setCxOrigine(null);cxCloud.relire();}} plateformesFermees={plateformesFermees}
+          choisies={cxOrigine&&cxCloud.lu?cxCloud.plateformes.map((p)=>p.id):null} origine={cxOrigine}/>
       )}
       {/* (01/11) Une connexion Cloud tombée (drapeau cloud_voie) : l'app demande la reconnexion — témoin seulement. */}
       {user&&cloudConnexionVisible(user.id)&&(

@@ -61,6 +61,7 @@ import { usePublicationProgrammee } from '../utils/usePublicationProgrammee';
 // (02/11 soir, Nico) Compte Cloud : les tâches suivies avec les mots du Cloud, jamais « ton ordinateur » ni « Chrome ».
 import { useCompteCloud } from '../cloud/useCompteCloud';
 import { parLeCloud } from '../cloud/voieCloud';
+import { gardeSyncCloud, textesConnexionsCloud } from '../cloud/connexionsCloud';
 import { useAchatsAnnules, achatsAnnulesAMontrer, lireMasquesAchatsAnnules, masquerAchatAnnule, texteAchatAnnule } from '../stock/achatsAnnules';
 import { messageFileEnPause } from '../../supabase/functions/_shared/file-pause.js';
 import BarreJobCarte from '../components/BarreJobCarte';
@@ -3152,6 +3153,8 @@ function StatsPlateformesPopup({ lang, item, stats = [], onClose }) {
 
 export function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null, registerEtat = null, extensionAutreCompte = false }) {
   const fr = lang !== 'en';
+  // (08/11, urgent U3 de Nico) Un client FillSell Cloud n'a ni extension ni ordinateur : aucune phrase ne l'y envoie.
+  const compteCloudSync = useCompteCloud(user?.id ?? null);
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
   // doctrine du 09/08. Le CTA d'installation sur stock vide — l'e-mail en un
   // tap sur téléphone, le lien /extension sur ordinateur, hook
@@ -3606,13 +3609,17 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   // (capacité lue, pas d'extension connue) ET que la sonde de ce navigateur a fini : jamais pendant la lecture (le
   // téléphone l'affichait 15 s à tort), jamais sur une lecture illisible.
   const blocage = !peutLancer && sondeFinie && capaciteConnue;
-  const MESSAGE_BLOCAGE = fr
+  const MESSAGE_BLOCAGE = compteCloudSync
+    ? textesConnexionsCloud(lang).syncPasConnecte
+    : fr
     ? "Installe l'extension FillSell sur ton ordinateur pour synchroniser tes annonces."
     : 'Install the FillSell extension on your computer to sync your listings.';
   // Distinct de MESSAGE_BLOCAGE, et ça compte : l'extension EST installée, le
   // geste n'est pas de l'installer mais d'ouvrir Chrome. Dit AVANT l'action —
   // une demande mise en file que personne ne réclamera est le pire des retours.
-  const MESSAGE_HORS_LIGNE = fr
+  const MESSAGE_HORS_LIGNE = compteCloudSync
+    ? (fr ? "FillSell Cloud ne répond pas pour l'instant : réessaie un peu plus tard." : "FillSell Cloud isn't responding right now: try again a little later.")
+    : fr
     ? "Ton ordinateur ne répond pas. Ouvre Chrome avec l'extension FillSell pour lancer la synchro."
     : "Your computer isn't responding. Open Chrome with the FillSell extension to start the sync.";
 
@@ -3690,7 +3697,8 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   // Le rappel « c'est automatique », lui, garde ses conditions : il PROMET
   // quelque chose, contrairement à l'heure ci-dessus qui ne fait que constater.
   const autoTexte = (() => {
-    if (!dejaSync || blocage || enCours || enAttenteDistante || attenteOccupee) return null;
+    // (08/11, urgent U3) Client Cloud : pas de « quand Chrome est ouvert » (le Cloud relève sans ordinateur).
+    if (!dejaSync || blocage || enCours || enAttenteDistante || attenteOccupee || compteCloudSync) return null;
     return fr
       ? 'automatique une fois par jour quand Chrome est ouvert'
       : 'automatic once a day while Chrome is open';
@@ -3755,6 +3763,15 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   ouvrirQuestionRef.current = ouvrirQuestion;
 
   const lancer = async (opts = {}) => {
+    // (08/11, urgent U4 de Nico) Client FillSell Cloud SANS AUCUNE plateforme connectée : aucun relevé ne part (le
+    // 08/11, quatre relevés sont partis dans le vide) ; l'app ouvre l'écran de connexion et le dit : « pas encore
+    // connecté », jamais « reconnexion » pour qui ne s'est jamais connecté. La garde est posée par l'app (App.jsx).
+    const pasConnecte = gardeSyncCloud('vinted', lang);
+    if (pasConnecte) {
+      logSyncClick('refusée', 'cloud_non_connecte');
+      setMessage({ ton: 'orange', texte: pasConnecte });
+      return;
+    }
     // ── UNE BOUTIQUE À CONFIRMER N'EST PLUS UN CUL-DE-SAC (06/10) ──────────
     // Avant : refus silencieux (la question vivait dans cette ligne, CACHÉE).
     // Désormais :
@@ -4433,7 +4450,7 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       {/* 05/09 : le CTA vit dans InstallExtensionCta (partagé avec l'étape 1
           du Tableau vide) — même hook, mêmes états, plus la télémétrie
           install_extension. Rien de visible n'a changé ici. */}
-      {blocage&&source==='stock_empty'?(
+      {blocage&&source==='stock_empty'&&!compteCloudSync?(
         <InstallExtensionCta
           lang={lang} isNative={isNative}
           userId={user?.id??null} userEmail={user?.email??null}
@@ -9861,7 +9878,9 @@ const StockTab = memo(function StockTab({
         titre: titreEcarteesAutreCompte(PLATFORM_LABELS[e.platform] || e.platform, e.n, lang),
         texte: texteEcarteesAutreCompte(e.n, lang) });
     }
-    if (isMobile && !stockVide) {
+    // (08/11, urgent U3 de Nico) Les alertes de l'EXTENSION (ordinateur, Chrome, Chrome Web Store) : jamais pour un
+    // client FillSell Cloud — sa machine est la nôtre (les connexions tombées : BandeauCloudReconnexion).
+    if (isMobile && !stockVide && !compteCloud) {
       if (extFraicheur.etat === 'session_expiree') {
         out.push({ cle: 'ext-session', icone: KeyRound, ton: 'regler',
           titre: fr ? "L'extension doit se reconnecter" : 'The extension needs to sign in again',
@@ -9916,7 +9935,7 @@ const StockTab = memo(function StockTab({
     // tant qu'on n'ouvrait pas la feuille. Elle a retrouvé son bandeau en tête du Stock (bandeauxPause, plus bas) :
     // l'état du service, pas un geste à faire — une seule place, jamais deux.
     const retard = retardHorloge;
-    if (retard.enRetard) {
+    if (retard.enRetard && !compteCloud) {   // l'horloge de l'ORDINATEUR : sans objet pour un client Cloud (08/11, U3)
       out.push({ cle: 'horloge', icone: Clock, ton: 'regler',
         titre: fr ? `L'horloge de ton ordinateur retarde d'environ ${retard.jours} jour${retard.jours > 1 ? 's' : ''}` : `Your computer's clock is about ${retard.jours} day${retard.jours > 1 ? 's' : ''} behind`,
         texte: fr ? "Les sites de vente refusent des connexions quand l'heure est fausse — c'est souvent ce qui fait échouer les publications. Active la date et l'heure automatiques dans les réglages de ton ordinateur (celui où tourne l'extension), puis relance tes publications." : "Selling sites refuse connections when the clock is wrong — this is often what makes publications fail. Turn on automatic date & time on your computer (the one running the extension), then relaunch your publications." });
@@ -10420,7 +10439,8 @@ const StockTab = memo(function StockTab({
     const voiesLot = repartirParVoie(d.aPublier, ebayCompte?.voieApiReelle);
     if (voiesLot.toutServeur) { publierAvecDetail(item); return; }
     if (extensionNeverSeen === true) { setExtPitchItem(item); }
-    else if (shouldShowExtensionReminder()) { setExtReminderItem({ item, voies: voiesLot }); }
+    // (08/11, urgent U3) Un client FillSell Cloud ne voit jamais le rappel « l'extension est requise » : le Cloud publie.
+    else if (!compteCloud && shouldShowExtensionReminder()) { setExtReminderItem({ item, voies: voiesLot }); }
     else { publierAvecDetail(item); }
   };
   const remonterArticle = (item) => {
@@ -13208,6 +13228,8 @@ const StockTab = memo(function StockTab({
       })()}
       {jobStatusItem&&(
         <JobStatusModal
+          // (08/11, urgent U3) Sans userId, la fiche ne savait pas le compte Cloud : « Extension inactive… Ouvre Chrome ».
+          userId={user?.id??null}
           item={jobStatusItem}
           jobs={(jobsByInventaire[jobStatusItem.id]||[]).filter(j=>j.action!=="delete")}
           lang={lang}

@@ -1,5 +1,36 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 08/11/2026 soir — URGENT U1-U6 (premier vrai client Cloud sans écran de connexion)
+- **Cause prouvée (U1)** : virginie.coste81 (web mobile, Stripe) — le parcours d'entrée était marqué fini AVANT de partir
+  chez Stripe (15:15:34), essai démarré 15:16:08, poste prêt 15:16:57 ; au retour, la page /success menait à /app (Stock)
+  et RIEN ne menait aux connexions (sur iPhone, le parcours enchaîne sur l'étape des connexions : Nicotest 07/11, 7 s).
+  Puis carte « installer l'extension », « Synchroniser » → 4 relevés partis dans le vide (aucune ligne au coffre).
+  Aucune régression du 08/11. Son abonnement, son IP, son poste : NON touchés (Nico lui écrit lui-même).
+- **U6 prouvé** : m95428054 = app iPhone (WKWebView), préparation OK (IP 1 réservée 15:05:15), feuille Apple fermée en
+  ~4 s (`cloud_essai_annule`) = ABANDON, pas un paiement web cassé. Paiement web Stripe de l'essai vérifié de bout en
+  bout sur virginie (create-checkout-session 14:15:30-34Z → essai actif). Aucun achat de test fait (pas nécessaire).
+- **Correctif (commit ci-dessous, web au push, OTA sur feu vert)** — règles : `src/cloud/connexionsCloud.js` :
+  U1 web : /success (Cloud) → « Connecter mes comptes → » → `/app?connexion=cloud` → l'écran s'ouvre DIRECTEMENT (même
+  avant le webhook) ; tous canaux : client Cloud sans AUCUNE connexion → l'écran s'ouvre tout seul une fois par appareil
+  (jamais par-dessus le parcours d'entrée) ; l'écran ouvert par ce parcours montre les plateformes CHOISIES et
+  « N sur M connectées » (Réglages : toutes, inchangé). U2 : carte « Connecte tes comptes pour démarrer FillSell Cloud »
+  en haut du Tableau et du Stock (`CarteConnexionCloud.jsx`). U3 : extension « jamais vue » = false pour un client Cloud ;
+  rappels d'extension (Stock, Lens), fiche statut (userId), alertes de l'extension + horloge, synchro Vinted, BlocSynchro
+  (« Extension requise », « pas connecté », « ordinateur n'a pas répondu »), BoutonMeConnecter (ouvre la connexion
+  Cloud), `repartirParVoie` (les 4 plateformes du Cloud partent « de nos serveurs »), Tableau vide. U4 : relevés gardés
+  (`gardeSyncCloud` : « pas encore connecté » si jamais connectée, « connexion à refaire » si tombée, écran ouvert).
+  U5 : traces `cloud_connexion_auto`, `cloud_me_connecter_ouvert` {origine}, `cloud_connexion_plateforme` ; alerte
+  support@ « 0 plateforme connectée 30 min après l'essai » (`_shared/cloud-alerte-connexion.js`, passage horaire
+  d'email-tunnel, AVANT la fenêtre de nuit : délai réel 30-90 min ; registre cloud_mails, clé `alerte:zero_connexion:`,
+  aucun mail au client) — **email-tunnel À DÉPLOYER sur feu vert** (`--no-verify-jwt`, cron).
+- **Reste U3 (lot suivant)** : textes « ordinateur / Chrome » encore visibles d'un client Cloud dans la publication par
+  lot (`LotPublication.jsx`, `attenteLectureRegles.js`), `EcranConfirmer`/`StepperNouveau`, Réglages (`SousPagePlateformes`,
+  `SousPagePublicationProgrammee`, `RepublicationPlanifiee`), `retraitsBloques.js`, messagerie bêta, toast App « ouvert
+  dans Chrome », raisons Vinted de `fileDesJobs.js` ; textes de la file de republication (`etapeRepublication`, zone du
+  terminal « Problèmes ») — liste complète dans le rapport du 08/11 soir.
+- Selftest : `selftest:cloud-connexion-apres-essai` (66 contrôles, 3 canaux). C1 (textes) et jauges/landing : en
+  attente dans `git stash` « C1 textes Cloud + jauges/landing WIP ».
+
 ## 08/11/2026 après-midi — « FORMULE + CLOUD » CASSÉ (constat de Nico 14:23) : points 0 à 3
 - **Point 0 (14:49-14:51)** : le parcours combiné n'achetait QUE la formule, sur les 3 canaux (formule, puis la feuille des
   offres rouverte). Aucun vrai client touché depuis 13:29 (seul Nicotest ; aucun checkout Stripe réel ; aucune

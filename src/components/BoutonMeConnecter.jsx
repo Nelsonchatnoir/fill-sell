@@ -20,6 +20,9 @@ import PlatformLogo from './platform-logos/PlatformLogo';
 import { UI } from './ui';
 import { MOTIFS, NOMS_PLATEFORME, estWeb, lienWeb, useDemandeConnexion, demanderAutorisationOplaSurLeWeb, demanderAutorisationDepopSurLeWeb } from '../utils/connexionPlateformes';
 import { demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
+import { useCompteCloud } from '../cloud/useCompteCloud';
+import { PLATEFORMES_CLOUD } from '../cloud/voieCloud';
+import { ouvrirConnexionCloud, textesConnexionsCloud } from '../cloud/connexionsCloud';
 
 // ⟦opla-autorisation-app:début⟧
 // Le MÊME message que le serveur (_shared/textes-jobs.ts, autorisationOplaRequise,
@@ -155,6 +158,7 @@ export default function BoutonMeConnecter({
   // Opla sur le WEB (2026-09-23) : le bouton demande à l'extension d'ouvrir sa
   // page, où le geste se fait. États propres, hors de la file mobile.
   const [etatOplaWeb, setEtatOplaWeb] = useState('repos'); // repos | demande | ouverte | deja | absente | refusee
+  const compteCloud = useCompteCloud(userId ?? null);
   const etat = etatOplaWeb !== 'repos' ? etatOplaWeb : etatDemande;
   const reinitialiser = () => { setEtatOplaWeb('repos'); reinitialiserDemande(); };
 
@@ -242,6 +246,25 @@ export default function BoutonMeConnecter({
     ...(compact ? { fontSize: 12.5, whiteSpace: 'nowrap', justifyContent: 'center', width: '100%', boxSizing: 'border-box' } : {}),
   });
   const dedans = (texte) => (compact ? <span>{texte}</span> : <><PlatformLogo platform={platform} size={20} /><span>{texte}</span></>);
+
+  // (08/11, urgent U3 de Nico) CLIENT FILLSELL CLOUD, plateforme du Cloud : la connexion se fait dans FillSell Cloud
+  // (l'écran « Me connecter » de l'app, ouvert par connexionsCloud.ouvrirConnexionCloud), jamais « sur ton ordinateur ».
+  if (compteCloud && PLATEFORMES_CLOUD.includes(platform) && motif === MOTIFS.CONNEXION) {
+    const TC = textesConnexionsCloud(lang);
+    const boutonCloud = (
+      <button type="button" data-me-connecter-cloud={platform} onClick={() => ouvrirConnexionCloud('me_connecter')} style={habit(false)}>
+        {dedans(libelleImpose || t.meConnecter)}
+      </button>
+    );
+    return variante === 'bouton' ? (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>{boutonCloud}</div>
+    ) : (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', ...style }}>
+        <span style={{ flex: 1, minWidth: 180, fontSize: 13.5, lineHeight: 1.5, color: UI.mute2 }}>{TC.murCloud(nom)}</span>
+        {boutonCloud}
+      </div>
+    );
+  }
 
   // L'extension n'est pas là : le seul geste utile est de l'installer. Un lien
   // vers la page d'installation, à côté du message — jamais une consigne

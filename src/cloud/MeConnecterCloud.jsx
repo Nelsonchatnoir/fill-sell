@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { tracerCloud, auPremierPlan } from './traceCloud';
 import { CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
+import { avancementConnexions, textesConnexionsCloud } from './connexionsCloud';
 
 // (03/11, flotte) L'ADRESSE DU SERVEUR DU COMPTE : plusieurs serveurs Cloud, chacun son adresse (cloud-2.fillsell.app…).
 // Lue une fois par session (cloud_serveur_moi, qui attribue un serveur si besoin) ; illisible, absente ou hors de
@@ -241,8 +242,12 @@ function EtatExecutant({ T, lang }) {
  * @param {{ userId: string, lang?: string, onFermer: () => void }} p
  */
 // (25/10) `plateformesFermees` (App.jsx) : Leboncoin d'une adresse de remise hors de France n'a pas de ligne.
-export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, plateformesFermees = [] }) {
+// (08/11, urgent U1 de Nico) `choisies` : les plateformes choisies au parcours d'entrée (useConnexionsCloud) — seules
+// elles s'affichent, une par une, avec l'avancement « 2 sur 4 connectées » ; vide = toutes celles du Cloud.
+// `origine` : qui a ouvert l'écran (auto, retour_stripe, carte_tableau, carte_stock, synchroniser, reglages…), tracé.
+export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, plateformesFermees = [], choisies = null, origine = null }) {
   const T = textesConnexion(lang);
+  const TA = textesConnexionsCloud(lang);
   const [etats, setEtats] = useState(null);   // null = lecture ; 'echec' ; objet
   const [ouverte, setOuverte] = useState(null);
   const [ebayRelie, setEbayRelie] = useState(null);
@@ -252,6 +257,7 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
   const [isoles, setIsoles] = useState([]);
 
   const racine = useRef(null);
+  const plateformesEcran = CLOUD_PLATEFORMES_CONNEXION.filter((p) => !plateformesFermees.includes(p.id) && (!Array.isArray(choisies) || !choisies.length || choisies.includes(p.id)));
 
   const relire = useCallback(() => {
     setEtats(null);
@@ -287,10 +293,11 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
   useEffect(() => {
     const t = setTimeout(() => {
       const vu = auPremierPlan(racine.current, typeof document === 'undefined' ? null : document);
-      tracerCloud(userId, 'cloud_me_connecter_ouvert', { visible: vu.visible });
+      tracerCloud(userId, 'cloud_me_connecter_ouvert', { visible: vu.visible, ...(origine ? { origine } : {}) });
       if (!vu.visible) tracerCloud(userId, 'cloud_me_connecter_cache', { devant: vu.devant });
     }, 600);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- une trace par ouverture : `origine` ne change pas pendant que l'écran est ouvert
   }, [userId]);
 
   const fermerVue = useCallback((connectee) => { setOuverte(null); if (connectee) relire(); }, [relire]);
@@ -311,7 +318,11 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
         {etats === 'echec' && <p style={{ color: C.amberInk, fontSize: 14 }}>{T.lectureEchec}</p>}
         {etats && etats !== 'echec' && (
           <div style={{ display: 'grid', gap: 10 }}>
-            {CLOUD_PLATEFORMES_CONNEXION.filter((p) => !plateformesFermees.includes(p.id)).map((p) => {
+            {etats && etats !== 'echec' && (() => {
+              const a = avancementConnexions({ plateformes: plateformesEcran, etats, isoles });
+              return a.total > 1 ? <p data-cloud-avancement="1" style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 700, color: a.toutes ? C.tealDeep : C.ink }}>{TA.avancement(a)}</p> : null;
+            })()}
+            {plateformesEcran.map((p) => {
               const verif = verifs.find((x) => x.id === p.id)?.etat ?? null;
               const isole = isoles.includes(p.id) && etatConnexion(etats?.[p.id]) !== 'connecte';
               return (

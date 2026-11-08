@@ -54,7 +54,7 @@ ok(/logSyncClick\('refusée', 'extension_autre_compte'\)/.test(s), 'l\'appui ref
 ok((s.match(/extensionAutreCompte=\{extensionAutreCompte\}/g) || []).length === 2, 'les deux montages de la ligne Vinted reçoivent le constat');
 const iAlertes = s.indexOf('const alertesCompte = (() => {');
 const iAlerte = s.indexOf("cle: 'ext-autre-compte'");
-ok(iAlertes > 0 && iAlerte > iAlertes && iAlerte < s.indexOf('if (isMobile && !stockVide) {', iAlertes), 'alerte dans les points du compte, stock VIDE compris (jamais un bandeau)');
+ok(iAlertes > 0 && iAlerte > iAlertes && iAlerte < s.indexOf('if (isMobile && !stockVide', iAlertes), 'alerte dans les points du compte, stock VIDE compris (jamais un bandeau)');
 // (31/10, lot F) « Autre compte » seulement sur PREUVE : le constat se journalise sous son nom, un silence à part.
 ok(/feature: etat === 'autre_compte' \? 'extension_autre_compte' : 'extension_muette'/.test(s)
   && /preuve: etat === 'autre_compte' \? 'compte_extension' : 'silence'/.test(s),

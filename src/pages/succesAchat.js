@@ -11,7 +11,8 @@ const EN = {
   cloudTitre: 'Your FillSell Cloud is starting',
   cloudEssai: (j) => `Your ${j}-day free trial starts now: nothing is charged before it ends. Your machine, your IP address and your browser are being set up (usually under 2 minutes).`,
   cloudPaye: 'Your subscription is active. Your machine, your IP address and your browser are being set up (usually under 2 minutes).',
-  cloudSuite: 'Then connect your marketplaces from the app ("Sign in").',
+  cloudSuite: 'Next step: connect your accounts — the button below takes you straight there.',
+  cloudBouton: 'Connect my accounts →',
   actif: 'Your subscription is active: your new quotas are available right away.',
   annulable: 'Cancel anytime, in 1 click',
 };
@@ -28,7 +29,11 @@ export function messageSucces(params, lang = 'fr') {
       texte: essai
         ? (en ? EN.cloudEssai(CLOUD_ESSAI_JOURS) : `Ton essai gratuit de ${CLOUD_ESSAI_JOURS} jours commence : rien n'est prélevé avant sa fin. Ta machine, ton adresse IP et ton navigateur se préparent (en général moins de 2 minutes).`)
         : (en ? EN.cloudPaye : 'Ton abonnement est actif. Ta machine, ton adresse IP et ton navigateur se préparent (en général moins de 2 minutes).'),
-      suite: en ? EN.cloudSuite : 'Ensuite, connecte tes plateformes depuis l\'app (« Me connecter »).',
+      // (08/11, urgent U1 de Nico) Le retour de Stripe mène DIRECTEMENT à l'écran de connexion des plateformes choisies
+      // (App.jsx lit ?connexion=cloud) : avant, « Accéder à l'app » posait la cliente sur le Stock, rien pour se connecter.
+      suite: en ? EN.cloudSuite : 'Prochaine étape : connecte tes comptes, le bouton ci-dessous t\'y mène directement.',
+      bouton: en ? EN.cloudBouton : 'Connecter mes comptes →',
+      vers: '/app?connexion=cloud',
       // Une valeur d'achat n'est comptée que pour un vrai paiement (un essai ne rapporte rien ce jour-là).
       valeur: essai ? null : 24.99,
     };

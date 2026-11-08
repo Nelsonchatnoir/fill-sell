@@ -30,6 +30,7 @@ import { lireDoublonsProposes } from '../utils/doublons';
 import { relancerAvecTout } from './absencesDeSuite.js';
 import { etatSession } from '../utils/sessionsPlateformes.js';
 import { textesAnnonces } from './textes.js';
+import { gardeSyncCloud, refusSyncCloud, lireConnexionsCloud, ouvrirConnexionCloud } from '../cloud/connexionsCloud.js';
 
 // Le poll : la base rend compte, jamais l'extension.
 // (04/10, incident CPU 99 %) Sept requêtes par tour, dont releves_vides_signales
@@ -125,6 +126,9 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   // un « je ne sais pas ».
   const lancer = useCallback(async (platform) => {
     if (busy || toutBusy) return;
+    // (08/11, urgent U4) Client FillSell Cloud, plateforme pas connectée : rien ne part, l'écran de connexion s'ouvre.
+    const pasConnecte = gardeSyncCloud(platform, lang);
+    if (pasConnecte) { setMessage({ ton: 'orange', texte: pasConnecte }); track('releve_refuse_cloud', { platform }); return; }
     if (platform === 'vinted') { try { lancerVinted?.(); } catch { /* la ligne Vinted dit le refus */ } return; }
     if (platform === 'opla' && oplaAcces === false) { setOplaModale(true); return; }
     setBusy(platform); setMessage(null);
@@ -145,6 +149,10 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   // « absente » sur des plateformes qu'elle n'utilise pas.
   const toutRelever = useCallback(async () => {
     if (busy || toutBusy) return;
+    // (08/11, urgent U4) Client FillSell Cloud SANS AUCUNE plateforme connectée : aucun relevé ne part (le 08/11,
+    // quatre relevés sont partis dans le vide) ; l'écran de connexion s'ouvre, « pas encore connecté » est dit.
+    const pasConnecte = gardeSyncCloud(null, lang);
+    if (pasConnecte) { setMessage({ ton: 'orange', texte: pasConnecte }); track('releve_tout_refuse_cloud', {}); return; }
     setToutBusy(true); setMessage(null);
     let choix = null;
     try { choix = await lireChoixEtSessions(userId); } catch { /* rien de connu : tout, comme avant */ }
@@ -172,7 +180,12 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
       return;
     }
     const refus = [];
+    let aConnecterCloud = false;
     for (const p of cibles) {
+      // Une plateforme du Cloud pas connectée : sautée, avec « pas encore connecté » (jamais « reconnexion » pour qui
+      // ne s'est jamais connecté) ; l'écran de connexion s'ouvre une fois, après la boucle.
+      const refusCloud = refusSyncCloud(lireConnexionsCloud(), p, lang);
+      if (refusCloud) { refus.push(refusCloud.texte); aConnecterCloud = true; track('releve_tout_saute', { platform: p, motif: 'cloud_non_connecte' }); continue; }
       if (p === 'vinted') {
         try { if (typeof lancerVinted === 'function') lancerVinted(); } catch { /* la ligne Vinted dit le refus */ }
         continue;
@@ -200,6 +213,7 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     }
     setToutBusy(false);
     if (refus.length) setMessage({ ton: 'orange', texte: refus.join(' · ') });
+    if (aConnecterCloud) ouvrirConnexionCloud('synchroniser');
     recharger();
   }, [busy, toutBusy, lancerVinted, cle, runs, oplaAcces, fr, lang, recharger, userId, compte, runVinted]);
 

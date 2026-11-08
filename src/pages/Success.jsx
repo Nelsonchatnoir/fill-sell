@@ -38,8 +38,8 @@ export default function Success(){
         <div style={{fontSize:28,fontWeight:700,color:"#fff",marginBottom:12,letterSpacing:"-0.5px"}}>{m.titre}</div>
         <div style={{fontSize:16,color:"rgba(255,255,255,0.85)",marginBottom:12,lineHeight:1.6}}>{m.texte}</div>
         <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",marginBottom:40,fontWeight:600}}>{m.suite ?? ''}</div>
-        <button onClick={()=>nav("/app")} style={{width:"100%",padding:"16px",background:"#fff",color:"#3EACA0",border:"none",borderRadius:14,fontSize:16,fontWeight:700,cursor:"pointer",boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
-          {lang === 'en' ? 'Go to the app →' : "Accéder à l'app →"}
+        <button onClick={()=>nav(m.vers ?? "/app")} style={{width:"100%",padding:"16px",background:"#fff",color:"#3EACA0",border:"none",borderRadius:14,fontSize:16,fontWeight:700,cursor:"pointer",boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
+          {m.bouton ?? (lang === 'en' ? 'Go to the app →' : "Accéder à l'app →")}
         </button>
       </div>
     </div>

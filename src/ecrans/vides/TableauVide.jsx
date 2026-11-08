@@ -18,6 +18,7 @@ import { COULEUR_PLATEFORME } from '../../utils/ventesStats';
 import { CSS_ECRANS } from '../animations';
 import { Boucle } from '../primitives';
 import Icone from '../Icone';
+import { useConnexionsCloudPartage } from '../../cloud/useConnexionsCloud';
 
 const ENCRE2 = '#5C6560';
 const MENTHE = '#E6F1EE';
@@ -102,6 +103,8 @@ function Tuile({ icone, fond, titre, texte }) {
 
 export default function TableauVide({ lang, onImport, onOpenLens, extensionAbsente = false, onExtensionInfo = null }) {
   const fr = lang !== 'en';
+  // (08/11, urgent U3 de Nico) Client FillSell Cloud : la phrase ne parle ni d'extension ni d'ordinateur.
+  const { clientCloud } = useConnexionsCloudPartage();
   const boutonPrincipal = { height: 54, border: 0, borderRadius: 27, background: `linear-gradient(135deg,${UI.teal},${UI.tealDeep})`, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 10px 24px -10px rgba(27,110,98,.6)', cursor: 'pointer', width: '100%' };
   return (
     <div className="fsx-ecran" style={{ display: 'flex', flexDirection: 'column', fontFamily: "'Space Grotesk',sans-serif", color: UI.ink }}>
@@ -135,7 +138,9 @@ export default function TableauVide({ lang, onImport, onOpenLens, extensionAbsen
           </button>
         </div>
         <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.45, color: ENCRE2, textAlign: 'center' }}>
-          {fr
+          {clientCloud
+            ? (fr ? "Tu pilotes depuis ton téléphone, FillSell Cloud s'occupe des plateformes : plus besoin d'ordinateur." : 'You steer from your phone, FillSell Cloud handles the platforms: no computer needed.')
+            : fr
             ? "Tu pilotes depuis ton téléphone, l'extension FillSell s'occupe des plateformes sur ton ordinateur."
             : 'You steer from your phone, the FillSell extension handles the platforms on your computer.'}
         </p>

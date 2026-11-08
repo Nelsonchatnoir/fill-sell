@@ -31,6 +31,7 @@ import {
 // (07/11 soir) Le prix du mail de la veille : lu chez le canal qui prélève (Stripe, Apple, Google), jamais écrit en dur.
 import { lecteurPrixCloud } from "../_shared/cloud-prix-source.ts";
 import { envoyerAlerteCloudTest } from "../_shared/cloud-mails-envoi.ts";
+import { passageSansConnexion } from "../_shared/cloud-alerte-connexion.js";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -669,6 +670,56 @@ serve(async (req) => {
   if (body?.alerte_cloud_test === true) {
     const r = await envoyerAlerteCloudTest();
     return new Response(JSON.stringify({ ok: true, ...r }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+
+  // ── (08/11/2026, urgent U5 de Nico) « 0 PLATEFORME CONNECTÉE 30 MIN APRÈS L'ESSAI » ──────────────────────────
+  // Règles : _shared/cloud-alerte-connexion.js (selftest:cloud-alerte-connexion). Un mail à support@fillsell.app par
+  // essai, AUCUN au client. Passe à chaque cron horaire (job_relaunch, AVANT la fenêtre de nuit des mails clients) ;
+  // à la main : { cloud_zero_connexion: true, apercu: true } rend la cible sans rien réserver ni envoyer.
+  // Ne bloque jamais la suite du passage horaire : tout est avalé, le bilan va au journal.
+  const alerteSansConnexion = (apercu: boolean) => passageSansConnexion({
+    apercu,
+    deps: {
+      lireComptes: async ({ depuis, jusqua, limite }: { depuis: string; jusqua: string; limite: number }) => {
+        const { data, error } = await supabase.from("profiles")
+          .select("id, email, cloud_voie, cloud_essai_debut, cloud_canal, platform_settings")
+          .eq("cloud_voie", true).gte("cloud_essai_debut", depuis).lte("cloud_essai_debut", jusqua)
+          .order("cloud_essai_debut", { ascending: true }).limit(limite);
+        if (error) throw new Error(`profiles : ${error.message}`);
+        return data ?? [];
+      },
+      lireCoffre: async (ids: string[]) => {
+        const { data, error } = await supabase.from("cloud_coffre").select("user_id, plateforme, connecte")
+          .in("user_id", ids).neq("plateforme", "fillsell");
+        if (error) throw new Error(`cloud_coffre : ${error.message}`);   // illisible : AUCUNE alerte (jamais un faux « 0 »)
+        return data ?? [];
+      },
+      lireVus: async (ids: string[], depuis: string) => {
+        const { data } = await supabase.from("usage_logs").select("user_id, feature, created_at")
+          .in("user_id", ids).in("feature", ["cloud_me_connecter_ouvert", "cloud_connexion_ouverte", "cloud_connexion_auto"])
+          .gte("created_at", depuis).limit(1000);
+        return data ?? [];
+      },
+      reserver: async ({ userId, evenement, cle }: { userId: string; evenement: string; cle: string }) => {
+        const { error } = await supabase.from("cloud_mails").insert({ user_id: userId, evenement, cle, canal: null });
+        if (!error) return "pris";
+        if ((error as { code?: string }).code === "23505") return "deja";
+        console.error(`[email-tunnel] zero_connexion : registre cloud_mails illisible (${(error as { code?: string }).code ?? "?"}) : ${error.message}`);
+        return "erreur";
+      },
+      liberer: async ({ userId, evenement, cle }: { userId: string; evenement: string; cle: string }) => {
+        await supabase.from("cloud_mails").delete().eq("user_id", userId).eq("evenement", evenement).eq("cle", cle);
+      },
+      noter: async ({ userId, evenement, cle, detail }: { userId: string; evenement: string; cle: string; detail: unknown }) => {
+        await supabase.from("cloud_mails").update({ envoye_le: new Date().toISOString(), detail }).eq("user_id", userId).eq("evenement", evenement).eq("cle", cle);
+      },
+      envoyer: ({ to, subject, html, type }: { to: string; subject: string; html: string; type: string }) =>
+        envoyerEmail({ to, subject, html, userId: null, type, categorie: "support", dedup: "journal" }),
+    },
+  }).catch((e: unknown) => ({ erreur: String((e as Error)?.message ?? e) }));
+  if (body?.cloud_zero_connexion === true) {
+    const bilan = await alerteSansConnexion(body?.apercu === true);
+    return new Response(JSON.stringify({ ok: true, zero_connexion: bilan }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
 
   // ── Alerte de paiement (2026-07-28) ────────────────────────────────────
@@ -1505,6 +1556,11 @@ serve(async (req) => {
 
   if (body?.job_relaunch === true) {
     const dryRun = body?.dry_run === true;
+    // (08/11, U5) L'alerte « 0 plateforme connectée » d'abord, de jour comme de nuit (elle va à FillSell, pas au client).
+    try {
+      const bilanZero = await alerteSansConnexion(dryRun);
+      if ((bilanZero as { a_alerter?: number; erreur?: string }).a_alerter || (bilanZero as { erreur?: string }).erreur) console.log("[email-tunnel] zero_connexion", JSON.stringify(bilanZero));
+    } catch (e) { console.error(`[email-tunnel] zero_connexion impossible : ${(e as Error)?.message ?? e}`); }
     const h = heureParis();
     // Échec fermé : une heure illisible ne doit JAMAIS autoriser l'envoi —
     // mieux vaut un créneau manqué qu'un mail à 3 h du matin.

@@ -48,6 +48,9 @@ import { etatSession } from '../utils/sessionsPlateformes.js';
 import { demarrerRelecture } from '../utils/relectureBornee';
 // (07/11 soir) « Client Cloud » : la MÊME règle que le reste de l'app (profiles.cloud_voie, une lecture par compte).
 import { useCompteCloud } from '../cloud/useCompteCloud';
+import { useConnexionsCloudPartage } from '../cloud/useConnexionsCloud';
+import { connexionCloudDe, textesConnexionsCloud, ouvrirConnexionCloud } from '../cloud/connexionsCloud';
+import { PLATEFORMES_CLOUD } from '../cloud/voieCloud';
 
 // Le point d'une pastille de plateforme : teal = à jour ; ambre = à reprendre
 // ou un geste attend ; gris = jamais synchronisée / pas de compte.
@@ -175,6 +178,8 @@ export default function BlocSynchro({
   // (07/11 soir, essai TestFlight de Nico) Un client FillSell Cloud : la carte en cours dit que c'est le Cloud qui
   // travaille, jamais « ton ordinateur ».
   const compteCloud = useCompteCloud(user?.id ?? null);
+  // (08/11, urgent U4) Une plateforme du Cloud jamais connectée dit « pas encore connecté », jamais « à reconnecter ».
+  const cxCloud = useConnexionsCloudPartage();
 
   const vague = useMemo(
     () => lireVague({ plateformes: r.plateformes, runs: r.runs, runVinted: r.runVinted, etatVinted }),
@@ -279,7 +284,8 @@ export default function BlocSynchro({
     return () => { vivant = false; };
   }, [ouvert, r.userId]);
   const navApp = useMemo(() => navigateurDeLApp(), []);
-  const noteNav = (plateforme) => noteNavigateur({ ext: navExt, app: navApp, plateforme, lang });
+  // (08/11, U3) La note « navigateur de l'extension » ne parle pas à un client Cloud (pas d'extension, pas de Chrome).
+  const noteNav = (plateforme) => (compteCloud ? null : noteNavigateur({ ext: navExt, app: navApp, plateforme, lang }));
   // (15/10, lot B — Marta) Vinted pas connecté sur un appareil d'un autre pays
   // Vinted de la zone euro : le point nomme le domaine et les deux gestes, et
   // l'app note le pays (une fois) pour que le popup propose « Autoriser ».
@@ -353,7 +359,9 @@ export default function BlocSynchro({
 
   if (!ouvert || !r.userId) return ligneVinted ? <div aria-hidden="true" style={{ display: 'none' }}>{ligneVinted}</div> : null;
 
-  const extVue = Number.isFinite(Date.parse(extensionStatus?.lastSeenAt ?? ''));
+  // (08/11, urgent U3) Un client FillSell Cloud n'a pas d'extension à installer : jamais « Extension requise » ni la
+  // carte « Extension Chrome » — le Cloud relève (ses plateformes pas connectées : refus « pas encore connecté », U4).
+  const extVue = compteCloud || Number.isFinite(Date.parse(extensionStatus?.lastSeenAt ?? ''));
   // (01/11, Louis) « Leboncoin passe par ton compte Amiral » — seulement pour un compte qui délègue Leboncoin.
   const ligneDelegationLbc = texteDelegationLbc(delegationLbc, Date.now(), fr);
   const nbARattacher = r.aRattacher.length;
@@ -380,7 +388,7 @@ export default function BlocSynchro({
         etat: x.status === 'queued' ? T.ligneAttente
           : x.status === 'running' ? (Number(x.lues) > 0 ? T.ligneLues(Number(x.lues), x.annoncees ?? null) : T.ligneEnCours)
           : fini ? (Number(x.lues) > 0 ? T.ligneLues(Number(x.lues), null) : T.ligneFini)
-          : aConnecter ? T.ligneAConnecter : T.ligneFini,
+          : aConnecter ? (connexionCloudDe(cxCloud, x.platform) === 'a_connecter' ? textesConnexionsCloud(lang).lignePasConnecte : T.ligneAConnecter) : T.ligneFini,
       };
     }),
     ...(rap && (av.releves ?? []).length ? [{
@@ -422,10 +430,17 @@ export default function BlocSynchro({
   // l'ordinateur n'a JAMAIS prises (Chrome fermé). Une demande annulée par la
   // cadence n'est pas un point à régler.
   const expirees = tuiles.filter((t) => t.e.phase === 'expire' && t.e.situation === 'pas_prise');
+  // (08/11, urgent U3-U4 de Nico) CLIENT FILLSELL CLOUD : une plateforme du Cloud pas connectée se connecte dans
+  // FillSell Cloud — « pas encore connecté » quand elle ne l'a jamais été, jamais « sur ton ordinateur » ni « Chrome ».
+  const TC = textesConnexionsCloud(lang);
+  const pfCloud = (p) => compteCloud && PLATEFORMES_CLOUD.includes(p);
+  const texteNonConnecteCloud = (t) => (connexionCloudDe(cxCloud, t.p) === 'a_reconnecter' ? TC.syncPfAReconnecter(t.nom) : TC.syncPfPasConnecte(t.nom));
+  const titreNonConnecteCloud = (t) => (connexionCloudDe(cxCloud, t.p) === 'a_reconnecter' ? T.titrePointNonConnecte(t.nom) : `${t.nom} : ${TC.lignePasConnecte}`);
+  const connecterCloud = { libelle: TC.carteCta, icone: ChevronRight, onTap: () => { setFeuille(false); ouvrirConnexionCloud('bloc_synchro'); } };
   const signaux = [
     ...tuiles.filter((t) => t.vide).map((t) => ({ cle: `vide-${t.p}`, platform: t.p, titre: T.titrePointVide(t.nom), texte: T.signalVideRepete(t.nom), bouton: synchroDe(t) })),
     ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p) && !(t.p === 'opla' && t.e.opla && oplaAutorisee))
-      .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom),
+      .map((t) => (pfCloud(t.p) ? { cle: t.p, platform: t.p, titre: titreNonConnecteCloud(t), texte: texteNonConnecteCloud(t), bouton: connecterCloud } : { cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom),
         texte: t.e.opla ? T.signalOpla : [enSerie(t.p) ? T.murRepriseDeSuite(t.nom, absencesDe(t.p)) : T.signalNonConnecte(t.nom), noteNav(t.nom), noteVinted(t.p)].filter(Boolean).join(' '),
         ...(t.e.opla || !enSerie(t.p) ? {} : { bouton: synchroDe(t) }) })),
     ...tuiles.filter((t) => t.e.phase === 'echec' && !murDe.has(t.p)).map((t) => {
@@ -452,6 +467,9 @@ export default function BlocSynchro({
           texte: T.finBoutiqueAutreCompte(etatVinted.fin.boutiqueAutreCompte.login ?? null),
         };
       }
+      if (pfCloud(t.p) && t.e.situation === 'pas_connecte') {
+        return { cle: t.p, platform: t.p, titre: titreNonConnecteCloud(t), texte: texteNonConnecteCloud(t), bouton: connecterCloud };
+      }
       const technique = t.p !== 'vinted' && arretTechniqueReleve(r.runs[t.p] ?? null);
       // (05/10) Plus jamais le texte brut du relevé à l'écran (codes HTTP,
       // pages, minutes) : la situation, dite en clair, et le geste.
@@ -473,9 +491,9 @@ export default function BlocSynchro({
       .map((t) => ({ cle: `incomplet-${t.p}`, platform: t.p, titre: T.titrePointIncomplet(t.nom), texte: T.signalIncomplet(t.nom, t.e.lus ?? 0, t.e.annonce ?? null), bouton: synchroDe(t) })),
     ...(expirees.length ? [{
       cle: '_expire',
-      icone: Laptop,
-      titre: T.titreEndormie,
-      texte: T.texteEndormie(expirees.map((t) => t.nom).join(', ')),
+      icone: compteCloud ? Info : Laptop,
+      titre: compteCloud ? TC.titreCloudPasPris : T.titreEndormie,
+      texte: compteCloud ? TC.texteCloudPasPris(expirees.map((t) => t.nom).join(', ')) : T.texteEndormie(expirees.map((t) => t.nom).join(', ')),
       bouton: { libelle: T.ctaPointReessayer, icone: RotateCcw, onTap: () => r.toutRelever(), desactive: occupeLancer },
     }] : []),
   ];

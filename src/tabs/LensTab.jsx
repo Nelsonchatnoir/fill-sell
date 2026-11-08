@@ -35,6 +35,7 @@ import PrixStrategie from '../components/lens/PrixStrategie';
 import HistoriqueLens from '../components/lens/HistoriqueLens';
 import { Pli, DetailMarche } from '../components/lens/PlisResultat';
 import { useReglagesRedaction } from '../utils/redactionALaDemande';
+import { useCompteCloud } from '../cloud/useCompteCloud';
 
 const INK       = '#10201B';
 const TEAL      = '#2F9E90';
@@ -824,6 +825,7 @@ const LensTab = memo(function LensTab({
   // (29/10, lot B 1.2-1.4) Les réglages de rédaction du compte : la stratégie de
   // prix (affichage du résultat) et « Ouvrir l'annonce dès la fin de l'analyse ».
   const { reglages: reglagesRedaction, lue: reglagesLus, enregistrer: enregistrerReglages } = useReglagesRedaction(user?.id);
+  const compteCloud = useCompteCloud(user?.id ?? null);
 
   // (La lecture de coin_config posée ici le 01/09 pour afficher le prix du
   // scan — price_lens_overflow — a été RETIRÉE au nettoyage unités du 02/09
@@ -1057,7 +1059,8 @@ const LensTab = memo(function LensTab({
   // analyse » et à l'enchaînement automatique (29/10).
   function lancer(action){
     if(extensionNeverSeen===true){setExtPitchAction(action);return;}
-    if(shouldShowExtensionReminder()){setRappelAction(action);return;}
+    // (08/11, urgent U3) Un client FillSell Cloud ne voit jamais le rappel « l'extension est requise ».
+    if(!compteCloud&&shouldShowExtensionReminder()){setRappelAction(action);return;}
     executer(action);
   }
   // (04/11, grille à 3 jauges, maquette 5.4) Le mur Lens du Business (scans Lens du mois faits) propose « Créer une
