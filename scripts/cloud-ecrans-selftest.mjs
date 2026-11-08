@@ -67,7 +67,13 @@ verifier(/onCloudSeul=\{/.test(app), 'ouverture possible côté serveur : l’h�
 // ── 2. Drapeau baissé : l'appel d'onUpgrade reste à un argument ─────────────
 const modale = lignesDeCode(lire('src/components/ConversionModal.jsx'));
 verifier(/const offreCloud = cloudVisible \? offreCloudPourModale\(lectureCloud\) : null;/.test(modale), 'feuille : sans drapeau, offreCloud vaut null');
-verifier(/if \(choixCloud\) onUpgrade\(tier, \{ cloud: avecCloud \}\);\s*else onUpgrade\(tier\);/.test(modale), 'feuille : le choix Cloud ne part QUE si l’interrupteur est montré, sinon onUpgrade(tier) comme avant');
+// (08/11, point 0 de Nico : « formule + Cloud » n'achetait que la formule) La carte d'un palier n'achète que CE palier :
+// plus jamais onUpgrade(tier, { cloud }), aucune carte payante ne reçoit le Cloud, l'interrupteur ne sert qu'à Free.
+verifier(!/onUpgrade\(tier, \{ cloud/.test(modale) && /\.\.\.contexteDeLogs\(\) \}\);\s*onUpgrade\(tier\);\s*\};\s*const basculerCloud/.test(modale), 'feuille : une carte payante appelle onUpgrade(tier), jamais avec le Cloud');
+verifier(/<PremiumPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale) && /<ProPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale)
+  && /<BusinessPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale) && /<BusinessPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{choisirPalier\} cloud=\{null\} \/>/.test(modale),
+  'feuille : Premium, Pro, Business jamais « + FillSell Cloud » (prix ni bouton)');
+verifier(/\(voieFree \? <InterrupteurCloud [^>]*freeCompris \/> : null\)/.test(modale), 'feuille : l’interrupteur ne se montre qu’avec la voie « Free + FillSell Cloud »');
 verifier(/const choixCloud = interrupteurMontre;/.test(modale) && /const interrupteurMontre = offreCloud\?\.mode === 'interrupteur' && !ajoutCloudPossible;/.test(modale), 'feuille : « interrupteur montré » dérive d’offreCloud (null sans drapeau)');
 verifier(!/onUpgrade\(\s*(palier|rangCourant|palierDesDrapeaux)/.test(modale), 'feuille : jamais onUpgrade(palier actuel) (un second abonnement)');
 verifier(!/onUpgrade\(\s*['"]free['"]/.test(modale), 'feuille : jamais onUpgrade(\'free\') (Free + Sans ordinateur passe par onCloudSeul)');
@@ -278,8 +284,10 @@ try {
   const inter = (offre, coche, extra = {}) => texte(h(IC.default, { offre, coche, onBasculer() {}, lang: 'fr', maintenant: n, ...extra }));
   const i0 = inter({ mode: 'interrupteur', essai: true }, false);
   verifier(i0.includes('FillSell Cloud · sans ordinateur · +24,99 €/mois') && /7 jours d.essai gratuits/.test(i0) && /Carte demandée, rien n.est prélevé pour le Cloud avant le 17 octobre/.test(i0), 'interrupteur décoché : libellé, essai, carte demandée avec la date', i0);
-  verifier(/ci-dessous\./.test(i0) && !/Free compris/.test(i0), 'interrupteur sans voie Free : « ci-dessous » seulement');
-  verifier(/Free compris/.test(inter({ mode: 'interrupteur', essai: true }, false, { freeCompris: true })), 'interrupteur avec voie Free : « Free compris »');
+  // (08/11, point 0) Jamais « s'ajoute à la formule que tu choisis ci-dessous » : une carte payante n'achète que sa formule.
+  verifier(!/ci-dessous/.test(i0) && /une fois qu.elle est prise/.test(i0), 'interrupteur sans voie Free : « une fois qu’elle est prise », jamais « ci-dessous »');
+  const iFree = inter({ mode: 'interrupteur', essai: true }, false, { freeCompris: true });
+  verifier(/Il se prend seul, avec Free/.test(iFree) && /une fois ta formule prise/.test(iFree) && !/ci-dessous/.test(iFree), 'interrupteur avec voie Free : seul avec Free, ajouté APRÈS une formule');
   const i1 = inter({ mode: 'interrupteur', essai: true }, true);
   verifier(/Aujourd.hui — Carte demandée, rien n.est prélevé pour le Cloud/.test(i1) && /17 octobre — Le Cloud passe à 24,99 €\/mois, sauf si tu l.arrêtes avant/.test(i1) && /D.ici là — Tu l.arrêtes en un geste dans Réglages › Abonnement\. On te prévient la veille, dans l.app et par e-mail/.test(i1), 'interrupteur coché : la frise sans piège', i1);
   const i2 = inter({ mode: 'interrupteur', essai: false }, true);

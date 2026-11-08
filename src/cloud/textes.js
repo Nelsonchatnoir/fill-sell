@@ -77,8 +77,9 @@ const FR = {
   ebayDeja: 'eBay part déjà sans ordinateur, pour tout le monde.',
 
   // ── L'interrupteur de la feuille des formules ────────────────────────────
-  sAjoute: "S'ajoute à la formule que tu choisis ci-dessous.",
-  sAjouteFree: "S'ajoute à la formule que tu choisis ci-dessous, Free compris.",
+  // (08/11, point 0 de Nico) Jamais « s'ajoute à la formule que tu choisis » : une carte payante n'achète que sa formule.
+  sAjoute: "Il s'ajoute à ta formule une fois qu'elle est prise.",
+  sAjouteFree: "Il se prend seul, avec Free. Avec Premium, Pro ou Business, tu l'ajoutes une fois ta formule prise.",
   frise: (date) => [
     { quand: "Aujourd'hui", quoi: "Carte demandée, rien n'est prélevé pour le Cloud." },
     { quand: date, quoi: `Le Cloud passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.` },
@@ -266,8 +267,8 @@ const EN = {
   ceQueCaFait: 'Your Vinted, Leboncoin, Beebs and Depop listings go out, get reposted and removed even with your computer off, and your sales are seen: everything is driven from your phone.',
   ebayDeja: 'eBay already works without a computer, for everyone.',
 
-  sAjoute: 'Adds to the plan you pick below.',
-  sAjouteFree: 'Adds to the plan you pick below, Free included.',
+  sAjoute: 'It adds to your plan once your plan is active.',
+  sAjouteFree: 'Take it on its own, with Free. With Premium, Pro or Business, you add it once your plan is active.',
   frise: (date) => [
     { quand: 'Today', quoi: 'Card required, nothing is charged for the Cloud.' },
     { quand: date, quoi: `The Cloud moves to ${PRIX_EN}/mo, unless you stop it before.` },

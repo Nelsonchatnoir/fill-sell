@@ -721,10 +721,14 @@ function PlansStack({ fr, tiers, K, onUpgrade, showFree = false, avant = null, c
       {/* Le Free ouvre la pile QUAND le lecteur est en Free (02/09 soir) :
           c'est son point de départ — il voit ce qu'il a, puis ce que payer
           change, ligne à ligne. Jamais montré aux payants (rien à y lire). */}
+      {/* ⛔ (08/11, point 0 de Nico, achat « formule + Cloud » cassé) Le Cloud ne se combine JAMAIS à une carte
+          payante : Apple et Google ne vendent qu'un abonnement par feuille, et le parcours combiné n'achetait que la
+          formule. Seule la carte Free porte sa voie « Free + FillSell Cloud » (le Cloud seul, son propre achat) ;
+          un compte payant ajoute le Cloud par la carte d'ajout, APRÈS sa formule. */}
       {showFree && <FreePlanCard fr={fr} K={K} estMonPlan cloud={cloud} voieCloud={voieCloudFree} />}
-      {showPremium && <PremiumPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={cloud} />}
-      {showPro && <ProPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={cloud} />}
-      {showBusiness && <BusinessPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={cloud} />}
+      {showPremium && <PremiumPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={null} />}
+      {showPro && <ProPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={null} />}
+      {showBusiness && <BusinessPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={null} />}
     </div>
   );
 }
@@ -1179,8 +1183,8 @@ export default function ConversionModal({
     const choixCloud = interrupteurMontre;
     logModale('offers_modal_tier_click', { tier, origine: origine ?? 'non_precisee', trigger, view, ...(choixCloud ? { cloud: avecCloud } : {}),
       ouverture: ouvertureRef.current.id, duree_ms: ouvertureRef.current.le ? Date.now() - ouvertureRef.current.le : null, ...contexteDeLogs() });
-    if (choixCloud) onUpgrade(tier, { cloud: avecCloud });
-    else onUpgrade(tier);
+    // (08/11, point 0) La carte d'un palier achète CE palier, et rien d'autre : plus jamais onUpgrade(tier, { cloud }).
+    onUpgrade(tier);
   };
   const basculerCloud = (v) => {
     setAvecCloud(v);
@@ -1268,8 +1272,10 @@ export default function ConversionModal({
   const voieCloudFree = voieFree && avecCloud
     ? <SectionFreeCloud offre={offreCloud} quotaFree={K.quota_annonces_free} onCloudSeul={choisirCloudSeul} lang={lang} />
     : null;
+  // (08/11, point 0) L'interrupteur ne sert plus qu'à la voie « Free + FillSell Cloud » : sans elle, il ne ferait rien
+  // (les cartes payantes ne prennent plus le Cloud) — il ne se montre donc pas.
   const blocCloud = interrupteurMontre
-    ? <InterrupteurCloud offre={offreCloud} coche={avecCloud} onBasculer={basculerCloud} lang={lang} freeCompris={voieFree} />
+    ? (voieFree ? <InterrupteurCloud offre={offreCloud} coche={avecCloud} onBasculer={basculerCloud} lang={lang} freeCompris /> : null)
     : ligneCloud;
   const carteAjoutCloud = ajoutCloudPossible ? (
     <div style={{ marginBottom: 12 }}>
@@ -1384,7 +1390,7 @@ export default function ConversionModal({
         {grille ? <ResumePalier fr={fr} palier={palierIci} K={K} /> : carteAjoutCloud}
         {grille ? null : <ToutesOffresBlock fr={fr} />}
         {blocCloudAuDessus}
-        <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
+        <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} cloud={null} />
         {carteAjoutCloudSous}
         {encartCloud}
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
