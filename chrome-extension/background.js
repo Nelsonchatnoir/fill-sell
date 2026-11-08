@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-08-soir (0.6.182 : le compte Leboncoin relevé (celui du jeton de la page) est écrit sur le relevé et sur chaque annonce vue, si la base a les colonnes — le serveur ne mélange plus deux comptes ; rien d'autre ne change — précédent : " +
   "2026-11-08-apres-midi (0.6.181 : l'espacement de 2 min entre deux gestes de republication est compté PAR PLATEFORME — Vinted, Leboncoin, Beebs et Depop avancent ensemble, chacune à son rythme d'avant ; un retrait né pendant un cycle l'arrête entre deux tâches et un poll repart — précédent : " +
   "2026-11-07-nuit-louis (0.6.180 : état d'une tâche — une remise en vente Leboncoin retenue parce que son annonce vendue est encore affichée le dit (achat en cours, « Article vendu », relecture) et, au-delà de la borne, « À toi de jouer : supprime-la sur Leboncoin » ; recopie de _shared/etat-job.js, rien d'autre ne change — précédent : " +
   "2026-11-07-nuit (0.6.179 : Vinted — un choix de rayon de la personne coupe la queue héritée de l'ancien arbre et la question suivante porte le chemin corrigé (la réponse s'y ajoute) ; un rayon refusé au compte Pro (400 « category ») devient une question de RAYON, jamais « renseigne category » ; relevé du dressing : le référent du marquage des disparitions est le dernier relevé du même compte qui a réellement marqué, et « sans recoupement » à identité prouvée reporte d'un relevé au lieu de renoncer ; Beebs — une republication dont la suppression est partie garde ses constats « page 404 » et son envoi, et se prouve par la page comme un retrait — précédent : " +
@@ -18357,6 +18358,8 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       annonces: [...annonces.values()],
       complet: complet && !jugement,
       illisibles,
+      // (08/11 soir, point 3 de Nico — 0.6.182) Le compte Leboncoin lu : celui du jeton de la page (owner.user_id de la requête).
+      compte: compteLeboncoinValide(api.compte),
       annonce: Number.isFinite(lbcTotalEnLigne) ? lbcTotalEnLigne : null,
       erreur: jugement
         ? `couverture partielle : ${enLigneApi} annonce(s) vue(s) sur ${lbcTotalEnLigne ?? "?"} « en ligne » — le reste n'est ni relevé ni conclu disparu`
@@ -19964,6 +19967,17 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     // (03/11, point 5) Le statut brut Leboncoin — seulement si la base a la colonne (même règle que ci-dessus).
     const statutBrutLu = platform === "leboncoin" && annonces.some((a) => typeof a.statut_brut === "string");
     const statutBrutPossible = statutBrutLu && await restRequest("annonces_plateforme?select=statut_brut&limit=1", token).then(() => true).catch(() => false);
+    // (08/11 soir, point 3 de Nico — 0.6.182) Le compte Leboncoin relevé (compteLeboncoinValide) : sur le relevé AVANT le
+    // rapprochement (le serveur le lit pour juger les absences), puis sur chaque annonce vue — seulement si la base a les
+    // colonnes (même règle que ci-dessus : une colonne inconnue ferait refuser l'upsert EN ENTIER).
+    const comptePlateforme = platform === "leboncoin" ? compteLeboncoinValide(lu.compte) : null;
+    const comptePossible = !!comptePlateforme && await restRequest("annonces_plateforme?select=compte_plateforme&limit=1", token).then(() => true).catch(() => false)
+      && await restRequest("vinted_sync_runs?select=compte_plateforme&limit=1", token).then(() => true).catch(() => false);
+    if (comptePossible) {
+      await restRequest(`vinted_sync_runs?id=eq.${run.id}&status=eq.running`, token, {
+        method: "PATCH", body: JSON.stringify({ compte_plateforme: comptePlateforme, updated_at: maintenant() }),
+      }).catch(() => {});
+    }
     // ⚠️ Number(null) vaut 0 : un prix ILLISIBLE doit rester NULL (bande
     //    incertaine), jamais devenir 0 € — même règle pour vues / favoris.
     const nombreOuNull = (v) => (v == null || v === "" ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
@@ -19975,6 +19989,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       ...(datePossible ? { publiee_le: a.publiee_le ?? null } : {}),
       ...(transactionPossible ? { transaction_plateforme: a.transaction, transaction_lue_le: maintenant() } : {}),
       ...(statutBrutPossible ? { statut_brut: typeof a.statut_brut === "string" ? a.statut_brut : null } : {}),
+      ...(comptePossible ? { compte_plateforme: comptePlateforme } : {}),
       statut_plateforme: ["en_ligne", "en_verification", "desactivee", "vendue"].includes(a.statut) ? a.statut : "inconnu",
       run_id: run.id, vu_le: maintenant(), disparu_le: null, updated_at: maintenant(),
     }));
@@ -20517,8 +20532,22 @@ async function releverLeboncoinParApi() {
       ok: liste.length > 0 || (!motif && actives === 0),
       annonces: liste, actives, total, pages, motif, statuts,
       enLigne: liste.filter((a) => a.statut === "en_ligne").length,
+      // (08/11 soir, point 3 de Nico — 0.6.182) Le compte dont on vient de lire les annonces (owner.user_id ci-dessus).
+      compte: uid,
     };
   }, [LBC_API_PAGE, LBC_API_PAGES_MAX]);
+}
+
+// (08/11 soir, point 3 de Nico — ayadi007, 0.6.182) LE COMPTE LEBONCOIN RELEVÉ, ÉCRIT AVEC LE RELEVÉ. Rien ne nommait le
+// compte lu : quand une personne change de compte Leboncoin dans Chrome, le serveur ne pouvait que le DEVINER (absence de
+// continuité, au moins 5 annonces). L'identifiant est celui que la page elle-même donne à son API (cookie lbc_user_id, ou
+// le compte du jeton) : il est écrit sur le relevé (vinted_sync_runs.compte_plateforme) et sur chaque annonce vue
+// (annonces_plateforme.compte_plateforme) — seulement si la base a ces colonnes (migration 20261108190000). Le serveur
+// (constater_absences_releve) ne mélange alors jamais deux comptes : une annonce d'un autre compte n'est jamais « Vendue ? ».
+// Une valeur d'une autre forme (vide, trop longue, caractères inattendus) n'est jamais écrite.
+function compteLeboncoinValide(v) {
+  const s = String(v ?? "").trim();
+  return /^[A-Za-z0-9-]{3,80}$/.test(s) ? s : null;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

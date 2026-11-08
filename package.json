@@ -536,6 +536,7 @@
     "selftest:ebay-contenu-actif": "deno run --allow-read --allow-env --allow-net scripts/ebay-contenu-actif-selftest.ts",
     "selftest:lot-0811-app": "node --import ./scripts/loader-ext.mjs scripts/lot-0811-app-selftest.mjs",
     "selftest:contenu-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/contenu-du-vendeur-selftest.mjs",
+    "selftest:compte-plateforme-releve": "node scripts/compte-plateforme-releve-selftest.mjs",
     "selftest:genre-a-choisir": "node --import ./scripts/loader-ext.mjs scripts/genre-a-choisir-selftest.mjs",
     "selftest:lot-2210-soir": "node --import ./scripts/loader-ext.mjs scripts/lot-2210-soir-selftest.mjs",
     "selftest:lot-2310": "node --import ./scripts/loader-ext.mjs scripts/lot-2310-selftest.mjs",
