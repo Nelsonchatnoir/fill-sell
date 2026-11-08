@@ -528,5 +528,5 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   trace `usage_logs.releve_compte_change` (compte Leboncoin changé ou bloqué, tout republié d'un coup).
 - FillSell ne connaît qu'UN compte Leboncoin à la fois (la session du Chrome de l'extension) et n'en garde pas le numéro ;
   ne jamais l'écrire dans `vinted_sync_runs.vinted_user_id` (lu comme compte Vinted par `cloud_essai_preparer_moi`).
-- Migrations `20261108141000`, `20261108143000`, `20261108144000` (+ `rapprochement` à redéployer pour `moteur.js`) :
-  PRÉPARÉES, NON APPLIQUÉES au 08/11 (feu vert). Preuve : `scripts/preuve-ayadi-0811.mjs` (54/54).
+- Migrations `20261108141000`, `20261108143000`, `20261108144000` APPLIQUÉES le 08/11 (feux verts nommés de Nico) ;
+  `rapprochement` **v37** (moteur.js) déployée le 08/11. Preuve : `scripts/preuve-ayadi-0811.mjs` (54/54).

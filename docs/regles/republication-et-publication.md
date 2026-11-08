@@ -1402,8 +1402,8 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   (Sonia : 3 PNG, 5,6 Mo, critères jamais affichés en 45 s).
 - (08/11, point 4 — Jess, câble USB-C 3178619102) Une annonce Leboncoin vue en ligne dont le badge « Vendu » date d'AVANT
   le suivi (`leboncoin_vendu_avant_suivi` : « sold » dès la première lecture, jamais « aucune » ni « pending » depuis) se
-  republie : `republication_annonce_partie` ne compte plus ce badge (migration `20261108142000`, PRÉPARÉE, NON APPLIQUÉE
-  au 08/11). Une vente lue pendant le suivi reste « annonce_vendue ». 26 fiches au stock bloquées ainsi le 08/11.
+  republie : `republication_annonce_partie` ne compte plus ce badge (migration `20261108142000`, APPLIQUÉE le
+  08/11). Une vente lue pendant le suivi reste « annonce_vendue ». 26 fiches au stock bloquées ainsi le 08/11.
 - (08/11, ayadi007) « Synchroniser » sur un stock VIDE n'est jamais refusé par la cadence de 15 min, déclencheur
-  `garde_cadence_sync_runs` compris (migration `20261108140000`, PRÉPARÉE) ; un refus de cadence se dit par un fait au
+  `garde_cadence_sync_runs` compris (migration `20261108140000`, APPLIQUÉE le 08/11) ; un refus de cadence se dit par un fait au
   passé (« lues il y a N min ») et relance le rangement — jamais « La demande n'a pas pu être envoyée ».
