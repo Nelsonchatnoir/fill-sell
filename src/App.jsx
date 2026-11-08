@@ -80,6 +80,10 @@ ecouterEchecsNonRattrapes();
 // dès le chargement de ce module — avant le premier rendu de l'app, en parallèle de la session. Fermés tant qu'ils ne
 // sont pas revenus (config/interrupteurs.js).
 lireInterrupteurs(supabase);
+// (08/11, jour J) Le binaire natif, lu UNE fois (Capacitor App.getInfo) : dans l'app, le Cloud ne se VEND qu'à partir du
+// binaire relu avec lui (CLOUD_BINAIRE_MIN, config/cloudOffer.js) — Android 2.9.10 et iPhone 2.8 n'ont pas le module de
+// notifications. Web : sans objet. Pas encore lu ou illisible = pas vendu.
+const binaireCloudLu=noterBinaireCloud(Capacitor.isNativePlatform()?CapacitorApp.getInfo().then((i)=>i?.version??null):'web');
 // (29/10, point 10) Un DOM touché par un tiers (traduction du navigateur…) ne lève plus : signalé une fois, avec la
 // langue. Et l'app ne se laisse plus traduire (décision de Nico, 29/10 soir) : index.html le déclare, et ce geste le
 // repose si un tiers l'a retiré (utils/domTraduit.js).
@@ -146,7 +150,7 @@ import BandeauCloudReconnexion from './cloud/BandeauCloudReconnexion';
 import BandeauLeboncoinPause from './components/BandeauLeboncoinPause';
 import { creerAchatCloud } from './cloud/achatCloud';
 import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
-import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud } from './config/cloudOffer';
+import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud, noterBinaireCloud } from './config/cloudOffer';
 import { useEtatCompteCloud } from './cloud/useCompteCloud';
 import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
 import { lireInterrupteurs, ecouterInterrupteurs, interrupteursConnus } from './config/interrupteurs';
@@ -2710,9 +2714,12 @@ export default function App({ loginOnly = false }){
   // redessine — cloudOfferVisible / cloudOffreVendable relisent l'interrupteur à chaque rendu.
   const [,setInterrupteursLus]=useState(0);
   useEffect(()=>{
+    let mort=false;
     const stop=ecouterInterrupteurs(()=>setInterrupteursLus((n)=>n+1));
     if(interrupteursConnus())setInterrupteursLus((n)=>n+1);
-    return stop;
+    // (08/11) Le binaire lu (cloudOffreVendable le relit à chaque rendu) : l'app se redessine à son arrivée.
+    binaireCloudLu.then(()=>{if(!mort)setInterrupteursLus((n)=>n+1);});
+    return ()=>{mort=true;stop();};
   },[]);
   // (30/10, lot D) La case des conditions d'utilisation du Cloud, avant toute carte (promesse résolue par la modale).
   const [conditionsCloudOuvertes,setConditionsCloudOuvertes]=useState(null);

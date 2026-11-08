@@ -1,5 +1,34 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 08/11/2026 — JOUR J : OUVERTURE (procédure en tête de docs/reprise/JOUR-OUVERTURE-CLOUD.md, « On ouvre » de Nico)
+- **Android sans la vc36 (12:45)** : la vc36 est encore en examen chez Google, le binaire Android en ligne est la 2.9.10
+  (vc31). a) l'OTA s'y installe : canal Capgo `production` (Android oui, « Auto Update » major, « Updates Under
+  Native » No), et 31 Android au natif 2.9.10 tournent déjà l'OTA 2.9.162 (envoyée en --delta). b) achat et arrêt
+  Google Play : même module que la vc36 (native-purchases 8.3.3, même correctif), même chemin que Premium (3
+  abonnements Google actifs), manageSubscriptions présent ; jamais essayé en réel sur aucun binaire (pas d'appareil).
+  c) NON : pas de module de notifications sur la 2.9.10 (appareils_push Android : 7, tous sur un seul compte de test),
+  or la liste d'attente promet « une notification te prévient ». → **Ouverture iPhone + web, Android fermé jusqu'à la
+  vc36** : règle `CLOUD_BINAIRE_MIN = 2.9.164` (src/config/cloudOffer.js, lue au démarrage par App.jsx) — dans l'app, le
+  Cloud ne se VEND qu'à partir du binaire relu avec lui (Android 2.9.10 et iPhone 2.8 : offre masquée, allumée seule au
+  binaire 2.9.164 ; web sans objet ; un client Cloud garde ses écrans). Aujourd'hui aucun Android ne voit l'offre : les
+  OTA ≤ 2.9.162 et le web embarqué de la 2.9.10 la ferment en dur (CLOUD_OFFER_ENABLED false).
+- **Prérequis relus (12:31-12:45)** : Apple 2.9.164 READY_FOR_SALE (build 2611071917 VALID, abonnement Cloud APPROVED,
+  App Store public 2.9.164 depuis 12:16:31 : étape 6a déjà faite par Nico) ; étanchéité cloud-2 : `enable_icc false`,
+  `reseau_cloisonnement ok:true complet:true` (07/11 19:34), test réel 000/000 depuis un conteneur, 200/401 depuis
+  l'hôte ; aucune tâche `processing` chez Nico ; `cloud_offre_ouverte` absente ; `cloud_mails` absente.
+- **Fonctions, avant (12:36)** : email-tunnel v83 (false), stripe-webhook v70 (false), apple-iap-webhook v48 (false),
+  google-play-webhook v41 (false), validate-google-purchase v21 (true), validate-apple-receipt v42 (true),
+  cancel-subscription v54 (true), create-checkout-session v70 (true), get-pending-jobs v351 (true). get-pending-jobs
+  téléchargée (CLI 2.98.2 : la 3.0.0 refuse un fichier hors `supabase/functions`) = main, 166/166 → PAS redéployée. Les
+  7 autres : chaque fichier en service existe dans l'historique de main (rien d'étranger, rien d'écrasé).
+- **Alerte à Nico à chaque événement d'argent du Cloud (ajout de Nico, 08/11)** : `_shared/cloud-alerte-nico.js`, appelée
+  par `mailsCloud` (les 4 fonctions qui écrivent le Cloud) après les mails clients : essai, paiement (1er mois et
+  renouvellements), arrêt pendant l'essai (confirmé), arrêt programmé ; compte, canal, palier, montant lu à la source
+  (rien si elle se tait), date de Paris ; à **support@fillsell.app** (= `ALERTES_DESTINATAIRE` relu sur cloud-2, l'adresse
+  de l'alerte des IP en pause) ; un mail par événement (registre `cloud_mails`, clé « alerte: ») ; jamais bloquante ;
+  mails clients inchangés. Envoi de test : email-tunnel `{ "alerte_cloud_test": true }` (x-cron-secret). Selftest
+  `cloud-alerte-nico` (51).
+
 ## 08/11/2026 — DERNIÈRES FINITIONS : résiliation + mails (code poussé, RIEN déployé, migration PRÉPARÉE)
 - **Bouton « Arrêter » muet (TestFlight 07/11)** : cause relue dans les journaux — 2 taps (18:02:33 et 18:02:52 UTC,
   compte 5322fa18) envoyés à cancel-subscription v53, qui ignore `option:'cloud'` et répond `{ success: true }` ; le build

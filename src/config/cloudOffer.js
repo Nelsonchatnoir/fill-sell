@@ -103,14 +103,48 @@ export function paysDuTelephoneCloud(fuseau) {
   }
   return FUSEAUX_PAYS_CLOUD[String(f ?? '').trim()] ?? null;
 }
-/** La règle (pure, testée : scripts/cloud-pays-selftest.mjs) : témoin partout ; sinon l'offre ouverte ET un pays ouvert. */
-export function cloudVendableDansLePays({ temoin = false, ouvert = false, pays = null } = {}) {
+// (08/11/2026, jour J, consigne de Nico « Android sans le nouveau binaire : rien à moitié, sinon invisible jusqu'à la
+// vc36 ») DANS L'APP, LE CLOUD NE SE VEND QU'À PARTIR DU BINAIRE RELU AVEC LUI (CLOUD_BINAIRE_MIN = 2.9.164, Apple
+// build 2611071917, Google vc36). Un binaire plus ancien (Android 2.9.10, iPhone 2.8) n'a pas le module de
+// notifications : la liste d'attente y promettrait une notification qui n'arrive jamais. Il reçoit pourtant l'OTA :
+// l'offre lui reste donc MASQUÉE (même règle que le pays), et s'allume seule le jour où la personne installe le
+// binaire 2.9.164 — ni OTA, ni interrupteur. Web : sans objet (aucun binaire). Le binaire est lu UNE fois au démarrage
+// (App.jsx : Capacitor App.getInfo → noterBinaireCloud) ; pas encore lu ou illisible sur un téléphone = PAS vendu.
+// ⛔ Seule la VENTE est bornée : un compte qui a déjà le Cloud garde ses écrans, l'arrêt et la reprise (cloudOfferVisible).
+export const CLOUD_BINAIRE_MIN = '2.9.164';
+/** Compare deux versions « a.b.c » segment par segment (pur) ; une version illisible vaut -1. */
+export function comparerVersions(a, b) {
+  const lire = (v) => (/^\d+(\.\d+)*$/.test(String(v ?? '').trim()) ? String(v).trim().split('.').map(Number) : null);
+  const x = lire(a), y = lire(b);
+  if (!x || !y) return -1;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+/** Le binaire porte-t-il le Cloud ? (pur) 'web' = oui ; un numéro natif ≥ CLOUD_BINAIRE_MIN = oui ; sinon (inconnu) non. */
+export function binairePorteLeCloud(binaire) {
+  if (binaire === 'web') return true;
+  return comparerVersions(binaire, CLOUD_BINAIRE_MIN) >= 0;
+}
+let binaireCloud = null;   // null = pas encore lu ; 'web' ; ou la version du binaire natif (« 2.9.164 »)
+/** Note le binaire (valeur ou promesse : 'web', une version, null si illisible). Rend une promesse ; jamais d'exception. */
+export function noterBinaireCloud(v) {
+  return Promise.resolve(v).then((x) => { binaireCloud = x ?? null; }, () => { binaireCloud = null; }).then(() => binaireCloud);
+}
+/** Pour les selftests seulement. */
+export function _binaireCloudAZero(v = null) { binaireCloud = v; }
+/** La règle (pure, testée : scripts/cloud-pays-selftest.mjs) : témoin partout ; sinon l'offre ouverte ET un pays ouvert
+ *  ET (08/11) un binaire qui porte le Cloud (`binaire` absent = sans objet, comme avant). */
+export function cloudVendableDansLePays({ temoin = false, ouvert = false, pays = null, binaire = true } = {}) {
   if (temoin) return true;
-  return Boolean(ouvert) && PAYS_CLOUD_OUVERTS.includes(pays);
+  return Boolean(ouvert) && PAYS_CLOUD_OUVERTS.includes(pays) && binaire === true;
 }
 /** Le point de décision de la VENTE du Cloud (achat, essai, offre) : à la place de cloudOfferVisible sur ces gestes-là. */
 export const cloudOffreVendable = (userId, fuseau = undefined) =>
-  cloudVendableDansLePays({ temoin: estTemoin(userId), ouvert: cloudOffreOuverte(), pays: paysDuTelephoneCloud(fuseau) });
+  cloudVendableDansLePays({ temoin: estTemoin(userId), ouvert: cloudOffreOuverte(), pays: paysDuTelephoneCloud(fuseau),
+    binaire: binairePorteLeCloud(binaireCloud) });
 
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
 // (07/11, décision de Nico, voie b) CLOUD_DOMAINE retiré : l'adresse vient du serveur du compte (cloud_serveur_moi,

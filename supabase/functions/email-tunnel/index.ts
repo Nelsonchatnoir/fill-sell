@@ -30,6 +30,7 @@ import {
 } from "../_shared/cloud-rappel-veille.js";
 // (07/11 soir) Le prix du mail de la veille : lu chez le canal qui prélève (Stripe, Apple, Google), jamais écrit en dur.
 import { lecteurPrixCloud } from "../_shared/cloud-prix-source.ts";
+import { envoyerAlerteCloudTest } from "../_shared/cloud-mails-envoi.ts";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -660,6 +661,14 @@ serve(async (req) => {
     return new Response(JSON.stringify({ http: r.status, resend: corps }), {
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // ── (08/11/2026, jour J) ENVOI DE TEST de l'alerte Cloud à Nico ───────────
+  // { alerte_cloud_test: true } : le même texte, la même porte d'envoi, la même adresse que l'alerte réelle
+  // (_shared/cloud-alerte-nico.js, ALERTE_CLOUD_DESTINATAIRE) ; aucun client, aucun paiement, aucun registre.
+  if (body?.alerte_cloud_test === true) {
+    const r = await envoyerAlerteCloudTest();
+    return new Response(JSON.stringify({ ok: true, ...r }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
 
   // ── Alerte de paiement (2026-07-28) ────────────────────────────────────

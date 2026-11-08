@@ -45,7 +45,12 @@ ok(prevenu === 1 && v.cloud_offre_ouverte === 1, 'l’écouteur est prévenu une
 await I.lireInterrupteurs(client({ data: [], error: null }, { compteur: cpt }));
 ok(cpt.n === 1, 'une lecture réussie n’est jamais refaite');
 ok(C.cloudOffreOuverte() === true && C.cloudOfferVisible('n-importe-qui') === true, 'serveur à 1 : le Cloud est visible pour tous');
+// (08/11, jour J) La vente exige aussi un binaire qui porte le Cloud : ici le web (sans objet).
+C._binaireCloudAZero('web');
 ok(C.cloudOffreVendable('n-importe-qui', 'Europe/Paris') === true && C.cloudOffreVendable('n-importe-qui', 'America/New_York') === false, 'ouvert : vendu en France seulement (règle des pays inchangée)');
+C._binaireCloudAZero('2.9.10');
+ok(C.cloudOffreVendable('n-importe-qui', 'Europe/Paris') === false && C.cloudOfferVisible('n-importe-qui') === true, 'ouvert, binaire Android 2.9.10 : rien de vendu (l’état d’un client Cloud reste visible)');
+C._binaireCloudAZero(null);
 
 I._remettreAZero();
 await I.lireInterrupteurs(client({ data: null, error: { message: 'réseau' } }));
