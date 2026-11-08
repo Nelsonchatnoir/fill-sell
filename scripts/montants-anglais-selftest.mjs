@@ -102,9 +102,12 @@ for (const f of ["src/annonces/EcranDoublons.jsx", "src/annonces/EcranRattacheme
   ok(/montantAnglais\(v\)/.test(code) && !/`€\$\{Number\(v\)\}`/.test(code) && !/'en-GB', \{ minimumFractionDigits: 0, maximumFractionDigits: 2 \}\)\} €/.test(code), `${f.split("/").pop()} : le prix lisible anglais à l'anglaise`);
 }
 {
+  // (08/11, refus Google Play de la vc36) Les prix du WEB vivent dans lib/prixBoutique.js (PRIX_WEB) ; la feuille les lit
+  // par prixOuChargement (mobile : le prix de la boutique, selftest:prix-boutique).
+  const pb = lire("src/lib/prixBoutique.js");
   const cm = lire("src/components/ConversionModal.jsx");
-  ok(/premium: +\{ price: '12,99 €', priceEn: '€12\.99' \}/.test(cm) && /pro: +\{ price: '29,99 €', priceEn: '€29\.99' \}/.test(cm) && /business: \{ price: '59,99 €', priceEn: '€59\.99' \}/.test(cm)
-    && !/PLAN_PRICES\.\w+\.price\}/.test(cm), "feuille des formules : « €12.99 », « €29.99 », « €59.99 » en anglais (le français inchangé)");
+  ok(/premium: Object\.freeze\(\{ fr: '12,99 €', en: '€12\.99' \}\)/.test(pb) && /pro: Object\.freeze\(\{ fr: '29,99 €', en: '€29\.99' \}\)/.test(pb) && /business: Object\.freeze\(\{ fr: '59,99 €', en: '€59\.99' \}\)/.test(pb)
+    && /const prixPlan = \(palier, fr\) => prixOuChargement\(palier, fr \? 'fr' : 'en'\);/.test(cm) && !/PLAN_PRICES/.test(cm), "feuille des formules : « €12.99 », « €29.99 », « €59.99 » en anglais (le français inchangé)");
 }
 {
   // Aucun texte anglais du Cloud n'écrit le prix à la française.

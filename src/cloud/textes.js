@@ -42,14 +42,16 @@
 //    compte (cloudDuProfil.essaiFin, periodeFin) ou, avant l'essai, de
 //    maintenant + 7 jours ; le nombre d'annonces du plan Free vient de
 //    coin_config (quota_annonces_free) ou de quotas_etat. Contrôlé par le selftest.
-import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN, CLOUD_ESSAI_JOURS } from '../utils/palier';
+import { CLOUD_ESSAI_JOURS } from '../utils/palier';
+import { JETON_PRIX_CLOUD, avecPrix } from '../lib/prixBoutique.js';
 
 // Espaces INSÉCABLES dans le prix et « 7 jours » : à 390 px, le montant se
 // retrouvait seul en fin de ligne et « €/mois » à la suivante (capture du 04/10).
 const NBSP = String.fromCharCode(0xa0);
-const PRIX = CLOUD_PRIX_AFFICHE.replace(/ /g, NBSP); // '24,99 €' — le prix AFFICHÉ, cf. utils/palier.js
-// (07/11, décision de Nico) Les textes anglais disent le même prix à l'anglaise : '€24.99' (sans espace à couper).
-const PRIX_EN = CLOUD_PRIX_AFFICHE_EN;
+// (08/11, refus Google Play de la vc36) Le prix n'est plus écrit ici : un JETON, remplacé à la lecture par le prix du
+// CANAL (web : Stripe en euros ; iPhone/Android : prix formaté par la boutique, « … » tant qu'il charge) — lib/prixBoutique.js.
+const PRIX = JETON_PRIX_CLOUD;   // web : '24,99 €' (insécable) ; mobile : le prix de la boutique
+const PRIX_EN = JETON_PRIX_CLOUD; // web : '€24.99' (CLOUD_PRIX_AFFICHE_EN)
 const JOURS = CLOUD_ESSAI_JOURS;          // 7
 const J7 = `${JOURS}${NBSP}jours`;
 const D7 = `${JOURS}${NBSP}days`;
@@ -421,5 +423,5 @@ const EN = {
 };
 
 export function textesCloud(lang) {
-  return lang === 'en' ? EN : FR;
+  return avecPrix(lang === 'en' ? EN : FR, lang === 'en' ? 'en' : 'fr');
 }

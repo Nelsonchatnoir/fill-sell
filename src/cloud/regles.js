@@ -10,6 +10,7 @@
 // téléphone : la bascule de facturation a lieu à une heure précise, et c'est
 // celle-là qu'on promet.
 import { CLOUD_ESSAI_JOURS } from '../utils/palier';
+import { essaiBoutiqueOffert } from '../lib/prixBoutique.js';
 
 export const FUSEAU = 'Europe/Paris';
 const JOUR_MS = 86_400_000;
@@ -81,7 +82,8 @@ export function offreCloudPourModale(lecture) {
   const c = lecture.cloud;
   if (c.etat === 'essai' || c.etat === 'paye') return { mode: 'deja_actif' };
   if (c.etat === 'suspendu') return { mode: 'suspendu' };
-  return { mode: 'interrupteur', essai: c.etat === 'aucun' && !c.essaiPris };
+  // (08/11, refus Google) Mobile : l'essai n'est annoncé que si la boutique offre une semaine gratuite à ce compte.
+  return { mode: 'interrupteur', essai: c.etat === 'aucun' && !c.essaiPris && essaiBoutiqueOffert('cloud') };
 }
 
 /** La 2e voie (entrée, mur) : null = ne rien montrer ; sinon { essai }. */

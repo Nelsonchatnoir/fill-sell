@@ -29,6 +29,9 @@ import { C, MENTHE, BLANC, DEGRADE_TEAL } from './theme';
 import { textesCloud } from './textes';
 import { dateLongue, finEssaiSiOnCommence } from './regles';
 import { useDisponibiliteCloud, venteFermee, placesRestantes, RELECTURE_PLACES_MS } from './useDisponibiliteCloud';
+// (08/11, refus Google) Mobile : un bouton d'achat n'agit qu'une fois le prix de la boutique affiché.
+import { prixPret } from '../lib/prixBoutique';
+import { usePrixBoutique } from '../lib/usePrixBoutique';
 
 function Glyphe({ taille = 34 }) {
   return (
@@ -259,7 +262,7 @@ export function SectionFreeCloud({ offre, quotaFree, onCloudSeul, lang = 'fr', m
         : (
           <>
             {placesRestantes(vente.dispo) > 0 && <div style={{ display: 'flex', marginTop: 12 }}><CompteurPlacesCloud dispo={vente.dispo} lang={lang} /></div>}
-            <button type="button" onClick={onCloudSeul} style={{ ...styleBoutonPlein, marginTop: placesRestantes(vente.dispo) > 0 ? 8 : 12 }}>
+            <button type="button" onClick={onCloudSeul} disabled={!prixPret('cloud')} style={{ ...styleBoutonPlein, marginTop: placesRestantes(vente.dispo) > 0 ? 8 : 12, ...(prixPret('cloud') ? {} : { opacity: 0.55, cursor: 'default' }) }}>
               {offre.essai ? T.freeCloudCtaEssai : T.freeCloudCta}
             </button>
           </>
@@ -289,6 +292,7 @@ export function LigneCloudModale({ offre, lang = 'fr' }) {
  * ce composant n'est jamais rendu.
  */
 export function PrixAvecCloud({ prix, cloud, sombre = false, taille = 22, lang = 'fr', encreClaire = C.ink }) {
+  usePrixBoutique({ charger: false });
   const T = textesCloud(lang);
   const encre = sombre ? C.paper : encreClaire;
   const sous = sombre ? 'rgba(246,245,241,0.78)' : C.mute2;
@@ -337,7 +341,7 @@ export function CarteAjoutCloud({ offre, nomPalier, onAjouter, lang = 'fr', main
         : (
           <>
             {placesRestantes(vente.dispo) > 0 && <div style={{ display: 'flex', marginTop: 12 }}><CompteurPlacesCloud dispo={vente.dispo} lang={lang} /></div>}
-            <button type="button" onClick={onAjouter} style={{ ...styleBoutonPlein, marginTop: placesRestantes(vente.dispo) > 0 ? 8 : 12 }}>
+            <button type="button" onClick={onAjouter} disabled={!prixPret('cloud')} style={{ ...styleBoutonPlein, marginTop: placesRestantes(vente.dispo) > 0 ? 8 : 12, ...(prixPret('cloud') ? {} : { opacity: 0.55, cursor: 'default' }) }}>
               {offre.essai ? T.ajoutCtaEssai : T.ajoutCta}
             </button>
           </>

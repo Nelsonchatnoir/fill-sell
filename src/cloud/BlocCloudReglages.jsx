@@ -49,6 +49,8 @@ import { textesConnexion } from './textesConnexion';
 import { dateLongue, heureDe, jourDEssai, finEssaiSiOnCommence } from './regles';
 import { DEGRADE_TEAL } from './theme';
 import { voieArretCloud, voieBoutique } from './achatCloud';
+// (08/11, refus Google) Mobile : un bouton d'achat n'agit qu'une fois le prix de la boutique affiché.
+import { prixPret } from '../lib/prixBoutique';
 
 function Glyphe() {
   return (
@@ -204,12 +206,12 @@ export default function BlocCloudReglages({
               {quotaLigne}
               {!cloud.essaiPris ? (
                 <>
-                  {actions.essayer && <Bouton ton="plein" onClick={actions.essayer} style={PLEIN}>{T.aucunCtaEssai}</Bouton>}
+                  {actions.essayer && <Bouton ton="plein" onClick={actions.essayer} disabled={!prixPret('cloud')} style={PLEIN}>{T.aucunCtaEssai}</Bouton>}
                   <p style={pNote}>{T.aucunNoteEssai(dateAvantEssai)}</p>
                 </>
               ) : (
                 <>
-                  {actions.ajouter && <Bouton ton="plein" onClick={actions.ajouter} style={PLEIN}>{T.aucunCta}</Bouton>}
+                  {actions.ajouter && <Bouton ton="plein" onClick={actions.ajouter} disabled={!prixPret('cloud')} style={PLEIN}>{T.aucunCta}</Bouton>}
                   <p style={pNote}>{T.aucunNote}</p>
                 </>
               )}
@@ -257,7 +259,7 @@ export default function BlocCloudReglages({
             <>
               <p style={pTexte}>{phraseRefus ?? (cloud.essaiArrete ? T.arreteTexte(date) : T.termineTexte(date))}</p>
               <p style={pNote}>{T.termineSuite}</p>
-              {actions.ajouter && <Bouton ton="plein" onClick={actions.ajouter} style={PLEIN}>{T.termineCta}</Bouton>}
+              {actions.ajouter && <Bouton ton="plein" onClick={actions.ajouter} disabled={!prixPret('cloud')} style={PLEIN}>{T.termineCta}</Bouton>}
             </>
           )}
 

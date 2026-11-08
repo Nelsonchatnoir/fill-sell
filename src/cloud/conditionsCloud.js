@@ -20,6 +20,7 @@
 // La version en vigueur (AAAA-MM-JJ) vit dans config/cloudOffer.js (aucune date en dur dans src/cloud/) — même
 // valeur que supabase/functions/_shared/cloud-conditions.js.
 import { CGU_CLOUD_VERSION } from '../config/cloudOffer.js';
+import { lirePrixBoutique, estCanalBoutique, prixOuChargement } from '../lib/prixBoutique.js';
 export { CGU_CLOUD_VERSION };
 
 const FR = {
@@ -129,7 +130,33 @@ const EN = {
 };
 
 /** Les conditions : le français fait foi ; `lang` = 'en' rend la traduction pour information. */
-export const conditionsCloud = (lang = 'fr') => (lang === 'en' ? EN : FR);
+// (08/11/2026, refus Google Play de la vc36) Dans l'app iPhone / Android, l'article 6 dit le prix de la BOUTIQUE (monnaie
+// et format du téléphone, ceux de la feuille de paiement), jamais l'euro du web ; sur le web, le texte reste mot pour mot.
+// Le contrat ne change pas : en France, le prix des boutiques EST 24,99 € TTC (même version CGU_CLOUD_VERSION).
+const MOBILE = Object.freeze({
+  fr: [
+    ["24,99 € TTC par mois, sur le web (carte bancaire, paiement géré par Stripe), dans l'App Store et dans Google Play", (prix, b) => `${prix} par mois, au prix affiché par ${b} au moment de l'achat`],
+    ['24,99 € sont prélevés', (prix) => `${prix} sont prélevés`],
+  ],
+  en: [
+    ['€24.99 including VAT per month, on the web (bank card, payment handled by Stripe), in the App Store and in Google Play', (prix, b) => `${prix} per month, at the price shown by ${b} at the time of purchase`],
+    ['€24.99 is charged', (prix) => `${prix} is charged`],
+  ],
+});
+function auPrixDeLaBoutique(T, lang, e) {
+  const prix = prixOuChargement('cloud', lang, e);
+  const b = e.canal === 'apple' ? 'App Store' : 'Google Play';
+  const remplacer = (x) => (typeof x === 'string'
+    ? MOBILE[lang].reduce((acc, [de, vers]) => acc.split(de).join(vers(prix, b)), x)
+    : Array.isArray(x) ? x.map(remplacer)
+      : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, remplacer(v)])) : x);
+  return remplacer(T);
+}
+export const conditionsCloud = (lang = 'fr') => {
+  const l = lang === 'en' ? 'en' : 'fr';
+  const e = lirePrixBoutique();
+  return estCanalBoutique(e) ? auPrixDeLaBoutique(l === 'en' ? EN : FR, l, e) : (l === 'en' ? EN : FR);
+};
 
 /** La version acceptée vaut-elle la version en vigueur ? (pur) */
 export const conditionsAcceptees = (profil) => String(profil?.cloud_cgu_version ?? '') === CGU_CLOUD_VERSION;

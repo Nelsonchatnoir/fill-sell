@@ -25,6 +25,8 @@ import { lireDernierGeste, canalDeLApp } from '../utils/dernierGeste';
 import { Capacitor } from '@capacitor/core';
 // (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité, au pied.
 import MentionsAbonnement from './MentionsAbonnement';
+import { prixOuChargement, prixPret, prixGratuit } from '../lib/prixBoutique';
+import { usePrixBoutique } from '../lib/usePrixBoutique';
 
 // ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -139,12 +141,18 @@ export const COIN_CONFIG_FALLBACK = {
 // que ces deux lignes ne sont pas alignées, l'offre reste masquée — cf.
 // src/config/businessOffer.js, qui porte le relevé complet et les conditions.
 // (07/11, décision de Nico) `priceEn` : le MÊME montant écrit à l'anglaise pour l'écran anglais (« €12.99 »).
-const PLAN_PRICES = {
-  premium:  { price: '12,99 €', priceEn: '€12.99' },
-  pro:      { price: '29,99 €', priceEn: '€29.99' },
-  business: { price: '59,99 €', priceEn: '€59.99' },
+// (08/11, refus Google Play de la vc36) Plus AUCUN prix écrit ici : web = prix Stripe en euros, iPhone/Android = prix
+// formaté par la boutique (« … » tant qu'il charge, bouton inactif) — lib/prixBoutique.js.
+const prixPlan = (palier, fr) => prixOuChargement(palier, fr ? 'fr' : 'en');
+// Le bouton d'achat d'une carte : inactif tant que son prix n'est pas affiché (mobile).
+const boutonAchat = (formule, onUpgrade, style) => {
+  const pret = prixPret(formule);
+  return {
+    disabled: !pret, 'aria-disabled': !pret, 'data-prix-pret': pret ? '1' : '0',
+    onClick: () => { if (prixPret(formule)) onUpgrade(formule); },
+    style: pret ? style : { ...style, opacity: 0.55, cursor: 'default' },
+  };
 };
-const prixPlan = (palier, fr) => (fr ? PLAN_PRICES[palier].price : PLAN_PRICES[palier].priceEn);
 
 // (Bascule quotas 02/09 : articlesParMois / coutArticleComplet — les
 // équivalences « ≈ N articles » calculées depuis les prix en unités — sont
@@ -524,9 +532,9 @@ function FreePlanCard({ fr, estMonPlan, K, cloud = null, voieCloud = null }) {
             </span>
           )}
         </span>
-        {cloud && voieCloud ? <PrixAvecCloud prix={fr ? "0 €" : "€0"} cloud={cloud} encreClaire={C.mute2} lang={fr ? 'fr' : 'en'} /> : (
+        {cloud && voieCloud ? <PrixAvecCloud prix={prixGratuit(fr ? 'fr' : 'en')} cloud={cloud} encreClaire={C.mute2} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.mute2, lineHeight: 1 }}>{fr ? "0 €" : "€0"}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.mute2, lineHeight: 1 }}>{prixGratuit(fr ? 'fr' : 'en')}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
         )}
@@ -572,13 +580,12 @@ function PremiumPlanCard({ fr, K, onUpgrade, cloud = null }) {
           automatique » reste le levier visible vers Pro. */}
       {grille ? <CorpsCarteGrille fr={fr} palier="premium" K={K} accroche /> : <LignesDiff fr={fr} palier="premium" K={K} />}
       <button
-        onClick={() => onUpgrade('premium')}
-        style={{
+        {...boutonAchat('premium', onUpgrade, {
           width: '100%', padding: 15, border: 'none', borderRadius: 14,
           background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff',
           fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
           boxShadow: '0 10px 22px -8px rgba(47,158,144,0.5)',
-        }}
+        })}
       >
         {fr ? 'Passer Premium' : 'Go Premium'}{suffixeCloud(fr, cloud)}
       </button>
@@ -615,13 +622,12 @@ export function ProPlanCard({ fr, K, onUpgrade, cloud = null }) {
           republication automatique reste STRICTEMENT identique à Business. */}
       {grille ? <CorpsCarteGrille fr={fr} palier="pro" K={K} dark accroche /> : <LignesDiff fr={fr} palier="pro" dark K={K} />}
       <button
-        onClick={() => onUpgrade('pro')}
-        style={{
+        {...boutonAchat('pro', onUpgrade, {
           width: '100%', padding: 15, border: 'none', borderRadius: 14,
           background: `linear-gradient(120deg,${C.amber},#F2B48C)`, color: C.ink,
           fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
           boxShadow: '0 10px 22px -8px rgba(232,149,109,0.5)',
-        }}
+        })}
       >
         {fr ? 'Passer Pro' : 'Go Pro'}{suffixeCloud(fr, cloud)}
       </button>
@@ -683,13 +689,12 @@ export function BusinessPlanCard({ fr, K, onUpgrade, cloud = null }) {
           le volume d'unités distingue Business, et il est au-dessus. */}
       {grille ? <CorpsCarteGrille fr={fr} palier="business" K={K} dark accroche /> : <LignesDiff fr={fr} palier="business" dark K={K} />}
       <button
-        onClick={() => onUpgrade('business')}
-        style={{
+        {...boutonAchat('business', onUpgrade, {
           width: '100%', padding: 15, border: 'none', borderRadius: 14,
           background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)', color: '#060B09',
           fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
           boxShadow: '0 10px 26px -8px rgba(174,233,223,0.55)',
-        }}
+        })}
       >
         {fr ? 'Passer Business' : 'Go Business'}{suffixeCloud(fr, cloud)}
       </button>
@@ -1085,6 +1090,8 @@ export default function ConversionModal({
   onCreerDepuisPhotos = null,
 }) {
   const fr = lang !== 'en';
+  // (08/11, refus Google) Les prix de la boutique : l'écran se redessine quand ils arrivent (mobile).
+  usePrixBoutique({ charger: Boolean(isOpen) });
   const [cfg, setCfg] = useState(null);
   // Vue interne : 'entry' = écran du cas d'entrée (packs d'unités en CAS 1/2) ;
   // 'plans' = vue comparative des abonnements. Depuis les CAS 1/2, le bouton

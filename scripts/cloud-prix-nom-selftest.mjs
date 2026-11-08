@@ -200,10 +200,14 @@ titre('5. Le nom : « FillSell Cloud » ; « sans ordinateur » est la promesse'
   const mur = lire('src/components/ExtensionPitchScreen.jsx');
   ok(mur.includes("par l'option FillSell Cloud.") && mur.includes('through the FillSell Cloud add-on.') && !/option Sans ordinateur\.|No computer add-on/.test(mur),
     'le mur « installe l’extension » : « … par l’option FillSell Cloud » (drapeau levé)');
-  // La feuille des offres et l'onboarding lisent le prix, jamais en dur (structure inchangée).
-  ok(/from ['"]\.\.\/utils\/palier['"]/.test(lire('src/entree/textes.js')) && /CLOUD_PRIX_AFFICHE\.replace/.test(lire('src/entree/textes.js'))
-    && /CLOUD_PRIX_AFFICHE\.replace/.test(lire('src/cloud/textes.js')) && /import \{ textesCloud \} from '\.\.\/cloud\/textes'/.test(lire('src/components/ConversionModal.jsx')),
-  'l’onboarding (entree/textes.js) et la feuille (ConversionModal, par cloud/textes.js) lisent CLOUD_PRIX_AFFICHE');
+  // La feuille des offres et l'onboarding lisent le prix, jamais en dur. (08/11, refus Google Play de la vc36) Par le
+  // JETON du prix, remplacé à la lecture par le prix du CANAL : web = CLOUD_PRIX_AFFICHE (lib/prixBoutique.js, PRIX_WEB),
+  // iPhone/Android = prix de la boutique (selftest:prix-boutique).
+  ok(/const PRIX = JETON_PRIX_CLOUD;/.test(lire('src/entree/textes.js')) && /avecPrix\(lang === 'en' \? EN : FR/.test(lire('src/entree/textes.js'))
+    && /const PRIX = JETON_PRIX_CLOUD;/.test(lire('src/cloud/textes.js')) && /avecPrix\(lang === 'en' \? EN : FR/.test(lire('src/cloud/textes.js'))
+    && /cloud: Object\.freeze\(\{ fr: CLOUD_PRIX_AFFICHE, en: CLOUD_PRIX_AFFICHE_EN \}\)/.test(lire('src/lib/prixBoutique.js'))
+    && /import \{ textesCloud \} from '\.\.\/cloud\/textes'/.test(lire('src/components/ConversionModal.jsx')),
+  'l’onboarding (entree/textes.js) et la feuille (ConversionModal, par cloud/textes.js) lisent le prix du canal (web : CLOUD_PRIX_AFFICHE)');
 }
 
 // ── 5 bis. « Cloud » partout, jamais « option » seul (04/11, décision de Nico) ─────────────────────────────────

@@ -16,13 +16,15 @@
 // le 03/11) sont AJOUTÉS en fin d'objet : aucune clé d'avant ne change. ⛔ Ni prix, ni durée d'essai, ni quota
 // écrits ici : le prix vient de CLOUD_PRIX_AFFICHE, la durée de CLOUD_ESSAI_JOURS (utils/palier.js), les volumes
 // de coin_config (passés en paramètre), les noms des plateformes du Cloud de config/cloudOffer.js.
-import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN, CLOUD_ESSAI_JOURS } from '../utils/palier';
+import { CLOUD_ESSAI_JOURS } from '../utils/palier';
+import { JETON_PRIX_CLOUD, avecPrix } from '../lib/prixBoutique.js';
 
 // Insécables : « 7 jours », le prix « …/mois » ne se coupent pas en fin de ligne (même règle que cloud/textes.js).
 const NBSP = String.fromCharCode(0xa0);
-const PRIX = CLOUD_PRIX_AFFICHE.replace(/ /g, NBSP);
-// (07/11, décision de Nico) Les textes anglais disent le même prix à l'anglaise (CLOUD_PRIX_AFFICHE_EN).
-const PRIX_EN = CLOUD_PRIX_AFFICHE_EN;
+// (08/11, refus Google Play de la vc36) Le prix n'est plus écrit ici : un JETON, remplacé à la lecture par le prix du
+// CANAL (web : Stripe en euros ; iPhone/Android : prix formaté par la boutique, « … » tant qu'il charge) — lib/prixBoutique.js.
+const PRIX = JETON_PRIX_CLOUD;
+const PRIX_EN = JETON_PRIX_CLOUD;
 const J7 = `${CLOUD_ESSAI_JOURS}${NBSP}jours`;
 const D7 = `${CLOUD_ESSAI_JOURS}${NBSP}days`;
 
@@ -483,5 +485,5 @@ const EN = {
 };
 
 export function textesEntree(lang) {
-  return lang === 'en' ? EN : FR;
+  return avecPrix(lang === 'en' ? EN : FR, lang === 'en' ? 'en' : 'fr');
 }

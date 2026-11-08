@@ -3,14 +3,15 @@
 // ordinateur » étant sa promesse). Mêmes règles que textes.js : tutoiement, aucune phrase
 // technique, aucune date ni aucun quota en dur, l'essai sans piège, aucune
 // plateforme promise qui n'est pas prouvée (la liste vient de config/cloudOffer.js).
-import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from '../utils/palier';
+import { JETON_PRIX_CLOUD, avecPrix } from '../lib/prixBoutique.js';
 
 const NBSP = ' ';
 // (01/11) Les noms des plateformes du bandeau : une liste, quoi qu'on passe (un autotest appelle chaque phrase avec une date).
 const listeNoms = (n) => (Array.isArray(n) ? n : []).map(String).filter(Boolean);
-const PRIX = CLOUD_PRIX_AFFICHE.replace(/ /g, NBSP);
-// (07/11, décision de Nico) Les textes anglais disent le même prix à l'anglaise : '€24.99'.
-const PRIX_EN = CLOUD_PRIX_AFFICHE_EN;
+// (08/11, refus Google Play de la vc36) Le prix n'est plus écrit ici : un JETON, remplacé à la lecture par le prix du
+// CANAL (web : Stripe en euros ; iPhone/Android : prix formaté par la boutique, « … » tant qu'il charge) — lib/prixBoutique.js.
+const PRIX = JETON_PRIX_CLOUD;
+const PRIX_EN = JETON_PRIX_CLOUD;
 
 const FR = {
   titre: 'Me connecter',
@@ -80,9 +81,12 @@ const FR = {
   dejaClient: "L'option FillSell Cloud est déjà active sur ton compte.",
   sansEssai: (raison) => `${raison === 'essai_deja_pris'
     ? "Tu as déjà profité de l'essai gratuit."
-    : "L'essai gratuit a déjà servi sur cet appareil ou ce compte de plateforme."} Le Cloud démarre donc tout de suite, à ${PRIX}/mois, et tu l'arrêtes quand tu veux. Continuer ?`,
+    : raison === 'boutique_sans_essai'
+      ? "Ta boutique d'applications ne propose pas d'essai gratuit à ce compte."
+      : "L'essai gratuit a déjà servi sur cet appareil ou ce compte de plateforme."} Le Cloud démarre donc tout de suite, à ${PRIX}/mois, et tu l'arrêtes quand tu veux. Continuer ?`,
   sansEssaiStore: "Si ta boutique d'applications affiche une semaine offerte, le Cloud ne tournera qu'à partir du premier paiement.",
   achatEchec: "Le paiement du Cloud n'a pas pu s'ouvrir. Rien n'a été prélevé : réessaie dans un instant.",
+  prixBoutiqueAbsent: "Le prix de ta boutique d'applications n'est pas encore affiché : rien n'a été prélevé, réessaie dans un instant.",
   achatAttente: 'Paiement reçu : ton Cloud démarre dans un instant.',
   achatOk: 'Cloud actif : connecte maintenant tes plateformes.',
   // (07/11, Nico) « Restaurer les achats » retrouve aussi l'option Cloud (prise seule ou avec une formule).
@@ -170,9 +174,12 @@ const EN = {
   dejaClient: 'The FillSell Cloud add-on is already active on your account.',
   sansEssai: (raison) => `${raison === 'essai_deja_pris'
     ? 'You already used the free trial.'
-    : 'The free trial was already used on this device or platform account.'} The Cloud therefore starts right away, at ${PRIX_EN}/mo, and you can stop it whenever you want. Continue?`,
+    : raison === 'boutique_sans_essai'
+      ? "Your app store doesn't offer a free trial to this account."
+      : 'The free trial was already used on this device or platform account.'} The Cloud therefore starts right away, at ${PRIX_EN}/mo, and you can stop it whenever you want. Continue?`,
   sansEssaiStore: 'If your app store shows a free week, the Cloud only runs from the first payment.',
   achatEchec: "The Cloud payment couldn't open. Nothing was charged: try again in a moment.",
+  prixBoutiqueAbsent: "Your app store's price isn't shown yet: nothing was charged, try again in a moment.",
   achatAttente: 'Payment received: your Cloud starts in a moment.',
   achatOk: 'Cloud active: now connect your platforms.',
   restaureOk: 'FillSell Cloud restored: it is active.',
@@ -201,5 +208,5 @@ const EN = {
 };
 
 export function textesConnexion(lang) {
-  return lang === 'en' ? EN : FR;
+  return avecPrix(lang === 'en' ? EN : FR, lang === 'en' ? 'en' : 'fr');
 }

@@ -21,6 +21,7 @@
 // `{ success: true }` sans rien arrêter ; l'app le prenait pour un succès et ne disait rien. Une app n'annule jamais
 // un abonnement Apple ou Google : notre état suit le retour de la boutique (apple-iap-webhook, google-play-webhook).
 import { textesConnexion } from './textesConnexion';
+import { prixPret, essaiBoutiqueOffert } from '../lib/prixBoutique.js';
 
 export const PRODUIT_CLOUD = 'app.fillsell.cloud.sub';   // même identifiant Apple et Google (cloud-option.js, PRODUIT_CLOUD_GOOGLE)
 export const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
@@ -108,7 +109,8 @@ export function lirePreparation(r, lang = 'fr') {
 // AppStore.showManageSubscriptions) ; `journal(evenement, metadata)` : la trace usage_logs du geste d'arrêt (le
 // 07/11, « Arrêter » ne laissait aucune ligne nulle part).
 export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, lang, platform, purchasePremium, ouvrirLien, confirmer, notifier, paiementsAndroidCoupes, demanderConditions, gererAbonnements, journal }) {
-  const T = textesConnexion(lang);
+  // (08/11, refus Google) Les textes relus à CHAQUE usage : le prix de la boutique arrive après la création.
+  const T = new Proxy({}, { get: (_, k) => textesConnexion(lang)[k] });
 
   async function jeton() {
     let { data: { session } } = await supabase.auth.getSession();
@@ -156,11 +158,11 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     return { etat: 'redirige' };
   }
 
-  async function boutique(essaiPermis) {
+  async function boutique(essaiPermis, { boutiqueSansEssai = false } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) {
       return { etat: 'erreur', message: T.achatEchec };
     }
-    if (!essaiPermis) notifier?.(T.sansEssaiStore);
+    if (!essaiPermis && !boutiqueSansEssai) notifier?.(T.sansEssaiStore);
     const r = await purchasePremium(PRODUIT_CLOUD, user.id);
     if (r?.cancelled) return { etat: 'annule' };
     if (platform === 'android') {
@@ -191,6 +193,9 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
 
   /** Prendre l'option (seule sur Free, ou en plus d'une formule). */
   async function acheter(origine = 'non_precisee') {
+    // (08/11, refus Google Play de la vc36) iPhone / Android : jamais d'achat tant que le prix de la BOUTIQUE n'est pas
+    // affiché (lib/prixBoutique.js) — la monnaie de l'écran est celle de la feuille de paiement.
+    if (platform !== 'web' && !prixPret('cloud')) return { etat: 'refuse', raison: 'prix_boutique_absent', message: T.prixBoutiqueAbsent };
     // 0. Les conditions d'utilisation : acceptées (case cochée, enregistrée) AVANT la place, avant toute carte.
     if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
     notifier?.(T.preparation);
@@ -201,9 +206,15 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
       if (p.inscrit) return { etat: 'attente', raison: p.raison, message: T.inscritAttente(null) };
       return { etat: 'refuse', raison: p.raison, message: p.message };
     }
-    if (p.essai === false && !(await confirmer(p.confirmation))) return { etat: 'annule' };
+    // (08/11) Mobile : l'essai n'est promis que si la boutique offre une semaine gratuite à CE compte — sinon la
+    // personne le sait AVANT la feuille de paiement (prix de la boutique).
+    let essai = p.essai;
+    let confirmation = p.confirmation;
+    let boutiqueSansEssai = false;
+    if (platform !== 'web' && essai !== false && !essaiBoutiqueOffert('cloud')) { essai = false; boutiqueSansEssai = true; confirmation = T.sansEssai('boutique_sans_essai'); }
+    if (essai === false && !(await confirmer(confirmation))) return { etat: 'annule' };
     try {
-      return platform === 'web' ? await stripe(origine) : await boutique(p.essai);
+      return platform === 'web' ? await stripe(origine) : await boutique(essai, { boutiqueSansEssai });
     } catch (e) {
       console.warn('[cloud] achat de l’option :', e?.message ?? e);
       return { etat: 'erreur', message: T.achatEchec };

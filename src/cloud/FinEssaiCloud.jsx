@@ -23,6 +23,8 @@ import { C, MENTHE, BLANC, DEGRADE_TEAL, POLICE } from './theme';
 import { textesCloud } from './textes';
 import { dateLongue, heureDe, issueVeilleArret, RELECTURES_APRES_BOUTIQUE_MS } from './regles';
 import { voieArretCloud, voieBoutique } from './achatCloud';
+// (08/11, refus Google) Mobile : un bouton d'achat n'agit qu'une fois le prix de la boutique affiché.
+import { prixPret } from '../lib/prixBoutique';
 
 const ANIM = `
 @keyframes fsCloudMonte { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -231,7 +233,7 @@ export function EcranEssaiTermine({ lang = 'fr', nomPalier = null, actions = {},
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {typeof reprendre === 'function' && (
-            <button type="button" onClick={reprendre} style={bouton(true)}>{T.finCtaAjouter}</button>
+            <button type="button" onClick={reprendre} disabled={!prixPret('cloud')} style={{ ...bouton(true), ...(prixPret('cloud') ? {} : { opacity: 0.55 }) }}>{T.finCtaAjouter}</button>
           )}
           {typeof actions.extension === 'function' && (
             <button type="button" onClick={actions.extension} style={bouton(false)}>{T.finCtaExtension}</button>
@@ -259,7 +261,7 @@ export function EcranCloudArrete({ lang = 'fr', actions = {}, onFermer }) {
         <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{T.arretTexte}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {typeof actions.ajouter === 'function' && (
-            <button type="button" onClick={actions.ajouter} style={bouton(true)}>{T.arretCtaReprendre}</button>
+            <button type="button" onClick={actions.ajouter} disabled={!prixPret('cloud')} style={{ ...bouton(true), ...(prixPret('cloud') ? {} : { opacity: 0.55 }) }}>{T.arretCtaReprendre}</button>
           )}
           {typeof actions.extension === 'function' && (
             <button type="button" onClick={actions.extension} style={bouton(false)}>{T.arretCtaExtension}</button>

@@ -4,7 +4,8 @@
 // iOS : c'est le contrat choisi dans App Store Connect), les conditions générales et la politique de confidentialité.
 // Les prix des formules sont sur leurs cartes ; le Cloud a sa ligne (essai, prix) seulement quand son offre est montrée.
 // Calcul PUR (testé : scripts/mentions-abonnement-selftest.mjs).
-import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from './palier.js';
+// (08/11, refus Google Play de la vc36) Le prix du Cloud du CANAL : web = Stripe en euros, mobile = prix de la boutique.
+import { prixOuChargement, essaiBoutiqueOffert } from '../lib/prixBoutique.js';
 
 export const EULA_APPLE = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 const LEGAL = 'https://fillsell.app/legal';
@@ -30,9 +31,13 @@ export function mentionsAbonnement({ canal = 'web', lang = 'fr', cloud = false, 
     ? `Auto-renewing subscriptions: the price shown is ${ou} when you confirm, then at each period, unless you cancel at least 24 hours before it ends (${arreter}).`
     : `Abonnements à renouvellement automatique : le prix affiché est ${ou} à la confirmation, puis à chaque période, sauf résiliation au moins 24 h avant son terme (${arreter}).`;
   if (cloud) {
+    const prixCloudEn = prixOuChargement('cloud', 'en');
+    const prixCloudFr = prixOuChargement('cloud', 'fr');
+    // Mobile : l'essai n'est écrit que si la boutique le propose à ce compte.
+    essaiCloud = essaiCloud && (canal === 'web' || essaiBoutiqueOffert('cloud'));
     texte += en
-      ? (essaiCloud ? ` FillSell Cloud: 7-day free trial for a first subscription, then ${CLOUD_PRIX_AFFICHE_EN} a month.` : ` FillSell Cloud: ${CLOUD_PRIX_AFFICHE_EN} a month.`)
-      : (essaiCloud ? ` FillSell Cloud : 7 jours d'essai gratuit pour un premier abonnement, puis ${CLOUD_PRIX_AFFICHE} par mois.` : ` FillSell Cloud : ${CLOUD_PRIX_AFFICHE} par mois.`);
+      ? (essaiCloud ? ` FillSell Cloud: 7-day free trial for a first subscription, then ${prixCloudEn} a month.` : ` FillSell Cloud: ${prixCloudEn} a month.`)
+      : (essaiCloud ? ` FillSell Cloud : 7 jours d'essai gratuit pour un premier abonnement, puis ${prixCloudFr} par mois.` : ` FillSell Cloud : ${prixCloudFr} par mois.`);
   }
   const liens = [];
   if (canal === 'ios') liens.push({ cle: 'eula', libelle: en ? 'Terms of Use (EULA)' : "Conditions d'utilisation (EULA)", url: EULA_APPLE });

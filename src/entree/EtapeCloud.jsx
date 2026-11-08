@@ -23,6 +23,9 @@ import { Scene, Kicker, Titre, Texte, Carte, BoutonPrimaire, LienDiscret, Bande,
 import { listeNoms, listeJauges } from './regles';
 // (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité.
 import MentionsAbonnement from '../components/MentionsAbonnement';
+// (08/11, refus Google) Mobile : le bouton n'achète qu'une fois le prix de la boutique affiché.
+import { prixPret } from '../lib/prixBoutique';
+import { usePrixBoutique } from '../lib/usePrixBoutique';
 
 function Coche({ children, k, dernier }) {
   return (
@@ -69,6 +72,7 @@ function Frise({ etapes }) {
 }
 
 export default function EtapeCloud({ c, T, onSuivant, onAller }) {
+  usePrixBoutique();
   const k = c.cloud;
   const TC = textesCloud(c.lang);
   const TX = textesConnexion(c.lang);
@@ -146,7 +150,7 @@ export default function EtapeCloud({ c, T, onSuivant, onAller }) {
           {!k.actif && k.vente.places > 0 && (
             <Texte centre style={{ margin: '0 0 8px', fontSize: 12.5, fontWeight: 700, color: E.tealDeep }}><span data-entree="places" aria-live="polite">{TC.placesRestantes(k.vente.places)}</span></Texte>
           )}
-          <BoutonPrimaire onClick={commencer} disabled={enCours}>{libelle}</BoutonPrimaire>
+          <BoutonPrimaire onClick={commencer} disabled={enCours || (!k.actif && k.achat.etat !== 'attente' && !prixPret('cloud'))}>{libelle}</BoutonPrimaire>
           <Texte centre style={{ margin: '10px 0 0', fontSize: 12 }}>{T.cloudCanal[c.plateforme] ?? T.cloudCanal.web}</Texte>
           {!k.actif && <LienDiscret onClick={ordinateur} style={{ marginTop: 2 }}>{T.cloudOrdinateur}</LienDiscret>}
         </>

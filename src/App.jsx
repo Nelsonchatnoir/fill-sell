@@ -245,7 +245,10 @@ import { paysAnglophoneDuFuseau, paysDuVendeur, paysDuCompte, plateformesFermees
 // (25/10, balayage des erreurs visibles, règle 2) La pastille de l'onglet Stock suit la règle de « À régler ».
 import { articlesARegler, plateformesHorsJeu } from './utils/erreursVisibles';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
-import { palierDuProfil, droitsDuPalier, palierLePlusHaut, aAuMoins, CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from './utils/palier';
+import { palierDuProfil, droitsDuPalier, palierLePlusHaut, aAuMoins } from './utils/palier';
+// (08/11, refus Google Play de la vc36) Les prix affichés : web = Stripe en euros, mobile = prix de la boutique.
+import { prixOuChargement, prixPret } from './lib/prixBoutique';
+import { usePrixBoutique } from './lib/usePrixBoutique';
 import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
 import { prixParDefautDuBandeau, preuveDeVente } from './utils/prixBandeauVente';
 import { dansLaBoutique } from './utils/filtreBoutique';
@@ -790,7 +793,7 @@ function CtaPremium({ onClick, label = "Voir les offres", disabled, sub }) {
         {label}
       </PremiumButton>
       <div style={{fontSize:12,color:UI.mute,fontWeight:500,marginTop:2}}>
-        {sub || "12,99 €/mois — annulable à tout moment"}
+        {sub || "Sans engagement · Résiliable en 1 clic"}
       </div>
     </>
   );
@@ -1517,9 +1520,9 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium', etapeCloud = fal
           <div data-bienvenue-etape-cloud="1" style={{padding:20,display:'flex',flexDirection:'column',gap:10}}>
             <div style={{background:'#fff',border:'1.5px solid #2F9E90',borderRadius:16,padding:'14px 16px'}}>
               <div style={{fontSize:14.5,fontWeight:700,color:UI.ink,marginBottom:6}}>{TE.etapeTitre}</div>
-              <div style={{fontSize:13,lineHeight:1.5,fontWeight:600,color:'#4D5752'}}>{TE.etapeTexte(nomPalier, fr ? CLOUD_PRIX_AFFICHE : CLOUD_PRIX_AFFICHE_EN)}</div>
+              <div style={{fontSize:13,lineHeight:1.5,fontWeight:600,color:'#4D5752'}}>{TE.etapeTexte(nomPalier, prixOuChargement('cloud', fr ? 'fr' : 'en'))}</div>
             </div>
-            <PremiumButton onClick={onAjouterCloud}>{TE.etapeCta}</PremiumButton>
+            <PremiumButton onClick={()=>{if(prixPret('cloud'))onAjouterCloud();}} disabled={!prixPret('cloud')}>{TE.etapeCta}</PremiumButton>
             <button type="button" onClick={onClose} style={{minHeight:44,border:'none',background:'none',color:'#1B6E62',fontSize:14,fontWeight:700,fontFamily:'inherit',cursor:'pointer'}}>{TE.etapePlusTard}</button>
           </div>
         ) : (
@@ -2003,6 +2006,9 @@ function marquerScanVu(id){
 
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
+  // (08/11, refus Google) Les prix de la boutique, lus au démarrage sur iPhone/Android (rien sur le web) : l'app se
+  // redessine quand ils arrivent ; d'ici là « … » et les boutons d'achat restent inactifs.
+  usePrixBoutique();
   const [searchParams] = useSearchParams();
   // Splash natif : caché au premier render, SAUF au premier lancement d'un binaire neuf sur le web embarqué, où il
   // couvre le rechargement de Capgo vers l'OTA plus récente (au plus 10 s) — natif/splashDemarrage.js (06/11 soir,
@@ -3246,6 +3252,13 @@ export default function App({ loginOnly = false }){
     const isProPurchase=tier==='pro';
     const tierLog=isBusinessPurchase?'business':isProPurchase?'pro':'premium';
     const canal=platform==='ios'?'apple':platform==='android'?'google':platform;
+    // (08/11, refus Google Play de la vc36) Jamais d'achat tant que le prix de la BOUTIQUE n'est pas affiché : l'écran et
+    // la feuille de paiement disent la même monnaie (lib/prixBoutique.js).
+    if((platform==='ios'||platform==='android')&&!prixPret(tierLog)){
+      setToast({visible:true,message:lang==='en'?"Your app store's price isn't shown yet: nothing was charged, try again in a moment.":"Le prix de ta boutique d'applications n'est pas encore affiché : rien n'a été prélevé, réessaie dans un instant."});
+      setTimeout(()=>setToast({visible:false,message:''}),6000);
+      return;
+    }
     console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isBusinessPurchase?'business':isProPurchase?'pro':'premium');
     // Coupe-circuit 07/08 : validate-google-purchase en 500 = débit sans
     // crédit. Tant que coin_config.android_payments_enabled vaut 0, on ne
