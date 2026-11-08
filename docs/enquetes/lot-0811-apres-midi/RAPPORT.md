@@ -125,3 +125,25 @@ Relevé : 81 « failed » sur les comptes vus en 7 j (dont 51 Beebs de XEWER du 
 numéro jamais en ligne (40), Beebs refusé par sa modération (25, dont 11 déjà relancés et refusés de nouveau, 2 vendus),
 Leboncoin refus de modération probable (14), eBay (2). Aucune n'est le reste d'un bug de chez nous : RIEN à relancer.
 50 needs_user de plus de 7 j : tous un geste de la personne.
+
+## Mises en production (08/11, après le commit 264d6ac + 0153a71)
+- Fonctions : get-pending-jobs v352 (true), ebay-api-worker v119 (false), ebay-account v35 (true) — 15:55-15:56 ; code
+  en service comparé fichier par fichier avant (= 1bcb193) et après (= 0153a71).
+- Point 2 : la tâche 8d59f147 de Sébastien avait été ANNULÉE par lui entre-temps (« Arrêté à ta demande — tu as abandonné
+  eBay pour cet article ») : la relance n'a rien écrit (garde du script) — son choix est respecté. La règle vaut pour
+  toutes les prochaines publications eBay.
+- Point 3 : 491 doublons sans fiche (11 comptes) clos par la règle 20261108143000 (sauvegarde + inverse).
+- Point 1 (Cloud) : copie Cloud 0.6.181 NON déployée (refus du garde-fou « Production Deploy ») ; cloud-2 reste en
+  0.6.178-cloud. Le serveur (get-pending-jobs v352) vaut déjà pour le Cloud (pause par plateforme).
+- Point 5 : annonce de test 10719554551 en « Vérification en cours » chez Vinted : retrait refusé (403) pendant la
+  vérification, à refaire dès la fin.
+
+## Point 3 — ce qui reste (dit, non fait)
+- Les ~115 annonces de l'ancien compte Leboncoin d'ayadi007 restent « en ligne » dans FillSell : la règle du 08/11 midi
+  (20261108144000) ne date rien quand le compte a changé (pas de 117 « Vendue ? »). Elles se ferment par les juges
+  existants quand les relevés du NOUVEAU compte deviennent probants (il a des annonces depuis 12:12) : republications
+  « introuvable à confirmer » closes après deux relevés complets, publications par le juge « annonce publiée disparue »
+  (« n'est plus en ligne — FillSell n'a rien retiré »), sans question de vente. Aucun relevé Leboncoin depuis 12:03.
+- La racine (savoir QUEL compte Leboncoin est connecté) demande : une colonne du compte relevé (migration), l'extension
+  qui l'écrit (cookie `lbc_user_id`, déjà lu pour l'API), et une règle « une annonce d'un autre compte n'est jamais
+  comparée au compte relevé ». Préparée en description seulement : migration + extension + soumission CWS = décision de Nico.

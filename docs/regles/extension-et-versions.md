@@ -324,3 +324,15 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   `extension_build` d'ordinateur (22/07) suffisait à allumer le bandeau — jusque sur l'iPhone. Côté serveur, le « vu il y
   a moins de 30 jours » reste pollué par le poste Cloud (non corrigé : `get-pending-jobs`, décision à prendre).
   Selftest `essai-testflight-0711`.
+
+## 08/11 après-midi — 0.6.181 : les plateformes avancent ensemble (rapport `docs/enquetes/lot-0811-apres-midi/RAPPORT.md` § 1)
+- La 0.6.180 + l'espacement de 2 min entre deux gestes de republication compté PAR plateforme (Vinted, Leboncoin,
+  Beebs, Depop avancent ensemble, chacune à son rythme d'avant ; toujours une action à la fois) ; un retrait (vente) né
+  pendant un cycle l'arrête entre deux tâches ; recopie d'etat-job (retrait Vinted sans session = « À toi de jouer »,
+  pause de respiration par plateforme).
+- Livrable : `build/CWS-0.6.181-A-TELEVERSER/fillsell-extension-0.6.181-cws.zip` (BUILD_ID `2026-11-08T14:57:08Z+0153a71`,
+  613 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-08T14:52:14Z (264d6ac). Empaqueté depuis un worktree propre à HEAD
+  (l'arbre partagé portait le travail non committé du terminal Cloud). Seul zip à téléverser : il REMPLACE la 0.6.180
+  (jamais téléversée), rangée dans `build/anciens-zips/REMPLACEE-PAR-0.6.181-CWS-0.6.180`.
+- Copie Cloud : cloud-2 est en 0.6.178-cloud ; la 0.6.181-cloud n'est PAS déployée (déploiement refusé par le garde-fou,
+  autorisation nommée de Nico demandée) : `EXTENSION_SEULE=1 bash serveur-cloud/outils/deployer.sh 5.9.80.213 cloud-2.fillsell.app`.
