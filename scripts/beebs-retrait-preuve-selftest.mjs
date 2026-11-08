@@ -181,11 +181,13 @@ console.log("\n3 ter. (25/10) UN RETRAIT : DEUX CONSTATS « PAGE 404 » À 6 H D
   const dlb = bj.slice(bj.indexOf("async function deleteListing(job)"), bj.indexOf("// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER"));
   ok(/const ctxPreuve = job\?\.action === "delete"/.test(dlb) && (dlb.match(/beebs404Constats: preuve\.lecture\.constats404/g) ?? []).length === 1
     // (29/10, lot B 4.9) 3 reprises + la sortie « absente » (sortieAbsente) : les constats et le résumé de la lecture partent aussi.
-    && (dlb.match(/\.\.\.constatsDe\(preuve\)/g) ?? []).length === 4, "deleteListing : constats du job pour un RETRAIT seulement, rendus au background à chaque reprise");
+    // (08/11 soir, point 4) + la reprise « en vérification » (attente nommée, pas un essai) : cinq sorties.
+    && (dlb.match(/\.\.\.constatsDe\(preuve\)/g) ?? []).length === 5, "deleteListing : constats du job pour un RETRAIT seulement, rendus au background à chaque reprise");
   ok(/MESSAGE_CONSTAT_404_BEEBS/.test(dlb) && /Beebs ne montre plus cette annonce/.test(bj) && !/reste en vente/.test(bj.slice(bj.indexOf("const MESSAGE_CONSTAT_404_BEEBS"), bj.indexOf("const MESSAGE_CONSTAT_404_BEEBS") + 500)),
     "le message d'un constat est vrai (introuvable, hors vérification, index en retard) — jamais « encore en vente »");
   const bgr = lire("chrome-extension/background.js");
-  const rep = bgr.slice(bgr.indexOf("} else if (result && !result.success && result.reprise) {"), bgr.indexOf("} else if (result && !result.success && result.reprise) {") + 1600);
+  // (08/11 soir, point 4) La branche « en vérification » s'intercale avant rearmBounded : fenêtre de lecture élargie.
+  const rep = bgr.slice(bgr.indexOf("} else if (result && !result.success && result.reprise) {"), bgr.indexOf("} else if (result && !result.success && result.reprise) {") + 4000);
   ok(/Array\.isArray\(result\.beebs404Constats\)/.test(rep) && /pfC\.beebs_404_constats = result\.beebs404Constats/.test(rep)
     && rep.indexOf("job.platform_fields = pfC;") < rep.indexOf("await rearmBounded(accessToken, job"), "background : les constats sont posés sur le job AVANT rearmBounded (la trace survit à la reprise)");
   const uj = lire("supabase/functions/update-job-status/index.ts");

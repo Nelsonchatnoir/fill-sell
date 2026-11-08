@@ -183,11 +183,15 @@ function noteInutilisable(erreur, platform) {
   return motifs.some((motif) => !NOTE_PERIMETRE_VINTED_RE.test(motif));
 }
 
-export function releveComplet(r, { platform = null, boutique = null } = {}) {
+// (08/11 soir, point 2 de Nico) `compte` : le compte de la plateforme qui porte l'annonce (annonces_plateforme.
+// compte_plateforme, extension ≥ 0.6.182). Un relevé d'un AUTRE compte connu ne prouve jamais son absence — la règle
+// « deux comptes ne se mélangent jamais » de la migration 20261108190000. Compte inconnu d'un côté : règle d'avant.
+export function releveComplet(r, { platform = null, boutique = null, compte = null } = {}) {
   if (!releveCompletRetrait(r)) return false;
   if (!((Number(r?.items_vus) || 0) > 0)) return false;
   if (!Number.isFinite(t(r?.finished_at))) return false;
   if (noteInutilisable(r?.erreur, platform)) return false;
+  if (platform !== 'vinted' && compte && r?.compte_plateforme && String(r.compte_plateforme) !== String(compte)) return false;
   if (platform === 'vinted') {
     if (r?.kind != null && r.kind !== 'dressing') return false;
     if (!boutique || r?.vinted_user_id == null || String(r.vinted_user_id) !== String(boutique)) return false;
@@ -281,19 +285,39 @@ export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = nu
   const vues = [vuLe, cree].filter(Number.isFinite);
   const derniereVue = vues.length ? Math.max(...vues) : NaN;
   const borne = Number.isFinite(derniereVue) ? Math.max(derniereVue + 60_000, dementi) : depuisAbsence;
+  const compteAnnonce = platform !== 'vinted' ? (String(annonce?.compte_plateforme ?? '').trim() || null) : null;
   const sansElle = (runs ?? []).filter((r) => t(r?.started_at) > borne
-    && releveComplet(r, { platform, boutique: laBoutique }));
+    && releveComplet(r, { platform, boutique: laBoutique, compte: compteAnnonce }));
   const apresLecture = sansElle.filter((r) => t(r.started_at) > depuisAbsence).length;
   if (sansElle.length >= RELEVES_POUR_DISPARITION && apresLecture >= 1) {
     return { decision: 'confirmer', raison: `absente de ${sansElle.length} relevés complets depuis sa dernière vue, dont ${apresLecture} après la lecture` };
   }
   // `releve_attendu` : seul un relevé de plus peut trancher (handler-watch peut le demander).
+  // (08/11 soir, point 2 de Nico — Logann, ayadi007) `releve_apres` : l'instant après lequel un relevé NEUF fait
+  // avancer CETTE décision — la lecture ratée (ou le dernier démenti) tant qu'aucun relevé complet ne l'a suivie ;
+  // sinon le début du dernier relevé déjà compté (+ 1 s : jamais lui-même), car il en faut un AUTRE pour confirmer.
+  // Avant, handler-watch partait de la PLUS ANCIENNE lecture : un relevé fait après elle (Logann 15:06, ayadi 18:11)
+  // bloquait toute demande pendant 6 h alors qu'il ne pouvait rien trancher seul.
+  const dernierCompte = sansElle.reduce((m, r) => Math.max(m, t(r.started_at)), -Infinity);
+  const releveApres = apresLecture >= 1 && Number.isFinite(dernierCompte) ? dernierCompte + 1000 : depuisAbsence;
   return {
     decision: 'attendre', releve_attendu: true,
+    releve_apres: new Date(releveApres).toISOString(),
+    absente_une_fois: apresLecture >= 1,
     raison: !apresLecture
       ? (sansElle.length ? `absente de ${sansElle.length} relevé(s) complet(s) depuis sa dernière vue : le prochain relevé tranche` : 'aucun relevé complet après la lecture')
       : "absente d'un relevé complet : on attend le suivant",
   };
+}
+
+// (08/11 soir, point 2 de Nico) Ce que la personne lit quand UN relevé complet fait après la lecture ne contient pas
+// l'annonce : la promesse « au prochain relevé » ne tenait plus (rien ne bougeait après lui). Un fait au passé, aucune
+// heure ni durée (règle du 16/10).
+export function messagePauseAbsenteUneFois(platform) {
+  const nom = nomDe(platform);
+  return `Republication en pause, rien n'a été retiré : cette annonce n'apparaît plus dans le dernier relevé de ta boutique ${nom}. ` +
+    'FillSell fait un second relevé pour en être sûr : si elle y est, la republication repart toute seule ; sinon elle sera ' +
+    'close (FillSell ne retire rien).';
 }
 
 // ── (05/11, point 5 — ayoub, Dylan, bertin) LA BORNE DU RELEVÉ QU'ON DEMANDE ─────────────────────────────────────────
@@ -306,4 +330,21 @@ export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = nu
 export function borneReleveAttendu(seuilIso, lectureMs) {
   const s = Date.parse(String(seuilIso ?? ''));
   return Number.isFinite(lectureMs) && Number.isFinite(s) && lectureMs > s ? new Date(lectureMs).toISOString() : seuilIso;
+}
+
+// ── (08/11 soir, point 2 de Nico — Logann, ayadi007) LA DEMANDE SUIT CE DONT LA DÉCISION A BESOIN ────────────────────
+// Logann : 6 lectures ratées de 15:04 à 15:16 ; le relevé de 15:06 (404/404, sans elles) a bloqué toute demande — la
+// borne partait de la PLUS ANCIENNE lecture (15:04) — alors qu'il ne tranchait rien : 5 lectures lui sont postérieures,
+// et la clôture exige DEUX relevés. ayadi007 : relevé de 18:11 sans ses 4 annonces (410 chez Leboncoin), le second
+// n'aurait été demandé qu'à 00:11, poste allumé ou non. Règle : `besoinMs` = le plus TARDIF des `releve_apres` des
+// pauses de la plateforme (un relevé commencé après lui fait avancer toutes les décisions) ; on le demande dès qu'aucun
+// relevé n'a commencé ni été demandé après lui — avec la cadence d'avant pour plancher : au plus une demande par heure
+// (ESPACEMENT_DEMANDES_RELEVE_MS, deux lectures indépendantes de la boutique) et jamais plus d'une par 6 h quand la
+// décision n'a besoin de rien de neuf. Pure.
+export const ESPACEMENT_DEMANDES_RELEVE_MS = 60 * 60_000;
+/** @param {string} seuilIso — il y a 6 h @param {number|null|undefined} besoinMs @param {number} [maintenantMs] */
+export function borneDemandeReleve(seuilIso, besoinMs, maintenantMs = Date.now()) {
+  const b = borneReleveAttendu(seuilIso, besoinMs);
+  const plancher = maintenantMs - ESPACEMENT_DEMANDES_RELEVE_MS;
+  return Date.parse(b) > plancher ? new Date(plancher).toISOString() : b;
 }

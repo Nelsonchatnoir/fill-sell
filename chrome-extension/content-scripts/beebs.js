@@ -25,7 +25,7 @@ function navigateurCourtPage() {
   return "ton navigateur";
 }
 
-const BEEBS_BUILD = "2026-11-07-nuit-republication-preuve-par-la-page (0.6.179 : une REPUBLICATION dont la suppression est partie se prouve comme un retrait — deux pages 404 à 6 h d'écart après l'envoi, « Mes annonces » lue ou non ; l'envoi d'une republication d'avant vaut par son marqueur, pour son numéro exact) · 2026-10-26-adresse-sans-rue (une suggestion d'adresse sans rue — la commune seule, « Thionville57100, France » — n'est jamais cliquée ni soumise : arrêt avant « Mettre en vente », attente nommée beebs_adresse_sans_rue, la personne complète Réglages › Expédition › Adresse de remise ; une rue ou un lieu-dit restent acceptés) · 2026-10-26-correction-tracee (une correction TRACÉE de la copie — platform_fields.correction_tracee — passe devant la taille que l'annonce affiche encore, jamais l'ancienne valeur en repli ; miroir de _shared/correction-tracee.js) · 2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-11-08-soir-refus-lu-dans-le-formulaire (0.6.183 : le refus de « Mettre en vente » est lu dans l’état react-hook-form du formulaire — adresse invisible, attribut obligatoire vide, compte non chargé — et nommé tout de suite ; le relevé du texte ne remonte plus les conteneurs de champs) · 2026-11-07-nuit-republication-preuve-par-la-page (0.6.179 : une REPUBLICATION dont la suppression est partie se prouve comme un retrait — deux pages 404 à 6 h d'écart après l'envoi, « Mes annonces » lue ou non ; l'envoi d'une republication d'avant vaut par son marqueur, pour son numéro exact) · 2026-10-26-adresse-sans-rue (une suggestion d'adresse sans rue — la commune seule, « Thionville57100, France » — n'est jamais cliquée ni soumise : arrêt avant « Mettre en vente », attente nommée beebs_adresse_sans_rue, la personne complète Réglages › Expédition › Adresse de remise ; une rue ou un lieu-dit restent acceptés) · 2026-10-26-correction-tracee (une correction TRACÉE de la copie — platform_fields.correction_tracee — passe devant la taille que l'annonce affiche encore, jamais l'ancienne valeur en repli ; miroir de _shared/correction-tracee.js) · 2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -1244,6 +1244,22 @@ async function deleteListing(job) {
       const preuve = await preuveAbsenceMesAnnonces(idCible, t, ctxPreuve);
       if (preuve.verdict === "absente") return sortieAbsente(preuve);
       if (preuve.verdict === "presente") {
+        // ── (08/11 soir, point 4 de Nico — recrutementgroupezk704, 53cff028) EN VÉRIFICATION, PAS « PAGE NON RENDUE » ──
+        // Annonce 34083555 dans l'onglet « En vérification » depuis le 30/09 : Beebs n'offre AUCUN bouton de suppression
+        // pendant la vérification. L'ancien texte disait « page pas encore rendue » et le background COMPTAIT l'essai —
+        // compteur resté à 4, chaque essai finissait « le retrait est arrêté » (failed) que le serveur requalifiait en
+        // attente. Lue dans l'onglet « En vérification » : une attente nommée, jamais un essai (background, enVerification).
+        const enVerification = (preuve.lecture?.pages ?? []).some((p) => p?.page === "en_verification"
+          && (p.ids ?? []).map(String).includes(String(idCible)));
+        if (enVerification) {
+          t(`${idCible} dans « En vérification » : aucun bouton de suppression tant que Beebs vérifie — attente, pas un essai`);
+          return {
+            success: false, reprise: true, enVerification: true,
+            error: "L'annonce est toujours dans « Mes annonces » mais sa page n'a pas montré le bouton de suppression : Beebs la garde « en vérification » " +
+              "et ne permet pas de la supprimer tant que la vérification dure — rien n'a été touché, le retrait attend la fin de la vérification",
+            ...constatsDe(preuve), trace,
+          };
+        }
         return {
           success: false, reprise: true,
           error: "L'annonce est toujours dans « Mes annonces » mais sa page n'a pas montré le bouton de suppression (page pas encore rendue) — rien n'a été touché, nouvel essai",
@@ -2484,6 +2500,11 @@ async function fillListingForm(job) {
     ? `bouton « ${String(publishBtn.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40)} »` +
       `${publishBtn.disabled || publishBtn.getAttribute("aria-disabled") === "true" ? " DÉSACTIVÉ" : ""} (${boutonsSubmit} bouton(s) submit)`
     : "AUCUN bouton submit trouvé";
+  // (08/11) Le compteur d'envois du formulaire avant le clic : seules les erreurs posées par CE clic (compteur
+  // avancé) sont un refus de validation. Lu AVANT la garde d'abandon : aucun await entre la garde et le clic
+  // (invariant du 07/11). Pont muet → null, attente et verdict d'avant.
+  const etatAvantClic = await lireEtatFormulaireBeebs();
+  const soumissionsAvant = etatAvantClic?.ok === true ? Number(etatAvantClic.soumissions) || 0 : null;
   // ── (07/11, Ciddjy) PERSONNE N'ATTEND PLUS CE REMPLISSAGE : RIEN NE PART ──
   // La borne de l'arrière-plan est dépassée (message « abandon ») ou le port qui
   // l'attendait s'est fermé sans relève : cliquer ferait un dépôt que personne
@@ -2517,8 +2538,34 @@ async function fillListingForm(job) {
   // listingUrl reste null — ce n'est PAS une erreur, la re-capture différée
   // côté background ira le chercher plus tard.
   marquerPhase("confirmation");
-  const proof = await waitForBeebsDeposit();
+  const proof = await waitForBeebsDeposit(45_000, { lireEtat: lireEtatFormulaireBeebs, soumissionsAvant });
   if (!proof.ok) {
+    // ── (08/11 soir, Julian) LE REFUS DE VALIDATION, NOMMÉ PAR L'ÉTAT DU FORMULAIRE ──
+    // Rien n'est parti (le gestionnaire de Beebs retourne avant toute requête) : le motif réel, une question
+    // précise ou une attente nommée — jamais trois reprises aveugles puis un « à toi » générique.
+    const etatLu = resumeEtatFormulaireBeebs(proof.etatFormulaire, soumissionsAvant);
+    warnings.push(`observabilité: état du formulaire Beebs après le clic : ${etatLu}`);
+    if (Array.isArray(proof.refusValidation)) {
+      const tousChamps = champsFormulaire();
+      const champsLus = tousChamps.map((c) => {
+        const cle = cleDeChamp(c, tousChamps);
+        return { name: c.name, cle, label: c.label, libelle: libelleAffichable(c, tousChamps), valeurs: c.valuesFiber ?? beebsObservedOptions[cle] ?? null };
+      });
+      const refusEtat = refusDepuisEtatFormulaire(proof.refusValidation, {
+        titre: job.title, champs: champsLus, adresse: proof.etatFormulaire?.adresse ?? null, navigateur: navigateurCourtPage(),
+      });
+      if (refusEtat) {
+        warnings.push(`refus Beebs lu dans l'état du formulaire (${refusEtat.code}) : ${refusEtat.message}`);
+        return {
+          success: false,
+          needsUser: true,
+          ...(refusEtat.attenteUtilisateur ? { attenteUtilisateur: true, attenteMotif: refusEtat.attenteMotif } : {}),
+          ...(refusEtat.needsUserField ? { needsUserField: refusEtat.needsUserField } : {}),
+          error: refusEtat.message,
+          warnings, unfilledRequired, discoveredRequired: enumerated,
+        };
+      }
+    }
     // ── CE QUE BEEBS REFUSE, LU SUR LE FORMULAIRE (2026-10-01, Marie) ──────
     // Un champ refusé ne se relance pas en boucle : six essais de la chemise
     // de Marie sont repartis sur le même mur (« Taille 8XL » au lieu de M).
@@ -2539,7 +2586,7 @@ async function fillListingForm(job) {
     }
     return {
       success: false,
-      error: `${proof.error} — observabilité: clic : ${etatClic} ; catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; session Firebase: ${etatSessionFirebase}`,
+      error: `${proof.error} — observabilité: clic : ${etatClic} ; catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; session Firebase: ${etatSessionFirebase} ; formulaire : ${etatLu}`,
       warnings, unfilledRequired, discoveredRequired: enumerated,
     };
   }
@@ -2665,8 +2712,16 @@ function texteRenduHorsScripts() {
 // un « menu obligatoire jamais rempli » qui n'existait pas. Le vrai motif
 // des 4 refus était « Ajouter au moins 5 caractères » (i18n
 // `description_min_length`, aussi `title_min_length`), AJOUTÉ ici.
+// (08/11 soir, Julian) « Vous devez être connecté pour ajouter un produit » AJOUTÉ : l'erreur racine que le
+// gestionnaire d'envoi pose quand le compte Beebs n'est pas chargé (relevé dans son code le 08/11).
 const BEEBS_ERREURS_FORMULAIRE_RE =
-  /Ajouter au moins une photo|Ajouter au moins 5 caractères|Sélectionner une catégorie|Renseigner le prix de vente|Sélectionner un format de colis|Renseigner votre adresse|Renseigner une date valide|Veuillez certifier|Une erreur est survenue lors de l[’']enregistrement de votre annonce/g;
+  /Ajouter au moins une photo|Ajouter au moins 5 caractères|Sélectionner une catégorie|Renseigner le prix de vente|Sélectionner un format de colis|Renseigner votre adresse|Renseigner une date valide|Veuillez certifier|Vous devez [êe]tre connect[ée] pour ajouter un produit|Une erreur est survenue lors de l[’']enregistrement de votre annonce/g;
+// (08/11 soir, Julian) Un CONTENEUR de champ n'est jamais une erreur : les classes Tailwind de Beebs
+// (« …invalid:… », « …error… ») sont portées par l'enveloppe de chaque champ, qui contient son libellé, son
+// bouton ou sa zone de saisie. Les cinq places du relevé partaient sur « Titre de votre annonce19/100… »,
+// « Supprimer la photo », « Catégorie… » — jamais sur le motif. Seuls les éléments sans libellé ni contrôle comptent.
+const estConteneurDeChamp = (el) => !!el.querySelector?.("label, input, textarea, select, button, img, svg")
+  || el.matches?.("label, button, input, textarea, select");
 function erreursFormulaireVisibles() {
   const textes = new Set();
   for (const m of texteRenduHorsScripts().matchAll(BEEBS_ERREURS_FORMULAIRE_RE)) {
@@ -2682,6 +2737,7 @@ function erreursFormulaireVisibles() {
   const BRUIT_RE = /^Retour$/i;
   for (const el of document.querySelectorAll('[role="alert"], [aria-invalid="true"], [class*="error" i], [class*="invalid" i]')) {
     if (el.matches?.(".grecaptcha-error")) continue;
+    if (estConteneurDeChamp(el)) continue;
     const t = (el.getAttribute("aria-label") || el.textContent || "").replace(/\s+/g, " ").trim();
     if (t && t.length <= 160 && !BRUIT_RE.test(t)) textes.add(t);
     if (textes.size >= 5) break;
@@ -2739,9 +2795,162 @@ function lireRefusFormulaireBeebs({ tailleVoulue = "", titre = "" } = {}) {
   return null;
 }
 
-async function waitForBeebsDeposit(timeoutMs = 45_000) {
+// ── (08/11 soir, Julian — tout le parc) LE REFUS LU DANS L'ÉTAT DU FORMULAIRE ──────────────────────────────────────
+// julian.boissel, 5 publications × 4 essais (08/11 18:17 → 19:29) : « Dépôt Beebs non confirmé », sonde « AUCUNE
+// capture » (rien n'est parti), et un « le formulaire affiche » rempli de cinq CONTENEURS de champs (« Titre de votre
+// annonce19/100 caractères max | Supprimer la photo | Catégorie… ») — jamais le motif. Relevé sur la page réelle le
+// 08/11 : le formulaire est un react-hook-form ; au clic, son gestionnaire d'envoi valide tout (titre, photos,
+// description, catégorie, attributs, adresse, format, prix, date limite), pose chaque refus par setError et RETOURNE
+// sans aucune requête. Trois refus n'atteignaient jamais le lecteur du texte rendu :
+//   · « Vous devez être connecté pour ajouter un produit » (erreur racine, compte Beebs non chargé) ;
+//   · « Sélectionner une valeur » (attribut obligatoire vide) — retiré de la regex le 13/09 car c'est aussi le
+//     libellé d'un menu vide ;
+//   · l'adresse quand la section Adresse n'est pas affichée : le message n'a nulle part où s'écrire (vérifié : un
+//     setError("address") ne rend AUCUN texte sur ce formulaire).
+// Règle : l'état du formulaire est lu par le pont MAIN (background, BEEBS_MAIN_FONCTIONS.formulaire) avant le clic
+// (compteur d'envois) puis pendant l'attente. Des erreurs posées PAR CE CLIC (compteur avancé, envoi terminé) sont un
+// refus de validation : rien n'est parti, le motif est nommé tout de suite (needs_user précis, plus de reprises
+// aveugles ni de « à toi » générique). Une erreur racine autre que la connexion (« Une erreur est survenue lors de
+// l'enregistrement… ») suit, elle, une requête : elle garde son chemin d'avant. Pont muet → comportement d'avant.
+async function lireEtatFormulaireBeebs() {
+  try {
+    const r = await demanderMainBeebs("formulaire", []);
+    if (r && r.ok === true) return r;
+    return { ok: false, reason: String(r?.reason ?? "pont MAIN indisponible").slice(0, 160) };
+  } catch (e) {
+    return { ok: false, reason: `exception (${String(e?.message ?? e).slice(0, 120)})` };
+  }
+}
+
+// Erreur racine NON liée à une requête : la connexion (le gestionnaire la pose avant toute validation).
+const BEEBS_RACINE_CONNEXION_RE = /connect/i;
+const estErreurRacine = (e) => e?.champ === "root" || String(e?.champ ?? "").startsWith("root.");
+
+// Le refus de validation posé PAR CE CLIC, ou null. Pur (testé par scripts/beebs-refus-etat-formulaire-selftest.mjs).
+function refusDeValidationBeebs(etat, soumissionsAvant = null) {
+  if (!etat || etat.ok !== true || etat.enCours === true) return null;
+  if (!Array.isArray(etat.erreurs) || !etat.erreurs.length) return null;
+  // Des erreurs d'AVANT le clic ne sont pas la réponse au clic : le compteur d'envois doit avoir avancé.
+  if (Number.isFinite(soumissionsAvant) && !(Number(etat.soumissions) > soumissionsAvant)) return null;
+  const validation = etat.erreurs.filter((e) => !estErreurRacine(e) || BEEBS_RACINE_CONNEXION_RE.test(String(e.message ?? "")));
+  return validation.length ? validation : null;
+}
+
+// Résumé lisible de l'état (observabilité du verdict), sans donnée personnelle.
+function resumeEtatFormulaireBeebs(etat, soumissionsAvant = null) {
+  if (!etat) return "non lu";
+  if (etat.ok !== true) return `illisible (${String(etat.reason ?? "?").slice(0, 120)})`;
+  const avance = Number.isFinite(soumissionsAvant)
+    ? (Number(etat.soumissions) > soumissionsAvant ? `envoi n° ${etat.soumissions} déclenché par le clic` : `compteur d'envois inchangé (${etat.soumissions}) : le clic n'a pas déclenché l'envoi`)
+    : `${etat.soumissions} envoi(s)`;
+  const erreurs = (etat.erreurs ?? []).map((e) => `${e.champ} — ${String(e.message ?? e.type ?? "?").slice(0, 80)}`);
+  return `${avance}${etat.enCours ? " (en cours)" : ""} ; erreurs : ${erreurs.length ? erreurs.join(" | ") : "aucune"}` +
+    ` ; adresse : section ${etat.adresse?.section ? "affichée" : "absente"}, ${etat.adresse?.complete ? "complète" : "incomplète"}` +
+    (Array.isArray(etat.vides) && etat.vides.length ? ` ; vides : ${etat.vides.join(", ")}` : "");
+}
+
+// Cibles d'écriture d'une réponse (même table que BEEBS_DEDICATED_TARGETS de fillForm) : libellé UNIQUE → champ
+// racine de platform_fields ; homonyme (clé à discriminant) ou autre libellé → beebsAspects.<clé>.
+const BEEBS_CIBLES_DEDIEES = {
+  "Couleur": "couleur", "Marque": "marque", "Pointure": "taille", "Taille": "taille",
+  "État": "etat", "Matière": "matiere", "Âge": "age", "Format du colis": "format_colis",
+};
+const BEEBS_NOMS_DE_CHAMP = {
+  title: "Titre", description: "Description", pictures: "Photos", category: "Catégorie", price: "Prix",
+  weight: "Format du colis", address: "Adresse", ddm: "Date limite",
+  ddmCertified: "la certification de la date limite", ddmProductNotOpen: "la certification « jamais ouvert »",
+};
+
+// Le refus de validation → ce que la personne lit et la question à poser. Pur.
+// champs : [{ name, cle, label, libelle, valeurs }] (relevé du formulaire au moment du verdict).
+function refusDepuisEtatFormulaire(erreurs, { titre = "", champs = [], adresse = null, navigateur = "Chrome" } = {}) {
+  if (!Array.isArray(erreurs) || !erreurs.length) return null;
+  const court = String(titre ?? "").trim().slice(0, 60);
+  const pour = court ? ` pour « ${court} »` : "";
+  const cite = (e) => String(e?.message ?? "").trim() ? ` (« ${String(e.message).trim().slice(0, 80)} »)` : "";
+  const racine = erreurs.find((e) => estErreurRacine(e) && BEEBS_RACINE_CONNEXION_RE.test(String(e.message ?? "")));
+  if (racine) {
+    return {
+      code: "session",
+      message: `Connexion Beebs requise : Beebs ne reconnaît pas ton compte au moment de mettre en vente${cite(racine)}${pour} — ` +
+        `rien n'a été publié. Reconnecte-toi à ton compte sur beebs.app dans ${navigateur}, le job repartira au prochain passage.`,
+    };
+  }
+  const champ = (e) => String(e?.champ ?? "");
+  const adr = erreurs.find((e) => champ(e) === "address" || champ(e).startsWith("address."));
+  if (adr) {
+    if (adresse?.section) {
+      return {
+        code: "adresse", attenteUtilisateur: true, attenteMotif: "beebs_adresse",
+        message: `Beebs n'a pas accepté l'adresse d'envoi${pour} : rien n'a été publié. ` +
+          "Vérifie ton adresse dans les Réglages FillSell (numéro, rue, code postal, ville), puis relance.",
+      };
+    }
+    return {
+      code: "adresse_compte", attenteUtilisateur: true, attenteMotif: "beebs_adresse_compte",
+      message: `Beebs demande une adresse complète sur ton compte Beebs${pour} et ne l'affiche pas dans son formulaire : ` +
+        "rien n'a été publié. Ouvre beebs.app (ou l'appli Beebs), complète l'adresse de ton profil (numéro, rue, code postal, ville), puis relance.",
+    };
+  }
+  // Un champ à choix (attribut, format du colis) : la question, avec les valeurs de Beebs.
+  const aChoisir = erreurs.find((e) => champ(e).startsWith("attributes.") || champ(e) === "weight");
+  if (aChoisir) {
+    const nom = champ(aChoisir);
+    const c = champs.find((x) => x?.name === nom)
+      ?? (nom === "weight" ? champs.find((x) => x?.label === "Format du colis") : null);
+    const libelle = c?.libelle ?? c?.label ?? (nom === "weight" ? "Format du colis" : nom.replace(/^attributes\./, ""));
+    if (c && Array.isArray(c.valeurs) && c.valeurs.length) {
+      const dedie = /\[[^\]]+\]\s*$/.test(String(c.cle ?? "")) ? null : (BEEBS_CIBLES_DEDIEES[c.label] ?? null);
+      return {
+        code: "champ_obligatoire",
+        needsUserField: {
+          field_key: c.cle, field_label: libelle,
+          target: dedie ? { root: null, key: dedie } : { root: "beebsAspects", key: c.cle },
+          input_type: "dropdown", allowed_values: c.valeurs,
+        },
+        message: `Beebs demande « ${libelle} »${pour} et ce champ est resté vide${cite(aChoisir)} : rien n'a été publié. ` +
+          "Choisis la valeur ci-dessous et la publication repart.",
+      };
+    }
+    return {
+      code: "champ_obligatoire", attenteUtilisateur: true, attenteMotif: "beebs_champ_obligatoire",
+      message: `Beebs demande « ${libelle} »${pour} et ce champ est resté vide${cite(aChoisir)} : rien n'a été publié. ` +
+        "Complète-le dans la copie Beebs de l'annonce, puis relance.",
+    };
+  }
+  const prix = erreurs.find((e) => champ(e) === "price");
+  if (prix) {
+    return {
+      code: "prix", attenteUtilisateur: true, attenteMotif: "beebs_prix",
+      message: `Beebs refuse le prix${pour}${cite(prix)} : rien n'a été publié. Vérifie le prix de la copie Beebs, puis relance.`,
+    };
+  }
+  const texte = erreurs.find((e) => champ(e) === "title" || champ(e) === "description");
+  if (texte) {
+    return {
+      code: "texte_trop_court", attenteUtilisateur: true, attenteMotif: "beebs_texte_trop_court",
+      message: `Beebs refuse ${champ(texte) === "title" ? "le titre" : "la description"}${pour}${cite(texte)} : rien n'a été publié. ` +
+        "Complète-le (5 caractères au moins), puis relance.",
+    };
+  }
+  const ddm = erreurs.find((e) => /^ddm/.test(champ(e)));
+  if (ddm) {
+    return {
+      code: "date_limite", attenteUtilisateur: true, attenteMotif: "beebs_date_limite",
+      message: `Beebs demande ${BEEBS_NOMS_DE_CHAMP[champ(ddm)] ?? "la date limite"}${pour}${cite(ddm)} : rien n'a été publié. ` +
+        "Ce rayon exige une date limite certifiée : publie cet article à la main sur Beebs, ou choisis une autre catégorie.",
+    };
+  }
+  // Photos, catégorie : un remplissage de notre côté, rien n'est parti — le verdict d'avant (reprise) s'applique,
+  // avec le motif nommé dans l'observabilité.
+  return null;
+}
+
+async function waitForBeebsDeposit(timeoutMs = 45_000, { lireEtat = null, soumissionsAvant = null } = {}) {
   const CONFIRME = /bien été ajouté à (?:votre|ton) dressing|sera mis en ligne dès qu|en cours de vérification/i;
   const deadline = Date.now() + timeoutMs;
+  let tour = 0;
+  let etatFormulaire = null;
 
   while (Date.now() < deadline) {
     if (/\/listing\/success/i.test(location.pathname)) {
@@ -2749,12 +2958,30 @@ async function waitForBeebsDeposit(timeoutMs = 45_000) {
     }
     const m = texteRenduHorsScripts().match(CONFIRME);
     if (m) return { ok: true, preuve: `message rendu « ${m[0]} »` };
+    // (08/11) Toutes les ~3 s : le formulaire a-t-il refusé CE clic ? Alors rien n'est parti — inutile d'attendre 45 s.
+    if (typeof lireEtat === "function" && tour % 3 === 2) {
+      etatFormulaire = await lireEtat().catch(() => null);
+      const refus = refusDeValidationBeebs(etatFormulaire, soumissionsAvant);
+      if (refus) {
+        return {
+          ok: false, refusValidation: refus, etatFormulaire,
+          error: "Dépôt Beebs non confirmé : le formulaire Beebs a refusé l'envoi (aucune requête partie) — " +
+            `${refus.map((e) => `${e.champ} : ${String(e.message ?? e.type ?? "?").slice(0, 80)}`).join(" | ")}. ` +
+            "L'annonce n'est PAS déposée.",
+        };
+      }
+    }
+    tour++;
     await sleep(1000);
   }
 
+  if (typeof lireEtat === "function") etatFormulaire = await lireEtat().catch(() => null);
+  const refusTardif = refusDeValidationBeebs(etatFormulaire, soumissionsAvant);
   const erreurs = erreursFormulaireVisibles();
   return {
     ok: false,
+    ...(refusTardif ? { refusValidation: refusTardif } : {}),
+    etatFormulaire,
     error:
       "Dépôt Beebs non confirmé : ni page de succès, ni message de confirmation affiché " +
       `${timeoutMs / 1000} s après le clic « Publier »` +

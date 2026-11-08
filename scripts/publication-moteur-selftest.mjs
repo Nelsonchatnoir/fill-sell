@@ -212,9 +212,15 @@ console.log("\n[10] gardeAspectsEbay — manquant, rapprochement, suggestion, re
   const pfM = { marque: "Inconnue", ebayAspects: {} };
   const vM = R.gardeAspectsEbay({ pfE: pfM, ebayRequiredFull: [{ name: "Marque", allowedValues: ["Zara"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
   ok("la marque n'est jamais remplacée par la seule marque de la liste", vM.invalides.length === 1 && pfM.marque === "Inconnue", JSON.stringify(vM));
-  const pf2 = { taille: "24 mois", ebayAspects: {} };
+  // (08/11, point 3 de Nico — E3 de _shared/taille-ebay.js) « 24 mois » n'est plus un refus face à « 2 ans » : la même
+  // étiquette enfant (92 cm, table de tailles.js). Le refus d'un âge se vérifie sur « 18 mois » (86 cm), qu'une liste
+  // sans stature ni « 18 mois » ne sait pas écrire — jamais un âge voisin.
+  const pf2 = { taille: "18 mois", ebayAspects: {} };
   const v2 = R.gardeAspectsEbay({ pfE: pf2, ebayRequiredFull: [{ name: "Taille", allowedValues: ["2 ans", "3 ans", "XS", "S"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
-  ok("SELECTION_ONLY sans rapprochement → refus, cas âge avec les valeurs mois/ans en exemple", v2.invalides.length === 1 && v2.invalides[0].ageLike === true && v2.invalides[0].sample === "2 ans, 3 ans", JSON.stringify(v2.invalides));
+  ok("SELECTION_ONLY sans rapprochement → refus, cas âge avec les valeurs mois/ans en exemple", v2.invalides.length === 1 && v2.invalides[0].ageLike === true && v2.invalides[0].sample === "2 ans, 3 ans" && pf2.taille === "18 mois", JSON.stringify(v2.invalides));
+  const pf2b = { taille: "24 mois", ebayAspects: {} };
+  const v2b = R.gardeAspectsEbay({ pfE: pf2b, ebayRequiredFull: [{ name: "Taille", allowedValues: ["2 ans", "3 ans", "XS", "S"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
+  ok("« 24 mois » face à « 2 ans » : la même étiquette enfant (E3), posée, aucun refus", v2b.invalides.length === 0 && pf2b.taille === "2 ans", JSON.stringify({ v2b, pf2b }));
   const pf3 = { couleur: "Rouge", colors: ["Rouge"] };
   R.gardeAspectsEbay({ pfE: pf3, ebayRequiredFull: [{ name: "Couleur", allowedValues: ["Rouge foncé"], mode: "FREE_TEXT" }], outils: { nearestAllowedValue: () => "Rouge foncé", listeFaitFoi } });
   ok("couleur rapprochée : couleur ET colors[0] réécrits (gates et handlers lisent colors[0])", pf3.couleur === "Rouge foncé" && pf3.colors[0] === "Rouge foncé");

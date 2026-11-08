@@ -1446,3 +1446,7 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - **Parcours de publication fermé sans publier** : une ligne `action_app_ratee` « stepper_ferme » (étape, plateformes,
   durée), y compris au rechargement — pour savoir où et pourquoi on s'arrête (Stéphanie Durand, 07/11 18:11).
 - Selftest `lot-0811-app`.
+
+## Vinted — « preuve de boutique » absente sur la boutique ouverte (08/11 nuit, point 5 de Nico — linda.sidhoum)
+- Boutique de l'annonce = boutique ouverte dans Chrome : le message dit « la page de cette annonce n'a pas pu être lue »,
+  jamais « une autre de tes boutiques ». Garde inchangée (aucun retrait sans preuve). Selftest `vinted-preuve-boutique-meme`.

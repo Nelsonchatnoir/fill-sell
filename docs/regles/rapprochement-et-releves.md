@@ -543,3 +543,13 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   `usage_logs.releve_autre_compte`. Compte inconnu : la règle d'avant, et l'heuristique « compte changé ou vidé » (≥ 5,
   aucune continuité, `20261108144000`) reste.
 - Les annonces d'avant la 0.6.182 se marquent au premier relevé qui les voit. Selftest `compte-plateforme-releve`.
+
+## « Introuvable à confirmer » : le relevé dont la décision a besoin (08/11 nuit, point 2 de Nico — Logann, ayadi007)
+- La décision (`_shared/introuvable-a-confirmer.js`) rend `releve_apres` : la lecture ratée tant qu'aucun relevé complet
+  ne l'a suivie, sinon le début du dernier relevé déjà compté (+ 1 s) — la clôture exige DEUX relevés complets.
+- handler-watch demande le relevé quand aucun n'a commencé ni été demandé après le plus tardif des `releve_apres`
+  (`borneDemandeReleve`), au plus une demande par heure, cadence de 6 h sinon. Avant : borne = plus ANCIENNE lecture ; un
+  relevé fait après elle bloquait 6 h des pauses qu'il ne tranchait pas.
+- Absente d'un premier relevé complet : message vrai (`messagePauseAbsenteUneFois`), écrit une fois.
+- Leboncoin (et toute plateforme non Vinted) : un relevé d'un AUTRE compte connu (`compte_plateforme`) ne prouve jamais
+  l'absence d'une annonce ; compte inconnu = règle d'avant. Selftest `introuvable-a-confirmer`.

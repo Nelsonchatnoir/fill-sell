@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import {
   decisionIntrouvable as d, marqueIntrouvable, messagePause, messageDisparueConfirmee, MAX_REPRISES_INTROUVABLE,
   identifiantAnnonceJob, releveComplet, RELEVES_POUR_DISPARITION, messageVendueLue, FENETRE_TRACE_MS, borneReleveAttendu,
+  borneDemandeReleve, ESPACEMENT_DEMANDES_RELEVE_MS, messagePauseAbsenteUneFois,
 } from '../supabase/functions/_shared/introuvable-a-confirmer.js';
 import { classerEchec } from '../supabase/functions/_shared/pas-de-rouge.js';
 
@@ -293,8 +294,71 @@ ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSIS
   ok(borneReleveAttendu(seuil, Date.parse('2026-11-04T09:00:00Z')) === seuil, 'lecture plus vieille que 6 h : la borne de 6 h, comme avant');
   ok(borneReleveAttendu(seuil, undefined) === seuil && borneReleveAttendu(seuil, NaN) === seuil, 'lecture inconnue : la borne de 6 h, comme avant');
   const hw = readFileSync(new URL('../supabase/functions/handler-watch/index.ts', import.meta.url), 'utf8');
-  ok(hw.includes('const borne = borneReleveAttendu(seuil, lectureAttendueDe.get(plateforme));') && hw.includes('started_at.gt.${borne},queued_at.gt.${borne}'),
-    'handler-watch : la demande de relevé utilise cette borne');
+  ok(hw.includes('const borne = borneDemandeReleve(seuil, besoinReleveDe.get(plateforme));') && hw.includes('started_at.gt.${borne},queued_at.gt.${borne}'),
+    'handler-watch : la demande de relevé utilise la borne du besoin (08/11)');
+}
+
+{
+  // (08/11 soir, point 2 de Nico) LOGANN ET AYADI007 — la pause ne se libérait pas : la clôture exige DEUX relevés
+  // complets, et la demande du second était bloquée 6 h par une borne calée sur la PLUS ANCIENNE lecture.
+  // Faits (UTC) : Logann, boutique 55364004, relevé 13:37 (419, les 6 annonces vues à 13:38:17), lectures 404 de
+  // 14:04:44 à 14:16:27, relevé 14:06:23 (404/404, sans elles), poste en ligne jusqu'à 17:04.
+  const B = '55364004';
+  const vu = { vu_le: '2026-11-08T13:38:17.105Z', statut: 'active' };
+  const r1 = { platform: 'vinted', kind: 'dressing', status: 'done', started_at: '2026-11-08T14:06:23.083Z', finished_at: '2026-11-08T14:07:06.975Z', items_vus: 404, total_entries: 404, erreur: null, vinted_user_id: B };
+  const r0 = { platform: 'vinted', kind: 'dressing', status: 'done', started_at: '2026-11-08T13:37:36.031Z', finished_at: '2026-11-08T13:38:17.908Z', items_vus: 419, total_entries: 419, erreur: '[note] disparitions non marquées — aucun run terminé en référence (première sync) : rien à marquer ce run', vinted_user_id: B };
+  const jobL = (lecture) => ({ platform: 'vinted', listing_url: 'https://www.vinted.fr/items/9269180078', platform_fields: { vinted_item_id: '9269180078', vinted_account_id: B, introuvable_a_confirmer: { depuis: lecture, premiere: lecture, n: 1, reprises: 0 } } });
+  const premiere = d({ job: jobL('2026-11-08T14:04:44.197Z'), vu, runs: [r1, r0], boutique: B });
+  ok(premiere.decision === 'attendre' && premiere.absente_une_fois === true && premiere.releve_apres === '2026-11-08T14:06:24.083Z',
+    'Logann 660a7cac : absente du relevé de 14:06 fait après sa lecture → il en faut un AUTRE, après ce relevé', premiere);
+  const derniere = d({ job: jobL('2026-11-08T14:16:27.828Z'), vu, runs: [r1, r0], boutique: B });
+  ok(derniere.decision === 'attendre' && derniere.absente_une_fois === false && derniere.releve_apres === '2026-11-08T14:16:27.828Z',
+    'Logann 653c5fb4 : le relevé de 14:06 précède sa lecture → il faut un relevé après 14:16:27', derniere);
+  const besoin = Math.max(Date.parse(premiere.releve_apres), Date.parse(derniere.releve_apres));
+  // À 14:20 UTC : le relevé de 14:06 a moins d'une heure — on attend (au plus une demande par heure).
+  const b1420 = borneDemandeReleve('2026-11-08T08:20:00.000Z', besoin, Date.parse('2026-11-08T14:20:00Z'));
+  ok(Date.parse(r1.started_at) > Date.parse(b1420), "à 14:20, le relevé de 14:06 tient encore (espacement d'une heure)", b1420);
+  // À 15:10 UTC (poste en ligne) : rien n'a commencé après 14:16:27 → demande. Avant : borne = 14:04:44, bloquée jusqu'à 20:04.
+  const b1510 = borneDemandeReleve('2026-11-08T09:10:00.000Z', besoin, Date.parse('2026-11-08T15:10:00Z'));
+  ok(Date.parse(r1.started_at) < Date.parse(b1510), 'à 15:10, le relevé de 14:06 ne bloque plus : le second relevé est demandé', b1510);
+  ok(Date.parse(r1.started_at) > Date.parse(borneReleveAttendu('2026-11-08T09:10:00.000Z', Date.parse('2026-11-08T14:04:44.197Z'))),
+    "… alors que la borne d'avant (plus ancienne lecture) le bloquait (le défaut est réel)");
+  // Le second relevé (sans elles) les clôt toutes.
+  const r2 = { ...r1, started_at: '2026-11-08T15:11:00.000Z', finished_at: '2026-11-08T15:11:45.000Z' };
+  for (const lecture of ['2026-11-08T14:04:44.197Z', '2026-11-08T14:16:27.828Z']) {
+    const c = d({ job: jobL(lecture), vu, runs: [r2, r1, r0], boutique: B });
+    ok(c.decision === 'confirmer', `Logann (lecture ${lecture.slice(11, 19)}) : absente de deux relevés complets → close (« plus en ligne »)`, c);
+  }
+  // Revue en ligne au second relevé → elle repart (zéro régression).
+  const revue = d({ job: jobL('2026-11-08T14:16:27.828Z'), vu: { vu_le: '2026-11-08T15:11:30.000Z', statut: 'active' }, runs: [r2, r1, r0], boutique: B });
+  ok(revue.decision === 'reprendre', 'revue en ligne au relevé suivant → la republication repart', revue);
+
+  // ayadi007, Leboncoin : vue le 07/11 19:59 (117 annonces), lecture « unavailable » 10:44, relevé 17:11 (5/5, sans elle).
+  const jobA = { platform: 'leboncoin', platform_listing_id: '3229105886', platform_fields: { introuvable_a_confirmer: { depuis: '2026-11-08T10:44:18.757Z', premiere: '2026-11-08T10:44:18.757Z', n: 1, reprises: 0 } } };
+  const annonceA = { vu_le: '2026-11-07T19:59:26.390Z', statut_plateforme: 'en_ligne', disparu_le: null, transaction_plateforme: 'aucune' };
+  const ra1 = { platform: 'leboncoin', kind: 'annonces', status: 'done', started_at: '2026-11-08T17:11:24.914Z', finished_at: '2026-11-08T17:11:27.656Z', items_vus: 5, total_entries: 5, erreur: '[défilement] [adresse] 1 page(s), 5 en ligne lues sur 5 annoncées · [statuts] active 5' };
+  const a1 = d({ job: jobA, annonce: annonceA, runs: [ra1] });
+  ok(a1.decision === 'attendre' && a1.absente_une_fois && a1.releve_apres === '2026-11-08T17:11:25.914Z', 'ayadi : absente du relevé de 17:11 → il en faut un autre après lui', a1);
+  const bA = borneDemandeReleve('2026-11-08T12:30:00.000Z', Date.parse(a1.releve_apres), Date.parse('2026-11-08T18:30:00Z'));
+  ok(Date.parse(ra1.started_at) < Date.parse(bA), 'ayadi à 18:30 (poste en ligne) : le second relevé est demandé (avant : à 23:11 au plus tôt)', bA);
+  const ra2 = { ...ra1, started_at: '2026-11-08T18:31:00.000Z', finished_at: '2026-11-08T18:31:03.000Z' };
+  ok(d({ job: jobA, annonce: annonceA, runs: [ra2, ra1] }).decision === 'confirmer', 'ayadi : absente de deux relevés complets → close');
+  // Deux comptes ne se mélangent jamais (20261108190000) : un relevé d'un AUTRE compte connu ne prouve rien.
+  const autre = d({ job: jobA, annonce: { ...annonceA, compte_plateforme: 'lbc-ancien' }, runs: [{ ...ra2, compte_plateforme: 'lbc-nouveau' }, { ...ra1, compte_plateforme: 'lbc-nouveau' }] });
+  ok(autre.decision === 'attendre' && !autre.absente_une_fois, "annonce d'un autre compte Leboncoin connu : jamais close sur les relevés du compte connecté", autre);
+  ok(d({ job: jobA, annonce: { ...annonceA, compte_plateforme: 'lbc-nouveau' }, runs: [{ ...ra2, compte_plateforme: 'lbc-nouveau' }, { ...ra1, compte_plateforme: 'lbc-nouveau' }] }).decision === 'confirmer',
+    "même compte connu : la règle s'applique");
+  ok(releveComplet({ ...ra1, compte_plateforme: 'x' }, { platform: 'leboncoin', compte: null }) === true, "compte de l'annonce inconnu : règle d'avant");
+  // Sans besoin neuf : la cadence de 6 h d'avant, inchangée.
+  ok(borneDemandeReleve('2026-11-08T12:00:00.000Z', Date.parse('2026-11-08T05:00:00Z'), Date.parse('2026-11-08T18:00:00Z')) === '2026-11-08T12:00:00.000Z', 'besoin plus vieux que 6 h : borne de 6 h');
+  ok(borneDemandeReleve('2026-11-08T12:00:00.000Z', undefined, Date.parse('2026-11-08T18:00:00Z')) === '2026-11-08T12:00:00.000Z', 'sans besoin : borne de 6 h');
+  ok(ESPACEMENT_DEMANDES_RELEVE_MS === 3_600_000, 'au plus une demande par heure');
+  const m = messagePauseAbsenteUneFois('vinted');
+  ok(/n'apparaît plus dans le dernier relevé de ta boutique Vinted/.test(m) && /rien n'a été retiré/.test(m) && !/\d{1,2}[:h]\d{2}|minute|heure/.test(m), 'le message dit le fait, sans heure ni durée', m);
+  const hw2 = readFileSync(new URL('../supabase/functions/handler-watch/index.ts', import.meta.url), 'utf8');
+  ok(/besoinReleveDe\.set\(String\(j\.platform\), Math\.max\(/.test(hw2), 'handler-watch : le besoin est le PLUS TARDIF des releve_apres');
+  ok(/if \(j\.error !== msg\)/.test(hw2), "handler-watch : le message n'est écrit que s'il change");
+  ok(/erreur, compte_plateforme"\)/.test(hw2) && /transaction_lue_le, compte_plateforme"\)/.test(hw2), "handler-watch : le compte relevé et celui de l'annonce sont lus");
 }
 
 console.log(`✓ selftest:introuvable-a-confirmer — ${n} assertions`);

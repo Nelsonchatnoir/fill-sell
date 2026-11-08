@@ -97,7 +97,8 @@ console.log("\n5. EXTENSION_MIN_BUILD ne se pose jamais ; la 0.6.175 est publié
 const { EXTENSION_MIN_BUILD } = await imp("supabase/functions/_shared/version-min-extension.js");
 ok(EXTENSION_MIN_BUILD === "2026-10-17T18:16:49Z", `EXTENSION_MIN_BUILD inchangé (${EXTENSION_MIN_BUILD})`);
 const pkg = lire("scripts/package-extension.mjs");
-ok(/const ALREADY_PUBLISHED = \[[^\]]*'0\.6\.175'\]/.test(pkg), "0.6.175 dans ALREADY_PUBLISHED");
+// (08/11 nuit) 0.6.179 et 0.6.182 l'ont suivie dans la liste : elle n'est plus la dernière, elle y reste.
+ok(/const ALREADY_PUBLISHED = \[[^\]]*'0\.6\.175'[,\]]/.test(pkg), "0.6.175 dans ALREADY_PUBLISHED");
 ok(!pkg.includes("poser EXTENSION_MIN_BUILD =") && pkg.includes("EXTENSION_MIN_BUILD ne se pose JAMAIS"), "la consigne de fin ne dit plus de poser EXTENSION_MIN_BUILD");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }

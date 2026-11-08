@@ -65,9 +65,13 @@ forme("24 mths", BEBE, false, null, "24 mois");
 forme("Newborn", BEBE, false, null, "Naissance");
 forme("12-18 months", PIEDS_BEBE, false, null, "12-18 mois", "Pointure AU");
 forme("12-18 mths", BEBE, false, null, null);                    // une tranche n'est jamais une de ses bornes
-forme("24 months", ENFANT, false, null, null);                   // jamais « 2 ans » : mois ≠ ans
-forme("1 year", BEBE, false, null, null);                        // jamais « 12 mois »
-forme("18 months", ENFANT, true, null, null);                    // un bébé dans un rayon 2-16 ans : la question
+// (08/11, point 3 de Nico) E1 seul ne change jamais d'unité (« 24 months » est « 24 mois », vérifié plus bas) ; c'est
+// E3, APRÈS lui, qui lit la table des étiquettes enfant de tailles.js : 24 mois = 2 ans = 92 cm, 18 mois = 86 cm.
+// Hier ces deux lignes attendaient la question ; c'est le trou que le point 3 ferme (job ccffd8ef).
+forme("24 months", ENFANT, false, null, "2 ans");                // E1 « 24 mois », puis E3 : la même étiquette (92 cm)
+forme("1 year", BEBE, false, null, null);                        // jamais « 12 mois » : « 1 an » n'est pas dans la table
+forme("18 months", ENFANT, true, null, "86");                    // un bébé dans un rayon 2-16 ans : sa stature, que la liste porte
+ok(ageEnFrancais("24 months") === "24 mois" && ageEnFrancais("2 years") === "2 ans", "E1 ne change jamais d'unité (« 24 months » → « 24 mois »)");
 forme("0-3 months", BEBE, false, null, null);                    // la liste n'a que « 3 mois » : la question
 ok(ageEnFrancais("11/12 yrs") === "11-12 ans" && ageEnFrancais("12 yrs") === "12 ans" && ageEnFrancais("12") === null && ageEnFrancais("M") === null,
   "« 11/12 yrs » est UNE tranche ; un nombre nu ou une lettre ne sont jamais un âge");
@@ -148,6 +152,73 @@ ok(!/\(\?<[=!]/.test(src), "taille-ebay.js : aucun lookbehind (WebView iOS)");
 ok(/tailleEbayComplement\(nomAspect, brut, liste, \{ ferme \}\)/.test(lire("supabase/functions/_shared/ebay-publication.ts")), "ebay-publication.ts : le complément APRÈS taille-de-service, dans tailleServieEbay");
 ok(/tailleSansPrefixeEuFr\(a\.name, brut, a\.allowedValues\) \?\? tailleServieEbay\(/.test(lire("supabase/functions/_shared/ebay-publication.ts")), "ebay-publication.ts : la chaîne des aspects non-taille inchangée");
 
+console.log("\n3 bis. E3 — L'ÉTIQUETTE ENFANT DANS L'AUTRE ÉCRITURE DE LA LISTE eBay (08/11, point 3 de Nico)");
+// Listes relues dans ebay_item_aspects le 08/11 (celles qui ne sont pas dans la fixture du 07/11).
+const GARCON_51973 = ["2XS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "74", "80", "86", "92", "98", "104", "110", "116", "122", "128", "134", "140", "146", "152", "158", "164", "170", "176", "2 ans", "2-3 ans", "3 ans", "3-4 ans", "4 ans", "4-5 ans", "5 ans", "5-6 ans", "6 ans", "6-7 ans", "7 ans", "7-8 ans", "8 ans", "8-9 ans", "9 ans", "9-10 ans", "10 ans", "10-11 ans", "11 ans", "11-12 ans", "12 ans", "12-13 ans", "13 ans", "13-14 ans", "14 ans", "14-15 ans", "15 ans", "15-16 ans", "16 ans", "Taille unique"];
+const BEBE_93404 = ["Enfant prématuré", "Nouveau né", "1 mois", "3 mois", "6 mois", "9 mois", "12 mois", "18 mois", "24 mois"];
+const TRANCHES_260027 = ["XS/S", "L/XL", "14-16", "16-18", "18-20", "56-62", "62-68", "68-74", "74-80", "80-86", "86-92", "Bébé prématuré", "Naissance", "1 mois", "3 mois", "6 mois", "9 mois", "12 mois", "18 mois", "24 mois", "Taille unique"];
+const ADOS_62482 = ["Moins de 4 ans", "4 ans", "6 ans", "8 ans", "10 ans", "12 ans", "14 ans", "16 ans", "XXS", "XS", "S", "M", "L", "XL", "XXL", "Taille unique"];
+const TETE_67681 = L("67681");       // 40 … 76 de 1 en 1 : des tours de tête, pas des statures
+const DIVERS_2993 = L("2993");       // 75, 80, 84, 85, 90… : pas une liste de statures enfant
+// Le cas fondateur : chaouidz (sos.cuisine.valenciennes), job ccffd8ef, rayon 51973, copie « 24 mois ».
+forme("24 mois", GARCON_51973, false, null, "2 ans");
+forme("24 mois", GARCON_51973, true, null, "2 ans");
+const q51973 = { status: "needs_user", platform: "ebay", platform_fields: {
+  taille: "24 mois", ebayAspects: { "Département": "Garçon" },
+  ebayCategoryPath: ["Vêtements, accessoires", "Enfant : vêtements, accessoires", "Garçon : vêtements, accessoires", "Vêtements garçon (2-16 ans)", "Sous-vêtements"],
+  needsUserField: { field_key: "Taille", field_label: "Taille", target: { root: "ebayAspects", key: "Taille" }, allowed_values: GARCON_51973, input_type: "selection_only", options_completes: true },
+} };
+const rep51973 = reponseTailleAuto(q51973 as never, "18-24 mois / 86 cm", ["lot 3 pieces bebe garcon taille 18/24 mois kiabi tao primark", "lot 3 pièces pour bébé garçon (Kiabi Eco Conception, 18M / 77-82 cm)"]) as { valeur?: string; regle?: string } | null;
+ok(rep51973?.valeur === "2 ans" && rep51973?.regle === "E3", "question eBay de ccffd8ef : handler-watch répond « 2 ans » (E3), la publication repart seule", JSON.stringify(rep51973));
+ok(garde("24 mois", GARCON_51973, "FREE_TEXT").pfE.taille === "2 ans", "app (voie extension) : la copie eBay part en « 2 ans » — l'extension trouve l'option, plus de question");
+ok(servi("24 mois", GARCON_51973, "SELECTION_ONLY") === "2 ans" && servi("24 mois", GARCON_51973, "FREE_TEXT") === "2 ans", "voie API : « 2 ans », liste fermée ou texte libre");
+console.log("   — les écritures d'un âge (mois, ans, abrégées, anglaises)");
+for (const v of ["24M", "24 m", "24mois", "24 Mois", "24 months"]) forme(v, GARCON_51973, true, null, "2 ans");
+forme("36 mois", ENFANT, true, null, "3 ans");
+forme("24-36 mois", ENFANT, true, null, "2-3 ans");                // la tranche entière, dans l'autre écriture
+forme("2 ans", BEBE, true, null, "24 mois");                       // rayon bébé : l'âge en mois
+forme("2A", BEBE, true, null, "24 mois");
+forme("2 ans", BEBE_93404, true, null, "24 mois");
+forme("0 mois", BEBE, true, null, "Naissance");
+forme("Naissance", BEBE_93404, true, null, "Nouveau né");          // le mot de CETTE liste
+forme("Prématuré", BEBE, true, null, "Bébé prématuré");
+forme("Prématuré", BEBE_93404, true, null, "Enfant prématuré");
+console.log("   — la stature, sur une liste de statures enfant (table des étiquettes de tailles.js)");
+forme("18 mois", GARCON_51973, true, null, "86");
+forme("12 mois", GARCON_51973, true, null, "80");
+forme("9 mois", GARCON_51973, true, null, "74");
+forme("6 mois", ENFANT, true, null, "68");
+forme("3 mois", ENFANT, true, null, "62");
+forme("3 ans", BEBE, true, null, "98");                            // la liste bébé n'a pas « 36 mois » : 98 cm
+forme("36 mois", BEBE, true, null, "98");
+forme("18-24 mois / 86 cm", GARCON_51973, true, null, "86");      // l'étiquette Vinted de la fiche : son morceau « 86 cm »
+forme("18-24 mois / 86 cm", BEBE, true, null, "86");
+forme("86 cm", GARCON_51973, true, null, "86");
+console.log("   — une tranche : entière (statures ou autre écriture), jamais une borne");
+forme("18-24 mois", TRANCHES_260027, true, null, "86-92");
+forme("3-6 mois", TRANCHES_260027, true, null, "62-68");
+forme("12-18 mois", TRANCHES_260027, true, null, "80-86");
+forme("18-24 mois", GARCON_51973, true, null, null);               // ni « 86 », ni « 2 ans » : la question
+forme("12-18 mois", ENFANT, true, null, null);
+forme("0-3 mois", TRANCHES_260027, true, null, null);              // « 50-62 » n'existe pas : la question
+console.log("   — jamais un âge voisin, jamais une liste qui n'écrit pas la taille");
+forme("1 mois", GARCON_51973, true, null, null);                  // 56 cm : la liste commence à 74
+forme("Naissance", ENFANT, true, null, null);
+forme("18 mois", ADOS_62482, true, null, null);                    // « Moins de 4 ans » n'est pas une traduction
+forme("24 mois", ADOS_62482, true, null, null);                    // « 2 ans » absent : jamais « 4 ans »
+forme("36 mois", BEBE_93404, true, null, null);
+forme("15 mois", ENFANT, true, null, null);                        // absent de la table
+forme("1 an", BEBE, true, null, null);
+console.log("   — une liste qui n'est pas une liste de statures enfant : aucun nombre n'y est lu comme une stature");
+forme("9 mois", TETE_67681, true, null, null);                     // 74 y est un tour de tête
+forme("12 mois", DIVERS_2993, true, null, null);                   // 80 y voisine 75, 84, 85
+forme("3 mois", ROBES, true, null, null);                          // 62 y est un FR 62 adulte
+forme("86 cm", HOMME, true, null, null);
+ok(tailleEbayComplement("Type de taille", "24 mois", GARCON_51973, { ferme: true }) === null, "E3 : jamais un autre aspect que la taille ou la pointure");
+ok(reponseTailleAuto({ ...q51973, platform: "opla" } as never, "18-24 mois / 86 cm", null) === null, "même question sur une autre plateforme : inchangée (règle propre à eBay)");
+const tl = lire("supabase/functions/_shared/tailles.js");
+ok(/"92": \["24 mois", "2 ans"\]/.test(tl) && /"86": \["18 mois"\]/.test(tl), "la table d'E3 est celle de tailles.js, non modifiée");
+
 console.log("\n4. LE BANC DE NON-RÉGRESSION (parc eBay, 60 jours, fixture du 07/11)");
 // Les seuls cas que le correctif change — chacun : hier ∅ ou hors liste, aujourd'hui une entrée de la liste.
 const CORRIGES: Record<string, string> = {
@@ -156,6 +227,10 @@ const CORRIGES: Record<string, string> = {
 };
 const CORRIGES_APP: Record<string, string> = {
   "11-12 yrs␟155201␟Taille": "11-12 ans",
+  // (08/11, E3) robe « 18 mois » au rayon 51581 (fille 2-16 ans, liste fermée) : hier la copie restait « 18 mois » (hors
+  // liste → question, à laquelle la personne a répondu « 2 ans », un âge VOISIN) ; aujourd'hui 86, sa stature dans la liste.
+  // La voie API ne bouge pas : la réponse de la personne passe toujours devant (étape 1 de tailleAssemblee).
+  "18 mois␟51581␟Taille": "86",
 };
 let identiques = 0, corriges = 0, regressions = 0, identiquesApp = 0, corrigesApp = 0;
 for (const c of F.cas as Array<Record<string, any>>) {

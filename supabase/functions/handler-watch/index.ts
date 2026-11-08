@@ -2,7 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { retraitEngage, suppressionEnvoyeeHeritee } from "../_shared/retenue-creneau.js";
 import {
   decisionIntrouvable, identifiantAnnonceJob, messageDisparueConfirmee, messagePersistant, messageVendueLue,
-  SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE, FENETRE_TRACE_MS, borneReleveAttendu,
+  SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE, FENETRE_TRACE_MS, borneDemandeReleve,
+  messagePauseAbsenteUneFois,
 } from "../_shared/introuvable-a-confirmer.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -3848,7 +3849,7 @@ serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       const plateformes = [...new Set(jobs.map((j: any) => String(j.platform)))];
       const { data: runs, error: eRuns } = await supabase.from("vinted_sync_runs")
-        .select("platform, kind, status, started_at, finished_at, vinted_user_id, items_vus, total_entries, erreur")
+        .select("platform, kind, status, started_at, finished_at, vinted_user_id, items_vus, total_entries, erreur, compte_plateforme")
         .eq("user_id", userId).eq("status", "done").in("kind", ["dressing", "annonces"])
         .in("platform", plateformes).gt("items_vus", 0)
         .gt("started_at", new Date(debutFenetre).toISOString())
@@ -3911,7 +3912,9 @@ serve(async (req) => {
       let reprisesCompte = 0;
       // (25/10) Les relevés que la règle attend, par plateforme (Vinted : la boutique de l'annonce).
       const relevesAttendus = new Map<string, string | null>();
-      const lectureAttendueDe = new Map<string, number>();
+      // (08/11 soir, point 2 de Nico) Par plateforme, l'instant le plus TARDIF après lequel un relevé neuf fait avancer
+      // une décision (`releve_apres`) : un relevé commencé après lui les fait toutes avancer (borneDemandeReleve).
+      const besoinReleveDe = new Map<string, number>();
       for (const j of jobs) {
         const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
         const fiche = ficheDe.get(String(j.inventaire_id)) ?? null;
@@ -3924,7 +3927,7 @@ serve(async (req) => {
           vu = traceV.get(String(identifiantAnnonceJob(j) ?? "")) ?? null;
         } else {
           const ident = String(j.platform_listing_id ?? "").trim();
-          let q = supabase.from("annonces_plateforme").select("vu_le, statut_plateforme, disparu_le, transaction_plateforme, transaction_lue_le").eq("user_id", userId).eq("platform", j.platform);
+          let q = supabase.from("annonces_plateforme").select("vu_le, statut_plateforme, disparu_le, transaction_plateforme, transaction_lue_le, compte_plateforme").eq("user_id", userId).eq("platform", j.platform);
           q = ident ? q.eq("listing_id", ident) : (j.listing_url ? q.eq("url", j.listing_url) : q.eq("job_id", j.id));
           const { data: a, error: eA } = await q.limit(1).maybeSingle();
           if (eA) continue; // illisible : jamais une absence
@@ -3938,10 +3941,19 @@ serve(async (req) => {
         const creeLe = creeLeDe.get(String(j.platform) + ":" + String(identifiantAnnonceJob(j) ?? "")) ?? null;
         const d = decisionIntrouvable({ job: j, fiche, vu, annonce, runs: runsPf, boutique, creeLe });
         if (d.decision === "attendre" && (d as { releve_attendu?: boolean }).releve_attendu) {
-          // (05/11, point 5) La lecture la plus ancienne qui attend son relevé, par plateforme (borne ci-dessous).
-          const marqueI = (pf.introuvable_a_confirmer ?? {}) as Record<string, unknown>;
-          const lu = Date.parse(String(marqueI.premiere ?? marqueI.depuis ?? ""));
-          if (Number.isFinite(lu)) lectureAttendueDe.set(String(j.platform), Math.min(lectureAttendueDe.get(String(j.platform)) ?? lu, lu));
+          // (08/11 soir, point 2 de Nico) Ce dont CETTE décision a besoin : un relevé commencé après `releve_apres`.
+          // (Avant : la lecture la plus ANCIENNE — un relevé fait après elle bloquait 6 h des pauses qu'il ne tranchait pas.)
+          const besoin = Date.parse(String((d as { releve_apres?: string }).releve_apres ?? ""));
+          if (Number.isFinite(besoin)) besoinReleveDe.set(String(j.platform), Math.max(besoinReleveDe.get(String(j.platform)) ?? besoin, besoin));
+          // Absente d'UN relevé complet fait après la lecture : la personne lit ce qui se passe vraiment (un second
+          // relevé confirme), plus « le prochain relevé » qui était déjà passé. Écrit une fois (jamais une ligne inchangée).
+          if ((d as { absente_une_fois?: boolean }).absente_une_fois) {
+            const msg = messagePauseAbsenteUneFois(String(j.platform));
+            if (j.error !== msg) {
+              await supabase.from("cross_post_jobs").update({ error: msg })
+                .eq("id", j.id).eq("status", "needs_user").eq("platform_fields->>needs_user_source", SOURCE_INTROUVABLE);
+            }
+          }
         }
         if (d.decision === "attendre" && (d as { releve_attendu?: boolean }).releve_attendu
             && (j.platform !== "vinted" || boutique) && !relevesAttendus.has(String(j.platform))) {
@@ -4042,7 +4054,9 @@ serve(async (req) => {
               // trancher : il ne compte plus. Chez ayoub, le relevé de 19:06 (Paris) bloquait toute demande pour les 8
               // annonces lues à 19:29, poste allumé. La borne part de la plus récente de ces deux dates : il y a 6 h, ou
               // la plus ancienne lecture qui attend — un relevé demandé APRÈS elle reprend la cadence de 6 h, inchangée.
-              const borne = borneReleveAttendu(seuil, lectureAttendueDe.get(plateforme));
+              // (08/11 soir, point 2 de Nico) La borne suit ce dont les décisions ont besoin (le plus tardif des
+              // `releve_apres`), au plus une demande par heure ; sans besoin neuf, la cadence de 6 h d'avant.
+              const borne = borneDemandeReleve(seuil, besoinReleveDe.get(plateforme));
               const { data: recents, error: eRec } = await supabase.from("vinted_sync_runs").select("id")
                 .eq("user_id", userId).eq("kind", kind).eq("platform", plateforme)
                 .or(`started_at.gt.${borne},queued_at.gt.${borne},status.in.(queued,running,claimed)`).limit(1);

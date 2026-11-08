@@ -4,7 +4,7 @@ import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts";
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // handler-watch — module JS sans import, chargé tel quel par Deno.
-import { archiverErreur, errorTechniqueAvecHistorique } from "../_shared/erreurs-archivees.js";
+import { archiverErreur, errorTechniqueAvecHistorique, brutSelonStatut } from "../_shared/erreurs-archivees.js";
 import { accidentAvantRetrait, coupureSeule, prochaineRepriseAvantRetrait, MESSAGE_ACCIDENT_AVANT_RETRAIT, MARQUES_RETRAIT_OU_DEPOT, CLES_ATTENTE_A_RETIRER } from "../_shared/accident-avant-retrait.js";
 // Les phrases lues par la personne vivent dans leur fichier, pas au milieu de
 // la logique qui les déclenche (même convention que src/*/textes.js).
@@ -1487,11 +1487,28 @@ serve(async (req) => {
                 " dès que tu es connecté.";
               raisonRequalif = `pas de session Vinted dans Chrome, observation ${n} — reprise dans ${dans}`;
             } else {
-              messageEffectif = (jV.action === "delete" ? "Retrait Vinted en attente : " : "Republication Vinted en attente : ") +
+              // (08/11 soir, point 5 de Nico — linda.sidhoum, 5 jobs) La boutique de l'annonce EST celle ouverte dans
+              // Chrome (une seule boutique, 657403) : ce n'est pas « une autre de tes boutiques », c'est la page de
+              // l'annonce qui n'a pas pu être lue (preuve absente) — on le dit tel quel, sans geste à faire.
+              let memeBoutique = false;
+              try {
+                const compteAnnonce = String(((jV?.platform_fields ?? {}) as Record<string, unknown>).vinted_account_id ?? "").trim();
+                if (compteAnnonce) {
+                  const { data: profV } = await userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+                  // deno-lint-ignore no-explicit-any
+                  const ouverte = String(((profV as any)?.extension_sessions ?? {})?.vinted_identite?.user_id ?? "").trim();
+                  memeBoutique = !!ouverte && ouverte === compteAnnonce;
+                }
+              } catch (_e) { memeBoutique = false; }
+              messageEffectif = memeBoutique
+                ? (jV.action === "delete" ? "Retrait Vinted en attente : " : "Republication Vinted en attente : ") +
+                  "la page de cette annonce n'a pas pu être lue sur Vinted pour vérifier qu'elle est bien dans ta boutique — " +
+                  "on ne touche à rien sans cette preuve. Nouvel essai automatique, rien à faire."
+                : (jV.action === "delete" ? "Retrait Vinted en attente : " : "Republication Vinted en attente : ") +
                 "nous n'arrivons pas encore à prouver que cette annonce appartient à la boutique Vinted ouverte dans Chrome " +
                 "(ton compte a peut-être plusieurs boutiques) — on ne touche à rien sans cette preuve. Si l'annonce est sur une autre " +
                 "de tes boutiques, connecte Chrome à celle-ci sur vinted.fr. Nouvel essai automatique, rien à faire.";
-              raisonRequalif = `boutique invérifiable, observation ${n} — reprise dans ${dans}`;
+              raisonRequalif = `boutique invérifiable${memeBoutique ? " (page de l'annonce illisible, même boutique)" : ""}, observation ${n} — reprise dans ${dans}`;
             }
           }
         }
@@ -5154,7 +5171,7 @@ serve(async (req) => {
       patch.platform_fields = {
         ...pfT,
         error_technique: errorTechniqueAvecHistorique(pfT.error_technique,
-          erreurTechniqueBrute, `update-job-status (${raisonRequalif ?? "requalification affichage G1/G4"})`),
+          brutSelonStatut(erreurTechniqueBrute, statutEffectif), `update-job-status (${raisonRequalif ?? "requalification affichage G1/G4"})`),
       };
     }
 
@@ -5457,7 +5474,8 @@ serve(async (req) => {
     // toujours requêtable. Une erreur effacée (réparation) n'écrit rien ; un brut déjà posé n'est pas réécrit.
     if (erreurTechniqueBrute == null && ["failed", "pending", "needs_user", "cancelled"].includes(String(statutEffectif))) {
       try {
-        const brutCorps = typeof body.error === "string" ? body.error.trim().slice(0, 2000) : "";
+        // (08/11 soir, point 4 de Nico) Sur une attente, la conclusion « arrêté » de l'extension ne survit pas au brut.
+        const brutCorps = typeof body.error === "string" ? brutSelonStatut(body.error.trim(), statutEffectif).slice(0, 2000) : "";
         const affiche = "error" in patch && patch.error != null ? String(patch.error).trim() : "";
         if (brutCorps && affiche && affiche !== brutCorps) {
           let pfB = (patch.platform_fields && typeof patch.platform_fields === "object") ? patch.platform_fields as Record<string, unknown> : null;

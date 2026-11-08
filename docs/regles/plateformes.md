@@ -916,3 +916,25 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   pas dans la liste », `item_upload.model.other_options.unknown` = « Je ne connais pas le nom du modèle »
   (`item_upload.model.unknown` = « Inconnu »). La correspondance « other » ↔ « Mon modèle ne figure pas dans la liste »
   (`VINTED_MODELE_REPLI_PAR_TYPE`, 26/10) n'est plus une hypothèse. Le blocage reste gardé jusqu'à la décision de Nico.
+
+## Beebs — le refus de « Mettre en vente » lu dans l'état du formulaire (08/11 nuit, point 1 de Nico — Julian ; 0.6.183)
+- Le formulaire de dépôt est un react-hook-form : au clic, le gestionnaire valide puis pose les refus par `setError` et
+  retourne sans requête. `BEEBS_MAIN_FONCTIONS.formulaire` (background) lit erreurs, compteur d'envois et, pour l'adresse,
+  des booléens seulement. Un refus posé PAR CE CLIC (compteur avancé, envoi terminé) est nommé tout de suite : connexion →
+  « Connexion Beebs requise » ; adresse masquée → compléter l'adresse du compte Beebs ; attribut/format → la question
+  avec les valeurs de Beebs ; prix, texte, date limite → attente nommée ; photos/catégorie → reprise d'avant.
+- Trois refus étaient invisibles au lecteur du texte : « Vous devez être connecté pour ajouter un produit » (racine),
+  « Sélectionner une valeur » (= libellé d'un menu vide), l'adresse quand sa section est masquée (aucun texte rendu).
+- Le relevé du texte ne remonte plus les conteneurs de champs. Selftest `beebs-refus-etat-formulaire`.
+
+## Beebs — retrait d'une annonce « en vérification » (08/11 nuit, point 4 de Nico ; 0.6.183)
+- Lue dans l'onglet « En vérification » de « Mes annonces » : aucun bouton de suppression n'existe ; attente nommée
+  (`enVerification`), compteur d'essais intact, jamais « page pas encore rendue ». Serveur : sur pending/needs_user, le
+  brut gardé ne porte jamais la conclusion « le retrait est arrêté » (`brutSelonStatut`). Selftest
+  `beebs-retrait-en-verification`.
+
+## eBay — tailles bébé/enfant (08/11 nuit, point 3 de Nico — sos.cuisine.valenciennes)
+- Règle E3 (`_shared/taille-ebay.js`), en dernier recours : même âge autre écriture (« 24 mois » ↔ « 2 ans », « 24M »,
+  « 0 mois » → « Naissance »), stature enfant (18 mois → 86) seulement dans une liste de statures enfant, tranches
+  traduites entières (« 18-24 mois » → « 86-92 ») ; jamais un âge voisin, jamais une valeur hors de la liste eBay.
+  Selftest `taille-ebay`.

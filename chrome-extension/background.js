@@ -354,6 +354,9 @@ const TRANSIENT_JOB_ERROR_RE =
 // reprise ne RE-DÉBITE jamais (même invariant que le palliatif bfcache
 // d'update-job-status) ; au failed final elle est rendue une seule fois.
 const REPRISE_ESPACEE_DELAIS_MIN = [5, 15, 30, 60];
+// (08/11 soir, point 4 de Nico) Retrait Beebs d'une annonce lue « en vérification » : prochain passage, sans essai
+// compté (même délai que RETRAIT_VERIF_MIN d'update-job-status, qui garde la main sur l'espacement long).
+const RETRAIT_EN_VERIFICATION_MIN = 60;
 
 // ── Cause CONNUE → message humain (défaut n°2 du 31/08) ──────────────────────
 // Le job fa69b1bd affichait l'exception Chrome « the message channel closed »
@@ -11865,6 +11868,73 @@ const BEEBS_MAIN_FONCTIONS = {
         champs.push({ ordre: champs.length, label: l.textContent.trim(), name: nom, values: valeurs, ...(options ? { options } : {}) });
       }
       return { ok: true, champs, canal: "executeScript" };
+    } catch (e) {
+      return { ok: false, reason: "exception MAIN: " + (e && e.message) };
+    }
+  },
+  // ── (08/11 soir, Julian — tout le parc) CE QUE LE FORMULAIRE BEEBS REFUSE, LU DANS SON ÉTAT ──
+  // Le formulaire de dépôt est un react-hook-form (relevé le 08/11 sur beebs.app/fr/listing) : au clic
+  // « Mettre en vente », son gestionnaire d'envoi valide titre, photos, description, catégorie, attributs,
+  // ADRESSE, format, prix ; au moindre refus il pose les erreurs dans l'état du formulaire (setError) et
+  // RETOURNE — aucune requête ne part. Trois de ces refus étaient illisibles pour le lecteur du texte
+  // rendu : l'adresse quand la section Adresse n'est pas affichée (le message n'a nulle part où s'écrire),
+  // un attribut obligatoire vide (« Sélectionner une valeur », texte identique au libellé d'un menu vide)
+  // et « Vous devez être connecté pour ajouter un produit » (erreur racine). Ici on lit l'état lui-même :
+  // nom du champ, type, message ; compteur d'envois ; envoi en cours ; et, pour l'adresse, seulement des
+  // booléens (section affichée, adresse complète) — aucune donnée personnelle ne sort.
+  formulaire: function () {
+    try {
+      const form = document.querySelector("form");
+      if (!form) return { ok: false, reason: "aucun <form> sur la page" };
+      const fk = Object.keys(form).find((k) => k.indexOf("__reactFiber$") === 0);
+      if (!fk) return { ok: false, reason: "expando __reactFiber$ absent du formulaire" };
+      let f = form[fk], api = null;
+      for (let i = 0; f && i < 40 && !api; i++, f = f.return) {
+        let h = f.memoizedState;
+        for (let j = 0; h && j < 80; j++, h = h.next) {
+          let s = h.memoizedState;
+          if (s && typeof s === "object" && s.current && typeof s.current === "object") s = s.current;
+          if (s && typeof s === "object" && s.control && typeof s.handleSubmit === "function" && typeof s.getValues === "function") { api = s; break; }
+        }
+      }
+      if (!api) return { ok: false, reason: "react-hook-form introuvable dans la chaîne fiber du formulaire" };
+      const etat = (api.control && api.control._formState) || {};
+      const erreurs = [];
+      const parcourir = (o, chemin) => {
+        if (!o || typeof o !== "object" || erreurs.length >= 15) return;
+        const feuille = typeof o.message === "string" || typeof o.type === "string";
+        if (feuille && chemin) {
+          erreurs.push({ champ: chemin, type: typeof o.type === "string" ? o.type.slice(0, 40) : null, message: typeof o.message === "string" ? o.message.slice(0, 200) : "" });
+          return;
+        }
+        for (const k of Object.keys(o)) {
+          if (k === "ref") continue;
+          parcourir(o[k], chemin ? chemin + "." + k : k);
+        }
+      };
+      parcourir(etat.errors || {}, "");
+      let valeurs = {};
+      try { valeurs = api.getValues() || {}; } catch (_e) { valeurs = {}; }
+      const plein = (v) => v != null && !(typeof v === "string" && !v.trim()) && !(Array.isArray(v) && !v.length);
+      const a = (valeurs && valeurs.address) || {};
+      const adresse = {
+        section: !!document.querySelector('input[name="address"]'),
+        complete: ["fullAddress", "city", "country", "zip", "streetAddress"].every((k) => typeof a[k] === "string" && a[k].trim())
+          && a.longitude != null && a.latitude != null,
+      };
+      const attributs = (valeurs && valeurs.attributes && typeof valeurs.attributes === "object") ? valeurs.attributes : {};
+      const vides = Object.keys(attributs).filter((k) => !plein(attributs[k])).map((k) => "attributes." + k);
+      for (const k of ["weight", "price", "category"]) if (k in valeurs && !plein(valeurs[k])) vides.push(k);
+      return {
+        ok: true,
+        soumissions: Number(etat.submitCount) || 0,
+        enCours: etat.isSubmitting === true,
+        reussi: etat.isSubmitSuccessful === true,
+        erreurs,
+        adresse,
+        vides: vides.slice(0, 20),
+        canal: "executeScript",
+      };
     } catch (e) {
       return { ok: false, reason: "exception MAIN: " + (e && e.message) };
     }
@@ -32692,6 +32762,25 @@ async function processDeleteJob(job, accessToken) {
         if (result.beebs404Constats.length) pfC.beebs_404_constats = result.beebs404Constats.slice(-6);
         else delete pfC.beebs_404_constats;
         job.platform_fields = pfC;
+      }
+      // ── (08/11 soir, point 4 de Nico — recrutementgroupezk704, 53cff028) EN VÉRIFICATION = ATTENTE, JAMAIS UN ESSAI ──
+      // beebs.js a lu l'annonce dans l'onglet « En vérification » : Beebs n'offre aucun bouton de suppression tant
+      // qu'elle y est. Compter l'essai menait, compteur à 4, à « le retrait est arrêté » (failed) à CHAQUE passage, que
+      // update-job-status requalifiait en attente : statut et motif se contredisaient. Ici : pending, compteur INTACT,
+      // prochain passage dans RETRAIT_EN_VERIFICATION_MIN — le serveur garde la main sur le message et l'espacement
+      // (vérification longue : servi quand le relevé bouge).
+      if (job.platform === "beebs" && job.action === "delete" && result.enVerification === true) {
+        const actuelV = await jobStatusNow(accessToken, job.id);
+        if (actuelV && actuelV !== "processing" && actuelV !== "pending") return { status: "retry", error: result.error };
+        stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+        await updateJobStatus(accessToken, job.id, "pending", {
+          error: String(result.error ?? ""),
+          platform_fields: {
+            ...(job.platform_fields ?? {}),
+            next_action_after: new Date(Date.now() + RETRAIT_EN_VERIFICATION_MIN * 60_000).toISOString(),
+          },
+        });
+        return { status: "retry", error: result.error };
       }
       await rearmBounded(accessToken, job, String(result.error ?? "retrait non confirmé, à reprendre"));
       return { status: "retry", error: result.error };

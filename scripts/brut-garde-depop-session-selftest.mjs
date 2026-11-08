@@ -68,7 +68,8 @@ console.log("\nB. pas-de-rouge : « Session Depop illisible »");
 console.log("\nC. update-job-status : le brut gardé à chaque réécriture");
 {
   const ujs = lire("supabase/functions/update-job-status/index.ts");
-  dit("importe errorTechniqueAvecHistorique", /import \{ archiverErreur, errorTechniqueAvecHistorique \} from "\.\.\/_shared\/erreurs-archivees\.js";/.test(ujs));
+  // (08/11 soir, point 4) brutSelonStatut s'ajoute à l'import : le brut d'une attente ne dit plus « arrêté ».
+  dit("importe errorTechniqueAvecHistorique", /import \{ archiverErreur, errorTechniqueAvecHistorique(?:, brutSelonStatut)? \} from "\.\.\/_shared\/erreurs-archivees\.js";/.test(ujs));
   dit("plus de pose_par figé : il dit qui a réécrit (raisonRequalif)", !/pose_par: "update-job-status \(requalification affichage G1\/G4\)",/.test(ujs) && /`update-job-status \(\$\{raisonRequalif \?\? "requalification affichage G1\/G4"\}\)`/.test(ujs));
   const iQ = ujs.indexOf("UNE QUESTION SE POSE EN FRANÇAIS, AVEC DES CHOIX FERMÉS");
   const iB = ujs.indexOf("LE MOTIF BRUT EST TOUJOURS GARDÉ");

@@ -63,6 +63,20 @@ export const PRECEDENTS_MAX = 5;
  * @param {string} [maintenantIso]
  * @returns {{brut: string, at: string, pose_par: string, precedents?: Array<{brut: string, at: string|null, pose_par: string|null}>}|null}
  */
+// ── (08/11 soir, point 4 de Nico — recrutementgroupezk704, 53cff028) UN BRUT NE DIT JAMAIS « ARRÊTÉ » D'UN JOB QUI ATTEND ──
+// L'extension conclut ses essais épuisés par « Plusieurs essais automatiques n'ont pas abouti : le retrait est arrêté… »
+// (rearmBounded, failed). Quand le serveur requalifie ce rapport en ATTENTE (retrait Beebs d'une annonce en vérification,
+// pending, aucune tentative consommée), le brut gardé disait encore « arrêté » d'un job en attente — statut et motif se
+// contredisaient. Règle : sur un statut non terminal (pending, needs_user), la conclusion d'arrêt de l'extension est
+// remplacée par la requalification, dite telle quelle ; le reste du brut (la cause lue) est gardé mot pour mot. Pur.
+const CONCLUSION_ARRET_RE = /\s*Plusieurs essais automatiques n'ont pas abouti : (?:le retrait est arrêté\. Si l'annonce est encore en ligne, retire-la à la main sur la plateforme\.|la publication est arrêtée\. Relance depuis la fiche de l'article ; si ça se reproduit, écris-nous\.)/;
+/** @param {unknown} brut @param {unknown} statut @returns {string} */
+export function brutSelonStatut(brut, statut) {
+  const texte = String(brut ?? "");
+  if (!["pending", "needs_user"].includes(String(statut ?? "")) || !CONCLUSION_ARRET_RE.test(texte)) return texte;
+  return texte.replace(CONCLUSION_ARRET_RE, ` [l'extension concluait « essais épuisés, arrêté » ; requalifié par le serveur : le job n'est pas arrêté, statut ${String(statut)}]`);
+}
+
 export function errorTechniqueAvecHistorique(avant, brut, posePar, maintenantIso = new Date().toISOString()) {
   const texte = String(brut ?? "").trim().slice(0, 2000);
   if (!texte) return avant && typeof avant === "object" ? avant : null;
