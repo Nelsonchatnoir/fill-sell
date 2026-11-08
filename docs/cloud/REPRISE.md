@@ -1,5 +1,29 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 08/11/2026 soir — REFUS GOOGLE DE LA VC36 (« Currency differences with prominent display price ») → vc37
+- **Cause confirmée** (Play Console › Conformité aux règles, preuve « Expérience dans l'application ») : nos écrans
+  d'offres en « €12.99 / €29.99 / €59.99 » à côté de la feuille Google Play dans la monnaie du testeur (hors euro). L'app
+  ne lisait AUCUN prix chez la boutique : constantes en euros.
+- **Correctif 0dd0d2f** : `src/lib/prixBoutique.js` (règles pures) + `chargerPrixBoutique.js` (getProducts des 4
+  abonnements au démarrage, natif seulement) + `usePrixBoutique.js`. Web = prix Stripe (PRIX_WEB, inchangés) ; iPhone /
+  Android = `priceString` de la boutique (Google : l'offre de base = prix récurrent ; offre à 0 = essai proposé à CE
+  compte ; Apple : priceString + prix d'introduction à 0). « … » et bouton d'achat inactif tant que le prix n'est pas lu ;
+  « Gratuit » au lieu de « 0 € » ; essai annoncé seulement si la boutique l'offre (sinon confirmation « ta boutique ne
+  propose pas d'essai » AVANT la feuille). Textes Cloud / onboarding / confirmation : un JETON remplacé à la lecture.
+  Conditions du Cloud (article 6) : prix de la boutique sur mobile, mot pour mot sur le web (CGU_CLOUD_VERSION inchangée).
+  Achats gardés au centre : `handleIAPPurchase` et `achatCloud.acheter`. Preuve : `selftest:prix-boutique` (35 : iPhone et
+  Android en dollars, écran = produit acheté, balayage du code). Restent en dur, volontairement : web (PRIX_WEB,
+  CLOUD_PRIX_AFFICHE, page de retour Stripe, landing — jamais montrée sur l'app), textes légaux (Legal.jsx,
+  textesLegaux.js), exemples d'annonces (EtapeReleve) et un champ de prix d'article.
+- **Play Console (lu, rien changé)** : 4 abonnements actifs, chacun dans 175 pays/régions sur 175 (Premium
+  standard-monthly, Pro pro-monthly, Business business-monthly, Cloud cloud-monthly) ; l'app est distribuée dans 178 :
+  3 pays sans facturation Google (l'app y montre « … », aucun achat). Essai Cloud `cloud-trial-3d` = 7 jours (le nom
+  seul dit 3), nouveaux clients de cet abonnement. Premium : offre essai-7-jours INACTIVE.
+- **Binaire** : 2.9.167 / versionCode 37 (33c8c1a), AAB 18,2 Mo sha256 db9f781f…ffff, signature = vc36 ;
+  `build/AAB-A-TELEVERSER-2.9.167-vc37/fillsell-android-2.9.167-versionCode37-33c8c1a.aab` (seul) ; anciens AAB
+  rangés dans `build/AAB-PERIMES/`. iPhone : pas de nouveau binaire Apple (le module lit déjà les prix) → OTA.
+- **OTA** : rien publié ; la prochaine OTA (commune Cloud + Problèmes) doit être **≥ 2.9.168** (2.9.167 = le binaire).
+
 ## 08/11/2026 soir — URGENT U1-U6 (premier vrai client Cloud sans écran de connexion)
 - **Cause prouvée (U1)** : virginie.coste81 (web mobile, Stripe) — le parcours d'entrée était marqué fini AVANT de partir
   chez Stripe (15:15:34), essai démarré 15:16:08, poste prêt 15:16:57 ; au retour, la page /success menait à /app (Stock)
