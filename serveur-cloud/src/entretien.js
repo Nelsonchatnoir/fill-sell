@@ -41,7 +41,7 @@ import { creerPareFeu, sortieOuverte } from './pareFeu.js';
 import { creerApprovisionnement, dateIproyal } from './approvisionnement.js';
 
 export const VISITE_ESPACEMENT_MS = 3600_000;   // (03/11) au plus une visite de contrôle de plateforme par heure
-const COLONNES_IPS = 'id, commande, ip, port, etat, user_id, dernier_user_id, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus, rebut_critere, rebut_le';
+const COLONNES_IPS = 'id, commande, ip, port, etat, user_id, dernier_user_id, attribuee_le, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus, rebut_critere, rebut_le';
 /** (07/11 soir) La charge de l'hôte (1 min) par processeur — le conteneur voit celle de l'hôte. */
 export const chargeHote = () => loadavg()[0] / Math.max(1, cpus().length);
 
@@ -103,6 +103,23 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       if (Number(data) === 0) coupees.add(pf);
     }
     return coupees;
+  }
+
+  /** (08/11 nuit) Les IP au repos dont le dernier compte n'a réussi AUCUNE connexion pendant qu'il les tenait (ids). Lecture
+   *  ratée ou donnée manquante : aucune (le repos de 7 jours reste la règle dans le doute). */
+  async function ipsSansConnexionReussie(ips) {
+    const ids = new Set();
+    const avecTenue = (ips ?? []).filter((i) => i.dernier_user_id && i.attribuee_le && i.liberee_le);
+    if (!avecTenue.length) return ids;
+    const { data, error } = await base.from('cloud_connexions').select('user_id, ouverte_le')
+      .in('user_id', [...new Set(avecTenue.map((i) => i.dernier_user_id))]).eq('statut', 'connectee');
+    if (error || !Array.isArray(data)) return ids;
+    for (const i of avecTenue) {
+      const debut = Date.parse(i.attribuee_le) - 60_000, fin = Date.parse(i.liberee_le);
+      const reussie = data.some((c) => c.user_id === i.dernier_user_id && Date.parse(c.ouverte_le) >= debut && Date.parse(c.ouverte_le) <= fin);
+      if (!reussie) ids.add(Number(i.id));
+    }
+    return ids;
   }
 
   /** (04/11) Le compte tient-il encore une IP, ou son Cloud est-il actif ? Dans le doute (lecture ratée) : oui, jamais de purge. */
@@ -251,9 +268,16 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
 
     // 3. Contrôles (au plus 2 par heure : chacun allume un navigateur)
     let controlesFaits = 0;
+    // (08/11/2026 nuit, décision de Nico : « on peut les réattribuer, celles où la connexion n'a jamais réussi ») Une IP
+    // au repos, purge prouvée, dont le dernier compte n'a réussi AUCUNE connexion pendant qu'il la tenait, sort du repos
+    // sans attendre ses 7 jours (cloud_ip_remettre_en_pool, migration 20261108233000, refait la même vérification).
+    const sansConnexion = await ipsSansConnexionReussie(toutes.filter((i) => i.etat === 'repos' && i.purge_prouvee_le
+      && Date.parse(i.repos_fin) > Date.now()));
+    bilan.repos_sans_connexion = [...sansConnexion];
     const aControler = [
       ...toutes.filter((i) => i.etat === 'achetee').map((i) => ({ i, nature: 'entree' })),
-      ...toutes.filter((i) => i.etat === 'repos' && i.purge_prouvee_le && Date.parse(i.repos_fin) <= Date.now()).map((i) => ({ i, nature: 'sortie' })),
+      ...toutes.filter((i) => i.etat === 'repos' && i.purge_prouvee_le && (Date.parse(i.repos_fin) <= Date.now() || sansConnexion.has(Number(i.id))))
+        .map((i) => ({ i, nature: 'sortie' })),
     ];
     for (const { i, nature } of aControler) {
       if (controlesFaits >= 2) break;
