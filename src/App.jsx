@@ -6039,7 +6039,12 @@ export default function App({ loginOnly = false }){
     // et c'est exactement la confusion qui a fait croire à une suppression en
     // masse le 22/09.
     if(retenuBoutiqueEtrangere){
-      setToast({visible:true,message:lang==='fr'
+      // (08/11, U3 de Nico) Client FillSell Cloud : le compte Vinted est celui connecté à FillSell Cloud, pas « dans Chrome ».
+      setToast({visible:true,message:clientCloud
+        ?(lang==='fr'
+          ?"L'article est retiré de ton stock. Son annonce Vinted appartient à un autre compte que celui connecté à FillSell Cloud : elle est toujours en ligne."
+          :"The item was removed from your stock. Its Vinted listing belongs to another account than the one connected to FillSell Cloud: it is still online.")
+        :lang==='fr'
         ?"L'article est retiré de ton stock. Son annonce Vinted appartient à un autre compte que celui ouvert dans Chrome : elle est toujours en ligne."
         :"The item was removed from your stock. Its Vinted listing belongs to another account than the one open in Chrome: it is still online."});
       setTimeout(()=>setToast({visible:false,message:''}),8000);

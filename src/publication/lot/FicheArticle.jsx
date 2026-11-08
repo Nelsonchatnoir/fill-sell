@@ -22,6 +22,8 @@ import { urlPhoto, urlsPhotos } from "../../utils/photos";
 import { grilleColisVinted } from "../../utils/vintedColis";
 import { descriptionFidele, hashtagsServent } from "../moteur/descriptionFidele";
 import { lirePoidsSaisi } from "./regles";
+// (08/11, U3 de Nico) Client FillSell Cloud : jamais « depuis ton ordinateur ».
+import { estClientCloud } from "../../cloud/connexionsCloud";
 import {
   cheminRayon, texteRayon, plateformesDeLArticle, statutPlateforme, colisDe, detailsDe, rayonNeufDe,
   poidsAffiche, poidsParDefaut, textePoids, poidsIncoherent,
@@ -419,6 +421,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
 
 function phraseLecture(note, en) {
   if (note === "redigee_sans_lecteur") return en ? "You chose to have FillSell write it from your photos and title." : "Tu as choisi de la faire rédiger par FillSell, d'après tes photos et ton titre.";
+  if (note === "vinted_sans_extension" && estClientCloud()) return en ? "FillSell Cloud hasn't read your Vinted description yet: this one was written from your photos." : "FillSell Cloud n'a pas encore lu ta description Vinted : celle-ci a été écrite d'après tes photos.";
   if (note === "vinted_sans_extension") return en ? "Your Vinted description is read from your computer: this one was written from your photos." : "Ta description Vinted se lit depuis ton ordinateur : celle-ci a été écrite d'après tes photos.";
   if (note === "sans_description") return en ? "Your Vinted listing has no description: this one was written from your photos." : "Ton annonce Vinted n'a pas de description : celle-ci a été écrite d'après tes photos.";
   if (note === "vinted_echec" || note === "pont_mort") return en ? "Your Vinted description couldn't be read this time: this one was written from your photos." : "Ta description Vinted n'a pas pu être lue cette fois : celle-ci a été écrite d'après tes photos.";

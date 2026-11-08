@@ -16,6 +16,8 @@
 
 import { urlPhoto, urlsPhotos } from '../utils/photos.js';
 import { LOCALE_MONTANT_ANGLAIS } from '../utils/montants.js';
+import { estClientCloud } from '../cloud/connexionsCloud.js';
+import { sansOrdinateur } from '../cloud/textesSansOrdinateur.js';
 
 // (17/10) La vignette d'une conversation ou d'une commande (Vignette.jsx) :
 // la photo de l'annonce, puis les photos de la fiche du stock rattachée — une
@@ -114,7 +116,7 @@ export function montantTexte(v, devise = 'EUR', lang = 'fr') {
 }
 
 /** Ce que l'app dit d'une réponse écrite par la personne. */
-export function etatReponse(r, lang = 'fr') {
+function etatReponseBrut(r, lang = 'fr') {
   const fr = lang !== 'en';
   switch (r?.statut) {
     case 'verrouillee':
@@ -327,7 +329,7 @@ export function extensionCommandeVinted(extensionBuild) {
 /** (18/10) Les noms de types d'étiquette que FillSell connaît (Vinted les écrit en toutes lettres). */
 const TYPES_VINTED_CONNUS = Object.freeze(['printable', 'code', 'digital']);
 
-export function actionCommande(c, lang = 'fr', generation = null, extensionVinted = null, bordereaux = true) {
+function actionCommandeBrut(c, lang = 'fr', generation = null, extensionVinted = null, bordereaux = true) {
   const fr = lang !== 'en';
   const pf = nomPlateforme(c?.platform);
   const url = lienCommande(c);
@@ -446,7 +448,7 @@ function motifGenerationEnClair(motif, pf, fr) {
 }
 
 /** Ce que l'app dit d'une demande de bordereau (table bordereaux_demandes). */
-export function etatDemandeBordereau(d, lang = 'fr', platform = null) {
+function etatDemandeBordereauBrut(d, lang = 'fr', platform = null) {
   const fr = lang !== 'en';
   const pf = nomPlateforme(platform ?? d?.platform);
   // (17/10, migration 20261017100000) Une demande attend l'ordinateur 24 h (30 min avant).
@@ -518,7 +520,7 @@ export function refusDemandeBordereau(refuse, lang = 'fr') {
  * ce qui empêche FillSell de lire une plateforme, dit en clair, avec le geste
  * à faire. null = rien à dire (relevé normal, ou incident passager).
  */
-export function murReleve(r, lang = 'fr', maintenant = Date.now()) {
+function murReleveBrut(r, lang = 'fr', maintenant = Date.now()) {
   if (!r?.platform) return null;
   const fr = lang !== 'en';
   const pf = nomPlateforme(r.platform);
@@ -604,3 +606,10 @@ export function resumeBordereaux({ commandes = [], demandes = {}, copies = {}, e
   const presents = ordre.filter((k) => morceaux[k]);
   return { aImprimer, enPreparation, aExpedier, enRoute: nRoute, titre: presents.length ? morceaux[presents[0]] : null, details: presents.slice(1).map((k) => morceaux[k]) };
 }
+
+// ── (08/11, U3 de Nico) Client FillSell Cloud : ces phrases parlent de FillSell Cloud, jamais de « ton ordinateur »,
+// de « Chrome » ni de « ton extension » (cloud/textesSansOrdinateur.js). Rien ne change pour les autres comptes.
+export const etatReponse = (...a) => sansOrdinateur(etatReponseBrut(...a), estClientCloud());
+export const actionCommande = (...a) => sansOrdinateur(actionCommandeBrut(...a), estClientCloud());
+export const etatDemandeBordereau = (...a) => sansOrdinateur(etatDemandeBordereauBrut(...a), estClientCloud());
+export const murReleve = (...a) => sansOrdinateur(murReleveBrut(...a), estClientCloud());

@@ -31,6 +31,11 @@ import { useOplaAcces } from '../utils/oplaAcces';
 import { ilYA } from '../annonces/etatReleve';
 import { R } from './theme';
 import { Groupe, Carte, Pastille, Note } from './ReglagesUI';
+// (08/11, U3 de Nico) Client FillSell Cloud : ses plateformes du Cloud se connectent dans FillSell Cloud — l'état vient
+// de FillSell Cloud (cloud/connexionsCloud.js), jamais « sessions sur ton ordinateur ».
+import { useConnexionsCloudPartage } from '../cloud/useConnexionsCloud';
+import { connexionCloudDe } from '../cloud/connexionsCloud';
+import { PLATEFORMES_CLOUD } from '../cloud/voieCloud';
 
 // Noms propres, pas du vocabulaire : ils ne se traduisent pas.
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
@@ -70,6 +75,8 @@ export default function SousPagePlateformes({ c, T }) {
   const userId = c.user?.id ?? null;
   const fr = c.lang !== 'en';
   const extensionJamaisVue = verite ? !verite.extension_vue_le : false;
+  const cx = useConnexionsCloudPartage();
+  const cloud = cx.clientCloud === true;
   // L'AUTORISATION Opla (24/09) : le verdict du SERVEUR, le même que le
   // stepper et l'écran de suivi (utils/oplaAcces). Il corrige l'état de
   // session d'Opla — un refus connu → « à autoriser », un accès prouvé → jamais
@@ -93,7 +100,7 @@ export default function SousPagePlateformes({ c, T }) {
 
   return (
     <>
-      <Groupe intitule={T.sessionsTitre}>
+      <Groupe intitule={cloud ? (fr ? 'Connexions FillSell Cloud' : 'FillSell Cloud connections') : T.sessionsTitre}>
         <Carte>
           {liste.map((pf) => {
             const nom = NOMS[pf] ?? pf;
@@ -104,10 +111,12 @@ export default function SousPagePlateformes({ c, T }) {
             // Réglages › Expédition (SousPageExpedition), là où l'adresse se change.
             if (pf === 'leboncoin' && c.lbcHorsFrance) return null;
             const v = verite?.plateformes?.[pf] ?? depuisAncienEtat(etats?.[pf] ?? null);
-            const etat = pf === 'opla' ? etatOplaAffiche(v.etat, verdictOpla) : v.etat;
+            let etat = pf === 'opla' ? etatOplaAffiche(v.etat, verdictOpla) : v.etat;
+            const cxEtat = cloud && PLATEFORMES_CLOUD.includes(pf) ? connexionCloudDe(cx, pf) : null;
+            if (cxEtat && etat !== ETATS.ECARTEE) etat = cxEtat === 'connecte' ? ETATS.CONNECTEE : ETATS.A_CONNECTER;
             // Opla sans AUCUNE preuve d'accès, et pas écartée : le bouton reste.
             const oplaSansPreuve = pf === 'opla' && verdictOpla === 'inconnu' && etat !== ETATS.ECARTEE && etat !== ETATS.A_AUTORISER;
-            const quand = v.depuis ? ilYA(v.depuis, fr) : null;
+            const quand = !cxEtat && v.depuis ? ilYA(v.depuis, fr) : null;
             const ton = etat === ETATS.CONNECTEE ? 'ok'
               : (etat === ETATS.A_CONNECTER || etat === ETATS.A_AUTORISER) ? 'ko' : 'inconnu';
             const libelle = etat === ETATS.CONNECTEE ? T.veriteConnecte
@@ -138,7 +147,7 @@ export default function SousPagePlateformes({ c, T }) {
                 {/* ── UNE PHRASE, UN GESTE ─────────────────────────────────── */}
                 {etat === ETATS.A_CONNECTER && pf !== 'ebay' && (
                   <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <span style={{ fontSize: 14, color: R.ink }}>{T.veriteConnecteToi(nom)}</span>
+                    <span style={{ fontSize: 14, color: R.ink }}>{cxEtat ? (fr ? `Connecte ${nom} à FillSell Cloud.` : `Connect ${nom} to FillSell Cloud.`) : T.veriteConnecteToi(nom)}</span>
                     <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.CONNEXION} lang={c.lang} onOuverte={relire} />
                   </div>
                 )}
@@ -178,7 +187,7 @@ export default function SousPagePlateformes({ c, T }) {
                     <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.AUTORISER_OPLA} lang={c.lang} onOuverte={relire} />
                   </div>
                 )}
-                {etat === ETATS.INCONNUE && extensionJamaisVue && (
+                {etat === ETATS.INCONNUE && extensionJamaisVue && !cloud && (
                   <div style={{ padding: '0 16px 14px' }}>
                     <span style={{ fontSize: 13, color: R.texteSecondaire }}>{T.veriteExtensionJamaisVue}</span>
                   </div>
@@ -198,7 +207,9 @@ export default function SousPagePlateformes({ c, T }) {
             );
           })}
         </Carte>
-        <Note>{T.sessionsNote}</Note>
+        <Note>{cloud
+          ? (fr ? "Ces états viennent de FillSell Cloud. Quand une plateforme n'est pas connectée, le bouton ouvre l'écran de connexion de FillSell Cloud." : 'These states come from FillSell Cloud. When a platform is not connected, the button opens the FillSell Cloud sign-in screen.')
+          : T.sessionsNote}</Note>
       </Groupe>
 
       {/* Les questions de catégorie Opla déjà tranchées — le bloc ne s'affiche

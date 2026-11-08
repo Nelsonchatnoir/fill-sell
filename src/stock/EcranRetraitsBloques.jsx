@@ -22,11 +22,15 @@ import { nombreFr } from './regles';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { texteRetraitsBloques } from '../utils/retraitsBloques';
+// (08/11, U3 de Nico) Client FillSell Cloud : le geste se fait dans FillSell Cloud, jamais « sur ton ordinateur ».
+import { useConnexionsCloudPartage } from '../cloud/useConnexionsCloud';
+import { retraitPourLeCloud } from '../utils/retraitsCloud';
 // Les noms viennent de la configuration des plateformes, jamais d'une liste ici.
 import { nomPlateforme } from '../utils/fileDesJobs';
 
 export default function EcranRetraitsBloques({ lang = 'fr', retraits, userId, motifDe, onFermer, aRetirer = [], onRetirer = null, onPlusTard = null, onOplaFait = null }) {
   const fr = lang !== 'en';
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   const total = (retraits?.total ?? 0) + aRetirer.reduce((t, g) => t + g.length, 0);
   return (
     <EcranPlein lang={lang} titre={fr ? 'Annonces à retirer' : 'Listings to remove'} onFermer={onFermer}>
@@ -37,9 +41,9 @@ export default function EcranRetraitsBloques({ lang = 'fr', retraits, userId, mo
             : `${total} listing${total > 1 ? 's' : ''} still live`}
         </div>
         <div style={{ marginTop: 8, fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
-          {fr
+          {retraitPourLeCloud(fr
             ? 'FillSell les retire tout seul dès que le geste ci-dessous est fait, sur ton ordinateur. En attendant, un acheteur peut encore les payer.'
-            : 'FillSell removes them on its own as soon as the step below is done, on your computer. Until then, a buyer can still pay for them.'}
+            : 'FillSell removes them on its own as soon as the step below is done, on your computer. Until then, a buyer can still pay for them.', cloud)}
         </div>
       </div>
       {(retraits?.parPlateforme ?? []).map((g) => {

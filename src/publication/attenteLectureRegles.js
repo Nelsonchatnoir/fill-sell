@@ -24,6 +24,21 @@
 import { LECTURE_FOND_VERSION_MIN } from "../../supabase/functions/_shared/lecture-fond.js";
 import { texteSuffisant, CLE_CHOIX_SANS_LECTURE } from "../../supabase/functions/_shared/contenu-fiche.js";
 import { retoucheAEcrire } from "./texteDeLaFiche.js";
+import { estClientCloud } from "../cloud/connexionsCloud.js";
+
+// ── (08/11, U3 de Nico) CLIENT FILLSELL CLOUD : celui qui lit la description, c'est FillSell Cloud, jamais « ton
+// ordinateur ». Les phrases ci-dessous gardent leur sens ; le sujet change (le compte courant : cloud/connexionsCloud.js).
+const VERS_CLOUD = [
+  [/Ton ordinateur \(son extension FillSell\)/g, "FillSell Cloud"], [/Your computer \(its FillSell extension\)/g, "FillSell Cloud"],
+  [/sur ton ordinateur/g, "dans FillSell Cloud"], [/on your computer/g, "in FillSell Cloud"],
+  [/\bTon ordinateur\b/g, "FillSell Cloud"], [/\bton ordinateur\b/g, "FillSell Cloud"],
+  [/\bYour computer\b/g, "FillSell Cloud"], [/\byour computer\b/g, "FillSell Cloud"],
+];
+/** La phrase dite à un client Cloud (pur) : rien ne change pour les autres comptes. */
+export function pourLeCloud(texte, cloud = estClientCloud()) {
+  if (!cloud || typeof texte !== "string") return texte;
+  return VERS_CLOUD.reduce((t, [de, vers]) => t.replace(de, vers), texte);
+}
 
 /** L'écart entre deux lectures pendant l'attente. */
 export const RELECTURE_ATTENTE_MS = 6_000;
@@ -127,9 +142,9 @@ export function lecteurEnRetard(lecteur, ecouleMs) {
 
 /** La phrase de l'attente quand c'est l'ORDINATEUR qui lit (aucune extension sur cet appareil) — jamais « ferme ». */
 export function texteAttenteParOrdinateur(lang = "fr") {
-  return lang === "en"
+  return pourLeCloud(lang === "en"
     ? "Your computer (its FillSell extension) is reading your Vinted description, usually in under 2 minutes: keep this screen open, the publishing screen opens by itself as soon as it's read."
-    : "Ton ordinateur (son extension FillSell) lit ta description Vinted, en général en moins de 2 minutes : garde cet écran ouvert, l'écran de publication s'ouvre tout seul dès qu'elle est lue.";
+    : "Ton ordinateur (son extension FillSell) lit ta description Vinted, en général en moins de 2 minutes : garde cet écran ouvert, l'écran de publication s'ouvre tout seul dès qu'elle est lue.");
 }
 
 // Heure de Paris : « 17:15 » le jour même, « hier à 17:15 », sinon « le 25/10 à 17:15 » (jamais une heure future).
@@ -159,6 +174,12 @@ export function quandEnMots(iso, maintenant = Date.now(), lang = "fr") {
 export function phraseSansLecteur(lecteur, { lang = "fr", maintenant = Date.now() } = {}) {
   if (!lecteur || lecteur.disponible !== false) return null;
   const en = lang === "en";
+  // Client Cloud : une seule phrase, celle de FillSell Cloud (ni extension, ni version, ni ordinateur).
+  if (estClientCloud()) {
+    return lecteur.raison === "lecture_en_retard"
+      ? (en ? "FillSell Cloud hasn't read your Vinted description yet." : "FillSell Cloud n'a pas encore lu ta description Vinted.")
+      : (en ? "FillSell Cloud isn't responding right now: your Vinted description isn't read yet." : "FillSell Cloud ne répond pas pour l'instant : ta description Vinted n'est pas encore lue.");
+  }
   const debut = en ? "Only the FillSell extension on a computer can read your Vinted description: " : "Seule l'extension FillSell d'un ordinateur sait lire ta description Vinted : ";
   const v = lecteur.version ? ` (${lecteur.version})` : "";
   const quand = quandEnMots(lecteur.vuLe, maintenant, lang);
@@ -209,7 +230,7 @@ export function libellesSansLecteur(lang = "fr") {
     titre: en ? "Your Vinted description isn't read yet" : "Ta description Vinted n'est pas encore lue",
     ecrire: en ? "Write my description" : "Écrire ma description",
     rediger: en ? "Have FillSell write it" : "La faire rédiger par FillSell",
-    attendre: en ? "Wait for my computer" : "Attendre mon ordinateur",
+    attendre: estClientCloud() ? (en ? "Wait for FillSell Cloud" : "Attendre FillSell Cloud") : (en ? "Wait for my computer" : "Attendre mon ordinateur"),
     ecrireTitre: en ? "Your description" : "Ta description",
     ouvrirVinted: en ? "Open my Vinted listing ↗" : "Ouvrir mon annonce Vinted ↗",
     pourCopier: en ? "to copy your text" : "pour copier ton texte",
@@ -219,9 +240,9 @@ export function libellesSansLecteur(lang = "fr") {
     enregistrement: en ? "Saving…" : "Enregistrement…",
     retour: en ? "Back" : "Retour",
     fermer: en ? "Close" : "Fermer",
-    attenteTitre: en ? "Waiting for your computer" : "En attente de ton ordinateur",
-    attenteFinie: en ? "Still not read: close this, the reading carries on — publish once your computer has read it."
-      : "Toujours pas lue : ferme, la lecture continue — publie quand ton ordinateur l'aura lue.",
+    attenteTitre: pourLeCloud(en ? "Waiting for your computer" : "En attente de ton ordinateur"),
+    attenteFinie: pourLeCloud(en ? "Still not read: close this, the reading carries on — publish once your computer has read it."
+      : "Toujours pas lue : ferme, la lecture continue — publie quand ton ordinateur l'aura lue."),
     echec: en ? "Your choice couldn't be saved: try again." : "Ton choix n'a pas pu être enregistré : réessaie.",
     redigeeNote: en ? "FillSell writes your description from your photos and your title: check it before publishing. It isn't saved on your item."
       : "FillSell rédige ta description d'après tes photos et ton titre : relis-la avant de publier. Elle n'est pas enregistrée sur ta fiche.",
@@ -241,6 +262,11 @@ export function texteAttenteSansLecteur(lecteur, { lang = "fr", contexte = "step
     return contexte === "lot"
       ? (en ? "The reading carries on: as soon as it succeeds, the item gets prepared." : "La lecture continue : dès qu'elle aboutit, l'article se prépare.")
       : (en ? "The reading carries on: as soon as it succeeds, the publishing screen opens by itself." : "La lecture continue : dès qu'elle aboutit, l'écran de publication s'ouvre tout seul.");
+  }
+  if (estClientCloud()) {
+    return contexte === "lot"
+      ? (en ? "As soon as FillSell Cloud has read your description, the item gets prepared." : "Dès que FillSell Cloud a lu ta description, l'article se prépare.")
+      : (en ? "As soon as FillSell Cloud has read your description, the publishing screen opens." : "Dès que FillSell Cloud a lu ta description, l'écran de publication s'ouvre.");
   }
   const quand = lecteur?.raison === "extension_ancienne_ici"
     ? (en ? "As soon as the extension on this computer is up to date, " : "Dès que l'extension de cet ordinateur est à jour, ")
@@ -347,7 +373,10 @@ export function travailDuPoste(postes, maintenant = Date.now()) {
 }
 
 /** Le motif d'un échec, en clair (pur). */
-export function messageEchecLecture(motif, { lang = "fr", plateforme = "vinted" } = {}) {
+export function messageEchecLecture(motif, o = {}) {
+  return pourLeCloud(messageEchecLectureBrut(motif, o));
+}
+function messageEchecLectureBrut(motif, { lang = "fr", plateforme = "vinted" } = {}) {
   const en = lang === "en";
   const nom = NOMS_PLATEFORMES[plateforme] ?? "";
   const m = String(motif ?? "");
@@ -368,7 +397,10 @@ export function messageEchecLecture(motif, { lang = "fr", plateforme = "vinted" 
 }
 
 /** La phrase de l'étape (pur) — un fait, jamais une heure promise. */
-export function phraseEtatDemande(e, { lang = "fr", lecteur = null, travail = null, plateforme = "vinted" } = {}) {
+export function phraseEtatDemande(e, o = {}) {
+  return pourLeCloud(phraseEtatDemandeBrute(e, o));
+}
+function phraseEtatDemandeBrute(e, { lang = "fr", lecteur = null, travail = null, plateforme = "vinted" } = {}) {
   const en = lang === "en";
   const nom = NOMS_PLATEFORMES[plateforme] ?? "";
   const ici = lecteur?.ou === "ici";

@@ -37,6 +37,9 @@ import { empreinteTexte } from './empreinte';
 import { useReglagesMessagerie } from './useMessagerieBeta';
 import Vignette from './Vignette';
 import './espace.css';
+// (08/11, U3 de Nico) Client FillSell Cloud : ses messages sont relevés par FillSell Cloud, jamais « ton extension, ordinateur allumé ».
+import { useConnexionsCloudPartage } from '../cloud/useConnexionsCloud';
+import { phraseSansOrdinateur } from '../cloud/textesSansOrdinateur';
 
 const ENCRE2 = '#5C6560';
 const LIGNE = '#EFECE6';
@@ -100,6 +103,7 @@ function Bulle({ m, lang }) {
 
 function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMode = 1 }) {
   const fr = lang !== 'en';
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   const [messages, setMessages] = useState(null);
   const [reponses, setReponses] = useState([]);
   const [blanche, setBlanche] = useState(false);
@@ -213,7 +217,7 @@ function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMod
           conteneur à hauteur fixe. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px' }}>
         {messages === null && <p style={{ margin: 0, fontSize: 13, color: ENCRE2 }}>{fr ? 'Chargement…' : 'Loading…'}</p>}
-        {messages?.length === 0 && <p style={{ margin: 0, fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Les messages de cette conversation arrivent au prochain relevé de ton extension, ordinateur allumé.' : 'Messages arrive with your extension’s next read, computer on.'}</p>}
+        {messages?.length === 0 && <p style={{ margin: 0, fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{phraseSansOrdinateur(fr ? 'Les messages de cette conversation arrivent au prochain relevé de ton extension, ordinateur allumé.' : 'Messages arrive with your extension’s next read, computer on.', cloud)}</p>}
         {messages?.map((m) => <Bulle key={m.id} m={m} lang={lang} />)}
         {reponses.map((r) => {
           const e = etatReponse(r, lang);
@@ -264,6 +268,7 @@ function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMod
 // (24/10 soir) `messages` faux : compte hors bêta aux bordereaux Vinted ouverts — l'écran « À expédier » seul.
 export default function EspaceMessagerie({ supabase, lang = 'fr', ecran, onAller, onRetour, photosParInventaire = null, onChange, messages = true }) {
   const fr = lang !== 'en';
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   const onglet = ecran?.onglet === 'expedier' || !messages ? 'expedier' : 'messages';
   const [conversations, setConversations] = useState(null);
   const [releves, setReleves] = useState([]);
@@ -410,7 +415,7 @@ export default function EspaceMessagerie({ supabase, lang = 'fr', ecran, onAller
               </span>
               <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <span style={{ fontSize: 14.5, fontWeight: 700 }}>{fr ? 'Aucune conversation pour l’instant' : 'No conversation yet'}</span>
-                <span style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Tes messages Vinted, Leboncoin, Beebs, Depop et eBay arrivent ici, relevés par ton extension (ordinateur allumé) et par eBay.' : 'Your Vinted, Leboncoin, Beebs, Depop and eBay messages arrive here, read by your extension (computer on) and by eBay.'}</span>
+                <span style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{phraseSansOrdinateur(fr ? 'Tes messages Vinted, Leboncoin, Beebs, Depop et eBay arrivent ici, relevés par ton extension (ordinateur allumé) et par eBay.' : 'Your Vinted, Leboncoin, Beebs, Depop and eBay messages arrive here, read by your extension (computer on) and by eBay.', cloud)}</span>
               </span>
             </div>
           )}

@@ -33,6 +33,8 @@ import { ouvrirLien } from './ouvrir';
 import { useReglagesMessagerie } from './useMessagerieBeta';
 import Couche from './Couche';
 import Vignette from './Vignette';
+import { useConnexionsCloudPartage } from '../cloud/useConnexionsCloud';
+import { phraseSansOrdinateur } from '../cloud/textesSansOrdinateur';
 // L'aperçu et « Tout imprimer » (pdf.js, pdf-lib derrière) ne se chargent qu'à l'usage :
 // rien de plus à l'ouverture des Ventes, pour personne.
 const ApercuBordereau = lazySur(() => import('./impression/ApercuBordereau.jsx'));
@@ -93,6 +95,8 @@ function tonEtat(c) {
  */
 function ConfirmationGeneration({ commande: c, action, lang, occupe, onAnnuler, onConfirmer }) {
   const fr = lang !== 'en';
+  // (08/11, U3 de Nico) Client FillSell Cloud : c'est FillSell Cloud qui fait le geste, jamais « ton ordinateur ».
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   const types = action.types ?? [];
   const [type, setType] = useState(types.includes(1) ? 1 : (types[0] ?? null));
   const geste = GESTES[c.platform] ?? ['Confirmer', 'Confirm'];
@@ -128,17 +132,17 @@ function ConfirmationGeneration({ commande: c, action, lang, occupe, onAnnuler, 
                 {libelleTypeEtiquette(t, lang)}
               </label>
             ))}
-            {action.typesSupposes && <div style={{ fontSize: 12.5, color: ENCRE2, lineHeight: 1.4 }}>{fr ? 'Ton ordinateur vérifie juste avant de commander que Vinted propose ce type pour cette commande ; sinon rien n’est commandé et FillSell te le dit.' : 'Your computer checks right before ordering that Vinted offers this type for this order; otherwise nothing is ordered and FillSell tells you.'}</div>}
+            {action.typesSupposes && <div style={{ fontSize: 12.5, color: ENCRE2, lineHeight: 1.4 }}>{phraseSansOrdinateur(fr ? 'Ton ordinateur vérifie juste avant de commander que Vinted propose ce type pour cette commande ; sinon rien n’est commandé et FillSell te le dit.' : 'Your computer checks right before ordering that Vinted offers this type for this order; otherwise nothing is ordered and FillSell tells you.', cloud)}</div>}
           </fieldset>
         )}
         {action.adresse === true && (
           <div data-expediteur="compte-leboncoin" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 14, border: `1px solid ${UI.border}`, background: '#FFFFFF', fontSize: 13, lineHeight: 1.45 }}>
             <Icone nom="maison" taille={17} couleur={ENCRE2} epaisseur={2.1} style={{ flex: 'none', marginTop: 1 }} />
-            <span>{fr ? 'Expéditeur : l’adresse enregistrée dans ton compte Leboncoin (nom, adresse, téléphone), lue par ton ordinateur au moment du geste. Incomplète : rien ne part et FillSell te le dit.' : 'Sender: the address saved in your Leboncoin account (name, address, phone), read by your computer at the time of the step. Incomplete: nothing is sent and FillSell tells you.'}</span>
+            <span>{phraseSansOrdinateur(fr ? 'Expéditeur : l’adresse enregistrée dans ton compte Leboncoin (nom, adresse, téléphone), lue par ton ordinateur au moment du geste. Incomplète : rien ne part et FillSell te le dit.' : 'Sender: the address saved in your Leboncoin account (name, address, phone), read by your computer at the time of the step. Incomplete: nothing is sent and FillSell tells you.', cloud)}</span>
           </div>
         )}
         <div style={{ fontSize: 12.5, color: ENCRE2, lineHeight: 1.45 }}>
-          {fr ? `Ton ordinateur (Chrome ouvert, extension active) le fait sur ${nomPlateforme(c.platform)} à son prochain passage, une seule fois, puis le bordereau s’affiche ici.` : `Your computer (Chrome open, extension on) does it on ${nomPlateforme(c.platform)} on its next pass, only once, then the label shows up here.`}
+          {phraseSansOrdinateur(fr ? `Ton ordinateur (Chrome ouvert, extension active) le fait sur ${nomPlateforme(c.platform)} à son prochain passage, une seule fois, puis le bordereau s’affiche ici.` : `Your computer (Chrome open, extension on) does it on ${nomPlateforme(c.platform)} on its next pass, only once, then the label shows up here.`, cloud)}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Bouton onClick={onAnnuler} desactive={occupe} ariaLabel={fr ? 'Annuler' : 'Cancel'}>{fr ? 'Annuler' : 'Cancel'}</Bouton>

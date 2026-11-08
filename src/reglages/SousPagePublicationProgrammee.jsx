@@ -11,6 +11,8 @@ import { usePublicationProgrammee } from '../utils/usePublicationProgrammee';
 import { CRENEAUX_PROGRAMMES } from '../../supabase/functions/_shared/publication-programmee.js';
 import { R } from './theme';
 import { Groupe, Carte, Bouton, Note } from './ReglagesUI';
+// (08/11, U3 de Nico) Client FillSell Cloud : ni Chrome ni ordinateur pendant le créneau.
+import { useConnexionsCloudPartage } from '../cloud/useConnexionsCloud';
 
 const MOTS = {
   fr: {
@@ -21,6 +23,7 @@ const MOTS = {
     enregistre: 'Programmation enregistrée.', erreur: 'Pas enregistré : réessaie dans un instant.',
     horairesFaux: "L'heure de fin doit venir après l'heure de début.", joursVides: 'Choisis au moins un jour.',
     note: "Le quota se décompte au moment où tu envoies, comme aujourd'hui. Éteindre la programmation libère ta file : tout part à son tour. Chrome doit être ouvert sur ton ordinateur pendant le créneau.",
+    noteCloud: "Le quota se décompte au moment où tu envoies, comme aujourd'hui. Éteindre la programmation libère ta file : tout part à son tour. FillSell Cloud publie pendant le créneau, sans ordinateur.",
     jourCourt: ['L', 'M', 'M', 'J', 'V', 'S', 'D'], jourLong: ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'],
   },
   en: {
@@ -31,6 +34,7 @@ const MOTS = {
     enregistre: 'Schedule saved.', erreur: 'Not saved: try again in a moment.',
     horairesFaux: 'The end time must come after the start time.', joursVides: 'Pick at least one day.',
     note: 'Your quota is counted when you send, as today. Turning scheduling off frees your queue: everything goes out in turn. Chrome must be open on your computer during the slot.',
+    noteCloud: 'Your quota is counted when you send, as today. Turning scheduling off frees your queue: everything goes out in turn. FillSell Cloud publishes during the slot, no computer needed.',
     jourCourt: ['M', 'T', 'W', 'T', 'F', 'S', 'S'], jourLong: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
   },
 };
@@ -44,6 +48,7 @@ const fuseauLocal = () => { try { return Intl.DateTimeFormat().resolvedOptions()
 export default function SousPagePublicationProgrammee({ c }) {
   const lang = c.lang === 'en' ? 'en' : 'fr';
   const T = MOTS[lang];
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   const { brut, regler } = usePublicationProgrammee(c.user?.id ?? null);
   const actif = brut?.actif === true;
   const [creneau, setCreneau] = useState(undefined);
@@ -149,7 +154,7 @@ export default function SousPagePublicationProgrammee({ c }) {
             {faute ? <div role="alert" style={{ fontSize: 12.5, color: R.negatifTexte, fontWeight: 600 }}>{faute}</div> : null}
             <Bouton onClick={enregistrer} enCours={enCours} style={{ width: '100%' }}>{T.enregistrer}</Bouton>
           </Carte>
-          <Note>{T.note}</Note>
+          <Note>{cloud ? T.noteCloud : T.note}</Note>
         </Groupe>
       )}
     </>

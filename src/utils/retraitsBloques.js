@@ -36,6 +36,9 @@
 // plateforme, même lien) : un retrait plus récent qui a abouti éteint l'ancien.
 // Pur (Node + Vite) : scripts/retraits-bloques-connexion-selftest.mjs.
 
+import { estClientCloud } from '../cloud/connexionsCloud.js';
+import { retraitsPourLeCloud } from './retraitsCloud.js';
+
 export const NOMS_PLATEFORME_RETRAIT = Object.freeze({
   vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop',
 });
@@ -289,7 +292,7 @@ export function retraitsBloquesParConnexion({ jobs = [], fiches = null, maintena
  * sinon (fiche supprimée, retrait demandé d'un article en stock) on ne dit
  * pas « vendu » à tort : « annonces dont tu as demandé le retrait ».
  */
-export function texteRetraitsBloques(groupe, lang = 'fr') {
+function texteRetraitsBloquesBrut(groupe, lang = 'fr') {
   if (!groupe?.lignes?.length) return null;
   const fr = lang !== 'en';
   const n = groupe.lignes.length;
@@ -365,7 +368,7 @@ export function texteRetraitsBloques(groupe, lang = 'fr') {
 }
 
 /** La ligne de la carte d'un article vendu dont le retrait attend. */
-export function ligneCarteRetraitBloque(platform, lang = 'fr', mur = 'connexion', boutique = null) {
+function ligneCarteRetraitBloqueBrut(platform, lang = 'fr', mur = 'connexion', boutique = null) {
   const nom = nomDe(platform);
   // (12/10 soir) Rattachée à une fiche déjà vendue : le retrait attend l'accord.
   if (mur === 'a_retirer') {
@@ -409,7 +412,7 @@ export function ligneCarteRetraitBloque(platform, lang = 'fr', mur = 'connexion'
 }
 
 /** Titre et détail de la ligne « À régler ». */
-export function ligneARegler(bloques, lang = 'fr') {
+function ligneAReglerBrut(bloques, lang = 'fr') {
   const fr = lang !== 'en';
   const n = bloques?.total ?? 0;
   const noms = (bloques?.parPlateforme ?? []).map((g) => g.nom);
@@ -636,7 +639,7 @@ export function articlesVendusEncoreEnLigne({ retraits = null, pendingRemovals =
 }
 
 /** Le détail de la ligne « À régler » d'un article vendu encore en ligne. */
-export function detailArticleVenduEnLigne(article, lang = 'fr') {
+function detailArticleVenduEnLigneBrut(article, lang = 'fr') {
   const fr = lang !== 'en';
   const pfs = article?.plateformes ?? [];
   if (!pfs.length) return null;
@@ -685,3 +688,10 @@ export function retraitsHorsArticlesVendus(retraits, articles = []) {
   const parArticle = new Map([...(retraits?.parArticle ?? new Map())].filter(([k]) => !ids.has(String(k))));
   return { total: parPlateforme.reduce((t, g) => t + g.lignes.length, 0), parPlateforme, parArticle };
 }
+
+// ── (08/11, U3 de Nico) Les textes de retrait dits à un client FillSell Cloud : jamais Chrome ni « ton ordinateur »
+// (utils/retraitsCloud.js). Rien ne change pour les autres comptes.
+export const texteRetraitsBloques = (...a) => retraitsPourLeCloud(texteRetraitsBloquesBrut(...a), estClientCloud());
+export const ligneCarteRetraitBloque = (...a) => retraitsPourLeCloud(ligneCarteRetraitBloqueBrut(...a), estClientCloud());
+export const ligneARegler = (...a) => retraitsPourLeCloud(ligneAReglerBrut(...a), estClientCloud());
+export const detailArticleVenduEnLigne = (...a) => retraitsPourLeCloud(detailArticleVenduEnLigneBrut(...a), estClientCloud());

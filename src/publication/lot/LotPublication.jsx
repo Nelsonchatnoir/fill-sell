@@ -100,6 +100,8 @@ import { noterGeste } from "../../utils/dernierGeste";
 import { useChoixPoidsLeboncoin } from "../../utils/useChoixPoidsLeboncoin";
 import { usePublicationProgrammee } from "../../utils/usePublicationProgrammee";
 import { montantAnglais } from "../../utils/montants";
+// (08/11, U3 de Nico) Un client FillSell Cloud n'a ni ordinateur ni Chrome : ses textes parlent de FillSell Cloud.
+import { useConnexionsCloudPartage } from "../../cloud/useConnexionsCloud";
 import {
   cleColisRetenu, grilleColisVinted, chargerGrilleColisRelevee, colisRetenusDuProfil, colisRetenuDuRayon,
   colisVintedDeLaFiche, semerColisRetenus, colisRetenusEnCache, retenirColisVinted,
@@ -288,6 +290,7 @@ function EcranDuLot({
 }) {
   const { userId, supabase, lang } = ctx;
   const en = lang === "en";
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   const L = LIBELLE_PHASE[en ? "en" : "fr"];
   // (11/10 soir, Nico) Le poids Leboncoin : « Laisser Leboncoin estimer » (par
   // défaut) ou « Saisir le poids », retenu pour le compte. Le bilan de chaque
@@ -1255,7 +1258,9 @@ function EcranDuLot({
       if (prets.length && programme) cta = cta.replace(/^Envoyer/, "Programmer").replace(/^Send/, "Schedule");
       onCta = envoyer;
       if (aCompleter.length && prets.length) sous = [en ? `The ${aCompleter.length} others stay in your stock, prepared: nothing is lost.` : `${aCompleter.length > 1 ? `Les ${aCompleter.length} autres restent` : "L'autre reste"} dans ton stock, préparé${aCompleter.length > 1 ? "s" : ""} : rien n'est perdu.`];
-      else if (prets.length) sous = [en ? "The FillSell extension then posts them from your computer, one after the other." : "L'extension FillSell les dépose ensuite depuis ton ordinateur, une après l'autre."];
+      else if (prets.length) sous = [cloud
+        ? (en ? "FillSell Cloud then posts them, one after the other: no computer needed." : "FillSell Cloud les dépose ensuite, une après l'autre : plus besoin d'ordinateur.")
+        : (en ? "The FillSell extension then posts them from your computer, one after the other." : "L'extension FillSell les dépose ensuite depuis ton ordinateur, une après l'autre.")];
       if (prets.length && programme) {
         const nom = { matin: en ? "morning " : "du matin", midi: en ? "midday " : "de midi", soir: en ? "evening " : "du soir" }[programmation.reglage.creneau] ?? "";
         const plafond = programmation.reglage.plafond_jour;
@@ -1265,7 +1270,9 @@ function EcranDuLot({
       }
       if (!prets.length && enOrigine && !aCompleter.length) {
         sous = [sansLecteurIci
-          ? (en ? "For each item: write your description, have FillSell write it, or wait for your computer." : "Pour chaque article : écris ta description, fais-la rédiger par FillSell, ou attends ton ordinateur.")
+          ? (cloud
+            ? (en ? "For each item: write your description, have FillSell write it, or wait for FillSell Cloud to read it." : "Pour chaque article : écris ta description, fais-la rédiger par FillSell, ou attends que FillSell Cloud la lise.")
+            : (en ? "For each item: write your description, have FillSell write it, or wait for your computer." : "Pour chaque article : écris ta description, fais-la rédiger par FillSell, ou attends ton ordinateur."))
           : pontMort
             ? (en ? "Reload the page (above): your batch is kept." : "Recharge la page (plus haut) : ton lot est gardé.")
             : (en ? "Each item is ready with YOUR text as soon as its listing is read. If reading drags on, each item lets you write the description yourself or remove it from the batch." : "Chaque article est prêt avec TON texte dès que son annonce est lue. Si la lecture traîne, chaque article te propose d'écrire la description toi-même ou de le retirer du lot.")];
@@ -1407,6 +1414,7 @@ export function EcranPlateformes({
   // (04/11, grille à 3 jauges) { jauges, palier, configJauges, nbPlateformes(id) } — null sans la grille : rendu d'avant.
   grille = null,
 }) {
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   const n = donnees.length;
   const vus = donnees.slice(0, 6);
   const ann = quotas?.annonces ?? null;
@@ -1519,13 +1527,17 @@ export function EcranPlateformes({
                 </button>
                 {on && p === "depop" && depopAAutoriser && (
                   <div className="fsn-pf-sous" style={{ marginTop: 6 }}>
-                    <span>{en ? "Depop needs your permission on your computer, once: its listings will wait for it, then go out on their own." : "Depop demande ton autorisation sur ton ordinateur, une seule fois : ses annonces l'attendront, puis partiront toutes seules."}</span>
-                    <div className="fsn-pf-geste"><BoutonMeConnecter userId={userId} platform="depop" motif={MOTIFS.AUTORISER_DEPOP} lang={lang} variante="bouton" /></div>
+                    <span>{cloud
+                      ? (en ? "Depop isn't connected to FillSell Cloud yet: its listings will wait for it, then go out on their own." : "Depop n'est pas encore connecté à FillSell Cloud : ses annonces l'attendront, puis partiront toutes seules.")
+                      : (en ? "Depop needs your permission on your computer, once: its listings will wait for it, then go out on their own." : "Depop demande ton autorisation sur ton ordinateur, une seule fois : ses annonces l'attendront, puis partiront toutes seules.")}</span>
+                    <div className="fsn-pf-geste"><BoutonMeConnecter userId={userId} platform="depop" motif={cloud ? MOTIFS.CONNEXION : MOTIFS.AUTORISER_DEPOP} lang={lang} variante="bouton" /></div>
                   </div>
                 )}
                 {on && sessionFermee && !(p === "depop" && depopAAutoriser) && (
                   <div className="fsn-pf-sous" style={{ marginTop: 6 }}>
-                    <span>{en ? `You're signed out of ${NOM(p)} on your computer: its listings will wait for you.` : `Tu n'es pas connecté à ${NOM(p)} sur ton ordinateur : ses annonces t'attendront.`}</span>
+                    <span>{cloud
+                      ? (en ? `${NOM(p)} isn't connected to FillSell Cloud: its listings will wait for you.` : `${NOM(p)} n'est pas connecté à FillSell Cloud : ses annonces t'attendront.`)
+                      : (en ? `You're signed out of ${NOM(p)} on your computer: its listings will wait for you.` : `Tu n'es pas connecté à ${NOM(p)} sur ton ordinateur : ses annonces t'attendront.`)}</span>
                     <div className="fsn-pf-geste"><BoutonMeConnecter userId={userId} platform={p} lang={lang} variante="bouton" /></div>
                   </div>
                 )}
@@ -1555,7 +1567,9 @@ export function EcranPlateformes({
             )}
             {!murLa && <div className="fsn-small">{c.regle}</div>}
             {duree && annoncesPrevues > 0 && (
-              <div className="fsn-card-p">{en ? `With your computer on: ${duree}, one listing after the other.` : `Avec ton ordinateur allumé : ${duree}, une annonce après l'autre.`}</div>
+              <div className="fsn-card-p">{cloud
+                ? (en ? `With FillSell Cloud: ${duree}, one listing after the other.` : `Avec FillSell Cloud : ${duree}, une annonce après l'autre.`)
+                : (en ? `With your computer on: ${duree}, one listing after the other.` : `Avec ton ordinateur allumé : ${duree}, une annonce après l'autre.`)}</div>
             )}
           </Carte>
         );
@@ -1576,7 +1590,9 @@ export function EcranPlateformes({
           </div>
         )}
         {duree && annoncesPrevues > 0 && (
-          <div className="fsn-card-p">{en ? `With your computer on: ${duree}, one listing after the other.` : `Avec ton ordinateur allumé : ${duree}, une annonce après l'autre.`}</div>
+          <div className="fsn-card-p">{cloud
+                ? (en ? `With FillSell Cloud: ${duree}, one listing after the other.` : `Avec FillSell Cloud : ${duree}, une annonce après l'autre.`)
+                : (en ? `With your computer on: ${duree}, one listing after the other.` : `Avec ton ordinateur allumé : ${duree}, une annonce après l'autre.`)}</div>
         )}
       </Carte>}
 
@@ -1589,7 +1605,9 @@ export function EcranPlateformes({
       )}
       {extensionNeverSeen !== true && extEndormie && (
         <Carte gravite="info">
-          <div className="fsn-card-p">{en
+          <div className="fsn-card-p">{cloud
+            ? (en ? "FillSell Cloud isn't responding right now: the listings will go out as soon as it's back." : "FillSell Cloud ne répond pas pour l'instant : les annonces partiront dès qu'il reprend.")
+            : en
             ? "Your computer seems off: the listings will go out next time Chrome opens."
             : "Ton ordinateur semble éteint : les annonces partiront à la prochaine ouverture de Chrome."}</div>
         </Carte>
@@ -1923,6 +1941,7 @@ function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot, horloge = 0
 // Un article qui attend une réponse : SES questions, posées par le même bloc
 // que le stepper, plus ce que le lot ajoute (texte à relire, prix, jumeau).
 export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot, lecture = null, poserPoids = null }) {
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   if (!m) return null;
   const motifs = st?.motifs ?? [];
   const aPoids = motifs.some((x) => x.cle === "poids");
@@ -1984,7 +2003,9 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
                 // Ta description vit sur Vinted, et CET appareil ne peut pas la
                 // lire (pas d'extension : un téléphone) — on dit où elle se lit.
                 : lecture?.note === "vinted_sans_extension"
-                  ? (en ? "Your description is on Vinted and is read from your computer, where the FillSell extension runs. This one was written from your photos and your title: check it, or prepare this batch from your computer." : "Ta description est sur Vinted et se lit depuis ton ordinateur, là où tourne l'extension FillSell. Celle-ci a été écrite d'après tes photos et ton titre : relis-la, ou prépare ce lot depuis ton ordinateur.")
+                  ? (cloud
+                    ? (en ? "Your Vinted description hasn't been read by FillSell Cloud yet. This one was written from your photos and your title: check it before it goes out." : "Ta description Vinted n'a pas encore été lue par FillSell Cloud. Celle-ci a été écrite d'après tes photos et ton titre : relis-la avant qu'elle parte.")
+                    : (en ? "Your description is on Vinted and is read from your computer, where the FillSell extension runs. This one was written from your photos and your title: check it, or prepare this batch from your computer." : "Ta description est sur Vinted et se lit depuis ton ordinateur, là où tourne l'extension FillSell. Celle-ci a été écrite d'après tes photos et ton titre : relis-la, ou prépare ce lot depuis ton ordinateur."))
                   : lecture?.note === "pont_mort"
                     ? (en ? "Your FillSell extension was just updated and this page can no longer reach it, so your Vinted description couldn't be read from here. This one was written from your photos and your title: check it — or reload the page to read yours." : "Ton extension FillSell vient d'être mise à jour et cette page ne la joint plus : ta description Vinted n'a pas pu être lue d'ici. Celle-ci a été écrite d'après tes photos et ton titre : relis-la — ou recharge la page pour lire la tienne.")
                   : lecture?.note === "sans_description"
@@ -2523,6 +2544,7 @@ function PliDuLot({ en, titre, resume, ouvertDOffice = false, children }) {
 // ═══ ÉCRAN 3 — « C'EST PARTI » ═══════════════════════════════════════════════
 // (04/11, grille à 3 jauges) `grille` vrai : « N publications en file » (le mot « annonce » appartient à la jauge IA).
 export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen, ebayParServeur, onOuvrirArticle, remise, grille = false }) {
+  const { clientCloud: cloud } = useConnexionsCloudPartage();
   const envoyes = lot.ids.filter((id) => etats[id]?.phase === "envoye");
   const annonces = envoyes.reduce((n, id) => n + (etats[id]?.envoyees?.length ?? 0), 0);
   const deCote = lignes.filter((id) => etats[id]?.phase !== "envoye");
@@ -2535,7 +2557,9 @@ export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen,
           ? (grille ? titreFinDuLot(annonces, en ? "en" : "fr") : en ? `${annonces} listing${annonces > 1 ? "s" : ""} queued` : `${annonces} annonce${annonces > 1 ? "s" : ""} en file`)
           : (en ? "Nothing was sent" : "Rien n'est parti")}</h2>
         {annonces > 0 && (
-          <p className="fsn-lead">{extensionNeverSeen === true
+          <p className="fsn-lead">{cloud
+            ? (en ? "FillSell Cloud posts them one after the other, no computer needed — you follow each listing here, in FillSell." : "FillSell Cloud les dépose une après l'autre, sans ordinateur, et tu suis chaque annonce ici, dans FillSell.")
+            : extensionNeverSeen === true
             ? (en ? "They'll go out as soon as the FillSell extension is installed on your computer." : "Elles partiront dès que l'extension FillSell sera installée sur ton ordinateur.")
             : ebayParServeur && envoyes.every((id) => (etats[id]?.envoyees ?? []).every((p) => p === "ebay"))
               ? (en ? "eBay listings go out from our servers, even with your computer off." : "Les annonces eBay partent de nos serveurs, même ordinateur éteint.")

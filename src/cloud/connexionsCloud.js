@@ -148,3 +148,6 @@ export function gardeSyncCloud(pf = null, lang = 'fr') {
 export function ouvrirConnexionCloud(origine = 'synchroniser') {
   try { ouvreur?.(origine); } catch { /* rien à ouvrir */ }
 }
+
+/** Le compte courant est-il un client FillSell Cloud (état publié par l'app) ? Pour les règles pures des textes. */
+export const estClientCloud = () => partage.clientCloud === true;
