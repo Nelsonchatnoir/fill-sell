@@ -186,3 +186,23 @@ vente le 07/11 au soir. Les 4 achats en cours n'ont pas été touchés.
 3. **Les 4 achats en cours de Louis** (3295743872, 3295398035, 3298021777, 3297234692) : rien à faire. Ils partiront
    d'eux-mêmes dès que leur vente sera close et leur annonce retirée, soit par Louis, soit par la règle 2 une fois
    allumée.
+
+## Suite du 08/11 (feux verts nommés de Nico)
+- **Correction avant déploiement** : « À toi de jouer : supprime-la sur Leboncoin » ne s'affiche JAMAIS pendant un achat
+  en cours. Personne n'a vérifié ce qu'une suppression fait à une vente pas finie. L'app y dit seulement « En pause :
+  achat en cours chez Leboncoin — l'article repartira quand la vente sera terminée », à toute ancienneté. La borne de
+  48 h ne vaut que pour une vente close (« sold »). Selftest `etat-job` : 1 h, 49 h, 30 jours, français et anglais.
+  Commit c8fc41d.
+- **Code en service vérifié identique à main d'avant le lot (2206d89)**, fichier par fichier : get-pending-jobs v350
+  166/166, handler-watch v184 130/130. Aucun fichier en cours du terminal Cloud dans leurs graphes d'imports.
+- **Déployé** (versions lues avant et après) :
+  - get-pending-jobs v350 → **v351**, `verify_jwt` true, à 10:33:05 ;
+  - handler-watch v184 → **v185**, `verify_jwt` false, à 10:33:21.
+- **`RETIRER_VENDUES_CLOSES` ALLUMÉ** pour tous les comptes. Premier passage à 10:36 : **rien d'armé**, aucune erreur.
+  Les seules remises en attente du parc sont les 4 de Louis, toutes « achat en cours », et la garde l'interdit.
+- Premier passage de get-pending-jobs v351 chez Louis à 10:34:26 : les 4 remises retenues, raison posée une fois
+  (`vente_en_cours`). Aucun relevé de plus n'a été demandé : le dernier avait été mis en file à 10:25.
+- Les 5 annonces remises en vente sont vues en ligne par la veille (07:01) et par le relevé (10:27).
+- **Extension 0.6.180** refaite avec la correction (BUILD_ID `2026-11-08T09:35:38Z+42fa425`, 613 Ko, 37 entrées). Seul
+  zip à téléverser : `C:\Users\nicol\fill-and-sell\build\CWS-0.6.180-A-TELEVERSER\fillsell-extension-0.6.180-cws.zip`.
+  La 0.6.179 est rangée dans `build/anciens-zips/CWS-0.6.179-A-TELEVERSER`.
