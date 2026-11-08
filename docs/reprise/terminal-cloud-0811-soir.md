@@ -4,6 +4,18 @@ Rédigé le 08/11 vers 20:15 (heure de Paris), à la demande de Nico, pour une s
 terminé** (dernière mise à jour : 08/11 20:4x, migration 20261108200000 appliquée). Tout ce qui suit a été relu
 en prod au moment d'écrire, sauf mention contraire.
 
+## 000. NUIT EN AUTONOMIE (Nico valide tout, 08/11 ~23:55 → matin) — avancement
+1. Push c6deec5 / 0658714 / f6f45e3 : FAIT (f574e40..f6f45e3, 23:5x).
+2. Play Console vc37 : « Enregistrer » puis « Envoyer 14 modifications pour examen » FAIT (~23:57) ; état « Modifications en
+   cours d'examen » (vérifications rapides de Google, puis envoi). ⚠️ « Publication gérée » ACTIVÉE : une fois validée par
+   Google, la mise en ligne attend un clic « Publier » (vue d'ensemble de la publication). Brouillon vc33 (tests
+   internes), fiche, prix, pays : non touchés.
+3. Copie Cloud **0.6.183-cloud** (CRX 0.6.183.44921, commit f6f45e3) en service sur cloud-2 (23:55) ; postes de Nico et
+   Virginie rouverts seuls en ~5 s sur la copie neuve. 2e preuve sur poste NEUF (Nicotest,
+   `scripts/reparations/20261108p_nicotest_preuve_sso*.sql`, remis comme avant) : Vinted→Google, Leboncoin→Apple,
+   Beebs→Google, Depop→Apple, chaque page du fournisseur en 390×844 ; aucun refus, aucune boucle, aucune erreur ; le refus
+   des cookies de Vinted marche (clique:true).
+
 ## 00. URGENCES DE LA NUIT (08/11, après 22:30) — jade60890 perdue, poste Cloud pris pour une extension
 **A. « Boucle » Vinted (jade60890, iPhone, essai Apple 22:15:23 → arrêté 22:18)** — CORRIGÉ, DÉPLOYÉ, PROUVÉ.
 - Cause (journal orchestrateur 21:15:50-56 UTC) : « Continuer avec Google » de Vinted ouvre `www.vinted.fr/web/api/auth/
