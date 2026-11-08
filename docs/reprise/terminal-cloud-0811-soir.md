@@ -66,7 +66,18 @@ en prod au moment d'écrire, sauf mention contraire.
    ordinateur », « ça tourne tout seul, Chrome ouvert », « Ton ordinateur les republie une à une », menu « Voir la file
    de l'ordinateur ».
 6. **ORDRE DE NICO (08/11 20:2x)** : (a) **C2 d'abord** — 3 maquettes animées du bandeau « NOUVEAU · FillSell Cloud »
-   en Artifacts, donner les liens et **ATTENDRE son choix avant d'intégrer** ; (b) C1 (« plus besoin d'ordinateur »
+   en Artifacts, donner les liens et **ATTENDRE son choix avant d'intégrer** ; **FAIT 20:4x** : toile
+   https://claude.ai/artifact/KeD76ohqxxTNmmFEVsjVQh (A « Lueur » = bande encre + reflet toutes les 7 s ; B « Le relais »
+   = encart menthe, le PC se ferme et le nuage prend le relais ; C « Halo » = carte blanche, liseré lumineux qui tourne,
+   deux phrases qui défilent), chacune en web/iPhone × clair/sombre, refermable, rejouable. Sources :
+   scratchpad `c2-bandeau/project/*.dc.html` (session du 08/11). **EN ATTENTE DU CHOIX DE NICO** — rien intégré.
+   Règles d'affichage à coder ensuite (spéc. de Nico) : haut du Tableau pour tout compte sans Cloud (tous paliers) ; jamais
+   pour un client Cloud (essai ou payant) ; refermé = 7 jours ; masqué là où le Cloud ne se vend pas (Android tant que la
+   vc36/vc37 n'est pas publiée, binaire < 2.9.164, plus de place → rien ou liste d'attente, à proposer) ; usage_logs : vu,
+   clic, fermeture (une ligne chacun dans le rapport). L'app est claire partout (décision du 29/10) : le sombre n'est
+   montré que parce que Nico l'a demandé.
+   Effet de la migration 20261108200000 vérifié en prod : au signe de vie de 20:38:52, les 2 postes actifs ont perdu
+   details.raison (« arret_orchestrateur ») ; derniere_erreur nulle. (b) C1 (« plus besoin d'ordinateur »
    partout), C3 (Cloud visible en Business), C4 (voir les autres formules et pouvoir descendre) ; (c) jauges, puis landing.
    **C1-C4, jauges et landing** : le travail en cours est dans `git stash@{0}` (« C1 textes Cloud + jauges/landing WIP »).
    C1 avait des selftests rouges à reprendre (cloud-ecrans, cloud-prix-nom, onboarding-trois-jauges, essai-testflight-0711,
