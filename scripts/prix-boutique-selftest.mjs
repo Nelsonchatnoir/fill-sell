@@ -82,6 +82,29 @@ try {
   ok(!/€/.test(enChargement) && /…/.test(enChargement), 'MOBILE, chargement : la feuille des offres n’écrit aucun « € », elle montre « … »', enChargement.slice(0, 300));
   ok(/data-prix-pret="0"/.test(brut) && !/data-prix-pret="1"/.test(brut) && /disabled=""/.test(brut), 'MOBILE, chargement : chaque bouton d’achat est inactif');
 
+  // ── 1 bis. (09/11, condition de Nico avant l'OTA 2.9.168) LECTURE APPLE EN ÉCHEC : l'écran d'achat reste utilisable ──
+  P.poserPrixBoutique({ canal: 'apple', statut: 'echec', prix: {} });
+  ok(P.prixAffiche('pro', 'fr') === '29,99 €' && P.prixAffiche('cloud', 'en') === '€24.99' && P.prixPret('premium') && P.prixPret('business') && P.prixPret('cloud'),
+    'iPHONE, lecture Apple en échec : prix de repli (ceux de la 2.9.166, validés par Apple), chaque achat possible');
+  ok(P.essaiBoutiqueOffert('cloud') === true && P.prixOuChargement('cloud') === '24,99 €', 'iPHONE en échec : l’essai suit le serveur (comme avant le 08/11), aucun « … » sans fin');
+  const repli = modale('fr');
+  ok(/data-prix-pret="1"/.test(repli) && !/data-prix-pret="0"/.test(repli) && /29,99/.test(texte(h(CM.default, { isOpen: true, onClose() {}, onUpgrade() {}, lang: 'fr', userId: 'u1' }))),
+    'iPHONE en échec : la feuille des offres se rend sans erreur, prix de repli affichés, boutons d’achat ACTIFS');
+  P.poserPrixBoutique({ canal: 'apple', statut: 'pret', prix: { pro: { texte: '$29.99', montant: 29.99, devise: 'USD', essai: false } } });
+  ok(P.prixAffiche('pro') === '$29.99' && P.prixAffiche('cloud') === '24,99 €' && P.prixPret('cloud'), 'iPHONE, réponse partielle (Cloud absent) : le lu fait foi, le manquant prend le repli');
+  P.poserPrixBoutique({ canal: 'google', statut: 'echec', prix: {} });
+  ok(P.prixAffiche('pro') === null && !P.prixPret('cloud') && P.prixOuChargement('cloud') === '…' && !P.essaiBoutiqueOffert('cloud'),
+    'ANDROID en échec : JAMAIS de prix de repli (règle Google, refus de la vc36) — « … », achat inactif');
+  // La lecture bornée : rejet, silence et exception levée d'un coup deviennent un échec, jamais une attente sans fin.
+  const issue = (p) => p.then(() => 'ok', (e) => `rejet:${e?.message ?? e}`);
+  ok(await issue(P.avecDelai(() => Promise.reject(new Error('StoreKit')), 200)) === 'rejet:StoreKit', 'lecture rejetée par StoreKit → échec');
+  ok(await issue(P.avecDelai(() => new Promise(() => {}), 150)) === 'rejet:delai_lecture_prix', 'lecture sans réponse → échec au bout du délai');
+  ok(await issue(P.avecDelai(() => { throw new Error('module absent'); }, 200)) === 'rejet:module absent', 'module natif qui lève d’un coup (vieux binaire) → échec, aucune exception');
+  ok(await issue(P.avecDelai(() => Promise.resolve({ products: [] }), 200)) === 'ok', 'réponse dans le délai → transmise');
+  const CHG = lire('src/lib/chargerPrixBoutique.js');
+  ok(/export const DELAI_LECTURE_MS = 8_000;/.test(CHG) && /enVol = avecDelai\(\(\) => NativePurchases\.getProducts\(/.test(CHG)
+    && /poserPrixBoutique\(\{ canal, statut: 'echec'/.test(CHG), 'le chargeur natif borne la lecture à 8 s et pose « echec » (→ repli iPhone)');
+
   // ── 2. Téléphone hors zone euro ───────────────────────────────────────────
   for (const [canal, produits, ids] of [['google', GOOGLE_USD, IDS_GOOGLE], ['apple', APPLE_USD, IDS_APPLE]]) {
     P.poserPrixBoutique({ canal, statut: 'pret', prix: P.lireProduitsBoutique(produits, { canal, ids }) });

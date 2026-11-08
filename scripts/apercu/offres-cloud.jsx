@@ -12,6 +12,7 @@ import { lireInterrupteurs } from '../../src/config/interrupteurs';
 import { noterBinaireCloud } from '../../src/config/cloudOffer';
 import { droitsDuPalier } from '../../src/utils/palier';
 import { supabase } from '../../src/lib/supabase';
+import { poserPrixBoutique } from '../../src/lib/prixBoutique';
 import '../../src/base.css';
 import '../../src/App.redesign.css';
 
@@ -42,6 +43,8 @@ try { localStorage.clear(); } catch { /* rien */ }
 window.__gestes = [];
 const geste = (nom) => (...a) => { window.__gestes.push({ nom, a: a.map((x) => (typeof x === 'object' ? JSON.stringify(x) : x)) }); };
 
+// (09/11) ?canal=apple-echec : l'iPhone dont la lecture des prix chez Apple a échoué (repli de lib/prixBoutique.js).
+if (p.get('canal') === 'apple-echec') poserPrixBoutique({ canal: 'apple', statut: 'echec', prix: {} });
 await lireInterrupteurs(supabase);
 await noterBinaireCloud('web', 'web');
 const droits = droitsDuPalier(palier === 'free' ? 'gratuit' : palier);

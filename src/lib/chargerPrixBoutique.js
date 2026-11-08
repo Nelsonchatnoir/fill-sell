@@ -4,11 +4,12 @@
 import { Capacitor } from '@capacitor/core';
 import { NativePurchases } from '@capgo/native-purchases';
 import { PRODUCT_IDS } from './iap';
-import { poserPrixBoutique, lirePrixBoutique, lireProduitsBoutique } from './prixBoutique';
+import { poserPrixBoutique, lirePrixBoutique, lireProduitsBoutique, avecDelai } from './prixBoutique';
 
 // Le Cloud : même identifiant Apple et Google (cloud/achatCloud.js, PRODUIT_CLOUD).
 export const ID_CLOUD_BOUTIQUE = 'app.fillsell.cloud.sub';
 const RELECTURE_MIN_MS = 60_000;
+export const DELAI_LECTURE_MS = 8_000;
 let enVol = null;
 let derniereTentative = 0;
 
@@ -27,7 +28,10 @@ export function chargerPrixBoutique({ force = false } = {}) {
   derniereTentative = Date.now();
   if (e.canal !== canal) poserPrixBoutique({ canal, statut: 'chargement', prix: {} });
   const ids = idsBoutique();
-  enVol = NativePurchases.getProducts({ productIdentifiers: Object.values(ids), productType: 'subs' })
+  // (09/11, repli de l'iPhone) Une lecture qui ne répond pas en DELAI_LECTURE_MS vaut un échec : sur iPhone, l'écran
+  // d'achat passe au prix de repli (lib/prixBoutique.js repliApple) au lieu de rester sur « … » sans fin.
+  // Un module natif absent ou qui lève d'un coup (vieux binaire) devient un échec, jamais une exception (avecDelai).
+  enVol = avecDelai(() => NativePurchases.getProducts({ productIdentifiers: Object.values(ids), productType: 'subs' }), DELAI_LECTURE_MS)
     .then(({ products }) => {
       const prix = lireProduitsBoutique(products, { canal, ids });
       poserPrixBoutique({ canal, statut: Object.keys(prix).length ? 'pret' : 'echec', prix });

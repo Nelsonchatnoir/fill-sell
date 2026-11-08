@@ -43,11 +43,22 @@ export const lirePrixBoutique = () => etat;
 export function abonnerPrixBoutique(f) { abonnes.add(f); return () => { abonnes.delete(f); }; }
 export const estCanalBoutique = (e = etat) => e.canal === 'apple' || e.canal === 'google';
 
+// (09/11/2026 nuit, condition de Nico avant l'OTA 2.9.168) LE REPLI DE L'iPHONE : si la lecture des prix chez Apple
+// ÉCHOUE (erreur, réponse vide ou sans ce produit, plus de DELAI_LECTURE_MS — lib/chargerPrixBoutique.js), l'écran
+// d'achat reste UTILISABLE : le prix affiché redevient celui qu'affichait l'app jusqu'à la 2.9.166 (euros, validé par
+// Apple), le bouton d'achat agit, et l'essai suit la décision du serveur (comme avant le 08/11). La feuille de paiement
+// d'Apple montre, elle, le montant réel avant toute confirmation. ⛔ ANDROID JAMAIS : la règle de Google qui a refusé la
+// vc36 interdit un prix d'une autre monnaie que sa feuille — sur Android, « … » et achat inactif tant que rien n'est lu.
+export const repliApple = (produit, e = etat) => e.canal === 'apple'
+  && (e.statut === 'echec' || (e.statut === 'pret' && !(typeof e.prix?.[produit]?.texte === 'string' && e.prix[produit].texte.trim())));
+
 /** Le prix mensuel À AFFICHER (« 12,99 € », « $24.99 »…), ou null tant que la boutique ne l'a pas donné. */
 export function prixAffiche(produit, lang = 'fr', e = etat) {
   if (!estCanalBoutique(e)) return PRIX_WEB[produit]?.[lang === 'en' ? 'en' : 'fr'] ?? null;
   const t = e.prix?.[produit]?.texte;
-  return typeof t === 'string' && t.trim() ? t.trim() : null;
+  if (typeof t === 'string' && t.trim()) return t.trim();
+  if (repliApple(produit, e)) return PRIX_WEB[produit]?.[lang === 'en' ? 'en' : 'fr'] ?? null;
+  return null;
 }
 /** Le bouton d'achat peut-il agir ? (le prix est affiché) */
 export const prixPret = (produit, e = etat) => prixAffiche(produit, 'fr', e) != null;
@@ -62,6 +73,8 @@ export const prixGratuit = (lang = 'fr', e = etat) => (estCanalBoutique(e) ? (la
  */
 export function essaiBoutiqueOffert(produit = 'cloud', e = etat) {
   if (!estCanalBoutique(e)) return true;
+  // (09/11) Repli de l'iPhone : Apple n'a rien dit — l'essai suit la décision du serveur (comme jusqu'à la 2.9.166).
+  if (repliApple(produit, e)) return true;
   return e.prix?.[produit]?.essai === true;
 }
 
@@ -126,3 +139,12 @@ export function lireProduitsBoutique(products, { canal, ids }) {
 }
 
 export const versionPrixBoutique = () => version;
+
+/** (09/11, repli de l'iPhone) Appelle `appel()` et rend sa promesse, bornée à `ms` : une réponse qui n'arrive pas, un
+ *  rejet ou une exception levée d'un coup (module natif absent d'un vieux binaire) deviennent un REJET — jamais une
+ *  exception qui s'échappe, jamais une attente sans fin. Pur, testé (selftest:prix-boutique). */
+export function avecDelai(appel, ms) {
+  let minuteur = null;
+  const delai = new Promise((_, rejeter) => { minuteur = setTimeout(() => rejeter(new Error('delai_lecture_prix')), ms); });
+  return Promise.race([Promise.resolve().then(() => appel()), delai]).finally(() => clearTimeout(minuteur));
+}
