@@ -349,8 +349,10 @@ test('« Me connecter » : sans ticket valide, rien ne s\'ouvre', async () => {
   assert.equal(s.navigateurs.ouverts().length, 0);
 });
 
-test('« Me connecter » : jamais de boucle — 5 refus en 20 s arrêtent l’écran et le disent (05/10, Vinted /member/register)', async () => {
-  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+test('« Me connecter » : jamais de boucle — une page qui boucle : 2 nouveaux essais propres AVANT tout message, l’équipe prévenue, jamais « réessaie plus tard » (05/10 + 08/11 soir)', async () => {
+  const signalees = [];
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }],
+    alertes: { signaler: async (...a) => { signalees.push(a); return { envoye: true }; } } });
   const recus = [];
   const ws = { readyState: 1, bufferedAmount: 0, ecouteurs: {}, on(e, f) { this.ecouteurs[e] = f; },
     send(d) { recus.push(typeof d === 'string' ? JSON.parse(d) : { binaire: d }); }, close() { this.readyState = 3; this.ecouteurs.close?.(); } };
@@ -363,16 +365,59 @@ test('« Me connecter » : jamais de boucle — 5 refus en 20 s arrêtent l’é
   s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: 'ok1', frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.vinted.fr/member/register/select_type?ref_url=%2F' } } });
   await attendre(10);
   assert.ok(s.nav.cdp.envoyes.some((e) => e.methode === 'Fetch.continueRequest' && e.params.requestId === 'ok1'), '/member/register/select_type est permis');
-  // Une page qui renvoie sans cesse hors de la liste : arrêt au 5e refus.
-  for (let i = 1; i <= 7; i++) {
-    s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: `b${i}`, frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.vinted.fr/catalog?q=x' } } });
+  // Une page qui renvoie sans cesse hors de la liste, sans aucun toucher : au 5e refus, un NOUVEL ESSAI PROPRE (la page
+  // de connexion rechargée) ; idem au 10e ; au 15e seulement, le message (l'équipe prévenue) et la fermeture.
+  const refuser = async (de, a) => {
+    for (let i = de; i <= a; i++) {
+      s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: `b${i}`, frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.vinted.fr/catalog?q=x' } } });
+      await attendre(5);
+    }
+  };
+  const navs = () => s.nav.cdp.envoyes.filter((e) => e.methode === 'Page.navigate').length;
+  await refuser(1, 5);
+  assert.equal(navs(), 1 + 4 + 1, '4 retours à la page, puis 1 nouvel essai propre au 5e refus');
+  assert.ok(!recus.some((m) => m.t === 'etat' && m.etape === 'erreur'), 'aucune erreur montrée : on se rétablit d’abord');
+  assert.ok(recus.some((m) => m.t === 'etat' && /On relance proprement la page de connexion de Vinted/.test(m.message)), 'la personne lit seulement « on relance proprement »');
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'l’écran reste ouvert');
+  assert.ok(signalees.some(([n, t]) => n === 'serveur' && /boucle de navigation .* nouvel essai propre 1\/2/.test(t)), 'l’équipe est prévenue dès le 1er essai propre');
+  await refuser(6, 10);
+  assert.equal(navs(), 1 + 4 + 1 + 4 + 1, '2e nouvel essai propre au 10e refus');
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'toujours ouvert');
+  await refuser(11, 17);
+  assert.equal(navs(), 1 + 4 + 1 + 4 + 1 + 4, 'puis plus aucun renvoi au-delà');
+  const arret = recus.find((m) => m.t === 'etat' && m.etape === 'erreur');
+  assert.ok(arret && /L'équipe FillSell est prévenue/.test(arret.message) && !/réessaie plus tard/i.test(arret.message), 'le message final dit que l’équipe est prévenue, jamais « réessaie plus tard »');
+  assert.ok(signalees.some(([n, t]) => n === 'serveur' && /erreur montrée/.test(t)), 'l’erreur montrée part aussi à support@');
+  assert.ok(!s.connexions.connexionsOuvertes().has(U), 'l’écran est fermé');
+});
+
+test('« Me connecter » : un lien refusé juste après un TOUCHER n’est jamais une boucle — retour à la page, équipe prévenue (08/11 soir, jade60890, Vinted « Continuer avec Google »)', async () => {
+  const signalees = [];
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }],
+    alertes: { signaler: async (...a) => { signalees.push(a); return { envoye: true }; } } });
+  const recus = [];
+  const ws = { readyState: 1, bufferedAmount: 0, ecouteurs: {}, on(e, f) { this.ecouteurs[e] = f; },
+    send(d) { recus.push(typeof d === 'string' ? JSON.parse(d) : { binaire: d }); }, close() { this.readyState = 3; this.ecouteurs.close?.(); } };
+  s.connexions.brancher(ws, 'https://fillsell.app');
+  const ticket = signerTicket({ user: U }, config.cleTickets);
+  await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'ouvrir', ticket, plateforme: 'vinted', largeur: 390, hauteur: 780, dpr: 3 })), false);
+  await attendre(20);
+  const sid = s.nav.cdp.envoyes.find((e) => e.methode === 'Page.navigate').sessionId;
+  // Le bouton « Continuer avec Google » de Vinted : PERMIS désormais (son API d'authentification).
+  s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: 'g1', frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.vinted.fr/web/api/auth/google_authorize?state=x' } } });
+  await attendre(10);
+  assert.ok(s.nav.cdp.envoyes.some((e) => e.methode === 'Fetch.continueRequest' && e.params.requestId === 'g1'), '/web/api/auth/google_authorize est permis');
+  // Un lien vraiment hors connexion, touché 8 fois de suite : jamais une boucle, jamais une fermeture.
+  for (let i = 1; i <= 8; i++) {
+    await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'toucher', type: 'debut', x: 100, y: 200 })), false);
+    await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'toucher', type: 'fin', x: 100, y: 200 })), false);
+    s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: `t${i}`, frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.vinted.fr/catalog?q=x' } } });
     await attendre(5);
   }
-  const navigations = s.nav.cdp.envoyes.filter((e) => e.methode === 'Page.navigate').length;
-  assert.equal(navigations, 1 + 4, 'la page de connexion n’est renvoyée que 4 fois, jamais au-delà');
-  const arret = recus.find((m) => m.t === 'etat' && m.etape === 'erreur');
-  assert.ok(arret && /ne s'ouvre pas comme prévu/.test(arret.message), 'la personne lit pourquoi on s’arrête');
-  assert.ok(!s.connexions.connexionsOuvertes().has(U), 'l’écran est fermé');
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'l’écran reste ouvert');
+  assert.ok(!recus.some((m) => m.t === 'etat' && m.etape === 'erreur'), 'aucune erreur montrée');
+  assert.ok(recus.some((m) => m.t === 'etat' && /ne fait pas partie de la connexion à Vinted/.test(m.message)), 'la personne lit qu’elle reste sur la connexion');
+  assert.ok(signalees.some(([n, t]) => n === 'serveur' && /lien refusé après un toucher : www\.vinted\.fr\/catalog/.test(t)), 'l’équipe sait quel lien a été refusé');
 });
 
 // ── (01/11) Essai de Nico du 01/11 au soir : « connecté » sur le seul cookie, fenêtre fermée en pleine vérification ───

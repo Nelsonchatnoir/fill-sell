@@ -127,8 +127,15 @@ export function navigationPermise(plateforme, url, retours = []) {
   if (!def.hotesPermis.some((r) => r.test(hote))) return false;
   // Les hôtes d'authentification de la plateforme : en entier.
   if (/^(auth|accounts|api)\./.test(hote)) return true;
+  // (08/11/2026 soir, client jade60890 perdu) Les POINTS D'ENTRÉE DE CONNEXION de la plateforme elle-même, sur son site
+  // (Vinted : « Continuer avec Google » ouvre www.vinted.fr/web/api/auth/google_authorize, qui renvoie chez Google) : ils
+  // étaient refusés comme « pas la connexion » — 5 touchers, « boucle », et la cliente partie. Une API d'authentification
+  // de la plateforme ne sert QUE la connexion : permise, sur ses hôtes seulement.
+  if (CHEMIN_AUTH_PLATEFORME.test(u.pathname)) return true;
   return def.cheminsPermis.some((r) => r.test(u.pathname));
 }
+/** Les chemins d'API d'authentification d'une plateforme (/web/api/auth/…, /api/v1/oauth/…). */
+export const CHEMIN_AUTH_PLATEFORME = /^\/(web\/)?api\/(v\d+\/)?(auth|oauth2?)\//i;
 
 /** Pour le journal : l'hôte et le chemin, jamais la requête (elle porte des jetons). */
 export function urlPourJournal(url) {

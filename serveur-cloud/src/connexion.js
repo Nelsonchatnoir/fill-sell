@@ -84,6 +84,10 @@ export function ouverteParLaConnexion(targetInfo, idsConnexion) {
 
 export const REFUS_MAX = 5;
 export const REFUS_FENETRE_MS = 20_000;
+// (08/11/2026 soir) Un refus moins de GESTE_RECENT_MS après un toucher de la personne vient d'elle (un lien touché), pas
+// d'une page qui boucle. Une vraie boucle : REPRISES_PROPRES_MAX nouveaux essais propres avant tout message d'erreur.
+export const GESTE_RECENT_MS = 4_000;
+export const REPRISES_PROPRES_MAX = 2;
 // (01/11, « la touche effacer ne marche pas ») Le rejeu, lui, efface (mesuré dans Chromium : keyDown Backspace →
 // « bonjour mond ») ; c'est le téléphone qui n'envoyait rien (clientConnexion.js). Le clavier entier est rejoué : effacer
 // à droite, un mot (Ctrl+Retour arrière = l'effacement par mot de Chrome sous Linux), jusqu'au début de la ligne,
@@ -123,8 +127,10 @@ export const MESSAGES = Object.freeze({
     etapes: (nom) => `Termine les étapes demandées par ${nom} (code, téléphone…) : la page reste ouverte jusqu'au bout.`,
     pasConnecte: (nom) => `Tu n'es pas encore connecté à ${nom} : termine la connexion sur la page.`,
     reprise: 'Te revoilà : ta page de connexion est restée ouverte.',
-    bloquee: 'Cette page n\'est pas la connexion : on y revient.',
-    boucle: (nom) => `La page de connexion de ${nom} ne s'ouvre pas comme prévu. On arrête ici et on regarde de notre côté : réessaie plus tard.`,
+    // (08/11 soir, client jade60890 perdu) Plus jamais « réessaie plus tard » : le système se rétablit seul d'abord.
+    bloquee: (nom) => `Cette page ne fait pas partie de la connexion à ${nom} : tu restes sur la page de connexion.`,
+    reprisePropre: (nom) => `On relance proprement la page de connexion de ${nom}…`,
+    boucle: (nom) => `FillSell n'arrive pas à afficher la page de connexion de ${nom}. L'équipe FillSell est prévenue à l'instant et s'en occupe. En attendant, tu peux connecter tes autres plateformes.`,
     // (07/11 soir, ordre de Nico : un seul nom) « FillSell Cloud », jamais « l'option » ni « Sans ordinateur ».
     refuse: (nom) => `Ce compte ${nom} a déjà servi à un essai gratuit. L'essai s'arrête ; tu peux reprendre FillSell Cloud sans essai.`,
     inactif: 'FillSell Cloud n\'est pas actif sur ce compte.',
@@ -152,8 +158,9 @@ export const MESSAGES = Object.freeze({
     etapes: (nom) => `Finish the steps ${nom} asks for (code, phone…): the page stays open until you're done.`,
     pasConnecte: (nom) => `You're not signed in to ${nom} yet: finish signing in on the page.`,
     reprise: 'Welcome back: your sign-in page stayed open.',
-    bloquee: 'That page isn\'t the sign-in page: taking you back.',
-    boucle: (nom) => `The ${nom} sign-in page isn't opening as expected. We're stopping here and looking into it on our side: try again later.`,
+    bloquee: (nom) => `That page isn't part of signing in to ${nom}: you stay on the sign-in page.`,
+    reprisePropre: (nom) => `Reloading the ${nom} sign-in page cleanly…`,
+    boucle: (nom) => `FillSell can't show the ${nom} sign-in page. The FillSell team has just been alerted and is on it. Meanwhile, you can connect your other platforms.`,
     refuse: (nom) => `This ${nom} account was already used for a free trial. The trial stops; you can take FillSell Cloud without a trial.`,
     inactif: 'FillSell Cloud isn\'t active on this account.',
     occupe: 'Another sign-in was open: it has just been closed.',
@@ -285,6 +292,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     let numero = 0, enVol = 0, enAttente = null;
     let finie = false, connectee = false;
     let dernierGeste = Date.now();
+    let dernierToucher = 0;    // (08/11 soir) le dernier toucher / la dernière frappe DE LA PERSONNE (jamais l'ouverture)
     const debut = Date.now();
     let sonde = null, arreterEcoute = null, attenteRetour = null;
     let ligneJournal = null;
@@ -295,8 +303,21 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     let derniereEtape = { etape: 'demarrage', message: txt.demarrage };
 
     const refusNavigation = []; // instants des derniers refus de navigation (garde anti-boucle)
+    let reprisesPropres = 0;    // (08/11 soir) les nouveaux essais propres déjà faits contre une boucle
     const sessionDe = (sid) => [cible, ...fenetres].find((c) => c?.sessionId === sid) ?? null;
-    const etat = (etape, message) => { derniereEtape = { etape, message }; dire({ t: 'etat', etape, message }); };
+    // (08/11/2026 soir, client jade60890) L'ÉQUIPE SAIT TOUT DE SUITE : toute « erreur » montrée à la personne, quelle
+    // qu'en soit la cause (boucle, page qui ne répond pas…), et tout rétablissement automatique, partent à
+    // support@fillsell.app (alertes.js : au plus un mail par heure pour un même sujet). L'alerte du 08/11 (4391256) ne
+    // couvrait que l'ÉCHEC D'OUVERTURE : la « boucle » de 22:15:56 n'avait rien envoyé. Jamais un mail au client.
+    const alerterSupport = (cause) => {
+      Promise.resolve(alertes?.signaler('serveur', `« Me connecter » ${plateforme} — compte ${String(user).slice(0, 8)} : ${String(cause).slice(0, 200)}`,
+        { user, plateforme, cause: String(cause).slice(0, 300) })).catch(() => {});
+    };
+    const etat = (etape, message) => {
+      derniereEtape = { etape, message };
+      dire({ t: 'etat', etape, message });
+      if (etape === 'erreur') alerterSupport(`erreur montrée : ${String(message).slice(0, 160)}`);
+    };
     const avis = (cle, message) => { if (dernierAvis === cle) return; dernierAvis = cle; etat('info', message); };
 
     async function preparerCible(c) {
@@ -318,9 +339,23 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     // redimensionnée (Browser.setWindowBounds), AUCUNE émulation : ni mobile, ni écran inventé, ni taille simulée. Mesuré
     // au banc du 04/11 : avec Emulation.setDeviceMetricsOverride, la souris envoyée à la page arrive DÉCALÉE dans le cadre
     // DataDome hors processus (200,300 → 161,137) — la glissière n'aurait jamais bougé. Les autres : le téléphone, comme avant.
-    const appliquerFormat = (c) => (bureau ? mettreFenetreBureau(c)
-      : cdp.send('Emulation.setDeviceMetricsOverride', { width: dims.largeur, height: dims.hauteur,
-        deviceScaleFactor: dims.dpr, mobile: true, screenWidth: dims.largeur, screenHeight: dims.hauteur }, c.sessionId));
+    const formatTelephone = (c) => cdp.send('Emulation.setDeviceMetricsOverride', { width: dims.largeur, height: dims.hauteur,
+      deviceScaleFactor: dims.dpr, mobile: true, screenWidth: dims.largeur, screenHeight: dims.hauteur }, c.sessionId);
+    // (08/11/2026 soir, client jade60890, Beebs « Continuer avec Google ») LES FENÊTRES DE CONNEXION (Google, Apple,
+    // Facebook, Kiabi) ouvertes par la page de bureau sont au FORMAT DU TÉLÉPHONE : la fenêtre Google de 22:17:30 a été
+    // rendue en 1366 × 767 (« demandée 500 × 676 ») — une page de bureau réduite à la largeur d'un iPhone, illisible ; la
+    // cliente a touché 13 fois en 7 s puis fermé. Ces pages n'ont pas de glissière DataDome (la raison de la vue bureau) :
+    // émulation du téléphone, et les gestes s'y rapportent à l'échelle 1 (pageBureau = le téléphone, k = 1).
+    const appliquerFormat = (c) => {
+      if (!bureau) return formatTelephone(c);
+      if (cible && c !== cible) {
+        c.pageBureau = { largeur: dims.largeur, hauteur: dims.hauteur, k: 1 };
+        c.telephone = true;
+        journal.info('vue_fenetre_telephone', { user, plateforme, format: [dims.largeur, dims.hauteur] });
+        return formatTelephone(c);
+      }
+      return mettreFenetreBureau(c);
+    };
     async function mettreFenetreBureau(c) {
       const fb = formatBureau(dims);
       const taille = async () => {
@@ -355,7 +390,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       // légères qu'en 3× (le téléphone les agrandit). La page, elle, garde la densité du téléphone (deviceScaleFactor).
       // (04/11) Beebs : la page de bureau, à sa taille (échelle 1) ; l'app l'étire sur son canvas.
       const echelle = Math.min(dims.dpr, ECHELLE_IMAGES_MAX);
-      const fb = bureau ? pageDe(c) : null;
+      // (08/11 soir) Une fenêtre de connexion au format du téléphone se diffuse comme un téléphone (images en 2×).
+      const fb = bureau && !c.telephone ? pageDe(c) : null;
       await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: fb ? fb.largeur : Math.round(dims.largeur * echelle),
         maxHeight: fb ? fb.hauteur : Math.round(dims.hauteur * echelle), everyNthFrame: 1 }, c.sessionId);
     }
@@ -537,21 +573,47 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         await cdp.send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'BlockedByClient' }, m.sessionId).catch(() => {});
         // (01/11) Connectée : la page reste où elle est (aucun retour forcé à la connexion, aucune boucle).
         if (connectee) return;
-        // (05/10) JAMAIS DE BOUCLE : la page de connexion qui redirige elle-même
-        // hors de la liste (Vinted : /member/signup → /member/register) était
-        // renvoyée 4 à 5 fois par seconde, sans fin. Au REFUS_MAX-ième refus en
-        // REFUS_FENETRE_MS, on arrête et on le dit ; l'alerte part au journal.
         const t = Date.now();
+        const retourPage = async () => {
+          if (c === cible) await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {});
+          else await cdp.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
+        };
+        // (08/11/2026 soir, client jade60890 perdu sur Vinted) UN REFUS QUI SUIT UN TOUCHER DE LA PERSONNE n'est PAS une
+        // boucle : c'est elle qui a touché un lien que la connexion ne suit pas (« Continuer avec Google » de Vinted était
+        // refusé : 5 touchers en 6 s ont fini en « boucle » et en « réessaie plus tard »). On la ramène à la page de
+        // connexion, on le lui dit, et l'équipe le sait TOUT DE SUITE (le chemin refusé, pour l'ouvrir s'il sert la
+        // connexion) — jamais compté comme boucle, jamais une fermeture.
+        if (t - dernierToucher < GESTE_RECENT_MS) {
+          journal.alerte('connexion_refus_apres_geste', { user, plateforme, vers: urlPourJournal(url) });
+          alerterSupport(`lien refusé après un toucher : ${urlPourJournal(url)}`);
+          avis(`bloquee:${urlPourJournal(url)}`, txt.bloquee(def.nom));
+          await retourPage();
+          return;
+        }
+        // (05/10) JAMAIS DE BOUCLE : la page de connexion qui redirige elle-même hors de la liste (Vinted : /member/signup
+        // → /member/register) était renvoyée 4 à 5 fois par seconde, sans fin. Au REFUS_MAX-ième refus en REFUS_FENETRE_MS :
+        // (08/11 soir) d'abord SE RÉTABLIR SEUL — un nouvel essai propre (fenêtres fermées, session de la plateforme
+        // purgée, page de connexion rechargée), REPRISES_PROPRES_MAX fois, l'équipe prévenue dès la première ; la personne
+        // ne lit qu'« on relance proprement ». Seulement si la page boucle encore après : le message qui dit que l'équipe
+        // est prévenue (jamais « réessaie plus tard »), puis la fermeture.
         refusNavigation.push(t);
         while (refusNavigation.length && t - refusNavigation[0] > REFUS_FENETRE_MS) refusNavigation.shift();
         if (refusNavigation.length >= REFUS_MAX) {
-          journal.alerte('connexion_boucle', { user, plateforme, vers: urlPourJournal(url), refus: refusNavigation.length });
+          if (reprisesPropres < REPRISES_PROPRES_MAX) {
+            reprisesPropres += 1;
+            refusNavigation.length = 0;
+            journal.alerte('connexion_boucle_reprise', { user, plateforme, vers: urlPourJournal(url), reprise: reprisesPropres });
+            alerterSupport(`boucle de navigation (${urlPourJournal(url)}) : nouvel essai propre ${reprisesPropres}/${REPRISES_PROPRES_MAX}`);
+            avis(`reprise:${reprisesPropres}`, txt.reprisePropre(def.nom));
+            await nouvelEssaiPropre();
+            return;
+          }
+          journal.alerte('connexion_boucle', { user, plateforme, vers: urlPourJournal(url), refus: refusNavigation.length, reprises: reprisesPropres });
           etat('erreur', txt.boucle(def.nom));
           return fermer('boucle');
         }
-        etat('info', txt.bloquee);
-        if (c === cible) await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {});
-        else await cdp.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
+        avis(`bloquee:${urlPourJournal(url)}`, txt.bloquee(def.nom));
+        await retourPage();
         return;
       }
       if (resoudre && cadreExcepte && m.method === 'Page.frameAttached' && m.sessionId === cible?.sessionId && p.frameId) {
@@ -588,6 +650,23 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           fermer('page_fermee');
         }
       }
+    }
+
+    /**
+     * (08/11/2026 soir) UN NOUVEL ESSAI PROPRE, sans rien demander à la personne : les fenêtres ouvertes par la page
+     * fermées, la demi-session de la plateforme purgée (cookies et stockage, sauf si elle était déjà connectée — même
+     * règle qu'à la fermeture), puis la page de connexion rechargée. Les autres plateformes ne bougent pas.
+     */
+    async function nouvelEssaiPropre() {
+      for (const f of fenetres.splice(0)) await cdp.send('Target.closeTarget', { targetId: f.targetId }).catch(() => {});
+      if (cible && active !== cible) await diffuser(cible).catch(() => {});
+      const etaitConnectee = (permisesAvant ?? []).includes(plateforme);
+      if (!etaitConnectee) {
+        await Promise.resolve(postes.purgerPlateforme?.(user, plateforme))
+          .catch((e) => journal.alerte('reprise_propre_purge_echec', { user, plateforme, erreur: e.message }));
+      }
+      if (cible) await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {});
+      journal.info('connexion_reprise_propre', { user, plateforme, reprise: reprisesPropres, purge: !etaitConnectee });
     }
 
     /** (01/11) Le compte, lu dans la page de connexion (rien hors du site de la plateforme). */
@@ -883,6 +962,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         return;
       }
       dernierGeste = Date.now();
+      if (['toucher', 'texte', 'touche', 'molette'].includes(m.t)) dernierToucher = dernierGeste;
       if (m.t === 'toucher' && bureau) {
         // (04/11) Beebs : le doigt devient la souris d'un bureau (clic, glisser bouton enfoncé, molette), rapporté à la
         // page entière ou à la zone du zoom. Aucun événement de toucher n'atteint la page.
