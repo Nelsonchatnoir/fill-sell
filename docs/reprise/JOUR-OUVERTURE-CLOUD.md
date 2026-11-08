@@ -1,5 +1,11 @@
 # Jour d'ouverture de FillSell Cloud — la liste, dans l'ordre (décision j de Nico, 05/11/2026)
 
+> **FAIT le 08/11/2026 (13:02 → 13:42)**, iPhone + web ; Android attend la vc36 (en examen chez Google ; la règle
+> `CLOUD_BINAIRE_MIN` l'allume seule à sa publication). Heures, vérifications et retours : docs/cloud/REPRISE.md (bloc du
+> 08/11). Écarts à la procédure : P.1 Google non publié (décision de Nico) ; CLI Supabase 3.0 → `SUPABASE_YES=1` devant le
+> script de déploiement et `--yes` sur `migration repair` ; `functions download` avec la CLI 2.98.2 (la 3.0 refuse un
+> fichier hors `supabase/functions`) ; « reappro_rapide » absent du journal quand il n'y a rien à acheter (normal).
+
 ## ⛔ PROCÉDURE DU JOUR J POUR UNE NOUVELLE SESSION (mise à jour le 07/11/2026 ~20:00 ; 08/11 : étape 1.0 registre des mails, mails Cloud, OTA) — prime sur tout le reste
 Déclencheur : Nico écrit « On ouvre ». La session exécute SEULE, dans l'ordre, une étape à la fois : geste → vérification
 → la moindre différence = retour arrière de CETTE étape et arrêt, dit à Nico. Heures de Paris notées au fur et à mesure

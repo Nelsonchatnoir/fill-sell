@@ -311,3 +311,10 @@ marge de 100 % sur du vent, indétectable ensuite.
 - Preuves : `npm run selftest:cloud-mails-canaux` (mail × canal, rendus par le vrai code), `selftest:cloud-prix-nom`
   (nom étendu aux mails et au serveur Cloud) ; aperçus : `node scripts/apercu/mails-cloud.mjs <dossier>` ; aperçu
   envoyé à l'adresse de test SEULEMENT : email-tunnel `test_template: "cloud_veille"` (+ `test_user_id` = prix lu).
+- **(08/11, jour J, ajout de Nico) L'ALERTE À NICO À CHAQUE ÉVÉNEMENT D'ARGENT DU CLOUD** — essai, paiement (1er mois et
+  renouvellements), arrêt pendant l'essai (confirmé), arrêt programmé, sur les trois canaux : `_shared/cloud-alerte-nico.js`,
+  appelée par `mailsCloud` APRÈS les mails clients (qui ne changent pas). Compte, canal, palier (palier.js), montant lu à
+  la source (rien si elle se tait), date de Paris. Destinataire `ALERTE_CLOUD_DESTINATAIRE` = **support@fillsell.app**,
+  la même adresse que l'alerte des IP en pause (orchestrateur, `ALERTES_DESTINATAIRE`). Un mail par événement : même
+  registre `cloud_mails`, clé « alerte: » + la clé de l'événement ; jamais bloquante. email_logs `cloud_alerte_<événement>`
+  (user_id null). Envoi de test : email-tunnel `{ "alerte_cloud_test": true }` (x-cron-secret). selftest:cloud-alerte-nico.

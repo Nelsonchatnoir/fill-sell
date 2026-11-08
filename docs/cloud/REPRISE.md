@@ -28,6 +28,42 @@
   de l'alerte des IP en pause) ; un mail par événement (registre `cloud_mails`, clé « alerte: ») ; jamais bloquante ;
   mails clients inchangés. Envoi de test : email-tunnel `{ "alerte_cloud_test": true }` (x-cron-secret). Selftest
   `cloud-alerte-nico` (51).
+- **Commits** : 721fdce (règle binaire + alerte, poussé 13:02) ; 4f8c7c6 (version 2.9.165, 13:33). Suite complète 625
+  (1 rouge : aucune-estimation, travail non committé de l'autre terminal, corrigé par lui ensuite) ; 2e passe tuée par le
+  poste (mémoire) → 90 selftests ciblés verts.
+- **Étape 1.0 (13:02:30)** : migration 20261108090000 appliquée + `migration repair` (13:03) ; RLS true, anon et
+  authenticated sans SELECT, 0 ligne. Retour : `supabase/rollbacks/20261108090000_cloud_mails_registre_INVERSE.sql`.
+- **Étape 1 (13:03:56 → 13:04:58)** : `SUPABASE_YES=1 node scripts/cloud/deployer-fonctions-cloud.mjs --go --seulement …`
+  (la CLI 3.0 exige la confirmation en mode agent) — email-tunnel v84, stripe-webhook v71, apple-iap-webhook v49,
+  google-play-webhook v42, validate-google-purchase v22, cancel-subscription v55, create-checkout-session v71 ; verify_jwt
+  inchangés ; code en service retéléchargé = 721fdce (100/100 fichiers). Vérifs : email-tunnel dry_run → `prix_lus`
+  présent ; Apple TEST 13:05:39 (`jws_ok`, sendAttempts SUCCESS) ; Play « Envoyer une notification test » → ligne
+  `test` 13:05:56, HTTP 200 (`oidc_absent`, comme les 8 notifications Google depuis le 25/10 : état ancien) ; Stripe 20
+  derniers événements `pending_webhooks` 0 ; banc Stripe mode test 13/13 ; 15 min de journaux : seule erreur
+  « runMicrotasks » de stripe-webhook à l'arrêt du processus, déjà 3 fois ce matin avec la v70 (ancienne) ; un vrai
+  renouvellement Premium passé à 13:11 sur la v71 (200). Retour : redéployer chaque fonction depuis cbf9e76, même verify_jwt.
+- **Étape 2 (13:20:27 → 13:20:53)** : orchestrateur 32c0ed5040a6 → 721fdcea9211 (`ORCHESTRATEUR_SEUL=1`) ;
+  `reseau_cloisonnement ok:true complet:true` ; navigateur de Nico rouvert en 7 s. Retour : VERSION_ORCHESTRATEUR 32c0ed5040a6.
+- **Étape 3 (13:21:07)** : `cloud_ip_achats_auto` = 1. Entretien 13:21:47 : carte « …9699 (stripe, fin 2029-04) »,
+  aCommander 0, garde 7 comptées / borne 4 (stock au-dessus du besoin : rien à acheter), 5 libres saines ; aucun
+  `reappro_rapide` écrit (le code ne l'écrit qu'avec un achat ou une livraison), aucune alerte. Retour : la clé à 0.
+- **Étape 4 (13:28:50)** : `COMPTES_AUTORISES=` (archive `/srv/fillsell-cloud/archives/env-avant-ouverture-20261108-1328`) ;
+  `demarrage` comptes_autorises « tous » ; `cloud_serveurs` cloud-2 apte, comptes « tous » (battement 13:28:58).
+  Retour : interrupteur à 0 D'ABORD, puis l'archive remise + `docker compose up -d --no-deps --force-recreate orchestrateur`.
+- **Étape 5 (13:29:50)** : `cloud_offre_ouverte` = 1 ; lu en anonyme comme l'app : 1 ; compte ordinaire : vente
+  possible, 5 places = min(14 serveur, 5 IP). Écran non vu (connexion à un compte = mot de passe : pas fait). Retour : 0.
+- **Étape 6** : Apple 2.9.164 READY_FOR_SALE (Nico, 12:16) ; OTA **2.9.165** (13:33:09 → 13:41:59) : commit 4f8c7c6,
+  `npm run build` sur arbre propre (lot ayadi007 de l'autre terminal poussé avant, 34c7a8b, son accord), build.json
+  `2026-11-08T12:33:42Z+4f8c7c6`, upload --delta compatible, canal `production` relu 2.9.165. Retour : 2.9.162 sur le canal.
+- **Étape 7 (13:42:37)** : `grille_trois_jauges` = 1 ; quotas_etat de Nico : `trois_jauges`, annonces 3/120,
+  publications 15/1200, republication illimitée. Retour : 0.
+- **Relève 13:43** : 0 essai Cloud depuis l'ouverture, 1 client Cloud, liste d'attente vide, aucun appareil encore sur
+  la 2.9.165 (au prochain passage en fond), aucune erreur des 7 fonctions depuis 13:20. Pas de surveillance en boucle
+  (consigne du 09/10) : à vérifier au prochain check — 1er essai réel → une ligne `cloud_mails` `essai_debut` + sa ligne
+  `alerte:` + email_logs `cloud_essai_debut` et `cloud_alerte_essai_debut` ; poste créé en moins de 3 min ; IP achetée
+  quand le stock passe sous la marge.
+- **Android (reste à Nico)** : quand Google valide la vc36 → Play Console › Vue d'ensemble de la publication › « Publier
+  les modifications ». Rien d'autre : l'offre s'allume seule sur le binaire 2.9.164.
 
 ## 08/11/2026 — DERNIÈRES FINITIONS : résiliation + mails (code poussé, RIEN déployé, migration PRÉPARÉE)
 - **Bouton « Arrêter » muet (TestFlight 07/11)** : cause relue dans les journaux — 2 taps (18:02:33 et 18:02:52 UTC,
