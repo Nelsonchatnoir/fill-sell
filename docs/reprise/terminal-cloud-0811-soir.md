@@ -38,8 +38,16 @@ en prod au moment d'écrire, sauf mention contraire.
   Virginie (Cloud actif) : inchangés, leurs postes Cloud continuent de prendre leurs jobs.
 **C. Pool d'IP sous la marge (22:52:35)** : 2 IP saines libres (3, 40 ; la 39 est réservée à Nico) pour une marge de 3 ;
   IP au repos 7 j : 4 (Jade, 15/11), 1 (wtk8, 15/11), 2 (Nicotest, 14/11) ; 5 et 6 expirées. Aucun achat : l'achat auto
-  ne part que sous cloud_ip_stock_min = 2. Levier proposé à Nico (non fait) : une IP dont le compte n'a JAMAIS réussi une
-  connexion repasse « disponible » après sa purge, sans repos (IP 4 et 1 → 4 libres).
+  ne part que sous cloud_ip_stock_min = 2. **Décision de Nico (23:4x) : « on peut les réattribuer, celles où la connexion
+  n'a jamais réussi »** → FAIT : migration **20261108233000** (cloud_ip_remettre_en_pool : le repos de 7 j ne vaut que pour
+  une IP dont le compte a réussi une connexion pendant qu'il la tenait ; banc jetable 10/10 ; APPLIQUÉE + repair ; corps
+  prod = migration ; inverse = corps prod) + orchestrateur **065871458a15** (entretien.js : contrôle de sortie tenté sans
+  attendre les 7 j). IP 1 et 4 : repos, purge prouvée → sortent au prochain contrôle de santé (au plus 2/h). IP 2
+  (Nicotest) : purge à refaire par l'entretien d'abord. Aucun achat.
+**D. Commits LOCAUX non poussés** (push refusé par le classifieur, « Out-of-Place Publication ») : c6deec5 (poste ≠
+  extension, get-pending-jobs **v353 déjà en service**), 0658714 (règle des IP, orchestrateur déjà déployé) + ce point de
+  reprise. → Nico : `! git push origin main`. Le lot du point 4 (bandeau B, règle Android vc37, harnais) est rangé dans
+  **git stash@{0}** (vert, non poussé) ; l'ancien stash C1 est devenu stash@{1}.
 
 ## 0. Décisions de Nico du 08/11 soir (2e session) — avancement, point par point
 1. **OTA / écart Capgo — RÉGLÉ** : @capgo/capacitor-updater **revenu en 8.51.2** (retour de 7c82602). Preuves : le JS
