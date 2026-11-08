@@ -73,6 +73,46 @@ en prod au moment d'écrire, sauf mention contraire.
    --fail-on-incompatible`, CLI épinglé 8.101.1. `npm run binaires -- --aab-seul` : AAB refait sans réécrire les
    secrets de prod. ⚠️ `npm install` RETIRE les paquets posés en `--no-save` (embedded-postgres, pg : bancs jetables) →
    `npm i --no-save embedded-postgres@17.10.0-beta.17 pg@8.16.3` (selftest:ordre-photos rouge sinon).
+2. **Play Console — AAB vc37 IMPORTÉ, ARRÊTÉ AVANT « Enregistrer » (2 avertissements, consigne de Nico)** :
+   AAB refait `npm run binaires -- --aab-seul` sur **861420b** : `build/AAB-A-TELEVERSER-2.9.167-vc37/fillsell-android-2.9.167-versionCode37-861420b.aab`,
+   18 205 224 o, sha256 a3239de9…6b9a, signature habituelle, updater natif 8.51.2, morceau `prixBoutique` (0dd0d2f) présent.
+   Ancien AAB 8.53.1 (7c82602, sha 98a662f4) rangé dans `build/AAB-PERIMES/AAB-2.9.167-vc37-7c82602-updater-8.53.1-JAMAIS-LIVRE-…`.
+   Relu avant : vc37 jamais utilisé chez Google (dernier 36) ; aucun brouillon en Production ; **brouillon inactif vc33
+   (2.9.161) sur Tests internes, NON touché** ; tests fermés Alpha (vc20, juillet) et ouverts (inactif) sans brouillon ;
+   « 14 modifications pas encore envoyées » = l'envoi refusé de la vc36 (release + fiche FR/EN : nom, descriptions,
+   captures, image, vidéo ; sécurité des données ; accès) — elles repartiront avec l'envoi, sans retouche.
+   Fait : Production › Créer une version (release n° 13) › AAB importé (37 (2.9.167), SDK cible 36) › notes copiées de la
+   vc36 (identiques mot pour mot, FR + EN) › nom « 2.9.167 » › Suivant. Google affiche **2 avertissements** : pas de
+   fichier de désobscurcissement (R8/ProGuard), pas de symboles de débogage du code natif — recommandations, non
+   bloquantes. **Reste (sur feu vert de Nico)** : « Enregistrer » › Vue d'ensemble › « Envoyer les modifications pour
+   examen » › relire « En cours d'examen ». Voie de téléversement (l'outil du navigateur plafonne à 10 Mo) : page
+   relais sur 127.0.0.1 (`scratchpad/serveur-aab/serveur.cjs`, un seul fichier, arrêt seul en 20 min) ouverte en
+   fenêtre par la Play Console, `postMessage` du fichier, empreinte vérifiée dans la page, injection dans le champ.
+4. **Bandeau « NOUVEAU · FillSell Cloud » (maquette B « Le relais », CLAIR seulement) — INTÉGRÉ en haut du Tableau**
+   (`src/cloud/BandeauCloudTableau.jsx`, règles pures `src/cloud/bandeauCloud.js`, `selftest:cloud-bandeau` 42/42).
+   Montré seulement si : Cloud VENDABLE ici (`cloudOffreVendable` : offre ouverte, France, binaire ; **Android : minimum
+   relevé à la vc37 2.9.167** — `CLOUD_BINAIRE_MIN_ANDROID`, la vc36 refusée ne vend rien ; s'allume seul quand Google
+   publie la vc37), état du compte LU, pas client Cloud (essai compris), **jamais eu le Cloud** (essai pris/arrêté/refusé,
+   abonnement passé : « Essayer 7 jours » y mentirait), pas refermé depuis 7 jours sur l'appareil
+   (`fs_bandeau_cloud_ferme:<uid>`), ni parcours d'entrée ni « Me connecter » ouverts. Rien tant qu'une lecture manque
+   (pas de clignotement). « Essayer 7 jours » = `lancerAchatCloud('bandeau_tableau')` (Stripe web, Apple iPhone). Aucun
+   prix. Moins d'animations : tout arrêté, état final fixe. Mesure usage_logs : `cloud_bandeau_vu` (1 par ouverture de
+   l'app), `cloud_bandeau_clic`, `cloud_bandeau_ferme` (+ `cloud_cta_click` origine `bandeau_tableau`). Lecture :
+   `select feature, count(*), count(distinct user_id) from usage_logs where feature like 'cloud_bandeau_%' or (feature='cloud_cta_click' and metadata->>'origine'='bandeau_tableau') group by 1;`
+   Vérif : `node scripts/apercu/capture-bandeau-cloud.mjs` (vrai composant, faux Supabase) — Chrome 1440 et 390, WebKit
+   iPhone SE (320 !) et 15 Pro Max 430, FR/EN : 0 débordement, scène 132×88 entière, × hors scène/textes, titre /
+   accroche / bouton sur une ligne, boutons ≥ 44 px, contrastes 6,08 à 15,1, Tableau décalé verticalement seulement,
+   ×/rechargement retenu, essai pris / client / non vendable = rien. (WebKit de Playwright sous Windows rend Space
+   Grotesk sans le gras — idem pour le reste de l'app, propre au moteur de test.)
+6. **C3 (Cloud visible en Business) — DÉJÀ TENU, prouvé** : harnais `scripts/apercu/offres-cloud.jsx` +
+   `capture-offres-cloud.mjs` (vraie feuille des offres, Cloud ouvert, fuseau Paris, faux Supabase) : Free = voie
+   « Free + FillSell Cloud », Premium / Pro / Business = carte « Ajouter à ta formule … » (présentation, essai 7 jours,
+   places, bouton) ; client Cloud = ligne « déjà actif ». Capture `screenshots-review/offres-web-390-business-grille.png`.
+   **C4 (voir les autres formules et descendre) — NON COMMENCÉ, volontairement** : c'est un chantier de paiement complet
+   (Stripe : changement programmé sans prorata via subscription schedule ; Apple : achat du palier inférieur du même
+   groupe = bascule au renouvellement, à relire dans apple-iap-webhook ; Google : remplacement DEFERRED ; état « Ta
+   formule passera à X le JJ/MM » + annulation = colonnes neuves → migration sur base jetable + feu vert ; bancs Stripe
+   test + bac à sable Apple/Google). Rien à moitié (pas de pli « autres formules » sans descente qui marche).
 3. **Landing + modales (toile https://claude.ai/artifact/W3TVVFa8FtcwKpuPvyq9Nu) — FAIT, version 6** : vrais logos
    (icônes des apps = celles des mails, `public/email/logo-*.png` ; App Store = pomme du badge officiel ; Google Play =
    triangle du badge officiel `site/medias/badges`) devant chaque plateforme ou store cité : liste du Cloud, pastilles

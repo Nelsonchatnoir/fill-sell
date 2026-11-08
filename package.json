@@ -23,6 +23,7 @@
     "site:preuve-consentement": "node scripts/site/preuve-consentement.mjs",
     "selftest:site-aiguillage": "node scripts/site-aiguillage-selftest.mjs",
     "selftest:ota-garde": "node scripts/ota/regles-ota-selftest.mjs",
+    "selftest:cloud-bandeau": "node scripts/cloud-bandeau-selftest.mjs",
     "selftest:poste-cloud-pas-extension": "node scripts/poste-cloud-pas-extension-selftest.mjs",
     "selftest:annonce-partagee-cascade": "node scripts/annonce-partagee-cascade-selftest.mjs",
     "selftest:questions-tranchees": "node scripts/questions-tranchees-selftest.mjs",

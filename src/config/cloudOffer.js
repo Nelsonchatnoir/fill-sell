@@ -123,18 +123,27 @@ export function comparerVersions(a, b) {
   }
   return 0;
 }
-/** Le binaire porte-t-il le Cloud ? (pur) 'web' = oui ; un numéro natif ≥ CLOUD_BINAIRE_MIN = oui ; sinon (inconnu) non. */
-export function binairePorteLeCloud(binaire) {
+// (08/11/2026 soir, point 4 de Nico : « jamais sur Android tant que Google n'a pas validé le Cloud ») Sur ANDROID, le
+// binaire relu avec le Cloud est la vc37 (2.9.167) : la vc36 (2.9.164) a été REFUSÉE par Google (devises). Un Android
+// 2.9.164 (APK d'essai seulement, jamais publié) ne vend donc rien ; le jour où Google publie la vc37, l'offre s'allume
+// seule chez ceux qui l'installent — ni OTA, ni interrupteur. iPhone : inchangé (2.9.164, validé par Apple).
+export const CLOUD_BINAIRE_MIN_ANDROID = '2.9.167';
+/** Le binaire porte-t-il le Cloud ? (pur) 'web' = oui ; un numéro natif ≥ au minimum de SA plateforme = oui ; sinon
+ *  (inconnu) non. `plateforme` : 'android' → CLOUD_BINAIRE_MIN_ANDROID ; tout le reste → CLOUD_BINAIRE_MIN. */
+export function binairePorteLeCloud(binaire, plateforme = null) {
   if (binaire === 'web') return true;
-  return comparerVersions(binaire, CLOUD_BINAIRE_MIN) >= 0;
+  return comparerVersions(binaire, plateforme === 'android' ? CLOUD_BINAIRE_MIN_ANDROID : CLOUD_BINAIRE_MIN) >= 0;
 }
 let binaireCloud = null;   // null = pas encore lu ; 'web' ; ou la version du binaire natif (« 2.9.164 »)
-/** Note le binaire (valeur ou promesse : 'web', une version, null si illisible). Rend une promesse ; jamais d'exception. */
-export function noterBinaireCloud(v) {
+let plateformeCloud = null; // 'ios' | 'android' | 'web' | null (Capacitor.getPlatform, noté avec le binaire)
+/** Note le binaire (valeur ou promesse : 'web', une version, null si illisible) et sa plateforme. Rend une promesse ;
+ *  jamais d'exception. */
+export function noterBinaireCloud(v, plateforme = null) {
+  plateformeCloud = plateforme ?? null;
   return Promise.resolve(v).then((x) => { binaireCloud = x ?? null; }, () => { binaireCloud = null; }).then(() => binaireCloud);
 }
 /** Pour les selftests seulement. */
-export function _binaireCloudAZero(v = null) { binaireCloud = v; }
+export function _binaireCloudAZero(v = null, plateforme = null) { binaireCloud = v; plateformeCloud = plateforme; }
 /** La règle (pure, testée : scripts/cloud-pays-selftest.mjs) : témoin partout ; sinon l'offre ouverte ET un pays ouvert
  *  ET (08/11) un binaire qui porte le Cloud (`binaire` absent = sans objet, comme avant). */
 export function cloudVendableDansLePays({ temoin = false, ouvert = false, pays = null, binaire = true } = {}) {
@@ -144,7 +153,7 @@ export function cloudVendableDansLePays({ temoin = false, ouvert = false, pays =
 /** Le point de décision de la VENTE du Cloud (achat, essai, offre) : à la place de cloudOfferVisible sur ces gestes-là. */
 export const cloudOffreVendable = (userId, fuseau = undefined) =>
   cloudVendableDansLePays({ temoin: estTemoin(userId), ouvert: cloudOffreOuverte(), pays: paysDuTelephoneCloud(fuseau),
-    binaire: binairePorteLeCloud(binaireCloud) });
+    binaire: binairePorteLeCloud(binaireCloud, plateformeCloud) });
 
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
 // (07/11, décision de Nico, voie b) CLOUD_DOMAINE retiré : l'adresse vient du serveur du compte (cloud_serveur_moi,

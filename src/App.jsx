@@ -85,7 +85,8 @@ lireInterrupteurs(supabase);
 // (08/11, jour J) Le binaire natif, lu UNE fois (Capacitor App.getInfo) : dans l'app, le Cloud ne se VEND qu'à partir du
 // binaire relu avec lui (CLOUD_BINAIRE_MIN, config/cloudOffer.js) — Android 2.9.10 et iPhone 2.8 n'ont pas le module de
 // notifications. Web : sans objet. Pas encore lu ou illisible = pas vendu.
-const binaireCloudLu=noterBinaireCloud(Capacitor.isNativePlatform()?CapacitorApp.getInfo().then((i)=>i?.version??null):'web');
+// (08/11 soir) + la plateforme : sur Android, le minimum est la vc37 (2.9.167), la vc36 ayant été refusée par Google.
+const binaireCloudLu=noterBinaireCloud(Capacitor.isNativePlatform()?CapacitorApp.getInfo().then((i)=>i?.version??null):'web',Capacitor.getPlatform());
 // (29/10, point 10) Un DOM touché par un tiers (traduction du navigateur…) ne lève plus : signalé une fois, avec la
 // langue. Et l'app ne se laisse plus traduire (décision de Nico, 29/10 soir) : index.html le déclare, et ce geste le
 // repose si un tiers l'a retiré (utils/domTraduit.js).
@@ -158,6 +159,8 @@ import { useEtatCompteCloud } from './cloud/useCompteCloud';
 // (08/11, urgent U1-U4) Connecter les plateformes choisies : écran ouvert tout seul, carte Tableau/Stock, Synchroniser.
 import { useConnexionsCloud } from './cloud/useConnexionsCloud';
 import CarteConnexionCloud from './cloud/CarteConnexionCloud';
+import BandeauCloudTableau from './cloud/BandeauCloudTableau';
+import { ORIGINE_BANDEAU_CLOUD } from './cloud/bandeauCloud';
 import { ouvrirConnexionToutSeul, carteConnexionVisible, publierConnexionsCloud, poserOuvreurConnexionCloud } from './cloud/connexionsCloud';
 import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
 import { lireInterrupteurs, ecouterInterrupteurs, interrupteursConnus } from './config/interrupteurs';
@@ -9065,6 +9068,17 @@ export default function App({ loginOnly = false }){
           <CarteConnexionCloud key={tab===0?'tableau':'stock'} ou={tab===0?'tableau':'stock'} avancement={cxCloud.avancement} lang={lang}
             journal={logTunnel}
             onConnecter={()=>{const o=tab===0?'carte_tableau':'carte_stock';setCxOrigine(o);ouvrirMeConnecter(o);}}/>
+        )}
+
+        {/* (08/11 soir, point 4 de Nico) Le bandeau « NOUVEAU · FillSell Cloud » (maquette B « Le relais »), en haut du
+            Tableau, web et iPhone — jamais à un client Cloud (essai compris) ni à qui l'a déjà eu, jamais là où le Cloud
+            ne se vend pas (Android : tant que Google n'a pas publié la vc37), refermé = 7 jours sur cet appareil. Règles :
+            cloud/bandeauCloud.js. « Essayer 7 jours » = le parcours d'achat du Cloud (Stripe sur le web, Apple sur iPhone). */}
+        {user?.id&&tab===0&&(
+          <BandeauCloudTableau userId={user.id} lang={lang} plateforme={Capacitor.getPlatform()}
+            vendable={cloudOffreVendable(user.id)} compteLu={etatCompteCloud.lu===true} clientCloud={clientCloud}
+            ecranLibre={!meConnecterOuvert&&!showOnboardingFlow}
+            journal={logTunnel} onEssayer={()=>lancerAchatCloud(ORIGINE_BANDEAU_CLOUD)}/>
         )}
 
         {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.

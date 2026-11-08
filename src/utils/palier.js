@@ -102,6 +102,15 @@ export function cloudDuProfil(p, maintenant = Date.now()) {
   return { ...base, etat: 'aucun', actif: false };
 }
 
+/** (08/11/2026 soir, point 4 de Nico) Le compte a-t-il DÉJÀ eu le Cloud, sous quelque forme que ce soit (essai pris,
+ *  arrêté ou refusé, abonnement en cours ou passé, canal ou référence d'abonnement posés) ? Le bandeau « Essayer 7
+ *  jours » du Tableau ne se montre qu'à un compte qui ne l'a JAMAIS eu (l'essai ne se reprend pas). Pur. */
+export function aDejaEuLeCloud(p) {
+  if (!p) return false;
+  return Boolean(p.is_cloud || p.cloud_essai_debut || p.cloud_essai_fin || p.cloud_essai_arrete || p.cloud_essai_refus
+    || p.cloud_periode_fin || p.cloud_ref || p.cloud_canal);
+}
+
 /** Peut-on PROPOSER l'essai à ce compte ? Free compris (04/10 soir). L'appareil,
  *  les comptes de plateforme et la place se vérifient côté serveur AVANT le
  *  paiement (cloud_essai_preparer_moi), la carte au début de l'essai

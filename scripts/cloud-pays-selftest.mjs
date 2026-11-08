@@ -3,7 +3,7 @@
 // de relecture) le voient partout ; un compte qui a déjà le Cloud garde ses écrans (état, connexion, arrêt) où qu'il soit.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { cloudVendableDansLePays, paysDuTelephoneCloud, PAYS_CLOUD_OUVERTS, CLOUD_BINAIRE_MIN, comparerVersions, binairePorteLeCloud,
+import { cloudVendableDansLePays, paysDuTelephoneCloud, PAYS_CLOUD_OUVERTS, CLOUD_BINAIRE_MIN, CLOUD_BINAIRE_MIN_ANDROID, comparerVersions, binairePorteLeCloud,
   noterBinaireCloud, cloudOffreVendable, cloudOfferVisible, _binaireCloudAZero } from '../src/config/cloudOffer.js';
 
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n++; };
@@ -58,8 +58,22 @@ ok(await noterBinaireCloud(Promise.reject(new Error('getInfo'))) === null, 'lect
 ok(await noterBinaireCloud(Promise.resolve('2.9.10')) === '2.9.10' && cloudOfferVisible('u-ordinaire') === false, 'binaire lu (promesse) : noté');
 _binaireCloudAZero(null);
 // Câblage : App.jsx lit le binaire au chargement (natif : App.getInfo ; web : 'web') et se redessine à son arrivée.
-ok(/const binaireCloudLu=noterBinaireCloud\(Capacitor\.isNativePlatform\(\)\?CapacitorApp\.getInfo\(\)\.then\(\(i\)=>i\?\.version\?\?null\):'web'\);/.test(app),
+ok(/const binaireCloudLu=noterBinaireCloud\(Capacitor\.isNativePlatform\(\)\?CapacitorApp\.getInfo\(\)\.then\(\(i\)=>i\?\.version\?\?null\):'web',Capacitor\.getPlatform\(\)\);/.test(app),
   'App : le binaire est lu une fois au chargement (natif : getInfo().version ; web : sans objet)');
 ok(/binaireCloudLu\.then\(\(\)=>\{if\(!mort\)setInterrupteursLus\(\(n\)=>n\+1\);\}\)/.test(app), 'App : l’app se redessine quand le binaire est lu');
+
+// 5. (08/11/2026 soir, point 4 de Nico) Android : jamais tant que Google n'a pas validé — le minimum Android est la vc37
+//    (2.9.167), la vc36 (2.9.164) ayant été refusée. iPhone inchangé (2.9.164, validé par Apple).
+ok(CLOUD_BINAIRE_MIN_ANDROID === '2.9.167', 'Android : binaire minimal du Cloud = 2.9.167 (vc37)');
+ok(binairePorteLeCloud('2.9.164', 'android') === false && binairePorteLeCloud('2.9.10', 'android') === false
+  && binairePorteLeCloud('2.9.166', 'android') === false, 'Android 2.9.164 (vc36 refusée), 2.9.10, 2.9.166 : non');
+ok(binairePorteLeCloud('2.9.167', 'android') === true && binairePorteLeCloud('2.9.170', 'android') === true, 'Android 2.9.167 (vc37) et au-dessus : oui');
+ok(binairePorteLeCloud('2.9.164', 'ios') === true && binairePorteLeCloud('2.9.164') === true, 'iPhone 2.9.164 : oui (inchangé)');
+ok(binairePorteLeCloud('web', 'web') === true, 'web : sans objet');
+_binaireCloudAZero('2.9.164', 'android');
+ok(cloudOffreVendable('u-ordinaire', 'Europe/Paris') === false, 'Android 2.9.164 en France : rien de vendu, quel que soit l’interrupteur');
+_binaireCloudAZero(null);
+ok(await noterBinaireCloud(Promise.resolve('2.9.164'), 'android') === '2.9.164', 'noterBinaireCloud garde la plateforme (android)');
+_binaireCloudAZero(null);
 
 console.log(`✓ selftest:cloud-pays — ${n} assertions`);
