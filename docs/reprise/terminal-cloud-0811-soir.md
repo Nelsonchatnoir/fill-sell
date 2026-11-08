@@ -1,17 +1,18 @@
 # POINT DE REPRISE — TERMINAL CLOUD, 08/11/2026 soir (à lire EN ENTIER avant toute action)
 
-Rédigé le 08/11 vers 20:15 (heure de Paris), à la demande de Nico, pour une session neuve. Tout ce qui suit a été relu
+Rédigé le 08/11 vers 20:15 (heure de Paris), à la demande de Nico, pour une session neuve ; **mis à jour après chaque point
+terminé** (dernière mise à jour : 08/11 20:4x, migration 20261108200000 appliquée). Tout ce qui suit a été relu
 en prod au moment d'écrire, sauf mention contraire.
 
 ## 1. L'état en service
 
 | Quoi | État |
 |---|---|
-| Web (Vercel) | main poussé jusqu'à **4391256**. Le code de l'app en ligne est celui de 0dd0d2f (prix des boutiques) + ac219a2 (U1-U5). |
-| **Non poussé** | **4d606f9** (fin d'U3, code de l'app) + le commit de docs de ce point : attendent « pousse » de Nico. |
+| Web (Vercel) | **4d606f9 + ba0bea7 poussés** (20:2x, ordre de Nico) ; build en ligne **2026-11-08T19:31:34Z+2ee78f8** (doc du terminal Problèmes posée par-dessus ba0bea7 ; contient tout notre code). Vérifié 20:3x : /app et ?onglet=stock rendus, 0 erreur console. |
+| Migration **20261108200000** | **APPLIQUÉE** 20:3x (+ `migration repair`) après banc jetable vert 11/11 (`scripts/essais/20261108200000_banc.mjs`) ; corps prod relu = migration. Un poste qui repasse « actif » perd derniere_erreur et details.erreur/raison. Inverse : `supabase/rollbacks/20261108200000_poste_noter_erreur_effacee_INVERSE.sql`. |
 | cloud-2 | orchestrateur **4391256d06e4** (course du poste neuf réglée 304369a + alerte « Me connecter en erreur ») ; image Chrome 61fb7ddd6e2a ; copie Cloud de l'extension **0.6.182-cloud** (CRX 6eab0eb5f00b, posée par le terminal Problèmes à 20:02). Santé ok, 2 postes : Nico (IP 42 = 94.194.94.68, coffre Vinted/Leboncoin/Beebs/Depop) et Virginie (IP 41 = 88.151.56.82, coffre vide). |
 | Fonctions | email-tunnel **v85** (verify_jwt false) : alerte support@ « 0 plateforme connectée 30 min après l'essai » au passage horaire (délai réel 30-90 min). |
-| OTA Capgo | canal production **2.9.166**. Rien publié ce soir. La prochaine OTA commune (Cloud + Problèmes) doit être **≥ 2.9.168** (2.9.167 = le binaire Android). |
+| OTA Capgo | canal production **2.9.166**. Rien publié ce soir (**ordre de Nico : pas d'OTA ce soir ; la prochaine attend que l'écart du module Capgo soit réglé, 8.53.1 dans l'app / 8.51.2 dans les binaires en ligne ; aucune OTA ne doit atteindre un binaire incompatible, preuve à l'appui**). La prochaine OTA commune (Cloud + Problèmes) doit être **≥ 2.9.168** (2.9.167 = le binaire Android). |
 | Android | binaire **2.9.167 / versionCode 37** (7c82602, updater 8.53.1) : `build/AAB-A-TELEVERSER-2.9.167-vc37/fillsell-android-2.9.167-versionCode37-7c82602.aab`, sha256 98a662f4…d3f2, signature = vc36. **À téléverser par Nico** (Play Console › Production › Créer une release › Importer › Enregistrer › Vue d'ensemble de la publication › Envoyer les modifications pour examen). La vc36 a été refusée par Google (devises). |
 | iPhone | aucun binaire neuf : tout passe par l'OTA. |
 
@@ -42,13 +43,15 @@ en prod au moment d'écrire, sauf mention contraire.
    - le client **a arrêté son essai Apple à 19:33** (IP 1 au repos jusqu'au 15/11, poste éteint) : Nico lui écrit.
 
 ## 3. À faire, par ordre (ce que Nico attend)
-1. **Pousser** 4d606f9 (+ docs) quand Nico dit « pousse » — c'est du code de l'app (web au push).
+1. ~~Pousser 4d606f9 (+ docs)~~ FAIT 20:2x, site vérifié.
 2. **OTA commune ≥ 2.9.168** sur feu vert de Nico, avec le terminal Problèmes. ⚠️ `npx @capgo/cli bundle compatibility
    --channel production` signale @capgo/capacitor-updater **incompatible** (8.53.1 local / 8.51.2 au canal, natif
    changé) : relire le réglage « Disable auto update » du canal (aujourd'hui « major ») et décider avec Nico AVANT l'envoi
    (les binaires en ligne — iPhone 2.9.164, Android 2.9.10 — gardent l'updater 8.51.2 ; nos 4 appels existent dans les deux).
    ⚠️ Le module Android annonce « 8.52.1 » à Capgo même en 8.53.1/8.54.2 (constante PLUGIN_VERSION pas montée en amont).
-3. **Migration 20261108200000** (PRÉPARÉE, NON APPLIQUÉE) : `cloud_poste_noter` efface derniere_erreur et
+3. ~~Migration 20261108200000~~ **APPLIQUÉE** 20:3x (banc jetable 11/11, feu vert de Nico conditionné au banc). Le poste éteint
+   de wtk8jnmnnf garde son « CDP : connexion fermée » (règle : effacé seulement au retour « actif » ; aucune retouche à la main).
+   Ancien texte : : `cloud_poste_noter` efface derniere_erreur et
    details.erreur/raison quand un poste repasse « actif » (le « CDP : connexion fermée » restait affiché après 19:26 :
    un reste, pas une panne). Essai sur base JETABLE puis feu vert nommé ; inverse dans `supabase/rollbacks/`.
 4. **Surveiller** la prochaine connexion réelle d'un client (Virginie ; wtk8jnmnnf a arrêté) :
@@ -62,7 +65,10 @@ en prod au moment d'écrire, sauf mention contraire.
    « Connecte-toi à X sur ton ordinateur » (texteConnecteToi), « Ton ordinateur dépose l'annonce », « … retire depuis ton
    ordinateur », « ça tourne tout seul, Chrome ouvert », « Ton ordinateur les republie une à une », menu « Voir la file
    de l'ordinateur ».
-6. **C1-C4, jauges et landing** : le travail en cours est dans `git stash@{0}` (« C1 textes Cloud + jauges/landing WIP »).
+6. **ORDRE DE NICO (08/11 20:2x)** : (a) **C2 d'abord** — 3 maquettes animées du bandeau « NOUVEAU · FillSell Cloud »
+   en Artifacts, donner les liens et **ATTENDRE son choix avant d'intégrer** ; (b) C1 (« plus besoin d'ordinateur »
+   partout), C3 (Cloud visible en Business), C4 (voir les autres formules et pouvoir descendre) ; (c) jauges, puis landing.
+   **C1-C4, jauges et landing** : le travail en cours est dans `git stash@{0}` (« C1 textes Cloud + jauges/landing WIP »).
    C1 avait des selftests rouges à reprendre (cloud-ecrans, cloud-prix-nom, onboarding-trois-jauges, essai-testflight-0711,
    aucune-estimation sur jaugesExplications.js:59). C2 : 3 maquettes de bandeau à montrer AVANT de coder. C4 : changement
    de formule différé (Stripe, Apple, Google) en bac à sable. Route `/demo/jauges` à remettre avec `lazySur`.
