@@ -133,10 +133,12 @@ Leboncoin refus de modération probable (14), eBay (2). Aucune n'est le reste d'
   eBay pour cet article ») : la relance n'a rien écrit (garde du script) — son choix est respecté. La règle vaut pour
   toutes les prochaines publications eBay.
 - Point 3 : 491 doublons sans fiche (11 comptes) clos par la règle 20261108143000 (sauvegarde + inverse).
-- Point 1 (Cloud) : copie Cloud 0.6.181 NON déployée (refus du garde-fou « Production Deploy ») ; cloud-2 reste en
-  0.6.178-cloud. Le serveur (get-pending-jobs v352) vaut déjà pour le Cloud (pause par plateforme).
-- Point 5 : annonce de test 10719554551 en « Vérification en cours » chez Vinted : retrait refusé (403) pendant la
-  vérification, à refaire dès la fin.
+- Point 1 (Cloud) : premier essai refusé par le garde-fou ; sur autorisation nommée de Nico, copie Cloud **0.6.181-cloud**
+  déployée à 17:59 (CRX 0.6.181.44885, depuis 08bc9d7). Vérifié : santé OK, 2 navigateurs rouverts, Virginie (1re cliente
+  Cloud en essai) sur 88.151.56.82 et Nico sur 94.194.94.68, coffres intacts, écran de connexion (/connexion, client.js) 200.
+- Point 5 : annonce de test 10719554551 en « Vérification en cours » chez Vinted (rayon électronique) : retrait refusé
+  (403) pendant la vérification ; à 18:0x elle n'existe plus (page introuvable, absente du dressing de Nico) — retirée
+  par Vinted à l'issue de sa vérification. Plus rien en ligne.
 
 ## Point 3 — ce qui reste (dit, non fait)
 - Les ~115 annonces de l'ancien compte Leboncoin d'ayadi007 restent « en ligne » dans FillSell : la règle du 08/11 midi

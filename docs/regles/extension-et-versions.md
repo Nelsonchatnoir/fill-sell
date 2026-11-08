@@ -334,5 +334,5 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   613 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-08T14:52:14Z (264d6ac). Empaqueté depuis un worktree propre à HEAD
   (l'arbre partagé portait le travail non committé du terminal Cloud). Seul zip à téléverser : il REMPLACE la 0.6.180
   (jamais téléversée), rangée dans `build/anciens-zips/REMPLACEE-PAR-0.6.181-CWS-0.6.180`.
-- Copie Cloud : cloud-2 est en 0.6.178-cloud ; la 0.6.181-cloud n'est PAS déployée (déploiement refusé par le garde-fou,
-  autorisation nommée de Nico demandée) : `EXTENSION_SEULE=1 bash serveur-cloud/outils/deployer.sh 5.9.80.213 cloud-2.fillsell.app`.
+- Copie Cloud : **0.6.181-cloud** (CRX 0.6.181.44885) sur cloud-2 le 08/11 à 17:59, depuis 08bc9d7 (worktree propre :
+  le main local portait un commit non poussé du terminal Cloud), sur autorisation nommée de Nico ; avant 0.6.178-cloud.
