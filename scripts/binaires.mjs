@@ -136,9 +136,10 @@ if (pkg?.version !== VERSION) stop(`package.json est en ${pkg?.version}, pas ${V
 const lock = lireJson(path.join(RACINE, 'package-lock.json'));
 if (lock?.version !== VERSION || lock?.packages?.['']?.version !== VERSION) stop(`package-lock.json n'est pas en ${VERSION}.`, 'npm install --package-lock-only, puis committer le lock avec package.json.');
 if (!new RegExp(`versionCode ${VERSION_CODE}\\b`).test(gradle) || !gradle.includes(`versionName "${VERSION}"`)) stop(`android/app/build.gradle n'est pas en ${VERSION} / versionCode ${VERSION_CODE}.`);
-if (!codemagic.includes(`agvtool new-marketing-version ${VERSION}`)) stop(`codemagic.yaml ne fige pas la version iOS ${VERSION}.`);
-if (!codemagic.includes('<key>aps-environment</key>')) stop('codemagic.yaml ne pose pas aps-environment (pas de jeton iOS sans lui).');
-ok(`versions alignées : package.json ${VERSION}, Android ${VERSION}/vc${VERSION_CODE}, iOS ${VERSION} (aps-environment posé)`);
+// (08/11 soir) --aab-seul : aucun binaire iOS ne part (l'iPhone reste sur le sien, 2.9.164) — codemagic.yaml n'est pas lu.
+if (!aabSeul && !codemagic.includes(`agvtool new-marketing-version ${VERSION}`)) stop(`codemagic.yaml ne fige pas la version iOS ${VERSION}.`);
+if (!aabSeul && !codemagic.includes('<key>aps-environment</key>')) stop('codemagic.yaml ne pose pas aps-environment (pas de jeton iOS sans lui).');
+ok(aabSeul ? `versions alignées : package.json ${VERSION}, Android ${VERSION}/vc${VERSION_CODE} (iOS non concerné : --aab-seul)` : `versions alignées : package.json ${VERSION}, Android ${VERSION}/vc${VERSION_CODE}, iOS ${VERSION} (aps-environment posé)`);
 }
 
 // ── B. Les trois fichiers ───────────────────────────────────────────────────
