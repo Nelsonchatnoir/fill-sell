@@ -149,3 +149,14 @@ Leboncoin refus de modération probable (14), eBay (2). Aucune n'est le reste d'
 - La racine (savoir QUEL compte Leboncoin est connecté) demande : une colonne du compte relevé (migration), l'extension
   qui l'écrit (cookie `lbc_user_id`, déjà lu pour l'API), et une règle « une annonce d'un autre compte n'est jamais
   comparée au compte relevé ». Préparée en description seulement : migration + extension + soumission CWS = décision de Nico.
+
+## Point 3, suite (08/11 soir, GO de Nico) — savoir quel compte Leboncoin est connecté
+- Migration `20261108190000_compte_plateforme_releve` APPLIQUÉE (`db query -f` + `migration repair`), relue en prod
+  (règle en place, 2 colonnes, version inscrite). Preuve sur Postgres jetable (schéma de prod) : 21/21 — avant : un
+  compte changé avec 3 annonces sur l'ancien faisait 3 « Vendue ? » ; après : comptes connus jamais mélangés, même compte =
+  règle d'avant, compte inconnu = règle d'avant (heuristique du midi gardée) ; inverse rend la définition de prod (md5).
+- Extension 0.6.182 : le compte Leboncoin du jeton de la page écrit sur le relevé (avant le rapprochement) et sur chaque
+  annonce vue. Rien d'effacé ni de recréé chez ayadi007 : ses annonces se marquent au prochain relevé qui les voit ; les
+  ~115 de l'ancien compte (inconnues, d'avant la 0.6.182) restent sous l'heuristique du midi (aucun « Vendue ? »).
+- Effet : seulement chez les postes en 0.6.182 (Chrome Web Store) et, pour le Cloud, une copie 0.6.182-cloud (à déployer
+  sur autorisation nommée).

@@ -530,3 +530,16 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   ne jamais l'écrire dans `vinted_sync_runs.vinted_user_id` (lu comme compte Vinted par `cloud_essai_preparer_moi`).
 - Migrations `20261108141000`, `20261108143000`, `20261108144000` APPLIQUÉES le 08/11 (feux verts nommés de Nico) ;
   `rapprochement` **v37** (moteur.js) déployée le 08/11. Preuve : `scripts/preuve-ayadi-0811.mjs` (54/54).
+
+## ⛔ 08/11 soir (point 3 de Nico — ayadi007) — LE COMPTE DE LA PLATEFORME RELEVÉ EST CONNU ; deux comptes ne se mélangent jamais
+- Migration `20261108190000_compte_plateforme_releve` APPLIQUÉE le 08/11 au soir (preuve Postgres jetable 21/21,
+  `scripts/preuve-compte-plateforme-0811.mjs` ; inverse `supabase/rollbacks/…_INVERSE.sql`) :
+  `vinted_sync_runs.compte_plateforme` et `annonces_plateforme.compte_plateforme` (NULL = inconnu, aucune donnée réécrite).
+- Extension ≥ 0.6.182 (Leboncoin) : le compte du jeton de la page (celui que le relevé passe à l'API dans
+  `owner.user_id`) est écrit sur le relevé AVANT le rapprochement, puis sur chaque annonce vue (seulement si la base a les
+  colonnes). Jamais dans `vinted_user_id` (lu comme des comptes Vinted par l'essai Cloud).
+- `constater_absences_releve` : deux relevés de comptes différents ne forment jamais une paire ; une annonce d'un AUTRE
+  compte connu n'est ni comptée ni datée disparue (aucun « Vendue ? », aucun retrait ailleurs) ; trace
+  `usage_logs.releve_autre_compte`. Compte inconnu : la règle d'avant, et l'heuristique « compte changé ou vidé » (≥ 5,
+  aucune continuité, `20261108144000`) reste.
+- Les annonces d'avant la 0.6.182 se marquent au premier relevé qui les voit. Selftest `compte-plateforme-releve`.

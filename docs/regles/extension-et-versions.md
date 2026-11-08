@@ -336,3 +336,7 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   (jamais téléversée), rangée dans `build/anciens-zips/REMPLACEE-PAR-0.6.181-CWS-0.6.180`.
 - Copie Cloud : **0.6.181-cloud** (CRX 0.6.181.44885) sur cloud-2 le 08/11 à 17:59, depuis 08bc9d7 (worktree propre :
   le main local portait un commit non poussé du terminal Cloud), sur autorisation nommée de Nico ; avant 0.6.178-cloud.
+
+## 08/11 soir — 0.6.182 : le compte Leboncoin relevé (point 3 de Nico)
+- La 0.6.181 + le compte Leboncoin du jeton de la page écrit sur le relevé et sur chaque annonce vue (`compteLeboncoinValide`,
+  colonnes de la migration `20261108190000`, écrites seulement si elles existent). Rien d'autre ne change.
