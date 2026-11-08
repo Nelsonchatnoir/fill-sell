@@ -340,3 +340,8 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 ## 08/11 soir — 0.6.182 : le compte Leboncoin relevé (point 3 de Nico)
 - La 0.6.181 + le compte Leboncoin du jeton de la page écrit sur le relevé et sur chaque annonce vue (`compteLeboncoinValide`,
   colonnes de la migration `20261108190000`, écrites seulement si elles existent). Rien d'autre ne change.
+- Livrable : `build/CWS-0.6.182-A-TELEVERSER/fillsell-extension-0.6.182-cws.zip` (BUILD_ID `2026-11-08T18:30:10Z+bc358e9`,
+  614 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-08T18:29:41Z (44d55b6). Empaqueté depuis un worktree propre à
+  origin/main. SEUL zip à téléverser (Nico n'a téléversé ni la 0.6.180 ni la 0.6.181) : il contient toute la 0.6.181
+  (espacement par plateforme, arrêt du cycle sur une vente, recopie d'etat-job) ; la 0.6.181 est rangée dans
+  `build/anciens-zips/REMPLACEE-PAR-0.6.182-CWS-0.6.181`.
