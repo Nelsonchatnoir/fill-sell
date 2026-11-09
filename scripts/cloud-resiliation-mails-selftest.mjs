@@ -164,8 +164,9 @@ const textesMails = [...tous.map(({ t }) => [t.sujet, t.preheader, ...t.paragrap
   ...impayesStripe.map((t) => [t.sujet, t.preheader, t.intro, t.encadre, ...t.suite].join(' '))];
 const fautifs = textesMails.filter((x) => ON_EXECUTE.test(x) || SUPPOSE_EXTENSION.test(x));
 ok(fautifs.length === 0 && textesMails.length === 38, `les ${textesMails.length} mails Cloud (6 événements × canaux × langues, veille, impayé Stripe) : jamais « on publie pour toi », jamais « repassent » / « comme avant »`, fautifs.map((x) => x.slice(0, 160)));
-ok(fr('essai_debut', 'stripe').paragraphes[1] === 'Ton essai gratuit de FillSell Cloud a commencé : FillSell Cloud publie et republie tes annonces, même quand ton ordinateur est éteint.',
-  'début d\'essai : « FillSell Cloud publie et republie tes annonces, même quand ton ordinateur est éteint »');
+// (09/11, point C1 de Nico) « plus besoin d'ordinateur » — jamais « ordinateur éteint », jamais « sans ordinateur ».
+ok(fr('essai_debut', 'stripe').paragraphes[1] === "Ton essai gratuit de FillSell Cloud a commencé : plus besoin d'ordinateur, FillSell Cloud publie, republie et retire tes annonces 24 h/24, et tes ventes sont suivies.",
+  'début d\'essai : « plus besoin d’ordinateur, FillSell Cloud publie, republie et retire tes annonces 24 h/24 »');
 ok(['arret_essai', 'arret_programme', 'impaye'].every((ev) => ['apple', 'google'].every((c) => fr(ev, c).paragraphes.some((p) => /[Ss]ans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur\./.test(p))))
   && impayesStripe.filter((t) => !/^Hi/.test(t.salut)).every((t) => t.suite.some((p) => /Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur\./.test(p))),
   'arrêts et impayés : « Sans FillSell Cloud, tes publications passent par l\'extension FillSell, sur ton ordinateur. » (vrai même sans ordinateur)');

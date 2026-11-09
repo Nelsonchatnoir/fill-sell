@@ -115,8 +115,9 @@ export default function EtapeVoie({ c, T, onAller }) {
           }}
         >
           i
-          {/* La zone tactile : 12 px de plus de chaque côté, soit 44 × 44. */}
-          <span aria-hidden="true" style={{ position: 'absolute', inset: -12 }} />
+          {/* La zone tactile : 44 × 44. L'absolu part du bord INTÉRIEUR de la bordure (20 − 2 × 1,5 = 17 px) :
+              13,5 px de plus de chaque côté (09/11 : -12 ne donnait que 41-42 px, mesuré). */}
+          <span aria-hidden="true" style={{ position: 'absolute', inset: -13.5 }} />
         </button>
         {' '}{T.voieTexteApres}
       </Texte>

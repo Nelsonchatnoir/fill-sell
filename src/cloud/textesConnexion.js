@@ -15,7 +15,7 @@ const PRIX_EN = JETON_PRIX_CLOUD;
 
 const FR = {
   titre: 'Me connecter',
-  intro: "Connecte tes plateformes une fois : FillSell publie ensuite tes annonces depuis ses serveurs, même ordinateur éteint. Seule la page de connexion s'ouvre.",
+  intro: "Connecte tes plateformes une fois : FillSell Cloud publie ensuite tes annonces depuis ses serveurs, sans ordinateur. Seule la page de connexion s'ouvre.",
   connecte: 'Connecté',
   aConnecter: 'À connecter',
   // (30/10, lot D) Une connexion faite qui a lâché (session fermée par la plateforme).
@@ -122,7 +122,7 @@ const FR = {
 
 const EN = {
   titre: 'Sign in',
-  intro: "Connect your platforms once: FillSell then posts your listings from its servers, even with your computer off. Only the sign-in page opens.",
+  intro: "Connect your platforms once: FillSell Cloud then posts your listings from its servers, no computer needed. Only the sign-in page opens.",
   connecte: 'Connected',
   aConnecter: 'Not connected',
   aReconnecter: 'Sign in again needed',

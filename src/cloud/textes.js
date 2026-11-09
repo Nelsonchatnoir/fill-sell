@@ -48,6 +48,8 @@ import { JETON_PRIX_CLOUD, avecPrix } from '../lib/prixBoutique.js';
 // Espaces INSÉCABLES dans le prix et « 7 jours » : à 390 px, le montant se
 // retrouvait seul en fin de ligne et « €/mois » à la suivante (capture du 04/10).
 const NBSP = String.fromCharCode(0xa0);
+// (09/11, vu sur la capture C1 à 375 px) Le « gluon » (U+2060, invisible) : « €/mois » ne se coupe plus après la barre.
+const GLUE = String.fromCharCode(0x2060);
 // (08/11, refus Google Play de la vc36) Le prix n'est plus écrit ici : un JETON, remplacé à la lecture par le prix du
 // CANAL (web : Stripe en euros ; iPhone/Android : prix formaté par la boutique, « … » tant qu'il charge) — lib/prixBoutique.js.
 const PRIX = JETON_PRIX_CLOUD;   // web : '24,99 €' (insécable) ; mobile : le prix de la boutique
@@ -69,13 +71,17 @@ const FR = {
   // Ancien libellé imposé le 04/10, remplacé : « Sans ordinateur · +20 €/mois ». Pourquoi : le 03/11, Nico a fixé
   // le prix à 24,99 € sur les trois canaux (jamais un prix affiché différent du prix facturé) et le NOM de
   // l'option à « FillSell Cloud », « sans ordinateur » devenant sa promesse.
-  libelleInterrupteur: `FillSell Cloud · sans ordinateur · +${PRIX}/mois`,
+  libelleInterrupteur: `FillSell Cloud · sans ordinateur · +${PRIX}/${GLUE}mois`,
   essaiPastille: `${J7} d'essai gratuits`,
   // ⛔ CARTE DEMANDÉE (décision du 04/10 soir) — dit là où l'essai se propose.
   carteDemandee: (date) => `Carte demandée, rien n'est prélevé pour le Cloud avant le ${date}.`,
 
   // ── Ce que ça fait (une phrase, la même partout) ─────────────────────────
-  ceQueCaFait: 'Tes annonces Vinted, Leboncoin, Beebs et Depop partent, se republient et se retirent même ordinateur éteint, et tes ventes sont vues : tout se pilote depuis ton téléphone.',
+  // (08/11, point C1 de Nico) « plus besoin d'ordinateur » : jamais « même ordinateur éteint » (qui suppose un ordinateur).
+  // « sans ordinateur », pas « toutes seules » : la republication AUTOMATIQUE est du Pro et du Business ; le Cloud,
+  // lui, fait partir sans ordinateur ce que la formule fait (publication, republication, retrait, ventes).
+  accroche: "Plus besoin d'ordinateur",
+  ceQueCaFait: 'Tes annonces Vinted, Leboncoin, Beebs et Depop partent, se republient et se retirent sans ordinateur, 24 h/24, et tes ventes sont suivies. Tout se pilote depuis ton téléphone.',
   ebayDeja: 'eBay part déjà sans ordinateur, pour tout le monde.',
 
   // ── L'interrupteur de la feuille des formules ────────────────────────────
@@ -94,17 +100,18 @@ const FR = {
   prixOptionSousEssai: `/mois · Cloud offert ${J7}`,
   prixOptionSous: '/mois · avec FillSell Cloud',
   ctaSuffixe: ' + FillSell Cloud',
-  titreModale: 'Vends même ordinateur éteint.',
+  titreModale: "Plus besoin d'ordinateur.",
   ajoutTitre: (nom) => `Ajouter à ${taFormule(nom)}`,
   ajoutCtaEssai: `Essayer ${J7} gratuits`,
   ajoutCta: `Ajouter · +${PRIX}/mois`,
 
   // ── La voie « Free + FillSell Cloud » (carte Free de la feuille) ─────────
   freeCloudTitre: 'Free + FillSell Cloud',
-  freeCloudQuota: (n) => `Avec Free + FillSell Cloud, tu restes à ${annoncesFree(n)} par mois.`,
+  // (09/11, vu sur la capture C1) Quota pas encore lu : la phrase reste juste — jamais « tu restes à les annonces ».
+  freeCloudQuota: (n) => (Number.isFinite(n) ? `Avec Free + FillSell Cloud, tu restes à ${annoncesFree(n)} par mois.` : 'Avec Free + FillSell Cloud, tu gardes les quotas du plan Free.'),
   freeCloudFrise: (date, n) => [
     { quand: "Aujourd'hui", quoi: '0 €, carte demandée.' },
-    { quand: "Pendant l'essai", quoi: `Tes ${annoncesFree(n)} du plan Free.` },
+    { quand: "Pendant l'essai", quoi: Number.isFinite(n) ? `Tes ${annoncesFree(n)} du plan Free.` : 'Les quotas du plan Free.' },
     { quand: date, quoi: `${PRIX}/mois, sauf si tu l'arrêtes.` },
   ],
   freeCloudSansEssai: `Le Cloud est facturé ${PRIX}/mois dès aujourd'hui ; tu l'arrêtes quand tu veux.`,
@@ -153,11 +160,11 @@ const FR = {
   essaiJauge: (j, total) => `Jour ${j} sur ${total}`,
   essaiNote: (nom) => `Si tu l'arrêtes, ${taFormule(nom)} ne change pas, et l'extension comme eBay restent possibles.`,
   // UNE mention, ici seulement, pendant l'essai d'un compte Free (jamais une fenêtre).
-  mentionPremium: (n) => `Tu es en Free + FillSell Cloud : ${annoncesFree(n)} par mois. Pour en publier plus, Premium s'ajoute au Cloud.`,
+  mentionPremium: (n) => (Number.isFinite(n) ? `Tu es en Free + FillSell Cloud : ${annoncesFree(n)} par mois. Pour en publier plus, Premium s'ajoute au Cloud.` : "Tu es en Free + FillSell Cloud, avec les quotas du plan Free. Pour publier plus, Premium s'ajoute au Cloud."),
   voirPremium: 'Voir Premium',
   payeTexte: (nom) => (nom
-    ? `En plus de ta formule ${nom} : tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint.`
-    : 'Avec ton plan Free : tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint.'),
+    ? `En plus de ta formule ${nom} : tes annonces Vinted, Leboncoin, Beebs et Depop partent sans ordinateur, 24 h/24.`
+    : 'Avec ton plan Free : tes annonces Vinted, Leboncoin, Beebs et Depop partent sans ordinateur, 24 h/24.'),
   arretPrevuTexte: (date) => `Le Cloud tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite.`,
   garderOption: 'Garder le Cloud',
   // Plus rendu depuis CLOUD_EXIGE_UN_PALIER = false (gardé pour l'interrupteur de palier.js).
@@ -229,7 +236,7 @@ const FR = {
   finTexte: "Le Cloud n'est plus actif.",
   finArreteTitre: "Ce qui s'arrête",
   finArrete: [
-    "Tes annonces Vinted, Leboncoin, Beebs et Depop ne partent plus ordinateur éteint : sans FillSell Cloud, publication, republication, retrait et ventes passent par l'extension FillSell, sur ton ordinateur.",
+    "Tes annonces Vinted, Leboncoin, Beebs et Depop ne partent plus sans ordinateur : sans FillSell Cloud, publication, republication, retrait et ventes passent par l'extension FillSell, sur ton ordinateur.",
   ],
   finContinueTitre: 'Ce qui continue',
   finContinue: (nom) => [
@@ -262,11 +269,12 @@ const FR = {
 
 const EN = {
   nom: 'FillSell Cloud',
-  libelleInterrupteur: `FillSell Cloud · no computer · +${PRIX_EN}/mo`,
+  libelleInterrupteur: `FillSell Cloud · no computer · +${PRIX_EN}/${GLUE}mo`,
   essaiPastille: `${JOURS}-day free trial`,
   carteDemandee: (date) => `Card required, nothing is charged for the Cloud before ${date}.`,
 
-  ceQueCaFait: 'Your Vinted, Leboncoin, Beebs and Depop listings go out, get reposted and removed even with your computer off, and your sales are seen: everything is driven from your phone.',
+  accroche: 'No computer needed',
+  ceQueCaFait: 'Your Vinted, Leboncoin, Beebs and Depop listings go out, get reposted and removed without a computer, 24/7, and your sales are tracked. Everything is driven from your phone.',
   ebayDeja: 'eBay already works without a computer, for everyone.',
 
   sAjoute: 'It adds to your plan once your plan is active.',
@@ -283,16 +291,16 @@ const EN = {
   prixOptionSousEssai: `/mo · Cloud free for ${D7}`,
   prixOptionSous: '/mo · with FillSell Cloud',
   ctaSuffixe: ' + FillSell Cloud',
-  titreModale: 'Sell even with your computer off.',
+  titreModale: 'No computer needed.',
   ajoutTitre: (nom) => `Add to ${yourPlan(nom)}`,
   ajoutCtaEssai: `Try ${D7} free`,
   ajoutCta: `Add · +${PRIX_EN}/mo`,
 
   freeCloudTitre: 'Free + FillSell Cloud',
-  freeCloudQuota: (n) => `With Free + FillSell Cloud, you stay at ${listingsFree(n)} a month.`,
+  freeCloudQuota: (n) => (Number.isFinite(n) ? `With Free + FillSell Cloud, you stay at ${listingsFree(n)} a month.` : 'With Free + FillSell Cloud, you keep the Free plan quotas.'),
   freeCloudFrise: (date, n) => [
     { quand: 'Today', quoi: '€0, card required.' },
-    { quand: 'During the trial', quoi: `Your ${listingsFree(n)} of the Free plan.` },
+    { quand: 'During the trial', quoi: Number.isFinite(n) ? `Your ${listingsFree(n)} of the Free plan.` : 'The Free plan quotas.' },
     { quand: date, quoi: `${PRIX_EN}/mo, unless you stop it.` },
   ],
   freeCloudSansEssai: `The Cloud is billed ${PRIX_EN}/mo from today; stop it whenever you want.`,
@@ -335,11 +343,11 @@ const EN = {
     : `Free until ${date} at ${heure}. Then the Cloud moves to ${PRIX_EN}/mo, unless you stop it before.`),
   essaiJauge: (j, total) => `Day ${j} of ${total}`,
   essaiNote: (nom) => `If you stop it, ${yourPlan(nom)} does not change, and the extension and eBay remain available.`,
-  mentionPremium: (n) => `You are on Free + FillSell Cloud: ${listingsFree(n)} a month. To post more, Premium adds to the Cloud.`,
+  mentionPremium: (n) => (Number.isFinite(n) ? `You are on Free + FillSell Cloud: ${listingsFree(n)} a month. To post more, Premium adds to the Cloud.` : 'You are on Free + FillSell Cloud, with the Free plan quotas. To post more, Premium adds to the Cloud.'),
   voirPremium: 'See Premium',
   payeTexte: (nom) => (nom
-    ? `On top of your ${nom} plan: your Vinted, Leboncoin, Beebs and Depop listings go out even with your computer off.`
-    : 'With your Free plan: your Vinted, Leboncoin, Beebs and Depop listings go out even with your computer off.'),
+    ? `On top of your ${nom} plan: your Vinted, Leboncoin, Beebs and Depop listings go out without a computer, 24/7.`
+    : 'With your Free plan: your Vinted, Leboncoin, Beebs and Depop listings go out without a computer, 24/7.'),
   arretPrevuTexte: (date) => `The Cloud runs until ${date}, then stops: nothing will be charged after that.`,
   garderOption: 'Keep the Cloud',
   suspenduTexte: 'The Cloud is paused: it restarts as soon as you pick a plan again.',
@@ -395,7 +403,7 @@ const EN = {
   finTexte: 'The Cloud is off.',
   finArreteTitre: 'What stops',
   finArrete: [
-    'Your Vinted, Leboncoin, Beebs and Depop listings no longer go out with your computer off: without FillSell Cloud, posting, reposting, removal and sales go through the FillSell extension, on your computer.',
+    'Your Vinted, Leboncoin, Beebs and Depop listings no longer go out without a computer: without FillSell Cloud, posting, reposting, removal and sales go through the FillSell extension, on your computer.',
   ],
   finContinueTitre: 'What continues',
   finContinue: (nom) => [

@@ -21,7 +21,9 @@ export default function MentionsAbonnement({ lang = 'fr', cloud = false, essaiCl
         {liens.map((l) => (
           <a key={l.cle} href={l.url} target="_blank" rel="noopener noreferrer"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); ouvrirLien(l.url); }}
-            style={{ color: '#1B6E62', fontWeight: 600, textDecoration: 'underline' }}>
+            // (09/11, C1 « ultra carré ») Zone de toucher de 44 px sans rien déplacer : 14 px de marge intérieure en haut
+            // et en bas, rendus par une marge négative (16,5 + 28 = 44,5 px ; le texte reste à sa place, mesuré).
+            style={{ color: '#1B6E62', fontWeight: 600, textDecoration: 'underline', padding: '14px 0', margin: '-14px 0' }}>
             {l.libelle}
           </a>
         ))}

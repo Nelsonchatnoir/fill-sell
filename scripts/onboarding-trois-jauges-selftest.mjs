@@ -169,7 +169,7 @@ try {
     const vHtml = rendre('EtapeVoie', cV);
     ok(/L.étape qui compte Comment tu veux publier \?/.test(v) && /Tes annonces doivent être déposées sur chaque plateforme, avec ton compte\. i Choisis qui s.en charge : tu pourras changer plus tard\./.test(v),
       'voie : titre, phrase et son point « i »', v.slice(0, 300));
-    ok(/7 jours offerts FillSell Cloud Tout depuis ton téléphone Sans ordinateur\. FillSell publie, remonte et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis ses serveurs, même quand tout est éteint\./.test(v),
+    ok(/7 jours offerts FillSell Cloud Tout depuis ton téléphone Plus besoin d.ordinateur\. FillSell Cloud publie, remonte et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis ses serveurs, 24 h\/24, et tes ventes sont suivies\./.test(v) && !/éteint/.test(v),
       'voie : la carte Cloud devant, pastille « 7 jours offerts », plateformes lues dans config/cloudOffer.js', v);
     ok(v.includes('Rien à installer Ventes vues en direct Sans engagement Essayer 7 jours offerts') && v.includes(`Puis ${P_FR}/mois. Tu l'arrêtes en un geste, on te prévient la veille.`),
       `voie : « Essayer 7 jours offerts » et « Puis ${P_FR}/mois » (CLOUD_PRIX_AFFICHE)`, v);
@@ -177,7 +177,7 @@ try {
       'voie : l’extension en alternative claire, avec SON bouton', v);
     ok(/Tu pourras passer de l.un à l.autre dans Réglages, quand tu veux\./.test(v) && !/aria-checked="true"|aria-pressed="true"/.test(vHtml) && (vHtml.match(/<button/g) || []).length === 3,
       'voie : rien de pré-coché, trois boutons (le « i », le Cloud, l’extension)');
-    ok(/aria-label="Il te faut déjà un compte sur chaque plateforme"/.test(vHtml) && /width:20px;height:20px/.test(vHtml) && /position:absolute;inset:-12px/.test(vHtml),
+    ok(/aria-label="Il te faut déjà un compte sur chaque plateforme"/.test(vHtml) && /width:20px;height:20px/.test(vHtml) && /position:absolute;inset:-13.5px/.test(vHtml),
       'voie : le point « i » dessiné à 20 px, zone tactile 20 + 2 × 12 = 44 px, nommé pour les lecteurs d’écran');
     ok(!/data-entree="info-voie"/.test(vHtml), 'voie : la petite fenêtre est fermée à l’arrivée');
     const info = texte(renderToStaticMarkup(h(E.EtapeVoie.FenetreInfo, { T: TX.textesEntree('fr'), onFermer() {} })));
@@ -199,7 +199,7 @@ try {
       'essai : la date de bascule EST le titre', e.slice(0, 260));
     ok(e.includes(`Aujourd'hui Carte demandée, 0 € prélevé. Lundi 9 novembre On te prévient, dans l'app et par e-mail. Mardi 10 novembre ${P_FR}/mois, sauf si tu arrêtes avant. Sans engagement.`),
       'essai : la frise — aujourd’hui, la veille (le rappel), la bascule avec le prix', e);
-    ok(/Ce que fait le Cloud Vinted, Leboncoin, Beebs et Depop : publiés, remontés et retirés après une vente, ordinateur éteint Tes ventes vues en direct, sur ton téléphone eBay part déjà de nos serveurs, pour tout le monde Tes quotas restent ceux de ton plan : en Free, 5 annonces, 50 publications et 30 remontées par mois/.test(e),
+    ok(/Ce que fait le Cloud Vinted, Leboncoin, Beebs et Depop : publiés, remontés et retirés après une vente, sans ordinateur, 24 h\/24 Tes ventes vues en direct, sur ton téléphone eBay part déjà de nos serveurs, pour tout le monde Tes quotas restent ceux de ton plan : en Free, 5 annonces, 50 publications et 30 remontées par mois/.test(e),
       'essai : « Ce que fait le Cloud », la dernière ligne dit les quotas Free (lus dans coin_config)', e);
     ok(/Commencer mes 7 jours offerts L.essai passe par l.App Store : tu l.arrêtes aussi dans tes abonnements Apple\. Je préfère utiliser mon ordinateur$/.test(e), 'essai (iPhone) : le bouton, la ligne App Store, « Je préfère utiliser mon ordinateur »', e.slice(-220));
     ok(/L.essai passe par Google Play : tu l.arrêtes aussi dans tes abonnements Google Play\./.test(lu('EtapeCloud', cC({ plateforme: 'android' })))
@@ -229,7 +229,7 @@ try {
       { id: 'beebs', nom: 'Beebs', etat: 'a_connecter', verif: null }, { id: 'depop', nom: 'Depop', etat: 'a_connecter', verif: null }];
     const cX = ctx({ voie: 'cloud', cloud: cloudObjet({ parcours: true, actif: true, cx: cx(L4) }) });
     const x = lu('EtapeCloudConnexion', cX);
-    ok(/Cloud activé · essai jusqu.au 10\/11 Connecte tes comptes, une fois La page de connexion de chaque plateforme s.ouvre ici\. Ensuite, FillSell publie depuis ses serveurs, même ordinateur éteint\./.test(x),
+    ok(/Cloud activé · essai jusqu.au 10\/11 Connecte tes comptes, une fois La page de connexion de chaque plateforme s.ouvre ici\. Ensuite, FillSell Cloud publie depuis ses serveurs, sans ordinateur\./.test(x),
       'connexions : « Cloud activé · essai jusqu’au 10/11 » (la fin RÉELLE de l’essai), titre, phrase', x.slice(0, 260));
     ok(/Vinted Connecté Leboncoin/.test(x) && /Leboncoin À connecter Me connecter/.test(x) && /Beebs À connecter Me connecter/.test(x) && /Depop À connecter Me connecter/.test(x)
       && /eBay Par la connexion officielle d.eBay Relier eBay/.test(x) && x.indexOf('Vinted Connecté') < x.indexOf('Depop À connecter') && x.indexOf('Depop À connecter') < x.indexOf('Relier eBay'),
@@ -271,7 +271,7 @@ try {
     ok(/l.extension lit tes annonces déjà publiées/.test(rExt) && /Ton ordinateur doit être allumé, avec Chrome et l.extension FillSell/.test(rExt) && !/aucune jauge/.test(rExt), 'relevé avec l’extension (grille 0) : l’écran d’avant');
     ok(/elle part dès que FillSell Cloud est prêt/.test(lu('EtapeReleve', { ...cP, releve: { etat: 'en_file' } })), 'relevé Cloud demandé avant que l’exécutant soit vu : jamais « sur ton ordinateur »');
     const d = lu('EtapeDebut', { ...cP, choix: { plateformes: [], debute: true } });
-    ok(/FillSell la publie depuis ses serveurs\./.test(d) && /une plateforme après l.autre, même ordinateur éteint/.test(d) && !/Ton ordinateur, ouvert avec l.extension/.test(d), '« Je débute » avec le Cloud : le dépôt part de nos serveurs');
+    ok(/FillSell la publie depuis ses serveurs\./.test(d) && /FillSell Cloud la publie depuis ses serveurs, une plateforme après l.autre, sans ordinateur/.test(d) && !/éteint/.test(d) && !/Ton ordinateur, ouvert avec l.extension/.test(d), '« Je débute » avec le Cloud : le dépôt part de nos serveurs');
   }
   {
     const rem = lu('EtapeRepublication', ctx({ grille: true }));

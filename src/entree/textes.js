@@ -160,7 +160,8 @@ const FR = {
   voiePastille: `${J7} offerts`,
   voieCloudK: 'FillSell Cloud',
   voieCloudT: 'Tout depuis ton téléphone',
-  voieCloudP: (noms) => `Sans ordinateur. FillSell publie, remonte et retire tes annonces ${noms} depuis ses serveurs, même quand tout est éteint.`,
+  // (08/11, point C1 de Nico) « plus besoin d'ordinateur », jamais « même ordinateur éteint ».
+  voieCloudP: (noms) => `Plus besoin d'ordinateur. FillSell Cloud publie, remonte et retire tes annonces ${noms} depuis ses serveurs, 24 h/24, et tes ventes sont suivies.`,
   voieCloudPlus: ['Rien à installer', 'Ventes vues en direct', 'Sans engagement'],
   voieCloudCta: `Essayer ${J7} offerts`,
   voieCloudNote: `Puis ${PRIX}/mois. Tu l'arrêtes en un geste, on te prévient la veille.`,
@@ -188,7 +189,7 @@ const FR = {
   ],
   cloudFait: 'Ce que fait le Cloud',
   cloudFaitListe: (noms, quotasFree) => [
-    `${noms} : publiés, remontés et retirés après une vente, ordinateur éteint`,
+    `${noms} : publiés, remontés et retirés après une vente, sans ordinateur, 24 h/24`,
     'Tes ventes vues en direct, sur ton téléphone',
     'eBay part déjà de nos serveurs, pour tout le monde',
     quotasFree ? `Tes quotas restent ceux de ton plan : en Free, ${quotasFree} par mois` : 'Tes quotas restent ceux de ton plan',
@@ -207,7 +208,7 @@ const FR = {
   // ── 2 quater. Cloud : les connexions (maquette o-cloud-connexion, v3) ────
   cxKicker: (date) => (date ? `Cloud activé · essai jusqu'au ${date}` : 'Cloud activé'),
   cxTitre: 'Connecte tes comptes, une fois',
-  cxTexte: "La page de connexion de chaque plateforme s'ouvre ici. Ensuite, FillSell publie depuis ses serveurs, même ordinateur éteint.",
+  cxTexte: "La page de connexion de chaque plateforme s'ouvre ici. Ensuite, FillSell Cloud publie depuis ses serveurs, sans ordinateur.",
   cxEbaySous: "Par la connexion officielle d'eBay",
   cxBande: "Seule la page de connexion s'ouvre : connecte-toi avec ton compte déjà créé sur la plateforme, FillSell n'en crée pas. Connecte une plateforme maintenant, les autres quand tu veux, dans Réglages › Mes plateformes.",
   cxCompte: (n, total) => `${n} plateforme${n > 1 ? 's' : ''} connectée${n > 1 ? 's' : ''} sur ${total}`,
@@ -228,7 +229,7 @@ const FR = {
 
   // ── 4 bis. Je débute, avec le Cloud ──────────────────────────────────────
   debTexteCloud: 'Photographie un article : FillSell remplit la fiche, tu choisis les plateformes, FillSell la publie depuis ses serveurs.',
-  debEtapeCloud: "FillSell la publie depuis ses serveurs, une plateforme après l'autre, même ordinateur éteint",
+  debEtapeCloud: "FillSell Cloud la publie depuis ses serveurs, une plateforme après l'autre, sans ordinateur",
 
   // ── 5. Remonter tes annonces, avec la grille (maquette o-remontees) ──────
   remTitre: 'Remonte tes annonces en un geste',
@@ -386,7 +387,7 @@ const EN = {
   voiePastille: `${D7} free`,
   voieCloudK: 'FillSell Cloud',
   voieCloudT: 'Everything from your phone',
-  voieCloudP: (noms) => `No computer needed. FillSell posts, bumps and removes your ${noms} listings from its servers, even when everything is off.`,
+  voieCloudP: (noms) => `No computer needed. FillSell Cloud posts, bumps and removes your ${noms} listings from its servers, 24/7, and your sales are tracked.`,
   voieCloudPlus: ['Nothing to install', 'Sales seen live', 'No commitment'],
   voieCloudCta: `Try ${D7} free`,
   voieCloudNote: `Then ${PRIX_EN}/mo. Stop it in one tap, we remind you the day before.`,
@@ -412,7 +413,7 @@ const EN = {
   ],
   cloudFait: 'What the Cloud does',
   cloudFaitListe: (noms, quotasFree) => [
-    `${noms}: posted, bumped and removed after a sale, computer off`,
+    `${noms}: posted, bumped and removed after a sale, no computer needed, 24/7`,
     'Your sales seen live, on your phone',
     'eBay already goes out from our servers, for everyone',
     quotasFree ? `Your quotas stay those of your plan: on Free, ${quotasFree} a month` : 'Your quotas stay those of your plan',
@@ -428,7 +429,7 @@ const EN = {
 
   cxKicker: (date) => (date ? `Cloud on · trial until ${date}` : 'Cloud on'),
   cxTitre: 'Connect your accounts, once',
-  cxTexte: "Each platform's sign-in page opens here. Then FillSell posts from its servers, even with your computer off.",
+  cxTexte: "Each platform's sign-in page opens here. Then FillSell Cloud posts from its servers, no computer needed.",
   cxEbaySous: "Through eBay's official sign-in",
   cxBande: 'Only the sign-in page opens: sign in with the account you already created on the platform, FillSell does not create one. Connect one platform now, the others whenever you want, in Settings › My platforms.',
   cxCompte: (n, total) => `${n} platform${n === 1 ? '' : 's'} connected out of ${total}`,
@@ -445,7 +446,7 @@ const EN = {
   relImportGratuit: 'And the import counts in no gauge, even with 500 listings.',
 
   debTexteCloud: 'Photograph an item: FillSell fills the card, you pick the platforms, FillSell posts it from its servers.',
-  debEtapeCloud: 'FillSell posts it from its servers, one platform after another, even with your computer off',
+  debEtapeCloud: 'FillSell Cloud posts it from its servers, one platform after another, no computer needed',
 
   remTitre: 'Bump your listings in one tap',
   remTexte: 'An ageing listing sinks down the lists. "Bump my listings", in your Stock, puts it back on top on each platform.',

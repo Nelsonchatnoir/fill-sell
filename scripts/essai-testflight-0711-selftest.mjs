@@ -50,8 +50,10 @@ ok(/\.\.\.\(av\.releves \?\? \[\]\)\.map\(\(x\) => \{\n\s*const fini = releveAva
 console.log('\nc. La carte en cours, pour un client FillSell Cloud');
 for (const lang of ['fr', 'en']) {
   const L = textesAnnonces(lang);
-  ok(/FillSell Cloud/.test(L.enCoursSousCloud) && (lang === 'fr' ? /ordinateur éteint/.test(L.enCoursSousCloud) : /computer off/.test(L.enCoursSousCloud)),
-    `${lang} : « FillSell Cloud travaille… même ordinateur éteint »`, L.enCoursSousCloud);
+  // (09/11, point C1 de Nico) « plus besoin d'ordinateur » : jamais « ordinateur éteint » (qui suppose un ordinateur).
+  ok(/FillSell Cloud/.test(L.enCoursSousCloud) && (lang === 'fr' ? /sans ordinateur/.test(L.enCoursSousCloud) : /no computer needed/.test(L.enCoursSousCloud))
+    && !/éteint|computer off/.test(L.enCoursSousCloud),
+    `${lang} : « FillSell Cloud travaille… sans ordinateur »`, L.enCoursSousCloud);
   ok(!/^Ton ordinateur|^Your computer/.test(L.enCoursSousCloud) && /FillSell Cloud/.test(L.enCoursAttenteCloud) && !/ordinateur|computer/.test(L.enCoursAttenteCloud),
     `${lang} : jamais « ton ordinateur travaille », ni « en attente de ton ordinateur »`, L.enCoursAttenteCloud);
 }

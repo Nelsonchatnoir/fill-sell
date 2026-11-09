@@ -195,7 +195,9 @@ const FR = {
     titre: 'Ton essai FillSell Cloud a commencé',
     preheader: (q) => (q ? `Il est gratuit jusqu'au ${q}.` : "Il est gratuit jusqu'à la fin de l'essai."),
     // (08/11, Nico) C'est FillSell Cloud qui publie — jamais « on publie pour toi ».
-    intro: "Ton essai gratuit de FillSell Cloud a commencé : FillSell Cloud publie et republie tes annonces, même quand ton ordinateur est éteint.",
+    // (08/11, point C1 de Nico) « plus besoin d'ordinateur » : jamais « même quand ton ordinateur est éteint ».
+    // (09/11) … ni « sans ordinateur » (l'ancien NOM de l'option, interdit dans les mails : selftest:cloud-resiliation-mails).
+    intro: "Ton essai gratuit de FillSell Cloud a commencé : plus besoin d'ordinateur, FillSell Cloud publie, republie et retire tes annonces 24 h/24, et tes ventes sont suivies.",
     connecter: 'Pour démarrer, connecte tes plateformes dans FillSell : Réglages → Abonnement → FillSell Cloud → Connecter mes plateformes.',
     fin: (q) => (q ? `L'essai est gratuit jusqu'au ${q} (heure de Paris).` : "L'essai est gratuit jusqu'à sa date de fin, affichée dans FillSell (Réglages → Abonnement)."),
     suite: {
@@ -299,7 +301,7 @@ const EN = {
     sujet: 'Your FillSell Cloud trial has started',
     titre: 'Your FillSell Cloud trial has started',
     preheader: (q) => (q ? `It is free until ${q}.` : 'It is free until the end of the trial.'),
-    intro: 'Your free FillSell Cloud trial has started: FillSell Cloud lists and relists your items, even when your computer is off.',
+    intro: 'Your free FillSell Cloud trial has started: no computer needed, FillSell Cloud lists, reposts and removes your items 24/7, and your sales are tracked.',
     connecter: 'To get going, connect your platforms in FillSell: Settings → Subscription → FillSell Cloud → Connect my platforms.',
     fin: (q) => (q ? `The trial is free until ${q} (Paris time).` : 'The trial is free until its end date, shown in FillSell (Settings → Subscription).'),
     suite: {

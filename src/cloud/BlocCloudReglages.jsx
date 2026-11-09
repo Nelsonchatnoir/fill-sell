@@ -202,6 +202,8 @@ export default function BlocCloudReglages({
 
           {etat === 'aucun' && (
             <>
+              {/* (08/11, point C1) « FillSell Cloud — plus besoin d'ordinateur » */}
+              <p data-cloud-accroche="1" style={{ ...pTexte, margin: 0, fontWeight: 700, color: R.ink }}>{T.accroche}</p>
               <p style={pTexte}>{T.ceQueCaFait}</p>
               {quotaLigne}
               {!cloud.essaiPris ? (

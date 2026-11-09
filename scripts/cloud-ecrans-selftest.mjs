@@ -131,7 +131,10 @@ const toutes = (T) => Object.values(T).flatMap((v) => {
 {
   verifier(JSON.stringify(Object.keys(FR).sort()) === JSON.stringify(Object.keys(EN).sort()), 'textes : fr et en ont les mêmes clés',
     Object.keys(FR).filter((k) => !(k in EN)).concat(Object.keys(EN).filter((k) => !(k in FR))).join(', '));
-  verifier(net(FR.libelleInterrupteur) === 'FillSell Cloud · sans ordinateur · +24,99 €/mois', 'le libellé IMPOSÉ : « FillSell Cloud · sans ordinateur · +24,99 €/mois »', FR.libelleInterrupteur);
+  // (09/11) Le gluon U+2060 (invisible) après la barre : « €/mois » ne se coupe plus (vu à 375 px).
+  const GLUE = String.fromCharCode(0x2060);
+  verifier(FR.libelleInterrupteur.includes(`€/${GLUE}mois`) && EN.libelleInterrupteur.includes(`/${GLUE}mo`), '« €/mois » ne se coupe pas après la barre (gluon U+2060), fr et en', FR.libelleInterrupteur);
+  verifier(net(FR.libelleInterrupteur).split(GLUE).join('') === 'FillSell Cloud · sans ordinateur · +24,99 €/mois', 'le libellé IMPOSÉ : « FillSell Cloud · sans ordinateur · +24,99 €/mois »', FR.libelleInterrupteur);
   verifier(NBSP.test(FR.libelleInterrupteur), 'le prix ne se coupe pas en fin de ligne (« 20 € » insécable)');
   for (const [nom, T] of [['fr', FR], ['en', EN]]) {
     const phrases = toutes(T);
@@ -148,9 +151,22 @@ const toutes = (T) => Object.values(T).flatMap((v) => {
   verifier(nomsCloud.join(',') === 'Vinted,Leboncoin,Beebs,Depop', 'la liste officielle : Vinted, Leboncoin, Beebs, Depop', nomsCloud.join(','));
   const deuxSeules = [...toutes(FR), ...toutes(EN)].filter((p) => /Vinted (et|and) Leboncoin/.test(p));
   verifier(deuxSeules.length === 0, 'aucune phrase Cloud ne nomme Vinted et Leboncoin seuls (01/11 : les quatre)', deuxSeules.join(' | '));
-  verifier(net(FR.payeTexte('Pro')) === 'En plus de ta formule Pro : tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint.'
-    && /Vinted, Leboncoin, Beebs and Depop listings go out even with your computer off/.test(EN.payeTexte('Pro')),
-    'la carte des Réglages : « tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint »', net(FR.payeTexte('Pro')));
+  // (09/11, vu sur la capture C1) Quota Free pas encore lu : chaque phrase reste juste (jamais « tu restes à les annonces »).
+  const sansQuota = [FR.freeCloudQuota(null), FR.mentionPremium(undefined), FR.freeCloudFrise('16 novembre', NaN)[1].quoi,
+    EN.freeCloudQuota(null), EN.mentionPremium(undefined), EN.freeCloudFrise('Nov 16', NaN)[1].quoi].map(net);
+  verifier(sansQuota.join(' | ') === ['Avec Free + FillSell Cloud, tu gardes les quotas du plan Free.',
+    "Tu es en Free + FillSell Cloud, avec les quotas du plan Free. Pour publier plus, Premium s'ajoute au Cloud.", 'Les quotas du plan Free.',
+    'With Free + FillSell Cloud, you keep the Free plan quotas.', 'You are on Free + FillSell Cloud, with the Free plan quotas. To post more, Premium adds to the Cloud.',
+    'The Free plan quotas.'].join(' | ') && !sansQuota.some((p) => /à les annonces|Tes les annonces|at the listings|Your the listings/.test(p)),
+  'quota Free inconnu : phrases justes, fr et en', sansQuota.join(' | '));
+  verifier(net(FR.freeCloudQuota(5)) === 'Avec Free + FillSell Cloud, tu restes à 5 annonces par mois.' && net(EN.mentionPremium(5)).startsWith('You are on Free + FillSell Cloud: 5 listings a month.'),
+    'quota Free lu : la phrase d’avant, inchangée', net(FR.freeCloudQuota(5)));
+  // (09/11, point C1 de Nico) « plus besoin d'ordinateur » : « sans ordinateur, 24 h/24 », jamais « ordinateur éteint ».
+  verifier(net(FR.payeTexte('Pro')) === 'En plus de ta formule Pro : tes annonces Vinted, Leboncoin, Beebs et Depop partent sans ordinateur, 24 h/24.'
+    && /Vinted, Leboncoin, Beebs and Depop listings go out without a computer, 24\/7/.test(EN.payeTexte('Pro')),
+    'la carte des Réglages : « tes annonces Vinted, Leboncoin, Beebs et Depop partent sans ordinateur, 24 h/24 »', net(FR.payeTexte('Pro')));
+  const eteint = [...toutes(FR), ...toutes(EN)].filter((p) => /ordinateur éteint|quand tout est éteint|computer (is )?off|everything is off/.test(p));
+  verifier(eteint.length === 0, 'C1 : aucune phrase Cloud ne dit « ordinateur éteint » / « computer off » (la promesse : plus besoin d’ordinateur)', eteint.join(' | '));
   verifier(FR.voieTexte.includes('FillSell publie tes annonces depuis ses serveurs') && FR.pageTexte.includes('FillSell publie tes annonces depuis ses serveurs'), 'la phrase imposée : « FillSell publie tes annonces depuis ses serveurs », partout');
   const frise = FR.frise('17 octobre').map((e) => ({ quand: net(e.quand), quoi: net(e.quoi) }));
   verifier(frise.length === 3 && /Carte demandée, rien n.est prélevé pour le Cloud/.test(frise[0].quoi) && frise[1].quand === '17 octobre' && /24,99 €\/mois/.test(frise[1].quoi)
@@ -176,7 +192,7 @@ const toutes = (T) => Object.values(T).flatMap((v) => {
     new RegExp(`\\b\\d{1,2}(er)?\\s+(${MOIS})\\b`, 'i'),
     new RegExp(`\\b(${MOIS})\\s+\\d{1,2}\\b`, 'i'),
     /\b20\d\d-\d\d-\d\d/,
-    /['"`][^'"`\n]*\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b[^'"`\n]*['"`]/,
+    /['"`][^'"`\n]*\b(?!24\/7\b)\d{1,2}\/\d{1,2}(\/\d{2,4})?\b[^'"`\n]*['"`]/, // « 24/7 » (en continu) n'est pas une date
   ];
   const fichiers = fs.readdirSync(join(ROOT, 'src/cloud')).filter((f) => /\.(jsx?)$/.test(f)).map((f) => `src/cloud/${f}`);
   const fautes = [];
@@ -242,7 +258,7 @@ try {
   const React = (await import('react')).default;
   const { renderToStaticMarkup } = await import('react-dom/server');
   const h = React.createElement;
-  const texte = (el) => net(renderToStaticMarkup(el).replace(/<[^>]+>/g, ' ').replace(/&#x27;|&#39;/g, '\'').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ')).replace(/\s+/g, ' ');
+  const texte = (el) => net(renderToStaticMarkup(el).replace(/<[^>]+>/g, ' ').replace(/&#x27;|&#39;/g, '\'').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ')).split(String.fromCharCode(0x2060)).join('').replace(/\s+/g, ' '); // le gluon U+2060 (invisible) n'est pas lu
   const sansMotsInterdits = (t, quoi) => {
     for (const m of INTERDITS) verifier(!m.test(t), `${quoi} : jamais ${m}`, t.slice(0, 300));
   };

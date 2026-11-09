@@ -68,7 +68,7 @@ const FR = {
   enCoursSous: 'Ton ordinateur travaille pendant ce temps.',
   // (07/11 soir, essai TestFlight de Nico) Un client FillSell Cloud (cloud/useCompteCloud.js, profiles.cloud_voie) :
   // c'est le Cloud qui travaille, l'ordinateur peut être éteint — jamais « ton ordinateur » sur cette carte.
-  enCoursSousCloud: 'FillSell Cloud travaille pendant ce temps, même ordinateur éteint.',
+  enCoursSousCloud: 'FillSell Cloud travaille pendant ce temps, sans ordinateur.',
   enCoursAttenteCloud: 'Synchronisation en attente de FillSell Cloud',
 
   // ── (07/10) Rattachement avant stock : le rapprochement, son temps, la fin ──
@@ -267,7 +267,7 @@ const EN = {
   enCoursAttente: 'Waiting for your computer',
   enCoursRange: 'Filing the listings into your stock.',
   enCoursSous: 'Your computer is working on it right now.',
-  enCoursSousCloud: 'FillSell Cloud is working on it, even with your computer off.',
+  enCoursSousCloud: 'FillSell Cloud is working on it, no computer needed.',
   enCoursAttenteCloud: 'Waiting for FillSell Cloud',
 
   rapprochementEnCours: 'Matching your listings',

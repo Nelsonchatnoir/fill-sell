@@ -153,7 +153,8 @@ titre('5. Le nom : « FillSell Cloud » ; « sans ordinateur » est la promesse'
   const FR = TX.textesCloud('fr'), EN = TX.textesCloud('en');
   ok(FR.nom === 'FillSell Cloud' && EN.nom === 'FillSell Cloud', 'le nom de l’option : « FillSell Cloud » (fr et en)', `${FR.nom} / ${EN.nom}`);
   ok(FR.groupe === 'FillSell Cloud' && EN.groupe === 'FillSell Cloud', 'Réglages › Abonnement : le groupe « FillSell Cloud »');
-  ok(net(FR.libelleInterrupteur) === `FillSell Cloud · sans ordinateur · +${PRIX}/mois` && net(EN.libelleInterrupteur) === `FillSell Cloud · no computer · +${PAL.CLOUD_PRIX_AFFICHE_EN}/mo`,
+  const sansGlue = (s) => net(s).split(String.fromCharCode(0x2060)).join(''); // (09/11) le gluon de « €/mois », invisible
+  ok(sansGlue(FR.libelleInterrupteur) === `FillSell Cloud · sans ordinateur · +${PRIX}/mois` && sansGlue(EN.libelleInterrupteur) === `FillSell Cloud · no computer · +${PAL.CLOUD_PRIX_AFFICHE_EN}/mo`,
     `l’interrupteur : « FillSell Cloud · sans ordinateur · +${PRIX}/mois » (en : « +€24.99/mo »)`, `${net(FR.libelleInterrupteur)} / ${net(EN.libelleInterrupteur)}`);
   // (07/11, décision de Nico) Montants en anglais au format anglais : « €24.99 », dérivé de CLOUD_PRIX_AFFICHE ; le français inchangé.
   ok(PAL.CLOUD_PRIX_AFFICHE_EN === '€24.99', `CLOUD_PRIX_AFFICHE_EN = '€24.99' (dérivé de CLOUD_PRIX_AFFICHE)`, PAL.CLOUD_PRIX_AFFICHE_EN);
@@ -170,9 +171,13 @@ titre('5. Le nom : « FillSell Cloud » ; « sans ordinateur » est la promesse'
   ok(sansNom.length === 0, `les titres et boutons de l’option la nomment « FillSell Cloud » (${nommes.join(', ')})`, sansNom.join(', '));
   ok(net(FR.freeCloudQuota(5)).startsWith('Avec Free + FillSell Cloud,') && /Free \+ FillSell Cloud/.test(FR.resiliationCloud) && /Free \+ FillSell Cloud/.test(FR.mentionPremium(5)),
     '« Free + FillSell Cloud » partout où l’option se prend avec le plan Free');
-  ok(/sans ordinateur/.test(FR.ebayDeja) && /même sans ordinateur/.test(FR.voieTexte) && /ordinateur éteint/.test(FR.titreModale), 'la promesse reste dite : « sans ordinateur », « même ordinateur éteint »');
+  // (09/11, point C1 de Nico) la promesse devient « Plus besoin d'ordinateur » (titre de la modale, accroche des Réglages).
+  ok(/sans ordinateur/.test(FR.ebayDeja) && /même sans ordinateur/.test(FR.voieTexte) && FR.titreModale === "Plus besoin d'ordinateur." && FR.accroche === "Plus besoin d'ordinateur"
+    && EN.titreModale === 'No computer needed.' && EN.accroche === 'No computer needed',
+    'la promesse reste dite : « sans ordinateur », « Plus besoin d’ordinateur » / « No computer needed »');
   const NOM_FR = /Sans ordinateur/;            // le nom d'avant (majuscule) ; la promesse s'écrit « sans ordinateur »
-  const NOM_EN = /No computer(?!\?)|[Nn]o computer add-on/; // « No computer? » reste une question (la promesse)
+  // « No computer? » (question) et « No computer needed » (promesse) ne sont pas un nom ; « No computer » seul, si.
+  const NOM_EN = /No computer(?![?]| needed)|[Nn]o computer add-on/;
   const textes = {
     'textes.js': [phrases(FR), phrases(EN)],
     'textesConnexion.js': [phrases(CX.textesConnexion('fr')), phrases(CX.textesConnexion('en'))],
