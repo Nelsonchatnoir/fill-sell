@@ -34,7 +34,7 @@
 //   automatique.
 import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estConnectee, connexionComplete, identifiantCompte,
   retourDeclare, expressionLectureCompte, verdictLectureCompte, expressionAcces, pageDeResolution, navigationResolution,
-  EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT, EXPRESSION_COOKIES, EXPRESSION_REFUSER_COOKIES } from './plateformes.js';
+  EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT, EXPRESSION_COOKIES, EXPRESSION_REFUSER_COOKIES, cookiesChoixPays, autrePaysDe } from './plateformes.js';
 import { etatVisible } from './verifications.js';
 import { verifierTicket } from './tickets.js';
 import { lireDansExtension } from './sessionFillsell.js';
@@ -129,6 +129,8 @@ export const MESSAGES = Object.freeze({
     reprise: 'Te revoilà : ta page de connexion est restée ouverte.',
     // (08/11 soir, client jade60890 perdu) Plus jamais « réessaie plus tard » : le système se rétablit seul d'abord.
     bloquee: (nom) => `Cette page ne fait pas partie de la connexion à ${nom} : tu restes sur la page de connexion.`,
+    // (09/11, cliente f0acd3af) « Dans quel pays vis-tu ? » de Vinted : un autre pays touché n'est jamais suivi.
+    autrePays: (nom) => `FillSell Cloud se connecte à ${nom} France : tu restes sur ${nom} France. Continue ta connexion ici.`,
     reprisePropre: (nom) => `On relance proprement la page de connexion de ${nom}…`,
     boucle: (nom) => `FillSell n'arrive pas à afficher la page de connexion de ${nom}. L'équipe FillSell est prévenue à l'instant et s'en occupe. En attendant, tu peux connecter tes autres plateformes.`,
     // (07/11 soir, ordre de Nico : un seul nom) « FillSell Cloud », jamais « l'option » ni « Sans ordinateur ».
@@ -159,6 +161,7 @@ export const MESSAGES = Object.freeze({
     pasConnecte: (nom) => `You're not signed in to ${nom} yet: finish signing in on the page.`,
     reprise: 'Welcome back: your sign-in page stayed open.',
     bloquee: (nom) => `That page isn't part of signing in to ${nom}: you stay on the sign-in page.`,
+    autrePays: (nom) => `FillSell Cloud signs in to ${nom} France: you stay on ${nom} France. Continue signing in here.`,
     reprisePropre: (nom) => `Reloading the ${nom} sign-in page cleanly…`,
     boucle: (nom) => `FillSell can't show the ${nom} sign-in page. The FillSell team has just been alerted and is on it. Meanwhile, you can connect your other platforms.`,
     refuse: (nom) => `This ${nom} account was already used for a free trial. The trial stops; you can take FillSell Cloud without a trial.`,
@@ -575,7 +578,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         if (connectee) return;
         const t = Date.now();
         const retourPage = async () => {
-          if (c === cible) await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {});
+          if (c === cible) { await poserChoixPays(); await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {}); }
           else await cdp.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
         };
         // (08/11/2026 soir, client jade60890 perdu sur Vinted) UN REFUS QUI SUIT UN TOUCHER DE LA PERSONNE n'est PAS une
@@ -584,9 +587,13 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         // connexion, on le lui dit, et l'équipe le sait TOUT DE SUITE (le chemin refusé, pour l'ouvrir s'il sert la
         // connexion) — jamais compté comme boucle, jamais une fermeture.
         if (t - dernierToucher < GESTE_RECENT_MS) {
-          journal.alerte('connexion_refus_apres_geste', { user, plateforme, vers: urlPourJournal(url) });
-          alerterSupport(`lien refusé après un toucher : ${urlPourJournal(url)}`);
-          avis(`bloquee:${urlPourJournal(url)}`, txt.bloquee(def.nom));
+          // (09/11, cliente f0acd3af) Un AUTRE PAYS de la plateforme (Vinted : « Dans quel pays vis-tu ? », vinted.dk touché
+          // deux fois) : la personne lit qu'on reste sur la plateforme française, et l'équipe que l'IP du compte n'est sans
+          // doute pas vue en France par la plateforme (la question n'est posée qu'à une IP hors de France).
+          const pays = autrePaysDe(plateforme, url);
+          journal.alerte('connexion_refus_apres_geste', { user, plateforme, vers: urlPourJournal(url), ...(pays ? { autre_pays: pays } : {}) });
+          alerterSupport(`lien refusé après un toucher : ${urlPourJournal(url)}${pays ? ` (autre pays : ${pays} — ${def.nom} ne voit sans doute pas l'IP du compte en France)` : ''}`);
+          avis(`bloquee:${urlPourJournal(url)}`, pays ? txt.autrePays(def.nom) : txt.bloquee(def.nom));
           await retourPage();
           return;
         }
@@ -665,7 +672,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         await Promise.resolve(postes.purgerPlateforme?.(user, plateforme))
           .catch((e) => journal.alerte('reprise_propre_purge_echec', { user, plateforme, erreur: e.message }));
       }
-      if (cible) await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {});
+      if (cible) { await poserChoixPays(); await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {}); }
       journal.info('connexion_reprise_propre', { user, plateforme, reprise: reprisesPropres, purge: !etaitConnectee });
     }
 
@@ -905,6 +912,16 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       journal.info('annulation_essai', { user: u, http: r.status });
     }
 
+    // (09/11/2026, cliente f0acd3af) LA RÉPONSE « FRANCE » À LA QUESTION DU PAYS (Vinted, plateformes.js choixPays), posée
+    // AVANT chaque page de connexion : la purge d'un essai sans connexion l'efface avec la demi-session de la plateforme.
+    // Un échec ne bloque jamais la connexion (la question reste alors à la personne, et un autre pays reste refusé).
+    async function poserChoixPays() {
+      const temoins = cookiesChoixPays(plateforme);
+      if (!temoins.length || !cdp) return;
+      await cdp.send('Storage.setCookies', { cookies: temoins })
+        .catch((e) => journal.alerte('choix_pays_echec', { user, plateforme, erreur: String(e?.message ?? e).slice(0, 120) }));
+    }
+
     async function journaliser(statut, raison) {
       if (!ligneJournal) return;
       const { error } = await base.from('cloud_connexions').update({ statut, close_le: new Date().toISOString(), raison }).eq('id', ligneJournal);
@@ -943,6 +960,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       }
       await preparerCible(cible);
       await diffuser(cible);
+      await poserChoixPays();
       await cdp.send('Page.navigate', { url: pageDepart }, sessionId);
       await cdp.send('Page.bringToFront', {}, sessionId).catch(() => {});
       etat('pret', resoudre ? txt.resoudrePret(def.nom) : txt.pret);

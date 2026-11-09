@@ -420,6 +420,44 @@ test('« Me connecter » : un lien refusé juste après un TOUCHER n’est jamai
   assert.ok(signalees.some(([n, t]) => n === 'serveur' && /lien refusé après un toucher : www\.vinted\.fr\/catalog/.test(t)), 'l’équipe sait quel lien a été refusé');
 });
 
+test('(09/11, cliente f0acd3af) Vinted : la réponse « France » posée AVANT chaque page de connexion ; vinted.dk touché : jamais suivi, message clair, équipe prévenue', async () => {
+  const signalees = [];
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }],
+    alertes: { signaler: async (...a) => { signalees.push(a); return { envoye: true }; } } });
+  const c = brancherClient(s, 'vinted');
+  await c.ouvrir();
+  await attendre(20);
+  const envoyes = s.nav.cdp.envoyes;
+  const iNav = envoyes.findIndex((e) => e.methode === 'Page.navigate');
+  const poses = () => envoyes.map((e, i) => ({ e, i })).filter(({ e }) => e.methode === 'Storage.setCookies' && e.params.cookies.some((k) => k.name === 'domain_selected'));
+  assert.ok(iNav > 0, 'la page de connexion est ouverte');
+  assert.ok(poses().some(({ i, e }) => i < iNav && e.params.cookies[0].value === 'true' && e.params.cookies[0].url === 'https://www.vinted.fr/'), 'France répondue AVANT la page');
+  const sid = envoyes[iNav].sessionId;
+  // La personne touche « Danmark » dans « Dans quel pays vis-tu ? » : www.vinted.dk au même chemin.
+  await c.dire({ t: 'toucher', type: 'debut', x: 120, y: 330 });
+  await c.dire({ t: 'toucher', type: 'fin', x: 120, y: 330 });
+  const avant = poses().length;
+  s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: 'dk1', frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.vinted.dk/member/register/select_type?ref_url=%2F' } } });
+  await attendre(20);
+  assert.ok(envoyes.some((e) => e.methode === 'Fetch.failRequest' && e.params.requestId === 'dk1'), 'vinted.dk : jamais suivi');
+  assert.ok(c.recus.some((m) => m.t === 'etat' && /FillSell Cloud se connecte à Vinted France/.test(m.message)), 'la personne lit qu’elle reste sur Vinted France');
+  assert.ok(!c.recus.some((m) => m.t === 'etat' && /ne fait pas partie de la connexion/.test(m.message)), 'pas le message générique');
+  assert.ok(signalees.some(([n, t]) => n === 'serveur' && t.includes('www.vinted.dk/member/register/select_type (autre pays : vinted.dk —')), 'l’équipe sait que l’IP n’est pas vue en France');
+  const navs = envoyes.filter((e) => e.methode === 'Page.navigate');
+  assert.equal(navs.length, 2, 'retour à la page de connexion');
+  assert.ok(poses().length > avant, 'France répondue de nouveau avant le retour');
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'l’écran reste ouvert');
+});
+
+test('(09/11) Leboncoin : aucune question du pays, aucun témoin posé', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const c = brancherClient(s, 'leboncoin');
+  await c.ouvrir();
+  await attendre(20);
+  assert.ok(s.nav.cdp.envoyes.some((e) => e.methode === 'Page.navigate'));
+  assert.ok(!s.nav.cdp.envoyes.some((e) => e.methode === 'Storage.setCookies' && e.params.cookies.some((k) => k.name === 'domain_selected')));
+});
+
 // ── (01/11) Essai de Nico du 01/11 au soir : « connecté » sur le seul cookie, fenêtre fermée en pleine vérification ───
 function brancherClient(s, plateforme = 'leboncoin') {
   const recus = [];

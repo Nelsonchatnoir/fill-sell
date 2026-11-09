@@ -73,6 +73,16 @@ export const DEFINITIONS = Object.freeze({
     hotesPermis: [/^(www\.)?vinted\.fr$/, /^accounts\.vinted\.com$/],
     cookiesDomaine: /(^|\.)vinted\.(fr|com)$/,
     hoteSite: 'www.vinted.fr',
+    // (09/11/2026, cliente f0acd3af : 4 « Me connecter » Vinted fermés de 19:27 à 19:30) LA QUESTION DU PAYS : depuis une
+    // IP que Vinted ne place pas en France, www.vinted.fr ouvre « Dans quel pays vis-tu ? » (domain-select-modal : at, au,
+    // be, cz, de, dk…, France plus bas dans la liste) ; un pays touché mène à SON domaine au même chemin
+    // (www.vinted.dk/member/register/select_type, refusé deux fois après un toucher). FillSell Cloud = Vinted France : la
+    // page reçoit AVANT la connexion la réponse « France » que Vinted enregistre lui-même quand on choisit France ou qu'on
+    // ferme la question (témoin domain_selected, 20 ans). Mesuré le 09/11 depuis une IP hors de France : sans le témoin,
+    // la page porte la liste des pays (domainLinks) ; avec lui, plus rien.
+    choixPays: Object.freeze({ name: 'domain_selected', value: 'true', url: 'https://www.vinted.fr/' }),
+    // Les AUTRES pays de la même plateforme (vinted.dk, vinted.co.uk, vinted.com…) : jamais suivis, mais nommés à la personne.
+    autresPays: /^(www\.)?vinted\.(?!fr$)[a-z]{2,3}(\.[a-z]{2})?$/,
   },
   leboncoin: {
     nom: 'Leboncoin',
@@ -136,6 +146,28 @@ export function navigationPermise(plateforme, url, retours = []) {
 }
 /** Les chemins d'API d'authentification d'une plateforme (/web/api/auth/…, /api/v1/oauth/…). */
 export const CHEMIN_AUTH_PLATEFORME = /^\/(web\/)?api\/(v\d+\/)?(auth|oauth2?)\//i;
+
+/**
+ * (09/11) La réponse « France » à la question du pays d'une plateforme, en témoins pour Storage.setCookies (témoin de
+ * l'hôte seul, comme celui que la page pose elle-même) ; [] pour une plateforme sans question du pays.
+ */
+export function cookiesChoixPays(plateforme, maintenant = Date.now()) {
+  const c = DEFINITIONS[plateforme]?.choixPays;
+  if (!c) return [];
+  return [{ name: c.name, value: c.value, url: c.url, path: '/', secure: true, sameSite: 'Lax',
+    expires: Math.floor(maintenant / 1000) + 20 * 365 * 24 * 3600 }];
+}
+
+/** (09/11) Une adresse de la MÊME plateforme dans un AUTRE pays (www.vinted.dk…) : son domaine (« vinted.dk »), sinon null. */
+export function autrePaysDe(plateforme, url) {
+  const r = DEFINITIONS[plateforme]?.autresPays;
+  if (!r) return null;
+  try {
+    const u = new URL(String(url));
+    const h = u.hostname.toLowerCase();
+    return u.protocol === 'https:' && r.test(h) ? h.replace(/^www\./, '') : null;
+  } catch { return null; }
+}
 
 /** Pour le journal : l'hôte et le chemin, jamais la requête (elle porte des jetons). */
 export function urlPourJournal(url) {

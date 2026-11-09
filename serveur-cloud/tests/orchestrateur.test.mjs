@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { navigationPermise, estConnectee, identifiantCompte, versCookieParam, PLATEFORMES_CLOUD, urlPourJournal } from '../src/plateformes.js';
+import { navigationPermise, estConnectee, identifiantCompte, versCookieParam, PLATEFORMES_CLOUD, urlPourJournal, cookiesChoixPays, autrePaysDe } from '../src/plateformes.js';
 import { chiffrer, dechiffrer, creerCoffre } from '../src/coffre.js';
 import { signerTicket, verifierTicket } from '../src/tickets.js';
 import { planifierPostes, resumerJobs } from '../src/planificateur.js';
@@ -55,6 +55,26 @@ test('navigation : seule la connexion (et les fournisseurs Apple / Google / Face
   assert.equal(navigationPermise('opla', 'https://www.opla.co/'), false, 'Opla : jamais');
   assert.equal(navigationPermise('vinted', 'about:blank'), true);
   assert.equal(urlPourJournal('https://www.vinted.fr/member/login?token=SECRET'), 'www.vinted.fr/member/login', 'le journal ne garde jamais la requête');
+});
+
+test('(09/11, cliente f0acd3af) Vinted « Dans quel pays vis-tu ? » : la réponse France posée, un autre pays jamais suivi mais nommé', () => {
+  const [c, ...autres] = cookiesChoixPays('vinted', Date.UTC(2026, 10, 9));
+  assert.equal(autres.length, 0);
+  assert.deepEqual([c.name, c.value, c.url, c.path, c.secure], ['domain_selected', 'true', 'https://www.vinted.fr/', '/', true], 'le témoin que la page pose quand on choisit France');
+  assert.equal(c.domain, undefined, 'témoin de l’hôte seul, comme celui de la page');
+  assert.ok(c.expires > Date.UTC(2045, 0, 1) / 1000, '20 ans, comme la page');
+  for (const p of ['leboncoin', 'beebs', 'depop', 'opla']) assert.deepEqual(cookiesChoixPays(p), [], `${p} : aucune question du pays`);
+  assert.equal(autrePaysDe('vinted', 'https://www.vinted.dk/member/register/select_type?ref_url=%2F'), 'vinted.dk', 'l’adresse refusée du 09/11');
+  assert.equal(autrePaysDe('vinted', 'https://www.vinted.co.uk/member/register/select_type'), 'vinted.co.uk');
+  assert.equal(autrePaysDe('vinted', 'https://www.vinted.com.au/'), 'vinted.com.au');
+  assert.equal(autrePaysDe('vinted', 'https://www.vinted.com/'), 'vinted.com');
+  assert.equal(autrePaysDe('vinted', 'https://www.vinted.fr/member/register/select_type'), null, 'la France n’est pas un autre pays');
+  assert.equal(autrePaysDe('vinted', 'https://accounts.vinted.com/x'), null, 'un hôte d’authentification n’est pas un pays');
+  assert.equal(autrePaysDe('vinted', 'https://evil-vinted.dk/'), null);
+  assert.equal(autrePaysDe('vinted', 'http://www.vinted.dk/'), null, 'jamais en clair');
+  assert.equal(autrePaysDe('leboncoin', 'https://www.vinted.dk/'), null);
+  assert.equal(navigationPermise('vinted', 'https://www.vinted.dk/member/register/select_type'), false, 'un autre pays reste REFUSÉ');
+  assert.ok(MESSAGES.fr.autrePays('Vinted').includes('Vinted France') && MESSAGES.en.autrePays('Vinted').includes('Vinted France'));
 });
 
 test('connectée pour de vrai : un visiteur invité ne compte jamais', () => {
