@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-09-soir (0.6.185 : Beebs — le lecteur de la page des ventes porte ses fonctions du flux RSC (envoyé seul dans l'onglet par executeScript, il plantait depuis la 0.6.132 : aucune vente Beebs lue depuis le 25/10) ; un échec de lecture de cette page se trace au serveur (ventes_beebs_lecture_echec) — précédent : " +
   "2026-11-09-matin (0.6.184 : Leboncoin — le badge « Article vendu » d'une vente d'AVANT le suivi, marqué par le serveur sur la republication servie, n'arrête plus la republication (l'annonce est en ligne) et ne prouve jamais un retrait ; sans marque, rien ne change ; recopie d'etat-job (aucun rayon eBay sûr = en pause, FillSell s'en occupe) — précédent : 0.6.183, puis " +
   "2026-11-08-soir (0.6.182 : le compte Leboncoin relevé (celui du jeton de la page) est écrit sur le relevé et sur chaque annonce vue, si la base a les colonnes — le serveur ne mélange plus deux comptes ; rien d'autre ne change — précédent : " +
   "2026-11-08-apres-midi (0.6.181 : l'espacement de 2 min entre deux gestes de republication est compté PAR PLATEFORME — Vinted, Leboncoin, Beebs et Depop avancent ensemble, chacune à son rythme d'avant ; un retrait né pendant un cycle l'arrête entre deux tâches et un poll repart — précédent : " +

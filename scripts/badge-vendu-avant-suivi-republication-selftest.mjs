@@ -114,7 +114,10 @@ ok(/const badgeAvantSuivi = job\.platform === "leboncoin" && etatLu === "sold" &
 const etape1 = BG.slice(BG.indexOf('// ── Étape 1 : RETRAIT', BG.indexOf('async function processRepublishJobPlateforme(')), BG.indexOf('if (step === "deleted")', BG.indexOf('async function processRepublishJobPlateforme(')));
 ok((etape1.match(/etatProuveAbsence\(job, state, /g) ?? []).length === 2 && !/\(state === "unavailable" \|\| state === "sold"\) && job\.platform !== "beebs"/.test(etape1),
   'étape du retrait : les deux replis (canal coupé, retrait non abouti) passent par etatProuveAbsence');
-ok(/"version": "0\.6\.184"/.test(lire('chrome-extension/manifest.json')) && /const FILLSELL_BUILD =\n {2}"2026-11-09-matin \(0\.6\.184 :/.test(BG), 'manifest 0.6.184, FILLSELL_BUILD daté');
+// (09/11 soir, 0.6.185) Durable comme les autres selftests de version : 0.6.184 OU PLUS, et son entrée datée reste dans
+// l'historique de FILLSELL_BUILD (la plus récente passe devant elle).
+ok((() => { const v = (lire('chrome-extension/manifest.json').match(/"version": "(\d+)\.(\d+)\.(\d+)"/) || []).slice(1).map(Number); return v[0] === 0 && v[1] === 6 && v[2] >= 184; })()
+  && /const FILLSELL_BUILD =\n[\s\S]*?\n {2}"2026-11-09-matin \(0\.6\.184 :/.test(BG), 'manifest 0.6.184 ou plus, FILLSELL_BUILD daté (entrée 0.6.184 gardée)');
 
 console.log(`\n${echecs ? '✗' : '✓'} selftest:badge-vendu-avant-suivi-republication — ${total - echecs}/${total}`);
 process.exit(echecs ? 1 : 0);
