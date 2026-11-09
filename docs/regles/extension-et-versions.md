@@ -345,3 +345,11 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   origin/main. SEUL zip à téléverser (Nico n'a téléversé ni la 0.6.180 ni la 0.6.181) : il contient toute la 0.6.181
   (espacement par plateforme, arrêt du cycle sur une vente, recopie d'etat-job) ; la 0.6.181 est rangée dans
   `build/anciens-zips/REMPLACEE-PAR-0.6.182-CWS-0.6.181`.
+
+## 09/11 matin — 0.6.184 : le badge Leboncoin « Article vendu » d'avant le suivi (point 2 de Nico — Jess)
+- La 0.6.183 + : sur une republication Leboncoin marquée par le serveur (`badge_vendu_avant_suivi`, get-pending-jobs), la
+  page lue « sold » est une annonce EN LIGNE (la republication continue) et ne prouve jamais un retrait (`etatProuveAbsence`) ;
+  recopie d'etat-job (`ebay_rayon_a_notre_charge` → « En pause — FillSell s'en occupe »). Rien d'autre ne change.
+- Livrable : `build/CWS-0.6.184-A-TELEVERSER/fillsell-extension-0.6.184-cws.zip` (BUILD_ID `2026-11-09T09:46:04Z+6d36bb4`,
+  617 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-09T09:00:49Z (4b432f8). Empaqueté depuis un worktree propre à
+  6d36bb4. SEUL zip à téléverser. 0.6.183 lue servie (32 comptes en 2026-11-08T22:09:14Z+6c84532) : dans ALREADY_PUBLISHED.

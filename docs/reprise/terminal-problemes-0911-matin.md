@@ -158,7 +158,7 @@ attente, retrait déjà fait). Reste :
   qu'une parce que la seconde a été redéposée à 06:35, après sa rédaction.
 
 ### Le lot à 10:00
-- 07:48 : lot 77b7bf38 retenu — en attente Vinted 217, Leboncoin 225, Beebs 205 ; publiées depuis 06:29 : les 2 ci-dessus.
+- 08:48 : lot 77b7bf38 retenu — en attente Vinted 217, Leboncoin 225, Beebs 205 ; publiées depuis 06:29 : les 2 ci-dessus.
 - Attendu à 10:00 (créneau 10:00–22:00, modules actifs) : service au rythme du manuel par plateforme (2 min, pause 2 h toutes
   les 50 par plateforme, quotas), l'automatique en pause tant que le lot est en file. À constater après 10:00 (lecture) :
   `select platform, count(*) filter (where published_at >= '2026-11-09 10:00+01'), max(published_at) from cross_post_jobs
@@ -166,9 +166,46 @@ attente, retrait déjà fait). Reste :
 
 ## Suite, commit, déploiements
 - Suite complète (première tentative en arrière-plan arrêtée par Claude Code, mémoire du poste saturée ; relancée au premier
-  plan sur décision de Nico) : 652 selftests, 08:31 → 08:55, 1 rouge `titre-symboles-vinted` (garde de la lecture du job
+  plan sur décision de Nico) : 652 selftests, 09:31 → 09:55, 1 rouge `titre-symboles-vinted` (garde de la lecture du job
   dans update-job-status, que j'avais élargie) → lecture rendue intacte, numéro lu à part ; avant cela, 2 gardes de
   structure rouges corrigées (`caracteres-invisibles` : le marquage du badge passe AVANT le nettoyage des invisibles ;
   `beebs-retrait-preuve` : compte aussi la forme `etatProuveAbsence(...) && job.platform !== "beebs"`).
   `cloud-orchestrateur` : vert seul (simulation 23/23 en 303 s — il dépassait seulement une borne de 300 s). Après la
   retouche : les 162 selftests qui lisent update-job-status ou get-pending-jobs rejoués, verts.
+- ⚠️ Heures : l'horloge du shell (`TZ=Europe/Paris date`) retardait d'une heure ce matin ; les heures ci-dessus sont
+  corrigées (lues sur les commits et `functions list`).
+- Commits poussés (feu vert de Nico pour les push) : **4b432f8** (lot points 1-4, extension 0.6.184) et **6d36bb4**
+  (`EXTENSION_LAST_COMMIT` = 2026-11-09T09:00:49Z, posé dans un commit qui ne touche pas chrome-extension/ — la garde
+  bloquait les builds du terminal Cloud entre les deux, prévenu ; + garde-fou 2 de Nico : une question « Déjà vendu ? »
+  n'est citée que dans UN mail de vente, réservée par `inventaire_doublons.preuves.mail_vente` ; aucun mail de plus — le
+  paragraphe voyage dans le mail de la vente, un par vente, jamais plafonné depuis la règle du 06/10).
+
+## En service (09/11 10:47, feu vert nommé de Nico, deux garde-fous)
+- Garde-fou 1 (le code en prod contenu dans le commit déployé) : code des 4 fonctions téléchargé (CLI 2.98.2) — 229
+  fichiers identiques à 4b432f8, 10 en version plus ancienne présente dans l'historique (dont 3 fichiers de config de
+  l'app committés par le terminal Cloud : cloudOffer.js, interrupteurs.js, paiement-echoue.js), 0 inconnu.
+- Déployées depuis une archive de 6d36bb4 : push-ventes **v24** (avant v23, false), update-job-status **v188** (avant v187,
+  false), ebay-api-worker **v122** (avant v121, false), get-pending-jobs **v355** (avant v354, true) — verify_jwt relus
+  après, inchangés. Journaux depuis 10:47 : toutes les réponses en 200.
+- Effets vérifiés :
+  - grizstyle (point 3) : rejouées seules au premier passage (`rayon_rejoue` 10:48:10) et PUBLIÉES — « Lot femme M/L T40 »
+    en 260011 « Tenues, ensembles » (eBay 820334420238) ; « Lit bébé Sauthon » en 58761 « Lits, équipements d'intérieur ›
+    Autres » (eBay y accepte l'occasion ; trace `rayon_etat_reel` 93391 → 58761, états refusés « Neuf ») (eBay 820334420465).
+  - Joséphine (point 4) : le lot a repris à l'ouverture du créneau — premières republications 10:02 (Vinted), 10:09
+    (Leboncoin), 10:14 (Beebs) ; à 10:44 : 4 Vinted, 4 Leboncoin, 3 Beebs, aucune arrêtée (≈ une toutes les 10 min par
+    plateforme, les trois ensemble).
+  - xxewwer (point 1) : la personne a répondu « Oui » aux deux questions à 08:22 → retraits 00fe8a15 (eBay 377476217083) et
+    c7a79f08 (Leboncoin 3298682693) FAITS (`deleted`) — par le circuit normal, rien répondu à sa place.
+- Extension **0.6.184** : `build/CWS-0.6.184-A-TELEVERSER/fillsell-extension-0.6.184-cws.zip` (BUILD_ID
+  `2026-11-09T09:46:04Z+6d36bb4`, 617 Ko, 37 entrées, sha256 a2634527…978b), empaquetée depuis un worktree propre à
+  6d36bb4 (retiré). 0.6.183 (servie à 32 comptes) ajoutée à ALREADY_PUBLISHED, son dossier rangé dans
+  `build/anciens-zips/PUBLIEE-CWS-0.6.183`. Seul zip à téléverser.
+
+## Ce qui attend
+- Nico : téléverser la 0.6.184 (Chrome Web Store → « Envoyer pour examen ») ; à son acceptation, ajouter « 0.6.184 » à
+  ALREADY_PUBLISHED. Jess et jeanluclassarat916 relanceront alors leurs republications (rien relancé à leur place).
+- Le paragraphe « Déjà vendu ? » du mail se verra à la prochaine vente qui laisse une question ouverte (aucun mail envoyé
+  pour l'essayer — consigne « aucun mail client »).
+- App web : au push (Vercel) — lien `/app?ventes=deja-vendu`, « En pause — FillSell s'en occupe » ; mobile à la prochaine OTA.
+- Questions encore ouvertes du balayage (nicolas.menar ×3, josephinecerni, boncoin59300 ×2, labouquinerie85 ×2) : le
+  circuit est la réponse de la personne ; le cas de Nico (short de bain, vente à 1 €) est à trancher par lui.
