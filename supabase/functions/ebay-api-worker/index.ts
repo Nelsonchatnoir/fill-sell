@@ -40,6 +40,12 @@ import { estSupportNonLivre, SUPPORT_NON_LIVRE_RE } from "../_shared/support-non
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+// (09/11, point 3 de Nico — grizstyle) Un trou de correspondance eBay est à notre charge : lot de vêtements, rayon qui
+// accepte l'état réel, trou restant en pause chez nous, rejeu des tâches arrêtées.
+import {
+  aRejouer, champsRejoues, messageEtatRefuseParEbay, messageRayonANotreCharge, rayonLotDeVetements, rayonsVoisinsPourEtat,
+  REGLE_RAYON_VERSION, REJOUER_MAX_PAR_PASSAGE, SOURCE_RAYON_A_NOTRE_CHARGE,
+} from "../_shared/ebay-rayon-a-notre-charge.js";
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 // (25/10) Une tâche finie n'attend plus personne ; un retrait sur une annonce déjà absente est un retrait fait.
 import { champsAttenteClose } from "../_shared/etat-terminal.js";
@@ -246,6 +252,28 @@ function classerErreurEbayDepuisDiagnostic(d: Record<string, unknown>) {
 // Et les refus de compte d'AVANT la règle (rangés « relancer » par défaut : nicolas.menar ×11, 06-08/11) prennent leur
 // vraie source, une fois, avec le mur daté de leur refus — sans rien envoyer à eBay. Bornée (50 + 100), écriture
 // conditionnée au statut et à la source lus ; aucune ligne inchangée réécrite.
+// ══ (09/11, point 3 de Nico) LES PUBLICATIONS ARRÊTÉES SUR UN RAYON OU UN ÉTAT SONT REJOUÉES AVEC LES RÈGLES DU JOUR ══
+// Rayon (« aucune catégorie sûre ») ou état (« n'accepte que des objets neufs ») : un trou de NOTRE correspondance. Une
+// fois par version des règles (REGLE_RAYON_VERSION), sans la marque qui ferait prendre la proposition d'eBay à l'aveugle
+// (ebayCategorieAttente) ni la reprise déjà faite. Jamais « Catégorie eBay à confirmer » (le choix de la personne).
+// Bornée, écriture conditionnée au statut lu. _shared/ebay-rayon-a-notre-charge.js.
+async function rayonsANotreChargeRejouer(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  const { data } = await admin.from("cross_post_jobs")
+    .select("id, user_id, platform, action, status, error, platform_fields")
+    .eq("platform", "ebay").eq("voie", "api").eq("status", "needs_user").in("action", ["publish", "republish"])
+    .in("platform_fields->last_diagnostic->>etape", ["categorie", "condition"]).limit(100);
+  let rejouees = 0;
+  for (const j of ((data ?? []) as Array<Record<string, unknown>>).filter(aRejouer).slice(0, REJOUER_MAX_PAR_PASSAGE)) {
+    const pf = champsRejoues((j.platform_fields ?? {}) as Record<string, unknown>);
+    pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, String(j.error ?? ""), "needs_user", "ebay-api-worker (rayon ou état eBay : rejouée avec les règles du 09/11)");
+    const { data: maj } = await admin.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pf })
+      .eq("id", String(j.id)).eq("status", "needs_user").select("id");
+    if (maj?.length) rejouees++;
+  }
+  if (rejouees) console.log(`[ebay-api-worker] rayons eBay à notre charge : ${rejouees} publication(s) rejouée(s) avec les règles ${REGLE_RAYON_VERSION}`);
+  return { rejouees };
+}
+
 async function murCompteEbayEntretien(admin: SupabaseClient): Promise<Record<string, unknown>> {
   let reclasses = 0, reparties = 0;
   // 1. Les anciens refus de compte rangés « relancer » (motif d'eBay gardé dans last_diagnostic).
@@ -478,7 +506,7 @@ async function publier(
   // de catégorie lui soit imputé (usage_logs) — sinon il n'apparaît nulle part.
   (pf as Record<string, unknown>).__userId = job.user_id;
   (pf as Record<string, unknown>).__admin = admin;
-  const categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
+  let categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
   delete (pf as Record<string, unknown>).__userId;
   delete (pf as Record<string, unknown>).__admin;
   // ── LE RAYON REFUSÉ, IA EN PANNE : ON ATTEND (2026-09-25) ─────────────────
@@ -493,6 +521,20 @@ async function publier(
       job.platform_fields = { ...pfA, rayon_refuse_attente: { n, at: new Date().toISOString() } };
       await marquer(admin, job, { status: "pending", error: null }, { etape: "categorie", quoi: "rayon_refuse_ia_indisponible", tentative: n, motif: categorie.motif, suggestions: categorie.suggestions, ...diagAttributs });
       return { job: job.id, issue: "pending", motif: "rayon_refuse_attente", tentative: n };
+    }
+  }
+  // ══ (09/11, point 3 de Nico — grizstyle) UN LOT DE VÊTEMENTS SANS RAYON SÛR PART EN « TENUES, ENSEMBLES » ══
+  // eBay France n'a pas de rayon « lots » pour les vêtements ; ses suggestions nomment un type (robe, pantalon…) que le
+  // lot n'est pas. _shared/ebay-rayon-a-notre-charge.js (rayonLotDeVetements) : jamais le choix de la personne.
+  if ("choix" in categorie && !categorie.attente) {
+    const lot = rayonLotDeVetements({
+      titre: inv.titre || job.title || "", objet: (pf.objet as string | null) ?? null, famille: (pf.famille as string | null) ?? null,
+      cheminMappe: Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [], genre: (pf.genre as string | null) ?? null,
+      categorieSource: (pf.categorie_source as string | null) ?? null,
+    });
+    if (lot) {
+      console.log(`[ebay-api-worker] job ${job.id} : ${lot.detail} → ${lot.id} (aucun rayon sûr : ${categorie.motif})`);
+      categorie = { id: lot.id, chemin: lot.chemin, source: "lot_vetements", detail: `${lot.detail} — ${categorie.motif}`, suggestions: categorie.suggestions };
     }
   }
   if ("choix" in categorie) {
@@ -571,10 +613,16 @@ async function publier(
     // changer = prendre la proposition d'eBay (jamais une boucle automatique).
     job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategorieAttente: { mapping: mappee || null, choix: categorie.choix, at: new Date().toISOString() } };
     const quoi = !sansMapping ? "categorie_a_confirmer" : "categorie_a_choisir";
-    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "categorie", quoi, choix: categorie.choix, motif: categorie.motif, suggestions: categorie.suggestions, ...diagAttributs });
+    // (09/11, point 3 de Nico) Aucun rayon sûr (le nôtre refusé, rien de bon chez eBay) : un trou de NOTRE correspondance —
+    // en pause chez nous (« FillSell s'en occupe »), jamais « change l'icône ou le genre, puis relance ». Le détail (rayon
+    // refusé, suggestions, message d'avant) reste dans last_diagnostic ; la règle corrigée, la tâche est rejouée seule
+    // (rayonsANotreChargeRejouer).
+    const aNotreCharge = sansMapping && !categorie.attente;
+    if (aNotreCharge) job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_RAYON_A_NOTRE_CHARGE };
+    await marquer(admin, job, { status: "needs_user", error: aNotreCharge ? messageRayonANotreCharge() : msg }, { etape: "categorie", quoi, choix: categorie.choix, motif: categorie.motif, suggestions: categorie.suggestions, ...(aNotreCharge ? { message_d_avant: msg } : {}), ...diagAttributs });
     return { job: job.id, issue: "needs_user", motif: quoi, choix: categorie.choix, detail: categorie.motif };
   }
-  const categoryId = categorie.id;
+  let categoryId = categorie.id;
   // `mapping_confirme_par_attributs` (18/09) rejoint les deux autres sources
   // qui RENDENT le mapping de l'app : son chemin est déjà celui du job, le
   // réécrire ne ferait qu'ajouter une écriture sans effet.
@@ -610,7 +658,26 @@ async function publier(
 
   // 2. Condition — liste de la catégorie (Metadata), correspondance à confirmer par eBay.
   const conditions = await conditionsCategorie(env, token, categoryId);
-  const condition = choisirCondition(pf.etat as string, conditions);
+  let condition = choisirCondition(pf.etat as string, conditions);
+  // ══ (09/11, point 3 de Nico — grizstyle, « Lit bébé Sauthon ») UN RAYON QUI ACCEPTE L'ÉTAT RÉEL DE L'ARTICLE ══
+  // Le rayon retenu refuse l'état (93391 « Lits, matelas, berceaux » : neuf seulement) : avant toute reprise, un rayon
+  // VOISIN de la même branche qui l'accepte (« Autres » du parent, puis au-dessus — jamais une autre racine), vérifié
+  // chez eBay. _shared/ebay-rayon-a-notre-charge.js (rayonsVoisinsPourEtat).
+  if (!condition) {
+    for (const v of rayonsVoisinsPourEtat(categoryId)) {
+      const cv = await conditionsCategorie(env, token, v.id);
+      const ch = choisirCondition(pf.etat as string, cv);
+      if (!ch) continue;
+      console.log(`[ebay-api-worker] job ${job.id} : le rayon ${categoryId} refuse l'état « ${pf.etat ?? ""} » — rayon voisin ${v.id} (« ${v.chemin.join(" > ")} ») l'accepte`);
+      const rayonEtat = { de: categoryId, vers: v.id, etat: pf.etat ?? null, etats_refuses: (conditions ?? []).map((c) => c.libelle), le: new Date().toISOString() };
+      categoryId = v.id;
+      condition = ch;
+      pf.ebayCategoryPath = v.chemin;
+      pf.ebayCategoryId = v.id;
+      job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategoryPath: v.chemin, ebayCategoryId: v.id, rayon_etat_reel: rayonEtat };
+      break;
+    }
+  }
   if (!condition) {
     // Formulation (2026-09-11, audit des messages) : l'état de l'article est
     // bon, c'est la CATÉGORIE qui n'en veut pas (cas 21205, cosmétiques =
@@ -643,13 +710,14 @@ async function publier(
       }, { etape: "condition", quoi: "etat_sans_correspondance_reprise_auto", categoryId, etats_ebay: (conditions ?? []).map((c) => c.libelle) });
       return { job: job.id, issue: "pending", motif: "condition_reprise_auto" };
     }
+    // (09/11, point 3 de Nico) Ni ce rayon, ni ses voisins, ni celui qu'eBay propose n'acceptent l'état réel : c'est la
+    // règle d'eBay pour ce type d'article, pas une question — la publication se clôt, message vrai, rien à faire (jamais
+    // « change l'icône ou le genre »). Les autres plateformes ne sont pas concernées.
     await marquer(admin, job, {
-      status: "needs_user",
-      error: neufSeulement
-        ? `La catégorie eBay de cet article n'accepte que des objets neufs, et celle qu'eBay propose ne convient pas non plus. Change l'icône ou le genre de l'article depuis sa fiche, puis relance d'un clic.`
-        : `eBay n'accepte pas l'état « ${pf.etat ?? ""} » dans le rayon de cet article, ni dans celui qu'il propose lui-même. Change l'icône ou le genre de l'article depuis sa fiche, puis relance d'un clic.`,
-    }, { etape: "condition", quoi: "etat_sans_correspondance", categoryId, etats_ebay: (conditions ?? []).map((c) => c.libelle) });
-    return { job: job.id, issue: "needs_user", motif: "condition" };
+      status: "cancelled",
+      error: messageEtatRefuseParEbay(pf.etat as string | null, neufSeulement),
+    }, { etape: "condition", quoi: "etat_refuse_par_ebay", categoryId, etats_ebay: (conditions ?? []).map((c) => c.libelle), voisins_essayes: rayonsVoisinsPourEtat(categoryId).map((v) => v.id) });
+    return { job: job.id, issue: "cancelled", motif: "etat_refuse_par_ebay" };
   }
 
   // 3. Aspects — catalogue de la catégorie (cache ou Taxonomy), assemblage, recalage.
@@ -4081,6 +4149,10 @@ Deno.serve(async (req) => {
   let murCompte: Record<string, unknown> = {};
   try { murCompte = await murCompteEbayEntretien(admin); }
   catch (e) { murCompte = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  // (09/11, point 3) Les publications arrêtées sur un rayon ou un état eBay : rejouées avec les règles du jour. Jamais bloquant.
+  let rayons: Record<string, unknown> = {};
+  try { rayons = await rayonsANotreChargeRejouer(admin); }
+  catch (e) { rayons = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
   // ── Retraits d'un compte relié bloqués faute de session eBay (15/10 soir) ──
   // Voie API (Trading) au lieu d'attendre Chrome : avant la sortie anticipée.
@@ -4108,7 +4180,7 @@ Deno.serve(async (req) => {
   const jobs = [...((jobsFile ?? []) as Job[]), ...(programmation?.servir ?? [])]
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(0, LOT_MAX);
   if (programmation?.retenues) console.log(`[ebay-api-worker] publications programmées : ${programmation.servir.length} servie(s), ${programmation.retenues} retenue(s) (créneau, plafond, une à la fois, espacement)`);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, programmees_retenues: programmation?.retenues ?? 0 });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, programmees_retenues: programmation?.retenues ?? 0 });
   // (09/11) Les jobs du mur de compte, lus une fois par compte et par passe.
   const murParCompte = new Map<string, Array<Record<string, unknown>>>();
 
@@ -4246,5 +4318,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, resultats });
 });

@@ -105,6 +105,8 @@ import { estRepublicationManuelle, lotsDepuisLignes, lotDansLesCreneaux, retenue
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
 import { restrictionVinted, messageRestrictionVinted } from "../_shared/pas-de-rouge.js";
+// (09/11, point 2 de Nico — Jess) Le badge « Article vendu » d'avant le suivi voyage avec la republication servie.
+import { badgeAvantSuivi, faitsDuNumero, marquerTache, tachesBadgeAJuger } from "../_shared/badge-vendu-avant-suivi.js";
 // Champs exigés au dépôt par rayon Vinted, appris sur les refus 400 (cache de
 // l'isolat, 15 min : la lecture parcourt la table — ~200 ms).
 const CACHE_EXIGES_VINTED = new Map<string, { codes: Set<string>; at: number }>();
@@ -15557,6 +15559,38 @@ serve(async (req) => {
           console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${String(j.platform)}) : marque « ${String((pfN[CLE_MARQUE_RETIREE] as Record<string, unknown>)?.marque ?? "")} » retirée — marque de compatibilité${eM ? ` (trace non écrite : ${eM.message})` : ""}`);
         }
         out = out.map((j) => (remplace.get(String(j.id)) ?? j) as typeof j);
+      }
+    }
+    // ══ (09/11, point 2 de Nico — Jess) LE BADGE « ARTICLE VENDU » D'AVANT LE SUIVI VOYAGE AVEC LA TÂCHE SERVIE ══
+    // Une republication Leboncoin pas encore retirée dont l'annonce porte le badge d'une vente d'AVANT le suivi (même
+    // règle que la base : _shared/badge-vendu-avant-suivi.js) part marquée ; l'extension ≥ 0.6.184 ne s'arrête plus sur
+    // ce badge et ne le prend jamais pour un retrait. Lecture seule, bornée (10 numéros), rien écrit ici ; une lecture
+    // ratée = la tâche servie comme avant (sans marque).
+    if (!includeProcessing && !includeNeedsUser) {
+      const aJuger = tachesBadgeAJuger(out);
+      if (aJuger.length) {
+        try {
+          const adminBd = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const numeros = [...new Set(aJuger.map((j) => String(j.platform_listing_id ?? "").trim()))];
+          const [{ data: annBd }, { data: tachesBd }] = await Promise.all([
+            adminBd.from("annonces_plateforme").select("listing_id, statut_plateforme, disparu_le")
+              .eq("user_id", user.id).eq("platform", "leboncoin").in("listing_id", numeros),
+            adminBd.from("cross_post_jobs").select("platform_listing_id, action, platform_fields")
+              .eq("user_id", user.id).eq("platform", "leboncoin").in("platform_listing_id", numeros).limit(500),
+          ]);
+          const verdictBd = new Map<string, boolean>();
+          for (const n of numeros) {
+            const { data: vas, error: eVas } = await adminBd.rpc("leboncoin_vendu_avant_suivi", { p_user: user.id, p_listing: n });
+            verdictBd.set(n, badgeAvantSuivi({ venduAvantSuivi: eVas ? null : vas === true, ...faitsDuNumero(n, annBd ?? [], tachesBd ?? []) }));
+          }
+          const quand = new Date().toISOString();
+          const ids = new Set(aJuger.map((j) => String(j.id)));
+          out = out.map((j) => (ids.has(String(j.id)) ? marquerTache(j, verdictBd.get(String(j.platform_listing_id ?? "").trim()) === true, quand) : j) as typeof j);
+          const marques = [...verdictBd.values()].filter(Boolean).length;
+          if (marques) console.log(`[get-pending-jobs] userId=${user.id} : ${marques} republication(s) Leboncoin servie(s) avec la marque « badge Vendu d'avant le suivi »`);
+        } catch (e) {
+          console.warn(`[get-pending-jobs] badge d'avant le suivi : lecture illisible (${String((e as Error)?.message ?? e)}) — tâches servies sans marque`);
+        }
       }
     }
     out = out.map((j) => jobSansInvisibles(j) as typeof j);

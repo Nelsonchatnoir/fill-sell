@@ -30,6 +30,8 @@ import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur, porteUnPrefixeD
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
 import { classerEchec, estTailleHorsGrille, restrictionVinted, LBC_REFUS_CONTENU_RE, empreinteTexteServi, RAYON_NEUF_SEULEMENT_VINTED_RE, PREVOL_TROP_LENT_RE } from "../_shared/pas-de-rouge.js";
+// (09/11, point 2 de Nico) Une vente lue à la republication devient une vente détectée (signal de la veille).
+import { signalVenteLueALaRepublication } from "../_shared/badge-vendu-avant-suivi.js";
 import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
 import { marqueIntrouvable, messagePause, SOURCE_INTROUVABLE } from "../_shared/introuvable-a-confirmer.js";
 import { questionEnFrancais } from "../_shared/question-francais.js";
@@ -4535,6 +4537,34 @@ serve(async (req) => {
         raisonRequalif = `pas-de-rouge : ${sortie.motif} → ${sortie.verdict}`;
         pfPasDeRouge = pfS;
         console.log(`[update-job-status] userId=${user.id} job=${jobId} — pas-de-rouge : ${sortie.motif} → ${sortie.verdict}/${sortie.statut}`);
+        // ══ (09/11, point 2 de Nico) UNE VENTE LUE À LA REPUBLICATION DEVIENT UNE VENTE DÉTECTÉE ══
+        // La page relue avant le retrait dit « Article vendu » (vente pendant le suivi — un badge d'avant le suivi sort
+        // plus haut, motif badge_vendu_avant_suivi) : la republication se clôt comme avant ET l'annonce publiée de ce
+        // numéro reçoit le signal de la veille (sale_signal « sold ») — le circuit des ventes détectées prend la suite
+        // tout de suite (Ventes à confirmer, mail, retraits ailleurs à l'enregistrement, republication refusée). Une
+        // écriture, compare-and-set (publiée, sans signal), jamais un point de panne. _shared/badge-vendu-avant-suivi.js.
+        if (sortie.motif === "annonce_vendue") {
+          try {
+            const serviceKeyV = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+            const adminV = serviceKeyV ? createClient(Deno.env.get("SUPABASE_URL")!, serviceKeyV) : null;
+            const { data: jNum } = adminV
+              ? await adminV.from("cross_post_jobs").select("platform_listing_id").eq("id", jobId).eq("user_id", user.id).maybeSingle()
+              : { data: null };
+            const numeroV = String((jNum as { platform_listing_id?: string | null } | null)?.platform_listing_id ?? "").trim();
+            if (numeroV && adminV) {
+              const { data: publiees } = await adminV.from("cross_post_jobs").select("id, platform_fields")
+                .eq("user_id", user.id).eq("platform", String(jPdr?.platform ?? "")).eq("platform_listing_id", numeroV)
+                .in("action", ["publish", "republish"]).eq("status", "published").neq("id", jobId).limit(3);
+              for (const p of (publiees ?? []) as Array<{ id: string; platform_fields: Record<string, unknown> | null }>) {
+                const pfV = signalVenteLueALaRepublication(p.platform_fields ?? {});
+                if (!pfV) continue;
+                const { data: okV } = await adminV.from("cross_post_jobs").update({ platform_fields: pfV })
+                  .eq("id", p.id).eq("status", "published").is("platform_fields->>sale_signal", null).select("id");
+                console.log(`[update-job-status] userId=${user.id} job=${jobId} — vente lue à la republication : signal « sold » posé sur ${String(p.id).slice(0, 8)} (${okV?.length ? "écrit" : "déjà signalé"})`);
+              }
+            }
+          } catch (_e) { /* le signal est un renfort : la veille le posera à son passage */ }
+        }
       } catch (e) {
         // ⛔ Un filet ne devient jamais un point de panne : si l'arbitrage
         //    tombe, le statut d'origine part tel quel (comportement d'avant).

@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-09-matin (0.6.184 : Leboncoin — le badge « Article vendu » d'une vente d'AVANT le suivi, marqué par le serveur sur la republication servie, n'arrête plus la republication (l'annonce est en ligne) et ne prouve jamais un retrait ; sans marque, rien ne change ; recopie d'etat-job (aucun rayon eBay sûr = en pause, FillSell s'en occupe) — précédent : 0.6.183, puis " +
   "2026-11-08-soir (0.6.182 : le compte Leboncoin relevé (celui du jeton de la page) est écrit sur le relevé et sur chaque annonce vue, si la base a les colonnes — le serveur ne mélange plus deux comptes ; rien d'autre ne change — précédent : " +
   "2026-11-08-apres-midi (0.6.181 : l'espacement de 2 min entre deux gestes de republication est compté PAR PLATEFORME — Vinted, Leboncoin, Beebs et Depop avancent ensemble, chacune à son rythme d'avant ; un retrait né pendant un cycle l'arrête entre deux tâches et un poll repart — précédent : " +
   "2026-11-07-nuit-louis (0.6.180 : état d'une tâche — une remise en vente Leboncoin retenue parce que son annonce vendue est encore affichée le dit (achat en cours, « Article vendu », relecture) et, au-delà de la borne, « À toi de jouer : supprime-la sur Leboncoin » ; recopie de _shared/etat-job.js, rien d'autre ne change — précédent : " +
@@ -29267,6 +29268,24 @@ async function retenirDerriereAnnonceHorsLigne(accessToken, job, pf, frere) {
   return msg;
 }
 
+// ── (09/11, point 2 de Nico — Jess, 0.6.184) LE BADGE « ARTICLE VENDU » D'AVANT LE SUIVI ─────────────────────────────
+// Recopie de supabase/functions/_shared/badge-vendu-avant-suivi.js (marqueBadgeAvantSuivi). Le serveur (get-pending-jobs)
+// marque une republication Leboncoin dont l'annonce porte le badge d'une vente d'AVANT le suivi (ventes de juillet de Jess,
+// annonces importées le 07/11, toujours en vente) : règle de Nico du 08/11 et du 09/11, ce badge n'est jamais une vente.
+// Pour CETTE annonce : la page lue « sold » (200, list_id présent) est une annonce EN LIGNE — on republie ; et à l'étape du
+// retrait, « sold » ne prouve jamais un retrait (seule une page morte le prouve). Sans marque : rien ne change.
+function badgeAvantSuiviDuJob(pfJob, listing) {
+  const m = pfJob && typeof pfJob === "object" ? pfJob.badge_vendu_avant_suivi : null;
+  const n = String(listing ?? "").trim();
+  return !!(m && typeof m === "object" && n && String(m.listing ?? "").trim() === n);
+}
+// Une lecture d'état PROUVE-t-elle l'absence de l'annonce ? (« sold » sur le badge d'avant le suivi : non, elle est en ligne)
+function etatProuveAbsence(job, state, pfJob = job?.platform_fields) {
+  if (state === "unavailable") return true;
+  if (state !== "sold") return false;
+  return !(job?.platform === "leboncoin" && badgeAvantSuiviDuJob(pfJob, job?.platform_listing_id));
+}
+
 async function processRepublishJobPlateforme(job, accessToken) {
   const pf = { ...(job.platform_fields ?? {}) };
   const step = pf.republish_step ?? "a_capturer";
@@ -29291,9 +29310,14 @@ async function processRepublishJobPlateforme(job, accessToken) {
       await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
       return { status: "failed", error: msg };
     }
-    const { state, raison } = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) })
+    const { state: etatLu, raison } = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) })
       .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
-    pf.republish_etat_reel = { at: new Date().toISOString(), state: String(state), ...(raison ? { raison: String(raison).slice(0, 80) } : {}) };
+    // (09/11, 0.6.184) Badge « Article vendu » d'avant le suivi, marqué par le serveur : l'annonce est EN LIGNE.
+    const badgeAvantSuivi = job.platform === "leboncoin" && etatLu === "sold" && badgeAvantSuiviDuJob(pf, job.platform_listing_id);
+    const state = badgeAvantSuivi ? "active" : etatLu;
+    pf.republish_etat_reel = { at: new Date().toISOString(), state: String(etatLu), ...(raison ? { raison: String(raison).slice(0, 80) } : {}),
+      ...(badgeAvantSuivi ? { badge_avant_suivi: true } : {}) };
+    if (badgeAvantSuivi) console.log(`[republish] job ${job.id} : « Article vendu » sur une vente d'avant le suivi (marque du serveur) — annonce en ligne, la republication continue`);
     // ── NOTRE SUPPRESSION ÉTAIT DÉJÀ PARTIE (05/10, Joséphine) ─────────────────
     // 8 republications Beebs de Joe0410 : suppression envoyée au premier essai,
     // jamais confirmée (liste « Mes annonces » tronquée), puis, relancées à
@@ -29713,7 +29737,8 @@ async function processRepublishJobPlateforme(job, accessToken) {
         // Canal coupé PAR la navigation du retrait : l'état réel tranche
         // (sauf Beebs, 03/10 : la page publique ne prouve rien, on reprend).
         const { state } = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) }).catch(() => ({ state: "unknown" }));
-        if ((state === "unavailable" || state === "sold") && job.platform !== "beebs") {
+        // (09/11, 0.6.184) « sold » sur le badge d'avant le suivi n'est pas une absence : l'annonce est encore en ligne.
+        if (etatProuveAbsence(job, state, { ...pf, ...(job.platform_fields ?? {}) }) && job.platform !== "beebs") {
           result = { success: true, trace: ["canal coupé par la navigation du retrait — annonce absente : retrait confirmé par l'état réel"], confirmeParEtat: true };
         } else {
           await rearmRetrait(`Retrait ${label} interrompu (onglet navigué ou rechargé) : ${msg}`);
@@ -29779,7 +29804,8 @@ async function processRepublishJobPlateforme(job, accessToken) {
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
       // (03/10) Beebs : la page publique ne prouve jamais un retrait (une
       // annonce en vérification y est en 404) — seule « Mes annonces » tranche.
-      if ((state === "unavailable" || state === "sold") && job.platform !== "beebs") {
+      // (09/11, 0.6.184) Leboncoin : « sold » sur le badge d'avant le suivi n'est pas une absence.
+      if (etatProuveAbsence(job, state, pfApres) && job.platform !== "beebs") {
         retire = true; confirmePar = "etat_annonce";
       } else if (motifSessionMorte(job.platform, result.error)) {
         // (27/09, point 19) arbitré : « false » seulement sur preuve.

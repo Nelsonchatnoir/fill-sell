@@ -969,6 +969,9 @@ const SOURCES_AUTOMATIQUES = Object.freeze({
   build_min_requis: "mise_a_jour",
   // (26/10 nuit, point 5) Leboncoin a refusé le texte à la modération : FillSell adapte la copie Leboncoin.
   lbc_moderation: "lbc_moderation",
+  // (09/11, point 3 de Nico) Aucun rayon eBay sûr : un trou de NOTRE correspondance (_shared/ebay-rayon-a-notre-charge.js),
+  // en pause chez nous, rejoué seul quand la règle est complétée — jamais « change l'icône ou le genre ».
+  ebay_rayon_a_notre_charge: "ebay_rayon",
 });
 
 // (07/11 nuit) La remise en vente Leboncoin qui attend la disparition de son annonce vendue : les valeurs de

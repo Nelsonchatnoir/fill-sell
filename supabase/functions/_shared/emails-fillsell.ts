@@ -682,10 +682,33 @@ export interface ContexteVentes {
   retraitsBeebsAuto: number;
   /** (11/10) Vente DÉTECTÉE, pas encore enregistrée : à confirmer dans l'app. */
   aConfirmer?: boolean;
+  /** (09/11, point 1 de Nico — xxewwer) Annonces des articles vendus ENCORE EN LIGNE ailleurs, que FillSell ne retire
+   *  pas sans la personne (question « Déjà vendu ? » ouverte : lien par le titre, plusieurs exemplaires possibles) —
+   *  une plateforme par annonce (slugs). Absent ou vide : le mail d'avant, à l'octet. */
+  dejaVendu?: string[];
 }
 
 /** (11/10) Le lien du mail « Vendu » : la liste « Ventes à confirmer » de l'app. */
 export const URL_VENTES_A_CONFIRMER = `${URL_APP}/app?ventes=a-decider`;
+/** (09/11) Le lien qui ouvre les questions « Déjà vendu ? » (Stock → À régler). */
+export const URL_DEJA_VENDU = `${URL_APP}/app?ventes=deja-vendu`;
+
+/** (09/11, point 1 de Nico) Le paragraphe « encore en ligne » : vendu ici, une annonce vit ailleurs et attend la réponse
+ *  de la personne. Jamais « retirée » : FillSell ne la retire qu'après son « Oui ». null = rien à dire. */
+export function texteDejaVendu(plateformes: string[] | undefined, lang: Langue, unArticle = true): string | null {
+  const n = Array.isArray(plateformes) ? plateformes.length : 0;
+  if (!n) return null;
+  const fr = lang === "fr";
+  const ou = plateformesEnClair(plateformes as string[], lang);
+  const de = fr ? (unArticle ? "de cet article" : "de ces articles") : (unArticle ? "of this item" : "of these items");
+  return fr
+    ? (n > 1
+      ? `Attention : ${n} annonces ${de} sont encore en ligne (${ou}). FillSell ne sait pas si c'est le même exemplaire, alors il ne les retire pas sans toi. Réponds à « Déjà vendu ? » dans FillSell : « Oui » les retire tout de suite, pour ne pas vendre deux fois.`
+      : `Attention : une annonce ${de} est encore en ligne (${ou}). FillSell ne sait pas si c'est le même exemplaire, alors il ne la retire pas sans toi. Réponds à « Déjà vendu ? » dans FillSell : « Oui » la retire tout de suite, pour ne pas vendre deux fois.`)
+    : (n > 1
+      ? `Heads up: ${n} listings ${de} are still online (${ou}). FillSell can't tell if it's the same unit, so it won't take them down without you. Answer “Already sold?” in FillSell: “Yes” takes them down right away, so you don't sell twice.`
+      : `Heads up: a listing ${de} is still online (${ou}). FillSell can't tell if it's the same unit, so it won't take it down without you. Answer “Already sold?” in FillSell: “Yes” takes it down right away, so you don't sell twice.`);
+}
 
 function euros(n: number, lang: Langue): string {
   const v = Math.round(Number(n) || 0);
@@ -715,7 +738,7 @@ export interface VenteRafale extends VenteAnnoncee {
   aConfirmer?: boolean;
 }
 
-export function mailRafale(ctx: { ventes: VenteRafale[] }, lang: Langue): MailPret {
+export function mailRafale(ctx: { ventes: VenteRafale[]; dejaVendu?: string[] }, lang: Langue): MailPret {
   const fr = lang === "fr";
   const n = ctx.ventes.length;
   const lignes = ctx.ventes.map((v) => {
@@ -740,6 +763,7 @@ export function mailRafale(ctx: { ventes: VenteRafale[] }, lang: Langue): MailPr
   });
   const sansPrixAchat = ctx.ventes.some((v) => prixVenteConnu(v) && v.benefice === null);
   const nbAConfirmer = ctx.ventes.filter((v) => v.aConfirmer).length;
+  const dejaVenduTxt = texteDejaVendu(ctx.dejaVendu, lang, false);
   const sujet = fr ? `${n} ventes d'un coup sur ton compte 🎉` : `${n} sales at once on your account 🎉`;
 
   const corps = [
@@ -762,8 +786,12 @@ export function mailRafale(ctx: { ventes: VenteRafale[] }, lang: Langue): MailPr
         ? "Ajoute le prix d'achat d'un article dans FillSell pour connaître ton bénéfice."
         : "Add an item's purchase price in FillSell to see your profit.")]
       : []),
-    boutonPrincipal(nbAConfirmer > 0 ? (fr ? "Confirmer les ventes" : "Confirm the sales") : (fr ? "Ouvrir FillSell" : "Open FillSell"),
-      URL_VENTES_A_CONFIRMER),
+    // (09/11, point 1 de Nico) Des annonces des articles vendus restent en ligne, en attente de « Déjà vendu ? ».
+    ...(dejaVenduTxt ? [paragraphe(dejaVenduTxt)] : []),
+    nbAConfirmer > 0 || !dejaVenduTxt
+      ? boutonPrincipal(nbAConfirmer > 0 ? (fr ? "Confirmer les ventes" : "Confirm the sales") : (fr ? "Ouvrir FillSell" : "Open FillSell"),
+        URL_VENTES_A_CONFIRMER)
+      : boutonPrincipal(fr ? "Répondre à « Déjà vendu ? »" : "Answer “Already sold?”", URL_DEJA_VENDU),
   ];
 
   return {
@@ -805,6 +833,7 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
   // Le bénéfice ne manque « faute de prix d'achat » que si le prix de vente est connu.
   const sansPrixAchat = ctx.ventes.some((v) => prixVenteConnu(v) && v.benefice === null);
   const seule = n === 1 ? ctx.ventes[0] : null;
+  const dejaVenduTxt = ctx.aConfirmer ? null : texteDejaVendu(ctx.dejaVendu, lang, n === 1);
   const seuleAilleurs = seule?.plateforme === "ailleurs";
   const ouSeule = seule && !seuleAilleurs ? plateformesEnClair([seule.plateforme], lang) : "";
 
@@ -844,10 +873,15 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
         ? "Les dépôts Beebs encore en vérification seront retirés automatiquement dès que Beebs les aura mis en ligne."
         : "Beebs listings still under review will be taken down automatically as soon as Beebs puts them online.")]
       : []),
+    // (09/11, point 1 de Nico — xxewwer) Une annonce de l'article vendu reste en ligne ailleurs, en attente de « Déjà
+    // vendu ? » : le mail le dit, et son bouton ouvre la question (avant : rien, la question attendait dans l'app).
+    ...(dejaVenduTxt ? [paragraphe(dejaVenduTxt)] : []),
     // (11/10) Le bouton mène à la liste « Ventes à confirmer » (Stock), plus à
     // l'accueil du site : c'est là que la vente se confirme.
-    boutonPrincipal(ctx.aConfirmer ? (fr ? "Confirmer la vente" : "Confirm the sale") : (fr ? "Ouvrir FillSell" : "Open FillSell"),
-      URL_VENTES_A_CONFIRMER),
+    ctx.aConfirmer || !dejaVenduTxt
+      ? boutonPrincipal(ctx.aConfirmer ? (fr ? "Confirmer la vente" : "Confirm the sale") : (fr ? "Ouvrir FillSell" : "Open FillSell"),
+        URL_VENTES_A_CONFIRMER)
+      : boutonPrincipal(fr ? "Répondre à « Déjà vendu ? »" : "Answer “Already sold?”", URL_DEJA_VENDU),
   ];
 
   return {

@@ -256,6 +256,7 @@ import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
 import { prixParDefautDuBandeau, preuveDeVente } from './utils/prixBandeauVente';
 import { dansLaBoutique } from './utils/filtreBoutique';
 import { marqueursDeNaissance } from './utils/sourceDuTexte';
+import { noterLienDejaVendu } from './utils/lienDejaVendu';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -5237,6 +5238,14 @@ export default function App({ loginOnly = false }){
     try{
       if(new URLSearchParams(window.location.search).get('ventes')==='a-decider'){
         sessionStorage.setItem('fillsell:ventes-a-decider','1');
+        const url=new URL(window.location.href);url.searchParams.delete('ventes');
+        window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+      }
+      // (09/11, point 1 de Nico) Le lien du mail de vente quand une annonce de l'article reste en ligne ailleurs
+      // (/app?ventes=deja-vendu) : le Stock s'ouvre et le Stock ouvre « Déjà vendu ? » (utils/lienDejaVendu.js).
+      if(new URLSearchParams(window.location.search).get('ventes')==='deja-vendu'){
+        noterLienDejaVendu();
+        setTab(1);try{localStorage.setItem('tab','1');}catch{/* idem */}
         const url=new URL(window.location.href);url.searchParams.delete('ventes');
         window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
       }

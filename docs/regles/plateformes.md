@@ -948,3 +948,17 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   personne APRÈS le mur ; l'éclaireur publié → les autres repartent seules ; les anciens refus « relancer » qui portent un
   motif de compte sont reclassés (borné, conditionné). App : « Finaliser ma vérification sur eBay » (Seller Hub) et
   « C'est fait, relancer » (jamais « Relancer maintenant »). Selftest `ebay-refus-compte`.
+
+## ⛔ eBay — un trou de correspondance de rayon est à NOTRE charge (09/11 matin, point 3 de Nico — contact.grizstyle)
+- Règle générale : choisir un rayon eBay qui accepte l'ÉTAT RÉEL de l'article. Le rayon retenu refuse l'état (lit bébé
+  d'occasion en 93391 « Lits, matelas, berceaux », neuf seulement) → un rayon voisin de la même branche qui l'accepte
+  (« Autres » du parent, puis au-dessus, jamais une autre racine ; 3 au plus, vérifiés chez eBay) AVANT la reprise avec la
+  proposition d'eBay ; rien ne l'accepte → publication close (`etat_refuse_par_ebay`), la règle d'eBay dite vraie.
+- Lot de vêtements sans rayon sûr → « Tenues, ensembles » du genre (Femme 260011, Fille 156801, Garçon 156790, Bébé
+  260024 ; eBay France n'a pas de rayon « lots » de vêtements ; rien pour Homme).
+- Un trou qui reste (aucun rayon sûr) : `needs_user_source = ebay_rayon_a_notre_charge` → « En pause — FillSell s'en
+  occupe » (etat-job, cause-blocage NOUS), jamais « change l'icône ou le genre, puis relance ».
+- Les publications arrêtées sur un rayon ou un état sont rejouées seules, une fois par version des règles
+  (`REGLE_RAYON_VERSION`), sans `ebayCategorieAttente`. Jamais « Catégorie eBay à confirmer » (choix de la personne).
+- La règle « qui peut lever le refus » (`ebay-refus-compte.js`) ne voit que les réponses d'eBay : ces arrêts tombent avant
+  tout appel. `_shared/ebay-rayon-a-notre-charge.js`, selftest `ebay-rayon-a-notre-charge`.

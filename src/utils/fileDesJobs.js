@@ -118,6 +118,8 @@ const TEXTE = {
     technique: (p) => `En pause avant tout retrait, ton annonce est intacte : elle repart toute seule dès que ${p} répond à nouveau`,
     ebay_etranger: "En pause : ton compte eBay est inscrit sur un autre site qu'ebay.fr, FillSell n'y publie pas — rien n'a été envoyé",
     lbc_moderation: "En pause — FillSell s'en occupe : Leboncoin a refusé ce texte à la modération, l'équipe adapte la copie Leboncoin (ta fiche ne change pas)",
+    // (09/11, point 3 de Nico) Aucun rayon eBay sûr : à notre charge, la publication repartira seule.
+    ebay_rayon: "En pause — FillSell s'en occupe : aucun rayon eBay sûr pour cet article, l'équipe complète la correspondance et la publication repartira seule (ta fiche ne change pas)",
     ecartee: (p) => `En pause : tu as indiqué ne pas vendre sur ${p}, rien n'est envoyé`,
     en_cours_ordinateur: "En cours sur ton ordinateur",
     en_cours_serveurs: "En cours sur nos serveurs",
@@ -171,6 +173,7 @@ const TEXTE = {
     technique: (p) => `Paused before any removal, your listing is untouched: it resumes on its own as soon as ${p} answers again`,
     ebay_etranger: "Paused: your eBay account is registered on another site than ebay.fr, FillSell does not list there — nothing was sent",
     lbc_moderation: "Paused — FillSell is on it: Leboncoin's moderation refused this text, the team adapts the Leboncoin copy (your item doesn't change)",
+    ebay_rayon: "Paused — FillSell is on it: no safe eBay category for this item yet, the team completes the mapping and the listing will go out on its own (your item doesn't change)",
     ecartee: (p) => `Paused: you said you don't sell on ${p}, nothing is sent`,
     en_cours_ordinateur: "In progress on your computer",
     en_cours_cloud: { publish: "FillSell Cloud is listing it…", republish: "FillSell Cloud is reposting it…", delete: "FillSell Cloud is removing it…" },

@@ -190,6 +190,7 @@ import {
 } from '../stock/regles';
 import EcranDoublons from '../annonces/EcranDoublons';
 import { lireDoublonsProposes, pairesAffichables, estQuestionDejaVendu } from '../utils/doublons';
+import { ouvrirDejaVenduAuLien } from '../utils/lienDejaVendu';
 import {
   Upload, ChevronsUp, BadgeEuro, Pencil, Copy, Trash2, Layers, ListChecks, Eye, Store, ExternalLink, Activity,
   CircleAlert, Laptop, KeyRound, Wrench, PauseCircle, Clock, RotateCcw,
@@ -7994,15 +7995,22 @@ const StockTab = memo(function StockTab({
   // pour être comptées dans « À régler » et ouvertes depuis son écran.
   const [doublonsProposes, setDoublonsProposes] = useState([]);
   const [ecranDejaVendu, setEcranDejaVendu] = useState(false);
+  // (09/11) Les questions sont-elles LUES ? (le lien du mail « Déjà vendu ? » attend la lecture pour ouvrir l'écran)
+  const [doublonsLus, setDoublonsLus] = useState(false);
   const relireDoublons = useCallback(() => {
     if (!user?.id) return;
-    lireDoublonsProposes(user.id).then((d) => setDoublonsProposes(Array.isArray(d) ? d : [])).catch(() => {});
+    lireDoublonsProposes(user.id).then((d) => { setDoublonsProposes(Array.isArray(d) ? d : []); setDoublonsLus(true); }).catch(() => { setDoublonsLus(true); });
   }, [user?.id]);
   useEffect(() => { relireDoublons(); }, [relireDoublons]);
   const questionsDejaVendu = useMemo(
     () => pairesAffichables(doublonsProposes, items).filter(estQuestionDejaVendu),
     [doublonsProposes, items],
   );
+  // (09/11, point 1 de Nico) Le lien du mail de vente (/app?ventes=deja-vendu) ouvre « Déjà vendu ? » — une fois,
+  // questions lues ET fiches chargées (pairesAffichables a besoin des deux) ; aucune question → rien.
+  useEffect(() => {
+    if (ouvrirDejaVenduAuLien({ lues: doublonsLus && items.length > 0, nbQuestions: questionsDejaVendu.length })) setEcranDejaVendu(true);
+  }, [doublonsLus, items.length, questionsDejaVendu.length]);
   // (Mode brouillons — MÊME mécanique que modePrixAchat et modeRepublish : une
   // pastille l'arme, un en-tête `pa-call` porte la sortie, la liste bascule.
   // Son état est déclaré plus HAUT, avec la lecture des brouillons : l'effet de

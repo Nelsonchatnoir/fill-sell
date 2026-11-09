@@ -229,7 +229,9 @@ ok(!/return \{ success: true \}/.test(dl) && !/return \{ success: true, trace \}
 // (25/10) Les deux appels portent le contexte du retrait (ses constats « page 404 ») : ctxPreuve.
 ok((dl.match(/await preuveAbsenceMesAnnonces\(idCible, t, ctxPreuve\)/g) ?? []).length === 2, "page sans bouton / carte introuvable : la liste complète tranche");
 const bg = lire("chrome-extension/background.js");
-ok((bg.match(/\(state === "unavailable" \|\| state === "sold"\) && job\.platform !== "beebs"/g) ?? []).length >= 4,
+// (09/11, 0.6.184) Deux de ces gardes passent par etatProuveAbsence (badge Leboncoin d'avant le suivi) : Beebs reste exclu.
+ok(((bg.match(/\(state === "unavailable" \|\| state === "sold"\) && job\.platform !== "beebs"/g) ?? []).length
+    + (bg.match(/etatProuveAbsence\(job, state, [^\n]*?\) && job\.platform !== "beebs"/g) ?? []).length) >= 4,
   "la page publique ne clôt plus un retrait Beebs (retrait, canal coupé, republication ×2)");
 ok(/if \(result\.preuveRetrait\) pfOk\.preuve_retrait = result\.preuveRetrait;/.test(bg) && /pfOk\.diagnostic_essai_precedent = pfOk\.last_diagnostic; delete pfOk\.last_diagnostic;/.test(bg)
   && /updateJobStatus\(accessToken, job\.id, "deleted", \{ error: null, platform_fields: pfOk \}\)/.test(bg),

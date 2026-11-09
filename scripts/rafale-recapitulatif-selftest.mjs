@@ -218,7 +218,7 @@ ok(iSplit > 0 && iSplit < iPousser && iSplit < iGroupes && /if \(recaps\.length\
 const fMail = pv.slice(pv.indexOf('async function envoyerMailRafale('), pv.indexOf('function messageDuRecap('));
 ok(/type: `vente:\$\{n\.id\}`/.test(fMail) && /categorie: "support", dedup: "reservation"/.test(fMail) && /if \(r\.motif === "deja_envoye"\) return \{ statut: "deja_envoye" \};/.test(fMail),
   'le mail du récapitulatif : réservation « vente:<id du récapitulatif> » (index email_logs_vente_unique) — un second passage trouve « deja_envoye »');
-ok(/ventes\.length === 1\s*\? mailVentes\(/.test(fMail) && /: mailRafale\(\{ ventes \}, lang\)/.test(fMail) && /aConfirmer: l\.a_decider === true/.test(fMail) && /ligneDuMail\(admin, a, String\(l\.plateforme \?\? ""\)\)/.test(fMail),
+ok(/ventes\.length === 1\s*\? mailVentes\(/.test(fMail) && /: mailRafale\(\{ ventes(?:, \.\.\.dv)? \}, lang\)/.test(fMail) && /aConfirmer: l\.a_decider === true/.test(fMail) && /ligneDuMail\(admin, a, String\(l\.plateforme \?\? ""\)\)/.test(fMail),
   'chaque ligne : titre, plateforme, prix et bénéfice (ligneDuMail, la règle du mail de vente) ; une seule vente → le mail d\'une vente seule');
 const blocRecap = pv.slice(pv.indexOf('const recapsPousses = '), pv.indexOf('const appareils = '));
 ok((blocRecap.match(/envoyerNote\(/g) ?? []).length === 1 && /messageDuRecap\(n, lang\)/.test(blocRecap) && (blocRecap.match(/envoyerMailRafale\(/g) ?? []).length === 1

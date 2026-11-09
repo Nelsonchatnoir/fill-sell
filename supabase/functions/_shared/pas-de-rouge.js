@@ -60,6 +60,8 @@ import { repriseTitreInvisibles, messageRepriseInvisibles } from "./caracteres-i
 import { indiceEtatRetrait } from "./retrait-deja-absent.js";
 // (28/10, point 11) Le mur « configuration vendeur » de Depop : une seule source (pur, sans import).
 import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP } from "./vendeur-depop.js";
+// (09/11, point 2 de Nico — Jess) Le badge « Article vendu » d'avant le suivi, à la republication.
+import { CLE_BADGE_AVANT_SUIVI, messageBadgeAvantSuivi } from "./badge-vendu-avant-suivi.js";
 // (25/10, N6 et R2) eBay voie clic : le manquant qu'eBay nomme au refus du brouillon (retours, photos).
 import {
   classeRefusBrouillonEbay, SOURCE_RETOURS_EBAY, champRetoursEbay, MOTIF_PHOTOS_EBAY, REPRISES_PHOTOS_MAX,
@@ -865,6 +867,15 @@ function classerEchecSansRegleRetrait(arg) {
   // « sold », dépôt marqué vendu depuis le 16/10) — elle est close, rien retiré ; la vente suit son
   // propre circuit (relevés, ventes prouvées), jamais celui-ci.
   if (action === "republish" && String(pf?.republish_etat_reel?.state ?? "") === "sold") {
+    // (09/11, point 2 de Nico — Jess) Le badge « Article vendu » d'une vente d'AVANT le suivi (marque posée par
+    // get-pending-jobs, _shared/badge-vendu-avant-suivi.js) n'est jamais « vendue » : une extension d'avant 0.6.184
+    // s'arrête encore dessus — on le dit vrai, rien retiré, l'article reste republiable.
+    if (platform === "leboncoin" && String(pf?.[CLE_BADGE_AVANT_SUIVI]?.listing ?? "").trim()) {
+      return {
+        verdict: "info", statut: "cancelled", motif: "badge_vendu_avant_suivi",
+        message: messageBadgeAvantSuivi(),
+      };
+    }
     return {
       verdict: "info", statut: "cancelled", motif: "annonce_vendue",
       message: `Republication annulée : ton annonce ${nom} est vendue (la page affiche « Article vendu »). ` +

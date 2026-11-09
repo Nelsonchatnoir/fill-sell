@@ -700,3 +700,17 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   et que l'annonce est vue en ligne OU née hors FillSell (importée) ; disparue, elle se juge par les constats (« plus en
   ligne »). Migration `20261109010000_vendu_avant_suivi_jamais_une_vente` (APPLIQUÉE le 09/11, feu vert de Nico ; banc 19/19).
   Une vente lue pendant le suivi reste « vendue ». Selftest `vendu-avant-suivi-republication`.
+
+## ⛔ 09/11 matin (points 1 et 2 de Nico — xxewwer, Jess) — une annonce encore en ligne ailleurs SE DIT ; un badge d'avant le suivi n'arrête pas la republication
+- **Point 1 (MediEvil, xxewwer)** : une annonce d'une autre plateforme rattachée par le TITRE (même photo comprise : ce
+  compte a répondu « Non » 5 fois sur des photos identiques, plusieurs exemplaires) n'est jamais retirée d'office — la vente
+  pose « Déjà vendu ? » (inchangé, décision de Nico du 09/11 : on attend la réponse de la personne). Nouveau : le mail de
+  vente (push-ventes, `annoncesEncoreEnLigne` → `dejaVendu`) nomme les annonces encore en ligne et son bouton ouvre la
+  question (`/app?ventes=deja-vendu`, `src/utils/lienDejaVendu.js`). Avant : `retraitsACliquer: 0` codé en dur, rien dit.
+  Sans question ouverte : le mail d'avant à l'octet. Selftest `deja-vendu-mail`. Rapport : `docs/reprise/terminal-problemes-0911-matin.md`.
+- **Point 2 (Jess)** : le badge « Article vendu » d'une vente d'AVANT le suivi, relu par l'extension avant le retrait d'une
+  republication, n'est plus « annonce vendue » : get-pending-jobs marque la tâche servie (`badge_vendu_avant_suivi`, règle de
+  la base), l'extension ≥ 0.6.184 continue (et « sold » ne prouve jamais un retrait pour cette annonce) ; une extension plus
+  ancienne s'arrête avec un message vrai (`badge_vendu_avant_suivi`). Une vente lue PENDANT le suivi à la republication :
+  close comme avant ET signal de vente (`sale_signal` sold) posé sur l'annonce publiée du même numéro (update-job-status) →
+  circuit des ventes détectées tout de suite. `_shared/badge-vendu-avant-suivi.js`, selftest `badge-vendu-avant-suivi-republication`.

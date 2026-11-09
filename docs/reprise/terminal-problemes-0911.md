@@ -103,4 +103,4 @@ chantier, rien codé) ; copie 0.6.183-cloud = terminal Cloud ; créneaux et manu
 ## Ce qui attend
 - Créneaux : vérifier à 10:00 que le lot de Joséphine repart (créneau ouvert), au rythme de chaque plateforme.
 - OTA 2.9.168 (terminal Cloud) : embarque l'app de c837c27 (feuille de republication, file, trace des refus).
-- Nico : confirmer « créneaux définis = module ACTIF » (un module en pause ne retient pas le manuel).
+- Nico : « créneaux définis = module ACTIF » CONFIRMÉ le 09/11 matin. Suite : `docs/reprise/terminal-problemes-0911-matin.md`.

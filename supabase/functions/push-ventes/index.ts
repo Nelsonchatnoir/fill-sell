@@ -39,6 +39,34 @@ type NoteServie = {
 
 type VerdictMail = { statut: "envoye" | "deja_envoye" | "a_reessayer" | "echec" | "sans_adresse"; motif?: string };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// (09/11, point 1 de Nico — xxewwer, « MediEvil ») UNE ANNONCE ENCORE EN LIGNE AILLEURS SE DIT DANS LE MAIL DE VENTE
+// ═══════════════════════════════════════════════════════════════════════════
+// À la vente, une annonce d'une autre plateforme rattachée à la fiche par le titre (ou la photo) seulement n'est pas
+// retirée d'office : la base pose la question « Déjà vendu ? » (inventaire_doublons, motif copie_non_prouvee) dans la
+// même transaction — plusieurs exemplaires sont possibles (xxewwer : 5 « Non » sur des photos identiques). Avant, le
+// mail de vente n'en disait rien (retraitsACliquer: 0) : la question posée à 00:47 attendait que la personne ouvre
+// l'app, l'annonce en vente ailleurs. Ici : les questions OUVERTES des fiches vendues de ce mail, une plateforme par
+// annonce. Lecture seule, une requête par mail, bornée ; une lecture ratée = le mail d'avant (jamais de mail bloqué).
+async function annoncesEncoreEnLigne(
+  // deno-lint-ignore no-explicit-any
+  admin: any, userId: string, inventaireIds: unknown[],
+): Promise<string[]> {
+  const ids = [...new Set(inventaireIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0))].slice(0, 100);
+  if (!userId || !ids.length) return [];
+  try {
+    const { data, error } = await admin.from("inventaire_doublons").select("preuves")
+      .eq("user_id", userId).eq("motif", "copie_non_prouvee").eq("statut", "proposee").in("garde", ids).limit(50);
+    if (error || !Array.isArray(data)) return [];
+    // deno-lint-ignore no-explicit-any
+    return data.map((q: any) => String(q?.preuves?.platform ?? "").trim().toLowerCase()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+const idsDesArticles = (n: NoteServie): unknown[] =>
+  (Array.isArray(n.articles) && n.articles.length ? n.articles.map((a) => a?.inventaire_id) : [n.inventaire_id]);
+
 // Une ligne du mail : la note elle-même (un article), ou un article de la commande —
 // même règle de prix et de bénéfice pour chacun.
 async function ligneDuMail(
@@ -84,6 +112,7 @@ async function envoyerMailVente(
     return Promise.all(arts.map((a) => ligneDuMail(admin, a, String(m.plateforme ?? ""))));
   }))).flat();
   const ventes = [...ventesTete, ...ventesAutres];
+  const dejaVendu = n.a_decider === true ? [] : await annoncesEncoreEnLigne(admin, n.user_id, groupe.flatMap(idsDesArticles));
   const { sujet, html } = mailVentes({
     ventes,
     retraitsACliquer: 0,
@@ -91,6 +120,8 @@ async function envoyerMailVente(
     // (11/10) Vente détectée, non enregistrée : le mail dit de la confirmer
     // (liste « Ventes à confirmer »). Absent (base d'avant) : texte d'avant.
     aConfirmer: n.a_decider === true,
+    // (09/11) Annonces encore en ligne ailleurs, en attente de « Déjà vendu ? » (vide : le mail d'avant).
+    ...(dejaVendu.length ? { dejaVendu } : {}),
   }, langue(n.lang));
   const r = await envoyerEmail({
     to: adresse, subject: sujet, html, type: `vente:${n.id}`,
@@ -173,9 +204,13 @@ async function envoyerMailRafale(
   }))).flat();
   if (!ventes.length) return { statut: "echec", motif: "recapitulatif_vide" };
   const lang = langue(n.lang);
+  // (09/11) Les annonces encore en ligne ailleurs des ventes ENREGISTRÉES du récapitulatif (« Déjà vendu ? » ouverte).
+  const dejaVendu = await annoncesEncoreEnLigne(admin, n.user_id,
+    lignesRafale(n.articles).filter((l) => l.a_decider !== true).flatMap((l) => (articlesDeLaLigne(l) as ArticleNote[]).map((a) => a?.inventaire_id)));
+  const dv = dejaVendu.length ? { dejaVendu } : {};
   const { sujet, html } = ventes.length === 1
-    ? mailVentes({ ventes, retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: ventes[0].aConfirmer }, lang)
-    : mailRafale({ ventes }, lang);
+    ? mailVentes({ ventes, retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: ventes[0].aConfirmer, ...dv }, lang)
+    : mailRafale({ ventes, ...dv }, lang);
   const r = await envoyerEmail({
     to: adresse, subject: sujet, html, type: `vente:${n.id}`,
     userId: n.user_id, categorie: "support", dedup: "reservation",
