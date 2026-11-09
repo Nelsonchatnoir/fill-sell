@@ -142,8 +142,8 @@ FillSell, c'est [Lens, l'IA qui rédige tes annonces](page:fonctions/lens), dire
 | Pour commencer | forfait Gratuit à 0 €, sans carte bancaire, sans date de fin | essai de 14 jours sans carte ; aucune formule gratuite |
 | Formules payantes, par mois | Premium 12,99 €, Pro 29,99 €, Business 59,99 €, sans engagement | Starter 14 €, Growth 29 €, Pro 49 € ; Business 89 € « coming soon » |
 | Prix à l'année | non | oui : 11 €, 24 € et 41 € par mois |
-| Ce qui est compté | les articles rédigés par l'IA ; une fois rédigé, un article part sur toutes tes plateformes sans rien compter de plus | les crédits d'IA ; annonces illimitées dans chaque formule |
 | Marge et bénéfice | calculés sur tous les forfaits, Gratuit compris | analyse complète (coût d'achat, marge, taux d'écoulement) à partir de Growth |
+| Ce qui est compté | par mois : les annonces rédigées par l'IA, les publications (une par plateforme) et les remontées | les crédits d'IA ; annonces illimitées dans chaque formule |
 | Devise | euros | euros (livres au Royaume-Uni), « VAT may apply » |
 
 En clair : pour démarrer, FillSell ne te coûte rien, et pas seulement pendant deux semaines. Au mois, Premium (12,99 €) est affiché sous le Starter de Relistly (14 €). À l'année, Relistly descend à 11 € par mois ; FillSell n'a pas de prix annuel. Le volume de chaque forfait FillSell s'affiche dans l'app avant tout achat : tu sais ce que tu prends. Tous les détails : [les tarifs de FillSell](page:tarifs).

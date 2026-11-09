@@ -148,7 +148,7 @@ Dans l'app : Réglages, puis Compte, puis « Supprimer mon compte », avec une d
 
 ### Combien coûte FillSell ?
 
-FillSell est gratuit pour commencer, sans carte bancaire ; Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Il n'existe ni prix à l'année ni essai des forfaits payants : le Gratuit te laisse tester sur tes vrais articles, sans date de fin. Tu ne paies ni par plateforme ni par publication : ton forfait compte les articles rédigés par l'IA, et un article rédigé part sur toutes tes plateformes sans rien compter de plus. L'app, l'app web et l'extension Chrome sont gratuites. Le prix qui fait foi est celui affiché au moment de l'achat ; dans l'App Store et sur Google Play, il peut différer. Tout le détail : [les tarifs FillSell](page:tarifs).
+FillSell est gratuit pour commencer, sans carte bancaire ; Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Il n'existe ni prix à l'année ni essai des forfaits payants : le Gratuit te laisse tester sur tes vrais articles, sans date de fin. Tu ne paies jamais par plateforme : chaque formule compte, par mois, les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées. L'app, l'app web et l'extension Chrome sont gratuites. Le prix qui fait foi est celui affiché au moment de l'achat ; dans l'App Store et sur Google Play, il peut différer. Tout le détail : [les tarifs FillSell](page:tarifs).
 
 ### Que comprend le forfait Gratuit ?
 

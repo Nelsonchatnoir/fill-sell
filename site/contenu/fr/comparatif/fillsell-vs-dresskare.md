@@ -189,7 +189,7 @@ Tu peux garder DressKare pour ton dépôt-vente et confier le crosslisting à Fi
 1. [Crée ton compte FillSell gratuit](/login?mode=signup), sans carte bancaire, et installe l'app sur ton téléphone.
 2. Installe [l'extension Chrome](/extension) sur ton ordinateur, puis connecte-toi à tes plateformes dans Chrome, comme d'habitude. Pour Depop, clique « Autoriser Depop » dans l'extension ; pour eBay, relie ton compte depuis la page officielle d'eBay.
 3. Appuie sur « Synchroniser » : tes annonces Vinted déjà en ligne, y compris celles publiées avec DressKare, entrent dans ton stock, rangées par article. Rien n'est publié ni modifié.
-4. Ouvre une fiche et mets l'article en vente sur tes autres plateformes. Ton forfait compte l'article rédigé par l'IA ; ensuite, il part sur toutes les plateformes cochées sans rien compter de plus.
+4. Ouvre une fiche et mets l'article en vente sur tes autres plateformes. La rédaction par l'IA compte une annonce de ton forfait, puis chaque plateforme cochée compte une publication.
 5. Coupe dans DressKare la republication automatique des annonces que FillSell reprend : un article, un seul outil.
 
 ## Questions fréquentes

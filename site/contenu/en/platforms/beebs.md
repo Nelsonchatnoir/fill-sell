@@ -188,4 +188,4 @@ No. According to its official help centre, Beebs charges no listing fees: the bu
 
 ### How do I put my Vinted listings on Beebs?
 
-Tap Sync: your Vinted listings land in your FillSell stock. Then pick the items, tick Beebs, check the version prepared for Beebs, and the extension posts them one by one. The Beebs version of an imported item is written by AI: it counts as one listing on your plan, and once written, the item goes out to all your marketplaces at no extra count.
+Tap Sync: your Vinted listings land in your FillSell stock. Then pick the items, tick Beebs, check the version prepared for Beebs, and the extension posts them one by one. The Beebs version of an imported item is written by AI: it counts as one listing on your plan, and each marketplace the item goes out to counts as one publication.

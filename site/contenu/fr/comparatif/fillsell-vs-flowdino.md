@@ -150,7 +150,7 @@ FlowDino facture chaque plateforme connectée : 7,99 €, 14,99 €, 29,99 € o
 
 Prix lus le 9 octobre 2026 sur [la page tarifs de FlowDino](https://www.flowdino.com/pricing) et sur [nos tarifs](page:tarifs) ; totaux FlowDino calculés d'après sa formule.
 
-Les volumes inclus ne sont pas les mêmes d'un outil à l'autre. FlowDino fixe, à chaque palier, un nombre d'articles et d'annonces par mois. FillSell compte les annonces rédigées par l'IA, pas les publications : une fois rédigé, un article part sur toutes tes plateformes sans rien décompter de plus, et le volume de chaque forfait s'affiche dans l'app avant tout achat.
+Les volumes inclus ne sont pas les mêmes d'un outil à l'autre. FlowDino fixe, à chaque palier, un nombre d'articles et d'annonces par mois. FillSell compte, par mois, les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées ; le volume de chaque formule s'affiche dans l'app avant tout achat.
 
 Pour un seul site, le Starter de FlowDino (7,99 €) coûte moins que Premium (12,99 €). Dès deux sites, c'est l'inverse, et l'écart grandit à chaque plateforme ajoutée. Dernier point : la FAQ de l'accueil de FlowDino cite d'autres montants (« Premium à 19,99 €/mois et Pro à 49,99 €/mois ») ; le prix affiché au moment de l'abonnement fait foi.
 

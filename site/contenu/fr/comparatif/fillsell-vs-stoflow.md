@@ -95,7 +95,7 @@ Chez FillSell, un appui sur « Synchroniser » et tes annonces déjà en ligne s
 
 Chez StoFlow, l'import existe aussi, sur Vinted, Leboncoin, eBay et Etsy, par un bouton « Synchroniser ». Sa FAQ précise la suite : les annonces importées « apparaissent comme « non liées » et tu peux les lier à ton inventaire StoFlow ». Aucune de ses pages lues le 9 octobre 2026 ne décrit de rapprochement automatique d'un même article entre deux plateformes : le lien se fait à la main. Avec FillSell, ces paires se forment toutes seules dès que photos et titre concordent ; il ne te reste que les cas douteux à trancher.
 
-Côté volume, ton stock FillSell n'a pas de limite d'articles, même en gratuit ; ton forfait compte les articles rédigés par l'IA, et un article rédigé part sur toutes tes plateformes sans rien compter de plus. StoFlow compte, lui, les produits publiés : 100 en Free, 500 en Starter, 2 000 en Pro, sans plafond en Business (FAQ de StoFlow).
+Côté volume, ton stock FillSell n'a pas de limite d'articles, même en gratuit. Chaque formule compte, par mois, les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées. StoFlow compte, lui, les produits publiés : 100 en Free, 500 en Starter, 2 000 en Pro, sans plafond en Business (FAQ de StoFlow).
 
 ## Double vente : qui retire quoi, et quand ?
 

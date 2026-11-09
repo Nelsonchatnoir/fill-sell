@@ -193,7 +193,7 @@ Jamais. Tu te connectes toi-même à Vinted et à Beebs dans Chrome, comme d'hab
 
 ### Combien coûte le transfert de Vinted vers Beebs ?
 
-La synchronisation est gratuite et sans limite. Publier sur Beebs un article importé de Vinted passe par la rédaction de l'IA, qui compte une annonce de ton forfait ; une fois rédigé, l'article part sur toutes tes plateformes sans rien compter de plus. FillSell est gratuit pour commencer, sans carte bancaire ; Premium 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement.
+La synchronisation est gratuite et sans limite. Publier sur Beebs un article importé de Vinted passe par la rédaction de l'IA, qui compte une annonce de ton forfait ; chaque plateforme où l'article part compte ensuite une publication. FillSell est gratuit pour commencer, sans carte bancaire ; Premium 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement.
 
 ### Pourquoi mon annonce Beebs n'apparaît-elle pas tout de suite ?
 

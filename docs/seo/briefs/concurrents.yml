@@ -127,7 +127,7 @@ outils:
         niveau: decision_nico
       stock_ventes_marges: {valeur: "stock sans limite d'articles (tous paliers) ; ventes, marge et bénéfice (un prix d'achat inconnu est exclu du calcul) ; export Excel, import Excel/CSV ; pas de module fiscal (DAC7, URSSAF)", refs: [F48, F49, F50], verifie_fiche: oui, sources: ["docs/seo/etat-des-lieux/03-fiche-de-verite.md"], date: "2026-10-09", niveau: fiche_de_verite}
       prix:
-        valeur: "Gratuit 0 €, Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement ; aucun prix annuel ; le forfait compte les annonces rédigées par l'IA, pas les publications (aucun chiffre de quota publié : décision de Nico)"
+        valeur: "Gratuit 0 €, Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement ; aucun prix annuel ; chaque formule compte 3 jauges par mois, détaillées sur la page tarifs, dont les annonces rédigées par l'IA et les publications (une annonce mise en ligne sur une plateforme) ; aucun chiffre de quota publié (décision de Nico)"
         devise: EUR
         paliers:
           - {nom: Gratuit, prix_mensuel: 0}

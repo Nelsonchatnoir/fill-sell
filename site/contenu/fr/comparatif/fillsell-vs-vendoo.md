@@ -151,7 +151,7 @@ Prix relevés le 9 octobre 2026 sur [nos tarifs](page:tarifs) et sur [la page ta
 
 Mêmes chiffres au milieu et en haut de la grille, mais pas la même monnaie : FillSell se paie en euros, Vendoo en dollars américains. La vraie différence est à l'entrée. FillSell commence à 0 €, sans carte bancaire et sans date de fin : tu testes sur tes vrais articles aussi longtemps que tu veux. Vendoo propose un essai de 14 jours qui exige un moyen de paiement, et une fois l'abonnement facturé, il n'est pas remboursé. À l'année, Vendoo descend à 12,49 $, 24,99 $ et 49,99 $ par mois ; FillSell n'a pas de prix annuel, mais il est sans engagement : tu arrêtes quand tu veux, et l'abonnement court jusqu'à la fin de la période payée.
 
-Côté volume, Vendoo annonce des articles sans limite dans toutes ses formules. Chez FillSell, ton stock n'a pas de limite d'articles, même en gratuit ; ton forfait compte les articles rédigés par l'IA, et un article rédigé part sur toutes tes plateformes sans rien compter de plus.
+Côté volume, Vendoo annonce des articles sans limite dans toutes ses formules. Chez FillSell, ton stock n'a pas de limite d'articles, même en gratuit. Chaque formule compte, par mois, les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées.
 
 ## Les vrais atouts de Vendoo
 

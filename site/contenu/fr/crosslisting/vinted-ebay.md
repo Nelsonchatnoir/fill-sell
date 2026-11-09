@@ -176,4 +176,4 @@ Aujourd'hui, FillSell travaille avec Vinted France (vinted.fr) et eBay France (e
 
 ### Combien coûte FillSell pour vendre sur Vinted et eBay ?
 
-Tu commences gratuitement, sans carte bancaire. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Ton forfait compte les articles rédigés par l'IA ; une fois rédigé, un article part sur Vinted et sur eBay sans rien compter de plus, et la synchronisation de tes annonces est gratuite. Le détail est sur la page [tarifs](page:tarifs).
+Tu commences gratuitement, sans carte bancaire. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Chaque formule compte, par mois, les annonces rédigées par l'IA, les publications et les remontées. Un article mis en ligne sur Vinted et sur eBay, c'est une annonce et deux publications ; la synchronisation de tes annonces est gratuite. Le détail est sur la page [tarifs](page:tarifs).

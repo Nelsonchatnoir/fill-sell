@@ -158,7 +158,7 @@ outils:
         date: 2026-10-09
         niveau: fiche_de_verite
       prix:
-        valeur: 'Gratuit 0 €, Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement ; aucun prix annuel ; le forfait compte les annonces rédigées par l''IA, pas les publications (aucun chiffre de quota publié : décision de Nico)'
+        valeur: 'Gratuit 0 €, Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement ; aucun prix annuel ; chaque formule compte 3 jauges par mois, détaillées sur la page tarifs, dont les annonces rédigées par l''IA et les publications (une annonce mise en ligne sur une plateforme) ; aucun chiffre de quota publié (décision de Nico)'
         verdict: null
         sources:
           - 'https://fillsell.app/'

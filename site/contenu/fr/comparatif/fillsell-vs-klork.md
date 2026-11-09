@@ -137,7 +137,7 @@ Un comparatif qui ne dit que du bien de son auteur ne sert à rien. Au 9 octobre
 
 Les deux outils ont une formule gratuite permanente, sans carte bancaire, et aucun essai de leurs forfaits payants. Chez FillSell : Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement. Chez Klork : Pro 15 €, Business 35 € et Entreprise 69 € (marqué « Bientôt ») par mois, ou 150 €, 350 € et 690 € à l'année ([tarifs de Klork](https://klork.app/pricing)).
 
-Même logique de décompte des deux côtés : chez FillSell, ton forfait compte les articles rédigés par l'IA, et un article rédigé part sur toutes tes plateformes sans rien compter de plus ; chez Klork, « une annonce part sur toutes tes plateformes d'un coup et ne compte que pour 1 ». Les forfaits ne contiennent pas les mêmes fonctions : compare donc fonction par fonction.
+Le décompte diffère : chez Klork, « une annonce part sur toutes tes plateformes d'un coup et ne compte que pour 1 » ; chez FillSell, chaque formule compte, par mois, les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées. Les formules ne contiennent pas les mêmes fonctions : compare donc fonction par fonction.
 
 | Ce que tu veux | Avec FillSell | Avec Klork |
 |---|---|---|

@@ -195,7 +195,7 @@ Never. You sign in to Vinted and Beebs yourself in Chrome, as usual, and the ext
 
 ### How much does it cost to move my listings from Vinted to Beebs?
 
-Syncing is free, with no limit. Publishing a synced Vinted item on Beebs goes through the AI write-up, which counts as one item on your plan, and your own title and description are kept. Once prepared, the item goes out to all your marketplaces at no extra count. FillSell is free to start (€0), no credit card; Premium €12.99, Pro €29.99 and Business €59.99 a month, no commitment.
+Syncing is free, with no limit. Publishing a synced Vinted item on Beebs goes through the AI write-up, which counts as one item on your plan, and your own title and description are kept. Then each marketplace the item goes out to counts as one publication. FillSell is free to start (€0), no credit card; Premium €12.99, Pro €29.99 and Business €59.99 a month, no commitment.
 
 ### Why doesn't my Beebs listing show up straight away?
 

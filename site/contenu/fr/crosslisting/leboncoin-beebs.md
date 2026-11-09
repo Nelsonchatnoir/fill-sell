@@ -89,7 +89,7 @@ Tu n'as pas à retenir tout ça par cœur pour chaque article : quand un rayon B
 
 Un appui sur « Synchroniser » et tes annonces Leboncoin arrivent dans ton stock, rangées. Gratuit et sans limite, et rien n'est publié ni modifié au passage ([la synchronisation en détail](page:fonctions/synchronisation)). Ensuite, tu choisis tes articles d'enfant, tu coches Beebs, et tu lances tout le lot d'un coup : en lot, chaque article part là où il n'est pas encore.
 
-Un réflexe pour Beebs : au moment de publier, prends « Telles quelles » plutôt que « Retouche IA » pour tes photos, car les règles du catalogue Beebs interdisent toute modification de la photo. Côté forfait, FillSell compte les articles rédigés par l'IA : une fois rédigé, un article part sur toutes tes plateformes sans rien compter de plus.
+Un réflexe pour Beebs : au moment de publier, prends « Telles quelles » plutôt que « Retouche IA » pour tes photos, car les règles du catalogue Beebs interdisent toute modification de la photo. Côté volume, chaque formule compte, par mois, les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées.
 
 ### Tu vends déjà sur Beebs : ajoute Leboncoin
 

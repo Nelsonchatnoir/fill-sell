@@ -171,7 +171,7 @@ Un mot d'honnêteté : republier, c'est retirer l'annonce puis la remettre en li
 | Abonnements mensuels | Premium 12,99 € · Pro 29,99 € · Business 59,99 €, sans engagement | Simple 29 $ · Business 49 $ · Pro 69 $ · Pro Plus 99 $, 149 $ ou 249 $ |
 | Prix à l'année | non | aucun tarif annuel publié |
 | Retrait automatique des copies | tous les forfaits | Pro Plus, à partir de 99 $ |
-| Ce que le forfait compte | les articles que l'IA rédige ; une fois rédigé, l'article part sur toutes tes plateformes sans compter davantage | l'IA, le détourage et les scans ; annonces et crosslisting non comptés |
+| Ce que la formule compte | par mois : les annonces rédigées par l'IA, les publications (une par plateforme) et les remontées | l'IA, le détourage et les scans ; annonces et crosslisting non comptés |
 | Devise | euros | dollars US |
 
 Lecture simple. Pour démarrer, FillSell ne te coûte rien, sans limite de durée. Le premier forfait payant de FillSell est affiché à 12,99 € par mois ; la première formule de List Perfectly, à 29 $. Et le retrait automatique des copies, qui commence à 99 $ par mois chez List Perfectly, est dans tous les forfaits FillSell.

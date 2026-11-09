@@ -212,4 +212,4 @@ L'app est gratuite sur l'App Store (iPhone et iPad, iOS 15 ou plus) et sur Googl
 
 ### Combien coûte FillSell ?
 
-Tu commences gratuitement (0 €), sans carte bancaire. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Ton forfait compte les articles rédigés par l'IA ; une fois rédigé, un article part sur toutes tes plateformes sans rien compter de plus. La synchronisation est gratuite et ton stock n'a pas de limite d'articles. Le détail est sur [la page tarifs](page:tarifs).
+Tu commences gratuitement (0 €), sans carte bancaire. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Chaque formule compte, par mois, les annonces rédigées par l'IA (un scan Lens compte comme une annonce), les publications (une annonce mise en ligne sur une plateforme) et les remontées. La synchronisation est gratuite et ton stock n'a pas de limite d'articles. Le détail est sur [la page tarifs](page:tarifs).

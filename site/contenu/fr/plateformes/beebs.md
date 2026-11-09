@@ -179,7 +179,7 @@ Non. Selon son aide officielle, Beebs ne demande aucun frais de mise en vente : 
 
 ### Comment mettre mes annonces Vinted sur Beebs ?
 
-Appuie sur « Synchroniser » : tes annonces Vinted entrent dans ton stock FillSell. Choisis ensuite les articles, coche Beebs, vérifie la version préparée pour Beebs, et l'extension les dépose une à une. La version Beebs d'un article importé est rédigée par l'IA : elle compte une annonce de ton forfait, et une fois rédigé, l'article part sur toutes tes plateformes sans rien compter de plus.
+Appuie sur « Synchroniser » : tes annonces Vinted entrent dans ton stock FillSell. Choisis ensuite les articles, coche Beebs, vérifie la version préparée pour Beebs, et l'extension les dépose une à une. La version Beebs d'un article importé est rédigée par l'IA : elle compte une annonce de ton forfait, et chaque plateforme où l'article part compte une publication.
 
 ### Mon ordinateur doit-il rester allumé ?
 

@@ -13,7 +13,7 @@ points_cles:
   - "La marque se lit, elle ne se devine pas : Lens est réglé pour ne la remplir que s'il la lit sur l'article (étiquette, logo, gravure) et pour laisser le champ vide sinon."
   - "Le prix conseillé s'appuie sur des annonces comparables trouvées en ligne, Vinted d'abord, puis eBay et Leboncoin, et l'écran dit sur combien d'annonces il repose."
   - "À partir du même scan, chaque plateforme que tu coches reçoit sa version de l'annonce ; l'extension Chrome la dépose depuis ton ordinateur, et un compte eBay relié passe par l'API officielle d'eBay."
-  - "Lens est dans chaque forfait : un scan compte comme une annonce de ton forfait, puis l'annonce part sur toutes tes plateformes sans rien compter de plus."
+  - "Lens est dans chaque forfait : un scan compte comme une annonce de ton forfait, et chaque plateforme où l'annonce part compte ensuite une publication."
 hero_media: "captures/lens-analyse-photo.png"
 hero_alt: "Résultat d'un scan Lens dans l'app FillSell : l'article reconnu (« T-shirt Picture gris imprimé ours « Climate Change » », marque Picture), la description rédigée, ce qui a été lu sur l'objet (motif, coupe, taille S sur l'étiquette du col, composition, saison), puis le prix de vente conseillé de 14 €, une marge jugée excellente (+10 €) et la base du prix : 5 annonces comparables, de 12 € à 16 €."
 cta: inscription
@@ -167,7 +167,7 @@ Oui, Lens ne se limite pas à la mode : il part de la photo de l'objet, et chaqu
 
 ### Combien coûte Lens ?
 
-Lens est inclus dans chaque forfait, Gratuit compris (0 €, sans carte bancaire). Un scan compte comme une annonce de ton forfait ; l'annonce qui en sort part ensuite sur toutes tes plateformes sans rien compter de plus. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Le détail : [les tarifs de FillSell](page:tarifs).
+Lens est inclus dans chaque forfait, Gratuit compris (0 €, sans carte bancaire). Un scan compte comme une annonce de ton forfait ; chaque plateforme où l'annonce part compte ensuite une publication. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Le détail : [les tarifs de FillSell](page:tarifs).
 
 ### Puis-je utiliser des photos retouchées par l'IA sur Vinted ?
 

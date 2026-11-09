@@ -143,13 +143,13 @@ Les deux outils se testent sans carte bancaire. Ensuite, ils ne comptent pas la 
 |---|---|---|
 | Pour commencer | Gratuit, 0 €, permanent, sans carte bancaire | 10 publications offertes à l'inscription, sans carte bancaire |
 | Ensuite, par mois | Premium 12,99 €, Pro 29,99 €, Business 59,99 €, sans engagement | 10 € (10 crédits), 20 € (50 crédits), 30 € (100 crédits), 50 € (500 crédits), sans engagement |
-| Publier sur plusieurs plateformes | ton forfait compte les articles rédigés par l'IA ; une fois rédigé, un article part sur toutes tes plateformes sans rien compter de plus | 1 crédit par publication, et 1 par ville : une annonce publiée dans 40 villes, c'est 40 crédits |
+| Publier sur plusieurs plateformes | une publication par plateforme, dans le volume mensuel de ta formule ; la rédaction par l'IA compte une annonce, une seule fois | 1 crédit par publication, et 1 par ville : une annonce publiée dans 40 villes, c'est 40 crédits |
 | Vinted | inclus dans chaque forfait | option « multi-plateforme », prix non affiché |
 | Réponses aux acheteurs | non proposé | option « messagerie », prix non affiché |
 
 Sources : [tarifs sur l'accueil de Reposter](https://reposter.io/) et [guide « Crédits »](https://docs.reposter.io/guide/credits.md) ; pour FillSell, [nos tarifs](page:tarifs).
 
-Compare sur ton usage réel. Chez Reposter, chaque publication consomme un crédit, ville par ville. Chez FillSell, un article rédigé par l'IA compte une fois, puis il part sur toutes les plateformes que tu coches, sans rien compter de plus. Et le forfait Gratuit reste gratuit, aussi longtemps que tu veux.
+Compare sur ton usage réel. Chez Reposter, chaque publication consomme un crédit, ville par ville. Chez FillSell, l'annonce rédigée par l'IA compte une fois, puis chaque plateforme que tu coches compte une publication, dans le volume mensuel de ta formule. Et le forfait Gratuit reste gratuit, aussi longtemps que tu veux.
 
 ## Ce que Reposter fait mieux que FillSell
 

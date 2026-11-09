@@ -1,7 +1,7 @@
 # POINT DE REPRISE — TERMINAL CLOUD, 08/11/2026 soir (à lire EN ENTIER avant toute action)
 
 Rédigé le 08/11 vers 20:15 (heure de Paris), à la demande de Nico, pour une session neuve ; **mis à jour après chaque point
-terminé** (dernière mise à jour : 09/11 02:2x, nuit en autonomie — section 000). Tout ce qui suit a été relu
+terminé** (dernière mise à jour : 09/11 vers 12:00, OTA 2.9.169 — section 0000, point 9). Tout ce qui suit a été relu
 en prod au moment d'écrire, sauf mention contraire.
 
 ## 0000. MATIN DU 09/11 (Nico valide tout : OTA, mail, C4 Stripe, site, Play Console) — fait
@@ -20,7 +20,8 @@ en prod au moment d'écrire, sauf mention contraire.
    (Apple/Google : aucun parcours). Preuves : `docs/enquetes/c4-descente-0911/RAPPORT.md` (en tête).
 4. **Site vitrine** : « seul un compte eBay relié… » corrigé sans nommer le Cloud (le site bannit « FillSell Cloud » :
    décision de Nico, inchangée) — affa76f.
-5. **Play Console** : vc37 toujours « en cours d'examen » à 08:08:48, 08:44, 09:14, 10:40 (rien « prêt à être publié ») — « Publier » se clique après la
+5. **Play Console** : vc37 toujours « en cours d'examen » à 08:08:48, 08:44, 09:14, 11:40 (rien « prêt à être publié » ; le message de 535208d dit
+   « 10:40 » : heure UTC lue par `TZ=Europe/Paris date` sous Git Bash, piège connu — l'heure de Paris est 11:40) — « Publier » se clique après la
    validation de Google (publication gérée) ; à reprendre au prochain passage.
 6. **Site : « aucun Cloud » levé** (décision de Nico) — EN PROD 533a46a (build relu 09:57:03) : Cloud présenté sur
    51 pages (accueil, FAQ, guide, comparatifs, plateformes, trajets, blog) ; garde REGLE_CLOUD_ANDROID ; « 24,99 € »
@@ -38,6 +39,27 @@ en prod au moment d'écrire, sauf mention contraire.
 8. **Carte Cloud de la feuille des offres** : 3 maquettes (https://claude.ai/artifact/8jv58tceFCDQRSNPFwAT2o) ; **Nico
    valide la B** (menthe à liseré + relais) → `src/cloud/CarteCloudOffres.jsx` (une carte, un bouton « Essayer 7 jours »,
    prix de la boutique ENSUITE), branchée dans la feuille après l'agent des jauges ; part dans la même OTA.
+9. **Poussé à 11:51:55** (a6c23c7 feuille des offres, 535208d landing, b5f921e version 2.9.169 ; suite complète 0 rouge
+   en 1 236 s sur 535208d, build:essai vert). **OTA 2.9.169 ENVOYÉE à 11:54:58** (`npm run ota`, delta) : canal
+   production = 2.9.169 (commit b5f921e), 9/9 modules natifs identiques au canal (updater 8.51.2) ; le bundle contient
+   la carte B (« Publiées, republiées et retirées depuis nos serveurs »), les logos (`data-logo-plateforme`) et les
+   explications des jauges (« Ne compte jamais : »). 1er appareil sur 2.9.169 : Android (binaire 2.9.10),
+   11:57:43 ; les autres appareils du jour étaient sur 2.9.168.
+   **Web** : à 11:58 Vercel n'avait encore AUCUN déploiement pour b5f921e — githubstatus.com : « Webhooks
+   degraded_performance » (incident GitHub). Pas de déploiement forcé à la main ; l'étape « ignorer le build » compare
+   au dernier déploiement réussi (6d36bb4), donc le build qui viendra porte bien le site et la feuille. Le webhook est
+   arrivé : déploiement Vercel créé à 12:14 (READY) ; relu à 12:38:15 : build.json = 2026-11-09T11:15:23Z+b5f921e,
+   « Tes annonces avancent. » sur / et « Your listings keep moving. » sur /en.
+10. **Réponses de Nico (09/11 midi)** : a) cartes de prix GARDÉES au style de l'app (Pro et Business sombres, animations
+   des badges, couleurs) — rien à faire ; b) contrastes ≥ 4,5:1 sans changer l'identité : boutons Gratuit/Premium et
+   badge Premium partent de #228275 (4,65:1) au lieu de #2F9E90 (3,27) / #37AC9C (2,78), même dégradé vers #1B6E62 ;
+   « / mois » et « Pour les gros volumes » de Pro à rgba(246,245,241,.68) (5,23:1 sur la lueur) — Business, animations
+   et reflets inchangés ; c) 18 pages (16 FR, 2 EN) disaient l'ancienne règle « un article rédigé part partout sans rien
+   compter de plus » → la règle des 3 jauges (annonces rédigées par l'IA, publications = une annonce mise en ligne sur
+   une plateforme, remontées), sans titre, h1, description ni adresse touchés ; fillsell-vs-klork : « Même logique de
+   décompte » devenu « Le décompte diffère » ; relistly : 2 lignes du tableau permutées (garde « palier à côté de la
+   republication ») ; brief des concurrents (prix de FillSell) corrigé et site:concurrents relancé. Garde-fou de Nico
+   tenu : rien poussé avant b5f921e en ligne ; b + c + ce point en UN push.
 
 ## 000. NUIT EN AUTONOMIE (Nico valide tout, 08/11 ~23:55 → matin) — avancement
 1. Push c6deec5 / 0658714 / f6f45e3 : FAIT (f574e40..f6f45e3, 23:5x).
