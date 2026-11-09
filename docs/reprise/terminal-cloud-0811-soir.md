@@ -15,6 +15,48 @@ en prod au moment d'écrire, sauf mention contraire.
    `scripts/reparations/20261108p_nicotest_preuve_sso*.sql`, remis comme avant) : Vinted→Google, Leboncoin→Apple,
    Beebs→Google, Depop→Apple, chaque page du fournisseur en 390×844 ; aucun refus, aucune boucle, aucune erreur ; le refus
    des cookies de Vinted marche (clique:true).
+4. Bandeau web : EN PROD (bfbb809 poussé ; `build.json` = `2026-11-08T23:52:06Z+10c8ac9` relu le 09/11 00:53). Relu en
+   prod : (a) Chrome de Nico, session déjà ouverte, LECTURE seule (aucune connexion), compte client Cloud → Tableau SANS
+   bandeau, `scrollWidth` = largeur (1536) ; la fenêtre de Chrome est maximisée et refuse 1440/390 (`resize_window`
+   sans effet) — les largeurs 1440/390/SE/Pro Max restent prouvées par le harnais du vrai composant (point 4 plus bas) ;
+   (b) `usage_logs` prod 09/11 00:28→00:53 : `cloud_bandeau_vu` ×3, 2 comptes, plateforme web seulement ; 0 vu par un
+   compte qui a eu le Cloud ; 0 événement Android. Play Console relue 00:5x : vc37 toujours « en cours d'examen ».
+5. OTA 2.9.168 : condition de Nico PROUVÉE et poussée (10c8ac9) — si la lecture des prix Apple échoue (erreur, vide,
+   partielle, > 8 s, module absent), l'écran d'achat garde les prix de la 2.9.166, boutons actifs, essai décidé par le
+   serveur ; Android inchangé. Preuves : `selftest:prix-boutique` vert ; rendu WebKit iPhone SE de la vraie feuille des
+   offres en échec Apple (`scripts/apercu/offres-cloud.jsx?canal=apple-echec`) : 0 « … », 0 bouton inactif, l'achat
+   part, 0 erreur. **OTA pas encore envoyée** : `npm run ota` refuse un arbre sale — le terminal « Problèmes » a son lot
+   en cours dans le dossier partagé (il prévient quand c'est poussé) ; ensuite version 2.9.168, `npm run ota -- --essai`,
+   `npm run ota`, relecture du canal et de la compatibilité.
+6. C1 « plus besoin d'ordinateur » : FAIT (commit du 09/11 ~01:3x). Partout dans les écrans Cloud : titre de la feuille
+   ouverte sur le Cloud « Plus besoin d'ordinateur. », accroche neuve du bloc Cloud des Réglages, ce que fait le Cloud
+   (« … sans ordinateur, 24 h/24, et tes ventes sont suivies »), carte des Réglages payée, carte Cloud du parcours
+   d'entrée, connexions, « Je débute », Synchroniser (« FillSell Cloud travaille… sans ordinateur »), mail « essai
+   commencé ». Plus jamais « ordinateur éteint » / « computer off » dans une phrase Cloud (règle ajoutée à
+   `selftest:cloud-ecrans`). Défauts VUS sur les captures et corrigés à la règle : (a) quota Free pas lu → « tu restes à
+   les annonces par mois » → phrases justes (« tu gardes les quotas du plan Free »), fr/en, 3 phrases ; (b) « +24,99 €/ »
+   | « mois » coupé à 375 px → gluon U+2060 après la barre ; (c) zone de toucher du « i » de « Comment tu veux
+   publier ? » = 41-42 px (bordure sous `inset:-12`) → `-13.5` = 44 ; (d) liens légaux des feuilles d'achat (Conditions,
+   Confidentialité) = 16,5 px → 44,5 px par marge intérieure compensée. Preuve : `node scripts/apercu/capture-c1-cloud.mjs`
+   (vrais composants, Chrome 1440/390/320, WebKit iPhone SE/15 Pro Max, fr/en, 80 pages) : 570 contrôles verts ; avec
+   `--comparer=` le plan de chaque texte est IDENTIQUE à l'avant sauf la phrase du quota et la coupure du libellé (rien
+   d'autre ne bouge). ⚠️ Le mail « essai commencé » (`_shared/cloud-mails.js`) n'est PAS déployé : il part de fonctions
+   de paiement (stripe-webhook, apple-iap-webhook, google-play-webhook, cancel-subscription, email-tunnel) — on ne les
+   redéploie pas de nuit pour une phrase ; il partira au prochain déploiement de l'une d'elles.
+   Remarque, hors C1 (rien touché) : le site vitrine dit encore « Chez FillSell, seul un compte eBay relié publie
+   ordinateur éteint » (`site/contenu/fr/comparatif/fillsell-vs-reposter.md:158`, `crosslisting.md:221`, `concurrents.yml`)
+   — faux depuis l'ouverture du Cloud, à reprendre avec Nico.
+7. C4 « voir les autres formules et descendre » : PRÊT, PAS EN PROD — tout est dans
+   `docs/enquetes/c4-descente-0911/RAPPORT.md`. Stripe prouvé en mode test (banc 23/23, horloges de test) : descente à
+   l'échéance, droits et crédit du mois justes, annulation, Cloud intact ; deux dangers PROUVÉS et réglés dans le lot
+   (une montée directe garde le schedule → refusée tant qu'une descente est prévue ; Stripe refuse une résiliation
+   directe sous schedule → release puis résiliation). Dans `main`, inerte : règles pures (`selftest:descente-formule`
+   28/28), écran Réglages › Abonnement fermé par `coin_config.descente_formule_ouverte` (absente), migration
+   `20261109020000` NON appliquée (banc base jetable 14/14). Hors `main` : le lot des chemins d'argent
+   (`lot-c4-paiements.patch` : changer-formule, stripe-webhook, cancel-subscription, create-checkout-session) — le garde
+   `selftest:paiements-non-regression` les verrouille. Pourquoi pas en prod : iPhone et Android ne font jamais tomber un
+   palier aujourd'hui (Pro resterait ouvert au prix Premium), niveaux App Store Connect à vérifier (crossgrade immédiat si
+   Premium = Pro), portail Stripe face à un schedule non vérifié (réglage Stripe = ordre de Nico).
 
 ## 00. URGENCES DE LA NUIT (08/11, après 22:30) — jade60890 perdue, poste Cloud pris pour une extension
 **A. « Boucle » Vinted (jade60890, iPhone, essai Apple 22:15:23 → arrêté 22:18)** — CORRIGÉ, DÉPLOYÉ, PROUVÉ.

@@ -565,6 +565,7 @@
     "selftest:ordre-photos": "node scripts/ordre-photos-selftest.mjs",
     "selftest:lbc-machine-virtuelle-exception": "node scripts/lbc-machine-virtuelle-exception-selftest.mjs",
     "selftest:delegation-leboncoin": "node scripts/delegation-leboncoin-selftest.mjs",
+    "selftest:descente-formule": "node scripts/descente-formule-selftest.mjs",
     "selftest:delegation-leboncoin-releves": "node scripts/delegation-leboncoin-releves-selftest.mjs",
     "selftest:session-prouvee": "node scripts/session-prouvee-selftest.mjs",
     "selftest:session-bonne-capture": "node scripts/session-bonne-capture-selftest.mjs",

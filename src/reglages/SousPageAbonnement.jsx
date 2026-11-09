@@ -29,6 +29,7 @@ import { grilleActive } from '../utils/jauges';
 // Option « Sans ordinateur » (Cloud, conception du 04/10) — le bloc regarde
 // lui-même le drapeau (config/cloudOffer.js) : baissé, il ne rend rien.
 import { BlocCloudReglagesLu, MentionCloudResiliation } from '../cloud/BlocCloudReglages';
+import BlocChangerFormule from './BlocChangerFormule';
 import { useCloudReglages } from '../cloud/useCloudProfil';
 import { RELECTURES_APRES_BOUTIQUE_MS } from '../cloud/regles';
 
@@ -170,6 +171,10 @@ export default function SousPageAbonnement({ c, T }) {
           )}
         </div>
       </Carte>
+
+      {/* (09/11, C4) « Voir les autres formules » et descendre à la fin de la période — FERMÉ tant que
+          coin_config.descente_formule_ouverte ≠ 1 : rien n'est rendu, aucune requête ne part. */}
+      <BlocChangerFormule c={c} clientStripe={clientStripe} />
 
       {/* ── Option « Sans ordinateur » (04/10, conception) ─────────────
           Juste sous la formule : l'option s'y ajoute, ou se prend seule en

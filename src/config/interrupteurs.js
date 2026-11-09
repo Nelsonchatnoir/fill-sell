@@ -21,6 +21,7 @@ export const CLES_OUVERTURE = Object.freeze([
   'grille_trois_jauges',          // la grille annonces · publications · remontées (utils/jauges.js)
   'sync_multi_ouverte',           // relevés multi-plateformes (BlocSynchro) — sinon la carte Vinted d'avant
   'republication_multi_ouverte',  // republication hors Vinted
+  'descente_formule_ouverte',     // (09/11, C4) « Voir les autres formules » et descendre à la fin de la période (web)
 ]);
 export const DELAI_MS = 4000;
 
