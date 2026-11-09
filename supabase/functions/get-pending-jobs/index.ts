@@ -46,7 +46,7 @@ import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
-import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif } from "../_shared/cloud-voie.js";
+import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste } from "../_shared/cloud-voie.js";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
@@ -2150,6 +2150,18 @@ serve(async (req) => {
     // plateforme, nombre) et le même ordre (queued_at croissant). Illisible : liste vide, comme avant (rien n'est servi).
     type CommandeEnFile = { id: unknown; kind: unknown; platform: unknown; queued_at: unknown; declencheur?: unknown };
     let commandesEnFile: CommandeEnFile[] | null = null;
+    // ══ (09/11/2026 soir, Deborah — décision de Nico) UN SEUL EXÉCUTANT, LE CLOUD (_shared/cloud-voie.js) ══
+    // Au Cloud actif (cloud_voie), l'ORDINATEUR ne reçoit plus aucune demande de relevé des plateformes du Cloud (dressing
+    // Vinted, relevés « annonces ») : elles restent en file pour le poste Cloud. Le drapeau est lu avec les postes ; un
+    // poll sans session (extension ancienne) le lit ici, une fois. Illisible → comme avant (rien n'est retenu).
+    if (!posteCloud && cloudVoie === null) {
+      try {
+        const adminVoieCmd = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: pvCmd } = await adminVoieCmd.from("profiles").select("cloud_voie").eq("id", user.id).maybeSingle();
+        if (pvCmd) cloudVoie = (pvCmd as { cloud_voie?: boolean }).cloud_voie === true;
+      } catch (_e) { /* illisible : comme avant */ }
+    }
+    let commandesLaisseesAuCloud = 0;
     const lireCommandesEnFile = async (ttlIso: string) => {
       if (!commandesEnFile) {
         const { data, error } = await userClient.from("vinted_sync_runs").select("id, kind, platform, queued_at, declencheur")
@@ -2157,7 +2169,10 @@ serve(async (req) => {
           .gte("queued_at", new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
           .order("queued_at", { ascending: true }).limit(200);
         if (error || !Array.isArray(data)) return [];
-        commandesEnFile = data as CommandeEnFile[];
+        const lues = data as CommandeEnFile[];
+        commandesEnFile = lues.filter((c) => !commandeLaisseeAuCloud(c, { cloudVoie, posteCloud }));
+        commandesLaisseesAuCloud = lues.length - commandesEnFile.length;
+        if (commandesLaisseesAuCloud) console.log(`[get-pending-jobs] userId=${user.id} : ${commandesLaisseesAuCloud} demande(s) de relevé laissée(s) au Cloud (un seul exécutant, cloud_voie)`);
       }
       return (commandesEnFile ?? []).filter((c) => Date.parse(String(c.queued_at ?? "")) >= Date.parse(ttlIso));
     };
@@ -15397,7 +15412,9 @@ serve(async (req) => {
     // (26/10, Johan) Une relecture servie DEVANT (vérification avant redépôt) : rien de fond ne passe avant elle.
     let personnePublie = out.length > 0 || syncCommandsAnnonces.some((c) => c.devant);
     // (01/11) Jamais au compte de travail délégué : il ne fait que Leboncoin.
-    if (!personnePublie && !includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN) && !delegationLbc) {
+    // (09/11 soir) Au Cloud actif : au seul poste Cloud (un seul exécutant).
+    if (!personnePublie && !includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN) && !delegationLbc
+        && lectureFondPourCePoste({ cloudVoie, posteCloud })) {
       try {
         const { data: gestes } = await userClient.from("usage_logs").select("id").eq("user_id", user.id)
           .in("feature", FEATURES_PUBLICATION as unknown as string[])
@@ -15465,7 +15482,7 @@ serve(async (req) => {
     // pilote, en mesure). Lectures bornées : 200 annonces, deux lectures de fiches par identifiants. Illisible → rien servi.
     let lectureFondBeebs: Record<string, unknown> | null = null;
     if (!includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_BEEBS_VERSION_MIN)
-        && !syncCommandsAnnonces.some((c) => c.devant) && !delegationLbc) {
+        && !syncCommandsAnnonces.some((c) => c.devant) && !delegationLbc && lectureFondPourCePoste({ cloudVoie, posteCloud })) {
       try {
         const maintenantLb = Date.now();
         const [cfgLb, profLb, refusLb, luesLb, pauseLb] = await Promise.all([

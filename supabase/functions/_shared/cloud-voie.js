@@ -45,6 +45,28 @@ export function jobsPourPosteCloud(jobs, { cloudVoie }) {
 }
 
 /**
+ * (09/11/2026 soir, Deborah — décision de Nico : « un seul exécutant, le Cloud ») UNE DEMANDE EN FILE d'un compte au
+ * Cloud ACTIF (cloud_voie vrai) n'est JAMAIS servie à l'ORDINATEUR : relevé du dressing (Vinted) et relevé « annonces »
+ * des plateformes du Cloud. Elle reste en file pour le poste Cloud (une plateforme à reconnecter attend la reconnexion,
+ * comme les tâches). Preuve du 09/11 : l'extension de son PC (6d36bb4) prenait les relevés Leboncoin servis (19:43,
+ * 20:04 — « page de connexion ») et le dressing Vinted (19:36) en parallèle du Cloud, qui réussissait les siens.
+ * Inchangé : le poste Cloud, un compte sans drapeau (faux ou illisible), eBay et les demandes « connexion » (un geste de
+ * la personne). Pur : testé par scripts/cloud-un-executant-selftest.mjs.
+ */
+export function commandeLaisseeAuCloud(commande, { cloudVoie, posteCloud }) {
+  if (posteCloud || cloudVoie !== true) return false;
+  const kind = String(commande?.kind ?? "");
+  if (kind === "dressing") return true;
+  if (kind === "annonces") return PLATEFORMES_CLOUD_VOIE.includes(String(commande?.platform));
+  return false;
+}
+
+/** (09/11 soir) Les lectures de fond (textes Vinted, pages Beebs) d'un compte au Cloud actif : au seul poste Cloud. */
+export function lectureFondPourCePoste({ cloudVoie, posteCloud }) {
+  return posteCloud || cloudVoie !== true;
+}
+
+/**
  * (05/11 soir, point 13) Le ROUTAGE « une plateforme connectée au Cloud va au seul poste Cloud » ne vaut que si le
  * Cloud du compte est actif : drapeau faux → l'ordinateur garde toutes ses tâches (sinon, la tâche n'irait à personne).
  */

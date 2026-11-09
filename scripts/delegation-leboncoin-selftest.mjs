@@ -115,7 +115,9 @@ ok(/if \(!includeProcessing && !includeNeedsUser && proprietaireDelegue\) \{\n\s
   && /\.eq\("id", String\(j\.id\)\)\.eq\("status", "pending"\)/.test(blocPr) && /ecritsP >= 40/.test(blocPr) && !/status: "(?:cancelled|failed|needs_user)"/.test(blocPr),
   'B13. postes du propriétaire : « blocages » = delegue ; message seulement sur ses tâches en attente, borné, aucun statut changé');
 ok(GPJ.includes('...(delegationsExecutees.length ? { delegations: delegationsExecutees } : {}),')
-  && GPJ.includes('versionAuMoins(version, LECTURE_FOND_VERSION_MIN) && !delegationLbc) {') && GPJ.includes('&& !syncCommandsAnnonces.some((c) => c.devant) && !delegationLbc) {'),
+  // (09/11 soir) + la garde « un seul exécutant, le Cloud » (lectureFondPourCePoste), ajoutée APRÈS celle de la délégation.
+  && /versionAuMoins\(version, LECTURE_FOND_VERSION_MIN\) && !delegationLbc(\s*&& lectureFondPourCePoste\(\{ cloudVoie, posteCloud \}\))?\) \{/.test(GPJ)
+  && /&& !syncCommandsAnnonces\.some\(\(c\) => c\.devant\) && !delegationLbc( && lectureFondPourCePoste\(\{ cloudVoie, posteCloud \}\))?\) \{/.test(GPJ),
   'B14. réponse : « delegations » seulement chez l\'exécutant ; lectures de fond jamais au compte de travail');
 ok(GPJ.includes('if (pf === PLATEFORME_DELEGUEE && delegationLbc) continue;'), 'B15. le mur d\'un poste ne laisse jamais Leboncoin du compte de travail à un autre poste');
 ok(nDelegue >= 20, `B16. toutes les branches neuves sont gardées par la délégation (${nDelegue} occurrences)`);
