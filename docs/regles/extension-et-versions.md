@@ -353,3 +353,14 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Livrable : `build/CWS-0.6.184-A-TELEVERSER/fillsell-extension-0.6.184-cws.zip` (BUILD_ID `2026-11-09T09:46:04Z+6d36bb4`,
   617 Ko, 37 entrées), EXTENSION_LAST_COMMIT = 2026-11-09T09:00:49Z (4b432f8). Empaqueté depuis un worktree propre à
   6d36bb4. SEUL zip à téléverser. 0.6.183 lue servie (32 comptes en 2026-11-08T22:09:14Z+6c84532) : dans ALREADY_PUBLISHED.
+
+## 09/11 soir — 0.6.185 : le lecteur des ventes Beebs réparé (louis-seller, commande 1723956)
+- La 0.6.184 + : `lecteurCommandesBeebs` porte ses fonctions du flux RSC (envoyé seul dans l'onglet par executeScript,
+  il plantait depuis la 0.6.132 : aucune vente Beebs lue depuis le 25/10) ; un échec de lecture de la page des ventes se
+  trace (`usage_logs ventes_beebs_lecture_echec`). Rien d'autre ne change. Interrupteur `ventes_beebs_commandes` : 0.
+- Livrable : `build/CWS-0.6.185-A-TELEVERSER/fillsell-extension-0.6.185-cws.zip` (BUILD_ID `2026-11-09T20:53:23Z+e00c214`,
+  617 Ko, 37 entrées, sha256 417a0515…), EXTENSION_LAST_COMMIT = 2026-11-09T20:52:37Z (2bc123e). Empaqueté depuis un
+  worktree propre à e00c214 (sous `build/`, supprimé ensuite). Vérifié dans le zip MINIFIÉ : 21 fonctions injectées sans
+  référence extérieure, le lecteur Beebs reconstruit depuis son texte lit une commande. SEUL zip à téléverser.
+  0.6.184 lue servie (83 comptes en `2026-11-09T09:46:04Z+6d36bb4`) : dans ALREADY_PUBLISHED, dossier rangé dans
+  `build/anciens-zips/TELEVERSEE-CWS-0.6.184`.
