@@ -20,7 +20,8 @@ const modale = lire("src/components/ConversionModal.jsx");
 ok(!/\?\?\s*K\.quota_annonces_free/.test(modale), "modale de conversion : aucun « ?? K.quota_annonces_free » (le plafond Free n'est jamais le repli du forfait de la personne)");
 ok(/quotaCas\.plafond != null \? <>Ton forfait comprend \{quotaCas\.plafond\} annonces créées par mois/.test(modale), "sans plafond rendu : la phrase ne dit aucun nombre");
 const usagesFree = [...modale.matchAll(/K\.quota_annonces_free/g)].length;
-ok(usagesFree === 1 && /quotaFree=\{K\.quota_annonces_free\}/.test(modale), "le nombre du plan Free ne sert qu'à décrire le plan Free (feuille Cloud)", String(usagesFree));
+// (09/11, maquette B validée par Nico) La carte Cloud ne dit plus le quota Free : la feuille ne le lit plus du tout.
+ok(usagesFree === 0, "le nombre du plan Free n'est plus lu par la feuille (carte Cloud B : aucun quota)", String(usagesFree));
 for (const f of ["src/publication/lot/LotPublication.jsx", "src/publication/EcranOuPublier.jsx", "src/reglages/ReglagesUI.jsx", "src/components/RepublicationPlanifiee.jsx", "src/tabs/StockTab.jsx"]) {
   ok(!/quota_annonces_free/.test(lire(f)), `${f} : aucune lecture du plafond Free`);
 }

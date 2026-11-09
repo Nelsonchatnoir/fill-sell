@@ -69,17 +69,25 @@ const modale = lignesDeCode(lire('src/components/ConversionModal.jsx'));
 verifier(/const offreCloud = cloudVisible \? offreCloudPourModale\(lectureCloud\) : null;/.test(modale), 'feuille : sans drapeau, offreCloud vaut null');
 // (08/11, point 0 de Nico : « formule + Cloud » n'achetait que la formule) La carte d'un palier n'achète que CE palier :
 // plus jamais onUpgrade(tier, { cloud }), aucune carte payante ne reçoit le Cloud, l'interrupteur ne sert qu'à Free.
-verifier(!/onUpgrade\(tier, \{ cloud:/.test(modale) && /\.\.\.contexteDeLogs\(\) \}\);\s*if \(voieFree && avecCloud\) onUpgrade\(tier, \{ cloudEnsuite: true \}\);\s*else onUpgrade\(tier\);\s*\};\s*const basculerCloud/.test(modale),
-  'feuille : une carte payante achète SA formule ; FillSell Cloud coché (interrupteur visible) = l’étape 2 après, jamais dans le même achat');
+// (09/11, maquette B validée par Nico) Plus d'interrupteur : avecCloud vaut toujours faux — une carte de formule achète SA
+// formule, jamais le Cloud avec ; le Cloud se prend par le bouton de SA carte (CarteCloudOffres).
+verifier(!/onUpgrade\(tier, \{ cloud:/.test(modale) && /const avecCloud = false;/.test(modale) && !/setAvecCloud|basculerCloud/.test(modale)
+  && /\.\.\.contexteDeLogs\(\) \}\);\s*if \(voieFree && avecCloud\) onUpgrade\(tier, \{ cloudEnsuite: true \}\);\s*else onUpgrade\(tier\);\s*\};/.test(modale),
+  'feuille : une carte payante achète SA formule ; plus d’interrupteur (maquette B) — jamais formule + Cloud dans le même achat');
 verifier(/<PremiumPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale) && /<ProPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale)
   && /<BusinessPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{onUpgrade\} cloud=\{null\} \/>/.test(modale) && /<BusinessPlanCard fr=\{fr\} K=\{K\} onUpgrade=\{choisirPalier\} cloud=\{null\} \/>/.test(modale),
   'feuille : Premium, Pro, Business jamais « + FillSell Cloud » (prix ni bouton)');
-verifier(/\(voieFree \? <InterrupteurCloud [^>]*freeCompris \/> : null\)/.test(modale), 'feuille : l’interrupteur ne se montre qu’avec la voie « Free + FillSell Cloud »');
+verifier(/\(voieFree \? <CarteCloudOffres offre=\{offreCloud\} onEssayer=\{choisirCloudSeul\} lang=\{lang\} \/> : null\)/.test(modale)
+  && /<CarteCloudOffres offre=\{offreCloud\} onEssayer=\{ajouterCloud\} nomPalier=\{nomDuPalier\(/.test(modale) && !/<InterrupteurCloud\b|<SectionFreeCloud\b|<CarteAjoutCloud\b/.test(modale),
+  'feuille : la carte FillSell Cloud (maquette B) — compte Free : le Cloud seul ; compte payant : l’ajout à SA formule ; plus d’interrupteur');
 verifier(/const choixCloud = interrupteurMontre;/.test(modale) && /const interrupteurMontre = offreCloud\?\.mode === 'interrupteur' && !ajoutCloudPossible;/.test(modale), 'feuille : « interrupteur montré » dérive d’offreCloud (null sans drapeau)');
 verifier(!/onUpgrade\(\s*(palier|rangCourant|palierDesDrapeaux)/.test(modale), 'feuille : jamais onUpgrade(palier actuel) (un second abonnement)');
 verifier(!/onUpgrade\(\s*['"]free['"]/.test(modale), 'feuille : jamais onUpgrade(\'free\') (Free + Sans ordinateur passe par onCloudSeul)');
 verifier(/const voieFree = interrupteurMontre && !isPremium && typeof onCloudSeul === 'function';/.test(modale), 'feuille : la voie Free + Sans ordinateur exige l’interrupteur montré, un compte Free et un hôte qui sait la prendre');
-verifier(/quotaFree=\{K\.quota_annonces_free\}/.test(modale), 'feuille : le nombre d’annonces du plan Free vient de coin_config (K.quota_annonces_free)');
+// (09/11, maquette B) La carte Cloud ne dit plus le quota Free (texte court, décision de Nico) : la feuille ne lit plus
+// K.quota_annonces_free du tout — et jamais en repli d'un autre forfait.
+verifier(!/K\.quota_annonces_free/.test(modale) && !/\d+\s?annonces/.test(lignesDeCode(lire('src/cloud/CarteCloudOffres.jsx'))),
+  'feuille : plus aucune lecture du quota Free, et la carte Cloud n’écrit aucun nombre d’annonces');
 
 // ── 3. PostgREST tout ou rien ────────────────────────────────────────────────
 {
@@ -418,6 +426,29 @@ try {
   sansMotsInterdits(carte + rangee + carteSans + page + texte(h(VO.CarteVoieCloud, { lang: 'fr', variante: 'lien', onChoisir() {} })), '2e voie');
   const en = texte(h(VO.CarteVoieCloud, { lang: 'en', essai: true, onChoisir() {}, maintenant: n }));
   verifier(/I don.t have a computer/.test(en) && !/ordinateur|octobre/.test(en), '2e voie en anglais : aucun mot français', en);
+
+  // (09/11, maquette B validée par Nico) LA carte FillSell Cloud de la feuille des offres (CarteCloudOffres.jsx), rendue.
+  const CB = await vite.ssrLoadModule('/src/cloud/CarteCloudOffres.jsx');
+  const offre = (essai) => ({ mode: 'interrupteur', essai });
+  const bFreeEssai = texte(h(CB.default, { offre: offre(true), onEssayer() {}, lang: 'fr' }));
+  verifier(/^FillSell Cloud Essai gratuit 7 jours Plus besoin d.ordinateur Publiées, republiées et retirées depuis nos serveurs, 24 h\/24\. Essayer 7 jours Puis 24,99 €\/mois · sans engagement On te prévient la veille\. Tu l.arrêtes en un geste\.$/.test(bFreeEssai.trim()),
+    'carte B (Free, essai offert) : essai en gros, accroche, relais, bouton « Essayer 7 jours », puis le prix', bFreeEssai);
+  const bFreeSans = texte(h(CB.default, { offre: offre(false), onEssayer() {}, lang: 'fr' }));
+  verifier(!/Essai|7 jours|veille/.test(bFreeSans) && /Prendre FillSell Cloud 24,99 €\/mois · sans engagement Tu l.arrêtes en un geste\./.test(bFreeSans),
+    'carte B (Free, essai déjà servi) : jamais d’essai annoncé ; « Prendre FillSell Cloud », le prix', bFreeSans);
+  const bPro = texte(h(CB.default, { offre: offre(true), onEssayer() {}, nomPalier: 'Pro', lang: 'fr' }));
+  const bProSans = texte(h(CB.default, { offre: offre(false), onEssayer() {}, nomPalier: 'Pro', lang: 'fr' }));
+  verifier(/En plus de ta formule Pro/.test(bPro) && /Essayer 7 jours/.test(bPro) && /Ajouter FillSell Cloud 24,99 €\/mois/.test(bProSans),
+    'carte B (payant) : « En plus de ta formule Pro » ; essai → « Essayer 7 jours », sinon « Ajouter FillSell Cloud » et le prix', bProSans);
+  verifier(texte(h(CB.default, { offre: offre(true), lang: 'fr' })) === '' && texte(h(CB.default, { offre: { mode: 'deja_actif' }, onEssayer() {}, lang: 'fr' })) === '',
+    'carte B : rien sans geste d’hôte, rien hors du mode d’offre (client Cloud : la ligne « déjà actif » à la place)');
+  const bEn = texte(h(CB.default, { offre: offre(true), onEssayer() {}, lang: 'en' }));
+  verifier(/7 days free trial/.test(bEn) && /No computer needed/.test(bEn) && /Try 7 days free/.test(bEn) && /Then €24\.99\/mo · cancel anytime/.test(bEn) && !/ordinateur|jours/.test(bEn),
+    'carte B en anglais : essai, accroche, bouton, prix ; aucun mot français', bEn);
+  const balisage = renderToStaticMarkup(h(CB.default, { offre: offre(true), onEssayer() {}, lang: 'fr' }));
+  verifier((balisage.match(/<img /g) ?? []).length === 4 && /logo-beebs-2910\.png/.test(balisage) && !/logo-ebay/.test(balisage) && (balisage.match(/<button/g) ?? []).length === 1,
+    'carte B : le relais montre Vinted, Leboncoin, Beebs (logo du 29/10) et Depop — jamais eBay — ; un seul bouton');
+  sansMotsInterdits(bFreeEssai + bFreeSans + bPro + bProSans, 'carte B');
 } finally {
   await vite.close();
 }

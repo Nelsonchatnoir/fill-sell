@@ -218,7 +218,8 @@ try {
     const enDur = /['"`][^'"`\n]*\b(5|30|40|50|120|400|600|1200|1500|1 200|1 500)\b[^'"`\n]*['"`]/;
     ok(corps.length > 500 && !enDur.test(corps.replace(/'\d+px[^']*'|'repeat\([^']*'|'rgba\([^']*'/g, "''")), 'lignes et tuiles : aucun volume écrit en dur dans le code', corps.match(enDur)?.[0]);
     ok(!/20\s?€|20 €/.test(code), 'aucun « 20 € » écrit dans le code de la feuille (le prix du Cloud vit ailleurs)');
-    ok(!/\?\?\s*K\.quota_annonces_free/.test(code) && (code.match(/K\.quota_annonces_free/g) ?? []).length === 1, 'jamais le plafond Free prêté à un compte (règle du 26/10)');
+    // (09/11, maquette B) La carte Cloud ne dit plus le quota Free : plus aucune lecture (0), jamais un repli (« ?? »).
+    ok(!/\?\?\s*K\.quota_annonces_free/.test(code) && (code.match(/K\.quota_annonces_free/g) ?? []).length === 0, 'jamais le plafond Free prêté à un compte (règle du 26/10) — la feuille ne le lit plus');
   }
 
   // ── 3. Les murs ───────────────────────────────────────────────────────────
@@ -410,8 +411,9 @@ try {
     const ouverture = code.match(/logModale\('offers_modal_open', \{[\s\S]*?\}\);/)?.[0] ?? '';
     ok(/\.\.\.\(trigger === 'quota_geste' && quotaInfo\?\.geste \? \{ geste: quotaInfo\.geste \} : \{\}\)/.test(ouverture), 'télémétrie : l’ouverture porte le geste, rien d’autre');
     const logs = [...code.matchAll(/logModale\('([a-z_]+)'/g)].map((x) => x[1]).sort().join(',');
-    ok(logs === 'offers_modal_abandon,offers_modal_cloud_ajout,offers_modal_cloud_bascule,offers_modal_cloud_seul,offers_modal_offertes_click,offers_modal_open,offers_modal_tier_click',
-      'aucun événement neuf', logs);
+    // (09/11, maquette B) offers_modal_cloud_bascule est parti avec l'interrupteur ; aucun événement neuf.
+    ok(logs === 'offers_modal_abandon,offers_modal_cloud_ajout,offers_modal_cloud_seul,offers_modal_offertes_click,offers_modal_open,offers_modal_tier_click',
+      'aucun événement neuf (la bascule de l’interrupteur est partie avec lui)', logs);
     const pd = lignesDeCode(lire('src/components/PlanDetailsModal.jsx'));
     ok(/import \{ COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard, CorpsCarteGrille, BlocCoches \} from '\.\/ConversionModal';/.test(pd)
       && /<CorpsCarteGrille fr=\{fr\} palier=\{palierCourant\} K=\{K\}/.test(pd), '« Ton plan » importe le corps de carte de la feuille (une seule source)');

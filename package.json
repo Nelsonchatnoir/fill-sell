@@ -107,6 +107,7 @@
     "selftest:trois-jauges": "node scripts/trois-jauges-selftest.mjs",
     "selftest:jauges-affichage": "node scripts/jauges-affichage-selftest.mjs",
     "selftest:offres-trois-jauges": "node scripts/offres-trois-jauges-selftest.mjs",
+    "selftest:jauges-explications": "node scripts/jauges-explications-selftest.mjs",
     "selftest:reglages-jauges": "node --import ./scripts/loader-ext.mjs scripts/reglages-jauges-selftest.mjs",
     "selftest:cout-publication": "node --import ./scripts/loader-ext.mjs scripts/cout-publication-selftest.mjs",
     "selftest:ecarts-0411": "node --import ./scripts/loader-ext.mjs scripts/ecarts-0411-selftest.mjs",

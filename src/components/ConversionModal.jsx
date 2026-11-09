@@ -10,7 +10,8 @@ import { PALIERS, palierDesDrapeaux, nomDuPalier } from '../utils/palier';
 // cloudOfferVisible() : drapeau baissé, rien de ce qui suit n'est rendu et
 // onUpgrade(tier) part exactement comme avant (un seul argument).
 import { cloudOffreVendable } from '../config/cloudOffer';
-import InterrupteurCloud, { LigneCloudModale, PrixAvecCloud, CarteAjoutCloud, SectionFreeCloud } from '../cloud/InterrupteurCloud';
+import { LigneCloudModale, PrixAvecCloud } from '../cloud/InterrupteurCloud';
+import CarteCloudOffres from '../cloud/CarteCloudOffres';
 import { useCloudProfil } from '../cloud/useCloudProfil';
 import { offreCloudPourModale } from '../cloud/regles';
 import { textesCloud } from '../cloud/textes';
@@ -21,6 +22,11 @@ import { jourRemise, jourRemiseCourt } from '../utils/jourRemise';
 // (04/11) La grille à 3 jauges (annonces · publications · remontées) — règle d'affichage unique, derrière
 // l'interrupteur coin_config.grille_trois_jauges. À 0 (ou config illisible), rien de ce qui suit ne se rend.
 import { JAUGES, grilleActiveConfig, grilleDuPalier, nombre, motJauge, palierQuiDebloque } from '../utils/jauges';
+// (09/11, maquette « les carrés au tap » validée par Nico) Chaque carré ouvre « qu'est-ce que ça compte ? » ; les
+// plateformes de la ligne commune portent leur logo.
+import { nomAccessibleCarre } from '../utils/jaugesExplications';
+import ExplicationJauge, { IconeInfoJauge } from './ExplicationJauge';
+import TexteAvecLogos from './TexteAvecLogos';
 import { lireDernierGeste, canalDeLApp } from '../utils/dernierGeste';
 import { Capacitor } from '@capacitor/core';
 // (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité, au pied.
@@ -202,7 +208,8 @@ export function ToutesOffresBlock({ fr, grille = false }) {
     // (06/10 soir, Nico) L'import marche depuis TOUTES les plateformes, pas seulement Vinted.
     fr ? 'Import de tes annonces depuis toutes tes plateformes' : 'Import your listings from all your platforms',
     // (06/11) Depop, ouverte à tous depuis le 10/10, manquait à la liste.
-    fr ? 'Publication sur Vinted, Leboncoin, eBay, Beebs & Depop' : 'Publishing on Vinted, Leboncoin, eBay, Beebs & Depop',
+    // (09/11, demande de Nico) Le logo de chaque plateforme devant son nom (TexteAvecLogos).
+    <TexteAvecLogos key="plateformes" texte={fr ? 'Publication sur Vinted, Leboncoin, eBay, Beebs & Depop' : 'Publishing on Vinted, Leboncoin, eBay, Beebs & Depop'} />,
     fr ? 'Commandes vocales' : 'Voice commands',
     fr ? 'Retrait automatique partout après une vente' : 'Automatic removal everywhere after a sale',
   ];
@@ -247,10 +254,13 @@ export function BlocCoches({ titre, items, style = null, children = null }) {
 // (04/11) « Dans tous les forfaits » de la grille (maquette 2.1) : Depop nommée avec les autres, puis la légende
 // « Comment on compte » — elle répond à la question avant qu'elle se pose ; « l'import ne compte jamais » rassure
 // celui qui a 300 annonces.
+// (09/11, maquette « les carrés au tap » validée par Nico) La ligne des plateformes : le logo de chaque plateforme
+// devant son nom, insécable (TexteAvecLogos).
 function ToutesOffresGrille({ fr }) {
+  const plateformes = <TexteAvecLogos key="plateformes" texte={fr ? 'Vinted, Leboncoin, eBay, Beebs et Depop' : 'Vinted, Leboncoin, eBay, Beebs and Depop'} />;
   const items = fr
-    ? ['Import de tout ton stock, depuis toutes tes plateformes', 'Vinted, Leboncoin, eBay, Beebs et Depop', 'Retrait automatique partout après une vente', 'Commandes vocales']
-    : ['Import your whole stock, from all your platforms', 'Vinted, Leboncoin, eBay, Beebs and Depop', 'Automatic removal everywhere after a sale', 'Voice commands'];
+    ? ['Import de tout ton stock, depuis toutes tes plateformes', plateformes, 'Retrait automatique partout après une vente', 'Commandes vocales']
+    : ['Import your whole stock, from all your platforms', plateformes, 'Automatic removal everywhere after a sale', 'Voice commands'];
   const compte = fr
     ? [['1 annonce', "une rédaction par l'IA ou un scan Lens"], ['1 publication', 'une mise en ligne sur une plateforme'], ['1 remontée', 'une republication sur une plateforme']]
     : [['1 listing', 'one AI write-up or one Lens scan'], ['1 publication', 'one listing put online on one platform'], ['1 bump', 'one repost on one platform']];
@@ -454,34 +464,102 @@ function lignesGrille(fr, palier, K) {
 }
 
 // Les 3 tuiles d'une carte (maquette jauges3) puis « par mois ».
+// (09/11/2026, maquette « les carrés au tap » validée par Nico) Chaque carré est un BOUTON : un tap ou un appui long
+// ouvre « qu'est-ce que ça compte ? » (ExplicationJauge, textes de utils/jaugesExplications.js). Libellés inchangés.
+// Le « i » a sa propre bande en haut du carré, à droite : il ne passe jamais sur le chiffre ni sur le mot, quelle que
+// soit la largeur. Le carré entier est la cible (44 px de haut au moins). Il suit le style de sa carte : clair sur
+// Free et Premium, sombre sur Pro et Business. Le même composant sert « Ton plan » et la fenêtre de bienvenue
+// (CorpsCarteGrille) : la feuille se monte au-dessus de chacun (ExplicationJauge, Z_EXPLICATION_JAUGE).
+// Fond, bordure et états (survol, appui, focus, ouvert) vivent dans la feuille de style : un style en ligne les
+// écraserait.
+const STYLE_CARRES = `
+.fs-carre-jauge{appearance:none;-webkit-appearance:none;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer;box-sizing:border-box;width:100%;min-width:0;min-height:44px;border-radius:12px;padding:4px 6px 7px 9px;display:flex;flex-direction:column;align-items:stretch;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation;transition:transform .12s ease,border-color .15s ease,background-color .15s ease}
+.fs-carre-jauge.fs-clair{background:#FFFFFF;border:1px solid ${C.border}}
+.fs-carre-jauge.fs-sombre{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+@media (hover:hover){.fs-carre-jauge.fs-clair:hover{border-color:${C.teal}}.fs-carre-jauge.fs-sombre:hover{background:rgba(255,255,255,.1)}}
+.fs-carre-jauge:active{transform:scale(.97)}
+.fs-carre-jauge.fs-clair:focus-visible{outline:2px solid ${C.tealDeep};outline-offset:2px}
+.fs-carre-jauge.fs-sombre:focus-visible{outline:2px solid #4ECDC4;outline-offset:2px}
+.fs-carre-jauge.fs-clair[aria-expanded="true"]{border-color:${C.teal};background:#F1F8F6}
+.fs-carre-jauge.fs-sombre[aria-expanded="true"]{border-color:#4ECDC4;background:rgba(78,205,196,.12)}
+.fs-carre-jauge .fs-carre-info{align-self:flex-end;display:flex;height:13px;line-height:0}
+.fs-carre-jauge .fs-carre-mot{font-size:10.5px;margin-top:1px}
+@media (prefers-reduced-motion: reduce){.fs-carre-jauge{transition:none}.fs-carre-jauge:active{transform:none}}
+@media (max-width: 359px){.fs-carre-jauge{padding-left:7px;padding-right:5px}.fs-carre-jauge .fs-carre-mot{font-size:9.5px;letter-spacing:-0.01em}}
+`;
+// ↑ (09/11) Sous 360 px de large (iPhone SE 1re génération, 320 px), un carré n'a plus que ~61 px pour son mot :
+// « publications » se coupait en « publication / s » (déjà avant les carrés au tap). Le mot passe à 9,5 px et le
+// carré rend 3 px de marge : tout tient sur une ligne (capture-jauges-offres.mjs, Chrome 320).
+const APPUI_LONG_MS = 450;
+// Le mot, le « i » et « par mois » d'une carte sombre : 0,72 d'opacité (0,6 et 0,55 avant le 09/11) — sous le reflet
+// ambré de la carte Pro, 0,6 tombait à 3,9:1 ; 0,72 tient 4,5:1 partout (scripts/apercu/capture-jauges-offres.mjs).
+const ENCRE_SOMBRE_CARRE = 'rgba(246,245,241,0.72)';
 function TuilesGrille({ fr, palier, K, dark }) {
   const lang = fr ? 'fr' : 'en';
   const g = grilleDuPalier(K, palier);
   const encreIllimite = palier === 'business' ? '#9BE8DC' : dark ? '#F2C98A' : C.tealDeep;
+  // { cle, carre } : la jauge expliquée et le carré qui l'a ouverte (le focus y revient à la fermeture).
+  const [ouverte, setOuverte] = useState(null);
+  const minuteur = useRef(null);
+  const longFait = useRef(false);
+  const lacher = () => { if (minuteur.current) { clearTimeout(minuteur.current); minuteur.current = null; } };
+  useEffect(() => lacher, []);
+  // Un tap ouvre ; un appui long aussi (APPUI_LONG_MS) — le clic qui suit le relâcher est alors ignoré.
+  const surClic = (cle) => (e) => {
+    if (longFait.current) { longFait.current = false; return; }
+    setOuverte({ cle, carre: e.currentTarget });
+  };
+  const surAppui = (cle) => (e) => {
+    longFait.current = false;
+    lacher();
+    if (e.button !== 0) return;
+    const carre = e.currentTarget;
+    minuteur.current = setTimeout(() => { minuteur.current = null; longFait.current = true; setOuverte({ cle, carre }); }, APPUI_LONG_MS);
+  };
   return (
     <div data-jauges-carte={palier}>
+      <style>{STYLE_CARRES}</style>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
         {JAUGES.map((cle) => {
           const illimite = g[cle] === Infinity;
+          const valeur = illimite ? (fr ? 'illimitées' : 'unlimited') : nombre(g[cle], lang);
+          const mot = motJauge(cle, 2, lang);
           return (
-            <div key={cle} style={{
-              background: dark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', border: `1px solid ${dark ? 'rgba(255,255,255,0.1)' : C.border}`,
-              borderRadius: 12, padding: '8px 9px 7px', display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0,
-            }}>
-              <span style={{
+            <button
+              key={cle}
+              type="button"
+              data-carre-jauge={cle}
+              className={`fs-carre-jauge ${dark ? 'fs-sombre' : 'fs-clair'}`}
+              aria-haspopup="dialog"
+              aria-expanded={ouverte?.cle === cle}
+              aria-label={nomAccessibleCarre(valeur, mot, lang)}
+              onClick={surClic(cle)}
+              onPointerDown={surAppui(cle)}
+              onPointerUp={lacher}
+              onPointerLeave={lacher}
+              onPointerCancel={lacher}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <span aria-hidden="true" data-carre-info="" className="fs-carre-info" style={{ color: dark ? ENCRE_SOMBRE_CARRE : C.mute2 }}>
+                <IconeInfoJauge />
+              </span>
+              <span data-carre-chiffre="" style={{
                 fontSize: illimite ? 13 : 17, fontWeight: 700, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', lineHeight: 1.15,
-                paddingTop: illimite ? 3 : 0, color: illimite ? encreIllimite : dark ? C.paper : C.ink,
+                marginTop: 1, paddingTop: illimite ? 3 : 0, color: illimite ? encreIllimite : dark ? C.paper : C.ink,
               }}>
-                {illimite ? (fr ? 'illimitées' : 'unlimited') : nombre(g[cle], lang)}
+                {valeur}
               </span>
-              <span style={{ fontSize: 10.5, fontWeight: 600, color: dark ? 'rgba(246,245,241,0.6)' : C.mute2, overflowWrap: 'anywhere' }}>
-                {motJauge(cle, 2, lang)}
+              <span style={{ fontWeight: 600, color: dark ? ENCRE_SOMBRE_CARRE : C.mute2, overflowWrap: 'anywhere' }} className="fs-carre-mot" data-carre-mot="">
+                {mot}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, fontWeight: 600, color: dark ? 'rgba(246,245,241,0.55)' : C.mute2, textAlign: 'right', margin: '4px 2px 12px' }}>
+      {ouverte && (
+        <ExplicationJauge key={ouverte.cle} cle={ouverte.cle} lang={lang} ouvreur={ouverte.carre} onFermer={() => { longFait.current = false; setOuverte(null); }} />
+      )}
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: dark ? ENCRE_SOMBRE_CARRE : C.mute2, textAlign: 'right', margin: '4px 2px 12px' }}>
         {fr ? 'par mois' : 'a month'}
       </div>
     </div>
@@ -1111,8 +1189,10 @@ export default function ConversionModal({
   const cloudVisible = cloudOffreVendable(userId);
   const lectureCloud = useCloudProfil(userId, { actif: Boolean(isOpen && cloudVisible) });
   const offreCloud = cloudVisible ? offreCloudPourModale(lectureCloud) : null;
-  const [avecCloud, setAvecCloud] = useState(false);
-  useEffect(() => { if (isOpen) setAvecCloud(trigger === 'cloud'); }, [isOpen, trigger]);
+  // (09/11, maquette B validée par Nico) Plus d'interrupteur : la carte FillSell Cloud a SON bouton (« Essayer 7 jours »)
+  // qui prend le Cloud tout de suite (Free : seul ; payant : en plus de la formule). Les cartes des formules n'achètent
+  // que leur formule — plus de « formule + Cloud ensuite » par un interrupteur coché.
+  const avecCloud = false;
   // Un compte DÉJÀ payant ajoute l'option à SA formule par la carte d'ajout
   // (si l'hôte sait le faire) ; l'interrupteur des cartes ne sert alors pas.
   const ajoutCloudPossible = Boolean(isPremium && offreCloud?.mode === 'interrupteur' && typeof onAjouterCloud === 'function');
@@ -1196,10 +1276,6 @@ export default function ConversionModal({
     if (voieFree && avecCloud) onUpgrade(tier, { cloudEnsuite: true });
     else onUpgrade(tier);
   };
-  const basculerCloud = (v) => {
-    setAvecCloud(v);
-    logModale('offers_modal_cloud_bascule', { coche: v, origine: origine ?? 'non_precisee', trigger });
-  };
   const choisirCloudSeul = () => {
     palierCliqueRef.current = true;
     logModale('offers_modal_cloud_seul', { origine: origine ?? 'non_precisee', trigger, essai: offreCloud?.essai === true });
@@ -1279,19 +1355,18 @@ export default function ConversionModal({
   // par le bouton dédié de la carte Free — seulement si l'hôte sait le faire.
   // Le nombre d'annonces vient de coin_config (K), jamais écrit ici.
   const voieFree = interrupteurMontre && !isPremium && typeof onCloudSeul === 'function';
-  const voieCloudFree = voieFree && avecCloud
-    ? <SectionFreeCloud offre={offreCloud} quotaFree={K.quota_annonces_free} onCloudSeul={choisirCloudSeul} lang={lang} />
-    : null;
-  // (08/11, point 0) L'interrupteur ne sert plus qu'à la voie « Free + FillSell Cloud » : sans elle, il ne ferait rien
-  // (les cartes payantes ne prennent plus le Cloud) — il ne se montre donc pas.
+  // (09/11, maquette B) Plus de section « Free + FillSell Cloud » dans la carte Free : la carte Cloud a son bouton.
+  const voieCloudFree = null;
+  // (09/11, maquette B validée par Nico) Compte Free : LA carte FillSell Cloud (CarteCloudOffres) au-dessus des formules,
+  // son bouton « Essayer 7 jours » prend le Cloud seul (choisirCloudSeul) — à la place de l'interrupteur.
   const blocCloud = interrupteurMontre
-    ? (voieFree ? <InterrupteurCloud offre={offreCloud} coche={avecCloud} onBasculer={basculerCloud} lang={lang} freeCompris /> : null)
+    ? (voieFree ? <CarteCloudOffres offre={offreCloud} onEssayer={choisirCloudSeul} lang={lang} /> : null)
     : ligneCloud;
-  const carteAjoutCloud = ajoutCloudPossible ? (
-    <div style={{ marginBottom: 12 }}>
-      <CarteAjoutCloud offre={offreCloud} nomPalier={nomDuPalier(palierDesDrapeaux({ isPremium, isPro, isBusiness }))} onAjouter={ajouterCloud} lang={lang} />
-    </div>
-  ) : null;
+  // Compte payant : la MÊME carte, avec le nom de la formule ; son bouton ajoute le Cloud à la formule (ajouterCloud).
+  const carteCloudPayant = ajoutCloudPossible
+    ? <CarteCloudOffres offre={offreCloud} onEssayer={ajouterCloud} nomPalier={nomDuPalier(palierDesDrapeaux({ isPremium, isPro, isBusiness }))} lang={lang} />
+    : null;
+  const carteAjoutCloud = carteCloudPayant ? <div style={{ marginBottom: 12 }}>{carteCloudPayant}</div> : null;
   const blocCloudAuDessus = blocCloud ? <div style={{ marginBottom: 12 }}>{blocCloud}</div> : null;
   // (06/10) L'encart « Bientôt : FillSell Cloud » : SOUS les cartes, avant la
   // sortie — il n'éloigne aucun bouton d'abonnement. Il se masque seul (compte
@@ -1305,11 +1380,7 @@ export default function ConversionModal({
   const palierIci = palierCarte(palierDesDrapeaux({ isPremium, isPro, isBusiness }));
   // Chez un payant, la carte d'ajout du Cloud passe SOUS les cartes (maquette 2.2 : c'est une option, elle ne
   // doit pas cacher la vraie montée). Sans la grille, elle reste au-dessus (carteAjoutCloud).
-  const carteAjoutCloudSous = grille && ajoutCloudPossible ? (
-    <div style={{ marginTop: 12 }}>
-      <CarteAjoutCloud offre={offreCloud} nomPalier={nomDuPalier(palierDesDrapeaux({ isPremium, isPro, isBusiness }))} onAjouter={ajouterCloud} lang={lang} />
-    </div>
-  ) : null;
+  const carteAjoutCloudSous = grille && carteCloudPayant ? <div style={{ marginTop: 12 }}>{carteCloudPayant}</div> : null;
 
   // ── Les murs, un par jauge (grille seulement, vue d'entrée) ──────────────────
   // quota_geste → la jauge du refus ('retouches' garde la feuille d'avant : compteur à part, inchangé ; un scan

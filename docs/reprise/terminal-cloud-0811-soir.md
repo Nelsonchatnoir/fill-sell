@@ -20,8 +20,18 @@ en prod au moment d'écrire, sauf mention contraire.
    (Apple/Google : aucun parcours). Preuves : `docs/enquetes/c4-descente-0911/RAPPORT.md` (en tête).
 4. **Site vitrine** : « seul un compte eBay relié… » corrigé sans nommer le Cloud (le site bannit « FillSell Cloud » :
    décision de Nico, inchangée) — affa76f.
-5. **Play Console** : vc37 toujours « en cours d'examen » à 08:08:48 — « Publier » se clique après la validation de
-   Google (publication gérée) ; à reprendre au prochain passage.
+5. **Play Console** : vc37 toujours « en cours d'examen » à 08:08:48, 08:44, 09:14 — « Publier » se clique après la
+   validation de Google (publication gérée) ; à reprendre au prochain passage.
+6. **Site : « aucun Cloud » levé** (décision de Nico) — EN PROD 533a46a (build relu 09:57:03) : Cloud présenté sur
+   51 pages (accueil, FAQ, guide, comparatifs, plateformes, trajets, blog) ; garde REGLE_CLOUD_ANDROID ; « 24,99 € »
+   insécable ; note C6b de FillSell 1 → 5 et variantes recalculées ; 204 contrôles verts (4 formats). Le paragraphe Cloud
+   de l'accueil est dans le texte replié : la section Cloud de la maquette validée vient avec l'intégration de la landing.
+7. **Maquettes validées jamais intégrées** (vu par Nico à 08:53) : feuille des offres (« i » + logos) et landing (section
+   Cloud + tarifs à 3 jauges) — le travail commencé le 08/11 soir était resté dans `stash@{1}` (urgences de la nuit).
+   En cours : feuille des offres (agent), landing (agent) ; puis OTA.
+8. **Carte Cloud de la feuille des offres** : 3 maquettes (https://claude.ai/artifact/8jv58tceFCDQRSNPFwAT2o) ; **Nico
+   valide la B** (menthe à liseré + relais) → `src/cloud/CarteCloudOffres.jsx` (une carte, un bouton « Essayer 7 jours »,
+   prix de la boutique ENSUITE), branchée dans la feuille après l'agent des jauges ; part dans la même OTA.
 
 ## 000. NUIT EN AUTONOMIE (Nico valide tout, 08/11 ~23:55 → matin) — avancement
 1. Push c6deec5 / 0658714 / f6f45e3 : FAIT (f574e40..f6f45e3, 23:5x).

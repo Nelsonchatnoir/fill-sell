@@ -20,7 +20,7 @@ const seulement = ARGS.find((a) => a.startsWith('--seulement='))?.split('=')[1];
 const formatsVoulus = ARGS.find((a) => a.startsWith('--formats='))?.split('=')[1]?.split(',');
 fs.mkdirSync(SORTIE, { recursive: true });
 
-const serveur = spawn('npx', ['vite', '--config', 'scripts/apercu/vite-bandeau-cloud.config.mjs', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { cwd: RACINE, shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
+const serveur = spawn('npx', ['vite', '--config', process.env.APERCU_VITE_CONFIG ?? 'scripts/apercu/vite-bandeau-cloud.config.mjs', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { cwd: RACINE, shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
 const stop = () => {
   try {
     if (process.platform === 'win32') {
