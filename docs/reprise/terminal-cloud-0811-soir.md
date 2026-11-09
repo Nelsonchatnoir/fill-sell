@@ -31,7 +31,10 @@ en prod au moment d'écrire, sauf mention contraire.
    pas à moi. Toute OTA exige une version poussée (`npm run ota` : main = origin/main) — pousser emporterait SON travail :
    je ne le fais pas. → Nico : `! git push origin main`, puis version 2.9.168 (package.json + lock), commit, push,
    `npm run ota -- --essai`, `npm run ota`, relecture du canal et de la compatibilité (garde 8.51.2). Suite complète
-   relancée sur HEAD avec les deux lots (06:3x) : résultat ci-dessous.
+   sur 6523f0c (les deux lots, 06:33→06:53) : **0 rouge**. Version 2.9.168 COMMITÉE en local (ced3863, non poussée).
+   `npm run ota -- --essai` (06:5x) : canal production 2.9.166 ; **9/9 modules natifs identiques au canal**
+   (capacitor-updater 8.51.2) → aucun binaire incompatible ne la recevrait ; seuls refus : main non poussé (+ ce
+   document, commité ensuite). → Après le push de Nico : `npm run ota` suffit.
 6. C1 « plus besoin d'ordinateur » : EN PROD WEB (2a84fa1, poussé avec 3ba9611 ; `build.json` = `2026-11-09T01:15:13Z+3ba9611`
    relu 02:15:27 ; le bundle servi porte « Plus besoin d'ordinateur », plus aucun « partent même ordinateur éteint ») ;
    iPhone : avec l'OTA 2.9.168. Partout dans les écrans Cloud : titre de la feuille
