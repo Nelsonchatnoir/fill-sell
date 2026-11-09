@@ -53,7 +53,7 @@ const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
 ok(/if \(!tacheAMettreDeCote\(j, resa\)\) continue;/.test(gpj) && /\.update\(\{ status: "needs_user", error: messageTacheSansDemarrage\(j, resa\), platform_fields: (?:pfAPersister\(pf\)|pf) \}\)\s+\.eq\("id", j\.id as string\)\.eq\("status", "pending"\)/.test(gpj),
   "get-pending-jobs : mise de côté conditionnelle, la file servie sans elle");
 const stock = lire("src/tabs/StockTab.jsx");
-ok(/'tache_sans_demarrage',\s*\n\];/.test(stock) && /delete pf\.tache_sans_demarrage;/.test(stock), "app : la relance la remet en file");
+ok(/const MURS_LEVES_A_LA_RELANCE = \[[^\]]*'tache_sans_demarrage',[^\]]*\];/.test(stock) && /delete pf\.tache_sans_demarrage;/.test(stock), "app : la relance la remet en file");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ une tâche qui ne démarre jamais passe à la personne ; la file passe");

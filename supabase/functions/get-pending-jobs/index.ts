@@ -101,6 +101,7 @@ import {
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
 import { recreationAVerifier, decisionVerificationRecreation, retraitLe, BROUILLONS_PAGE_UNE } from "../_shared/recreation-vinted-verifiee.js";
 import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
+import { estRepublicationManuelle, lotsDepuisLignes, lotDansLesCreneaux, retenueLotManuel, messageRetenueLotCreneau } from "../_shared/lot-manuel-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
 import { restrictionVinted, messageRestrictionVinted } from "../_shared/pas-de-rouge.js";
@@ -798,6 +799,29 @@ serve(async (req) => {
       return out;
     };
 
+    // ── (09/11, décision de Nico — option B) LES LOTS MANUELS : LEUR TAILLE, LUE EN BASE ────────────────────────────
+    // _shared/lot-manuel-creneau.js : un lot de PLUS de 10 articles part dans les créneaux. Taille = articles distincts
+    // du lot (bulk_batch_id), tous statuts et toutes plateformes ; la tâche la plus récente dit si le lot est encore en
+    // création. Une lecture par requête, bornée (1000 lignes : au-delà, le lot dépasse 10 articles de toute façon), et
+    // seulement pour des lots qu'une retenue pourrait toucher. Illisible → Map vide : rien n'est retenu (jamais une
+    // retenue sur une panne de lecture).
+    const lotsLus = new Map<string, { articles: number; dernier_cree: number }>();
+    const lireLotsManuels = async (ids: string[]) => {
+      const manquants = [...new Set(ids.filter((id) => id && !lotsLus.has(id)))];
+      if (!manquants.length) return lotsLus;
+      try {
+        const { data: lignes, error } = await userClient.from("cross_post_jobs")
+          .select("bulk_batch_id, inventaire_id, created_at")
+          .eq("user_id", user.id).eq("action", "republish").in("bulk_batch_id", manquants.slice(0, 20))
+          .order("created_at", { ascending: false }).limit(1000);
+        if (error) throw error;
+        for (const [id, lot] of lotsDepuisLignes((lignes ?? []) as Array<Record<string, string | number | null>>)) lotsLus.set(id, lot);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] userId=${user.id} : taille des lots manuels illisible (${String((e as Error)?.message ?? e).slice(0, 120)}) — rien n'est retenu`);
+      }
+      return lotsLus;
+    };
+
     // ── État de la RETENUE d'exécution des republications ───────────────────
     // (2026-08-29, régime refondu le 2026-09-04) UNE seule définition,
     // calculée ICI et nulle part ailleurs. Sert à la retenue du claim
@@ -996,12 +1020,13 @@ serve(async (req) => {
       // compte (RLS) : la file par pages de 1000 (5 au plus), un comptage exact par plateforme, 200 publications
       // récentes pour le rythme. Tolérant : une lecture ratée → null, l'app n'affiche rien de plus.
       let avancement: Record<string, unknown> | null = null;
+      let lotsCreneaux: string[] = [];
       let pfEnFile: string[] = [];
       let plafondLu: Awaited<ReturnType<typeof etatRetenueRepublish>> | null = null;
       try {
-        const enFile: Array<{ platform: string; created_at: string; status: string }> = [];
+        const enFile: Array<{ platform: string; created_at: string; status: string; bulk_batch_id?: string | null; platform_fields?: Record<string, unknown> | null }> = [];
         for (let page = 0; page < 5; page++) {
-          const { data: lot, error: eL } = await userClient.from("cross_post_jobs").select("platform, created_at, status")
+          const { data: lot, error: eL } = await userClient.from("cross_post_jobs").select("platform, created_at, status, bulk_batch_id, platform_fields->republish_source")
             .eq("action", "republish").in("status", ["pending", "processing", "needs_user"])
             .order("created_at", { ascending: true }).range(page * 1000, page * 1000 + 999);
           if (eL) throw eL;
@@ -1025,17 +1050,28 @@ serve(async (req) => {
           // Les réglages de la pause : ceux qu'etatRetenueRepublish vient de lire (une seule lecture de coin_config).
           pfEnFile = [...new Set(enFile.filter((j) => j.status !== "needs_user").map((j) => j.platform))];
           plafondLu = await etatRetenueRepublish(pfEnFile);
+          // (09/11, option B) Les lots manuels de PLUS de 10 articles en file : l'app les dit « en pause (créneau) » hors
+          // du créneau de leur plateforme (_shared/etat-job.js, ctx.lotsCreneaux), et l'avancement d'une plateforme qui
+          // ne travaille que dans ses créneaux le dit (« de créneau »). Même lecture que la retenue (lireLotsManuels).
+          const idsLots = [...new Set(enFile.filter((j) => j.status === "pending" && (j as Record<string, unknown>).republish_source !== "auto")
+            .map((j) => String(j.bulk_batch_id ?? "")).filter(Boolean))];
+          const lotsEnFile = idsLots.length ? await lireLotsManuels(idsLots) : lotsLus;
+          lotsCreneaux = idsLots.filter((id) => lotDansLesCreneaux(lotsEnFile.get(id)));
+          const plateformesEnCreneaux = [...new Set(enFile.filter((j) => j.status === "pending" && (
+            (j as Record<string, unknown>).republish_source === "auto" || lotsCreneaux.includes(String(j.bulk_batch_id ?? ""))))
+            .map((j) => j.platform))].filter((pf) => (creneaux as Record<string, { actif?: boolean }>)[pf]?.actif === true);
           avancement = avancementRepublication({
             enFile, faites: recentes ?? [], faitesLotParPf, maintenant: Date.now(),
             pauseApres: Number(plafondLu?.pause_apres ?? 0) || 0, pauseDureeMin: Number(plafondLu?.pause_duree_min ?? 0) || 0,
+            plateformesEnCreneaux,
           }) as Record<string, unknown> | null;
         }
       } catch (_e) { avancement = null; }
       try {
-        return json({ plafond_republish: plafondLu ?? await etatRetenueRepublish(pfEnFile), annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux, avancement_republication: avancement });
+        return json({ plafond_republish: plafondLu ?? await etatRetenueRepublish(pfEnFile), annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux, avancement_republication: avancement, lots_dans_creneaux: lotsCreneaux });
       } catch (_e) {
         // L'app masque le bandeau sur null : jamais un bandeau sur une panne.
-        return json({ plafond_republish: null, annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux, avancement_republication: avancement });
+        return json({ plafond_republish: null, annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux, avancement_republication: avancement, lots_dans_creneaux: lotsCreneaux });
       }
     }
 
@@ -2613,7 +2649,7 @@ serve(async (req) => {
     const lireFile = () => {
       let q = userClient
         .from("cross_post_jobs")
-        .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error")
+        .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error, bulk_batch_id")
         .in("status", statuses)
         .eq("voie", "extension");
       if (delegationLbc) q = q.eq("platform", PLATEFORME_DELEGUEE);
@@ -2627,7 +2663,7 @@ serve(async (req) => {
     const lireFileAvecArticle = () => {
       let q = userClient
         .from("cross_post_jobs")
-        .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error, inventaire:inventaire_id(vinted_item_id, disparu_le, vinted_status)")
+        .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error, bulk_batch_id, inventaire:inventaire_id(vinted_item_id, disparu_le, vinted_status)")
         .in("status", statuses)
         .eq("voie", "extension");
       if (delegationLbc) q = q.eq("platform", PLATEFORME_DELEGUEE);
@@ -8254,8 +8290,11 @@ serve(async (req) => {
     // RETENU en pending jusqu'au prochain créneau. Étape 'deleted' EXEMPTÉE,
     // comme pour le plafond et la pause : une annonce déjà retirée doit
     // toujours pouvoir être recréée.
-    // Le MANUEL n'est pas concerné (décision Nico, point 7) : seuls les jobs
-    // republish_source = 'auto'. Un créneau manqué n'est jamais rattrapé : le
+    // ⛔ (09/11, décision de Nico — OPTION B, remplace le « point 7 ») Le MANUEL
+    // est concerné quand c'est un LOT de PLUS de 10 articles (bloc « lot manuel »
+    // ci-dessous, _shared/lot-manuel-creneau.js) ; l'unité et les lots de 1 à 10
+    // partent tout de suite. Ci-dessous, le filtre de l'automatique : seuls les
+    // jobs republish_source = 'auto'. Un créneau manqué n'est jamais rattrapé : le
     // job attend le suivant, avec le plafond du jour suivant.
     // La fenêtre vient du SERVEUR SQL (republish_planifiee_fenetre_courante,
     // auth.uid()) — une seule définition ; l'app formate `reprise` sans la
@@ -8289,12 +8328,60 @@ serve(async (req) => {
       return j.action === "republish" && pf["republish_source"] === "auto" && pf["republish_step"] !== "deleted"
         && !retraitEngage(j) && !exceptionCreneau(pf);
     };
-    if (!includeProcessing && !includeNeedsUser && out.some(autoHorsDeleted)) {
+    // ── (09/11, décision de Nico — OPTION B, remplace le « point 7 ») LE LOT MANUEL DE PLUS DE 10 ARTICLES SUIT LE
+    // CRÉNEAU DE SA PLATEFORME (_shared/lot-manuel-creneau.js). Mêmes exemptions que l'automatique (étape « deleted »,
+    // suppression partie, exception de créneau) ; une plateforme sans module ACTIF ne retient rien ; 1 à 10 articles et
+    // l'unité partent tout de suite. Rien n'est écrit sur le rythme : une fois dans le créneau, la tâche est servie comme
+    // toute republication manuelle (espacement par plateforme de l'extension, pause de respiration, quotas).
+    const manuelCandidat = (j: { action: string; platform_fields: unknown; error?: unknown }) => {
+      const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+      return estRepublicationManuelle(j) && pf["republish_step"] !== "deleted" && !retraitEngage(j) && !exceptionCreneau(pf);
+    };
+    let heldLotManuel = 0;
+    if (!includeProcessing && !includeNeedsUser && (out.some(autoHorsDeleted) || out.some(manuelCandidat))) {
       try {
         const fenetres = await lireCreneaux();
         if (Object.keys(fenetres).length) {
           creneauxRepublish = fenetres;
           creneauRepublish = fenetres["vinted"] ?? null;
+          // Les lots à mesurer : ceux des republications manuelles d'une plateforme dont le créneau est FERMÉ.
+          const horsCreneau = (pf: string) => fenetres[pf]?.actif === true && fenetres[pf]?.dans_creneau !== true;
+          const lotsAMesurer = out.filter((j) => manuelCandidat(j) && horsCreneau(String((j as { platform?: string }).platform ?? "")))
+            .map((j) => String((j as { bulk_batch_id?: string | null }).bulk_batch_id ?? "")).filter(Boolean);
+          const lots = lotsAMesurer.length ? await lireLotsManuels(lotsAMesurer) : lotsLus;
+          const retenusLot: Record<string, number> = {};
+          const lotsRetenusIds = new Map<string, Set<string>>(); // plateforme → ids (message « lot dans les créneaux »)
+          out = out.filter((j) => {
+            if (!manuelCandidat(j)) return true;
+            const plat = String((j as { platform?: string }).platform ?? "");
+            const d = retenueLotManuel(j, { fenetre: fenetres[plat] ?? null, lot: lots.get(String((j as { bulk_batch_id?: string | null }).bulk_batch_id ?? "")) ?? null });
+            if (!d.retenir) return true;
+            retenusLot[`${plat}:${d.motif}`] = (retenusLot[`${plat}:${d.motif}`] ?? 0) + 1;
+            if (d.motif === "lot_dans_creneaux" && String((j as { error?: string | null }).error ?? "") !== messageRetenueLotCreneau(plat)) {
+              if (!lotsRetenusIds.has(plat)) lotsRetenusIds.set(plat, new Set());
+              lotsRetenusIds.get(plat)!.add(String(j.id));
+            }
+            return false;
+          });
+          heldLotManuel = Object.values(retenusLot).reduce((a, b) => a + b, 0);
+          // La retenue se DIT, à la transition seulement (aucune ligne inchangée réécrite), par lots de 100 au plus
+          // et 300 par passage : un lot de 700 tâches est dit en quelques passages, sans 700 écritures d'un coup.
+          let ecrites = 0;
+          for (const [plat, ids] of lotsRetenusIds) {
+            const liste = [...ids];
+            for (let i = 0; i < liste.length && ecrites < 300; i += 100) {
+              const tranche = liste.slice(i, i + 100);
+              try {
+                await userClient.from("cross_post_jobs").update({ error: messageRetenueLotCreneau(plat) })
+                  .in("id", tranche).eq("status", "pending");
+                ecrites += tranche.length;
+              } catch (_e) { /* message seulement : jamais un point de panne */ }
+            }
+          }
+          if (heldLotManuel) {
+            console.log(`[get-pending-jobs] userId=${user.id} : lot manuel hors créneau — ` +
+              Object.entries(retenusLot).map(([k, n]) => `${n} ${k}`).join(" · ") + ` (option B du 09/11 ; ${ecrites} message(s) écrit(s))`);
+          }
           const retenus: Record<string, number> = {};
           const avant = out.length;
           const avantFiltreCreneau = [...out];

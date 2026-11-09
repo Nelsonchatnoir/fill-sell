@@ -9,6 +9,7 @@ import { sansEstimation } from '../../supabase/functions/_shared/etat-job.js';
 import { parLeCloud, compteCourantEstCloud, texteTacheCloud } from '../cloud/voieCloud.js';
 // (06/11, phase 3 point 1 — suite) Les phrases françaises écrites en base, lues en anglais à l'affichage.
 import { traduireMessageServeur } from './messagesServeur.js';
+import { gesteMurCompteEbay } from '../../supabase/functions/_shared/ebay-refus-compte.js';
 import { sansRienVenduSurVente } from './rienVenduSurVente.js';
 // (07/11, décision de Nico) Les montants en anglais au format anglais (« €1,268.00 »), le français inchangé.
 import { localeDuMontant } from './montants.js';
@@ -351,6 +352,10 @@ export function lienVerificationEbay(job, lang = 'fr') {
         : (plafond ? "Dès qu'eBay relève ton plafond de vente, cette annonce part toute seule." : "Dès qu'eBay laisse ton compte vendre, cette annonce part toute seule."),
     };
   }
+  // (09/11, point 2 de Nico — nicolas.menar) Un refus qui vise le COMPTE (vérification d'identité ou des données
+  // financières, compte bloqué) : le lien chez eBay et l'aide, depuis la règle unique (_shared/ebay-refus-compte.js).
+  const mur = gesteMurCompteEbay(job, lang);
+  if (mur) return { url: mur.url, libelle: mur.libelle, aide: mur.aide };
   const motif = String(job?.platform_fields?.last_diagnostic?.motif_ebay ?? '');
   if (!/^KYC_/i.test(motif)) return null;
   return {

@@ -88,7 +88,7 @@ import { computeRemovalInfo, vintedMasqueeMalgreJobs, vintedPresenceArticle, rep
 import { plateformesJumelles } from '../utils/copiesJumelles';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
-import { plateformesRepubliables, republierArticle, republierAvecReprise, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
+import { plateformesRepubliables, republierArticle, republierAvecReprise, messageRefusRepublication, traceRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
 // (25/10, balayage des erreurs visibles) CE QUI DEMANDE VRAIMENT UN GESTE, une règle pour la carte, « À régler »,
 // le filtre, la modale de statut et la pastille de l'onglet (App.jsx).
 import { causeARegler, jobSupplante, derniersParLigne, republicationLibereeApresArret, pastilleRepublicationEnPause, indexSelonARegler, plateformesHorsJeu as plateformesHorsJeuDe, indexSansPublicationsJumelles, publicationSansObjet } from '../utils/erreursVisibles';
@@ -261,6 +261,8 @@ import { lirePrixAnnoncesVinted } from '../utils/prixAnnoncesVinted.js';
 import { parLots } from '../utils/parLots.js';
 import { relanceSansDepotMort, TRACES_DEPOT_MORT } from '../utils/relanceDepotMort.js';
 import { relanceRefusBeebs, MESSAGE_BOUTON_REFUS_BEEBS, SOURCE_REFUS_BEEBS_MEME_CONTENU } from '../utils/empreinteContenu.js';
+import { gesteMurCompteEbay, SOURCES_MUR_COMPTE_EBAY } from '../../supabase/functions/_shared/ebay-refus-compte.js';
+import { SEUIL_LOT_MANUEL_ARTICLES } from '../../supabase/functions/_shared/lot-manuel-creneau.js';
 import CeQueFillSellFait, { BandeauStockVide } from '../ecrans/vides/StockVide.jsx';
 
 // ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
@@ -380,6 +382,9 @@ function etatLienJob(job) {
 }
 function failJobAction(job, lang) {
   const err = job?.error || '';
+  // (09/11, point 2 de Nico — nicolas.menar) Refus eBay qui vise le COMPTE : le seul geste est chez eBay.
+  const murEbay = gesteMurCompteEbay(job, lang);
+  if (murEbay) return { url: murEbay.url, label: murEbay.libelle };
   // Échec posé par le cron « publication sans lien » (2026-08-10) : son message
   // ORDONNE d'aller vérifier ses annonces avant de republier, sinon doublon. On
   // rend cet ordre cliquable — un bouton vaut mieux qu'une phrase. Reconnu par
@@ -472,6 +477,9 @@ const MURS_LEVES_A_LA_RELANCE = [
   // (03/10, point F) Mise de côté par le serveur (servie sans jamais
   // démarrer) : la relance la remet en file, le compteur repart de zéro.
   'tache_sans_demarrage',
+  // (09/11, point 2 de Nico) Refus eBay qui vise le COMPTE (vérification d'identité, compte bloqué) : « C'est fait,
+  // relancer » — la tâche part en éclaireur (ebay-api-worker), le mur est reposé s'il tient (_shared/ebay-refus-compte.js).
+  ...SOURCES_MUR_COMPTE_EBAY,
 ];
 
 // ── Relance MANUELLE d'un job échoué récupérable (2026-08-31) ─────────────────
@@ -2532,6 +2540,8 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                   const info = onRelancer ? relanceManuelleInfo(j, jobs) : null;
                   if (!info || info.mode !== "repend") return null;
                   const bloque = info.epuise || info.attenteMin > 0 || relanceBusy;
+                  // (09/11, point 2 de Nico) Mur du COMPTE eBay : « C'est fait, relancer », jamais « Relancer maintenant ».
+                  const murEbay = gesteMurCompteEbay(j, lang);
                   return (
                     <button
                       onClick={() => onRelancer(j)}
@@ -2545,7 +2555,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                         ? (fr ? "Relances épuisées pour ce job" : "No relaunch left for this job")
                         : info.attenteMin > 0
                           ? (fr ? 'Relancé il y a peu — un peu plus tard' : 'Relaunched recently — a little later')
-                          : <><IconeTexte icone={RotateCcw} style={{ marginRight: 6 }} />{fr ? "Relancer maintenant" : "Relaunch now"}</>}
+                          : <><IconeTexte icone={RotateCcw} style={{ marginRight: 6 }} />{murEbay ? murEbay.relancer : (fr ? "Relancer maintenant" : "Relaunch now")}</>}
                     </button>
                   );
                 })()}
@@ -5810,7 +5820,7 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
 // ⛔ CADENCE INTOUCHABLE : la feuille ne fait que CHOISIR, avant l'appui, le sous-ensemble de la sélection qui part —
 //    l'envoi reste onConfirm → lancerRepublication / lancerRepublicationLot, inchangés, dans l'ordre de la sélection.
 // Exportée pour selftest:cout-publication (rendu serveur), rien d'autre ne la monte.
-export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, repubMois = null, jaugeRemontees = null }) {
+export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, repubMois = null, jaugeRemontees = null, plateformesCreneaux = [] }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -6109,6 +6119,23 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
               : (fr ? `Ton mois gratuit en couvre encore ${repubMois.restantes} sur ${nbEnvois}${repubMois.remise ? ` (remise à zéro le ${repubMois.remise})` : ''} : décoche ce que tu peux garder pour plus tard.` : `Your free month still covers ${repubMois.restantes} of ${nbEnvois}${repubMois.remise ? ` (resets on ${repubMois.remise})` : ''}: untick what can wait.`)}
           </div>
         )}
+        {/* (09/11, décision de Nico — option B) Plus de 10 articles et des créneaux de republication : le lot part DANS
+            les créneaux, au rythme de chaque plateforme (get-pending-jobs, _shared/lot-manuel-creneau.js) — dit AVANT le
+            clic, jamais une heure. Les plateformes sans créneau partent tout de suite, comme avant. */}
+        {(() => {
+          if (solo || items.length <= SEUIL_LOT_MANUEL_ARTICLES) return null;
+          const avec = nomsSel.filter((p) => (plateformesCreneaux ?? []).includes(p));
+          if (!avec.length) return null;
+          const sans = nomsSel.filter((p) => !avec.includes(p));
+          const noms = (l) => listeDesNoms(l.map((p) => LABEL_PF[p] ?? p), fr ? 'fr' : 'en');
+          return (
+            <div data-lot-creneaux style={{ fontSize: 12, lineHeight: 1.5, color: '#3A443F', background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 12, padding: '8px 12px', marginBottom: 10 }}>
+              {fr
+                ? <>Plus de {SEUIL_LOT_MANUEL_ARTICLES} articles : {sans.length ? `sur ${noms(avec)}, ` : ''}ils partiront dans ton créneau de republication, au rythme habituel de chaque plateforme.{sans.length ? ` Sur ${noms(sans)}, tout de suite.` : ''}</>
+                : <>More than {SEUIL_LOT_MANUEL_ARTICLES} items: {sans.length ? `on ${noms(avec)}, ` : ''}they go out in your repost time slot, at each platform's usual pace.{sans.length ? ` On ${noms(sans)}, right away.` : ''}</>}
+            </div>
+          );
+        })()}
         {/* (04/11, grille, décision de Nico) Pas assez de remontées pour tout le lot : le bouton « tout envoyer »
             laisse la place aux plus anciennes (« Remonter les 3 plus anciennes (6 remontées sur Vinted et
             Leboncoin) ») ; aucune ne tient : grisé, rien ne part. Sinon : le bouton d'avant, inchangé. */}
@@ -6778,7 +6805,7 @@ const StockTab = memo(function StockTab({
           platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
         });
         if (!res.success) {
-          signalerActionRatee({ action: 'republier', motif: String(res.reason ?? 'refus'), userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: res.error ? String(res.error).slice(0, 160) : null } });
+          { const t = traceRefusRepublication(res); signalerActionRatee({ action: 'republier', motif: t.motif, userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: t.message, annonce: t.annonce } }); }
           if (rejetMaintenance(res)) { setRepubMaintenance(true); return; }
           if (res.reason === 'plafond_republication_free') {
             if (!ouvrirModalePlafondRepub(res)) {
@@ -6974,7 +7001,7 @@ const StockTab = memo(function StockTab({
             }],
           }));
         } else {
-          signalerActionRatee({ action: 'republier_lot', motif: String(res.reason ?? 'refus'), userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: res.error ? String(res.error).slice(0, 160) : null } });
+          { const t = traceRefusRepublication(res); signalerActionRatee({ action: 'republier_lot', motif: t.motif, userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: t.message, annonce: t.annonce } }); }
           // FILET maintenance : le trigger refusera pareil tous les suivants —
           // on s'arrête là, le bandeau (armé ici) dit pourquoi, pas de liste
           // de refus techniques.
@@ -12849,6 +12876,8 @@ const StockTab = memo(function StockTab({
           repubMois={offertGratuit.repub!=null?{restantes:offertGratuit.repub,remise:offertGratuit.remise}:null}
           // (04/11, grille à 3 jauges) La jauge Remontées (plafond seulement : illimitées, rien de neuf). Sans la grille : null.
           // (04/11, décision de Nico) La date en JJ/MM : quotas_etat (remise_le, tous paliers avec la grille), sinon la lecture de la feuille.
+          // (09/11, option B) Les plateformes où le module de republication est actif : un lot de plus de 10 articles y part dans le créneau.
+          plateformesCreneaux={planifieeActives}
           jaugeRemontees={(()=>{const j=jaugesDuCompte(quotas)?.remontees;return j&&!j.illimite?{...j,remise:jourRemiseCourt(remiseDuCompte(quotas)??remiseLueStock,lang==='en'?'en':'fr')}:null;})()}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles,choix)=>{
@@ -13061,6 +13090,9 @@ const StockTab = memo(function StockTab({
                 </div>
               );
               const enAttente=r.attenteMin>0;
+              // (09/11, point 2 de Nico) Mur du COMPTE eBay : la relance ne se propose que comme « C'est fait » (le geste
+              // fait chez eBay), jamais comme un nouvel essai qui retomberait sur le même mur.
+              const murEbay=gesteMurCompteEbay(failJobModal,lang);
               return(
                 <>
                   <button disabled={relanceBusy||enAttente}
@@ -13070,10 +13102,10 @@ const StockTab = memo(function StockTab({
                       ?(lang==="en"?"Relaunching…":"Relance…")
                       :enAttente
                         ?(lang==="en"?'Relaunched recently — try again a little later':'Relancé il y a peu — réessaie un peu plus tard')
-                        :<><IconeTexte icone={RotateCcw} style={{ marginRight: 6 }} />{lang==="en"?"Relaunch now":"Relancer maintenant"}</>}
+                        :<><IconeTexte icone={RotateCcw} style={{ marginRight: 6 }} />{murEbay?murEbay.relancer:(lang==="en"?"Relaunch now":"Relancer maintenant")}</>}
                   </button>
                   <div style={{fontSize:11,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>
-                    {r.mode==='repend'
+                    {murEbay?murEbay.relancerAide:r.mode==='repend'
                       ?(lang==="en"
                         ?"Once the cause above is fixed. The job restarts as-is — nothing regenerated, nothing counted."
                         :"Une fois la cause ci-dessus réglée. Le job repart tel quel — rien de régénéré, rien de décompté.")

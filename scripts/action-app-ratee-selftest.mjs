@@ -51,7 +51,8 @@ console.log("\n2. Le câblage aux gestes");
   ok(/motif: repubEnPause \? 'republication_en_pause' : 'republication_deja_en_cours'/.test(stock) && /motif: 'extension_jamais_vue'/.test(stock), "Republier (unité) : chaque retenue de l'app signalée");
   ok((stock.match(/action: 'republier'?_?lot'?/g) ?? []).length >= 1 && /action: 'republier_lot', motif: 'lot_reserve_aux_payants'/.test(stock)
     && /motif: !cibles\.length \? 'aucune_cible' : 'lot_precedent_en_cours'/.test(stock), "Republier (lot) : retenues signalées");
-  ok((stock.match(/signalerActionRatee\(\{ action: 'republier(_lot)?', motif: String\(res\.reason \?\? 'refus'\)/g) ?? []).length === 2, "Republier : refus du serveur signalés (unité et lot)");
+  // (09/11, point 1 de Nico) Le refus du serveur garde son motif (reason:motif) et sa phrase : traceRefusRepublication.
+  ok((stock.match(/const t = traceRefusRepublication\(res\); signalerActionRatee\(\{ action: 'republier(_lot)?', motif: t\.motif/g) ?? []).length === 2, "Republier : refus du serveur signalés (unité et lot), motif du serveur gardé");
   const lps = lire("src/components/ListingPreviewScreen.jsx");
   ok(/signalerActionRatee\(\{ action: "generer_annonce"/.test(lps), "stepper : rédaction ratée signalée");
   ok(/if \(pubErr\) signalerActionRatee\(\{ action: "publier", motif: "rpc_erreur"/.test(lps) && /else if \(pubRes\?\.allowed === false\) signalerActionRatee\(\{ action: "publier", motif: String\(pubRes\.reason/.test(lps), "stepper : publication refusée ou en erreur signalée");

@@ -1450,3 +1450,21 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 ## Vinted — « preuve de boutique » absente sur la boutique ouverte (08/11 nuit, point 5 de Nico — linda.sidhoum)
 - Boutique de l'annonce = boutique ouverte dans Chrome : le message dit « la page de cette annonce n'a pas pu être lue »,
   jamais « une autre de tes boutiques ». Garde inchangée (aucun retrait sans preuve). Selftest `vinted-preuve-boutique-meme`.
+
+## ⛔ 09/11 (décision de Nico, OPTION B avec exception — remplace le « point 7 ») — UN LOT MANUEL DE PLUS DE 10 ARTICLES PART DANS LES CRÉNEAUX
+- Avec un module de republication ACTIF sur la plateforme, un lot manuel (bulk_batch_id) de PLUS de 10 articles n'est
+  servi que dans le créneau de cette plateforme, puis au rythme habituel (espacement par plateforme, pause de 2 h toutes
+  les 50, quotas — inchangés). 1 à 10 articles, l'unité, ou sans module actif : tout de suite. Règle unique
+  `_shared/lot-manuel-creneau.js`, lue à l'EXÉCUTION (get-pending-jobs) : un lot déjà en file la suit sans être recréé,
+  annulé ni dupliqué. Exemptions de l'automatique (deleted, suppression partie, exception de créneau). Hors créneau, une
+  republication manuelle née il y a < 90 s (ou d'un lot dont la dernière tâche a < 90 s) attend la fin de la création.
+- L'automatique reste en pause tant que le lot est en file : la retenue n'écrit AUCUNE échéance (next_action_after) — les
+  tâches restent « en vol » pour la garde anti-rafale de `republish_planifiee_sweep`. Seul le message s'écrit (transition).
+- L'app : « En pause (créneau de republication) » (`lots_dans_creneaux` → `ctx.lotsCreneaux`), avancement « de créneau »,
+  la feuille de republication le dit avant le clic. Selftest `lot-manuel-creneau`. Cas : josephinecerni (lot 77b7bf38).
+- Mis de côté (Nico, 09/11) : écran de confirmation au-delà de 50 republications.
+
+## 09/11 (point 1 de Nico — assopmfrance) — la trace d'un refus de republication garde le motif du serveur
+- `reason` seul confondait trois causes (« annonce_introuvable ») : la trace action_app_ratee porte désormais
+  `reason:motif` (« annonce_introuvable:annonce_vendue »), la phrase du serveur et le numéro d'annonce
+  (`src/utils/traceRefusRepublication.js`, republier et republier_lot). Selftest `vendu-avant-suivi-republication`.

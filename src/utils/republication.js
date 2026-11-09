@@ -199,6 +199,9 @@ export async function republierAvecReprise(supabase, params, {
   return coupures ? { ...res, coupures } : res;
 }
 
+// (09/11, point 1 de Nico) La trace d'un refus garde le motif du serveur : règle pure, sans import (testée par Node).
+export { traceRefusRepublication } from './traceRefusRepublication.js';
+
 // Le refus, en mots — UNE table pour toutes les plateformes. `res.message`
 // (serveur) prime quand il existe : il est écrit pour être lu.
 export function messageRefusRepublication(res, lang = 'fr', platform = res?.platform ?? 'vinted') {

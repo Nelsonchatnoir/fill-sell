@@ -938,3 +938,13 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   « 0 mois » → « Naissance »), stature enfant (18 mois → 86) seulement dans une liste de statures enfant, tranches
   traduites entières (« 18-24 mois » → « 86-92 ») ; jamais un âge voisin, jamais une valeur hors de la liste eBay.
   Selftest `taille-ebay`.
+
+## ⛔ eBay — un refus qui vise le COMPTE n'est jamais « relancer » (09/11, point 2 de Nico — nicolas.menar)
+- Classement par QUI peut lever le refus (`_shared/ebay-refus-compte.js`, règle unique) : vérification d'identité ou des
+  données financières (codes KYC_*, TRISK_*, ou la phrase d'eBay FR/EN) → source `ebay_verification_identite` ; compte
+  bloqué (USER_ON_HOLD, phrase) → `ebay_compte_bloque` ; l'article et le passager : chemins inchangés. Jamais deviné.
+- Voie API (ebay-api-worker) : un mur par compte, un éclaireur — sous un mur de < 30 j non levé par une publication,
+  aucune publication du compte n'est envoyée à eBay (retenue, même source, même message), sauf celle relancée par la
+  personne APRÈS le mur ; l'éclaireur publié → les autres repartent seules ; les anciens refus « relancer » qui portent un
+  motif de compte sont reclassés (borné, conditionné). App : « Finaliser ma vérification sur eBay » (Seller Hub) et
+  « C'est fait, relancer » (jamais « Relancer maintenant »). Selftest `ebay-refus-compte`.

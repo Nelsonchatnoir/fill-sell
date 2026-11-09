@@ -101,7 +101,8 @@ const T = {
 // Largeur du panneau rouge révélé en glissant une ligne vers la gauche.
 const PANNEAU_ANNULER = 92;
 
-const COLONNES_JOB = "id, inventaire_id, platform, status, action, created_at, published_at, platform_fields, error, title, voie, listing_url";
+// (09/11, option B) bulk_batch_id : un lot manuel de plus de 10 articles attend le créneau de sa plateforme.
+const COLONNES_JOB = "id, inventaire_id, platform, status, action, created_at, published_at, platform_fields, error, title, voie, listing_url, bulk_batch_id";
 
 // Lecture autonome (hors du Stock) : jobs vivants, fiches, poste, plateformes
 // en pause. Tolérante : une lecture ratée garde l'état précédent.
@@ -165,7 +166,7 @@ function useRetenuesRepublication({ supabase, actif }) {
     const lire = async () => {
       try {
         const { data, error } = await supabase.functions.invoke("get-pending-jobs", { body: { plafond_only: true } });
-        if (vivant && !error) setEtat({ plafond: data?.plafond_republish ?? null, creneaux: data?.creneaux_republish ?? null, avancement: data?.avancement_republication ?? null });
+        if (vivant && !error) setEtat({ plafond: data?.plafond_republish ?? null, creneaux: data?.creneaux_republish ?? null, avancement: data?.avancement_republication ?? null, lots: Array.isArray(data?.lots_dans_creneaux) ? data.lots_dans_creneaux : null });
       } catch { /* inconnu : rien d'affiché */ }
     };
     lire();
@@ -360,6 +361,7 @@ export default function FileDesJobs({
     plateformesEnPause: contexte?.plateformesEnPause ?? autonome?.plateformesEnPause ?? new Set(),
     plafond: retenues?.plafond ?? contexte?.plafond ?? null,
     creneaux: retenues?.creneaux ?? null,
+    lotsCreneaux: retenues?.lots ?? null,
     oplaAAutoriser: contexte?.oplaAAutoriser ?? (opla.verdict === "a_autoriser"),
     boutiques: contexte?.boutiques ?? autonome?.boutiques ?? null,
     extensionAMettreAJour: contexte?.extensionAMettreAJour ?? autonome?.majExtension ?? false,

@@ -41,6 +41,9 @@ const PAR_SOURCE = Object.freeze({
   depop_vendeur: [ORIGINE.UTILISATEUR, "compte_a_finir"],
   ebay_compte_a_finir: [ORIGINE.UTILISATEUR, "compte_a_finir"],
   ebay_compte_vendeur_inactif: [ORIGINE.UTILISATEUR, "compte_a_finir"],
+  // (09/11, point 2 de Nico) Refus eBay qui vise le COMPTE (_shared/ebay-refus-compte.js) : le geste est chez eBay.
+  ebay_verification_identite: [ORIGINE.UTILISATEUR, "compte_a_finir"],
+  ebay_compte_bloque: [ORIGINE.PLATEFORME, "compte_bloque"],
   // (04/11, Nico) Le compte bloqué par Vinted (page /main/banned) : un refus de la plateforme, jamais chez nous.
   compte_vinted_bloque: [ORIGINE.PLATEFORME, "compte_bloque"],
   // (25/10 nuit, audit N1) Deux sources posées par le code que la sentinelle rangeait en « nous/autre » : la

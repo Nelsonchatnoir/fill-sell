@@ -693,3 +693,10 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   09:37, l'ordinateur était éteint (aucun poll).
 - Règle : `attendConnexion` (`_shared/etat-job.js`, recopié dans l'extension) reconnaît aussi `attente_connexion` +
   « Connecte-toi à … » → « À toi de jouer » (connexion), comme `attente_session`. Selftest `etat-job`.
+
+## ⛔ 09/11 (point 1 de Nico — assopmfrance, lupilou999) — le badge « Vendu » Leboncoin d'avant le suivi n'est jamais une vente, quelle que soit la branche
+- `republication_annonce_partie` : le badge lu par le relevé (transaction_plateforme) ET celui lu par la veille de
+  l'extension sur la page (« Article vendu » → sale_signal 'sold') ne comptent plus quand `leboncoin_vendu_avant_suivi`
+  et que l'annonce est vue en ligne OU née hors FillSell (importée) ; disparue, elle se juge par les constats (« plus en
+  ligne »). Migration `20261109010000_vendu_avant_suivi_jamais_une_vente` (APPLIQUÉE le 09/11, feu vert de Nico ; banc 19/19).
+  Une vente lue pendant le suivi reste « vendue ». Selftest `vendu-avant-suivi-republication`.

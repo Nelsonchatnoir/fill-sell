@@ -36,6 +36,7 @@ import {
   attenteAutomatique, boutiqueAttendue, boutiqueDuJob, sansEstimation,
 } from "../../supabase/functions/_shared/etat-job.js";
 import { phraseMiseAJourExtension } from "./extensionAJour.js";
+import { lotRetenuAuxCreneaux } from "../../supabase/functions/_shared/lot-manuel-creneau.js";
 // (02/11 soir, Nico) Compte Cloud : les mots du Cloud pour ses tâches, jamais « ton ordinateur » ni « Chrome ».
 import { parLeCloud } from "../cloud/voieCloud.js";
 
@@ -186,6 +187,22 @@ const TEXTE = {
   },
 };
 
+// ── (09/11, décision de Nico — option B) UN LOT MANUEL DE PLUS DE 10 ARTICLES ATTEND LE CRÉNEAU DE SA PLATEFORME ──
+// get-pending-jobs le retient (_shared/lot-manuel-creneau.js) et nomme ses lots (lots_dans_creneaux → ctx.lotsCreneaux).
+// Même rang que le créneau de l'automatique dans _shared/etat-job.js : il l'emporte seulement sur les états qui viennent
+// APRÈS lui (en file, essai, ordinateur, plateforme en pause, retenue derrière une remise) — jamais sur une tâche finie,
+// à toi, en cours, une pause de la file, une boutique, le rythme. Module en pause ou absent : rien ne change. Fait ICI
+// (app seule) : etat-job.js est recopié dans l'extension, dont le popup ne connaît pas les lots.
+const APRES_LE_CRENEAU = new Set(["tour", "serveurs", "essai", "ordinateur", "ordinateur_session", "plateforme", "attente_remise"]);
+export function lotEnPauseCreneau(j, ctx, v) {
+  if (!v || !APRES_LE_CRENEAU.has(v.motif) || j?.status !== "pending" || j?.action !== "republish") return v;
+  const pf = pfDe(j);
+  if (pf.republish_source === "auto" || pf.republish_step === "deleted" || pf.republish_suppression_envoyee) return v;
+  if (!lotRetenuAuxCreneaux(j, ctx?.lotsCreneaux)) return v;
+  const cr = ctx?.creneaux?.[j.platform];
+  return cr && cr.actif === true && cr.dans_creneau === false ? { etat: ETATS.EN_PAUSE, motif: "creneau" } : v;
+}
+
 // Le groupe de la file, dérivé de l'état — jamais décidé ici.
 const GROUPE_DE = { en_cours: "en_cours", en_file: "en_file", en_pause: "en_pause", a_toi: "a_toi" };
 
@@ -205,7 +222,7 @@ export function situationJob(j, ctx = {}) {
   const nom = nomPlateforme(j.platform);
   const cloud = parLeCloud(j, ctx.cloud === true);
   // (02/11 soir) Une tâche faite par FillSell Cloud ne dépend jamais de la version de l'extension du PC.
-  const v = etatJob(j, { ...ctx, maintenant, ...(cloud ? { extensionAMettreAJour: false } : {}) });
+  const v = lotEnPauseCreneau(j, ctx, etatJob(j, { ...ctx, maintenant, ...(cloud ? { extensionAMettreAJour: false } : {}) }));
   const groupe = GROUPE_DE[v.etat] ?? "en_pause";
   let raison;
   switch (v.motif) {

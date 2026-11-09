@@ -49,6 +49,7 @@ import { etatCompteEbayApi, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGA
 import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 // (25/10, audit N10) Un compte eBay inscrit hors d'eBay France : la publication est close, jamais en pause.
 import { clotureEbayHorsFrance } from "../_shared/ebay-hors-france.js";
+import { classerErreurEbay, decisionMurCompteEbay, marqueurRefusCompte, attendMurCompteEbay, murCompteEbay, compteEbayAPublieDepuis, CLE_REFUS_COMPTE, SOURCES_MUR_COMPTE_EBAY } from "../_shared/ebay-refus-compte.js";
 import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuveRetraitRepublicationEbayMemorisee, verifierOffreRetraitEbay, verifierSourceRetraitEbay, type SourceRetraitEbay } from "../_shared/ebay-retrait-identite.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
@@ -214,6 +215,92 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Recor
   return { vues: (jobs ?? []).length, vers_api: versApi, parquees, closes_hors_france: closesHorsFrance };
 }
 
+// ══ (09/11, point 2 de Nico — nicolas.menar) LE MUR DE COMPTE eBAY : LES JOBS DU COMPTE QUI LE DISENT ══════════════
+// Les derniers jobs eBay du compte qui portent le mur (ebay_refus_compte) et ses dernières publications : ce que lit
+// decisionMurCompteEbay (_shared/ebay-refus-compte.js). Deux lectures bornées par compte ; la seconde seulement s'il y a
+// un mur de moins de 30 jours. Illisible → [] (aucun mur : le chemin d'avant, jamais un point de panne).
+async function jobsDuMurCompte(admin: SupabaseClient, userId: string): Promise<Array<Record<string, unknown>>> {
+  try {
+    const { data: murs } = await admin.from("cross_post_jobs")
+      .select("id, platform, action, status, published_at, handler_build, platform_fields")
+      .eq("user_id", userId).eq("platform", "ebay").in("action", ["publish", "republish"])
+      .not(`platform_fields->${CLE_REFUS_COMPTE}`, "is", null)
+      .order("created_at", { ascending: false }).limit(50);
+    const m = (murs ?? []) as Array<Record<string, unknown>>;
+    if (!m.length) return m;
+    const { data: pubs } = await admin.from("cross_post_jobs")
+      .select("id, platform, action, status, published_at, handler_build")
+      .eq("user_id", userId).eq("platform", "ebay").in("action", ["publish", "republish"]).in("status", ["published", "sold"])
+      .not("published_at", "is", null).order("published_at", { ascending: false }).limit(20);
+    return [...m, ...((pubs ?? []) as Array<Record<string, unknown>>)];
+  } catch (_e) { return []; }
+}
+
+/** Le classement d'un refus d'après le diagnostic gardé (motif_ebay, phrase d'eBay, message générique). */
+function classerErreurEbayDepuisDiagnostic(d: Record<string, unknown>) {
+  const code = typeof d.motif_ebay === "string" ? d.motif_ebay : null;
+  return classerErreurEbay({ message: String(d.message ?? ""), params: code ? [{ name: "code", value: code }] : [], parametres: String(d.message_ebay_generique ?? "") });
+}
+
+// ══ (09/11) LES TÂCHES RETENUES DERRIÈRE UN MUR DE COMPTE REPARTENT DÈS QU'eBAY A ACCEPTÉ UNE PUBLICATION APRÈS LUI ══
+// Et les refus de compte d'AVANT la règle (rangés « relancer » par défaut : nicolas.menar ×11, 06-08/11) prennent leur
+// vraie source, une fois, avec le mur daté de leur refus — sans rien envoyer à eBay. Bornée (50 + 100), écriture
+// conditionnée au statut et à la source lus ; aucune ligne inchangée réécrite.
+async function murCompteEbayEntretien(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  let reclasses = 0, reparties = 0;
+  // 1. Les anciens refus de compte rangés « relancer » (motif d'eBay gardé dans last_diagnostic).
+  const { data: anciens } = await admin.from("cross_post_jobs")
+    .select("id, user_id, action, status, error, platform_fields")
+    .eq("platform", "ebay").eq("voie", "api").eq("status", "needs_user").in("action", ["publish", "republish"])
+    .eq("platform_fields->>needs_user_source", "relancer").not("platform_fields->last_diagnostic->motif_ebay", "is", null)
+    .limit(50);
+  for (const j of (anciens ?? []) as Array<{ id: string; status: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+    const pf = { ...(j.platform_fields ?? {}) };
+    const d = (pf.last_diagnostic ?? {}) as Record<string, unknown>;
+    const classe = classerErreurEbayDepuisDiagnostic(d);
+    if (!classe) continue;
+    const vu = Date.parse(String(d.at ?? "")) || Date.now();
+    pf.needs_user_source = classe.source;
+    pf[CLE_REFUS_COMPTE] = { ...marqueurRefusCompte(classe, { maintenant: vu, code: classe.code }), reclasse_le: new Date().toISOString(),
+      pose_par: "ebay-api-worker (refus de compte d'avant la règle du 09/11)" };
+    pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error ?? "", j.status, "ebay-api-worker (refus de compte reclassé)");
+    const { data: maj } = await admin.from("cross_post_jobs").update({ error: classe.message, platform_fields: pf })
+      .eq("id", j.id).eq("status", "needs_user").eq("platform_fields->>needs_user_source", "relancer").select("id");
+    if (maj?.length) reclasses++;
+  }
+  // 2. Les retenues dont le compte a publié depuis le mur : elles repartent (pending). Seule la PREUVE relâche : une
+  //    publication eBay (hors relevé) faite après le mur de CETTE tâche — jamais l'âge du mur.
+  const { data: retenues } = await admin.from("cross_post_jobs")
+    .select("id, user_id, platform, action, status, error, platform_fields")
+    .eq("platform", "ebay").eq("voie", "api").eq("status", "needs_user").in("action", ["publish", "republish"])
+    .in("platform_fields->>needs_user_source", [...SOURCES_MUR_COMPTE_EBAY]).limit(100);
+  const parCompte = new Map<string, Array<Record<string, unknown>>>();
+  for (const j of (retenues ?? []) as Array<Record<string, unknown>>) {
+    if (!attendMurCompteEbay(j)) continue;
+    const u = String(j.user_id);
+    if (!parCompte.has(u)) parCompte.set(u, []);
+    parCompte.get(u)!.push(j);
+  }
+  for (const [userId, liste] of parCompte) {
+    const jc = await jobsDuMurCompte(admin, userId);
+    if (!jc.length || murCompteEbay(jc)) continue; // le mur tient (ou rien de lisible) : on attend
+    for (const j of liste) {
+      const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+      const murJob = Date.parse(String(((pf[CLE_REFUS_COMPTE] ?? {}) as Record<string, unknown>).vu_le ?? ""));
+      if (!Number.isFinite(murJob) || !compteEbayAPublieDepuis(jc, murJob)) continue;
+      const src = String(pf.needs_user_source ?? "");
+      for (const k of ["needs_user_source", "needsUserAttempts", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after"]) delete pf[k];
+      pf[CLE_REFUS_COMPTE] = { ...((pf[CLE_REFUS_COMPTE] ?? {}) as Record<string, unknown>), leve_le: new Date().toISOString() };
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, String(j.error ?? ""), "needs_user", "ebay-api-worker (mur du compte levé : eBay a accepté une publication)");
+      const { data: maj } = await admin.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pf })
+        .eq("id", String(j.id)).eq("status", "needs_user").eq("platform_fields->>needs_user_source", src).select("id");
+      if (maj?.length) reparties++;
+    }
+  }
+  if (reclasses || reparties) console.log(`[ebay-api-worker] mur de compte eBay : ${reclasses} refus d'avant la règle reclassé(s), ${reparties} tâche(s) repartie(s) (eBay a accepté une publication)`);
+  return { reclasses, reparties };
+}
+
 // ══ (31/10, lot J 3 — Rosa Metra) UNE ATTENTE eBAY D'UN COMPTE HORS D'eBAY FRANCE SE RANGE SOUS SA VRAIE RAISON ══
 // Publications et republications eBay EN ATTENTE (needs_user, ou pending) d'un compte relié dont le site lu n'est pas
 // eBay France : jamais « compte à finir » ni un message technique — la clôture de la règle (_shared/ebay-hors-france.js,
@@ -286,6 +373,21 @@ function diagRefus(e: ErreurEbay, motif: ReturnType<typeof messageRefus>["motif"
     ...(motif ? { motif_ebay: motif.code, motif_nomme: motif.nomme, message_ebay_generique: e.message } : {}),
     ...(e.brut ? { brut: e.brut } : {}),
   };
+}
+
+// ── (09/11, point 2 de Nico — nicolas.menar) UN REFUS QUI VISE LE COMPTE SE RANGE SOUS SA SOURCE, JAMAIS « RELANCER » ──
+// _shared/ebay-refus-compte.js (la règle de classement) : vérification d'identité / données financières (KYC_*, TRISK_*),
+// compte bloqué (USER_ON_HOLD) → needs_user avec SA source et le geste à faire chez eBay, le mur daté (ebay_refus_compte)
+// pour que les publications suivantes du compte n'aillent plus taper eBay (decisionMurCompteEbay, avant tout appel).
+// Rend true quand le refus a été rangé ainsi (l'appelant s'arrête là) ; false : le chemin d'avant, inchangé.
+async function parquerSiRefusCompte(admin: SupabaseClient, job: Job, http: number, e: ErreurEbay, diagnostic: Record<string, unknown>, ebayApi?: Record<string, unknown>): Promise<boolean> {
+  if (http >= 500 || http === 0) return false;
+  const classe = classerErreurEbay(e);
+  if (!classe) return false;
+  job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: classe.source,
+    [CLE_REFUS_COMPTE]: marqueurRefusCompte(classe, { code: classe.code }) };
+  await marquer(admin, job, { status: "needs_user", error: classe.message }, { ...diagnostic, refus_compte: classe.famille }, ebayApi);
+  return true;
 }
 
 // 4xx eBay = faute de contenu ou de compte → needs_user (le message dit quoi) ;
@@ -641,6 +743,9 @@ async function publier(
   if (rItem.http !== 200 && rItem.http !== 204 && rItem.http !== 201) {
     const e = lireErreurEbay(rItem.json, rItem.texte);
     const refusItem = messageRefus("la fiche produit", rItem.http, e);
+    if (await parquerSiRefusCompte(admin, job, rItem.http, e, { etape: "inventory_item", http: rItem.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refusItem.motif) }, { sku, tentatives })) {
+      return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "inventory_item", http: rItem.http };
+    }
     await marquer(admin, job, { status: verdictHttp(rItem.http, tentatives), error: refusItem.error },
       { etape: "inventory_item", http: rItem.http, errorId: e.errorId, message: e.message, condition_envoyee: condition.enumValue, condition_id: condition.id, ...diagRefus(e, refusItem.motif) }, { sku, tentatives });
     return { job: job.id, issue: "inventory_item", http: rItem.http, ebay: e, condition_envoyee: condition.enumValue };
@@ -705,6 +810,9 @@ async function publier(
       const e = lireErreurEbay(maj.json, maj.texte);
       // (2026-09-11) Même filtre que la publication : un motif nommé prime sur
       // le longMessage parapluie d'eBay, qui accuse l'utilisateur.
+      if (await parquerSiRefusCompte(admin, job, maj.http, e, { etape: "offre_maj", http: maj.http, errorId: e.errorId, message: e.message, ...diagRefus(e, messageRefus("la mise à jour de l'offre", maj.http, e).motif) }, { sku, offer_id: brouillon.offerId, tentatives })) {
+        return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "offre_maj", http: maj.http };
+      }
       await marquer(admin, job, { status: verdictHttp(maj.http, tentatives), error: messageRefus("la mise à jour de l'offre", maj.http, e).error }, { etape: "offre_maj", http: maj.http, errorId: e.errorId, message: e.message }, { sku, offer_id: brouillon.offerId, tentatives });
       return { job: job.id, issue: "offre_maj", http: maj.http, ebay: e };
     }
@@ -714,6 +822,9 @@ async function publier(
     if (cre.http !== 201 && cre.http !== 200) {
       const e = lireErreurEbay(cre.json, cre.texte);
       const refusOffre = messageRefus("la création de l'offre", cre.http, e);
+      if (await parquerSiRefusCompte(admin, job, cre.http, e, { etape: "offre", http: cre.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refusOffre.motif) }, { sku, tentatives })) {
+        return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "offre", http: cre.http };
+      }
       await marquer(admin, job, { status: verdictHttp(cre.http, tentatives), error: refusOffre.error }, { etape: "offre", http: cre.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refusOffre.motif) }, { sku, tentatives });
       return { job: job.id, issue: "offre", http: cre.http, motif: refusOffre.motif?.code ?? null, ebay: e };
     }
@@ -822,6 +933,9 @@ async function publier(
       return { job: job.id, issue: "needs_user", motif: "ean_exige" };
     }
     const refus = messageRefus("la publication", pub.http, e);
+    if (await parquerSiRefusCompte(admin, job, pub.http, e, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives })) {
+      return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "publish", http: pub.http };
+    }
     await marquer(admin, job, { status: verdictHttp(pub.http, tentatives), error: refus.error }, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives });
     return { job: job.id, issue: "publish", http: pub.http, motif: refus.motif?.code ?? null, ebay: e };
   }
@@ -3963,6 +4077,10 @@ Deno.serve(async (req) => {
   let horsFrance: Record<string, unknown> = {};
   try { horsFrance = await fermerAttentesEbayHorsFrance(admin); }
   catch (e) { horsFrance = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  // (09/11, point 2) Mur de compte eBay : refus d'avant la règle reclassés, retenues relâchées sur preuve. Jamais bloquant.
+  let murCompte: Record<string, unknown> = {};
+  try { murCompte = await murCompteEbayEntretien(admin); }
+  catch (e) { murCompte = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
   // ── Retraits d'un compte relié bloqués faute de session eBay (15/10 soir) ──
   // Voie API (Trading) au lieu d'attendre Chrome : avant la sortie anticipée.
@@ -3990,7 +4108,9 @@ Deno.serve(async (req) => {
   const jobs = [...((jobsFile ?? []) as Job[]), ...(programmation?.servir ?? [])]
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(0, LOT_MAX);
   if (programmation?.retenues) console.log(`[ebay-api-worker] publications programmées : ${programmation.servir.length} servie(s), ${programmation.retenues} retenue(s) (créneau, plafond, une à la fois, espacement)`);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, programmees_retenues: programmation?.retenues ?? 0 });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, programmees_retenues: programmation?.retenues ?? 0 });
+  // (09/11) Les jobs du mur de compte, lus une fois par compte et par passe.
+  const murParCompte = new Map<string, Array<Record<string, unknown>>>();
 
   const resultats: Record<string, unknown>[] = [];
   // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou
@@ -4083,6 +4203,21 @@ Deno.serve(async (req) => {
         resultats.push({ job: job.id, issue: "needs_user", motif: "compte_pas_pret" });
         continue;
       }
+      // ── (09/11, point 2 de Nico) UN MUR DE COMPTE eBAY EN VIGUEUR : RIEN N'EST ENVOYÉ À eBAY, SAUF L'ÉCLAIREUR ──
+      // nicolas.menar : 9 publications du 08/11 (23:06 → 23:26) ont chacune retapé le même refus d'identité. Sous un mur
+      // vu depuis moins de 30 jours et pas levé par une publication, la tâche passe en attente du même geste (needs_user,
+      // même source, même message), sans appel ; seule celle que la personne a relancée APRÈS le mur part.
+      if (job.action === "publish" || job.action === "republish") {
+        if (!murParCompte.has(job.user_id)) murParCompte.set(job.user_id, await jobsDuMurCompte(admin, job.user_id));
+        const dMur = decisionMurCompteEbay(job as unknown as Record<string, unknown>, murParCompte.get(job.user_id) ?? []);
+        if (dMur.action === "retenir" && dMur.mur) {
+          job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: dMur.mur.source,
+            [CLE_REFUS_COMPTE]: marqueurRefusCompte(dMur.mur, { retenue: true, murVuLe: dMur.mur.vu_le }) };
+          await marquer(admin, job, { status: "needs_user", error: dMur.mur.message }, { etape: "compte", quoi: "mur_du_compte", famille: dMur.mur.famille });
+          resultats.push({ job: job.id, issue: "needs_user", motif: "mur_du_compte_ebay" });
+          continue;
+        }
+      }
       const jeton = await obtenirAccessToken(admin, job.user_id);
       if (!jeton.ok) {
         const msg = jeton.motif === "non_connecte" ? "Ton compte eBay n'est pas relié à FillSell : connecte-le dans les Paramètres, puis relance."
@@ -4111,5 +4246,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, resultats });
 });

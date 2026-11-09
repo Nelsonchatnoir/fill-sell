@@ -686,7 +686,10 @@
     "selftest:vinted-attributs-connus": "node scripts/vinted-attributs-connus-selftest.mjs",
     "selftest:copies-completes-2610": "node scripts/copies-completes-2610-selftest.mjs",
     "selftest:beebs-depot-sans-numero": "node scripts/beebs-depot-sans-numero-selftest.mjs",
-    "selftest:rouges-parc-0711": "node scripts/rouges-parc-0711-selftest.mjs"
+    "selftest:rouges-parc-0711": "node scripts/rouges-parc-0711-selftest.mjs",
+    "selftest:vendu-avant-suivi-republication": "node scripts/vendu-avant-suivi-republication-selftest.mjs",
+    "selftest:ebay-refus-compte": "node scripts/ebay-refus-compte-selftest.mjs",
+    "selftest:lot-manuel-creneau": "node scripts/lot-manuel-creneau-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

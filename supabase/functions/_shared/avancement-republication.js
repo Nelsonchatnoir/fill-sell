@@ -44,12 +44,16 @@ export function rythmeConstate(horodatages, o = {}) {
 }
 
 /**
- * @param {{ enFile?: Array<{platform:string, created_at:string, status:string}>, faites?: Array<{platform:string|null, created_at:string|null, published_at:string|null}>, faitesLotParPf?: Record<string, number>|null, maintenant?: number, pauseApres?: number, pauseDureeMin?: number }} [p]
+ * @param {{ enFile?: Array<{platform:string, created_at:string, status:string}>, faites?: Array<{platform:string|null, created_at:string|null, published_at:string|null}>, faitesLotParPf?: Record<string, number>|null, maintenant?: number, pauseApres?: number, pauseDureeMin?: number, plateformesEnCreneaux?: string[] }} [p]
  *   enFile : republications pending/processing/needs_user ; faites : republications publiées (récentes)
  * @returns {{ plateformes: Record<string, object>, total: { faites:number, restantes:number, a_toi:number } } | null}
  */
 export function avancementRepublication(p = {}) {
-  const { enFile = [], faites = [], faitesLotParPf = null, maintenant = Date.now(), pauseApres = 50, pauseDureeMin = 120 } = p;
+  // (09/11, option B de Nico) plateformesEnCreneaux : les plateformes dont la file ne part QUE dans les créneaux
+  // (republications automatiques, ou lot manuel de plus de 10 articles, module actif) — l'estimation s'y dit en temps de
+  // créneau (`creneaux: true`), jamais en temps d'ordinateur allumé tout court.
+  const { enFile = [], faites = [], faitesLotParPf = null, maintenant = Date.now(), pauseApres = 50, pauseDureeMin = 120, plateformesEnCreneaux = [] } = p;
+  const enCreneaux = new Set(Array.isArray(plateformesEnCreneaux) ? plateformesEnCreneaux : []);
   const parPf = new Map();
   const entree = (pf) => {
     if (!parPf.has(pf)) parPf.set(pf, { restantes: 0, a_toi: 0, debut: null, publiees: [] });
@@ -92,6 +96,7 @@ export function avancementRepublication(p = {}) {
       depuis: e.debut === null ? null : new Date(e.debut).toISOString(),
       rythme_h: rythme === null ? null : Math.round(rythme * 10) / 10,
       fin_estimee_h: finH === null ? null : Math.round(finH * 10) / 10,
+      ...(enCreneaux.has(pf) ? { creneaux: true } : {}),
     };
     tf += faitesLot; tr += e.restantes; ta += e.a_toi;
   }
@@ -120,7 +125,9 @@ export function phraseAvancement(a, { lang = "fr", cloud = false } = {}) {
   if (a.restantes > 0 && a.fin_estimee_h !== null) {
     const d = dureeEstimee(a.fin_estimee_h, lang);
     // estimation-ok: décision de Nico du 08/11 (point 1 f) — fin de file au rythme CONSTATÉ, en temps de poste allumé.
-    if (d) fin = fr ? `fin dans ${d} ${cloud ? "de FillSell Cloud" : "d'ordinateur allumé"}` : `done in ${d} of ${cloud ? "FillSell Cloud" : "computer on"}`; // estimation-ok: décision de Nico du 08/11 (point 1 f)
+    // (09/11, option B) Une file qui ne part que dans les créneaux : « de créneau », le temps où elle avance vraiment.
+    if (d && a.creneaux) fin = fr ? `fin dans ${d} de créneau ${cloud ? "(FillSell Cloud)" : "(ordinateur allumé)"}` : `done in ${d} of time slot ${cloud ? "(FillSell Cloud)" : "(computer on)"}`; // estimation-ok: décision de Nico du 08/11 (point 1 f), créneaux du 09/11
+    else if (d) fin = fr ? `fin dans ${d} ${cloud ? "de FillSell Cloud" : "d'ordinateur allumé"}` : `done in ${d} of ${cloud ? "FillSell Cloud" : "computer on"}`; // estimation-ok: décision de Nico du 08/11 (point 1 f)
   } else if (a.restantes > 0) {
     fin = fr ? "fin estimée dès les premières republications" : "estimate after the first reposts";
   }
