@@ -4,6 +4,25 @@ Rédigé le 08/11 vers 20:15 (heure de Paris), à la demande de Nico, pour une s
 terminé** (dernière mise à jour : 09/11 02:2x, nuit en autonomie — section 000). Tout ce qui suit a été relu
 en prod au moment d'écrire, sauf mention contraire.
 
+## 0000. MATIN DU 09/11 (Nico valide tout : OTA, mail, C4 Stripe, site, Play Console) — fait
+1. **OTA 2.9.168 ENVOYÉE** (07:3x, `npm run ota`, commit 72d0135 contenant ced3863). Canal production = 2.9.168
+   (blocage « major », sous le natif refusé) ; compatibilité relue : 9/9 modules natifs identiques (updater 8.51.2) ;
+   les appareils actifs depuis octobre sont tous en updater 8.51.2 (10 appareils en 6.14/7.0, vus en septembre au plus
+   tard). 1er appareil sur 2.9.168 : iPhone binaire 2.9.164, 07:53.
+2. **Mail « essai commencé » (texte C1) DÉPLOYÉ** : le code déployé de 8 fonctions était identique à HEAD sauf
+   `_shared/cloud-mails.js` (relu par téléchargement dans un dossier temporaire) ; redéployées avec leur verify_jwt
+   d'avant : apple-iap-webhook v50, google-play-webhook v43, email-tunnel v86 (sans JWT), validate-apple-receipt v43,
+   validate-google-purchase v23 (avec), + stripe-webhook v72, cancel-subscription v56, create-checkout-session v72.
+   Code déployé relu : la phrase neuve y est, l'ancienne n'y est plus. selftest:cloud-resiliation-mails et
+   paiements-non-regression verts.
+3. **C4 OUVERT pour les abonnés STRIPE seulement** — migration 20261109020000 appliquée (lue avant/après),
+   changer-formule v1 (verify_jwt true), clé `coin_config.descente_formule_ouverte` = 1 (08:06:41). Garde boutique
+   (Apple/Google : aucun parcours). Preuves : `docs/enquetes/c4-descente-0911/RAPPORT.md` (en tête).
+4. **Site vitrine** : « seul un compte eBay relié… » corrigé sans nommer le Cloud (le site bannit « FillSell Cloud » :
+   décision de Nico, inchangée) — affa76f.
+5. **Play Console** : vc37 toujours « en cours d'examen » à 08:08:48 — « Publier » se clique après la validation de
+   Google (publication gérée) ; à reprendre au prochain passage.
+
 ## 000. NUIT EN AUTONOMIE (Nico valide tout, 08/11 ~23:55 → matin) — avancement
 1. Push c6deec5 / 0658714 / f6f45e3 : FAIT (f574e40..f6f45e3, 23:5x).
 2. Play Console vc37 : « Enregistrer » puis « Envoyer 14 modifications pour examen » FAIT (~23:57) ; état « Modifications en
