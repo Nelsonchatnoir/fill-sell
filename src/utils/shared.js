@@ -76,8 +76,20 @@ export function lirePoidsGrammes(saisie) {
 // Relevé en direct le 22/09, page par page :
 //   · vinted    — /member/signup/select_type : 200, et c'est le mur que nos
 //                 handlers reconnaissent. Déjà connecté ⇒ redirige sur l'accueil.
-//   · leboncoin — auth.leboncoin.fr/login : « Se connecter - leboncoin »,
-//                 champs e-mail ET mot de passe. La vraie page.
+//   · leboncoin — ⛔ CORRIGÉ le 09/11 (Guillaume JEHLY, Brave) : JAMAIS
+//                 auth.leboncoin.fr/login en lien nu. La page s'affiche (e-mail,
+//                 mot de passe) mais son formulaire envoie client_id, redirect_uri
+//                 et from_to LUS DANS L'ADRESSE, sans valeur par défaut
+//                 (POST /api/authenticator/v2/users/login) ; sans eux Leboncoin
+//                 refuse, et un refus 401 s'affiche « Votre mot de passe est
+//                 incorrect » (clé login.unknown-account.error) — le bon mot de
+//                 passe passait partout SAUF dans l'onglet de notre bouton.
+//                 La règle : on ouvre une page du SITE qui exige la connexion, et
+//                 c'est Leboncoin qui construit sa page de connexion avec son
+//                 contexte. Déconnecté, « Mes annonces » mène (relevé 09/11, Chrome
+//                 neuf) à auth.leboncoin.fr/login?client_id=lbc-front-web&
+//                 redirect_uri=…/api/authorizer/v2/authorize&from_to=… ; connecté,
+//                 elle s'ouvre simplement. Selftest `liens-connexion`.
 //   · ebay      — signin.ebay.fr : _shared/ebay-page-vendeur.ts l'écrit déjà,
 //                 « signin.ebay.* — un mur de CONNEXION ».
 //   · beebs     — CORRIGÉ le 22/09. `/fr/login` rendait une page 404 RENDUE
@@ -89,7 +101,7 @@ export function lirePoidsGrammes(saisie) {
 //                 relevée en session réelle.
 export const PLATFORM_LOGIN_URLS = {
   vinted: 'https://www.vinted.fr/member/signup/select_type?ref_url=%2F',
-  leboncoin: 'https://auth.leboncoin.fr/login',
+  leboncoin: 'https://www.leboncoin.fr/compte/part/mes-annonces',
   ebay: 'https://signin.ebay.fr/',
   beebs: 'https://www.beebs.app/fr/auth',
 };

@@ -962,3 +962,11 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   (`REGLE_RAYON_VERSION`), sans `ebayCategorieAttente`. Jamais « Catégorie eBay à confirmer » (choix de la personne).
 - La règle « qui peut lever le refus » (`ebay-refus-compte.js`) ne voit que les réponses d'eBay : ces arrêts tombent avant
   tout appel. `_shared/ebay-rayon-a-notre-charge.js`, selftest `ebay-rayon-a-notre-charge`.
+
+## ⛔ 09/11 soir — Leboncoin : un lien « Me connecter » ouvre le SITE, jamais auth.leboncoin.fr nu (Guillaume JEHLY)
+- `auth.leboncoin.fr/login` sans paramètre s'affiche, mais son formulaire envoie client_id / redirect_uri / from_to lus
+  dans l'adresse : sans eux, refus 401 affiché « Votre mot de passe est incorrect » (le bon mot de passe passait ailleurs).
+- Règle : `PLATFORM_LOGIN_URLS.leboncoin` = `https://www.leboncoin.fr/compte/part/mes-annonces` (Leboncoin construit sa
+  page de connexion avec son contexte). Jamais un hôte d'authentification OAuth en lien direct, jamais un paramètre OAuth
+  fabriqué par nous. Selftest `liens-connexion`. Rapport : `docs/enquetes/lbc-mot-de-passe-0911/RAPPORT.md`.
+- Relevés routés au poste connecté (décision de Nico, 09/11 soir) : `docs/regles/rapprochement-et-releves.md` (fin).

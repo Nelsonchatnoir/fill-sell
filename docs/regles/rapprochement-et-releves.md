@@ -553,3 +553,12 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - Absente d'un premier relevé complet : message vrai (`messagePauseAbsenteUneFois`), écrit une fois.
 - Leboncoin (et toute plateforme non Vinted) : un relevé d'un AUTRE compte connu (`compte_plateforme`) ne prouve jamais
   l'absence d'une annonce ; compte inconnu = règle d'avant. Selftest `introuvable-a-confirmer`.
+
+## ⛔ 09/11 soir — un relevé va au poste CONNECTÉ ; un relevé raté par un autre poste ne dit pas « Me reconnecter » (décision de Nico, Guillaume JEHLY)
+- get-pending-jobs note sur le poste le relevé qu'il lui sert (`extension_postes.<poste>.releve_<pf>` = { run, le }) ;
+  ce relevé fini sur la page de connexion pose le mur du poste (`mur_<pf>`), comme une tâche ; un poste emmuré laisse
+  ses relevés à un autre poste vivant sans mur (la règle des tâches, `murDuPosteTient`). Jamais pour un compte Cloud
+  (un seul exécutant). Règle pure : `_shared/poste-connecte.js`.
+- L'app (`lireDerniersRunsReleve`) tait un relevé raté sur la page de connexion quand le poste qui l'a pris est connu
+  et qu'un AUTRE poste vivant est connecté (réussite ou sonde plus récente que son mur) ; sinon « Me reconnecter »
+  comme avant. Vinted non concerné (boutiques). Selftest `poste-connecte`.

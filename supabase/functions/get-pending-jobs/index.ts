@@ -34,6 +34,7 @@ import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, posteAvecAccesDepop, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
 // (18/10, lot 6) Deux postes, deux boutiques Vinted : chaque poste reçoit les jobs de SA boutique.
 import { identiteVintedDuPoste, routageBoutiquesActif, posteLaisseJobVinted, boutiqueAutoTenueParAutrePoste, murDuPosteTient, posteSeDitDeconnecte, patchPosteDuPoll } from "../_shared/poste-extension.ts";
+import { mursDesRelevesDuPoste, PLATEFORMES_RELEVE_POSTE } from "../_shared/poste-connecte.js";
 import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, attentesVendeurDepop, messageVendeurDepop, derniereObservationMur, estEclaireurFrais, champsRetenue } from "../_shared/vendeur-depop.js";
 // (25/10, R3 et N6) eBay par l'extension : le compte pas encore ouvert à la vente, les conditions de retour du compte.
@@ -1271,6 +1272,30 @@ serve(async (req) => {
               if (n) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} avec accès Depop : ${n} job(s) « Autoriser Depop » relancé(s)`);
             }
           }
+          // ── (09/11 soir, décision de Nico — Guillaume, 3 postes) LE MUR D'UN RELEVÉ RATÉ PAR CE POSTE ──────────────
+          // Le relevé servi à ce poste est noté sur lui (releve_<pf>, plus bas, à la réponse). Fini sur la page de
+          // connexion → le mur du poste (mur_<pf>), comme une tâche : ses relevés et ses tâches iront à un autre poste
+          // vivant sans mur. Lecture bornée (8 lignes, seulement s'il reste un relevé noté non conclu). _shared/poste-connecte.js.
+          try {
+            const avantR = avant as Record<string, unknown>;
+            const pris = PLATEFORMES_RELEVE_POSTE.map((pf) => avantR[`releve_${pf}`] as Record<string, unknown> | undefined)
+              .filter((r) => !!r && typeof r === "object" && !r.conclu && !!r.run) as Array<Record<string, unknown>>;
+            if (pris.length) {
+              const { data: runsPris } = await admin.from("vinted_sync_runs").select("id, platform, status, erreur, finished_at")
+                .eq("user_id", user.id).in("id", pris.map((r) => String(r.run))).limit(8);
+              const lignesPris = (runsPris ?? []) as Array<{ id: string; platform: string; status: string; erreur: string | null; finished_at: string | null }>;
+              const murs = mursDesRelevesDuPoste(avantR, lignesPris);
+              const patchR = patchPoste as Record<string, unknown>;
+              Object.assign(patchR, murs);
+              for (const r of lignesPris) {
+                if (["queued", "running"].includes(String(r.status))) continue;
+                const cle = `releve_${r.platform}`;
+                const deja = avantR[cle] as Record<string, unknown> | undefined;
+                if (deja && String(deja.run) === String(r.id)) patchR[cle] = { ...deja, conclu: true };
+              }
+              if (Object.keys(murs).length) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : relevé tombé sur la page de connexion → ${Object.keys(murs).join(", ")}`);
+            }
+          } catch (e) { console.warn("[get-pending-jobs] mur des relevés du poste :", (e as Error)?.message ?? e); }
           // Fusion ATOMIQUE (RPC noter_poste_extension, verrou de ligne) : deux
           // postes qui pollent en parallèle ne se perdent plus leurs mises à jour.
           const { error: rpcErr } = await admin.rpc("noter_poste_extension", { p_user: user.id, p_session: sessionId, p_patch: patchPoste });
@@ -2337,6 +2362,28 @@ serve(async (req) => {
             continue;
           }
           lues.push(c);
+        }
+        // ── (09/11 soir, décision de Nico — Guillaume) RELEVÉS AU POSTE CONNECTÉ ──────────────────────────────────
+        // Les TÂCHES évitaient déjà un poste qui a vu le mur de la plateforme (plus bas, « UN POSTE QUI VIENT DE VOIR LE
+        // MUR… ») ; les relevés partaient au premier poste venu — un Brave sans session Leboncoin concluait « page de
+        // connexion » pendant que Chrome publiait. Même règle : ce poste emmuré laisse le relevé (en file, sans écriture)
+        // à un autre poste vivant (< 15 min) sans mur. Seul poste du compte, ou compte Cloud (un seul exécutant) : rien.
+        if (sessionId && !posteCloud && cloudVoie !== true && Object.keys(postesDuCompte).length > 1) {
+          const moiR = (posteCourant ?? postesDuCompte[sessionId]) as Record<string, unknown> | undefined;
+          const emmureR = (p: Record<string, unknown> | undefined, pf: string, sid: string): boolean =>
+            murDuPosteTient({ moi: p, pf, postes: postesDuCompte, session: sid }) || posteSeDitDeconnecte(p, pf);
+          for (let k = lues.length - 1; k >= 0; k--) {
+            const pf = String(lues[k].platform ?? "");
+            if (!pf || !emmureR(moiR, pf, sessionId)) continue;
+            const autre = Object.entries(postesDuCompte).find(([sid, p]) => {
+              if (sid === sessionId) return false;
+              const le = Date.parse(String((p as Record<string, unknown>).le ?? ""));
+              return Number.isFinite(le) && Date.now() - le < 15 * 60_000 && !emmureR(p as Record<string, unknown>, pf, sid);
+            });
+            if (!autre) continue;
+            console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} a vu le mur ${pf} : relevé ${String(lues[k].id).slice(0, 8)} laissé au poste ${posteCourt(autre[0])}`);
+            lues.splice(k, 1);
+          }
         }
         syncCommandsAnnonces = lues.map((c) => ({
           id: String(c.id), platform: String(c.platform), declencheur: String(c.declencheur ?? ""), devant: releveServiDevant(c.declencheur),
@@ -15609,6 +15656,24 @@ serve(async (req) => {
           console.warn(`[get-pending-jobs] badge d'avant le suivi : lecture illisible (${String((e as Error)?.message ?? e)}) — tâches servies sans marque`);
         }
       }
+    }
+    // ── (09/11 soir, décision de Nico — Guillaume) LE RELEVÉ SERVI EST NOTÉ SUR LE POSTE QUI LE PREND ────────────
+    // C'est ce qui permet de poser SON mur s'il tombe sur la page de connexion (plus haut), et à l'app de taire ce relevé
+    // quand un autre poste du compte est connecté (_shared/poste-connecte.js). Une écriture au plus par poll, seulement
+    // quand un relevé part ; jamais pour le poste Cloud. Best-effort.
+    if (sessionId && !posteCloud && syncCommandsAnnonces.length) {
+      try {
+        const maintenantR = new Date().toISOString();
+        const patchReleves: Record<string, unknown> = {};
+        for (const c of syncCommandsAnnonces) {
+          if (PLATEFORMES_RELEVE_POSTE.includes(c.platform)) patchReleves[`releve_${c.platform}`] = { run: c.id, le: maintenantR };
+        }
+        if (Object.keys(patchReleves).length) {
+          const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const { error: eR } = await adminR.rpc("noter_poste_extension", { p_user: user.id, p_session: sessionId, p_patch: patchReleves });
+          if (eR) console.warn(`[get-pending-jobs] relevé servi non noté sur le poste : ${eR.message}`);
+        }
+      } catch (e) { console.warn("[get-pending-jobs] relevé servi non noté sur le poste :", (e as Error)?.message ?? e); }
     }
     out = out.map((j) => jobSansInvisibles(j) as typeof j);
     // (01/11, Jocabroc) Vinted reçoit les 20 premières photos du job, jamais plus : au-delà, l'extension attendait des

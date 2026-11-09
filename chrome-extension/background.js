@@ -24575,7 +24575,20 @@ async function lireVentesBeebsSiDue(session) {
     await chrome.storage.local.set({ [VENTES_BEEBS_LECTURE_KEY]: { ...lu, [userId]: Date.now() } });
   } catch { return; }
   const cmd = await executerDansOngletPlateforme("beebs", M.LECTEURS.beebs.commandes, [[], M.COMMANDES_DETAILS_MAX]);
-  if (!cmd?.ok) { console.warn(`[ventes][beebs] page des ventes illisible (${cmd?.motif ?? "?"}) — rien décidé`); return; }
+  if (!cmd?.ok) {
+    console.warn(`[ventes][beebs] page des ventes illisible (${cmd?.motif ?? "?"}) — rien décidé`);
+    // (09/11 soir, louis-seller) Un échec de lecture se TRACE au serveur : du 24/10 au 09/11, le lecteur échouait dans
+    // chaque onglet (« commandesDuFluxRsc is not defined ») et seule cette console le savait — 15 jours sans aucune
+    // vente Beebs lue. Au plus une trace par lecture (30 min par compte, cadence ci-dessus). Rien n'est décidé.
+    await restRequest("usage_logs", token, {
+      method: "POST",
+      body: JSON.stringify([{ user_id: userId, feature: "ventes_beebs_lecture_echec", metadata: {
+        motif: String(cmd?.motif ?? "sans_resultat").slice(0, 60), detail: String(cmd?.detail ?? "").slice(0, 160),
+        http: Number(cmd?.http) || null, build: FILLSELL_BUILD_ID, at: new Date().toISOString(),
+      } }]),
+    }).catch(() => null);
+    return;
+  }
   await noterVentesBeebs(token, cmd);
 }
 

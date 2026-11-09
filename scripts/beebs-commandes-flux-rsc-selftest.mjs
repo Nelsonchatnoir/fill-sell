@@ -183,4 +183,16 @@ await cas("11. le serveur accepte un numéro de commande court (migration 202610
   assert.equal(a.filter((l, i) => l !== b[i]).length, 1, "une seule ligne diffère de l'inverse");
 });
 
+// (09/11 soir, vente Beebs de louis-seller non vue) Les cas 2 à 10 appelaient le lecteur DANS Node, avec ses voisines
+// sous la main. En vrai, chrome.scripting.executeScript n'envoie que SON texte dans l'onglet : du 24/10 (0.6.132) au
+// 09/11, « commandesDuFluxRsc is not defined », aucun bilan, aucune vente Beebs lue — et ce selftest restait vert.
+await cas("12. le lecteur RECONSTRUIT DEPUIS SON SEUL TEXTE (comme executeScript l'envoie) lit les mêmes commandes", async () => {
+  const seul = new Function(`"use strict"; return (${M.LECTEURS.beebs.commandes.toString()});`)();
+  const r = await avecSite({ [LISTE]: { texte: PAGE_VENTES }, "/fr/account/orders/555123": { texte: PAGE_555123 } },
+    () => seul([], 5));
+  assert.equal(r.ok, true, `le lecteur sérialisé échoue : ${JSON.stringify(r).slice(0, 200)}`);
+  assert.deepEqual(r.commandes.map((c) => c.id), ["1234567", "890", "555123"]);
+  assert.deepEqual(r.commandes.find((c) => c.id === "555123").order.products.map((p) => p.id), [34101552]);
+});
+
 console.log(`\n✓ beebs-commandes-flux-rsc : ${n} cas verts`);

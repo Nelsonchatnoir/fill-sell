@@ -1385,59 +1385,64 @@
   // une référence « $7b » vers une autre ligne est suivie). Les liens restent lus
   // en second (si Beebs les rendait un jour côté serveur). Une commande dont les
   // produits n'ont pas de numéro est relue sur sa page (comme avant).
-  function lignesFluxRsc(texte) {
-    const lignes = new Map();
-    for (const ligne of String(texte ?? "").split("\n")) {
-      const i = ligne.indexOf(":");
-      if (i <= 0) continue;
-      const cle = ligne.slice(0, i);
-      const reste = ligne.slice(i + 1);
-      if (!/^[0-9a-f]{1,8}$/i.test(cle) || !/^[[{]/.test(reste)) continue;
-      try { lignes.set(cle.toLowerCase(), JSON.parse(reste)); } catch { /* ligne d'une autre forme */ }
-    }
-    return lignes;
-  }
-  // « $7b » = la ligne 7b ; « $7b:props:order » = un chemin dans la ligne 7b (un objet que le flux reprend
-  // ailleurs ; un élément s'écrit ["$", type, clé, props], relu sur beebs.app le 23/10 :
-  // "localeCookie":"$42:props:localeCookie"). Toute autre valeur (« $L5a », « $D2026-… », « $undefined »,
-  // un texte) est rendue telle quelle.
-  function resolveurFluxRsc(lignes) {
-    const ELEMENT = { type: 1, key: 2, props: 3 };
-    return (v) => {
-      if (typeof v !== "string") return v;
-      const m = /^\$([0-9a-f]{1,8})((?::[A-Za-z0-9_$-]+)*)$/i.exec(v);
-      if (!m) return v;
-      let x = lignes.get(m[1].toLowerCase());
-      for (const seg of m[2].split(":").slice(1)) {
-        if (x == null || typeof x !== "object") return undefined;
-        x = Array.isArray(x) && x[0] === "$" && seg in ELEMENT ? x[ELEMENT[seg]] : x[seg];
-      }
-      return x;
-    };
-  }
-  function commandesDuFluxRsc(texte) {
-    const lignes = lignesFluxRsc(texte);
-    const resoudre = resolveurFluxRsc(lignes);
-    const trouvees = new Map();
-    const estCommande = (o) => o && typeof o === "object" && !Array.isArray(o) && o.id != null && typeof o.status === "string"
-      && Array.isArray(resoudre(o.products)) && ("created_at" in o || "amount" in o || "computed_buyer_payin" in o);
-    const marcher = (v, profondeur) => {
-      v = resoudre(v);
-      if (!v || typeof v !== "object" || profondeur > 60) return;
-      if (!Array.isArray(v)) {
-        // Les props d'une carte : { order, isSale } — seule une VENTE compte (jamais un achat).
-        const o = resoudre(v.order);
-        if (estCommande(o) && v.isSale !== false) {
-          const id = String(o.id).trim();
-          if (/^[A-Za-z0-9_-]{1,80}$/.test(id) && !trouvees.has(id)) trouvees.set(id, { ...o, products: resoudre(o.products).map(resoudre) });
-        }
-      }
-      for (const x of Object.values(v)) marcher(x, profondeur + 1);
-    };
-    for (const v of lignes.values()) marcher(v, 0);
-    return trouvees;
-  }
   async function lecteurCommandesBeebs(suivies, detailsMax, priorite) {
+    // ⛔ (09/11 soir, vente Beebs de louis-seller non vue) CES TROIS FONCTIONS VIVENT DANS LE LECTEUR. Il est
+    // envoyé dans l'onglet par chrome.scripting.executeScript, qui ne transmet que SON texte : posées à côté de lui
+    // (23/10, f081a28 → 0.6.132), elles n'existaient pas dans la page — « commandesDuFluxRsc is not defined », aucun
+    // résultat, aucun bilan ventes_beebs_commandes depuis le 25/10, aucune vente Beebs lue. Selftest
+    // « lecteurs-autonomes » : aucune référence extérieure dans une fonction envoyée dans une page.
+    function lignesFluxRsc(texte) {
+      const lignes = new Map();
+      for (const ligne of String(texte ?? "").split("\n")) {
+        const i = ligne.indexOf(":");
+        if (i <= 0) continue;
+        const cle = ligne.slice(0, i);
+        const reste = ligne.slice(i + 1);
+        if (!/^[0-9a-f]{1,8}$/i.test(cle) || !/^[[{]/.test(reste)) continue;
+        try { lignes.set(cle.toLowerCase(), JSON.parse(reste)); } catch { /* ligne d'une autre forme */ }
+      }
+      return lignes;
+    }
+    // « $7b » = la ligne 7b ; « $7b:props:order » = un chemin dans la ligne 7b (un objet que le flux reprend
+    // ailleurs ; un élément s'écrit ["$", type, clé, props], relu sur beebs.app le 23/10 :
+    // "localeCookie":"$42:props:localeCookie"). Toute autre valeur (« $L5a », « $D2026-… », « $undefined »,
+    // un texte) est rendue telle quelle.
+    function resolveurFluxRsc(lignes) {
+      const ELEMENT = { type: 1, key: 2, props: 3 };
+      return (v) => {
+        if (typeof v !== "string") return v;
+        const m = /^\$([0-9a-f]{1,8})((?::[A-Za-z0-9_$-]+)*)$/i.exec(v);
+        if (!m) return v;
+        let x = lignes.get(m[1].toLowerCase());
+        for (const seg of m[2].split(":").slice(1)) {
+          if (x == null || typeof x !== "object") return undefined;
+          x = Array.isArray(x) && x[0] === "$" && seg in ELEMENT ? x[ELEMENT[seg]] : x[seg];
+        }
+        return x;
+      };
+    }
+    function commandesDuFluxRsc(texte) {
+      const lignes = lignesFluxRsc(texte);
+      const resoudre = resolveurFluxRsc(lignes);
+      const trouvees = new Map();
+      const estCommande = (o) => o && typeof o === "object" && !Array.isArray(o) && o.id != null && typeof o.status === "string"
+        && Array.isArray(resoudre(o.products)) && ("created_at" in o || "amount" in o || "computed_buyer_payin" in o);
+      const marcher = (v, profondeur) => {
+        v = resoudre(v);
+        if (!v || typeof v !== "object" || profondeur > 60) return;
+        if (!Array.isArray(v)) {
+          // Les props d'une carte : { order, isSale } — seule une VENTE compte (jamais un achat).
+          const o = resoudre(v.order);
+          if (estCommande(o) && v.isSale !== false) {
+            const id = String(o.id).trim();
+            if (/^[A-Za-z0-9_-]{1,80}$/.test(id) && !trouvees.has(id)) trouvees.set(id, { ...o, products: resoudre(o.products).map(resoudre) });
+          }
+        }
+        for (const x of Object.values(v)) marcher(x, profondeur + 1);
+      };
+      for (const v of lignes.values()) marcher(v, 0);
+      return trouvees;
+    }
     let requetes = 1;
     const r = await fetch("/fr/account/orders/list/seller", { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
     if (!r) return { ok: false, motif: "reseau", requetes };

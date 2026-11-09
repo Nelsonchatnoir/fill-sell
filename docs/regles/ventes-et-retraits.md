@@ -714,3 +714,12 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   ancienne s'arrête avec un message vrai (`badge_vendu_avant_suivi`). Une vente lue PENDANT le suivi à la republication :
   close comme avant ET signal de vente (`sale_signal` sold) posé sur l'annonce publiée du même numéro (update-job-status) →
   circuit des ventes détectées tout de suite. `_shared/badge-vendu-avant-suivi.js`, selftest `badge-vendu-avant-suivi-republication`.
+
+## ⛔ 09/11 soir — la page des ventes Beebs n'était plus lue depuis la 0.6.132 (louis-seller, commande 1723956)
+- `lecteurCommandesBeebs` est envoyé dans l'onglet par `chrome.scripting.executeScript` : il ne reçoit que SON texte.
+  Ses trois fonctions du flux RSC posées à côté de lui le 23/10 (f081a28) n'existaient pas dans la page → aucune
+  lecture, aucun bilan `ventes_beebs_commandes` après le 25/10, aucune vente Beebs lue. Elles vivent désormais DANS le
+  lecteur ; toute fonction envoyée dans une page est contrôlée sans référence extérieure (selftest
+  `lecteurs-autonomes`, 21 fonctions) ; un échec de lecture se trace (`usage_logs ventes_beebs_lecture_echec`).
+- L'interrupteur `ventes_beebs_commandes` reste à 0 (décision de Nico) : lecteur réparé = bilans fantômes à relire,
+  puis interrupteur à 1 sur son feu vert. Rapport : `docs/enquetes/beebs-vente-louis-0911/RAPPORT.md`.

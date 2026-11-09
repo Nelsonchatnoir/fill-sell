@@ -18,6 +18,7 @@ import { lireToutesPages } from './lireToutesPages.js';
 import { FILTRE_SANS_VEILLE } from './declencheursReleve.js';
 import { absenceDePlateforme } from '../annonces/etatReleve.js';
 import { absencesDeSuite } from '../annonces/absencesDeSuite.js';
+import { releveRateParUnAutrePoste } from '../../supabase/functions/_shared/poste-connecte.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : toutes sauf
 // Vinted, qui a son propre relevé (carte « Relever mes annonces Vinted »).
@@ -116,11 +117,23 @@ export async function lireDerniersRunsReleve(userId) {
     .order('started_at', { ascending: false, nullsFirst: false })
     .limit(60);
   if (error) return {};
+  // (09/11 soir, décision de Nico — Guillaume, 3 postes) Un relevé tombé sur la page de connexion d'UN poste ne dit
+  // plus « Me reconnecter » quand un AUTRE poste vivant du compte est connecté à la plateforme : on montre le dernier
+  // relevé qui n'est pas dans ce cas (get-pending-jobs sert désormais les relevés au poste connecté). On ne tait que ce
+  // qu'on sait : le poste qui a pris le relevé est noté par le serveur (releve_<pf>) ; poste inconnu → comme avant.
+  // Lecture du profil ratée → comme avant (rien n'est tu).
+  let postes = null;
+  try {
+    const { data: prof } = await supabase.from('profiles').select('extension_postes').eq('id', userId).maybeSingle();
+    postes = prof?.extension_postes ?? null;
+  } catch { postes = null; }
+  const maintenant = Date.now();
+  const tu = (r) => !!postes && r.platform !== 'vinted' && releveRateParUnAutrePoste(r, r.platform, postes, maintenant);
   // (15/10, P17) Le dernier run porte la série de « pas connecté » d'affilée
   // de sa plateforme (absences_de_suite) — lue sur ces mêmes lignes, aucune
   // requête de plus.
   const listes = {};
-  for (const r of data ?? []) (listes[r.platform] ??= []).push(r);
+  for (const r of data ?? []) if (!tu(r)) (listes[r.platform] ??= []).push(r);
   const par = {};
   for (const [p, liste] of Object.entries(listes)) par[p] = { ...liste[0], absences_de_suite: absencesDeSuite(liste, absenceDePlateforme) };
   return par;
