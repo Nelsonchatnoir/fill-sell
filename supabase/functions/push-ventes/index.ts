@@ -47,19 +47,36 @@ type VerdictMail = { statut: "envoye" | "deja_envoye" | "a_reessayer" | "echec" 
 // même transaction — plusieurs exemplaires sont possibles (xxewwer : 5 « Non » sur des photos identiques). Avant, le
 // mail de vente n'en disait rien (retraitsACliquer: 0) : la question posée à 00:47 attendait que la personne ouvre
 // l'app, l'annonce en vente ailleurs. Ici : les questions OUVERTES des fiches vendues de ce mail, une plateforme par
-// annonce. Lecture seule, une requête par mail, bornée ; une lecture ratée = le mail d'avant (jamais de mail bloqué).
+// annonce. Une requête par mail, bornée ; une lecture ratée = le mail d'avant (jamais de mail bloqué).
+// ⛔ (09/11, garde-fou de Nico) AUCUN MAIL DE PLUS : le paragraphe voyage dans le mail de la vente (un par vente, réservé
+// `vente:<note>`), jamais un mail à part — le compte de mails par personne et par jour ne bouge pas. Et UNE QUESTION N'EST
+// CITÉE QU'UNE FOIS : la note qui la cite la réserve (`preuves.mail_vente = { note, le }`, compare-and-set sur une
+// question encore ouverte et jamais citée) ; un autre mail ne la cite plus ; le même mail réessayé (même note) la garde.
 async function annoncesEncoreEnLigne(
   // deno-lint-ignore no-explicit-any
-  admin: any, userId: string, inventaireIds: unknown[],
+  admin: any, userId: string, inventaireIds: unknown[], noteId: number | string,
 ): Promise<string[]> {
   const ids = [...new Set(inventaireIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0))].slice(0, 100);
   if (!userId || !ids.length) return [];
   try {
-    const { data, error } = await admin.from("inventaire_doublons").select("preuves")
+    const { data, error } = await admin.from("inventaire_doublons").select("id, preuves")
       .eq("user_id", userId).eq("motif", "copie_non_prouvee").eq("statut", "proposee").in("garde", ids).limit(50);
     if (error || !Array.isArray(data)) return [];
+    const note = String(noteId);
+    const citees: string[] = [];
     // deno-lint-ignore no-explicit-any
-    return data.map((q: any) => String(q?.preuves?.platform ?? "").trim().toLowerCase()).filter(Boolean);
+    for (const q of data as Array<{ id: string; preuves: Record<string, any> | null }>) {
+      const preuves = q.preuves ?? {};
+      const deja = preuves.mail_vente;
+      const pf = String(preuves.platform ?? "").trim().toLowerCase();
+      if (!pf) continue;
+      if (deja) { if (String(deja.note ?? "") === note) citees.push(pf); continue; }
+      const { data: pris } = await admin.from("inventaire_doublons")
+        .update({ preuves: { ...preuves, mail_vente: { note, le: new Date().toISOString() } } })
+        .eq("id", q.id).eq("statut", "proposee").is("preuves->mail_vente", null).select("id");
+      if (pris?.length) citees.push(pf);
+    }
+    return citees;
   } catch {
     return [];
   }
@@ -112,7 +129,7 @@ async function envoyerMailVente(
     return Promise.all(arts.map((a) => ligneDuMail(admin, a, String(m.plateforme ?? ""))));
   }))).flat();
   const ventes = [...ventesTete, ...ventesAutres];
-  const dejaVendu = n.a_decider === true ? [] : await annoncesEncoreEnLigne(admin, n.user_id, groupe.flatMap(idsDesArticles));
+  const dejaVendu = n.a_decider === true ? [] : await annoncesEncoreEnLigne(admin, n.user_id, groupe.flatMap(idsDesArticles), n.id);
   const { sujet, html } = mailVentes({
     ventes,
     retraitsACliquer: 0,
@@ -206,7 +223,7 @@ async function envoyerMailRafale(
   const lang = langue(n.lang);
   // (09/11) Les annonces encore en ligne ailleurs des ventes ENREGISTRÉES du récapitulatif (« Déjà vendu ? » ouverte).
   const dejaVendu = await annoncesEncoreEnLigne(admin, n.user_id,
-    lignesRafale(n.articles).filter((l) => l.a_decider !== true).flatMap((l) => (articlesDeLaLigne(l) as ArticleNote[]).map((a) => a?.inventaire_id)));
+    lignesRafale(n.articles).filter((l) => l.a_decider !== true).flatMap((l) => (articlesDeLaLigne(l) as ArticleNote[]).map((a) => a?.inventaire_id)), n.id);
   const dv = dejaVendu.length ? { dejaVendu } : {};
   const { sujet, html } = ventes.length === 1
     ? mailVentes({ ventes, retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: ventes[0].aConfirmer, ...dv }, lang)

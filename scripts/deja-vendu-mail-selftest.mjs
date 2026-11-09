@@ -91,12 +91,23 @@ ok(r2.html.includes(E.URL_VENTES_A_CONFIRMER) && texte(r2.html).includes('encore
 console.log('\n4. push-ventes : les questions OUVERTES des fiches vendues du mail, rien d\'autre');
 const PV = lire('supabase/functions/push-ventes/index.ts');
 const f = PV.slice(PV.indexOf('async function annoncesEncoreEnLigne('), PV.indexOf('const idsDesArticles'));
-ok(/\.from\("inventaire_doublons"\)\.select\("preuves"\)/.test(f) && /\.eq\("user_id", userId\)\.eq\("motif", "copie_non_prouvee"\)\.eq\("statut", "proposee"\)\.in\("garde", ids\)\.limit\(50\)/.test(f),
+ok(/\.from\("inventaire_doublons"\)\.select\("id, preuves"\)/.test(f) &&/\.eq\("user_id", userId\)\.eq\("motif", "copie_non_prouvee"\)\.eq\("statut", "proposee"\)\.in\("garde", ids\)\.limit\(50\)/.test(f),
   'lecture : inventaire_doublons du compte, motif copie_non_prouvee, statut proposee, fiches du mail, 50 au plus');
 ok(/slice\(0, 100\)/.test(f) && /if \(error \|\| !Array\.isArray\(data\)\) return \[\];/.test(f) && /catch \{\s*return \[\];/.test(f), 'bornée (100 fiches) ; une lecture ratée = le mail d\'avant, jamais un mail bloqué');
-ok(!/\.(insert|update|upsert|delete)\(/.test(f), 'lecture seule');
+ok(!/\.(insert|upsert|delete)\(/.test(f) && (f.match(/\.update\(/g) ?? []).length === 1,
+  'une seule écriture : la réservation de la question (jamais une insertion, jamais un effacement)');
+// (09/11, garde-fou de Nico) Une question n'est citée que dans UN mail : la note qui la cite d'abord la réserve.
+ok(/if \(deja\) \{ if \(String\(deja\.note \?\? ""\) === note\) citees\.push\(pf\); continue; \}/.test(f)
+  && /mail_vente: \{ note, le: new Date\(\)\.toISOString\(\) \}/.test(f)
+  && /\.eq\("id", q\.id\)\.eq\("statut", "proposee"\)\.is\("preuves->mail_vente", null\)\.select\("id"\)/.test(f)
+  && /if \(pris\?\.length\) citees\.push\(pf\);/.test(f),
+  'une question n\'est citée qu\'une fois : réservée (compare-and-set) par la note qui la cite ; le même mail réessayé la garde, un autre jamais');
+// Aucun mail de plus : le paragraphe voyage dans le mail de la vente (même nombre d'envois que 72d0135).
+const PV_AVANT = execFileSync('git', ['show', '72d0135:supabase/functions/push-ventes/index.ts'], { cwd: RACINE, encoding: 'utf8' });
+ok(!/envoyerEmail\(/.test(f) && (PV.match(/envoyerEmail\(\{/g) ?? []).length === (PV_AVANT.match(/envoyerEmail\(\{/g) ?? []).length,
+  'aucun mail de plus : rien n\'est envoyé pour la question, le nombre d\'envois de push-ventes est celui d\'avant');
 const fv = PV.slice(PV.indexOf('async function envoyerMailVente('), PV.indexOf('async function envoyerMailVentesGroupe('));
-ok(/const dejaVendu = n\.a_decider === true \? \[\] : await annoncesEncoreEnLigne\(admin, n\.user_id, groupe\.flatMap\(idsDesArticles\)\);/.test(fv)
+ok(/const dejaVendu = n\.a_decider === true \? \[\] : await annoncesEncoreEnLigne\(admin, n\.user_id, groupe\.flatMap\(idsDesArticles\), n\.id\);/.test(fv)
   && /\.\.\.\(dejaVendu\.length \? \{ dejaVendu \} : \{\}\)/.test(fv) && /retraitsACliquer: 0,/.test(fv), 'mail d\'une vente (et de son groupe) : les fiches de TOUTES ses ventes ; vente à confirmer → rien');
 const fr = PV.slice(PV.indexOf('async function envoyerMailRafale('), PV.indexOf('function messageDuRecap('));
 ok(/lignesRafale\(n\.articles\)\.filter\(\(l\) => l\.a_decider !== true\)/.test(fr) && /mailRafale\(\{ ventes, \.\.\.dv \}, lang\)/.test(fr), 'récapitulatif : les ventes enregistrées de la rafale');
