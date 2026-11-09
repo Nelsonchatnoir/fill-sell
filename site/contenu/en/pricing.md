@@ -12,7 +12,7 @@ points_cles:
   - "The Free plan costs €0: you open it without a credit card, and it has no end date."
   - "Premium is €12.99, Pro €29.99 and Business €59.99 a month, no commitment. There is no annual price and no trial of the paid plans."
   - "Every plan, Free included, covers publishing on {{plateformes}}, syncing your listings with no limit, and removing an item's other listings as soon as its sale is recorded."
-  - "Your plan counts the items written by AI, not the times they're published: once written, an item goes out to all your marketplaces at no extra count."
+  - "Each plan counts three things a month: listings written by AI, publications (one listing put online on one marketplace) and bumps."
   - "You subscribe at fillsell.app (payment handled by Stripe) or through the App Store and Google Play, in euros, and you stop whenever you like."
 cta: inscription
 publie: "2026-10-09"
@@ -86,9 +86,9 @@ Your phone gives the orders, your computer does the legwork: the extension works
 
 ## What you pay for with Premium, Pro or Business
 
-### You pay for written listings, never for posts
+### Three counters a month, nothing hidden
 
-Your plan counts the items written by AI; once written, an item goes out to all your marketplaces at no extra count. So you never pay per marketplace, and never per post. Premium, Pro and Business give you far more written listings each month than Free: enough to sell every week, then at high volume, then to make it your business. The counter resets every month, on the anniversary date of your subscription (of your sign-up on the Free plan).
+Each plan counts three things a month: listings written by AI (a Lens scan counts as one listing), publications (one listing put online on one marketplace: a sweater on three marketplaces is one listing and three publications) and bumps. Syncing, imported listings and removals never count. You never pay per marketplace. Premium, Pro and Business give you far more volume each month than Free: enough to sell every week, then at high volume, then to publish without counting. The counter resets every month, on the anniversary date of your subscription (of your sign-up on the Free plan).
 
 ### Photos that pop
 
@@ -177,7 +177,7 @@ Not for the plans. The paid plans have neither a trial nor an annual price: they
 
 ### Do I pay per marketplace or per listing posted?
 
-Neither: you pay for a monthly plan. That plan counts the items written by AI: each new item is written once, then goes out to all your marketplaces at no extra count. A Lens scan counts as one listing on your plan. Each plan's volume is shown in the app before you buy, and your monthly counter stays in view; it resets on the anniversary date of your sign-up or of your subscription.
+Neither: you pay for a monthly plan. It counts, each month, the listings written by AI (a Lens scan counts as one listing), the publications (one listing put online on one marketplace) and the bumps. Nothing is added per marketplace: each plan includes its volume. Each plan's volume is shown in the app before you buy, and your monthly counter stays in view; it resets on the anniversary date of your sign-up or of your subscription.
 
 ### Can I use FillSell from the UK or the US?
 

@@ -266,6 +266,39 @@ d.querySelectorAll('[data-video]').forEach((b) => {
   });
 });
 
+// ── Carrés des formules : l'explication de chaque jauge (09/11, maquette validée par Nico) ──
+// Sans JS, chaque carré ouvre sa <dialog> en popover natif (popovertarget : Échap et clic à côté la ferment). Ici,
+// la même boîte devient MODALE : showModal (le reste de la page inerte, focus entré dans la boîte), Échap la ferme
+// (natif), un clic sur le fond aussi (la boîte n'a pas de marge intérieure : un clic qui vise la <dialog> elle-même
+// tombe sur le fond), et le focus revient au carré qui l'a ouverte.
+const explications = d.querySelectorAll('dialog.explication');
+if (explications.length && typeof HTMLDialogElement === 'function' && HTMLDialogElement.prototype.showModal) {
+  let ouvreur = null;
+  explications.forEach((boite) => {
+    boite.removeAttribute('popover');
+    boite.setAttribute('aria-modal', 'true');
+    boite.addEventListener('click', (e) => { if (e.target === boite) boite.close(); });
+    boite.addEventListener('close', () => {
+      if (ouvreur) ouvreur.focus();
+      ouvreur = null;
+    });
+    boite.querySelectorAll('[data-fermer]').forEach((b) => {
+      b.removeAttribute('popovertarget');
+      b.removeAttribute('popovertargetaction');
+      b.addEventListener('click', () => boite.close());
+    });
+  });
+  d.querySelectorAll('.carre[popovertarget]').forEach((carre) => {
+    const boite = d.getElementById(carre.getAttribute('popovertarget'));
+    carre.removeAttribute('popovertarget');
+    carre.addEventListener('click', () => {
+      if (!boite || boite.open) return;
+      ouvreur = carre;
+      boite.showModal();
+    });
+  });
+}
+
 // ── Blocs qui DÉFILENT (tableaux, étapes en carrousel, <pre>, transcription) ──
 // Le HTML les rend focalisables (tabindex="0" + data-defile) : sans JS, un bloc
 // qui déborde reste atteignable au clavier. Ici, on ne garde l'arrêt que si le

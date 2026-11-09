@@ -20,7 +20,11 @@ export const BUDGET_SITE_JS_GZIP = 6 * 1024;
 // Relevé à 30 Ko le 10/10 (Nico : cartes de prix au dessin EXACT des cartes de palier de
 // l'app, badges animés compris — module tarifs 1,7 → 5,2 Ko ; menu refait) : 29 211 o
 // mesurés sur l'accueil, Lighthouse mobile de l'accueil repassé (mesure dans le commit).
-export const BUDGET_CSS = 30 * 1024;
+// Relevé à 40 Ko le 09/11 (maquette « Landing — section Cloud + tarifs à 3 jauges » validée
+// par Nico) : la section FillSell Cloud (module cloud, 5,1 Ko) et les trois carrés des formules
+// avec leur explication en boîte de dialogue (module tarifs 5,2 → 8,5 Ko) — 37 788 o mesurés
+// sur l'accueil.
+export const BUDGET_CSS = 40 * 1024;
 
 /** Bundle IIFE minifié d'une entrée ; `define` remplace les constantes __FS_…__. */
 export async function bundler(entree, { racine, define = {} }) {

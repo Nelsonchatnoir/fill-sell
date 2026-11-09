@@ -166,4 +166,4 @@ When Vinted or eBay marks your item as sold, FillSell records the sale on its ow
 
 ### How much does FillSell cost?
 
-FillSell is free to start (€0), no credit card needed. Premium is €12.99, Pro €29.99 and Business €59.99 a month, no commitment. Your plan counts the items written by AI; once written, an item goes out to all your marketplaces at no extra count. And your stock has no item limit, even on the free plan. Details: [FillSell pricing](page:tarifs).
+FillSell is free to start (€0), no credit card needed. Premium is €12.99, Pro €29.99 and Business €59.99 a month, no commitment. Your stock has no item limit, even on the free plan. Each plan counts, per month, the listings written by AI (a Lens scan counts as one listing), the publications (one listing put online on one marketplace) and the bumps: details on [FillSell pricing](page:tarifs).

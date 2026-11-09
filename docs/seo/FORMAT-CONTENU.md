@@ -24,7 +24,10 @@ rédaction les remplit. Un champ inconnu fait échouer le build : ne rien invent
   en dur.
 - Aucun chiffre de quota ni de plafond, nulle part (la mécanique `{{quota:…}}` est retirée).
 - Logos des plateformes : jamais sur les pages (noms en texte, puces neutres) ; mention de
-  non-affiliation dans le pied de page.
+  non-affiliation dans le pied de page. (09/11/2026, maquette « Landing — section Cloud + tarifs à 3 jauges » validée
+  par Nico le 08/11) L'icône se pose DEVANT le nom de sa plateforme, jamais à sa place (alt vide, nom écrit à côté :
+  `logosPlateformesFautifs` du vérificateur), là où la maquette la montre (section FillSell Cloud, option Cloud et
+  « Dans tous les forfaits » des tarifs, exemples des carrés) ; fichiers `site/medias/plateformes/`.
 - Ton OFFENSIF, ultra vendeur, comparatifs à notre avantage ; seule limite : rien que l'app ne
   fasse au moment de la mise en ligne, aucun dénigrement, aucun faux chiffre.
 
@@ -157,7 +160,9 @@ ligne), `og_image` (facultatif). Ton du blog en français : VOUVOIEMENT (article
   `lang="fr"` (revue technique C-11). La ligne FillSell ne porte AUCUN palier à côté de la
   republication : l'import le retire (journalisé), le vérificateur le refuse.
 - `tarifs.yml` : paliers Gratuit 0 €, Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois,
-  devise EUR, ce qui est inclus SANS chiffre de quota (fiche de vérité § 10 + décisions de Nico).
+  devise EUR, ce qui est inclus SANS chiffre de quota (fiche de vérité § 10 + décisions de Nico). Les volumes des
+  cartes (les trois carrés annonces · publications · remontées, la retouche IA, Lens du Business) sont LUS EN BASE au
+  build (`scripts/site/lib/grille.mjs`, 09/11), jamais recopiés.
 
 ## 5. Ton et style (rédaction)
 

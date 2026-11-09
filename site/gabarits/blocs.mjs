@@ -1,4 +1,6 @@
 import { esc } from '../../scripts/site/lib/html.mjs';
+import { jaugesDeCarte } from '../../scripts/site/lib/grille.mjs';
+import { CLES_EXPLIQUEES, explicationJauge, libellesExplication } from '../../src/utils/jaugesExplications.js';
 import { TEXTES } from './textes.mjs';
 import { habillage, prix, listeLisible, picture, capture, etiquettes, verdict, boutonInscription, attrsAutreLangue } from './composants.mjs';
 
@@ -138,6 +140,78 @@ export function video(site, page) {
     `</div></section>`);
 }
 
+// ── Logos devant les noms (09/11, maquette « Landing — section Cloud + tarifs à 3 jauges » validée par Nico) ──
+// L'icône de la plateforme (site.logos, site/medias/plateformes/) se pose DEVANT son nom, jamais à sa place : alt
+// vide, le nom reste du texte (site:verifier le relit). « iPhone » porte l'icône de l'App Store, comme la maquette.
+// Seulement là où la maquette les montre : section FillSell Cloud, option Cloud et « dans tous les forfaits » des
+// tarifs, exemples des carrés.
+const iconeApple = (site, classe) => (site.iconeAppStore ? `<img class="${classe}" src="${esc(site.iconeAppStore)}" alt="" width="18" height="18" loading="lazy" decoding="async">` : '');
+const logoPf = (site, nom, classe = 'logo-pf', taille = 20) => (site.logos?.[nom]
+  ? `<img class="${classe}" src="${esc(site.logos[nom])}" alt="" width="${taille}" height="${taille}" loading="lazy" decoding="async">` : '');
+/** Un texte dont chaque nom de plateforme (et « iPhone ») porte son icône devant lui. */
+export function avecLogos(site, texte) {
+  const noms = [...Object.keys(site.logos ?? {}), 'iPhone'];
+  const motif = new RegExp(`\\b(${noms.join('|')})\\b`);
+  return String(texte).split(motif).map((m, i) => {
+    if (i % 2 === 0) return esc(m);
+    return `<span class="avec-logo">${m === 'iPhone' ? iconeApple(site, 'logo-pf') : logoPf(site, m)}${esc(m)}</span>`;
+  }).join('');
+}
+
+// ── FillSell Cloud (section de l'accueil, maquette validée par Nico le 08/11) ─
+// Fond sarcelle profond, halos, une scène : l'ordinateur éteint → FillSell Cloud → les plateformes où le Cloud agit
+// (celles de l'extension : site.cloud.plateformes), dont l'état défile (publiée, remontée, retirée). Le défilement est
+// du DÉCOR (aria-hidden) ; « moins d'animations » : la scène s'arrête sur « publiée ». Faits : FORMAT-CONTENU § 0 —
+// prix et essai lus dans l'app (src/utils/palier.js) ; ⛔ jamais Android à côté de FillSell Cloud (REGLE_CLOUD_ANDROID).
+const SVG_ORDI = '<svg class="ordi" width="76" height="62" viewBox="0 0 76 62" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><rect x="12" y="6" width="52" height="36" rx="4"/><path d="M4 50h68l-6 6H10z" stroke-linejoin="round"/></svg>';
+const SVG_NUAGE = '<svg class="nuage" width="80" height="80" viewBox="0 0 80 80" fill="none" aria-hidden="true" focusable="false"><circle cx="40" cy="40" r="36" fill="#1B6E62" stroke="#4ECDC4" stroke-width="2"/><path d="M26 47h28a8 8 0 0 0 0-16 12 12 0 0 0-23-3 8 8 0 0 0-5 19z" stroke="#F6F5F1" stroke-width="2.2" stroke-linejoin="round"/></svg>';
+export function blocCloud(site, page) {
+  if (!site.cloud?.plateformes?.length) return '';
+  const c = TEXTES[page.lang].cloud;
+  const montant = prix(site.cloud.prix, page.lang);
+  const jours = site.cloud.essaiJours;
+  const etats = habillage(`<span class="etat" aria-hidden="true">${c.etats.map((e, i) => `<span class="e${i + 1}">${esc(e)}</span>`).join('')}</span>`);
+  const puces = site.cloud.plateformes.map((nom) => `<li class="puce"><span class="puce-nom">${logoPf(site, nom, 'logo-puce', 24)}${esc(nom)}</span>${etats}</li>`).join('');
+  return `<section class="bloc-cloud sombre" aria-labelledby="cloud-titre"><div class="cadre">` +
+    `<div class="cloud-tete apparait"><p class="cloud-surtitre">${esc(c.surtitre)}</p><h2 id="cloud-titre">${esc(c.titre)}</h2><p class="chapo-section">${esc(c.chapo)}</p></div>` +
+    `<div class="cloud-scene apparait">` +
+    `<div class="noeud noeud-ordi">${SVG_ORDI}<span>${esc(c.ordi)}</span>${habillage('<span class="zz" aria-hidden="true">z z</span>')}</div>` +
+    `<div class="noeud-centre"><div class="noeud">${habillage('<span class="anneau" aria-hidden="true"></span><span class="anneau b" aria-hidden="true"></span>')}${SVG_NUAGE}<span class="noeud-nom">FillSell Cloud</span></div>` +
+    `<div class="flux" aria-hidden="true"><span class="point"></span></div></div>` +
+    `<ul class="puces" aria-label="${esc(c.plateformes)}">${puces}</ul></div>` +
+    `<ul class="cloud-faits">${c.faits.map((f) => `<li class="apparait"><h3>${esc(f.titre)}</h3><p>${esc(f.texte)}</p></li>`).join('')}</ul>` +
+    `<div class="cloud-bas"><div class="cloud-prix">` +
+    `<p class="cloud-montant"><span class="cloud-chiffre">${esc(montant)}</span> <span>${esc(c.parMois)}</span></p>` +
+    `<p class="cloud-essai">${esc(c.essai(jours))}</p><p class="cloud-detail">${esc(c.essaiDetail(montant, jours))}</p>` +
+    `<a class="bouton bouton-premier" href="/login?mode=signup" data-cta="signup_cloud">${esc(c.cta)}</a></div>` +
+    `<div class="cloud-infos"><ul class="cloud-ou"><li>${iconeApple(site, 'logo-store')}${esc(c.ou[0])}</li><li>${esc(c.ou[1])}</li><li class="cloud-places">${esc(c.places)}</li></ul>` +
+    `<p>${avecLogos(site, c.ebay)}</p><p>${esc(c.extension)}</p></div></div>` +
+    `</div></section>`;
+}
+
+// ── Les carrés des formules et leur explication (maquette validée par Nico le 08/11) ──
+// Trois carrés par carte (annonces · publications · remontées), chiffres LUS EN BASE au build (page.tarifs.grille,
+// scripts/site/lib/grille.mjs). Chaque carré ouvre l'explication de sa jauge (src/utils/jaugesExplications.js, la
+// source de l'app) : une <dialog> par jauge, ouverte en boîte de dialogue MODALE par site.js (focus entré et rendu,
+// Échap, fond cliquable) ; sans JS, la même boîte s'ouvre en popover natif (popovertarget). Carrés et boîtes sont de
+// l'HABILLAGE (hors empreinte des dates) : un quota changé en base ne périme aucune page.
+const ICONE_FERMER = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M4 4l10 10M14 4L4 14" stroke-linecap="round"/></svg>';
+const carresDe = (j, t) => habillage(`<div class="carres">${j.carres.map((x) => `<button type="button" class="carre${x.illimite ? ' carre-illimite' : x.valeur.length > 3 ? ' carre-long' : ''}" popovertarget="explication-${esc(x.cle)}" aria-haspopup="dialog" aria-label="${esc(x.aria)}">` +
+  `<span class="carre-valeur">${esc(x.valeur)}</span><span class="carre-mot">${esc(x.mot)}</span></button>`).join('')}</div><p class="carres-periode">${esc(t.carresPeriode)}</p>`);
+function explications(site, lang) {
+  const L = libellesExplication(lang);
+  return habillage(CLES_EXPLIQUEES.map((cle) => {
+    const x = explicationJauge(cle, lang);
+    const id = `explication-${cle}`;
+    return `<dialog class="explication" id="${id}" role="dialog" popover aria-labelledby="${id}-titre"><div class="explication-corps">` +
+      `<div class="explication-tete"><h3 id="${id}-titre">${esc(x.titre)}</h3><button type="button" class="explication-fermer" data-fermer popovertarget="${id}" popovertargetaction="hide" aria-label="${esc(L.fermer)}">${ICONE_FERMER}</button></div>` +
+      `<p class="explication-def">${esc(x.definition)}</p>` +
+      `<div class="explication-exemple"><p class="explication-titre">${esc(L.exemple)}</p><p>${avecLogos(site, x.exemple)}</p></div>` +
+      `<p class="explication-regle"><strong>${esc(L.compte)}</strong> ${esc(x.compte)}</p>` +
+      `<p class="explication-regle"><strong>${esc(L.pas)}</strong> ${esc(x.pas)}</p></div></dialog>`;
+  }).join(''));
+}
+
 // ── Tarifs ─────────────────────────────────────────────────────────────────
 /** Cartes des paliers (site/donnees/tarifs.yml) : nom, prix par mois, ce qui est inclus — jamais un chiffre de quota. */
 // ── Badges des paliers (10/10, Nico) ───────────────────────────────────────
@@ -163,17 +237,25 @@ export function cartesTarifs(site, page, { titre = true } = {}) {
   if (!d) return '';
   const t = TEXTES[page.lang];
   const l = page.lang;
-  const cartes = d.paliers.map((p) => `<li class="palier palier-${esc(p.id)}${PALIERS_SOMBRES.has(p.id) ? ' palier-sombre' : ''}${p.mis_en_avant ? ' palier-avant' : ''}">` +
+  // (09/11) Carrés et lignes chiffrées lus en base ; base illisible → la carte part sans eux (jamais un chiffre recopié).
+  const jauges = d.paliers.map((p) => jaugesDeCarte(d.grille, p.id, l));
+  const cartes = d.paliers.map((p, i) => `<li class="palier palier-${esc(p.id)}${PALIERS_SOMBRES.has(p.id) ? ' palier-sombre' : ''}${p.mis_en_avant ? ' palier-avant' : ''}">` +
     `${p.mis_en_avant ? habillage(`<p class="palier-badge">${esc(t.misEnAvant)}</p>`) : ''}` +
     `<h3 class="palier-nom">${badgePalier(p.id, esc(p.nom[l]))}</h3><p class="palier-pour">${esc(p.pour[l])}</p>` +
     `<p class="palier-prix"><span class="montant">${esc(prix(p.prix, l, d.devise))}</span> <span class="periode">${esc(t.parMois)}</span></p>` +
-    `<ul>${p.inclus[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` +
+    `${jauges[i] ? carresDe(jauges[i], t) : ''}` +
+    `<ul>${jauges[i] ? habillage(jauges[i].lignes.map((x) => `<li>${esc(x)}</li>`).join('')) : ''}${p.inclus[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` +
     `<a class="palier-bouton" href="${esc(d.inscription)}" data-cta="signup_tarifs_${esc(p.id)}">${esc(p.cta[l])}</a></li>`).join('');
-  const communs = `<div class="carte communs"><h3>${esc(t.communsTitre)}</h3><ul>${d.communs[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+  // L'option FillSell Cloud (bandeau sombre de la maquette), entre les cartes et « dans tous les forfaits ».
+  const o = t.optionCloud;
+  const option = site.cloud ? `<div class="option-cloud"><div><p class="option-titre">${esc(o.titre(prix(site.cloud.prix, l), site.cloud.essaiJours))}</p>` +
+    `<p class="option-texte">${avecLogos(site, o.texte)}</p></div><a class="option-lien" href="${esc(d.lienCloud)}">${esc(o.lien)}</a></div>` : '';
+  const communs = `<div class="carte communs"><h3>${esc(t.communsTitre)}</h3><ul>${d.communs[l].map((x) => `<li>${avecLogos(site, x)}</li>`).join('')}</ul></div>`;
   return `<section class="bloc-tarifs" aria-labelledby="tarifs-titre"><div class="cadre">` +
     (titre ? `<h2 id="tarifs-titre">${esc(t.tarifsTitre)}</h2><p class="chapo-section">${esc(t.tarifsChapo)}</p>` : `<h2 id="tarifs-titre" class="sr">${esc(t.tarifsTitre)}</h2>`) +
-    `<ul class="paliers">${cartes}</ul>${communs}<p class="mentions">${esc(d.mentions[l])}</p>` +
-    `${d.lien ? `<p class="lien-suite"><a href="${esc(d.lien.chemin)}">${esc(t.tarifsLien)}</a></p>` : ''}</div></section>`;
+    `<ul class="paliers">${cartes}</ul>${option}${communs}<p class="mentions">${esc(d.mentions[l])}</p>` +
+    `${d.lien ? `<p class="lien-suite"><a href="${esc(d.lien.chemin)}">${esc(t.tarifsLien)}</a></p>` : ''}` +
+    `${jauges.some(Boolean) ? explications(site, l) : ''}</div></section>`;
 }
 
 // ── Plateforme ─────────────────────────────────────────────────────────────

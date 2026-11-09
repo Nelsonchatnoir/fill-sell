@@ -32,7 +32,12 @@ et ses revues ; **contrat des types de pages** : `docs/seo/FORMAT-CONTENU.md` ;
   données, écrite par le jeton `{{republication}}` — jamais en dur, jamais un
   palier à côté, jamais eBay à côté (le vérificateur le relit).
 - Aucun logo de plateforme sur les pages (noms en texte, dans des étiquettes) ;
-  la non-affiliation est au pied de chaque page, tirée des données.
+  la non-affiliation est au pied de chaque page, tirée des données. (09/11,
+  maquette validée par Nico) Exception : l'icône DEVANT le nom (alt vide), dans
+  la section FillSell Cloud de l'accueil et les tarifs — `site/medias/plateformes/`.
+- (09/11) Les cartes de tarifs portent trois carrés (annonces · publications ·
+  remontées) LUS EN BASE au build (`scripts/site/lib/grille.mjs`, mêmes clés et
+  mêmes fonctions que l'app) ; `tarifs.yml` n'a plus aucun chiffre de volume.
 
 ## Ajouter une page — le geste
 
@@ -141,7 +146,9 @@ et ses revues ; **contrat des types de pages** : `docs/seo/FORMAT-CONTENU.md` ;
   et dans les builds de l'app.
 - **Jamais de logo de plateforme** sur les pages (le vérificateur refuse une
   image « logo » et un SVG aux couleurs d'une plateforme) ; les captures et la
-  vidéo montrent les logos tels que l'app les dessine.
+  vidéo montrent les logos tels que l'app les dessine. Depuis le 09/11 : l'icône
+  de `site/medias/plateformes/` devant le nom de sa plateforme, alt vide
+  (`logosPlateformesFautifs` refuse une icône sans son nom juste après).
 - **Lexique** (fiche de vérité § 15 + décisions de Nico) relu dans le `<main>`
   des pages vitrine : bot, robot, temps réel, zéro risque, « le seul outil »,
   partenaire officiel… et les DÉCISIONS (`REGLES_DECISION`) : aucun palier,
@@ -162,7 +169,8 @@ et ses revues ; **contrat des types de pages** : `docs/seo/FORMAT-CONTENU.md` ;
   tiennent WCAG AA (4,5:1 texte, 3:1 anneau de focus), y compris sur les fonds
   MÊLÉS (halos du héros et des têtes, tête du dégradé sombre, coins de l'appel
   final) : la couleur à alpha est composée sur son fond, au plus fort.
-- **Budgets** : HTML ≤ 120 Ko par page ; **CSS en ligne ≤ 26 Ko PAR PAGE** (la
+- **Budgets** (relevés le 09/11 : section FillSell Cloud et carrés des formules) :
+  HTML ≤ 136 Ko par page ; **CSS en ligne ≤ 40 Ko PAR PAGE** (la
   feuille est découpée en modules, chaque page n'embarque que les siens —
   `docs/seo/design/DESIGN.md`) ; `site.js` ≤ 6 Ko gzip. Relevés le 09/10 (nuit)
   avec la rédaction réelle (80 / 24 Ko avaient été posés sur la démonstration) :

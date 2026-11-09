@@ -1,14 +1,16 @@
 import { esc } from '../../scripts/site/lib/html.mjs';
 import { TEXTES } from './textes.mjs';
 import { habillage, appelsHeros, pointsCles, etapes, lignesDates, pagesLiees, appelFinal, bandeauDemonstration } from './composants.mjs';
-import { scene, bandeauPlateformes, fonctions, video, comparaisonAccueil, cartesTarifs } from './blocs.mjs';
+import { scene, bandeauPlateformes, fonctions, video, comparaisonAccueil, cartesTarifs, blocCloud } from './blocs.mjs';
 
 // Gabarit « accueil » (/ et /en) — 09/10/2026, docs/seo/FORMAT-CONTENU.md § 3.
 // Ordre : héros (scène : téléphone + fiches), bandeau des plateformes en texte,
 // l'essentiel en 10 secondes, parcours en étapes (section sombre), cartes de
 // fonctions, vidéo, texte de référence (le corps) — la comparaison courte
 // est sortie de l'accueil le 10/10 (Nico) : elle vit sur le comparatif —,
-// tarifs, FAQ (le corps), pages liées, appel final.
+// FillSell Cloud puis tarifs à 3 jauges (09/11 : les deux sections de la
+// maquette « Landing — section Cloud + tarifs à 3 jauges » validée par Nico,
+// à la suite comme dessinées), FAQ (le corps), pages liées, appel final.
 // Les CTA sont de VRAIS liens (data-cta : site.js pousse cta_click avant de
 // naviguer). Aucun fil d'Ariane (c'est la racine), aucun masquage par défaut.
 
@@ -30,8 +32,8 @@ export function titreEnTemps(h1) {
 // ci-dessous (titres du gabarit, textes.mjs). Questions, FAQ, « À lire
 // aussi » : sans reflet, comme avant.
 const FINS_REFLET = {
-  fr: { 'etapes-titre': 'se passe', 'fonctions-titre': 'vendre plus vite', 'video-titre': 'en action', 'tarifs-titre': 'chaque rythme', 'appel-titre': 'vu partout.' },
-  en: { 'etapes-titre': 'it goes', 'fonctions-titre': 'sell faster', 'video-titre': 'in action', 'tarifs-titre': 'every pace', 'appel-titre': 'seen everywhere.' },
+  fr: { 'etapes-titre': 'se passe', 'fonctions-titre': 'vendre plus vite', 'video-titre': 'en action', 'cloud-titre': 'Plus besoin d’ordinateur.', 'tarifs-titre': 'rien de caché', 'appel-titre': 'vu partout.' },
+  en: { 'etapes-titre': 'it goes', 'fonctions-titre': 'sell faster', 'video-titre': 'in action', 'cloud-titre': 'No computer needed.', 'tarifs-titre': 'nothing hidden', 'appel-titre': 'seen everywhere.' },
 };
 export function refletsTitres(html, lang) {
   return html.replace(/<h2 id="([^"]+)">([^<]+)<\/h2>/g, (tout, id, texte) => {
@@ -80,6 +82,7 @@ ${fonctions(site, page)}
 ${video(site, page)}
 ${comparaisonAccueil(site, page)}
 ${avant.trim() ? `<section class="bloc-texte"><div class="cadre"><div class="prose">${avant}</div></div></section>` : ''}
+${blocCloud(site, page)}
 ${page.tarifs ? habillage(cartesTarifs(site, page)) : ''}
 ${faq ? `<section class="bloc-faq"><div class="cadre"><div class="prose">${faq}</div></div></section>` : ''}
 ${page.liees?.length ? `<div class="cadre">${pagesLiees(page.liees, t)}</div>` : ''}

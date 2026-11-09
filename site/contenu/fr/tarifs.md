@@ -12,7 +12,7 @@ points_cles:
   - "Le forfait Gratuit coûte 0 € : il s'ouvre sans carte bancaire et n'a pas de date de fin."
   - "Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement ; il n'existe ni prix annuel ni essai des forfaits payants."
   - "Chaque forfait, Gratuit compris, inclut la publication sur {{plateformes}}, la synchronisation sans limite et le retrait des autres annonces d'un article dès que sa vente est enregistrée."
-  - "Le forfait compte les articles rédigés par l'IA, pas les publications : un article rédigé part sur toutes tes plateformes sans rien compter de plus."
+  - "Chaque formule compte trois choses par mois : les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées."
   - "Tu t'abonnes sur fillsell.app (paiement traité par Stripe) ou dans l'App Store et Google Play, et tu arrêtes quand tu veux."
 cta: inscription
 publie: "2026-10-09"
@@ -86,9 +86,9 @@ Le téléphone pilote, l'ordinateur exécute : l'extension travaille dans tes pr
 
 ## Ce que tu paies avec Premium, Pro ou Business
 
-### Des articles rédigés, jamais des publications
+### Trois compteurs par mois, rien de caché
 
-Ton forfait compte les articles rédigés par l'IA ; une fois rédigé, un article part sur toutes tes plateformes sans rien compter de plus. Tu ne paies donc ni par plateforme, ni par publication. Premium, Pro et Business te donnent bien plus d'annonces rédigées chaque mois que le Gratuit : de quoi vendre chaque semaine, puis à gros volume, puis en faire ton métier. Le compteur repart chaque mois, à la date anniversaire de ton abonnement (de ton inscription en Gratuit).
+Chaque formule compte trois choses par mois : les annonces rédigées par l'IA (un scan Lens compte comme une annonce), les publications (une annonce mise en ligne sur une plateforme : un pull sur trois plateformes, c'est une annonce et trois publications) et les remontées. Une synchronisation, une annonce importée ou un retrait ne comptent jamais. Tu ne paies jamais par plateforme. Premium, Pro et Business te donnent bien plus de volume chaque mois que le Gratuit : de quoi vendre chaque semaine, puis à gros volume, puis publier sans compter. Le compteur repart chaque mois, à la date anniversaire de ton abonnement (de ton inscription en Gratuit).
 
 ### Des photos qui sautent aux yeux
 
@@ -173,7 +173,7 @@ Pas pour les forfaits. Les forfaits payants n'ont ni essai ni prix annuel : ils 
 
 ### Est-ce que je paie par plateforme ou par annonce publiée ?
 
-Ni l'un ni l'autre : tu paies un forfait au mois. Ce forfait compte les articles rédigés par l'IA : chaque nouvel article est rédigé une fois, puis part sur toutes tes plateformes sans rien compter de plus. Un scan Lens compte comme une annonce de ton forfait.
+Ni l'un ni l'autre : tu paies une formule au mois. Elle compte, par mois, les annonces rédigées par l'IA (un scan Lens compte comme une annonce), les publications (une annonce mise en ligne sur une plateforme) et les remontées. Rien ne s'ajoute par plateforme : chaque formule comprend son volume, affiché dans l'app avant tout achat.
 
 ### Où voir le volume d'annonces de chaque forfait ?
 

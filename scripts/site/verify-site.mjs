@@ -51,8 +51,11 @@ export const URLS_SITEMAP_PROD_0910 = [
 // FAQ reprise dans le JSON-LD) pèsent 82 à 105 Ko bruts, ~24 Ko en brotli ; l'accueil
 // porte 25,6 Ko de CSS (pages liées, tableau, capture en fenêtre). Mesures :
 // docs/seo/design/DESIGN.md § 4.
-const BUDGET_HTML = 120 * 1024;
-const BUDGET_CSS = 30 * 1024; // par page, feuille découpée en modules (scripts/site/lib/bundles.mjs)
+// Relevé à 136 Ko le 09/11 (maquette « Landing — section Cloud + tarifs à 3 jauges » validée par
+// Nico) : l'accueil gagne la section FillSell Cloud, les douze carrés des formules et leurs trois
+// boîtes d'explication, et 8 Ko de CSS en ligne de plus — 125 073 o mesurés (/), 120 Ko pour /en.
+const BUDGET_HTML = 136 * 1024;
+const BUDGET_CSS = 40 * 1024; // par page, feuille découpée en modules (scripts/site/lib/bundles.mjs) — 40 Ko depuis le 09/11 (section Cloud et carrés des formules)
 const BUDGET_DATA_URI = 1024;
 const BUDGET_SITE_JS_GZIP = 6 * 1024;
 const MOTS_MIN = {
@@ -88,7 +91,10 @@ const TYPES_VITRINE = Object.keys(MOTS_MIN).filter((t) => !['article', 'liste', 
 //   · aucun palier écrit à côté de la republication automatique, jamais eBay à
 //     côté de la republication ;
 //   · aucun logo de plateforme sur les pages (captures et vidéo exceptées :
-//     « logos tels que l'app les dessine ») ;
+//     « logos tels que l'app les dessine ») — SAUF, depuis le 09/11 (maquette
+//     « Landing — section Cloud + tarifs à 3 jauges » validée par Nico), l'icône
+//     de site/medias/plateformes posée DEVANT le nom de sa plateforme : alt vide,
+//     le nom écrit juste après (logosPlateformesFautifs) — jamais à la place du nom ;
 //   · le lexique banni, sur les pages vitrine (le blog, plus ancien et au
 //     vouvoiement, sera réécrit : il n'est pas relu ici).
 const PLATEFORME_SORTIE = new RegExp(`\\b${String.fromCharCode(79, 112, 108, 97)}\\b`, 'i');
@@ -145,6 +151,20 @@ export function listeSansDepop(texte) {
     if (vus.length === AUTRES_QUE_DEPOP.length) return phrase.trim().slice(0, 140);
   }
   return null;
+}
+// Logos des plateformes (09/11, maquette validée par Nico) : seulement les fichiers de site/medias/plateformes
+// (publiés /assets/site/<id>.<empreinte>.webp), alt="" et le NOM de la plateforme écrit juste après l'image — l'icône
+// accompagne le nom, elle ne le remplace jamais (un lecteur d'écran, un moteur, un œil pressé lisent le nom).
+export function logosPlateformesFautifs(html, ids) {
+  if (!ids?.length) return [];
+  const fautes = [];
+  const motif = new RegExp(`<img\\b[^>]*\\bsrc="/assets/site/(${ids.join('|')})\\.[0-9a-f]{10}\\.webp"[^>]*>([^<]*)`, 'g');
+  for (const m of String(html).matchAll(motif)) {
+    const alt = /\balt="([^"]*)"/.exec(m[0]);
+    if (!alt || alt[1] !== '') fautes.push(`logo ${m[1]} avec un texte alternatif (alt="" attendu : le nom est écrit à côté)`);
+    if (!m[2].trim().toLowerCase().startsWith(m[1])) fautes.push(`logo ${m[1]} sans son nom juste après (« ${m[2].trim().slice(0, 30)} ») — l'icône se pose devant le nom, jamais à sa place`);
+  }
+  return fautes;
 }
 // Couleurs de marque des plateformes (un logo dessiné en SVG en ligne les porterait).
 const COULEURS_PLATEFORMES = /#(007782|09B1BA|E53238|0064D2|F5AF02|86B817|FF2300|EC5A13|FF6E14)\b/i;
@@ -422,6 +442,9 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
   // jamais le correctif urgent de l'app, revue de la fondation I-3).
   const errDate = (m) => (datesStrictes ? erreurs : avertissements).push(m);
   if (!existsSync(dossier)) return { erreurs: [`dossier ${dossier} introuvable`], avertissements, resume: '' };
+  // Les logos permis (devant leur nom) : les fichiers de site/medias/plateformes.
+  const dossierLogos = path.join(racine, 'site', 'medias', 'plateformes');
+  const idsLogos = existsSync(dossierLogos) ? readdirSync(dossierLogos).filter((f) => /^[a-z0-9-]+\.webp$/.test(f)).map((f) => f.slice(0, -5)) : [];
 
   // ── La coquille ─────────────────────────────────────────────────────────
   const fichierCoquille = path.join(dossier, 'app-shell.html');
@@ -778,6 +801,7 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
     for (const svg of h.match(/<svg\b[\s\S]*?<\/svg>/gi) ?? []) {
       if (COULEURS_PLATEFORMES.test(svg)) err(`${o} : SVG en ligne aux couleurs d'une plateforme — aucun logo de plateforme sur les pages`);
     }
+    for (const faute of logosPlateformesFautifs(h, idsLogos)) err(`${o} : ${faute}`);
 
     // Parité des balises communes avec l'app.
     if (blocsCoquille) {

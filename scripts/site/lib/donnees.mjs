@@ -64,11 +64,13 @@ export function lirePlateformes(racine) {
 
 /**
  * Tarifs (site/donnees/tarifs.yml). ⛔ Aucun chiffre de quota (décision de
- * Nico du 09/10) : un chiffre dans « pour », « communs » ou « mentions » fait
- * échouer le build — les prix, eux, sont des nombres. SAUF « inclus » (10/10,
- * Nico : « il faut les chiffres ») : les lignes des cartes portent les volumes
- * de l'app (annonces, republications, retouches par mois) ; site:verifier
- * refuse toujours un chiffre de quota HORS des cartes.
+ * Nico du 09/10) : un chiffre dans « pour », « inclus », « communs » ou
+ * « mentions » fait échouer le build — les prix, eux, sont des nombres.
+ * (09/11, maquette « tarifs à 3 jauges » validée par Nico) Les volumes des
+ * cartes (les trois carrés, la retouche IA, Lens du Business) sont LUS EN BASE
+ * au build (scripts/site/lib/grille.mjs) : un volume recopié ici avait dérivé
+ * (Business « 300 annonces », Pro « 5 000 republications »), il est refusé.
+ * site:verifier refuse toujours un chiffre de quota HORS des cartes.
  */
 export function lireTarifs(racine, langues) {
   const { donnees, err } = lireFichier(racine, 'tarifs.yml');
@@ -98,7 +100,7 @@ export function lireTarifs(racine, langues) {
     parLangue(p.cta, `${ou}.cta`, sansChiffre);
     parLangue(p.inclus, `${ou}.inclus`, (liste, o) => {
       if (!Array.isArray(liste) || !liste.length) throw err(`${o} : liste attendue`);
-      liste.forEach((x, j) => { if (typeof x !== 'string' || !x.trim()) throw err(`${o}[${j}] : texte attendu`); });
+      liste.forEach((x, j) => sansChiffre(x, `${o}[${j}]`));
     });
   }
   if (donnees.paliers.filter((p) => p.mis_en_avant).length > 1) throw err('un seul palier « mis_en_avant »');

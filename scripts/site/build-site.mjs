@@ -10,6 +10,8 @@ import { rendreMarkdown } from './lib/markdown.mjs';
 import { creerActifs, empreinteSource } from './lib/actifs.mjs';
 import { bundler, preparerCss, tailleGzip, BUDGET_SITE_JS_GZIP } from './lib/bundles.mjs';
 import { constantesSupabase } from './lib/constantes-app.mjs';
+import { lireGrilleEnBase } from './lib/grille.mjs';
+import { CLOUD_PRIX_AFFICHE, CLOUD_ESSAI_JOURS } from '../../src/utils/palier.js';
 import { empreinteContenu, lireVerrou, brancheCourante, dateValide } from './lib/dates.mjs';
 import { entreeOg, lireManifesteOg, DOSSIER_OG } from './lib/og.mjs';
 import { ORIGINE, esc, urlAbsolue, dateLisible, aujourdhuiParis, balisesOuvrantes } from './lib/html.mjs';
@@ -246,6 +248,15 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   const supabase = constantesSupabase(racine);
   const plateformes = lirePlateformes(racine);
   const tarifs = lireTarifs(racine, CODES_LANGUES);
+  // (09/11) La grille à 3 jauges des cartes de tarifs, LUE EN BASE (scripts/site/lib/grille.mjs) : au build du site
+  // seulement ; illisible ou interrupteur à 0 → cartes sans carrés, avertissement, jamais un chiffre recopié.
+  const grille = mode === 'build' ? await lireGrilleEnBase(supabase, { env }) : { K: null, source: 'absente', raison: `mode ${mode}` };
+  if (mode === 'build' && !grille.K) avertir(`grille à 3 jauges illisible en base (${grille.raison}) : cartes de tarifs SANS carrés ni volumes`);
+  // FillSell Cloud (FORMAT-CONTENU § 0) : prix et jours d'essai LUS dans l'app (src/utils/palier.js, la source de la
+  // feuille des offres) ; plateformes = celles où l'extension agit (mode « extension » de plateformes.yml) — eBay,
+  // relié par l'API, part déjà des serveurs sans l'option.
+  const prixCloud = Number(String(CLOUD_PRIX_AFFICHE).replace(/[^\d,]/g, '').replace(',', '.'));
+  if (!(prixCloud > 0) || !Number.isInteger(CLOUD_ESSAI_JOURS)) throw new Error(`[site] prix ou essai de FillSell Cloud illisibles dans src/utils/palier.js (${CLOUD_PRIX_AFFICHE}, ${CLOUD_ESSAI_JOURS})`);
   const concurrents = lireConcurrents(racine);
   if (!jetable && !existsSync(path.join(dossier, 'app-shell.html'))) {
     throw new Error('[site] app-shell.html absent : le plugin appShell doit copier la coquille AVANT le générateur (vite.config.js)');
@@ -356,6 +367,11 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
     balises,
     liensIcones,
     plateformes,
+    cloud: {
+      prix: prixCloud,
+      essaiJours: CLOUD_ESSAI_JOURS,
+      plateformes: plateformes.ouvertes.filter((p) => p.mode === 'extension').map((p) => p.nom),
+    },
     chemin: (id, lang) => (id === 'accueil' ? accueilDe(lang) : entreeGabarit(id, lang).chemin),
     nomCourt: (id, lang) => (id === 'accueil' ? TEXTES[lang].accueil : entreeGabarit(id, lang).nom),
     perimetre: (lang) => perimetres[lang],
@@ -420,6 +436,18 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   site.police = await actifs.publierFichier(path.join(racine, 'site', 'polices', 'space-grotesk-latin.woff2'));
   // Icône de la marque à la taille de l'en-tête (64 px pour 32 px affichés) : 3,5 Ko au lieu des 45 Ko d'icon-192x192.png.
   site.logo = await actifs.publierFichier(path.join(racine, 'site', 'medias', 'marque', 'fillsell-icone-64.png'));
+  // Logos des plateformes (09/11, maquette validée par Nico : l'icône devant le NOM, jamais à sa place) — les icônes
+  // des mails et de l'app (public/email/, src/utils/logosPlateformes.js) en WebP 96 px : site/medias/plateformes/<id>.webp.
+  // Une plateforme ouverte sans son fichier = build rouge.
+  site.logos = {};
+  for (const p of plateformes.ouvertes) {
+    const f = path.join(racine, 'site', 'medias', 'plateformes', `${p.id}.webp`);
+    if (!existsSync(f)) throw new Error(`[site] logo de ${p.nom} absent : site/medias/plateformes/${p.id}.webp`);
+    site.logos[p.nom] = await actifs.publierFichier(f);
+  }
+  // Icône de l'App Store devant « iPhone » (maquette du 08/11) : la pomme du badge officiel (site/medias/badges) sur
+  // fond noir, en fichier — 1 Ko de SVG en ligne répété à chaque « iPhone » pesait sur le budget HTML.
+  site.iconeAppStore = await actifs.publierFichier(path.join(racine, 'site', 'medias', 'stores', 'app-store.svg'));
   await actifs.publierFichier(path.join(racine, 'site', 'polices', 'OFL.txt')); // licence livrée avec la police (OFL 1.1, condition 2)
   // CSS : socle + modules ; chaque page ne met en ligne que ce qu'elle emploie
   // (site.cssPour(html), budget de 20 Ko PAR PAGE). Le module « bandeaux »
@@ -598,7 +626,10 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   const tarifsPour = (lang, avecLien) => {
     const communs = remplacerJetonsProfond(tarifs.communs, jetonsDe(lang, plateformes), 'site/donnees/tarifs.yml');
     const lienTarifs = avecLien ? entreeGabaritOuRien('tarifs', lang) : null;
-    return { ...tarifs, communs, lien: lienTarifs ? lienVers(lienTarifs, lang) : null };
+    // L'option FillSell Cloud sous les cartes renvoie à la section Cloud de l'accueil : ancre dans la page sur
+    // l'accueil (avecLien), l'accueil de la même langue ailleurs (page « tarifs »).
+    const lienCloud = `${avecLien ? '' : accueilDe(lang)}#cloud-titre`;
+    return { ...tarifs, communs, lien: lienTarifs ? lienVers(lienTarifs, lang) : null, grille: grille.K, lienCloud };
   };
 
   // Comparaisons (site/donnees/concurrents.yml) : une cellule par outil et par critère.

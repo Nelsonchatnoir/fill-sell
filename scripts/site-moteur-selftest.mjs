@@ -34,7 +34,11 @@
 //  21. tableaux Markdown : coin vide → en-têtes de ligne, région nommée par le
 //      titre ; <pre> focalisable (M-2, C-10) ;
 //  22. faits concurrents : la ligne FillSell perd le palier écrit à côté de la
-//      republication, les valeurs { fr, en } passent en traductions (C-8, C-11).
+//      republication, les valeurs { fr, en } passent en traductions (C-8, C-11) ;
+//  23. (09/11) grille à 3 jauges des cartes LUE EN BASE (scripts/site/lib/grille.mjs) :
+//      carrés et lignes chiffrées, interrupteur, base illisible = aucun carré ; cartes
+//      avec et sans grille, boîtes d'explication, section FillSell Cloud sans Android ;
+//  24. (09/11) logos des plateformes : devant leur nom (alt vide), jamais à sa place.
 import { readFileSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -45,7 +49,9 @@ import { texteBrut, texteComparable, contenuPrincipal, sansRegions, typographie 
 import { remplacerJetons, remplacerJetonsProfond, valeursJetons, lireTarifs } from './site/lib/donnees.mjs';
 import { validerFrontmatter } from './site/lib/contenu.mjs';
 import { lirePlateformes } from './site/lib/donnees.mjs';
-import { LEXIQUE_BANNI, REGLES_DECISION, CLOUD_ANDROID_OUVERT, REGLE_CLOUD_ANDROID, listeSansDepop, contrastePaire, couleurRgba } from './site/verify-site.mjs';
+import { LEXIQUE_BANNI, REGLES_DECISION, CLOUD_ANDROID_OUVERT, REGLE_CLOUD_ANDROID, listeSansDepop, contrastePaire, couleurRgba, logosPlateformesFautifs } from './site/verify-site.mjs';
+import { lireGrilleEnBase, jaugesDeCarte } from './site/lib/grille.mjs';
+import { cartesTarifs, blocCloud } from '../site/gabarits/blocs.mjs';
 import { importer as importerConcurrents } from './site/importer-concurrents.mjs';
 import { mkdirSync, writeFileSync as ecrire } from 'node:fs';
 import { dateValide, dateFuture, empreinteContenu } from './site/lib/dates.mjs';
@@ -284,19 +290,24 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   ok(pfInconnue && pfInconnue.includes("n'est pas une plateforme ouverte"), `plateforme inconnue refusée (${pfInconnue})`);
 }
 
-// ── 15. Tarifs : chiffres de quota dans les lignes des cartes SEULEMENT ─────
-// (10/10, Nico : les cartes portent les volumes de l'app ; « pour », « communs »
-// et « mentions » restent sans chiffre.)
+// ── 15. Tarifs : AUCUN chiffre de volume dans tarifs.yml ─────────────────────
+// (10/10, Nico : les cartes portent les volumes de l'app. 09/11, maquette « tarifs
+// à 3 jauges » validée par Nico : ces volumes sont LUS EN BASE au build —
+// scripts/site/lib/grille.mjs —, un volume recopié dans tarifs.yml avait dérivé :
+// il est refusé, « inclus » compris.)
 {
   const temp = mkdtempSync(path.join(tmpdir(), 'fs-tarifs-'));
   try {
     mkdirSync(path.join(temp, 'site', 'donnees'), { recursive: true });
     const vrai = readFileSync(path.join(racine, 'site', 'donnees', 'tarifs.yml'), 'utf8');
-    ok(!(await leve(() => lireTarifs(racine, ['fr', 'en']))), 'site/donnees/tarifs.yml accepté (chiffres des cartes compris)');
-    ok(/\d+ annonces créées et publiées/.test(vrai), 'les lignes des cartes portent le volume d\'annonces');
+    ok(!(await leve(() => lireTarifs(racine, ['fr', 'en']))), 'site/donnees/tarifs.yml accepté (aucun volume recopié)');
+    ok(!/^\s+- "[^"\n]*\d/m.test(vrai), 'aucune ligne de carte ne porte de chiffre (les volumes viennent de la base)');
     ecrire(path.join(temp, 'site', 'donnees', 'tarifs.yml'), vrai.replace('Pour vendre chaque semaine', '40 annonces par mois'));
     const e = await leve(() => lireTarifs(temp, ['fr', 'en']));
-    ok(e && e.includes('aucun chiffre de quota'), `chiffre de quota hors des lignes des cartes refusé (${e})`);
+    ok(e && e.includes('aucun chiffre de quota'), `chiffre de quota dans « pour » refusé (${e})`);
+    ecrire(path.join(temp, 'site', 'donnees', 'tarifs.yml'), vrai.replace('"Support prioritaire"', '"120 annonces créées et publiées par mois"'));
+    const e2 = await leve(() => lireTarifs(temp, ['fr', 'en']));
+    ok(e2 && e2.includes('aucun chiffre de quota'), `volume recopié dans « inclus » refusé (${e2})`);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
@@ -397,6 +408,71 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   ok(nous.criteres.import_synchro.valeur.includes('tous paliers'), 'ligne FillSell : un palier loin de la republication reste (synchronisation)');
   ok(autre.criteres.republication.valeur === 'automatique à partir de Pro', 'concurrent : son fait daté reste tel quel (data-tiers)');
   ok(autre.criteres.app_mobile.valeur === 'non — extension seulement' && autre.criteres.app_mobile.traductions?.valeur?.en === 'no — extension only' && autre.criteres.app_mobile.verdict === 'non', 'valeur { fr, en } : français en base, anglais en traductions, verdict lu en français');
+}
+
+// ── 23. Grille à 3 jauges des cartes, lue en base (09/11, maquette validée par Nico) ──
+{
+  // coin_config tel que la base le rend (0 = illimité), interrupteur à 1.
+  const K = { grille_trois_jauges: 1, jauge_annonces_free: 5, jauge_publications_free: 50, jauge_remontees_free: 30, quota_retouche_free: 0,
+    jauge_annonces_premium: 40, jauge_publications_premium: 400, jauge_remontees_premium: 1500, quota_retouche_premium: 5,
+    jauge_annonces_pro: 120, jauge_publications_pro: 1200, jauge_remontees_pro: 0, quota_retouche_pro: 20,
+    jauge_annonces_business: 0, jauge_publications_business: 0, jauge_remontees_business: 0, quota_retouche_business: 50, jauge_lens_business: 600 };
+  const pro = jaugesDeCarte(K, 'pro', 'fr');
+  const nbsp = (t) => t.replace(/[  ]/g, ' ');
+  ok(pro && pro.carres.map((c) => nbsp(c.valeur)).join('|') === '120|1 200|illimitées' && pro.carres.map((c) => c.mot).join('|') === 'annonces|publications|remontées',
+    `carrés du Pro lus dans K, 0 = « illimitées » (${pro?.carres.map((c) => c.valeur).join('|')})`);
+  ok(pro.carres[0].aria === "120 annonces — qu'est-ce que ça compte ?" && pro.carres[2].illimite, `nom accessible du carré = celui de l'app (${pro.carres[0].aria})`);
+  ok(pro.lignes.join('|') === 'Retouche IA : 20 annonces retouchées par mois', `ligne de retouche du Pro (${pro.lignes})`);
+  const business = jaugesDeCarte(K, 'business', 'en');
+  ok(business.lignes.length === 2 && /^Lens: 600 scans a month$/.test(nbsp(business.lignes[0])) && business.carres.every((c) => c.valeur === 'unlimited'),
+    `Business EN : Lens d'abord (ordre de la maquette), tout « unlimited » (${business.lignes.join(' | ')})`);
+  ok(jaugesDeCarte(K, 'gratuit', 'fr').lignes.length === 0, 'Gratuit : aucune retouche, aucune ligne chiffrée');
+  ok(jaugesDeCarte(null, 'pro', 'fr') === null, 'base illisible : aucune grille (la carte part sans carrés, jamais un repli recopié)');
+  const hors = await lireGrilleEnBase({ url: 'https://x.supabase.co', cle: 'k' }, { env: { FILLSELL_SITE_GRILLE_HORS_LIGNE: '1' } });
+  ok(hors.K === null, 'hors ligne : aucune requête, aucune grille');
+  const lignes = Object.entries(K).map(([key, value]) => ({ key, value }));
+  const reponse = (rows) => async () => ({ ok: true, status: 200, json: async () => rows });
+  const lue = await lireGrilleEnBase({ url: 'https://x.supabase.co', cle: 'k' }, { env: {}, fetcher: reponse(lignes) });
+  ok(lue.source === 'base' && lue.K.jauge_annonces_pro === 120, 'grille lue en base');
+  const coupee = await lireGrilleEnBase({ url: 'https://x.supabase.co', cle: 'k' }, { env: {}, fetcher: reponse(lignes.map((l) => (l.key === 'grille_trois_jauges' ? { ...l, value: 0 } : l))) });
+  ok(coupee.K === null && /interrupteur/.test(coupee.raison), `interrupteur à 0 en base : pas de carrés (le serveur décide, comme l'app) (${coupee.raison})`);
+  const trouee = await lireGrilleEnBase({ url: 'https://x.supabase.co', cle: 'k' }, { env: {}, fetcher: reponse(lignes.filter((l) => l.key !== 'jauge_annonces_pro')) });
+  ok(trouee.K === null && /jauge_annonces_pro/.test(trouee.raison), 'une clé de volume absente : aucune grille (jamais une grille à moitié vraie)');
+  const panne = await lireGrilleEnBase({ url: 'https://x.supabase.co', cle: 'k' }, { env: {}, essais: 2, fetcher: async () => ({ ok: false, status: 503 }) });
+  ok(panne.K === null && /503/.test(panne.raison), 'base en panne : aucune grille, la raison dite');
+
+  // Les blocs : cartes avec et sans grille, section FillSell Cloud.
+  const site = {
+    logos: { Vinted: '/assets/site/vinted.0123456789.webp', Leboncoin: '/assets/site/leboncoin.0123456789.webp', eBay: '/assets/site/ebay.0123456789.webp', Beebs: '/assets/site/beebs.0123456789.webp', Depop: '/assets/site/depop.0123456789.webp' },
+    iconeAppStore: '/assets/site/app-store.0123456789.svg',
+    cloud: { prix: 24.99, essaiJours: 7, plateformes: ['Vinted', 'Leboncoin', 'Beebs', 'Depop'] },
+  };
+  const tarifs = { ...lireTarifs(racine, ['fr', 'en']), communs: { fr: ['Publication sur Vinted, Leboncoin, eBay, Beebs et Depop'], en: ['Publishing on Vinted, Leboncoin, eBay, Beebs and Depop'] }, lien: null, lienCloud: '#cloud-titre' };
+  for (const lang of ['fr', 'en']) {
+    const avec = cartesTarifs(site, { lang, tarifs: { ...tarifs, grille: K } });
+    const sans = cartesTarifs(site, { lang, tarifs: { ...tarifs, grille: null } });
+    ok((avec.match(/class="carre[ "]/g) ?? []).length === 12 && (avec.match(/<dialog class="explication"/g) ?? []).length === 3, `${lang} : 12 carrés et 3 boîtes d'explication`);
+    ok(/popovertarget="explication-remontees" aria-haspopup="dialog"/.test(avec) && /role="dialog" popover aria-labelledby="explication-annonces-titre"/.test(avec), `${lang} : carré → sa boîte (popover sans JS), boîte nommée par son titre`);
+    ok(!/class="carre|<dialog/.test(sans) && !/\d+ (annonces|listings)/.test(texteBrut(sans)), `${lang} : sans grille, ni carré ni boîte ni volume`);
+    ok(!/\d/.test(texteBrut(sansRegions(avec, 'habillage')).replace(/(\d+[,.]\d{2}|\d+)\s?€|€\s?\d+[.,]?\d*|\d+-day|\d+ jours/g, '')), `${lang} : les chiffres de volume sont de l'habillage (hors empreinte des dates)`);
+    ok(logosPlateformesFautifs(avec, ['vinted', 'leboncoin', 'ebay', 'beebs', 'depop']).length === 0 && (avec.match(/class="logo-pf"/g) ?? []).length >= 6, `${lang} : logos devant leur nom (« dans tous les forfaits », exemples, option Cloud)`);
+    const cloud = blocCloud(site, { lang });
+    const texte = texteBrut(cloud);
+    ok(!REGLE_CLOUD_ANDROID.test(texte) && !/Android|Google Play/i.test(cloud), `${lang} : section FillSell Cloud sans Android ni Google Play`);
+    ok(texte.includes(lang === 'fr' ? '24,99' : '24.99') && (lang === 'fr' ? /7 jours/ : /7-day/).test(cloud) && /id="cloud-titre"/.test(cloud), `${lang} : prix et essai du Cloud écrits depuis l'app, ancre de l'option`);
+    ok(['Vinted', 'Leboncoin', 'Beebs', 'Depop'].every((n) => cloud.includes(`>${n}</span>`)) && !/>eBay<\/span><span class="etat/.test(cloud), `${lang} : les quatre plateformes du Cloud, eBay à part (API)`);
+    ok(logosPlateformesFautifs(cloud, ['vinted', 'leboncoin', 'ebay', 'beebs', 'depop']).length === 0, `${lang} : logos de la scène devant leur nom`);
+  }
+}
+
+// ── 24. Logos des plateformes : devant le nom, jamais à sa place (09/11) ──────
+{
+  const ids = ['vinted', 'ebay'];
+  ok(logosPlateformesFautifs('<span><img class="logo-pf" src="/assets/site/vinted.0123456789.webp" alt="" width="20" height="20">Vinted</span>', ids).length === 0, 'logo devant son nom, alt vide : permis');
+  ok(logosPlateformesFautifs('<img src="/assets/site/ebay.0123456789.webp" alt="" width="20" height="20"> eBay, une fois relié', ids).length === 0, 'eBay (casse du nom) : permis');
+  ok(logosPlateformesFautifs('<img src="/assets/site/vinted.0123456789.webp" alt="Vinted" width="20" height="20">Vinted', ids).length === 1, 'logo avec texte alternatif : refusé (le nom est écrit à côté)');
+  ok(logosPlateformesFautifs('<p>Publie sur <img src="/assets/site/vinted.0123456789.webp" alt="" width="20" height="20"> et le reste</p>', ids).length === 1, 'logo à la PLACE du nom : refusé');
+  ok(logosPlateformesFautifs('<img src="/assets/site/capture.0123456789.webp" alt="Vinted">', ids).length === 0, 'une capture n\'est pas un logo');
 }
 
 console.log(`selftest:site-moteur — ${passes} vérifications passées, ${echecs} échec(s)`);
