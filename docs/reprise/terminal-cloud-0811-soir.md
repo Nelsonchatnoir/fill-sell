@@ -25,9 +25,13 @@ en prod au moment d'écrire, sauf mention contraire.
    partielle, > 8 s, module absent), l'écran d'achat garde les prix de la 2.9.166, boutons actifs, essai décidé par le
    serveur ; Android inchangé. Preuves : `selftest:prix-boutique` vert ; rendu WebKit iPhone SE de la vraie feuille des
    offres en échec Apple (`scripts/apercu/offres-cloud.jsx?canal=apple-echec`) : 0 « … », 0 bouton inactif, l'achat
-   part, 0 erreur. **OTA pas encore envoyée** : `npm run ota` refuse un arbre sale — le terminal « Problèmes » a son lot
-   en cours dans le dossier partagé (il prévient quand c'est poussé) ; ensuite version 2.9.168, `npm run ota -- --essai`,
-   `npm run ota`, relecture du canal et de la compatibilité.
+   part, 0 erreur. **OTA PAS ENVOYÉE** (09/11 06:3x) : le terminal « Problèmes » a commité son lot (c837c27 code +
+   6523f0c docs, get-pending-jobs v354 et ebay-api-worker v121 déployés, migration 20261109010000 appliquée — relu dans
+   `functions list`) mais son `git push` a été REFUSÉ par le classifieur : `main` local a 2 commits d'avance qui ne sont
+   pas à moi. Toute OTA exige une version poussée (`npm run ota` : main = origin/main) — pousser emporterait SON travail :
+   je ne le fais pas. → Nico : `! git push origin main`, puis version 2.9.168 (package.json + lock), commit, push,
+   `npm run ota -- --essai`, `npm run ota`, relecture du canal et de la compatibilité (garde 8.51.2). Suite complète
+   relancée sur HEAD avec les deux lots (06:3x) : résultat ci-dessous.
 6. C1 « plus besoin d'ordinateur » : EN PROD WEB (2a84fa1, poussé avec 3ba9611 ; `build.json` = `2026-11-09T01:15:13Z+3ba9611`
    relu 02:15:27 ; le bundle servi porte « Plus besoin d'ordinateur », plus aucun « partent même ordinateur éteint ») ;
    iPhone : avec l'OTA 2.9.168. Partout dans les écrans Cloud : titre de la feuille
