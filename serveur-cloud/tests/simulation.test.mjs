@@ -462,7 +462,7 @@ test('(09/11) Leboncoin : aucune question du pays, aucun témoin posé', async (
 function brancherClient(s, plateforme = 'leboncoin') {
   const recus = [];
   const ws = { readyState: 1, bufferedAmount: 0, ecouteurs: {}, on(e, f) { this.ecouteurs[e] = f; },
-    send(d) { recus.push(typeof d === 'string' ? JSON.parse(d) : { binaire: d }); }, close() { this.readyState = 3; this.ecouteurs.close?.(); } };
+    send(d) { recus.push(typeof d === 'string' ? JSON.parse(d) : { binaire: d }); }, close(code) { if (this.readyState === 3) return; this.code = code ?? null; this.readyState = 3; this.ecouteurs.close?.(); } };
   s.connexions.brancher(ws, 'https://fillsell.app');
   const ticket = signerTicket({ user: U }, config.cleTickets);
   const dire = (m) => ws.ecouteurs.message(Buffer.from(JSON.stringify(m)), false);
@@ -553,6 +553,66 @@ test('(01/11) l\'app quittée pour lire un SMS : la page attend, et le même « 
   assert.equal(pages(), 2);
   assert.ok(fermetures() >= 1, 'la page Depop en attente est fermée');
   await c3.dire({ t: 'fermer' });
+});
+
+// (09/11/2026 soir, cliente d813639b — essai perdu) Ordinateur sur Leboncoin, téléphone sur Vinted : 15 connexions en 55 s,
+// Vinted ↔ Leboncoin toutes les 1 à 2 s (« remplacee » / reprise n = 1 à 6), puis « reprises épuisées ». Rejoué ici.
+test('(09/11 soir, d813639b) deux écrans : la page remplacée s’ARRÊTE (étape finale, 4409) et sa reprise automatique ne remplace jamais l’autre', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const ordi = brancherClient(s, 'leboncoin');
+  await ordi.ouvrir();
+  await attendre(20);
+  const tel = brancherClient(s, 'vinted');
+  await tel.ouvrir();                                // un TOUCHER sur le téléphone : il remplace (règle d'avant, gardée)
+  await attendre(20);
+  assert.ok(ordi.etapes().includes('remplacee'), 'l’ordinateur apprend que sa page est remplacée');
+  assert.equal(ordi.etapes().filter((e) => e === 'remplacee' || e === 'expire').length, 2, '« remplacee », puis « expire » : une fin aussi pour les apps d’avant');
+  assert.match(ordi.recus.find((m) => m.etape === 'remplacee').message, /une seule à la fois/);
+  assert.equal(ordi.ws.code, 4409, 'fermée en 4409 (jamais 1000, que l’app d’avant prenait pour une coupure)');
+  assert.ok(tel.etapes().includes('pret'), 'le téléphone a sa page');
+  assert.deepEqual(s.base.t.cloud_connexions.map((l) => [l.plateforme, l.statut, l.raison ?? null]), [['leboncoin', 'abandonnee', 'remplacee'], ['vinted', 'ouverte', null]]);
+  // La page de l'ordinateur tente une REPRISE AUTOMATIQUE (réseau revenu, app d'avant) : refusée, le téléphone garde la sienne.
+  const reprise = brancherClient(s, 'leboncoin');
+  await reprise.ouvrir({ reprise: true });
+  await attendre(20);
+  assert.ok(reprise.etapes().includes('remplacee') && reprise.ws.code === 4409, 'la reprise automatique est refusée et dite');
+  assert.equal(tel.ws.readyState, 1, 'la page du téléphone reste ouverte');
+  assert.ok(!tel.etapes().includes('remplacee'), 'aucune bascule sous les yeux de la personne');
+  assert.equal(s.base.t.cloud_connexions.length, 2, 'aucune connexion de plus au journal (avant : une par reprise, 15 en 55 s)');
+  assert.ok(s.connexions.connexionsOuvertes().has(U));
+  // Un TOUCHER de la personne sur l'ordinateur (pas une reprise) : il remplace, et c'est le téléphone qui s'arrête.
+  const toucher = brancherClient(s, 'leboncoin');
+  await toucher.ouvrir();
+  await attendre(20);
+  assert.ok(tel.etapes().includes('remplacee') && tel.ws.code === 4409, 'le téléphone s’arrête, sans reprise');
+  assert.ok(toucher.etapes().includes('pret'));
+  await toucher.dire({ t: 'fermer' });
+});
+
+test('(09/11 soir, d813639b) même plateforme sur deux écrans : la page passe à celui qui la rouvre, l’autre s’ARRÊTE (jamais de reprise croisée)', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const a = brancherClient(s, 'vinted');
+  await a.ouvrir();
+  await attendre(20);
+  const pages = () => s.nav.cdp.envoyes.filter((e) => e.methode === 'Target.createTarget').length;
+  const b = brancherClient(s, 'vinted');
+  await b.ouvrir({ reprise: true });                 // l'app revenue devant (SMS lu) : sa page l'attendait — reprise permise
+  await attendre(20);
+  assert.equal(pages(), 1, 'la même page, reprise telle quelle');
+  assert.ok(b.recus.some((m) => m.etape === 'pret' && /restée ouverte/.test(m.message)));
+  assert.ok(a.etapes().includes('remplacee') && a.ws.code === 4409, 'l’écran qui la montrait s’arrête (étape finale), il ne la reprend pas');
+  await b.dire({ t: 'fermer' });
+});
+
+test('(09/11 soir) un redémarrage du serveur ferme en 1012 : une coupure, la page se reprend (comme avant)', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const c = brancherClient(s, 'vinted');
+  await c.ouvrir();
+  await attendre(20);
+  s.connexions.fermerTout();
+  await attendre(10);
+  assert.equal(c.ws.code, 1012);
+  assert.ok(!c.etapes().includes('remplacee'));
 });
 
 test('(01/11) fermée sans connexion vérifiée : la demi-session part du profil (sauf l\'appareil DataDome)', async () => {

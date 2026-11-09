@@ -65,6 +65,8 @@ const FR = {
   ebayTexteRelie: 'FillSell publie sur eBay par sa connexion officielle : rien à connecter ici.',
   // (01/11) La connexion avec la page coupée trop de fois (réseau) : la page se rouvre à la main.
   coupee: "La connexion avec ta page s'est coupée. Rouvre « Me connecter » pour reprendre.",
+  // (09/11 soir) Une autre page de connexion du compte s'est ouverte (autre appareil, autre onglet) : celle-ci s'arrête.
+  remplacee: "Une autre page de connexion FillSell Cloud s'est ouverte (sur cet appareil ou un autre) : celle-ci s'arrête, une seule à la fois. Pour continuer ici, ferme puis rouvre la plateforme.",
   ecrire: '⌨︎ Écrire',
   fini: "J'ai fini",
   fermer: 'Fermer',
@@ -160,6 +162,7 @@ const EN = {
   ebayRelie: 'Linked through the eBay API',
   ebayTexteRelie: 'FillSell lists on eBay through its official connection: nothing to connect here.',
   coupee: 'The connection to your page dropped. Open "Sign in" again to pick up where you left off.',
+  remplacee: 'Another FillSell Cloud sign-in page opened (on this device or another): this one stops, only one at a time. To continue here, close and open the platform again.',
   ecrire: '⌨︎ Type',
   fini: "I'm done",
   fermer: 'Close',

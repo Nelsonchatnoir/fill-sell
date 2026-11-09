@@ -8,7 +8,8 @@
 // navigation libre (c'est le serveur qui refuse tout le reste).
 // Les doigts deviennent des gestes, le clavier du téléphone du texte.
 //
-// ouvrirConnexion({ url, jeton | ticket, plateforme, conteneur, lang, surEtat, mode })
+// ouvrirConnexion({ url, jeton | ticket, plateforme, conteneur, lang, surEtat, mode, reprise })
+//   (09/11 soir) surEtat('ferme', '', { code }) : le code de fermeture (repriseApresFermeture) ; reprise : reprise automatique.
 //   (02/11) mode 'resoudre' : « Résoudre la vérification » — la page du navigateur Cloud où la glissière s'affiche.
 //   → { fermer(), ecrire(), termine(), refuserCookies() }
 // surEtat(etape, message) : 'demarrage' | 'pret' | 'info' | 'connecte' | 'refuse' |
@@ -67,7 +68,20 @@ export function sourceZoom(zone, page, img) {
   return { sx: zone.x * fx, sy: zone.y * fy, sl: zone.l * fx, sh: zone.h * fy };
 }
 
-export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, conteneur, lang = 'fr', surEtat = () => {}, mode = null }) {
+// ── (09/11/2026 soir, cliente d813639b — essai perdu) UNE SEULE PAGE DE CONNEXION À LA FOIS ─────────────────────────
+// Son ordinateur montrait Leboncoin, son téléphone ouvrit Vinted : le serveur ferma Leboncoin (une page par compte), la
+// page de l'ordinateur se REPRIT toute seule (sa fermeture passait pour une coupure), remplaça Vinted, qui se reprit à son
+// tour… 15 connexions en 55 s, Vinted ↔ Leboncoin toutes les 1 à 2 s, jusqu'à « reprises épuisées ».
+// Règle : une page que le serveur ferme EXPRÈS — remplacée par une autre page (autre appareil, autre onglet) : 4409, ou
+// 1000 sans étape finale (serveur d'avant ce correctif) — ne se rouvre JAMAIS toute seule. Seule une COUPURE se reprend
+// (réseau, app passée en arrière-plan : 1006, 1001 ; redémarrage du serveur : 1012).
+export const FERMETURES_VOULUES = Object.freeze([1000, 4409]);
+/** (pure) La page fermée avec ce code se reprend-elle toute seule ? */
+export const repriseApresFermeture = (code) => !FERMETURES_VOULUES.includes(Number(code));
+
+// `reprise` : cette ouverture est une REPRISE AUTOMATIQUE (pas un toucher de la personne) — le serveur ne la laisse jamais
+// remplacer une autre page de connexion ouverte (connexion.js, brancher).
+export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, conteneur, lang = 'fr', surEtat = () => {}, mode = null, reprise = false }) {
   const doc = conteneur.ownerDocument;
   const largeur = Math.max(280, Math.min(540, Math.round(conteneur.clientWidth)));
   const hauteur = Math.max(420, Math.min(1000, Math.round(conteneur.clientHeight)));
@@ -101,7 +115,7 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
   const envoyer = (o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 
   // (04/11, Beebs) `zoom: true` : cette app sait n'afficher que la zone de la glissière (le serveur ne zoome que pour elle).
-  ws.addEventListener('open', () => envoyer({ t: 'ouvrir', jeton, ticket, plateforme, largeur, hauteur, dpr, lang, zoom: true, ...(mode === 'resoudre' ? { mode } : {}) }));
+  ws.addEventListener('open', () => envoyer({ t: 'ouvrir', jeton, ticket, plateforme, largeur, hauteur, dpr, lang, zoom: true, ...(mode === 'resoudre' ? { mode } : {}), ...(reprise ? { reprise: true } : {}) }));
   // La dernière image est gardée : un changement de zoom la redessine aussitôt (une page immobile n'en envoie pas d'autre).
   let derniere = null, zoom = null;
   const dessiner = () => {
@@ -129,7 +143,8 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
     } catch { /* image abîmée : la suivante viendra */ }
     envoyer({ t: 'ack' });
   });
-  ws.addEventListener('close', () => { derniere?.close?.(); derniere = null; if (!ferme) { ferme = true; surEtat('ferme', ''); } });
+  // (09/11 soir) Le code de fermeture part avec « ferme » : l'écran sait si c'est une coupure (reprise) ou une page remplacée.
+  ws.addEventListener('close', (ev) => { derniere?.close?.(); derniere = null; if (!ferme) { ferme = true; surEtat('ferme', '', { code: ev?.code ?? null }); } });
 
   // ── Les doigts → des gestes (un seul doigt ; deux doigts = rien : jamais de zoom)
   const point = (t) => { const r = toile.getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; };

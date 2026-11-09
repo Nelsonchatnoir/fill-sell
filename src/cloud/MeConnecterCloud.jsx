@@ -40,7 +40,7 @@ async function domaineCloudDuCompte() {
   } catch { /* illisible : aucune adresse */ }
   return null;
 }
-import { ouvrirConnexion } from './connexion/clientConnexion';
+import { ouvrirConnexion, repriseApresFermeture } from './connexion/clientConnexion';
 import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 import { textesConnexion } from './textesConnexion';
 import { C, BLANC, MENTHE, DEGRADE_TEAL, POLICE } from './theme';
@@ -50,7 +50,9 @@ import { etatConnexion, phraseExecutant, executantArrete, quandParis, verificati
 // (01/11) « ferme » n'est plus une fin : la connexion coupée sans « Fermer » (app quittée pour lire un SMS ou un
 // courriel) reprend au retour, sur la MÊME page (le serveur l'a gardée, connexion.js REPRISE_MS).
 // (02/11) « Résoudre la vérification » : ses fins à elle (résolue, revenue, rien à glisser, session fermée, rien à résoudre).
-const ETAPES_FINALES = ['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur', 'resolu', 'revenue', 'restreint', 'session_fermee', 'rien'];
+// (09/11/2026 soir, cliente d813639b) 'remplacee' : une autre page de connexion du compte s'est ouverte (autre appareil,
+// autre onglet) — cette page s'arrête et ne se rouvre JAMAIS toute seule (clientConnexion.js, FERMETURES_VOULUES).
+const ETAPES_FINALES = ['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur', 'resolu', 'revenue', 'restreint', 'session_fermee', 'rien', 'remplacee'];
 export const REPRISES_MAX = 6;
 
 // (02/11) `verif` : la plateforme attend une vérification du navigateur Cloud ('a_resoudre' : le bouton « Résoudre la
@@ -118,11 +120,19 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
       if (mort || !conteneur.current) return;
       if (!domaine) { if (!finale) reprendre(); return; }
       session.current = ouvrirConnexion({
-        url: `wss://${domaine}/connexion/ws`, jeton: s?.access_token ?? null, plateforme, conteneur: conteneur.current, lang, mode,
-        surEtat: (etape, m) => {
+        // (09/11 soir) `reprise` : une reprise automatique ne remplace jamais une autre page ouverte (le serveur la refuse).
+        url: `wss://${domaine}/connexion/ws`, jeton: s?.access_token ?? null, plateforme, conteneur: conteneur.current, lang, mode, reprise: reprises > 0,
+        surEtat: (etape, m, info) => {
           if (etape === 'clavier') { setClavier(m === true); return; }
           if (etape === 'cookies') { setCookies(m === true); return; }
-          if (etape === 'ferme') { if (!finale && !mort) reprendre(); return; }
+          if (etape === 'ferme') {
+            if (finale || mort) return;
+            // (09/11 soir, cliente d813639b) Fermée EXPRÈS par le serveur (une autre page l'a remplacée) : jamais reprise
+            // toute seule — sa reprise remplaçait l'autre page, qui se reprenait à son tour (Vinted ↔ Leboncoin).
+            if (!repriseApresFermeture(info?.code)) { finale = true; setFinie(true); setMessage(T.remplacee); fin('remplacee', `code_${info?.code}`); return; }
+            reprendre();
+            return;
+          }
           if (m) setMessage(m);
           if (etape === 'verifie' && !verifieeRef.current) {
             verifieeRef.current = true;
@@ -161,7 +171,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
     tracerCloud(userId, 'cloud_connexion_ouverte', { plateforme, ...(resoudre ? { mode: 'resoudre' } : {}) });
     ouvrir().catch((e) => fin('erreur_client', e?.message ?? e));
     return () => { mort = true; arreterAttente?.(); session.current?.fermer(); };
-  }, [userId, plateforme, lang, onFermer, T.coupee, mode, resoudre]);
+  }, [userId, plateforme, lang, onFermer, T.coupee, T.remplacee, mode, resoudre]);
 
   return (
     <div role="dialog" aria-modal="true" aria-label={`${T.titre} — ${nom}`} style={{

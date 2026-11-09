@@ -115,6 +115,29 @@ const ACTIF_EDITABLE = `(() => { const e = document.activeElement; if (!e) retur
   if (t === 'INPUT') return !/^(button|submit|checkbox|radio|file|image|reset|range|color|hidden)$/i.test(e.type || 'text');
   return t === 'IFRAME'; })()`;
 
+// ── (09/11/2026 soir, cliente d813639b — essai perdu) UNE SEULE CONNEXION À LA FOIS, JAMAIS DE BASCULE AUTOMATIQUE ─────
+// Son ordinateur montrait Leboncoin, son téléphone ouvrit Vinted : la page de Leboncoin, fermée « remplacee » (code 1000,
+// sans étape finale), se crut coupée et se REPRIT toute seule ; sa reprise remplaça Vinted, qui se reprit à son tour…
+// 15 connexions en 55 s (22:13:05 → 22:14:00), Vinted ↔ Leboncoin toutes les 1 à 2 s, sous ses yeux, puis « reprises
+// épuisées » ; elle arrêta l'essai à 22:14. Règle :
+//   · une page REMPLACÉE (un toucher sur un autre écran, ou la même page reprise ailleurs) l'apprend par une étape FINALE
+//     (« remplacee », puis « expire » pour les apps d'avant ce correctif, pour qui « expire » est déjà une fin) et un code
+//     4409 : elle s'arrête, jamais de reprise ;
+//   · une REPRISE AUTOMATIQUE ({ reprise: true }) ne remplace JAMAIS une autre page ouverte : refusée, l'autre reste ;
+//   · seul un toucher de la personne remplace une page ouverte ; un redémarrage du serveur ferme en 1012 (coupure : la
+//     page se reprend, comme avant).
+export const CODE_REMPLACEE = 4409;
+export const CODE_REDEMARRAGE = 1012;
+/** Dit à une page (son canal { ws, envoyer }) qu'elle est remplacée, puis la ferme. Ne lève jamais. */
+export function signifierRemplacee(c, t) {
+  if (!c?.ws) return;
+  try {
+    c.envoyer({ t: 'etat', etape: 'remplacee', message: t.remplacee });
+    c.envoyer({ t: 'etat', etape: 'expire', message: t.remplacee });
+    if (c.ws.readyState === 1) c.ws.close(CODE_REMPLACEE, 'remplacee');
+  } catch { /* déjà fermée */ }
+}
+
 const borne = (v, a, b) => Math.min(b, Math.max(a, Number(v) || 0));
 const hoteDe = (u) => { try { return new URL(String(u)).hostname.toLowerCase(); } catch { return ''; } };
 
@@ -137,6 +160,8 @@ export const MESSAGES = Object.freeze({
     refuse: (nom) => `Ce compte ${nom} a déjà servi à un essai gratuit. L'essai s'arrête ; tu peux reprendre FillSell Cloud sans essai.`,
     inactif: 'FillSell Cloud n\'est pas actif sur ce compte.',
     occupe: 'Une autre connexion est déjà ouverte : elle vient d\'être fermée.',
+    // (09/11 soir, cliente d813639b) La page remplacée par une autre (autre appareil, autre onglet) : elle s'arrête.
+    remplacee: 'Une autre page de connexion FillSell Cloud s\'est ouverte (sur cet appareil ou un autre) : celle-ci s\'arrête, une seule à la fois. Pour continuer ici, ferme puis rouvre la plateforme.',
     expire: 'Fermé après un moment sans geste. Rouvre « Me connecter » quand tu veux.',
     erreur: 'La page de connexion ne répond pas. Réessaie dans un instant.',
     non_autorise: 'Reconnecte-toi à FillSell, puis réessaie.',
@@ -167,6 +192,7 @@ export const MESSAGES = Object.freeze({
     refuse: (nom) => `This ${nom} account was already used for a free trial. The trial stops; you can take FillSell Cloud without a trial.`,
     inactif: 'FillSell Cloud isn\'t active on this account.',
     occupe: 'Another sign-in was open: it has just been closed.',
+    remplacee: 'Another FillSell Cloud sign-in page opened (on this device or another): this one stops, only one at a time. To continue here, close and open the platform again.',
     expire: 'Closed after a while without activity. Open "Sign in" again whenever you like.',
     erreur: 'The sign-in page isn\'t responding. Try again in a moment.',
     non_autorise: 'Sign in to FillSell again, then retry.',
@@ -245,6 +271,14 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           if (ancienne?.reprenable(m.plateforme, mode)) {
             vue = ancienne;
             await vue.reprendre({ ws, envoyer, lang, ...dims, zoom: m.zoom === true });
+            return;
+          }
+          // (09/11 soir, cliente d813639b) Une REPRISE AUTOMATIQUE ne remplace jamais une autre page ouverte : refusée,
+          // dite « remplacee » à la page qui revient ; l'autre reste. Seul un toucher de la personne remplace.
+          // (La même plateforme dont la page n'est pas encore prête n'est pas une bascule : elle repart, comme avant.)
+          if (ancienne && m.reprise === true && !ancienne.memePage(m.plateforme, mode)) {
+            journal.info('connexion_reprise_refusee', { user, plateforme: m.plateforme, ouverte: ancienne.plateforme });
+            signifierRemplacee({ ws, envoyer }, txt);
             return;
           }
           if (ancienne) { ancienne.fermer('remplacee'); envoyer({ t: 'etat', etape: 'info', message: txt.occupe }); }
@@ -1070,12 +1104,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     }
 
     /** (01/11) Le même « Me connecter » rouvert pendant l'attente (ou pendant qu'il tourne : un autre écran) : il reprend. */
-    const reprenable = (p, md = 'connexion') => !finie && p === plateforme && (md === 'resoudre') === resoudre && Boolean(cible);
+    const memePage = (p, md = 'connexion') => p === plateforme && (md === 'resoudre') === resoudre;
+    const reprenable = (p, md = 'connexion') => !finie && memePage(p, md) && Boolean(cible);
     async function reprendre({ ws: w, envoyer: e, lang: l, largeur: lg, hauteur: ht, dpr: d, zoom: zoomApp = false }) {
       clearTimeout(attenteRetour); attenteRetour = null;
-      const ancien = canal?.ws;
+      // (09/11 soir) L'écran qui la montrait encore l'apprend par une étape FINALE (jamais de reprise de sa part : sinon
+      // les deux écrans se la reprenaient l'un à l'autre).
+      const ancien = canal;
       canal = { ws: w, envoyer: e };
-      if (ancien && ancien !== w) { try { ancien.close(4409, 'repris ailleurs'); } catch { /* déjà fermé */ } }
+      if (ancien?.ws && ancien.ws !== w) signifierRemplacee(ancien, txt);
       txt = MESSAGES[l === 'en' ? 'en' : 'fr'];
       dernierGeste = Date.now();
       enVol = 0; enAttente = null;
@@ -1134,12 +1171,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           .catch((e) => journal.alerte('verrou_retour_echec', { user, plateforme, erreur: e.message }));
       }
       journal.info('connexion_fermee', { user, plateforme, raison, connectee, duree_s: Math.round((Date.now() - debut) / 1000) });
-      const w = canal?.ws;
+      const c = canal;
       canal = null;
-      try { if (w?.readyState === 1) w.close(1000); } catch { /* déjà fermé */ }
+      // (09/11 soir) Remplacée : l'écran l'apprend (étape finale, 4409) et ne se reprend pas. Redémarrage du serveur :
+      // 1012, une coupure (l'écran se reprend). Le reste : 1000, après l'étape finale déjà dite.
+      if (raison === 'remplacee') signifierRemplacee(c, txt);
+      else try { if (c?.ws?.readyState === 1) c.ws.close(raison === 'arret_serveur' ? CODE_REDEMARRAGE : 1000); } catch { /* déjà fermé */ }
     }
 
-    const vue = { demarrer, geste, fermer, clientParti, reprenable, reprendre, user };
+    const vue = { demarrer, geste, fermer, clientParti, reprenable, memePage, reprendre, user, plateforme };
     return vue;
   }
 

@@ -82,7 +82,20 @@ ok(/addEventListener\('input', \(e\) => \{ if \(!compose && !e\.isComposing\) ra
 
 console.log('\n6. La page survit à l\'app quittée (lire un SMS, un courriel) et reprend au retour');
 ok(!/ETAPES_FINALES = \[[^\]]*'ferme'/.test(me), '« ferme » n\'est plus une fin');
-ok(/if \(etape === 'ferme'\) \{ if \(!finale && !mort\) reprendre\(\); return; \}/.test(me) && /visibilitychange/.test(me) && /REPRISES_MAX/.test(me), 'connexion coupée sans « Fermer » : reprise quand l\'app revient devant, bornée');
+ok(/if \(etape === 'ferme'\) \{\s*if \(finale \|\| mort\) return;[\s\S]{0,900}?reprendre\(\);\s*return;\s*\}/.test(me) && /visibilitychange/.test(me) && /REPRISES_MAX/.test(me), 'connexion coupée sans « Fermer » : reprise quand l\'app revient devant, bornée');
+
+// ── (09/11/2026 soir, cliente d813639b — essai perdu) ─────────────────────────────────────────────────────────────
+console.log('\n6 bis. Une seule page de connexion à la fois : la page REMPLACÉE ne se reprend jamais toute seule');
+// Ordinateur sur Leboncoin, téléphone sur Vinted : la page fermée « remplacee » (1000) se reprenait, remplaçait l'autre,
+// qui se reprenait… 15 connexions en 55 s. Seule une COUPURE se reprend.
+for (const code of [1006, 1001, 1012, null, undefined]) ok(client.repriseApresFermeture(code) === true, `fermeture ${code} = coupure : reprise`);
+for (const code of [1000, 4409]) ok(client.repriseApresFermeture(code) === false, `fermeture ${code} = voulue par le serveur (page remplacée) : jamais de reprise`);
+ok(/surEtat\('ferme', '', \{ code: ev\?\.code \?\? null \}\)/.test(cli), 'le code de fermeture part avec « ferme »');
+ok(/if \(!repriseApresFermeture\(info\?\.code\)\) \{ finale = true; setFinie\(true\); setMessage\(T\.remplacee\); fin\('remplacee'/.test(me), 'page remplacée : fin dite (« remplacee »), aucune reprise');
+ok(/ETAPES_FINALES = \[[^\]]*'remplacee'/.test(me), 'l’étape « remplacee » du serveur est une fin');
+ok(/reprise: reprises > 0/.test(me) && /\.\.\.\(reprise \? \{ reprise: true \} : \{\}\)/.test(cli), 'une reprise automatique se dit au serveur (qui ne la laisse jamais remplacer une autre page)');
+const textes = await import('../src/cloud/textesConnexion.js');
+for (const l of ['fr', 'en']) ok(/une seule à la fois|only one at a time/.test(textes.textesConnexion(l).remplacee ?? ''), `message « remplacée » (${l})`);
 for (const trace of ['cloud_connexion_reprise', 'cloud_connexion_verifiee']) ok(me.includes(`'${trace}'`), `trace « ${trace} »`);
 ok(/etape === 'verifie'/.test(me) && /onFermer\(verifieeRef\.current\)/.test(me), '« vérifié » : la page reste ; « Fermer » relit la liste quand le compte a été vérifié');
 

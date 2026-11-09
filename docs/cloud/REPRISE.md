@@ -1,5 +1,14 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 09/11/2026 soir — URGENT : « Me connecter » Vinted ↔ Leboncoin en boucle entre deux écrans (essai perdu, d813639b)
+- Rapport : `docs/enquetes/cloud-bascule-connexions-0911/RAPPORT.md`. Cause prouvée : PC sur Leboncoin + téléphone sur
+  Vinted ; la page remplacée (code 1000, sans étape finale) se reprenait toute seule et remplaçait l'autre : 15 connexions
+  en 55 s, puis « reprises épuisées » ; l'essai arrêté par la cliente 22:14:38.
+- Règle (serveur + app) : une page remplacée reçoit une étape FINALE (`remplacee`, + `expire` pour les apps d'avant) et le
+  code 4409, jamais de reprise ; une reprise automatique (`reprise: true`) ne remplace jamais une autre page ; seul un
+  toucher remplace ; arrêt du serveur = 1012 (la page se reprend). App : seule une coupure (1006, 1001, 1012) se reprend.
+- Question du pays (correctif « France ») : rien ne prouve son retour (0 refus, 0 `choix_pays_echec` aux 3 ouvertures).
+
 ## 08/11/2026 soir — REFUS GOOGLE DE LA VC36 (« Currency differences with prominent display price ») → vc37
 - **Cause confirmée** (Play Console › Conformité aux règles, preuve « Expérience dans l'application ») : nos écrans
   d'offres en « €12.99 / €29.99 / €59.99 » à côté de la feuille Google Play dans la monnaie du testeur (hors euro). L'app
