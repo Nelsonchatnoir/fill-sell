@@ -13,7 +13,7 @@ points_cles:
   - "Sur Vinted France (vinted.fr), l'extension Chrome FillSell publie, relit, republie et retire tes annonces dans ta session, une à une, à un rythme humain."
   - "Un appui sur « Synchroniser » importe tes annonces Vinted déjà en ligne dans ton stock FillSell, gratuitement et sans limite, sans rien publier ni modifier."
   - "Quand Vinted marque un article vendu, FillSell enregistre la vente tout seul ; les copies prouvées sont retirées de tes autres plateformes et, au moindre doute, l'app demande « Déjà vendu ? »."
-  - "Selon ta formule, la republication automatique remonte tes annonces sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé."
+  - "Selon ta formule, la republication automatique remonte tes annonces sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur."
   - "FillSell ne demande jamais ton mot de passe Vinted : tu te connectes à Vinted dans Chrome comme d'habitude, l'extension travaille dans cette session."
 hero_media: "captures/publication-verification-annonces.png"
 hero_alt: "Étape 2 sur 3 de la publication, « Ce qui va partir » : une carte par plateforme, chacune avec son rayon, son état, son prix de 14 € et la mention « Prêt » — Vinted (Hommes › … › T-shirts), Leboncoin (Mode › Vêtements), Beebs (Mode › … › T-shirts), eBay (Vêtements, accessoires › … › T-shirts) et Depop (Homme › … › T-shirts, sans titre : chez Depop, la description fait l'annonce)."
@@ -97,7 +97,7 @@ Republier, c'est retirer l'annonce puis la remettre en ligne. Soyons clairs : ce
 Deux façons de faire :
 
 - **D'un appui.** Tu choisis une annonce, tu appuies, ton ordinateur la republie ; plusieurs d'un coup selon ta formule, et il les republie une à une.
-- **En automatique, selon ta formule.** Tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'âge à partir duquel une annonce remonte, jamais moins d'une semaine. Ordinateur allumé, Chrome ouvert, et toi, tu fais autre chose.
+- **En automatique, selon ta formule.** Tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'âge à partir duquel une annonce remonte, jamais moins d'une semaine. Ordinateur allumé, Chrome ouvert (ou, avec l'option FillSell Cloud, sans ordinateur), et toi, tu fais autre chose.
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -115,7 +115,7 @@ Dans l'autre sens, ton annonce Vinted tombe aussi. Vendu sur eBay ? La vente s'e
 
 ![La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».](media:captures/vente-deja-vendu-question.png)
 
-Et derrière ? La vente atterrit dans ton onglet Ventes, marge calculée toute seule ; un article dont tu ne connais pas le prix d'achat est écarté du calcul plutôt que compté comme gratuit. Quand FillSell enregistre une vente sur Vinted, tu reçois un e-mail. Pour repérer tes ventes Vinted et retirer tes annonces, ton ordinateur doit être allumé avec Chrome ouvert. Le parcours complet : [ventes et retraits des copies](page:fonctions/ventes-et-retraits).
+Et derrière ? La vente atterrit dans ton onglet Ventes, marge calculée toute seule ; un article dont tu ne connais pas le prix d'achat est écarté du calcul plutôt que compté comme gratuit. Quand FillSell enregistre une vente sur Vinted, tu reçois un e-mail. Pour repérer tes ventes Vinted et retirer tes annonces, ton ordinateur doit être allumé avec Chrome ouvert ; avec l'option FillSell Cloud, les serveurs de FillSell s'en chargent, ordinateur éteint. Le parcours complet : [ventes et retraits des copies](page:fonctions/ventes-et-retraits).
 
 ## Ta session Vinted, jamais ton mot de passe
 
@@ -148,7 +148,7 @@ Non, jamais. Tu te connectes à Vinted dans Chrome comme d'habitude, et l'extens
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Pour Vinted, oui : publier, republier, retirer une annonce et repérer une vente demandent l'ordinateur allumé, Chrome ouvert et ta session Vinted active. Tant qu'il reste des annonces en file, l'extension empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome.
+Pour Vinted, oui, sans l'option FillSell Cloud : publier, republier, retirer une annonce et repérer une vente demandent l'ordinateur allumé, Chrome ouvert et ta session Vinted active. Tant qu'il reste des annonces en file, l'extension empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur : elle publie, republie et retire tes annonces Vinted depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Comment remonter une annonce Vinted avec FillSell ?
 

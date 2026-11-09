@@ -118,7 +118,7 @@ Plusieurs applis ouvertes et un tableur tenu à la main : c'est là que naissent
 
 Deux acheteurs paient le même article sur deux plateformes : l'une des ventes doit être annulée, avec un remboursement et un acheteur déçu. Les délais ne laissent pas de marge : sur Vinted, 5 jours ouvrés pour expédier, sinon la commande est annulée ; sur Leboncoin, 48 heures pour confirmer que l'article est disponible ; sur Beebs, 48 heures pour valider la commande. Depop est clair : si ton article se vend chez lui et ailleurs, la responsabilité est la tienne, remboursement compris.
 
-**Ce que fait FillSell :** vendu ici, retiré là-bas. FillSell repère tes ventes, et une fois la vente enregistrée, les autres annonces de l'article sont retirées sur {{plateformes}}. Au moindre doute, il te demande « Déjà vendu ? » au lieu de deviner. Aucun délai n'est promis : garde ton ordinateur allumé avec Chrome ouvert, c'est lui qui fait les retraits (sauf sur eBay quand ton compte est relié). La méthode complète : [éviter la double vente](page:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
+**Ce que fait FillSell :** vendu ici, retiré là-bas. FillSell repère tes ventes, et une fois la vente enregistrée, les autres annonces de l'article sont retirées sur {{plateformes}}. Au moindre doute, il te demande « Déjà vendu ? » au lieu de deviner. Aucun délai n'est promis : sans l'option FillSell Cloud, garde ton ordinateur allumé avec Chrome ouvert, c'est lui qui fait les retraits (sauf sur eBay quand ton compte est relié). La méthode complète : [éviter la double vente](page:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
 
 ![La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».](media:captures/vente-deja-vendu-question.png)
 
@@ -192,7 +192,7 @@ Le crosslisting se vit en duos. Nos guides, trajet par trajet, dans les deux sen
 
 ### Ton téléphone pilote, ton ordinateur exécute
 
-Tu sources en vide-grenier ou en friperie ? Photo, annonce, choix des plateformes, suivi des ventes : tout se fait dans l'app, sur iPhone, Android ou fillsell.app. L'extension Chrome de ton ordinateur prend le relais, dans tes propres sessions, et empêche l'ordinateur de se mettre en veille tant qu'il reste des annonces à publier. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Sur eBay France, un compte relié fait partir tes annonces par l'API officielle d'eBay, même ordinateur éteint.
+Tu sources en vide-grenier ou en friperie ? Photo, annonce, choix des plateformes, suivi des ventes : tout se fait dans l'app, sur iPhone, Android ou fillsell.app. L'extension Chrome de ton ordinateur prend le relais, dans tes propres sessions, et empêche l'ordinateur de se mettre en veille tant qu'il reste des annonces à publier. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Sur eBay France, un compte relié fait partir tes annonces par l'API officielle d'eBay, même ordinateur éteint. Et avec l'option FillSell Cloud, plus besoin d'ordinateur : FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24.
 
 ![Le panneau de l'extension Chrome FillSell (version 0.6.105) en entier, pendant un dépôt : « Active », dernier passage il y a 1 min, ordinateur gardé éveillé pendant la publication, les cinq plateformes connectées dont Depop, « En cours : Depop · publication » de la casquette Volcom avec sa barre, puis le sweat Öhlins prêt à publier (déjà en ligne sur Vinted, en file pour Leboncoin et Depop) et « 3 en file ».](media:captures/extension-popup.png)
 
@@ -218,7 +218,7 @@ Un outil de crosslisting se juge le jour où tu vends, pas seulement le jour où
 | Annonce depuis une photo | c'est là que file ton temps | Lens, prix compris |
 | Republication | une annonce qui vieillit s'enfonce | d'un appui, ou automatique selon ta formule sur {{republication}} |
 | Téléphone | tu sources dehors | apps iPhone et Android, et le web |
-| Ordinateur éteint | certains outils travaillent depuis leurs serveurs | eBay relié, par l'API officielle |
+| Ordinateur éteint | certains outils travaillent depuis leurs serveurs | eBay relié, par l'API officielle ; Vinted, Leboncoin, Beebs et Depop avec l'option FillSell Cloud |
 | Prix | ce que tu paies chaque mois | Gratuit (0 €) sans carte bancaire ; Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement |
 
 Deux vérifications avant de choisir, d'après les pages des éditeurs relues le 9 octobre 2026 :
@@ -226,7 +226,7 @@ Deux vérifications avant de choisir, d'après les pages des éditeurs relues le
 - **Le pays.** Crosslist écrit « we do not support users residing in the European Union » ([crosslist.com](https://crosslist.com/pricing)) ; List Perfectly « supports U.S. marketplaces only » ([listperfectly.com](https://listperfectly.com/faq/)) ; Vendoo ne cite ni Vinted ni Leboncoin ([aide de Vendoo](https://help.vendoo.co/en/articles/6260300-which-marketplaces-does-vendoo-support)). Aucun des trois ne sert, de façon documentée, un revendeur qui vit en France.
 - **Ce que le retrait touche.** Chez Relistly, seulement les annonces publiées par Relistly (« Only touches listings Relistly posted », [relistly.io](https://relistly.io/integrations/vinted)) ; chez FlowDino, celles publiées au préalable avec FlowDino ([flowdino.com](https://www.flowdino.com/docs/chrome-suppression)). FillSell retire aussi les annonces que tu avais déposées toi-même, dès qu'une preuve les relie à l'article (import, identifiant, photo identique), et te pose la question sinon.
 
-Là où d'autres vont plus loin, on le dit : StoFlow annonce un fonctionnement ordinateur éteint dans ses plans Pro et Business, FLUF Connect et Relistly couvrent davantage de plateformes européennes. Le détail critère par critère, avec la méthode et les sources : [le classement des meilleures applications de crosslisting](page:comparatif/meilleures-applications-crosslisting).
+Là où d'autres vont plus loin, on le dit : StoFlow inclut le fonctionnement ordinateur éteint dans ses plans Pro et Business, quand FillSell le vend en option (FillSell Cloud) ; FLUF Connect et Relistly couvrent davantage de plateformes européennes. Le détail critère par critère, avec la méthode et les sources : [le classement des meilleures applications de crosslisting](page:comparatif/meilleures-applications-crosslisting).
 
 ## Le vocabulaire du crosslisting
 
@@ -251,7 +251,7 @@ Personne ne peut te promettre un délai, mais le principe est simple : un articl
 
 ### Comment éviter de vendre deux fois le même article ?
 
-Retire les autres annonces dès qu'une vente tombe, et garde un seul stock qui fait foi. FillSell le fait avec toi : quand Vinted ou eBay marque l'article vendu, la vente s'enregistre toute seule. Sur Leboncoin et Beebs, tu la confirmes d'un appui. Les autres annonces sont ensuite retirées, et au moindre doute FillSell te demande « Déjà vendu ? ». Garde ton ordinateur allumé avec Chrome ouvert : c'est lui qui fait les retraits, sauf sur eBay quand ton compte est relié.
+Retire les autres annonces dès qu'une vente tombe, et garde un seul stock qui fait foi. FillSell le fait avec toi : quand Vinted ou eBay marque l'article vendu, la vente s'enregistre toute seule. Sur Leboncoin et Beebs, tu la confirmes d'un appui. Les autres annonces sont ensuite retirées, et au moindre doute FillSell te demande « Déjà vendu ? ». Sans l'option FillSell Cloud, garde ton ordinateur allumé avec Chrome ouvert : c'est lui qui fait les retraits, sauf sur eBay quand ton compte est relié.
 
 ### Quelle différence entre crosslisting et republication ?
 
@@ -259,11 +259,11 @@ Le crosslisting met le même article sur plusieurs plateformes. La republication
 
 ### Faut-il laisser son ordinateur allumé ?
 
-Oui, sauf pour eBay quand ton compte est relié. L'extension Chrome travaille sur ton ordinateur allumé, Chrome ouvert, et l'empêche de se mettre en veille tant qu'il reste des annonces à publier. Ordinateur éteint, rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome.
+Sans l'option FillSell Cloud, oui, sauf pour eBay quand ton compte est relié. L'extension Chrome travaille sur ton ordinateur allumé, Chrome ouvert, et l'empêche de se mettre en veille tant qu'il reste des annonces à publier. Ordinateur éteint, rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, plus besoin d'ordinateur : FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24.
 
 ### Peut-on faire du crosslisting depuis son téléphone ?
 
-Oui : avec FillSell, ton téléphone pilote et ton ordinateur exécute. Photo, annonce, choix des plateformes, suivi des ventes : tout se fait dans l'app iPhone ou Android, ou sur fillsell.app. L'extension Chrome de ton ordinateur dépose ensuite les annonces dans tes sessions, sans jamais te demander tes mots de passe ; un compte eBay relié passe par l'API officielle d'eBay.
+Oui : avec FillSell, ton téléphone pilote et ton ordinateur exécute. Photo, annonce, choix des plateformes, suivi des ventes : tout se fait dans l'app iPhone ou Android, ou sur fillsell.app. L'extension Chrome de ton ordinateur dépose ensuite les annonces dans tes sessions, sans jamais te demander tes mots de passe ; un compte eBay relié passe par l'API officielle d'eBay. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop partent des serveurs de FillSell.
 
 ### Sur combien de plateformes faut-il publier ?
 

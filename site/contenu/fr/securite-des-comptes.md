@@ -126,7 +126,7 @@ Ton téléphone pilote, ton ordinateur exécute. Ce duo n'est pas un détour : c
 
 ![Le panneau de l'extension Chrome FillSell (version 0.6.105) en entier, pendant un dépôt : « Active », dernier passage il y a 1 min, ordinateur gardé éveillé pendant la publication, les cinq plateformes connectées dont Depop, « En cours : Depop · publication » de la casquette Volcom avec sa barre, puis le sweat Öhlins prêt à publier (déjà en ligne sur Vinted, en file pour Leboncoin et Depop) et « 3 en file ».](media:captures/extension-popup.png)
 
-Une tâche à la fois, le reste attend son tour : c'est ce que montre le panneau de l'extension. Et si tu veux tout arrêter net, ferme Chrome. Plus rien ne part de ton ordinateur, et ce qui attendait patiente jusqu'à la prochaine ouverture. Seules tes annonces eBay d'un compte relié continuent de passer par l'API officielle d'eBay. Pour voir le parcours complet, de la photo à la vente : [comment marche FillSell](page:comment-ca-marche).
+Une tâche à la fois, le reste attend son tour : c'est ce que montre le panneau de l'extension. Et si tu veux tout arrêter net, ferme Chrome. Plus rien ne part de ton ordinateur, et ce qui attendait patiente jusqu'à la prochaine ouverture. Sans l'option FillSell Cloud, seules tes annonces eBay d'un compte relié continuent de passer par l'API officielle d'eBay. Pour voir le parcours complet, de la photo à la vente : [comment marche FillSell](page:comment-ca-marche).
 
 ## Republier sans t'exposer : les garde-fous
 
@@ -160,7 +160,7 @@ Vendu ici, retiré là-bas, c'est exactement le travail de FillSell :
 
 *Compte de démonstration, chiffres fictifs.*
 
-Aucun délai n'est promis : les retraits passent par ton ordinateur allumé avec Chrome ouvert, sauf pour tes annonces eBay publiées par l'API officielle d'eBay. Le fonctionnement complet : [ventes et retraits des annonces](page:fonctions/ventes-et-retraits).
+Aucun délai n'est promis : sans l'option FillSell Cloud, les retraits passent par ton ordinateur allumé avec Chrome ouvert, sauf pour tes annonces eBay publiées par l'API officielle d'eBay. Le fonctionnement complet : [ventes et retraits des annonces](page:fonctions/ventes-et-retraits).
 
 ## Pourquoi un compte se fait-il restreindre ou bloquer ?
 
@@ -198,7 +198,7 @@ Ce que FillSell s'engage à faire, en revanche, se vérifie dans l'app : agir da
 5. **Laisse respirer tes annonces.** Republie avec mesure : un créneau, une ancienneté minimale, jamais en rafale.
 6. **Tes propres photos, telles quelles sur Vinted et Beebs.** Leurs règles n'autorisent pas les retouches, et Depop retire les annonces illustrées par des images de banques d'images.
 7. **Aucun renvoi vers une autre plateforme dans tes annonces.** Vinted masque une annonce dont la description « fait la promotion d'une autre plateforme », Leboncoin interdit de rediriger vers un autre site, Beebs et Depop aussi.
-8. **Tes mots de passe restent à toi.** Avec FillSell, tu n'as rien à confier : tu te connectes toi-même, dans ton navigateur.
+8. **Tes mots de passe restent à toi.** Avec FillSell, tu n'as rien à confier : tu te connectes toi-même, dans ton navigateur — ou, avec l'option FillSell Cloud, sur la page de connexion de chaque plateforme, et ce que tu tapes n'est jamais enregistré.
 9. **Pour eBay, relie ton compte.** L'API officielle d'eBay est la voie qu'eBay prévoit pour les logiciels.
 10. **Une seule extension FillSell par navigateur**, pour qu'un même article ne parte pas deux fois.
 
@@ -237,7 +237,7 @@ Non. FillSell n'est affilié à aucune de ces plateformes, ni approuvé ni spons
 
 ### FillSell connaît-il mes mots de passe ?
 
-Non. Tu te connectes toi-même à Vinted, Leboncoin, Beebs et Depop dans Chrome, et l'extension travaille dans ces sessions ; FillSell ne lit ni ne stocke les mots de passe de tes plateformes. Pour Depop, tu autorises l'accès d'un clic dans l'extension. Pour eBay, tu relies ton compte depuis la page officielle d'eBay : FillSell reçoit une autorisation, jamais ton mot de passe.
+Non. Tu te connectes toi-même à Vinted, Leboncoin, Beebs et Depop dans Chrome, et l'extension travaille dans ces sessions ; FillSell ne lit ni ne stocke les mots de passe de tes plateformes. Avec l'option FillSell Cloud, tu te connectes aussi toi-même, une fois, sur la page de connexion de chaque plateforme : ce que tu tapes lui est transmis sans être enregistré, et FillSell ne conserve jamais tes mots de passe. Pour Depop, tu autorises l'accès d'un clic dans l'extension. Pour eBay, tu relies ton compte depuis la page officielle d'eBay : FillSell reçoit une autorisation, jamais ton mot de passe.
 
 ### Pourquoi relier mon compte eBay plutôt que passer par l'extension ?
 

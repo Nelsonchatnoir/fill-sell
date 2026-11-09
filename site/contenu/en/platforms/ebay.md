@@ -78,7 +78,7 @@ eBay's own app can also build a listing from photos. The difference with [Lens (
 
 ### Linked account: your listing goes out, computer off
 
-On your other marketplaces, the Chrome extension does the legwork, in your own session, from your computer while it's on. On eBay France, once your account is linked, your listings go out through eBay's official API, from our servers. Laptop shut, Chrome closed: they go out anyway. Tick eBay from your phone, on the bus or at a flea market, and your listing is on its way. In the app, the eBay box says it plainly: it leaves from our servers, without the extension.
+On your other marketplaces, the Chrome extension does the legwork, in your own session, from your computer while it's on — or, with the FillSell Cloud option, FillSell's servers do, no computer needed. On eBay France, once your account is linked, your listings go out through eBay's official API, from our servers. Laptop shut, Chrome closed: they go out anyway. Tick eBay from your phone, on the bus or at a flea market, and your listing is on its way. In the app, the eBay box says it plainly: it leaves from our servers, without the extension.
 
 ### Your eBay stock, filed with everything else
 

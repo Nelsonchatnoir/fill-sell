@@ -52,7 +52,7 @@ FillSell vit sur fillsell.app, sur l'[App Store](https://apps.apple.com/app/id67
 
 ### Sur quelles plateformes FillSell publie-t-il ?
 
-Aujourd'hui, FillSell travaille avec {{nb_plateformes}} plateformes : {{plateformes}}. Pour chaque article, tu coches celles où il doit partir : une seule, quelques-unes ou toutes. Un seul forfait les couvre toutes, sans supplément par plateforme. Un compte eBay relié publie par l'API officielle d'eBay ; dans tous les autres cas, c'est l'extension Chrome qui dépose l'annonce, dans ta propre session.
+Aujourd'hui, FillSell travaille avec {{nb_plateformes}} plateformes : {{plateformes}}. Pour chaque article, tu coches celles où il doit partir : une seule, quelques-unes ou toutes. Un seul forfait les couvre toutes, sans supplément par plateforme. Un compte eBay relié publie par l'API officielle d'eBay ; dans les autres cas, c'est l'extension Chrome qui dépose l'annonce, dans ta propre session, sauf si tu as pris l'option FillSell Cloud : elle publie alors tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell.
 
 ### FillSell publie-t-il mes annonces tout seul ?
 
@@ -90,11 +90,15 @@ Oui : FillSell est gratuit sur l'App Store, pour iPhone et iPad (iOS 15 ou plus)
 
 ### Faut-il un ordinateur pour utiliser FillSell ?
 
-Oui pour publier, synchroniser et retirer tes annonces : sur les sites des plateformes, c'est l'extension Chrome, sur ton ordinateur allumé, qui fait le travail. Seule exception : un compte eBay relié, qui publie par l'API officielle d'eBay, même ordinateur éteint. Tout le reste tient dans ta poche : Lens, ton stock, tes ventes, ta marge. Et ce duo est un atout. Ton téléphone pilote, ton ordinateur exécute : tes annonces partent de ton propre navigateur, dans les sessions que tu as ouvertes toi-même, sans jamais tes mots de passe. Tant qu'il reste des annonces à publier, l'extension empêche l'ordinateur de se mettre en veille ; l'écran, lui, peut s'éteindre.
+Sans option, oui pour publier, synchroniser et retirer tes annonces : sur les sites des plateformes, c'est l'extension Chrome, sur ton ordinateur allumé, qui fait le travail ; un compte eBay relié, lui, publie par l'API officielle d'eBay, même ordinateur éteint. Avec l'option FillSell Cloud, plus besoin d'ordinateur : FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Tout le reste tient dans ta poche : Lens, ton stock, tes ventes, ta marge. Et le duo téléphone-ordinateur est un atout. Ton téléphone pilote, ton ordinateur exécute : tes annonces partent de ton propre navigateur, dans les sessions que tu as ouvertes toi-même, sans jamais tes mots de passe. Tant qu'il reste des annonces à publier, l'extension empêche l'ordinateur de se mettre en veille ; l'écran, lui, peut s'éteindre.
+
+### Qu'est-ce que FillSell Cloud ?
+
+FillSell Cloud, c'est l'option « plus besoin d'ordinateur ». Elle coûte 24,99 € par mois, avec un essai gratuit de 7 jours pour un premier abonnement, et s'ajoute à n'importe quel forfait, Gratuit compris ; ce que comprend ton forfait ne change pas. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes : tu pilotes tout depuis ton téléphone ou le web. Tu connectes chaque plateforme une fois, sur sa propre page de connexion ; FillSell ne crée aucun compte à ta place. Tu arrêtes l'option en un geste, et on te prévient la veille de la fin de l'essai. Disponible en France, sur iPhone et sur le web, dans la limite des places disponibles.
 
 ### Que se passe-t-il si mon ordinateur est éteint ?
 
-Rien n'est perdu : tes annonces attendent leur tour et partent à la prochaine ouverture de Chrome. Les retraits patientent aussi, et un retrait bloqué est retenté plus tard, sans que tu aies à le relancer. Pendant ce temps, ton téléphone garde la main : tu prépares des annonces, tu consultes ton stock et tes ventes. Sur eBay France, un compte relié continue de publier, ordinateur éteint. Seule précaution : un dépôt qui attend vraiment trop longtemps passe en échec, et tu le relances d'un appui.
+Rien n'est perdu : tes annonces attendent leur tour et partent à la prochaine ouverture de Chrome. Les retraits patientent aussi, et un retrait bloqué est retenté plus tard, sans que tu aies à le relancer. Pendant ce temps, ton téléphone garde la main : tu prépares des annonces, tu consultes ton stock et tes ventes. Sur eBay France, un compte relié continue de publier, ordinateur éteint. Et avec l'option FillSell Cloud, ton ordinateur peut rester éteint : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell. Seule précaution : un dépôt qui attend vraiment trop longtemps passe en échec, et tu le relances d'un appui.
 
 ### L'extension fonctionne-t-elle seulement dans Chrome ?
 
@@ -122,7 +126,7 @@ Oui, selon ta formule : sur {{republication}}, tes annonces remontent toutes seu
 
 ### FillSell a-t-il besoin de mes mots de passe ?
 
-Non, jamais : tu te connectes toi-même à tes plateformes dans Chrome, comme d'habitude, et l'extension travaille dans ces sessions déjà ouvertes. FillSell ne lit ni ne stocke les mots de passe de tes plateformes. Pour eBay, tu relies ton compte depuis la page officielle d'eBay : FillSell reçoit une autorisation, jamais ton mot de passe. Pour Depop, tu donnes l'accès d'un clic, « Autoriser Depop », dans l'extension.
+Non, jamais : tu te connectes toi-même à tes plateformes dans Chrome, comme d'habitude, et l'extension travaille dans ces sessions déjà ouvertes. FillSell ne lit ni ne stocke les mots de passe de tes plateformes. Avec l'option FillSell Cloud, tu te connectes aussi toi-même, une fois, sur la page de connexion de chaque plateforme : ce que tu tapes lui est transmis sans être enregistré, et FillSell ne conserve jamais tes mots de passe. Pour eBay, tu relies ton compte depuis la page officielle d'eBay : FillSell reçoit une autorisation, jamais ton mot de passe. Pour Depop, tu donnes l'accès d'un clic, « Autoriser Depop », dans l'extension.
 
 ### Vinted autorise-t-il les outils comme FillSell ?
 
@@ -134,7 +138,7 @@ Non : FillSell n'est affilié à aucune des plateformes avec lesquelles il trava
 
 ### Que fait FillSell de mes données ?
 
-Tes données FillSell sont stockées en Europe, chez Supabase, en Irlande, et elles ne sont jamais vendues. Pour analyser tes photos et ta voix, FillSell fait appel à des services d'intelligence artificielle. Le contenu de tes annonces passe par FillSell pour être publié ; les mots de passe de tes plateformes, eux, ne passent jamais par FillSell. Tu exerces tes droits d'accès, de rectification et d'effacement en écrivant à [support@fillsell.app](mailto:support@fillsell.app).
+Tes données FillSell sont stockées en Europe, chez Supabase, en Irlande, et elles ne sont jamais vendues. Pour analyser tes photos et ta voix, FillSell fait appel à des services d'intelligence artificielle. Le contenu de tes annonces passe par FillSell pour être publié ; les mots de passe de tes plateformes, eux, ne sont jamais conservés par FillSell : avec l'extension, ils ne passent pas par FillSell ; avec l'option FillSell Cloud, ce que tu tapes sur la page de connexion d'une plateforme lui est transmis sans être enregistré. Tu exerces tes droits d'accès, de rectification et d'effacement en écrivant à [support@fillsell.app](mailto:support@fillsell.app).
 
 ### Comment supprimer mon compte FillSell ?
 

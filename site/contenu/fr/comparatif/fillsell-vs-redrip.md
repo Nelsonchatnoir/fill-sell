@@ -84,7 +84,7 @@ Chaque plateforme reçoit sa propre version de l'annonce, adaptée à ses rubriq
 
 Redrip est une extension de navigateur. Pour le téléphone, sa page dédiée propose deux navigateurs qui acceptent les extensions, Orion sur iPhone et Yandex sur Android, et précise que « l'usage sur ordinateur reste recommandé pour les vendeurs qui font beaucoup de volume ».
 
-FillSell est une app publiée sur l'App Store (iPhone et iPad, iOS 15 ou plus) et sur Google Play (Android 7 ou plus), qui s'ouvre aussi dans le navigateur sur fillsell.app. **Ton téléphone pilote, ton ordinateur exécute.** Tu photographies, tu fixes ton prix et tu coches tes plateformes au vide-grenier ou depuis ton canapé ; l'extension Chrome dépose tes annonces depuis ton ordinateur, dans ta propre session, une à une, à un rythme humain. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome.
+FillSell est une app publiée sur l'App Store (iPhone et iPad, iOS 15 ou plus) et sur Google Play (Android 7 ou plus), qui s'ouvre aussi dans le navigateur sur fillsell.app. **Ton téléphone pilote, ton ordinateur exécute.** Tu photographies, tu fixes ton prix et tu coches tes plateformes au vide-grenier ou depuis ton canapé ; l'extension Chrome dépose tes annonces depuis ton ordinateur, dans ta propre session, une à une, à un rythme humain. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Et avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell, 24 h/24.
 
 ### Une photo suffit : Lens écrit l'annonce et propose le prix
 
@@ -127,7 +127,7 @@ FillSell, si. Tu notes ton prix d'achat, et à chaque vente ta marge et ton bén
 
 La republication est le cœur de Redrip : en lot sur Vinted et Leboncoin, et un « mode auto 24/7 » qui republie tes annonces Vinted « toutes les X minutes », onglet fermé, d'après sa fiche Chrome Web Store.
 
-FillSell republie sur {{republication}}. Tu remontes une annonce en un appui ou, selon ta formule, tu laisses [la republication automatique](page:fonctions/republication) s'en charger : tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'ancienneté à partir de laquelle une annonce remonte. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Ordinateur allumé, Chrome ouvert : il travaille pendant que tu fais autre chose.
+FillSell republie sur {{republication}}. Tu remontes une annonce en un appui ou, selon ta formule, tu laisses [la republication automatique](page:fonctions/republication) s'en charger : tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'ancienneté à partir de laquelle une annonce remonte. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Ordinateur allumé, Chrome ouvert : il travaille pendant que tu fais autre chose ; avec l'option FillSell Cloud, ce sont les serveurs de FillSell, ordinateur éteint.
 
 Bon à savoir : republier, c'est retirer l'annonce puis la remettre en ligne. Elle repart en haut des résultats, mais ses vues et ses favoris repartent de zéro. C'est pour ça que FillSell te laisse régler l'ancienneté minimale.
 
@@ -191,7 +191,7 @@ Non. Redrip est une extension de navigateur ; pour le téléphone, son site prop
 
 ### Faut-il laisser l'ordinateur allumé avec FillSell ?
 
-Pour Vinted, Leboncoin, Beebs et Depop, oui : ton ordinateur doit être allumé avec Chrome ouvert, car l'extension agit dans ta session. Éteint, rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Sur eBay France, une fois ton compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint.
+Sans option, oui pour Vinted, Leboncoin, Beebs et Depop : ton ordinateur doit être allumé avec Chrome ouvert, car l'extension agit dans ta session. Éteint, rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sur eBay France, une fois ton compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint.
 
 ### Peut-on passer de Redrip à FillSell sans tout retaper ?
 

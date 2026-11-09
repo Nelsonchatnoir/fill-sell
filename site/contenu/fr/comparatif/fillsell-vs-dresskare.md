@@ -81,9 +81,9 @@ Un détail qui compte sur Depop : ses conditions permettent de proposer ses arti
 
 **FillSell** est une vraie app, gratuite sur l'App Store (iPhone et iPad, iOS 15 ou plus) et sur Google Play (Android 7 ou plus), en français et en anglais. L'article est devant toi : tu le prends en photo, [Lens écrit l'annonce](page:fonctions/lens), tu coches tes plateformes, tu envoies. C'est depuis ton téléphone que tu publies, que tu remontes une annonce, que tu réponds à « Déjà vendu ? ». Avant de supprimer un article, l'app te dit quelles annonces seront retirées. Et la même app s'ouvre sur fillsell.app depuis ton ordinateur.
 
-Chez les deux, l'ordinateur fait le travail sur les sites. DressKare : « L'ordinateur doit rester allumé avec un onglet Vinted ouvert sur Chrome » ([extension DressKare](https://dresskare.com/extension-dresskare)). FillSell : le téléphone pilote, l'ordinateur exécute. Pour Vinted, Leboncoin, Beebs et Depop, ton ordinateur doit être allumé avec Chrome ouvert ; tant qu'il reste des annonces à publier, l'extension l'empêche de se mettre en veille. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié, lui, publie par l'API officielle d'eBay, même ordinateur éteint.
+Chez les deux, l'ordinateur fait le travail sur les sites, sauf chez FillSell avec l'option FillSell Cloud. DressKare : « L'ordinateur doit rester allumé avec un onglet Vinted ouvert sur Chrome » ([extension DressKare](https://dresskare.com/extension-dresskare)). FillSell : le téléphone pilote, l'ordinateur exécute. Sans l'option, pour Vinted, Leboncoin, Beebs et Depop, ton ordinateur doit être allumé avec Chrome ouvert ; tant qu'il reste des annonces à publier, l'extension l'empêche de se mettre en veille. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié, lui, publie par l'API officielle d'eBay, même ordinateur éteint. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell, 24 h/24.
 
-Sur la sécurité, même philosophie. DressKare écrit que son extension ne stocke pas ton mot de passe et ne se connecte jamais à ta place depuis un serveur. FillSell ne te demande jamais tes mots de passe Vinted, Leboncoin, Beebs ou Depop : l'extension travaille dans les sessions que tu as ouvertes toi-même. Pour eBay, tu relies ton compte depuis la page officielle d'eBay, et FillSell ne voit jamais ton mot de passe. Ce que ça change pour tes comptes : [la sécurité de tes comptes](page:securite-des-comptes).
+Sur la sécurité, côté extension, même philosophie. DressKare écrit que son extension ne stocke pas ton mot de passe et ne se connecte jamais à ta place depuis un serveur. FillSell ne te demande jamais tes mots de passe Vinted, Leboncoin, Beebs ou Depop : l'extension travaille dans les sessions que tu as ouvertes toi-même. Pour eBay, tu relies ton compte depuis la page officielle d'eBay, et FillSell ne voit jamais ton mot de passe. Ce que ça change pour tes comptes : [la sécurité de tes comptes](page:securite-des-comptes).
 
 ## Double vente : entre Shopify et Vinted, ou d'une place de marché à l'autre ?
 
@@ -97,7 +97,7 @@ Vendre le même article à deux acheteurs, c'est un remboursement, un message g�
 
 *Compte de démonstration, chiffres fictifs.*
 
-FillSell ne promet aucun délai : les retraits sur Vinted, Leboncoin, Beebs et Depop passent par ton ordinateur allumé, avec Chrome ouvert.
+FillSell ne promet aucun délai : les retraits sur Vinted, Leboncoin, Beebs et Depop passent par ton ordinateur allumé, avec Chrome ouvert, ou par les serveurs de FillSell avec l'option FillSell Cloud.
 
 ## Ton stock déjà en ligne : l'import Vinted, ou toutes tes plateformes en un appui ?
 
@@ -119,7 +119,7 @@ FillSell ne promet aucun délai : les retraits sur Vinted, Leboncoin, Beebs et D
 
 **DressKare** automatise la republication Vinted dès son offre Éco, à 9,90 € : « Republication auto tous les X jours (par défaut 7), à l'heure que tu choisis » ([accueil de DressKare](https://dresskare.com/)). Son aide détaille la cadence : « au maximum 20 articles par heure, avec au moins 3 minutes entre deux articles », et une pause de 24 heures des automatisations si le compte est restreint ([republications Vinted par jour, aide DressKare](https://dresskare.com/centre-aide/combien-republications-vinted-par-jour)). Dès l'offre Actif, sa remise en vente automatique remet en ligne une pièce dont il reste d'autres exemplaires.
 
-**FillSell**, selon ta formule, fait remonter tes annonces toutes seules sur {{republication}}. Tu choisis les jours et le créneau ; FillSell les republie pendant que tu fais autre chose, ordinateur allumé, et espace les republications à un rythme humain pour protéger ton compte. Tu coupes tout d'un geste, quand tu veux. Une annonce à remonter tout de suite ? Un appui suffit. Et si tu vends un article en plusieurs exemplaires, FillSell le remet en ligne après une vente, sur la plateforme où il est parti, pour les annonces qu'il a déposées. Réglages et conseils : [remonter tes annonces](page:fonctions/republication).
+**FillSell**, selon ta formule, fait remonter tes annonces toutes seules sur {{republication}}. Tu choisis les jours et le créneau ; FillSell les republie pendant que tu fais autre chose, ordinateur allumé (ou éteint, avec l'option FillSell Cloud), et espace les republications à un rythme humain pour protéger ton compte. Tu coupes tout d'un geste, quand tu veux. Une annonce à remonter tout de suite ? Un appui suffit. Et si tu vends un article en plusieurs exemplaires, FillSell le remet en ligne après une vente, sur la plateforme où il est parti, pour les annonces qu'il a déposées. Réglages et conseils : [remonter tes annonces](page:fonctions/republication).
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -216,7 +216,7 @@ Non. FillSell gère ton stock, tes annonces sur plusieurs plateformes, tes vente
 
 ### Faut-il laisser son ordinateur allumé avec FillSell et avec DressKare ?
 
-Oui pour les deux, avec une exception chez FillSell. DressKare demande un ordinateur allumé avec un onglet Vinted ouvert dans Chrome. Avec FillSell, Vinted, Leboncoin, Beebs et Depop passent par ton ordinateur allumé, Chrome ouvert ; ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint.
+Avec DressKare, oui ; avec FillSell, oui sans option, non avec l'option FillSell Cloud. DressKare demande un ordinateur allumé avec un onglet Vinted ouvert dans Chrome. Avec FillSell sans option, Vinted, Leboncoin, Beebs et Depop passent par ton ordinateur allumé, Chrome ouvert ; ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint, avec ou sans l'option.
 
 ### Peut-on reprendre dans FillSell des annonces publiées avec DressKare ?
 

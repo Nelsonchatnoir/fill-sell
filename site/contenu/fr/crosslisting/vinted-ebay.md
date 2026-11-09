@@ -134,7 +134,7 @@ Le téléphone pilote, l'ordinateur exécute. Tu photographies, tu choisis et tu
 
 ![Le panneau de l'extension Chrome FillSell (version 0.6.105), ouvert en haut à droite d'un écran d'ordinateur : pastille « Active », dernier passage il y a 1 min, « FillSell garde ton ordinateur éveillé pendant la publication », les cinq plateformes « Connectée » (Vinted, Leboncoin, eBay — « Compte eBay relié à FillSell » —, Beebs et Depop), puis le sweat Öhlins « Prête à publier » : déjà en ligne sur Vinted, en file pour Leboncoin et Depop. Le bas du panneau sort de l'écran.](media:captures/extension-popup-ordinateur.png)
 
-Ordinateur éteint ? Rien n'est perdu : ce qui attend côté Vinted part à la prochaine ouverture de Chrome. Et côté eBay, un compte relié n'attend pas ton ordinateur pour publier.
+Ordinateur éteint ? Rien n'est perdu : ce qui attend côté Vinted part à la prochaine ouverture de Chrome. Et côté eBay, un compte relié n'attend pas ton ordinateur pour publier. Côté Vinted, l'option FillSell Cloud fait de même : tes annonces Vinted partent depuis les serveurs de FillSell, 24 h/24, sans ordinateur.
 
 ## Et Depop, maintenant qu'il appartient à eBay ?
 
@@ -156,7 +156,7 @@ Oui. Avec FillSell, un appui sur « Synchroniser » fait entrer ton annonce Vint
 
 ### Faut-il laisser son ordinateur allumé pour vendre sur Vinted et eBay ?
 
-Pour Vinted, oui : la publication, le repérage des ventes et le retrait passent par l'extension Chrome, donc par ton ordinateur allumé, Chrome ouvert et ta session Vinted active. Pour eBay, non, si ton compte est relié : FillSell publie par l'API officielle d'eBay, même ordinateur éteint. Ordinateur éteint, rien n'est perdu : ce qui attend part à la prochaine ouverture de Chrome.
+Pour Vinted, oui, sans l'option FillSell Cloud : la publication, le repérage des ventes et le retrait passent par l'extension Chrome, donc par ton ordinateur allumé, Chrome ouvert et ta session Vinted active. Pour eBay, non, si ton compte est relié : FillSell publie par l'API officielle d'eBay, même ordinateur éteint. Ordinateur éteint, rien n'est perdu : ce qui attend part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur pour Vinted non plus : elle publie et retire tes annonces Vinted depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Vendre sur eBay est-il vraiment gratuit depuis septembre 2026 ?
 
@@ -168,7 +168,7 @@ FillSell n'est affilié ni à Vinted ni à eBay. Vinted prévoit le cas d'un art
 
 ### Comment ne pas vendre deux fois le même article sur Vinted et eBay ?
 
-Publie-le depuis une seule fiche FillSell. Quand Vinted ou eBay marque l'article vendu, FillSell enregistre la vente tout seul et retire l'annonce de l'autre site si elle est liée à l'article par une preuve, par exemple parce que FillSell l'a déposée. S'il a un doute, il te demande « Déjà vendu ? » avant d'y toucher. Côté Vinted, garde ton ordinateur allumé avec Chrome ouvert : c'est lui qui repère la vente et retire l'annonce. Tout le mécanisme est expliqué sur la page [ventes et retraits](page:fonctions/ventes-et-retraits).
+Publie-le depuis une seule fiche FillSell. Quand Vinted ou eBay marque l'article vendu, FillSell enregistre la vente tout seul et retire l'annonce de l'autre site si elle est liée à l'article par une preuve, par exemple parce que FillSell l'a déposée. S'il a un doute, il te demande « Déjà vendu ? » avant d'y toucher. Côté Vinted, garde ton ordinateur allumé avec Chrome ouvert : c'est lui qui repère la vente et retire l'annonce, sauf avec l'option FillSell Cloud, qui s'en charge depuis les serveurs de FillSell. Tout le mécanisme est expliqué sur la page [ventes et retraits](page:fonctions/ventes-et-retraits).
 
 ### Quels comptes Vinted et eBay fonctionnent avec FillSell ?
 

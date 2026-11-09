@@ -29,7 +29,7 @@ choisir_concurrent:
   - "Tu ne vends que sur Vinted et tu veux automatiser ta boutique à fond : offres et contre-offres, messages aux favoris, évaluation automatique de tes acheteurs."
   - "Tu as un dressing Vinted PRO et tu veux des factures, un fichier clients, des bordereaux regroupés et une comptabilité avec TVA par pays."
   - "Tu vends sur Vinted hors de France : FillSell travaille aujourd'hui avec Vinted France."
-  - "Tu n'as pas d'ordinateur : Clemz tourne sur un téléphone Android dans le navigateur Quetta, alors que les dépôts Vinted de FillSell partent de ton ordinateur."
+  - "Tu n'as pas d'ordinateur et tu veux que l'outil tourne sur ton téléphone Android lui-même : Clemz le fait, dans le navigateur Quetta."
 publie: "2026-10-09"
 faq: true
 fil:
@@ -85,7 +85,7 @@ Clemz n'a pas d'application sur l'App Store ni sur Google Play (recherches du 9 
 
 FillSell, lui, a son app : sur l'App Store pour iPhone et iPad (à partir d'iOS 15), sur Google Play (à partir d'Android 7), et sur le web à l'adresse fillsell.app. **Ton téléphone pilote, ton ordinateur exécute.** Photo au vide-grenier, prix fixé dans le bus, plateformes cochées depuis le canapé ; c'est ensuite l'extension Chrome qui dépose tes annonces sur ton ordinateur, dans ta propre session, l'une après l'autre, à un rythme humain.
 
-Elle travaille dans une fenêtre à part, réduite, sans prendre la main sur ce que tu fais. Tant qu'il reste des annonces à publier, elle empêche l'ordinateur de se mettre en veille. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Et jamais FillSell ne te demande tes mots de passe : tu restes connecté(e) à tes comptes, comme d'habitude. Le détail : [la sécurité de tes comptes](page:securite-des-comptes).
+Elle travaille dans une fenêtre à part, réduite, sans prendre la main sur ce que tu fais. Tant qu'il reste des annonces à publier, elle empêche l'ordinateur de se mettre en veille. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Et jamais FillSell ne te demande tes mots de passe : tu restes connecté(e) à tes comptes, comme d'habitude. Le détail : [la sécurité de tes comptes](page:securite-des-comptes). Et si tu préfères te passer d'ordinateur, l'option FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24.
 
 ### Une photo, et l'annonce est écrite, prix compris
 
@@ -103,7 +103,7 @@ Sur la republication, les deux outils font le même geste. Clemz le décrit ains
 
 La différence, c'est qui appuie sur le bouton. Chez Clemz, tu remplis une liste « à traiter » depuis ton dressing, puis tu cliques sur « Go Clemz ! ». Sa documentation conseille de le faire aux heures de pointe (« 6h-8h, 12h-13h, 19h-21h et les week-ends ») et ne décrit pas de republication programmée à des jours et des heures fixes (relevé du 9 octobre 2026).
 
-Chez FillSell, selon ta formule, ces heures, tu les fixes une fois. Avec [la republication automatique](page:fonctions/republication), tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours, le créneau (matin, midi, soir ou le tien) et l'ancienneté à partir de laquelle une annonce repart. FillSell espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Ordinateur allumé, Chrome ouvert : l'extension republie pendant que tu chines. Besoin d'en remonter une tout de suite ? Un appui suffit.
+Chez FillSell, selon ta formule, ces heures, tu les fixes une fois. Avec [la republication automatique](page:fonctions/republication), tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours, le créneau (matin, midi, soir ou le tien) et l'ancienneté à partir de laquelle une annonce repart. FillSell espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Ordinateur allumé, Chrome ouvert : l'extension republie pendant que tu chines ; avec l'option FillSell Cloud, ce sont les serveurs de FillSell, ordinateur éteint. Besoin d'en remonter une tout de suite ? Un appui suffit.
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -143,7 +143,7 @@ Pour choisir en connaissance de cause :
 - **Les automatisations propres à Vinted.** FillSell n'envoie ni offres automatiques ni messages aux favoris, n'évalue pas tes acheteurs à ta place et ne propose pas d'échange de vues.
 - **La gestion administrative.** Pas de bordereaux regroupés, de factures, de fichier clients ni de comptabilité avec TVA : FillSell calcule tes marges, il ne tient pas ta comptabilité.
 - **Vinted hors de France.** FillSell travaille aujourd'hui avec Vinted France ; l'extension Clemz vise les sites Vinted de nombreux pays et parle cinq langues, quand l'app FillSell existe en français et en anglais.
-- **Le téléphone seul.** Sur Vinted, les dépôts de FillSell partent de ton ordinateur ; Clemz tourne aussi sur Android, dans Quetta.
+- **Le téléphone seul.** Clemz tourne sur le téléphone lui-même, sur Android, dans Quetta. Chez FillSell, sans ordinateur, tes dépôts Vinted passent par l'option FillSell Cloud, depuis les serveurs de FillSell.
 
 Rien ne t'oblige à trancher d'un bloc. Tu peux garder Clemz pour ses automatisations Vinted et confier à FillSell tes autres plateformes, ton stock et le retrait des copies. Un conseil : une même annonce ne se republie qu'avec un seul outil.
 
@@ -207,4 +207,4 @@ Tu peux répartir les rôles : Clemz pour ses automatisations Vinted (offres, me
 
 ### Faut-il laisser l'ordinateur allumé avec FillSell ?
 
-Oui pour Vinted, Leboncoin, Beebs et Depop : c'est l'extension, dans ton Chrome, qui fait le travail sur ces sites. Si l'ordinateur est éteint, tes annonces patientent dans la file et partent dès que Chrome se rouvre. eBay fait exception : compte relié, tes annonces eBay France passent par l'API officielle d'eBay, que l'ordinateur soit allumé ou non. Clemz, de son côté, a besoin d'un appareil actif pendant qu'il travaille, ordinateur ou téléphone Android.
+Sans option, oui pour Vinted, Leboncoin, Beebs et Depop : c'est l'extension, dans ton Chrome, qui fait le travail sur ces sites. Si l'ordinateur est éteint, tes annonces patientent dans la file et partent dès que Chrome se rouvre. eBay fait exception : compte relié, tes annonces eBay France passent par l'API officielle d'eBay, que l'ordinateur soit allumé ou non. Avec l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Clemz, de son côté, a besoin d'un appareil actif pendant qu'il travaille, ordinateur ou téléphone Android.

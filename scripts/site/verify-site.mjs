@@ -102,7 +102,7 @@ export const LEXIQUE_BANNI = [
   [/100\s?%\s*automati/i, '100 % automatique'], [/temps r[ée]el|real[- ]time/i, 'temps réel'], [/z[ée]ro risque|zero risk/i, 'zéro risque'],
   [/publi[ée]e?s? partout en m[êe]me temps/i, 'publié partout en même temps'], [/retrait automatique partout/i, 'retrait automatique partout'],
   [/un e-?mail à chaque vente|an email for every sale/i, 'un e-mail à chaque vente'], [/partenaire officiel|official partner/i, 'partenaire officiel'],
-  [/p[ée]pites?/i, 'pépites'], [/FillSell Cloud/i, 'FillSell Cloud'],
+  [/p[ée]pites?/i, 'pépites'],
   [/\b(le seul|la seule) (outil|app|application|logiciel)|\bthe only (tool|app)\b/i, '« le seul »'],
 ];
 // Décisions de Nico (09/10, 03c § 2 et P1) : « jamais Pro / Business NI AUCUN
@@ -116,6 +116,12 @@ export const LEXIQUE_BANNI = [
 // suivante (« … la republie tout seul. Avec Pro ou Business »). Relue sur le
 // texte visible ET sur les lignes de tableau JOINTES (th + td :
 // « Republication » | « … à tous les paliers » forment une phrase).
+// (09/11/2026, décision de Nico) La règle « aucun Cloud » est LEVÉE sur le site (« aucun Opla » reste). Garde à la
+// place : FillSell Cloud ne s'annonce PAS sur Android tant que Google n'a pas validé la vc37 (« sur iPhone et sur le
+// web ») — le jour de l'ouverture Android : CLOUD_ANDROID_OUVERT = true, et Android s'écrit. Toutes les pages, blog compris.
+export const CLOUD_ANDROID_OUVERT = false;
+export const REGLE_CLOUD_ANDROID = /FillSell Cloud[^.!?]{0,240}\bAndroid\b|\bAndroid\b[^.!?]{0,240}FillSell Cloud/i;
+
 export const REGLES_DECISION = [
   [/\b(republi|remont)\w*[^.!?]{0,160}(?:[.!?]\s*[^.!?]{0,40})?\b(paliers?|plans?|forfaits?|Pro|Premium|Business|Gratuit)\b|\b(paliers?|plans?|forfaits?|Pro|Premium|Business|Gratuit)\b[^.!?]{0,160}\b(republi|remont)\w*/i, 'palier à côté de la republication automatique'],
   [/\b(repost|relist)\w*[^.!?]{0,160}(?:[.!?]\s*[^.!?]{0,40})?\b(tiers?|plans?|Pro|Premium|Business)\b|\b(tiers?|plans?|Pro|Premium|Business)\b[^.!?]{0,160}\b(repost|relist)\w*/i, 'plan next to automatic reposting'],
@@ -740,6 +746,10 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
     for (const [r, nom] of REGLES_DECISION) {
       const m = r.exec(sansNomsOutils(visible)) ?? r.exec(sansNomsOutils(lignes));
       if (m) decisions.push(`lexique banni « ${nom} » (« ${m[0]} »), décisions de Nico du 09/10`);
+    }
+    if (!CLOUD_ANDROID_OUVERT) {
+      const mc = REGLE_CLOUD_ANDROID.exec(visible) ?? REGLE_CLOUD_ANDROID.exec(lignes);
+      if (mc) err(`${o} : FillSell Cloud annoncé avec Android (« ${mc[0].slice(0, 120)} ») — fermé sur Android tant que Google n'a pas validé la vc37 (décision de Nico du 09/11 : « sur iPhone et sur le web »)`);
     }
     const sansDepop = listeSansDepop(visible);
     if (sansDepop) decisions.push(`liste de plateformes sans Depop (« ${sansDepop} ») — décision de Nico : Depop partout`);

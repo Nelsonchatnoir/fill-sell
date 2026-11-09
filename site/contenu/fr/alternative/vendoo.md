@@ -41,7 +41,7 @@ Le bon remplaçant dépend de deux choses : le pays où tu vends, et les platefo
 
 - **Tu vends depuis la France sur {{plateformes}}, ou sur une partie d'entre elles, et ton atelier, c'est ton téléphone** : FillSell. Aucune autre alternative de cette page ne réunit Leboncoin, Beebs et une app iPhone et Android.
 - **Tu vends dans plusieurs pays d'Europe, sur beaucoup de plateformes** : FLUF Connect.
-- **Vinted et Leboncoin doivent tourner ordinateur éteint** : StoFlow, à partir de son plan Pro.
+- **Vinted et Leboncoin doivent tourner ordinateur éteint** : FillSell avec l'option FillSell Cloud, ou StoFlow, à partir de son plan Pro.
 - **Tu vends aussi sur Etsy ou Vestiaire Collective, ou depuis une boutique Shopify** : FlowDino.
 - **Tu vends sur Vinted et Depop hors de France, sans Leboncoin** : Relistly.
 - **Tu vis aux États-Unis et tu vends sur Poshmark, Mercari ou Whatnot** : garde Vendoo. C'est son terrain, et il y est très bien noté.
@@ -88,9 +88,9 @@ FillSell est notre produit, et voici ce qu'il met entre tes mains, aujourd'hui, 
 
 **Ton stock déjà en ligne, rangé en un appui.** Un appui sur « Synchroniser » et tes annonces déjà en ligne arrivent dans ton stock, gratuitement et sans limite. Rien n'est publié ni modifié. Un même article présent sur plusieurs plateformes devient une seule fiche : FillSell compare les photos ET le titre, et au moindre doute il te demande « Est-ce le même article ? ». Chez Vendoo, fusionner les imports de plusieurs plateformes passe par « Import & Merge », encore en bêta ([aide de Vendoo](https://help.vendoo.co/en/articles/6746641-i-already-have-items-listed-on-multiple-marketplaces-do-i-import-twice)).
 
-**Selon ta formule, tes annonces remontent toutes seules.** FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Chez Vendoo, « Delist & Relist » se lance à la main, à l'unité ou en lot, avec un rappel des annonces anciennes ; aucune de ses pages ne décrit de republication programmée ([aide de Vendoo](https://help.vendoo.co/en/articles/6260292-how-to-use-vendoo-s-delist-relist-feature)).
+**Selon ta formule, tes annonces remontent toutes seules.** FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé, ou éteint avec l'option FillSell Cloud. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Chez Vendoo, « Delist & Relist » se lance à la main, à l'unité ou en lot, avec un rappel des annonces anciennes ; aucune de ses pages ne décrit de republication programmée ([aide de Vendoo](https://help.vendoo.co/en/articles/6260292-how-to-use-vendoo-s-delist-relist-feature)).
 
-**Ton téléphone pilote, ton ordinateur exécute.** L'extension Chrome s'installe une fois, gratuitement, et travaille sur ton ordinateur, dans les sessions que tu as ouvertes toi-même : FillSell ne te demande jamais tes mots de passe Vinted, Leboncoin, Beebs ou Depop. Pour eBay, tu relies ton compte depuis la page officielle d'eBay, et tes annonces partent par l'API officielle d'eBay, même ordinateur éteint.
+**Ton téléphone pilote, ton ordinateur exécute.** L'extension Chrome s'installe une fois, gratuitement, et travaille sur ton ordinateur, dans les sessions que tu as ouvertes toi-même : FillSell ne te demande jamais tes mots de passe Vinted, Leboncoin, Beebs ou Depop. Pour eBay, tu relies ton compte depuis la page officielle d'eBay, et tes annonces partent par l'API officielle d'eBay, même ordinateur éteint. Et avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop partent des serveurs de FillSell, 24 h/24.
 
 **En français, en euros, avec un vrai Gratuit.** L'app parle français et anglais. Les prix sont en euros. Le forfait Gratuit n'a pas de date de fin et ne demande pas de carte bancaire.
 
@@ -153,7 +153,7 @@ Sur Depop, un point vaut de l'or. Les conditions de Depop permettent de proposer
 
 Deux repères avant de te lancer. En France, Depop prélève 10 % du prix et du port, plus les frais PayPal ([frais vendeur de Depop](https://depophelp.zendesk.com/hc/en-gb/articles/360001791127-Seller-fees-and-charges)). Et eBay possède Depop depuis le 30 juillet 2026 : pour l'instant, Depop garde sa marque, ses comptes et ses frais, donc deux plateformes et deux comptes, que FillSell gère côte à côte.
 
-Honnêteté oblige : FLUF Connect gère Depop sans ordinateur une fois connecté. Chez FillSell, Depop passe par ton ordinateur allumé, avec Chrome ouvert.
+Honnêteté oblige : FLUF Connect gère Depop sans ordinateur une fois connecté. Chez FillSell, Depop passe par ton ordinateur allumé, avec Chrome ouvert, sauf avec l'option FillSell Cloud.
 
 ## Après une vente : qui retire tes autres annonces ?
 
@@ -162,7 +162,7 @@ Quitter Vendoo, c'est aussi choisir qui empêchera la double vente. Les méthode
 | Outil | Ce qui déclenche le retrait | Ce qui est retiré | Condition |
 |---|---|---|---|
 | Vendoo | détection des ventes, en bêta, toutes les dix minutes | les copies sur cinq ou six places de marché américaines, selon la page | ordinateur allumé, onglet Vendoo ouvert |
-| **FillSell** | une vente enregistrée : seule quand Vinted ou eBay marque l'article vendu, après ton appui ailleurs | les autres annonces de l'article sur {{plateformes}}, liées par une preuve ; au moindre doute, la question « Déjà vendu ? » | ordinateur allumé avec Chrome ; un compte eBay relié est suivi depuis nos serveurs |
+| **FillSell** | une vente enregistrée : seule quand Vinted ou eBay marque l'article vendu, après ton appui ailleurs | les autres annonces de l'article sur {{plateformes}}, liées par une preuve ; au moindre doute, la question « Déjà vendu ? » | ordinateur allumé avec Chrome, sauf avec l'option FillSell Cloud ; un compte eBay relié est suivi depuis nos serveurs |
 | FLUF Connect | ventes vérifiées toutes les 90 minutes (Starter) ou 60 minutes (Pro) | les copies sur ses canaux ; Leboncoin non coché dans son tableau | selon la plateforme |
 | StoFlow | « automatiquement ou après votre feu vert », dès le plan Free | les autres annonces du produit | navigateur ouvert en Free et Starter |
 | FlowDino | la tâche « Suppression » de l'extension | les annonces publiées avec FlowDino | navigateur ouvert |
@@ -215,7 +215,7 @@ Les cinq outils de cette page publient sur Vinted, chacun dans son périmètre. 
 
 ### Quelle est la meilleure alternative à Vendoo pour vendre sur Vinted ?
 
-Tout dépend de ton pays et de tes autres plateformes. Depuis la France, avec Leboncoin, Beebs, eBay ou Depop à côté de Vinted et tout piloté depuis ton téléphone, FillSell arrive en tête de [notre classement](page:comparatif/meilleures-applications-crosslisting) (FillSell est notre produit, la grille est publiée). Pour Vinted dans plusieurs pays et beaucoup de plateformes européennes, regarde FLUF Connect ; pour Vinted et Leboncoin ordinateur éteint, StoFlow à partir de son plan Pro.
+Tout dépend de ton pays et de tes autres plateformes. Depuis la France, avec Leboncoin, Beebs, eBay ou Depop à côté de Vinted et tout piloté depuis ton téléphone, FillSell arrive en tête de [notre classement](page:comparatif/meilleures-applications-crosslisting) (FillSell est notre produit, la grille est publiée). Pour Vinted dans plusieurs pays et beaucoup de plateformes européennes, regarde FLUF Connect ; pour Vinted et Leboncoin ordinateur éteint, FillSell avec l'option FillSell Cloud, ou StoFlow à partir de son plan Pro.
 
 ### Existe-t-il une alternative gratuite à Vendoo ?
 
@@ -223,11 +223,11 @@ Oui. FillSell et StoFlow ont un palier gratuit sans date de fin ni carte bancair
 
 ### Quelle alternative à Vendoo pour vendre sur Depop depuis la France ?
 
-Parmi les outils de cette page, FillSell, FLUF Connect et Relistly gèrent Depop pour un vendeur installé en France ; les pages de Vendoo documentent Depop côté États-Unis. FillSell réunit Depop avec Vinted, Leboncoin, eBay et Beebs dans le même stock, pour un compte Depop en euros, et retire l'annonce Depop quand l'article se vend ailleurs. FLUF Connect, lui, gère Depop sans ordinateur une fois connecté.
+Parmi les outils de cette page, FillSell, FLUF Connect et Relistly gèrent Depop pour un vendeur installé en France ; les pages de Vendoo documentent Depop côté États-Unis. FillSell réunit Depop avec Vinted, Leboncoin, eBay et Beebs dans le même stock, pour un compte Depop en euros, et retire l'annonce Depop quand l'article se vend ailleurs. FLUF Connect, lui, gère Depop sans ordinateur une fois connecté ; chez FillSell, c'est possible avec l'option FillSell Cloud.
 
 ### Quelle alternative à Vendoo fonctionne ordinateur éteint ?
 
-Sur ce point, StoFlow va le plus loin d'après notre grille : à partir de son plan Pro, il annonce Vinted, Leboncoin et Vestiaire Collective sur ses serveurs, ordinateur éteint. FLUF Connect fait tourner Depop, eBay, Etsy et Shopify sans ordinateur une fois connectés, d'après son aide. Chez FillSell, un compte eBay relié publie par l'API officielle d'eBay même ordinateur éteint ; Vinted, Leboncoin, Beebs et Depop passent par ton ordinateur allumé, et tes annonces attendent la prochaine ouverture de Chrome. Vendoo passe par l'API pour eBay et Etsy, et détecte les ventes ordinateur allumé.
+Sur ce point, StoFlow l'inclut dans son abonnement : à partir de son plan Pro, il annonce Vinted, Leboncoin et Vestiaire Collective sur ses serveurs, ordinateur éteint. FLUF Connect fait tourner Depop, eBay, Etsy et Shopify sans ordinateur une fois connectés, d'après son aide. Chez FillSell, c'est l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement). FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes ; sans l'option, elles passent par ton ordinateur allumé et attendent la prochaine ouverture de Chrome. Un compte eBay relié, lui, publie par l'API officielle d'eBay même ordinateur éteint. Vendoo passe par l'API pour eBay et Etsy, et détecte les ventes ordinateur allumé.
 
 ### Peut-on passer de Vendoo à FillSell sans republier ses annonces ?
 

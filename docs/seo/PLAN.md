@@ -57,7 +57,7 @@ design, réponses des IA, mots-clés FR/EN), `docs/seo/concurrents/*` (14 outils
   (articles existants). Aucun changement de ton sans Nico.
 - Logos Vinted et eBay : interdits sans autorisation écrite → noms en texte + mention « FillSell
   n'est affilié à aucune de ces plateformes ».
-- Aucun Opla, aucun Cloud ; Depop présent partout (décision de Nico) ; aucune personne de
+- Aucun Opla (« aucun Cloud » levé le 09/11 par Nico : FORMAT-CONTENU.md § 0) ; Depop présent partout (décision de Nico) ; aucune personne de
   l'équipe nommée.
 - Aucun chiffre de quota ni de plafond, même sur la carte tarifs (décision de Nico) : prix et
   fonctions seulement.

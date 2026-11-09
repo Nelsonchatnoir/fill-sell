@@ -45,7 +45,7 @@ import { texteBrut, texteComparable, contenuPrincipal, sansRegions, typographie 
 import { remplacerJetons, remplacerJetonsProfond, valeursJetons, lireTarifs } from './site/lib/donnees.mjs';
 import { validerFrontmatter } from './site/lib/contenu.mjs';
 import { lirePlateformes } from './site/lib/donnees.mjs';
-import { LEXIQUE_BANNI, REGLES_DECISION, listeSansDepop, contrastePaire, couleurRgba } from './site/verify-site.mjs';
+import { LEXIQUE_BANNI, REGLES_DECISION, CLOUD_ANDROID_OUVERT, REGLE_CLOUD_ANDROID, listeSansDepop, contrastePaire, couleurRgba } from './site/verify-site.mjs';
 import { importer as importerConcurrents } from './site/importer-concurrents.mjs';
 import { mkdirSync, writeFileSync as ecrire } from 'node:fs';
 import { dateValide, dateFuture, empreinteContenu } from './site/lib/dates.mjs';
@@ -322,6 +322,9 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   const nb = String.fromCharCode(0xa0);
   ok(t === `<p title="a : b">StoFlow${nb}: lequel${nb}? «${nb}oui${nb}»</p>`, `typographie FR dans le texte seulement (${t})`);
   ok(typographie('<p>Price : x</p>', 'en') === '<p>Price : x</p>', 'typographie : rien en anglais');
+  // (09/11) Un montant ne se coupe pas : « 24,99 € », « 15 % » insécables ; un € sans chiffre devant reste tel quel.
+  ok(typographie('<p>FillSell Cloud : 24,99 € par mois, 15 % de frais. Prix en €.</p>', 'fr') === `<p>FillSell Cloud${nb}: 24,99${nb}€ par mois, 15${nb}% de frais. Prix en €.</p>`,
+    'typographie FR : « 24,99 € » et « 15 % » insécables');
 }
 
 // ── 18. Lexique banni ──────────────────────────────────────────────────────
@@ -341,6 +344,13 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
     'Republier en lot, sans y penser. Support prioritaire. Passer Pro',
     'Une annonce qui remonte en un appui. Marges et bénéfices calculés pour toi. Commencer gratuitement',
   ]) ok(!banni(t), `phrase permise : « ${t} »`);
+  // (09/11, décision de Nico) « Aucun Cloud » levé : FillSell Cloud se nomme ; Opla reste interdit (PLATEFORME_SORTIE).
+  ok(!banni('FillSell Cloud : plus besoin d’ordinateur, sur iPhone et sur le web.'), 'FillSell Cloud se nomme sur le site (règle « aucun Cloud » levée le 09/11)');
+  // Garde : le Cloud ne s'annonce pas sur Android tant que Google n'a pas validé la vc37.
+  ok(!CLOUD_ANDROID_OUVERT && REGLE_CLOUD_ANDROID.test('FillSell Cloud, sur iPhone, Android et le web.') && REGLE_CLOUD_ANDROID.test('Sur Android aussi, FillSell Cloud publie sans ordinateur.'),
+    'FillSell Cloud annoncé avec Android → refusé tant que le Cloud Android est fermé');
+  ok(!REGLE_CLOUD_ANDROID.test('FillSell Cloud, sur iPhone et sur le web. Les apps iPhone et Android pilotent FillSell.') && !REGLE_CLOUD_ANDROID.test('Apps iPhone et Android, et le web.'),
+    'Android cité AILLEURS (apps, autre phrase) → permis');
 }
 
 // ── 19. « Depop partout » dans le texte ────────────────────────────────────

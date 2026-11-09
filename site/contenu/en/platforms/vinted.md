@@ -13,7 +13,7 @@ points_cles:
   - "On Vinted France (vinted.fr), the FillSell Chrome extension posts, reads, reposts and removes your listings in your own session, one at a time, at a human pace."
   - "One tap on Sync brings the Vinted listings you already have live into your FillSell stock, free and with no limit, without publishing or editing anything."
   - "When Vinted marks an item sold, FillSell records the sale on its own; proven copies come down from your other marketplaces, and any doubt becomes the question “Already sold?”."
-  - "Depending on your subscription, automatic reposting bumps your listings back up on {{republication}}, on the days and in the time slot you choose, with your computer on."
+  - "Depending on your subscription, automatic reposting bumps your listings back up on {{republication}}, on the days and in the time slot you choose, computer on, or off with the FillSell Cloud option."
   - "FillSell never asks for your Vinted password: you sign in to Vinted in Chrome as usual, and the extension works inside that session."
 hero_media: "captures/publication-verification-annonces.png"
 hero_alt: "Step 2 of 3 of publishing, \"Ce qui va partir\" (what will go out): one card per marketplace, each with its category, condition, €14 price and a \"Prêt\" (ready) label — Vinted (Men › … › T-shirts), Leboncoin (Fashion › Clothing), Beebs (Fashion › … › T-shirts), eBay (Clothing, accessories › … › T-shirts) and Depop (Men › … › T-shirts, no title: on Depop the description is the listing)."
@@ -102,7 +102,7 @@ Reposting means taking the listing down and putting it back online. Let's be str
 Two ways to do it:
 
 - **With one tap.** Pick a listing, tap, and your computer reposts it; several at once depending on your subscription, reposted one by one.
-- **Automatically, depending on your subscription.** Your listings bump themselves back up on {{republication}}. You choose the days, the time slot (morning, noon, evening or custom) and the age from which a listing goes back up, never less than a week. Computer on, Chrome open, and you get on with something else.
+- **Automatically, depending on your subscription.** Your listings bump themselves back up on {{republication}}. You choose the days, the time slot (morning, noon, evening or custom) and the age from which a listing goes back up, never less than a week. Computer on, Chrome open (or, with the FillSell Cloud option, no computer at all), and you get on with something else.
 
 ![Automatic reposting settings in FillSell: the time slot (morning 8–10, noon 12–14, evening 19–22 selected, or custom), "local time · Chrome open", the note that reposts are spread over the slot at the account's real pace, never in bursts, and the active days (every day, Monday to Sunday).](media:captures/republication-creneaux.png)
 
@@ -124,7 +124,7 @@ The other way round, your Vinted listing comes down too. Sold on eBay? The sale 
 
 *Demo account, illustrative figures.*
 
-And after that? The sale lands in your Sales tab, margin worked out for you; an item whose purchase price you don't know is left out of the maths rather than counted as free. When FillSell records a sale on Vinted, you get an email. To spot your Vinted sales and remove your listings, your computer needs to be on with Chrome open. The whole picture, marketplace by marketplace: [selling the same item on several marketplaces without selling it twice (in French)](page:fr:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
+And after that? The sale lands in your Sales tab, margin worked out for you; an item whose purchase price you don't know is left out of the maths rather than counted as free. When FillSell records a sale on Vinted, you get an email. To spot your Vinted sales and remove your listings, your computer needs to be on with Chrome open; with the FillSell Cloud option, FillSell's servers take care of it, computer off. The whole picture, marketplace by marketplace: [selling the same item on several marketplaces without selling it twice (in French)](page:fr:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
 
 ## Your Vinted session, never your password
 
@@ -157,7 +157,7 @@ No, never. You sign in to Vinted in Chrome as usual, and the extension works ins
 
 ### Does my computer have to stay on?
 
-For Vinted, yes: posting, reposting, removing a listing and spotting a sale all need your computer on, Chrome open and your Vinted session active. While listings are queued, the extension keeps the computer awake. Computer off, nothing is lost: everything waits for the next time Chrome opens.
+For Vinted, yes, without the FillSell Cloud option: posting, reposting, removing a listing and spotting a sale all need your computer on, Chrome open and your Vinted session active. While listings are queued, the extension keeps the computer awake. Computer off, nothing is lost: everything waits for the next time Chrome opens. With the FillSell Cloud option (€24.99 a month, 7-day free trial for a first subscription, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### How do I bump a Vinted listing with FillSell?
 

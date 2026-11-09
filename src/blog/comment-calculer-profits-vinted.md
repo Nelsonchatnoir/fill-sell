@@ -193,7 +193,7 @@ Et pour savoir où vendre, l'onglet Stats répond : ce que chaque plateforme vou
 
 *Capture de l'app FillSell. Compte de démonstration, chiffres fictifs.*
 
-Une seule fiche, une marge juste, et le même article proposé sur Vinted, Leboncoin, eBay, Beebs et Depop : vous remplissez l'annonce une fois sur votre téléphone, l'extension Chrome la dépose depuis votre ordinateur, dans votre propre session, sur les plateformes que vous cochez, sans jamais vous demander vos mots de passe. Sur eBay France, un compte relié passe par l'API officielle d'eBay, même ordinateur éteint. Pour aller plus loin, voyez comment FillSell travaille [avec Vinted](page:plateformes/vinted), [avec eBay](page:plateformes/ebay) et [avec Depop](page:plateformes/depop).
+Une seule fiche, une marge juste, et le même article proposé sur Vinted, Leboncoin, eBay, Beebs et Depop : vous remplissez l'annonce une fois sur votre téléphone, l'extension Chrome la dépose depuis votre ordinateur, dans votre propre session, sur les plateformes que vous cochez, sans jamais vous demander vos mots de passe. Sur eBay France, un compte relié passe par l'API officielle d'eBay, même ordinateur éteint. Avec l'option FillSell Cloud, vos annonces Vinted, Leboncoin, Beebs et Depop partent elles aussi sans ordinateur, depuis les serveurs de FillSell. Pour aller plus loin, voyez comment FillSell travaille [avec Vinted](page:plateformes/vinted), [avec eBay](page:plateformes/ebay) et [avec Depop](page:plateformes/depop).
 
 FillSell est gratuit pour commencer, sans carte bancaire, et votre stock n'a pas de limite d'articles, même en gratuit. **[Créer mon compte FillSell gratuitement](/login?mode=signup)**, ou comparez d'abord [les tarifs](page:tarifs).
 

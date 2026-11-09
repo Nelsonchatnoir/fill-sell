@@ -20,7 +20,7 @@ outils:
     nom: FillSell
     url: 'https://fillsell.app'
     pays: France
-    categorie: 'crosslisting piloté depuis le téléphone : apps iOS/Android + application web + extension Chrome qui exécute sur l''ordinateur'
+    categorie: 'crosslisting piloté depuis le téléphone : apps iOS/Android + application web + extension Chrome qui exécute sur l''ordinateur. Option FillSell Cloud (sur iPhone et sur le web) : exécution sur les serveurs de FillSell'
     notre_produit: true
     classement: classe
     criteres:
@@ -98,16 +98,16 @@ outils:
         date: 2026-10-09
         niveau: fiche_de_verite
       depart:
-        valeur: 'le téléphone (app) ou le web pilotent ; l''extension exécute sur l''ordinateur, dans la session de la personne'
+        valeur: 'le téléphone (app) ou le web pilotent ; l''extension exécute sur l''ordinateur, dans la session de la personne — ou, avec l''option FillSell Cloud, les serveurs de FillSell (Vinted, Leboncoin, Beebs, Depop)'
         verdict: null
         sources: []
         date: 2026-10-09
         niveau: fiche_de_verite
       ordinateur_eteint:
-        valeur: 'Vinted, Leboncoin, Beebs, Depop : non, les actions attendent en file et partent à la réouverture de Chrome ; eBay relié : publication par l''API même ordinateur éteint'
-        verdict: null
+        valeur: 'oui avec l''option FillSell Cloud (24,99 € par mois, essai de 7 jours ; sur iPhone et sur le web, en France) : Vinted, Leboncoin, Beebs et Depop publiés, republiés et retirés depuis les serveurs de FillSell ; sans l''option, les actions attendent en file et partent à la réouverture de Chrome ; eBay relié : publication par l''API même ordinateur éteint'
+        verdict: oui
         sources: []
-        date: 2026-10-09
+        date: 2026-11-09
         niveau: fiche_de_verite
       ia_photo:
         valeur: 'oui — Lens : objet, marque lue, état proposé, prix proposé à partir d''annonces comparables en ligne, titre, description ; tu relis avant de publier ; retouche photo IA en Premium, Pro et Business seulement'
@@ -2947,10 +2947,10 @@ classement:
       C4: 10
       C5: 9
       C6a: 5
-      C6b: 1
+      C6b: 5
       C7: 8
       C8: 4
-      total: 88
+      total: 92
       avant_0910_soir:
         C1: 21
         C5: 9
@@ -2958,7 +2958,10 @@ classement:
       avant_0910_nuit:
         C5: 10
         total: 89
-      conditions: 'C1 23 si Depop est ouverte à tous à la mise en ligne (sinon 21, total 86) ; C5 9 tranché le 09/10 nuit : la republication automatique dépend de la formule'
+      avant_0911:
+        C6b: 1
+        total: 88
+      conditions: 'C1 23 si Depop est ouverte à tous à la mise en ligne (sinon 21, total 86) ; C5 9 tranché le 09/10 nuit : la republication automatique dépend de la formule ; C6b 5 depuis le 09/11 (décision de Nico : le Cloud se nomme sur le site) — toutes ses plateformes ordinateur éteint : Vinted, Leboncoin, Beebs et Depop avec l''option FillSell Cloud (24,99 €/mois, iPhone et web, France), eBay relié par l''API'
     - slug: fluf-connect
       C1: 22
       C2: 16
@@ -3039,25 +3042,25 @@ classement:
   variantes:
     - nom: Base (pondération ci-dessus)
       poids: 'C1 25, C2 20, C3 10, C4 10, C5 10, C6a 5, C6b 5, C7 10, C8 5'
-      ordre: FillSell 88 · FLUF 83 · StoFlow 79 · FlowDino 66 · Relistly 63 · Redrip 60 · Klork 54 · Reposter 45
+      ordre: FillSell 92 · FLUF 83 · StoFlow 79 · FlowDino 66 · Relistly 63 · Redrip 60 · Klork 54 · Reposter 45
     - nom: Ordinateur éteint prioritaire
       poids: 'C1 22, C2 18, C3 8, C4 8, C5 8, C6a 5, C6b 20, C7 8, C8 3'
-      ordre: 'StoFlow 79,0 · FillSell 77,4 · FLUF 76,2 · Relistly 56,0 · FlowDino 55,2 · Reposter 53,6 · Redrip 50,1 · Klork 45,4'
+      ordre: 'FillSell 93,4 · StoFlow 79,0 · FLUF 76,2 · Relistly 56,0 · FlowDino 55,2 · Reposter 53,6 · Redrip 50,1 · Klork 45,4'
     - nom: Petit budget
       poids: 'C1 20, C2 15, C3 7,5, C4 7,5, C5 10, C6a 3,75, C6b 3,75, C7 27,5, C8 5'
-      ordre: 'FillSell 86,4 · StoFlow 83,0 · FLUF 80,3 · FlowDino 67,9 · Redrip 67,2 · Relistly 66,4 · Klork 57,5 · Reposter 46,8'
+      ordre: 'FillSell 89,4 · StoFlow 83,0 · FLUF 80,3 · FlowDino 67,9 · Redrip 67,2 · Relistly 66,4 · Klork 57,5 · Reposter 46,8'
     - nom: Plus de plateformes européennes
       poids: 'base × 0,85 + E 15'
-      ordre: 'FLUF 85,5 · FillSell 77,8 · StoFlow 76,1 · Relistly 65,5 · FlowDino 65,1 · Klork 54,9 · Redrip 54,0 · Reposter 38,3'
+      ordre: 'FLUF 85,5 · FillSell 81,2 · StoFlow 76,1 · Relistly 65,5 · FlowDino 65,1 · Klork 54,9 · Redrip 54,0 · Reposter 38,3'
     - nom: 'Vendeur sans Beebs (Beebs retiré de C1, C1 ramené sur 22 puis pondéré 25)'
       poids: base
-      ordre: 'FillSell 87,7 · FLUF 86,0 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
+      ordre: 'FillSell 91,7 · FLUF 86,0 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
     - nom: Vendeur sans Beebs ni Depop (les deux retirés de C1)
       poids: base
-      ordre: 'FLUF 86,0 · FillSell 85,5 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
+      ordre: 'FillSell 89,5 · FLUF 86,0 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
     - nom: 'Vendeur Depop (nouvelle, 09/10 soir)'
       poids: 'base × 0,85 + D 15'
-      ordre: 'FillSell 89,8 · FLUF 85,5 · StoFlow 67,1 · Relistly 67,0 · Klork 60,9 · FlowDino 56,1 · Redrip 51,0 · Reposter 38,3'
+      ordre: 'FillSell 93,2 · FLUF 85,5 · StoFlow 67,1 · Relistly 67,0 · Klork 60,9 · FlowDino 56,1 · Redrip 51,0 · Reposter 38,3'
   hors_classement:
     - slug: flypr
       raison: 'activité non démontrée (rien depuis le 18/04/2026, API en 404, extension hors du Chrome Web Store)'

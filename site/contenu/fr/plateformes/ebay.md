@@ -80,7 +80,7 @@ eBay propose lui aussi, dans son app, de créer une annonce à partir de photos.
 
 ### Compte relié : ton annonce part, même ordinateur éteint
 
-Sur tes autres plateformes, c'est l'extension Chrome qui travaille, dans ta session, depuis ton ordinateur allumé. Sur eBay France, une fois ton compte relié, tes annonces partent par l'API officielle d'eBay, depuis nos serveurs. Ordinateur fermé, Chrome éteint : elles partent quand même. Tu coches eBay depuis ton téléphone, dans le métro ou au vide-grenier, et ton annonce est en route. Dans l'app, la case eBay l'annonce clairement : « Part de nos serveurs, sans l'extension ».
+Sur tes autres plateformes, c'est l'extension Chrome qui travaille, dans ta session, depuis ton ordinateur allumé — ou, avec l'option FillSell Cloud, les serveurs de FillSell, sans ordinateur. Sur eBay France, une fois ton compte relié, tes annonces partent par l'API officielle d'eBay, depuis nos serveurs. Ordinateur fermé, Chrome éteint : elles partent quand même. Tu coches eBay depuis ton téléphone, dans le métro ou au vide-grenier, et ton annonce est en route. Dans l'app, la case eBay l'annonce clairement : « Part de nos serveurs, sans l'extension ».
 
 ### Ton stock eBay, rangé avec tout le reste
 

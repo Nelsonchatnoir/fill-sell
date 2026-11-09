@@ -165,7 +165,11 @@ Oui, pour commencer. Le forfait Gratuit coûte 0 €, s'ouvre sans carte bancair
 
 ### Y a-t-il un essai gratuit ou un prix à l'année ?
 
-Non. Les forfaits payants n'ont ni essai ni prix annuel : ils se paient au mois, sans engagement. Pour essayer, le forfait Gratuit suffit : tu testes FillSell sur tes vrais articles, aussi longtemps que tu veux, sans carte bancaire.
+Pas pour les forfaits. Les forfaits payants n'ont ni essai ni prix annuel : ils se paient au mois, sans engagement. Pour essayer, le forfait Gratuit suffit : tu testes FillSell sur tes vrais articles, aussi longtemps que tu veux, sans carte bancaire. Seule l'option FillSell Cloud commence par un essai gratuit de 7 jours, pour un premier abonnement.
+
+### Combien coûte l'option FillSell Cloud ?
+
+24,99 € par mois. FillSell Cloud est une option : elle s'ajoute à n'importe quel forfait, Gratuit compris, et ne change rien à ce que compte ton forfait. Un premier abonnement commence par un essai gratuit de 7 jours ; on te prévient la veille de la fin de l'essai, et tu arrêtes l'option en un geste. Ce que tu paies : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Disponible en France, sur iPhone et sur le web, dans la limite des places disponibles.
 
 ### Est-ce que je paie par plateforme ou par annonce publiée ?
 
@@ -181,7 +185,7 @@ La fiche de FillSell sur l'App Store peut encore lister d'anciens achats intégr
 
 ### Faut-il payer l'app ou l'extension Chrome ?
 
-Non. L'app iPhone et Android est gratuite, l'app web aussi, et l'extension Chrome s'installe gratuitement depuis le Chrome Web Store. Seuls les forfaits Premium, Pro et Business sont payants.
+Non. L'app iPhone et Android est gratuite, l'app web aussi, et l'extension Chrome s'installe gratuitement depuis le Chrome Web Store. Seuls les forfaits Premium, Pro et Business, et l'option FillSell Cloud, sont payants.
 
 ### Que devient mon abonnement si je supprime mon compte ?
 

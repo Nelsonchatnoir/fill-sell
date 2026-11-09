@@ -8,6 +8,14 @@ rédaction les remplit. Un champ inconnu fait échouer le build : ne rien invent
 
 - Plateformes : Vinted, Leboncoin, eBay, Beebs, Depop. Opla n'existe nulle part (ni données,
   ni texte, ni image).
+- (09/11/2026, Nico) **FillSell Cloud se nomme sur le site** (la règle « aucun Cloud » est levée ; « aucun Opla »
+  reste). Les faits, et rien d'autre : une OPTION mensuelle à 24,99 € (essai gratuit de 7 jours pour un premier
+  abonnement), qui s'ajoute à n'importe quelle formule, Gratuit compris ; « plus besoin d'ordinateur » : FillSell Cloud
+  publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24,
+  et suit tes ventes ; tu connectes chaque plateforme une fois, sur sa propre page de connexion ; eBay relié part déjà
+  des serveurs (API officielle) sans option. **Sur iPhone et sur le web** tant que Google n'a pas validé la vc37
+  (Android : jamais écrit avant — garde `REGLE_CLOUD_ANDROID` du vérificateur) ; vendu **en France** ; places limitées.
+  Jamais : une autre plateforme, un prix inventé, Android, « FillSell publie pour toi » sans le nom FillSell Cloud.
 - Republication automatique : Vinted, Leboncoin, Beebs, Depop (tous paliers, jamais de palier
   écrit à côté). eBay : on ne parle pas de republication. La liste vient de
   `site/donnees/plateformes.yml` (`republication_auto: true`) et s'écrit dans les textes par le
@@ -162,8 +170,9 @@ ligne), `og_image` (facultatif). Ton du blog en français : VOUVOIEMENT (article
   « 100 % automatique », « temps réel », « zéro risque », « illimité » sans objet, « publié partout
   en même temps », « retrait automatique partout », « un e-mail à chaque vente », « partenaire
   officiel », « le seul », tout chiffre de quota ou de plafond, tout palier à côté de la
-  republication automatique, Opla, Cloud, noms de l'équipe, « FillSell publie pour toi » (c'est
-  l'extension qui publie, pilotée depuis le téléphone ; eBay relié : l'API officielle).
+  republication automatique, Opla, noms de l'équipe, « FillSell publie pour toi » (c'est
+  l'extension qui publie, pilotée depuis le téléphone ; eBay relié : l'API officielle ; avec l'option, FillSell Cloud
+  depuis ses serveurs — « Cloud » n'est plus banni depuis le 09/11, voir § 0).
 - Ventes : enregistrées seules sur Vinted et eBay ; sur Leboncoin, Beebs (et Depop : selon la
   fiche Depop), la personne confirme d'un geste ; les copies prouvées sont retirées ; au moindre
   doute, la question « Déjà vendu ? ».

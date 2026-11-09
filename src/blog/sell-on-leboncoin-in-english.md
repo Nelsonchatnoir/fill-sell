@@ -160,7 +160,7 @@ Tick Leboncoin. The free FillSell extension for Chrome fills in the Leboncoin fo
 - Leboncoin reviews new listings: they can take a while to appear.
 - If anything's missing, the app asks you.
 
-Your phone gives the orders; your computer does the legwork. For your listings to go out, the computer must be on with Chrome open, and while listings are queued the extension keeps it from going to sleep. Computer off? Nothing is lost: your listings wait and go out the next time Chrome opens.
+Your phone gives the orders; your computer does the legwork. For your listings to go out through the extension, the computer must be on with Chrome open, and while listings are queued the extension keeps it from going to sleep. Computer off? Nothing is lost: your listings wait and go out the next time Chrome opens. With the FillSell Cloud option (€24.99 a month, 7-day free trial for a first subscription, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Leboncoin listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### Already on Leboncoin? One tap brings it all in
 
@@ -178,7 +178,7 @@ When an item sells on Leboncoin, FillSell asks you to confirm the sale with one 
 
 On Leboncoin, climbing back to the top of the results is a paid option (“Remonter en tête de liste”). FillSell does something else: it reposts. The listing is removed and put back online, so it goes back to the top of the results — its views and favourites start from zero. FillSell never buys the paid option.
 
-Depending on your subscription, your listings bump themselves back up on Vinted, Leboncoin, Beebs, and Depop, on the days and in the time slot you choose, with your computer on; otherwise, you repost a listing with one tap. FillSell spaces out your reposts at a human pace to protect your account, and you switch it all off in one tap. More on [automatic reposting (in French)](page:fr:fonctions/republication).
+Depending on your subscription, your listings bump themselves back up on Vinted, Leboncoin, Beebs, and Depop, on the days and in the time slot you choose, with your computer on (or without one, with the FillSell Cloud option); otherwise, you repost a listing with one tap. FillSell spaces out your reposts at a human pace to protect your account, and you switch it all off in one tap. More on [automatic reposting (in French)](page:fr:fonctions/republication).
 
 ### One honest note
 

@@ -7,13 +7,13 @@ surtitre: "Comparatif relevé le 9 octobre 2026"
 title: "Meilleure application de crosslisting 2026 : le comparatif — FillSell"
 description: "15 outils de crosslisting comparés le 9 octobre 2026 : plateformes, double vente, IA, republication, app et prix. La grille, les notes, le bon choix selon ton cas."
 h1: "Meilleure application de crosslisting en 2026 : 15 outils comparés"
-chapo: "Pour vendre sur {{plateformes}} depuis la France, FillSell arrive en tête de notre comparatif de 15 outils (9 octobre 2026) : il publie sur les {{nb_plateformes}}, retire tes autres annonces d'un article vendu et se pilote depuis une app iPhone et Android. StoFlow passe devant si tout doit tourner ordinateur éteint, FLUF Connect si tu vends dans plusieurs pays d'Europe. FillSell est notre produit."
+chapo: "Pour vendre sur {{plateformes}} depuis la France, FillSell arrive en tête de notre comparatif de 15 outils (9 octobre 2026, note de FillSell mise à jour le 9 novembre) : il publie sur les {{nb_plateformes}}, retire tes autres annonces d'un article vendu et se pilote depuis une app iPhone et Android. FLUF Connect passe devant si tu vends dans plusieurs pays d'Europe. FillSell est notre produit."
 points_cles:
   - "Ce comparatif réunit 15 outils de crosslisting relus le 9 octobre 2026 sur leurs pages officielles et fiches de store : 8 sont notés sur 9 critères qui pèsent 100 points, 7 sont cités hors classement avec leur raison."
   - "Au 9 octobre 2026, aucun autre outil de ce comparatif n'annonce la publication à la fois sur Vinted, Leboncoin, eBay, Beebs et Depop."
   - "Pour un revendeur qui vit en France, quatre outils de ce comparatif gèrent Depop : FillSell, FLUF Connect, Klork et Relistly."
   - "Le retrait des autres annonces après une vente enregistrée est inclus dans tous les forfaits FillSell ; chez Klork, le retrait automatique demande le plan Business à 35 € par mois, chez Crosslist le plan Gold à 39,99 $."
-  - "StoFlow arrive premier quand l'ordinateur éteint compte le plus, FLUF Connect quand on veut le plus de plateformes européennes."
+  - "FLUF Connect arrive premier quand on veut le plus de plateformes européennes ; quand l'ordinateur éteint compte le plus, FillSell reste premier avec l'option FillSell Cloud."
 hero_media: "captures/stock-cartes-multi-plateformes.png"
 hero_alt: "Les cartes du stock FillSell, deux par ligne, avec la photo de chaque article, son prix, son ancienneté en ligne et les icônes des plateformes où il est en ligne : le t-shirt Picture gris « Pas en ligne », le sweat Öhlins sur Vinted seulement, le t-shirt Patagonia en ligne sur cinq plateformes (Depop, Beebs, eBay et deux autres) et le short Polo Ralph Lauren sur trois (Depop, Leboncoin, Vinted)."
 cta: inscription
@@ -32,7 +32,7 @@ liens:
 Il n'existe pas une meilleure application de crosslisting pour tout le monde. Il existe la meilleure pour **ta** façon de vendre. Voici ce que dit notre grille, relevée le 9 octobre 2026 :
 
 - **Tu vends sur Vinted, Leboncoin, eBay, Beebs et Depop, et tu veux tout piloter depuis ton téléphone** : FillSell arrive en tête. Au 9 octobre 2026, aucun autre outil de ce comparatif n'annonce la publication sur ces cinq plateformes à la fois.
-- **Tout doit tourner ordinateur éteint** : StoFlow passe devant. Son plan Pro fait tourner Vinted, Leboncoin et Vestiaire Collective sur ses serveurs.
+- **Tout doit tourner ordinateur éteint** : FillSell reste devant avec l'option FillSell Cloud, pour Vinted, Leboncoin, Beebs et Depop. StoFlow suit : son plan Pro fait tourner Vinted, Leboncoin et Vestiaire Collective sur ses serveurs.
 - **Tu vends dans plusieurs pays d'Europe, sur beaucoup de plateformes** : FLUF Connect passe devant.
 - **Petit budget** : FillSell reste en tête, avec un forfait Gratuit sans carte bancaire et sans date de fin.
 
@@ -81,7 +81,7 @@ FillSell est notre produit. Un comparatif écrit par un éditeur ne vaut que par
 
 ### Les variantes par profil
 
-Une seule note globale ne dit pas tout. Le classement est donc recalculé pour plusieurs profils de vendeur, en changeant les poids. FillSell arrive premier dans la pondération de base et dans le profil « petit budget ». StoFlow passe premier dans le profil « ordinateur éteint prioritaire ». FLUF Connect passe premier dans le profil « plus de plateformes européennes » et, de peu, dans le profil « vendeur sans Beebs ni Depop ». Toutes les variantes sont affichées sur cette page, avec leurs poids.
+Une seule note globale ne dit pas tout. Le classement est donc recalculé pour plusieurs profils de vendeur, en changeant les poids. FillSell arrive premier dans la pondération de base et dans les profils « petit budget », « ordinateur éteint prioritaire », « vendeur sans Beebs », « vendeur sans Beebs ni Depop » et « vendeur Depop » ; depuis le 9 novembre 2026, sa note « ordinateur éteint » compte l'option FillSell Cloud. FLUF Connect passe premier dans le profil « plus de plateformes européennes ». Toutes les variantes sont affichées sur cette page, avec leurs poids.
 
 ## Pourquoi FillSell arrive en tête de la grille de base
 
@@ -101,7 +101,7 @@ Une seule note globale ne dit pas tout. Le classement est donc recalculé pour p
 
 ![La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».](media:captures/vente-deja-vendu-question.png)
 
-**Tes annonces remontent toutes seules, selon ta formule.** La republication automatique couvre {{republication}} : tu choisis tes jours et ton créneau, FillSell republie tes annonces une à une, à un rythme humain, pendant que tu fais autre chose, ordinateur allumé. Tu coupes tout d'un geste, quand tu veux. Leboncoin compris : FLUF Connect n'automatise pas la republication sur Leboncoin, et Relistly ne gère pas encore Leboncoin.
+**Tes annonces remontent toutes seules, selon ta formule.** La republication automatique couvre {{republication}} : tu choisis tes jours et ton créneau, FillSell republie tes annonces une à une, à un rythme humain, pendant que tu fais autre chose, ordinateur allumé, ou éteint avec l'option FillSell Cloud. Tu coupes tout d'un geste, quand tu veux. Leboncoin compris : FLUF Connect n'automatise pas la republication sur Leboncoin, et Relistly ne gère pas encore Leboncoin.
 
 **Un prix qui ne se multiplie pas par plateforme.** Gratuit pour commencer, sans carte bancaire ; puis Premium 12,99 €, Pro 29,99 € ou Business 59,99 € par mois, sans engagement, toutes les plateformes comprises. Chez FlowDino, le prix s'entend par site connecté. Le détail des forfaits est sur notre page tarifs.
 
@@ -109,7 +109,7 @@ Une seule note globale ne dit pas tout. Le classement est donc recalculé pour p
 
 Un classement honnête dit aussi ça. Au 9 octobre 2026 :
 
-- **L'ordinateur éteint.** Chez FillSell, Vinted, Leboncoin, Beebs et Depop demandent ton ordinateur allumé avec Chrome ouvert ; éteint, rien n'est perdu, tes annonces attendent la prochaine ouverture de Chrome. Exception : sur eBay France, compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint. StoFlow (plan Pro) fait tourner Vinted, Leboncoin et Vestiaire Collective sur ses serveurs ; Reposter travaille côté serveur sur Leboncoin ; FLUF Connect gère Depop, eBay et Etsy sans navigateur ouvert une fois connecté.
+- **L'ordinateur éteint.** Chez FillSell, sans option, Vinted, Leboncoin, Beebs et Depop demandent ton ordinateur allumé avec Chrome ouvert ; éteint, rien n'est perdu, tes annonces attendent la prochaine ouverture de Chrome. Exception : sur eBay France, compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint. Depuis le 8 novembre 2026, l'option FillSell Cloud, à 24,99 € par mois, lève cette limite pour Vinted, Leboncoin, Beebs et Depop, depuis les serveurs de FillSell. StoFlow (plan Pro) fait tourner Vinted, Leboncoin et Vestiaire Collective sur ses serveurs ; Reposter travaille côté serveur sur Leboncoin ; FLUF Connect gère Depop, eBay et Etsy sans navigateur ouvert une fois connecté.
 - **La largeur.** FLUF Connect annonce plus de 60 plateformes, Relistly 13 en service en Europe. Vestiaire Collective, Etsy, Grailed ou Whatnot ne sont pas dans FillSell aujourd'hui.
 - **Vinted hors de France.** FillSell travaille aujourd'hui avec Vinted France. Redrip annonce 25 pays Vinted, FLUF Connect 19 sites.
 - **Le volume d'annonces.** Chaque forfait FillSell compte les articles rédigés par l'IA ; le volume exact s'affiche dans l'app avant tout achat. Relistly, lui, ne plafonne pas le nombre d'annonces de ses forfaits payants.
@@ -123,13 +123,13 @@ Un classement honnête dit aussi ça. Au 9 octobre 2026 :
 
 ### FillSell, notre produit
 
-Une app iPhone et Android, une application web sur fillsell.app et une extension Chrome gratuite, installée une fois depuis le Chrome Web Store. FillSell publie sur {{plateformes}}, relit ton stock déjà en ligne, retire les autres annonces d'un article vendu et republie tes annonces sur {{republication}}. L'app parle français et anglais. Ses limites sont écrites plus haut : ordinateur allumé pour tout sauf eBay relié, Vinted France seulement aujourd'hui, pas d'outils d'offres ni de messagerie. Tout le parcours est expliqué dans [notre guide du crosslisting](page:crosslisting).
+Une app iPhone et Android, une application web sur fillsell.app et une extension Chrome gratuite, installée une fois depuis le Chrome Web Store. FillSell publie sur {{plateformes}}, relit ton stock déjà en ligne, retire les autres annonces d'un article vendu et republie tes annonces sur {{republication}}. L'app parle français et anglais. Ses limites sont écrites plus haut : ordinateur allumé pour tout sauf eBay relié (sans l'option FillSell Cloud), Vinted France seulement aujourd'hui, pas d'outils d'offres ni de messagerie. Tout le parcours est expliqué dans [notre guide du crosslisting](page:crosslisting).
 
 ### FLUF Connect, le plus proche de FillSell
 
 L'éditeur est à Londres. FLUF Connect a, lui aussi, une app iPhone et Android et une extension Chrome qui exécute sur l'ordinateur. **Ce qu'il fait bien** : une couverture très large (19 sites Vinted, plus de 17 sites eBay, plus de 60 plateformes annoncées), Depop complet (publication, stock, commandes, offres, republication automatique), une partie du travail sans ordinateur une fois connecté, les doublons regroupés par photos avec confirmation, et une preuve publique solide (Trustpilot 4,6 sur 33 avis). **Ce que FillSell fait en plus** : Beebs ; Leboncoin au-delà de la publication (stock, retrait, republication) ; des prix en euros et une app en français de bout en bout, quand le site de FLUF affiche ses prix en livres, y compris sur ses pages françaises, et que son IA écrit en anglais par défaut ; un forfait gratuit permanent là où FLUF propose 7 jours pour 1 £. [FillSell ou FLUF Connect, critère par critère](page:comparatif/fillsell-vs-fluf-connect).
 
-### StoFlow, premier si tout doit tourner ordinateur éteint
+### StoFlow, le travail ordinateur éteint inclus dans son plan Pro
 
 L'éditeur est une SARL de Seine-et-Marne. StoFlow, c'est un tableau de bord web et une extension pour Chrome, Brave, Edge et Firefox. **Ce qu'il fait bien** : une grille claire de ce que chaque plan ouvre ; Vinted et Leboncoin dès le plan Free, retrait après vente compris ; eBay France dès Starter (14,99 €) ; Vestiaire Collective et le travail sur ses serveurs, ordinateur éteint, en plan Pro (29,99 €) ; Etsy et eBay dans 9 pays en Business (79,99 €) ; des prix annuels et 14 jours remboursés. Son offre à 29,99 € ajoute, sur Vinted et Leboncoin, la republication automatique. **Ce que FillSell fait en plus** : une app iPhone et Android publiée, quand celle de StoFlow est « en cours de construction » ; Beebs et Depop, que StoFlow n'annonce pas ; eBay dès le forfait Gratuit ; le rapprochement automatique d'un même article entre plateformes, quand StoFlow fait lier les annonces importées à la main. [FillSell ou StoFlow, en détail](page:comparatif/fillsell-vs-stoflow).
 
@@ -177,7 +177,7 @@ Reste le mot « officielle ». FillSell n'est affilié ni à Vinted ni à Lebonc
 
 Depop appartient à eBay depuis le 30 juillet 2026, mais les deux restent deux plateformes, avec deux comptes. Pour un revendeur qui vit en France, quatre outils de ce comparatif gèrent Depop :
 
-- **FillSell** : publication au format Depop (pas de titre, des hashtags, la grille de tailles EU), synchronisation de ta boutique Depop avec le reste de ton stock, retrait de ton annonce Depop quand l'article se vend ailleurs, republication d'un appui. Pour Depop, tu autorises l'accès d'un clic dans l'extension, ordinateur allumé.
+- **FillSell** : publication au format Depop (pas de titre, des hashtags, la grille de tailles EU), synchronisation de ta boutique Depop avec le reste de ton stock, retrait de ton annonce Depop quand l'article se vend ailleurs, republication d'un appui. Pour Depop, tu autorises l'accès d'un clic dans l'extension, ordinateur allumé. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tu connectes Depop une fois, sur sa propre page de connexion.
 - **FLUF Connect** : Depop complet, offres et commandes comprises, sans navigateur ouvert une fois connecté. Le plus profond sur Depop, mais sans Beebs, avec Leboncoin limité à la publication.
 - **Klork** : publication sur Depop, ventes détectées puis annonce retirée (retrait automatique en plan Business). Republication à la main.
 - **Relistly** : Depop dans 24 pays européens, retrait des annonces publiées par Relistly ; sans Leboncoin ni Beebs.
@@ -207,7 +207,7 @@ Un point à connaître : les conditions de Depop (version du 6 octobre 2026) per
 
 ### Quelle est la meilleure application de crosslisting en 2026 ?
 
-Ça dépend de là où tu vends. Pour vendre depuis la France sur Vinted, Leboncoin, eBay, Beebs et Depop en pilotant tout depuis ton téléphone, FillSell arrive en tête de notre grille du 9 octobre 2026 (15 outils relus, 9 critères pondérés). Si tout doit tourner ordinateur éteint, StoFlow passe devant ; si tu vends dans plusieurs pays d'Europe sur beaucoup de plateformes, c'est FLUF Connect. FillSell est notre produit : la grille, les notes et les sources sont publiées sur cette page.
+Ça dépend de là où tu vends. Pour vendre depuis la France sur Vinted, Leboncoin, eBay, Beebs et Depop en pilotant tout depuis ton téléphone, FillSell arrive en tête de notre grille du 9 octobre 2026 (15 outils relus, 9 critères pondérés). Si tout doit tourner ordinateur éteint, FillSell reste devant avec l'option FillSell Cloud, StoFlow suit ; si tu vends dans plusieurs pays d'Europe sur beaucoup de plateformes, c'est FLUF Connect. FillSell est notre produit : la grille, les notes et les sources sont publiées sur cette page.
 
 ### Existe-t-il une application de crosslisting gratuite ?
 
@@ -223,7 +223,7 @@ Quatre outils de ce comparatif : FillSell, FLUF Connect, Klork et Relistly. Cros
 
 ### Peut-on faire du crosslisting sans ordinateur ?
 
-En partie. Avec FillSell, tu pilotes tout depuis ton téléphone, mais l'extension Chrome travaille sur ton ordinateur pour Vinted, Leboncoin, Beebs et Depop : il doit être allumé, Chrome ouvert. Éteint, rien n'est perdu : tes annonces attendent la prochaine ouverture de Chrome. Sur eBay France, compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint. Pour que tout tourne sans ordinateur, StoFlow le propose dans son plan Pro, et Reposter sur Leboncoin, en confiant tes identifiants à son service.
+Oui. Avec FillSell, tu pilotes tout depuis ton téléphone, et l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement), t'évite l'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans l'option, l'extension Chrome travaille sur ton ordinateur pour ces quatre plateformes : il doit être allumé, Chrome ouvert ; éteint, rien n'est perdu, tes annonces attendent la prochaine ouverture de Chrome. Sur eBay France, compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint. Côté concurrents, StoFlow propose le travail sans ordinateur dans son plan Pro, et Reposter sur Leboncoin, en confiant tes identifiants à son service.
 
 ### Comment éviter la double vente quand on vend sur plusieurs plateformes ?
 

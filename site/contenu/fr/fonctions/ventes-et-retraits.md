@@ -91,7 +91,7 @@ Et ce qui ne bouge pas :
 
 Le retrait est définitif : l'annonce disparaît de la plateforme pour de bon, exactement le geste que demandent l'aide de Vinted et les conditions de Depop.
 
-**Qui fait le retrait ?** Sur Vinted, Leboncoin, Beebs et Depop, c'est l'extension Chrome, sur ton ordinateur, dans ta propre session, une annonce après l'autre. Sur Depop, elle vérifie ensuite chez Depop que l'annonce n'est plus en ligne. Sur eBay, une annonce publiée par l'API officielle d'eBay est retirée par la même voie, sans passer par ton ordinateur ; une annonce publiée par l'extension est retirée par l'extension. Le détail par plateforme : [Vinted](page:plateformes/vinted), [Leboncoin](page:plateformes/leboncoin), [eBay](page:plateformes/ebay), [Beebs](page:plateformes/beebs) et [Depop](page:plateformes/depop).
+**Qui fait le retrait ?** Sur Vinted, Leboncoin, Beebs et Depop, c'est l'extension Chrome, sur ton ordinateur, dans ta propre session, une annonce après l'autre. Sur Depop, elle vérifie ensuite chez Depop que l'annonce n'est plus en ligne. Sur eBay, une annonce publiée par l'API officielle d'eBay est retirée par la même voie, sans passer par ton ordinateur ; une annonce publiée par l'extension est retirée par l'extension. Avec l'option FillSell Cloud, tes annonces Vinted, Leboncoin, Beebs et Depop sont retirées depuis les serveurs de FillSell, sans ton ordinateur. Le détail par plateforme : [Vinted](page:plateformes/vinted), [Leboncoin](page:plateformes/leboncoin), [eBay](page:plateformes/ebay), [Beebs](page:plateformes/beebs) et [Depop](page:plateformes/depop).
 
 ## « Déjà vendu ? » : le doute pose une question, il ne retire rien
 
@@ -115,13 +115,13 @@ Vide-grenier, remise en main propre, vente sur un autre site : ouvre la fiche de
 
 Tu as les mains prises ? Dis-le à voix haute, par exemple « J'ai vendu le sweat Öhlins 35 € en main propre » : l'app prépare la vente et te prévient des annonces qui seront retirées.
 
-Sur Depop aussi, un appui sur « Vendre » enregistre la vente et lance le retrait de tes autres annonces de l'article. Dans l'autre sens, quand l'article se vend ailleurs, c'est ton annonce Depop qui est retirée. Depop a beau appartenir à eBay depuis le 30 juillet 2026, il reste une plateforme à part, avec son propre compte : c'est l'extension, dans ta session Depop, qui s'occupe de tes annonces Depop.
+Sur Depop aussi, un appui sur « Vendre » enregistre la vente et lance le retrait de tes autres annonces de l'article. Dans l'autre sens, quand l'article se vend ailleurs, c'est ton annonce Depop qui est retirée. Depop a beau appartenir à eBay depuis le 30 juillet 2026, il reste une plateforme à part, avec son propre compte : c'est l'extension, dans ta session Depop, ou FillSell Cloud si tu as pris l'option, qui s'occupe de tes annonces Depop.
 
 ## Ordinateur allumé ou éteint : qui fait quoi ?
 
 Ton téléphone pilote, ton ordinateur exécute. Dans l'app, où que tu sois, tu vois tes ventes, tu réponds aux questions, tu confirmes d'un appui. Sur ton ordinateur, l'extension Chrome relit tes annonces, repère tes ventes et retire les copies, dans tes sessions, sans jamais te demander tes mots de passe.
 
-- **Vinted, Leboncoin, Beebs et Depop** : ton ordinateur doit être allumé avec Chrome ouvert.
+- **Vinted, Leboncoin, Beebs et Depop** : ton ordinateur doit être allumé avec Chrome ouvert, sauf avec l'option FillSell Cloud, qui retire tes annonces et suit tes ventes depuis les serveurs de FillSell, 24 h/24.
 - **eBay** : le serveur de FillSell suit tes ventes eBay, et une annonce publiée par l'API officielle d'eBay est retirée par la même voie, sans ton ordinateur.
 - **Ordinateur éteint ?** Rien n'est perdu : les retraits attendent et partent à la prochaine ouverture de Chrome. Un retrait qui bute est retenté plus tard, sans que tu aies à le relancer ; s'il faut te reconnecter à une plateforme, l'app te le dit.
 
@@ -146,7 +146,7 @@ Le retrait des copies après une vente, c'est ce que les outils anglophones appe
 
 | Outil | Retrait automatique des autres annonces après une vente | Ce que l'outil écrit lui-même |
 |---|---|---|
-| **FillSell** | dans toutes les formules, une fois la vente enregistrée | annonces reliées à l'article par un lien sûr, importées comprises ; au moindre doute, « Déjà vendu ? » ; ordinateur allumé (eBay relié : sans ordinateur) |
+| **FillSell** | dans toutes les formules, une fois la vente enregistrée | annonces reliées à l'article par un lien sûr, importées comprises ; au moindre doute, « Déjà vendu ? » ; ordinateur allumé (sans ordinateur : eBay relié ; Vinted, Leboncoin, Beebs et Depop avec l'option FillSell Cloud) |
 | StoFlow | dès son plan gratuit, « automatiquement ou après votre feu vert » | — |
 | Relistly | dans tous ses paliers | « Only touches listings Relistly posted » : seulement les annonces publiées par Relistly |
 | FlowDino | par l'extension, navigateur ouvert | annonces « publiées au préalable avec FlowDino » |
@@ -167,7 +167,7 @@ Chez FillSell, le retrait des copies n'est pas une option à débloquer : il fai
 3. **Enregistre la vente là où elle a vraiment eu lieu**, dans FillSell : les autres annonces de l'article sont retirées.
 4. **Fais le tri dans « À régler »** : si une annonce encore en ligne n'est pas la même pièce, réponds « Non, c'est un autre exemplaire ».
 
-Et pour que ça ne se reproduise pas : laisse ton ordinateur allumé avec Chrome ouvert quand tu vends sur Vinted, Leboncoin, Beebs ou Depop, et confirme sans attendre les ventes que l'app te présente. Le guide complet, avec la méthode à la main et les pièges de chaque plateforme : [vendre le même article sur plusieurs plateformes sans double vente](page:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
+Et pour que ça ne se reproduise pas : laisse ton ordinateur allumé avec Chrome ouvert quand tu vends sur Vinted, Leboncoin, Beebs ou Depop (ou prends l'option FillSell Cloud : plus besoin d'ordinateur), et confirme sans attendre les ventes que l'app te présente. Le guide complet, avec la méthode à la main et les pièges de chaque plateforme : [vendre le même article sur plusieurs plateformes sans double vente](page:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
 
 Prêt à vendre sur toutes tes plateformes sans courir après tes annonces ? [Crée ton compte FillSell](/login?mode=signup) : gratuit pour commencer, sans carte bancaire.
 
@@ -191,7 +191,7 @@ FillSell ne retire que les annonces qu'un lien sûr relie à l'article vendu. Un
 
 ### Faut-il laisser l'ordinateur allumé pour que les annonces soient retirées ?
 
-Pour Vinted, Leboncoin, Beebs et Depop, oui : c'est l'extension Chrome qui retire les annonces, ordinateur allumé avec Chrome ouvert. Ordinateur éteint, les retraits attendent et partent à la prochaine ouverture de Chrome. Sur eBay, une annonce publiée par l'API officielle d'eBay est retirée par la même voie, sans ton ordinateur.
+Pour Vinted, Leboncoin, Beebs et Depop, oui, sans l'option FillSell Cloud : c'est l'extension Chrome qui retire les annonces, ordinateur allumé avec Chrome ouvert. Ordinateur éteint, les retraits attendent et partent à la prochaine ouverture de Chrome. Sur eBay, une annonce publiée par l'API officielle d'eBay est retirée par la même voie, sans ton ordinateur. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont retirées depuis les serveurs de FillSell, 24 h/24.
 
 ### J'ai vendu un article en main propre : comment retirer ses annonces en ligne ?
 

@@ -19,7 +19,7 @@ points_cles:
   - "One tap on Sync brings your live Vinted and Leboncoin listings into one stock: the same item on both sites becomes one card when its photos and title agree."
   - "Sold on Vinted: FillSell records the sale itself and removes the proven Leboncoin copy. Sold on Leboncoin: you confirm with one tap first. Any doubt, it asks “Already sold?”."
   - "The extension works in your own Chrome sessions, one listing at a time, with your computer on. FillSell never asks for your Vinted or Leboncoin passwords."
-  - "Depending on your subscription, automatic reposting runs on {{republication}}, on the days and in the time slot you choose, with your computer on."
+  - "Depending on your subscription, automatic reposting runs on {{republication}}, on the days and in the time slot you choose, with your computer on, or without one with the FillSell Cloud option."
 hero_media: "captures/vente-retrait-copies.png"
 hero_alt: "The computer's queue in FillSell right after a sale on Vinted: in progress, removing the Depop listing of the sold Red Bull Racing hoodie (€38), with its progress bar; next, removing its Leboncoin copy, then publishing the Öhlins hoodie on Depop and Leboncoin, each waiting its turn."
 etapes:
@@ -104,7 +104,7 @@ Selling on two sites has one real trap: the second buyer. FillSell closes it fro
 - **It sells on Leboncoin.** FillSell spots the sale and asks you to confirm it with one tap — a “sold” reading on Leboncoin never counts as a sale by itself. Once you confirm, the proven Vinted copy comes down, just as Vinted's own help asks.
 - **Any doubt, it asks.** A copy is removed on its own only when FillSell can prove it's the same item: FillSell posted that copy, you linked the two, or the photos are identical. Otherwise you get the question “Already sold?”, with two answers: “Yes, remove it” or “No, it's another copy”. A “No” is never asked again.
 
-A removal is final, and it needs your computer on with Chrome open. Computer off? The removal waits and goes out the next time Chrome opens. Every rule behind this is laid out on the [sales and removals page (in French)](page:fr:fonctions/ventes-et-retraits).
+A removal is final, and without the FillSell Cloud option it needs your computer on with Chrome open. Computer off? The removal waits and goes out the next time Chrome opens. With the option, it goes out from FillSell's servers, computer off. Every rule behind this is laid out on the [sales and removals page (in French)](page:fr:fonctions/ventes-et-retraits).
 
 ## Already selling on both? Get one stock, not two lists
 
@@ -124,7 +124,7 @@ From then on, each card knows where its item is live — which is what lets a sa
 Vinted sells Boost; Leboncoin sells a bump to the top of the list. FillSell does something different: it reposts. The listing is removed and put back online, so it goes back to the top of the results — but its views and favourites start from zero. And the extension never buys a paid option on your behalf.
 
 - **One tap** reposts a listing that's losing steam.
-- **Automatic reposting**, depending on your subscription, runs on {{republication}}: your listings bump themselves back up on the days and in the time slot you choose, while you get on with something else — with your computer on.
+- **Automatic reposting**, depending on your subscription, runs on {{republication}}: your listings bump themselves back up on the days and in the time slot you choose, while you get on with something else — with your computer on, or without one with the FillSell Cloud option.
 - **A human pace.** Reposts are spaced out to protect your account, and you switch everything off in one tap.
 
 The details, and how reposting differs from a Boost, are on the [reposting page (in French)](page:fr:fonctions/republication).
@@ -135,7 +135,7 @@ The details, and how reposting differs from a Boost, are on the [reposting page 
 
 FillSell splits the work in two, on purpose. You sign in to Vinted and Leboncoin yourself, in Chrome on your computer, like you always do. The free FillSell extension, installed once from the Chrome Web Store (see the [extension page](/extension)), works inside those sessions: FillSell never asks for your Vinted or Leboncoin passwords.
 
-You drive the work from the app — on iPhone, Android or the web. The extension does the typing on the sites, one listing at a time, in a minimised window that doesn't take over your screen. While listings are queued, it keeps the computer from going to sleep. And if the computer is off, nothing is lost: your listings wait and go out the next time Chrome opens.
+You drive the work from the app — on iPhone, Android or the web. The extension does the typing on the sites, one listing at a time, in a minimised window that doesn't take over your screen. While listings are queued, it keeps the computer from going to sleep. And if the computer is off, nothing is lost: your listings wait and go out the next time Chrome opens. With the FillSell Cloud option, no computer needed: your Vinted and Leboncoin listings go out from FillSell's servers, around the clock.
 
 ## Picking a tool for Vinted and Leboncoin: four questions
 
@@ -170,7 +170,7 @@ FillSell spots the sale and asks you to confirm it with one tap. Once confirmed,
 
 ### Does my computer need to be on?
 
-Yes, for Vinted and Leboncoin: posting, removing and spotting sales go through the extension, so the computer must be on with Chrome open. You drive it from your phone. Computer off? Your listings wait and go out the next time Chrome opens.
+Yes, without the FillSell Cloud option, for Vinted and Leboncoin: posting, removing and spotting sales go through the extension, so the computer must be on with Chrome open. You drive it from your phone. Computer off? Your listings wait and go out the next time Chrome opens. With the FillSell Cloud option (€24.99 a month, 7-day free trial for a first subscription, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted and Leboncoin listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### Is FillSell's reposting the same as a Vinted Boost or a Leboncoin bump?
 

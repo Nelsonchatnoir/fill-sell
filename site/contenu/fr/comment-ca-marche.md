@@ -98,6 +98,7 @@ Pourquoi passer par l'ordinateur ? Parce que c'est ce qui garde tes comptes entr
 | Ton téléphone (app iPhone ou Android), ou fillsell.app sur ton ordinateur | le poste de pilotage | photographier, relire l'annonce de Lens, cocher les plateformes, appuyer sur « Synchroniser », répondre aux questions, suivre ventes et marge |
 | Ton ordinateur, avec l'extension Chrome | l'exécutant | rien de plus que le laisser allumé, Chrome ouvert : il dépose, relit, republie et retire tes annonces dans tes sessions |
 | Ton compte eBay relié | la voie officielle | le relier une fois ; ensuite, tes annonces eBay partent par l'API officielle d'eBay, ordinateur éteint compris |
+| L'option FillSell Cloud | l'exécutant, sans ordinateur | connecter une fois chaque plateforme, sur sa propre page de connexion ; ensuite, les serveurs de FillSell publient, republient et retirent tes annonces Vinted, Leboncoin, Beebs et Depop, 24 h/24, et suivent tes ventes |
 
 ## Étapes 1 et 2 : une photo, et l'annonce est écrite
 
@@ -142,7 +143,7 @@ Une exception utile : si la synchronisation découvre qu'un article est déjà v
 
 Une annonce qui vieillit descend dans les résultats. La parade des vendeurs, c'est de la republier : la retirer puis la remettre en ligne. Elle repart alors comme une annonce neuve, avec une nouvelle date de mise en ligne, mais ses vues et ses favoris repartent de zéro. Fait à la main, c'est une corvée ; avec FillSell, c'est un appui et, selon ta formule, tes annonces remontent toutes seules sur {{republication}}.
 
-Tu règles une fois les jours actifs et ton créneau : matin, midi, soir ou sur mesure. Pendant ce créneau, l'extension republie tes annonces une à une, au rythme réel de ton compte, jamais en rafale, pendant que tu fais autre chose. Il faut l'ordinateur allumé avec Chrome ouvert. Un geste suffit pour tout couper, quand tu veux. Et une annonce précise à faire remonter tout de suite ? Tu la remontes d'un appui.
+Tu règles une fois les jours actifs et ton créneau : matin, midi, soir ou sur mesure. Pendant ce créneau, l'extension republie tes annonces une à une, au rythme réel de ton compte, jamais en rafale, pendant que tu fais autre chose. Il faut l'ordinateur allumé avec Chrome ouvert, sauf avec l'option FillSell Cloud. Un geste suffit pour tout couper, quand tu veux. Et une annonce précise à faire remonter tout de suite ? Tu la remontes d'un appui.
 
 Chaque plateforme a ses règles sur les outils et la republication : nous les citons mot pour mot, avec ce que FillSell fait pour espacer ses gestes, sur [la page sécurité des comptes](page:securite-des-comptes). Pour les réglages en détail : [la republication automatique](page:fonctions/republication).
 
@@ -187,11 +188,11 @@ La vidéo de présentation, sur [la page d'accueil de FillSell](page:accueil), d
 
 ### Faut-il laisser son ordinateur allumé ?
 
-Oui, pour tout ce que fait l'extension : elle a besoin de l'ordinateur allumé, de Chrome ouvert et de tes sessions ouvertes sur tes plateformes. Tant qu'il reste des annonces à publier, elle empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Exception : sur eBay France, avec un compte relié, tes annonces eBay partent par l'API officielle d'eBay, même ordinateur éteint.
+Oui, pour tout ce que fait l'extension : elle a besoin de l'ordinateur allumé, de Chrome ouvert et de tes sessions ouvertes sur tes plateformes. Tant qu'il reste des annonces à publier, elle empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Deux exceptions. Sur eBay France, avec un compte relié, tes annonces eBay partent par l'API officielle d'eBay, même ordinateur éteint. Et avec l'option FillSell Cloud, plus besoin d'ordinateur : FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24.
 
 ### FillSell me demande-t-il mes mots de passe ?
 
-Non. Tu te connectes toi-même à Vinted, Leboncoin, Beebs et Depop dans Chrome, comme d'habitude, et l'extension travaille dans ces sessions ; pour Depop, tu autorises l'accès d'un clic dans l'extension. Pour eBay, tu relies ton compte sur la page officielle d'eBay : FillSell reçoit une autorisation, jamais ton mot de passe.
+Non. Tu te connectes toi-même à Vinted, Leboncoin, Beebs et Depop dans Chrome, comme d'habitude, et l'extension travaille dans ces sessions ; pour Depop, tu autorises l'accès d'un clic dans l'extension. Pour eBay, tu relies ton compte sur la page officielle d'eBay : FillSell reçoit une autorisation, jamais ton mot de passe. Avec l'option FillSell Cloud, tu te connectes toi-même, une fois, sur la page de connexion de chaque plateforme : ce que tu tapes lui est transmis sans être enregistré.
 
 ### Mon annonce part-elle sur toutes les plateformes en même temps ?
 

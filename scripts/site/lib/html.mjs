@@ -157,5 +157,7 @@ export function typographie(html, lang) {
   const insecable = String.fromCharCode(0xa0);
   return String(html).replace(/(<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>)|([^<]+)/gi, (m, balise, texte) => (balise
     ? balise
-    : texte.replace(/ ([:;?!»])/g, `${insecable}$1`).replace(/« /g, `«${insecable}`)));
+    // (09/11) Un montant ne se coupe jamais en fin de ligne : « 24,99 € », « 0 € », « 15 % » (vu sur le comparatif StoFlow
+    // à 375 px : « 24,99 » | « € »). Seulement après un chiffre : jamais une espace ordinaire avant un € isolé.
+    : texte.replace(/ ([:;?!»])/g, `${insecable}$1`).replace(/« /g, `«${insecable}`).replace(/(\d) (€|%)/g, `$1${insecable}$2`)));
 }
