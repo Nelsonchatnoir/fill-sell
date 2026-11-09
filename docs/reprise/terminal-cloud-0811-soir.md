@@ -1,7 +1,7 @@
 # POINT DE REPRISE — TERMINAL CLOUD, 08/11/2026 soir (à lire EN ENTIER avant toute action)
 
 Rédigé le 08/11 vers 20:15 (heure de Paris), à la demande de Nico, pour une session neuve ; **mis à jour après chaque point
-terminé** (dernière mise à jour : 08/11 20:4x, migration 20261108200000 appliquée). Tout ce qui suit a été relu
+terminé** (dernière mise à jour : 09/11 02:2x, nuit en autonomie — section 000). Tout ce qui suit a été relu
 en prod au moment d'écrire, sauf mention contraire.
 
 ## 000. NUIT EN AUTONOMIE (Nico valide tout, 08/11 ~23:55 → matin) — avancement
@@ -28,7 +28,9 @@ en prod au moment d'écrire, sauf mention contraire.
    part, 0 erreur. **OTA pas encore envoyée** : `npm run ota` refuse un arbre sale — le terminal « Problèmes » a son lot
    en cours dans le dossier partagé (il prévient quand c'est poussé) ; ensuite version 2.9.168, `npm run ota -- --essai`,
    `npm run ota`, relecture du canal et de la compatibilité.
-6. C1 « plus besoin d'ordinateur » : FAIT (commit du 09/11 ~01:3x). Partout dans les écrans Cloud : titre de la feuille
+6. C1 « plus besoin d'ordinateur » : EN PROD WEB (2a84fa1, poussé avec 3ba9611 ; `build.json` = `2026-11-09T01:15:13Z+3ba9611`
+   relu 02:15:27 ; le bundle servi porte « Plus besoin d'ordinateur », plus aucun « partent même ordinateur éteint ») ;
+   iPhone : avec l'OTA 2.9.168. Partout dans les écrans Cloud : titre de la feuille
    ouverte sur le Cloud « Plus besoin d'ordinateur. », accroche neuve du bloc Cloud des Réglages, ce que fait le Cloud
    (« … sans ordinateur, 24 h/24, et tes ventes sont suivies »), carte des Réglages payée, carte Cloud du parcours
    d'entrée, connexions, « Je débute », Synchroniser (« FillSell Cloud travaille… sans ordinateur »), mail « essai
