@@ -83,3 +83,24 @@ chantier, rien codé) ; copie 0.6.183-cloud = terminal Cloud ; créneaux et manu
 - ⚠️ Interprétation à confirmer par Nico : « avoir des créneaux » = module ACTIF ; un module en pause ou arrêté ne
   retient pas le manuel (sinon le lot ne partirait jamais).
 - Mis de côté (décision de Nico) : écran de confirmation au-delà de 50 republications — futur chantier, rien codé.
+
+## En service (09/11, feu vert nommé de Nico)
+- Migration 20261109010000 appliquée (~00:55) ; verdicts relus en prod : assopmfrance ×4 « annonce_partie », christopher
+  ×6, jordy ×4, lupilou ×1 NULL (republiables), louis ×3 et nicolas.menar ×1 « annonce_vendue » (inchangés).
+- Suite complète 648/648 verte (06:28) ; commit c837c27 ; déploiement depuis une archive de HEAD (06:29) :
+  get-pending-jobs **v354** (avant v353, verify_jwt true), ebay-api-worker **v121** (avant v120, false).
+- Effet vérifié (point 2, 06:30) : les 11 publications eBay de nicolas.menar sont passées seules en
+  `ebay_verification_identite` (message « eBay bloque la mise en vente… finalises la vérification »), sans appel à eBay ;
+  sa 12e (question de rayon) reste « relancer » (article).
+- La suite complète a gelé pendant la nuit (poste en veille) : commit et déploiements faits à 06:2x au lieu de ~01:00 —
+  le lot de Joséphine a donc continué hors créneau jusque-là.
+
+- Effet vérifié (créneaux, 06:3x) : au premier poll de Joséphine après le déploiement, 317 tâches de son lot portent
+  « Republication de ton lot (plus de 10 articles) en attente de ton créneau… » (borne de ~300 messages par passage, les
+  autres suivent) ; la seule tâche servie depuis 06:29 (Leboncoin 1c72f570, 06:31:51) était à l'étape « deleted » (annonce
+  déjà retirée : elle va au bout, règle voulue). Les deux dernières publiées (06:21, 06:25) l'ont été avant le déploiement.
+
+## Ce qui attend
+- Créneaux : vérifier à 10:00 que le lot de Joséphine repart (créneau ouvert), au rythme de chaque plateforme.
+- OTA 2.9.168 (terminal Cloud) : embarque l'app de c837c27 (feuille de republication, file, trace des refus).
+- Nico : confirmer « créneaux définis = module ACTIF » (un module en pause ne retient pas le manuel).
