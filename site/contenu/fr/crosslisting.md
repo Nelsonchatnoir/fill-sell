@@ -218,7 +218,7 @@ Un outil de crosslisting se juge le jour où tu vends, pas seulement le jour où
 | Annonce depuis une photo | c'est là que file ton temps | Lens, prix compris |
 | Republication | une annonce qui vieillit s'enfonce | d'un appui, ou automatique selon ta formule sur {{republication}} |
 | Téléphone | tu sources dehors | apps iPhone et Android, et le web |
-| Ordinateur éteint | certains outils travaillent depuis leurs serveurs | eBay relié seulement |
+| Ordinateur éteint | certains outils travaillent depuis leurs serveurs | eBay relié, par l'API officielle |
 | Prix | ce que tu paies chaque mois | Gratuit (0 €) sans carte bancaire ; Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement |
 
 Deux vérifications avant de choisir, d'après les pages des éditeurs relues le 9 octobre 2026 :
