@@ -38,3 +38,11 @@ les bordereaux sont ouverts). Deux façons de les couper pour tous les clients C
 - **ou** une extension qui lit un champ du serveur, « plateformes du Cloud », et n'y touche plus jamais, comme
   Leboncoin « délégué » depuis la 0.6.164.
 Rien n'est fait de ce côté sans ton feu vert nommé (SQL montré, essayé d'abord sur une base jetable).
+
+## 4. Déploiement (09/11, feu vert de Nico)
+
+- **get-pending-jobs v355 → v356** à 20:33 (`verify_jwt` = true avant et après), déployée depuis `git archive d9ee076`
+  (jamais depuis le dossier partagé : gpj importe `src/utils/shared.js`, modifié sans commit par un autre terminal).
+  41 appels dans les 10 min qui suivent, aucune erreur 5xx.
+- Suite complète tuée par le poste (mémoire) à 20:24 sans rouge ; selftests ciblés verts (33 qui lisent le code touché,
+  cloud-orchestrateur 209/209, cloud-un-executant 21/21).

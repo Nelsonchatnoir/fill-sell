@@ -56,3 +56,11 @@ Aucune image n'est gardée (`ENREGISTREMENT_CONNEXIONS=0`) : ce qu'elle voyait e
   Vinted voit toujours un accès « hors de France » sur ce compte. Remplacer l'IP = achat (accord écrit de Nico).
 - Proposition : ajouter au contrôle d'entrée d'une IP la lecture de `www.vinted.fr` SANS le témoin — une page qui porte
   `domainLinks` = IP non vue en France par Vinted → l'IP ne sert pas (règle à valider avant d'être codée).
+
+## 6. Déploiement (09/11, feu vert de Nico)
+
+- Poussé c90e1e3..d9ee076 (a2a9246 = ce correctif). Orchestrateur de cloud-2 : **065871458a15 → d9ee076698ac** à
+  20:55:44-20:56:05 (`ORCHESTRATEUR_SEUL=1`, image Chrome 61fb7ddd6e2a et extension Cloud CRX 7ab2163c1521 inchangées),
+  lancé une fois Deborah au repos (20:55:01 : aucun « Me connecter », aucune tâche, aucun relevé).
+- Vérifié après : son poste rouvert à 20:56:16 avec ses 4 sessions reprises du profil, session FillSell gardée, coffre
+  `connecte = true` pour Vinted, Leboncoin, Beebs, Depop (20:56:17), IP n° 1 inchangée, aucune purge ni alerte.
