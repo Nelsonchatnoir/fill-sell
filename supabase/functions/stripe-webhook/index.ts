@@ -9,6 +9,7 @@ import { mailsCloud, type EvenementCloud } from "../_shared/cloud-mails-envoi.ts
 import { prixDepuisStripe } from "../_shared/cloud-prix.js";
 import { faitsEchec, decisionMailEchec, causeDuPaiement } from "../_shared/paiement-echoue.js";
 import { palierDeFacture } from "../_shared/paiement-stripe.js";
+import { colonnesDescente, descentePrevue } from "../_shared/descente-formule.js";
 import { palierDuProfil } from "../_shared/palier.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
@@ -110,6 +111,37 @@ function planDuPrix(s: Stripe.Subscription): string | null {
   return null;
 }
 
+// (09/11, C4) LA DESCENTE PRÉVUE (« Ta formule passera à Premium le … »), lue chez Stripe — ses schedules sont la source
+// de vérité (_shared/descente-formule.js). Écrite À PART des droits, jamais bloquante : les droits ne changent qu'avec le
+// prix facturé (ci-dessus). Aucun appel tant qu'aucun abonnement n'a de schedule ; si les colonnes n'existent pas
+// (migration 20261109020000 pas appliquée), l'erreur est journalisée et rien d'autre ne bouge.
+// deno-lint-ignore no-explicit-any
+async function ecrireDescentePrevue(supabase: any, customerId: string, subs: Stripe.Subscription[]) {
+  try {
+    const prix = prixConnus();
+    const avecSchedule = subs.filter((s) => s.schedule && !estAbonnementCloud(s, prix));
+    if (!avecSchedule.length) {
+      // Plus aucun schedule : une descente encore affichée (rendue ailleurs, au tableau de bord Stripe) est effacée.
+      const { data: fp, error: lu } = await supabase.from("profiles").select("formule_prevue_canal").eq("stripe_customer_id", customerId).maybeSingle();
+      if (!lu && fp?.formule_prevue_canal === "stripe") {
+        await supabase.from("profiles").update(colonnesDescente(null)).eq("stripe_customer_id", customerId);
+      }
+      return;
+    }
+    const schedules: Record<string, unknown> = {};
+    for (const s of avecSchedule) {
+      const id = typeof s.schedule === "string" ? s.schedule : (s.schedule as { id: string }).id;
+      schedules[id] = await stripe.subscriptionSchedules.retrieve(id);
+    }
+    const prevue = descentePrevue(avecSchedule, schedules, prix);
+    const { error } = await supabase.from("profiles").update(colonnesDescente(prevue)).eq("stripe_customer_id", customerId);
+    if (error) console.error(`[webhook] descente prévue non écrite pour ${customerId} : ${error.message}`);
+    else console.log(`[webhook] descente prévue pour ${customerId} :`, prevue ? `${prevue.formule} le ${prevue.le}` : "aucune");
+  } catch (e) {
+    console.error(`[webhook] descente prévue illisible pour ${customerId} : ${(e as Error)?.message ?? e}`);
+  }
+}
+
 async function recomputeStripeFlags(supabase: any, customerId: string) {
   const { data: subs } = await stripe.subscriptions.list({ customer: customerId, limit: 20 });
   // ⚠️ is_business RECALCULÉ ICI, et pas seulement posé à l'achat (2026-08-09).
@@ -147,6 +179,7 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
     }
   }
   await supabase.from("profiles").update(update).eq("stripe_customer_id", customerId);
+  await ecrireDescentePrevue(supabase, customerId, subs ?? []);
   console.log(
     "[webhook] recomputed flags for", customerId,
     "paid subs:", (subs ?? []).filter((s: Stripe.Subscription) => ["active", "trialing"].includes(s.status)).length,

@@ -8,6 +8,8 @@
 //      stripe-portal, apple-iap-webhook, validate-apple-receipt, google-play-webhook, validate-google-purchase,
 //      validate-coin-purchase, _shared/stripe-rang-vivant.ts) ;
 //   3. create-checkout-session n'a changé QUE sur la page de retour (success_url) et la garde du Cloud ;
+//   3 bis. (09/11, C4 de Nico) les lignes de la descente de formule Stripe, relues une à une
+//      (scripts/fixtures/paiements-lignes-c4-0911.json), n'agissent que sous un subscription schedule ;
 //   4. (07/11, décision de Nico : « Restaurer les achats » retrouve un Cloud pris seul) validate-apple-receipt n'a changé
 //      QUE par le mode `option: 'cloud'` : sans lui (tous les appels d'avant), le corps est celui de la base.
 import { execFileSync } from 'node:child_process';
@@ -108,13 +110,19 @@ for (const f of INCHANGEES) {
 // lecture du renouvellement signé du produit Cloud, arrêt d'essai Stripe relu avec ses factures, RESTARTED Google =
 // reprise). Toute AUTRE ligne changée — un chemin de palier — rend ce contrôle rouge.
 const LIGNES_CLOUD = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-cloud-0811.json'), 'utf8'));
-for (const [f, permises] of Object.entries(LIGNES_CLOUD)) {
+// ── 2 ter. (09/11, C4 de Nico : descente de formule, abonnés Stripe seulement) Les lignes AJOUTÉES par C4 dans
+// stripe-webhook, cancel-subscription et create-checkout-session, relues une à une et inscrites dans
+// scripts/fixtures/paiements-lignes-c4-0911.json : chacune n'agit que sous un subscription schedule (descente
+// programmée). Elles s'ajoutent aux lignes permises, ligne pour ligne ; rien d'autre ne passe.
+const LIGNES_C4 = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-c4-0911.json'), 'utf8'));
+for (const [f, permisesCloud] of Object.entries(LIGNES_CLOUD)) {
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
   const restant = [...permises];
   const horsCloud = changees.filter((l) => { const i = restant.indexOf(l); if (i < 0) return true; restant.splice(i, 1); return false; });
-  ok(horsCloud.length === 0, `${f.replace('supabase/functions/', '')} : seules les ${permises.length} lignes Cloud relues le 08/11 changent depuis ${BASE} (aucun chemin de palier)`, horsCloud.slice(0, 4).join(' | '));
+  ok(horsCloud.length === 0, `${f.replace('supabase/functions/', '')} : seules les ${permisesCloud.length} lignes Cloud relues le 08/11${LIGNES_C4[f] ? ` et les ${LIGNES_C4[f].length} lignes C4 relues le 09/11` : ''} changent depuis ${BASE} (aucun autre chemin de palier)`, horsCloud.slice(0, 4).join(' | '));
 }
 
 // ── 3. create-checkout-session : seulement la page de retour et la garde du Cloud ──
@@ -122,8 +130,10 @@ const d = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', 'supabase/functio
 const lignes = d.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l.slice(1).trim()).filter(Boolean);
 const permises = [/^\/\//, /success_url:/, /cloudVivantDuProfil/, /^\.from\("profiles"\)\.select\("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut/,
   /^if \(profilCloud\?\.is_cloud === true && profilCloud\?\.cloud_canal && profilCloud\.cloud_canal !== "stripe"\) \{$/, /^import \{ estAbonnementCloud/];
-const autres = lignes.filter((l) => !permises.some((r) => r.test(l)));
-ok(autres.length === 0, `create-checkout-session : ${lignes.length} lignes changées, toutes sur la page de retour ou la garde du Cloud`, autres.join(' | '));
+const c4Checkout = (LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []).map((l) => l.slice(1));
+const restantC4 = [...c4Checkout];
+const autres = lignes.filter((l) => !permises.some((r) => r.test(l))).filter((l) => { const i = restantC4.indexOf(l); if (i < 0) return true; restantC4.splice(i, 1); return false; });
+ok(autres.length === 0, `create-checkout-session : ${lignes.length} lignes changées, toutes sur la page de retour, la garde du Cloud ou le refus C4 (montée pendant une descente programmée)`, autres.join(' | '));
 ok(lignes.some((l) => /success_url: `https:\/\/fillsell\.app\/success\?produit=\$\{encodeURIComponent\(planType\)\}/.test(l)), 'palier : seule la page de retour change (elle dit le palier acheté)');
 
 // ── 4. validate-apple-receipt : seulement le mode « cloud » (07/11) ──

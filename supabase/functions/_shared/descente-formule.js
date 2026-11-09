@@ -15,7 +15,21 @@
 // customer.subscription.updated → drapeauxDepuisStripe, et le crédit du mois suit la facture (palierDeFacture).
 // Le Cloud (abonnement à part) n'est jamais touché. Pur : testé en Node (selftest:descente-formule, banc Stripe test).
 
+import { rangAppleVivant, rangGoogleVivant } from './droits-canaux.js';
+
 export const RANG_FORMULE = Object.freeze({ standard: 1, pro: 2, business: 3 });
+
+/**
+ * (09/11 matin, décision de Nico : C4 pour les abonnés STRIPE seulement) Une boutique (Apple / Google) tient-elle une
+ * formule VIVANTE pour ce profil (jeton + fin de période à venir, droits-canaux.js) ? Alors AUCUN parcours C4 : même
+ * s'il a aussi un abonnement Stripe, une descente Stripe ne changerait rien à ce que la boutique lui ouvre — « pour lui,
+ * rien ne change par rapport à aujourd'hui ». Rend 'apple' | 'google' | null.
+ */
+export function boutiqueVivante(p, maintenant = Date.now()) {
+  if (rangAppleVivant(p, maintenant) > 0) return 'apple';
+  if (rangGoogleVivant(p, maintenant) > 0) return 'google';
+  return null;
+}
 export const FORMULES = Object.freeze(['standard', 'pro', 'business']);
 
 /** 'premium' (nom de l'app) → 'standard' (nom Stripe) ; inconnu → null. */

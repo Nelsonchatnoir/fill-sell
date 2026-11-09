@@ -1,8 +1,34 @@
 # C4 — « Voir les autres formules » et descendre à la fin de la période (09/11/2026 nuit)
 
-**État : PRÊT, PAS EN PROD.** Nico l'avait dit : « si un point est incertain (paiement, résiliation, droits d'accès) :
-pas en prod, laisse-le prêt et explique ». Trois points le sont : ils sont écrits plus bas, avec ce qu'il faut pour
-les lever.
+**État (09/11 matin) : OUVERT POUR LES ABONNÉS STRIPE SEULEMENT (web), sur décision de Nico — rien côté Apple ni Google.**
+Fait dans l'ordre :
+- migration 20261109020000 appliquée (lue avant / après) ;
+- lot des fonctions de paiement appliqué, avec son test de non-régression vert (lignes C4 relues une à une :
+  `scripts/fixtures/paiements-lignes-c4-0911.json`) ;
+- fonctions déployées ;
+- clé `coin_config.descente_formule_ouverte` = 1.
+
+**Garde de Nico :** « un abonné Apple ou Google ne doit voir AUCUN parcours C4 ». Elle tient à trois niveaux :
+1. **App iPhone / Android** : le bloc ne se rend jamais (`blocDescenteVisible` : web seulement).
+2. **Web, sans client Stripe** : rien n'est rendu, aucune requête ne part.
+3. **Serveur** : `changer-formule` répond `disponible: false` à tout profil dont une boutique tient une formule vivante
+   (`boutiqueVivante`, jeton + fin à venir). C'est vérifié avant toute lecture Stripe et tout geste, même s'il a aussi un
+   abonnement Stripe.
+
+**Relu en prod le 09/11 (lecture seule) :**
+- 67 comptes payants : 39 Stripe, 15 Apple vivants, 3 Google vivants, 0 compte à la fois boutique vivante et client
+  Stripe.
+- Rejeu de la décision sur les 39 abonnements Stripe actifs (lecture live) :
+  - 18 voient « Voir les autres formules » (13 Pro → Premium, 5 Business → Pro / Premium) ;
+  - 16 Premium : rien plus bas ;
+  - 5 ont déjà un arrêt programmé : rien, la résiliation prime ;
+  - aucun schedule existant.
+- Portail Stripe (lecture de sa configuration) : le changement de formule y est **désactivé**, seule la résiliation en
+  fin de période est offerte. Sur un abonnement tenu par un schedule, Stripe rend d'abord l'abonnement puis le résilie
+  (documentation) ; sinon le portail refuse et l'app résilie (release puis résiliation). Aucun débit faux dans les deux
+  cas.
+
+Ce qui suit est l'état de la nuit (« prêt, pas en prod ») et reste vrai pour iPhone et Android.
 
 ## Ce que voit l'abonné (web), une fois ouvert
 Dans Réglages › Abonnement, sous la carte de la formule, une ligne « Voir les autres formules » (un pli). Elle s'ouvre

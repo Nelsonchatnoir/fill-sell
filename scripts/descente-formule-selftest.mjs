@@ -67,6 +67,24 @@ console.log('4. La cible : l’abonnement de formule, jamais le Cloud');
   ok(abonnementDeFormule([cloud], PRIX, estCloud) === null, 'Cloud seul → aucune cible (rien à descendre)');
   ok(abonnementDeFormule([sub({ status: 'canceled' })], PRIX, estCloud) === null, 'abonnement arrêté → aucune cible');
 }
+console.log('4 bis. Stripe SEULEMENT (décision de Nico, 09/11 matin) : une boutique vivante → aucun parcours C4');
+{
+  const { boutiqueVivante } = await import('../supabase/functions/_shared/descente-formule.js');
+  const MAINT = Date.parse('2026-11-09T08:00:00Z');
+  const futur = '2026-12-01T00:00:00Z';
+  ok(boutiqueVivante({ apple_original_transaction_id: '2000001', subscription_period_end: futur, is_premium: true, is_pro: true }, MAINT) === 'apple', 'Apple : jeton + fin à venir → apple (aucun C4, même avec un Stripe à côté)');
+  ok(boutiqueVivante({ google_purchase_token: 'tok', google_product_id: 'app.fillsell.pro.monthly', subscription_period_end: futur, is_premium: true }, MAINT) === 'google', 'Google : jeton + produit + fin à venir → google');
+  ok(boutiqueVivante({ apple_original_transaction_id: '2000001', subscription_period_end: '2026-10-01T00:00:00Z', is_premium: true }, MAINT) === null
+    && boutiqueVivante({ google_purchase_token: 'tok', google_product_id: 'pro', subscription_period_end: null }, MAINT) === null,
+  'boutique arrêtée (fin passée) ou sans fin → plus vivante : un ancien client Apple passé à Stripe garde C4');
+  ok(boutiqueVivante({ stripe_customer_id: 'cus_1', is_premium: true, is_pro: true, subscription_period_end: futur }, MAINT) === null, 'abonné Stripe seul → null (C4 ouvert)');
+  const src = (await import('node:fs')).readFileSync(new URL('../supabase/functions/changer-formule/index.ts', import.meta.url), 'utf8');
+  const iGarde = src.indexOf('const boutique = boutiqueVivante(profil);');
+  ok(iGarde > 0 && iGarde < src.indexOf('if (!profil.stripe_customer_id)') && iGarde < src.indexOf('action === "lire"') && iGarde < src.indexOf('action === "annuler"') && iGarde < src.indexOf('action !== "programmer"')
+    && /select\("[^"]*google_product_id[^"]*subscription_period_end/.test(src),
+  'changer-formule : la garde boutique passe AVANT toute lecture Stripe et tout geste (lire, programmer, annuler), colonnes lues');
+}
+
 console.log('5. L’écran (reglages/formuleDescente.js)');
 {
   const UI = await import('../src/reglages/formuleDescente.js');

@@ -627,6 +627,21 @@ serve(async (req) => {
         // ⛔ Jamais deux factures : une montée déjà en attente vers ce palier
         //    renvoie SA page (double clic, retour arrière) ; vers un autre palier,
         //    Stripe annule l'ancienne facture en posant la nouvelle.
+        // (09/11, C4) Une DESCENTE est programmée sur cet abonnement (subscription schedule) : on ne monte pas par-dessus.
+        // Stripe ACCEPTE la mise à jour directe mais GARDE le schedule — sa phase 2 ramènerait le palier payé à la
+        // formule inférieure à l'échéance (prouvé, banc descente-formule D). Et rendre l'abonnement d'abord ferait perdre
+        // la descente si le paiement de la différence est abandonné (pending_if_incomplete) : la personne paierait plus
+        // sans l'avoir voulu. Elle annule d'abord le changement prévu (Réglages › Abonnement), puis monte.
+        if (target.schedule) {
+          console.log(`[checkout] montée ${target.id} → ${planType} refusée : une descente est programmée (schedule ${typeof target.schedule === "string" ? target.schedule : "?"})`);
+          return new Response(JSON.stringify({
+            error: "descente_prevue", tier: planType,
+            message_fr: "Un passage à une formule inférieure est prévu à la fin de ta période. Annule-le dans Réglages › Abonnement, puis change de formule. Rien n'a été prélevé.",
+            message_en: "A move to a lower plan is scheduled for the end of your period. Cancel it in Settings › Subscription, then change plans. Nothing was charged.",
+          }), {
+            status: 409, headers: { "Content-Type": "application/json", ...CORS },
+          });
+        }
         const pageEnAttente = await pageDeLaMonteeEnAttente(target, planType);
         if (pageEnAttente) {
           console.log(`[checkout] montée ${target.id} → ${planType} déjà en attente de paiement — page existante renvoyée`);

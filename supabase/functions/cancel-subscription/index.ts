@@ -264,6 +264,18 @@ serve(async (req) => {
     let periodEnd: string | null = null;
 
     if (paliersVivants.length > 0) {
+      // (09/11, C4) Une descente de formule programmée (subscription schedule) : Stripe REFUSE alors toute résiliation
+      // directe (« managed by the subscription schedule », banc descente-formule E). La résiliation prime : l'abonnement
+      // est rendu à lui-même d'abord (la descente disparaît), puis résilié. Sans schedule : rien ne change.
+      const sched = paliersVivants[0].schedule;
+      const idSched = typeof sched === "string" ? sched : (sched as { id?: string } | null)?.id ?? null;
+      if (idSched) {
+        await stripe.subscriptionSchedules.release(idSched);
+        console.log(`[cancel-subscription] descente prévue retirée (schedule ${idSched} rendu) avant la résiliation`);
+        const { error: colErr } = await supabaseAdmin.from("profiles")
+          .update({ formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null }).eq("id", user.id);
+        if (colErr) console.error(`[cancel-subscription] colonnes formule_prevue non effacées : ${colErr.message}`);
+      }
       const canceled = await stripe.subscriptions.update(paliersVivants[0].id, {
         cancel_at_period_end: true,
       });
