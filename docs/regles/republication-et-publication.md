@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 10/11 — un lot prêt ne se quitte jamais en silence ; « en file » = un job relu ; Cloud n'ouvre aucun quota (en fin de fichier)
 - 04/11 soir — une republication neuve n'hérite d'aucune trace de retrait ; un seul juge du marqueur ; deux jobs ne s'attendent jamais (en fin de fichier)
 - 26/10 nuit — « Ta file » : annuler ce qui attend (Tout annuler, par ligne) — jamais l'en cours, une annonce retirée ni un retrait (en fin de fichier)
 - 26/10 nuit — la relecture avant redépôt passe devant, relancée puis dite ; en relecture, une annonce ne retient que sa plateforme (en fin de fichier)
@@ -1468,3 +1469,18 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - `reason` seul confondait trois causes (« annonce_introuvable ») : la trace action_app_ratee porte désormais
   `reason:motif` (« annonce_introuvable:annonce_vendue »), la phrase du serveur et le numéro d'annonce
   (`src/utils/traceRefusRepublication.js`, republier et republier_lot). Selftest `vendu-avant-suivi-republication`.
+
+## ⛔ 10/11 (URGENT Cloud d0ac0538) — un lot prêt ne se quitte jamais en silence ; « en file » = un job relu
+- Cas : deux lots préparés puis quittés sans « Envoyer » (aucun `spend_coins_and_publish` dans les journaux d'API) ;
+  « ✓ Réglé » et « Quitter ? Les textes préparés sont gardés » ont fait croire la publication faite. Rapport :
+  `docs/enquetes/lot-sans-envoi-cloud-1011/RAPPORT.md`.
+- Des articles PRÊTS, rien d'envoyé : « Quitter » ouvre la feuille « Rien n'est encore parti » (`SortieSansEnvoi`) avec
+  le MÊME geste que le bouton du bas et « Quitter sans envoyer » ; sans article prêt, « Rien n'est parti — quitter ? ».
+  La ligne d'un article réglé dit « Prêt à envoyer ».
+- Un article n'est « En file » que si son job de CE lot est relu (`jobsDuLot` : estampille `bulk_batch_id` puis
+  relecture) ; aucun → « Le serveur n'a pas confirmé — rien n'a été créé » ; lecture en erreur → rien conclu.
+  L'écran 3 ne dit « C'est parti » ✓ qu'avec au moins un article en file (sinon « Pas envoyé », « ! »).
+- Traces `usage_logs` : `lot_envoi_demande`, `lot_quitte_sans_envoyer`, `lot_envoi_sans_job`. Selftest
+  `lot-sortie-sans-envoi`.
+- FillSell Cloud n'ouvre AUCUN quota (essai compris) : le mur du lot propose le palier supérieur, c'est la règle
+  (`_shared/cloud-option.js:9-17`) — la changer est une décision de Nico.

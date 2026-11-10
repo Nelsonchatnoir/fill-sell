@@ -40,6 +40,9 @@ function charger(extra = {}) {
 }
 const M = charger();
 const MAINTENANT = Date.parse("2026-10-16T12:00:00Z");
+// (10/11) Les données du test sont datées du 16/10 : l'horloge est FIGÉE sur cette date (aDetailler → recente lit
+// Date.now). Sans ça, le test pourrit avec le temps — devenu rouge le 10/11, la fenêtre de rétention dépassée.
+Date.now = () => MAINTENANT;
 const ilYa = (jours) => new Date(MAINTENANT - jours * 86400000).toISOString();
 
 // ── a. Normaliseurs ──────────────────────────────────────────────────────────

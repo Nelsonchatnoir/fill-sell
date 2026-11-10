@@ -457,6 +457,7 @@
     "selftest:champs-lbc-etat-marque": "node scripts/champs-lbc-etat-marque-selftest.mjs",
     "selftest:achats-store-issue": "node scripts/achats-store-issue-selftest.mjs",
     "selftest:lot-sans-plafond": "node scripts/lot-sans-plafond-selftest.mjs",
+    "selftest:lot-sortie-sans-envoi": "node --import ./scripts/loader-ext.mjs scripts/lot-sortie-sans-envoi-selftest.mjs",
     "selftest:roue-reglages-visible": "node scripts/roue-reglages-visible-selftest.mjs",
     "selftest:popup-compteur-depop": "node scripts/popup-compteur-depop-selftest.mjs",
     "selftest:champs-lbc-auto": "node scripts/champs-lbc-auto-selftest.mjs",

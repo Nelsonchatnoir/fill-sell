@@ -963,6 +963,20 @@ function EcranDuLot({
     const boucle = () => { if (pred() || Date.now() > fin) resolve(pred()); else setTimeout(boucle, 150); };
     boucle();
   });
+  // (10/11, URGENT d0ac0538) Les jobs de publication de CE lot pour un article : { lue, n }. L'estampille du lot les
+  // touche et les rend ; rien touché → une relecture (même filtre) avant de conclure « aucun ».
+  async function jobsDuLot(id) {
+    const filtre = (q) => q.eq("user_id", userId).eq("inventaire_id", Number(id)).eq("action", "publish")
+      .filter("platform_fields->lot_publication->>id", "eq", lot.id);
+    try {
+      const { data, error } = await filtre(supabase.from("cross_post_jobs").update({ bulk_batch_id: lot.id })).select("id");
+      if (error) { console.warn("[lot] estampille du lot :", error.message); return { lue: false, n: null }; }
+      if (Array.isArray(data) && data.length) return { lue: true, n: data.length };
+      const { count, error: e2 } = await filtre(supabase.from("cross_post_jobs").select("id", { count: "exact", head: true }));
+      if (e2 || typeof count !== "number") return { lue: false, n: null };
+      return { lue: true, n: count };
+    } catch { return { lue: false, n: null }; }
+  }
   async function envoyer() {
     if (!lot) return;
     // (12/10, A1) Un seul envoi à la fois : un double appui ne relance jamais
@@ -971,6 +985,9 @@ function EcranDuLot({
     if (envoiEnCoursRef.current) return;
     const ids = lot.ids.filter((id) => etatsRef.current[id]?.phase === "pret");
     if (!ids.length) return;
+    // (10/11, URGENT d0ac0538) Le geste d'envoi se trace : sans lui, un lot quitté et un lot envoyé sans job se
+    // confondaient (aucune ligne côté serveur ne disait si « Envoyer » avait été touché).
+    journaliser("lot_envoi_demande", { lot: lot.id, prets: ids.length, articles: lot.ids.length, cloud: Boolean(cloud), programme: Boolean(programme) });
     envoiEnCoursRef.current = true;
     try { await envoyerUnParUn(ids); } finally { envoiEnCoursRef.current = false; }
   }
@@ -995,20 +1012,23 @@ function EcranDuLot({
       // (« regarde-le dans ton Stock »), jamais un « rien n'a été créé » non prouvé.
       if (!mm && etatsRef.current[id]?.phase === "erreur") { setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       if (mm?.done) {
-        parti++;
-        majEtat(id, {
-          phase: "envoye",
-          envoyees: mm.fournee?.plateformes ?? [...(mm.selected ?? [])],
-          exclusions: mm.exclusionsDuClic ?? [],
-        });
-        // bulk_batch_id après coup, comme la republication en lot : la RPC ne
-        // le prend pas. Le marqueur platform_fields.lot_publication, lui, est
-        // posé à la création ; l'estampille n'est qu'un raccourci de lecture.
-        supabase.from("cross_post_jobs").update({ bulk_batch_id: lot.id })
-          .eq("user_id", userId).eq("inventaire_id", Number(id)).eq("action", "publish")
-          .filter("platform_fields->lot_publication->>id", "eq", lot.id)
-          .select("id")
-          .then(({ error }) => { if (error) console.warn("[lot] estampille du lot :", error.message); }, () => {});
+        // (10/11, URGENT d0ac0538) « En file » seulement quand le job EXISTE : l'estampille du lot (bulk_batch_id après
+        // coup, la RPC ne le prend pas ; le marqueur platform_fields.lot_publication est posé à la création) rend les
+        // jobs qu'elle touche — c'est la preuve. Aucun job relu (et la lecture a répondu) : l'article n'est PAS dit
+        // parti. Lecture en erreur : on ne conclut rien, la confirmation du serveur vaut (jamais un « rien n'a été
+        // créé » non prouvé).
+        const preuve = await jobsDuLot(id);
+        if (preuve.lue && preuve.n === 0) {
+          journaliser("lot_envoi_sans_job", { lot: lot.id, inventaire_id: id, plateformes: mm.fournee?.plateformes ?? [...(mm.selected ?? [])] });
+          majEtat(id, { phase: "refuse", raison: en ? "The server didn't confirm — nothing was created for this item." : "Le serveur n'a pas confirmé — rien n'a été créé pour cet article." });
+        } else {
+          parti++;
+          majEtat(id, {
+            phase: "envoye",
+            envoyees: mm.fournee?.plateformes ?? [...(mm.selected ?? [])],
+            exclusions: mm.exclusionsDuClic ?? [],
+          });
+        }
       } else if (jaugesLot && REFUS_DE_JAUGE.has(mm?.publishErrorCode)) {
         // (04/11, grille à 3 jauges) Les publications du mois, ou le garde-fou du jour : l'article est mis de côté
         // comme un refus d'annonces (phase « quota », « Reste au stock »), avec la phrase du serveur (publishError :
@@ -1197,15 +1217,38 @@ function EcranDuLot({
 
   // ── La coque ─────────────────────────────────────────────────────────────
   const numeroEcran = etape === "plateformes" ? 1 : etape === "fin" ? 3 : 2;
+  // (10/11, URGENT d0ac0538) « C'est parti » seulement si au moins une publication est VRAIMENT en file (job relu) :
+  // un écran de fin sans rien d'envoyé ne se titre plus comme une réussite.
+  const partis = lot ? lot.ids.filter((id) => etats[id]?.phase === "envoye").length : 0;
   const titre = etape === "fin"
-    ? (en ? "It's under way" : "C'est parti")
+    ? (partis ? (en ? "It's under way" : "C'est parti") : (en ? "Not sent" : "Pas envoyé"))
     : (en ? `Publish ${donnees.length} item${donnees.length > 1 ? "s" : ""}` : `Publier ${donnees.length} article${donnees.length > 1 ? "s" : ""}`);
   const [quitterArme, setQuitterArme] = useState(false);
-  const quitter = () => {
-    // Rien n'est encore parti mais des articles sont préparés : un second tap
-    // confirme. Les fiches rédigées restent sur les articles (rien de perdu).
-    if (etape === "avant" && prepares > 0 && !quitterArme) { setQuitterArme(true); setTimeout(() => setQuitterArme(false), 4000); return; }
+  // ── (10/11, URGENT d0ac0538 — van.nessa) QUITTER UN LOT PRÊT SANS L'ENVOYER ─────────────────────────────────────
+  // Le défaut : deux lots préparés (12:00 et 12:07, après « Continuer » au mur), chaque article « ✓ », puis quittés —
+  // AUCUNE demande d'envoi n'est partie du téléphone (journaux du serveur : ni spend_coins_and_publish, ni la relecture
+  // d'adresse du clic). « Quitter ? Les textes préparés sont gardés » ne disait jamais que RIEN n'était parti ; la
+  // cliente a cru ses annonces publiées. Même chemin chez deux autres comptes depuis le 04/11.
+  // La règle : un lot qui a des articles PRÊTS ne se quitte plus sans un choix explicite — « Envoyer » (le même geste
+  // que le bouton du bas) ou « Quitter sans envoyer », sous la phrase vraie (« rien n'est encore parti »). Sans
+  // article prêt (questions en cours), le second appui reste, avec la phrase vraie. Chaque sortie sans envoi et chaque
+  // envoi demandé se tracent (usage_logs) : la prochaine fois, la preuve existe côté serveur.
+  const [sortieAConfirmer, setSortieAConfirmer] = useState(false);
+  const metaSortie = () => ({
+    lot: lot?.id ?? null, etape, articles: lot?.ids?.length ?? 0, prets: prets.length, a_completer: aCompleter.length,
+    en_preparation: enPrep.length, envoyes: partis, mur: murActif, cloud: Boolean(cloud), cta: typeof cta === "string" ? cta : null,
+    cta_desactive: Boolean(disabled),
+  });
+  const quitterSansEnvoyer = () => {
+    setSortieAConfirmer(false);
+    if (lot && etape === "avant" && !partis) journaliser("lot_quitte_sans_envoyer", metaSortie());
     fermer();
+  };
+  const quitter = () => {
+    if (etape === "avant" && prets.length > 0) { setSortieAConfirmer(true); return; }
+    // Rien de prêt mais des articles préparés : un second tap confirme. Les fiches rédigées restent sur les articles.
+    if (etape === "avant" && prepares > 0 && !quitterArme) { setQuitterArme(true); setTimeout(() => setQuitterArme(false), 4000); return; }
+    quitterSansEnvoyer();
   };
 
   let cta = null, disabled = false, onCta = null, sous = [], secondaire = null;
@@ -1364,8 +1407,41 @@ function EcranDuLot({
               extensionNeverSeen={ctx.extensionNeverSeen} ebayParServeur={ebayParServeur} onOuvrirArticle={onOuvrirArticle} remise={remise}
               grille={Boolean(jaugesLot)} />
           )}
+          {sortieAConfirmer && etape === "avant" && (
+            <SortieSansEnvoi en={en} nPrets={prets.length} libelleEnvoi={typeof cta === "string" ? cta : null}
+              onEnvoyer={() => { setSortieAConfirmer(false); envoyer(); }}
+              onQuitter={quitterSansEnvoyer}
+              onRester={() => setSortieAConfirmer(false)} />
+          )}
     </CoqueLot>
   );
+}
+
+// ═══ (10/11, URGENT d0ac0538) QUITTER UN LOT PRÊT : LE CHOIX, JAMAIS UNE SORTIE MUETTE ════════════════════════
+// Des articles sont prêts, rien n'est parti : la feuille le dit, et propose le MÊME geste que le bouton du bas.
+export function SortieSansEnvoi({ en, nPrets, libelleEnvoi = null, onEnvoyer, onQuitter, onRester }) {
+  const n = Math.max(1, Number(nPrets) || 0);
+  return createPortal((
+    <div className="fsn fsq-feuille-hote" data-ecran="lot-sortie">
+      <div className="fsq-voile" onClick={onRester} />
+      <div className="fsq-feuille" role="dialog" aria-modal="true" aria-label={en ? "Nothing sent yet" : "Rien n'est encore parti"}>
+        <div className="fsq-feuille-tete">
+          <span className="fsq-poignee" aria-hidden="true" />
+          <button type="button" className="fsq-fermer" onClick={onRester} aria-label={en ? "Close" : "Fermer"}>✕</button>
+        </div>
+        <div className="fsq-feuille-corps">
+          <h2 className="fsn-h">{en ? "Nothing has been sent yet" : "Rien n'est encore parti"}</h2>
+          <p className="fsn-lead">{en
+            ? `${n > 1 ? `Your ${n} items are` : "Your item is"} ready but not sent: no listing goes out on the platforms until you tap “Send”.`
+            : `${n > 1 ? `Tes ${n} articles sont prêts` : "Ton article est prêt"} mais pas encore ${n > 1 ? "envoyés" : "envoyé"} : aucune annonce ne part sur les plateformes tant que tu n'appuies pas sur « Envoyer ».`}</p>
+        </div>
+        <div className="fsq-feuille-pied" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Bouton onClick={onEnvoyer}>{libelleEnvoi || (en ? "Send" : "Envoyer")}</Bouton>
+          <button type="button" className="fsn-btn fsn-btn--secondary" onClick={onQuitter}>{en ? "Leave without sending" : "Quitter sans envoyer"}</button>
+        </div>
+      </div>
+    </div>
+  ), document.body);
 }
 
 // ═══ LA COQUE DU LOT — en-tête, progression 1/3 · 2/3 · 3/3, pied ═══════════
@@ -1383,7 +1459,7 @@ export function CoqueLot({ en, ecran, titre, numeroEcran, retour = null, quitter
           <div className="fsn-top-step num">{numeroEcran} / 3</div>
           {quitter && (
             <button type="button" className={`fsn-quit${quitter.arme ? " fsn-quit--arme" : ""}`} onClick={quitter.onClick} disabled={quitter.desactive}>
-              {quitter.arme ? (en ? "Leave? Prepared texts are kept" : "Quitter ? Les textes préparés sont gardés") : (en ? "Leave" : "Quitter")}
+              {quitter.arme ? (en ? "Nothing sent yet — leave?" : "Rien n'est parti — quitter ?") : (en ? "Leave" : "Quitter")}
             </button>
           )}
         </div>
@@ -2316,7 +2392,7 @@ export function VueListe({
           </div>
         )}
         {places.current.get(id) === "haut" && pret && (
-          <div className="fsv-fait"><span className="fsv-ok" aria-hidden="true">✓</span><span>{en ? "Settled — tap the line to review." : "Réglé — touche la ligne pour revoir."}</span></div>
+          <div className="fsv-fait"><span className="fsv-ok" aria-hidden="true">✓</span><span>{en ? "Ready to send — tap the line to review." : "Prêt à envoyer — touche la ligne pour revoir."}</span></div>
         )}
         {ecartees.length > 0 && (
           <div className="fsv-ecart">
@@ -2552,7 +2628,10 @@ export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen,
   return (
     <>
       <div className="fsn-centre fsn-stack" style={{ gap: 10, padding: "8px 0" }}>
-        <div className="fsn-ok-rond">✓</div>
+        {/* (10/11, URGENT d0ac0538) La coche seulement quand des publications sont VRAIMENT en file. */}
+        {annonces
+          ? <div className="fsn-ok-rond">✓</div>
+          : <div className="fsn-ok-rond" style={{ background: "var(--fs-amber-fond)", borderColor: "var(--fs-amber-bord)", color: "var(--fs-amber-ink)" }} aria-hidden="true">!</div>}
         <h2 className="fsn-h">{annonces
           ? (grille ? titreFinDuLot(annonces, en ? "en" : "fr") : en ? `${annonces} listing${annonces > 1 ? "s" : ""} queued` : `${annonces} annonce${annonces > 1 ? "s" : ""} en file`)
           : (en ? "Nothing was sent" : "Rien n'est parti")}</h2>
