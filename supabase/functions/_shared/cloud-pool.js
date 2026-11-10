@@ -336,10 +336,12 @@ export const effetSignalement = (critere) => (CRITERES_PAR_PLATEFORME.includes(c
  *   prix_illisible · achats_coupes_serveur (IPROYAL_ACHATS_AUTORISES) · interrupteur_coupe (coin_config) ·
  *   garde_illisible / garde_nombre (ACHAT seulement : `garde` = gardeNombre ; une prolongation ne passe jamais `garde`) ·
  *   prolongation_recente (PROLONGATION seulement : `dejaProlongee` vrai, voir prolongationRecente) ·
- *   solde_insuffisant (paiement par le SOLDE seulement — une carte n'est pas bornée par le solde) · ok.
+ *   solde_insuffisant · ok.
+ * (10/11 soir, ordre de Nico) Les IP se paient par le SOLDE IPRoyal, JAMAIS par carte (la banque refuse IPRoyal) : le
+ * solde borne TOUTE dépense (l'ancien argument `paiement: 'carte'` n'est plus lu).
  */
 export function deciderDepense({ montantUsd, envAutorise = false, interrupteur = false, garde = undefined, dejaProlongee = false,
-  rebutsEntree = 0, soldeUsd = null, paiement = 'solde', p = PARAMETRES }) {
+  rebutsEntree = 0, soldeUsd = null, p = PARAMETRES }) {
   const m = Number(montantUsd);
   if (!Number.isFinite(m) || m <= 0) return { faire: false, raison: 'prix_illisible' };
   if (envAutorise !== true) return { faire: false, raison: 'achats_coupes_serveur' };
@@ -352,7 +354,7 @@ export function deciderDepense({ montantUsd, envAutorise = false, interrupteur =
     if ((Number(rebutsEntree) || 0) >= p.ipRebutsEntreeMax) return { faire: false, raison: 'rebuts_controle' };
   }
   if (dejaProlongee === true) return { faire: false, raison: 'prolongation_recente' };
-  if (paiement !== 'carte' && (!Number.isFinite(Number(soldeUsd)) || Number(soldeUsd) + 1e-9 < m)) return { faire: false, raison: 'solde_insuffisant' };
+  if (!Number.isFinite(Number(soldeUsd)) || Number(soldeUsd) + 1e-9 < m) return { faire: false, raison: 'solde_insuffisant' };
   return { faire: true, raison: 'ok' };
 }
 

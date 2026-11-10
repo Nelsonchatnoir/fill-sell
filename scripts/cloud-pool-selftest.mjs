@@ -253,8 +253,8 @@ titre('10. (03/11, point 2 de Nico) L\'approvisionnement : stock minimum, refus 
     && M.deciderDepense({ ...g, garde: M.gardePour(garde, 4) }).raison === 'garde_nombre'
     && M.deciderDepense({ ...g, garde: null }).raison === 'garde_illisible'
     && M.deciderDepense({ ...g, depenseMoisUsd: 5000, budgetUsd: 60 }).faire === true
-    && M.deciderDepense({ ...g, soldeUsd: 3 }).raison === 'solde_insuffisant' && M.deciderDepense({ ...g, soldeUsd: 3, paiement: 'carte' }).faire === true,
-    'une dépense ne part que sous ses gardes (serveur, interrupteur, NOMBRE) et si le solde la couvre (ou par carte) — aucun plafond en dollars');
+    && M.deciderDepense({ ...g, soldeUsd: 3 }).raison === 'solde_insuffisant' && M.deciderDepense({ ...g, soldeUsd: 3, paiement: 'carte' }).raison === 'solde_insuffisant',
+    'une dépense ne part que sous ses gardes (serveur, interrupteur, NOMBRE) et si le SOLDE la couvre — (10/11) jamais par carte, aucun plafond en dollars');
   ok(M.deciderDepense({ montantUsd: 4, envAutorise: true, interrupteur: true, soldeUsd: 50 }).faire === true
     && M.deciderDepense({ montantUsd: 4, envAutorise: true, interrupteur: true, soldeUsd: 50, dejaProlongee: true }).raison === 'prolongation_recente',
     'une prolongation n\'est jamais bornée par le nombre ; seule une deuxième prolongation en 15 jours est refusée');

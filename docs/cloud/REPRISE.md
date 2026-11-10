@@ -1,5 +1,23 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 10/11/2026 soir — URGENT : les IP se paient par le SOLDE IPRoyal, JAMAIS par carte (ordre de Nico)
+- Constat : achat automatique du 10/11 19:36 (registre `cloud_ip_commandes` id 4, 1 IP, 4 $) payé par la carte …9699
+  (`cloud_ip_carte_id` 410814) → IPRoyal `POST /orders` HTTP 500 ; la banque refuse IPRoyal (« marchand non autorisé »),
+  plusieurs paiements de 3,50 € refusés côté IPRoyal. Le solde (21,15 $) n'était pas utilisé.
+- Chez IPRoyal (lu par l'API le 10/11 ~20:40, lecture seule) : la tentative a laissé la commande **88136330** au statut
+  **`unpaid`**, 0 IP livrée, solde 21,15 $ non débité. Notre registre : UNE seule tentative (id 4, `echec`). Rien en
+  double. ⚠️ La commande `unpaid` reste dans le tableau de bord IPRoyal : à annuler / ignorer par Nico (aucune action
+  d'écriture faite chez IPRoyal) ; elle n'entre jamais au pool (le registre id 4 n'a pas de numéro de commande).
+- Règle (code) : `iproyal.js` n'envoie JAMAIS `card_id` (ni `commander`, ni `prolonger` ; `GET /cards` retiré) ;
+  `approvisionnement.js` paie toujours par le solde (`moyenPaiement()` = solde, plus de reprise carte → solde, plus de
+  surveillance de carte) ; `deciderDepense` (cloud-pool.js) : le solde borne TOUTE dépense. Solde insuffisant (ou
+  illisible) = rien acheté ni prolongé, aucune bascule, alerte à Nico « Achat / Renouvellement d'IP NON FAIT : solde
+  IPRoyal X $, il faut Y $ (manque Z $). RECHARGER LE SOLDE … ». `cloud_ip_paiement_carte` / `cloud_ip_carte_id` ne sont
+  plus lus (le premier remis à 0). Tests : `ip.test.mjs` (« jamais la carte »), `selftest:cloud-pool`.
+- Base : `scripts/reparations/20261110_cloud_ip_paiement_solde.sql` (20:22:29 : `cloud_ip_paiement_carte` 1 → 0,
+  `cloud_ip_achats_auto` 1 → 0 le temps du correctif ; sauvegarde `_backup_1011_cloud_ip_paiement`, inverse
+  `…_INVERSE.sql`). `cloud_ip_renouvellement_auto` inchangé (1).
+
 ## 09/11/2026 soir — URGENT : « Me connecter » Vinted ↔ Leboncoin en boucle entre deux écrans (essai perdu, d813639b)
 - Rapport : `docs/enquetes/cloud-bascule-connexions-0911/RAPPORT.md`. Cause prouvée : PC sur Leboncoin + téléphone sur
   Vinted ; la page remplacée (code 1000, sans étape finale) se reprenait toute seule et remplaçait l'autre : 15 connexions

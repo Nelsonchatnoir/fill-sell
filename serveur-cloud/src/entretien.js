@@ -23,7 +23,7 @@
 //      tables, livraison et contrôle d'entrée des IP achetées, achat dès qu'il manque des IP — mêmes gardes, jamais en
 //      même temps qu'un entretien (un seul verrou), jamais une boucle (garde du nombre, pause d'une heure après un échec) ;
 //   3. le SOLDE IPRoyal : l'alerte part sous la dépense prévue sur 14 jours (regles.seuilSoldeProjete) et dit combien
-//      recharger ; en paiement par carte, l'alerte est celle de la carte (absente, expirée, expire dans 45 jours).
+//      recharger. (10/11 soir) Les IP se paient par le solde, JAMAIS par carte (approvisionnement.js).
 // (07/11 soir, ordres 3 et 4 de Nico)
 //   4. LE CONTRÔLE DE SANTÉ des IP libres (controlerSante, toutes les SANTE_IP_MIN minutes, coin_config
 //      cloud_ip_sante_controle = 1) : une IP à la fois (cloud-pool.choisirIpASonder), un Chrome jetable (sante.js), sous le
@@ -333,12 +333,11 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     const registre = await lireRegistre().catch(() => []);
     let { data: etat } = await base.rpc('cloud_pool_etat');
     // (30/10, lot D ; 07/11, décision 3) Le solde du fournisseur (lecture seule, aucune recharge) : l'alerte part sous la
-    // dépense prévue sur 14 jours ; en paiement par CARTE, c'est la carte qui est surveillée (et le solde si elle manque).
-    bilan.carte = g?.paiementCarte ? await approvisionnement.verifierCarte?.(g).catch((e2) => { journal.alerte('carte_echec', { erreur: e2.message }); return null; }) ?? null : null;
+    // dépense prévue sur 14 jours. (10/11 soir) Plus de paiement par carte : le solde est TOUJOURS surveillé.
     const projection = regles.seuilSoldeProjete
       ? regles.seuilSoldeProjete({ ips: toutes, registre, marge: g?.marge ?? regles.PARAMETRES?.ipMarge, enAttente: etat?.en_attente ?? 0, prixIpUsd: await prixIp(registre) })
       : null;
-    bilan.solde = await fournisseurIp?.verifierSolde(Date.now(), { projection, alerter: bilan.carte?.mode !== 'carte' })
+    bilan.solde = await fournisseurIp?.verifierSolde(Date.now(), { projection, alerter: true })
       .catch((e2) => { journal.alerte('solde_echec', { erreur: e2.message }); return null; }) ?? null;
     // En ROTATION, un compte n'attend jamais une IP dédiée : pas de plan d'achat ni d'alerte « pool vide ».
     if (await fournisseurIp?.rotationActive().catch(() => false)) {

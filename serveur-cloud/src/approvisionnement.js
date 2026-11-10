@@ -17,11 +17,13 @@
 //    boucle (alerte immédiate à support@), jamais un achat que le plan demande. Une PROLONGATION n'y passe jamais ; son
 //    anti-boucle : jamais deux fois la même commande en 15 jours. Toute dépense est ouverte au registre
 //    (cloud_ip_commandes) AVANT l'appel au fournisseur ; un achat échoué suspend l'achat automatique une heure.
-// (07/11, addendum de Nico) LE MOYEN DE PAIEMENT : coin_config cloud_ip_paiement_carte (0 = le SOLDE, défaut ; 1 = une
-//    CARTE enregistrée chez IPRoyal : cloud_ip_carte_id si elle existe, sinon celle qui expire le plus tard). Par carte,
-//    le solde ne bloque rien ; une carte REFUSÉE (4xx) → UNE reprise par le solde s'il couvre, puis une alerte ; une issue
-//    inconnue (5xx, coupure) → aucune reprise (jamais deux paiements), une alerte. Le registre dit le moyen (details).
-import { proxiesLivres, choisirCarte, carteLisible } from './iproyal.js';
+// (10/11 soir, ordre de Nico) LE MOYEN DE PAIEMENT : le SOLDE du compte IPRoyal, JAMAIS une carte. La banque refuse
+//    IPRoyal (« marchand non autorisé » : achat du 10/11 19:36 en HTTP 500, paiements de 3,50 € refusés). Le mode carte
+//    du 07/11 (coin_config cloud_ip_paiement_carte / cloud_ip_carte_id, reprise par le solde) est RETIRÉ : ces réglages
+//    ne sont plus lus. Solde qui ne couvre pas la dépense : RIEN n'est acheté ni prolongé, aucune bascule, UNE alerte à
+//    Nico « recharger le solde » (au plus une par heure et par texte, alertes.js). Une issue inconnue (5xx, coupure) n'est
+//    jamais rejouée (jamais deux paiements). Le registre dit le moyen (details.paiement = 'solde').
+import { proxiesLivres } from './iproyal.js';
 
 /** Une date IPRoyal (« 2026-12-04 12:57:45 », UTC sans fuseau) → instant (pure) ; NaN si illisible. */
 export function dateIproyal(s) {
@@ -57,32 +59,20 @@ const RAISONS = Object.freeze({
 });
 export const raisonLisible = (r) => RAISONS[r] ?? r;
 
-/** (07/11) Un achat échoué suspend l'achat automatique pendant ce délai : jamais une boucle d'essais (carte refusée…). */
+/** (07/11) Un achat échoué suspend l'achat automatique pendant ce délai : jamais une boucle d'essais. */
 export const ECHEC_ACHAT_PAUSE_MS = 3600_000;
-/** (07/11, addendum) Alerte quand la carte qui paie expire dans ces jours-là (une fois par jour au plus). */
-export const CARTE_ALERTE_JOURS = 45;
 
-/**
- * (07/11, addendum) L'ALERTE DE LA CARTE (pure) — en mode carte seulement : aucune carte valide (absente, expirée,
- * illisible) ou carte qui expire dans 45 jours ; au plus une fois par 24 h.
- */
-export function alerteCarte({ modeCarte, carte, maintenant = Date.now(), derniereLe = null, jours = CARTE_ALERTE_JOURS }) {
-  if (modeCarte !== true) return { alerte: false, raison: null };
-  const raison = !carte ? 'carte_absente' : (carte.fin - maintenant <= jours * 86_400_000 ? 'carte_expire_bientot' : null);
-  if (!raison) return { alerte: false, raison: null };
-  return { alerte: !(Number.isFinite(derniereLe) && maintenant - derniereLe < 24 * 3600_000), raison };
-}
-
-/** (07/11, addendum) Une carte refusée se reprend-elle par le solde ? (pure) — refus SÛR (4xx) et solde qui couvre. */
-export function repliParSolde({ erreur, soldeUsd, montantUsd, soldeCouvre }) {
-  const s = Number(erreur?.statut);
-  return s >= 400 && s < 500 && soldeCouvre(soldeUsd, montantUsd) === true;
+/** (10/11 soir) L'alerte d'un solde qui ne couvre pas une dépense (pure) : ce qui manque, et « recharger ». */
+export function texteSoldeInsuffisant({ nature, soldeUsd, montantUsd, texte }) {
+  const s = Number(soldeUsd), m = Number(montantUsd);
+  const manque = Number.isFinite(s) && Number.isFinite(m) ? Math.max(0, Math.ceil((m - s) * 100) / 100) : NaN;
+  return `${nature} d'IP NON FAIT : solde IPRoyal ${Number.isFinite(s) ? `${s.toFixed(2)} $` : 'illisible'}, il faut ${Number.isFinite(m) ? `${m.toFixed(2)} $` : '?'}`
+    + `${Number.isFinite(manque) ? ` (manque ${manque.toFixed(2)} $)` : ''}. RECHARGER LE SOLDE sur le tableau de bord IPRoyal — les IP ne se paient`
+    + ` jamais par carte, rien n'est acheté d'ici là. (${texte})`;
 }
 
 export function creerApprovisionnement({ base, iproyal, alertes, journal, regles, attendreLivraisonMs = 120_000, pasMs = 20_000, maintenant = () => Date.now() }) {
   let dernierEchecAchat = null;
-  let cartesLues = { le: 0, carte: null, lue: false };
-  let derniereAlerteCarte = null;
   const param = async (cle, defaut) => {
     const { data, error } = await base.rpc('cloud_param', { p_cle: cle, p_defaut: defaut });
     return error ? defaut : Number(data ?? defaut);
@@ -92,50 +82,22 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
   async function gardes() {
     // (07/11 soir, ordres 3 et 4 de Nico) cloud_ip_sante_controle (le contrôle de santé périodique) et
     // cloud_ip_renouveler_saines_seulement (la règle « saines d'abord ») : 0 par défaut — le comportement d'avant.
-    const [achatsAuto, renouvAuto, marge, achatMax, paiementCarte, carteId, santeControle, sainesSeulement] = await Promise.all([
+    // (10/11 soir) cloud_ip_paiement_carte / cloud_ip_carte_id ne sont plus lus : les IP se paient par le solde, toujours.
+    const [achatsAuto, renouvAuto, marge, achatMax, santeControle, sainesSeulement] = await Promise.all([
       param('ip_achats_auto', 0), param('ip_renouvellement_auto', 0), param('ip_marge', regles?.PARAMETRES?.ipMarge ?? 3),
-      param('ip_achat_max', regles?.PARAMETRES?.ipAchatMax ?? 10), param('ip_paiement_carte', 0), param('ip_carte_id', 0),
+      param('ip_achat_max', regles?.PARAMETRES?.ipAchatMax ?? 10),
       param('ip_sante_controle', 0), param('ip_renouveler_saines_seulement', 0),
     ]);
     return {
       envAutorise: iproyal?.achatsAutorises === true, achatsAuto: achatsAuto === 1, renouvAuto: renouvAuto === 1,
       marge: Math.max(0, Math.floor(Number.isFinite(marge) ? marge : 3)), achatMax: Math.max(1, Math.min(50, achatMax || 10)),
-      paiementCarte: paiementCarte === 1, carteId: carteId > 0 ? carteId : null,
       santeControle: santeControle === 1, sainesSeulement: sainesSeulement === 1,
     };
   }
 
-  /**
-   * (07/11, addendum) Le moyen de paiement du moment : la carte choisie (GET /cards relu au plus toutes les 10 min, ou
-   * sur demande), sinon le solde. Mode carte sans carte valide : le solde, dit (`sansCarte`).
-   */
-  async function moyenPaiement(g, { relire = false } = {}) {
-    if (!g?.paiementCarte) return { mode: 'solde', carte: null };
-    const t = maintenant();
-    if (relire || t - cartesLues.le > 10 * 60_000) {
-      try { cartesLues = { le: t, carte: choisirCarte(await iproyal.cartes(), g.carteId, t), lue: true }; } catch (e) {
-        cartesLues = { le: t, carte: null, lue: false };
-        journal.alerte('cartes_illisibles', { erreur: e.message });
-      }
-    }
-    if (cartesLues.carte) return { mode: 'carte', carte: cartesLues.carte };
-    return { mode: 'solde', carte: null, sansCarte: true, raison: cartesLues.lue ? 'carte_absente' : 'cartes_illisibles' };
-  }
-
-  /** (07/11, addendum) L'alerte de la carte (tour horaire) : absente / expirée / expire dans 45 jours — une fois par jour. */
-  async function verifierCarte(g) {
-    if (!g?.paiementCarte) return { mode: 'solde' };
-    const p = await moyenPaiement(g, { relire: true });
-    const t = maintenant();
-    const a = alerteCarte({ modeCarte: true, carte: p.carte, maintenant: t, derniereLe: derniereAlerteCarte });
-    if (a.alerte) {
-      derniereAlerteCarte = t;
-      await alertes?.signaler('serveur', a.raison === 'carte_absente'
-        ? `Paiement des IP par carte (cloud_ip_paiement_carte = 1) : AUCUNE carte valide chez IPRoyal (${p.raison}). Les achats et renouvellements passent par le solde tant qu'il couvre : enregistrer une carte, ou cloud_ip_paiement_carte = 0.`
-        : `La ${carteLisible(p.carte)} qui paie les IP expire dans ${Math.max(0, Math.ceil((p.carte.fin - t) / 86_400_000))} jours : enregistrer une nouvelle carte chez IPRoyal (la plus lointaine est prise seule, ou coin_config cloud_ip_carte_id).`,
-      { raison: a.raison });
-    }
-    return { mode: p.mode, carte: p.carte ? carteLisible(p.carte) : null, raison: a.raison };
+  /** (10/11 soir) Le moyen de paiement : le SOLDE, toujours (jamais une carte — ordre de Nico). */
+  function moyenPaiement() {
+    return { mode: 'solde' };
   }
 
   /** Une dépense refusée ou impossible : dite (jamais un mail à un utilisateur ; ALERTES_MAIL décide pour support@). */
@@ -149,27 +111,26 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
       await alertes?.signaler('serveur', `Achat d'IP BLOQUÉ par la garde du nombre : ${gd.comptees ?? '?'} IP comptées (vivantes ${gd.vivantes ?? '?'}`
         + ` + en commande ${gd.en_commande ?? '?'} + demandées ${gd.demandees ?? '?'}) pour une borne de ${gd.borne ?? '?'} (comptes Cloud ${gd.comptes ?? '?'}`
         + ` + marge ${gd.marge ?? '?'} + attente ${gd.attente ?? '?'}). Une boucle d'achat ? Rien n'est acheté : relire cloud_ip_commandes et cloud_ips. (${texte})`, details);
+    } else if (raison === 'solde_insuffisant') {
+      // (10/11 soir) Le solde ne couvre pas : rien n'est fait, aucune bascule sur une carte — Nico recharge le solde.
+      await alertes?.signaler('serveur', texteSoldeInsuffisant({ nature: nature === 'achat' ? 'Achat' : 'Renouvellement',
+        soldeUsd: details?.solde_usd, montantUsd: details?.prix_usd, texte }), details);
     } else {
       await alertes?.signaler('serveur', `Dépense IPRoyal BLOQUÉE (${raisonLisible(raison)}) : ${texte}`, details);
     }
   }
 
   /**
-   * (07/11, addendum) LE PAIEMENT D'UNE DÉPENSE DÉJÀ OUVERTE AU REGISTRE : `geste(carteId|null)` = l'appel IPRoyal.
-   * Par carte ; refus SÛR (4xx) → UNE reprise par le solde s'il couvre (alerte), sinon l'erreur remonte, dite. Jamais plus.
+   * LE PAIEMENT D'UNE DÉPENSE DÉJÀ OUVERTE AU REGISTRE : `geste()` = l'appel IPRoyal, payé par le SOLDE. (10/11 soir)
+   * Plus de carte ni de reprise : une erreur remonte telle quelle ; un 5xx ou une coupure = issue inconnue, jamais rejouée.
    */
-  async function payer({ nature, texte, montant, solde, paiement, geste }) {
-    if (paiement.mode !== 'carte') return { r: await geste(null), paiement: 'solde' };
+  async function payer({ geste }) {
     try {
-      return { r: await geste(paiement.carte.id), paiement: 'carte', carte_id: paiement.carte.id };
+      return { r: await geste(), paiement: 'solde' };
     } catch (e) {
-      if (repliParSolde({ erreur: e, soldeUsd: solde?.montant, montantUsd: montant, soldeCouvre: regles.soldeCouvre })) {
-        await alertes?.signaler('serveur', `${nature} IPRoyal : la ${carteLisible(paiement.carte)} est REFUSÉE (${String(e.message).slice(0, 80)}) — une seule reprise par le solde (${Number(solde.montant).toFixed(2)} $) : ${texte} Vérifier la carte.`);
-        const r = await geste(null);
-        return { r, paiement: 'solde', repli_carte: true, erreur_carte: String(e.message).slice(0, 120) };
+      if (!(Number(e?.statut) >= 400 && Number(e?.statut) < 500)) {
+        e.message = `${e.message} — issue inconnue (aucune reprise : jamais deux paiements), vérifier le tableau de bord IPRoyal`;
       }
-      e.message = `${e.message} — ${carteLisible(paiement.carte)}, ${Number(e?.statut) >= 400 && Number(e?.statut) < 500
-        ? 'refusée, solde insuffisant pour la reprise' : 'issue inconnue (aucune reprise : jamais deux paiements), vérifier le tableau de bord IPRoyal'}`;
       throw e;
     }
   }
@@ -231,23 +192,19 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
         montant = await iproyal.prixCommande(quantite, cat);
       } catch (e) { journal.alerte('renouvellement_prix_illisible', { commande, erreur: e.message }); }
       const texte = `renouveler la commande ${commande} (${quantite} IP : ${ids.join(', ')}) pour ${Number.isFinite(montant) ? `${montant.toFixed(2)} $` : 'un prix illisible'}.`;
-      const paiement = await moyenPaiement(g);
-      if (paiement.mode === 'solde' && Number.isFinite(montant) && !regles.soldeCouvre(solde?.montant, montant)) {
-        await alertes?.signaler('serveur', `Solde IPRoyal ${Number(solde?.montant ?? NaN).toFixed(2)} $ : il ne couvre pas le prochain renouvellement (${montant.toFixed(2)} $). Recharger le solde.`, { commande });
-      }
+      const paiement = moyenPaiement();
       const dejaProlongee = ids.some((id) => regles.prolongationRecente({ registre, commande, ip: id, maintenant: maintenant() }));
       const d = regles.deciderDepense({ montantUsd: montant, envAutorise: g.envAutorise, interrupteur: g.renouvAuto, dejaProlongee,
-        soldeUsd: solde?.montant, paiement: paiement.mode });
-      if (!d.faire) { await dire('prolongation', d.raison, texte, { commande, ips: ids, prix_usd: montant }); faits.push({ commande, fait: false, raison: d.raison }); continue; }
+        soldeUsd: solde?.montant });
+      if (!d.faire) { await dire('prolongation', d.raison, texte, { commande, ips: ids, prix_usd: montant, solde_usd: solde?.montant ?? null }); faits.push({ commande, fait: false, raison: d.raison }); continue; }
       const { data: o } = await base.rpc('cloud_ip_depense_ouvrir', { p_nature: 'prolongation', p_quantite: quantite, p_prix_usd: montant,
-        p_ip: ids[0], p_details: { commande, ips: ids, paiement: paiement.mode, ...(paiement.carte ? { carte_id: paiement.carte.id } : {}) } });
+        p_ip: ids[0], p_details: { commande, ips: ids, paiement: paiement.mode } });
       if (!o?.ok) { await dire('prolongation', o?.raison ?? 'refus_base', texte, { commande }); faits.push({ commande, fait: false, raison: o?.raison }); continue; }
       try {
-        const p = await payer({ nature: 'Renouvellement', texte, montant, solde, paiement,
-          geste: (carteId) => iproyal.prolonger(commande, cat.planId, { carteId }) });
+        const p = await payer({ geste: () => iproyal.prolonger(commande, cat.planId) });
         const fin = dateIproyal(p.r?.expire_date);
         await base.rpc('cloud_ip_depense_fermer', { p_id: o.id, p_statut: 'livree', p_commande: String(commande), p_prix_usd: montant,
-          p_details: { expire_date: p.r?.expire_date ?? null, paiement: p.paiement, ...(p.repli_carte ? { repli_carte: true, erreur_carte: p.erreur_carte } : {}) } });
+          p_details: { expire_date: p.r?.expire_date ?? null, paiement: p.paiement } });
         if (Number.isFinite(fin)) {
           for (const id of ids) await base.rpc('cloud_ip_renouvelee', { p_ip: id, p_expire_le: new Date(fin).toISOString() });
         }
@@ -295,10 +252,7 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     let montant = NaN, cat = null;
     try { cat = await iproyal.catalogueIsp(); montant = await iproyal.prixCommande(n, cat); } catch (e) { journal.alerte('achat_prix_illisible', { erreur: e.message }); }
     const texte = `acheter ${n} IP France 30 jours pour ${Number.isFinite(montant) ? `${montant.toFixed(2)} $` : 'un prix illisible'} (stock visé ${plan.vise}, prêtes ${plan.projete}).`;
-    const paiement = await moyenPaiement(g);
-    if (paiement.mode === 'solde' && Number.isFinite(montant) && !regles.soldeCouvre(solde?.montant, montant)) {
-      await alertes?.signaler('serveur', `Solde IPRoyal ${Number(solde?.montant ?? NaN).toFixed(2)} $ : il ne couvre pas le prochain achat (${n} IP, ${montant.toFixed(2)} $). Recharger le solde.`, { quantite: n });
-    }
+    const paiement = moyenPaiement();
     // (07/11, décision 2) La garde du nombre : celle du plan (JS) ; sur accord écrit (plan sans garde), relue en base.
     const surAccord = Boolean(accord) && !g.achatsAuto;
     let garde = regles.gardePour(plan?.garde ?? null, n);
@@ -307,10 +261,10 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
       garde = error ? null : data;
     }
     const d = regles.deciderDepense({ montantUsd: montant, envAutorise: g.envAutorise, interrupteur: g.achatsAuto || Boolean(accord),
-      garde, rebutsEntree: surAccord ? 0 : (plan?.rebutsEntree24h ?? 0), soldeUsd: solde?.montant, paiement: paiement.mode });
-    if (!d.faire) { await dire('achat', d.raison, texte, { quantite: n, prix_usd: montant, ...(garde ? { garde } : {}) }); return { fait: false, raison: d.raison }; }
+      garde, rebutsEntree: surAccord ? 0 : (plan?.rebutsEntree24h ?? 0), soldeUsd: solde?.montant });
+    if (!d.faire) { await dire('achat', d.raison, texte, { quantite: n, prix_usd: montant, solde_usd: solde?.montant ?? null, ...(garde ? { garde } : {}) }); return { fait: false, raison: d.raison }; }
     const detailsAchat = { produit: cat.produitId, offre: cat.planId, lieu: cat.lieuId, paiement: paiement.mode,
-      ...(paiement.carte ? { carte_id: paiement.carte.id } : {}), ...(accord ? { accord_ecrit: accord } : {}) };
+      ...(accord ? { accord_ecrit: accord } : {}) };
     const o = surAccord
       ? await ouvrirSurAccord({ quantite: n, prixUsd: montant, details: detailsAchat, accord })
       : (await base.rpc('cloud_ip_depense_ouvrir', { p_nature: 'achat', p_quantite: n, p_prix_usd: montant, p_ip: null, p_details: detailsAchat })).data;
@@ -320,10 +274,10 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     }
     let commande = null;
     try {
-      const p = await payer({ nature: 'Achat', texte, montant, solde, paiement, geste: (carteId) => iproyal.commander(n, cat, { carteId }) });
+      const p = await payer({ geste: () => iproyal.commander(n, cat) });
       commande = p.r;
       await base.rpc('cloud_ip_depense_fermer', { p_id: o.id, p_statut: 'en_cours', p_commande: String(commande.id), p_prix_usd: montant,
-        p_details: { paiement: p.paiement, ...(p.repli_carte ? { repli_carte: true, erreur_carte: p.erreur_carte } : {}) } });
+        p_details: { paiement: p.paiement } });
       if (p.paiement === 'solde' && solde && Number.isFinite(solde.montant)) solde.montant -= montant;
       journal.info('achat_fait', { commande: String(commande.id), quantite: n, prix_usd: montant, paiement: p.paiement });
     } catch (e) {
@@ -340,5 +294,5 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     return { fait: true, commande: String(commande.id), quantite: n };
   }
 
-  return { gardes, moyenPaiement, verifierCarte, livrer, renouveler, acheter };
+  return { gardes, moyenPaiement, livrer, renouveler, acheter };
 }

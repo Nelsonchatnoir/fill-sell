@@ -1,6 +1,6 @@
 // (03/11, point 2 de Nico) L'APPROVISIONNEMENT AUTOMATIQUE DES IP — sans réseau ni base : faux IPRoyal, fausse base.
 // Achat et renouvellement sous leurs gardes (serveur, interrupteur ; (07/11) garde du NOMBRE pour l'achat, anti-boucle pour
-// la prolongation — plus de plafond en dollars), solde insuffisant, paiement par carte, livraison, pare-feu
+// la prolongation — plus de plafond en dollars), solde insuffisant, (10/11) jamais la carte, livraison, pare-feu
 // dynamique (liste écrite, preuve lue, script de l'hôte joué avec de faux iptables), refus par plateforme, verdict de la
 // visite de contrôle, rotation sans partage simultané.
 import test from 'node:test';
@@ -11,8 +11,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as regles from '../../supabase/functions/_shared/cloud-pool.js';
-import { lireCatalogueIsp, prixDeCalcul, proxiesLivres, creerIproyal, finCarte, choisirCarte, carteLisible } from '../src/iproyal.js';
-import { creerApprovisionnement, dateIproyal, grouperParCommande, alerteCarte, CARTE_ALERTE_JOURS, ECHEC_ACHAT_PAUSE_MS } from '../src/approvisionnement.js';
+import { lireCatalogueIsp, prixDeCalcul, proxiesLivres, creerIproyal } from '../src/iproyal.js';
+import { creerApprovisionnement, dateIproyal, grouperParCommande, ECHEC_ACHAT_PAUSE_MS } from '../src/approvisionnement.js';
 import { sortiesDuPool, texteSorties, lireSorties, sortiesAppliquees, sortieOuverte, creerPareFeu } from '../src/pareFeu.js';
 import { verdictCloisonnement } from '../src/cloisonnement.js';
 import { verdictVisite, ACCUEILS_CONTROLE } from '../src/controle.js';
@@ -58,7 +58,7 @@ test('dépense (07/11) : dans l’ordre — prix, serveur, interrupteur, garde d
   assert.equal(regles.deciderDepense({ ...base, garde: null }).raison, 'garde_illisible', 'un achat sans garde lisible ne part pas');
   assert.equal(regles.deciderDepense({ ...base, budgetUsd: 0, depenseMoisUsd: 5000 }).raison, 'ok', 'les dollars ne bornent plus rien');
   assert.equal(regles.deciderDepense({ ...base, soldeUsd: 7.15 }).raison, 'solde_insuffisant');
-  assert.equal(regles.deciderDepense({ ...base, soldeUsd: 0, paiement: 'carte' }).raison, 'ok', 'par carte, le solde ne bloque pas');
+  assert.equal(regles.deciderDepense({ ...base, soldeUsd: 0, paiement: 'carte' }).raison, 'solde_insuffisant', '(10/11) jamais la carte : le solde borne tout');
   assert.equal(regles.deciderDepense({ ...base, montantUsd: NaN }).raison, 'prix_illisible');
   // Une prolongation : jamais la garde du nombre (même très au-dessus), seulement l'anti-boucle.
   const prol = { montantUsd: 4, envAutorise: true, interrupteur: true, soldeUsd: 50 };
@@ -143,19 +143,19 @@ function fausseBase({ params = {}, depense = 0, ouvrir = { ok: true, id: 101 }, 
     },
   };
 }
-function fauxIproyal({ achatsAutorises = true, prix = 29.4, livree = null, cartes = [], carteRefuse = null } = {}) {
+function fauxIproyal({ achatsAutorises = true, prix = 29.4, livree = null, echec = null } = {}) {
   const gestes = [];
-  // (07/11, addendum) Une carte qui échoue : `carteRefuse` = le statut HTTP rendu (402 = refus sûr, 503 = issue inconnue).
-  const payer = (carteId) => {
-    if (carteId && carteRefuse) { const e = new Error(`IPRoyal POST → HTTP ${carteRefuse}`); e.statut = carteRefuse; throw e; }
+  // (10/11 soir) Un paiement qui échoue : `echec` = le statut HTTP rendu (500 = issue inconnue). Le 4e élément d'un geste
+  // est l'éventuel 3e argument (une carte) : il doit rester null — jamais de card_id.
+  const payer = () => {
+    if (echec) { const e = new Error(`IPRoyal POST /orders → HTTP ${echec}`); e.statut = echec; throw e; }
   };
   return {
     gestes, disponible: true, achatsAutorises,
     async catalogueIsp() { return lireCatalogueIsp(CATALOGUE); },
     async prixCommande(n) { gestes.push(['prix', n]); return prix; },
-    async commander(n, cat, o = {}) { gestes.push(['commander', n, cat.planId, o.carteId ?? null]); payer(o.carteId); return { id: 99001 }; },
-    async prolonger(c, plan, o = {}) { gestes.push(['prolonger', c, plan, o.carteId ?? null]); payer(o.carteId); return { expire_date: '2026-12-04 12:57:45' }; },
-    async cartes() { gestes.push(['cartes']); return cartes; },
+    async commander(n, cat, o) { gestes.push(['commander', n, cat.planId, o ?? null]); payer(); return { id: 99001 }; },
+    async prolonger(c, plan, o) { gestes.push(['prolonger', c, plan, o ?? null]); payer(); return { expire_date: '2026-12-04 12:57:45' }; },
     async lireCommande(c) { gestes.push(['lire', c]); return livree ?? { status: 'in-progress', proxy_data: { proxies: [] } }; },
     urlProxy(cmd, ip) { return `http://u:p@${ip}:12323`; },
   };
@@ -186,7 +186,7 @@ test('achat : garde ouverte → registre AVANT la commande, puis commande de N I
   const iproyal = fauxIproyal();
   const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: null, attendreLivraisonMs: 0 });
   const g = await a.gardes();
-  assert.deepEqual([g.marge, g.paiementCarte, g.carteId], [3, false, null], 'défauts : marge 3, paiement par le solde');
+  assert.equal(g.marge, 3, 'défaut : marge 3 (paiement : le solde, toujours)');
   const solde = { montant: 50 };
   const r = await a.acheter(plan, g, solde);
   assert.equal(r.fait, true); assert.equal(r.quantite, 3);
@@ -234,7 +234,7 @@ test('achat : solde IPRoyal insuffisant → alerte, aucune commande', async () =
   const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: { async signaler(n, t) { dits.push(t); } }, attendreLivraisonMs: 0 });
   const r = await a.acheter(plan, await a.gardes(), { montant: 3.15 });
   assert.equal(r.raison, 'solde_insuffisant');
-  assert.ok(dits.some((t) => /ne couvre pas le prochain achat/.test(t)));
+  assert.ok(dits.some((t) => /^Achat d'IP NON FAIT : solde IPRoyal 3\.15 \$.*RECHARGER LE SOLDE/.test(t)), JSON.stringify(dits));
   assert.ok(!iproyal.gestes.some((x) => x[0] === 'commander'));
 });
 
@@ -262,115 +262,64 @@ test('renouvellement : une commande entière à la fois, prolonger() appelée, �
   assert.equal(iproyal.gestes.filter((x) => x[0] === 'prolonger').length, 2, 'aucune prolongation de plus');
 });
 
-// ── (07/11, addendum de Nico) LE PAIEMENT PAR CARTE ─────────────────────────────────────────────────────────────
-const CARTES = [
-  { id: 11, provider: 'stripe', card_type: 'visa', last_four_digits: '4242', expiry_date: '2029/4' },
-  { id: 12, provider: 'stripe', card_type: 'visa', last_four_digits: '1881', expiry_date: '2031/12' },
-  { id: 13, provider: 'stripe', card_type: 'mastercard', last_four_digits: '5100', expiry_date: '2031/12' },
-  { id: 14, provider: 'stripe', last_four_digits: '0000', expiry_date: '2025/1' },
-];
-
-test('carte : fin du mois d’échéance, choix (réglage sinon la plus lointaine, jamais une expirée), jamais plus que 4 chiffres', () => {
-  assert.equal(finCarte('2031/12'), Date.UTC(2032, 0, 1) - 1);
-  assert.equal(finCarte('2029/4'), Date.UTC(2029, 4, 1) - 1, '« 2029/4 » sans zéro');
-  assert.ok(Number.isNaN(finCarte('12/31'))); assert.ok(Number.isNaN(finCarte('2031/13'))); assert.ok(Number.isNaN(finCarte(null)));
-  const loin = choisirCarte(CARTES, null, T0);
-  assert.deepEqual([loin.id, loin.choisie, loin.quatre], [12, 'plus_lointaine', '1881'], 'la plus lointaine (12 et 13 à égalité : le plus petit id)');
-  assert.equal(choisirCarte(CARTES, 11, T0).id, 11, 'cloud_ip_carte_id présente et valide : elle');
-  assert.equal(choisirCarte(CARTES, 14, T0).id, 12, 'cloud_ip_carte_id expirée : la plus lointaine');
-  assert.equal(choisirCarte(CARTES, 99, T0).id, 12, 'cloud_ip_carte_id absente de GET /cards : la plus lointaine');
-  assert.equal(choisirCarte({ data: CARTES.slice(3) }, null, T0), null, 'que des cartes expirées : aucune');
-  assert.equal(choisirCarte([], null, T0), null);
-  assert.equal(carteLisible(loin), 'carte …1881 (stripe, fin 2031-12)');
-  assert.ok(!/\d{5,}/.test(carteLisible(loin)), 'jamais plus que les 4 derniers chiffres');
-});
-
-test('carte : alerte si aucune carte valide ou fin dans 45 jours, au plus une fois par jour ; rien en mode solde', () => {
-  const carte = { id: 12, fin: T0 + 40 * J };
-  assert.deepEqual(alerteCarte({ modeCarte: false, carte: null, maintenant: T0 }), { alerte: false, raison: null });
-  assert.deepEqual(alerteCarte({ modeCarte: true, carte: null, maintenant: T0 }), { alerte: true, raison: 'carte_absente' });
-  assert.deepEqual(alerteCarte({ modeCarte: true, carte, maintenant: T0 }), { alerte: true, raison: 'carte_expire_bientot' });
-  assert.equal(alerteCarte({ modeCarte: true, carte: { ...carte, fin: T0 + 46 * J }, maintenant: T0 }).alerte, false);
-  assert.equal(alerteCarte({ modeCarte: true, carte, maintenant: T0, derniereLe: T0 - 2 * 3600_000 }).alerte, false, 'une fois par jour');
-  assert.equal(alerteCarte({ modeCarte: true, carte, maintenant: T0, derniereLe: T0 - 25 * 3600_000 }).alerte, true);
-  assert.equal(CARTE_ALERTE_JOURS, 45);
-});
-
-test('carte : achat et renouvellement passent card_id ; le solde ne bloque pas ; registre identique + moyen de paiement', async () => {
-  const base = fausseBase({ params: { ip_achats_auto: 1, ip_renouvellement_auto: 1, ip_paiement_carte: 1 } });
-  const iproyal = fauxIproyal({ cartes: CARTES });
-  const dits = [];
-  const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: { async signaler(n, t) { dits.push(t); } }, attendreLivraisonMs: 0, maintenant: () => T0 });
+// ── (10/11 soir, ordre de Nico) LE SOLDE PAIE, JAMAIS LA CARTE ─────────────────────────────────────────────────────
+// La banque refuse IPRoyal (achat du 10/11 19:36 par la carte …9699 en HTTP 500) : le mode carte du 07/11 est retiré.
+test('jamais la carte : cloud_ip_paiement_carte = 1 et cloud_ip_carte_id ne sont plus lus ; achat et renouvellement par le solde, sans card_id', async () => {
+  const base = fausseBase({ params: { ip_achats_auto: 1, ip_renouvellement_auto: 1, ip_paiement_carte: 1, ip_carte_id: 410814 } });
+  const iproyal = fauxIproyal();
+  const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: null, attendreLivraisonMs: 0, maintenant: () => T0 });
   const g = await a.gardes();
-  assert.equal(g.paiementCarte, true);
-  const solde = { montant: 0.5 };
-  const r = await a.acheter(plan, g, solde);
-  assert.equal(r.fait, true, 'solde à 0,50 $ : la carte paie');
-  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'commander'), [['commander', 3, 22, 12]], 'card_id = la carte la plus lointaine');
-  assert.equal(solde.montant, 0.5, 'le solde n’est pas décompté');
-  const ouvrir = base.appels.find((x) => x[0] === 'cloud_ip_depense_ouvrir')[1];
-  assert.deepEqual([ouvrir.p_nature, ouvrir.p_quantite, ouvrir.p_details.paiement, ouvrir.p_details.carte_id], ['achat', 3, 'carte', 12]);
-  assert.equal(base.appels.find((x) => x[0] === 'cloud_ip_depense_fermer')[1].p_details.paiement, 'carte');
-  assert.ok(!dits.some((t) => /Solde IPRoyal/.test(t)), 'aucune alerte de solde en mode carte');
-  assert.ok(!JSON.stringify(base.appels).includes('4242') && !JSON.stringify(base.appels).includes('1881'), 'aucun chiffre de carte au registre');
-  const ips = [{ id: 42, commande: '87509051' }];
-  const rr = await a.renouveler({ renouveler: [42] }, ips, g, solde, { registre: [] });
-  assert.equal(rr[0].fait, true); assert.equal(rr[0].paiement, 'carte');
-  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'prolonger'), [['prolonger', '87509051', 22, 12]]);
-  // cloud_ip_carte_id réglé : cette carte-là.
-  const b2 = fausseBase({ params: { ip_achats_auto: 1, ip_paiement_carte: 1, ip_carte_id: 11 } });
-  const i2 = fauxIproyal({ cartes: CARTES });
-  const a2 = creerApprovisionnement({ base: b2, iproyal: i2, regles, journal, alertes: null, attendreLivraisonMs: 0, maintenant: () => T0 });
-  await a2.acheter(plan, await a2.gardes(), null);
-  assert.deepEqual(i2.gestes.filter((x) => x[0] === 'commander'), [['commander', 3, 22, 11]]);
+  assert.equal('paiementCarte' in g, false); assert.equal('carteId' in g, false);
+  assert.deepEqual(a.moyenPaiement(g), { mode: 'solde' });
+  assert.equal('verifierCarte' in a, false, 'plus aucune surveillance de carte');
+  const solde = { montant: 100 };
+  assert.equal((await a.acheter(plan, g, solde)).fait, true);
+  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'commander'), [['commander', 3, 22, null]], 'aucun card_id');
+  assert.ok(Math.abs(solde.montant - (100 - 29.4)) < 1e-9, 'le solde est décompté');
+  const ouvrir = base.appels.find((x) => x[0] === 'cloud_ip_depense_ouvrir')[1].p_details;
+  assert.equal(ouvrir.paiement, 'solde'); assert.equal('carte_id' in ouvrir, false);
+  const rr = await a.renouveler({ renouveler: [42] }, [{ id: 42, commande: '87509051' }], g, solde, { registre: [] });
+  assert.equal(rr[0].fait, true); assert.equal(rr[0].paiement, 'solde');
+  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'prolonger'), [['prolonger', '87509051', 22, null]]);
+  assert.ok(!iproyal.gestes.some((x) => x[0] === 'cartes'), 'GET /cards jamais lu');
 });
 
-test('carte refusée (4xx) : UNE reprise par le solde s’il couvre, puis une alerte ; sinon échec dit, pause d’une heure ; issue inconnue (5xx) : jamais de reprise', async () => {
-  const faire = (statut, soldeUsd) => {
-    const base = fausseBase({ params: { ip_achats_auto: 1, ip_paiement_carte: 1 } });
-    const iproyal = fauxIproyal({ cartes: CARTES, carteRefuse: statut });
-    const dits = [];
-    let t = T0;
-    const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: { async signaler(n, x) { dits.push(x); } }, attendreLivraisonMs: 0, maintenant: () => t });
-    return { base, iproyal, dits, a, solde: { montant: soldeUsd }, avancer: (ms) => { t += ms; } };
-  };
-  // Refus sûr, solde suffisant : la carte, puis le solde (une fois).
-  const x = faire(402, 100);
-  const r = await x.a.acheter(plan, await x.a.gardes(), x.solde);
-  assert.equal(r.fait, true);
-  assert.deepEqual(x.iproyal.gestes.filter((g) => g[0] === 'commander').map((g) => g[3]), [12, null], 'carte, puis UNE reprise par le solde');
-  assert.equal(x.solde.montant, 100 - 29.4, 'payé par le solde');
-  const fermer = x.base.appels.find((g) => g[0] === 'cloud_ip_depense_fermer')[1].p_details;
-  assert.deepEqual([fermer.paiement, fermer.repli_carte], ['solde', true], 'le registre dit la reprise');
-  assert.ok(x.dits.some((d) => /carte …1881 \(stripe, fin 2031-12\) est REFUSÉE .* une seule reprise par le solde/.test(d)), JSON.stringify(x.dits));
-  assert.ok(!x.dits.some((d) => /4242|5100/.test(d)));
-  // Refus sûr, solde insuffisant : aucune reprise, échec dit, l'achat automatique suspendu une heure.
-  const y = faire(402, 1);
-  assert.equal((await y.a.acheter(plan, await y.a.gardes(), y.solde)).raison, 'echec');
-  assert.deepEqual(y.iproyal.gestes.filter((g) => g[0] === 'commander').map((g) => g[3]), [12], 'aucune reprise');
-  assert.equal(y.base.appels.find((g) => g[0] === 'cloud_ip_depense_fermer')[1].p_statut, 'echec');
-  assert.ok(y.dits.some((d) => /Achat IPRoyal ÉCHOUÉ .*refusée, solde insuffisant pour la reprise.*suspendu une heure/.test(d)), JSON.stringify(y.dits));
-  y.avancer(30 * 60_000);
-  assert.equal((await y.a.acheter(plan, await y.a.gardes(), y.solde)).raison, 'echec_recent', '30 min après : rien n’est retenté');
-  assert.equal(y.iproyal.gestes.filter((g) => g[0] === 'commander').length, 1);
-  y.avancer(ECHEC_ACHAT_PAUSE_MS);
-  await y.a.acheter(plan, await y.a.gardes(), y.solde);
-  assert.equal(y.iproyal.gestes.filter((g) => g[0] === 'commander').length, 2, 'une heure après : un seul nouvel essai');
-  // Issue inconnue (503) : jamais de reprise (un paiement est peut-être passé), même avec un gros solde.
-  const z = faire(503, 1000);
-  assert.equal((await z.a.acheter(plan, await z.a.gardes(), z.solde)).raison, 'echec');
-  assert.deepEqual(z.iproyal.gestes.filter((g) => g[0] === 'commander').map((g) => g[3]), [12]);
-  assert.ok(z.dits.some((d) => /issue inconnue \(aucune reprise : jamais deux paiements\)/.test(d)));
-  // Mode carte sans carte valide : le solde paie (s'il couvre), dit par l'alerte de la carte au tour horaire.
-  const w = faire(null, 100);
-  w.iproyal.cartes = async () => CARTES.slice(3);
-  assert.equal((await w.a.acheter(plan, await w.a.gardes(), w.solde)).fait, true);
-  assert.deepEqual(w.iproyal.gestes.filter((g) => g[0] === 'commander').map((g) => g[3]), [null]);
-  const v = await w.a.verifierCarte(await w.a.gardes());
-  assert.deepEqual([v.mode, v.raison], ['solde', 'carte_absente']);
-  assert.ok(w.dits.some((d) => /AUCUNE carte valide chez IPRoyal/.test(d)));
-  await w.a.verifierCarte(await w.a.gardes());
-  assert.equal(w.dits.filter((d) => /AUCUNE carte valide/.test(d)).length, 1, 'une fois par jour');
+test('jamais la carte : solde insuffisant → RIEN (ni achat, ni prolongation, ni bascule), une alerte « recharger le solde »', async () => {
+  const base = fausseBase({ params: { ip_achats_auto: 1, ip_renouvellement_auto: 1, ip_paiement_carte: 1 } });
+  const iproyal = fauxIproyal({ prix: 4 });
+  const dits = [];
+  const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: { async signaler(n, t) { dits.push([n, t]); } }, attendreLivraisonMs: 0, maintenant: () => T0 });
+  const g = await a.gardes();
+  const solde = { montant: 1.2 };
+  assert.equal((await a.acheter({ ...plan, aCommander: 1, garde: regles.gardePour(GARDE_OK, 1) }, g, solde)).raison, 'solde_insuffisant');
+  assert.equal((await a.renouveler({ renouveler: [42] }, [{ id: 42, commande: '87509051' }], g, solde, { registre: [] }))[0].raison, 'solde_insuffisant');
+  assert.ok(!iproyal.gestes.some((x) => x[0] === 'commander' || x[0] === 'prolonger'), 'aucune dépense');
+  assert.ok(!base.appels.some((x) => x[0] === 'cloud_ip_depense_ouvrir'), 'rien au registre');
+  assert.equal(solde.montant, 1.2);
+  assert.ok(dits.some(([n, t]) => n === 'serveur' && /^Achat d'IP NON FAIT : solde IPRoyal 1\.20 \$, il faut 4\.00 \$ \(manque 2\.80 \$\)\. RECHARGER LE SOLDE .* jamais par carte/.test(t)), JSON.stringify(dits));
+  assert.ok(dits.some(([, t]) => /^Renouvellement d'IP NON FAIT : solde IPRoyal 1\.20 \$.*RECHARGER LE SOLDE/.test(t)), JSON.stringify(dits));
+  // Solde illisible (GET /balance en panne) : rien non plus, jamais à l'aveugle.
+  const a2 = creerApprovisionnement({ base: fausseBase({ params: { ip_achats_auto: 1 } }), iproyal: fauxIproyal({ prix: 4 }), regles, journal, alertes: null, attendreLivraisonMs: 0 });
+  assert.equal((await a2.acheter({ ...plan, aCommander: 1, garde: regles.gardePour(GARDE_OK, 1) }, await a2.gardes(), null)).raison, 'solde_insuffisant');
+});
+
+test('issue inconnue (5xx) : jamais rejouée — échec dit, pause d’une heure, un seul nouvel essai ensuite', async () => {
+  const base = fausseBase({ params: { ip_achats_auto: 1 } });
+  const iproyal = fauxIproyal({ echec: 500 });
+  const dits = [];
+  let t = T0;
+  const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: { async signaler(n, x) { dits.push(x); } }, attendreLivraisonMs: 0, maintenant: () => t });
+  const solde = { montant: 1000 };
+  assert.equal((await a.acheter(plan, await a.gardes(), solde)).raison, 'echec');
+  assert.equal(iproyal.gestes.filter((g) => g[0] === 'commander').length, 1, 'aucune reprise');
+  assert.equal(base.appels.find((g) => g[0] === 'cloud_ip_depense_fermer')[1].p_statut, 'echec');
+  assert.ok(dits.some((d) => /Achat IPRoyal ÉCHOUÉ .*issue inconnue \(aucune reprise : jamais deux paiements\).*suspendu une heure/.test(d)), JSON.stringify(dits));
+  t += 30 * 60_000;
+  assert.equal((await a.acheter(plan, await a.gardes(), solde)).raison, 'echec_recent', '30 min après : rien n’est retenté');
+  t += ECHEC_ACHAT_PAUSE_MS;
+  await a.acheter(plan, await a.gardes(), solde);
+  assert.equal(iproyal.gestes.filter((g) => g[0] === 'commander').length, 2, 'une heure après : un seul nouvel essai');
+  assert.equal(solde.montant, 1000, 'rien décompté');
 });
 
 test('livraison : chaque IP livrée entre au pool (URL au vault par cloud_ip_ajouter), la dépense est close', async () => {
@@ -694,7 +643,7 @@ test('entretien horaire : une livraison relit le pool AVANT le plan (jamais rach
   assert.deepEqual([soldes[0].projection.horizonJours, soldes[0].projection.achats, soldes[0].projection.prixIpUsd], [14, 3, 4], 'achats ≥ la marge, prix lu au catalogue');
 });
 
-test('IPRoyal : card_id dans le corps de la commande et de la prolongation en mode carte, jamais sinon ; le statut HTTP voyage avec l’erreur', async () => {
+test('IPRoyal (10/11 soir) : JAMAIS de card_id dans une commande ni une prolongation, même demandé ; le statut HTTP voyage avec l’erreur', async () => {
   const corps = [];
   const avant = globalThis.fetch;
   let statut = 200;
@@ -705,11 +654,13 @@ test('IPRoyal : card_id dans le corps de la commande et de la prolongation en mo
     const cat = { produitId: 9, planId: 22, lieuId: 25 };
     await i.commander(2, cat); await i.commander(2, cat, { carteId: 12 });
     await i.prolonger('87509051', 22); await i.prolonger('87509051', 22, { carteId: 12 });
-    await i.cartes();
-    assert.deepEqual(corps.map((c) => c[2]?.card_id ?? null), [null, 12, null, 12, null]);
+    assert.deepEqual(corps.map((c) => Object.keys(c[2] ?? {}).filter((k) => /card/i.test(k))), [[], [], [], []], 'aucun champ de carte');
+    assert.deepEqual(corps[1][2], { product_id: 9, product_plan_id: 22, product_location_id: 25, quantity: 2, auto_extend: false });
+    assert.deepEqual(corps[3][2], { product_plan_id: 22 });
     assert.equal(corps[0][2].auto_extend, false, 'jamais de renouvellement automatique chez IPRoyal');
-    assert.match(corps[4][0], /\/cards$/); assert.equal(corps[4][1], 'GET');
-    statut = 402;
-    await assert.rejects(i.commander(1, cat, { carteId: 12 }), (e) => e.statut === 402 && /HTTP 402/.test(e.message));
+    assert.equal('cartes' in i, false, 'GET /cards n’existe plus');
+    assert.ok(!corps.some((c) => /\/cards/.test(c[0])));
+    statut = 500;
+    await assert.rejects(i.commander(1, cat), (e) => e.statut === 500 && /HTTP 500/.test(e.message));
   } finally { globalThis.fetch = avant; }
 });
