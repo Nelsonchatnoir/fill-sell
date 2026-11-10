@@ -143,6 +143,9 @@ export const BUILD_LBC_CRITERES_APRES_PHOTOS = "2026-11-07T14:34:17Z"; // BUILD_
 // une question de RAYON (0.6.179). Posée au BUILD_ID du zip (npm run package:extension, 07/11 20:56) : un poste à ce
 // build ou plus récent reprend les jobs arrêtés sur ce refus, une fois.
 export const BUILD_VINTED_RAYON_REFUSE_AU_COMPTE = "2026-11-07T19:56:30Z"; // BUILD_ID du paquet 0.6.179 (2026-11-07T19:56:30Z+3c365ba)
+// (10/11, point 6 de Nico) L'état CONFIRMÉ dans la fenêtre Vinted « l'article ne doit jamais avoir été utilisé »
+// (« Neuf sans étiquette », depuis le 09/11) : premier paquet qui la confirme (0.6.186). Posé au BUILD_ID du paquet.
+export const BUILD_VINTED_ETAT_CONFIRME = "2026-11-10T14:10:14Z"; // BUILD_ID du paquet 0.6.186 (2026-11-10T14:10:14Z+ba13a51)
 
 export const CORRECTIFS_EXTENSION = [
   {
@@ -381,6 +384,29 @@ export const CORRECTIFS_EXTENSION = [
     buildMin: BUILD_VINTED_RAYON_REFUSE_AU_COMPTE,
     version: "0.6.179",
     motif: "rayon refusé au compte Pro par Vinted : une question de rayon (autre rayon, ou Vinted abandonné), plus jamais « renseigne category »",
+    clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user", "server_required_fields"],
+  },
+  {
+    // (10/11, point 6 de Nico — stefcarpro 3fba26fa, meminiandmove 641fb37e, victorine 888c5152) Depuis le 09/11, Vinted
+    // demande de CONFIRMER « Neuf sans étiquette » (fenêtre new-without-tags-education-modal) ; les postes ≤ 0.6.185 ne la
+    // confirmaient pas : l'état ne partait pas, POST refusé 400 « Le champ État doit être renseigné » — APRÈS le retrait de
+    // l'annonce d'origine. L'état était connu (capture : item_attributes condition [1]) : ce n'était pas une question. Le job
+    // repart UNE fois vers un poste 0.6.186, qui pose l'état de la CAPTURE (republication) ou de la fiche (publication) et le
+    // confirme. ⛔ Jamais par-dessus une réponse de la personne qui diffère de cet état ; jamais sans état connu.
+    cle: "vinted_etat_a_confirmer",
+    platform: "vinted",
+    actions: ["republish", "publish"],
+    signature: /"field":"condition"|Le champ État doit être renseigné|Vinted exige « État »/,
+    buildMin: BUILD_VINTED_ETAT_CONFIRME,
+    version: "0.6.186",
+    motif: "l'état « Neuf sans étiquette » n'était pas confirmé dans la fenêtre que Vinted ouvre depuis le 09/11 : il ne partait pas",
+    condition: (job) => {
+      const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+      const connu = String((job?.action === "republish" ? pf.republish_snapshot?.etat : pf.etat) ?? "").trim();
+      if (!connu) return false; // aucun état connu : la question reste à la personne
+      const reponse = String(pf.vintedAspects?.condition ?? "").trim();
+      return !reponse || reponse.toLowerCase() === connu.toLowerCase();
+    },
     clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user", "server_required_fields"],
   },
 ];

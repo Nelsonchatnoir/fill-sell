@@ -1488,3 +1488,9 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   France) ; enregistrée → `m.relireAdresseLbc()` sur chaque moteur. Le bouton gris du moteur nomme l'adresse.
 - FillSell Cloud n'ouvre AUCUN quota (essai compris) : le mur du lot propose le palier supérieur, c'est la règle
   (`_shared/cloud-option.js:9-17`) — la changer est une décision de Nico.
+
+## ⛔ 10/11 (point 6 de Nico) — Vinted : l'état « Neuf sans étiquette » se CONFIRME (fenêtre du 09/11)
+- Vinted ouvre `new-without-tags-education-modal` quand on choisit « Neuf sans étiquette » : non confirmée, l'état ne
+  part pas (400 « Le champ État doit être renseigné », annonce déjà retirée). Extension 0.6.186 : « Conserver » l'état
+  posé, jamais « Passer à … ». Serveur : relance unique `vinted_etat_a_confirmer` vers un poste ≥ 0.6.186 (état de la
+  capture, jamais par-dessus une réponse différente). Rapport : `docs/enquetes/republication-etat-neuf-sans-etiquette-1011/`.

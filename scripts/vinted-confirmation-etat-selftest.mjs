@@ -85,5 +85,26 @@ const parId = extraireFonctionJs(src, "selectEtatParId");
 ok(/el\.click\(\);\s*await humanPause\(\);[\s\S]{0,300}confirmerEtatVinted\(titreId \|\| null, warnings\)/.test(parId), "par identifiant (page non française) : la même confirmation");
 ok(/"version": "0\.6\.186"/.test(fs.readFileSync(join(ROOT, "chrome-extension/manifest.json"), "utf8")), "manifest 0.6.186");
 
+console.log("C. Le serveur relance UNE fois vers un poste 0.6.186 (correctifs-extension)");
+const CE = await import("../supabase/functions/_shared/correctifs-extension.js");
+const diag400 = 'refus serveur HTTP 400 (/api/v2/item_upload/items) || réponse : {"code":99,"message":"Erreurs trouvées","message_code":"validation_error","errors":[{"field":"condition","value":"Le champ État doit être renseigné"}],"payload":{}}';
+const jobRecreation = (pf = {}, extra = {}) => ({
+  platform: "vinted", action: "republish", status: "needs_user", handler_build: "2026-11-09T09:46:04Z+6d36bb4 · v0.6.184",
+  error: "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement : Vinted exige « État ».",
+  platform_fields: { republish_step: "deleted", last_diagnostic: diag400, republish_snapshot: { etat: "Neuf sans étiquette", status_id: 1 }, ...pf }, ...extra,
+});
+ok(CE.BUILD_VINTED_ETAT_CONFIRME === "2026-11-10T14:10:14Z", "buildMin = BUILD_ID du paquet 0.6.186");
+ok(CE.correctifPourJob(jobRecreation())?.cle === "vinted_etat_a_confirmer", "stefcarpro / meminiandmove (capture « Neuf sans étiquette », aucune réponse) : repart une fois");
+ok(CE.correctifPourJob(jobRecreation({ vintedAspects: { condition: "Neuf sans étiquette" } }))?.cle === "vinted_etat_a_confirmer", "victorine (réponse posée = état de la capture) : repart une fois");
+ok(CE.correctifPourJob(jobRecreation({ vintedAspects: { condition: "Très bon état" } })) == null, "une réponse de la personne DIFFÉRENTE de la capture : jamais relancée par-dessus");
+ok(CE.correctifPourJob(jobRecreation({ republish_snapshot: { status_id: 1 } })) == null, "aucun état connu dans la capture : la question reste à la personne (jamais deviné)");
+ok(CE.correctifPourJob(jobRecreation({}, { handler_build: "2026-11-10T14:10:14Z+ba13a51 · v0.6.186" })) == null, "échec SUR un poste 0.6.186 : jamais réarmé (le diagnostic du nouveau build fait foi)");
+ok(CE.correctifPourJob(jobRecreation({ correctif_leve: { cle: "vinted_etat_a_confirmer" } })) == null, "déjà réarmé une fois pour ce correctif : jamais deux");
+ok(CE.correctifPourJob(jobRecreation({}, { status: "published" })) == null && CE.correctifPourJob(jobRecreation({}, { status: "cancelled" })) == null,
+  "publiée (belkacem, van.nessa) ou annulée par la personne : jamais touchée");
+ok(CE.correctifPourJob({ ...jobRecreation(), action: "publish", platform_fields: { last_diagnostic: diag400, etat: "Neuf sans étiquette" } })?.cle === "vinted_etat_a_confirmer",
+  "une PUBLICATION refusée pareil (état de la fiche connu) repart aussi une fois");
+ok(CE.correctifPourJob({ ...jobRecreation(), platform: "leboncoin" }) == null, "autres plateformes : rien");
+
 console.log(`\n${rouges === 0 ? "✓" : "✗"} vinted-confirmation-etat : ${verts} contrôles verts, ${rouges} rouges`);
 process.exit(rouges === 0 ? 0 : 1);

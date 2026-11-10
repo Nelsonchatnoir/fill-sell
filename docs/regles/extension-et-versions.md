@@ -364,3 +364,16 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   référence extérieure, le lecteur Beebs reconstruit depuis son texte lit une commande. SEUL zip à téléverser.
   0.6.184 lue servie (83 comptes en `2026-11-09T09:46:04Z+6d36bb4`) : dans ALREADY_PUBLISHED, dossier rangé dans
   `build/anciens-zips/TELEVERSEE-CWS-0.6.184`.
+
+## 10/11 — 0.6.186 : l'état « Neuf sans étiquette » confirmé dans la fenêtre Vinted (point 6 de Nico)
+- La 0.6.185 + : depuis le 09/11, choisir « Neuf sans étiquette » ouvre (sur une partie des formulaires)
+  `new-without-tags-education-modal` ; non confirmée, l'état n'entre pas dans le POST (400 « Le champ État doit être
+  renseigné », recréations retirées puis perdues). `confirmerEtatVinted` (content-scripts/vinted.js) clique le bouton
+  « Conserver » qui NOMME l'état posé, jamais « Passer à … » ; branchée sur les voies libellé, réponse et identifiant.
+  Rapport : `docs/enquetes/republication-etat-neuf-sans-etiquette-1011/RAPPORT.md`. Selftest `vinted-confirmation-etat`.
+- Livrable : `build/CWS-0.6.186-A-TELEVERSER/fillsell-extension-0.6.186-cws.zip` (BUILD_ID `2026-11-10T14:10:14Z+ba13a51`,
+  618 Ko, 37 entrées, sha256 eb598b57…), EXTENSION_LAST_COMMIT = 2026-11-10T14:09:01Z (ba13a51). Empaqueté depuis un
+  worktree propre à ba13a51. SEUL zip à téléverser. 0.6.185 lue servie (80 comptes) : dans ALREADY_PUBLISHED.
+- Serveur (sans attendre le CWS) : `CORRECTIFS_EXTENSION` `vinted_etat_a_confirmer` (buildMin = ce BUILD_ID) — un job
+  arrêté sur ce refus repart UNE fois vers un poste 0.6.186 (get-pending-jobs), avec l'état de sa capture / de sa fiche ;
+  jamais par-dessus une réponse différente de la personne, jamais sans état connu.
