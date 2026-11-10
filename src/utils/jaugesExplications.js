@@ -9,7 +9,8 @@
 //   · annonces     = quota_annonces_consommees (20260902220000_fusion_scans_annonces.sql) : chaque ligne usage_logs
 //                    'generate_listing' (une rédaction par l'IA, generate-listing ou un scan Lens unifié) + chaque
 //                    ligne 'lens' non unifiée (un scan Lens qui ne rédige rien : analyse de marché). Un article saisi
-//                    à la main au stock, un import : aucune ligne, rien.
+//                    à la main au stock, un import : rien — (10/11/2026, migration 20261110170000) leur passe légère
+//                    pose bien une ligne, mais titre ET description du vendeur (texte_vendeur_*) = hors du décompte.
 //   · publications = publications_du_cycle (20261104000000_trois_jauges_interrupteur.sql) : 1 tâche 'publish' = 1
 //                    plateforme, comptée publiée ou en cours (pending, processing, needs_user) ; échouée ou annulée
 //                    sans mise en ligne, relevés et imports (sync-dressing, releve-annonces), retraits ('delete') : rien.

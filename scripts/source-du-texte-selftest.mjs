@@ -3,7 +3,7 @@
 // Cas relevés en base le 29/10 : paugues.contact « Jazz man » 1793117541271 (fiche tapée au Stock, origine NULL,
 // aucun marqueur → réécrite par l'IA le 27/10 à 17:12:36), un résultat Lens (notre brouillon), un relevé Beebs.
 import {
-  champDuVendeur, texteDuVendeurDeLaFiche, marqueursDeNaissance, estLigneDuStock, MARQUES_FILLSELL,
+  champDuVendeur, texteDuVendeurDeLaFiche, marqueursDeNaissance, estLigneDuStock, MARQUES_FILLSELL, redactionHorsQuota,
 } from "../src/utils/sourceDuTexte.js";
 import { texteDuVendeurDe } from "../src/publication/texteDeLaFiche.js";
 import { readFileSync } from "node:fs";
@@ -47,6 +47,29 @@ const fa = readFileSync(new URL("../supabase/functions/_shared/fiche-article.ts"
 ok(/marqueursDeNaissance\(\{ titre: titreBrut, description: a\.description \}, a\.sourceTexte \?\? "lens"\)/.test(fa), "serveur : la fiche née d'un scan porte « lens »");
 const gl = readFileSync(new URL("../supabase/functions/generate-listing/index.ts", import.meta.url), "utf8");
 ok(/champDuVendeur\(/.test(gl) && /const ligneDuStock = !item_data;/.test(gl), "generate-listing : même règle que l'écran");
+
+console.log("6. (10/11) Titre ET description du vendeur : passe légère, hors quota d'annonces");
+// Compte d0ac0538 (Free) le 10/11 : 5 imports Vinted (titre et description de SON annonce) comptés 5 sur 5.
+const vinted = { titre: "Manteau jacadi 6 ans en parfait état", description: "Manteau Jacadi bleu marine, porté une saison, très bon état.", origine: "vinted_sync", attributs: null };
+ok(redactionHorsQuota(vinted, { ligneDuStock: true }), "import Vinted avec titre et description : aucune annonce");
+ok(redactionHorsQuota(jazz, { ligneDuStock: true }), "fiche tapée au stock (titre et description) : aucune annonce");
+ok(!redactionHorsQuota({ ...vinted, description: "" }, { ligneDuStock: true }), "import sans description encore lue : l'IA l'écrirait → compte");
+ok(redactionHorsQuota({ ...vinted, description: "" }, { ligneDuStock: true, descriptionALire: true }), "… sauf si sa description d'origine sera lue avant (descriptionALire)");
+ok(!redactionHorsQuota({ ...jazz, description: "" }, { ligneDuStock: true }), "fiche tapée sans description : l'IA rédige → compte");
+ok(!redactionHorsQuota({ ...vinted, titre: "Manteau" }, { ligneDuStock: true }), "titre d'un seul mot : l'IA reprend le titre → compte");
+for (const mq of MARQUES_FILLSELL) ok(!redactionHorsQuota({ ...jazz, attributs: { titre_source: { v: mq }, description_source: { v: mq } } }, { ligneDuStock: true }), `texte marqué « ${mq} » (le nôtre) → compte`);
+ok(!redactionHorsQuota(lens, { ligneDuStock: false }), "résultat Lens (item_data sans marqueur) → compte");
+ok(!redactionHorsQuota(null), "rien → compte (prudence)");
+ok(/const passeLegere = Boolean\(titreVendeur\) && Boolean\(descriptionVendeuse\);/.test(gl) && /passeLegere\s*\n\s*\? \{ data: \{ allowed: true, price: 0, passe_legere: true \}/.test(gl), "generate-listing : la passe légère ne passe pas au guichet du quota");
+ok(gl.indexOf("const passeLegere") > 0 && gl.indexOf("const passeLegere") < gl.indexOf('.rpc("spend_coins_for_generate"'), "generate-listing : la fiche est lue AVANT le guichet");
+const mig = readFileSync(new URL("../supabase/migrations/20261110170000_annonces_texte_vendeur_hors_quota.sql", import.meta.url), "utf8");
+ok((mig.match(/COALESCE\((u|prev)\.metadata->>'texte_vendeur_titre', ''\) = 'true'/g) ?? []).length === 3, "migration : la passe légère sort du décompte, de la dédup 24 h et de la « régénération » du guichet");
+const lotSrc = readFileSync(new URL("../src/publication/lot/LotPublication.jsx", import.meta.url), "utf8");
+ok(/consomme: \(d\) => !ficheCouvre\([^\n]*\n\s*&& !redactionHorsQuota\(d\.item/.test(lotSrc), "mur du lot : un import au texte du vendeur ne prend pas d'annonce");
+const step = readFileSync(new URL("../src/publication/StepperNouveau.jsx", import.meta.url), "utf8");
+ok(/annonces: redactionIA && !m\.texteHorsQuota \? 1 : 0/.test(step), "« Où publier ? » : ne compte ni ne bloque la passe légère");
+const stock = readFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url), "utf8");
+ok(/aRediger=\{lotARediger\}/.test(stock), "barre de sélection du Stock : « il te reste N annonces » ne compte que les articles à rédiger");
 
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }
 console.log("\ntout passe");

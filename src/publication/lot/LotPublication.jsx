@@ -70,6 +70,7 @@ import {
 // (25/10 — Louis) Le pont de la page vers l'extension : mort après une mise à jour, la page le dit.
 import { ecouterEtatPont } from "../../utils/vintedSync";
 import { plateformeOrigine } from "../../../supabase/functions/_shared/contenu-fiche.js";
+import { redactionHorsQuota } from "../../utils/sourceDuTexte";
 import { demarrerRelecture } from "../../utils/relectureBornee";
 import { propsStepperArticle } from "./propsArticle";
 import {
@@ -416,7 +417,11 @@ function EcranDuLot({
   }, [quotas, quotaSimule]);
   const partage = useMemo(() => partagerQuota(articlesAvecCible, {
     restantes: Number.isFinite(restantes) ? restantes : null,
-    consomme: (d) => !ficheCouvre(fiches?.[d.id], ciblesAvant[d.id]),
+    // (10/11/2026, règle de Nico) Un article dont le titre ET la description sont ceux du vendeur (import d'une
+    // plateforme, saisie au stock) ne prend aucune annonce : sa rédaction n'est qu'une passe légère, hors quota
+    // (generate-listing, quota_annonces_consommees). Le mur ne le reporte plus au mois prochain.
+    consomme: (d) => !ficheCouvre(fiches?.[d.id], ciblesAvant[d.id])
+      && !redactionHorsQuota(d.item, { ligneDuStock: true, descriptionALire: Boolean(plateformeOrigine(d.item)) }),
     ...(jaugesLot ? { jauges: jaugesLot, plateformes: (d) => ciblesAvant[d.id].length } : {}),
   }), [articlesAvecCible, restantes, fiches, ciblesAvant, jaugesLot]);
   const annoncesPrevues = partage.maintenant.reduce((n, d) => n + ciblesAvant[d.id].length, 0);

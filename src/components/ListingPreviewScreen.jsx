@@ -115,7 +115,9 @@ import {
 } from "../utils/valeursGenerales";
 // (04/10, Louis) Le texte qui part est celui de la fiche au moment de l'envoi.
 import { CHAMPS_TEXTE, texteDuVendeurDe, champsAReprendreDeLaFiche, retoucheAEcrire } from "../publication/texteDeLaFiche";
-import { estLigneDuStock } from "../utils/sourceDuTexte";
+import { estLigneDuStock, redactionHorsQuota } from "../utils/sourceDuTexte";
+// (10/11/2026) La prévision « passe légère, hors quota d'annonces » : un article importé dont le texte d'origine sera lu.
+import { plateformeOrigine } from "../../supabase/functions/_shared/contenu-fiche.js";
 import { prixSelonStrategie, libelleStrategie } from "../utils/strategiePrix";
 import FeuilleRemplacer from "../publication/FeuilleRemplacer";
 import { avecFormatChoisi } from "../utils/leboncoinColis";
@@ -5001,9 +5003,11 @@ export default function ListingPreviewScreen({
   useEffect(() => {
     if (!inventaireId) { setArticleBase(null); return undefined; }
     let vivant = true;
+    // (10/11/2026) titre, description, origine : la prévision « passe légère » (titre ET description du vendeur →
+    // aucune annonce du quota), même règle que generate-listing (src/utils/sourceDuTexte.js, redactionHorsQuota).
     supabase
       .from("inventaire")
-      .select("vinted_catalog_id,attributs")
+      .select("vinted_catalog_id,attributs,titre,description,origine")
       .eq("id", inventaireId)
       .maybeSingle()
       .then(({ data }) => { if (vivant && data) setArticleBase(data); })
@@ -12513,6 +12517,9 @@ export default function ListingPreviewScreen({
   const moteur = {
     // Contexte
     lang, t, tpl, userId, supabase, onClose, onCompleter, modales,
+    // (10/11/2026, règle de Nico) Titre ET description du vendeur (import, saisie au stock) : la rédaction n'est qu'une
+    // passe légère, elle ne prend AUCUNE annonce du quota — « Où publier ? » ne la compte ni ne la bloque.
+    texteHorsQuota: redactionHorsQuota(articleBase, { ligneDuStock: true, descriptionALire: Boolean(plateformeOrigine(articleBase)) }),
     // (29/10, lot B 1.2) « Voir l'analyse » depuis l'annonce ouverte directement après Lens.
     onVoirAnalyse,
     step, done, isLocked, initializing,

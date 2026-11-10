@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 10/11 soir — titre ET description du vendeur = passe légère, hors quota d'annonces (en fin de fichier)
 - ⛔ 10/11 — un lot prêt ne se quitte jamais en silence ; « en file » = un job relu ; Cloud n'ouvre aucun quota (en fin de fichier)
 - 04/11 soir — une republication neuve n'hérite d'aucune trace de retrait ; un seul juge du marqueur ; deux jobs ne s'attendent jamais (en fin de fichier)
 - 26/10 nuit — « Ta file » : annuler ce qui attend (Tout annuler, par ligne) — jamais l'en cours, une annonce retirée ni un retrait (en fin de fichier)
@@ -1494,3 +1495,16 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   part pas (400 « Le champ État doit être renseigné », annonce déjà retirée). Extension 0.6.186 : « Conserver » l'état
   posé, jamais « Passer à … ». Serveur : relance unique `vinted_etat_a_confirmer` vers un poste ≥ 0.6.186 (état de la
   capture, jamais par-dessus une réponse différente). Rapport : `docs/enquetes/republication-etat-neuf-sans-etiquette-1011/`.
+
+## ⛔ 10/11 soir (règle de Nico) — titre ET description du vendeur = passe légère, HORS quota d'annonces
+- COMPTE : une fiche rédigée par l'IA (titre ou description écrits par elle) et chaque scan Lens. NE COMPTE JAMAIS :
+  un article dont le titre ET la description qui partent sont ceux du vendeur (import d'une plateforme, saisie au
+  stock). La passe légère de l'IA (rayon, champs, état) reste faite, gratuite. Valable pour tous les paliers.
+- Serveur : la ligne `generate_listing` porte `texte_vendeur_titre` ET `texte_vendeur_description` = true →
+  `quota_annonces_consommees` l'écarte (et elle n'ouvre pas la dédup 24 h ; `spend_coins_for_generate` idem pour la
+  « régénération ») — migration 20261110170000, preuve `scripts/quotas/preuve-texte-vendeur.mjs`. `generate-listing`
+  lit la fiche AVANT le guichet : une passe légère ne passe ni au quota, ni au garde-fou du jour, ni au débit.
+- App (prévision, même règle) : `redactionHorsQuota` (`src/utils/sourceDuTexte.js`) — « Où publier ? »
+  (`m.texteHorsQuota`), mur du lot (`consomme`), barre de sélection du Stock (`aRediger`). Un import dont la
+  description d'origine sera lue avant rédaction (`plateformeOrigine`) est prévu hors quota.
+- Rapport : `docs/enquetes/quota-texte-vendeur-1011/RAPPORT.md`.

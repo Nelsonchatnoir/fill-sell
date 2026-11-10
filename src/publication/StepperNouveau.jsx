@@ -104,7 +104,8 @@ export default function StepperNouveau({ m }) {
   // (quotas_etat sans « grille ») : null, et `m` reste exactement celui d'avant.
   const jauges = jaugesDuCompte(quotas);
   const redactionIA = !m.platformListings || Boolean(m.copieManquante) || Boolean(m.retoucheARefaire);
-  const besoin = { annonces: redactionIA ? 1 : 0, publications: bilan.cochees.length };
+  // (10/11/2026, règle de Nico) Titre ET description du vendeur : passe légère, aucune annonce (m.texteHorsQuota).
+  const besoin = { annonces: redactionIA && !m.texteHorsQuota ? 1 : 0, publications: bilan.cochees.length };
   const cout = jauges ? { ...coutPublication(besoin, jauges, { lang: m.lang }), jauges, besoin, redaction: redactionIA } : null;
   const mq = { ...m, quotas, retouchesEpuisees, bilan, rien, ...(cout ? { cout } : {}) };
 

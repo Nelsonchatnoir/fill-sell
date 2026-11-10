@@ -240,6 +240,7 @@ import AttenteLectureOrigine from '../publication/AttenteLectureOrigine';
 import { libellesSansLecteur } from '../publication/attenteLectureRegles';
 import { signalerActionRatee } from '../utils/actionRatee';
 import { plateformeOrigine } from '../../supabase/functions/_shared/contenu-fiche.js';
+import { redactionHorsQuota } from '../utils/sourceDuTexte';
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
 import { ChampPortDepop } from '../components/PortDepop';
 import { lirePortSaisi } from '../utils/fraisPortDepop';
@@ -8258,6 +8259,18 @@ const StockTab = memo(function StockTab({
   // seule limite est le quota du palier, dite par la barre avant de lancer.
   // Appartenance par Set : des centaines d'articles cochés restent fluides.
   const lotSelSet = useMemo(() => new Set(lotSel), [lotSel]);
+  // (10/11/2026, règle de Nico) Les articles choisis qui prendront une annonce : un import (ou une saisie au stock) qui
+  // garde le titre ET la description du vendeur n'en prend aucune — la même prévision que le mur du lot.
+  const lotARediger = useMemo(() => {
+    if (!lotSel.length) return 0;
+    const parId = new Map(stockFiltre.map(i => [i.id, i]));
+    let n = 0;
+    for (const id of lotSel) {
+      const i = parId.get(id);
+      if (!i || !redactionHorsQuota(i, { ligneDuStock: true, descriptionALire: Boolean(plateformeOrigine(i)) })) n++;
+    }
+    return n;
+  }, [lotSel, stockFiltre]);
   const basculerLot = (id) => setLotSel(prev => prev.includes(id)
     ? prev.filter(x => x !== id)
     : [...prev, id]);
@@ -12301,6 +12314,7 @@ const StockTab = memo(function StockTab({
                 <EnteteModeLot lang={lang} onQuitter={quitterModeLot}/>
                 <BarreSelectionLot lang={lang} n={lotSel.length} nVue={lotActionnablesVue.length}
                   restantes={Number.isFinite(quotas?.annonces?.restantes)?quotas.annonces.restantes:null}
+                  aRediger={lotARediger}
                   onTout={()=>setLotSel(prev=>{const n=[...prev.filter(id=>lotSelectionnables.has(id))];const deja=new Set(n);for(const i of lotActionnablesVue){if(!deja.has(i.id)){deja.add(i.id);n.push(i.id);}}return n;})}
                   onVider={()=>setLotSel([])}
                   onContinuer={()=>ouvrirLot(filtreDiffusion?.mode==='pas_encore'?[filtreDiffusion.platform]:null)}/>

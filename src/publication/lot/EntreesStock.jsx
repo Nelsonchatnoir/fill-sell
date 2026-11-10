@@ -79,10 +79,12 @@ export function EnteteModeLot({ lang, onQuitter }) {
  *  (annonces restantes ce mois, quotas_etat) : dépassé, la barre le dit AVANT
  *  de lancer — l'écran du lot proposera ensuite la suite (formule au-dessus,
  *  ou ce qui tient dans le quota). `restantes` null = quota inconnu : rien. */
-export function BarreSelectionLot({ lang, n, nVue, onTout, onVider, onContinuer, restantes = null }) {
+export function BarreSelectionLot({ lang, n, nVue, onTout, onVider, onContinuer, restantes = null, aRediger = n }) {
   const fr = lang !== "en";
   const toutPris = nVue > 0 && n >= nVue;
-  const auDela = Number.isFinite(restantes) && n > restantes;
+  // (10/11/2026, règle de Nico) Seuls les articles que l'IA rédigera prennent une annonce : un import qui garde le
+  // titre et la description du vendeur n'en prend aucune (`aRediger`, compté par le Stock ; par défaut : tous).
+  const auDela = Number.isFinite(restantes) && aRediger > restantes;
   return (
     <div className="pa-bar" role="region" aria-label={fr ? "Sélection du lot" : "Batch selection"}>
       <span className="lbl" aria-live="polite">

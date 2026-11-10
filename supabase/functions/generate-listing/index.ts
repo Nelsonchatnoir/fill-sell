@@ -715,6 +715,63 @@ serve(async (req) => {
       if (errLui || !aLui) return json({ error: "Item not found" }, 404);
     }
 
+    // ── (10/11/2026, règle de Nico) LA FICHE EST LUE AVANT LE GUICHET DU QUOTA ──────────────────────────────────────
+    // Lue jusqu'ici APRÈS spend_coins_for_generate : le guichet ne savait pas si le titre et la description qui partent
+    // sont ceux du vendeur, et refusait « quota_annonces_atteint » la passe légère d'un article importé (compte d0ac0538,
+    // Free, 10/11 : 5 imports Vinted ont vidé ses 5 annonces). Rien d'autre ne change : même lecture, même refus 404.
+    let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null; attributs?: Record<string, unknown> | null; origine?: string | null };
+    if (item_data) {
+      item = item_data;
+    } else {
+      const { data, error: itemErr } = await adminClient
+        .from("inventaire")
+        // attributs (2026-09-07) : on y lit description_source, le SEUL marqueur qui
+        // dit si la description vient de l'annonce Vinted de la vendeuse (verrou)
+        // ou d'un texte que nous avons nous-mêmes produit (Lens, vocal).
+        // origine (2026-09-21) : le SECOND marqueur, et le seul dont disposent
+        // les articles rattachés — un `releve_beebs` / `releve_leboncoin` porte
+        // le texte de son annonce et NE PORTE AUCUN description_source (184
+        // articles en base, zéro marqueur). C'est très exactement le trou par
+        // lequel le texte de Louis THONET est passé.
+        .select("id, titre, marque, description, type, statut, prix_vente, attributs, origine")
+        .eq("id", inventaire_id)
+        // (21/10) Jamais la fiche d'un autre compte (contrôle d'appartenance plus haut, gardé ici aussi).
+        .eq("user_id", user.id)
+        .single();
+      if (itemErr || !data) {
+        // Rien n'a été généré, et rien n'est encore débité (la fiche est lue AVANT le guichet) : rien à rendre.
+        return json({ error: "Item not found" }, 404);
+      }
+      item = data;
+    }
+    // Qui a écrit le texte qui part (règles du 21/09 et du 29/10, détaillées plus bas à la rédaction) — une seule règle,
+    // la même que l'écran : src/utils/sourceDuTexte.js.
+    const ligneDuStock = !item_data;
+    const texteDuVendeur = (cle: string) => champDuVendeur(item as Record<string, unknown>, cle.replace(/_source$/, ""), { ligneDuStock });
+    const origineItem = String(item.origine ?? "").trim().toLowerCase();
+    const descriptionVendeuse = (() => {
+      if (body.description_verrouillee === false) return null;
+      const deLaPersonne = texteDuVendeur("description_source") || body.description_verrouillee === true;
+      if (!deLaPersonne) return null;
+      // Une description vide ou d'UN SEUL MOT ne dit rien de l'article : l'IA
+      // reprend alors la main (seule exception, demandée par Nico le 07/09).
+      const t = String(item.description ?? "").trim();
+      return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
+    })();
+    const titreVendeur = (() => {
+      if (body.titre_verrouille === false) return null;
+      const deLaPersonne = texteDuVendeur("titre_source") || body.titre_verrouille === true;
+      if (!deLaPersonne) return null;
+      // Même seuil que la description : un titre d'un seul mot ne dit rien, et
+      // une chaîne vide encore moins — l'IA reprend la main.
+      const t = String(item.titre ?? "").trim();
+      return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
+    })();
+    // (10/11/2026, règle de Nico) PASSE LÉGÈRE = titre ET description du vendeur : l'IA ne rédige rien (rayon, champs,
+    // état seulement). Elle ne compte JAMAIS dans les annonces (quota_annonces_consommees l'écarte sur
+    // texte_vendeur_titre ET texte_vendeur_description) : le guichet ne la refuse donc pas au quota — elle reste faite.
+    const passeLegere = Boolean(titreVendeur) && Boolean(descriptionVendeuse);
+
     // ── Génération PAYANTE : price_generate unités (6 depuis la grille du
     // 2026-08-08), débitées ICI, avant tout appel LLM ────────────────────────
     // (2026-08-05, remplace le plafond 15/60 par 24 h ET l'ancien pré-check
@@ -736,7 +793,12 @@ serve(async (req) => {
       // des générations sont des reprises de confort) et de dédupliquer le
       // comptage. Les corps item_data (article pas encore sauvé) n'ont pas
       // d'id : chaque appel compte — limite assumée, signalée à Nico.
-      const { data: spend, error: spendErr } = await adminClient
+      // (10/11/2026) Passe légère (titre ET description du vendeur) : ni quota d'annonces, ni garde-fou du jour, ni
+      // débit — elle ne compte pas (quota_annonces_consommees) et elle est gratuite pour le client (règle de Nico).
+      // deno-lint-ignore no-explicit-any
+      const { data: spend, error: spendErr }: { data: any; error: { message: string } | null } = passeLegere
+        ? { data: { allowed: true, price: 0, passe_legere: true }, error: null }
+        : await adminClient
         .rpc("spend_coins_for_generate", {
           p_user_id: user.id,
           p_inventaire_id: inventaire_id ?? null,
@@ -827,33 +889,6 @@ serve(async (req) => {
           }, 402);
         }
       }
-    }
-
-    let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null; attributs?: Record<string, unknown> | null; origine?: string | null };
-    if (item_data) {
-      item = item_data;
-    } else {
-      const { data, error: itemErr } = await adminClient
-        .from("inventaire")
-        // attributs (2026-09-07) : on y lit description_source, le SEUL marqueur qui
-        // dit si la description vient de l'annonce Vinted de la vendeuse (verrou)
-        // ou d'un texte que nous avons nous-mêmes produit (Lens, vocal).
-        // origine (2026-09-21) : le SECOND marqueur, et le seul dont disposent
-        // les articles rattachés — un `releve_beebs` / `releve_leboncoin` porte
-        // le texte de son annonce et NE PORTE AUCUN description_source (184
-        // articles en base, zéro marqueur). C'est très exactement le trou par
-        // lequel le texte de Louis THONET est passé.
-        .select("id, titre, marque, description, type, statut, prix_vente, attributs, origine")
-        .eq("id", inventaire_id)
-        // (21/10) Jamais la fiche d'un autre compte (contrôle d'appartenance plus haut, gardé ici aussi).
-        .eq("user_id", user.id)
-        .single();
-      if (itemErr || !data) {
-        // Rien n'a été généré : l'unité du clic est rendue.
-        await refundGenerateFn?.("item_not_found");
-        return json({ error: "Item not found" }, 404);
-      }
-      item = data;
     }
 
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
@@ -1366,27 +1401,8 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
     // texte est au vendeur. Un corps item_data (article pas encore enregistré, souvent un résultat Lens) n'a de texte
     // du vendeur que s'il le dit par un marqueur. Une seule règle, la même que l'écran : src/utils/sourceDuTexte.js.
     // « Générer » (demande explicite) passe description_verrouillee:false / titre_verrouille:false, comme avant.
-    const ligneDuStock = !item_data;
-    const texteDuVendeur = (cle: string) => champDuVendeur(item as Record<string, unknown>, cle.replace(/_source$/, ""), { ligneDuStock });
-    const origineItem = String(item.origine ?? "").trim().toLowerCase();
-    const descriptionVendeuse = (() => {
-      if (body.description_verrouillee === false) return null;
-      const deLaPersonne = texteDuVendeur("description_source") || body.description_verrouillee === true;
-      if (!deLaPersonne) return null;
-      // Une description vide ou d'UN SEUL MOT ne dit rien de l'article : l'IA
-      // reprend alors la main (seule exception, demandée par Nico le 07/09).
-      const t = String(item.description ?? "").trim();
-      return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
-    })();
-    const titreVendeur = (() => {
-      if (body.titre_verrouille === false) return null;
-      const deLaPersonne = texteDuVendeur("titre_source") || body.titre_verrouille === true;
-      if (!deLaPersonne) return null;
-      // Même seuil que la description : un titre d'un seul mot ne dit rien, et
-      // une chaîne vide encore moins — l'IA reprend la main.
-      const t = String(item.titre ?? "").trim();
-      return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
-    })();
+    // (10/11) descriptionVendeuse et titreVendeur sont calculés AVANT le guichet du quota (plus haut, juste après la
+    // lecture de la fiche) : titre ET description du vendeur = passe légère, hors quota d'annonces.
     const traceTexteVendeur = {
       texte_vendeur_origine: origineItem || null,
       texte_vendeur_description: Boolean(descriptionVendeuse),

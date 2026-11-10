@@ -190,7 +190,8 @@ try {
     const deux = fr(unite({ quotas: free, cochees: ['vinted', 'leboncoin'] }));
     ok(/Cette publication utilisera 1 annonce et 2 publications\./.test(deux) && /Il te restera 4 annonces et 48 publications ce mois-ci\./.test(deux),
       'une case décochée : le coût suit (2 publications, 48 restantes)', deux);
-    ok(/besoin = \{ annonces: redactionIA \? 1 : 0, publications: bilan\.cochees\.length \}/.test(SN), 'la coque compte les cases COCHÉES ET cochables (bilan.cochees), à chaque rendu');
+    // (10/11/2026, règle de Nico) La passe légère (titre ET description du vendeur) ne prend aucune annonce : m.texteHorsQuota.
+    ok(/besoin = \{ annonces: redactionIA && !m\.texteHorsQuota \? 1 : 0, publications: bilan\.cochees\.length \}/.test(SN), 'la coque compte les cases COCHÉES ET cochables (bilan.cochees), à chaque rendu ; la passe légère ne prend aucune annonce');
     const redige = fr(unite({ quotas: free, fiche: true }));
     ok(/Cette publication utilisera 3 publications\./.test(redige) && /Ton texte est déjà rédigé : aucune annonce n'est utilisée\. Il te restera 47 publications ce mois-ci\./.test(redige)
       && /Annonces 5 sur 5/.test(redige), 'texte déjà rédigé : pas d’annonce dans la phrase, « Ton texte est déjà rédigé… », Annonces 5 sur 5', redige);

@@ -83,6 +83,24 @@ export function texteDuVendeurDeLaFiche(ligne, opts = {}) {
 }
 
 /**
+ * (10/11/2026, règle de Nico) UNE RÉDACTION QUI REPREND LE TEXTE DU VENDEUR NE COMPTE PAS DANS LES ANNONCES.
+ * Compte : une fiche rédigée par l'IA (titre ou description écrits par elle) et chaque scan Lens. Ne compte jamais :
+ * un article dont le titre ET la description qui partent sont ceux du vendeur (import d'une plateforme, saisie au
+ * stock) — la passe légère de l'IA (rayon, champs, état) reste faite, gratuite. Le serveur décide sur la ligne
+ * generate_listing (texte_vendeur_titre ET texte_vendeur_description, quota_annonces_consommees) ; cette fonction est
+ * la PRÉVISION de l'app (écran « Où publier ? », mur du lot), sur la même règle que generate-listing.
+ * `descriptionALire` : la description d'origine sera lue avant toute rédaction (article importé, lectureOrigine.js) —
+ * elle sera alors celle du vendeur.
+ */
+export function redactionHorsQuota(ligne, { descriptionALire = false, ...opts } = {}) {
+  if (!ligne || typeof ligne !== "object") return false;
+  const t = texteDuVendeurDeLaFiche(ligne, opts);
+  if (!t.titre) return false;
+  if (t.description) return true;
+  return Boolean(descriptionALire) && champDuVendeur(ligne, "description", opts);
+}
+
+/**
  * Les marqueurs à poser à la NAISSANCE d'une fiche (attributs.titre_source / description_source), pour les seuls
  * champs non vides. `source` : « manuel » (tapé par la personne), « lens », « vocal ».
  */

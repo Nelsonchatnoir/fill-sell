@@ -39,7 +39,8 @@ const entrees = lire('src/publication/lot/EntreesStock.jsx');
 verifier(!/20 au plus|at most/.test(entrees), 'plus aucun texte « 20 au plus »');
 
 console.log('\n2. Le quota du palier, dit avant de lancer');
-verifier(/const auDela = Number\.isFinite\(restantes\) && n > restantes;/.test(entrees) && /il te reste \$\{restantes\} annonce/.test(entrees), 'la barre de sélection dit le quota restant quand la sélection le dépasse');
+// (10/11/2026, règle de Nico) Seuls les articles que l'IA rédigera comptent (`aRediger`, par défaut : tous).
+verifier(/aRediger = n \}/.test(entrees) && /const auDela = Number\.isFinite\(restantes\) && aRediger > restantes;/.test(entrees) && /il te reste \$\{restantes\} annonce/.test(entrees), 'la barre de sélection dit le quota restant quand la sélection le dépasse');
 const lot = lire('src/publication/lot/LotPublication.jsx');
 verifier(/partagerQuota/.test(lot) && /murActif/.test(lot), 'l’écran du lot garde son mur de quota avant l’envoi (choix : formule au-dessus ou ce qui tient)');
 
