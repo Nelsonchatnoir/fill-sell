@@ -2332,11 +2332,11 @@ export function VueListe({
       );
     }
     if (q.type === "port_depop") return <CartePortDepop m={m} id={`port-depop-q-${id}`} />;
-    // (10/11, URGENT d0ac0538) L'adresse de remise se saisit UNE fois, dans le bloc du lot (plus haut).
+    // (10/11, URGENT d0ac0538) L'adresse de remise se saisit UNE fois, dans le bloc du lot (sous la liste des articles).
     if (q.type === "adresse") return (
       <p className="fsq-note">{en
-        ? `${(q.plateformes ?? []).map(NOM).join(" and ")}: your pickup address is missing — enter it once in “Your pickup address” above.`
-        : `${(q.plateformes ?? []).map(NOM).join(" et ")} : ton adresse de remise manque — saisis-la une fois dans « Ton adresse de remise », plus haut.`}</p>
+        ? `${(q.plateformes ?? []).map(NOM).join(" and ")}: your pickup address is missing — enter it once in “Your pickup address” below.`
+        : `${(q.plateformes ?? []).map(NOM).join(" et ")} : ton adresse de remise manque — saisis-la une fois dans « Ton adresse de remise », plus bas.`}</p>
     );
     if (q.type === "description") return (
       <div className="fsf-choix">
