@@ -45,3 +45,10 @@ serveur (juste) et les plafonds de la grille ne sont PAS touchés.
 
 ## Son compte
 - Rien publié à sa place, rien modifié en base : ses articles reportés restent dans son stock, elle les relancera.
+
+## En service (10/11 soir)
+- 90323d6 poussé 20:54:45 ; web `2026-11-10T19:56:01Z+90323d6` ; OTA 2.9.171 (delta) sur le canal production.
+- Rejeu à blanc sur 9 vrais imports de son stock (vinted_sync, jamais publiés sur Leboncoin / Beebs ; code de l'app :
+  `redactionHorsQuota` + `partagerQuota`, 3 annonces et 20 publications restantes, 2 plateformes) : avant 3 retenus /
+  6 reportés ; après **9 retenus, 0 reporté, 0 annonce consommée, 18 publications : le mur ne s'affiche plus**.
+  Aucune session ouverte chez elle (elle publiait en direct depuis son poste Cloud) ; rejeu navigateur non fait.
