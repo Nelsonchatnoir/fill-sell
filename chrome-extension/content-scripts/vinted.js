@@ -1842,6 +1842,56 @@ async function selectCategoryParIds(catalogId, warnings) {
   }
 }
 
+// ── (10/11, point 6 de Nico) LA CONFIRMATION DE L'ÉTAT DEMANDÉE PAR VINTED ──────────────────────────────────
+// Depuis le 09/11, choisir « Neuf sans étiquette » ouvre, sur une partie des formulaires, la fenêtre
+// `new-without-tags-education-modal` (« L'article ne doit jamais avoir été utilisé ») : « Conserver « Neuf sans
+// étiquette » » ou « Passer à « Très bon état » ». Relevé en réel sur le compte de Nico (10/11, rayon 2942) : tant
+// qu'elle n'est pas confirmée, l'état n'entre pas dans le POST — refus 400 « Le champ État doit être renseigné »
+// (recréations retirées puis jamais recréées : stefcarpro, meminiandmove, victorine, van.nessa) ; confirmée, le corps
+// porte item_attributes [{ code: "condition", ids: [1] }] et l'état est accepté.
+// La règle : on CONFIRME l'état que l'on vient de poser (celui de la capture, de la fiche ou de la réponse de la
+// personne) — le bouton « Conserver » qui NOMME cet état ; jamais « Passer à … », jamais un autre état. Sans
+// fenêtre : rien à faire. Fenêtre sans ce bouton, ou qui ne se ferme pas : false — l'état est dit non posé (le
+// constat des requis le dira), rien d'autre n'est cliqué.
+const SEL_CONFIRMATION_ETAT = '[data-testid="new-without-tags-education-modal"], [role="dialog"][data-testid$="-education-modal"]';
+function boutonConserverEtat(modale, libellePose) {
+  const cible = texteComparable(libellePose ?? "");
+  return Array.from(modale.querySelectorAll("button")).find((b) => {
+    const t = texteComparable(b.textContent);
+    return /^(conserver|keep)\b/.test(t) && (!cible || t.includes(cible));
+  }) ?? null;
+}
+async function confirmerEtatVinted(libellePose, warnings, { attenteMs = 1500 } = {}) {
+  try {
+    let modale = null;
+    const fin = Date.now() + attenteMs;
+    while (Date.now() < fin) {
+      modale = document.querySelector(SEL_CONFIRMATION_ETAT);
+      if (modale) break;
+      await sleep(100);
+    }
+    if (!modale) return true; // aucune confirmation demandée
+    const bouton = boutonConserverEtat(modale, libellePose);
+    if (!bouton) {
+      warnings.push(`état : Vinted demande une confirmation sans bouton « Conserver « ${libellePose ?? "?"} » » — rien cliqué`);
+      return false;
+    }
+    await humanPause();
+    bouton.click();
+    const fin2 = Date.now() + 3000;
+    while (Date.now() < fin2 && document.querySelector(SEL_CONFIRMATION_ETAT)) await sleep(100);
+    if (document.querySelector(SEL_CONFIRMATION_ETAT)) {
+      warnings.push(`état : confirmation « Conserver « ${libellePose ?? "?"} » » cliquée mais la fenêtre reste ouverte`);
+      return false;
+    }
+    warnings.push(`état : « ${libellePose ?? "?"} » confirmé dans la fenêtre Vinted « l'article ne doit jamais avoir été utilisé »`);
+    return true;
+  } catch (e) {
+    warnings.push(`état : confirmation Vinted non faite (${String(e?.message ?? e)})`);
+    return false;
+  }
+}
+
 // État posé par IDENTIFIANT (#condition-<id>). true = le champ porte un état.
 async function selectEtatParId(statusId, warnings) {
   const TRIGGER = '#condition, [data-testid="category-condition-single-list-input"]';
@@ -1854,6 +1904,9 @@ async function selectEtatParId(statusId, warnings) {
     await humanPause();
     if (el.getAttribute("aria-checked") !== "true") el.click();
     await humanPause();
+    // (10/11, point 6 de Nico) La confirmation que Vinted peut demander pour l'état choisi (« Neuf sans étiquette »).
+    const titreId = (el.querySelector('[data-testid$="--title"]')?.textContent ?? "").trim();
+    if (!(await confirmerEtatVinted(titreId || null, warnings))) throw new Error(`confirmation de l'état ${id} non faite`);
     await closeAnyOpenDropdown();
     const t = document.querySelector(TRIGGER);
     const v = String(t ? readCommittedValue(t) : "").trim() || valeurChampVinted(t).trim();
@@ -8543,6 +8596,12 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
     await humanPause(); // temps de "lecture" de la liste avant le clic
     match.el.click();
     await humanPause();
+    // (10/11, point 6 de Nico) L'état : Vinted peut demander de CONFIRMER le choix (« Neuf sans étiquette ») — sans
+    // confirmation, le POST part sans état (400 « Le champ État doit être renseigné »).
+    if (/condition/.test(String(triggerSelector)) && !(await confirmerEtatVinted(match.label, warnings))) {
+      await closeAnyOpenDropdown().catch(() => {});
+      return false;
+    }
     await confirmDropdownIfNeeded();
     if (match.stage !== "exact") {
       const note = `${fieldName}: "${rawText}" → option Vinted "${match.label}" (match ${match.stage})`;
