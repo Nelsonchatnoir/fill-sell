@@ -71,5 +71,47 @@ ok(/annonces: redactionIA && !m\.texteHorsQuota \? 1 : 0/.test(step), "« Où pu
 const stock = readFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url), "utf8");
 ok(/aRediger=\{lotARediger\}/.test(stock), "barre de sélection du Stock : « il te reste N annonces » ne compte que les articles à rédiger");
 
+console.log("7. (10/11 soir) La fiche du STOCK de l'app (mapItem : `title`, pas `titre`) — mur du lot, barre du Stock");
+// van.nessa d0ac0538 (Free, 3 annonces restantes) : 10 imports Vinted reportés à tort par le mur à 19:05, 19:13, 19:22 —
+// le mur et la barre reçoivent les fiches mises en forme par mapItem (App.jsx), où le titre s'appelle `title`.
+const mapItemSrc = app.slice(app.indexOf("function mapItem(v){"), app.indexOf("function mapItem(v){") + 4000);
+ok(/title:v\.titre/.test(mapItemSrc) && !/[{,]\s*titre:/.test(mapItemSrc), "mapItem range le titre sous `title` (aucune clé `titre`)");
+ok(/description:v\.description\|\|""/.test(mapItemSrc) && /attributs:v\.attributs\?\?null/.test(mapItemSrc) && /origine:v\.origine\|\|null/.test(mapItemSrc),
+  "mapItem garde description, attributs, origine (la règle les lit)");
+const commeMapItem = (r) => ({ id: r.id, title: r.titre, description: r.description || "", attributs: r.attributs ?? null, origine: r.origine || null, quantite: 1, statut: "stock" });
+const opts = (i) => ({ ligneDuStock: true, descriptionALire: i.origine === "vinted_sync" });
+const sesImports = [
+  ["Doudoune légère de grossesse", "Doudoune légère de grossesse, portée deux fois, très bon état, taille M."],
+  ["Jean DPAM 6 ans", "Jean DPAM taille 6 ans, très bon état, aucun défaut visible."],
+  ["Jegging doublé 6 ans okaïdi", "Jegging doublé okaïdi taille 6 ans, chaud pour l'hiver."],
+  ["Tee-shirt manches longues Licornes Dpam", "Tee-shirt DPAM licornes, manches longues, 6 ans."],
+  ["Pantalon bleu élastiqué sergent Major", "Pantalon Sergent Major bleu, taille élastiquée, 6 ans."],
+  ["Manteau court 7 ans mango", "Manteau court Mango 7 ans, très bon état."],
+  ["Jolie gilet petit bateau 6 ans", "Gilet Petit Bateau 6 ans, très bon état."],
+  ["Blouse sezane taille 40", "Blouse Sézane taille 40, portée une fois."],
+  ["Sweat court mango kids", "Sweat court Mango kids."],
+].map(([titre, description], k) => commeMapItem({ id: `179430808${k}`, titre, description, origine: "vinted_sync", attributs: { description_source: { v: "vinted" } } }));
+ok(sesImports.every((i) => redactionHorsQuota(i, opts(i))), "ses 9 imports Vinted (fiche du Stock, `title`) : aucune annonce");
+ok(redactionHorsQuota({ ...sesImports[0], description: "" }, opts(sesImports[0])), "import dont la description d'origine sera lue avant (description vide au Stock) : aucune annonce");
+ok(!redactionHorsQuota({ ...sesImports[0], description: "" }, { ligneDuStock: true }), "… sans lecture prévue : l'IA l'écrirait → compte");
+ok(!redactionHorsQuota(commeMapItem({ id: "x", titre: "Veste", description: "Veste noire adidas trois bandes.", origine: "vinted_sync" }), { ligneDuStock: true }), "titre d'un seul mot (fiche du Stock) → compte");
+ok(!redactionHorsQuota({ ...sesImports[1], attributs: { titre_source: { v: "lens" }, description_source: { v: "lens" } }, origine: null }, { ligneDuStock: true }), "fiche Lens au Stock (marque « lens ») → compte");
+ok(redactionHorsQuota({ titre: "Jean DPAM 6 ans", title: "autre", description: "Jean DPAM taille 6 ans, très bon état.", origine: "vinted_sync" }, { ligneDuStock: true }), "ligne de la base (`titre`) : inchangée");
+// Le partage du mur (regles.partagerQuota, avec la grille à 3 jauges) sur SON lot de 19:22 : 9 articles, 3 annonces restantes.
+const { partagerQuota } = await import("../src/publication/lot/regles.js");
+const donnees = sesImports.map((item) => ({ id: String(item.id), item }));
+const consomme = (d) => !redactionHorsQuota(d.item, { ligneDuStock: true, descriptionALire: d.item.origine === "vinted_sync" });
+const jauges = { annonces: { cle: "annonces", illimite: false, restantes: 3, plafond: 5 }, publications: { cle: "publications", illimite: false, restantes: 20, plafond: 40 } };
+const p = partagerQuota(donnees, { restantes: 3, consomme, jauges, plateformes: () => 2 });
+ok(p.maintenant.length === 9 && p.plusTard.length === 0 && p.aConsommer === 0 && p.bloque === null, `mur de son lot (9 imports, 3 restantes, 2 plateformes) : 9 retenus, 0 reporté, 0 annonce (${p.maintenant.length}/${p.plusTard.length}/${p.aConsommer})`);
+const avecLens = [...donnees, ...[1, 2, 3, 4].map((k) => ({ id: `lens${k}`, item: { ...commeMapItem({ id: `lens${k}`, titre: "Veste à capuche adidas", description: "Veste à capuche zippée adidas noire.", origine: null }), attributs: { titre_source: { v: "lens" }, description_source: { v: "lens" } } } }))];
+const q = partagerQuota(avecLens, { restantes: 3, consomme, jauges: { ...jauges, publications: { ...jauges.publications, restantes: 100 } }, plateformes: () => 2 });
+ok(q.maintenant.length === 12 && q.plusTard.length === 1 && q.aConsommer === 3 && q.bloque === "annonces", "9 imports + 4 fiches Lens, 3 restantes : 12 retenus, 1 Lens reporté (seules les rédactions IA comptent)");
+const q2 = partagerQuota(donnees, { restantes: 3, consomme });
+ok(q2.maintenant.length === 9 && q2.plusTard.length === 0, "sans la grille (partage d'avant) : même verdict");
+const lot = readFileSync(new URL("../src/publication/lot/LotPublication.jsx", import.meta.url), "utf8");
+ok(/!redactionHorsQuota\(d\.item, \{ ligneDuStock: true, descriptionALire: Boolean\(plateformeOrigine\(d\.item\)\) \}\)/.test(lot), "le mur passe la fiche du Stock (d.item) à la règle");
+ok(/redactionHorsQuota\(i, \{ ligneDuStock: true, descriptionALire: Boolean\(plateformeOrigine\(i\)\) \}\)/.test(stock), "la barre du Stock passe la fiche du Stock à la règle");
+
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }
 console.log("\ntout passe");

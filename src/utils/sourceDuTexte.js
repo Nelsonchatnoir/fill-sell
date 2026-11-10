@@ -91,13 +91,28 @@ export function texteDuVendeurDeLaFiche(ligne, opts = {}) {
  * la PRÉVISION de l'app (écran « Où publier ? », mur du lot), sur la même règle que generate-listing.
  * `descriptionALire` : la description d'origine sera lue avant toute rédaction (article importé, lectureOrigine.js) —
  * elle sera alors celle du vendeur.
+ * ⛔ (10/11 soir, van.nessa d0ac0538) Le Stock et le lot reçoivent les fiches mises en forme par `mapItem` (App.jsx),
+ *    qui range le titre sous `title` — jamais `titre`. Lue telle quelle, chaque fiche du Stock avait un titre vide :
+ *    le mur du lot et la barre de sélection comptaient 1 annonce par import (10 articles reportés à tort à 19:05,
+ *    19:13, 19:22). La ligne est donc lue par `ficheAvecTitre` : `titre`, sinon `title`.
  */
 export function redactionHorsQuota(ligne, { descriptionALire = false, ...opts } = {}) {
   if (!ligne || typeof ligne !== "object") return false;
-  const t = texteDuVendeurDeLaFiche(ligne, opts);
+  const fiche = ficheAvecTitre(ligne);
+  const t = texteDuVendeurDeLaFiche(fiche, opts);
   if (!t.titre) return false;
   if (t.description) return true;
-  return Boolean(descriptionALire) && champDuVendeur(ligne, "description", opts);
+  return Boolean(descriptionALire) && champDuVendeur(fiche, "description", opts);
+}
+
+/**
+ * (10/11 soir) Une fiche de la base porte `titre` ; la même fiche dans le Stock de l'app (`mapItem`, App.jsx) porte
+ * `title`. Rend la fiche avec son `titre` (celui de la base s'il est là, sinon `title`), sans la modifier.
+ */
+export function ficheAvecTitre(ligne) {
+  if (!ligne || typeof ligne !== "object") return ligne;
+  if (ligne.titre != null || typeof ligne.title !== "string") return ligne;
+  return { ...ligne, titre: ligne.title };
 }
 
 /**

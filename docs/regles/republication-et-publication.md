@@ -1508,3 +1508,9 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   (`m.texteHorsQuota`), mur du lot (`consomme`), barre de sélection du Stock (`aRediger`). Un import dont la
   description d'origine sera lue avant rédaction (`plateformeOrigine`) est prévu hors quota.
 - Rapport : `docs/enquetes/quota-texte-vendeur-1011/RAPPORT.md`.
+- ⛔ (10/11 soir, van.nessa d0ac0538 : 10 imports reportés à tort par le mur) Le Stock et le lot passent à la règle les
+  fiches mises en forme par `mapItem` (App.jsx), où le titre s'appelle `title`, jamais `titre`. `redactionHorsQuota` lit
+  la fiche par `ficheAvecTitre` (`titre`, sinon `title`) : sans ce pont, toute fiche du Stock avait un titre vide et
+  comptait 1 annonce. Toute nouvelle prévision de quota qui lit une fiche du Stock passe par `redactionHorsQuota`, jamais
+  par `ligne.titre` directement. Preuve : `selftest:source-du-texte` § 7 (son lot : 9 imports, 3 restantes → 9 retenus).
+  Rapport : `docs/enquetes/mur-lot-importes-1011/RAPPORT.md`.
