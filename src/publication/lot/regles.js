@@ -432,8 +432,13 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   if (decisions.photoVide === true) {
     motifs.push({ cle: "photo", libelle: en ? "Photo" : "Photo" });
   }
-  // Plus aucune plateforme où partir (toutes exclues) : rien ne partira.
-  if (!plateformes.length) {
+  // (10/11, URGENT d0ac0538) Rien ne part parce que l'ADRESSE DE REMISE manque (Leboncoin, Beebs la réclament) : c'est
+  // ce motif-là, nommé, jamais « Aucune plateforme » ni « Coche eBay, Depop » — le lot la demande (AdresseRemiseDuLot).
+  const sansAdresse = [...(m.lbcAdresseManquante?.plateformes ?? [])];
+  if (!plateformes.length && sansAdresse.length) {
+    motifs.push({ cle: "adresse", libelle: en ? "Pickup address" : "Adresse de remise", plateformes: sansAdresse });
+  } else if (!plateformes.length) {
+    // Plus aucune plateforme où partir (toutes exclues) : rien ne partira.
     motifs.push({ cle: "aucune", libelle: en ? "Nowhere to publish" : "Aucune plateforme" });
   }
   // Le bouton du moteur est gris pour une raison que rien ci-dessus ne nomme :

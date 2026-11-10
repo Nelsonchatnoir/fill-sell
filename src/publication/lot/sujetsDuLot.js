@@ -94,6 +94,11 @@ export function questionsDeLArticle(m, motifs = [], { jumeaux = [], lang = "fr" 
   if (a.has("poids")) ajouter({ cle: "poids", type: "poids", libelle: en ? "Parcel weight" : "Poids du colis", plateformes: ["leboncoin"] });
   if (a.has("jumeau")) for (const j of jumeaux ?? []) ajouter({ cle: `jumeau:${j.platform}`, type: "jumeau", libelle: en ? "Same item?" : "Le même article ?", plateformes: [j.platform], jumeau: j });
   if (a.has("port_depop")) ajouter({ cle: "port_depop", type: "port_depop", libelle: en ? "Shipping" : "Frais de port", plateformes: ["depop"] });
+  // (10/11, URGENT d0ac0538) L'adresse de remise manque : UNE question (le lot la pose une fois, AdresseRemiseDuLot).
+  if (a.has("adresse")) {
+    const pfs = (motifs ?? []).find((x) => x.cle === "adresse")?.plateformes ?? m.lbcAdresseManquante?.plateformes ?? [];
+    ajouter({ cle: "adresse", type: "adresse", libelle: en ? "Pickup address" : "Adresse de remise", plateformes: [...pfs] });
+  }
   // (26/10, D3) « À la demande », fiche sans description : la sienne, écrite ou « Générer » (la question Vinted suffit
   // quand elle est déjà posée).
   if (a.has("description") && !out.some((q) => q.cle === "description")) ajouter({ cle: "description_fiche", type: "description", libelle: "Description", plateformes: [] });

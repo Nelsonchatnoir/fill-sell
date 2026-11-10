@@ -1482,5 +1482,9 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   L'écran 3 ne dit « C'est parti » ✓ qu'avec au moins un article en file (sinon « Pas envoyé », « ! »).
 - Traces `usage_logs` : `lot_envoi_demande`, `lot_quitte_sans_envoyer`, `lot_envoi_sans_job`. Selftest
   `lot-sortie-sans-envoi`.
+- ⛔ LA CAUSE : compte SANS adresse de remise → Leboncoin et Beebs retirées par le moteur → rien de publiable, motif
+  faux (« Coche eBay, Depop »), aucun moyen de la saisir dans le lot. Désormais : motif « Adresse de remise »
+  (bilanArticle), question du lot, bloc `AdresseRemiseDuLot` (même écriture que Réglages › Expédition, BAN, hors de
+  France) ; enregistrée → `m.relireAdresseLbc()` sur chaque moteur. Le bouton gris du moteur nomme l'adresse.
 - FillSell Cloud n'ouvre AUCUN quota (essai compris) : le mur du lot propose le palier supérieur, c'est la règle
   (`_shared/cloud-option.js:9-17`) — la changer est une décision de Nico.

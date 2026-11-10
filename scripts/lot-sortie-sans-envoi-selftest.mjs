@@ -146,6 +146,38 @@ try {
   ok(/const titre = etape === "fin"\s*\? \(partis \? \(en \? "It's under way" : "C'est parti"\) : \(en \? "Not sent" : "Pas envoyé"\)\)/.test(src),
     'le titre de l\'écran 3 : « C\'est parti » seulement avec au moins un article en file');
   ok(src.includes('"Prêt à envoyer — touche la ligne pour revoir."') && !src.includes('"Réglé — touche la ligne pour revoir."'), 'la ligne d\'un article réglé dit « Prêt à envoyer », jamais « Réglé »');
+
+  // ── E : l'adresse de remise manquante (la VRAIE cause du lot bloqué de d0ac0538) ──
+  console.log('E. L\'adresse de remise, demandée dans le lot');
+  const R = await vite.ssrLoadModule('/src/publication/lot/regles.js');
+  const S = await vite.ssrLoadModule('/src/publication/lot/sujetsDuLot.js');
+  // Le moteur d'un article importé de Vinted, visé Leboncoin + Beebs, compte SANS adresse de remise : rien de publiable.
+  const mSans = { preparationAuRepos: true, ctaDisabled: true, price: 20, plateformesPubliables: new Set(), selected: new Set(['leboncoin', 'beebs']),
+    lbcAdresseManquante: { plateformes: ['leboncoin', 'beebs'] }, motifsCtaGris: ['Adresse de remise à indiquer (Leboncoin, Beebs) — Réglages › Expédition.'],
+    texteVendeur: { titre: 'T', description: 'D' }, generales: { titre: 'T', description: 'D' }, edited: {}, jumeaux: [], clesQuestions: [] };
+  const b = R.bilanArticle(mSans, {}, 'fr');
+  ok(!b.pret && b.motifs.some((x) => x.cle === 'adresse') && !b.motifs.some((x) => ['aucune', 'cta'].includes(x.cle)),
+    'bilan : le motif « Adresse de remise », jamais « Aucune plateforme » ni « À vérifier »', JSON.stringify(b.motifs));
+  const qs = S.questionsDeLArticle(mSans, b.motifs, { lang: 'fr' });
+  ok(qs.length === 1 && qs[0].type === 'adresse' && qs[0].libelle === 'Adresse de remise' && qs[0].plateformes.join() === 'leboncoin,beebs',
+    'la question du lot : « Adresse de remise » (Leboncoin, Beebs), une seule', JSON.stringify(qs));
+  // Une autre plateforme part quand même : l'adresse n'arrête pas l'article (comportement d'avant, inchangé).
+  const bAutre = R.bilanArticle({ ...mSans, ctaDisabled: false, plateformesPubliables: new Set(['vinted']), motifsCtaGris: [] }, {}, 'fr');
+  ok(bAutre.pret && !bAutre.motifs.length, 'Vinted part : l\'article reste prêt (les plateformes sans adresse sont exclues, comme avant)', JSON.stringify(bAutre));
+  const AR = await vite.ssrLoadModule('/src/publication/lot/AdresseRemiseDuLot.jsx');
+  const ad = texte(renderToStaticMarkup(h(AR.default, { en: false, plateformes: ['leboncoin', 'beebs'], nArticles: 5, onEnregistree: noop })));
+  ok(/Ton adresse de remise/.test(ad) && /Leboncoin et Beebs demandent une adresse de remise à chaque annonce/.test(ad) && /tes 5 articles ne peuvent pas y partir sans elle/.test(ad)
+    && /Enregistrer mon adresse/.test(ad), 'le bloc du lot : la phrase vraie et le geste « Enregistrer mon adresse »', ad);
+  const arSrc = lire('src/publication/lot/AdresseRemiseDuLot.jsx');
+  ok(/fusionnerReglages\(\["leboncoin"\], \{ rue: r, code_postal: p, ville: v, adresse \}\)/.test(arSrc) && /adresseLbcHorsFrance\(/.test(arSrc) && /api-adresse\.data\.gouv\.fr/.test(arSrc),
+    'la MÊME écriture que Réglages › Expédition (champs d\'adresse seuls, fusionnés), hors de France averti, vérification BAN');
+  const moteur = lire('src/components/ListingPreviewScreen.jsx');
+  ok(/relireAdresseLbc: async \(\) => \{\s*const r = await lireAdresseRemiseLbc\(\);\s*if \(r\.lue\) setAdresseLbc\(\{ chargee: true, valeur: r\.valeur \}\);/.test(moteur),
+    'le moteur relit l\'adresse à la demande du lot (même lecture qu\'au clic)');
+  ok(/if \(publishChips\.length === 0 && cocheesSansAdresse\.length\) \{[\s\S]{0,300}Adresse de remise à indiquer/.test(moteur) && /if \(publishChips\.length === 0 && !cocheesSansAdresse\.length\) \{/.test(moteur),
+    'le bouton gris nomme l\'adresse, jamais « Coche eBay, Depop » à qui a coché Leboncoin et Beebs');
+  ok(/adresseDuLot\.ids\.length > 0 && blocProtege\("adresse"/.test(src) && /onEnregistree=\{relireAdresseDesMoteurs\}/.test(src) && /q\.type === "adresse"/.test(src),
+    'le lot montre le bloc dès qu\'un article l\'attend, et chaque moteur relit l\'adresse enregistrée');
 } finally {
   await vite.close();
 }

@@ -12063,7 +12063,15 @@ export default function ListingPreviewScreen({
     // « Choisis au moins une plateforme » sans dire LESQUELLES sont
     // disponibles ni pourquoi les autres sont éteintes.
     // Ici on nomme les deux : ce qui est cochable, et ce qui ne l'est pas.
-    if (publishChips.length === 0) {
+    // (10/11, URGENT d0ac0538) Les plateformes COCHÉES retirées faute d'adresse de remise : le motif vrai, en tête —
+    // jamais « Coche eBay, Depop » à quelqu'un qui a coché Leboncoin et Beebs et n'a pas d'adresse.
+    const cocheesSansAdresse = [...selected].filter(p => (lbcAdresseManquante?.plateformes ?? []).includes(p));
+    if (publishChips.length === 0 && cocheesSansAdresse.length) {
+      m.push(lang === "en"
+        ? `Pickup address to fill in (${cocheesSansAdresse.map(nomPlateforme).join(", ")}) — Settings › Shipping.`
+        : `Adresse de remise à indiquer (${cocheesSansAdresse.map(nomPlateforme).join(", ")}) — Réglages › Expédition.`);
+    }
+    if (publishChips.length === 0 && !cocheesSansAdresse.length) {
       const offertes = Object.keys(platformListings?.platforms ?? {});
       const verrouillees = offertes.filter(p => lockedSet.has(p));
       const libres = offertes.filter(p => !lockedSet.has(p)
@@ -12689,6 +12697,13 @@ export default function ListingPreviewScreen({
     // une fois pour tout le lot, qu'une annonce attendra l'extension — c'est
     // la règle du 15/09 (le job part en attente, rien n'est jeté).
     publier: handlePublish,
+    // (10/11, URGENT d0ac0538) L'adresse de remise saisie DANS LE LOT : le moteur la relit (même lecture qu'au clic),
+    // Leboncoin et Beebs redeviennent publiables sans démonter l'article.
+    relireAdresseLbc: async () => {
+      const r = await lireAdresseRemiseLbc();
+      if (r.lue) setAdresseLbc({ chargee: true, valeur: r.valeur });
+      return r.lue ? Boolean(r.valeur) : null;
+    },
   };
   // Le pilote du lot lit le moteur APRÈS chaque rendu, jamais pendant.
   useEffect(() => { pilote?.surMoteur?.(inventaireId ?? null, moteur); });

@@ -20,7 +20,26 @@ Preuves (journaux d'API `edge_logs` filtrés sur `request.sb.auth_user` = la cli
   peuvent pas s'appliquer (stock illimité, lot qui attend la relecture). Donc : le geste « Envoyer » n'a jamais eu
   lieu (ou n'était pas possible) — le moteur n'a rien refusé, il n'a rien reçu.
 
-Ce qui l'a trompée (le défaut corrigé) : à l'étape 2, chaque article réglé affichait « ✓ Réglé », et quitter un lot
+**LA CAUSE (trouvée en rejouant son lot par l'app, 13:40-13:45, sans rien envoyer) : son compte n'a AUCUNE adresse de
+remise** (`platform_settings.leboncoin.adresse` absent). Leboncoin et Beebs la réclament à chaque annonce : le moteur les
+retire (`lbcAdresseManquante`) ; ses articles, déjà sur Vinted, n'avaient plus aucune plateforme. Chaque article restait
+« À vérifier — Coche la plateforme où publier : eBay, Depop » (motif FAUX : elle avait coché Leboncoin et Beebs), le
+bouton « Réponds aux questions pour envoyer » restait gris, et RIEN dans le lot ne permettait de saisir l'adresse : un
+cul-de-sac. Elle a ouvert chaque article (photos lues 12:07:45 → 12:08:32), n'a rien trouvé à régler, a quitté.
+Preuve sur le parc : les 3 comptes bloqués (bookibulle, logannlaffargue, van.nessa) n'ont pas d'adresse ;
+dylan.fontaine13 (sans adresse) n'a publié que sur Depop ; tous les comptes qui ont une adresse ont publié leurs lots.
+
+Correctif de la cause (règle, tous les comptes) :
+- `lot/regles.js` bilanArticle : rien de publiable + adresse manquante → motif « Adresse de remise » (plus « Aucune
+  plateforme » / « À vérifier ») ; `lot/sujetsDuLot.js` : une question « Adresse de remise » (Leboncoin, Beebs) ;
+- `lot/AdresseRemiseDuLot.jsx` : le lot demande l'adresse UNE fois (bloc « Ton adresse de remise »), même écriture que
+  Réglages › Expédition (platform_settings_fusionner, champs d'adresse seuls ; hors de France averti ; vérification
+  BAN) ; enregistrée → chaque moteur la relit (`relireAdresseLbc`, nouveau dans le moteur) et les articles repartent ;
+- moteur (`ListingPreviewScreen` motifsCtaGris) : plateformes cochées retirées faute d'adresse → « Adresse de remise à
+  indiquer (Leboncoin, Beebs) — Réglages › Expédition », jamais « Coche eBay, Depop ».
+Un article qui a une AUTRE plateforme publiable reste prêt (Leboncoin/Beebs exclues et dites, comme avant).
+
+Ce qui l'a trompée en plus : à l'étape 2, chaque article réglé affichait « ✓ Réglé », et quitter un lot
 préparé disait « Quitter ? Les textes préparés sont gardés » — jamais « rien n'est parti ». Rien ne traçait non plus
 le geste d'envoi : impossible de distinguer côté serveur « pas touché » de « touché sans effet ».
 
@@ -83,6 +102,17 @@ puis confirmation :508). Journaux d'API : 12:21:51 pause de la file, 12:22:01 re
 `status=eq.pending&action=eq.republish` depuis l'agent Android de la cliente. Aucune tâche pg_cron, fonction edge ni
 le poste Cloud n'écrit ce marqueur. La 18e (déjà engagée) a été publiée à 12:19. Rien relancé (garde-fou).
 
-## Point 5 — déblocage
+## Point 5 — déblocage (ordre de Nico : ses 5 articles, annonces rendues)
 
-(voir la section « Déblocage » ajoutée après l'envoi)
+- Annonces rendues (ordre de Nico) : `scripts/reparations/20261110_annonces_rendues_d0ac0538.sql` (sauvegarde
+  `_backup_1011_annonces_rendues_d0ac0538`, inverse `…_INVERSE.sql`), passé à 13:3x : les 5 générations du lot de 12:00
+  + la régénération de 12:05:33 sortent du décompte (`generate_listing` → `generate_listing_rendue`, coût et dates
+  conservés). Décompte : 5 → 0 consommées (5 restantes sur 5 jusqu'au 10/12). Le lot de 12:07 n'avait rien consommé.
+  Aucun autre compte, aucun plafond touchés.
+- Rejeu par la voie normale de l'app (navigateur isolé WebKit, session à usage unique de SON compte, révoquée à la fin ;
+  reprise de lot du Stock `fs_lot_reprise_<uid>` : …910020, …910021, …910022, …906005, …906007 → Leboncoin + Beebs) :
+  écran 1 conforme (« Préparer 10 publications », 0 annonce consommée : textes déjà rédigés) ; écran 2 : les 5
+  « À vérifier — Coche la plateforme où publier : eBay, Depop », bouton gris → ARRÊT sans envoi (aucune écriture).
+  C'est ce rejeu qui a révélé l'adresse manquante.
+- **Bloqué sur une donnée qu'elle seule a** : son adresse de remise. Rien n'est inventé ; elle la saisit (Réglages ›
+  Expédition, ou désormais dans le lot), puis « Envoyer ». Ses 5 articles sont préparés, ses 5 annonces rendues.

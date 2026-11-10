@@ -92,6 +92,7 @@ import FicheArticle, { PoidsDeLArticle } from "./FicheArticle";
 import { usePhotoVide } from "./photoVide";
 import { plateformesDeLArticle, poidsAffiche, poidsIncoherent, textePoids, phraseEcartees, ecarteesAutomatiques } from "./ficheLue";
 import LivraisonDuLot from "./LivraisonDuLot";
+import AdresseRemiseDuLot from "./AdresseRemiseDuLot";
 import { parLots } from "../../utils/parLots.js";
 import BarriereErreur from "../../components/BarriereErreur";
 import { transporteursPourPoids } from "../../utils/leboncoinColis";
@@ -1052,6 +1053,26 @@ function EcranDuLot({
   const aCompleter = lot ? lot.ids.filter((id) => etats[id]?.phase === "questions") : [];
   const annoncesPretes = prets.reduce((n, id) => n + [...(moteursRef.current.get(id)?.plateformesPubliables ?? [])].length, 0);
   const preparationFinie = Boolean(lot) && enPrep.length === 0;
+  // (10/11, URGENT d0ac0538) Les articles que l'adresse de remise MANQUANTE retient (rien d'autre ne part pour eux) :
+  // le bloc « Ton adresse de remise » les débloque tous d'un coup — chaque moteur relit l'adresse enregistrée.
+  const adresseDuLot = useMemo(() => {
+    if (!lot) return { ids: [], plateformes: [] };
+    const ids = [], pfs = new Set();
+    for (const id of lot.ids) {
+      if (["retire", "envoye", "erreur", "rien", "quota"].includes(etats[id]?.phase)) continue;
+      const m = moteursRef.current.get(id);
+      const sans = [...(m?.lbcAdresseManquante?.plateformes ?? [])];
+      if (!sans.length || [...(m?.plateformesPubliables ?? [])].length) continue;
+      ids.push(id); for (const p of sans) pfs.add(p);
+    }
+    return { ids, plateformes: [...pfs] };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lot, etats, tick]);
+  const relireAdresseDesMoteurs = async () => {
+    const tous = lot ? lot.ids.map((id) => moteursRef.current.get(id)).filter(Boolean) : [];
+    await Promise.all(tous.map((m) => Promise.resolve(m.relireAdresseLbc?.()).catch(() => null)));
+    planifierTick(300);
+  };
   // (09/10 soir) Les articles d'une catégorie que DEPOP INTERDIT : exclus de
   // Depop seulement (la case de leur moteur est grisée), comptés et dits AVANT
   // l'envoi — le reste du lot part normalement, jamais un lot bloqué pour ça.
@@ -1384,6 +1405,7 @@ function EcranDuLot({
           )}
           {(etape === "avant" || etape === "envoi") && lot && (
             <EcranAvant
+              adresseDuLot={adresseDuLot} relireAdresseDesMoteurs={relireAdresseDesMoteurs}
               en={en} lang={lang} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId}
               moteurs={moteursRef.current} decisions={decisions} prepares={prepares} preparationFinie={preparationFinie}
               prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes}
@@ -1707,6 +1729,8 @@ export function EcranAvant({
   userId = null, exclusDepop = [], mettreDeCote = () => {}, signalerErreurBloc = () => {},
   // (11/10 soir) Le choix du poids Leboncoin du lot — reçu, jamais supposé.
   choixPoidsLbc = "estimer", choisirPoidsLbc = () => {}, poidsExigeLbc = false,
+  // (10/11, URGENT d0ac0538) L'adresse de remise qui retient des articles, et le geste qui la fait relire aux moteurs.
+  adresseDuLot = { ids: [], plateformes: [] }, relireAdresseDesMoteurs = () => {},
   // (26/10, D2) Le poids par défaut des Réglages (Colis Leboncoin par défaut) — reçu, jamais supposé.
   poidsDefaut = null,
   // (26/10, D4) La programmation (réglage, null : éteinte) et l'exception « Envoyer tout de suite » de ce lot — reçues.
@@ -1778,6 +1802,11 @@ export function EcranAvant({
           sansLecteur={sansLecteur} preparation={preparationFinie ? null : { faits: prepares, total }} poidsDefaut={poidsDefaut}
           blocsDuLot={(
             <>
+              {/* (10/11, URGENT d0ac0538) L'adresse de remise manque et retient des articles : demandée ICI, une fois. */}
+              {adresseDuLot.ids.length > 0 && blocProtege("adresse", (
+                <AdresseRemiseDuLot en={en} plateformes={adresseDuLot.plateformes} nArticles={adresseDuLot.ids.length}
+                  onEnregistree={relireAdresseDesMoteurs} />
+              ))}
               {/* (04/10) Poids, transporteurs et format : AVANT l'envoi, pour le lot — repliés, ouverts d'office
                   quand le lot attend un poids saisi. */}
               {preparationFinie && blocProtege("livraison", (
@@ -2303,6 +2332,12 @@ export function VueListe({
       );
     }
     if (q.type === "port_depop") return <CartePortDepop m={m} id={`port-depop-q-${id}`} />;
+    // (10/11, URGENT d0ac0538) L'adresse de remise se saisit UNE fois, dans le bloc du lot (plus haut).
+    if (q.type === "adresse") return (
+      <p className="fsq-note">{en
+        ? `${(q.plateformes ?? []).map(NOM).join(" and ")}: your pickup address is missing — enter it once in “Your pickup address” above.`
+        : `${(q.plateformes ?? []).map(NOM).join(" et ")} : ton adresse de remise manque — saisis-la une fois dans « Ton adresse de remise », plus haut.`}</p>
+    );
     if (q.type === "description") return (
       <div className="fsf-choix">
         <textarea className="fsn-textarea" rows={3} defaultValue="" aria-label="Description"
