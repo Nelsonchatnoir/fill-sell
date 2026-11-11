@@ -449,6 +449,8 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
     cloud: { avecCloud: null, essaiJours: 7, plateformes: ['Vinted', 'Leboncoin', 'Beebs', 'Depop'] },
   };
   const siteAvec = { ...site, cloud: { ...site.cloud, avecCloud: { premium: 34.99, pro: 49.99, business: 79.99 } } };
+  // (11/11 au soir, offre définitive) l'économie de chaque formule avec Cloud, calculée par l'app (economieCloud)
+  const siteEco = { ...siteAvec, cloud: { ...siteAvec.cloud, economie: { premium: 3, pro: 5, business: 5 } } };
   const tarifs = { ...lireTarifs(racine, ['fr', 'en']), communs: { fr: ['Publication sur Vinted, Leboncoin, eBay, Beebs et Depop'], en: ['Publishing on Vinted, Leboncoin, eBay, Beebs and Depop'] }, lien: null, lienCloud: '#cloud-titre' };
   for (const lang of ['fr', 'en']) {
     const avec = cartesTarifs(site, { lang, tarifs: { ...tarifs, grille: K } });
@@ -474,6 +476,11 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
       `${lang} : interrupteur « Sans Cloud / Avec Cloud », « Sans » coché, prix avec Cloud sur les trois formules payantes`);
     ok(!/class="bascule"/.test(avec) && /class="option-cloud"/.test(avec) && !/24[,.]99|\boption\b/i.test(texteBrut(avec)),
       `${lang} : sans prix avec Cloud, pas d'interrupteur, le bandeau de repli sans prix ni « option »`);
+    const tarifsEco = cartesTarifs(siteEco, { lang, tarifs: { ...tarifs, grille: K } });
+    const eco = (n) => (lang === 'fr' ? `− ${n} €` : `− €${n}`);
+    ok((tarifsEco.match(/class="economie"/g) ?? []).length === 3 && ['3', '5'].every((n) => tarifsEco.includes(eco(n)) || tarifsEco.includes(eco(n).replace(' ', ' ')))
+      && !/class="economie"/.test(tarifsAvec), `${lang} : l'économie (− 3 €, − 5 €, − 5 €) lue dans l'app sur chaque carte avec Cloud, rien sans elle`);
+    ok(!/Places limitées|Limited places|places disponibles|while places last/i.test(cloud + cloudAvec + tarifsAvec), `${lang} : plus de « Places limitées »`);
     ok(['Vinted', 'Leboncoin', 'Beebs', 'Depop'].every((n) => cloud.includes(`>${n}</span>`)) && !/>eBay<\/span><span class="etat/.test(cloud), `${lang} : les quatre plateformes du Cloud, eBay à part (API)`);
     ok(logosPlateformesFautifs(cloud, ['vinted', 'leboncoin', 'ebay', 'beebs', 'depop']).length === 0, `${lang} : logos de la scène devant leur nom`);
   }

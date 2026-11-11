@@ -175,7 +175,7 @@ export function blocCloud(site, page) {
   const noms = Object.fromEntries((page.tarifs?.paliers ?? []).map((p) => [p.id, p.nom[page.lang]]));
   const NOMS = { premium: 'Premium', pro: 'Pro', business: 'Business' };
   const formules = ac
-    ? `<ul class="cloud-formules">${['premium', 'pro', 'business'].map((id) => `<li${id === 'pro' ? ' class="avant"' : ''}><span>${esc(noms[id] ?? NOMS[id])}${id === 'pro' ? ` <em>${esc(TEXTES[page.lang].misEnAvant)}</em>` : ''}</span><strong>${esc(prix(ac[id], page.lang))}</strong></li>`).join('')}</ul>` +
+    ? `<ul class="cloud-formules">${['premium', 'pro', 'business'].map((id) => `<li${id === 'pro' ? ' class="avant"' : ''}><span>${esc(noms[id] ?? NOMS[id])}${id === 'pro' ? ` <em>${esc(TEXTES[page.lang].misEnAvant)}</em>` : ''}</span><strong>${esc(prix(ac[id], page.lang))}${site.cloud.economie?.[id] > 0 ? ` <span class="economie"><span class="sr">${esc(TEXTES[page.lang].cloudFormules.economieLibelle)} </span>${esc(TEXTES[page.lang].cloudFormules.economie(prix(site.cloud.economie[id], page.lang)))}</span>` : ''}</strong></li>`).join('')}</ul>` +
       `<p class="cloud-periode">${esc(c.formulesPeriode)}</p>`
     : `<p class="cloud-sans-prix">${esc(c.formulesSansPrix)}</p>`;
   const etats = habillage(`<span class="etat" aria-hidden="true">${c.etats.map((e, i) => `<span class="e${i + 1}">${esc(e)}</span>`).join('')}</span>`);
@@ -192,7 +192,7 @@ export function blocCloud(site, page) {
     `<p class="cloud-formules-titre">${esc(c.formulesTitre)}</p>${formules}` +
     `<p class="cloud-essai">${esc(c.essai(jours))}</p><p class="cloud-detail">${esc(c.essaiDetail(jours))}</p>` +
     `<a class="bouton bouton-premier" href="/login?mode=signup" data-cta="signup_cloud">${esc(c.cta)}</a></div>` +
-    `<div class="cloud-infos"><ul class="cloud-ou"><li>${iconeApple(site, 'logo-store')}${esc(c.ou[0])}</li><li>${esc(c.ou[1])}</li><li class="cloud-places">${esc(c.places)}</li></ul>` +
+    `<div class="cloud-infos"><ul class="cloud-ou"><li>${iconeApple(site, 'logo-store')}${esc(c.ou[0])}</li><li>${esc(c.ou[1])}</li></ul>` +
     `<p>${avecLogos(site, c.ebay)}</p><p>${esc(c.extension)}</p></div></div>` +
     `</div></section>`;
 }
@@ -254,6 +254,7 @@ export function cartesTarifs(site, page, { titre = true } = {}) {
   const cf = t.cloudFormules;
   const jours = site.cloud?.essaiJours;
   const ac = site.cloud?.avecCloud ?? null;
+  const eco = (id) => (site.cloud?.economie?.[id] > 0 ? ` <span class="economie"><span class="sr">${esc(cf.economieLibelle)} </span>${esc(cf.economie(prix(site.cloud.economie[id], l, d.devise)))}</span>` : '');
   const deux = (sans, avec) => `<span class="prix-sans">${sans}</span><span class="prix-avec">${avec}</span>`;
   const cartes = d.paliers.map((p, i) => {
     const pa = ac?.[p.id];
@@ -262,7 +263,7 @@ export function cartesTarifs(site, page, { titre = true } = {}) {
       `<h3 class="palier-nom">${badgePalier(p.id, esc(p.nom[l]))}</h3>` +
       `<p class="palier-pour">${ac && !pa ? deux(esc(p.pour[l]), esc(cf.gratuit)) : esc(p.pour[l])}</p>` +
       `<p class="palier-prix"><span class="montant">${pa ? deux(esc(prix(p.prix, l, d.devise)), esc(prix(pa, l, d.devise))) : esc(prix(p.prix, l, d.devise))}</span> ` +
-      `<span class="periode">${pa ? deux(esc(t.parMois), esc(cf.periodeAvec)) : esc(t.parMois)}</span></p>` +
+      `<span class="periode">${pa ? deux(esc(t.parMois), esc(cf.periodeAvec) + eco(p.id)) : esc(t.parMois)}</span></p>` +
       `${jauges[i] ? carresDe(jauges[i], t) : ''}` +
       `<ul>${jauges[i] ? habillage(jauges[i].lignes.map((x) => `<li>${esc(x)}</li>`).join('')) : ''}${p.inclus[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` +
       `<a class="palier-bouton" href="${esc(d.inscription)}" data-cta="signup_tarifs_${esc(p.id)}">${pa ? deux(esc(p.cta[l]), esc(cf.ctaAvec(jours))) : esc(p.cta[l])}</a></li>`;

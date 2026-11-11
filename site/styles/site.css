@@ -556,6 +556,8 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .prix-avec, .bascule-note { display: none; }
 .bloc-tarifs:has(.bascule-avec:checked) .prix-sans { display: none; }
 .bloc-tarifs:has(.bascule-avec:checked) .prix-avec { display: inline; }
+.economie { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px; background: rgba(47,158,144,.15); color: #1B6E62; font-size: 11px; font-weight: 700; }
+.palier-sombre .economie { background: rgba(242,201,138,.18); color: #F2C98A; }
 .bloc-tarifs:has(.bascule-avec:checked) .bascule-note { display: block; margin: 12px 0 0; font-size: 14px; color: var(--gr); }
 /* L'explication d'une jauge : <dialog> modale (site.js), popover natif sans JS. */
 .explication { width: min(440px, calc(100% - 32px)); max-height: calc(100% - 32px); margin: auto; padding: 0; border: 0; border-radius: 22px; background: var(--pa); color: var(--en); box-shadow: 0 30px 60px -24px rgba(16,32,27,.6); overflow: auto; }
@@ -632,7 +634,6 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .cloud-infos { flex: 1 1 320px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
 .cloud-ou { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .cloud-ou li { display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(78,205,196,.18); color: var(--mp); font-size: 14px; font-weight: 600; }
-.cloud-ou .cloud-places { padding: 6px 12px; border: 1px dashed rgba(246,245,241,.35); background: none; color: var(--s2); font-weight: 400; }
 .logo-store { flex: none; width: 18px; height: 18px; }
 /* Téléphone : la pastille la plus longue (« retirée : vendue ailleurs ») ne touche jamais le nom de la plateforme. */
 @media (max-width: 480px) {
