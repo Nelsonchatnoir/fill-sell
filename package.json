@@ -497,6 +497,7 @@
     "selftest:releves-de-veille": "node scripts/releves-de-veille-selftest.mjs",
     "selftest:lbc-interdits": "node --import ./scripts/loader-ext.mjs scripts/lbc-interdits-selftest.mjs",
     "selftest:retrait-vente-prouvee": "node scripts/retrait-vente-prouvee-selftest.mjs",
+    "selftest:attente-connexion-revenue": "node scripts/attente-connexion-revenue-selftest.mjs",
     "selftest:visite-controle-lbc": "node scripts/visite-controle-lbc-selftest.mjs",
     "selftest:lbc-session-fermee-circuit-connexion": "node scripts/lbc-session-fermee-circuit-connexion-selftest.mjs",
     "selftest:affichage-en-ligne": "node --import ./scripts/loader-ext.mjs scripts/affichage-en-ligne-selftest.mjs",

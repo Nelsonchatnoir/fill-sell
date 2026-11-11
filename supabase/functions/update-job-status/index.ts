@@ -42,6 +42,7 @@ import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAcce
 // (18/10, lot 6) La boutique Vinted ouverte sur CE poste, lue par ses gardes ou prouvée après un dépôt.
 import { identiteVintedDesGardes } from "../_shared/poste-extension.ts";
 import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
+import { MARQUE_LEVEE_CONNEXION, leveesApresObservation } from "../_shared/attente-connexion-revenue.js";
 // (03/11, point 3) Le build de l'exécutant Cloud (« …-cloud · v0.6.x ») : la prise atomique prendre_job enfin appelée.
 import { estPosteCloud } from "../_shared/cloud-voie.js";
 // (01/11, Louis — tout le parc) « Ta connexion est bonne » ne se dit que prouvé sur CE poste, après le mur.
@@ -1468,8 +1469,16 @@ serve(async (req) => {
     // boutiques ». Le marqueur `attente_connexion` (lu par l'app) est reposé à
     // chaque observation et retiré à toute autre écriture : l'extension
     // recopie les platform_fields du job, il ne doit jamais survivre au départ.
+    // (11/11, A1a) Même règle pour les deux marques de la COPIE SERVIE par get-pending-jobs, que l'extension recopie :
+    // `attente_levee` (vente prouvée, _shared/retrait-vente-prouvee.js — 160 retraits la portaient en base) et
+    // `levee_connexion` (connexion revenue, _shared/attente-connexion-revenue.js), lue ici AVANT d'être retirée : elle
+    // compte une levée dans `verification_boutique_vinted.levees_connexion` à l'observation ci-dessous (6 par 24 h).
+    let leveeConnexionRecue: unknown = null;
     if (body.platform_fields && typeof body.platform_fields === "object") {
+      leveeConnexionRecue = (body.platform_fields as Record<string, unknown>)[MARQUE_LEVEE_CONNEXION] ?? null;
       delete (body.platform_fields as Record<string, unknown>).attente_connexion;
+      delete (body.platform_fields as Record<string, unknown>).attente_levee;
+      delete (body.platform_fields as Record<string, unknown>)[MARQUE_LEVEE_CONNEXION];
     }
     if (statutEffectif === "pending" && body.platform_fields && typeof body.platform_fields === "object") {
       try {
@@ -1496,7 +1505,10 @@ serve(async (req) => {
             // Sans session, l'attente plafonne à 30 min : elle doit repartir
             // peu après la connexion, pas six heures plus tard.
             const delai = sansSession ? ([2, 10][n - 1] ?? 30) : ([2, 10, 30, 120][n - 1] ?? 360);
-            pfV.verification_boutique_vinted = { ...v, n, depuis: avant?.depuis ?? v.le };
+            // (11/11, A1a) Les levées « connexion revenue » des dernières 24 h suivent l'observation (plafond 6).
+            const leveesC = leveesApresObservation(avant ?? null, leveeConnexionRecue);
+            const { levees_connexion: _leveesCorps, ...vSansLevees } = v;
+            pfV.verification_boutique_vinted = { ...vSansLevees, n, depuis: avant?.depuis ?? v.le, ...(leveesC.length ? { levees_connexion: leveesC } : {}) };
             pfV.next_action_after = new Date(Date.now() + delai * 60_000).toISOString();
             const dans = delai >= 60 ? `${Math.round(delai / 60)} h` : `${delai} min`;
             if (sansSession) {

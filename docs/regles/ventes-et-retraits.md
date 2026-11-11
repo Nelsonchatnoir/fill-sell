@@ -536,7 +536,8 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
 - Un retrait armé par une vente PROUVÉE (la vente de la fiche porte le numéro de commande/transaction de la plateforme)
   est servi sans l'attente de 10 min (`_shared/retrait-vente-prouvee.js`, get-pending-jobs) ; le « Vendu » cliqué à la main
   garde ses 10 min (annulation). L'extension (0.6.174) passe un retrait avant toute autre tâche ; dans une file Leboncoin
-  espacée (reprise prudente, délégation), les retraits d'abord. Aucune visite de plus.
+  espacée (reprise prudente, délégation), les retraits d'abord. Seule l'attente de l'ARMEMENT est levée (une visite
+  avancée, une fois) — jamais une reprise : voir « 11/11 soir — A1a » plus bas.
 - Le numéro d'annonce d'une vente Leboncoin se lit dans le DÉTAIL de la transaction
   (`/api/consumergoods/proxy/v2/pages/transactions/<n°>`, `item.id`), avant l'envoi, une fois par appareil, 16 au plus par
   passage, arriéré de 30 jours. Avec lui, enregistrer_ventes_relevees range la vente chez le compte relié qui POSSÈDE
@@ -820,3 +821,27 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
     un lien retrouvé par le titre. Verrou `npm run selftest:publication-apres-retrait` (dont le banc
     `scripts/essais/20261111180000_banc.mjs`). La revérification AVANT le clic demande une nouvelle extension (rapport § 9) ;
     le filet reste ensuite pour les postes pas à jour.
+
+## ⛔ 11/11 soir — A1a (bloc A, temps 1 « 2a ») : une reprise garde sa cadence ; un retrait Vinted repart dès que la connexion est prouvée
+- **D1 — la levée « vente prouvée » ne lève que l'attente de l'ARMEMENT** (`_shared/retrait-vente-prouvee.js`) :
+  `next_action_after` = `arme_par.le` + `ATTENTE_ANNULATION_MS` (10 min, = `p_delai` des appelants SQL
+  `inventaire_vendu_retire_ses_copies` et `vente_vinted_lot_eclater`), à 1 s près ; `arme_par.le` absent → jamais. La v1
+  levait TOUTE échéance future d'un retrait de vente : un retrait Beebs en modération (f4367beb) était resservi à chaque
+  poll (`beebs_en_moderation.n` 679 le 11/11 20:35, un passage Beebs toutes les 2 min poste allumé). Toute reprise
+  (Beebs en modération 1 h / 3 h / 6 h / 12 h, connexion, « tentative N/5 », « pas de rouge », 410 Leboncoin) retrouve sa
+  cadence d'origine. update-job-status ne persiste plus `attente_levee` (retiré du corps reçu avec `attente_connexion`).
+- **D2 — un RETRAIT Vinted en attente de connexion part dès que la connexion est prouvée** (`_shared/attente-connexion-revenue.js`,
+  get-pending-jobs juste avant le filtre des attentes programmées ; cas aa957efd, 10/11 : bonne boutique revue à 14:46,
+  échéance 15:05, poste éteint à 15:01). Marqueur `attente_connexion` + « Connecte-toi à … » + échéance future → servi sans
+  échéance (copie servie, AUCUNE écriture au poll) si la preuve d'identité la PLUS RÉCENTE est postérieure à
+  `verification_boutique_vinted.le` et égale au `vinted_account_id` du job (exigé). Preuves : sonde (datée par
+  `checked_at_par_plateforme.vinted`), relevé du dressing, capture, boutique dite par le poste à son poll. Domaine de
+  l'annonce = domaine de la session (`vinted_identite.domaine`, absent = vinted.fr ; illisible → jamais). Compte au Cloud
+  (actif, ou drapeau illisible), poste Cloud ou plusieurs postes vivants : seule la preuve du poste qui poll. Retraits
+  seulement (une republication garde sa cadence). **6 levées au plus par retrait et par 24 h** : la copie porte
+  `levee_connexion`, qu'update-job-status lit, retire du corps et compte dans `verification_boutique_vinted.levees_connexion`
+  à l'observation suivante. Profil lu seulement si un job porte `attente_connexion` et que la garde de boutique ne l'a pas lu.
+- Hors de ce temps : la levée « annonce Beebs vue en ligne » (Q2 de Nico, oui) s'ajoute au temps suivant ; aucun relevé
+  n'est demandé par le serveur (décision du 05/10, Q4 non).
+- Verrous : `npm run selftest:retrait-vente-prouvee` (complété : rejeu Beebs, égalité à 1 s, `attente_levee`, miroir SQL) et
+  `npm run selftest:attente-connexion-revenue` (rejeu aa957efd, bornes, Cloud, plafond, branchement sans écriture).

@@ -217,6 +217,8 @@ import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-int
 import { verdictLbcInterdit, messageLbcInterdit } from "../_shared/lbc-interdits.js";
 // (05/11, point 10) Une vente prouvée retire ses copies sans l'attente de 10 min.
 import { retraitDeVenteEnAttente, venteProuveePourRetrait, retraitServiSansAttente, retraitsDabord } from "../_shared/retrait-vente-prouvee.js";
+// (11/11, A1a, D2) Un retrait Vinted qui attend la connexion repart dès que la connexion est prouvée.
+import { retraitEnAttenteDeConnexion, preuvesConnexionVinted, preuveDuSeulPoste, domaineDeLaSession, decisionConnexionRevenue, retraitServiConnexionRevenue } from "../_shared/attente-connexion-revenue.js";
 import { lireParLots } from "../_shared/par-lots.ts";
 import { teteDeFile } from "../_shared/tete-de-file.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
@@ -8689,6 +8691,13 @@ serve(async (req) => {
         par_action: Record<string, number>;
       }
       | null = null;
+    // (11/11, A1a, D2) Les trois relevés d'identité lus ci-dessous, gardés pour la levée « connexion revenue » plus bas
+    // (_shared/attente-connexion-revenue.js) : aucune lecture de plus quand ce bloc les a déjà lus.
+    let identitesVintedLues: {
+      sessions: Record<string, unknown> | null;
+      run: { vinted_user_id?: unknown; vinted_login?: unknown; started_at?: unknown } | null;
+      capture: { session?: unknown; login_session?: unknown; lu_le?: unknown } | null;
+    } | null = null;
     // ── LE DIAGNOSTIC EST CALCULÉ POUR TOUT LE MONDE, LE FILTRE NON ─────────
     // (2026-09-08) Ce bloc vivait ENTIÈREMENT derrière la garde du poll
     // d'exécution : le popup, qui demande needs_user et processing, ne recevait
@@ -8722,6 +8731,7 @@ serve(async (req) => {
           const sessions = (prof?.extension_sessions ?? null) as Record<string, unknown> | null;
           const run = (runs?.[0] ?? null) as
             { vinted_user_id?: unknown; vinted_login?: unknown; started_at?: unknown } | null;
+          if (prof) identitesVintedLues = { sessions, run, capture };
           // (03/10, point 16) LA règle, partagée avec l'app — sonde et relevé
           // du dressing, le plus récent tranche, fraîcheur 30 min
           // (_shared/boutique-connectee.js). (11/10, Rémi) + la boutique lue
@@ -14434,7 +14444,10 @@ serve(async (req) => {
     // cliqué par erreur) — mesuré chez Louis : 14 ventes, aucun retrait pris avant 10 min. Une vente PROUVÉE par la
     // plateforme — la vente de la fiche porte le numéro de commande ou de transaction de la plateforme — n'a rien à
     // annuler : son retrait est servi sans attendre (_shared/retrait-vente-prouvee.js). Le « Vendu » cliqué à la main
-    // (aucun numéro) garde ses 10 min. Rien n'est écrit en base : seule l'heure servie change ; aucune visite de plus.
+    // (aucun numéro) garde ses 10 min. Rien n'est écrit en base : seule l'heure servie change.
+    // (11/11, A1a, D1 — f4367beb) SEULE l'attente de l'ARMEMENT est levée (next_action_after = arme_par.le + 10 min, à 1 s
+    // près) : une échéance posée après un essai (Beebs en modération, connexion, reprise espacée, 410 Leboncoin) garde
+    // sa cadence — la v1 la levait à chaque poll (un passage Beebs toutes les 2 min, poste allumé).
     if (!includeProcessing && !includeNeedsUser && out.length) {
       const enAttente = out.filter((j) => retraitDeVenteEnAttente(j as Record<string, unknown>));
       if (enAttente.length) {
@@ -14452,6 +14465,59 @@ serve(async (req) => {
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] retraits de vente prouvée : ${String((e as Error)?.message ?? e)} — l'attente d'avant s'applique`);
+        }
+      }
+    }
+
+    // ══ (11/11, A1a, D2 — aa957efd) UN RETRAIT VINTED QUI ATTEND LA CONNEXION REPART DÈS QU'ELLE EST PROUVÉE ══════════
+    // update-job-status pose `attente_connexion` + « Connecte-toi à Vinted… » + une échéance (2, 10 puis 30 min) ; seule
+    // `attente_session` avait sa levée sur preuve (filtre ci-dessous). Ici : une preuve de connexion de la BONNE boutique,
+    // POSTÉRIEURE à la dernière observation, sert le retrait sans son échéance (_shared/attente-connexion-revenue.js :
+    // identité exigée, domaine égal, retraits seulement, Cloud ou plusieurs postes = preuve du poste qui poll, 6 levées
+    // par 24 h comptées par update-job-status). AUCUNE écriture ; profil lu seulement si un job porte `attente_connexion`
+    // et que la garde de boutique ne l'a pas déjà lu.
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const enAttenteC = out.filter((j) => retraitEnAttenteDeConnexion(j as Record<string, unknown>));
+      if (enAttenteC.length) {
+        try {
+          let lus = identitesVintedLues;
+          if (!lus) {
+            const [{ data: profC }, { data: runsC }, captureC] = await Promise.all([
+              userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle(),
+              userClient.from("vinted_sync_runs").select("vinted_user_id, vinted_login, started_at")
+                .eq("kind", "dressing").not("vinted_user_id", "is", null).not("started_at", "is", null)
+                .order("started_at", { ascending: false }).limit(1),
+              derniereCaptureBoutique(),
+            ]);
+            if (profC) {
+              lus = {
+                sessions: (profC.extension_sessions ?? null) as Record<string, unknown> | null,
+                run: (runsC?.[0] ?? null) as { vinted_user_id?: unknown; vinted_login?: unknown; started_at?: unknown } | null,
+                capture: captureC,
+              };
+            }
+          }
+          if (lus) {
+            const maintenantC = Date.now();
+            const postesC: Record<string, Poste> = sessionId && posteCourant ? { ...postesDuCompte, [sessionId]: posteCourant } : postesDuCompte;
+            const posteSeul = preuveDuSeulPoste({ posteCloud, cloudVoie, postes: postesC, maintenant: maintenantC });
+            const preuves = preuvesConnexionVinted({ ...lus, poste: sessionId ? posteCourant : null });
+            const domaineSession = domaineDeLaSession(lus.sessions);
+            const leves = new Map<string, Record<string, unknown>>();
+            const refus: Record<string, number> = {};
+            for (const j of enAttenteC) {
+              const d = decisionConnexionRevenue(j as Record<string, unknown>, { preuves, domaineSession, posteSeul, maintenant: maintenantC });
+              if (d.lever) leves.set(String(j.id), retraitServiConnexionRevenue(j as Record<string, unknown>, d.preuve, maintenantC));
+              else refus[d.motif] = (refus[d.motif] ?? 0) + 1;
+            }
+            if (leves.size) {
+              out = out.map((j) => (leves.get(String(j.id)) as typeof j | undefined) ?? j);
+              console.log(`[get-pending-jobs] userId=${user.id} : ${leves.size} retrait(s) Vinted en attente de connexion servi(s) — connexion de la boutique prouvée après la dernière observation${posteSeul ? " (preuve du poste qui poll)" : ""}`);
+            }
+            if (refus["plafond_24h"]) console.log(`[get-pending-jobs] userId=${user.id} : ${refus["plafond_24h"]} retrait(s) Vinted en attente de connexion au plafond de 6 levées par 24 h — cadence d'origine`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] retraits en attente de connexion : ${String((e as Error)?.message ?? e)} — l'attente d'avant s'applique`);
         }
       }
     }
