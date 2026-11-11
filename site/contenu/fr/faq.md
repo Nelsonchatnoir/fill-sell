@@ -5,7 +5,7 @@ lang: fr
 nom: FAQ
 surtitre: "Questions fréquentes"
 title: "FAQ FillSell : publication, ordinateur, ventes et prix"
-description: "Réponses courtes et exactes sur FillSell, l'app de crosslisting pour {{plateformes}} : publication, ordinateur, ventes, mots de passe, prix."
+description: "Réponses courtes sur FillSell, l'app de crosslisting pour {{plateformes}} : publication, ordinateur ou le Cloud, ventes, mots de passe, prix."
 h1: "FAQ FillSell : toutes les réponses sur l'app de crosslisting"
 chapo: "FillSell est l'app de crosslisting qui met tes articles en vente sur {{plateformes}} sans rien retaper : une photo, Lens écrit l'annonce, et l'extension Chrome la dépose depuis ton ordinateur, dans ta session, sans jamais tes mots de passe. Un article vendu ? Une fois la vente enregistrée, ses autres annonces sont retirées. Gratuit pour commencer, sans carte bancaire."
 points_cles:

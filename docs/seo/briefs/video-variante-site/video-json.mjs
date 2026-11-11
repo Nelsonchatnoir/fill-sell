@@ -8,7 +8,10 @@
 // Même règle que site/donnees/plateformes.yml (`republication_auto` de Depop) : les deux se
 // basculent ENSEMBLE.
 // Poids, durée et dimensions sont LUS sur les fichiers (ffprobe de Remotion, lecture seule).
+// ⛔ PÉRIMÉ depuis le 11/11/2026 : le site sert la vidéo « podcast » (site/medias/video/video.json) ;
+// les fichiers fillsell-presentation* et version-b/ sont retirés. Le script refuse de tourner.
 import fs from 'node:fs';
+if (!process.env.FILLSELL_ANCIENNE_VIDEO) throw new Error('video-json.mjs : périmé depuis le 11/11/2026 (vidéo « podcast » servie) — voir docs/seo/briefs/video.md');
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';

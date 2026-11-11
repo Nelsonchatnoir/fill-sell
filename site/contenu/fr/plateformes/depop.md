@@ -6,7 +6,7 @@ plateforme: depop
 nom: Depop
 surtitre: "Depop · app + extension Chrome"
 title: "Outil pour vendre sur Depop : extension et republication — FillSell"
-description: "Vends sur Depop sans rien retaper : annonce mise au format Depop, boutique importée en un appui, republication d'un appui, retrait quand l'article part ailleurs."
+description: "Vends sur Depop sans rien retaper : annonce au format Depop, boutique importée en un appui, publiée par l'extension ou FillSell Cloud, retirée à la vente."
 h1: "FillSell pour Depop : l'outil pour vendre sur Depop sans rien retaper"
 chapo: "FillSell est une app de crosslisting qui ajoute Depop à tes plateformes : tu remplis ta fiche une fois, FillSell la met au format Depop et l'extension Chrome la dépose depuis ton ordinateur, dans ta session. Ta boutique Depop s'importe en un appui. Vendu ailleurs ? Dès la vente enregistrée, ton annonce Depop est retirée, comme le demandent les conditions de Depop ; au moindre doute, FillSell te pose la question."
 points_cles:

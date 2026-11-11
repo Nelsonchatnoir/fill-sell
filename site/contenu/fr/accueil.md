@@ -4,10 +4,10 @@ type: accueil
 lang: fr
 nom: Accueil
 title: "Application de crosslisting : une photo, {{nb_plateformes}} plateformes — FillSell"
-description: "L'app de crosslisting pilotée du téléphone : Lens rédige, tes annonces partent sur {{plateformes}}. Gratuit pour commencer."
+description: "L'app de crosslisting pilotée du téléphone : Lens rédige, tes annonces partent sur {{plateformes}}, avec ou sans ordinateur (FillSell Cloud)."
 surtitre: "Crosslisting piloté depuis ton téléphone"
 h1: "L'app de crosslisting : une photo, {{nb_plateformes}} plateformes. Vendu ici, retiré là-bas."
-chapo: "FillSell est une application de crosslisting pilotée du téléphone. Une photo, Lens rédige l'annonce, et l'extension Chrome la dépose sur {{plateformes}} depuis ton ordinateur, dans ta session. Ton stock se synchronise en un appui, tes annonces remontent toutes seules sur {{republication}} selon ta formule, et une vente enregistrée fait retirer les autres annonces de l'article."
+chapo: "FillSell est une application de crosslisting pilotée du téléphone. Une photo, Lens rédige l'annonce ; l'extension Chrome la dépose sur {{plateformes}} de ton ordinateur, l'option FillSell Cloud sans ordinateur. Ton stock se synchronise en un appui, tes annonces remontent toutes seules sur {{republication}} selon ta formule, et une vente enregistrée retire les autres annonces."
 publie: "2026-10-09"
 faq: true
 cta: inscription

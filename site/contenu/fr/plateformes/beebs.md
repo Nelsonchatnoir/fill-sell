@@ -6,7 +6,7 @@ plateforme: beebs
 nom: Beebs
 surtitre: "FillSell pour Beebs"
 title: "Vendre sur Beebs : l'outil pour publier et republier — FillSell"
-description: "Vends sur Beebs sans rien ressaisir : une annonce remplie une fois, déposée par l'extension FillSell dans ta session, republiée, retirée à la vente."
+description: "Vends sur Beebs sans rien ressaisir : une annonce remplie une fois, déposée par l'extension FillSell ou par FillSell Cloud, republiée, retirée à la vente."
 h1: "FillSell pour Beebs : l'outil pour vendre sur Beebs sans rien ressaisir"
 chapo: "FillSell est une app de crosslisting qui ajoute Beebs à tes plateformes sans ressaisie : tu remplis l'annonce une fois sur ton téléphone, l'extension Chrome la dépose sur Beebs depuis ton ordinateur, dans ta session. Ton stock Beebs s'importe en un appui ; selon ta formule, tes annonces Beebs remontent toutes seules. Vendu ailleurs ? Dès la vente enregistrée, sa copie Beebs prouvée est retirée."
 points_cles:

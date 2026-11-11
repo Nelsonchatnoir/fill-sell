@@ -5,7 +5,7 @@ lang: en
 nom: Pricing
 surtitre: "No commitment, free to start"
 title: "FillSell pricing: free crosslisting app, plans from €12.99"
-description: "FillSell is free to start, no credit card. Premium €12.99, Pro €29.99, Business €59.99 a month, no commitment: what each plan includes, and how it compares."
+description: "FillSell is free to start, no credit card. Premium €12.99, Pro €29.99, Business €59.99 a month, no commitment. FillSell Cloud option in France: €24.99."
 h1: "FillSell pricing: free to start, no commitment after that"
 chapo: "FillSell is free to start, with no credit card: publishing on {{plateformes}}, syncing your stock and taking down an item's other listings after a sale are all on the Free plan. Premium costs €12.99, Pro €29.99 and Business €59.99 a month, no commitment. You pay for more AI-written listings, AI photo touch-ups and support. Never per marketplace."
 points_cles:
