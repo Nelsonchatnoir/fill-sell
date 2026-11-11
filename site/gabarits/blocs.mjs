@@ -168,8 +168,16 @@ const SVG_NUAGE = '<svg class="nuage" width="80" height="80" viewBox="0 0 80 80"
 export function blocCloud(site, page) {
   if (!site.cloud?.plateformes?.length) return '';
   const c = TEXTES[page.lang].cloud;
-  const montant = prix(site.cloud.prix, page.lang);
   const jours = site.cloud.essaiJours;
+  // (11/11 au soir) Plus de Cloud seul : la carte présente les formules AVEC Cloud, prix lus dans l'app
+  // (site.cloud.avecCloud) ; sans ces prix, la même carte sans aucun prix.
+  const ac = site.cloud.avecCloud;
+  const noms = Object.fromEntries((page.tarifs?.paliers ?? []).map((p) => [p.id, p.nom[page.lang]]));
+  const NOMS = { premium: 'Premium', pro: 'Pro', business: 'Business' };
+  const formules = ac
+    ? `<ul class="cloud-formules">${['premium', 'pro', 'business'].map((id) => `<li${id === 'pro' ? ' class="avant"' : ''}><span>${esc(noms[id] ?? NOMS[id])}${id === 'pro' ? ` <em>${esc(TEXTES[page.lang].misEnAvant)}</em>` : ''}</span><strong>${esc(prix(ac[id], page.lang))}</strong></li>`).join('')}</ul>` +
+      `<p class="cloud-periode">${esc(c.formulesPeriode)}</p>`
+    : `<p class="cloud-sans-prix">${esc(c.formulesSansPrix)}</p>`;
   const etats = habillage(`<span class="etat" aria-hidden="true">${c.etats.map((e, i) => `<span class="e${i + 1}">${esc(e)}</span>`).join('')}</span>`);
   const puces = site.cloud.plateformes.map((nom) => `<li class="puce"><span class="puce-nom">${logoPf(site, nom, 'logo-puce', 24)}${esc(nom)}</span>${etats}</li>`).join('');
   return `<section class="bloc-cloud sombre" aria-labelledby="cloud-titre"><div class="cadre">` +
@@ -181,8 +189,8 @@ export function blocCloud(site, page) {
     `<ul class="puces" aria-label="${esc(c.plateformes)}">${puces}</ul></div>` +
     `<ul class="cloud-faits">${c.faits.map((f) => `<li class="apparait"><h3>${esc(f.titre)}</h3><p>${esc(f.texte)}</p></li>`).join('')}</ul>` +
     `<div class="cloud-bas"><div class="cloud-prix">` +
-    `<p class="cloud-montant"><span class="cloud-chiffre">${esc(montant)}</span> <span>${esc(c.parMois)}</span></p>` +
-    `<p class="cloud-essai">${esc(c.essai(jours))}</p><p class="cloud-detail">${esc(c.essaiDetail(montant, jours))}</p>` +
+    `<p class="cloud-formules-titre">${esc(c.formulesTitre)}</p>${formules}` +
+    `<p class="cloud-essai">${esc(c.essai(jours))}</p><p class="cloud-detail">${esc(c.essaiDetail(jours))}</p>` +
     `<a class="bouton bouton-premier" href="/login?mode=signup" data-cta="signup_cloud">${esc(c.cta)}</a></div>` +
     `<div class="cloud-infos"><ul class="cloud-ou"><li>${iconeApple(site, 'logo-store')}${esc(c.ou[0])}</li><li>${esc(c.ou[1])}</li><li class="cloud-places">${esc(c.places)}</li></ul>` +
     `<p>${avecLogos(site, c.ebay)}</p><p>${esc(c.extension)}</p></div></div>` +
@@ -239,21 +247,39 @@ export function cartesTarifs(site, page, { titre = true } = {}) {
   const l = page.lang;
   // (09/11) Carrés et lignes chiffrées lus en base ; base illisible → la carte part sans eux (jamais un chiffre recopié).
   const jauges = d.paliers.map((p) => jaugesDeCarte(d.grille, p.id, l));
-  const cartes = d.paliers.map((p, i) => `<li class="palier palier-${esc(p.id)}${PALIERS_SOMBRES.has(p.id) ? ' palier-sombre' : ''}${p.mis_en_avant ? ' palier-avant' : ''}">` +
-    `${p.mis_en_avant ? habillage(`<p class="palier-badge">${esc(t.misEnAvant)}</p>`) : ''}` +
-    `<h3 class="palier-nom">${badgePalier(p.id, esc(p.nom[l]))}</h3><p class="palier-pour">${esc(p.pour[l])}</p>` +
-    `<p class="palier-prix"><span class="montant">${esc(prix(p.prix, l, d.devise))}</span> <span class="periode">${esc(t.parMois)}</span></p>` +
-    `${jauges[i] ? carresDe(jauges[i], t) : ''}` +
-    `<ul>${jauges[i] ? habillage(jauges[i].lignes.map((x) => `<li>${esc(x)}</li>`).join('')) : ''}${p.inclus[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` +
-    `<a class="palier-bouton" href="${esc(d.inscription)}" data-cta="signup_tarifs_${esc(p.id)}">${esc(p.cta[l])}</a></li>`).join('');
-  // L'option FillSell Cloud (bandeau sombre de la maquette), entre les cartes et « dans tous les forfaits ».
-  const o = t.optionCloud;
-  const option = site.cloud ? `<div class="option-cloud"><div><p class="option-titre">${esc(o.titre(prix(site.cloud.prix, l), site.cloud.essaiJours))}</p>` +
-    `<p class="option-texte">${avecLogos(site, o.texte)}</p></div><a class="option-lien" href="${esc(d.lienCloud)}">${esc(o.lien)}</a></div>` : '';
+  // (11/11 au soir, Nico) L'interrupteur « Sans Cloud / Avec Cloud », même logique que la fenêtre d'offres de l'app : avec
+  // Cloud, chaque formule payante montre son prix avec Cloud (LU dans l'app : site.cloud.avecCloud) et l'essai ; la
+  // carte Gratuite rappelle que le Cloud se prend avec Premium, Pro ou Business. Sans JS : deux boutons radio DANS les
+  // étiquettes (un clic ne fait pas défiler la page) et :has() (le CSS seul bascule). Prix avec Cloud absents → pas d'interrupteur, la ligne de repli.
+  const cf = t.cloudFormules;
+  const jours = site.cloud?.essaiJours;
+  const ac = site.cloud?.avecCloud ?? null;
+  const deux = (sans, avec) => `<span class="prix-sans">${sans}</span><span class="prix-avec">${avec}</span>`;
+  const cartes = d.paliers.map((p, i) => {
+    const pa = ac?.[p.id];
+    return `<li class="palier palier-${esc(p.id)}${PALIERS_SOMBRES.has(p.id) ? ' palier-sombre' : ''}${p.mis_en_avant ? ' palier-avant' : ''}">` +
+      `${p.mis_en_avant ? habillage(`<p class="palier-badge">${esc(t.misEnAvant)}</p>`) : ''}` +
+      `<h3 class="palier-nom">${badgePalier(p.id, esc(p.nom[l]))}</h3>` +
+      `<p class="palier-pour">${ac && !pa ? deux(esc(p.pour[l]), esc(cf.gratuit)) : esc(p.pour[l])}</p>` +
+      `<p class="palier-prix"><span class="montant">${pa ? deux(esc(prix(p.prix, l, d.devise)), esc(prix(pa, l, d.devise))) : esc(prix(p.prix, l, d.devise))}</span> ` +
+      `<span class="periode">${pa ? deux(esc(t.parMois), esc(cf.periodeAvec)) : esc(t.parMois)}</span></p>` +
+      `${jauges[i] ? carresDe(jauges[i], t) : ''}` +
+      `<ul>${jauges[i] ? habillage(jauges[i].lignes.map((x) => `<li>${esc(x)}</li>`).join('')) : ''}${p.inclus[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` +
+      `<a class="palier-bouton" href="${esc(d.inscription)}" data-cta="signup_tarifs_${esc(p.id)}">${pa ? deux(esc(p.cta[l]), esc(cf.ctaAvec(jours))) : esc(p.cta[l])}</a></li>`;
+  }).join('');
+  const bascule = ac
+    ? `<div class="bascule" role="radiogroup" aria-label="${esc(cf.aria)}">` +
+      `<label><input type="radio" name="formules-cloud" id="formules-sans" class="bascule-entree bascule-sans" checked>${esc(cf.sans)}</label>` +
+      `<label><input type="radio" name="formules-cloud" id="formules-avec" class="bascule-entree bascule-avec">${esc(cf.avec)}</label></div>` +
+      `<p class="bascule-note">${esc(cf.note(jours))} <a href="${esc(d.lienCloud)}">${esc(cf.lien)}</a></p>`
+    : '';
+  // Repli (prix avec Cloud pas encore dans l'app) : le bandeau sombre, sans aucun prix.
+  const option = site.cloud && !ac ? `<div class="option-cloud"><div><p class="option-titre">${esc(cf.repliTitre)}</p>` +
+    `<p class="option-texte">${esc(cf.repliTexte(jours))}</p></div><a class="option-lien" href="${esc(d.lienCloud)}">${esc(cf.lien)}</a></div>` : '';
   const communs = `<div class="carte communs"><h3>${esc(t.communsTitre)}</h3><ul>${d.communs[l].map((x) => `<li>${avecLogos(site, x)}</li>`).join('')}</ul></div>`;
   return `<section class="bloc-tarifs" aria-labelledby="tarifs-titre"><div class="cadre">` +
     (titre ? `<h2 id="tarifs-titre">${esc(t.tarifsTitre)}</h2><p class="chapo-section">${esc(t.tarifsChapo)}</p>` : `<h2 id="tarifs-titre" class="sr">${esc(t.tarifsTitre)}</h2>`) +
-    `<ul class="paliers">${cartes}</ul>${option}${communs}<p class="mentions">${esc(d.mentions[l])}</p>` +
+    `${bascule}<ul class="paliers">${cartes}</ul>${option}${communs}<p class="mentions">${esc(d.mentions[l])}</p>` +
     `${d.lien ? `<p class="lien-suite"><a href="${esc(d.lien.chemin)}">${esc(t.tarifsLien)}</a></p>` : ''}` +
     `${jauges.some(Boolean) ? explications(site, l) : ''}</div></section>`;
 }

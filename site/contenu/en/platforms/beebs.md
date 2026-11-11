@@ -86,7 +86,7 @@ You make the calls from your phone, iPhone or Android, or from fillsell.app. The
 It acts in **your** Beebs session, the one you're already signed in to in Chrome. Never your password: FillSell neither reads nor stores it.
 
 - **Computer on, Chrome open**: that's what it takes for your listings to go out through the extension. While some are still queued, the extension keeps the computer from going to sleep.
-- **Computer off?** Nothing is lost: your listings wait and go out the next time Chrome opens. With the FillSell Cloud option, no computer needed: your Beebs listings go out from FillSell's servers, around the clock.
+- **Computer off?** Nothing is lost: your listings wait and go out the next time Chrome opens. With FillSell Cloud, no computer needed: your Beebs listings go out from FillSell's servers, around the clock.
 - **Beebs reviews new listings**: yours can take a while to show up. A listing never seen online counts as a failed post, never as a sale.
 
 ![The full FillSell Chrome extension panel (version 0.6.105) during a deposit: "Active", last run 1 min ago, computer kept awake while publishing, the five marketplaces connected including Depop, "in progress: Depop · publishing" for the Volcom cap with its bar, then the Öhlins hoodie ready to publish (already live on Vinted, queued for Leboncoin and Depop) and "3 in queue".](media:captures/extension-popup.png)
@@ -115,7 +115,7 @@ On Beebs, that removal is no detail: its terms of use (version of 29 January 202
 Reposting means taking the listing down and putting it back online: it comes back as a brand-new listing, but its views and favourites start from zero. On Beebs, the order matters, because its rules forbid listing the same item more than once. FillSell removes first, posts again second.
 
 - **With one tap**: a Beebs listing losing visibility? Bump it from your phone, and the computer handles the rest.
-- **On its own**, depending on your subscription: your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, while you get on with your day — computer on, or without one with the FillSell Cloud option.
+- **On its own**, depending on your subscription: your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, while you get on with your day — computer on, or without one with FillSell Cloud.
 - **At your pace, never in bursts**: FillSell spaces out your reposts at a human pace to protect your account. Switch it all off in one tap, whenever you like.
 
 Like any new listing, a reposted one goes back through Beebs's review: it can take a while to reappear. Time slots and settings explained: [automatic and one-tap reposting (in French)](page:fr:fonctions/republication).
@@ -160,7 +160,7 @@ Everything about Beebs on this page comes from its official texts, read on 9 Oct
 
 ### Does FillSell work with Beebs?
 
-Yes. Today, with FillSell, you publish, sync, repost and remove your Beebs listings from the same stock as your other marketplaces. The work on Beebs is done by the FillSell Chrome extension, in your session, on your computer, with Chrome open; you run it all from your phone or from fillsell.app. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. With the FillSell Cloud option (€24.99 a month, 7-day free trial for a first subscription, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Beebs listings from FillSell's servers, around the clock, and keeps track of your sales.
+Yes. Today, with FillSell, you publish, sync, repost and remove your Beebs listings from the same stock as your other marketplaces. The work on Beebs is done by the FillSell Chrome extension, in your session, on your computer, with Chrome open; you run it all from your phone or from fillsell.app. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. With FillSell Cloud (7-day trial, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Beebs listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### Do I have to give FillSell my Beebs password?
 
@@ -176,7 +176,7 @@ Beebs is a French app: its help centre is in French, and it handles payment and 
 
 ### Can I repost my Beebs listings automatically?
 
-Yes, depending on your subscription. FillSell's automatic reposting covers {{republication}}: you choose the days and the time slot, and your listings bump themselves back up, one by one, at a human pace, as long as your computer is on with Chrome open, or without a computer with the FillSell Cloud option. Otherwise, you bump a listing with one tap. Either way, you switch everything off in one go.
+Yes, depending on your subscription. FillSell's automatic reposting covers {{republication}}: you choose the days and the time slot, and your listings bump themselves back up, one by one, at a human pace, as long as your computer is on with Chrome open, or without a computer with FillSell Cloud. Otherwise, you bump a listing with one tap. Either way, you switch everything off in one go.
 
 ### Does FillSell record a Beebs sale on its own?
 

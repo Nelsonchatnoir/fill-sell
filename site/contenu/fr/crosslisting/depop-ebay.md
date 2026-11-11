@@ -106,7 +106,7 @@ Pour Depop, c'est l'extension FillSell qui travaille, dans Chrome, sur ton ordin
 
 L'extension remplit le formulaire, envoie les photos, puis relit l'annonce chez Depop et ne la dit publiée qu'une fois qu'elle la voit en vente. Si la réponse de Depop se perd en route, elle vérifie ta boutique avant de renvoyer quoi que ce soit : pas d'annonce en double. Une annonce après l'autre, à un rythme humain.
 
-Ce qu'il te faut : l'ordinateur allumé, Chrome ouvert, ta session Depop ouverte, et un compte vendeur Depop terminé, PayPal relié — sinon FillSell te prévient que Depop attend la fin de ta configuration de vendeur. Ordinateur éteint ? Rien n'est perdu : ce qui est prévu pour Depop attend et part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Depop partent depuis les serveurs de FillSell, 24 h/24.
+Ce qu'il te faut : l'ordinateur allumé, Chrome ouvert, ta session Depop ouverte, et un compte vendeur Depop terminé, PayPal relié — sinon FillSell te prévient que Depop attend la fin de ta configuration de vendeur. Ordinateur éteint ? Rien n'est perdu : ce qui est prévu pour Depop attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Depop partent depuis les serveurs de FillSell, 24 h/24.
 
 ## Vendu d'un côté, retiré de l'autre
 
@@ -118,7 +118,7 @@ Le vrai risque du duo Depop–eBay, ce n'est pas la saisie : c'est de vendre deu
 
 ![La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».](media:captures/vente-deja-vendu-question.png)
 
-Côté Depop, sans l'option FillSell Cloud, tout passe par ton ordinateur : si une vente eBay tombe pendant qu'il est éteint, le retrait de l'annonce Depop attend et part dès que Chrome se rouvre. Pendant tes journées de vente, garde-le allumé. Avec l'option, ce retrait part des serveurs de FillSell, ordinateur éteint. Tout le mécanisme est détaillé sur la page [ventes et retraits](page:fonctions/ventes-et-retraits).
+Côté Depop, sans FillSell Cloud, tout passe par ton ordinateur : si une vente eBay tombe pendant qu'il est éteint, le retrait de l'annonce Depop attend et part dès que Chrome se rouvre. Pendant tes journées de vente, garde-le allumé. Avec FillSell Cloud, ce retrait part des serveurs de FillSell, ordinateur éteint. Tout le mécanisme est détaillé sur la page [ventes et retraits](page:fonctions/ventes-et-retraits).
 
 ## Ta boutique Depop et tes annonces eBay, dans un seul stock
 
@@ -132,7 +132,7 @@ Sur Depop, la nouveauté compte un peu : « Newer items get a slight edge », é
 
 Avec FillSell, tu republies une annonce Depop d'un appui : l'extension la retire, la recrée et la garde sur la même fiche. Rien n'est retiré tant que la nouvelle copie n'est pas complète.
 
-Et sur {{republication}}, selon ta formule, la republication automatique prend le relais : tu choisis les jours et le créneau, FillSell espace les republications à un rythme humain, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur, et tu coupes tout d'un geste. Tout est expliqué sur la page [republication](page:fonctions/republication).
+Et sur {{republication}}, selon ta formule, la republication automatique prend le relais : tu choisis les jours et le créneau, FillSell espace les republications à un rythme humain, ordinateur allumé ou, avec FillSell Cloud, sans ordinateur, et tu coupes tout d'un geste. Tout est expliqué sur la page [republication](page:fonctions/republication).
 
 ## Les règles du duo Depop–eBay, avant de te lancer
 
@@ -149,7 +149,7 @@ Pour savoir comment FillSell agit sur tes comptes, et ce que disent les conditio
 
 Au 9 octobre 2026, d'après leurs pages officielles, quatre outils de [notre comparatif des applications de crosslisting](page:comparatif/meilleures-applications-crosslisting) proposent Depop sans exclure les vendeurs installés en France : FillSell, FLUF Connect, Klork et Relistly. Plusieurs outils connus pour le duo Depop–eBay visent d'autres marchés : Crosslist indique ne pas servir les résidents de l'Union européenne, Vendoo traite Depop aux États-Unis, et List Perfectly ne prend en charge que Depop US.
 
-En toute franchise : FLUF Connect travaille sur Depop sans navigateur ouvert une fois le compte connecté, quand FillSell passe par ton ordinateur, sauf avec l'option FillSell Cloud. Ce que FillSell met sur la table, c'est tout ton stock au même endroit : Vinted France, Leboncoin, Beebs, eBay France par l'API officielle d'eBay et Depop, dans une app iPhone et Android, en français et en euros, avec Lens qui rédige à partir d'une photo.
+En toute franchise : FLUF Connect travaille sur Depop sans navigateur ouvert une fois le compte connecté, quand FillSell passe par ton ordinateur, sauf avec FillSell Cloud. Ce que FillSell met sur la table, c'est tout ton stock au même endroit : Vinted France, Leboncoin, Beebs, eBay France par l'API officielle d'eBay et Depop, dans une app iPhone et Android, en français et en euros, avec Lens qui rédige à partir d'une photo.
 
 Et si tu vends aussi ailleurs, la même fiche part sur {{plateformes}}. [Crée ton compte gratuitement](/login?mode=signup), sans carte bancaire, puis [installe l'extension Chrome](/extension) sur ton ordinateur.
 
@@ -170,7 +170,7 @@ Non. eBay a finalisé le rachat de Depop le 30 juillet 2026, mais Depop garde sa
 
 ### Faut-il laisser son ordinateur allumé pour vendre sur Depop et eBay ?
 
-Pour Depop, oui, sans l'option FillSell Cloud : la publication, les retraits et tout le travail sur Depop passent par l'extension Chrome, ordinateur allumé, Chrome ouvert et session Depop active. Pour eBay, non, une fois ton compte relié : l'annonce part par l'API officielle d'eBay, même ordinateur éteint. Éteint, rien n'est perdu : ce qui attend pour Depop part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur pour Depop non plus : elle publie, republie et retire tes annonces Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Pour Depop, oui, sans FillSell Cloud : la publication, les retraits et tout le travail sur Depop passent par l'extension Chrome, ordinateur allumé, Chrome ouvert et session Depop active. Pour eBay, non, une fois ton compte relié : l'annonce part par l'API officielle d'eBay, même ordinateur éteint. Éteint, rien n'est perdu : ce qui attend pour Depop part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur pour Depop non plus : il publie, republie et retire tes annonces Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Combien coûte la vente sur Depop et sur eBay depuis la France ?
 
@@ -186,4 +186,4 @@ Jamais. Pour Depop, tu restes connecté(e) dans Chrome, comme d'habitude, et tu 
 
 ### Et si l'article se vend sur les deux sites à quelques minutes d'écart ?
 
-Ça peut arriver : entre une vente et le retrait de l'autre annonce, il s'écoule toujours un moment, et Depop rappelle que le vendeur reste responsable d'une double vente, remboursement compris. FillSell raccourcit ce moment : la vente eBay s'enregistre toute seule et le retrait de l'annonce Depop part dès que ton ordinateur est allumé avec Chrome ouvert, ou depuis les serveurs de FillSell avec l'option FillSell Cloud. Si ça arrive quand même, rembourse l'acheteur que tu ne peux pas servir, comme Depop le demande.
+Ça peut arriver : entre une vente et le retrait de l'autre annonce, il s'écoule toujours un moment, et Depop rappelle que le vendeur reste responsable d'une double vente, remboursement compris. FillSell raccourcit ce moment : la vente eBay s'enregistre toute seule et le retrait de l'annonce Depop part dès que ton ordinateur est allumé avec Chrome ouvert, ou depuis les serveurs de FillSell avec FillSell Cloud. Si ça arrive quand même, rembourse l'acheteur que tu ne peux pas servir, comme Depop le demande.

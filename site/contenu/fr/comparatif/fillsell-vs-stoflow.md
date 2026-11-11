@@ -26,7 +26,7 @@ choisir_fillsell:
   - "Tu as déjà des annonces en ligne un peu partout et tu veux une fiche par article, sans relier chaque annonce à la main."
   - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis (selon ta formule)."
 choisir_concurrent:
-  - "Tu veux des comptes sur serveurs, ordinateur éteint, inclus dans ton abonnement et Vestiaire Collective compris : c'est le plan Pro de StoFlow ; chez FillSell, c'est l'option FillSell Cloud."
+  - "Tu veux des comptes sur serveurs, ordinateur éteint, inclus dans ton abonnement et Vestiaire Collective compris : c'est le plan Pro de StoFlow ; chez FillSell, c'est FillSell Cloud."
   - "Tu vends aussi sur Vestiaire Collective, Etsy ou eBay hors de France : StoFlow les ouvre sur ses plans Pro et Business."
   - "Tu travailles sous Firefox ou tu préfères payer à l'année : StoFlow a une extension Firefox et des prix annuels (deux mois offerts)."
   - "Tu veux une messagerie unifiée avec réponses par l'IA, la négociation automatique ou un export comptable FEC : StoFlow les propose en Pro et Business."
@@ -51,10 +51,10 @@ FillSell est notre produit : garde-le en tête en lisant. Tout ce qui est dit ic
 
 Les deux outils répondent au même besoin : écrire une annonce une fois, la mettre en vente sur plusieurs plateformes, puis ne jamais vendre deux fois le même article. Ils ne prennent pas le même chemin.
 
-- **FillSell part de ton téléphone.** Une app iPhone et Android publiée, un stock rangé une fiche par article, et {{plateformes}} depuis la même fiche. L'extension Chrome exécute sur ton ordinateur, dans tes propres sessions ; avec l'option FillSell Cloud, plus besoin d'ordinateur.
+- **FillSell part de ton téléphone.** Une app iPhone et Android publiée, un stock rangé une fiche par article, et {{plateformes}} depuis la même fiche. L'extension Chrome exécute sur ton ordinateur, dans tes propres sessions ; avec FillSell Cloud, plus besoin d'ordinateur.
 - **StoFlow part d'un tableau de bord web.** Il s'ouvre aussi dans le navigateur du téléphone, couvre Vestiaire Collective, Etsy et eBay dans neuf pays européens, et fait tourner tes comptes sur ses serveurs, ordinateur éteint, à partir de son plan Pro.
 
-Ton atelier, c'est ton téléphone, et tu veux Beebs ou Depop à côté de Vinted, Leboncoin et eBay ? Prends FillSell, avec l'option FillSell Cloud si ton ordinateur doit pouvoir s'éteindre. Tu vends sur Vestiaire ou Etsy ? Regarde StoFlow.
+Ton atelier, c'est ton téléphone, et tu veux Beebs ou Depop à côté de Vinted, Leboncoin et eBay ? Prends FillSell, avec FillSell Cloud si ton ordinateur doit pouvoir s'éteindre. Tu vends sur Vestiaire ou Etsy ? Regarde StoFlow.
 
 ## Une vraie app sur ton téléphone : FillSell l'a, StoFlow la construit
 
@@ -109,13 +109,13 @@ Chez FillSell, tout part d'une vente **enregistrée**. Quand Vinted ou eBay marq
 
 Chez StoFlow : « Vendu sur l'une, retiré des autres. Un produit vendu est retiré de toutes les autres marketplaces, automatiquement ou après votre feu vert » ([accueil de StoFlow](https://stoflow.com/)). StoFlow annonce une détection des ventes au fil de quatre synchronisations par jour, plus rapide sur eBay, et ne promet aucun délai ([article de StoFlow sur la double vente](https://stoflow.com/blog/synchroniser-son-stock-eviter-double-vente), mis à jour le 6 octobre 2026). Sur ses plans Free et Starter, le navigateur doit rester ouvert.
 
-FillSell ne promet pas de délai non plus. Sa règle : jamais une annonce retirée sur un simple doute. Pour Vinted, Leboncoin, Beebs et Depop, ton ordinateur doit être allumé avec Chrome ouvert, sauf avec l'option FillSell Cloud ; un compte eBay relié est suivi depuis nos serveurs.
+FillSell ne promet pas de délai non plus. Sa règle : jamais une annonce retirée sur un simple doute. Pour Vinted, Leboncoin, Beebs et Depop, ton ordinateur doit être allumé avec Chrome ouvert, sauf avec FillSell Cloud ; un compte eBay relié est suivi depuis nos serveurs.
 
 ## Republication : quelles plateformes remontent toutes seules ?
 
 Une annonce qui vieillit descend dans les résultats. La parade, c'est de la republier : la retirer puis la remettre en ligne, pour qu'elle reparte comme neuve. Ses vues et ses favoris repartent de zéro, c'est le principe.
 
-Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours et le créneau, FillSell les republie pendant que tu fais autre chose, ordinateur allumé, ou éteint avec l'option FillSell Cloud. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. À la main, une annonce remonte en un appui, sur Depop aussi. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
+Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours et le créneau, FillSell les republie pendant que tu fais autre chose, ordinateur allumé, ou éteint avec FillSell Cloud. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. À la main, une annonce remonte en un appui, sur Depop aussi. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -131,7 +131,7 @@ StoFlow a de vrais atouts ici : son « Studio IA » retire le fond des photos, r
 
 Soyons clairs : sur ce point, StoFlow l'inclut dans son plan Pro. « Avec le plan Pro, vos comptes tournent sur nos serveurs en France, ordinateur éteint » : Vinted, Leboncoin et Vestiaire Collective, eBay passant par l'API officielle d'eBay ([accueil de StoFlow](https://stoflow.com/), déclaration de l'éditeur, non testée par nous). Sur ses plans Free et Starter, le navigateur doit rester ouvert.
 
-Chez FillSell, c'est l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans l'option, ces quatre plateformes passent par ton ordinateur allumé, avec Chrome ouvert. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome, et tant qu'il en reste à publier, l'extension empêche l'ordinateur de se mettre en veille. Ton compte eBay relié, lui, publie par l'API officielle d'eBay, même ordinateur éteint.
+Chez FillSell, c'est FillSell Cloud, sur iPhone et sur le web (formules avec Cloud, 7 jours d’essai) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans FillSell Cloud, ces quatre plateformes passent par ton ordinateur allumé, avec Chrome ouvert. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome, et tant qu'il en reste à publier, l'extension empêche l'ordinateur de se mettre en veille. Ton compte eBay relié, lui, publie par l'API officielle d'eBay, même ordinateur éteint.
 
 La contrepartie joue pour toi : tes comptes restent dans ton navigateur, sur ta machine. L'extension agit dans les sessions que tu as ouvertes toi-même, et FillSell ne voit jamais tes mots de passe. Ce que ça change pour tes comptes : [la sécurité de tes comptes](page:securite-des-comptes).
 
@@ -203,7 +203,7 @@ Au mois, FillSell Premium coûte 12,99 € contre 14,99 € pour StoFlow Starter
 
 ### FillSell fonctionne-t-il ordinateur éteint, comme StoFlow en Pro ?
 
-Oui, avec l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans l'option, l'extension travaille sur ton ordinateur allumé, avec Chrome ouvert ; ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié, lui, publie par l'API officielle d'eBay, même ordinateur éteint, avec ou sans l'option. StoFlow annonce, à partir de son plan Pro, des comptes Vinted, Leboncoin et Vestiaire Collective qui tournent sur ses serveurs, ordinateur éteint.
+Oui, avec FillSell Cloud, sur iPhone et sur le web (formules avec Cloud, 7 jours d’essai) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans FillSell Cloud, l'extension travaille sur ton ordinateur allumé, avec Chrome ouvert ; ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié, lui, publie par l'API officielle d'eBay, même ordinateur éteint, avec ou sans FillSell Cloud. StoFlow annonce, à partir de son plan Pro, des comptes Vinted, Leboncoin et Vestiaire Collective qui tournent sur ses serveurs, ordinateur éteint.
 
 ### Faut-il donner ses mots de passe Vinted ou Leboncoin à FillSell ?
 

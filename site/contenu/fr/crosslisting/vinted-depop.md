@@ -13,7 +13,7 @@ points_cles:
   - "Une annonce Depop n'a pas de titre : FillSell tire ta version Depop de ta version Vinted, avec 1 000 caractères et cinq hashtags au plus, la taille dans la grille EU de Depop."
   - "Vendu sur Vinted : la vente s'enregistre toute seule et l'extension retire l'annonce Depop du même article, puis vérifie chez Depop qu'elle n'est plus en ligne."
   - "En France, Depop prélève 10 % du prix et du port, plus les frais PayPal ; Vinted ne prend aucun frais de vente au vendeur particulier (pages officielles lues le 9 octobre 2026)."
-  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur."
+  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé ou, avec FillSell Cloud, sans ordinateur."
 hero_media: "captures/lens-analyse-photo.png"
 hero_alt: "Résultat d'un scan Lens dans l'app FillSell : l'article reconnu (« T-shirt Picture gris imprimé ours « Climate Change » », marque Picture), la description rédigée, ce qui a été lu sur l'objet (motif, coupe, taille S sur l'étiquette du col, composition, saison), puis le prix de vente conseillé de 14 €, une marge jugée excellente (+10 €) et la base du prix : 5 annonces comparables, de 12 € à 16 €."
 cta: inscription
@@ -99,7 +99,7 @@ C'est le cœur du crosslisting : un article, deux annonces, une seule vente. Fil
 
 ![La file de l'ordinateur dans FillSell, juste après une vente sur Vinted : en cours, le retrait de l'annonce Depop du sweat Red Bull Racing vendu (38 €), avec sa barre d'avancement ; à venir, le retrait de sa copie Leboncoin, puis la publication du sweat Öhlins sur Depop et sur Leboncoin, chacune « en attente de son tour ».](media:captures/vente-retrait-copies.png)
 
-Ici, après une vente sur Vinted, l'ordinateur retire la copie Leboncoin. Avec Depop, c'est le même chemin. Garde ton ordinateur allumé, Chrome ouvert : c'est lui qui retire. Éteint, rien ne se perd, le retrait patiente jusqu'à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, il part des serveurs de FillSell, ordinateur éteint.
+Ici, après une vente sur Vinted, l'ordinateur retire la copie Leboncoin. Avec Depop, c'est le même chemin. Garde ton ordinateur allumé, Chrome ouvert : c'est lui qui retire. Éteint, rien ne se perd, le retrait patiente jusqu'à la prochaine ouverture de Chrome. Avec FillSell Cloud, il part des serveurs de FillSell, ordinateur éteint.
 
 ![La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».](media:captures/vente-deja-vendu-question.png)
 
@@ -125,13 +125,13 @@ Une annonce qui vieillit perd des regards. Republier, c'est la retirer puis la r
 
 Envie de remonter une pièce précise tout de suite ? Sur Vinted comme sur Depop, un appui suffit : l'extension retire l'annonce, la recrée, et la nouvelle annonce reste rattachée à la même fiche.
 
-Mieux encore, selon ta formule : tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur. FillSell espace les republications à un rythme humain, et tu coupes tout d'un geste. Réglages, rythme et bonnes pratiques : [la republication](page:fonctions/republication).
+Mieux encore, selon ta formule : tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé ou, avec FillSell Cloud, sans ordinateur. FillSell espace les republications à un rythme humain, et tu coupes tout d'un geste. Réglages, rythme et bonnes pratiques : [la republication](page:fonctions/republication).
 
 ## Ton téléphone pilote, ton ordinateur exécute
 
 Sur Vinted comme sur Depop, FillSell agit par son extension Chrome, dans ta propre session. Tu restes connecté(e) à tes comptes comme d'habitude, et FillSell ne te demande jamais tes mots de passe Vinted ou Depop ; pour Depop, tu autorises l'accès d'un clic dans l'extension. Depuis l'app iPhone ou Android, tu photographies, tu coches, tu décides ; ton ordinateur dépose, relit et retire, une annonce après l'autre.
 
-Ordinateur éteint ? Tout patiente et repart à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted et Depop partent depuis les serveurs de FillSell, 24 h/24. Aujourd'hui, FillSell travaille avec Vinted France et un compte vendeur Depop en euros. Et ton stock ne s'arrête pas à ce duo : le même article peut partir sur {{plateformes}}. Tu compares les outils ? [Notre classement des applications de crosslisting](page:comparatif/meilleures-applications-crosslisting) dit, sources et dates à l'appui, lesquels gèrent Depop depuis la France.
+Ordinateur éteint ? Tout patiente et repart à la prochaine ouverture de Chrome. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted et Depop partent depuis les serveurs de FillSell, 24 h/24. Aujourd'hui, FillSell travaille avec Vinted France et un compte vendeur Depop en euros. Et ton stock ne s'arrête pas à ce duo : le même article peut partir sur {{plateformes}}. Tu compares les outils ? [Notre classement des applications de crosslisting](page:comparatif/meilleures-applications-crosslisting) dit, sources et dates à l'appui, lesquels gèrent Depop depuis la France.
 
 ## Nos conseils pour réussir le duo Vinted–Depop
 
@@ -164,7 +164,7 @@ Dès que la vente est enregistrée dans FillSell (tu peux la noter toi-même ave
 
 ### Faut-il laisser l'ordinateur allumé ?
 
-Oui, sans l'option FillSell Cloud, pour Vinted comme pour Depop : l'extension Chrome dépose, relit et retire tes annonces depuis ton ordinateur, Chrome ouvert. S'il est éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur : elle publie, republie et retire tes annonces Vinted et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Tu pilotes le tout depuis ton téléphone.
+Oui, sans FillSell Cloud, pour Vinted comme pour Depop : l'extension Chrome dépose, relit et retire tes annonces depuis ton ordinateur, Chrome ouvert. S'il est éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Vinted et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Tu pilotes le tout depuis ton téléphone.
 
 ### FillSell a-t-il besoin de mon mot de passe Depop ?
 

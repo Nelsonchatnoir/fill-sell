@@ -64,7 +64,7 @@ Sur Leboncoin, FillSell passe par son extension Chrome, installée une seule foi
 - **Un rythme humain.** Tes annonces partent une après l'autre, jamais en rafale, et une seule à la fois par compte Leboncoin.
 - **Discrète.** Elle travaille dans une fenêtre réduite, sans prendre la main sur ce que tu fais.
 - **Jamais d'option payante.** FillSell ne souscrit jamais d'option payante à ta place.
-- **Ordinateur allumé, Chrome ouvert.** Tant qu'il reste des annonces à traiter, l'extension empêche l'ordinateur de se mettre en veille. Tu l'éteins quand même ? Rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Leboncoin partent depuis les serveurs de FillSell, 24 h/24.
+- **Ordinateur allumé, Chrome ouvert.** Tant qu'il reste des annonces à traiter, l'extension empêche l'ordinateur de se mettre en veille. Tu l'éteins quand même ? Rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Leboncoin partent depuis les serveurs de FillSell, 24 h/24.
 
 Leboncoin vérifie les nouvelles annonces avant de les afficher : la tienne peut mettre un moment à apparaître. Si elle n'apparaît jamais, FillSell compte ce dépôt comme un échec, jamais comme une vente. Tu sais toujours où tu en es.
 
@@ -91,7 +91,7 @@ Leboncoin vend la visibilité. L'option « Remonter en tête de liste » existe 
 FillSell joue une autre carte : **la republication. Republier, c'est retirer l'annonce, puis la redéposer.** Elle revient comme une annonce neuve, en haut des résultats. Le revers est clair et on te le dit : ses vues et ses favoris repartent de zéro, et ce retrait ne se rattrape pas. L'ancienne annonce part avant que la nouvelle arrive : pas deux annonces identiques en ligne en même temps, ce que les règles de Leboncoin interdisent.
 
 - **En un appui.** Une annonce s'essouffle ? Tu la remontes depuis ton téléphone, ton ordinateur fait le reste.
-- **Toutes seules, selon ta formule.** La republication automatique remonte tes annonces sur {{republication}}, les jours et au créneau que tu choisis (matin, midi, soir ou sur mesure), pendant que tu fais autre chose, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur. FillSell les espace à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux.
+- **Toutes seules, selon ta formule.** La republication automatique remonte tes annonces sur {{republication}}, les jours et au créneau que tu choisis (matin, midi, soir ou sur mesure), pendant que tu fais autre chose, ordinateur allumé ou, avec FillSell Cloud, sans ordinateur. FillSell les espace à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux.
 
 Comment ça marche dans le détail, plateforme par plateforme : [la republication de tes annonces](page:fonctions/republication).
 
@@ -101,7 +101,7 @@ Comment ça marche dans le détail, plateforme par plateforme : [la republicatio
 
 Dès ta confirmation, FillSell retire les autres annonces de l'article. Celles qui lui sont liées par une preuve (il les a déposées, elles portent le même identifiant ou la même photo, ou tu les as liées toi-même) sont retirées sans que tu y touches. Pour une annonce dont il n'est pas sûr, il te demande d'abord « Déjà vendu ? » : « Oui, la retirer » ou « Non », et la question n'est jamais reposée.
 
-**L'article part ailleurs.** Quand Vinted ou eBay marque ton article vendu, FillSell enregistre la vente tout seul et retire ton annonce Leboncoin du même article si elle lui est liée par une preuve ; sinon, il te demande « Déjà vendu ? ». Sur Beebs, comme sur Leboncoin, tu confirmes la vente d'un appui. Le retrait sur Leboncoin passe par l'extension : ordinateur allumé, Chrome ouvert ; avec l'option FillSell Cloud, il part des serveurs de FillSell, ordinateur éteint.
+**L'article part ailleurs.** Quand Vinted ou eBay marque ton article vendu, FillSell enregistre la vente tout seul et retire ton annonce Leboncoin du même article si elle lui est liée par une preuve ; sinon, il te demande « Déjà vendu ? ». Sur Beebs, comme sur Leboncoin, tu confirmes la vente d'un appui. Le retrait sur Leboncoin passe par l'extension : ordinateur allumé, Chrome ouvert ; avec FillSell Cloud, il part des serveurs de FillSell, ordinateur éteint.
 
 ![La file de l'ordinateur dans FillSell, juste après une vente sur Vinted : en cours, le retrait de l'annonce Depop du sweat Red Bull Racing vendu (38 €), avec sa barre d'avancement ; à venir, le retrait de sa copie Leboncoin, puis la publication du sweat Öhlins sur Depop et sur Leboncoin, chacune « en attente de son tour ».](media:captures/vente-retrait-copies.png)
 
@@ -171,7 +171,7 @@ Non. Tu restes connecté(e) à Leboncoin dans Chrome, comme d'habitude, et l'ext
 
 ### Comment remonter une annonce Leboncoin sans acheter d'option ?
 
-En la republiant : FillSell retire l'annonce puis la redépose, et elle revient en haut des résultats comme une annonce neuve ; ses vues et ses favoris repartent de zéro. Tu le fais en un appui ou, selon ta formule, tu laisses la republication automatique s'en charger sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur. Côté Leboncoin, le dépôt n'est payant pour un particulier que dans certaines sous-catégories Véhicules et Immobilier.
+En la republiant : FillSell retire l'annonce puis la redépose, et elle revient en haut des résultats comme une annonce neuve ; ses vues et ses favoris repartent de zéro. Tu le fais en un appui ou, selon ta formule, tu laisses la republication automatique s'en charger sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé ou, avec FillSell Cloud, sans ordinateur. Côté Leboncoin, le dépôt n'est payant pour un particulier que dans certaines sous-catégories Véhicules et Immobilier.
 
 ### Que se passe-t-il quand mon article se vend sur Leboncoin ?
 
@@ -179,7 +179,7 @@ FillSell te demande « Vendue sur Leboncoin ? ». Un appui confirme la vente, et
 
 ### Mon ordinateur doit-il rester allumé pour Leboncoin ?
 
-Oui, sans l'option FillSell Cloud : sur Leboncoin, la publication, la republication, le retrait et le repérage des ventes passent par l'extension, avec l'ordinateur allumé et Chrome ouvert. Tant qu'il reste du travail, elle empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur : elle publie, republie et retire tes annonces Leboncoin depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Oui, sans FillSell Cloud : sur Leboncoin, la publication, la republication, le retrait et le repérage des ventes passent par l'extension, avec l'ordinateur allumé et Chrome ouvert. Tant qu'il reste du travail, elle empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Leboncoin depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Pourquoi mon annonce Leboncoin n'apparaît-elle pas tout de suite ?
 

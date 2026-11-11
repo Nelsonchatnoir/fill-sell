@@ -5,12 +5,12 @@ lang: en
 nom: Pricing
 surtitre: "No commitment, free to start"
 title: "FillSell pricing: free crosslisting app, plans from €12.99"
-description: "FillSell is free to start, no credit card. Premium €12.99, Pro €29.99, Business €59.99 a month, no commitment. FillSell Cloud option in France: €24.99."
+description: "FillSell is free to start, no credit card. Premium €12.99, Pro €29.99, Business €59.99 a month, no commitment, with or without Cloud."
 h1: "FillSell pricing: free to start, no commitment after that"
 chapo: "FillSell is free to start, with no credit card: publishing on {{plateformes}}, syncing your stock and taking down an item's other listings after a sale are all on the Free plan. Premium costs €12.99, Pro €29.99 and Business €59.99 a month, no commitment. You pay for more AI-written listings, AI photo touch-ups and support. Never per marketplace."
 points_cles:
   - "The Free plan costs €0: you open it without a credit card, and it has no end date."
-  - "Premium is €12.99, Pro €29.99 and Business €59.99 a month, no commitment. There is no annual price and no trial of the paid plans."
+  - "Premium is €12.99, Pro €29.99 and Business €59.99 a month, no commitment and no annual price; only plans with Cloud come with a 7-day trial."
   - "Every plan, Free included, covers publishing on {{plateformes}}, syncing your listings with no limit, and removing an item's other listings as soon as its sale is recorded."
   - "Each plan counts three things a month: listings written by AI, publications (one listing put online on one marketplace) and bumps."
   - "You subscribe at fillsell.app (payment handled by Stripe) or through the App Store and Google Play, in euros, and you stop whenever you like."
@@ -169,11 +169,11 @@ Yes, to start. The Free plan costs €0, opens without a credit card and has no 
 
 ### Is there a free trial or an annual price?
 
-Not for the plans. The paid plans have neither a trial nor an annual price: they're paid monthly, with no commitment. To try FillSell, the Free plan is all you need: test it on your real items, for as long as you like, without a credit card. Only the FillSell Cloud option starts with a 7-day free trial, on your first subscription.
+Not for the plans. The paid plans have neither a trial nor an annual price: they're paid monthly, with no commitment. To try FillSell, the Free plan is all you need: test it on your real items, for as long as you like, without a credit card. Only plans with Cloud start with a 7-day trial.
 
-### How much is the FillSell Cloud option?
+### How much is FillSell Cloud?
 
-€24.99 a month. FillSell Cloud is an add-on: it works with any plan, Free included, and doesn't change what your plan counts. Your first subscription starts with a 7-day free trial; we remind you the day before it ends, and you stop the option in one tap. What you pay for: no computer needed. FillSell Cloud posts, reposts and removes your Vinted, Leboncoin, Beebs and Depop listings from FillSell's servers, around the clock, and keeps track of your sales. Available in France, on iPhone and on the web, while places last.
+FillSell Cloud comes with your plan: Premium, Pro or Business, with Cloud. The price of each plan with Cloud is shown with the plans, on this page. No commitment, with a 7-day trial on the plan with Cloud; we remind you the day before it ends, and you stop the Cloud in one tap. What you pay extra for: no computer needed. FillSell Cloud posts, reposts and removes your Vinted, Leboncoin, Beebs and Depop listings from FillSell's servers, around the clock, and keeps track of your sales. Available in France, on iPhone and on the web, while places last.
 
 ### Do I pay per marketplace or per listing posted?
 

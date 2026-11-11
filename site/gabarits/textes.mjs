@@ -78,7 +78,7 @@ export const TEXTES = {
     videoLire: 'Lire la vidéo',
     videoTranscription: 'Lire la transcription',
     // (09/11, maquette « Landing — section Cloud + tarifs à 3 jauges » validée par Nico) Titre, chapô, carrés et
-    // option FillSell Cloud des tarifs ; section FillSell Cloud de l'accueil. Les faits du Cloud : FORMAT-CONTENU § 0
+    // interrupteur « Avec Cloud » des tarifs ; section FillSell Cloud de l'accueil. Les faits du Cloud : FORMAT-CONTENU § 0
     // (prix et jours d'essai lus dans l'app : src/utils/palier.js). ⛔ Jamais Android à côté de FillSell Cloud.
     tarifsTitre: 'Les formules : trois compteurs, rien de caché',
     tarifsChapo: 'Chaque formule compte des annonces, des publications et des remontées par mois. Touche un carré pour voir exactement ce qu’il compte.',
@@ -87,9 +87,19 @@ export const TEXTES = {
     misEnAvant: 'Notre conseil',
     communsTitre: 'Dans tous les forfaits',
     tarifsLien: 'Comparer les forfaits',
-    optionCloud: {
-      titre: (prix, jours) => `Option FillSell Cloud : ${prix} par mois, essai gratuit de ${jours} jours`,
-      texte: 'Avec n’importe quelle formule, même Gratuit. En France, sur iPhone et sur le web.',
+    // (11/11 au soir, Nico) Plus de Cloud seul : l'interrupteur « Sans Cloud / Avec Cloud » des formules, même logique
+    // que la fenêtre d'offres de l'app ; prix avec Cloud LUS dans l'app (PRIX_AVEC_CLOUD, src/utils/palier.js). Sans ces
+    // prix (export pas encore livré) : la ligne de repli, sans aucun prix. ⛔ Jamais « option » seul pour le Cloud.
+    cloudFormules: {
+      sans: 'Sans Cloud',
+      avec: 'Avec Cloud',
+      aria: 'Formules sans ou avec FillSell Cloud',
+      note: (jours) => `Avec Cloud, plus besoin d’ordinateur : ${jours} jours d’essai sur la formule avec Cloud. En France, sur iPhone et sur le web.`,
+      periodeAvec: '/ mois, Cloud compris',
+      ctaAvec: (jours) => `Essayer ${jours} jours`,
+      gratuit: 'Le Cloud se prend avec Premium, Pro ou Business.',
+      repliTitre: 'Sans ordinateur ? FillSell Cloud se prend avec Premium, Pro ou Business.',
+      repliTexte: (jours) => `${jours} jours d’essai sur la formule avec Cloud. En France, sur iPhone et sur le web.`,
       lien: 'Voir FillSell Cloud',
     },
     cloud: {
@@ -105,9 +115,11 @@ export const TEXTES = {
         { titre: 'Republie', texte: 'Selon ta formule, tes annonces remontent aux créneaux que tu as choisis, sans ton ordinateur.' },
         { titre: 'Retire', texte: 'Vendu sur une plateforme ? Dès la vente enregistrée, les autres annonces de l’article sont retirées.' },
       ],
-      parMois: 'par mois, en plus de n’importe quelle formule, même Gratuit',
-      essai: (jours) => `Essai gratuit de ${jours} jours`,
-      essaiDetail: (prix, jours) => `Pour un premier abonnement, carte demandée au début de l’essai. Arrête-le avant la fin des ${jours} jours : tu ne paies rien. Ensuite ${prix} par mois, sans engagement.`,
+      formulesTitre: 'Le Cloud se prend avec ta formule',
+      formulesPeriode: 'par mois, Cloud compris',
+      formulesSansPrix: 'Avec Premium, Pro ou Business.',
+      essai: (jours) => `${jours} jours d’essai sur la formule avec Cloud`,
+      essaiDetail: (jours) => `Pour un premier abonnement, carte demandée au début de l’essai. Arrête-le avant la fin des ${jours} jours : tu ne paies rien. Sans engagement.`,
       cta: 'Essayer FillSell Cloud',
       ou: ['iPhone', 'Web'],
       places: 'Places limitées',
@@ -269,9 +281,16 @@ export const TEXTES = {
     misEnAvant: 'Our pick',
     communsTitre: 'In every plan',
     tarifsLien: 'Compare plans',
-    optionCloud: {
-      titre: (prix, jours) => `FillSell Cloud option: ${prix} a month, ${jours}-day free trial`,
-      texte: 'With any plan, even Free. In France, on iPhone and the web.',
+    cloudFormules: {
+      sans: 'Without Cloud',
+      avec: 'With Cloud',
+      aria: 'Plans without or with FillSell Cloud',
+      note: (jours) => `With Cloud, no computer needed: ${jours}-day trial on the plan with Cloud. In France, on iPhone and the web.`,
+      periodeAvec: '/ month, Cloud included',
+      ctaAvec: (jours) => `Try it for ${jours} days`,
+      gratuit: 'The Cloud comes with Premium, Pro or Business.',
+      repliTitre: 'No computer? FillSell Cloud comes with Premium, Pro or Business.',
+      repliTexte: (jours) => `${jours}-day trial on the plan with Cloud. In France, on iPhone and the web.`,
       lien: 'See FillSell Cloud',
     },
     cloud: {
@@ -286,9 +305,11 @@ export const TEXTES = {
         { titre: 'Bumps', texte: 'Depending on your plan, your listings go back to the top at the times you set, without your computer.' },
         { titre: 'Removes', texte: 'Sold on one platform? Once the sale is recorded, the item’s other listings come down.' },
       ],
-      parMois: 'a month, on top of any plan, Free included',
-      essai: (jours) => `${jours}-day free trial`,
-      essaiDetail: (prix, jours) => `For a first subscription, card asked at the start of the trial. Stop it before the ${jours} days are over and you pay nothing. Then ${prix} a month, cancel anytime.`,
+      formulesTitre: 'The Cloud comes with your plan',
+      formulesPeriode: 'a month, Cloud included',
+      formulesSansPrix: 'With Premium, Pro or Business.',
+      essai: (jours) => `${jours}-day trial on the plan with Cloud`,
+      essaiDetail: (jours) => `For a first subscription, card asked at the start of the trial. Stop it before the ${jours} days are over and you pay nothing. Cancel anytime.`,
       cta: 'Try FillSell Cloud',
       ou: ['iPhone', 'Web'],
       places: 'Limited places',

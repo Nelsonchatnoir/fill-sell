@@ -547,6 +547,16 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .option-lien { display: inline-block; padding: 12px 0; font-weight: 600; color: var(--mp); }
 .option-lien:hover { color: var(--bl); }
 .option-cloud :focus-visible { outline-color: var(--me); }
+/* (11/11 au soir) Interrupteur « Sans Cloud / Avec Cloud » : radios DANS les étiquettes et :has(), sans JS. */
+.bascule { display: inline-flex; gap: 4px; margin-top: 26px; padding: 4px; border-radius: 999px; background: var(--bl); border: 1px solid var(--tr); }
+.bascule label { position: relative; padding: 9px 18px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--gr); cursor: pointer; }
+.bascule-entree { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.bascule label:has(:checked) { background: var(--nu); color: var(--ss); }
+.bascule label:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.prix-avec, .bascule-note { display: none; }
+.bloc-tarifs:has(.bascule-avec:checked) .prix-sans { display: none; }
+.bloc-tarifs:has(.bascule-avec:checked) .prix-avec { display: inline; }
+.bloc-tarifs:has(.bascule-avec:checked) .bascule-note { display: block; margin: 12px 0 0; font-size: 14px; color: var(--gr); }
 /* L'explication d'une jauge : <dialog> modale (site.js), popover natif sans JS. */
 .explication { width: min(440px, calc(100% - 32px)); max-height: calc(100% - 32px); margin: auto; padding: 0; border: 0; border-radius: 22px; background: var(--pa); color: var(--en); box-shadow: 0 30px 60px -24px rgba(16,32,27,.6); overflow: auto; }
 .explication::backdrop { background: rgba(16,32,27,.5); }
@@ -608,8 +618,13 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .cloud-bas { display: flex; flex-wrap: wrap; align-items: stretch; gap: 16px; margin-top: 30px; }
 .cloud-prix { flex: 1 1 320px; display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 22px; background: var(--pa); color: var(--en); }
 .bloc-cloud .cloud-prix p { margin: 0; color: var(--gr); }
-.cloud-montant { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
-.bloc-cloud .cloud-chiffre { font-size: 36px; font-weight: 700; line-height: 1.1; color: var(--en); }
+/* (11/11 au soir) Les formules avec Cloud, prix lus dans l'app. */
+.bloc-cloud .cloud-prix .cloud-formules-titre { font-weight: 700; color: var(--en); }
+.cloud-formules { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cloud-formules li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 8px 12px; border-radius: 12px; background: var(--bl); font-weight: 600; }
+.cloud-formules .avant { outline: 1.5px solid var(--sf); }
+.cloud-formules em { font-style: normal; font-size: 11px; font-weight: 700; color: var(--sf); }
+.cloud-formules strong { font-size: 20px; }
 .bloc-cloud .cloud-prix .cloud-essai { font-weight: 600; color: var(--sf); }
 .bloc-cloud .cloud-prix .cloud-detail { font-size: 14px; line-height: 1.5; color: var(--gt); }
 .cloud-prix .bouton { align-self: flex-start; margin-top: 4px; padding: 0 22px; border-radius: 999px; }

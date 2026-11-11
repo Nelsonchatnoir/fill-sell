@@ -92,19 +92,20 @@ export function offres(tarifs, lang) {
     priceCurrency: tarifs.devise,
     url: ORIGINE + tarifs.inscription,
   }));
-  // (11/11, lot marketing, étape SEO) L'option FillSell Cloud, au prix de sa carte (site.cloud, lu dans
-  // src/utils/palier.js) : « par mois, en plus de n'importe quelle formule », en France seulement.
-  const c = tarifs.cloud;
-  if (!(c?.prix > 0)) return paliers;
-  return [...paliers, {
+  // (11/11 au soir, Nico) Plus de Cloud seul : les formules AVEC Cloud, au prix de leurs cartes (lus dans l'app,
+  // PRIX_AVEC_CLOUD) et en France seulement. Prix absents → seulement les formules sans Cloud.
+  const ac = tarifs.cloud?.avecCloud;
+  if (!ac) return paliers;
+  const avec = lang === 'en' ? 'with Cloud' : 'avec Cloud';
+  return [...paliers, ...tarifs.paliers.filter((p) => ac[p.id] > 0).map((p) => ({
     '@type': 'Offer',
-    name: 'FillSell Cloud',
-    description: `${prix(c.prix, lang, tarifs.devise)} ${TEXTES[lang].cloud.parMois}`,
-    price: c.prix.toFixed(2),
+    name: `FillSell ${p.nom[lang]} ${avec}`,
+    description: `${prix(ac[p.id], lang, tarifs.devise)} ${TEXTES[lang].cloudFormules.periodeAvec}`,
+    price: ac[p.id].toFixed(2),
     priceCurrency: tarifs.devise,
     eligibleRegion: { '@type': 'Country', name: 'FR' },
     url: ORIGINE + tarifs.inscription,
-  }];
+  }))];
 }
 
 function application(page) {

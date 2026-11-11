@@ -13,7 +13,7 @@ points_cles:
   - "Leboncoin revendique 30 millions de visiteurs par mois (mars 2026) et propose la remise en main propre par défaut ; Beebs, dans le groupe Kiabi depuis mai 2024, a un catalogue pensé pour l'enfant de 0 à 16 ans."
   - "Avec FillSell, une seule fiche donne une annonce adaptée à Leboncoin et une à Beebs, déposées par l'extension Chrome depuis ton ordinateur, dans tes sessions, sans jamais te demander tes mots de passe."
   - "Sur Leboncoin comme sur Beebs, une vente se confirme d'un appui dans l'app ; FillSell retire alors l'annonce de l'autre site, et demande « Déjà vendu ? » au moindre doute."
-  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur."
+  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé ou, avec FillSell Cloud, sans ordinateur."
 hero_media: "captures/publication-verification-annonces.png"
 hero_alt: "Étape 2 sur 3 de la publication, « Ce qui va partir » : une carte par plateforme, chacune avec son rayon, son état, son prix de 14 € et la mention « Prêt » — Vinted (Hommes › … › T-shirts), Leboncoin (Mode › Vêtements), Beebs (Mode › … › T-shirts), eBay (Vêtements, accessoires › … › T-shirts) et Depop (Homme › … › T-shirts, sans titre : chez Depop, la description fait l'annonce)."
 cta: inscription
@@ -119,7 +119,7 @@ Vendu en main propre, payé en espèces ? Tu marques l'article vendu dans l'app 
 
 Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart en haut des résultats, mais ses vues et ses favoris repartent de zéro. Sur Leboncoin comme sur Beebs, tu remontes une annonce en un appui.
 
-Et, selon ta formule, tu peux ne plus y penser : tes annonces remontent toutes seules. FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur. Il espace les republications à un rythme humain pour protéger ton compte, ne republie jamais la même annonce deux fois en 24 h, et tu coupes tout d'un geste quand tu veux ([la republication en détail](page:fonctions/republication)).
+Et, selon ta formule, tu peux ne plus y penser : tes annonces remontent toutes seules. FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé ou, avec FillSell Cloud, sans ordinateur. Il espace les republications à un rythme humain pour protéger ton compte, ne republie jamais la même annonce deux fois en 24 h, et tu coupes tout d'un geste quand tu veux ([la republication en détail](page:fonctions/republication)).
 
 Ce n'est ni l'option payante « Remonter en tête de liste » de Leboncoin, ni un Boost Beebs : la republication retire ton annonce et la redépose. FillSell ne souscrit jamais d'option payante à ta place.
 
@@ -127,7 +127,7 @@ Ce n'est ni l'option payante « Remonter en tête de liste » de Leboncoin, ni u
 
 Tu gères tout depuis l'app, sur iPhone, Android ou fillsell.app. Le travail sur les sites, c'est l'extension Chrome, installée une fois sur ton ordinateur : elle remplit les formulaires, relit tes annonces, repère tes ventes, retire et republie tes annonces, une à une, à un rythme humain, dans une fenêtre réduite qui ne prend pas la main sur ce que tu fais.
 
-Elle travaille dans tes sessions Leboncoin et Beebs déjà ouvertes : FillSell ne te demande jamais tes mots de passe. Il faut un ordinateur allumé avec Chrome ouvert ; tant qu'il reste des annonces à publier, l'extension l'empêche de se mettre en veille. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Leboncoin et Beebs partent depuis les serveurs de FillSell, 24 h/24. Pour tout ce qui touche à tes comptes, lis [notre page sur la sécurité des comptes](page:securite-des-comptes) ; pour le parcours complet, [comment marche FillSell](page:comment-ca-marche).
+Elle travaille dans tes sessions Leboncoin et Beebs déjà ouvertes : FillSell ne te demande jamais tes mots de passe. Il faut un ordinateur allumé avec Chrome ouvert ; tant qu'il reste des annonces à publier, l'extension l'empêche de se mettre en veille. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Leboncoin et Beebs partent depuis les serveurs de FillSell, 24 h/24. Pour tout ce qui touche à tes comptes, lis [notre page sur la sécurité des comptes](page:securite-des-comptes) ; pour le parcours complet, [comment marche FillSell](page:comment-ca-marche).
 
 ![Le panneau de l'extension Chrome FillSell (version 0.6.105) en entier, pendant un dépôt : « Active », dernier passage il y a 1 min, ordinateur gardé éveillé pendant la publication, les cinq plateformes connectées dont Depop, « En cours : Depop · publication » de la casquette Volcom avec sa barre, puis le sweat Öhlins prêt à publier (déjà en ligne sur Vinted, en file pour Leboncoin et Depop) et « 3 en file ».](media:captures/extension-popup.png)
 
@@ -162,7 +162,7 @@ Non, et c'est voulu. Sur ces deux sites, FillSell repère le signal (article aff
 
 ### Faut-il laisser mon ordinateur allumé ?
 
-Oui, sans l'option FillSell Cloud, pour publier, republier et retirer sur Leboncoin et Beebs : l'extension travaille dans Chrome, sur ton ordinateur. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur : elle publie, republie et retire tes annonces Leboncoin et Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Ton téléphone, lui, reste la télécommande.
+Oui, sans FillSell Cloud, pour publier, republier et retirer sur Leboncoin et Beebs : l'extension travaille dans Chrome, sur ton ordinateur. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Leboncoin et Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Ton téléphone, lui, reste la télécommande.
 
 ### FillSell me demande-t-il mes mots de passe Leboncoin et Beebs ?
 

@@ -4,10 +4,10 @@ type: accueil
 lang: en
 nom: Home
 title: "Crosslisting app: Vinted France, Leboncoin, eBay and more — FillSell"
-description: "The crosslisting app on your phone: Lens writes the listing, it goes out to {{plateformes}}, with or without a computer (FillSell Cloud)."
+description: "The crosslisting app on your phone: Lens writes the listing, it goes out to {{plateformes}}, no computer needed with Cloud. Free to start."
 surtitre: "Crosslisting, run from your phone"
 h1: "The crosslisting app: one photo, {{nb_plateformes}} marketplaces. Sold here, removed there."
-chapo: "FillSell is a crosslisting app you run from your phone. One photo, Lens writes the listing; the Chrome extension posts it to {{plateformes}} from your computer, or, in France, the FillSell Cloud option with no computer. Your stock syncs in one tap, your listings bump back up on {{republication}} depending on your plan, and a recorded sale takes the other listings down."
+chapo: "FillSell is a crosslisting app you run from your phone. One photo, Lens writes the listing; the Chrome extension posts it to {{plateformes}} from your computer, or, in France, FillSell Cloud with no computer. Your stock syncs in one tap, your listings bump back up on {{republication}} depending on your plan, and a recorded sale takes the other listings down."
 publie: "2026-10-09"
 faq: true
 cta: inscription
@@ -99,7 +99,7 @@ That's FillSell's edge. On your phone (iPhone or Android) or at fillsell.app, yo
 
 It works in your own session, the one you're already signed in to. FillSell never asks for your Vinted, Leboncoin, Beebs or Depop passwords; for Depop, you allow access with one click in the extension. Computer off? Nothing is lost: your listings wait and go out the next time Chrome opens. And on eBay France, once your account is linked on eBay's official page, your listings go through [eBay's official API](page:plateformes/ebay), even with your computer off.
 
-**No computer needed: add the FillSell Cloud option.** FillSell Cloud posts, reposts and removes your Vinted, Leboncoin, Beebs and Depop listings from FillSell's servers, around the clock, and keeps track of your sales; you run it all from your phone or the web. You connect each marketplace once, on its own sign-in page. The option costs €24.99 a month, with a 7-day free trial on your first subscription, and works with any plan, Free included. Available in France, on iPhone and on the web, while places last.
+**No computer needed: add FillSell Cloud.** FillSell Cloud posts, reposts and removes your Vinted, Leboncoin, Beebs and Depop listings from FillSell's servers, around the clock, and keeps track of your sales; you run it all from your phone or the web. You connect each marketplace once, on its own sign-in page. FillSell Cloud comes with Premium, Pro or Business, with a 7-day trial on the plan with Cloud. Available in France, on iPhone and on the web, while places last.
 
 ## What FillSell does on each marketplace
 
@@ -115,7 +115,7 @@ Depending on your subscription, automatic reposting runs on {{republication}}. W
 
 Where it works today: {{plateformes}}, with accounts based in France — that means Vinted France (vinted.fr), eBay France (ebay.fr) and a French Depop account, in euros. Vinted UK, eBay.co.uk and eBay.com aren't covered today.
 
-With the FillSell Cloud option, no computer needed: your Vinted, Leboncoin, Beebs and Depop listings are posted, reposted and removed from FillSell's servers.
+With FillSell Cloud, no computer needed: your Vinted, Leboncoin, Beebs and Depop listings are posted, reposted and removed from FillSell's servers.
 
 ## Why FillSell for your crosslisting?
 
@@ -150,11 +150,11 @@ Yes: the app on iPhone, Android and the web is in English and French, and Lens d
 
 ### Do I need to keep my computer on?
 
-For the extension to do its work (publishing, reposting, spotting your sales, removing listings), your computer must be on with Chrome open; while listings are queued, the extension keeps it from going to sleep. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. Two exceptions. On eBay France, once your account is linked, your listings go through eBay's official API, even with your computer off. And with the FillSell Cloud option, no computer needed: FillSell Cloud posts, reposts and removes your Vinted, Leboncoin, Beebs and Depop listings from FillSell's servers, around the clock.
+For the extension to do its work (publishing, reposting, spotting your sales, removing listings), your computer must be on with Chrome open; while listings are queued, the extension keeps it from going to sleep. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. Two exceptions. On eBay France, once your account is linked, your listings go through eBay's official API, even with your computer off. And with FillSell Cloud, no computer needed: FillSell Cloud posts, reposts and removes your Vinted, Leboncoin, Beebs and Depop listings from FillSell's servers, around the clock.
 
 ### Does FillSell ask for my passwords?
 
-Never. You stay signed in to your accounts in your browser as usual, and the extension works within those sessions. For Depop, you allow access with one click in the extension. For eBay, you link your account on eBay's official page: FillSell never sees your password. With the FillSell Cloud option, you sign in yourself, once, on each marketplace's own sign-in page: what you type is passed to it without being recorded.
+Never. You stay signed in to your accounts in your browser as usual, and the extension works within those sessions. For Depop, you allow access with one click in the extension. For eBay, you link your account on eBay's official page: FillSell never sees your password. With FillSell Cloud, you sign in yourself, once, on each marketplace's own sign-in page: what you type is passed to it without being recorded.
 
 ### Can I bring in the listings I already have live?
 

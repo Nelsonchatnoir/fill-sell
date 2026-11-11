@@ -10,7 +10,7 @@ h1: "FillSell vs Reposter : lequel choisir pour vendre sur Leboncoin et ailleurs
 chapo: "Reposter est un service web taillé pour Leboncoin : il publie et remonte tes annonces depuis ses serveurs, même ordinateur éteint, avec les identifiants que tu lui confies ; Vinted s'y ajoute en option. FillSell, app iPhone et Android, pilote {{plateformes}} : une photo crée l'annonce, l'extension agit dans ta session sans ton mot de passe, et une vente fait retirer les copies de l'article."
 points_cles:
   - "Au 9 octobre 2026, Reposter gère Leboncoin et, avec une option au prix non affiché, Vinted ; avec FillSell, une fiche part sur {{plateformes}}, Vinted inclus sans option."
-  - "Reposter agit depuis ses serveurs avec l'e-mail, le mot de passe et le téléphone que tu lui confies ; FillSell, dans ta session ou depuis ses serveurs (option FillSell Cloud), sans garder ton mot de passe."
+  - "Reposter agit depuis ses serveurs avec l'e-mail, le mot de passe et le téléphone que tu lui confies ; FillSell, dans ta session ou depuis ses serveurs (avec FillSell Cloud), sans garder ton mot de passe."
   - "FillSell crée l'annonce à partir d'une photo (objet, marque lue, état, prix tiré d'annonces comparables, titre, description) ; chez Reposter, l'annonce se remplit au formulaire ou s'importe."
   - "Chez FillSell, une vente enregistrée fait retirer les autres annonces de l'article, avec « Déjà vendu ? » au moindre doute ; la documentation de Reposter ne décrit pas ce retrait."
   - "Reposter se paie au crédit, de 10 € (10 crédits) à 50 € (500 crédits) par mois, un crédit par publication ; FillSell démarre gratuit, puis 12,99 €, 29,99 € ou 59,99 € par mois."
@@ -49,7 +49,7 @@ FillSell est notre produit : lis ce comparatif en le sachant. Tout ce qui est di
 Les deux outils ne jouent pas le même match.
 
 - **Reposter est un spécialiste de Leboncoin.** Il dépose et remonte tes annonces depuis ses propres serveurs, ville par ville, au rythme que tu programmes. Vinted s'y ajoute par une option.
-- **FillSell est fait pour le revendeur qui vend partout.** Une fiche par article, et elle part sur {{plateformes}}. Tu pilotes depuis ton téléphone ; ton ordinateur exécute, dans ta session. Avec l'option FillSell Cloud, plus besoin d'ordinateur.
+- **FillSell est fait pour le revendeur qui vend partout.** Une fiche par article, et elle part sur {{plateformes}}. Tu pilotes depuis ton téléphone ; ton ordinateur exécute, dans ta session. Avec FillSell Cloud, plus besoin d'ordinateur.
 
 Presque tout ton chiffre passe par Leboncoin, et tu veux couvrir plusieurs villes ? Regarde Reposter. Tu vends sur plusieurs plateformes, ou tu veux t'y mettre sans retaper une ligne ? FillSell est construit pour ça.
 
@@ -85,7 +85,7 @@ C'est le vrai choix d'architecture entre les deux outils. Chacun a ses arguments
 
 **FillSell agit dans ta session.** Le téléphone pilote, l'ordinateur exécute. Tu restes connecté(e) à Vinted, Leboncoin, Beebs et Depop dans Chrome, comme tous les jours, et l'extension FillSell travaille dans ces sessions déjà ouvertes. Aucun mot de passe de plateforme à nous donner, jamais. Pour Depop, tu autorises l'accès d'un clic dans l'extension. Pour eBay, tu relies ton compte sur la page officielle d'eBay : FillSell ne voit jamais ton mot de passe.
 
-La contrepartie, on te la dit aussi : sans option, pour Vinted, Leboncoin, Beebs et Depop, ton ordinateur doit être allumé, Chrome ouvert. Tant qu'il reste des annonces en file, l'extension l'empêche de se mettre en veille. Tu l'éteins quand même ? Rien n'est perdu : tout part à la prochaine ouverture de Chrome. Et l'extension travaille comme toi, une annonce après l'autre, à un rythme humain, dans une fenêtre réduite qui ne te prend jamais la main. Et si tu veux que tout tourne ordinateur éteint, l'option FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24. Tu connectes chaque plateforme une fois, sur sa propre page de connexion.
+La contrepartie, on te la dit aussi : sans FillSell Cloud, pour Vinted, Leboncoin, Beebs et Depop, ton ordinateur doit être allumé, Chrome ouvert. Tant qu'il reste des annonces en file, l'extension l'empêche de se mettre en veille. Tu l'éteins quand même ? Rien n'est perdu : tout part à la prochaine ouverture de Chrome. Et l'extension travaille comme toi, une annonce après l'autre, à un rythme humain, dans une fenêtre réduite qui ne te prend jamais la main. Et si tu veux que tout tourne ordinateur éteint, FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24. Tu connectes chaque plateforme une fois, sur sa propre page de connexion.
 
 ![Le panneau de l'extension Chrome FillSell (version 0.6.105), ouvert en haut à droite d'un écran d'ordinateur : pastille « Active », dernier passage il y a 1 min, « FillSell garde ton ordinateur éveillé pendant la publication », les cinq plateformes « Connectée » (Vinted, Leboncoin, eBay — « Compte eBay relié à FillSell » —, Beebs et Depop), puis le sweat Öhlins « Prête à publier » : déjà en ligne sur Vinted, en file pour Leboncoin et Depop. Le bas du panneau sort de l'écran.](media:captures/extension-popup-ordinateur.png)
 
@@ -103,7 +103,7 @@ Sur Leboncoin, la visibilité se vend : l'option « Remonter en tête de liste �
 
 **Reposter en a fait son cœur de métier, sur Leboncoin.** Ses « tâches » programment publications et republications : lots espacés, relance après un nombre de jours choisi, publication dans plusieurs villes, à un crédit par ville ([guide « Tâches »](https://docs.reposter.io/guide/taches.md)). Il peut faire tourner la photo de couverture et incruster une vignette (prix, badge, texte) sur la première photo. Pour Vinted, la republication programmée est annoncée dans ses guides ; sa documentation ne la détaille pas.
 
-**FillSell remonte tes annonces sur {{republication}}.** En un appui, quand une annonce s'essouffle. Ou toutes seules, selon ta formule : la republication automatique les remonte les jours et au créneau que tu choisis (matin, midi, soir ou sur mesure), pendant que tu fais autre chose, ordinateur allumé, ou éteint avec l'option FillSell Cloud. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Une seule chose à savoir, et on préfère te la dire : une annonce republiée repart à zéro vue et zéro favori.
+**FillSell remonte tes annonces sur {{republication}}.** En un appui, quand une annonce s'essouffle. Ou toutes seules, selon ta formule : la republication automatique les remonte les jours et au créneau que tu choisis (matin, midi, soir ou sur mesure), pendant que tu fais autre chose, ordinateur allumé, ou éteint avec FillSell Cloud. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Une seule chose à savoir, et on préfère te la dire : une annonce republiée repart à zéro vue et zéro favori.
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -155,7 +155,7 @@ Compare sur ton usage réel. Chez Reposter, chaque publication consomme un créd
 
 Un comparatif qui ne dit que du bien de son auteur ne vaut rien. Au 9 octobre 2026, Reposter a de vrais atouts :
 
-- **Ordinateur éteint, sans option à ajouter** : ses tâches tournent sur ses serveurs, Leboncoin compris. Chez FillSell, un compte eBay relié publie aussi ordinateur éteint ; pour Vinted, Leboncoin, Beebs et Depop, c'est l'option FillSell Cloud.
+- **Ordinateur éteint, sans option à ajouter** : ses tâches tournent sur ses serveurs, Leboncoin compris. Chez FillSell, un compte eBay relié publie aussi ordinateur éteint ; pour Vinted, Leboncoin, Beebs et Depop, c'est FillSell Cloud.
 - **La profondeur Leboncoin** : publication dans plusieurs villes, lots espacés, relance programmée, rotation de la photo de couverture, vignettes incrustées, suivi des indicateurs Leboncoin Pro.
 - **Un assistant qui répond à tes acheteurs** : des modèles de réponses, ou une IA qui s'appuie sur la conversation et sur ta fiche, peut proposer d'autres articles de ton catalogue et te prévient par Telegram ou par e-mail quand une question sort du cadre. FillSell ne répond pas à tes acheteurs.
 - **Des statistiques d'audience** qui survivent aux remontées.
@@ -215,7 +215,7 @@ Pour relier un compte, la documentation de Reposter demande l'e-mail, le mot de 
 
 ### Lequel fonctionne ordinateur éteint ?
 
-Les deux. Reposter : ses tâches tournent sur ses serveurs, ordinateur éteint. FillSell : avec l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans l'option, sur Vinted, Leboncoin, Beebs et Depop, l'extension agit depuis ton ordinateur allumé, Chrome ouvert ; éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Sur eBay France, une fois ton compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint.
+Les deux. Reposter : ses tâches tournent sur ses serveurs, ordinateur éteint. FillSell : avec FillSell Cloud, sur iPhone et sur le web (formules avec Cloud, 7 jours d’essai), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans FillSell Cloud, sur Vinted, Leboncoin, Beebs et Depop, l'extension agit depuis ton ordinateur allumé, Chrome ouvert ; éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Sur eBay France, une fois ton compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint.
 
 ### Reposter a-t-il une application iPhone ou Android ?
 

@@ -11,7 +11,9 @@ import { creerActifs, empreinteSource } from './lib/actifs.mjs';
 import { bundler, preparerCss, tailleGzip, BUDGET_SITE_JS_GZIP } from './lib/bundles.mjs';
 import { constantesSupabase } from './lib/constantes-app.mjs';
 import { lireGrilleEnBase } from './lib/grille.mjs';
-import { CLOUD_PRIX_AFFICHE, CLOUD_ESSAI_JOURS } from '../../src/utils/palier.js';
+// (11/11 au soir) lecture par l'espace de noms : un export encore absent (PRIX_AVEC_CLOUD, livré par le terminal 1) ne
+// casse pas le chargement du module.
+import * as PALIER from '../../src/utils/palier.js';
 import { empreinteContenu, lireVerrou, brancheCourante, dateValide } from './lib/dates.mjs';
 import { entreeOg, lireManifesteOg, DOSSIER_OG } from './lib/og.mjs';
 import { ORIGINE, esc, urlAbsolue, dateLisible, aujourdhuiParis, balisesOuvrantes } from './lib/html.mjs';
@@ -218,6 +220,13 @@ function transcriptionParChapitre(lignes, chapitres) {
 /** « 4:05 » depuis des secondes. */
 const minutes = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
+/** Prix des formules avec Cloud lus dans l'app : { premium, pro, business } en euros, tous > 0 ; sinon null. */
+export function prixAvecCloud(x) {
+  if (!x || typeof x !== 'object') return null;
+  const ids = ['premium', 'pro', 'business'];
+  return ids.every((id) => Number.isFinite(x[id]) && x[id] > 0) ? Object.fromEntries(ids.map((id) => [id, x[id]])) : null;
+}
+
 // `verrou` : un verrou des dates FOURNI (selftests seulement) à la place de site/dates.lock.json.
 export async function genererSite({ dossier, racine = process.cwd(), mode = 'build', journal = console, verifier = true, env = process.env, verrou: verrouFourni = null } = {}) {
   const t0 = performance.now();
@@ -255,8 +264,14 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   // FillSell Cloud (FORMAT-CONTENU § 0) : prix et jours d'essai LUS dans l'app (src/utils/palier.js, la source de la
   // feuille des offres) ; plateformes = celles où l'extension agit (mode « extension » de plateformes.yml) — eBay,
   // relié par l'API, part déjà des serveurs sans l'option.
-  const prixCloud = Number(String(CLOUD_PRIX_AFFICHE).replace(/[^\d,]/g, '').replace(',', '.'));
-  if (!(prixCloud > 0) || !Number.isInteger(CLOUD_ESSAI_JOURS)) throw new Error(`[site] prix ou essai de FillSell Cloud illisibles dans src/utils/palier.js (${CLOUD_PRIX_AFFICHE}, ${CLOUD_ESSAI_JOURS})`);
+  // (11/11 au soir, décision de Nico) Le Cloud SEUL n'est plus montré aux nouveaux clients : les formules Premium, Pro
+  // et Business existent « avec Cloud ». Leurs prix sont LUS dans l'app : PRIX_AVEC_CLOUD = { premium, pro, business }
+  // (euros, prix web ; nom convenu avec le terminal 1). Export absent ou incomplet → aucun prix « avec Cloud » affiché,
+  // jamais un chiffre recopié (avertissement au build). CLOUD_PRIX_AFFICHE (Cloud seul) n'est plus lu.
+  const CLOUD_ESSAI_JOURS = PALIER.CLOUD_ESSAI_JOURS;
+  if (!Number.isInteger(CLOUD_ESSAI_JOURS)) throw new Error(`[site] jours d'essai de FillSell Cloud illisibles dans src/utils/palier.js (${CLOUD_ESSAI_JOURS})`);
+  const avecCloud = prixAvecCloud(PALIER.PRIX_AVEC_CLOUD);
+  if (!avecCloud && mode === 'build') avertir('prix des formules avec Cloud absents de src/utils/palier.js (PRIX_AVEC_CLOUD) : pages sans prix « avec Cloud » ni interrupteur');
   const concurrents = lireConcurrents(racine);
   if (!jetable && !existsSync(path.join(dossier, 'app-shell.html'))) {
     throw new Error('[site] app-shell.html absent : le plugin appShell doit copier la coquille AVANT le générateur (vite.config.js)');
@@ -368,7 +383,7 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
     liensIcones,
     plateformes,
     cloud: {
-      prix: prixCloud,
+      avecCloud,
       essaiJours: CLOUD_ESSAI_JOURS,
       plateformes: plateformes.ouvertes.filter((p) => p.mode === 'extension').map((p) => p.nom),
     },

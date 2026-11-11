@@ -83,7 +83,7 @@ Tu décides depuis ton téléphone, iPhone ou Android, ou depuis fillsell.app. L
 Elle agit dans **ta** session Beebs, celle où tu es déjà connecté(e) dans Chrome. Jamais ton mot de passe : FillSell ne le lit pas et ne le stocke pas.
 
 - **Ordinateur allumé, Chrome ouvert** : c'est la condition pour que tes annonces partent par l'extension. Tant qu'il en reste en file, l'extension empêche l'ordinateur de se mettre en veille.
-- **Ordinateur éteint ?** Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Beebs partent depuis les serveurs de FillSell, 24 h/24.
+- **Ordinateur éteint ?** Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Beebs partent depuis les serveurs de FillSell, 24 h/24.
 - **Beebs vérifie les nouvelles annonces** : la tienne peut mettre un moment à apparaître. Une annonce jamais vue en ligne compte comme un échec de publication, jamais comme une vente.
 
 ![Le panneau de l'extension Chrome FillSell (version 0.6.105) en entier, pendant un dépôt : « Active », dernier passage il y a 1 min, ordinateur gardé éveillé pendant la publication, les cinq plateformes connectées dont Depop, « En cours : Depop · publication » de la casquette Volcom avec sa barre, puis le sweat Öhlins prêt à publier (déjà en ligne sur Vinted, en file pour Leboncoin et Depop) et « 3 en file ».](media:captures/extension-popup.png)
@@ -112,7 +112,7 @@ Sur Beebs, ce retrait n'est pas un détail : ses conditions d'utilisation (versi
 Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart comme une annonce neuve, mais ses vues et ses favoris repartent de zéro. Sur Beebs, l'ordre compte, car ses règles interdisent de référencer le même article plus d'une fois. FillSell retire d'abord, redépose ensuite.
 
 - **D'un appui** : une annonce Beebs perd en visibilité ? Tu la remontes depuis ton téléphone, l'ordinateur s'occupe du reste.
-- **Toute seule**, selon ta formule : tes annonces remontent sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose — ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur.
+- **Toute seule**, selon ta formule : tes annonces remontent sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose — ordinateur allumé ou, avec FillSell Cloud, sans ordinateur.
 - **À ton rythme, pas en rafale** : FillSell espace tes republications à un rythme humain pour protéger ton compte. Tu coupes tout d'un geste, quand tu veux.
 
 Comme tout nouveau dépôt, une annonce republiée repasse par la vérification de Beebs : elle peut mettre un moment à réapparaître. Pour tout comprendre des créneaux et des réglages : [la republication automatique et à la demande](page:fonctions/republication).
@@ -155,7 +155,7 @@ Tout ce qui concerne Beebs sur cette page vient de ses textes officiels, lus le 
 
 ### FillSell fonctionne-t-il avec Beebs ?
 
-Oui. Aujourd'hui, avec FillSell, tu publies, synchronises, republies et retires tes annonces Beebs depuis le même stock que tes autres plateformes. Le travail sur Beebs, c'est l'extension Chrome FillSell qui le fait, dans ta session, sur ton ordinateur (ou, avec l'option FillSell Cloud, les serveurs de FillSell) ; toi, tu pilotes depuis ton téléphone ou depuis fillsell.app.
+Oui. Aujourd'hui, avec FillSell, tu publies, synchronises, republies et retires tes annonces Beebs depuis le même stock que tes autres plateformes. Le travail sur Beebs, c'est l'extension Chrome FillSell qui le fait, dans ta session, sur ton ordinateur (ou, avec FillSell Cloud, les serveurs de FillSell) ; toi, tu pilotes depuis ton téléphone ou depuis fillsell.app.
 
 ### Dois-je donner mon mot de passe Beebs à FillSell ?
 
@@ -163,7 +163,7 @@ Non, jamais. Tu te connectes toi-même à Beebs dans Chrome, comme d'habitude, e
 
 ### Peut-on republier ses annonces Beebs automatiquement ?
 
-Oui, selon ta formule. La republication automatique de FillSell couvre {{republication}} : tu choisis les jours et le créneau, et tes annonces remontent toutes seules, une à une, à un rythme humain, tant que ton ordinateur est allumé avec Chrome ouvert, ou sans ordinateur avec l'option FillSell Cloud. Sinon, tu remontes une annonce d'un appui. Dans tous les cas, tu coupes tout d'un geste.
+Oui, selon ta formule. La republication automatique de FillSell couvre {{republication}} : tu choisis les jours et le créneau, et tes annonces remontent toutes seules, une à une, à un rythme humain, tant que ton ordinateur est allumé avec Chrome ouvert, ou sans ordinateur avec FillSell Cloud. Sinon, tu remontes une annonce d'un appui. Dans tous les cas, tu coupes tout d'un geste.
 
 ### FillSell enregistre-t-il tout seul une vente faite sur Beebs ?
 
@@ -183,4 +183,4 @@ Appuie sur « Synchroniser » : tes annonces Vinted entrent dans ton stock FillS
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Tes annonces Beebs restent en vente quoi qu'il arrive. Sans l'option FillSell Cloud, ce qui demande l'ordinateur allumé avec Chrome ouvert, c'est le travail de FillSell sur Beebs : dépôts, republications, retraits et repérage des ventes. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur : elle publie, republie et retire tes annonces Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Tes annonces Beebs restent en vente quoi qu'il arrive. Sans FillSell Cloud, ce qui demande l'ordinateur allumé avec Chrome ouvert, c'est le travail de FillSell sur Beebs : dépôts, republications, retraits et repérage des ventes. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
