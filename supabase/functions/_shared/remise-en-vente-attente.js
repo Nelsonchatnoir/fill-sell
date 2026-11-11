@@ -62,13 +62,96 @@ export const REARMEMENTS_MAX = 3;
 export const FENETRE_REARMEMENT_MS = 14 * 86_400_000;
 export const DELAI_PUBLIE_JAMAIS_VU_MS = 2 * 3600_000;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// (11/11, L1 — chemin résiduel 2, décision de Nico) UNE REMISE DONT L'ARTICLE OU L'ANNONCE A ÉTÉ RETIRÉ NE SE RÉARME JAMAIS
+// ═══════════════════════════════════════════════════════════════════════════
+// « Aucun chemin ne remet en ligne un article retiré sans geste du client. » La règle A ne refusait qu'une remise arrêtée
+// « à ta demande » : une remise close par l'extension après un retrait ciblé (removed_by_user), une remise « published »
+// jamais vue dont le retrait est armé ou en file, une remise dont la fiche a été supprimée, une remise d'un article retiré
+// « partout » depuis le compte relié (L1) repassaient « pending » — puis get-pending-jobs les servait à la disparition de
+// la vendue : un dépôt neuf, en ligne. Désormais, jamais :
+//   fiche_supprimee         la ligne n'a plus de fiche (inventaire_id NULL : suppression, avec ou sans retrait) ;
+//   retrait_arme            un retrait a été armé sur elle (vente, traversée L1) : retrait_arme est un POINTEUR — la tâche
+//                           pointée décide (annulée : ne compte pas ; introuvable : le doute garde la remise) ;
+//   article_retire_partout  la traversée L1 l'a marquée, ou un bilan « retrait_partout_compte_relie » de SA fiche est né
+//                           après elle ;
+//   retrait_demande         un retrait né après elle vise un de SES DÉPÔTS, par son numéro (colonne, lien, adsubmit,
+//   / annonce_retiree       sans_adsubmit, identifiants du dépôt jamais en ligne) — en file, en cours, fait ou échoué :
+//                           c'est le geste qui compte (annonce_retiree quand l'extension l'a aussi close, removed_by_user).
+//                           (Relecture du 11/11) Deux annonces = deux exemplaires : en série, le retrait de la vendue d'une
+//                           AUTRE remise ou d'un autre exemplaire de la fiche ne touche jamais cette remise ; un numéro qui
+//                           est la vendue d'une remise de la fiche ne compte jamais (c'est son retrait qui libère la remise).
+//                           Un retrait annulé ne compte pas. removed_by_user SEUL ne décide rien : l'extension le pose aussi
+//                           par son repli au TITRE (cancelPublishAfterDelete) — jamais une décision sur un titre seul ;
+//   retraits_illisibles     une lecture a échoué : le doute ne remet rien en ligne.
+// Les faits (retraitsDeLaFiche, bilansRetraitPartout, vendesDesRemises) sont LUS par handler-watch pour les seules remises
+// qui allaient repartir : non fournis (undefined), seuls les signes de la ligne elle-même jouent (pré-tri).
+export const FEATURE_RETRAIT_PARTOUT_COMPTE_RELIE = "retrait_partout_compte_relie";
+export const STATUTS_RETRAIT_DEMANDE = Object.freeze(["pending", "processing", "needs_user", "deleted", "failed"]);
+export const MOTIFS_REMISE_RETIREE = Object.freeze(["fiche_supprimee", "annonce_retiree", "retrait_arme", "article_retire_partout",
+  "retrait_demande", "retraits_illisibles"]);
+const numeroDuRetrait = (d) => String(d?.platform_listing_id ?? "").trim()
+  || (String(d?.listing_url ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
+const numeroLbc = (v) => { const s = String(v ?? "").trim(); return /^\d{6,}$/.test(s) ? s : null; };
+
+/** Les numéros des DÉPÔTS de cette remise (les annonces qu'elle a elle-même déposées), sans sa vendue. (pur) */
+export function depotsDeLaRemise(job) {
+  const pf = job?.platform_fields ?? {};
+  const lbc = pf.lbc_depot && typeof pf.lbc_depot === "object" ? pf.lbc_depot : {};
+  const trace = pf.depot_jamais_en_ligne && typeof pf.depot_jamais_en_ligne === "object" ? pf.depot_jamais_en_ligne : {};
+  const liste = [job?.platform_listing_id, String(job?.listing_url ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1],
+    lbc.adsubmit?.id, lbc.sans_adsubmit?.id, ...(Array.isArray(trace.identifiants) ? trace.identifiants : [])].map(numeroLbc).filter(Boolean);
+  const vendue = annonceVendueDeLaRemise(job);
+  return [...new Set(liste)].filter((n) => n !== vendue);
+}
+
+/**
+ * L'article ou l'annonce de cette remise a-t-il été retiré ? Le motif, ou null. (pur)
+ * @param {any} job  la remise (inventaire_id, created_at, platform_fields)
+ * @param {{ retraitsDeLaFiche?: any[] | null, bilansRetraitPartout?: any[] | null, vendesDesRemises?: string[] | null }} [faits]
+ *   retraitsDeLaFiche : les tâches « delete » Leboncoin de SA fiche (et celle que pointe retrait_arme) ;
+ *   bilansRetraitPartout : les lignes usage_logs « retrait_partout_compte_relie » du compte ;
+ *   vendesDesRemises : les numéros des annonces vendues des remises de SA fiche. null = lecture en panne ;
+ *   undefined = pas encore lu (pré-tri).
+ */
+export function retraitDeLaRemise(job, { retraitsDeLaFiche, bilansRetraitPartout, vendesDesRemises } = {}) {
+  const pf = job?.platform_fields ?? {};
+  if (job && "inventaire_id" in job && job.inventaire_id == null) return "fiche_supprimee";
+  if (pf.retrait_partout_compte_relie) return "article_retire_partout";
+  if (retraitsDeLaFiche === undefined && bilansRetraitPartout === undefined && vendesDesRemises === undefined) return null;
+  if (retraitsDeLaFiche === null || bilansRetraitPartout === null || vendesDesRemises === null) return "retraits_illisibles";
+  const retraits = Array.isArray(retraitsDeLaFiche) ? retraitsDeLaFiche : [];
+  // Le pointeur : la tâche que retrait_arme désigne décide (annulée → ne compte pas ; introuvable → doute).
+  if (pf.retrait_arme) {
+    const ptr = String(pf.retrait_arme?.job ?? "").trim();
+    const pointe = ptr ? retraits.find((d) => String(d?.id ?? "") === ptr) : null;
+    if (!pointe || String(pointe.status ?? "") !== "cancelled") return "retrait_arme";
+  }
+  const cree = Date.parse(String(job?.created_at ?? ""));
+  const apres = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) && (!Number.isFinite(cree) || t >= cree); };
+  const vendues = new Set([annonceVendueDeLaRemise(job), ...(Array.isArray(vendesDesRemises) ? vendesDesRemises : [])].map(numeroLbc).filter(Boolean));
+  const depots = new Set(depotsDeLaRemise(job).filter((num) => !vendues.has(num)));
+  const vise = depots.size > 0 && retraits.some((d) =>
+    String(d?.action ?? "delete") === "delete" && STATUTS_RETRAIT_DEMANDE.includes(String(d?.status ?? "")) && apres(d?.created_at)
+    && depots.has(numeroDuRetrait(d))
+    && !/remise-en-vente-attente/.test(String(d?.platform_fields?.arme_par?.pose_par ?? "")));
+  if (vise) return pf.removed_by_user ? "annonce_retiree" : "retrait_demande";
+  const fiche = job?.inventaire_id != null ? String(job.inventaire_id) : null;
+  const partout = fiche != null && (Array.isArray(bilansRetraitPartout) ? bilansRetraitPartout : []).some((b) =>
+    String(b?.metadata?.article_id ?? "") === fiche && apres(b?.created_at));
+  return partout ? "article_retire_partout" : null;
+}
+
 /**
  * Décision pour une remise close : la remettre en attente (règle A) ?
- * @param {any} job  la tâche (status, created_at, platform_fields, error)
- * @param {{ vendueEncoreAffichee: boolean, depotVu: boolean, autreAnnonceVivante: boolean, maintenant?: number }} faits
+ * @param {any} job  la tâche (status, created_at, platform_fields, error, inventaire_id)
+ * @param {{ vendueEncoreAffichee: boolean, depotVu: boolean, autreAnnonceVivante: boolean, maintenant?: number,
+ *   retraitsDeLaFiche?: any[] | null, bilansRetraitPartout?: any[] | null, vendesDesRemises?: string[] | null }} faits
+ *   (retraitDeLaRemise ; non fournis = pré-tri)
  * @returns {{ rearmer: boolean, motif: string }}
  */
-export function decisionRearmementRemise(job, { vendueEncoreAffichee, depotVu, autreAnnonceVivante, maintenant = Date.now() }) {
+export function decisionRearmementRemise(job, { vendueEncoreAffichee, depotVu, autreAnnonceVivante, maintenant = Date.now(),
+  retraitsDeLaFiche, bilansRetraitPartout, vendesDesRemises }) {
   const pf = job?.platform_fields ?? {};
   if (!remiseAAttendre({ ...job, action: job?.action ?? "publish" })) return { rearmer: false, motif: "pas_une_remise_leboncoin" };
   // (07/11) Aussi un dépôt « published » JAMAIS vu depuis 2 h au moins, sa vendue identique encore affichée : Leboncoin
@@ -79,6 +162,9 @@ export function decisionRearmementRemise(job, { vendueEncoreAffichee, depotVu, a
   if (statut === "published" && !(Number.isFinite(publieDepuis) && maintenant - publieDepuis >= DELAI_PUBLIE_JAMAIS_VU_MS)) return { rearmer: false, motif: "publie_recent" };
   if (!["cancelled", "failed", "published"].includes(statut)) return { rearmer: false, motif: "pas_close" };
   if (pf.arret_utilisateur || /à ta demande/i.test(String(job?.error ?? ""))) return { rearmer: false, motif: "arretee_par_la_personne" };
+  // (11/11, L1 — chemin résiduel 2) L'article ou l'annonce a été retiré : jamais réarmée.
+  const retire = retraitDeLaRemise(job, { retraitsDeLaFiche, bilansRetraitPartout, vendesDesRemises });
+  if (retire) return { rearmer: false, motif: retire };
   const cree = Date.parse(String(job?.created_at ?? ""));
   if (!Number.isFinite(cree) || maintenant - cree > FENETRE_REARMEMENT_MS) return { rearmer: false, motif: "trop_ancienne" };
   if ((Number(pf.remise_regle_a?.rearmements) || 0) >= REARMEMENTS_MAX) return { rearmer: false, motif: "plafond" };

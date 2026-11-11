@@ -723,3 +723,100 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   `lecteurs-autonomes`, 21 fonctions) ; un échec de lecture se trace (`usage_logs ventes_beebs_lecture_echec`).
 - L'interrupteur `ventes_beebs_commandes` reste à 0 (décision de Nico) : lecteur réparé = bilans fantômes à relire,
   puis interrupteur à 1 sur son feu vert. Rapport : `docs/enquetes/beebs-vente-louis-0911/RAPPORT.md`.
+
+## ⛔ 11/11 (règle de Nico, L1) — un retrait « PARTOUT » traverse les comptes reliés, sur la BOUTIQUE PARTAGÉE
+- **La règle** : quand une personne supprime une fiche EN RETIRANT ses annonces (« Supprimer l'article » → « Retirer aussi
+  les annonces … et supprimer », ou le filet serveur à la suppression), les copies du MÊME article suivies par un compte
+  relié (même personne, `comptes_lies`) sur une boutique PARTAGÉE sont retirées aussi. Valable pour toute paire de comptes
+  reliés.
+  · **portée (décision 1 de Nico, 11/11 15:15)** : les plateformes où `boutique_partagee_compte_relie(compte qui agit,
+    compte relié, plateforme)` est vrai (la MÊME annonce, suivie par les deux comptes ; jamais Vinted : une boutique par
+    compte), tant que la fenêtre de suppression ne l'annonce pas à la personne. Ailleurs, rien n'est touché (compté au
+    bilan, `hors_portee`) ;
+  · même article = la fiche jumelle de `fiches_liees_comptes` (un fait d'écriture, jamais un titre), comptes reliés au
+    moment du geste (`comptes_sont_lies`), jumelle ni fondue ni vendue (vendue : le circuit de la vente, inchangé) ;
+  · copie = par plateforme, le dépôt « published » le plus récent dont le rattachement est CERTAIN : les preuves de la
+    vente appelées telles quelles (`retrait_job_prouve` ET `rattachement_confirme`, `fiche_annonces_vivantes` < 2) ;
+  · jamais retirée : deux annonces vivantes, annonce vendue (`sale_signal`), sous achat (`leboncoin_transaction_lue`
+    pending / sold), copie Opla (l'information est posée une fois), copie sans numéro ni lien, copie qui a déjà son
+    retrait — chez ce compte OU chez un compte relié (`annonce_en_retrait_compte_relie` : jamais deux retraits du même
+    numéro d'une boutique partagée). Chaque refus est tracé chez le compte relié (`usage_logs retrait_refuse_compte_relie`) ;
+  · **copie au TITRE SEUL (décision 5), ou DEUX EXEMPLAIRES de la boutique partagée** (la fiche supprimée porte SA propre
+    annonce, une autre, sur la même plateforme : `deux_annonces_paire`, lue avant le SET NULL) : rien n'est retiré ; la
+    question de la vente est posée au compte relié, sur l'annonce relevée qui porte le NUMÉRO du dépôt (sinon refus tracé)
+    (`inventaire_doublons`, motif `copie_non_prouvee`, source `retrait_partout_compte_relie`, une par dépôt, jamais
+    reposée) ; sa réponse : `copie_retrait_partout_repondre(question, 'oui' | 'non', annonce montrée)` (sa session) — « Oui »
+    = le rattachement confirmé par la personne puis le retrait de CETTE annonce (`chemin copie_confirmee_retrait_partout`) ;
+    « Non » = jamais reposée. La réponse de la vente (`inventaire_doublon_decider`) la déclare sans objet tant que la
+    jumelle est au stock (rien n'est retiré) ;
+  · « partout » = la suppression retire au moins une annonce de la fiche : un retrait de la fiche ouvert depuis moins de
+    **2 MINUTES (décision 3)**, ou un dépôt publié que le filet arme. RIEN chez le compte relié pour : une fiche sans
+    annonce, « Supprimer la fiche, laisser les annonces en ligne » (`annonces_laissees_en_ligne`), une réinitialisation
+    (`fillsell.sans_retrait`), une suppression en cascade (`pg_trigger_depth`), une suppression de compte (`service_role`),
+    le retrait d'UNE plateforme par son logo (aucune fiche supprimée).
+- **Ce qui attend chez la jumelle (décisions 2 et 6)**, sur les plateformes partagées, par les voies existantes :
+  publication en attente / qui attend un geste / échouée (TOUTES les échouées) → l'annulation de « Ta file »
+  (`cancelled` + `arret_utilisateur` + `annulee_dans_la_file`, « Annulée à ta demande — rien n'a été publié. » ; une tâche
+  qui portait déjà un lien ou un numéro : « … vérifie qu'aucune annonce n'est restée en ligne. », nommée au bilan
+  `annulees_avec_numero`) ; republication NON engagée → la clôture du 31/10 si un retrait vise CETTE annonce, sinon « … ton
+  annonce est restée en ligne. » ; republication ENGAGÉE (ancienne annonce supprimée) → annulée, « la nouvelle ne sera pas
+  publiée » ; remise en vente `a_faire` → `abandonnee` ; remise Leboncoin close (< 14 j) → `arret_utilisateur`.
+  ⛔ Une tâche EN COURS (`processing`) n'est jamais lue FOR UPDATE ni écrite : elle est nommée au bilan
+  (`taches_laissees`, `{ job, motif: 'en_cours' }`), le format que lit le filet d'update-job-status
+  (`_shared/publication-apres-retrait.js`, B) pour retirer ce que cet essai publierait.
+- **La plateforme d'un doute** (question, deux annonces vivantes, `deux_annonces_paire`) : rien n'y est annulé ni clos
+  chez la jumelle (`taches_gardees_doute` au bilan).
+- **La jumelle (décision 4)** RESTE au stock, porte une marque (`jumelles_retirees_partout` : compte et fiche d'origine,
+  quand, portée ; RLS : lue par son compte seulement) SEULEMENT si quelque chose a été fait (retrait armé ou déjà en
+  cours, tâche annulée, remise close), et rien d'automatique ne la remet en ligne. ⏳ App (prochaine OTA) :
+  montrer la marque et tenir la jumelle HORS DES LOTS (`src/publication/lot/regles.js articleSelectionnable` — aucune
+  règle de lot côté serveur), montrer la question (`src/utils/doublons.js` : `pairesAffichables` ne montre une
+  `copie_non_prouvee` que sur une fiche vendue ; texte à adapter) et appeler `copie_retrait_partout_repondre`.
+- **Le temps (relecture I1/M1)** : authenticated a `statement_timeout` 8 s (une 57014 n'est jamais attrapée) — verrous de
+  lignes en NOWAIT / SKIP LOCKED (tracés), `lock_timeout` 1 s pour les verrous implicites, budget de 2 s ; au-delà, le
+  reste est tracé (`erreurs` du bilan, I2) et nommé. Une erreur d'une étape n'emporte jamais les autres ni la suppression.
+- **Où** : SQL seul, en AJOUT — migration `20261111140000_retrait_partout_fiche_liee` (`copies_fiche_liee`,
+  `annonce_en_retrait_compte_relie`, `armer_retrait_copie_reliee`, `armer_retraits_fiche_liee`, déclencheur
+  `inventaire_arme_retraits_fiche_liee` BEFORE DELETE ON inventaire — serveur seulement ; `copie_retrait_partout_repondre`
+  — la personne ; table `jumelles_retirees_partout`). Aucune fonction existante n'est réécrite (TOUS les md5 de la
+  fixture contrôlés). `SET lock_timeout = '5s'` en tête de la migration et de l'inverse (DDL sur inventaire).
+  Inverse : `supabase/rollbacks/20261111140000_retrait_partout_fiche_liee_INVERSE.sql`. ⛔ `pose_par` = « armer_retraits_fiche_liee
+  (serveur) » / « copie_retrait_partout_repondre (geste de la personne) » (jamais lus comme un retrait d'article vendu) ;
+  `chemin` = `suppression_article_compte_relie` / `copie_confirmee_retrait_partout` (jamais « vente_… »).
+- **Verrou** : `npm run selftest:retrait-partout-fiche-liee` (ROUGE sans la migration et sur sa version d'avant la
+  relecture, vert avec ; corps de prod, base jetable, délais de l'API). Banc : `scripts/essais/20261111140000_banc.mjs`
+  (avant / après / inverse / de nouveau, et les deux scripts de réparation). ⛔ Aucune donnée client dans la fixture, le
+  décor, les cas ni le banc (commentaires des corps de prod retirés, valeurs d'essai inventées). Rapport :
+  `docs/enquetes/retrait-comptes-relies-1111/RAPPORT.md`.
+- ⛔ **Chemins résiduels fermés (décision de Nico, 11/11 : « aucun chemin ne remet en ligne un article retiré sans geste du
+  client »)** — rapport § 9.
+  · **Remise en vente Leboncoin (règle A, handler-watch)** : une remise dont l'article ou l'annonce a été retiré ne se
+    réarme JAMAIS (`_shared/remise-en-vente-attente.js`, `retraitDeLaRemise` dans `decisionRearmementRemise`) : fiche
+    supprimée (`inventaire_id` NULL) ; marque ou bilan de la traversée L1 de SA fiche né après elle ; `retrait_arme` lu
+    comme un POINTEUR (la tâche pointée décide : annulée → ne compte pas ; introuvable → le doute garde la remise) ; un
+    retrait né après elle qui vise un de SES DÉPÔTS par son numéro (colonne, lien, adsubmit, sans_adsubmit, identifiants du
+    dépôt jamais en ligne), en file, en cours, fait ou échoué. ⛔ Deux annonces = deux exemplaires : en SÉRIE, le retrait de
+    la vendue d'une AUTRE remise, ou d'un autre exemplaire de la fiche, ne touche jamais cette remise ; un numéro qui est la
+    vendue d'une remise de la fiche ne compte jamais (c'est son retrait qui libère la remise). ⛔ `removed_by_user` SEUL ne
+    décide rien (l'extension le pose aussi par son repli au TITRE). Retrait annulé : ne compte pas ; lecture en panne :
+    jamais réarmée ; une ligne de journal agrégée par passage. Verrou `npm run selftest:remise-retiree-jamais-rearmee`.
+  · **Tâche déjà prise par un poste ou le Cloud au moment du retrait** : l'extension ne revérifie rien avant son clic final
+    (seule sa borne de temps l'arrête). D'abord la RACINE : une tâche annulée par la suppression de sa fiche n'accepte plus
+    aucune écriture d'un poste sauf son « publié » (update-job-status : 409, même forme que « Arrêtée à ta demande » ;
+    l'extension le lit sans re-tenter) — elle ne ressuscite plus en file. Puis le filet SERVEUR (`update-job-status`,
+    `_shared/publication-apres-retrait.js`, toutes versions) : le « publié » d'une tâche dont l'article a été retiré pendant
+    qu'elle travaillait s'écrit comme avant, puis le retrait de l'annonce qui vient de partir est armé aussitôt par la voie du
+    logo (tâche `delete`, lien ou numéro, jamais un titre ; `arme_par.chemin = publication_apres_retrait`). Retiré pendant la
+    tâche = (A) annulée par la suppression de sa fiche ET la personne a choisi le retrait (marque `annulee_par_suppression.
+    avec_retrait`, posée à l'annulation par 20261111180000 : un retrait de la fiche armé depuis moins de 2 min, fenêtre de
+    L1 ; suppression sans retrait ou marque absente : jamais ; ⚠️ reste ouvert : un retrait par le logo armé moins de 2 min
+    avant compte encore — à fermer par une marque côté app à la prochaine OTA) ; (B) nommée
+    « en_cours » dans `taches_laissees` d'un bilan L1, l'essai qui publie ayant commencé avant le bilan (une relance par la
+    personne n'est jamais un retrait) ; (C) republication dont l'annonce, sur SA fiche, a reçu un retrait né après le début
+    de l'essai. Jamais : « laisser les annonces en ligne », une autre annulation, une publication à côté d'un retrait de la
+    même fiche, l'ancienne annonce d'une republication. Idempotent ; lectures par clé ; un retrait né clos n'est pas armé.
+    Ni lien ni numéro → marque `retrait_apres_publication_attendu` : le lecteur du lien tardif (20261111180000) arme le
+    retrait quand l'identité est PROUVÉE (`lien_retrouve_par_identifiant`, `preuve_identifiant_beebs_acceptee`), jamais sur
+    un lien retrouvé par le titre. Verrou `npm run selftest:publication-apres-retrait` (dont le banc
+    `scripts/essais/20261111180000_banc.mjs`). La revérification AVANT le clic demande une nouvelle extension (rapport § 9) ;
+    le filet reste ensuite pour les postes pas à jour.

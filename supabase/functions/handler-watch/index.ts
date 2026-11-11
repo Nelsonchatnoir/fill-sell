@@ -12,7 +12,8 @@ import { grilleDuDernierEchecTaille, normaliserTaille, tailleAServir } from "../
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // update-job-status — une remise en pending automatique n'efface plus le motif.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
-import { annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, decisionRearmementRemise, champsRearmementRemise, FENETRE_REARMEMENT_MS, decisionRetraitVendueClose } from "../_shared/remise-en-vente-attente.js";
+import { annonceVendueDeLaRemise, annonceVendueEncoreEnLigne, decisionRearmementRemise, champsRearmementRemise, FENETRE_REARMEMENT_MS, decisionRetraitVendueClose,
+  FEATURE_RETRAIT_PARTOUT_COMPTE_RELIE, MOTIFS_REMISE_RETIREE } from "../_shared/remise-en-vente-attente.js";
 // (06/10, Glowik) Un échec qu'une extension corrige repart dès que le poste l'a.
 import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj } from "../_shared/relance-apres-maj.js";
 import { MESSAGE_REPUBLICATION_ARTICLE_VENDU } from "../_shared/relance-apres-maj.js";
@@ -3257,6 +3258,9 @@ serve(async (req) => {
         .gte("created_at", new Date(Date.now() - FENETRE_REARMEMENT_MS).toISOString())
         .not("platform_fields->remise_en_vente", "is", null)
         .limit(50);
+      // (11/11) Les remises gardées (article ou annonce retiré) : un compteur par passage, jamais une ligne par remise.
+      let remisesGardees = 0;
+      const motifsGardes: Record<string, number> = {};
       // deno-lint-ignore no-explicit-any
       for (const j of (closes ?? []) as any[]) {
         const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
@@ -3283,10 +3287,46 @@ serve(async (req) => {
             String(s.listing_id) !== vendue && !ids.includes(String(s.listing_id))
             && !["pending", "sold"].includes(String(s.transaction_plateforme ?? "").toLowerCase()));
         }
-        const d = decisionRearmementRemise(j, {
-          vendueEncoreAffichee: annonceVendueEncoreEnLigne(ligneVendue as never), depotVu, autreAnnonceVivante,
-        });
-        if (!d.rearmer) continue;
+        const faits = { vendueEncoreAffichee: annonceVendueEncoreEnLigne(ligneVendue as never), depotVu, autreAnnonceVivante };
+        const d0 = decisionRearmementRemise(j, faits);
+        if (!d0.rearmer) {
+          if (MOTIFS_REMISE_RETIREE.includes(d0.motif)) { remisesGardees++; motifsGardes[d0.motif] = (motifsGardes[d0.motif] ?? 0) + 1; }
+          continue;
+        }
+        // (11/11, L1 — chemin résiduel 2, décision de Nico) Une remise dont l'article ou l'annonce a été retiré ne se
+        // réarme JAMAIS (_shared/remise-en-vente-attente.js, retraitDeLaRemise). Lus pour les seules remises qui allaient
+        // repartir, par clé : les retraits Leboncoin de SA fiche nés après elle (et celui que pointe retrait_arme, relu par
+        // son identifiant), les vendues des remises de SA fiche (deux annonces = deux exemplaires : seul le retrait d'un de
+        // SES dépôts compte), le bilan de la traversée L1. Une lecture en panne = jamais réarmée.
+        let retraitsDeLaFiche: unknown[] | null = [];
+        let bilansRetraitPartout: unknown[] | null = [];
+        let vendesDesRemises: string[] | null = [];
+        if (j.inventaire_id != null) {
+          const { data: rf, error: eRf } = await supabase.from("cross_post_jobs")
+            .select("id, action, status, created_at, platform_listing_id, listing_url, platform_fields")
+            .eq("user_id", j.user_id).eq("inventaire_id", j.inventaire_id).eq("platform", "leboncoin").eq("action", "delete")
+            .gte("created_at", j.created_at).limit(50);
+          retraitsDeLaFiche = eRf ? null : (rf ?? []);
+          const { data: rs, error: eRs } = await supabase.from("cross_post_jobs").select("id, platform_fields")
+            .eq("user_id", j.user_id).eq("inventaire_id", j.inventaire_id).eq("platform", "leboncoin").eq("action", "publish")
+            .not("platform_fields->remise_en_vente", "is", null).limit(100);
+          vendesDesRemises = eRs ? null : ((rs ?? []) as unknown[]).map((x) => annonceVendueDeLaRemise(x)).filter((x): x is string => Boolean(x));
+          const { data: bl, error: eBl } = await supabase.from("usage_logs").select("created_at, metadata")
+            .eq("user_id", j.user_id).eq("feature", FEATURE_RETRAIT_PARTOUT_COMPTE_RELIE).gte("created_at", j.created_at).limit(50);
+          bilansRetraitPartout = eBl ? null : (bl ?? []);
+        }
+        const ptrRetrait = String(((pfJ.retrait_arme ?? {}) as Record<string, unknown>).job ?? "").trim();
+        if (ptrRetrait && retraitsDeLaFiche && !retraitsDeLaFiche.some((x) => String((x as Record<string, unknown>).id) === ptrRetrait)) {
+          const { data: rp, error: eRp } = await supabase.from("cross_post_jobs")
+            .select("id, action, status, created_at, platform_listing_id, listing_url, platform_fields")
+            .eq("id", ptrRetrait).eq("user_id", j.user_id).limit(1);
+          retraitsDeLaFiche = eRp ? null : [...retraitsDeLaFiche, ...((rp ?? []) as unknown[])];
+        }
+        const d = decisionRearmementRemise(j, { ...faits, retraitsDeLaFiche, bilansRetraitPartout, vendesDesRemises });
+        if (!d.rearmer) {
+          if (MOTIFS_REMISE_RETIREE.includes(d.motif)) { remisesGardees++; motifsGardes[d.motif] = (motifsGardes[d.motif] ?? 0) + 1; }
+          continue;
+        }
         const maintenantIso = new Date().toISOString();
         const pfN = champsRearmementRemise(pfJ, j, maintenantIso) as Record<string, unknown>;
         if (j.error) pfN.erreurs_archivees = archiverErreur(pfN.erreurs_archivees, j.error, j.status, "handler-watch (règle A : remise remise en attente de la disparition de l'annonce vendue)");
@@ -3300,6 +3340,7 @@ serve(async (req) => {
         }
       }
       if (remisesRearmees) console.log(`[handler-watch] règle A : ${remisesRearmees} remise(s) Leboncoin remise(s) en attente de la disparition de la vendue`);
+      if (remisesGardees) console.log(`[handler-watch] règle A : ${remisesGardees} remise(s) jamais réarmée(s) — l'article ou l'annonce a été retiré (${Object.entries(motifsGardes).map(([m, k]) => `${m} ${k}`).join(", ")})`);
     } catch (e) {
       console.error("[handler-watch] règle A (remises closes) :", (e as Error)?.message ?? e);
     }

@@ -94,11 +94,11 @@ import {
 // EXCLUSIVEMENT dans check-listing-status, et n'est déclenché QUE par le clic de
 // confirmation de l'utilisateur dans l'app. Ne jamais le rebrancher ici.
 //
-// Déploiement : supabase functions deploy update-job-status
-// verify_jwt reste à true (défaut) : la fonction reçoit toujours un JWT
-// utilisateur, contrairement aux webhooks/cron listés dans CLAUDE.md.
-// auth.getUser() ci-dessous n'est pas redondant : il fournit l'identité
-// (user.id) et alimente le client scoped user pour la RLS.
+// Déploiement : supabase functions deploy update-job-status --no-verify-jwt
+// (lu en prod le 11/11 : v188, verify_jwt FALSE). La garde est MAISON :
+// auth.getUser() ci-dessous refuse tout appel sans session valable (401, ou
+// 503 « auth_indisponible »), fournit l'identité (user.id) et alimente le
+// client scoped user pour la RLS. Relire version et verify_jwt AVANT et APRÈS.
 
 // ⚠️ 'sold' RETIRÉ le 2026-07-12 (décision produit) — et le statut n'est plus
 // acceptable ici du tout. Cette fonction pouvait orchestrer une vente (créer la
@@ -584,6 +584,23 @@ serve(async (req) => {
     });
     if (erreurReservation) return json({ error: "La réservation du job est indisponible. Aucun geste ne doit partir." }, 503);
     if (!reservation?.ok) return json({ error: reservation?.reason || "Ce job n'est plus réservé à ce poste." }, 409);
+    // ══ (11/11, relecture — L1 chemin résiduel 1) UNE TÂCHE ANNULÉE PAR LA SUPPRESSION DE SA FICHE NE RESSUSCITE PLUS ══
+    // (_shared/publication-apres-retrait.js, tacheAnnuleeParSuppression) controler_job_extension laisse passer toute
+    // écriture (sauf « processing ») sur une tâche annulée SANS arret_utilisateur — c'est ainsi que l'app et le filet de
+    // suppression annulent les tâches de la fiche supprimée. Une ancienne boucle qui écrivait ensuite « pending »,
+    // « needs_user » ou « failed » la remettait en file ou dans « À régler », pour un article qui n'est plus au stock.
+    // Refus 409, même forme que « Arrêtée à ta demande » : l'extension lit l'erreur et son statut (callEdgeFunction),
+    // l'ACK de démarrage devient « skipped », les autres écritures sont en .catch — rien n'est re-tenté, et
+    // get-pending-jobs ne sert que « pending ». Seul le « publié » passe : l'annonce est partie, elle doit être suivie, et
+    // le filet du retrait après publication la rattrape (plus bas).
+    if (reservation.statut === "cancelled" && status !== "published") {
+      const { data: jAnnulee } = await userClient.from("cross_post_jobs")
+        .select("status, inventaire_id, error, platform_fields").eq("id", jobId).maybeSingle();
+      if (jAnnulee && tacheAnnuleeParSuppression(jAnnulee)) {
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — « ${status} » refusé : tâche annulée par la suppression de sa fiche (elle ne ressuscite pas)`);
+        return json({ error: MESSAGE_TACHE_ARTICLE_SUPPRIME }, 409);
+      }
+    }
 
     // ══ (30/10, lot D) L'EXÉCUTANT CLOUD PREND SES JOBS PAR LA PRISE ATOMIQUE (prendre_job, lot C) ══════════
     // Un poste Cloud (BUILD_ID « …-cloud », scripts/cloud/build-extension-cloud.mjs) : la PRISE (un job encore
@@ -5663,6 +5680,63 @@ serve(async (req) => {
       }
     }
 
+    // ══ (11/11, L1 — chemin résiduel 1, décision de Nico) UNE TÂCHE DÉJÀ PRISE QUAND SON ARTICLE EST RETIRÉ ═══════════
+    // (_shared/publication-apres-retrait.js) L'extension ne relit rien avant son clic final (seule sa borne de temps
+    // l'arrête) : une tâche « processing » va au bout, même si, entre-temps, sa fiche a été supprimée « avec retrait »
+    // (l'app et le filet l'annulent sans arret_utilisateur : controler_job_extension laisse passer, et
+    // ecrire_statut_job_extension écrit sur « cancelled »), si la traversée L1 l'a laissée finir (taches_laissees), ou si
+    // l'annonce de sa republication a reçu un retrait pendant le vol. Le « publié » s'écrit comme avant (l'annonce est
+    // suivie) ; juste après, le retrait de l'annonce qui vient de partir est armé par la voie ordinaire (une tâche
+    // « delete », lien ou numéro — jamais un titre). L'état est lu ICI, avant l'écriture (le corps de l'extension écrase
+    // platform_fields). Best-effort : une lecture en panne ne change ni l'écriture ni la réponse. Le vrai correctif
+    // (l'extension revérifie juste avant le clic) demande une nouvelle version : RAPPORT.md de
+    // docs/enquetes/retrait-comptes-relies-1111/, § « Chemins résiduels fermés ».
+    // (Relecture du 11/11) B et C se bornent au DÉBUT DE L'ESSAI qui publie (processing_since) ; lectures par clé
+    // (bilans du compte depuis ce début ; retraits par numéro de l'ancienne annonce, triés, bornés, colonnes utiles).
+    // Une écriture REQUALIFIÉE (le « publié » devenu « pending », « needs_user »…) sur une tâche annulée par la
+    // suppression de sa fiche est refusée comme plus haut : elle ne ressuscite pas.
+    if (reservation.statut === "cancelled" && statutEffectif !== "published") {
+      const { data: jAnnuleeR } = await userClient.from("cross_post_jobs")
+        .select("status, inventaire_id, error, platform_fields").eq("id", jobId).maybeSingle();
+      if (jAnnuleeR && tacheAnnuleeParSuppression(jAnnuleeR)) {
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — « ${statutEffectif} » (requalifié) refusé : tâche annulée par la suppression de sa fiche`);
+        return json({ error: MESSAGE_TACHE_ARTICLE_SUPPRIME }, 409);
+      }
+    }
+    let retraitApresPublication: string | null = null;
+    let identifiantsAvantRp: string[] = [];
+    if (statutEffectif === "published") {
+      try {
+        const { data: jAv } = await userClient.from("cross_post_jobs")
+          .select("id, user_id, inventaire_id, platform, action, status, error, created_at, listing_url, platform_listing_id, platform_fields")
+          .eq("id", jobId).maybeSingle();
+        if (jAv && ["publish", "republish"].includes(String(jAv.action ?? "publish"))) {
+          const debutEssai = String(((jAv.platform_fields ?? {}) as Record<string, unknown>).processing_since ?? "");
+          const debutConnu = Number.isFinite(Date.parse(debutEssai));
+          let bilansRp: unknown[] = [];
+          if (debutConnu) {
+            const { data: bl } = await userClient.from("usage_logs").select("created_at, metadata")
+              .eq("user_id", user.id).eq("feature", FEATURE_BILAN_RETRAIT_PARTOUT).gte("created_at", debutEssai).limit(50);
+            bilansRp = bl ?? [];
+          }
+          let retraitsRp: unknown[] = [];
+          const numerosRp = jAv.action === "republish" && debutConnu ? numerosVises(jAv) : [];
+          if (numerosRp.length) {
+            const { data: rs } = await userClient.from("cross_post_jobs")
+              .select("id, user_id, inventaire_id, platform, action, status, created_at, listing_url, platform_listing_id, arme_par:platform_fields->arme_par")
+              .eq("user_id", user.id).eq("platform", String(jAv.platform ?? "")).eq("action", "delete")
+              .in("platform_listing_id", numerosRp).gte("created_at", debutEssai)
+              .order("created_at", { ascending: false }).limit(20);
+            retraitsRp = rs ?? [];
+          }
+          retraitApresPublication = retraitPendantLaTache(jAv, { bilans: bilansRp, retraits: retraitsRp });
+          identifiantsAvantRp = identifiantsAvantPublication(jAv);
+        }
+      } catch (e) {
+        console.warn("[update-job-status] retrait après publication (lecture) :", (e as Error)?.message ?? e);
+      }
+    }
+
     // Le propriétaire et la génération sont revérifiés SOUS le verrou d'écriture.
     // Une annulation ou une reprise intervenue pendant cette fonction prime.
     const { data: ecriture, error: updateErr } = await adminReservation.rpc("ecrire_statut_job_extension", {
@@ -5672,6 +5746,64 @@ serve(async (req) => {
     if (updateErr) return json({ error: updateErr.message }, 500);
     if (!ecriture?.ok) return json({ error: ecriture?.reason || "Le job a changé entre-temps." }, 409);
     const updated = ecriture.job;
+
+    // (11/11, L1 — chemin résiduel 1) Le « publié » est écrit : l'annonce qui vient de partir alors que son article était
+    // retiré reçoit son retrait, aussitôt, par la voie du logo du Stock (RLS de la personne, gardes d'insertion). Jamais un
+    // second retrait de la même annonce (lu par sa clé : numéro, lien) ; ni lien ni numéro → aucun retrait, la tâche le
+    // porte et le journal le dit ; un retrait que les gardes d'insertion font naître clos n'est pas un retrait armé.
+    let retraitArmeApresPublication: Record<string, unknown> | null = null;
+    if (retraitApresPublication) {
+      try {
+        const maintenantRp = new Date().toISOString();
+        const { data: jAp, error: eAp } = await userClient.from("cross_post_jobs")
+          .select("id, user_id, inventaire_id, platform, action, status, title, listing_url, platform_listing_id, platform_fields")
+          .eq("id", jobId).maybeSingle();
+        const pfAp = ((jAp?.platform_fields ?? {}) as Record<string, unknown>);
+        const ligneRp = jAp ? ligneRetraitApresPublication(jAp, { motif: retraitApresPublication, maintenantIso: maintenantRp,
+          identifiantsAvant: identifiantsAvantRp }) as Record<string, unknown> | null : null;
+        if (eAp || !jAp) {
+          console.error(`[update-job-status] userId=${user.id} job=${jobId} — publié APRÈS le retrait de son article (${retraitApresPublication}) : relecture de la tâche impossible (${eAp?.message ?? "introuvable"}), retrait NON armé`);
+        } else if (!ligneRp) {
+          await userClient.from("cross_post_jobs")
+            .update({ platform_fields: champsPublicationSansLien(pfAp, { motif: retraitApresPublication, maintenantIso: maintenantRp }) })
+            .eq("id", jobId).eq("status", "published");
+          console.warn(`[update-job-status] userId=${user.id} job=${jobId} — publié APRÈS le retrait de son article (${retraitApresPublication}), sans lien ni numéro : aucun retrait possible (jamais par le titre), tâche marquée`);
+        } else {
+          const ouvertsRp: unknown[] = [];
+          for (const [colonne, valeur] of [["platform_listing_id", ligneRp.platform_listing_id], ["listing_url", ligneRp.listing_url]] as const) {
+            if (!valeur) continue;
+            const { data: o } = await userClient.from("cross_post_jobs")
+              .select("id, platform, action, status, listing_url, platform_listing_id")
+              .eq("user_id", user.id).eq("platform", String(ligneRp.platform ?? "")).eq("action", "delete")
+              .in("status", STATUTS_RETRAIT_OUVERTS).eq(colonne, String(valeur)).limit(5);
+            ouvertsRp.push(...(o ?? []));
+          }
+          if (retraitDejaOuvert(ouvertsRp, ligneRp)) {
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — publié APRÈS le retrait de son article (${retraitApresPublication}) : un retrait de cette annonce est déjà ouvert`);
+          } else {
+            const { data: insRp, error: eInsRp } = await userClient.from("cross_post_jobs").insert(ligneRp).select("id, status").maybeSingle();
+            if (eInsRp || !insRp?.id) {
+              console.error(`[update-job-status] userId=${user.id} job=${jobId} — publié APRÈS le retrait de son article (${retraitApresPublication}) : retrait NON armé (${eInsRp?.message ?? "aucune ligne : garde d'insertion"})`);
+            } else if (!["pending", "needs_user"].includes(String(insRp.status ?? ""))) {
+              console.warn(`[update-job-status] userId=${user.id} job=${jobId} — publié APRÈS le retrait de son article (${retraitApresPublication}) : retrait ${String(insRp.id).slice(0, 8)} né clos (« ${String(insRp.status)} », garde d'insertion) — rien d'armé`);
+            } else {
+              await userClient.from("cross_post_jobs")
+                .update({ platform_fields: champsPublicationApresRetrait(pfAp, { motif: retraitApresPublication, retraitId: insRp.id, maintenantIso: maintenantRp }) })
+                .eq("id", jobId).eq("status", "published");
+              await userClient.from("usage_logs").insert({
+                user_id: user.id, feature: "retrait_annonces",
+                metadata: { chemin: CHEMIN_PUBLICATION_APRES_RETRAIT, plateformes: [String(ligneRp.platform ?? "")], n_annonces: 1, n_articles: 1,
+                  article_id: jAp.inventaire_id != null ? String(jAp.inventaire_id) : null, motif: retraitApresPublication, depot: jobId, retrait: insRp.id },
+              });
+              retraitArmeApresPublication = { retrait: insRp.id, motif: retraitApresPublication };
+              console.warn(`[update-job-status] userId=${user.id} job=${jobId} — publié APRÈS le retrait de son article (${retraitApresPublication}) : retrait ${String(insRp.id).slice(0, 8)} armé aussitôt (${String(ligneRp.platform)} ${String(ligneRp.platform_listing_id ?? ligneRp.listing_url ?? "")})`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] retrait après publication :", (e as Error)?.message ?? e);
+      }
+    }
 
     // ── DEPOP : LE CONTRÔLE VENDEUR PASSÉ LÈVE LE MUR DU COMPTE (17/10, Nico) ──
     // (_shared/vendeur-depop.js) Un résultat Depop qui a passé le contrôle
@@ -5804,7 +5936,7 @@ serve(async (req) => {
 
     console.log(`[update-job-status] userId=${user.id} job=${jobId} → ${statutEffectif}${raisonRequalif ? ` (requalifié depuis ${status} : ${raisonRequalif})` : ""}`);
 
-    return json({ success: true, job: updated });
+    return json({ success: true, job: updated, ...(retraitArmeApresPublication ? { retrait_apres_publication: retraitArmeApresPublication } : {}) });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[update-job-status] Erreur inattendue:", msg);
@@ -5823,4 +5955,6 @@ import { signeBlocageHorsConnexionLbc } from "../_shared/blocage-leboncoin.js";
 import { adresseRefuseeAvantRetrait, publicationAvecLaMemeAdresse, messageAdresseChezNous, PUBLICATION_PREUVE_JOURS, prochaineAdresseLbc, messageAutreAdresseLbc, messageRueIntrouvableLbc } from "../_shared/lbc-voie-des-reglages.js";
 import { urlConditionsVintedRelevee, messageConditionsVinted } from "../_shared/vinted-conditions.js";
 import { retraitEngage } from "../_shared/retenue-creneau.js";
+import { retraitPendantLaTache, ligneRetraitApresPublication, retraitDejaOuvert, champsPublicationApresRetrait, champsPublicationSansLien, FEATURE_BILAN_RETRAIT_PARTOUT, CHEMIN_PUBLICATION_APRES_RETRAIT,
+  tacheAnnuleeParSuppression, MESSAGE_TACHE_ARTICLE_SUPPRIME, numerosVises, identifiantsAvantPublication, STATUTS_RETRAIT_OUVERTS } from "../_shared/publication-apres-retrait.js";
 import { murConnexionBeebsDeCeRapport } from "../_shared/retraits-en-retard.js";
