@@ -587,7 +587,7 @@ export function resoudreCategorieOpla(
    * que SON mot nomme.
    *
    * ⛔ ELLE REND LA LISTE ENTIÈRE, PLUS LE SEUL PREMIER ÉTAGE (2026-09-21).
-   *    Job e288edef (louis@ttfamily.fr, 21/09 19:50, « Rangement Blanc et Bleu
+   *    Job e288edef (compte faf5021a, 21/09 19:50, « Rangement Blanc et Bleu
    *    Ciel pour 12 pots et 12 couvercles pour yaourtière Multidélices ») : le
    *    mot-objet de l'IA disait « accessoire de yaourtière ». « Accessoire » ne
    *    nomme aucun objet — il désigne quatre fourre-tout dans trois rayons

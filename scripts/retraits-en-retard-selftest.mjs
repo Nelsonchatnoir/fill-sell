@@ -92,8 +92,8 @@ console.log("\n[B] ORANGE : le geste attendu de la personne");
   ok(jv.couleur === "orange" && jv.motif === "connexion", "c867ffe9 : vue 4 j avant la vente, connexion Vinted attendue → orange", JSON.stringify([jv.couleur, jv.motif]));
   const jd = juger({ job: retrait({ platform: "depop", status: "needs_user", listing_url: "https://www.depop.com/products/x-y-a21a/", platform_fields: { ...retrait().platform_fields, needs_user_source: "depop_acces" } }) });
   ok(jd.couleur === "orange" && jd.motif === "depop_acces", "autorisation Depop attendue, aucune preuve : orange", JSON.stringify([jd.couleur, jd.motif]));
-  const jbq = juger({ job: retrait({ platform: "vinted", status: "needs_user", listing_url: "https://www.vinted.fr/items/10499262943", platform_fields: { ...retrait().platform_fields, needs_user_source: "boutique_etrangere", boutique_etrangere: { login_article: "johandsr974" } } }) });
-  ok(jbq.couleur === "orange" && jbq.motif === "boutique" && /@johandsr974/.test(jbq.mur.texte), "boutique Vinted étrangère : orange, boutique nommée", JSON.stringify(jbq.mur));
+  const jbq = juger({ job: retrait({ platform: "vinted", status: "needs_user", listing_url: "https://www.vinted.fr/items/10499262943", platform_fields: { ...retrait().platform_fields, needs_user_source: "boutique_etrangere", boutique_etrangere: { login_article: "boutique-7b9d8a71" } } }) });
+  ok(jbq.couleur === "orange" && jbq.motif === "boutique" && /@boutique-7b9d8a71/.test(jbq.mur.texte), "boutique Vinted étrangère : orange, boutique nommée", JSON.stringify(jbq.mur));
   const jl = juger({ profils: profils(profil(T - 10 * 60_000, { platform_settings: { leboncoin: { blocage_acces: { signe: "http_403", depuis: iso(T - 4 * J) } } } })) });
   ok(jl.couleur === "orange" && jl.motif === "pause_leboncoin", "pause Leboncoin du profil, aucune preuve en ligne : orange", JSON.stringify([jl.couleur, jl.motif]));
   const jlev = juger({ profils: profils(profil(T - 10 * 60_000, { platform_settings: { leboncoin: { blocage_acces: { signe: "http_403", depuis: iso(T - 4 * J), leve_le: iso(T - J) } } } })) });
@@ -133,11 +133,11 @@ console.log("\n[C] BLANC : sans risque de double vente");
   // Délégation Leboncoin : c'est le poste de l'exécutant qui compte.
   const AM = "faf5021a-479a-4bb3-b3ec-c296770739b7";
   const pd = new Map([
-    [U, profil(T - 60 * J, { beta_flags: { delegation_leboncoin: { executant: AM, nom: "Amiral" } } })],
+    [U, profil(T - 60 * J, { beta_flags: { delegation_leboncoin: { executant: AM, nom: "Compte-faf5021a" } } })],
     [AM, profil(T - 5 * 60_000, { beta_flags: { execute_leboncoin_pour: [U] } })],
   ]);
   const jdl = juger({ profils: pd, annonces: [{ statut_plateforme: "en_ligne", vu_le: iso(T - H) }] });
-  ok(jdl.couleur === "rouge" && jdl.delegue && /poste de Amiral \(délégation\)/.test(M.ligneRetrait(jdl, T)), "délégation Leboncoin : poste de l'exécutant vivant → jugé (rouge), exécutant nommé", JSON.stringify([jdl.couleur, jdl.motif, jdl.executantNom]));
+  ok(jdl.couleur === "rouge" && jdl.delegue && /poste de Compte-faf5021a \(délégation\)/.test(M.ligneRetrait(jdl, T)), "délégation Leboncoin : poste de l'exécutant vivant → jugé (rouge), exécutant nommé", JSON.stringify([jdl.couleur, jdl.motif, jdl.executantNom]));
 }
 
 console.log("\n[D] Les lignes et l'objet");

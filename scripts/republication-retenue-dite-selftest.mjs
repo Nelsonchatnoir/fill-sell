@@ -83,7 +83,7 @@ const txtExt = BG.slice(BG.indexOf('async function retenirDerriereAnnonceHorsLig
 ok(txtExt.includes("Les autres republications attendent sa remise en ligne, pour ne jamais laisser deux annonces hors ligne. Rien n'a été retiré.")
   && GPJ.includes("Les autres republications attendent sa remise en ligne, pour ne jamais laisser deux annonces hors ligne. Rien n'a été retiré."), 'même texte côté serveur et côté extension');
 ok(/selling-restriction/.test(VJS), 'vinted.js reconnaît /selling-restriction');
-ok(/CAPTURE_VINTED_BORNE_MS\s*=\s*90/.test(BG) || /CAPTURE_VINTED_BORNE_MS = 90_000/.test(BG), 'capture de republication bornée à 90 s (ltouze)');
+ok(/CAPTURE_VINTED_BORNE_MS\s*=\s*90/.test(BG) || /CAPTURE_VINTED_BORNE_MS = 90_000/.test(BG), 'capture de republication bornée à 90 s (client-7c5f4407)');
 // (11/10) La 0.6.108 embarque la 0.6.107 (jamais téléversée) : 0.6.107 OU PLUS.
 ok((() => {
   const v = (lire('chrome-extension/manifest.json').match(/"version": "(\d+)\.(\d+)\.(\d+)"/) || []).slice(1).map(Number);

@@ -117,7 +117,7 @@ const linda = { id: "30277889", action: "republish", status: "pending", platform
 const dL = decisionRecreatedSansNumero(linda, { ficheVintedId: "10542669657" });
 t(dL.verdict === "clore" && dL.listing_id === "10542669657", "Vinted : nouvelle annonce rattachée à la fiche → published");
 t(!etapeRecreatedSansNumero({ ...jean, platform_listing_id: "3296005486" }), "avec son numéro : la règle du 15/10 s'en charge");
-t(!etapeRecreatedSansNumero({ ...jean, status: "failed" }), "une tâche CLOSE (failed) n'est jamais rouverte par la règle (XEWER, 30/10)");
+t(!etapeRecreatedSansNumero({ ...jean, status: "failed" }), "une tâche CLOSE (failed) n'est jamais rouverte par la règle (COMPTE-DE63CA45, 30/10)");
 t(!etapeRecreatedSansNumero({ ...jean, platform: "beebs", platform_fields: { ...jean.platform_fields, refus_verification_beebs: { numero: "34140079" } } }), "un numéro refusé par la vérification Beebs : jamais repris");
 
 // ── 5. Relance après mise à jour d'un AUTRE défaut (Sébastien) ──

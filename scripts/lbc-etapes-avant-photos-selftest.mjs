@@ -84,7 +84,7 @@ function charger(document) {
 }
 const JOB = { title: "Gomme de musculation pour la mâchoire", description: "Gomme de musculation, neuve.", price: 12 };
 
-console.log("\n[1] Glowik — rayon « Équipements pour commerces & marchés » : description → prix → photos");
+console.log("\n[1] Boutique-869e5f03 — rayon « Équipements pour commerces & marchés » : description → prix → photos");
 {
   const w = wizard([
     { nom: "decrivez", champs: ["body"], exige: "body" },

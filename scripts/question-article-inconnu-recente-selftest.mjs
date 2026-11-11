@@ -75,7 +75,7 @@ ok(neuf.includes("v_le >= now() - interval '24 hours'") && neuf.includes('push_n
 ok(REP.includes("(v.vendu_le IS NOT NULL AND v.vendu_le >= u.created_at - interval '48 hours') AS due")
   && regle.includes("p_vendu_le is not null and p_vendu_le >= coalesce(p_lu_le, now()) - interval '48 hours'"),
   'C1. périmètre = la même règle (48 h), jugée à l\'instant où chaque question a été posée, sans dépendre de la migration');
-ok(/n_tot <> 125 OR n_anc <> 123 OR n_due <> 2 OR n_sans <> 0/.test(REP) && /nadegemarcelin78 serait neutralisée/.test(REP),
+ok(/n_tot <> 125 OR n_anc <> 123 OR n_due <> 2 OR n_sans <> 0/.test(REP) && /compte 8a2eba68 serait neutralisée/.test(REP),
   'C2. 125 questions, 123 anciennes, 2 récentes gardées : sinon rien n\'est écrit');
 ok(/CREATE TABLE public\._backup_0111_questions_article_inconnu AS/.test(REP) && /ENABLE ROW LEVEL SECURITY/.test(REP),
   'C3. sauvegarde des lignes entières, fermée');

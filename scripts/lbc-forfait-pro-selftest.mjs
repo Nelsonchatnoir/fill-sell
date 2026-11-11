@@ -49,7 +49,7 @@ ok(!jobProuvePro({ platform: "leboncoin", error: MUR }) && !jobProuvePro({ platf
   "le mur seul ne prouve rien ; une autre plateforme non plus");
 ok(/general_sales_condition/.test(FILTRE_PREUVE_PRO) && /custom_ref/.test(FILTRE_PREUVE_PRO) && /erreurs_archivees/.test(FILTRE_PREUVE_PRO), "le filtre serveur lit la même preuve (erreur et archives)");
 
-console.log("\n2. LE CAS RÉEL (DeadRoz, 14/10) — c'est le compte, pas les photos");
+console.log("\n2. LE CAS RÉEL (Compte-7373c96c, 14/10) — c'est le compte, pas les photos");
 // Photos réellement envoyées, relevées en base : 10 partout, sauf 8afe17aa (7, au mur) ; les 5 passés : 10.
 const envoyeesMurs = [10, 10, 10, 10, 10, 7, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
 const envoyeesPassees = [10, 10, 10, 10, 10];
@@ -323,7 +323,7 @@ console.log("\n9. (29/10, lot B partie 3) AU MUR, LE TYPE DE LA SESSION QUI DÉP
   ok(v(D({ compteProServeur: false, formulairePro: true, typeLu: "individual" })) === "particulier/session/contredit",
     "formulaire pro vu mais la session lit « individual » : particulier (jamais de circuit pro contre la lecture)");
   ok(v(D({ compteProServeur: true, typeLu: "business" })) === "pro/session" && v(D({ typeLu: "business" })) === "pro/session" && v(D({ typeLu: "pro" })) === "pro/session",
-    "une lecture pro (≠ individual) → circuit pro, preuve de la session (paugues.contact : « business », sans formulaire pro)");
+    "une lecture pro (≠ individual) → circuit pro, preuve de la session (client-e95e8b9d : « business », sans formulaire pro)");
   ok(v(D({ typeLu: "individual" })) === "particulier/session", "particulier lu, rien d'autre : particulier, sans contradiction");
   ok(v(D({ compteProServeur: true, typeLu: null })) === "pro/serveur" && v(D({ formulairePro: true, typeLu: null })) === "pro/formulaire"
     && v(D({ compteProServeur: true, formulairePro: true, typeLu: null })) === "pro/formulaire",

@@ -25,7 +25,7 @@ const VIDE = "contrôle Supprimer introuvable sur la page de l'annonce 326450773
 
 console.log("A. Reconnaissance");
 const r = V.vueVisiteurLbc(RITTHIK);
-ok(r && r.vendeur === "RiseFit", "diagnostic réel de Ritthik : vue acheteur, vendeur « RiseFit »", r);
+ok(r && r.vendeur === "RiseFit", "diagnostic réel de Compte-essai-1 : vue acheteur, vendeur « RiseFit »", r);
 ok(V.vueVisiteurLbc(PROPRIO) === null, "vue propriétaire (Modifier / Mettre en pause) : jamais une attente de connexion");
 ok(V.vueVisiteurLbc(VIDE) === null, "panneau non monté (aucune action) : rien n'est conclu");
 ok(V.vueVisiteurLbc(RITTHIK.replace("« Gérer » absent", "« Gérer » présent")) === null, "« Gérer » présent : pas une vue acheteur");

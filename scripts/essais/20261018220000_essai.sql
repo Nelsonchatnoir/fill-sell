@@ -532,21 +532,21 @@ $function$;
 
 -- T1 : le relevé Leboncoin du compte principal voit une annonce PUBLIÉE par louis-seller (3290854157) → pas importée.
 insert into annonces_plateforme (user_id, platform, listing_id, titre) values ('faf5021a-479a-4bb3-b3ec-c296770739b7', 'leboncoin', '3290854157', 'essai');
-insert into _r select 'T1 relevé du principal : annonce de louis-seller non importée', not exists (select 1 from annonces_plateforme where user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7' and listing_id = '3290854157');
+insert into _r select 'T1 relevé du principal : annonce de client-447d920c non importée', not exists (select 1 from annonces_plateforme where user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7' and listing_id = '3290854157');
 insert into _r select 'T1 tracée (compte_relie:leboncoin)', exists (select 1 from sync_import_ecartes where user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7' and vinted_item_id = '3290854157' and motif = 'compte_relie:leboncoin');
 -- T2 : le relevé de louis-seller l'importe (c'est la sienne).
 insert into annonces_plateforme (user_id, platform, listing_id, titre) values ('447d920c-976a-4d8f-aff4-a2998050358c', 'leboncoin', '3290854157', 'essai');
-insert into _r select 'T2 relevé de louis-seller : sa propre annonce importée', exists (select 1 from annonces_plateforme where user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and listing_id = '3290854157');
+insert into _r select 'T2 relevé de client-447d920c : sa propre annonce importée', exists (select 1 from annonces_plateforme where user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and listing_id = '3290854157');
 -- T3 : une annonce du principal (3290751219, suivie par lui) n'entre jamais chez louis-seller.
 insert into annonces_plateforme (user_id, platform, listing_id, titre) values ('447d920c-976a-4d8f-aff4-a2998050358c', 'leboncoin', '3290751219', 'essai');
-insert into _r select 'T3 annonce du principal : jamais importée chez louis-seller', not exists (select 1 from annonces_plateforme where user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and listing_id = '3290751219');
+insert into _r select 'T3 annonce du principal : jamais importée chez client-447d920c', not exists (select 1 from annonces_plateforme where user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and listing_id = '3290751219');
 -- T4 : une vente relevée par le principal sur l'annonce de louis-seller → laissée à louis-seller.
-insert into _r select 'T4 vente vue par le principal : laissée à louis-seller', (r ->> 'autre_compte_relie')::int = 1
+insert into _r select 'T4 vente vue par le principal : laissée à client-447d920c', (r ->> 'autre_compte_relie')::int = 1
   from (select enregistrer_ventes_relevees('leboncoin', '[{"ref":"lbc-essai-220-4","statut":"paid","titre":"essai","prix":"1","listing_id":"3290861710"}]'::jsonb,
         'faf5021a-479a-4bb3-b3ec-c296770739b7') r) x;
 insert into _r select 'T4 aucune vente écrite chez le principal', not exists (select 1 from ventes where commande_ref = 'lbc-essai-220-4');
 -- T5 : la même vente relevée par louis-seller n'est pas écartée (c'est la sienne).
-insert into _r select 'T5 vente vue par louis-seller : jamais écartée', (r ->> 'autre_compte_relie')::int = 0
+insert into _r select 'T5 vente vue par client-447d920c : jamais écartée', (r ->> 'autre_compte_relie')::int = 0
   from (select enregistrer_ventes_relevees('leboncoin', '[{"ref":"lbc-essai-220-5","statut":"paid","titre":"essai","prix":"1","listing_id":"3290861710"}]'::jsonb,
         '447d920c-976a-4d8f-aff4-a2998050358c') r) x;
 select * from _r;

@@ -33,7 +33,7 @@ ok(F.couleursVintedSansQuestion({ pf: { couleur: "Burgundy" } }).colors.join() =
 ok(F.couleursVintedSansQuestion({ pf: { couleur: "zzz" }, attrs: { couleur: { v: "Jaune" } } }).colors.join() === "Jaune", "copie illisible : la fiche tranche");
 
 console.log("2. marque");
-ok(F.marqueVintedSansQuestion({ pf: {}, attrs: {}, marqueColonne: null })?.marque === "Sans marque", "bijou SANS AUCUNE marque (lucyburaux988) : « Sans marque », aucune question");
+ok(F.marqueVintedSansQuestion({ pf: {}, attrs: {}, marqueColonne: null })?.marque === "Sans marque", "bijou SANS AUCUNE marque (client-61ecf180) : « Sans marque », aucune question");
 ok(F.marqueVintedSansQuestion({ pf: {}, attrs: { marque: { v: "Pandora", source: "lens" } } }) === null, "la fiche porte une marque : jamais « Sans marque » en silence");
 ok(F.marqueVintedSansQuestion({ pf: {}, attrs: {}, marqueColonne: "Zara" }) === null, "marque dans la colonne de la fiche : idem");
 ok(F.marqueVintedSansQuestion({ pf: { marque: "Nike" }, attrs: {} }) === null, "une marque déjà sur la copie : on n'y touche pas");

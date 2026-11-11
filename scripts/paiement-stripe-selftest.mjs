@@ -55,11 +55,11 @@ console.log('Pourquoi le paiement n\'est pas passé');
   ok(causeEchec(null) === 'aucune_tentative', 'aucune tentative du tout');
 }
 
-console.log('(15/10, DeadRoz) Le palier PAYÉ se lit sur ce que Stripe facture, jamais sur les drapeaux');
+console.log('(15/10, Compte-7373c96c) Le palier PAYÉ se lit sur ce que Stripe facture, jamais sur les drapeaux');
 {
   const P = { standard: 'price_std', pro: 'price_pro', business: 'price_biz' };
   // Facture de création réelle (forme 2026-03-25.dahlia : pricing.price_details.price).
-  ok(palierDeFacture({ lines: { data: [{ amount: 5999, pricing: { price_details: { price: 'price_biz' } } }] } }, null, P) === 'business', 'facture Business de création → business (DeadRoz : « premium » lu sur les drapeaux)');
+  ok(palierDeFacture({ lines: { data: [{ amount: 5999, pricing: { price_details: { price: 'price_biz' } } }] } }, null, P) === 'business', 'facture Business de création → business (Compte-7373c96c : « premium » lu sur les drapeaux)');
   ok(palierDeFacture({ lines: { data: [{ amount: 2999, price: { id: 'price_pro' } }] } }, null, P) === 'pro', 'ancienne forme (line.price) → pro');
   ok(palierDeFacture({ lines: { data: [{ amount: -1000, price: { id: 'price_pro' } }, { amount: 3000, price: { id: 'price_biz' } }] } }, null, P) === 'business', 'facture de différence : la ligne POSITIVE fait foi (le crédit « temps non utilisé » est ignoré)');
   ok(palierDeFacture({ lines: { data: [{ amount: 0, price: { id: 'price_biz' } }] } }, { items: { data: [{ price: { id: 'price_biz' } }] } }, P) === 'business', 'facture à 0 € (bon de réduction) → le prix de l\'abonnement');
@@ -68,7 +68,7 @@ console.log('(15/10, DeadRoz) Le palier PAYÉ se lit sur ce que Stripe facture, 
   ok(palierDeFacture({}, null, P) === null, 'illisible → null (l\'appelant garde son repli et le journalise)');
 }
 
-console.log('(29/10, lot C 5 — boncoin59300) Jamais deux abonnements au même palier');
+console.log('(29/10, lot C 5 — client-3f91c02e) Jamais deux abonnements au même palier');
 {
   const t = Date.parse('2026-10-29T17:13:50Z');
   // (30/10, lot D point 2) RECTIFIÉ : le « profil réel au moment du clic » du lot C était lu APRÈS le paiement Stripe.

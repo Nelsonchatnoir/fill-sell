@@ -54,7 +54,7 @@ console.log("\n2. LES CAS QUI FUYAIENT");
 const geronimo = { platform: "ebay", action: "publish", status: "needs_user",
   error: "LIVE : aspect(s) obligatoire(s) eBay vide(s) sur le formulaire : Numéro de pièce fabricant — publication NON tentée (refus eBay garanti). Compléter le champ dans l'app (badge « À compléter » du Stock) ; le job repartira ensuite automatiquement. Détail du remplissage : Numéro de pièce fabricant: champ sauté — bouton-valeur introuvable" };
 const g = jobErrorSansFaussePromesse(geronimo, "fr");
-ok(/Numéro de pièce fabricant/.test(g) && !JARGON.test(g), "geronimo0550 : le champ demandé, en mots de vendeur, même sur un job vivant", g);
+ok(/Numéro de pièce fabricant/.test(g) && !JARGON.test(g), "client-63b80b36 : le champ demandé, en mots de vendeur, même sur un job vivant", g);
 const verif = humanizeJobError({ platform: "vinted", action: "publish", status: "published",
   error: "Impossible de vérifier l'état de cette annonce vinted après 4 tentatives (page de vérification anti-bot ou format inattendu). L'annonce N'A PAS été touchée et le job reste 'published' : vérifier à la main sur la plateforme. Nouvelle tentative dans 24 h." }, "fr");
 ok(verif === "Impossible de vérifier cette annonce sur Vinted : sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification à un prochain passage.",

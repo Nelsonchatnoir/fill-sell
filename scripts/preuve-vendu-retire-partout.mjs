@@ -456,7 +456,7 @@ try {
     has_function_privilege('service_role', $1, 'EXECUTE') AS srv`, [NEUVE]);
   ok(!droits.auth && !droits.anon && droits.srv, 'armer_retrait_annonce_pour : serveur seulement (ni anon, ni authenticated)', droits);
 
-  console.log('\n   le Doudou de nicolas.menar (tel qu\'en prod) : chaque annonce a sa question, le « Oui » retire L\'ANNONCE MONTRÉE');
+  console.log('\n   le Doudou de client-39bfa95a (tel qu\'en prod) : chaque annonce a sa question, le « Oui » retire L\'ANNONCE MONTRÉE');
   {
     const x = await casDoudou();
     const q = await questionsDe(x.f);

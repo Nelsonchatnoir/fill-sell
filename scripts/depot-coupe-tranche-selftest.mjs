@@ -53,7 +53,7 @@ ok(decisionDepotCoupe({ job: jobCuisine, lignes: unSeul, runs: F.runs, empreinte
 console.log("\n3. BOUTIQUE PARTAGÉE : UNE VUE SOUS UN AUTRE COMPTE COMPTE");
 const partagee = [...F.lignes.map((l) => (l.listing_id === "3292489182" ? { ...l, statut_plateforme: "en_ligne" } : l)), { user_id: "447d920c-976a-4d8f-aff4-a2998050358c", listing_id: "3292489182", vu_le: plusTard(dernierRun.started_at, 30), disparu_le: null }];
 const dP = decisionDepotCoupe({ job: jobCuisine, lignes: partagee, runs: F.runs, empreinte: emp });
-ok(dP.decision !== "relancer", "vue par le relevé de louis-seller (même boutique Leboncoin) après les relevés de louis → encore en ligne", JSON.stringify(dP));
+ok(dP.decision !== "relancer", "vue par le relevé de client-447d920c (même boutique Leboncoin) après les relevés de louis → encore en ligne", JSON.stringify(dP));
 ok(candidatesDepotCoupe(jobCuisine, partagee).every((c) => c.user_id === jobCuisine.user_id), "les lignes d'un autre compte ne sont jamais des candidates");
 
 console.log("\n4. JAMAIS SANS RELEVÉ, JAMAIS DEUX FOIS");
@@ -102,7 +102,7 @@ const runsTot = [{ id: "rt", status: "done", started_at: plusTard(essaiB, 20), f
 ok(decisionDepotCoupe({ job: depotB, lignes: [plancher], runs: runsTot, empreinte: () => undefined }).decision === "attendre",
   "aucune annonce apparue mais seul relevé 20 min après l'essai → on attend (une annonce en vérification a 1 h pour apparaître)");
 ok(decisionDepotCoupe({ job: depotB, lignes: [plancher], runs: runsB, empreinte: () => undefined }).decision === "relancer",
-  "Ciddjy (25/10) : aucune annonce apparue, relevés complets des 20/10 16:44 et 22/10 18:01 → redépôt unique");
+  "Compte-eacbe32c (25/10) : aucune annonce apparue, relevés complets des 20/10 16:44 et 22/10 18:01 → redépôt unique");
 const avantDepot = { ...ligneBVue, listing_id: "34000001" };
 ok(decisionDepotCoupe({ job: depotB, lignes: [plancher, avantDepot], runs: runsB, empreinte: empB }).decision === "relancer",
   "une annonce au numéro plus petit que ceux du compte avant l'essai n'est jamais ce dépôt");
@@ -166,7 +166,7 @@ const gpj = fs.readFileSync(new URL("../supabase/functions/get-pending-jobs/inde
 ok(gpj.includes("depotInacheveLbc(plateforme, pf, c,") && /publiee_le"\)\s*\n\s*\.eq\("platform", plateforme\)/.test(gpj), "get-pending-jobs écarte le dépôt inachevé avant de juger (publiee_le lu)");
 ok(hw.includes("retiree_le, publiee_le\")"), "handler-watch lit publiee_le des candidates");
 
-console.log("\n10. UNE ANNONCE D'UNE AUTRE FICHE N'EST PAS CE DÉPÔT (29/10, tiblancdeshaut c9fe1ee1 ; Leboncoin 1660ea94)");
+console.log("\n10. UNE ANNONCE D'UNE AUTRE FICHE N'EST PAS CE DÉPÔT (29/10, client-7b9d8a71 c9fe1ee1 ; Leboncoin 1660ea94)");
 // Relevé en base le 29/10. Beebs, « Sweat GAP » c9fe1ee1 (fiche 1792587088278), retiré le 27/10 à 14:02:31 (Paris),
 // essai coupé le 28/10 à 08:06, question à 08:17 sur 34245064 (sac, job 9a096169, fiche 1792586354104) et 34246760
 // (pantalon, job c002a882, fiche 1792586859815), revues au relevé 99f7288a du 29/10 18:22. Numéros des jobs tels

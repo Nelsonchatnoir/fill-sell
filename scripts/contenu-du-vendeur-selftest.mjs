@@ -265,7 +265,7 @@ console.log("E. (22/10 nuit, décisions de Nico) L'ÉTAT JAMAIS DÉGRADÉ EN REP
   const pub = contenuAImposer({ ...rep, action: "publish" }, f, { contenuLe: "2026-10-01T10:00:00.000Z", etatLuLe: "2026-09-01T10:00:00.000Z" });
   ok(pub.etat === undefined, "publication rédigée après la lecture (vue par la personne) : son état n'est pas touché", JSON.stringify(pub));
   const haut = contenuAImposer({ ...rep, platform_fields: { etat: "Neuf avec étiquette" } }, f, { contenuLe: "2026-10-01T10:00:00.000Z" });
-  ok(haut.etat === undefined, "état de copie plus HAUT que la fiche : jamais touché (louis-seller, décision de Nico)", JSON.stringify(haut));
+  ok(haut.etat === undefined, "état de copie plus HAUT que la fiche : jamais touché (client-447d920c, décision de Nico)", JSON.stringify(haut));
   // Leboncoin : le critère du formulaire (lbcAspects.condition) part AVANT platform_fields.etat — c'est lui qui compte
   // (vu le 22/10 nuit sur Louis : état imposé « Neuf », critère « Très bon état » repris de l'ancienne annonce).
   const lbc = contenuAImposer({ ...rep, platform_fields: { etat: "Neuf sans étiquette", lbcAspects: { condition: "Très bon état", toy_type: "Jeux de société" } } }, f,
@@ -282,7 +282,7 @@ console.log("E. (22/10 nuit, décisions de Nico) L'ÉTAT JAMAIS DÉGRADÉ EN REP
   const ficheArt = { origine: null, titre: "Huile sur toile style post impressionisme - P.Vicent - 1977", description: "", attributs: { etat: { v: "Bon état" } } };
   const c1 = correctionCaptureVinted(ficheArt, { categoryPath: ["Loisirs créatifs", "Peinture", "Toiles et panneaux"], catalog_id_depot: 5267, etat: "Bon état" }, { catalog_id: 5267, status_id: 3 });
   ok(c1?.libelles.catalog_id_depot === 3847 && c1.libelles.categoryPath.at(-1) === "Peintures" && c1.raisons.join() === "categorie_oeuvre",
-    "paugues : une œuvre rangée en « Toiles et panneaux » repart dans « Peintures » (3847)", JSON.stringify(c1));
+    "compte-e95e8b9d : une œuvre rangée en « Toiles et panneaux » repart dans « Peintures » (3847)", JSON.stringify(c1));
   ok(c1?.libelles.etat === "Bon état" && c1.natif.status_id === 3, "… sans rien toucher d'autre (état, ids)");
   const c2 = correctionCaptureVinted(ficheArt, { categoryPath: ["Maison", "Décoration", "Décorations murales", "Peintures"], catalog_id_depot: 3847, etat: "Bon état" }, { catalog_id: 3847 });
   ok(c2 === null, "déjà dans « Peintures » : rien à corriger");
@@ -308,7 +308,7 @@ console.log("E. (22/10 nuit, décisions de Nico) L'ÉTAT JAMAIS DÉGRADÉ EN REP
   const ficheEtat = { origine: "releve_leboncoin", titre: "Magnifique Pichet Vintage en Céramique Vernissée", description: "", attributs: { etat: { v: "Bon état" } } };
   const c3 = correctionCaptureVinted(ficheEtat, { categoryPath: ["Maison", "Cuisine"], etat: "Bon état" }, { status_id: 3 }, "Très bon état");
   ok(c3?.libelles.etat === "Très bon état" && c3.natif.status_id === 2 && c3.raisons.join() === "etat_de_la_fiche",
-    "jocabroc8 : « Bon état » en ligne, « Très bon état » sur la fiche AVANT la capture (qui l'a réécrite) → « Très bon état » (2)", JSON.stringify(c3));
+    "client-53efea05 : « Bon état » en ligne, « Très bon état » sur la fiche AVANT la capture (qui l'a réécrite) → « Très bon état » (2)", JSON.stringify(c3));
   ok(correctionCaptureVinted({ ...ficheEtat, attributs: { etat: { v: "Bon état" } } }, { etat: "Très bon état" }, { status_id: 2 }) === null,
     "état en ligne plus haut que la fiche : jamais redescendu");
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");

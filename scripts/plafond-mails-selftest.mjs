@@ -20,7 +20,7 @@ ok(compteDansPlafond('venteX') && compteDansPlafond('relance_vente') && compteDa
 ok(compteDansPlafond(null) && compteDansPlafond('') && compteDansPlafond(undefined), 'type absent → compte (prudence)');
 ok(PREFIXES_HORS_PLAFOND.length === 1 && TYPES_HORS_PLAFOND.length === 1, 'deux exceptions seulement, nommées');
 
-console.log('2. thecloset72000, 28/10 ~20:30');
+console.log('2. client-8ac5bbda, 28/10 ~20:30');
 const lignes = ['vente:5676', 'maintenance_vinted', 'vente:5583', 'vente:5552', 'vente:5444'].map((email_type) => ({ email_type }));
 ok(lignes.length === 5, 'avant : 5 lignes comptées (« deja: 5 ») → refus');
 ok(mailsQuiComptent(lignes) === 1 && mailsQuiComptent(lignes) < PLAFOND_24H, 'maintenant : 1 seule compte (maintenance_vinted) → le mail part');

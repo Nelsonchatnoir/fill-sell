@@ -47,7 +47,7 @@ async function deposerSur(pathname, { botShield = false } = {}) {
     { pathname, href: `https://www.vinted.fr${pathname}` },
     () => botShield, false, { log() {}, warn() {}, error() {} }, "vinted.fr", () => "Chrome",
     async () => ({ tryResolveSelector: () => false }),
-    async () => { sondes.push(pathname); return { success: true, login: "lp_vtd89" }; },
+    async () => { sondes.push(pathname); return { success: true, login: "client-c4d4807f" }; },
     () => new Promise(() => {}), () => "conditions", { querySelector: () => null, body: null },
   );
   const r = await fn({ id: "f2849ebb", title: "Veste adidas France 98", platform_fields: {} });
@@ -75,8 +75,8 @@ for (const p of ["/main/bannedx", "/member/login", "/listing-restriction", "/sel
 }
 
 console.log("\n[3] le serveur arrête au premier essai (essaiSurPageCompteBloque)");
-const brutLp = "Page de dépôt Vinted non atteinte (pathname inattendu (/main/banned)) alors que le compte (@lp_vtd89) répond — nouvelle tentative au prochain passage, rien à faire. Nouvel essai automatique (tentative 1/5), rien à faire.";
-ok(V.essaiSurPageCompteBloque({}, brutLp), "texte exact de lp.vtd89 (extension 0.6.169) : reconnu dès le 1er essai");
+const brutLp = "Page de dépôt Vinted non atteinte (pathname inattendu (/main/banned)) alors que le compte (@client-c4d4807f) répond — nouvelle tentative au prochain passage, rien à faire. Nouvel essai automatique (tentative 1/5), rien à faire.";
+ok(V.essaiSurPageCompteBloque({}, brutLp), "texte exact de client-c4d4807f (extension 0.6.169) : reconnu dès le 1er essai");
 ok(V.essaiSurPageCompteBloque(null, "COMPTE VINTED BLOQUÉ : Vinted affiche sa page « compte bloqué » à la place du formulaire de dépôt — rien n'a été publié."), "verdict nommé de la 0.6.173");
 ok(V.essaiSurPageCompteBloque({ work_window_state: { at_end: { tab_url: "https://www.vinted.fr/main/banned" } } }, ""), "fin de l'essai sur /main/banned : comme avant");
 for (const [nom, brut] of [

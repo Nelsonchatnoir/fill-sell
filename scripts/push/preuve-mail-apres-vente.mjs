@@ -122,7 +122,7 @@ begin
   values (u, i4, 'vinted', 'published', 'publish', 'Veste preuve déclarée', 30, '990000204', 'https://www.vinted.fr/items/990000204', now() - interval '3 days', now() - interval '1 hour', now() - interval '1 hour')
   returning id into j4;
 
-  -- D1. CAS BEBERTDEALS : signal « vendue » SANS preuve enregistrable → la note naît…
+  -- D1. CAS BOUTIQUE-C15F4B0E : signal « vendue » SANS preuve enregistrable → la note naît…
   update cross_post_jobs set platform_fields = coalesce(platform_fields, '{}'::jsonb)
     || jsonb_build_object('sale_signal', 'sold', 'unavailable_since', ts, 'detected_price', 21) where id = j1;
   select count(*) into v_n from push_ventes where user_id = u and job_id = j1 and statut = 'a_envoyer';
@@ -133,7 +133,7 @@ begin
   select count(*) into v_n from jsonb_array_elements(coalesce(v_res -> 'notes', '[]'::jsonb)) x
    where (x ->> 'id')::bigint in (select id from push_ventes where job_id = j1);
   select count(*) into v_m from push_ventes where job_id = j1 and part_le is null and statut = 'a_envoyer';
-  perform pg_temp.verif(v_n = 0 and v_m = 1, 'D1b. CAS BEBERTDEALS : vente NON enregistrée → AUCUN mail, la note attend');
+  perform pg_temp.verif(v_n = 0 and v_m = 1, 'D1b. CAS BOUTIQUE-C15F4B0E : vente NON enregistrée → AUCUN mail, la note attend');
   select count(*) into v_n from ventes where user_id = u and inventaire_id = i1;
   perform pg_temp.verif(v_n = 0, 'D1c. aucune vente écrite, stock intact (statut « stock »)');
 

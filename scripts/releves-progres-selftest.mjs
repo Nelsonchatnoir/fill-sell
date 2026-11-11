@@ -63,7 +63,7 @@ ok(/const reveilReleve = setInterval\(\(\) => chrome\.runtime\.getPlatformInfo\(
 
 console.log("\n4. LE VEILLEUR S'ESPACE APRÈS UN ÉCHEC (toutes versions)");
 ok(/EXIT WHEN r\.status = 'done';/.test(mig) && /status IN \('done', 'absente', 'failed', 'expired', 'interrupted', 'incomplete'\)/.test(mig), "série d'échecs comptée jusqu'au dernier relevé réussi");
-ok(/WHEN v_echecs = 1 THEN interval '1 hour'\s+WHEN v_echecs = 2 THEN interval '3 hours'\s+ELSE interval '6 hours' END;/.test(mig), "1 h, 3 h, puis 6 h (44310spgl : de ~96 par jour à 4 au plus)");
+ok(/WHEN v_echecs = 1 THEN interval '1 hour'\s+WHEN v_echecs = 2 THEN interval '3 hours'\s+ELSE interval '6 hours' END;/.test(mig), "1 h, 3 h, puis 6 h (client-dbca7f39 : de ~96 par jour à 4 au plus)");
 ok(/IF NEW\.kind IS DISTINCT FROM 'annonces'\s+OR NEW\.declencheur IS DISTINCT FROM 'veilleur'/.test(mig), "le veilleur seul — un relevé demandé depuis l'app part toujours");
 ok(/RAISE EXCEPTION 'RELEVE_ECHEC_ESPACE:/.test(mig), "refus nommé (lisible dans les journaux de l'extension)");
 

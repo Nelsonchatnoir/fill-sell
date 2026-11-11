@@ -51,7 +51,7 @@ console.log("\n[1] Le verdict d'adresse (code postal de la base officielle fran�
     codesPostauxFrancais().size === CODES_POSTAUX_FR_NOMBRE && CODES_POSTAUX_FR_NOMBRE > 6000 && /^\d{4}-\d{2}-\d{2}$/.test(CODES_POSTAUX_FR_LE));
   const marta = { rue: "Via CANALE 24 C", code_postal: "16035", ville: "RAPALLO", adresse: "Via CANALE 24 C 16035 RAPALLO" };
   const vm = adresseLbcHorsFrance(marta);
-  ok("16035 RAPALLO (Marta, Italie) → hors de France, preuve 16035", vm.horsFrance === true && vm.code === "16035" && vm.motif === "hors_france", JSON.stringify(vm));
+  ok("16035 RAPALLO (Compte-essai-3, Italie) → hors de France, preuve 16035", vm.horsFrance === true && vm.code === "16035" && vm.motif === "hors_france", JSON.stringify(vm));
   ok("06890 Transinne (code belge complété d'un zéro) → hors de France",
     adresseLbcHorsFrance({ rue: "La Chavée 11", code_postal: "06890", ville: "Transinne" }).horsFrance === true);
   for (const [cp, ville] of [["91160", "Saulx-les-Chartreux"], ["26230", "Chantemerle-lès-Grignan"], ["97400", "Saint-Denis (La Réunion)"], ["20000", "Ajaccio"], ["75116", "Paris 16e"], ["98800", "Nouméa"]]) {

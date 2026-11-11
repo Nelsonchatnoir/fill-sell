@@ -52,9 +52,9 @@ ok(!releveComplet(R1610, { platform: 'vinted', boutique: '999' }), 'le relevé d
 ok(!releveComplet(R1610, { platform: 'vinted', boutique: null }), 'sans boutique connue, aucun relevé Vinted ne prouve une absence');
 
 // 2. Vinted — le cas DeadRoz du 16/10, rejoué.
-ok(d({ job: job(), vu: VU_0737 }).decision === 'attendre', 'DeadRoz : la trace de 07:37 est AVANT la lecture → elle ne prouve rien, on attend');
+ok(d({ job: job(), vu: VU_0737 }).decision === 'attendre', 'Compte-7373c96c : la trace de 07:37 est AVANT la lecture → elle ne prouve rien, on attend');
 const un = d({ job: job(), vu: VU_0737, runs: [R1610] });
-ok(un.decision === 'attendre' && /on attend le suivant/.test(un.raison), 'DeadRoz 16/10 : absente d’UN relevé complet → on attend le second (jamais clos sur un seul)', un);
+ok(un.decision === 'attendre' && /on attend le suivant/.test(un.raison), 'Compte-7373c96c 16/10 : absente d’UN relevé complet → on attend le second (jamais clos sur un seul)', un);
 ok(d({ job: job(), vu: VU_0737, runs: [R1610, R1710] }).decision === 'confirmer', 'absente de DEUX relevés complets de SA boutique → close (vraie disparition, zéro régression)');
 ok(d({ job: job(), fiche: { statut: 'stock', last_synced_at: '2026-10-16T18:00:00Z', vinted_status: 'active' }, vu: VU_0737, runs: [R1610] }).decision === 'attendre',
   'la fiche « active » n’est jamais une preuve (garde É4 : figée pendant une republication)');
@@ -113,7 +113,7 @@ ok(d({ job: job('leboncoin'), vu: { vu_le: '2026-10-11T17:20:22Z', statut: 'en_l
 // DeadRoz eb1e852c / 38ac687c : clos le 15/10 et le 16/10 sur « 0 en ligne lues sur 0 annoncées ».
 const vides = [lbc('2026-10-16T06:14:21Z', { items_vus: 0, total_entries: 0 }), lbc('2026-10-16T06:18:22Z', { items_vus: 0, total_entries: 0 })];
 ok(d({ job: job('leboncoin'), vu: { vu_le: '2026-10-11T17:20:22Z', statut: 'en_ligne' }, runs: vides }).decision === 'attendre',
-  'DeadRoz : deux relevés Leboncoin VIDES ne closent jamais une republication');
+  'Compte-7373c96c : deux relevés Leboncoin VIDES ne closent jamais une republication');
 ok(d({ job: job('leboncoin'), vu: { vu_le: '2026-10-11T17:20:22Z', statut: 'en_ligne' }, runs: [lbc('2026-10-15T15:00:00Z', { erreur: '[incomplet] 30 sur 111' }), lbc('2026-10-16T15:00:00Z')] }).decision === 'attendre',
   'un relevé « [incomplet] » ne compte pas');
 ok(d({ job: job('leboncoin'), vu: { vu_le: '2026-10-11T17:20:22Z', statut: 'en_ligne', disparu_le: '2026-10-16T09:14:19Z' } }).decision === 'attendre',
@@ -141,7 +141,7 @@ const debutZone = hw.indexOf('« INTROUVABLE À CONFIRMER » : REPRISE OU CLÔTU
 const zone = debutZone >= 0 ? hw.slice(debutZone, hw.indexOf('introuvable à confirmer :", (e as Error)', debutZone)) : '';
 ok(zone.length > 0, 'handler-watch : la zone « introuvable à confirmer » existe');
 ok(/\.in\("platform", plateformes\)/.test(zone) && /\.gt\("items_vus", 0\)/.test(zone) && /ascending: false/.test(zone),
-  'handler-watch : relevés NON VIDES des seules plateformes en pause, du plus récent (DeadRoz : rang 89 jamais lu)');
+  'handler-watch : relevés NON VIDES des seules plateformes en pause, du plus récent (Compte-7373c96c : rang 89 jamais lu)');
 ok(!/ascending: true \}\)\.limit\(50\)/.test(zone), 'handler-watch : plus jamais « les 50 plus anciens relevés »');
 ok(/from\("vinted_listing_snapshots"\)/.test(zone) && /\.in\("vinted_item_id", itemsV\)/.test(zone) && /identifiantAnnonceJob\(j\)/.test(zone),
   'handler-watch : trace Vinted par identifiant exact (relevé du jour + fiche qui porte CE vinted_item_id)');
@@ -214,11 +214,11 @@ ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSIS
   ok(seuls.decision === 'attendre' && seuls.releve_attendu === true && /le prochain relevé tranche/.test(seuls.raison),
     'absente de relevés faits AVANT la lecture seulement → le prochain relevé tranche (jamais clos sans lui)', seuls);
   ok(d({ job: marta, vu: vuM, runs: [...avant, rM('2026-10-24T12:59:33Z')] }).decision === 'confirmer',
-    'Marta 133c921a : + un relevé de sa boutique après la lecture, toujours sans elle → close');
+    'Compte-essai-3 133c921a : + un relevé de sa boutique après la lecture, toujours sans elle → close');
   ok(d({ job: marta, vu: { vu_le: '2026-10-24T12:59:40Z', statut: 'active' }, runs: [...avant, rM('2026-10-24T12:59:33Z')] }).decision === 'reprendre',
     'le relevé d’après la lecture la voit → reprise');
   ok(d({ job: marta, vu: { vu_le: '2026-10-24T12:33:45Z', statut: 'active' }, runs: [...avant, rM('2026-10-24T12:59:33Z')] }).decision === 'attendre',
-    'DeadRoz : vue par le DERNIER relevé avant la lecture → un seul relevé sans elle, on attend le suivant');
+    'Compte-7373c96c : vue par le DERNIER relevé avant la lecture → un seul relevé sans elle, on attend le suivant');
   ok(d({ job: marta, vu: vuM, runs: [avant[0], { ...rM('2026-10-24T12:59:33Z'), vinted_user_id: '999' }] }).decision === 'attendre',
     'le relevé d’une autre boutique ne fait jamais le relevé d’après la lecture');
   ok(d({ job: marta, vu: null, runs: [...avant, rM('2026-10-24T12:59:33Z')] }).decision === 'attendre',
@@ -252,7 +252,7 @@ ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSIS
   const lohan = { platform: 'vinted', listing_url: 'https://www.vinted.fr/items/10412430838',
     platform_fields: { vinted_item_id: '10412430838', vinted_account_id: WOOD, ...marqueIntrouvable({}, { platform: 'vinted', lecture: 'item_upload_404', at: LECTURE_LOHAN }) } };
   const rW = (debut, note) => releve(debut, { vinted_user_id: WOOD, items_vus: 30, total_entries: 30, erreur: note });
-  const NOTE_CC = "[note] disparitions non marquées — changement de compte Vinted (@lo160 → @woodenbridge) : sync normale, aucune disparition marquée | [note] cadence cron : 1 sync 'cron' refusée(s) depuis ce run";
+  const NOTE_CC = "[note] disparitions non marquées — changement de compte Vinted (@boutique-0f8722f5 → @boutique-essai-8) : sync normale, aucune disparition marquée | [note] cadence cron : 1 sync 'cron' refusée(s) depuis ce run";
   ok(releveComplet(rW('2026-10-25T10:16:33Z', NOTE_CC), { platform: 'vinted', boutique: WOOD }), 'Lohan : un relevé complet noté « changement de compte » prouve (sa boutique)');
   ok(releveComplet(rW('2026-10-25T10:16:33Z', '[note] disparitions non marquées — aucun run terminé en référence (première sync) : rien à marquer ce run'), { platform: 'vinted', boutique: WOOD }), 'premier relevé (aucune référence) : complet');
   ok(!releveComplet(rW('2026-10-25T10:16:33Z', NOTE_CC), { platform: 'vinted', boutique: '999' }), 'noté « changement de compte » mais d’une AUTRE boutique : jamais');
@@ -310,10 +310,10 @@ ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSIS
   const jobL = (lecture) => ({ platform: 'vinted', listing_url: 'https://www.vinted.fr/items/9269180078', platform_fields: { vinted_item_id: '9269180078', vinted_account_id: B, introuvable_a_confirmer: { depuis: lecture, premiere: lecture, n: 1, reprises: 0 } } });
   const premiere = d({ job: jobL('2026-11-08T14:04:44.197Z'), vu, runs: [r1, r0], boutique: B });
   ok(premiere.decision === 'attendre' && premiere.absente_une_fois === true && premiere.releve_apres === '2026-11-08T14:06:24.083Z',
-    'Logann 660a7cac : absente du relevé de 14:06 fait après sa lecture → il en faut un AUTRE, après ce relevé', premiere);
+    'Compte-4cfb7afe 660a7cac : absente du relevé de 14:06 fait après sa lecture → il en faut un AUTRE, après ce relevé', premiere);
   const derniere = d({ job: jobL('2026-11-08T14:16:27.828Z'), vu, runs: [r1, r0], boutique: B });
   ok(derniere.decision === 'attendre' && derniere.absente_une_fois === false && derniere.releve_apres === '2026-11-08T14:16:27.828Z',
-    'Logann 653c5fb4 : le relevé de 14:06 précède sa lecture → il faut un relevé après 14:16:27', derniere);
+    'Compte-4cfb7afe 653c5fb4 : le relevé de 14:06 précède sa lecture → il faut un relevé après 14:16:27', derniere);
   const besoin = Math.max(Date.parse(premiere.releve_apres), Date.parse(derniere.releve_apres));
   // À 14:20 UTC : le relevé de 14:06 a moins d'une heure — on attend (au plus une demande par heure).
   const b1420 = borneDemandeReleve('2026-11-08T08:20:00.000Z', besoin, Date.parse('2026-11-08T14:20:00Z'));
@@ -327,7 +327,7 @@ ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSIS
   const r2 = { ...r1, started_at: '2026-11-08T15:11:00.000Z', finished_at: '2026-11-08T15:11:45.000Z' };
   for (const lecture of ['2026-11-08T14:04:44.197Z', '2026-11-08T14:16:27.828Z']) {
     const c = d({ job: jobL(lecture), vu, runs: [r2, r1, r0], boutique: B });
-    ok(c.decision === 'confirmer', `Logann (lecture ${lecture.slice(11, 19)}) : absente de deux relevés complets → close (« plus en ligne »)`, c);
+    ok(c.decision === 'confirmer', `Compte-4cfb7afe (lecture ${lecture.slice(11, 19)}) : absente de deux relevés complets → close (« plus en ligne »)`, c);
   }
   // Revue en ligne au second relevé → elle repart (zéro régression).
   const revue = d({ job: jobL('2026-11-08T14:16:27.828Z'), vu: { vu_le: '2026-11-08T15:11:30.000Z', statut: 'active' }, runs: [r2, r1, r0], boutique: B });

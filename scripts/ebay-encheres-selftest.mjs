@@ -20,7 +20,7 @@ const cas = (nom, f) => { f(); n++; console.log(`  ✓ ${nom}`); };
 console.log("ebay-encheres-selftest");
 
 // 1. Marta — 920016444915, enchère avec achat immédiat, fin 14/10, lue le 09/10 09:30:05Z.
-cas("Marta : enchère en cours (fin future) = VIVANTE, jamais « terminée »", () => {
+cas("Compte-essai-3 : enchère en cours (fin future) = VIVANTE, jamais « terminée »", () => {
   const j = browse({ fin: "2026-10-14T06:36:52.000Z", options: ["FIXED_PRICE", "AUCTION"], prix: "26.70" });
   const v = verdictAnnonceEbay(j, t("2026-10-09T09:30:05.575Z"));
   assert.equal(v.verdict, "vivante");
@@ -29,18 +29,18 @@ cas("Marta : enchère en cours (fin future) = VIVANTE, jamais « terminée »", 
 });
 
 // 2. Les 8 autres annonces de Marta : prix fixe, offre possible, sans fin (GTC).
-cas("Marta : prix fixe sans date de fin = VIVANTE", () => {
+cas("Compte-essai-3 : prix fixe sans date de fin = VIVANTE", () => {
   const v = verdictAnnonceEbay(browse({ options: ["FIXED_PRICE", "BEST_OFFER"] }), t("2026-10-09T09:30:05Z"));
   assert.equal(v.verdict, "vivante");
   assert.equal(v.format, "FIXED_PRICE");
 });
 
 // 3. labouqu_7 — 158310494197, enchère, fin 26/09 19:34Z, lue le 25/09 16:52Z (AVANT la fin).
-cas("labouqu_7 : enchère lue la veille de sa fin = VIVANTE (le 25/09 elle avait été posée « terminée »)", () => {
+cas("boutique-68e350f0 : enchère lue la veille de sa fin = VIVANTE (le 25/09 elle avait été posée « terminée »)", () => {
   const j = browse({ fin: "2026-09-26T19:34:36.000Z", options: ["AUCTION", "BEST_OFFER"], prix: "2.24" });
   assert.equal(verdictAnnonceEbay(j, t("2026-09-25T16:52:02.966Z")).verdict, "vivante");
 });
-cas("labouqu_7 : la même enchère, terminée sans acheteur (relue le 09/10) = ENCHÈRE SANS ACHETEUR, jamais une vente", () => {
+cas("boutique-68e350f0 : la même enchère, terminée sans acheteur (relue le 09/10) = ENCHÈRE SANS ACHETEUR, jamais une vente", () => {
   const j = browse({ fin: "2026-09-26T19:34:36.000Z", options: ["AUCTION", "BEST_OFFER"], prix: "2.24" });
   const v = verdictAnnonceEbay(j, t("2026-10-09T10:00:00Z"));
   assert.equal(v.verdict, "enchere_sans_acheteur");
@@ -48,11 +48,11 @@ cas("labouqu_7 : la même enchère, terminée sans acheteur (relue le 09/10) = E
 });
 
 // 4. Jocabroc — 407252783089, enchère, 2 offres, fin 05/10 18:04:30Z, vendue 1,50 €.
-cas("Jocabroc : enchère lue 2 h avant sa fin = VIVANTE (le 05/10 elle avait été posée « terminée »)", () => {
+cas("Boutique-53efea05 : enchère lue 2 h avant sa fin = VIVANTE (le 05/10 elle avait été posée « terminée »)", () => {
   const j = browse({ fin: "2026-10-05T18:04:30.000Z", options: ["AUCTION"], bids: 1, prix: "1.00" });
   assert.equal(verdictAnnonceEbay(j, t("2026-10-05T16:02:02.344Z")).verdict, "vivante");
 });
-cas("Jocabroc : enchère terminée avec acheteur (OUT_OF_STOCK, 1 vendu) = VENDUE (vraie vente gardée)", () => {
+cas("Boutique-53efea05 : enchère terminée avec acheteur (OUT_OF_STOCK, 1 vendu) = VENDUE (vraie vente gardée)", () => {
   const j = browse({ fin: "2026-10-05T18:04:30.000Z", options: ["AUCTION"], dispo: "OUT_OF_STOCK", q: 0, vendus: 1, bids: 2, prix: "1.50" });
   const v = verdictAnnonceEbay(j, t("2026-10-06T10:06:03.346Z"));
   assert.equal(v.verdict, "vendue");
@@ -67,7 +67,7 @@ cas("Enchère terminée depuis moins d'une heure, 0 vendu = INDÉTERMINÉ (le ga
 });
 
 // 5. XEWER — 377552164234, prix fixe, fin 07/10 15:51:28Z, lue 15:52:03Z : arrêtée par le vendeur.
-cas("XEWER : prix fixe terminé (fin passée), 0 vendu = TERMINÉE SANS VENTE → la question reste", () => {
+cas("COMPTE-DE63CA45 : prix fixe terminé (fin passée), 0 vendu = TERMINÉE SANS VENTE → la question reste", () => {
   const j = browse({ fin: "2026-10-07T15:51:28.000Z", options: ["FIXED_PRICE", "BEST_OFFER"], prix: "104.69" });
   assert.equal(verdictAnnonceEbay(j, t("2026-10-07T15:52:03.049Z")).verdict, "terminee_sans_vente");
 });

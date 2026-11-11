@@ -21,7 +21,7 @@ const { classerEchec, couleurVintedHorsPalette } = await import("../supabase/fun
 const G = await import("../supabase/functions/_shared/google-accuse-abonnement.js");
 const { classerIssueAchat } = await import("../src/lib/issueAchat.js");
 
-console.log("\n1. Rosa Metra — le site lu, la première annonce");
+console.log("\n1. Compte-c7c382b7 — le site lu, la première annonce");
 const bg = lire("chrome-extension/background.js");
 const trace = bg.slice(bg.indexOf("function tracerPageDemandee("), bg.indexOf("function tracerPageDemandee(") + 1800);
 ok(/domaine: VO\.domaineVintedAffiche\(\)/.test(trace), "sync_page porte le domaine Vinted lu, à chaque page de chaque relevé");

@@ -220,7 +220,7 @@ const session = (id: string, cus: string, sub: string, plan: string, montant: nu
 type Scenario = { nom: string; attendu: string; etat: () => any; evenements: () => any[] };
 const SCENARIOS: Scenario[] = [
   {
-    nom: "client qui REVIENT → Business (DeadRoz) : invoice.paid AVANT checkout",
+    nom: "client qui REVIENT → Business (Compte-7373c96c) : invoice.paid AVANT checkout",
     attendu: "1 crédit business (3 000), 1 mail",
     etat: () => etatInitial({
       profils: [profil({ stripe_customer_id: "cus_R" })],

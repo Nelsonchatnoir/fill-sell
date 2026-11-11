@@ -53,8 +53,8 @@ ok(/const candidatsEtat = \[\.\.\.new Set\(\[resolu, brut, precis\]\.filter\(Boo
     for (const c of [...new Set([resolu, brut, precis].filter(Boolean))]) { const m = etatLeboncoinExact(c, grille); if (m) return m; }
     return null;
   };
-  ok(choisir('', 'Bon état', 'Très bon état', MAISON) === 'Bon état', '2b. DeadRoz : « Bon état » choisi au stepper reste « Bon état » (la fiche disait « Très bon état »)');
-  ok(choisir('', 'Neuf', 'Neuf avec étiquette', MODE) === 'Neuf avec étiquette', '2c. MeMiniandMove (17/09) : « Neuf » aplati → la fiche précise (inchangé)');
+  ok(choisir('', 'Bon état', 'Très bon état', MAISON) === 'Bon état', '2b. Compte-7373c96c : « Bon état » choisi au stepper reste « Bon état » (la fiche disait « Très bon état »)');
+  ok(choisir('', 'Neuf', 'Neuf avec étiquette', MODE) === 'Neuf avec étiquette', '2c. Compte-63ad8597 (17/09) : « Neuf » aplati → la fiche précise (inchangé)');
 }
 ok(/const brutAmbigu = !brut \|\| \/\^\(etat \)\?neuf\$\/\.test\(normEtatLbc\(brut\)\);/.test(GPJ)
   && /if \(precis && brutAmbigu && !pf\.lbc_etat_precis/.test(GPJ),
@@ -281,7 +281,7 @@ console.log('\n7. (29/10) LA MARQUE PAR SON IDENTIFIANT, DEPUIS LA LISTE DE LEBO
   j = await jouer('H&M');
   ok(j.r === true && j.poses.join() === 'hm', '7b. « H&M » → identifiant « hm » (la valeur ne se devine jamais depuis le libellé : elle est LUE)', JSON.stringify(j));
   j = await jouer('Fourrures D.S Paris');
-  ok(j.r === true && j.poses.join() === 'autre' && j.hors === 'Fourrures D.S Paris' && /absente de la liste.*« Autre »/.test(j.w[0]), '7c. une vraie marque hors liste → « Autre » de CETTE liste, la marque écrite dans la description (boncoin59300)', JSON.stringify(j));
+  ok(j.r === true && j.poses.join() === 'autre' && j.hors === 'Fourrures D.S Paris' && /absente de la liste.*« Autre »/.test(j.w[0]), '7c. une vraie marque hors liste → « Autre » de CETTE liste, la marque écrite dans la description (client-3f91c02e)', JSON.stringify(j));
   j = await jouer('Jordan', 'Vintage Dressing');
   ok(j.r === true && j.poses.join() === 'jordan' && /pré-rempli « Vintage Dressing » que l'article ne nomme pas, remplacé/.test(j.w[0]), '7d. pré-rempli deviné que l\'article ne nomme pas : remplacé par notre marque, lue dans la liste', JSON.stringify(j));
   j = await jouer('Zar');

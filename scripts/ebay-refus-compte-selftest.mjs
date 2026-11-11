@@ -53,7 +53,7 @@ const INCONNU = { errorId: 25005, message: "Catégorie non valide.", params: [{ 
 console.log("\n1. LE CLASSEMENT DES REFUS eBAY");
 {
   const t = classerErreurEbay(TRISK);
-  ok(t?.source === SOURCE_EBAY_VERIFICATION_IDENTITE && t.code === "TRISK_pmts2_Issue_617_Block_BuyingandSellingandm2m", "nicolas.menar (TRISK_…, 25019) → vérification d'identité eBay", JSON.stringify(t));
+  ok(t?.source === SOURCE_EBAY_VERIFICATION_IDENTITE && t.code === "TRISK_pmts2_Issue_617_Block_BuyingandSellingandm2m", "client-39bfa95a (TRISK_…, 25019) → vérification d'identité eBay", JSON.stringify(t));
   ok(classerErreurEbay(KYC)?.source === SOURCE_EBAY_VERIFICATION_IDENTITE, "KYC_DSAReq_EUB2C_SYI (10/09) → vérification d'identité eBay");
   ok(classerErreurEbay(ON_HOLD)?.source === SOURCE_EBAY_COMPTE_BLOQUE, "USER_ON_HOLD (27/10) → compte eBay bloqué");
   ok(classerErreurEbay(ASPECT) === null, "refus d'un aspect (25129) : pas un refus de compte");

@@ -24,15 +24,15 @@ async function scenario({page='/items/123456',proprietaire=null,attendue,session
   return {resultat,posts:appels.filter(a=>a.method==='POST')};
 }
 for(const options of [
-  {proprietaire:{vendeur:'nadege',session:'albert'}},
+  {proprietaire:{vendeur:'compte-essai-4',session:'albert'}},
   {proprietaire:null},
-  {proprietaire:{vendeur:'nadege',session:'nadege'},attendue:'albert'},
+  {proprietaire:{vendeur:'compte-essai-4',session:'compte-essai-4'},attendue:'albert'},
   {page:'/items/new'},
-  {page:'/items/new',attendue:'nadege',session:'albert'},
+  {page:'/items/new',attendue:'compte-essai-4',session:'albert'},
   {job:{listing_url:'https://www.vinted.fr/items/654321'}},
   {job:{listing_url:'https://www.vinted.fr/items/123456',platform_listing_id:'654321'}},
   // 0.6.78 : page illisible + origine prouvée d'une AUTRE boutique que la session.
-  {proprietaire:null,attendue:'nadege',session:'albert'},
+  {proprietaire:null,attendue:'compte-essai-4',session:'albert'},
 ]) {
   const r=await scenario(options);assert.equal(r.resultat.success,false);assert.equal(r.posts.length,0);
 }
@@ -45,5 +45,5 @@ for(const options of [
 // 0.6.78 : la preuve manquante est nommée, et une preuve absente n'accuse personne.
 { const r=await scenario({page:'/items/new'}); assert.equal(r.resultat.verdict.preuve_manquante,'boutique_article'); assert.equal('boutiqueEtrangere' in r.resultat,false); }
 { const r=await scenario({page:'/items/new',attendue:'albert',session:null}); assert.equal(r.posts.length,0); assert.equal(r.resultat.verdict.preuve_manquante,'session'); }
-{ const r=await scenario({proprietaire:{vendeur:'nadege',session:'albert'}}); assert.equal(r.resultat.boutiqueEtrangere.article,'nadege'); }
+{ const r=await scenario({proprietaire:{vendeur:'compte-essai-4',session:'albert'}}); assert.equal(r.resultat.boutiqueEtrangere.article,'compte-essai-4'); }
 console.log('15 scénarios de retrait Vinted : aucune requête sur identité absente, étrangère ou contradictoire.');

@@ -53,7 +53,7 @@ console.log("\n1. LA RÈGLE");
   ok(lots.get("A")?.articles === 2 && lots.get("A").dernier_cree === Date.parse("2026-11-04T21:14:08Z") && lots.size === 1, "taille = articles distincts, toutes plateformes ; dernière tâche du lot");
   ok(!lotDansLesCreneaux({ articles: 10 }) && lotDansLesCreneaux({ articles: 11 }), "10 articles : tout de suite ; 11 : dans les créneaux");
   const r = (j, o) => retenueLotManuel(j, { maintenant: MAINTENANT, ...o });
-  ok(r(job(), { fenetre: HORS, lot: lotJo }).retenir && r(job(), { fenetre: HORS, lot: lotJo }).motif === "lot_dans_creneaux", "Joséphine à 00:24 : son lot (299 articles) attend le créneau de 10:00");
+  ok(r(job(), { fenetre: HORS, lot: lotJo }).retenir && r(job(), { fenetre: HORS, lot: lotJo }).motif === "lot_dans_creneaux", "Client-essai-1 à 00:24 : son lot (299 articles) attend le créneau de 10:00");
   for (const pf of ["vinted", "leboncoin", "beebs"]) ok(r(job({ platform: pf }), { fenetre: HORS, lot: lotJo }).retenir, `…sur ${pf} aussi (créneau de la plateforme)`);
   ok(!r(job(), { fenetre: DANS, lot: lotJo }).retenir, "dans le créneau : servi, au rythme habituel");
   ok(!r(job(), { fenetre: PAUSE, lot: lotJo }).retenir, "module en pause ou arrêté : rien ne change (part tout de suite)");

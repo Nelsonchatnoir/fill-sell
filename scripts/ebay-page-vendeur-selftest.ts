@@ -58,14 +58,14 @@ ok(false, null, "null");
 ok(false, undefined, "absent");
 ok(false, 42, "pas une chaîne");
 
-console.log("=== 5. (06/11, ayadi007) L'ONBOARDING DES PAIEMENTS eBay : le même mur, un autre hôte ===");
+console.log("=== 5. (06/11, client-cfdfda6f) L'ONBOARDING DES PAIEMENTS eBay : le même mur, un autre hôte ===");
 const okP = (attendu: boolean, u: unknown, pourquoi: string) => {
   const rendu = estPagePaiementsVendeurEbay(u);
   const bon = rendu === attendu;
   if (!bon) ko++;
   console.log(`  ${bon ? "ok  " : "⚠ KO"} ${String(u) || "(vide)"} → ${rendu} — ${pourquoi}`);
 };
-okP(true, "https://ebaypayonboardingweb.ebay.com/account-status-error/", "RELEVÉ en prod, ayadi007 (5 fins du Dimplex 20023afa)");
+okP(true, "https://ebaypayonboardingweb.ebay.com/account-status-error/", "RELEVÉ en prod, client-cfdfda6f (5 fins du Dimplex 20023afa)");
 okP(true, "https://ebaypayonboardingweb.ebay.fr/", "même hôte, autre extension");
 okP(false, "https://ebaypayonboardingweb.ebay.com.exemple.com/account-status-error/", "sous-domaine trompeur");
 okP(false, "https://onboardweb.ebay.fr/onboard-revamped/", "l'inscription vendeur : l'autre fonction");

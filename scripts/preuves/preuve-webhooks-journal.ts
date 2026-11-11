@@ -402,7 +402,7 @@ async function enfant() {
       attendu: { ecritures: [{ is_premium: true, subscription_cancel_at_period_end: false }], tier: "premium", http: 200 }, head: "identique" },
     { canal: "apple", nom: "passage de palier", libelle: `${A.passage.type}/${A.passage.subtype ?? "—"} · ${A.passage.productId}`, requete: requeteApple(A.passage),
       attendu: { ecritures: [{ is_premium: true, is_pro: true, subscription_cancel_at_period_end: false }], tier: "pro", http: 200 },
-      head: "droits_differents", pourquoiHead: "HEAD ne lit pas le sous-type : « Unhandled type » → 200 skipped, aucun droit (cas Ciddjy) — écart VOULU" },
+      head: "droits_differents", pourquoiHead: "HEAD ne lit pas le sous-type : « Unhandled type » → 200 skipped, aucun droit (cas Compte-eacbe32c) — écart VOULU" },
     { canal: "google", nom: "achat", libelle: `type 4 PURCHASED · ${P}`, requete: requeteGoogle(notifAbo(4, P, "jeton-factice-achat")),
       reponsesGoogle: { "jeton-factice-achat": achatV2(P) },
       attendu: { ecritures: [{ is_premium: true, google_purchase_token: "jeton-factice-achat", google_product_id: P, subscription_cancel_at_period_end: false }], tier: "premium", http: 200 }, head: "identique" },

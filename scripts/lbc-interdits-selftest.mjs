@@ -12,7 +12,7 @@ const lire = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8")
 
 console.log("1. La règle, sur la catégorie Vinted (source certaine)");
 const v = verdictLbcInterdit({ vinted_catalog_id: 956 });
-ok(v?.motif === "cosmetique" && v.vinted_catalog_id === 956 && v.categorie[0] === "soins du corps", "le coffret de Dylan62 (Soins du corps, 956) → interdit", JSON.stringify(v));
+ok(v?.motif === "cosmetique" && v.vinted_catalog_id === 956 && v.categorie[0] === "soins du corps", "le coffret de Compte-a6bbc6c3 (Soins du corps, 956) → interdit", JSON.stringify(v));
 ok(verdictLbcInterdit({ vinted_catalog_id: "152" })?.motif === "cosmetique", "parfums (152, en texte) → interdit");
 ok(verdictLbcInterdit({ vinted_catalog_id: 1863 })?.categorie[0] === "coffrets de soins", "Hommes > Soins > Coffrets (1863) → interdit");
 for (const id of [1906, 1903, 958, 962, 950, 967, 2055, 1826, 1827, 971]) ok(verdictLbcInterdit({ vinted_catalog_id: id }) === null, `accessoire de beauté ${id} → jamais interdit (trousse, brosse, rasoir, appareil)`);

@@ -18,7 +18,7 @@ const { raisonRefus } = await import(pathToFileURL(join(ROOT, 'src/utils/raisonR
 console.log('1. La règle');
 // JEAN-LUC, annonce 3224866836 (scie sabre) : une seule trace, la première lecture du 03/11 10:56 dit déjà « Vendu ».
 const jl = R.vendueAvantSuivi([{ created_at: '2026-11-03T09:56:05Z', transaction: 'sold', avant: null }]);
-ok(jl.ancienne === true && jl.premiereLecture === '2026-11-03T09:56:05Z', '« Vendu » dès la première lecture : vente ancienne (JEAN-LUC, 03/11)');
+ok(jl.ancienne === true && jl.premiereLecture === '2026-11-03T09:56:05Z', '« Vendu » dès la première lecture : vente ancienne (COMPTE-9256E3AE, 03/11)');
 // louis-seller, annonce 3291945630 (Polly Pocket) : lue sans transaction, puis « Achat en cours » le 24/10 — une vraie vente.
 ok(R.vendueAvantSuivi([{ created_at: '2026-10-24T10:08:50Z', transaction: 'pending', avant: 'aucune' }]).ancienne === false,
   'lue sans transaction puis « Achat en cours » : FillSell a vu la vente (Polly Pocket, 24/10)');
@@ -39,7 +39,7 @@ ok(raison.includes('le 03/11') && raison.includes('Rien n\'est enregistré, rien
   'la raison dite à la personne : la date (heure de Paris), rien d\'enregistré ni de retiré, moins de 500 caractères');
 ok(R.annonceImportee({ source: 'releve', rattachement: { import: true, par: 'rapprochement' } })
   && R.annonceImportee({ rattachement: { import: 'true' } }) && R.annonceImportee({ source: 'releve' }),
-  'annonce importée par un relevé (JEAN-LUC : source releve, rattachement import)');
+  'annonce importée par un relevé (COMPTE-9256E3AE : source releve, rattachement import)');
 ok(!R.annonceImportee({}) && !R.annonceImportee(null) && !R.annonceImportee({ rattachement: { par: 'utilisateur', motif: 'meme_article_confirme' } }),
   'annonce déposée par FillSell : jamais concernée (elle n\'existait pas avant son dépôt)');
 const lue = await raisonRefus({ context: { status: 409, json: async () => ({ error: raison }) } });

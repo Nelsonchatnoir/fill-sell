@@ -380,10 +380,10 @@ try {
   console.log('\nA. AVANT (définitions de prod)');
   const a1 = await cadence();
   ok(/SYNC_CADENCE/.test(a1.insertion ?? '') && /SYNC_CADENCE/.test(a1.erreurRpc ?? ''),
-    'stock vide, dressing lu il y a 5 min : l\'INSERT ET demander_sync_dressing() meurent sur « SYNC_CADENCE » (ce qu\'a vu ayadi007 à 11:01:16)', a1);
+    'stock vide, dressing lu il y a 5 min : l\'INSERT ET demander_sync_dressing() meurent sur « SYNC_CADENCE » (ce qu\'a vu client-cfdfda6f à 11:01:16)', a1);
   const a2 = await jess();
   ok(a2.verdict === 'annonce_vendue' && a2.trace.some((t) => t.issue === 'vendu_avant_suivi'),
-    'Jess : « vendu_avant_suivi » pour les ventes, mais republication_annonce_partie = « annonce_vendue » (refus « annonce_introuvable »)', a2);
+    'Compte-essai-9 : « vendu_avant_suivi » pour les ventes, mais republication_annonce_partie = « annonce_vendue » (refus « annonce_introuvable »)', a2);
   const a3 = await reinitialiser();
   ok(!a3.erreur && a3.reste.fiches === 0 && a3.reste.ventes === 0, '« Réinitialiser » efface fiches et ventes', a3);
   ok(a3.lignes.lbc_publie.status === 'published' && a3.lignes.lbc_publie.inventaire_id === null
@@ -416,7 +416,7 @@ try {
   ok(/SYNC_CRON_CADENCE/.test(b1c.insertion ?? ''), 'le cron garde sa règle des 20 h, stock vide ou non', b1c);
   // B2. Jess
   const b2 = await jess();
-  ok(b2.verdict === null, 'Jess : l\'annonce « vendue avant le suivi », en ligne, se republie (verdict NULL)', b2);
+  ok(b2.verdict === null, 'Compte-essai-9 : l\'annonce « vendue avant le suivi », en ligne, se republie (verdict NULL)', b2);
   const b2v = await jess({ avantSuivi: false });
   ok(b2v.verdict === 'annonce_vendue', 'une vente LUE pendant le suivi (aucune → sold) reste « annonce_vendue »', b2v);
   {

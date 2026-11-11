@@ -22,7 +22,7 @@ const ok = (cond, titre, detail = "") => {
 };
 const lire = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
-console.log("1. LE CAS DE LOUIS : « Lunettes enfants stitch », genre « Enfant », Beebs");
+console.log("1. LE CAS DE COMPTE-ESSAI-2 : « Lunettes enfants stitch », genre « Enfant », Beebs");
 {
   const icon = detectObjectKeywordDetail("Lunettes enfants stitch")?.icon;
   ok(icon === "🕶️", `icône lunettes (${icon})`);

@@ -11,8 +11,8 @@ const ok = (c: boolean, m: string) => { console.log(`${c ? "✅" : "❌"} ${m}`)
 const IT = ["Nuovo con cartellino", "Nuovo senza cartellino", "Ottime", "Buone", "Discrete"];
 
 // Le cas réel d'Alberto (jobs 80c3d14c et b81a3312) : racine « Uomo » + liste relevée.
-ok(langueVintedDuJob({ racineCapturee: "Uomo", listeEtatsRelevee: IT }) === "it", "Alberto : Uomo + liste italienne → it");
-ok(langueVintedDuJob({ racineCapturee: "Uomo" }) === "it", "Alberto après relance (racine seule) → it");
+ok(langueVintedDuJob({ racineCapturee: "Uomo", listeEtatsRelevee: IT }) === "it", "Compte-essai-10 : Uomo + liste italienne → it");
+ok(langueVintedDuJob({ racineCapturee: "Uomo" }) === "it", "Compte-essai-10 après relance (racine seule) → it");
 ok(ETATS_VINTED.it.libelles[6] === "Nuovo con cartellino", "status 6 en italien = « Nuovo con cartellino » (son formulaire)");
 
 // Un compte français ne reçoit JAMAIS autre chose que fr (et fr = rien de posé).

@@ -1,6 +1,6 @@
 // selftest:lbc-session-partagee-rythme — UNE SESSION LEBONCOIN PARTAGÉE SE LIT COMME CELLE D'UN COMPTE (05/11 soir,
-// décision de Nico ; extension 0.6.175). Cas d'origine : Louis, deux comptes FillSell (louis@ttfamily.fr exécutant
-// faf5021a…, louis-seller@ttfamily.fr propriétaire 447d920c…) sur UN compte Leboncoin, par la délégation ; ≈ 190 pages
+// décision de Nico ; extension 0.6.175). Cas d'origine : Louis, deux comptes FillSell (compte faf5021a exécutant
+// faf5021a…, compte 447d920c propriétaire 447d920c…) sur UN compte Leboncoin, par la délégation ; ≈ 190 pages
 // d'annonce lues par heure jour et nuit, « Mes annonces » lu deux fois en 30 s, comptes restreints (403).
 //
 //   npm run selftest:lbc-session-partagee-rythme
@@ -250,7 +250,7 @@ function simuler24h({ partagee, prioriteA = null }) {
   })();
 }
 
-console.log('\nB. Règles 2 et 3 — 24 h simulées chez Louis (277 + 110 annonces Leboncoin, 40 Vinted), polls de 2 min');
+console.log('\nB. Règles 2 et 3 — 24 h simulées chez Compte-essai-2 (277 + 110 annonces Leboncoin, 40 Vinted), polls de 2 min');
 {
   const avant = await simuler24h({ partagee: false });
   const apres = await simuler24h({ partagee: true, prioriteA: { le: Date.parse('2026-11-06T01:00:00Z'), id: idJob(A, 'leboncoin', 7) } });

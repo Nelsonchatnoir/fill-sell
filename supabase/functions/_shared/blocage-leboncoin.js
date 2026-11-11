@@ -2,7 +2,7 @@
 // LEBONCOIN RESTREINT L'ACCÈS : TOUT S'ARRÊTE SUR LE COMPTE, PUIS REPRISE PRUDENTE (30/10, urgence Louis)
 // ═══════════════════════════════════════════════════════════════════════════
 // LE CAS : Louis (Business) a deux comptes FillSell sur le même PC et la même connexion — « Amiral »
-// (louis@ttfamily.fr, Brave) et louis-seller@ttfamily.fr (machine virtuelle) — qui lisent la même boutique Leboncoin
+// (compte faf5021a, Brave) et compte 447d920c (machine virtuelle) — qui lisent la même boutique Leboncoin
 // (409 annonces). Refus 403 de Leboncoin à la veille des commandes : Amiral le 28/10 à 21:31, la VM le 29/10 à 05:35,
 // Amiral encore le 30/10 à 02:27 ; trois republications en « vérification anti-robot » dès 12:51 ; le 30/10 vers
 // 19:12, Leboncoin affiche « Accès temporairement restreint — un robot est sur le même réseau ». Pendant ce temps,

@@ -211,7 +211,7 @@ function page({ vivant = true, repondre = true, meme = true } = {}) {
 // ── 3. extensionAutreCompte.js ──────────────────────────────────────────────
 console.log("3. « autre compte » seulement sur preuve ; un silence = ordinateur qui ne répond pas");
 const EAC = await import("../src/utils/extensionAutreCompte.js");
-ok(EAC.etatExtensionDuNavigateur({ compte: null, silenceConfirme: true }) === "muette", "silence sans preuve (Johan, Sébastien, extensions ≤ 0.6.161) : « muette », jamais « autre compte »");
+ok(EAC.etatExtensionDuNavigateur({ compte: null, silenceConfirme: true }) === "muette", "silence sans preuve (Compte-essai-5, Sébastien, extensions ≤ 0.6.161) : « muette », jamais « autre compte »");
 ok(EAC.etatExtensionDuNavigateur({ compte: { vivant: false }, silenceConfirme: true }) === "muette", "service worker muet + silence : « muette »");
 ok(EAC.etatExtensionDuNavigateur({ compte: { vivant: true, meme: true }, silenceConfirme: true }) === "muette", "même compte mais aucun passage : « muette »");
 ok(EAC.etatExtensionDuNavigateur({ compte: { vivant: true, meme: false }, silenceConfirme: false }) === "autre_compte", "l'extension DIT travailler pour un autre compte : « autre compte » (le vrai cas reste détecté)");
@@ -277,7 +277,7 @@ const jobJ = { id: "ee32823f", platform: "leboncoin", action: "republish", statu
 {
   const v = RC.jugerCibleRepublication({ job: jobJ, releve, cible: { listing_id: "3293222567", vu_le: "2026-10-26T18:40:11Z" },
     fiche: [{ listing_id: "3293222567", vu_le: "2026-10-26T18:40:11Z" }, { listing_id: "3298253160", vu_le: "2026-10-31T06:59:15Z", publiee_le: "2026-10-30T14:10:29Z" }] });
-  ok(v.verdict === "sans_objet" && v.successeur === "3298253160", "Johan : 3293222567 absente du dernier relevé, 3298253160 vue sur la fiche → « déjà remise en ligne », rien retiré ni recréé", JSON.stringify(v));
+  ok(v.verdict === "sans_objet" && v.successeur === "3298253160", "Compte-essai-5 : 3293222567 absente du dernier relevé, 3298253160 vue sur la fiche → « déjà remise en ligne », rien retiré ni recréé", JSON.stringify(v));
   ok(/déjà remise en ligne \(annonce n° 3298253160\)/.test(RC.messageRepublicationSansObjet("leboncoin", "3298253160")) && /Rien n'a été retiré ni recréé/.test(RC.messageRepublicationSansObjet("leboncoin", "x")), "le texte de la clôture le dit en clair");
 }
 {
@@ -336,7 +336,7 @@ function passer(donnees, mode = "normal") {
 {
   const { R, plan } = passer(compte());
   const d = R.dec.get("Aa-nouvelle");
-  ok(d?.decision === "a_verifier" && d.succession === true, "Johan, prix 5 → 3 € et une photo ajoutée, l'ancienne absente du relevé : « à vérifier », plus « nouveau »", JSON.stringify({ decision: d?.decision }));
+  ok(d?.decision === "a_verifier" && d.succession === true, "Compte-essai-5, prix 5 → 3 € et une photo ajoutée, l'ancienne absente du relevé : « à vérifier », plus « nouveau »", JSON.stringify({ decision: d?.decision }));
   ok(!plan.some((x) => x.type === "creer"), "aucune fiche créée dans le stock pour ce doute (règle du 07/10)");
   const q = plan.find((x) => x.type === "a_verifier");
   ok(q?.candidat?.annonce === "a-ancienne" && q.motif === "remise_en_ligne_meme_plateforme" && q.preuves?.avant_stock === true,

@@ -46,7 +46,7 @@ BEGIN
      OR NOT EXISTS (SELECT 1 FROM public.cross_post_jobs WHERE id = v_depot AND inventaire_id = v_garde AND status = 'sold' AND platform_listing_id = '3295236977')
      OR (SELECT count(*) FROM public.cross_post_jobs WHERE inventaire_id = v_dbl) <> 1
      OR (SELECT count(*) FROM public.annonces_plateforme WHERE inventaire_id = v_dbl) <> 1 THEN
-    RAISE EXCEPTION 'XEWER : l''état n''est plus celui relu le 27/10 — rien n''est fait';
+    RAISE EXCEPTION 'compte de63ca45 : l''état n''est plus celui relu le 27/10 — rien n''est fait';
   END IF;
 
   -- 1. La vente en double (décision de Nico). Supprimée par le rôle postgres : ventes_suppression_trace ne rejoue pas.
@@ -61,7 +61,7 @@ BEGIN
   UPDATE public.annonces_plateforme SET inventaire_id = NULL, job_id = NULL, source_rapprochement = NULL, updated_at = now() WHERE id = v_ann;
   r := public.annonce_rattacher_par_identifiant(v_ann, 'reparation');
   IF r IS NULL OR (r ->> 'inventaire_id')::bigint <> v_garde OR (r ->> 'job_id')::uuid <> v_depot THEN
-    RAISE EXCEPTION 'XEWER : la règle n''a pas rattaché l''annonce à la fiche de son dépôt (%)', r;
+    RAISE EXCEPTION 'compte de63ca45 : la règle n''a pas rattaché l''annonce à la fiche de son dépôt (%)', r;
   END IF;
 
   -- 3. La fiche née du relevé est absorbée (comme fiche_releve_doublon_resorber), statut inchangé.
@@ -69,6 +69,6 @@ BEGIN
   INSERT INTO public.inventaire_fusions (user_id, garde, absorbe, deplacements, champs_repris, par)
   VALUES (v_user, v_garde, v_dbl, jsonb_build_object('annonces_plateforme', jsonb_build_array(v_ann), 'ventes_retirees', jsonb_build_array(315890)),
           '{}'::jsonb, 'regle:identifiant_avant_fiche (vente en double, décision de Nico 27/10)');
-  RAISE NOTICE 'XEWER : vente 315890 retirée, annonce 3295236977 sur 1792945124235 (dépôt 3b92d5ca), fiche 1792999747010 absorbée';
+  RAISE NOTICE 'compte de63ca45 : vente 315890 retirée, annonce 3295236977 sur 1792945124235 (dépôt 3b92d5ca), fiche 1792999747010 absorbée';
 END $$;
 COMMIT;

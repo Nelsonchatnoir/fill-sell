@@ -211,7 +211,7 @@ console.log("9. eBay par la voie API : la ligne part comme avant, le serveur tra
   ok((ecran.match(/ebayVoieApi: ebayVoieApiReelle,/g) ?? []).length === 2, "l'écran passe la voie réelle aux DEUX résolutions (pré-calcul et clic)");
 }
 
-console.log("Aucun rayon trouvé : on demande, on ne bloque jamais (03/10, cas Louis)");
+console.log("Aucun rayon trouvé : on demande, on ne bloque jamais (03/10, cas Compte-essai-2)");
 {
   // (09/10) + Depop : son rayon se pose par identifiant, sinon la même question.
   ok(PLATEFORMES_RAYON_A_DEMANDER.join() === "vinted,leboncoin,beebs,ebay,depop", "les plateformes dont l'app pose le rayon (Opla : son pré-vol ; Depop : par identifiant)");
@@ -228,7 +228,7 @@ console.log("Aucun rayon trouvé : on demande, on ne bloque jamais (03/10, cas L
   ok(/motif: "aucun_rayon_trouve"/.test(res) && /for \(const platform of PLATEFORMES_RAYON_A_DEMANDER\)/.test(res), "la résolution pose la question en fin de calcul, une seule fois pour les quatre");
 }
 
-console.log("11. (29/10, Ianis Martin) Une feuille que l'IA a JUGÉE et refusée n'est jamais une puce");
+console.log("11. (29/10, Compte-581767bb) Une feuille que l'IA a JUGÉE et refusée n'est jamais une puce");
 {
   // Phare de moto sur Beebs : la descente « le plus proche » trouve « Romans pour adultes », l'arbitrage répond
   // « aucune » (non_confirme). Avant : la question proposait cette feuille ET ses 11 voisines (tous les livres).

@@ -54,7 +54,7 @@ doitDonner('38', VINTED_COMBINE, 'M / 38 / 10', 'le chiffre trouve la ligne de l
 doitDonner('M', VINTED_COMBINE, 'M / 38 / 10')
 
 
-console.log('\n── TAILLE ENFANT EN CM (27/09, doriane-henri) : l\'étiquette, jamais une conversion ──')
+console.log('\n── TAILLE ENFANT EN CM (27/09, client-af37fa49) : l\'étiquette, jamais une conversion ──')
 const VINTED_BEBE = ['Naissance / 44 cm','Jusqu\'à 1 mois / 50 cm','1-3 mois / 56 cm','3-6 mois / 62 cm','6-9 mois / 68 cm',
   '9-12 mois / 74 cm','12-18 mois / 80 cm','18-24 mois / 86 cm','2 ans / 92 cm','3 ans / 98 cm']
 doitDonner('86', G2, '18M', 'Pantalon Zeeman taille 86 → Opla 18 mois (étiquette FR)')
@@ -82,7 +82,7 @@ for (const [v, att] of [['18M','18 mois'],['0-3M','0-3 mois'],['2Y','2 ans'],['1
 }
 
 console.log('\n── CE QUI DOIT ÊTRE REFUSÉ — refuser vaut mieux qu\'approximer ───────')
-doitDonner('44.5', G3, null, 'Opla n\'a pas de demi-pointure : refus LÉGITIME (tessy)')
+doitDonner('44.5', G3, null, 'Opla n\'a pas de demi-pointure : refus LÉGITIME (compte-2f8b09d2)')
 doitDonner('42', VINTED_FEMME, null, 'FR 42 → XL serait une CONVERSION : jamais')
 doitDonner('25', EBAY_LETTRES, null, 'W25 → XS serait une conversion : jamais')
 doitDonner('2 ans', ['24M','36M'], null, 'mois et années ne se croisent pas (Opla distingue les deux)')
@@ -195,7 +195,7 @@ doitDonner('S/M', VINTED_FEMME, 'S', 'double taille en lettres : comportement d\
 doitDonner('42', ['40','41','42','43','44','44,5'], '42', 'pointure')
 doitDonner('44,5', ['44','44,5','45'], '44,5', 'demi-pointure, écrite avec une virgule par la grille')
 doitDonner('EU 42', ['41','42','43'], null, 'point G : « EU 42 » garde son pays')
-doitDonner('42', ['EU 41','EU 42','EU 43','XS','S'], 'EU 42', 'règle du 23/09 (vestes de Joséphine) : nu → EU N, en dernier recours')
+doitDonner('42', ['EU 41','EU 42','EU 43','XS','S'], 'EU 42', 'règle du 23/09 (vestes de Client-essai-1) : nu → EU N, en dernier recours')
 doitDonner('42', ['FR 42','EU 42'], 'FR 42', 'mais le pays de l\'app d\'abord')
 doitDonner('12 ans', G2, '12Y')
 doitDonner('10/12', G2, null, 'enfant sans unité : jamais lu comme un jean')

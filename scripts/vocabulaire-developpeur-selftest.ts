@@ -30,9 +30,9 @@ const ok = (nom: string, cond: boolean, detail = "") => {
 
 console.log("=== 1. CE QUI NE DOIT JAMAIS ATTEINDRE UN ÉCRAN ===");
 const DOIT_PRENDRE: Array<[string, string]> = [
-  ["chemin de fichier (job 7678a1ed, adamchocho13)",
+  ["chemin de fichier (job 7678a1ed, client-c8cf253d)",
    "Formulaire eBay non atteint (page actuelle: /lstng/error). categoryId=139971 probablement refusé par /sl/list — vérifier l'id dans src/utils/ebayCategories.js (arbre docs/ebay-categories-raw.txt)."],
-  ["nom de fonction serveur (seghirdeborah711, 17/09)", "update-job-status → HTTP 520"],
+  ["nom de fonction serveur (client-f0acd3af, 17/09)", "update-job-status → HTTP 520"],
   ["identifiant interne seul", "Le champ field_key est absent de la capture."],
   ["route de plateforme", "La page /items/new n'a jamais répondu."],
   ["fragment de DOM", "document.querySelector('[data-testid=submit]') est resté null."],
@@ -85,7 +85,7 @@ ok("incise retirée, message et geste gardés", nettoye ===
   "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce. Ouvre ebay.fr dans Chrome, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.",
   String(nettoye));
 ok("le texte nettoyé est montrable", nettoye != null && !porteDuVocabulaireDeDeveloppeur(nettoye));
-ok("vocabulaire HORS parenthèses (adamchocho13) → toujours le générique",
+ok("vocabulaire HORS parenthèses (client-c8cf253d) → toujours le générique",
   sansIncisesTechniques(DOIT_PRENDRE[0][1]) === null);
 ok("sans parenthèses (« update-job-status → HTTP 520 ») → toujours le générique",
   sansIncisesTechniques("update-job-status → HTTP 520") === null);

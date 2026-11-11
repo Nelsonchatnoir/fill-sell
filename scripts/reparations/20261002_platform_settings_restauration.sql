@@ -82,7 +82,7 @@ BEGIN
     WHERE user_id = v_u AND platform IN ('leboncoin', 'beebs') AND COALESCE(platform_fields ->> 'adresse', '') <> '';
     v_m := regexp_match(btrim(v_adr), '^(.*\S)\s+(\d{5})\s+(\S.*)$');
     IF v_n <> 1 OR v_m IS NULL THEN
-      RAISE EXCEPTION 'meminiandmove : preuve absente (% adresse(s), découpage %)', v_n, v_m IS NOT NULL;
+      RAISE EXCEPTION 'compte 63ad8597 : preuve absente (% adresse(s), découpage %)', v_n, v_m IS NOT NULL;
     END IF;
     v_obj := jsonb_build_object('rue', v_m[1], 'code_postal', v_m[2], 'ville', v_m[3], 'adresse', btrim(v_adr));
     PERFORM platform_settings_fusionner(ARRAY['leboncoin'], v_obj, '{}', v_u);

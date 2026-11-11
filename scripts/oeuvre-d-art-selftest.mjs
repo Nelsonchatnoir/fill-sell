@@ -45,14 +45,14 @@ console.log("2. LE RESTE RESTE CE QU'IL EST");
 for (const t of PAS_DES_OEUVRES) ok(!estOeuvreDArt(t), `pas une œuvre : « ${t} »`);
 
 console.log("3. TYPE, ICÔNE, LEBONCOIN, VINTED");
-ok(detectType(PAUGUES) !== "Beauté", `le type de l'œuvre de paugues n'est plus Beauté (${detectType(PAUGUES)})`);
+ok(detectType(PAUGUES) !== "Beauté", `le type de l'œuvre de compte-e95e8b9d n'est plus Beauté (${detectType(PAUGUES)})`);
 ok(detectType("Huile visage bio 30ml") === "Beauté", "une huile visage reste Beauté");
 ok(detectObjectKeywordDetail(PAUGUES)?.icon === "🖼️", `l'icône de l'œuvre : 🖼️ (${detectObjectKeywordDetail(PAUGUES)?.icon})`);
 ok(detectObjectKeywordDetail("Huile visage bio 30ml")?.icon !== "🖼️", "une huile visage garde son icône");
 ok(!estCosmetiqueInterditeLbc("🧴", { titre: PAUGUES, description: "" }), "Leboncoin : l'œuvre n'est JAMAIS refusée comme cosmétique (même icône 🧴 écrite avant la règle)");
 ok(!estCosmetiqueInterditeLbc("🧴", { titre: "Toile", description: "Huile sur toile signée en bas à droite, 1952" }), "Leboncoin : la description suffit à reconnaître l'œuvre");
 ok(estCosmetiqueInterditeLbc("🧴", { titre: "Huile visage bio 30ml" }) === estCosmetiqueInterditeLbc("🧴", { titre: "Huile visage bio 30ml", description: "" }), "Leboncoin : un cosmétique est jugé comme avant");
-ok(rayonVintedOeuvre("peinture").id === 3847 && rayonVintedOeuvre("estampe").id === 3849, "Vinted : Peintures (3847) / Affiches et reproductions (3849) — relevés sur l'annonce de paugues");
+ok(rayonVintedOeuvre("peinture").id === 3847 && rayonVintedOeuvre("estampe").id === 3849, "Vinted : Peintures (3847) / Affiches et reproductions (3849) — relevés sur l'annonce de compte-e95e8b9d");
 const resol = lire("src/utils/resolutionPublication.js");
 ok(resol.includes("rayonVintedOeuvre(oeuvre.famille)") && resol.includes(': parMot.regle?.startsWith("oeuvre_") ? "oeuvre_d_art"'),"la publication Vinted d'une œuvre prend ce rayon, et le dit (categorie_source)");
 

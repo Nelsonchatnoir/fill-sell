@@ -5,7 +5,7 @@ import { posteVivant, messageInterruption, POSTE_VIVANT_MS, posteTravailleSurLeJ
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
 
-console.log("\n1. NIVAKE03 — ceinture Beebs 8d487ebb (relevé en base)");
+console.log("\n1. CLIENT-869E5F03 — ceinture Beebs 8d487ebb (relevé en base)");
 // prise 01:22:07Z, dernier signe 01:22Z, handler-watch passe à 01:51Z.
 const t = Date.parse("2026-10-02T01:51:02Z");
 const muet = posteVivant({ vuLe: "2026-10-02T01:22:00Z", priseLe: "2026-10-02T01:22:07Z", maintenant: t });
@@ -27,7 +27,7 @@ console.log("\n3. ÉTAPE 'captured' (annonce encore en ligne)");
 ok(/toujours en ligne sur Vinted/.test(messageInterruption({ etape: "captured", vivant: false, platform: "vinted", vuLe: null })), "muette : annonce intacte");
 ok(!/ordinateur/.test(messageInterruption({ etape: "captured", vivant: true, platform: "vinted" })), "vivante : pas « ordinateur »");
 
-console.log("\n4. (29/10, point 5) JOHAN, 098cab75 — recréation Leboncoin prise 11:37:39, publiée 12:13:17 (Paris)");
+console.log("\n4. (29/10, point 5) COMPTE-ESSAI-5, 098cab75 — recréation Leboncoin prise 11:37:39, publiée 12:13:17 (Paris)");
 {
   const job = "098cab75-261f-416f-aac3-51f27999704f";
   const h1151 = Date.parse("2026-10-27T10:51:00Z");

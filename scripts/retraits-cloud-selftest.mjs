@@ -55,12 +55,12 @@ const litteraux = (src) => [...src.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*?)\1/g)
 C.publierConnexionsCloud({ clientCloud: true, lu: true });
 for (const mur of ['ordinateur', 'boutique', 'connexion', 'compte_vinted']) {
   for (const lang of ['fr', 'en']) {
-    const t = RB.ligneCarteRetraitBloque('vinted', lang, mur, '@lo160');
+    const t = RB.ligneCarteRetraitBloque('vinted', lang, mur, '@boutique-0f8722f5');
     ok(!INTERDIT.test(t), `retrait « ${mur} » (${lang}), client Cloud : ${t}`);
   }
 }
 ok(/FillSell Cloud la retirera dès qu'il reprend/.test(RB.ligneCarteRetraitBloque('vinted', 'fr', 'ordinateur', null)), 'retrait, ordinateur muet → « FillSell Cloud la retirera dès qu’il reprend »');
-ok(/connecte ta boutique @lo160 à FillSell Cloud/.test(RB.ligneCarteRetraitBloque('vinted', 'fr', 'boutique', '@lo160')), 'retrait, autre boutique → « connecte ta boutique @lo160 à FillSell Cloud »');
+ok(/connecte ta boutique @boutique-0f8722f5 à FillSell Cloud/.test(RB.ligneCarteRetraitBloque('vinted', 'fr', 'boutique', '@boutique-0f8722f5')), 'retrait, autre boutique → « connecte ta boutique @boutique-0f8722f5 à FillSell Cloud »');
 for (const e of [{ etat: 'en_attente' }, { etat: 'refusee', motif: 'empreinte_differente' }, { etat: 'refusee', motif: 'trop_ancienne' }]) {
   const t = JSON.stringify(VUE.etatReponse(e, 'fr'));
   ok(!INTERDIT.test(t), `messagerie, réponse ${e.etat}/${e.motif ?? '-'}, client Cloud : sans ordinateur`, t);

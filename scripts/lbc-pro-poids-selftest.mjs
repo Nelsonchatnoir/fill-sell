@@ -245,7 +245,7 @@ console.log("\n3. Formulaire PRO, label sans clé sémantique (for= id React) : 
   ok(m.payer.clics === 0, "« Valider et payer » : JAMAIS cliqué");
 }
 
-console.log("\n4. Particulier : 4 s sans critère à poser, 15 s quand le job en porte (29/10, thecloset72000)");
+console.log("\n4. Particulier : 4 s sans critère à poser, 15 s quand le job en porte (29/10, client-8ac5bbda)");
 {
   const m = formulaire({ pro: false, critereApresMs: 9000 });
   // Un job SANS critère garde la sonde de 4 s.

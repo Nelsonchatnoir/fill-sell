@@ -37,7 +37,7 @@ select public.spend_coins_and_publish('original', jsonb_build_array(jsonb_build_
     'lbcTransporteurs', jsonb_build_array('Shop2Shop by Chronopost', 'Mondial Relay', 'Colissimo'),
     'categorie_source', 'choix_humain',
     'categorie_choisie', jsonb_build_object('id', null, 'le', now(), 'chemin', jsonb_build_array('Mode', 'Vêtements')),
-    'test_nico', 'lot A 29/10 : dépôt Vêtements Leboncoin avec critères (cas thecloset72000)'
+    'test_nico', 'lot A 29/10 : dépôt Vêtements Leboncoin avec critères (cas client-8ac5bbda)'
   )
 ))) as publication;
 

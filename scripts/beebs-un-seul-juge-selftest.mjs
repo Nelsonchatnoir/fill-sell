@@ -155,7 +155,7 @@ const retraitJo = { id: "1845ce62", platform: "beebs", action: "delete", status:
   platform_fields: { beebs_suppression_envoyee: se, beebs_404_constats: [c404("2026-10-27T08:00:00.000Z", "non_lue"), c404("2026-10-27T15:00:00.000Z", "non_lue")] } };
 const vJo = RA.jugerRetraitDejaAbsent(retraitJo, { depotsBeebs: null });
 ok(vJo?.motif === BP.REGLE_SUPPRESSION_ENVOYEE_404 && vJo.preuve?.constats_404?.length === 2 && vJo.delete_confirmed_by === "suppression_envoyee_404",
-  "balayage serveur (handler-watch) : Joséphine 1845ce62 — envoi gardé + deux 404 → retrait fait, sans « Mes annonces » complète ni garde de modération", JSON.stringify(vJo));
+  "balayage serveur (handler-watch) : Client-essai-1 1845ce62 — envoi gardé + deux 404 → retrait fait, sans « Mes annonces » complète ni garde de modération", JSON.stringify(vJo));
 ok(RA.jugerRetraitDejaAbsent({ ...retraitJo, platform_fields: { ...retraitJo.platform_fields, beebs_suppression_envoyee: undefined } }, { depotsBeebs: null }) === null,
   "sans l'envoi gardé : les constats « en vérification non lue » ne prouvent rien (règle d'avant)");
 ok(RA.jugerRetraitDejaAbsent({ ...retraitJo, platform_fields: { ...retraitJo.platform_fields, beebs_suppression_envoyee: { ...se, numero: "33911383" } } }, { depotsBeebs: null }) === null,

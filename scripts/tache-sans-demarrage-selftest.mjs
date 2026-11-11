@@ -21,7 +21,7 @@ const guitare = { id: "4bf31094", platform: "vinted", action: "publish", status:
 const coque = { id: "63b68552", platform: "vinted", action: "republish", status: "pending", platform_fields: { republish_step: "a_capturer" } };
 
 console.log("\n1. LA RÈGLE");
-ok(M.tacheAMettreDeCote(guitare, resa(15, 2 * H), now), "servie 15 fois en 2 h sans démarrer → mise de côté (doriane-henri)");
+ok(M.tacheAMettreDeCote(guitare, resa(15, 2 * H), now), "servie 15 fois en 2 h sans démarrer → mise de côté (client-af37fa49)");
 ok(M.tacheAMettreDeCote(coque, resa(12, 3 * H), now), "republication pas encore retirée : idem");
 ok(!M.tacheAMettreDeCote(guitare, resa(11, 5 * H), now), "moins de 12 services : on attend encore");
 ok(!M.tacheAMettreDeCote(guitare, resa(40, 1 * H), now), "moins de 2 h : on attend encore (une file chargée se vide)");

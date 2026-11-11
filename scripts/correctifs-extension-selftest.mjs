@@ -31,7 +31,7 @@ const fiole = (surcharge = {}) => ({
 
 console.log("\n── CORRECTIFS D'EXTENSION : LE JOB REPART QUAND LE POSTE EST À JOUR ──");
 
-console.log("\n1. Les 5 republications des Petites Fioles sont reconnues");
+console.log("\n1. Les 5 republications des Petites Compte-02ca0f20 sont reconnues");
 {
   const c = correctifPourJob(fiole());
   ok(c?.cle === "lbc_retrait_pro_tiroir", `correctif reconnu : ${c?.cle}`);
@@ -99,7 +99,7 @@ console.log("\n1 quater. (26/10 nuit, point 4) la marque créée par la 0.6.146"
   ok(c?.cle === "vinted_marque_creee", "christophe « uncle stubble » (0.6.141) : reconnu", c?.cle);
   ok(posteAJour("2026-10-26T00:53:28Z+ebdc605", c) && !posteAJour("2026-10-25T15:28:19Z+7b08e45", c), "0.6.146 porte le correctif, 0.6.144 non");
   ok(correctifPourJob(job({ action: "publish", handler_build: "2026-10-23T11:19:48Z+4098342 · v0.6.131", error: "Vinted ne connaît pas la marque « The North Face » et ne permet plus d'en créer une nouvelle." }, { republish_step: undefined }))?.cle === "vinted_marque_creee",
-    "Johan « The North Face » (publication, 0.6.131) : reconnu aussi");
+    "Compte-essai-5 « The North Face » (publication, 0.6.131) : reconnu aussi");
   ok(correctifPourJob(job({ handler_build: "2026-10-26T00:53:28Z+ebdc605 · v0.6.146" })) === null, "un arrêt SUR la 0.6.146 n'est jamais réarmé (sa question au texte vrai reste)");
   ok(correctifPourJob(job({}, { correctif_leve: { cle: "vinted_marque_creee" } })) === null, "un seul réarmement");
   ok(correctifPourJob(job({}, { republish_step: "deleted" })) === null, "jamais après un retrait");

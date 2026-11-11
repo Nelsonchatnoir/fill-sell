@@ -81,7 +81,7 @@ rejouer([{ Type: "Veste", Style: "Polaire zippée" }]);
     "une valeur libre rendue par la PREMIÈRE passe n'est pas rejugée (comportement d'avant)", JSON.stringify(r.aspects));
 }
 
-console.log("\n2. Cas Manon : Style laissé vide → posé par la seconde passe");
+console.log("\n2. Cas Compte-essai-11 : Style laissé vide → posé par la seconde passe");
 rejouer([{ Type: "Veste", Style: null }, { Style: "Polaire" }]);
 {
   const r = await completerAspectsIA(demandes63862(), POLAIRE, OPTS);
@@ -259,7 +259,7 @@ console.log("\n8. (25/10, N5) Une taille : liste fermée, jamais de seconde pass
   ok(["Taille", "Pointure", "Pointure EU", "Pointure UK", "Pointure US", "Pointure AU"].every(estAspectDeTaille), "Taille, Pointure, Pointure EU/UK/US/AU : des tailles");
   ok(!["Type de taille", "Tour de taille", "Taille d'écran", "Taille (cm)", "Taille du chien", "taille", "Pointure FR"].some(estAspectDeTaille), "Type de taille, Tour de taille, Taille d'écran… : jamais");
   rejouer([{ Style: null }, { Style: "Polaire" }]);
-  ok((await completerAspectsIA([{ name: "Style", mode: "FREE_TEXT", allowedValues: STYLE_63862 }], POLAIRE, OPTS)).aspects.Style === "Polaire", "un aspect qui n'est pas une taille garde sa seconde passe (cas Manon)");
+  ok((await completerAspectsIA([{ name: "Style", mode: "FREE_TEXT", allowedValues: STYLE_63862 }], POLAIRE, OPTS)).aspects.Style === "Polaire", "un aspect qui n'est pas une taille garde sa seconde passe (cas Compte-essai-11)");
   // La voie API (assemblerAspects, remplirAspects) : scripts/ebay-refus-25129-selftest.ts (réseau et env simulés).
 }
 

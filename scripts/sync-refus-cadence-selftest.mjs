@@ -23,7 +23,7 @@ const texte = fabrique("texteLectureRecente");
 console.log("\n1. L'exception SYNC_CADENCE est un refus de cadence");
 const MSG = "SYNC_CADENCE: dressing synchronisé il y a moins de 15 min (dernier run done: 2026-11-08 09:53:23.434+00)";
 const r = refus(MSG);
-ok(r?.ok === false && r.reason === "cadence" && r.lu_le === "2026-11-08T09:53:23.434Z", "le message réel d'ayadi007 (11:01:16) → reason « cadence », lu_le = 09:53:23 UTC", r);
+ok(r?.ok === false && r.reason === "cadence" && r.lu_le === "2026-11-08T09:53:23.434Z", "le message réel d'client-cfdfda6f (11:01:16) → reason « cadence », lu_le = 09:53:23 UTC", r);
 ok(refus("SYNC_CADENCE: dressing synchronisé il y a moins de 15 min")?.reason === "cadence", "sans date lisible : « cadence » quand même (jamais « erreur »)");
 ok(refus("permission denied for table vinted_sync_runs") === null && refus(null) === null, "toute autre erreur : rien (l'appelant garde « erreur »)");
 ok(/const cadence = refusCadenceDepuisErreur\(error\.message\);\s*if \(cadence\) return cadence;/.test(vs), "demanderSyncDressingServeur rend ce refus au lieu de « erreur »");

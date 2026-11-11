@@ -51,7 +51,7 @@ console.log("\n1. Le lecteur : il existe MAINTENANT, ou pas");
 
   const p = R.lecteurDisponible({ versionIci: null, compte: PATRICK, maintenant: A_21H34 });
   ok(p.disponible === false && p.raison === "extension_ancienne" && p.version === "0.6.141" && p.allume === false && p.vuLe === "2026-10-25T16:15:28.234Z",
-    "patrick giry (téléphone, poste 0.6.141 vu à 17:15) : AUCUN lecteur — pas d'attente", JSON.stringify(p));
+    "compte-82e64f14 (téléphone, poste 0.6.141 vu à 17:15) : AUCUN lecteur — pas d'attente", JSON.stringify(p));
 
   const vu5 = { version: "0.6.144", vuLe: ilYa(A_21H34, 5), postes: { a: { le: ilYa(A_21H34, 5), build: BUILD_144 } } };
   const q = R.lecteurDisponible({ versionIci: null, compte: vu5, maintenant: A_21H34 });

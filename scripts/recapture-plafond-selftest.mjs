@@ -218,7 +218,7 @@ console.log('\nNON-RÉGRESSION\n');
     !/deleteListing|republish_step\s*=\s*["']deleted["']|supprimer/i.test(BLOC));
 }
 
-console.log('\nLE MUR DE LECTURE N\'ATTEND PAS UNE RELANCE À LA MAIN (28/10, vincent.armengol 52f63459)\n');
+console.log('\nLE MUR DE LECTURE N\'ATTEND PAS UNE RELANCE À LA MAIN (28/10, client-67a8b907 52f63459)\n');
 {
   const ANTIROBOT = { success: false, accesRefuse: true, httpStatus: 403, error: "lecture de l'annonce refusée par Vinted (HTTP 403) — protection anti-robot" };
   const r = await jouer({ ageHeures: 31, pf: { vinted_item_id: '2801714080' }, recapture: ANTIROBOT });

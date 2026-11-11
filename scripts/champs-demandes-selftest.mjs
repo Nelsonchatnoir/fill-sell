@@ -60,7 +60,7 @@ console.log("3. Une question sans champ principal a son écran");
 {
   const sansPrincipal = { status: "needs_user", platform_fields: { needsUserFields: [{ field_key: "Largeur", field_label: "Largeur" }] } };
   ok(needsUserOuvrable(sansPrincipal) === true, "needsUserFields seuls : la modale s'ouvre");
-  ok(needsUserOuvrable(jocabroc) === true, "Jocabroc : la modale s'ouvre");
+  ok(needsUserOuvrable(jocabroc) === true, "Boutique-53efea05 : la modale s'ouvre");
   ok(needsUserOuvrable({ status: "needs_user", platform_fields: {} }) === false, "rien à demander : pas de bouton vide");
   ok(needsUserOuvrable({ ...jocabroc, status: "pending" }) === false, "hors needs_user : rien");
 }

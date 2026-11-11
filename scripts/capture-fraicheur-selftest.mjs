@@ -156,7 +156,7 @@ console.log("\n4. LES PÉRIMÉES ONT UN CONTINGENT — PLANCHER ET PLAFOND");
   ok("le reste est annoncé pour le run suivant", r.restantes === 450 - 30, String(r.restantes));
 }
 
-console.log("\n5. LE CAS DE LOUIS, SUR SES CHIFFRES RÉELS");
+console.log("\n5. LE CAS DE COMPTE-ESSAI-2, SUR SES CHIFFRES RÉELS");
 {
   // 47 annonces Beebs, toutes capturées le 19/09, aucune jamais capturée.
   // La sienne (32750579) a été capturée le 19/09 à 13:28, soit ~52 h avant.
@@ -191,7 +191,7 @@ console.log("\n6. UNE CAPTURE D'AVANT CE LOT (sans ligne mémorisée) N'EST PAS 
     r.pris.length === 1 && r.perimees === 1, JSON.stringify({ pris: r.pris.length, perimees: r.perimees }));
 }
 
-console.log("\n7. LES FICHES À UNE PHOTO D'ABORD (04/10, Louis — photos Beebs)");
+console.log("\n7. LES FICHES À UNE PHOTO D'ABORD (04/10, Compte-essai-2 — photos Beebs)");
 {
   // Une annonce RATTACHÉE jamais capturée = une fiche née du relevé avec la
   // seule vignette de l'index (Beebs n'en donne qu'une). Louis : six

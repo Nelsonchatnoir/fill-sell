@@ -54,13 +54,13 @@ export { CANAL_RE };
 import { repriseTitreSymbolesVinted } from "./titre-symboles-vinted.js";
 // (25/10, décision de Nico) Titre « trop de lettres majuscules » : la casse normale, une reprise (bloc 0 ter).
 import { repriseTitreMajuscules } from "./casse-titre.js";
-// (05/11, point 6 — Smail Lachkar) Un titre refusé pour un caractère INVISIBLE repart sans lui, tout seul.
+// (05/11, point 6 — compte dc8fc12a) Un titre refusé pour un caractère INVISIBLE repart sans lui, tout seul.
 import { repriseTitreInvisibles, messageRepriseInvisibles } from "./caracteres-invisibles.js";
-// (25/10, boncoin59300) Ce qu'un retrait en reprise a le droit de dire de son annonce : lu sur des champs, jamais deviné.
+// (25/10, compte 3f91c02e) Ce qu'un retrait en reprise a le droit de dire de son annonce : lu sur des champs, jamais deviné.
 import { indiceEtatRetrait } from "./retrait-deja-absent.js";
 // (28/10, point 11) Le mur « configuration vendeur » de Depop : une seule source (pur, sans import).
 import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP } from "./vendeur-depop.js";
-// (09/11, point 2 de Nico — Jess) Le badge « Article vendu » d'avant le suivi, à la republication.
+// (09/11, point 2 de Nico — un compte client) Le badge « Article vendu » d'avant le suivi, à la republication.
 import { CLE_BADGE_AVANT_SUIVI, messageBadgeAvantSuivi } from "./badge-vendu-avant-suivi.js";
 // (25/10, N6 et R2) eBay voie clic : le manquant qu'eBay nomme au refus du brouillon (retours, photos).
 import {
@@ -863,11 +863,11 @@ function classerEchecSansRegleRetrait(arg) {
   // (_shared/introuvable-a-confirmer.js, handler-watch). Le message d'avant ne
   // part plus que sur preuve.
   // (24/10, lot « zéro blocage », A4) Une annonce que la page dit VENDUE (« Article vendu ») n'est jamais
-  // « introuvable » : la republication n'a plus d'objet (louis, fa5c6f20 : relevé du 24/10 12:10
+  // « introuvable » : la republication n'a plus d'objet (un compte client, fa5c6f20 : relevé du 24/10 12:10
   // « sold », dépôt marqué vendu depuis le 16/10) — elle est close, rien retiré ; la vente suit son
   // propre circuit (relevés, ventes prouvées), jamais celui-ci.
   if (action === "republish" && String(pf?.republish_etat_reel?.state ?? "") === "sold") {
-    // (09/11, point 2 de Nico — Jess) Le badge « Article vendu » d'une vente d'AVANT le suivi (marque posée par
+    // (09/11, point 2 de Nico — un compte client) Le badge « Article vendu » d'une vente d'AVANT le suivi (marque posée par
     // get-pending-jobs, _shared/badge-vendu-avant-suivi.js) n'est jamais « vendue » : une extension d'avant 0.6.184
     // s'arrête encore dessus — on le dit vrai, rien retiré, l'article reste republiable.
     if (platform === "leboncoin" && String(pf?.[CLE_BADGE_AVANT_SUIVI]?.listing ?? "").trim()) {

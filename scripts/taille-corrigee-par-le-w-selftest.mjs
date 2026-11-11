@@ -29,7 +29,7 @@ const r517 = c({ tailleCopie: '34', ficheTaille: { v: 'L', source: 'releve_lebon
 ok(r517?.valeur === '44' && r517.w === 34 && r517.source === 'texte', 'Levi\'s 517 (Beebs 34165464) : « 34 » → « 44 » (W34 lu au titre)', JSON.stringify(r517));
 ok(/le tour de taille d'un W34/.test(r517.motif) && /W34 = FR 44/.test(r517.motif), 'le motif dit pourquoi');
 const rJ = c({ tailleCopie: '34', ficheTaille: { v: 'W34 | FR 44', source: 'manuel' }, textes: [JOHAN] });
-ok(rJ?.valeur === '44' && rJ.source === 'fiche', 'Johan : sa réponse « W34 | FR 44 » l\'emporte sur le « 33/34 » du titre → « 44 »', JSON.stringify(rJ));
+ok(rJ?.valeur === '44' && rJ.source === 'fiche', 'Compte-essai-5 : sa réponse « W34 | FR 44 » l\'emporte sur le « 33/34 » du titre → « 44 »', JSON.stringify(rJ));
 ok(val({ tailleCopie: '34', textes: [JOHAN] }) === '42', 'sans réponse : « 33/34 » = W33, « 34 » est la longueur → « 42 »');
 ok(val({ tailleCopie: 'FR 34', ficheTaille: 'W34 | FR 44', textes: [JOHAN] }) === '44', '« FR 34 » aussi');
 ok(val({ tailleCopie: '28', textes: ['Jean femme slim W28 L32'] }) === '38', 'jean femme : « 28 » (le W) → « 38 »');

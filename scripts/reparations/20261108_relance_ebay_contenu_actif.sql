@@ -1,4 +1,4 @@
--- (08/11, point 2 de Nico) Relance de la publication eBay 8d59f147 de Sébastien (sebastien64310@icloud.com, CD « Mort
+-- (08/11, point 2 de Nico) Relance de la publication eBay 8d59f147 de Sébastien (compte 48dd94f7, CD « Mort
 -- Shuman - Compilation "Expression" (16 titres) »), refusée deux fois (14:16, 14:22) en 25002 « code JavaScript »
 -- [0=DESCRIPTION] : le filtre « contenu actif » d'eBay lisait `expression (` dans « collection Expression (PolyGram) ».
 -- La RÈGLE est corrigée (supabase/functions/_shared/ebay-publication.ts, sansContenuActifEbay — ebay-api-worker et

@@ -327,7 +327,7 @@ log("4. Pré-vol avant retrait trop lent : rien n'est retiré");
   assert.ok(prevolTropLent(420_500, 600_000), "au-delà : bloque");
   assert.equal(prevolTropLent(602_000, 1_200_000), null, "borne élargie à 20 min : 602 s passe");
   assert.equal(prevolTropLent(null, 600_000), null, "sans mesure : rien");
-  const job = { id: "ciddjy" }; const pf = { republish_step: "captured" };
+  const job = { id: "compte-eacbe32c" }; const pf = { republish_step: "captured" };
   const r = await rendreEchecPrevolTropLent("t", job, pf, lent, "beebs");
   assert.deepEqual(JSON.parse(JSON.stringify(r)), { status: "failed", error: lent.message });
   assert.equal(statuts[0].status, "failed");
@@ -389,7 +389,7 @@ log("6. Vinted — dimensions du colis jamais demandées");
 }
 
 // ── 7. VINTED : COULEUR ───────────────────────────────────────────────────────
-log("7. Vinted — couleur (Marta MELE)");
+log("7. Vinted — couleur (Compte-ac19c8c9)");
 // a. La sonde du POST (background.js, monde MAIN).
 {
   const bloc = tranche(bg, "        window.__fsCouleurAPoser = null;", "        const origFetch = window.fetch;");
@@ -560,7 +560,7 @@ log("7. Vinted — couleur (Marta MELE)");
 }
 
 // ── 8. VINTED : RÉFÉRENTIEL RELU ──────────────────────────────────────────────
-log("8. Vinted — référentiel relu sur accroc réseau ou 5xx (linda.sidhoum)");
+log("8. Vinted — référentiel relu sur accroc réseau ou 5xx (client-54b136db)");
 {
   const monter = (reponses) => {
     const appels = []; const pauses = [];

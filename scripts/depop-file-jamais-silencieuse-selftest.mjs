@@ -40,12 +40,12 @@ const postes = (...l) => Object.fromEntries(l.map((p, i) => [`s${i}`, { le: iso(
 console.log("\nA. LA DÉCISION « AUTORISER DEPOP »");
 {
   dit("job de 10 min, poste sans accès : on attend encore", demanderAutorisationDepop(job(10), postes({ vuMin: 1, depop: false }), T0).demander === false);
-  dit("job de 16 min, poste sans accès vu à l'instant : DEMANDE (cas Simon)", demanderAutorisationDepop(job(16), postes({ vuMin: 1, depop: false }), T0).demander === true);
+  dit("job de 16 min, poste sans accès vu à l'instant : DEMANDE (cas Compte-essai-13)", demanderAutorisationDepop(job(16), postes({ vuMin: 1, depop: false }), T0).demander === true);
   dit("… pourquoi = poste_sans_acces", demanderAutorisationDepop(job(16), postes({ vuMin: 1, depop: false }), T0).pourquoi === "poste_sans_acces");
   dit("job de 16 min, un AUTRE poste du compte a l'accès : rien", demanderAutorisationDepop(job(16), postes({ vuMin: 1, depop: false }, { vuMin: 300, depop: true }), T0).demander === false);
   dit("poste autorisé vu il y a 40 h (ordinateur éteint) : jamais de demande", demanderAutorisationDepop(job(600), postes({ vuMin: 40 * 60, depop: true }), T0).demander === false);
   dit("job de 30 min, poste d'avant la trace (aucune clé) : on attend", demanderAutorisationDepop(job(30), postes({ vuMin: 5 }), T0).demander === false);
-  dit("job de 61 min, aucun poste autorisé (cas Jake, extension muette) : DEMANDE", demanderAutorisationDepop(job(61), postes({ vuMin: 18 * 60 }), T0).demander === true);
+  dit("job de 61 min, aucun poste autorisé (cas Compte-97221b6a, extension muette) : DEMANDE", demanderAutorisationDepop(job(61), postes({ vuMin: 18 * 60 }), T0).demander === true);
   dit("job de 61 min, aucun poste du tout : DEMANDE (filet)", demanderAutorisationDepop(job(61), null, T0).pourquoi === "aucun_poste_autorise");
   dit("après une relance (accordé il y a 5 min) : on attend de nouveau", demanderAutorisationDepop(job(120, { platform_fields: { depop_acces_accorde_le: iso(T0 - 5 * 60_000) } }), postes({ vuMin: 1, depop: false }), T0).demander === false);
   dit("un job needs_user ou d'une autre plateforme n'est jamais jugé", demanderAutorisationDepop(job(99, { status: "needs_user" }), null, T0).demander === false && demanderAutorisationDepop(job(99, { platform: "opla" }), null, T0).demander === false);
@@ -122,7 +122,7 @@ console.log("\nE. L'APP");
 console.log("\nF. DEPOP JAMAIS PRÉ-COCHÉE DANS LE LOT");
 {
   const resume = { vinted: { possibles: 4 }, leboncoin: { possibles: 4 }, depop: { possibles: 4 } };
-  dit("premier lot : Vinted et Leboncoin cochées, Depop proposée mais pas cochée (cas Simon)", choixInitial(resume).join() === "vinted,leboncoin");
+  dit("premier lot : Vinted et Leboncoin cochées, Depop proposée mais pas cochée (cas Compte-essai-13)", choixInitial(resume).join() === "vinted,leboncoin");
   dit("lot précédent avec Depop cochée : gardée", choixInitial(resume, { memorise: ["vinted", "depop"] }).join() === "vinted,depop");
   const sf = lire("src/utils/stockFiltres.js");
   const rg = lire("src/publication/lot/regles.js");

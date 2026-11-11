@@ -38,7 +38,7 @@ ok(/updateJobStatus\(accessToken, job\.id, "pending"/.test(fAttente) && /En atte
 const fMotif = BG.slice(BG.indexOf("function motifSessionMorte("), BG.indexOf("function motifSessionMorte(") + 400);
 const motifSessionMorte = new Function("estUrlDeConnexionPlateforme", `${fMotif.slice(0, fMotif.indexOf("\n}\n") + 2)}\nreturn motifSessionMorte;`)(() => false);
 ok(motifSessionMorte("vinted", "Connexion Vinted requise : se connecter sur vinted.fr dans Chrome (l'onglet de travail est resté ouvert), le job repartira au prochain passage."),
-  "le texte réel du 24/10 (vincent.armengol) est bien un mur de connexion");
+  "le texte réel du 24/10 (client-67a8b907) est bien un mur de connexion");
 ok(!motifSessionMorte("vinted", "Suppression refusée par Vinted (HTTP 500)"), "une autre erreur de suppression garde son chemin");
 
 console.log(`mur-suppression-arbitre-selftest : ${n} contrôles verts`);

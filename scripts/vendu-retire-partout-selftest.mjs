@@ -125,7 +125,7 @@ ok((sansCommentaires(ddB).match(/armer_retrait_annonce_pour/g) ?? []).length ===
 
 console.log('\n5. Le cas réel nommé, la preuve présente');
 ok(/1790106697754007/.test(MIG) && /13627ae2/.test(MIG) && /3267000921/.test(MIG) && /3274924341/.test(MIG) && /d23190b7/.test(MIG),
-  'le Doudou de nicolas.menar (fiche, dépôts, numéros) et sa cause sont écrits en tête de la migration');
+  'le Doudou de client-39bfa95a (fiche, dépôts, numéros) et sa cause sont écrits en tête de la migration');
 ok(/Le numéro vide n'est PAS la cause/.test(MIG), 'la piste « Beebs sans numéro » vérifiée et écrite (pas la cause)');
 ok(/APPLIQUÉE le 05\/11 à 22:21:06/.test(MIG), 'la migration se dit appliquée (05/11 22:21:06, feu vert nommé de Nico)');
 ok(/PREUVE_PG/.test(PREUVE) && /supabase\\\.\(co\|com\)\|pooler/.test(PREUVE), 'la preuve refuse toute base qui n\'est pas jetable');

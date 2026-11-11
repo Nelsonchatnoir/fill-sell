@@ -85,7 +85,7 @@ ok(plafondEbay({ quantity: 0, amount: { value: '500', currency: 'EUR' } })?.nul 
 ok(plafondEbay({ quantity: 10, amount: { value: '0', currency: 'EUR' } })?.nul === true, 'montant 0, quantité non nulle : bloqué');
 ok(plafondEbay({ quantity: 5000, amount: { value: '43622.4', currency: 'EUR' } })?.nul === false, 'plafond ordinaire : pas bloqué');
 ok(plafondEbay(null) === null && plafondEbay({ quantity: 'x' }) === null, 'plafond illisible : on ne conclut rien');
-ok(etatCompteEbay(ligne(...CAS.fluxen)).pret === true, 'Fluxen (15/10) : prêt');
+ok(etatCompteEbay(ligne(...CAS.fluxen)).pret === true, 'Compte-3b7e2361 (15/10) : prêt');
 const romain = etatCompteEbay(vue(...CAS.romain));
 ok(romain.statut === 'a_finir' && romain.manquantes[0] === 'politique_livraison' && romain.aChoisir.length === 3, 'Romain : à finir, la livraison d’abord, trois politiques à choisir', json(romain));
 const inscr = etatCompteEbay(vue(...CAS.inscription_pas_finie));

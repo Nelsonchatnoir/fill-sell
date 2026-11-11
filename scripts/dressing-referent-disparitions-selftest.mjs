@@ -29,7 +29,7 @@ function simulateur() {
   const runs = [];           // du plus ancien au plus récent : { id, status, vinted_user_id, vinted_login, started_at, items_vus, erreur }
   const inventaire = new Map(); // vinted_item_id → { id, vinted_item_id, last_synced_at, disparu_le, origine }
   let seq = 0;
-  const relever = (le, visibles, { identite = ID, login = "ayoubd72", origineHors = [] } = {}) => {
+  const relever = (le, visibles, { identite = ID, login = "boutique-90d11dae", origineHors = [] } = {}) => {
     const t = Date.parse(le);
     const run = { id: `r${++seq}`, status: "done", vinted_user_id: identite, vinted_login: login, started_at: new Date(t).toISOString(), items_vus: visibles.length, erreur: null };
     // Import / mise à jour : les articles vus portent last_synced_at du relevé (origine vinted_sync, sauf les articles

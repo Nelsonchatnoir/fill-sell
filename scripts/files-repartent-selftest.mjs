@@ -27,7 +27,7 @@ let ko = 0;
 const ok = (c, m) => { if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}`); } };
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
 
-console.log("1. hu.anastasia : un relevé ne retient que SA plateforme");
+console.log("1. client-d8b07167 : un relevé ne retient que SA plateforme");
 const i1 = gpj.indexOf("UN RELEVÉ NE RETIENT QUE SA PLATEFORME");
 const bloc1 = gpj.slice(i1, gpj.indexOf("RETENUE D'EXÉCUTION des republications", i1));
 ok(i1 > 0 && /if \(syncCommand && syncCommandFrais\) plateformesRelevees\.add\("vinted"\);/.test(bloc1),
@@ -55,10 +55,10 @@ ok(held([...file, { platform: "beebs", action: "publish" }], new Set(["beebs"]))
 
 console.log("2. Rémi : la boutique lue par la capture est une identité");
 const T0 = Date.parse("2026-10-11T11:40:00Z");
-const sondeVieille = { checked_at: "2026-10-10T13:25:00Z", vinted_identite: { user_id: "295151754", login: "narema75" } };
-const capture = { session: "36325065", login_session: "celineetmarie", lu_le: "2026-10-11T11:36:20Z" };
+const sondeVieille = { checked_at: "2026-10-10T13:25:00Z", vinted_identite: { user_id: "295151754", login: "boutique-essai-3" } };
+const capture = { session: "36325065", login_session: "boutique-essai-1", lu_le: "2026-10-11T11:36:20Z" };
 const vu = B.boutiqueConnecteeVinted({ sessions: sondeVieille, run: null, capture, maintenant: T0 });
-ok(vu && vu.userId === "36325065" && vu.source === "capture" && vu.fraiche, "capture de 13:36 (celineetmarie) : plus récente que la sonde → identité fraîche");
+ok(vu && vu.userId === "36325065" && vu.source === "capture" && vu.fraiche, "capture de 13:36 (boutique-essai-1) : plus récente que la sonde → identité fraîche");
 ok(B.boutiqueConnecteeVinted({ sessions: sondeVieille, run: null, capture: null, maintenant: T0 })?.fraiche === false, "sans capture : sonde périmée → pas fraîche (comme avant)");
 ok(B.boutiqueConnecteeVinted({ sessions: null, run: null, capture: { session: "36325065", lu_le: "2026-10-11T10:00:00Z" }, maintenant: T0 })?.fraiche === false,
   "une capture de plus de 30 min ne décide pas");
@@ -80,8 +80,8 @@ const pause = {
 };
 const bonne = { userId: "36325065", fraiche: true, source: "capture" };
 const d = I.leverPauseIntrouvable(pause, bonne, "36325065");
-ok(d.lever && d.boutique === "36325065", "celineetmarie vue connectée : la pause se lève");
-ok(!I.leverPauseIntrouvable(pause, { userId: "295151754", fraiche: true, source: "sonde" }, "36325065").lever, "narema75 connectée : la pause reste (jamais sur une autre boutique)");
+ok(d.lever && d.boutique === "36325065", "boutique-essai-1 vue connectée : la pause se lève");
+ok(!I.leverPauseIntrouvable(pause, { userId: "295151754", fraiche: true, source: "sonde" }, "36325065").lever, "boutique-essai-3 connectée : la pause reste (jamais sur une autre boutique)");
 ok(!I.leverPauseIntrouvable(pause, { userId: "36325065", fraiche: false }, "36325065").lever, "identité périmée : la pause reste (jamais avant)");
 ok(!I.leverPauseIntrouvable(pause, null, "36325065").lever, "aucune identité : la pause reste");
 const disparue = structuredClone(pause); disparue.platform_fields.introuvable_404.verdict = "disparue"; disparue.platform_fields.introuvable_indetermine.verdict = "disparue";

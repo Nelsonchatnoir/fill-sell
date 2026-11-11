@@ -44,7 +44,7 @@ const B_0_6_100 = "2026-10-06T06:11:17Z+2b883ef";
 const B_0_6_101 = "2026-10-06T15:09:44Z+3e77bae";
 const B_PLUS_TARD = "2026-10-20T08:00:00Z+abcdef0";
 
-console.log("\n[1] La tâche de Glowik est couverte par la règle « pages avant les photos »");
+console.log("\n[1] La tâche de Boutique-869e5f03 est couverte par la règle « pages avant les photos »");
 {
   const r = regleDeRelance(GLOWIK);
   ok("règle trouvée", r?.cle === "lbc_pages_avant_photos", JSON.stringify(r));
@@ -84,7 +84,7 @@ console.log("\n[3] La relance = le geste « Relancer » de l'app, une fois");
 console.log("\n[4] Rien d'autre ne bouge");
 {
   const sansMotif = { ...GLOWIK, platform_fields: { needs_user_source: "relancer" } };
-  ok("« relancer » sans motif technique (31 tâches Leboncoin du parc, dont patrick giry)", regleDeRelance(sansMotif) === null);
+  ok("« relancer » sans motif technique (31 tâches Leboncoin du parc, dont compte-82e64f14)", regleDeRelance(sansMotif) === null);
   const autreMotif = { ...GLOWIK, platform_fields: { ...GLOWIK.platform_fields, error_technique: { brut: "Timeout: pas de réponse du content script (300 s)" } } };
   ok("autre motif technique", regleDeRelance(autreMotif) === null);
   ok("autre plateforme (même texte)", regleDeRelance({ ...GLOWIK, platform: "vinted" }) === null);
@@ -164,7 +164,7 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
     error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted exige des champs encore vides pour cette catégorie : Plateforme (accepte : Acer Nitro Blaze 11 · Atari · Ayaneo), Classement du contenu (accepte : PEGI 12), État (accepte : Neuf avec étiquette · Très bon état)",
     platform_fields: { needs_user_source: "prevol_negatif", republish_step: "captured" },
   };
-  ok("XEWER (jeux vidéo) : « État vide » sur une republication → relancée avec la 0.6.150",
+  ok("COMPTE-DE63CA45 (jeux vidéo) : « État vide » sur une republication → relancée avec la 0.6.150",
     regleDeRelance(XEWER)?.cle === "vinted_menus_bloom_etat_vide_republish_prevol_negatif");
   const PES = { ...XEWER, action: "publish", platform_fields: { needs_user_source: "champ_a_choisir", etat: "Très bon état" } };
   ok("   publication qui PORTE un état, question « État vide » → relancée", regleDeRelance(PES)?.cle === "vinted_menus_bloom_etat_vide_publish_champ_a_choisir");

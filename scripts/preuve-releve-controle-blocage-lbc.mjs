@@ -74,7 +74,7 @@ $function$`);
   console.log('\n1. AVANT (prod du 05/11) : la visite de contrôle est avalée en silence');
   const md5Avant = await md5Veille();
   ok(md5Avant === MD5_PROD, `releve_est_veille identique à la prod (md5 ${md5Avant})`, md5Avant);
-  ok(await poser('controle_blocage_lbc') === 0, "controle_blocage_lbc : 0 ligne, aucune erreur — le défaut d'Amiral (690 refus le 04/11)");
+  ok(await poser('controle_blocage_lbc') === 0, "controle_blocage_lbc : 0 ligne, aucune erreur — le défaut d'Compte-faf5021a (690 refus le 04/11)");
   ok(await poser('bouton_distant') === 1 && await poser('cron') === 1, 'un geste et une veille passent (témoins)');
 
   console.log('\n2. LA MIGRATION, appliquée en entier');

@@ -1,5 +1,5 @@
 // selftest:lbc-machine-virtuelle-exception — « LEBONCOIN AUTORISÉ SUR MACHINE VIRTUELLE » : UNE EXCEPTION PAR COMPTE
-// (01/11, décision de Nico — louis-seller@ttfamily.fr), la garde machine virtuelle inchangée pour tous les autres.
+// (01/11, décision de Nico — compte 447d920c), la garde machine virtuelle inchangée pour tous les autres.
 //
 //   npm run selftest:lbc-machine-virtuelle-exception            contrôles du dépôt (hors ligne)
 //   npm run selftest:lbc-machine-virtuelle-exception -- --prod  + la base, en LECTURE seule
@@ -93,7 +93,7 @@ if (process.argv.includes('--prod')) {
   // (01/11 après-midi, décision de Nico) L'exception est RETIRÉE de louis-seller : son Leboncoin passe par Amiral
   // (délégation, selftest:delegation-leboncoin). La règle reste (garde par compte), plus aucun compte ne la porte.
   ok(r && r.comptes == null && r.autres_valeurs === 0,
-    `PROD. plus aucun compte avec l'exception (retirée de louis-seller le 01/11, délégation à Amiral) : ${JSON.stringify(r)}`);
+    `PROD. plus aucun compte avec l'exception (retirée de client-447d920c le 01/11, délégation à Compte-faf5021a) : ${JSON.stringify(r)}`);
 }
 
 console.log(echecs ? `\n✗ ${echecs} échec(s) sur ${total}` : `\n✓ ${total} vérifications vertes`);

@@ -56,7 +56,7 @@ verifie("page, session et annonces connues d'accord → vendeur des graines", c.
 c = beebsChoisirUid({ uidGraines: A, uidSession: null, uidsConnus: [], graines: 3 });
 verifie("sans cookie lisible : comme avant (graines seules)", c.uid === A && c.source === "index_public");
 c = beebsChoisirUid({ uidGraines: null, uidSession: A, uidsConnus: [], graines: 0 });
-verifie("LE CAS MEMINIANDMOVE : page vide, rien de connu dans l'index → compte connecté", c.uid === A && c.source === "session");
+verifie("LE CAS COMPTE-63AD8597 : page vide, rien de connu dans l'index → compte connecté", c.uid === A && c.source === "session");
 c = beebsChoisirUid({ uidGraines: null, uidSession: A, uidsConnus: [A], graines: 0 });
 verifie("page vide, annonce connue sous le compte connecté → compte connecté", c.uid === A && c.source === "session");
 c = beebsChoisirUid({ uidGraines: B, uidSession: A, uidsConnus: [], graines: 2 });

@@ -22,7 +22,7 @@ const JEUX = ["Jeux, jouets et loisirs", "Multimédia", "Jeux vidéo"];
 const age = (classement, textes = ["Call of Duty Black Ops 4 – PS4"]) => A.ageBeebsAuto({ chemin: JEUX, textes, classement, allowedValues: AGES })?.valeur ?? null;
 // Les 9 jeux de XEWER redemandés en 10 jours : leurs classements répondus sur Vinted.
 ok(age("PEGI 7") === "6 ans - 8 ans" && age("PEGI 16") === "16 ans et +" && age("PEGI 3") === "3 ans - 4 ans", "PEGI répondu : la table du 25/09 (7 → 6-8 ans, 16 → 16 ans et +, 3 → 3-4 ans)");
-ok(age("M – 17 ans et plus") === "16 ans et +", "ESRB « M – 17 ans et plus » (3 jeux de XEWER) → « 16 ans et + »");
+ok(age("M – 17 ans et plus") === "16 ans et +", "ESRB « M – 17 ans et plus » (3 jeux de COMPTE-DE63CA45) → « 16 ans et + »");
 ok(age("E10+ – 10 ans et plus") === "8 ans - 12 ans", "ESRB « E10+ » (Kirby) → « 8 ans - 12 ans » (la tranche qui contient 10)");
 ok(age("T – 13 ans et plus") === "12 ans - 16 ans" && age("AO – Réservé aux adultes") === "16 ans et +", "ESRB T et AO → la tranche qui contient leur âge minimum");
 ok(age("E – Tous publics") === null && age("Non précisé") === null && age("RP – En attente de classement") === null && age("USK 0") === null, "aucun âge minimum (E, RP, Non précisé, USK 0) → la question reste");

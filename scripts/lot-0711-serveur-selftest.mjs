@@ -27,7 +27,7 @@ const pfCiddjy = {
   error_technique: { at: "2026-11-07T06:59:43.509Z", brut: `Ton annonce a été retirée de Beebs … : ${MUET}.`, precedents: [{ at: "2026-11-07T06:04:16.890Z", brut: MUET }] },
 };
 const s1 = depotPeutEtrePartiDepuis("beebs", pfCiddjy);
-ok(s1 && s1.at === "2026-11-07T06:59:43.509Z" && /clic « Mettre en vente » a pu partir/.test(s1.raison), `Ciddjy : suspect au dernier essai muet (${s1?.at})`);
+ok(s1 && s1.at === "2026-11-07T06:59:43.509Z" && /clic « Mettre en vente » a pu partir/.test(s1.raison), `Compte-eacbe32c : suspect au dernier essai muet (${s1?.at})`);
 ok(depotPeutEtrePartiDepuis("beebs", { ...pfCiddjy, recreation_verifiee: { apres: "2026-11-07T07:10:00Z" } }) === null, "une relecture faite après l'essai lève le soupçon");
 ok(depotPeutEtrePartiDepuis("beebs", { ...pfCiddjy, error_technique: { at: "2026-11-07T06:59:43Z", brut: "Ajouter au moins 5 caractères" }, work_window_state: {} }) === null, "un refus nommé du formulaire n'est pas suspect");
 ok(depotPeutEtrePartiDepuis("beebs", { ...pfCiddjy, error_technique: null, work_window_state: { fins: [{ at: "2026-11-07T06:00:00Z", tab_url: "https://www.beebs.app/fr/listing/success" }] } })?.at === "2026-11-07T06:00:00.000Z", "la page /fr/listing/success prouve un envoi");
@@ -65,7 +65,7 @@ const v3 = classerEchec({ platform: "vinted", action: "publish", brut: neuf, pf:
 ok(v3.verdict === "a_toi" && v3.motif === "vinted_rayon_neuf_seulement" && /Accessoires maquillage/.test(v3.message) && /Très bon état/.test(v3.message) && /Rien n'a été publié/.test(v3.message), `a_toi, le rayon et l'état nommés (${v3.verdict})`);
 ok(!/n'a pas abouti après plusieurs essais/.test(v3.message), "jamais le générique « n'a pas abouti après plusieurs essais »");
 
-console.log("5. Point 7 — Marta : la couleur exigée et connue par la capture est notre envoi");
+console.log("5. Point 7 — Compte-essai-3 : la couleur exigée et connue par la capture est notre envoi");
 const pfMarta = { republish_step: "deleted", needs_user_source: "recreation_bloquee", deleted_at: "2026-11-02T12:41:00Z",
   server_required_fields: [{ key: "color", message: "Compila il campo \"colore\" per continuare" }],
   republish_snapshot: { color1_id: 9 }, vintedAspects: { condition: "Ottime" },
@@ -108,7 +108,7 @@ console.log("8. (07/11 soir, Nico) Taille : la fiche fait foi ; une tranche de l
   ok(R(job("10 ans"), "12 ans")?.valeur === "10 ans / 140 cm", "sans choix de la personne (source inconnue) : l'ordre d'avant, inchangé");
 }
 
-console.log("9. (07/11 nuit, Marta f1c4a0e0) Les libellés exacts de la palette de vinted.it");
+console.log("9. (07/11 nuit, Compte-essai-3 f1c4a0e0) Les libellés exacts de la palette de vinted.it");
 {
   const { normalizeVintedColors: n } = await import("../src/utils/vintedColors.js");
   ok(n("Blu marino").colors.join() === "Marine" && n("Borgogna").colors.join() === "Bordeaux" && n("Chiaro").colors.join() === "Transparence",

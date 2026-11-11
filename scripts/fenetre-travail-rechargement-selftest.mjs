@@ -222,7 +222,7 @@ await cas('fenêtre de la personne sans aucun de nos onglets → aucune adoption
   assert.deepEqual(fc.wins.get(7).ordre, [71, 72]);
 });
 
-await cas('fenêtre du registre où la personne a ouvert fillsell.app (MeMiniandMove) → rendue, jamais fermée (inchangé)', async () => {
+await cas('fenêtre du registre où la personne a ouvert fillsell.app (Compte-63ad8597) → rendue, jamais fermée (inchangé)', async () => {
   const fc = faireChrome({
     fenetres: [{ id: 1, state: 'fullscreen', tabs: [{ url: '' }, { id: 11, url: 'https://fillsell.app/stock' }, { id: 12, url: LBC_TRAVAIL }] }],
     session: { fillsell_work_window: 1 },

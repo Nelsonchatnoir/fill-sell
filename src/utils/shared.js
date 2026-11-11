@@ -76,7 +76,7 @@ export function lirePoidsGrammes(saisie) {
 // Relevé en direct le 22/09, page par page :
 //   · vinted    — /member/signup/select_type : 200, et c'est le mur que nos
 //                 handlers reconnaissent. Déjà connecté ⇒ redirige sur l'accueil.
-//   · leboncoin — ⛔ CORRIGÉ le 09/11 (Guillaume JEHLY, Brave) : JAMAIS
+//   · leboncoin — ⛔ CORRIGÉ le 09/11 (compte 229c7b07, Brave) : JAMAIS
 //                 auth.leboncoin.fr/login en lien nu. La page s'affiche (e-mail,
 //                 mot de passe) mais son formulaire envoie client_id, redirect_uri
 //                 et from_to LUS DANS L'ADRESSE, sans valeur par défaut
@@ -364,7 +364,7 @@ export function lienVerificationEbay(job, lang = 'fr') {
         : (plafond ? "Dès qu'eBay relève ton plafond de vente, cette annonce part toute seule." : "Dès qu'eBay laisse ton compte vendre, cette annonce part toute seule."),
     };
   }
-  // (09/11, point 2 de Nico — nicolas.menar) Un refus qui vise le COMPTE (vérification d'identité ou des données
+  // (09/11, point 2 de Nico — compte 39bfa95a) Un refus qui vise le COMPTE (vérification d'identité ou des données
   // financières, compte bloqué) : le lien chez eBay et l'aide, depuis la règle unique (_shared/ebay-refus-compte.js).
   const mur = gesteMurCompteEbay(job, lang);
   if (mur) return { url: mur.url, libelle: mur.libelle, aide: mur.aide };

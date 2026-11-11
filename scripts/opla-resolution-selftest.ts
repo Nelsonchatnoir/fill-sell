@@ -228,7 +228,7 @@ ok("« casque audio » : question honnête, avec Casques et écouteurs dedans",
 
 
 l("=== 8. UN ÉTAGE QUI NE NOMME QUE DES FOURRE-TOUT CÈDE LA PLACE (21/09) ===");
-// Job e288edef (louis@ttfamily.fr, 21/09 19:50). L'IA a nommé l'article
+// Job e288edef (compte faf5021a, 21/09 19:50). L'IA a nommé l'article
 // « accessoire de yaourtière » ; « accessoire » ne désigne dans tout l'arbre
 // que quatre fourre-tout, répartis dans trois rayons. On posait donc une
 // question dont AUCUNE des quatre réponses n'était juste, pendant que ses cinq

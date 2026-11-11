@@ -57,7 +57,7 @@ const CAS = [
     attendu: "mot_cle_description", icone: "👟" },
 
   // ── VOIE 4 : description anglaise → la passe 2 se tait ────────────────────
-  { nom: "CIGARES (roehrricky24, 19/09) — « pull-tab » dans un texte anglais",
+  { nom: "CIGARES (client-27d58881, 19/09) — « pull-tab » dans un texte anglais",
     titre: "Lot of 10 Cigars", marque: "Swisher Sweets", objetIa: "Cigars",
     description: "Lot of 10 Swisher Sweets cigars in original packaging. Multiple varieties visible including Swisher Sweets Cigar Blunt Wraps and Swisher Sweets Smooth Cigars. All cigars appear to be in sealed plastic wrapping with blue and yellow pull-tab bands. Stored in a green plastic container. No visible damage to packaging or product.",
     attendu: "passe2_ecartee" },

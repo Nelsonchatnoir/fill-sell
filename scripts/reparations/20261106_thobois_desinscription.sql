@@ -1,4 +1,4 @@
--- (06/11, ordre de Nico, point 5) Nicolas THOBOIS (nicolas.thobois@live.fr, compte 46b1f110) a écrit « STOP » à support@ le
+-- (06/11, ordre de Nico, point 5) Nicolas THOBOIS (compte 46b1f110, compte 46b1f110) a écrit « STOP » à support@ le
 -- 24/10 à 19:29 (mail sorti du spam le 06/11). Désinscription de TOUS les envois marketing, mot pour mot les écritures de
 -- desinscrire() (_shared/desinscription.ts) : registre canonique email_destinataires (desinscrit, desinscrit_le, origine)
 -- + trace d'audit email_logs « marketing_optout » (lue par le tunnel et les blasts). estDesinscrit() lit les deux. Le

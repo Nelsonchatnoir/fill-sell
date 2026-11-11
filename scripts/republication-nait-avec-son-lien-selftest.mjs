@@ -59,11 +59,11 @@ const LBC = (id) => `https://www.leboncoin.fr/ad/electromenager/${id}`;
 const amiral = { listing_url: LBC('3275975415'), platform_listing_id: '3276310850' };
 const n1 = naissance({ source: amiral, annonces: [{ listing_id: '3276310850', url: LBC('3276310850') }] });
 ok(n1.lien === LBC('3276310850') && n1.copie.listing_url === n1.lien && n1.copie.platform_listing_id === '3276310850',
-  'Amiral : le lien suit le numéro (…850), la copie dit la MÊME annonce que le job');
+  'Compte-faf5021a : le lien suit le numéro (…850), la copie dit la MÊME annonce que le job');
 ok(naissance({ source: amiral }).refus === 'lien_annonce_incertain' && naissance({ source: amiral }).cause === 'lien_inconnu',
   'lien du numéro inconnu du relevé : refus, jamais un job sans lien');
 ok(naissance({ source: { listing_url: LBC('3276310850'), platform_listing_id: '3276310850' }, fichesDesignant: 2 }).cause === 'annonce_partagee',
-  'annonce désignée par deux fiches (l’état d’Amiral) : refus, la cascade tranche d’abord');
+  'annonce désignée par deux fiches (l’état d’Compte-faf5021a) : refus, la cascade tranche d’abord');
 const coherent = naissance({ source: { listing_url: LBC('3288693323'), platform_listing_id: '3288693323' } });
 ok(coherent.lien === LBC('3288693323') && coherent.copie.platform_listing_id === '3288693323', 'dépôt cohérent : rien ne change');
 const sansNumero = naissance({ source: { listing_url: LBC('3288693323'), platform_listing_id: null } });

@@ -7,7 +7,7 @@
 -- annonce VUE EN LIGNE par le dressing (relevé actif < 26 h, postérieur à la
 -- publication de l'annonce portée, job jamais annulé). Jamais une fiche
 -- « pas vendue » (vinted_status 'closed' = réponse de la personne).
--- Aperçu du 08/10 : 7 fiches, toutes chez louis@ttfamily.fr.
+-- Aperçu du 08/10 : 7 fiches, toutes chez compte faf5021a.
 -- Rien n'est touché sur Vinted, aucune vente n'est créée ni supprimée.
 -- Sauvegarde : _backup_0810_fiches_vinted (RLS, aucun accès anon/authenticated).
 -- Inverse : 20261008_fiches_vinted_suivent_annonce_en_ligne_INVERSE.sql

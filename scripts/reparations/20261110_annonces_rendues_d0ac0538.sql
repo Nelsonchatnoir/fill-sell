@@ -1,4 +1,4 @@
--- (10/11/2026, ordre de Nico) Rendre à la cliente d0ac0538 (van.nessa.calvo@gmail.com, essai Cloud, Free) les annonces
+-- (10/11/2026, ordre de Nico) Rendre à la cliente d0ac0538 (compte d0ac0538, essai Cloud, Free) les annonces
 -- consommées par son lot NON ENVOYÉ de 12:00 (Paris) : 5 générations (12:00:46 → 12:01:44, articles …910022, …910020,
 -- …910021, …906005, …906007) + la régénération de …906005 à 12:05:33 (gratuite tant que la première compte ; elle
 -- est sortie avec, sinon elle se mettrait à compter). Le lot de 12:07 n'a rien consommé (aucune ligne generate_listing).

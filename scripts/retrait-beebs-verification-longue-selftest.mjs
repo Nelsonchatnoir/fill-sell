@@ -28,7 +28,7 @@ console.log('1. Depuis quand Beebs la garde en vérification');
 const ligne = { statut_plateforme: 'en_verification', created_at: '2026-10-01T01:23:12.203784+00:00', vu_le: '2026-10-24T20:38:04.013+00:00', disparu_le: null, retiree_le: null };
 const depot = { published_at: '2026-09-30T17:00:44.89+00:00', created_at: '2026-09-30T16:57:15.489867+00:00', vu_en_ligne_le: null };
 const depuis = M.debutVerificationBeebs({ ligne, depot });
-ok(depuis === '2026-09-30T17:00:44.890Z', 'DeadRoz : le dépôt du 30/09 19:00 (jamais vu en ligne) date la vérification', depuis);
+ok(depuis === '2026-09-30T17:00:44.890Z', 'Compte-7373c96c : le dépôt du 30/09 19:00 (jamais vu en ligne) date la vérification', depuis);
 ok(M.debutVerificationBeebs({ ligne, depot: null }) === '2026-10-01T01:23:12.203Z', 'sans dépôt FillSell : la première ligne du relevé « en vérification »');
 ok(M.debutVerificationBeebs({ ligne, depot: { ...depot, vu_en_ligne_le: '2026-10-02T10:00:00Z' } }) === null, 'vue en ligne un jour : on ne sait plus depuis quand elle y est revenue → rien');
 ok(M.debutVerificationBeebs({ ligne: { ...ligne, statut_plateforme: 'en_ligne' }, depot: null }) === null, 'ligne « en ligne » sans dépôt : rien de sûr');

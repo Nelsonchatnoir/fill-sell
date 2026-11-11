@@ -50,10 +50,10 @@ if (garde) {
 
 // ── Décor commun : deux boutiques, Chrome sur la SECONDE ─────────────────────
 const BOUTIQUES = [
-  { user_id: "3134424277", login: "patrick-boutique" },
-  { user_id: "22484600", login: "patrick-vintage" },
+  { user_id: "3134424277", login: "compte-essai-6-boutique" },
+  { user_id: "22484600", login: "compte-essai-6-vintage" },
 ];
-const CONNECTEE = { userId: "22484600", login: "patrick-vintage" };
+const CONNECTEE = { userId: "22484600", login: "compte-essai-6-vintage" };
 const ORIGINES = new Map([
   ["art-A", "3134424277"],   // le débardeur — boutique NON connectée
   ["art-B", "22484600"],     // un article de la boutique connectée
@@ -71,16 +71,16 @@ check("une attente est bien détectée", Boolean(etatP));
 check("le retrait est compté", etatP?.suppression === 1, `(suppression=${etatP?.suppression})`);
 check("la republication est comptée", etatP?.republish === 1, `(republish=${etatP?.republish})`);
 check("total = 2", etatP?.total === 2, `(total=${etatP?.total})`);
-check("la boutique attendue est nommée @patrick-boutique",
-  etatP?.boutiques?.[0]?.nom === "@patrick-boutique", `(${etatP?.boutiques?.[0]?.nom})`);
+check("la boutique attendue est nommée @compte-essai-6-boutique",
+  etatP?.boutiques?.[0]?.nom === "@compte-essai-6-boutique", `(${etatP?.boutiques?.[0]?.nom})`);
 
 const enTete = phraseBoutiqueActive(etatP);
 check("la phrase d'ancrage nomme la boutique ACTIVE",
-  enTete === "Tu es actuellement sur la boutique @patrick-vintage.", `\n      « ${enTete} »`);
+  enTete === "Tu es actuellement sur la boutique @compte-essai-6-vintage.", `\n      « ${enTete} »`);
 const lignes = lignesAttenteBoutique(etatP);
 check("une ligne par boutique attendue", lignes.length === 1, `(${lignes.length})`);
 check("la ligne nomme l'autre boutique et les deux natures de job",
-  lignes[0]?.includes("@patrick-boutique") && lignes[0]?.includes("1 republication") && lignes[0]?.includes("1 retrait d'annonce"),
+  lignes[0]?.includes("@compte-essai-6-boutique") && lignes[0]?.includes("1 republication") && lignes[0]?.includes("1 retrait d'annonce"),
   `\n      « ${lignes[0]} »`);
 check("la ligne promet une reprise automatique",
   /reprendront? automatiquement/.test(lignes[0] ?? ""), `\n      « ${lignes[0]} »`);
@@ -138,11 +138,11 @@ const fiche = messageFicheAttenteBoutique({
 });
 check("la fiche rend un message", Boolean(fiche));
 check("il nomme la boutique ACTIVE et la boutique ATTENDUE",
-  fiche?.detail.includes("@patrick-vintage") && fiche?.detail.includes("@patrick-boutique"),
+  fiche?.detail.includes("@compte-essai-6-vintage") && fiche?.detail.includes("@compte-essai-6-boutique"),
   `\n      « ${fiche?.detail} »`);
 check("il dit « retrait » pour un delete", fiche?.detail.startsWith("Tu es actuellement") && fiche?.detail.includes("Ce retrait"));
 check("il rassure explicitement", /Rien n'est perdu/.test(fiche?.detail ?? ""));
-check("pastille courte non muette", fiche?.court === "Attend @patrick-boutique", `(${fiche?.court})`);
+check("pastille courte non muette", fiche?.court === "Attend @compte-essai-6-boutique", `(${fiche?.court})`);
 check("même boutique → aucun message",
   messageFicheAttenteBoutique({ connectee: CONNECTEE, origine: "22484600", boutiques: BOUTIQUES }) === null);
 check("origine inconnue → aucun message",

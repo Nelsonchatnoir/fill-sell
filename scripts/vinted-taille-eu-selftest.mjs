@@ -46,7 +46,7 @@ const COSTUMES = () => panneau([
   { texte: "EU", groupe: 93, idDepart: 2400, options: EU },
 ]);
 
-console.log("\n[1] Joséphine — « 42 » et « 48 » sur le panneau des costumes homme");
+console.log("\n[1] Client-essai-1 — « 42 » et « 48 » sur le panneau des costumes homme");
 for (const [taille, attendu] of [["42", "EU 42"], ["48", "EU 48"]]) {
   const { document, clics } = COSTUMES();
   const b = bac(document);
@@ -74,7 +74,7 @@ for (const [taille, attendu] of [["42", "EU 42"], ["48", "EU 48"]]) {
 // Relevé dans le Chrome de Nico le 06/10 : catalog 2632 (Femmes > Chaussures >
 // Baskets) = groupe 7 « Chaussures », « 34 » … « 46 » nus, sans onglet ; la
 // capture de l'annonce d'origine rend « EU 40 » (size_id 2037, groupe 87 EU).
-console.log("\n[1bis] dbz70 — « EU 40 » sur la grille nue des chaussures, et les onglets interdits");
+console.log("\n[1bis] compte-4c26231d — « EU 40 » sur la grille nue des chaussures, et les onglets interdits");
 const POINTURES_NUES = ["34", "34.5", "35", "35.5", "36", "36.5", "37", "37.5", "38", "38.5", "39", "39.5", "40", "40.5", "41", "41.5", "42", "42.5", "43", "43.5", "44", "44.5", "45", "45.5", "46", "Taille unique", "Autre"];
 for (const [taille, attendu] of [["EU 40", "40"], ["EU 40.5", "40.5"], ["EU 38", "38"]]) {
   const { document, clics } = panneau([{ texte: "", groupe: 7, idDepart: 55, options: POINTURES_NUES }]);

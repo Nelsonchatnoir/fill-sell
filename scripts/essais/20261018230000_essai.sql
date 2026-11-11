@@ -1115,7 +1115,7 @@ select set_config('request.jwt.claims', '{"sub":"faf5021a-479a-4bb3-b3ec-c296770
 insert into _r select 'T3 veille de la VM : refusée (boutique_autre_compte)', r ->> 'motif' = 'boutique_autre_compte'
   from (select public.commandes_vinted_noter(jsonb_build_array(jsonb_build_object('ref', '99018230003', 'item_ids', jsonb_build_array('99018230031'),
         'paye', true, 'prix', 5, 'devise', 'EUR', 'statut', 'needs_action', 'date', now()))) r) x;
-insert into _r select 'T3 aucune ligne de commande chez louis@', not exists (select 1 from vinted_commandes_articles where commande_ref = '99018230003');
+insert into _r select 'T3 aucune ligne de commande chez compte-essai-2@', not exists (select 1 from vinted_commandes_articles where commande_ref = '99018230003');
 insert into _r select 'T3 relevé de la VM : refusé aussi', r ->> 'motif' = 'boutique_autre_compte'
   from (select public.enregistrer_ventes_relevees('vinted', '[{"ref":"99018230009","statut":"completed","titre":"essai","prix":"5","listing_id":"99018230091"}]'::jsonb) r) x;
 -- T4 : la veille du PC (sa boutique) enregistre comme avant un article inconnu.
@@ -1123,14 +1123,14 @@ select set_config('request.jwt.claims', '{"sub":"faf5021a-479a-4bb3-b3ec-c296770
 insert into _r select 'T4 veille du PC : éclatée comme avant', (r ->> 'eclatees')::int = 1
   from (select public.commandes_vinted_noter(jsonb_build_array(jsonb_build_object('ref', '99018230004', 'item_ids', jsonb_build_array('99018230041'),
         'paye', true, 'prix', 5, 'devise', 'EUR', 'statut', 'needs_action', 'date', now()))) r) x;
-insert into _r select 'T4 une vente chez louis@', (select count(*) from ventes where commande_ref = '99018230004' and user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7') = 1;
+insert into _r select 'T4 une vente chez compte-essai-2@', (select count(*) from ventes where commande_ref = '99018230004' and user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7') = 1;
 -- T5 : une commande déjà enregistrée chez louis-seller ne l'est jamais une 2e fois chez louis@.
 insert into ventes (user_id, titre, plateforme, plateforme_code, commande_ref, annonce_id, source, statut, date, quantite, selling_fees)
 values ('447d920c-976a-4d8f-aff4-a2998050358c', 'essai 230000', 'Vinted', 'vinted', '99018230005', '99018230051', 'releve', 'vendu', current_date, 1, 0);
 insert into _r select 'T5 veille du PC : commande du compte relié écartée', (r ->> 'eclatees')::int = 0
   from (select public.commandes_vinted_noter(jsonb_build_array(jsonb_build_object('ref', '99018230005', 'item_ids', jsonb_build_array('99018230051'),
         'paye', true, 'prix', 5, 'devise', 'EUR', 'statut', 'needs_action', 'date', now()))) r) x;
-insert into _r select 'T5 aucune vente chez louis@ (une seule en tout)', (select count(*) from ventes where commande_ref like '99018230005%') = 1;
+insert into _r select 'T5 aucune vente chez compte-essai-2@ (une seule en tout)', (select count(*) from ventes where commande_ref like '99018230005%') = 1;
 insert into _r select 'T5 décision compte_relie', exists (select 1 from vinted_commandes_articles where user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7' and commande_ref = '99018230005' and decision = 'compte_relie');
 -- T6 : l'article d'une fiche de louis-seller, vendu et lu par louis@ : enregistré CHEZ louis-seller.
 create temp table _f6 as select id, vinted_item_id from inventaire
@@ -1141,20 +1141,20 @@ create temp table _f6 as select id, vinted_item_id from inventaire
 insert into _r select 'T6 veille du PC : renvoyée au compte relié', r::text like '%compte_relie%' or (r ->> 'eclatees')::int = 0
   from (select public.commandes_vinted_noter(jsonb_build_array(jsonb_build_object('ref', '99018230006', 'item_ids', jsonb_build_array((select vinted_item_id from _f6)),
         'paye', true, 'prix', 7, 'devise', 'EUR', 'statut', 'needs_action', 'date', now()))) r) x;
-insert into _r select 'T6 vente chez louis-seller, sur SA fiche', exists (select 1 from ventes where commande_ref = '99018230006' and user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and inventaire_id = (select id from _f6));
-insert into _r select 'T6 le jeton de louis@ est rendu après le renvoi', auth.uid() = 'faf5021a-479a-4bb3-b3ec-c296770739b7'::uuid;
-insert into _r select 'T6 aucune vente chez louis@', not exists (select 1 from ventes where commande_ref like '99018230006%' and user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7');
+insert into _r select 'T6 vente chez client-447d920c, sur SA fiche', exists (select 1 from ventes where commande_ref = '99018230006' and user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and inventaire_id = (select id from _f6));
+insert into _r select 'T6 le jeton de compte-essai-2@ est rendu après le renvoi', auth.uid() = 'faf5021a-479a-4bb3-b3ec-c296770739b7'::uuid;
+insert into _r select 'T6 aucune vente chez compte-essai-2@', not exists (select 1 from ventes where commande_ref like '99018230006%' and user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7');
 -- T7 : l'article publié par louis@ sur @evat (job 56e8788c) n'est jamais importé chez louis-seller.
 select set_config('request.jwt.claims', '', true);
 insert into inventaire (user_id, titre, origine, vinted_item_id, vinted_account_id, vinted_status, photos, statut)
 values ('447d920c-976a-4d8f-aff4-a2998050358c', 'essai 230000', 'vinted_sync', '10432288057', '371531', 'active', '["https://x/y.jpg"]'::jsonb, 'stock');
-insert into _r select 'T7 relevé de louis-seller : l''article de louis@ non importé', not exists (select 1 from inventaire where user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and vinted_item_id = '10432288057');
+insert into _r select 'T7 relevé de client-447d920c : l''article de compte-essai-2@ non importé', not exists (select 1 from inventaire where user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and vinted_item_id = '10432288057');
 insert into _r select 'T7 tracé compte_relie:vinted', exists (select 1 from sync_import_ecartes where user_id = '447d920c-976a-4d8f-aff4-a2998050358c' and vinted_item_id = '10432288057' and motif = 'compte_relie:vinted');
 -- T8 : sa vente relevée par louis-seller : laissée à louis@ (pas de vente « pas suivie » chez louis-seller).
-insert into _r select 'T8 relevé de louis-seller : vente de l''article de louis@ écartée', (r ->> 'autre_compte_relie')::int = 1
+insert into _r select 'T8 relevé de client-447d920c : vente de l''article de compte-essai-2@ écartée', (r ->> 'autre_compte_relie')::int = 1
   from (select public.enregistrer_ventes_relevees('vinted', '[{"ref":"99018230008","statut":"completed","titre":"essai","prix":"10","listing_id":"10432288057"}]'::jsonb,
         '447d920c-976a-4d8f-aff4-a2998050358c') r) x;
-insert into _r select 'T8 aucune vente chez louis-seller', not exists (select 1 from ventes where commande_ref like '99018230008%');
+insert into _r select 'T8 aucune vente chez client-447d920c', not exists (select 1 from ventes where commande_ref like '99018230008%');
 -- T9 : un compte sans poste connu : rien ne change (Régis, veille d'un article inconnu).
 select set_config('request.jwt.claims', '{"sub":"309d0787-9000-46cc-9c6a-51f7475d7d41","role":"authenticated","session_id":"00000000-0000-0000-0000-000000000000"}', true);
 insert into _r select 'T9 compte non relié, poste inconnu : comme avant', public.vinted_boutique_du_poste('309d0787-9000-46cc-9c6a-51f7475d7d41') is null;

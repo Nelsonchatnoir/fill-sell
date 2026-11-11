@@ -57,7 +57,7 @@ console.log('1. La réponse du serveur, rangée');
   ok(Object.keys(indexerRelevesVides([{ arret: true }, 'x', 3])).length === 0, 'forme inattendue → ignorée, rien ne casse');
 }
 
-console.log('2. La tuile Leboncoin de pironneau montre le relevé vide, plus « 528 »');
+console.log('2. La tuile Leboncoin de client-28865d04 montre le relevé vide, plus « 528 »');
 {
   const runs = { leboncoin: RUN_APP_2309, beebs: RUN_BEEBS };
   const out = avecDernierReleveVide(runs, { leboncoin: ETAT_LBC });

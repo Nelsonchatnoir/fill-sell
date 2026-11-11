@@ -155,7 +155,7 @@ console.log('\n1. Leboncoin : « Achat en cours » = vente (Sébastien, 21-22/10
 }
 
 // ── 2. Retraits : jamais en attente sans fin ────────────────────────────────
-console.log('\n2. Retraits d\'articles vendus : jamais en attente sans fin (DeadRoz, XEWER, Tech-t, Sébastien)');
+console.log('\n2. Retraits d\'articles vendus : jamais en attente sans fin (Compte-7373c96c, COMPTE-DE63CA45, Boutique-6eb8400b, Sébastien)');
 {
   const rb = await importer('src/utils/retraitsBloques.js');
   const now = Date.parse('2026-10-22T10:00:00Z'); const ext = '2026-10-22T09:59:00Z';
@@ -163,7 +163,7 @@ console.log('\n2. Retraits d\'articles vendus : jamais en attente sans fin (Dead
   const r1 = rb.retraitsBloquesParConnexion({ jobs: [verif], fiches: [{ id: 1, statut: 'vendu', title: 'Jean 511' }], maintenant: now, extensionVueLe: ext });
   // (25/10, Nico : « L'utilisateur ne doit voir AUCUNE erreur qui vient de nous ou qui est déjà réglée ») un mur à
   // part, jamais « en retard » : ni achetable ni supprimable — ambre, sans « risque de double vente ».
-  verifier(r1.total === 1 && r1.parPlateforme[0].mur === 'verification_beebs', 'Beebs en vérification depuis 8 j (DeadRoz 53cff028) : une ligne « À régler », mur « vérification Beebs »');
+  verifier(r1.total === 1 && r1.parPlateforme[0].mur === 'verification_beebs', 'Beebs en vérification depuis 8 j (Compte-7373c96c 53cff028) : une ligne « À régler », mur « vérification Beebs »');
   const t1 = rb.texteRetraitsBloques(r1.parPlateforme[0]);
   verifier(/ne permet pas de la supprimer/.test(t1) && /pas achetable/.test(t1) && /support Beebs/.test(t1), 'le texte dit le vrai : pas achetable, Beebs ne permet pas de la supprimer (vu le 22/10), support Beebs');
   const l1 = rb.ligneARegler(r1);
@@ -174,7 +174,7 @@ console.log('\n2. Retraits d\'articles vendus : jamais en attente sans fin (Dead
   verifier(av1.length === 1 && av1[0].ton === 'regler' && !/double vente|encore en ligne/.test(rb.detailArticleVenduEnLigne(av1[0])), 'article vendu : ton ambre (jamais rouge), détail sans « encore en ligne » ni « double vente »');
   const echec = { ...verif, id: 'b', inventaire_id: 2, error: 'Le retrait n\'est pas encore fait', platform_fields: { pas_de_rouge: { motif: 'retrait_inconnu_relancer' } } };
   const r2 = rb.retraitsBloquesParConnexion({ jobs: [echec], fiches: [{ id: 2, statut: 'vendu' }], maintenant: now, extensionVueLe: ext });
-  verifier(r2.parPlateforme[0]?.mur === 'en_retard' && /Retire-la toi-même sur Beebs/.test(rb.texteRetraitsBloques(r2.parPlateforme[0])), 'retrait sans effet depuis 8 j (DeadRoz ecd27eef) : « retire-la toi-même », FillSell continue');
+  verifier(r2.parPlateforme[0]?.mur === 'en_retard' && /Retire-la toi-même sur Beebs/.test(rb.texteRetraitsBloques(r2.parPlateforme[0])), 'retrait sans effet depuis 8 j (Compte-7373c96c ecd27eef) : « retire-la toi-même », FillSell continue');
   verifier(rb.retraitsBloquesParConnexion({ jobs: [{ ...echec, created_at: '2026-10-22T08:00:00Z' }], fiches: [{ id: 2, statut: 'vendu' }], maintenant: now, extensionVueLe: ext }).total === 0, 'moins de 24 h : rien (le retrait suit son cours)');
   verifier(rb.retraitsBloquesParConnexion({ jobs: [echec], fiches: [{ id: 2, statut: 'stock' }], maintenant: now, extensionVueLe: ext }).total === 0, 'article NON vendu : jamais cette alerte');
   verifier(rb.retraitsBloquesParConnexion({ jobs: [echec], fiches: [{ id: 2, statut: 'vendu' }], maintenant: now, extensionVueLe: '2026-10-21T00:00:00Z' }).parPlateforme[0]?.mur === 'ordinateur', 'un mur plus précis passe avant (ordinateur éteint : « ouvre Chrome »)');
@@ -183,7 +183,7 @@ console.log('\n2. Retraits d\'articles vendus : jamais en attente sans fin (Dead
 }
 
 // ── 3. Opla : plus rien ─────────────────────────────────────────────────────
-console.log('\n3. Opla : plus aucun job, une seule information par annonce (XEWER)');
+console.log('\n3. Opla : plus aucun job, une seule information par annonce (COMPTE-DE63CA45)');
 {
   const mig = lire('supabase/migrations/20261022100000_opla_plus_rien.sql');
   verifier(/if j\.platform = 'opla' and public\.opla_sortie_passee\(\) then\s+perform public\.opla_copie_a_retirer_noter\(j\.id, p_chemin\);\s+return null;/.test(mig), 'armer_retrait_job_pour : aucun retrait Opla, information posée sur la copie');
@@ -199,13 +199,13 @@ console.log('\n3. Opla : plus aucun job, une seule information par annonce (XEWE
   verifier(rb.retraitsBloquesParConnexion({ jobs: [{ ...copie, platform_fields: { ...copie.platform_fields, opla_retire_par_la_personne: { le: 'x' } } }], fiches: [{ id: 7, statut: 'vendu' }], maintenant: Date.now() }).total === 0, 'app : « C\'est fait » → la ligne disparaît');
   const clos = (id, t) => ({ id, inventaire_id: null, action: 'delete', platform: 'opla', status: 'cancelled', created_at: t, listing_url: 'https://opla.co/b', platform_fields: { opla_sortie: { le: t } } });
   const r9 = rb.retraitsBloquesParConnexion({ jobs: [clos('d1', '2026-10-21T10:00:00Z'), clos('d2', '2026-10-21T11:00:00Z'), clos('d3', '2026-10-22T09:00:00Z')], fiches: [], maintenant: Date.now() });
-  verifier(r9.total === 1, `fiche supprimée : 3 retraits clos de la MÊME annonce = 1 ligne (XEWER : 9 lignes pour 3 annonces) — ${r9.total}`);
+  verifier(r9.total === 1, `fiche supprimée : 3 retraits clos de la MÊME annonce = 1 ligne (COMPTE-DE63CA45 : 9 lignes pour 3 annonces) — ${r9.total}`);
   const app = lire('src/App.jsx');
   verifier(/if\(oplaFermee\) p\.online=p\.online\.filter\(pub=>pub\.platform!=='opla'\);/.test(app) && /group\.filter\(j=>!\(oplaFermee&&j\.platform==='opla'\)\)/.test(app), 'app : la suppression et le bandeau n\'arment plus de retrait Opla');
 }
 
 // ── 4. Tailles et états vers Beebs et Depop ─────────────────────────────────
-console.log('\n4. Tailles vers Depop, fiche jamais écrasée (Johan, Louis)');
+console.log('\n4. Tailles vers Depop, fiche jamais écrasée (Compte-essai-5, Louis)');
 {
   const da = await importer('src/utils/depopAttributs.js');
   verifier(da.depopPointureEnfant('33')?.libelle === '33 (adult)' && da.depopPointureEnfant('EUR 33')?.libelle === '33 (adult)' && da.depopPointureEnfant('pointure 25')?.libelle === '25', 'pointure enfant nue = la même que « EU n » (Louis, basket « 33 »)');

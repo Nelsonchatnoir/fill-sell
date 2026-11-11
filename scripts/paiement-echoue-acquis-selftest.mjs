@@ -47,7 +47,7 @@ const LIEN = (id) => `https://invoice.stripe.com/i/acct_1/live_${id}`;
 const MARTA = {
   facture: {
     id: 'in_1UOZlGQZRA77vrWJJtwrivJd', status: 'open', billing_reason: 'subscription_create',
-    amount_due: 2999, hosted_invoice_url: LIEN('marta'), next_payment_attempt: null,
+    amount_due: 2999, hosted_invoice_url: LIEN('compte-essai-3'), next_payment_attempt: null,
     lines: { data: [{ period: { start: s('2026-10-09T09:06:42Z'), end: s('2026-11-09T09:06:42Z') } }] },
   },
   abonnement: { id: 'sub_marta', status: 'incomplete', trial_end: null, metadata: { plan_type: 'pro' } },
@@ -66,7 +66,7 @@ const ROMAIN = {
 const NADEGE = {
   facture: {
     id: 'in_1UKe75QZRA77vrWJGQibRJMe', status: 'open', billing_reason: 'subscription_cycle',
-    amount_due: 1299, hosted_invoice_url: LIEN('nadege'), next_payment_attempt: s('2026-10-09T21:57:52Z'),
+    amount_due: 1299, hosted_invoice_url: LIEN('compte-essai-4'), next_payment_attempt: s('2026-10-09T21:57:52Z'),
     lines: { data: [{ period: { start: s('2026-10-08T23:50:00Z'), end: s('2026-10-08T23:50:00Z') + MOIS } }] },
   },
   abonnement: { id: 'sub_nadege', status: 'past_due', trial_end: null, metadata: {} },
@@ -84,14 +84,14 @@ const GERONIMO = {
 //   2026-10-03 21:46:04 subscription.updated … status: incomplete_expired (23 h après) ;
 //   profil toujours gratuit (ni is_premium, ni is_pro, ni Apple / Google).
 const LOJH = {
-  facture: { id: 'in_lojh', status: 'void', billing_reason: 'subscription_create', amount_due: 1299, hosted_invoice_url: null, next_payment_attempt: null, lines: { data: [] } },
-  abonnement: { id: 'sub_lojh', status: 'incomplete_expired', trial_end: null, metadata: { plan_type: 'premium', fillsell_user_id: 'd74ce4ab-b15a-485c-988c-c5412081b92f' } },
+  facture: { id: 'in_boutique-d74ce4ab', status: 'void', billing_reason: 'subscription_create', amount_due: 1299, hosted_invoice_url: null, next_payment_attempt: null, lines: { data: [] } },
+  abonnement: { id: 'sub_boutique-d74ce4ab', status: 'incomplete_expired', trial_end: null, metadata: { plan_type: 'premium', fillsell_user_id: 'd74ce4ab-b15a-485c-988c-c5412081b92f' } },
   pi: { status: 'canceled', last_payment_error: null },
 };
 
 const echec = (cas, evenement) => decisionMailEchec({ evenement, facture: cas.facture, abonnement: cas.abonnement });
 
-titre('Marta (09/10) : 3D Secure pendant le paiement initial, payé 34 s plus tard → AUCUN mail');
+titre('Compte-essai-3 (09/10) : 3D Secure pendant le paiement initial, payé 34 s plus tard → AUCUN mail');
 {
   for (const ev of EVENEMENTS_ECHEC) {
     const d = echec(MARTA, ev);
@@ -104,7 +104,7 @@ titre('Marta (09/10) : 3D Secure pendant le paiement initial, payé 34 s plus ta
   ok(causeDuPaiement({ pi: MARTA.pi, evenement: 'invoice.payment_failed' }).cause === '3ds', 'la cause relue reste « 3ds » (comme le journal : cause=3ds)');
 }
 
-titre('romain.knc (08/10) : même parcours, payé 2,9 min plus tard → AUCUN mail');
+titre('client-7e436336 (08/10) : même parcours, payé 2,9 min plus tard → AUCUN mail');
 for (const ev of EVENEMENTS_ECHEC) {
   const d = echec(ROMAIN, ev);
   ok(d.envoyer === false && d.raison === 'paiement_initial_en_cours', `${ev} → aucun mail`);
@@ -122,7 +122,7 @@ for (const pi of [
   ok(d.envoyer === false, `souscription, cause ${cause} → aucun mail tant que Stripe n'a pas abandonné`);
 }
 
-titre('nadegemarcelin78 (09/10 01:58 Paris) : VRAI échec de renouvellement → le mail part TOUJOURS');
+titre('boutique-essai-4 (09/10 01:58 Paris) : VRAI échec de renouvellement → le mail part TOUJOURS');
 {
   for (const ev of EVENEMENTS_ECHEC) {
     const d = echec(NADEGE, ev);
@@ -134,15 +134,15 @@ titre('nadegemarcelin78 (09/10 01:58 Paris) : VRAI échec de renouvellement → 
   ok(cause === 'carte_refusee' && code === 'generic_decline', 'cause relue : carte_refusee (comme le journal)');
   const f = faitsEchec({ facture: NADEGE.facture, abonnement: NADEGE.abonnement });
   // (29/10) Abonnement past_due : le palier n'est plus gardé (impayé = gratuit) → « actif » n'est plus dit.
-  ok(f.contexte === 'renouvellement' && f.lien_facture === LIEN('nadege') && f.abonnement_actif === false
+  ok(f.contexte === 'renouvellement' && f.lien_facture === LIEN('compte-essai-4') && f.abonnement_actif === false
     && f.relance_le === '2026-10-09T21:57:52.000Z', 'faits : renouvellement, bouton facture, relance 21:57:52Z, plus « actif » (past_due)');
   const t = texteEchec({ lang: 'fr', cause, contexte: f.contexte, lienFacture: f.lien_facture, relanceLe: f.relance_le, abonnementActif: f.abonnement_actif });
-  ok(t.sujet === "Ton paiement n'a pas abouti" && t.bouton?.texte === 'Régler la facture' && t.bouton?.url === LIEN('nadege'),
+  ok(t.sujet === "Ton paiement n'a pas abouti" && t.bouton?.texte === 'Régler la facture' && t.bouton?.url === LIEN('compte-essai-4'),
     'texte inchangé : « Ton paiement n\'a pas abouti », bouton « Régler la facture »');
   ok(t.suite.some((x) => x.includes('vendredi 9 octobre')) && !t.suite.includes("Ton abonnement reste actif pour l'instant."), 'relance « vendredi 9 octobre », jamais « reste actif » sur un impayé');
 }
 
-titre('geronimo0550 (06/10) : renouvellement échoué → le mail part toujours');
+titre('client-63b80b36 (06/10) : renouvellement échoué → le mail part toujours');
 ok(echec(GERONIMO, 'invoice.payment_failed').envoyer === true, 'invoice.payment_failed → mail');
 
 titre('Fin d\'essai (Cloud ou palier) : échec acquis → mail, comme avant');
@@ -156,7 +156,7 @@ titre('Fin d\'essai (Cloud ou palier) : échec acquis → mail, comme avant');
   ok(d.envoyer === true, 'fin d\'essai Cloud impayée → mail');
 }
 
-titre('« Lojh boutique » (03/10) : souscription ABANDONNÉE (incomplete_expired) → le mail part, une fois acquis');
+titre('« Compte-d74ce4ab » (03/10) : souscription ABANDONNÉE (incomplete_expired) → le mail part, une fois acquis');
 {
   const d = decisionMailEchec({ evenement: 'customer.subscription.updated', facture: LOJH.facture, abonnement: LOJH.abonnement });
   ok(d.envoyer === true && d.raison === 'souscription_abandonnee', `incomplete_expired, facture annulée, rien payé ailleurs → mail (${d.raison})`);
@@ -209,10 +209,10 @@ titre('La cause fine : la règle du 07/08, à l\'identique');
 titre('Rejeu des 4 mails « payment_failed » de l\'historique (email_logs, tout le parc)');
 {
   const rejeu = [
-    ['geronimo0550', 'in_1UN9phQZRA77vrWJia5A4RIF', GERONIMO, true],
-    ['romain.knc', 'in_1UOCZFQZRA77vrWJwGV5cmI0', ROMAIN, false],
-    ['nadegemarcelin78', 'in_1UKe75QZRA77vrWJGQibRJMe', NADEGE, true],
-    ['Marta MELE', 'in_1UOZlGQZRA77vrWJJtwrivJd', MARTA, false],
+    ['client-63b80b36', 'in_1UN9phQZRA77vrWJia5A4RIF', GERONIMO, true],
+    ['client-7e436336', 'in_1UOCZFQZRA77vrWJwGV5cmI0', ROMAIN, false],
+    ['boutique-essai-4', 'in_1UKe75QZRA77vrWJGQibRJMe', NADEGE, true],
+    ['Compte-ac19c8c9', 'in_1UOZlGQZRA77vrWJJtwrivJd', MARTA, false],
   ];
   for (const [qui, facture, cas, attendu] of rejeu) {
     const d = echec(cas, 'invoice.payment_failed');

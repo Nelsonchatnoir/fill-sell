@@ -182,12 +182,12 @@ begin
   n := public.retraits_beebs_rearmer_revus(v_seb);
   v_ms := round(extract(epoch from clock_timestamp() - t0) * 1000, 1);
   select status, error, platform_fields pf into j from public.cross_post_jobs where id = v_ret;
-  insert into _r values ('R1 Sébastien cfed66ca (fiche supprimée, vente 286083 lue sur sa ligne) : réarmé, « pending », trace rearme_revu_en_ligne',
+  insert into _r values ('R1 Compte-essai-8 cfed66ca (fiche supprimée, vente 286083 lue sur sa ligne) : réarmé, « pending », trace rearme_revu_en_ligne',
     n = 1 and j.status = 'pending' and (j.pf #>> '{rearme_revu_en_ligne,n}')::int = 1
     and j.error = 'Revue en ligne sur Beebs après la clôture de son retrait : l''article est vendu, FillSell la retire.',
     n || ' / ' || j.status || ' / ' || coalesce(j.pf ->> 'rearme_revu_en_ligne', '∅'));
   insert into _r values ('R6 relu aussitôt : rien de plus (le retrait est en file, jamais deux)', public.retraits_beebs_rearmer_revus(v_seb) = 0, null);
-  insert into _r values ('P1 durée de l''appel pour le compte de Sébastien', v_ms < 200, v_ms || ' ms');
+  insert into _r values ('P1 durée de l''appel pour le compte de Compte-essai-8', v_ms < 200, v_ms || ' ms');
   insert into _r values ('X1 aucun job créé, aucun mail',
     (select count(*) from public.cross_post_jobs where user_id = v_seb and created_at >= now()) = n_jobs
     and (select count(*) from public.email_logs where sent_at >= now()) = 0, null);

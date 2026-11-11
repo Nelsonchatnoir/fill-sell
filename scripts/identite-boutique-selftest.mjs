@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
 import { verifierBoutiqueOperation as verifier, exigePreuveBoutiqueVinted, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact, depotVintedExactParAnnonce, idAnnonceVintedExact, importVintedExactParAnnonce } from '../supabase/functions/_shared/identite-boutique.js';
-const base={action:'delete',platform:'vinted',boutiqueArticle:'nadege',boutiqueSession:'albert',boutiques:[{user_id:'albert'}],lectureFiable:true};
+const base={action:'delete',platform:'vinted',boutiqueArticle:'compte-essai-4',boutiqueSession:'albert',boutiques:[{user_id:'albert'}],lectureFiable:true};
 assert.equal(verifier(base),'boutique_non_confirmee');
-assert.equal(verifier({...base,boutiqueSession:'nadege'}),'boutique_non_confirmee');
+assert.equal(verifier({...base,boutiqueSession:'compte-essai-4'}),'boutique_non_confirmee');
 assert.equal(verifier({...base,action:'publish',platform:'opla'}),null);
-assert.equal(verifier({...base,boutiques:[{user_id:'nadege'}]}),'boutique_etrangere');
+assert.equal(verifier({...base,boutiques:[{user_id:'compte-essai-4'}]}),'boutique_etrangere');
 assert.equal(verifier({...base,boutiqueArticle:'albert'}),null);
 assert.equal(verifier({...base,boutiqueArticle:'albert',boutiqueSession:null}),'session_inconnue');
 assert.equal(verifier({...base,boutiqueArticle:'albert',boutiqueSession:null,sessionRequise:false}),null);
 assert.equal(verifier({...base,boutiqueSession:null,sessionRequise:false}),'boutique_non_confirmee');
-assert.equal(verifier({...base,boutiques:[{user_id:'nadege'}],sessionRequise:false}),'boutique_etrangere');
+assert.equal(verifier({...base,boutiques:[{user_id:'compte-essai-4'}],sessionRequise:false}),'boutique_etrangere');
 assert.equal(verifier({...base,boutiqueArticle:null}),'origine_inconnue');
 assert.equal(verifier({...base,lectureFiable:false}),'lecture_indisponible');
 assert.equal(verifier({...base,action:'publish',boutiqueArticle:null}),null);
-assert.equal(verifier({...base,action:'publish',boutiqueArticle:'nadege',boutiqueSession:'albert'}),null);
+assert.equal(verifier({...base,action:'publish',boutiqueArticle:'compte-essai-4',boutiqueSession:'albert'}),null);
 assert.equal(verifier({...base,action:'publish',platform:'opla',boutiqueArticle:'albert'}),null);
 assert.equal(exigePreuveBoutiqueVinted({action:'publish',platform:'vinted'}),false);
 assert.equal(exigePreuveBoutiqueVinted({action:'delete',platform:'vinted'}),true);
@@ -39,7 +39,7 @@ assert.equal(verifier({...base,boutiqueArticle:null,sessionRequise:false,histori
 assert.equal(verifier({...base,boutiqueArticle:null,historiqueListingProuve:true}),'origine_inconnue');
 // (02/10) jocabroc8 : retraits demandés par la personne, annonces IMPORTÉES par
 // le relevé (sync-dressing), fiche supprimée — formes réelles des jobs.
-const pin=[{ajoute_le:'2026-09-20T12:49:11.380Z',login:'lookyvintage',source:'premiere_sync',user_id:'137708392'}];
+const pin=[{ajoute_le:'2026-09-20T12:49:11.380Z',login:'boutique-essai-7',source:'premiere_sync',user_id:'137708392'}];
 const retraitSauciere={id:'8fc4b131',inventaire_id:null,platform:'vinted',action:'delete',listing_url:'https://www.vinted.fr/items/9655441807-sauciere-ancienne-inspiration-luneville-avec-son-dormant-bleu-decor-romantique'};
 const importSauciere={id:'700cf4a3',inventaire_id:null,platform:'vinted',action:'publish',status:'published',created_at:'2026-09-20 12:49:18.93044+00',handler_build:'2026-09-19T18:50:24Z+a3d49f9 · sync-dressing',platform_listing_id:'9655441807',listing_url:retraitSauciere.listing_url,platform_fields:{check_unknown_count:1}};
 assert.equal(depotVintedExactParAnnonce(retraitSauciere,[importSauciere]),null);

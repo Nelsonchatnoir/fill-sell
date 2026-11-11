@@ -23,7 +23,7 @@ const M = await import(pathToFileURL(join(ROOT, 'supabase/functions/_shared/mur-
 let n = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); n++; console.log(`  ✓ ${msg}`); };
 
-console.log('1. Hassan Said : Vinted refuse le TITRE');
+console.log('1. Compte-bf85d176 : Vinted refuse le TITRE');
 const BRUT_HASSAN = "Vinted a refusé la publication : Le titre contient trop de symboles d'affilée — l'annonce n'a PAS été créée. Champ exigé par Vinted : Titre. À faire : renseigne « Titre » dans la copie Vinted de l'app, puis relance la publication. [sonde réseau : /api/v2/item_upload/items → HTTP 400 · prix ENVOYÉ = 25 · réponse : {\"code\":99,\"message\":\"Erreurs trouvées\",\"message_code\":\"validation_error\",\"errors\":[{\"field\":\"title\",\"value\":\"Le titre contient trop de symboles d'affilée\"}],\"payload\":{}}]";
 {
   const o = P.classerEchec({ platform: 'vinted', action: 'publish', brut: BRUT_HASSAN, essais: 1, pf: {}, reprises: 3 });
@@ -37,7 +37,7 @@ const BRUT_HASSAN = "Vinted a refusé la publication : Le titre contient trop de
   ok(r.message.includes('déjà retirée, sera remise en ligne'), 'republication dont l\'annonce est retirée : on ne dit pas « intacte »');
 }
 
-console.log('2. Kossiwa : la phrase suit l\'action ; la restriction vaut pour le compte');
+console.log('2. Compte-06b76fe8 : la phrase suit l\'action ; la restriction vaut pour le compte');
 {
   // (24/10) La restriction de Kossiwa (« jusqu'au 18/10/2026 ») était écrite en dur : passé le 18/10,
   // classerEchec la jugeait — à juste titre — terminée (compte_restreint_echu), et ce contrôle virait
@@ -67,11 +67,11 @@ console.log('2. Kossiwa : la phrase suit l\'action ; la restriction vaut pour le
   ok(/j\.action === "publish" \|\| j\.action === "republish"\)\);\n\s*if \(retenus\.length\)/.test(gpj), 'les retraits (articles vendus) restent servis');
 }
 
-console.log('3. carhoa : une déconnexion n\'est jamais un anti-robot');
+console.log('3. compte-6f41de45 : une déconnexion n\'est jamais un anti-robot');
 {
   const runsCarhoa = [{ status: 'failed', erreur: "[cause403] session_absente — aucune session Vinted dans ce navigateur (HTTP 403 sur la sonde)", started_at: '2026-10-14T23:32:00Z', finished_at: '2026-10-14T23:33:10Z' }];
   const a = M.connexionVintedAbsenteProuvee({ runs: runsCarhoa, dernierSucces: Date.parse('2026-10-02T10:00:00Z'), sessions: { vinted: null }, maintenant: Date.parse('2026-10-15T05:45:00Z') });
-  ok(a.prouvee === true, 'carhoa : cookie de connexion absent au dernier relevé, rien de réussi depuis → connexion PROUVÉE absente');
+  ok(a.prouvee === true, 'compte-6f41de45 : cookie de connexion absent au dernier relevé, rien de réussi depuis → connexion PROUVÉE absente');
   ok(!M.connexionVintedAbsenteProuvee({ runs: runsCarhoa, dernierSucces: Date.parse('2026-10-15T00:10:00Z'), maintenant: Date.parse('2026-10-15T05:45:00Z') }).prouvee, 'un succès Vinted après le relevé → pas de preuve');
   ok(!M.connexionVintedAbsenteProuvee({ runs: runsCarhoa, sessions: { vinted: true, checked_at: '2026-10-15T01:00:00Z' }, maintenant: Date.parse('2026-10-15T05:45:00Z') }).prouvee, 'la sonde revoit Vinted répondre après → pas de preuve');
   ok(!M.connexionVintedAbsenteProuvee({ runs: runsCarhoa, maintenant: Date.parse('2026-10-16T05:45:00Z') }).prouvee, 'relevé de plus de 24 h → pas de preuve');

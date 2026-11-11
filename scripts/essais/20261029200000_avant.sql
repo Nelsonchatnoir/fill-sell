@@ -7,10 +7,10 @@ create temp table _r (essai text, ok boolean, detail text);
 grant all on _r to public;
 create temp table _cas (id uuid, user_id uuid, numero text, nom text);
 insert into _cas values
-  ('abd12bb5-2899-4bd2-a394-02dc6763f3cc', 'de63ca45-63d9-4a3c-b65a-d1345acd8b2e', '34198358', 'XEWER abd12bb5 34198358'),
-  ('22362f3a-86fe-4eb3-a986-ef4569f6d89f', '447d920c-976a-4d8f-aff4-a2998050358c', '34200634', 'louis-seller 22362f3a 34200634'),
-  ('ef037533-8fc0-4997-b436-3c562f3256a5', '447d920c-976a-4d8f-aff4-a2998050358c', '34200711', 'louis-seller ef037533 34200711'),
-  ('4cdadbc1-886e-4af1-a40c-37bfa2f805ff', '447d920c-976a-4d8f-aff4-a2998050358c', '34206489', 'louis-seller Polly 4cdadbc1 34206489');
+  ('abd12bb5-2899-4bd2-a394-02dc6763f3cc', 'de63ca45-63d9-4a3c-b65a-d1345acd8b2e', '34198358', 'COMPTE-DE63CA45 abd12bb5 34198358'),
+  ('22362f3a-86fe-4eb3-a986-ef4569f6d89f', '447d920c-976a-4d8f-aff4-a2998050358c', '34200634', 'client-447d920c 22362f3a 34200634'),
+  ('ef037533-8fc0-4997-b436-3c562f3256a5', '447d920c-976a-4d8f-aff4-a2998050358c', '34200711', 'client-447d920c ef037533 34200711'),
+  ('4cdadbc1-886e-4af1-a40c-37bfa2f805ff', '447d920c-976a-4d8f-aff4-a2998050358c', '34206489', 'client-447d920c Polly 4cdadbc1 34206489');
 create temp table _runs (user_id uuid, run uuid, debut timestamptz);
 insert into _runs
   select distinct on (r.user_id) r.user_id, r.id, r.started_at

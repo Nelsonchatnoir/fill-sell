@@ -133,7 +133,7 @@ BEGIN
   PERFORM set_config('request.jwt.claims', '', true);
   SELECT * INTO j FROM public.cross_post_jobs WHERE id = NULLIF(r ->> 'job_id', '')::uuid;
   INSERT INTO _res (cas, attendu, obtenu, ok) VALUES (
-    'A3 avant : cas Amiral — republication d''une annonce portée par deux fiches (ancienne règle)',
+    'A3 avant : cas Compte-faf5021a — republication d''une annonce portée par deux fiches (ancienne règle)',
     'défaut prouvé : créée sur …705',
     COALESCE(r ->> 'reason', 'créée') || ' ; lien ' || COALESCE(public.annonce_id_job('leboncoin', j.listing_url), '∅'),
     COALESCE((r ->> 'allowed')::boolean, false)
@@ -150,7 +150,7 @@ BEGIN
   SELECT id INTO v_id FROM public.cross_post_jobs WHERE inventaire_id = 9017101700005 AND action = 'republish';
   r := public.annonce_partagee_reprendre(v_id, 'essai_1710_avant', NULL);
   INSERT INTO _res (cas, attendu, obtenu, ok)
-  SELECT 'A4 avant : cas Amiral — reprise Leboncoin dont la copie vise une autre annonce (ancienne règle)',
+  SELECT 'A4 avant : cas Compte-faf5021a — reprise Leboncoin dont la copie vise une autre annonce (ancienne règle)',
          'défaut prouvé : copie retirée, étape a_capturer',
          COALESCE(r ->> 'issue', r ->> 'reason', '?') || ' ; ' || j.status || ' ; copie '
            || CASE WHEN j.platform_fields ? 'republish_snapshot' THEN 'gardée' ELSE 'retirée' END
@@ -1490,7 +1490,7 @@ BEGIN
   SELECT COALESCE(sum(included_balance + purchased_balance), 0) INTO v_solde_apres FROM public.coin_wallets
    WHERE user_id = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
   INSERT INTO _res (cas, attendu, obtenu, ok) VALUES (
-    'C4 après : cas Amiral — annonce portée par deux fiches (fiches 11 et 12)',
+    'C4 après : cas Compte-faf5021a — annonce portée par deux fiches (fiches 11 et 12)',
     'refus lien_annonce_incertain / annonce_partagee ; 0 job ; 0 journal ; 0 mouvement ; solde inchangé',
     COALESCE(r ->> 'reason', 'créée') || ' / ' || COALESCE(r ->> 'cause', '∅') || ' ; ' || v_jobs || ' job ; '
       || (v_journal_apres - v_journal_avant) || ' journal ; ' || (v_mouv_apres - v_mouv_avant) || ' mouvement ; solde '
@@ -1531,7 +1531,7 @@ BEGIN
   SELECT id INTO v_id FROM public.cross_post_jobs WHERE inventaire_id = 9017101700008 AND action = 'republish';
   r := public.annonce_partagee_reprendre(v_id, 'essai_1710', NULL);
   INSERT INTO _res (cas, attendu, obtenu, ok)
-  SELECT 'C6 après : cas Amiral — reprise Leboncoin, copie sur une autre annonce (fiche 8)',
+  SELECT 'C6 après : cas Compte-faf5021a — reprise Leboncoin, copie sur une autre annonce (fiche 8)',
          'repris ; pending ; copie gardée = …712/…712 ; réalignée ; étape a_capturer ; champs lus retirés',
          COALESCE(r ->> 'issue', r ->> 'reason', '?') || ' ; ' || j.status || ' ; copie '
            || CASE WHEN j.platform_fields ? 'republish_snapshot' THEN 'gardée' ELSE 'retirée' END

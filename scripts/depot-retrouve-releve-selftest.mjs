@@ -34,7 +34,7 @@ const veste = (o = {}) => ({
     republier: { le: "2026-11-05T18:51:09.791Z", avant: { statut: 520, actions: [] }, nouvel_item: { id: "10677685596", titre: "Veste gilet ONLY beige", source: "geste_du_vendeur" }, rattache_le: "2026-11-05T18:51:09.791Z" },
     lien_refuse: { le: "2026-11-05T18:51:10.730996+00:00", motif: "annonce_portee_par_un_autre_article", id_propose: "10677685596" },
     vinted_item_id: "10677685596", vinted_account_id: "6947482",
-    vinted_account_proof: { login: "dorianehenri", user_id: "6947482", source: "users/current_apres_depot" },
+    vinted_account_proof: { login: "client-af37fa49", user_id: "6947482", source: "users/current_apres_depot" },
     remise_par_republier: { vente: "460230", item_id: "10281020199", transaction_id: "23929370487" },
     listing_url_abandon: ABANDON, hors_quota: true,
     ...(o.pf ?? {}),
@@ -59,7 +59,7 @@ ok("lien refusé seul (dépôt ordinaire) → son numéro", numeroLuAuDepot(vest
 ok("la boutique du dépôt : celle lue après le dépôt", boutiqueDuDepot(veste()) === "6947482");
 ok("photos communes par jeton Vinted (signature ignorée)", photosCommunes(veste().photos, neuveVeste().photos) === 1);
 
-console.log("2. Doriane — la veste VENDUE sur la fiche neuve : la vente reste une, le dépôt se clôt");
+console.log("2. Client-essai-2 — la veste VENDUE sur la fiche neuve : la vente reste une, le dépôt se clôt");
 const vV = jugerDepotRetrouve({ job: veste(), ficheDepot: ficheVeste, porteuse: neuveVeste(), jobsPorteuse: [suiviVeste], ventesAnnonce: [venteVeste], maintenant });
 ok("décision « vendue »", vV.decision === "vendue", JSON.stringify(vV));
 const pV = patchDepotVendu(veste(), vV, maintenant);
@@ -83,7 +83,7 @@ const pull = (o = {}) => ({
   platform_fields: {
     republier: { nouvel_item: { id: "10667288621", titre: "Pull zippé chaud bleu 12 ans", source: "geste_du_vendeur" }, rattache_le: "2026-11-05T09:25:55.206Z" },
     lien_refuse: { motif: "annonce_portee_par_un_autre_article", id_propose: "10667288621" },
-    vinted_item_id: "10667288621", vinted_account_id: "24934271", vinted_account_proof: { user_id: "24934271", login: "echinaster" },
+    vinted_item_id: "10667288621", vinted_account_id: "24934271", vinted_account_proof: { user_id: "24934271", login: "boutique-d71db658" },
     remise_par_republier: { item_id: "10631712126" }, listing_url_abandon: ABANDON, ...(o.pf ?? {}),
   },
 });
@@ -94,7 +94,7 @@ const neuvePull = (o = {}) => ({ id: 1793870557184002, origine: "vinted_sync", s
 const suiviPull = (o = {}) => ({ id: "c3d14b37-9fa4-4266-8761-78cc45ff64f7", platform: "vinted", action: "publish", status: "published", platform_listing_id: "10667288621",
   listing_url: "https://www.vinted.fr/items/10667288621-pull-zippe-chaud-bleu-12-ans", handler_build: "2026-11-04T22:07:23Z+f153ea3 · sync-dressing", platform_fields: { x: 1 }, ...o });
 
-console.log("3. Anne-Hélène — en ligne sur une fiche neuve née AVANT la remise : la question, le dépôt quitte « failed »");
+console.log("3. Compte-essai-15 — en ligne sur une fiche neuve née AVANT la remise : la question, le dépôt quitte « failed »");
 const vP = jugerDepotRetrouve({ job: pull(), ficheDepot: fichePull(), porteuse: neuvePull(), jobsPorteuse: [suiviPull()], ventesAnnonce: [],
   question: { statut: "proposee" }, unionPossible: true, maintenant });
 ok("née avant le dépôt (10:22:37 < 10:25:00) → jamais de rattachement automatique", vP.nee_apres_le_depot === false && vP.decision !== "rattacher");
@@ -137,7 +137,7 @@ const dbz = (o = {}) => ({ ...pull(), id: "a705b36c-4d79-4135-896f-881cffcb17f8"
 const ficheDbz = { id: 1793011584104, statut: "stock", quantite: 1, fusionne_dans: null, vinted_item_id: "10651652373", vinted_status: "sold", vinted_account_id: "3137271285", prix_achat: 1 };
 const neuveDbz = { id: 1793869235444004, origine: "vinted_sync", statut: "stock", quantite: 1, fusionne_dans: null, vinted_item_id: "10666779284", vinted_status: "active",
   vinted_account_id: "3137271285", created_at: "2026-11-05T09:00:35.756518Z", first_seen_at: "2026-11-05T09:00:35Z", prix_achat: 1, photos: [] };
-console.log("5. XEWER — dépôt ARRÊTÉ par la personne : jamais réécrit, la question seule");
+console.log("5. COMPTE-DE63CA45 — dépôt ARRÊTÉ par la personne : jamais réécrit, la question seule");
 const vX = jugerDepotRetrouve({ job: dbz(), ficheDepot: ficheDbz, porteuse: neuveDbz, jobsPorteuse: [], unionPossible: true, maintenant });
 ok("la question (questionSeule)", vX.decision === "question" && vX.questionSeule === true, JSON.stringify(vX));
 ok("annonce vendue → rien (jamais réécrit)", jugerDepotRetrouve({ job: dbz(), ficheDepot: ficheDbz, porteuse: { ...neuveDbz, vinted_status: "sold" }, ventesAnnonce: [{ id: 1 }], maintenant }).decision === "rien");

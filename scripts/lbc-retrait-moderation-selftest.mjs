@@ -28,7 +28,7 @@ const corps = (l = lecture(), extra = {}) => ({
   needs_user_source: "relancer", pas_de_rouge: { x: 1 }, lecture_etat_retrait: l, ...extra,
 });
 
-console.log("1. Le cas de Cédric (2e lecture 410 à 23:04 Paris, compteur 2 en base, l'extension envoie 3/5)");
+console.log("1. Le cas de Compte-essai-16 (2e lecture 410 à 23:04 Paris, compteur 2 en base, l'extension envoie 3/5)");
 const a = attenteModerationLbc({ job: RETRAIT, pfBase: { needsUserAttempts: 2 }, pfCorps: corps(), maintenant: t0 });
 ok("attente posée", !!a, JSON.stringify(a));
 ok("aucun essai consommé : le compteur reste celui de la base (2), pas 3", a?.pf.needsUserAttempts === 2, String(a?.pf.needsUserAttempts));

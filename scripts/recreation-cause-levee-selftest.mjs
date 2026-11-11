@@ -24,7 +24,7 @@ const ana = {
   },
 };
 
-console.log("\n1. ANA0115 : LA CAUSE (DESCRIPTION VIDE) EST LEVÉE PAR LE SERVEUR");
+console.log("\n1. CLIENT-6D8E3C4A : LA CAUSE (DESCRIPTION VIDE) EST LEVÉE PAR LE SERVEUR");
 const c = causeLeveePourRelance(ana);
 ok(c?.code === "description_beebs_trop_courte", "cause reconnue sur la trace de l'échec", JSON.stringify(c));
 const pf = champsRelanceCauseLevee(ana.platform_fields, c, "2026-10-15T19:30:00Z");

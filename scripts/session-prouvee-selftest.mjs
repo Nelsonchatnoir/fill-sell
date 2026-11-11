@@ -61,7 +61,7 @@ ok(S.sondeProuveSession({ platform: 'vinted', sessionsCompte: { vinted: null, pr
   'C2. la sonde « connecté » juste écrasée par le mur (previous) compte encore pour un poste seul');
 const fraisV = { vinted: true, checked_at_par_plateforme: { vinted: '2026-11-01T10:39:00Z' } };
 ok(S.sessionsPourArbitrage({ platform: 'vinted', sessionsCompte: fraisV, maintenant }) === fraisV,
-  'C3. pas-de-rouge : une sonde fraîche d\'un poste seul passe telle quelle (van-breugel.sandra, 23/09)');
+  'C3. pas-de-rouge : une sonde fraîche d\'un poste seul passe telle quelle (client-9148e867, 23/09)');
 const sortieV = PDR.classerEchec({ platform: 'vinted', action: 'republish', brut: 'Connexion Vinted requise', essais: 0, pf: {},
   sessions: S.sessionsPourArbitrage({ platform: 'vinted', sessionsCompte: fraisV, maintenant }) });
 ok(sortieV.motif === 'refus_session_bonne', `C4. classerEchec, sonde prouvée : « connexion bonne », comme avant (${sortieV.motif})`);

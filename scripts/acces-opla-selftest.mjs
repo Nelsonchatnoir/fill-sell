@@ -29,7 +29,7 @@ const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else c
 const MAINTENANT = Date.parse("2026-09-24T17:05:00Z");
 const il = (min) => new Date(MAINTENANT - min * 60_000).toISOString();
 
-console.log("1. Cas Louis (24/09 17:01, extension 0.6.63, deux profils Chrome)");
+console.log("1. Cas Compte-essai-2 (24/09 17:01, extension 0.6.63, deux profils Chrome)");
 {
   const v = verdictAccesOpla({
     maintenant: MAINTENANT,

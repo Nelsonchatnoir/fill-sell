@@ -19,7 +19,7 @@ const TYPE_54235 = ["Banc", "Canapé", "Chaise", "Chaise de bureau", "Chaise ou 
 const TYPE_11205 = ["Imprimante 3D", "Imprimante d'étiquettes", "Imprimante grand format", "Imprimante mobile", "Imprimante standard",
   "Imprimante tout-en-un", "Scanner à main", "Scanner à plat", "Scanner mobile", "Scanner portatif et compact", "Stylo scanner et lecteur"];
 
-console.log("1. Les cas réels d'ayadi007 : rien d'écrit → rien de déduit (la question, jamais inventé)");
+console.log("1. Les cas réels d'client-cfdfda6f : rien d'écrit → rien de déduit (la question, jamais inventé)");
 ok("« Chaise Ergonomique B300 Pro / Support lombaire adaptatif, blanc » : Longueur → null",
   aspectDuTexte({ name: "Longueur", allowedValues: LONGUEUR, textes: ["Chaise Ergonomique B300 Pro", "Support lombaire adaptatif, blanc"] }) === null);
 const scan = aspectDuTexte({ name: "Type", allowedValues: TYPE_11205, textes: ["scanner de codes-barres portable Android", "Système mis à niveau : Android 14…"] });

@@ -12,9 +12,9 @@ begin
     ('T1 vendue il y a 47 h : question', public.question_article_inconnu_due(now() - interval '47 hours'), null),
     ('T1 vendue il y a 49 h : aucune', not public.question_article_inconnu_due(now() - interval '49 hours'), null),
     ('T1 date inconnue : aucune', not public.question_article_inconnu_due(null), null),
-    ('T1 the_closet72 (04/09/2025 lue le 01/11) : aucune',
+    ('T1 boutique-8ac5bbda (04/09/2025 lue le 01/11) : aucune',
        not public.question_article_inconnu_due('2025-09-04 16:09:20+00', '2026-10-31 23:45:29+00'), null),
-    ('T1 nadegemarcelin78 (31/10 07:36 lue le 01/11 00:28) : question',
+    ('T1 boutique-essai-4 (31/10 07:36 lue le 01/11 00:28) : question',
        public.question_article_inconnu_due('2026-10-31 06:36:32+00', '2026-10-31 23:28:40+00'), null),
     ('T2 eclater appelle la règle, une seule fois',
        (select (length(prosrc) - length(replace(prosrc, 'question_article_inconnu_due(v_le)', '')))

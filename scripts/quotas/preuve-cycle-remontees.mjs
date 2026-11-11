@@ -160,7 +160,7 @@ try {
   let r = await payer(U(1), 'premium', 31);
   let c = await cycle(U(1));
   ok(r.granted === false && r.reason === 'no_upgrade_needed', 'paiement du même palier 4 jours avant l’échéance : rien de crédité', JSON.stringify(r));
-  ok(proche(c.e, 31) && !recent(c.c) && c.l === 1, '… échéance reportée à la fin de période, cycle NON remis à zéro (le cas nadegemarcelin78)');
+  ok(proche(c.e, 31) && !recent(c.c) && c.l === 1, '… échéance reportée à la fin de période, cycle NON remis à zéro (le cas boutique-essai-4)');
   await compte(U(30), { grantIlYa: 10 }); await remontees(U(30));
   const avant30 = await etat(U(30));
   ok(avant30.republication.faites === 13, 'Premium : 13 remontées comptées (annulées jamais publiées, échouée, synchro comprises)', JSON.stringify(avant30.republication));
@@ -189,12 +189,12 @@ try {
   await q(m1);
   const ap = async (k) => cycle(U(k));
   let x = await ap(51);
-  ok(x.l === parcAvant[51].l + 1, 'nadegemarcelin78 : une ligne grant_monthly datée du paiement');
+  ok(x.l === parcAvant[51].l + 1, 'boutique-essai-4 : une ligne grant_monthly datée du paiement');
   const paye51 = await un(`SELECT (next_grant_at - interval '1 month') AS p FROM public.coin_wallets WHERE user_id = $1`, [U(51)]);
   ok(new Date(x.c).getTime() === new Date(paye51.p).getTime(), '… son cycle repart de la date du paiement (échéance − 1 mois)', `${x.c} ≠ ${paye51.p}`);
   ok(x.inc === parcAvant[51].inc && new Date(x.e).getTime() === new Date(parcAvant[51].e).getTime(), '… solde et échéance intacts (delta 0)');
   x = await ap(52);
-  ok(x.l === parcAvant[52].l + 1, 'boncoin59300 (cycle ouvert par un paiement Google remboursé, vrai paiement 3 jours après) : recalculé');
+  ok(x.l === parcAvant[52].l + 1, 'client-3f91c02e (cycle ouvert par un paiement Google remboursé, vrai paiement 3 jours après) : recalculé');
   for (const [k, m] of [[53, 'compte ordinaire'], [54, 'compte offert'], [55, 'Free'], [56, 'balayage par ancrage'], [57, 'sans canal de paiement']]) {
     x = await ap(k);
     ok(x.l === parcAvant[k].l && new Date(x.c).getTime() === new Date(parcAvant[k].c).getTime(), `${m} : intact`);

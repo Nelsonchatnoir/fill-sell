@@ -25,7 +25,7 @@ ok("Louis, « Rangement Noir » 3303254205 : jamais vue, 2 relevés complets à 
 
 console.log("2. Une seule preuve manque → on attend (jamais un faux)");
 ok("vue par un relevé après le dépôt → en ligne", jugerDepotLbcJamaisEnLigne(depot(), { vue: { vu_le: "2026-11-06T09:13:00Z" }, releves: relevesLouis, maintenant }).decision === "en_ligne");
-ok("jocabroc8 (EN LIGNE, jamais relevée) : la page n'a rien vu manquer → attendre",
+ok("client-53efea05 (EN LIGNE, jamais relevée) : la page n'a rien vu manquer → attendre",
   jugerDepotLbcJamaisEnLigne(depot({ pf: { sale_signal: undefined, unavailable_since: undefined } }), { releves: relevesLouis, maintenant }).raison === "page_pas_relue_absente");
 ok("un seul relevé complet → attendre", jugerDepotLbcJamaisEnLigne(depot(), { releves: [relevesLouis[0]], maintenant }).raison === "moins_de_deux_releves_complets");
 ok("un relevé incomplet ne compte pas", jugerDepotLbcJamaisEnLigne(depot(), { releves: [relevesLouis[0], run("2026-11-06T09:19:00Z", 200, 401)], maintenant }).decision === "attendre");

@@ -100,7 +100,7 @@ console.log("3. Les besoins : couleur exigée ET vide — jamais une copie retou
   ok(eb.length === 1 && eb[0].key === "Couleur" && eb[0].cle === "ebay|63862|Couleur", "eBay : l'aspect « Couleur » manquant seul", eb);
 }
 
-console.log("4. Cas jakefawright rejoué : la figurine part avec une couleur, sans question :");
+console.log("4. Cas client-97221b6a rejoué : la figurine part avec une couleur, sans question :");
 {
   const copies = { vinted: { title: "Smallest spicy mcnuggat shaped like heart or nose", platform_fields: { marque: "McDonald's", etat: "Neuf sans étiquette" } },
     beebs: { platform_fields: { marque: "McDonald's" } } };

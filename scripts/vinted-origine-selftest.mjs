@@ -217,7 +217,7 @@ await cas("f. « Chrome » sous Google Chrome (textes d'avant), « Edge » sous 
   assert.deepEqual(enDur, []);
 });
 
-await cas("f'. « pas connecté » : marqueurs gardés, domaine et navigateur nommés (Marta : Edge, vinted.it)", () => {
+await cas("f'. « pas connecté » : marqueurs gardés, domaine et navigateur nommés (Compte-essai-3 : Edge, vinted.it)", () => {
   const bg = lire("chrome-extension/background.js");
   const d = bg.indexOf('"[pas_connecte] [cause403] session_absente — aucune session Vinted dans " + VO.navigateurLong()');
   assert.ok(d > 0, "message trouvé");

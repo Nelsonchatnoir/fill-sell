@@ -31,7 +31,7 @@ SELECT j.id, j.user_id, j.inventaire_id, j.status, j.error, j.platform_fields pf
        coalesce(public.annonce_id_de_job(j.platform_listing_id, j.listing_url), substring(j.listing_url from '/([0-9]{6,})')) AS annonce,
        (j.platform_fields ->> 'unavailable_since')::timestamptz AS depuis
   FROM cross_post_jobs j
- WHERE j.user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7'            -- louis@ttfamily.fr
+ WHERE j.user_id = 'faf5021a-479a-4bb3-b3ec-c296770739b7'            -- compte faf5021a
    AND j.platform = 'beebs' AND j.status = 'published' AND j.action IN ('publish', 'republish')
    AND j.inventaire_id IS NOT NULL AND j.platform_fields ? 'unavailable_since';
 

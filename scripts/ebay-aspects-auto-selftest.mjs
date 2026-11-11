@@ -54,7 +54,7 @@ console.log("1. Jamais sur la liste d'une autre catégorie");
   ok(r3.attendre && !r3.fini, "pas de liste d'exigés → attendre (jamais « terminé » par défaut)", r3);
 }
 
-console.log("\n2. Le déroulé du cas Manon (Polaire Reebok) : la course catégorie / liste");
+console.log("\n2. Le déroulé du cas Compte-essai-11 (Polaire Reebok) : la course catégorie / liste");
 {
   const deja = new Set();
   // a) catégorie de l'icône, liste relue, tout est posé (défauts, titre) : terminé.

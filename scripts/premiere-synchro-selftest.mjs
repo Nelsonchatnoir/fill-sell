@@ -15,7 +15,7 @@ const maintenant = Date.parse("2026-10-26T15:30:00Z");
 // Azizak : inscrit à 11:27 (Paris), 5 plateformes choisies, Vinted connecté, aucun relevé.
 const azizak = { inscritLe: "2026-10-26T10:27:45Z", platformSettings: { plateformes_vendeur: ["vinted", "leboncoin", "ebay", "beebs", "depop"] }, sessions: { vinted: true }, runs: [], maintenant };
 console.log("1. La décision");
-ok(P.premiereSynchroAPoser(azizak).join() === "vinted", "Azizak : la première synchro Vinted part seule", P.premiereSynchroAPoser(azizak).join());
+ok(P.premiereSynchroAPoser(azizak).join() === "vinted", "Compte-c2bd32ed : la première synchro Vinted part seule", P.premiereSynchroAPoser(azizak).join());
 ok(P.premiereSynchroAPoser({ ...azizak, sessions: { vinted: true, leboncoin: true, beebs: false } }).join() === "vinted,leboncoin", "chaque plateforme choisie ET connectée");
 ok(P.premiereSynchroAPoser({ ...azizak, runs: [{ declencheur: "bouton" }] }).length === 0, "une synchro déjà demandée (bouton) : rien — une fois par compte");
 ok(P.premiereSynchroAPoser({ ...azizak, runs: [{ declencheur: "app" }] }).length === 0 && P.premiereSynchroAPoser({ ...azizak, runs: [{ declencheur: "bouton_distant:redemande" }] }).length === 0, "… ni après une demande de l'app ou une redemande");

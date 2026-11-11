@@ -42,7 +42,7 @@ cas("les mots EXACTS de Leboncoin et le champ visé sont lus, jamais l'observabi
   assert.deepEqual(P.motsRefusLeboncoin("Une autre erreur"), { mots: [], champs: [] });
 });
 
-cas("jocabroc8 : le texte servi a CHANGÉ (instagram retiré) → UNE reprise, marque posée", () => {
+cas("client-53efea05 : le texte servi a CHANGÉ (instagram retiré) → UNE reprise, marque posée", () => {
   const servie = D.nettoyerDescriptionLeboncoin(DESC, { titre: TITRE });
   assert.ok(servie.modifiee && !/instagram/i.test(servie.texte), "la liste du 18/10 retire la phrase");
   const emp = P.empreinteTexteServi(TITRE, servie.texte);
@@ -117,7 +117,7 @@ cas("une seule signature de coupure : pas-de-rouge réexporte CANAL_RE d'etat-jo
 });
 
 const job = (x) => ({ id: "j", inventaire_id: 1, platform: "vinted", action: "republish", status: "needs_user", created_at: "2026-10-17T11:30:00Z", platform_fields: {}, ...x });
-cas("seghirdeborah711 (16691e13) : coupure en republication, étape captured → « En pause » technique, plus de « Relancer »", () => {
+cas("client-f0acd3af (16691e13) : coupure en republication, étape captured → « En pause » technique, plus de « Relancer »", () => {
   const j = job({ error: AFFICHE, platform_fields: { republish_step: "captured", needs_user_source: "relancer", error_technique: { brut: BRUT_COUPURE } } });
   assert.equal(E.attenteAutomatique(j), "technique");
   assert.equal(E.etatJob(j, {}).etat, E.ETATS.EN_PAUSE);

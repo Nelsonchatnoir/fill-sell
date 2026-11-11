@@ -8,13 +8,13 @@ const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { cons
 const notif = (lignes, topic = TOPIC_COMMANDE) => ({
   metadata: { topic, schemaVersion: "1.0" },
   notification: { notificationId: "n-1", eventDate: "2026-10-05T12:00:00.000Z",
-    data: { user: { userId: "u-pub", username: "xxewwer" }, order: { orderId: "15-15245-15618", orderLineItems: lignes } } },
+    data: { user: { userId: "u-pub", username: "client-de63ca45" }, order: { orderId: "15-15245-15618", orderLineItems: lignes } } },
 });
 
 console.log("\n1. Lecture du message");
 const c = lireCommandeConfirmee(notif([{ orderLineItemId: "10085383325115", listingId: "377494897809", quantity: 1 }]));
 ok(c?.orderId === "15-15245-15618" && c.lignes.length === 1 && c.lignes[0].listingId === "377494897809" && c.lignes[0].quantite === 1, "commande, ligne, numéro d'annonce, quantité");
-ok(c?.username === "xxewwer" && c?.userId === "u-pub", "le vendeur (pseudo et identifiant public)");
+ok(c?.username === "client-de63ca45" && c?.userId === "u-pub", "le vendeur (pseudo et identifiant public)");
 ok(lireCommandeConfirmee(notif([{ listingId: "377494897809", quantity: 1 }], "MARKETPLACE_ACCOUNT_DELETION")) === null, "un autre sujet : rien");
 ok(lireCommandeConfirmee(notif([{ listingId: "abc", quantity: 1 }])) === null, "aucun numéro d'annonce valable : rien");
 ok(lireCommandeConfirmee({ metadata: { topic: TOPIC_COMMANDE }, notification: { data: {} } }) === null, "message vide : rien");

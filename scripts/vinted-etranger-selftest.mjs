@@ -31,14 +31,14 @@ cas("pays du réseau : IT gardé, XX / T1 / vide écartés", () => {
 });
 
 const ouverts = new Set(["IT"]);
-cas("Marta : réseau IT, aucune session vinted.fr, Italie ouverte → « Autoriser www.vinted.it »", () => {
+cas("Compte-essai-3 : réseau IT, aucune session vinted.fr, Italie ouverte → « Autoriser www.vinted.it »", () => {
   const v = vintedEtranger({ paysReseau: "IT", ouverts, sessionVintedFr: null, domaines: PAYS_VINTED_EURO });
   assert.deepEqual(v, { pays: "IT", domaine: "www.vinted.it", source: "reseau" });
 });
 cas("Jamais un Français (réseau FR)", () => {
   assert.equal(vintedEtranger({ paysReseau: "FR", ouverts: new Set(["IT", "FR"]), domaines: PAYS_VINTED_EURO }), null);
 });
-cas("Jamais à qui travaille déjà sur vinted.fr (Alberto, compte IT, sonde 200)", () => {
+cas("Jamais à qui travaille déjà sur vinted.fr (Compte-essai-10, compte IT, sonde 200)", () => {
   assert.equal(vintedEtranger({ paysSonde: "IT", paysReseau: "IT", ouverts, sessionVintedFr: true, domaines: PAYS_VINTED_EURO }), null);
 });
 cas("Jamais pour un pays fermé (Espagne, vinted_pays_es absent)", () => {
@@ -67,7 +67,7 @@ cas("pays d'appareil lu dans platform_settings.vinted.pays_appareil (illisible �
   assert.equal(paysAppareilDesReglages({ vinted: {} }), null);
   assert.equal(paysAppareilDesReglages(null), null);
 });
-cas("Marta : appareil IT, aucune session vinted.fr → « Autoriser www.vinted.it » (source appareil, jamais affirmée)", () => {
+cas("Compte-essai-3 : appareil IT, aucune session vinted.fr → « Autoriser www.vinted.it » (source appareil, jamais affirmée)", () => {
   assert.deepEqual(vintedEtranger({ paysAppareil: "IT", ouverts, sessionVintedFr: null, domaines: PAYS_VINTED_EURO }),
     { pays: "IT", domaine: "www.vinted.it", source: "appareil" });
 });
@@ -75,7 +75,7 @@ cas("Le pays du COMPTE prime sur celui de l'appareil ; l'appareil sur le réseau
   assert.equal(vintedEtranger({ paysSonde: "FR", paysAppareil: "IT", ouverts, domaines: PAYS_VINTED_EURO }), null);
   assert.equal(vintedEtranger({ paysAppareil: "IT", paysReseau: "FR", ouverts, domaines: PAYS_VINTED_EURO }).source, "appareil");
 });
-cas("Appareil IT mais session vinted.fr vivante (Alberto) → rien ; pays fermé (ES) → rien", () => {
+cas("Appareil IT mais session vinted.fr vivante (Compte-essai-10) → rien ; pays fermé (ES) → rien", () => {
   assert.equal(vintedEtranger({ paysAppareil: "IT", ouverts, sessionVintedFr: true, domaines: PAYS_VINTED_EURO }), null);
   assert.equal(vintedEtranger({ paysAppareil: "ES", ouverts, domaines: PAYS_VINTED_EURO }), null);
 });
@@ -91,7 +91,7 @@ register("data:text/javascript," + encodeURIComponent(`
   }`));
 const { noteNavigateur, navigateurDeLApp, navigateurDesPostes } = await import("../src/utils/navigateurExtension.js");
 
-cas("Marta : extension Edge, app Chrome → la phrase nomme les deux navigateurs", () => {
+cas("Compte-essai-3 : extension Edge, app Chrome → la phrase nomme les deux navigateurs", () => {
   const t = noteNavigateur({ ext: "edge", app: navigateurDeLApp(UA_CHROME_MARTA), plateforme: "Vinted" });
   assert.match(t, /installée dans Microsoft Edge/);
   assert.match(t, /tu utilises FillSell dans Google Chrome/);
@@ -123,7 +123,7 @@ cas("app : un appareil en France ne voit rien de plus (aucune note, aucune écri
   assert.equal(noteVintedEtranger({ pays: null }), null);
   assert.equal(noteVintedEtranger({ pays: "FR" }), null);
 });
-cas("app : Marta (Europe/Rome, extension Edge, Italie ouverte) → domaine nommé, deux gestes, puis « Synchroniser »", () => {
+cas("app : Compte-essai-3 (Europe/Rome, extension Edge, Italie ouverte) → domaine nommé, deux gestes, puis « Synchroniser »", () => {
   assert.equal(paysVintedDeLAppareil("Europe/Rome"), "IT");
   assert.equal(domaineVintedDe("IT"), "vinted.it");
   const t = noteVintedEtranger({ pays: "IT", navigateur: "edge", ouvert: true });

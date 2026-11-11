@@ -94,7 +94,7 @@ assert.equal(AVIS.URL_AVIS_EXTENSION, "https://chromewebstore.google.com/detail/
 // Vinted tournaient en rond depuis le 27 et le 28/09 (en file, donc neutres).
 const ouverte = (status, ageMs, pf = {}) => ({ id: `o${++k}`, action: "publish", status, created_at: il_y_a(ageMs), handler_build: null, platform_fields: pf });
 assert.equal(decisionAvis({ ...base, tachesOuvertes: undefined }).motif, "taches_illisibles", "tâches non lues = on n'ouvre pas");
-assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("pending", 6 * J)] }).motif, "tache_bloquee", "en file depuis 6 jours (doriane-henri) = figée");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("pending", 6 * J)] }).motif, "tache_bloquee", "en file depuis 6 jours (client-af37fa49) = figée");
 assert.equal(decisionAvis({ ...base, tachesOuvertes: [{ ...ouverte("pending", 6 * J), action: "republish" }] }).motif, "tache_bloquee", "republication figée aussi");
 assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("needs_user", 40 * J)] }).motif, "tache_bloquee", "une question en attente, même ancienne");
 assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("failed", 3 * J)] }).motif, "tache_bloquee", "un échec récent");

@@ -47,7 +47,7 @@ const JOB = {
   platform_fields: { vinted_account_id: "127239260" },
 };
 
-console.log("\n[1] DeadRoz — /main/banned, l'API accepte le retrait");
+console.log("\n[1] Compte-7373c96c — /main/banned, l'API accepte le retrait");
 {
   const b = charger({ pathname: "/main/banned", reponseApi: { success: true, verdict: { conclusion: "supprimee", http: 200 } } });
   const r = await b.deleteListing(JOB);

@@ -56,7 +56,7 @@ export function messagePosteVirtuelLbc() {
 }
 
 // ── (01/11, décision de Nico — Louis) EXCEPTION PAR COMPTE : « Leboncoin autorisé sur machine virtuelle » ─────────
-// louis-seller@ttfamily.fr pilote Leboncoin depuis une machine virtuelle de son NAS et en assume le risque. La clé vit
+// compte 447d920c pilote Leboncoin depuis une machine virtuelle de son NAS et en assume le risque. La clé vit
 // côté serveur dans profiles.beta_flags (jamais écrite par l'app : la colonne n'est pas ouverte en écriture au client) :
 //   beta_flags.lbc_machine_virtuelle_autorisee = true   (booléen strict ; toute autre valeur = pas d'exception)
 // Avec elle, CE compte passe la garde machine virtuelle partout où elle s'applique (get-pending-jobs : tâches, retraits,

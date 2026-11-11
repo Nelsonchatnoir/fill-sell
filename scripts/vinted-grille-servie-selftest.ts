@@ -81,7 +81,7 @@ ok("« XS » ne passe pas pour « S »",
 ok("comparableLibelle réduit les espaces", comparableLibelle("  Très   Bon   État ") === "tres bon etat");
 
 console.log("\n=== (05/11) LE CHAMP SOUS SON CODE VINTED (needsUserField.field_key) ===");
-ok("labouquinerie85 : « condition » + « Très bon état » dans « accepte : … » ⇒ la grille est bonne (true)",
+ok("boutique-essai-6 : « condition » + « Très bon état » dans « accepte : … » ⇒ la grille est bonne (true)",
   valeurFigureDansListeServie({ champDemande: "condition", valeurs: { etat: "Très bon état" }, listeServie: ["Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "Satisfaisant"], libelles: LIBELLES }).offerte === true);
 ok("« size » + « S » dans la grille ⇒ true",
   valeurFigureDansListeServie({ champDemande: "size", valeurs: { taille: "S" }, listeServie: GRILLE_LETTRES, libelles: LIBELLES }).offerte === true);

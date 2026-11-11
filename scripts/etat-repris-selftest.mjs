@@ -28,7 +28,7 @@ const job = (sid, racine, liste, pf = {}) => ({
   },
 });
 
-console.log("\n1. LES CAS DE DEW (forme relevée en base)");
+console.log("\n1. LES CAS DE CLIENT-8FD381A7 (forme relevée en base)");
 {
   const r = etatReprisPourJob(job(2, "Men", EN5));
   ok(r?.valeur === "Very good" && r?.langue === "en" && r?.status_id === 2, "sac à dos (status 2, page anglaise) → « Very good »", JSON.stringify(r));

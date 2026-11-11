@@ -8,7 +8,7 @@ const lire = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8")
 const fichiers = (dir) => fs.readdirSync(new URL(`../${dir}`, import.meta.url), { withFileTypes: true })
   .flatMap((e) => e.isDirectory() ? fichiers(`${dir}/${e.name}`) : /\.(jsx?|tsx?)$/.test(e.name) ? [`${dir}/${e.name}`] : []);
 
-console.log("\n1. POINT 7 — UN CHUNK ABSENT PENDANT UN CHANGEMENT DE VERSION NE PLANTE PLUS (doriane-henri, 07/11 20:37)");
+console.log("\n1. POINT 7 — UN CHUNK ABSENT PENDANT UN CHANGEMENT DE VERSION NE PLANTE PLUS (client-af37fa49, 07/11 20:37)");
 {
   globalThis.window = { addEventListener: () => {}, removeEventListener: () => {}, postMessage: () => {}, location: { origin: "https://fillsell.app", href: "https://fillsell.app/app" } };
   const L = await import("../src/utils/lazySur.js");
@@ -35,7 +35,7 @@ console.log("\n1. POINT 7 — UN CHUNK ABSENT PENDANT UN CHANGEMENT DE VERSION N
   ok(/if \(Date\.now\(\) - dernier < 10000\) return/.test(main), "jamais de boucle : un seul rechargement par tranche de 10 s (inchangé)");
 }
 
-console.log("\n2. POINT 8 — UNE COUPURE RÉSEAU N'EST PLUS UN REFUS, ET JAMAIS UNE TÂCHE PERDUE (XEWER, 07/11 18:17)");
+console.log("\n2. POINT 8 — UNE COUPURE RÉSEAU N'EST PLUS UN REFUS, ET JAMAIS UNE TÂCHE PERDUE (COMPTE-DE63CA45, 07/11 18:17)");
 {
   const R = await import("../src/utils/republication.js");
   const faux = (reponses, jobExistant = null) => {
@@ -68,7 +68,7 @@ console.log("\n2. POINT 8 — UNE COUPURE RÉSEAU N'EST PLUS UN REFUS, ET JAMAIS
   ok(/const res = await republierAvecReprise\(supabase, \{/.test(lire("src/tabs/StockTab.jsx")), "la boucle du lot (StockTab) passe par la reprise");
 }
 
-console.log("\n3. POINT 10 — UN PARCOURS DE PUBLICATION FERMÉ SANS PUBLIER SE TRACE (Stéphanie Durand, 07/11 18:11)");
+console.log("\n3. POINT 10 — UN PARCOURS DE PUBLICATION FERMÉ SANS PUBLIER SE TRACE (Compte-cca934e7, 07/11 18:11)");
 {
   const lps = lire("src/components/ListingPreviewScreen.jsx");
   ok(/signalerActionRatee\(\{ action: "stepper_ferme", motif: "sans_publier"/.test(lps), "une ligne « stepper_ferme » (étape, plateformes, durée)");

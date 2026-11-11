@@ -43,7 +43,7 @@ console.log('\n2. Un clic ne relève que les plateformes choisies, connectées o
 const TOUTES = ['vinted', 'leboncoin', 'beebs', 'ebay'];
 const sessionsLaura = { vinted: true, ebay: false, leboncoin: null, beebs: null, checked_at: maintenant,
   checked_at_par_plateforme: { vinted: maintenant, ebay: maintenant, leboncoin: maintenant, beebs: maintenant } };
-ok('Laura (Vinted seul) : Vinted seul', JSON.stringify(ciblesReleve({ plateformes: TOUTES, choisies: ['vinted'], sessions: sessionsLaura })) === '["vinted"]');
+ok('Compte-essai-19 (Vinted seul) : Vinted seul', JSON.stringify(ciblesReleve({ plateformes: TOUTES, choisies: ['vinted'], sessions: sessionsLaura })) === '["vinted"]');
 ok('la choisie passe en premier', JSON.stringify(ciblesReleve({ plateformes: TOUTES, choisies: ['leboncoin'], sessions: sessionsLaura })) === '["leboncoin","vinted"]');
 ok('déjà relevée : gardée', ciblesReleve({ plateformes: TOUTES, choisies: ['vinted'], dejaRelevees: ['beebs'] }).includes('beebs'));
 ok('ordre du choix respecté', JSON.stringify(ciblesReleve({ plateformes: TOUTES, choisies: ['ebay', 'vinted'] })) === '["ebay","vinted"]');

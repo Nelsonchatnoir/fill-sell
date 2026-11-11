@@ -46,7 +46,7 @@ const passer = (j: {
 // ── LES CINQ DÉPÔTS DE meminiandmove, 20:03 → 20:07 ────────────────────────
 // Relevés en base ce soir. Deux sont PASSÉS, trois ont échoué : un seul champ
 // les sépare — `genre`. C'est le corpus de la passe.
-console.log("\n── meminiandmove, 20/09 20:03-20:07 : les cinq du même lot ──");
+console.log("\n── compte-63ad8597, 20/09 20:03-20:07 : les cinq du même lot ──");
 
 const ROBE_ROUGE = {
   id: "ac1e01de",
@@ -322,7 +322,7 @@ const SANDRA = {
 // Enfants et jeunes adultes › Enfants ». Avant : ni code ni liste, donc aucune
 // question, dix refus opla_categorie_absente. Le rayon « Livres » nomme le nœud
 // Opla « Culture et Loisirs › Livres » : ses 11 feuilles font la question.
-console.log("\n── ⑤ nadegemarcelin78, 25/09 : le rayon de l'étagère borne la question ──");
+console.log("\n── ⑤ boutique-essai-4, 25/09 : le rayon de l'étagère borne la question ──");
 {
   const CONTES = {
     id: "86ff39c5",

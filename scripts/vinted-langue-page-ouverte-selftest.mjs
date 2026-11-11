@@ -41,7 +41,7 @@ const RACINES_IT = ["Accessori", "Donna", "Uomo", "Bambini", "Casa", "Elettronic
 const RACINES_FR = ["Femmes", "Hommes", "Enfants", "Maison", "Électronique", "Livres et médias", "Loisirs et collections", "Sport", "Articles de créateurs"];
 assert.equal(langueEtrangereDesRacinesVinted(RACINES_IT), "it", "2fd83d73 : page italienne (« Sport » commun) → étrangère");
 assert.equal(langueEtrangereDesRacinesVinted(RACINES_FR), null, "page française → jamais étrangère");
-assert.equal(langueEtrangereDesRacinesVinted(["Women", "Men", "Books & Media"]), "en", "cas Adam (23/08) : anglais");
+assert.equal(langueEtrangereDesRacinesVinted(["Women", "Men", "Books & Media"]), "en", "cas Compte-essai-14 (23/08) : anglais");
 assert.equal(langueEtrangereDesRacinesVinted(["Jeux", "Consoles", "Accessoires"]), null, "sous-niveau français → rien");
 // La même règle que le serveur, langue par langue.
 for (const l of Object.keys(RACINES_CATALOGUE)) {

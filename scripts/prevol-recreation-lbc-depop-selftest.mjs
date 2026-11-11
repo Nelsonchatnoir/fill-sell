@@ -124,7 +124,7 @@ try {
     assert.equal(j.statuts.length, 0, "aucune autre écriture (ni processing, ni retrait)");
     assert.equal(j.jobPrevol.platform_fields.republish_step, "captured");
     sorties = r;
-    ok("voirememe : « Produit » (toy_type, 29 valeurs, cible lbcAspects.toy_type) demandé AVANT tout retrait");
+    ok("client-f66531a7 : « Produit » (toy_type, 29 valeurs, cible lbcAspects.toy_type) demandé AVANT tout retrait");
   }
   // b. Pas de preuve → pending +30 min, aucun essai consommé.
   for (const [quoi, res] of [["délai dépassé", new Error("Timeout: pas de réponse du content script")], ["page illisible", { success: false, error: "Élément introuvable" }], ["défaut de notre code", { success: false, error: "x is not defined" }]]) {

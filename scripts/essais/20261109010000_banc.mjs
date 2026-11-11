@@ -142,17 +142,17 @@ try {
 
   console.log('A. AVANT (corps de la prod)');
   const a = await tous();
-  ok(a.assop === 'annonce_vendue', 'assopmfrance : « vendue » (le défaut : la vente date d\'avant le suivi)');
-  ok(a.lupi === 'annonce_vendue', 'lupilou999 : EN LIGNE et pourtant « vendue » par la page (le défaut : refus à tort)');
-  ok(a.jess === null, 'Jess : se republie (règle du 08/11)');
+  ok(a.assop === 'annonce_vendue', 'client-ca9afe24 : « vendue » (le défaut : la vente date d\'avant le suivi)');
+  ok(a.lupi === 'annonce_vendue', 'client-cae7a20d : EN LIGNE et pourtant « vendue » par la page (le défaut : refus à tort)');
+  ok(a.jess === null, 'Compte-essai-9 : se republie (règle du 08/11)');
 
   console.log('B. APRÈS (migration, jouée deux fois)');
   await client.query(MIGRATION);
   await client.query(MIGRATION);
   const b = await tous();
-  ok(b.assop === 'annonce_partie', 'assopmfrance : « annonce_partie » (plus en ligne, confirmé par les relevés) — toujours refusée, jamais « vendue »');
-  ok(b.lupi === null, 'lupilou999 : en ligne, badge d\'avant le suivi → se republie');
-  ok(b.jess === null, 'Jess : inchangé (se republie)');
+  ok(b.assop === 'annonce_partie', 'client-ca9afe24 : « annonce_partie » (plus en ligne, confirmé par les relevés) — toujours refusée, jamais « vendue »');
+  ok(b.lupi === null, 'client-cae7a20d : en ligne, badge d\'avant le suivi → se republie');
+  ok(b.jess === null, 'Compte-essai-9 : inchangé (se republie)');
   ok(b.venteSuivi === 'annonce_vendue', 'vente lue PENDANT le suivi (relevé + page) : toujours « vendue »');
   ok(b.venteSuiviPage === 'annonce_vendue', 'vente lue PENDANT le suivi, par la page seule : toujours « vendue »');
   ok(b.depotFillSell === 'annonce_vendue', 'dépôt de FillSell au badge dès sa 1re lecture, disparu : toujours « vendue »');

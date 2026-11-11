@@ -1,4 +1,4 @@
--- 18/10 ~17:00 Paris — Régis (juchsregis@gmail.com, 309d0787), boutique Vinted asgarde67 (31995881).
+-- 18/10 ~17:00 Paris — Régis (compte 309d0787, 309d0787), boutique Vinted asgarde67 (31995881).
 -- Chaque « canal coupé » de recréation était un dépôt RÉUSSI non reconnu : 7 copies du short Levi's, 4 du bloc-feuillet
 -- (relevé public du dressing, 18/10 16:45-16:50 Paris ; heure de chaque copie = heure d'une de nos tentatives ;
 -- 0 favori, 0 vue). Décision de Nico (18/10, question posée en séance) : GARDER LA 1re COPIE de chaque article,

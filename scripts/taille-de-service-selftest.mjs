@@ -31,7 +31,7 @@ const LBC_VETEMENTS = ["32 - XXS", "34 - XS", "36 - S", "38 - M", "40 - L", "42 
 const OPLA_ENFANT = ["12M", "18M", "24M", "2Y", "3Y", "4Y", "10Y", "12Y"];
 const POINTURES = ["38", "39", "40", "41", "42", "43", "44", "45"];
 
-console.log("\n1. LE CAS RÉEL (patrick giry, W28 L32)");
+console.log("\n1. LE CAS RÉEL (compte-82e64f14, W28 L32)");
 ok(v("W28 L32", EBAY_11554, "femme") === "38", "eBay 11554 : W28 L32 → « 38 » (R1, table publiée par Vinted)");
 ok(v("W28 L32", OPLA_G1, "femme") === "M", "Opla jeans femme : W28 L32 → « M » (R1 + R2)");
 ok(tourDeTailleEnFrancais("W28 L32")?.valeur === "38", "Leboncoin : servi « 38 » (posé sur « 38 - M »)");

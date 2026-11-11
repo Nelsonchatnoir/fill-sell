@@ -248,7 +248,7 @@ async function lire() {
   if (!sauvegardes.length) return;
   const lignes = sauvegardes.map(({ s, r }) => `(${lit(s.listing_id)}, ${lit(s.job_id)}, ${lit(r.sauvegarde.offer_id)}, ${lit(r.sauvegarde.sku)}, ` +
     `${lit(r.sauvegarde.offre)}::jsonb, ${lit(r.sauvegarde.article)}::jsonb, ${lit(r.sauvegarde.browse)}::jsonb, ${lit(r.sauvegarde.empreinte)})`);
-  const requete = `-- Sauvegarde AVANT toute écriture chez eBay (11/10, 3 annonces de Tessy) — offre et article
+  const requete = `-- Sauvegarde AVANT toute écriture chez eBay (11/10, 3 annonces du compte 2f8b09d2) — offre et article
 -- tels que relus par ebay-api-worker (getOffer, getInventoryItem), annonce publique (Browse), job eBay.
 create table if not exists public.${TABLE_SAUVEGARDE} (
   listing_id text primary key, job_id uuid not null, offer_id text not null, sku text not null,

@@ -31,7 +31,7 @@ const JOHAN = "Jean Levi's 501 bleu délavé taille 33/34";
 const v = (p) => T.tailleDuTexte(p)?.valeur ?? null;
 const d = (p) => T.tailleDuTexte(p)?.doute ?? null;
 
-console.log('1. Le jean de Johan (fiche 1792769972063, 23/10)');
+console.log('1. Le jean de Compte-essai-5 (fiche 1792769972063, 23/10)');
 ok(v({ textes: [JOHAN], grille: VINTED_H, chemin: CH_V }) === 'W33 | FR 42', 'Vinted : « 33/34 » au titre → « W33 | FR 42 », aucune question');
 ok(v({ textes: [JOHAN], grille: BEEBS_H, chemin: CH_B }) === '42', 'Beebs : → « 42 » (W33 = FR 42, table publiée par Vinted)');
 ok(v({ valeur: '33/34', textes: ["Jean Levi's 501"], grille: BEEBS_H, chemin: CH_B }) === '42', 'Beebs : copie « 33/34 » → « 42 »');
@@ -59,7 +59,7 @@ ok(v({ textes: ['Baskets enfant 33/34'], grille: ['33', '34'], chemin: 'Mode > E
 ok(v({ textes: ['Jean 33/34 €'], grille: BEEBS_H, chemin: CH_B }) === null && v({ textes: ['Jean 33/34cm'], grille: BEEBS_H, chemin: CH_B }) === null, 'un prix ou une mesure : jamais');
 ok(d({ textes: ['Jean, envoi du 28/30 octobre'], grille: BEEBS_H, chemin: CH_B }) !== null, 'une date « 28/30 » dans un jean : doute (la question reste), jamais une taille');
 ok(v({ textes: ['Jean taille US 8'], grille: BEEBS_H, chemin: CH_B }) === null, '« US 8 » (taille US femme) : jamais lu');
-ok(T.tailleDuTexte({ valeur: 'W34 | FR 44', textes: [JOHAN], grille: BEEBS_H, chemin: CH_B }) === null, 'la réponse de Johan « W34 | FR 44 » n\'est jamais recouverte par le titre');
+ok(T.tailleDuTexte({ valeur: 'W34 | FR 44', textes: [JOHAN], grille: BEEBS_H, chemin: CH_B }) === null, 'la réponse de Compte-essai-5 « W34 | FR 44 » n\'est jamais recouverte par le titre');
 
 console.log('4. Le rapprochement « par mots » de l\'app ne fabrique plus « 34 »');
 const ecran = lire('src/components/ListingPreviewScreen.jsx');

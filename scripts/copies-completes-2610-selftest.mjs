@@ -19,7 +19,7 @@ let verts = 0, rouges = 0;
 const ok = (c, msg, d = "") => { if (c) { verts++; console.log(`  ok   ${msg}`); } else { rouges++; console.log(`  RATÉ ${msg}${d ? `  ← ${d}` : ""}`); } };
 
 console.log("Point 3 — le rayon Beebs que l'index public dit de l'annonce");
-ok(IX.rayonBeebsDeLIndex("5f73MnZ3kyhs0kWunLMcYd") === "Mode > Homme > Vêtements (homme) > Manteaux et vestes (homme) > Manteaux (homme)", "boncoin59300, annonce 12003122 : « Manteaux (homme) »");
+ok(IX.rayonBeebsDeLIndex("5f73MnZ3kyhs0kWunLMcYd") === "Mode > Homme > Vêtements (homme) > Manteaux et vestes (homme) > Manteaux (homme)", "client-3f91c02e, annonce 12003122 : « Manteaux (homme) »");
 ok(IX.rayonBeebsDeLIndex("6RW2B9Q4bZczOUK36mmmT8") === null, "l'identifiant AMBIGU (deux chemins observés) ne donne rien");
 ok(IX.rayonBeebsDeLIndex("inconnu") === null && IX.rayonBeebsDeLIndex(null) === null && IX.rayonBeebsDeLIndex("") === null, "inconnu, nul, vide → rien");
 const feuilles = new Set(FEUILLES.map((f) => f.chemin.join(" > ")));
@@ -34,7 +34,7 @@ ok(/repris\["beebsCategoryPath"\] = chemin\.join\(" > "\)\s*\+ \(cheminsDeLIndex
 
 console.log("\nPoint 12 — la correction tracée passe devant la valeur affichée, tant que l'annonce affiche l'ancienne");
 const pf = { taille: "31", correction_tracee: { cle: "taille", avant: "16", apres: "31", source: "correction" } };
-ok(CT.correctionTient(pf, "taille", "16") === true, "chaouidz : l'annonce affiche encore « 16 », la copie garde « 31 »");
+ok(CT.correctionTient(pf, "taille", "16") === true, "boutique-90ace0e4 : l'annonce affiche encore « 16 », la copie garde « 31 »");
 ok(CT.correctionTient(pf, "taille", "32") === false, "la personne a changé la pointure sur Beebs depuis (« 32 ») : l'annonce l'emporte");
 ok(CT.correctionTient({ ...pf, taille: "33" }, "taille", "16") === false, "la copie ne porte plus la valeur corrigée : rien ne tient");
 ok(CT.correctionTient(pf, "age", "16") === false && CT.correctionTient({ taille: "31" }, "taille", "16") === false, "une autre clé, ou pas de trace : rien");

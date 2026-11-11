@@ -42,7 +42,7 @@ ok(i0 > 0 && i1 > i0, '0. le prédicat de reprise est trouvé dans handler-watch
     error: "Republication en pause AVANT tout retrait : l'état de ton annonce Leboncoin n'a pas pu être vérifié (Leboncoin a bloqué notre lecture par une vérification anti-robot)…",
     platform_fields: { republish_step: 'a_capturer', needs_user_source: 'relancer', needs_user_vu_le: '2026-10-14T07:06:01.458Z',
       republish_etat_indetermine: { n: 4, depuis: '2026-10-14T06:01:13.048Z', raison: 'bot_shield_403', dernier: '2026-10-14T06:49:11.956Z' } } };
-  ok(etatIndetermineAvantRetrait(louis) === true, '1a. Louis (12e5d144) : reprise possible');
+  ok(etatIndetermineAvantRetrait(louis) === true, '1a. Compte-essai-2 (12e5d144) : reprise possible');
   ok(bloqueLeDe(louis.platform_fields) === Date.parse('2026-10-14T07:06:01.458Z'), '1b. le blocage retenu est le DERNIER connu (jamais une sonde d\'avant)');
   ok(etatIndetermineAvantRetrait({ ...louis, platform_fields: { ...louis.platform_fields, republish_step: 'deleted' } }) === false,
     '1c. jamais après le retrait (l\'étape deleted a sa propre reprise)');
@@ -58,7 +58,7 @@ ok(i0 > 0 && i1 > i0, '0. le prédicat de reprise est trouvé dans handler-watch
   const cas = [
     ["Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : Connexion Vinted requise : se connecter sur vinted.fr dans Chrome (l'onglet de travail est resté ouvert), le job repartira au prochain passage. Rien à corriger sur l'annonce — relance depuis l'app quand tu veux.", true, 'Leo-paul 6af38fa2 (session)'],
     ["Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : Impossible de vérifier les champs obligatoires Vinted pour cette catégorie (configuration non captée). Relance la publication — le formulaire sera rechargé. Rien à corriger sur l'annonce — relance depuis l'app quand tu veux.", true, 'Leo-paul fcfa9f82 (formulaire non capté)'],
-    ["Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué : lecture de l'annonce refusée par Vinted — protection anti-robot. Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, Chrome ouvert.", true, 'RoCotCot a15c16e5 (anti-robot)'],
+    ["Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué : lecture de l'annonce refusée par Vinted — protection anti-robot. Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, Chrome ouvert.", true, 'Boutique-f66531a7 a15c16e5 (anti-robot)'],
     ["Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : Le champ Marque n'a pas pu être renseigné avec « Cousu Main » (introuvable au catalogue Vinted, création impossible, et même le repli « Sans marque » a échoué). Rien à corriger sur l'annonce — relance depuis l'app quand tu veux.", false, 'Jen cec26662 (marque)'],
     ["Leboncoin ne propose aucune option gratuite pour ce dépôt : son écran « Boostez votre annonce »…", false, 'mur payant'],
   ];

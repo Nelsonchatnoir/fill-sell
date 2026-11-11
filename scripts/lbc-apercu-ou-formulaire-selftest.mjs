@@ -51,7 +51,7 @@ const TITRES_CHOUPETTE = ["Déposer une annonce", "Un dernier aperçu avant de p
 const TITRES_VICTOR = ["Déposer une annonce", "Ajoutez des photos", "Décrivez votre bien !",
                        "Dites-nous en plus", "Quel est votre prix ?"];
 
-console.log("\n▸ Choupette — elle EST sur l'aperçu");
+console.log("\n▸ Compte-5f704c61 — elle EST sur l'aperçu");
 {
   const f = construire(faireDocument(TITRES_CHOUPETTE));
   check("estEncoreApercu = true", f.estEncoreApercu() === true);

@@ -47,7 +47,7 @@ BEGIN
       n_tot, n_anc, n_due, n_sans;
   END IF;
   IF EXISTS (SELECT 1 FROM _q WHERE NOT due AND user_id = '8a2eba68-7a2d-4fc1-aab0-aba23189c33b') THEN
-    RAISE EXCEPTION 'une question de nadegemarcelin78 serait neutralisée : rien n''est écrit';
+    RAISE EXCEPTION 'une question du compte 8a2eba68 serait neutralisée : rien n''est écrit';
   END IF;
 END
 $$;

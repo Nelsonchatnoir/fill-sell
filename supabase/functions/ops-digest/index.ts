@@ -1462,7 +1462,7 @@ serve(async (req) => {
     <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
       Arrêté : trois passes de suite sans rien écrire (rapprochement v12), un défaut chez nous ; corriger, puis remettre
       rapprochement_comptes.passages à 0. Répétée : la base a refusé d'écrire une décision identique à la précédente
-      (rapprochements_repetes), un chemin qui boucle, à fermer à la racine (Nadège, 07/10 : 8 954 fois).
+      (rapprochements_repetes), un chemin qui boucle, à fermer à la racine (un compte client, 07/10 : 8 954 fois).
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${arretsRapprochement.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">rapprochement ${esc(x.user_id)} — ${esc(-x.passages)} passes sans écriture — ${esc(JSON.stringify((x.bilan ?? {}).arret ?? (x.bilan ?? {}).erreur ?? null))} — ${esc(x.maj_le)}</li>`).join("")}

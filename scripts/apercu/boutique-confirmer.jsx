@@ -21,9 +21,9 @@ import BlocSynchro from '../../src/stock/BlocSynchro.jsx';
 const CAS = new URLSearchParams(location.search).get('cas') || 'web_ajouter';
 const MOBILE = CAS.startsWith('mobile');
 const U = '11111111-2222-3333-4444-555555555555';
-const NAREMA = { user_id: '295151754', login: 'narema75', source: 'pose_manuelle', ajoute_le: '2026-09-03T10:00:00Z' };
-const JCASSOU = { user_id: '32977976', login: 'jcassou', source: 'confirmation_app', ajoute_le: '2026-09-20T16:38:00Z' };
-const CELINE = { user_id: '36325065', login: 'celineetmarie' };
+const NAREMA = { user_id: '295151754', login: 'boutique-essai-3', source: 'pose_manuelle', ajoute_le: '2026-09-03T10:00:00Z' };
+const JCASSOU = { user_id: '32977976', login: 'boutique-essai-5', source: 'confirmation_app', ajoute_le: '2026-09-20T16:38:00Z' };
+const CELINE = { user_id: '36325065', login: 'boutique-essai-1' };
 const ilYa = (min) => new Date(Date.now() - min * 60_000).toISOString();
 
 const question = !CAS.startsWith('normal') && CAS !== 'autres_plateformes';
@@ -35,7 +35,7 @@ const runs = question
     id: 'run-q', user_id: U, kind: 'dressing', platform: 'vinted', status: 'failed', declencheur: 'bouton',
     started_at: ilYa(6), finished_at: ilYa(6), items_vus: 0, total_entries: null,
     vinted_user_id: CELINE.user_id, vinted_login: CELINE.login,
-    erreur: "[boutique_a_confirmer] Ce navigateur est connecté au dressing @celineetmarie — ce compte FillSell suit @narema75, @jcassou. Rien n'a été importé. Confirme la boutique dans l'app (carte « Actualiser mon dressing ») ou change de compte Vinted dans Chrome, puis relance.",
+    erreur: "[boutique_a_confirmer] Ce navigateur est connecté au dressing @boutique-essai-1 — ce compte FillSell suit @boutique-essai-3, @boutique-essai-5. Rien n'a été importé. Confirme la boutique dans l'app (carte « Actualiser mon dressing ») ou change de compte Vinted dans Chrome, puis relance.",
   }]
   : [{
     id: 'run-ok', user_id: U, kind: 'dressing', platform: 'vinted', status: 'done', declencheur: 'bouton',

@@ -411,7 +411,7 @@ console.log("\n[18] horsListeBloque — la règle classique ne bouge pas, la nou
   ok("nouvelle : Marque Beebs (recherche) jamais bloquante", L.horsListeBloque({ regle: "nouvelle", platform: "beebs", key: "Marque", inputType: "dropdown", allowedValues: ["Zara", "Nike"] }) === false);
   ok("vintedExigeUneMarque : partout sauf « Livres et médias »", L.vintedExigeUneMarque(["Maison", "Décoration", "Encadrements"]) && L.vintedExigeUneMarque(["Femmes", "Vêtements"]) && !L.vintedExigeUneMarque(["Livres et médias", "Livres"]));
   // (25/09) La couleur : les deux rayons de Jocabroc, puis chaque exception MESURÉE.
-  ok("vintedExigeUneCouleur : Peintures et Bibelots (les deux refus de Jocabroc)",
+  ok("vintedExigeUneCouleur : Peintures et Bibelots (les deux refus de Boutique-53efea05)",
     L.vintedExigeUneCouleur(["Maison", "Décoration", "Décorations murales", "Peintures"])
     && L.vintedExigeUneCouleur(["Maison", "Décoration", "Accessoires décoratifs", "Bibelots"]));
   ok("vintedExigeUneCouleur : vêtements, chaussures, jouets, rayon jamais relevé → demandée",
@@ -543,7 +543,7 @@ console.log("\n[RN] Rayon Vinted « neuf seulement » (25/09) — jamais « Neuf
 // ── LES BAS DE PATRICK GIRY (02/10, point 11) : une taille connue n'est plus
 //    redemandée, le job porte l'écriture de la grille, et ce qui ne se traduit
 //    pas devient UNE question ─────────────────────────────────────────────────
-console.log("\n[taille des bas] Patrick Giry, 02/10 — Vinted, Opla, Leboncoin, Beebs, eBay");
+console.log("\n[taille des bas] Compte-82e64f14, 02/10 — Vinted, Opla, Leboncoin, Beebs, eBay");
 {
   const FRW = [[23,32],[24,34],[25,34],[26,36],[27,36],[28,38],[29,38],[30,40],[31,40],[32,42],[33,42],[34,44],[35,44],
     [36,46],[38,48],[40,50],[42,52],[44,54],[46,56],[48,58],[50,60],[52,62],[54,64]].map(([w, f]) => `W${w} | FR ${f}`);

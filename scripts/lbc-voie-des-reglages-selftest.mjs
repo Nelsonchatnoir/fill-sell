@@ -49,7 +49,7 @@ assert.equal(jobJosephine.platform_fields.localisation_origine.voie, null, "l'or
 // Ce que tapera l'extension (leboncoin.js : voie + cp + ville) = la chaîne qui a réussi le 29/09.
 const lo1 = d1.job.platform_fields.localisation_origine;
 assert.equal(`${lo1.voie} ${lo1.code_postal} ${lo1.ville}`, "4 Rue Du Hameau 26230 Chantemerle-lès-Grignan");
-ok("josephinecerni : « 4 Rue Du Hameau 26230 Chantemerle-lès-Grignan », la chaîne de ses 131 publications");
+ok("client-afeef3c7 : « 4 Rue Du Hameau 26230 Chantemerle-lès-Grignan », la chaîne de ses 131 publications");
 
 // nicolas.menar : second doudou, jamais essayé, refus connu sur un AUTRE job du compte.
 const jobNicolas2 = { id: "02fef16f", platform: "leboncoin", action: "republish", error: null,
@@ -57,7 +57,7 @@ const jobNicolas2 = { id: "02fef16f", platform: "leboncoin", action: "republish"
 const d2 = decisionAdresseRepublicationLbc(jobNicolas2, reglagesNicolas, true);
 assert.equal(d2.action, "rue");
 assert.equal(d2.job.platform_fields.localisation_origine.voie, "204 allée du château de bernicourt");
-ok("nicolas.menar : rue des Réglages servie avant même le premier essai (refus connu sur l'autre doudou)");
+ok("client-39bfa95a : rue des Réglages servie avant même le premier essai (refus connu sur l'autre doudou)");
 
 // Ce qui passe aujourd'hui ne change pas.
 const jocabroc = { id: "x", platform: "leboncoin", action: "republish", platform_fields: { localisation_origine: { voie: null, ville: "Sarreguemines", code_postal: "57200", libelle: "Sarreguemines 57200" } } };

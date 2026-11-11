@@ -33,15 +33,15 @@ const ERREUR_SERVEUR = (() => {
   }
   return '[boutique_a_confirmer][boutique_autre_compte] Cette boutique Vinted est déjà suivie par un autre compte FillSell. Rien n’a été importé et rien n’a changé sur Vinted : une boutique se suit sur un seul compte.';
 })();
-const RUN_LOUIS = { id: 'run-louis', status: 'failed', erreur: ERREUR_SERVEUR, vinted_user_id: '123456', vinted_login: 'evat' };
-const RUN_QUESTION = { id: 'run-q', status: 'failed', erreur: "[boutique_a_confirmer] Ce navigateur est connecté au dressing @celineetmarie — ce compte FillSell suit @narema75. Rien n'a été importé.", vinted_user_id: '36325065', vinted_login: 'celineetmarie' };
-const PHRASE_FR = "Ce navigateur est connecté à la boutique Vinted @evat, déjà suivie par un autre compte FillSell. Rien n'a été importé et rien n'a changé sur Vinted. Une boutique se suit sur un seul compte : ouvre ici la boutique de ce compte, ou écris-nous pour la transférer avec son historique.";
-const PHRASE_EN = "This browser is signed in to the Vinted shop @evat, already followed by another FillSell account. Nothing was imported and nothing changed on Vinted. A shop is followed on one account only: open this account's shop here, or write to us to transfer it with its history.";
+const RUN_LOUIS = { id: 'run-louis', status: 'failed', erreur: ERREUR_SERVEUR, vinted_user_id: '123456', vinted_login: 'boutique-essai-2' };
+const RUN_QUESTION = { id: 'run-q', status: 'failed', erreur: "[boutique_a_confirmer] Ce navigateur est connecté au dressing @boutique-essai-1 — ce compte FillSell suit @boutique-essai-3. Rien n'a été importé.", vinted_user_id: '36325065', vinted_login: 'boutique-essai-1' };
+const PHRASE_FR = "Ce navigateur est connecté à la boutique Vinted @boutique-essai-2, déjà suivie par un autre compte FillSell. Rien n'a été importé et rien n'a changé sur Vinted. Une boutique se suit sur un seul compte : ouvre ici la boutique de ce compte, ou écris-nous pour la transférer avec son historique.";
+const PHRASE_EN = "This browser is signed in to the Vinted shop @boutique-essai-2, already followed by another FillSell account. Nothing was imported and nothing changed on Vinted. A shop is followed on one account only: open this account's shop here, or write to us to transfer it with its history.";
 
 console.log('1. Le marqueur');
 ok(MARQUEUR_BOUTIQUE_AUTRE_COMPTE === '[boutique_autre_compte]' && ERREUR_SERVEUR.includes(MARQUEUR_BOUTIQUE_AUTRE_COMPTE), 'le marqueur est celui que le serveur écrit', ERREUR_SERVEUR);
 ok(estBoutiqueAutreCompte(ERREUR_SERVEUR) && !estBoutiqueAutreCompte(RUN_QUESTION.erreur) && !estBoutiqueAutreCompte(null), 'reconnu ; l\'ancienne question seule ne l\'est pas');
-ok(loginDuRun(RUN_LOUIS) === 'evat' && loginDuRun({ vinted_login: '@evat ' }) === 'evat' && loginDuRun({}) === null, 'le pseudo vu par le run, jamais deviné du texte');
+ok(loginDuRun(RUN_LOUIS) === 'boutique-essai-2' && loginDuRun({ vinted_login: '@boutique-essai-2 ' }) === 'boutique-essai-2' && loginDuRun({}) === null, 'le pseudo vu par le run, jamais deviné du texte');
 
 console.log('\n2. Jamais la question « c\'est bien ta boutique ? »');
 ok(!runPoseQuestionBoutique(RUN_LOUIS) && runPoseQuestionBoutique(RUN_QUESTION), 'synchroniser.js : la boutique d\'un autre compte ne pose pas la question ; l\'ancienne la pose toujours');
@@ -58,7 +58,7 @@ const T = textesAnnonces('fr'); const TE = textesAnnonces('en');
 ok(situationFinReleve(RUN_LOUIS) === 'autre_compte' && situationFinReleve({ erreur: '[boutique_autre_compte] x' }) === 'autre_compte', 'classé « autre compte » (avec ou sans l\'ancien marqueur)');
 ok(texteFinReleve(RUN_LOUIS, 'Vinted', T) === PHRASE_FR, 'FR, mot pour mot', texteFinReleve(RUN_LOUIS, 'Vinted', T));
 ok(texteFinReleve(RUN_LOUIS, 'Vinted', TE) === PHRASE_EN, 'EN, mot pour mot', texteFinReleve(RUN_LOUIS, 'Vinted', TE));
-ok(texteBoutiqueAutreCompte('evat', 'fr') === PHRASE_FR && texteBoutiqueAutreCompte('@evat', 'en') === PHRASE_EN, 'une seule source pour la phrase (textes.js), partout la même');
+ok(texteBoutiqueAutreCompte('boutique-essai-2', 'fr') === PHRASE_FR && texteBoutiqueAutreCompte('@boutique-essai-2', 'en') === PHRASE_EN, 'une seule source pour la phrase (textes.js), partout la même');
 ok(/^Ce navigateur est connecté à une boutique Vinted, déjà suivie/.test(texteBoutiqueAutreCompte(null, 'fr')), 'sans pseudo connu : la phrase sans @');
 ok(texteSituation('autre_compte', 'Vinted', T) === T.finAutreCompte('Vinted') && texteFinReleve(RUN_QUESTION, 'Vinted', T) === T.finAutreCompte('Vinted'), 'l\'ancienne situation « autre compte » garde sa phrase');
 ok(![PHRASE_FR, PHRASE_EN].some((p) => /\[|\]|réessaie|try again|c'est bien ta boutique/i.test(p)), 'ni marqueur, ni « réessaie », ni question');

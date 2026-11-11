@@ -908,7 +908,7 @@ begin
    where c.id <> v_gta and c.status = 'failed' and c.error like '%n''a donné aucun motif. Rien n''est vendu, ton article reste dans ton stock, et cette publication ne compte pas dans tes limites.'
      and c.error !~ 'refusée par sa|retirée' and c.platform_fields #>> '{reparation_2710_jamais_en_ligne,par}' = 'texte';
   insert into _r values ('R5 les 10 autres lignes : toujours en échec, motif sans déduction', n = 10, n::text);
-  insert into _r values ('R6 Leboncoin (paugues 36529e5f) : texte exact, mêmes relevés',
+  insert into _r values ('R6 Leboncoin (compte-e95e8b9d 36529e5f) : texte exact, mêmes relevés',
     (select error from public.cross_post_jobs where id = '36529e5f-5b03-4f00-93ba-7862365c5ba2')
       = 'Cette annonce est absente de tes annonces Leboncoin aux relevés complets du 25/10 à 16h44 et du 26/10 à 19h23, et Leboncoin n''a donné aucun motif. Rien n''est vendu, ton article reste dans ton stock, et cette publication ne compte pas dans tes limites.',
     (select error from public.cross_post_jobs where id = '36529e5f-5b03-4f00-93ba-7862365c5ba2'));
@@ -990,7 +990,7 @@ begin
     from public.cross_post_jobs where user_id = v_boncoin;
   insert into _r values ('P1 relevé de BONCOIN relu à l''identique : aucun job réécrit', v_avant = v_apres, n || ' annonces, ' || round(v_ms) || ' ms');
   execute 'explain (analyze, format json) select 1 from public.cross_post_jobs c where c.user_id = ''447d920c-976a-4d8f-aff4-a2998050358c'' and c.status = ''failed'' and c.platform = ''leboncoin'' and coalesce(c.platform_fields, ''{}''::jsonb) ? ''depot_jamais_en_ligne'' limit 1' into v_plan;
-  insert into _r values ('P2 lecture du déclencheur (compte louis-seller) < 5 ms', (v_plan -> 0 ->> 'Execution Time')::numeric < 5, (v_plan -> 0 ->> 'Execution Time') || ' ms');
+  insert into _r values ('P2 lecture du déclencheur (compte client-447d920c) < 5 ms', (v_plan -> 0 ->> 'Execution Time')::numeric < 5, (v_plan -> 0 ->> 'Execution Time') || ' ms');
   t0 := clock_timestamp();
   perform public.depot_jamais_en_ligne_refermer(u.user_id, u.platform, null, null, null)
      from (select distinct user_id, platform from public._backup_2710_jamais_en_ligne) u;

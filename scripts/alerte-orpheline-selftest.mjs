@@ -14,7 +14,7 @@ let verts = 0, rouges = 0;
 const ok = (c, msg, d = "") => { if (c) { verts++; console.log(`  ok   ${msg}`); } else { rouges++; console.log(`  RATÉ ${msg}${d ? `  ← ${d}` : ""}`); } };
 const t = (iso) => Date.parse(iso);
 
-console.log("1. nerema75, 259e97c8 (Vinted, une-passe) : retrait ET envoi à 19:44 — l'alerte de 20:15 était fausse");
+console.log("1. compte-2189c4d8, 259e97c8 (Vinted, une-passe) : retrait ET envoi à 19:44 — l'alerte de 20:15 était fausse");
 const nerema = {
   republish_step: "deleted", deleted_at: "2026-10-25T18:44:14.000Z", deleted_at_client: "2026-10-25T18:44:13.118Z", deleted_at_serveur: "2026-10-25T18:44:14.000Z",
   recreation_tentee: { n: 1, at: "2026-10-25T18:44:14.000Z", via: "une_passe" }, recreation_envois: ["2026-10-25T18:44:14.000Z"],
@@ -23,7 +23,7 @@ ok(A.alerteOrphelineDue(nerema, t("2026-10-25T19:15:04Z")).due === false, "20:15
 ok(A.alerteOrphelineDue(nerema, t("2026-10-25T19:15:04Z")).motif === "envoi_parti", "motif : envoi_parti");
 ok(A.alerteOrphelineDue(nerema, t("2026-10-26T00:45:00Z")).motif === "envoi_non_verifie", "jamais relu au bout de 6 h → l'alerte « remise en ligne non vérifiée » (aucune attente sans fin)");
 
-console.log("\n2. Sébastien, 1ab00947 (Beebs) : retrait 18:30, PC coupé 18:33, rien renvoyé — une vraie orpheline");
+console.log("\n2. Compte-essai-8, 1ab00947 (Beebs) : retrait 18:30, PC coupé 18:33, rien renvoyé — une vraie orpheline");
 const seb = { republish_step: "deleted", deleted_at: "2026-10-25T17:30:39.000Z" };
 ok(A.alerteOrphelineDue(seb, t("2026-10-25T18:03:01Z")).due === true && A.alerteOrphelineDue(seb, t("2026-10-25T18:03:01Z")).motif === "sans_envoi", "19:03 : rien n'est parti depuis le retrait → l'alerte, comme avant");
 ok(A.alerteOrphelineDue(seb, t("2026-10-25T17:50:00Z")).due === false, "moins de 30 min après le retrait → trop tôt");
@@ -60,13 +60,13 @@ ok(/\.not\("platform_fields->republish_suppression_envoyee", "is", null\)/.test(
   const seb = { republish_step: "captured", republish_suppression_envoyee: { at: "2026-10-26T08:27:15Z", annonce: "34207184" } };
   ok(A.suppressionEnvoyeeLe(seb) === t0, "(28/10) heure de la suppression envoyée lue");
   const r1 = A.alerteOrphelineDue(seb, t0 + 31 * 60_000);
-  ok(r1.due === true && r1.motif === "suppression_envoyee", "(28/10) Sébastien : suppression envoyée sans preuve + 31 min → l'alerte", JSON.stringify(r1));
+  ok(r1.due === true && r1.motif === "suppression_envoyee", "(28/10) Compte-essai-8 : suppression envoyée sans preuve + 31 min → l'alerte", JSON.stringify(r1));
   ok(A.alerteOrphelineDue(seb, t0 + 10 * 60_000).due === false, "(28/10) avant 30 min : pas encore");
   ok(A.alerteOrphelineDue({ republish_step: "captured" }, t0 + 99 * 60_000).due === false, "(28/10) « captured » sans suppression envoyée : rien");
   ok(A.alerteOrphelineDue({ ...seb, republish_step: "a_capturer" }, t0 + 99 * 60_000).due === false, "(28/10) autre étape : rien");
 }
 
-console.log("\n6. (29/10, point 5 — Nico, Johan) Poste éteint = pas d'alerte ; poste vivant qui ne recrée pas = l'alerte");
+console.log("\n6. (29/10, point 5 — Nico, Compte-essai-5) Poste éteint = pas d'alerte ; poste vivant qui ne recrée pas = l'alerte");
 {
   // Johan, 098cab75 (Leboncoin) : retrait 10:41:50 (Paris), redépôt « au prochain passage », poste occupé par sa file
   // jusqu'à 11:21, recréation prise à 11:37:39, publiée à 12:13:17. L'alerte est partie à 11:12:02.

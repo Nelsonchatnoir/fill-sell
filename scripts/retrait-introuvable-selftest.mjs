@@ -25,18 +25,18 @@ ok(!releveComplet(R("2026-09-29T20:20:58Z", 29, 29, { erreur: "[incomplet] relev
 ok(!releveComplet({ status: "expired", started_at: "2026-09-29T20:51:01Z", items_vus: 0, total_entries: null }), "demande jamais réclamée : ne compte pas");
 ok(!releveComplet(R("2026-10-01T20:29:02Z", 30, 41)), "30/41 : incomplet");
 
-console.log("\n2. SANS NUMÉRO — XXEWWER, DEBORAH, ORNELLA");
+console.log("\n2. SANS NUMÉRO — CLIENT-DE63CA45, DEBORAH, ORNELLA");
 const annoncesXx = Array.from({ length: 41 }, (_, i) => ({ listing_id: String(34013018 + i), job_id: `job-${i}`, inventaire_id: 1789717 + i, vu_le: "2026-10-01T20:29:30Z", statut_plateforme: "en_ligne" }));
 const vXx = jugerRetraitIntrouvable(retraitBeebs("d2e7799e", "2026-09-25T17:02:03Z"), {
   releves: [R("2026-10-01T20:29:02Z", 41, 41), R("2026-09-30T11:04:17Z", 40, 40), R("2026-09-29T11:04:24Z", 40, 40)],
   annonces: annoncesXx, depotId: "89f4c4b9-f92b-4052-aaab-44501dcd6308",
 });
-ok(vXx?.verdict === "deja_retire" && vXx.releves.length === 2, "xxewwer d2e7799e : deux relevés complets, tout est relié → rien à retirer", JSON.stringify(vXx));
+ok(vXx?.verdict === "deja_retire" && vXx.releves.length === 2, "client-de63ca45 d2e7799e : deux relevés complets, tout est relié → rien à retirer", JSON.stringify(vXx));
 ok(/Rien à retirer sur Beebs/.test(vXx.message) && /ne compte pas dans tes limites/.test(vXx.message) && !/titre/.test(vXx.message.replace("titre", "")), "message vrai : relevés datés, quota rendu");
 const vXx2 = jugerRetraitIntrouvable(retraitBeebs("435df0a2", "2026-10-01T20:40:08Z"), {
   releves: [R("2026-10-01T20:29:02Z", 41, 41), R("2026-09-30T11:04:17Z", 40, 40)], annonces: annoncesXx,
 });
-ok(vXx2?.verdict === "attente" && /0\/2 à ce jour/.test(vXx2.message), "xxewwer 435df0a2 : aucun relevé depuis sa création → attente, 0/2");
+ok(vXx2?.verdict === "attente" && /0\/2 à ce jour/.test(vXx2.message), "client-de63ca45 435df0a2 : aucun relevé depuis sa création → attente, 0/2");
 ok(/jamais par son titre/.test(vXx2.message) && /Chrome soit ouvert/.test(vXx2.message), "attente : message vrai, pas d'attente sans motif");
 const vDeb = jugerRetraitIntrouvable(retraitBeebs("708098ab", "2026-09-30T21:45:09Z"), {
   releves: [R("2026-10-01T20:11:59Z", 0, 0), R("2026-10-01T12:07:50Z", 1, 1), R("2026-09-30T20:26:14Z", 1, 1)],
@@ -166,7 +166,7 @@ ok(jugerRetraitVintedIntrouvable({ ...fb9, listing_url: null }, { releves: avecU
 const hwSrc = fs.readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8");
 ok(/jugerRetraitVintedIntrouvable\(/.test(hwSrc) && /vinted_listing_snapshots/.test(hwSrc), "handler-watch juge les retraits Vinted ouverts sur tout le parc");
 
-console.log("\n8 bis. BEEBS SANS NUMÉRO, DÉPÔT DE PLUS DE 7 JOURS — XEWER b6803c70 « Hitman » (29/10)");
+console.log("\n8 bis. BEEBS SANS NUMÉRO, DÉPÔT DE PLUS DE 7 JOURS — COMPTE-DE63CA45 b6803c70 « Hitman » (29/10)");
 // Relevé en base le 29/10 : retrait armé le 27/10 09:20 sur le dépôt 74037bf3 (publié le 23/09, jamais de numéro) ;
 // get-pending-jobs sautait Beebs dans ce juge → message réécrit à chaque passage (26 170 observations), jamais conclu.
 const gpjSrc = fs.readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
@@ -189,7 +189,7 @@ const vHitLibre = jugerRetraitIntrouvable(retraitBeebs("b6803c70", "2026-10-27T0
 ok(vHitLibre?.verdict === "non_reliee" && vHitLibre.nonReliees?.[0] === "34240001", "une annonce libre → la question (needs_user après 48 h), jamais un retrait par titre", JSON.stringify(vHitLibre));
 
 
-console.log("\n9. NUMÉROTÉE AVANT LE DÉPÔT (BEEBS) : JOE0410, T-SHIRT NASA (15/10 soir)");
+console.log("\n9. NUMÉROTÉE AVANT LE DÉPÔT (BEEBS) : BOUTIQUE-AFEEF3C7, T-SHIRT NASA (15/10 soir)");
 // Relevé en base le 15/10 : retrait 450b05b6 armé le 11/10 ; dépôt 3b0346fa
 // confirmé le 30/09 07:03:54 sans numéro ; 33911255 « Polo Scott homme L »
 // (déposé le 06/09, job ba7cc76b) revu « en vérification » le 30/09 à 17:56,

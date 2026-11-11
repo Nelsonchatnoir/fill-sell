@@ -50,7 +50,7 @@ const s = lire('src/tabs/StockTab.jsx');
 ok(/if \(quotas\?\.palier !== 'free'\) return \{ annonces: null, repub: null, remise: null \};/.test(s), 'seulement pour un compte gratuit, sur les compteurs déjà chargés');
 ok(/Gratuit : encore \$\{nombreFr\(n, lang\)\} republication/.test(s) && /Gratuit : encore \$\{nombreFr\(n, lang\)\} article\$\{n > 1 \? 's' : ''\} ce mois-ci, sur toutes tes plateformes/.test(s), '« Gratuit : encore N … ce mois-ci » sur Publier et Remonter');
 ok(/ordre=\{ordreAFaire\}/.test(s) && /\? \['remonter', 'publier', 'aRegler'\] : null;/.test(s), '« À faire maintenant » : Remonter en tête quand il y a de quoi');
-ok(/initiale=\{coupePub\?new Set\(articles\.slice\(0,offertsPub\)\.map\(a=>a\.id\)\):null\}/.test(s) && /initiale=\{coupeRep\?new Set\(articles\.slice\(0,offertsRep\)\.map\(a=>a\.id\)\):null\}/.test(s), 'la sélection ne coche pas plus que le mois n\'offre (Orlanne : 5, pas 20)');
+ok(/initiale=\{coupePub\?new Set\(articles\.slice\(0,offertsPub\)\.map\(a=>a\.id\)\):null\}/.test(s) && /initiale=\{coupeRep\?new Set\(articles\.slice\(0,offertsRep\)\.map\(a=>a\.id\)\):null\}/.test(s), 'la sélection ne coche pas plus que le mois n\'offre (Compte-b1439404 : 5, pas 20)');
 ok(/repubMois=\{offertGratuit\.repub!=null\?\{restantes:offertGratuit\.repub,remise:offertGratuit\.remise\}:null\}/.test(s) && /Ton mois gratuit en couvre encore/.test(s), 'la feuille de republication dit le MOIS avant le clic (Chiara)');
 const h = lire('src/stock/Haut.jsx');
 ok(/const offert = \(g, style, court = false\) =>/.test(h) && (h.match(/\{offert\(g/g) || []).length === 3, 'la mention s\'affiche en lignes, boutons et tuiles (forme courte sur les tuiles)');

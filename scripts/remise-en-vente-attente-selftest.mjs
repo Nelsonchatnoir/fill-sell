@@ -51,7 +51,7 @@ const close = (o = {}) => remise({ status: "cancelled", created_at: "2026-11-06T
   platform_fields: { remise_en_vente: { annonce_vendue: "3297400164" }, lbc_depot: { sans_adsubmit: { id: "3303702852" } },
     depot_jamais_en_ligne: { issue: "article_en_ligne_ailleurs", identifiants: ["3303702852"] }, serie_un_par_un: { serie: "s", rang: 1 }, ...(o.platform_fields ?? {}) } });
 const f = { vendueEncoreAffichee: true, depotVu: false, autreAnnonceVivante: false, maintenant: T0 };
-ok("rang 1 de Louis (cancelled à tort) : remis en attente", decisionRearmementRemise(close(), f).rearmer);
+ok("rang 1 de Compte-essai-2 (cancelled à tort) : remis en attente", decisionRearmementRemise(close(), f).rearmer);
 ok("rejugé « failed » : remis en attente", decisionRearmementRemise(close({ status: "failed" }), f).rearmer);
 ok("rang 4 (published 11:25, jamais vu, 410) : remis en attente après 2 h, pas avant",
   decisionRearmementRemise(close({ status: "published", published_at: "2026-11-07T10:25:28Z" }), f).rearmer
@@ -75,7 +75,7 @@ const HW = readFileSync(join(ROOT, "supabase/functions/handler-watch/index.ts"),
 ok("branchement handler-watch : statut relu à l'écriture, un passage par quart d'heure",
   /decisionRearmementRemise\(j, \{/.test(HW) && /\.eq\("id", j\.id\)\.eq\("status", j\.status\)/.test(HW) && /getUTCMinutes\(\) % 15 < 3/.test(HW));
 
-console.log("5. (07/11 nuit, Louis) Ce que l'annonce vendue est — sur les 9 lignes RÉELLES lues le 07/11 (relevé de 17:42)");
+console.log("5. (07/11 nuit, Compte-essai-2) Ce que l'annonce vendue est — sur les 9 lignes RÉELLES lues le 07/11 (relevé de 17:42)");
 {
   const R = { created_at: "2026-11-06T06:20:00Z" };
   const R2 = { created_at: "2026-11-06T18:20:00Z" };
@@ -86,7 +86,7 @@ console.log("5. (07/11 nuit, Louis) Ce que l'annonce vendue est — sur les 9 li
     ["Adaptateurs Orange 3298491503", L("sold"), R, ETAT_VENDUE.VENDUE_AFFICHEE],
     ["Blanc et Vert Pomme 3295743872", L("pending"), R, ETAT_VENDUE.VENTE_EN_COURS],
     ["Bleu et Bleu Ciel 3295398035", L("pending"), R, ETAT_VENDUE.VENTE_EN_COURS],
-    ["Noir 3297440551 (supprimée par Louis, relevée disparue le 06/11 22:01)", L("pending", { disparu_le: "2026-11-06T21:01:00Z", transaction_lue_le: "2026-11-06T09:19:00Z" }), R, ETAT_VENDUE.HORS_LIGNE],
+    ["Noir 3297440551 (supprimée par Compte-essai-2, relevée disparue le 06/11 22:01)", L("pending", { disparu_le: "2026-11-06T21:01:00Z", transaction_lue_le: "2026-11-06T09:19:00Z" }), R, ETAT_VENDUE.HORS_LIGNE],
     ["Blanc 3280443604", L("sold"), R2, ETAT_VENDUE.VENDUE_AFFICHEE],
     ["Noir et Gris 3297299585", L("sold"), R2, ETAT_VENDUE.VENDUE_AFFICHEE],
     ["Zombicide Jaune 3298021777", L("pending"), R, ETAT_VENDUE.VENTE_EN_COURS],

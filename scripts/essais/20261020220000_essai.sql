@@ -1283,7 +1283,7 @@ declare
   v_fiche_echec bigint; v_job_echec uuid;
 begin
   -- ── B : boutique partagée, jumelle, copies, garde de publication, relance ─────────────────────────
-  insert into _r values ('B01 boutique partagée louis-seller/louis@ leboncoin', boutique_partagee_compte_relie(ls, lou, 'leboncoin'), '');
+  insert into _r values ('B01 boutique partagée client-447d920c/louis@ leboncoin', boutique_partagee_compte_relie(ls, lou, 'leboncoin'), '');
   insert into _r values ('B02 beebs pas partagée', not boutique_partagee_compte_relie(ls, lou, 'beebs'), '');
   insert into _r values ('B03 vinted jamais', not boutique_partagee_compte_relie(ls, lou, 'vinted'), '');
   insert into _r values ('B04 comptes non reliés jamais', not boutique_partagee_compte_relie(seb, ls, 'leboncoin'), '');
@@ -1300,7 +1300,7 @@ begin
 
   perform set_config('request.jwt.claims', json_build_object('sub', ls, 'role', 'authenticated')::text, true);
   select count(*), count(*) filter (where platform = 'leboncoin'), count(distinct inventaire_id) into n, n2, v_inv from copies_fiches_jumelles();
-  insert into _r values ('B06 copies_fiches_jumelles louis-seller : leboncoin seulement', n > 0 and n = n2, n || ' copie(s), ' || v_inv || ' fiche(s)');
+  insert into _r values ('B06 copies_fiches_jumelles client-447d920c : leboncoin seulement', n > 0 and n = n2, n || ' copie(s), ' || v_inv || ' fiche(s)');
   -- garde de publication
   r := spend_coins_and_publish('original', jsonb_build_array(jsonb_build_object('inventaire_id', v_fiche_echec, 'platform', 'leboncoin', 'title', 'Essai', 'price', 999, 'photos', '[]'::jsonb, 'platform_fields', '{}'::jsonb)));
   insert into _r values ('B09 publier leboncoin sur la fiche jumelle refusé (compte_relie)',
@@ -1312,7 +1312,7 @@ begin
   insert into _r values ('B07 copies_fiches_jumelles d''un compte sans jumelle : vide', n = 0, n::text);
   perform set_config('request.jwt.claims', json_build_object('sub', lou, 'role', 'authenticated')::text, true);
   select count(*) into n from copies_fiches_jumelles();
-  insert into _r values ('B08 copies_fiches_jumelles louis@ (copies de louis-seller)', true, n::text);
+  insert into _r values ('B08 copies_fiches_jumelles louis@ (copies de client-447d920c)', true, n::text);
 
   -- B11 compte non relié : même réponse que la fonction d'avant (savepoints implicites, annulés)
   perform set_config('request.jwt.claims', json_build_object('sub', seb, 'role', 'authenticated')::text, true);
@@ -1427,7 +1427,7 @@ begin
     select jsonb_object_agg(s, n) into c_ap from (select status || ':' || coalesce(platform_fields#>>'{depot_jamais_en_ligne,issue}', '-') s, count(*) n from cross_post_jobs where user_id = ls and platform = 'leboncoin' and (platform_fields#>>'{depot_jamais_en_ligne,le}')::timestamptz >= now() group by 1) x;
     raise exception 'annule';
   exception when raise_exception then null; end;
-  insert into _r values ('C12 louis-seller : doublons du compte relié clos sans rouge au lieu d''échecs',
+  insert into _r values ('C12 client-447d920c : doublons du compte relié clos sans rouge au lieu d''échecs',
     coalesce((c_ap->>'cancelled:en_ligne_par_compte_relie')::int, 0) > 0
     and coalesce((c_ap->>'failed:refus_moderation_probable')::int, 0) < coalesce((c_av->>'failed:refus_moderation_probable')::int, 0),
     'avant ' || coalesce(c_av::text, '{}') || ' · après ' || coalesce(c_ap::text, '{}'));

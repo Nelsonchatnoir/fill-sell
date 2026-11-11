@@ -32,7 +32,7 @@ const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else c
 const ARTS = LBC_MAISON_JARDIN_DEPENDANTS["Maison & Jardin > Arts de la table"].produits;
 const ACCESSOIRE = ARTS["Accessoire de table"];
 
-console.log("1. Cas fondateur fc5e4bff (Jocabroc)");
+console.log("1. Cas fondateur fc5e4bff (Boutique-53efea05)");
 {
   const textes = textesDeLAnnonce({
     titre: "Présentoir vintage en bois sculpté – 3 compartiments – plateau de service",

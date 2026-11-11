@@ -53,7 +53,7 @@ const doitNePasBouger = (cas, arg) => {
 };
 
 console.log("\n— CE QUI DOIT BASCULER —");
-doitBasculer("cas fondateur : Nike Blazer Mid 77 (lesmillesetunepepite, 22/09)", {
+doitBasculer("cas fondateur : Nike Blazer Mid 77 (client-4cd4d9ae, 22/09)", {
   mot: "blazer",
   titre: "Nike Blazer Mid 77 Jumbo Blanc Noir DD3111-100",
   description: "Paire de Nike Blazer Mid 77 Jumbo en blanc et noir. Usure visible sur les semelles.",

@@ -71,7 +71,7 @@ const FORM = `<form><label for=":form-field-_r_0_">Quel est le titre de l’anno
 const COOKIES = `<div role="dialog"><p>Pour leboncoin, votre expérience sur notre site est une priorité.</p>`
   + `<button>Accepter</button><button>Continuer sans accepter</button></div>`;
 const CAS = [
-  { nom: "mur réel, jeton absent (xxewwer, 02/10)", html: page(`<main id="mainContent">${ENTETE}${MUR}</main>${COOKIES}`), jeton: false,
+  { nom: "mur réel, jeton absent (client-de63ca45, 02/10)", html: page(`<main id="mainContent">${ENTETE}${MUR}</main>${COOKIES}`), jeton: false,
     sonde: { mur: true, murType: "connexion", sessionPage: "morte", manquants: [] }, murCs: true },
   { nom: "mur réel, jeton encore posé (périmé)", html: page(`<main>${ENTETE}${MUR}</main>`), jeton: true,
     sonde: { mur: true, murType: "connexion", sessionPage: null, manquants: [] }, murCs: true },

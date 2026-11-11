@@ -82,10 +82,10 @@ select user_id, sum(prix_vente) ca, count(*) n from ventes
 do $rep$
 declare n int; m int;
 begin
-  insert into _r select 'R1 CA the_closet72 = avant le découpage (+ 397,90 €)', a.ca + 397.90 = sum(v.prix_vente) and a.n = count(v.id),
+  insert into _r select 'R1 CA boutique-8ac5bbda = avant le découpage (+ 397,90 €)', a.ca + 397.90 = sum(v.prix_vente) and a.n = count(v.id),
     format('%s → %s (%s ventes)', a.ca, sum(v.prix_vente), count(v.id))
     from _ca0 a join ventes v on v.user_id = a.user_id where a.user_id = '8ac5bbda-0947-4612-82fd-effdaa3ca84a' group by a.ca, a.n;
-  insert into _r select 'R1 CA PILOU = avant le découpage (+ 91,30 €)', a.ca + 91.30 = sum(v.prix_vente) and a.n = count(v.id),
+  insert into _r select 'R1 CA COMPTE-CAE7A20D = avant le découpage (+ 91,30 €)', a.ca + 91.30 = sum(v.prix_vente) and a.n = count(v.id),
     format('%s → %s (%s ventes)', a.ca, sum(v.prix_vente), count(v.id))
     from _ca0 a join ventes v on v.user_id = a.user_id where a.user_id = 'cae7a20d-56c8-46a6-868c-ae1f885faa70' group by a.ca, a.n;
   -- La réparation pose exactement ce que la règle neuve calcule pour ces 34 lots.

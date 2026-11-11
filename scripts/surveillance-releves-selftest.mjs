@@ -35,7 +35,7 @@ const LIGNES = [BEEBS, LBC, VINTED];
 console.log('1. La règle de la ligne');
 {
   const r = A.boutiquesNonSurveillees(LIGNES, MAINTENANT);
-  ok(r.length === 2 && r.map((a) => a.platform).join(',') === 'leboncoin,vinted', 'lesmillesetunepepite : Leboncoin et Vinted, rien pour Beebs (0 annonce)', JSON.stringify(r));
+  ok(r.length === 2 && r.map((a) => a.platform).join(',') === 'leboncoin,vinted', 'client-4cd4d9ae : Leboncoin et Vinted, rien pour Beebs (0 annonce)', JSON.stringify(r));
   ok(r.every((a) => a.kind === 'non_surveillee' && a.motif === 'connexion'), 'kind non_surveillee, geste « connexion »');
   ok(r[0].annonces === 217 && r[1].annonces === 234, 'annonces distinctes rendues telles quelles (217, 234 — jamais 430)');
   ok(r[0].jours === 25 && r[1].jours === 25, 'jours pleins depuis le dernier relevé réussi, recalculés à l\'heure de l\'écran', `${r[0].jours} / ${r[1].jours}`);
@@ -143,7 +143,7 @@ console.log('\n5. Migration, inverse, essai');
   ok(corps(MIG) && ESS.includes(corps(MIG)) && corps(INV) && ESS.includes(corps(INV)), 'essai : corps de la migration et de l\'inverse repris à l\'octet');
   ok((ESS.match(/^BEGIN;$/gm) ?? []).length === 1 && /\nROLLBACK;\n?$/.test(ESS) && !/^COMMIT;$/m.test(ESS), 'essai : une transaction, ROLLBACK final, aucun COMMIT');
   ok(/set_config\('request\.jwt\.claims', json_build_object\('sub', '4cd4d9ae-7165-4750-860f-6ecf747b1be0', 'role', 'authenticated'\)::text, true\)/.test(ESS) && /EXECUTE 'SET LOCAL ROLE authenticated';/.test(ESS) && /EXECUTE 'RESET ROLE';/.test(ESS) && /SELECT ordre, cas, attendu, obtenu, ok FROM _r ORDER BY ordre;/.test(ESS),
-    'essai : se fait passer pour lesmillesetunepepite (claims + rôle authenticated), résultat dans _r');
+    'essai : se fait passer pour client-4cd4d9ae (claims + rôle authenticated), résultat dans _r');
 }
 
 console.log(`\n${total - echecs}/${total} contrôles verts`);

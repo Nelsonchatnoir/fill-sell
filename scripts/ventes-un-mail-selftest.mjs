@@ -15,9 +15,9 @@ const cas = (nom, f) => { f(); n++; console.log(`  ✓ ${nom}`); };
 console.log("ventes-un-mail-selftest");
 
 const LOUIS = "447d920c-0000-0000-0000-000000000000";
-const note = (id, extra = {}) => ({ id, user_id: LOUIS, email: "louis-seller@ttfamily.fr", lang: "fr", a_decider: false, plateforme: "leboncoin", ...extra });
+const note = (id, extra = {}) => ({ id, user_id: LOUIS, email: "client-447d920c@exemple.invalid", lang: "fr", a_decider: false, plateforme: "leboncoin", ...extra });
 
-cas("1. louis-seller : 5 notes du même passage → UN groupe, tête = la plus ancienne", () => {
+cas("1. client-447d920c : 5 notes du même passage → UN groupe, tête = la plus ancienne", () => {
   const g = groupesDeMail([note(4203), note(4199), note(4201), note(4200), note(4202)]);
   assert.equal(g.length, 1);
   assert.deepEqual(g[0].map((x) => x.id), [4199, 4200, 4201, 4202, 4203]);

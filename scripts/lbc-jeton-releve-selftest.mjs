@@ -150,7 +150,7 @@ for (const motif of ['jeton_expire', 'http_401', 'user_id_absent']) {
 {
   const partiel = { ok: true, annonces: new Array(192), actives: 193, enLigne: 192, pages: 2, motif: null };
   const { api, vus } = await orchestration([partiel, complete], [{ ok: true }]);
-  ok(api === complete && vus.pauses[0] >= 10_000 && vus.renouvellements === 0, `compteur qui bouge (192/193, Jocabroc) : relance après ${vus.pauses[0] / 1000} s, puis complet`);
+  ok(api === complete && vus.pauses[0] >= 10_000 && vus.renouvellements === 0, `compteur qui bouge (192/193, Boutique-53efea05) : relance après ${vus.pauses[0] / 1000} s, puis complet`);
 }
 
 // ── 3. Le renouvellement par la page (chrome.* simulé, horloge simulée) ─────
@@ -273,7 +273,7 @@ ok(/« Mes annonces » n'a pas rendu sa liste \(redirection du compte, challenge
   const e = '[incomplet] session leboncoin : page de connexion (« Mes annonces » renvoie vers la connexion de Leboncoin au renouvellement du jeton) · [défilement] [adresse muette : essai 1 : jeton_absent ; jeton non renouvelé (session_fermee)] repli sur la page';
   ok(F.situationFinReleve({ erreur: e }) === 'pas_connecte', 'l’app dit « Connecte-toi à Leboncoin », plus « échec »');
   const ancien = '[incomplet] « Mes annonces » n\'a pas rendu sa liste (redirection du compte, challenge ou page non peinte) — couverture inconnue, rien n\'est conclu disparu · [défilement] [adresse muette : essai 1 : jeton_absent ; jeton non renouvelé (session_fermee) ; essai 1 : jeton_absent ; jeton non renouvelé (session_fermee)] repli sur la page';
-  ok(F.situationFinReleve({ erreur: ancien }) === 'pas_connecte', 'runs des extensions ≤ 0.6.152 (annehelene.reve, 29/10 10:22) : « Connecte-toi à Leboncoin » aussi');
+  ok(F.situationFinReleve({ erreur: ancien }) === 'pas_connecte', 'runs des extensions ≤ 0.6.152 (client-d71db658, 29/10 10:22) : « Connecte-toi à Leboncoin » aussi');
   ok(F.situationFinReleve({ erreur: '[incomplet] « Mes annonces » n\'a pas rendu sa liste … [adresse muette : essai 1 : onglet_fige] repli sur la page' }) === 'echec', 'une liste non rendue SANS renvoi vers la connexion reste « échec »');
   ok(!/n'a pas rendu sa liste/.test(e), 'le libellé « hors liste » (releve_hors_liste) n’est pas porté : aucun import, aucune disparition — comme avant');
 }

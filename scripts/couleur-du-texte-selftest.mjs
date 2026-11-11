@@ -17,7 +17,7 @@ const lu = (t, d = "") => C.couleurEcriteDansLeTexte(t, d);
 const MAISON = ["Argenté", "Beige", "Blanc", "Bleu", "Bois", "Bordeaux", "Doré", "Gris", "Jaune", "Kaki", "Marron", "Multicolore", "Noir", "Orange", "Rose", "Rouge", "Transparent", "Vert", "Violet", "Autre"];
 const MODE = ["Argenté / Acier", "Beige / Camel", "Blanc", "Bleu / Ciel", "Crème / Blanc cassé / Écru", "Doré / Bronze / Cuivre", "Gris / Anthracite", "Imprimé", "Jaune / Moutarde", "Kaki", "Lavande / Lilas", "Marine / Turquoise", "Marron", "Multicolore", "Noir", "Orange / Corail", "Rose / Fuchsia", "Rouge / Bordeaux", "Vert", "Violet / Mauve", "Autre"];
 
-console.log("1. Les cas de Jocabroc (26/10)");
+console.log("1. Les cas de Boutique-53efea05 (26/10)");
 {
   const pot = lu("Pot à sucre Sarreguemines bleu marine à pois blancs vintage", "Charmant petit pot en céramique émaillée, bleu marine à pois blancs.");
   ok(pot?.couleur === "Bleu marine" && pot.source === "titre", "pot à sucre : « bleu marine » du titre (« à pois blancs » est un décor)", JSON.stringify(pot));

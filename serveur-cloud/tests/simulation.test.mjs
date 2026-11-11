@@ -391,7 +391,7 @@ test('« Me connecter » : jamais de boucle — une page qui boucle : 2 nouveaux
   assert.ok(!s.connexions.connexionsOuvertes().has(U), 'l’écran est fermé');
 });
 
-test('« Me connecter » : un lien refusé juste après un TOUCHER n’est jamais une boucle — retour à la page, équipe prévenue (08/11 soir, jade60890, Vinted « Continuer avec Google »)', async () => {
+test('« Me connecter » : un lien refusé juste après un TOUCHER n’est jamais une boucle — retour à la page, équipe prévenue (08/11 soir, compte 7d22ae91, Vinted « Continuer avec Google »)', async () => {
   const signalees = [];
   const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }],
     alertes: { signaler: async (...a) => { signalees.push(a); return { envoye: true }; } } });

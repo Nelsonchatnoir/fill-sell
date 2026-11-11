@@ -34,7 +34,7 @@ const postes = (x = {}) => ({
 cas("identité du poste : fraîche (30 min) seulement, un numéro Vinted seulement", () => {
   assert.equal(identiteVintedDuPoste(postes()[PC], T), PRO);
   assert.equal(identiteVintedDuPoste({ vinted_user_id: PRO, vinted_le: il(31) }, T), null, "trop vieille : inconnue");
-  assert.equal(identiteVintedDuPoste({ vinted_user_id: "evat", vinted_le: il(1) }, T), null, "un pseudo n'est pas une preuve");
+  assert.equal(identiteVintedDuPoste({ vinted_user_id: "boutique-essai-2", vinted_le: il(1) }, T), null, "un pseudo n'est pas une preuve");
   assert.equal(identiteVintedDuPoste({}, T), null);
   assert.equal(identiteVintedDuPoste(null, T), null);
 });
@@ -46,7 +46,7 @@ cas("le routage ne s'allume qu'avec DEUX postes vivants (15 min) ET DEUX boutiqu
   assert.equal(routageBoutiquesActif({ [PC]: postes()[PC] }, 2, T), false, "un seul poste : rien ne change");
 });
 
-cas("la VM (perso) laisse le job d'@evat au PC qui l'a ouverte ; le PC le garde ; un job perso reste à la VM", () => {
+cas("la VM (perso) laisse le job d'@boutique-essai-2 au PC qui l'a ouverte ; le PC le garde ; un job perso reste à la VM", () => {
   const P = postes();
   assert.deepEqual(posteLaisseJobVinted({ postes: P, session: VM, identiteMoi: PERSO, boutiqueJob: PRO, maintenant: T }), { laisser: true, autre: PC });
   assert.deepEqual(posteLaisseJobVinted({ postes: P, session: PC, identiteMoi: PRO, boutiqueJob: PRO, maintenant: T }), { laisser: false, autre: null });
@@ -59,7 +59,7 @@ cas("aucune preuve, aucun autre poste sur la bonne boutique : le job est servi c
   assert.equal(posteLaisseJobVinted({ postes: P, session: VM, identiteMoi: PERSO, boutiqueJob: "", maintenant: T }).laisser, false, "boutique du job inconnue");
   assert.equal(posteLaisseJobVinted({ postes: postes({ pc: { vinted_le: il(40) } }), session: VM, identiteMoi: PERSO, boutiqueJob: PRO, maintenant: T }).laisser, false, "identité du PC trop vieille");
   assert.equal(posteLaisseJobVinted({ postes: postes({ pc: { le: il(20) } }), session: VM, identiteMoi: PERSO, boutiqueJob: PRO, maintenant: T }).laisser, false, "PC endormi : la VM le reçoit, ses gardes locales jugent (jamais une file morte)");
-  assert.equal(posteLaisseJobVinted({ postes: postes({ pc: { vinted_user_id: "999" } }), session: VM, identiteMoi: PERSO, boutiqueJob: PRO, maintenant: T }).laisser, false, "personne n'a @evat ouverte");
+  assert.equal(posteLaisseJobVinted({ postes: postes({ pc: { vinted_user_id: "999" } }), session: VM, identiteMoi: PERSO, boutiqueJob: PRO, maintenant: T }).laisser, false, "personne n'a @boutique-essai-2 ouverte");
 });
 
 cas("la boutique « auto » posée par l'autre poste vivant (toujours sur elle) ne bascule pas", () => {
@@ -91,7 +91,7 @@ cas("mur Leboncoin de la VM : 2 h comme avant ; au-delà, il TIENT tant que le P
 cas("ce que le poste dit au poll (≥ 0.6.126) : relu, borné ; une extension d'avant ne dit rien", () => {
   assert.deepEqual(patchPosteDuPoll({ vinted_identite: { user_id: PRO, lu_le: il(2) } }, T), { vinted_user_id: PRO, vinted_le: il(2), vinted_source: "poll" });
   assert.deepEqual(patchPosteDuPoll({ vinted_identite: { user_id: PRO, lu_le: il(20) } }, T), {}, "plus de 15 min : ignorée");
-  assert.deepEqual(patchPosteDuPoll({ vinted_identite: { user_id: "evat", lu_le: il(1) } }, T), {});
+  assert.deepEqual(patchPosteDuPoll({ vinted_identite: { user_id: "boutique-essai-2", lu_le: il(1) } }, T), {});
   assert.deepEqual(patchPosteDuPoll({ sessions_poste: { leboncoin: true, vinted: "oui", lu_le: il(1) } }, T),
     { sessions: { lu_le: il(1), vinted: null, leboncoin: true, beebs: null, depop: null, ebay: null } });
   assert.deepEqual(patchPosteDuPoll({}, T), {});

@@ -20,7 +20,7 @@ const T = (min) => Date.parse(DEBUT) + min * 60_000;
 const iso = (min) => new Date(T(min)).toISOString();
 const tache = (rang, status = 'pending', extra = {}) => ({
   id: `job-${rang}`, status, published_at: null, vu_en_ligne_le: null,
-  platform_fields: { [CLE_SERIE]: { serie: 'louis', rang, intervalle_min: 60, le: DEBUT }, ...(extra.pf ?? {}) }, ...extra,
+  platform_fields: { [CLE_SERIE]: { serie: 'compte-essai-2', rang, intervalle_min: 60, le: DEBUT }, ...(extra.pf ?? {}) }, ...extra,
 });
 
 console.log('1. Le marqueur');
@@ -56,7 +56,7 @@ console.log('2. Un par un, chacun vu en ligne avant le suivant');
     && decisionSerie(deuxVu[2], deuxVu, { maintenant: T(127) }).servir, "l'intervalle court depuis le DERNIER dépôt de la série (rang 2), pas depuis le rang 1");
   // Louis, 06/11 22:01 → 07/11 22:18 : rangs 1-4 retenus par la règle A (pending), rang 5 (vendue disparue) servable.
   const louis = [tache(1, 'pending'), tache(2, 'pending'), tache(3, 'pending'), tache(4, 'pending'), tache(5, 'pending')];
-  ok(decisionSerie(louis[4], louis, { maintenant: T(600) }).servir, 'cas réel de Louis : le rang 5 part même si les rangs 1 à 4 attendent leur vendue (avant : « attend_rang_1 » 24 h)');
+  ok(decisionSerie(louis[4], louis, { maintenant: T(600) }).servir, 'cas réel de Compte-essai-2 : le rang 5 part même si les rangs 1 à 4 attendent leur vendue (avant : « attend_rang_1 » 24 h)');
   const avantSerie = [tache(1, 'published', { published_at: '2026-11-06T06:22:00Z' }), tache(2)];
   ok(decisionSerie(avantSerie[1], avantSerie, { maintenant: T(1) }).servir, "un dépôt d'AVANT le début de la série n'en est pas une étape (ni attente, ni intervalle)");
   const parReleve = [tache(1, 'published', { published_at: iso(5) }), tache(2)];
@@ -81,9 +81,9 @@ console.log('3. Arrêt au premier refus');
   ok(decisionSerie(annulee[1], annulee, { maintenant: T(1) }).servir, 'une tâche annulée sort de la série (ni refus, ni étape)');
 }
 
-console.log("3b. Une tâche de la série qui attend un correctif de l'extension (06/11 soir, Louis « SEB »)");
+console.log("3b. Une tâche de la série qui attend un correctif de l'extension (06/11 soir, Compte-essai-2 « SEB »)");
 {
-  const exige = (rang, extra = {}) => ({ ...tache(rang, extra.status ?? 'pending', extra), platform_fields: { [CLE_SERIE]: { serie: 'louis', rang, intervalle_min: 60, le: DEBUT, exige_version: '0.6.176' } } });
+  const exige = (rang, extra = {}) => ({ ...tache(rang, extra.status ?? 'pending', extra), platform_fields: { [CLE_SERIE]: { serie: 'compte-essai-2', rang, intervalle_min: 60, le: DEBUT, exige_version: '0.6.176' } } });
   ok(versionAvant('0.6.175', '0.6.176') && !versionAvant('0.6.176', '0.6.176') && !versionAvant('0.7.0', '0.6.176') && versionAvant('', '0.6.176'), 'versions comparées nombre par nombre ; illisible = avant');
   const m = [exige(1)];
   ok(!decisionSerie(m[0], m, { maintenant: T(1), version: '0.6.175' }).servir && /attend_extension/.test(decisionSerie(m[0], m, { maintenant: T(1), version: '0.6.175' }).motif), 'poste en 0.6.175 : la tâche attend la 0.6.176 (sans arrêter la série)');

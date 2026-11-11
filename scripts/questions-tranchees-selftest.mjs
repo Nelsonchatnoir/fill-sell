@@ -29,12 +29,12 @@ const ok = (c, m) => { if (c) console.log(`  ✓ ${m}`); else { ko++; console.lo
 // ── A. Boutique ─────────────────────────────────────────────────────────────
 console.log("A. Boutique Vinted d'une publication");
 const B = await charger("supabase/functions/_shared/boutique-publication-vinted.js");
-const louis = [{ user_id: "247512093", login: "neyenonie" }, { user_id: "371531", login: "evat" }];
+const louis = [{ user_id: "247512093", login: "boutique-faf5021a" }, { user_id: "371531", login: "boutique-essai-2" }];
 ok(B.boutiquePublicationVinted({ boutiqueArticle: "247512093", boutiqueSession: "371531", boutiques: louis }).boutique === "247512093", "(1) article lié : SA boutique, quelle que soit celle ouverte");
 ok(B.boutiquePublicationVinted({ boutiqueDefaut: "247512093", boutiqueSession: "371531", boutiques: louis }).source === "defaut", "(2) sans boutique d'article : la boutique par défaut des Réglages");
 const s3 = B.boutiquePublicationVinted({ boutiqueSession: "371531", boutiques: louis });
-ok(s3.boutique === "371531" && s3.source === "session", "(3) sans réglage : la boutique ouverte dans le navigateur (@evat)");
-ok(B.boutiquePublicationVinted({ boutiqueChoisie: "@neyenonie", boutiqueDefaut: "371531", boutiqueSession: "371531", boutiques: louis }).boutique === "247512093", "le changement fait dans la file passe avant le défaut");
+ok(s3.boutique === "371531" && s3.source === "session", "(3) sans réglage : la boutique ouverte dans le navigateur (@boutique-essai-2)");
+ok(B.boutiquePublicationVinted({ boutiqueChoisie: "@boutique-faf5021a", boutiqueDefaut: "371531", boutiqueSession: "371531", boutiques: louis }).boutique === "247512093", "le changement fait dans la file passe avant le défaut");
 ok(B.boutiquePublicationVinted({ boutiqueSession: "999", boutiques: louis }).motif === "boutique_non_confirmee", "GARDE-FOU : une boutique ouverte hors du compte → rien ne part");
 ok(B.boutiquePublicationVinted({ boutiqueDefaut: "999", boutiqueSession: "371531", boutiques: louis }).source === "session", "un défaut qui n'est plus sur le compte est ignoré");
 ok(B.boutiquePublicationVinted({ boutiques: louis }).motif === "session_inconnue", "aucune boutique lisible → la publication attend (sans question)");
@@ -143,7 +143,7 @@ const paugues = jobColis({
 });
 const a = K.colisRepublicationATrancher(paugues, "2026-10-25T10:00:00.000Z");
 const pa = a?.platform_fields ?? {};
-ok(a?.branche === "A" && pa.republish_step === "a_capturer", "A. paugues 110c27ae : rayon changé par FillSell (œuvre d'art) → retour à « a_capturer »");
+ok(a?.branche === "A" && pa.republish_step === "a_capturer", "A. compte-e95e8b9d 110c27ae : rayon changé par FillSell (œuvre d'art) → retour à « a_capturer »");
 ok(!("capture_id" in pa) && !("republish_snapshot" in pa) && !("republish_copie_servie" in pa), "… capture, copie servie et copie retirées : l'annonce en ligne est relue");
 ok(!pa.needsUserField && !pa.needs_user_source && !pa.champs_a_completer && !pa.needs_user_tick_le && !("needsUserBoucle" in pa), "… la question, ses compteurs et sa mémoire anti-boucle retirés");
 ok(Boolean(pa.capture_corrigee_par_la_fiche) && pa.capture_corrigee_annulee?.capture_id === "17297" && pa.capture_corrigee_annulee?.rayon_annonce?.at(-1) === "Toiles et panneaux",

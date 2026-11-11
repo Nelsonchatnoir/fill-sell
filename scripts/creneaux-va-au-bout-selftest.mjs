@@ -86,7 +86,7 @@ console.log("\n[1] Anti-rafale : un job parqué ne bloque plus, une suppression 
     creneauBloque([echeancePassee]).bloque === true);
   // Le cas complet de Joséphine : parqué + needs_user (needs_user n'est ni pending ni processing) → libre.
   const needsUser = { status: "needs_user", platform_fields: { republish_step: "captured" } };
-  ok("Joséphine 23/09 : parqué + needs_user → le créneau est LIBRE de créer l'article suivant",
+  ok("Client-essai-1 23/09 : parqué + needs_user → le créneau est LIBRE de créer l'article suivant",
     creneauBloque([parque, needsUser]).bloque === false);
 }
 
@@ -94,7 +94,7 @@ console.log("\n[2] Disjoncteur : needs_user arrête, seuls les failed consécuti
 {
   // Joséphine 23/09 créneau 45, du plus récent au plus ancien : needs_user, pending, published×5.
   const josephine = ["needs_user", "pending", "published", "published", "published", "published", "published"];
-  ok("Joséphine 23/09 : needs_user en tête → 0 échec compté, le disjoncteur NE SAUTE PAS",
+  ok("Client-essai-1 23/09 : needs_user en tête → 0 échec compté, le disjoncteur NE SAUTE PAS",
     disjoncteurCompte(josephine) === 0, String(disjoncteurCompte(josephine)));
   // GARDE-FOU : une vraie rafale anti-robot (deux failed d'affilée) fait sauter à 2.
   ok("GARDE-FOU : deux failed consécutifs → 2 (le disjoncteur saute, seuil 2)",

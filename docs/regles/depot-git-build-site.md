@@ -16,6 +16,7 @@
 - ⛔ Un seul push sur main par lot (ex-L674-686)
 - ⛔ Écran blanc : le build avant le code (ex-L687-724)
 - ⛔ Interrupteurs d'ouverture sur le serveur, jamais dans le bundle (06/11 soir)
+- ⛔ Jamais de nom, pseudo ni e-mail de client dans le dépôt, verrou `selftest:donnees-clients` (11/11/2026)
 
 <!-- ex-CLAUDE.md L396-398 : Selftests (compte et morceaux mis de côté) -->
 - **Selftests** : 151 dans package.json + 37 scripts non câblés, 0 rouge (04/10). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
@@ -212,3 +213,23 @@ republications multi-plateformes) est une clé de `coin_config`, lue UNE fois au
   version (`window.__fillsellRechargeVersion`, posé par main.jsx avant `preventDefault`) ne se résout jamais (Suspense
   garde son fallback) ; l'erreur d'un chunk absent n'est pas journalisée pendant le rechargement. Jamais de boucle (10 s,
   inchangé). Plus aucun `lazy(() => import(...))` hors de lazySur (selftest `lot-0811-app`).
+
+## ⛔ 11/11/2026 — jamais de nom, pseudo ni e-mail de client dans le dépôt (règle de Nico)
+- Ni dans le code, ni dans les commentaires, ni dans les fixtures, ni dans les docs suivis : l'id8 du compte à la
+  place (« le compte 2f4383e9 »), « un compte client » quand il est inconnu, ou une valeur factice manifeste
+  (`vendeur-essai-1`, `client@exemple.invalid`). Une capture de prod qui devient fixture est anonymisée AVANT le
+  commit, de façon cohérente partout où le contrôle la lit (pseudo → `boutique-<id8>`, adresse →
+  `<jeton>@exemple.invalid`). Les boîtes de l'équipe (Nico, Ornella, leurs comptes d'essai) restent.
+- Verrou `npm run selftest:donnees-clients` (`scripts/donnees-clients-selftest.mjs`) sur les fichiers SUIVIS de
+  `src/`, `supabase/functions/`, `chrome-extension/`, `serveur-cloud/`, `scripts/` : rouge sur toute adresse e-mail
+  hors liste blanche, commentaires compris, et sur toute identité de client connue dans une donnée (chaîne, gabarit,
+  regex, JSON, texte d'une page). Les identités y sont des empreintes SHA-256, jamais en clair ; une nouvelle :
+  `node scripts/donnees-clients-selftest.mjs --empreinte <jeton>`, puis la ligne dans la liste. Les prénoms seuls
+  trop courants (marques, mots du français) n'y sont pas : ils se remplacent à la main.
+- Pas encore contrôlés (passe « b », semaine du 11/11) : les noms et pseudos dans les commentaires et les
+  identifiants de code ; `--commentaires` et `--identifiants` étendent le verrou le jour venu.
+- Jamais touchés (« c ») et exclus du verrou : migrations déjà appliquées, noms de fichiers, tables et fichiers de
+  sauvegarde. Gardés et comptés un par un dans `EXCEPTIONS` (empreinte du fichier, nombre exact, raison) : ce
+  qu'une réparation a exécuté en prod (sélecteur par e-mail, valeur écrite, message — l'inverse défait à
+  l'identique), la copie d'un texte de migration ou de réparation (générateur, essai), un texte qu'un selftest
+  cherche tel quel dans un commentaire, et la comparaison d'un selftest `--prod` à la vraie adresse en base.

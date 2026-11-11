@@ -85,7 +85,7 @@ await cas("fenêtre dédiée minimisée, onglet caché derrière le porte-page :
   assert.ok(fc.journal.updates.every((u) => u.focused === false));
 });
 
-await cas("fenêtre dédiée DÉJÀ visible mais onglet caché (relevé de gjehly : normal, tab_active false) : geste fait", async () => {
+await cas("fenêtre dédiée DÉJÀ visible mais onglet caché (relevé de client-229c7b07 : normal, tab_active false) : geste fait", async () => {
   const fc = fausseChrome({ etatFenetre: "normal", gele: false, actif: false, dediee: true });
   assert.equal(await charger(fc).restaurerFenetrePourOngletMuet(42), true);
   assert.deepEqual(fc.journal.ongletsActives, [{ id: 42, active: true }]);

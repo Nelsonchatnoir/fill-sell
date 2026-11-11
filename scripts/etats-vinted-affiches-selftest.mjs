@@ -69,7 +69,7 @@ const DEW = "Republication en pause AVANT toute suppression — ton annonce est 
 {
   const t = etatsVintedLisibles(DEW, "vinted", "fr");
   ok(t.includes("pour cette catégorie : État (accepte : Neuf avec étiquette · Neuf sans étiquette · Très bon état · Bon état · Satisfaisant)."),
-    "le message de dew : champ et valeurs en français, espace gardée", t);
+    "le message de client-8fd381a7 : champ et valeurs en français, espace gardée", t);
   ok(!/Very good|New with|Satisfactory|Condition/.test(t), "plus un mot anglais d'état dans le message");
   ok(t.startsWith("Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted."), "le reste du message est intact");
   const deux = "Vinted exige des champs encore vides pour cette catégorie : Size (accepte : S · M · L), Condition (accepte : Very good · Good).";

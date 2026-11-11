@@ -230,7 +230,7 @@ async function lancer(api, job) {
 }
 
 // ═══ A. LA BORNE POUR TOUS LES COMPTES ════════════════════════════════════════
-log("A. Point 3 (Ciddjy) — l'arrêt à la borne sans port, et fill_borne_ms pour tous");
+log("A. Point 3 (Compte-eacbe32c) — l'arrêt à la borne sans port, et fill_borne_ms pour tous");
 for (const fichier of ["beebs", "vinted", "leboncoin"]) {
   // 1. Sans port : borne de 300 s → abandon prévenu → Timeout au mot près → aucun clic.
   {

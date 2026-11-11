@@ -35,7 +35,7 @@ const COSTUMES = ["XXS", "XS", "S", "M", "L", "XL", "Taille unique", "DE 42", "D
 // Le diagnostic RÉEL du job ebbddbdb (last_diagnostic, 06/10 13:51Z).
 const DIAG_DBZ70 = "taille demandée « EU 40 » — candidats essayés : « EU 40 » — onglets vus : (sans onglet) [34, 34.5, 35, 35.5, 36, 36.5, 37, 37.5, 38, 38.5, 39, 39.5, 40, 40.5, 41, 41.5, 42, 42.5, 43, 43.5, … +7]";
 
-console.log("\n[1] dbz70 — republication, capture « EU 40 », grille nue des baskets femme");
+console.log("\n[1] compte-4c26231d — republication, capture « EU 40 », grille nue des baskets femme");
 {
   const r = tailleAServir({ captureTaille: "EU 40", inventaireTaille: { v: "EU 40", source: "capture" }, options: BASKETS_FEMME }, moderne);
   ok("« EU 40 » → « 40 » servi", r.valeur === "40", JSON.stringify(r));

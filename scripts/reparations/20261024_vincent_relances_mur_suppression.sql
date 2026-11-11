@@ -38,7 +38,7 @@ BEGIN
      AND platform_fields ->> 'republish_step' = 'captured'
      AND error LIKE 'Republication en pause avant toute suppression%Connexion Vinted requise%';
   GET DIAGNOSTICS n = ROW_COUNT;
-  IF n <> 4 THEN RAISE EXCEPTION 'vincent.armengol : % ligne(s) au lieu de 4 — rien n''est fait', n; END IF;
+  IF n <> 4 THEN RAISE EXCEPTION 'compte 67a8b907 : % ligne(s) au lieu de 4 — rien n''est fait', n; END IF;
 END $$;
 SELECT c.id, c.status, c.platform_fields ->> 'republish_step' AS etape,
        (SELECT count(*) FROM public.email_logs e WHERE e.user_id = c.user_id AND e.sent_at > now() - interval '5 minutes') AS mails_5min

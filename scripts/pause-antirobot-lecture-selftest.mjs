@@ -24,7 +24,7 @@ const refus = (at, verdict = "boutique_ok", extra = {}) => ({
 cas("un refus sur SA boutique compte ; une autre boutique ou une session absente, jamais", () => {
   assert.equal(refusSurSaBoutique(refus("2026-10-17T11:52:14.767Z")), true);
   assert.equal(refusSurSaBoutique(refus("2026-10-18T08:02:35.159Z", "identite_inconnue_capture_seule")), false, "identité illisible : pas une preuve");
-  assert.equal(refusSurSaBoutique({ ...refus("2026-10-18T08:00:00Z"), gardes: { garde_boutique: { verdict: "autre_boutique", boutique_article: "1", boutique_connectee: "2" } } }), false, "remialbertholl (24/09) : annonces d'une AUTRE boutique");
+  assert.equal(refusSurSaBoutique({ ...refus("2026-10-18T08:00:00Z"), gardes: { garde_boutique: { verdict: "autre_boutique", boutique_article: "1", boutique_connectee: "2" } } }), false, "client-2189c4d8 (24/09) : annonces d'une AUTRE boutique");
   assert.equal(refusSurSaBoutique(refus("2026-10-18T08:00:00Z", "boutique_ok", { cause403: "session_absente" })), false, "pas de session : une connexion à refaire, pas un anti-robot");
   assert.equal(refusSurSaBoutique({}), false);
   assert.equal(refusSurSaBoutique(null), false);
@@ -51,7 +51,7 @@ cas("ce que la pause retient : les republications Vinted qui lisent encore leur 
   assert.equal(retenuParPauseLectures({ platform: "leboncoin", action: "republish", platform_fields: {} }), false, "les autres plateformes continuent");
 });
 
-cas("le message dit la vraie cause et le seul geste, sans nommer un navigateur (hu.anastasia est sous Edge)", () => {
+cas("le message dit la vraie cause et le seul geste, sans nommer un navigateur (client-d8b07167 est sous Edge)", () => {
   assert.ok(/refuse la lecture de tes annonces/.test(ANTIROBOT_LECTURES_MSG));
   assert.ok(/rien n'a été touché/.test(ANTIROBOT_LECTURES_MSG) && /tout repartira seul/.test(ANTIROBOT_LECTURES_MSG));
   assert.ok(!/Chrome/.test(ANTIROBOT_LECTURES_MSG));

@@ -30,7 +30,7 @@ SELECT 'annonce', a.id, to_jsonb(a) - 'capture' FROM annonces_plateforme a
  WHERE a.proposition ->> 'motif' = 'depot_beebs_photo_proche'
 ON CONFLICT DO NOTHING;
 
-SELECT 'josephinecerni' AS compte, public.beebs_numeros_par_sequence('afeef3c7-0b0b-408c-a25b-3823448e3eb1'::uuid, false, true) - 'detail' AS resultat
+SELECT 'afeef3c7' AS compte, public.beebs_numeros_par_sequence('afeef3c7-0b0b-408c-a25b-3823448e3eb1'::uuid, false, true) - 'detail' AS resultat
 UNION ALL
-SELECT 'recrutementgroupezk704', public.beebs_numeros_par_sequence('7373c96c-c0ed-4947-a4c5-ee1b0d2b8d28'::uuid, false, true) - 'detail';
+SELECT '7373c96c', public.beebs_numeros_par_sequence('7373c96c-c0ed-4947-a4c5-ee1b0d2b8d28'::uuid, false, true) - 'detail';
 COMMIT;

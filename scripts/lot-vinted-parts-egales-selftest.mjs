@@ -64,7 +64,7 @@ ok(/IF NOT EXISTS \(SELECT 1 FROM unnest\(v_pv\) x WHERE x IS NULL OR x <= 0\) T
 
 // ── C. La réparation ─────────────────────────────────────────────────────────
 ok(/r\.lots <> 34 OR r\.l1 <> 27 OR r\.p1 <> 397\.90 OR r\.p2 <> 91\.30/.test(REP) && /<> 123/.test(REP),
-  'C1. périmètre : 34 lots (27 the_closet72, 7 PILOU), 397,90 € et 91,30 €, 123 articles — sinon rien n\'est écrit');
+  'C1. périmètre : 34 lots (27 boutique-8ac5bbda, 7 COMPTE-CAE7A20D), 397,90 € et 91,30 €, 123 articles — sinon rien n\'est écrit');
 ok(REP.includes("(u.metadata -> 'avant' ->> 'prix_vente')::numeric AS prix_lot") && REP.includes("u.feature = 'vente_lot_eclatee'"),
   'C2. le prix de chaque lot = celui de sa ligne « Lot » d\'avant le découpage (trace vente_lot_eclatee)');
 ok(/ORDER BY c\.position, c\.item_id/.test(REP) && /round\(\(\(lot_c \/ n\) \+ CASE WHEN rang <= lot_c - \(lot_c \/ n\) \* n THEN 1 ELSE 0 END\) \/ 100\.0, 2\)/.test(REP),

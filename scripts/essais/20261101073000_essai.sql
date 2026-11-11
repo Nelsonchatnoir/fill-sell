@@ -438,9 +438,9 @@ begin
     ('T1 vendue il y a 47 h : question', public.question_article_inconnu_due(now() - interval '47 hours'), null),
     ('T1 vendue il y a 49 h : aucune', not public.question_article_inconnu_due(now() - interval '49 hours'), null),
     ('T1 date inconnue : aucune', not public.question_article_inconnu_due(null), null),
-    ('T1 the_closet72 (04/09/2025 lue le 01/11) : aucune',
+    ('T1 boutique-8ac5bbda (04/09/2025 lue le 01/11) : aucune',
        not public.question_article_inconnu_due('2025-09-04 16:09:20+00', '2026-10-31 23:45:29+00'), null),
-    ('T1 nadegemarcelin78 (31/10 07:36 lue le 01/11 00:28) : question',
+    ('T1 boutique-essai-4 (31/10 07:36 lue le 01/11 00:28) : question',
        public.question_article_inconnu_due('2026-10-31 06:36:32+00', '2026-10-31 23:28:40+00'), null),
     ('T2 eclater appelle la règle, une seule fois',
        (select (length(prosrc) - length(replace(prosrc, 'question_article_inconnu_due(v_le)', '')))
@@ -536,7 +536,7 @@ BEGIN
       n_tot, n_anc, n_due, n_sans;
   END IF;
   IF EXISTS (SELECT 1 FROM _q WHERE NOT due AND user_id = '8a2eba68-7a2d-4fc1-aab0-aba23189c33b') THEN
-    RAISE EXCEPTION 'une question de nadegemarcelin78 serait neutralisée : rien n''est écrit';
+    RAISE EXCEPTION 'une question du compte 8a2eba68 serait neutralisée : rien n''est écrit';
   END IF;
 END
 $$;
@@ -570,12 +570,12 @@ SELECT u.user_id, u.feature, count(*) FROM usage_logs u
 -- §réparation
 do $apres$
 begin
-  insert into _r select 'T5 réparation : 123 neutralisées (the_closet72 106, PILOU 17)',
+  insert into _r select 'T5 réparation : 123 neutralisées (boutique-8ac5bbda 106, COMPTE-CAE7A20D 17)',
     count(*) = 123 and count(*) filter (where user_id = '8ac5bbda-0947-4612-82fd-effdaa3ca84a') = 106
       and count(*) filter (where user_id = 'cae7a20d-56c8-46a6-868c-ae1f885faa70') = 17
       and bool_and(not metadata ? 'question') and bool_and(metadata ? 'neutralisee'),
     count(*)::text from usage_logs where feature = 'vente_vinted_article_inconnu_ancienne';
-  insert into _r select 'T5 réparation : les 2 de nadegemarcelin78 gardées', count(*) = 2, count(*)::text
+  insert into _r select 'T5 réparation : les 2 de boutique-essai-4 gardées', count(*) = 2, count(*)::text
     from usage_logs where feature = 'vente_vinted_article_inconnu' and user_id = '8a2eba68-7a2d-4fc1-aab0-aba23189c33b'
      and created_at >= '2026-11-01 00:00:00 Europe/Paris'::timestamptz;
   insert into _r select 'T5 réparation : ventes des trois comptes identiques à l''octet',

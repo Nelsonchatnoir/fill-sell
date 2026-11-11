@@ -115,7 +115,7 @@ console.log("\n4. LA VALEUR GÉNÉRALE SE DÉDUIT DE CE QUI EXISTE");
   ok(valeurCommune(divergent, "titre", PF, d2) === "Même titre", "la carte dissociée ne vote pas");
 }
 
-console.log("\n4 bis. UN TITRE GÉNÉRAL VIDÉ N'EFFACE AUCUNE CARTE (25/09, patrick giry)");
+console.log("\n4 bis. UN TITRE GÉNÉRAL VIDÉ N'EFFACE AUCUNE CARTE (25/09, compte-82e64f14)");
 {
   // Ses cinq copies réelles : deux formulations → titre général vide au semis.
   const A = "Carhartt T-shirt manches longues gris chiné M";
@@ -141,7 +141,7 @@ console.log("\n4 bis. UN TITRE GÉNÉRAL VIDÉ N'EFFACE AUCUNE CARTE (25/09, pat
   ok(pf.every((p) => lireValeur(descVide[p], "description") === ""), "description : comportement inchangé");
 }
 
-console.log("\n5. LE CAS DE LOUIS THONET, EN ENTIER");
+console.log("\n5. LE CAS DE COMPTE-ESSAI-2 THONET, EN ENTIER");
 {
   // Son article 1789991601609, relevé Beebs du 21/09 — texte et état réels.
   const TITRE = "Rangement Blanc et Orange pour 12 pots et 12 couvercles pour yaourtière Multidélices";

@@ -158,7 +158,7 @@ console.log("\n6. Un refus de garde n'est pas une panne passagère");
   ok(normal && /rien à faire/.test(normal.message), "une panne passagère garde son message d'avant");
 }
 
-console.log("\n(04/11, sebastien64310, b3727bbe) Coupure de NOTRE authentification pendant le redépôt : 1 min, anti-doublon armé");
+console.log("\n(04/11, client-48dd94f7, b3727bbe) Coupure de NOTRE authentification pendant le redépôt : 1 min, anti-doublon armé");
 {
   const BRUT_SEB = "Ton annonce a été retirée de Leboncoin et n'a pas pu être redéposée automatiquement : Token invalide ou expiré. " +
     "Rien n'est perdu : titre, description, photos et champs sont sauvegardés. Clique « Republier maintenant » depuis la fiche de l'article.";

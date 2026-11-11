@@ -16,7 +16,7 @@ const natif = {
     { code: "condition", ids: [2] },
   ],
 };
-console.log("\n1. TECH-T — CE QUE LA CAPTURE PORTAIT");
+console.log("\n1. BOUTIQUE-6EB8400B — CE QUE LA CAPTURE PORTAIT");
 const cap = aspectsDeLaCapture(natif);
 ok(cap.aspects.model === "Chromebook CM14", "modèle connu de Vinted (collection 8576)");
 ok(cap.aspects.computer_ram === "4 Go" && cap.aspects.computer_storage_capacity === "64 Go" && cap.aspects.laptop_charger_included === "Inclus",
@@ -75,7 +75,7 @@ ok(capT.nonResolus.join() === "internal_memory_capacity,sim_lock", "stockage et 
   ok(repondu.vintedAspects.model === "Galaxy S10" && !repondu.poses.length && !Object.keys(repondu.remplace).length, "copie qui a un modèle (réponse) : JAMAIS remplacé par le repli");
   ok(completerAspects({ model: REPLI }, capT).poses.length === 0, "le repli déjà là : rien à réécrire");
 }
-ok(completerAspects({ model: "CM1400FX" }, cap).remplace.model === "CM1400FX", "un modèle CONNU de l'annonce prime toujours sur une saisie hors liste (Tech-t, inchangé)");
+ok(completerAspects({ model: "CM1400FX" }, cap).remplace.model === "CM1400FX", "un modèle CONNU de l'annonce prime toujours sur une saisie hors liste (Boutique-6eb8400b, inchangé)");
 ok(cap.modele_repli === false && cap.modele_exige === true && cap.modele_capture?.type === "known" && cap.modele_capture?.collection_id === 8576 && cap.modele_capture?.name === "Chromebook CM14",
   "modèle connu : jamais un repli ; modele_capture fidèle");
 {

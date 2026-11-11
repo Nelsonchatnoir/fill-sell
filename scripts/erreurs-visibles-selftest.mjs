@@ -143,7 +143,7 @@ console.log("\n[2 bis] L'index du Stock : filtre « État », pastille « à tra
     compteursStock(items, indexSelonARegler(indexEtatStock(items, parArticle, "fr"), parArticle, { plateformesHorsJeu: plateformesHorsJeu({ plateformesFermees: ["leboncoin"] }) })).enEchec === 0);
 }
 
-console.log("\n[3] Le suivi du lot et sa ligne (Marta, B7)");
+console.log("\n[3] Le suivi du lot et sa ligne (Compte-essai-3, B7)");
 {
   // Marta (ac19c8c9…, Rapallo 16035) : lot 0f5a563f lancé à 12:08, 38 publications Leboncoin closes « hors de France ».
   const lot2 = { id: "0f5a563f-74e9-4fd2-a8f5-4c4e7e7a0e01", le: "2026-10-25T11:08:15Z" };
@@ -155,7 +155,7 @@ console.log("\n[3] Le suivi du lot et sa ligne (Marta, B7)");
   const clos = Object.values(jobsParArticle).flat();
   ok("précondition : 38 clôtures, message vrai, jamais « à ta demande »", clos.length === 38 && clos.every((j) => j.status === "cancelled" && j.error === MESSAGE_LBC_HORS_FRANCE && !arreteeParLaPersonne(j)));
   const midi = Date.parse("2026-10-25T13:00:00Z");
-  ok("Marta : plus de ligne « Ton lot · 0 annonce en ligne sur 38 » (lot fait seulement de clôtures)", lotLePlusRecent(jobsParArticle, midi) === null);
+  ok("Compte-essai-3 : plus de ligne « Ton lot · 0 annonce en ligne sur 38 » (lot fait seulement de clôtures)", lotLePlusRecent(jobsParArticle, midi) === null);
   ok("les clôtures sortent du suivi de l'app (jobsDuSuivi)", jobsDuSuivi(clos).length === 0 && clos.every(clotureDeNosRegles));
   ok("suiviDuLot appelé seul garde le groupe neutre « réservé à la France » (contrat de lbc-adresse-france)", suiviDuLot([clos[0]]).lignes[0]?.groupe === "hors_france");
   // Un lot mixte : Vinted en ligne + Leboncoin clos → « 1 en ligne sur 1 », jamais « 1 sur 2 ».
@@ -227,7 +227,7 @@ console.log("\n[6] Réglages › Plateformes et câblage des écrans");
 {
   // La liste que ReglagesPage passe à « Mes plateformes » et au compteur (sessions.total = sa longueur).
   const sessionsMarta = plateformesDeReleve([], false).filter((p) => !["leboncoin"].includes(p));
-  ok("Marta : « comptes connectés x sur 3 » (Vinted, Beebs, eBay), plus « sur 4 » avec Leboncoin",
+  ok("Compte-essai-3 : « comptes connectés x sur 3 » (Vinted, Beebs, eBay), plus « sur 4 » avec Leboncoin",
     sessionsMarta.length === 3 && !sessionsMarta.includes("leboncoin") && plateformesDeReleve([], false).length === 4, sessionsMarta.join(","));
   const reglages = lire("src/reglages/ReglagesPage.jsx");
   ok("ReglagesPage : plateformesSession sans les plateformes fermées (ligne et compteur « x sur N »)",

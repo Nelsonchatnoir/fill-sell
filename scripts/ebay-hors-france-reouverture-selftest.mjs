@@ -41,10 +41,10 @@ ok(E.reouvertureEbayHorsFrance(close, { ...ctx, maintenant: t("2026-12-01T00:00:
 ok(E.reouvertureEbayHorsFrance({ ...close, action: "republish" }, ctx).motif === "pas_une_publication", "une republication ne se rouvre jamais");
 ok(E.reouvertureEbayHorsFrance({ ...close, published_at: "2026-10-25T13:00:00Z" }, ctx).motif === "deja_publiee", "déjà publiée → rien");
 ok(E.reouvertureEbayHorsFrance({ ...close, status: "pending" }, ctx).motif === "pas_close_hors_france", "pas close par cette règle → rien");
-const w = E.ecritureReouvertureEbayHorsFrance(close, { compte: "aelevy.-86", message: "Ton compte eBay est bien relié…", par: "ebay-oauth-callback", maintenant: t("2026-10-25T23:30:00Z"), archiver: (a, e) => [...(a ?? []), { erreur: e }] });
+const w = E.ecritureReouvertureEbayHorsFrance(close, { compte: "boutique-5de22691", message: "Ton compte eBay est bien relié…", par: "ebay-oauth-callback", maintenant: t("2026-10-25T23:30:00Z"), archiver: (a, e) => [...(a ?? []), { erreur: e }] });
 ok(w.status === "needs_user" && w.platform_fields.needs_user_source === "ebay_compte_a_finir" && w.error.startsWith("Ton compte eBay est bien relié"), "rouverte en « compte à finir » (le ré-armement la publie dès que le compte est prêt)");
 const m = w.platform_fields.ebay_hors_france_rouverte;
-ok(m.compte_avant === "echa_5" && m.compte_apres === "aelevy.-86" && m.site_avant === "US" && m.site_apres === "France", "le marqueur dit l'ancien et le nouveau compte");
+ok(m.compte_avant === "echa_5" && m.compte_apres === "boutique-5de22691" && m.site_avant === "US" && m.site_apres === "France", "le marqueur dit l'ancien et le nouveau compte");
 ok(w.platform_fields.hors_quota === true && w.platform_fields.erreurs_archivees?.[0]?.erreur?.includes("echa_5"), "hors quota gardé, la clôture archivée");
 ok(E.reouvertureEbayHorsFrance({ ...close, ...w, status: "cancelled" }, ctx).motif === "deja_rouverte", "une seule fois : refermée, elle ne se rouvre plus");
 

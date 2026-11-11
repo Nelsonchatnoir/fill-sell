@@ -39,7 +39,7 @@ ok(T.texteDuVendeurDe({ ...louis, origine: "lens", attributs: { description_sour
 ok(T.texteDuVendeurDe({ ...louis, description: "Rangement" }).description === "", "un seul mot : pas un texte");
 ok(T.texteDuVendeurDe(null).titre === "", "pas de ligne : rien");
 
-console.log("2. le cas de Louis (copie à 154 caractères, fiche à 315)");
+console.log("2. le cas de Compte-essai-2 (copie à 154 caractères, fiche à 315)");
 const generalesCopie = { titre: louis.titre, description: ANCIEN, etat: "Très bon état" };
 const patch = T.champsAReprendreDeLaFiche(T.texteDuVendeurDe(louis), generalesCopie);
 ok(patch.description === RECENT && !("titre" in patch), "la description est reprise de la fiche, le titre (identique) ne bouge pas");

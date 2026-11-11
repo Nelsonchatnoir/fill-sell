@@ -17,7 +17,7 @@ ok(trancheLbcDepuisGrammes(100) === "Jusqu’à 100 g", "100 → « Jusqu’à 1
 ok(trancheLbcDepuisGrammes(250) === "De 100 g à 250 g", "250 → « De 100 g à 250 g » (2 annonces)");
 ok(trancheLbcDepuisGrammes(1000) === "De 500 g à 1 kg", "1000 → « De 500 g à 1 kg » (21 annonces)");
 
-console.log("2. Le calendrier des Petites Fioles");
+console.log("2. Le calendrier des Petites Compte-02ca0f20");
 ok(trancheLbcDepuisGrammes(500) === "De 250 g à 500 g", "500 → « De 250 g à 500 g »", trancheLbcDepuisGrammes(500));
 
 console.log("3. Bornes et cas limites");

@@ -27,7 +27,7 @@ cas("1. ce que lui seul peut faire : connexion, compte vendeur à finir, compte 
 });
 
 const { messageCompteVintedBloque } = await import(pathToFileURL(path.join(RACINE, "supabase/functions/_shared/vinted-compte-bloque.js")).href);
-cas("1b. (04/11, lp.vtd89) le compte bloqué PAR VINTED (page /main/banned) est un refus de la plateforme, jamais chez nous", () => {
+cas("1b. (04/11, client-c4d4807f) le compte bloqué PAR VINTED (page /main/banned) est un refus de la plateforme, jamais chez nous", () => {
   est(causeDuTexte({ texte: messageCompteVintedBloque("publish", null), source: "compte_vinted_bloque", platform: "vinted" }), ORIGINE.PLATEFORME, "compte_bloque");
   est(causeDuTexte({ texte: messageCompteVintedBloque("publish", null), source: null, platform: "vinted" }), ORIGINE.PLATEFORME, "compte_bloque");
   est(causeDuTexte({ texte: messageCompteVintedBloque("delete", "Jeans"), source: null, platform: "vinted" }), ORIGINE.PLATEFORME, "compte_bloque");
@@ -74,7 +74,7 @@ cas("4. la plateforme qui refuse sans motif (modération) est à part ; Opla (qu
   est(causeDuTexte({ texte: "Beebs a refusé cette annonce à sa vérification (Beebs ne dit pas pourquoi), et elle repartirait à l'identique", source: "refus_beebs_meme_contenu" }), ORIGINE.PLATEFORME, "moderation");
 });
 
-cas("5. un échec de notre fait puis abandonné par l'utilisateur reste un ÉCHEC (mele.marta, 34f17de2 et adf0454e, 24/10)", () => {
+cas("5. un échec de notre fait puis abandonné par l'utilisateur reste un ÉCHEC (client-ac19c8c9, 34f17de2 et adf0454e, 24/10)", () => {
   const job = {
     platform: "vinted", action: "publish", status: "cancelled",
     error: "Stopped at your request — Vinted was abandoned for this item. Nothing was published, nothing was charged.",

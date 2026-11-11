@@ -34,7 +34,7 @@ ok(!/setInterval/.test(b), "jamais de relecture en boucle");
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 ok(app.includes("{user&&<BandeauLeboncoinPause userId={user.id} lang={lang}/>}"), "monté dans l'app (PC et téléphone)");
 
-console.log("\n4. (07/11, Goulvenk) SESSION FERMÉE : « CONNECTE-TOI », JAMAIS « RESTREINT »");
+console.log("\n4. (07/11, Compte-521b7f89) SESSION FERMÉE : « CONNECTE-TOI », JAMAIS « RESTREINT »");
 const fermee = pauseLeboncoin(ps({ depuis: DEPUIS, derniere_preuve: DEPUIS, signe: "session_fermee" }));
 ok(fermee?.sessionFermee === true, "signe « session_fermee » → bandeau de connexion");
 ok(pauseLeboncoin(ps({ depuis: DEPUIS, signe: "http_403" }))?.sessionFermee === false && pauseLeboncoin(ps({ depuis: DEPUIS, signe: "datadome" }))?.sessionFermee === false,

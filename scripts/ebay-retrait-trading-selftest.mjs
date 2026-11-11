@@ -10,7 +10,7 @@ import fs from "node:fs";
 
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
-const xml = ({ id = "178450879276", vendeur = "vintora16", statut = "Active", vendus = 0, type = "FixedPriceItem", ack = "Success" } = {}) =>
+const xml = ({ id = "178450879276", vendeur = "boutique-b245e854", statut = "Active", vendus = 0, type = "FixedPriceItem", ack = "Success" } = {}) =>
   `<?xml version="1.0" encoding="UTF-8"?><GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>${ack}</Ack><Item><ItemID>${id}</ItemID>` +
   `<ListingDetails><EndTime>2026-11-14T18:25:00.000Z</EndTime></ListingDetails><ListingType>${type}</ListingType>` +
   `<Seller><UserID>${vendeur}</UserID></Seller><SellingStatus><QuantitySold>${vendus}</QuantitySold><ListingStatus>${statut}</ListingStatus></SellingStatus>` +
@@ -18,20 +18,20 @@ const xml = ({ id = "178450879276", vendeur = "vintora16", statut = "Active", ve
 
 console.log("\n1. LA LECTURE GetItem");
 const l = lireItemTrading(xml());
-ok(l.itemId === "178450879276" && l.vendeur === "vintora16" && l.statut === "Active" && l.type === "FixedPriceItem", "champs lus", JSON.stringify(l));
+ok(l.itemId === "178450879276" && l.vendeur === "boutique-b245e854" && l.statut === "Active" && l.type === "FixedPriceItem", "champs lus", JSON.stringify(l));
 const err = lireItemTrading(`<GetItemResponse><Ack>Failure</Ack><Errors><ShortMessage>Invalid</ShortMessage><LongMessage>Item not found.</LongMessage><ErrorCode>17</ErrorCode><SeverityCode>Error</SeverityCode></Errors></GetItemResponse>`);
 ok(err.ack === "Failure" && err.erreurs[0]?.code === "17", "erreur eBay lue");
 
 console.log("\n2. AVANT TOUT GESTE");
-ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "vintora16", lecture: l }).geste === "retirer", "Amega : même numéro, même vendeur, active → retirer");
-ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "vintora16", lecture: l }).appel === "EndFixedPriceItem", "prix fixe → EndFixedPriceItem");
+ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "boutique-b245e854", lecture: l }).geste === "retirer", "Compte-b245e854 : même numéro, même vendeur, active → retirer");
+ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "boutique-b245e854", lecture: l }).appel === "EndFixedPriceItem", "prix fixe → EndFixedPriceItem");
 ok(verdictAvantRetraitTrading({ itemId: "1", compteEbay: "v", lecture: lireItemTrading(xml({ id: "1", vendeur: "v", type: "Chinese" })) }).appel === "EndItem", "enchère → EndItem");
-ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "VINTORA16", lecture: l }).geste === "retirer", "vendeur comparé sans la casse");
+ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "BOUTIQUE-B245E854", lecture: l }).geste === "retirer", "vendeur comparé sans la casse");
 ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "autre_pseudo", lecture: l }).geste === "autre_compte", "autre compte eBay → jamais touchée");
-ok(verdictAvantRetraitTrading({ itemId: "178450879277", compteEbay: "vintora16", lecture: l }).geste === "identite", "eBay rend un autre numéro → arrêt");
-ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "vintora16", lecture: lireItemTrading(xml({ statut: "Completed", vendus: 1 })) }).geste === "deja_vendue", "déjà vendue sur eBay → on le dit (double vente)");
-ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "vintora16", lecture: lireItemTrading(xml({ statut: "Ended" })) }).geste === "deja_terminee", "déjà terminée sans vente → rien à faire");
-ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "vintora16", lecture: err }).geste === "illisible", "lecture en échec → rien n'est touché");
+ok(verdictAvantRetraitTrading({ itemId: "178450879277", compteEbay: "boutique-b245e854", lecture: l }).geste === "identite", "eBay rend un autre numéro → arrêt");
+ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "boutique-b245e854", lecture: lireItemTrading(xml({ statut: "Completed", vendus: 1 })) }).geste === "deja_vendue", "déjà vendue sur eBay → on le dit (double vente)");
+ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "boutique-b245e854", lecture: lireItemTrading(xml({ statut: "Ended" })) }).geste === "deja_terminee", "déjà terminée sans vente → rien à faire");
+ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "boutique-b245e854", lecture: err }).geste === "illisible", "lecture en échec → rien n'est touché");
 ok(verdictAvantRetraitTrading({ itemId: "178450879276", compteEbay: "", lecture: l }).geste === "autre_compte", "compte relié inconnu → jamais touchée");
 
 console.log("\n3. LA PREUVE APRÈS");
@@ -41,7 +41,7 @@ ok(preuveApresRetraitTrading({ itemId: "178450879276", lecture: null }).prouve =
 
 console.log("\n4. QUELS RETRAITS PASSENT PAR L'API");
 const amega = { platform: "ebay", action: "delete", status: "needs_user", platform_fields: { needs_user_source: "connexion", attente_session: { depuis: "2026-10-14T17:50:00Z" } } };
-ok(retraitBloqueParSessionEbay(amega), "Amega 3691ee7a (needs_user connexion) → voie API");
+ok(retraitBloqueParSessionEbay(amega), "Compte-b245e854 3691ee7a (needs_user connexion) → voie API");
 ok(retraitBloqueParSessionEbay({ ...amega, status: "pending", platform_fields: { attente_session: {} } }), "en attente de session → voie API");
 ok(!retraitBloqueParSessionEbay({ ...amega, status: "pending", platform_fields: {} }), "un retrait en file normal reste à l'extension");
 ok(!retraitBloqueParSessionEbay({ ...amega, platform: "leboncoin" }), "eBay seulement");
@@ -67,7 +67,7 @@ ok(/await lire\(\)/.test(w) && /preuveApresRetraitTrading/.test(w), "GetItem rel
 ok(/if \(!parSession && !retraitAttendLePoste\(j\)\) continue;/.test(w) && /platform_fields, created_at"\)/.test(w),
   "reroutage : session absente OU ordinateur qui n'a pas fait le retrait à temps (created_at lu)");
 
-console.log("\n6. LA PUBLICATION D'ORIGINE SORT DE LA VEILLE (24/10 nuit, jocabroc8)");
+console.log("\n6. LA PUBLICATION D'ORIGINE SORT DE LA VEILLE (24/10 nuit, client-53efea05)");
 // Cas réel : estampe en double, fiche 1791040801501, annonce 407302958488 (import du
 // relevé, rattachée à la main) retirée par l'API Trading ; l'annonce gardée est
 // 407302931655, sur l'AUTRE fiche (1791818408222).
@@ -85,7 +85,7 @@ const autreCompte = { ...pubA, id: "autre-1", user_id: "00000000-0000-0000-0000-
 const leboncoin = { ...pubA, id: "lbc-1", platform: "leboncoin" };
 const ids = (l) => l.map((p) => p.id).sort().join(",");
 ok(ids(sourcesACloreApresRetraitTrading([pubA, ancienne, gardee], retraitJ, "407302958488")) === "b55aefd3",
-  "jocabroc8 : seule la publication de l'annonce retirée est close (l'annonce gardée 407302931655 jamais)");
+  "client-53efea05 : seule la publication de l'annonce retirée est close (l'annonce gardée 407302931655 jamais)");
 ok(ids(sourcesACloreApresRetraitTrading([repub], retraitJ, "407302958488")) === "rep-1", "republication du même numéro (lien avec titre) → close aussi");
 ok(sourcesACloreApresRetraitTrading([vendue], retraitJ, "407302958488").length === 0, "eBay l'a dite vendue (sold) → jamais close ici");
 ok(sourcesACloreApresRetraitTrading([contraire], retraitJ, "407302958488").length === 0, "colonne et lien contraires → jamais touchée");

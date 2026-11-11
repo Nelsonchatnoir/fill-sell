@@ -1277,7 +1277,7 @@ end $$;
 -- ═══ C. Moteur de rapprochement : annonces Opla orphelines ══════════════════
 create temp table _orph as select a.* from annonces_plateforme a
  where a.user_id = (select u from _x) and a.platform = 'opla' and a.inventaire_id is null and a.disparu_le is null and a.ignoree_le is null;
-insert into _r select 'C0 XEWER : annonces Opla orphelines présentes (données de l''essai)', count(*) > 0, count(*) || ' orpheline(s)' from _orph;
+insert into _r select 'C0 COMPTE-DE63CA45 : annonces Opla orphelines présentes (données de l''essai)', count(*) > 0, count(*) || ' orpheline(s)' from _orph;
 do $$ declare a record; r jsonb; n_ok int := 0; n int := 0; f bigint; j uuid; n_f int := 0; n_j int := 0; begin
   for a in select * from _orph loop
     n := n + 1;

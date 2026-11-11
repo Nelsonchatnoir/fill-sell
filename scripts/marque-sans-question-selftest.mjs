@@ -40,7 +40,7 @@ const arrivee = (copies, initialListing) => sansMarqueDOffice(
 ).edited;
 const copiesVides = () => Object.fromEntries(["vinted", "beebs", "leboncoin", "ebay", "depop"].map((p) => [p, { title: "Parure", platform_fields: { marque: null, etat: "Neuf avec étiquette" } }]));
 
-console.log("1. Cas lucyburaux988 rejoué : aucune marque nulle part → « Sans marque », sans question :");
+console.log("1. Cas client-61ecf180 rejoué : aucune marque nulle part → « Sans marque », sans question :");
 {
   // Le résultat de Lens EST l'initialListing du parcours Lens (LensTab).
   const lens = { titre: "Parure bijoux papillon rouge et argent - collier, boucles d'oreilles, bague", marque: null, notes: "Parure sans marque identifiable", couleur: "Rouge" };

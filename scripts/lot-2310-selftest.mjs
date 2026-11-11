@@ -135,7 +135,7 @@ console.log("4b. « CASQUE » : LA MARQUE, LA TAILLE ET LE CONTEXTE AVANT LE MOT
 {
   const { detectObjectKeywordDetail, familleDuCasque } = await import("../src/utils/shared.js");
   const ic = (t, d = "") => detectObjectKeywordDetail(t, d)?.icon ?? null;
-  ok(ic("Casque enfant Oxelo Decathlon - Taille 55-58 cm", " Oxelo") === "⛑️", "louis-seller : « Casque enfant Oxelo Decathlon - Taille 55-58 cm » → ⛑️ (sport), plus 🎧");
+  ok(ic("Casque enfant Oxelo Decathlon - Taille 55-58 cm", " Oxelo") === "⛑️", "client-447d920c : « Casque enfant Oxelo Decathlon - Taille 55-58 cm » → ⛑️ (sport), plus 🎧");
   ok(ic("Casque de ski Quechua bleu – Taille S") === "⛑️" && ic("Casque de vélo") === "⛑️" && ic("Casque chantier enfant") === "⛑️", "ski, vélo, chantier → ⛑️");
   ok(ic("Casque de moto homme taille L") === "🪖" && ic("Casque Exo 520 Air Shade noir mat taille M", " Scorpion") === "🪖", "moto (mot ou marque) → 🪖");
   ok(ic("Casque audio Jabra") === "🎧" && ic("Bose QuietComfort Ultra - Casque réduction de bruit") === "🎧" && ic("Casque gaming sans fil blanc et bleu") === "🎧", "⛔ les casques audio restent 🎧");

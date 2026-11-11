@@ -24,7 +24,7 @@ const ecran = fs.readFileSync(join(ROOT, "src/annonces/EcranDoublons.jsx"), "utf
 let ko = 0;
 const ok = (nom, cond, detail = "") => { if (!cond) ko++; console.log(`  ${cond ? "ok  " : "KO  "} ${nom}${cond ? "" : `   ← ${detail}`}`); };
 
-console.log("[1] L'app : les questions de XEWER et d'Ornella");
+console.log("[1] L'app : les questions de COMPTE-DE63CA45 et d'Ornella");
 const vendu = (id, title) => ({ id, title, statut: "vendu" });
 const items = [
   vendu(1789717153245001, "Syphon Filter 2 Platinum PS1 PAL FR"),

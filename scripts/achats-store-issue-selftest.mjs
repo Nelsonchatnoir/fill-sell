@@ -82,7 +82,7 @@ verifier(/decisionNotif\.effet === "on"\) isPremium = true;/.test(wh) && /if \(P
 verifier(/if \(!decisionNotif\.connu\) \{\s*\n\s*await signalerNotificationStoreInconnue/.test(wh) && /if \(!decisionJ\.connu\) \{\s*\n\s*await signalerNotificationStoreInconnue/.test(gw), 'Apple ET Google : un inconnu est signalé (alerte support@)');
 verifier(/journaliserNotificationStore\(supabaseAdmin, ligneJournal\(/.test(wh) && /journaliserNotificationStore\(supabaseAdmin, ligneJournal\(/.test(gw), 'Apple ET Google : chaque notification est enregistrée');
 
-console.log('\n4 bis. Un remboursement est signalé comme tel (29/10, boncoin59300)');
+console.log('\n4 bis. Un remboursement est signalé comme tel (29/10, client-3f91c02e)');
 {
   const rv = D.decisionGoogleRemboursement({ purchaseToken: 'x', orderId: 'GPA.3369-1510-4339-09469', productType: 1, refundType: 1 });
   verifier(rv.connu === true && rv.effet === 'remboursement' && rv.type === 'abonnement' && rv.partiel === false && rv.nom === 'REMBOURSEMENT_ABONNEMENT_TOTAL', 'voidedPurchase (abonnement, total) : connu, « remboursement », jamais « inconnu »', JSON.stringify(rv));

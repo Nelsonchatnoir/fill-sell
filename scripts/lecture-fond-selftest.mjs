@@ -187,7 +187,7 @@ console.log("6. (26/10, urgence lenteur) La lecture de fond s'efface quand la pe
   ok(/if \(Date\.now\(\) - derniereDemandeAppMs < FOND_PAUSE_APRES_DEMANDE_MS\) return "personne_publie";/.test(bg) && /FOND_PAUSE_APRES_DEMANDE_MS = 10 \* 60_000/.test(bg), "extension : 10 min après une demande de l'app");
 }
 
-console.log("7. (28/10, jocabroc8) Page occupée ≠ pont mort ; extension occupée = une seule demande, jamais le formulaire d'édition");
+console.log("7. (28/10, client-53efea05) Page occupée ≠ pont mort ; extension occupée = une seule demande, jamais le formulaire d'édition");
 {
   const bloquer = (ms) => { const fin = Date.now() + ms; while (Date.now() < fin) { /* le fil de la page est pris */ } };
   // 7a. La page est prise 1 s juste après le ping (rendu d'un gros Stock) : la réponse arrive après le minuteur.

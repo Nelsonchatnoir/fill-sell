@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // BEEBS : LE REFUS DE « METTRE EN VENTE » LU DANS L'ÉTAT DU FORMULAIRE (08/11 soir, Julian) — `npm run selftest:beebs-refus-etat-formulaire`
 // ═══════════════════════════════════════════════════════════════════════════
-// julian.boissel@gmail.com, 5 publications × 4 essais (08/11 18:17 → 19:29, 0.6.179) : « Dépôt Beebs non confirmé »,
+// compte fc37c75e, 5 publications × 4 essais (08/11 18:17 → 19:29, 0.6.179) : « Dépôt Beebs non confirmé »,
 // sonde « AUCUNE capture » (rien n'est parti), « le formulaire affiche » = cinq conteneurs de champs, jamais le motif.
 // Relevé sur beebs.app/fr/listing le 08/11 : formulaire react-hook-form ; au clic, le gestionnaire valide puis pose
 // chaque refus par setError et RETOURNE sans requête. Trois refus étaient illisibles : compte non chargé (erreur racine

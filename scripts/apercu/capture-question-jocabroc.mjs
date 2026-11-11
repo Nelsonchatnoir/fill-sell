@@ -65,12 +65,12 @@ try {
     verifier((await page.inputValue('input[inputmode="decimal"] >> nth=0')) === '30', "la saisie « 30 » s'affiche telle quelle (l'unité est à côté)");
     const deborde = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     verifier(!deborde, 'aucun débordement horizontal');
-    await page.screenshot({ path: path.join(SORTIE, `question-jocabroc-${largeur}.png`), fullPage: true });
+    await page.screenshot({ path: path.join(SORTIE, `question-boutique-53efea05-${largeur}.png`), fullPage: true });
     await page.close();
   }
   await navigateur.close();
 } finally {
   stop();
 }
-console.log(echecs.length ? `\n✗ ${echecs.length} contrôle(s) en échec` : '\n✓ tout est vert — captures dans screenshots-review/question-jocabroc-*.png');
+console.log(echecs.length ? `\n✗ ${echecs.length} contrôle(s) en échec` : '\n✓ tout est vert — captures dans screenshots-review/question-boutique-53efea05-*.png');
 process.exit(echecs.length ? 1 : 0);

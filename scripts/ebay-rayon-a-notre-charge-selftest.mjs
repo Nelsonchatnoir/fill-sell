@@ -34,7 +34,7 @@ ok(FEUILLES.find((x) => x.id === '93391')?.chemin.join(' > ') === "Bébé, puér
 console.log('\n2. Un lot de vêtements sans rayon sûr : « Tenues, ensembles » de son genre');
 const lot = R.rayonLotDeVetements({ titre: 'Lot femme M/L T40 – Last Queen + Neo Noir – Neuf – Valeur 184,95€', objet: 'lot de deux vêtements',
   cheminMappe: ['Vêtements, accessoires', 'Femme : vêtements, accessoires', 'Femme : vêtements', 'Robes'], genre: 'Femme' });
-ok(lot?.id === '260011' && lot.chemin.join(' > ') === 'Vêtements, accessoires > Femme : vêtements, accessoires > Femme : vêtements > Tenues, ensembles', `grizstyle : ${lot?.id} « ${lot?.chemin.at(-1)} »`);
+ok(lot?.id === '260011' && lot.chemin.join(' > ') === 'Vêtements, accessoires > Femme : vêtements, accessoires > Femme : vêtements > Tenues, ensembles', `boutique-6e3d92b3 : ${lot?.id} « ${lot?.chemin.at(-1)} »`);
 for (const [g, cible] of Object.entries(R.TENUES_ENSEMBLES)) {
   const f = FEUILLES.find((x) => x.id === cible.id);
   ok(f && f.chemin.join(' > ') === cible.chemin.join(' > '), `« Tenues, ensembles » ${g} (${cible.id}) existe dans l'arbre eBay France relevé`);
@@ -68,7 +68,7 @@ console.log('\n4. Le rejeu des tâches déjà arrêtées');
 const t = (pf, x = {}) => ({ status: 'needs_user', platform: 'ebay', action: 'publish', platform_fields: pf, ...x });
 const lit = t({ needs_user_source: 'relancer', last_diagnostic: { etape: 'condition', quoi: 'etat_sans_correspondance' }, condition_relance_auto: { at: 'x' }, ebayCategorieAttente: { choix: [] } });
 const lotJ = t({ needs_user_source: 'relancer', last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_choisir' }, ebayCategorieAttente: { choix: [{ id: '63862' }] } });
-ok(R.aRejouer(lit) && R.aRejouer(lotJ), 'les deux tâches de grizstyle sont rejouées');
+ok(R.aRejouer(lit) && R.aRejouer(lotJ), 'les deux tâches de boutique-6e3d92b3 sont rejouées');
 ok(!R.aRejouer(t({ needs_user_source: 'relancer', last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_confirmer' } })), '« Catégorie eBay à confirmer » (le choix de la personne) : jamais rejouée');
 ok(!R.aRejouer(t({ needs_user_source: 'ebay_verification_identite', last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_choisir' } })), 'une autre source (compte, connexion…) : jamais');
 ok(!R.aRejouer({ ...lotJ, status: 'pending' }) && !R.aRejouer({ ...lotJ, platform: 'vinted' }) && !R.aRejouer({ ...lotJ, action: 'delete' }), 'needs_user eBay publication seulement');

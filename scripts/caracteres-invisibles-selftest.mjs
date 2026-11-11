@@ -30,7 +30,7 @@ const TITRE_SMAIL = `${Z}Basket Asics Gel-Lethal MP 7 - Rose et Blanche - Taille
 const MOTIF_SMAIL = `Tu ne peux pas utiliser les caractères spéciaux (${Z}) dans le champ Titre`;
 
 console.log("\n[A] le nettoyage");
-ok(M.nettoyerTitre(TITRE_SMAIL) === TITRE_SMAIL.slice(1), "le titre de Smail perd son U+200B, rien d'autre");
+ok(M.nettoyerTitre(TITRE_SMAIL) === TITRE_SMAIL.slice(1), "le titre de Compte-dc8fc12a perd son U+200B, rien d'autre");
 const corpus = [
   ["Pull col roulé : laine mérinos – état neuf", "Pull col roulé : laine mérinos – état neuf", "insécable → espace ; accents, tiret long intacts"],
   ["Robe à fleurs", "Robe à fleurs", "espaces fines → espaces ordinaires"],

@@ -2,7 +2,7 @@
 // Selftest « Vinted : la fiche et le signal suivent l'annonce en ligne » (08/10)
 //   node scripts/vinted-annonce-en-ligne-selftest.mjs
 //
-// LE CAS (louis@ttfamily.fr) : la synchro du dressing collait la vente d'une
+// LE CAS (compte faf5021a) : la synchro du dressing collait la vente d'une
 // ANCIENNE annonce (job déjà « sold ») au job publié de la fiche — l'annonce
 // NEUVE, en ligne ; et réécrivait sur la fiche l'id et le statut « sold » de
 // l'ancienne. 06/10 15:02 : 14 « Oui » sur ces bandeaux, 14 ventes, 14

@@ -31,10 +31,10 @@ console.log("▸ liste fermée");
 check("« shein » n'est PAS dans la liste (accepté par Leboncoin, 148 articles en base)", !TERMES_SITES_LEBONCOIN.includes("shein"));
 check("« leboncoin » n'est PAS dans la liste", !TERMES_SITES_LEBONCOIN.some((t) => /leboncoin/.test(t)));
 check("« vinted » y est (prouvé : 403)", TERMES_SITES_LEBONCOIN.includes("vinted"));
-check("« instagram » y est (prouvé : 403 le 18/10, jocabroc8 3e3074ef)", TERMES_SITES_LEBONCOIN.includes("instagram"));
+check("« instagram » y est (prouvé : 403 le 18/10, client-53efea05 3e3074ef)", TERMES_SITES_LEBONCOIN.includes("instagram"));
 check("« insta » seul n'y est PAS (« instant », « installé »)", !TERMES_SITES_LEBONCOIN.includes("insta"));
 
-console.log("▸ (18/10) la description de jocabroc8 : la phrase « vidéo disponible sur instagram » part, le reste reste");
+console.log("▸ (18/10) la description de client-53efea05 : la phrase « vidéo disponible sur instagram » part, le reste reste");
 {
   const joca = "Aucun défaut majeur évident n’a été constaté lors de l’examen visuel.\nLes photographies et une vidéo disponible sur instagram permettent d’apprécier les détails du décor. Merci de les examiner attentivement.";
   const r = n(joca);

@@ -42,7 +42,7 @@ function ordrePassage(faitsAujourdhui) {
 
 const CRENEAU = 4 * 3600; // 14 400 s
 
-console.log("\n[1] Joséphine : Beebs n'est plus gelé, Vinted pas affamé (N=3)");
+console.log("\n[1] Client-essai-1 : Beebs n'est plus gelé, Vinted pas affamé (N=3)");
 {
   const N = 3; // vinted + beebs + leboncoin actives+éligibles le soir
   const plats = {

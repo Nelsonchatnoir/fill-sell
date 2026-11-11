@@ -37,7 +37,7 @@ select public.spend_coins_and_publish('original', jsonb_build_array(jsonb_build_
     'lbcTransporteurs', jsonb_build_array('Shop2Shop by Chronopost', 'Mondial Relay', 'Colissimo'),
     'categorie_source', 'choix_humain',
     'categorie_choisie', jsonb_build_object('id', null, 'le', now(), 'chemin', jsonb_build_array('Mode', 'Vêtements')),
-    'test_nico', 'lot B 29/10 : marque par recherche (cas boncoin59300, Air Jordan)'
+    'test_nico', 'lot B 29/10 : marque par recherche (cas client-3f91c02e, Air Jordan)'
   )
 ))) as publication;
 

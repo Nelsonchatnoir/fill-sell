@@ -9,11 +9,11 @@
 // est capturé ici — rien ne sort de la machine, aucun compte, aucune session.
 //
 //     node scripts/apercu/capture-moteur-taille-titre.mjs
-//     (ou : vite, puis /scripts/apercu/moteur-taille-titre.html?cas=deadroz|vide|conflit|ornella|unique_vide|unique_tu|unique_sans_option|unique_doute)
+//     (ou : vite, puis /scripts/apercu/moteur-taille-titre.html?cas=cas_7373c96c|vide|conflit|ornella|unique_vide|unique_tu|unique_sans_option|unique_doute)
 import { createRoot } from 'react-dom/client';
 import ListingPreviewScreen from '../../src/components/ListingPreviewScreen.jsx';
 
-const CAS = new URLSearchParams(location.search).get('cas') || 'deadroz';
+const CAS = new URLSearchParams(location.search).get('cas') || 'cas_7373c96c';
 
 // Grilles RELEVÉES (platform_category_aspects, 19/10).
 const GRILLE_HOMME = ["32", "34", "36", "38", "40", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60", "62", "64", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "4XL", "5XL", "6XL", "7XL", "8XL"];
@@ -21,7 +21,7 @@ const GRILLE_FEMME = ["XXXS / 30", "XXS / 32", "XS / 34", "S / 36", "M / 38", "L
 const GRILLE_BEBE = ["Prématuré (- de 45 cm)", "Naissance - 0 mois (45-50 cm)", "1 mois (50-54 cm)", "3 mois (54-60 cm)", "6 mois (60-66 cm)", "9 mois (67-74 cm)", "12 mois (74-80 cm)", "18 mois (80-86 cm)", "24 mois (86-94 cm)", "3 ans (94-102 cm)", "4 ans (102-108 cm)"];
 const ARTICLES = {
   // DeadRoz, 19/10 12:19 : la fiche « W30 » (synchro Vinted), le titre dit FR40.
-  deadroz: { titre: "Jeans Levi's vintage 511 W30 L32 FR40 homme bleu marine coupe slim J32", taille: "W30", genre: "Homme", grille: GRILLE_HOMME, icone: "👖" },
+  cas_7373c96c: { titre: "Jeans Levi's vintage 511 W30 L32 FR40 homme bleu marine coupe slim J32", taille: "W30", genre: "Homme", grille: GRILLE_HOMME, icone: "👖" },
   // Une copie SANS taille, le titre la dit entre parenthèses.
   vide: { titre: "Jean Levi's Homme braguette patch en cuir effet usagé 100% coton bleu W36 L34 (46) J398", taille: "", genre: "Homme", grille: GRILLE_HOMME, icone: "👖" },
   // La fiche et le titre se contredisent (W32 ≠ W42 FR52) : la question reste.
@@ -37,7 +37,7 @@ const ARTICLES = {
   // Deux tailles dites : « Taille unique / L » → doute, la question reste.
   unique_doute: { titre: "Pull fluide à liens - Taille unique / L", taille: "", genre: "Femme", grille: GRILLE_FEMME, icone: "🧶" },
 };
-const A = ARTICLES[CAS] ?? ARTICLES.deadroz;
+const A = ARTICLES[CAS] ?? ARTICLES.cas_7373c96c;
 const DESCRIPTION = `${A.titre}. Très bon état.`;
 
 const photoSvg = (couleur) => 'data:image/svg+xml;utf8,' + encodeURIComponent(

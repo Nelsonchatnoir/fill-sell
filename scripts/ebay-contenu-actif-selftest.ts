@@ -15,7 +15,7 @@ const entitesDecodees = (h: string) => h.replace(/&#40;/g, "(").replace(/&#46;/g
 let n = 0;
 const ok = (c: boolean, nom: string) => { assert.ok(c, nom); console.log(`  ✓ ${nom}`); n++; };
 
-console.log("\n1. LE CAS DU 08/11 (Sébastien, 8d59f147)");
+console.log("\n1. LE CAS DU 08/11 (Compte-essai-8, 8d59f147)");
 const reel = "• Artiste : Mort Shuman\n• Album : Compilation de la collection Expression (PolyGram).\n• Titres inclus : Le Lac Majeur, Papa Tango Charly…\nEnvoi rapide (sous 24h/48h).";
 const h = descriptionEbay(reel, "Mort Shuman - Compilation \"Expression\" (16 titres)");
 ok(!MOTIF.test(brut(h)), "HTML brut : plus aucun motif de code");

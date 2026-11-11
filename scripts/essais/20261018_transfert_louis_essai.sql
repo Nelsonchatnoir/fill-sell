@@ -989,7 +989,7 @@ create trigger a_une_copie_entre_comptes_lies before insert on public.plateforme
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- CORPS du transfert de la boutique Vinted PERSO @evat (371531) de Louis :
--- louis@ttfamily.fr (C1, faf5021a) → louis-seller@ttfamily.fr (C2, 447d920c). 18/10.
+-- compte faf5021a (C1, faf5021a) → compte 447d920c (C2, 447d920c). 18/10.
 -- Inclus par 20261018_transfert_boutique_evat_louis.sql (BEGIN … COMMIT) et par
 -- scripts/essais/20261018_transfert_louis_essai.sql (… ROLLBACK). Ne pas lancer seul.
 -- Décisions de Nico (18/10) : @evat = PERSO → C2 ; @neyenonie (Vinted PRO), Beebs PRO, Leboncoin,
@@ -1197,8 +1197,8 @@ update profiles p set beta_flags = coalesce(p.beta_flags, '{}'::jsonb) || '{"mes
 
 -- ── 8. Contrôles (une seule erreur annule tout) ──────────────────────────────
 create temp table _verif as
-select 'C1 : plus aucune fiche @evat' as controle, (select count(*) from inventaire i, _c where i.user_id = _c.c1 and i.vinted_account_id = '371531') = 0 as ok
-union all select 'C2 : fiches @evat = E + celles de C2 seules', (select count(*) from inventaire i, _c where i.user_id = _c.c2 and i.vinted_account_id = '371531')
+select 'C1 : plus aucune fiche de la boutique 371531' as controle, (select count(*) from inventaire i, _c where i.user_id = _c.c1 and i.vinted_account_id = '371531') = 0 as ok
+union all select 'C2 : fiches de la boutique 371531 = E + celles de C2 seules', (select count(*) from inventaire i, _c where i.user_id = _c.c2 and i.vinted_account_id = '371531')
   = (select count(*) from _e) + (select count(*) from _backup_1810_louis_inventaire b, _c where b.user_id = _c.c2 and b.vinted_account_id = '371531')
     - (select count(*) from _d)
 union all select 'C2 : aucun numéro Vinted en double', not exists (select 1 from inventaire i, _c where i.user_id = _c.c2 and i.vinted_item_id is not null group by i.vinted_item_id having count(*) > 1)
@@ -1226,7 +1226,7 @@ union all select 'jumelles = fiches coupées = liens', (select count(*) from inv
 union all select 'comptes reliés', public.comptes_sont_lies((select c1 from _c), (select c2 from _c))
 union all select 'registre : 371531 → C2, 247512093 → C1', public.boutique_proprietaire('vinted', '371531') = (select c2 from _c)
   and public.boutique_proprietaire('vinted', '247512093') = (select c1 from _c)
-union all select 'pin C1 sans @evat', not exists (select 1 from profiles p, _c, jsonb_array_elements(p.vinted_sync_pin -> 'boutiques') b where p.id = _c.c1 and b ->> 'user_id' = '371531')
+union all select 'pin C1 sans la boutique 371531', not exists (select 1 from profiles p, _c, jsonb_array_elements(p.vinted_sync_pin -> 'boutiques') b where p.id = _c.c1 and b ->> 'user_id' = '371531')
 union all select 'bêta messages ouverte sur C2', (select (beta_flags ->> 'messages_bordereaux')::boolean from profiles p, _c where p.id = _c.c2);
 
 do $v$ begin
@@ -1237,14 +1237,14 @@ end $v$;
 
 -- Le bilan chiffré (lu par l'essai et par l'exécution réelle).
 create temp table _bilan as
-select 'fiches @evat passées à C2 (E)' as quoi, (select count(*) from _e)::text as n
+select 'fiches de la boutique 371531 passées à C2 (E)' as quoi, (select count(*) from _e)::text as n
 union all select 'fiches nues de C2 remplacées (D)', (select count(*) from _d)::text
 union all select 'fiches Leboncoin retirées de C2 (L)', (select count(*) from _l)::text
 union all select 'ventes Leboncoin retirées de C2', (select count(*) from _v_lbc_c2)::text
-union all select 'ventes @evat en double retirées de C1 (copie de C2 gardée)', (select count(*) from _v_dup_c1)::text
+union all select 'ventes de la boutique 371531 en double retirées de C1 (copie de C2 gardée)', (select count(*) from _v_dup_c1)::text
 union all select 'fiches coupées en deux (jumelle C1 reliée)', (select count(*) from _split)::text
-union all select 'commandes @evat passées à C2', (select count(*) from _cmd_evat)::text
-union all select 'conversations @evat passées à C2', (select count(*) from _conv_evat)::text
+union all select 'commandes de la boutique 371531 passées à C2', (select count(*) from _cmd_evat)::text
+union all select 'conversations de la boutique 371531 passées à C2', (select count(*) from _conv_evat)::text
 union all select 'C2 : fiches au total', (select count(*) from inventaire i, _c where i.user_id = _c.c2)::text
 union all select 'C2 : ventes au total', (select count(*) from ventes v, _c where v.user_id = _c.c2)::text
 union all select 'C1 : ventes au total', (select count(*) from ventes v, _c where v.user_id = _c.c1)::text;

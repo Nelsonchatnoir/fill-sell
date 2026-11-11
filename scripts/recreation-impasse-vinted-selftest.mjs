@@ -45,14 +45,14 @@ ok(decisionImpasseRecreation(gomme, { releves: [], fiches: [] }) === null, "aucu
 ok(decisionImpasseRecreation(gomme, { releves: [releveComplet("2026-10-02T00:20:00Z")], fiches: [] }) === null, "relevé AVANT l'impasse → on attend");
 ok(decisionImpasseRecreation(gomme, { releves: [{ ...releveComplet("2026-10-02T00:36:00Z"), items_vus: 30 }], fiches: [] }) === null, "relevé incomplet (30/48) → on attend");
 
-console.log("\n3. NIVAKE03 : SES GOMMES À ELLE NE SONT PAS LES NÔTRES");
+console.log("\n3. CLIENT-869E5F03 : SES GOMMES À ELLE NE SONT PAS LES NÔTRES");
 const fichesNivake = [0, 1, 2, 3, 5].map((m, i) => ({ vinted_item_id: `1020353361${i}`, listed_at_guess: `2026-10-01T13:0${m}:00Z` }));
 const dg = decisionImpasseRecreation(gomme, { releves: [releveComplet("2026-10-02T00:36:00Z")], fiches: fichesNivake, maintenant: MAINTENANT });
 ok(dg?.action === "relancer" && dg.status === "pending", "aucune annonce pendant nos envois → la recréation repart", JSON.stringify(dg?.apparues));
 ok(!dg.platform_fields.recreation_doublon && dg.platform_fields.recreation_tentee?.at, "impasse levée, tentative conservée (le dressing sera relu avant de recréer)");
 ok(/une seule fois/.test(dg.error) && /rien à faire/.test(dg.error), "message vrai, aucun geste");
 
-console.log("\n4. 9CDR9RM4RN : NOS DEUX ENVOIS ONT CHACUN CRÉÉ UNE COPIE");
+console.log("\n4. CLIENT-EACBE32C : NOS DEUX ENVOIS ONT CHACUN CRÉÉ UNE COPIE");
 const fiches9 = [
   { vinted_item_id: "7742925895", listed_at_guess: "2025-12-11T10:00:00Z" },      // l'autre vraie annonce, ancienne
   { vinted_item_id: "10205000001", listed_at_guess: "2026-10-02T02:13:40Z" },     // copie A (une-passe orpheline)

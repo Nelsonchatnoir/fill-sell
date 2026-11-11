@@ -13,7 +13,7 @@ insert into public.inventaire (id, user_id, titre, prix_achat, prix_achat_inconn
   purchase_costs, selling_fees, quantite, photos)
 values (1793287500000, 'f44b5917-bccc-4431-ba41-f40571a2ed18',
   'TEST FillSell 999 ne pas acheter - tableau acrylique sur toile', null, true, null, 'stock', now(), 'Sans marque',
-  'Annonce de test FillSell (dépôt Leboncoin en Maison & Jardin › Décoration, cas paugues.contact). Ne pas acheter : elle est retirée dans l''heure.',
+  'Annonce de test FillSell (dépôt Leboncoin en Maison & Jardin › Décoration, cas client-e95e8b9d). Ne pas acheter : elle est retirée dans l''heure.',
   'Maison', 0, 0, 1,
   '[{"type":"original","url":"https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f44b5917-bccc-4431-ba41-f40571a2ed18/rapatrie-fiche/1793009594578/1793009703834_0.jpg"}]'::jsonb);
 
@@ -22,7 +22,7 @@ select public.file_pause_basculer(false) as file_reprise;
 select public.spend_coins_and_publish('original', jsonb_build_array(jsonb_build_object(
   'inventaire_id', '1793287500000', 'platform', 'leboncoin',
   'title', 'TEST FillSell 999 ne pas acheter - tableau acrylique sur toile',
-  'description', 'Annonce de test FillSell (dépôt Leboncoin en Maison & Jardin › Décoration, cas paugues.contact). Ne pas acheter : elle est retirée dans l''heure.',
+  'description', 'Annonce de test FillSell (dépôt Leboncoin en Maison & Jardin › Décoration, cas client-e95e8b9d). Ne pas acheter : elle est retirée dans l''heure.',
   'price', '999',
   'photos', '[{"type":"original","url":"https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f44b5917-bccc-4431-ba41-f40571a2ed18/rapatrie-fiche/1793009594578/1793009703834_0.jpg"}]'::jsonb,
   'platform_fields', jsonb_build_object(
@@ -33,7 +33,7 @@ select public.spend_coins_and_publish('original', jsonb_build_array(jsonb_build_
     'lbcCategoryPath', jsonb_build_array('Maison & Jardin', 'Décoration'), 'lbcPoidsGrammes', 600,
     'categorie_source', 'choix_humain',
     'categorie_choisie', jsonb_build_object('id', null, 'le', now(), 'chemin', jsonb_build_array('Maison & Jardin', 'Décoration')),
-    'test_nico', 'lot A 29/10 point 8 : même rayon et mêmes critères que les tableaux de paugues.contact (Acrylique B. Dufour, 25/10)'
+    'test_nico', 'lot A 29/10 point 8 : même rayon et mêmes critères que les tableaux de client-e95e8b9d (Acrylique B. Dufour, 25/10)'
   )
 ))) as publication;
 

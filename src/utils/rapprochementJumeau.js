@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // « TU AS DÉJÀ QUELQUE CHOSE QUI RESSEMBLE » (2026-09-20, passe 2, point 6-a)
 // ═══════════════════════════════════════════════════════════════════════════
-// LE 20/09 À 11:56, en une minute, louis@ttfamily.fr a importé une
+// LE 20/09 À 11:56, en une minute, compte faf5021a a importé une
 // cinquantaine d'annonces depuis l'écran de rattachement. DIX d'entre elles
 // ont créé une deuxième ligne pour un article qu'il avait déjà : les sept
 // tomes de « Une, deux, trois princesses » (l'article s'appelait « … tome 3 »,

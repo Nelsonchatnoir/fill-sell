@@ -40,7 +40,7 @@ console.log('1. Les murs');
 const ornella = retrait({ platform_fields: { attente_boutique_retrait: { boutique: '472079', login: 'ornella-vend', connectee: '999', login_connectee: 'luciatrendyshop' } } });
 verifier(M.retraitBloqueParBoutique(ornella)?.login === 'ornella-vend', 'Ornella : retrait retenu pour une autre boutique → mur « boutique », @ornella-vend');
 const nerema = retrait({ id: 'r2', inventaire_id: null, platform_fields: { verification_boutique_vinted: { motif: 'origine_inconnue' } } });
-verifier(!!M.retraitBloqueParBoutique(nerema), 'nerema75 : boutique non prouvée (origine inconnue) → mur « boutique »');
+verifier(!!M.retraitBloqueParBoutique(nerema), 'compte-2189c4d8 : boutique non prouvée (origine inconnue) → mur « boutique »');
 const etrangere = retrait({ id: 'r3', status: 'needs_user', platform_fields: { needs_user_source: 'boutique_etrangere', boutique_etrangere: { article: '472079', login_article: 'ornella-vend' } } });
 verifier(M.retraitBloqueParBoutique(etrangere)?.boutique === '472079', 'boutique étrangère (needs_user) → mur « boutique »');
 verifier(M.retraitBloqueParBoutique(retrait({ platform_fields: { verification_boutique_vinted: { motif: 'session_inconnue' } } })) === null, 'session inconnue : c’est le mur « connexion », pas « boutique »');

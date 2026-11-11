@@ -12,7 +12,7 @@ const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { cons
 
 console.log("\n1. LA RÈGLE");
 ok(M.OPLA_PRIX_MAX === 1000, "plafond d'Opla : 1 000 €");
-ok(M.prixOplaTropHaut({ platform: "opla", action: "publish", price: 1100 }), "sac de Lebonzeze à 1 100 € : arrêté");
+ok(M.prixOplaTropHaut({ platform: "opla", action: "publish", price: 1100 }), "sac de Compte-197618d0 à 1 100 € : arrêté");
 ok(M.prixOplaTropHaut({ platform: "opla", action: "republish", price: "1000.01" }), "republication à 1 000,01 € : arrêtée");
 ok(!M.prixOplaTropHaut({ platform: "opla", action: "publish", price: 1000 }), "1 000 € pile : accepté");
 ok(!M.prixOplaTropHaut({ platform: "opla", action: "delete", price: 5000 }), "un retrait n'est jamais arrêté pour son prix");

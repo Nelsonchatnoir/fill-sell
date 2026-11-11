@@ -1052,7 +1052,7 @@ delete from annonces_plateforme where user_id = '447d920c-976a-4d8f-aff4-a299805
 insert into _r select 'T9 vente LBC : laissée au compte propriétaire (relié)', (r ->> 'autre_compte_relie')::int = 1
   from (select enregistrer_ventes_relevees('leboncoin', '[{"ref":"lbc-essai-9","statut":"paid","titre":"essai","prix":"1","listing_id":"3290751219"}]'::jsonb,
         '447d920c-976a-4d8f-aff4-a2998050358c') r) x;
-insert into _r select 'T9 vente LBC : aucune vente écrite sur louis-seller', not exists (select 1 from ventes where commande_ref = 'lbc-essai-9');
+insert into _r select 'T9 vente LBC : aucune vente écrite sur client-447d920c', not exists (select 1 from ventes where commande_ref = 'lbc-essai-9');
 
 -- T10 : commande Vinted déjà enregistrée sur le compte relié → jamais une 2e fois (un seul mail).
 update profiles set extension_sessions = coalesce(extension_sessions, '{}'::jsonb)

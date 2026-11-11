@@ -589,11 +589,11 @@ begin
     (select proacl::text from pg_proc where oid = 'public.article_en_ligne_ailleurs(uuid,text,bigint,text[])'::regprocedure));
 
   -- A l'aide sur les vraies fiches.
-  insert into _r values ('A1 Short Okaïdi (louis-seller) : en ligne par le compte relié, 3286756945',
+  insert into _r values ('A1 Short Okaïdi (client-447d920c) : en ligne par le compte relié, 3286756945',
     public.article_en_ligne_ailleurs(v_louis, 'leboncoin', 1789889085803006, ARRAY[]::text[]) = '{"issue": "en_ligne_par_compte_relie", "listing_id": "3286756945"}'::jsonb,
     public.article_en_ligne_ailleurs(v_louis, 'leboncoin', 1789889085803006, ARRAY[]::text[])::text);
   insert into _r values ('A2 numéro exclu : rien', public.article_en_ligne_ailleurs(v_louis, 'leboncoin', 1789889085803006, ARRAY['3286756945']) is null, null);
-  insert into _r values ('A3 Jupe Gémo (louis-seller) : en ligne nulle part', public.article_en_ligne_ailleurs(v_louis, 'leboncoin', 1789889085803000, ARRAY[]::text[]) is null, null);
+  insert into _r values ('A3 Jupe Gémo (client-447d920c) : en ligne nulle part', public.article_en_ligne_ailleurs(v_louis, 'leboncoin', 1789889085803000, ARRAY[]::text[]) is null, null);
   insert into _r values ('A4 arguments nuls : rien', public.article_en_ligne_ailleurs(null, 'leboncoin', 1, null) is null and public.article_en_ligne_ailleurs(v_louis, 'leboncoin', null, null) is null, null);
 
   -- T jocabroc8, estampe (job 20587777) : remise « publiée » telle qu'avant son jugement du 22/10, puis rejugée.

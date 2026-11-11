@@ -46,7 +46,7 @@ const job = (pf = {}, extra = {}) => ({
   ...extra,
 });
 
-console.log("1. le cas voirememe rejoué (66bbae2b, 11/10 12:03)");
+console.log("1. le cas client-f66531a7 rejoué (66bbae2b, 11/10 12:03)");
 const d = R.requisManquantsAvantRetrait(job(), parCle);
 ok(d && d.manquants.length === 1 && d.manquants[0].key === "toy_type" && d.categorie === "Loisirs > Jeux & Jouets",
   "« Produit » (toy_type) manque à l'étape 'captured' → la republication est RETENUE avant le retrait");

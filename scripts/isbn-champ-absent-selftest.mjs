@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // UN CHAMP ISBN ABSENT N'ARRÊTE PLUS UNE REPUBLICATION (2026-09-20, passe 3)
 // ═══════════════════════════════════════════════════════════════════════════
-// LE CAS : laforge.vinted@gmail.com, « Black Clover tome 2 – Yûki Tabata »,
+// LE CAS : compte cdf7007c, « Black Clover tome 2 – Yûki Tabata »,
 // republication du 20/09 à 14:02, build v0.6.47 → needs_user sur
 // « Élément introuvable: #isbn, [data-testid="isbn--input"] ».
 // Le MÊME après-midi, le MÊME compte, le MÊME build et la MÊME série ont

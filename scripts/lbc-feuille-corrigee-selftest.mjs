@@ -21,7 +21,7 @@ ok(r?.pf.feuille_corrigee?.avant?.[1] === "Arts de la table", "trace feuille_cor
 
 console.log("\n2. RIEN NE BOUGE QUAND LA FEUILLE EST JUSTE OU LE DOUTE RESTE");
 ok(corrigerFeuilleLbc({ lbcCategoryPath: ["Maison & Jardin", "Décoration"], lbcAspects: { house_and_garden_type: "Objet décoratif", decoration_type: "Vase, cache pot et céramique", table_art_type: "Accessoire de table", table_art_product: "Plateau" } }, "Ancien plateau à olives faïence") === null,
-  "jocabroc (22/09) : notre feuille a une vraie paire → elle reste");
+  "boutique-53efea05 (22/09) : notre feuille a une vraie paire → elle reste");
 ok(corrigerFeuilleLbc({ lbcCategoryPath: ["Maison & Jardin", "Arts de la table"], lbcAspects: { table_art_type: "Autre", table_art_product: "Autre", home_appliance_type: "Cuisine et cuisson", home_appliance_product: "Yaourtière" } }, "Rangement Gris et Rose pour 12 pots et 12 couvercles de yaourtière") === null,
   "« pots » nomme un Produit de NOTRE feuille (Bocaux et pots) → elle reste");
 ok(corrigerFeuilleLbc({ lbcCategoryPath: ["Maison & Jardin", "Arts de la table"], lbcAspects: { table_art_type: "Autre", table_art_product: "Autre", house_and_garden_type: "Éclairage", decoration_type: "Lampe à poser", diy_type: "Électricité, éclairage et domotique", diy_product: "Lampe torche" } }, "lampe") === null,

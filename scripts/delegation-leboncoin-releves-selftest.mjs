@@ -72,7 +72,7 @@ if (process.argv.includes('--prod')) {
   const sql = `with a as (select user_id, listing_id, inventaire_id, disparu_le from public.annonces_plateforme
                 where platform = 'leboncoin' and user_id in ('${A}', '${B}'))
   select jsonb_build_object(
-    'par_compte', (select jsonb_object_agg(case user_id when '${A}' then 'amiral' else 'seller' end, x) from (select user_id,
+    'par_compte', (select jsonb_object_agg(case user_id when '${A}' then 'compte-faf5021a' else 'seller' end, x) from (select user_id,
         jsonb_build_object('vivantes', count(*) filter (where disparu_le is null), 'rattachees', count(*) filter (where disparu_le is null and inventaire_id is not null)) x
         from a group by user_id) t),
     'vivantes_aux_deux', (select count(*) from a x join a y on x.listing_id = y.listing_id and x.user_id < y.user_id where x.disparu_le is null and y.disparu_le is null),
@@ -81,7 +81,7 @@ if (process.argv.includes('--prod')) {
         (select count(*) from public._backup_0111_delegation_lbc_annonces s join a on a.listing_id = s.listing_id and a.user_id <> s.user_id
           and a.disparu_le is null and a.inventaire_id is not null) end),
     'sauvegarde', (case when to_regclass('public._backup_0111_delegation_lbc_annonces') is null then null else
-        (select jsonb_object_agg(case user_id when '${A}' then 'amiral' else 'seller' end, n) from (select user_id, count(*) n from public._backup_0111_delegation_lbc_annonces group by 1) s) end)
+        (select jsonb_object_agg(case user_id when '${A}' then 'compte-faf5021a' else 'seller' end, n) from (select user_id, count(*) n from public._backup_0111_delegation_lbc_annonces group by 1) s) end)
   ) as r;`;
   const fichier = path.join(os.tmpdir(), `delegation-lbc-releves-prod-${process.pid}.sql`);
   writeFileSync(fichier, sql, 'utf8');

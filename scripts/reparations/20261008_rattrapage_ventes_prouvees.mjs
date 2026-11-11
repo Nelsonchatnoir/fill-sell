@@ -243,12 +243,12 @@ function rapport(res) {
   L.push('', '## 4. À vérifier — rien ne sera enregistré par le rattrapage', '',
     'Motifs : `annonce_non_prouvee` / `plusieurs_annonces_vivantes` / `vente_deja_liee` (la base refuserait) ; `quantite_N` (plusieurs exemplaires) ;',
     '`remise_en_ligne_possible(n)` : n autre(s) fiche(s) en stock du compte, même titre, dont l\'annonce Vinted a été revue EN LIGNE après la preuve',
-    '(article peut-être remis en ligne, cas Bebertdeals) ; `fiche_suit_une_autre_annonce_en_ligne` ; `dressing_la_revoit_en_ligne` ; `releve_en_cours`.', '',
+    '(article peut-être remis en ligne, cas du compte c15f4b0e) ; `fiche_suit_une_autre_annonce_en_ligne` ; `dressing_la_revoit_en_ligne` ; `releve_en_cours`.', '',
     '| Compte | Fiche | Annonce | Preuve | Motif(s) | Copies vues < 3 j |', '|---|---|---|---|---|---|');
   for (const r of res.a_verifier) L.push(`| ${r.u} | ${r.inv} | ${r.platform} ${r.lid} | ${r.preuve_le_paris} | ${r.doutes.join(', ')} | ${r.copies.filter((c) => c.vu_3j).map((c) => c.pf).join(', ') || '—'} |`);
   L.push('', `## 5. Signaux « sold » SANS preuve (${res.sans_preuve.length}) — jamais une vente`, '',
     'Le job porte `sale_signal = sold` mais le dernier relevé du dressing de cette annonce ne dit pas « sold » (ou rien n\'a été lu) :',
-    'une vente n\'est jamais enregistrée sur ce seul signal (cas Louis, 06/10).', '', '| Compte | Fiche | Annonce | Q | Dernier relevé |', '|---|---|---|---|---|');
+    'une vente n\'est jamais enregistrée sur ce seul signal (un compte client, 06/10).', '', '| Compte | Fiche | Annonce | Q | Dernier relevé |', '|---|---|---|---|---|');
   for (const r of res.sans_preuve) L.push(`| ${r.u} | ${r.inv} | ${r.platform} ${r.lid} | ${r.q} | ${r.dernier_releve ?? 'aucun'} |`);
   L.push('', `## 6. Comptes internes (non comptés) : ${res.internes.length} annonce(s)`, '', res.internes.map((r) => `${r.u} ${r.inv} ${r.platform}`).join(' · ') || '—', '');
   return L.join('\n');

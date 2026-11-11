@@ -276,7 +276,7 @@ begin
 
   -- 1. La preuve tient pour chacune, et nomme l'annonce de louis-seller qui la remplace.
   select count(*) filter (where public.remplacee_par_compte_relie(s.id) ->> 'annonce' = s.attendue) into n from _syn s;
-  insert into _r values ('P1 16/16 : remplacée par l''annonce de louis-seller attendue', n = 16, n || ' / 16');
+  insert into _r values ('P1 16/16 : remplacée par l''annonce de client-447d920c attendue', n = 16, n || ' / 16');
   select * into s0 from _syn order by attendue limit 1;
   v := public.remplacee_par_compte_relie(s0.id);
   insert into _r values ('P1b preuve lisible (ancienne, relevé d''absence, apparue après)',
@@ -420,7 +420,7 @@ begin
     raise exception 'annuler';
   exception when others then if sqlerrm <> 'annuler' then v_txt := sqlerrm; end if;
   end;
-  insert into _r values ('P4 fin d''un relevé de louis-seller (déclencheur) : les 16 closes', n3 = 16, coalesce(n3::text, '-') || coalesce(' — ' || v_txt, ''));
+  insert into _r values ('P4 fin d''un relevé de client-447d920c (déclencheur) : les 16 closes', n3 = 16, coalesce(n3::text, '-') || coalesce(' — ' || v_txt, ''));
 
   -- P2 le geste direct : 16 closes, les cas douteux restent ouverts, aucun effet de bord
   select count(*) into n_ret_avant from cross_post_jobs where user_id in (louis, seller) and action = 'delete';
@@ -442,7 +442,7 @@ begin
     (n_ret_apres - n_ret_avant) || ' retrait, ' || (n_pv_apres - n_pv_avant) || ' vente, ' || (n_mail_apres - n_mail_avant) || ' mail');
   select count(*) into n from cross_post_jobs c where c.user_id = seller and c.platform = 'beebs' and c.status = 'published'
      and c.platform_listing_id in (select attendue from _syn) and not (c.platform_fields ?| array['unavailable_since', 'sale_signal']);
-  insert into _r values ('P2d les 10 annonces de louis-seller intactes', n = 10, n::text);
+  insert into _r values ('P2d les 10 annonces de client-447d920c intactes', n = 10, n::text);
   insert into _r values ('P3 rejouée : rien de plus (aucune ligne réécrite)', public.questions_remplacees_par_compte_relie(seller, 'beebs') = 0, '');
 end $$;
 select essai, ok, left(coalesce(detail, ''), 160) detail from _r

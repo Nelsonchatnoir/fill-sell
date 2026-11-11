@@ -53,7 +53,7 @@ ok("Roost-Warendin : « Rue de Roost Warendin, Douai (59500) » ne couvre JAMAIS
 // nicolas.menar, rue des Réglages (sans le numéro dans la proposition).
 const nicRue = adresseRepublicationLbc({ localisation_origine: { voie: "204 allée du château de bernicourt", ville: "Roost-Warendin", code_postal: "59286" } });
 assert.equal(decisionAdresseLbc(nicRue, ["Allée du Château de Bernicourt, Roost-Warendin (59286)"], []).verdict, "ok");
-ok("rue de nicolas.menar : numéro absent de la proposition toléré, commune et code postal présents → ok");
+ok("rue de client-39bfa95a : numéro absent de la proposition toléré, commune et code postal présents → ok");
 
 // Une rue que Leboncoin ne connaît pas : pause avant retrait, même si le mode simple propose la commune.
 const faute = adresseRepublicationLbc({ localisation_origine: { voie: "12 rue imaginaire", ville: "Roost-Warendin", code_postal: "59286" } });

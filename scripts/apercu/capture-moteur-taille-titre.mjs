@@ -55,7 +55,7 @@ const lireMoteur = (page) => page.evaluate(() => {
 });
 
 const ATTENDU = {
-  deadroz: { question: false, job: '40', saisie: 'W30' },
+  cas_7373c96c: { question: false, job: '40', saisie: 'W30' },
   // Copie vide : la taille dite par le texte est POSÉE sur la copie Beebs (trace option_du_texte).
   vide: { question: false, job: '46', saisie: null, trace: true },
   conflit: { question: true },

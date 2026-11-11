@@ -68,8 +68,8 @@ ok(m.matiereEbayAuto({ composition: "", allowedValues: ["Bois", "Métal", "Synth
 console.log("d) Pointure : la fiche, puis un nombre COLLÉ à un mot explicite, cohérent avec le public du rayon, une seule valeur");
 const G = []; for (let n = 15; n <= 50; n++) { G.push(String(n)); G.push(`${n},5`); }
 const pt = (o) => val(p.pointureDuTexte({ grille: G, ...o }));
-ok(pt({ valeurFiche: "EU 31", textes: ["Adidas Torsion ZX Flux Noir Enfant Pointure 31", "pointure FR 31 (JP 190)"], chemin: "Mode > Chaussures > Enfant" }) === "31", "chaouidz : fiche « EU 31 » + texte « Pointure 31 » → 31 (jamais 16)");
-ok(pt({ valeurFiche: "37.5", textes: ["Scarpe da nike Runallday", "Taglia 37.5"], chemin: "Mode > Chaussures > Femme" }) === "37,5", "Marta : fiche 37.5 + « Taglia 37.5 » → « 37,5 » de la grille Leboncoin");
+ok(pt({ valeurFiche: "EU 31", textes: ["Adidas Torsion ZX Flux Noir Enfant Pointure 31", "pointure FR 31 (JP 190)"], chemin: "Mode > Chaussures > Enfant" }) === "31", "boutique-90ace0e4 : fiche « EU 31 » + texte « Pointure 31 » → 31 (jamais 16)");
+ok(pt({ valeurFiche: "37.5", textes: ["Scarpe da nike Runallday", "Taglia 37.5"], chemin: "Mode > Chaussures > Femme" }) === "37,5", "Compte-essai-3 : fiche 37.5 + « Taglia 37.5 » → « 37,5 » de la grille Leboncoin");
 ok(pt({ textes: ["Chaussures femme taille 37 et demi"], chemin: "Femmes > Chaussures" }) === "37,5", "« 37 et demi » = 37,5 (jamais arrondi)");
 ok(pt({ textes: ["Adidas Courtsmash taille 37 1/3"], chemin: "Femmes > Chaussures" }) === "doute", "tiers Adidas « 37 1/3 » → doute (jamais 37)");
 ok(pt({ textes: ["Basket Puma de taille 40,5 cm"], chemin: "Femmes > Chaussures" }) === null, "« taille 40,5 cm » : une longueur, jamais relue « 40 »");

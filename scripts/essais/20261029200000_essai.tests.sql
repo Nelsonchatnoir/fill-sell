@@ -15,7 +15,7 @@ begin
   -- A. Ce que la règle d'AVANT (prod) disait des quatre, sur les mêmes relevés.
   -- Polly n'est pas jugée ce jour-là (le relevé précédent du compte est antérieur à son dépôt + 7 jours) : c'est le
   -- relevé du 24/10 (grâce de 72 h) qui l'avait dite « jamais en ligne » ; voir N4 et N4b.
-  insert into _r values ('A1 AVANT (prod) : les 3 dépôts du 4.5 jugés « failed » sur le même relevé (louis-seller : page 60 < index 253)',
+  insert into _r values ('A1 AVANT (prod) : les 3 dépôts du 4.5 jugés « failed » sur le même relevé (client-447d920c : page 60 < index 253)',
     (select count(*) from jsonb_array_elements(v_av -> 'cas') x where x ->> 'status' = 'failed' and x ->> 'id' <> v_polly::text) = 3,
     (select string_agg((x ->> 'id')::text || '=' || (x ->> 'status') || ' « ' || left(coalesce(x ->> 'error', ''), 70) || '… »', ' | ') from jsonb_array_elements(v_av -> 'cas') x)
     || ' || bilans : ' || (select string_agg((x ->> 'user') || ' refusées ' || (x #>> '{bilan,refusees}') || ', en attente ' || (x #>> '{bilan,en_attente}'), ' | ') from jsonb_array_elements(v_av -> 'bilans') x));
@@ -35,7 +35,7 @@ begin
     md5(pg_get_functiondef('public.trancher_publications_sans_lien(uuid,text,uuid)'::regprocedure)));
 
   -- R. Le miroir de releveVoitToutEnLigne sur les relevés réels.
-  insert into _r values ('R1 relevé de XEWER (page = index) : la page a tout vu ; louis-seller (page 60 < index) : jamais ; relevé inconnu : jamais',
+  insert into _r values ('R1 relevé de COMPTE-DE63CA45 (page = index) : la page a tout vu ; client-447d920c (page 60 < index) : jamais ; relevé inconnu : jamais',
     public.releve_beebs_voit_tout_en_ligne((select run from _runs where user_id = v_xu))
     and not public.releve_beebs_voit_tout_en_ligne((select run from _runs where user_id = v_louis))
     and not public.releve_beebs_voit_tout_en_ligne(gen_random_uuid()),
@@ -50,25 +50,25 @@ begin
     insert into _bilans values ('nouvelle', c.user_id, b || jsonb_build_object('ms', round(extract(epoch from clock_timestamp() - t0) * 1000)));
   end loop;
   select status, error, platform_fields pf into j from public.cross_post_jobs where id = v_xewer;
-  insert into _r values ('N1 XEWER 34198358 (compte de 31 annonces, la page les a toutes vues) : « failed », preuve « relevé », message vrai et daté',
+  insert into _r values ('N1 COMPTE-DE63CA45 34198358 (compte de 31 annonces, la page les a toutes vues) : « failed », preuve « relevé », message vrai et daté',
     j.status = 'failed' and j.pf #>> '{depot_jamais_en_ligne,preuve,source}' = 'releve'
     and j.error ~ '^Beebs a reçu ton annonce \(n° 34198358, en vérification à \d\dh\d\d le 19/10\), puis l''a retirée de sa vérification '
     and j.error ~ 'Beebs ne dit pas pourquoi\. Le relevé fait à \d\dh\d\d le \d\d/\d\d, qui a lu toutes tes annonces en ligne, ne la montre pas : Beebs n''a jamais mis cette annonce en ligne\.'
     and j.error !~ 'refusée|serait refusé',
     j.error);
   select status, error, platform_fields pf into j from public.cross_post_jobs where id = v_l634;
-  insert into _r values ('N2 louis-seller 34200634 (page 60 < index 253) : reste « publiée », « pas encore visible » posé, aucun rouge',
+  insert into _r values ('N2 client-447d920c 34200634 (page 60 < index 253) : reste « publiée », « pas encore visible » posé, aucun rouge',
     j.status = 'published' and j.error is null and j.pf #>> '{pas_encore_visible,regle}' = 'beebs_sans_preuve_de_refus_2910'
     and j.pf #>> '{pas_encore_visible,numero}' = '34200634' and not (j.pf ? 'depot_jamais_en_ligne'),
     j.status || ' ' || coalesce(j.pf ->> 'pas_encore_visible', '∅'));
   select status, error, platform_fields pf into j from public.cross_post_jobs where id = v_l711;
-  insert into _r values ('N3 louis-seller 34200711 : idem', j.status = 'published' and j.error is null
+  insert into _r values ('N3 client-447d920c 34200711 : idem', j.status = 'published' and j.error is null
     and j.pf #>> '{pas_encore_visible,regle}' = 'beebs_sans_preuve_de_refus_2910', j.status || ' ' || coalesce(j.pf ->> 'pas_encore_visible', '∅'));
   select status, error, platform_fields pf into j from public.cross_post_jobs where id = v_polly;
   insert into _r values ('N4 Polly 34206489 (EN LIGNE le 28/10 à 22:03) : jamais « refusée » — publiée, son marqueur du 20/10 gardé tel quel',
     j.status = 'published' and j.error is null and j.pf #>> '{pas_encore_visible,regle}' = 'sortie_de_verification_2510',
     j.status || ' ' || coalesce(j.pf ->> 'pas_encore_visible', '∅'));
-  insert into _r values ('N4b Polly : le relevé de louis-seller, « complet » pour l''ancienne règle (index), n''est JAMAIS une preuve pour la nouvelle',
+  insert into _r values ('N4b Polly : le relevé de client-447d920c, « complet » pour l''ancienne règle (index), n''est JAMAIS une preuve pour la nouvelle',
     public.releve_preuve_absence((select run from _runs where user_id = v_louis))
     and public.beebs_preuve_jamais_en_ligne(v_louis, '34206489', '2026-10-20T21:51:59.769Z'::timestamptz, 10, j.pf, (select run from _runs where user_id = v_louis)) is null,
     null);
@@ -102,7 +102,7 @@ begin
     j.error);
   select status, error, platform_fields pf into j from public.cross_post_jobs where id = v_l711;
   insert into _r values ('N8 34200711 + constats à 3 h d''écart (et un « en vérification » non lue) : toujours publiée', j.status = 'published', j.status);
-  insert into _r values ('N9 durée de la règle sur le compte de louis-seller (relevé + 2 dépôts jugés)', v_ms < 2000, v_ms || ' ms');
+  insert into _r values ('N9 durée de la règle sur le compte de client-447d920c (relevé + 2 dépôts jugés)', v_ms < 2000, v_ms || ' ms');
   -- 500 € et plus : jamais jugée (Beebs les examine invisibles), même avec deux constats.
   insert into _r values ('N10 999 € : jamais une preuve, même avec deux constats 404',
     public.beebs_preuve_jamais_en_ligne(v_louis, '34200634', '2026-10-20T01:02:44Z'::timestamptz, 999, '{}'::jsonb, null) is null
@@ -138,13 +138,13 @@ begin
      where o.user_id = %L and o.created_at >= %L::timestamptz and o.platform = ''beebs'' and o.action in (''publish'', ''republish'')
        and o.platform_fields ? ''preuve_identifiant_beebs'' and pg.p ->> ''ok'' = ''true'' and jsonb_typeof(pg.p -> ''ids'') = ''array''
        and (pg.p -> ''ids'') ? ''34200634''', v_louis, '2026-10-19T01:02:44Z') into v_plan;
-  insert into _r values ('P1 lecture des vues « en vérification » (louis-seller, dépôts depuis le 19/10) < 50 ms',
+  insert into _r values ('P1 lecture des vues « en vérification » (client-447d920c, dépôts depuis le 19/10) < 50 ms',
     (v_plan -> 0 ->> 'Execution Time')::numeric < 50, (v_plan -> 0 ->> 'Execution Time') || ' ms, ' || (v_plan -> 0 -> 'Plan' ->> 'Node Type'));
   execute format('explain (analyze, buffers, format json) select count(*) from public.cross_post_jobs o
       cross join lateral jsonb_array_elements(case when jsonb_typeof(o.platform_fields -> ''beebs_404_constats'') = ''array'' then o.platform_fields -> ''beebs_404_constats'' else ''[]''::jsonb end) e
      where o.user_id = %L and o.created_at >= %L::timestamptz and o.platform = ''beebs'' and o.platform_fields ? ''beebs_404_constats''
        and (btrim(coalesce(o.platform_listing_id, '''')) = ''34200634'' or annonce_id_job(''beebs'', o.listing_url) = ''34200634'')', v_louis, '2026-10-19T01:02:44Z') into v_plan;
-  insert into _r values ('P2 lecture des constats 404 du numéro (louis-seller) < 50 ms',
+  insert into _r values ('P2 lecture des constats 404 du numéro (client-447d920c) < 50 ms',
     (v_plan -> 0 ->> 'Execution Time')::numeric < 50, (v_plan -> 0 ->> 'Execution Time') || ' ms');
 
   -- X. Rien d'autre.

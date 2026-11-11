@@ -26,11 +26,11 @@ const A = await import(pathToFileURL(join(ROOT, 'supabase/functions/_shared/atte
 let ko = 0;
 const ok = (cond, msg) => { if (cond) console.log(`  ✓ ${msg}`); else { ko++; console.log(`  ✗ ${msg}`); } };
 
-const LOUIS = [{ user_id: '247512093', login: 'neyenonie' }, { user_id: '371531', login: 'evat' }];
+const LOUIS = [{ user_id: '247512093', login: 'boutique-faf5021a' }, { user_id: '371531', login: 'boutique-essai-2' }];
 const v = (o) => I.verifierBoutiquePublicationVinted({ action: 'publish', platform: 'vinted', boutiques: LOUIS, lectureFiable: true, ...o });
 
 console.log('1. la règle');
-ok(v({ boutiqueArticle: '247512093', boutiqueSession: '371531' }) === 'boutique_etrangere', 'cas de Louis rejoué : fiche @neyenonie, Chrome sur @evat → RETENU (boutique_etrangere)');
+ok(v({ boutiqueArticle: '247512093', boutiqueSession: '371531' }) === 'boutique_etrangere', 'cas de Compte-essai-2 rejoué : fiche @boutique-faf5021a, Chrome sur @boutique-essai-2 → RETENU (boutique_etrangere)');
 ok(v({ boutiqueArticle: '247512093', boutiqueSession: '247512093' }) === null, 'bonne boutique ouverte → servi');
 ok(v({ boutiqueArticle: '247512093', boutiqueSession: '' }) === 'session_inconnue', 'session illisible, deux boutiques → retenu en file');
 ok(v({ boutiqueArticle: '', boutiqueSession: '371531' }) === 'origine_inconnue', 'article sans boutique, deux boutiques → la personne choisit');
@@ -46,15 +46,15 @@ ok(v({ platform: 'leboncoin', boutiqueArticle: '247512093', boutiqueSession: '37
 ok(I.verifierBoutiqueOperation({ action: 'publish', platform: 'vinted', boutiqueArticle: '247512093', boutiqueSession: '371531', boutiques: LOUIS, lectureFiable: true }) === null, 'la garde des opérations existantes ne change pas (publish = null)');
 
 console.log('2. le choix de la personne');
-ok(I.boutiqueChoisieVersId('@evat', LOUIS) === '371531' && I.boutiqueChoisieVersId('neyenonie', LOUIS) === '247512093', '« @evat » / « neyenonie » → leur numéro');
+ok(I.boutiqueChoisieVersId('@boutique-essai-2', LOUIS) === '371531' && I.boutiqueChoisieVersId('boutique-faf5021a', LOUIS) === '247512093', '« @boutique-essai-2 » / « boutique-faf5021a » → leur numéro');
 ok(I.boutiqueChoisieVersId('371531', LOUIS) === '371531', 'un numéro confirmé → lui-même');
 ok(I.boutiqueChoisieVersId('@inconnue', LOUIS) === null && I.boutiqueChoisieVersId('', LOUIS) === null, 'boutique non confirmée ou vide → rien (jamais un défaut)');
 
 console.log('3. l\'attente se lève seule');
 const garde = { motif: 'boutique_etrangere', article: '247512093', pose_par: A.POSE_PAR_PUBLICATION_BOUTIQUE };
-ok(A.attenteBoutiqueLevable(garde), 'publication retenue sur sa boutique : levable dès que @neyenonie est vue connectée');
+ok(A.attenteBoutiqueLevable(garde), 'publication retenue sur sa boutique : levable dès que @boutique-faf5021a est vue connectée');
 ok(!A.attenteBoutiqueLevable({ ...garde, article: '' }), 'sans boutique d\'article : jamais levée');
-ok(/@neyenonie/.test(A.messageAttenteBoutique('neyenonie', 'publish')) && /ne se publie que sur elle/.test(A.messageAttenteBoutique('neyenonie', 'publish')) && /Rien n'a été publié ailleurs/.test(A.messageAttenteBoutique('neyenonie', 'publish')),
+ok(/@boutique-faf5021a/.test(A.messageAttenteBoutique('boutique-faf5021a', 'publish')) && /ne se publie que sur elle/.test(A.messageAttenteBoutique('boutique-faf5021a', 'publish')) && /Rien n'a été publié ailleurs/.test(A.messageAttenteBoutique('boutique-faf5021a', 'publish')),
   'la phrase nomme la boutique, dit la règle et que rien n\'est parti');
 ok(/la republication repartira toute seule/.test(A.messageAttenteBoutique('x', 'republish')), 'phrase des republications inchangée');
 

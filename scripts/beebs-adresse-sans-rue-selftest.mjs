@@ -43,7 +43,7 @@ console.log("\n1. LA COMMUNE SEULE EST RECONNUE");
 const MSG_SRIDEALS = "Beebs a besoin de ta rue pour publier : ton adresse dans Réglages n'a pas de rue (« Thionville »). "
   + "Ajoute ta rue et ton numéro dans Réglages › Expédition › Adresse de remise : rien n'a été publié.";
 {
-  ok(suggestionSansRue("Thionville57100, France", "Thionville 57100 Thionville") === true, "Srideals : « Thionville57100, France » = la commune seule → arrêt");
+  ok(suggestionSansRue("Thionville57100, France", "Thionville 57100 Thionville") === true, "Compte-7153db13 : « Thionville57100, France » = la commune seule → arrêt");
   const msg = messageAdresseSansRue("Thionville 57100 Thionville", "Thionville57100, France");
   ok(msg === MSG_SRIDEALS, "le message exact (noms de l'app : Réglages › Expédition › Adresse de remise)", msg);
   for (const [tape, suggestion] of [
@@ -160,7 +160,7 @@ console.log("\n6. LE CLASSEMENT CÔTÉ SERVEUR (cause-blocage.js)");
 console.log("\n7. LE TEST MORD");
 {
   const sansBloc = charger((s) => s.replace("reste = retirerSuiteDeMots(reste, commune);", "void commune;"));
-  ok(sansBloc.suggestionSansRue("Thionville57100, France", "Thionville 57100 Thionville") === false, "sans le retrait de la commune, Srideals passerait : le cas 1 tomberait");
+  ok(sansBloc.suggestionSansRue("Thionville57100, France", "Thionville 57100 Thionville") === false, "sans le retrait de la commune, Compte-7153db13 passerait : le cas 1 tomberait");
   const sansVoie = charger((s) => s.replace("return lettres.length >= 2 &&", "return false &&"));
   ok(sansVoie.suggestionSansRue("12 Rue X, 57100 Thionville, France", "12 Rue X 57100 Thionville") === true, "sans la lecture de la voie, une vraie rue serait arrêtée : le cas 2 tomberait");
   const sansBlocEnBloc = charger((s) => s.replace("if (suite.every((m, k) => mots[i + k] === m)) { i += suite.length; continue; }", "if (suite.includes(mots[i])) { i++; continue; }"));
@@ -171,7 +171,7 @@ console.log("\n7. LE TEST MORD");
 // (26/10 nuit, point 14a) L'app le dit dès les Réglages : une adresse sans rue (vide, ou la ville répétée).
 {
   const A = await import(pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "..", "supabase/functions/_shared/lbc-adresse-france.js")).href);
-  ok(A.rueAbsente({ rue: "Thionville", ville: "Thionville" }) === true, "Réglages de Srideals (rue = ville) : sans rue");
+  ok(A.rueAbsente({ rue: "Thionville", ville: "Thionville" }) === true, "Réglages de Compte-7153db13 (rue = ville) : sans rue");
   ok(A.rueAbsente({ rue: "", ville: "Metz" }) === true, "rue vide : sans rue");
   ok(A.rueAbsente({ rue: "12 rue de la Paix", ville: "Paris" }) === false && A.rueAbsente({ rue: "Le Moulin", ville: "Saint-Avold" }) === false, "une rue ou un lieu-dit : rien à dire");
   const reg = fs.readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src/reglages/SousPageExpedition.jsx"), "utf8");

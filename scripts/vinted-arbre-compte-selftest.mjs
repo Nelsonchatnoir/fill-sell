@@ -30,7 +30,7 @@ console.log("2. Vers le NOUVEL arbre (compte basculé)");
 ok("Femmes > Accessoires > Bijoux > Bracelets → Accessoires de mode > Bijoux > Bracelets", eq(cheminVintedPourArbre(c("Femmes > Accessoires > Bijoux > Bracelets"), "nouveau"), c("Accessoires de mode > Bijoux > Bracelets")));
 ok("renommage de Vinted : Breloques et pendentifs → Charms et pendentifs", eq(cheminVintedPourArbre(c("Hommes > Accessoires > Bijoux > Breloques et pendentifs"), "nouveau"), c("Accessoires de mode > Bijoux > Charms et pendentifs")));
 ok("rayon déplacé (même id 246) : sacs Homme remontés", eq(cheminVintedPourArbre(c("Hommes > Accessoires > Sacs et sacoches > Sacs à dos"), "nouveau"), c("Hommes > Sacs et sacoches > Sacs à dos")));
-ok("Jean-Luc : « Hommes > Accessoires > Autres » n'a aucun équivalent → rien (la question reste)", cheminVintedPourArbre(c("Hommes > Accessoires > Autres"), "nouveau") === null);
+ok("Compte-9256e3ae : « Hommes > Accessoires > Autres » n'a aucun équivalent → rien (la question reste)", cheminVintedPourArbre(c("Hommes > Accessoires > Autres"), "nouveau") === null);
 ok("un chemin déjà du nouvel arbre ne bouge pas (aucune régression d'un compte basculé)", cheminVintedPourArbre(c("Accessoires de mode > Montres"), "nouveau") === null
   && cheminVintedPourArbre(c("Femmes > Vêtements > Robes > Robes longues"), "nouveau") === null);
 

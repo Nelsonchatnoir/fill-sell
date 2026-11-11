@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- RATTRAPAGE : LES PHOTOS MANQUANTES DE SIX FICHES BEEBS DE LOUIS — 04/10/2026
 -- ═══════════════════════════════════════════════════════════════════════════
--- Louis (Business, louis@ttfamily.fr) : six « Rangement Rouge et … » nés du
+-- Louis (Business, compte faf5021a) : six « Rangement Rouge et … » nés du
 -- relevé Beebs avec la SEULE vignette de l'index (Beebs n'en donne qu'une),
 -- jamais capturés depuis (file de capture de l'extension en retard). Sur
 -- Beebs, chaque annonce a 4 ou 5 photos.

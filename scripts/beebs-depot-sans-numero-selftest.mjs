@@ -79,7 +79,7 @@ ok(vLui?.verdict === 'attente' && vLui.motif === 'en_ligne_par_releve', 'une ann
 const memeFiche = ligne(34300003, { job_id: 'job-import', inventaire_id: 1001, source_rapprochement: 'automatique', created_at: iso(T0 + 40 * 60_000) });
 const vFiche = juger(depot(), { annonces: [...COMPTE, memeFiche] });
 ok(vFiche?.verdict === 'attente' && vFiche.motif === 'article_en_ligne_sur_beebs' && vFiche.annonces[0] === '34300003',
-  'louis-seller (26/10) : une annonce de la MÊME fiche apparue 40 min après, rattachée par le moteur → attendre (le dépôt est peut-être elle)', JSON.stringify(vFiche));
+  'client-447d920c (26/10) : une annonce de la MÊME fiche apparue 40 min après, rattachée par le moteur → attendre (le dépôt est peut-être elle)', JSON.stringify(vFiche));
 const memeFicheParNumero = ligne(34300004, { job_id: 'job-republication', inventaire_id: 1001, source_rapprochement: 'job' });
 ok(juger(depot(), { annonces: [...COMPTE, memeFicheParNumero] })?.motif === 'article_en_ligne_sur_beebs', 'même fiche, en ligne sous une republication à numéro → attendre aussi (rien n’est dit à faux)');
 const memeFicheVieille = ligne(34000004, { job_id: 'job-ancien', inventaire_id: 1001, vu_le: iso(T0 - 2 * J) });
@@ -93,7 +93,7 @@ const effondre = Array.from({ length: 40 }, (_, k) => ligne(34050000 + k, { vu_l
 const vEff = juger(depot(), { annonces: [...effondre, ligne(34100001)] });
 ok(vEff?.verdict === 'attente' && vEff.motif === 'releves_partiels' && vEff.non_revues === 40, 'relevés qui n’ont pas revu le compte (40 lignes vivantes non revues, 1 revue) → aucune absence ne se conclut', JSON.stringify(vEff));
 const quelques = Array.from({ length: 5 }, (_, k) => ligne(34050000 + k, { vu_le: iso(T0 + (W - 1) * J) }));
-ok(juger(depot(), { annonces: [...COMPTE, ...quelques] })?.verdict === 'jamais_en_ligne', '5 lignes vivantes non revues sur 35 (l’ordinaire : XEWER 6/34) → ne retient rien');
+ok(juger(depot(), { annonces: [...COMPTE, ...quelques] })?.verdict === 'jamais_en_ligne', '5 lignes vivantes non revues sur 35 (l’ordinaire : COMPTE-DE63CA45 6/34) → ne retient rien');
 ok(juger(depot(), { retraitActif: true })?.motif === 'retrait_en_cours', 'un retrait Beebs du dépôt en file → son juge (get-pending-jobs) tranche, ici on attend');
 const vComptes = juger(depot(), { releves: [releve(T0 + (W + 0.5) * J, { uid: 'A' }), releve(T0 + (W + 0.9) * J, { uid: 'B' })] });
 ok(vComptes?.verdict === 'attente' && vComptes.motif === 'deux_comptes_beebs', 'deux relevés de deux comptes Beebs différents → attendre');

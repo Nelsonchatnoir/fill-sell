@@ -122,12 +122,12 @@ const dressing = (debut, fin, vus, boutique, erreur = null) => ({ user_id: U, pl
   started_at: debut, finished_at: fin, items_vus: vus, total_entries: vus, vinted_user_id: boutique, erreur });
 const relevesReels = [ // les relevés Vinted du compte (quatre boutiques), tels qu'en base
   dressing("2026-10-29T20:41:11.892Z", "2026-10-29T20:41:31.028Z", 255, BOUTIQUE, "[note] cadence cron : 1 sync 'cron' refusée(s) depuis ce run (fenêtre de 20 h), dernière le 2026-10-29T21:45:06.167Z"),
-  dressing("2026-10-30T11:17:09.240Z", "2026-10-30T11:17:30.933Z", 222, "32977976", "[note] disparitions non marquées — changement de compte Vinted (@narema75 → @jcassou) : sync normale, aucune disparition marquée"),
+  dressing("2026-10-30T11:17:09.240Z", "2026-10-30T11:17:30.933Z", 222, "32977976", "[note] disparitions non marquées — changement de compte Vinted (@boutique-essai-3 → @boutique-essai-5) : sync normale, aucune disparition marquée"),
   dressing("2026-11-01T00:43:09.975Z", "2026-11-01T00:43:30.074Z", 222, "32977976"),
-  dressing("2026-11-01T16:52:18.832Z", "2026-11-01T16:52:27.934Z", 15, "36916243", "[note] disparitions non marquées — changement de compte Vinted (@jcassou → @isa78980) : sync normale, aucune disparition marquée"),
-  dressing("2026-11-02T23:28:42.403Z", "2026-11-02T23:29:12.719Z", 307, "36325065", "[note] disparitions non marquées — changement de compte Vinted (@isa78980 → @celineetmarie) : sync normale, aucune disparition marquée"),
+  dressing("2026-11-01T16:52:18.832Z", "2026-11-01T16:52:27.934Z", 15, "36916243", "[note] disparitions non marquées — changement de compte Vinted (@boutique-essai-5 → @boutique-2189c4d8) : sync normale, aucune disparition marquée"),
+  dressing("2026-11-02T23:28:42.403Z", "2026-11-02T23:29:12.719Z", 307, "36325065", "[note] disparitions non marquées — changement de compte Vinted (@boutique-2189c4d8 → @boutique-essai-1) : sync normale, aucune disparition marquée"),
   dressing("2026-11-03T23:28:43.772Z", "2026-11-03T23:29:09.856Z", 306, "36325065"),
-  dressing("2026-11-04T23:23:21.883Z", "2026-11-04T23:23:44.298Z", 276, BOUTIQUE, "[note] disparitions non marquées — changement de compte Vinted (@celineetmarie → @narema75) : sync normale, aucune disparition marquée"),
+  dressing("2026-11-04T23:23:21.883Z", "2026-11-04T23:23:44.298Z", 276, BOUTIQUE, "[note] disparitions non marquées — changement de compte Vinted (@boutique-essai-1 → @boutique-essai-3) : sync normale, aucune disparition marquée"),
 ];
 const vueEnLigne = { vu_le: "2026-11-04T23:23:33.022Z", statut: "active" };
 const vueAncienne = { vu_le: "2026-10-28T11:01:00.010Z", statut: "active" };

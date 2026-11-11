@@ -96,7 +96,7 @@ BEGIN
   SELECT count(*) INTO attendus FROM _a_nettoyer;
   IF attendus > 450 THEN RAISE EXCEPTION 'garde : % tâches (la lecture à blanc en voyait 392) — rien n''est fait', attendus; END IF;
   IF NOT EXISTS (SELECT 1 FROM _a_nettoyer WHERE id = '44d125ac-47ff-4623-bcd8-eea509ebb810') THEN
-    RAISE EXCEPTION 'garde : la tâche de Thibault (44d125ac) n''est plus dans le périmètre — état relu inattendu, rien n''est fait';
+    RAISE EXCEPTION 'garde : la tâche du compte a3002ab6 (44d125ac) n''est plus dans le périmètre — état relu inattendu, rien n''est fait';
   END IF;
   -- Compare-and-swap sur platform_fields : une ligne qui a bougé depuis la lecture n'est jamais écrasée.
   UPDATE public.cross_post_jobs c

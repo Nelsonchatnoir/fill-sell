@@ -163,7 +163,7 @@ const dressingRegis = ({ avecCopie, copieEnBrouillon = false }) => (msg) => {
     "…et reconnue (le brouillon au même titre, photo 13:11:50, ne fait pas une 2e candidate)");
   dressing = (msg) => ({ success: true, page: msg.page, articles: msg.page === 1 ? [COPIE_EN_LIGNE, ...recents(5, "2026-10-18T09:00:00Z").slice(0, 95)] : [] });
   const luSans = await B.lireDressingPourCopie(1, "31995881", B.seuilRetraitRecreation(PF_REGIS()));
-  ok(luSans.pages === 1 && luSans.articles.some((a) => a.vinted_item_id === COPIE.vinted_item_id), "compte sans brouillon (111savagenow, tessy.galy, xxewwer) : la copie en page 1, une page lue");
+  ok(luSans.pages === 1 && luSans.articles.some((a) => a.vinted_item_id === COPIE.vinted_item_id), "compte sans brouillon (client-cd1e30f9, client-2f8b09d2, client-de63ca45) : la copie en page 1, une page lue");
   dressing = () => ({ success: true, articles: brouillons(1), pagination: { total_pages: 50 } });
   const luBrouillons = await B.lireDressingPourCopie(1, "31995881", B.seuilRetraitRecreation(PF_REGIS()));
   ok(luBrouillons.pages === 10 && luBrouillons.complet === false, "que des brouillons : 10 pages au plus, lecture dite INCOMPLÈTE");

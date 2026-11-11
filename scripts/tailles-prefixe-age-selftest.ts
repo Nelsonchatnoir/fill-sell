@@ -39,7 +39,7 @@ ok("(25/10) valeur non tranchée « EU 39 », texte libre : l'entrée « 39 » d
 ok("(25/10) valeur non tranchée hors liste, texte libre : manquant (la question)", serviNonTranche("Classic Fit", "FREE_TEXT", ["S", "M", "L"]) === null);
 ok("(25/10) fiche « EU 39 », texte libre : envoyée telle quelle (comme hier)",
   (assemblerAspects({ taille: "EU 39" } as never, aspect("FREE_TEXT", ["38", "39"]) as never).aspects["Taille"]?.[0] ?? null) === "EU 39");
-ok("liste fermée : EU 42 → 42 (tessy)", servi("EU 42", "SELECTION_ONLY", ROBES) === "42");
+ok("liste fermée : EU 42 → 42 (compte-2f8b09d2)", servi("EU 42", "SELECTION_ONLY", ROBES) === "42");
 ok("liste fermée : UK 10 tel quel (déjà dans la liste)", servi("UK 10", "SELECTION_ONLY", ROBES) === "UK 10");
 ok("liste fermée : 42 tel quel", servi("42", "SELECTION_ONLY", ROBES) === "42");
 ok("liste fermée : EU 43 → manquant (question)", servi("EU 43", "SELECTION_ONLY", ROBES) === null);

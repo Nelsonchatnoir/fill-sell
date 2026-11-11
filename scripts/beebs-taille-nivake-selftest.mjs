@@ -60,7 +60,7 @@ console.log("\n1 bis. SAUF UNE CORRECTION TRACÉE QUI TIENT (26/10 nuit, point 1
     champs_lus_sur_l_annonce: { le: "2026-10-26T01:00:00Z", lus: { taille: lue }, repris: {} }, ...surcharge });
   const c = taillesAPoser(pf("16"));
   ok(c.primaire === "31" && c.replis.length === 0 && c.correctionTracee === true,
-    "chaouidz : l'annonce affiche encore « 16 », la copie corrigée « 31 » part SEULE (jamais « 16 » en repli)", JSON.stringify(c));
+    "boutique-90ace0e4 : l'annonce affiche encore « 16 », la copie corrigée « 31 » part SEULE (jamais « 16 » en repli)", JSON.stringify(c));
   const autre = taillesAPoser(pf("30"));
   ok(autre.primaire === "30" && autre.replis.length === 1 && autre.replis[0] === "31" && !autre.correctionTracee,
     "l'annonce affiche une 3e valeur (« 30 », changée depuis sur Beebs) : rien n'est forcé, la valeur affichée d'abord", JSON.stringify(autre));
@@ -96,4 +96,4 @@ const iIa = src.indexOf("const champTaille = sizeField ||");
 ok(iIa > 0 && /if \(!match && !champTaille && !marqueReelle\)/.test(src.slice(iIa, iIa + 320)), "toujours aucune IA pour une taille (ni pour une vraie marque, 18/10)");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
-console.log("\n✓ ceinture nivake03 : la taille que l'annonce affiche est reposée, jamais demandée, jamais approchée");
+console.log("\n✓ ceinture client-869e5f03 : la taille que l'annonce affiche est reposée, jamais demandée, jamais approchée");

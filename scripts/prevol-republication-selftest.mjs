@@ -85,7 +85,7 @@ attendu("copie complète", jobVintedReel, [], copie);
 // manquant de COPIE : la une-passe le DEMANDE avant tout retrait (question
 // fermée sur les formats offerts), ou refuse de retirer — cf.
 // selftest:vinted-colis-envoi. La copie laisse donc passer.
-attendu("format du colis manquant (cas XEWER) → demandé par la une-passe, plus par la copie", jobVintedReel, [], { ...copie, package_size_id: null });
+attendu("format du colis manquant (cas COMPTE-DE63CA45) → demandé par la une-passe, plus par la copie", jobVintedReel, [], { ...copie, package_size_id: null });
 attendu("catégorie manquante", jobVintedReel, ["la catégorie"], { ...copie, catalog_id: null });
 attendu("photos et prix manquants", jobVintedReel, ["les photos", "le prix"], { ...copie, photos: [], prix: 0 });
 // La copie passée fait foi : même avec une capture_id, une copie construite
@@ -93,7 +93,7 @@ attendu("photos et prix manquants", jobVintedReel, ["les photos", "le prix"], { 
 // (03/10) Ce cas se juge en section 3, avec les deux autres morceaux du point D
 // (mis de côté par le retour arrière du 28/09).
 
-console.log("\n2. LEBONCOIN — le cas af34f609 (nicolas.menar, 22/09)");
+console.log("\n2. LEBONCOIN — le cas af34f609 (client-39bfa95a, 22/09)");
 const lbcComplet = {
   platform: "leboncoin", description: "Description conservée de cette annonce", title: "Lot 2 doudous Lama Simba Toys", price: 28, photos: ["u1"],
   listing_url: "https://www.leboncoin.fr/ad/jeux_jouets/3254722711",
@@ -113,7 +113,7 @@ attendu("pas de localisation capturée MAIS une adresse aux Réglages → on pas
 // XEWER, 25/09 : le lieu-dit ne bloque pas (la commune et le code postal
 // suffisent) ; ce qui bloque AVANT le retrait, c'est l'absence de code postal
 // dans ce qu'on va taper — l'invariant de fillAddress n'a plus rien à tenir.
-attendu("XEWER : localisation avec lieu-dit → on passe (la commune suffit)", {
+attendu("COMPTE-DE63CA45 : localisation avec lieu-dit → on passe (la commune suffit)", {
   ...lbcComplet,
   platform_fields: {
     lbcCategoryPath: ["Loisirs", "Jeux & Jouets"],

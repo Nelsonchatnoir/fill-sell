@@ -107,7 +107,7 @@ ok(vsb3.verdict === "presente", "SoldOut d'un AUTRE produit de la page : jamais 
 const vsb4 = await fabrique([listee], { pageAnnonce: { http: 404, produit: false, sku: "34097677", disponibilite: "SoldOut" } }).preuveAbsenceMesAnnonces("34097677", t);
 ok(vsb4.verdict === "presente", "page sans réponse 200 : jamais une preuve");
 
-console.log("\n3 bis. UN GROS COMPTE : « EN LIGNE » TRONQUÉE À 60 (04/10, Joséphine, ~190 annonces)");
+console.log("\n3 bis. UN GROS COMPTE : « EN LIGNE » TRONQUÉE À 60 (04/10, Client-essai-1, ~190 annonces)");
 {
   const soixante = Array.from({ length: 60 }, (_, k) => String(34000000 + k));
   const jo = L([], soixante, 190);

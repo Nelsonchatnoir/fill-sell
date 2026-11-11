@@ -20,7 +20,7 @@ BEGIN
      AND c.status = 'cancelled'
      AND c.platform_fields->'lbc_hors_france'->>'par' = 'scripts/reparations/20261025_lbc_hors_france_marta.sql';
   GET DIAGNOSTICS n = ROW_COUNT;
-  RAISE NOTICE '% job(s) Leboncoin de Marta remis dans leur état d''avant la clôture', n;
+  RAISE NOTICE '% job(s) Leboncoin du compte ac19c8c9 remis dans leur état d''avant la clôture', n;
 END $$;
 SELECT c.status, count(*) AS n, count(*) FILTER (WHERE c.platform_fields ? 'lbc_hors_france') AS encore_marques
   FROM public.cross_post_jobs c

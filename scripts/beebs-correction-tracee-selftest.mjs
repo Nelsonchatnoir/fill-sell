@@ -76,7 +76,7 @@ console.log("\n1. PARITÉ : le miroir de beebs.js et _shared/correction-tracee.j
   ok(ecarts === 0, `même verdict sur les ${n} cas (${ecarts} écart)`);
 }
 
-console.log("\n2. LE CAS DE chaouidz (Beebs 34229052, job 29f9116e)");
+console.log("\n2. LE CAS DE boutique-90ace0e4 (Beebs 34229052, job 29f9116e)");
 // platform_fields tels qu'en base après le script du 26/10, plus la lecture de l'annonce faite AVANT le retrait.
 const TRACE_CHAOUIDZ = {
   cle: "taille", avant: "16", apres: "31", source: "correction", annonce: "34229052",

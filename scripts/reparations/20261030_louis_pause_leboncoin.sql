@@ -3,7 +3,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Ordre de Nico (30/10, « Mets en pause TOUTES les actions Leboncoin de ses DEUX comptes […] tant que le blocage
 -- dure. Reprise prudente ensuite, sans rafale. »), promis à Louis par mail vers 19:20.
--- Comptes : « Amiral » louis@ttfamily.fr (faf5021a-479a-4bb3-b3ec-c296770739b7, Brave) et louis-seller@ttfamily.fr
+-- Comptes : « Amiral » compte faf5021a (faf5021a-479a-4bb3-b3ec-c296770739b7, Brave) et compte 447d920c
 -- (447d920c-976a-4d8f-aff4-a2998050358c, machine virtuelle) — comptes liés depuis le 18/10, UN seul compte Leboncoin.
 -- Preuves (base) : veille des commandes Leboncoin en 403 — Amiral 28/10 21:31 et 30/10 02:27, louis-seller 29/10
 -- 05:35 ; trois republications d'Amiral en « vérification anti-robot » depuis 12:51 ; capture de Louis à 19:12 :

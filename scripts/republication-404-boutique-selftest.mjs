@@ -33,7 +33,7 @@ const CELINE = "88111222", NAREMA = "55444333", JCASSOU = "32977976";
 const V = (boutique, identite, multiBoutiques) => verdictIntrouvable404Republication({ boutique, identite, multiBoutiques });
 assert.equal(V(CELINE, "", true), "attente_boutique");
 assert.equal(V(CELINE, null, true), "attente_boutique");
-ok("Rémi : boutique de l'article connue, identité illisible, trois boutiques → ATTENTE de boutique");
+ok("Compte-essai-7 : boutique de l'article connue, identité illisible, trois boutiques → ATTENTE de boutique");
 assert.equal(V(CELINE, NAREMA, true), "mauvaise_boutique");
 ok("une autre boutique ouverte → attente (inchangé)");
 assert.equal(V(CELINE, CELINE, true), "disparue");
@@ -74,13 +74,13 @@ function monter({ boutiques, ongletRend = null }) {
   `)(ctx);
   return { fn, ecrits, patchs, ongletLu };
 }
-const REMI = [{ user_id: CELINE, login: "celineetmarie" }, { user_id: NAREMA, login: "narema75" }, { user_id: JCASSOU, login: "jcassou" }];
+const REMI = [{ user_id: CELINE, login: "boutique-essai-1" }, { user_id: NAREMA, login: "boutique-essai-3" }, { user_id: JCASSOU, login: "boutique-essai-5" }];
 const silence = console.log; console.log = () => {};
 try {
   // a. Rémi, identité illisible partout : six 404 de suite → six attentes, jamais needs_user.
   {
     const { fn, ecrits, patchs, ongletLu } = monter({ boutiques: REMI, ongletRend: null });
-    const job = { id: "remi-1", inventaire_id: 42 };
+    const job = { id: "compte-essai-7-1", inventaire_id: 42 };
     let pf = {};
     for (let i = 0; i < 6; i++) {
       const r = await fn({ accessToken: "t", job, pf, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: null });
@@ -89,7 +89,7 @@ try {
     }
     assert.ok(ecrits.every((e) => e.status === "pending"), "toujours pending");
     assert.equal(pf.attente_boutique.user_id, CELINE);
-    assert.equal(pf.attente_boutique.login, "celineetmarie");
+    assert.equal(pf.attente_boutique.login, "boutique-essai-1");
     assert.equal(pf.introuvable_indetermine, undefined, "aucun compteur « indéterminé »");
     assert.equal(pf.needs_user_source, undefined);
     assert.equal(pf.introuvable_404.verdict, "attente_boutique");
@@ -97,24 +97,24 @@ try {
     assert.equal(ongletLu.n, 6, "l'identité est relue par l'onglet avant chaque verdict");
     const echeance = Date.parse(pf.next_action_after) - Date.now();
     assert.ok(echeance > 14 * 60_000 && echeance <= 15 * 60_000, "échéance 15 min");
-    ok("Rémi : six 404 sous une identité illisible → six attentes de @celineetmarie, aucun compteur, jamais needs_user");
+    ok("Compte-essai-7 : six 404 sous une identité illisible → six attentes de @boutique-essai-1, aucun compteur, jamais needs_user");
   }
   // b. Rémi, l'onglet lit @narema75 → attente de la bonne boutique (mauvaise_boutique).
   {
-    const { fn, ecrits } = monter({ boutiques: REMI, ongletRend: { user_id: NAREMA, login: "narema75", source: "onglet" } });
-    const r = await fn({ accessToken: "t", job: { id: "remi-2", inventaire_id: 42 }, pf: {}, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: null });
+    const { fn, ecrits } = monter({ boutiques: REMI, ongletRend: { user_id: NAREMA, login: "boutique-essai-3", source: "onglet" } });
+    const r = await fn({ accessToken: "t", job: { id: "compte-essai-7-2", inventaire_id: 42 }, pf: {}, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: null });
     assert.equal(r.status, "skipped");
     const pf = ecrits[0].extra.platform_fields;
     assert.equal(pf.introuvable_404.verdict, "mauvaise_boutique");
     assert.equal(pf.introuvable_404.identite, NAREMA);
     assert.equal(pf.introuvable_404.source_identite, "onglet");
     assert.equal(pf.attente_boutique.user_id, CELINE);
-    ok("Rémi : l'onglet lit @narema75 → attente de @celineetmarie (identité tracée « onglet »)");
+    ok("Compte-essai-7 : l'onglet lit @boutique-essai-3 → attente de @boutique-essai-1 (identité tracée « onglet »)");
   }
   // c. L'onglet lit la BONNE boutique → disparue, chemin inchangé.
   {
-    const { fn, ecrits, patchs } = monter({ boutiques: REMI, ongletRend: { user_id: CELINE, login: "celineetmarie", source: "onglet" } });
-    const r = await fn({ accessToken: "t", job: { id: "remi-3", inventaire_id: 42 }, pf: {}, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: null });
+    const { fn, ecrits, patchs } = monter({ boutiques: REMI, ongletRend: { user_id: CELINE, login: "boutique-essai-1", source: "onglet" } });
+    const r = await fn({ accessToken: "t", job: { id: "compte-essai-7-3", inventaire_id: 42 }, pf: {}, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: null });
     assert.equal(r.status, "failed");
     assert.equal(ecrits[0].status, "failed");
     assert.match(ecrits[0].extra.error, /Vinted n'a pas rendu cette annonce/);
@@ -123,7 +123,7 @@ try {
   }
   // d. Compte à UNE boutique, identité illisible : chemin d'avant (compteur, puis needs_user), onglet jamais lu.
   {
-    const { fn, ecrits, ongletLu } = monter({ boutiques: [{ user_id: CELINE, login: "celineetmarie" }], ongletRend: { user_id: NAREMA } });
+    const { fn, ecrits, ongletLu } = monter({ boutiques: [{ user_id: CELINE, login: "boutique-essai-1" }], ongletRend: { user_id: NAREMA } });
     let pf = {};
     for (let i = 0; i < 5; i++) {
       await fn({ accessToken: "t", job: { id: "mono", inventaire_id: 42 }, pf, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: null });
@@ -137,7 +137,7 @@ try {
   // e. Identité du service worker lisible et différente : pas besoin de l'onglet.
   {
     const { fn, ecrits, ongletLu } = monter({ boutiques: REMI, ongletRend: null });
-    await fn({ accessToken: "t", job: { id: "remi-5", inventaire_id: 42 }, pf: {}, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: { user_id: JCASSOU, login: "jcassou" } });
+    await fn({ accessToken: "t", job: { id: "compte-essai-7-5", inventaire_id: 42 }, pf: {}, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: { user_id: JCASSOU, login: "boutique-essai-5" } });
     assert.equal(ecrits[0].extra.platform_fields.introuvable_404.verdict, "mauvaise_boutique");
     assert.equal(ongletLu.n, 0);
     ok("identité déjà lisible : aucune lecture d'onglet de plus");

@@ -109,7 +109,7 @@ console.log("4. CHAQUE ATTENTE DIT POURQUOI, AVEC LE MOT DE L'ÉTAT, SANS HEURE"
   const horsLigneLongtemps = job({ action: "republish", platform_fields: { republish_step: "deleted", deleted_at: iso(-4 * 24 * 60 - 30), next_action_after: iso(5) } });
   ok(/^En cours : hors ligne depuis le \d{1,2} \S+, remise en ligne dès que possible$/.test(s(horsLigneLongtemps).raison) && !/quelques minutes/.test(s(horsLigneLongtemps).raison),
     "retirée depuis 4 jours : « hors ligne depuis le … », jamais « quelques minutes »", s(horsLigneLongtemps).raison);
-  ok(s(job({ action: "republish", platform_fields: { republish_step: "captured", attente_boutique: { login: "louis" } } })).raison === "En pause : ouvre ta boutique @louis sur vinted.fr dans Chrome, ça repartira tout seul",
+  ok(s(job({ action: "republish", platform_fields: { republish_step: "captured", attente_boutique: { login: "compte-essai-2" } } })).raison === "En pause : ouvre ta boutique @compte-essai-2 sur vinted.fr dans Chrome, ça repartira tout seul",
     "attente de la bonne boutique Vinted — la phrase dit quelle boutique OUVRIR");
   ok(s(job({ platform: "opla" }), { ...ctx, oplaAAutoriser: true }).groupe === "a_toi", "Opla sans autorisation connue : à toi de jouer, jamais « son tour »");
   ok(s(job({ platform: "opla" }), ctx).raison === "En file : elle partira à son tour", "Opla autorisée (ou verdict inconnu) : à son tour");

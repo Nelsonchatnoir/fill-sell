@@ -99,7 +99,7 @@ async function essai(sc) {
 const supprime = (r) => r.ecrits.some((e) => e.status === "deleted");
 
 // ═══ 1. BEEBS ═══════════════════════════════════════════════════════════════
-console.log("1. Beebs (boncoin59300, d87c8614) — deux constats « page 404 » à 6 h d'écart");
+console.log("1. Beebs (client-3f91c02e, d87c8614) — deux constats « page 404 » à 6 h d'écart");
 const jobBeebs = (pf = {}) => ({ id: "d87c8614", user_id: "u", platform: "beebs", action: "delete", title: "playmobil city action 71149",
   listing_url: "https://www.beebs.app/fr/p/33747519-playmobil-city-action", platform_listing_id: "33747519", inventaire_id: 1792855532058017, platform_fields: pf });
 const constat = (le) => ({ le, page_http: 404, produit: false, en_verification: "complete", en_ligne: "60/1103", index: "la_porte_encore" });
@@ -247,7 +247,7 @@ console.log("\n5. Le balayage (handler-watch) — ce qui prouve, ce qui ne prouv
   const relevesAvant = [R("2026-10-22T10:00:00Z", 40, 40), R("2026-10-21T10:00:00Z", 41, 41)];
   const v = RA.jugerRetraitDejaAbsent(retraitLbc, { releves: relevesAvant, annonces: ligneGone });
   ok(v?.motif === "deux_releves_complets" && v.vente === null && v.preuve.source === "releves_complets",
-    "f38fc7f6 (Hassan Said) : vue puis partie au relevé, absente des deux derniers relevés complets (même d'avant la demande) → retrait fait", JSON.stringify(v));
+    "f38fc7f6 (Compte-bf85d176) : vue puis partie au relevé, absente des deux derniers relevés complets (même d'avant la demande) → retrait fait", JSON.stringify(v));
   ok(RA.jugerRetraitDejaAbsent(retraitLbc, { releves: relevesAvant, annonces: [] }) === null, "jamais vue par un relevé (deux comptes, un seul relevé) → rien n'est conclu");
   ok(RA.jugerRetraitDejaAbsent(retraitLbc, { releves: [R("2026-10-22T10:00:00Z", 30, 40), R("2026-10-21T10:00:00Z", 41, 41)], annonces: ligneGone }) === null, "un relevé incomplet → rien");
   ok(RA.jugerRetraitDejaAbsent(retraitLbc, { releves: relevesAvant, annonces: [{ ...ligneGone[0], disparu_le: null, vu_le: "2026-10-22T10:05:00Z" }] }) === null, "revue en ligne par un des deux relevés → rien (elle est là)");

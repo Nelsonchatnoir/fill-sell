@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // DÉLÉGATION LEBONCOIN PAR COMPTE (01/11, décision de Nico — Louis)
 // ═══════════════════════════════════════════════════════════════════════════
-// Louis a deux comptes FillSell sur UN compte Leboncoin (boutique « Clayton ») : Amiral (louis@ttfamily.fr, son vrai
-// PC) et louis-seller (louis-seller@ttfamily.fr, une machine virtuelle de son NAS que Leboncoin refuse). Décision :
+// Louis a deux comptes FillSell sur UN compte Leboncoin (boutique « Clayton ») : Amiral (compte faf5021a, son vrai
+// PC) et louis-seller (compte 447d920c, une machine virtuelle de son NAS que Leboncoin refuse). Décision :
 // toutes les actions Leboncoin de louis-seller (publication, republication, retrait, relevé des annonces, veille et
 // relevé des ventes, essai de levée de pause) sont EXÉCUTÉES par l'extension du poste d'Amiral, sur SA session
 // Leboncoin. Les données restent celles de louis-seller : l'extension d'Amiral ouvre un second compte de travail,

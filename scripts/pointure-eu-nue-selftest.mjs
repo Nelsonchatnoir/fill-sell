@@ -22,7 +22,7 @@ const BEEBS_ENFANT = Array.from({ length: 27 }, (_, i) => String(15 + i));
 const VINTED_HOMME = ["38", "38,5", "39", "39,5", "40", "40,5", "41", "41,5", "42", "42,5", "43", "43,5", "44", "44,5", "45", "45,5", "46", "46,5", "47", "47,5", "48", "48,5", "49", "50", "51", "52", "Taille unique", "Autre"];
 
 console.log("1. Leboncoin « Pointure » (shoe_size) : « EU N » est « N »");
-ok("« EU 37.5 » (Marta) → « 37,5 »", juge("leboncoin", "shoe_size", "EU 37.5", LBC).valeurListe === "37,5");
+ok("« EU 37.5 » (Compte-essai-3) → « 37,5 »", juge("leboncoin", "shoe_size", "EU 37.5", LBC).valeurListe === "37,5");
 ok("« EU 31 » (90ace0e4) → « 31 », jamais « 16 »", juge("leboncoin", "shoe_size", "EU 31", LBC).valeurListe === "31");
 ok("« EU 38 » → « 38 » ; « EUR 38 » → « 38 » ; « EU 37,5 » → « 37,5 »",
   juge("leboncoin", "shoe_size", "EU 38", LBC).valeurListe === "38" && juge("leboncoin", "shoe_size", "EUR 38", LBC).valeurListe === "38"

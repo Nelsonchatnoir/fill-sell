@@ -34,7 +34,7 @@ console.log('Aspirateur de Nico : tout en ligne, Beebs INTERDIT (règle écrite)
   ok(r && !r.attendGeste, "ce n'est pas « pour l'instant » : rien à débloquer");
 }
 
-console.log('Cas Louis (03/10) : rayon introuvable par NOTRE table → cochable, jamais grisé');
+console.log('Cas Compte-essai-2 (03/10) : rayon introuvable par NOTRE table → cochable, jamais grisé');
 {
   // « 12 adaptateurs … pour pots La Laitière – Seb Multidélices » : icône 🔌,
   // table Beebs → « unavailable ». Beebs a pourtant Maison > Cuisine.

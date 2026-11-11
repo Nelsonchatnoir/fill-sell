@@ -82,7 +82,7 @@ const MAINTENANT = Date.parse("2026-10-05T12:00:00Z");
 const r = retraitsBloquesParConnexion({ jobs, fiches, maintenant: MAINTENANT });
 const groupe = (p) => r.parPlateforme.find((g) => g.platform === p);
 
-console.log("\n── 1. Les 8 retraits Opla de Joséphine ────────────────────────");
+console.log("\n── 1. Les 8 retraits Opla de Client-essai-1 ────────────────────────");
 ok("Opla : 8 retraits bloqués", groupe("opla")?.lignes.length === 8, groupe("opla")?.lignes.length);
 ok("Opla : tous vendus", groupe("opla")?.nVendus === 8);
 ok("Opla : le titre vient de la FICHE", groupe("opla")?.lignes.every((l) => /^Robe \d$/.test(l.titre)), groupe("opla")?.lignes.map((l) => l.titre));
@@ -225,7 +225,7 @@ console.log("\n── 7. (06/10) Vinted : session absente, session illisible, «
   const fichesX = new Map([["901", { id: 901, title: "Les Sims 2 Naufragés DS", statut: "vendu" }], ["902", { id: 902, title: "Viewtiful Joe GameCube", statut: "vendu" }]]);
   const jobsX = [clos("s1", 901, 1), clos("s2", 901, 2), clos("s3", 901, 3), clos("v1", 902, 4)];
   const r = retraitsBloquesParConnexion({ jobs: jobsX, fiches: fichesX, maintenant: Date.parse("2026-10-15T16:00:00Z") });
-  ok("Opla quittée : un retrait clos par la sortie d'Opla est un mur (XEWER)", retraitOplaQuittee(jobsX[0]));
+  ok("Opla quittée : un retrait clos par la sortie d'Opla est un mur (COMPTE-DE63CA45)", retraitOplaQuittee(jobsX[0]));
   ok("Opla quittée : trois armements de la même annonce = UNE ligne", r.total === 2, r.total);
   const g = r.parPlateforme.find((x) => x.mur === "opla_sortie");
   ok("Opla quittée : la phrase dit de retirer soi-même sur Opla", g && /retire-les toi-même sur Opla/.test(texteRetraitsBloques(g, "fr")) && /risque de double vente/.test(texteRetraitsBloques(g, "fr")), g && texteRetraitsBloques(g, "fr"));

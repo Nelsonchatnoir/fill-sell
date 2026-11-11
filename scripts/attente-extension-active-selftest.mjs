@@ -28,29 +28,29 @@ const AMIRAL = "faf5021a-479a-4bb3-b3ec-c296770739b7";
 const SEULE = "11111111-2222-4333-8444-555555555555";
 const H = 3600_000;
 const iso = (t) => new Date(t).toISOString();
-const flagsLouis = { delegation_leboncoin: { executant: AMIRAL, nom: "Amiral" } };
+const flagsLouis = { delegation_leboncoin: { executant: AMIRAL, nom: "Compte-faf5021a" } };
 const flagsAmiral = { execute_leboncoin_pour: [LOUIS] };
 const profils = (extra = {}) => new Map([
-  [LOUIS, { id: LOUIS, username: "louis-seller", extension_last_seen_at: null, beta_flags: flagsLouis, platform_settings: {}, ...(extra[LOUIS] ?? {}) }],
-  [AMIRAL, { id: AMIRAL, username: "Amiral", extension_last_seen_at: null, beta_flags: flagsAmiral, platform_settings: {}, ...(extra[AMIRAL] ?? {}) }],
+  [LOUIS, { id: LOUIS, username: "client-447d920c", extension_last_seen_at: null, beta_flags: flagsLouis, platform_settings: {}, ...(extra[LOUIS] ?? {}) }],
+  [AMIRAL, { id: AMIRAL, username: "Compte-faf5021a", extension_last_seen_at: null, beta_flags: flagsAmiral, platform_settings: {}, ...(extra[AMIRAL] ?? {}) }],
   [SEULE, { id: SEULE, username: "seule", extension_last_seen_at: null, beta_flags: {}, platform_settings: {}, ...(extra[SEULE] ?? {}) }],
 ]);
 const job = (o) => ({ id: o.id ?? "j-" + Math.random().toString(16).slice(2, 10), status: "pending", action: "delete", platform: "leboncoin", error: "", platform_fields: {}, ...o });
 
-console.log("\n[A] le cas de louis-seller, à ses heures (05/11 09:50 Paris)");
+console.log("\n[A] le cas de client-447d920c, à ses heures (05/11 09:50 Paris)");
 {
   const maintenant = Date.parse("2026-11-05T08:50:00Z");
   const p = profils({ [AMIRAL]: { extension_last_seen_at: "2026-11-05T08:41:51Z" } });
   const j = job({ id: "69f89a6d-0000", user_id: LOUIS, created_at: "2026-11-03T14:36:00Z",
-    error: "Leboncoin passe par ton compte Amiral : cette tâche partira dès que l'extension FillSell (à jour) sera ouverte" });
+    error: "Leboncoin passe par ton compte Compte-faf5021a : cette tâche partira dès que l'extension FillSell (à jour) sera ouverte" });
   const r = M.filesArretees({ jobs: [j], profils: p, derniersDeparts: new Map([[`${LOUIS}|leboncoin`, Date.parse("2026-11-02T15:52:00Z")]]), maintenant });
   const a = r.arretees[0];
-  ok(r.arretees.length === 1, "le retrait de Louis est signalé", JSON.stringify(r));
-  ok(a?.delegue === true && a?.executant === AMIRAL && a?.executantNom === "Amiral", "exécutant : Amiral, par la délégation", JSON.stringify(a));
+  ok(r.arretees.length === 1, "le retrait de Compte-essai-2 est signalé", JSON.stringify(r));
+  ok(a?.delegue === true && a?.executant === AMIRAL && a?.executantNom === "Compte-faf5021a", "exécutant : Compte-faf5021a, par la délégation", JSON.stringify(a));
   ok(a?.attenteH === 42 && a?.vuIlYaMin === 8, `attente 42 h, extension vue il y a 8 min (${a?.attenteH} h, ${a?.vuIlYaMin} min)`);
   const l = a ? M.ligneFileArretee(a) : "";
-  ok(/^\[Leboncoin\] louis-seller — 1 tâche\(s\) en file depuis 42 h \(delete×1\) · exécutée par Amiral \(délégation\), extension vue il y a 8 min/.test(l), "la ligne dit qui doit faire la tâche", l);
-  ok(/dernier départ 2026-11-02 15:52 UTC/.test(l) && /affiché : « Leboncoin passe par ton compte Amiral/.test(l), "la ligne dit le dernier départ et ce que lit la personne", l);
+  ok(/^\[Leboncoin\] client-447d920c — 1 tâche\(s\) en file depuis 42 h \(delete×1\) · exécutée par Compte-faf5021a \(délégation\), extension vue il y a 8 min/.test(l), "la ligne dit qui doit faire la tâche", l);
+  ok(/dernier départ 2026-11-02 15:52 UTC/.test(l) && /affiché : « Leboncoin passe par ton compte Compte-faf5021a/.test(l), "la ligne dit le dernier départ et ce que lit la personne", l);
   // Le soir du 03/11 : Amiral vu 2 h après la création seulement → pas encore 6 h d'attente « extension ouverte ».
   const r2 = M.filesArretees({ jobs: [j], profils: profils({ [AMIRAL]: { extension_last_seen_at: "2026-11-03T16:40:00Z" } }), derniersDeparts: new Map(), maintenant: Date.parse("2026-11-03T20:40:00Z") });
   ok(r2.arretees.length === 0 && r2.extensionsFermees === 1, "extension vue moins de 6 h après l'échéance : pas encore une file arrêtée");
@@ -118,9 +118,9 @@ console.log("\n[E] ops-digest : la section rouge");
   {
     const T = Date.parse("2026-11-05T15:00:00Z");
     const jobLbc = { id: "g1", user_id: "g", platform: "leboncoin", action: "publish", status: "pending", created_at: "2026-11-04T12:00:00Z", platform_fields: {} };
-    const pr = new Map([["g", { username: "goulven", extension_last_seen_at: "2026-11-05T14:55:00Z", platform_settings: { leboncoin: { blocage_acces: { depuis: "2026-11-04T12:36:52Z" } } } }]]);
+    const pr = new Map([["g", { username: "compte-essai-17", extension_last_seen_at: "2026-11-05T14:55:00Z", platform_settings: { leboncoin: { blocage_acces: { depuis: "2026-11-04T12:36:52Z" } } } }]]);
     const r = M.filesArretees({ jobs: [jobLbc], profils: pr, derniersDeparts: new Map(), maintenant: T });
-    ok(r.arretees.length === 0 && r.attentesVoulues === 1, "Leboncoin en pause chez goulventroad : attente de la plateforme, pas de rouge", JSON.stringify(r));
+    ok(r.arretees.length === 0 && r.attentesVoulues === 1, "Leboncoin en pause chez client-521b7f89 : attente de la plateforme, pas de rouge", JSON.stringify(r));
     const pr2 = new Map([["g", { username: "x", extension_last_seen_at: "2026-11-05T04:00:00Z", platform_settings: {} }]]);
     ok(M.filesArretees({ jobs: [jobLbc], profils: pr2, derniersDeparts: new Map(), maintenant: T }).arretees.length === 0, "extension muette depuis 11 h : pas « ouverte », pas de rouge");
   }

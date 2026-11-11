@@ -161,7 +161,7 @@ console.log("\n6. LA FILE AVANCE : PASSÉES, RESTANTES, RYTHME CONSTATÉ, FIN ES
   // 18 Beebs le 08/11 entre 10:06 et 14:53 (heure de Paris), puis un trou d'une nuit avant.
   const beebs = Array.from({ length: 18 }, (_, i) => ({ platform: "beebs", created_at: "2026-11-04T21:07:43Z", published_at: new Date(maintenant - 2 * 60_000 - i * 16 * 60_000).toISOString() }));
   const a = avancementRepublication({ enFile, faites: beebs, faitesLotParPf: { beebs: 29, leboncoin: 22, vinted: 29 }, maintenant, pauseApres: 50, pauseDureeMin: 120 });
-  ok(a.total.restantes === 796 && a.total.faites === 80, `Joséphine : 80 faites, 796 restantes (${a.total.faites} / ${a.total.restantes})`);
+  ok(a.total.restantes === 796 && a.total.faites === 80, `Client-essai-1 : 80 faites, 796 restantes (${a.total.faites} / ${a.total.restantes})`);
   ok(a.plateformes.beebs.rythme_h === 3.8, `Beebs : rythme constaté ${a.plateformes.beebs.rythme_h}/h (une toutes les 16 min)`);
   const attendu = 253 / (60 / 16) + 5 * 2;
   ok(Math.abs(a.plateformes.beebs.fin_estimee_h - attendu) < 0.2, `fin Beebs ≈ ${a.plateformes.beebs.fin_estimee_h} h de poste allumé (pauses de 2 h toutes les 50 comprises)`);

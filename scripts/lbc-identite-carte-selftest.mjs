@@ -68,7 +68,7 @@ ok(/if \(!Number\.isFinite\(vu\) \|\| now - \(vu as number\) > 24 \* 3_600_000\)
 ok(/pub >= le && !il\?\.libere_le/.test(hw) && /champsReprise\(j\.platform_fields/.test(hw), "éclaireur publié → toutes les autres repartent, une fois");
 ok(/if \(traites >= 10\) break;/.test(hw), "10 comptes par passage au plus");
 
-console.log("\n5. (08/11, point 6 — Rosa Metra) TANT QUE LE MUR TIENT, SEUL L'ÉCLAIREUR PART (get-pending-jobs)");
+console.log("\n5. (08/11, point 6 — Compte-c7c382b7) TANT QUE LE MUR TIENT, SEUL L'ÉCLAIREUR PART (get-pending-jobs)");
 {
   const I = await import("../supabase/functions/_shared/lbc-identite.js");
   const mur = (id, at, o = {}) => ({ id, platform: "leboncoin", action: "publish", status: "needs_user", created_at: "2026-11-06T14:45:00Z",

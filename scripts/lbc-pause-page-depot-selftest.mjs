@@ -35,7 +35,7 @@ const SESSIONS_XXEWWER = { leboncoin: null, http: { leboncoin: 403 }, checked_at
 const MAINTENANT = Date.parse("2026-10-02T07:30:00Z");
 
 console.log("\n1. LA PAUSE EST RECONNUE PAR SA GARDE ET SON MESSAGE, JAMAIS PAR UN TEXTE SEUL");
-ok(!!pausePageDepotLbc(job()), "la pause de xxewwer (0.6.82) est reconnue");
+ok(!!pausePageDepotLbc(job()), "la pause de client-de63ca45 (0.6.82) est reconnue");
 ok(!pausePageDepotLbc(job({}, { status: "pending" })), "un job pending n'est pas une pause");
 ok(!pausePageDepotLbc(job({ republish_step: "deleted" })), "jamais à l'étape 'deleted'");
 ok(!pausePageDepotLbc(job({ needsUserField: { field_key: "x", field_label: "X" } })), "une vraie question attend sa réponse : on n'y touche pas");
@@ -46,7 +46,7 @@ ok(!pausePageDepotLbc(job({}, { action: "delete" })), "un retrait : rien");
 
 console.log("\n2. CE QUE LE COMPTE DIT DE SA SESSION");
 const sx = sessionLbcDuCompte(RELEVES_XXEWWER, SESSIONS_XXEWWER);
-ok(sx.fermee === true, "xxewwer : session fermée (dernier relevé « jeton_absent »)", JSON.stringify(sx));
+ok(sx.fermee === true, "client-de63ca45 : session fermée (dernier relevé « jeton_absent »)", JSON.stringify(sx));
 const sOk = sessionLbcDuCompte([{ status: "done", started_at: "2026-10-02T08:00:00Z", erreur: "" }, ...RELEVES_XXEWWER], SESSIONS_XXEWWER);
 ok(sOk.fermee === false && sOk.derniereReussite === Date.parse("2026-10-02T08:00:00Z"), "un relevé réussi plus récent : session bonne");
 const sPage = sessionLbcDuCompte([], { leboncoin: false, http: { leboncoin: "login_redirect_observee" }, checked_at_par_plateforme: { leboncoin: "2026-10-02T06:00:00Z" } });
@@ -57,7 +57,7 @@ ok(sessionLbcDuCompte([], null).fermee === false, "aucun relevé : on ne sait pa
 
 console.log("\n3. LA DÉCISION");
 const d1 = decisionPausePageDepotLbc(job(), { releves: RELEVES_XXEWWER, sessions: SESSIONS_XXEWWER, maintenant: MAINTENANT });
-ok(d1?.action === "attente_session" && d1.status === "pending", "xxewwer → attente de session (pending)", JSON.stringify(d1?.action));
+ok(d1?.action === "attente_session" && d1.status === "pending", "client-de63ca45 → attente de session (pending)", JSON.stringify(d1?.action));
 ok(ATTENTE_SESSION_RE.test(d1.error), "message ancré « En attente de ta connexion à » (app, relancer_jobs_connexion)");
 ok(d1.error === MESSAGE_ATTENTE_CONNEXION_LBC && /reconnecte-toi à Leboncoin sur ton ordinateur/.test(d1.error), "message vrai : reconnecte-toi, rien n'a été touché");
 ok(!/de notre côté|on s'en occupe/.test(d1.error), "plus de « on s'en occupe » quand c'est la session");

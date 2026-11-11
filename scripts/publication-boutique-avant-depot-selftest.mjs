@@ -35,13 +35,13 @@ const { boutiqueAttendueDepotVinted, gardeBoutiqueDepotVinted, messageAttenteBou
 
 const NEYENONIE = "247512093";
 const EVAT = "371531";
-const BOUTIQUES_LOUIS = [{ user_id: NEYENONIE, login: "neyenonie" }, { user_id: EVAT, login: "evat" }];
+const BOUTIQUES_LOUIS = [{ user_id: NEYENONIE, login: "boutique-faf5021a" }, { user_id: EVAT, login: "boutique-essai-2" }];
 const publication = (pf = {}) => ({ id: "j1", platform: "vinted", action: "publish", platform_fields: { vinted_account_id: NEYENONIE, ...pf } });
 
 assert.deepEqual(gardeBoutiqueDepotVinted(publication(), BOUTIQUES_LOUIS),
-  { attendue: NEYENONIE, login_attendu: "neyenonie", multi: true });
-ok("Louis (deux boutiques) : la publication part avec sa boutique attendue @neyenonie");
-assert.equal(gardeBoutiqueDepotVinted(publication(), [{ user_id: NEYENONIE, login: "neyenonie" }]), null);
+  { attendue: NEYENONIE, login_attendu: "boutique-faf5021a", multi: true });
+ok("Louis (deux boutiques) : la publication part avec sa boutique attendue @boutique-faf5021a");
+assert.equal(gardeBoutiqueDepotVinted(publication(), [{ user_id: NEYENONIE, login: "boutique-faf5021a" }]), null);
 assert.equal(gardeBoutiqueDepotVinted(publication(), []), null);
 assert.equal(gardeBoutiqueDepotVinted(publication(), null), null);
 ok("compte à UNE boutique (ou liste vide) : aucune garde, rien ne change");
@@ -57,15 +57,15 @@ assert.equal(gardeBoutiqueDepotVinted({ ...publication(), action: "republish" },
 assert.equal(gardeBoutiqueDepotVinted({ ...publication(), platform: "leboncoin" }, BOUTIQUES_LOUIS), null);
 assert.equal(boutiqueAttendueDepotVinted(publication()), NEYENONIE);
 ok("seule une PUBLICATION Vinted est concernée");
-const sansLogin = gardeBoutiqueDepotVinted(publication(), [{ user_id: NEYENONIE }, { user_id: EVAT, login: "evat" }]);
+const sansLogin = gardeBoutiqueDepotVinted(publication(), [{ user_id: NEYENONIE }, { user_id: EVAT, login: "boutique-essai-2" }]);
 assert.equal(sansLogin.login_attendu, null);
 ok("pseudo inconnu : login_attendu null (jamais un identifiant à l'écran)");
 
 // ── 2. Le verdict de la page de dépôt (pur, vinted.js) ──────────────────────
 const verdictBoutiqueAvantDepotVinted = new Function(`${extraireFonctionJs(vt, "verdictBoutiqueAvantDepotVinted")}\nreturn verdictBoutiqueAvantDepotVinted;`)();
 const garde = gardeBoutiqueDepotVinted(publication(), BOUTIQUES_LOUIS);
-assert.equal(verdictBoutiqueAvantDepotVinted(garde, { success: true, userId: EVAT, login: "evat" }).verdict, "mauvaise_boutique");
-ok("le cas du 11/10 : Chrome sur @evat, article de @neyenonie → mauvaise_boutique (aucun dépôt)");
+assert.equal(verdictBoutiqueAvantDepotVinted(garde, { success: true, userId: EVAT, login: "boutique-essai-2" }).verdict, "mauvaise_boutique");
+ok("le cas du 11/10 : Chrome sur @boutique-essai-2, article de @boutique-faf5021a → mauvaise_boutique (aucun dépôt)");
 for (const ident of [
   { success: false, httpStatus: 403, accesRefuse: true, error: "accès refusé par Vinted (HTTP 403)" },
   { success: false, httpStatus: 401, sessionExpiree: true, error: "session Vinted absente ou expirée (HTTP 401)" },
@@ -75,16 +75,16 @@ for (const ident of [
   null,
 ]) assert.equal(verdictBoutiqueAvantDepotVinted(garde, ident).verdict, "identite_illisible", JSON.stringify(ident));
 ok("identité illisible (401, 403, réseau, anonyme, vide) chez un compte à plusieurs boutiques → aucun dépôt");
-assert.equal(verdictBoutiqueAvantDepotVinted(garde, { success: true, userId: NEYENONIE, login: "neyenonie" }).verdict, "boutique_ok");
+assert.equal(verdictBoutiqueAvantDepotVinted(garde, { success: true, userId: NEYENONIE, login: "boutique-faf5021a" }).verdict, "boutique_ok");
 ok("la bonne boutique ouverte → le dépôt part");
 assert.equal(verdictBoutiqueAvantDepotVinted(null, { success: true, userId: EVAT }).verdict, "sans_garde");
 assert.equal(verdictBoutiqueAvantDepotVinted({ attendue: NEYENONIE, multi: false }, null).verdict, "sans_garde");
 ok("sans garde (mono-boutique) → rien ne change, même identité illisible");
 
 // ── 3. Le texte de la carte ─────────────────────────────────────────────────
-const m1 = messageAttenteBoutiqueDepot({ verdict: "mauvaise_boutique", loginAttendu: "neyenonie" });
-assert.match(m1, /@neyenonie/); assert.match(m1, /Rien n'a été publié ailleurs/); assert.match(m1, /repartira toute seule/);
-const m2 = messageAttenteBoutiqueDepot({ verdict: "identite_illisible", loginAttendu: "neyenonie", navigateur: "Edge" });
+const m1 = messageAttenteBoutiqueDepot({ verdict: "mauvaise_boutique", loginAttendu: "boutique-faf5021a" });
+assert.match(m1, /@boutique-faf5021a/); assert.match(m1, /Rien n'a été publié ailleurs/); assert.match(m1, /repartira toute seule/);
+const m2 = messageAttenteBoutiqueDepot({ verdict: "identite_illisible", loginAttendu: "boutique-faf5021a", navigateur: "Edge" });
 assert.match(m2, /n'a pas pu lire quelle boutique est ouverte dans Edge/); assert.match(m2, /Rien n'a été publié/);
 const m3 = messageAttenteBoutiqueDepot({ verdict: "mauvaise_boutique", loginAttendu: null });
 assert.doesNotMatch(m3, /\d{5,}/);
@@ -151,14 +151,14 @@ assert.equal(r.status, "skipped");
 assert.equal(ecrits.length, 1);
 assert.equal(ecrits[0].status, "pending");
 const pfE = ecrits[0].extra.platform_fields;
-assert.deepEqual({ user_id: pfE.attente_boutique.user_id, login: pfE.attente_boutique.login }, { user_id: NEYENONIE, login: "neyenonie" });
+assert.deepEqual({ user_id: pfE.attente_boutique.user_id, login: pfE.attente_boutique.login }, { user_id: NEYENONIE, login: "boutique-faf5021a" });
 const echeance = Date.parse(pfE.next_action_after) - avant;
 assert.ok(echeance > 14 * 60_000 && echeance <= 15 * 60_000 + 5_000, `échéance ≈ 15 min (${echeance} ms)`);
 assert.equal(pfE.needsUserAttempts, 1, "le compteur de tentatives n'avance pas");
 assert.equal(pfE.processing_since, undefined);
 assert.equal(pfE.gardes.garde_boutique_depot.verdict, "mauvaise_boutique");
-assert.match(ecrits[0].extra.error, /@neyenonie/);
-ok("simulation : pending + attente_boutique {@neyenonie} + 15 min, compteur de tentatives intact, trace de garde");
+assert.match(ecrits[0].extra.error, /@boutique-faf5021a/);
+ok("simulation : pending + attente_boutique {@boutique-faf5021a} + 15 min, compteur de tentatives intact, trace de garde");
 
 const ecritsAnnule = [];
 const retenirAnnule = new Function("ctx", `const { jobStatusNow, updateJobStatus, tracerGarde, VO, messageAttenteBoutiqueDepot } = ctx;\n${ret}\nreturn retenirPublicationPourBoutique;`)({

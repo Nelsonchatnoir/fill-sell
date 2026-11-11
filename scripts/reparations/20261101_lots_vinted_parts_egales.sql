@@ -57,11 +57,11 @@ BEGIN
          count(DISTINCT (user_id, cmd)) AS distincts
     INTO r FROM _lots;
   IF r.lots <> 34 OR r.l1 <> 27 OR r.p1 <> 397.90 OR r.p2 <> 91.30 OR r.sans_prix <> 0 OR r.distincts <> 34 THEN
-    RAISE EXCEPTION 'lots inattendus : % (% the_closet72), %/% €, % sans prix : rien n''est écrit', r.lots, r.l1, r.p1, r.p2, r.sans_prix;
+    RAISE EXCEPTION 'lots inattendus : % (% du compte 8ac5bbda), %/% €, % sans prix : rien n''est écrit', r.lots, r.l1, r.p1, r.p2, r.sans_prix;
   END IF;
   IF (SELECT count(*) FROM _parts) <> 123
      OR (SELECT count(*) FROM _parts WHERE user_id = '8ac5bbda-0947-4612-82fd-effdaa3ca84a') <> 106 THEN
-    RAISE EXCEPTION 'articles inattendus : % (attendu 123 dont 106 the_closet72) : rien n''est écrit', (SELECT count(*) FROM _parts);
+    RAISE EXCEPTION 'articles inattendus : % (attendu 123 dont 106 du compte 8ac5bbda) : rien n''est écrit', (SELECT count(*) FROM _parts);
   END IF;
   -- Chaque article a SA vente, encore à prix NULL, sans prix d'achat ni bénéfice, une seule fois.
   IF (SELECT count(*) FROM _parts p JOIN ventes v ON v.id = p.vente_id AND v.user_id = p.user_id

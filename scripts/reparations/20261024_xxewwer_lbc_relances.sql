@@ -32,7 +32,7 @@ BEGIN
      AND platform_fields ->> 'needs_user_source' = 'introuvable_a_confirmer'
      AND coalesce(platform_fields ->> 'republish_step', 'a_capturer') = 'a_capturer';
   GET DIAGNOSTICS n = ROW_COUNT;
-  IF n <> 5 THEN RAISE EXCEPTION 'xxewwer : % ligne(s) au lieu de 5 — rien n''est fait', n; END IF;
+  IF n <> 5 THEN RAISE EXCEPTION 'compte de63ca45 : % ligne(s) au lieu de 5 — rien n''est fait', n; END IF;
 END $$;
 SELECT c.id, c.status, (SELECT count(*) FROM public.email_logs e WHERE e.user_id = c.user_id AND e.sent_at > now() - interval '5 minutes') AS mails_5min
   FROM public.cross_post_jobs c WHERE c.id IN ('248dcbf3-b44b-42b6-bc3d-e965aa68afb5', 'ba629cd2-dc0e-4604-97b5-76dabe9e6060', '8ca2071f-e6a2-4f55-b83b-51f1b34df5d1', '9ed000c9-390f-45b8-8aaa-22ba29ce6bd4', '8b8a1d62-5a3c-402a-84de-de8afc1e6207');

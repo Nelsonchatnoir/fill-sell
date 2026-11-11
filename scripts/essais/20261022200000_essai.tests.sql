@@ -223,8 +223,8 @@ begin
   on conflict (user_id, platform, listing_id) do update set vu_le = excluded.vu_le;
   select count(*) into n from annonces_plateforme where user_id = seller and platform = 'leboncoin' and listing_id = l;
   select vu_le into apres from annonces_plateforme where user_id = louis and platform = 'leboncoin' and listing_id = l;
-  insert into _r values ('E1 l''annonce de louis@ n''entre pas chez louis-seller', n = 0, n::text);
-  insert into _r values ('E2 sa présence est rafraîchie chez louis@ (une seule vérité)', apres > avant, avant::text || ' → ' || apres::text);
+  insert into _r values ('E1 l''annonce de compte-essai-2@ n''entre pas chez client-447d920c', n = 0, n::text);
+  insert into _r values ('E2 sa présence est rafraîchie chez compte-essai-2@ (une seule vérité)', apres > avant, avant::text || ' → ' || apres::text);
   -- une annonce « vendue » lue par l'autre compte ne touche pas la ligne de louis@ (présence seulement)
   insert into annonces_plateforme (user_id, platform, listing_id, statut_plateforme, vu_le, updated_at)
   values (seller, 'leboncoin', l, 'vendue', now() + interval '1 minute', now())

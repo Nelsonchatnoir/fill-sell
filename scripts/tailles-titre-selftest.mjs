@@ -32,7 +32,7 @@ const BEBE = ["Mode", "Bébé", "Vêtements (bébé)", "Pulls, gilets et sweats 
 const v = (valeur, textes, grille = BEEBS_HOMME, extra = {}) => T.tailleDuTexte({ valeur, textes: [].concat(textes), grille, ...extra })?.valeur ?? null;
 const doute = (valeur, textes, grille = BEEBS_HOMME) => T.tailleDuTexte({ valeur, textes: [].concat(textes), grille })?.doute ?? null;
 
-console.log("\n1. DeadRoz : la taille du titre, telle quelle (titres réels du 19/10)");
+console.log("\n1. Compte-7373c96c : la taille du titre, telle quelle (titres réels du 19/10)");
 ok("« W30 » + « … W30 L32 FR40 … » → « 40 » (Beebs homme)", v("W30", "Jeans Levi's vintage 511 W30 L32 FR40 homme bleu marine coupe slim J32") === "40");
 ok("« W36 L34 (46) » : le FR entre parenthèses → « 46 »", v("", "Jean Levi's Homme braguette patch en cuir effet usagé 100% coton bleu W36 L34 (46) J398") === "46");
 ok("« W34 L32 (44) » → « 44 »", v("", "Jean W34 L32 (44)") === "44");
@@ -108,7 +108,7 @@ const job = (taille, allowed, chemin = BEBE, champ = "Taille") => ({ status: "ne
 const orn = Q.reponseTailleAuto(job("24M", BEEBS_BEBE), "24 mois (86-94 cm)", ["Pull Kiabi 24M gris clair motifs"]);
 ok("Ornella 08ddc213 : « 24M » → « 24 mois (86-94 cm) » (R5)", orn?.valeur === "24 mois (86-94 cm)" && orn?.regle === "R5");
 ok("sans textes (appel d'avant) : rien, comme avant", Q.reponseTailleAuto(job("24M", BEEBS_BEBE), "24 mois (86-94 cm)") === null);
-ok("R0 → R4 d'abord, inchangées (patrick giry « W28 L32 » → R1 « 38 »)", Q.reponseTailleAuto({ ...job("W28 L32", ["36", "38", "40"]), platform: "ebay" }, null, ["Jeans W28 L32 FR38"])?.regle === "R1");
+ok("R0 → R4 d'abord, inchangées (compte-82e64f14 « W28 L32 » → R1 « 38 »)", Q.reponseTailleAuto({ ...job("W28 L32", ["36", "38", "40"]), platform: "ebay" }, null, ["Jeans W28 L32 FR38"])?.regle === "R1");
 ok("Pointure : jamais (« 9M » d'une botte)", Q.reponseTailleAuto(job("9M", ["38", "39", "40"], ["Mode", "Femme", "Chaussures (femme)"], "Pointure"), null, ["Western Boot taille 9M"]) === null);
 ok("copie sans taille + titre « Pyjama 18 mois » → « 18 mois (80-86 cm) »", Q.reponseTailleAuto(job("", BEEBS_BEBE), null, ["Pyjama 18 mois"])?.valeur === "18 mois (80-86 cm)");
 ok("une fois seulement (taille_convertie_serveur)", Q.reponseTailleAuto({ ...job("24M", BEEBS_BEBE), platform_fields: { ...job("24M", BEEBS_BEBE).platform_fields, taille_convertie_serveur: { de: "x" } } }, null, ["24M"]) === null);

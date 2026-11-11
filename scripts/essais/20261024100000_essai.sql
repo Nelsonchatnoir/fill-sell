@@ -65,7 +65,7 @@ begin
   select count(*) into n from public.boutiques_plateforme;
   insert into _r values ('B3 les boutiques des comptes vivants restent (273 - 7 = 266)', n = 266, n::text);
   select count(*) into n from public.boutiques_plateforme where user_id = v_reglox;
-  insert into _r values ('B4 reglox560 garde sa boutique', n = 1, n::text);
+  insert into _r values ('B4 client-fa2011a6 garde sa boutique', n = 1, n::text);
 
   -- P1 la sauvegarde est née protégée.
   insert into _r values ('P1 sauvegarde : RLS active, aucun droit anon ni authenticated',

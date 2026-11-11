@@ -30,7 +30,7 @@ ok(!pageCompteVintedBloque({ work_window_state: { fins: [{ tab_url: "https://www
 const m = messageCompteVintedBloque("delete", "Jeans Levi's 511");
 ok(/compte bloqué/.test(m) && /n'a PAS été retirée/.test(m) && /appli Vinted/.test(m) && !/relance|notre onglet/i.test(m), "message vrai, geste réel, jamais « relance »");
 ok(/tant que Vinted affiche cette page/.test(m) && /tant que Vinted affiche cette page/.test(messageCompteVintedBloque("publish", null)),
-  "le message ne présume pas un compte fermé (duport.leo3 : page bloquée, compte qui répond)");
+  "le message ne présume pas un compte fermé (client-e27daaeb : page bloquée, compte qui répond)");
 
 console.log("\n1 bis. UN RETRAIT N'EST JAMAIS ARRÊTÉ PAR CE MUR (04/10) — requalification sur tout le parc");
 // Forme RELEVÉE en prod sur a7dd76cd : needs_user, fenêtre finie sur /main/banned.

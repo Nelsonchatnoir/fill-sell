@@ -38,7 +38,7 @@ const ok = (c, l) => { total++; if (!c) echecs++; console.log(`${c ? '✓' : '�
 const A = 'faf5021a-479a-4bb3-b3ec-c296770739b7';   // Amiral (exécutant)
 const B = '447d920c-976a-4d8f-aff4-a2998050358c';   // louis-seller (propriétaire)
 const X = '11111111-2222-4333-8444-555555555555';
-const FB = { [D.CLE_DELEGATION_LBC]: { executant: A, nom: 'Amiral' } };
+const FB = { [D.CLE_DELEGATION_LBC]: { executant: A, nom: 'Compte-faf5021a' } };
 const FA = { [D.CLE_EXECUTE_LBC_POUR]: [B] };
 
 // ── A. La règle ──────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ ok(!D.delegationLbcValide({ proprietaire: B, flagsProprietaire: FB, executant: X
   && !D.delegationLbcValide({ proprietaire: X, flagsProprietaire: { [D.CLE_DELEGATION_LBC]: { executant: A } }, executant: A, flagsExecutant: FA })
   && !D.delegationLbcValide({ proprietaire: B, flagsProprietaire: { [D.CLE_DELEGATION_LBC]: { executant: B } }, executant: B, flagsExecutant: { [D.CLE_EXECUTE_LBC_POUR]: [B] } }),
   'A4. un tiers ne passe ni comme exécutant ni comme propriétaire ; jamais soi-même');
-ok([{ [D.CLE_DELEGATION_LBC]: 'faf5021a' }, { [D.CLE_DELEGATION_LBC]: { executant: 'Amiral' } }, { [D.CLE_DELEGATION_LBC]: [A] }].every((f) => D.executantLbcDeclare(f) === null)
+ok([{ [D.CLE_DELEGATION_LBC]: 'faf5021a' }, { [D.CLE_DELEGATION_LBC]: { executant: 'Compte-faf5021a' } }, { [D.CLE_DELEGATION_LBC]: [A] }].every((f) => D.executantLbcDeclare(f) === null)
   && D.comptesExecutesLbc({ [D.CLE_EXECUTE_LBC_POUR]: B }).length === 0 && JSON.stringify(D.comptesExecutesLbc({ [D.CLE_EXECUTE_LBC_POUR]: [B, B, 'x', 3] })) === JSON.stringify([B]),
   'A5. valeurs mal formées ignorées (texte, nom au lieu d\'identifiant, liste) ; doublons et intrus retirés');
 const file = [{ id: 1, platform: 'vinted' }, { id: 2, platform: 'leboncoin' }, { id: 3, platform: 'beebs' }, { id: 4, platform: 'leboncoin' }];
@@ -62,8 +62,8 @@ ok(JSON.stringify(D.tachesDuDelegue(file).map((j) => j.id)) === '[2,4]' && JSON.
   'A6. le compte de travail : Leboncoin seulement ; les postes du propriétaire : tout sauf Leboncoin');
 ok(D.etatLePlusPrudent('libre', 'bloque') === 'bloque' && D.etatLePlusPrudent('essai', 'reprise') === 'essai' && D.etatLePlusPrudent('libre', 'libre') === 'libre',
   'A7. la pause la plus prudente gagne (exécutant ou propriétaire)');
-ok(/Leboncoin passe par ton compte Amiral/.test(D.messageDelegationLbc('Amiral')) && /Rien n'a été touché/.test(D.messageTacheDelegueeEnAttente('Amiral'))
-  && !/\d+\s*(min|h)\b/.test(D.messageDelegationLbc('Amiral') + D.messageTacheDelegueeEnAttente('Amiral')),
+ok(/Leboncoin passe par ton compte Compte-faf5021a/.test(D.messageDelegationLbc('Compte-faf5021a')) && /Rien n'a été touché/.test(D.messageTacheDelegueeEnAttente('Compte-faf5021a'))
+  && !/\d+\s*(min|h)\b/.test(D.messageDelegationLbc('Compte-faf5021a') + D.messageTacheDelegueeEnAttente('Compte-faf5021a')),
   'A8. les phrases nomment le compte, sans aucune estimation de temps');
 
 // ── B. get-pending-jobs ──────────────────────────────────────────────────────
@@ -173,12 +173,12 @@ ok(BG.includes('const filtreDelegation = plateforme ? `&platform=eq.${encodeURIC
 ok(BS.texteDelegationLbc(null) === null && BS.pastilleLbcDeleguee({ delegation: null, phase: 'jamais' }) === false,
   'E1. ⛔ compte sans délégation : ni ligne, ni pastille changée');
 const t0 = Date.parse('2026-11-01T15:00:00Z');
-const dl = { nom: 'Amiral', posteVuLe: '2026-11-01T14:58:00Z', sessionLbc: true, sessionLe: '2026-11-01T14:55:00Z', dernierReleve: { status: 'done', items_vus: 120, finished_at: '2026-11-01T14:50:00Z' } };
-ok(BS.texteDelegationLbc(dl, t0, true).texte === 'Leboncoin passe par ton compte Amiral.' && BS.texteDelegationLbc(dl, t0, true).ok === true,
-  'E2. délégation qui fonctionne : « Leboncoin passe par ton compte Amiral. »');
+const dl = { nom: 'Compte-faf5021a', posteVuLe: '2026-11-01T14:58:00Z', sessionLbc: true, sessionLe: '2026-11-01T14:55:00Z', dernierReleve: { status: 'done', items_vus: 120, finished_at: '2026-11-01T14:50:00Z' } };
+ok(BS.texteDelegationLbc(dl, t0, true).texte === 'Leboncoin passe par ton compte Compte-faf5021a.' && BS.texteDelegationLbc(dl, t0, true).ok === true,
+  'E2. délégation qui fonctionne : « Leboncoin passe par ton compte Compte-faf5021a. »');
 ok(/En attente de son ordinateur/.test(BS.texteDelegationLbc({ ...dl, posteVuLe: '2026-11-01T10:00:00Z' }, t0, true).texte)
   && /n'est pas connecté sur son ordinateur/.test(BS.texteDelegationLbc({ ...dl, sessionLbc: false }, t0, true).texte),
-  'E3. état réel : ordinateur d\'Amiral muet depuis 2 h, ou Leboncoin déconnecté chez lui → dit');
+  'E3. état réel : ordinateur d\'Compte-faf5021a muet depuis 2 h, ou Leboncoin déconnecté chez lui → dit');
 ok(['jamais', 'echec', 'expire', 'absente'].every((ph) => BS.pastilleLbcDeleguee({ delegation: dl, phase: ph }))
   && !BS.pastilleLbcDeleguee({ delegation: dl, phase: 'fait' }) && !BS.pastilleLbcDeleguee({ delegation: dl, phase: 'en_cours' })
   && !BS.pastilleLbcDeleguee({ delegation: { ...dl, dernierReleve: null }, phase: 'jamais' }),
@@ -202,7 +202,7 @@ if (process.argv.includes('--prod')) {
   try { r = JSON.parse(txt.slice(txt.indexOf('{'))).rows?.[0]?.r; } catch { r = null; }
   ok(r && JSON.stringify(r.delegants) === JSON.stringify([{ email: 'louis-seller@ttfamily.fr', executant: A }])
     && JSON.stringify(r.executants) === JSON.stringify([{ email: 'louis@ttfamily.fr', pour: [B] }]) && r.exception_vm === 0,
-    `PROD. délégation sur la paire louis-seller → Amiral seule, plus d'exception machine virtuelle : ${JSON.stringify(r)}`);
+    `PROD. délégation sur la paire client-447d920c → Compte-faf5021a seule, plus d'exception machine virtuelle : ${JSON.stringify(r)}`);
 }
 
 console.log(echecs ? `\n✗ ${echecs} échec(s) sur ${total}` : `\n✓ ${total} vérifications vertes`);

@@ -22,7 +22,7 @@ CREATE TEMP TABLE _r (ordre serial, cas text, attendu text, obtenu text, ok bool
 
 -- ═══ A. AVANT ═════════════════════════════════════════════════════════════
 INSERT INTO _r (cas, attendu, obtenu, ok)
-SELECT 'A1 avant : veille, lesmillesetunepepite Leboncoin (dépôts + annonces additionnés)', '430 (213 + 217, double compte)',
+SELECT 'A1 avant : veille, client-4cd4d9ae Leboncoin (dépôts + annonces additionnés)', '430 (213 + 217, double compte)',
        coalesce((SELECT (l ->> 'a_surveiller') FROM jsonb_array_elements(public.releves_morts_veille(7, 500) -> 'lignes') l
                   WHERE l ->> 'uid' = '4cd4d9ae' AND l ->> 'platform' = 'leboncoin'), 'absente'),
        true;
@@ -242,7 +242,7 @@ BEGIN
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claims', '', true);
   INSERT INTO _r (cas, attendu, obtenu, ok)
-  SELECT 'C1 ligne ' || x.platform || ' (vue par lesmillesetunepepite)',
+  SELECT 'C1 ligne ' || x.platform || ' (vue par client-4cd4d9ae)',
          CASE x.platform WHEN 'leboncoin' THEN 'non surveillée, 217 annonces' WHEN 'vinted' THEN 'non surveillée, 234 annonces' ELSE 'surveillée ou rien à surveiller' END,
          'relevé réussi ' || coalesce(to_char(x.dernier_releve_le AT TIME ZONE 'Europe/Paris', 'DD/MM HH24:MI'), 'jamais')
            || ' · mur ' || coalesce(to_char(x.dernier_mur_le AT TIME ZONE 'Europe/Paris', 'DD/MM HH24:MI') || ' [' || x.dernier_mur_marqueur || ']', 'aucun')
@@ -336,7 +336,7 @@ $c4$;
 
 -- C5. La veille de l'ops-digest : plus de double compte.
 INSERT INTO _r (cas, attendu, obtenu, ok)
-SELECT 'C5 veille, lesmillesetunepepite Leboncoin (annonces distinctes)', '217',
+SELECT 'C5 veille, client-4cd4d9ae Leboncoin (annonces distinctes)', '217',
        coalesce((SELECT (l ->> 'a_surveiller') FROM jsonb_array_elements(public.releves_morts_veille(7, 500) -> 'lignes') l
                   WHERE l ->> 'uid' = '4cd4d9ae' AND l ->> 'platform' = 'leboncoin'), 'absente'),
        (SELECT (l ->> 'a_surveiller')::int FROM jsonb_array_elements(public.releves_morts_veille(7, 500) -> 'lignes') l

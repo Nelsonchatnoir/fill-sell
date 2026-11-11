@@ -37,7 +37,7 @@ ok("vérifié APRÈS cet essai → plus suspect",
 ok("vérifié AVANT cet essai → toujours suspect",
   depotPeutEtrePartiDepuis("leboncoin", { ...pfFioles, recreation_verifiee: { apres: "2026-09-25T08:52:59.338Z" } }) !== null);
 // XEWER 25/09 : arrêts à l'étape « adresse », AVANT le dépôt — jamais suspect.
-ok("arrêt à l'étape adresse (XEWER) → pas suspect", depotPeutEtrePartiDepuis("leboncoin", {
+ok("arrêt à l'étape adresse (COMPTE-DE63CA45) → pas suspect", depotPeutEtrePartiDepuis("leboncoin", {
   republish_step: "deleted", deleted_at: "2026-09-25T17:40:00Z",
   work_window_state: { at_end: { at: "2026-09-25T17:54:43Z", tab_url: "https://www.leboncoin.fr/deposer-une-annonce", fill_step: "adresse" } },
 }) === null);
@@ -108,7 +108,7 @@ ok("deux candidates → incertaine, deux liens",
   (() => { const v = jugerCandidates({ candidates: [enLigne[0], { ...enLigne[0], listing_id: "3276289397", url: "u2" }], titres, prix: 44.99, photoIdentique: () => true }); return v.verdict === "incertaine" && v.liens.length === 2; })());
 
 
-console.log("\n5. LES PHOTOS DE NOTRE COPIE TRANCHENT (15/10 soir, camille.ferren 5b6c8cc9)");
+console.log("\n5. LES PHOTOS DE NOTRE COPIE TRANCHENT (15/10 soir, client-6a7595b1 5b6c8cc9)");
 // Empreintes RELEVÉES en base le 15/10 (photo_empreintes) : copie du job =
 // rehosted/…_watch_0/1.jpg ; annonce 3288747290 apparue à 12:34 (photos
 // acbf41…, 665e04…) ; annonce d'origine 3122354807 (photo 173941…).
@@ -126,7 +126,7 @@ const NOUVELLE = [
 const ORIGINE = ["https://img.leboncoin.fr/api/v1/lbcpb1/images/17/39/41/17394166cacd6290604c16095ddf927f3df9debe.jpg?rule=ad-large"].map(e);
 const candCamille = [{ listing_id: "3288747290", url: "https://www.leboncoin.fr/ad/loisirs_creatifs/3288747290", statut_plateforme: "en_ligne", created_at: "2026-10-15T10:35:45Z" }];
 const vC = jugerCandidates({ candidates: candCamille, empreintesCopie: COPIE, empreintesParCandidate: new Map([["3288747290", NOUVELLE]]) });
-ok("camille : photos identiques à NOTRE copie → certaine (rattachée, aucun redépôt)", vC.verdict === "certaine" && vC.retenue?.listing_id === "3288747290" && /photos/.test(vC.preuve ?? ""), JSON.stringify(vC));
+ok("boutique-essai-9 : photos identiques à NOTRE copie → certaine (rattachée, aucun redépôt)", vC.verdict === "certaine" && vC.retenue?.listing_id === "3288747290" && /photos/.test(vC.preuve ?? ""), JSON.stringify(vC));
 const vO = jugerCandidates({ candidates: [{ ...candCamille[0], listing_id: "999" }], empreintesCopie: COPIE, empreintesParCandidate: new Map([["999", ORIGINE]]) });
 ok("une annonce aux photos de la personne (pas les nôtres) → incertaine (question)", vO.verdict === "incertaine", JSON.stringify(vO));
 const vSans = jugerCandidates({ candidates: candCamille, empreintesCopie: COPIE, empreintesParCandidate: new Map([["3288747290", []]]) });
@@ -140,7 +140,7 @@ ok("deux candidates, une seule aux photos de la copie, l'autre sans photo approc
 ok("annonce disparue entre-temps (statut autre) → jamais rattachée", jugerCandidates({ candidates: [{ ...candCamille[0], statut_plateforme: "desactivee" }], empreintesCopie: COPIE, empreintesParCandidate: new Map([["3288747290", NOUVELLE]]) }).verdict === "incertaine");
 
 
-console.log("\n6. UNE ANNONCE D'UNE AUTRE FICHE N'EST PAS CETTE COPIE (29/10, tiblancdeshaut c9fe1ee1 ; Leboncoin 1660ea94)");
+console.log("\n6. UNE ANNONCE D'UNE AUTRE FICHE N'EST PAS CETTE COPIE (29/10, client-7b9d8a71 c9fe1ee1 ; Leboncoin 1660ea94)");
 // Relevé en base le 29/10. Beebs, « Sweat GAP » c9fe1ee1 (fiche 1792587088278), annonce 34209525 retirée le
 // 27/10 à 14:02:31 (Paris). Relevé 51de8deb du 28/10 08:15 (aucun depuis le 26/10 12:21) : 34245064 et 34246760
 // vues pour la première fois à 08:15:57 → question du 28/10 08:17 (« 2 annonces apparues depuis le retrait »).

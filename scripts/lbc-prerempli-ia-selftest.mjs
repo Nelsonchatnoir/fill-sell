@@ -31,7 +31,7 @@ const VAISSELLE = ["Assiette", "Bol", "Carafe et pichet", "Coquetier", "Coupe et
 console.log("1. Jamais un blocage");
 {
   const pot = D({ prefilled: "Vaisselle de table", notre: "Accessoire de table", texte: texte("Pot à sucre Sarreguemines bleu marine à pois blancs", "Pot à sucre ancien en faïence de Sarreguemines."), optionsProduit: VAISSELLE, produitNotre: "Salière, poivrière et sucrier" });
-  ok(pot.garder === false && /blocage/.test(pot.motif), "Jocabroc, pot à sucre : « Vaisselle de table » n'a ni sucrier ni « Autre » → NOTRE paire (Accessoire de table › Salière, poivrière et sucrier)", JSON.stringify(pot));
+  ok(pot.garder === false && /blocage/.test(pot.motif), "Boutique-53efea05, pot à sucre : « Vaisselle de table » n'a ni sucrier ni « Autre » → NOTRE paire (Accessoire de table › Salière, poivrière et sucrier)", JSON.stringify(pot));
   const avecAutre = D({ prefilled: "Vaisselle de table", notre: "Accessoire de table", texte: texte("Pot à sucre"), optionsProduit: [...VAISSELLE, "Autre"], produitNotre: "Salière, poivrière et sucrier" });
   ok(avecAutre.garder === true, "la même liste AVEC « Autre » : rien ne bloque, le pré-rempli reste (aucun des deux nommé)");
   const dedans = D({ prefilled: "Vaisselle de table", notre: "Accessoire de table", texte: texte("Grand plat"), optionsProduit: VAISSELLE, produitNotre: "Plat de service" });
@@ -44,13 +44,13 @@ console.log("1. Jamais un blocage");
 console.log("2. La valeur que l'article nomme gagne");
 {
   const sandra = D({ prefilled: "Ensembles & Combinaisons", notre: "Robes & Jupes", texte: texte("Combinaison pilote bébé Absorba", "ensemble complet") });
-  ok(sandra.garder === true, "Sandra (54da4bab) : « Combinaison » est dans le titre → Leboncoin gardé", JSON.stringify(sandra));
+  ok(sandra.garder === true, "Compte-essai-12 (54da4bab) : « Combinaison » est dans le titre → Leboncoin gardé", JSON.stringify(sandra));
   const lot = D({ prefilled: "Ensembles & Combinaisons", notre: "T-shirt & brassières", texte: texte("Lot tenue fille 3 ans", "un ensemble complet") });
-  ok(lot.garder === true, "Sandra (a1e43f7b) : « ensemble » dans le texte → Leboncoin gardé");
+  ok(lot.garder === true, "Compte-essai-12 (a1e43f7b) : « ensemble » dans le texte → Leboncoin gardé");
   const tableau = D({ prefilled: "Sculpture et statue", notre: "Tableau et toile", texte: texte("Aquarelle Bois pittoresque encadrée", "Tableau aquarelle signé, sous verre") });
   ok(tableau.garder === false, "un tableau que le texte appelle « tableau » : notre « Tableau et toile » gagne", JSON.stringify(tableau));
   const huitres = D({ prefilled: "Plat de service", notre: "Plat apéritif", texte: texte("Grand plat à huîtres Longwy France vert d'eau", "Céramique ancienne") });
-  ok(huitres.garder === true, "Jocabroc, plat à huîtres : le texte ne nomme ni « service » ni « apéritif » → la valeur précise de Leboncoin reste (règle du 24/10)", JSON.stringify(huitres));
+  ok(huitres.garder === true, "Boutique-53efea05, plat à huîtres : le texte ne nomme ni « service » ni « apéritif » → la valeur précise de Leboncoin reste (règle du 24/10)", JSON.stringify(huitres));
   const zombi = D({ prefilled: "Jeux de société", notre: "Loisirs créatifs", texte: texte("Insert Rangement Zombicide", "rangement pour boîte de jeu") });
   ok(zombi.garder === true, "Zombicide (louis, origine de la règle) : rien de nommé → « Jeux de société » reste");
   ok(D({ prefilled: "Jeux de société", notre: "Loisirs créatifs", texte: texte("Jeux de société Zombicide", "loisirs créatifs") }).garder === true, "les deux nommés : la valeur précise de Leboncoin reste");

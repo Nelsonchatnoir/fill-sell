@@ -2,7 +2,7 @@
 -- 17/10/2026 — BÊTA « MESSAGES + À EXPÉDIER » : LE DRAPEAU SUR LE COMPTE DE LOUIS
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Demande de Nico (17/10 après-midi) : « ouvrir à Louis aussi la bêta expédition +
--- message ». Compte : louis@ttfamily.fr = « Amiral » (faf5021a-479a-4bb3-b3ec-c296770739b7),
+-- message ». Compte : compte faf5021a = « Amiral » (faf5021a-479a-4bb3-b3ec-c296770739b7),
 -- Business, deux boutiques Vinted, eBay relié (plafond de vente eBay à 0 le 17/10),
 -- extension 0.6.114 du Chrome Web Store.
 -- Effet : profiles.beta_flags.messages_bordereaux = true → l'app lui montre « Messages ·

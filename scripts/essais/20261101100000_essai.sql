@@ -306,11 +306,11 @@ BEGIN
          count(DISTINCT (user_id, cmd)) AS distincts
     INTO r FROM _lots;
   IF r.lots <> 34 OR r.l1 <> 27 OR r.p1 <> 397.90 OR r.p2 <> 91.30 OR r.sans_prix <> 0 OR r.distincts <> 34 THEN
-    RAISE EXCEPTION 'lots inattendus : % (% the_closet72), %/% €, % sans prix : rien n''est écrit', r.lots, r.l1, r.p1, r.p2, r.sans_prix;
+    RAISE EXCEPTION 'lots inattendus : % (% du compte 8ac5bbda), %/% €, % sans prix : rien n''est écrit', r.lots, r.l1, r.p1, r.p2, r.sans_prix;
   END IF;
   IF (SELECT count(*) FROM _parts) <> 123
      OR (SELECT count(*) FROM _parts WHERE user_id = '8ac5bbda-0947-4612-82fd-effdaa3ca84a') <> 106 THEN
-    RAISE EXCEPTION 'articles inattendus : % (attendu 123 dont 106 the_closet72) : rien n''est écrit', (SELECT count(*) FROM _parts);
+    RAISE EXCEPTION 'articles inattendus : % (attendu 123 dont 106 du compte 8ac5bbda) : rien n''est écrit', (SELECT count(*) FROM _parts);
   END IF;
   -- Chaque article a SA vente, encore à prix NULL, sans prix d'achat ni bénéfice, une seule fois.
   IF (SELECT count(*) FROM _parts p JOIN ventes v ON v.id = p.vente_id AND v.user_id = p.user_id
@@ -384,10 +384,10 @@ SELECT a.user_id, a.ca AS ca_avant_reparation, sum(v.prix_vente) AS ca_apres, co
 do $rep$
 declare n int; m int;
 begin
-  insert into _r select 'R1 CA the_closet72 = avant le découpage (+ 397,90 €)', a.ca + 397.90 = sum(v.prix_vente) and a.n = count(v.id),
+  insert into _r select 'R1 CA boutique-8ac5bbda = avant le découpage (+ 397,90 €)', a.ca + 397.90 = sum(v.prix_vente) and a.n = count(v.id),
     format('%s → %s (%s ventes)', a.ca, sum(v.prix_vente), count(v.id))
     from _ca0 a join ventes v on v.user_id = a.user_id where a.user_id = '8ac5bbda-0947-4612-82fd-effdaa3ca84a' group by a.ca, a.n;
-  insert into _r select 'R1 CA PILOU = avant le découpage (+ 91,30 €)', a.ca + 91.30 = sum(v.prix_vente) and a.n = count(v.id),
+  insert into _r select 'R1 CA COMPTE-CAE7A20D = avant le découpage (+ 91,30 €)', a.ca + 91.30 = sum(v.prix_vente) and a.n = count(v.id),
     format('%s → %s (%s ventes)', a.ca, sum(v.prix_vente), count(v.id))
     from _ca0 a join ventes v on v.user_id = a.user_id where a.user_id = 'cae7a20d-56c8-46a6-868c-ae1f885faa70' group by a.ca, a.n;
   -- La réparation pose exactement ce que la règle neuve calcule pour ces 34 lots.

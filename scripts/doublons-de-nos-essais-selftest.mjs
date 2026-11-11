@@ -99,7 +99,7 @@ const parCandidate = (cands) => new Map(cands.map((c) => [String(c.listing_id), 
 
 console.log("1. LE CONSTAT — essais suspects de CE job depuis le retrait (journal du serveur)");
 const essais = essaisSuspectsDepuisRetrait("beebs", pfCiddjy);
-ok("Ciddjy : 4 essais suspects (06:34, 06:54, 07:15, 07:49 à Paris)", essais.length === 4, JSON.stringify(essais));
+ok("Compte-eacbe32c : 4 essais suspects (06:34, 06:54, 07:15, 07:49 à Paris)", essais.length === 4, JSON.stringify(essais));
 ok("leurs débuts sont ceux du journal", JSON.stringify(essais.map((e) => e.debut)) === JSON.stringify([
   "2026-11-07T05:34:35.810Z", "2026-11-07T05:54:00.489Z", "2026-11-07T06:15:35.913Z", "2026-11-07T06:49:35.544Z"]));
 ok("les trois premiers : arrêtés à la borne (10 min) — le 4e : brut « borne 10 min dépassée » mis de côté par la relance",
@@ -162,7 +162,7 @@ ok("db4617d6 (Billard, Leboncoin) : 1 essai suspect (fin à l'étape « depot »
   essaisSuspectsDepuisRetrait("leboncoin", pfBillard).length === 1
   && doublonsDeNosEssais({ candidates: [{ listing_id: "3302976541" }, { listing_id: "3303479720" }], niveaux: {}, essais: essaisSuspectsDepuisRetrait("leboncoin", pfBillard), fiche: { quantite: 1 }, deletedAt: pfBillard.deleted_at, inventaireId: 1 }).raison === "2 annonces pour 1 essai(s) suspect(s) de cette remise en ligne");
 
-console.log("2. LA RÈGLE — Ciddjy : 4 essais, 4 annonces aux photos de la copie → 1 rattachée, 3 retraits");
+console.log("2. LA RÈGLE — Compte-eacbe32c : 4 essais, 4 annonces aux photos de la copie → 1 rattachée, 3 retraits");
 const tri = trierCandidatesDepuisRetrait({ jobId: JOB_ID, ancienId: "34177027", deletedAt: RETRAIT, lignes: LIGNES, inventaireId: FICHE,
   numerosAutres: new Map(), fichesJobs: new Map(), platform: "beebs", vusAvant: new Map() });
 ok("les 4 annonces sont candidates (apparues depuis le retrait, inconnues de FillSell)", tri.candidates.length === 4 && !tri.ecartees.length);
@@ -244,7 +244,7 @@ ok("une seule annonce, autre photo → « incertaine », identique avec ou sans 
   JSON.stringify(jugerCandidates({ candidates: uneAutre, empreintesCopie, empreintesParCandidate: empUneAutre }))
   === JSON.stringify(jugerCandidates({ candidates: uneAutre, empreintesCopie, empreintesParCandidate: empUneAutre, doublons })));
 const v4Avant = sansDoublons(tri.candidates);
-ok("Ciddjy SANS `doublons` : la question d'aujourd'hui, mot pour mot (aucune clé ajoutée)",
+ok("Compte-eacbe32c SANS `doublons` : la question d'aujourd'hui, mot pour mot (aucune clé ajoutée)",
   v4Avant.verdict === "incertaine" && JSON.stringify(v4Avant.raisons) === JSON.stringify(["4 annonces apparues depuis le retrait"])
   && !("doublons_refus" in v4Avant) && JSON.stringify(Object.keys(v4Avant)) === JSON.stringify(["verdict", "raisons", "liens", "photos"]));
 ok("aucune annonce → « aucune », avec ou sans la règle", jugerCandidates({ candidates: [], doublons }).verdict === "aucune");
@@ -260,7 +260,7 @@ ok("deux aux photos de la copie + une autre pièce → question (comme avant)",
 
 console.log("6. LES QUESTIONS DÉJÀ POSÉES — rejugées, bornées");
 const now = Date.parse("2026-11-07T20:00:00Z");
-ok("la question de Ciddjy (4 liens, incertaine) est à rejuger", questionDoublonsARejuger(jobCiddjy, now));
+ok("la question de Compte-eacbe32c (4 liens, incertaine) est à rejuger", questionDoublonsARejuger(jobCiddjy, now));
 ok("une question à 1 lien ne l'est pas (la cascade d'avant suffit)",
   !questionDoublonsARejuger({ ...jobCiddjy, platform_fields: { ...pfCiddjy, recreation_deja_partie: { ...pfCiddjy.recreation_deja_partie, liens: ["x"] } } }, now));
 ok("ni « relevé introuvable », ni un autre motif, ni une publication, ni Vinted",
@@ -279,7 +279,7 @@ const pfNouvelle = { ...pfN, recreation_deja_partie: { ...pfN.recreation_deja_pa
 ok("une NOUVELLE question (autre « le ») repart de zéro", questionDoublonsARejuger({ ...jobCiddjy, platform_fields: pfNouvelle }, now)
   && marqueDoublonsRejuge(pfNouvelle).n === 1);
 ok(`borné à ${QUESTIONS_DOUBLONS_PAR_PASSAGE} questions par passage`, QUESTIONS_DOUBLONS_PAR_PASSAGE === 2);
-ok("relevés de Ciddjy (heure de Paris) : 02:01 complet, 13:33 [incomplet] anti-robot écarté, 13:37 complet",
+ok("relevés de Compte-eacbe32c (heure de Paris) : 02:01 complet, 13:33 [incomplet] anti-robot écarté, 13:37 complet",
   releveCompletAvantRedepot({ status: "done", items_vus: 120, erreur: "[défilement] …" })
   && !releveCompletAvantRedepot({ status: "incomplete", items_vus: 123, erreur: "[incomplet] [anti_robot] …" })
   && !releveCompletAvantRedepot({ status: "done", items_vus: 123, erreur: "[incomplet] …" })

@@ -69,7 +69,7 @@ BEGIN
      AND EXISTS (SELECT 1 FROM public.inventaire i WHERE i.id = c.inventaire_id AND i.vinted_item_id = '4279156557'
                    AND i.vinted_account_id::text = '158898598' AND i.statut = 'stock');
   GET DIAGNOSTICS n = ROW_COUNT;
-  IF n <> 1 THEN RAISE EXCEPTION 'mele.marta f86ecce8 : % ligne(s) — rien n''est fait (déjà parti ?)', n; END IF;
+  IF n <> 1 THEN RAISE EXCEPTION 'compte ac19c8c9, f86ecce8 : % ligne(s) — rien n''est fait (déjà parti ?)', n; END IF;
 
   -- 4. Les deux republications Leboncoin « introuvable persistant » : relancées avant retrait.
   UPDATE public.cross_post_jobs

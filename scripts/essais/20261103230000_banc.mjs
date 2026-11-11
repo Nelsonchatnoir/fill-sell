@@ -146,7 +146,7 @@ try {
   ok(!trg.includes('cross_post_jobs_inseree_sur_article_vendu') && !trg.includes('cross_post_jobs_repointee_sur_article_vendu'), 'les deux déclencheurs de 13:52 sont partis', trg.join(','));
   ok(trg.includes('cross_post_jobs_publie_sur_article_vendu') && trg.includes('cross_post_jobs_lbc_vendu_avant_suivi'), 'le déclencheur de statut reste ; celui de Leboncoin est posé');
 
-  console.log('2. JEAN-LUC : « oui » sur une fiche vendue dont l\'autre a une annonce en ligne');
+  console.log('2. COMPTE-9256E3AE : « oui » sur une fiche vendue dont l\'autre a une annonce en ligne');
   const c2 = await casJeanLuc(201, 202, '3233436490');
   const r2 = await un(`SELECT inventaire_doublon_decider($1, 'oui', $2) r`, [c2.d, c2.annonce]);
   ok(r2.r?.ok === true && r2.r?.article_a_part === true && r2.r?.retraits === 0, 'réponse : un article à part, 0 retrait', JSON.stringify(r2.r));
@@ -171,7 +171,7 @@ try {
   await q(`UPDATE cross_post_jobs SET status = 'failed' WHERE id = $1`, [j3]); await q(`UPDATE cross_post_jobs SET status = 'published' WHERE id = $1`, [j3]);
   ok((await retraits(301)) === 0, 'annonce importée repassée « published » sur une fiche vendue : rien');
 
-  console.log('4. Polly (louis-seller, 28/10) : le dépôt de FillSell refermé, vente APRÈS sa mise en ligne → retrait');
+  console.log('4. Polly (client-447d920c, 28/10) : le dépôt de FillSell refermé, vente APRÈS sa mise en ligne → retrait');
   const LS = '447d920c-976a-4d8f-aff4-a2998050358c';
   await q(`INSERT INTO inventaire (id, user_id, titre, statut, quantite, plateforme) VALUES (401, $1, 'Polly Pocket Ananas', 'vendu', 0, 'vinted')`, [LS]);
   await q(`INSERT INTO ventes (user_id, inventaire_id, plateforme, plateforme_code, date, created_at) VALUES ($1, 401, 'Leboncoin', 'leboncoin', '2026-10-24', '2026-10-24 10:11+00')`, [LS]);
@@ -203,7 +203,7 @@ try {
      VALUES ($1, 601, 'ebay', 'published', '168700000001', '2026-10-20 10:00+00', '2026-10-20 09:50+00') RETURNING id`, [DY]);
   ok((await un(`SELECT armer_retrait_job_pour($1, 'vente_article_serveur', interval '0', false) r`, [j6])).r !== null, 'dépôt de FillSell publié après la vente réelle : retiré (l\'objet de la fiche)');
 
-  console.log('7. Leboncoin : « Vendu » dès la première lecture d\'une annonce importée (JEAN-LUC, 18:15)');
+  console.log('7. Leboncoin : « Vendu » dès la première lecture d\'une annonce importée (COMPTE-9256E3AE, 18:15)');
   await q(`INSERT INTO inventaire (id, user_id, titre, statut) VALUES (701, $1, 'Scie sabre ERBAUER', 'stock'), (702, $1, 'Balance', 'stock'), (703, $1, 'Polly', 'stock')`, [JL]);
   const [{ id: j7 }] = await q(`INSERT INTO cross_post_jobs (user_id, inventaire_id, platform, status, platform_listing_id, platform_fields) VALUES ($1, 701, 'leboncoin', 'published', '3224866836', '{"source":"releve","rattachement":{"import":true}}') RETURNING id`, [JL]);
   await q(`INSERT INTO usage_logs (user_id, feature, metadata, created_at) VALUES ($1, 'vente_leboncoin_transaction', '{"listing_id":"3224866836","transaction":"sold","avant":null,"issue":"sans_job"}', '2026-11-03 09:56:05+00')`, [JL]);

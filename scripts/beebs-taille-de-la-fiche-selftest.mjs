@@ -11,7 +11,7 @@ const BOTTES = [{ field_key: "Pointure", allowed_values: ["34", "34.5", "35", "3
   "40", "40.5", "41", "41.5", "42", "42.5", "43", "43.5", "44", "44.5", "45", "45.5", "46", "Taille unique", "Autre"] }];
 
 assert.deepEqual(tailleBeebsDeLaFiche("40", BOTTES), { valeur: "40", champ: "Pointure" });
-ok("misscat801, bottines : fiche « 40 » → Pointure « 40 »");
+ok("boutique-7804bb4a, bottines : fiche « 40 » → Pointure « 40 »");
 assert.equal(tailleBeebsDeLaFiche("40 - XL", BOTTES), null);
 assert.equal(tailleBeebsDeLaFiche("EU 40", BOTTES), null);
 assert.equal(tailleBeebsDeLaFiche("39,5", BOTTES), null, "pas de conversion virgule → point");

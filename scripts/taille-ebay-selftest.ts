@@ -119,7 +119,7 @@ ok(tailleEbayComplement("Type de taille", "11-12 yrs", ["11-12 ans"], { ferme: t
 console.log("\n3. LES BRANCHEMENTS");
 ok(servi("11-12 yrs", ENFANT, "FREE_TEXT") === "11-12 ans", "voie API, texte libre : « 11-12 yrs » part en « 11-12 ans » (hier : tel quel)");
 ok(servi("11-12 yrs", ENFANT, "SELECTION_ONLY") === "11-12 ans", "voie API, liste fermée : « 11-12 ans » (hier : la question)");
-ok(servi("FR 3", HOMME, "SELECTION_ONLY") === null, "voie API : « FR 3 » reste la question (PMF Vito)");
+ok(servi("FR 3", HOMME, "SELECTION_ONLY") === null, "voie API : « FR 3 » reste la question (Compte-ca9afe24)");
 ok(servi("EU 39", ["38", "39"], "FREE_TEXT") === "EU 39", "voie API, texte libre : « EU 39 » part tel quel (règle du 01/10, inchangée)");
 ok(servi("38 EU", ROBES, "SELECTION_ONLY") === "38" && servi("EU S", HAUTS_H, "SELECTION_ONLY") === "S", "voie API, liste fermée : « 38 EU » → 38, « EU S » → S");
 const t = tailleRetenueDansLaListe("Taille", "11-12 yrs", ENFANT) as { valeur?: string };
@@ -134,10 +134,10 @@ const question = (platform: string, taille: string, liste: string[]) => ({
   },
 });
 const rep = reponseTailleAuto(question("ebay", "11-12 yrs", ENFANT) as never, "10 ans (128-140 cm)", ["Monsoon Veste Denim Bleu Col Volant 11-12 ans", ""]) as { valeur?: string; regle?: string } | null;
-ok(rep?.valeur === "11-12 ans" && rep?.regle === "E1", "question eBay de Rosa (ba0c4d73) : handler-watch répond « 11-12 ans » (E1), la publication repart", JSON.stringify(rep));
+ok(rep?.valeur === "11-12 ans" && rep?.regle === "E1", "question eBay de Compte-essai-20 (ba0c4d73) : handler-watch répond « 11-12 ans » (E1), la publication repart", JSON.stringify(rep));
 ok(reponseTailleAuto(question("opla", "11-12 yrs", ENFANT) as never, null, null) === null, "même question sur une autre plateforme : inchangée (règle propre à eBay)");
 ok(reponseTailleAuto({ ...question("ebay", "FR 3", HOMME), platform_fields: { ...question("ebay", "FR 3", HOMME).platform_fields, genre: "Homme", ebayAspects: { "Département": "Homme" } } } as never, "S / 36", null) === null,
-  "question eBay de PMF Vito (0119b570, « FR 3 ») : reste à la personne");
+  "question eBay de Compte-ca9afe24 (0119b570, « FR 3 ») : reste à la personne");
 const listeFaitFoi = (platform: string, mode: string) => platform === "ebay" && mode === "SELECTION_ONLY";
 const garde = (taille: string, liste: string[], mode: string) => {
   const pfE: Record<string, unknown> = { taille };

@@ -47,7 +47,7 @@ const faits = B.faitsDuNumero('3178619102',
   [{ listing_id: '3178619102', statut_plateforme: 'en_ligne', disparu_le: null }],
   [{ platform_listing_id: '3178619102', action: 'publish', platform_fields: { source: 'releve' } },
    { platform_listing_id: '3178619102', action: 'republish', platform_fields: { source: 'releve' } }]);
-ok(faits.enLigne && faits.importee && !faits.deposeeParFillSell && B.badgeAvantSuivi({ venduAvantSuivi: true, ...faits }), 'Jess, 3178619102 : importée, en ligne → badge d\'avant le suivi');
+ok(faits.enLigne && faits.importee && !faits.deposeeParFillSell && B.badgeAvantSuivi({ venduAvantSuivi: true, ...faits }), 'Compte-essai-9, 3178619102 : importée, en ligne → badge d\'avant le suivi');
 const fDepot = B.faitsDuNumero('3300000000', [], [{ platform_listing_id: '3300000000', action: 'publish', platform_fields: {} }]);
 ok(!fDepot.importee && fDepot.deposeeParFillSell && !fDepot.enLigne, 'dépôt de FillSell, jamais relevé → déposée par FillSell');
 ok(B.faitsDuNumero('1', [{ listing_id: '1', statut_plateforme: 'en_ligne', disparu_le: '2026-11-01' }], []).enLigne === false, 'disparue → pas « en ligne »');

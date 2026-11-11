@@ -13,7 +13,7 @@ const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { cons
 const F = JSON.parse(fs.readFileSync(new URL("./fixtures/depots-sans-numero-nicolas-menar-1510.json", import.meta.url), "utf8"));
 const emp = (u) => (F.empreintes[u] ? { url: u, ...F.empreintes[u] } : undefined);
 
-console.log("\n1. NICOLAS.MENAR : LES PHOTOS DE LA COPIE DÉSIGNENT L'ANNONCE");
+console.log("\n1. CLIENT-39BFA95A : LES PHOTOS DE LA COPIE DÉSIGNENT L'ANNONCE");
 const r = rattacherParPhotos({ depots: F.depots, lignes: F.lignes, empreinte: emp });
 const attendu = { "80053a31": "34085142", "cc51213c": "34085194", "faa2b229": "34085172" };
 ok(r.size === 3, "trois dépôts rattachés", JSON.stringify([...r]));
@@ -40,7 +40,7 @@ ok(/rattacherParPhotos\(/.test(bl), "beebs-lien appelle rattacherParPhotos");
 ok(/lien_par_photos/.test(bl) && /\.is\("platform_listing_id", null\)/.test(bl), "trace lien_par_photos, écriture conditionnée (numéro encore vide)");
 
 
-console.log("\n4. CIDDJY : JAMAIS UN DEUXIÈME DÉPÔT À L'AVEUGLE (traces relevées le 15/10)");
+console.log("\n4. COMPTE-EACBE32C : JAMAIS UN DEUXIÈME DÉPÔT À L'AVEUGLE (traces relevées le 15/10)");
 const pfC = { work_window_state: { at_start: { at: "2026-10-15T17:44:54.800Z" }, at_end: { at: "2026-10-15T17:49:55.530Z" }, fins: [{ at: "2026-10-15T17:49:55.530Z" }] },
   error_technique: { at: "2026-10-15T17:49:56.827Z", brut: "Timeout: pas de réponse du content script" } };
 ok(depotPublicationPeutEtrePartiDepuis("beebs", pfC)?.at === "2026-10-15T17:49:55.530Z", "cee154c7 « Jogging 18 mois » : formulaire muet après 5 min → le clic a pu partir, relevé avant tout redépôt");

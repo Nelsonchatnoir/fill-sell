@@ -77,7 +77,7 @@ console.log("\n▸ Les quatre familles d'état qui INTERDISENT le rechargement")
   // le problème pour Joséphine et Ornella.
   // (03/10, point 23 — nivake03) Une recréation REPORTÉE (next_action_after
   // futur) n'est pas en cours : elle bloquait la mise à jour indéfiniment.
-  check("④ une recréation REPORTÉE à plus tard ne bloque pas la mise à jour (nivake03, 0.6.85 bloquée)",
+  check("④ une recréation REPORTÉE à plus tard ne bloque pas la mise à jour (client-869e5f03, 0.6.85 bloquée)",
     /select=id,status,nao:platform_fields->>next_action_after/.test(raisons)
       && /if \(j\.status === "processing"\) return true;/.test(raisons)
       && /return !\(Number\.isFinite\(nao\) && nao > Date\.now\(\)\);/.test(raisons),

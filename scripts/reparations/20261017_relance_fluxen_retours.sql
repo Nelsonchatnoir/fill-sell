@@ -48,7 +48,7 @@ do $$
 begin
   if (select count(*) from public.cross_post_jobs where id = 'b731ae0f-5847-4731-a97f-dea7faa27c5c' and status = 'pending'
         and platform_fields ? 'relance_reparation_1710') <> 1 then
-    raise exception 'relance Fluxen : le job n''est pas repassé en file — tout est annulé';
+    raise exception 'relance du compte 3b7e2361 : le job n''est pas repassé en file — tout est annulé';
   end if;
 end $$;
 

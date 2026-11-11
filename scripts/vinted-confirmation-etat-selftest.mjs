@@ -94,14 +94,14 @@ const jobRecreation = (pf = {}, extra = {}) => ({
   platform_fields: { republish_step: "deleted", last_diagnostic: diag400, republish_snapshot: { etat: "Neuf sans étiquette", status_id: 1 }, ...pf }, ...extra,
 });
 ok(CE.BUILD_VINTED_ETAT_CONFIRME === "2026-11-10T14:10:14Z", "buildMin = BUILD_ID du paquet 0.6.186");
-ok(CE.correctifPourJob(jobRecreation())?.cle === "vinted_etat_a_confirmer", "stefcarpro / meminiandmove (capture « Neuf sans étiquette », aucune réponse) : repart une fois");
-ok(CE.correctifPourJob(jobRecreation({ vintedAspects: { condition: "Neuf sans étiquette" } }))?.cle === "vinted_etat_a_confirmer", "victorine (réponse posée = état de la capture) : repart une fois");
+ok(CE.correctifPourJob(jobRecreation())?.cle === "vinted_etat_a_confirmer", "client-64eab2f9 / compte-63ad8597 (capture « Neuf sans étiquette », aucune réponse) : repart une fois");
+ok(CE.correctifPourJob(jobRecreation({ vintedAspects: { condition: "Neuf sans étiquette" } }))?.cle === "vinted_etat_a_confirmer", "client-a962a59e (réponse posée = état de la capture) : repart une fois");
 ok(CE.correctifPourJob(jobRecreation({ vintedAspects: { condition: "Très bon état" } })) == null, "une réponse de la personne DIFFÉRENTE de la capture : jamais relancée par-dessus");
 ok(CE.correctifPourJob(jobRecreation({ republish_snapshot: { status_id: 1 } })) == null, "aucun état connu dans la capture : la question reste à la personne (jamais deviné)");
 ok(CE.correctifPourJob(jobRecreation({}, { handler_build: "2026-11-10T14:10:14Z+ba13a51 · v0.6.186" })) == null, "échec SUR un poste 0.6.186 : jamais réarmé (le diagnostic du nouveau build fait foi)");
 ok(CE.correctifPourJob(jobRecreation({ correctif_leve: { cle: "vinted_etat_a_confirmer" } })) == null, "déjà réarmé une fois pour ce correctif : jamais deux");
 ok(CE.correctifPourJob(jobRecreation({}, { status: "published" })) == null && CE.correctifPourJob(jobRecreation({}, { status: "cancelled" })) == null,
-  "publiée (belkacem, van.nessa) ou annulée par la personne : jamais touchée");
+  "publiée (compte-b695d990, van.nessa) ou annulée par la personne : jamais touchée");
 ok(CE.correctifPourJob({ ...jobRecreation(), action: "publish", platform_fields: { last_diagnostic: diag400, etat: "Neuf sans étiquette" } })?.cle === "vinted_etat_a_confirmer",
   "une PUBLICATION refusée pareil (état de la fiche connu) repart aussi une fois");
 ok(CE.correctifPourJob({ ...jobRecreation(), platform: "leboncoin" }) == null, "autres plateformes : rien");

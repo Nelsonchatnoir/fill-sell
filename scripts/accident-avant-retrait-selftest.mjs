@@ -41,7 +41,7 @@ const avec = (job, pf, extra = {}) => ({ ...job, ...extra, platform_fields: { ..
 
 console.log("\n1. LES DEUX CAS DU 21 ET DU 24/10 REPARTENT");
 ok(accidentAvantRetrait(deborah)?.signature === "technique", "Deborah : onglet de dépôt muet avant tout envoi → accident avant retrait");
-ok(accidentAvantRetrait(jocabroc)?.signature === "boucle_canal_coupe", "jocabroc : même coupure répétée → accident avant retrait (trace de boucle gardée)");
+ok(accidentAvantRetrait(jocabroc)?.signature === "boucle_canal_coupe", "boutique-53efea05 : même coupure répétée → accident avant retrait (trace de boucle gardée)");
 ok(coupureSeule(BRUT_DEBORAH) && coupureSeule(deborah.error), "le brut ET l'affichage G1 se lisent comme une coupure");
 
 console.log("\n2. JAMAIS APRÈS UN RETRAIT, JAMAIS UNE QUESTION, JAMAIS UN MUR QUI A SA RÈGLE");

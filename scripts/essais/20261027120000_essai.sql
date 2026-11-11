@@ -447,13 +447,13 @@ begin
     (select status from public.cross_post_jobs where id = v_nico_suivi) = 'cancelled'
     and (select platform_fields ? 'doublon_identifiant' from public.cross_post_jobs where id = v_nico_suivi)
     and (select status || '|' || listing_url from public.cross_post_jobs where id = v_nico_depot) = 'published|https://www.depop.com/products/nvlsonchatnoir-roman-en-tres-bon-etat-30fa/', null);
-  insert into _r values ('R4 XEWER : à signaler (fiche vendue, une vente), rien écrit',
+  insert into _r values ('R4 COMPTE-DE63CA45 : à signaler (fiche vendue, une vente), rien écrit',
     (select resultat ->> 'motif' from public._resultat_2710_doublons where annonce_id = v_xe_ann) = 'fiche_pas_intacte'
     and (select (resultat ->> 'ventes')::int from public._resultat_2710_doublons where annonce_id = v_xe_ann) = 1
     and (select inventaire_id from public.annonces_plateforme where id = v_xe_ann) = v_xe_dbl
     and (select fusionne_dans from public.inventaire where id = v_xe_dbl) is null,
     (select resultat::text from public._resultat_2710_doublons where annonce_id = v_xe_ann));
-  insert into _r values ('R5 Johan : à signaler (fiche créée par la personne), rien écrit',
+  insert into _r values ('R5 Compte-essai-5 : à signaler (fiche créée par la personne), rien écrit',
     (select resultat ->> 'motif' from public._resultat_2710_doublons where annonce_id = v_jo_ann) = 'fiche_pas_nee_du_releve'
     and (select inventaire_id from public.annonces_plateforme where id = v_jo_ann) = v_jo_autre, null);
   select count(*), count(*) filter (where (resultat ->> 'ok')::boolean) into n, n2 from public._resultat_2710_doublons;

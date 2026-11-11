@@ -7,7 +7,7 @@ let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
 const CHALLENGE = "CHALLENGE DATADOME : Beebs affiche une vérification anti-robot à la place du formulaire de vente. Ouvrir beebs.app dans Chrome et résoudre la vérification (l'onglet de travail est resté ouvert), le job repartira au prochain passage.";
 
-console.log("\n1. BEEBS — 9cdr9rm4rn a6692748 : le challenge à résoudre");
+console.log("\n1. BEEBS — client-eacbe32c a6692748 : le challenge à résoudre");
 const j1 = { platform: "beebs", action: "republish", error: null, platform_fields: { republish_step: "captured",
   republish_prevol_formulaire: { at: "2026-10-02T16:02:04.951Z", verdict: "illisible", detail: CHALLENGE } } };
 const v1 = jugerMurGeste(j1);
@@ -25,7 +25,7 @@ ok(v3.geste === null && v3.change && !v3.pf.mur_antirobot, "le challenge s'est l
 ok(observationChallenge({ republish_prevol_formulaire: { at: "2026-10-02T16:00:00Z", verdict: "illisible", detail: "aucune preuve positive du formulaire" } }) === null,
   "un formulaire simplement illisible n'est pas un mur anti-robot");
 
-console.log("\n2. LEBONCOIN — xxewwer : connexion fermée");
+console.log("\n2. LEBONCOIN — client-de63ca45 : connexion fermée");
 const att = (n) => ({ platform: "leboncoin", action: "republish", error: "En attente de ta connexion à Leboncoin : …",
   platform_fields: { republish_step: "captured", attente_session: { depuis: "2026-10-02T06:28:17Z", derniere: "2026-10-02T06:48:00Z", observations: n, platform: "leboncoin" } } });
 ok(jugerMurGeste(att(CONNEXION_OBSERVATIONS_MIN - 1)).geste === null, "vue 2 fois : on attend encore (faux « déconnecté » de Louis)");
@@ -43,7 +43,7 @@ ok(/vinted\.fr/.test(messagePauseVintedGeste()) && /connecte-toi/.test(messagePa
   "pause Vinted > 6 h : les deux gestes possibles (connexion ou vérification)");
 ok(/^Connexion Vinted requise/.test(messageConnexionRequise("vinted")) && /^Vinted te demande/.test(messageVerificationAntirobot("vinted")), "libellés par plateforme");
 
-console.log("\n4. VINTED — nivake03 0b54edbc : recréation reportée, Vinted muet (03/10, point 23)");
+console.log("\n4. VINTED — client-869e5f03 0b54edbc : recréation reportée, Vinted muet (03/10, point 23)");
 // Le job RÉEL : annonce retirée le 29/09, recréation reportée de 5 min en
 // 5 min (« identité Vinted illisible » — sonde Vinted 403 sur ce poste).
 const recr = (at) => ({ platform: "vinted", action: "republish", error: null, platform_fields: {
@@ -58,7 +58,7 @@ ok(/^Vinted ne répond plus à FillSell sur ton ordinateur : ouvre vinted\.fr da
 ok(jugerMurGeste({ ...recr("2026-10-03T09:20:00.000Z"), platform_fields: { ...recr("2026-10-03T09:20:00.000Z").platform_fields, gardes: { prevol_recreation: { at: "2026-10-03T09:20:00.000Z", verdict: "report", detail: "fenêtre de recréation non ouverte" } } } }).geste === null,
   "un autre report (pas l'identité) reste une attente");
 
-console.log("\n6. RETRAIT BLOQUÉ PAR UNE CONNEXION (05/10, Joséphine, 8 retraits Opla)");
+console.log("\n6. RETRAIT BLOQUÉ PAR UNE CONNEXION (05/10, Client-essai-1, 8 retraits Opla)");
 const attenteOpla = { platform: "opla", action: "delete", status: "pending",
   error: "En attente de ta connexion à Opla dans Chrome : ton article est vendu mais son annonce est encore en ligne sur Opla (risque de double vente). Le retrait repartira tout seul dès que tu seras reconnecté(e).",
   platform_fields: { attente_session: { platform: "opla", depuis: "2026-10-04T14:18:23.682Z", observations: CONNEXION_OBSERVATIONS_MIN } } };

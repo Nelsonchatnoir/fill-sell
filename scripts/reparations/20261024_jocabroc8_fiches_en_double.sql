@@ -151,7 +151,7 @@ END $$;
 
 -- Effets de bord : aucun attendu (mails, notifications, quotas, jobs créés, ventes : tous à 0).
 SELECT quoi, cle, detail FROM (
-  SELECT 1 AS o, 'effets' AS quoi, 'jocabroc8' AS cle,
+  SELECT 1 AS o, 'effets' AS quoi, '53efea05' AS cle,
          'mails ' || ((SELECT count(*) FROM public.email_logs WHERE user_id = '53efea05-dc2d-4467-a8cd-c6fa52a47a61') - a.mails)
          || ' · push ' || ((SELECT count(*) FROM public.push_ventes WHERE user_id = '53efea05-dc2d-4467-a8cd-c6fa52a47a61') - a.push)
          || ' · quotas ' || ((SELECT count(*) FROM public.coin_ledger WHERE user_id = '53efea05-dc2d-4467-a8cd-c6fa52a47a61') - a.quotas)

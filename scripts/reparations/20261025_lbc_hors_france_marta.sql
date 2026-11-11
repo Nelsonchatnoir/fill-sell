@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- RÉPARATION 25/10 — Marta (mele.marta@gmail.com, ac19c8c9-586a-4f76-a0fc-55e4e59ab3c3) :
+-- RÉPARATION 25/10 — Marta (compte ac19c8c9, ac19c8c9-586a-4f76-a0fc-55e4e59ab3c3) :
 -- LEBONCOIN RÉSERVÉ AUX ADRESSES EN FRANCE (décision de Nico, 25/10)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- « Pas de Leboncoin pour les adresses hors de France (cas Marta, Italie) : la plateforme ne doit plus être proposée
@@ -85,7 +85,7 @@ BEGIN
   IF n <> v_sauves THEN
     RAISE EXCEPTION 'attendu % jobs clos (la sauvegarde), obtenu % — une ligne a bougé entre-temps, rien n''est fait', v_sauves, n;
   END IF;
-  RAISE NOTICE '% job(s) Leboncoin de Marta clos (hors de France) — sauvegardés dans _backup_2510_lbc_hors_france_marta', n;
+  RAISE NOTICE '% job(s) Leboncoin du compte ac19c8c9 clos (hors de France) — sauvegardés dans _backup_2510_lbc_hors_france_marta', n;
 END $$;
 
 -- Relecture (heure de Paris) : ce qui reste vivant sur Leboncoin pour ce compte, et aucun mail parti.

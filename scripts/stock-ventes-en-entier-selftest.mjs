@@ -388,7 +388,7 @@ ok(dansLaBoutique({ vinted_account_id: '1' }, 'Toutes') && dansLaBoutique({}, un
     const r = soldFiltre(fiches, 'Tous', 'Toutes', 'Toutes', '', mk, tous, dansLaBoutique, ventes, trierParVente).map((i) => i.id);
     assert.deepEqual(r, [11, 13, 12, 10], 'Vendu : ventes du 13/10 en tête (11:07 puis 09:35), puis la date de fiche, puis la vente du 02/09 saisie tard'); n++;
   }
-  assert.deepEqual(sous('295151754'), [1], 'Vendu sous @narema75 : ses ventes seulement'); n++;
+  assert.deepEqual(sous('295151754'), [1], 'Vendu sous @boutique-essai-3 : ses ventes seulement'); n++;
   assert.deepEqual(sous('sans_origine'), [3], 'Vendu sous « sans origine » : les fiches non estampillées'); n++;
   assert.deepEqual(sous('Toutes'), [1, 2, 3], 'Vendu sous « Toutes » : tout'); n++;
   const st = /const stockFiltre=useMemo\(\(\)=>\{([\s\S]*?)\},\[([^\]]*)\]\);/.exec(APP);

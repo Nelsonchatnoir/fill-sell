@@ -102,11 +102,11 @@ cas("9. l'essai couvre les trois cas rejoués, le sans-dépôt d'avant, le dép�
     "M1 aucun retrait armé", "M2 aucun mail", "R6 parc"]) assert.ok(TESTS.includes(k), k);
 });
 
-cas("9 bis. XEWER (décision de Nico) : la vente en double retirée, l'annonce rattachée PAR LA RÈGLE, rien sur Leboncoin", () => {
+cas("9 bis. COMPTE-DE63CA45 (décision de Nico) : la vente en double retirée, l'annonce rattachée PAR LA RÈGLE, rien sur Leboncoin", () => {
   const X = lire("scripts/reparations/20261027_xewer_vente_en_double.sql");
   const XI = lire("scripts/reparations/20261027_xewer_vente_en_double_INVERSE.sql");
   assert.match(X, /CREATE TABLE public\._backup_2710_xewer_vente AS/);
-  assert.match(X, /RAISE EXCEPTION 'XEWER : l''état n''est plus celui relu le 27\/10/);
+  assert.match(X, /RAISE EXCEPTION 'compte de63ca45 : l''état n''est plus celui relu le 27\/10/);
   assert.match(X, /DELETE FROM public\.ventes WHERE id = 315890;/);
   assert.ok(!/DELETE FROM public\.ventes WHERE id = 290670/.test(X), "la vente gardée n'est jamais touchée");
   assert.match(X, /r := public\.annonce_rattacher_par_identifiant\(v_ann, 'reparation'\);/);

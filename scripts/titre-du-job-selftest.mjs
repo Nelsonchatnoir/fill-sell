@@ -34,7 +34,7 @@ for (const [pf, max] of Object.entries(TITRE_MAX)) {
 ok(couperTitre("  Pull   bleu  ", "vinted") === "Pull bleu", "espaces resserrés, jamais reformulé");
 ok(CLE_TITRE_SAISI === "titre_saisi", "clé de la réponse : titre_saisi");
 
-console.log("\n2. LE JOB RÉEL 891a7039 (eBay, patrick giry, 25/09 18:29)");
+console.log("\n2. LE JOB RÉEL 891a7039 (eBay, compte-82e64f14, 25/09 18:29)");
 {
   // Relu en base le 25/09 : title "", platform_fields sans titre_saisi,
   // inventaire 1790346024798 titre « T-shirt manches longues gris chiné taille M ».

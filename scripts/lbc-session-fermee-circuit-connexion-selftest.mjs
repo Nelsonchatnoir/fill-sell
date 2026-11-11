@@ -52,7 +52,7 @@ ok(signeBlocageHorsConnexionLbc("http_403") === "http_403" && signeBlocageHorsCo
 ok(murConnexionLbc(VISITE_REELLE) && murConnexionLbc("En attente de ta connexion à Leboncoin dans Chrome") && !murConnexionLbc("Prix manquant"),
   "le mur de connexion se lit sur NOS textes");
 const vReel = verdictVisiteControleLbc("absente", VISITE_REELLE);
-ok(vReel.verdict === "refuse" && vReel.signe === "session_fermee", "visite réelle de Goulvenk (17:38) → refusée, session fermée", JSON.stringify(vReel));
+ok(vReel.verdict === "refuse" && vReel.signe === "session_fermee", "visite réelle de Compte-521b7f89 (17:38) → refusée, session fermée", JSON.stringify(vReel));
 const v403 = verdictVisiteControleLbc("absente", VISITE_REELLE + " · [adresse] essai 1 : http_403");
 ok(v403.verdict === "refuse" && v403.signe === "session_fermee", "visite à la page de connexion + 403 de l'adresse → session fermée (avant : http_403)", JSON.stringify(v403));
 ok(verdictVisiteControleLbc("done", "[défilement] [adresse] 1 page(s), 17 en ligne lues sur 17 annoncées").verdict === "passe",
@@ -60,7 +60,7 @@ ok(verdictVisiteControleLbc("done", "[défilement] [adresse] 1 page(s), 17 en li
 
 console.log("\n2. LA SESSION FERMÉE PASSE PAR LE CIRCUIT CONNEXION (règle 2)");
 ok(blocageSessionFermee(B_GOULVENK) && !blocageSessionFermee({ ...B_GOULVENK, signe: "http_403" }) && !blocageSessionFermee({ ...B_GOULVENK, leve_le: "x" }),
-  "la pause de Goulvenk tient sur une session fermée (signe de sa dernière visite)");
+  "la pause de Compte-521b7f89 tient sur une session fermée (signe de sa dernière visite)");
 const jobLego = { id: "53665705", platform: "leboncoin", action: "publish", status: "pending",
   error: messageBlocageLbc("Chrome", B_GOULVENK.depuis, "session_fermee"), platform_fields: { attente_blocage_lbc: { depuis: B_GOULVENK.depuis } } };
 const avant = situationJob(jobLego, { maintenant: T("2026-11-07T18:30:00Z") });
@@ -146,7 +146,7 @@ ok(bg.includes("erreur: `session leboncoin : page de connexion (« Mes annonces 
   "relevé : la porte de connexion vue deux fois, nommée, avec les motifs de l'adresse");
 ok(bg.includes('.replace(/\\bhttp_(\\d{3})\\b/gi, "réponse $1")'), "les motifs de l'adresse ne portent jamais « http_403 » à côté de la page de connexion");
 
-console.log("\n7. LA CHAÎNE DE GOULVENK, REJOUÉE");
+console.log("\n7. LA CHAÎNE DE COMPTE-521B7F89, REJOUÉE");
 {
   // 17:39:58 : visite refusée, session fermée → tâches en « connecte-toi » ; 18:10 : sa synchro EST la visite.
   const ref = blocageEssaiRefuse({ ...B_GOULVENK, essai: { releve_id: "5e7a7a8e", le: "2026-11-07T16:37:58.732Z", controle: true } },

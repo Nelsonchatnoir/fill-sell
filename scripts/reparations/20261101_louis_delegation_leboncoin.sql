@@ -1,4 +1,4 @@
--- 01/11 — DÉCISION DE NICO : DÉLÉGATION LEBONCOIN louis-seller@ttfamily.fr → louis@ttfamily.fr (« Amiral »), CETTE PAIRE SEULE
+-- 01/11 — DÉCISION DE NICO : DÉLÉGATION LEBONCOIN compte 447d920c → compte faf5021a (« Amiral »), CETTE PAIRE SEULE
 -- (règle : supabase/functions/_shared/delegation-leboncoin.js ; get-pending-jobs, extension-session, extension ≥ 0.6.164).
 -- Ce script, en une transaction (garde sur les adresses ET les identifiants ; sauvegardes ; inverse : …_INVERSE.sql) :
 --   1. sauvegarde les beta_flags des deux comptes, la tâche 9aa5edb9 et la liste des annonces Leboncoin vivantes de
@@ -96,7 +96,7 @@ BEGIN
      OR NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = 'faf5021a-479a-4bb3-b3ec-c296770739b7'
                      AND beta_flags -> 'execute_leboncoin_pour' = '["447d920c-976a-4d8f-aff4-a2998050358c"]'::jsonb)
      OR EXISTS (SELECT 1 FROM public.profiles WHERE beta_flags ? 'lbc_machine_virtuelle_autorisee') THEN
-    RAISE EXCEPTION 'la délégation doit tenir sur la paire louis-seller → Amiral et sur elle seule, sans exception machine virtuelle : rien n''est écrit';
+    RAISE EXCEPTION 'la délégation doit tenir sur la paire compte 447d920c → compte faf5021a et sur elle seule, sans exception machine virtuelle : rien n''est écrit';
   END IF;
 END
 $$;

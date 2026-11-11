@@ -49,7 +49,7 @@ console.log("\n[A] servi au compte de travail : retrait, republication, relevé 
   ok(delegue === "retrait,republication,publication", `le compte de travail reçoit les tâches Leboncoin (${delegue})`);
   ok(D.tachesSansLbc(TRAVAIL).map((j) => j.id).join() === "vinted", "les postes du propriétaire ne gardent que le reste");
   ok(D.delegationLbcValide({ proprietaire: LOUIS, flagsProprietaire: { delegation_leboncoin: { executant: AMIRAL } }, executant: AMIRAL, flagsExecutant: { execute_leboncoin_pour: [LOUIS] } }),
-    "la paire louis-seller → Amiral, posée des deux côtés, est une délégation valide");
+    "la paire client-447d920c → Compte-faf5021a, posée des deux côtés, est une délégation valide");
   ok(/delegationLbc \? c\.platform === PLATEFORME_DELEGUEE : proprietaireDelegue \? c\.platform !== PLATEFORME_DELEGUEE : true/.test(GPJ),
     "relevés : le poll délégué ne lit que les relevés Leboncoin du propriétaire, ses postes jamais");
 }
@@ -74,8 +74,8 @@ console.log("\n[C] l'exécutant en pause : rien ne part, et le propriétaire lit
   ok(/if \(await leboncoinEnPause\(\)\) \{[\s\S]{0,200}return;/.test(cycle), "pause sur le navigateur de l'exécutant : aucun travail délégué ce cycle");
   ok(/const msgP = lecturesExtensionEnPause\(ebEx\.etat\)\s*\? messageTacheDelegueeEnPause\(proprietaireDelegue\.nom\)\s*: messageTacheDelegueeEnAttente\(proprietaireDelegue\.nom\);/.test(GPJ),
     "get-pending-jobs : exécutant en pause → message « en pause », sinon « en attente »");
-  const m = D.messageTacheDelegueeEnPause("Amiral");
-  ok(/Leboncoin passe par .*Amiral/.test(m) && /restreint l'accès/.test(m) && !/ouvr/i.test(m), "le message dit la pause, jamais « ouvre l'extension »", m);
+  const m = D.messageTacheDelegueeEnPause("Compte-faf5021a");
+  ok(/Leboncoin passe par .*Compte-faf5021a/.test(m) && /restreint l'accès/.test(m) && !/ouvr/i.test(m), "le message dit la pause, jamais « ouvre l'extension »", m);
   for (const etat of ["bloque", "essai"]) ok(B.lecturesExtensionEnPause(etat), `état « ${etat} » : lectures et cycle délégué arrêtés`);
 }
 
@@ -125,16 +125,16 @@ console.log("\n[F] et si la chaîne recoince : rouge sur support@fillsell.app, e
 {
   const maintenant = Date.parse("2026-11-05T08:50:00Z");
   const profils = new Map([
-    [LOUIS, { id: LOUIS, username: "louis-seller", extension_last_seen_at: null, beta_flags: { delegation_leboncoin: { executant: AMIRAL, nom: "Amiral" } }, platform_settings: {} }],
-    [AMIRAL, { id: AMIRAL, username: "Amiral", extension_last_seen_at: "2026-11-05T08:41:51Z", beta_flags: { execute_leboncoin_pour: [LOUIS] }, platform_settings: {} }],
+    [LOUIS, { id: LOUIS, username: "client-447d920c", extension_last_seen_at: null, beta_flags: { delegation_leboncoin: { executant: AMIRAL, nom: "Compte-faf5021a" } }, platform_settings: {} }],
+    [AMIRAL, { id: AMIRAL, username: "Compte-faf5021a", extension_last_seen_at: "2026-11-05T08:41:51Z", beta_flags: { execute_leboncoin_pour: [LOUIS] }, platform_settings: {} }],
   ]);
   const jobs = [
     { id: "retrait", user_id: LOUIS, status: "pending", action: "delete", platform: "leboncoin", created_at: "2026-11-03T14:36:00Z", error: "" },
     { id: "republication", user_id: LOUIS, status: "pending", action: "republish", platform: "leboncoin", created_at: "2026-11-03T20:00:00Z", error: "", platform_fields: { republish_step: "deleted", republish_source: "auto" } },
   ];
   const r = A.filesArretees({ jobs, profils, derniersDeparts: new Map(), maintenant });
-  ok(r.arretees.length === 1 && r.arretees[0].executantNom === "Amiral" && r.arretees[0].n === 2 && /delete×1, republish×1/.test(r.arretees[0].actions),
-    "retrait et republication déjà retirée de Louis : une ligne rouge, exécutée par Amiral", JSON.stringify(r.arretees));
+  ok(r.arretees.length === 1 && r.arretees[0].executantNom === "Compte-faf5021a" && r.arretees[0].n === 2 && /delete×1, republish×1/.test(r.arretees[0].actions),
+    "retrait et republication déjà retirée de Louis : une ligne rouge, exécutée par Compte-faf5021a", JSON.stringify(r.arretees));
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s) sur ${n}` : `\n✓ ${n}/${n} — la délégation Leboncoin va au bout : retrait, republication, relevé`);

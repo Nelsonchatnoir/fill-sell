@@ -37,7 +37,7 @@ ok(horodatageFige(beebsAe28) === null, "un job jamais tenté n'a pas figé");
 ok(horodatageFige({ error: "Reprise après interruption : l'ordinateur qui portait ce traitement ne s'est plus manifesté", platform_fields: {} }) === null,
   "ordinateur éteint (handler-watch) ≠ gel du job");
 
-console.log("2. La file réelle de MeMiniandMove");
+console.log("2. La file réelle de Compte-63ad8597");
 {
   const figees = plateformesFigees([lbc2cfa, beebs6f23, beebsAe28, vintedCc78], NOW);
   ok(figees.has("leboncoin") && figees.has("beebs") && !figees.has("vinted"), "Leboncoin et Beebs figés, Vinted non");
@@ -76,7 +76,7 @@ console.log("5. Le constat daté fait foi (le début du traitement date d'une he
   ok(gelSansConstat(beebsAe28) === false && gelSansConstat(vintedCc78) === false, "un job sans gel n'est jamais daté");
 }
 
-console.log("6. (02/11, gjehly) Jamais affamée sur un poste actif : un essai par poll, une réussite lève le gel");
+console.log("6. (02/11, client-229c7b07) Jamais affamée sur un poste actif : un essai par poll, une réussite lève le gel");
 {
   // La file réelle du 02/11 : un Vinted figé à 13:00:57 (content script muet → canal coupé), 77 Vinted et 58
   // Leboncoin en file ; le poste sert un Leboncoin toutes les 2 min et ne repasse qu'au bout de son lot.
