@@ -162,7 +162,12 @@ export const cloudOffreVendable = (userId, fuseau = undefined) =>
 // valeur que supabase/functions/_shared/cloud-conditions.js. Changer le texte = changer cette version.
 // (04/11) 2026-10-30 → 2026-11-04 : le prix de l'article 6 passe à 24,99 € (décision de Nico du 03/11). Une personne
 // qui avait accepté la version du 30/10 se voit présenter la nouvelle avant tout paiement Cloud.
-export const CGU_CLOUD_VERSION = '2026-11-04';
+// (11/11, point C1 du méga lot de Nico) L'article 4 est REFORMULÉ sans rien changer sur le fond (et la case ne cite
+// plus le risque) → version neuve. La version, la version MINIMALE et la règle d'acceptation (date AAAA-MM-JJ réelle
+// ET ≥ la minimale) ont UNE source : supabase/functions/_shared/cloud-conditions.js, la même que create-checkout-session.
+// Ré-exportées ici, jamais redéfinies : une reformulation garde valables les acceptations depuis la minimale (2026-11-04)
+// sans redéploiement synchronisé ; un changement de FOND relève la minimale en DEUX TEMPS (procédure dans ce fichier).
+export { CGU_CLOUD_VERSION, CGU_CLOUD_VERSION_MINIMALE, CGU_CLOUD_HISTORIQUE, versionCguValable } from '../../supabase/functions/_shared/cloud-conditions.js';
 // Les plateformes proposées : SEULEMENT celles prouvées en réel depuis le Cloud.
 // (Une plateforme qui bloque le Cloud n'est jamais promise : elle s'ajoute ici
 // après son test réel, sur décision de Nico.) eBay a sa propre ligne (API).

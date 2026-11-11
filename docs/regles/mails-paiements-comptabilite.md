@@ -318,3 +318,68 @@ marge de 100 % sur du vent, indétectable ensuite.
   la même adresse que l'alerte des IP en pause (orchestrateur, `ALERTES_DESTINATAIRE`). Un mail par événement : même
   registre `cloud_mails`, clé « alerte: » + la clé de l'événement ; jamais bloquante. email_logs `cloud_alerte_<événement>`
   (user_id null). Envoi de test : email-tunnel `{ "alerte_cloud_test": true }` (x-cron-secret). selftest:cloud-alerte-nico.
+
+## ⛔ (11/11/2026, point C1 du méga lot de Nico) Conditions de FillSell Cloud : une reformulation garde valables les acceptations précédentes
+- Où : texte et case dans `src/cloud/conditionsCloud.js` (le français fait foi, l'anglais pour information) ; écran
+  `src/cloud/ConditionsCloudModale.jsx` (case OBLIGATOIRE, bouton grisé, acceptation ENREGISTRÉE par la rpc
+  `cloud_cgu_accepter_moi` : version montrée + `now()`, AVANT la préparation et toute carte, Stripe comme boutique) ;
+  la version (`CGU_CLOUD_HISTORIQUE`, la plus récente en tête : `CGU_CLOUD_VERSION`), la version MINIMALE
+  (`CGU_CLOUD_VERSION_MINIMALE`) et la règle (`versionCguValable`, `conditionsCloudAcceptees`) ont UNE source,
+  `supabase/functions/_shared/cloud-conditions.js`, que `src/config/cloudOffer.js` ré-exporte sans rien redéfinir.
+- Règle : une acceptation VAUT si sa version est une date AAAA-MM-JJ réelle ET ≥ la version MINIMALE (aujourd'hui
+  `2026-11-04`, le dernier changement de fond : le prix). Refusées : vide, format faux, date impossible, < minimale
+  (`2026-10-30`, l'ancien prix). Ni liste exacte ni égalité : une app plus récente que le serveur (date changée après le
+  déploiement de la fonction, ou web parti avant elle) et une ancienne app (`2026-11-04`) paient sans refus.
+- Une REFORMULATION sans changement de fond (ex. les articles 4 et 9 et la case du 11/11/2026) = une version neuve en tête de
+  `CGU_CLOUD_HISTORIQUE`, minimale inchangée ; aucun redéploiement synchronisé (la fonction accepte déjà toute date
+  ≥ minimale ; la redéployer pour rester à jour, dans n'importe quel ordre). La ligne de version le dit (table
+  `NOTES_DE_VERSION` de `conditionsCloud.js`, choisie par le `changement` de la version), ce qui tient l'article 9.
+- Un changement de FOND (prix, droits, données…) relève la minimale, EN DEUX TEMPS : (1) la version neuve dans
+  `CGU_CLOUD_HISTORIQUE`, minimale INCHANGÉE → déployer `create-checkout-session`, puis le web, puis l'OTA (ancienne et
+  neuve passent) ; (2) l'OTA partie, `CGU_CLOUD_VERSION_MINIMALE` = la version neuve → redéployer
+  `create-checkout-session` (et livrer l'app) : l'ancienne acceptation est alors redemandée avant tout paiement Stripe.
+- La date de la version neuve = la date RÉELLE du push web (heure de Paris) ; elle ne s'écrit qu'à UN endroit du code
+  (`CGU_CLOUD_HISTORIQUE[0].version`), plus `VERSION_LIVREE` de `scripts/cloud-executant-selftest.mjs` qui l'épingle.
+- Seule lecture de la version : `create-checkout-session` (paiement Stripe web, 409 `conditions_a_accepter`), par
+  `conditionsCloudAcceptees` importée de `_shared` (jamais redéfinie, aucune comparaison locale). Rien d'autre ne la lit
+  (service du Cloud, Apple / Google, politiques, crons) : le Cloud en service n'est jamais coupé pour une version.
+- Mesure de l'étape (`usage_logs` par `tracerCloud`, jamais attendue) : `cloud_conditions_vues`, `cloud_conditions_cochees`,
+  `cloud_conditions_annulees` (`coche` : cochée ou non), `cloud_conditions_acceptees` (= « continué », après
+  l'enregistrement), `cloud_conditions_echec` (`raison`) ; chaque ligne porte `version`, `lang`, `plateforme`.
+  `usage_logs` est écrivable par la personne : c'est une mesure, pas la preuve de l'acceptation (la preuve =
+  `profiles.cloud_cgu_version` / `cloud_cgu_acceptee_le`, écrasés à chaque acceptation ; un historique = une migration).
+- Verrou : `selftest:cloud-executant` § 3 bis (case, fond de l'article 4 en fr et en, obligation avant toute préparation,
+  une seule source, date ≥ minimale exécutée côté app et serveur, date écrite une fois, aucune autre lecture, règle
+  écrite) et § 3 ter (la modale exécutée : rendu serveur, « vues » une fois, aucune trace attendue) ; `selftest:cloud-prix-nom`.
+- Comptage à OTA + 48 h (date absolue de Paris fixée au départ de l'OTA ; `npx supabase db query --linked --read-only`,
+  une requête à la fois, une lecture, jamais en boucle). Seuls comptent les comptes qui ont au moins une trace
+  `cloud_conditions_*` dans la fenêtre : un ancien paquet OTA ne trace rien, ses clics ne sont pas une perte de la case.
+  Point de comparaison avant C1 (08/11 13:29:50 → 11/11) : 23 clics → 16 acceptations → 8 essais ; population
+  minuscule, ne pas conclure sur un écart d'une ou deux unités.
+  ```sql
+  -- 1. Les événements de l'étape, sur les comptes qui tracent (paquet à jour)
+  with traces as (select distinct user_id from usage_logs
+                   where feature like 'cloud\_conditions\_%'
+                     and created_at >= timestamptz '<OTA> Europe/Paris' and created_at < timestamptz '<OTA> Europe/Paris' + interval '48 hours')
+  select feature, count(*) as n, count(distinct user_id) as comptes
+    from usage_logs
+   where created_at >= timestamptz '<OTA> Europe/Paris' and created_at < timestamptz '<OTA> Europe/Paris' + interval '48 hours'
+     and (feature like 'cloud\_conditions\_%' or feature = 'cloud_cta_click')
+     and user_id in (select user_id from traces)
+   group by 1 order by 1;
+  -- 2. Le parcours par compte qui trace (vues → cochées → acceptées / annulées / rien)
+  with v as (select user_id,
+                    bool_or(feature = 'cloud_conditions_vues') as vu,
+                    bool_or(feature = 'cloud_conditions_cochees') as c,
+                    bool_or(feature = 'cloud_conditions_acceptees') as a,
+                    bool_or(feature = 'cloud_conditions_annulees') as x
+               from usage_logs
+              where feature like 'cloud\_conditions\_%'
+                and created_at >= timestamptz '<OTA> Europe/Paris' and created_at < timestamptz '<OTA> Europe/Paris' + interval '48 hours'
+              group by 1)
+  select count(*) as comptes, count(*) filter (where vu) as vues, count(*) filter (where c) as cochees,
+         count(*) filter (where a) as acceptees, count(*) filter (where x and not a) as annulees,
+         count(*) filter (where not a and not x) as sans_issue from v;
+  -- 3. Les versions enregistrées depuis l'OTA (la neuve ; quelques 2026-11-04 = anciens paquets)
+  select cloud_cgu_version, count(*) from profiles where cloud_cgu_acceptee_le >= timestamptz '<OTA> Europe/Paris' group by 1;
+  ```

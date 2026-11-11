@@ -12,20 +12,50 @@
 // plateformes.js), mêmes plafonds et cadences que l'extension (get-pending-jobs, un exécutant par plateforme),
 // arrêt sur restriction, purge au plus tard 3 jours après la fin, empreintes HMAC 12 mois, IP françaises IPRoyal
 // en rotation (fournisseurIp.js). Changer le texte = changer la VERSION (une nouvelle acceptation est demandée).
+// (11/11 : précisé plus bas — une reformulation garde valables les acceptations depuis la version minimale.)
 // (04/11, décision de Nico du 03/11) Article 6 : le prix passe à 24,99 € TTC par mois (le prix facturé sur les trois
 // canaux) → version 2026-11-04 (config/cloudOffer.js ET supabase/functions/_shared/cloud-conditions.js).
 // (04/11, décision de Nico) « l'option FillSell Cloud » ou « le Cloud », jamais « option » seul (article 1) : même
 // version 2026-11-04 — rien n'a été publié depuis qu'elle a été posée le même jour.
+// (11/11, point C1 du méga lot de Nico ; textes validés par Nico le 11/11 vers 15:25) La case ne cite plus le risque
+// (« J'ai lu et j'accepte les conditions d'utilisation de FillSell Cloud. ») ; l'article 4 devient « Le Cloud et les
+// règles des plateformes » : reformulé pour rassurer, au « vous » comme le reste, SANS RIEN RETIRER SUR LE FOND (règles
+// propres à chaque plateforme, risque y compris à cause du Cloud, accepté en l'activant, aucune garantie, aucune
+// responsabilité des décisions d'une plateforme, aucune affiliation, l'utilisateur seul responsable) → version neuve.
+// Règle d'acceptation (une seule source : supabase/functions/_shared/cloud-conditions.js) : une date AAAA-MM-JJ réelle
+// ET ≥ la version MINIMALE (2026-11-04, le dernier changement de fond) — une reformulation garde donc valables les
+// acceptations précédentes, ce que dit la ligne de version (article 9) ; un changement de FOND relève la minimale, en
+// deux temps (procédure dans _shared/cloud-conditions.js). Verrou : scripts/cloud-executant-selftest.mjs § 3 bis et 3 ter.
+// (11/11, D4, décision de Nico « Le préciser ») L'article 9 le dit aussi : « …, sauf une simple reformulation, qui ne
+// demande pas de nouvelle acceptation. »
 
-// La version en vigueur (AAAA-MM-JJ) vit dans config/cloudOffer.js (aucune date en dur dans src/cloud/) — même
-// valeur que supabase/functions/_shared/cloud-conditions.js.
-import { CGU_CLOUD_VERSION } from '../config/cloudOffer.js';
+// La version, la minimale, l'historique et la règle viennent de config/cloudOffer.js, qui les ré-exporte de
+// supabase/functions/_shared/cloud-conditions.js (aucune date en dur dans src/cloud/).
+import { CGU_CLOUD_VERSION, CGU_CLOUD_VERSION_MINIMALE, CGU_CLOUD_HISTORIQUE, versionCguValable } from '../config/cloudOffer.js';
 import { lirePrixBoutique, estCanalBoutique, prixOuChargement } from '../lib/prixBoutique.js';
-export { CGU_CLOUD_VERSION };
+export { CGU_CLOUD_VERSION, CGU_CLOUD_VERSION_MINIMALE, versionCguValable };
+
+// AAAA-MM-JJ → JJ/MM/AAAA.
+const dateVersion = (v) => String(v).split('-').reverse().join('/');
+// Ce que dit la ligne de version, selon ce que la version CHANGE (`changement` dans CGU_CLOUD_HISTORIQUE) : une version
+// absente de cette table n'affiche que sa date, jamais la phrase d'une autre. `min` = la version minimale (JJ/MM/AAAA).
+const NOTES_DE_VERSION = Object.freeze({
+  reformulation_articles_4_9: Object.freeze({
+    fr: (min) => `elle reformule les articles 4 et 9 sans rien changer sur le fond : une acceptation de la version du ${min} reste valable.`,
+    en: (min) => `it rewords articles 4 and 9 without changing their substance: an acceptance of the version of ${min} remains valid.`,
+  }),
+});
+/** La ligne « Version du … » d'une version de l'historique (pure, testée) ; par défaut, la version en vigueur. */
+export function ligneDeVersion(lang, entree = CGU_CLOUD_HISTORIQUE[0]) {
+  const note = NOTES_DE_VERSION[entree?.changement];
+  const date = dateVersion(entree?.version ?? CGU_CLOUD_VERSION), min = dateVersion(CGU_CLOUD_VERSION_MINIMALE);
+  if (lang === 'en') return `Version of ${date} — ${note ? `${note.en(min)} ` : ''}English translation for information only; the French version prevails.`;
+  return `Version du ${date}${note ? ` — ${note.fr(min)}` : ''}`;
+}
 
 const FR = {
   titre: "Conditions d'utilisation de FillSell Cloud",
-  version: `Version du ${CGU_CLOUD_VERSION.split('-').reverse().join('/')}`,
+  version: ligneDeVersion('fr'),
   articles: [
     { t: '1. Le service', ps: [
       "L'option FillSell Cloud (« le Cloud ») est un service de FillSell. Le Cloud exécute depuis les serveurs de FillSell, sans que votre ordinateur soit allumé, ce que l'extension Chrome FillSell fait sur un ordinateur : publier, republier et retirer vos annonces, relever vos annonces en ligne et détecter vos ventes, 24 heures sur 24, dans un navigateur réservé à votre compte.",
@@ -42,9 +72,10 @@ const FR = {
       "Une fois connecté, la plateforme dépose ses cookies de session. FillSell les chiffre (AES-256-GCM) avec une clé qui n'existe que sur les serveurs du Cloud ; la base de données de FillSell n'en garde qu'une version chiffrée. Ces connexions ne servent qu'aux tâches de l'article 2. L'arrêt du Cloud les efface ; vous pouvez aussi les fermer à tout moment depuis la plateforme (changement de mot de passe, déconnexion de tous les appareils).",
       "Les navigateurs du Cloud sont hébergés par Hetzner Online GmbH (Allemagne, Union européenne). Ils sortent sur Internet par des adresses IP françaises fournies par IPRoyal Services FZE LLC (Émirats arabes unis) ; l'adresse utilisée pour votre compte peut changer au fil du temps.",
     ] },
-    { t: '4. Votre responsabilité vis-à-vis des plateformes', ps: [
-      "Vous restez l'auteur et le seul responsable de vos annonces, de leur contenu, de leurs prix et des ventes que vous concluez. Vous vous engagez à respecter les conditions d'utilisation de chaque plateforme que vous connectez au Cloud.",
-      "Chaque plateforme fixe ses propres règles, notamment sur l'automatisation et les connexions depuis des serveurs, et peut les changer à tout moment. Une plateforme peut demander une vérification, limiter, suspendre ou fermer un compte, y compris parce qu'un service comme le Cloud est utilisé. En activant le Cloud, vous acceptez ce risque. FillSell applique les protections de l'extension pour le réduire (plafonds, rythmes, pause avant suppression, arrêt sur restriction), mais ne peut pas l'écarter et ne répond pas des décisions d'une plateforme. FillSell n'est affilié à aucune plateforme.",
+    { t: '4. Le Cloud et les règles des plateformes', ps: [
+      "FillSell agit comme vous, à votre rythme, depuis une connexion française : le Cloud travaille dans vos propres sessions, seulement pour les tâches que vous lancez ou programmez, au rythme de votre forfait et jamais plus vite que l'extension, par une adresse IP française. Si une plateforme demande une vérification ou signale une restriction, il s'arrête sur cette plateforme et vous prévient dans l'app.",
+      "Comme pour tout outil, chaque plateforme reste maître de ses règles, notamment sur l'automatisation et les connexions depuis des serveurs, et peut les changer à tout moment. Elle peut demander une vérification, limiter, suspendre ou fermer un compte, y compris parce qu'un service comme le Cloud est utilisé. Les protections de FillSell (plafonds, rythmes, pause avant suppression, arrêt sur restriction) réduisent ce risque sans pouvoir l'écarter : en activant le Cloud, vous l'acceptez. FillSell ne répond pas des décisions d'une plateforme et n'est affilié à aucune d'elles.",
+      "Vous restez l'auteur et le seul responsable de vos annonces, de leur contenu, de leurs prix et des ventes que vous concluez, et vous vous engagez à respecter les conditions d'utilisation de chaque plateforme que vous connectez au Cloud.",
     ] },
     { t: '5. Aucune garantie de vente', ps: [
       "Le Cloud exécute des tâches. Il ne garantit ni la visibilité de vos annonces, ni un nombre de vues, ni une vente, ni un prix. Il dépend des plateformes, qui peuvent changer leurs pages ou refuser l'accès depuis les serveurs de FillSell : une tâche peut alors être retardée ou ne pas aboutir, et l'app vous le signale. FillSell met en œuvre des moyens raisonnables pour que le Cloud fonctionne en continu, sans garantie de résultat ni de disponibilité permanente.",
@@ -63,10 +94,10 @@ const FR = {
       "À l'arrêt du Cloud (fin de l'essai sans abonnement, résiliation, suppression du compte), FillSell efface le navigateur, son profil, vos connexions chiffrées et sa session FillSell, au plus tard 3 jours après la fin. Le détail figure dans la politique de confidentialité (article 4.8).",
     ] },
     { t: '9. Acceptation et modifications', ps: [
-      "L'activation du Cloud exige d'accepter les présentes conditions. FillSell enregistre la date et la version acceptées. Une nouvelle version vous est présentée et doit être acceptée pour continuer à utiliser le Cloud. Les CGU et les CGV de FillSell s'appliquent pour tout ce que ces conditions ne prévoient pas.",
+      "L'activation du Cloud exige d'accepter les présentes conditions. FillSell enregistre la date et la version acceptées. Une nouvelle version vous est présentée et doit être acceptée pour continuer à utiliser le Cloud, sauf une simple reformulation, qui ne demande pas de nouvelle acceptation. Les CGU et les CGV de FillSell s'appliquent pour tout ce que ces conditions ne prévoient pas.",
     ] },
   ],
-  case: "J'ai lu et j'accepte les conditions d'utilisation de FillSell Cloud, y compris le risque de restriction de mes comptes par les plateformes.",
+  case: "J'ai lu et j'accepte les conditions d'utilisation de FillSell Cloud.",
   accepter: "J'accepte et je continue",
   annuler: 'Annuler',
   lire: 'Lire les conditions en entier',
@@ -80,7 +111,7 @@ const FR = {
 // français. Le Cloud n'est vendu qu'en France (config/cloudOffer.js) : cette version sert une interface réglée en anglais.
 const EN = {
   titre: 'FillSell Cloud terms of use',
-  version: `Version of ${CGU_CLOUD_VERSION.split('-').reverse().join('/')} — English translation for information only; the French version prevails.`,
+  version: ligneDeVersion('en'),
   articles: [
     { t: '1. The service', ps: [
       'The FillSell Cloud option ("the Cloud") is a FillSell service. From FillSell\'s servers, without your computer being on, the Cloud does what the FillSell Chrome extension does on a computer: publishing, reposting and withdrawing your listings, reading your online listings and detecting your sales, 24 hours a day, in a browser reserved for your account.',
@@ -97,9 +128,10 @@ const EN = {
       'Once you are signed in, the marketplace sets its session cookies. FillSell encrypts them (AES-256-GCM) with a key that exists only on the Cloud servers; FillSell\'s database keeps only an encrypted version. These connections are used only for the tasks of article 2. Stopping the Cloud erases them; you can also close them at any time from the marketplace (password change, sign-out of all devices).',
       'The Cloud browsers are hosted by Hetzner Online GmbH (Germany, European Union). They go out to the Internet through French IP addresses supplied by IPRoyal Services FZE LLC (United Arab Emirates); the address used for your account may change over time.',
     ] },
-    { t: '4. Your responsibility towards the marketplaces', ps: [
-      'You remain the author of, and solely responsible for, your listings, their content, their prices and the sales you make. You undertake to comply with the terms of use of each marketplace you connect to the Cloud.',
-      'Each marketplace sets its own rules, in particular on automation and on connections from servers, and may change them at any time. A marketplace may ask for a verification, limit, suspend or close an account, including because a service such as the Cloud is used. By activating the Cloud, you accept this risk. FillSell applies the extension\'s protections to reduce it (limits, pace, pause before deletion, stop on restriction), but cannot rule it out and is not liable for a marketplace\'s decisions. FillSell is not affiliated with any marketplace.',
+    { t: '4. The Cloud and the marketplaces\' rules', ps: [
+      'FillSell acts like you, at your pace, from a French connection: the Cloud works in your own sessions, only for the tasks you start or schedule, at your plan\'s pace and never faster than the extension, through a French IP address. If a marketplace asks for a verification or reports a restriction, the Cloud stops on that marketplace and tells you in the app.',
+      'As with any tool, each marketplace remains in charge of its own rules, in particular on automation and on connections from servers, and may change them at any time. It may ask for a verification, limit, suspend or close an account, including because a service such as the Cloud is used. FillSell\'s protections (limits, pace, pause before deletion, stop on restriction) reduce this risk but cannot rule it out: by activating the Cloud, you accept it. FillSell is not liable for a marketplace\'s decisions and is not affiliated with any marketplace.',
+      'You remain the author of, and solely responsible for, your listings, their content, their prices and the sales you make, and you undertake to comply with the terms of use of each marketplace you connect to the Cloud.',
     ] },
     { t: '5. No guarantee of sale', ps: [
       'The Cloud carries out tasks. It guarantees neither the visibility of your listings, nor a number of views, nor a sale, nor a price. It depends on the marketplaces, which may change their pages or refuse access from FillSell\'s servers: a task may then be delayed or fail, and the app tells you. FillSell uses reasonable means to keep the Cloud running continuously, with no guarantee of result or of permanent availability.',
@@ -118,10 +150,10 @@ const EN = {
       'When the Cloud stops (end of the trial without a subscription, cancellation, account deletion), FillSell erases the browser, its profile, your encrypted connections and its FillSell session, at the latest 3 days after the end. Details are in the privacy policy (article 4.8).',
     ] },
     { t: '9. Acceptance and changes', ps: [
-      'Activating the Cloud requires accepting these terms. FillSell records the date and the version accepted. A new version is shown to you and must be accepted to keep using the Cloud. FillSell\'s Terms and Conditions and Terms of Sale apply to everything these terms do not cover.',
+      'Activating the Cloud requires accepting these terms. FillSell records the date and the version accepted. A new version is shown to you and must be accepted to keep using the Cloud, except a simple rewording, which does not require a new acceptance. FillSell\'s Terms and Conditions and Terms of Sale apply to everything these terms do not cover.',
     ] },
   ],
-  case: 'I have read and accept the FillSell Cloud terms of use, including the risk of my accounts being restricted by the marketplaces.',
+  case: 'I have read and accept the FillSell Cloud terms of use.',
   accepter: 'I accept and continue',
   annuler: 'Cancel',
   lire: 'Read the full terms',
@@ -158,5 +190,5 @@ export const conditionsCloud = (lang = 'fr') => {
   return estCanalBoutique(e) ? auPrixDeLaBoutique(l === 'en' ? EN : FR, l, e) : (l === 'en' ? EN : FR);
 };
 
-/** La version acceptée vaut-elle la version en vigueur ? (pur) */
-export const conditionsAcceptees = (profil) => String(profil?.cloud_cgu_version ?? '') === CGU_CLOUD_VERSION;
+/** La version acceptée est-elle valable (date réelle ≥ la version minimale : la règle de _shared, jamais recopiée) ? (pur) */
+export const conditionsAcceptees = (profil) => versionCguValable(profil?.cloud_cgu_version);

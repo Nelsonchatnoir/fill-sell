@@ -279,7 +279,13 @@ titre('5 bis. « le Cloud » ou « l’option FillSell Cloud », jamais « optio
   // (08/11) « pour lui » se lit sur l'essai ARRÊTÉ (confirmé) : la fin naturelle ne promet plus rien sur la facturation.
   ok(FR.etatAucun === 'Pas activé' && FR.etatPaye === 'Actif' && /n'est plus actif, et rien n'a été facturé pour lui/.test(FR.arreteTexte('7 octobre')), 'les accords : « le Cloud », masculin (« Pas activé », « Actif », « pour lui »)');
   ok(/« le Cloud »/.test(COND.conditionsCloud().articles[0].ps[0]) && /^L'option FillSell Cloud/.test(COND.conditionsCloud().articles[0].ps[0]), 'conditions, article 1 : « L’option FillSell Cloud (« le Cloud ») est un service de FillSell »');
-  ok(CFG.CGU_CLOUD_VERSION === '2026-11-04' && SRV.CGU_CLOUD_VERSION === CFG.CGU_CLOUD_VERSION, 'la version des conditions reste 2026-11-04, la même des deux côtés (rien publié depuis)');
+  // (11/11, point C1 de Nico) La version passe après 2026-11-04 : l'article 4 reformulé SANS changer le fond. Règle :
+  // version datée ≥ la MINIMALE (_shared/cloud-conditions.js, seule source, ré-exportée par l'app) ; la minimale reste
+  // 2026-11-04 (le prix à 24,99 €) : l'acceptation du 04/11 vaut, 2026-10-30 (ancien prix) non (section 4 ci-dessus).
+  // La date exacte de la version est épinglée par selftest:cloud-executant (VERSION_LIVREE), pas ici.
+  ok(CFG.CGU_CLOUD_VERSION > '2026-11-04' && SRV.CGU_CLOUD_VERSION === CFG.CGU_CLOUD_VERSION && CFG.CGU_CLOUD_VERSION_MINIMALE === '2026-11-04' && SRV.CGU_CLOUD_VERSION_MINIMALE === '2026-11-04'
+    && COND.conditionsAcceptees({ cloud_cgu_version: '2026-11-04' }) && SRV.conditionsCloudAcceptees({ cloud_cgu_version: '2026-11-04' }),
+  'la version des conditions passe après 2026-11-04 (article 4 reformulé), la même des deux côtés ; minimale 2026-11-04 : l’acceptation du 04/11 vaut, app et serveur');
 }
 
 // ── 6. Rien d'autre ne bouge ─────────────────────────────────────────────────

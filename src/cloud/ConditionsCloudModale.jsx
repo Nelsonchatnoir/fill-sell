@@ -5,28 +5,67 @@
 // cochée. L'acceptation est ENREGISTRÉE en base (rpc cloud_cgu_accepter_moi : version + date, écrites par le serveur
 // seul) avant de rendre la main : un échec se dit, rien ne s'ouvre. Mobile d'abord, thème de l'app (cloud/theme.js).
 // Monté par App derrière cloudOfferVisible() / le drapeau par compte : invisible pour tout autre compte.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 // (01/11) Portail sur document.body, comme « Me connecter » : ouverte depuis Réglages (portail sur body, z-index 400),
 // rendue dans `.app-root` elle restait DERRIÈRE sur iPhone (WKWebView) — « Essayer » aurait eu l'air mort.
 import { createPortal } from 'react-dom';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { conditionsCloud, CGU_CLOUD_VERSION } from './conditionsCloud';
+import { tracerCloud } from './traceCloud';
 // (05/11 soir, phase 3) La langue de l'app (fs_lang, sinon celle du téléphone) : la traduction anglaise pour information.
 import { languePage } from '../pages/languePage';
 import { C, BLANC, DEGRADE_TEAL, POLICE } from './theme';
 
+// (11/11, point C1 du méga lot de Nico) LA MESURE DE L'ÉTAPE, dans usage_logs par la porte tracerCloud :
+// cloud_conditions_vues (l'écran monté, une fois par ouverture), cloud_conditions_cochees (premier passage de la case à
+// cochée), cloud_conditions_annulees (« Annuler », avec `coche` : cochée ou non), cloud_conditions_acceptees (= « continué » :
+// l'acceptation ENREGISTRÉE, juste avant de rendre la main), cloud_conditions_echec (l'enregistrement a échoué, `raison`).
+// Chaque ligne porte la version montrée, la langue et la plateforme (web / ios / android). Jamais attendue : une trace
+// lente ou en échec ne ralentit ni ne bloque l'écran. L'identifiant vient de supabase.auth.getSession(), qui peut
+// rafraîchir le jeton par le réseau : c'est une raison de plus pour ne jamais l'attendre.
+function plateformeApp() {
+  try { return Capacitor.getPlatform(); } catch { return 'inconnue'; }
+}
+function tracerEtape(feature, lang, extra = {}) {
+  const metadata = { version: CGU_CLOUD_VERSION, lang, plateforme: plateformeApp(), ...extra };
+  Promise.resolve()
+    .then(() => supabase.auth.getSession())
+    .then(({ data }) => tracerCloud(data?.session?.user?.id, feature, metadata))
+    .catch(() => { /* une trace ne bloque jamais l'écran */ });
+}
+
 export default function ConditionsCloudModale({ onFini }) {
-  const T = conditionsCloud(languePage());
+  const lang = languePage();
+  const T = conditionsCloud(lang);
   const [coche, setCoche] = useState(false);
   const [etat, setEtat] = useState('lecture');   // lecture | envoi | echec
+  const vues = useRef(false);
+  const cochees = useRef(false);
+  useEffect(() => {
+    if (vues.current) return;
+    vues.current = true;
+    tracerEtape('cloud_conditions_vues', lang);
+  }, [lang]);
+  function cocher(v) {
+    setCoche(v);
+    if (v && !cochees.current) { cochees.current = true; tracerEtape('cloud_conditions_cochees', lang); }
+  }
+  function annuler() {
+    tracerEtape('cloud_conditions_annulees', lang, { coche });
+    onFini(false);
+  }
   async function accepter() {
     if (!coche || etat === 'envoi') return;
     setEtat('envoi');
     try {
       const { data, error } = await supabase.rpc('cloud_cgu_accepter_moi', { p_version: CGU_CLOUD_VERSION });
+      if (error || data?.ok !== true) tracerEtape('cloud_conditions_echec', lang, { raison: error ? `rpc: ${String(error.message ?? error).slice(0, 160)}` : String(data?.raison ?? 'ok_absent') });
       if (error || data?.ok !== true) { setEtat('echec'); return; }
+      tracerEtape('cloud_conditions_acceptees', lang);
       onFini(true);
-    } catch {
+    } catch (e) {
+      tracerEtape('cloud_conditions_echec', lang, { raison: `exception: ${String(e?.message ?? e).slice(0, 160)}` });
       setEtat('echec');
     }
   }
@@ -53,13 +92,13 @@ export default function ConditionsCloudModale({ onFini }) {
         </div>
         <div style={{ padding: '10px 16px 14px', borderTop: `1px solid ${C.border}`, background: BLANC }}>
           <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13.5, color: C.ink, lineHeight: 1.45, cursor: 'pointer' }}>
-            <input type="checkbox" checked={coche} onChange={(e) => setCoche(e.target.checked)}
+            <input type="checkbox" checked={coche} onChange={(e) => cocher(e.target.checked)}
               style={{ width: 22, height: 22, marginTop: 1, flexShrink: 0, accentColor: C.teal }} />
             <span>{T.case}</span>
           </label>
           {etat === 'echec' && <p role="alert" style={{ margin: '8px 0 0', fontSize: 13, color: C.amberInk }}>{T.echec}</p>}
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button type="button" onClick={() => onFini(false)} style={{
+            <button type="button" onClick={annuler} style={{
               flex: 1, minHeight: 48, borderRadius: 12, fontWeight: 700, fontSize: 15, border: `1px solid ${C.border}`, background: BLANC, color: C.ink,
             }}>{T.annuler}</button>
             <button type="button" onClick={accepter} disabled={!coche || etat === 'envoi'} aria-disabled={!coche || etat === 'envoi'} style={{
