@@ -73,7 +73,10 @@ import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, connexionVintedAbsenteP
 import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 // (05/11, A4) Relevés de veille au retour de la connexion : Leboncoin, Beebs, Depop, lecture seule.
-import { FENETRE_ARRETS_MS, PLATEFORMES_VEILLE_REPRISE, STATUTS_ARRET_RELEVE, ligneReleveDeVeille, murConnexionVeille, relevesDeVeilleAReposer } from "../_shared/releves-de-veille.js";
+import {
+  FENETRE_ARRETS_MS, PLATEFORMES_VEILLE_REPRISE, STATUTS_ARRET_RELEVE, candidatsReleveDeVeille, cleReleveDeVeille, gardeReleveDeVeille,
+  ligneReleveDeVeille, lireEtatReleveDeVeille, murConnexionVeille, relevesDeVeilleAReposer, trancheReleveDeVeille,
+} from "../_shared/releves-de-veille.js";
 import { decisionAnnoncePubliee, identifiantAnnoncePubliee, patchAnnoncePublieeDisparue, pfAnnonceEnVerification, PLATEFORMES_RELEVEES, POSES_PAR_DISPARUE } from "../_shared/annonce-publiee-disparue.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs, constats404Beebs, deuxConstats404Prouvent } from "../_shared/beebs-preuve-retrait.js";
 // (25/10, règle de Nico) Un retrait sur une annonce déjà absente se clôt seul : `deleted` + deja_absente.
@@ -4775,9 +4778,21 @@ serve(async (req) => {
   // création d'article ; la règle du 05/10 reste entière. eBay (API) et Opla (quittée) hors du code ; jamais pendant une
   // pause Leboncoin. La règle, pure et testée : _shared/releves-de-veille.js (scripts/releves-de-veille-selftest.mjs) ;
   // les gardes d'avant le 05/10 inchangées (sonde fraîche et postérieure au mur, rien en file, 15 min, 3 par épisode).
+  // ⛔ (11/11) UNE GARDE DE CRON NE SE CALCULE JAMAIS SUR UNE LECTURE NON BORNÉE ; UN ÉTAT NON LU NE POSE RIEN.
+  //    Du 09/11 14:09 au 11/11, ce bloc lisait ici 30 jours de relevés de tous les comptes à mur d'un coup (limite de
+  //    2 000, ni tri ni pages) : PostgREST n'en rendait que 1 000, sans erreur, les plus anciennes — les gardes ne
+  //    voyaient plus les relevés récents et un relevé repartait à chaque passage (plus de 1 500 en deux jours, 12 comptes).
+  //    Désormais : les candidats d'abord (sans historique), puis l'état EXACT de chacun, lu par clé en lectures bornées
+  //    (lireEtatReleveDeVeille : le dernier relevé réussi d'abord — postérieur au mur, rien d'autre n'est lu), puis la
+  //    règle. ⛔ Ne JAMAIS relire ici l'historique de plusieurs comptes d'un coup ; ne JAMAIS couper les candidats
+  //    avant de les avoir lus (au-delà du plafond, la tranche lue tourne d'un passage à l'autre).
+  //    Rapport : docs/enquetes/reprise-connexion-boucle-1111/RAPPORT.md ; verrou : selftest:releves-de-veille.
   try {
-    const depuis = new Date(Date.now() - FENETRE_ARRETS_MS).toISOString();
-    const { data: arretes } = await supabase
+    const maintenant = Date.now();
+    const depuis = new Date(maintenant - FENETRE_ARRETS_MS).toISOString();
+    // Par pages (PostgREST coupe à 1 000 lignes sans erreur) ; une page en erreur lève : rien n'est reposé à ce passage.
+    // deno-lint-ignore no-explicit-any
+    const arrets: any[] = await lirePagesDisparues(() => supabase
       .from("vinted_sync_runs")
       .select("id, user_id, platform, status, erreur, finished_at")
       .eq("kind", "annonces")
@@ -4785,19 +4800,21 @@ serve(async (req) => {
       .in("platform", [...PLATEFORMES_VEILLE_REPRISE])
       .gte("finished_at", depuis)
       .order("finished_at", { ascending: false })
-      .limit(1000);
-    // Le PLUS RÉCENT arrêt par (compte, plateforme) fait foi (relevesDeVeilleAReposer) : tous les arrêts lui sont donnés.
-    // deno-lint-ignore no-explicit-any
-    const arrets = (arretes ?? []) as any[];
+      .order("id", { ascending: false }));
+    // Lus du plus récent au plus ancien : une lecture coupée au plafond (5 000) ne perd que les arrêts les plus anciens —
+    // jamais une boucle, au pire un relevé voulu qui attend ; c'est DIT au journal du passage.
+    const arretsCoupes = arrets.length >= 5000;
+    // Le PLUS RÉCENT arrêt par (compte, plateforme) fait foi (candidatsReleveDeVeille) : tous les arrêts lui sont donnés.
     const ids = [...new Set(arrets.filter((r) => murConnexionVeille(r.erreur)).map((r) => String(r.user_id)))];
+    let candidatsVus = 0, candidatsLus = 0, etatsIllisibles = 0, nonEcrits = 0, interrupteurFerme = 0, motifIllisible = "", motifNonEcrit = "";
+    const retenus = new Map<string, number>();   // garde → nombre de candidats qu'elle retient à ce passage
     if (ids.length) {
       const profils = new Map<string, { sessions: Record<string, unknown>; extVue: string | null; ps: Record<string, unknown> }>();
-      // deno-lint-ignore no-explicit-any
-      const historique: any[] = [];
       for (let i = 0; i < ids.length; i += 200) {
         const lot = ids.slice(i, i + 200);
-        const { data: profs } = await supabase.from("profiles")
+        const { data: profs, error: eProfs } = await supabase.from("profiles")
           .select("id, extension_sessions, extension_last_seen_at, platform_settings").in("id", lot);
+        if (eProfs) throw new Error(`profils illisibles : ${eProfs.message}`);   // non lus = rien à ce passage, et c'est dit
         // deno-lint-ignore no-explicit-any
         for (const p of ((profs ?? []) as any[])) {
           profils.set(String(p.id), {
@@ -4806,30 +4823,60 @@ serve(async (req) => {
             ps: (p.platform_settings ?? {}) as Record<string, unknown>,
           });
         }
-        const { data: histo } = await supabase.from("vinted_sync_runs")
-          .select("user_id, platform, status, declencheur, queued_at, started_at, finished_at")
-          .eq("kind", "annonces").in("user_id", lot).in("platform", [...PLATEFORMES_VEILLE_REPRISE])
-          .gte("started_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString()).limit(2000);
-        historique.push(...(histo ?? []));
-        // Les lignes ENCORE EN FILE peuvent n'avoir ni started_at ni finished_at : relues à part.
-        const { data: enFile } = await supabase.from("vinted_sync_runs").select("user_id, platform, status")
-          .eq("kind", "annonces").in("user_id", lot).in("status", ["queued", "running"]).limit(1000);
-        historique.push(...(enFile ?? []));
       }
-      // L'interrupteur serveur, compte par compte (la RPC demander_sync_plateforme le vérifie, nous aussi).
+      // Les candidats : tout ce qui se décide SANS l'historique (mur, extension vue, session revenue après le mur, pas
+      // de pause Leboncoin) — TOUS, murs les plus récents d'abord. Ceux qu'on lit à ce passage : tous sous le plafond,
+      // sinon une tranche qui tourne d'un passage à l'autre (aucun candidat n'est privé de lecture).
+      const candidats = candidatsReleveDeVeille({ arrets: arrets.filter((r) => ids.includes(String(r.user_id))), profils, maintenant });
+      const tranche = trancheReleveDeVeille(candidats, { maintenant });
+      candidatsVus = candidats.length;
+      candidatsLus = tranche.length;
+      // L'état EXACT de chaque candidat, par clé : le dernier relevé réussi d'abord — postérieur au mur (déjà reparti),
+      // rien d'autre n'est lu ; sinon « en file » et les reprises de l'épisode. Non lu = rien.
+      const etats = new Map<string, Awaited<ReturnType<typeof lireEtatReleveDeVeille>>>();
+      for (const c of tranche) {
+        const etat = await lireEtatReleveDeVeille(supabase, c, maintenant);
+        etats.set(cleReleveDeVeille(c), etat);
+        if (etat.lu !== true) {
+          etatsIllisibles++;
+          if (!motifIllisible) motifIllisible = String((etat as { motif?: unknown }).motif ?? "");
+          continue;
+        }
+        const garde = gardeReleveDeVeille(c, etat, maintenant);
+        if (garde !== null) retenus.set(garde, (retenus.get(garde) ?? 0) + 1);
+      }
+      // L'interrupteur serveur, pour les seuls candidats qu'aucune garde ne retient (la RPC demander_sync_plateforme le
+      // vérifie, nous aussi) : aucun appel pour un relevé déjà reparti, en file, trop récent ou au plafond de l'épisode.
+      // Illisible ou interrompu = fermé, et compté au journal.
       const ouverte = new Map<string, boolean>();
-      for (const uid of ids) {
-        try { const { data } = await supabase.rpc("sync_multi_ouverte_pour", { p_user: uid }); ouverte.set(uid, data === true); }
-        catch { ouverte.set(uid, false); }
+      const libres = tranche.filter((c) => gardeReleveDeVeille(c, etats.get(cleReleveDeVeille(c)), maintenant) === null);
+      for (const uid of new Set(libres.map((c) => c.user_id))) {
+        try {
+          const { data, error: eOuverte } = await supabase.rpc("sync_multi_ouverte_pour", { p_user: uid });
+          ouverte.set(uid, eOuverte ? false : data === true);
+          if (eOuverte) { etatsIllisibles++; if (!motifIllisible) motifIllisible = `interrupteur : ${String(eOuverte.message ?? "").slice(0, 120)}`; }
+          else if (data !== true) interrupteurFerme++;
+        } catch (e) {
+          ouverte.set(uid, false);
+          etatsIllisibles++;
+          if (!motifIllisible) motifIllisible = `interrupteur interrompu : ${String((e as Error)?.message ?? e).slice(0, 120)}`;
+        }
       }
-      for (const c of relevesDeVeilleAReposer({ arrets: arrets.filter((r) => ids.includes(String(r.user_id))), historique, profils, ouverte })) {
-        const { data: pose } = await supabase.from("vinted_sync_runs").insert(ligneReleveDeVeille(c)).select("id");
+      for (const c of relevesDeVeilleAReposer({ candidats: tranche, etats, ouverte, maintenant })) {
+        const { data: pose, error: ePose } = await supabase.from("vinted_sync_runs").insert(ligneReleveDeVeille(c)).select("id");
         if (pose?.length) {
           relevesRepris++;
           console.log(`[handler-watch] relevé de veille ${c.platform} de ${c.user_id} : session revenue → reposé en lecture seule (mur du ${c.mur_du})`);
+        } else {
+          nonEcrits++;
+          if (!motifNonEcrit) motifNonEcrit = String(ePose?.message ?? "aucune ligne rendue").slice(0, 120);
         }
       }
     }
+    // Un journal par passage : ce que la règle a vu et fait (preuve de l'arrêt de la boucle, et de toute lecture ratée),
+    // avec la garde qui retient chaque candidat non reposé.
+    const parGarde = [...retenus].map(([g, k]) => `${k} ${g}`).join(", ");
+    console.log(`[handler-watch] relevés de veille : ${candidatsVus} candidat(s), ${relevesRepris} reposé(s), ${etatsIllisibles} état(s) illisible(s)${motifIllisible ? ` (${motifIllisible})` : ""}${parGarde ? ` ; retenus : ${parGarde}` : ""}${interrupteurFerme ? ` ; ${interrupteurFerme} interrupteur(s) fermé(s)` : ""}${candidatsLus < candidatsVus ? ` ; plafond du passage atteint : ${candidatsLus} lus, la tranche tourne au passage suivant` : ""}${nonEcrits ? ` ; ${nonEcrits} non écrit(s) par la base (${motifNonEcrit})` : ""}${arretsCoupes ? " ; arrêts lus coupés à 5 000 : les murs les plus anciens attendent" : ""}`);
   } catch (e) {
     console.error("[handler-watch] reprise du relevé après reconnexion:", (e as Error)?.message ?? e);
   }

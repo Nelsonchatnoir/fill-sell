@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 11/11 — une garde de cron ne se calcule jamais sur une lecture non bornée ; un état non lu ne pose rien (en fin de fichier)
 - 04/11 soir — départ d'un compte : activité anonyme ; photo HEIC reconvertie par photo-heic-jpeg (en fin de fichier)
 - 04/10 — incident CPU 99 % (ex-L343-346)
 - platform_settings (fusion seulement) (ex-L442-443)
@@ -459,3 +460,39 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 7 et § 8.
   de prod, inverse au md5 près).
 - Réparer un état de pause sans toucher un job : `platform_settings_fusionner(chemin, patch, p_supprimer)` retire une clé
   (`p_supprimer`), jamais un `UPDATE profiles` direct.
+
+## ⛔ 11/11 — une garde de cron ne se calcule jamais sur une lecture non bornée ; un état non lu ne pose rien
+Rapport `docs/enquetes/reprise-connexion-boucle-1111/RAPPORT.md` ; verrou `npm run selftest:releves-de-veille` (§ 6 à 13 ;
+le § 12 EXÉCUTE le vrai bloc de handler-watch, découpé dans index.ts, sur le faux serveur).
+- **Le défaut** (09/11 14:09 → 11/11) : handler-watch calculait les gardes de la reprise des relevés (« déjà reparti »,
+  « 15 min », « 3 par épisode ») sur 30 jours de relevés de TOUS les comptes à mur, lus en une requête `.limit(2000)` sans
+  tri ni pages, erreur non lue. PostgREST rend 1 000 lignes au plus, SANS erreur, dans l'ordre physique : les relevés
+  récents manquaient, et une ligne absente valait « garde ouverte » — un relevé `reprise_connexion` reposé à chaque
+  passage du cron (1 572 en deux jours, 12 comptes). La règle était juste ; sa lecture, non.
+- **La règle** : une décision de cron (poser, relancer, lever, clore) ne se calcule jamais sur une lecture qui peut être
+  coupée. L'état se lit PAR CLÉ (un compte, une plateforme), trié et borné à ce dont la garde a besoin (`.limit(1)`,
+  `.limit(3)`) ; une liste se lit par pages triées. `.limit(n)` avec n ≥ 1 000 n'est jamais tenu : c'est 1 000.
+- **Un état non lu ne pose rien** : erreur, réponse inattendue, date illisible, état absent → `{ lu: false }`, et la garde
+  ne laisse rien passer. Jamais « rien vu = rien à craindre ».
+- **Un plafond de passage porte sur les lectures, jamais sur les candidats, et il tourne** : couper une liste triée à ses
+  N premiers prive toujours les MÊMES de lecture (le relevé voulu après une vraie reconnexion ne partirait jamais pour
+  eux). Au-delà du plafond, la tranche lue avance d'un passage à l'autre (`trancheReleveDeVeille`), d'un pas PREMIER
+  avec le nombre de candidats : une fonction edge n'a pas de mémoire (le numéro du passage se lit sur l'heure), et un
+  pas premier avec n n'oublie personne même si des passages du cron manquent.
+- **Un tri décroissant met les dates vides en tête** : « le dernier réussi » se lit avec `finished_at` non vide.
+- **Dans le code** (`_shared/releves-de-veille.js`) : `candidatsReleveDeVeille` (pur — ce qui se décide sans l'historique,
+  tous les candidats), `trancheReleveDeVeille` (30 lus par passage au plus), `lireEtatReleveDeVeille` (le dernier relevé
+  réussi d'abord : postérieur au mur, une seule lecture ; sinon « en file » et les reprises de l'épisode),
+  `gardeReleveDeVeille` et `relevesDeVeilleAReposer` (purs, sur cet état). handler-watch lit les arrêts par pages, ne
+  demande l'interrupteur que pour les candidats qu'aucune garde ne retient, et écrit un journal par passage (« relevés
+  de veille : N candidat(s), N reposé(s), N état(s) illisible(s) ; retenus : N déjà reparti, N en file… » ; interrupteur
+  illisible ou interrompu = fermé et compté ; insertion refusée nommée ; lecture des arrêts coupée à 5 000 dite).
+  ⛔ Ne jamais y relire l'historique de plusieurs comptes d'un coup.
+- **Un selftest de règle pure ne suffit pas** : la LECTURE se teste aussi, sur un faux serveur qui coupe comme le vrai
+  (1 000 lignes au plus, sans erreur, ordre physique) — `fauxServeur` de `scripts/releves-de-veille-selftest.mjs`.
+  Le 11/11 au matin, les 32 contrôles de la règle étaient verts pendant que la boucle tournait. Et la COLLE du cron se
+  teste en exécutant le vrai bloc, pas une copie : une copie dans le selftest laissait six défauts de handler-watch verts.
+- **Mesurer les effets d'un relevé** : `items_crees` et `items_maj` ne disent ni les déclencheurs de fin de relevé ni la
+  charge d'écriture (`vu_le` réécrit à chaque relevé : écritures de l'API sur `annonces_plateforme` multipliées par 11
+  le 10/11). Et une « absence datée » se compte en DATES posées, pas en traces : la fin d'un relevé retraite aussi les
+  annonces déjà datées (126 traces de la boucle, 8 dates posées, 0 à tort).
