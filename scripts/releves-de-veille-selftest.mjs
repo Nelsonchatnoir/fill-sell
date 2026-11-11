@@ -5,12 +5,20 @@
 // ⛔ (11/11) VERROU de la boucle « reprise_connexion » du 09/11 14:09 (§ 6 à 11) : une garde de cron ne se calcule jamais
 // sur une lecture non bornée ; un état non lu ne pose rien ; aucun candidat n'est privé de lecture.
 // Rapport : docs/enquetes/reprise-connexion-boucle-1111/RAPPORT.md.
+// ⛔ (11/11, décision de Nico) VERROU des murs Depop et Cloud (§ 12 et § 13 bis) : le mur Depop de l'ordinateur et celui de
+// la copie Cloud sont des murs ; un relevé de veille part après une VRAIE reconnexion ; aucun autre refus réel n'est un mur.
+// La preuve de session revenue suit l'EXÉCUTANT du relevé, quel que soit le texte du mur (11/11 vers 15:25, « Suivre
+// l'exécutant ») : Cloud du compte actif (cloud_voie) → la connexion vérifiée par l'orchestrateur (coffre du Cloud) ;
+// sinon → la sonde de l'ordinateur.
 import fs from "node:fs";
 import {
   CADENCE_PASSAGES_MS, CADENCE_REPRISE_MS, DECLENCHEUR_REPRISE_CONNEXION, FENETRE_ARRETS_MS, FRAICHEUR_SONDE_VEILLE_MS, PLAFOND_CANDIDATS_PAR_PASSAGE,
   PLAFOND_REPRISES_PAR_EPISODE, PLATEFORMES_VEILLE_REPRISE, STATUTS_ARRET_RELEVE, candidatsReleveDeVeille, cleReleveDeVeille,
   gardeReleveDeVeille, ligneReleveDeVeille, lireEtatReleveDeVeille, murConnexionVeille, pasDeTranche, relevesDeVeilleAReposer, trancheReleveDeVeille,
 } from "../supabase/functions/_shared/releves-de-veille.js";
+// Les noms neufs du 11/11 (voie d'un mur) se lisent sur l'espace du module : sur un code qui ne les a pas, le verrou
+// rougit au lieu de ne pas se charger.
+import * as regleModule from "../supabase/functions/_shared/releves-de-veille.js";
 import { DECLENCHEURS_VEILLE } from "../src/utils/declencheursReleve.js";
 
 let ko = 0, n = 0;
@@ -106,6 +114,50 @@ function fauxServeur(lignes, { plafond = 1000, panne = null } = {}) {
   };
   return { client, etat };
 }
+
+// ── (11/11, murs Depop et Cloud) LA PREUVE DU CLOUD, servie comme la base : `cloud_coffre` (une ligne par compte et
+//    plateforme — `connecte`, `maj_le` —, écrite par l'orchestrateur seul) et `profiles` (`cloud_voie`, le Cloud du compte
+//    actif). Les colonnes demandées seulement ; un filtre que la fausse table ne connaît pas lève ; chaque lecture est
+//    comptée ; `panne()` rend « erreur » (réponse en erreur) ou « jette » (lecture interrompue).
+function fausseTable(lignes, compter, panne = null) {
+  const q = { filtres: [], lim: null, colonnes: null };
+  const b = {
+    select(cols = "*") { q.colonnes = cols === "*" ? null : String(cols).split(",").map((x) => x.trim()); return b; },
+    eq(c, v) { q.filtres.push((r) => r[c] != null && String(r[c]) === String(v)); return b; },
+    in(c, vs) { const e = new Set(vs.map(String)); q.filtres.push((r) => r[c] != null && e.has(String(r[c]))); return b; },
+    limit(k) { q.lim = k; return b; },
+    then(resolve, reject) {
+      return Promise.resolve().then(() => {
+        compter();
+        const p = panne ? panne() : null;
+        if (p === "jette") throw new Error("réseau coupé");
+        if (p) return { data: null, error: { message: "lecture en panne" } };
+        const rows = lignes.filter((r) => q.filtres.every((f) => f(r))).slice(0, q.lim ?? Infinity);
+        return { data: rows.map((r) => (q.colonnes ? Object.fromEntries(q.colonnes.map((c) => [c, r[c] ?? null])) : { ...r })), error: null };
+      }).then(resolve, reject);
+    },
+  };
+  return b;
+}
+/** Le client d'un passage, Cloud compris : `cloud_coffre` et `profiles` servis par fausseTable, le reste par `client`. */
+function avecCloud(client, { coffre = [], voies = new Map(), panne = null } = {}) {
+  const etat = { coffre: 0, profils: 0 };
+  return {
+    etat,
+    client: {
+      from(table) {
+        if (table === "cloud_coffre") return fausseTable(coffre, () => etat.coffre++, panne && (() => panne("cloud_coffre")));
+        if (table === "profiles") return fausseTable([...voies].map(([id, v]) => ({ id, cloud_voie: v })), () => etat.profils++, panne && (() => panne("profiles")));
+        return client.from(table);
+      },
+    },
+  };
+}
+// ── (11/11) Les textes RÉELS des deux murs, tels que nos relevés les écrivent dans `vinted_sync_runs.erreur` (lus en base
+//    le 11/11 sur 14 jours ; § 13 les relit aussi dans leurs sources) : Depop sur ordinateur (relevé « absente », 6 en
+//    14 jours sur 3 comptes) et la copie Cloud (relevé « failed », 6 en 7 jours sur 3 comptes : Leboncoin, Beebs, Depop).
+const MUR_DEPOP_REEL = "[incomplet] Connexion Depop requise : connecte-toi à Depop sur ton ordinateur. · [rattachement] par identifiant 0, automatiques 0, proposées 0, sans candidat 0, importées 0, disparues 0";
+const murCloudReel = (pf) => `FillSell Cloud : ${pf} demande une reconnexion (session fermée ou jeton non renouvelé), aucune visite`;
 
 // ── Un passage de la reprise sur des candidats, tel que handler-watch le fait : la tranche du passage, l'état EXACT de
 //    chacun lu par clé (lireEtatReleveDeVeille), l'interrupteur demandé pour les seuls candidats qu'aucune garde ne
@@ -376,7 +428,7 @@ const murIlYA = (min, o = {}) => releve({ status: "failed", started_at: iso(min 
 {
   // La vraie reconnexion : relevé réussi il y a 3 h, mur il y a 2 h, session revue il y a 10 min.
   const histoire = () => [reussiIlYA(180), murIlYA(120)];
-  const candidat = { user_id: U, platform: "leboncoin", mur_du: iso(120) };
+  const candidat = { user_id: U, platform: "leboncoin", mur_du: iso(120), executant: "poste" };
   const poser = (e) => relevesDeVeilleAReposer({ candidats: [candidat], etats: e === undefined ? new Map() : new Map([[cleReleveDeVeille(candidat), e]]), ouverte: ouvert, maintenant: MAINTENANT });
   const lecture = async (panne) => { const s = fauxServeur(histoire(), { panne }); return { e: await lireEtatReleveDeVeille(s.client, candidat, MAINTENANT), s }; };
   const sain = await lecture(null);
@@ -429,9 +481,9 @@ const murIlYA = (min, o = {}) => releve({ status: "failed", started_at: iso(min 
     "sur un état lu, les gardes d'avant, chacune nommée : déjà reparti (réussi après le mur), en file, 15 min, 3 reprises par épisode");
   const hors = fauxServeur(histoire());
   const refus = [
-    await lireEtatReleveDeVeille(hors.client, { user_id: U, platform: "vinted", mur_du: iso(120) }, MAINTENANT),
-    await lireEtatReleveDeVeille(hors.client, { platform: "beebs", mur_du: iso(120) }, MAINTENANT),
-    await lireEtatReleveDeVeille(hors.client, { user_id: U, platform: "beebs" }, MAINTENANT),
+    await lireEtatReleveDeVeille(hors.client, { user_id: U, platform: "vinted", mur_du: iso(120), executant: "poste" }, MAINTENANT),
+    await lireEtatReleveDeVeille(hors.client, { platform: "beebs", mur_du: iso(120), executant: "poste" }, MAINTENANT),
+    await lireEtatReleveDeVeille(hors.client, { user_id: U, platform: "beebs", executant: "poste" }, MAINTENANT),
   ];
   ok(refus.every((e) => e.lu === false) && hors.etat.lectures === 0, "plateforme hors de la règle, compte absent ou mur sans date → non lu, aucune lecture faite");
   ok(relevesDeVeilleAReposer({ candidats: [{ user_id: U, platform: "vinted", mur_du: iso(120) }], etats: new Map([[`${U}|vinted`, bon]]), ouverte: ouvert, maintenant: MAINTENANT }).length === 0
@@ -489,7 +541,7 @@ const finir = (s, apres, status, erreur = null) => Object.assign(s.etat.lignes.a
   const J = 24 * 60;
   const reprisesAuMur = (jours) => jours.map((j) => murIlYA(j * J, { declencheur: DECLENCHEUR_REPRISE_CONNEXION, queued_at: iso(j * J + 1) }));
   const vieux = fauxServeur([reussiIlYA(40 * J), ...reprisesAuMur([35, 34.9, 34.8]), murIlYA(120)]);
-  const e = await lireEtatReleveDeVeille(vieux.client, { user_id: U, platform: "leboncoin", mur_du: iso(120) }, MAINTENANT);
+  const e = await lireEtatReleveDeVeille(vieux.client, { user_id: U, platform: "leboncoin", mur_du: iso(120), executant: "poste" }, MAINTENANT);
   ok(e.lu === true && e.reussi_le === null && e.en_file === false && e.reprises === 0 && await tour(vieux, 0, 10) === 1,
     "un relevé réussi et 3 reprises vieux de plus de 30 jours ne retiennent pas la reconnexion d'aujourd'hui (comme avant)", JSON.stringify(e));
   const recent = fauxServeur([reussiIlYA(40 * J), ...reprisesAuMur([20, 19.9, 19.8]), murIlYA(120)]);
@@ -676,7 +728,7 @@ const accesSyncRuns = (src) => {
   ok(d > 0 && nb(/\.from\("vinted_sync_runs"\)/g) === 3 && nb(/\.eq\("user_id", user_id\)/g) === 3 && nb(/\.eq\("platform", platform\)/g) === 3
     && nb(/\.limit\(/g) === 3 && nb(/\.limit\(1\)/g) === 2 && nb(/\.limit\(PLAFOND_REPRISES_PAR_EPISODE\)/g) === 1 && !/\.in\("user_id"|\.range\(/.test(corps)
     && nb(/\.gte\("started_at", depuis\)/g) === 2,
-    "le module : trois lectures au plus, chacune par clé (compte, plateforme) et bornée (1, 1 et 3 lignes ; 30 jours pour le dernier réussi et les reprises) — jamais une lecture de plusieurs comptes");
+    "le module : trois lectures de vinted_sync_runs au plus par candidat — quatre lectures en tout pour un compte au Cloud actif, avec la ligne du coffre (§ 13 bis) —, chacune par clé (compte, plateforme) et bornée (1, 1 et 3 lignes ; 30 jours pour le dernier réussi et les reprises) — jamais une lecture de plusieurs comptes");
   const iReussi = corps.indexOf('.eq("status", "done")'), iArret = corps.indexOf("en_file: null, reprises: null"), iFile = corps.indexOf('.in("status", ["queued", "running"])'), iEpisode = corps.indexOf('.eq("declencheur", DECLENCHEUR_REPRISE_CONNEXION)');
   ok(iReussi > 0 && iArret > iReussi && iFile > iArret && iEpisode > iFile && /if \(reussi_le != null && dejaReparti\(t\(reussi_le\), arret\)\) return \{ lu: true,/.test(corps)
     && nb(/\.not\("finished_at", "is", null\)/g) === 1 && /\.not\("finished_at", "is", null\)\s*\.order\("finished_at", \{ ascending: false \}\)\.limit\(1\)/.test(corps),
@@ -715,14 +767,19 @@ console.log("\n12. Le vrai bloc de handler-watch, exécuté sur le faux serveur"
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
   const { bloc: executerBloc } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
 
-  // Le client du bloc : le faux serveur de vinted_sync_runs, plus profiles et l'interrupteur.
-  const clientDuBloc = (s, profils, { interrupteur = () => true, profilsEnPanne = false, refuserInsert = false } = {}) => ({
+  // Le client du bloc : le faux serveur de vinted_sync_runs, plus profiles (cloud_voie compris), le coffre du Cloud
+  // (cloud_coffre) et l'interrupteur. `compteur` : les lectures du coffre, et celles d'UN profil par clé (.eq("id")) —
+  // le Cloud du compte se lit dans la lecture des profils par lots du bloc, jamais profil par profil.
+  const clientDuBloc = (s, profils, { interrupteur = () => true, profilsEnPanne = false, refuserInsert = false, coffre = [], compteur = { coffre: 0, profilParCle: 0 } } = {}) => ({
     from(table) {
       if (table === "profiles") {
-        const rows = [...profils].map(([id, p]) => ({ id, extension_sessions: p.sessions, extension_last_seen_at: p.extVue, platform_settings: p.ps }));
-        return { select() { return { in(_c, ids) { const s2 = new Set(ids.map(String)); return Promise.resolve(profilsEnPanne
-          ? { data: null, error: { message: "profils en panne" } } : { data: rows.filter((r) => s2.has(String(r.id))), error: null }); } }; } };
+        const rows = [...profils].map(([id, p]) => ({ id, extension_sessions: p.sessions, extension_last_seen_at: p.extVue, platform_settings: p.ps, cloud_voie: p.cloudVoie === true }));
+        const b = fausseTable(rows, () => {}, profilsEnPanne ? () => "erreur" : null);
+        const eqDeBase = b.eq;
+        b.eq = (c, v) => { if (c === "id") compteur.profilParCle++; return eqDeBase(c, v); };
+        return b;
       }
+      if (table === "cloud_coffre") return fausseTable(coffre, () => compteur.coffre++);
       const b = s.client.from(table);
       if (refuserInsert) b.insert = () => ({ select: () => Promise.resolve({ data: null, error: { message: "insertion refusée" } }) });
       return b;
@@ -740,11 +797,12 @@ console.log("\n12. Le vrai bloc de handler-watch, exécuté sur le faux serveur"
     const journal = [], erreurs = [];
     const FauxDate = class extends Date { constructor(...a) { if (a.length) super(...a); else super(quand); } static now() { return quand; } };
     const avant = s.etat.lignes.length;
-    const reposes = await executerBloc(clientDuBloc(s, profils, opts), FauxDate,
+    const compteur = { coffre: 0, profilParCle: 0 };
+    const reposes = await executerBloc(clientDuBloc(s, profils, { ...opts, compteur }), FauxDate,
       { log: (m) => journal.push(String(m)), error: (...a) => erreurs.push(a.join(" ")) },
       { ...regle, ligneReleveDeVeille: (c) => regle.ligneReleveDeVeille(c, new Date(quand).toISOString()) });
     const poses = s.etat.lignes.slice(avant).map((l) => `${l.user_id}|${l.platform}`).sort().join(", ");
-    return { reposes, poses, journal: journal.find((l) => l.includes("relevés de veille :")) ?? "", erreurs };
+    return { reposes, poses, journal: journal.find((l) => l.includes("relevés de veille :")) ?? "", erreurs, compteur };
   };
 
   const { lignes, profils } = parcDu1111();
@@ -798,12 +856,98 @@ console.log("\n12. Le vrai bloc de handler-watch, exécuté sur le faux serveur"
     const r = await executer(fauxServeur(beaucoup), new Map(), T11);
     ok(r.poses === "" && /arrêts lus coupés à 5 000/.test(r.journal), "LE VRAI BLOC : une lecture des arrêts coupée à 5 000 est dite au journal", r.journal);
   }
+  {
+    // (11/11, décision de Nico) LES MURS DEPOP ET CLOUD PAR LE VRAI BLOC. Trois comptes, un mur il y a 1 h, relevé réussi
+    // il y a 5 h, la sonde de L'ORDINATEUR revue connectée il y a 2 min (après le mur) :
+    //   d1 : Depop sur ordinateur (texte réel), Cloud arrêté — l'exécutant est l'ordinateur, sa sonde est la preuve → reposé ;
+    //   k1 : Leboncoin au Cloud (texte réel du verrou), Cloud actif, connexion vérifiée par l'orchestrateur il y a 3 min
+    //        (coffre) → reposé ;
+    //   k2 : Beebs au Cloud, Cloud actif, AUCUNE connexion au coffre : la sonde de l'ordinateur ne prouve rien pour le
+    //        Cloud (l'ordinateur et la copie Cloud écrivent la même colonne) → retenu « session Cloud non revenue ».
+    //   Le Cloud du compte (cloud_voie) est lu dans la lecture des profils PAR LOTS du bloc : aucun profil lu par clé.
+    const l = [], profilsM = new Map(), coffre = [];
+    const ecrireM = (u, pf, o) => l.push({ id: `mc${String(l.length + 1).padStart(3, "0")}`, user_id: u, kind: "annonces", platform: pf, declencheur: "cron", queued_at: null, erreur: null, ...o });
+    const compteM = (u, pf, status, erreur, cloudVoie = false) => {
+      ecrireM(u, pf, { status: "done", started_at: pg(T11 - 5 * HEURE), finished_at: pg(T11 - 5 * HEURE + 40_000) });
+      ecrireM(u, pf, { status, started_at: pg(T11 - HEURE - 20_000), finished_at: pg(T11 - HEURE), erreur });
+      profilsM.set(u, { extVue: pg(T11 - MIN), sessions: { [pf]: true, checked_at_par_plateforme: { [pf]: pg(T11 - 2 * MIN) } }, ps: {}, cloudVoie });
+    };
+    compteM("d1", "depop", "absente", MUR_DEPOP_REEL);
+    compteM("k1", "leboncoin", "failed", murCloudReel("leboncoin"), true);
+    coffre.push({ user_id: "k1", plateforme: "leboncoin", connecte: true, maj_le: pg(T11 - 3 * MIN) });
+    compteM("k2", "beebs", "failed", murCloudReel("beebs"), true);
+    const s = fauxServeur(l);
+    const p1 = await executer(s, profilsM, T11, { coffre });
+    ok(p1.poses === "d1|depop, k1|leboncoin" && p1.reposes === 2 && /3 candidat\(s\), 2 reposé\(s\), 0 état\(s\) illisible\(s\)/.test(p1.journal)
+      && /retenus : 1 session Cloud non revenue/.test(p1.journal) && p1.compteur.coffre === 2 && p1.compteur.profilParCle === 0,
+      "LE VRAI BLOC, murs Depop et Cloud : Depop reposé après la sonde de l'ordinateur, Leboncoin au Cloud reposé après la connexion vérifiée par l'orchestrateur ; Beebs au Cloud, seulement la sonde de l'ordinateur → retenu « session Cloud non revenue » ; 2 lectures du coffre, aucun profil lu par clé",
+      `posés : ${p1.poses || "aucun"} ; journal : ${p1.journal} ; lectures ${JSON.stringify(p1.compteur)} ; erreurs : ${p1.erreurs.join(" | ")}`);
+    const p2 = await executer(s, profilsM, T11 + CADENCE_PASSAGES_MS, { coffre });
+    ok(p2.poses === "" && /2 en file/.test(p2.journal) && /1 session Cloud non revenue/.test(p2.journal),
+      "… et au passage suivant, rien : les deux relevés sont en file, Beebs au Cloud toujours retenu", `posés : ${p2.poses || "aucun"} ; journal : ${p2.journal}`);
+  }
+  {
+    // (11/11 vers 15:25, décision de Nico : « Suivre l'exécutant ») LA PREUVE SUIT L'EXÉCUTANT, QUEL QUE SOIT LE TEXTE DU
+    // MUR — par le vrai bloc. Mur il y a 1 h, relevé réussi il y a 5 h :
+    //   p1 : mur de L'ORDINATEUR (« page de connexion ») d'un compte au Cloud ACTIF, sonde de l'ordinateur revue il y a
+    //        2 min, AUCUNE connexion au coffre — le relevé irait au Cloud : la sonde ne prouve rien → retenu ;
+    //   p2 : le même mur, Cloud actif, connexion au coffre il y a 3 min, AUCUNE sonde → reposé ;
+    //   q1 : mur du CLOUD (texte du verrou) d'un compte au Cloud ARRÊTÉ, sonde revue il y a 2 min, aucun coffre — le
+    //        relevé irait à l'ordinateur : sa sonde est la preuve → reposé, coffre non lu ;
+    //   q2 : mur du Cloud, Cloud arrêté, connexion au coffre il y a 3 min, AUCUNE sonde → pas candidat (rien ne prouve la
+    //        session de l'ordinateur).
+    const l = [], profilsX = new Map(), coffre = [];
+    const ecrireX = (u, pf, o) => l.push({ id: `px${String(l.length + 1).padStart(3, "0")}`, user_id: u, kind: "annonces", platform: pf, declencheur: "cron", queued_at: null, erreur: null, ...o });
+    const compteX = (u, pf, status, erreur, cloudVoie, sonde) => {
+      ecrireX(u, pf, { status: "done", started_at: pg(T11 - 5 * HEURE), finished_at: pg(T11 - 5 * HEURE + 40_000) });
+      ecrireX(u, pf, { status, started_at: pg(T11 - HEURE - 20_000), finished_at: pg(T11 - HEURE), erreur });
+      profilsX.set(u, { extVue: pg(T11 - MIN), sessions: sonde ? { [pf]: true, checked_at_par_plateforme: { [pf]: pg(T11 - 2 * MIN) } } : {}, ps: {}, cloudVoie });
+    };
+    compteX("p1", "leboncoin", "absente", "session leboncoin : page de connexion", true, true);
+    compteX("p2", "leboncoin", "absente", "session leboncoin : page de connexion", true, false);
+    coffre.push({ user_id: "p2", plateforme: "leboncoin", connecte: true, maj_le: pg(T11 - 3 * MIN) });
+    compteX("q1", "beebs", "failed", murCloudReel("beebs"), false, true);
+    compteX("q2", "depop", "failed", murCloudReel("depop"), false, false);
+    coffre.push({ user_id: "q2", plateforme: "depop", connecte: true, maj_le: pg(T11 - 3 * MIN) });
+    const r = await executer(fauxServeur(l), profilsX, T11, { coffre });
+    ok(r.poses === "p2|leboncoin, q1|beebs" && /3 candidat\(s\), 2 reposé\(s\), 0 état\(s\) illisible\(s\)/.test(r.journal) && /retenus : 1 session Cloud non revenue/.test(r.journal)
+      && r.compteur.coffre === 2 && r.compteur.profilParCle === 0,
+      "LE VRAI BLOC, la preuve suit l'exécutant : mur de l'ordinateur au Cloud actif → le coffre (sonde seule : retenu ; coffre : reposé) ; mur du Cloud au Cloud arrêté → la sonde (reposé sans lire le coffre ; coffre sans sonde : rien) ; aucun profil lu par clé",
+      `posés : ${r.poses || "aucun"} ; journal : ${r.journal} ; lectures ${JSON.stringify(r.compteur)} ; erreurs : ${r.erreurs.join(" | ")}`);
+  }
+  {
+    // (relecture du 11/11) LE MUR DU CLOUD QUI SE RÉPÈTE, COFFRE RAFRAÎCHI À CHAQUE PASSAGE — par le vrai bloc. Le coffre
+    // est réécrit à chaque sauvegarde du navigateur Cloud (connecte vrai, maj_le neuf) même quand le verrou refuse encore la
+    // plateforme : la preuve du Cloud tient à chaque passage. Seul le plafond de l'épisode borne : 3 relevés, puis plus rien.
+    const l = [], coffre = [{ user_id: "b1", plateforme: "beebs", connecte: true, maj_le: pg(T11 - MIN) }];
+    const ecrireB = (o) => l.push({ id: `bc${String(l.length + 1).padStart(3, "0")}`, user_id: "b1", kind: "annonces", platform: "beebs", declencheur: "cron", queued_at: null, erreur: null, ...o });
+    ecrireB({ status: "done", started_at: pg(T11 - 5 * HEURE), finished_at: pg(T11 - 5 * HEURE + 40_000) });
+    ecrireB({ status: "failed", started_at: pg(T11 - 2 * HEURE - 20_000), finished_at: pg(T11 - 2 * HEURE), erreur: murCloudReel("beebs") });
+    const profilsB = new Map([["b1", { extVue: pg(T11 - MIN), sessions: {}, ps: {}, cloudVoie: true }]]);
+    const s = fauxServeur(l);
+    const parPassage = [], gardes = [];
+    let profilParCle = 0;
+    for (let k = 0; k < 12; k++) {
+      const quand = T11 + k * CADENCE_PASSAGES_MS;
+      // Le relevé posé au passage d'avant a tourné au Cloud et retombe sur le mur du Cloud ; l'orchestrateur sauvegarde.
+      for (const x of s.etat.lignes) if (x.status === "queued") Object.assign(x, { status: "failed", started_at: x.queued_at, finished_at: pg(Date.parse(x.queued_at) + 2 * MIN), erreur: murCloudReel("beebs") });
+      coffre[0].maj_le = pg(quand - 30_000);
+      const p = await executer(s, profilsB, quand, { coffre });
+      parPassage.push(p.reposes);
+      gardes.push(/retenus : 1 plafond de l'épisode/.test(p.journal) ? "plafond" : p.journal.replace(/^.*relevés de veille : /, ""));
+      profilParCle += p.compteur.profilParCle;
+    }
+    ok(parPassage.join(",") === "1,1,1,0,0,0,0,0,0,0,0,0" && gardes.slice(3).every((g) => g === "plafond") && profilParCle === 0
+      && s.etat.lignes.filter((x) => x.declencheur === DECLENCHEUR_REPRISE_CONNEXION).length === PLAFOND_REPRISES_PAR_EPISODE,
+      "LE VRAI BLOC, mur du Cloud répété et coffre rafraîchi à chaque passage : 3 relevés posés, puis « plafond de l'épisode » à chaque passage (36 min) — jamais une boucle",
+      `posés par passage : ${parPassage.join(",")} ; gardes : ${gardes.slice(3, 5).join(" | ")} ; profils lus par clé : ${profilParCle}`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 13. COMPLÉMENTS DE LA RELECTURE (11/11)
 // ═══════════════════════════════════════════════════════════════════════════
-console.log("\n13. Compléments de la relecture : gardes exercées sur le faux serveur, constantes, murs non reconnus, rotation");
+console.log("\n13. Compléments de la relecture : gardes exercées sur le faux serveur, constantes, ancien contrat, rotation");
 {
   // Un relevé EN COURS (running), aucun réussi après le mur → rien.
   const enCours = fauxServeur([reussiIlYA(300), murIlYA(60), releve({ status: "running", started_at: iso(5), finished_at: null, declencheur: DECLENCHEUR_REPRISE_CONNEXION, queued_at: iso(5) })]);
@@ -817,13 +961,6 @@ console.log("\n13. Compléments de la relecture : gardes exercées sur le faux s
   ok((await tour(frais, 0, 170)) === 1, "une sonde de 2 h 50, postérieure au mur : le relevé part");
   const vieille = fauxServeur([reussiIlYA(400), murIlYA(200)]);
   ok((await tour(vieille, 0, 190)) === 0, "une sonde de 3 h 10 : rien");
-  // Les murs que la règle ne reconnaît PAS aujourd'hui (décision de Nico en attente, 11/11) : le texte réel de Depop
-  // sur ordinateur et celui de la copie Cloud. Aujourd'hui : rien n'est posé pour eux.
-  ok(!murConnexionVeille("Connexion Depop requise : ouvre depop.com et connecte-toi") && !murConnexionVeille("Vinted demande une reconnexion")
-    && !murConnexionVeille("accès Depop non accordé"),
-    "murs NON reconnus aujourd'hui (décision de Nico en attente) : « Connexion Depop requise… », « … demande une reconnexion » (Cloud), « accès Depop non accordé »");
-  ok(plateformes(await run({ arrets: [mur("depop", 120, { erreur: "Connexion Depop requise : ouvre depop.com et connecte-toi" })] })) === "",
-    "Depop sur ordinateur (texte réel) : aucun relevé de veille posé aujourd'hui");
   // L'ancien contrat lève au lieu de rendre [] en silence.
   let leve = false;
   try { relevesDeVeilleAReposer({ arrets: [], historique: [], profils: new Map(), ouverte: ouvert }); } catch { leve = true; }
@@ -843,6 +980,225 @@ console.log("\n13. Compléments de la relecture : gardes exercées sur le faux s
     "le pas de la tranche est le plus grand entier ≤ plafond premier avec n (31 → 30, 35 → 29, 60 → 29, 100 → 29)");
   const cron = lire("supabase/migrations/20260716110000_handler_watch_cron.sql");
   ok(/'\*\/3 \* \* \* \*'/.test(cron) && CADENCE_PASSAGES_MS === 3 * MIN, "la cadence des passages (3 min) est celle du cron handler-watch-3min ('*/3 * * * *')");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13 bis. LES MURS DEPOP ET CLOUD (11/11, décision de Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// « OUI : les murs Depop et Cloud doivent être reconnus (un relevé après une vraie reconnexion, comme ailleurs). » Jusqu'au
+// 11/11 la règle ne lisait que « page de connexion » : le mur Depop de l'ordinateur (12 en 30 jours sur 6 comptes) et
+// celui de la copie Cloud (6 arrêts en 7 jours sur 3 comptes) n'étaient pas reconnus — le relevé voulu après une vraie
+// reconnexion ne partait JAMAIS pour eux. Les textes sont ceux que NOS relevés écrivent, lus en base et dans leurs
+// sources (une reformulation rougit ici). La preuve de session revenue suit l'EXÉCUTANT du relevé, quel que soit le texte
+// du mur (11/11 vers 15:25, décision de Nico : « Suivre l'exécutant » — get-pending-jobs ne sert le relevé d'un compte au
+// Cloud actif qu'au poste Cloud, commandeLaisseeAuCloud) :
+//   · Cloud du compte ARRÊTÉ (cloud_voie faux) — l'ordinateur : la sonde de session fraîche et postérieure au mur ;
+//   · Cloud du compte ACTIF (cloud_voie vrai) — le Cloud : la connexion du coffre de l'orchestrateur
+//     (`cloud_coffre.connecte`, posée par une connexion VÉRIFIÉE — « Me connecter » —, rafraîchie à chaque sauvegarde,
+//     retombée à « à reconnecter » sur ce mur), écrite après le mur, de moins de 3 h. La sonde de l'ordinateur n'en dit
+//     rien : l'ordinateur et la copie Cloud écrivent la même colonne (`extension_sessions`).
+//   Le Cloud du compte arrive avec le profil (lecture par lots de handler-watch) : aucun profil lu par clé.
+console.log("\n13 bis. Les murs Depop et Cloud (11/11) : reconnus ; un relevé après une VRAIE reconnexion ; la preuve suit l'exécutant ; aucun autre refus n'est un mur");
+{
+  const voie = typeof regleModule.voieMurVeille === "function" ? regleModule.voieMurVeille : () => "(voieMurVeille absente du module)";
+  ok(murConnexionVeille(MUR_DEPOP_REEL) && ["leboncoin", "beebs", "depop"].every((pf) => murConnexionVeille(murCloudReel(pf))),
+    "murs RECONNUS (textes réels lus en base le 11/11) : « Connexion Depop requise : connecte-toi à Depop sur ton ordinateur. » et « FillSell Cloud : <pf> demande une reconnexion (session fermée ou jeton non renouvelé), aucune visite »");
+  ok(voie(MUR_DEPOP_REEL) === "poste" && voie("[incomplet] session beebs : page de connexion") === "poste"
+    && ["leboncoin", "beebs", "depop"].every((pf) => voie(murCloudReel(pf)) === "cloud"),
+    "… chacun avec la voie qui ÉCRIT son texte (Depop et « page de connexion » : l'extension ; le verrou : la copie Cloud) — elle ne choisit pas la preuve",
+    `Depop : ${voie(MUR_DEPOP_REEL)} ; Cloud : ${voie(murCloudReel("beebs"))}`);
+  // Les textes que les relevés ÉCRIVENT, relus dans leurs sources : ceux de la base, et reconnus.
+  const depopSrc = lire("chrome-extension/content-scripts/depop.js");
+  const iLister = depopSrc.indexOf("async function listerMesArticles(");
+  const texteDepop = /session\.connecte === false\) return \{[^}]*error: "([^"]+)"/.exec(iLister > 0 ? depopSrc.slice(iLister, depopSrc.indexOf("\n}\n", iLister)) : "")?.[1] ?? "";
+  const suiteCloud = /new TypeError\("FillSell Cloud : " \+ pf \+ "([^"]+)"\)/.exec(lire("scripts/cloud/build-extension-cloud.mjs"))?.[1] ?? "";
+  ok(texteDepop.startsWith("Connexion Depop requise") && `[incomplet] ${texteDepop}` === MUR_DEPOP_REEL.split(" · ")[0] && voie(`[incomplet] ${texteDepop}`) === "poste"
+    && `FillSell Cloud : beebs${suiteCloud}` === murCloudReel("beebs") && ["leboncoin", "beebs", "depop"].every((pf) => voie(`FillSell Cloud : ${pf}${suiteCloud}`) === "cloud"),
+    "les textes ÉCRITS par le relevé Depop (depop.js, listerMesArticles) et par le verrou de la copie Cloud (build-extension-cloud.mjs, refusVerrouCloud) sont ceux lus en base, et reconnus",
+    `Depop « ${texteDepop} » ; Cloud « FillSell Cloud : <pf>${suiteCloud} »`);
+  // (relecture du 11/11) Le motif Depop est le TEXTE COMPLET du relevé, jamais son début : les textes des TÂCHES Depop
+  // (publication, retrait — DEPOP_MSG_SESSION*, lus dans depop.js) commencent aussi par « Connexion Depop requise : ».
+  const textesTachesDepop = [...depopSrc.matchAll(/const DEPOP_MSG_SESSION(?:_RETRAIT)? =\s*"([^"]+)" \+\s*"([^"]+)";/g)].map((m) => m[1] + m[2]);
+  const memeDebut = [...textesTachesDepop, "Connexion Depop requise : autre chose", "[incomplet] Connexion Depop requise : connecte-toi à Depop"];
+  ok(textesTachesDepop.length === 2 && textesTachesDepop.every((e) => e.startsWith("Connexion Depop requise : "))
+    && memeDebut.every((e) => !murConnexionVeille(e) && voie(e) === null) && murConnexionVeille(`[incomplet] ${texteDepop}`),
+    "le motif Depop est le texte COMPLET du relevé : les textes des tâches Depop (« Connexion Depop requise : ta session Depop est fermée… », publication et retrait) et tout autre texte de même début ne sont pas des murs",
+    `${textesTachesDepop.length} textes de tâches lus ; reconnus à tort : ${memeDebut.filter((e) => murConnexionVeille(e)).map((e) => e.slice(0, 70)).join(" | ") || "aucun"}`);
+  // Ce qui n'est PAS un mur : la reconnexion n'y change rien (débuts réels lus en base le 11/11, 14 jours).
+  const NON_MURS_REELS = [
+    "accès Depop non accordé · [rattachement] par identifiant 0, automatiques 0",           // permission d'hôte : « Autoriser Depop »
+    "session Depop illisible (reseau) · [rattachement] par identifiant 0",
+    "[incomplet] [anti_robot] Beebs a montré sa vérification anti-robot",
+    "[incomplet] « Mes annonces » n'a pas rendu sa liste (redirection du compte, challenge ou page non peinte)",
+    "demande jamais réclamée en 6 h — ton ordinateur",
+    "[watchdog] La synchronisation s'est arrêtée avant la fin",
+    "demande expirée (6 h sans extension disponible)",
+    "Timeout: la page de dépôt n'a pas fini de charger",
+    "l'index public de Beebs n'a rien pu dire (index",
+    "Onglet de travail fermé pendant le chargement",
+    "REST annonces_plateforme?on_conflict=user_id,platform,listing_id",
+    "REAUTH VENTE eBay : eBay demande une reconnexion de sécurité pour vendre",
+  ];
+  ok(NON_MURS_REELS.every((e) => !murConnexionVeille(e)) && !murConnexionVeille(null) && !murConnexionVeille(""),
+    "PAS des murs : accès Depop non accordé, session Depop illisible, anti-robot Beebs, liste Leboncoin non rendue, demande expirée ou jamais réclamée, chien de garde, chargement, index Beebs, onglet fermé, écriture REST, reconnexion de sécurité eBay",
+    NON_MURS_REELS.filter((e) => murConnexionVeille(e)).join(" | "));
+  ok(NON_MURS_REELS.every((e) => voie(e) === null) && voie(murCloudReel("vinted")) === null && voie(null) === null,
+    "… aucune voie pour eux ; Vinted au Cloud est hors de la règle (dressing coupé)");
+
+  // ── DEPOP SUR ORDINATEUR : la sonde de l'ordinateur est sa preuve (comme « page de connexion »).
+  const murDepop = (minAvant) => mur("depop", minAvant, { status: "absente", erreur: MUR_DEPOP_REEL });
+  ok(plateformes(await run({ arrets: [murDepop(120)] })) === "depop",
+    "Depop sur ordinateur (texte réel) : session Depop revue connectée APRÈS le mur → UN relevé de veille (avant le 11/11 : jamais)");
+  ok(plateformes(await run({ arrets: [murDepop(5)] })) === ""
+    && plateformes(await run({ arrets: [murDepop(120)], profils: profil({ sessions: { depop: false, checked_at_par_plateforme: { depop: iso(10) } } }) })) === "",
+    "… sonde d'avant le mur, ou Depop vue déconnectée → rien (pas de reconnexion, pas de relevé)");
+  {
+    const s = fauxServeur([reussiIlYA(300, { platform: "depop" }), releve({ platform: "depop", status: "absente", started_at: iso(31), finished_at: iso(30), erreur: MUR_DEPOP_REEL })]);
+    const tourD = async (apres, sonde) => (await passageComplet(s.client, {
+      profils: profil({ sessions: { depop: true, checked_at_par_plateforme: { depop: iso(sonde) } } }), ouverte: ouvert, maintenant: MAINTENANT + apres * MIN,
+    })).length;
+    const d1 = await tourD(0, 5), d2 = await tourD(3, 5);
+    finir(s, 4, "done");
+    const d3 = [await tourD(6, 5), await tourD(60, -55)];
+    ok(d1 === 1 && d2 === 0 && d3.every((k) => k === 0) && s.etat.lignes.filter((x) => x.declencheur === DECLENCHEUR_REPRISE_CONNEXION).length === 1,
+      "Depop, passages complets : un relevé à la reconnexion, rien tant qu'il est en file, rien après sa réussite", [d1, d2, ...d3].join(","));
+  }
+
+  // ── LE CLOUD ACTIF : la preuve est la connexion du coffre de l'orchestrateur. Dans tous ces cas, la sonde de
+  //    L'ORDINATEUR du compte dit Leboncoin, Beebs et Depop connectés il y a 10 min — APRÈS le mur (profil()) : elle ne
+  //    prouve rien.
+  const murCloud = (pf, minAvant) => ({ user_id: U, platform: pf, status: "failed", finished_at: iso(minAvant), erreur: murCloudReel(pf) });
+  const coffreDe = (pf, minAvant, connecte = true) => ({ user_id: U, plateforme: pf, connecte, maj_le: iso(minAvant) });
+  const passerCloud = async ({ arrets, coffre = [], cloudVoie = true, panne = null, profils = profil(), maintenant = MAINTENANT }) => {
+    const s = fauxServeur([]);
+    // Le Cloud du compte arrive avec le profil (lecture par lots de handler-watch) ; `profiles` reste servie pour COMPTER
+    // une lecture d'un profil par clé — il n'en faut aucune.
+    const p = new Map([...profils].map(([k, v]) => [k, { ...v, cloudVoie }]));
+    const c = avecCloud(s.client, { coffre, voies: new Map([[U, cloudVoie]]), panne });
+    const candidats = candidatsReleveDeVeille({ arrets, profils: p, maintenant });
+    const d = await decider(c.client, candidats, { ouverte: ouvert, maintenant });
+    const e = candidats[0] ? d.etats.get(cleReleveDeVeille(candidats[0])) : null;
+    return { poses: plateformes(d.aPoser), garde: candidats[0] ? gardeReleveDeVeille(candidats[0], e, maintenant) : "aucun candidat", etat: e, lectures: { runs: s.etat.lectures, ...c.etat } };
+  };
+  const vraie = await passerCloud({ arrets: [murCloud("beebs", 120)], coffre: [coffreDe("beebs", 5)] });
+  ok(vraie.poses === "beebs" && vraie.garde === null && vraie.lectures.coffre === 1 && vraie.lectures.profils === 0,
+    "Cloud (texte réel) : connexion vérifiée par l'orchestrateur APRÈS le mur (coffre connecté il y a 5 min), Cloud du compte actif → UN relevé de veille ; une ligne du coffre lue, aucun profil",
+    JSON.stringify(vraie));
+  const sansOrdinateur = await passerCloud({ arrets: [murCloud("beebs", 120)], coffre: [coffreDe("beebs", 5)], profils: profil({ sessions: {} }) });
+  ok(sansOrdinateur.poses === "beebs",
+    "… un compte SANS ordinateur (aucune sonde) : la connexion du coffre suffit — la sonde n'est jamais exigée d'un mur du Cloud", JSON.stringify(sansOrdinateur));
+  const sansCoffre = await passerCloud({ arrets: [murCloud("beebs", 120)] });
+  ok(sansCoffre.poses === "" && sansCoffre.garde === "session Cloud non revenue" && sansCoffre.lectures.runs === 1 && sansCoffre.lectures.coffre === 1 && sansCoffre.lectures.profils === 0,
+    "Cloud sans connexion au coffre : rien, même si la sonde de L'ORDINATEUR dit la plateforme connectée après le mur — garde « session Cloud non revenue », 2 lectures d'une ligne",
+    JSON.stringify(sansCoffre));
+  const refus = [
+    ["à reconnecter (connecte faux, écrit après le mur)", await passerCloud({ arrets: [murCloud("beebs", 120)], coffre: [coffreDe("beebs", 5, false)] })],
+    ["connexion écrite AVANT le mur", await passerCloud({ arrets: [murCloud("beebs", 120)], coffre: [coffreDe("beebs", 130)] })],
+    ["connexion de 3 h 10", await passerCloud({ arrets: [murCloud("beebs", 400)], coffre: [coffreDe("beebs", 190)] })],
+    ["coffre d'une AUTRE plateforme", await passerCloud({ arrets: [murCloud("beebs", 120)], coffre: [coffreDe("leboncoin", 5)] })],
+  ];
+  ok(refus.every(([, r]) => r.poses === "" && r.garde === "session Cloud non revenue"),
+    "Cloud : à reconnecter, connexion antérieure au mur, connexion de plus de 3 h, autre plateforme connectée → rien (« session Cloud non revenue »)",
+    refus.filter(([, r]) => r.poses !== "" || r.garde !== "session Cloud non revenue").map(([q, r]) => `${q} : ${r.poses || "rien"} / ${r.garde}`).join(" | "));
+  ok((await passerCloud({ arrets: [murCloud("beebs", 400)], coffre: [coffreDe("beebs", 170)] })).poses === "beebs",
+    "… une connexion de 2 h 50, postérieure au mur : le relevé part (même fraîcheur que la sonde de l'ordinateur)");
+  // ── (11/11 vers 15:25, « Suivre l'exécutant ») LA PREUVE SUIT L'EXÉCUTANT, QUEL QUE SOIT LE TEXTE DU MUR — les deux sens.
+  //    Mur du CLOUD d'un compte au Cloud ARRÊTÉ : le relevé irait à l'ordinateur, sa sonde est la preuve.
+  const arreteSonde = await passerCloud({ arrets: [murCloud("beebs", 120)], cloudVoie: false });
+  const arreteCoffre = await passerCloud({ arrets: [murCloud("beebs", 120)], coffre: [coffreDe("beebs", 5)], cloudVoie: false, profils: profil({ sessions: {} }) });
+  const arreteVieille = await passerCloud({ arrets: [murCloud("beebs", 120)], coffre: [coffreDe("beebs", 5)], cloudVoie: false,
+    profils: profil({ sessions: { beebs: true, checked_at_par_plateforme: { beebs: iso(130) } } }) });
+  ok(arreteSonde.poses === "beebs" && arreteSonde.garde === null && arreteSonde.lectures.coffre === 0 && arreteSonde.lectures.profils === 0
+    && arreteCoffre.poses === "" && arreteCoffre.garde === "aucun candidat" && arreteVieille.poses === "" && arreteVieille.garde === "aucun candidat",
+    "mur du CLOUD d'un compte au Cloud ARRÊTÉ (cloud_voie faux : le relevé irait à l'ordinateur) : la sonde de l'ordinateur, fraîche et postérieure au mur, est la preuve → UN relevé, coffre non lu ; sans sonde, ou sonde d'avant le mur → rien, même avec une connexion au coffre",
+    JSON.stringify({ arreteSonde: [arreteSonde.poses, arreteSonde.garde, arreteSonde.lectures], arreteCoffre: [arreteCoffre.poses, arreteCoffre.garde], arreteVieille: [arreteVieille.poses, arreteVieille.garde] }));
+  //    Mur de L'ORDINATEUR d'un compte au Cloud ACTIF : le relevé irait au Cloud, la connexion du coffre est la preuve.
+  const murPoste = (pf, minAvant, erreur = `session ${pf} : page de connexion`) => ({ user_id: U, platform: pf, status: "absente", finished_at: iso(minAvant), erreur });
+  const actifSonde = await passerCloud({ arrets: [murPoste("leboncoin", 120)] });
+  const actifCoffre = await passerCloud({ arrets: [murPoste("leboncoin", 120)], coffre: [coffreDe("leboncoin", 5)], profils: profil({ sessions: {} }) });
+  const actifDepop = await passerCloud({ arrets: [murPoste("depop", 120, MUR_DEPOP_REEL)] });
+  ok(actifSonde.poses === "" && actifSonde.garde === "session Cloud non revenue" && actifSonde.lectures.coffre === 1
+    && actifCoffre.poses === "leboncoin" && actifCoffre.garde === null && actifCoffre.lectures.profils === 0
+    && actifDepop.poses === "" && actifDepop.garde === "session Cloud non revenue",
+    "mur de L'ORDINATEUR (« page de connexion », Depop) d'un compte au Cloud ACTIF (le relevé irait au Cloud) : la sonde de l'ordinateur ne prouve rien → rien sans connexion au coffre (« session Cloud non revenue ») ; connexion au coffre après le mur → UN relevé, même sans sonde",
+    JSON.stringify({ actifSonde: [actifSonde.poses, actifSonde.garde], actifCoffre: [actifCoffre.poses, actifCoffre.garde], actifDepop: [actifDepop.poses, actifDepop.garde] }));
+  const pannes = [];
+  for (const mode of ["erreur", "jette"]) {
+    const r = await passerCloud({ arrets: [murCloud("beebs", 120)], coffre: [coffreDe("beebs", 5)], panne: (t) => (t === "cloud_coffre" ? mode : null) });
+    pannes.push(r.poses === "" && r.etat?.lu === false && r.garde === "état non lu" ? "" : `cloud_coffre/${mode} : ${r.poses || "rien"} ${JSON.stringify(r.etat)}`);
+  }
+  ok(pannes.every((x) => x === ""), "Cloud : coffre illisible ou interrompu → { lu: false }, rien n'est reposé", pannes.filter(Boolean).join(" | "));
+  const pauseLbc = { leboncoin: { blocage_acces: { depuis: iso(600), signe: "acces_restreint" } } };
+  ok((await passerCloud({ arrets: [murCloud("leboncoin", 120)], coffre: [coffreDe("leboncoin", 5)], profils: profil({ ps: pauseLbc }) })).poses === ""
+    && (await passerCloud({ arrets: [murCloud("leboncoin", 120)], coffre: [coffreDe("leboncoin", 5)] })).poses === "leboncoin",
+    "Cloud, Leboncoin : jamais pendant une pause Leboncoin ; hors pause, la vraie reconnexion part");
+  const sansPreuve = { lu: true, reussi_le: null, en_file: false, reprises: 0 };
+  ok(gardeReleveDeVeille({ user_id: U, platform: "beebs", mur_du: iso(120), executant: "cloud" }, sansPreuve, MAINTENANT) === "état non lu",
+    "un candidat au Cloud actif sans preuve lue (état sans `cloud`) ne pose rien — jamais la permission par défaut");
+  const sansExecutant = { user_id: U, platform: "beebs", mur_du: iso(120) };
+  ok(gardeReleveDeVeille(sansExecutant, sansPreuve, MAINTENANT) === "état non lu" && gardeReleveDeVeille({ ...sansExecutant, executant: "autre" }, sansPreuve, MAINTENANT) === "état non lu"
+    && relevesDeVeilleAReposer({ candidats: [sansExecutant], etats: new Map([[cleReleveDeVeille(sansExecutant), sansPreuve]]), ouverte: ouvert, maintenant: MAINTENANT }).length === 0,
+    "un candidat sans exécutant connu ne pose rien — jamais l'ordinateur par défaut (sa sonde n'aurait pas été lue)");
+  {
+    // L'épisode au Cloud : la reconnexion → un relevé ; en file → rien ; il retombe sur le mur du Cloud → rien tant que
+    // l'orchestrateur n'a pas réécrit la connexion APRÈS ce nouveau mur ; puis un 2e ; réussi → plus rien.
+    const s = fauxServeur([reussiIlYA(300, { platform: "beebs" }), releve({ platform: "beebs", status: "failed", started_at: iso(121), finished_at: iso(120), erreur: murCloudReel("beebs") })]);
+    const coffre = [coffreDe("beebs", 5)];
+    const c = avecCloud(s.client, { coffre, voies: new Map([[U, true]]) });
+    const tourC = async (apres) => (await passageComplet(c.client, { profils: profil({ cloudVoie: true }), ouverte: ouvert, maintenant: MAINTENANT + apres * MIN })).length;
+    const c1 = await tourC(0), c2 = await tourC(3);
+    finir(s, 4, "failed", murCloudReel("beebs"));
+    const c3 = await tourC(6);
+    coffre[0].maj_le = iso(-8);
+    const c4 = await tourC(9);
+    finir(s, 10, "done");
+    const c5 = [await tourC(30), await tourC(60)];
+    ok(c1 === 1 && c2 === 0 && c3 === 0 && c4 === 1 && c5.every((k) => k === 0) && s.etat.lignes.filter((x) => x.declencheur === DECLENCHEUR_REPRISE_CONNEXION).length === 2,
+      "Cloud, passages complets : un relevé à la reconnexion ; rien en file ; retombé au mur, rien tant que la connexion n'est pas réécrite après lui ; puis un 2e ; réussi, plus rien",
+      [c1, c2, c3, c4, ...c5].join(","));
+  }
+  {
+    // (relecture du 11/11) LE MUR DU CLOUD QUI SE RÉPÈTE, COFFRE RAFRAÎCHI À CHAQUE PASSAGE : l'orchestrateur réécrit
+    // `connecte`, `maj_le` à chaque sauvegarde du navigateur, même quand le verrou refuse encore la plateforme — la preuve
+    // du Cloud tient à chaque passage, seul le plafond de l'épisode borne. Attendu : 3 relevés posés, puis « plafond de
+    // l'épisode » (40 passages, 2 h).
+    const s = fauxServeur([reussiIlYA(300, { platform: "beebs" }), releve({ platform: "beebs", status: "failed", started_at: iso(121), finished_at: iso(120), erreur: murCloudReel("beebs") })]);
+    const coffre = [coffreDe("beebs", 1)];
+    const c = avecCloud(s.client, { coffre, voies: new Map([[U, true]]) });
+    const parPassage = [], gardes = [];
+    for (let k = 0; k < 40; k++) {
+      const quand = MAINTENANT + k * CADENCE_PASSAGES_MS;
+      // Le relevé posé au passage d'avant a tourné au Cloud et retombe sur le mur du Cloud 2 min après ; l'orchestrateur sauvegarde.
+      for (const x of s.etat.lignes) if (x.status === "queued") Object.assign(x, { status: "failed", finished_at: new Date(Date.parse(x.queued_at) + 2 * MIN).toISOString(), erreur: murCloudReel("beebs") });
+      coffre[0].maj_le = new Date(quand - 30_000).toISOString();
+      const candidats = await candidatsDuPassage(c.client, { profils: profil({ cloudVoie: true, sessions: {} }), maintenant: quand });
+      const d = await decider(c.client, candidats, { ouverte: ouvert, maintenant: quand });
+      for (const x of d.aPoser) await c.client.from("vinted_sync_runs").insert(ligneReleveDeVeille(x, new Date(quand).toISOString())).select("id");
+      parPassage.push(d.aPoser.length);
+      gardes.push(candidats[0] ? gardeReleveDeVeille(candidats[0], d.etats.get(cleReleveDeVeille(candidats[0])), quand) : "aucun candidat");
+    }
+    ok(parPassage.slice(0, 3).join(",") === "1,1,1" && parPassage.slice(3).every((k) => k === 0) && gardes.slice(3).every((g) => g === "plafond de l'épisode")
+      && s.etat.lignes.filter((x) => x.declencheur === DECLENCHEUR_REPRISE_CONNEXION).length === PLAFOND_REPRISES_PAR_EPISODE && c.etat.profils === 0,
+      "Cloud, mur répété et coffre rafraîchi à chaque passage (40 passages, 2 h) : 3 relevés posés, puis « plafond de l'épisode » — jamais une boucle",
+      `posés : ${parPassage.join("")} ; gardes : ${[...new Set(gardes.slice(3))].join(" | ")} ; profils lus par clé : ${c.etat.profils}`);
+  }
+  // Statique : la preuve du Cloud se lit par clé, bornée, après le dernier relevé réussi et avant « en file » ; le Cloud du
+  // compte vient de la lecture des profils par lots de handler-watch, jamais d'une lecture du module.
+  const mod = lire("supabase/functions/_shared/releves-de-veille.js");
+  const dp = mod.indexOf("export async function lirePreuveCloudVeille(");
+  const corpsP = dp > 0 ? mod.slice(dp, mod.indexOf("\n}\n", dp)) : "";
+  const de = mod.indexOf("export async function lireEtatReleveDeVeille(");
+  const corpsE = mod.slice(de, mod.indexOf("\n}\n", de));
+  const iPreuve = corpsE.indexOf("lirePreuveCloudVeille(supabase, ");
+  ok(dp > 0 && (corpsP.match(/\.from\(/g) ?? []).length === 1
+    && /\.from\("cloud_coffre"\)\.select\("connecte, maj_le"\)\.eq\("user_id", user_id\)\.eq\("plateforme", platform\)\.limit\(1\)/.test(corpsP)
+    && !/\.from\("profiles"\)/.test(mod) && !/\.in\(|\.range\(/.test(corpsP)
+    && iPreuve > corpsE.indexOf("dejaReparti(t(reussi_le), arret)") && iPreuve < corpsE.indexOf('.in("status", ["queued", "running"])'),
+    "le module : la preuve du Cloud se lit par clé — une ligne du coffre (compte, plateforme) — après le dernier relevé réussi, avant « en file » ; aucun profil lu dans le module");
+  const blocHw = hw.slice(hw.indexOf("LE RELEVÉ AUSSI REPART TOUT SEUL"), hw.indexOf("LE RELEVÉ VINTED REPART AUSSI")).replace(/^\s*\/\/.*$/gm, "");
+  ok(/\.select\("id, extension_sessions, extension_last_seen_at, platform_settings, cloud_voie"\)\.in\("id", lot\)/.test(blocHw) && /cloudVoie: p\.cloud_voie === true,/.test(blocHw)
+    && (blocHw.match(/\.from\("profiles"\)/g) ?? []).length === 1,
+    "handler-watch : le Cloud du compte (cloud_voie) est lu dans la lecture des profils PAR LOTS du bloc (une seule lecture de profiles), jamais un profil par clé");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s) sur ${n}` : `\n✓ ${n}/${n} — relevés de veille`);

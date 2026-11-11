@@ -180,7 +180,7 @@ avant le commit : le verrou exécute désormais le VRAI bloc de handler-watch (�
 nomme la garde qui retient chaque candidat, compte l'interrupteur interrompu, nomme une insertion refusée et dit la
 coupe des arrêts à 5 000 ; la tranche avance d'un pas premier avec n ; l'ancien contrat de `relevesDeVeilleAReposer`
 lève ; des cas neufs (relevé en cours sans réussi après le mur, relevé réussi d'une autre plateforme, sonde de 2 h 50 et
-de 3 h 10, textes réels des murs Depop et Cloud non reconnus aujourd'hui).
+de 3 h 10, textes réels des murs Depop et Cloud alors non reconnus — reconnus depuis, voir « Les murs Depop et Cloud »).
 
 ## L'état résiduel (les lignes de la boucle restent, consigne de Nico) — aucun script, à contrôler après le déploiement
 - Le premier relevé de chaque AUTRE plateforme d'un compte de la boucle ne datera aucune absence (son relevé précédent
@@ -196,7 +196,7 @@ de 3 h 10, textes réels des murs Depop et Cloud non reconnus aujourd'hui).
   uniquement les lignes écrites par les relevés de la boucle (preuve de sélection d'abord), avec sauvegarde, script
   montré avant de lancer.
 
-## Le verrou — `npm run selftest:releves-de-veille` (111 contrôles, dont 79 neufs : § 6 à 13)
+## Le verrou — `npm run selftest:releves-de-veille` (111 contrôles à la livraison de B5, dont 79 neufs : § 6 à 13 ; 137 depuis les murs Depop et Cloud et la preuve par exécutant, § 12 et § 13 bis)
 Un faux serveur qui coupe comme le vrai (1 000 lignes au plus, sans erreur, ordre physique), sur le parc du 11/11 à
 11:03 en chiffres : 2 935 lignes, 40 comptes à mur, 526 reprises réussies après le mur du premier compte.
 - Écrit AVANT le correctif et lancé sur le code d'alors : ROUGE — « reposés : c01|leboncoin, c02|leboncoin,
@@ -220,7 +220,8 @@ Un faux serveur qui coupe comme le vrai (1 000 lignes au plus, sans erreur, ordr
   120) ; la cadence de 3 min est épinglée sur celle du cron.
 - Statique : dans le bloc de handler-watch, toute lecture de `vinted_sync_runs` est triée et lue par pages, aucune par
   `.in("user_id")`, aucun `.limit` de 1 000 ou plus, jamais de coupe des candidats, l'état lu avant l'interrupteur, les
-  lignes de la colle épinglées ; dans le module, trois lectures au plus par clé, bornées, le dernier réussi d'abord.
+  lignes de la colle épinglées ; dans le module, trois lectures de `vinted_sync_runs` au plus par clé (quatre lectures en
+  tout au Cloud actif, avec la ligne du coffre), bornées, le dernier réussi d'abord.
 - § 12, LE VRAI BLOC : le bloc de handler-watch est découpé dans `index.ts` avec `lirePagesDisparues`, ses types retirés
   (`typescript`) et exécuté sur le faux serveur (profils, interrupteur et insertion compris) : sur le parc du 11/11,
   seul c05 est reposé et le journal dit « 5 candidat(s), 1 reposé(s), 0 état(s) illisible(s) ; retenus : 4 déjà
@@ -325,6 +326,92 @@ Et, sans requête sur la table :
   `CANAL_RE`, `decisionRefusContenuLeboncoin` et `empreinteTexteServi` : aucun changement de comportement attendu, à
   relire avant de déployer. Ils sont déjà servis par get-pending-jobs et update-job-status.
 
+## Les murs Depop et Cloud (11/11, après B5, à part — décision de Nico)
+Décision, mot pour mot : « OUI : les murs Depop et Cloud doivent être reconnus (un relevé après une vraie reconnexion,
+comme ailleurs). Mais À PART, juste après B5, pas dans B5 : B5 reste petit. »
+
+Les textes que nos relevés écrivent dans `vinted_sync_runs.erreur` pour un mur de connexion (lus dans le code et en base
+le 11/11 vers 15 h, `kind='annonces'`, arrêtés, 14 jours) :
+- ordinateur, Leboncoin et Beebs : « session <pf> : page de connexion … » (`background.js`) — Leboncoin « absente » 112 +
+  88 (40 et 23 comptes), Beebs « absente » 68 (23 comptes). Déjà reconnu ;
+- ordinateur, Depop : « [incomplet] Connexion Depop requise : connecte-toi à Depop sur ton ordinateur. · … »
+  (`content-scripts/depop.js`, `listerMesArticles`), relevé « absente » — 6 sur 3 comptes (1 en 7 jours) ;
+- copie Cloud, Leboncoin / Beebs / Depop : « FillSell Cloud : <pf> demande une reconnexion (session fermée ou jeton non
+  renouvelé), aucune visite » (verrou, `scripts/cloud/build-extension-cloud.mjs`, `refusVerrouCloud`), relevé « failed » —
+  Leboncoin 3, Beebs 2, Depop 1, sur 3 comptes, tous dans les 7 jours. Le texte d'avant le 05/11 (« … n'est pas connecté
+  dans ce navigateur, aucune visite », 5 arrêts d'un compte, dernier le 04/11) n'est plus écrit : hors de la liste.
+- Ce qui n'est PAS un mur (la reconnexion n'y change rien), lus sur la même période : « accès Depop non accordé » (24,
+  13 comptes : permission d'hôte), « session Depop illisible (reseau) » (15), « « Mes annonces » n'a pas rendu sa liste
+  (redirection du compte, challenge ou page non peinte) » (23 : l'extension la change déjà en « page de connexion »
+  quand un signe de la connexion est vu), « [anti_robot] Beebs… » (6), demandes expirées ou jamais réclamées, chien de
+  garde, chargements, écriture REST, index Beebs.
+
+Le correctif (`_shared/releves-de-veille.js` ; dans handler-watch, une colonne de plus à la lecture des profils) :
+- `MURS_CONNEXION_VEILLE` : une liste FERMÉE de trois textes écrits par nous, chacun avec la voie qui l'ÉCRIT
+  (`voieMurVeille`, qui ne choisit plus la preuve) — Cloud : « FillSell Cloud : (leboncoin|beebs|depop) demande une
+  reconnexion ( » ; ordinateur : « page de connexion », et le texte COMPLET « Connexion Depop requise : connecte-toi à
+  Depop sur ton ordinateur. » (relecture : le début seul attrapait aussi les textes des TÂCHES Depop, « Connexion Depop
+  requise : ta session Depop est fermée… », publication et retrait). `murConnexionVeille` lit cette liste.
+- LA PREUVE DE SESSION REVENUE SUIT L'EXÉCUTANT DU RELEVÉ, QUEL QUE SOIT LE TEXTE DU MUR. Question posée à Nico le 11/11
+  vers 15:25, mot pour mot : « pour un compte, la preuve que la session est revenue doit-elle suivre celui qui EXÉCUTE le
+  relevé (Cloud actif → la connexion vérifiée du Cloud ; sinon → la sonde de l'ordinateur), quel que soit le texte du
+  mur ? » — réponse : « Suivre l'exécutant ». Le premier jet lisait la preuve sur le texte du mur : un mur « page de
+  connexion » d'un compte au Cloud actif se jugeait sur la sonde de l'ordinateur alors que le relevé irait au Cloud, et
+  un mur du Cloud d'un compte au Cloud arrêté n'avait jamais de relevé (« Cloud du compte inactif ») alors que
+  l'ordinateur le ferait.
+  - L'exécutant (`executantReleveDeVeille`) : `profiles.cloud_voie` vrai → le Cloud ; sinon → l'ordinateur. Vérifié dans
+    get-pending-jobs : au Cloud actif, un relevé « annonces » de Leboncoin, Beebs ou Depop n'est jamais servi à
+    l'ordinateur (`commandeLaisseeAuCloud`, filtre posé à la source, `lireCommandesEnFile` ; verrou
+    `selftest:cloud-un-executant`), il reste en file pour le poste Cloud, qui le reçoit (`PLATEFORMES_POSTE_CLOUD` :
+    Vinted, Leboncoin, Beebs, Depop) ; au Cloud arrêté, il part au poste qui le réclame — l'ordinateur.
+  - Ordinateur (Cloud arrêté) : la sonde, fraîche (3 h) et postérieure au mur — inchangée, mur du Cloud compris.
+  - Cloud (Cloud actif) : la sonde ne prouve rien (l'ordinateur ET la copie Cloud écrivent `profiles.extension_sessions` :
+    le compte 09/11-soir d813639b a sa sonde Leboncoin de l'ordinateur « connecté » après son mur Cloud). La preuve est
+    celle de l'orchestrateur, déjà en base : `cloud_coffre` (compte, plateforme) `connecte = true` — posé par une
+    connexion VÉRIFIÉE (« Me connecter », compte lu par l'orchestrateur, `connexion.js`), rafraîchi à chaque sauvegarde du
+    navigateur (les 8 lignes connectées des comptes au Cloud actif avaient toutes `maj_le` de 3 min au moment de la
+    lecture), retombé à « à reconnecter » quand le verrou ne rouvre plus la plateforme (`coffre.aReconnecter`) — avec
+    `maj_le` postérieur au mur et de moins de 3 h. Mur de l'ordinateur compris (« page de connexion », Depop).
+  - `cloud_voie` est lu par handler-watch dans sa lecture des profils PAR LOTS (une colonne de plus) ; le module ne lit
+    plus aucun profil (la lecture par clé du premier jet est retirée). La preuve du Cloud se lit par clé
+    (`lirePreuveCloudVeille` : une ligne du coffre), après le dernier relevé réussi, avant « en file ». Garde neuve au
+    journal : « session Cloud non revenue » ; « Cloud du compte inactif » disparaît. Un candidat sans exécutant connu ne
+    pose rien (jamais l'ordinateur par défaut).
+- Un mur du Cloud qui se répète ne boucle pas : le coffre est réécrit à chaque sauvegarde même quand le verrou refuse
+  encore la plateforme, la preuve tient à chaque passage, et c'est le plafond de l'épisode qui borne — 3 relevés, puis
+  plus rien jusqu'au prochain relevé réussi (épinglé au verrou, § 12 et § 13 bis).
+- Coût, en lectures d'une ligne par candidat lu (30 au plus par passage) : déjà reparti 1 (inchangé) ; ordinateur 3
+  (inchangé) ; Cloud actif sans reconnexion 2 (inchangé), avec reconnexion 4 (5 au premier jet : la ligne du profil). La
+  lecture des profils par lots porte une colonne de plus, aucun appel de plus. Qui est candidat change : un mur de
+  l'ordinateur d'un compte au Cloud actif l'est sans sonde (2 lectures par passage tant que le mur tient, 7 jours au
+  plus, 1 dès qu'un relevé a réussi après lui) ; un mur du Cloud d'un compte au Cloud arrêté ne l'est plus qu'avec une
+  sonde fraîche postérieure au mur (le premier jet lui donnait 2 lectures par passage pour aucun relevé possible).
+- Lu le 11/11 vers 15 h : 6 couples à mur Cloud, aucun avec une ligne au coffre pour la plateforme — 3 d'un compte au
+  Cloud actif (trois plateformes jamais connectées : rien ne part), 3 de 2 comptes au Cloud arrêté, désormais jugés sur
+  la sonde de l'ordinateur (un relevé au plus si elle est fraîche et postérieure au mur, 3 par épisode ; sondes non
+  relues). Le nombre de murs de l'ordinateur sur des comptes au Cloud actif n'a pas été compté.
+
+Le verrou (`selftest:releves-de-veille`, § 12 et § 13 bis, 137 contrôles). Premier jet : écrit AVANT le code, ROUGE (18
+échecs sur 129), puis VERT (130/130). Preuve par exécutant : les cas neufs écrits AVANT le code et lancés sur le premier
+jet : ROUGE, 12 échecs sur 137 — 5 de comportement (mur de l'ordinateur au Cloud actif, mur du Cloud au Cloud arrêté, par
+le module et par le vrai bloc ; texte de tâche Depop pris pour un mur ; candidat sans exécutant), 4 par la seule lecture
+du profil par clé (les deux cas « mur du Cloud répété », le cas réel Cloud et le vrai bloc Depop-Cloud, dont le
+comportement était déjà juste), 1 par le nom du champ (`executant`), 2 statiques ; après : VERT, 137/137. Les textes réels
+de la base, relus aussi dans leurs sources (`depop.js`, `build-extension-cloud.mjs`) ; aucun des refus réels ni des
+textes de tâches Depop n'est un mur ; un relevé après une vraie reconnexion Depop (sonde), et Cloud (coffre) ; la preuve
+suit l'exécutant dans les deux sens ; rien sur la seule sonde de l'ordinateur au Cloud actif, ni à reconnecter, ni
+connexion antérieure au mur ou de plus de 3 h, ni coffre illisible, ni pendant une pause Leboncoin ; l'épisode au Cloud
+(en file, retombé au mur, 2e après une connexion réécrite, réussi ; mur répété et coffre rafraîchi : 3 puis le plafond) ;
+le VRAI bloc de handler-watch (§ 12), aucun profil lu par clé. Contre-épreuves : 17 défauts du premier jet réintroduits
+un à un sur une copie hors dépôt : 17 rouges ; puis 9 pour la preuve par exécutant (preuve qui suit le texte, plafond de
+l'épisode sauté pour le Cloud, motif Depop rouvert en préfixe, `cloud_voie` retiré de la lecture par lots ou non rangé
+dans le profil, exécutant inconnu tenu pour l'ordinateur, sonde exigée au Cloud, garde du Cloud retirée, exécutant
+inversé) : 9 rouges, 0 vert.
+
+Livraison : handler-watch seule (elle embarque le module), comme B5. L'app ne change pas : `MUR_PAGE_CONNEXION`
+(`src/annonces/etatReleve.js`) dit ce que l'écran propose, la règle ne le lit pas ; le mur Depop y sort déjà « à
+connecter » (relevé « absente »), le mur Cloud garde son bandeau « à reconnecter » lu sur le coffre.
+
 ## Reste à décider (Nico)
 Codé par défaut, à confirmer :
 - Plafond des lectures par passage : 30, avec une tranche qui tourne d'un pas premier avec n ; le retirer est possible
@@ -339,10 +426,16 @@ Non codé :
 - Garde en base en plus du code : un déclencheur BEFORE INSERT qui refuse une `reprise_connexion` si un relevé a réussi
   après le mur, à moins de 15 min d'un relevé réussi, ou après 3 reprises (migration, banc jetable, feu vert ; la
   définition du mur existerait alors en SQL et en JS : selftest miroir à prévoir).
-- Murs que la règle ne reconnaît pas (elle lit « page de connexion ») : Depop sur ordinateur (« Connexion Depop
-  requise… », 12 murs en 30 jours sur 6 comptes) et la copie Cloud (« … demande une reconnexion », 8 arrêts en 7
-  jours). Pour eux le relevé voulu après reconnexion ne part pas, depuis avant le 09/11. Les faire reconnaître, ou
-  laisser.
+- ~~Murs que la règle ne reconnaît pas~~ — DÉCIDÉ ET CODÉ le 11/11 (« Les murs Depop et Cloud » ci-dessus ; verrou
+  `selftest:releves-de-veille`, § 12 et § 13 bis). ~~La voie d'un mur lue sur son texte~~ — DÉCIDÉ le 11/11 vers 15:25
+  (« Suivre l'exécutant ») et codé : la preuve suit `cloud_voie`, plus le texte du mur.
+- Non codé, hors de cette règle : au Cloud ARRÊTÉ, get-pending-jobs sert un relevé « annonces » au premier poste qui le
+  réclame — l'ordinateur, ou le navigateur Cloud s'il est encore ouvert pendant la grâce (`jobsPourPosteCloud` ne retire
+  que les TÂCHES au poste Cloud d'un compte au Cloud inactif, pas les demandes de relevé). La règle juge alors sur la
+  sonde de l'ordinateur, que la copie Cloud écrit aussi. Fermer ce trou (règle « un seul exécutant » pour les relevés au
+  Cloud inactif) : à décider.
+- L'écran pour ces murs (« Me connecter » sur le mur Depop, mur Cloud dit « à reconnecter » sur la tuile au lieu
+  d'« échec ») : `src/annonces/etatReleve.js`, livraison web + OTA — non fait, à décider.
 - Dressing Vinted : sa reprise reste coupée ; sa lecture (limite de 2 000, triée du plus récent au plus ancien) est à
   passer par la même lecture par clé avant d'être rallumée un jour.
 - Alerte dans l'ops-digest au-delà de 3 `reprise_connexion` en 24 h pour un compte et une plateforme (la boucle a tourné

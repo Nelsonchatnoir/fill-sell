@@ -4778,6 +4778,9 @@ serve(async (req) => {
   // création d'article ; la règle du 05/10 reste entière. eBay (API) et Opla (quittée) hors du code ; jamais pendant une
   // pause Leboncoin. La règle, pure et testée : _shared/releves-de-veille.js (scripts/releves-de-veille-selftest.mjs) ;
   // les gardes d'avant le 05/10 inchangées (sonde fraîche et postérieure au mur, rien en file, 15 min, 3 par épisode).
+  // (11/11) Murs Depop et Cloud reconnus ; la preuve de session revenue suit l'EXÉCUTANT du relevé, quel que soit le
+  // texte du mur (décision de Nico, « Suivre l'exécutant ») : Cloud du compte actif → la connexion vérifiée du coffre
+  // du Cloud ; sinon → la sonde de l'ordinateur.
   // ⛔ (11/11) UNE GARDE DE CRON NE SE CALCULE JAMAIS SUR UNE LECTURE NON BORNÉE ; UN ÉTAT NON LU NE POSE RIEN.
   //    Du 09/11 14:09 au 11/11, ce bloc lisait ici 30 jours de relevés de tous les comptes à mur d'un coup (limite de
   //    2 000, ni tri ni pages) : PostgREST n'en rendait que 1 000, sans erreur, les plus anciennes — les gardes ne
@@ -4809,11 +4812,13 @@ serve(async (req) => {
     let candidatsVus = 0, candidatsLus = 0, etatsIllisibles = 0, nonEcrits = 0, interrupteurFerme = 0, motifIllisible = "", motifNonEcrit = "";
     const retenus = new Map<string, number>();   // garde → nombre de candidats qu'elle retient à ce passage
     if (ids.length) {
-      const profils = new Map<string, { sessions: Record<string, unknown>; extVue: string | null; ps: Record<string, unknown> }>();
+      // (11/11, « Suivre l'exécutant ») cloud_voie lu ICI, avec les profils par lots : il dit qui fera le relevé (le
+      // Cloud actif ou l'ordinateur), donc quelle preuve de session vaut — jamais un profil relu par clé dans le module.
+      const profils = new Map<string, { sessions: Record<string, unknown>; extVue: string | null; ps: Record<string, unknown>; cloudVoie: boolean }>();
       for (let i = 0; i < ids.length; i += 200) {
         const lot = ids.slice(i, i + 200);
         const { data: profs, error: eProfs } = await supabase.from("profiles")
-          .select("id, extension_sessions, extension_last_seen_at, platform_settings").in("id", lot);
+          .select("id, extension_sessions, extension_last_seen_at, platform_settings, cloud_voie").in("id", lot);
         if (eProfs) throw new Error(`profils illisibles : ${eProfs.message}`);   // non lus = rien à ce passage, et c'est dit
         // deno-lint-ignore no-explicit-any
         for (const p of ((profs ?? []) as any[])) {
@@ -4821,12 +4826,14 @@ serve(async (req) => {
             sessions: (p.extension_sessions ?? {}) as Record<string, unknown>,
             extVue: p.extension_last_seen_at ?? null,
             ps: (p.platform_settings ?? {}) as Record<string, unknown>,
+            cloudVoie: p.cloud_voie === true,
           });
         }
       }
-      // Les candidats : tout ce qui se décide SANS l'historique (mur, extension vue, session revenue après le mur, pas
-      // de pause Leboncoin) — TOUS, murs les plus récents d'abord. Ceux qu'on lit à ce passage : tous sous le plafond,
-      // sinon une tranche qui tourne d'un passage à l'autre (aucun candidat n'est privé de lecture).
+      // Les candidats : tout ce qui se décide SANS l'historique (mur, extension vue, pas de pause Leboncoin ; pour un
+      // relevé qu'exécutera l'ordinateur, sa sonde revenue après le mur — au Cloud actif, la connexion du coffre se lit
+      // avec l'état) — TOUS, murs les plus récents d'abord. Ceux qu'on lit à ce passage : tous sous le plafond, sinon une
+      // tranche qui tourne d'un passage à l'autre (aucun candidat n'est privé de lecture).
       const candidats = candidatsReleveDeVeille({ arrets: arrets.filter((r) => ids.includes(String(r.user_id))), profils, maintenant });
       const tranche = trancheReleveDeVeille(candidats, { maintenant });
       candidatsVus = candidats.length;
