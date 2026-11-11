@@ -99,7 +99,7 @@ Deux repères avant de te lancer. En France, Depop prélève 10 % du prix de ven
 
 Vendu sur Vinted à 10 h, acheté une deuxième fois sur Leboncoin à 10 h 20 : c'est la double vente, la hantise de tout revendeur multiplateforme. Les deux outils s'y attaquent. Pas au même prix.
 
-**Chez FillSell, le retrait des copies est inclus dans tous les forfaits, Gratuit compris.** Tout part d'une vente enregistrée. Quand Vinted ou eBay marque ton article vendu, FillSell enregistre la vente tout seul. Sur Leboncoin et Beebs, il te demande de confirmer d'un appui. Ensuite, FillSell retire les autres annonces de l'article, sur {{plateformes}} : celles qu'il a déposées, et aussi celles que tu avais publiées toi-même, une fois rattachées à l'article par une preuve. Un doute sur une annonce ? Aucun retrait à l'aveugle : l'app te demande « Déjà vendu ? », et ta réponse vaut pour de bon. Pour Vinted, Leboncoin, Beebs et Depop, ton ordinateur doit être allumé avec Chrome ouvert, sauf avec l'option FillSell Cloud ; un compte eBay relié est suivi depuis nos serveurs.
+**Chez FillSell, le retrait des copies est inclus dans tous les forfaits, Gratuit compris.** Tout part d'une vente enregistrée. Quand Vinted ou eBay marque ton article vendu, FillSell enregistre la vente tout seul. Sur Leboncoin et Beebs, il te demande de confirmer d'un appui. Ensuite, FillSell retire les autres annonces de l'article, sur {{plateformes}} : celles qu'il a déposées, et aussi celles que tu avais publiées toi-même, une fois rattachées à l'article par une preuve. Un doute sur une annonce ? Aucun retrait à l'aveugle : l'app te demande « Déjà vendu ? », et ta réponse vaut pour de bon. Pour Vinted, Leboncoin, Beebs et Depop, ton ordinateur doit être allumé avec Chrome ouvert, sauf avec FillSell Cloud ; un compte eBay relié est suivi depuis nos serveurs.
 
 ![La file de l'ordinateur dans FillSell, juste après une vente sur Vinted : en cours, le retrait de l'annonce Depop du sweat Red Bull Racing vendu (38 €), avec sa barre d'avancement ; à venir, le retrait de sa copie Leboncoin, puis la publication du sweat Öhlins sur Depop et sur Leboncoin, chacune « en attente de son tour ».](media:captures/vente-retrait-copies.png)
 
@@ -132,7 +132,7 @@ Une annonce qui vieillit glisse dans les résultats. Pour la relancer, on la ret
 
 Crosslist republie à la demande, à l'unité ou en lot, en retirant d'abord l'ancienne annonce pour éviter les doublons ([republication chez Crosslist](https://docs.crosslist.com/knowledge-base/listing-management/relist-delist)). La programmation des republications figure sur sa feuille de route publique, au statut « Under consideration » ([feuille de route de Crosslist](https://feedback.crosslist.com/en/roadmap), relevée le 9 octobre 2026).
 
-Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours et le créneau, matin, midi, soir ou sur mesure, et FillSell les republie pendant que tu chines, ordinateur allumé, ou éteint avec l'option FillSell Cloud. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
+Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours et le créneau, matin, midi, soir ou sur mesure, et FillSell les republie pendant que tu chines, ordinateur allumé, ou éteint avec FillSell Cloud. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
 
 ![L'écran « Remonter mes annonces » de FillSell : « 23 annonces perdent en visibilité », toutes cochées, avec la photo, les icônes des plateformes (dont Depop) et l'ancienneté de chacune (en ligne depuis 35, 31, 27, 22 jours…), la ligne « Republication automatique — Active sur Vinted, Leboncoin et Beebs », interrupteur allumé, et le bouton « Remonter 23 annonces » : « Ton ordinateur les republie une à une ».](media:captures/republication-remonter.png)
 
@@ -153,13 +153,13 @@ Chez FillSell, le partage des rôles est net, et il joue pour toi :
 - **ton téléphone pilote** : la photo, l'annonce, le stock, les ventes, la marge ;
 - **ton ordinateur exécute** : l'extension Chrome, installée une fois depuis le Chrome Web Store, dépose tes annonces sur Vinted, Leboncoin, Beebs et Depop dans tes propres sessions, une à une, à un rythme humain ;
 - **jamais ton mot de passe** : tu restes connecté(e) à tes comptes dans Chrome, comme d'habitude ;
-- **ordinateur éteint ?** Rien ne se perd : tes annonces attendent la prochaine ouverture de Chrome. Et ton compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell, 24 h/24.
+- **ordinateur éteint ?** Rien ne se perd : tes annonces attendent la prochaine ouverture de Chrome. Et ton compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell, 24 h/24.
 
 ![Étape 1 sur 3 de la publication dans FillSell, « Où publier ? » : la fiche du t-shirt Picture gris (Très bon état, 14 €) et cinq plateformes cochées — Vinted, Leboncoin, Beebs et Depop « Connectée », eBay « Part de nos serveurs, sans l'extension » (compte relié par l'API) — puis le choix des photos (Retouche IA ou Telles quelles) et le bouton « Continuer · 5 plateformes ». Mention : « Rien ne part encore. Tu vérifies à l'écran suivant. »](media:captures/publication-choix-plateformes.png)
 
 *Compte de démonstration, chiffres fictifs.*
 
-Soyons justes : pour Depop, Crosslist suit les ventes depuis ses serveurs dans ses formules Gold et Diamond, quand FillSell le fait avec l'option FillSell Cloud. Mais seulement dans les quatre pays qu'il sert.
+Soyons justes : pour Depop, Crosslist suit les ventes depuis ses serveurs dans ses formules Gold et Diamond, quand FillSell le fait avec FillSell Cloud. Mais seulement dans les quatre pays qu'il sert.
 
 ## Combien coûtent FillSell et Crosslist ?
 
@@ -243,7 +243,7 @@ Non. Crosslist gère Depop aux États-Unis, au Royaume-Uni, au Canada et en Aust
 
 ### Faut-il laisser son ordinateur allumé avec FillSell ?
 
-Sans option, oui pour Vinted, Leboncoin, Beebs et Depop : l'extension Chrome travaille sur ton ordinateur allumé, dans tes sessions, sans jamais te demander tes mots de passe. Ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint. Avec l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Chez Crosslist, l'ordinateur doit rester allumé pour Vinted et les autres places de marché gérées par son extension.
+Sans FillSell Cloud, oui pour Vinted, Leboncoin, Beebs et Depop : l'extension Chrome travaille sur ton ordinateur allumé, dans tes sessions, sans jamais te demander tes mots de passe. Ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint. Avec FillSell Cloud, sur iPhone et sur le web (formules avec Cloud, 7 jours d’essai), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Chez Crosslist, l'ordinateur doit rester allumé pour Vinted et les autres places de marché gérées par son extension.
 
 ### Que valent les avis sur Crosslist ?
 

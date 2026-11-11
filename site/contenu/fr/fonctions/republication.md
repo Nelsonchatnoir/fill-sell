@@ -124,7 +124,7 @@ Une fois l'ancienne annonce retirée, FillSell va au bout de la remise en ligne,
 
 Ce qu'il faut de ton côté : l'ordinateur allumé, Chrome ouvert, et ta session ouverte sur chaque plateforme. Tant qu'il reste du travail, l'extension empêche l'ordinateur de se mettre en veille ; l'écran, lui, peut s'éteindre. Ordinateur éteint ? Rien ne part tant qu'il dort. Et si l'extension n'a pas donné signe de vie depuis une semaine, FillSell ne lance aucune republication : il attend ton ordinateur. Pas encore installée ? [Installe l'extension FillSell](/extension).
 
-Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont republiées depuis les serveurs de FillSell.
+Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont republiées depuis les serveurs de FillSell.
 
 ## Les garde-fous : ton compte d'abord
 
@@ -180,7 +180,7 @@ Oui. D'un appui, FillSell retire ton annonce et la remet en ligne, et elle reste
 
 ### Mon ordinateur doit-il rester allumé pendant la republication ?
 
-Sans l'option FillSell Cloud, oui : c'est l'extension Chrome qui republie, sur ton ordinateur, dans tes sessions. Ordinateur allumé et Chrome ouvert pendant ton créneau, elle fait le travail et empêche la mise en veille tant qu'il en reste ; l'écran peut s'éteindre. Ordinateur éteint, rien ne part. Et une fois une ancienne annonce retirée, la remise en ligne va au bout, même si le créneau se termine. Avec l'option FillSell Cloud, non : tes annonces Vinted, Leboncoin, Beebs et Depop sont republiées depuis les serveurs de FillSell, sans ton ordinateur.
+Sans FillSell Cloud, oui : c'est l'extension Chrome qui republie, sur ton ordinateur, dans tes sessions. Ordinateur allumé et Chrome ouvert pendant ton créneau, elle fait le travail et empêche la mise en veille tant qu'il en reste ; l'écran peut s'éteindre. Ordinateur éteint, rien ne part. Et une fois une ancienne annonce retirée, la remise en ligne va au bout, même si le créneau se termine. Avec FillSell Cloud, non : tes annonces Vinted, Leboncoin, Beebs et Depop sont republiées depuis les serveurs de FillSell, sans ton ordinateur.
 
 ### Republier ses annonces, est-ce risqué pour son compte ?
 

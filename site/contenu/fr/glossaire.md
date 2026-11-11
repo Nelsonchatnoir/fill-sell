@@ -170,7 +170,7 @@ La republication automatique remonte tes annonces sans que tu y touches, aux jou
 
 Exemple : chaque soir entre 19 h et 22 h, tes annonces en ligne depuis plus de quinze jours remontent une à une, pendant que tu dînes.
 
-Avec FillSell, selon ta formule, elle fonctionne sur {{republication}}. Tu règles chaque plateforme une fois : créneau du matin, du midi, du soir ou sur mesure, jours actifs, ancienneté minimale (jamais moins d'une semaine), ordre de passage. Ton ordinateur allumé, Chrome ouvert, fait le reste, à un rythme humain, jamais en rafale. Un geste met tout en pause, et tes réglages t'attendent. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces sont republiées depuis les serveurs de FillSell.
+Avec FillSell, selon ta formule, elle fonctionne sur {{republication}}. Tu règles chaque plateforme une fois : créneau du matin, du midi, du soir ou sur mesure, jours actifs, ancienneté minimale (jamais moins d'une semaine), ordre de passage. Ton ordinateur allumé, Chrome ouvert, fait le reste, à un rythme humain, jamais en rafale. Un geste met tout en pause, et tes réglages t'attendent. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces sont republiées depuis les serveurs de FillSell.
 
 ### Boost
 
@@ -188,7 +188,7 @@ La double vente arrive quand un même article est payé par deux acheteurs, sur 
 
 Exemple : ton blouson part sur Vinted à 14 h ; à 14 h 20, un acheteur Leboncoin le paie aussi. Il faut annuler une vente, rembourser, s'excuser. Et les délais ne laissent pas de marge : sur Vinted, 5 jours ouvrés pour expédier, sinon la commande est annulée ([aide Vinted](https://www.vinted.fr/help/753)) ; sur Beebs, 48 heures pour valider la commande ([aide Beebs](https://sos.beebs.app/hc/fr/articles/360018452760)). Depop l'écrit noir sur blanc : si l'article se vend chez lui et ailleurs, la responsabilité est la tienne, remboursement compris ([conditions de Depop](https://depophelp.zendesk.com/hc/en-gb/articles/360001773148-Terms-of-Service)).
 
-Avec FillSell, la parade tient en quatre mots : vendu ici, retiré là-bas. Une fois la vente enregistrée, les autres annonces de l'article sont retirées ; au moindre doute, l'app te demande « Déjà vendu ? ». Aucun délai n'est promis : sans l'option FillSell Cloud, c'est ton ordinateur, allumé avec Chrome ouvert, qui fait les retraits, sauf pour une annonce eBay publiée par l'API officielle d'eBay, retirée par la même voie. La méthode complète : [éviter la double vente](page:fonctions/ventes-et-retraits).
+Avec FillSell, la parade tient en quatre mots : vendu ici, retiré là-bas. Une fois la vente enregistrée, les autres annonces de l'article sont retirées ; au moindre doute, l'app te demande « Déjà vendu ? ». Aucun délai n'est promis : sans FillSell Cloud, c'est ton ordinateur, allumé avec Chrome ouvert, qui fait les retraits, sauf pour une annonce eBay publiée par l'API officielle d'eBay, retirée par la même voie. La méthode complète : [éviter la double vente](page:fonctions/ventes-et-retraits).
 
 ### Vente enregistrée
 
@@ -318,7 +318,7 @@ Une API officielle est la porte qu'une plateforme ouvre elle-même aux logiciels
 
 Exemple : sur eBay, tu relies ton compte depuis la page d'autorisation officielle d'eBay. FillSell reçoit une autorisation, jamais ton mot de passe.
 
-Avec FillSell, la publication d'un compte eBay relié passe par l'API officielle d'eBay, sur eBay France, même si ton ordinateur est éteint ; le compte doit simplement être prêt à vendre chez eBay, paiement, retours et livraison réglés. Sur les autres plateformes, c'est l'extension qui travaille, dans ta session — ou, avec l'option FillSell Cloud, les serveurs de FillSell. Bon à savoir : eBay a racheté Depop, rachat finalisé le 30 juillet 2026 ([Depop](https://news.depop.com/company-news/ebay-completes-acquisition-of-depop/)), mais ce sont toujours deux plateformes et deux comptes distincts ; relier eBay ne relie pas Depop. Tout sur eBay : [FillSell sur eBay](page:plateformes/ebay).
+Avec FillSell, la publication d'un compte eBay relié passe par l'API officielle d'eBay, sur eBay France, même si ton ordinateur est éteint ; le compte doit simplement être prêt à vendre chez eBay, paiement, retours et livraison réglés. Sur les autres plateformes, c'est l'extension qui travaille, dans ta session — ou, avec FillSell Cloud, les serveurs de FillSell. Bon à savoir : eBay a racheté Depop, rachat finalisé le 30 juillet 2026 ([Depop](https://news.depop.com/company-news/ebay-completes-acquisition-of-depop/)), mais ce sont toujours deux plateformes et deux comptes distincts ; relier eBay ne relie pas Depop. Tout sur eBay : [FillSell sur eBay](page:plateformes/ebay).
 
 ### Lens
 

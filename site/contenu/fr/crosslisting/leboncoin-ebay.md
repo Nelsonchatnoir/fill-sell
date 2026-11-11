@@ -107,7 +107,7 @@ FillSell ne souscrit jamais d'option payante à ta place. Et pour tout un stock,
 
 ## Vendu sur eBay ou sur Leboncoin : ce qui se passe
 
-**Vendu sur eBay.** FillSell repère la vente côté eBay et l'enregistre tout seul ; tu reçois un e-mail. L'annonce Leboncoin du même article est retirée par l'extension, ordinateur allumé et Chrome ouvert. Ordinateur éteint ? Le retrait attend et part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, il part des serveurs de FillSell, ordinateur éteint.
+**Vendu sur eBay.** FillSell repère la vente côté eBay et l'enregistre tout seul ; tu reçois un e-mail. L'annonce Leboncoin du même article est retirée par l'extension, ordinateur allumé et Chrome ouvert. Ordinateur éteint ? Le retrait attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud, il part des serveurs de FillSell, ordinateur éteint.
 
 **Vendu sur Leboncoin.** L'extension repère la vente, ordinateur allumé, et FillSell te demande « Vendue sur Leboncoin ? ». Un appui pour confirmer, et l'annonce eBay est retirée, par l'API officielle d'eBay quand FillSell l'a publiée par cette voie. Filet de sécurité côté Leboncoin : son aide te donne 48 h après le paiement pour confirmer que l'article est disponible, faute de quoi la vente est annulée. Ne confirme que si l'objet n'est pas déjà parti sur eBay.
 
@@ -121,7 +121,7 @@ Le parcours complet d'une vente : [ventes et retraits des copies](page:fonctions
 
 FillSell s'utilise sur iPhone, sur Android ou dans ton navigateur sur fillsell.app. C'est là que tu scannes, coches, vérifies et confirmes. Le travail sur les sites, lui, se fait sur ton ordinateur : l'extension Chrome agit dans tes sessions déjà ouvertes, dans une fenêtre réduite, une annonce après l'autre. Tant qu'il reste des annonces à publier, elle empêche l'ordinateur de se mettre en veille. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome.
 
-Sur ce trajet, eBay a un avantage net : une fois ton compte relié, il se passe même de l'ordinateur. Publication, synchronisation et suivi des ventes passent par l'API officielle d'eBay. Avec l'option FillSell Cloud, Leboncoin s'en passe aussi : tes annonces Leboncoin partent depuis les serveurs de FillSell, 24 h/24.
+Sur ce trajet, eBay a un avantage net : une fois ton compte relié, il se passe même de l'ordinateur. Publication, synchronisation et suivi des ventes passent par l'API officielle d'eBay. Avec FillSell Cloud, Leboncoin s'en passe aussi : tes annonces Leboncoin partent depuis les serveurs de FillSell, 24 h/24.
 
 ![Le panneau de l'extension Chrome FillSell (version 0.6.105), ouvert en haut à droite d'un écran d'ordinateur : pastille « Active », dernier passage il y a 1 min, « FillSell garde ton ordinateur éveillé pendant la publication », les cinq plateformes « Connectée » (Vinted, Leboncoin, eBay — « Compte eBay relié à FillSell » —, Beebs et Depop), puis le sweat Öhlins « Prête à publier » : déjà en ligne sur Vinted, en file pour Leboncoin et Depop. Le bas du panneau sort de l'écran.](media:captures/extension-popup-ordinateur.png)
 
@@ -131,7 +131,7 @@ Jamais ton mot de passe. Sur Leboncoin, tu restes connecté(e) dans ton navigate
 
 Leboncoin vend une option « Remonter en tête de liste », en une fois ou sur 7, 30 ou 60 jours. FillSell ne l'achète jamais à ta place. Il republie : il retire l'annonce puis la remet en ligne, et elle repart en haut des résultats. Ses vues et ses favoris repartent de zéro : à toi de choisir lesquelles remonter.
 
-Encore mieux, selon ta formule, tes annonces remontent toutes seules : FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur. Les republications sont espacées à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Le détail : [la republication de tes annonces](page:fonctions/republication).
+Encore mieux, selon ta formule, tes annonces remontent toutes seules : FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé ou, avec FillSell Cloud, sans ordinateur. Les republications sont espacées à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Le détail : [la republication de tes annonces](page:fonctions/republication).
 
 ## Et le reste de ton stock ?
 
@@ -149,7 +149,7 @@ Appuie sur « Synchroniser » : tes annonces Leboncoin arrivent dans ton stock F
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Pour Leboncoin, oui, sans l'option FillSell Cloud : l'extension Chrome dépose, surveille et retire tes annonces depuis ton ordinateur, Chrome ouvert. Pour eBay, non, une fois ton compte relié : publication et suivi des ventes passent par l'API officielle d'eBay. Ordinateur éteint, rien n'est perdu : ce qui concerne Leboncoin attend et part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur pour Leboncoin non plus : elle publie et retire tes annonces Leboncoin depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Pour Leboncoin, oui, sans FillSell Cloud : l'extension Chrome dépose, surveille et retire tes annonces depuis ton ordinateur, Chrome ouvert. Pour eBay, non, une fois ton compte relié : publication et suivi des ventes passent par l'API officielle d'eBay. Ordinateur éteint, rien n'est perdu : ce qui concerne Leboncoin attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur pour Leboncoin non plus : il publie et retire tes annonces Leboncoin depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Vendre sur eBay est-il vraiment gratuit en 2026 ?
 

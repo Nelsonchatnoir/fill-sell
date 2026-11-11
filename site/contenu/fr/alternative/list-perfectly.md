@@ -58,7 +58,7 @@ Ce n'est pas une critique : chaque outil choisit son marché. Il te faut simplem
 |---|---|---|
 | Tu vends depuis la France sur tout ou partie de ces plateformes : {{plateformes}} ; ton atelier, c'est ton téléphone | **FillSell** (notre produit) | publication sur chacune depuis une même fiche, app iPhone et Android |
 | Tu vends dans plusieurs pays d'Europe, sur un grand nombre de plateformes | FLUF Connect | Vinted sur 19 sites, eBay sur plus de 17, Wallapop, Subito, Kleinanzeigen… |
-| Tes comptes Vinted et Leboncoin doivent tourner sans ton ordinateur | **FillSell** (option FillSell Cloud) ou StoFlow | FillSell Cloud, à 24,99 € par mois, publie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis nos serveurs ; StoFlow annonce les faire tourner sur ses serveurs à partir de son plan Pro, 29,99 € par mois |
+| Tes comptes Vinted et Leboncoin doivent tourner sans ton ordinateur | **FillSell** (avec FillSell Cloud) ou StoFlow | FillSell Cloud publie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis nos serveurs ; StoFlow annonce les faire tourner sur ses serveurs à partir de son plan Pro, 29,99 € par mois |
 | Tu as une boutique Shopify, WooCommerce ou PrestaShop, et tu vends aussi sur Beebs | FlowDino | modules de boutique publiés, plus Beebs, Etsy et Vestiaire Collective |
 | Tu vends sur Vinted et Depop ailleurs qu'en France, sans Leboncoin | Relistly | Depop pour les vendeurs de 24 pays européens |
 | Tu vends aux États-Unis, sur Poshmark, Mercari ou Whatnot | List Perfectly | c'est son terrain |
@@ -94,7 +94,7 @@ L'article est devant toi, ton téléphone aussi : FillSell commence là. Tu le p
 
 *Compte de démonstration, chiffres fictifs.*
 
-**Et, selon ta formule, tes annonces remontent toutes seules.** FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, à un rythme humain, pendant que tu fais autre chose, ordinateur allumé, ou éteint avec l'option FillSell Cloud. Tu coupes tout d'un geste, quand tu veux.
+**Et, selon ta formule, tes annonces remontent toutes seules.** FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, à un rythme humain, pendant que tu fais autre chose, ordinateur allumé, ou éteint avec FillSell Cloud. Tu coupes tout d'un geste, quand tu veux.
 
 Ses limites, sans détour. Aujourd'hui, FillSell travaille avec Vinted France et, pour Depop, avec un compte en euros ouvert depuis la France ; il ne publie ni sur Poshmark, ni sur Etsy, ni sur Vestiaire Collective. Et sa preuve publique est jeune : 360 utilisateurs et 5,0 sur 1 avis sur le Chrome Web Store, 5,0 sur 3 notes sur l'App Store français, plus de 500 téléchargements sur Google Play (relevé du 9 octobre 2026). Le duel complet : [FillSell ou List Perfectly, critère par critère](page:comparatif/fillsell-vs-list-perfectly).
 
@@ -140,7 +140,7 @@ Les autres alternatives retirent aussi les copies, chacune à sa façon : StoFlo
 
 List Perfectly part de l'ordinateur : le crosslisting passe par son extension, et tu cliques toi-même « publier » sur chaque place de marché. Sur le téléphone, son site s'ouvre dans le navigateur, pour les brouillons, les images et les outils de prix.
 
-FillSell renverse l'ordre. Tout se décide dans l'app, sur ton iPhone ou ton Android : la photo, l'annonce, les plateformes, la vérification avant l'envoi. Puis l'extension Chrome, installée une fois sur ton ordinateur, remplit chaque formulaire et dépose tes annonces une à une, à un rythme humain, dans une fenêtre réduite qui ne te prend pas la main. Tant qu'il reste des annonces à publier, elle empêche l'ordinateur de se mettre en veille. Ordinateur éteint ? Tes annonces patientent dans la file et partent dès que Chrome se rouvre. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell, 24 h/24.
+FillSell renverse l'ordre. Tout se décide dans l'app, sur ton iPhone ou ton Android : la photo, l'annonce, les plateformes, la vérification avant l'envoi. Puis l'extension Chrome, installée une fois sur ton ordinateur, remplit chaque formulaire et dépose tes annonces une à une, à un rythme humain, dans une fenêtre réduite qui ne te prend pas la main. Tant qu'il reste des annonces à publier, elle empêche l'ordinateur de se mettre en veille. Ordinateur éteint ? Tes annonces patientent dans la file et partent dès que Chrome se rouvre. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell, 24 h/24.
 
 ![Le panneau de l'extension Chrome FillSell (version 0.6.105), ouvert en haut à droite d'un écran d'ordinateur : pastille « Active », dernier passage il y a 1 min, « FillSell garde ton ordinateur éveillé pendant la publication », les cinq plateformes « Connectée » (Vinted, Leboncoin, eBay — « Compte eBay relié à FillSell » —, Beebs et Depop), puis le sweat Öhlins « Prête à publier » : déjà en ligne sur Vinted, en file pour Leboncoin et Depop. Le bas du panneau sort de l'écran.](media:captures/extension-popup-ordinateur.png)
 
@@ -164,7 +164,7 @@ Avec FillSell, ton compte Depop en France, en euros, rejoint le reste de ton sto
 
 Un argument que Depop pose lui-même : ses conditions d'utilisation (version du 6 octobre 2026) acceptent qu'on propose ses articles sur d'autres plateformes via un outil de crosslisting, si l'on retire vite l'annonce Depop quand l'article se vend ailleurs ([conditions d'utilisation de Depop](https://depophelp.zendesk.com/hc/en-gb/articles/360001773148-Terms-of-Service)). FillSell est construit pour ça : la vente enregistrée ailleurs, l'extension retire l'annonce Depop rattachée à l'article, puis vérifie chez Depop qu'elle n'est plus en ligne.
 
-Deux repères. Depop appartient à eBay depuis le 30 juillet 2026, mais reste une plateforme à part, avec ses propres comptes et ses frais : en France, 10 % du prix et du port, plus les frais PayPal ([frais vendeur de Depop](https://depophelp.zendesk.com/hc/en-gb/articles/360001791127-Seller-fees-and-charges)). Et, par honnêteté : FLUF Connect gère Depop sans ordinateur une fois le compte connecté ; chez FillSell, Depop passe par ton ordinateur allumé, Chrome ouvert, sauf avec l'option FillSell Cloud.
+Deux repères. Depop appartient à eBay depuis le 30 juillet 2026, mais reste une plateforme à part, avec ses propres comptes et ses frais : en France, 10 % du prix et du port, plus les frais PayPal ([frais vendeur de Depop](https://depophelp.zendesk.com/hc/en-gb/articles/360001791127-Seller-fees-and-charges)). Et, par honnêteté : FLUF Connect gère Depop sans ordinateur une fois le compte connecté ; chez FillSell, Depop passe par ton ordinateur allumé, Chrome ouvert, sauf avec FillSell Cloud.
 
 ## Combien coûtent List Perfectly et ses alternatives ?
 
@@ -206,7 +206,7 @@ Tu vends aux États-Unis ? Garde-le. Tu vends depuis la France ? Les outils plus
 
 ### Quelle est la meilleure alternative à List Perfectly en France ?
 
-Tout dépend de tes plateformes. Pour vendre depuis la France sur Vinted, Leboncoin, eBay, Beebs ou Depop et tout piloter depuis ton téléphone, FillSell arrive en tête de [notre comparatif du 9 octobre 2026](page:comparatif/meilleures-applications-crosslisting), dont la grille est publiée (FillSell est notre produit). Pour vendre dans plusieurs pays d'Europe, regarde FLUF Connect ou Relistly ; pour des comptes qui tournent ordinateur éteint, l'option FillSell Cloud ou StoFlow à partir de son plan Pro ; pour Beebs avec une boutique Shopify, FlowDino.
+Tout dépend de tes plateformes. Pour vendre depuis la France sur Vinted, Leboncoin, eBay, Beebs ou Depop et tout piloter depuis ton téléphone, FillSell arrive en tête de [notre comparatif du 9 octobre 2026](page:comparatif/meilleures-applications-crosslisting), dont la grille est publiée (FillSell est notre produit). Pour vendre dans plusieurs pays d'Europe, regarde FLUF Connect ou Relistly ; pour des comptes qui tournent ordinateur éteint, FillSell Cloud ou StoFlow à partir de son plan Pro ; pour Beebs avec une boutique Shopify, FlowDino.
 
 ### List Perfectly fonctionne-t-il avec Vinted France ?
 
@@ -230,4 +230,4 @@ List Perfectly coûte 29 $, 49 $, 69 $ ou de 99 à 249 $ par mois, sans formule 
 
 ### FillSell retire-t-il mes autres annonces quand je vends sur Vinted ?
 
-Oui. Quand Vinted marque ton article vendu, FillSell enregistre la vente tout seul, puis retire les autres annonces de l'article qui lui sont rattachées par une preuve. Une annonce dont il n'est pas sûr reste en ligne et te pose la question « Déjà vendu ? ». Hors compte eBay relié, le retrait passe par ton ordinateur allumé, avec Chrome ouvert, ou par les serveurs de FillSell avec l'option FillSell Cloud.
+Oui. Quand Vinted marque ton article vendu, FillSell enregistre la vente tout seul, puis retire les autres annonces de l'article qui lui sont rattachées par une preuve. Une annonce dont il n'est pas sûr reste en ligne et te pose la question « Déjà vendu ? ». Hors compte eBay relié, le retrait passe par ton ordinateur allumé, avec Chrome ouvert, ou par les serveurs de FillSell avec FillSell Cloud.

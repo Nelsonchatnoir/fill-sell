@@ -445,8 +445,10 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   const site = {
     logos: { Vinted: '/assets/site/vinted.0123456789.webp', Leboncoin: '/assets/site/leboncoin.0123456789.webp', eBay: '/assets/site/ebay.0123456789.webp', Beebs: '/assets/site/beebs.0123456789.webp', Depop: '/assets/site/depop.0123456789.webp' },
     iconeAppStore: '/assets/site/app-store.0123456789.svg',
-    cloud: { prix: 24.99, essaiJours: 7, plateformes: ['Vinted', 'Leboncoin', 'Beebs', 'Depop'] },
+    // (11/11 au soir) Plus de Cloud seul : prix des formules AVEC Cloud lus dans l'app (PRIX_AVEC_CLOUD) ; ici, absents.
+    cloud: { avecCloud: null, essaiJours: 7, plateformes: ['Vinted', 'Leboncoin', 'Beebs', 'Depop'] },
   };
+  const siteAvec = { ...site, cloud: { ...site.cloud, avecCloud: { premium: 34.99, pro: 49.99, business: 79.99 } } };
   const tarifs = { ...lireTarifs(racine, ['fr', 'en']), communs: { fr: ['Publication sur Vinted, Leboncoin, eBay, Beebs et Depop'], en: ['Publishing on Vinted, Leboncoin, eBay, Beebs and Depop'] }, lien: null, lienCloud: '#cloud-titre' };
   for (const lang of ['fr', 'en']) {
     const avec = cartesTarifs(site, { lang, tarifs: { ...tarifs, grille: K } });
@@ -459,7 +461,19 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
     const cloud = blocCloud(site, { lang });
     const texte = texteBrut(cloud);
     ok(!REGLE_CLOUD_ANDROID.test(texte) && !/Android|Google Play/i.test(cloud), `${lang} : section FillSell Cloud sans Android ni Google Play`);
-    ok(texte.includes(lang === 'fr' ? '24,99' : '24.99') && (lang === 'fr' ? /7 jours/ : /7-day/).test(cloud) && /id="cloud-titre"/.test(cloud), `${lang} : prix et essai du Cloud écrits depuis l'app, ancre de l'option`);
+    // (11/11 au soir, verrou) Le Cloud SEUL n'est plus vendu : jamais « 24,99 » ni « option » ; prix AVEC Cloud lus dans
+    // l'app, absents = aucun prix (jamais un chiffre recopié) ; l'essai et l'ancre restent.
+    const prixAvec = lang === 'fr' ? ['34,99', '49,99', '79,99'] : ['34.99', '49.99', '79.99'];
+    const cloudAvec = blocCloud(siteAvec, { lang });
+    ok(!/24[,.]99/.test(cloud + cloudAvec) && !/\boption\b/i.test(texteBrut(cloud) + texteBrut(cloudAvec)) && (lang === 'fr' ? /7[  ]jours/ : /7-day/).test(cloud) && /id="cloud-titre"/.test(cloud),
+      `${lang} : section Cloud sans Cloud seul (ni 24,99 ni « option »), essai et ancre gardés`);
+    ok(!/\d+[,.]\d\d/.test(texteBrut(cloud)) && prixAvec.every((x) => texteBrut(cloudAvec).includes(x)), `${lang} : prix des formules avec Cloud lus dans l'app, aucun prix sans eux`);
+    const tarifsAvec = cartesTarifs(siteAvec, { lang, tarifs: { ...tarifs, grille: K } });
+    ok(/class="bascule"/.test(tarifsAvec) && /id="formules-sans"[^>]*checked/.test(tarifsAvec) && /id="formules-avec"/.test(tarifsAvec)
+      && prixAvec.every((x) => tarifsAvec.includes(x)) && (tarifsAvec.match(/class="prix-avec"/g) ?? []).length >= 9,
+      `${lang} : interrupteur « Sans Cloud / Avec Cloud », « Sans » coché, prix avec Cloud sur les trois formules payantes`);
+    ok(!/class="bascule"/.test(avec) && /class="option-cloud"/.test(avec) && !/24[,.]99|\boption\b/i.test(texteBrut(avec)),
+      `${lang} : sans prix avec Cloud, pas d'interrupteur, le bandeau de repli sans prix ni « option »`);
     ok(['Vinted', 'Leboncoin', 'Beebs', 'Depop'].every((n) => cloud.includes(`>${n}</span>`)) && !/>eBay<\/span><span class="etat/.test(cloud), `${lang} : les quatre plateformes du Cloud, eBay à part (API)`);
     ok(logosPlateformesFautifs(cloud, ['vinted', 'leboncoin', 'ebay', 'beebs', 'depop']).length === 0, `${lang} : logos de la scène devant leur nom`);
   }

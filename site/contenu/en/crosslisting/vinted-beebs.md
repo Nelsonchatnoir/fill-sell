@@ -34,7 +34,7 @@ etapes:
   - titre: "Check the Beebs version, then send"
     texte: "The “What will go out” screen shows each marketplace's listing: title, category, condition, price. Beebs category not found, or parcel weight missing? The app asks you a quick question. Nothing leaves before you say go."
   - titre: "Your computer posts the listings on Beebs"
-    texte: "The extension fills in Beebs's form one listing at a time, at a human pace, in a minimised window. Computer off? Nothing is lost: your listings wait and go out the next time Chrome opens. With the FillSell Cloud option, no computer needed."
+    texte: "The extension fills in Beebs's form one listing at a time, at a human pace, in a minimised window. Computer off? Nothing is lost: your listings wait and go out the next time Chrome opens. With FillSell Cloud, no computer needed."
     media: "captures/extension-popup.png"
     alt: "The full FillSell Chrome extension panel (version 0.6.105) during a deposit: \"Active\", last run 1 min ago, computer kept awake while publishing, the five marketplaces connected including Depop, \"in progress: Depop · publishing\" for the Volcom cap with its bar, then the Öhlins hoodie ready to publish (already live on Vinted, queued for Leboncoin and Depop) and \"3 in queue\"."
   - titre: "Sold here, removed there"
@@ -133,7 +133,7 @@ A copy counts as “proven” when the link is certain: FillSell posted it itsel
 
 ![The computer's queue in FillSell right after a sale on Vinted: in progress, removing the Depop listing of the sold Red Bull Racing hoodie (€38), with its progress bar; next, removing its Leboncoin copy, then publishing the Öhlins hoodie on Depop and Leboncoin, each waiting its turn.](media:captures/vente-retrait-copies.png)
 
-It's exactly what both marketplaces ask of you. Beebs's terms (version of 29 January 2025) ask the seller to remove an item from the Beebs catalogue once it has sold “through another channel” (our translation). And [Vinted's help centre](https://www.vinted.ie/help/214) says it plainly: “If it happens that you sold an item on a different platform, please hide or delete it from your Vinted listings”. With FillSell, as soon as the sale is recorded, the removal goes out without you lifting a finger — computer on, Chrome open. Computer off? The removal waits and goes out the next time Chrome opens. With the FillSell Cloud option, it goes out from FillSell's servers, computer off.
+It's exactly what both marketplaces ask of you. Beebs's terms (version of 29 January 2025) ask the seller to remove an item from the Beebs catalogue once it has sold “through another channel” (our translation). And [Vinted's help centre](https://www.vinted.ie/help/214) says it plainly: “If it happens that you sold an item on a different platform, please hide or delete it from your Vinted listings”. With FillSell, as soon as the sale is recorded, the removal goes out without you lifting a finger — computer on, Chrome open. Computer off? The removal waits and goes out the next time Chrome opens. With FillSell Cloud, it goes out from FillSell's servers, computer off.
 
 ![The "Déjà vendu ?" (already sold?) question in FillSell, over the Stock: the grey Red Bull Racing hoodie sold on Vinted — is your eBay listing with the same name the same item? The sold item card (photo, €38, created in the app, "sold"), the line "if you answer yes, this listing will be removed: eBay", and two buttons: "yes, remove it" and "no, it’s another copy".](media:captures/vente-deja-vendu-question.png)
 
@@ -143,7 +143,7 @@ Proofs, removals and questions in detail: [sales and delisting of copies (in Fre
 
 An ageing listing slides down the results. Reposting means taking it down and putting it back up: it climbs back to the top, but its views and favourites start from zero. FillSell removes the old listing first, then posts the new one — and on Beebs, whose rules forbid offering the same item twice, that order matters.
 
-Bump a listing back up with one tap. Or, depending on your subscription, switch on automatic reposting, and your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, while you get on with your evening — computer on, or without one with the FillSell Cloud option. FillSell spaces your reposts out at a human pace to protect your account, never in bursts, and you can switch everything off in one tap, whenever you like.
+Bump a listing back up with one tap. Or, depending on your subscription, switch on automatic reposting, and your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, while you get on with your evening — computer on, or without one with FillSell Cloud. FillSell spaces your reposts out at a human pace to protect your account, never in bursts, and you can switch everything off in one tap, whenever you like.
 
 ![Automatic reposting settings in FillSell: the time slot (morning 8–10, noon 12–14, evening 19–22 selected, or custom), "local time · Chrome open", the note that reposts are spread over the slot at the account's real pace, never in bursts, and the active days (every day, Monday to Sunday).](media:captures/republication-creneaux.png)
 
@@ -183,7 +183,7 @@ Beebs handles payment and shipping in mainland France, Corsica and Belgium, and 
 
 ### Does my computer need to stay on?
 
-Yes, without the FillSell Cloud option, for Vinted and Beebs: the Chrome extension posts, checks and removes your listings from your computer, with Chrome open. While listings are queued, it keeps the computer from going to sleep. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. With the FillSell Cloud option (€24.99 a month, 7-day free trial for a first subscription, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted and Beebs listings from FillSell's servers, around the clock, and keeps track of your sales.
+Yes, without FillSell Cloud, for Vinted and Beebs: the Chrome extension posts, checks and removes your listings from your computer, with Chrome open. While listings are queued, it keeps the computer from going to sleep. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. With FillSell Cloud (7-day trial, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted and Beebs listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### What happens when my item sells on Beebs?
 

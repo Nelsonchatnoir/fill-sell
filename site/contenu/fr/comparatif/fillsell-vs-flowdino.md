@@ -20,7 +20,7 @@ cta: inscription
 plateformes_citees: [vinted, leboncoin, ebay, beebs, depop]
 concurrent: flowdino
 choisir_fillsell:
-  - "Tu veux tout lancer depuis ton téléphone : photo, annonce, choix des plateformes, suivi des ventes, pendant que ton ordinateur exécute, ou les serveurs de FillSell avec l'option FillSell Cloud."
+  - "Tu veux tout lancer depuis ton téléphone : photo, annonce, choix des plateformes, suivi des ventes, pendant que ton ordinateur exécute, ou les serveurs de FillSell avec FillSell Cloud."
   - "Tu vends sur Depop, ou tu veux t'y mettre, en plus de Vinted, Leboncoin, eBay et Beebs."
   - "Tu vends sur plusieurs plateformes et tu veux un seul forfait mensuel, sans payer chaque site en plus."
   - "Tu as déjà des annonces en ligne : elles entrent dans ton stock sans limite, une fiche par article, et leurs copies sont retirées à la vente."
@@ -60,7 +60,7 @@ FlowDino, de son côté, ratisse plus large : Etsy, Vestiaire Collective, et des
 
 FlowDino est un outil d'ordinateur : une application web et une extension Chrome. Le 9 octobre 2026, la recherche « flowdino » ne renvoie aucune application sur l'App Store français ni sur Google Play. Pour Android, sa documentation conseille d'installer le navigateur Yandex afin d'y faire tourner l'extension ([installation de l'extension FlowDino](https://www.flowdino.com/docs/chrome-installation)) ; une « App mobile native » figure dans sa feuille de route ([llms.txt de FlowDino](https://www.flowdino.com/llms.txt), mis à jour en janvier 2026).
 
-FillSell est une vraie app, gratuite sur l'App Store (iPhone et iPad, iOS 15 ou plus) et sur Google Play (Android 7 ou plus), qui s'ouvre aussi sur fillsell.app depuis un ordinateur. Tu photographies l'article dans le vide-grenier, tu coches tes plateformes dans le métro, tu suis tes ventes où que tu sois. Le travail sur les sites, c'est l'[extension Chrome](/extension) qui le fait, depuis ton ordinateur, dans tes propres sessions. Avec l'option FillSell Cloud, ce sont les serveurs de FillSell : plus besoin d'ordinateur.
+FillSell est une vraie app, gratuite sur l'App Store (iPhone et iPad, iOS 15 ou plus) et sur Google Play (Android 7 ou plus), qui s'ouvre aussi sur fillsell.app depuis un ordinateur. Tu photographies l'article dans le vide-grenier, tu coches tes plateformes dans le métro, tu suis tes ventes où que tu sois. Le travail sur les sites, c'est l'[extension Chrome](/extension) qui le fait, depuis ton ordinateur, dans tes propres sessions. Avec FillSell Cloud, ce sont les serveurs de FillSell : plus besoin d'ordinateur.
 
 ![Étape 1 sur 3 de la publication dans FillSell, « Où publier ? » : la fiche du t-shirt Picture gris (Très bon état, 14 €) et cinq plateformes cochées — Vinted, Leboncoin, Beebs et Depop « Connectée », eBay « Part de nos serveurs, sans l'extension » (compte relié par l'API) — puis le choix des photos (Retouche IA ou Telles quelles) et le bouton « Continuer · 5 plateformes ». Mention : « Rien ne part encore. Tu vérifies à l'écran suivant. »](media:captures/publication-choix-plateformes.png)
 
@@ -68,7 +68,7 @@ FillSell est une vraie app, gratuite sur l'App Store (iPhone et iPad, iOS 15 ou 
 
 Côté ordinateur, la nuance compte. FlowDino demande que ton navigateur reste « ouvert sur le site concerné pendant l'exécution des tâches » ([FAQ de FlowDino](https://www.flowdino.com/faq)). L'extension FillSell travaille dans sa propre fenêtre, réduite, sans prendre la main sur ce que tu fais ; tant qu'il reste des annonces à publier, elle empêche même l'ordinateur de se mettre en veille.
 
-Sur les sites où l'extension agit, les deux outils ont besoin d'un ordinateur allumé. FlowDino le dit lui-même : « Si votre ordinateur reste éteint tout le week-end, les retraits se feront au prochain lancement » ([blog de FlowDino](https://www.flowdino.com/blog/eviter-double-vente-multi-plateformes)). Chez FillSell aussi, sans option, Vinted, Leboncoin, Beebs et Depop attendent Chrome ; rien ne se perd, tout part à la réouverture. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell, 24 h/24. Une exception de taille : sur eBay France, ton compte relié publie par l'API officielle d'eBay, même ordinateur éteint. Le détail : [FillSell pour eBay](page:plateformes/ebay).
+Sur les sites où l'extension agit, les deux outils ont besoin d'un ordinateur allumé. FlowDino le dit lui-même : « Si votre ordinateur reste éteint tout le week-end, les retraits se feront au prochain lancement » ([blog de FlowDino](https://www.flowdino.com/blog/eviter-double-vente-multi-plateformes)). Chez FillSell aussi, sans le Cloud, Vinted, Leboncoin, Beebs et Depop attendent Chrome ; rien ne se perd, tout part à la réouverture. Avec FillSell Cloud, plus besoin d'ordinateur : tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées, republiées et retirées depuis les serveurs de FillSell, 24 h/24. Une exception de taille : sur eBay France, ton compte relié publie par l'API officielle d'eBay, même ordinateur éteint. Le détail : [FillSell pour eBay](page:plateformes/ebay).
 
 ## Depop : dans FillSell, absent de FlowDino
 
@@ -130,7 +130,7 @@ Le retrait des copies est compris dans tous les forfaits FillSell, Gratuit compr
 
 FlowDino republie par une tâche planifiée, « Renouveler » : un intervalle de 5 à 360 minutes ou des heures fixes, une ancienneté minimale, un nombre d'annonces par passage ([automatisations de FlowDino](https://www.flowdino.com/docs/automation)).
 
-Selon ta formule, FillSell fait remonter tes annonces toutes seules sur {{republication}}. Tu choisis tes jours et ton créneau — matin, midi, soir, ou sur mesure — et ton ordinateur allumé republie pendant que tu fais autre chose, ou les serveurs de FillSell avec l'option FillSell Cloud. Les republications sont espacées à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Une annonce à relancer tout de suite ? Un appui.
+Selon ta formule, FillSell fait remonter tes annonces toutes seules sur {{republication}}. Tu choisis tes jours et ton créneau — matin, midi, soir, ou sur mesure — et ton ordinateur allumé republie pendant que tu fais autre chose, ou les serveurs de FillSell avec FillSell Cloud. Les republications sont espacées à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Une annonce à relancer tout de suite ? Un appui.
 
 Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart en haut des résultats, et ses vues comme ses favoris repartent de zéro. Le mode d'emploi : [remonter tes annonces](page:fonctions/republication).
 
@@ -200,7 +200,7 @@ Oui, tous les deux, mais pas sur le même périmètre. FlowDino retire les annon
 
 ### Faut-il laisser son ordinateur allumé ?
 
-Oui, avec les deux, sur les sites où l'extension travaille : FlowDino demande un navigateur ouvert sur le site concerné, FillSell un ordinateur allumé avec Chrome ouvert. Ordinateur éteint, rien n'est perdu chez FillSell : tout part à la prochaine ouverture de Chrome. Mais FillSell a aussi l'option FillSell Cloud, sur iPhone et sur le web (24,99 € par mois, essai gratuit de 7 jours pour un premier abonnement) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sur eBay France, un compte relié à FillSell publie par l'API officielle d'eBay, même ordinateur éteint.
+Oui, avec les deux, sur les sites où l'extension travaille : FlowDino demande un navigateur ouvert sur le site concerné, FillSell un ordinateur allumé avec Chrome ouvert. Ordinateur éteint, rien n'est perdu chez FillSell : tout part à la prochaine ouverture de Chrome. Mais FillSell a aussi FillSell Cloud, sur iPhone et sur le web (formules avec Cloud, 7 jours d’essai) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sur eBay France, un compte relié à FillSell publie par l'API officielle d'eBay, même ordinateur éteint.
 
 ### FillSell ou FlowDino me demandent-ils mes mots de passe ?
 

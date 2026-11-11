@@ -36,7 +36,7 @@ etapes:
     media: "captures/publication-verification-annonces.png"
     alt: "Étape 2 sur 3 de la publication, « Ce qui va partir » : une carte par plateforme, chacune avec son rayon, son état, son prix de 14 € et la mention « Prêt » — Vinted (Hommes › … › T-shirts), Leboncoin (Mode › Vêtements), Beebs (Mode › … › T-shirts), eBay (Vêtements, accessoires › … › T-shirts) et Depop (Homme › … › T-shirts, sans titre : chez Depop, la description fait l'annonce)."
   - titre: "Ton ordinateur dépose les annonces sur Beebs"
-    texte: "L'extension remplit le formulaire de Beebs, une annonce après l'autre, à un rythme humain, dans une fenêtre réduite. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, plus besoin d'ordinateur."
+    texte: "L'extension remplit le formulaire de Beebs, une annonce après l'autre, à un rythme humain, dans une fenêtre réduite. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud, plus besoin d'ordinateur."
     media: "captures/extension-popup.png"
     alt: "Le panneau de l'extension Chrome FillSell (version 0.6.105) en entier, pendant un dépôt : « Active », ordinateur gardé éveillé pendant la publication, les cinq plateformes connectées dont Depop, « En cours : Depop · publication » de la casquette Volcom avec sa barre, puis le sweat Öhlins prêt à publier (déjà en ligne sur Vinted, en file pour Leboncoin et Depop) et « 3 en file »."
   - titre: "Vendu ici, retiré là-bas"
@@ -131,7 +131,7 @@ Une copie est « prouvée » quand le lien est sûr : FillSell l'a déposée lui
 
 ![La file de l'ordinateur dans FillSell, juste après une vente sur Vinted : en cours, le retrait de l'annonce Depop du sweat Red Bull Racing vendu (38 €), avec sa barre d'avancement ; à venir, le retrait de sa copie Leboncoin, puis la publication du sweat Öhlins sur Depop et sur Leboncoin, chacune « en attente de son tour ».](media:captures/vente-retrait-copies.png)
 
-C'est exactement le geste que demandent les deux plateformes. Les CGU de Beebs (version du 29 janvier 2025) demandent au vendeur de retirer l'article du catalogue de Beebs quand il est vendu « via un autre canal ». L'[aide de Vinted](https://www.vinted.fr/help/214) le dit aussi : « S'il se trouve que tu as vendu un article sur une autre plateforme, masque-le ou supprime-le de tes annonces Vinted ». Avec FillSell, dès que la vente est enregistrée, le retrait part sans que tu aies à le faire — ordinateur allumé, Chrome ouvert. Éteint, le retrait attend et part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud, il part des serveurs de FillSell, ordinateur éteint.
+C'est exactement le geste que demandent les deux plateformes. Les CGU de Beebs (version du 29 janvier 2025) demandent au vendeur de retirer l'article du catalogue de Beebs quand il est vendu « via un autre canal ». L'[aide de Vinted](https://www.vinted.fr/help/214) le dit aussi : « S'il se trouve que tu as vendu un article sur une autre plateforme, masque-le ou supprime-le de tes annonces Vinted ». Avec FillSell, dès que la vente est enregistrée, le retrait part sans que tu aies à le faire — ordinateur allumé, Chrome ouvert. Éteint, le retrait attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud, il part des serveurs de FillSell, ordinateur éteint.
 
 ![La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».](media:captures/vente-deja-vendu-question.png)
 
@@ -141,7 +141,7 @@ Le détail des preuves, des retraits et des questions : [ventes et retraits des 
 
 Une annonce qui vieillit descend dans les résultats. Republier, c'est la retirer puis la remettre en ligne : elle repart en haut, mais ses vues et ses favoris repartent de zéro. FillSell retire d'abord l'ancienne annonce, puis dépose la nouvelle : sur Beebs, dont les règles interdisent de proposer le même article deux fois, l'ordre compte.
 
-Tu remontes une annonce en un appui. Et avec la republication automatique, selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose — ordinateur allumé ou, avec l'option FillSell Cloud, sans ordinateur. FillSell espace tes republications à un rythme humain pour protéger ton compte, ne republie jamais deux fois la même annonce en 24 h, et tu coupes tout d'un geste, quand tu veux.
+Tu remontes une annonce en un appui. Et avec la republication automatique, selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose — ordinateur allumé ou, avec FillSell Cloud, sans ordinateur. FillSell espace tes republications à un rythme humain pour protéger ton compte, ne republie jamais deux fois la même annonce en 24 h, et tu coupes tout d'un geste, quand tu veux.
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -177,7 +177,7 @@ Non. Les photos, le titre, la description, l'état et le prix viennent de ta fic
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Oui, sans l'option FillSell Cloud, pour Vinted et Beebs : l'extension Chrome dépose, vérifie et retire tes annonces depuis ton ordinateur, Chrome ouvert. Tant qu'il reste des annonces à publier, elle l'empêche de se mettre en veille. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec l'option FillSell Cloud (24,99 € par mois, 7 jours d'essai offerts pour un premier abonnement, sur iPhone et sur le web), plus besoin d'ordinateur : elle publie, republie et retire tes annonces Vinted et Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Oui, sans FillSell Cloud, pour Vinted et Beebs : l'extension Chrome dépose, vérifie et retire tes annonces depuis ton ordinateur, Chrome ouvert. Tant qu'il reste des annonces à publier, elle l'empêche de se mettre en veille. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Vinted et Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Que se passe-t-il quand l'article se vend sur Beebs ?
 

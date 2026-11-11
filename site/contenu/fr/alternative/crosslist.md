@@ -7,7 +7,7 @@ surtitre: "Alternatives · relevé du 9 octobre 2026"
 title: "Alternative à Crosslist en France et en Europe (2026) — FillSell"
 description: "Crosslist ne sert pas l'Union européenne et a fermé Vinted aux nouveaux comptes. Les alternatives pour {{plateformes}}, et pour qui."
 h1: "Alternative à Crosslist en Europe : quel outil pour Vinted, Leboncoin et Depop ?"
-chapo: "Crosslist ne sert pas les résidents de l'Union européenne et a fermé Vinted aux nouveaux comptes le 2 octobre 2026. Depuis la France, prends FillSell, notre produit : une app iPhone et Android pour vendre sur {{plateformes}}, gratuite pour commencer, en euros. Tu vends dans plusieurs pays européens ? FLUF Connect ou Relistly. Ordinateur éteint ? L'option FillSell Cloud, ou StoFlow."
+chapo: "Crosslist ne sert pas les résidents de l'Union européenne et a fermé Vinted aux nouveaux comptes le 2 octobre 2026. Depuis la France, prends FillSell, notre produit : une app iPhone et Android pour vendre sur {{plateformes}}, gratuite pour commencer, en euros. Tu vends dans plusieurs pays européens ? FLUF Connect ou Relistly. Ordinateur éteint ? FillSell Cloud, ou StoFlow."
 points_cles:
   - "Au 9 octobre 2026, Crosslist écrit ne pas servir les personnes qui résident dans l'Union européenne ; il sert les États-Unis, le Royaume-Uni, le Canada et l'Australie, en anglais et en dollars US."
   - "Depuis un billet daté du 2 octobre 2026, un nouveau compte Crosslist ne peut plus connecter Vinted, et il n'a jamais proposé vinted.fr. Leboncoin, Beebs et eBay France n'y figurent pas non plus."
@@ -64,12 +64,12 @@ Personne ne cherche « un Crosslist » dans l'absolu. On cherche une fonction pr
 | vendre sur Vinted depuis la France | **FillSell** | Vinted France piloté depuis ton téléphone, et toutes tes autres plateformes dans la même app |
 | vendre sur Vinted dans plusieurs pays européens | **FLUF Connect** | 19 sites Vinted annoncés, vinted.fr compris |
 | Depop, avec Leboncoin et Beebs à côté | **FillSell** | ta boutique Depop, compte en euros, rangée avec tout ton stock |
-| Depop sans garder d'ordinateur allumé | **FLUF Connect**, ou **FillSell** avec l'option FillSell Cloud | chez FLUF, d'après son aide, plus besoin de navigateur ouvert une fois Depop connecté ; chez FillSell, l'option FillSell Cloud publie et retire tes annonces Depop depuis nos serveurs |
+| Depop sans garder d'ordinateur allumé | **FLUF Connect**, ou **FillSell** avec FillSell Cloud | chez FLUF, d'après son aide, plus besoin de navigateur ouvert une fois Depop connecté ; chez FillSell, FillSell Cloud publie et retire tes annonces Depop depuis nos serveurs |
 | Depop dans un autre pays d'Europe | **Relistly** | Depop annoncé dans 24 pays européens |
 | une vraie app iPhone et Android | **FillSell** ou **FLUF Connect** | les deux sont publiés sur l'App Store et Google Play ; StoFlow, Relistly, Klork et FlowDino, non |
 | le retrait des copies après une vente, dès le premier prix | **FillSell** | inclus dans tous les forfaits, Gratuit compris ; Crosslist le réserve à Gold (39,99 $ par mois) et Diamond |
 | une annonce écrite depuis une photo, prix compris | **FillSell** | Lens, sans option à ajouter ; chez Crosslist, l'IA coûte 4,99 $ de plus par mois |
-| tout faire tourner ordinateur éteint | **FillSell** avec l'option FillSell Cloud, ou **StoFlow** | FillSell Cloud, à 24,99 € par mois : Vinted, Leboncoin, Beebs et Depop depuis nos serveurs ; StoFlow : Vinted, Leboncoin et Vestiaire Collective sur ses serveurs, selon StoFlow, à partir de son plan Pro |
+| tout faire tourner ordinateur éteint | **FillSell** avec FillSell Cloud, ou **StoFlow** | FillSell Cloud, avec Premium, Pro ou Business : Vinted, Leboncoin, Beebs et Depop depuis nos serveurs ; StoFlow : Vinted, Leboncoin et Vestiaire Collective sur ses serveurs, selon StoFlow, à partir de son plan Pro |
 | Etsy, Vestiaire Collective ou une boutique Shopify | **FlowDino** ou **StoFlow** | les deux les proposent, en plus de Vinted et Leboncoin |
 | partir de ton dressing Vinted pour vendre la mode ailleurs | **Klork** | il sauvegarde ton dressing et publie vers Depop, Vestiaire Collective, Leboncoin et eBay France |
 
@@ -89,10 +89,10 @@ Relevé le 9 octobre 2026 sur les pages officielles et les fiches de store de ch
 
 ## FillSell : tout ce que Crosslist ne t'ouvre pas depuis la France
 
-Le principe ne change pas. Tu pilotes depuis ton téléphone, une extension Chrome exécute sur ton ordinateur (ou, avec l'option FillSell Cloud, les serveurs de FillSell), et eBay passe par sa voie officielle. Ce qui change, c'est tout le reste.
+Le principe ne change pas. Tu pilotes depuis ton téléphone, une extension Chrome exécute sur ton ordinateur (ou, avec FillSell Cloud, les serveurs de FillSell), et eBay passe par sa voie officielle. Ce qui change, c'est tout le reste.
 
 1. **Tes plateformes, enfin dans la même app.** {{plateformes}} : une seule saisie, une version taillée pour chaque site, rangée dans ses propres rubriques. Il manque une info ? L'app te pose la question, en français, plutôt que de deviner. Sur eBay France, une fois ton compte relié depuis la page officielle d'eBay, l'annonce part par l'API officielle d'eBay, même ordinateur éteint. Crosslist, lui, ne t'ouvre aucune de ces plateformes depuis la France.
-2. **Tes annonces remontent toutes seules, selon ta formule.** FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé, ou éteint avec l'option FillSell Cloud. Il les espace à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Chez Crosslist, on republie à la main ; programmer des republications est au statut « Under consideration » sur sa [feuille de route publique](https://feedback.crosslist.com/en/roadmap).
+2. **Tes annonces remontent toutes seules, selon ta formule.** FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé, ou éteint avec FillSell Cloud. Il les espace à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Chez Crosslist, on republie à la main ; programmer des republications est au statut « Under consideration » sur sa [feuille de route publique](https://feedback.crosslist.com/en/roadmap).
 3. **Vendu ici, retiré là-bas, dans tous les forfaits.** Quand Vinted ou eBay marque ton article vendu, FillSell enregistre la vente tout seul. Sur Leboncoin et Beebs, tu confirmes d'un appui. Ensuite, les autres annonces de l'article, liées par une preuve, sont retirées. Au moindre doute, l'app te demande « Déjà vendu ? » avant de toucher à quoi que ce soit. Chez Crosslist, ce retrait demande la formule Gold ou Diamond et reste désactivé par défaut ([documentation de Crosslist](https://docs.crosslist.com/knowledge-base/sales/autodelist)). Tout le circuit : [ventes et retraits des copies](page:fonctions/ventes-et-retraits).
 4. **Une photo, l'annonce est écrite, prix compris.** Lens reconnaît l'objet, lit la marque, propose un état et un prix tiré d'annonces comparables trouvées en ligne, en te disant sur combien d'annonces il s'appuie. Puis il rédige le titre et la description. Tu relis, tu publies. Chaque scan compte comme une annonce de ton forfait, sans option à ajouter.
 5. **Tes ventes et ta marge, dans tous les forfaits.** Chaque vente garde sa plateforme, son prix et sa marge ; un article dont tu ne connais pas le prix d'achat est écarté du calcul plutôt que compté comme gratuit. Chez Crosslist, les statistiques de ventes et le compte de résultat sont réservés aux formules Gold et Diamond.
@@ -122,7 +122,7 @@ Prends-le si ton terrain, c'est Depop et les places de marché néerlandaises ou
 
 StoFlow est édité par une SARL de Seine-et-Marne. Son atout maître : à partir du plan Pro (29,99 € par mois), « vos comptes tournent sur nos serveurs en France, ordinateur éteint », pour Vinted, Leboncoin et Vestiaire Collective, selon son [accueil](https://stoflow.com/). Son plan Free couvre Vinted et Leboncoin, retrait après vente compris ; eBay France arrive avec Starter, à 14,99 €.
 
-Prends-le si tu veux le travail ordinateur éteint inclus dans ton abonnement, Vestiaire Collective compris ; chez FillSell, c'est l'option FillSell Cloud. Ce qui te manquera : une app sur les stores (la sienne est « en cours de construction ») ; Beebs et Depop, qu'il n'annonce pas ; le regroupement automatique d'un même article, puisque ses annonces importées se lient à la main. Le détail : [FillSell ou StoFlow](page:comparatif/fillsell-vs-stoflow).
+Prends-le si tu veux le travail ordinateur éteint inclus dans ton abonnement, Vestiaire Collective compris ; chez FillSell, c'est FillSell Cloud. Ce qui te manquera : une app sur les stores (la sienne est « en cours de construction ») ; Beebs et Depop, qu'il n'annonce pas ; le regroupement automatique d'un même article, puisque ses annonces importées se lient à la main. Le détail : [FillSell ou StoFlow](page:comparatif/fillsell-vs-stoflow).
 
 ### Klork : du dressing Vinted vers les plateformes de mode
 
@@ -158,7 +158,7 @@ Quand ton article se vend ailleurs, l'extension retire ton annonce Vinted. C'est
 
 Depop compte parmi les points forts de Crosslist : publication, import, et ventes suivies depuis ses serveurs sur ses formules Gold et Diamond. Mais pour les vendeurs de ses quatre pays seulement. Depuis la France, quatre outils prennent le relais au 9 octobre 2026 :
 
-- **FillSell** : ta boutique Depop entre dans ton stock sur « Synchroniser », rangée avec toutes tes autres plateformes, depuis un compte Depop en euros. L'annonce part au format Depop, sans titre et avec des hashtags. Quand l'article se vend ailleurs, ton annonce Depop est retirée. Tu autorises l'accès d'un clic dans l'extension, et elle agit ordinateur allumé. Avec l'option FillSell Cloud, plus besoin d'ordinateur : tu connectes Depop une fois, sur sa propre page de connexion.
+- **FillSell** : ta boutique Depop entre dans ton stock sur « Synchroniser », rangée avec toutes tes autres plateformes, depuis un compte Depop en euros. L'annonce part au format Depop, sans titre et avec des hashtags. Quand l'article se vend ailleurs, ton annonce Depop est retirée. Tu autorises l'accès d'un clic dans l'extension, et elle agit ordinateur allumé. Avec FillSell Cloud, plus besoin d'ordinateur : tu connectes Depop une fois, sur sa propre page de connexion.
 - **FLUF Connect** : le plus complet des quatre sur Depop d'après son tableau des capacités, offres et commandes comprises, sans navigateur ouvert une fois connecté. Sur ce point, il va plus loin que FillSell.
 - **Relistly** : Depop dans 24 pays européens, avec le retrait des annonces qu'il a publiées.
 - **Klork** : publication sur Depop depuis ton dressing Vinted, retrait automatique en plan Business.
@@ -179,13 +179,13 @@ Prêt ? [Crée ton compte FillSell gratuit](/login?mode=signup), installe [l'ext
 
 ## Comment nous avons comparé
 
-FillSell est notre produit. Crosslist et les cinq autres outils sont décrits d'après leurs pages officielles, leur documentation et leurs fiches de store, relues le 9 octobre 2026, sans compte créé ni test : on rapporte ce que chaque éditeur écrit. FillSell est décrit d'après ce que fait l'app, limites comprises (mis à jour le 9 novembre 2026 pour l'option FillSell Cloud) : sans l'option, ordinateur allumé pour tout, sauf un compte eBay relié ; Vinted France seulement, aujourd'hui. Les prix et les plateformes bougent vite. Une erreur, un changement ? Écris-nous à [support@fillsell.app](mailto:support@fillsell.app), on corrige.
+FillSell est notre produit. Crosslist et les cinq autres outils sont décrits d'après leurs pages officielles, leur documentation et leurs fiches de store, relues le 9 octobre 2026, sans compte créé ni test : on rapporte ce que chaque éditeur écrit. FillSell est décrit d'après ce que fait l'app, limites comprises (mis à jour le 9 novembre 2026 pour FillSell Cloud) : sans FillSell Cloud, ordinateur allumé pour tout, sauf un compte eBay relié ; Vinted France seulement, aujourd'hui. Les prix et les plateformes bougent vite. Une erreur, un changement ? Écris-nous à [support@fillsell.app](mailto:support@fillsell.app), on corrige.
 
 ## Questions fréquentes
 
 ### Quelle est la meilleure alternative à Crosslist en Europe ?
 
-Elle dépend de ton pays et de tes plateformes. Depuis la France, pour vendre sur {{plateformes}}, FillSell (notre produit) arrive en tête de [notre classement publié](page:comparatif/meilleures-applications-crosslisting), avec une app iPhone et Android et un forfait Gratuit. Pour vendre dans plusieurs pays européens, FLUF Connect annonce le plus de plateformes ; pour tout faire tourner ordinateur éteint, l'option FillSell Cloud, ou StoFlow, à partir de son plan Pro.
+Elle dépend de ton pays et de tes plateformes. Depuis la France, pour vendre sur {{plateformes}}, FillSell (notre produit) arrive en tête de [notre classement publié](page:comparatif/meilleures-applications-crosslisting), avec une app iPhone et Android et un forfait Gratuit. Pour vendre dans plusieurs pays européens, FLUF Connect annonce le plus de plateformes ; pour tout faire tourner ordinateur éteint, FillSell Cloud, ou StoFlow, à partir de son plan Pro.
 
 ### Existe-t-il une alternative gratuite à Crosslist ?
 

@@ -5,12 +5,12 @@ lang: fr
 nom: Tarifs
 surtitre: "Tarifs sans engagement"
 title: "Prix et tarifs FillSell : gratuit, puis dès 12,99 € par mois"
-description: "FillSell est gratuit pour commencer, sans carte bancaire. Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement. Option FillSell Cloud : 24,99 €."
+description: "FillSell est gratuit pour commencer, sans carte bancaire. Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement, avec ou sans Cloud."
 h1: "Prix et tarifs FillSell : gratuit pour commencer, sans engagement ensuite"
 chapo: "FillSell est gratuit pour commencer, sans carte bancaire : la publication sur {{plateformes}}, la synchronisation de ton stock et le retrait des autres annonces après une vente sont inclus dès le Gratuit. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Tu paies pour plus d'annonces rédigées par l'IA, la retouche photo et le support, jamais par plateforme."
 points_cles:
   - "Le forfait Gratuit coûte 0 € : il s'ouvre sans carte bancaire et n'a pas de date de fin."
-  - "Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement ; il n'existe ni prix annuel ni essai des forfaits payants."
+  - "Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement et sans prix annuel ; seules les formules avec Cloud ont un essai, de 7 jours."
   - "Chaque forfait, Gratuit compris, inclut la publication sur {{plateformes}}, la synchronisation sans limite et le retrait des autres annonces d'un article dès que sa vente est enregistrée."
   - "Chaque formule compte trois choses par mois : les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées."
   - "Tu t'abonnes sur fillsell.app (paiement traité par Stripe) ou dans l'App Store et Google Play, et tu arrêtes quand tu veux."
@@ -165,11 +165,11 @@ Oui, pour commencer. Le forfait Gratuit coûte 0 €, s'ouvre sans carte bancair
 
 ### Y a-t-il un essai gratuit ou un prix à l'année ?
 
-Pas pour les forfaits. Les forfaits payants n'ont ni essai ni prix annuel : ils se paient au mois, sans engagement. Pour essayer, le forfait Gratuit suffit : tu testes FillSell sur tes vrais articles, aussi longtemps que tu veux, sans carte bancaire. Seule l'option FillSell Cloud commence par un essai gratuit de 7 jours, pour un premier abonnement.
+Pas pour les forfaits. Les forfaits payants n'ont ni essai ni prix annuel : ils se paient au mois, sans engagement. Pour essayer, le forfait Gratuit suffit : tu testes FillSell sur tes vrais articles, aussi longtemps que tu veux, sans carte bancaire. Seules les formules avec Cloud commencent par un essai de 7 jours.
 
-### Combien coûte l'option FillSell Cloud ?
+### Combien coûte FillSell Cloud ?
 
-24,99 € par mois. FillSell Cloud est une option : elle s'ajoute à n'importe quel forfait, Gratuit compris, et ne change rien à ce que compte ton forfait. Un premier abonnement commence par un essai gratuit de 7 jours ; on te prévient la veille de la fin de l'essai, et tu arrêtes l'option en un geste. Ce que tu paies : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Disponible en France, sur iPhone et sur le web, dans la limite des places disponibles.
+FillSell Cloud se prend avec ta formule : Premium, Pro ou Business, avec Cloud. Le prix de chaque formule avec Cloud s'affiche avec les formules, sur cette page. Sans engagement, avec 7 jours d'essai sur la formule avec Cloud ; on te prévient la veille de la fin de l'essai, et tu arrêtes le Cloud en un geste. Ce que tu paies en plus : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Disponible en France, sur iPhone et sur le web, dans la limite des places disponibles.
 
 ### Est-ce que je paie par plateforme ou par annonce publiée ?
 
@@ -185,7 +185,7 @@ La fiche de FillSell sur l'App Store peut encore lister d'anciens achats intégr
 
 ### Faut-il payer l'app ou l'extension Chrome ?
 
-Non. L'app iPhone et Android est gratuite, l'app web aussi, et l'extension Chrome s'installe gratuitement depuis le Chrome Web Store. Seuls les forfaits Premium, Pro et Business, et l'option FillSell Cloud, sont payants.
+Non. L'app iPhone et Android est gratuite, l'app web aussi, et l'extension Chrome s'installe gratuitement depuis le Chrome Web Store. Seuls les forfaits Premium, Pro et Business, avec ou sans Cloud, sont payants.
 
 ### Que devient mon abonnement si je supprime mon compte ?
 
