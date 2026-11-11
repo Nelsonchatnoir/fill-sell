@@ -24,7 +24,7 @@ import BoutonDictee from '../components/BoutonDictee';
 import GaleriePhotos from '../components/GaleriePhotos';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import { MOTIFS } from '../utils/connexionPlateformes';
-import { MIN_PHOTOS, MAX_PHOTOS } from '../utils/photos';
+import { MAX_PHOTOS } from '../utils/photos';
 import { VINTED_COLORS } from '../utils/vintedColors';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
@@ -11432,22 +11432,11 @@ const StockTab = memo(function StockTab({
                 onRemove={retirerPhotoAjout}
                 onReorder={reordonnerPhotosAjout}
                 removable
-                /* Le rappel « au moins 3 » appartient à la PUBLICATION, pas au
-                   stock : un article peut vivre ici avec une seule photo. On
-                   dit simplement, plus bas, ce qu'il faudra pour publier. */
-                rappelMinimum={false}
                 lang={lang}
               />
               {iPhotosErreur&&(
                 <div style={{fontSize:11,color:"#B91C1C",background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 12px",marginTop:-12,marginBottom:8}}>
                   {iPhotosErreur}
-                </div>
-              )}
-              {iPhotos.length>0&&iPhotos.length<MIN_PHOTOS&&(
-                <div style={{fontSize:11,color:C.sub,marginTop:-12,marginBottom:8,lineHeight:1.5}}>
-                  {lang==='fr'
-                    ?`L'article s'enregistre très bien avec ${iPhotos.length} photo${iPhotos.length>1?"s":""}. Il en faudra ${MIN_PHOTOS} pour le publier sur Vinted.`
-                    :`The item saves fine with ${iPhotos.length} photo${iPhotos.length>1?"s":""}. You'll need ${MIN_PHOTOS} to publish it on Vinted.`}
                 </div>
               )}
             </div>

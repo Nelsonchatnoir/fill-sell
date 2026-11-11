@@ -15,7 +15,7 @@
 
 import { useRef } from "react";
 import { Plus, X, GripVertical } from "lucide-react";
-import { MIN_PHOTOS, MAX_PHOTOS } from "../utils/photos";
+import { MAX_PHOTOS } from "../utils/photos";
 // Les outils (multi-select Android, moveItem, usePhotoDrag) vivent dans un
 // fichier .js à part : un module qui exporte à la fois des composants et des
 // fonctions casse le Fast Refresh de Vite.
@@ -28,7 +28,6 @@ const T = {
   mute:   "#8A8578",
   border: "#E7E3D8",
   card:   "#FFFFFF",
-  amber:  "#B45309",
 };
 
 export function DragHandle({ bind, lang }) {
@@ -53,14 +52,15 @@ export function CoverBadge({ lang }) {
 /**
  * La grille : vignettes carrées, poignée de réordonnancement, badge
  * « Couverture » sur la première, croix de retrait, tuile « + » tant que le
- * plafond n'est pas atteint, et le rappel du minimum.
+ * plafond n'est pas atteint. (11/11/2026, décision de Nico) Plus de rappel
+ * « Ajoute au moins 3 photos pour continuer (n/3) » sous la grille : une photo
+ * suffit pour publier (la règle vit dans utils/photos.js).
  *
  * @param {string[]} previews      les URLs à afficher, dans l'ordre
  * @param {(files: File[]) => void} onAdd
  * @param {(i: number) => void}     onRemove
  * @param {(from: number, to: number) => void} onReorder
  * @param {boolean} [removable]     la croix de retrait est-elle offerte
- * @param {boolean} [rappelMinimum] afficher « ajoute au moins 3 photos »
  * @param {number}  [max]           plafond, MAX_PHOTOS par défaut
  */
 export default function GaleriePhotos({
@@ -69,7 +69,6 @@ export default function GaleriePhotos({
   onRemove,
   onReorder,
   removable = true,
-  rappelMinimum = true,
   max = MAX_PHOTOS,
   lang,
 }) {
@@ -145,16 +144,6 @@ export default function GaleriePhotos({
           </button>
         )}
       </div>
-
-      {/* Minimum 3 photos : exigence Vinted (marques premium), rappelée ici
-          plutôt que subie à la publication. */}
-      {rappelMinimum && count > 0 && count < MIN_PHOTOS && (
-        <div style={{ marginTop:-8, marginBottom:16, fontSize:12.5, fontWeight:600, color:T.amber }}>
-          {lang === "en"
-            ? `Add at least ${MIN_PHOTOS} photos to continue (${count}/${MIN_PHOTOS}).`
-            : `Ajoute au moins ${MIN_PHOTOS} photos pour continuer (${count}/${MIN_PHOTOS}).`}
-        </div>
-      )}
     </div>
   );
 }

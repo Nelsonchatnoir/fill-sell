@@ -19,6 +19,7 @@ import CarteLivraisonEbay from "../../components/CarteLivraisonEbay";
 import { Logo, Puce } from "../composants";
 import { NOM } from "../texte";
 import { urlPhoto, urlsPhotos } from "../../utils/photos";
+import { imageParDefautDe } from "./photoVide";
 import { grilleColisVinted } from "../../utils/vintedColis";
 import { descriptionFidele, hashtagsServent } from "../moteur/descriptionFidele";
 import { lirePoidsSaisi } from "./regles";
@@ -266,7 +267,7 @@ export function PoidsDeLArticle({ en, poids, poserPoids }) {
  * @param {object} props.item        l'article du Stock
  * @param {object} [props.decision]  decisions[id] du lot ({ poids, texteValide, ecarteesRemises… })
  * @param {Array}  [props.ecartees]  plateformes écartées d'office ([{ p, motif }])
- * @param {boolean} [props.photoVide] la seule « photo » est une image de remplissage
+ * @param {boolean} [props.photoVide] aucune vraie photo (les seules sont des images par défaut connues, photoVide.js)
  * @param {object} props.actions     { poserPoids(g), retirerPlateforme(p), remettrePlateforme(p), validerTexte() }
  */
 export default function FicheArticle({ m, item = null, decision = {}, ecartees = [], photoVide = false, actions = {}, en = false, lecture = null, poidsDefaut = null }) {
@@ -316,7 +317,9 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
     <div className="fsf">
       {photoVide && (
         <div className="fsf-alerte fsf-alerte--refus">
-          <p><b>{en ? "No real photo." : "Aucune vraie photo."}</b> {en ? "The picture is the placeholder Beebs shows when a listing has none." : "L'image est celle que Beebs affiche quand l'annonce n'en a pas."}</p>
+          {/* (11/11, point T1) La phrase sur Beebs : seulement pour l'image par défaut de Beebs reconnue à l'identique. */}
+          <p><b>{en ? "No real photo." : "Aucune vraie photo."}</b>{imageParDefautDe("beebs", [...urlsPhotos(photos), ...urlsPhotos(m.photos)])
+            ? <> {en ? "The picture is the placeholder Beebs shows when a listing has none." : "L'image est celle que Beebs affiche quand l'annonce n'en a pas."}</> : null}</p>
           <div className="fsn-choices fsq-puces">
             <button type="button" className="fsn-choice fsn-choice--on" onClick={() => fichier.current?.click()} disabled={ajout}>
               {ajout ? (en ? "Adding…" : "Ajout…") : (en ? "Add photos" : "Ajouter des photos")}

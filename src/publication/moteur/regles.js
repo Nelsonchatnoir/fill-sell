@@ -26,6 +26,8 @@ import { departementEbayPour } from "./departementEbay.js";
 import { descriptionFidele, lignesEcritesParLaPersonne } from "./descriptionFidele.js";
 import { matieresDeLaComposition } from "../../../supabase/functions/_shared/composition-matieres.js";
 import { photosDuJob } from "../photosParPlateforme.js";
+// (11/11, décision de Nico) Les vraies photos d'un article : jamais une image de remplissage dans une tâche.
+import { vraiesPhotos } from "../../utils/photos.js";
 import { villePourLeJob } from "../villeLbc.js";
 import { ISBN_ABSENT } from "../../../supabase/functions/_shared/vinted-exigences.js";
 
@@ -156,6 +158,45 @@ function titreVintedSousLaLimite(titre, pf, description) {
   return casseTitre(titre, { marques: [pf?.marque].filter((m) => typeof m === "string" && m.trim()), plateforme: "vinted", reference: description ?? null });
 }
 
+// ── LES MARQUES D'UN RETRAIT D'IMAGE PAR DÉFAUT (11/11/2026, point T1) ─────────────────────────────────────────
+// Posées par construireJobs sur une tâche dont une image par défaut a été retirée (photos_choisies ; jamais
+// lbcPhotosCapped, décision de Nico du 11/11 : la fiche prend les photos envoyées) ; elles ne valent que pour elle.
+// `photosRemplissageRetirees` les signe : sans elle, rien n'est touché (photos choisies, plafond Leboncoin d'avant). Un
+// lbcPhotosCapped n'est jamais ôté ici : c'est la marque d'un vrai plafond, que sa propre règle repose ou non.
+const MARQUES_DU_RETRAIT = ["photos_choisies", "photosRemplissageRetirees"];
+/** Retire de `pf` (muté) les marques d'un retrait d'image par défaut. */
+export function retirerMarquesDuRetrait(pf) {
+  if (!pf || typeof pf !== "object" || !("photosRemplissageRetirees" in pf)) return pf;
+  for (const k of MARQUES_DU_RETRAIT) delete pf[k];
+  return pf;
+}
+/** `pf` sans les marques d'un retrait (une copie), pour la carte : pf lui-même quand il n'en porte pas. */
+export function sansMarquesDuRetrait(pf) {
+  if (!pf || typeof pf !== "object" || !("photosRemplissageRetirees" in pf)) return pf;
+  return retirerMarquesDuRetrait({ ...pf });
+}
+
+// ── CE QUE DIT LE REFUS D'UNE CONSTRUCTION (11/11/2026, point T1 — sorti de handlePublish, exécuté par le verrou) ──
+/** Le message qui ARRÊTE le clic « Publier » quand construireJobs refuse (rien ne part, rien n'est décompté), ou null
+ *  (rien à refuser). `t` : les traductions de l'app ; `nomPlateforme(p)` : le nom affiché d'une plateforme. */
+export function refusDeConstruction(construction, { lang = "fr", t = (cle) => cle, nomPlateforme = (p) => p } = {}) {
+  const erreur = construction?.erreur;
+  // Plus aucune vraie photo (que des images par défaut connues) : la phrase de « Où publier ? ».
+  if (erreur === "sans_vraie_photo") return t("ouPublierVraiePhoto");
+  if (erreur === "ebay_sans_photo") {
+    return lang === "en"
+      ? "eBay: this item has no photo. eBay requires at least one image — add a photo before publishing."
+      : "eBay : cet article n'a aucune photo. eBay exige au moins une image — ajoute une photo avant de publier.";
+  }
+  if (erreur === "sans_titre") {
+    const nomPf = nomPlateforme(construction.plateforme) ?? construction.plateforme;
+    return lang === "en"
+      ? `${nomPf}: this listing has no title. Write one in the “Title” field, then publish again. Nothing was charged.`
+      : `${nomPf} : cette annonce n'a pas de titre. Écris-le dans le champ « Titre », puis publie à nouveau. Rien n'a été décompté.`;
+  }
+  return null;
+}
+
 // ── LES LIGNES DE JOBS (handlePublish, `rows`) ──────────────────────────────
 // Une ligne par plateforme, dans l'ordre reçu. Photos du JOB, par plateforme :
 // identiques partout SAUF plafonnement Leboncoin (quota gratuit par feuille).
@@ -185,16 +226,47 @@ export function construireJobs({
   // (26/10, D4) Publication PROGRAMMÉE (réglage de la personne) : la tâche naît marquée ; get-pending-jobs la sert
   // dans le créneau, une à la fois (_shared/publication-programmee.js). eBay par l'API part de nos serveurs : non retenu.
   programmee = false,
+  // (11/11, décisions de Nico) Les adresses RECONNUES À L'IDENTIQUE comme images par défaut connues d'une plateforme
+  // (lot/imagesParDefaut.js, lues au clic par lot/photoVide.js — jamais une estimation) et, quand `processedPhotos`
+  // en est la copie rang par rang (rédaction), les photos d'origine. Absentes ou vides : rien ne change.
+  photosDeRemplissage = null, photosDOrigine = null,
 }) {
   const { entreesPhotos, getLbcFreePhotoQuota, normalizeVintedTitle } = outils;
   const rows = [];
   const journal = [];
+  // ── L'IMAGE PAR DÉFAUT N'EST JAMAIS ENVOYÉE (11/11/2026, décisions de Nico) ───────────────────────────────────
+  // L'article part avec ses VRAIES photos seulement (utils/photos.js, vraiesPhotos — la règle du bouton et du lot),
+  // quelle que soit la place de l'image par défaut. Plus aucune vraie photo : rien ne part (« 0 photo »). Seule une
+  // image par défaut CONNUE, reconnue à l'identique, est retirée : une image non lue, illisible ou seulement douteuse
+  // part — jamais retirée sur un doute. Un article sans image par défaut connue : `aEnvoyer` est `processedPhotos`
+  // lui-même, tout ce qui suit est celui d'avant.
+  const aEnvoyer = vraiesPhotos(processedPhotos, photosDeRemplissage, photosDOrigine);
+  const retirees = entreesPhotos(processedPhotos).length - entreesPhotos(aEnvoyer).length;
+  if (retirees > 0 && !entreesPhotos(aEnvoyer).length) return { rows: null, erreur: "sans_vraie_photo", journal };
+  if (retirees > 0) journal.push(`[publish] ${retirees} image(s) par défaut retirée(s) des photos : elles ne partent sur aucune plateforme`);
   for (const platform of plateformes) {
     const pf = champsResolus[platform];
-    const photosJob = entreesPhotos(processedPhotos);
+    const photosJob = entreesPhotos(aEnvoyer);
     let rowPhotos = photosJob;
     if (platform === "ebay" && ebayVoieApiReelle && !photosJob.length) {
       return { rows: null, erreur: "ebay_sans_photo", journal };
+    }
+    // Les marques d'un retrait ne valent que pour LA tâche où il a eu lieu : revenues de la carte (la fusion de la
+    // catégorie résolue dans `edited`, un brouillon d'avant), elles tombent ici — les blocs suivants reposent ce
+    // qui vaut pour CETTE tâche (photos choisies, plafond Leboncoin). Une carte sans `photosRemplissageRetirees`
+    // (toute carte d'avant le 11/11) n'est pas touchée.
+    if (pf) retirerMarquesDuRetrait(pf);
+    // Une tâche dont une image par défaut a été retirée porte les VRAIES photos seulement : elle n'est jamais
+    // « complétée » par celles de la fiche (photos_choisies : contenuAImposer, ordre des photos). (11/11, décision de
+    // Nico, « vraie photo seule ») La FICHE prend les photos envoyées : AUCUN lbcPhotosCapped pour un retrait, pour que
+    // spend_coins_and_publish réécrive inventaire.photos = les vraies photos (l'image par défaut quitte la fiche, une
+    // vraie photo ajoutée dans le stepper y arrive). Un VRAI plafond (quota gratuit Leboncoin, photos choisies sur la
+    // carte) pose toujours le sien, plus bas : cette tâche-là, un extrait, ne réécrit jamais la fiche — les autres
+    // plateformes du même clic la réécrivent (la liste la plus longue l'emporte). `photosRemplissageRetirees` :
+    // combien, pour le suivi. Rien de retiré : rien n'est posé.
+    if (pf && retirees > 0) {
+      pf.photos_choisies = true;
+      pf.photosRemplissageRetirees = retirees;
     }
     // (30/10, lot E) Les photos CHOISIES pour cette plateforme (carte : choix, ordre, limite) — absentes, la règle
     // d'avant. Un extrait ne réécrit jamais la fiche (lbcPhotosCapped, spend_coins_and_publish) et n'est jamais

@@ -28,6 +28,9 @@ import { bilanPlateformes, rienAPublier, verdictConfirmation } from "./plateform
 import { jaugesDuCompte, coutPublication, nombre, motJauge } from "../utils/jauges";
 import { formaterRemiseAZero } from "../reglages/quotas";
 import { murDeLaJauge } from "../reglages/refusEtMurs";
+// (11/11/2026, décisions de Nico) Une photo suffit pour publier, 0 vraie photo bloque toujours : la règle des deux
+// peaux et du lot.
+import { photosManquentPourPublier, vraiesPhotos } from "../utils/photos";
 
 // (04/11/2026, grille à 3 jauges) Ce que dit le bouton de « Où publier ? » quand une jauge ne suffit pas — AVANT
 // l'appui, plus après un refus. Rend { cta, raison, mur } : `mur` = la jauge dont le mur s'ouvre d'un lien (null :
@@ -118,7 +121,13 @@ export default function StepperNouveau({ m }) {
     // `selected` brut (une case grisée peut y traîner).
     const n = bilan.cochees.length;
     const enTeleversement = m.uploading;
-    const photosManquent = m.photoCount < m.MIN_PHOTOS && !m.platformListings;
+    // (11/11/2026, décision de Nico) Seul « 0 photo » retient le bouton, et il le retient toujours — à l'unité comme
+    // par lot, import ou photo du téléphone, quelle que soit la plateforme cochée, texte déjà rédigé ou non (avant :
+    // moins de 3 photos, sauf texte rédigé). Ne comptent que les VRAIES photos : l'image par défaut CONNUE d'une
+    // plateforme (reconnue à l'identique par le moteur : m.photosDeRemplissage, la lecture du lot) ne compte pas,
+    // quelle que soit sa place. Pas lue, illisible ou seulement douteuse : une vraie photo. Le libellé est la clé
+    // d'avant le 14/07 (ctaAddAtLeastOnePhoto), celle de l'ancienne peau. Verrou : selftest:une-photo-suffit.
+    const photosManquent = photosManquentPourPublier(vraiesPhotos(m.displayPreviews, m.photosDeRemplissage).length);
     const pl = (k) => (en ? `${k} platform${k > 1 ? "s" : ""}` : `${k} plateforme${k > 1 ? "s" : ""}`);
     if (!m.publishedStateLoaded) {
       cta = en ? "Reading this item…" : "Lecture de l'article…"; disabled = true;
@@ -130,7 +139,7 @@ export default function StepperNouveau({ m }) {
       const reecrire = !m.platformListings || m.copieManquante || m.retoucheARefaire;
       disabled = enTeleversement || photosManquent || n === 0;
       cta = enTeleversement ? (en ? "Uploading photos…" : "Envoi des photos…")
-        : photosManquent ? (en ? `Add at least ${m.MIN_PHOTOS} photos` : `Ajoute au moins ${m.MIN_PHOTOS} photos`)
+        : photosManquent ? m.t("ctaAddAtLeastOnePhoto")
         : n === 0 ? (en ? "Tick at least one platform" : "Coche au moins une plateforme")
         : reecrire
           ? (en ? `Write the listing · ${pl(n)}` : `Rédiger l'annonce · ${pl(n)}`)

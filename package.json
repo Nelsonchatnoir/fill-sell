@@ -170,6 +170,7 @@
     "selftest:vinted-langue-page-ouverte": "node scripts/vinted-langue-page-ouverte-selftest.mjs",
     "selftest:titre-du-job": "node scripts/titre-du-job-selftest.mjs",
     "selftest:rien-a-publier": "node --import ./scripts/loader-ext.mjs scripts/publication-rien-a-publier-selftest.mjs",
+    "selftest:une-photo-suffit": "node scripts/une-photo-suffit-selftest.mjs",
     "selftest:paiement-stripe": "node scripts/paiement-stripe-selftest.mjs",
     "selftest:paiement-echoue": "node scripts/paiement-echoue-selftest.mjs",
     "selftest:paiement-echoue-acquis": "node scripts/paiement-echoue-acquis-selftest.mjs",

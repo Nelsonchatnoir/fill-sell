@@ -14,11 +14,10 @@
 // prix par plateforme, versions du texte) restent un geste plus bas, repliées — rien n'est perdu.
 import { useState } from "react";
 import { StepGeneration } from "../components/ListingPreviewScreen";
-import { urlPhoto } from "../utils/photos";
+import { vraiesPhotos } from "../utils/photos";
 import { formaterRemiseAZero } from "../reglages/quotas";
 import { Carte } from "./composants";
 import FicheArticle from "./lot/FicheArticle";
-import { usePhotoVide } from "./lot/photoVide";
 
 export default function EcranVerifier({ m }) {
   const en = m.lang === "en";
@@ -26,9 +25,10 @@ export default function EcranVerifier({ m }) {
   const dateRemise = formaterRemiseAZero(m.remiseAZero, m.lang);
   const photos = m.processedPhotos?.length ? m.processedPhotos : (m.photos ?? []);
   const [cartes, setCartes] = useState(false);
-  const premiere = photos[0] ? urlPhoto(typeof photos[0] === "string" ? photos[0] : photos[0]?.url) : null;
-  const photoLue = usePhotoVide(premiere);
-  const photoVide = Boolean(premiere) && photoLue === true; // seule une image LUE comme remplissage le dit
+  // (11/11/2026, décisions de Nico) « Aucune vraie photo » : il ne reste aucune vraie photo (utils/photos.js,
+  // vraiesPhotos — la règle du bouton et de la tâche). Une image par défaut connue parmi de vraies photos ne part pas
+  // et ne retient rien ; seule une image RECONNUE À L'IDENTIQUE compte (m.photosDeRemplissage, la lecture du moteur).
+  const photoVide = photos.length > 0 && vraiesPhotos(photos, m.photosDeRemplissage, m.photos).length === 0;
   return (
     <>
       <div>

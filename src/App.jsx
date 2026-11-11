@@ -9819,9 +9819,6 @@ export default function App({ loginOnly = false }){
                     onRemove={retirerPhotoEdition}
                     onReorder={reordonnerPhotosEdition}
                     removable
-                    /* Le rappel « au moins 3 » appartient à la PUBLICATION,
-                       pas au stock — même arbitrage qu'à l'ajout. */
-                    rappelMinimum={false}
                     lang={lang}
                   />
                   {editPhotosErreur&&(

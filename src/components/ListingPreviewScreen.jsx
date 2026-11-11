@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { signalerActionRatee } from "../utils/actionRatee";
 import { Camera, Check, ChevronLeft, Mic, Plus, X, Pencil, Clock, ImageOff, GripVertical, MapPin, Lock, LogOut } from "lucide-react";
@@ -14,7 +14,7 @@ import AnalyseMarche from "./AnalyseMarche";
 // Photos : lecture tolérante (chaîne ou objet), écriture TOUJOURS en objets
 // `{ type, url }` — la forme de generate-listing, la seule que les handlers
 // de l'extension savent lire. Règle et incident dans utils/photos.js.
-import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee, MIN_PHOTOS, MAX_PHOTOS } from "../utils/photos";
+import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee, MIN_PHOTOS, MAX_PHOTOS, photosManquentPourPublier, photosDuStepper, vraiesPhotos } from "../utils/photos";
 import { normalizeIsbn, resoudreIsbn } from "../../supabase/functions/_shared/isbn.js";
 // La galerie (ajouter / retirer / réordonner) et ses primitives sont partagées
 // avec le formulaire d'ajout manuel depuis le 19/09 — extraites d'ici, rendu
@@ -131,6 +131,9 @@ import { avecFormatChoisi } from "../utils/leboncoinColis";
 import StepperNouveau from "../publication/StepperNouveau";
 // (23/10, point 4) Le délai de repos du moteur avant les questions : celui du lot (une seule règle).
 import { REPOS_AVANT_LECTURE_MS } from "../publication/lot/regles";
+// (11/11, point T1) L'image par défaut CONNUE d'une plateforme n'est pas une photo : la lecture du lot, telle quelle
+// (reconnaissance à l'identique ; l'estimation ne fait que signaler).
+import { useImagesParDefaut, reconnaitreAuClic, signalerUneFois, prelireImagesParDefaut } from "../publication/lot/photoVide";
 const FILET_QUESTIONS_MS = 45_000;
 import { categorieFermee } from "../publication/plateformes";
 import { lireProchaineRemiseAZero } from "../reglages/quotas";
@@ -142,7 +145,7 @@ import {
   champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
   descriptionVintedVide, calculerExclusions, motifAucunePlateforme, cleCategorieRequis,
   construireJobs, plateformesSansChemin, gardeAspectsEbay, aspectsEbayEncoreVides, questionsParPlateforme as calculerQuestionsParPlateforme,
-  dimensionsEbayGroupees, issueQuestionDisparue,
+  dimensionsEbayGroupees, issueQuestionDisparue, sansMarquesDuRetrait, refusDeConstruction,
 } from "../publication/moteur/regles";
 import {
   NO_BRAND_VALUE, SHARED_FIELD_KEYS, SHARED_PROPAGATION, EBAY_ASPECT_LABELS,
@@ -311,9 +314,9 @@ function deriverCopieOpla(vinted, { prixGeneral = null, generales = null } = {})
   };
 }
 
-// MIN_PHOTOS (3) et MAX_PHOTOS (20) vivent dans utils/photos.js depuis le
-// 19/09 : le formulaire d'ajout manuel en a besoin aussi, et une borne écrite
-// à deux endroits finit toujours par diverger. Elles sont importées en haut.
+// MIN_PHOTOS (1 depuis le 11/11, 3 avant) et MAX_PHOTOS (20) vivent dans
+// utils/photos.js depuis le 19/09 : une borne écrite à deux endroits finit
+// toujours par diverger. Elles sont importées en haut.
 const MAX_RETOUCHED = 5;   // doit rester aligné sur generate-listing.MAX_RETOUCHED
 
 // ── Plateformes qui exigent l'adresse de remise des Réglages (2026-08-10) ────
@@ -1652,9 +1655,10 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
       )}
 
       {/* La galerie — input caché, grille, poignée de réordonnancement,
-          badge « Couverture », croix de retrait, tuile « + » et rappel du
-          minimum — est partagée avec le formulaire d'ajout manuel depuis le
-          19/09. Rendu identique : c'est le même composant, extrait d'ici. */}
+          badge « Couverture », croix de retrait et tuile « + » — est partagée
+          avec le formulaire d'ajout manuel depuis le 19/09. Rendu identique :
+          c'est le même composant, extrait d'ici. (11/11) Plus de rappel du
+          minimum : une photo suffit, le bouton dit seul quand il n'y en a pas. */}
       <GaleriePhotos
         previews={previews}
         onAdd={onAdd}
@@ -11085,6 +11089,11 @@ export default function ListingPreviewScreen({
           console.warn("[stepper] fiche non relue avant l'envoi :", e?.message ?? e);
         }
       }
+      // (11/11/2026, décisions de Nico — point T1) Les images par défaut CONNUES parmi toutes les photos qui peuvent
+      // partir, reconnues à l'identique AU CLIC (lot/photoVide.js : adresse exacte, ou octets exacts d'une copie chez
+      // nous). Attente bornée à quelques secondes : une photo pas lue à temps, ou illisible, part — jamais retirée sur
+      // un doute. Déjà lue (la 1re photo, en arrière-plan) : aucune attente.
+      const imagesParDefautReconnues = await reconnaitreAuClic([...urlsPhotos(processedPhotos), ...urlsPhotos(photos)]);
       const construction = construireJobs({
         plateformes: plateformesAPublier, champsResolus, processedPhotos, lbcAddress,
         userId, inventaireId: addToStock ? currentInvId : null, photoOption, edited: editedEnvoi, price, ebayVoieApiReelle,
@@ -11103,18 +11112,15 @@ export default function ListingPreviewScreen({
         villePublicationLbc: lbcVilleReglage,
         descriptionsGenerees: Object.fromEntries(Object.entries(platformListings?.platforms ?? {}).map(([p, c]) => [p, c?.description ?? ""])),
         programmee: Boolean(programmation.reglage) && !envoyerMaintenantRef.current,
+        // (11/11/2026, décisions de Nico) L'image par défaut CONNUE n'est JAMAIS envoyée, quelle que soit sa place, à
+        // l'unité comme dans le lot (qui publie par ce moteur) : les adresses reconnues à l'identique, et les photos de
+        // la fiche dont processedPhotos est la copie rang par rang. Aucune reconnue : la liste d'avant, à l'identique.
+        photosDeRemplissage: imagesParDefautReconnues, photosDOrigine: photos,
       });
-      if (construction.erreur === "ebay_sans_photo") {
-        throw new Error(lang === "en"
-          ? "eBay: this item has no photo. eBay requires at least one image — add a photo before publishing."
-          : "eBay : cet article n'a aucune photo. eBay exige au moins une image — ajoute une photo avant de publier.");
-      }
-      if (construction.erreur === "sans_titre") {
-        const nomPf = PLATFORM_LABELS[construction.plateforme] ?? construction.plateforme;
-        throw new Error(lang === "en"
-          ? `${nomPf}: this listing has no title. Write one in the “Title” field, then publish again. Nothing was charged.`
-          : `${nomPf} : cette annonce n'a pas de titre. Écris-le dans le champ « Titre », puis publie à nouveau. Rien n'a été décompté.`);
-      }
+      // Un refus de la construction ARRÊTE le clic : rien ne part, rien n'est décompté (moteur/regles.js,
+      // refusDeConstruction — plus aucune vraie photo : la phrase de « Où publier ? » ; eBay sans photo ; sans titre).
+      const refusConstruction = refusDeConstruction(construction, { lang, t, nomPlateforme: (p) => PLATFORM_LABELS[p] ?? p });
+      if (refusConstruction) throw new Error(refusConstruction);
       for (const ligne of construction.journal) console.log(ligne);
       let rows = construction.rows;
       // ── LA TAILLE PART ÉCRITE COMME LA GRILLE L'ÉCRIT (02/10, point 11) ────
@@ -11400,13 +11406,16 @@ export default function ListingPreviewScreen({
       // article refaisait tout le chemin, appel IA de vérification compris.
       // On le recopie dans `edited`, donc dans le brouillon, donc dans la fiche
       // en base. Aucune valeur écrasée : on fusionne par-dessus ce qui existe.
+      // (11/11/2026, point T1) Sauf les marques d'un retrait d'image par défaut (photos_choisies,
+      // photosRemplissageRetirees) : elles ne valent que pour CETTE tâche, jamais pour la carte ni la suivante
+      // (moteur/regles.js, sansMarquesDuRetrait — construireJobs les retire aussi d'une carte qui les porterait).
       setEdited(prev => {
         const suivant = { ...prev };
         for (const row of rows) {
           if (!suivant[row.platform]) continue;
           suivant[row.platform] = {
             ...suivant[row.platform],
-            platform_fields: { ...(suivant[row.platform].platform_fields ?? {}), ...(row.platform_fields ?? {}) },
+            platform_fields: { ...(suivant[row.platform].platform_fields ?? {}), ...(sansMarquesDuRetrait(row.platform_fields) ?? {}) },
           };
         }
         return suivant;
@@ -11796,8 +11805,42 @@ export default function ListingPreviewScreen({
   }, [relanceEbay, edited, publishing, done]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Nav ───────────────────────────────────────────────────────────────────
-  const displayPreviews = pickedPreviews.length > 0 ? pickedPreviews : photos;
+  const displayPreviews = photosDuStepper(pickedPreviews, photos);
   const photoCount      = displayPreviews.length;
+  // (11/11/2026, décisions de Nico — point T1) LA PHOTO MANQUE-T-ELLE ? Une photo suffit pour publier, à l'unité
+  // comme par lot : seul « 0 photo » retient le bouton, et il le retient toujours, texte déjà rédigé ou non. Les
+  // règles sont dans utils/photos.js (vraiesPhotos, photosManquentPourPublier), lues par les deux peaux et par le lot.
+  // L'image par défaut CONNUE d'une plateforme (une annonce sans photo, arrivée sur la fiche avec l'import ; la liste
+  // fermée de lot/imagesParDefaut.js, reconnue à l'identique — choix b de Nico, 11/11) n'est pas une photo : elle ne
+  // compte pas, et elle n'est JAMAIS envoyée, quelle que soit sa place (reconnaitreAuClic puis construireJobs, au
+  // clic). Ici, en arrière-plan, seulement ce que le bouton demande (lot/photoVide.js) : la 1re photo, puis la
+  // suivante seulement si celle d'avant est une image par défaut reconnue — moteur du lot compris. Rien n'attend
+  // cette lecture : une image pas lue, illisible ou seulement douteuse compte pour une vraie photo.
+  // L'estimation (≤ 256 px et ≤ 40 couleurs) ne retire rien : une photo DOUTEUSE est signalée (usage_logs,
+  // « photo_par_defaut_douteuse » : la fiche et l'adresse de la photo, une fois par photo et par session) pour que
+  // Nico ajoute la vraie image par défaut à la liste. Verrou : selftest:une-photo-suffit.
+  const signalerPhotoDouteuse = useCallback((url) => {
+    if (!userId || !supabase) return;
+    signalerUneFois(url, () => {
+      supabase.from("usage_logs")
+        .insert({ user_id: userId, feature: "photo_par_defaut_douteuse", metadata: { inventaire_id: invId ?? null, photo: url } })
+        .then(({ error }) => { if (error) console.warn("[stepper] photo_par_defaut_douteuse non journalisé :", error.message); }, () => {});
+    });
+  }, [supabase, userId, invId]);
+  const photosDeRemplissage = useImagesParDefaut(urlsPhotos(displayPreviews), { quandDouteuse: signalerPhotoDouteuse });
+  // (11/11, point T1 — le coût du clic, surtout dans le lot qui publie ses articles l'un après l'autre) Le moteur PRÉ-LIT,
+  // tant que l'article n'est pas parti, toutes les photos qui peuvent partir (petite priorité, en-têtes seulement pour
+  // une photo d'une autre taille que les images connues ; rien n'attend) : dans le lot pendant la préparation, à
+  // l'unité dès « Où publier ? » — au clic, la reconnaissance est déjà faite. Un aperçu local (photo pas encore
+  // montée) ne se lit jamais.
+  const clePrelecture = !done ? [...new Set([...urlsPhotos(processedPhotos), ...urlsPhotos(photos)])].join("\n") : "";
+  useEffect(() => {
+    if (!clePrelecture) return undefined;
+    const ctl = new AbortController();
+    prelireImagesParDefaut(clePrelecture.split("\n"), { signal: ctl.signal });
+    return () => ctl.abort();
+  }, [clePrelecture]);
+  const photosManquent = (liste) => photosManquentPourPublier(vraiesPhotos(liste, photosDeRemplissage).length);
   const isLocked        = uploading || publishing || generatingPlatforms;
 
   // Adresse de remise absente (2026-08-10) : ces plateformes ne partiront pas,
@@ -11818,14 +11861,20 @@ export default function ListingPreviewScreen({
   const plateformesBloqueesChamps = calculerPlateformesBloqueesChamps(plateformesPubliables, genericRequiredStatus);
   const publishChips = [...plateformesPubliables].filter(p => !plateformesBloqueesChamps.includes(p));
 
+  // (11/11/2026, décision de Nico) L'ancienne peau : le bouton des étapes 0 et
+  // 1 lit la règle des deux peaux (photosManquent, plus haut — et ctaDisabled,
+  // plus bas). Le minimum de 3 photos du 14/07 (celui de VINTED sur certains
+  // articles haut de gamme : l'extension y pourvoit en recopiant la dernière
+  // photo) bloquait les articles importés à une seule photo. Le libellé est
+  // celui d'avant le 14/07 (ctaAddAtLeastOnePhoto).
   function ctaLabel() {
     if (step === 0) {
       if (uploading)              return t("ctaUploading");
-      if (photoCount < MIN_PHOTOS) return minPhotosLabel;
+      if (photosManquent(displayPreviews)) return t("ctaAddAtLeastOnePhoto");
       return tpl("ctaContinuePhotos", { n:photoCount });
     }
     if (step === 1) {
-      if (photos.length < MIN_PHOTOS) return minPhotosLabel;
+      if (photosManquent(photos)) return t("ctaAddAtLeastOnePhoto");
       // Génération payante (2026-08-05) : le prix s'affiche AVANT le clic —
       // config pas encore lue → libellé sans prix, jamais un montant faux.
       // Génération payante pour TOUS les paliers (retour arrière du 08/08
@@ -11867,14 +11916,6 @@ export default function ListingPreviewScreen({
     }
     return "";
   }
-
-  // Minimum 3 photos (2026-07-14) : c'est le minimum imposé par VINTED sur les
-  // marques premium (cf. VINTED_MIN_PHOTOS dans chrome-extension/vinted.js, qui
-  // DUPLIQUAIT jusqu'ici la dernière photo pour l'atteindre — un pansement).
-  // On le demande à la source plutôt que de fabriquer de fausses photos.
-  const minPhotosLabel = lang === "en"
-    ? `Add at least ${MIN_PHOTOS} photos to continue`
-    : `Ajoute au moins ${MIN_PHOTOS} photos pour continuer`;
 
   // ── Publier DÉSACTIVÉ tant qu'un requis est vide (chantier 2026-07-16) ────
   // Règle produit : plus jamais un clic qui échoue sur un requis — le bouton
@@ -12122,8 +12163,8 @@ export default function ListingPreviewScreen({
   })();
 
   const ctaDisabled =
-    (step === 0 && (photoCount < MIN_PHOTOS || uploading)) ||
-    (step === 1 && (photos.length < MIN_PHOTOS || selected.size === 0)) ||
+    (step === 0 && (photosManquent(displayPreviews) || uploading)) ||
+    (step === 1 && (photosManquent(photos) || selected.size === 0)) ||
     (step === 2 && (generatingPlatforms || !platformListings)) ||
     // !publishedStateLoaded (S7) : pas de clic Publier tant que la relecture
     // des plateformes déjà en ligne n'a pas répondu — sinon une fenêtre de
@@ -12528,6 +12569,9 @@ export default function ListingPreviewScreen({
     // L'article et ses photos
     initialListing, invId, titreArticle, etatArticle, price, generales, edited, selected, setSelected,
     photos, displayPreviews, pickedPreviews, photoCount, addFiles, removeFile, handleReorderPreviews,
+    // (11/11, point T1) Les photos reconnues à l'identique comme images par défaut CONNUES d'une plateforme (la liste
+    // fermée, lot/imagesParDefaut.js) : elles ne comptent pas et ne partent pas (utils/photos.js, vraiesPhotos).
+    photosDeRemplissage,
     handleAddMorePhotos, handleRemovePhoto, handleReorderPhotos, uploading, uploadError, setLightboxUrl,
     notes, setNotes, micActive, toggleMic, micEtat, micMessage,
     // Le micro ne s'affiche que là où l'on sait ENREGISTRER (utils/dictee.js).

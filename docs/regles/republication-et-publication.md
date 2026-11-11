@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 11/11 — à l'unité comme par lot : une photo suffit, seul « 0 photo » bloque ; une image par défaut CONNUE (reconnue à l'identique) ne part jamais, jamais une photo retirée sur un doute (en fin de fichier)
 - ⛔ 10/11 soir — titre ET description du vendeur = passe légère, hors quota d'annonces (en fin de fichier)
 - ⛔ 10/11 — un lot prêt ne se quitte jamais en silence ; « en file » = un job relu ; Cloud n'ouvre aucun quota (en fin de fichier)
 - 04/11 soir — une republication neuve n'hérite d'aucune trace de retrait ; un seul juge du marqueur ; deux jobs ne s'attendent jamais (en fin de fichier)
@@ -769,6 +770,8 @@
   deux poids plausibles et « Garder ».
 - Photo de remplissage (l'image par défaut de Beebs rapatriée comme photo) : lue dans la page (≤ 256 px ET ≤ 40 couleurs),
   dite dès la ligne (« Sans photo », motif « Photo » : rien ne part avec elle) ; une image illisible n'est JAMAIS déclarée vide.
+  ⛔ Remplacé le 11/11 (choix b de Nico) : seule une image par défaut CONNUE, reconnue à l'identique, est retirée ;
+  l'estimation ne fait plus que signaler — voir la section du 11/11 (point T1) en fin de fichier.
 - ⛔ Une description écrite par FillSell ne contredit jamais la fiche (`moteur/descriptionFidele.js`, appliquée au texte qui
   PART dans construireJobs ET à celui qu'on montre — même fiche, `moteur.ficheDuTexte`) : même état (« Bon état » →
   « Très bon état » de la fiche), même genre (« homme » contre une fiche « femme » réécrit ; « pour femme » que rien ne
@@ -1514,3 +1517,116 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   comptait 1 annonce. Toute nouvelle prévision de quota qui lit une fiche du Stock passe par `redactionHorsQuota`, jamais
   par `ligne.titre` directement. Preuve : `selftest:source-du-texte` § 7 (son lot : 9 imports, 3 restantes → 9 retenus).
   Rapport : `docs/enquetes/mur-lot-importes-1011/RAPPORT.md`.
+
+## ⛔ 11/11 (décision de Nico, point T1) — à l'unité comme par lot : une photo suffit, seul « 0 photo » bloque
+- Le minimum de 3 photos du 14/07 est retiré (un compte de plusieurs milliers d'articles importés d'eBay, la plupart à
+  une seule photo : bouton gris sur « Où publier ? »). `MIN_PHOTOS` = 1 et `photosManquentPourPublier`
+  (`src/utils/photos.js`), lue par les deux peaux du stepper — les 5 plateformes, import ou photo du téléphone.
+- « 0 photo » bloque TOUJOURS, texte déjà rédigé compris (plus d'exception) : bouton gris « Ajoute au moins 1 photo ».
+- ⛔ VRAIES PHOTOS SEULEMENT, à l'unité comme en lot : les vraies photos d'un article = ses photos moins les images par
+  défaut CONNUES (l'image qu'une plateforme sert à une annonce sans photo, arrivée sur la fiche avec l'import), dans
+  leur ordre — UNE règle, `vraiesPhotos` (`src/utils/photos.js`), lue par le bouton (les deux peaux), « Ce qui va
+  partir », la vignette du lot et la tâche. Une image par défaut connue n'est JAMAIS envoyée, quelle que soit sa place :
+  `construireJobs` (`moteur/regles.js`, la même pour l'unité et le lot) l'ôte de la liste des photos et marque la tâche
+  `photos_choisies` (jamais complétée par les photos de la fiche) et `photosRemplissageRetirees` (combien). La RETOUCHE
+  d'une image par défaut (photos rédigées, rang par rang) est retirée aussi — seulement une retouche de CE rang
+  (`<uid>/enhanced/<ts>_<rang>.png` porte le rang) ; des listes décalées de même longueur, une autre adresse : rien
+  n'est retiré par le rang. Les photos gardées perdent leur type POSITIONNEL (« original »,
+  « photo_<i> ») : `entreesPhotos` le recalcule, la nouvelle couverture redevient « original » (aucun lecteur ne s'en
+  sert : extension et serveur ne lisent que « enhanced… », pour la retouche, qui reste). Aucune vraie photo = « 0 photo » :
+  unité, bouton gris « Ajoute au moins 1 photo » ; lot, « Sans photo » ; au clic, aucune tâche (`sans_vraie_photo`),
+  rien de décompté — le refus est traduit par `refusDeConstruction` (`moteur/regles.js`, avec « eBay sans photo » et
+  « sans titre », mêmes mots qu'avant) et ARRÊTE le clic. Un article SANS image par défaut connue part exactement comme
+  avant (même tableau, même ordre, mêmes adresses, aucune marque : 119 constructions comparées au `construireJobs` de
+  HEAD, lecture au clic comprise, 0 écart).
+- ⛔ (11/11, décision de Nico : « vraie photo seule ») LA FICHE PREND LES PHOTOS ENVOYÉES : un retrait ne pose JAMAIS
+  `lbcPhotosCapped`, et `spend_coins_and_publish` (la liste la plus longue des tâches non plafonnées, garde « AND NOT
+  plafonne ») réécrit `inventaire.photos` = les vraies photos — l'image par défaut quitte la fiche, une vraie photo
+  ajoutée dans le stepper y arrive. Fiche [D] + R ajoutée → tâches [R], fiche [R] ; fiche [D, R] → tâches [R], fiche
+  [R] ; fiche aux photos normales → fiche inchangée (réécrite avec la même liste, comme avant). Le lot publie par le
+  même `construireJobs` : même règle. Les DEUX causes ensemble (un retrait ET un vrai plafond Leboncoin, « Divers >
+  Autres », 3 photos gratuites) : la tâche Leboncoin garde son `lbcPhotosCapped` (un extrait ne réécrit jamais la
+  fiche, règle du 27/09) ; les autres plateformes du même clic, entières, réécrivent la fiche. Choix fait pour
+  Leboncoin plafonné SEUL : la fiche n'est pas réécrite (3 photos ne remplacent jamais la fiche) — l'image par défaut
+  y reste, reconnue et retirée à chaque publication ; elle part de la fiche dès qu'une autre plateforme est publiée.
+  Même chose quand toutes les plateformes cochées ont des photos choisies sur leur carte (règle du 30/10, inchangée).
+- ⛔ Les marques d'un retrait ne reviennent jamais sur la CARTE ni dans une NOUVELLE publication du stepper : la fusion
+  de la catégorie résolue dans la carte (`edited`, puis le brouillon `fiches_annonce`) ne les recopie pas
+  (`sansMarquesDuRetrait`), et `construireJobs` ôte celles qu'une carte porterait encore (`retirerMarquesDuRetrait`,
+  signées par `photosRemplissageRetirees` : une carte d'avant le 11/11 n'est pas touchée) — 2e publication du même
+  article après retrait de l'image de la fiche = aucune marque. MAIS une REPUBLICATION (`spend_coins_and_republish`) et
+  une RELANCE PAR COPIE (Stock, « relancer » une tâche échouée) d'une tâche où une image a été retirée recopient ses
+  `platform_fields`, marques comprises (`photos_choisies`, `photosRemplissageRetirees`) : elles repartent avec les
+  seules vraies photos de cette tâche, dans son ordre — l'image par défaut reste dehors, voulu (verrou : la règle de
+  l'ordre, `_shared/ordre-photos.js`, exécutée) —, mais la règle du 06/11 « l'ordre de l'article fait foi » ne
+  s'applique plus à elles (`photos_choisies` : le job garde les siennes), et une photo ajoutée plus tard à la fiche ne
+  les rejoint jamais. Une relance par copie passe par `spend_coins_and_publish` : sans `lbcPhotosCapped`, elle réécrit la
+  fiche avec les photos de la tâche (ses vraies photos d'alors). Ces fonctions serveur ne sont pas changées.
+- « Où publier ? », quand les seules photos sont des images par défaut connues : une phrase, par les traductions de
+  l'app (clé `ouPublierVraiePhoto`) — « Ajoute une vraie photo de ton article pour le publier. » / « Add a real photo of
+  your item to publish it. » Le libellé du bouton ne change pas (clé `ctaAddAtLeastOnePhoto`, lue aussi par la coque).
+  « L'image est celle que Beebs affiche… » (fiche de l'article) et « l'image vient de Beebs » (ligne du lot) ne se
+  disent que pour l'image de Beebs reconnue à l'identique (`imageParDefautDe`). Aucun autre texte neuf.
+- ⛔ (11/11 vers 14:50, choix b de Nico) RECONNUE À L'IDENTIQUE, ZÉRO FAUX POSITIF — « on ne retire jamais une photo sur
+  un doute ». La LISTE FERMÉE vit dans `src/publication/lot/imagesParDefaut.js` (`IMAGES_PAR_DEFAUT`, datée, son
+  origine dite) : aujourd'hui UNE image, celle de Beebs — un pictogramme de casquette, 200 × 200, JPEG de 3 066 octets,
+  SHA-256 `f0b31c8669a358d81d37c4c9ab7f686b56872aa21a52599c5940373558aacc66`, servie à
+  `https://cdn.beebs.app/7c49fc10-d3ac-40cc-8042-90523132ad74.jpg` (objet du CDN daté du 15/03/2023). Relevée le 11/11
+  sur l'annonce Beebs du cas du 26/10 (compte de Nico) : la photo lue sur l'annonce (capture) est cette image, la fiche
+  en porte la copie `rapatrie-fiche/` aux MÊMES octets (le rapatriement de handler-watch recopie les octets tels quels).
+  Une seule annonce de la base la portait (sur 8 916 annonces Beebs) : que Beebs serve toujours cette adresse n'est pas
+  prouvé — d'où deux reconnaissances exactes : l'ADRESSE exacte (photo encore chez Beebs : aucun téléchargement, et
+  `cdn.beebs.app` ne sert aucun CORS) ; les OCTETS exacts (sa copie chez nous, bucket `listing-photos` hors `raw/` et
+  `enhanced/` : une taille annoncée (Content-Length) qui n'est celle d'AUCUNE image de la liste coupe la lecture sur les
+  en-têtes — le stockage sert les images sans compression, Content-Length = la taille exacte, vérifié le 11/11 ; sinon
+  la lecture s'arrête dès qu'elle dépasse la plus grande image connue ; puis SHA-256, par WebCrypto ou, quand la page ne
+  l'a pas (la vue web iOS, `capacitor://localhost`), par un SHA-256 en JavaScript pur (`sha256HexJs`, même empreinte,
+  vérifiée par le verrou). Copie de test : `scripts/fixtures/image-par-defaut-beebs.jpg`.
+- La lecture (`lot/photoVide.js`) : en arrière-plan, SEULEMENT ce que l'affichage demande — la 1re photo (vignette du
+  lot, bouton), puis la suivante seulement si celle d'avant est une image par défaut reconnue (cascade : deux images
+  par défaut et rien d'autre se lisent toutes deux). Le corps de l'effet est une fonction pure (`lireEnArrierePlan`) ;
+  la vignette du lot vit dans son module (`lot/VignetteLot.jsx`), lit aussi les photos de la fiche quand elle montre
+  leur copie rédigée (une retouche de l'image par défaut ne compte pas pour une vraie photo) et ne dit au lot « une
+  vraie photo » / « Sans photo » (`onVide`) qu'une fois la lecture CONCLUE — jamais sur une lecture ratée, comme avant
+  le 11/11. Au CLIC qui construit les tâches (`reconnaitreAuClic`, unité et lot, prioritaire) : toutes les photos qui
+  peuvent partir, attente bornée à 4 s (`DELAIS.auClicMs`) ; déjà lues = aucune attente. Le moteur PRÉ-LIT ces photos
+  tant que l'article n'est pas parti (`prelireImagesParDefaut`, petite priorité) — dans le LOT (qui publie ses articles
+  l'un après l'autre) pendant la préparation, à l'unité dès « Où publier ? » : mesuré sur un lot de 30 articles à
+  5 photos, l'attente ajoutée au clic passe de 9,6 s à 0 s (stockage à 150 ms par requête) et de 90 s à 0 s (1,5 s par
+  requête), la pré-lecture prenant 6 s / 57 s pendant la préparation, sans rien bloquer (un clic plus rapide que la
+  pré-lecture n'attend que ce qui reste, 4 s au plus par article). 4 lectures à la fois (1re photo et clic devant), 8 s
+  par lecture, un résultat par adresse pour la session (un « null » se relit plus tard) ; une réponse d'erreur est
+  coupée (corps jamais téléchargé), une estimation abandonnée arrête le chargement de l'image ; la file se libère
+  quand l'écran qui l'a demandée se ferme. Ne se lit qu'une photo venue d'une plateforme (jamais
+  `blob:`/`data:`, `<uid>/raw/`, `<uid>/enhanced/`). ⛔ Non lue, illisible, lue trop tard ou seulement douteuse = VRAIE
+  photo, gardée et MONTRÉE (la vignette n'affiche « 📦 » qu'à la place d'une image reconnue).
+- L'ESTIMATION (`estPhotoDeRemplissage`, `lot/ficheLue.js`, inchangée : ≤ 256 px ET ≤ 40 couleurs) ne retire plus rien :
+  sur la photo où la cascade s'arrête (à l'unité et dans le lot, par le moteur), une photo jugée douteuse et non
+  reconnue est SIGNALÉE — une ligne `usage_logs`, `feature = 'photo_par_defaut_douteuse'`, `metadata = { inventaire_id,
+  photo }` (le compte = `user_id`), une fois par photo et par session — et reste dans l'annonce (une petite photo noir et
+  blanc réelle part). Pour lister les cas douteux (≈ 3 700 lectures d'index, aucun balayage) :
+  `select (l.created_at at time zone 'Europe/Paris') as le, left(p.id::text, 8) as compte, l.metadata->>'inventaire_id'
+  as fiche, l.metadata->>'photo' as photo from public.profiles p cross join lateral (select u.created_at, u.metadata
+  from public.usage_logs u where u.user_id = p.id and u.feature = 'photo_par_defaut_douteuse' and u.created_at > now()
+  - interval '30 days' order by u.created_at desc limit 50) l order by l.created_at desc limit 200;`
+  Ajouter une image à la liste : la REGARDER, relever son adresse, sa taille et son SHA-256 (`sha256sum`), une entrée
+  datée dans `IMAGES_PAR_DEFAUT`, un cas au verrou.
+- ⛔ Ce qui peut ENCORE envoyer une image par défaut (ces chemins ne passent pas par `construireJobs`, donc pas par
+  cette règle — non vérifié chemin par chemin) : une REPUBLICATION et une REMISE EN VENTE (elles reprennent des photos
+  déjà enregistrées : tâche d'origine, fiche), et la RELANCE PAR COPIE d'une tâche née avant le 11/11 (ses photos sont
+  celles d'alors). Une tâche née depuis dont une image a été retirée porte ses seules vraies photos et
+  `photos_choisies` (jamais complétée par celles de la fiche) ; la fiche, elle, a perdu l'image (sauf Leboncoin
+  plafonné seul, plus haut).
+- ⛔ Conséquence visible de la recopie Vinted (gardée, décision de Nico) : une annonce Vinted à UNE photo part avec
+  TROIS fois la même photo (à deux photos : a, b, b). L'extension complète toute annonce Vinted à 3 photos en recopiant
+  la dernière (`VINTED_MIN_PHOTOS`, `chrome-extension/content-scripts/vinted.js`) parce que Vinted en exige 3 sur
+  certains articles haut de gamme sans dire lesquels ; une seule photo suffit désormais pour publier, ce cas devient
+  fréquent (imports eBay à une photo). Les autres plateformes partent avec la photo seule.
+- Inchangés : le lot (sélection « Sans photo », questions, jauges, quotas, ordre, pilote), le serveur (ne refuse que
+  0 photo ; aucune garde serveur des images par défaut — proposée à Nico pour plus tard), l'attente de lecture de
+  l'annonce d'origine, la republication, l'extension. Verrou : `selftest:une-photo-suffit` (168 contrôles, dont la
+  reconnaissance avec les vrais octets, avec et sans WebCrypto, la petite photo noir et blanc gardée et signalée, la
+  file, le délai, la relecture d'un « null », la pré-lecture du lot, le refus qui arrête le clic, les types recalculés,
+  les marques d'une publication à la suivante, la fiche après publication (règle du serveur lue dans sa migration et
+  rejouée), et le crochet et la vignette du lot MONTÉS — un React minimal, effets compris, la mémoire de la session
+  remise à zéro avant chaque montage).

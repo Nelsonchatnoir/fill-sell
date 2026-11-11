@@ -22,6 +22,7 @@ import { etatPlateforme } from "./plateformes";
 import { formaterRemiseAZero } from "../reglages/quotas";
 import { nombre, motJauge } from "../utils/jauges";
 import { montantAnglais } from "../utils/montants";
+import { vraiesPhotos } from "../utils/photos";
 
 // ═══ (04/11/2026, grille à 3 jauges) LE COÛT AVANT PUBLICATION — maquettes 4.1 à 4.4 ════════════════════════
 // Une mini-jauge : le nom, la barre (ce qu'il restera en sarcelle, la part qui va partir en ambre pâle au bout),
@@ -89,6 +90,10 @@ export default function EcranOuPublier({ m }) {
   const photos = m.displayPreviews;
   const nb = photos.length;
   const aUneFiche = Boolean(m.platformListings);
+  // (11/11/2026, décisions de Nico) Les seules photos sont des images par défaut CONNUES d'une plateforme (reconnues à
+  // l'identique par le moteur : m.photosDeRemplissage) : elles ne partent pas et le bouton est retenu — une phrase
+  // courte le dit (traductions de l'app, clé ouPublierVraiePhoto). Même règle que le bouton (utils/photos.js).
+  const queDuRemplissage = nb > 0 && vraiesPhotos(photos, m.photosDeRemplissage).length === 0;
   // Avant le téléversement (step 0), les photos sont des aperçus locaux ; après,
   // des URLs — les deux jeux de gestes existent dans le moteur, on prend le bon.
   const gestesPhotos = m.pickedPreviews.length > 0
@@ -258,7 +263,6 @@ export default function EcranOuPublier({ m }) {
                   onRemove={gestesPhotos.onRemove}
                   onReorder={gestesPhotos.onReorder}
                   removable={gestesPhotos.removable}
-                  rappelMinimum={!aUneFiche}
                   max={m.MAX_PHOTOS}
                   lang={m.lang}
                 />
@@ -276,6 +280,7 @@ export default function EcranOuPublier({ m }) {
                 </button>
               </div>
             )}
+            {queDuRemplissage && <p className="fsn-small" data-photo-vraie="manque">{m.t("ouPublierVraiePhoto")}</p>}
             {m.uploadError && <Carte gravite="refus"><div className="fsn-card-p">{m.uploadError}</div></Carte>}
           </>
         )}

@@ -90,7 +90,8 @@ import { posesMemoireVisibles } from "../moteur/memoireCategorie";
 import { questionsDeLArticle } from "./sujetsDuLot";
 // (26/10, refonte C validée par Nico) Une ligne par article, une pop-up par article.
 import FicheArticle, { PoidsDeLArticle } from "./FicheArticle";
-import { usePhotoVide } from "./photoVide";
+import { imageParDefautDe } from "./photoVide";
+import VignetteLot from "./VignetteLot";
 import { plateformesDeLArticle, poidsAffiche, poidsIncoherent, textePoids, phraseEcartees, ecarteesAutomatiques } from "./ficheLue";
 import LivraisonDuLot from "./LivraisonDuLot";
 import AdresseRemiseDuLot from "./AdresseRemiseDuLot";
@@ -2231,19 +2232,9 @@ function BilanDuLot({ en, lot, etats, prets, aCompleter, annoncesPretes, ouvrir,
   );
 }
 
-// La vignette de la ligne : la première photo, et « Sans photo » quand il n'y en a pas de vraie (photoVide.js).
-function VignetteLot({ item, photos = null, onVide = null, en = false }) {
-  const url = (photos && photos.length ? (typeof photos[0] === "string" ? photos[0] : photos[0]?.url) : null) ?? urlsPhotos(item?.photos)[0] ?? null;
-  const lu = usePhotoVide(url ? urlPhoto(url) : null);
-  const vide = !url || lu === true;
-  useEffect(() => { if (onVide && (lu !== null || !url)) onVide(vide); }, [vide, lu, url, onVide]);
-  return (
-    <div className="fsn-thumb fsv-thumb" aria-hidden="true">
-      {url ? <img src={urlPhoto(url)} alt="" loading="lazy" /> : "📦"}
-      {vide ? <span className="fsv-sans">{en ? "No photo" : "Sans photo"}</span> : null}
-    </div>
-  );
-}
+// La vignette de la ligne : un module à lui depuis le 11/11 (./VignetteLot.jsx — la règle des vraies photos, lue en
+// cascade ; « Sans photo » et ce que le lot retient pour l'article, seulement une fois la lecture conclue).
+export { VignetteLot };
 
 export function VueListe({
   en, L, lot, etats, lignes, parId, moteurs, decisions, prets, aCompleter, annoncesPretes, communes, repondreCommune,
@@ -2383,7 +2374,7 @@ export function VueListe({
     return (
       <div key={id} className="fsv-art">
         <button type="button" className="fsv-ligne" onClick={() => setOuvert(id)}>
-          <VignetteLot en={en} item={item} photos={m ? ((m.processedPhotos?.length ? m.processedPhotos : m.photos) ?? null) : null} onVide={(v) => signalerVide(id, v)} />
+          <VignetteLot en={en} item={item} photos={m ? ((m.processedPhotos?.length ? m.processedPhotos : m.photos) ?? null) : null} origines={m?.photos ?? null} onVide={(v) => signalerVide(id, v)} />
           <span className="fsv-tx">
             <b>{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</b>
             <span className="fsv-meta">
@@ -2397,7 +2388,11 @@ export function VueListe({
         </button>
         {!pret && d.photoVide && (
           <div className="fsv-q">
-            <p className="fsq-note"><b>{en ? "No real photo:" : "Aucune vraie photo :"}</b> {en ? "the picture is a placeholder." : "l'image vient de Beebs (image par défaut)."}</p>
+            {/* (11/11, point T1) Beebs n'est nommé que pour son image par défaut reconnue à l'identique
+                (photoVide.js) — jamais sur une supposition. */}
+            {imageParDefautDe("beebs", [...urlsPhotos(m?.processedPhotos), ...urlsPhotos(m?.photos), ...urlsPhotos(item?.photos)])
+              ? <p className="fsq-note"><b>{en ? "No real photo:" : "Aucune vraie photo :"}</b> {en ? "the picture is a placeholder." : "l'image vient de Beebs (image par défaut)."}</p>
+              : <p className="fsq-note"><b>{en ? "No real photo." : "Aucune vraie photo."}</b></p>}
             <div className="fsn-choices fsq-puces"><button type="button" className="fsn-choice fsn-choice--on" onClick={() => setOuvert(id)}>{en ? "Add photos" : "Ajouter des photos"}</button></div>
           </div>
         )}
@@ -2558,7 +2553,7 @@ export function VueListe({
                 secours={<b className="fsv-ligne fsv-ligne--tete">{titreDe(parId.get(ouvert)?.item)}</b>}>
                 <Rendu f={() => (
                   <div className="fsv-ligne fsv-ligne--tete">
-                    <VignetteLot en={en} item={parId.get(ouvert)?.item} photos={mOuvert ? ((mOuvert.processedPhotos?.length ? mOuvert.processedPhotos : mOuvert.photos) ?? null) : null} />
+                    <VignetteLot en={en} item={parId.get(ouvert)?.item} photos={mOuvert ? ((mOuvert.processedPhotos?.length ? mOuvert.processedPhotos : mOuvert.photos) ?? null) : null} origines={mOuvert?.photos ?? null} />
                     <span className="fsv-tx">
                       <b>{titreDe(parId.get(ouvert)?.item) || (en ? "Untitled item" : "Article sans titre")}</b>
                       <span className="fsv-meta">

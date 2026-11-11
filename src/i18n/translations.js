@@ -307,6 +307,8 @@ export const translations = {
 
     ctaUploading:"Upload en cours…",
     ctaAddAtLeastOnePhoto:"Ajoute au moins 1 photo",
+    // (11/11/2026, décision de Nico) « Où publier ? » : les seules photos sont des images de remplissage.
+    ouPublierVraiePhoto:"Ajoute une vraie photo de ton article pour le publier.",
     ctaContinuePhotos:"Continuer · {n} photo{s}",
     ctaGenerateListings:"Générer les annonces",
     ctaGenerating:"Génération…",
@@ -738,6 +740,7 @@ export const translations = {
 
     ctaUploading:"Uploading…",
     ctaAddAtLeastOnePhoto:"Add at least 1 photo",
+    ouPublierVraiePhoto:"Add a real photo of your item to publish it.",
     ctaContinuePhotos:"Continue · {n} photo{s}",
     ctaGenerateListings:"Generate listings",
     ctaGenerating:"Generating…",
