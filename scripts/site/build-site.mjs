@@ -227,6 +227,16 @@ export function prixAvecCloud(x) {
   return ids.every((id) => Number.isFinite(x[id]) && x[id] > 0) ? Object.fromEntries(ids.map((id) => [id, x[id]])) : null;
 }
 
+/** Économies des formules avec Cloud, calculées par l'app (economieCloud(palier)) : { premium, pro, business } > 0, sinon null. */
+export function economiesAvecCloud(f) {
+  if (typeof f !== 'function') return null;
+  const ids = ['premium', 'pro', 'business'];
+  try {
+    const e = Object.fromEntries(ids.map((id) => [id, f(id)]));
+    return ids.every((id) => Number.isFinite(e[id]) && e[id] > 0) ? e : null;
+  } catch { return null; }
+}
+
 // `verrou` : un verrou des dates FOURNI (selftests seulement) à la place de site/dates.lock.json.
 export async function genererSite({ dossier, racine = process.cwd(), mode = 'build', journal = console, verifier = true, env = process.env, verrou: verrouFourni = null } = {}) {
   const t0 = performance.now();
@@ -271,6 +281,9 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   const CLOUD_ESSAI_JOURS = PALIER.CLOUD_ESSAI_JOURS;
   if (!Number.isInteger(CLOUD_ESSAI_JOURS)) throw new Error(`[site] jours d'essai de FillSell Cloud illisibles dans src/utils/palier.js (${CLOUD_ESSAI_JOURS})`);
   const avecCloud = prixAvecCloud(PALIER.PRIX_AVEC_CLOUD);
+  // (11/11 au soir, Nico) L'économie de chaque formule avec Cloud (« − 3 € », « − 5 € »…) est CALCULÉE PAR L'APP :
+  // economieCloud(palier), fonction livrée par le terminal 1. Absente ou incohérente → aucune économie affichée.
+  const economieCloud = avecCloud ? economiesAvecCloud(PALIER.economieCloud) : null;
   if (!avecCloud && mode === 'build') avertir('prix des formules avec Cloud absents de src/utils/palier.js (PRIX_AVEC_CLOUD) : pages sans prix « avec Cloud » ni interrupteur');
   const concurrents = lireConcurrents(racine);
   if (!jetable && !existsSync(path.join(dossier, 'app-shell.html'))) {
@@ -384,6 +397,7 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
     plateformes,
     cloud: {
       avecCloud,
+      economie: economieCloud,
       essaiJours: CLOUD_ESSAI_JOURS,
       plateformes: plateformes.ouvertes.filter((p) => p.mode === 'extension').map((p) => p.nom),
     },
