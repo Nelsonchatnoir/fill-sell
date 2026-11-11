@@ -32,6 +32,32 @@ export function palierDuProfil(p) {
   return 'gratuit';
 }
 
+// ── (11/11/2026, décision 1 de Nico, offres Cloud) LES DROITS d'un compte en essai du Cloud seul ──────────────────────
+// Un essai du Cloud SEUL en cours sur un compte GRATUIT = droits Pro jusqu'à la fin de l'essai. Une RÈGLE dans le temps,
+// pas un drapeau : stripe-webhook réécrit is_pro depuis Stripe à chaque événement. MÊME RÈGLE que palier_de en SQL
+// (migration 20261111230000) — quotas, republication automatique et planifiée, bordereaux.
+// palierDuProfil (ci-dessus) reste le palier PAYÉ (les drapeaux) : crédits mensuels, alertes de paiement, « avec
+// formule », remboursements. Les DROITS se lisent ici : palierDesDroits.
+const instantPalier = (v) => {
+  if (v == null || v === '') return null;
+  const t = v instanceof Date ? v.getTime() : typeof v === 'number' ? v : Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+};
+/** L'essai du Cloud seul est-il EN COURS (commencé, pas fini, pas arrêté, pas encore payé, jamais l'offert) ? */
+export function essaiCloudSeulEnCours(p, maintenant = Date.now()) {
+  const now = instantPalier(maintenant) ?? Date.now();
+  const debut = instantPalier(p?.cloud_essai_debut);
+  const fin = instantPalier(p?.cloud_essai_fin);
+  return p?.is_cloud !== true && p?.cloud_essai_arrete !== true && p?.cloud_canal !== 'offert'
+    && debut != null && fin != null && debut <= now && now < fin;
+}
+/** Le palier des DROITS (= palier_de en SQL) : le palier payé, ou Pro pendant un essai du Cloud seul d'un compte gratuit. */
+export function palierDesDroits(p, maintenant = Date.now()) {
+  const paye = palierDuProfil(p);
+  if (paye === 'gratuit' && essaiCloudSeulEnCours(p, maintenant)) return 'pro';
+  return paye;
+}
+
 /** Le palier depuis les drapeaux de l'app ({ isPremium, isPro, isBusiness }). */
 export function palierDesDrapeaux({ isPremium = false, isPro = false, isBusiness = false } = {}) {
   if (isBusiness === true) return 'business';

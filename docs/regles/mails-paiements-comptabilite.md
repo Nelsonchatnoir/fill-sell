@@ -383,3 +383,16 @@ marge de 100 % sur du vent, indétectable ensuite.
   -- 3. Les versions enregistrées depuis l'OTA (la neuve ; quelques 2026-11-04 = anciens paquets)
   select cloud_cgu_version, count(*) from profiles where cloud_cgu_acceptee_le >= timestamptz '<OTA> Europe/Paris' group by 1;
   ```
+
+## ⛔ 11/11/2026 nuit — un essai du Cloud SEUL en cours sur un compte GRATUIT = droits Pro jusqu'à la fin de l'essai (décision 1 de Nico)
+- Une RÈGLE dans le temps, pas un drapeau (stripe-webhook réécrit is_pro depuis Stripe) : `palier_de` (SQL) et
+  `palierDesDroits` (`_shared/palier.js`) rendent « pro » pour un compte sans palier payé dont l'essai du Cloud seul est
+  commencé, pas fini, pas arrêté, pas payé, jamais l'offert. Suivent : quotas (`quotas_etat`, `spend_coins_for_generate`,
+  `spend_coins_for_lens`), republication automatique et planifiée, bordereaux. NE suivent PAS (palier PAYÉ, drapeaux) :
+  crédit mensuel (`upgrade_monthly_grant`, paresseux ou balayage), `coins_awaiting_payment`, `cloud_etat.avecFormule`.
+  À la fin ou à l'arrêt de l'essai, ou au premier paiement du Cloud seul (qui garde les quotas Free, décision 2), le compte
+  redevient Free sans rien écrire.
+- Migration **20261111230000** (appliquée le 11/11 à 23:19, après banc sur base jetable 56/56, sauvegarde
+  `_backup_1111_essai_cloud_droits_pro_*`, lecture avant/après : `scripts/reparations/20261111_essai_cloud_droits_pro_PREUVE.sql`,
+  à jouer en postgres, pas `--read-only`). Inverse : `supabase/rollbacks/20261111230000_essai_cloud_seul_droits_pro_INVERSE.sql`
+  puis `migration repair --status reverted 20261111230000`. Verrou `npm run selftest:essai-cloud-droits-pro`.

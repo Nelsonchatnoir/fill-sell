@@ -1,0 +1,1803 @@
+{
+ "source": "pg_get_functiondef + pg_attribute + pg_constraint, prod tojihnuawsoohlolangc, lecture seule",
+ "lu_le": "2026-11-11T22:53+01:00",
+ "racines": [
+  "palier_de",
+  "palier_au_moins",
+  "republish_palier",
+  "quotas_etat",
+  "spend_coins_for_generate",
+  "spend_coins_for_lens",
+  "cloud_etat",
+  "bordereaux_ouverts_pour",
+  "upgrade_monthly_grant",
+  "grant_monthly_coins",
+  "coins_awaiting_payment",
+  "jauge_publications_plafond"
+ ],
+ "exactes": [
+  "palier_de",
+  "quotas_etat",
+  "spend_coins_for_generate",
+  "spend_coins_for_lens"
+ ],
+ "fonctions": [
+  {
+   "nom": "bordereaux_ouverts_pour",
+   "args": "p_user uuid, p_platform text",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "md5_prod": "88a47e18f12c34f1baa6df46ab6310fb",
+   "def": "CREATE OR REPLACE FUNCTION public.bordereaux_ouverts_pour(p_user uuid DEFAULT NULL::uuid, p_platform text DEFAULT 'vinted'::text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  SELECT CASE\n    WHEN auth.uid() IS NOT NULL AND p_user IS NOT NULL AND p_user <> auth.uid() THEN false\n    WHEN coalesce(p_user, auth.uid()) IS NULL THEN false\n    WHEN lower(coalesce(p_platform, '')) <> 'vinted' THEN false\n    WHEN public.palier_de(coalesce(p_user, auth.uid())) NOT IN ('pro', 'business') THEN false\n    WHEN coalesce((SELECT k.value FROM coin_config k WHERE k.key = 'bordereaux_vinted_tous'), 0) = 1 THEN true\n    ELSE public.messagerie_beta(coalesce(p_user, auth.uid()))\n  END;\n$function$\n"
+  },
+  {
+   "nom": "cloud_etat",
+   "args": "p_user uuid, p_maintenant timestamp with time zone",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "f104bccfb8418ff75a194180126993e1",
+   "def": "CREATE OR REPLACE FUNCTION public.cloud_etat(p_user uuid, p_maintenant timestamp with time zone DEFAULT now())\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE\r\n  c_exige_un_palier CONSTANT boolean := false;\r\n  v_now timestamptz := date_trunc('milliseconds', p_maintenant);\r\n  v_is_cloud boolean; v_debut timestamptz; v_fin timestamptz; v_arrete boolean;\r\n  v_periode timestamptz; v_arret_fp boolean;\r\n  v_business boolean; v_pro boolean; v_premium boolean; v_comped boolean;\r\n  v_essai_pris boolean; v_en_cours boolean; v_paye boolean; v_avec_formule boolean; v_palier_ok boolean;\r\n  v_base jsonb;\r\nBEGIN\r\n  SELECT p.is_cloud, date_trunc('milliseconds', p.cloud_essai_debut), date_trunc('milliseconds', p.cloud_essai_fin),\r\n         p.cloud_essai_arrete, date_trunc('milliseconds', p.cloud_periode_fin), p.cloud_arret_fin_periode,\r\n         p.is_business, p.is_pro, p.is_premium, p.is_comped\r\n    INTO v_is_cloud, v_debut, v_fin, v_arrete, v_periode, v_arret_fp, v_business, v_pro, v_premium, v_comped\r\n    FROM public.profiles p WHERE p.id = p_user;\r\n  v_essai_pris := v_debut IS NOT NULL;\r\n  v_en_cours := v_debut IS NOT NULL AND v_fin IS NOT NULL AND v_debut <= v_now AND v_now < v_fin AND v_arrete IS NOT TRUE;\r\n  v_paye := v_is_cloud IS TRUE;\r\n  v_avec_formule := (v_business IS TRUE OR v_pro IS TRUE OR v_premium IS TRUE OR v_comped IS TRUE);\r\n  v_palier_ok := NOT c_exige_un_palier OR v_avec_formule;\r\n  v_base := jsonb_build_object(\r\n    'essaiPris', v_essai_pris,\r\n    'essaiArrete', v_essai_pris AND v_arrete IS TRUE,\r\n    'essaiFin', CASE WHEN v_fin IS NULL THEN NULL\r\n                     ELSE to_char(v_fin AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') END,\r\n    'joursRestants', NULL,\r\n    'avecFormule', v_avec_formule,\r\n    'periodeFin', CASE WHEN v_paye AND v_periode IS NOT NULL\r\n                       THEN to_char(v_periode AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') END,\r\n    'arretPrevuLe', CASE WHEN v_paye AND v_arret_fp IS TRUE AND v_periode IS NOT NULL\r\n                         THEN to_char(v_periode AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') END);\r\n  IF (v_paye OR v_en_cours) AND NOT v_palier_ok THEN\r\n    RETURN v_base || jsonb_build_object('etat', 'suspendu', 'actif', false);\r\n  END IF;\r\n  IF v_paye THEN\r\n    RETURN v_base || jsonb_build_object('etat', 'paye', 'actif', true);\r\n  END IF;\r\n  IF v_en_cours THEN\r\n    RETURN v_base || jsonb_build_object('etat', 'essai', 'actif', true,\r\n      'joursRestants', GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_fin - v_now)) / 86400)::integer));\r\n  END IF;\r\n  IF v_essai_pris AND (v_arrete IS TRUE OR (v_fin IS NOT NULL AND v_now >= v_fin)) THEN\r\n    RETURN v_base || jsonb_build_object('etat', 'essai_termine', 'actif', false);\r\n  END IF;\r\n  RETURN v_base || jsonb_build_object('etat', 'aucun', 'actif', false);\r\nEND;\r\n$function$\n"
+  },
+  {
+   "nom": "coins_awaiting_payment",
+   "args": "",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "f559b9978471d31e78b1b25794c8f8fe",
+   "def": "CREATE OR REPLACE FUNCTION public.coins_awaiting_payment()\n RETURNS TABLE(user_id uuid, email text, tier text, canal text, next_grant_at timestamp with time zone, jours_retard integer)\n LANGUAGE sql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  select p.id,\n         p.email,\n         case when p.is_business then 'business' when p.is_pro then 'pro' else 'premium' end,\n         case when p.stripe_customer_id is not null then 'stripe'\n              when p.apple_original_transaction_id is not null then 'apple'\n              when p.google_purchase_token is not null then 'google'\n              else 'inconnu' end,\n         w.next_grant_at,\n         extract(day from (now() - w.next_grant_at))::int\n  from profiles p\n  join coin_wallets w on w.user_id = p.id\n  where (p.is_pro or p.is_premium)\n    and not coalesce(p.is_comped, false)\n    and (p.stripe_customer_id is not null\n         or p.apple_original_transaction_id is not null\n         or p.google_purchase_token is not null)\n    and w.next_grant_at is not null\n    and w.next_grant_at < now() - interval '3 days'\n  order by w.next_grant_at;\n$function$\n"
+  },
+  {
+   "nom": "debut_cycle_quotas",
+   "args": "p_user_id uuid",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "98716246a4ed59ea21d829d2ac8953bb",
+   "def": "CREATE OR REPLACE FUNCTION public.debut_cycle_quotas(p_user_id uuid)\n RETURNS timestamp with time zone\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  SELECT COALESCE(\n    (SELECT max(created_at) FROM coin_ledger\n      WHERE user_id = p_user_id AND kind IN ('grant_monthly','grant_upgrade')),\n    date_trunc('month', now())\n  );\n$function$\n"
+  },
+  {
+   "nom": "garde_fou_jour",
+   "args": "p_user uuid, p_jauge text, p_ajout integer",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "53b4ab70d61a5ded0ba0cadc5d83cf7c",
+   "def": "CREATE OR REPLACE FUNCTION public.garde_fou_jour(p_user uuid, p_jauge text, p_ajout integer DEFAULT 1)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_garde  integer;\n  v_minuit timestamptz;\n  v_faites integer;\n  v_nom    text;\nBEGIN\n  IF NOT jauges_actives() THEN\n    RETURN NULL;\n  END IF;\n  SELECT NULLIF(value, 0) INTO v_garde FROM coin_config WHERE key = 'garde_jour_' || p_jauge;\n  IF v_garde IS NULL THEN\n    RETURN NULL;\n  END IF;\n  v_minuit := date_trunc('day', now() AT TIME ZONE 'Europe/Paris') AT TIME ZONE 'Europe/Paris';\n  v_faites := CASE p_jauge\n    WHEN 'publications' THEN publications_du_cycle(p_user, v_minuit)\n    WHEN 'remontees'    THEN remontees_du_cycle(p_user, v_minuit)\n    WHEN 'annonces'     THEN quota_annonces_consommees(p_user, v_minuit)\n  END;\n  IF v_faites IS NULL OR v_faites + GREATEST(COALESCE(p_ajout, 1), 0) <= v_garde THEN\n    RETURN NULL;\n  END IF;\n  v_nom := CASE p_jauge WHEN 'remontees' THEN 'remontées' ELSE p_jauge END;\n  RETURN jsonb_build_object(\n    'allowed', false, 'reason', 'garde_fou_jour', 'jauge', p_jauge,\n    'garde', v_garde, 'faites', v_faites, 'reprise_le', v_minuit + interval '1 day',\n    'message', format('Pause de sécurité jusqu''à minuit : tu as fait %s %s aujourd''hui. Au-delà, les plateformes risquent de restreindre ton compte. Rien n''est perdu : tout reprend demain.',\n                      replace(to_char(v_faites, 'FM999,999,999'), ',', ' '), v_nom));\nEND;\n$function$\n"
+  },
+  {
+   "nom": "grant_monthly_coins",
+   "args": "p_user_id uuid, p_tier text, p_period_end timestamp with time zone, p_source text",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "185d1427c213ccb8d2a179adbfebc6ed",
+   "def": "CREATE OR REPLACE FUNCTION public.grant_monthly_coins(p_user_id uuid, p_tier text, p_period_end timestamp with time zone DEFAULT NULL::timestamp with time zone, p_source text DEFAULT 'auto'::text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  v_amount      integer;\n  v_override    integer;\n  v_wallet      coin_wallets%ROWTYPE;\n  v_anchor      int;\n  v_created     timestamptz;\n  v_has_billing boolean;\n  v_is_comped   boolean;\n  v_due         timestamptz;\n  v_next        timestamptz;\n  v_new_inc     integer;\n  v_delta       integer;\n  v_ref         text;\nbegin\n  if p_tier not in ('free','premium','pro','business') then\n    return jsonb_build_object('granted', false, 'reason', 'invalid_tier');\n  end if;\n\n  select value into v_amount from coin_config where key = 'monthly_grant_' || p_tier;\n  if v_amount is null then\n    return jsonb_build_object('granted', false, 'reason', 'grant_not_configured');\n  end if;\n\n  select monthly_grant_override, created_at,\n         (stripe_customer_id is not null\n          or apple_original_transaction_id is not null\n          or google_purchase_token is not null),\n         coalesce(is_comped, false)\n    into v_override, v_created, v_has_billing, v_is_comped\n  from profiles where id = p_user_id;\n\n  if v_override is not null and v_override > 0 then\n    v_amount := v_override;\n  end if;\n\n  insert into coin_wallets (user_id) values (p_user_id) on conflict (user_id) do nothing;\n  select * into v_wallet from coin_wallets where user_id = p_user_id for update;\n\n  v_anchor := coalesce(v_wallet.grant_anchor_day,\n                       extract(day from coalesce(v_created, now()))::int);\n  v_due := v_wallet.next_grant_at;\n\n  if v_due is not null then\n    if p_source = 'payment' then\n      if v_due > now() + interval '2 days' then\n        return jsonb_build_object('granted', false, 'reason', 'already_granted',\n                                  'next_grant_at', v_due);\n      end if;\n    elsif v_due > now() then\n      return jsonb_build_object('granted', false, 'reason', 'already_granted',\n                                'next_grant_at', v_due);\n    end if;\n  end if;\n\n  if p_source <> 'payment' and v_has_billing and not v_is_comped and p_tier <> 'free'\n     and v_due is not null and v_due < now() - interval '3 days' then\n    return jsonb_build_object('granted', false, 'reason', 'awaiting_payment_event',\n                              'next_grant_at', v_due, 'tier', p_tier);\n  end if;\n\n  v_new_inc := v_amount;\n  v_delta   := v_new_inc - v_wallet.included_balance;\n\n  if p_period_end is not null and p_period_end > now() then\n    v_next := p_period_end;\n  else\n    v_next := grant_next_due(now(), v_anchor);\n  end if;\n\n  v_ref := 'grant_monthly:' || p_user_id || ':' || to_char(coalesce(v_due, now()), 'YYYY-MM-DD');\n  begin\n    insert into coin_ledger (user_id, delta, included_after, purchased_after, kind, ref, metadata)\n    values (\n      p_user_id, v_delta, v_new_inc, v_wallet.purchased_balance,\n      'grant_monthly', v_ref,\n      jsonb_build_object('tier', p_tier, 'override', v_override,\n                         'source', p_source,\n                         'solde_avant', v_wallet.included_balance,\n                         'montant_theorique', v_amount,\n                         'remplacement', true,\n                         'next_grant_at', v_next)\n    );\n  exception when unique_violation then\n    return jsonb_build_object('granted', false, 'reason', 'already_granted', 'ref', v_ref);\n  end;\n\n  update coin_wallets set\n    included_balance = v_new_inc,\n    next_grant_at    = v_next,\n    grant_anchor_day = v_anchor,\n    updated_at       = now()\n  where user_id = p_user_id;\n\n  return jsonb_build_object('granted', true, 'amount', v_delta,\n                            'montant_theorique', v_amount,\n                            'solde_avant', v_wallet.included_balance,\n                            'included_after', v_new_inc,\n                            'next_grant_at', v_next,\n                            'source', p_source);\nend;\n$function$\n"
+  },
+  {
+   "nom": "grant_next_due",
+   "args": "p_after timestamp with time zone, p_anchor_day integer",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "4f54f884468a7c1a88d6cb78a0d1f506",
+   "def": "CREATE OR REPLACE FUNCTION public.grant_next_due(p_after timestamp with time zone, p_anchor_day integer)\n RETURNS timestamp with time zone\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO 'public'\nAS $function$\ndeclare\n  v_ref    date := p_after::date;\n  v_first  date;\n  v_last   int;\n  v_cand   date;\n  v_anchor int := least(greatest(coalesce(p_anchor_day, 1), 1), 31);\n  i        int;\nbegin\n  v_first := make_date(extract(year from v_ref)::int, extract(month from v_ref)::int, 1);\n  for i in 0..1 loop\n    v_last := extract(day from (v_first + interval '1 month' - interval '1 day'))::int;\n    v_cand := v_first + (least(v_anchor, v_last) - 1);\n    if v_cand > v_ref then\n      return v_cand::timestamptz;\n    end if;\n    v_first := (v_first + interval '1 month')::date;\n  end loop;\n  return v_cand::timestamptz;\nend;\n$function$\n"
+  },
+  {
+   "nom": "jauge_annonces_plafond",
+   "args": "p_user uuid, p_tier text",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "12041c18fa86edea2550dae88e0e3674",
+   "def": "CREATE OR REPLACE FUNCTION public.jauge_annonces_plafond(p_user uuid, p_tier text)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  WITH k AS (SELECT (SELECT value FROM coin_config WHERE key = 'jauge_annonces_' || COALESCE(p_tier, 'free')) AS v)\n  SELECT CASE\n    WHEN NOT jauges_actives() OR k.v IS NULL THEN quota_annonces_compte(p_user, p_tier)\n    WHEN k.v = 0 THEN NULL\n    ELSE COALESCE((SELECT q.quota_annonces FROM quotas_par_compte q WHERE q.user_id = p_user), k.v)\n  END FROM k;\n$function$\n"
+  },
+  {
+   "nom": "jauge_lens_plafond",
+   "args": "p_tier text",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "389c4033b24fa9da1921b8783400d6aa",
+   "def": "CREATE OR REPLACE FUNCTION public.jauge_lens_plafond(p_tier text)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  SELECT CASE WHEN jauges_actives() AND COALESCE(p_tier, 'free') = 'business'\n    THEN NULLIF((SELECT value FROM coin_config WHERE key = 'jauge_lens_business'), 0)\n  END;\n$function$\n"
+  },
+  {
+   "nom": "jauge_publications_plafond",
+   "args": "p_tier text",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "e1e1e9ee9567faf8432072abf6dadf3b",
+   "def": "CREATE OR REPLACE FUNCTION public.jauge_publications_plafond(p_tier text)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  SELECT CASE WHEN jauges_actives()\n    THEN NULLIF((SELECT value FROM coin_config WHERE key = 'jauge_publications_' || COALESCE(p_tier, 'free')), 0)\n  END;\n$function$\n"
+  },
+  {
+   "nom": "jauges_actives",
+   "args": "",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "c112932f2948a1e8b081edba6d6fe460",
+   "def": "CREATE OR REPLACE FUNCTION public.jauges_actives()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  SELECT COALESCE((SELECT value FROM coin_config WHERE key = 'grille_trois_jauges'), 0) = 1;\n$function$\n"
+  },
+  {
+   "nom": "messagerie_beta",
+   "args": "p_user uuid",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "md5_prod": "7e75278d68613fe3feb9035be372aa67",
+   "def": "CREATE OR REPLACE FUNCTION public.messagerie_beta(p_user uuid DEFAULT NULL::uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  SELECT CASE\n    WHEN auth.uid() IS NOT NULL AND p_user IS NOT NULL AND p_user <> auth.uid() THEN false\n    ELSE coalesce((\n      SELECT (p.beta_flags -> 'messages_bordereaux') = 'true'::jsonb\n        FROM profiles p\n       WHERE p.id = coalesce(p_user, auth.uid())), false)\n  END;\n$function$\n"
+  },
+  {
+   "nom": "palier_au_moins",
+   "args": "p_user uuid, p_requis text",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "md5_prod": "45f8b539b346c58725ada9e70f3fa998",
+   "def": "CREATE OR REPLACE FUNCTION public.palier_au_moins(p_user uuid, p_requis text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  SELECT (CASE palier_de(p_user) WHEN 'business' THEN 3 WHEN 'pro' THEN 2 WHEN 'premium' THEN 1 ELSE 0 END)\n      >= (CASE p_requis WHEN 'business' THEN 3 WHEN 'pro' THEN 2 WHEN 'premium' THEN 1 WHEN 'free' THEN 0 WHEN 'gratuit' THEN 0 ELSE 99 END);\n$function$\n"
+  },
+  {
+   "nom": "palier_de",
+   "args": "p_user uuid",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "md5_prod": "52173f13c0f202187d593c90ad645cb6",
+   "def": "CREATE OR REPLACE FUNCTION public.palier_de(p_user uuid)\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  SELECT COALESCE((SELECT CASE\n    WHEN p.is_business IS TRUE THEN 'business'\n    WHEN p.is_pro IS TRUE THEN 'pro'\n    WHEN p.is_premium IS TRUE OR p.is_comped IS TRUE THEN 'premium'\n    ELSE 'free' END\n  FROM public.profiles p WHERE p.id = p_user), 'free');\n$function$\n"
+  },
+  {
+   "nom": "publications_du_cycle",
+   "args": "p_user uuid, p_depuis timestamp with time zone",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "773d0b9f2531b33403faface1b260b95",
+   "def": "CREATE OR REPLACE FUNCTION public.publications_du_cycle(p_user uuid, p_depuis timestamp with time zone)\n RETURNS integer\n LANGUAGE sql\n STABLE\n SET search_path TO 'public'\nAS $function$\n  SELECT count(*)::integer\n    FROM cross_post_jobs j\n   WHERE j.user_id = p_user\n     AND j.action = 'publish'\n     AND j.created_at >= p_depuis\n     AND (j.published_at IS NOT NULL OR j.status IN ('published', 'sold', 'pending', 'processing', 'needs_user'))\n     AND NOT (COALESCE(j.platform_fields, '{}'::jsonb) ?| ARRAY['opla_sortie', 'hors_quota'])\n     AND COALESCE(j.handler_build, '') !~ '(sync-dressing|releve-annonces)';\n$function$\n"
+  },
+  {
+   "nom": "quota_annonces_compte",
+   "args": "p_user uuid, p_tier text",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "d635326989ffb27ebf041baa5c09d28c",
+   "def": "CREATE OR REPLACE FUNCTION public.quota_annonces_compte(p_user uuid, p_tier text)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  select coalesce(\n    (select q.quota_annonces from public.quotas_par_compte q where q.user_id = p_user),\n    (select c.value from public.coin_config c where c.key = 'quota_annonces_' || coalesce(p_tier, 'free'))\n  );\n$function$\n"
+  },
+  {
+   "nom": "quota_annonces_consommees",
+   "args": "p_user_id uuid, p_cycle timestamp with time zone",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "6e2f60f0c9fd6d67797f182e81d84f86",
+   "def": "CREATE OR REPLACE FUNCTION public.quota_annonces_consommees(p_user_id uuid, p_cycle timestamp with time zone)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  WITH borne AS (\n    SELECT GREATEST(\n      p_cycle,\n      to_timestamp(COALESCE((SELECT value FROM coin_config WHERE key = 'quotas_annonces_depuis'), 0))\n    ) AS t\n  )\n  SELECT (\n    (SELECT count(*) FROM usage_logs u, borne\n      WHERE u.user_id = p_user_id AND u.feature = 'generate_listing'\n        AND u.created_at >= borne.t\n        AND NOT (COALESCE(u.metadata->>'texte_vendeur_titre', '') = 'true'\n                 AND COALESCE(u.metadata->>'texte_vendeur_description', '') = 'true')\n        AND NOT (\n          u.metadata ? 'inventaire_id' AND EXISTS (\n            SELECT 1 FROM usage_logs prev\n            WHERE prev.user_id = u.user_id AND prev.feature = 'generate_listing'\n              AND prev.metadata->>'inventaire_id' = u.metadata->>'inventaire_id'\n              AND prev.created_at <  u.created_at\n              AND prev.created_at >= u.created_at - interval '24 hours'\n              AND NOT (COALESCE(prev.metadata->>'texte_vendeur_titre', '') = 'true'\n                       AND COALESCE(prev.metadata->>'texte_vendeur_description', '') = 'true')\n          )\n        ))\n    + (SELECT count(*) FROM usage_logs l, borne\n        WHERE l.user_id = p_user_id AND l.feature = 'lens'\n          AND l.created_at >= borne.t\n          AND NOT (l.metadata ? 'unifie'))\n  )::int;\n$function$\n"
+  },
+  {
+   "nom": "quota_remontees_plafond",
+   "args": "p_tier text",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "92fe1b1df01d1f8e607b12c96368b252",
+   "def": "CREATE OR REPLACE FUNCTION public.quota_remontees_plafond(p_tier text)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  WITH k AS (SELECT (SELECT value FROM coin_config WHERE key = 'jauge_remontees_' || COALESCE(p_tier, 'free')) AS v)\n  SELECT CASE\n    WHEN jauges_actives() AND k.v IS NOT NULL THEN NULLIF(k.v, 0)\n    WHEN COALESCE(p_tier, 'free') = 'business' THEN NULL\n    ELSE NULLIF((SELECT value FROM coin_config WHERE key = 'quota_republication_' || COALESCE(p_tier, 'free')), 0)\n  END FROM k;\n$function$\n"
+  },
+  {
+   "nom": "quota_republication_free_etat",
+   "args": "p_user uuid",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "b9070ff46bfb0feb86eb0e6e8d94a2a6",
+   "def": "CREATE OR REPLACE FUNCTION public.quota_republication_free_etat(p_user uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_plafond integer;\n  v_borne   timestamptz;\n  v_exec    integer;\n  v_vol     integer;\n  v_remise  timestamptz;\nBEGIN\n  v_plafond := quota_remontees_plafond('free');\n  IF v_plafond IS NULL OR v_plafond <= 0 THEN\n    RETURN jsonb_build_object('mode', 'mensuel', 'plafond', NULL);\n  END IF;\n  v_borne := GREATEST(\n    debut_cycle_quotas(p_user),\n    to_timestamp(COALESCE((SELECT value FROM coin_config WHERE key = 'quotas_republication_free_depuis'), 0)));\n  SELECT count(*) FILTER (WHERE j.published_at >= v_borne),\n         count(*) FILTER (WHERE j.published_at IS NULL AND j.created_at >= v_borne\n                            AND j.status IN ('pending', 'processing', 'needs_user'))\n    INTO v_exec, v_vol\n    FROM cross_post_jobs j\n   WHERE j.user_id = p_user\n     AND j.action = 'republish'\n     AND (j.published_at >= v_borne OR j.created_at >= v_borne)\n     AND NOT (COALESCE(j.platform_fields, '{}'::jsonb) ?| ARRAY['opla_sortie', 'hors_quota'])\n     AND COALESCE(j.handler_build, '') !~ '(sync-dressing|releve-annonces)';\n  SELECT w.next_grant_at INTO v_remise FROM coin_wallets w WHERE w.user_id = p_user;\n  RETURN jsonb_build_object(\n    'mode', 'mensuel',\n    'plafond', v_plafond,\n    'faites', v_exec + v_vol,\n    'executees', v_exec,\n    'en_cours', v_vol,\n    'restantes', GREATEST(0, v_plafond - v_exec - v_vol),\n    'depuis', v_borne,\n    'remise_le', v_remise);\nEND;\n$function$\n"
+  },
+  {
+   "nom": "quotas_etat",
+   "args": "",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "md5_prod": "8c18278821e7884d00b0faaba5d65f2d",
+   "def": "CREATE OR REPLACE FUNCTION public.quotas_etat()\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_user  uuid := auth.uid();\n  v_tier  text;\n  v_cycle timestamptz;\n  v_qa integer; v_qs integer; v_qr integer; v_qrep integer;\n  v_avie integer; v_depuis integer;\n  v_ca integer; v_cs integer; v_cr integer; v_crep integer;\n  v_repub jsonb;\nBEGIN\n  IF v_user IS NULL THEN\n    RETURN jsonb_build_object('error', 'unauthorized');\n  END IF;\n  SELECT CASE\n           WHEN p.is_business = true THEN 'business'\n           WHEN p.is_pro = true THEN 'pro'\n           WHEN p.is_premium = true OR p.is_comped = true THEN 'premium'\n           ELSE 'free'\n         END INTO v_tier\n  FROM profiles p WHERE p.id = v_user;\n  v_tier  := COALESCE(v_tier, 'free');\n  v_cycle := debut_cycle_quotas(v_user);\n\n  -- (11/10) Le quota d'annonces du COMPTE : son réglage s'il en a un, sinon\n  -- celui du palier (quota_annonces_compte, table quotas_par_compte).\n  -- (03/11/2026, grille à 3 jauges, décision de Nico ; interrupteur coin_config.grille_trois_jauges, 0 = règles d'avant) : jauge_annonces_plafond (à 0 : quota_annonces_compte, à l'identique).\n  v_qa := jauge_annonces_plafond(v_user, v_tier);\n  SELECT value INTO v_qs   FROM coin_config WHERE key = 'quota_scan_'      || v_tier;\n  SELECT value INTO v_qr   FROM coin_config WHERE key = 'quota_retouche_'  || v_tier;\n  -- Fusion 02/09 soir : clés scans à 0 (retour arrière) — 0 = pas de compteur.\n  v_qs := NULLIF(COALESCE(v_qs, 0), 0);\n\n  v_ca := quota_annonces_consommees(v_user, v_cycle);\n  SELECT count(*)::int INTO v_cs FROM usage_logs\n   WHERE user_id = v_user AND feature = 'lens' AND created_at >= v_cycle;\n  -- Retouches : même remise à zéro que les annonces (quotas_retouche_depuis).\n  SELECT count(*)::int INTO v_cr FROM usage_logs\n   WHERE user_id = v_user AND feature = 'photo_retouche'\n     AND (metadata->>'delivered') IS DISTINCT FROM 'false'\n     AND created_at >= GREATEST(v_cycle,\n       to_timestamp(COALESCE((SELECT value FROM coin_config WHERE key = 'quotas_retouche_depuis'), 0)));\n\n  IF v_tier = 'free' THEN\n    -- (05/10, décision Nico) 50 PAR MOIS, plus « à vie » : le compteur et sa\n    -- remise à zéro vivent dans quota_republication_free_etat (même cycle\n    -- que quota_annonces_free).\n    v_repub := quota_republication_free_etat(v_user);\n  ELSIF v_tier = 'business' THEN\n    v_repub := jsonb_build_object('mode', 'illimite');\n  ELSIF jauges_actives() AND quota_remontees_plafond(v_tier) IS NULL THEN\n    -- (03/11/2026, grille à 3 jauges, décision de Nico ; interrupteur coin_config.grille_trois_jauges, 0 = règles d'avant) : remontées illimitées (Pro).\n    v_repub := jsonb_build_object('mode', 'illimite');\n  ELSE\n    v_qrep := quota_remontees_plafond(v_tier);\n    -- (03/11, décision de Nico) faites + en cours, jamais les annulées jamais publiées (remontees_du_cycle).\n    v_crep := remontees_du_cycle(v_user, v_cycle);\n    v_repub := jsonb_build_object('mode', 'mensuel',\n                                  'plafond', NULLIF(COALESCE(v_qrep, 0), 0),\n                                  'faites', v_crep,\n                                  'restantes', CASE WHEN COALESCE(v_qrep,0) > 0\n                                    THEN GREATEST(0, v_qrep - v_crep) ELSE NULL END);\n  END IF;\n\n  RETURN jsonb_build_object(\n    'palier', v_tier,\n    'cycle_debut', v_cycle,\n    'annonces',  jsonb_build_object('plafond', v_qa, 'consommes', v_ca,\n                   'restantes', CASE WHEN v_qa IS NOT NULL THEN GREATEST(0, v_qa - v_ca) END),\n    'scans',     jsonb_build_object('plafond', v_qs, 'consommes', v_cs,\n                   'restantes', CASE WHEN v_qs IS NOT NULL THEN GREATEST(0, v_qs - v_cs) END),\n    'retouches', jsonb_build_object('plafond', v_qr, 'consommes', v_cr,\n                   'restantes', CASE WHEN v_qr IS NOT NULL THEN GREATEST(0, v_qr - v_cr) END),\n    'republication', v_repub\n  ) || CASE WHEN jauges_actives() THEN jsonb_build_object(\n    -- (03/11/2026, grille à 3 jauges, décision de Nico ; interrupteur coin_config.grille_trois_jauges, 0 = règles d'avant) : les publications, le mode des annonces et le Lens du Business.\n    'grille', 'trois_jauges',\n    -- (04/11/2026, demande de Nico : la remise à zéro, aussi pour les payants ; seulement avec la grille)\n    'remise_le', (SELECT w.next_grant_at FROM coin_wallets w WHERE w.user_id = v_user),\n    'annonces_mode', CASE WHEN v_qa IS NULL THEN 'illimite' ELSE 'mensuel' END,\n    'publications', (SELECT jsonb_build_object('mode', CASE WHEN x.pl IS NULL THEN 'illimite' ELSE 'mensuel' END,\n                              'plafond', x.pl, 'consommes', x.c,\n                              'restantes', CASE WHEN x.pl IS NOT NULL THEN GREATEST(0, x.pl - x.c) END)\n                     FROM (SELECT jauge_publications_plafond(v_tier) AS pl, publications_du_cycle(v_user, v_cycle) AS c) x),\n    'lens', (SELECT CASE WHEN l.pl IS NULL THEN NULL\n                    ELSE jsonb_build_object('plafond', l.pl, 'consommes', v_cs, 'restantes', GREATEST(0, l.pl - v_cs)) END\n             FROM (SELECT jauge_lens_plafond(v_tier) AS pl) l)\n  ) ELSE '{}'::jsonb END;\nEND;\n$function$\n"
+  },
+  {
+   "nom": "remontees_du_cycle",
+   "args": "p_user uuid, p_depuis timestamp with time zone",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "51d9edbecaac0bf36bab7950f93a64f5",
+   "def": "CREATE OR REPLACE FUNCTION public.remontees_du_cycle(p_user uuid, p_depuis timestamp with time zone)\n RETURNS integer\n LANGUAGE sql\n STABLE\n SET search_path TO 'public'\nAS $function$\n  SELECT count(*)::integer\n    FROM cross_post_jobs j\n   WHERE j.user_id = p_user\n     AND j.action = 'republish'\n     AND j.created_at >= p_depuis\n     AND (j.published_at IS NOT NULL OR j.status IN ('published', 'sold', 'pending', 'processing', 'needs_user'))\n     AND NOT (COALESCE(j.platform_fields, '{}'::jsonb) ?| ARRAY['opla_sortie', 'hors_quota'])\n     AND COALESCE(j.handler_build, '') !~ '(sync-dressing|releve-annonces)';\n$function$\n"
+  },
+  {
+   "nom": "republish_palier",
+   "args": "p_user uuid",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "5c6f9dfda0d6a8a04c80452adb786733",
+   "def": "CREATE OR REPLACE FUNCTION public.republish_palier(p_user uuid)\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  SELECT public.palier_de(p_user);\n$function$\n"
+  },
+  {
+   "nom": "spend_coins_for_generate",
+   "args": "p_user_id uuid, p_inventaire_id bigint",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "md5_prod": "00d31c6c22b7b028ead28bfb1f5ee03d",
+   "def": "CREATE OR REPLACE FUNCTION public.spend_coins_for_generate(p_user_id uuid, p_inventaire_id bigint DEFAULT NULL::bigint)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_price     integer;\n  v_wallet    coin_wallets%ROWTYPE;\n  v_total     integer;\n  v_from_inc  integer;\n  v_from_pur  integer;\n  v_tier      text;\n  v_quota     integer;\n  v_cycle     timestamptz;\n  v_consommes integer;\n  v_regen     boolean := false;\n  v_garde     jsonb;\nBEGIN\n\n  -- (20/10, sécurité) Appelée sous une session (authenticated, ou tout rôle porté\n  -- par un jeton autre que service_role) : l'utilisateur et la fiche doivent être\n  -- ceux de auth.uid(). service_role (fonctions edge) et les appels sans jeton\n  -- (cron, SQL d'administration) : inchangés.\n  IF auth.role() IS NOT NULL AND auth.role() <> 'service_role' THEN\n    IF auth.uid() IS NULL OR p_user_id IS DISTINCT FROM auth.uid() THEN\n      RAISE EXCEPTION 'utilisateur non autorisé' USING ERRCODE = '42501';\n    END IF;\n    IF p_inventaire_id IS NOT NULL\n       AND NOT EXISTS (SELECT 1 FROM inventaire i WHERE i.id = p_inventaire_id AND i.user_id = auth.uid()) THEN\n      RAISE EXCEPTION 'fiche non autorisée' USING ERRCODE = '42501';\n    END IF;\n  END IF;\n  SELECT CASE\n           WHEN p.is_business = true THEN 'business'\n           WHEN p.is_pro = true THEN 'pro'\n           WHEN p.is_premium = true OR p.is_comped = true THEN 'premium'\n           ELSE 'free'\n         END INTO v_tier\n  FROM profiles p WHERE p.id = p_user_id;\n  v_tier := COALESCE(v_tier, 'free');\n\n  -- QUOTA D'ANNONCES (bascule 02/09) — AVANT tout le reste. Régénération du\n  -- même article sous 24 h : passe sans compter.\n  -- (10/11/2026, règle de Nico) Seule une ligne qui COMPTE ouvre la régénération : une passe légère (titre ET\n  -- description du vendeur) ne compte pas — la vraie rédaction qui la suit passe au quota (quota_annonces_consommees).\n  IF p_inventaire_id IS NOT NULL THEN\n    SELECT EXISTS (\n      SELECT 1 FROM usage_logs u\n      WHERE u.user_id = p_user_id AND u.feature = 'generate_listing'\n        AND u.metadata->>'inventaire_id' = p_inventaire_id::text\n        AND u.created_at >= now() - interval '24 hours'\n        AND NOT (COALESCE(u.metadata->>'texte_vendeur_titre', '') = 'true'\n                 AND COALESCE(u.metadata->>'texte_vendeur_description', '') = 'true')\n    ) INTO v_regen;\n  END IF;\n\n  IF NOT v_regen THEN\n    -- (11/10) Le réglage du compte prime sur le quota du palier.\n    -- (03/11/2026, grille à 3 jauges, décision de Nico ; interrupteur coin_config.grille_trois_jauges, 0 = règles d'avant)\n    v_quota := jauge_annonces_plafond(p_user_id, v_tier);\n    IF v_quota IS NOT NULL AND v_quota > 0 THEN\n      v_cycle := debut_cycle_quotas(p_user_id);\n      v_consommes := quota_annonces_consommees(p_user_id, v_cycle);\n      IF v_consommes >= v_quota THEN\n        RETURN jsonb_build_object('allowed', false, 'reason', 'quota_annonces_atteint',\n                                  'plafond', v_quota, 'consommes', v_consommes);\n      END IF;\n    END IF;\n    -- (03/11/2026, grille à 3 jauges, décision de Nico ; interrupteur coin_config.grille_trois_jauges, 0 = règles d'avant) : le garde-fou du jour, sous le code que generate-listing relaie déjà avec son message.\n    v_garde := garde_fou_jour(p_user_id, 'annonces', 1);\n    IF v_garde IS NOT NULL THEN\n      RETURN jsonb_build_object('allowed', false, 'reason', 'pro_daily_cap_reached', 'garde_fou', true, 'jauge', 'annonces',\n                                'message', v_garde ->> 'message', 'cap', (v_garde ->> 'garde')::integer,\n                                'used', (v_garde ->> 'faites')::integer, 'reprise_le', v_garde -> 'reprise_le');\n    END IF;\n  END IF;\n\n  SELECT value INTO v_price FROM coin_config WHERE key = 'price_generate';\n  IF v_price IS NULL THEN\n    RETURN jsonb_build_object('allowed', false, 'reason', 'price_not_configured');\n  END IF;\n\n  IF v_price = 0 THEN\n    RETURN jsonb_build_object('allowed', true, 'price', 0, 'regen', v_regen);\n  END IF;\n\n  INSERT INTO coin_wallets (user_id) VALUES (p_user_id) ON CONFLICT (user_id) DO NOTHING;\n  SELECT * INTO v_wallet FROM coin_wallets WHERE user_id = p_user_id FOR UPDATE;\n\n  IF v_wallet.next_grant_at IS NULL OR v_wallet.next_grant_at <= now() THEN\n    PERFORM upgrade_monthly_grant(p_user_id, v_tier, null, 'lazy');\n    SELECT * INTO v_wallet FROM coin_wallets WHERE user_id = p_user_id FOR UPDATE;\n  END IF;\n\n  v_total := v_wallet.included_balance + v_wallet.purchased_balance;\n  IF v_total < v_price THEN\n    RETURN jsonb_build_object(\n      'allowed', false, 'reason', 'insufficient_coins',\n      'price', v_price, 'balance', v_total\n    );\n  END IF;\n\n  v_from_inc := LEAST(v_wallet.included_balance, v_price);\n  v_from_pur := v_price - v_from_inc;\n\n  UPDATE coin_wallets SET\n    included_balance  = included_balance  - v_from_inc,\n    purchased_balance = purchased_balance - v_from_pur,\n    updated_at        = now()\n  WHERE user_id = p_user_id;\n\n  INSERT INTO coin_ledger (user_id, delta, included_after, purchased_after, kind, metadata)\n  VALUES (\n    p_user_id, -v_price,\n    v_wallet.included_balance - v_from_inc,\n    v_wallet.purchased_balance - v_from_pur,\n    'spend_generate',\n    NULL\n  );\n\n  RETURN jsonb_build_object(\n    'allowed', true, 'price', v_price,\n    'included_after',  v_wallet.included_balance - v_from_inc,\n    'purchased_after', v_wallet.purchased_balance - v_from_pur\n  );\nEND;\n$function$\n"
+  },
+  {
+   "nom": "spend_coins_for_lens",
+   "args": "p_user_id uuid, p_unifie boolean",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "md5_prod": "f20a612820a4c8a6f6230ddcd2d66653",
+   "def": "CREATE OR REPLACE FUNCTION public.spend_coins_for_lens(p_user_id uuid, p_unifie boolean DEFAULT false)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_price     integer;\n  v_wallet    coin_wallets%ROWTYPE;\n  v_total     integer;\n  v_from_inc  integer;\n  v_from_pur  integer;\n  v_tier      text;\n  v_quota     integer;\n  v_consommes integer;\n  v_garde     jsonb;\n  v_ql        integer;\n  v_cl        integer;\n  v_remise    timestamptz;\nBEGIN\n\n  -- (20/10, sécurité) Appelée sous une session (authenticated, ou tout rôle porté\n  -- par un jeton autre que service_role) : l'utilisateur doivent être\n  -- ceux de auth.uid(). service_role (fonctions edge) et les appels sans jeton\n  -- (cron, SQL d'administration) : inchangés.\n  IF auth.role() IS NOT NULL AND auth.role() <> 'service_role' THEN\n    IF auth.uid() IS NULL OR p_user_id IS DISTINCT FROM auth.uid() THEN\n      RAISE EXCEPTION 'utilisateur non autorisé' USING ERRCODE = '42501';\n    END IF;\n  END IF;\n  SELECT CASE\n           WHEN p.is_business = true THEN 'business'\n           WHEN p.is_pro = true THEN 'pro'\n           WHEN p.is_premium = true OR p.is_comped = true THEN 'premium'\n           ELSE 'free'\n         END INTO v_tier\n  FROM profiles p WHERE p.id = p_user_id;\n  v_tier := COALESCE(v_tier, 'free');\n\n  -- ── COMPTEUR FUSIONNÉ (02/09 soir) — avant tout appel IA ─────────────────\n  -- (11/10) Le réglage du compte prime sur le quota du palier.\n  -- (03/11/2026, grille à 3 jauges, décision de Nico ; interrupteur coin_config.grille_trois_jauges, 0 = règles d'avant)\n  v_quota := jauge_annonces_plafond(p_user_id, v_tier);\n  IF v_quota IS NOT NULL AND v_quota > 0 THEN\n    v_consommes := quota_annonces_consommees(p_user_id, debut_cycle_quotas(p_user_id));\n    IF v_consommes >= v_quota THEN\n      RETURN jsonb_build_object('allowed', false, 'reason', 'quota_annonces_atteint',\n                                'plafond', v_quota, 'consommes', v_consommes);\n    END IF;\n  END IF;\n\n  -- (03/11/2026, grille à 3 jauges, décision de Nico ; interrupteur coin_config.grille_trois_jauges, 0 = règles d'avant) : Lens du Business, 600 par mois affichés ; refus sous le code que lens-analysis relaie déjà.\n  v_ql := jauge_lens_plafond(v_tier);\n  IF v_ql IS NOT NULL THEN\n    SELECT count(*)::integer INTO v_cl FROM usage_logs\n     WHERE user_id = p_user_id AND feature = 'lens' AND created_at >= debut_cycle_quotas(p_user_id);\n    IF v_cl >= v_ql THEN\n      SELECT w.next_grant_at INTO v_remise FROM coin_wallets w WHERE w.user_id = p_user_id;\n      RETURN jsonb_build_object('allowed', false, 'reason', 'quota_scan_atteint', 'jauge', 'lens',\n                                'plafond', v_ql, 'consommes', v_cl, 'remise_le', v_remise,\n                                'message', format('Tes %s scans Lens du mois sont faits%s. Tout le reste continue, sans limite.', v_ql,\n                                  CASE WHEN v_remise IS NOT NULL THEN ' : ils reviennent le ' || to_char(v_remise AT TIME ZONE 'Europe/Paris', 'DD/MM') ELSE '' END));\n    END IF;\n  END IF;\n  v_garde := garde_fou_jour(p_user_id, 'annonces', CASE WHEN p_unifie THEN 0 ELSE 1 END);\n  IF v_garde IS NOT NULL THEN\n    RETURN jsonb_build_object('allowed', false, 'reason', 'quota_scan_atteint', 'garde_fou', true, 'jauge', 'annonces',\n                              'plafond', (v_garde ->> 'garde')::integer, 'consommes', (v_garde ->> 'faites')::integer,\n                              'message', v_garde ->> 'message', 'reprise_le', v_garde -> 'reprise_le');\n  END IF;\n\n  SELECT value INTO v_price FROM coin_config WHERE key = 'price_lens_overflow';\n  IF v_price IS NULL THEN\n    RETURN jsonb_build_object('allowed', false, 'reason', 'price_not_configured');\n  END IF;\n\n  -- Prix nul : ni wallet ni ledger — la ligne usage_logs 'lens' reste posée.\n  -- unifie:true = ce scan sera porté par sa ligne generate_listing.\n  IF v_price = 0 THEN\n    INSERT INTO usage_logs (user_id, feature, metadata)\n    VALUES (p_user_id, 'lens',\n      jsonb_build_object('coins', 0, 'model', 'per_scan')\n      || CASE WHEN p_unifie THEN jsonb_build_object('unifie', true) ELSE '{}'::jsonb END);\n    RETURN jsonb_build_object('allowed', true, 'price', 0);\n  END IF;\n\n  INSERT INTO coin_wallets (user_id) VALUES (p_user_id) ON CONFLICT (user_id) DO NOTHING;\n  SELECT * INTO v_wallet FROM coin_wallets WHERE user_id = p_user_id FOR UPDATE;\n\n  IF v_wallet.next_grant_at IS NULL OR v_wallet.next_grant_at <= now() THEN\n    PERFORM upgrade_monthly_grant(p_user_id, v_tier, null, 'lazy');\n    SELECT * INTO v_wallet FROM coin_wallets WHERE user_id = p_user_id FOR UPDATE;\n  END IF;\n\n  v_total := v_wallet.included_balance + v_wallet.purchased_balance;\n  IF v_total < v_price THEN\n    RETURN jsonb_build_object(\n      'allowed', false, 'reason', 'insufficient_coins',\n      'price', v_price, 'balance', v_total\n    );\n  END IF;\n\n  v_from_inc := LEAST(v_wallet.included_balance, v_price);\n  v_from_pur := v_price - v_from_inc;\n\n  UPDATE coin_wallets SET\n    included_balance  = included_balance  - v_from_inc,\n    purchased_balance = purchased_balance - v_from_pur,\n    updated_at        = now()\n  WHERE user_id = p_user_id;\n\n  INSERT INTO coin_ledger (user_id, delta, included_after, purchased_after, kind, metadata)\n  VALUES (\n    p_user_id, -v_price,\n    v_wallet.included_balance - v_from_inc,\n    v_wallet.purchased_balance - v_from_pur,\n    'spend_lens',\n    jsonb_build_object('model', 'per_scan')\n  );\n\n  INSERT INTO usage_logs (user_id, feature, metadata)\n  VALUES (p_user_id, 'lens', jsonb_build_object('coins', v_price, 'model', 'per_scan'));\n\n  RETURN jsonb_build_object(\n    'allowed', true, 'price', v_price,\n    'included_after',  v_wallet.included_balance - v_from_inc,\n    'purchased_after', v_wallet.purchased_balance - v_from_pur\n  );\nEND;\n$function$\n"
+  },
+  {
+   "nom": "upgrade_monthly_grant",
+   "args": "p_user_id uuid, p_tier text, p_period_end timestamp with time zone, p_source text",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "2080915eaed8f9d8aae81345702dc672",
+   "def": "CREATE OR REPLACE FUNCTION public.upgrade_monthly_grant(p_user_id uuid, p_tier text, p_period_end timestamp with time zone DEFAULT NULL::timestamp with time zone, p_source text DEFAULT 'auto'::text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  v_wallet     coin_wallets%ROWTYPE;\n  v_old_tier   text;\n  v_new_amount integer;\n  v_override   integer;\n  v_delta      integer;\n  v_cap        integer;\n  v_new_inc    integer;\n  v_ref        text;\n  v_res        jsonb;\nbegin\n  if p_tier not in ('free','premium','pro','business') then\n    return jsonb_build_object('granted', false, 'reason', 'invalid_tier');\n  end if;\n\n  insert into coin_wallets (user_id) values (p_user_id) on conflict (user_id) do nothing;\n  select * into v_wallet from coin_wallets where user_id = p_user_id for update;\n\n  if v_wallet.next_grant_at is null or v_wallet.next_grant_at <= now()\n     or (p_source = 'payment' and v_wallet.next_grant_at <= now() + interval '2 days') then\n    return grant_monthly_coins(p_user_id, p_tier, p_period_end, p_source);\n  end if;\n\n  select l.metadata->>'tier' into v_old_tier\n  from coin_ledger l\n  where l.user_id = p_user_id\n    and l.kind in ('grant_monthly','grant_upgrade')\n  order by l.created_at desc, l.id desc\n  limit 1;\n  v_old_tier := coalesce(v_old_tier, 'free');\n\n  if v_old_tier is not distinct from p_tier and p_source = 'payment'\n     and p_period_end is not null and p_period_end > now()\n     and p_period_end > v_wallet.next_grant_at + interval '2 days' then\n    update coin_wallets set next_grant_at = now() where user_id = p_user_id;\n    v_res := grant_monthly_coins(p_user_id, p_tier, p_period_end, p_source);\n    if coalesce((v_res ->> 'granted')::boolean, false) then\n      return v_res || jsonb_build_object('cycle_neuf', true, 'echeance_avant', v_wallet.next_grant_at);\n    end if;\n    update coin_wallets set next_grant_at = p_period_end, updated_at = now() where user_id = p_user_id;\n    return v_res || jsonb_build_object('cycle_neuf', false);\n  end if;\n\n  select monthly_grant_override into v_override from profiles where id = p_user_id;\n  if v_override is not null and v_override > 0 then\n    return jsonb_build_object('granted', false, 'reason', 'override_fixed_amount',\n                              'amount', v_override, 'tier', p_tier);\n  end if;\n\n\n  select value into v_new_amount from coin_config where key = 'monthly_grant_' || p_tier;\n  if v_new_amount is null then\n    return jsonb_build_object('granted', false, 'reason', 'grant_not_configured');\n  end if;\n\n  if v_old_tier is not distinct from p_tier then\n    if p_period_end is not null and p_period_end > now() then\n      update coin_wallets set next_grant_at = p_period_end, updated_at = now()\n      where user_id = p_user_id;\n    end if;\n    return jsonb_build_object('granted', false, 'reason', 'no_upgrade_needed',\n                              'from_tier', v_old_tier, 'tier', p_tier);\n  end if;\n\n  v_delta := v_new_amount;\n\n  v_cap     := v_new_amount * 2;\n  v_new_inc := greatest(v_wallet.included_balance,\n                        least(v_wallet.included_balance + v_delta, v_cap));\n  v_delta   := v_new_inc - v_wallet.included_balance;\n\n  if v_delta <= 0 then\n    return jsonb_build_object('granted', false, 'reason', 'cap_reached',\n                              'from_tier', v_old_tier, 'tier', p_tier);\n  end if;\n\n  v_ref := 'grant_upgrade:' || p_user_id || ':'\n           || to_char(coalesce(v_wallet.next_grant_at, now()), 'YYYY-MM-DD') || ':' || p_tier;\n  begin\n    insert into coin_ledger (user_id, delta, included_after, purchased_after, kind, ref, metadata)\n    values (\n      p_user_id, v_delta, v_new_inc, v_wallet.purchased_balance,\n      'grant_upgrade', v_ref,\n      jsonb_build_object('tier', p_tier, 'from_tier', v_old_tier, 'source', p_source)\n    );\n  exception when unique_violation then\n    return jsonb_build_object('granted', false, 'reason', 'already_granted', 'ref', v_ref);\n  end;\n\n  update coin_wallets set\n    included_balance = v_new_inc,\n    next_grant_at    = case when p_period_end is not null and p_period_end > now()\n                            then p_period_end else next_grant_at end,\n    updated_at       = now()\n  where user_id = p_user_id;\n\n  return jsonb_build_object('granted', true, 'topup', true, 'amount', v_delta,\n                            'from_tier', v_old_tier, 'tier', p_tier,\n                            'included_after', v_new_inc);\nend;\n$function$\n"
+  }
+ ],
+ "tables": [
+  {
+   "nom": "coin_config",
+   "cols": [
+    {
+     "n": "key",
+     "t": "text",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "value",
+     "t": "integer",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "updated_at",
+     "t": "timestamp with time zone",
+     "nn": true,
+     "d": "now()",
+     "id": null,
+     "g": null
+    }
+   ],
+   "cons": [
+    {
+     "def": "PRIMARY KEY (key)",
+     "n": "coin_config_pkey",
+     "ref": null,
+     "refns": null,
+     "type": "p"
+    }
+   ],
+   "acl": "{postgres=arwdDxtm/postgres,anon=rtm/postgres,authenticated=rtm/postgres,service_role=arwdDxtm/postgres}",
+   "rls": true
+  },
+  {
+   "nom": "coin_ledger",
+   "cols": [
+    {
+     "n": "id",
+     "t": "bigint",
+     "nn": true,
+     "d": "nextval('coin_ledger_id_seq'::regclass)",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "user_id",
+     "t": "uuid",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "delta",
+     "t": "integer",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "included_after",
+     "t": "integer",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "purchased_after",
+     "t": "integer",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "kind",
+     "t": "text",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "ref",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "metadata",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "created_at",
+     "t": "timestamp with time zone",
+     "nn": true,
+     "d": "now()",
+     "id": null,
+     "g": null
+    }
+   ],
+   "cons": [
+    {
+     "def": "PRIMARY KEY (id)",
+     "n": "coin_ledger_pkey",
+     "ref": null,
+     "refns": null,
+     "type": "p"
+    }
+   ],
+   "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+   "rls": true
+  },
+  {
+   "nom": "coin_wallets",
+   "cols": [
+    {
+     "n": "user_id",
+     "t": "uuid",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "included_balance",
+     "t": "integer",
+     "nn": true,
+     "d": "0",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "purchased_balance",
+     "t": "integer",
+     "nn": true,
+     "d": "0",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "included_granted_month",
+     "t": "date",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "updated_at",
+     "t": "timestamp with time zone",
+     "nn": true,
+     "d": "now()",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "next_grant_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "grant_anchor_day",
+     "t": "smallint",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "reserved_balance",
+     "t": "integer",
+     "nn": true,
+     "d": "0",
+     "id": null,
+     "g": null
+    }
+   ],
+   "cons": [
+    {
+     "def": "PRIMARY KEY (user_id)",
+     "n": "coin_wallets_pkey",
+     "ref": null,
+     "refns": null,
+     "type": "p"
+    }
+   ],
+   "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+   "rls": true
+  },
+  {
+   "nom": "cross_post_jobs",
+   "cols": [
+    {
+     "n": "id",
+     "t": "uuid",
+     "nn": true,
+     "d": "gen_random_uuid()",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "user_id",
+     "t": "uuid",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "inventaire_id",
+     "t": "bigint",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "platform",
+     "t": "text",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "status",
+     "t": "text",
+     "nn": true,
+     "d": "'pending'::text",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "photo_option",
+     "t": "text",
+     "nn": true,
+     "d": "'standard'::text",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "bulk_batch_id",
+     "t": "uuid",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "title",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "description",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "price",
+     "t": "numeric",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "photos",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "platform_listing_id",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "generated_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "published_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "error",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "created_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": "now()",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "listing_url",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "last_checked_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "sold_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "platform_fields",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "action",
+     "t": "text",
+     "nn": true,
+     "d": "'publish'::text",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "handler_build",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "reservation_id",
+     "t": "uuid",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "reservation_settled_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "voie",
+     "t": "text",
+     "nn": true,
+     "d": "'extension'::text",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "vu_en_ligne_le",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    }
+   ],
+   "cons": [
+    {
+     "def": "PRIMARY KEY (id)",
+     "n": "cross_post_jobs_pkey",
+     "ref": null,
+     "refns": null,
+     "type": "p"
+    }
+   ],
+   "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+   "rls": true
+  },
+  {
+   "nom": "inventaire",
+   "cols": [
+    {
+     "n": "id",
+     "t": "bigint",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "user_id",
+     "t": "uuid",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "titre",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "prix_achat",
+     "t": "numeric",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "prix_vente",
+     "t": "numeric",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "margin",
+     "t": "numeric",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "margin_pct",
+     "t": "numeric",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "statut",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "date",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "created_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": "now()",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "marque",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "description",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "type",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "purchase_costs",
+     "t": "numeric",
+     "nn": false,
+     "d": "0",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "selling_fees",
+     "t": "numeric",
+     "nn": false,
+     "d": "0",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "quantite",
+     "t": "integer",
+     "nn": false,
+     "d": "1",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "emplacement",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "plateforme",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "photos",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "vinted_item_id",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "origine",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "prix_achat_inconnu",
+     "t": "boolean",
+     "nn": true,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "listed_at_guess",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "first_seen_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "last_synced_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "disparu_le",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "vinted_view_count",
+     "t": "integer",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "vinted_favourite_count",
+     "t": "integer",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "vinted_status",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "vinted_catalog_id",
+     "t": "integer",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "vinted_account_id",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "attributs",
+     "t": "jsonb",
+     "nn": true,
+     "d": "'{}'::jsonb",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "fusionne_dans",
+     "t": "bigint",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "fusionne_le",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "photos_a_rapatrier",
+     "t": "boolean",
+     "nn": true,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "poids_g",
+     "t": "integer",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "poids_change_le",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "poids_change_par",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "prix_vente_change_le",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "prix_vente_change_par",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "a_verifier",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    }
+   ],
+   "cons": [
+    {
+     "def": "PRIMARY KEY (id)",
+     "n": "inventaire_pkey",
+     "ref": null,
+     "refns": null,
+     "type": "p"
+    }
+   ],
+   "acl": "{postgres=arwdDxtm/postgres,anon=arwdm/postgres,authenticated=arwdm/postgres,service_role=arwdDxtm/postgres}",
+   "rls": true
+  },
+  {
+   "nom": "profiles",
+   "cols": [
+    {
+     "n": "id",
+     "t": "uuid",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "email",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "is_premium",
+     "t": "boolean",
+     "nn": false,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "stripe_customer_id",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "created_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": "now()",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "subscription_cancel_at_period_end",
+     "t": "boolean",
+     "nn": false,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "subscription_period_end",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "currency",
+     "t": "character varying(3)",
+     "nn": false,
+     "d": "'EUR'::character varying",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "lens_count_today",
+     "t": "integer",
+     "nn": false,
+     "d": "0",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "lens_count_date",
+     "t": "date",
+     "nn": false,
+     "d": "CURRENT_DATE",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "voice_count_today",
+     "t": "integer",
+     "nn": false,
+     "d": "0",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "voice_count_date",
+     "t": "date",
+     "nn": false,
+     "d": "CURRENT_DATE",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "stats_analysis_cache",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "is_founder",
+     "t": "boolean",
+     "nn": false,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "username",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "lang",
+     "t": "text",
+     "nn": false,
+     "d": "'fr'::text",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "apple_original_transaction_id",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "lens_daily_override",
+     "t": "integer",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "lens_monthly_override",
+     "t": "integer",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "google_purchase_token",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "google_product_id",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "is_pro",
+     "t": "boolean",
+     "nn": false,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "push_token",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "platform_settings",
+     "t": "jsonb",
+     "nn": true,
+     "d": "'{}'::jsonb",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_last_seen_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_build",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "is_comped",
+     "t": "boolean",
+     "nn": true,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_sessions",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "monthly_grant_override",
+     "t": "integer",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_version",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "is_business",
+     "t": "boolean",
+     "nn": true,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "onboarded_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "vinted_sync_pin",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_session_rejetee_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "ebay_voie_api",
+     "t": "boolean",
+     "nn": true,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_maj_en_attente",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_maj_vue_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "acquisition_source",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "acquisition_medium",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "acquisition_campaign",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "acquisition_content",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "acquisition_fbclid",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "acquisition_referrer",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "acquisition_captured_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "plateformes_visibles",
+     "t": "text[]",
+     "nn": true,
+     "d": "'{}'::text[]",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "beta_flags",
+     "t": "jsonb",
+     "nn": true,
+     "d": "'{}'::jsonb",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "app_build",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "app_build_premier",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_postes",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "is_cloud",
+     "t": "boolean",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_essai_debut",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_essai_fin",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_essai_arrete",
+     "t": "boolean",
+     "nn": true,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_periode_fin",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_arret_fin_periode",
+     "t": "boolean",
+     "nn": true,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_canal",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_ref",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_essai_refus",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_cgu_version",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_cgu_acceptee_le",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "cloud_voie",
+     "t": "boolean",
+     "nn": true,
+     "d": "false",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "extension_ordinateur_vu_le",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "formule_prevue",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "formule_prevue_le",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "formule_prevue_canal",
+     "t": "text",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    }
+   ],
+   "cons": [
+    {
+     "def": "PRIMARY KEY (id)",
+     "n": "profiles_pkey",
+     "ref": null,
+     "refns": null,
+     "type": "p"
+    }
+   ],
+   "acl": "{postgres=arwdDxtm/postgres,anon=arwdm/postgres,authenticated=ardm/postgres,service_role=arwdDxtm/postgres}",
+   "rls": true
+  },
+  {
+   "nom": "quotas_par_compte",
+   "cols": [
+    {
+     "n": "user_id",
+     "t": "uuid",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "quota_annonces",
+     "t": "integer",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "motif",
+     "t": "text",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "pose_le",
+     "t": "timestamp with time zone",
+     "nn": true,
+     "d": "now()",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "pose_par",
+     "t": "text",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    }
+   ],
+   "cons": [
+    {
+     "def": "PRIMARY KEY (user_id)",
+     "n": "quotas_par_compte_pkey",
+     "ref": null,
+     "refns": null,
+     "type": "p"
+    }
+   ],
+   "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+   "rls": true
+  },
+  {
+   "nom": "usage_logs",
+   "cols": [
+    {
+     "n": "id",
+     "t": "uuid",
+     "nn": true,
+     "d": "gen_random_uuid()",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "user_id",
+     "t": "uuid",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "feature",
+     "t": "text",
+     "nn": true,
+     "d": null,
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "created_at",
+     "t": "timestamp with time zone",
+     "nn": false,
+     "d": "now()",
+     "id": null,
+     "g": null
+    },
+    {
+     "n": "metadata",
+     "t": "jsonb",
+     "nn": false,
+     "d": null,
+     "id": null,
+     "g": null
+    }
+   ],
+   "cons": [
+    {
+     "def": "PRIMARY KEY (id)",
+     "n": "usage_logs_pkey",
+     "ref": null,
+     "refns": null,
+     "type": "p"
+    }
+   ],
+   "acl": "{postgres=arwdDxtm/postgres,anon=arwdm/postgres,authenticated=arwdm/postgres,service_role=arwdDxtm/postgres}",
+   "rls": true
+  }
+ ],
+ "config": {
+  "coin_config": [
+   {
+    "key": "bordereaux_vinted_tous",
+    "value": 1
+   },
+   {
+    "key": "garde_jour_annonces",
+    "value": 800
+   },
+   {
+    "key": "garde_jour_publications",
+    "value": 2000
+   },
+   {
+    "key": "garde_jour_remontees",
+    "value": 2000
+   },
+   {
+    "key": "grille_trois_jauges",
+    "value": 1
+   },
+   {
+    "key": "jauge_annonces_business",
+    "value": 0
+   },
+   {
+    "key": "jauge_annonces_free",
+    "value": 5
+   },
+   {
+    "key": "jauge_annonces_premium",
+    "value": 40
+   },
+   {
+    "key": "jauge_annonces_pro",
+    "value": 120
+   },
+   {
+    "key": "jauge_lens_business",
+    "value": 600
+   },
+   {
+    "key": "jauge_publications_business",
+    "value": 0
+   },
+   {
+    "key": "jauge_publications_free",
+    "value": 50
+   },
+   {
+    "key": "jauge_publications_premium",
+    "value": 400
+   },
+   {
+    "key": "jauge_publications_pro",
+    "value": 1200
+   },
+   {
+    "key": "jauge_remontees_business",
+    "value": 0
+   },
+   {
+    "key": "jauge_remontees_free",
+    "value": 30
+   },
+   {
+    "key": "jauge_remontees_premium",
+    "value": 1500
+   },
+   {
+    "key": "jauge_remontees_pro",
+    "value": 0
+   },
+   {
+    "key": "monthly_grant_business",
+    "value": 3000
+   },
+   {
+    "key": "monthly_grant_free",
+    "value": 50
+   },
+   {
+    "key": "monthly_grant_premium",
+    "value": 400
+   },
+   {
+    "key": "monthly_grant_pro",
+    "value": 1200
+   },
+   {
+    "key": "price_generate",
+    "value": 0
+   },
+   {
+    "key": "price_lens_overflow",
+    "value": 0
+   },
+   {
+    "key": "quota_annonces_business",
+    "value": 300
+   },
+   {
+    "key": "quota_annonces_free",
+    "value": 5
+   },
+   {
+    "key": "quota_annonces_premium",
+    "value": 40
+   },
+   {
+    "key": "quota_annonces_pro",
+    "value": 120
+   },
+   {
+    "key": "quota_republication_business",
+    "value": 0
+   },
+   {
+    "key": "quota_republication_free",
+    "value": 50
+   },
+   {
+    "key": "quota_republication_premium",
+    "value": 1500
+   },
+   {
+    "key": "quota_republication_pro",
+    "value": 5000
+   },
+   {
+    "key": "quota_retouche_business",
+    "value": 50
+   },
+   {
+    "key": "quota_retouche_free",
+    "value": 0
+   },
+   {
+    "key": "quota_retouche_premium",
+    "value": 5
+   },
+   {
+    "key": "quota_retouche_pro",
+    "value": 20
+   },
+   {
+    "key": "quota_scan_business",
+    "value": 0
+   },
+   {
+    "key": "quota_scan_free",
+    "value": 0
+   },
+   {
+    "key": "quota_scan_premium",
+    "value": 0
+   },
+   {
+    "key": "quota_scan_pro",
+    "value": 0
+   },
+   {
+    "key": "quotas_annonces_depuis",
+    "value": 1788363075
+   },
+   {
+    "key": "quotas_republication_free_depuis",
+    "value": 1791215014
+   },
+   {
+    "key": "quotas_retouche_depuis",
+    "value": 1788363075
+   }
+  ]
+ }
+}
