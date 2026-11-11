@@ -575,6 +575,7 @@
     "selftest:lot-vinted-parts-egales": "node scripts/lot-vinted-parts-egales-selftest.mjs",
     "selftest:photos-limite-vinted": "node scripts/photos-limite-vinted-selftest.mjs",
     "selftest:ordre-photos": "node scripts/ordre-photos-selftest.mjs",
+    "selftest:taches-sans-balayage": "node scripts/taches-sans-balayage-selftest.mjs",
     "selftest:lbc-machine-virtuelle-exception": "node scripts/lbc-machine-virtuelle-exception-selftest.mjs",
     "selftest:delegation-leboncoin": "node scripts/delegation-leboncoin-selftest.mjs",
     "selftest:descente-formule": "node scripts/descente-formule-selftest.mjs",

@@ -42,6 +42,13 @@
 - **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
   `migration repair --linked --status applied <version>`, relecture.
 
+- **⛔ Lecture récurrente du PARC = son index partiel (11/11/2026, P1)** : une lecture qui revient (poll, cron) sur tous
+  les comptes d'une grosse table (`cross_post_jobs`…) a son index PARTIEL, expression et prédicat = le texte exact
+  envoyé par PostgREST, prouvé par EXPLAIN (ANALYZE, BUFFERS) sur une base JETABLE : balayage sans, bon index avec,
+  mêmes lignes rendues. Un `CREATE INDEX CONCURRENTLY IF NOT EXISTS` par migration (une transaction le refuse),
+  inverse `DROP INDEX CONCURRENTLY` dans `supabase/rollbacks/`, `indisvalid` relu après chacun (un INVALID est sauté
+  par IF NOT EXISTS). Registre et verrou : `selftest:taches-sans-balayage` (une lecture de plus = une entrée de plus).
+
 <!-- ex-CLAUDE.md L451-452 : Données (scripts/reparations, sauvegarde, inverse) -->
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
