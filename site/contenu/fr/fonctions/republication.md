@@ -5,7 +5,7 @@ lang: fr
 nom: Republication
 surtitre: "Republier · remonter tes annonces"
 title: "Remonter une annonce Vinted : republication automatique | FillSell"
-description: "Remonte une annonce d'un appui ou, selon ta formule, laisse tes annonces remonter toutes seules sur {{republication}}, au créneau que tu choisis."
+description: "Remonte une annonce d'un appui ou, selon ta formule, laisse-la remonter toute seule sur {{republication}}, même sans ordinateur avec FillSell Cloud."
 h1: "Republier et remonter tes annonces sur {{republication}}"
 chapo: "Republier une annonce, c'est la retirer puis la remettre en ligne : elle repart comme une annonce neuve, mais ses vues et ses favoris repartent de zéro. Avec FillSell, tu remontes une annonce d'un appui depuis ton téléphone ; selon ta formule, tes annonces remontent aussi toutes seules sur {{republication}}, au créneau choisi. L'extension Chrome fait le travail sur ton ordinateur, une à une."
 points_cles:

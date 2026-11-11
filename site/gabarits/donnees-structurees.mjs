@@ -84,7 +84,7 @@ function pageWeb(page, type = 'WebPage') {
  * `description`, le texte même de la carte de prix (« 12,99 € / mois »).
  */
 export function offres(tarifs, lang) {
-  return tarifs.paliers.map((p) => ({
+  const paliers = tarifs.paliers.map((p) => ({
     '@type': 'Offer',
     name: `FillSell ${p.nom[lang]}`,
     description: `${prix(p.prix, lang, tarifs.devise)} ${TEXTES[lang].parMois}`,
@@ -92,6 +92,19 @@ export function offres(tarifs, lang) {
     priceCurrency: tarifs.devise,
     url: ORIGINE + tarifs.inscription,
   }));
+  // (11/11, lot marketing, étape SEO) L'option FillSell Cloud, au prix de sa carte (site.cloud, lu dans
+  // src/utils/palier.js) : « par mois, en plus de n'importe quelle formule », en France seulement.
+  const c = tarifs.cloud;
+  if (!(c?.prix > 0)) return paliers;
+  return [...paliers, {
+    '@type': 'Offer',
+    name: 'FillSell Cloud',
+    description: `${prix(c.prix, lang, tarifs.devise)} ${TEXTES[lang].cloud.parMois}`,
+    price: c.prix.toFixed(2),
+    priceCurrency: tarifs.devise,
+    eligibleRegion: { '@type': 'Country', name: 'FR' },
+    url: ORIGINE + tarifs.inscription,
+  }];
 }
 
 function application(page) {

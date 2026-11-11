@@ -4,7 +4,7 @@ type: guide
 lang: fr
 nom: Comment ça marche
 title: "Comment faire du crosslisting : le parcours en 7 étapes | FillSell"
-description: "Le crosslisting pas à pas : Lens écrit l'annonce, l'extension la dépose sur {{plateformes}}, FillSell la suit jusqu'à la vente."
+description: "Le crosslisting pas à pas : Lens écrit l'annonce, l'extension ou FillSell Cloud la dépose sur {{plateformes}}, puis la suit jusqu'à la vente."
 h1: "Comment faire du crosslisting avec FillSell : le parcours en 7 étapes"
 surtitre: "Le crosslisting, de la photo à la vente"
 chapo: "Faire du crosslisting, c'est proposer le même article sur plusieurs plateformes de seconde main sans tout retaper. Avec FillSell, une photo suffit : Lens écrit l'annonce, tu coches tes plateformes parmi {{plateformes}}, et l'extension Chrome la dépose depuis ton ordinateur. Une fois la vente enregistrée, ses autres annonces sont retirées ; au moindre doute, FillSell te pose la question."

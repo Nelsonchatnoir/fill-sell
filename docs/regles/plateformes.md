@@ -470,9 +470,10 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   (`vercel.json` : images « immutable » un an) ; l'ancien fichier reste pour les mails déjà envoyés. Le CDN de Beebs
   (cdn.beebs.app) sert encore l'ancien logo : ne rien y prendre. Captures du site : un logo seul se remplace au pixel près
   (même place, même taille, coins 28 %) ; un logo EMPILÉ (pastilles qui se chevauchent) se refait par
-  `scripts/apercu/site-capture.mjs <clé>` ; puis `site:images`. Vidéo du site : `docs/seo/briefs/video-variante-site`
-  (preparer → patch → logo remplacé dans `public/logos/` du dossier de travail, jamais dans fillsell-video → rendu.cjs A et
-  B → encoder.sh → video-json.mjs A).
+  `scripts/apercu/site-capture.mjs <clé>` ; puis `site:images`. Vidéo du site : depuis le 11/11/2026, le « podcast »
+  Camille et Sam (`site/medias/video/video.json`, champ `source`) ; un logo changé = rendu Remotion refait dans
+  `marketing/livrables-20261111/sources` (poste de Nico, hors dépôt), réencodé, puis `video.json` réécrit. L'ancienne
+  bascule A/B (`docs/seo/briefs/video-variante-site`) ne sert plus.
 - ⛔ **Leboncoin, compte PRO prouvé aussi par son TYPE** (paugues.contact, 29/10) : `account/v2/members/me/account` →
   `account.type` « individual » = particulier, tout autre type (« business »…) = PRO. Le formulaire pro
   (`general_sales_condition`, `custom_ref`) n'apparaît pas dans tous les rayons (Maison > Décoration, Loisirs >

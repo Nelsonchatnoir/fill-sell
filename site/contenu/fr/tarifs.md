@@ -5,7 +5,7 @@ lang: fr
 nom: Tarifs
 surtitre: "Tarifs sans engagement"
 title: "Prix et tarifs FillSell : gratuit, puis dès 12,99 € par mois"
-description: "FillSell est gratuit pour commencer, sans carte bancaire. Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement : ce que chaque forfait inclut."
+description: "FillSell est gratuit pour commencer, sans carte bancaire. Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement. Option FillSell Cloud : 24,99 €."
 h1: "Prix et tarifs FillSell : gratuit pour commencer, sans engagement ensuite"
 chapo: "FillSell est gratuit pour commencer, sans carte bancaire : la publication sur {{plateformes}}, la synchronisation de ton stock et le retrait des autres annonces après une vente sont inclus dès le Gratuit. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Tu paies pour plus d'annonces rédigées par l'IA, la retouche photo et le support, jamais par plateforme."
 points_cles:

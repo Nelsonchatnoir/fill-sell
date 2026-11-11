@@ -6,7 +6,7 @@ plateforme: leboncoin
 nom: Leboncoin
 surtitre: "Leboncoin · app + extension Chrome"
 title: "Outil Leboncoin : publie et republie depuis ton téléphone — FillSell"
-description: "Publie tes annonces Leboncoin depuis ton téléphone, republie-les sans option payante de Leboncoin et évite la double vente avec tes autres plateformes."
+description: "Publie sur Leboncoin depuis ton téléphone, par l'extension ou FillSell Cloud, republie sans option payante de Leboncoin et évite la double vente."
 h1: "FillSell pour Leboncoin : l'outil pour vendre sur Leboncoin depuis ton téléphone"
 chapo: "FillSell est une app de crosslisting qui pilote tes annonces Leboncoin depuis ton téléphone : tu les publies, tu les republies, tu les retires, et son extension Chrome fait le travail sur ton ordinateur, dans ta session Leboncoin, sans ton mot de passe. La même fiche part sur {{plateformes}}. Vendu sur Leboncoin ? Un appui pour confirmer, et FillSell retire les autres annonces de l'article."
 points_cles:

@@ -4,10 +4,10 @@ type: accueil
 lang: en
 nom: Home
 title: "Crosslisting app: Vinted France, Leboncoin, eBay and more — FillSell"
-description: "The crosslisting app you run from your phone: one photo, Lens writes the listing, and it goes out to {{plateformes}}. Free to start."
+description: "The crosslisting app on your phone: Lens writes the listing, it goes out to {{plateformes}}, with or without a computer (FillSell Cloud)."
 surtitre: "Crosslisting, run from your phone"
 h1: "The crosslisting app: one photo, {{nb_plateformes}} marketplaces. Sold here, removed there."
-chapo: "FillSell is a crosslisting app you run from your phone. One photo, Lens writes the listing, and the Chrome extension posts it to {{plateformes}} from your computer, in your own session. Your stock syncs in one tap, your listings bump themselves back up on {{republication}} depending on your subscription, and once a sale is recorded, the item's other listings come down."
+chapo: "FillSell is a crosslisting app you run from your phone. One photo, Lens writes the listing; the Chrome extension posts it to {{plateformes}} from your computer, or, in France, the FillSell Cloud option with no computer. Your stock syncs in one tap, your listings bump back up on {{republication}} depending on your plan, and a recorded sale takes the other listings down."
 publie: "2026-10-09"
 faq: true
 cta: inscription

@@ -1,5 +1,10 @@
 # Brief — vidéo de présentation, variante « site » (refaite le 09/10/2026, compte « Camille »)
 
+> ⛔ **REMPLACÉE le 11/11/2026** par la vidéo « podcast » (Camille et Sam, 33 s, voix générées par IA) du lot
+> marketing : `site/medias/video/video.json` (champ `source`). Les fichiers `fillsell-presentation*` et
+> `version-b/` sont retirés du site ; la bascule A/B ci-dessous (`video-json.mjs A|B`) ne sert plus et refuse de
+> tourner (elle réécrirait `video.json` vers des fichiers absents). Ce brief reste comme historique.
+
 > Refaite le 2026-10-09 (18:40–19:50, heure de Paris) dans le worktree `C:\Users\nicol\fill-and-sell-seo`
 > (branche `seo-crosslisting`). Aucun commit, aucun push, aucun déploiement, aucun SQL, aucune connexion
 > à fillsell.app ni à un compte. `C:\Users\nicol\fillsell-video` **lu seulement** (rendu sur une copie

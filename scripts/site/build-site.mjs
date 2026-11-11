@@ -629,7 +629,8 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
     // L'option FillSell Cloud sous les cartes renvoie à la section Cloud de l'accueil : ancre dans la page sur
     // l'accueil (avecLien), l'accueil de la même langue ailleurs (page « tarifs »).
     const lienCloud = `${avecLien ? '' : accueilDe(lang)}#cloud-titre`;
-    return { ...tarifs, communs, lien: lienTarifs ? lienVers(lienTarifs, lang) : null, grille: grille.K, lienCloud };
+    // (11/11) `cloud` : l'offre FillSell Cloud des données structurées (prix lu dans src/utils/palier.js, comme la carte).
+    return { ...tarifs, communs, lien: lienTarifs ? lienVers(lienTarifs, lang) : null, grille: grille.K, lienCloud, cloud: site.cloud };
   };
 
   // Comparaisons (site/donnees/concurrents.yml) : une cellule par outil et par critère.

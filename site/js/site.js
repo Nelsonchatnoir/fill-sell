@@ -261,7 +261,9 @@ d.querySelectorAll('[data-video]').forEach((b) => {
     // Le bouton disparaît : le focus passe à la vidéo (et à ses contrôles),
     // sinon il tombait sur <body> (revue technique C-2).
     v.focus();
-    v.play().catch(() => { /* lecture refusée : les contrôles restent */ });
+    // (11/11) la vidéo parle : le clic est le geste qui autorise le son ; refusé, elle repart muette
+    v.muted = false;
+    v.play().catch(() => { v.muted = true; v.play().catch(() => { /* lecture refusée : les contrôles restent */ }); });
     pousser({ event: 'video_play', page });
   });
 });
