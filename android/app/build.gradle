@@ -121,8 +121,11 @@ android {
         // (08/11 soir, refus Google de la vc36 : « Currency differences with prominent display price ») versionCode 37 /
         // versionName 2.9.167 : les prix affichés viennent de Google Play Billing (lib/prixBoutique.js). Natif inchangé ;
         // prochaine OTA ≥ 2.9.168.
-        versionCode 37
-        versionName "2.9.167"
+        // (12/11, point 7 de Nico — achats Google Play) versionCode 38 / versionName 2.9.176 : le module d'achat transmet
+        // enfin le code de Google Play (patches/@capgo+native-purchases+8.3.3.patch). Un numéro à lui, au-dessus de l'OTA
+        // 2.9.175 qui porte le même code JS ; prochaine OTA ≥ 2.9.177. PRÉPARÉ, jamais soumis sans le go de Nico.
+        versionCode 38
+        versionName "2.9.176"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

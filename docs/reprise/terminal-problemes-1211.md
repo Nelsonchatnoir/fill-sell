@@ -79,3 +79,35 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
 - Migration 20261112160000 + fonction rapprochement (cadence) ; fusion_photo_tick inchangée. Verrou
   `selftest:empreintes-rafales` (6 rouges sur cfef7d7 → 11/11), banc 15/15.
 - Référence avant : empreintes-urls 23 % d'échecs (24 h) ; attentes de photos du rapprochement médiane 29 s, p90 85 s.
+- **EN SERVICE (commit 2223f0b)** : sauvegarde 16:22:14 ; **migration 20261112160000 à 16:22:27** (md5 2043347c…) ;
+  **rapprochement v39** (16:22:49, `verify_jwt` false).
+- **Mesure sur 1 h (16:22 → 17:22, contre 15:22 → 16:22)** : rapprochement PLUS RAPIDE — ≤ 50 photos médiane 8,7 s
+  (avant 27 s), 213 photos en 44 s et 302 en 76 s (avant 237 en 239 s, 440 en 96 s, 654 en 107 s) ; empreintes-urls
+  20,4 % d'échecs (56/275) contre 22,7 % (245/1 080) — presque pas mieux : les échecs tombent dans les minutes à 35–110
+  appels (relance toutes les 4 s = même débit par minute qu'avant). Moins d'échecs = rapprochement plus lent : décision
+  de Nico. Rien à défaire.
+
+## Soir — points 7 et 8, puis point 9 (ouverture du Cloud, ce terminal ouvre)
+| Point | Comptes | Classement | Suite |
+|---|---|---|---|
+| 7. achats Google Play « Purchase is not purchased » | 8 comptes, 18 échecs (16/10 → 12/11) | ROUGE (app aveugle), corrigé | OTA 2.9.175 + binaire 2.9.176 / vc38 préparé |
+| 8. rédaction coupée à 150 s (504) | ebdf29f0 (4), 229c7b07 (2) sur 7 jours | ROUGE, corrigé | generate-listing v140 |
+- **Point 8 EN SERVICE (commit 6ede137, poussé 2223f0b..6ede137)** : suite LF 682/682 (16:36 → 17:01) ; **generate-listing
+  v140** (17:02:24 ; avant v139 ; `verify_jwt` true avant et après ; sans session → 401), déployée depuis la copie de PROD
+  v139 + le correctif (`_shared/palier.js` et deux fichiers `src/` de la prod sont plus anciens que main : gardés tels quels).
+- **Point 7 EN SERVICE (commit 253a740, poussé 6ede137..253a740)** : suite LF 682/683 sur ff8291f (17:01 → 17:25), seul
+  rouge `lot-i-3110` (il épinglait l'ancien message dans App.jsx) mis à jour dans 253a740 et vert, plus les 4 selftests
+  touchés par l'écart revérifiés ; **OTA 2.9.175** (canal production = 2.9.175, commit 253a740, delta, 162 fichiers),
+  depuis le dossier principal avancé en avance rapide (propre avant et après) ; web 2026-11-12T16:27:44Z+253a740 (entrée
+  lue avec `Origin` : 200).
+- ⚠ Règle de l'OTA : un numéro de binaire n'est JAMAIS celui d'une OTA (garde `scripts/ota/regles-ota.mjs`) : binaire
+  Android **2.9.176 / vc38** (module d'achat patché, compilé par Gradle le 12/11) ; prochaine OTA ≥ 2.9.177.
+- **Point 9** (étapes de Nico) : 1. vert (ci-dessus) ; 2. vert — 2.9.167 / vc37 « Disponible sur Google Play », sortie le
+  09/11 20:15 ; 3. vert (GO de Nico, ~17:35) — ACTIVÉS sur Google Play : `premium-cloud-monthly` (34,99 €) + offre
+  `premium-cloud-trial-7d`, `pro-cloud-monthly` (49,99 €) + offre `pro-cloud-trial-7d`, `business-cloud-monthly` (79,99 €,
+  aucune offre) ; aucun prix, aucun abonnement existant touché. ⚠ Éligibilité Google de l'essai = « n'a jamais eu
+  d'abonnement dans cette appli » (question posée à Nico) ; sur la vc37, le module prend la PREMIÈRE offre renvoyée par
+  Google (essai ou plein tarif) : jamais éprouvé. 4. attend le téléphone de Nico (aucun appareil Android sur ce poste) :
+  témoins FillSell d6a9e726, 953c1ca6, f44b5917 ; compte Google testeur de licence jamais abonné.
+- Interrupteurs : `coin_config.cloud_formules_stripe` / `_google` / `_apple` ABSENTS (= fermés) au 12/11 ~17:40 ;
+  `cloud_offre_ouverte` = 1. Ouverture : seulement sur « GO OUVERTURE » de Nico ; `cloud_formules_apple` reste fermé.
