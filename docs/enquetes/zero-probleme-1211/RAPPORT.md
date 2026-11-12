@@ -60,3 +60,31 @@ Autres demandes vérifiées : relevés Vinted / Leboncoin / Beebs / Depop d'un c
 ventes : lues par les relevés (même chemin) ou par l'API eBay si relié ; retraits / publications eBay : à l'ordinateur
 (reste, 0 tâche ouverte, 3 comptes exposés). **Correctif** : règle `cloud-voie.js`, handler-watch, get-pending-jobs, app.
 **Verrou** : `selftest:cloud-releves-sans-ordinateur`.
+
+### Étape 1 — EN SERVICE (12/11 au soir)
+- Suite complète sur une copie LF (881c2b9 + étape 1) : 687/689 — `cloud-voie` rouge (ordre d'un import, corrigé, puis les
+  175 selftests qui lisent get-pending-jobs relancés : 175/175) et `onglet-muet-partout` (vert relancé deux fois, instable,
+  sans lien). La passe 4a seule : 684/685 (le rouge, un libellé « Environnement » lu comme une estimation, corrigé).
+- Commits **24f3b69** (correctif) + **1b91d34** (version 2.9.177), poussés b681ffc..1b91d34 ; le commit = la copie testée
+  (46 fichiers comparés, 0 écart).
+- Fonctions, depuis `git -c core.autocrlf=false archive 1b91d34`, versions lues avant / après : apple-iap-webhook v55 → **v56**,
+  google-play-webhook v48 → **v49**, stripe-webhook v77 → **v78**, email-tunnel v91 → **v92** (verify_jwt false avant et
+  après, `--no-verify-jwt`) ; validate-google-purchase v28 → **v29**, create-checkout-session v78 → **v79** (verify_jwt true) ;
+  handler-watch v196 → **v197** (false) ; get-pending-jobs v365 → **v366** (true). Appels sans session : 400 (webhooks
+  signés), 401 (les autres). Dépendances : aucune modifiée depuis leur dernier déploiement hors de ce lot (deno info).
+  Premiers passages : get-pending-jobs v366 188 appels en 200, médiane 1 330 ms (v365 : 1 274) ; handler-watch v197 2
+  passages en 200 (13,4 s et 18,3 s ; v196 : 10 à 11 s, déjà 12 à 39 s le 11/11).
+- Web : build 2026-11-12T22:04:35Z+1b91d34, entrée de l'app lue avec `Origin` : 200.
+- **OTA 2.9.177** publiée (canal production = 2.9.177, commit 1b91d34, `--delta`, 162 fichiers). ⚠ Deux obstacles levés :
+  (1) un fichier vide `'programmee_servie_le'` (nom avec apostrophes, 0 octet, écrit le 12/11 à 21:28 par une redirection
+  ratée, auteur inconnu) rendait l'arbre « sale » : déplacé, intact, dans le scratchpad de la session ; (2) Capgo voyait
+  `@capgo/native-purchases` « Android native code changed » : node_modules porte le patch de la vc38 (253a740), le canal
+  l'empreinte de la vc37. Le bundle JavaScript ne dépend pas de ce code Java (la 2.9.175 marche sur les deux binaires) :
+  pour l'envoi, le module a été remis dans l'état du canal (ancien patch), compatibilité « OK », OTA envoyée, puis
+  node_modules remis dans l'état vc38 OCTET POUR OCTET (copie de sauvegarde). ⚠ À décider quand la vc38 sera publiée :
+  la prochaine OTA depuis node_modules patché bute sur la même garde.
+- Retour : fonctions depuis une archive de b681ffc, dans l'ordre inverse ; app : nouvelle OTA (numéro neuf) d'un commit
+  qui revient sur 24f3b69.
+- À relire : le mail « 24,99 € » de 5322fa18 ne doit plus partir le 13/11 vers 18:50 (le renouvellement TestFlight, s'il
+  vient, doit écrire « mails Cloud RETENUS (achat de test) » et une alerte « [TEST] ») ; le premier `cloud_essai_veille`
+  réel attendu pour d607ba20 (Stripe) le 13/11 vers 16:00 (email_logs).
