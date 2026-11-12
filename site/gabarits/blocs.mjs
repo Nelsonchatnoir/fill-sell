@@ -170,14 +170,16 @@ export function blocCloud(site, page) {
   const c = TEXTES[page.lang].cloud;
   const jours = site.cloud.essaiJours;
   // (11/11 au soir) Plus de Cloud seul : la carte présente les formules AVEC Cloud, prix lus dans l'app
-  // (site.cloud.avecCloud) ; sans ces prix, la même carte sans aucun prix.
+  // (site.cloud.avecCloud) ; sans ces prix (interrupteur cloud_formules_stripe FERMÉ), la même carte sans aucun prix.
+  // (12/11) Noms et supplément de l'app, à la lettre (« Pro + Cloud », « Le Cloud pour 20 € de plus » ; jamais une
+  // « économie », décision 4 de Nico). Ce qui dépend de l'interrupteur est de l'HABILLAGE : l'ouvrir ne périme aucune date.
   const ac = site.cloud.avecCloud;
-  const noms = Object.fromEntries((page.tarifs?.paliers ?? []).map((p) => [p.id, p.nom[page.lang]]));
-  const NOMS = { premium: 'Premium', pro: 'Pro', business: 'Business' };
-  const formules = ac
-    ? `<ul class="cloud-formules">${['premium', 'pro', 'business'].map((id) => `<li${id === 'pro' ? ' class="avant"' : ''}><span>${esc(noms[id] ?? NOMS[id])}${id === 'pro' ? ` <em>${esc(TEXTES[page.lang].misEnAvant)}</em>` : ''}</span><strong>${esc(prix(ac[id], page.lang))}${site.cloud.economie?.[id] > 0 ? ` <span class="economie"><span class="sr">${esc(TEXTES[page.lang].cloudFormules.economieLibelle)} </span>${esc(TEXTES[page.lang].cloudFormules.economie(prix(site.cloud.economie[id], page.lang)))}</span>` : ''}</strong></li>`).join('')}</ul>` +
+  const cf = TEXTES[page.lang].cloudFormules;
+  const avant = site.cloud.miseEnAvant ?? 'pro';
+  const formules = habillage(ac
+    ? `<ul class="cloud-formules">${['premium', 'pro', 'business'].map((id) => `<li${id === avant ? ' class="avant"' : ''}><span>${esc(cf.nomAvec(id))}${id === avant ? ` <em>${esc(TEXTES[page.lang].misEnAvant)}</em>` : ''}</span><strong>${esc(prix(ac[id], page.lang))}${site.cloud.supplement?.[id] > 0 ? ` <span class="supplement">${esc(cf.supplement(prix(site.cloud.supplement[id], page.lang)))}</span>` : ''}</strong></li>`).join('')}</ul>` +
       `<p class="cloud-periode">${esc(c.formulesPeriode)}</p>`
-    : `<p class="cloud-sans-prix">${esc(c.formulesSansPrix)}</p>`;
+    : `<p class="cloud-sans-prix">${esc(c.formulesSansPrix)}</p>`);
   const etats = habillage(`<span class="etat" aria-hidden="true">${c.etats.map((e, i) => `<span class="e${i + 1}">${esc(e)}</span>`).join('')}</span>`);
   const puces = site.cloud.plateformes.map((nom) => `<li class="puce"><span class="puce-nom">${logoPf(site, nom, 'logo-puce', 24)}${esc(nom)}</span>${etats}</li>`).join('');
   return `<section class="bloc-cloud sombre" aria-labelledby="cloud-titre"><div class="cadre">` +
@@ -248,35 +250,41 @@ export function cartesTarifs(site, page, { titre = true } = {}) {
   // (09/11) Carrés et lignes chiffrées lus en base ; base illisible → la carte part sans eux (jamais un chiffre recopié).
   const jauges = d.paliers.map((p) => jaugesDeCarte(d.grille, p.id, l));
   // (11/11 au soir, Nico) L'interrupteur « Sans Cloud / Avec Cloud », même logique que la fenêtre d'offres de l'app : avec
-  // Cloud, chaque formule payante montre son prix avec Cloud (LU dans l'app : site.cloud.avecCloud) et l'essai ; la
-  // carte Gratuite rappelle que le Cloud se prend avec Premium, Pro ou Business. Sans JS : deux boutons radio DANS les
-  // étiquettes (un clic ne fait pas défiler la page) et :has() (le CSS seul bascule). Prix avec Cloud absents → pas d'interrupteur, la ligne de repli.
+  // Cloud, chaque formule payante prend son nom (« Pro + Cloud »), son prix avec Cloud (LU dans l'app :
+  // site.cloud.avecCloud) et son supplément (« Le Cloud pour 20 € de plus ») ; la carte Gratuite rappelle que le Cloud
+  // se prend avec Premium, Pro ou Business. Sans JS : deux boutons radio DANS les étiquettes (un clic ne fait pas défiler
+  // la page) et :has() (le CSS seul bascule). Interrupteur cloud_formules_stripe FERMÉ (prix absents) → pas
+  // d'interrupteur, la ligne de repli.
+  // (12/11, correction de Nico du 11/11 22:55) L'essai : Premium + Cloud et Pro + Cloud SEULEMENT
+  // (site.cloud.essaiFormules, lu dans FORMULES_AVEC_ESSAI) ; Business + Cloud : « Passer à Business + Cloud », le bouton
+  // de l'app. Tout ce qui dépend de l'interrupteur est de l'HABILLAGE : l'ouvrir ou le fermer ne périme aucune date.
   const cf = t.cloudFormules;
   const jours = site.cloud?.essaiJours;
   const ac = site.cloud?.avecCloud ?? null;
-  const eco = (id) => (site.cloud?.economie?.[id] > 0 ? ` <span class="economie"><span class="sr">${esc(cf.economieLibelle)} </span>${esc(cf.economie(prix(site.cloud.economie[id], l, d.devise)))}</span>` : '');
-  const deux = (sans, avec) => `<span class="prix-sans">${sans}</span><span class="prix-avec">${avec}</span>`;
+  const avecEssai = new Set(site.cloud?.essaiFormules ?? []);
+  const sup = (id) => (site.cloud?.supplement?.[id] > 0 ? `<span class="supplement">${esc(cf.supplement(prix(site.cloud.supplement[id], l, d.devise)))}</span>` : '');
+  const deux = (sans, avec) => `<span class="prix-sans">${sans}</span>${habillage(`<span class="prix-avec">${avec}</span>`)}`;
   const cartes = d.paliers.map((p, i) => {
     const pa = ac?.[p.id];
     return `<li class="palier palier-${esc(p.id)}${PALIERS_SOMBRES.has(p.id) ? ' palier-sombre' : ''}${p.mis_en_avant ? ' palier-avant' : ''}">` +
       `${p.mis_en_avant ? habillage(`<p class="palier-badge">${esc(t.misEnAvant)}</p>`) : ''}` +
-      `<h3 class="palier-nom">${badgePalier(p.id, esc(p.nom[l]))}</h3>` +
+      `<h3 class="palier-nom">${badgePalier(p.id, pa ? deux(esc(p.nom[l]), esc(cf.nomAvec(p.id))) : esc(p.nom[l]))}</h3>` +
       `<p class="palier-pour">${ac && !pa ? deux(esc(p.pour[l]), esc(cf.gratuit)) : esc(p.pour[l])}</p>` +
       `<p class="palier-prix"><span class="montant">${pa ? deux(esc(prix(p.prix, l, d.devise)), esc(prix(pa, l, d.devise))) : esc(prix(p.prix, l, d.devise))}</span> ` +
-      `<span class="periode">${pa ? deux(esc(t.parMois), esc(cf.periodeAvec) + eco(p.id)) : esc(t.parMois)}</span></p>` +
+      `<span class="periode">${pa ? deux(esc(t.parMois), esc(cf.periodeAvec) + sup(p.id)) : esc(t.parMois)}</span></p>` +
       `${jauges[i] ? carresDe(jauges[i], t) : ''}` +
       `<ul>${jauges[i] ? habillage(jauges[i].lignes.map((x) => `<li>${esc(x)}</li>`).join('')) : ''}${p.inclus[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` +
-      `<a class="palier-bouton" href="${esc(d.inscription)}" data-cta="signup_tarifs_${esc(p.id)}">${pa ? deux(esc(p.cta[l]), esc(cf.ctaAvec(jours))) : esc(p.cta[l])}</a></li>`;
+      `<a class="palier-bouton" href="${esc(d.inscription)}" data-cta="signup_tarifs_${esc(p.id)}">${pa ? deux(esc(p.cta[l]), esc(avecEssai.has(p.id) ? cf.ctaAvec(jours) : cf.ctaSansEssai(p.id))) : esc(p.cta[l])}</a></li>`;
   }).join('');
-  const bascule = ac
+  const bascule = habillage(ac
     ? `<div class="bascule" role="radiogroup" aria-label="${esc(cf.aria)}">` +
       `<label><input type="radio" name="formules-cloud" id="formules-sans" class="bascule-entree bascule-sans" checked>${esc(cf.sans)}</label>` +
       `<label><input type="radio" name="formules-cloud" id="formules-avec" class="bascule-entree bascule-avec">${esc(cf.avec)}</label></div>` +
       `<p class="bascule-note">${esc(cf.note(jours))} <a href="${esc(d.lienCloud)}">${esc(cf.lien)}</a></p>`
-    : '';
-  // Repli (prix avec Cloud pas encore dans l'app) : le bandeau sombre, sans aucun prix.
-  const option = site.cloud && !ac ? `<div class="option-cloud"><div><p class="option-titre">${esc(cf.repliTitre)}</p>` +
-    `<p class="option-texte">${esc(cf.repliTexte(jours))}</p></div><a class="option-lien" href="${esc(d.lienCloud)}">${esc(cf.lien)}</a></div>` : '';
+    : '');
+  // Repli (interrupteur fermé : prix avec Cloud non montrés) : le bandeau sombre, sans aucun prix.
+  const option = habillage(site.cloud && !ac ? `<div class="option-cloud"><div><p class="option-titre">${esc(cf.repliTitre)}</p>` +
+    `<p class="option-texte">${esc(cf.repliTexte(jours))}</p></div><a class="option-lien" href="${esc(d.lienCloud)}">${esc(cf.lien)}</a></div>` : '');
   const communs = `<div class="carte communs"><h3>${esc(t.communsTitre)}</h3><ul>${d.communs[l].map((x) => `<li>${avecLogos(site, x)}</li>`).join('')}</ul></div>`;
   return `<section class="bloc-tarifs" aria-labelledby="tarifs-titre"><div class="cadre">` +
     (titre ? `<h2 id="tarifs-titre">${esc(t.tarifsTitre)}</h2><p class="chapo-section">${esc(t.tarifsChapo)}</p>` : `<h2 id="tarifs-titre" class="sr">${esc(t.tarifsTitre)}</h2>`) +

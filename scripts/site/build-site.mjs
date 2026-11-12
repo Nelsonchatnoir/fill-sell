@@ -13,7 +13,8 @@ import { constantesSupabase } from './lib/constantes-app.mjs';
 import { lireGrilleEnBase } from './lib/grille.mjs';
 // (11/11 au soir) lecture par l'espace de noms : un export encore absent (PRIX_AVEC_CLOUD, livré par le terminal 1) ne
 // casse pas le chargement du module.
-import * as PALIER from '../../src/utils/palier.js';
+import * as FORMULES from '../../supabase/functions/_shared/formules-cloud.js';
+import { lireInterrupteurFormules } from './lib/interrupteur-cloud.mjs';
 import { empreinteContenu, lireVerrou, brancheCourante, dateValide } from './lib/dates.mjs';
 import { entreeOg, lireManifesteOg, DOSSIER_OG } from './lib/og.mjs';
 import { ORIGINE, esc, urlAbsolue, dateLisible, aujourdhuiParis, balisesOuvrantes } from './lib/html.mjs';
@@ -220,21 +221,33 @@ function transcriptionParChapitre(lignes, chapitres) {
 /** « 4:05 » depuis des secondes. */
 const minutes = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-/** Prix des formules avec Cloud lus dans l'app : { premium, pro, business } en euros, tous > 0 ; sinon null. */
+// (12/11, contrat du terminal 1) Les formules avec Cloud vivent dans supabase/functions/_shared/formules-cloud.js
+// (ré-exporté par src/config/cloudOffer.js) : clés « premium_cloud », « pro_cloud », « business_cloud ».
+const IDS_CLOUD = ['premium', 'pro', 'business'];
+
+/** Prix des formules avec Cloud lus dans l'app (PRIX_AVEC_CLOUD_EUR) : { premium, pro, business } en euros, tous > 0 ; sinon null. */
 export function prixAvecCloud(x) {
   if (!x || typeof x !== 'object') return null;
-  const ids = ['premium', 'pro', 'business'];
-  return ids.every((id) => Number.isFinite(x[id]) && x[id] > 0) ? Object.fromEntries(ids.map((id) => [id, x[id]])) : null;
+  const v = (id) => x[`${id}_cloud`];
+  return IDS_CLOUD.every((id) => Number.isFinite(v(id)) && v(id) > 0) ? Object.fromEntries(IDS_CLOUD.map((id) => [id, v(id)])) : null;
 }
 
-/** Économies des formules avec Cloud, calculées par l'app (economieCloud(palier)) : { premium, pro, business } > 0, sinon null. */
-export function economiesAvecCloud(f) {
+/**
+ * Le supplément du Cloud sur chaque formule, lu dans l'app (supplementCloud(formule)) : { premium, pro, business } > 0,
+ * sinon null. ⛔ Décision 4 de Nico : « le Cloud pour 22 € / 20 € de plus », JAMAIS une « économie ».
+ */
+export function supplementsCloud(f) {
   if (typeof f !== 'function') return null;
-  const ids = ['premium', 'pro', 'business'];
   try {
-    const e = Object.fromEntries(ids.map((id) => [id, f(id)]));
-    return ids.every((id) => Number.isFinite(e[id]) && e[id] > 0) ? e : null;
+    const s = Object.fromEntries(IDS_CLOUD.map((id) => [id, f(`${id}_cloud`)]));
+    return IDS_CLOUD.every((id) => Number.isFinite(s[id]) && s[id] > 0) ? s : null;
   } catch { return null; }
+}
+
+/** Les formules avec Cloud qui ont un essai (FORMULES_AVEC_ESSAI) : liste d'ids de palier ; jamais Business. */
+export function formulesAvecEssai(liste) {
+  if (!Array.isArray(liste)) return [];
+  return IDS_CLOUD.filter((id) => liste.includes(`${id}_cloud`));
 }
 
 // `verrou` : un verrou des dates FOURNI (selftests seulement) à la place de site/dates.lock.json.
@@ -271,20 +284,27 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   // seulement ; illisible ou interrupteur à 0 → cartes sans carrés, avertissement, jamais un chiffre recopié.
   const grille = mode === 'build' ? await lireGrilleEnBase(supabase, { env }) : { K: null, source: 'absente', raison: `mode ${mode}` };
   if (mode === 'build' && !grille.K) avertir(`grille à 3 jauges illisible en base (${grille.raison}) : cartes de tarifs SANS carrés ni volumes`);
-  // FillSell Cloud (FORMAT-CONTENU § 0) : prix et jours d'essai LUS dans l'app (src/utils/palier.js, la source de la
-  // feuille des offres) ; plateformes = celles où l'extension agit (mode « extension » de plateformes.yml) — eBay,
-  // relié par l'API, part déjà des serveurs sans l'option.
-  // (11/11 au soir, décision de Nico) Le Cloud SEUL n'est plus montré aux nouveaux clients : les formules Premium, Pro
-  // et Business existent « avec Cloud ». Leurs prix sont LUS dans l'app : PRIX_AVEC_CLOUD = { premium, pro, business }
-  // (euros, prix web ; nom convenu avec le terminal 1). Export absent ou incomplet → aucun prix « avec Cloud » affiché,
-  // jamais un chiffre recopié (avertissement au build). CLOUD_PRIX_AFFICHE (Cloud seul) n'est plus lu.
-  const CLOUD_ESSAI_JOURS = PALIER.CLOUD_ESSAI_JOURS;
-  if (!Number.isInteger(CLOUD_ESSAI_JOURS)) throw new Error(`[site] jours d'essai de FillSell Cloud illisibles dans src/utils/palier.js (${CLOUD_ESSAI_JOURS})`);
-  const avecCloud = prixAvecCloud(PALIER.PRIX_AVEC_CLOUD);
-  // (11/11 au soir, Nico) L'économie de chaque formule avec Cloud (« − 3 € », « − 5 € »…) est CALCULÉE PAR L'APP :
-  // economieCloud(palier), fonction livrée par le terminal 1. Absente ou incohérente → aucune économie affichée.
-  const economieCloud = avecCloud ? economiesAvecCloud(PALIER.economieCloud) : null;
-  if (!avecCloud && mode === 'build') avertir('prix des formules avec Cloud absents de src/utils/palier.js (PRIX_AVEC_CLOUD) : pages sans prix « avec Cloud » ni interrupteur');
+  // FillSell Cloud (FORMAT-CONTENU § 0) : prix, supplément et jours d'essai LUS dans l'app
+  // (supabase/functions/_shared/formules-cloud.js, la source de la fenêtre d'offres) ; plateformes = celles où
+  // l'extension agit (mode « extension » de plateformes.yml) — eBay, relié par l'API, part déjà des serveurs sans le Cloud.
+  // (11/11 au soir, décision de Nico) Plus de Cloud SEUL pour les nouveaux clients : Premium + Cloud, Pro + Cloud
+  // (« Notre conseil ») et Business + Cloud. (12/11, plan de nuit) Le site bascule EN MÊME TEMPS que le web de l'app :
+  // interrupteur coin_config.cloud_formules_stripe lu au build (lib/interrupteur-cloud.mjs). FERMÉ (ou base
+  // illisible) → aucun prix « avec Cloud », aucun interrupteur « Sans / Avec Cloud », aucune offre dans les données
+  // structurées : le bandeau de repli sans prix. Jamais un chiffre recopié (avertissement au build).
+  // Essai : seulement sur Premium + Cloud et Pro + Cloud (FORMULES_AVEC_ESSAI) ; Business + Cloud se paie dès le 1er jour.
+  const CLOUD_ESSAI_JOURS = FORMULES.ESSAI_JOURS;
+  if (!Number.isInteger(CLOUD_ESSAI_JOURS)) throw new Error(`[site] jours d'essai des formules avec Cloud illisibles dans supabase/functions/_shared/formules-cloud.js (${CLOUD_ESSAI_JOURS})`);
+  const interrupteurCloud = mode === 'build' ? await lireInterrupteurFormules(supabase, { env }) : { ouvert: false, source: 'absente', raison: `mode ${mode}` };
+  const prixCloudLus = prixAvecCloud(FORMULES.PRIX_AVEC_CLOUD_EUR);
+  const avecCloud = interrupteurCloud.ouvert ? prixCloudLus : null;
+  const supplementCloud = avecCloud ? supplementsCloud(FORMULES.supplementCloud) : null;
+  const essaiCloud = formulesAvecEssai(FORMULES.FORMULES_AVEC_ESSAI);
+  if (mode === 'build') {
+    if (!interrupteurCloud.ouvert) journal.log(`[site] formules avec Cloud FERMÉES (${interrupteurCloud.raison}) : ni prix « avec Cloud » ni interrupteur`);
+    else if (!prixCloudLus) avertir('formules avec Cloud OUVERTES mais prix illisibles dans formules-cloud.js (PRIX_AVEC_CLOUD_EUR) : pages sans prix « avec Cloud » ni interrupteur');
+    else journal.log(`[site] formules avec Cloud OUVERTES (${interrupteurCloud.raison})`);
+  }
   const concurrents = lireConcurrents(racine);
   if (!jetable && !existsSync(path.join(dossier, 'app-shell.html'))) {
     throw new Error('[site] app-shell.html absent : le plugin appShell doit copier la coquille AVANT le générateur (vite.config.js)');
@@ -397,7 +417,9 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
     plateformes,
     cloud: {
       avecCloud,
-      economie: economieCloud,
+      supplement: supplementCloud,
+      essaiFormules: essaiCloud,
+      miseEnAvant: String(FORMULES.FORMULE_MISE_EN_AVANT ?? '').replace(/_cloud$/, '') || null,
       essaiJours: CLOUD_ESSAI_JOURS,
       plateformes: plateformes.ouvertes.filter((p) => p.mode === 'extension').map((p) => p.nom),
     },
@@ -658,7 +680,8 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
     // L'option FillSell Cloud sous les cartes renvoie à la section Cloud de l'accueil : ancre dans la page sur
     // l'accueil (avecLien), l'accueil de la même langue ailleurs (page « tarifs »).
     const lienCloud = `${avecLien ? '' : accueilDe(lang)}#cloud-titre`;
-    // (11/11) `cloud` : l'offre FillSell Cloud des données structurées (prix lu dans src/utils/palier.js, comme la carte).
+    // (11/11) `cloud` : les offres avec Cloud des données structurées (prix lus dans formules-cloud.js, comme la carte ;
+    // interrupteur fermé → aucune).
     return { ...tarifs, communs, lien: lienTarifs ? lienVers(lienTarifs, lang) : null, grille: grille.K, lienCloud, cloud: site.cloud };
   };
 

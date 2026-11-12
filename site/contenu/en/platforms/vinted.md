@@ -157,7 +157,7 @@ No, never. You sign in to Vinted in Chrome as usual, and the extension works ins
 
 ### Does my computer have to stay on?
 
-For Vinted, yes, without FillSell Cloud: posting, reposting, removing a listing and spotting a sale all need your computer on, Chrome open and your Vinted session active. While listings are queued, the extension keeps the computer awake. Computer off, nothing is lost: everything waits for the next time Chrome opens. With FillSell Cloud (7-day trial, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted listings from FillSell's servers, around the clock, and keeps track of your sales.
+For Vinted, yes, without FillSell Cloud: posting, reposting, removing a listing and spotting a sale all need your computer on, Chrome open and your Vinted session active. While listings are queued, the extension keeps the computer awake. Computer off, nothing is lost: everything waits for the next time Chrome opens. With FillSell Cloud (on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### How do I bump a Vinted listing with FillSell?
 

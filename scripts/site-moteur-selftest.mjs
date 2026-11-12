@@ -61,7 +61,10 @@ import {
 import { LANGUES, langueXDefault } from '../site/langues.mjs';
 import { TEXTES } from '../site/gabarits/textes.mjs';
 import { TEXTES_CONSENTEMENT } from '../src/utils/consentementTextes.js';
-import { genererSite } from './site/build-site.mjs';
+import { genererSite, prixAvecCloud, supplementsCloud, formulesAvecEssai } from './site/build-site.mjs';
+import { lireInterrupteurFormules, valeurOuverte, CLE_INTERRUPTEUR_SITE } from './site/lib/interrupteur-cloud.mjs';
+import * as FORMULES_CLOUD from '../supabase/functions/_shared/formules-cloud.js';
+import { readdirSync } from 'node:fs';
 import { lirePagesSite } from './site/lib/contenu.mjs';
 
 const racine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -418,7 +421,7 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
     jauge_annonces_pro: 120, jauge_publications_pro: 1200, jauge_remontees_pro: 0, quota_retouche_pro: 20,
     jauge_annonces_business: 0, jauge_publications_business: 0, jauge_remontees_business: 0, quota_retouche_business: 50, jauge_lens_business: 600 };
   const pro = jaugesDeCarte(K, 'pro', 'fr');
-  const nbsp = (t) => t.replace(/[  ]/g, ' ');
+  const nbsp = (t) => t.replace(/[\u00a0\u202f]/g, ' ');
   ok(pro && pro.carres.map((c) => nbsp(c.valeur)).join('|') === '120|1 200|illimitées' && pro.carres.map((c) => c.mot).join('|') === 'annonces|publications|remontées',
     `carrés du Pro lus dans K, 0 = « illimitées » (${pro?.carres.map((c) => c.valeur).join('|')})`);
   ok(pro.carres[0].aria === "120 annonces — qu'est-ce que ça compte ?" && pro.carres[2].illimite, `nom accessible du carré = celui de l'app (${pro.carres[0].aria})`);
@@ -448,9 +451,11 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
     // (11/11 au soir) Plus de Cloud seul : prix des formules AVEC Cloud lus dans l'app (PRIX_AVEC_CLOUD) ; ici, absents.
     cloud: { avecCloud: null, essaiJours: 7, plateformes: ['Vinted', 'Leboncoin', 'Beebs', 'Depop'] },
   };
-  const siteAvec = { ...site, cloud: { ...site.cloud, avecCloud: { premium: 34.99, pro: 49.99, business: 79.99 } } };
-  // (11/11 au soir, offre définitive) l'économie de chaque formule avec Cloud, calculée par l'app (economieCloud)
-  const siteEco = { ...siteAvec, cloud: { ...siteAvec.cloud, economie: { premium: 3, pro: 5, business: 5 } } };
+  // (12/11, plan de nuit de Nico) Interrupteur cloud_formules_stripe OUVERT : prix, supplément, essai et mise en avant LUS
+  // dans supabase/functions/_shared/formules-cloud.js par les fonctions du build (jamais recopiés dans le gabarit).
+  const siteAvec = { ...site, cloud: { ...site.cloud, avecCloud: prixAvecCloud(FORMULES_CLOUD.PRIX_AVEC_CLOUD_EUR),
+    supplement: supplementsCloud(FORMULES_CLOUD.supplementCloud), essaiFormules: formulesAvecEssai(FORMULES_CLOUD.FORMULES_AVEC_ESSAI),
+    miseEnAvant: String(FORMULES_CLOUD.FORMULE_MISE_EN_AVANT).replace(/_cloud$/, '') } };
   const tarifs = { ...lireTarifs(racine, ['fr', 'en']), communs: { fr: ['Publication sur Vinted, Leboncoin, eBay, Beebs et Depop'], en: ['Publishing on Vinted, Leboncoin, eBay, Beebs and Depop'] }, lien: null, lienCloud: '#cloud-titre' };
   for (const lang of ['fr', 'en']) {
     const avec = cartesTarifs(site, { lang, tarifs: { ...tarifs, grille: K } });
@@ -467,7 +472,7 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
     // l'app, absents = aucun prix (jamais un chiffre recopié) ; l'essai et l'ancre restent.
     const prixAvec = lang === 'fr' ? ['34,99', '49,99', '79,99'] : ['34.99', '49.99', '79.99'];
     const cloudAvec = blocCloud(siteAvec, { lang });
-    ok(!/24[,.]99/.test(cloud + cloudAvec) && !/\boption\b/i.test(texteBrut(cloud) + texteBrut(cloudAvec)) && (lang === 'fr' ? /7[  ]jours/ : /7-day/).test(cloud) && /id="cloud-titre"/.test(cloud),
+    ok(!/24[,.]99/.test(cloud + cloudAvec) && !/\boption\b/i.test(texteBrut(cloud) + texteBrut(cloudAvec)) && (lang === 'fr' ? /7[ \u00a0]jours/ : /7-day/).test(cloud) && /id="cloud-titre"/.test(cloud),
       `${lang} : section Cloud sans Cloud seul (ni 24,99 ni « option »), essai et ancre gardés`);
     ok(!/\d+[,.]\d\d/.test(texteBrut(cloud)) && prixAvec.every((x) => texteBrut(cloudAvec).includes(x)), `${lang} : prix des formules avec Cloud lus dans l'app, aucun prix sans eux`);
     const tarifsAvec = cartesTarifs(siteAvec, { lang, tarifs: { ...tarifs, grille: K } });
@@ -476,14 +481,86 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
       `${lang} : interrupteur « Sans Cloud / Avec Cloud », « Sans » coché, prix avec Cloud sur les trois formules payantes`);
     ok(!/class="bascule"/.test(avec) && /class="option-cloud"/.test(avec) && !/24[,.]99|\boption\b/i.test(texteBrut(avec)),
       `${lang} : sans prix avec Cloud, pas d'interrupteur, le bandeau de repli sans prix ni « option »`);
-    const tarifsEco = cartesTarifs(siteEco, { lang, tarifs: { ...tarifs, grille: K } });
-    const eco = (n) => (lang === 'fr' ? `− ${n} €` : `− €${n}`);
-    ok((tarifsEco.match(/class="economie"/g) ?? []).length === 3 && ['3', '5'].every((n) => tarifsEco.includes(eco(n)) || tarifsEco.includes(eco(n).replace(' ', ' ')))
-      && !/class="economie"/.test(tarifsAvec), `${lang} : l'économie (− 3 €, − 5 €, − 5 €) lue dans l'app sur chaque carte avec Cloud, rien sans elle`);
+    // (12/11, VERROU du plan de nuit de Nico) Les textes VALIDÉS des formules avec Cloud :
+    //   · « Premium + Cloud », « Pro + Cloud » (« Notre conseil »), « Business + Cloud » — les noms de l'app ;
+    //   · « Le Cloud pour 22 € de plus » / « 20 € » (supplementCloud), JAMAIS une « économie » (décision 4) ;
+    //   · l'essai SEULEMENT sur Premium + Cloud et Pro + Cloud ; Business + Cloud : « Passer à Business + Cloud » ;
+    //   · jamais « n'importe quelle formule » / « any plan » ; plus de Cloud seul ni de 24,99 €.
+    const nb = (s) => String(s).replace(/[\u00a0\u202f]/g, ' ');
+    const T = nb(texteBrut(tarifsAvec));
+    const carte = (id) => nb(texteBrut((tarifsAvec.match(new RegExp(`<li class="palier palier-${id}[^"]*">[\\s\\S]*?</a></li>`)) ?? [''])[0]));
+    const [cPremium, cPro, cBusiness] = ['premium', 'pro', 'business'].map(carte);
+    const essayer = lang === 'fr' ? 'Essayer 7 jours' : 'Try it for 7 days';
+    const sup = (n) => (lang === 'fr' ? `Le Cloud pour ${n} € de plus` : `Cloud for €${n} more`);
+    const passer = lang === 'fr' ? 'Passer à Business + Cloud' : 'Switch to Business + Cloud';
+    ok(cPremium && cPro && cBusiness, `${lang} : les trois cartes payantes (repérées par <li class="palier …"> sans autre attribut, comme le vérificateur)`);
+    ok(cPremium.includes('Premium + Cloud') && cPro.includes('Pro + Cloud') && cBusiness.includes('Business + Cloud'), `${lang} : noms de l'app « Premium + Cloud », « Pro + Cloud », « Business + Cloud »`);
+    ok(cPremium.includes(nb(prixAvec[0])) && cPro.includes(nb(prixAvec[1])) && cBusiness.includes(nb(prixAvec[2])), `${lang} : 34,99 / 49,99 / 79,99 sur leur carte`);
+    ok(cPremium.includes(sup(22)) && cPro.includes(sup(20)) && cBusiness.includes(sup(20)) && (tarifsAvec.match(/class="supplement"/g) ?? []).length === 3
+      && nb(texteBrut(cloudAvec)).includes(sup(22)), `${lang} : « ${sup(22)} » / « ${sup(20)} » sur chaque carte avec Cloud et dans la section Cloud`);
+    ok(!/[ée]conomi|saving|\bsave\b|− ?\d/i.test(T + nb(texteBrut(cloudAvec))) && !/class="economie"/.test(tarifsAvec + cloudAvec), `${lang} : jamais d'« économie » (décision 4 de Nico)`);
+    ok(cPremium.includes(essayer) && cPro.includes(essayer), `${lang} : « ${essayer} » sur Premium + Cloud et Pro + Cloud`);
+    ok(!cBusiness.includes(essayer) && !/\d+[ -]?(jours|day)|essai|trial/i.test(cBusiness) && cBusiness.includes(passer),
+      `${lang} : Business + Cloud SANS essai, bouton « ${passer} »`);
+    ok(/palier-pro palier-sombre palier-avant/.test(tarifsAvec) && cPro.includes(TEXTES[lang].misEnAvant) && /<li class="avant"><span>Pro \+ Cloud <em>/.test(cloudAvec),
+      `${lang} : Pro + Cloud « ${TEXTES[lang].misEnAvant} » (carte et section Cloud)`);
+    const essaiPP = lang === 'fr' ? /7 jours d’essai gratuit,? sur Premium ou Pro avec Cloud/ : /7-day free trial,? on Premium or Pro with Cloud/;
+    ok(essaiPP.test(T) && essaiPP.test(nb(texteBrut(avec))) && essaiPP.test(nb(texteBrut(cloud))),
+      `${lang} : l'essai dit « sur Premium ou Pro avec Cloud » (interrupteur, repli, section Cloud)`);
+    ok(!/importe quelle formule|any plan/i.test(T + texteBrut(cloud) + texteBrut(cloudAvec) + texteBrut(avec)), `${lang} : jamais « n'importe quelle formule » / « any plan »`);
+    ok(/^<li class="palier palier-[a-z]+[^"]*">/m.test(tarifsAvec.replace(/<li class="palier/g, '\n<li class="palier')) && !/<li class="palier[^>]*" data-/.test(tarifsAvec)
+      && !/class="bascule"|class="prix-avec"|\d+[,.]\d\d\s?€\s?\/|Cloud pour|Cloud for/.test(avec + cloud.replace(/class="cloud-sans-prix"/, '')),
+      `${lang} : interrupteur FERMÉ : ni bascule, ni prix avec Cloud, ni supplément`);
+    ok(texteBrut(sansRegions(tarifsAvec, 'habillage')) === texteBrut(sansRegions(avec, 'habillage'))
+      && texteBrut(sansRegions(cloudAvec, 'habillage')) === texteBrut(sansRegions(cloud, 'habillage')),
+      `${lang} : ouvrir l'interrupteur ne change que l'HABILLAGE (aucune date périmée)`);
     ok(!/Places limitées|Limited places|places disponibles|while places last/i.test(cloud + cloudAvec + tarifsAvec), `${lang} : plus de « Places limitées »`);
     ok(['Vinted', 'Leboncoin', 'Beebs', 'Depop'].every((n) => cloud.includes(`>${n}</span>`)) && !/>eBay<\/span><span class="etat/.test(cloud), `${lang} : les quatre plateformes du Cloud, eBay à part (API)`);
     ok(logosPlateformesFautifs(cloud, ['vinted', 'leboncoin', 'ebay', 'beebs', 'depop']).length === 0, `${lang} : logos de la scène devant leur nom`);
   }
+}
+
+// ── 23 bis. Formules avec Cloud : le contrat de l'app et l'interrupteur du site (12/11, plan de nuit de Nico) ──
+{
+  // Le contrat du terminal 1 (supabase/functions/_shared/formules-cloud.js) tel que Nico l'a validé : si un prix, un
+  // supplément ou l'essai change dans l'app, ce verrou rougit et les textes du site sont à relire avant tout déploiement.
+  ok(JSON.stringify(prixAvecCloud(FORMULES_CLOUD.PRIX_AVEC_CLOUD_EUR)) === JSON.stringify({ premium: 34.99, pro: 49.99, business: 79.99 }),
+    `prix avec Cloud lus dans l'app : 34,99 / 49,99 / 79,99 (${JSON.stringify(prixAvecCloud(FORMULES_CLOUD.PRIX_AVEC_CLOUD_EUR))})`);
+  ok(JSON.stringify(supplementsCloud(FORMULES_CLOUD.supplementCloud)) === JSON.stringify({ premium: 22, pro: 20, business: 20 }), 'supplément lu dans l\'app : 22 / 20 / 20 €');
+  ok(JSON.stringify(formulesAvecEssai(FORMULES_CLOUD.FORMULES_AVEC_ESSAI)) === JSON.stringify(['premium', 'pro']), 'essai : Premium + Cloud et Pro + Cloud seulement, jamais Business');
+  ok(FORMULES_CLOUD.FORMULE_MISE_EN_AVANT === 'pro_cloud' && FORMULES_CLOUD.ESSAI_JOURS === 7, 'Pro + Cloud mis en avant, essai de 7 jours');
+  ok(prixAvecCloud({ premium_cloud: 34.99, pro_cloud: 0, business_cloud: 79.99 }) === null && prixAvecCloud(null) === null, 'un prix manquant : aucun prix (jamais un repli)');
+  ok(supplementsCloud(undefined) === null && supplementsCloud(() => { throw new Error('x'); }) === null, 'supplément illisible : aucun');
+  ok(formulesAvecEssai(['business_cloud']).length === 1 && formulesAvecEssai(null).length === 0, 'essai lu tel quel, liste illisible = aucun essai');
+
+  // L'interrupteur : coin_config.cloud_formules_stripe, la clé du web de l'app ; OUVERT = 1 seulement.
+  ok(CLE_INTERRUPTEUR_SITE === FORMULES_CLOUD.CLE_INTERRUPTEUR_FORMULES.stripe && CLE_INTERRUPTEUR_SITE === 'cloud_formules_stripe', 'le site lit la clé du web (cloud_formules_stripe)');
+  ok(valeurOuverte(1) && valeurOuverte('1') && !valeurOuverte(0) && !valeurOuverte('0') && !valeurOuverte(null) && !valeurOuverte(true) && !valeurOuverte(2), 'ouvert = 1 seulement');
+  const sb = { url: 'https://x.supabase.co', cle: 'k' };
+  const rep = (rows) => async (url) => ({ ok: true, status: 200, json: async () => (url.includes('key=eq.cloud_formules_stripe') ? rows : []) });
+  ok((await lireInterrupteurFormules(sb, { env: {}, fetcher: rep([{ value: 1 }]) })).ouvert === true, 'value 1 en base : ouvert');
+  ok((await lireInterrupteurFormules(sb, { env: {}, fetcher: rep([{ value: '1' }]) })).ouvert === true, 'value « 1 » en base : ouvert');
+  ok((await lireInterrupteurFormules(sb, { env: {}, fetcher: rep([]) })).ouvert === false, 'aucune ligne : fermé');
+  ok((await lireInterrupteurFormules(sb, { env: {}, fetcher: rep([{ value: 0 }]) })).ouvert === false, 'value 0 : fermé');
+  const panneI = await lireInterrupteurFormules(sb, { env: {}, essais: 2, fetcher: async () => ({ ok: false, status: 503 }) });
+  ok(panneI.ouvert === false && /503/.test(panneI.raison), 'base en panne : fermé (jamais une offre montrée sur un doute)');
+  ok((await lireInterrupteurFormules(sb, { env: {}, essais: 1, fetcher: async () => { throw new Error('réseau'); } })).ouvert === false, 'réseau coupé : fermé');
+  ok((await lireInterrupteurFormules(sb, { env: { FILLSELL_SITE_GRILLE_HORS_LIGNE: '1' }, fetcher: rep([{ value: 1 }]) })).ouvert === false, 'hors ligne (selftests) : fermé, aucune requête');
+  ok((await lireInterrupteurFormules(sb, { env: { FILLSELL_SITE_FORMULES_CLOUD: 'ouvert' }, fetcher: rep([]) })).ouvert === true, 'forçage LOCAL « ouvert » (aperçu, captures)');
+  ok((await lireInterrupteurFormules(sb, { env: { VERCEL: '1', FILLSELL_SITE_FORMULES_CLOUD: 'ouvert' }, fetcher: rep([]) })).ouvert === false, 'sur Vercel, le forçage est IGNORÉ : seule la base décide');
+  ok((await lireInterrupteurFormules({ url: '', cle: '' }, { env: {}, fetcher: rep([{ value: 1 }]) })).ouvert === false, 'clé publique illisible : fermé');
+
+  // Le contenu : plus jamais l'essai « sur n'importe quelle formule » (correction de Nico du 11/11 22:55).
+  const fautifs = [];
+  const parcourir = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) parcourir(p);
+      else if (/\.(md|ya?ml)$/.test(e.name) && /n[’']importe quelle formule avec Cloud|any plan with Cloud|formule de ton choix avec Cloud/i.test(readFileSync(p, 'utf8'))) fautifs.push(path.relative(racine, p));
+    }
+  };
+  for (const d of ['site/contenu', 'src/blog', 'site/donnees']) parcourir(path.join(racine, d));
+  ok(!fautifs.length, `contenu : jamais l'essai « sur n'importe quelle formule avec Cloud » / « any plan with Cloud » (${fautifs.join(', ') || 'aucun'})`);
 }
 
 // ── 24. Logos des plateformes : devant le nom, jamais à sa place (09/11) ──────

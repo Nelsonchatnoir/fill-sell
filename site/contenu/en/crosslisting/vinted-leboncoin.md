@@ -170,7 +170,7 @@ FillSell spots the sale and asks you to confirm it with one tap. Once confirmed,
 
 ### Does my computer need to be on?
 
-Yes, without FillSell Cloud, for Vinted and Leboncoin: posting, removing and spotting sales go through the extension, so the computer must be on with Chrome open. You drive it from your phone. Computer off? Your listings wait and go out the next time Chrome opens. With FillSell Cloud (7-day trial, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted and Leboncoin listings from FillSell's servers, around the clock, and keeps track of your sales.
+Yes, without FillSell Cloud, for Vinted and Leboncoin: posting, removing and spotting sales go through the extension, so the computer must be on with Chrome open. You drive it from your phone. Computer off? Your listings wait and go out the next time Chrome opens. With FillSell Cloud (on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted and Leboncoin listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### Is FillSell's reposting the same as a Vinted Boost or a Leboncoin bump?
 

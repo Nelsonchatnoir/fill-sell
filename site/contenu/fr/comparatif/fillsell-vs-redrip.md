@@ -191,7 +191,7 @@ Non. Redrip est une extension de navigateur ; pour le téléphone, son site prop
 
 ### Faut-il laisser l'ordinateur allumé avec FillSell ?
 
-Sans FillSell Cloud, oui pour Vinted, Leboncoin, Beebs et Depop : ton ordinateur doit être allumé avec Chrome ouvert, car l'extension agit dans ta session. Éteint, rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud, sur iPhone et sur le web (formules avec Cloud, 7 jours d’essai), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sur eBay France, une fois ton compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint.
+Sans FillSell Cloud, oui pour Vinted, Leboncoin, Beebs et Depop : ton ordinateur doit être allumé avec Chrome ouvert, car l'extension agit dans ta session. Éteint, rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud, sur iPhone et sur le web (formules avec Cloud), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sur eBay France, une fois ton compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint.
 
 ### Peut-on passer de Redrip à FillSell sans tout retaper ?
 

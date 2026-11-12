@@ -94,7 +94,7 @@ Sans FillSell Cloud, oui pour publier, synchroniser et retirer tes annonces : su
 
 ### Qu'est-ce que FillSell Cloud ?
 
-FillSell Cloud, c'est FillSell « plus besoin d'ordinateur ». Il se prend avec ta formule, Premium, Pro ou Business, avec 7 jours d'essai gratuit sur n'importe quelle formule avec Cloud (carte demandée, une fois par personne) ; ce que comprend ta formule ne change pas. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes : tu pilotes tout depuis ton téléphone ou le web. Tu connectes chaque plateforme une fois, sur sa propre page de connexion ; FillSell ne crée aucun compte à ta place. Tu arrêtes le Cloud en un geste, et on te prévient la veille de la fin de l'essai. Disponible en France, sur iPhone et sur le web.
+FillSell Cloud, c'est FillSell « plus besoin d'ordinateur ». Il se prend avec ta formule, Premium, Pro ou Business ; 7 jours d'essai gratuit sur Premium ou Pro avec Cloud (carte demandée, une fois par personne) ; ce que comprend ta formule ne change pas. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes : tu pilotes tout depuis ton téléphone ou le web. Tu connectes chaque plateforme une fois, sur sa propre page de connexion ; FillSell ne crée aucun compte à ta place. Tu arrêtes le Cloud en un geste, et on te prévient la veille de la fin de l'essai. Disponible en France, sur iPhone et sur le web.
 
 ### Que se passe-t-il si mon ordinateur est éteint ?
 

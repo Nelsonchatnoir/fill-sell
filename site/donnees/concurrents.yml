@@ -104,7 +104,7 @@ outils:
         date: 2026-10-09
         niveau: fiche_de_verite
       ordinateur_eteint:
-        valeur: 'oui avec FillSell Cloud (formules avec Cloud, essai de 7 jours ; sur iPhone et sur le web, en France) : Vinted, Leboncoin, Beebs et Depop publiés, republiés et retirés depuis les serveurs de FillSell ; sans l''option, les actions attendent en file et partent à la réouverture de Chrome ; eBay relié : publication par l''API même ordinateur éteint'
+        valeur: 'oui avec FillSell Cloud (formules avec Cloud ; sur iPhone et sur le web, en France) : Vinted, Leboncoin, Beebs et Depop publiés, republiés et retirés depuis les serveurs de FillSell ; sans le Cloud, les actions attendent en file et partent à la réouverture de Chrome ; eBay relié : publication par l''API même ordinateur éteint'
         verdict: oui
         sources: []
         date: 2026-11-09

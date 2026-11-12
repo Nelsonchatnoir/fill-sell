@@ -183,7 +183,7 @@ Beebs handles payment and shipping in mainland France, Corsica and Belgium, and 
 
 ### Does my computer need to stay on?
 
-Yes, without FillSell Cloud, for Vinted and Beebs: the Chrome extension posts, checks and removes your listings from your computer, with Chrome open. While listings are queued, it keeps the computer from going to sleep. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. With FillSell Cloud (7-day trial, on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted and Beebs listings from FillSell's servers, around the clock, and keeps track of your sales.
+Yes, without FillSell Cloud, for Vinted and Beebs: the Chrome extension posts, checks and removes your listings from your computer, with Chrome open. While listings are queued, it keeps the computer from going to sleep. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. With FillSell Cloud (on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Vinted and Beebs listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### What happens when my item sells on Beebs?
 

@@ -10,7 +10,7 @@ h1: "Prix et tarifs FillSell : gratuit pour commencer, sans engagement ensuite"
 chapo: "FillSell est gratuit pour commencer, sans carte bancaire : la publication sur {{plateformes}}, la synchronisation de ton stock et le retrait des autres annonces après une vente sont inclus dès le Gratuit. Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement. Tu paies pour plus d'annonces rédigées par l'IA, la retouche photo et le support, jamais par plateforme."
 points_cles:
   - "Le forfait Gratuit coûte 0 € : il s'ouvre sans carte bancaire et n'a pas de date de fin."
-  - "Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement et sans prix annuel ; seules les formules avec Cloud ont un essai, de 7 jours."
+  - "Premium coûte 12,99 €, Pro 29,99 € et Business 59,99 € par mois, sans engagement et sans prix annuel ; seules Premium et Pro avec Cloud ont un essai, de 7 jours."
   - "Chaque forfait, Gratuit compris, inclut la publication sur {{plateformes}}, la synchronisation sans limite et le retrait des autres annonces d'un article dès que sa vente est enregistrée."
   - "Chaque formule compte trois choses par mois : les annonces rédigées par l'IA, les publications (une annonce mise en ligne sur une plateforme) et les remontées."
   - "Tu t'abonnes sur fillsell.app (paiement traité par Stripe) ou dans l'App Store et Google Play, et tu arrêtes quand tu veux."
@@ -165,11 +165,11 @@ Oui, pour commencer. Le forfait Gratuit coûte 0 €, s'ouvre sans carte bancair
 
 ### Y a-t-il un essai gratuit ou un prix à l'année ?
 
-Pas pour les forfaits. Les forfaits payants n'ont ni essai ni prix annuel : ils se paient au mois, sans engagement. Pour essayer, le forfait Gratuit suffit : tu testes FillSell sur tes vrais articles, aussi longtemps que tu veux, sans carte bancaire. Seules les formules avec Cloud commencent par un essai de 7 jours.
+Pas pour les forfaits. Les forfaits payants n'ont ni essai ni prix annuel : ils se paient au mois, sans engagement. Pour essayer, le forfait Gratuit suffit : tu testes FillSell sur tes vrais articles, aussi longtemps que tu veux, sans carte bancaire. Seules Premium et Pro avec Cloud commencent par un essai de 7 jours.
 
 ### Combien coûte FillSell Cloud ?
 
-FillSell Cloud se prend avec ta formule : Premium, Pro ou Business, avec Cloud. Le prix de chaque formule avec Cloud s'affiche avec les formules, sur cette page. Sans engagement, avec 7 jours d'essai gratuit sur n'importe quelle formule avec Cloud (carte demandée, une fois par personne) ; on te prévient la veille de la fin de l'essai, et tu arrêtes le Cloud en un geste. Ce que tu paies en plus : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Disponible en France, sur iPhone et sur le web.
+FillSell Cloud se prend avec ta formule : Premium, Pro ou Business, avec Cloud. Le prix de chaque formule avec Cloud s'affiche avec les formules, sur cette page. Sans engagement, avec 7 jours d'essai gratuit sur Premium ou Pro avec Cloud (carte demandée, une fois par personne) ; on te prévient la veille de la fin de l'essai, et tu arrêtes le Cloud en un geste. Ce que tu paies en plus : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Disponible en France, sur iPhone et sur le web.
 
 ### Est-ce que je paie par plateforme ou par annonce publiée ?
 

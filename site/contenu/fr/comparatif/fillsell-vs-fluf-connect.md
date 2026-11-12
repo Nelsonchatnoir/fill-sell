@@ -240,7 +240,7 @@ FLUF Connect, sur Depop seul : son tableau des capacités coche publication, syn
 
 ### FillSell fonctionne-t-il ordinateur éteint, comme FLUF sur Depop ?
 
-Oui, avec FillSell Cloud, sur iPhone et sur le web (formules avec Cloud, 7 jours d’essai) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans FillSell Cloud, l'extension travaille sur ton ordinateur allumé, Chrome ouvert ; ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint, avec ou sans FillSell Cloud. FLUF Connect connecte Depop, eBay, Etsy et Shopify sans ordinateur. Il annonce aussi, depuis le 7 septembre 2026, que la republication Vinted tourne depuis son app.
+Oui, avec FillSell Cloud, sur iPhone et sur le web (formules avec Cloud) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans FillSell Cloud, l'extension travaille sur ton ordinateur allumé, Chrome ouvert ; ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint, avec ou sans FillSell Cloud. FLUF Connect connecte Depop, eBay, Etsy et Shopify sans ordinateur. Il annonce aussi, depuis le 7 septembre 2026, que la republication Vinted tourne depuis son app.
 
 ### Quel avis sur FLUF Connect ?
 

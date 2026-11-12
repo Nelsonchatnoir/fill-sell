@@ -177,7 +177,7 @@ Non. Les photos, le titre, la description, l'état et le prix viennent de ta fic
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Oui, sans FillSell Cloud, pour Vinted et Beebs : l'extension Chrome dépose, vérifie et retire tes annonces depuis ton ordinateur, Chrome ouvert. Tant qu'il reste des annonces à publier, elle l'empêche de se mettre en veille. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Vinted et Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Oui, sans FillSell Cloud, pour Vinted et Beebs : l'extension Chrome dépose, vérifie et retire tes annonces depuis ton ordinateur, Chrome ouvert. Tant qu'il reste des annonces à publier, elle l'empêche de se mettre en veille. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Vinted et Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Que se passe-t-il quand l'article se vend sur Beebs ?
 

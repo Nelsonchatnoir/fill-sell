@@ -1,5 +1,12 @@
 # Fiche des stores pour la 2.9 — textes FR et EN (lot « Ouverture du Cloud », phase 2, 05/11/2026)
 
+> (12/11/2026, plan de nuit de Nico) Textes des FORMULES AVEC CLOUD — validés par Nico le 11/11 (REPRISE-MARKETING du
+> lot marketing, § 3 et § 7) : Premium, Pro et Business avec ou sans Cloud, essai de 7 jours sur Premium et Pro avec
+> Cloud SEULEMENT (Business avec Cloud se paie dès le premier jour), plus de Cloud seul, plus de « même ordinateur
+> éteint ». Collés dans les consoles le jour de l'ouverture seulement (App Store : texte promotionnel d'abord, la
+> description avec la prochaine version de l'app ; Google Play : à l'ouverture d'Android). « Chrome » écrit en dur :
+> lot à part, plus tard (décision de Nico du 11/11).
+
 Textes SAISIS dans App Store Connect (version 2.9, non soumise) le 05/11 au soir ; Google Play : mêmes textes adaptés
 (« compte Google Play »). Repartis des textes en ligne (2.8), avec seulement ce qui a changé depuis :
 - Opla quittée le 10/10 → retirée ; Depop (ouverte à tous depuis le 10/10) ajoutée ;
@@ -18,7 +25,7 @@ annonces », EN « crosslist,cross-post,reseller,multi-platform,listing,resale �
 
 FillSell s'adresse à celles et ceux qui revendent sur plusieurs plateformes à la fois : Vinted, Leboncoin, eBay, Beebs et Depop.
 
-Tu pilotes tout depuis ton téléphone. C'est une extension Chrome gratuite, installée une seule fois sur ton ordinateur, qui agit sur les plateformes — dans les comptes où tu es déjà connecté, jamais avec tes mots de passe. Avec l'option FillSell Cloud, tu n'as même plus besoin de laisser ton ordinateur allumé.
+Tu pilotes tout depuis ton téléphone. C'est une extension Chrome gratuite, installée une seule fois sur ton ordinateur, qui agit sur les plateformes — dans les comptes où tu es déjà connecté, jamais avec tes mots de passe. Avec Cloud, plus besoin d'ordinateur.
 
 UNE PHOTO SUFFIT
 Photographie un article : Lens reconnaît l'objet, sa marque, son modèle et son état, puis rédige le titre et la description et propose un prix à partir de ce que valent les articles comparables. Tu peux aussi dicter un article au lieu de le saisir.
@@ -39,11 +46,11 @@ TES CHIFFRES
 Prix d'achat, prix de vente, marge, ce qu'il reste en stock : tes comptes sont à jour sans tableur. Un article dont le prix d'achat est inconnu est écarté du calcul de marge, plutôt que compté comme gratuit.
 
 FILLSELL CLOUD — EN FRANCE
-Une option à part : tes publications, republications et retraits partent même ordinateur éteint. FillSell les fait pour toi dans un navigateur qui t'est réservé, hébergé en Europe, avec une adresse IP française dédiée à ton compte. Tu connectes tes plateformes une fois depuis ton téléphone, et c'est tout. Essai gratuit de 7 jours pour un premier abonnement.
+Sans ordinateur : avec Cloud, FillSell publie, republie et retire tes annonces pour toi, dans un navigateur qui t'est réservé, hébergé en Europe, avec une adresse IP française dédiée à ton compte. Tout tourne sans toi, même téléphone en poche. Premium, Pro et Business existent avec ou sans Cloud ; 7 jours d'essai gratuit sur Premium ou Pro avec Cloud, une fois par personne.
 
 LES ABONNEMENTS
-Tu commences gratuitement : un nombre d'annonces par mois, et des republications offertes à vie. Premium ouvre plus d'annonces et de republications par mois, la retouche des photos et le support par email. Pro et Business ajoutent la republication automatique et le support prioritaire ; Business enlève la limite de republications. FillSell Cloud s'ajoute à n'importe quelle formule, gratuite comprise. Les volumes et les prix s'affichent dans l'app avant tout achat.
-Les abonnements se renouvellent automatiquement à la fin de chaque période, sauf résiliation au moins 24 heures avant son terme. Le paiement est débité sur ton compte Apple à la confirmation de l'achat — pour FillSell Cloud, à la fin de l'essai gratuit. Tu gères et résilies tes abonnements dans les réglages de ton compte App Store.
+Tu commences gratuitement : un nombre d'annonces par mois, et des republications offertes à vie. Premium ouvre plus d'annonces et de republications par mois, la retouche des photos et le support par email. Pro et Business ajoutent la republication automatique et le support prioritaire ; Business enlève la limite de republications. Premium, Pro et Business existent avec ou sans Cloud. Les volumes et les prix s'affichent dans l'app avant tout achat.
+Les abonnements se renouvellent automatiquement à la fin de chaque période, sauf résiliation au moins 24 heures avant son terme. Le paiement est débité sur ton compte Apple à la confirmation de l'achat — pour Premium ou Pro avec Cloud, à la fin de l'essai gratuit. Tu gères et résilies tes abonnements dans les réglages de ton compte App Store.
 
 CE QUE FILLSELL N'EST PAS
 FillSell n'est pas une plateforme de vente et n'est affilié ni à Vinted, ni à Leboncoin, ni à eBay, ni à Beebs, ni à Depop. FillSell agit dans tes propres sessions, exactement comme tu le ferais à la main, et seulement quand tu le demandes. Sans FillSell Cloud, la publication, la republication et le retrait exigent Chrome ouvert sur un ordinateur avec l'extension installée ; le téléphone, c'est là que tu décides, que tu suis et que tu corriges.
@@ -78,11 +85,11 @@ YOUR NUMBERS
 Purchase price, sale price, margin, what is still in stock: your figures stay current without a spreadsheet. An item whose purchase price is unknown is left out of the margin rather than counted as free.
 
 FILLSELL CLOUD — IN FRANCE
-A separate option, available in France: your listings, repostings and withdrawals go out even with your computer off. FillSell runs them for you in a browser reserved for you, hosted in Europe, with a French IP address dedicated to your account. 7-day free trial for a first subscription.
+No computer needed: with Cloud, FillSell posts, reposts and withdraws your listings for you, in a browser reserved for you, hosted in Europe, with a French IP address dedicated to your account. It all runs without you, even with your phone in your pocket. Premium with Cloud, Pro with Cloud and Business with Cloud; 7-day free trial on Premium or Pro with Cloud, once per person.
 
 PLANS
-You start for free, with a monthly allowance of listings and a batch of repostings included for life. Premium opens up more listings and repostings each month, photo touch-up and email support. Pro and Business add automatic reposting and priority support; Business lifts the reposting limit. The volumes and the price of each plan are shown in the app before any purchase.
-Subscriptions renew automatically at the end of each period unless cancelled at least 24 hours before it ends. Payment is charged to your Apple Account at confirmation of purchase — for FillSell Cloud, at the end of the free trial. You can manage and cancel your subscriptions in your App Store account settings.
+You start for free, with a monthly allowance of listings and a batch of repostings included for life. Premium opens up more listings and repostings each month, photo touch-up and email support. Pro and Business add automatic reposting and priority support; Business lifts the reposting limit. Premium, Pro and Business come with or without Cloud. The volumes and the price of each plan are shown in the app before any purchase.
+Subscriptions renew automatically at the end of each period unless cancelled at least 24 hours before it ends. Payment is charged to your Apple Account at confirmation of purchase — for Premium or Pro with Cloud, at the end of the free trial. You can manage and cancel your subscriptions in your App Store account settings.
 
 WHAT FILLSELL IS NOT
 FillSell is not a marketplace and is not affiliated with Vinted, eBay, Depop, Leboncoin or Beebs. It acts inside your own sessions, exactly as you would by hand, and only when you ask it to. Without FillSell Cloud, publishing, relisting and withdrawal need Chrome open on a computer with the extension installed; the phone is where you decide, follow along and correct.
@@ -98,14 +105,14 @@ FR :
 - Nouveau nom : FillSell – Crosslisting.
 - Depop rejoint Vinted, Leboncoin, eBay et Beebs.
 - Ta file dit l'heure de chaque étape d'une republication.
-- En France : FillSell Cloud, l'option qui publie pour toi même ordinateur éteint (essai gratuit de 7 jours).
+- Formules avec Cloud : plus besoin d'ordinateur (7 jours d'essai gratuit sur Premium et Pro)
 - Notifications à chaque vente, et de nombreuses corrections.
 
 EN :
 - New name: FillSell – Crosslisting.
 - Depop joins the marketplaces you can post to.
 - Your queue shows the time of each step of a repost.
-- In France: FillSell Cloud, the option that posts for you even with your computer off (7-day free trial).
+- Plans with Cloud: no computer needed (7-day free trial on Premium and Pro)
 - A notification for every sale, and many fixes.
 
 ## Google Play (05/11 soir) — brouillons enregistrés, rien envoyé (publication gérée ACTIVÉE)

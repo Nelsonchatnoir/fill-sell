@@ -1,3 +1,8 @@
+// (12/11/2026) Les mots des formules avec Cloud qui doivent être ceux de l'app, à la lettre (« Business + Cloud »,
+// « Passer à Business + Cloud », « Le Cloud pour 22 € de plus ») : LUS dans src/cloud/textesFormules.js (décision de
+// Nico du 11/11 : même nom partout), jamais recopiés.
+import { textesFormules, NOMS_FORMULES } from '../../src/cloud/textesFormules.js';
+
 // Libellés des gabarits du site vitrine, par langue (09/10/2026).
 // Le contenu des pages vit dans site/contenu ; ici, seulement l'habillage, les
 // titres des blocs que les gabarits composent (accueil, tarifs, comparatifs…)
@@ -94,14 +99,18 @@ export const TEXTES = {
       sans: 'Sans Cloud',
       avec: 'Avec Cloud',
       aria: 'Formules sans ou avec FillSell Cloud',
-      note: (jours) => `Avec Cloud, plus besoin d’ordinateur : ${jours} jours d’essai gratuit sur n’importe quelle formule avec Cloud. En France, sur iPhone et sur le web.`,
-      economie: (montant) => `− ${montant}`,
-      economieLibelle: 'économie',
+      // (12/11, correction de Nico du 11/11 22:55) l'essai : Premium + Cloud et Pro + Cloud SEULEMENT.
+      note: (jours) => `Avec Cloud, plus besoin d’ordinateur\u00a0: ${jours}\u00a0jours d’essai gratuit sur Premium ou Pro avec Cloud. En France, sur iPhone et sur le web.`,
+      // ⛔ Décision 4 de Nico : « le Cloud pour 22 € de plus », jamais une « économie » (textes de l'app).
+      supplement: textesFormules('fr').supplement,
+      nomAvec: (id) => NOMS_FORMULES[`${id}_cloud`],
       periodeAvec: '/ mois, Cloud compris',
-      ctaAvec: (jours) => `Essayer ${jours} jours`,
+      ctaAvec: (jours) => `Essayer ${jours}\u00a0jours`,
+      // Business + Cloud n'a pas d'essai : le bouton de l'app, à la lettre (« Passer à Business + Cloud »).
+      ctaSansEssai: (id) => textesFormules('fr').ctaPasser(NOMS_FORMULES[`${id}_cloud`]),
       gratuit: 'Le Cloud se prend avec Premium, Pro ou Business.',
       repliTitre: 'Sans ordinateur ? FillSell Cloud se prend avec Premium, Pro ou Business.',
-      repliTexte: (jours) => `${jours} jours d’essai gratuit sur n’importe quelle formule avec Cloud. En France, sur iPhone et sur le web.`,
+      repliTexte: (jours) => `${jours}\u00a0jours d’essai gratuit sur Premium ou Pro avec Cloud. En France, sur iPhone et sur le web.`,
       lien: 'Voir FillSell Cloud',
     },
     cloud: {
@@ -120,8 +129,8 @@ export const TEXTES = {
       formulesTitre: 'Le Cloud se prend avec ta formule',
       formulesPeriode: 'par mois, Cloud compris',
       formulesSansPrix: 'Avec Premium, Pro ou Business.',
-      essai: (jours) => `${jours} jours d’essai gratuit, sur n’importe quelle formule avec Cloud`,
-      essaiDetail: (jours) => `Une fois par personne, carte demandée au début de l’essai. Arrête-le avant la fin des ${jours} jours : tu ne paies rien. Sans engagement.`,
+      essai: (jours) => `${jours}\u00a0jours d’essai gratuit, sur Premium ou Pro avec Cloud`,
+      essaiDetail: (jours) => `Une fois par personne, carte demandée au début de l’essai. Arrête-le avant la fin des ${jours}\u00a0jours\u00a0: tu ne paies rien. Sans engagement.`,
       cta: 'Essayer FillSell Cloud',
       ou: ['iPhone', 'Web'],
       ebay: 'eBay part déjà sans ordinateur, pour tout le monde : une fois ton compte relié, par son API officielle.',
@@ -286,14 +295,15 @@ export const TEXTES = {
       sans: 'Without Cloud',
       avec: 'With Cloud',
       aria: 'Plans without or with FillSell Cloud',
-      note: (jours) => `With Cloud, no computer needed: ${jours}-day free trial on any plan with Cloud. In France, on iPhone and the web.`,
-      economie: (montant) => `− ${montant}`,
-      economieLibelle: 'saving',
+      note: (jours) => `With Cloud, no computer needed: ${jours}-day free trial on Premium or Pro with Cloud. In France, on iPhone and the web.`,
+      supplement: textesFormules('en').supplement,
+      nomAvec: (id) => NOMS_FORMULES[`${id}_cloud`],
       periodeAvec: '/ month, Cloud included',
       ctaAvec: (jours) => `Try it for ${jours} days`,
+      ctaSansEssai: (id) => textesFormules('en').ctaPasser(NOMS_FORMULES[`${id}_cloud`]),
       gratuit: 'The Cloud comes with Premium, Pro or Business.',
       repliTitre: 'No computer? FillSell Cloud comes with Premium, Pro or Business.',
-      repliTexte: (jours) => `${jours}-day free trial on any plan with Cloud. In France, on iPhone and the web.`,
+      repliTexte: (jours) => `${jours}-day free trial on Premium or Pro with Cloud. In France, on iPhone and the web.`,
       lien: 'See FillSell Cloud',
     },
     cloud: {
@@ -311,7 +321,7 @@ export const TEXTES = {
       formulesTitre: 'The Cloud comes with your plan',
       formulesPeriode: 'a month, Cloud included',
       formulesSansPrix: 'With Premium, Pro or Business.',
-      essai: (jours) => `${jours}-day free trial, on any plan with Cloud`,
+      essai: (jours) => `${jours}-day free trial, on Premium or Pro with Cloud`,
       essaiDetail: (jours) => `Once per person, card asked at the start of the trial. Stop it before the ${jours} days are over and you pay nothing. Cancel anytime.`,
       cta: 'Try FillSell Cloud',
       ou: ['iPhone', 'Web'],

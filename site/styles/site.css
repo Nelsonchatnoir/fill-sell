@@ -556,8 +556,10 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .prix-avec, .bascule-note { display: none; }
 .bloc-tarifs:has(.bascule-avec:checked) .prix-sans { display: none; }
 .bloc-tarifs:has(.bascule-avec:checked) .prix-avec { display: inline; }
-.economie { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px; background: rgba(47,158,144,.15); color: #1B6E62; font-size: 11px; font-weight: 700; }
-.palier-sombre .economie { background: rgba(242,201,138,.18); color: #F2C98A; }
+/* (12/11) « Le Cloud pour 22 € de plus » : le supplément de l'app, un fait, jamais une « économie » (décision 4 de Nico). */
+.supplement { display: block; margin-top: 4px; font-size: 12px; font-weight: 600; color: #1B6E62; }
+.cloud-formules .supplement { display: inline-block; margin: 0 0 0 6px; }
+.palier-sombre .supplement { color: #8FE3D3; }
 .bloc-tarifs:has(.bascule-avec:checked) .bascule-note { display: block; margin: 12px 0 0; font-size: 14px; color: var(--gr); }
 /* L'explication d'une jauge : <dialog> modale (site.js), popover natif sans JS. */
 .explication { width: min(440px, calc(100% - 32px)); max-height: calc(100% - 32px); margin: auto; padding: 0; border: 0; border-radius: 22px; background: var(--pa); color: var(--en); box-shadow: 0 30px 60px -24px rgba(16,32,27,.6); overflow: auto; }

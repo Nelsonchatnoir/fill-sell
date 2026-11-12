@@ -209,4 +209,4 @@ Depop te prévient par e-mail et dans son app. Dès que la vente est enregistré
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Tes annonces Depop restent en vente dans tous les cas. Ce qui demande ton ordinateur allumé, Chrome ouvert, c'est le travail de l'extension sur Depop : dépôts, synchronisation, republications et retraits. Ordinateur éteint, rien n'est perdu : tout attend et repart à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, 7 jours d'essai, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Tes annonces Depop restent en vente dans tous les cas. Ce qui demande ton ordinateur allumé, Chrome ouvert, c'est le travail de l'extension sur Depop : dépôts, synchronisation, republications et retraits. Ordinateur éteint, rien n'est perdu : tout attend et repart à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.

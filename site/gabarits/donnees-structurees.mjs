@@ -96,10 +96,10 @@ export function offres(tarifs, lang) {
   // PRIX_AVEC_CLOUD) et en France seulement. Prix absents → seulement les formules sans Cloud.
   const ac = tarifs.cloud?.avecCloud;
   if (!ac) return paliers;
-  const avec = lang === 'en' ? 'with Cloud' : 'avec Cloud';
   return [...paliers, ...tarifs.paliers.filter((p) => ac[p.id] > 0).map((p) => ({
     '@type': 'Offer',
-    name: `FillSell ${p.nom[lang]} ${avec}`,
+    // (12/11) le nom de l'app, à la lettre (« FillSell Pro + Cloud ») ; interrupteur fermé → aucune de ces offres.
+    name: `FillSell ${TEXTES[lang].cloudFormules.nomAvec(p.id)}`,
     description: `${prix(ac[p.id], lang, tarifs.devise)} ${TEXTES[lang].cloudFormules.periodeAvec}`,
     price: ac[p.id].toFixed(2),
     priceCurrency: tarifs.devise,
