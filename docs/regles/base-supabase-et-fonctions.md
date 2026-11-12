@@ -503,3 +503,19 @@ le § 12 EXÉCUTE le vrai bloc de handler-watch, découpé dans index.ts, sur le
   charge d'écriture (`vu_le` réécrit à chaque relevé : écritures de l'API sur `annonces_plateforme` multipliées par 11
   le 10/11). Et une « absence datée » se compte en DATES posées, pas en traces : la fin d'un relevé retraite aussi les
   annonces déjà datées (126 traces de la boucle, 8 dates posées, 0 à tort).
+
+## ⛔ 12/11 (urgence de Nico) — le secret « Se connecter avec Apple » du web se renouvelle SEUL ; toute échéance est annoncée
+- Cas : du 11/11 21:56 au 12/11 18:33, personne ne pouvait se connecter ni s'inscrire avec Apple sur le WEB (`/callback` →
+  « oauth2: invalid_client — Unable to exchange external code ») ; l'app iPhone (jeton natif) n'en dépend pas. Le secret
+  client que Supabase présente à Apple (JWT ES256, 6 mois au plus, clé U5R7347N3K du 18/04) avait expiré. Prouvé chez
+  Apple : un secret EXPIRÉ de la même clé donne exactement `invalid_client`, un neuf est accepté. La .p8 d'avril n'était
+  plus sur le poste (Apple ne la donne qu'une fois) : clé « Sign in with Apple » **TJY379J9P7** créée le 12/11 (App ID
+  principal app.fillsell.app, Services ID app.fillsell.web regroupé), rangée dans `Documents\FillSell-cles` et en secret
+  serveur ; secret posé le 12/11 à 18:33 (API de gestion, `external_apple_secret` SEUL), valable jusqu'au 11/05/2027.
+- **La règle** : `expirations-secrets` (pg_cron `expirations-secrets-jour`, x-cron-secret, verify_jwt false) remplace le
+  secret dès qu'il a plus de 30 jours par un neuf de 180 jours (un par mois) — secrets serveur `APPLE_SIWA_P8` (corps
+  base64 de la .p8), `APPLE_SIWA_KEY_ID`, `APPLE_SIWA_TEAM_ID`, `APPLE_SIWA_CLIENT_ID`, `GESTION_SUPABASE_JETON` ; jamais
+  de clé dans le dépôt. `public.expirations_secrets` porte chaque clé ou certificat qui expire : mail à support@ 30 jours
+  avant (redit tous les 7 jours), et le jour même si un renouvellement rate. Une clé ou un certificat neuf qui expire =
+  une ligne de plus dans cette table. Module `_shared/expirations-secrets.js`, verrou `npm run selftest:expirations-secrets`.
+- Lire l'échéance réelle : l'API de gestion ne rend du secret qu'une empreinte ; la date fait foi dans la table.

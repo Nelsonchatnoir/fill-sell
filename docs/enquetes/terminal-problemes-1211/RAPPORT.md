@@ -162,3 +162,16 @@ enregistrée et la réponse part avant 150 s. Aucun appel en plus (même coût),
 sur 30 jours, 309 retouches, médiane 15 s, p99 75 s, la plus longue 78 s — aucune n'aurait atteint l'échéance de +100 s ;
 rédaction mesurée de 3 à 26 s. Verrou `selftest:redaction-jamais-coupee` (14 rouges sur 2223f0b → 24/24, dont un essai
 du vrai module de rédaction face à une IA qui ne répond jamais).
+
+## 10. « Se connecter avec Apple » cassé sur le web — ROUGE, réparé à 18:33, renouvellement automatique préparé
+**Cause prouvée** : le secret client Apple du web (JWT ES256 de 6 mois au plus, clé U5R7347N3K créée le 18/04) avait
+expiré ; journaux auth : `/callback` → « oauth2: invalid_client — 500: Unable to exchange external code » le 11/11 à
+21:56, 21:57, 21:59, le 12/11 à 12:00 et 18:23 (×2). L'API de gestion ne rend qu'une empreinte du secret (sa date ne se
+lit pas) ; preuve chez Apple : avec la même clé, un secret expiré donne exactement `invalid_client`, un neuf est accepté.
+L'app iPhone (jeton natif) n'en dépend pas.
+**Correctif** : nouvelle clé « Sign in with Apple » TJY379J9P7 (la .p8 d'avril n'était plus sur le poste) ; secret posé à
+18:33:25 (seul `external_apple_secret` changé : reste de la configuration auth identique, empreinte avant/après), valable
+jusqu'au 11/05/2027 ; connexion Apple web réussie à 18:46:19 (compte de Nico). Racine : fonction `expirations-secrets` +
+table `public.expirations_secrets` (renouvellement mensuel, alerte à support 30 jours avant toute échéance) — verrou
+`selftest:expirations-secrets` (7 rouges sur 7709f6e → 26/26). Migration 20261112190000 et jeton de l'API de gestion :
+en attente du feu vert de Nico.

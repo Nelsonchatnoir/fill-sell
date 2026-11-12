@@ -330,6 +330,11 @@ verify_jwt = false
 # Appelée par pg_cron (veille-cpu-2min, x-cron-secret) — 04/10/2026.
 verify_jwt = false
 
+[functions.expirations-secrets]
+# Appelée par pg_cron (expirations-secrets-jour, x-cron-secret) — 12/11/2026 : secret Apple du web renouvelé seul,
+# alerte à support 30 jours avant toute échéance.
+verify_jwt = false
+
 [functions.rapprochement-ia]
 verify_jwt = false
 
