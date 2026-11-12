@@ -510,7 +510,8 @@ le § 12 EXÉCUTE le vrai bloc de handler-watch, découpé dans index.ts, sur le
   client que Supabase présente à Apple (JWT ES256, 6 mois au plus, clé U5R7347N3K du 18/04) avait expiré. Prouvé chez
   Apple : un secret EXPIRÉ de la même clé donne exactement `invalid_client`, un neuf est accepté. La .p8 d'avril n'était
   plus sur le poste (Apple ne la donne qu'une fois) : clé « Sign in with Apple » **TJY379J9P7** créée le 12/11 (App ID
-  principal app.fillsell.app, Services ID app.fillsell.web regroupé), rangée dans `Documents\FillSell-cles` et en secret
+  principal app.fillsell.app, Services ID app.fillsell.web regroupé), rangée dans `Documents\FillSell-cles\sign-in-with-apple\` (à part : `npm run binaires` prend la seule
+  `AuthKey_*.p8` du dossier principal, la clé push J8G395AA93) et en secret
   serveur ; secret posé le 12/11 à 18:33 (API de gestion, `external_apple_secret` SEUL), valable jusqu'au 11/05/2027.
 - **La règle** : `expirations-secrets` (pg_cron `expirations-secrets-jour`, x-cron-secret, verify_jwt false) remplace le
   secret dès qu'il a plus de 30 jours par un neuf de 180 jours (un par mois) — secrets serveur `APPLE_SIWA_P8` (corps

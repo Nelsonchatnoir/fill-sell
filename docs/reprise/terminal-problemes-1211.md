@@ -138,7 +138,7 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
   --aab-seul` depuis le dossier principal (le module patché y est déjà posé, `patch-package` ✔).
 
 ## Soir — urgence « Se connecter avec Apple » du web (rapport § 10)
-- 18:33 : nouvelle clé Sign in with Apple **TJY379J9P7** (Documents\FillSell-cles) ; secret posé (API de gestion,
+- 18:33 : nouvelle clé Sign in with Apple **TJY379J9P7** (Documents\FillSell-cles\sign-in-with-apple\, à part de la clé push) ; secret posé (API de gestion,
   `external_apple_secret` seul) ; 18:46:19 connexion Apple web de Nico réussie. L'ancienne clé U5R7347N3K reste active.
 - **EN SERVICE (f71279a)** : `expirations-secrets` v1 (19:22:40) ; migration **20261112190000** appliquée + `migration
   repair` (~19:23) ; secrets `APPLE_SIWA_P8/KEY_ID/TEAM_ID/CLIENT_ID`, `GESTION_SUPABASE_JETON` (jeton
@@ -147,3 +147,18 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
   support 30 jours avant toute échéance de `public.expirations_secrets`.
 - Inverse : `supabase/rollbacks/20261112190000_expirations_secrets_INVERSE.sql` + `migration repair --status reverted
   20261112190000` ; supprimer la fonction ; le secret posé reste valable jusqu'à son échéance.
+
+## Soir — fin : surveillance arrêtée, binaire vc38 soumis (ordres de Nico)
+- Surveillance Android ARRÊTÉE (Nico : « on valide tel quel ») ; `cloud_formules_google` reste à 1. Aucun achat de
+  formule (web ou Android) vu pendant qu'elle tournait.
+- **Binaire 2.9.176 / vc38 FABRIQUÉ** sur 881c2b9 (`npm run binaires -- --aab-seul --cle-apns=…AuthKey_J8G395AA93.p8`) :
+  `build/AAB-A-TELEVERSER-2.9.176-vc38/fillsell-android-2.9.176-versionCode38-881c2b9.aab`, 18 249 282 o, sha256
+  fee793bb…c029a, signé par la clé d'envoi habituelle, module d'achat patché présent (classes2.dex), bundle web
+  2026-11-12T18:38:35Z+881c2b9. Premier essai refusé par le script (deux `AuthKey_*.p8` dans `FillSell-cles`) : la clé
+  Sign in with Apple est rangée dans `FillSell-cles\sign-in-with-apple\`.
+- **Play Console (ordre de Nico : « tu soumets, tu publies »)** : Production › release 14 « 2.9.176 » (AAB importé par le
+  relais 127.0.0.1, empreinte vérifiée dans la page ; notes FR/EN « Achats plus clairs… ») ; 2 avertissements habituels
+  (désobscurcissement, symboles natifs) ; 12 604 téléphones, aucun perdu ; vue d'ensemble : UNE seule modification (les
+  brouillons de fiche du terminal marketing n'y étaient pas) → « Envoyer 1 modification pour examen » (~19:50).
+  ⚠ Publication GÉRÉE activée : une fois approuvée par Google, la release attend un clic « Publier » dans la vue
+  d'ensemble de la publication.
