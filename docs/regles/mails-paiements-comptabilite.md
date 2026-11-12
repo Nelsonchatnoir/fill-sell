@@ -406,7 +406,10 @@ marge de 100 % sur du vent, indétectable ensuite.
   Cloud). Business + Cloud : payé dès le premier jour, partout, y compris un abonné Business qui ajoute le Cloud
   (correction de Nico du 11/11, 21:45). Aucune offre d'introduction Apple ni offre Google sur business_cloud.
 - Pendant un essai : aucun crédit mensuel (`upgrade_monthly_grant` fixe le début du cycle des quotas : jamais pendant la
-  semaine gratuite). Reste à faire avant d'ouvrir le web : le balayage `grant_monthly_coins_sweep` (question 9).
+  semaine gratuite). ⛔ En SQL aussi (question 9, migration 20261112100000) : `grant_monthly_coins` refuse les appels
+  'sweep' (balayage `grant_monthly_coins_sweep`) et 'lazy' (crédit paresseux des spend_coins_*) d'un compte dont une
+  formule est en essai (`cloud_formule` + essai en cours, jamais l'offert) → `essai_formule_en_cours`, rien d'écrit ; seul
+  'payment' crédite ; `coins_awaiting_payment` (ops-digest) porte la même condition. Verrou essai-formule-credit.
 - `profiles.cloud_formule` (migration 20261112000000) : la formule active ou en essai, posée/remise à NULL par les
   fonctions des 3 canaux ; lue par l'app (lecture de SA ligne, aucune écriture client).
 - Conditions : deux textes en vigueur, chacun avec SA version — le Cloud seul (2026-11-11, montré à tous, inchangé) et

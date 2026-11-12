@@ -1,0 +1,391 @@
+{
+ "source": "pg_get_functiondef + pg_attribute + pg_constraint + pg_indexes + cron.job, prod tojihnuawsoohlolangc, MCP execute_sql, lecture seule",
+ "lu_le": "2026-11-12T09:45+01:00",
+ "complete": "scripts/essais/fixtures/prod-1111-palier-essai-cloud/catalogue.json (25 fonctions, 8 tables, lues le 11/11 vers 22:53) — md5 recomparés le 12/11 : inchangés, sauf palier_de, quotas_etat, spend_coins_for_generate et spend_coins_for_lens (migration 20261111230000, appliquée le 11/11 à 23:19, rejouée dans le décor)",
+ "md5_prod": {
+  "bordereaux_ouverts_pour": "88a47e18f12c34f1baa6df46ab6310fb",
+  "cloud_etat": "f104bccfb8418ff75a194180126993e1",
+  "coins_awaiting_payment": "f559b9978471d31e78b1b25794c8f8fe",
+  "debut_cycle_quotas": "98716246a4ed59ea21d829d2ac8953bb",
+  "garde_fou_jour": "53b4ab70d61a5ded0ba0cadc5d83cf7c",
+  "grant_monthly_coins": "185d1427c213ccb8d2a179adbfebc6ed",
+  "grant_monthly_coins_sweep": "a0da488f8fe11ef872409caee220ad70",
+  "grant_next_due": "4f54f884468a7c1a88d6cb78a0d1f506",
+  "jauge_annonces_plafond": "12041c18fa86edea2550dae88e0e3674",
+  "jauge_lens_plafond": "389c4033b24fa9da1921b8783400d6aa",
+  "jauge_publications_plafond": "e1e1e9ee9567faf8432072abf6dadf3b",
+  "jauges_actives": "c112932f2948a1e8b081edba6d6fe460",
+  "messagerie_beta": "7e75278d68613fe3feb9035be372aa67",
+  "palier_au_moins": "45f8b539b346c58725ada9e70f3fa998",
+  "palier_de": "2a7e7bf9b1a53a5164afac03f75dc5b8",
+  "publications_du_cycle": "773d0b9f2531b33403faface1b260b95",
+  "quota_annonces_compte": "d635326989ffb27ebf041baa5c09d28c",
+  "quota_annonces_consommees": "6e2f60f0c9fd6d67797f182e81d84f86",
+  "quota_remontees_plafond": "92fe1b1df01d1f8e607b12c96368b252",
+  "quota_republication_free_etat": "b9070ff46bfb0feb86eb0e6e8d94a2a6",
+  "quotas_etat": "91ce0ea8ff31c2e3c9e1e929a3ddc66e",
+  "refund_coins": "b4a7367db1fba28088665cca6a62c7ea",
+  "remontees_du_cycle": "51d9edbecaac0bf36bab7950f93a64f5",
+  "republish_palier": "5c6f9dfda0d6a8a04c80452adb786733",
+  "spend_coins_for_generate": "4cb2f80f99735a654b470ee6df9f72a9",
+  "spend_coins_for_lens": "51c836e6f09e3287ffc6f717845a9393",
+  "upgrade_monthly_grant": "2080915eaed8f9d8aae81345702dc672"
+ },
+ "acl_prod": {
+  "bordereaux_ouverts_pour": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+  "cloud_etat": "{postgres=X/postgres,service_role=X/postgres}",
+  "coins_awaiting_payment": "{postgres=X/postgres,service_role=X/postgres}",
+  "debut_cycle_quotas": "{postgres=X/postgres,service_role=X/postgres}",
+  "garde_fou_jour": "{postgres=X/postgres,service_role=X/postgres}",
+  "grant_monthly_coins": "{postgres=X/postgres,service_role=X/postgres}",
+  "grant_monthly_coins_sweep": "{postgres=X/postgres,service_role=X/postgres}",
+  "grant_next_due": "{postgres=X/postgres,service_role=X/postgres}",
+  "jauge_annonces_plafond": "{postgres=X/postgres,service_role=X/postgres}",
+  "jauge_lens_plafond": "{postgres=X/postgres,service_role=X/postgres}",
+  "jauge_publications_plafond": "{postgres=X/postgres,service_role=X/postgres}",
+  "jauges_actives": "{postgres=X/postgres,service_role=X/postgres}",
+  "messagerie_beta": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+  "palier_au_moins": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+  "palier_de": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+  "publications_du_cycle": "{postgres=X/postgres,service_role=X/postgres}",
+  "quota_annonces_compte": "{postgres=X/postgres,service_role=X/postgres}",
+  "quota_annonces_consommees": "{postgres=X/postgres,service_role=X/postgres}",
+  "quota_remontees_plafond": "{postgres=X/postgres,service_role=X/postgres}",
+  "quota_republication_free_etat": "{postgres=X/postgres,service_role=X/postgres}",
+  "quotas_etat": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+  "refund_coins": "{postgres=X/postgres,service_role=X/postgres}",
+  "remontees_du_cycle": "{postgres=X/postgres,service_role=X/postgres}",
+  "republish_palier": "{postgres=X/postgres,service_role=X/postgres}",
+  "spend_coins_for_generate": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+  "spend_coins_for_lens": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+  "upgrade_monthly_grant": "{postgres=X/postgres,service_role=X/postgres}"
+ },
+ "exactes": [
+  "grant_monthly_coins",
+  "coins_awaiting_payment",
+  "grant_monthly_coins_sweep"
+ ],
+ "fonctions": [
+  {
+   "nom": "grant_monthly_coins",
+   "args": "p_user_id uuid, p_tier text, p_period_end timestamp with time zone, p_source text",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "185d1427c213ccb8d2a179adbfebc6ed",
+   "def": "CREATE OR REPLACE FUNCTION public.grant_monthly_coins(p_user_id uuid, p_tier text, p_period_end timestamp with time zone DEFAULT NULL::timestamp with time zone, p_source text DEFAULT 'auto'::text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  v_amount      integer;\n  v_override    integer;\n  v_wallet      coin_wallets%ROWTYPE;\n  v_anchor      int;\n  v_created     timestamptz;\n  v_has_billing boolean;\n  v_is_comped   boolean;\n  v_due         timestamptz;\n  v_next        timestamptz;\n  v_new_inc     integer;\n  v_delta       integer;\n  v_ref         text;\nbegin\n  if p_tier not in ('free','premium','pro','business') then\n    return jsonb_build_object('granted', false, 'reason', 'invalid_tier');\n  end if;\n\n  select value into v_amount from coin_config where key = 'monthly_grant_' || p_tier;\n  if v_amount is null then\n    return jsonb_build_object('granted', false, 'reason', 'grant_not_configured');\n  end if;\n\n  select monthly_grant_override, created_at,\n         (stripe_customer_id is not null\n          or apple_original_transaction_id is not null\n          or google_purchase_token is not null),\n         coalesce(is_comped, false)\n    into v_override, v_created, v_has_billing, v_is_comped\n  from profiles where id = p_user_id;\n\n  if v_override is not null and v_override > 0 then\n    v_amount := v_override;\n  end if;\n\n  insert into coin_wallets (user_id) values (p_user_id) on conflict (user_id) do nothing;\n  select * into v_wallet from coin_wallets where user_id = p_user_id for update;\n\n  v_anchor := coalesce(v_wallet.grant_anchor_day,\n                       extract(day from coalesce(v_created, now()))::int);\n  v_due := v_wallet.next_grant_at;\n\n  if v_due is not null then\n    if p_source = 'payment' then\n      if v_due > now() + interval '2 days' then\n        return jsonb_build_object('granted', false, 'reason', 'already_granted',\n                                  'next_grant_at', v_due);\n      end if;\n    elsif v_due > now() then\n      return jsonb_build_object('granted', false, 'reason', 'already_granted',\n                                'next_grant_at', v_due);\n    end if;\n  end if;\n\n  -- Pas de paiement, pas de grant — SAUF compte offert (is_comped) : personne\n  -- ne paie pour lui, et il garde souvent un identifiant de paiement d'une\n  -- periode anterieure. coins_awaiting_payment() porte la MEME condition.\n  if p_source <> 'payment' and v_has_billing and not v_is_comped and p_tier <> 'free'\n     and v_due is not null and v_due < now() - interval '3 days' then\n    return jsonb_build_object('granted', false, 'reason', 'awaiting_payment_event',\n                              'next_grant_at', v_due, 'tier', p_tier);\n  end if;\n\n  -- ── REMPLACEMENT (2026-09-02) — les Pépites incluses du mois sont pour le\n  -- mois. L'ancien cumul plafonné (greatest/least, cap ×2) est retiré : le\n  -- solde inclus devient le grant du palier, ni plus, ni moins. v_delta peut\n  -- être négatif (solde de la veille > grant) : la ligne de ledger le porte\n  -- tel quel, c'est la trace honnête du remplacement.\n  -- purchased_balance n'apparaît nulle part ici — il ne bouge JAMAIS.\n  v_new_inc := v_amount;\n  v_delta   := v_new_inc - v_wallet.included_balance;\n\n  if p_period_end is not null and p_period_end > now() then\n    v_next := p_period_end;\n  else\n    v_next := grant_next_due(now(), v_anchor);\n  end if;\n\n  v_ref := 'grant_monthly:' || p_user_id || ':' || to_char(coalesce(v_due, now()), 'YYYY-MM-DD');\n  begin\n    insert into coin_ledger (user_id, delta, included_after, purchased_after, kind, ref, metadata)\n    values (\n      p_user_id, v_delta, v_new_inc, v_wallet.purchased_balance,\n      'grant_monthly', v_ref,\n      jsonb_build_object('tier', p_tier, 'override', v_override,\n                         'source', p_source,\n                         'solde_avant', v_wallet.included_balance,\n                         'montant_theorique', v_amount,\n                         'remplacement', true,\n                         'next_grant_at', v_next)\n    );\n  exception when unique_violation then\n    return jsonb_build_object('granted', false, 'reason', 'already_granted', 'ref', v_ref);\n  end;\n\n  -- (15/10, lot D) Le solde et l'échéance ne bougent QU'AVEC leur ligne.\n  update coin_wallets set\n    included_balance = v_new_inc,\n    next_grant_at    = v_next,\n    grant_anchor_day = v_anchor,\n    updated_at       = now()\n  where user_id = p_user_id;\n\n  return jsonb_build_object('granted', true, 'amount', v_delta,\n                            'montant_theorique', v_amount,\n                            'solde_avant', v_wallet.included_balance,\n                            'included_after', v_new_inc,\n                            'next_grant_at', v_next,\n                            'source', p_source);\nend;\n$function$\n"
+  },
+  {
+   "nom": "grant_monthly_coins_sweep",
+   "args": "",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "a0da488f8fe11ef872409caee220ad70",
+   "def": "CREATE OR REPLACE FUNCTION public.grant_monthly_coins_sweep()\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  v_granted   int := 0;\n  v_skipped   int := 0;\n  v_awaiting  int := 0;\n  v_purges    int := 0;\n  v_abandons  int := 0;\n  v_rendus    int := 0;\n  v_scans_purges int := 0;\n  r   record;\n  s   record;\n  res jsonb;\nbegin\n  -- Purge du cache identify expiré (> 24 h). Best-effort : elle ne conditionne\n  -- JAMAIS la fraîcheur (vérifiée à la lecture), elle évite juste la croissance\n  -- sans fin de la table.\n  delete from lens_identify_cache where created_at < now() - interval '24 hours';\n  get diagnostics v_purges = row_count;\n\n  -- Scans vivants dont plus rien ne viendra : réservation jamais partie\n  -- ('preparation') ou runtime jamais revenu ('en_cours'). Requalifiés en\n  -- échec, et remboursés s'ils avaient coûté quelque chose. Boucle et non\n  -- UPDATE de masse : refund_coins doit être appelé ligne à ligne.\n  for s in\n    select scan_id, user_id, coins_debites, statut\n    from lens_scans\n    where statut in ('preparation', 'en_cours')\n      and created_at < now() - interval '30 minutes'\n  loop\n    update lens_scans\n       set statut = 'echec',\n           motif  = case when s.statut = 'preparation'\n                      then jsonb_build_object('code', 'abandon_avant_envoi',\n                             'message', 'scan réservé dont la requête n''est jamais partie — requalifié par le sweep')\n                      else jsonb_build_object('code', 'abandon_runtime',\n                             'message', 'scan réservé jamais terminé — requalifié par le sweep')\n                    end,\n           termine_le = now()\n     where scan_id = s.scan_id;\n    v_abandons := v_abandons + 1;\n    if s.coins_debites > 0 then\n      perform refund_coins(\n        s.user_id, s.coins_debites,\n        jsonb_build_object('source', 'lens_analysis_failed',\n                           'motif', 'abandon_runtime',\n                           'scan_id', s.scan_id)\n      );\n      v_rendus := v_rendus + s.coins_debites;\n    end if;\n  end loop;\n\n  -- Fenêtre d'audit qualité : 90 jours.\n  delete from lens_scans where created_at < now() - interval '90 days';\n  get diagnostics v_scans_purges = row_count;\n\n  for r in\n    select p.id,\n           case\n             when p.is_business = true then 'business'\n          when p.is_pro = true then 'pro'\n             when p.is_premium = true or p.is_comped = true then 'premium'\n             else 'free'\n           end as tier\n    from profiles p\n    -- LEFT JOIN impératif : un profil sans ligne coin_wallets doit être balayé,\n    -- sinon il ne serait jamais crédité. next_grant_at vaut alors NULL.\n    left join coin_wallets w on w.user_id = p.id\n    where w.next_grant_at is null or w.next_grant_at <= now()\n  loop\n    res := upgrade_monthly_grant(r.id, r.tier, null, 'sweep');\n    if coalesce((res->>'granted')::boolean, false) then\n      v_granted := v_granted + 1;\n    elsif res->>'reason' = 'awaiting_payment_event' then\n      v_awaiting := v_awaiting + 1;\n    else\n      v_skipped := v_skipped + 1;\n    end if;\n  end loop;\n  return jsonb_build_object('granted', v_granted, 'skipped', v_skipped,\n                            'awaiting_payment', v_awaiting,\n                            'lens_cache_purge', v_purges,\n                            'lens_scans_abandonnes', v_abandons,\n                            'lens_scans_unites_rendues', v_rendus,\n                            'lens_scans_purges', v_scans_purges,\n                            'ran_at', now());\nend;\n$function$\n"
+  },
+  {
+   "nom": "coins_awaiting_payment",
+   "args": "",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "md5_prod": "f559b9978471d31e78b1b25794c8f8fe",
+   "def": "CREATE OR REPLACE FUNCTION public.coins_awaiting_payment()\n RETURNS TABLE(user_id uuid, email text, tier text, canal text, next_grant_at timestamp with time zone, jours_retard integer)\n LANGUAGE sql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  select p.id,\n         p.email,\n         case when p.is_business then 'business' when p.is_pro then 'pro' else 'premium' end,\n         case when p.stripe_customer_id is not null then 'stripe'\n              when p.apple_original_transaction_id is not null then 'apple'\n              when p.google_purchase_token is not null then 'google'\n              else 'inconnu' end,\n         w.next_grant_at,\n         extract(day from (now() - w.next_grant_at))::int\n  from profiles p\n  join coin_wallets w on w.user_id = p.id\n  where (p.is_pro or p.is_premium)\n    and not coalesce(p.is_comped, false)\n    and (p.stripe_customer_id is not null\n         or p.apple_original_transaction_id is not null\n         or p.google_purchase_token is not null)\n    and w.next_grant_at is not null\n    and w.next_grant_at < now() - interval '3 days'\n  order by w.next_grant_at;\n$function$\n"
+  }
+ ],
+ "profiles": {
+  "colonnes_ajoutees": [
+   {
+    "n": "cloud_formule",
+    "t": "text"
+   }
+  ],
+  "contraintes": [
+   {
+    "n": "profiles_cloud_canal_connu",
+    "def": "CHECK (((cloud_canal IS NULL) OR (cloud_canal = ANY (ARRAY['stripe'::text, 'apple'::text, 'google'::text, 'offert'::text]))))"
+   },
+   {
+    "n": "profiles_cloud_essai_coherent",
+    "def": "CHECK (((cloud_essai_fin IS NULL) OR ((cloud_essai_debut IS NOT NULL) AND (cloud_essai_fin >= cloud_essai_debut))))"
+   },
+   {
+    "n": "profiles_cloud_essai_refus_connu",
+    "def": "CHECK (((cloud_essai_refus IS NULL) OR (cloud_essai_refus = ANY (ARRAY['carte_deja_vue'::text, 'compte_plateforme_deja_vu'::text]))))"
+   },
+   {
+    "n": "profiles_cloud_formule_connue",
+    "def": "CHECK (((cloud_formule IS NULL) OR (cloud_formule = ANY (ARRAY['premium_cloud'::text, 'pro_cloud'::text, 'business_cloud'::text]))))"
+   },
+   {
+    "n": "profiles_formule_prevue_valeurs",
+    "def": "CHECK ((((formule_prevue IS NULL) AND (formule_prevue_le IS NULL) AND (formule_prevue_canal IS NULL)) OR ((formule_prevue = ANY (ARRAY['premium'::text, 'pro'::text])) AND (formule_prevue_le IS NOT NULL) AND (formule_prevue_canal = ANY (ARRAY['stripe'::text, 'apple'::text, 'google'::text]))))) NOT VALID"
+   }
+  ]
+ },
+ "contraintes": [
+  {
+   "table": "coin_ledger",
+   "n": "coin_ledger_kind_check",
+   "def": "CHECK ((kind = ANY (ARRAY['grant_monthly'::text, 'grant_upgrade'::text, 'purchase'::text, 'spend_publish'::text, 'spend_lens'::text, 'refund'::text, 'admin'::text, 'release_publish'::text, 'spend_generate'::text, 'refund_generate'::text, 'spend_republish'::text, 'refund_republish'::text, 'refund_publish_unconfirmed'::text])))"
+  },
+  {
+   "table": "coin_ledger",
+   "n": "coin_ledger_user_id_fkey",
+   "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+  },
+  {
+   "table": "coin_wallets",
+   "n": "coin_wallets_included_balance_check",
+   "def": "CHECK ((included_balance >= 0))"
+  },
+  {
+   "table": "coin_wallets",
+   "n": "coin_wallets_purchased_balance_check",
+   "def": "CHECK ((purchased_balance >= 0))"
+  },
+  {
+   "table": "coin_wallets",
+   "n": "coin_wallets_user_id_fkey",
+   "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+  }
+ ],
+ "index": [
+  "CREATE UNIQUE INDEX coin_ledger_ref_unique ON public.coin_ledger USING btree (ref) WHERE (ref IS NOT NULL)",
+  "CREATE INDEX coin_ledger_user_idx ON public.coin_ledger USING btree (user_id, created_at DESC)",
+  "CREATE INDEX coin_wallets_next_grant_idx ON public.coin_wallets USING btree (next_grant_at) WHERE (next_grant_at IS NOT NULL)"
+ ],
+ "tables": [
+  {
+   "nom": "lens_identify_cache",
+   "cols": "cle text NOT NULL, user_id uuid NOT NULL, resultat jsonb NOT NULL, created_at timestamp with time zone NOT NULL DEFAULT now()",
+   "cons": [
+    "PRIMARY KEY (cle)"
+   ]
+  },
+  {
+   "nom": "lens_scans",
+   "cols": "scan_id uuid NOT NULL, user_id uuid NOT NULL, statut text NOT NULL DEFAULT 'en_cours'::text, mode text, photos jsonb, resultat jsonb, motif jsonb, coins_debites integer NOT NULL DEFAULT 0, created_at timestamp with time zone NOT NULL DEFAULT now(), termine_le timestamp with time zone",
+   "cons": [
+    "PRIMARY KEY (scan_id)",
+    "CHECK ((statut = ANY (ARRAY['preparation'::text, 'en_cours'::text, 'termine'::text, 'echec'::text])))"
+   ]
+  }
+ ],
+ "cron": {
+  "jobname": "coins-monthly-sweep",
+  "schedule": "15 4 * * *",
+  "command": "SELECT public.grant_monthly_coins_sweep()"
+ },
+ "config": {
+  "coin_config": [
+   {
+    "key": "bordereaux_auto",
+    "value": 1
+   },
+   {
+    "key": "bordereaux_auto_depuis",
+    "value": 1792863742
+   },
+   {
+    "key": "bordereaux_generation_ouverte",
+    "value": 1
+   },
+   {
+    "key": "bordereaux_ouverts",
+    "value": 1
+   },
+   {
+    "key": "bordereaux_vinted_tous",
+    "value": 1
+   },
+   {
+    "key": "garde_jour_annonces",
+    "value": 800
+   },
+   {
+    "key": "garde_jour_publications",
+    "value": 2000
+   },
+   {
+    "key": "garde_jour_remontees",
+    "value": 2000
+   },
+   {
+    "key": "grille_trois_jauges",
+    "value": 1
+   },
+   {
+    "key": "jauge_annonces_business",
+    "value": 0
+   },
+   {
+    "key": "jauge_annonces_free",
+    "value": 5
+   },
+   {
+    "key": "jauge_annonces_premium",
+    "value": 40
+   },
+   {
+    "key": "jauge_annonces_pro",
+    "value": 120
+   },
+   {
+    "key": "jauge_lens_business",
+    "value": 600
+   },
+   {
+    "key": "jauge_publications_business",
+    "value": 0
+   },
+   {
+    "key": "jauge_publications_free",
+    "value": 50
+   },
+   {
+    "key": "jauge_publications_premium",
+    "value": 400
+   },
+   {
+    "key": "jauge_publications_pro",
+    "value": 1200
+   },
+   {
+    "key": "jauge_remontees_business",
+    "value": 0
+   },
+   {
+    "key": "jauge_remontees_free",
+    "value": 30
+   },
+   {
+    "key": "jauge_remontees_premium",
+    "value": 1500
+   },
+   {
+    "key": "jauge_remontees_pro",
+    "value": 0
+   },
+   {
+    "key": "monthly_grant_business",
+    "value": 3000
+   },
+   {
+    "key": "monthly_grant_free",
+    "value": 50
+   },
+   {
+    "key": "monthly_grant_premium",
+    "value": 400
+   },
+   {
+    "key": "monthly_grant_pro",
+    "value": 1200
+   },
+   {
+    "key": "price_generate",
+    "value": 0
+   },
+   {
+    "key": "price_ia_advanced",
+    "value": 0
+   },
+   {
+    "key": "price_ia_light",
+    "value": 0
+   },
+   {
+    "key": "price_lens_overflow",
+    "value": 0
+   },
+   {
+    "key": "price_original",
+    "value": 0
+   },
+   {
+    "key": "price_per_platform",
+    "value": 0
+   },
+   {
+    "key": "price_republish",
+    "value": 0
+   },
+   {
+    "key": "quota_annonces_business",
+    "value": 300
+   },
+   {
+    "key": "quota_annonces_free",
+    "value": 5
+   },
+   {
+    "key": "quota_annonces_premium",
+    "value": 40
+   },
+   {
+    "key": "quota_annonces_pro",
+    "value": 120
+   },
+   {
+    "key": "quota_republication_business",
+    "value": 0
+   },
+   {
+    "key": "quota_republication_free",
+    "value": 50
+   },
+   {
+    "key": "quota_republication_premium",
+    "value": 1500
+   },
+   {
+    "key": "quota_republication_pro",
+    "value": 5000
+   },
+   {
+    "key": "quota_retouche_business",
+    "value": 50
+   },
+   {
+    "key": "quota_retouche_free",
+    "value": 0
+   },
+   {
+    "key": "quota_retouche_premium",
+    "value": 5
+   },
+   {
+    "key": "quota_retouche_pro",
+    "value": 20
+   },
+   {
+    "key": "quota_scan_business",
+    "value": 0
+   },
+   {
+    "key": "quota_scan_free",
+    "value": 0
+   },
+   {
+    "key": "quota_scan_premium",
+    "value": 0
+   },
+   {
+    "key": "quota_scan_pro",
+    "value": 0
+   },
+   {
+    "key": "quota_voix_business",
+    "value": 200
+   },
+   {
+    "key": "quota_voix_free",
+    "value": 10
+   },
+   {
+    "key": "quota_voix_premium",
+    "value": 30
+   },
+   {
+    "key": "quota_voix_pro",
+    "value": 80
+   }
+  ]
+ }
+}

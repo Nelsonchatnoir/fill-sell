@@ -578,6 +578,7 @@
     "selftest:ordre-photos": "node scripts/ordre-photos-selftest.mjs",
     "selftest:taches-sans-balayage": "node scripts/taches-sans-balayage-selftest.mjs",
     "selftest:essai-cloud-droits-pro": "node scripts/essai-cloud-droits-pro-selftest.mjs",
+    "selftest:essai-formule-credit": "node scripts/essai-formule-credit-selftest.mjs",
     "selftest:formules-cloud-business-sans-essai": "node scripts/formules-cloud-business-sans-essai-selftest.mjs",
     "selftest:formules-cloud-stripe": "node scripts/formules-cloud-stripe-selftest.mjs",
     "selftest:formules-cloud-boutiques": "node scripts/formules-cloud-boutiques-selftest.mjs",
