@@ -72,6 +72,7 @@ import { CLES_ARTICLE_ECRITES, CLES_ARTICLE_LUES, CLES_OFFRE_ECRITES, CLES_OFFRE
 import { completerAspectsIA, estAspectDeTaille, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { appelTrading } from "../_shared/ebay-trading-releve.ts";
+import { ficheEpuisee, champsArticleVendu, messageArticleVendu } from "../_shared/article-epuise.js";
 import { jobSansMarqueDeCompatibilite } from "../_shared/marque-compatible.js";
 import { motifAnnonceDisparueEbay, raisonFinDepuisXml, relanceDepuisXml } from "../_shared/ebay-disparue-motif.js";
 import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, sourcesACloreApresRetraitTrading, clotureSourceRetiree,
@@ -444,6 +445,21 @@ async function publier(
   if (!photos.length) { await marquer(admin, job, { status: "needs_user", error: "Cet article n'a aucune photo : eBay exige au moins une image. Ajoute une photo à l'article, puis relance la publication." }, { etape: "controle", quoi: "photos_absentes" }); return { job: job.id, issue: "needs_user", motif: "photos_absentes" }; }
   if (!(prix > 0)) { await marquer(admin, job, { status: "needs_user", error: "Prix absent ou nul." }, { etape: "controle", quoi: "prix_absent" }); return { job: job.id, issue: "needs_user", motif: "prix_absent" }; }
   if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job sans inventaire_id : impossible de former le SKU." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed", motif: "inventaire_absent" }; }
+
+  // ── (12/11, point 2 de Nico) UN ARTICLE ÉPUISÉ NE PART JAMAIS — la garde d'exécution (_shared/article-epuise.js) ──
+  // Fiche « vendu » ou quantité ≤ 0 : rien n'est envoyé à eBay, la tâche est retenue « article vendu » (même forme que
+  // la garde de service de get-pending-jobs) ; la règle « sans objet » de handler-watch l'arrête si la vente est
+  // enregistrée. Une quantité restante (plusieurs exemplaires) n'est jamais bloquée. Lecture illisible : comme avant.
+  {
+    const { data: fE, error: eE } = await admin.from("inventaire").select("statut, quantite")
+      .eq("id", job.inventaire_id).eq("user_id", job.user_id).maybeSingle();
+    if (!eE && ficheEpuisee(fE)) {
+      job.platform_fields = champsArticleVendu(job.platform_fields, fE, "ebay-api-worker (démarrage refusé)") as PlatformFields;
+      await marquer(admin, job, { status: "needs_user", error: messageArticleVendu(fE) }, { etape: "controle", quoi: "article_vendu", statut: fE?.statut ?? null, quantite: fE?.quantite ?? null });
+      console.log(`[ebay-api-worker] job ${job.id} : article ${job.inventaire_id} épuisé (statut ${fE?.statut}, quantité ${fE?.quantite ?? "∅"}) — rien envoyé à eBay, retenu « article vendu »`);
+      return { job: job.id, issue: "needs_user", motif: "article_vendu" };
+    }
+  }
 
   // ── Lot 1 (07/09) : l'article en base — titre (catégorie) et attributs. ──
   const inv = await lireInventaire(admin, job.inventaire_id);

@@ -603,6 +603,29 @@ serve(async (req) => {
       }
     }
 
+    // ══ (12/11, point 2 de Nico) GARDE D'EXÉCUTION : UN ARTICLE ÉPUISÉ NE DÉMARRE JAMAIS ══════════════════════════
+    // (_shared/article-epuise.js) Une publication ou une republication qui DÉMARRE (« pending » → « processing ») sur une
+    // fiche « vendu » ou à quantité ≤ 0 ne part pas : retenue « article vendu » (needs_user, même forme que la garde de
+    // service de get-pending-jobs), réponse 409 — l'extension la lit comme « skipped » (publication) ou renonce avant
+    // tout retrait (republication : l'écriture « processing » précède toujours la suppression). Une quantité restante
+    // n'est jamais bloquée. Avant la prise du Cloud : le Cloud ne prend jamais une tâche épuisée. Lecture illisible :
+    // le démarrage passe (comme avant ; la garde de service a déjà jugé la tâche).
+    if (status === "processing" && reservation.statut === "pending") {
+      const { data: jD } = await userClient.from("cross_post_jobs")
+        .select("action, inventaire_id, platform, platform_fields").eq("id", jobId).maybeSingle();
+      if (jD && demarrageAGarder({ action: jD.action, statutEnBase: reservation.statut, statutDemande: status, inventaireId: jD.inventaire_id })) {
+        const { data: fD, error: eD } = await userClient.from("inventaire")
+          .select("statut, quantite").eq("id", jD.inventaire_id).maybeSingle();
+        if (!eD && ficheEpuisee(fD)) {
+          const { data: retenu, error: eR } = await userClient.from("cross_post_jobs")
+            .update({ status: "needs_user", error: messageArticleVendu(fD), platform_fields: champsArticleVendu(jD.platform_fields, fD, "update-job-status (démarrage refusé)") })
+            .eq("id", jobId).eq("status", "pending").select("id").maybeSingle();
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} (${jD.platform}/${jD.action ?? "publish"}) : article ${jD.inventaire_id} épuisé (statut ${fD?.statut}, quantité ${fD?.quantite ?? "∅"}) — démarrage REFUSÉ${retenu ? ", retenu « article vendu »" : eR ? ` (retenue non écrite : ${eR.message})` : " (déjà sorti de « pending »)"}`);
+          return json({ error: MESSAGE_DEMARRAGE_ARTICLE_VENDU }, 409);
+        }
+      }
+    }
+
     // ══ (30/10, lot D) L'EXÉCUTANT CLOUD PREND SES JOBS PAR LA PRISE ATOMIQUE (prendre_job, lot C) ══════════
     // Un poste Cloud (BUILD_ID « …-cloud », scripts/cloud/build-extension-cloud.mjs) : la PRISE (un job encore
     // « pending » qui passe à « processing ») se fait en UNE transaction, seulement depuis pending (prendre_job) ;
@@ -917,8 +940,9 @@ serve(async (req) => {
         .eq("id", jobId)
         .maybeSingle();
       const pfj = (jf?.platform_fields ?? {}) as Record<string, unknown>;
+      // (12/11) SOURCE_ARTICLE_VENDU : le démarrage refusé d'une republication Vinted (garde d'exécution ci-dessus).
       if (jf?.status === "needs_user" &&
-          ["livres_isbn_garde", "republish_couleur_garde"].includes(String(pfj.needs_user_source ?? ""))) {
+          ["livres_isbn_garde", "republish_couleur_garde", SOURCE_ARTICLE_VENDU].includes(String(pfj.needs_user_source ?? ""))) {
         console.log(`[update-job-status] userId=${user.id} job=${jobId} — garde republication (${pfj.needs_user_source}) : failed de repli IGNORÉ, needs_user conservé`);
         return json({ error: "Garde republication : job maintenu en needs_user (failed de repli ignoré)." }, 409);
       }
@@ -5970,3 +5994,4 @@ import { retraitEngage } from "../_shared/retenue-creneau.js";
 import { retraitPendantLaTache, ligneRetraitApresPublication, retraitDejaOuvert, champsPublicationApresRetrait, champsPublicationSansLien, FEATURE_BILAN_RETRAIT_PARTOUT, CHEMIN_PUBLICATION_APRES_RETRAIT,
   tacheAnnuleeParSuppression, MESSAGE_TACHE_ARTICLE_SUPPRIME, numerosVises, identifiantsAvantPublication, STATUTS_RETRAIT_OUVERTS } from "../_shared/publication-apres-retrait.js";
 import { murConnexionBeebsDeCeRapport } from "../_shared/retraits-en-retard.js";
+import { demarrageAGarder, ficheEpuisee, champsArticleVendu, messageArticleVendu, MESSAGE_DEMARRAGE_ARTICLE_VENDU, SOURCE_ARTICLE_VENDU } from "../_shared/article-epuise.js";

@@ -14,6 +14,8 @@
 //   3. sans objet : publication ou republication (pas encore engagée) d'un
 //      article dont la VENTE est enregistrée ; republication orpheline (sa
 //      fiche n'existe plus) → annulées, rien n'est retiré ni publié.
+//      (12/11) La règle 3 lit aussi les tâches EN ATTENTE (pending) d'une
+//      fiche « vendu » — 100 par passe, écriture conditionnée à « pending ».
 //   5. (17/10) « Marque (Depop) » d'une publication : hors de la liste de
 //      Depop → « Sans marque » (« Other »), jamais une autre marque
 //      (_shared/marque-depop.js) ; une question « ambiguë » reste au
@@ -68,7 +70,17 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
     .limit(400);
   if (error) throw new Error(error.message);
   const liste = (jobs ?? []) as any[];
-  if (!liste.length) return n;
+  // (12/11) Les tâches EN ATTENTE d'un article vendu (règle 3, plus bas) : lues avant la sortie anticipée, qui ne vaut
+  // que s'il n'y a rien du tout à trancher.
+  let enAttenteVendues: any[] = [];
+  {
+    const { data: pa, error: ePa } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, inventaire_id, created_at, error, platform_fields, inventaire!inner(statut)")
+      .eq("status", "pending").in("action", ["publish", "republish"]).eq("inventaire.statut", "vendu")
+      .order("created_at", { ascending: true }).limit(100);
+    if (!ePa) enAttenteVendues = ((pa ?? []) as any[]).map(({ inventaire: _fiche, ...j }) => j);
+  }
+  if (!liste.length && !enAttenteVendues.length) return n;
 
   const sansQuestion = (pf: Record<string, unknown>) => {
     const p = { ...pf };
@@ -139,7 +151,16 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
   }
 
   // ── 3. Sans objet : l'article est VENDU (vente enregistrée) ────────────────
-  const vendus = liste.filter((x) => x.platform_fields?.needs_user_source === "article_vendu" && x.inventaire_id != null
+  // (12/11, point 2 de Nico — compte 6e3d92b3, republication Vinted fac6fdef de l'annonce vendue) AUSSI LES TÂCHES EN
+  // ATTENTE : la cascade de la vente écartait la plateforme de la vente (corrigé par la migration 20261112140000) ; une
+  // tâche restée « pending » n'arrivait ici qu'après un poll de son poste (garde de service → « article vendu »), et
+  // attendait donc indéfiniment un ordinateur éteint. Même règle, mêmes conditions (fiche « vendu » ET vente
+  // enregistrée ; publication, ou republication pas encore engagée), lue directement : une lecture bornée (100) des
+  // tâches en attente dont la fiche est « vendu » (jointure sur la fiche, ~20 ms le 12/11), écriture conditionnée au
+  // statut lu (enAttenteVendues, lue en tête). Une quantité 0 sans vente n'est jamais arrêtée ici (elle reste à la garde
+  // de service, la question).
+  const vendus = [...liste.filter((x) => x.platform_fields?.needs_user_source === "article_vendu"), ...enAttenteVendues]
+    .filter((x) => x.inventaire_id != null
     && (x.action === "publish" || (x.action === "republish" && !x.platform_fields?.deleted_at
       && ["", "a_capturer", "captured"].includes(String(x.platform_fields?.republish_step ?? "")))));
   if (vendus.length) {
@@ -158,7 +179,7 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
       pf.sans_objet = { le: maintenant, motif: "article_vendu_vente_enregistree", par: "handler-watch" };
       const { data } = await supabase.from("cross_post_jobs").update({ status: "cancelled",
         error: `Article vendu${quand ? ` le ${quand}` : ""} : ${quoi} sur ${NOMS[j.platform] ?? j.platform} n'a plus d'objet. Rien n'a été retiré ni publié.`,
-        platform_fields: pf }).eq("id", j.id).eq("status", "needs_user").select("id");
+        platform_fields: pf }).eq("id", j.id).eq("status", j.status === "pending" ? "pending" : "needs_user").select("id");
       if (data?.length) n.vendu++;
     }
   }

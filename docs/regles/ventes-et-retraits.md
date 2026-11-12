@@ -16,6 +16,7 @@
 - 02/10 soir — ventes : annonce_id = la preuve (ex-L444-446)
 - 16/10 — lire une vente : plateforme normalisée, marge % au prix > 0, « Sans plateforme », tri par date
 - 16/10 soir — le prix d'une vente née d'un job ; jamais « vendu 0 € » (C1)
+- 12/11 — une vente arrête aussi les tâches non publiées de SA plateforme ; un article épuisé ne démarre jamais
 - 06/11 — ⛔ un plugin Capacitor ne passe JAMAIS nu à travers une promesse : c'est un Proxy qui répond à `then` ;
   rendu par `.then(...)` ou une fonction `async`, il est pris pour une promesse et `await` ne rend plus la main sur
   un vrai téléphone (« X.then() is not implemented », rejet orphelin). pushVentes.js le faisait : aucun jeton ne se
@@ -845,3 +846,21 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   n'est demandé par le serveur (décision du 05/10, Q4 non).
 - Verrous : `npm run selftest:retrait-vente-prouvee` (complété : rejeu Beebs, égalité à 1 s, `attente_levee`, miroir SQL) et
   `npm run selftest:attente-connexion-revenue` (rejeu aa957efd, bornes, Cloud, plafond, branchement sans écriture).
+
+## ⛔ 12/11 (point 2 de Nico, terminal « Problèmes ») — une vente arrête aussi les tâches non publiées de SA plateforme ; un article épuisé ne part jamais
+- **Cause prouvée** (compte 6e3d92b3, rapport `docs/enquetes/terminal-problemes-1211/RAPPORT.md` § 2) : la boucle d'arrêt
+  de `enregistrer_vente_atomique` écartait TOUTE la plateforme de la vente (`p_job IS NULL OR c.platform IS DISTINCT FROM
+  j.platform`) ; la republication Vinted fac6fdef de l'annonce vendue elle-même restait « pending » (seule du parc).
+- **La cascade** (migration 20261112140000, réécrite depuis la prod) : quand la vente épuise la fiche (`v_restant = 0`),
+  une publication ou une republication de la fiche sur la plateforme de la vente, pas encore en ligne (pending, processing,
+  needs_user), s'arrête comme ailleurs (« Cet exemplaire a été vendu ; cette publication est arrêtée. »). Une AUTRE annonce
+  PUBLIÉE de la plateforme n'est jamais touchée (deux annonces = deux exemplaires) ; une vente partielle n'arrête rien.
+- **La garde d'exécution** (`_shared/article-epuise.js`, même définition que la garde de service de get-pending-jobs :
+  « vendu » OU quantité ≤ 0 ; quantité restante jamais bloquée) : au DÉMARRAGE seulement (pending → processing) —
+  update-job-status (extension et Cloud, avant la prise du Cloud) répond 409 et retient « article vendu » ;
+  ebay-api-worker `publier()` retient avant tout appel eBay. Une écriture en cours de route n'est jamais refusée.
+- **Les cas existants** : la règle « sans objet » de handler-watch (`_shared/questions-tranchees.ts`, règle 3) lit aussi
+  les tâches EN ATTENTE d'une fiche « vendu » avec sa vente (100 par passe, ~20 ms, écriture conditionnée à « pending ») :
+  elles s'arrêtent sans attendre l'ordinateur. Une quantité 0 sans vente reste la question (garde de service).
+- Verrou `npm run selftest:vente-arrete-meme-plateforme` (rouge avant : 9 ; vert après : 28/28) ; banc sur base jetable
+  `node scripts/essais/20261112140000_banc.mjs` (décor de prod du 12/11, 214 fonctions, 72 déclencheurs : 25/25).
