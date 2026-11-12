@@ -102,6 +102,8 @@ import { fusionnerReglages } from "../../utils/reglagesPlateformes";
 import { noterGeste } from "../../utils/dernierGeste";
 import { useChoixPoidsLeboncoin } from "../../utils/useChoixPoidsLeboncoin";
 import { usePublicationProgrammee } from "../../utils/usePublicationProgrammee";
+import { useRythmeProgramme } from "../../utils/useRythmeProgramme";
+import { phraseEnvoiProgramme, prochainCreneau, quandCreneau } from "../../utils/rythmeProgramme";
 import { montantAnglais } from "../../utils/montants";
 // (08/11, U3 de Nico) Un client FillSell Cloud n'a ni ordinateur ni Chrome : ses textes parlent de FillSell Cloud.
 import { useConnexionsCloudPartage } from "../../cloud/useConnexionsCloud";
@@ -303,6 +305,10 @@ function EcranDuLot({
   const programmation = usePublicationProgrammee(userId);
   const [maintenantLot, setMaintenantLot] = useState(false);
   const programme = Boolean(programmation.reglage) && !maintenantLot;
+  // (12/11, point 4 de Nico) Ce qui va RÉELLEMENT partir : le rythme mesuré du compte (utils/rythmeProgramme.js), lu une
+  // fois à l'ouverture ; la phrase dite au moment de programmer est redite à la fin de l'envoi.
+  const rythmeProg = useRythmeProgramme(userId, Boolean(programmation.reglage));
+  const envoiProgrammeRef = useRef(null);
   const poidsLbcChoixRef = useRef(poidsLbc.choix); poidsLbcChoixRef.current = poidsLbc.choix;
   const plateformesCompte = (ctx.plateformesCompte ?? PLATEFORMES_LOT_DEFAUT).filter((p) => PLATEFORMES_LOT.includes(p));
   const fermer = (r) => {
@@ -1334,9 +1340,15 @@ function EcranDuLot({
       if (prets.length && programme) {
         const nom = { matin: en ? "morning " : "du matin", midi: en ? "midday " : "de midi", soir: en ? "evening " : "du soir" }[programmation.reglage.creneau] ?? "";
         const plafond = programmation.reglage.plafond_jour;
-        sous = [en
-          ? `Scheduled: they go out one at a time in your ${nom}slot${plafond ? `, ${plafond} a day at most` : ""}. Anything over the limit waits for the next slot.`
-          : `Programmées : elles partiront une à une dans ton créneau${nom ? ` ${nom}` : ""}${plafond ? `, ${plafond} par jour au plus` : ""}. Ce qui dépasse attend le créneau suivant.`];
+        // (12/11, point 4 de Nico) Quand ça part, le rythme RÉEL du compte, la fin estimée — jamais un chiffre théorique.
+        const phrase = phraseEnvoiProgramme({ reglage: programmation.reglage, servies: rythmeProg.servies,
+          dejaEnFile: rythmeProg.dejaEnFile, nouvelles: annoncesPretes, lang });
+        envoiProgrammeRef.current = phrase;
+        sous = [phrase
+          ? `${phrase}${plafond ? (en ? ` At most ${plafond} a day.` : ` ${plafond} par jour au plus.`) : ""}`
+          : (en
+            ? `Scheduled: they go out one at a time in your ${nom}slot${plafond ? `, ${plafond} a day at most` : ""}. Anything over the limit waits for the next slot.`
+            : `Programmées : elles partiront une à une dans ton créneau${nom ? ` ${nom}` : ""}${plafond ? `, ${plafond} par jour au plus` : ""}. Ce qui dépasse attend le créneau suivant.`)];
       }
       if (!prets.length && enOrigine && !aCompleter.length) {
         sous = [sansLecteurIci
@@ -1355,7 +1367,8 @@ function EcranDuLot({
   } else {
     cta = en ? "Back to stock" : "Retour au stock";
     onCta = () => fermer({ envoye: true });
-    sous = [en ? "You'll follow the batch at the top of your Stock." : "Tu suis le lot en haut de ton Stock."];
+    sous = [...(programme && envoiProgrammeRef.current ? [envoiProgrammeRef.current] : []),
+      en ? "You'll follow the batch at the top of your Stock." : "Tu suis le lot en haut de ton Stock."];
   }
 
   return (
@@ -1793,7 +1806,14 @@ export function EcranAvant({
           <div className="fsv-lot-l">
             <span>{maintenantLot
               ? (en ? "This batch goes out now, outside your schedule." : "Ce lot part tout de suite, hors programmation.")
-              : (en ? "Scheduled: one at a time, in your time slot." : "Programmé : une à la fois, dans ton créneau.")}</span>
+              : (() => {
+                // (12/11, point 4 de Nico) Le moment réel du départ, jamais « bloqué » sans un mot.
+                const p = prochainCreneau(programmation);
+                if (!p) return en ? "Scheduled: one at a time, in your time slot." : "Programmé : une à la fois, dans ton créneau.";
+                if (p.enCours) return en ? `Scheduled: goes out now, one at a time, until ${p.a}.` : `Programmé : part dès maintenant, une à la fois, jusqu'à ${p.a}.`;
+                const q = quandCreneau(p.decalage, p.jourIso, programmation.creneau, lang);
+                return en ? `Scheduled: goes out ${q} from ${p.de}, one at a time.` : `Programmé : partira ${q} à partir de ${p.de}, une à la fois.`;
+              })()}</span>
             <button type="button" className="fsn-lien" onClick={() => setMaintenantLot(!maintenantLot)}>
               {maintenantLot ? (en ? "Schedule it" : "Le programmer") : (en ? "Send now" : "Envoyer tout de suite")}
             </button>

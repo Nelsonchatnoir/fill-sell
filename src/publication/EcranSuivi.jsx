@@ -133,6 +133,8 @@ export default function EcranSuivi({ m }) {
   const ctxBarre = { lang: m.lang, extension: ext ?? null, oplaAAutoriser, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr"),
     // (03/10, point 25) Poste trop ancien : la barre attend la mise à jour, jamais « son tour ».
     extensionAMettreAJour: m.extensionAMettreAJour === true, cloud, programmation: Boolean(programmation.reglage),
+    // (12/11, point 4 de Nico) Le réglage : une programmée dit QUAND elle part (« partira ce soir à partir de 19:00 »).
+    reglageProgrammation: programmation.reglage,
     plateformeDuJob: (id) => jobs.find((x) => String(x.id) === String(id))?.platform ?? null };
   const piste = (p) => {
     const e = etats[p] ?? { kind: "en_file" };

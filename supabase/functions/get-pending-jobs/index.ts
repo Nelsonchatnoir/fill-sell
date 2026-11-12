@@ -56,6 +56,7 @@ import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE, marqueCo
 import { couleursVintedSansQuestion, marqueVintedSansQuestion, couleurRepublicationAPoser, couleurRepublicationSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
+import { estAnnonceAnimalVivantLbc, messageAnimalVivantLbc, champsAnimalVivantLbc } from "../_shared/leboncoin-animal-vivant.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 // (29/10, lot B 4.6) Un refus Beebs prouvé ne repart jamais à l'identique (même fonction que l'app).
 import { relanceRefusBeebs, messageRefusBeebsMemeContenu, SOURCE_REFUS_BEEBS_MEME_CONTENU } from "../../../src/utils/empreinteContenu.js";
@@ -4380,6 +4381,30 @@ serve(async (req) => {
         } catch (e) {
           console.warn(`[get-pending-jobs] colis Vinted retenu : ${String((e as Error)?.message ?? e)} — servi tel quel`);
         }
+      }
+    }
+
+    // ══ (12/11, point 6 de Nico) LEBONCOIN, ANIMAL VIVANT : UN GESTE CLAIR AU PREMIER PASSAGE, JAMAIS CINQ ÉCHECS ══
+    // (_shared/leboncoin-animal-vivant.js) Rangée « Animaux › Animaux », l'annonce demande des informations que seul le
+    // vendeur connaît (type d'animal, nature de l'offre, race, âge, vaccins — preuve : l'annonce 3229105886 déposée par
+    // la personne) et ne s'envoie pas (shippable = false, aucun poids). FillSell ne sait pas les poser : jamais tentée,
+    // elle devient le geste au premier passage, AVANT le poids et tout le reste. Écriture conditionnée à « pending ».
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const animaux = out.filter((j) => j.status === "pending" && estAnnonceAnimalVivantLbc(j as never));
+        if (animaux.length) {
+          const ids = new Set<string>();
+          for (const j of animaux) {
+            ids.add(String(j.id));
+            const { error: wErr } = await userClient.from("cross_post_jobs")
+              .update({ status: "needs_user", error: messageAnimalVivantLbc(j), platform_fields: champsAnimalVivantLbc(j.platform_fields, "get-pending-jobs") })
+              .eq("id", j.id as string).eq("status", "pending");
+            console.log(`[get-pending-jobs] ${String(j.id).slice(0, 8)} (leboncoin/${j.action ?? "publish"}) : annonce d'animal vivant (Animaux › Animaux) → geste demandé, rien tenté${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
+          }
+          out = out.filter((j) => !ids.has(String(j.id)));
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] annonce d'animal Leboncoin : ${String((e as Error)?.message ?? e)} — distribution normale`);
       }
     }
 

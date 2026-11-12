@@ -1645,3 +1645,21 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   ressorties par handler-watch dans la minute (essais 2), puis relancées en SQL direct à 20:16 (témoin :
   `scripts/reparations/20261111_relances_manuelles_64eab2f9*.sql`). Verrou `npm run selftest:remise-en-file` (le cas
   réel rejoué : remise en file → plus jamais ressortie par handler-watch avant un nouvel essai ; base jetable).
+
+## ⛔ 12/11 (point 4 de Nico, terminal « Problèmes ») — les publications programmées disent QUAND elles partent, au rythme RÉEL du compte
+- Cas : compte 229c7b07 (créneau du soir 19:00–22:00) a relancé 3 lots et en a annulé 2 — rien ne disait qu'ils attendaient
+  19:00. Règle de Nico (12/09) : l'écran dit ce qui va RÉELLEMENT partir, jamais un chiffre théorique. Décision du 12/11 :
+  l'heure de DÉBUT du créneau est dite (« ce soir à partir de 19:00 ») — remplace, pour ce seul cas, « jamais une heure »
+  de D4 ; aucune heure de passage n'est promise.
+- `src/utils/rythmeProgramme.js` (pur) + `src/utils/useRythmeProgramme.js` (une lecture à l'ouverture, 5 min de fraîcheur,
+  pages de 1 000, rien d'écrit). Réglage et rythme INTOUCHÉS (`_shared/publication-programmee.js` identique).
+- **Formule du rythme** : servies réelles (`programmee_servie_le`) des 14 derniers jours, jour local du réglage ; un jour
+  compte s'il était PLEIN (dernière servie dans les 30 dernières minutes du créneau, ou plafond atteint) ; **N = médiane
+  des 3 derniers jours pleins**, bornée au plafond ; le jour en cours ne compte jamais ; aucun jour plein → aucun chiffre
+  (« ton rythme habituel s'affichera après un premier créneau complet »). **Fin estimée** : (programmées déjà en attente +
+  publications du lot) ÷ N par créneau, sur les jours actifs, depuis le prochain créneau (au prorata s'il est en cours),
+  dite « vers le samedi 21/11 ».
+- Où : feuille du lot (phrase sous « Programmer », ligne « Programmé : partira ce soir à partir de 19:00 », redite à la fin
+  de l'envoi) ; « Ta file » et le suivi (`situationJob`, motif `programmee` : « Programmée : partira ce soir à partir de
+  19:00, une à la fois » / « elle part en ce moment, jusqu'à 22:00 » / « demain soir »), icône horloge.
+- Verrou `npm run selftest:programmees-verite` (rejeu des servies réelles de 229c7b07 : 39 par soir ; 4cfb7afe : aucun chiffre).

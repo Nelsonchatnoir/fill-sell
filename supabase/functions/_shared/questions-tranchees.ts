@@ -47,6 +47,7 @@ import { titreMajusculesATrancher } from "./casse-titre.js";
 import { titreInvisiblesATrancher } from "./caracteres-invisibles.js";
 import { colisRepublicationATrancher } from "./vinted-colis-tranche.js";
 import { estQuestionColisPublication, catalogueDuJob, formatDominantDuRayon, colisPublicationATrancher, repereSansAccord } from "./vinted-colis-categorie.js";
+import { estAnnonceAnimalVivantLbc, messageAnimalVivantLbc, champsAnimalVivantLbc, SOURCE_ANIMAL_VIVANT_LBC } from "./leboncoin-animal-vivant.js";
 
 const TICKS = ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"];
 const NOMS: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
@@ -57,7 +58,7 @@ const dateParis = (iso: string | null | undefined) => {
 };
 
 export async function trancherQuestions(supabase: any): Promise<Record<string, number>> {
-  const n = { boutique: 0, etat: 0, vendu: 0, orphelin: 0 };
+  const n = { boutique: 0, etat: 0, vendu: 0, orphelin: 0, animal_lbc: 0 };
   const maintenant = new Date().toISOString();
   const { data: jobs, error } = await supabase.from("cross_post_jobs")
     // (18/10) `title` : la règle 7 (titre Vinted, symboles en trop) part du titre du job.
@@ -79,6 +80,28 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
       .eq("status", "pending").in("action", ["publish", "republish"]).eq("inventaire.statut", "vendu")
       .order("created_at", { ascending: true }).limit(100);
     if (!ePa) enAttenteVendues = ((pa ?? []) as any[]).map(({ inventaire: _fiche, ...j }) => j);
+  }
+  // ── 11. (12/11, point 6 de Nico) ANNONCE D'ANIMAL VIVANT LEBONCOIN : LE GESTE CLAIR, MÊME APRÈS DES ÉCHECS ──────
+  // (_shared/leboncoin-animal-vivant.js) get-pending-jobs n'en tente plus aucune ; une tâche déjà tombée en échec
+  // (« n'a pas abouti… relance-la », cas 298e4944) reçoit le même geste : la déposer soi-même puis « Synchroniser ».
+  // Lecture bornée (50, ~5 ms le 12/11), écriture conditionnée à « needs_user », jamais une ligne réécrite à
+  // l'identique (une tâche qui porte déjà la source n'est pas relue). Une republication engagée n'est jamais touchée.
+  {
+    const { data: an, error: eAn } = await supabase.from("cross_post_jobs")
+      .select("id, platform, action, status, error, platform_fields")
+      .eq("status", "needs_user").eq("platform", "leboncoin").in("action", ["publish", "republish"])
+      .eq("platform_fields->lbcCategoryPath->>0", "Animaux").eq("platform_fields->lbcCategoryPath->>1", "Animaux")
+      .limit(50);
+    if (!eAn) {
+      for (const j of (an ?? []) as any[]) {
+        if (!estAnnonceAnimalVivantLbc(j) || j.platform_fields?.needs_user_source === SOURCE_ANIMAL_VIVANT_LBC) continue;
+        const pfA = champsAnimalVivantLbc(j.platform_fields, "handler-watch");
+        if (j.error) pfA.erreurs_archivees = archiverErreur(pfA.erreurs_archivees, j.error, "needs_user", "handler-watch (annonce d'animal Leboncoin → geste)");
+        const { data } = await supabase.from("cross_post_jobs").update({ error: messageAnimalVivantLbc(j), platform_fields: pfA })
+          .eq("id", j.id).eq("status", "needs_user").select("id");
+        if (data?.length) n.animal_lbc++;
+      }
+    }
   }
   if (!liste.length && !enAttenteVendues.length) return n;
 

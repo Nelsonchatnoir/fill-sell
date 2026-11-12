@@ -52,3 +52,16 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
   `git worktree remove` ou `rm -rf` (sinon le node_modules du dépôt principal est effacé).
 - Lectures de prod hors dépôt (citent des clients) : `…\scratchpad\cat\` (catalogue des fonctions), `…\scratchpad\defs\`.
 - Banc : `node scripts/essais/20261112140000_banc.mjs` ; fixture : `node scripts/essais/20261112140000_fixture.mjs --fonctions <tout.json> --tables <tab.json>`.
+
+## Après-midi — points 4 à 6 (rapport § 4 à 6)
+| Point | Compte | Classement | Suite |
+|---|---|---|---|
+| 4. publications programmées : dire quand ça part | 229c7b07, 4cfb7afe | ROUGE (l'app se taisait), corrigé | OTA 2.9.174 + web |
+| 5. empreintes-urls, temps de calcul dépassé | tout le parc (rapprochement ralenti, rien de cassé) | cause dans les appelants SQL (rafales de 100) : rapport seul | décision de Nico : borner `rapprochement_v3_empreinter` |
+| 6. Leboncoin « Animaux › Animaux » bloquée | cfdfda6f (298e4944, c8fd2caa) | ROUGE, corrigé | get-pending-jobs + handler-watch + app |
+- Formule du rythme (point 4) : médiane des servies des 3 derniers créneaux pleins (14 jours au plus), bornée au plafond ;
+  aucun créneau plein → aucun chiffre. `src/utils/rythmeProgramme.js`.
+- Verrous : `selftest:programmees-verite` (7 rouges sur 5e88909 → 30/30), `selftest:lbc-animal-vivant` (8 rouges → 21/21).
+- ⚠ Faute d'outillage (rien perdu) : un `git stash` raté dans la copie a été suivi d'un `git stash pop` qui a tenté
+  d'appliquer la remise du terminal Cloud (stash@{0}, « POINT 4 bandeau Cloud… ») — refusé par git, remise CONSERVÉE, copie
+  intacte. La pile de stash est partagée entre toutes les copies : jamais `git stash` ici.

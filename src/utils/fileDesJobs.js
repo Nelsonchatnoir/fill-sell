@@ -37,6 +37,7 @@ import {
 } from "../../supabase/functions/_shared/etat-job.js";
 import { phraseMiseAJourExtension } from "./extensionAJour.js";
 import { lotRetenuAuxCreneaux } from "../../supabase/functions/_shared/lot-manuel-creneau.js";
+import { phraseAttenteProgrammee } from "./rythmeProgramme.js";
 // (02/11 soir, Nico) Compte Cloud : les mots du Cloud pour ses tâches, jamais « ton ordinateur » ni « Chrome ».
 import { parLeCloud } from "../cloud/voieCloud.js";
 
@@ -276,6 +277,10 @@ export function situationJob(j, ctx = {}) {
       ? (cloud ? (T.en_cours_cloud[j.action] ?? T.en_cours_cloud.publish) : T.en_cours_ordinateur)
       : (cloud ? T.ordinateur_cloud : T.ordinateur); break;
     case "ordinateur_session": raison = cloud ? T.ordinateur_cloud : T.ordinateur_session; break;
+    // (12/11, point 4 de Nico) Une publication programmée dit QUAND elle part (« partira ce soir à partir de 19:00 »),
+    // jamais l'air bloquée — le réglage reçu de l'écran (ctx.reglageProgrammation), sinon la phrase d'avant.
+    case "programmee": raison = ctx.reglageProgrammation
+      ? phraseAttenteProgrammee(ctx.reglageProgrammation, maintenant, lang) : T.programmee; break;
     default: {
       const t = T[v.motif];
       raison = typeof t === "function" ? t(nom) : (t ?? libelleEtat(v.etat, lang));

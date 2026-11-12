@@ -40,6 +40,7 @@ import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from ".
 import { lbcProduitsDependants, lbcListePlate, lbcFeuilleDependante, lbcPaireDepuisTextes } from "../utils/lbcMaisonJardin";
 import { universLbcDeLaFiche, champsLbcSecondePasse, reponseDansLaListe, paireDeLaReponse } from "../publication/moteur/champsLbcAuto";
 import { gardeFouCategorie } from "../utils/categorieGardeFou";
+import { sansPoidsDeColisLbc } from "../../supabase/functions/_shared/leboncoin-animal-vivant.js";
 // Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
@@ -5234,6 +5235,9 @@ export default function ListingPreviewScreen({
     const poids = poidsDeLaFiche ?? defaut?.poids_g ?? null;
     let pf = lbc.platform_fields ?? {};
     let change = false;
+    // (12/11, point 6 de Nico) « Animaux › Animaux » : un animal vivant ne s'envoie pas (shippable = false chez
+    // Leboncoin, aucun champ de poids) — aucun poids ni format de colis posé (_shared/leboncoin-animal-vivant.js).
+    if (sansPoidsDeColisLbc(pf)) return copies;
     if (poids != null && poids <= POIDS_LBC_MAX && !(Number(pf.lbcPoidsGrammes) > 0)) {
       pf = { ...pf, lbcPoidsGrammes: poids, ...(poidsDeLaFiche == null ? { poids_par_defaut: true } : {}) };
       change = true;

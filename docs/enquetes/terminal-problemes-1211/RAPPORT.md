@@ -70,3 +70,46 @@ retraits Beebs en 404 depuis 60 jours : aucun revu en ligne, mais un seul était
 de 12 h qui suit le close (le 14/11 vers 18:45 si son poste est allumé). La boucle (n = 680) était le défaut rouge,
 corrigée le 11/11 22:40 (D1, get-pending-jobs v359). Clore plus tôt sur le 404 rouvrirait le risque du 04/10 (annonce
 validée par Beebs après un retrait « fait » → en ligne alors que vendue).
+
+## 4. Publications programmées : l'app dit ce qui va réellement partir — ROUGE (l'app se taisait), corrigé
+**Cause prouvée** (point 1) : le compte 229c7b07 (créneau du soir 19:00–22:00) voyait ses lots attendre sans un mot ; la
+feuille disait « elles partiront une à une dans ton créneau du soir », la file « Programmée : elle partira dans ton
+créneau » — ni l'heure, ni le rythme, ni la fin. Deux comptes ont ce réglage : 229c7b07 et 4cfb7afe.
+**Correctif** (règle `docs/regles/republication-et-publication.md` du 12/11) : à l'envoi d'un lot, « Elles partiront ce
+soir à partir de 19:00, une à la fois. À ton rythme habituel (environ 39 par soir), la dernière devrait partir vers le
+samedi 21/11. » ; dans « Ta file » : « Programmée : partira ce soir à partir de 19:00, une à la fois ». Réglage et rythme
+inchangés. **Formule** : N = médiane des servies des 3 derniers créneaux pleins (14 jours au plus ; plein = dernière servie
+dans les 30 dernières minutes du créneau, ou plafond atteint), borné au plafond ; fin = (déjà en attente + lot) ÷ N par
+créneau sur les jours actifs. Sur les vraies servies de 229c7b07 : 8 (sous son ancien plafond), 39, 53 → 39 (la médiane des
+14 jours aurait dit 8). 4cfb7afe (une seule servie, poste éteint) : aucun chiffre, « ton rythme habituel s'affichera après
+un premier créneau complet ».
+
+## 5. empreintes-urls dépasse son temps de calcul — NORMAL côté fonction, cause dans ses appelants : rapport seul
+**Cause prouvée** (journaux, lecture seule) : les échecs (546, « CPU Time exceeded ») tombent pendant les RAFALES d'appels
+simultanés. 24 h au 12/11 : 0 % d'échec dans les minutes à 1–3 appels, 9 % à 4–6, 25,5 % à 13–30, 27,5 % à 31 et plus ; 661
+des 690 échecs dans les minutes à 13 appels et plus ; 124 arrêts du worker pour 690 réponses 546 (≈ 5,6 requêtes perdues par
+arrêt : les appels simultanés partagent le worker). Les rafales viennent de nos fonctions SQL : `rapprochement_v3_empreinter`
+(jusqu'à 100 appels pg_net d'un coup après « Synchroniser », 6 photos par appel quand la fonction en prend 5) et
+`fusion_photo_tick` (6 appels à la fois chaque minute). La fonction elle-même est bornée (≈ 0,8 s de décodage par appel) et
+inchangée depuis ff0c460 (03/11, module « maison », interrupteur à 1 depuis 10:06) : versions 11 → 19 = même code (les
+autres numéros viennent des poses de secrets).
+**Depuis quand** : aucun de nos déploiements. Pendant les rafales, 1,4 % d'échecs du 03/11 10:10 au 04/11 10:10 (module
+maison déjà en service), 9,9 % du 04/11 12:00 au 05/11 12:00, 25–27 % les 11–12/11 — même code, même fréquence de rafales,
+photos plus légères (103 ms par photo au lieu de 159) : la plateforme coupe plus tôt pour la même charge.
+**Pour les clients** : rien de cassé — 0 passe de rapprochement classée sans ses photos en 24 h ; le rapprochement d'après
+« Synchroniser » attend un peu plus (443 attentes d'empreintes en 24 h, relues toutes les 12 s) ; ≈ 23 % des appels perdus.
+**Correctif possible (à décider par Nico, rien fait)** : borner la rafale dans `rapprochement_v3_empreinter` (par exemple 10
+appels à la fois au lieu de 100, et 5 photos par appel au lieu de 6) — migration SQL, hors de cette fonction.
+
+## 6. Compte cfdfda6f (Business), publication Leboncoin 298e4944 bloquée — ROUGE, corrigé
+**Le 5e essai** : passé le 12/11 à 14:01:31, même échec ; la tâche est tombée en « La publication n'a pas abouti après
+plusieurs essais… relance-la » (needs_user, 5 essais).
+**Cause prouvée** : catégorie « Animaux › Animaux » (animal vivant). Cinq traces : la page « Dites-nous en plus » ne montre
+que le critère `animal_type` (ni « État » ni « Poids du colis »), « Continuer » ne passe pas. Ce que Leboncoin demande, prouvé
+par l'annonce 3229105886 du même article déposée par la personne le 19/09 : type d'animal, nature de l'offre (Saillie),
+animal de race, âge, date de naissance, portée, vacciné, race — des informations que seul le vendeur connaît — et
+`shippable = false` : un poids de colis n'a aucun sens (le 1 kg venait du colis par défaut des Réglages). Même échec le
+10/11 (c8fd2caa, annulée par la personne). Seul compte touché (2 tâches) ; la catégorie est juste pour une saillie.
+**Correctif** (règle `docs/regles/plateformes.md` du 12/11) : jamais tentée — au premier passage, le geste « dépose-la
+toi-même sur Leboncoin, puis Synchroniser » (ou « Accessoires animaux » pour un objet) ; la tâche existante reçoit le même
+geste par handler-watch ; aucun poids posé par l'app sur cette catégorie.

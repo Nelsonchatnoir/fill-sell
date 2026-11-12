@@ -976,3 +976,15 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   réel, b.4) : rayon « déguisements » choisi pour un texte « ville » → la candidate de la bonne famille (veste → Blazers…),
   sinon la feuille réelle du catalogue, sinon AUCUN choix. Cas : compte 238dc49b, « veste de costume » classée en
   « Vêtements spécialisés et costumes » puis taille 50 refusée. Verrou `npm run selftest:costume-de-ville`.
+
+## ⛔ 12/11 (point 6 de Nico, terminal « Problèmes ») — Leboncoin, animal vivant : un geste clair au premier passage, aucun poids
+- Cas : compte cfdfda6f, job 298e4944 (saillie de chat, « Animaux › Animaux » posée par l'IA, poids 1 kg par défaut) : cinq
+  passages, cinq « wizard pas passé à l'aperçu » ; la page « Dites-nous en plus » ne montre que `animal_type`.
+- Preuve de ce que Leboncoin demande : l'annonce 3229105886 du même article, déposée par la personne le 19/09 —
+  animal_type, animal_offer_nature (Saillie), animal_race, animal_age, animal_birthdate, animal_litter, vaccinated_animal,
+  animal_breed ; **shippable = false** (aucun envoi, aucun poids : le formulaire n'en a pas).
+- Règle (`_shared/leboncoin-animal-vivant.js`) : une publication ou une republication Leboncoin « Animaux › Animaux », pas
+  encore engagée, n'est jamais tentée — get-pending-jobs la retient au premier passage, AVANT le poids (needs_user, source
+  `lbc_animal_vivant` : la déposer soi-même puis « Synchroniser » ; un objet → « Accessoires animaux ») ; handler-watch
+  (règle 11 de `_shared/questions-tranchees.ts`) donne le même geste à une tâche déjà tombée en échec ; l'app ne pose
+  aucun colis par défaut sur cette catégorie. Verrou `npm run selftest:lbc-animal-vivant`.

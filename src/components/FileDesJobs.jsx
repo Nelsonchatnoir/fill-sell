@@ -181,6 +181,8 @@ const ICONES = {
   rythme: Clock, limite_jour: Clock, creneau: Clock, essai: Clock, auto_en_pause: Clock,
   retenue_serveur: ShieldCheck, releve: ShieldCheck, technique: ShieldCheck, lbc_moderation: ShieldCheck, ebay_rayon: ShieldCheck,
   file_en_pause: Pause, lecture_origine: Clock,
+  // (12/11, point 4 de Nico) Une programmée attend son heure : une horloge, jamais le signe « pause » d'une file bloquée.
+  programmee: Clock,
   boutique: Pause, boutiques_a_ouvrir: Pause, plateforme: Pause, gel: Pause, ecartee: Pause, ebay_etranger: Pause,
   ordinateur: Monitor, ordinateur_session: Monitor, mise_a_jour: Monitor,
   geste: Hand, connexion: Hand, opla: Hand, depop: Hand, pas_partie: Hand,
@@ -341,7 +343,12 @@ export default function FileDesJobs({
   const aOplaEnAttente = (listeJobs ?? []).some((j) => j.platform === "opla" && j.status === "pending");
   const opla = useOplaAcces({ userId, actif: aOplaEnAttente });
   const cloudDuCompte = useCompteCloud(userId);
-  const programmationActive = Boolean(usePublicationProgrammee(userId ?? null).reglage);
+  // (12/11, point 4 de Nico) Le réglage lui-même : une programmée dit QUAND elle part (utils/rythmeProgramme.js).
+  const reglageLu = usePublicationProgrammee(userId ?? null).reglage;
+  const cleReglage = JSON.stringify(reglageLu ?? null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const reglageProgrammation = useMemo(() => reglageLu, [cleReglage]);
+  const programmationActive = Boolean(reglageProgrammation);
   const aPublicationVinted = (listeJobs ?? []).some((j) => j.platform === "vinted" && j.action === "publish" && ["pending", "needs_user"].includes(j.status));
   const boutiqueDefaut = useBoutiqueVintedParDefaut(userId, aPublicationVinted);
   // Une horloge qui avance toutes les 30 s : une pause dont l'heure est passée
@@ -356,6 +363,7 @@ export default function FileDesJobs({
     lang, maintenant,
     filePause: contexte?.filePause ?? (file_.pause === true),
     programmation: contexte?.programmation ?? programmationActive,
+    reglageProgrammation: contexte?.reglageProgrammation ?? reglageProgrammation,
     cloud: contexte?.cloud ?? cloudDuCompte,
     extension: contexte?.extension ?? autonome?.extension ?? null,
     plateformesEnPause: contexte?.plateformesEnPause ?? autonome?.plateformesEnPause ?? new Set(),
@@ -366,7 +374,7 @@ export default function FileDesJobs({
     boutiques: contexte?.boutiques ?? autonome?.boutiques ?? null,
     extensionAMettreAJour: contexte?.extensionAMettreAJour ?? autonome?.majExtension ?? false,
     texteErreur,
-  }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict, file_.pause, cloudDuCompte, programmationActive]);
+  }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict, file_.pause, cloudDuCompte, programmationActive, reglageProgrammation]);
 
   const file = useMemo(() => (listeJobs ? lireFile(listeJobs, ctx) : null), [listeJobs, ctx]);
   const ficheDe = (j) => lesFiches.get?.(String(j?.inventaire_id)) ?? null;
