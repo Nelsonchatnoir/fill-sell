@@ -269,6 +269,35 @@ const FR = {
   finConnexionsValeur: (n, total, reste) => (reste ? `${n} sur ${total} : ${reste} à connecter` : `${n} sur ${total}`),
   finSuiteCloud: 'Prochaine étape : connecte tes autres plateformes, puis publie ta première annonce.',
   finSuiteCloudPret: 'Prochaine étape : publie ta première annonce.',
+
+  // ── (11/11/2026) LES FORMULES AVEC CLOUD — textes validés par Nico (§ 8.2 du plan, avec ses 3 corrections : « l'extension
+  //    FillSell installée une fois sur ton ordinateur » (jamais « Chrome » en dur), « Tes ventes repérées automatiquement »,
+  //    la puce « eBay part déjà de nos serveurs » RETIRÉE). Aucun prix ici : passés en paramètre (prix du canal).
+  ordiKicker: "L'étape qui compte",
+  ordiTitre: 'As-tu un ordinateur ?',
+  ordiTexte: "Tes annonces doivent être déposées sur chaque plateforme, avec ton compte. Ton ordinateur peut s'en charger, ou nos serveurs.",
+  ordiOui: "Oui, j'ai un ordinateur",
+  ordiOuiSous: "Gratuit, avec l'extension FillSell installée une fois sur ton ordinateur.",
+  ordiNon: 'Non, seulement mon téléphone',
+  ordiNonSous: 'FillSell tourne pour toi sur nos serveurs.',
+  ordiPied: 'Tu pourras changer plus tard, dans Réglages.',
+  presKicker: 'FillSell Cloud',
+  presTitre: 'FillSell tourne pour toi, même sans ordinateur',
+  presTexte: (noms) => `Depuis nos serveurs, FillSell Cloud publie, remonte et retire tes annonces ${noms}, 24 h/24. Tu pilotes tout depuis ton téléphone.`,
+  presListe: ['Rien à installer', 'Tes ventes repérées automatiquement', 'Retrait partout après une vente'],
+  presCta: 'Voir les formules avec Cloud',
+  presOrdinateur: "Finalement, j'ai un ordinateur",
+  formKicker: (nom) => `${nom} · ${J7} gratuits`,
+  formFrise: (veille, bascule, nom, prix, zero) => [
+    { quand: "Aujourd'hui", quoi: `Carte demandée, ${zero} prélevé.` },
+    { quand: veille, quoi: "On te prévient dans l'app et par e-mail, et tu choisis ta formule." },
+    { quand: bascule, quoi: `Sans choix de ta part, ${nom} continue à ${prix}/mois. Sans engagement.` },
+  ],
+  formCta: `Commencer mes ${J7} gratuits`,
+  formCxKicker: (nom, date) => (date ? `${nom} activé · essai jusqu'au ${date}` : `${nom} activé`),
+  formuleKicker: 'Ta formule',
+  formuleTexte: (jauges) => `${jauges} par mois · le Cloud publie sans ordinateur.`,
+  finFormuleEssai: (nom, date) => `${nom} : essai gratuit jusqu'au ${date}`,
 };
 
 const EN = {
@@ -483,6 +512,32 @@ const EN = {
   finConnexionsValeur: (n, total, reste) => (reste ? `${n} of ${total}: ${reste} to connect` : `${n} of ${total}`),
   finSuiteCloud: 'Next step: connect your other platforms, then post your first listing.',
   finSuiteCloudPret: 'Next step: post your first listing.',
+
+  ordiKicker: 'The step that matters',
+  ordiTitre: 'Do you have a computer?',
+  ordiTexte: 'Your listings have to be posted on each platform, with your account. Your computer can handle it, or our servers can.',
+  ordiOui: 'Yes, I have a computer',
+  ordiOuiSous: 'Free, with the FillSell extension installed once on your computer.',
+  ordiNon: 'No, only my phone',
+  ordiNonSous: 'FillSell runs for you on our servers.',
+  ordiPied: 'You can change this later, in Settings.',
+  presKicker: 'FillSell Cloud',
+  presTitre: 'FillSell runs for you, even without a computer',
+  presTexte: (noms) => `From our servers, FillSell Cloud posts, bumps and removes your ${noms} listings, 24/7. You run everything from your phone.`,
+  presListe: ['Nothing to install', 'Your sales spotted automatically', 'Removed everywhere after a sale'],
+  presCta: 'See the plans with Cloud',
+  presOrdinateur: 'Actually, I have a computer',
+  formKicker: (nom) => `${nom} · ${D7} free`,
+  formFrise: (veille, bascule, nom, prix, zero) => [
+    { quand: 'Today', quoi: `Card required, ${zero} charged.` },
+    { quand: veille, quoi: 'We remind you in the app and by email, and you choose your plan.' },
+    { quand: bascule, quoi: `If you do nothing, ${nom} continues at ${prix}/mo. No commitment.` },
+  ],
+  formCta: `Start my ${D7} free`,
+  formCxKicker: (nom, date) => (date ? `${nom} on · trial until ${date}` : `${nom} on`),
+  formuleKicker: 'Your plan',
+  formuleTexte: (jauges) => `${jauges} a month · the Cloud posts without a computer.`,
+  finFormuleEssai: (nom, date) => `${nom}: free trial until ${date}`,
 };
 
 export function textesEntree(lang) {

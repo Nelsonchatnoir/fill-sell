@@ -12,6 +12,11 @@ import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
 import { prixDepuisAppleRenouvellement } from "../_shared/cloud-prix.js";
 import { decisionApple, ligneJournal, finPeriodeAEcrire, isoOuNull, natureRemboursementApple } from "../_shared/notifications-stores.js";
 import { palierDuProfil } from "../_shared/palier.js";
+// (11/11/2026, offres Cloud) Les formules avec Cloud dans le groupe « FillSell Plan » : le produit fait foi (planApple).
+import { formuleDuProduit, planAchatBoutique, grantDeFormule, formulePrevueEcrivable } from "../_shared/formules-serveur.js";
+import { lectureFormuleApple, verdictEssaiStore } from "../_shared/cloud-option.js";
+import { rangDesDrapeaux, rangGoogleVivant } from "../_shared/droits-canaux.js";
+import { rangStripeDuClient } from "../_shared/stripe-rang-vivant.ts";
 
 // (25/10) Prise au registre npm, la bibliothèque ne trouve pas seule la cryptographie du runtime edge (pas de `self`) :
 // la v38 a refusé la notification de TEST d'Apple (« Cannot get Crypto by name 'default' », 08:51:33). On la lui donne.
@@ -148,6 +153,146 @@ async function verifyAndDecodeJWS(jws: string): Promise<Record<string, unknown>>
   if (!valid) throw new Error("JWS signature verification failed");
 
   return JSON.parse(new TextDecoder().decode(b64urlToUint8(payloadB64)));
+}
+
+// ═══ (11/11/2026, offres Cloud) LE GROUPE « FillSell Plan » QUAND LE PRODUIT FAIT FOI ═══════════════════════════════════
+// Premium + Cloud, Pro + Cloud, Business + Cloud sont dans le MÊME groupe que Premium, Pro et Business (un abonnement par
+// personne). Pour une formule avec Cloud — et pour un produit sans Cloud quand le Cloud de ce compte est lié à CET
+// abonnement Apple (retrait du Cloud) ou qu'un changement y a été annoncé (DID_CHANGE_RENEWAL_PREF / DOWNGRADE) — les
+// droits se RECALCULENT depuis le produit de la transaction (achat, renouvellement : le produit renouvelé), sans jamais
+// descendre sous un autre canal vivant (Stripe relu, Google). Le Cloud suit le produit : formule → il tourne (payé, ou en
+// essai si la semaine gratuite est permise) ; produit sans Cloud → il s'arrête. ⛔ Business + Cloud n'a pas d'essai : une
+// semaine gratuite qui arriverait quand même n'ouvre RIEN avant le premier paiement réel (décision 8 : idem pour un essai
+// déjà pris). Aucun crédit du mois pendant un essai.
+const COLONNES_PLAN_APPLE = "id, email, lang, stripe_customer_id, google_purchase_token, google_product_id, apple_original_transaction_id, "
+  + "subscription_period_end, is_premium, is_pro, is_business, is_comped, formule_prevue, formule_prevue_le, formule_prevue_canal, "
+  + "cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode";
+const repondreApple = (corps: Record<string, unknown>, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
+
+/** Le rang des AUTRES canaux (Stripe relu, Google vivant). Stripe injoignable : on ne descend pas (rang des drapeaux). */
+// deno-lint-ignore no-explicit-any
+async function rangAutresQueApple(profil: any): Promise<number> {
+  let stripeRang = 0;
+  try { stripeRang = await rangStripeDuClient(profil?.stripe_customer_id ?? null); }
+  catch (e) {
+    console.warn(`[apple-iap-webhook] Stripe illisible (${(e as Error)?.message ?? e}) : aucun palier ne descend`);
+    return rangDesDrapeaux(profil);
+  }
+  return Math.max(stripeRang, rangGoogleVivant(profil));
+}
+
+// deno-lint-ignore no-explicit-any
+async function planApple(p: { notificationType: string; sousType: string | null; effet: string | null; tx: Record<string, unknown>; renouv: Record<string, unknown> | null; profil: any; userId: string; orig: string | null; productId: string; natureRemb: string | null }): Promise<Response> {
+  const { notificationType, sousType, tx, renouv, profil, userId, orig, productId } = p;
+  const f = formuleDuProduit(productId)!;
+  const cloudLie = profil?.cloud_canal === "apple" && orig != null && profil?.cloud_ref === orig;
+  const expires = typeof tx.expiresDate === "number" ? tx.expiresDate as number : null;
+  const finIso = expires ? new Date(expires).toISOString() : null;
+  const lecture = lectureFormuleApple(tx, renouv) ?? { essai: false, debut: null, fin: finIso, original: orig, transaction: null,
+    renouvellementAuto: renouv?.autoRenewStatus === 1 ? true : renouv?.autoRenewStatus === 0 ? false : null, phaseEssai: false, montantPaye: null };
+  const update: Record<string, unknown> = {};
+  const mailsAvant = profil ?? {};
+  const evenements: Array<Record<string, unknown>> = [];
+
+  // 1. Un changement ANNONCÉ (au prochain renouvellement) : DOWNGRADE → la formule prévue ; sans sous-type → retour en arrière.
+  if (notificationType === "DID_CHANGE_RENEWAL_PREF" || (notificationType === "OFFER_REDEEMED" && sousType === "DOWNGRADE")) {
+    if (sousType === "UPGRADE") { /* immédiat : traité comme un achat du produit (plus bas) */ }
+    else {
+      const versProduit = String(renouv?.autoRenewProductId ?? "");
+      const vers = formuleDuProduit(versProduit);
+      if (sousType === "DOWNGRADE" && vers && vers.formule !== "cloud") {
+        const prevue = formulePrevueEcrivable(vers.formule);
+        const maj = prevue && finIso ? { formule_prevue: prevue, formule_prevue_le: finIso, formule_prevue_canal: "apple" } : {};
+        if (Object.keys(maj).length) {
+          const { error } = await supabaseAdmin.from("profiles").update(maj).eq("id", userId);
+          if (error) console.error(`[apple-iap-webhook] formule prévue non écrite : ${error.message}`);
+        }
+        // Le Cloud retiré (même palier, sans Cloud) : le mail « le Cloud s'arrêtera le … ».
+        if (f.cloud && !vers.cloud && vers.rang === f.rang && orig) {
+          await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]",
+            evenements: [{ evenement: "arret_programme", cle: `${orig}:retrait:${finIso ?? "fin"}`, canal: "apple", faits: { finIso, formule: f.formule, retraitCloud: true } }] });
+        }
+        console.log(`[apple-iap-webhook] ${productId} → ${versProduit} prévu le ${finIso ?? "?"} → userId=${userId}`);
+        return repondreApple({ ok: true, prevue: vers.formule });
+      }
+      if (!sousType && profil?.formule_prevue_canal === "apple") {
+        await supabaseAdmin.from("profiles").update({ formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null }).eq("id", userId);
+        console.log(`[apple-iap-webhook] changement prévu annulé (${productId} garde son renouvellement) → userId=${userId}`);
+      }
+      return repondreApple({ ok: true, skipped: `renewal_pref_${sousType ?? "aucun"}` });
+    }
+  }
+
+  // 2. Le renouvellement coupé ou remis (DID_CHANGE_RENEWAL_STATUS) : l'accès court jusqu'à la fin ; le Cloud suit sa règle.
+  if (notificationType === "DID_CHANGE_RENEWAL_STATUS") {
+    const reprise = renouv?.autoRenewStatus === 1;
+    update.subscription_cancel_at_period_end = !reprise;
+    if (finIso) update.subscription_period_end = finIso;
+    if (f.cloud || cloudLie) {
+      const { update: maj } = ecritureCloudStore({ canal: "apple", lecture, sens: reprise ? "reprise" : "annulation", ref: orig, profil: profil ?? {} });
+      if (maj) { Object.assign(update, maj); evenements.push(...evenementsBoutique({ canal: "apple", nature: reprise ? "reprise" : "annulation", avant: mailsAvant, update: maj, lecture, ref: orig })); }
+    }
+  } else {
+    const sens = ["SUBSCRIBED", "DID_RENEW", "RESUBSCRIBE"].includes(notificationType) || p.effet === "on" ? "on"
+      : ["EXPIRED", "REFUND", "REVOKE", "DID_FAIL_TO_RENEW"].includes(notificationType) || p.effet === "off" ? "off" : null;
+    if (!sens) {
+      console.log(`[apple-iap-webhook] ${productId} : type ${notificationType} sans effet — skipped`);
+      return repondreApple({ ok: true, skipped: notificationType });
+    }
+    const essaiBoutique = lecture.essai === true;
+    const plan = planAchatBoutique({
+      produit: productId, sens, essaiBoutique, verdictEssai: verdictEssaiStore(profil ?? {}, "apple", orig),
+      rangAutres: await rangAutresQueApple(profil), cloudLie,
+    })!;
+    if (plan.drapeaux) Object.assign(update, plan.drapeaux);
+    if (orig) update.apple_original_transaction_id = orig;
+    if (sens === "on") {
+      if (productId === "app.fillsell.premium.sub") update.is_founder = true;   // Founder : un attribut à vie (règle d'avant)
+      if (expires) { const fin = finPeriodeAEcrire(expires, profil?.subscription_period_end ?? null); if (fin) update.subscription_period_end = fin; }
+      update.subscription_cancel_at_period_end = renouv?.autoRenewStatus === 0;
+      // Le changement annoncé est arrivé (le produit renouvelé est celui prévu, ou plus haut) : il n'est plus « prévu ».
+      if (profil?.formule_prevue_canal === "apple") { update.formule_prevue = null; update.formule_prevue_le = null; update.formule_prevue_canal = null; }
+    }
+    if (plan.cloud === "ecrire" || plan.cloud === "couper") {
+      const { update: maj, motif } = ecritureCloudStore({ canal: "apple", lecture, sens: plan.cloud === "ecrire" ? "on" : "off", ref: orig, profil: profil ?? {} });
+      if (maj) {
+        Object.assign(update, maj);
+        // profiles.cloud_formule : la formule quand son Cloud est écrit, NULL quand il est coupé.
+        update.cloud_formule = plan.cloud === "ecrire" ? f.formule : null;
+        const nature = notificationType === "SUBSCRIBED" ? "debut" : notificationType === "DID_FAIL_TO_RENEW" ? "impaye" : sens === "on" ? "paiement" : "fin";
+        if (f.cloud) evenements.push(...evenementsBoutique({ canal: "apple", nature, avant: mailsAvant, update: maj, lecture, ref: orig }));
+      } else console.log(`[apple-iap-webhook] Cloud de ${productId} non écrit (${motif})`);
+    }
+    if (!plan.ouvrir && sens === "on") console.warn(`[apple-iap-webhook] ${productId} : semaine gratuite sans droits (${plan.raison}) — droits au premier paiement réel`);
+    const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
+    if (error) {
+      console.error("[apple-iap-webhook] DB error (formule):", error.message);
+      return repondreApple({ error: error.message }, 500);
+    }
+    if (p.natureRemb && sens === "off") {
+      await signalerRemboursementStore({ canal: "apple", nature: p.natureRemb as "remboursement" | "retrait", type: "abonnement", user_id: userId, produit: productId,
+        ref: orig, palier: "gratuit (sauf autre canal)", droit: "retiré (le droit Apple tombe, les autres canaux restent)" });
+    }
+    if (plan.credit) {
+      const montant = tx.price != null && tx.currency ? `${(Number(tx.price) / 1000).toFixed(2)} ${tx.currency}` : null;
+      const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
+        p_user_id: userId, p_tier: grantDeFormule(f.formule), p_period_end: finIso, p_source: "payment",
+      });
+      if (grantErr) await alerterPaiementNonCredite({ canal: "apple", type: "abonnement", user_id: userId, produit: productId, montant, ref: orig, rpc: null, erreur: grantErr.message });
+      else if ((grantRes as { granted?: boolean })?.granted === true) {
+        await notifierPaiement({ canal: "apple", type: "abonnement", user_id: userId, produit: f.formule, montant, pepites: (grantRes as { amount?: number })?.amount ?? null, ref: orig, rpc: grantRes });
+      }
+    }
+    await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]",
+      evenements: evenements as never, lirePrix: async () => prixDepuisAppleRenouvellement(renouv).prix });
+    console.log(`[apple-iap-webhook] ${notificationType} ${productId} (${f.formule}) ${sens} → userId=${userId}`, JSON.stringify(update));
+    return repondreApple({ ok: true, formule: f.formule, sens });
+  }
+  const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
+  if (error) return repondreApple({ error: error.message }, 500);
+  await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]", evenements: evenements as never });
+  console.log(`[apple-iap-webhook] ${notificationType} ${productId} → userId=${userId}`, JSON.stringify(update));
+  return repondreApple({ ok: true, formule: f.formule });
 }
 
 serve(async (req) => {
@@ -295,6 +440,25 @@ serve(async (req) => {
           });
         }
 
+        // (11/11) Une formule avec Cloud : le renouvellement coupé ou remis — l'accès court jusqu'à la fin, le Cloud suit sa règle.
+        const formuleRen = renewalProductId ? formuleDuProduit(renewalProductId) : null;
+        if (renewalToken && formuleRen?.cloud && formuleRen.formule !== "cloud") {
+          const profilF = await profilCloudPourStore(supabaseAdmin, renewalToken);
+          const renewalDateF = renewal.renewalDate as number | undefined;
+          const finF = renewalDateF != null ? new Date(renewalDateF).toISOString() : null;
+          const lectureF = { fin: finF, renouvellementAuto: autoRenewStatus === 1 ? true : autoRenewStatus === 0 ? false : null, phaseEssai: null, formule: formuleRen.formule };
+          const sensF = autoRenewStatus === 1 ? "reprise" : "annulation";
+          const { update: majF } = ecritureCloudStore({ canal: "apple", lecture: lectureF, sens: sensF, ref: renewalOriginalTxId ?? null, profil: profilF ?? {} });
+          const ecrireF = { ...(majF ?? {}), subscription_cancel_at_period_end: autoRenewStatus !== 1, ...(finF ? { subscription_period_end: finF } : {}) };
+          const { error: errF } = await supabaseAdmin.from("profiles").update(ecrireF).eq("id", renewalToken);
+          if (errF) return new Response(JSON.stringify({ error: errF.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+          await mailsCloud(supabaseAdmin, {
+            userId: renewalToken, email: (profilF?.email as string | null) ?? null, lang: (profilF?.lang as string | null) ?? null, canal: "apple", journal: "[apple-iap-webhook]",
+            evenements: evenementsBoutique({ canal: "apple", nature: sensF, avant: profilF ?? {}, update: majF, lecture: lectureF, ref: renewalOriginalTxId ?? null }),
+          });
+          console.log(`[apple-iap-webhook] ${formuleRen.formule} DID_CHANGE_RENEWAL_STATUS autoRenew=${autoRenewStatus} → userId=${renewalToken}`, JSON.stringify(ecrireF));
+          return new Response(JSON.stringify({ ok: true, formule: formuleRen.formule }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
         if (!renewalToken || !renewalProductId || !PREMIUM_PRODUCT_IDS.includes(renewalProductId)) {
           console.warn("[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS: missing token or non-premium product");
           return new Response(JSON.stringify({ ok: true, skipped: "missing_token_or_product" }), {
@@ -409,7 +573,8 @@ serve(async (req) => {
       console.error("[apple-iap-webhook] No appAccountToken — cannot identify user — tx=", JSON.stringify(tx));
       // Payload inexploitable : de l'argent a pu être encaissé sans qu'on
       // sache pour qui. C'est exactement le cas à ne jamais laisser passer.
-      if (COIN_PRODUCTS[productId] != null || PREMIUM_PRODUCT_IDS.includes(productId)) {
+      // (11/11) Une formule avec Cloud aussi : de l'argent a pu être encaissé sans compte identifié.
+      if (COIN_PRODUCTS[productId] != null || PREMIUM_PRODUCT_IDS.includes(productId) || formuleDuProduit(productId)) {
         await alerterPaiementNonCredite({
           canal: "apple",
           type: COIN_PRODUCTS[productId] != null ? "pack" : "abonnement",
@@ -491,6 +656,29 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // ── (11/11/2026) LE GROUPE « FillSell Plan » QUAND LE PRODUIT FAIT FOI (planApple, plus haut) ──────────────
+    // Une formule avec Cloud, toujours ; un produit sans Cloud seulement si le Cloud de ce compte est lié à CET abonnement
+    // Apple (retrait du Cloud) ou qu'un changement y est annoncé — sinon le chemin des paliers d'avant, inchangé.
+    const formuleTx = formuleDuProduit(productId);
+    if (formuleTx && formuleTx.formule !== "cloud") {
+      const { data: profilLu } = await supabaseAdmin.from("profiles").select(COLONNES_PLAN_APPLE).eq("id", appAccountToken).maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      const profilPlan = profilLu as Record<string, any> | null;
+      const cloudLiePlan = profilPlan?.cloud_canal === "apple" && originalTransactionId != null && profilPlan?.cloud_ref === originalTransactionId;
+      if (formuleTx.cloud || cloudLiePlan || profilPlan?.formule_prevue_canal === "apple"
+          || (notificationType === "DID_CHANGE_RENEWAL_PREF" && notificationSubtype === "DOWNGRADE")) {
+        let renouvPlan: Record<string, unknown> | null = null;
+        if (signedRenewalInfo) {
+          try { renouvPlan = await verifyAndDecodeJWS(signedRenewalInfo); } catch { console.warn("[apple-iap-webhook] formule : signedRenewalInfo illisible"); }
+        }
+        const interditPlan = (await profilCloudPourStore(supabaseAdmin, appAccountToken)).cloud_essai_interdit === true;
+        return await planApple({
+          notificationType, sousType: notificationSubtype, effet: decisionNotif.connu ? decisionNotif.effet : null, tx, renouv: renouvPlan,
+          profil: { ...(profilPlan ?? {}), cloud_essai_interdit: interditPlan }, userId: appAccountToken, orig: originalTransactionId ?? null, productId, natureRemb,
+        });
+      }
     }
 
     // ── Consumables : packs de Pépites (2026-07-28) ───────────────────────

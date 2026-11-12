@@ -115,6 +115,10 @@ export function palierDeFacture(invoice, abonnement = null, prix = {}) {
     if (prix.business && id === prix.business) return "business";
     if (prix.pro && id === prix.pro) return "pro";
     if (prix.standard && id === prix.standard) return "premium";
+    // (11/11, offres Cloud) Une formule avec Cloud se facture au palier qu'elle porte.
+    if (prix.business_cloud && id === prix.business_cloud) return "business";
+    if (prix.pro_cloud && id === prix.pro_cloud) return "pro";
+    if (prix.premium_cloud && id === prix.premium_cloud) return "premium";
     return null;
   };
   const leplusHaut = (liste) => liste.filter(Boolean).sort((a, b) => RANG[b] - RANG[a])[0] ?? null;
@@ -159,6 +163,7 @@ export function rangProduitStore(produit) {
 // lisait « Premium Google vivant jusqu'au 26/11 ». Désormais : Google vivant = jeton + produit de palier + fin À VENIR,
 // et l'état RELU chez Google (opts.googleActif, create-checkout-session) tranche : faux → pas vivant, vrai → vivant.
 // Sans relecture (null) : la preuve locale, drapeaux compris. Apple : fin À VENIR exigée (13/13 abonnés Apple l'ont).
+/** @param {any} p @param {number} [maintenant] @param {{ googleActif?: boolean | null }} [opts] */
 export function abonnementStoreVivant(p, maintenant = Date.now(), { googleActif = null } = {}) {
   if (!p) return null;
   const rangDrapeaux = p.is_business ? 3 : (p.is_pro ? 2 : (p.is_premium ? 1 : 0));

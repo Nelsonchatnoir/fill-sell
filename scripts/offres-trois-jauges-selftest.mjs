@@ -412,7 +412,8 @@ try {
     ok(/\.\.\.\(trigger === 'quota_geste' && quotaInfo\?\.geste \? \{ geste: quotaInfo\.geste \} : \{\}\)/.test(ouverture), 'télémétrie : l’ouverture porte le geste, rien d’autre');
     const logs = [...code.matchAll(/logModale\('([a-z_]+)'/g)].map((x) => x[1]).sort().join(',');
     // (09/11, maquette B) offers_modal_cloud_bascule est parti avec l'interrupteur ; aucun événement neuf.
-    ok(logs === 'offers_modal_abandon,offers_modal_cloud_ajout,offers_modal_cloud_seul,offers_modal_offertes_click,offers_modal_open,offers_modal_tier_click',
+    // (11/11/2026, changement VOLONTAIRE nommé au rapport OFFRES-APP) + offers_modal_formule_cloud : le choix d'une carte « Avec Cloud ».
+    ok(logs === 'offers_modal_abandon,offers_modal_cloud_ajout,offers_modal_cloud_seul,offers_modal_formule_cloud,offers_modal_offertes_click,offers_modal_open,offers_modal_tier_click',
       'aucun événement neuf (la bascule de l’interrupteur est partie avec lui)', logs);
     const pd = lignesDeCode(lire('src/components/PlanDetailsModal.jsx'));
     ok(/import \{ COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard, CorpsCarteGrille, BlocCoches \} from '\.\/ConversionModal';/.test(pd)

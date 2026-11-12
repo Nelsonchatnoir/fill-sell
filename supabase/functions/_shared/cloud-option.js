@@ -39,6 +39,15 @@
 //
 // ⛔ Ce module ne lit ni n'écrit la base : il rend des décisions que l'appelant
 //    applique (migration 20261004233000).
+//
+// (11/11/2026, offres Cloud, décisions de Nico) LES FORMULES AVEC CLOUD — Premium + Cloud, Pro + Cloud, Business +
+// Cloud — sont UN abonnement qui porte À LA FOIS un palier et le Cloud (formules-serveur.js). Les règles ci-dessus
+// restent vraies pour le Cloud SEUL (hérité) ; une formule avec Cloud pose les drapeaux de son palier ET les colonnes
+// Cloud (is_cloud payée, cloud_essai_* en essai, cloud_canal, cloud_ref = l'abonnement). Le Cloud seul garde
+// `cloud: true` (hors du rang) ; une formule porte `formuleCloud` (dans le rang de son palier). Pour un abonnement de
+// palier sans formule, les sorties de ce module ne changent pas (selftest:paiements-non-regression).
+import { formuleDAbonnementStripe, planTypeDeFormule, essaiCloudAbonneStripe, formuleDuProduit, estFormuleCloud } from "./formules-serveur.js";
+import { PRODUITS_BOUTIQUES } from "./formules-cloud.js";
 
 export const ESSAI_CLOUD_JOURS = 7;
 export const JOUR_MS = 86_400_000;
@@ -165,6 +174,10 @@ export function litAbonnementStripe(sub, prix = {}) {
   const vivant = paye;
   const cloud = estAbonnementCloud(sub, prix);
   let palier = null;
+  // (11/11) Une formule avec Cloud (son prix, sinon sa métadonnée `formule`) : le palier de la formule.
+  const formuleCloud = cloud ? null : formuleDAbonnementStripe(sub, prix);
+  // (11/11, décision 6) L'essai du Cloud d'un ABONNÉ (schedule : il paie sa formule 7 jours, puis la formule avec Cloud).
+  const essaiCloudAbonne = cloud || formuleCloud ? null : essaiCloudAbonneStripe(sub);
   if (!cloud) {
     const ids = (sub?.items?.data ?? []).map(prixDeLArticle);
     const meta = sub?.metadata?.plan_type;
@@ -173,8 +186,11 @@ export function litAbonnementStripe(sub, prix = {}) {
     if (prix.business && ids.includes(prix.business)) palier = "business";
     else if (prix.pro && ids.includes(prix.pro)) palier = "pro";
     else if (prix.standard && ids.includes(prix.standard)) palier = palier ?? "standard";
+    if (formuleCloud) palier = planTypeDeFormule(formuleCloud);
   }
   return {
+    ...(formuleCloud ? { formuleCloud } : {}),
+    ...(essaiCloudAbonne ? { essaiCloudAbonne } : {}),
     id: sub?.id ?? null,
     status,
     vivant,
@@ -206,16 +222,24 @@ export function drapeauxDepuisStripe(subs, prix = {}) {
   const lus = (subs ?? []).map((s) => litAbonnementStripe(s, prix));
   const vivants = lus.filter((l) => l.vivant);
   const paliers = lus.filter((l) => l.paye && !l.cloud);
-  const clouds = vivants.filter((l) => l.cloud);
+  // (11/11) Le Cloud vient du Cloud seul, d'une formule avec Cloud (payée : active ; essai : trialing), ou de l'essai
+  // d'un abonné (schedule : son abonnement est payé, le Cloud est en essai jusqu'à essai_cloud_fin).
+  const clouds = vivants.filter((l) => l.cloud || l.formuleCloud).concat(vivants
+    .filter((l) => !l.cloud && !l.formuleCloud && l.essaiCloudAbonne)
+    .map((l) => ({ ...l, essai: true, trial_start: l.essaiCloudAbonne.debut, trial_end: l.essaiCloudAbonne.fin, cancel_at_period_end: false })));
   const cloudPaye = clouds.find((l) => !l.essai) ?? null;
   const cloudEssai = clouds.find((l) => l.essai) ?? null;
   const porteur = cloudPaye ?? cloudEssai;
-  // Le dernier abonnement Cloud arrêté pendant son essai (s'il n'y a plus rien de vivant).
+  // Le dernier abonnement Cloud (seul ou formule) arrêté pendant son essai (s'il n'y a plus rien de vivant).
   const arrete = porteur ? null
-    : lus.filter((l) => l.cloud && l.essai_arrete_le).sort((a, b) => (a.essai_arrete_le < b.essai_arrete_le ? 1 : -1))[0] ?? null;
+    : lus.filter((l) => (l.cloud || l.formuleCloud) && l.essai_arrete_le).sort((a, b) => (a.essai_arrete_le < b.essai_arrete_le ? 1 : -1))[0] ?? null;
   const hasBusiness = paliers.some((l) => l.palier === "business");
   const hasPro = paliers.some((l) => l.palier === "pro");
+  // (11/11) La formule avec Cloud qui porte le Cloud (payée, en essai, ou essai d'abonné) — profiles.cloud_formule. Clé
+  // absente sans formule : les sorties d'un palier ou du Cloud seul ne changent pas.
+  const formuleVivante = porteur ? (porteur.formuleCloud ?? porteur.essaiCloudAbonne?.formule ?? null) : null;
   return {
+    ...(formuleVivante ? { cloud_formule: formuleVivante } : {}),
     is_premium: paliers.length > 0,
     is_pro: hasPro || hasBusiness,
     is_business: hasBusiness,
@@ -252,6 +276,9 @@ export function miseAJourProfilDepuisStripe(d, canalActuel) {
     update.cloud_periode_fin = d.cloud_periode_fin;
     update.cloud_arret_fin_periode = d.cloud_arret_fin_periode;
     if (d.cloud_essai_debut) { update.cloud_essai_debut = d.cloud_essai_debut; update.cloud_essai_fin = d.cloud_essai_fin; }
+    // (11/11) La formule avec Cloud vivante (profiles.cloud_formule, migration 20261112000000) ; sa remise à NULL quand la
+    // formule tombe est faite par l'appelant (stripe-webhook), seulement si la colonne en porte une.
+    if (d.cloud_formule) update.cloud_formule = d.cloud_formule;
   } else if (canalActuel == null || canalActuel === "stripe") {
     // Plus rien chez Stripe : l'option tombe. L'essai pris reste écrit (un seul par compte).
     update.is_cloud = false;
@@ -271,8 +298,10 @@ export function miseAJourProfilDepuisStripe(d, canalActuel) {
 export function essaiCloudPermis(p, abonnementsStripe = [], prix = {}) {
   if (p?.cloud_essai_debut != null) return false;
   if (p?.is_cloud === true) return false;
+  // (11/11) Une formule avec Cloud (ou l'essai du Cloud d'un abonné) prise en essai compte aussi : un essai par personne.
   return !(abonnementsStripe ?? []).some((s) =>
-    estAbonnementCloud(s, prix) && (s?.trial_start != null || s?.metadata?.essai_cloud === "1"));
+    (estAbonnementCloud(s, prix) || formuleDAbonnementStripe(s, prix) || essaiCloudAbonneStripe(s) || estFormuleCloud(s?.metadata?.essai_cloud_formule))
+    && (s?.trial_start != null || s?.metadata?.essai_cloud === "1" || s?.metadata?.essai_cloud_formule != null));
 }
 
 // (05/11 soir, lot « Ouverture du Cloud », point 7 — serveur plein au paiement) La page de paiement Stripe du Cloud
@@ -318,6 +347,19 @@ export function sessionEstCloud(s) {
  */
 export function lectureCloudApple(tx, renouvellement = null) {
   if (tx?.productId !== PRODUIT_CLOUD_APPLE) return null;
+  return lireTransactionApple(tx, renouvellement);
+}
+/**
+ * (11/11) Une FORMULE AVEC CLOUD chez Apple (groupe « FillSell Plan ») : la même lecture que le Cloud seul (essai =
+ * offre d'introduction gratuite, montant payé, renouvellement auto), plus `formule`. null pour tout autre produit.
+ * @param {any} tx @param {any} [renouvellement]
+ */
+export function lectureFormuleApple(tx, renouvellement = null) {
+  const f = formuleDuProduit(tx?.productId);
+  if (!f || !estFormuleCloud(f.formule)) return null;
+  return { ...lireTransactionApple(tx, renouvellement), formule: f.formule };
+}
+function lireTransactionApple(tx, renouvellement) {
   const essai = Number(tx?.offerType) === 1 && (tx?.offerDiscountType == null || tx?.offerDiscountType === "FREE_TRIAL");
   // (08/11, résiliation) Ce qu'Apple dit EN PLUS, pour l'arrêt et les mails : le renouvellement automatique
   // (signedRenewalInfo.autoRenewStatus, vérifié par l'appelant — 0 = coupé : Apple ne prélèvera pas), la période EN
@@ -352,6 +394,20 @@ export const GOOGLE_PURCHASED = 4;
  */
 export function lectureCloudGoogle(subscriptionId, purchase, notificationType = null) {
   if (subscriptionId !== PRODUIT_CLOUD_GOOGLE) return null;
+  return lireAchatGoogle(purchase, notificationType, OFFRE_ESSAI_CLOUD_GOOGLE);
+}
+/**
+ * (11/11) Une FORMULE AVEC CLOUD chez Google (un abonnement par formule) : même lecture, avec l'offre d'essai de CETTE
+ * formule (formules-cloud.js ; ⛔ aucune pour Business + Cloud : jamais d'essai lu), plus `formule`. null sinon.
+ * @param {string} subscriptionId @param {any} purchase @param {number | null} [notificationType]
+ */
+export function lectureFormuleGoogle(subscriptionId, purchase, notificationType = null) {
+  const f = formuleDuProduit(subscriptionId);
+  if (!f || !estFormuleCloud(f.formule)) return null;
+  const offre = PRODUITS_BOUTIQUES[f.formule]?.google_offre_essai ?? null;
+  return { ...lireAchatGoogle(purchase, notificationType, offre), formule: f.formule };
+}
+function lireAchatGoogle(purchase, notificationType, offreEssai) {
   const ligne = (purchase?.lineItems ?? [])[0] ?? {};
   const offre = ligne?.offerDetails?.offerId ?? null;
   const debut = iso(instant(purchase?.startTime));
@@ -364,10 +420,12 @@ export function lectureCloudGoogle(subscriptionId, purchase, notificationType = 
   const d = instant(debut); const f = instant(fin);
   const premierePeriodeCourte = d != null && f != null && f - d <= (ESSAI_CLOUD_JOURS + 1) * JOUR_MS;
   const phase = ligne?.offerPhase ?? null;
+  // (11/11) L'offre d'essai du produit lu (Cloud seul : cloud-trial-3d ; formule : la sienne ; Business + Cloud : aucune).
+  const offreDEssai = offreEssai != null && offre === offreEssai;
   const phaseEssai = phase && typeof phase === "object"
     ? phase.freeTrial != null
-    : offre === OFFRE_ESSAI_CLOUD_GOOGLE && premierePeriodeCourte;
-  if (offre === OFFRE_ESSAI_CLOUD_GOOGLE) {
+    : offreDEssai && premierePeriodeCourte;
+  if (offreDEssai) {
     if (notificationType != null) essai = Number(notificationType) === GOOGLE_PURCHASED;
     else essai = premierePeriodeCourte;
   }

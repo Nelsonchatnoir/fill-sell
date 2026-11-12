@@ -13,14 +13,21 @@
 // Pur (aucun import natif) : testé en Node par scripts/prix-boutique-selftest.mjs. Le chargement natif vit ailleurs.
 
 import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from '../utils/palier.js';
+import { PALIER_DE_FORMULE, SUPPLEMENT_CLOUD_EUR } from '../../supabase/functions/_shared/formules-cloud.js';
 
-export const PRODUITS_PRIX = Object.freeze(['premium', 'pro', 'business', 'cloud']);
+// (11/11/2026) + les trois formules avec Cloud (contrat _shared/formules-cloud.js) : même règle que les autres.
+export const PRODUITS_PRIX = Object.freeze(['premium', 'pro', 'business', 'cloud', 'premium_cloud', 'pro_cloud', 'business_cloud']);
 // Les prix du WEB (Stripe, euros). ⛔ Lus sur le web SEULEMENT.
+// (11/11/2026) Les formules avec Cloud : les prix Stripe créés le 11/11 (price_1UahzR… 34,99 €, price_1Uai1K… 49,99 €,
+// price_1Uai2n… 79,99 € par mois, relus par l'API) — scripts/formules-cloud-offres-selftest.mjs les compare au contrat.
 export const PRIX_WEB = Object.freeze({
   premium: Object.freeze({ fr: '12,99 €', en: '€12.99' }),
   pro: Object.freeze({ fr: '29,99 €', en: '€29.99' }),
   business: Object.freeze({ fr: '59,99 €', en: '€59.99' }),
   cloud: Object.freeze({ fr: CLOUD_PRIX_AFFICHE, en: CLOUD_PRIX_AFFICHE_EN }),
+  premium_cloud: Object.freeze({ fr: '34,99 €', en: '€34.99' }),
+  pro_cloud: Object.freeze({ fr: '49,99 €', en: '€49.99' }),
+  business_cloud: Object.freeze({ fr: '79,99 €', en: '€79.99' }),
 });
 // Le jeton des textes (cloud/textes.js, entree/textes.js, cloud/textesConnexion.js…) : remplacé à la lecture par le
 // prix du Cloud du canal (avecPrix). Un texte n'écrit plus jamais le prix lui-même.
@@ -139,6 +146,54 @@ export function lireProduitsBoutique(products, { canal, ids }) {
 }
 
 export const versionPrixBoutique = () => version;
+
+// ── Les formules avec Cloud (11/11/2026) : le supplément du Cloud et le « 0 aujourd'hui », dans la monnaie du canal ──
+const deuxDecimales = (n) => Math.round(n * 100) / 100;
+/** Un montant en euros « à la FillSell » (web) : « 22 € », « 22,50 € » ; anglais « €22 », « €22.50 ». */
+function eurosWeb(n, lang) {
+  const v = deuxDecimales(n);
+  const entier = Number.isInteger(v);
+  if (lang === 'en') return `€${entier ? v : v.toFixed(2)}`;
+  return `${entier ? v : v.toFixed(2).replace('.', ',')} €`;
+}
+/** Un montant dans la monnaie de la BOUTIQUE (Intl, langue de l'app) ; null si la monnaie est inconnue. */
+function montantBoutique(n, devise, lang) {
+  if (!devise) return null;
+  try {
+    const v = deuxDecimales(n);
+    return new Intl.NumberFormat(lang === 'en' ? 'en-GB' : 'fr-FR', {
+      style: 'currency', currency: devise, currencyDisplay: 'narrowSymbol', minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2,
+    }).format(v).replace(/[\u00A0\u202F]/g, ' ');
+  } catch { return null; }
+}
+/**
+ * « Le Cloud pour 22 € de plus » (décision 4 de Nico : un fait, jamais un rabais affiché) — le supplément d'une formule avec
+ * Cloud sur la formule seule. WEB : le supplément du contrat (22 / 20 / 20 €, = les prix Stripe). iPHONE / ANDROID : la
+ * différence des DEUX prix de la boutique, dans SA monnaie (règle de Google, refus de la vc36) ; prix pas lus, monnaies
+ * différentes ou différence nulle : null (la ligne ne s'affiche pas). Repli de l'iPhone (Apple muet) : le montant du web,
+ * comme les prix affichés. Pur.
+ */
+export function supplementAffiche(formule, lang = 'fr', e = etat) {
+  const palier = PALIER_DE_FORMULE[formule];
+  const contrat = SUPPLEMENT_CLOUD_EUR[formule];
+  if (!palier || contrat == null) return null;
+  if (!estCanalBoutique(e)) return eurosWeb(contrat, lang);
+  const a = e.prix?.[formule], b = e.prix?.[palier];
+  if (a && b && Number.isFinite(a.montant) && Number.isFinite(b.montant) && a.devise && a.devise === b.devise && a.montant > b.montant) {
+    return montantBoutique(a.montant - b.montant, a.devise, lang);
+  }
+  if (repliApple(formule, e) && repliApple(palier, e)) return eurosWeb(contrat, lang);
+  return null;
+}
+/** « 0 € » (« Carte demandée, 0 € aujourd'hui ») dans la monnaie du canal ; mobile : celle de la boutique pour ce produit,
+ *  « … » tant qu'elle n'est pas connue (jamais une monnaie devinée). */
+export function zeroAffiche(formule, lang = 'fr', e = etat) {
+  if (!estCanalBoutique(e)) return lang === 'en' ? '€0' : '0 €';
+  const devise = e.prix?.[formule]?.devise ?? null;
+  if (devise) return montantBoutique(0, devise, lang) ?? TEXTE_CHARGEMENT;
+  if (repliApple(formule, e)) return lang === 'en' ? '€0' : '0 €';
+  return TEXTE_CHARGEMENT;
+}
 
 /** (09/11, repli de l'iPhone) Appelle `appel()` et rend sa promesse, bornée à `ms` : une réponse qui n'arrive pas, un
  *  rejet ou une exception levée d'un coup (module natif absent d'un vieux binaire) deviennent un REJET — jamais une

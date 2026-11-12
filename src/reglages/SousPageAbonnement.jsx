@@ -32,6 +32,10 @@ import { BlocCloudReglagesLu, MentionCloudResiliation } from '../cloud/BlocCloud
 import BlocChangerFormule from './BlocChangerFormule';
 import { useCloudReglages } from '../cloud/useCloudProfil';
 import { RELECTURES_APRES_BOUTIQUE_MS } from '../cloud/regles';
+// (11/11/2026) Les formules avec Cloud — fermées pour ce compte (formulesCloudVendables faux) : rien ne lit, rien ne change.
+import BlocFormulesReglages from '../cloud/BlocFormulesReglages';
+import { useProfilFormules } from '../cloud/useProfilFormules';
+import { formulesCloudVendables } from '../config/cloudOffer';
 
 // Point d'entrée tracé, dans le vocabulaire du tunnel (App.jsx) : sans lui,
 // `premium_cta_click` et `offers_modal_open` retombent sur 'non_precisee' et
@@ -81,6 +85,12 @@ export default function SousPageAbonnement({ c, T }) {
   // le bloc et par la mention de la résiliation. Drapeau baissé : rien ne part.
   const lectureCloud = useCloudReglages(c);
   const [arretCloudDemande, setArretCloudDemande] = useState(0);
+  // (11/11/2026) Ouvertes : le Cloud SEUL ne se vend plus — son bloc ne reste qu'à un client du Cloud seul en cours (essai ou
+  // payé, sans formule avec Cloud), inchangé ; tout le reste passe par le bloc des formules.
+  const formulesVisibles = formulesCloudVendables(c.user?.id, { plateforme: c.plateforme });
+  const profilFormules = useProfilFormules(c.user?.id, { actif: formulesVisibles });
+  const cloudSeulEnCours = lectureCloud.cloud?.etat === 'essai' || lectureCloud.cloud?.etat === 'paye';
+  const cacherBlocCloud = formulesVisibles && (profilFormules.formuleActuelle != null || !cloudSeulEnCours);
 
   useEffect(() => {
     if (!c.user?.id || c.natif) return;
@@ -182,7 +192,8 @@ export default function SousPageAbonnement({ c, T }) {
           gestes d'argent (essayer, ajouter, arrêter, reprendre) arriveront
           par `c.actionsCloud` avec le paiement de l'option — absents, leurs
           boutons n'existent pas. */}
-      <BlocCloudReglagesLu c={c} lecture={lectureCloud} arretDemande={arretCloudDemande} actions={{ voirFormules: () => c.ouvrirOffres('reglages_cloud'), ...avecRelecture(c.actionsCloud, lectureCloud.relire) }} />
+      {!cacherBlocCloud && <BlocCloudReglagesLu c={c} lecture={lectureCloud} arretDemande={arretCloudDemande} actions={{ voirFormules: () => c.ouvrirOffres('reglages_cloud'), ...avecRelecture(c.actionsCloud, lectureCloud.relire) }} />}
+      <BlocFormulesReglages c={c} visible={formulesVisibles} lecture={lectureCloud} profil={profilFormules} actions={avecRelecture(c.actionsCloud, () => { lectureCloud.relire?.(); profilFormules.relire?.(); })} />
 
       {/* ── Consommation du mois, avec le RESTE ───────────────────────── */}
       {compteurs && grille && <ConsommationGrille c={c} T={T} variante="page" />}

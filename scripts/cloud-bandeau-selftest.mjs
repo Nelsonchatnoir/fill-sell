@@ -77,7 +77,9 @@ const z0 = app.indexOf('<div ref={scrollRef} className=');
 ok(app.indexOf('<BandeauCloudTableau ') > z0 && app.indexOf('<BandeauCloudTableau ') < app.indexOf('<VentesADecider ', z0), 'dans la zone des bandeaux du Tableau, avant « Ventes à confirmer » (rien d’autre ne bouge)');
 ok(/vendable=\{cloudOffreVendable\(user\.id\)\} compteLu=\{etatCompteCloud\.lu===true\} clientCloud=\{clientCloud\}/.test(app), 'vendable, compte lu, client Cloud : les sources de l’app');
 ok(/ecranLibre=\{!meConnecterOuvert&&!showOnboardingFlow\}/.test(app), 'jamais sous le parcours d’entrée ni « Me connecter »');
-ok(/onEssayer=\{\(\)=>lancerAchatCloud\(ORIGINE_BANDEAU_CLOUD\)\}/.test(app) && ORIGINE_BANDEAU_CLOUD === 'bandeau_tableau', '« Essayer 7 jours » = lancerAchatCloud (Stripe web, Apple iPhone), origine « bandeau_tableau »');
+// (11/11/2026, changement VOLONTAIRE nommé au rapport OFFRES-APP) Formules avec Cloud visibles : le Cloud seul ne se vend plus,
+// « Essayer 7 jours » ouvre la fenêtre d'offres sur « Avec Cloud » ; fermées : lancerAchatCloud, comme avant.
+ok(/onEssayer=\{\(\)=>\(formulesCloudVendables\(user\.id,\{plateforme:platform\}\)\?openUpgradeModal\(null,ORIGINE_BANDEAU_CLOUD,'cloud'\):lancerAchatCloud\(ORIGINE_BANDEAU_CLOUD\)\)\}/.test(app) && ORIGINE_BANDEAU_CLOUD === 'bandeau_tableau', '« Essayer 7 jours » = lancerAchatCloud (Stripe web, Apple iPhone), origine « bandeau_tableau » — formules visibles : la fenêtre sur « Avec Cloud »');
 ok(/async function lancerAchatCloud\(origine='non_precisee'\)\{\s*if\(!achatCloud\|\|!cloudOffreVendable\(user\?\.id\)\)return;/.test(app), 'l’achat refuse lui-même un appareil où le Cloud ne se vend pas');
 for (const ev of ['cloud_bandeau_vu', 'cloud_bandeau_clic', 'cloud_bandeau_ferme']) ok(comp.includes(`'${ev}'`), `mesure : ${ev}`);
 ok(/vusCetteSession/.test(comp), '« vu » : une fois par ouverture de l’app, pas à chaque rendu');

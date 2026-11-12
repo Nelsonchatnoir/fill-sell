@@ -21,6 +21,7 @@ import { textesConnexion } from '../cloud/textesConnexion';
 import { demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 import { E, TACTILE } from './theme';
 import { Scene, Kicker, Titre, Texte, Carte, BoutonPrimaire, LienDiscret, Bande, Etat } from './EntreeUI';
+import { NOMS_FORMULES } from '../cloud/textesFormules';
 
 const styleBouton = {
   flexShrink: 0, minHeight: TACTILE, padding: '8px 14px', borderRadius: 999, border: `1.5px solid ${E.tealDeep}`, background: E.card,
@@ -105,7 +106,8 @@ export default function EtapeCloudConnexion({ c, T, onSuivant }) {
         </>
       )}
     >
-      <Kicker>{T.cxKicker(k.essaiFinCourt)}</Kicker>
+      {/* (11/11/2026) Sur la voie des formules avec Cloud : « Pro + Cloud activé · essai jusqu'au … ». */}
+      <Kicker>{c.formules?.parcours === true && NOMS_FORMULES[c.formules.choisie] ? T.formCxKicker(NOMS_FORMULES[c.formules.choisie], k.essaiFinCourt) : T.cxKicker(k.essaiFinCourt)}</Kicker>
       <Titre>{T.cxTitre}</Titre>
       <Texte>{T.cxTexte}</Texte>
 

@@ -7,6 +7,10 @@ import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "..
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 // (31/10, lot I point 7) L'abonnement confirmé par le serveur : sans confirmation, Google rembourse au bout de 72 h.
 import { accuserAbonnementGoogle } from "../_shared/google-accuse-abonnement.js";
+// (11/11/2026, offres Cloud) Les formules avec Cloud (un abonnement Google par formule) : mêmes règles que google-play-webhook.
+import { formuleDuProduit, planAchatBoutique, grantDeFormule } from "../_shared/formules-serveur.js";
+import { lectureFormuleGoogle, verdictEssaiStore } from "../_shared/cloud-option.js";
+import { rangDesDrapeaux, rangAppleVivant } from "../_shared/droits-canaux.js";
 
 // Validation serveur d'un achat Google Play — équivalent strict de
 // validate-apple-receipt, côté Android (2026-08-05).
@@ -155,7 +159,10 @@ serve(async (req) => {
 
     // Le TYPE est déduit du productId, jamais lu dans la requête : un client
     // ne doit pas pouvoir faire valider un pack via l'endpoint abonnement.
-    const estAbonnement = SUB_PRODUCT_IDS.includes(productId);
+    // (11/11) Une formule avec Cloud est un abonnement (palier + Cloud).
+    const formuleV = formuleDuProduit(productId);
+    const estFormuleV = !!formuleV && formuleV.cloud && formuleV.formule !== "cloud";
+    const estAbonnement = SUB_PRODUCT_IDS.includes(productId) || estFormuleV;
     const coins = COIN_PRODUCTS[productId];
     // (04/10) L'option Cloud : un abonnement elle aussi (subscriptionsv2), traitée à part plus bas.
     const estCloud = productId === PRODUIT_CLOUD_GOOGLE;
@@ -274,6 +281,54 @@ serve(async (req) => {
       console.log(`[validate-google-purchase] option Cloud user=${userId} état=${etat} ${sens}${lecture.essai ? " (essai)" : ""}`);
       if (actif) await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
       return json({ ok: true, type: "option_cloud", is_cloud: majCloud.is_cloud === true, essai: lecture.essai === true, state: etat ?? "unknown" });
+    }
+
+    // ── (11/11/2026) UNE FORMULE AVEC CLOUD : le produit fait foi (drapeaux du palier, colonnes Cloud) ──────────
+    // ⛔ Business + Cloud n'a pas d'essai ; une semaine gratuite refusée (essai déjà pris, verrous) n'ouvre RIEN avant le
+    // premier paiement réel ; aucun crédit du mois pendant un essai. Jamais descendre sous un autre canal vivant.
+    if (estFormuleV) {
+      const { data: luV } = await supabaseAdmin.from("profiles").select("id, google_purchase_token, google_product_id, apple_original_transaction_id, stripe_customer_id, is_premium, is_pro, is_business, subscription_period_end").eq("id", userId).maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      const profV = (luV ?? {}) as Record<string, any>;
+      const profilCloudV = await profilCloudPourStore(supabaseAdmin, userId);
+      const lectureV = lectureFormuleGoogle(productId, purchase, null)!;
+      let rangStripeV = 0;
+      try { rangStripeV = await rangStripeDuClient(profV.stripe_customer_id ?? null); } catch { rangStripeV = rangDesDrapeaux(profV); }
+      const rangAutresV = Math.max(rangStripeV, rangAppleVivant(profV));
+      if (!actif) {
+        if (profV.google_purchase_token === purchaseToken) {
+          const terminal = /EXPIRED|PENDING_PURCHASE_CANCELED/.test(String(etat ?? ""));
+          const { patch } = patchArretGoogle(profV, { terminal, rangStripe: rangStripeV, produit: productId });
+          const { update: majOff } = ecritureCloudStore({ canal: "google", lecture: lectureV, sens: "off", ref: purchaseToken, profil: profilCloudV ?? {} });
+          await supabaseAdmin.from("profiles").update({ ...patch, ...(majOff ? { ...majOff, cloud_formule: null } : {}) }).eq("id", userId).eq("google_purchase_token", purchaseToken);
+        }
+        return json({ ok: true, type: "formule", formule: formuleV!.formule, is_premium: false, state: etat ?? "unknown" });
+      }
+      const planV = planAchatBoutique({ produit: productId, sens: "on", essaiBoutique: lectureV.essai === true,
+        verdictEssai: verdictEssaiStore(profilCloudV ?? {}, "google", purchaseToken), rangAutres: rangAutresV })!;
+      const updateV: Record<string, unknown> = { ...(planV.drapeaux ?? {}), google_purchase_token: purchaseToken, google_product_id: productId,
+        subscription_cancel_at_period_end: etat === "SUBSCRIPTION_STATE_CANCELED", ...(ligne?.expiryTime ? { subscription_period_end: ligne.expiryTime } : {}) };
+      if (planV.cloud === "ecrire") {
+        const { update: majCloudV } = ecritureCloudStore({ canal: "google", lecture: lectureV, sens: "on", ref: purchaseToken, profil: profilCloudV ?? {} });
+        if (majCloudV) Object.assign(updateV, majCloudV, { cloud_formule: formuleV!.formule }, etat === "SUBSCRIPTION_STATE_CANCELED" ? { cloud_arret_fin_periode: true } : {});
+      }
+      const { error: errV } = await supabaseAdmin.from("profiles").update(updateV).eq("id", userId);
+      if (errV) {
+        await alerterPaiementNonCredite({ canal: "google", type: "abonnement", user_id: userId, produit: productId, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null, erreur: `écriture profiles refusée : ${errV.message}` });
+        return json({ error: "profile_update_failed" }, 500);
+      }
+      await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
+      if (planV.credit) {
+        const { data: grantV, error: grantErrV } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
+          p_user_id: userId, p_tier: grantDeFormule(formuleV!.formule), p_period_end: ligne?.expiryTime ?? null, p_source: "payment",
+        });
+        if (grantErrV) await alerterPaiementNonCredite({ canal: "google", type: "abonnement", user_id: userId, produit: productId, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null, erreur: grantErrV.message });
+        else if ((grantV as { granted?: boolean })?.granted === true) {
+          await notifierPaiement({ canal: "google", type: "abonnement", user_id: userId, produit: formuleV!.formule, pepites: (grantV as { amount?: number })?.amount ?? null, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: grantV });
+        }
+      }
+      console.log(`[validate-google-purchase] ${formuleV!.formule} user=${userId} état=${etat}${lectureV.essai ? " (essai)" : ""}${planV.ouvrir ? "" : ` — sans droits (${planV.raison})`}`);
+      return json({ ok: true, type: "formule", formule: formuleV!.formule, is_premium: planV.drapeaux?.is_premium === true, essai: lectureV.essai === true, droits_ouverts: planV.ouvrir, state: etat });
     }
 
     if (!actif) {

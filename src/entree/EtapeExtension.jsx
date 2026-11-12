@@ -35,9 +35,12 @@ import { Scene, Kicker, Titre, Texte, BoutonPrimaire, LienDiscret, Bande, Etat }
 export default function EtapeExtension({ c, T, onSuivant, onAller }) {
   const [pitch, setPitch] = useState(false);
   const { envoi, secondesRestantes } = c;
-  const voieFaite = c.cloud?.parcours === true;
+  // (11/11/2026) Formules avec Cloud ouvertes : « Finalement, je n'ai pas d'ordinateur » mène à la présentation du Cloud (4b).
+  const formules = c.formules?.parcours === true;
+  const voieFaite = c.cloud?.parcours === true || formules;
   const revenirAuChoix = () => {
     c.journaliser('voie_retour');
+    if (formules) { c.formules.noterVoie('cloud'); c.choisirVoie('cloud'); onAller?.('cloud_presentation'); return; }
     c.choisirVoie(null);
     onAller?.('voie');
   };

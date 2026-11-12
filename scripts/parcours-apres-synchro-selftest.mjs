@@ -33,8 +33,9 @@ ok(!/supabase|localStorage/.test(lire('src/utils/dernierGeste.js').replace(/\/\/
 console.log('2. La fermeture de l\'offre, mesurée');
 const m = lire('src/components/ConversionModal.jsx');
 ok(/const fermerParLeFond = \(\) => fermer\('fond'\);/.test(m) && /const fermerNonMerci = \(\) => fermer\('non_merci'\);/.test(m) && /fermer\('echap'\)/.test(m), 'sorties : fond, non_merci, echap');
-ok((m.match(/<Sheet onClose=\{fermerParLeFond\}>/g) || []).length === 4 && !/<Sheet onClose=\{fermer\}>/.test(m), 'les 4 feuilles : le tap hors de la feuille est « fond »');
-ok((m.match(/<Dismiss onClose=\{fermerNonMerci\} /g) || []).length === 4, 'les 4 liens du bas : « non_merci »');
+// (11/11/2026, changement VOLONTAIRE nommé au rapport OFFRES-APP) + la vue « Avec Cloud » des formules : 5 feuilles, mêmes sorties.
+ok((m.match(/<Sheet onClose=\{fermerParLeFond\}>/g) || []).length === 5 && !/<Sheet onClose=\{fermer\}>/.test(m), 'les 5 feuilles : le tap hors de la feuille est « fond »');
+ok((m.match(/<Dismiss onClose=\{fermerNonMerci\} /g) || []).length === 5, 'les 5 liens du bas : « non_merci »');
 ok(/noterFermetureRef\.current\('quitte'\)/.test(m) && /'pagehide'/.test(m) && /noterFermetureRef\.current\('fermee_par_app'\)/.test(m), 'page quittée (« quitte ») et fermée par l\'app (retour Android, navigation)');
 ok(/if \(o\.notee \|\| palierCliqueRef\.current\) return;/.test(m), 'UNE fermeture notée par ouverture, jamais après un choix de formule');
 ok(/ouverture: o\.id, sortie, duree_ms:/.test(m) && /ecran: contexte\?\.ecran \?\? null, \.\.\.lireDernierGeste\(\), canal/.test(m), 'chaque fermeture : identifiant d\'ouverture, sortie, durée, écran, après quoi, canal');

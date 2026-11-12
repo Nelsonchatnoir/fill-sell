@@ -8,6 +8,17 @@ import { jetonGooglePlay } from "../_shared/google-play-token.ts";
 import { abonnementGoogleActif } from "../_shared/droits-canaux.js";
 // (30/10, lot D) La version en vigueur des conditions d'utilisation du Cloud.
 import { CGU_CLOUD_VERSION, conditionsCloudAcceptees } from "../_shared/cloud-conditions.js";
+// (11/11/2026, offres Cloud) Les formules avec Cloud : règles pures (formules-serveur.js), prix lus à un seul endroit.
+import {
+  estFormuleCloud, voieFormuleStripe, messageVoieFormule, parametresCheckoutFormule, parametresEssaiCloudAbonne, metadonneesFormule,
+  formulesOuvertesPour, temoinCloud, conditionsFormulesAcceptees, versionCguFormules, cloudSeulRefuse, SECRETS_PRIX_STRIPE,
+  CLES_INTERRUPTEURS_FORMULES, grantDeFormule, planTypeDeFormule, essaiPossiblePourFormule, ESSAI_JOURS,
+} from "../_shared/formules-serveur.js";
+import { prixStripe } from "../_shared/prix-stripe.ts";
+import { litAbonnementStripe, drapeauxDepuisStripe, miseAJourProfilDepuisStripe } from "../_shared/cloud-option.js";
+import { abonnementStoreVivant } from "../_shared/paiement-stripe.js";
+import { evenementDebutFormuleStripe } from "../_shared/cloud-mails.js";
+import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -84,13 +95,9 @@ function rangAbonnement(s: Stripe.Subscription): number {
 // chemins de palier ci-dessous ne touchent jamais un abonnement Cloud
 // (metadata.option = "cloud" : hors du rang, hors des montées, hors des
 // sessions et abonnements « en attente » remplacés).
+// (11/11) Lus à un seul endroit (_shared/prix-stripe.ts), les trois formules avec Cloud comprises.
 function prixConnus() {
-  return {
-    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
-    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
-    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
-    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
-  };
+  return prixStripe();
 }
 
 const supabaseAdmin = createClient(
@@ -277,6 +284,257 @@ function reponseErreurPaiement(CORS: Record<string, string>): Response {
   });
 }
 
+// ═══ (11/11/2026, offres Cloud) LES FORMULES AVEC CLOUD : premium_cloud | pro_cloud | business_cloud ═══════════════
+// Gardes, dans l'ordre (rien n'est créé chez Stripe avant elles) : le prix actif ; l'interrupteur du canal web
+// (coin_config.cloud_formules_stripe = 1) ou un témoin ; les conditions du Cloud ≥ la version qui décrit les formules ;
+// jamais deux abonnements — un abonné Apple / Google change de formule dans l'app iPhone / Android, un abonné Stripe
+// change de prix sur LE MÊME abonnement ; la préparation fraîche (une place, et les verrous de l'essai). Puis la voie
+// (formules-serveur.js, voieFormuleStripe). ⛔ Business + Cloud : jamais d'essai, jamais de schedule d'essai.
+const COLONNES_FORMULE = "beta_flags, cloud_cgu_version, stripe_customer_id, is_cloud, cloud_canal, cloud_ref, cloud_essai_debut, cloud_essai_fin, "
+  + "cloud_essai_arrete, cloud_essai_refus, cloud_periode_fin, google_purchase_token, google_product_id, apple_original_transaction_id, "
+  + "is_premium, is_pro, is_business, subscription_period_end, lang, email";
+type Rep = (corps: unknown, status?: number) => Response;
+
+/** L'abonnement Google relu chez Google (lecture seule) : true / false, null si illisible (la preuve locale décide). */
+async function googleActifRelu(jeton: string | null | undefined, userId: string): Promise<boolean | null> {
+  if (!jeton) return null;
+  try {
+    const acces = await jetonGooglePlay();
+    const rg = await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/app.fillsell.app/purchases/subscriptionsv2/tokens/${encodeURIComponent(String(jeton))}`,
+      { headers: { Authorization: `Bearer ${acces}` }, signal: AbortSignal.timeout(10_000) });
+    if (rg.ok) return abonnementGoogleActif(await rg.json());
+    if (rg.status === 404 || rg.status === 410) return false;
+    console.log(`[checkout] ${userId} : abonnement Google illisible (HTTP ${rg.status})`);
+  } catch (e) {
+    console.warn(`[checkout] ${userId} : abonnement Google illisible (${(e as Error)?.message ?? e})`);
+  }
+  return null;
+}
+
+// deno-lint-ignore no-explicit-any
+async function interrupteurFormules(supabase: any, canal: "stripe" | "apple" | "google", profil: any): Promise<boolean> {
+  const { data } = await supabase.from("coin_config").select("value").eq("key", CLES_INTERRUPTEURS_FORMULES[canal]).maybeSingle();
+  return formulesOuvertesPour({ valeur: data?.value, temoin: temoinCloud(profil) });
+}
+
+// deno-lint-ignore no-explicit-any
+async function acheterFormuleCloud(p: { formule: string; user: { id: string; email?: string }; email: string | null; carte3ds: boolean; supabase: any; rep: Rep }): Promise<Response> {
+  const { formule, user, supabase, rep } = p;
+  const prix = prixConnus();
+  const secret = (SECRETS_PRIX_STRIPE as Record<string, string>)[formule];
+  const prixFormule = await activePriceOrNull((prix as Record<string, string>)[formule] || undefined, secret);
+  if (!prixFormule) return rep({ error: "payment_unavailable", formule }, 503);
+  const { data: profil } = await supabase.from("profiles").select(COLONNES_FORMULE).eq("id", user.id).maybeSingle();
+  if (!(await interrupteurFormules(supabase, "stripe", profil))) {
+    console.log(`[checkout] ${user.id} : ${formule} demandée, canal web des formules fermé — rien créé chez Stripe`);
+    return rep({ error: "offre_fermee", formule }, 403);
+  }
+  if (!conditionsFormulesAcceptees(profil)) {
+    return rep({ error: "conditions_a_accepter", formule, version: versionCguFormules() }, 409);
+  }
+  const googleActif = await googleActifRelu(profil?.google_purchase_token, user.id);
+  const boutique = abonnementStoreVivant(profil, Date.now(), { googleActif });
+  const cloudBoutique = cloudVivantDuProfil(profil) && (profil?.cloud_canal === "apple" || profil?.cloud_canal === "google") ? profil.cloud_canal : null;
+  const refus = (r: { motif?: string; canal?: string }) => {
+    console.log(`[checkout] ${user.id} : ${formule} refusée (${r.motif}, ${r.canal ?? "?"}) — rien créé chez Stripe`);
+    return rep({ error: "formule_refusee", motif: r.motif, canal: r.canal ?? null, formule,
+      message_fr: messageVoieFormule(r, "fr"), message_en: messageVoieFormule(r, "en") }, 409);
+  };
+  if (boutique || cloudBoutique) {
+    // (attendu par l'app) « abonnement_autre_canal » + canal : il change de formule dans l'app iPhone / Android.
+    const r = voieFormuleStripe({ formule, boutique, cloudBoutique });
+    console.log(`[checkout] ${user.id} : ${formule} refusée (${r.motif}, ${r.canal ?? "?"}) — rien créé chez Stripe`);
+    return rep({ error: "abonnement_autre_canal", motif: r.motif, canal: r.canal ?? null, formule,
+      message_fr: messageVoieFormule(r, "fr"), message_en: messageVoieFormule(r, "en") }, 409);
+  }
+  const client = await resoudreClient(profil?.stripe_customer_id ?? null, user.id, p.email);
+  const { data: subs } = await stripe.subscriptions.list({ customer: client, status: "all", limit: 30 });
+  const tous = (subs ?? []) as Stripe.Subscription[];
+  if (tous.some((s) => ["past_due", "unpaid"].includes(s.status))) return refus({ motif: "impaye", canal: "stripe" });
+  const vivants = tous.filter((s) => s.status === "active" || s.status === "trialing");
+  const lus = vivants.map((s) => ({ s, l: litAbonnementStripe(s, prix) }));
+  const palier = lus.filter((x) => !x.l.cloud).sort((a, b) => (b.l.rang ?? 0) - (a.l.rang ?? 0))[0] ?? null;
+  const cloudSeul = lus.find((x) => x.l.cloud) ?? null;
+  // La préparation (cloud_essai_preparer_moi, appelée par l'app juste avant) : une place pour le Cloud, et les verrous.
+  // Un Cloud déjà VIVANT chez Stripe (client du Cloud seul, payé ou en essai) a déjà sa place : pas de préparation.
+  const dejaUnePlace = cloudVivantDuProfil(profil) && profil?.cloud_canal === "stripe";
+  const { data: permis, error: errPermis } = await supabase.rpc("cloud_essai_permis", { p_user: user.id });
+  if (errPermis && !dejaUnePlace) {
+    console.error(`[checkout] cloud_essai_permis illisible : ${errPermis.message} — ${formule} refusée (jamais sans place)`);
+    return rep({ error: "payment_unavailable", formule }, 503);
+  }
+  if (permis?.fraiche !== true && !dejaUnePlace) return rep({ error: "preparation_requise", formule }, 409);
+  const essaiPermis = essaiCloudPermis(profil ?? {}, tous, prix) && permis?.permis === true;
+  const voie = voieFormuleStripe({
+    formule, essaiPermis,
+    palierStripe: palier ? { id: palier.s.id, status: palier.s.status, rang: palier.l.rang, formule: palier.l.formuleCloud ?? null,
+      schedule: palier.s.schedule ?? null, pending_update: palier.s.pending_update ?? null, cancel_at_period_end: palier.s.cancel_at_period_end } : null,
+    cloudSeulStripe: cloudSeul ? { id: cloudSeul.s.id, status: cloudSeul.s.status } : null,
+  });
+  if (voie.voie === "refus") return refus(voie);
+  if (voie.voie === "deja") return rep({ already: true, formule, canal: "stripe" });
+
+  if (voie.voie === "checkout") {
+    const essai = voie.essai === true && essaiPossiblePourFormule(formule);
+    let ouvertes: Stripe.Checkout.Session[] = [];
+    try {
+      const { data } = await stripe.checkout.sessions.list({ customer: client, status: "open", limit: 10 });
+      ouvertes = (data ?? []).filter((x: Stripe.Checkout.Session) => x.metadata?.formule != null || x.metadata?.option === "cloud");
+    } catch (e) {
+      console.warn(`[checkout] sessions de formule ouvertes de ${client} non relues : ${(e as Error)?.message ?? e}`);
+    }
+    const tri = trierSessionsOuvertes(ouvertes, { planType: planTypeDeFormule(formule) ?? "", carte3ds: p.carte3ds, codePromo: "" });
+    if (tri.aReprendre && tri.aReprendre.metadata?.formule === formule && (tri.aReprendre.metadata?.essai_cloud === "1") === essai) {
+      return rep({ url: tri.aReprendre.url, reprise: true, formule });
+    }
+    await remplacerSessions(ouvertes, client, (x) => x.metadata?.formule != null || estAbonnementCloud(x, prix));
+    const base = parametresCheckoutFormule({ formule, prixFormule, essai, userId: user.id });
+    const session = await stripe.checkout.sessions.create({
+      ...base,
+      customer: client,
+      success_url: `https://fillsell.app/success?produit=${encodeURIComponent(formule)}${essai ? "&essai=1" : ""}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: "https://fillsell.app/cancel?session_id={CHECKOUT_SESSION_ID}",
+      ...(p.carte3ds ? { payment_method_options: { card: { request_three_d_secure: "any" } }, metadata: { ...base.metadata, fillsell_carte_3ds: "1" } } : {}),
+    } as Stripe.Checkout.SessionCreateParams);
+    console.log(`[checkout] ${formule} pour ${user.id} : ${essai ? `essai ${ESSAI_JOURS} jours` : "payée tout de suite"}`);
+    return rep({ url: session.url, formule, essai });
+  }
+
+  const cible = vivants.find((s) => s.id === voie.cible)!;
+  if (voie.voie === "essai_abonne") {
+    // ⛔ Jamais pour Business + Cloud (parametresEssaiCloudAbonne lève) : 7 jours en payant sa formule, puis la formule.
+    const sched = await stripe.subscriptionSchedules.create({ from_subscription: cible.id });
+    let pose: Stripe.SubscriptionSchedule;
+    let essaiLu: { debut: string; fin: string };
+    try {
+      const { essai, ...params } = parametresEssaiCloudAbonne({ formule, abonnement: cible, schedule: sched, prix });
+      essaiLu = essai;
+      pose = await stripe.subscriptionSchedules.update(sched.id, params as Stripe.SubscriptionScheduleUpdateParams);
+    } catch (e) {
+      try { await stripe.subscriptionSchedules.release(sched.id); } catch { /* journalisé ci-dessous */ }
+      console.error(`[checkout] ${user.id} : essai ${formule} d'abonné refusé par Stripe : ${(e as Error)?.message ?? e}`);
+      return reponseErreurPaiementFormule(rep);
+    }
+    // La métadonnée d'essai sur l'ABONNEMENT aussi (la phase en cours ne la recopie pas forcément) : c'est elle que lisent
+    // stripe-webhook (Cloud en essai), cancel-subscription (arrêter l'essai) et changer-formule (rien par-dessus).
+    try {
+      const metaPhase = ((pose.phases?.[0]?.metadata ?? {}) as Record<string, string>);
+      await stripe.subscriptions.update(cible.id, { metadata: { ...(cible.metadata ?? {}), essai_cloud_formule: metaPhase.essai_cloud_formule ?? formule,
+        essai_cloud_debut: metaPhase.essai_cloud_debut ?? String(Math.floor(Date.parse(essaiLu.debut) / 1000)),
+        essai_cloud_fin: metaPhase.essai_cloud_fin ?? String(Math.floor(Date.parse(essaiLu.fin) / 1000)) } });
+    } catch (e) {
+      console.error(`[checkout] essai ${formule} de ${user.id} : métadonnée d'essai non posée sur ${cible.id} : ${(e as Error)?.message ?? e}`);
+    }
+    const { error: errCol } = await supabase.from("profiles").update({
+      cloud_canal: "stripe", cloud_ref: cible.id, cloud_essai_debut: essaiLu.debut, cloud_essai_fin: essaiLu.fin,
+      cloud_essai_arrete: false, is_cloud: false, cloud_periode_fin: essaiLu.fin, cloud_arret_fin_periode: false, stripe_customer_id: client,
+      cloud_formule: formule,
+    }).eq("id", user.id);
+    if (errCol) console.error(`[checkout] essai ${formule} de ${user.id} : colonnes Cloud non écrites : ${errCol.message}`);
+    console.log(`[checkout] ${user.id} : essai ${formule} d'abonné posé (schedule ${pose.id}, abonnement ${cible.id}, jusqu'au ${essaiLu.fin})`);
+    await mailsCloud(supabase, { userId: user.id, email: profil?.email ?? user.email ?? null, lang: profil?.lang ?? null, canal: "stripe",
+      evenements: evenementDebutFormuleStripe({ formule, ref: cible.id, finIso: essaiLu.fin, abonne: true }), journal: "[checkout]" });
+    return rep({ essai_abonne: true, change: true, formule, fin: essaiLu.fin });
+  }
+
+  // voie « changement_prix » : le MÊME abonnement change de prix (prorata tout de suite, ou aucun pendant un essai).
+  const item = cible.items.data[0];
+  const pendantEssai = voie.prorata === "aucun";
+  // ⛔ (correction de Nico, 21:45) Vers Business + Cloud pendant un essai : l'essai s'arrête MAINTENANT (trial_end: "now"),
+  // la formule est payée tout de suite — jamais 7 jours gratuits avec les quotas Business.
+  const finEssai = (voie as { finEssai?: boolean }).finEssai === true;
+  const maj = await stripe.subscriptions.update(cible.id, {
+    items: [{ id: item.id, price: prixFormule }],
+    proration_behavior: pendantEssai ? "none" : "always_invoice",
+    ...(pendantEssai ? {} : { payment_behavior: "pending_if_incomplete" }),
+    ...(finEssai ? { trial_end: "now" } : {}),
+    expand: ["latest_invoice"],
+  } as Stripe.SubscriptionUpdateParams);
+  const facture = (maj.latest_invoice && typeof maj.latest_invoice === "object") ? maj.latest_invoice as Stripe.Invoice : null;
+  if (maj.pending_update) {
+    if (facture?.id) {
+      try {
+        await stripe.invoices.update(facture.id, { auto_advance: false, metadata: { fillsell_upgrade_vers: planTypeDeFormule(formule) ?? "", fillsell_formule: formule, fillsell_user_id: user.id } });
+      } catch (e) {
+        console.error(`[checkout] facture ${facture.id} de ${formule} : métadonnées non posées : ${(e as Error)?.message ?? e}`);
+      }
+    }
+    if (!facture?.hosted_invoice_url) return reponseErreurPaiementFormule(rep);
+    console.log(`[checkout] ${cible.id} → ${formule} EN ATTENTE du paiement client (facture ${facture.id})`);
+    return rep({ url: facture.hosted_invoice_url, paiement_a_valider: true, formule });
+  }
+  // Appliqué : les métadonnées suivent (la formule, son palier ; un Cloud seul cesse d'être « option »), l'arrêt prévu levé.
+  try {
+    const { option: _o, ...meta } = (cible.metadata ?? {}) as Record<string, string>;
+    await stripe.subscriptions.update(cible.id, { cancel_at_period_end: false,
+      metadata: { ...meta, ...(cible.metadata?.option ? { option: "" } : {}), ...metadonneesFormule({ formule, essai: meta.essai_cloud === "1", userId: user.id }) } });
+  } catch (e) {
+    console.error(`[checkout] ${cible.id} → ${formule} : métadonnées non posées : ${(e as Error)?.message ?? e}`);
+  }
+  // Les droits, tout de suite (le webhook refait le même calcul) : drapeaux du palier et colonnes Cloud.
+  try {
+    const { data: apres } = await stripe.subscriptions.list({ customer: client, limit: 20 });
+    const update = miseAJourProfilDepuisStripe(drapeauxDepuisStripe(apres ?? [], prix), profil?.cloud_canal ?? null);
+    await supabase.from("profiles").update({ ...update, stripe_customer_id: client }).eq("id", user.id);
+  } catch (e) {
+    console.error(`[checkout] ${cible.id} → ${formule} : droits non relus (le webhook les posera) : ${(e as Error)?.message ?? e}`);
+  }
+  // Aucun crédit pendant un essai ; sinon, le crédit du mois au palier de la formule (cycle neuf payé).
+  if (!pendantEssai && maj.status !== "trialing") {
+    const { error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
+      p_user_id: user.id, p_tier: grantDeFormule(formule),
+      p_period_end: maj.current_period_end ? new Date(maj.current_period_end * 1000).toISOString() : null, p_source: "payment",
+    });
+    if (grantErr) console.error(`[checkout] ${formule} : upgrade_monthly_grant : ${grantErr.message}`);
+  }
+  console.log(`[checkout] ${cible.id} → ${formule} pour ${user.id} (${pendantEssai ? "pendant l'essai, sans prorata" : "prorata payé"})`);
+  return rep({ upgraded: true, change: true, formule, tier: planTypeDeFormule(formule), pendant_essai: pendantEssai });
+}
+
+function reponseErreurPaiementFormule(rep: Rep): Response {
+  return rep({
+    error: "paiement_impossible",
+    message_fr: "Le paiement n'a pas pu s'ouvrir. Rien n'a été débité : réessaie dans un instant. Si ça recommence, écris-nous depuis Réglages › Aide.",
+    message_en: "The payment could not be opened. Nothing was charged: try again in a moment. If it happens again, write to us from Settings › Help.",
+  }, 500);
+}
+
+// ── (11/11, décision 6) « 7 JOURS DE CLOUD OFFERTS » À UN ABONNÉ APPLE / GOOGLE ──────────────────────────────────────
+// Sa formule ne change pas (elle reste dans sa boutique) ; le Cloud tourne 7 jours (cloud_canal = 'offert'), puis
+// s'arrête sans geste : le passage à la formule avec Cloud se fait dans sa boutique. Premium et Pro seulement (⛔ jamais
+// Business + Cloud), une fois par personne (mêmes verrous que l'essai : préparation fraîche), canal ouvert.
+// deno-lint-ignore no-explicit-any
+async function essaiOffertBoutique(p: { formule: string; user: { id: string }; supabase: any; rep: Rep }): Promise<Response> {
+  const { formule, user, supabase, rep } = p;
+  if (!estFormuleCloud(formule) || !essaiPossiblePourFormule(formule)) return rep({ error: "essai_impossible", formule }, 409);
+  const { data: profil } = await supabase.from("profiles").select(COLONNES_FORMULE).eq("id", user.id).maybeSingle();
+  const googleActif = await googleActifRelu(profil?.google_purchase_token, user.id);
+  const boutique = abonnementStoreVivant(profil, Date.now(), { googleActif });
+  const rangVise = formule === "pro_cloud" ? 2 : 1;
+  if (!boutique || boutique.rang !== rangVise) return rep({ error: "essai_impossible", motif: "formule_boutique_differente", formule }, 409);
+  if (!(await interrupteurFormules(supabase, boutique.canal as "apple" | "google", profil))) return rep({ error: "offre_fermee", formule }, 403);
+  if (!conditionsFormulesAcceptees(profil)) return rep({ error: "conditions_a_accepter", formule, version: versionCguFormules() }, 409);
+  if (profil?.cloud_essai_debut != null || profil?.is_cloud === true || cloudVivantDuProfil(profil)) {
+    return rep({ error: "essai_impossible", motif: "essai_deja_pris", formule }, 409);
+  }
+  const { data: permis, error: errPermis } = await supabase.rpc("cloud_essai_permis", { p_user: user.id });
+  if (errPermis) return rep({ error: "payment_unavailable", formule }, 503);
+  if (permis?.fraiche !== true) return rep({ error: "preparation_requise", formule }, 409);
+  if (permis?.permis !== true) return rep({ error: "essai_impossible", motif: permis?.raison ?? "essai_refuse", formule }, 409);
+  const debut = new Date();
+  const fin = new Date(debut.getTime() + ESSAI_JOURS * 86_400_000);
+  const { error } = await supabase.from("profiles").update({
+    cloud_canal: "offert", cloud_ref: `offert:${boutique.canal}:${formule}`, cloud_essai_debut: debut.toISOString(),
+    cloud_essai_fin: fin.toISOString(), cloud_essai_arrete: false, is_cloud: false, cloud_periode_fin: fin.toISOString(), cloud_arret_fin_periode: false,
+  }).eq("id", user.id).is("cloud_essai_debut", null);
+  if (error) {
+    console.error(`[checkout] 7 jours offerts de ${user.id} non écrits : ${error.message}`);
+    return rep({ error: "payment_unavailable", formule }, 503);
+  }
+  console.log(`[checkout] ${user.id} : 7 jours de Cloud offerts (${boutique.canal}, ${formule}) jusqu'au ${fin.toISOString()}`);
+  return rep({ essai_offert: true, formule, canal: boutique.canal, fin: fin.toISOString() });
+}
+
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
@@ -334,6 +592,15 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // ── (11/11/2026, offres Cloud) Les formules avec Cloud, et les 7 jours offerts d'un abonné Apple / Google ──
+    const rep: Rep = (corps, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json", ...CORS } });
+    if (action === "essai_offert" && typeof product === "string") {
+      return await essaiOffertBoutique({ formule: product, user: authUser, supabase, rep });
+    }
+    if (typeof product === "string" && estFormuleCloud(product)) {
+      return await acheterFormuleCloud({ formule: product, user: authUser, email: verifiedEmail ?? null, carte3ds: carte_3ds === true, supabase, rep });
+    }
+
     // ── Packs de pièces : paiement one-shot (commission ~3% vs 30% stores) ──
     // Le crédit est fait par stripe-webhook (checkout.session.completed,
     // metadata.purchase_type = "coins") via credit_purchased_coins, idempotent
@@ -376,7 +643,7 @@ serve(async (req) => {
 
     // ── L'ABONNEMENT CLOUD, À PART (04/10/2026) ──────────────────────────────
     if (product === "cloud") {
-      const cloudPriceId = await activePriceOrNull(Deno.env.get("STRIPE_PRICE_CLOUD"), "STRIPE_PRICE_CLOUD");
+      const cloudPriceId = await activePriceOrNull(prixConnus().cloud || undefined, "STRIPE_PRICE_CLOUD");   // (11/11) prix lu à un seul endroit
       if (!cloudPriceId) {
         return new Response(JSON.stringify({ error: "payment_unavailable", option: "cloud" }), {
           status: 503, headers: { "Content-Type": "application/json", ...CORS },
@@ -399,6 +666,15 @@ serve(async (req) => {
         return new Response(JSON.stringify({ error: "conditions_a_accepter", option: "cloud", version: CGU_CLOUD_VERSION }), {
           status: 409, headers: { "Content-Type": "application/json", ...CORS },
         });
+      }
+      // (11/11, offres Cloud) Le Cloud SEUL n'est plus vendu à un nouveau : refusé à un compte qui ne l'a jamais eu dès que
+      // le canal web des formules est ouvert pour lui (les anciens paquets web / OTA le demandent encore).
+      {
+        const { data: profilSeul } = await supabase.from("profiles").select(COLONNES_FORMULE).eq("id", authUser.id).maybeSingle();
+        if (cloudSeulRefuse({ profil: profilSeul, formulesOuvertes: await interrupteurFormules(supabase, "stripe", profilSeul) })) {
+          console.log(`[checkout] ${authUser.id} : Cloud seul demandé, remplacé par les formules avec Cloud — rien créé chez Stripe`);
+          return rep({ error: "offre_remplacee", option: "cloud" }, 409);
+        }
       }
       const { data: profilCloud } = await supabase
         .from("profiles").select("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", authUser.id).single();

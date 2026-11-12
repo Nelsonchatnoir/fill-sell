@@ -22,6 +22,11 @@ export const CLES_OUVERTURE = Object.freeze([
   'sync_multi_ouverte',           // relevés multi-plateformes (BlocSynchro) — sinon la carte Vinted d'avant
   'republication_multi_ouverte',  // republication hors Vinted
   'descente_formule_ouverte',     // (09/11, C4) « Voir les autres formules » et descendre à la fin de la période (web)
+  // (11/11, formules avec Cloud) Un interrupteur PAR CANAL (contrat _shared/formules-cloud.js, CLE_INTERRUPTEUR_FORMULES) :
+  // le web peut ouvrir avant l'approbation d'Apple, Android attend la vc37. Absent = fermé.
+  'cloud_formules_stripe',
+  'cloud_formules_apple',
+  'cloud_formules_google',
 ]);
 export const DELAI_MS = 4000;
 

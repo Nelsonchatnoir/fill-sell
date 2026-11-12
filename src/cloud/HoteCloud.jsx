@@ -30,6 +30,10 @@ import { rappelVeilleDu, ecranApresCloud, arretEssaiConfirme } from './regles';
 import { RappelVeilleFinEssai, EcranEssaiTermine, EcranCloudArrete, BandeauPlaceLibre } from './FinEssaiCloud';
 import { useDisponibiliteCloud } from './useDisponibiliteCloud';
 import { nomDuPalier, palierDuProfil } from '../utils/palier';
+// (11/11/2026) Le rappel avant débit d'une formule avec Cloud (la veille, le jour J) — formules ouvertes pour ce compte.
+import RappelVeilleFormule from './FinEssaiFormule';
+import { useProfilFormules } from './useProfilFormules';
+import { formulesCloudVendables, essaiPossiblePourFormule } from '../config/cloudOffer';
 
 const dejaVu = (cle) => { try { return localStorage.getItem(cle) === '1'; } catch { return false; } };
 const marquerVu = (cle) => { try { localStorage.setItem(cle, '1'); } catch { /* affichage seul */ } };
@@ -43,6 +47,11 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   // (08/11) La feuille de la veille SUIT un arrêt demandé (boutique ouverte, ou Stripe) : elle reste montée jusqu'à ce
   // que la personne la ferme, même quand l'essai arrêté n'est plus « la veille » — c'est là qu'elle lit la confirmation.
   const [suiviVeille, setSuiviVeille] = useState(null);   // { cle, quand }
+  // (11/11/2026) La formule de l'essai n'est lue que la veille ou le jour J d'un essai, formules ouvertes (canal ou
+  // témoin) : fermées, aucune requête de plus, la feuille d'avant.
+  const formulesOuvertes = Boolean(visible && formulesCloudVendables(userId, { plateforme }));
+  const veilleLue = lecture.etat === 'ok' && lecture.cloud ? rappelVeilleDu(lecture.cloud, lecture.luLe) : null;
+  const profilFormules = useProfilFormules(userId, { actif: Boolean(formulesOuvertes && veilleLue) });
   const ouvrirRef = useRef(onOuvrirOffres);
   useEffect(() => { ouvrirRef.current = onOuvrirOffres; }, [onOuvrirOffres]);
 
@@ -77,6 +86,17 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   const cleVeille = suiviVeille?.cle ?? `fs_cloud_veille_${userId}_${cleEssai}`;
   const quand = rappelVeilleDu(cloud, lecture.luLe) ?? suiviVeille?.quand ?? null;
   if (quand && ferme !== cleVeille && !dejaVu(cleVeille)) {
+    // (11/11/2026) L'essai d'une formule avec Cloud : son propre rappel (garder, passer à la formule du dessous, arrêter).
+    if (formulesOuvertes && veilleLue && profilFormules.etat === 'lecture') return null;
+    if (formulesOuvertes && essaiPossiblePourFormule(profilFormules.formuleActuelle)) {
+      return (
+        <RappelVeilleFormule
+          lang={lang} cloud={cloud} quand={quand} formule={profilFormules.formuleActuelle} actions={actions}
+          canal={lecture.profil?.cloud_canal ?? null}
+          onFermer={() => { marquerVu(cleVeille); setFerme(cleVeille); setSuiviVeille(null); lecture.relire(); }}
+        />
+      );
+    }
     return (
       <RappelVeilleFinEssai
         lang={lang} cloud={cloud} quand={quand} nomPalier={nomPalier} actions={actions}

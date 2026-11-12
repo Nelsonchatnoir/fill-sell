@@ -52,16 +52,22 @@ import EtapeRepublication from './EtapeRepublication';
 import EtapePseudo from './EtapePseudo';
 import EtapeFin from './EtapeFin';
 import EtapeVoie from './EtapeVoie';
-import EtapeCloud from './EtapeCloud';
 import EtapeCloudConnexion from './EtapeCloudConnexion';
 import EtapeFree from './EtapeFree';
+// (11/11/2026) Les formules avec Cloud : « As-tu un ordinateur ? », la présentation, « Choisis ta formule », l'essai, la formule.
+import { EtapeOrdinateur, EtapeCloudPresentation, EtapeCloudOffres, EtapeCloudOuFormule, EtapeFormule } from './EtapesFormules';
+import { ENTREE_FORMULE_KEY } from './useFormulesEntree';
 
 // Un id d'étape → un composant. C'est la SEULE table de correspondance.
 const ECRANS = {
   plateformes: EtapePlateformes,
   ebay: EtapeEbay,
   voie: EtapeVoie,
-  cloud: EtapeCloud,
+  cloud: EtapeCloudOuFormule,
+  ordinateur: EtapeOrdinateur,
+  cloud_presentation: EtapeCloudPresentation,
+  cloud_offres: EtapeCloudOffres,
+  formule: EtapeFormule,
   cloud_connexion: EtapeCloudConnexion,
   extension: EtapeExtension,
   releve: EtapeReleve,
@@ -85,9 +91,9 @@ const lireEtapeInitiale = () => {
 
 export { ONBOARD_DONE_KEY, ONBOARD_STATE_KEY };
 
-export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = false, onUsername = null, palier = 'gratuit', essaiCloud = null }) {
+export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = false, onUsername = null, palier = 'gratuit', essaiCloud = null, essaiFormule = null }) {
   const T = useMemo(() => textesEntree(lang), [lang]);
-  const c = useContexteEntree({ lang, user, demanderPseudo, palier, essaiCloud });
+  const c = useContexteEntree({ lang, user, demanderPseudo, palier, essaiCloud, essaiFormule });
   const [etapeId, setEtapeId] = useState(lireEtapeInitiale);
   const [pseudo, setPseudo] = useState('');
   const finiRef = useRef(false);
@@ -163,6 +169,7 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
       localStorage.removeItem(ONBOARD_STATE_KEY);
       localStorage.removeItem(ENTREE_ETAPE_KEY);
       localStorage.removeItem(ENTREE_VOIE_KEY);
+      localStorage.removeItem(ENTREE_FORMULE_KEY);
       // ⚠️ ENTREE_RELEVE_KEY reste : la demande de relevé peut encore être en
       // attente de l'extension, et le Stock la reprendra. fs_extension_link_sent
       // reste aussi — elle appartient au mécanisme partagé (le Stock doit

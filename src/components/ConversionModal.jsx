@@ -31,8 +31,20 @@ import { lireDernierGeste, canalDeLApp } from '../utils/dernierGeste';
 import { Capacitor } from '@capacitor/core';
 // (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité, au pied.
 import MentionsAbonnement from './MentionsAbonnement';
-import { prixOuChargement, prixPret, prixGratuit } from '../lib/prixBoutique';
+import { prixOuChargement, prixPret, prixGratuit, essaiBoutiqueOffert, zeroAffiche } from '../lib/prixBoutique';
 import { usePrixBoutique } from '../lib/usePrixBoutique';
+// (11/11/2026, décisions de Nico) LES FORMULES AVEC CLOUD — l'interrupteur « Sans Cloud | Avec Cloud » et les trois cartes,
+// derrière formulesCloudVendables (interrupteur serveur du canal + témoins) ET un hôte qui sait les acheter
+// (onFormuleCloud). Fermé : aucun de ces imports n'est rendu ni lu, la feuille est celle d'avant octet pour octet
+// (scripts/formules-cloud-ferme-selftest.mjs).
+import { formulesCloudVendables, canalDeVente } from '../config/cloudOffer';
+import OffresAvecCloud, { BasculeCloud } from '../cloud/OffresAvecCloud';
+import { cartesFormulesCloud, vueOffresParDefaut, lireVueOffres, essaiPermisDuCompte } from '../cloud/formulesCloud';
+import { useProfilFormules } from '../cloud/useProfilFormules';
+import { useDisponibiliteCloud, venteFermee } from '../cloud/useDisponibiliteCloud';
+import { textesFormules } from '../cloud/textesFormules';
+import { demanderPrixFormules } from '../lib/chargerPrixBoutique';
+import { dateLongue, finEssaiSiOnCommence } from '../cloud/regles';
 
 // ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -1166,6 +1178,11 @@ export default function ConversionModal({
   // création d'annonce par photos SANS Lens (rédaction par l'IA, comptée en annonces, illimitées chez le Business).
   // Seul l'hôte sait si c'est possible (photos à l'écran, parcours monté) : absente (null), le bouton n'est pas rendu.
   onCreerDepuisPhotos = null,
+  // (11/11/2026) Les formules avec Cloud : (formule, { essaiAffiche, dejaCloud }) => l'achat (cloud/achatFormuleCloud.js).
+  // Absente (null) : jamais d'interrupteur « Sans Cloud | Avec Cloud », la feuille d'avant.
+  onFormuleCloud = null,
+  // (11/11/2026) La position de départ demandée par l'hôte ('avec' | 'sans') ; null = la règle (vueOffresParDefaut).
+  vueCloud = null,
 }) {
   const fr = lang !== 'en';
   // (08/11, refus Google) Les prix de la boutique : l'écran se redessine quand ils arrivent (mobile).
@@ -1187,8 +1204,20 @@ export default function ConversionModal({
   // Ouverte depuis la 2e voie (trigger 'cloud') : l'interrupteur arrive coché.
   // (05/11 soir, phase 3 point 3) L'offre du Cloud ne se montre qu'en France (et aux témoins) : cloudOffreVendable.
   const cloudVisible = cloudOffreVendable(userId);
-  const lectureCloud = useCloudProfil(userId, { actif: Boolean(isOpen && cloudVisible) });
+  // (11/11/2026) Les formules avec Cloud se montrent-elles ? Le canal de l'app (web → Stripe, iPhone → Apple, Android →
+  // Google), son interrupteur serveur (ou un témoin), et un hôte qui sait acheter. Faux : rien de ce qui suit ne lit,
+  // ne demande ni ne rend quoi que ce soit.
+  let plateformeIci = 'web';
+  try { plateformeIci = Capacitor.isNativePlatform() ? Capacitor.getPlatform() : 'web'; } catch { /* web */ }
+  const formulesVisibles = typeof onFormuleCloud === 'function' && formulesCloudVendables(userId, { plateforme: plateformeIci });
+  const lectureCloud = useCloudProfil(userId, { actif: Boolean(isOpen && (cloudVisible || formulesVisibles)) });
   const offreCloud = cloudVisible ? offreCloudPourModale(lectureCloud) : null;
+  const profilFormules = useProfilFormules(userId, { actif: Boolean(isOpen && formulesVisibles) });
+  const venteFormules = useDisponibiliteCloud({ actif: Boolean(isOpen && formulesVisibles) });
+  useEffect(() => { if (isOpen && formulesVisibles) demanderPrixFormules().catch(() => {}); }, [isOpen, formulesVisibles]);
+  // La position choisie à la main ; null = la règle (le Cloud déjà pris, une porte Cloud, la voie du parcours d'entrée).
+  const [vueChoisie, setVueChoisie] = useState(null);
+  useEffect(() => { if (isOpen) setVueChoisie(null); }, [isOpen]);
   // (09/11, maquette B validée par Nico) Plus d'interrupteur : la carte FillSell Cloud a SON bouton (« Essayer 7 jours »)
   // qui prend le Cloud tout de suite (Free : seul ; payant : en plus de la formule). Les cartes des formules n'achètent
   // que leur formule — plus de « formule + Cloud ensuite » par un interrupteur coché.
@@ -1286,6 +1315,13 @@ export default function ConversionModal({
     logModale('offers_modal_cloud_ajout', { origine: origine ?? 'non_precisee', trigger, essai: offreCloud?.essai === true });
     onAjouterCloud?.();
   };
+  // (11/11/2026) Une carte « Avec Cloud » choisie : la trace, puis l'achat par l'hôte (jamais onUpgrade).
+  const choisirFormule = (carte) => {
+    palierCliqueRef.current = true;
+    logModale('offers_modal_formule_cloud', { formule: carte.formule, cta: carte.cta, essai: carte.essai === true, origine: origine ?? 'non_precisee', trigger,
+      ouverture: ouvertureRef.current.id, duree_ms: ouvertureRef.current.le ? Date.now() - ouvertureRef.current.le : null, ...contexteDeLogs() });
+    onFormuleCloud?.(carte.formule, { essaiAffiche: carte.essai === true, dejaCloud: lectureCloud.cloud?.actif === true });
+  };
   // TOUTES les sorties (backdrop, Escape, « Non merci ») passent ici : une
   // fermeture sans checkout est un abandon — avec les paliers qui étaient
   // affichés, pour savoir DEVANT QUOI l'utilisateur est parti.
@@ -1348,7 +1384,7 @@ export default function ConversionModal({
 
   // ── Option « Sans ordinateur » : les blocs, montés selon le cas (04/10) ───
   // Tous valent null quand le drapeau est baissé (offreCloud null).
-  const titreCloud = trigger === 'cloud' && (interrupteurMontre || ajoutCloudPossible) ? textesCloud(lang).titreModale : null;
+  const titreCloud = !formulesVisibles && trigger === 'cloud' && (interrupteurMontre || ajoutCloudPossible) ? textesCloud(lang).titreModale : null;
   // Option déjà active ou en pause : une ligne, jamais d'interrupteur.
   const ligneCloud = offreCloud && offreCloud.mode !== 'interrupteur' ? <LigneCloudModale offre={offreCloud} lang={lang} /> : null;
   // Free + Sans ordinateur (04/10 soir) : un compte Free prend l'option SEULE,
@@ -1359,11 +1395,13 @@ export default function ConversionModal({
   const voieCloudFree = null;
   // (09/11, maquette B validée par Nico) Compte Free : LA carte FillSell Cloud (CarteCloudOffres) au-dessus des formules,
   // son bouton « Essayer 7 jours » prend le Cloud seul (choisirCloudSeul) — à la place de l'interrupteur.
-  const blocCloud = interrupteurMontre
+  // (11/11/2026) Formules avec Cloud visibles : le Cloud SEUL ne se vend plus (décision de Nico) — sa carte disparaît de
+  // la position « Sans Cloud » ; la ligne « déjà actif » d'un client du Cloud seul reste (ses écrans ne changent pas).
+  const blocCloud = formulesVisibles ? ligneCloud : interrupteurMontre
     ? (voieFree ? <CarteCloudOffres offre={offreCloud} onEssayer={choisirCloudSeul} lang={lang} /> : null)
     : ligneCloud;
   // Compte payant : la MÊME carte, avec le nom de la formule ; son bouton ajoute le Cloud à la formule (ajouterCloud).
-  const carteCloudPayant = ajoutCloudPossible
+  const carteCloudPayant = !formulesVisibles && ajoutCloudPossible
     ? <CarteCloudOffres offre={offreCloud} onEssayer={ajouterCloud} nomPalier={nomDuPalier(palierDesDrapeaux({ isPremium, isPro, isBusiness }))} lang={lang} />
     : null;
   const carteAjoutCloud = carteCloudPayant ? <div style={{ marginBottom: 12 }}>{carteCloudPayant}</div> : null;
@@ -1445,6 +1483,48 @@ export default function ConversionModal({
     );
   }
 
+  // ══ LES FORMULES AVEC CLOUD (11/11/2026) — l'interrupteur « Sans Cloud | Avec Cloud » ══════════════════════════════
+  // Fermées (formulesVisibles faux) : `basculeFormules` vaut null et aucune vue ne change. Ouvertes : l'interrupteur en
+  // tête de chaque vue ; « Sans Cloud » = la vue d'avant (sans la carte du Cloud seul) ; « Avec Cloud » = les trois cartes.
+  const vueFormules = formulesVisibles
+    ? (vueChoisie ?? vueOffresParDefaut({
+      demande: vueCloud, trigger, choixEntree: lireVueOffres(),
+      cloudActif: lectureCloud.cloud?.actif === true || profilFormules.formuleActuelle != null,
+    }))
+    : null;
+  const basculeFormules = formulesVisibles ? <BasculeCloud vue={vueFormules} onChange={setVueChoisie} lang={lang} /> : null;
+  if (vueFormules === 'avec') {
+    const TF = textesFormules(lang);
+    const palierCompte = palierDesDrapeaux({ isPremium, isPro, isBusiness });
+    const modele = cartesFormulesCloud({
+      palier: palierCompte, formuleActuelle: profilFormules.formuleActuelle, canalApp: canalDeVente(plateformeIci),
+      canalAbonnement: profilFormules.canalAbonnement, essaiPermis: essaiPermisDuCompte(lectureCloud),
+      essaiBoutique: (f) => essaiBoutiqueOffert(f), businessVisible: businessOfferVisible(userId), founder: profilFormules.founder,
+    });
+    return (
+      <Sheet onClose={fermerParLeFond}>
+        <Title>{TF.titre}</Title>
+        {modele.essaiAffiche && (
+          <p data-formules-sous-titre="" style={{ margin: '-6px 0 14px', fontSize: 13, fontWeight: 600, lineHeight: 1.45, color: C.mute2 }}>
+            {TF.sousTitreEssai(zeroAffiche('pro_cloud', lang))}
+          </p>
+        )}
+        {basculeFormules}
+        <OffresAvecCloud
+          modele={modele} lang={lang} vente={venteFormules} venteFermee={venteFermee(venteFormules.dispo)} onChoisir={choisirFormule}
+          palierIci={palierCompte} canalApp={canalDeVente(plateformeIci)} canalAbonnement={profilFormules.canalAbonnement}
+          echeance={profilFormules.echeance ? dateLongue(profilFormules.echeance, lang) : null}
+          finEssai={dateLongue(finEssaiSiOnCommence(), lang)}
+          corps={(palier, sombre) => (grille
+            ? <CorpsCarteGrille fr={fr} palier={palier} K={K} dark={sombre} margeBas={0} />
+            : <LignesDiff fr={fr} palier={palier} dark={sombre} K={K} />)}
+        />
+        <MentionsAbonnement lang={fr ? 'fr' : 'en'} />
+        <Dismiss onClose={fermerNonMerci} label={fr ? 'Non merci' : 'No thanks'} />
+      </Sheet>
+    );
+  }
+
   // (CAS 1/2 « unités insuffisantes » et leur vue 'plans' : SUPPRIMÉS le
   // 02/09 soir — insufficient_coins ne peut plus exister, cf. bascule quotas.)
 
@@ -1455,6 +1535,7 @@ export default function ConversionModal({
   if (isPro && sellable.includes('business')) {
     return (
       <Sheet onClose={fermerParLeFond}>
+        {basculeFormules}
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
           background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -1486,6 +1567,7 @@ export default function ConversionModal({
   if (isPremium && !isPro && sellable.length > 0) {
     return (
       <Sheet onClose={fermerParLeFond}>
+        {basculeFormules}
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
           background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -1520,6 +1602,7 @@ export default function ConversionModal({
   if (sellable.length === 0) {
     return (
       <Sheet onClose={fermerParLeFond}>
+        {basculeFormules}
         <Title>{titreCloud ?? (fr ? 'Tu es déjà au maximum.' : "You're already on the top plan.")}</Title>
         {carteAjoutCloud ?? ligneCloud}
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Fermer' : 'Close'} />
@@ -1573,6 +1656,7 @@ export default function ConversionModal({
   const stockVide = itemCount === 0;
   return (
     <Sheet onClose={fermerParLeFond}>
+      {basculeFormules}
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12,
         background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -1735,7 +1819,7 @@ export default function ConversionModal({
       <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} avant={blocCloud} cloud={cloudCarte} voieCloudFree={voieCloudFree} />
       {encartCloud}
 
-      <MentionsAbonnement lang={fr ? 'fr' : 'en'} cloud={Boolean(offreCloud)} essaiCloud={offreCloud?.essai !== false} />
+      <MentionsAbonnement lang={fr ? 'fr' : 'en'} cloud={!formulesVisibles && Boolean(offreCloud)} essaiCloud={offreCloud?.essai !== false} />
 
       <Dismiss onClose={fermerNonMerci} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>

@@ -79,7 +79,11 @@ const VINGT = /(?<![\d.,])20(?:[,.]00)?[\s  ]?€|€[\s  ]?20(?![\d]|[.,]
 const CLOUD = /cloud|sans ordinateur|no computer/i;
 const FENETRE = 3;
 const estCommentaire = (l) => /^\s*(\/\/|\*|\/\*|\{\/\*|#|<!--)/.test(l);
-const toleree = (l) => estCommentaire(l) && /\bancien(ne)?s?\b/i.test(l);
+// (11/11/2026, formules avec Cloud — changement VOLONTAIRE, nommé au rapport OFFRES-APP) Le SUPPLÉMENT du Cloud dans une
+// formule avec Cloud (« le Cloud pour 22 € / 20 € de plus », décision 4 de Nico ; contrat _shared/formules-cloud.js) n'est
+// pas le prix du Cloud seul : une ligne qui le dit (« de plus », « more », « supplément ») passe.
+const supplementFormules = (l) => /de plus|\bmore\b|suppl[ée]ment|SUPPLEMENT/i.test(l);
+const toleree = (l) => (estCommentaire(l) && /\bancien(ne)?s?\b/i.test(l)) || supplementFormules(l);
 // Les fichiers du Cloud : là, tout « 20 € » est le prix du Cloud.
 const STRICTS = [/^src\/cloud\//, /^src\/entree\//, /^src\/config\/cloudOffer\.js$/, /^src\/utils\/palier\.js$/,
   /^supabase\/functions\/_shared\/cloud-[^/]+\.js$/, /^supabase\/functions\/_shared\/mrr\.js$/];

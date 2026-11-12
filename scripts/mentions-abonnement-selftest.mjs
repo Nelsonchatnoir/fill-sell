@@ -33,8 +33,10 @@ ok(/ta carte/.test(web.texte) && /Réglages › Abonnement dans FillSell/.test(w
 ok(/FillSell Cloud : 24,99 € par mois\./.test(web.texte) && !/essai/.test(web.texte), 'essai déjà pris : pas d’essai promis');
 
 // Câblage : les deux écrans d'où part un achat d'abonnement.
+// (11/11/2026, changement VOLONTAIRE nommé au rapport OFFRES-APP) Formules avec Cloud visibles, le Cloud seul ne se vend plus :
+// sa ligne ne s'écrit plus dans les mentions (cloud={!formulesVisibles && …}) ; fermées, mot pour mot comme avant.
 const modale = lire('src/components/ConversionModal.jsx');
-ok(/import MentionsAbonnement from '\.\/MentionsAbonnement';/.test(modale) && /<MentionsAbonnement lang=\{fr \? 'fr' : 'en'\} cloud=\{Boolean\(offreCloud\)\}/.test(modale), 'la feuille des formules porte les mentions (et la ligne Cloud quand l’offre est montrée)');
+ok(/import MentionsAbonnement from '\.\/MentionsAbonnement';/.test(modale) && /<MentionsAbonnement lang=\{fr \? 'fr' : 'en'\} cloud=\{!formulesVisibles && Boolean\(offreCloud\)\}/.test(modale), 'la feuille des formules porte les mentions (et la ligne Cloud quand l’offre est montrée)');
 const etape = lire('src/entree/EtapeCloud.jsx');
 ok(/<MentionsAbonnement lang=\{c\.lang === 'en' \? 'en' : 'fr'\} cloud \/>/.test(etape), 'l’étape Cloud du parcours d’entrée aussi');
 const comp = lire('src/components/MentionsAbonnement.jsx');

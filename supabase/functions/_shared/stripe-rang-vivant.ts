@@ -3,14 +3,11 @@
 // (drapeauxDepuisStripe : payé = active | trialing, Cloud exclu, pro / business par métadonnée, prix en repli).
 import { drapeauxDepuisStripe } from "./cloud-option.js";
 import { rangDesDrapeaux } from "./droits-canaux.js";
+// (11/11, offres Cloud) Les prix Stripe se lisent à un seul endroit (_shared/prix-stripe.ts), formules avec Cloud comprises.
+import { prixStripe } from "./prix-stripe.ts";
 
 export function prixStripeConnus() {
-  return {
-    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
-    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
-    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
-    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
-  };
+  return prixStripe();
 }
 
 /** Le rang (0 à 3) des abonnements Stripe payés du client. Lance une erreur si Stripe ne répond pas : l'appelant

@@ -600,6 +600,10 @@ export interface RappelVeilleCloud {
   prix?: { montant: number; devise: string } | null;
   /** Stripe : les 4 derniers chiffres de la carte, s'ils sont connus. */
   carteFin?: string | null;
+  /** (11/11, offres Cloud) La formule avec Cloud lue à la source, l'essai d'un abonné, la référence (7 jours offerts). */
+  formule?: string | null;
+  abonne?: boolean;
+  ref?: string | null;
 }
 
 export function mailRappelVeilleCloud(r: RappelVeilleCloud): MailPret {
@@ -609,6 +613,9 @@ export function mailRappelVeilleCloud(r: RappelVeilleCloud): MailPret {
     canal: r.canal ?? null,
     prix: r.prix ?? null,
     carteFin: r.carteFin ?? null,
+    formule: r.formule ?? null,
+    abonne: r.abonne === true,
+    ref: r.ref ?? null,
   });
   return {
     sujet: t.sujet,

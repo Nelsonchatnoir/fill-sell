@@ -35,11 +35,11 @@ for (const [mot, quoi] of [['AES-256-GCM', 'chiffrement'], ['restriction', 'risq
 }
 ok(T?.articles?.length === 9 && /accepte/.test(T?.case ?? ''), '9 articles et une case à cocher');
 const modale = lire('src/cloud/ConditionsCloudModale.jsx');
-ok(/(?<!-)disabled=\{!coche \|\| etat === 'envoi'\}/.test(modale) && /rpc\('cloud_cgu_accepter_moi', \{ p_version: CGU_CLOUD_VERSION \}\)/.test(modale) && /if \(error \|\| data\?\.ok !== true\) \{ setEtat\('echec'\); return; \}/.test(modale), 'modale : bouton grisé sans la case, acceptation ENREGISTRÉE avant de continuer, échec dit');
+ok(/(?<!-)disabled=\{!coche \|\| etat === 'envoi'\}/.test(modale) && /rpc\('cloud_cgu_accepter_moi', \{ p_version: version \}\)/.test(modale) && /const version = versionConditionsMontree\(formules === true\);/.test(modale) && /if \(error \|\| data\?\.ok !== true\) \{ setEtat\('echec'\); return; \}/.test(modale), 'modale : bouton grisé sans la case, acceptation ENREGISTRÉE avant de continuer, échec dit');
 const achat = lire('src/cloud/achatCloud.js');
 ok(/if \(typeof demanderConditions !== 'function' \|\| !\(await demanderConditions\(\)\)\) return \{ etat: 'annule' \};\s*notifier\?\.\(T\.preparation\);/.test(achat), 'achat : les conditions AVANT la place et avant toute carte');
 const app = lire('src/App.jsx');
-ok(/demanderConditions:\(\)=>new Promise\(\(resolve\)=>setConditionsCloudOuvertes\(\{resolve\}\)\)/.test(app) && /<ConditionsCloudModale onFini=/.test(app), 'App : la modale est branchée sur l’achat');
+ok(/demanderConditions:\(\)=>new Promise\(\(resolve\)=>setConditionsCloudOuvertes\(\{resolve\}\)\)/.test(app) && /demanderConditions:\(\)=>new Promise\(\(resolve\)=>setConditionsCloudOuvertes\(\{resolve,formules:true\}\)\)/.test(app) && /<ConditionsCloudModale formules=\{conditionsCloudOuvertes\.formules===true\} onFini=/.test(app), 'App : la modale est branchée sur l’achat');
 ok(/chargerTemoinCloud\(supabase,user\.id\)/.test(app), 'App : le drapeau par compte est lu à la connexion');
 const cc = lire('supabase/functions/create-checkout-session/index.ts');
 const iGarde = cc.indexOf('error: "offre_fermee"'), iCgu = cc.indexOf('error: "conditions_a_accepter"'), iSession = cc.indexOf('const clientCloud = await resoudreClient(');
@@ -59,7 +59,13 @@ ok(/GRANT EXECUTE ON FUNCTION public\.cloud_executant_moi\(\) TO authenticated;/
 console.log('3 bis. La case des conditions (C1, 11/11) : sans le risque, le fond gardé, l’ancien acceptant jamais bloqué');
 // ⛔ LE JOUR DU PUSH WEB : la date RÉELLE de la livraison (heure de Paris), ici ET dans _shared/cloud-conditions.js
 // (CGU_CLOUD_HISTORIQUE[0].version) — seuls endroits où elle s'écrit.
-const VERSION_LIVREE = '2026-11-11';
+// (12/11/2026, offres Cloud — changement VOLONTAIRE, nommé dans le rapport OFFRES-SERVEUR) l'article 6 des formules avec
+// Cloud : version 2026-11-12 (validée par Nico) ; la minimale ne bouge pas.
+const VERSION_LIVREE = '2026-11-12';
+// (12/11/2026, offres Cloud) La version MONTRÉE à tous (case du Cloud seul, page publique fermée) reste celle du Cloud
+// seul : la dernière qui n'est pas celle des formules. Celle des formules (VERSION_LIVREE, en tête) ne se montre que dans
+// l'achat d'une formule (src/cloud/conditionsCloud.js, versionConditionsMontree).
+const VERSION_CLOUD_SEUL = '2026-11-11';
 const jma = (v) => v.split('-').reverse().join('/');
 const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
 {
@@ -138,13 +144,15 @@ const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
     }
     ok(ecrite.length === 1 && ecrite[0] === 'supabase/functions/_shared/cloud-conditions.js', `la date de la version en vigueur s’écrit à UN endroit du code (${ecrite.join(', ') || 'nulle part'})`);
   }
-  ok(T?.version ===`Version du ${jma(VERSION_LIVREE)} — elle reformule les articles 4 et 9 sans rien changer sur le fond : une acceptation de la version du 04/11/2026 reste valable.`
-    && EN?.version === `Version of ${jma(VERSION_LIVREE)} — it rewords articles 4 and 9 without changing their substance: an acceptance of the version of 04/11/2026 remains valid. English translation for information only; the French version prevails.`,
+  ok(T?.version ===`Version du ${jma(VERSION_CLOUD_SEUL)} — elle reformule les articles 4 et 9 sans rien changer sur le fond : une acceptation de la version du 04/11/2026 reste valable.`
+    && EN?.version === `Version of ${jma(VERSION_CLOUD_SEUL)} — it rewords articles 4 and 9 without changing their substance: an acceptance of the version of 04/11/2026 remains valid. English translation for information only; the French version prevails.`,
   'la ligne de version, mot pour mot : l’acceptation du 04/11/2026 reste valable (fr et en)');
   // (relecture D8) La phrase vient de la table « ce que change la version » : une autre version n'en hérite jamais.
   ok(typeof COND.ligneDeVersion === 'function' && COND.ligneDeVersion('fr', { version: '2026-12-01', changement: 'autre' }) === 'Version du 01/12/2026'
     && COND.ligneDeVersion('en', { version: '2026-12-01', changement: 'autre' }) === 'Version of 01/12/2026 — English translation for information only; the French version prevails.'
-    && COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.[0]) === T?.version && SRV.CGU_CLOUD_HISTORIQUE?.[0]?.version === SRV.CGU_CLOUD_VERSION,
+    && COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.find((e) => e.changement !== 'formules_cloud_article_6')) === T?.version && SRV.CGU_CLOUD_HISTORIQUE?.[0]?.version === SRV.CGU_CLOUD_VERSION
+    && COND.conditionsCloud?.('fr', { formules: true })?.version === COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.[0])
+    && COND.versionConditionsMontree?.(false) === VERSION_CLOUD_SEUL && COND.versionConditionsMontree?.(true) === VERSION_LIVREE,
   'la phrase de la ligne de version est choisie par la version (table), jamais écrite pour toutes : une version sans phrase n’affiche que sa date');
   // 5. Un ancien acceptant n'est jamais bloqué ; une app plus récente que le serveur non plus ; l'ancien prix (2026-10-30)
   //    et tout format faux toujours refusés (relecture D1). Même règle exécutée côté app et côté serveur.
@@ -159,13 +167,18 @@ const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
   // (relecture D6) create-checkout-session : la règle IMPORTÉE de _shared, jamais redéfinie, aucune comparaison locale.
   {
     const ccCode = cc.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-    const sansSelect = ccCode.replace('.select("beta_flags, cloud_cgu_version")', '');
+    // (11/11/2026, offres Cloud — changement VOLONTAIRE, nommé dans le rapport OFFRES-SERVEUR) la liste de colonnes lue pour
+    // une formule avec Cloud (COLONNES_FORMULE) contient aussi cloud_cgu_version : la garde des formules est
+    // conditionsFormulesAcceptees (_shared/formules-serveur.js), au même endroit — le paiement — et nulle part ailleurs.
+    const sansSelect = ccCode.replace('.select("beta_flags, cloud_cgu_version")', '').replace(/const COLONNES_FORMULE = "beta_flags, cloud_cgu_version, /, '');
     ok(/^import \{[^}]*\bconditionsCloudAcceptees\b[^}]*\} from "\.\.\/_shared\/cloud-conditions\.js";$/m.test(cc) && /if \(!conditionsCloudAcceptees\(profilGarde\)\) \{/.test(cc)
       && !/(const|let|var|function)\s+conditionsCloudAcceptees\b/.test(ccCode) && !/cloud_cgu_version/.test(sansSelect)
       && !/(===|!==|==|!=|<=|>=|<|>)\s*CGU_CLOUD_VERSION\b|\bCGU_CLOUD_VERSION\s*(===|!==|==|!=|<=|>=|<|>)/.test(ccCode),
     'create-checkout-session : la garde = conditionsCloudAcceptees importée de _shared (jamais redéfinie), aucune comparaison locale de cloud_cgu_version');
   }
-  const PERMIS = new Set(['src/config/cloudOffer.js', 'src/cloud/conditionsCloud.js', 'src/cloud/ConditionsCloudModale.jsx', 'supabase/functions/_shared/cloud-conditions.js',
+  // (11/11, offres Cloud — nommé dans le rapport) + _shared/formules-serveur.js : conditionsFormulesAcceptees, appelée SEULEMENT par
+  // create-checkout-session (vérifié juste après) — le Cloud en service n'est toujours jamais coupé pour une version.
+  const PERMIS = new Set(['src/config/cloudOffer.js', 'src/cloud/conditionsCloud.js', 'src/cloud/ConditionsCloudModale.jsx', 'supabase/functions/_shared/cloud-conditions.js', 'supabase/functions/_shared/formules-serveur.js',
     'supabase/functions/create-checkout-session/index.ts', 'supabase/migrations/20261030130000_cloud_conditions_executant_rotation.sql']);
   const LECTURE = /cloud_cgu|CGU_CLOUD_VERSION|CGU_CLOUD_HISTORIQUE|versionCguValable|conditionsCloudAcceptees|conditionsAcceptees/;
   const lecteurs = [];
@@ -178,16 +191,28 @@ const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
     }
   }
   ok(lecteurs.length === 0, `aucune autre lecture de la version (app, fonctions, migrations, serveur Cloud, extension) : le Cloud en service n’est jamais coupé pour une version${lecteurs.length ? ` — LUE PAR : ${lecteurs.join(', ')}` : ''}`);
+  // (11/11, offres Cloud) conditionsFormulesAcceptees (_shared/formules-serveur.js) n'est appelée QUE par create-checkout-session.
+  {
+    const appelants = [];
+    for (const f of fs.readdirSync(new URL('../supabase/functions', import.meta.url), { recursive: true })) {
+      const chemin = `supabase/functions/${String(f).replace(/\\/g, '/')}`;
+      if (!/\.(jsx?|mjs|tsx?)$/.test(chemin) || chemin.endsWith('_shared/formules-serveur.js')) continue;
+      const u = new URL(`../${chemin}`, import.meta.url);
+      if (fs.statSync(u).isFile() && /conditionsFormulesAcceptees\(/.test(fs.readFileSync(u, 'utf8'))) appelants.push(chemin);
+    }
+    ok(appelants.length === 1 && appelants[0] === 'supabase/functions/create-checkout-session/index.ts',
+      `(11/11) la garde des formules (conditionsFormulesAcceptees) ne vit qu'au paiement : ${appelants.join(', ') || 'aucun appelant'}`);
+  }
   // 6. L'étape est mesurée (usage_logs, par la porte tracerCloud), sans jamais attendre une trace.
   const EVENEMENTS = ['cloud_conditions_vues', 'cloud_conditions_cochees', 'cloud_conditions_annulees', 'cloud_conditions_acceptees', 'cloud_conditions_echec'];
   ok(EVENEMENTS.every((e) => modale.includes(`'${e}'`)) && /import \{ tracerCloud \} from '\.\/traceCloud';/.test(modale), `l’étape est mesurée par tracerCloud : ${EVENEMENTS.join(', ')}`);
   const iEffet = modale.indexOf('useEffect(() => {'), iVues = modale.indexOf("'cloud_conditions_vues'");
   ok(iEffet > 0 && iVues > iEffet && iVues < modale.indexOf('}, [', iEffet) && /if \(vues\.current\) return;/.test(modale), '« vues » : au montage (useEffect), une fois par ouverture');
-  ok(/if \(v && !cochees\.current\) \{ cochees\.current = true; tracerEtape\('cloud_conditions_cochees', lang\); \}/.test(modale), '« cochée » : au premier passage de la case à cochée, une fois par ouverture');
+  ok(/if \(v && !cochees\.current\) \{ cochees\.current = true; tracerEtape\('cloud_conditions_cochees', lang, \{\}, version\); \}/.test(modale), '« cochée » : au premier passage de la case à cochée, une fois par ouverture');
   const iEnreg = modale.indexOf("if (error || data?.ok !== true) { setEtat('echec'); return; }"), iAcc = modale.indexOf("'cloud_conditions_acceptees'");
   ok(iEnreg > 0 && iAcc > iEnreg && modale.indexOf('onFini(true)') > iAcc, '« acceptées » (= continué) : APRÈS l’enregistrement réussi, juste avant de rendre la main');
-  ok(/tracerEtape\('cloud_conditions_annulees', lang, \{ coche \}\);\s*onFini\(false\);/.test(modale) && (modale.match(/onFini\(false\)/g) ?? []).length === 1, '« annulées » : avant de fermer, avec « cochée ou non » (la seule sortie sans accepter)');
-  ok(/const metadata = \{ version: CGU_CLOUD_VERSION, lang, plateforme: plateformeApp\(\), \.\.\.extra \};/.test(modale), 'chaque trace porte la version, la langue et la plateforme (web / ios / android)');
+  ok(/tracerEtape\('cloud_conditions_annulees', lang, \{ coche \}, version\);\s*onFini\(false\);/.test(modale) && (modale.match(/onFini\(false\)/g) ?? []).length === 1, '« annulées » : avant de fermer, avec « cochée ou non » (la seule sortie sans accepter)');
+  ok(/function tracerEtape\(feature, lang, extra = \{\}, version = versionConditionsMontree\(false\)\) \{\s*const metadata = \{ version, lang, plateforme: plateformeApp\(\), \.\.\.extra \};/.test(modale), 'chaque trace porte la version, la langue et la plateforme (web / ios / android)');
   ok(!/await\s+(tracerCloud|tracerEtape)\b/.test(modale) && !/return\s+(tracerCloud|Promise)/.test(modale.slice(modale.indexOf('function tracerEtape'), modale.indexOf('export default')))
     && /\.catch\(\(\) => \{/.test(modale.slice(modale.indexOf('function tracerEtape'), modale.indexOf('export default'))),
   'jamais d’attente sur une trace (ni rendue, ni attendue, erreur avalée) : l’écran n’est ni ralenti ni bloqué');
@@ -248,7 +273,7 @@ console.log('3 ter. La modale des conditions, exécutée (rendu serveur + croche
     const caseHtml = html.match(/<input type="checkbox"[^>]*>/)?.[0] ?? '';
     const boutonHtml = html.match(/<button type="button"[^>]*>(?:(?!<\/button>).)*J(?:&#x27;|')accepte et je continue<\/button>/)?.[0] ?? '';
     ok(caseHtml && !/checked/.test(caseHtml) && /\sdisabled=""/.test(boutonHtml), 'rendu : la case n’est PAS cochée au départ, « J’accepte et je continue » grisé');
-    ok(html.includes('j&#x27;accepte les conditions d&#x27;utilisation de FillSell Cloud.</span>') && html.includes(`Version du ${jma(VERSION_LIVREE)} — elle reformule`),
+    ok(html.includes('j&#x27;accepte les conditions d&#x27;utilisation de FillSell Cloud.</span>') && html.includes(`Version du ${jma(VERSION_CLOUD_SEUL)} — elle reformule`),
       'rendu : le texte de la case et la ligne de version');
     // b. Joué avec des crochets simulés.
     const C = { slots: [], i: 0, effets: [] };
@@ -290,7 +315,7 @@ console.log('3 ter. La modale des conditions, exécutée (rendu serveur + croche
     ok(fermeTot && ann?.metadata?.coche === true && ann?.user_id === 'u-test', '« Annuler » : la modale se ferme aussitôt, la trace dit « cochée »');
     ok(['cloud_conditions_vues', 'cloud_conditions_cochees', 'cloud_conditions_annulees'].every((f) => {
       const m = traces.find((t) => t.feature === f)?.metadata ?? {};
-      return m.version === SRV.CGU_CLOUD_VERSION && m.lang === 'fr' && m.plateforme === 'web';
+      return m.version === VERSION_CLOUD_SEUL && m.lang === 'fr' && m.plateforme === 'web';
     }), 'chaque trace porte la version montrée, la langue et la plateforme');
     // b2. Une nouvelle ouverture = une nouvelle « vues ».
     traces.length = 0; fins.length = 0;
@@ -301,7 +326,7 @@ console.log('3 ter. La modale des conditions, exécutée (rendu serveur + croche
     laCase(el).props.onChange({ target: { checked: true } }); el = rendre(props);
     const clic = bouton(el, ["J'accepte et je continue"]).props.onClick();
     await Promise.race([clic, attendre(400)]);
-    ok(fins.length === 1 && fins[0] === true && rpcs.at(-1)?.nom === 'cloud_cgu_accepter_moi' && rpcs.at(-1)?.args?.p_version === SRV.CGU_CLOUD_VERSION,
+    ok(fins.length === 1 && fins[0] === true && rpcs.at(-1)?.nom === 'cloud_cgu_accepter_moi' && rpcs.at(-1)?.args?.p_version === VERSION_CLOUD_SEUL,
       'joué : l’acceptation ENREGISTRÉE (version montrée) rend la main même si la trace ne répond jamais (aucune trace attendue)');
     // b4. Accepté : la trace « acceptées » ; échec de l'enregistrement : la trace « echec » (raison), la modale reste ouverte.
     session = async () => ({ data: { session: { user: { id: 'u-test' } } } });

@@ -11,6 +11,9 @@ import { faitsEchec, decisionMailEchec, causeDuPaiement } from "../_shared/paiem
 import { palierDeFacture } from "../_shared/paiement-stripe.js";
 import { colonnesDescente, descentePrevue } from "../_shared/descente-formule.js";
 import { palierDuProfil } from "../_shared/palier.js";
+// (11/11/2026, offres Cloud) Les formules avec Cloud : un abonnement qui porte un palier ET le Cloud (formules-serveur.js).
+import { formuleDeMetadonnees, formuleDAbonnementStripe, grantDeFormule, planTypeDeFormule, formuleDuProduit, nomDeFormule } from "../_shared/formules-serveur.js";
+import { prixStripe } from "../_shared/prix-stripe.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -23,13 +26,9 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
 // JAMAIS is_premium / is_pro / is_business, ne crédite AUCUN quota, et continue
 // si le palier tombe. Règles : _shared/cloud-option.js (testé par
 // scripts/option-cloud-selftest.mjs).
+// (11/11) Lus à un seul endroit (_shared/prix-stripe.ts), les trois formules avec Cloud comprises.
 function prixConnus() {
-  return {
-    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
-    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
-    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
-    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
-  };
+  return prixStripe();
 }
 
 // Recalcule is_premium/is_pro depuis les abonnements Stripe RESTANTS du
@@ -104,6 +103,9 @@ function planDeMontee(invoice: Stripe.Invoice): "pro" | "business" | null {
 // lui qui fait foi après une mise à jour en attente appliquée.
 function planDuPrix(s: Stripe.Subscription): string | null {
   const ids = (s.items?.data ?? []).map((it: Stripe.SubscriptionItem) => it.price?.id ?? "");
+  // (11/11) Une formule avec Cloud : le palier de la formule (plan_type « standard » pour Premium + Cloud).
+  const formulePrix = formuleDAbonnementStripe(s, prixConnus());
+  if (formulePrix && ids.some((id: string) => formuleDuProduit(id, prixConnus())?.formule === formulePrix)) return planTypeDeFormule(formulePrix);
   for (const [plan, envKey] of [["business", "STRIPE_PRICE_BUSINESS"], ["pro", "STRIPE_PRICE_PRO"], ["standard", "STRIPE_PRICE_STANDARD"]] as const) {
     const priceId = Deno.env.get(envKey) ?? "";
     if (priceId && ids.includes(priceId)) return plan;
@@ -177,6 +179,12 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
       update.is_business = avecStores.is_business;
       console.log("[webhook] drapeaux gardés au rang du store vivant", avecStores.rangStore, "(Stripe :", avecStores.rangStripe, ") pour", customerId);
     }
+  }
+  // (11/11) La formule avec Cloud tombée (ou remplacée par le Cloud seul) : profiles.cloud_formule remis à NULL — lu à part,
+  // et seulement s'il en porte une (colonne absente : rien, jamais une erreur sur l'écriture des drapeaux).
+  if (!("cloud_formule" in update)) {
+    const { data: cf, error: ecf } = await supabase.from("profiles").select("cloud_formule").eq("stripe_customer_id", customerId).maybeSingle();
+    if (!ecf && cf?.cloud_formule && (prof?.cloud_canal == null || prof?.cloud_canal === "stripe")) update.cloud_formule = null;
   }
   await supabase.from("profiles").update(update).eq("stripe_customer_id", customerId);
   await ecrireDescentePrevue(supabase, customerId, subs ?? []);
@@ -296,7 +304,9 @@ async function signalerEchecAcquis(supabase: any, p: {
     );
   };
   const estCloud = abonnement ? estAbonnementCloud(abonnement, prixConnus()) : portePrix("STRIPE_PRICE_CLOUD");
-  const nomPlan = estCloud ? "Cloud"
+  // (11/11) Une formule avec Cloud se nomme (« Pro + Cloud »).
+  const formuleEchec = abonnement ? formuleDAbonnementStripe(abonnement, prixConnus()) : null;
+  const nomPlan = formuleEchec ? (nomDeFormule(formuleEchec) ?? "Premium") : estCloud ? "Cloud"
     : portePrix("STRIPE_PRICE_BUSINESS") ? "Business"
     : portePrix("STRIPE_PRICE_PRO") ? "Pro"
     : "Premium";
@@ -376,6 +386,93 @@ async function signalerSouscriptionAbandonnee(supabase: any, subscription: Strip
   } catch (e) {
     console.error(`[webhook] abandon de la souscription ${subscription.id} non traité : ${(e as Error)?.message ?? e}`);
   }
+}
+
+// ── (11/11/2026) LA SOUSCRIPTION D'UNE FORMULE AVEC CLOUD (checkout.session.completed) ───────────────────────────────
+// deno-lint-ignore no-explicit-any
+async function formuleCloudSouscrite(supabase: any, session: Stripe.Checkout.Session, customerId: string, email: string | null): Promise<Response> {
+  const formule = formuleDeMetadonnees(session.metadata)!;
+  const cible = session.metadata?.fillsell_user_id || null;
+  const { data: qui } = cible
+    ? await supabase.from("profiles").select("id").eq("id", cible).maybeSingle()
+    : await supabase.from("profiles").select("id").eq("email", email ?? "").maybeSingle();
+  if (!qui?.id) {
+    console.error(`[webhook] session ${formule} ${session.id} : compte introuvable (user=${cible ?? "?"}, email=${email ?? "?"})`);
+    await alerterPaiementNonCredite({
+      canal: "stripe", type: "abonnement", email, produit: formule, ref: `stripe:${session.id}`, rpc: null,
+      erreur: `Formule ${formule} (essai ou payée) sans compte FillSell retrouvé.`,
+    });
+    return new Response(JSON.stringify({ received: true, formule }), { headers: { "Content-Type": "application/json" } });
+  }
+  await supabase.from("profiles").update({ stripe_customer_id: customerId }).eq("id", qui.id);
+  const subId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null;
+  let sub: Stripe.Subscription | null = null;
+  let carteRefusee = false;
+  if (subId) {
+    try {
+      sub = await stripe.subscriptions.retrieve(subId, { expand: ["default_payment_method"] });
+    } catch (e) {
+      console.error(`[webhook] abonnement ${subId} (${formule}) illisible : ${(e as Error)?.message ?? e}`);
+    }
+  }
+  // Le 4e verrou de l'essai : la carte (empreinte hachée, cloud_essai_noter_carte) — même règle que le Cloud seul.
+  if (sub && sub.status === "trialing") {
+    try {
+      let pm = sub.default_payment_method as Stripe.PaymentMethod | string | null;
+      if (!pm || typeof pm === "string") {
+        const client = await stripe.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] }) as Stripe.Customer;
+        pm = (client.invoice_settings?.default_payment_method ?? null) as Stripe.PaymentMethod | string | null;
+      }
+      const empreinte = pm && typeof pm !== "string" ? pm.card?.fingerprint ?? null : null;
+      if (!empreinte) console.warn(`[webhook] essai ${formule} ${sub.id} : empreinte de carte illisible — verrou carte non appliqué`);
+      else {
+        const { data: verdict, error: errCarte } = await supabase.rpc("cloud_essai_noter_carte", { p_user: qui.id, p_carte: empreinte });
+        if (errCarte) console.error(`[webhook] cloud_essai_noter_carte : ${errCarte.message}`);
+        else if (verdict?.ok === false && verdict?.raison === "carte_deja_vue") {
+          await stripe.subscriptions.cancel(sub.id);
+          carteRefusee = true;
+          console.log(`[webhook] essai ${formule} ${sub.id} ANNULÉ : carte déjà utilisée pour l'essai d'un autre compte (rien prélevé)`);
+        }
+      }
+    } catch (e) {
+      console.error(`[webhook] verrou carte de l'essai ${formule} : ${(e as Error)?.message ?? e}`);
+    }
+  }
+  await recomputeStripeFlags(supabase, customerId);
+  if (carteRefusee) await supabase.from("profiles").update({ cloud_essai_refus: "carte_deja_vue" }).eq("id", qui.id);
+  if (sub && !carteRefusee && sub.status === "trialing") {
+    // Le mail de début d'essai (un seul), au prix de la PREMIÈRE échéance lu chez Stripe. ⛔ Jamais pour Business + Cloud.
+    const subLu = sub;
+    await mailsCloud(supabase, {
+      userId: qui.id, canal: "stripe", evenements: evenementDebutStripe(subLu), journal: "[webhook]",
+      lirePrix: async () => {
+        try {
+          const aVenir = await stripe.invoices.retrieveUpcoming({ subscription: subLu.id });
+          const m = montantStripe(Number(aVenir?.amount_due), aVenir?.currency);
+          if (m) return m;
+        } catch (e) {
+          console.warn(`[webhook] facture à venir de ${subLu.id} illisible : ${(e as Error)?.message ?? e}`);
+        }
+        return prixDepuisStripe(subLu).prix;
+      },
+    });
+  } else if (sub && !carteRefusee && sub.status === "active") {
+    // Payée tout de suite : le crédit du mois au palier de la formule (le mail de paiement part d'invoice.paid).
+    const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+    const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
+      p_user_id: qui.id, p_tier: grantDeFormule(formule), p_period_end: periodEnd, p_source: "payment",
+    });
+    const montant = session.amount_total != null ? `${(session.amount_total / 100).toFixed(2)} ${(session.currency ?? "eur").toUpperCase()}` : null;
+    if (grantErr) {
+      console.error(`[webhook] ${formule} : upgrade_monthly_grant : ${grantErr.message}`);
+      await alerterPaiementNonCredite({ canal: "stripe", type: "abonnement", user_id: qui.id, email, produit: formule, montant, ref: `stripe:${session.id}`, rpc: null, erreur: grantErr.message });
+    } else if ((grantRes as { granted?: boolean })?.granted === true) {
+      await notifierPaiement({ canal: "stripe", type: "abonnement", user_id: qui.id, email, produit: formule, montant,
+        pepites: (grantRes as { amount?: number })?.amount ?? null, ref: `stripe:${session.id}`, rpc: grantRes });
+    }
+  }
+  console.log(`[webhook] ${formule} souscrite → user=${qui.id} session=${session.id} statut=${sub?.status ?? "?"}${carteRefusee ? " (essai refusé : carte déjà vue)" : ""}`);
+  return new Response(JSON.stringify({ received: true, formule }), { headers: { "Content-Type": "application/json" } });
 }
 
 serve(async (req) => {
@@ -548,6 +645,15 @@ serve(async (req) => {
       });
     }
 
+    // ── (11/11/2026) UNE FORMULE AVEC CLOUD (Premium + Cloud, Pro + Cloud, Business + Cloud) ──────────────
+    // Un abonnement qui porte le palier ET le Cloud : drapeaux et colonnes Cloud relus chez Stripe (recomputeStripeFlags).
+    // Essai (Premium + Cloud, Pro + Cloud seulement) : le 4e verrou (la carte) ; AUCUN crédit pendant l'essai — le crédit
+    // du mois vient avec le premier paiement réel (invoice.paid). Payée tout de suite (Business + Cloud, ou essai déjà pris) :
+    // le crédit du mois ici, au palier de la formule.
+    if (formuleDeMetadonnees(session.metadata)) {
+      return await formuleCloudSouscrite(supabase, session, customerId, email ?? null);
+    }
+
     // (15/10) Le compte se retrouve par l'identifiant FillSell posé sur la
     // session (create-checkout-session, metadata.fillsell_user_id depuis le
     // 01/10) ; l'adresse de Checkout n'est plus qu'un repli. Avant : une
@@ -704,6 +810,16 @@ serve(async (req) => {
     // Pro ⊇ Premium), métadonnée de l'abonnement et annulation programmée levée
     // — celles-ci seulement une fois la mise à jour réellement appliquée (plus
     // de pending_update), sinon customer.subscription.updated s'en charge.
+    // (11/11/2026) AUCUN CRÉDIT PENDANT UN ESSAI, sur aucun abonnement : la facture à 0 € de la création d'un essai
+    // (formule avec Cloud) ne crédite rien et n'ouvre aucun cycle — les droits de l'essai viennent des drapeaux.
+    if (subFacture?.status === "trialing") {
+      await recomputeStripeFlags(supabase, customerId);
+      console.log(`[webhook] facture ${invoice.id} pendant l'essai de ${subFacture.id} (${invoice.amount_paid ?? "?"} ${invoice.currency ?? ""}) : aucun crédit`);
+      return new Response(JSON.stringify({ received: true, essai: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const formuleFacture = subFacture ? formuleDAbonnementStripe(subFacture, prixConnus()) : null;
     const montee = planDeMontee(invoice);
     if (montee) {
       const { error: flagsErr } = await supabase
@@ -793,9 +909,11 @@ serve(async (req) => {
         console.log(`[webhook] invoice.paid grant → user=${profs[0].id} tier=${tier}`);
         // granted=false : facture de proration ou event rejoué sur un cycle
         // déjà crédité — le renouvellement n'a rien ajouté, donc pas de mail.
+        // (11/11) Une formule avec Cloud : son mail de paiement (« Pro + Cloud continue », montant payé), un par facture.
+        if (formuleFacture) await mailsCloudDuClient(supabase, customerId, evenementPaiementStripe(invoice, subFacture));
         if ((grantRes as { granted?: boolean })?.granted === true) {
           await notifierPaiement({
-            canal: "stripe", type: "abonnement", user_id: profs[0].id, produit: tier,
+            canal: "stripe", type: "abonnement", user_id: profs[0].id, produit: formuleFacture ?? tier,
             montant: montantFacture,
             pepites: (grantRes as { amount?: number })?.amount ?? null,
             ref: invoice.id ?? null, rpc: grantRes,
@@ -874,6 +992,37 @@ serve(async (req) => {
       return new Response(JSON.stringify({ received: true, cloud: true }), {
         headers: { "Content-Type": "application/json" },
       });
+    }
+    // (11/11) UNE FORMULE AVEC CLOUD : arrêt pendant l'essai = effet IMMÉDIAT, rien facturé (même règle que le Cloud
+    // seul) ; arrêt programmé posé hors de l'app (portail) = le mail d'arrêt de la formule.
+    const formuleSub = formuleDAbonnementStripe(subscription, prixConnus());
+    if (formuleSub && status === "trialing" && cancelAtPeriodEnd) {
+      let evenementsArretF: EvenementCloud[] = [];
+      try {
+        const annule = await stripe.subscriptions.cancel(subscription.id);
+        const factures = await stripe.invoices.list({ subscription: subscription.id, limit: 20 });
+        evenementsArretF = evenementArretStripe(annule, factures.data);
+        console.log(`[webhook] essai ${formuleSub} ${subscription.id} arrêté tout de suite (résiliation pendant l'essai)`);
+      } catch (e) {
+        console.error(`[webhook] arrêt immédiat de l'essai ${formuleSub} ${subscription.id} impossible : ${(e as Error)?.message ?? e}`);
+      }
+      await recomputeStripeFlags(supabase, customerId);
+      await mailsCloudDuClient(supabase, customerId, evenementsArretF);
+      return new Response(JSON.stringify({ received: true, formule: formuleSub }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (formuleSub && status === "active" && cancelAtPeriodEnd && precedent.cancel_at_period_end === false) {
+      await mailsCloudDuClient(supabase, customerId, evenementArretStripe(subscription));
+    }
+    // La métadonnée `formule` suit le PRIX (retrait du Cloud, changement de formule appliqué par un schedule).
+    if (prixChange && !subscription.pending_update && (subscription.metadata?.formule ?? null) !== (formuleSub ?? null)
+        && (status === "active" || status === "trialing" || status === "past_due")) {
+      try {
+        await stripe.subscriptions.update(subscription.id, { metadata: { ...(subscription.metadata ?? {}), formule: formuleSub ?? "" } });
+      } catch (e) {
+        console.error(`[webhook] métadonnée de formule non réalignée sur ${subscription.id} : ${(e as Error)?.message ?? e}`);
+      }
     }
     let recalcule = false;
     if (prixChange && !subscription.pending_update

@@ -8,6 +8,7 @@
 // VOIE CLOUD, la ligne « FillSell Cloud » (et « Connexions » une fois l'option active) prend la place de celle de
 // l'extension. Grille éteinte et Cloud fermé : le récap d'avant, ligne pour ligne.
 import { Cloud, Gauge, Plug } from 'lucide-react';
+import { NOMS_FORMULES } from '../cloud/textesFormules';
 import { E, DEGRADE } from './theme';
 import { Scene, Titre, Texte, Carte, BoutonPrimaire } from './EntreeUI';
 import { LIBELLE_PLATEFORME } from '../utils/stockFiltres';
@@ -73,7 +74,8 @@ export default function EtapeFin({ c, T, pseudo, onTerminer }) {
         />
         {cloudChoisi ? (
           <Ligne
-            glyphe={<Cloud size={14} strokeWidth={2.4} />} libelle={T.finCloud}
+            // (11/11/2026) Sur la voie des formules avec Cloud : « Pro + Cloud · Essai gratuit jusqu'au … ».
+            glyphe={<Cloud size={14} strokeWidth={2.4} />} libelle={c.formules?.parcours === true && NOMS_FORMULES[c.formules.choisie] ? NOMS_FORMULES[c.formules.choisie] : T.finCloud}
             valeur={cloudPris ? (c.cloud.essaiFinCourt ? T.finCloudEssai(c.cloud.essaiFinCourt) : T.finCloudActif) : T.finCloudOu}
             fait={cloudPris} mot={cloudPris ? T.finPret : T.finAFaire} delai="70ms" retour
           />

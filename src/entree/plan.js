@@ -30,7 +30,17 @@
 //   · 'free' : `c.plan` (grille à 3 jauges lue dans coin_config) ET un compte Free.
 // Avec la voie Cloud choisie, l'étape extension s'efface : le choix est fait (« Je préfère utiliser mon
 // ordinateur » et « Finalement, je n'ai pas d'ordinateur » passent d'une voie à l'autre).
-const voieCloudChoisie = (c) => c.cloud?.parcours === true && c.voie === 'cloud';
+// (11/11/2026, formules avec Cloud — textes validés par Nico, § 8.2 du plan) Quand les formules se montrent à ce compte
+// (c.formules.parcours : téléphone + canal ouvert ou témoin + achat fourni par l'hôte), « As-tu un ordinateur ? »
+// remplace « Comment tu veux publier ? » ; « non » mène à la présentation du Cloud, puis à « Choisis ta formule », puis
+// (Premium + Cloud ou Pro + Cloud à l'essai) à « Rien à payer avant le … ». Fermé : `formules` est faux et la liste est
+// celle d'avant, dans le même ordre (verrou scripts/formules-cloud-ferme-selftest.mjs).
+const formules = (c) => c.formules?.parcours === true;
+const voieCloudChoisie = (c) => !formules(c) && c.cloud?.parcours === true && c.voie === 'cloud';
+const voieFormuleChoisie = (c) => formules(c) && c.voie === 'cloud';
+// L'essai d'une formule choisie (Premium + Cloud ou Pro + Cloud) : l'écran « Rien à payer avant le … ».
+const essaiFormuleChoisi = (c) => voieFormuleChoisie(c) && c.formules.choisieAvecEssai === true
+  && (c.formules.choisie === 'premium_cloud' || c.formules.choisie === 'pro_cloud');
 
 export const ETAPES = [
   { id: 'plateformes' },
@@ -38,13 +48,18 @@ export const ETAPES = [
   // le correctif du 20/09 — l'OAuth était planqué dans les Réglages et
   // personne ne le trouvait.
   { id: 'ebay', visible: (c) => c.choix.plateformes.includes('ebay') },
+  // (11/11/2026) « As-tu un ordinateur ? » — formules avec Cloud ouvertes seulement.
+  { id: 'ordinateur', visible: formules },
   // (04/11) « Comment tu veux publier ? » — Cloud ou extension, rien de pré-coché.
-  { id: 'voie', visible: (c) => c.cloud?.parcours === true },
-  // (04/11) « Rien à payer avant le … » — l'essai, par le chemin d'achat existant.
-  { id: 'cloud', visible: voieCloudChoisie },
+  { id: 'voie', visible: (c) => !formules(c) && c.cloud?.parcours === true },
+  // (11/11/2026) 4b : « FillSell tourne pour toi, même sans ordinateur », puis « Choisis ta formule ».
+  { id: 'cloud_presentation', visible: voieFormuleChoisie },
+  { id: 'cloud_offres', visible: voieFormuleChoisie },
+  // (04/11) « Rien à payer avant le … » — l'essai, par le chemin d'achat existant (11/11 : ou celui d'une formule).
+  { id: 'cloud', visible: (c) => voieCloudChoisie(c) || essaiFormuleChoisi(c) },
   // (04/11) « Connecte tes comptes, une fois » — seulement une fois l'option active (le serveur le dit).
-  { id: 'cloud_connexion', visible: (c) => voieCloudChoisie(c) && c.cloud.actif === true },
-  { id: 'extension', visible: (c) => !voieCloudChoisie(c) },
+  { id: 'cloud_connexion', visible: (c) => (voieCloudChoisie(c) && c.cloud.actif === true) || (voieFormuleChoisie(c) && c.formules.actif === true && c.cloud?.ouvert === true) },
+  { id: 'extension', visible: (c) => !voieCloudChoisie(c) && !voieFormuleChoisie(c) },
   // Deux faces d'une même marche : on ne suppose JAMAIS que la personne a
   // déjà des annonces en ligne. « Je n'ai encore rien en ligne » (aucune
   // plateforme cochée) SAUTE le relevé — il n'aurait rien à relever.
@@ -53,6 +68,8 @@ export const ETAPES = [
   { id: 'republication' },
   // (04/11) « Ton plan Free » — avec la grille, pour un compte Free ; jamais de bouton d'achat.
   { id: 'free', visible: (c) => c.plan?.free === true },
+  // (11/11/2026) « Ta formule Pro + Cloud » — la formule prise sur cette voie, avec la grille (à la place de « Ton plan Free »).
+  { id: 'formule', visible: (c) => voieFormuleChoisie(c) && c.formules.actif === true && c.plan != null && c.plan.free !== true && c.formules.choisie != null },
   // Dernière question, et seulement si personne ne nous a donné de nom.
   { id: 'pseudo', visible: (c) => c.demanderPseudo },
   { id: 'fin', passable: false },

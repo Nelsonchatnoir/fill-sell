@@ -44,9 +44,27 @@ const NOTES_DE_VERSION = Object.freeze({
     fr: (min) => `elle reformule les articles 4 et 9 sans rien changer sur le fond : une acceptation de la version du ${min} reste valable.`,
     en: (min) => `it rewords articles 4 and 9 without changing their substance: an acceptance of the version of ${min} remains valid.`,
   }),
+  formules_cloud_article_6: Object.freeze({
+    fr: (min) => `l'article 6 décrit les formules avec Cloud (Premium + Cloud, Pro + Cloud, Business + Cloud) ; pour l'option Cloud seule, une acceptation de la version du ${min} reste valable.`,
+    en: (min) => `article 6 describes the plans with Cloud (Premium + Cloud, Pro + Cloud, Business + Cloud); for the Cloud option alone, an acceptance of the version of ${min} remains valid.`,
+  }),
 });
-/** La ligne « Version du … » d'une version de l'historique (pure, testée) ; par défaut, la version en vigueur. */
-export function ligneDeVersion(lang, entree = CGU_CLOUD_HISTORIQUE[0]) {
+// (12/11/2026, nuit — décision de Nico : interrupteurs fermés = « exactement comme aujourd'hui ») DEUX textes en vigueur,
+// chacun avec SA version, et le texte montré = la version enregistrée :
+//   · le Cloud seul : la dernière version qui n'est PAS celle des formules (2026-11-11), montrée partout, à tout le monde,
+//     mot pour mot comme avant (la case du Cloud seul, la page /conditions-cloud) ;
+//   · les formules avec Cloud : la version qui porte `changement: 'formules_cloud_article_6'` (2026-11-12, article 6
+//     neuf), montrée SEULEMENT dans l'achat d'une formule (App : demanderConditions de achatFormules → { formules: true }).
+// La version des formules en tête de CGU_CLOUD_HISTORIQUE (serveur) ne change donc rien pour qui ne voit pas les formules.
+const CLE_CHANGEMENT_FORMULES = 'formules_cloud_article_6';
+const ENTREE_FORMULES = CGU_CLOUD_HISTORIQUE.find((e) => e?.changement === CLE_CHANGEMENT_FORMULES) ?? null;
+const ENTREE_CLOUD_SEUL = CGU_CLOUD_HISTORIQUE.find((e) => e?.changement !== CLE_CHANGEMENT_FORMULES) ?? CGU_CLOUD_HISTORIQUE[0];
+export const CGU_CLOUD_VERSION_CLOUD_SEUL = ENTREE_CLOUD_SEUL.version;
+export const CGU_CLOUD_VERSION_FORMULES = (ENTREE_FORMULES ?? ENTREE_CLOUD_SEUL).version;
+/** La version des conditions MONTRÉES (et donc enregistrées) : celle des formules dans leur achat, sinon celle du Cloud seul. */
+export const versionConditionsMontree = (formules = false) => (formules === true && ENTREE_FORMULES ? ENTREE_FORMULES.version : ENTREE_CLOUD_SEUL.version);
+/** La ligne « Version du … » d'une version de l'historique (pure, testée) ; par défaut, celle du Cloud seul (montrée à tous). */
+export function ligneDeVersion(lang, entree = ENTREE_CLOUD_SEUL) {
   const note = NOTES_DE_VERSION[entree?.changement];
   const date = dateVersion(entree?.version ?? CGU_CLOUD_VERSION), min = dateVersion(CGU_CLOUD_VERSION_MINIMALE);
   if (lang === 'en') return `Version of ${date} — ${note ? `${note.en(min)} ` : ''}English translation for information only; the French version prevails.`;
@@ -184,10 +202,49 @@ function auPrixDeLaBoutique(T, lang, e) {
       : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, remplacer(v)])) : x);
   return remplacer(T);
 }
-export const conditionsCloud = (lang = 'fr') => {
+// (11/11/2026, formules avec Cloud — TEMPS 1 du changement de FOND, § 8.6 du plan ; texte À VALIDER par Nico) L'ARTICLE 6
+// DES FORMULES AVEC CLOUD. Il ne s'affiche QUE dans l'achat d'une formule (conditionsCloud(lang, { formules: true })) et
+// seulement si CGU_CLOUD_HISTORIQUE (supabase/functions/_shared/cloud-conditions.js, la seule source) porte la version
+// `changement: 'formules_cloud_article_6'` : le texte et la version changent ENSEMBLE (règle d'en-tête : changer le texte
+// = changer la version). Partout ailleurs, l'article 6 du Cloud seul, mot pour mot. Les prix : ceux du canal (web : Stripe ; iPhone /
+// Android : la boutique) ; ⛔ Business + Cloud payé dès la souscription (correction de Nico du 11/11, 21:45).
+export const CHANGEMENT_FORMULES = 'formules_cloud_article_6';
+const dateVersionFr = () => dateVersion(CGU_CLOUD_HISTORIQUE[0]?.version ?? CGU_CLOUD_VERSION);
+export function article6Formules(lang, e = lirePrixBoutique()) {
+  const boutique = estCanalBoutique(e);
+  const b = e.canal === 'apple' ? 'App Store' : 'Google Play';
+  const p = (f) => prixOuChargement(f, lang, e);
+  if (lang === 'en') {
+    return { t: '6. Price and 7-day trial', ps: [
+      boutique
+        ? `The Cloud is included in the plans with Cloud: Premium + Cloud ${p('premium_cloud')}, Pro + Cloud ${p('pro_cloud')}, Business + Cloud ${p('business_cloud')} per month, at the price shown by ${b} at the time of purchase. Each plan with Cloud is a single subscription.`
+        : `The Cloud is included in the plans with Cloud: Premium + Cloud ${p('premium_cloud')}, Pro + Cloud ${p('pro_cloud')}, Business + Cloud ${p('business_cloud')} including VAT per month, on the web, in the App Store and in Google Play. Each plan with Cloud is a single subscription.`,
+      'A first 7-day trial is offered on Premium + Cloud or Pro + Cloud; Business + Cloud is paid from the day you subscribe. A payment method is required. Without cancellation or change of plan before the end of the trial, the chosen plan starts: its price is charged, then every month on the same date. At the latest the day before the trial ends, a reminder is sent to you in the app and by email.',
+      'A subscriber to a plan without Cloud can switch to its version with Cloud; the difference is charged on a prorated basis. Removing the Cloud takes you back to the plan without Cloud at the end of the paid period.',
+      `Subscribers to the FillSell Cloud option alone, taken before ${dateVersionFr()}, keep it at ${p('cloud')}${boutique ? '' : ' including VAT'} per month for as long as they remain subscribed.`,
+      EN.articles[5].ps[2],
+    ] };
+  }
+  return { t: '6. Prix et essai de 7 jours', ps: [
+    boutique
+      ? `Le Cloud est inclus dans les formules avec Cloud : Premium + Cloud ${p('premium_cloud')}, Pro + Cloud ${p('pro_cloud')}, Business + Cloud ${p('business_cloud')} par mois, au prix affiché par ${b} au moment de l'achat. Chaque formule avec Cloud est un seul abonnement.`
+      : `Le Cloud est inclus dans les formules avec Cloud : Premium + Cloud ${p('premium_cloud')}, Pro + Cloud ${p('pro_cloud')}, Business + Cloud ${p('business_cloud')} TTC par mois, sur le web, dans l'App Store et dans Google Play. Chaque formule avec Cloud est un seul abonnement.`,
+    "Un premier essai de 7 jours est offert sur Premium + Cloud ou Pro + Cloud ; Business + Cloud est payé dès la souscription. Un moyen de paiement est demandé. Sans résiliation ni changement de formule avant la fin de l'essai, la formule choisie commence : son prix est prélevé, puis chaque mois à la même date. Au plus tard la veille de la fin de l'essai, un rappel est envoyé dans l'app et par e-mail.",
+    'Un abonné à une formule sans Cloud peut passer à sa version avec Cloud ; la différence est facturée au prorata. Retirer le Cloud ramène à la formule sans Cloud à la fin de la période payée.',
+    `Les abonnés à l'option FillSell Cloud seule, souscrite avant le ${dateVersionFr()}, la gardent à ${p('cloud')}${boutique ? '' : ' TTC'} par mois tant qu'ils restent abonnés.`,
+    FR.articles[5].ps[2],
+  ] };
+}
+
+// `formules` : true SEULEMENT dans l'achat d'une formule avec Cloud (article 6 neuf + sa ligne de version) ; sinon le texte
+// du Cloud seul, mot pour mot comme avant, pour tout le monde.
+export const conditionsCloud = (lang = 'fr', { formules = false } = {}) => {
   const l = lang === 'en' ? 'en' : 'fr';
   const e = lirePrixBoutique();
-  return estCanalBoutique(e) ? auPrixDeLaBoutique(l === 'en' ? EN : FR, l, e) : (l === 'en' ? EN : FR);
+  const base = estCanalBoutique(e) ? auPrixDeLaBoutique(l === 'en' ? EN : FR, l, e) : (l === 'en' ? EN : FR);
+  if (formules !== true || !ENTREE_FORMULES || ENTREE_FORMULES.changement !== CHANGEMENT_FORMULES) return base;
+  return { ...base, version: ligneDeVersion(l, ENTREE_FORMULES),
+    articles: base.articles.map((a) => (a.t.startsWith('6.') ? article6Formules(l, e) : a)) };
 };
 
 /** La version acceptée est-elle valable (date réelle ≥ la version minimale : la règle de _shared, jamais recopiée) ? (pur) */

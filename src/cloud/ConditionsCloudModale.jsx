@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
-import { conditionsCloud, CGU_CLOUD_VERSION } from './conditionsCloud';
+import { conditionsCloud, versionConditionsMontree } from './conditionsCloud';
 import { tracerCloud } from './traceCloud';
 // (05/11 soir, phase 3) La langue de l'app (fs_lang, sinon celle du téléphone) : la traduction anglaise pour information.
 import { languePage } from '../pages/languePage';
@@ -27,17 +27,21 @@ import { C, BLANC, DEGRADE_TEAL, POLICE } from './theme';
 function plateformeApp() {
   try { return Capacitor.getPlatform(); } catch { return 'inconnue'; }
 }
-function tracerEtape(feature, lang, extra = {}) {
-  const metadata = { version: CGU_CLOUD_VERSION, lang, plateforme: plateformeApp(), ...extra };
+// (12/11/2026) `version` = la version MONTRÉE (Cloud seul, ou formules dans l'achat d'une formule : versionConditionsMontree).
+function tracerEtape(feature, lang, extra = {}, version = versionConditionsMontree(false)) {
+  const metadata = { version, lang, plateforme: plateformeApp(), ...extra };
   Promise.resolve()
     .then(() => supabase.auth.getSession())
     .then(({ data }) => tracerCloud(data?.session?.user?.id, feature, metadata))
     .catch(() => { /* une trace ne bloque jamais l'écran */ });
 }
 
-export default function ConditionsCloudModale({ onFini }) {
+// (12/11/2026, offres Cloud) `formules` : true seulement quand la case est demandée par l'achat d'une FORMULE avec Cloud
+// (App, achatFormules) — l'article 6 des formules et SA version ; sinon le texte et la version du Cloud seul, comme avant.
+export default function ConditionsCloudModale({ onFini, formules = false }) {
   const lang = languePage();
-  const T = conditionsCloud(lang);
+  const version = versionConditionsMontree(formules === true);
+  const T = conditionsCloud(lang, { formules: formules === true });
   const [coche, setCoche] = useState(false);
   const [etat, setEtat] = useState('lecture');   // lecture | envoi | echec
   const vues = useRef(false);
@@ -45,27 +49,27 @@ export default function ConditionsCloudModale({ onFini }) {
   useEffect(() => {
     if (vues.current) return;
     vues.current = true;
-    tracerEtape('cloud_conditions_vues', lang);
+    tracerEtape('cloud_conditions_vues', lang, {}, version);
   }, [lang]);
   function cocher(v) {
     setCoche(v);
-    if (v && !cochees.current) { cochees.current = true; tracerEtape('cloud_conditions_cochees', lang); }
+    if (v && !cochees.current) { cochees.current = true; tracerEtape('cloud_conditions_cochees', lang, {}, version); }
   }
   function annuler() {
-    tracerEtape('cloud_conditions_annulees', lang, { coche });
+    tracerEtape('cloud_conditions_annulees', lang, { coche }, version);
     onFini(false);
   }
   async function accepter() {
     if (!coche || etat === 'envoi') return;
     setEtat('envoi');
     try {
-      const { data, error } = await supabase.rpc('cloud_cgu_accepter_moi', { p_version: CGU_CLOUD_VERSION });
-      if (error || data?.ok !== true) tracerEtape('cloud_conditions_echec', lang, { raison: error ? `rpc: ${String(error.message ?? error).slice(0, 160)}` : String(data?.raison ?? 'ok_absent') });
+      const { data, error } = await supabase.rpc('cloud_cgu_accepter_moi', { p_version: version });
+      if (error || data?.ok !== true) tracerEtape('cloud_conditions_echec', lang, { raison: error ? `rpc: ${String(error.message ?? error).slice(0, 160)}` : String(data?.raison ?? 'ok_absent') }, version);
       if (error || data?.ok !== true) { setEtat('echec'); return; }
-      tracerEtape('cloud_conditions_acceptees', lang);
+      tracerEtape('cloud_conditions_acceptees', lang, {}, version);
       onFini(true);
     } catch (e) {
-      tracerEtape('cloud_conditions_echec', lang, { raison: `exception: ${String(e?.message ?? e).slice(0, 160)}` });
+      tracerEtape('cloud_conditions_echec', lang, { raison: `exception: ${String(e?.message ?? e).slice(0, 160)}` }, version);
       setEtat('echec');
     }
   }

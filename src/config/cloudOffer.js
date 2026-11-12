@@ -1,4 +1,5 @@
 import { interrupteurOuvert } from './interrupteurs.js';
+import { CLE_INTERRUPTEUR_FORMULES as CLES_FORMULES } from '../../supabase/functions/_shared/formules-cloud.js';
 
 // ── Drapeau UNIQUE de l'option « FillSell Cloud » (sans ordinateur) — 04/10/2026 ──
 //
@@ -154,6 +155,35 @@ export function cloudVendableDansLePays({ temoin = false, ouvert = false, pays =
 export const cloudOffreVendable = (userId, fuseau = undefined) =>
   cloudVendableDansLePays({ temoin: estTemoin(userId), ouvert: cloudOffreOuverte(), pays: paysDuTelephoneCloud(fuseau),
     binaire: binairePorteLeCloud(binaireCloud, plateformeCloud) });
+
+// ── LES FORMULES AVEC CLOUD (11/11/2026, décisions de Nico) ───────────────────────────────────────────────────────
+// Premium + Cloud, Pro + Cloud (mis en avant), Business + Cloud : UN abonnement chacune, sur le même canal que la
+// formule seule. Le CONTRAT (noms, essai, supplément, produits des boutiques, interrupteurs) a UNE source, partagée
+// avec le serveur : supabase/functions/_shared/formules-cloud.js — ré-exporté ici, jamais redéfini (comme les
+// conditions du Cloud ci-dessous). ⛔ Essai de 7 jours sur Premium + Cloud et Pro + Cloud SEULEMENT : Business + Cloud
+// est payé dès la souscription (correction de Nico du 11/11, 21:45).
+export {
+  FORMULES_CLOUD, PALIER_DE_FORMULE, FORMULE_CLOUD_DU_PALIER, FORMULE_MISE_EN_AVANT, ESSAI_JOURS as FORMULES_ESSAI_JOURS,
+  FORMULES_AVEC_ESSAI, essaiPossiblePourFormule, PRIX_AVEC_CLOUD_EUR, SUPPLEMENT_CLOUD_EUR, supplementCloud,
+  PRODUITS_BOUTIQUES, formuleDuProduitBoutique, CLE_INTERRUPTEUR_FORMULES,
+} from '../../supabase/functions/_shared/formules-cloud.js';
+/** Le canal de VENTE de l'app en cours (pur) : iPhone → 'apple', Android → 'google', tout le reste (web) → 'stripe'. */
+export const canalDeVente = (plateforme) => (plateforme === 'ios' ? 'apple' : plateforme === 'android' ? 'google' : 'stripe');
+/** L'interrupteur serveur des formules avec Cloud d'UN canal (coin_config.cloud_formules_<canal>) : 1 = ouvert ;
+ *  absent, illisible, pas encore lu ou ≠ 1 = FERMÉ. */
+export const formulesCloudOuvertes = (canal) => interrupteurOuvert(CLES_FORMULES[canal] ?? '');
+/**
+ * LE point de décision des formules avec Cloud (fenêtre d'offres, parcours d'entrée, Réglages, achat). Même règle que
+ * la vente du Cloud (cloudVendableDansLePays : témoin partout ; sinon France + binaire qui porte le Cloud), mais
+ * l'interrupteur est CELUI DU CANAL de l'app (stripe sur le web, apple sur iPhone, google sur Android). Fermé : l'app
+ * reste EXACTEMENT celle d'avant pour un compte ordinaire (verrou scripts/formules-cloud-ferme-selftest.mjs).
+ * `plateforme` absente : celle notée au démarrage (noterBinaireCloud), web sinon.
+ */
+export const formulesCloudVendables = (userId, { plateforme = undefined, fuseau = undefined } = {}) =>
+  cloudVendableDansLePays({
+    temoin: estTemoin(userId), ouvert: formulesCloudOuvertes(canalDeVente(plateforme ?? plateformeCloud ?? 'web')),
+    pays: paysDuTelephoneCloud(fuseau), binaire: binairePorteLeCloud(binaireCloud, plateformeCloud),
+  });
 
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
 // (07/11, décision de Nico, voie b) CLOUD_DOMAINE retiré : l'adresse vient du serveur du compte (cloud_serveur_moi,

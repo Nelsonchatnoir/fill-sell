@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { NativePurchases } from '@capgo/native-purchases';
 import { PRODUCT_IDS } from './iap';
 import { poserPrixBoutique, lirePrixBoutique, lireProduitsBoutique, avecDelai } from './prixBoutique';
+import { idsFormulesBoutique } from './idsFormulesBoutique';
 
 // Le Cloud : même identifiant Apple et Google (cloud/achatCloud.js, PRODUIT_CLOUD).
 export const ID_CLOUD_BOUTIQUE = 'app.fillsell.cloud.sub';
@@ -12,9 +13,22 @@ const RELECTURE_MIN_MS = 60_000;
 export const DELAI_LECTURE_MS = 8_000;
 let enVol = null;
 let derniereTentative = 0;
+// (11/11/2026) Les produits des formules avec Cloud ne sont demandés à la boutique QUE quand les formules se montrent à ce
+// compte (demanderPrixFormules) : fermées, la lecture est celle d'avant, produit pour produit.
+let formulesDemandees = false;
 
-export function idsBoutique() {
-  return { premium: PRODUCT_IDS.standard, pro: PRODUCT_IDS.pro, business: PRODUCT_IDS.business, cloud: ID_CLOUD_BOUTIQUE };
+export function idsBoutique({ formules = false } = {}) {
+  const ids = { premium: PRODUCT_IDS.standard, pro: PRODUCT_IDS.pro, business: PRODUCT_IDS.business, cloud: ID_CLOUD_BOUTIQUE };
+  return formules ? { ...ids, ...idsFormulesBoutique(Capacitor.getPlatform() === 'ios' ? 'apple' : 'google') } : ids;
+}
+
+/** (11/11) Les formules avec Cloud se montrent : leurs prix sont lus (une fois ; relecture forcée si déjà lus sans eux). */
+export function demanderPrixFormules() {
+  if (formulesDemandees) return chargerPrixBoutique();
+  formulesDemandees = true;
+  if (!Capacitor.isNativePlatform()) return Promise.resolve(lirePrixBoutique());
+  // Une lecture d'avant (sans les formules) déjà en vol : la relecture forcée part juste après elle.
+  return (enVol ?? Promise.resolve()).then(() => chargerPrixBoutique({ force: true }));
 }
 
 /** Lit les prix (natif seulement). `force` : relit même si une lecture a déjà réussi. Ne lève jamais. */
@@ -27,7 +41,7 @@ export function chargerPrixBoutique({ force = false } = {}) {
   if (!force && e.canal === canal && e.statut === 'echec' && Date.now() - derniereTentative < RELECTURE_MIN_MS) return Promise.resolve(e);
   derniereTentative = Date.now();
   if (e.canal !== canal) poserPrixBoutique({ canal, statut: 'chargement', prix: {} });
-  const ids = idsBoutique();
+  const ids = idsBoutique({ formules: formulesDemandees });
   // (09/11, repli de l'iPhone) Une lecture qui ne répond pas en DELAI_LECTURE_MS vaut un échec : sur iPhone, l'écran
   // d'achat passe au prix de repli (lib/prixBoutique.js repliApple) au lieu de rester sur « … » sans fin.
   // Un module natif absent ou qui lève d'un coup (vieux binaire) devient un échec, jamais une exception (avecDelai).

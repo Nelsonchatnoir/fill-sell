@@ -239,8 +239,12 @@ titre('Le câblage : la décision avant tout signal, l\'abandon écouté, les dr
     'l\'abandon passe par la même décision (autre abonnement vivant, compte déjà ouvert)');
   ok(/stripe\.subscriptions\.list\(\{ customer: customerId, status: "all", limit: 20 \}\)/.test(wh) && /palierDuProfil\(prof\) !== "gratuit"/.test(wh),
     'avant l\'abandon : abonnements du client relus chez Stripe, palier du compte par palierDuProfil');
-  ok((wh.match(/supabase\.rpc\("upgrade_monthly_grant"/g) ?? []).length === 2 && !/grant_upgrade|grant_monthly/.test(lire('../supabase/functions/_shared/paiement-echoue.js')),
-    'droits intacts : les deux appels upgrade_monthly_grant d\'avant, aucun grant dans les règles du mail');
+  // (11/11/2026, offres Cloud — changement VOLONTAIRE, nommé dans le rapport OFFRES-SERVEUR) un troisième appel : la
+  // souscription PAYÉE d'une formule avec Cloud (formuleCloudSouscrite, jamais pendant un essai). Toujours aucun grant dans
+  // les règles du mail d'échec.
+  ok((wh.match(/supabase\.rpc\("upgrade_monthly_grant"/g) ?? []).length === 3 && /\} else if \(sub && !carteRefusee && sub\.status === "active"\) \{[\s\S]{0,300}supabase\.rpc\("upgrade_monthly_grant"/.test(wh)
+    && !/grant_upgrade|grant_monthly/.test(lire('../supabase/functions/_shared/paiement-echoue.js')),
+    'droits intacts : les deux appels upgrade_monthly_grant d\'avant + (11/11) celui d\'une formule PAYÉE, aucun grant dans les règles du mail');
 }
 
 console.log(ko ? `\n${ko} ÉCHEC(S)` : '\nTout est vert.');

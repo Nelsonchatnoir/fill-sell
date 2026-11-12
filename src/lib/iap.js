@@ -75,7 +75,10 @@ export const initIAP = async () => {
   }
 };
 
-export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null } = {}) => {
+// (11/11/2026, formules avec Cloud) `replacementMode` : 2 par défaut (CHARGE_PRORATED_PRICE, la montée d'avant, inchangée) ;
+// 6 = DEFERRED (Billing 8.3.0 ; l'énumération TypeScript du module dit 4, docs/enquetes/c4-descente-0911) pour une
+// descente qui prend effet au renouvellement (Pro + Cloud → Premium + Cloud à la fin de l'essai). Android uniquement.
+export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null, replacementMode = 2 } = {}) => {
   try {
     const { products } = await NativePurchases.getProducts({
       productIdentifiers: [productId],
@@ -100,7 +103,7 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     // (même comportement que l'upgrade Stripe in situ). Android uniquement.
     if (oldPurchaseToken && Capacitor.getPlatform() === 'android') {
       purchaseOptions.oldPurchaseToken = oldPurchaseToken;
-      purchaseOptions.replacementMode = 2;
+      purchaseOptions.replacementMode = replacementMode;
     }
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
     const isPremium = result?.productIdentifier === productId;
@@ -192,6 +195,17 @@ export const findActivePlayPremiumSub = async (lowerIds = [PRODUCT_IDS.sub, PROD
     (p.isActive === true || (p.expirationDate && new Date(p.expirationDate) > new Date()) || p.purchaseState === '1')
   );
   return tx?.purchaseToken ?? null;
+};
+
+// (11/11/2026, formules avec Cloud) Le même relevé, mais qui rend AUSSI le produit en cours : le passage vers une formule
+// avec Cloud choisit montée (prorata) ou descente (au renouvellement) d'après lui. null = aucun abonnement de la liste.
+export const findActivePlaySub = async (ids) => {
+  const { purchases } = await NativePurchases.getPurchases({ productType: 'subs' });
+  const tx = (purchases ?? []).find(p =>
+    ids.includes(p?.productIdentifier) && p?.purchaseToken &&
+    (p.isActive === true || (p.expirationDate && new Date(p.expirationDate) > new Date()) || p.purchaseState === '1')
+  );
+  return tx ? { purchaseToken: tx.purchaseToken, productIdentifier: tx.productIdentifier } : null;
 };
 
 // (07/11 soir, essai TestFlight de Nico) La feuille « Abonnements » de la boutique, ouverte par l'app : iOS →

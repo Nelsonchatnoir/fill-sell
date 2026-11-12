@@ -23,6 +23,11 @@
 // ⛔ La date de la version EN VIGUEUR ne s'écrit qu'ICI (première ligne) : le jour du push web, la date RÉELLE (heure de
 // Paris) — et VERSION_LIVREE de scripts/cloud-executant-selftest.mjs, qui l'épingle.
 export const CGU_CLOUD_HISTORIQUE = Object.freeze([
+  // (12/11/2026, offres Cloud, validé par Nico) L'article 6 décrit les FORMULES AVEC CLOUD (prix, essai seulement sur
+  // Premium + Cloud et Pro + Cloud, Business + Cloud payé dès le premier jour, Cloud seul hérité gardé). Changement de FOND
+  // pour les formules seulement : la minimale (Cloud seul) ne bouge PAS ; une formule avec Cloud exige une acceptation
+  // ≥ cette version (conditionsFormulesAcceptees, _shared/formules-serveur.js).
+  Object.freeze({ version: "2026-11-12", changement: "formules_cloud_article_6" }),
   Object.freeze({ version: "2026-11-11", changement: "reformulation_articles_4_9" }),
   Object.freeze({ version: "2026-11-04", changement: "prix_article_6" }),
   Object.freeze({ version: "2026-10-30", changement: "premiere_version" }),

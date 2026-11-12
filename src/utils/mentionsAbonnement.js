@@ -45,3 +45,27 @@ export function mentionsAbonnement({ canal = 'web', lang = 'fr', cloud = false, 
   liens.push({ cle: 'confidentialite', libelle: en ? 'Privacy Policy' : 'Politique de confidentialité', url: `${LEGAL}${suffixe}#confidentialite` });
   return { texte, liens };
 }
+
+/**
+ * (11/11/2026, formules avec Cloud — texte validé par Nico, § 8.1 du plan) LA MENTION D'UNE CARTE « AVEC CLOUD », sous
+ * son bouton (Apple 3.1.2 : le prix, la période, l'essai, où c'est prélevé et comment l'arrêter, au plus près de l'achat).
+ *   essai    : la carte annonce l'essai de 7 jours (jamais pour Business + Cloud : il est payé dès la souscription) ;
+ *   business : Business + Cloud — « payé dès la souscription » ;
+ *   prix     : le prix du CANAL (web : Stripe ; mobile : la boutique), jamais écrit en dur. Pur.
+ */
+export function mentionFormuleCloud({ canal = 'web', lang = 'fr', prix, essai = false, business = false } = {}) {
+  const en = lang === 'en';
+  const ou = canal === 'ios'
+    ? (en ? 'charged to your Apple Account' : 'prélevés sur ton compte Apple')
+    : canal === 'android'
+      ? (en ? 'charged to your Google Play account' : 'prélevés sur ton compte Google Play')
+      : (en ? 'charged to your card' : 'prélevés sur ta carte');
+  const quand = business
+    ? (en ? 'a month, paid from the day you subscribe' : 'par mois, payé dès la souscription')
+    : essai
+      ? (en ? 'a month after a 7-day free trial for a first trial' : "par mois après 7 jours d'essai gratuits pour un premier essai") // estimation-ok: la durée de l'essai (un fait de l'offre, texte validé), pas un délai promis
+      : (en ? 'a month' : 'par mois');
+  return en
+    ? `Auto-renewing subscription: ${prix} ${quand}, ${ou}, unless cancelled at least 24 hours before the end of the period.`
+    : `Abonnement à renouvellement automatique : ${prix} ${quand}, ${ou}, sauf résiliation au moins 24 h avant la fin de la période.`;
+}

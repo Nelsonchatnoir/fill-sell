@@ -32,7 +32,7 @@ const ANIM = `
 @media (prefers-reduced-motion: reduce) { .fs-cloud-anime { animation: none !important } }
 `;
 
-function Feuille({ onFermer, children, etiquette }) {
+export function Feuille({ onFermer, children, etiquette }) {
   return createPortal(
     <>
       <style>{ANIM}</style>
@@ -67,7 +67,7 @@ function Feuille({ onFermer, children, etiquette }) {
   );
 }
 
-function EnTete({ kicker, titre }) {
+export function EnTete({ kicker, titre }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

@@ -14,6 +14,10 @@ import { accuserAbonnementGoogle } from "../_shared/google-accuse-abonnement.js"
 // (30/10, lot D point 2) Un canal qui s'arrête ne retire que SON droit ; Stripe relu en lecture seule.
 import { patchArretGoogle } from "../_shared/droits-canaux.js";
 import { rangStripeDuClient } from "../_shared/stripe-rang-vivant.ts";
+// (11/11/2026, offres Cloud) Les formules avec Cloud : un abonnement Google par formule, le produit fait foi (planGoogle).
+import { formuleDuProduit, planAchatBoutique, grantDeFormule, formulePrevueEcrivable } from "../_shared/formules-serveur.js";
+import { lectureFormuleGoogle, verdictEssaiStore } from "../_shared/cloud-option.js";
+import { rangDesDrapeaux, rangAppleVivant } from "../_shared/droits-canaux.js";
 
 // Les colonnes du profil dont l'arrêt du canal Google a besoin (canal, autres canaux, drapeaux).
 const COLONNES_ARRET_GOOGLE = "id, google_purchase_token, google_product_id, apple_original_transaction_id, stripe_customer_id, is_premium, is_pro, is_business, subscription_period_end";
@@ -142,6 +146,132 @@ async function compteDuJetonGoogle(jeton: string | null, empreinte: string | nul
     console.error("[google-play-webhook] compte du jeton illisible :", (e as Error)?.message ?? e);
   }
   return null;
+}
+
+// ═══ (11/11/2026, offres Cloud) LES FORMULES AVEC CLOUD CHEZ GOOGLE (un abonnement par formule) ═══════════════════════════
+// Pour une formule avec Cloud — et pour un produit sans Cloud quand le Cloud de ce compte est lié à CE jeton ou au jeton
+// qu'il REMPLACE (linkedPurchaseToken : retrait du Cloud, changement de formule) — les droits se RECALCULENT depuis le
+// produit, sans jamais descendre sous un autre canal vivant (Stripe relu, Apple). Le Cloud suit le produit. Un
+// remplacement DIFFÉRÉ (début à venir) est noté « prévu », appliqué à son début. L'expiration du jeton REMPLACÉ ne retire
+// rien (canceledStateContext.replacementCancellation). ⛔ Business + Cloud n'a pas d'essai : une semaine gratuite qui
+// arriverait quand même n'ouvre rien avant le premier paiement (décision 8 : idem pour un essai déjà pris). Aucun crédit
+// du mois pendant un essai.
+const COLONNES_PLAN_GOOGLE = `${COLONNES_ARRET_GOOGLE}, email, lang, formule_prevue, formule_prevue_le, formule_prevue_canal, `
+  + "cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode";
+
+// deno-lint-ignore no-explicit-any
+async function planGoogle(p: { notificationType: number; purchaseToken: string; subscriptionId: string; purchase: any; userId: string; packageName: string; accessToken: string; ctx: Contexte }): Promise<Response> {
+  const { notificationType, purchaseToken, subscriptionId, purchase, userId, packageName, accessToken, ctx } = p;
+  const f = formuleDuProduit(subscriptionId)!;
+  const { data: lu } = await supabaseAdmin.from("profiles").select(COLONNES_PLAN_GOOGLE).eq("id", userId).maybeSingle();
+  // deno-lint-ignore no-explicit-any
+  const profil = (lu ?? {}) as Record<string, any>;
+  const lie = typeof purchase?.linkedPurchaseToken === "string" ? purchase.linkedPurchaseToken : null;
+  const cloudLie = profil.cloud_canal === "google" && (profil.cloud_ref === purchaseToken || (lie != null && profil.cloud_ref === lie));
+  const interdit = (await profilCloudPourStore(supabaseAdmin, userId)).cloud_essai_interdit === true;
+  const profilV = { ...profil, cloud_essai_interdit: interdit };
+  const ligne = (purchase?.lineItems ?? [])[0] ?? {};
+  const expiry = typeof ligne?.expiryTime === "string" ? ligne.expiryTime : null;
+  const lecture = lectureFormuleGoogle(subscriptionId, purchase, notificationType)
+    ?? { essai: false, debut: isoOuNull(purchase?.startTime), fin: expiry, offre: null, phaseEssai: false,
+      renouvellementAuto: typeof ligne?.autoRenewingPlan?.autoRenewEnabled === "boolean" ? ligne.autoRenewingPlan.autoRenewEnabled : null,
+      etat: purchase?.subscriptionState ?? null, transaction: purchase?.latestOrderId ?? null };
+  const evenements: Array<Record<string, unknown>> = [];
+  const ecrire = async (update: Record<string, unknown>, garde: string | null = null) => {
+    let q = supabaseAdmin.from("profiles").update(update).eq("id", userId);
+    if (garde) q = q.eq("google_purchase_token", garde);
+    const { error } = await q;
+    if (error) throw new Error(error.message);
+  };
+  try {
+    // L'expiration (ou l'annulation) d'un jeton REMPLACÉ par un autre ne retire rien : le nouveau jeton porte les droits.
+    if (purchase?.canceledStateContext?.replacementCancellation != null && [3, 5, 6, 10, 12, 13].includes(notificationType)) {
+      console.log(`[google-play-webhook] ${subscriptionId} : jeton remplacé (type ${notificationType}) — rien retiré → userId=${userId}`);
+      ctx.maj.effet_applique = "jeton_remplace";
+      return json(200, { ok: true, skipped: "jeton_remplace" });
+    }
+    if (notificationType === 3 || notificationType === 7) {
+      // Renouvellement coupé (3) ou remis (7) sur le jeton COURANT : l'accès court ; le Cloud suit sa règle.
+      if (profil.google_purchase_token !== purchaseToken) return json(200, { ok: true, skipped: "stale_token_replaced" });
+      const reprise = notificationType === 7;
+      const update: Record<string, unknown> = { subscription_cancel_at_period_end: !reprise, ...(expiry ? { subscription_period_end: expiry } : {}) };
+      if (f.cloud || cloudLie) {
+        const { update: maj } = ecritureCloudStore({ canal: "google", lecture, sens: reprise ? "reprise" : "annulation", ref: purchaseToken, profil: profilV });
+        if (maj) { Object.assign(update, maj); evenements.push(...evenementsBoutique({ canal: "google", nature: reprise ? "reprise" : "annulation", avant: profilV, update: maj, lecture, ref: purchaseToken })); }
+      }
+      await ecrire(update, purchaseToken);
+      ctx.maj.effet_applique = reprise ? "formule_reprise" : "formule_annulation";
+    } else if ([1, 2, 4].includes(notificationType)) {
+      // Un remplacement DIFFÉRÉ (début à venir) : noté « prévu », appliqué quand il commence.
+      const debut = Date.parse(String(purchase?.startTime ?? ""));
+      if (Number.isFinite(debut) && debut > Date.now() + 60_000) {
+        const prevue = formulePrevueEcrivable(f.formule);
+        if (prevue) await ecrire({ formule_prevue: prevue, formule_prevue_le: new Date(debut).toISOString(), formule_prevue_canal: "google" });
+        if (cloudLie && !f.cloud) {
+          evenements.push({ evenement: "arret_programme", cle: `${lie ?? purchaseToken}:retrait:${new Date(debut).toISOString()}`, canal: "google",
+            faits: { finIso: new Date(debut).toISOString(), formule: formuleDuProduit(profil.google_product_id)?.formule ?? null, retraitCloud: true } });
+        }
+        ctx.maj.effet_applique = "formule_prevue";
+      } else {
+        let rangStripe = 0;
+        try { rangStripe = await rangStripeDuClient(profil.stripe_customer_id ?? null); }
+        catch (e) { console.warn(`[google-play-webhook] Stripe illisible (${(e as Error)?.message ?? e}) : aucun palier ne descend`); rangStripe = rangDesDrapeaux(profil); }
+        const essaiBoutique = notificationType === 4 && (lecture.essai === true || lecture.phaseEssai === true);
+        const plan = planAchatBoutique({ produit: subscriptionId, sens: "on", essaiBoutique, verdictEssai: verdictEssaiStore(profilV, "google", purchaseToken),
+          rangAutres: Math.max(rangStripe, rangAppleVivant(profil)), cloudLie })!;
+        const update: Record<string, unknown> = { ...(plan.drapeaux ?? {}), google_purchase_token: purchaseToken, google_product_id: subscriptionId,
+          subscription_cancel_at_period_end: false, ...(expiry ? { subscription_period_end: expiry } : {}) };
+        if (profil.formule_prevue_canal === "google") Object.assign(update, { formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null });
+        if (plan.cloud === "ecrire" || plan.cloud === "couper") {
+          const { update: maj, motif } = ecritureCloudStore({ canal: "google", lecture, sens: plan.cloud === "ecrire" ? "on" : "off",
+            ref: plan.cloud === "ecrire" ? purchaseToken : (profil.cloud_ref ?? purchaseToken), profil: profilV });
+          if (maj) {
+            Object.assign(update, maj);
+            update.cloud_formule = plan.cloud === "ecrire" ? f.formule : null;   // profiles.cloud_formule
+            if (f.cloud) evenements.push(...evenementsBoutique({ canal: "google", nature: notificationType === 4 ? "debut" : "paiement", avant: profilV, update: maj, lecture, ref: purchaseToken }));
+          } else console.log(`[google-play-webhook] Cloud de ${subscriptionId} non écrit (${motif})`);
+        }
+        if (!plan.ouvrir) console.warn(`[google-play-webhook] ${subscriptionId} : semaine gratuite sans droits (${plan.raison}) — droits au premier paiement réel`);
+        await ecrire(update);
+        await accuserAbonnementGoogle({ packageName, productId: subscriptionId, purchaseToken, purchase, accessToken });
+        if (lie) console.log(`[google-play-webhook] ${subscriptionId} remplace le jeton précédent (linkedPurchaseToken) → userId=${userId}`);
+        if (plan.credit) {
+          const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
+            p_user_id: userId, p_tier: grantDeFormule(f.formule), p_period_end: expiry, p_source: "payment",
+          });
+          if (grantErr) await alerterPaiementNonCredite({ canal: "google", type: "abonnement", user_id: userId, produit: subscriptionId, ref: purchaseToken, rpc: null, erreur: grantErr.message });
+          else if ((grantRes as { granted?: boolean })?.granted === true) {
+            await notifierPaiement({ canal: "google", type: "abonnement", user_id: userId, produit: f.formule, pepites: (grantRes as { amount?: number })?.amount ?? null, ref: purchaseToken, rpc: grantRes });
+          }
+        }
+        ctx.maj.effet_applique = `formule_on${plan.ouvrir ? "" : "_sans_droits"}`;
+      }
+    } else if ([5, 6, 10, 12, 13].includes(notificationType)) {
+      // L'arrêt ne retire que le droit GOOGLE (jeton courant seulement) ; le Cloud de cette formule s'arrête.
+      if (profil.google_purchase_token !== purchaseToken) {
+        console.log(`[google-play-webhook] OFF ignoré : jeton ${profil.google_purchase_token ? "remplacé" : "déjà retiré"} (type=${notificationType} product=${subscriptionId})`);
+        return json(200, { ok: true, skipped: profil.google_purchase_token ? "stale_token_replaced" : "jeton_deja_retire" });
+      }
+      await arreterCanalGoogle(profil, { terminal: notificationType === 12 || notificationType === 13, produit: subscriptionId, raison: `formule type ${notificationType}` });
+      if (f.cloud || cloudLie) {
+        const { update: maj } = ecritureCloudStore({ canal: "google", lecture, sens: "off", ref: purchaseToken, profil: profilV });
+        if (maj) {
+          await ecrire({ ...maj, cloud_formule: null });
+          if (f.cloud) evenements.push(...evenementsBoutique({ canal: "google", nature: notificationType === 5 || notificationType === 6 ? "impaye" : "fin", avant: profilV, update: maj, lecture, ref: purchaseToken }));
+        }
+      }
+      ctx.maj.effet_applique = "formule_off";
+    } else {
+      return json(200, { ok: true, skipped: `type_${notificationType}` });
+    }
+  } catch (e) {
+    console.error(`[google-play-webhook] ${subscriptionId} : écriture impossible — ${(e as Error)?.message ?? e}`);
+    return json(500, { error: "ecriture_formule_impossible" });
+  }
+  await mailsCloud(supabaseAdmin, { userId, email: profil.email ?? null, lang: profil.lang ?? null, canal: "google", journal: "[google-play-webhook]",
+    evenements: evenements as never, lirePrix: async () => prixDepuisGoogle(purchase).prix });
+  console.log(`[google-play-webhook] type=${notificationType} ${subscriptionId} (${f.formule}) → userId=${userId} : ${ctx.maj.effet_applique ?? "?"}`);
+  return json(200, { ok: true, formule: f.formule });
 }
 
 serve(async (req) => {
@@ -389,7 +519,8 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
     const { notificationType, purchaseToken, subscriptionId } = sub;
 
     // (04/10) L'option Cloud (app.fillsell.cloud.sub) passe aussi : traitée plus bas.
-    if (!PREMIUM_PRODUCT_IDS.includes(subscriptionId) && subscriptionId !== PRODUIT_CLOUD_GOOGLE) {
+    // (11/11) Les trois formules avec Cloud passent aussi : traitées par planGoogle.
+    if (!PREMIUM_PRODUCT_IDS.includes(subscriptionId) && subscriptionId !== PRODUIT_CLOUD_GOOGLE && !formuleDuProduit(subscriptionId)) {
       return new Response(JSON.stringify({ ok: true, skipped: "non-premium product" }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -545,6 +676,19 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       });
     }
 
+    // ── (11/11/2026) UNE FORMULE AVEC CLOUD, OU LE CLOUD LIÉ À CE JETON (ou au jeton qu'il remplace) : planGoogle ──
+    {
+      const fx = formuleDuProduit(subscriptionId);
+      if (fx && fx.formule !== "cloud") {
+        const { data: pl } = await supabaseAdmin.from("profiles").select("cloud_canal, cloud_ref, formule_prevue_canal").eq("id", userId).maybeSingle();
+        const lieJ = typeof purchase?.linkedPurchaseToken === "string" ? purchase.linkedPurchaseToken : null;
+        const cloudLieJ = pl?.cloud_canal === "google" && (pl?.cloud_ref === purchaseToken || (lieJ != null && pl?.cloud_ref === lieJ));
+        if (fx.cloud || cloudLieJ || pl?.formule_prevue_canal === "google") {
+          return await planGoogle({ notificationType, purchaseToken, subscriptionId, purchase, userId, packageName, accessToken, ctx });
+        }
+      }
+    }
+
     // ── Type 3 (CANCELED) : renouvellement coupé, accès CONSERVÉ ────────────
     // (2026-08-08) On ne touche PAS à is_premium : l'abonné a payé jusqu'à
     // expiryTime. On pose seulement l'intention d'annulation et la fin de
@@ -596,6 +740,15 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       if (prof?.google_purchase_token !== purchaseToken) {
         console.log(`[google-play-webhook] OFF ignoré : jeton ${prof?.google_purchase_token ? "remplacé" : "déjà retiré"} (type=${notificationType} product=${subscriptionId} userId=${userId})`);
         return new Response(JSON.stringify({ ok: true, skipped: prof?.google_purchase_token ? "stale_token_replaced" : "jeton_deja_retire" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      // (11/11) Un jeton REMPLACÉ (montée, descente, formule avec ou sans Cloud) qui expire ne retire rien, même s'il est
+      // encore le jeton courant (le PURCHASED du nouveau jeton peut arriver après) : Google le dit dans canceledStateContext.
+      if (purchase?.canceledStateContext?.replacementCancellation != null) {
+        console.log(`[google-play-webhook] OFF ignoré : jeton remplacé (replacementCancellation, type=${notificationType} product=${subscriptionId} userId=${userId})`);
+        ctx.maj.effet_applique = "jeton_remplace";
+        return new Response(JSON.stringify({ ok: true, skipped: "jeton_remplace" }), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }

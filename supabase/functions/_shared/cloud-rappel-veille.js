@@ -55,6 +55,9 @@
 
 import { PRODUIT_CLOUD_GOOGLE } from './cloud-option.js';
 import { PACKAGE_GOOGLE, formatPrix } from './cloud-prix.js';
+// (11/11/2026, offres Cloud) La veille d'une formule avec Cloud nomme la formule (texteRappelFormule, en fin de fichier).
+import { nomDeFormule, essaiPossiblePourFormule } from './formules-serveur.js';
+import { PALIER_DE_FORMULE } from './formules-cloud.js';
 
 const HEURE_MS = 3_600_000;
 const instant = (v) => {
@@ -220,15 +223,21 @@ const LIENS_BOUTON = { stripe: LIEN_APP, apple: LIEN_ABONNEMENTS_APPLE, google: 
  *   carteFin : les 4 derniers chiffres de la carte s'ils sont connus du flux de
  *              paiement (Stripe seulement) — jamais stockés par le pool.
  * @param {{ lang?: string, finIso: string, canal?: string | null,
- *           prix?: { montant: number, devise: string } | null, carteFin?: string | null }} p
+ *           prix?: { montant: number, devise: string } | null, carteFin?: string | null,
+ *           formule?: string | null, abonne?: boolean, ref?: string | null }} p
  */
-export function texteRappel({ lang = 'fr', finIso, canal = null, prix = null, carteFin = null }) {
+export function texteRappel({ lang = 'fr', finIso, canal = null, prix = null, carteFin = null, formule = null, abonne = false, ref = null }) {
   const en = lang === 'en';
   const T = TEXTES[en ? 'en' : 'fr'];
   const c = canalDuRappel(canal);
   const quand = dateFin(finIso, en ? 'en' : 'fr');
   const montant = formatPrix(prix, en ? 'en' : 'fr');
   const carte = c === 'stripe' && /^\d{4}$/.test(String(carteFin ?? '')) ? String(carteFin) : null;
+  // (11/11/2026, offres Cloud) Une formule avec Cloud (lue à la source), l'essai d'un abonné, ou 7 jours offerts.
+  const offert = String(canal ?? '') === 'offert';
+  if (offert || formule) {
+    return texteRappelFormule({ en, quand, montant, carte, c, formule: offert ? formuleDeRefOffert(ref) : formule, abonne, offert, boutique: offert ? boutiqueDeRefOffert(ref) : null });
+  }
   return {
     sujet: T.sujet(quand),
     preheader: T.preheader(montant),
@@ -243,4 +252,78 @@ export function texteRappel({ lang = 'fr', finIso, canal = null, prix = null, ca
     canal: c,
     prixAffiche: montant,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (11/11/2026, offres Cloud — texte 5 validé par Nico vers 21:25) LA VEILLE D'UNE FORMULE AVEC CLOUD
+// ═══════════════════════════════════════════════════════════════════════════
+// Trois cas : l'essai d'une formule (« Pro + Cloud continue à … ; tu préfères Premium + Cloud ? ») ; l'essai d'un
+// ABONNÉ Stripe (« le {date}, ta formule Pro devient Pro + Cloud ») ; les 7 jours OFFERTS à un abonné Apple / Google
+// (« sans geste, le Cloud s'arrête »). ⛔ « Ta formule FillSell ne change pas » n'y figure JAMAIS (faux pour une formule).
+// Le montant : celui lu à la source, sinon aucun. Business + Cloud n'a pas d'essai : jamais de veille.
+const AUTRE_FORMULE_VEILLE = { premium_cloud: 'pro_cloud', pro_cloud: 'premium_cloud' };
+/** cloud_ref d'un essai offert : « offert:<boutique>:<formule> » (create-checkout-session, action essai_offert). */
+export const formuleDeRefOffert = (ref) => {
+  const m = /^offert:(apple|google):([a-z_]+)$/.exec(String(ref ?? ''));
+  return m && essaiPossiblePourFormule(m[2]) ? m[2] : null;
+};
+export const boutiqueDeRefOffert = (ref) => /^offert:(apple|google):/.exec(String(ref ?? ''))?.[1] ?? null;
+const TEXTES_FORMULE = {
+  fr: {
+    sujet: (n, q) => `Ton essai ${n} se termine le ${q}`,
+    sujetOffert: (q) => `Tes 7 jours de Cloud offerts se terminent le ${q}`,
+    titre: 'Ton essai gratuit se termine bientôt',
+    fin: (n, q) => `Ton essai gratuit de ${n} se termine le ${q} (heure de Paris).`,
+    suite: (n, p, c, carte) => `Si tu ne fais rien, ${n} continue à partir de cette date${p ? `, à ${p} par mois` : ', au prix mensuel indiqué lors de ta souscription'}, ${c === 'apple' ? 'prélevés sur ton compte Apple' : c === 'google' ? 'prélevés sur ton compte Google Play' : `prélevés sur la carte que tu as enregistrée${carte ? ` (finissant par ${carte})` : ''}`}.`,
+    autre: (a) => `Tu préfères ${a} ? Change en un geste dans l'app, Réglages → Abonnement.`,
+    abonne: (palier, n, q) => `Le ${q}, ta formule ${palier} devient ${n}. La différence pour les jours restants jusqu'à ta prochaine échéance sera ajoutée à ta prochaine facture.`,
+    rester: (palier) => `Tu préfères rester en ${palier} sans Cloud ? Dis-le avant cette date dans FillSell, Réglages → Abonnement : rien ne change alors.`,
+    offert: (q) => `Tes 7 jours de Cloud offerts se terminent le ${q} (heure de Paris).`,
+    offertSuite: (palier) => `Sans geste de ta part, le Cloud s'arrête à cette date ; ta formule ${palier} ne change pas, et rien n'est prélevé pour le Cloud.`,
+    offertGarder: (n, b) => `Pour garder le Cloud, passe à ${n} dans l'app FillSell : le changement se fait dans ton abonnement ${b === 'google' ? 'Google Play' : 'App Store'}, sans second abonnement.`,
+    preheader: (n, p) => (p ? `Si tu ne fais rien, ${n} continue à ${p} par mois.` : `Si tu ne fais rien, ${n} devient payante à la fin de l'essai.`),
+    preheaderAbonne: (n) => `Ta formule devient ${n} à la fin de l'essai.`,
+    preheaderOffert: 'Sans geste de ta part, le Cloud s’arrête.',
+    raison: (n) => `Tu reçois cet e-mail parce que tu as commencé un essai de ${n}. C'est une information sur ta facturation : elle t'est envoyée même si tu t'es désinscrit des actualités de FillSell.`,
+  },
+  en: {
+    sujet: (n, q) => `Your ${n} trial ends on ${q}`,
+    sujetOffert: (q) => `Your 7 free days of Cloud end on ${q}`,
+    titre: 'Your free trial ends soon',
+    fin: (n, q) => `Your free trial of ${n} ends on ${q} (Paris time).`,
+    suite: (n, p, c, carte) => `If you do nothing, ${n} continues from that date${p ? ` at ${p} a month` : ' at the monthly price shown when you subscribed'}, ${c === 'apple' ? 'charged to your Apple Account' : c === 'google' ? 'charged to your Google Play account' : `charged to the card you saved${carte ? ` (ending in ${carte})` : ''}`}.`,
+    autre: (a) => `Prefer ${a}? Switch in one tap in the app, Settings → Subscription.`,
+    abonne: (palier, n, q) => `On ${q}, your ${palier} plan becomes ${n}. The difference for the days left until your next renewal will be added to your next invoice.`,
+    rester: (palier) => `Prefer to stay on ${palier} without the Cloud? Say so before then in FillSell, Settings → Subscription: nothing changes then.`,
+    offert: (q) => `Your 7 free days of Cloud end on ${q} (Paris time).`,
+    offertSuite: (palier) => `If you do nothing, the Cloud stops on that date; your ${palier} plan does not change, and nothing is charged for the Cloud.`,
+    offertGarder: (n, b) => `To keep the Cloud, switch to ${n} in the FillSell app: the change happens in your ${b === 'google' ? 'Google Play' : 'App Store'} subscription, with no second subscription.`,
+    preheader: (n, p) => (p ? `If you do nothing, ${n} continues at ${p} a month.` : `If you do nothing, ${n} becomes paid when the trial ends.`),
+    preheaderAbonne: (n) => `Your plan becomes ${n} when the trial ends.`,
+    preheaderOffert: 'If you do nothing, the Cloud stops.',
+    raison: (n) => `You are getting this email because you started a ${n} trial. It is billing information, so it is sent even if you unsubscribed from FillSell news.`,
+  },
+};
+function texteRappelFormule({ en, quand, montant, carte, c, formule, abonne, offert, boutique }) {
+  const T = TEXTES_FORMULE[en ? 'en' : 'fr'];
+  const B = TEXTES[en ? 'en' : 'fr'];
+  const f = essaiPossiblePourFormule(formule) ? formule : null;
+  const n = f ? nomDeFormule(f) : 'FillSell Cloud';
+  const palier = f ? nomDeFormule(PALIER_DE_FORMULE[f]) : null;
+  const salut = en ? 'Hi,' : 'Salut,';
+  const commun = { lienDesinscription: null, categorie: CATEGORIE_RAPPEL, type: TYPE_RAPPEL, canal: c, prixAffiche: montant };
+  if (offert) {
+    const b = boutique === 'google' ? 'google' : 'apple';
+    return { ...commun, sujet: T.sujetOffert(quand), preheader: T.preheaderOffert, titre: T.sujetOffert(quand),
+      paragraphes: [salut, T.offert(quand), T.offertSuite(palier ?? 'FillSell'), ...(f ? [T.offertGarder(n, b)] : [])],
+      bouton: { texte: B.bouton.stripe, url: LIEN_APP }, raisonEnvoi: T.raison('FillSell Cloud'), canal: 'offert', prixAffiche: null };
+  }
+  if (abonne === true && f) {
+    return { ...commun, sujet: T.sujet(n, quand), preheader: T.preheaderAbonne(n), titre: T.titre,
+      paragraphes: [salut, T.abonne(palier, n, quand), T.rester(palier)],
+      bouton: { texte: B.bouton.stripe, url: LIEN_APP }, raisonEnvoi: T.raison(n), prixAffiche: null };
+  }
+  return { ...commun, sujet: T.sujet(n, quand), preheader: T.preheader(n, montant), titre: T.titre,
+    paragraphes: [salut, T.fin(n, quand), T.suite(n, montant, c, carte), ...(f && AUTRE_FORMULE_VEILLE[f] ? [T.autre(nomDeFormule(AUTRE_FORMULE_VEILLE[f]))] : []), B.arret[c]],
+    bouton: { texte: B.bouton[c], url: LIENS_BOUTON[c] }, raisonEnvoi: T.raison(n) };
 }

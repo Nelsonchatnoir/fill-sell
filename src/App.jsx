@@ -8,7 +8,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { cacherSplashAuBonMoment } from './natif/splashDemarrage';
-import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, PRODUCT_IDS, gererAbonnementsBoutique } from './lib/iap';
+import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, findActivePlaySub, PRODUCT_IDS, gererAbonnementsBoutique } from './lib/iap';
 import { classerIssueAchat } from './lib/issueAchat';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
@@ -153,8 +153,11 @@ import MeConnecterCloud from './cloud/MeConnecterCloud';
 import BandeauCloudReconnexion from './cloud/BandeauCloudReconnexion';
 import BandeauLeboncoinPause from './components/BandeauLeboncoinPause';
 import { creerAchatCloud } from './cloud/achatCloud';
+// (11/11/2026) Les formules avec Cloud : l'achat (conditions, place, Stripe ou boutique), derrière formulesCloudVendables.
+import { creerAchatFormuleCloud } from './cloud/achatFormuleCloud';
+import { idsFormulesBoutique } from './lib/idsFormulesBoutique';
 import { garderCloudEnsuite, lireCloudEnsuite, effacerCloudEnsuite, issueCloudEnsuite, textesCloudEnsuite } from './cloud/cloudEnsuite';
-import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud, noterBinaireCloud } from './config/cloudOffer';
+import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud, noterBinaireCloud, formulesCloudVendables, PALIER_DE_FORMULE } from './config/cloudOffer';
 import { useEtatCompteCloud } from './cloud/useCompteCloud';
 // (08/11, urgent U1-U4) Connecter les plateformes choisies : écran ouvert tout seul, carte Tableau/Stock, Synchroniser.
 import { useConnexionsCloud } from './cloud/useConnexionsCloud';
@@ -3613,6 +3616,31 @@ export default function App({ loginOnly = false }){
     if(r?.message)toastCloud(r.message);
     if(r?.etat==='actif')ouvrirMeConnecter('achat');
   }
+  // ══ LES FORMULES AVEC CLOUD (11/11/2026, décisions de Nico) — Premium + Cloud, Pro + Cloud, Business + Cloud ══
+  // UN abonnement par compte, sur son canal (cloud/achatFormuleCloud.js : conditions, place, Stripe ou boutique ; on ne
+  // croit que le serveur). ⛔ Fermé (formulesCloudVendables : interrupteur serveur du canal, ou témoin) : aucun geste
+  // n'existe, aucun écran ne les montre. La fin d'essai (descente) reste ouverte à qui a déjà la formule.
+  const achatFormules=user?creerAchatFormuleCloud({
+    supabase,supabaseUrl,supabaseAnonKey,user,lang,platform,purchasePremium,
+    trouverAbonnementPlay:platform==='android'?findActivePlaySub:null,
+    idsAbonnementsPlay:platform==='android'?[PRODUCT_IDS.sub,PRODUCT_IDS.standard,PRODUCT_IDS.pro,PRODUCT_IDS.business,...Object.values(idsFormulesBoutique('google'))]:[],
+    confirmer:(message)=>Promise.resolve(window.confirm(message)),
+    // (12/11/2026) La case des conditions d'une FORMULE : l'article 6 des formules et sa version (jamais pour le Cloud seul).
+    demanderConditions:()=>new Promise((resolve)=>setConditionsCloudOuvertes({resolve,formules:true})),
+    notifier:toastCloud,
+    paiementsAndroidCoupes:()=>paiementsAndroidCoupes(supabase),
+  }):null;
+  async function lancerAchatFormule(formule,opts={},origine='non_precisee',{connexion=true}={}){
+    if(!achatFormules)return null;
+    if(!opts?.descente&&!formulesCloudVendables(user?.id,{plateforme:platform}))return null;
+    logTunnel('formule_cloud_cta_click',{origine,formule,declencheur:'clic',essai:opts?.essaiAffiche===true,descente:opts?.descente===true});
+    const r=await achatFormules.acheter(formule,{origine,...opts});
+    logTunnel('formule_cloud_issue',{origine,formule,etat:r?.etat??null,raison:r?.raison??null});
+    if(r?.message)toastCloud(r.message);
+    if(r?.etat==='actif'||r?.etat==='change'){monterPalier(PALIER_DE_FORMULE[formule]);if(user?.id)fetchAll(user.id,{silencieux:true});}
+    if(r?.etat==='actif'&&connexion)ouvrirMeConnecter('formule_cloud');
+    return r;
+  }
   // (01/11) « Me connecter » s'ouvre par ICI, jamais par un setMeConnecterOuvert nu : le clic laisse sa trace
   // (usage_logs « cloud_me_connecter_clic ») et, si l'écran n'est pas monté 1,5 s plus tard, « cloud_me_connecter_muet ».
   // Le 01/11 à 19:38, le bouton des Réglages ne faisait rien sur l'iPhone de Nico, sans une ligne nulle part.
@@ -3645,6 +3673,12 @@ export default function App({ loginOnly = false }){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id,palier]);
   const actionsCloud=user?{
+    // (11/11/2026) Les formules avec Cloud (Réglages › Abonnement, fin d'essai) : le geste, jamais un bouton de plus ailleurs.
+    ...(achatFormules?{
+      formule:(f,opts)=>lancerAchatFormule(f,opts,opts?.descente?'fin_essai_formule':'reglages_formule_cloud'),
+      // La fenêtre d'offres sur « Avec Cloud » (trigger 'cloud'), seulement quand les formules se montrent à ce compte.
+      ...(formulesCloudVendables(user.id,{plateforme:platform})?{voirFormulesCloud:()=>openUpgradeModal(null,'reglages_formules_cloud','cloud')}:{}),
+    }:{}),
     ...(cloudOfferVisible(user.id)&&achatCloud?{
       essayer:()=>lancerAchatCloud('reglages_cloud'),
       ajouter:()=>lancerAchatCloud('reglages_cloud'),
@@ -9087,7 +9121,9 @@ export default function App({ loginOnly = false }){
           <BandeauCloudTableau userId={user.id} lang={lang} plateforme={Capacitor.getPlatform()}
             vendable={cloudOffreVendable(user.id)} compteLu={etatCompteCloud.lu===true} clientCloud={clientCloud}
             ecranLibre={!meConnecterOuvert&&!showOnboardingFlow}
-            journal={logTunnel} onEssayer={()=>lancerAchatCloud(ORIGINE_BANDEAU_CLOUD)}/>
+            // (11/11/2026) Formules avec Cloud visibles : le Cloud seul ne se vend plus — « Essayer 7 jours » ouvre la fenêtre
+            // d'offres sur « Avec Cloud ». Fermées : l'achat d'avant.
+            journal={logTunnel} onEssayer={()=>(formulesCloudVendables(user.id,{plateforme:platform})?openUpgradeModal(null,ORIGINE_BANDEAU_CLOUD,'cloud'):lancerAchatCloud(ORIGINE_BANDEAU_CLOUD))}/>
         )}
 
         {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.
@@ -10215,6 +10251,9 @@ export default function App({ loginOnly = false }){
         }}
         onCloudSeul={cloudOffreVendable(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_seul');}:null}
         onAjouterCloud={cloudOffreVendable(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_ajout');}:null}
+        // (11/11/2026) Les formules avec Cloud : null tant que le canal est fermé (sauf témoin) — la feuille d'avant.
+        onFormuleCloud={achatFormules&&formulesCloudVendables(user?.id,{plateforme:platform})?(formule,opts)=>{setConversionModal(m=>({...m,open:false}));lancerAchatFormule(formule,opts,conversionModal.origine??'modale_formule_cloud');}:null}
+        vueCloud={conversionModal.vueCloud??null}
         trigger={conversionModal.trigger}
         lang={lang}
         isPremium={isPremium}
@@ -10272,8 +10311,8 @@ export default function App({ loginOnly = false }){
       {/* (03/11, point 6) Leboncoin en pause sur le compte : le bouton « Leboncoin remarche » promis par le message existe. */}
       {user&&<BandeauLeboncoinPause userId={user.id} lang={lang}/>}
       {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
-      {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id))&&(
-        <ConditionsCloudModale onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>
+      {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id)||formulesCloudVendables(user.id,{plateforme:platform}))&&(
+        <ConditionsCloudModale formules={conditionsCloudOuvertes.formules===true} onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>
       )}
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
@@ -10860,6 +10899,8 @@ export default function App({ loginOnly = false }){
           // (achatCloud.acheter : conditions, place, Stripe ou boutique) — null tant que le Cloud est fermé.
           palier={palier}
           essaiCloud={cloudOffreVendable(user.id)&&achatCloud?(origine)=>{logTunnel('cloud_cta_click',{origine,declencheur:'clic'});return achatCloud.acheter(origine);}:null}
+          // (11/11/2026) « As-tu un ordinateur ? » et les formules avec Cloud : null tant que le canal est fermé (sauf témoin).
+          essaiFormule={achatFormules&&formulesCloudVendables(user.id,{plateforme:platform})?(formule,opts)=>lancerAchatFormule(formule,opts,'entree_formule_cloud',{connexion:false}):null}
           onDone={(dest)=>{
             onboardingFiniRef.current=true;
             setShowOnboardingFlow(false);

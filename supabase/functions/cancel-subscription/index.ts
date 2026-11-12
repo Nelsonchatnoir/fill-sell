@@ -6,6 +6,11 @@ import { dateSeuleParis, langue, mailResiliation } from "../_shared/emails-fills
 import { estAbonnementCloud } from "../_shared/cloud-option.js";
 import { evenementArretStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
+// (11/11/2026, offres Cloud) Une formule avec Cloud : { option: "cloud" } arrête son ESSAI (tout de suite, rien prélevé) ;
+// l'essai du Cloud d'un abonné (schedule) s'arrête et sa formule continue ; une formule PAYÉE retire son Cloud à la fin
+// de la période par changer-formule ({ action: "retirer_cloud" }). Prix lus à un seul endroit (_shared/prix-stripe.ts).
+import { prixStripe } from "../_shared/prix-stripe.ts";
+import { formuleDAbonnementStripe, essaiCloudAbonneStripe, nomDeFormule } from "../_shared/formules-serveur.js";
 
 // (04/10) L'option Cloud est un abonnement Stripe À PART. Sans corps (appel
 // historique) : résiliation du PALIER, jamais de l'abonnement Cloud.
@@ -13,12 +18,7 @@ import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
 // à la fin de l'essai : aucun débit). Un Cloud pris dans l'App Store ou Google
 // Play se résilie dans la boutique.
 function prixConnus() {
-  return {
-    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
-    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
-    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
-    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
-  };
+  return prixStripe();
 }
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
@@ -59,7 +59,9 @@ const supabaseAdmin = createClient(
 // utilisateur échouerait en 23505 et l'accusé ne partirait pas.
 const TYPE_AR = "resiliation_ar";
 
-function nomFormule(p: { is_business?: boolean; is_pro?: boolean }): string {
+function nomFormule(p: { is_business?: boolean; is_pro?: boolean; formule?: string | null }): string {
+  // (11/11) Une formule avec Cloud se nomme (« Pro + Cloud ») dans l'accusé de réception.
+  if (p?.formule) return nomDeFormule(p.formule) ?? "Premium";
   if (p?.is_business) return "Business";
   if (p?.is_pro) return "Pro";
   return "Premium";
@@ -202,6 +204,50 @@ serve(async (req) => {
     const paliersVivants = vivants.filter((x: Stripe.Subscription) => !estAbonnementCloud(x, prixConnus()));
     console.log("[cancel-subscription] Abonnements vivants: paliers", paliersVivants.length, "Cloud", cloudVivant ? 1 : 0);
 
+    // (11/11) Le Cloud d'une FORMULE (ou l'essai du Cloud d'un abonné) — jamais quand un Cloud seul est vivant à côté.
+    if (option === "cloud" && !cloudVivant && !reprendre) {
+      const essaiAbonneSub = paliersVivants.find((x: Stripe.Subscription) => essaiCloudAbonneStripe(x)) ?? null;
+      const formuleSub = paliersVivants.find((x: Stripe.Subscription) => formuleDAbonnementStripe(x, prixConnus())) ?? null;
+      const maintenant = new Date().toISOString();
+      if (essaiAbonneSub) {
+        // L'essai du Cloud d'un abonné : le schedule est rendu (la formule ne change pas), le Cloud s'arrête tout de suite.
+        const ea = essaiCloudAbonneStripe(essaiAbonneSub)!;
+        const idSched = typeof essaiAbonneSub.schedule === "string" ? essaiAbonneSub.schedule : (essaiAbonneSub.schedule as { id?: string } | null)?.id ?? null;
+        if (idSched) await stripe.subscriptionSchedules.release(idSched);
+        await stripe.subscriptions.update(essaiAbonneSub.id, { metadata: { essai_cloud_formule: "", essai_cloud_debut: "", essai_cloud_fin: "" } });
+        await supabaseAdmin.from("profiles").update({ is_cloud: false, cloud_essai_arrete: true, cloud_essai_fin: maintenant, cloud_arret_fin_periode: false,
+          formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null, cloud_formule: null }).eq("id", user.id);
+        console.log(`[cancel-subscription] essai ${ea.formule} de l'abonné ${user.id} arrêté (schedule ${idSched ?? "?"} rendu, ${essaiAbonneSub.id} continue)`);
+        await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", journal: "[cancel-subscription]",
+          evenements: [{ evenement: "arret_essai", cle: `${essaiAbonneSub.id}:essai`, canal: "stripe", faits: { arreteIso: maintenant, aucunPrelevement: true, formule: ea.formule } }] });
+        return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true, aucun_prelevement: true, formule_continue: true }), {
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      if (formuleSub && formuleSub.status === "trialing") {
+        // L'essai d'une formule avec Cloud : tout s'arrête tout de suite, rien n'est prélevé (même règle que le Cloud seul).
+        const annule = await stripe.subscriptions.cancel(formuleSub.id);
+        await supabaseAdmin.from("profiles").update({ is_cloud: false, cloud_essai_arrete: true, cloud_essai_fin: maintenant, cloud_arret_fin_periode: false, cloud_formule: null }).eq("id", user.id);
+        let evenements: ReturnType<typeof evenementArretStripe> = [];
+        try {
+          const factures = await stripe.invoices.list({ subscription: formuleSub.id, limit: 20 });
+          evenements = evenementArretStripe(annule, factures.data);
+        } catch (e) {
+          console.error(`[cancel-subscription] factures de ${formuleSub.id} illisibles : ${(e as Error)?.message ?? e}`);
+        }
+        console.log(`[cancel-subscription] essai ${formuleDAbonnementStripe(formuleSub, prixConnus())} ${formuleSub.id} arrêté tout de suite`);
+        await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements, journal: "[cancel-subscription]" });
+        return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true, aucun_prelevement: evenements.some((e) => e.evenement === "arret_essai") }), {
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      if (formuleSub) {
+        // Une formule PAYÉE : retirer le Cloud = changer-formule, à la fin de la période (jamais un second abonnement).
+        return new Response(JSON.stringify({ success: false, error: "retirer_par_changer_formule", action: "retirer_cloud" }), {
+          status: 409, headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+    }
     if (option === "cloud") {
       if (!cloudVivant) {
         return new Response(JSON.stringify({ success: true, option: "cloud", deja: true }), {
@@ -297,7 +343,7 @@ serve(async (req) => {
         const { data: profilLangue } = await supabaseAdmin
           .from("profiles").select("lang").eq("id", idUtilisateur).maybeSingle();
         await envoyerAccuseResiliation(
-          destinataire, idUtilisateur, nomFormule(profile), fin, profilLangue?.lang,
+          destinataire, idUtilisateur, nomFormule({ ...profile, formule: formuleDAbonnementStripe(paliersVivants[0], prixConnus()) }), fin, profilLangue?.lang,
         );
       } else {
         console.error("[cancel-subscription] utilisateur sans e-mail — accusé de réception impossible");

@@ -12,6 +12,12 @@
 //      (scripts/fixtures/paiements-lignes-c4-0911.json), n'agissent que sous un subscription schedule ;
 //   4. (07/11, décision de Nico : « Restaurer les achats » retrouve un Cloud pris seul) validate-apple-receipt n'a changé
 //      QUE par le mode `option: 'cloud'` : sans lui (tous les appels d'avant), le corps est celui de la base.
+//   5. (11/11/2026, offres Cloud — formules avec Cloud, décision 1) les lignes AJOUTÉES ou CHANGÉES par les formules avec
+//      Cloud dans les huit fichiers de paiement, relues une à une et inscrites dans
+//      scripts/fixtures/paiements-lignes-formules-1111.json (générées par scripts/paiements-lignes-formules-genere.mjs,
+//      relues dans le rapport) : elles s'ajoutent aux lignes permises, ligne pour ligne ; validate-google-purchase et
+//      _shared/stripe-rang-vivant.ts ne sont plus « inchangées » mais contrôlées ligne à ligne de la même façon. Les
+//      DÉCISIONS de paliers (§ 1) restent identiques à la base sur toute la grille.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -97,8 +103,9 @@ rmSync(tmp, { recursive: true, force: true });
 ok(ecarts.length === 0, `décisions de paliers identiques à la base ${BASE} sur ${grille} scénarios (Stripe, mails d'échec, boutiques)`, JSON.stringify(ecarts.slice(0, 5)));
 
 // ── 2. Les fonctions de paiement des paliers : octet pour octet ──
-const INCHANGEES = ['supabase/functions/stripe-portal/index.ts',
-  'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/validate-coin-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'];
+// (11/11) validate-google-purchase et _shared/stripe-rang-vivant.ts sortent de cette liste : formules avec Cloud et prix lus
+// à un seul endroit — contrôlés ligne à ligne au § 2 bis (paiements-lignes-formules-1111.json).
+const INCHANGEES = ['supabase/functions/stripe-portal/index.ts', 'supabase/functions/validate-coin-purchase/index.ts'];
 for (const f of INCHANGEES) {
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
@@ -115,14 +122,18 @@ const LIGNES_CLOUD = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures
 // scripts/fixtures/paiements-lignes-c4-0911.json : chacune n'agit que sous un subscription schedule (descente
 // programmée). Elles s'ajoutent aux lignes permises, ligne pour ligne ; rien d'autre ne passe.
 const LIGNES_C4 = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-c4-0911.json'), 'utf8'));
-for (const [f, permisesCloud] of Object.entries(LIGNES_CLOUD)) {
-  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? [])];
+// (11/11) Les lignes des formules avec Cloud, relues une à une (§ 5 de l'en-tête).
+const LIGNES_F = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-formules-1111.json'), 'utf8'));
+const FICHIERS_LIGNES = [...new Set([...Object.keys(LIGNES_CLOUD), 'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'])];
+for (const f of FICHIERS_LIGNES) {
+  const permisesCloud = LIGNES_CLOUD[f] ?? [];
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
   const restant = [...permises];
   const horsCloud = changees.filter((l) => { const i = restant.indexOf(l); if (i < 0) return true; restant.splice(i, 1); return false; });
-  ok(horsCloud.length === 0, `${f.replace('supabase/functions/', '')} : seules les ${permisesCloud.length} lignes Cloud relues le 08/11${LIGNES_C4[f] ? ` et les ${LIGNES_C4[f].length} lignes C4 relues le 09/11` : ''} changent depuis ${BASE} (aucun autre chemin de palier)`, horsCloud.slice(0, 4).join(' | '));
+  ok(horsCloud.length === 0, `${f.replace('supabase/functions/', '')} : seules les ${permisesCloud.length} lignes Cloud relues le 08/11${LIGNES_C4[f] ? ` et les ${LIGNES_C4[f].length} lignes C4 relues le 09/11` : ''}${LIGNES_F[f] ? ` et les ${LIGNES_F[f].length} lignes des formules avec Cloud relues le 11/11` : ''} changent depuis ${BASE} (aucun autre chemin de palier)`, horsCloud.slice(0, 4).join(' | '));
 }
 
 // ── 3. create-checkout-session : seulement la page de retour et la garde du Cloud ──
@@ -130,10 +141,11 @@ const d = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', 'supabase/functio
 const lignes = d.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l.slice(1).trim()).filter(Boolean);
 const permises = [/^\/\//, /success_url:/, /cloudVivantDuProfil/, /^\.from\("profiles"\)\.select\("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut/,
   /^if \(profilCloud\?\.is_cloud === true && profilCloud\?\.cloud_canal && profilCloud\.cloud_canal !== "stripe"\) \{$/, /^import \{ estAbonnementCloud/];
-const c4Checkout = (LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []).map((l) => l.slice(1));
+// (11/11) + les lignes des formules avec Cloud (relues une à une).
+const c4Checkout = [...(LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_F['supabase/functions/create-checkout-session/index.ts'] ?? [])].map((l) => l.slice(1));
 const restantC4 = [...c4Checkout];
 const autres = lignes.filter((l) => !permises.some((r) => r.test(l))).filter((l) => { const i = restantC4.indexOf(l); if (i < 0) return true; restantC4.splice(i, 1); return false; });
-ok(autres.length === 0, `create-checkout-session : ${lignes.length} lignes changées, toutes sur la page de retour, la garde du Cloud ou le refus C4 (montée pendant une descente programmée)`, autres.join(' | '));
+ok(autres.length === 0, `create-checkout-session : ${lignes.length} lignes changées, toutes sur la page de retour, la garde du Cloud, le refus C4 (montée pendant une descente programmée) ou les formules avec Cloud relues le 11/11`, autres.join(' | '));
 ok(lignes.some((l) => /success_url: `https:\/\/fillsell\.app\/success\?produit=\$\{encodeURIComponent\(planType\)\}/.test(l)), 'palier : seule la page de retour change (elle dit le palier acheté)');
 
 // ── 4. validate-apple-receipt : seulement le mode « cloud » (07/11) ──
@@ -149,9 +161,14 @@ const permisesA = [/^\/\//, /^const \{ receipt, userId, option \} = await req\.j
   /^let majCloudLue: Record<string, unknown> \| null = null;$/, /^majCloudLue = majCloud \?\? null;$/,
   /^if \(majCloudLue\) await supabaseAdmin\.from\("profiles"\)\.update\(majCloudLue\)\.eq\("id", userId\);$/,
   /^console\.log\(`\[validate-apple-receipt\] option cloud seule userId=/];
-const autresA = ajoutees.filter((l) => !permisesA.some((r) => r.test(l)));
-ok(retirees.length === 1 && retirees[0] === 'const { receipt, userId } = await req.json();' && autresA.length === 0,
-  `validate-apple-receipt : ${ajoutees.length} lignes ajoutées, toutes du mode « cloud » ; une seule retirée (la lecture du corps)`, [...retirees, '|', ...autresA].join(' | '));
+// (11/11) + les lignes des formules avec Cloud (paiements-lignes-formules-1111.json), ajoutées et retirées, une à une.
+const FA_PLUS = (LIGNES_F[FA] ?? []).filter((l) => l.startsWith('+')).map((l) => l.slice(1));
+const FA_MOINS = (LIGNES_F[FA] ?? []).filter((l) => l.startsWith('-')).map((l) => l.slice(1));
+const restePlus = [...FA_PLUS], resteMoins = [...FA_MOINS];
+const autresA = ajoutees.filter((l) => !permisesA.some((r) => r.test(l))).filter((l) => { const i = restePlus.indexOf(l); if (i < 0) return true; restePlus.splice(i, 1); return false; });
+const retireesHorsF = retirees.filter((l) => { const i = resteMoins.indexOf(l); if (i < 0) return true; resteMoins.splice(i, 1); return false; });
+ok(retireesHorsF.length === 1 && retireesHorsF[0] === 'const { receipt, userId } = await req.json();' && autresA.length === 0,
+  `validate-apple-receipt : ${ajoutees.length} lignes ajoutées, toutes du mode « cloud » ou des formules avec Cloud ; une seule retirée hors formules (la lecture du corps)`, [...retireesHorsF, '|', ...autresA].join(' | '));
 // Le corps sans le mode « cloud » = celui de la base, au caractère près (paliers, Founder, échéance, option du reçu).
 const sansModeCloud = (t) => t.replace(/\r\n/g, '\n')
   .replace(/const \{ receipt, userId(, option)? \} = await req\.json\(\);/, '')
@@ -160,10 +177,20 @@ const sansModeCloud = (t) => t.replace(/\r\n/g, '\n')
   .replace(/\n[ \t]*let majCloudLue[^\n]*/, '')
   .replace(/\n[ \t]*majCloudLue = majCloud \?\? null;/, '')
   .replace(/\n([ \t]*)if \(seulementCloud\) \{[\s\S]*?\n\1\}(?=\n)/g, '');
+// (11/11) La preuve en deux temps : (a) à 1f91bc3 (le dernier commit avant les formules), sans le mode « cloud », le corps
+// est celui de la base, au caractère près (la garantie d'avant) ; (b) depuis 1f91bc3, SEULES les lignes des formules avec
+// Cloud relues (paiements-lignes-formules-1111.json) changent, une à une.
 const baseA = sansModeCloud(git('show', `${BASE}:${FA}`));
-const aujA = sansModeCloud(readFileSync(path.join(RACINE, FA), 'utf8'));
-ok(baseA === aujA, 'validate-apple-receipt : sans le mode « cloud », le corps est celui de la base (rien d\'autre ne change)',
-  baseA === aujA ? '' : `écart vers ${[...baseA].findIndex((c, i) => c !== aujA[i])}`);
+const v1111A = sansModeCloud(git('show', `1f91bc3:${FA}`));
+ok(baseA === v1111A, 'validate-apple-receipt : à 1f91bc3, sans le mode « cloud », le corps est celui de la base (rien d\'autre ne changeait)',
+  baseA === v1111A ? '' : `écart vers ${[...baseA].findIndex((c, i) => c !== v1111A[i])}`);
+{
+  const dF = git('diff', '--ignore-cr-at-eol', '-U0', '1f91bc3', '--', FA);
+  const chF = dF.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
+  const resteF = [...(LIGNES_F[FA] ?? [])];
+  const horsF = chF.filter((l) => { const i = resteF.indexOf(l); if (i < 0) return true; resteF.splice(i, 1); return false; });
+  ok(horsF.length === 0, `validate-apple-receipt : depuis 1f91bc3, seules les ${(LIGNES_F[FA] ?? []).length} lignes des formules avec Cloud relues le 11/11 changent`, horsF.slice(0, 4).join(' | '));
+}
 
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

@@ -17,17 +17,19 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { estAbonnementCloud } from "../_shared/cloud-option.js";
 import {
-  abonnementDeFormule, boutiqueVivante, colonnesDescente, descentePrevue, formuleDuPrix, formuleStripe, parametresDescente, peutDescendre, RANG_FORMULE,
+  abonnementDeFormule, boutiqueVivante, colonnesDescente, descentePrevue, formuleDuPrix, formuleStripe, parametresDescente, peutDescendre,
 } from "../_shared/descente-formule.js";
+// (11/11/2026, offres Cloud) Les formules avec Cloud : descendre (Pro + Cloud → Premium + Cloud), RETIRER le Cloud à la fin
+// de la période (action « retirer_cloud » : Pro + Cloud → Pro), et changer de formule PENDANT l'essai (sans prorata :
+// l'essai continue, le premier débit se fait au prix choisi). Prix lus à un seul endroit (_shared/prix-stripe.ts).
+import { prixStripe } from "../_shared/prix-stripe.ts";
+import { estFormuleCloud, essaiCloudAbonneStripe, metadonneesFormule, planTypeDeFormule } from "../_shared/formules-serveur.js";
+import { PALIER_DE_FORMULE } from "../_shared/formules-cloud.js";
 
 function prixConnus() {
-  return {
-    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
-    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
-    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
-    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
-  };
+  return prixStripe();
 }
+const CANDIDATES = ["standard", "pro", "premium_cloud", "pro_cloud"];
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, { apiVersion: "2023-10-16", httpClient: Stripe.createFetchHttpClient() });
 const supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -96,7 +98,8 @@ serve(async (req) => {
     }
     const { prix, cible, prevue, actuelle } = await lireStripe(profil.stripe_customer_id);
     const fin = cible?.current_period_end ? new Date(cible.current_period_end * 1000).toISOString() : null;
-    const possibles = actuelle ? ["standard", "pro"].filter((f) => RANG_FORMULE[f as "standard" | "pro"] < RANG_FORMULE[actuelle as "standard" | "pro" | "business"]).map(nomApp) : [];
+    // (11/11) Les formules plus basses, et (formule avec Cloud) la même sans le Cloud — peutDescendre, une règle pour tout.
+    const possibles = actuelle ? CANDIDATES.filter((f) => peutDescendre(actuelle, f)).map(nomApp) : [];
     const etat = () => ({ canal: "stripe", disponible: Boolean(cible), actuelle: nomApp(actuelle), fin_periode: fin, possibles,
       prevue: prevue ? { formule: nomApp(prevue.formule), le: prevue.le } : null, arret_prevu: Boolean(cible?.cancel_at_period_end) });
 
@@ -104,6 +107,18 @@ serve(async (req) => {
 
     if (!cible || !actuelle) return repondre({ ...etat(), error: "aucune_formule" }, 409);
 
+    // (11/11, décision 6) L'essai du Cloud d'un abonné tient un schedule à lui : il s'arrête par cancel-subscription
+    // ({ option: "cloud" }), jamais en rendant le schedule ici (le Cloud resterait affiché en essai).
+    const essaiAbonne = essaiCloudAbonneStripe(cible);
+    if (essaiAbonne && (action === "annuler" || action === "programmer" || action === "retirer_cloud")) {
+      return repondre({ ...etat(), error: "essai_cloud_en_cours", essai_fin: essaiAbonne.fin }, 409);
+    }
+    // (11/11) « Retirer le Cloud » = descendre vers la même formule SANS le Cloud, à la fin de la période payée.
+    if (action === "retirer_cloud") {
+      if (!estFormuleCloud(actuelle)) return repondre({ ...etat(), error: "pas_de_cloud" }, 409);
+      action = "programmer";
+      vers = PALIER_DE_FORMULE[actuelle as "premium_cloud" | "pro_cloud" | "business_cloud"];
+    }
     if (action === "annuler") {
       const id = idSchedule(cible);
       if (id) {
@@ -118,6 +133,22 @@ serve(async (req) => {
     if (!peutDescendre(actuelle, vers)) return repondre({ ...etat(), error: "descente_impossible" }, 409);
     // Une résiliation déjà programmée prime : la reprendre d'abord (jamais deux changements contradictoires).
     if (cible.cancel_at_period_end) return repondre({ ...etat(), error: "arret_deja_prevu" }, 409);
+    // (11/11) PENDANT L'ESSAI d'une formule avec Cloud : le changement est immédiat, sans prorata — l'essai continue et le
+    // premier débit se fait au prix choisi (Pro + Cloud → Premium + Cloud). Jamais vers une formule sans essai ici.
+    if (cible.status === "trialing" && estFormuleCloud(actuelle) && estFormuleCloud(formuleStripe(vers))) {
+      const versF = formuleStripe(vers) as string;
+      const prixVers = (prix as Record<string, string>)[versF];
+      if (!prixVers) return repondre({ ...etat(), error: "stripe_refus" }, 502);
+      try {
+        await stripe.subscriptions.update(cible.id, { items: [{ id: cible.items.data[0].id, price: prixVers }], proration_behavior: "none",
+          metadata: { ...(cible.metadata ?? {}), ...metadonneesFormule({ formule: versF, essai: true, userId: user.id }), plan_type: planTypeDeFormule(versF) ?? "" } });
+      } catch (e) {
+        console.error(`[changer-formule] ${user.id} : ${actuelle} → ${versF} pendant l'essai refusé par Stripe : ${(e as Error)?.message ?? e}`);
+        return repondre({ ...etat(), error: "stripe_refus" }, 502);
+      }
+      console.log(`[changer-formule] ${user.id} : ${actuelle} → ${versF} pendant l'essai (sans prorata, ${cible.id})`);
+      return repondre({ ...etat(), actuelle: nomApp(versF), prevue: null, change_pendant_essai: true });
+    }
     if (cible.status !== "active") return repondre({ ...etat(), error: "abonnement_pas_actif" }, 409);
     if (cible.pending_update) return repondre({ ...etat(), error: "montee_en_attente" }, 409);
 

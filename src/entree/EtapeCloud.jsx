@@ -43,7 +43,7 @@ function Coche({ children, k, dernier }) {
 }
 
 // La frise en trois temps : aujourd'hui (point plein), la veille, la bascule.
-function Frise({ etapes }) {
+export function Frise({ etapes }) {
   return (
     <Carte style={{ padding: '16px 16px 14px', marginBottom: 12 }}>
       <ol data-entree="frise" style={{ listStyle: 'none', margin: 0, padding: 0 }}>

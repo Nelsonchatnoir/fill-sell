@@ -16,6 +16,13 @@
 // Le Cloud (abonnement à part) n'est jamais touché. Pur : testé en Node (selftest:descente-formule, banc Stripe test).
 
 import { rangAppleVivant, rangGoogleVivant } from './droits-canaux.js';
+// (11/11/2026, offres Cloud) Les formules avec Cloud descendent aussi : vers une formule avec Cloud plus basse (Pro + Cloud
+// → Premium + Cloud), ou en RETIRANT le Cloud (Pro + Cloud → Pro), à la fin de la période. Rien ne change pour les paliers.
+import { FORMULES_CLOUD, PALIER_DE_FORMULE } from './formules-cloud.js';
+const estFormuleAvecCloud = (f) => FORMULES_CLOUD.includes(String(f ?? ''));
+const palierStripeDe = (f) => (estFormuleAvecCloud(f) ? (PALIER_DE_FORMULE[f] === 'premium' ? 'standard' : PALIER_DE_FORMULE[f]) : f);
+/** Le rang (1 à 3) d'une formule, avec ou sans Cloud ; 0 inconnue. */
+export const rangDeFormule = (f) => RANG_FORMULE[palierStripeDe(formuleStripe(f))] ?? 0;
 
 export const RANG_FORMULE = Object.freeze({ standard: 1, pro: 2, business: 3 });
 
@@ -36,13 +43,21 @@ export const FORMULES = Object.freeze(['standard', 'pro', 'business']);
 export function formuleStripe(f) {
   if (f === 'premium' || f === 'standard' || f === 'founder') return 'standard';
   if (f === 'pro' || f === 'business') return f;
+  if (estFormuleAvecCloud(f)) return f;   // (11/11) premium_cloud | pro_cloud | business_cloud : leur propre prix
   return null;
 }
 
 /** La descente est-elle possible de `actuelle` vers `vers` ? (strictement plus bas, deux formules payantes) */
 export function peutDescendre(actuelle, vers) {
-  const a = RANG_FORMULE[formuleStripe(actuelle)];
-  const v = RANG_FORMULE[formuleStripe(vers)];
+  const fa = formuleStripe(actuelle), fv = formuleStripe(vers);
+  // (11/11) Depuis une formule avec Cloud : vers une formule avec Cloud plus basse, ou la MÊME formule sans le Cloud.
+  if (estFormuleAvecCloud(fa)) {
+    const a = rangDeFormule(fa), v = rangDeFormule(fv);
+    return Boolean(a && v && (estFormuleAvecCloud(fv) ? v < a : v === a));
+  }
+  if (estFormuleAvecCloud(fv)) return false;
+  const a = RANG_FORMULE[fa];
+  const v = RANG_FORMULE[fv];
   return Boolean(a && v && v < a);
 }
 
@@ -54,6 +69,7 @@ export function formuleDuPrix(priceId, prix = {}) {
   if (prix.business && priceId === prix.business) return 'business';
   if (prix.pro && priceId === prix.pro) return 'pro';
   if (prix.standard && priceId === prix.standard) return 'standard';
+  for (const f of FORMULES_CLOUD) if (prix[f] && priceId === prix[f]) return f;   // (11/11)
   return null;
 }
 
@@ -79,9 +95,16 @@ export function parametresDescente({ abonnement, schedule, vers, prix }) {
       // Phase 1 : EXACTEMENT l'abonnement d'aujourd'hui, jusqu'à la fin de la période payée.
       { items: articles, start_date: phase0.start_date, end_date: fin, metadata: metaActuelle, proration_behavior: 'none' },
       // Phase 2 : la formule inférieure, sa métadonnée, une période, puis l'abonnement continue seul à ce prix.
-      { items: [{ price: prixVers, quantity: 1 }], iterations: 1, metadata: { ...metaActuelle, plan_type: cible }, proration_behavior: 'none' },
+      { items: [{ price: prixVers, quantity: 1 }], iterations: 1, metadata: metaDescente(metaActuelle, cible), proration_behavior: 'none' },
     ],
   };
+}
+
+/** (11/11) La métadonnée de la phase 2 : plan_type du palier ; `formule` posée pour une formule avec Cloud, retirée sinon. */
+function metaDescente(meta, cible) {
+  if (estFormuleAvecCloud(cible)) return { ...meta, plan_type: palierStripeDe(cible), formule: cible };
+  if (estFormuleAvecCloud(meta?.formule)) return { ...meta, plan_type: cible, formule: '' };
+  return { ...meta, plan_type: cible };
 }
 
 /**
@@ -103,7 +126,7 @@ export function descentePrevue(subs, schedules = {}, prix = {}, maintenant = Dat
     const future = (sched.phases ?? []).filter((ph) => Number(ph.start_date) > nowS).sort((a, b) => a.start_date - b.start_date)[0];
     if (!future) continue;
     const vers = (future.items ?? []).map(prixDeLArticle).map((p) => formuleDuPrix(p, prix)).find(Boolean);
-    if (vers && RANG_FORMULE[vers] < RANG_FORMULE[actuelle]) {
+    if (vers && peutDescendre(actuelle, vers)) {
       return { formule: vers, le: new Date(Number(future.start_date) * 1000).toISOString(), ref: idSched, depuis: actuelle };
     }
   }
@@ -113,13 +136,15 @@ export function descentePrevue(subs, schedules = {}, prix = {}, maintenant = Dat
 /** Ce qu'on écrit dans profiles (colonnes de la migration 20261109020000), à part des drapeaux : jamais bloquant. */
 export function colonnesDescente(prevue) {
   return prevue
-    ? { formule_prevue: prevue.formule === 'standard' ? 'premium' : prevue.formule, formule_prevue_le: prevue.le, formule_prevue_canal: 'stripe' }
+    // (11/11) La contrainte de prod n'admet que 'premium' | 'pro' : une formule avec Cloud s'écrit par son palier (Pro + Cloud →
+    // Premium + Cloud : 'premium' ; retrait du Cloud Pro + Cloud → Pro : 'pro'). Le détail « avec Cloud » se relit chez Stripe.
+    ? { formule_prevue: prevue.formule === 'standard' || prevue.formule === 'premium_cloud' ? 'premium' : prevue.formule === 'pro_cloud' ? 'pro' : prevue.formule, formule_prevue_le: prevue.le, formule_prevue_canal: 'stripe' }
     : { formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null };
 }
 
 /** L'abonnement de formule VIVANT d'un client (jamais le Cloud) — la cible d'une descente. */
 export function abonnementDeFormule(subs, prix = {}, estCloud = () => false) {
   const vivants = (subs ?? []).filter((s) => (s?.status === 'active' || s?.status === 'trialing') && !estCloud(s));
-  const rang = (s) => RANG_FORMULE[(s.items?.data ?? []).map(prixDeLArticle).map((p) => formuleDuPrix(p, prix)).find(Boolean) ?? formuleStripe(s.metadata?.plan_type)] ?? 0;
+  const rang = (s) => rangDeFormule((s.items?.data ?? []).map(prixDeLArticle).map((p) => formuleDuPrix(p, prix)).find(Boolean) ?? formuleStripe(s.metadata?.plan_type));
   return vivants.sort((a, b) => rang(b) - rang(a))[0] ?? null;
 }

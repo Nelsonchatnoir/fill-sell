@@ -241,7 +241,9 @@ titre('4. email-tunnel : canal et référence lus, prix à la source avant l’e
   const iDecision = v.indexOf('if (d.action !== "envoyer")'), iLu = v.indexOf('await lirePrix(p.cloud_canal, p.cloud_ref)'), iStop = v.indexOf('if (lu.renouvelle === false)'),
     iDry = v.indexOf('if (dry)'), iMail = v.indexOf('mailRappelVeilleCloud('), iEnvoi = v.indexOf('await envoyer(');
   ok(iDecision > 0 && iLu > iDecision && iStop > iLu && iDry > iStop && iMail > iDry && iEnvoi > iMail, 'ordre : décision → prix lu → « ne renouvelle pas » = aucun rappel → dry_run → rendu → envoi');
-  ok(/mailRappelVeilleCloud\(\{ lang, finIso: String\(p\.cloud_essai_fin\), canal: \(p\.cloud_canal as string \| null\) \?\? null, prix: lu\.prix \}\)/.test(v), 'le rendu reçoit le canal du profil et le prix LU (rien d’autre)');
+  // (11/11/2026, offres Cloud — changement VOLONTAIRE, nommé dans le rapport OFFRES-SERVEUR) le rendu reçoit en plus la
+  // formule LUE à la source (« Pro + Cloud »), l'essai d'un abonné et la référence (7 jours offerts) — rien d'autre.
+  ok(/mailRappelVeilleCloud\(\{ lang, finIso: String\(p\.cloud_essai_fin\), canal: \(p\.cloud_canal as string \| null\) \?\? null, prix: lu\.prix,\s*formule: \(lu as \{ formule\?: string \| null \}\)\.formule \?\? null, abonne: \(lu as \{ abonne\?: boolean \}\)\.abonne === true, ref: \(p\.cloud_ref as string \| null\) \?\? null \}\)/.test(v), 'le rendu reçoit le canal du profil, le prix LU, et (11/11) la formule lue à la source, l\'essai d\'abonné, la référence — rien d’autre');
   ok(!/texteRappel\(/.test(t) && !/PRIX_AFFICHE/.test(t), 'plus aucun texteRappel sans canal ni prix, plus aucun PRIX_AFFICHE dans email-tunnel');
   ok(/prix_lus: prixLus/.test(v), 'la réponse du passage dit les prix lus (dry_run : la preuve sans envoi)');
   ok(/const LECTURES_PRIX_MAX = 20;/.test(v) && /const BUDGET_PRIX_MS = 60_000;/.test(v) && /\.order\("cloud_essai_fin", \{ ascending: true \}\)/.test(v)

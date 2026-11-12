@@ -396,3 +396,27 @@ marge de 100 % sur du vent, indétectable ensuite.
   `_backup_1111_essai_cloud_droits_pro_*`, lecture avant/après : `scripts/reparations/20261111_essai_cloud_droits_pro_PREUVE.sql`,
   à jouer en postgres, pas `--read-only`). Inverse : `supabase/rollbacks/20261111230000_essai_cloud_seul_droits_pro_INVERSE.sql`
   puis `migration repair --status reverted 20261111230000`. Verrou `npm run selftest:essai-cloud-droits-pro`.
+
+## ⛔ 12/11/2026 nuit — FORMULES AVEC CLOUD (Premium + Cloud, Pro + Cloud, Business + Cloud) : livrées FERMÉES
+- UN abonnement par compte, sur son canal, dans le même groupe (Apple « FillSell Plan », Google, Stripe) ; jamais deux
+  abonnements. Contrat partagé serveur + app : `supabase/functions/_shared/formules-cloud.js` (formules, essai, supplément,
+  produits des boutiques, interrupteurs) ; serveur : `_shared/formules-serveur.js` (prix Stripe en UN endroit,
+  `formuleDuProduit` des 3 canaux) ; app : `src/cloud/formulesCloud.js`, `OffresAvecCloud.jsx`, `achatFormuleCloud.js`.
+- ⛔ ESSAI de 7 jours SEULEMENT sur Premium + Cloud et Pro + Cloud, une fois par personne (les 4 verrous de l'essai
+  Cloud). Business + Cloud : payé dès le premier jour, partout, y compris un abonné Business qui ajoute le Cloud
+  (correction de Nico du 11/11, 21:45). Aucune offre d'introduction Apple ni offre Google sur business_cloud.
+- Pendant un essai : aucun crédit mensuel (`upgrade_monthly_grant` fixe le début du cycle des quotas : jamais pendant la
+  semaine gratuite). Reste à faire avant d'ouvrir le web : le balayage `grant_monthly_coins_sweep` (question 9).
+- `profiles.cloud_formule` (migration 20261112000000) : la formule active ou en essai, posée/remise à NULL par les
+  fonctions des 3 canaux ; lue par l'app (lecture de SA ligne, aucune écriture client).
+- Conditions : deux textes en vigueur, chacun avec SA version — le Cloud seul (2026-11-11, montré à tous, inchangé) et
+  les formules (2026-11-12, article 6 neuf, montré SEULEMENT dans l'achat d'une formule et sur la page publique quand
+  `cloud_formules_stripe` = 1). Une formule exige une acceptation ≥ 2026-11-12 ; la minimale du Cloud seul ne bouge pas.
+- OUVERTURE = interrupteurs `coin_config` `cloud_formules_stripe` / `cloud_formules_apple` / `cloud_formules_google`
+  (absent ou ≠ 1 = FERMÉ : app, web, onboarding exactement comme avant) ; témoins = `profiles.beta_flags.cloud`
+  (Nico f44b5917, démo du relecteur Apple d6a9e726). Le site vitrine lit `cloud_formules_stripe` sans session :
+  `GET /rest/v1/coin_config?key=in.(cloud_formules_stripe)` avec la clé anon. Ordre : web (Stripe) d'abord, iPhone après
+  l'accord d'Apple sur les 3 abonnements, Android à la vc37.
+- Verrous : formules-cloud-business-sans-essai, -stripe, -boutiques, -comptage-mails, -contrat-app, -ferme, -offres ;
+  cloud-executant (deux versions de conditions), paiements-non-regression (lignes nommées dans
+  `scripts/fixtures/paiements-lignes-formules-1111.json`).

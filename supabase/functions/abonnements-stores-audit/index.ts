@@ -23,6 +23,10 @@ import { jetonGooglePlay } from "../_shared/google-play-token.ts";
 // (30/10, lot D point 2) Le MRR par canal, sur les seuls abonnements ACTIFS (Stripe relu en lecture seule).
 import { ligneMrrStripe, mrrParCanal, palierProduitStore, PRIX_MENSUELS_TTC } from "../_shared/mrr.js";
 import { prixStripeConnus } from "../_shared/stripe-rang-vivant.ts";
+// (11/11/2026, offres Cloud, § 9) Sept catégories (formules avec Cloud à part), € par catégorie, comptes distincts ; le
+// Cloud SEUL compté aussi chez Google (par cloud_ref : son jeton n'est jamais google_purchase_token) et chez Apple (son
+// groupe « FillSell Cloud » a sa propre transaction d'origine, cloud_ref).
+import { formuleDuProduit } from "../_shared/formules-serveur.js";
 
 const BUNDLE_ID = "app.fillsell.app";
 const APPLE_PROD_URL = "https://api.storekit.itunes.apple.com";
@@ -32,6 +36,9 @@ const RANG: Record<string, number> = { aucun: 0, premium: 1, pro: 2, business: 3
 /** Le palier d'un produit de store (Cloud et packs : aucun palier). */
 function palierDuProduit(id: string | null | undefined): string | null {
   const p = String(id ?? "");
+  // (11/11) Une formule avec Cloud porte le palier de sa formule.
+  const f = formuleDuProduit(p);
+  if (f && f.formule !== "cloud" && f.cloud) return f.palier;
   if (/business/.test(p)) return "business";
   if (/\.pro2?\.sub$/.test(p)) return "pro";
   if (/premium\.(sub|standard)$/.test(p)) return "premium";
@@ -53,8 +60,8 @@ serve(async (req) => {
   }
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: profils, error } = await admin.from("profiles")
-    .select("id, is_premium, is_pro, is_business, is_comped, apple_original_transaction_id, google_purchase_token, google_product_id")
-    .or("apple_original_transaction_id.not.is.null,google_purchase_token.not.is.null");
+    .select("id, is_premium, is_pro, is_business, is_comped, apple_original_transaction_id, google_purchase_token, google_product_id, cloud_canal, cloud_ref")
+    .or("apple_original_transaction_id.not.is.null,google_purchase_token.not.is.null,cloud_ref.not.is.null");
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
 
   const maintenant = Date.now();
@@ -63,38 +70,64 @@ serve(async (req) => {
   const jwtApple = await genererJWTApple(BUNDLE_ID).catch(() => null);
   const jetonGoogle = await jetonGooglePlay().catch(() => null);
 
+  // (11/11) L'historique Apple d'une transaction d'origine (palier, formule, ou Cloud seul).
+  const historiqueApple = async (orig: unknown) => {
+    const transactions: Array<Record<string, unknown>> = [];
+    let revision: string | undefined; let tours = 0; let erreur: string | null = null;
+    do {
+      const url = new URL(`${APPLE_PROD_URL}/inApps/v2/history/${orig}`);
+      url.searchParams.set("sort", "ASCENDING");
+      if (revision) url.searchParams.set("revision", revision);
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${jwtApple}` } });
+      if (!r.ok) { erreur = `apple_${r.status}`; break; }
+      const page = await r.json();
+      for (const x of page.signedTransactions ?? []) { try { transactions.push(decoder(x as string)); } catch { /* illisible */ } }
+      revision = page.hasMore ? page.revision : undefined; tours++;
+    } while (revision && tours < 20);
+    return { transactions, erreur };
+  };
+  const ligneMrrApple = (transactions: Array<Record<string, unknown>>, compte: unknown) => {
+    const cours = transactions
+      .filter((t) => palierProduitStore(t.productId as string) && !t.revocationDate && typeof t.expiresDate === "number" && (t.expiresDate as number) > maintenant)
+      .sort((a, b) => Number(b.purchaseDate) - Number(a.purchaseDate))[0] ?? null;
+    if (cours && cours.offerDiscountType !== "FREE_TRIAL") {
+      const palierM = palierProduitStore(cours.productId as string) as keyof typeof PRIX_MENSUELS_TTC;
+      const eur = cours.currency === "EUR" && typeof cours.price === "number" ? (cours.price as number) / 1000 : PRIX_MENSUELS_TTC[palierM];
+      lignesMrr.push({ canal: "apple", palier: palierM, eur, ref: compte, compte });
+    }
+  };
   for (const p of (profils ?? []) as Array<Record<string, unknown>>) {
+    // (11/11) Le Cloud SEUL : chez Apple (groupe « FillSell Cloud », sa propre transaction d'origine), chez Google (cloud_ref).
+    if (p.cloud_canal === "apple" && p.cloud_ref && p.cloud_ref !== p.apple_original_transaction_id && jwtApple) {
+      const { transactions: txCloud } = await historiqueApple(p.cloud_ref);
+      ligneMrrApple(txCloud.filter((t) => palierProduitStore(t.productId as string) === "cloud"), p.id);
+    }
+    if (p.cloud_canal === "google" && p.cloud_ref && p.cloud_ref !== p.google_purchase_token && jetonGoogle) {
+      const rc = await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE_NAME}/purchases/subscriptionsv2/tokens/${encodeURIComponent(String(p.cloud_ref))}`,
+        { headers: { Authorization: `Bearer ${jetonGoogle}` } });
+      if (rc.ok) {
+        const sc = await rc.json();
+        const itemsC = (sc.lineItems ?? []) as Array<Record<string, unknown>>;
+        const payeC = sc.subscriptionState === "SUBSCRIPTION_STATE_ACTIVE"
+          || (sc.subscriptionState === "SUBSCRIPTION_STATE_CANCELED" && itemsC.some((i) => Date.parse(String(i.expiryTime ?? "")) > maintenant));
+        const essaiC = itemsC.some((i) => i.offerPhase && typeof i.offerPhase === "object" && "freeTrial" in (i.offerPhase as Record<string, unknown>));
+        if (payeC && !essaiC && itemsC.some((i) => palierProduitStore(i.productId as string) === "cloud")) {
+          lignesMrr.push({ canal: "google", palier: "cloud", eur: PRIX_MENSUELS_TTC.cloud, ref: p.id, compte: p.id });
+        }
+      }
+    }
+    if (!p.apple_original_transaction_id && !p.google_purchase_token) continue;
     const chezNous = p.is_business ? "business" : p.is_pro ? "pro" : (p.is_premium || p.is_comped) ? "premium" : "aucun";
     // ── Apple ──────────────────────────────────────────────────────────────
     if (p.apple_original_transaction_id && jwtApple) {
-      const transactions: Array<Record<string, unknown>> = [];
-      let revision: string | undefined; let tours = 0; let erreur: string | null = null;
-      do {
-        const url = new URL(`${APPLE_PROD_URL}/inApps/v2/history/${p.apple_original_transaction_id}`);
-        url.searchParams.set("sort", "ASCENDING");
-        if (revision) url.searchParams.set("revision", revision);
-        const r = await fetch(url, { headers: { Authorization: `Bearer ${jwtApple}` } });
-        if (!r.ok) { erreur = `apple_${r.status}`; break; }
-        const page = await r.json();
-        for (const s of page.signedTransactions ?? []) { try { transactions.push(decoder(s as string)); } catch { /* illisible */ } }
-        revision = page.hasMore ? page.revision : undefined; tours++;
-      } while (revision && tours < 20);
+      const { transactions, erreur } = await historiqueApple(p.apple_original_transaction_id);
       const abonnements = transactions.filter((t) => palierDuProduit(t.productId as string) !== null);
       const enCours = abonnements
         .filter((t) => !t.revocationDate && typeof t.expiresDate === "number" && (t.expiresDate as number) > maintenant)
         .sort((a, b) => Number(b.purchaseDate) - Number(a.purchaseDate))[0] ?? null;
       const paye = enCours ? palierDuProduit(enCours.productId as string) ?? "aucun" : "aucun";
-      // MRR : la transaction en cours, hors essai gratuit ; son prix si Apple le donne en euros.
-      {
-        const cours = transactions
-          .filter((t) => palierProduitStore(t.productId as string) && !t.revocationDate && typeof t.expiresDate === "number" && (t.expiresDate as number) > maintenant)
-          .sort((a, b) => Number(b.purchaseDate) - Number(a.purchaseDate))[0] ?? null;
-        if (cours && cours.offerDiscountType !== "FREE_TRIAL") {
-          const palierM = palierProduitStore(cours.productId as string) as keyof typeof PRIX_MENSUELS_TTC;
-          const eur = cours.currency === "EUR" && typeof cours.price === "number" ? (cours.price as number) / 1000 : PRIX_MENSUELS_TTC[palierM];
-          lignesMrr.push({ canal: "apple", palier: palierM, eur, ref: p.id });
-        }
-      }
+      // MRR : la transaction en cours, hors essai gratuit (offerDiscountType !== "FREE_TRIAL") ; son prix si Apple le donne en euros.
+      ligneMrrApple(transactions.filter((t) => palierProduitStore(t.productId as string) !== "cloud"), p.id);
       lignes.push({
         canal: "apple", user_id: p.id, original_transaction_id: p.apple_original_transaction_id, erreur,
         palier_paye: paye, palier_chez_nous: chezNous,
@@ -128,7 +161,7 @@ serve(async (req) => {
         const item = items.find((i) => palierProduitStore(i.productId as string));
         if (payeM && !enEssai && item) {
           const palierM = palierProduitStore(item.productId as string) as keyof typeof PRIX_MENSUELS_TTC;
-          lignesMrr.push({ canal: "google", palier: palierM, eur: PRIX_MENSUELS_TTC[palierM], ref: p.id });
+          lignesMrr.push({ canal: "google", palier: palierM, eur: PRIX_MENSUELS_TTC[palierM], ref: p.id, compte: p.id });
         }
       }
       lignes.push({
@@ -143,6 +176,12 @@ serve(async (req) => {
   const payeSansEffet = lignes.filter((l) => l.paye_sans_effet);
   // ── Stripe : les abonnements « active » (jamais trialing ni past_due), relus en lecture seule ──
   let stripeLisible = false;
+  // (11/11) Le compte FillSell de chaque client Stripe (lecture par colonne indexée, ~70 lignes) : comptes distincts.
+  const compteDuClient = new Map<string, string>();
+  {
+    const { data: cs } = await admin.from("profiles").select("id, stripe_customer_id").not("stripe_customer_id", "is", null).limit(1000);
+    for (const c of (cs ?? []) as Array<{ id: string; stripe_customer_id: string }>) compteDuClient.set(c.stripe_customer_id, c.id);
+  }
   try {
     const cle = Deno.env.get("STRIPE_SECRET_KEY");
     if (cle) {
@@ -154,7 +193,10 @@ serve(async (req) => {
         const r = await fetch(u, { headers: { Authorization: `Bearer ${cle}` }, signal: AbortSignal.timeout(20_000) });
         if (!r.ok) throw new Error(`stripe_${r.status}`);
         const page = await r.json();
-        for (const sub of page.data ?? []) { const l = ligneMrrStripe(sub, prixStripeConnus()); if (l) lignesMrr.push(l); }
+        for (const sub of page.data ?? []) {
+          const l = ligneMrrStripe(sub, prixStripeConnus());
+          if (l) lignesMrr.push({ ...l, compte: (l as { client?: string }).client ? compteDuClient.get((l as { client: string }).client) ?? null : null });
+        }
         if (!page.has_more || !(page.data ?? []).length) { stripeLisible = true; break; }
         apres = page.data[page.data.length - 1].id;
       }

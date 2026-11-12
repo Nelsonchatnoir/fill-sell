@@ -39,6 +39,11 @@
 // Branché par _shared/cloud-prix-source.ts (Deno : clés, jetons, fetch).
 
 import { PRODUIT_CLOUD_APPLE, PRODUIT_CLOUD_GOOGLE } from "./cloud-option.js";
+// (11/11/2026, offres Cloud) Les formules avec Cloud : la même source (abonnement Stripe, renouvellement Apple, achat
+// Google), plus le NOM de la formule lu à la source (`formule`) pour les mails ; l'essai du Cloud d'un abonné Stripe
+// (schedule) → muette « essai_abonne » : le prix de la formule qui suivra n'est pas celui de l'abonnement d'aujourd'hui.
+import { formuleDuProduit, estFormuleCloud, essaiCloudAbonneStripe } from "./formules-serveur.js";
+const formuleDuProduitCloud = (id) => { const f = formuleDuProduit(id); return f && estFormuleCloud(f.formule) ? f.formule : null; };
 
 export const BUNDLE_APPLE = "app.fillsell.app";
 export const PACKAGE_GOOGLE = "app.fillsell.app";
@@ -97,6 +102,12 @@ export const muette = (canal, raison, extra = {}) => ({ canal: canal ?? null, pr
 /** L'abonnement Stripe relu → { prix, renouvelle, raison }. */
 export function prixDepuisStripe(sub) {
   if (!sub || typeof sub !== "object" || !sub.items) return muette("stripe", "abonnement_illisible");
+  const ea = essaiCloudAbonneStripe(sub);
+  if (ea) return { ...muette("stripe", "essai_abonne"), renouvelle: sub.cancel_at_period_end === true ? false : true, formule: ea.formule, abonne: true };
+  const formule = estFormuleCloud(sub?.metadata?.formule) ? sub.metadata.formule : null;
+  return formule ? { ...prixDepuisStripeBrut(sub), formule } : prixDepuisStripeBrut(sub);
+}
+function prixDepuisStripeBrut(sub) {
   const statut = String(sub.status ?? "");
   if (["canceled", "incomplete_expired", "unpaid"].includes(statut) || sub.cancel_at_period_end === true || sub.cancel_at != null) {
     return { ...muette("stripe", "ne_renouvelle_pas"), renouvelle: false };
@@ -142,7 +153,11 @@ export function charge(jws) {
 export function prixDepuisAppleRenouvellement(ri, statut = null) {
   if (!ri || typeof ri !== "object") return muette("apple", "renouvellement_illisible");
   const produit = ri.autoRenewProductId ?? ri.productId ?? null;
-  if (produit !== PRODUIT_CLOUD_APPLE) return muette("apple", "autre_produit");
+  const formule = formuleDuProduitCloud(produit);
+  if (produit !== PRODUIT_CLOUD_APPLE && !formule) return muette("apple", "autre_produit");
+  return formule ? { ...prixAppleBrut(ri, statut), formule } : prixAppleBrut(ri, statut);
+}
+function prixAppleBrut(ri, statut) {
   if (Number(statut) === 2 || Number(statut) === 5) return { ...muette("apple", "expire_ou_revoque"), renouvelle: false };
   if (Number(ri.autoRenewStatus) === 0) return { ...muette("apple", "ne_renouvelle_pas"), renouvelle: false };
   // Une offre promotionnelle, un code d'offre ou une offre de reconquête (2, 3, 4) s'applique à la prochaine
@@ -161,7 +176,7 @@ export function prixDepuisAppleStatuts(reponse, ref) {
   const env = typeof reponse?.environment === "string" ? reponse.environment : null;
   const lues = lignes.map((l) => ({ l, ri: charge(l?.signedRenewalInfo) }));
   const sienne = lues.find(({ l }) => String(l?.originalTransactionId ?? "") === String(ref))
-    ?? lues.find(({ ri }) => (ri?.autoRenewProductId ?? ri?.productId) === PRODUIT_CLOUD_APPLE)
+    ?? lues.find(({ ri }) => (ri?.autoRenewProductId ?? ri?.productId) === PRODUIT_CLOUD_APPLE || formuleDuProduitCloud(ri?.autoRenewProductId ?? ri?.productId))
     ?? null;
   if (!sienne) return muette("apple", "abonnement_absent_de_la_reponse", { environnement: env });
   return { ...prixDepuisAppleRenouvellement(sienne.ri, sienne.l?.status ?? null), environnement: env };
@@ -172,8 +187,12 @@ export function prixDepuisAppleStatuts(reponse, ref) {
 export function prixDepuisGoogle(achat) {
   if (!achat || typeof achat !== "object") return muette("google", "achat_illisible");
   const etat = String(achat.subscriptionState ?? "");
-  const ligne = (Array.isArray(achat.lineItems) ? achat.lineItems : []).find((l) => l?.productId === PRODUIT_CLOUD_GOOGLE) ?? null;
+  const ligne = (Array.isArray(achat.lineItems) ? achat.lineItems : []).find((l) => l?.productId === PRODUIT_CLOUD_GOOGLE || formuleDuProduitCloud(l?.productId)) ?? null;
   if (!ligne) return muette("google", "autre_produit");
+  const formule = formuleDuProduitCloud(ligne.productId);
+  return formule ? { ...prixGoogleBrut(etat, ligne), formule } : prixGoogleBrut(etat, ligne);
+}
+function prixGoogleBrut(etat, ligne) {
   const plan = ligne.autoRenewingPlan ?? null;
   if (["SUBSCRIPTION_STATE_CANCELED", "SUBSCRIPTION_STATE_EXPIRED"].includes(etat) || !plan || plan.autoRenewEnabled === false) {
     return { ...muette("google", "ne_renouvelle_pas"), renouvelle: false };

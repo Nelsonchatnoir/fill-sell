@@ -32,6 +32,8 @@ import { grilleActiveConfig } from '../utils/jauges';
 import { CLES_CONFIG_JAUGES } from '../reglages/quotas';
 import { planEntree } from './regles';
 import { useCloudEntree } from './useCloudEntree';
+// (11/11/2026) « As-tu un ordinateur ? » et les formules avec Cloud — fermé (canal fermé, compte ordinaire) : rien.
+import { useFormulesEntree } from './useFormulesEntree';
 
 // ⚠️ CES DEUX CLÉS NE CHANGENT PAS DE NOM NI DE SENS. Elles sont lues
 // ailleurs (App.jsx remonte le parcours quand l'attente est encore posée) :
@@ -118,7 +120,7 @@ export function marquerEntreeFaiteAuVol(userId, jeton) {
   } catch { /* idem */ }
 }
 
-export function useContexteEntree({ lang, user, demanderPseudo, palier = 'gratuit', essaiCloud = null }) {
+export function useContexteEntree({ lang, user, demanderPseudo, palier = 'gratuit', essaiCloud = null, essaiFormule = null }) {
   const fr = lang !== 'en';
   // ⚠️ L'identifiant est EXTRAIT UNE FOIS, et c'est LUI qu'on met en
   // dépendance. Écrire `[user?.id]` fait diverger les dépendances inférées
@@ -198,6 +200,9 @@ export function useContexteEntree({ lang, user, demanderPseudo, palier = 'gratui
   // « Je débute », le plan et le récap ne disent « depuis nos serveurs » qu'à ce moment-là).
   const cloudChoisi = cloud.parcours && voie === 'cloud';
   const cloudPris = cloudChoisi && cloud.actif;
+  // (11/11/2026) Les formules avec Cloud : après l'achat, l'état Cloud de la voie est relu UNE fois (les connexions).
+  const relireCloudVoie = cloud.lecture?.relire;
+  const formules = useFormulesEntree({ userId, lang, surTelephone, essaiFormule, apresAchat: relireCloudVoie });
 
   useEffect(() => { choixRef.current = choix; }, [choix]);
 
@@ -381,5 +386,7 @@ export function useContexteEntree({ lang, user, demanderPseudo, palier = 'gratui
     // cloud.parcours false, voie null ; aucune étape ne les lit autrement.
     K, grille, plan, palier,
     voie, choisirVoie, cloud, cloudChoisi, cloudPris, plateforme,
+    // (11/11/2026) formules.parcours faux (canal fermé, compte ordinaire) : aucune étape ne les lit.
+    formules,
   };
 }

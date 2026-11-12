@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { cloudOffreOuverte, chargerTemoinCloud } from '../config/cloudOffer';
+import { cloudOffreOuverte, chargerTemoinCloud, formulesCloudOuvertes } from '../config/cloudOffer';
 import { lireInterrupteurs } from '../config/interrupteurs';
 import { conditionsCloud } from '../cloud/conditionsCloud';
 import { languePage } from './languePage';
@@ -36,7 +36,9 @@ export default function ConditionsCloud() {
   if (acces === 'non') return <Navigate to="/app" replace />;
   if (acces !== 'oui') return null;
   // (05/11 soir, phase 3) ?lang, puis le réglage de l'app, puis le navigateur : la traduction anglaise pour information.
-  const T = conditionsCloud(languePage());
+  // (12/11/2026) Le web ouvert aux formules (interrupteur cloud_formules_stripe, lu ci-dessus) : la page publique montre la
+  // version des formules (article 6 neuf) ; fermé : celle du Cloud seul, comme avant.
+  const T = conditionsCloud(languePage(), { formules: formulesCloudOuvertes('stripe') });
   return (
     <main style={{ minHeight: '100vh', background: C.canvas, fontFamily: POLICE, padding: '24px 16px 48px' }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>

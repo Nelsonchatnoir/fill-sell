@@ -2,6 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
+// (11/11/2026, offres Cloud) Les formules avec Cloud (groupe « FillSell Plan ») : palier + Cloud dans le même reçu.
+import { formuleDuProduit, essaiPossiblePourFormule } from "../_shared/formules-serveur.js";
+import { PRODUITS_BOUTIQUES } from "../_shared/formules-cloud.js";
+import { verdictEssaiStore } from "../_shared/cloud-option.js";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -27,7 +31,9 @@ const PRO_PRODUCT_IDS = ["app.fillsell.pro2.sub", "app.fillsell.pro.sub"];
 // Business (2026-08-08) : même id que Google Play. Flags CUMULATIFS
 // (is_premium + is_pro + is_business).
 const BUSINESS_PRODUCT_IDS = ["app.fillsell.business.sub"];
-const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, ...PRO_PRODUCT_IDS, ...BUSINESS_PRODUCT_IDS];
+// (11/11) + les trois formules avec Cloud (même groupe Apple) : leur palier se lit par formuleDuProduit.
+const FORMULES_APPLE: string[] = (Object.values(PRODUITS_BOUTIQUES) as Array<{ apple: string }>).map((p) => p.apple);
+const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, ...PRO_PRODUCT_IDS, ...BUSINESS_PRODUCT_IDS, ...FORMULES_APPLE];
 
 // (La table des prix par produit ne servait qu'à la valeur de l'événement
 // TikTok, retiré le 7 septembre 2026 : elle est supprimée avec lui. Le montant
@@ -135,15 +141,24 @@ serve(async (req) => {
       return expires > now;
     });
 
-    const isPremium = !!activeSub;
+    // (11/11) Une formule avec Cloud en semaine gratuite REFUSÉE (⛔ Business + Cloud n'a pas d'essai ; essai FillSell déjà
+    // pris ou verrous de la préparation, décision 8) : rien ne monte avant le premier paiement réel.
+    const formuleA = activeSub ? formuleDuProduit(activeSub.product_id) : null;
+    const essaiA = activeSub?.is_trial_period === "true";
+    const profilCloudA = formuleA?.cloud ? await profilCloudPourStore(supabaseAdmin, userId) : null;
+    const refusEssaiA = !!formuleA?.cloud && essaiA
+      && (!essaiPossiblePourFormule(formuleA.formule) || verdictEssaiStore(profilCloudA ?? {}, "apple", activeSub?.original_transaction_id ?? null).ok === false);
+    const isPremium = !!activeSub && !refusEssaiA;
     const isFounderPurchase = isPremium && activeSub!.product_id === FOUNDER_PRODUCT_ID;
-    const isBusinessPurchase = isPremium && BUSINESS_PRODUCT_IDS.includes(activeSub!.product_id);
-    const isProPurchase = (isPremium && PRO_PRODUCT_IDS.includes(activeSub!.product_id)) || isBusinessPurchase;
+    const isBusinessPurchase = isPremium && (BUSINESS_PRODUCT_IDS.includes(activeSub!.product_id) || (formuleA?.cloud === true && formuleA.rang === 3));
+    const isProPurchase = (isPremium && (PRO_PRODUCT_IDS.includes(activeSub!.product_id) || (formuleA?.cloud === true && formuleA.rang >= 2))) || isBusinessPurchase;
 
     // Même logique que apple-iap-webhook : is_pro suit l'abonnement Pro actif,
     // et l'originalTransactionId est capturé dès qu'il est présent (tout produit).
     // Business : cumulatif (is_pro + is_business posés ensemble).
     const update: Record<string, unknown> = { is_premium: isPremium };
+    // (11/11) Semaine gratuite refusée : les drapeaux ne bougent pas (un abonné garde ce qu'il avait, rien ne monte).
+    if (refusEssaiA) delete update.is_premium;
     if (isProPurchase) update.is_pro = true;
     if (isBusinessPurchase) update.is_business = true;
     if (activeSub?.original_transaction_id) {
@@ -187,6 +202,20 @@ serve(async (req) => {
       if (majCloud) Object.assign(update, majCloud);
       else console.log(`[validate-apple-receipt] option Cloud du reçu ignorée (${motif})`);
       majCloudLue = majCloud ?? null;
+    }
+    // (11/11) Le Cloud d'une formule avec Cloud (même transaction que le palier) : essai = semaine gratuite permise.
+    if (formuleA?.cloud && activeSub && !seulementCloud) {
+      const lectureA = lectureCloudApple({
+        productId: "app.fillsell.cloud.sub", offerType: essaiA ? 1 : undefined,
+        purchaseDate: parseInt(activeSub.purchase_date_ms ?? "0") || undefined, expiresDate: parseInt(activeSub.expires_date_ms ?? "0") || undefined,
+        originalTransactionId: activeSub.original_transaction_id,
+      })!;
+      if (refusEssaiA) console.log(`[validate-apple-receipt] ${formuleA.formule} en semaine gratuite refusée : ni palier ni Cloud avant le premier paiement`);
+      else {
+        const { update: majF, motif: motifF } = ecritureCloudStore({ canal: "apple", lecture: lectureA, sens: "on", ref: activeSub.original_transaction_id ?? null, profil: profilCloudA ?? {} });
+        if (majF) Object.assign(update, majF, { cloud_formule: formuleA.formule });
+        else console.log(`[validate-apple-receipt] Cloud de ${formuleA.formule} ignoré (${motifF})`);
+      }
     }
     if (seulementCloud) {
       // L'option seule : rien d'autre ne s'écrit (ni formule, ni Founder).
