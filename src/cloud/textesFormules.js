@@ -26,7 +26,9 @@ const FR = {
   supplement: (s) => `Le Cloud pour ${s} de plus`,
   ctaEssai: `Essayer ${J} jours gratuits`,
   ctaPasser: (nom) => `Passer à ${nom}`,
-  lignePrixEssai: (p, zero) => `Puis ${p}/mois, sans engagement. Carte demandée, ${zero} aujourd'hui. On te prévient la veille.`,
+  // (12/11, point 4b de Nico) « On te prévient la veille. » retiré, comme du site et du mail (décision 5a) : la phrase
+  // ne revient qu'après un rappel de la veille PROUVÉ sur un vrai client, Stripe et Apple (email_logs).
+  lignePrixEssai: (p, zero) => `Puis ${p}/mois, sans engagement. Carte demandée, ${zero} aujourd'hui.`,
   lignePrix: (p) => `${p}/mois, sans engagement.`,
   ligneCommune: 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, sans ordinateur.',
   // Un abonné : sa formule surlignée.
@@ -37,6 +39,27 @@ const FR = {
     ? `Tu paies la différence au prorata jusqu'à ta prochaine échéance du ${date}.`
     : "Tu paies la différence au prorata jusqu'à ta prochaine échéance."),
   boutique: (b) => `Le changement se fait dans ton abonnement ${b}, sans second abonnement.`,
+  // (12/11, point 4c de Nico — texte de Nico pour l'App Store) La boutique qui facture n'a pas encore les formules :
+  // aucun bouton, on le dit.
+  boutiqueBientot: (canal) => (canal === 'google'
+    ? "Ton abonnement passe par Google Play. Les formules avec Cloud y arrivent bientôt. Dès qu'elles seront dans l'app FillSell sur ton téléphone Android, tu pourras y ajouter le Cloud, sans second abonnement. Rien n'a changé, rien n'a été débité."
+    : "Ton abonnement passe par l'App Store. Les formules avec Cloud y arrivent bientôt : Apple est en train de les valider. Dès qu'elles seront dans l'app FillSell sur ton iPhone, tu pourras y ajouter le Cloud, sans second abonnement. Rien n'a changé, rien n'a été débité."),
+  // Le client du Cloud SEUL facturé par une boutique, vu sur le web.
+  cloudBoutiqueBientot: (canal) => (canal === 'google'
+    ? "Ton FillSell Cloud passe par Google Play et continue comme aujourd'hui. Les formules avec Cloud y arrivent bientôt."
+    : "Ton FillSell Cloud passe par l'App Store et continue comme aujourd'hui. Les formules avec Cloud y arrivent bientôt : Apple est en train de les valider."),
+  cloudBoutique: (canal) => (canal === 'google'
+    ? "Ton FillSell Cloud passe par Google Play : le passage à une formule avec Cloud se fait dans l'app FillSell sur ton téléphone Android, sans second abonnement."
+    : "Ton FillSell Cloud passe par l'App Store : le passage à une formule avec Cloud se fait dans l'app FillSell sur ton iPhone, sans second abonnement."),
+  // (12/11, point 4d de Nico) Pendant un essai, chaque texte dit ce qui se passe vraiment.
+  essaiContinue: (fin, nom, p) => (fin ? `Ton essai continue jusqu'au ${fin}. Ensuite : ${nom}, ${p}/mois.` : `Ton essai continue jusqu'à sa fin. Ensuite : ${nom}, ${p}/mois.`),
+  essaiArrete: (nom, p) => `${nom} n'a pas d'essai : ton essai s'arrête, ${p} sont prélevés aujourd'hui.`,
+  essaiBoutique: (b) => `Le changement se fait dans ton abonnement ${b} : pendant ton essai, il peut l'arrêter et faire payer la formule dès aujourd'hui. ${b} t'affiche le montant avant que tu valides.`,
+  essaiDejaPrisBoutique: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. ${b} peut t'afficher « 1 semaine gratuite » : cette semaine-là, ${nom} n'est pas encore activé ; il démarre au premier paiement, 7 jours plus tard. Continuer ?`,
+  arreterEssai: "Arrêter l'essai",
+  arreterEssaiTexte: "Ton essai s'arrête maintenant : rien n'est prélevé pour l'essai.",
+  arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `C'est arrêté : ta formule ${palier} continue comme avant.` : "C'est arrêté. Rien n'a été prélevé."),
+  arreterEssaiEchec: "L'essai n'a pas pu être arrêté. Rien n'a changé : réessaie dans un instant.",
   // ⚠ Texte NON validé (question à Nico) : un abonné payé par carte, vu dans l'app iPhone / Android.
   carteSurMobile: 'Ton abonnement est payé par carte : le changement se fait sur le web, dans Réglages › Abonnement, sans second abonnement.',
   // ⚠ Seul le fragment « ton tarif Founder s'arrête » est validé (décision 10) ; la phrase entière est à relire.
@@ -96,7 +119,7 @@ const EN = {
   supplement: (s) => `Cloud for ${s} more`,
   ctaEssai: `Try ${J} days free`,
   ctaPasser: (nom) => `Switch to ${nom}`,
-  lignePrixEssai: (p, zero) => `Then ${p}/mo, no commitment. Card required, ${zero} today. We remind you the day before.`,
+  lignePrixEssai: (p, zero) => `Then ${p}/mo, no commitment. Card required, ${zero} today.`,
   lignePrix: (p) => `${p}/mo, no commitment.`,
   ligneCommune: 'The Cloud posts, bumps and removes your listings from our servers, no computer needed.',
   taFormuleAvec: (palier, p) => `Your plan: ${palier}. With Cloud: ${p}/mo.`,
@@ -106,6 +129,23 @@ const EN = {
     ? `You pay the prorated difference until your next billing date, on ${date}.`
     : 'You pay the prorated difference until your next billing date.'),
   boutique: (b) => `The change is made in your ${b} subscription, with no second subscription.`,
+  boutiqueBientot: (canal) => (canal === 'google'
+    ? 'Your subscription goes through Google Play. Plans with Cloud are coming there soon. As soon as they are in the FillSell app on your Android phone, you can add the Cloud there, with no second subscription. Nothing has changed, nothing was charged.'
+    : 'Your subscription goes through the App Store. Plans with Cloud are coming there soon: Apple is reviewing them. As soon as they are in the FillSell app on your iPhone, you can add the Cloud there, with no second subscription. Nothing has changed, nothing was charged.'),
+  cloudBoutiqueBientot: (canal) => (canal === 'google'
+    ? 'Your FillSell Cloud goes through Google Play and carries on as today. Plans with Cloud are coming there soon.'
+    : 'Your FillSell Cloud goes through the App Store and carries on as today. Plans with Cloud are coming there soon: Apple is reviewing them.'),
+  cloudBoutique: (canal) => (canal === 'google'
+    ? 'Your FillSell Cloud goes through Google Play: moving to a plan with Cloud is done in the FillSell app on your Android phone, with no second subscription.'
+    : 'Your FillSell Cloud goes through the App Store: moving to a plan with Cloud is done in the FillSell app on your iPhone, with no second subscription.'),
+  essaiContinue: (fin, nom, p) => (fin ? `Your trial continues until ${fin}. Then: ${nom}, ${p}/mo.` : `Your trial continues until it ends. Then: ${nom}, ${p}/mo.`),
+  essaiArrete: (nom, p) => `${nom} has no trial: your trial stops, ${p} is charged today.`,
+  essaiBoutique: (b) => `The change is made in your ${b} subscription: during your trial, it may end the trial and charge the plan today. ${b} shows you the amount before you confirm.`,
+  essaiDejaPrisBoutique: (nom, b) => `Your FillSell free trial has already been used. ${b} may show you "1 week free": during that week, ${nom} is not turned on yet; it starts at the first payment, 7 days later. Continue?`,
+  arreterEssai: 'Stop the trial',
+  arreterEssaiTexte: 'Your trial stops now: nothing is charged for the trial.',
+  arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `Stopped: your ${palier} plan carries on as before.` : 'Stopped. Nothing was charged.'),
+  arreterEssaiEchec: 'The trial could not be stopped. Nothing changed: try again in a moment.',
   carteSurMobile: 'Your subscription is paid by card: the change is made on the web, in Settings › Subscription, with no second subscription.',
   founder: 'With the Cloud, your Founder price ends: you move to the price of the plan you choose.',
   taFormule: (nom) => `Your plan: ${nom}.`,

@@ -21,10 +21,10 @@ async function appeler(action, vers = null) {
   return { ok: res.ok, json };
 }
 
-export default function BlocChangerFormule({ c, clientStripe }) {
+export default function BlocChangerFormule({ c, clientStripe, enEssai = false }) {
   const visible = blocDescenteVisible({
     ouvert: interrupteurOuvert('descente_formule_ouverte'), natif: c.natif, isPremium: c.isPremium,
-    clientStripe, resilie: c.resiliation?.resilie,
+    clientStripe, resilie: c.resiliation?.resilie, enEssai,   // (12/11, 4d) jamais pendant un essai
   });
   const lang = c.lang === 'en' ? 'en' : 'fr';
   const T = textesDescente(lang);

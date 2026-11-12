@@ -2372,6 +2372,9 @@ export default function App({ loginOnly = false }){
   // l'écran de publication pour arrêter un article sans photo AVANT le job
   // (la voie API n'accepte aucune annonce sans image).
   const [ebayVoieApi,setEbayVoieApi]=useState(false);
+  // (12/11, complément de Nico — cas b695d990) Le drapeau est-il LU ? Un client Cloud dont l'eBay n'est pas relié à FillSell
+  // n'envoie plus de relevé eBay qui attendrait un ordinateur (connexionsCloud.js) — jamais sur un « pas encore lu ».
+  const [ebayVoieApiLu,setEbayVoieApiLu]=useState(false);
   // ── Drapeau d'AFFICHAGE porté par le profil (2026-09-15, lot 7 Opla) ──────
   // profiles.plateformes_visibles : les plateformes que CE compte voit AVANT
   // leur ouverture générale. AFFICHAGE SEULEMENT — il n'autorise aucune
@@ -2436,7 +2439,7 @@ export default function App({ loginOnly = false }){
       ebayRelueA.current=Date.now();
       try{
         const {data}=await supabase.from('profiles').select('ebay_voie_api').eq('id',user.id).maybeSingle();
-        if(data){ setEbayVoieApi(data.ebay_voie_api===true); setEbayCompteTick(n=>n+1); }
+        if(data){ setEbayVoieApi(data.ebay_voie_api===true); setEbayVoieApiLu(true); setEbayCompteTick(n=>n+1); }
       }catch{ /* relu au prochain retour */ }
     };
     document.addEventListener('visibilitychange',auRetour);
@@ -2876,8 +2879,8 @@ export default function App({ loginOnly = false }){
   // U4 : « Synchroniser » d'un client Cloud vers une plateforme qui n'est pas connectée → rien ne part, l'écran de
   // connexion s'ouvre, « pas encore connecté » est dit. L'état est publié pour le Stock (connexionsCloud.js).
   useEffect(()=>{
-    publierConnexionsCloud({clientCloud,lu:cxCloud.lu,etats:cxCloud.etats,isoles:cxCloud.isoles,avancement:cxCloud.avancement});
-  },[clientCloud,cxCloud.lu,cxCloud.etats,cxCloud.isoles,cxCloud.avancement]);
+    publierConnexionsCloud({clientCloud,lu:cxCloud.lu,etats:cxCloud.etats,isoles:cxCloud.isoles,avancement:cxCloud.avancement,ebayApi:ebayVoieApiLu?ebayVoieApi:null});
+  },[clientCloud,cxCloud.lu,cxCloud.etats,cxCloud.isoles,cxCloud.avancement,ebayVoieApi,ebayVoieApiLu]);
   // U5 : chaque plateforme CONNECTÉE laisse sa trace (usage_logs « cloud_connexion_plateforme »), une fois par appareil —
   // la chaîne essai démarré (profiles.cloud_essai_debut) → écran vu (cloud_me_connecter_ouvert, cloud_connexion_auto)
   // → plateformes connectées se lit en base.
@@ -3905,6 +3908,7 @@ export default function App({ loginOnly = false }){
       setExtensionBuild(p.data?.extension_build??null);
       setExtensionLastSeenAt(p.data?.extension_last_seen_at??null);
       setEbayVoieApi(p.data?.ebay_voie_api===true);
+      if(p.data) setEbayVoieApiLu(true);
       // Lien d'e-mail porteur d'une offre (?offre=FILLSELL50, 26/09) : la
       // modale des offres s'ouvre UNE fois à l'arrivée — compte gratuit, web
       // seulement (le natif paie par les stores, où un code Stripe ne vaut

@@ -252,7 +252,8 @@ export async function lirePrixCloud({ canal, ref, deps }) {
       if (!deps.cleStripe) return muette(canal, "cle_absente");
       const res = await lire(`${STRIPE_API}/subscriptions/${r}`, { headers: { Authorization: `Bearer ${deps.cleStripe}` } });
       if (!res.ok) return muette(canal, `stripe_http_${res.status ?? "?"}`);
-      return prixDepuisStripe(res.corps);
+      // (12/11, point 4a) L'environnement de l'abonnement relu : un abonnement du mode test n'a jamais de mail client.
+      return { ...prixDepuisStripe(res.corps), environnement: res.corps?.livemode === false ? "test" : "production" };
     }
     if (canal === "apple") {
       if (!/^\d+$/.test(r)) return muette(canal, "reference_illisible");
@@ -272,7 +273,8 @@ export async function lirePrixCloud({ canal, ref, deps }) {
     const res = await lire(`${GOOGLE_API}/applications/${PACKAGE_GOOGLE}/purchases/subscriptionsv2/tokens/${encodeURIComponent(r)}`,
       { headers: { Authorization: `Bearer ${jeton}` } });
     if (!res.ok) return muette(canal, `google_http_${res.status ?? "?"}`);
-    return prixDepuisGoogle(res.corps);
+    // (12/11, point 4a) L'achat d'un testeur de licence porte testPurchase : jamais de mail client.
+    return { ...prixDepuisGoogle(res.corps), environnement: res.corps?.testPurchase != null ? "test" : "production" };
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
     return muette(canal, /abort/i.test(m) ? "delai_depasse" : `erreur:${m.slice(0, 80)}`);

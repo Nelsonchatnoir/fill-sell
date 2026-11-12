@@ -37,9 +37,9 @@ import { usePrixBoutique } from '../lib/usePrixBoutique';
 // derrière formulesCloudVendables (interrupteur serveur du canal + témoins) ET un hôte qui sait les acheter
 // (onFormuleCloud). Fermé : aucun de ces imports n'est rendu ni lu, la feuille est celle d'avant octet pour octet
 // (scripts/formules-cloud-ferme-selftest.mjs).
-import { formulesCloudVendables, canalDeVente } from '../config/cloudOffer';
+import { formulesCloudVendables, formulesCloudOuvertes, canalDeVente } from '../config/cloudOffer';
 import OffresAvecCloud, { BasculeCloud } from '../cloud/OffresAvecCloud';
-import { cartesFormulesCloud, vueOffresParDefaut, lireVueOffres, essaiPermisDuCompte } from '../cloud/formulesCloud';
+import { cartesFormulesCloud, vueOffresParDefaut, lireVueOffres, essaiPermisDuCompte, canalDuCloudSeul } from '../cloud/formulesCloud';
 import { useProfilFormules } from '../cloud/useProfilFormules';
 import { useDisponibiliteCloud, venteFermee } from '../cloud/useDisponibiliteCloud';
 import { textesFormules } from '../cloud/textesFormules';
@@ -1500,6 +1500,8 @@ export default function ConversionModal({
       palier: palierCompte, formuleActuelle: profilFormules.formuleActuelle, canalApp: canalDeVente(plateformeIci),
       canalAbonnement: profilFormules.canalAbonnement, essaiPermis: essaiPermisDuCompte(lectureCloud),
       essaiBoutique: (f) => essaiBoutiqueOffert(f), businessVisible: businessOfferVisible(userId), founder: profilFormules.founder,
+      // (12/11, 4c et 4d) le canal QUI FACTURE (formule ou Cloud seul) et son interrupteur ; l'essai en cours.
+      canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lectureCloud), essaiEnCours: lectureCloud.cloud?.etat === 'essai',
     });
     return (
       <Sheet onClose={fermerParLeFond}>
@@ -1515,6 +1517,7 @@ export default function ConversionModal({
           palierIci={palierCompte} canalApp={canalDeVente(plateformeIci)} canalAbonnement={profilFormules.canalAbonnement}
           echeance={profilFormules.echeance ? dateLongue(profilFormules.echeance, lang) : null}
           finEssai={dateLongue(finEssaiSiOnCommence(), lang)}
+          essaiFin={lectureCloud.cloud?.etat === 'essai' && lectureCloud.cloud?.essaiFin ? dateLongue(lectureCloud.cloud.essaiFin, lang) : null}
           corps={(palier, sombre) => (grille
             ? <CorpsCarteGrille fr={fr} palier={palier} K={K} dark={sombre} margeBas={0} />
             : <LignesDiff fr={fr} palier={palier} dark={sombre} K={K} />)}

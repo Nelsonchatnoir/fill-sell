@@ -13,7 +13,7 @@
 import { Cloud } from 'lucide-react';
 import { C, MENTHE, BLANC, DEGRADE_TEAL } from './theme';
 import { textesFormules, NOMS_FORMULES, NOMS_PALIERS_SEULS } from './textesFormules';
-import { nomBoutique } from './formulesCloud';
+import { texteNoteCarte } from './formulesCloud';
 import { BlocCompletCloud } from './InterrupteurCloud';
 import { prixOuChargement, prixPret, supplementAffiche, zeroAffiche } from '../lib/prixBoutique';
 import { mentionFormuleCloud } from '../utils/mentionsAbonnement';
@@ -59,10 +59,10 @@ const STYLES_CARTE = {
 
 /**
  * Une carte « Avec Cloud ». `carte` : un élément de cartesFormulesCloud (cloud/formulesCloud.js).
- * palierIci : le palier du compte ; echeance / finEssai : dates déjà écrites (Paris) ; canalApp / canalAbonnement : les
+ * palierIci : le palier du compte ; echeance / finEssai : dates déjà écrites (Paris) ; essaiFin : la fin de l'essai EN COURS ; canalApp / canalAbonnement : les
  * canaux ; corps(palier, sombre) : ce que la formule comprend (tuiles et lignes de la feuille des offres) ou null.
  */
-export function CarteFormuleCloud({ carte, lang = 'fr', palierIci = 'gratuit', echeance = null, finEssai = null, canalApp = 'stripe', canalAbonnement = null, venteFermee = false, onChoisir, corps = null }) {
+export function CarteFormuleCloud({ carte, lang = 'fr', palierIci = 'gratuit', echeance = null, finEssai = null, essaiFin = null, canalApp = 'stripe', canalAbonnement = null, venteFermee = false, onChoisir, corps = null }) {
   const T = textesFormules(lang);
   const f = carte.formule;
   const s = STYLES_CARTE[f];
@@ -78,10 +78,8 @@ export function CarteFormuleCloud({ carte, lang = 'fr', palierIci = 'gratuit', e
     : carte.cta === 'essai_abonne' ? T.ctaEssaiAbonne
       : carte.cta === 'ajouter' ? T.ctaAjouter
         : T.ctaPasser(nom);
-  const note = carte.note === 'prorata' ? T.prorata(echeance)
-    : carte.note === 'note_essai' ? T.noteEssai(nomPalierIci ?? '', nom, finEssai ?? '', echeance ?? '')
-      : carte.note === 'boutique' ? T.boutique(nomBoutique(carte.achetable ? canalApp : canalAbonnement) ?? 'App Store')
-        : carte.note === 'carte_sur_mobile' ? T.carteSurMobile : null;
+  // (12/11, 4c et 4d) Une seule règle pour le texte de la note (canal qui facture, essai en cours) : texteNoteCarte.
+  const note = texteNoteCarte({ ...carte, canalFacture: carte.canalFacture ?? canalAbonnement }, { T, palierIci: nomPalierIci, echeance, finEssai, essaiFin, canalApp, nom, prix });
   return (
     <section data-formule-cloud={f} data-cta={carte.cta ?? ''} aria-label={nom} style={{
       position: 'relative', background: s.fond, border: s.bord, borderRadius: 22, padding: '18px 18px 16px', boxShadow: s.ombre,

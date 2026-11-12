@@ -19,7 +19,7 @@ import { textesConnexion } from './textesConnexion';
 import { textesFormules, NOMS_FORMULES } from './textesFormules';
 import { identifiantAppareil, lirePreparation } from './achatCloud';
 import { nomBoutique, RANG_PRIX } from './formulesCloud';
-import { prixPret } from '../lib/prixBoutique.js';
+import { prixPret, essaiBoutiqueOffert } from '../lib/prixBoutique.js';
 import {
   FORMULES_CLOUD, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES, essaiPossiblePourFormule, formuleDuProduitBoutique,
 } from '../../supabase/functions/_shared/formules-cloud.js';
@@ -35,7 +35,9 @@ export function lireReponseFormule(d, formule, lang = 'fr') {
   const T = textesFormules(lang);
   const message = (lang === 'en' ? d?.message_en : d?.message_fr) || null;
   if (d?.error === 'preparation_requise') return { etat: 'preparation' };
-  if (d?.error === 'abonnement_autre_canal') return { etat: 'refuse', message: T.boutique(nomBoutique(d?.canal) ?? 'App Store') };
+  // (12/11, 4c) Le serveur dit où se fait le changement — et « bientôt » quand la boutique qui facture n'a pas encore les
+  // formules ; son texte d'abord, le nôtre en repli.
+  if (d?.error === 'abonnement_autre_canal') return { etat: 'refuse', message: message ?? T.boutique(nomBoutique(d?.canal) ?? 'App Store') };
   if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', message: message ?? T.achatEchec };
   if (d?.error) return { etat: 'erreur', message: message ?? T.achatEchec };
   // Un serveur qui ne connaît pas les formules ne renvoie pas `formule` : jamais une redirection sur sa réponse.
@@ -111,6 +113,25 @@ export function creerAchatFormuleCloud({
     return lu.etat === 'preparation' ? { etat: 'erreur', message: T.achatEchec } : lu;
   }
 
+  /**
+   * (12/11, point 4d de Nico) LA DESCENTE SUR LE WEB passe par changer-formule (« programmer »), jamais par
+   * create-checkout-session (qui la refuse : « descente_par_changer_formule ») — avant, « Passer à Premium + Cloud » de la
+   * feuille de la veille finissait sur un refus. Pendant l'essai, le serveur change la formule tout de suite, sans prorata
+   * (l'essai continue, le 1er débit au prix choisi) : 'change' ; sinon la descente est programmée à l'échéance : 'programme'.
+   */
+  async function stripeDescente(formule) {
+    const tk = await jeton();
+    if (!tk) return { etat: 'erreur', message: T.finChangeEchec };
+    const res = await fetch(`${supabaseUrl}/functions/v1/changer-formule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}`, apikey: supabaseAnonKey },
+      body: JSON.stringify({ action: 'programmer', vers: formule }),
+    });
+    const d = await res.json().catch(() => null);
+    if (res.ok && d && !d.error) return { etat: d.change_pendant_essai === true ? 'change' : 'programme' };
+    return { etat: 'erreur', message: T.finChangeEchec };
+  }
+
   async function boutique(formule, { descente = false } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) return { etat: 'erreur', message: T.achatEchec };
     const productId = produitBoutiqueDe(formule, platform);
@@ -138,7 +159,15 @@ export function creerAchatFormuleCloud({
   async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false } = {}) {
     if (!FORMULES_CLOUD.includes(formule)) return { etat: 'refuse', message: T.achatEchec };
     if (platform !== 'web' && !prixPret(formule)) return { etat: 'refuse', raison: 'prix_boutique_absent', message: TC.prixBoutiqueAbsent };
+    // (12/11, 4d) La boutique offrira SA semaine gratuite (iPhone : le Cloud seul et les formules sont dans deux groupes
+    // d'abonnements) alors que l'essai FillSell est déjà pris : le serveur n'ouvrira rien avant le premier paiement
+    // (décision 8) — on le dit AVANT la feuille de la boutique, jamais 7 jours sans rien en silence.
+    const nomF = NOMS_FORMULES[formule];
+    const boutiqueOffreEssai = platform !== 'web' && essaiPossiblePourFormule(formule) && essaiBoutiqueOffert(formule) === true;
+    const texteEssaiPris = boutiqueOffreEssai ? T.essaiDejaPrisBoutique(nomF, nomBoutique(platform === 'ios' ? 'apple' : 'google')) : T.sansEssaiConfirmer(nomF);
     try {
+      if (descente && platform === 'web') return await stripeDescente(formule);
+      if (!descente && !essaiAffiche && boutiqueOffreEssai && !(await confirmer?.(texteEssaiPris))) return { etat: 'annule' };
       if (!descente) {
         if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
         if (!dejaCloud) {
@@ -147,7 +176,7 @@ export function creerAchatFormuleCloud({
           if (!p.continuer) return { etat: 'refuse', raison: p.raison, attente: p.attente === true, message: p.message };
           // L'essai annoncé, refusé par un verrou : la formule n'est payée tout de suite que si la personne le confirme.
           if (essaiAffiche && essaiPossiblePourFormule(formule) && p.essai === false
-            && !(await confirmer?.(T.sansEssaiConfirmer(NOMS_FORMULES[formule])))) return { etat: 'annule' };
+            && !(await confirmer?.(texteEssaiPris))) return { etat: 'annule' };
         }
       }
       return platform === 'web' ? await stripe(formule, origine) : await boutique(formule, { descente });

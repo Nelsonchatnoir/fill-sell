@@ -124,16 +124,20 @@ const LIGNES_CLOUD = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures
 const LIGNES_C4 = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-c4-0911.json'), 'utf8'));
 // (11/11) Les lignes des formules avec Cloud, relues une à une (§ 5 de l'en-tête).
 const LIGNES_F = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-formules-1111.json'), 'utf8'));
+// (12/11, lot « zéro problème », point 4a) Les lignes du drapeau « achat de test » (aucun mail client, alertes « [TEST] »,
+// événement Stripe du mode test écarté), relues une à une : scripts/fixtures/paiements-lignes-test-1211.json. Aucune ne
+// touche un palier : elles ne passent qu'un drapeau aux mails et aux alertes (verrou : selftest:store-test-sans-mail).
+const LIGNES_T = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-test-1211.json'), 'utf8'));
 const FICHIERS_LIGNES = [...new Set([...Object.keys(LIGNES_CLOUD), 'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'])];
 for (const f of FICHIERS_LIGNES) {
   const permisesCloud = LIGNES_CLOUD[f] ?? [];
-  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? [])];
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
   const restant = [...permises];
   const horsCloud = changees.filter((l) => { const i = restant.indexOf(l); if (i < 0) return true; restant.splice(i, 1); return false; });
-  ok(horsCloud.length === 0, `${f.replace('supabase/functions/', '')} : seules les ${permisesCloud.length} lignes Cloud relues le 08/11${LIGNES_C4[f] ? ` et les ${LIGNES_C4[f].length} lignes C4 relues le 09/11` : ''}${LIGNES_F[f] ? ` et les ${LIGNES_F[f].length} lignes des formules avec Cloud relues le 11/11` : ''} changent depuis ${BASE} (aucun autre chemin de palier)`, horsCloud.slice(0, 4).join(' | '));
+  ok(horsCloud.length === 0, `${f.replace('supabase/functions/', '')} : seules les ${permisesCloud.length} lignes Cloud relues le 08/11${LIGNES_C4[f] ? ` et les ${LIGNES_C4[f].length} lignes C4 relues le 09/11` : ''}${LIGNES_F[f] ? ` et les ${LIGNES_F[f].length} lignes des formules avec Cloud relues le 11/11` : ''}${LIGNES_T[f] ? ` et les ${LIGNES_T[f].length} lignes « achat de test » relues le 12/11` : ''} changent depuis ${BASE} (aucun autre chemin de palier)`, horsCloud.slice(0, 4).join(' | '));
 }
 
 // ── 3. create-checkout-session : seulement la page de retour et la garde du Cloud ──
@@ -142,7 +146,8 @@ const lignes = d.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l
 const permises = [/^\/\//, /success_url:/, /cloudVivantDuProfil/, /^\.from\("profiles"\)\.select\("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut/,
   /^if \(profilCloud\?\.is_cloud === true && profilCloud\?\.cloud_canal && profilCloud\.cloud_canal !== "stripe"\) \{$/, /^import \{ estAbonnementCloud/];
 // (11/11) + les lignes des formules avec Cloud (relues une à une).
-const c4Checkout = [...(LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_F['supabase/functions/create-checkout-session/index.ts'] ?? [])].map((l) => l.slice(1));
+// (12/11) + les lignes du point 4c (le message « bientôt » quand le canal qui facture est fermé), relues une à une.
+const c4Checkout = [...(LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_F['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_T['supabase/functions/create-checkout-session/index.ts'] ?? [])].map((l) => l.slice(1));
 const restantC4 = [...c4Checkout];
 const autres = lignes.filter((l) => !permises.some((r) => r.test(l))).filter((l) => { const i = restantC4.indexOf(l); if (i < 0) return true; restantC4.splice(i, 1); return false; });
 ok(autres.length === 0, `create-checkout-session : ${lignes.length} lignes changées, toutes sur la page de retour, la garde du Cloud, le refus C4 (montée pendant une descente programmée) ou les formules avec Cloud relues le 11/11`, autres.join(' | '));

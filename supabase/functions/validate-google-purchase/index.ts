@@ -3,6 +3,10 @@ import { rangStripeDuClient } from "../_shared/stripe-rang-vivant.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
+import { notificationDeTest } from "../_shared/environnement-store.js";
+// (12/11, point 4a) Achat d'un testeur Google : alertes à support@ marquées « [TEST] », droits inchangés.
+// deno-lint-ignore no-explicit-any
+const deTest = (achat: any): boolean => notificationDeTest({ canal: "google", achat });
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 // (31/10, lot I point 7) L'abonnement confirmé par le serveur : sans confirmation, Google rembourse au bout de 72 h.
@@ -216,14 +220,14 @@ serve(async (req) => {
       if (rpcErr) {
         console.error("[validate-google-purchase] credit_purchased_coins:", rpcErr.message);
         await alerterPaiementNonCredite({
-          canal: "google", type: "pack", user_id: userId, produit: productId,
+          canal: "google", test: deTest(purchase), type: "pack", user_id: userId, produit: productId,
           ref, rpc: null, erreur: rpcErr.message,
         });
         return json({ error: "credit_failed" }, 500);
       }
       if ((credit as { credited?: boolean })?.credited === true) {
         await notifierPaiement({
-          canal: "google", type: "pack", user_id: userId, produit: productId,
+          canal: "google", test: deTest(purchase), type: "pack", user_id: userId, produit: productId,
           pepites: coins, ref, rpc: credit,
         });
       }
@@ -314,7 +318,7 @@ serve(async (req) => {
       }
       const { error: errV } = await supabaseAdmin.from("profiles").update(updateV).eq("id", userId);
       if (errV) {
-        await alerterPaiementNonCredite({ canal: "google", type: "abonnement", user_id: userId, produit: productId, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null, erreur: `écriture profiles refusée : ${errV.message}` });
+        await alerterPaiementNonCredite({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: productId, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null, erreur: `écriture profiles refusée : ${errV.message}` });
         return json({ error: "profile_update_failed" }, 500);
       }
       await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
@@ -322,9 +326,9 @@ serve(async (req) => {
         const { data: grantV, error: grantErrV } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
           p_user_id: userId, p_tier: grantDeFormule(formuleV!.formule), p_period_end: ligne?.expiryTime ?? null, p_source: "payment",
         });
-        if (grantErrV) await alerterPaiementNonCredite({ canal: "google", type: "abonnement", user_id: userId, produit: productId, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null, erreur: grantErrV.message });
+        if (grantErrV) await alerterPaiementNonCredite({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: productId, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null, erreur: grantErrV.message });
         else if ((grantV as { granted?: boolean })?.granted === true) {
-          await notifierPaiement({ canal: "google", type: "abonnement", user_id: userId, produit: formuleV!.formule, pepites: (grantV as { amount?: number })?.amount ?? null, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: grantV });
+          await notifierPaiement({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: formuleV!.formule, pepites: (grantV as { amount?: number })?.amount ?? null, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: grantV });
         }
       }
       console.log(`[validate-google-purchase] ${formuleV!.formule} user=${userId} état=${etat}${lectureV.essai ? " (essai)" : ""}${planV.ouvrir ? "" : ` — sans droits (${planV.raison})`}`);
@@ -385,7 +389,7 @@ serve(async (req) => {
       // faut voir dans la minute, pas au digest du lendemain.
       console.error("[validate-google-purchase] écriture profil:", upErr.message);
       await alerterPaiementNonCredite({
-        canal: "google", type: "abonnement", user_id: userId, produit: productId,
+        canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: productId,
         ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null,
         erreur: `écriture profiles refusée : ${upErr.message}`,
       });
@@ -411,7 +415,7 @@ serve(async (req) => {
       // abonnement pourtant actif.
       console.error("[validate-google-purchase] upgrade_monthly_grant:", grantErr.message);
       await alerterPaiementNonCredite({
-        canal: "google", type: "abonnement", user_id: userId, produit: productId,
+        canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: productId,
         ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null,
         erreur: grantErr.message,
       });
@@ -419,7 +423,7 @@ serve(async (req) => {
       // granted=false = cycle déjà crédité (le webhook est passé avant) → pas
       // de second mail pour le même encaissement.
       await notifierPaiement({
-        canal: "google", type: "abonnement", user_id: userId, produit: productId,
+        canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: productId,
         pepites: (grantRes as { amount?: number })?.amount ?? null,
         ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: grantRes,
       });

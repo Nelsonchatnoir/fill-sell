@@ -39,6 +39,9 @@ export type AlertePaiement = {
   ref?: string | null;         // référence de transaction (apple:… / google:… / id Stripe)
   rpc?: unknown;               // retour BRUT de la RPC, pour créditer sans rien chercher
   erreur?: string | null;
+  // (12/11, point 4a) Achat de test d'une boutique (bac à sable Apple, testeur Google, mode test Stripe —
+  // _shared/environnement-store.js) : l'alerte part quand même, marquée « [TEST] » par email-tunnel.
+  test?: boolean;
 };
 
 async function envoyer(a: AlertePaiement): Promise<void> {

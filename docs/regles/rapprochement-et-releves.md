@@ -574,3 +574,32 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - `fusion_photo_tick` inchangée : 6 appels de 4 au plus, une fois par minute. pg_net 0.20 sort une requête de sa file dès
   l'envoi : aucun plafond commun aux deux appelants n'est lisible en base.
 - Verrou `npm run selftest:empreintes-rafales` ; banc `node scripts/essais/20261112160000_banc.mjs` (15/15).
+
+## ⛔ 12/11/2026 soir (lot « zéro problème », complément de Nico à l'étape 1) — un client Cloud ne lit jamais « ton ordinateur » ; ses demandes de relevé ont un exécutant serveur ou un geste clair
+Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § Cloud et relevés. Cas : b695d990 (essai du Cloud par Stripe),
+relevés eBay demandés depuis l'app le 12/11 (09:35, 15:36) expirés après 6 h avec « ton ordinateur n'avait pas Chrome
+ouvert avec l'extension FillSell » — alors que son Vinted était relevé par le Cloud.
+- **Causes prouvées** : (1) la copie Cloud de l'extension ne porte QUE Vinted, Leboncoin, Beebs et Depop
+  (`PLATEFORMES_CLOUD_VOIE`) ; eBay d'un client Cloud passe par l'API d'eBay — SON eBay n'était pas relié à FillSell
+  (aucune ligne `ebay_accounts`, `ebay_voie_api` faux) : la demande eBay attendait l'ordinateur ; (2) le poll du POSTE
+  CLOUD l'a redemandée (« app:redemande ») alors qu'il ne sait pas la faire → seconde expiration ; (3) le texte
+  d'expiration de handler-watch ne regardait pas le compte.
+- **Règle** (`_shared/cloud-voie.js`) : `demandeExecutablePar(commande, { cloudVoie, posteCloud })` — le poste Cloud ne
+  prend ni ne redemande que ses plateformes (jamais eBay, jamais « connexion ») ; l'ordinateur d'un compte au Cloud actif
+  ne redemande jamais une demande laissée au Cloud. `texteDemandeExpireeCloud` — compte au Cloud actif (`cloud_voie`) :
+  `[cloud:relier_ebay]` (eBay non relié : le relier une fois, Réglages › Mes plateformes › eBay), `[cloud:ebay_api]`
+  (eBay relié : relu par nos serveurs, rien à faire), `[cloud:connecter]` (plateforme du Cloud pas connectée au coffre),
+  `[cloud:pas_pris]` (« Synchroniser » la relance) ; jamais « ordinateur », « Chrome », « extension ». Les autres comptes
+  gardent le texte d'avant, mot pour mot. handler-watch lit d'abord les demandes à expirer (500 au plus), leurs comptes
+  au Cloud actif par lots de 100, le coffre, puis écrit une fois par texte (compare-and-swap sur « queued »).
+- **App** : « Synchroniser » eBay d'un client Cloud dont l'eBay n'est pas relié ne part plus (geste « relie ton compte
+  eBay à FillSell », sans ouvrir l'écran de connexion du Cloud) ; drapeau `ebay_voie_api` pas encore lu → rien n'est
+  refusé. `finReleve.js` lit les marqueurs `[cloud:…]` ; le Stock montre le point à régler avec son geste.
+- **`is_cloud` faux pendant l'essai : VOULU** — `is_cloud` = Cloud PAYÉ ; l'essai vit dans `cloud_essai_debut/fin`
+  (`cloudDuProfil` : `etat = 'essai'`), l'exécutant dans `cloud_voie` (vrai pour lui). Aucune règle serveur ne décide
+  « client Cloud » sur `is_cloud` seul (relu le 12/11 : webhooks, create-checkout-session, palier, cloud-pool).
+- **Reste (mesuré, 0 cas ouvert au 12/11 23:00)** : une PUBLICATION ou un RETRAIT eBay d'un client Cloud dont l'eBay
+  n'est pas relié va toujours à l'ordinateur (`jobsSelonDrapeauCloud` garde eBay) — 3 comptes au Cloud sans eBay relié
+  (b695d990 : 4 annonces eBay ; d607ba20, d0ac0538 : aucune) ; 0 tâche eBay ouverte. À traiter avec l'étape 4 (eBay par
+  l'API, site de chaque compte) et l'étape 3 (retraits).
+- Verrou : `npm run selftest:cloud-releves-sans-ordinateur` (13 rouges sur 881c2b9 + 4a, 32 verts après).

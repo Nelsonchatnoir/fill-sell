@@ -52,6 +52,34 @@ export function canalAbonnementDuProfil(p) {
   return null;
 }
 
+/**
+ * (12/11/2026, lot « zéro problème », point 4c de Nico) LE CANAL QUI FACTURE, PAS L'APPAREIL. Ce que l'écran peut faire
+ * pour un compte dont l'abonnement (ou le Cloud seul) est facturé par `canalFacture`, vu dans l'app de `canalApp` (pur) :
+ *   'ici'               — même canal (ou aucun abonnement) : l'achat se fait ici ;
+ *   'carte_sur_mobile'  — payé par carte, vu sur iPhone / Android : le changement se fait sur le web ;
+ *   'boutique'          — facturé par l'App Store / Google Play, formules OUVERTES sur ce canal : dans l'app de ce téléphone ;
+ *   'boutique_bientot'  — facturé par une boutique dont les formules sont FERMÉES (Apple tant qu'il valide) : on le dit,
+ *                         sans aucun bouton (avant : un bouton qui finissait sur un refus 409, ou un renvoi vers l'iPhone
+ *                         où rien n'existait).
+ * `canalOuvert(canal)` : l'interrupteur serveur des formules de CE canal (formulesCloudOuvertes) ; absent = ouvert
+ * (l'appel d'avant ne change pas).
+ */
+export function voieFormulesDuCompte({ canalApp = 'stripe', canalFacture = null, canalOuvert = () => true } = {}) {
+  if (!canalFacture || canalFacture === canalApp) return 'ici';
+  if (canalFacture === 'stripe') return 'carte_sur_mobile';
+  if (canalFacture === 'apple' || canalFacture === 'google') return canalOuvert(canalFacture) === true ? 'boutique' : 'boutique_bientot';
+  return 'ici';
+}
+
+/** Le canal qui facture le CLOUD SEUL d'un compte (pur) : profiles.cloud_canal tant que ce Cloud est vivant (essai en cours
+ *  ou payé, d'après la lecture Cloud), sinon null. */
+export function canalDuCloudSeul(lecture) {
+  const etat = lecture?.cloud?.etat;
+  if (etat !== 'essai' && etat !== 'paye') return null;
+  const c = lecture?.profil?.cloud_canal;
+  return c === 'apple' || c === 'google' || c === 'stripe' ? c : null;
+}
+
 /** L'essai d'une formule avec Cloud est-il permis à CE compte, d'après l'état Cloud LU (useCloudProfil) ? (pur)
  *  true / false ; null tant que la lecture n'a pas répondu (jamais un essai promis sans lecture sûre). */
 export function essaiPermisDuCompte(lecture) {
@@ -70,23 +98,36 @@ export function essaiPermisDuCompte(lecture) {
  *   essaiBoutique   : (formule) => bool — mobile : la boutique propose-t-elle une semaine gratuite pour ce produit ?
  *   businessVisible : l'offre Business est-elle ouverte à ce compte (businessOfferVisible) ?
  *   founder         : profiles.is_founder
- * Rend { cartes: [...], founder: bool, essaiAffiche: bool }. Une carte :
- *   { formule, palier, misEnAvant, maFormule, actuelle, essai, pastille, cta, note, lignePrix, achetable, enLecture }
+ *   (12/11, points 4c et 4d de Nico)
+ *   canalOuvert     : (canal) => bool — l'interrupteur des formules du canal QUI FACTURE (formulesCloudOuvertes) ;
+ *   canalCloud      : canalDuCloudSeul(lecture) — le canal qui facture le Cloud SEUL d'un compte sans formule ;
+ *   essaiEnCours    : un essai (formule avec Cloud ou Cloud seul) est en cours sur ce compte (lecture Cloud).
+ * Rend { cartes: [...], founder: bool, essaiAffiche: bool, voie }. Une carte :
+ *   { formule, palier, misEnAvant, maFormule, actuelle, essai, pastille, cta, note, lignePrix, achetable, enLecture, canalFacture }
  *   cta       : 'essai' | 'essai_abonne' | 'ajouter' | 'passer' | null (formule déjà prise)
- *   note      : 'prorata' | 'note_essai' | 'boutique' (son abonnement App Store / Google Play) | 'carte_sur_mobile' | null
+ *   note      : 'prorata' | 'note_essai' | 'boutique' (son abonnement App Store / Google Play) | 'carte_sur_mobile'
+ *               | 'boutique_bientot' (sa boutique n'a pas encore les formules : aucun bouton)
+ *               | 'essai_continue' (web, pendant l'essai : l'essai continue, le 1er débit au prix choisi)
+ *               | 'essai_arrete' (web, pendant l'essai, vers Business + Cloud : l'essai s'arrête, payé aujourd'hui)
+ *               | 'essai_boutique' (iPhone / Android, pendant l'essai : la boutique peut l'arrêter, elle montre le montant)
+ *               | null
  *   lignePrix : 'essai' (« Puis {P}/mois… 0 € aujourd'hui… ») | 'simple' (« {P}/mois, sans engagement. »)
  */
 export function cartesFormulesCloud({
   palier = 'gratuit', formuleActuelle = null, canalApp = 'stripe', canalAbonnement = null, essaiPermis = null,
   essaiBoutique = () => true, businessVisible = true, founder = false,
+  canalOuvert = () => true, canalCloud = null, essaiEnCours = false,
 } = {}) {
   const rangIci = RANG_PALIER[palier] ?? 0;
   const actuelle = FORMULES_CLOUD.includes(formuleActuelle) ? formuleActuelle : null;
   const plancher = Math.max(rangIci, actuelle ? rangFormule(actuelle) : 0);
   const abonne = rangIci >= 1;
-  // Un abonné vu sur un AUTRE canal que celui qui le facture : rien ne s'achète ici (jamais deux abonnements).
-  const autreCanal = abonne && canalAbonnement != null && canalAbonnement !== canalApp;
-  const noteAutreCanal = autreCanal ? (canalAbonnement === 'stripe' ? 'carte_sur_mobile' : 'boutique') : null;
+  // Un compte vu sur un AUTRE canal que celui qui le facture (sa formule, ou son Cloud seul) : rien ne s'achète ici
+  // (jamais deux abonnements). (12/11, 4c) La note suit le canal QUI FACTURE et son interrupteur, jamais l'appareil.
+  const canalFacture = (abonne && canalAbonnement != null ? canalAbonnement : null) ?? canalCloud ?? null;
+  const voie = voieFormulesDuCompte({ canalApp, canalFacture, canalOuvert });
+  const autreCanal = voie !== 'ici';
+  const noteAutreCanal = autreCanal ? voie : null;
   const cartes = FORMULES_CLOUD
     .filter((f) => rangFormule(f) >= plancher && (f !== 'business_cloud' || businessVisible || palier === 'business'))
     .map((f) => {
@@ -103,23 +144,48 @@ export function cartesFormulesCloud({
       let note = null;
       if (!estActuelle) {
         if (noteAutreCanal) note = noteAutreCanal;
+        // (12/11, 4d) PENDANT UN ESSAI, chaque texte dit ce que fait le serveur : web — l'essai continue (formule avec
+        // essai, aucun prorata) ou s'arrête et la formule est payée aujourd'hui (Business + Cloud) ; boutique — c'est elle
+        // qui décide, elle montre le montant avant de valider.
+        else if (essaiEnCours && cta === 'passer') note = canalApp === 'stripe' ? (essaiPossiblePourFormule(f) ? 'essai_continue' : 'essai_arrete') : 'essai_boutique';
         else if (abonne && canalAbonnement != null) note = canalApp === 'stripe' ? (cta === 'essai_abonne' ? 'note_essai' : 'prorata') : 'boutique';
       }
       return {
         formule: f, palier: PALIER_DE_FORMULE[f], misEnAvant: f === FORMULE_MISE_EN_AVANT, maFormule, actuelle: estActuelle,
         essai, pastille: cta === 'essai', cta, note, lignePrix: cta === 'essai' ? 'essai' : 'simple',
         achetable: cta != null && !autreCanal, enLecture: essaiPermis === null && f !== 'business_cloud' && cta != null,
+        canalFacture: autreCanal ? canalFacture : null,
       };
     });
   return {
     cartes,
     founder: Boolean(founder) && abonne && !actuelle,
     essaiAffiche: cartes.some((c) => c.pastille),
+    voie,
   };
 }
 
 /** La boutique d'un canal, pour « ton abonnement {App Store|Google Play} » ; null pour la carte. */
 export const nomBoutique = (canal) => (canal === 'apple' ? 'App Store' : canal === 'google' ? 'Google Play' : null);
+
+/**
+ * (12/11, points 4c et 4d) Le texte de la note d'une carte (pur) : la fenêtre d'offres et Réglages › Abonnement disent la
+ * MÊME chose. T = textesFormules(lang) ; nom / prix : ceux de la carte ; essaiFin : la fin de l'essai EN COURS (date
+ * écrite) ; finEssai : la fin d'un essai qui commencerait maintenant (note_essai).
+ */
+export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, finEssai = null, essaiFin = null, canalApp = 'stripe', nom = '', prix = '' } = {}) {
+  switch (carte?.note) {
+    case 'prorata': return T.prorata(echeance);
+    case 'note_essai': return T.noteEssai(palierIci ?? '', nom, finEssai ?? '', echeance ?? '');
+    case 'boutique': return T.boutique(nomBoutique(carte.achetable ? canalApp : carte.canalFacture) ?? 'App Store');
+    case 'boutique_bientot': return T.boutiqueBientot(carte.canalFacture);
+    case 'carte_sur_mobile': return T.carteSurMobile;
+    case 'essai_continue': return T.essaiContinue(essaiFin, nom, prix);
+    case 'essai_arrete': return T.essaiArrete(nom, prix);
+    case 'essai_boutique': return T.essaiBoutique(nomBoutique(canalApp) ?? 'App Store');
+    default: return null;
+  }
+}
 /** Les abonnements d'une boutique, pour « tes abonnements {Apple|Google Play} » (Réglages). */
 export const nomAbonnementsBoutique = (canal) => (canal === 'apple' ? 'Apple' : canal === 'google' ? 'Google Play' : null);
 

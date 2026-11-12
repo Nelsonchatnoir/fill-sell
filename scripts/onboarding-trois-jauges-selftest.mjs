@@ -171,7 +171,7 @@ try {
       'voie : titre, phrase et son point « i »', v.slice(0, 300));
     ok(/7 jours offerts FillSell Cloud Tout depuis ton téléphone Plus besoin d.ordinateur\. FillSell Cloud publie, remonte et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis ses serveurs, 24 h\/24, et tes ventes sont suivies\./.test(v) && !/éteint/.test(v),
       'voie : la carte Cloud devant, pastille « 7 jours offerts », plateformes lues dans config/cloudOffer.js', v);
-    ok(v.includes('Rien à installer Ventes vues en direct Sans engagement Essayer 7 jours offerts') && v.includes(`Puis ${P_FR}/mois. Tu l'arrêtes en un geste, on te prévient la veille.`),
+    ok(v.includes('Rien à installer Ventes vues en direct Sans engagement Essayer 7 jours offerts') && v.includes(`Puis ${P_FR}/mois. Tu l'arrêtes en un geste.`) && !v.includes('prévient la veille'),
       `voie : « Essayer 7 jours offerts » et « Puis ${P_FR}/mois » (CLOUD_PRIX_AFFICHE)`, v);
     ok(/Extension Chrome Sur ton ordinateur, gratuit Installée une fois dans Chrome, elle dépose tes annonces avec tes comptes déjà connectés\. Ton ordinateur doit être allumé pour publier\. Utiliser mon ordinateur Gratuite, sans carte, pour toujours\./.test(v),
       'voie : l’extension en alternative claire, avec SON bouton', v);
@@ -197,8 +197,9 @@ try {
     const e = lu('EtapeCloud', cC());
     ok(/FillSell Cloud · 7 jours offerts Rien à payer avant le 10 novembre Pendant 7 jours, tes annonces partent de nos serveurs, pilotées depuis ton téléphone\. Tu ne paies que si tu continues\./.test(e),
       'essai : la date de bascule EST le titre', e.slice(0, 260));
-    ok(e.includes(`Aujourd'hui Carte demandée, 0 € prélevé. Lundi 9 novembre On te prévient, dans l'app et par e-mail. Mardi 10 novembre ${P_FR}/mois, sauf si tu arrêtes avant. Sans engagement.`),
-      'essai : la frise — aujourd’hui, la veille (le rappel), la bascule avec le prix', e);
+    // (12/11, point 4b de Nico) la veille ne promet plus de rappel : elle dit que l'essai se termine le lendemain.
+    ok(e.includes(`Aujourd'hui Carte demandée, 0 € prélevé. Lundi 9 novembre Ton essai se termine demain. Mardi 10 novembre ${P_FR}/mois, sauf si tu arrêtes avant. Sans engagement.`),
+      'essai : la frise — aujourd’hui, la veille (fin d’essai demain), la bascule avec le prix', e);
     ok(/Ce que fait le Cloud Vinted, Leboncoin, Beebs et Depop : publiés, remontés et retirés après une vente, sans ordinateur, 24 h\/24 Tes ventes vues en direct, sur ton téléphone eBay part déjà de nos serveurs, pour tout le monde Tes quotas restent ceux de ton plan : en Free, 5 annonces, 50 publications et 30 remontées par mois/.test(e),
       'essai : « Ce que fait le Cloud », la dernière ligne dit les quotas Free (lus dans coin_config)', e);
     ok(/Commencer mes 7 jours offerts L.essai passe par l.App Store : tu l.arrêtes aussi dans tes abonnements Apple\. Je préfère utiliser mon ordinateur$/.test(e), 'essai (iPhone) : le bouton, la ligne App Store, « Je préfère utiliser mon ordinateur »', e.slice(-220));

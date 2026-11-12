@@ -19,10 +19,10 @@ import { Groupe, Carte, Bouton, Note } from '../reglages/ReglagesUI';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { palierDesDrapeaux } from '../utils/palier';
 import { textesFormules, NOMS_FORMULES, NOMS_PALIERS_SEULS } from './textesFormules';
-import { cartesFormulesCloud, essaiPermisDuCompte, nomBoutique, nomAbonnementsBoutique } from './formulesCloud';
+import { cartesFormulesCloud, essaiPermisDuCompte, nomAbonnementsBoutique, canalDuCloudSeul, voieFormulesDuCompte, texteNoteCarte } from './formulesCloud';
 import { BasculeCloud } from './OffresAvecCloud';
 import { dateLongue, finEssaiSiOnCommence } from './regles';
-import { canalDeVente, FORMULE_CLOUD_DU_PALIER, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES } from '../config/cloudOffer';
+import { canalDeVente, formulesCloudOuvertes, FORMULE_CLOUD_DU_PALIER, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES } from '../config/cloudOffer';
 import { prixOuChargement, prixPret, essaiBoutiqueOffert } from '../lib/prixBoutique';
 import { ouvrirLien } from '../messagerie/ouvrir';
 
@@ -64,12 +64,16 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
   const T = textesFormules(lang);
   const [vue, setVue] = useState('sans');
   const [retrait, setRetrait] = useState('repos');   // repos | confirmer | en_cours | fait | echec
+  const [arretEssai, setArretEssai] = useState({ etat: 'repos', formuleContinue: false });   // (12/11, 4d)
   if (!visible || profil?.etat !== 'ok') return null;
   const palier = palierDesDrapeaux({ isPremium: c.isPremium, isPro: c.isPro, isBusiness: c.isBusiness });
   const cloud = lecture?.etat === 'ok' ? lecture.cloud : null;
   const canalApp = canalDeVente(c.plateforme);
   const echeance = profil.echeance ? dateLongue(profil.echeance, lang) : null;
   const formule = profil.formuleActuelle;
+  // (12/11, 4d) Un essai en cours (formule avec Cloud ou Cloud seul) : les textes disent ce que fait le serveur.
+  const enEssai = cloud?.etat === 'essai';
+  const essaiFin = enEssai && cloud?.essaiFin ? dateLongue(cloud.essaiFin, lang) : null;
 
   // ── Une formule avec Cloud est prise : « Ta formule : Pro + Cloud. » et « Retirer le Cloud » ──────────────────────
   if (formule) {
@@ -80,6 +84,42 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
       setRetrait('en_cours');
       try { setRetrait((await retirerSurLeWeb(PALIER_DE_FORMULE[formule])) ? 'fait' : 'echec'); } catch { setRetrait('echec'); }
     };
+    // (12/11, 4d) PENDANT L'ESSAI, sur le web : « Retirer le Cloud » finissait sur un refus du serveur (409) après un texte
+    // faux (« … rien n'est remboursé pour le mois en cours » alors que rien n'a été payé). Le vrai geste est d'ARRÊTER
+    // L'ESSAI (cancel-subscription { option: 'cloud' } : tout de suite, rien prélevé pour l'essai) — le serveur dit si une
+    // formule payée continue (formule_continue).
+    if (enEssai && !boutique && typeof actions.arreter === 'function') {
+      const arreter = async () => {
+        setArretEssai({ etat: 'en_cours', formuleContinue: false });
+        try {
+          const r = await actions.arreter({ canal: 'stripe' });
+          setArretEssai(r?.ok === false ? { etat: 'echec', formuleContinue: false } : { etat: 'fait', formuleContinue: r?.formule_continue === true });
+        } catch { setArretEssai({ etat: 'echec', formuleContinue: false }); }
+      };
+      return (
+        <Groupe intitule={T.groupe}>
+          <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div data-formules-reglages="formule_essai" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Tete titre={NOMS_FORMULES[formule]} />
+              <p style={{ ...pTexte, fontWeight: 600 }}>{T.taFormule(NOMS_FORMULES[formule])}</p>
+              {arretEssai.etat === 'fait' && <p style={pTexte}>{T.arreterEssaiFait(arretEssai.formuleContinue, palierSeul)}</p>}
+              {arretEssai.etat === 'echec' && <Note>{T.arreterEssaiEchec}</Note>}
+            </div>
+          </Carte>
+          {arretEssai.etat !== 'fait' && (arretEssai.etat === 'confirmer' || arretEssai.etat === 'en_cours' ? (
+            <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <p data-formules-reglages="arreter_essai" style={pTexte}>{T.arreterEssaiTexte}</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Bouton ton="danger-plein" onClick={arreter} enCours={arretEssai.etat === 'en_cours'}>{arretEssai.etat === 'en_cours' ? '…' : T.arreterEssai}</Bouton>
+                <Bouton ton="creux" onClick={() => setArretEssai({ etat: 'repos', formuleContinue: false })} disabled={arretEssai.etat === 'en_cours'}>{T.retirerAnnuler}</Bouton>
+              </div>
+            </Carte>
+          ) : (
+            <Bouton ton="danger-creux" onClick={() => setArretEssai({ etat: 'confirmer', formuleContinue: false })} style={{ width: '100%', minHeight: 50 }}>{T.arreterEssai}</Bouton>
+          ))}
+        </Groupe>
+      );
+    }
     return (
       <Groupe intitule={T.groupe}>
         <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -107,6 +147,20 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
 
   // ── Client du Cloud seul (hérité) : son bloc reste ; une ligne pour passer à une formule ───────────────────────────
   if (cloud && (cloud.etat === 'essai' || cloud.etat === 'paye')) {
+    // (12/11, 4c) Le Cloud seul facturé par une AUTRE voie que cette app (App Store / Google Play vus sur le web, carte vue
+    // sur mobile) : aucun bouton qui finirait sur un refus — on dit où, et « bientôt » si la boutique n'a pas encore les
+    // formules (Apple tant qu'il les valide).
+    const canalCloud = canalDuCloudSeul(lecture);
+    const voieCloud = voieFormulesDuCompte({ canalApp, canalFacture: canalCloud, canalOuvert: formulesCloudOuvertes });
+    if (voieCloud !== 'ici') {
+      const texte = voieCloud === 'boutique_bientot' ? T.cloudBoutiqueBientot(canalCloud)
+        : voieCloud === 'boutique' ? T.cloudBoutique(canalCloud) : T.carteSurMobile;
+      return (
+        <div data-formules-reglages="herite_autre_canal" data-voie={voieCloud} style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '-4px 0 8px' }}>
+          <p style={pNote}>{texte}</p>
+        </div>
+      );
+    }
     return (
       <div data-formules-reglages="herite" style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '-4px 0 8px' }}>
         <p style={pNote}>{T.heritePasser(prixOuChargement('pro_cloud', lang), prixOuChargement('premium_cloud', lang))}</p>
@@ -138,6 +192,7 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
   const modele = cartesFormulesCloud({
     palier, canalApp, canalAbonnement: profil.canalAbonnement, essaiPermis: essaiPermisDuCompte(lecture),
     essaiBoutique: (f) => essaiBoutiqueOffert(f), founder: profil.founder,
+    canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lecture), essaiEnCours: enEssai,   // (12/11, 4c et 4d)
   });
   const sienne = modele.cartes.find((x) => x.formule === FORMULE_CLOUD_DU_PALIER[palier]) ?? null;
   if (!sienne) return null;
@@ -145,10 +200,10 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
   const nom = NOMS_FORMULES[f];
   const prix = prixOuChargement(f, lang);
   const libelle = sienne.cta === 'essai_abonne' ? T.ctaEssayer7 : f === 'business_cloud' ? T.ctaPasser(nom) : T.ctaAjouter;
-  const note = sienne.note === 'note_essai' ? T.noteEssai(NOMS_PALIERS_SEULS[palier], nom, dateLongue(finEssaiSiOnCommence(), lang), echeance ?? '')
-    : sienne.note === 'prorata' ? T.prorata(echeance)
-      : sienne.note === 'boutique' ? T.boutique(nomBoutique(sienne.achetable ? canalApp : profil.canalAbonnement) ?? 'App Store')
-        : sienne.note === 'carte_sur_mobile' ? T.carteSurMobile : null;
+  // (12/11, 4c et 4d) Le même texte que la fenêtre d'offres (texteNoteCarte) : canal qui facture, essai en cours.
+  const note = texteNoteCarte({ ...sienne, canalFacture: sienne.canalFacture ?? profil.canalAbonnement }, {
+    T, palierIci: NOMS_PALIERS_SEULS[palier], echeance, finEssai: dateLongue(finEssaiSiOnCommence(), lang), essaiFin, canalApp, nom, prix,
+  });
   return (
     <Groupe intitule={T.groupe}>
       <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

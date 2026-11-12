@@ -13,9 +13,12 @@ const RANG_APP = Object.freeze({ premium: 1, pro: 2, business: 3 });
 /** Les formules proposées, la plus PROCHE d'abord (Business → Pro, puis Premium). */
 export const ordreProposees = (possibles) => [...(possibles ?? [])].filter((f) => RANG_APP[f]).sort((a, b) => RANG_APP[b] - RANG_APP[a]);
 
-/** Le bloc se montre-t-il ? Web, abonné Stripe, formule active non résiliée, interrupteur du serveur ouvert. */
-export function blocDescenteVisible({ ouvert, natif, isPremium, clientStripe, resilie }) {
-  return Boolean(ouvert && !natif && isPremium && clientStripe && !resilie);
+/** Le bloc se montre-t-il ? Web, abonné Stripe, formule active non résiliée, interrupteur du serveur ouvert.
+ *  (12/11, point 4d de Nico) Jamais PENDANT UN ESSAI : la descente programmée exige un abonnement actif (changer-formule
+ *  répondait « abonnement_pas_actif ») et la liste n'a pas les formules avec Cloud — une impasse ; pendant l'essai, le
+ *  changement se fait par la feuille de la veille (formule avec Cloud plus basse) ou « Arrêter l'essai ». */
+export function blocDescenteVisible({ ouvert, natif, isPremium, clientStripe, resilie, enEssai = false }) {
+  return Boolean(ouvert && !natif && isPremium && clientStripe && !resilie && !enEssai);
 }
 
 /** La date du changement, heure de Paris (« 9 décembre » / « December 9 »). */

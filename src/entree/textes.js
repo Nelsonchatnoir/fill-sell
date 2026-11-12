@@ -164,7 +164,7 @@ const FR = {
   voieCloudP: (noms) => `Plus besoin d'ordinateur. FillSell Cloud publie, remonte et retire tes annonces ${noms} depuis ses serveurs, 24 h/24, et tes ventes sont suivies.`,
   voieCloudPlus: ['Rien à installer', 'Ventes vues en direct', 'Sans engagement'],
   voieCloudCta: `Essayer ${J7} offerts`,
-  voieCloudNote: `Puis ${PRIX}/mois. Tu l'arrêtes en un geste, on te prévient la veille.`,
+  voieCloudNote: `Puis ${PRIX}/mois. Tu l'arrêtes en un geste.`,
   voieExtK: 'Extension Chrome',
   voieExtT: 'Sur ton ordinateur, gratuit',
   voieExtP: 'Installée une fois dans Chrome, elle dépose tes annonces avec tes comptes déjà connectés. Ton ordinateur doit être allumé pour publier.',
@@ -184,7 +184,7 @@ const FR = {
   cloudTexte: `Pendant ${J7}, tes annonces partent de nos serveurs, pilotées depuis ton téléphone. Tu ne paies que si tu continues.`,
   cloudFrise: (veille, bascule) => [
     { quand: "Aujourd'hui", quoi: `Carte demandée, 0${NBSP}€ prélevé.` },
-    { quand: veille, quoi: "On te prévient, dans l'app et par e-mail." },
+    { quand: veille, quoi: 'Ton essai se termine demain.' },
     { quand: bascule, quoi: `${PRIX}/mois, sauf si tu arrêtes avant. Sans engagement.` },
   ],
   cloudFait: 'Ce que fait le Cloud',
@@ -290,7 +290,7 @@ const FR = {
   formKicker: (nom) => `${nom} · ${J7} gratuits`,
   formFrise: (veille, bascule, nom, prix, zero) => [
     { quand: "Aujourd'hui", quoi: `Carte demandée, ${zero} prélevé.` },
-    { quand: veille, quoi: "On te prévient dans l'app et par e-mail, et tu choisis ta formule." },
+    { quand: veille, quoi: 'Ton essai se termine demain : tu choisis ta formule.' },
     { quand: bascule, quoi: `Sans choix de ta part, ${nom} continue à ${prix}/mois. Sans engagement.` },
   ],
   formCta: `Commencer mes ${J7} gratuits`,
@@ -419,7 +419,7 @@ const EN = {
   voieCloudP: (noms) => `No computer needed. FillSell Cloud posts, bumps and removes your ${noms} listings from its servers, 24/7, and your sales are tracked.`,
   voieCloudPlus: ['Nothing to install', 'Sales seen live', 'No commitment'],
   voieCloudCta: `Try ${D7} free`,
-  voieCloudNote: `Then ${PRIX_EN}/mo. Stop it in one tap, we remind you the day before.`,
+  voieCloudNote: `Then ${PRIX_EN}/mo. Stop it in one tap.`,
   voieExtK: 'Chrome extension',
   voieExtT: 'On your computer, free',
   voieExtP: 'Installed once in Chrome, it posts your listings with the accounts already signed in. Your computer must be on to post.',
@@ -437,7 +437,7 @@ const EN = {
   cloudTexte: `For ${D7}, your listings go out from our servers, driven from your phone. You only pay if you keep going.`,
   cloudFrise: (veille, bascule) => [
     { quand: 'Today', quoi: 'Card required, €0 charged.' },
-    { quand: veille, quoi: 'We remind you, in the app and by email.' },
+    { quand: veille, quoi: 'Your trial ends tomorrow.' },
     { quand: bascule, quoi: `${PRIX_EN}/mo, unless you stop before. No commitment.` },
   ],
   cloudFait: 'What the Cloud does',
@@ -530,7 +530,7 @@ const EN = {
   formKicker: (nom) => `${nom} · ${D7} free`,
   formFrise: (veille, bascule, nom, prix, zero) => [
     { quand: 'Today', quoi: `Card required, ${zero} charged.` },
-    { quand: veille, quoi: 'We remind you in the app and by email, and you choose your plan.' },
+    { quand: veille, quoi: 'Your trial ends tomorrow: you choose your plan.' },
     { quand: bascule, quoi: `If you do nothing, ${nom} continues at ${prix}/mo. No commitment.` },
   ],
   formCta: `Start my ${D7} free`,

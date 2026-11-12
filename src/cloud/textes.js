@@ -14,7 +14,8 @@
 //     payée, elle tourne jusqu'à la fin de la période ;
 //   · résilier la formule n'arrête PAS l'option (le compte repasse en Free +
 //     FillSell Cloud) ;
-//   · la veille de la fin d'essai, on prévient dans l'app ET par e-mail.
+//   · la veille de la fin d'essai, on prévient dans l'app ET par e-mail. (12/11, point 4b de Nico : la PROMESSE est retirée
+//     des écrans tant que le rappel de la veille n'est pas prouvé sur un vrai client — le rappel lui-même part toujours.)
 // (03/11, décision de Nico) LE NOM de l'option est « FillSell Cloud », partout ;
 // « sans ordinateur » est sa PROMESSE (« Vends même ordinateur éteint », « eBay
 // part déjà sans ordinateur »), jamais son nom. Contrôlé par
@@ -91,7 +92,7 @@ const FR = {
   frise: (date) => [
     { quand: "Aujourd'hui", quoi: "Carte demandée, rien n'est prélevé pour le Cloud." },
     { quand: date, quoi: `Le Cloud passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.` },
-    { quand: "D'ici là", quoi: "Tu l'arrêtes en un geste dans Réglages › Abonnement. On te prévient la veille, dans l'app et par e-mail." },
+    { quand: "D'ici là", quoi: "Tu l'arrêtes en un geste dans Réglages › Abonnement." },
   ],
   sansEssai: `Ton essai gratuit a déjà servi : le Cloud est facturé ${PRIX}/mois dès aujourd'hui. Tu l'arrêtes quand tu veux dans Réglages › Abonnement.`,
   dejaActif: 'FillSell Cloud est déjà actif sur ton compte : il suit la formule que tu choisis.',
@@ -110,7 +111,7 @@ const FR = {
   offresCtaAjout: 'Ajouter FillSell Cloud',
   offresPrixEssai: `Puis ${PRIX}/${GLUE}mois · sans engagement`,
   offresPrix: `${PRIX}/${GLUE}mois · sans engagement`,
-  offresRappel: "On te prévient la veille. Tu l'arrêtes en un geste.",
+  offresRappel: "Tu l'arrêtes en un geste.",
   offresArret: "Tu l'arrêtes en un geste.",
   offresEnPlus: (nom) => `En plus de ${taFormule(nom)}`,
   ajoutTitre: (nom) => `Ajouter à ${taFormule(nom)}`,
@@ -294,7 +295,7 @@ const EN = {
   frise: (date) => [
     { quand: 'Today', quoi: 'Card required, nothing is charged for the Cloud.' },
     { quand: date, quoi: `The Cloud moves to ${PRIX_EN}/mo, unless you stop it before.` },
-    { quand: 'Until then', quoi: "Stop it in one tap in Settings › Subscription. We'll remind you the day before, in the app and by email." },
+    { quand: 'Until then', quoi: 'Stop it in one tap in Settings › Subscription.' },
   ],
   sansEssai: `Your free trial has already been used: the Cloud is billed ${PRIX_EN}/mo from today. Stop it any time in Settings › Subscription.`,
   dejaActif: 'FillSell Cloud is already on for your account: it follows the plan you pick.',
@@ -311,7 +312,7 @@ const EN = {
   offresCtaAjout: 'Add FillSell Cloud',
   offresPrixEssai: `Then ${PRIX_EN}/${GLUE}mo · cancel anytime`,
   offresPrix: `${PRIX_EN}/${GLUE}mo · cancel anytime`,
-  offresRappel: 'We remind you the day before. Stop it in one tap.',
+  offresRappel: 'Stop it in one tap.',
   offresArret: 'Stop it in one tap.',
   offresEnPlus: (nom) => `On top of ${yourPlan(nom)}`,
   ajoutTitre: (nom) => `Add to ${yourPlan(nom)}`,

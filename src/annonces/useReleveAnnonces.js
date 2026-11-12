@@ -185,7 +185,8 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
       // Une plateforme du Cloud pas connectée : sautée, avec « pas encore connecté » (jamais « reconnexion » pour qui
       // ne s'est jamais connecté) ; l'écran de connexion s'ouvre une fois, après la boucle.
       const refusCloud = refusSyncCloud(lireConnexionsCloud(), p, lang);
-      if (refusCloud) { refus.push(refusCloud.texte); aConnecterCloud = true; track('releve_tout_saute', { platform: p, motif: 'cloud_non_connecte' }); continue; }
+      // (12/11) eBay à relier à FillSell (client Cloud) : sauté avec son texte, sans ouvrir l'écran de connexion du Cloud.
+      if (refusCloud) { refus.push(refusCloud.texte); if (refusCloud.geste !== 'relier_ebay') aConnecterCloud = true; track('releve_tout_saute', { platform: p, motif: refusCloud.geste === 'relier_ebay' ? 'cloud_ebay_a_relier' : 'cloud_non_connecte' }); continue; }
       if (p === 'vinted') {
         try { if (typeof lancerVinted === 'function') lancerVinted(); } catch { /* la ligne Vinted dit le refus */ }
         continue;

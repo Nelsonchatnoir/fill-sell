@@ -73,3 +73,47 @@ export function lectureFondPourCePoste({ cloudVoie, posteCloud }) {
 export function routageCloudActif({ cloudVoie }) {
   return cloudVoie !== false;
 }
+
+// ══ (12/11/2026, lot « zéro problème », complément de Nico à l'étape 1 — cas b695d990) ═══════════════════════════════
+// UNE DEMANDE DE RELEVÉ D'UN CLIENT CLOUD A TOUJOURS UN EXÉCUTANT SERVEUR, OU UN GESTE CLAIR — JAMAIS « TON ORDINATEUR ».
+// Le cas : client du Cloud (essai Stripe), ses relevés eBay demandés depuis l'app (12/11 09:35 et 15:38) ont expiré
+// après 6 h avec « ton ordinateur n'avait pas Chrome ouvert avec l'extension FillSell ». Cause : la copie Cloud de
+// l'extension ne porte QUE Vinted, Leboncoin, Beebs et Depop (PLATEFORMES_CLOUD_VOIE) — eBay d'un client Cloud passe par
+// l'API d'eBay, et SON eBay n'était pas relié à FillSell (aucune ligne ebay_accounts) : la demande attendait un
+// ordinateur, qui n'est jamais venu ; puis le POLL DU POSTE CLOUD l'a redemandée (« app:redemande ») — une demande qu'il
+// ne sait pas faire — et elle a expiré une seconde fois.
+
+/** La plateforme d'une demande (le dressing est Vinted). */
+const plateformeDeDemande = (c) => (String(c?.kind ?? '') === 'dressing' ? 'vinted' : String(c?.platform ?? ''));
+
+/**
+ * Ce poste peut-il EXÉCUTER cette demande de relevé ? (pur) Le poste Cloud : seulement ses plateformes (jamais eBay ni
+ * une demande « connexion », geste de l'ordinateur). L'ordinateur d'un compte au Cloud actif : jamais une demande
+ * laissée au Cloud (commandeLaisseeAuCloud). Sert à ne REDEMANDER que ce que le poste qui poll sait faire.
+ */
+export function demandeExecutablePar(commande, { cloudVoie, posteCloud }) {
+  if (posteCloud) return String(commande?.kind ?? '') !== 'connexion' && PLATEFORMES_CLOUD_VOIE.includes(plateformeDeDemande(commande));
+  return !commandeLaisseeAuCloud(commande, { cloudVoie, posteCloud });
+}
+
+/**
+ * Le texte d'une demande de relevé EXPIRÉE (6 h sans être prise) d'un client au Cloud ACTIF (cloud_voie) — jamais
+ * l'ordinateur, jamais Chrome (pur). Le marqueur en tête est lu par l'app (src/annonces/finReleve.js) :
+ *   [cloud:relier_ebay] — eBay non relié à FillSell : le geste est de le relier (Réglages › Mes plateformes › eBay) ;
+ *   [cloud:ebay_api]    — eBay relié : il est relu par nos serveurs, rien à faire ;
+ *   [cloud:connecter]   — plateforme du Cloud pas connectée au coffre du Cloud : la connecter ;
+ *   [cloud:pas_pris]    — le Cloud ne l'a pas prise à temps : « Synchroniser » la relance.
+ * p = { kind, platform, nom, ebayRelie: bool | null, connecteCloud: bool | null }
+ */
+export function texteDemandeExpireeCloud({ kind, platform, nom = null, ebayRelie = null, connecteCloud = null } = {}) {
+  const pf = plateformeDeDemande({ kind, platform });
+  const n = nom || (pf ? pf.charAt(0).toUpperCase() + pf.slice(1) : 'cette plateforme');
+  if (pf === 'ebay') {
+    if (ebayRelie === true) return "[cloud:ebay_api] eBay est relu depuis nos serveurs par sa connexion directe à FillSell, une fois par jour : rien à faire.";
+    return "[cloud:relier_ebay] Avec FillSell Cloud, eBay se relit depuis nos serveurs par sa connexion directe : relie ton compte eBay à FillSell une seule fois (Réglages › Mes plateformes › eBay), puis appuie sur « Synchroniser ». Rien n'a été effacé.";
+  }
+  if (PLATEFORMES_CLOUD_VOIE.includes(pf) && connecteCloud === false) {
+    return `[cloud:connecter] ${n} n'est pas connecté à FillSell Cloud : connecte-le (Réglages › Mes plateformes), puis appuie sur « Synchroniser ». Rien n'a été effacé.`;
+  }
+  return "[cloud:pas_pris] FillSell Cloud n'a pas pu prendre cette synchronisation à temps. Rien n'a été effacé : appuie sur « Synchroniser » pour la relancer.";
+}

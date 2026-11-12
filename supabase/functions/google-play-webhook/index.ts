@@ -7,6 +7,11 @@ import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "..
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 import { evenementsBoutique } from "../_shared/cloud-mails.js";
 import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
+import { notificationDeTest } from "../_shared/environnement-store.js";
+// (12/11, lot « zéro problème », point 4a) UN ACHAT DE TESTEUR (testPurchase, purchaseType 0) N'ENVOIE JAMAIS DE MAIL À UN
+// CLIENT ; droits gardés, alertes à support@ marquées « [TEST] ». Règle : _shared/environnement-store.js.
+// deno-lint-ignore no-explicit-any
+const deTest = (achat: any): boolean => notificationDeTest({ canal: "google", achat });
 import { prixDepuisGoogle } from "../_shared/cloud-prix.js";
 import { verifierJetonPubSub } from "../_shared/pubsub-oidc.ts";
 // (31/10, lot I point 7) Filet : un abonnement « on » encore non confirmé l'est par le serveur (remboursement à 72 h sinon).
@@ -239,9 +244,9 @@ async function planGoogle(p: { notificationType: number; purchaseToken: string; 
           const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
             p_user_id: userId, p_tier: grantDeFormule(f.formule), p_period_end: expiry, p_source: "payment",
           });
-          if (grantErr) await alerterPaiementNonCredite({ canal: "google", type: "abonnement", user_id: userId, produit: subscriptionId, ref: purchaseToken, rpc: null, erreur: grantErr.message });
+          if (grantErr) await alerterPaiementNonCredite({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: subscriptionId, ref: purchaseToken, rpc: null, erreur: grantErr.message });
           else if ((grantRes as { granted?: boolean })?.granted === true) {
-            await notifierPaiement({ canal: "google", type: "abonnement", user_id: userId, produit: f.formule, pepites: (grantRes as { amount?: number })?.amount ?? null, ref: purchaseToken, rpc: grantRes });
+            await notifierPaiement({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: f.formule, pepites: (grantRes as { amount?: number })?.amount ?? null, ref: purchaseToken, rpc: grantRes });
           }
         }
         ctx.maj.effet_applique = `formule_on${plan.ouvrir ? "" : "_sans_droits"}`;
@@ -268,7 +273,7 @@ async function planGoogle(p: { notificationType: number; purchaseToken: string; 
     console.error(`[google-play-webhook] ${subscriptionId} : écriture impossible — ${(e as Error)?.message ?? e}`);
     return json(500, { error: "ecriture_formule_impossible" });
   }
-  await mailsCloud(supabaseAdmin, { userId, email: profil.email ?? null, lang: profil.lang ?? null, canal: "google", journal: "[google-play-webhook]",
+  await mailsCloud(supabaseAdmin, { userId, email: profil.email ?? null, lang: profil.lang ?? null, canal: "google", journal: "[google-play-webhook]", test: deTest(purchase),
     evenements: evenements as never, lirePrix: async () => prixDepuisGoogle(purchase).prix });
   console.log(`[google-play-webhook] type=${notificationType} ${subscriptionId} (${f.formule}) → userId=${userId} : ${ctx.maj.effet_applique ?? "?"}`);
   return json(200, { ok: true, formule: f.formule });
@@ -458,7 +463,7 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
         // Payload complet : seule trace permettant un crédit manuel a posteriori.
         console.error("[google-play-webhook] oneTimeProduct sans obfuscatedExternalAccountId —", sansJeton(purchase));
         await alerterPaiementNonCredite({
-          canal: "google", type: "pack", produit: sku,
+          canal: "google", test: deTest(purchase), type: "pack", produit: sku,
           ref: (purchase?.orderId as string) ?? otpToken, rpc: null,
           erreur: "obfuscatedExternalAccountId absent : compte non identifiable. "
                 + "Retrouver l'acheteur via l'orderId dans la Play Console.",
@@ -486,7 +491,7 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       if (rpcErr) {
         console.error("[google-play-webhook] credit_purchased_coins:", rpcErr.message, "—", sansJeton(otp));
         await alerterPaiementNonCredite({
-          canal: "google", type: "pack", user_id: coinUserId, produit: sku,
+          canal: "google", test: deTest(purchase), type: "pack", user_id: coinUserId, produit: sku,
           ref, rpc: null, erreur: rpcErr.message,
         });
         return new Response(JSON.stringify({ error: "credit_failed" }), {
@@ -498,7 +503,7 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       // Google rejoue jusqu'au 200 : mail seulement si une ligne a été créée.
       if ((credit as { credited?: boolean })?.credited === true) {
         await notifierPaiement({
-          canal: "google", type: "pack", user_id: coinUserId, produit: sku,
+          canal: "google", test: deTest(purchase), type: "pack", user_id: coinUserId, produit: sku,
           pepites: COIN_PRODUCTS[sku], ref, rpc: credit,
         });
       }
@@ -610,7 +615,7 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
         sansJeton({ notificationType, subscriptionId, purchase }),
       );
       await alerterPaiementNonCredite({
-        canal: "google", type: "abonnement", produit: subscriptionId,
+        canal: "google", test: deTest(purchase), type: "abonnement", produit: subscriptionId,
         ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null,
         erreur: "obfuscatedExternalAccountId absent : compte non identifiable. "
               + "Retrouver l'abonné via l'orderId dans la Play Console, puis "
@@ -666,7 +671,7 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
         : notificationType === 5 || notificationType === 6 ? "impaye"
         : sens === "annulation" || sens === "reprise" ? sens : "fin";
       await mailsCloud(supabaseAdmin, {
-        userId, email: (profilCloud?.email as string | null) ?? null, lang: (profilCloud?.lang as string | null) ?? null, canal: "google",
+        userId, email: (profilCloud?.email as string | null) ?? null, lang: (profilCloud?.lang as string | null) ?? null, canal: "google", test: deTest(purchase),
         evenements: evenementsBoutique({ canal: "google", nature, avant: profilCloud ?? {}, update, lecture: lectureCloud, ref: purchaseToken }),
         lirePrix: async () => prixDepuisGoogle(purchase).prix,
         journal: "[google-play-webhook]",
@@ -823,13 +828,13 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       if (grantErr) {
         console.error("[google-play-webhook] upgrade_monthly_grant:", grantErr.message);
         await alerterPaiementNonCredite({
-          canal: "google", type: "abonnement", user_id: userId, produit: subscriptionId,
+          canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: subscriptionId,
           ref: purchaseToken, rpc: null, erreur: grantErr.message,
         });
       } else if ((grantRes as { granted?: boolean })?.granted === true) {
         // granted=false = cycle déjà crédité (rejeu Pub/Sub) → pas de mail.
         await notifierPaiement({
-          canal: "google", type: "abonnement", user_id: userId, produit: subscriptionId,
+          canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: subscriptionId,
           pepites: (grantRes as { amount?: number })?.amount ?? null,
           ref: purchaseToken, rpc: grantRes,
         });

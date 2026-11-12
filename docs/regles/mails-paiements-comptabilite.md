@@ -446,3 +446,53 @@ marge de 100 % sur du vent, indétectable ensuite.
 - **Le forfait de base** demandé à Google est `identifier` du produit (le forfait), jamais `planIdentifier` (que le module
   remplit avec l'identifiant du PRODUIT) — `forfaitDeBaseGoogle`.
 - Verrou `npm run selftest:achats-google-code`.
+
+## ⛔ 12/11/2026 soir (lot « zéro problème », point 4a de Nico) — un ACHAT DE TEST n'envoie jamais de mail à un client
+Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4a. Cas : le compte de test 5322fa18 a reçu un vrai mail
+« paiement FillSell Cloud 24,99 € » chaque soir à 18:50 du 08 au 12/11 — chaque fois un DID_RENEW Apple de l'environnement
+« Sandbox » (TestFlight renouvelle tous les jours) ; apple-iap-webhook lisait l'environnement pour son journal seulement.
+- **Une règle** : `_shared/environnement-store.js` — `notificationDeTest({ canal, environnement, achat, testNotification,
+  livemode })` : Apple `data.environment` ≠ « Production » (Sandbox, Xcode, LocalTesting) ; Google `testPurchase` présent,
+  `purchaseType === 0` ou notification de test ; Stripe `livemode === false`. Environnement absent ou inconnu = PAS un test
+  (un vrai client ne perd jamais un mail par doute). `environnementDeTest(v)` lit une valeur du journal ou du lecteur de prix.
+- **Décisions de Nico (12/11)** : aucun mail CLIENT ; l'alerte à support@ est GARDÉE, marquée « [TEST] » (sujet + mention
+  « Achat de TEST … ») ; les DROITS sont gardés (le relecteur d'Apple achète dans le bac à sable : il doit voir l'achat marcher).
+- **Où** : `mailsCloud({ …, test })` (`_shared/cloud-mails-envoi.ts`) ne réserve ni n'envoie de mail client, l'alerte part
+  « [TEST] » ; `notifierPaiement` / `alerterPaiementNonCredite({ …, test })` → sujet « [TEST] » (email-tunnel, payment_alert).
+  apple-iap-webhook (14 appels, `enTest` lu sur `data.environment`, planApple compris), google-play-webhook (10 appels) et
+  validate-google-purchase (8 appels) passent le drapeau (`deTest(purchase)`). Le rappel de la veille (email-tunnel) écarte un
+  essai dont l'abonnement LU À LA SOURCE est de test (le lecteur de prix rend `environnement` pour les 3 canaux).
+- **Stripe** : un événement du mode test n'est JAMAIS appliqué en production (rien ne peut y correspondre : clients et
+  abonnements du mode test n'existent pas en prod ; la session Cloud cherche aussi par e-mail) : 200 « mode_test », une
+  alerte « [TEST] » à support@, rien écrit. Seul écart à « droits gardés », sans effet réel (aucun relecteur Stripe).
+- Verrou : `npm run selftest:store-test-sans-mail` (rejoue la ligne 70 du journal sur le vrai module d'envoi : 19 rouges
+  sur 881c2b9, vert après) ; lignes relues dans `scripts/fixtures/paiements-lignes-test-1211.json`
+  (`selftest:paiements-non-regression`).
+
+## ⛔ 12/11/2026 soir (lot « zéro problème », points 4c, 4d, 4b de Nico) — l'offre suit le CANAL QUI FACTURE ; pendant l'essai, chaque texte dit ce que fait le serveur ; aucune promesse non prouvée
+Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
+- **4c — le canal qui facture, pas l'appareil** : `voieFormulesDuCompte({ canalApp, canalFacture, canalOuvert })`
+  (`src/cloud/formulesCloud.js`) → `ici` | `carte_sur_mobile` | `boutique` | `boutique_bientot`. `canalFacture` = le canal de
+  l'abonnement (`canalAbonnementDuProfil`) ou, sans formule, celui du Cloud SEUL vivant (`canalDuCloudSeul` :
+  `profiles.cloud_canal`, essai ou payé). `canalOuvert` = l'interrupteur `cloud_formules_<canal>` DU CANAL QUI FACTURE.
+  Autre canal → aucune carte achetable (jamais deux abonnements) ; boutique fermée (Apple tant qu'il valide) → le texte de
+  Nico « Ton abonnement passe par l'App Store. Les formules avec Cloud y arrivent bientôt : Apple est en train de les
+  valider… Rien n'a changé, rien n'a été débité. », AUCUN bouton (avant : boutons → conditions → refus 409, ou renvoi vers
+  l'iPhone où rien n'existe). Réglages : le client du Cloud seul d'une boutique n'a plus « Voir les formules avec Cloud ».
+  Serveur : `messageVoieFormule({ …, ferme })` dit « bientôt » ; create-checkout-session lit l'interrupteur du canal qui
+  facture avant de répondre. Une seule source du texte d'une note : `texteNoteCarte` (fenêtre d'offres ET Réglages).
+- **4d — pendant un essai** (`essaiEnCours` = lecture Cloud `etat === 'essai'`) : web, montée vers une formule avec essai →
+  « Ton essai continue jusqu'au {fin}. Ensuite : {formule}, {prix}/mois. » (le serveur : sans prorata) ; vers Business + Cloud
+  → « Business + Cloud n'a pas d'essai : ton essai s'arrête, 79,99 € sont prélevés aujourd'hui. » (le serveur : finEssai) ;
+  boutique → « … pendant ton essai, il peut l'arrêter … {boutique} t'affiche le montant avant que tu valides. ». La descente
+  du web (feuille de la veille) passe par changer-formule `programmer` (branche « pendant l'essai » : changement immédiat,
+  sans prorata), jamais create-checkout-session. Réglages, formule avec Cloud EN ESSAI sur le web : « Arrêter l'essai »
+  (cancel-subscription `{ option: "cloud" }`, rien prélevé pour l'essai ; `formule_continue` du serveur), plus « Retirer le
+  Cloud ». C4 (« Voir les autres formules ») caché pendant un essai (`blocDescenteVisible({ …, enEssai })`). iPhone / Android :
+  essai FillSell déjà pris mais la boutique offre sa semaine gratuite (Apple : Cloud seul et formules dans deux groupes) →
+  la question `essaiDejaPrisBoutique` AVANT la feuille de la boutique (la semaine n'active rien, décision 8) ; refusée = rien.
+- **4b** — « On te prévient la veille » retiré des 12 textes d'écran (FR / EN : fenêtre d'offres, carte du Cloud seul,
+  frises de l'essai, parcours d'entrée) comme du site et du mail (décision 5a) ; les CONDITIONS restent (le rappel est codé
+  et part) ; la phrase revient quand email_logs montre un `cloud_essai_veille` RÉEL Stripe ET Apple.
+- Verrous : `npm run selftest:formules-canal-ferme` (31), `selftest:formules-essai-changement` (24),
+  `selftest:promesse-veille-app` (12 textes attrapés sur 881c2b9) — tous rouges sur 881c2b9, verts après.

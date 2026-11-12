@@ -54,6 +54,8 @@ export function dateParis(v) {
   const x = (k) => f.find((p) => p.type === k)?.value ?? '';
   return `${x('weekday')} ${x('day')} ${x('month')} ${x('year')} à ${x('hour')}:${x('minute')}`;
 }
+/** (12/11, point 4a) La mention d'une alerte née d'un achat de test d'une boutique. */
+export const MENTION_ACHAT_DE_TEST = 'Achat de TEST (bac à sable de la boutique) : aucun mail envoyé au client, droits posés comme pour un vrai achat, aucun argent encaissé.';
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const canalLu = (c) => (Object.prototype.hasOwnProperty.call(NOM_CANAL, c) ? c : 'inconnu');
 
@@ -63,7 +65,10 @@ const canalLu = (c) => (Object.prototype.hasOwnProperty.call(NOM_CANAL, c) ? c :
  * maintenant : l'instant de l'événement chez nous.
  * Rend { sujet, lignes: [[libellé, valeur]], html, type } ou null (événement hors alerte).
  * @param {{ evenement: string, canal?: string | null, faits?: any, prix?: any, userId?: string | null, profil?: any,
- *           cle?: string | null, maintenant?: number, test?: boolean }} p
+ *           cle?: string | null, maintenant?: number, test?: boolean | 'boutique' }} p
+ * test : true = l'envoi de test manuel (email-tunnel { alerte_cloud_test }) ; 'boutique' = un ACHAT DE TEST d'une
+ * boutique (bac à sable Apple, testeur Google, mode test Stripe — _shared/environnement-store.js) : sujet « [TEST] »,
+ * mention MENTION_ACHAT_DE_TEST (12/11, point 4a).
  * @returns {{ sujet: string, lignes: Array<[string, string]>, html: string, type: string } | null}
  */
 export function texteAlerteCloud({ evenement, canal = null, faits = {}, prix = null, userId = null, profil = null, cle = null, maintenant = Date.now(), test = false }) {
@@ -115,7 +120,8 @@ export function texteAlerteCloud({ evenement, canal = null, faits = {}, prix = n
     <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
       ${lignes.map(([k, v]) => `<tr><td style="padding:6px 10px 6px 0;color:#6B7280;white-space:nowrap;vertical-align:top;">${esc(k)}</td><td style="padding:6px 0;color:#111827;word-break:break-word;"><strong>${esc(v)}</strong></td></tr>`).join('')}
     </table>
-    ${test ? '<p style="margin:14px 0 0;font-family:sans-serif;font-size:12px;color:#9CA3AF;">Envoi de test : aucun client, aucun paiement, rien écrit.</p>' : ''}
+    ${test === 'boutique' ? `<p style="margin:14px 0 0;font-family:sans-serif;font-size:12px;color:#9CA3AF;">${esc(MENTION_ACHAT_DE_TEST)}</p>`
+      : test ? '<p style="margin:14px 0 0;font-family:sans-serif;font-size:12px;color:#9CA3AF;">Envoi de test : aucun client, aucun paiement, rien écrit.</p>' : ''}
   </div>
 </body></html>`;
   return { sujet, lignes, html, type: typeAlerte(evenement) };
@@ -130,9 +136,11 @@ export function texteAlerteCloud({ evenement, canal = null, faits = {}, prix = n
  *   lirePrix(evenement) → Promise<prix | null>                                 (essai_debut : prochaine échéance)
  *   envoyer({ to, subject, html, type }) → { envoye, motif? }
  * Ne lève JAMAIS.
- * @param {{ evenements?: any[], userId: string, canal?: string | null, deps: any, maintenant?: number }} p
+ * test : un achat de test d'une boutique (12/11, point 4a) — l'alerte part quand même, marquée « [TEST] ».
+ * @param {{ evenements?: any[], userId: string, canal?: string | null, deps: any, maintenant?: number, test?: boolean }} p
  */
-export async function envoyerAlertesCloud({ evenements = [], userId, canal = null, deps, maintenant = Date.now() }) {
+export async function envoyerAlertesCloud({ evenements = [], userId, canal = null, deps, maintenant = Date.now(), test = false }) {
+  const marque = test ? 'boutique' : false;
   const bilan = [];
   const aAlerter = (evenements ?? []).filter((e) => EVENEMENTS_ALERTE.includes(e?.evenement));
   if (!userId || aAlerter.length === 0) return bilan;
@@ -145,14 +153,14 @@ export async function envoyerAlertesCloud({ evenements = [], userId, canal = nul
       if (!e.cle) { ligne.resultat = 'evenement_invalide'; continue; }
       const cn = e.canal ?? canal;
       const k = cleAlerte(e.cle);
-      if (!texteAlerteCloud({ evenement: e.evenement, canal: cn, faits: e.faits ?? {}, userId, profil, cle: e.cle, maintenant })) { ligne.resultat = 'sans_alerte'; continue; }
+      if (!texteAlerteCloud({ evenement: e.evenement, canal: cn, faits: e.faits ?? {}, userId, profil, cle: e.cle, maintenant, test: marque })) { ligne.resultat = 'sans_alerte'; continue; }
       const r = await deps.reserver({ userId, evenement: e.evenement, cle: k, canal: cn });
       if (r !== 'pris') { ligne.resultat = r === 'deja' ? 'deja_envoye' : 'registre_illisible'; continue; }
       let prix = null;
       if (e.evenement === 'essai_debut' && typeof deps.lirePrix === 'function') {
         try { prix = prixValide(await deps.lirePrix(e.evenement)); } catch { prix = null; }
       }
-      const t = texteAlerteCloud({ evenement: e.evenement, canal: cn, faits: e.faits ?? {}, prix, userId, profil, cle: e.cle, maintenant });
+      const t = texteAlerteCloud({ evenement: e.evenement, canal: cn, faits: e.faits ?? {}, prix, userId, profil, cle: e.cle, maintenant, test: marque });
       const env = await deps.envoyer({ to: ALERTE_CLOUD_DESTINATAIRE, subject: t.sujet, html: t.html, type: t.type });
       if (env?.envoye) {
         ligne.resultat = 'envoye';

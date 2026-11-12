@@ -19,6 +19,8 @@ const MUR_OPLA = /acc[èe]s opla non accord/i;
 //   anti_robot    la plateforme a bloqué la lecture un moment
 //   arret         la lecture s'est arrêtée avant la fin (chien de garde)
 //   pas_prise     l'ordinateur n'a jamais pris la demande (Chrome fermé)
+//   cloud_*       (12/11) client au Cloud actif : eBay à relier, eBay relu par l'API, plateforme à connecter au Cloud,
+//                 Cloud qui n'a pas pris la demande à temps — jamais « ordinateur » ni « Chrome »
 //   echec         tout le reste
 // (29/10) « jeton non renouvelé (session_fermee) » : le renouvellement du jeton Leboncoin a VU « Mes annonces »
 // renvoyer vers la connexion — runs des extensions ≤ 0.6.152, écrits « n'a pas rendu sa liste ».
@@ -28,9 +30,19 @@ const RE_AUTRE_COMPTE = /\[boutique_a_confirmer\]|\[boutique_autre_compte\]|\[ho
 const RE_ANTI_ROBOT = /\[anti_robot\]|anti-robot|\[retry403\]/i;
 const RE_ARRET = /\[watchdog\]/i;
 const RE_PAS_PRISE = /jamais réclamée|sans extension disponible/i;
+// (12/11, complément de Nico — cas b695d990) Les demandes expirées d'un client au Cloud actif portent un marqueur du Cloud
+// (supabase/functions/_shared/cloud-voie.js, texteDemandeExpireeCloud) : leur phrase ne parle jamais de l'ordinateur.
+const RE_CLOUD_RELIER_EBAY = /\[cloud:relier_ebay\]/;
+const RE_CLOUD_EBAY_API = /\[cloud:ebay_api\]/;
+const RE_CLOUD_CONNECTER = /\[cloud:connecter\]/;
+const RE_CLOUD_PAS_PRIS = /\[cloud:pas_pris\]/;
 
 export function situationFinReleve(run) {
   const e = String(run?.erreur ?? '');
+  if (RE_CLOUD_RELIER_EBAY.test(e)) return 'cloud_relier_ebay';
+  if (RE_CLOUD_EBAY_API.test(e)) return 'cloud_ebay_api';
+  if (RE_CLOUD_CONNECTER.test(e)) return 'cloud_connecter';
+  if (RE_CLOUD_PAS_PRIS.test(e)) return 'cloud_pas_pris';
   if (RE_PAS_CONNECTE.test(e) || MUR_OPLA.test(e)) return 'pas_connecte';
   if (RE_AUTRE_COMPTE.test(e)) return 'autre_compte';
   if (RE_ANTI_ROBOT.test(e)) return 'anti_robot';
@@ -51,6 +63,10 @@ export function texteSituation(situation, nom, T, run = null) {
   if (situation === 'anti_robot') return T.finAntiRobot(nom);
   if (situation === 'arret') return T.finArret(nom);
   if (situation === 'pas_prise') return T.finPasPrise(nom);
+  if (situation === 'cloud_relier_ebay') return T.finCloudRelierEbay;
+  if (situation === 'cloud_ebay_api') return T.finCloudEbayApi;
+  if (situation === 'cloud_connecter') return T.finCloudConnecter(nom);
+  if (situation === 'cloud_pas_pris') return T.finCloudPasPris(nom);
   return T.finEchec(nom);
 }
 

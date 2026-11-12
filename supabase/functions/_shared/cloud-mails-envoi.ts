@@ -38,10 +38,23 @@ export async function mailsCloud(
     /** essai_debut : le prix de la prochaine échéance, lu à la source (null → aucun montant). */
     lirePrix?: (evenement: string) => Promise<{ montant: number; devise: string } | null>;
     journal?: string;
+    /**
+     * (12/11, lot « zéro problème », point 4a) La notification vient d'un ACHAT DE TEST (bac à sable Apple, testeur
+     * Google, mode test Stripe — notificationDeTest de ./environnement-store.js). Aucun mail CLIENT, rien réservé pour
+     * lui ; l'alerte à support@ part quand même, marquée « [TEST] ». Les droits ne dépendent pas de ce module.
+     */
+    test?: boolean;
   },
 ): Promise<Array<{ evenement: string; cle: string; resultat: string }>> {
   const prefixe = p.journal ?? "[cloud-mails]";
   if (!p.userId || !Array.isArray(p.evenements) || p.evenements.length === 0) return [];
+  if (p.test === true) {
+    // Le mail client n'est ni réservé ni envoyé ; l'alerte garde son registre (une seule par événement).
+    const retenus = p.evenements.map((e) => ({ evenement: e.evenement, cle: e.cle, resultat: "retenu_achat_de_test" }));
+    console.log(`${prefixe} mails Cloud RETENUS (achat de test) → user=${p.userId}`, JSON.stringify(retenus));
+    await alertesNico(admin, p, prefixe);
+    return retenus;
+  }
   // (08/11, jour J) Le prix lu à la source UNE fois par événement : le mail client et l'alerte à Nico disent le même.
   const prixLus = new Map<string, Promise<{ montant: number; devise: string } | null>>();
   const lirePrixUneFois = p.lirePrix
@@ -61,7 +74,7 @@ export async function mailsCloud(
 async function alertesNico(admin: any, p: Parameters<typeof mailsCloud>[1], prefixe: string): Promise<void> {
   try {
     const bilan = await envoyerAlertesCloud({
-      evenements: p.evenements, userId: p.userId as string, canal: p.canal ?? null,
+      evenements: p.evenements, userId: p.userId as string, canal: p.canal ?? null, test: p.test === true,
       deps: {
         lireProfil: async () => {
           const { data } = await admin.from("profiles").select("email, is_premium, is_pro, is_business, is_comped").eq("id", p.userId).maybeSingle();

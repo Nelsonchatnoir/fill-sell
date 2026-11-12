@@ -485,6 +485,16 @@ export default function BlocSynchro({
     // répondu » : il a commencé. On le dit tel quel, plateforme par plateforme.
     ...tuiles.filter((t) => t.e.phase === 'expire' && t.e.situation === 'arret' && !murDe.has(t.p))
       .map((t) => ({ cle: `arret-${t.p}`, platform: t.p, titre: T.titrePointArretFin(t.nom), texte: T.finArret(t.nom), bouton: synchroDe(t) })),
+    // (12/11, complément de Nico — cas b695d990) Demande d'un client au Cloud actif, expirée : la phrase du Cloud et SON
+    // geste — eBay à relier à FillSell (aucun bouton « réessayer » : ça ne servirait à rien), plateforme à connecter au
+    // Cloud, ou « Synchroniser » ; jamais « ton ordinateur ». eBay relu par l'API (« rien à faire ») : aucun point à régler.
+    ...tuiles.filter((t) => t.e.phase === 'expire' && ['cloud_relier_ebay', 'cloud_connecter', 'cloud_pas_pris'].includes(t.e.situation) && !murDe.has(t.p))
+      .map((t) => ({
+        cle: `cloud-${t.p}`, platform: t.p,
+        titre: t.e.situation === 'cloud_relier_ebay' ? TC.titreEbayARelier : t.e.situation === 'cloud_connecter' ? titreNonConnecteCloud(t) : TC.titreCloudPasPris,
+        texte: texteSituation(t.e.situation, t.nom, T),
+        ...(t.e.situation === 'cloud_connecter' ? { bouton: connecterCloud } : t.e.situation === 'cloud_pas_pris' ? { bouton: synchroDe(t) } : {}),
+      })),
     ...tuiles.filter((t) => t.e.phase === 'hors_compte')
       .map((t) => ({ cle: `hors-compte-${t.p}`, platform: t.p, titre: T.titrePointHorsCompte(t.nom), texte: T.signalHorsCompteEbay(t.e.horsCompte?.chrome ?? null, t.e.horsCompte?.relie ?? null), bouton: synchroDe(t) })),
     ...tuiles.filter((t) => t.e.phase === 'incomplet' && !murDe.has(t.p))

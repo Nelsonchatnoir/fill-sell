@@ -32,6 +32,7 @@ import {
 import { lecteurPrixCloud } from "../_shared/cloud-prix-source.ts";
 import { envoyerAlerteCloudTest } from "../_shared/cloud-mails-envoi.ts";
 import { passageSansConnexion } from "../_shared/cloud-alerte-connexion.js";
+import { environnementDeTest } from "../_shared/environnement-store.js";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -748,6 +749,7 @@ serve(async (req) => {
       ["Quantité enregistrée (coin_ledger)", a.pepites ?? "—"],
       ["Référence transaction", a.ref ?? "—"],
       ["Retour RPC", a.rpc == null ? "—" : JSON.stringify(a.rpc)],
+      ...(a.test === true ? [["Origine", "ACHAT DE TEST (bac à sable de la boutique) : aucun argent encaissé"]] as Array<[string, unknown]> : []),
     ];
     const esc = (v: unknown) =>
       String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -755,7 +757,7 @@ serve(async (req) => {
 <body style="margin:0;padding:24px;background:#F2F2EE;">
   <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;">
     <h1 style="margin:0 0 6px;font-size:18px;font-family:sans-serif;color:${ok ? "#111827" : "#B91C1C"};">
-      ${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON ENREGISTRÉ"}
+      ${a.test === true ? "[TEST] " : ""}${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON ENREGISTRÉ"}
     </h1>
     <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
       ${esc(new Date().toISOString())}${ok ? "" : " — le client a payé, rien n'est arrivé sur son compte. Enregistrer à la main (coin_ledger, retour RPC ci-dessous)."}
@@ -771,7 +773,9 @@ serve(async (req) => {
 </body></html>`;
     const r = await envoyer({
       to: TO_OPS,
-      subject: `${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON ENREGISTRÉ"} — ${esc(a.canal)} ${esc(a.produit ?? "")}`.trim(),
+      // (12/11, point 4a) Un achat de test d'une boutique (bac à sable Apple, testeur Google, mode test Stripe) garde son
+      // alerte, marquée « [TEST] » — jamais confondue avec un vrai encaissement.
+      subject: `${a.test === true ? "[TEST] " : ""}${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON ENREGISTRÉ"} — ${esc(a.canal)} ${esc(a.produit ?? "")}`.trim(),
       html,
       // Alerte interne : 'support' (jamais filtrée), type dédié, journal
       // simple. user_id reste null — le destinataire est notre propre boîte,
@@ -1642,6 +1646,9 @@ serve(async (req) => {
         const lu = await lirePrix(p.cloud_canal, p.cloud_ref);
         prixLus.push({ user_id: uid, canal: lu.canal, prix: lu.prix, renouvelle: lu.renouvelle, source: lu.source, raison: lu.raison, environnement: lu.environnement ?? null });
         if (lu.renouvelle === false) { compter(rien, "ne_renouvelle_pas_a_la_source"); continue; }
+        // (12/11, point 4a) Un essai né d'un ACHAT DE TEST (bac à sable Apple, testeur Google, mode test Stripe), lu à
+        // la source : aucun mail au client — le 07/11, le compte de test 5322fa18 avait reçu ce rappel.
+        if (environnementDeTest(lu.environnement)) { compter(rien, "achat_de_test"); continue; }
         if (dry) { envoyes.push(`${uid}:${d.raison}`); continue; }
         const lang = langue(p.lang);
         // (11/11, offres Cloud) La formule lue à la source (Stripe, Apple, Google), l'essai d'un abonné, les 7 jours offerts.

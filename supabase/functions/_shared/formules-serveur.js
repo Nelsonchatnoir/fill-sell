@@ -222,6 +222,16 @@ export function messageVoieFormule(r, lang = 'fr') {
   switch (r?.motif) {
     case 'abonnement_boutique':
     case 'cloud_boutique':
+      // (12/11, point 4c de Nico) La boutique qui facture n'a pas encore les formules (interrupteur du canal fermé — Apple
+      // tant qu'il les valide) : jamais « change de formule dans l'app sur ton iPhone », où rien n'existe.
+      if (r.ferme === true) {
+        if (r.canal === 'google') {
+          return en ? 'Your subscription goes through Google Play. Plans with Cloud are coming there soon. As soon as they are in the FillSell app on your Android phone, you can add the Cloud there, with no second subscription. Nothing has changed, nothing was charged.'
+            : "Ton abonnement passe par Google Play. Les formules avec Cloud y arrivent bientôt. Dès qu'elles seront dans l'app FillSell sur ton téléphone Android, tu pourras y ajouter le Cloud, sans second abonnement. Rien n'a changé, rien n'a été débité.";
+        }
+        return en ? 'Your subscription goes through the App Store. Plans with Cloud are coming there soon: Apple is reviewing them. As soon as they are in the FillSell app on your iPhone, you can add the Cloud there, with no second subscription. Nothing has changed, nothing was charged.'
+          : "Ton abonnement passe par l'App Store. Les formules avec Cloud y arrivent bientôt : Apple est en train de les valider. Dès qu'elles seront dans l'app FillSell sur ton iPhone, tu pourras y ajouter le Cloud, sans second abonnement. Rien n'a changé, rien n'a été débité.";
+      }
       return en ? `Your subscription is managed by ${r.canal === 'apple' ? 'the App Store' : 'Google Play'}: change plans in ${app}. Nothing was charged.`
         : `Ton abonnement est géré par ${r.canal === 'apple' ? "l'App Store" : 'Google Play'} : change de formule dans ${app}. Rien n'a été débité.`;
     case 'deux_abonnements':

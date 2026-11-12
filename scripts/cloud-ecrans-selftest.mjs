@@ -178,8 +178,9 @@ const toutes = (T) => Object.values(T).flatMap((v) => {
   verifier(FR.voieTexte.includes('FillSell publie tes annonces depuis ses serveurs') && FR.pageTexte.includes('FillSell publie tes annonces depuis ses serveurs'), 'la phrase imposée : « FillSell publie tes annonces depuis ses serveurs », partout');
   const frise = FR.frise('17 octobre').map((e) => ({ quand: net(e.quand), quoi: net(e.quoi) }));
   verifier(frise.length === 3 && /Carte demandée, rien n.est prélevé pour le Cloud/.test(frise[0].quoi) && frise[1].quand === '17 octobre' && /24,99 €\/mois/.test(frise[1].quoi)
-    && /Réglages › Abonnement/.test(frise[2].quoi) && /la veille, dans l.app et par e-mail/.test(frise[2].quoi),
-    'l’essai sans piège : carte demandée sans prélèvement, date de bascule, montant, sortie, rappel la veille (app + e-mail)', JSON.stringify(frise));
+    && /Réglages › Abonnement/.test(frise[2].quoi) && !/veille/.test(frise[2].quoi),
+    // (12/11, point 4b de Nico) la promesse « on te prévient la veille » est retirée des écrans (verrou promesse-veille-app).
+    'l’essai sans piège : carte demandée sans prélèvement, date de bascule, montant, sortie — sans promesse du rappel de la veille', JSON.stringify(frise));
   verifier(/^Carte demandée, rien n.est prélevé pour le Cloud avant le 17 octobre\.$/.test(net(FR.carteDemandee('17 octobre'))), 'la carte demandée, dite là où l’essai se propose');
   const ff = FR.freeCloudFrise('17 octobre', 5).map((e) => net(`${e.quand} — ${e.quoi}`));
   verifier(/^Aujourd.hui — 0 €/.test(ff[0]) && /Pendant l.essai — Tes 5 annonces du plan Free/.test(ff[1]) && /^17 octobre — 24,99 €\/mois, sauf si tu l.arrêtes/.test(ff[2]), 'la frise Free (décision Nico) : 0 € / tes N annonces du plan Free / 24,99 €/mois sauf arrêt', ff.join(' | '));
@@ -314,7 +315,7 @@ try {
   const iFree = inter({ mode: 'interrupteur', essai: true }, false, { freeCompris: true });
   verifier(/Il se prend seul, avec Free/.test(iFree) && /une fois ta formule prise/.test(iFree) && !/ci-dessous/.test(iFree), 'interrupteur avec voie Free : seul avec Free, ajouté APRÈS une formule');
   const i1 = inter({ mode: 'interrupteur', essai: true }, true);
-  verifier(/Aujourd.hui — Carte demandée, rien n.est prélevé pour le Cloud/.test(i1) && /17 octobre — Le Cloud passe à 24,99 €\/mois, sauf si tu l.arrêtes avant/.test(i1) && /D.ici là — Tu l.arrêtes en un geste dans Réglages › Abonnement\. On te prévient la veille, dans l.app et par e-mail/.test(i1), 'interrupteur coché : la frise sans piège', i1);
+  verifier(/Aujourd.hui — Carte demandée, rien n.est prélevé pour le Cloud/.test(i1) && /17 octobre — Le Cloud passe à 24,99 €\/mois, sauf si tu l.arrêtes avant/.test(i1) && /D.ici là — Tu l.arrêtes en un geste dans Réglages › Abonnement\./.test(i1) && !/prévient la veille/.test(i1), 'interrupteur coché : la frise sans piège (12/11, 4b : sans promesse du rappel de la veille)', i1);
   const i2 = inter({ mode: 'interrupteur', essai: false }, true);
   verifier(i2.includes('FillSell Cloud · sans ordinateur · +24,99 €/mois') && !/7 jours|Carte demandée/.test(i2) && /déjà servi/.test(i2), 'essai déjà pris : « +24,99 €/mois », sans essai ni carte « offerte », facturée dès aujourd’hui', i2);
   verifier(inter({ mode: 'deja_actif' }, false) === '' && inter(null, true) === '', 'l’interrupteur ne se rend que pour une option prenable');
@@ -431,7 +432,7 @@ try {
   const CB = await vite.ssrLoadModule('/src/cloud/CarteCloudOffres.jsx');
   const offre = (essai) => ({ mode: 'interrupteur', essai });
   const bFreeEssai = texte(h(CB.default, { offre: offre(true), onEssayer() {}, lang: 'fr' }));
-  verifier(/^FillSell Cloud Essai gratuit 7 jours Plus besoin d.ordinateur Publiées, republiées et retirées depuis nos serveurs, 24 h\/24\. Essayer 7 jours Puis 24,99 €\/mois · sans engagement On te prévient la veille\. Tu l.arrêtes en un geste\.$/.test(bFreeEssai.trim()),
+  verifier(/^FillSell Cloud Essai gratuit 7 jours Plus besoin d.ordinateur Publiées, republiées et retirées depuis nos serveurs, 24 h\/24\. Essayer 7 jours Puis 24,99 €\/mois · sans engagement Tu l.arrêtes en un geste\.$/.test(bFreeEssai.trim()),
     'carte B (Free, essai offert) : essai en gros, accroche, relais, bouton « Essayer 7 jours », puis le prix', bFreeEssai);
   const bFreeSans = texte(h(CB.default, { offre: offre(false), onEssayer() {}, lang: 'fr' }));
   verifier(!/Essai|7 jours|veille/.test(bFreeSans) && /Prendre FillSell Cloud 24,99 €\/mois · sans engagement Tu l.arrêtes en un geste\./.test(bFreeSans),

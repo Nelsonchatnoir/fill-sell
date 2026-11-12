@@ -6,6 +6,7 @@ import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue } f
 import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud } from "../_shared/cloud-option.js";
 import { evenementArretStripe, evenementDebutStripe, evenementPaiementStripe, montantStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud, type EvenementCloud } from "../_shared/cloud-mails-envoi.ts";
+import { notificationDeTest } from "../_shared/environnement-store.js";
 import { prixDepuisStripe } from "../_shared/cloud-prix.js";
 import { faitsEchec, decisionMailEchec, causeDuPaiement } from "../_shared/paiement-echoue.js";
 import { palierDeFacture } from "../_shared/paiement-stripe.js";
@@ -495,6 +496,20 @@ serve(async (req) => {
         );
   } catch (err) {
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+  }
+
+  // ── (12/11, lot « zéro problème », point 4a) UN ÉVÉNEMENT DU MODE TEST N'EST JAMAIS APPLIQUÉ EN PRODUCTION ──────────
+  // Aujourd'hui fermé par construction (un seul secret de signature : celui du mode réel), mais par aucune règle. Un
+  // client, un abonnement ou une session du mode test n'existe pas en production : rien à y appliquer, aucun mail
+  // client ; une alerte à support@ marquée « [TEST] » dit qu'un tel événement est arrivé ici. Règle :
+  // _shared/environnement-store.js (notificationDeTest, livemode).
+  if (notificationDeTest({ canal: "stripe", livemode: (event as { livemode?: boolean }).livemode })) {
+    console.warn(`[webhook] événement du MODE TEST ${event.id} (${event.type}) : rien appliqué, aucun mail client`);
+    await alerterPaiementNonCredite({
+      canal: "stripe", test: true, type: "abonnement", produit: event.type, ref: event.id, rpc: null,
+      erreur: "Événement Stripe du MODE TEST reçu par le webhook de production : rien appliqué (aucun droit, aucun mail client).",
+    });
+    return new Response(JSON.stringify({ received: true, ignore: "mode_test" }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
 
   const supabase = createClient(

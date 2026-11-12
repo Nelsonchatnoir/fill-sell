@@ -9,6 +9,7 @@ import { lectureCloudApple, ecritureCloudStore, PRODUIT_CLOUD_APPLE } from "../_
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 import { evenementsBoutique } from "../_shared/cloud-mails.js";
 import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
+import { notificationDeTest } from "../_shared/environnement-store.js";
 import { prixDepuisAppleRenouvellement } from "../_shared/cloud-prix.js";
 import { decisionApple, ligneJournal, finPeriodeAEcrire, isoOuNull, natureRemboursementApple } from "../_shared/notifications-stores.js";
 import { palierDuProfil } from "../_shared/palier.js";
@@ -182,8 +183,9 @@ async function rangAutresQueApple(profil: any): Promise<number> {
 }
 
 // deno-lint-ignore no-explicit-any
-async function planApple(p: { notificationType: string; sousType: string | null; effet: string | null; tx: Record<string, unknown>; renouv: Record<string, unknown> | null; profil: any; userId: string; orig: string | null; productId: string; natureRemb: string | null }): Promise<Response> {
+async function planApple(p: { notificationType: string; sousType: string | null; effet: string | null; tx: Record<string, unknown>; renouv: Record<string, unknown> | null; profil: any; userId: string; orig: string | null; productId: string; natureRemb: string | null; test: boolean }): Promise<Response> {
   const { notificationType, sousType, tx, renouv, profil, userId, orig, productId } = p;
+  const test = p.test === true;   // (12/11, point 4a) achat du bac à sable : aucun mail client, alertes « [TEST] »
   const f = formuleDuProduit(productId)!;
   const cloudLie = profil?.cloud_canal === "apple" && orig != null && profil?.cloud_ref === orig;
   const expires = typeof tx.expiresDate === "number" ? tx.expiresDate as number : null;
@@ -209,7 +211,7 @@ async function planApple(p: { notificationType: string; sousType: string | null;
         }
         // Le Cloud retiré (même palier, sans Cloud) : le mail « le Cloud s'arrêtera le … ».
         if (f.cloud && !vers.cloud && vers.rang === f.rang && orig) {
-          await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]",
+          await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]", test,
             evenements: [{ evenement: "arret_programme", cle: `${orig}:retrait:${finIso ?? "fin"}`, canal: "apple", faits: { finIso, formule: f.formule, retraitCloud: true } }] });
         }
         console.log(`[apple-iap-webhook] ${productId} → ${versProduit} prévu le ${finIso ?? "?"} → userId=${userId}`);
@@ -278,19 +280,19 @@ async function planApple(p: { notificationType: string; sousType: string | null;
       const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
         p_user_id: userId, p_tier: grantDeFormule(f.formule), p_period_end: finIso, p_source: "payment",
       });
-      if (grantErr) await alerterPaiementNonCredite({ canal: "apple", type: "abonnement", user_id: userId, produit: productId, montant, ref: orig, rpc: null, erreur: grantErr.message });
+      if (grantErr) await alerterPaiementNonCredite({ canal: "apple", test, type: "abonnement", user_id: userId, produit: productId, montant, ref: orig, rpc: null, erreur: grantErr.message });
       else if ((grantRes as { granted?: boolean })?.granted === true) {
-        await notifierPaiement({ canal: "apple", type: "abonnement", user_id: userId, produit: f.formule, montant, pepites: (grantRes as { amount?: number })?.amount ?? null, ref: orig, rpc: grantRes });
+        await notifierPaiement({ canal: "apple", test, type: "abonnement", user_id: userId, produit: f.formule, montant, pepites: (grantRes as { amount?: number })?.amount ?? null, ref: orig, rpc: grantRes });
       }
     }
-    await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]",
+    await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]", test,
       evenements: evenements as never, lirePrix: async () => prixDepuisAppleRenouvellement(renouv).prix });
     console.log(`[apple-iap-webhook] ${notificationType} ${productId} (${f.formule}) ${sens} → userId=${userId}`, JSON.stringify(update));
     return repondreApple({ ok: true, formule: f.formule, sens });
   }
   const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
   if (error) return repondreApple({ error: error.message }, 500);
-  await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]", evenements: evenements as never });
+  await mailsCloud(supabaseAdmin, { userId, email: profil?.email ?? null, lang: profil?.lang ?? null, canal: "apple", journal: "[apple-iap-webhook]", test, evenements: evenements as never });
   console.log(`[apple-iap-webhook] ${notificationType} ${productId} → userId=${userId}`, JSON.stringify(update));
   return repondreApple({ ok: true, formule: f.formule });
 }
@@ -340,6 +342,10 @@ serve(async (req) => {
     // _shared/notifications-stores.js).
     const notificationSubtype = typeof notification.subtype === "string" ? notification.subtype : null;
     const data = notification.data as Record<string, unknown> | undefined;
+    // (12/11, lot « zéro problème », point 4a) UN ACHAT DU BAC À SABLE N'ENVOIE JAMAIS DE MAIL À UN CLIENT : le compte de
+    // test 5322fa18 recevait chaque soir « paiement 24,99 € » d'un renouvellement TestFlight. Droits gardés (le relecteur
+    // d'Apple achète dans le bac à sable) ; alertes à support@ marquées « [TEST] ». Règle : _shared/environnement-store.js.
+    const enTest = notificationDeTest({ canal: "apple", environnement: data?.environment ?? null });
 
     const signedTransactionInfo = data?.signedTransactionInfo as string | undefined;
     const signedRenewalInfo     = data?.signedRenewalInfo     as string | undefined;
@@ -431,6 +437,7 @@ serve(async (req) => {
           }
           console.log(`[apple-iap-webhook] Cloud DID_CHANGE_RENEWAL_STATUS autoRenew=${autoRenewStatus} → userId=${renewalToken}`, JSON.stringify(update));
           await mailsCloud(supabaseAdmin, {
+            test: enTest,
             userId: renewalToken, email: (profilCloud?.email as string | null) ?? null, lang: (profilCloud?.lang as string | null) ?? null, canal: "apple",
             evenements: evenementsBoutique({ canal: "apple", nature: sensRenouv, avant: profilCloud ?? {}, update, lecture: lectureRenouv, ref: renewalOriginalTxId ?? null }),
             journal: "[apple-iap-webhook]",
@@ -453,6 +460,7 @@ serve(async (req) => {
           const { error: errF } = await supabaseAdmin.from("profiles").update(ecrireF).eq("id", renewalToken);
           if (errF) return new Response(JSON.stringify({ error: errF.message }), { status: 500, headers: { "Content-Type": "application/json" } });
           await mailsCloud(supabaseAdmin, {
+            test: enTest,
             userId: renewalToken, email: (profilF?.email as string | null) ?? null, lang: (profilF?.lang as string | null) ?? null, canal: "apple", journal: "[apple-iap-webhook]",
             evenements: evenementsBoutique({ canal: "apple", nature: sensF, avant: profilF ?? {}, update: majF, lecture: lectureF, ref: renewalOriginalTxId ?? null }),
           });
@@ -576,6 +584,7 @@ serve(async (req) => {
       // (11/11) Une formule avec Cloud aussi : de l'argent a pu être encaissé sans compte identifié.
       if (COIN_PRODUCTS[productId] != null || PREMIUM_PRODUCT_IDS.includes(productId) || formuleDuProduit(productId)) {
         await alerterPaiementNonCredite({
+          test: enTest,
           canal: "apple",
           type: COIN_PRODUCTS[productId] != null ? "pack" : "abonnement",
           produit: productId,
@@ -648,6 +657,7 @@ serve(async (req) => {
         : notificationType === "DID_FAIL_TO_RENEW" ? "impaye"
         : sens === "annulation" || sens === "reprise" ? sens : "fin";
       await mailsCloud(supabaseAdmin, {
+        test: enTest,
         userId: appAccountToken, email: (profilCloud?.email as string | null) ?? null, lang: (profilCloud?.lang as string | null) ?? null, canal: "apple",
         evenements: evenementsBoutique({ canal: "apple", nature, avant: profilCloud ?? {}, update, lecture: lectureCloud, ref: originalTransactionId ?? null }),
         lirePrix: async () => prixDepuisAppleRenouvellement(renouvCloud).prix,
@@ -676,7 +686,7 @@ serve(async (req) => {
         const interditPlan = (await profilCloudPourStore(supabaseAdmin, appAccountToken)).cloud_essai_interdit === true;
         return await planApple({
           notificationType, sousType: notificationSubtype, effet: decisionNotif.connu ? decisionNotif.effet : null, tx, renouv: renouvPlan,
-          profil: { ...(profilPlan ?? {}), cloud_essai_interdit: interditPlan }, userId: appAccountToken, orig: originalTransactionId ?? null, productId, natureRemb,
+          profil: { ...(profilPlan ?? {}), cloud_essai_interdit: interditPlan }, userId: appAccountToken, orig: originalTransactionId ?? null, productId, natureRemb, test: enTest,
         });
       }
     }
@@ -714,6 +724,7 @@ serve(async (req) => {
       if (!transactionId) {
         console.error("[apple-iap-webhook] ONE_TIME_CHARGE sans transactionId — tx=", JSON.stringify(tx));
         await alerterPaiementNonCredite({
+          test: enTest,
           canal: "apple", type: "pack", user_id: appAccountToken, produit: productId,
           montant, ref: null, rpc: null,
           erreur: "ONE_TIME_CHARGE sans transactionId : aucune référence idempotente possible.",
@@ -733,6 +744,7 @@ serve(async (req) => {
         // PAS une erreur RPC : rejeu client/webhook → réponse 200 idempotente.
         console.error("[apple-iap-webhook] credit_purchased_coins:", rpcErr.message, "— tx=", JSON.stringify(tx));
         await alerterPaiementNonCredite({
+          test: enTest,
           canal: "apple", type: "pack", user_id: appAccountToken, produit: productId,
           montant, ref: `apple:${transactionId}`, rpc: null, erreur: rpcErr.message,
         });
@@ -746,6 +758,7 @@ serve(async (req) => {
       // précisément un rejeu déjà idempotent (already_credited).
       if ((credit as { credited?: boolean })?.credited === true) {
         await notifierPaiement({
+          test: enTest,
           canal: "apple", type: "pack", user_id: appAccountToken, produit: productId,
           montant, pepites: COIN_PRODUCTS[productId], ref: `apple:${transactionId}`, rpc: credit,
         });
@@ -909,12 +922,14 @@ serve(async (req) => {
       if (grantErr) {
         console.error("[apple-iap-webhook] upgrade_monthly_grant:", grantErr.message);
         await alerterPaiementNonCredite({
+          test: enTest,
           canal: "apple", type: "abonnement", user_id: appAccountToken, produit: productId,
           montant: montantAbo, ref: originalTransactionId ?? null, rpc: null, erreur: grantErr.message,
         });
       } else if ((grantRes as { granted?: boolean })?.granted === true) {
         // granted=false = déjà crédité pour ce cycle (rejeu Apple) → pas de mail.
         await notifierPaiement({
+          test: enTest,
           canal: "apple", type: "abonnement", user_id: appAccountToken, produit: productId,
           montant: montantAbo,
           pepites: (grantRes as { amount?: number })?.amount ?? null,

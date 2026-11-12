@@ -47,7 +47,7 @@ import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
-import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste } from "../_shared/cloud-voie.js";
+import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste, demandeExecutablePar } from "../_shared/cloud-voie.js";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
@@ -2277,6 +2277,10 @@ serve(async (req) => {
             vues.add(cleNature);
             if (ecartees.has(kind === "dressing" ? "vinted" : String(pf ?? ""))) continue;
             if (kind === "dressing" && compteEnPauseAr) continue; // (25/09) pause anti-robot : pas de relevé Vinted
+            // (12/11, complément de Nico — cas b695d990) On ne redemande que ce que CE poste sait exécuter : le poll du
+            // poste Cloud redemandait un relevé eBay (la copie Cloud n'a pas eBay) → seconde expiration ; l'ordinateur d'un
+            // compte au Cloud actif ne redemande pas une demande laissée au Cloud.
+            if (!demandeExecutablePar({ kind, platform: pf }, { cloudVoie, posteCloud })) continue;
             // Un run PLUS RÉCENT de même nature a déjà répondu (ou est en cours).
             let plusRecent = admin.from("vinted_sync_runs").select("id").eq("user_id", user.id).eq("kind", kind)
               .neq("id", r.id as string).gt("started_at", String(r.queued_at)).limit(1);

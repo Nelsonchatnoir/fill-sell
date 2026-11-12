@@ -184,7 +184,7 @@ export default function SousPageAbonnement({ c, T }) {
 
       {/* (09/11, C4) « Voir les autres formules » et descendre à la fin de la période — FERMÉ tant que
           coin_config.descente_formule_ouverte ≠ 1 : rien n'est rendu, aucune requête ne part. */}
-      <BlocChangerFormule c={c} clientStripe={clientStripe} />
+      <BlocChangerFormule c={c} clientStripe={clientStripe} enEssai={lectureCloud?.cloud?.etat === 'essai'} />
 
       {/* ── Option « Sans ordinateur » (04/10, conception) ─────────────
           Juste sous la formule : l'option s'y ajoute, ou se prend seule en

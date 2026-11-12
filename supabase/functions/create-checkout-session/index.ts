@@ -342,8 +342,12 @@ async function acheterFormuleCloud(p: { formule: string; user: { id: string; ema
   };
   if (boutique || cloudBoutique) {
     // (attendu par l'app) « abonnement_autre_canal » + canal : il change de formule dans l'app iPhone / Android.
-    const r = voieFormuleStripe({ formule, boutique, cloudBoutique });
-    console.log(`[checkout] ${user.id} : ${formule} refusée (${r.motif}, ${r.canal ?? "?"}) — rien créé chez Stripe`);
+    const r0 = voieFormuleStripe({ formule, boutique, cloudBoutique });
+    // (12/11, point 4c de Nico) Le canal qui facture a-t-il les formules ? Fermé (Apple tant qu'il valide) : le message dit
+    // « bientôt », jamais « change de formule dans l'app sur ton iPhone » où rien n'existe.
+    const canalR = r0.canal === "apple" || r0.canal === "google" ? r0.canal : null;
+    const r = canalR ? { ...r0, ferme: !(await interrupteurFormules(supabase, canalR, profil)) } : r0;
+    console.log(`[checkout] ${user.id} : ${formule} refusée (${r.motif}, ${r.canal ?? "?"}${"ferme" in r && r.ferme ? ", formules fermées sur ce canal" : ""}) — rien créé chez Stripe`);
     return rep({ error: "abonnement_autre_canal", motif: r.motif, canal: r.canal ?? null, formule,
       message_fr: messageVoieFormule(r, "fr"), message_en: messageVoieFormule(r, "en") }, 409);
   }

@@ -70,6 +70,9 @@ const FR = {
   murCloud: (nom) => `${nom} n'est pas connecté à FillSell Cloud.`,
   titreCloudPasPris: "FillSell Cloud n'a pas pris la demande",
   texteCloudPasPris: (noms) => `La synchronisation ${noms ? `(${noms}) ` : ''}n'est pas partie : réessaie un peu plus tard.`,
+  // (12/11, complément de Nico — cas b695d990) eBay d'un client Cloud se relit par l'API : il faut l'avoir relié.
+  syncEbayARelier: "eBay : avec FillSell Cloud, il se relit depuis nos serveurs par sa connexion directe. Relie ton compte eBay à FillSell une seule fois (Réglages › Mes plateformes › eBay), puis appuie sur « Synchroniser ».",
+  titreEbayARelier: 'eBay : à relier à FillSell',
 };
 const EN = {
   carteTitre: 'Connect your accounts to start FillSell Cloud',
@@ -85,13 +88,16 @@ const EN = {
   murCloud: (nom) => `${nom} isn't connected to FillSell Cloud.`,
   titreCloudPasPris: "FillSell Cloud didn't pick up the request",
   texteCloudPasPris: (noms) => `The sync ${noms ? `(${noms}) ` : ''}didn't start: try again a little later.`,
+  syncEbayARelier: 'eBay: with FillSell Cloud, it is read from our servers through its direct connection. Link your eBay account to FillSell once (Settings › My platforms › eBay), then tap “Sync”.',
+  titreEbayARelier: 'eBay: link it to FillSell',
 };
 export const textesConnexionsCloud = (lang = 'fr') => (lang === 'en' ? EN : FR);
 
 // ── L'ÉTAT PARTAGÉ (publié par l'app, lu au geste par le Stock) ─────────────────────────────────────────────────────
 // Une seule lecture (useConnexionsCloud, dans App.jsx) ; les écrans du Stock (Synchroniser, lignes d'avancement) lisent
 // le dernier état publié, sans requête de plus. L'app enregistre aussi l'ouvreur de l'écran de connexion.
-const VIDE_PARTAGE = Object.freeze({ clientCloud: false, lu: false, etats: null, isoles: [], avancement: null });
+// ebayApi : profiles.ebay_voie_api LU (true / false), null tant qu'il ne l'est pas (12/11).
+const VIDE_PARTAGE = Object.freeze({ clientCloud: false, lu: false, etats: null, isoles: [], avancement: null, ebayApi: null });
 let partage = VIDE_PARTAGE;
 let ouvreur = null;
 const abonnes = new Set();
@@ -129,6 +135,10 @@ export function refusSyncCloud(e, pf = null, lang = 'fr') {
     const a = e.avancement;
     return a && a.total > 0 && a.aucune ? { texte: T.syncPasConnecte, plateforme: null } : null;
   }
+  // (12/11, complément de Nico — cas b695d990) eBay d'un client Cloud : la copie Cloud de l'extension n'a pas eBay, il
+  // passe par l'API — non relié à FillSell, la demande attendait un ORDINATEUR et expirait en lui parlant de Chrome.
+  // Rien ne part ; le geste est de relier eBay (drapeau LU seulement : jamais sur un « pas encore lu »).
+  if (pf === 'ebay') return e.ebayApi === false ? { texte: T.syncEbayARelier, plateforme: 'ebay', geste: 'relier_ebay' } : null;
   const c = connexionCloudDe(e, pf);
   if (c === 'a_connecter') return { texte: T.syncPfPasConnecte(NOM_CLOUD[pf] ?? pf), plateforme: pf };
   if (c === 'a_reconnecter') return { texte: T.syncPfAReconnecter(NOM_CLOUD[pf] ?? pf), plateforme: pf };
@@ -140,7 +150,10 @@ export function gardeSyncCloud(pf = null, lang = 'fr') {
   let r = null;
   try { r = refusSyncCloud(partage, pf, lang); } catch { return null; }
   if (!r) return null;
-  try { ouvreur?.('synchroniser'); } catch { /* l'écran ne s'ouvre pas : le texte le dit quand même */ }
+  // eBay à relier : l'écran de connexion du Cloud ne relie pas eBay (le texte dit où) — il ne s'ouvre pas.
+  if (r.geste !== 'relier_ebay') {
+    try { ouvreur?.('synchroniser'); } catch { /* l'écran ne s'ouvre pas : le texte le dit quand même */ }
+  }
   return r.texte;
 }
 

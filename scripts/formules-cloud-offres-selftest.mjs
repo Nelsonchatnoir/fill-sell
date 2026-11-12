@@ -215,7 +215,8 @@ try {
     [F.sansCloud, 'Sans Cloud'], [F.avecCloud, 'Avec Cloud'], [F.notreConseil, 'Notre conseil'], [F.pastilleEssai, '7 jours gratuits'],
     [F.supplement('22 €'), 'Le Cloud pour 22 € de plus'], [F.ctaEssai, 'Essayer 7 jours gratuits'], [F.ctaPasser('Business + Cloud'), 'Passer à Business + Cloud'],
     [F.ctaPasser('Pro + Cloud'), 'Passer à Pro + Cloud'],
-    [F.lignePrixEssai('49,99 €', '0 €'), "Puis 49,99 €/mois, sans engagement. Carte demandée, 0 € aujourd'hui. On te prévient la veille."],
+    // (12/11, point 4b de Nico) « On te prévient la veille. » retiré (comme du site et du mail) — verrou promesse-veille-app.
+    [F.lignePrixEssai('49,99 €', '0 €'), "Puis 49,99 €/mois, sans engagement. Carte demandée, 0 € aujourd'hui."],
     [F.lignePrix('79,99 €'), '79,99 €/mois, sans engagement.'],
     [F.ligneCommune, 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, sans ordinateur.'],
     [F.taFormuleAvec('Pro', '49,99 €'), 'Ta formule : Pro. Avec Cloud : 49,99 €/mois.'],
@@ -253,7 +254,7 @@ try {
     [E.presCta, 'Voir les formules avec Cloud'], [E.presOrdinateur, "Finalement, j'ai un ordinateur"],
     [net(E.formKicker('Pro + Cloud')), 'Pro + Cloud · 7 jours gratuits'], [net(E.formCta), 'Commencer mes 7 jours gratuits'],
     [E.formFrise('Lundi 17 novembre', 'Mardi 18 novembre', 'Pro + Cloud', '49,99 €', '0 €').map((x) => `${x.quand} : ${x.quoi}`).join(' / '),
-      "Aujourd'hui : Carte demandée, 0 € prélevé. / Lundi 17 novembre : On te prévient dans l'app et par e-mail, et tu choisis ta formule. / Mardi 18 novembre : Sans choix de ta part, Pro + Cloud continue à 49,99 €/mois. Sans engagement."],
+      "Aujourd'hui : Carte demandée, 0 € prélevé. / Lundi 17 novembre : Ton essai se termine demain : tu choisis ta formule. / Mardi 18 novembre : Sans choix de ta part, Pro + Cloud continue à 49,99 €/mois. Sans engagement."],
   ];
   const fautesEntree = entree.filter(([a, b]) => a !== b);
   ok(fautesEntree.length === 0, `${entree.length} textes du parcours (avec les 3 corrections de Nico), à l’octet`, fautesEntree.map(([a, b]) => `${a} ≠ ${b}`).join(' | '));
@@ -280,7 +281,7 @@ try {
     appels.length = 0;
     const loc = { href: 'avant' };
     globalThis.window = { location: loc };
-    globalThis.fetch = async (url, init) => { appels.push({ url, corps: JSON.parse(init.body) }); return { json: async () => reponse }; };
+    globalThis.fetch = async (url, init) => { appels.push({ url, corps: JSON.parse(init.body) }); return { ok: true, json: async () => reponse }; };
     const supa = {
       auth: { getSession: async () => ({ data: { session: { access_token: 'jeton' } } }), refreshSession: async () => ({ data: { session: null } }) },
       rpc: async (nom) => { appels.push({ rpc: nom }); return { data: preparation, error: null }; },
@@ -303,8 +304,11 @@ try {
   ok(x.r.etat === 'redirige' && x.confirmations.length === 0, '⛔ Business + Cloud : aucune confirmation d’essai (il n’y en a pas), payé dès la souscription');
   x = await essaiAchat({ formule: 'pro_cloud', essaiAffiche: true, preparation: { ok: true, essai: true }, reponse: { url: 'https://checkout.stripe.com/s' } });
   ok(x.r.etat === 'refuse' && x.loc.href === 'avant', '⛔ serveur qui ne connaît pas les formules : AUCUNE redirection', JSON.stringify(x.r));
-  x = await essaiAchat({ formule: 'premium_cloud', descente: true, preparation: { ok: false }, reponse: { change: true, formule: 'premium_cloud' } });
-  ok(x.r.etat === 'change' && !x.appels.some((y) => y.rpc), 'fin d’essai, passer à Premium + Cloud : ni conditions ni préparation, le serveur change le prix');
+  // (12/11, point 4d de Nico) La descente du web passe par changer-formule (« programmer »), jamais create-checkout-session
+  // (qui la refusait : « descente_par_changer_formule ») ; pendant l'essai, le serveur change la formule tout de suite.
+  x = await essaiAchat({ formule: 'premium_cloud', descente: true, preparation: { ok: false }, reponse: { change_pendant_essai: true, actuelle: 'premium_cloud' } });
+  ok(x.r.etat === 'change' && !x.appels.some((y) => y.rpc) && x.appels.some((y) => String(y.url).endsWith('/functions/v1/changer-formule')) && !x.appels.some((y) => String(y.url).includes('create-checkout-session')),
+    'fin d’essai, passer à Premium + Cloud : ni conditions ni préparation, changer-formule change la formule', JSON.stringify(x.appels));
   delete globalThis.window; delete globalThis.fetch;
 
   // ── J. Les écrans rendus ─────────────────────────────────────────────────────────────────────────────────────────
@@ -335,7 +339,7 @@ try {
   const tB = texte(carteB);
   ok(carteB && !/data-formule-pastille/.test(carteB) && !/Essayer|jours gratuits|0 € aujourd'hui|essai/i.test(tB) && tB.includes('Passer à Business + Cloud') && tB.includes('79,99 €/mois, sans engagement.') && tB.includes('payé dès la souscription'), '⛔ carte Business + Cloud RENDUE : « Passer à Business + Cloud », « 79,99 €/mois, sans engagement. », aucun texte d’essai', tB);
   const carteP = texte(html.match(/<section data-formule-cloud="pro_cloud"[\s\S]*?<\/section>/)?.[0] ?? '');
-  ok(carteP.includes('7 jours gratuits') && carteP.includes('Essayer 7 jours gratuits') && carteP.includes("Puis 49,99 €/mois, sans engagement. Carte demandée, 0 € aujourd'hui. On te prévient la veille."), 'carte Pro + Cloud rendue, essai permis : pastille, « Essayer 7 jours gratuits », la ligne de prix validée', carteP);
+  ok(carteP.includes('7 jours gratuits') && carteP.includes('Essayer 7 jours gratuits') && carteP.includes("Puis 49,99 €/mois, sans engagement. Carte demandée, 0 € aujourd'hui.") && !carteP.includes('prévient la veille'), 'carte Pro + Cloud rendue, essai permis : pastille, « Essayer 7 jours gratuits », la ligne de prix validée', carteP);
   const html0 = renderToStaticMarkup(h(OAC.default, { modele: FC.cartesFormulesCloud({ palier: 'gratuit', essaiPermis: false }), lang: 'fr', onChoisir() {} }));
   ok(!/data-formule-pastille|Essayer/.test(html0) && texte(html0).includes('Passer à Pro + Cloud'), 'essai non permis : « Passer à Pro + Cloud », aucune pastille');
   // La fin d'essai (rappel avant débit).

@@ -114,6 +114,7 @@ import { BEEBS_ATTENTE_MAX_MS, POSE_PAR_SANS_NUMERO, jugerDepotBeebsSansNumero, 
 import { jugerDepotLbcJamaisEnLigne, patchDepotLbcJamaisEnLigne, estRemiseEnVente, POSE_PAR_JAMAIS_EN_LIGNE_LBC } from "../_shared/depot-lbc-jamais-en-ligne.js";
 import { FENETRE_DEPOT_RETROUVE_MS, MOTIF_QUESTION_DEPOT_RETROUVE, POSE_PAR_DEPOT_RETROUVE, estDepotAJuger as estDepotRetrouveAJuger, numeroLuAuDepot, jugerDepotRetrouve, patchDepotEnQuestion, patchDepotVendu, patchRecollage, patchJumeauClos, preuvesQuestion } from "../_shared/depot-retrouve-releve.js";
 import { attentePoseeParLeServeur } from "../_shared/attente-session.js";
+import { texteDemandeExpireeCloud } from "../_shared/cloud-voie.js";
 import { cheminVintedPourArbre } from "../_shared/vinted-arbre-compte.js";
 import {
   SOURCE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE, attendVendeurEbay, attentesVendeurEbay, dernierMurVendeurEbay,
@@ -1293,34 +1294,52 @@ serve(async (req) => {
     // (25/09) Relevés et dressings : get-pending-jobs les REDEMANDE au premier
     // poll de l'extension (une fois) — le texte le dit. Les demandes
     // « connexion » (ouvrir un onglet) ne se rejouent pas des heures après.
-    const { data: majReleves } = await supabase
+    // (12/11/2026, complément de Nico — cas b695d990) UN CLIENT AU CLOUD ACTIF (cloud_voie) NE LIT JAMAIS « TON
+    // ORDINATEUR » : ses demandes sont lues d'abord (bornées), et son texte vient de texteDemandeExpireeCloud (eBay à
+    // relier à FillSell, plateforme à connecter au Cloud, ou « Synchroniser » la relance). Les autres comptes : le texte
+    // d'avant, mot pour mot. Une écriture par texte, toujours sur une ligne encore « queued » (compare-and-swap).
+    const TEXTE_ORDI_RELEVE = `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'avait pas Chrome ouvert avec ` +
+      "l'extension FillSell. Elle repartira toute seule dès que Chrome se rouvrira avec l'extension : rien à faire.";
+    const TEXTE_ORDI_AUTRE = `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'avait pas Chrome ouvert avec ` +
+      "l'extension FillSell. Refais la demande depuis l'app quand il est allumé.";
+    const { data: aExpirer } = await supabase
       .from("vinted_sync_runs")
-      .update({
-        status: "expired",
-        finished_at: new Date(now).toISOString(),
-        updated_at: new Date(now).toISOString(),
-        erreur:
-          `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'avait pas Chrome ouvert avec ` +
-          "l'extension FillSell. Elle repartira toute seule dès que Chrome se rouvrira avec l'extension : rien à faire.",
-      })
-      .eq("status", "queued")
-      .in("kind", ["annonces", "dressing"])
-      .lt("queued_at", ttlIso)
-      .select("id");
-    const { data: maj } = await supabase
-      .from("vinted_sync_runs")
-      .update({
-        status: "expired",
-        finished_at: new Date(now).toISOString(),
-        updated_at: new Date(now).toISOString(),
-        erreur:
-          `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'avait pas Chrome ouvert avec ` +
-          "l'extension FillSell. Refais la demande depuis l'app quand il est allumé.",
-      })
+      .select("id, user_id, kind, platform")
       .eq("status", "queued")
       .lt("queued_at", ttlIso)
-      .select("id");
-    syncQueuesExpirees = (maj?.length ?? 0) + (majReleves?.length ?? 0);
+      .limit(500);
+    const lignesAExpirer = (aExpirer ?? []) as Array<{ id: string; user_id: string; kind: string | null; platform: string | null }>;
+    const comptesCloud = new Map<string, { ebayRelie: boolean; coffre: Map<string, boolean> }>();
+    const comptes = [...new Set(lignesAExpirer.map((l) => l.user_id))];
+    for (let i = 0; i < comptes.length; i += 100) {
+      const { data: profsCloud } = await supabase.from("profiles").select("id, ebay_voie_api").in("id", comptes.slice(i, i + 100)).eq("cloud_voie", true);
+      for (const p of (profsCloud ?? []) as Array<{ id: string; ebay_voie_api?: boolean | null }>) comptesCloud.set(p.id, { ebayRelie: p.ebay_voie_api === true, coffre: new Map() });
+    }
+    if (comptesCloud.size) {
+      const { data: coffre } = await supabase.from("cloud_coffre").select("user_id, plateforme, connecte").in("user_id", [...comptesCloud.keys()]);
+      for (const c of (coffre ?? []) as Array<{ user_id: string; plateforme: string; connecte: boolean | null }>) comptesCloud.get(c.user_id)?.coffre.set(c.plateforme, c.connecte === true);
+    }
+    const parTexte = new Map<string, string[]>();
+    for (const l of lignesAExpirer) {
+      const c = comptesCloud.get(l.user_id);
+      const pf = l.kind === "dressing" ? "vinted" : String(l.platform ?? "");
+      const texte = c
+        ? texteDemandeExpireeCloud({ kind: l.kind, platform: l.platform, ebayRelie: c.ebayRelie, connecteCloud: c.coffre.get(pf) === true })
+        : (l.kind === "annonces" || l.kind === "dressing" ? TEXTE_ORDI_RELEVE : TEXTE_ORDI_AUTRE);
+      parTexte.set(texte, [...(parTexte.get(texte) ?? []), l.id]);
+    }
+    let expireesIci = 0;
+    for (const [texte, ids] of parTexte) {
+      const { data: maj } = await supabase
+        .from("vinted_sync_runs")
+        .update({ status: "expired", finished_at: new Date(now).toISOString(), updated_at: new Date(now).toISOString(), erreur: texte })
+        .in("id", ids)
+        .eq("status", "queued")
+        .select("id");
+      expireesIci += maj?.length ?? 0;
+    }
+    if (comptesCloud.size) console.log(`[handler-watch] demandes expirées de ${comptesCloud.size} client(s) au Cloud actif : texte du Cloud (jamais l'ordinateur)`);
+    syncQueuesExpirees = expireesIci;
     if (syncQueuesExpirees) {
       console.log(`[handler-watch] ${syncQueuesExpirees} demande(s) de sync jamais réclamée(s) en ${SYNC_QUEUE_TTL_H} h → expirée(s)`);
     }
