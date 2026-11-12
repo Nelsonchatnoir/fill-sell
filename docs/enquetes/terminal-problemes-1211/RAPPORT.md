@@ -185,3 +185,30 @@ préfixe `SUPABASE_` est réservé). Jeton de gestion : « renouvellement-secret
 bout à 19:32:06 (déclenché comme le cron, `renouveler: true`) : sonde Apple acceptée, secret posé (empreinte changée,
 identifiants clients intacts), échéance 11/05/2027 20:32 ; l'essai raté de 19:31 (403) a envoyé l'alerte « renouvellement
 RATÉ » à support — le chemin d'alerte est prouvé.
+
+## 9. Ouverture du Cloud ce soir (web + Android) — FAIT (décisions de Nico)
+- Étape 1 (point 7) : OTA 2.9.175 + web 253a740 en service. Étape 2 : 2.9.167 / vc37 « Disponible sur Google Play »
+  (sortie le 09/11 20:15). Étape 3 (GO de Nico) : ACTIVÉS sur Google Play — `premium-cloud-monthly` (34,99 €) + offre
+  `premium-cloud-trial-7d`, `pro-cloud-monthly` (49,99 €) + `pro-cloud-trial-7d`, `business-cloud-monthly` (79,99 €, sans
+  offre) ; éligibilité de l'essai GARDÉE par Nico : « n'a jamais eu d'abonnement dans cette appli » ; aucun prix ni
+  abonnement existant touché. Étape 4 (achat d'essai réel) : impossible ici (se connecter à des comptes Google et FillSell
+  exige des mots de passe) ; Nico a ouvert quand même, sous surveillance, puis a arrêté la surveillance (« on valide tel
+  quel ») — aucun achat de formule vu pendant qu'elle tournait.
+- **Interrupteurs** : `cloud_formules_stripe` = 1 le 12/11 à 18:13:11 ; `cloud_formules_google` = 1 à 18:19:02 ;
+  `cloud_formules_apple` ABSENT (fermé, accord d'Apple attendu). Vérifié : témoin web (session de Nico, lecture seule) ;
+  compte ordinaire par le vrai code (app + serveur) et les valeurs lues sans session : web et Android vendables, iPhone
+  non. Terminal marketing prévenu à chaque ouverture.
+
+## Bilan final (12/11 vers 21:00) — point par point
+| Point | Classement | État | Commits |
+|---|---|---|---|
+| 1. lots « qui ne partent jamais » (229c7b07) | NORMAL (créneau du soir) | rien à corriger | — |
+| 2. vente qui n'arrête pas la republication (6e3d92b3) | ROUGE | EN SERVICE (migration 20261112140000, update-job-status v192, ebay-api-worker v124, handler-watch v192) | 21fa849, 5e88909 |
+| 3. retrait Beebs f4367beb (c7c382b7) | NORMAL (borné à 7 jours) | à relire le 14/11 au soir | — |
+| 4. publications programmées : dire quand ça part | ROUGE | EN SERVICE (OTA 2.9.174, web) | 1746fae, cfef7d7 |
+| 5. empreintes-urls (rafales) | cause dans les appelants | EN SERVICE (migration 20261112160000, rapprochement v39) ; 1 h après : rapprochement plus rapide, échecs 22,7 % → 20,4 % ; Nico arrête là | 2223f0b |
+| 6. Leboncoin « Animaux › Animaux » (cfdfda6f) | ROUGE | EN SERVICE (get-pending-jobs v362, handler-watch v193) | 1746fae |
+| 7. achats Google Play (8 comptes, 18 échecs) | ROUGE | OTA 2.9.175 EN SERVICE ; binaire 2.9.176 / vc38 EN EXAMEN chez Google | 253a740, a520698, 71f97fc |
+| 8. rédaction coupée à 150 s | ROUGE | EN SERVICE (generate-listing v140) | 6ede137 |
+| 9. ouverture du Cloud | — | web + Android OUVERTS, iPhone fermé | 7709f6e |
+| 10. « Se connecter avec Apple » du web | ROUGE | RÉPARÉ (18:33) + renouvellement automatique EN SERVICE | f71279a, 881c2b9 |
