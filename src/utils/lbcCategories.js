@@ -96,7 +96,15 @@ const LBC_CATEGORIES = {
   "🛞": ["Véhicules", "Équipement auto"], "🪖": ["Véhicules", "Équipement moto"],
   // Véhicules immatriculés complets : hors périmètre v1 (le dépôt LBC exige
   // plaque/carte grise, flux spécifique) — fallback explicite volontaire.
-  "🚗": null, "🏍️": null, "🛵": null,
+  // ── (12/11, Nico, point 1d-iii) 🚗 → « Véhicules › Équipement auto » ──
+  // 🚗 n'est pas la voiture vendue : c'est l'icône des pièces et accessoires
+  // (« autoradio », « pare-choc », « rétroviseur », shared.js) et le défaut du
+  // type « Auto-Moto ». Sans rayon, chaque autoradio partait en descente d'arbre
+  // (« Électronique › Photo, audio & vidéo », Produit et État exigés) : mesuré
+  // le 12/11, 26 autoradios rangés À LA MAIN en « Équipement auto » en 14 j
+  // (compte cfdfda6f), rayon sans aucun champ requis. 🏍️ et 🛵 (le véhicule
+  // lui-même) restent hors périmètre.
+  "🚗": ["Véhicules", "Équipement auto"], "🏍️": null, "🛵": null,
   // Beauté (re-relevé LIVE 2026-07-19, wizard de dépôt) : toujours AUCUN rayon
   // beauté dans les 13 racines — mais un sérum/parfum se vend bel et bien sur
   // LBC (221 annonces « sérum visage », rangées au petit bonheur : Collection,

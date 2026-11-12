@@ -42,6 +42,10 @@
   handler-watch v89 relance UNE fois (geste « Relancer », marqueur
   `relance_apres_maj`) quand `profiles.extension_build` atteint ce build. Toute
   nouvelle extension qui corrige un arrêt « relancer » y ajoute son entrée.
+  ⛔ (12/11, point 1c) Jamais quand l'arrêt a été écrit par un build qui avait DÉJÀ le correctif (`handler_build` du
+  job ≥ `buildMin` : `arretApresLeCorrectif`) — compte 2bde8576, 479f51c0 relancée « corrigé par la 0.6.150 » sur un
+  arrêt d'une 0.6.186. Build illisible, ou arrêt posé par le serveur (`tache_sans_demarrage`, `build_min_requis`) : la
+  règle d'avant.
 
 <!-- ex-CLAUDE.md L364-365 : 04/10 — boucles (onglet muet, canal coupé) -->
 - **Boucles (04/10)** : 3ᵉ onglet muet / 4ᵉ canal coupé de suite →

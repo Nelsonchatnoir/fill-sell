@@ -8424,6 +8424,30 @@ function candidatsTailleVinted(libelle) {
   if (eu) push(eu[1]);
   return out;
 }
+
+// ── UN IDENTIFIANT DE TAILLE RETIRÉ PAR VINTED : SON ÉQUIVALENT CERTAIN DANS LE RAYON (12/11, point 1c de Nico) ──
+// Vinted remplace des grilles entières (fin octobre : la grille 31 des chaussures enfant — 657 « 15 et moins »,
+// 585…609 « 16 »…« 40 » — par des onglets EU / UK / US : 2190 « EU 15 », 2192 « EU 16 »…). Un id capturé qui n'est
+// plus dans aucun onglet du rayon se traduit vers l'option du rayon qui porte LA MÊME POINTURE EU, et seulement elle :
+//   · le libellé de l'id (lu par la capture dans le référentiel de Vinted) est un nombre nu ou « EU N » — la grille
+//     nue de Vinted est l'EU (règle du 23/09 : « N » ≡ « EU N ») ; demi-pointure « ,5 » ou « .5 » comprise ;
+//   · l'option visée s'écrit « EU N » ou « N » (grille sans onglet) ; UNE seule (deux ids → rien) ;
+//   · jamais un autre système (UK, US, FR…) ni un libellé qui couvre plusieurs tailles (« 15 et moins ») : null, la
+//     cascade par libellé puis la question (update-job-status, liste fermée) prennent le relais.
+// Ni un mot ni une langue : des chiffres et le code « EU ». `options` = [{ id, groupe, onglet, libelle }].
+function tailleEquivalenteRetiree(titre, options) {
+  const t = String(titre ?? "").replace(/\s+/g, " ").trim();
+  const m = t.match(/^(?:EU ?)?(\d{1,3}(?:[.,]5)?)$/);
+  if (!m) return null;
+  const formes = new Set([m[1].replace(".", ","), m[1].replace(",", ".")]);
+  const trouvees = (Array.isArray(options) ? options : []).filter((o) => {
+    const l = String(o?.libelle ?? "").replace(/\s+/g, " ").trim();
+    const e = l.match(/^EU (\d{1,3}(?:[.,]5)?)$/);
+    return formes.has(e ? e[1] : l);
+  });
+  const ids = [...new Set(trouvees.map((o) => Number(o?.id)).filter(Number.isFinite))];
+  return ids.length === 1 ? trouvees.find((o) => Number(o.id) === ids[0]) : null;
+}
 // Ce que le dernier échec de taille a VU (candidats, onglets, options) — lu par
 // le verdict de fillListingForm et écrit dans last_diagnostic. Avant : vide,
 // on cherchait à l'aveugle.
@@ -8460,7 +8484,7 @@ function verdictTailleHorsGrille(fields, optionsTaille, { onePass = null, recrea
     ...(choix.length ? {
       needsUserField: {
         platform: "vinted", field_key: "size", field_label: "Taille", input_type: "grid",
-        allowed_values: choix.slice(0, 120),
+        allowed_values: choix.slice(0, 200), // (12/11) 200 : trois onglets de chaussures enfant (EU, UK, US) tiennent entiers
         target: onePass || recreation ? { root: "republish_user_fields", key: "taille" } : { key: "taille" },
       },
     } : {}),
@@ -8485,14 +8509,66 @@ async function selectTailleVinted(fields, warnings) {
     // (`ids` est déjà passé par Number.isFinite : rien d'injectable ici.)
     const trouverParId = () =>
       ids.map((id) => document.querySelector(`${TAILLE_OPTIONS_SEL}[data-testid$="-grid-option-${id}"]`)).find(Boolean) || null;
+    // ── (12/11, point 1c) LE GROUPE DE TAILLES DU RAYON, PAR SES IDENTIFIANTS ──
+    // Chaque onglet visité rend ses options avec leur identifiant de taille et
+    // leur groupe (data-testid="size-group-<groupe>-grid-option-<id>") : c'est
+    // le groupe du rayon tel que Vinted le sert AUJOURD'HUI. Un id capturé qui
+    // n'y est dans aucun onglet a été retiré par Vinted (compte 2bde8576 : 657
+    // « 15 et moins » face aux onglets EU / UK / US des chaussures bébé).
+    const optionsRayon = [];
+    const releverOptionsRayon = (onglet) => {
+      for (const el of document.querySelectorAll(TAILLE_OPTIONS_SEL)) {
+        const m = String(el.getAttribute("data-testid") ?? "").match(/^size-group-(\d+)-grid-option-(\d+)$/);
+        if (!m) continue;
+        const deja = optionsRayon.find((o) => o.id === Number(m[2]));
+        if (deja) { if (!deja.onglet && onglet) deja.onglet = onglet; continue; }
+        optionsRayon.push({ id: Number(m[2]), groupe: Number(m[1]), onglet, libelle: String(el.textContent ?? "").trim() });
+      }
+    };
     let cible = trouverParId();
     let ongletRetenu = null;
+    if (!cible && ids.length) releverOptionsRayon(null);
     if (!cible && ids.length && onglets.length) {
-      for (const o of onglets) {
+      // (12/11) L'onglet que nomme le libellé capturé d'abord (« FR 40 » → FR, « UK 8 enfant » → UK) : l'id y est le plus
+      // souvent — même id trouvé, moins d'onglets ouverts. Sans préfixe, l'ordre du panneau, comme avant.
+      const prefixe = String(libelle.match(TAILLE_PREFIXE_ONGLET_RE)?.[1] ?? "").toUpperCase();
+      const ordreIds = prefixe
+        ? [...onglets.filter((o) => String(o.texte ?? "").trim().toUpperCase() === prefixe), ...onglets.filter((o) => String(o.texte ?? "").trim().toUpperCase() !== prefixe)]
+        : onglets;
+      for (const o of ordreIds) {
         await humanPause();
         await activerOngletTaille(o);
         cible = trouverParId();
         if (cible) { ongletRetenu = o.texte; break; }
+        releverOptionsRayon(o);
+      }
+    }
+    // ── (12/11, point 1c) UN ID RETIRÉ PAR VINTED SE TRADUIT PAR IDENTIFIANT, QUAND C'EST CERTAIN ──
+    // L'id capturé n'est dans aucun onglet du rayon. Son libellé (celui que la
+    // capture a lu pour CET id dans le référentiel de Vinted) est une pointure
+    // EU (« 16 », « EU 16 ») : l'option du rayon qui porte la même pointure EU
+    // (une seule) est posée par SON identifiant (585 « 16 » → 2192 « EU 16 »).
+    // Rien d'autre n'est certain (« 15 et moins » couvre plusieurs pointures) :
+    // la cascade par libellé suit, puis la question (liste fermée, serveur).
+    let idsAbsentsDuRayon = null;
+    if (!cible && ids.length && optionsRayon.length) {
+      idsAbsentsDuRayon = `identifiant(s) capturé(s) ${ids.join(", ")} absent(s) de tous les onglets du rayon ` +
+        `(groupes ${[...new Set(optionsRayon.map((o) => o.groupe))].join(", ")})`;
+      const equiv = libelle ? tailleEquivalenteRetiree(libelle, optionsRayon) : null;
+      if (equiv) {
+        if (equiv.onglet) { await humanPause(); await activerOngletTaille(equiv.onglet); }
+        const el = document.querySelector(`${TAILLE_OPTIONS_SEL}[data-testid$="-grid-option-${equiv.id}"]`);
+        if (el) {
+          await humanPause();
+          el.click();
+          await humanPause();
+          await confirmDropdownIfNeeded();
+          const note = `taille: id ${ids.join(", ")} retiré du rayon par Vinted → posée par l'identifiant du rayon ${equiv.id} ` +
+            `« ${String(el.textContent ?? "").trim()} » (même pointure EU que « ${libelle} »)` + (equiv.onglet ? ` (onglet ${equiv.onglet.texte})` : "");
+          console.log(`[vinted] ${note}`);
+          warnings.push(note);
+          return true;
+        }
       }
     }
     if (cible) {
@@ -8521,7 +8597,9 @@ async function selectTailleVinted(fields, warnings) {
     const ongletsVus = [];
     const releverOnglet = (texte) => {
       const options = Array.from(document.querySelectorAll(TAILLE_OPTIONS_SEL)).map((el) => el.textContent.trim()).filter(Boolean);
-      if (!ongletsVus.some((o) => o.onglet === texte)) ongletsVus.push({ onglet: texte, options: options.slice(0, 40) });
+      // (12/11, point 1c) Chaque onglet ENTIER : la liste fermée de la question ne s'arrête plus à 40 par onglet (l'onglet
+      // EU des chaussures enfant en porte 51 — « EU 35 »… « EU 40 » manquaient). Le diagnostic, lui, en montre 20.
+      if (!ongletsVus.some((o) => o.onglet === texte)) ongletsVus.push({ onglet: texte, options });
     };
     // La forme nue tirée de « EU N » : grille sans onglet ou onglet EU seulement.
     const nuDeEu = libelle.match(/^EU\s*(\d{1,3}(?:[.,]\d)?)$/i)?.[1] ?? null;
@@ -8552,11 +8630,12 @@ async function selectTailleVinted(fields, warnings) {
       }
     }
     if (!match) {
-      diagnosticTailleDerniere = `candidats essayés : ${candidats.map((c) => `« ${c} »`).join(", ")} — onglets vus : ` +
+      diagnosticTailleDerniere = (idsAbsentsDuRayon ? `${idsAbsentsDuRayon} — ` : "") +
+        `candidats essayés : ${candidats.map((c) => `« ${c} »`).join(", ")} — onglets vus : ` +
         ongletsVus.map((o) => `${o.onglet} [${o.options.slice(0, 20).join(", ")}${o.options.length > 20 ? `, … +${o.options.length - 20}` : ""}]`).join(" ; ");
       // Toutes les options vues, tous onglets confondus, dans l'ordre de
       // parcours, dédoublonnées — la liste fermée du choix dans l'app.
-      optionsTailleVues = [...new Set(ongletsVus.flatMap((o) => o.options))].slice(0, 120);
+      optionsTailleVues = [...new Set(ongletsVus.flatMap((o) => o.options))].slice(0, 200);
       throw new Error(`« ${libelle} »${candidats.length > 1 ? ` (ni ${candidats.slice(1).map((c) => `« ${c} »`).join(", ")})` : ""} dans aucun onglet ${JSON.stringify(onglets.map((o) => o.texte))}`);
     }
     if (candidatRetenu !== libelle) {

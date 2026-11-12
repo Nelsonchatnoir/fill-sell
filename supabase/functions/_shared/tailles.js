@@ -69,13 +69,73 @@ const UNIQUES = new Set([
   "universel", "universelle", "universal",
 ]);
 const estUnique = (v) => UNIQUES.has(plier(v)) || UNIQUES.has(serrer(v));
+// (12/11) Les options qui ne disent AUCUNE taille, dans la langue de chaque site (Depop « Other », « Autre »…) :
+// jamais choisies, et jamais comptées pour juger qu'une grille n'écrit que des âges.
+const AUTRES = new Set(["other", "others", "autre", "autres", "altro", "altri", "otro", "otros", "andere", "sonstige", "overig", "overige"]);
+const estNeutre = (v) => estUnique(v) || AUTRES.has(plier(v));
+
+// ── LES SYSTÈMES DE TAILLE, RANGÉS PAR SITE (12/11, décision de Nico — point 1a) ──
+// CE QUI L'A PROVOQUÉ (compte c7c382b7, 12/11) : Depop a refusé « EU M » (pull,
+// tâche baf800fe) et « EU 140cm » (leggings, fe3af982) — la lettre M et
+// « 10 years » étaient DANS les grilles. Le préfixe vient de Lens, qui lit une
+// étiquette à plusieurs systèmes (« UK 9-10 Yrs, EUR 140cm, US 10 Yrs ») et la
+// rend dans la langue du compte. La règle n'existait que pour eBay
+// (taille-ebay.js, 07/11, « module propre à eBay ») : c'était corriger le cas.
+// LA RÈGLE, PAR SITE, POUR TOUTES LES PLATEFORMES (Vinted, Leboncoin, Beebs,
+// Depop, eBay, et l'extension par gen-tailles-content-script.mjs) : un préfixe
+// dit DANS QUEL SYSTÈME la valeur est écrite, et chaque système dit ce qu'il
+// fait d'une lettre :
+//   · EU, EUR, FR, IT, DE, ES, INT + lettre = la lettre (S, M, L… sont les mêmes
+//     lettres dans ces systèmes) ;
+//   · UK, US + lettre = la lettre de XS à XXL SEULEMENT (au-delà, les tailles
+//     anglo-saxonnes ne suivent plus la même échelle : la question) ;
+//   · UK, US, IT, DE, ES + NOMBRE : JAMAIS le nombre d'un autre système (« UK 10 »
+//     n'est ni « 10 » ni « 38 ») — lireNombre ne lit que FR (≡ nu) et EU/EUR ;
+//   · « EU 140cm » = 140 cm : un centimètre est un centimètre dans tous les
+//     systèmes, l'unité écrite suffit (statureEnfant, lireCm) ; un « EU 140 »
+//     SANS unité n'est jamais lu comme une stature.
+// Un nouveau site (pays d'un compte) = une ligne ici, jamais une règle ailleurs.
+// ⛔ Le préfixe doit être SÉPARÉ de la lettre (« EU M », « EU: M », « EU-M ») :
+//    « ITS », « DES », « USS » collés ne sont pas des tailles.
+export const SYSTEMES_DE_TAILLE = Object.freeze({
+  eu: Object.freeze({ systeme: "EU", lettres: "toutes" }),
+  eur: Object.freeze({ systeme: "EU", lettres: "toutes" }),
+  fr: Object.freeze({ systeme: "FR", lettres: "toutes" }),
+  it: Object.freeze({ systeme: "IT", lettres: "toutes" }),
+  de: Object.freeze({ systeme: "DE", lettres: "toutes" }),
+  es: Object.freeze({ systeme: "ES", lettres: "toutes" }),
+  int: Object.freeze({ systeme: "INT", lettres: "toutes" }),
+  uk: Object.freeze({ systeme: "UK", lettres: "xs-xxl" }),
+  us: Object.freeze({ systeme: "US", lettres: "xs-xxl" }),
+});
+const LETTRES_XS_XXL = new Set(["XS", "S", "M", "L", "XL", "XXL"]);
+const SITES_RE = Object.keys(SYSTEMES_DE_TAILLE).sort((a, b) => b.length - a.length).join("|");
+const SITE_SEPARE_RE = new RegExp(`^(${SITES_RE})(?:\\s*[:.]\\s*|\\s+)(.+)$`);
+
+// Le site d'une écriture : « EU M » → { cle: "eu", systeme: "EU", lettres, reste: "m" } ; null sans préfixe de site.
+function lireSysteme(v) {
+  const m = SITE_SEPARE_RE.exec(plier(v));
+  if (!m) return null;
+  const s = SYSTEMES_DE_TAILLE[m[1]];
+  return { cle: m[1], systeme: s.systeme, lettres: s.lettres, reste: m[2].trim() };
+}
 
 // ── Lettres : les deux orthographes du monde, XXL et 2XL ────────────────────
 // Ce n'est pas une conversion : « 2XL » et « XXL » désignent la MÊME taille
 // partout, et les plateformes ne s'accordent pas sur l'écriture (eBay écrit
 // « 2XL » et jamais « XXL » — relevé, cf. [[ebay-taille-vocabulaire-releve]]).
 // Rendu : la forme canonique « XXL »-style, pour comparer deux écritures.
+// (12/11) Une lettre écrite dans un site (« EU M », « UK S ») : la règle du site
+// (SYSTEMES_DE_TAILLE) — la lettre, ou rien.
 function canonLettre(v) {
+  const nue = lettreNue(v);
+  if (nue) return nue;
+  const site = lireSysteme(v);
+  if (!site) return null;
+  const l = lettreNue(site.reste);
+  return l && (site.lettres === "toutes" || LETTRES_XS_XXL.has(l)) ? l : null;
+}
+function lettreNue(v) {
   const s = serrer(v);
   const mots = {
     xsmall: "xs", extrasmall: "xs", small: "s", medium: "m", moyen: "m",
@@ -108,7 +168,9 @@ function canonAge(v) {
   const s = plier(v);
   // Un nombre, éventuellement une seconde borne (séparateur « à », « / » ou
   // le simple espace laissé par le tiret), puis l'unité.
-  const m = /^(\d{1,2})(?:\s*(?:a|\/)?\s*(\d{1,2}))?\s*(mois|m|ans?|a|y|years?|yr)$/.exec(s);
+  // (12/11) Sinon, l'âge écrit en ANGLAIS (« 6 months », « 11-12 yrs », « Age 11-12 », « 10 years old ») : la même
+  // unité, les mêmes nombres (ageEnFrancais) — jamais mois ↔ ans.
+  const m = AGE_FR_RE.exec(s) ?? (() => { const fr = ageEnFrancais(v); return fr ? AGE_FR_RE.exec(plier(fr)) : null; })();
   if (!m) return null;
   const u = m[3];
   const unite = (u === "mois" || u === "m") ? "M"
@@ -120,7 +182,58 @@ function canonAge(v) {
   if (!Number.isFinite(de) || !Number.isFinite(a)) return null;
   return { unite, de, a };
 }
+const AGE_FR_RE = /^(\d{1,2})(?:\s*(?:a|\/)?\s*(\d{1,2}))?\s*(mois|m|ans?|a|y|years?|yr)$/;
 const memeAge = (x, y) => !!x && !!y && x.unite === y.unite && x.de === y.de && x.a === y.a;
+
+// ── L'ÂGE ÉCRIT EN ANGLAIS → SON ÉCRITURE FRANÇAISE (07/11 pour eBay ; 12/11 : la règle de TOUTES les plateformes)
+// « 11-12 yrs » → « 11-12 ans », « 3-4 years old » → « 3-4 ans », « Age 11-12 » → « 11-12 ans », « 18 months » →
+// « 18 mois », « 12-18 mths » → « 12-18 mois », « 6 mos » → « 6 mois », « Newborn » → « Naissance ».
+// ⛔ Jamais mois ↔ ans (« 24 months » n'est pas « 2 ans ») ; une tranche reste une tranche (« 11/12 yrs » est UNE
+//    tranche, jamais « 12 ans ») ; sans unité, seul « Age 11-12 » (l'âge des étiquettes anglaises, en années) est un âge.
+// Née dans taille-ebay.js (E1, compte c7c382b7, job ba0c4d73) ; taille-ebay.js la ré-exporte (une seule règle).
+const plierAge = (v) => String(v ?? "")
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase()
+  .replace(/[‐-―−]/g, "-")
+  .replace(/\s+/g, " ")
+  .trim();
+const UNITE_MOIS_EN = "(?:months?|mths?|mos?)";
+const UNITE_ANS_EN = "(?:years?\\s*old|yrs?\\s*old|y\\.?\\s*o\\.?|yrs?|years?|y)";
+const MOIS_EN_RE = new RegExp(`^${UNITE_MOIS_EN}$`);
+// [1] « age(s) » ; [2] première borne ; [3] seconde borne ; [4] unité.
+const AGE_EN_RE = new RegExp(
+  `^(ages?\\s*:?\\s*)?(\\d{1,2})(?:\\s*(?:-|\\/|to|a)\\s*(\\d{1,2}))?\\s*(${UNITE_ANS_EN}|${UNITE_MOIS_EN}|ans?|mois)?\\.?$`,
+);
+/**
+ * L'écriture FRANÇAISE d'un âge écrit en anglais, ou null. Jamais une conversion d'unité.
+ * @param {unknown} brut
+ * @returns {string|null}
+ */
+export function ageEnFrancais(brut) {
+  const s = plierAge(brut);
+  if (/^(?:new ?born|nouveau ?-?nes?)$/.test(s)) return "Naissance";
+  const m = AGE_EN_RE.exec(s);
+  if (!m) return null;
+  const prefixeAge = Boolean(m[1]);
+  const unite = m[4] ?? "";
+  if (!unite && !prefixeAge) return null;
+  const enMois = MOIS_EN_RE.test(unite) || unite === "mois";
+  const de = Number(m[2]);
+  const a = m[3] === undefined ? null : Number(m[3]);
+  if (a !== null && a <= de) return null;
+  const max = enMois ? 36 : 18;
+  if (de > max || (a ?? de) > max) return null;
+  const borne = a !== null ? `${de}-${a}` : String(de);
+  return `${borne} ${enMois ? "mois" : ((a ?? de) > 1 ? "ans" : "an")}`;
+}
+
+// ── La stature écrite en centimètres (12/11) : « 140 cm », « 140cm », « EU 140cm », « EUR 140 cm » → 140 ; sinon null.
+// L'unité ÉCRITE fait la stature : un nombre nu (« 140 ») ou préfixé sans unité (« EU 140 ») n'en est jamais une ici.
+const CM_RE = new RegExp(`^(?:(?:${SITES_RE})\\s*[:.]?\\s*)?(\\d{2,3})\\s*cm$`);
+function lireCm(v) {
+  const m = CM_RE.exec(plier(v));
+  return m ? Number(m[1]) : null;
+}
 
 // ── Nombre : pointure, taille FR, tour de poitrine ──────────────────────────
 // « 44.5 » et « 44,5 » sont égaux ; « 44 » et « 44.5 » ne le sont JAMAIS.
@@ -215,6 +328,10 @@ export function memeTaille(a, b) {
   // Deux longueurs écrites doivent aussi s'accorder (« W34 L32 » ≢ « W34 L30 »).
   const tA = lireTourDeTaille(a), tB = lireTourDeTaille(b);
   if (tA?.w || tB?.w) return Boolean(tA?.w && tB?.w) && tA.w === tB.w && (tA.l == null || tB.l == null || tA.l === tB.l);
+  // (12/11) Deux statures écrites en cm, préfixe de site ou non (« EU 140cm » ≡ « 140 cm ») — seulement quand LES
+  // DEUX écrivent l'unité : « 140 » nu reste un nombre.
+  const cA = lireCm(a), cB = lireCm(b);
+  if (cA != null && cB != null) return cA === cB;
   const ageA = canonAge(a), ageB = canonAge(b);
   if (ageA || ageB) return memeAge(ageA, ageB);   // un âge ne vaut QUE un âge
   const litA = canonLettre(a), litB = canonLettre(b);
@@ -232,7 +349,11 @@ function meilleureEgale(valeur, options) {
   if (egales.length <= 1) return egales[0] ?? null;
   const nv = lireNombre(valeur);
   const memePays = nv ? egales.find((o) => lireNombre(o)?.pays === nv.pays) : null;
-  return memePays ?? egales[0];
+  if (memePays) return memePays;
+  // (12/11) Une lettre : l'option écrite dans le même site (sans préfixe → l'option sans préfixe).
+  const site = (x) => lireSysteme(x)?.systeme ?? "";
+  const memeSite = canonLettre(valeur) ? egales.find((o) => site(o) === site(valeur)) : null;
+  return memeSite ?? egales[0];
 }
 
 // Registre historique conservé pour compatibilité des imports, jamais utilisé
@@ -290,7 +411,10 @@ export function tailleDansGrille(brut, grille, opts) {
   // 3. La taille de l'article est COMPOSITE (« 12 ans / 152 cm ») : chacun de
   //    ses morceaux désigne la même taille, on cherche celui que la grille
   //    sait écrire.
-  const morceaux = jetons(valeur);
+  //    (12/11) ⛔ Une TRANCHE d'âge écrite avec « / » (« 6/9 mois », « 11/12 yrs ») est UNE taille, jamais deux
+  //    morceaux : « 9 mois » ou « 12 ans » seraient une de ses bornes (règle E1 d'eBay du 07/11, devenue commune).
+  const ageEntier = canonAge(valeur);
+  const morceaux = ageEntier && ageEntier.de !== ageEntier.a ? [valeur] : jetons(valeur);
   if (morceaux.length > 1) {
     for (const m of morceaux) {
       const trouve = meilleureEgale(m, options);
@@ -343,12 +467,24 @@ export function tailleDansGrille(brut, grille, opts) {
     const parCm = options.filter((o) => jetons(o).length > 1
       && jetons(o).some((m) => memeTaille(m, `${stature} cm`)));
     if (parCm.length === 1) return { valeur: parCm[0], motif: `stature ${stature} cm lue dans la grille` };
-    const queDesAges = options.every((o) => canonAge(o) || estUnique(o));
+    // (12/11) Les options NEUTRES (« One size », « Other », « Autre ») ne disent aucune taille : elles ne font pas
+    // d'une grille d'âges une grille mixte (Depop 101 : « One size », 0-3 months … 16 years, « Other » — fe3af982).
+    // Il faut au moins un âge.
+    const queDesAges = options.some((o) => canonAge(o)) && options.every((o) => canonAge(o) || estNeutre(o));
     const ages = AGE_PAR_STATURE_ENFANT[stature];
+    // (12/11) Un âge que la grille n'écrit pas seul, mais comme le BOUT d'une tranche (Depop « 18-24 months » face à
+    // 92 cm = 24 mois = 2 ans : « N mois » = jusqu'à N mois), a deux lectures possibles (la tranche, ou l'âge suivant
+    // de la même ligne, « 2 years ») : on ne tranche pas, la question (décision du 28/10 pour Depop, gardée quand
+    // « Other » cesse de masquer la grille d'âges). Un âge écrit tel quel (« 24M » d'Opla) passe comme avant.
+    const trancheAuBout = (age) => {
+      const g = canonAge(age);
+      return !!g && options.some((o) => { const x = canonAge(o); return !!x && x.de !== x.a && x.unite === g.unite && x.a === g.a; });
+    };
     if (queDesAges && ages && !parCm.length) {
       for (const age of ages) {
         const cible = options.find((o) => memeTaille(o, age));
         if (cible) return { valeur: cible, motif: `étiquette enfant ${stature} cm = ${age}` };
+        if (trancheAuBout(age)) return null;
       }
     }
   }
@@ -372,11 +508,136 @@ export const AGE_PAR_STATURE_ENFANT = Object.freeze({
 });
 
 // « 86 », « 86 cm », « 86cm », « T86 », « taille 86 » → "86" ; sinon null.
-function statureEnfant(v) {
+// (12/11) « EU 140cm », « EUR 140 cm » → "140" : un préfixe de site devant des centimètres ÉCRITS (lireCm) — jamais
+// devant un nombre sans unité (« EU 86 » reste une taille EU). Exportée : la même lecture pour Depop (tailleDepop).
+export function statureEnfant(v) {
   const s = plier(v).replace(/^(?:taille|t)\s*/, "");
   const m = /^(\d{2,3})\s*(?:cm)?$/.exec(s);
-  if (!m) return null;
-  return Object.prototype.hasOwnProperty.call(AGE_PAR_STATURE_ENFANT, m[1]) ? m[1] : null;
+  const n = m ? m[1] : (lireCm(v) != null ? String(lireCm(v)) : null);
+  if (!n) return null;
+  return Object.prototype.hasOwnProperty.call(AGE_PAR_STATURE_ENFANT, n) ? n : null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LA MÊME TAILLE, OU UNE AUTRE ? — UNE COPIE FACE À LA FICHE (12/11, décision de Nico)
+// ══════════════════════════════════════════════════════════════════════════
+// « Une taille qui contredit la fiche ne part jamais. » Fiche 1793630721658 (compte c7c382b7) : l'étiquette lue dit
+// « EU 140cm » (= 10 ans) ; la copie Vinted portait « 9 ans », la copie Beebs « Naissance » — les deux sont parties en
+// ligne. Ce module dit si deux écritures sont COMPARABLES (même système, ou stature ↔ âge par la table des étiquettes)
+// et, si oui, si elles désignent la même taille. Deux systèmes que rien ne relie (« XL » face à « 42 », « 140 » nu face
+// à « 140 cm ») ne sont JAMAIS une contradiction : on n'invente pas plus une contradiction qu'une correspondance.
+// L'axe enfant est la stature (cm), par la table AGE_PAR_STATURE_ENFANT :
+//   · un âge en ANS est sa stature (10 ans = 140 cm) ;
+//   · un âge en MOIS couvre sa stature et la précédente (« N mois » = jusqu'à N mois : Vinted écrit « 3-6 mois /
+//     62 cm » ce que la table dit 6 mois = 68 cm) — 6 mois = 62-68 cm ; jamais une fausse contradiction de convention ;
+//   · une tranche couvre ses deux bornes ; « Naissance » = 44-50 cm ; « Prématuré » = moins de 44 cm ;
+//   · un âge hors de la table (« 1 an », « 15 mois », « 18 ans ») n'est pas comparable.
+// Rien ici ne choisit une option de grille : la taille de remplacement est écrite dans le vocabulaire de l'app
+// (« 10 ans », « M », « 6 mois ») et la plateforme la traduit ensuite dans SA grille, comme toute taille.
+const STATURES_MOIS = Object.freeze([[0, 50], [1, 56], [3, 62], [6, 68], [9, 74], [12, 80], [18, 86], [24, 92], [36, 98]]);
+const STATURE_DES_ANS = (() => {
+  const index = new Map();
+  for (const [s, ages] of Object.entries(AGE_PAR_STATURE_ENFANT)) {
+    for (const age of ages) { const g = /^(\d{1,2}) ans$/.exec(age); if (g && !index.has(Number(g[1]))) index.set(Number(g[1]), Number(s)); }
+  }
+  return index;
+})();
+function intervalleMois(n) {
+  const i = STATURES_MOIS.findIndex(([m]) => m === n);
+  if (i < 0) return null;
+  return [i === 0 ? 44 : STATURES_MOIS[i - 1][1], STATURES_MOIS[i][1]];
+}
+function intervalleAns(n) {
+  const s = STATURE_DES_ANS.get(n);
+  return s === undefined ? null : [s, s];
+}
+// La lecture enfant d'UN morceau : { min, max, ecriture } en cm, ou null.
+function lectureEnfant(t) {
+  const p = plier(t);
+  if (/^(?:bebe |enfant )?(?:prema(?:ture)?s?|preemie)(?:$|[ .])/.test(p)) return { min: 0, max: 43, ecriture: "Prématuré" };
+  if (/^(?:naissance|nouveau nes?|new ?born)$/.test(p)) return { min: 44, max: 50, ecriture: "Naissance" };
+  const cm = lireCm(t);
+  if (cm != null) return cm >= 40 && cm <= 200 ? { min: cm, max: cm, ecriture: null, cm } : null;
+  const tr = /^(\d{2,3}) (\d{2,3}) ?cm$/.exec(p);
+  if (tr && Number(tr[1]) < Number(tr[2])) return { min: Number(tr[1]), max: Number(tr[2]), ecriture: null };
+  const age = canonAge(t);
+  if (!age) return null;
+  const iv = age.unite === "M" ? intervalleMois : intervalleAns;
+  const a = iv(age.de), b = iv(age.a);
+  if (!a || !b) return null;
+  const ecriture = age.de === age.a
+    ? (age.unite === "M" ? (age.de === 0 ? "Naissance" : `${age.de} mois`) : `${age.de} ${age.de > 1 ? "ans" : "an"}`)
+    : `${age.de}-${age.a} ${age.unite === "M" ? "mois" : "ans"}`;
+  return { min: Math.min(a[0], b[0]), max: Math.max(a[1], b[1]), ecriture };
+}
+// Les morceaux d'une écriture : elle-même, puis ses jetons, puis le dehors et le dedans de ses parenthèses
+// (« 10 ans (128-140 cm) » — l'écriture Beebs). Une tranche « 6/9 mois » reste entière.
+function morceauxDeTaille(v) {
+  const s = String(v ?? "").trim();
+  const age = canonAge(s);
+  const out = [s, ...(age && age.de !== age.a ? [] : jetons(s))];
+  const par = /^(.*?)\s*\(([^()]+)\)\s*$/.exec(s);
+  if (par) out.push(par[1].trim(), par[2].trim());
+  return [...new Set(out.filter(Boolean))];
+}
+// Les lectures d'une écriture, par genre : lettre, nombre (par système), tour de taille, enfant (cm).
+// ⛔ Un NOMBRE ne se lit que sur une écriture SEULE (« 40 », « EU 38 », « UK 10 ») : dans une étiquette composite, les
+//    nombres sont écrits nus dans d'AUTRES systèmes (Vinted « M / 38 / 10 » = EU 38 = FR 40 = UK 10) — y lire « 38 »
+//    comme un 38 français inventerait une contradiction avec une fiche « 40 ».
+function lectures(v) {
+  const out = [];
+  const entiere = String(v ?? "").trim();
+  for (const m of morceauxDeTaille(v)) {
+    const l = canonLettre(m);
+    if (l) { out.push({ genre: "lettre", l }); continue; }
+    const tour = lireTourDeTaille(m);
+    if (tour?.w) { out.push({ genre: "tour", w: tour.w }); continue; }
+    const enfant = lectureEnfant(m);
+    if (enfant) { out.push({ genre: "enfant", ...enfant }); continue; }
+    if (m !== entiere) continue;
+    const nb = lireNombre(m);
+    if (nb) { out.push({ genre: "nombre", systeme: nb.pays === "eu" ? "EU" : "FR", n: nb.n, nu: nb.pays === "" }); continue; }
+    const site = lireSysteme(m);
+    const ns = site && /^\d{1,3}(?:\.\d)?$/.test(site.reste) ? String(Number(site.reste)) : null;
+    if (ns) out.push({ genre: "nombre", systeme: site.systeme, n: ns });
+  }
+  return out;
+}
+const comparables = (x, y) => x.genre === y.genre && (x.genre !== "nombre" || x.systeme === y.systeme);
+const accord = (x, y) => (x.genre === "lettre" ? x.l === y.l
+  : x.genre === "tour" ? x.w === y.w
+  : x.genre === "nombre" ? x.n === y.n
+  : x.min <= y.max && y.min <= x.max);
+const ecritureDe = (x) => (x.genre === "lettre" ? x.l
+  : x.genre === "tour" ? `W${x.w}`
+  : x.genre === "nombre" ? (x.systeme === "FR" ? x.n : `${x.systeme} ${x.n}`)
+  : x.ecriture ?? (x.cm != null && AGE_PAR_STATURE_ENFANT[String(x.cm)]
+    ? (AGE_PAR_STATURE_ENFANT[String(x.cm)][0] === "0 mois" ? "Naissance" : AGE_PAR_STATURE_ENFANT[String(x.cm)][0]) : null));
+
+/**
+ * Une taille de COPIE face à une taille de RÉFÉRENCE (la fiche, l'étiquette lue).
+ * @param {unknown} copie
+ * @param {unknown} reference
+ * @param {{etiquette?: boolean}} [opts] etiquette : la référence est une ÉTIQUETTE LUE (Lens) — un nombre NU y est
+ *   d'un système inconnu (« 27 » : W27 ? 27 enfant ?) et ne sert jamais de référence ; ses lettres, ses âges, ses
+ *   centimètres et ses nombres préfixés (« EU 36,5 ») si.
+ * @returns {{verdict:'meme'|'contredit'|'incomparable', remplacement:string|null}}
+ *   meme : un morceau comparable désigne la même taille ; contredit : des morceaux comparables, aucun d'accord ;
+ *   remplacement (contredit seulement) : la référence écrite dans le vocabulaire de l'app, du genre de la copie
+ *   (« EU 140cm » → « 10 ans », « EU M » → « M ») — null quand elle ne s'écrit pas sans deviner.
+ */
+export function confronterTailles(copie, reference, opts = {}) {
+  const lc = lectures(copie), lr = lectures(reference).filter((y) => !(opts?.etiquette && y.genre === "nombre" && y.nu));
+  let comparable = false;
+  for (const x of lc) for (const y of lr) {
+    if (!comparables(x, y)) continue;
+    comparable = true;
+    if (accord(x, y)) return { verdict: "meme", remplacement: null };
+  }
+  if (!comparable) return { verdict: "incomparable", remplacement: null };
+  const genres = new Set(lc.map((x) => x.genre));
+  const ref = lr.find((y) => lc.some((x) => comparables(x, y)) && ecritureDe(y)) ?? lr.find((y) => genres.has(y.genre) && ecritureDe(y));
+  return { verdict: "contredit", remplacement: ref ? ecritureDe(ref) : null };
 }
 
 /**

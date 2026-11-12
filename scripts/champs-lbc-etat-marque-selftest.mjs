@@ -6,12 +6,16 @@
 //   npm run selftest:champs-lbc-etat-marque
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (f) => readFileSync(path.join(RACINE, f), 'utf8').replace(/\r\n/g, '\n');
 const GPJ = lire('supabase/functions/get-pending-jobs/index.ts');
 const LBC = lire('chrome-extension/content-scripts/leboncoin.js');
+// (12/11, décision de Nico — 1d-i, UN SEUL JUGE D'ÉTAT) get-pending-jobs et leboncoin.js appellent désormais le juge de
+// _shared/etat-correspondance.js (importé côté serveur, copie générée côté extension) : le verrou l'exécute tel qu'ils
+// l'appellent. Les attentes ci-dessous ne changent pas d'un caractère.
+const { etatDansLaGrille } = await import(pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/etat-correspondance.js')).href);
 
 let echecs = 0, total = 0;
 const ok = (c, l, d = '') => { total++; if (!c) echecs++; console.log(`${c ? '✓' : '✗'} ${l}${!c && d ? `   ← ${d}` : ''}`); };
@@ -23,7 +27,7 @@ const code = GPJ.slice(i0, i1).replace(/\(v: unknown\): string =>/, '(v) =>')
   .replace(/\(valeur: string, grille: string\[\]\): string \| null =>/, '(valeur, grille) =>')
   .replace(/ as \[string, string\]/g, '');
 // eslint-disable-next-line no-new-func
-const { etatLeboncoinExact } = new Function(`${code}; return { etatLeboncoinExact };`)();
+const { etatLeboncoinExact } = new Function('etatDansLaGrille', `${code}; return { etatLeboncoinExact };`)(etatDansLaGrille);
 ok(i0 > 0 && i1 > i0, '0. le correspondant d\'état est trouvé');
 
 const ELECTRONIQUE = ['État neuf', 'Très bon état', 'Bon état', 'État satisfaisant - fonctionnel', 'Pour pièces'];
@@ -40,8 +44,12 @@ ok(etatLeboncoinExact('Bon état', ELECTRONIQUE) === 'Bon état', '1d. valeur ex
   const j = LBC.indexOf('function trouverOptionEtatExacte', i);
   const n0 = LBC.indexOf('const normEtatLbc');
   const norm = n0 >= 0 ? LBC.slice(n0, LBC.indexOf('\n', LBC.indexOf('=>', n0)) + 1) : '';
+  // (12/11) La copie générée du juge (bloc borné de leboncoin.js), chargée telle que Chrome la charge.
+  const b0 = LBC.indexOf('// ═══ DÉBUT — COPIE GÉNÉRÉE de supabase/functions/_shared/etat-correspondance.js');
+  const b1 = LBC.indexOf('// ═══ FIN — COPIE GÉNÉRÉE du juge d\'état ═══');
+  const juge = b0 >= 0 && b1 > b0 ? LBC.slice(b0, b1) : '';
   // eslint-disable-next-line no-new-func
-  const parmi = new Function(`${norm}\n${LBC.slice(i, j)}; return etatLeboncoinExactParmi;`)();
+  const parmi = new Function(`${juge}\n${norm}\n${LBC.slice(i, j)}; return etatLeboncoinExactParmi;`)();
   ok(i > 0 && parmi(['État satisfaisant'], ELECTRONIQUE) === 'État satisfaisant - fonctionnel', '1e. extension : même équivalence sur la liste relevée en direct');
 }
 

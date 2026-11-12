@@ -209,7 +209,7 @@ export function texteSimple(s) {
 
 /** Le tri : ce qu'on sait, ce qu'il faut demander, et ce qu'on laisse
  *  tranquille. Une seule passe, une seule règle. */
-export function classerChamps(lignes, pf, platform, { regle = 'classique', cheminCategorie = null, textes = null } = {}) {
+export function classerChamps(lignes, pf, platform, { regle = 'classique', cheminCategorie = null, textes = null, rayonId = null } = {}) {
   const connus = [];
   const questions = [];
   const defauts = [];
@@ -311,7 +311,8 @@ export function classerChamps(lignes, pf, platform, { regle = 'classique', chemi
     }
     if (horsGrille && regle === 'nouvelle') {
       // (19/10) Les textes du vendeur, comme le moteur : « W30 » + « FR40 » → « 40 ».
-      const verdict = jugerValeurContreListe({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values, cheminCategorie, textes });
+      // (12/11, 1d-i) `rayonId` : l'identifiant du rayon (Vinted) dit au juge d'état si l'étiquette a un sens (beauté).
+      const verdict = jugerValeurContreListe({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values, cheminCategorie, textes, rayonId });
       horsGrille = !verdict.dans && horsListeBloque({
         regle, platform, key: l.field_key, inputType: l.input_type, allowedValues: l.allowed_values, suggested: verdict.suggested,
       });

@@ -47,23 +47,27 @@ const forme = (brut: string, liste: string[], ferme: boolean, attenduAvant: stri
 };
 
 console.log("1. LES ÂGES EN ANGLAIS → LEUR ÉCRITURE FRANÇAISE (E1)");
-forme("11-12 yrs", ENFANT, false, null, "11-12 ans");            // Rosa
-forme("11-12 yrs", ENFANT, true, null, "11-12 ans");
-forme("11-12 Yrs.", ENFANT, false, null, "11-12 ans");
-forme("10 yrs", ENFANT, false, null, "10 ans");
-forme("3-4 years old", ENFANT, false, null, "3-4 ans");
-forme("Age 11-12", ENFANT, false, null, "11-12 ans");
-forme("Ages: 9-10", ENFANT, false, null, "9-10 ans");
-forme("11 to 12 years", ENFANT, false, null, "11-12 ans");
-forme("11/12 yrs", ENFANT, false, null, "11-12 ans");
-forme("11-12 yrs / 146-152 cm", ENFANT, false, null, "11-12 ans");
-forme("11-12 yrs (146-152 cm)", ENFANT, false, null, "11-12 ans");
-forme("8 y.o.", ENFANT, false, null, "8 ans");
-forme("18 months", BEBE, false, null, "18 mois");
-forme("6 mos", BEBE, false, null, "6 mois");
-forme("24 mths", BEBE, false, null, "24 mois");
+// (12/11, décision de Nico — point 1a) La lecture de l'âge anglais n'est plus PROPRE À eBay : elle vit dans le vocabulaire
+// commun (tailles.js, ageEnFrancais), que la règle d'« hier » (tailleDeService, R0) applique désormais elle-même, sur
+// toutes les plateformes. Les lignes ci-dessous attendaient « ∅ → valeur » (le complément) : elles attendent « valeur →
+// valeur » (la règle commune la trouve avant le complément). Même valeur servie à eBay.
+forme("11-12 yrs", ENFANT, false, "11-12 ans", "11-12 ans");            // Rosa
+forme("11-12 yrs", ENFANT, true, "11-12 ans", "11-12 ans");
+forme("11-12 Yrs.", ENFANT, false, "11-12 ans", "11-12 ans");
+forme("10 yrs", ENFANT, false, "10 ans", "10 ans");
+forme("3-4 years old", ENFANT, false, "3-4 ans", "3-4 ans");
+forme("Age 11-12", ENFANT, false, "11-12 ans", "11-12 ans");
+forme("Ages: 9-10", ENFANT, false, "9-10 ans", "9-10 ans");
+forme("11 to 12 years", ENFANT, false, "11-12 ans", "11-12 ans");
+forme("11/12 yrs", ENFANT, false, "11-12 ans", "11-12 ans");
+forme("11-12 yrs / 146-152 cm", ENFANT, false, "11-12 ans", "11-12 ans");
+forme("11-12 yrs (146-152 cm)", ENFANT, false, "11-12 ans", "11-12 ans");
+forme("8 y.o.", ENFANT, false, "8 ans", "8 ans");
+forme("18 months", BEBE, false, "18 mois", "18 mois");
+forme("6 mos", BEBE, false, "6 mois", "6 mois");
+forme("24 mths", BEBE, false, "24 mois", "24 mois");
 forme("Newborn", BEBE, false, null, "Naissance");
-forme("12-18 months", PIEDS_BEBE, false, null, "12-18 mois", "Pointure AU");
+forme("12-18 months", PIEDS_BEBE, false, "12-18 mois", "12-18 mois", "Pointure AU");
 forme("12-18 mths", BEBE, false, null, null);                    // une tranche n'est jamais une de ses bornes
 // (08/11, point 3 de Nico) E1 seul ne change jamais d'unité (« 24 months » est « 24 mois », vérifié plus bas) ; c'est
 // E3, APRÈS lui, qui lit la table des étiquettes enfant de tailles.js : 24 mois = 2 ans = 92 cm, 18 mois = 86 cm.
@@ -92,10 +96,13 @@ forme("FR 38", ROBES, true, "38", "38");
 forme("38 EU", ROBES, true, null, "38");
 forme("EUR 38", ROBES, true, null, "38");
 forme("Taille FR 38", ROBES, true, null, "38");
-forme("EU S", HAUTS_H, true, null, "S");                          // job d3ee17a6 (rayon 57990)
-forme("FR M", HAUTS_H, true, null, "M");
-forme("INT XL", HAUTS_H, true, null, "XL");
-forme("EU XXL", HAUTS_H, true, null, "2XL");
+// (12/11, décision de Nico — point 1a) « EU/EUR/FR/IT/INT + lettre » = la lettre sur TOUTES les plateformes : la règle
+// commune (tailles.js, SYSTEMES_DE_TAILLE) la lit à l'étape R0, avant le complément — avant « ∅ → lettre », maintenant
+// « lettre → lettre » ; et en texte libre la lettre part sans son préfixe (hier : « EU S » tel quel).
+forme("EU S", HAUTS_H, true, "S", "S");                          // job d3ee17a6 (rayon 57990)
+forme("FR M", HAUTS_H, true, "M", "M");
+forme("INT XL", HAUTS_H, true, "XL", "XL");
+forme("EU XXL", HAUTS_H, true, "2XL", "2XL");
 forme("UK 10", ROBES, true, "UK 10", "UK 10");                    // la liste l'écrit : inchangé
 forme("UK10", ROBES, true, "UK 10", "UK 10");
 forme("US 8", ROBES, true, "US 8", "US 8");
@@ -106,7 +113,7 @@ forme("FR 3", HOMME, true, null, null);                           // PMF Vito : 
 forme("EU 2", ROBES, true, null, null);                           // The Kooples : la question
 forme("EU 43", ROBES, true, null, null);
 forme("38 EU", ROBES, false, null, null);                         // texte libre : rien de neuf (part tel quel, cf. 3)
-forme("EU S", HAUTS_H, false, null, null);
+forme("EU S", HAUTS_H, false, "S", "S");                         // (12/11) texte libre : la lettre, sans préfixe
 console.log("   — pointures : le préfixe du pays de l'ASPECT");
 forme("UK 6", P_UK, true, null, "6", "Pointure UK");
 forme("US 9.5", P_US, true, null, "9,5", "Pointure US");
@@ -134,8 +141,10 @@ const question = (platform: string, taille: string, liste: string[]) => ({
   },
 });
 const rep = reponseTailleAuto(question("ebay", "11-12 yrs", ENFANT) as never, "10 ans (128-140 cm)", ["Monsoon Veste Denim Bleu Col Volant 11-12 ans", ""]) as { valeur?: string; regle?: string } | null;
-ok(rep?.valeur === "11-12 ans" && rep?.regle === "E1", "question eBay de Compte-essai-20 (ba0c4d73) : handler-watch répond « 11-12 ans » (E1), la publication repart", JSON.stringify(rep));
-ok(reponseTailleAuto(question("opla", "11-12 yrs", ENFANT) as never, null, null) === null, "même question sur une autre plateforme : inchangée (règle propre à eBay)");
+// (12/11, décision de Nico — point 1a) La réponse vient désormais de la règle COMMUNE (R0), et vaut pour toutes les
+// plateformes : la même question posée par une autre plateforme reçoit la même réponse (hier : « règle propre à eBay »).
+ok(rep?.valeur === "11-12 ans" && (rep?.regle === "R0" || rep?.regle === "E1"), "question eBay de Compte-essai-20 (ba0c4d73) : handler-watch répond « 11-12 ans » (règle commune), la publication repart", JSON.stringify(rep));
+ok((reponseTailleAuto(question("opla", "11-12 yrs", ENFANT) as never, null, null) as { valeur?: string } | null)?.valeur === "11-12 ans", "(12/11) même question sur une autre plateforme : la même réponse (la règle est commune)");
 ok(reponseTailleAuto({ ...question("ebay", "FR 3", HOMME), platform_fields: { ...question("ebay", "FR 3", HOMME).platform_fields, genre: "Homme", ebayAspects: { "Département": "Homme" } } } as never, "S / 36", null) === null,
   "question eBay de Compte-ca9afe24 (0119b570, « FR 3 ») : reste à la personne");
 const listeFaitFoi = (platform: string, mode: string) => platform === "ebay" && mode === "SELECTION_ONLY";

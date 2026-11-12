@@ -49,7 +49,10 @@ import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } fr
 import { lbcClePremierCombobox, pairesMaisonJardinDeSecours } from "./lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "./categorieGardeFou";
 import { chaussureMalgreLeMot } from "./chaussureMalgreLeMot";
-import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre } from "./categorieParMot";
+import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre, feuillesDe } from "./categorieParMot";
+import { rayonsPourLIcone } from "./iconeDeLaCategorie";
+import { feuilleLbcDuCatalogueVinted } from "./vintedVersLbc";
+import { catalogueVintedDeLaFiche } from "../publication/moteur/apprises.js";
 import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSujet";
 import { jeuVideoDeLArticle, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme, plateformeEbayDuJeu,
          VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, EBAY_ASPECT_PLATEFORME } from "./jeuxVideo";
@@ -59,7 +62,7 @@ import { vetoBrancheSpecialisee } from "./brancheSpecialiseeEbay";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "./ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
 import { isChildGenre, toPlatformChildSize, lbcChildSizeCategory } from "./childSizes";
-import { tailleAGarder } from "./tailleInventee";
+import { tailleAGarder, referencesTailleFiche } from "./tailleInventee";
 import { rayonContreditLaFiche } from "./rayonIncoherent";
 import { estFourreToutCatalogue } from "./fourreTout";
 import { VERDICTS_REFUS, aReprendreApresRefus, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus } from "./rayonApresRefus";
@@ -351,8 +354,26 @@ export async function resoudrePublication({
 
   const iconFor = (platform) => {
     const pf = edited[platform]?.platform_fields ?? {};
-    return resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+    return resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon,
+      rayons: rayonsPourLIcone({ catalogueVinted }), catalogueVinted });
   };
+  // ── (12/11, Nico, points 1b et 1d-iii) LE CATALOGUE VINTED DE LA FICHE, EN CHEMIN ─────────────────────────────
+  // L'identifiant : moteur/apprises.catalogueVintedDeLaFiche (`vinted_catalog_id`, sinon `attributs.categorie_vinted`).
+  // Lu une fois, dans l'arbre relevé (chargé à la demande, comme pour la résolution par le mot). Il entre dans le
+  // calcul de l'icône (le mot du titre cède quand ce catalogue ET l'IA le contredisent ; le repli du type cède devant
+  // son identifiant) et range un jouet Vinted en « Jeux & Jouets » chez Leboncoin — exactement comme à l'écran
+  // (ListingPreviewScreen, catalogueVintedChemin).
+  const idCatalogueVinted = catalogueVintedDeLaFiche(initialListing);
+  let catalogueVinted = null;
+  {
+    const idCatalogue = idCatalogueVinted;
+    if (idCatalogue) {
+      try {
+        const f = (await feuillesDe("vinted")).find((x) => x.id === String(idCatalogue));
+        if (f) catalogueVinted = { id: String(idCatalogue), chemin: f.chemin };
+      } catch { /* arbre indisponible : la règle d'avant */ }
+    }
+  }
   const genreUnresolved = (platform) => {
     if (!selected.has(platform)) return false;
     const g = edited[platform]?.platform_fields?.genre ?? "";
@@ -923,6 +944,10 @@ export async function resoudrePublication({
   // ici par plateforme pour être VÉRIFIÉS contre le mot juste après.
   const poseParIcone = {};
   const pfParPlateforme = {};
+  const rayonsIcone = rayonsPourLIcone({
+    pfParPlateforme: Object.fromEntries(Object.entries(categorieParMotParPf).map(([p, r]) => [p, { categorie_par_mot: r }])),
+    catalogueVinted,
+  });
   for (const platform of plateformesAPublier) {
     const pf = { ...(edited[platform]?.platform_fields ?? {}) };
     // Dernier filet avant l'insert du job : un état vidé à la main (ou un
@@ -943,7 +968,10 @@ export async function resoudrePublication({
     // Beebs et eBay (needs_user « État exigé » sur les trois, parce que ces
     // rayons n'acceptent qu'un état neuf), pendant que Leboncoin passait
     // par le fourre-tout « Divers > Autres ».
-    const detIcone = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
+    // (12/11, Nico, point 1b) Les rayons que la résolution connaît à cet instant — catalogue Vinted de la fiche,
+    // résolus par le mot (categorieParMotParPf) — disent l'icône quand elle n'est qu'un repli de type. (Le rayon que la
+    // personne choisit se pose APRÈS la résolution, comme toujours : rayonPublication.js, qui aligne aussi le genre.)
+    const detIcone = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, aiObjet: activeAiObjet, rayons: rayonsIcone, catalogueVinted });
     const catalogVinted = initialListing?.vinted_catalog_id ?? null;
     const garde = gardeFouCategorie({
       icone: detIcone.icon,
@@ -1041,18 +1069,27 @@ export async function resoudrePublication({
     // la djellaba, comme eBay le suggère). Prime sur le mot, comme les familles jeu vidéo et œuvre.
     const traditionnel = platform === "ebay"
       ? vetementTraditionnel(iconeArticle, frTitrePublication, frDescriptionPublication) : null;
+    // ══ (12/11, Nico, point 1d-iii) LE CATALOGUE VINTED « JEUX ET JOUETS » → LEBONCOIN « JEUX & JOUETS » ══
+    // « Jouets musicaux en bois » (3358), « Jouet VTech – Trompette » (3366), « Playset micro machines » (3468) :
+    // des jouets déclarés comme tels sur Vinted, rangés en « Loisirs › Instruments de musique » par le mot. La table
+    // (utils/vintedVersLbc.js) est tenue par IDENTIFIANTS et prime sur le mot, comme les familles ci-dessus ; un
+    // rayon choisi par la personne passe toujours après (rayonPublication.js, la surcouche des choix).
+    const feuilleCatalogueLbc = platform === "leboncoin" && !feuilleJeuVideo ? feuilleLbcDuCatalogueVinted(idCatalogueVinted) : null;
     const parMot = feuilleJeuVideo
       ? { chemin: feuilleJeuVideo.chemin, id: feuilleJeuVideo.id ?? null, regle: `jeux_video_${jeuVideo.famille}` }
       : feuilleOeuvre
         ? { chemin: feuilleOeuvre.chemin, id: String(feuilleOeuvre.id), regle: `oeuvre_${oeuvre.famille}` }
         : traditionnel
           ? { chemin: traditionnel.chemin, id: traditionnel.id, regle: `vetement_traditionnel_${traditionnel.region}` }
-          : (categorieParMotParPf[platform] ?? null);
+          : feuilleCatalogueLbc
+            ? { chemin: feuilleCatalogueLbc.chemin, id: null, regle: feuilleCatalogueLbc.regle }
+            : (categorieParMotParPf[platform] ?? null);
     if (parMot) {
       pf.categorie_source = parMot.regle?.startsWith("jeux_video")
         ? "famille_jeu_video"
         : parMot.regle?.startsWith("oeuvre_") ? "oeuvre_d_art"
         : parMot.regle?.startsWith("vetement_traditionnel_") ? "vetement_traditionnel"
+        : parMot.regle?.startsWith("catalogue_vinted_") ? "catalogue_vinted"
         : parMot.choisiParIa ? "ia_parmi_candidats" : (motCategorieSource === "ia" ? "mot_objet_arbre" : "mot_cle_arbre");
       pf.categorie_par_mot = {
         mot: motCategorie, mot_source: motCategorieSource, chemin: parMot.chemin, id: parMot.id ?? null,
@@ -1376,11 +1413,13 @@ export async function resoudrePublication({
       const categoryPath = parMot?.chemin ?? getBeebsCategoryPath(icon, pf.genre);
       if (categoryPath) pf.beebsCategoryPath = categoryPath;
       // « Console » est un champ REQUIS de la feuille « Consoles de jeux »
-      // (18 valeurs relevées le 20/09). Il n'existe PAS au relevé de la
-      // feuille « Jeux vidéo » : on ne le pose donc que pour une machine,
-      // là où on sait qu'il est attendu — on ne sème pas un champ qu'on
-      // n'a jamais vu.
-      if (jeuVideo?.famille === "console" && jeuVideo.machine?.beebs) {
+      // (18 valeurs relevées le 20/09).
+      // (12/11, lot « zéro problème », 1e — Nico) … et des feuilles « Jeux vidéo » (relevé depuis le 20/09) et
+      // « Accessoires pour consoles » (relevé lu le 12/11) : le commentaire d'origine (« il n'existe PAS au relevé de
+      // Jeux vidéo ») était périmé — 93 fiches de 3 comptes demandées en 14 jours. La machine de l'article (colonne
+      // `beebs` de jeuxVideo.js, la même que l'écran : plateformeDuJeuPourLaListe) part pour les trois familles ; une
+      // machine sans valeur Beebs (Steam Deck, Switch 2) ne pose rien (la question).
+      if (jeuVideo?.machine?.beebs) {
         const aspectsBeebs = { ...(pf.beebsAspects && typeof pf.beebsAspects === "object" ? pf.beebsAspects : {}) };
         if (!String(aspectsBeebs["Console"] ?? "").trim()) {
           aspectsBeebs["Console"] = jeuVideo.machine.beebs;
@@ -1515,16 +1554,33 @@ export async function resoudrePublication({
     //    fiche, le texte de l'article, la valeur neutre — et TOUT ce que la
     //    personne a touché elle-même (encart partagé ou carte de la copie).
     //    On ne jette que ce que personne n'a dit.
+    // ── (12/11, décision de Nico — point 1a) UNE TAILLE QUI CONTREDIT LA FICHE NE PART JAMAIS ──
+    // Fiche 1793630721658 (compte c7c382b7) : l'étiquette dit « EU 140cm » (10 ans) ; Vinted est parti en « 9 ans /
+    // 134 cm » (e05bc4ae), Beebs en « Naissance » (8c447bfa). La copie est confrontée à la fiche ET à l'étiquette lue
+    // (referencesTailleFiche) : en désaccord, elle est remplacée par la taille de la fiche (« 10 ans »), que la suite
+    // (tailleDepop, toPlatformChildSize, la grille de chaque plateforme) traduit comme toute taille ; sans
+    // remplacement sûr, elle est écartée — la question. Seule la carte de CETTE copie touchée à la main reste la
+    // décision de la personne : l'encart partagé, que la génération remplit seule quand les copies s'accordent, ne
+    // prouve rien.
     if (pf.taille) {
       const editeeIci = Boolean(sharedOverrides[platform]?.has("taille"));
       const partagee = String(sharedFields.taille ?? "").trim();
       const verdict = tailleAGarder(pf.taille, {
-        tailleFiche: String(
-          initialListing?.attributs?.taille?.v ?? initialListing?.attributs?.taille ?? initialListing?.taille ?? "",
-        ),
+        ...referencesTailleFiche(initialListing),
         texte: `${initialListing?.titre ?? ""} ${initialListing?.description ?? ""}`,
       });
-      if (!editeeIci && !partagee && !verdict.garder) {
+      if (!editeeIci && verdict.contredit) {
+        const le = new Date().toISOString();
+        if (verdict.remplacement) {
+          console.warn(`[publish] ${platform} — taille « ${pf.taille} » REMPLACÉE par « ${verdict.remplacement} » : ${verdict.motif}`);
+          pf.taille_corrigee_par_la_fiche = { valeur: pf.taille, remplacement: verdict.remplacement, fiche: verdict.reference, motif: verdict.motif, le };
+          pf.taille = verdict.remplacement;
+        } else {
+          console.warn(`[publish] ${platform} — taille « ${pf.taille} » ÉCARTÉE : ${verdict.motif}`);
+          pf.taille_ecartee = { valeur: pf.taille, motif: verdict.motif, le };
+          delete pf.taille;
+        }
+      } else if (!editeeIci && !partagee && !verdict.garder) {
         console.warn(`[publish] ${platform} — taille « ${pf.taille} » ÉCARTÉE : ${verdict.motif}`);
         pf.taille_ecartee = { valeur: pf.taille, motif: verdict.motif, le: new Date().toISOString() };
         delete pf.taille;

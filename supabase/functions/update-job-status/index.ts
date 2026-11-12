@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts";
+import { questionTailleHorsGrille } from "../_shared/vinted-taille-hors-grille.js";
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // handler-watch — module JS sans import, chargé tel quel par Deno.
 import { archiverErreur, errorTechniqueAvecHistorique, brutSelonStatut } from "../_shared/erreurs-archivees.js";
@@ -3352,6 +3353,13 @@ serve(async (req) => {
               const resume = cles.map((c) => `${GRILLE_LIBELLES[c]} « ${valeurs[c]} »`).join(", ");
               const nowIso = new Date().toISOString();
               const motifBrut = typeof body.error === "string" ? body.error.slice(0, 300) : null;
+              // (12/11, point 1c) Reprises épuisées sur la SEULE taille, absente de la liste servie : UNE question (plus bas).
+              const questionTaille = (cles.length === 1 && cles[0] === "taille" && nuf)
+                ? questionTailleHorsGrille({
+                  champ: String(nuf.field_key ?? nuf.field_label ?? ""), valeur: valeurs.taille ?? "", liste: listeServie,
+                  valeurOfferte, grilleAdulteEnfant,
+                })
+                : null;
               if (deja < GRILLE_MAX_REPRISES) {
                 const { next_action_after: _nao, needsUserField: _nuf, champs_a_completer: _cac, needs_user_source: _nus, ...pfSans } = pfCourant;
                 for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete (pfSans as Record<string, unknown>)[k];
@@ -3376,6 +3384,48 @@ serve(async (req) => {
                 console.log(
                   `[update-job-status] userId=${user.id} job=${jobId} — pré-vol négatif (${cles.join(", ")}) alors que la capture porte ${resume}` +
                   `${grilleAdulteEnfant ? " [grille adulte / taille enfant]" : ""} : reprise ${deja + 1}/${GRILLE_MAX_REPRISES}, étape captured conservée`,
+                );
+              } else if (questionTaille) {
+                // ── (12/11, point 1c de Nico) UNE TAILLE QUE VINTED NE PROPOSE PLUS POUR CE RAYON : UNE VRAIE QUESTION ──
+                // Compte 2bde8576, republication 479f51c0 : « 15 et moins » (identifiant 657 de l'ancienne grille des
+                // chaussures enfant) face aux onglets EU / UK / US du formulaire d'aujourd'hui. La branche ci-dessous
+                // RETIRAIT la liste servie et disait « Relance depuis l'app ; si ça se reproduit, écris-nous » : la
+                // relance rejouait le même mur, une dizaine de fois, sans aucune sortie. Ici la taille est réellement
+                // inconnue du formulaire (deux reprises, valeur absente de la liste, liste du rayon connue) : la liste
+                // fermée reste, ENTIÈRE, les voisines en tête (« EU 15 », « Très petit bébé »), et la question est dite
+                // telle qu'elle est (_shared/vinted-taille-hors-grille.js). La réponse part dans republish_user_fields.taille
+                // (cible de la question) ; get-pending-jobs la fait entrer dans la capture (tailleChoisieVersCapture) —
+                // la republication suivante de cet article porte le nouvel identifiant de Vinted : plus de question.
+                // ⛔ Hors périmètre (règle d'avant) : valeur DANS la liste (saisie non commitée), grille adulte sur une
+                //    taille enfant (une autre grille que celle du rayon), plusieurs champs, liste vide.
+                const q = questionTaille;
+                const nufQ = (nuf ?? {}) as Record<string, unknown>;
+                const pfQ = { ...pfCourant } as Record<string, unknown>;
+                for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfQ[k];
+                pfGrilleRefus = {
+                  ...pfQ,
+                  needsUserField: {
+                    ...nufQ,
+                    allowed_values: q.allowed_values,
+                    voisines: q.voisines,
+                    raison: "taille_hors_grille_vinted",
+                    target: (nufQ.target && typeof nufQ.target === "object") ? nufQ.target : { root: "republish_user_fields", key: "taille" },
+                  },
+                  champs_a_completer: ["taille"],
+                  needs_user_source: "champ_a_choisir",
+                  taille_grille_reprise: deja,
+                  taille_grille_refus: {
+                    le: nowIso, champs: cles, valeurs, grille_adulte_taille_enfant: grilleAdulteEnfant, motif: motifBrut,
+                    valeur_offerte_par_vinted: valeurOfferte, question_posee: true, voisines: q.voisines,
+                    build: typeof body.handler_build === "string" ? body.handler_build.slice(0, 80) : null,
+                    pose_par: "update-job-status (reprises épuisées : taille absente de la liste du rayon — UNE question, voisines en tête)",
+                  },
+                };
+                messageEffectif = q.message;
+                raisonRequalif = `taille « ${valeurs.taille} » absente de la liste servie par Vinted après ${GRILLE_MAX_REPRISES} reprises : question posée (${q.voisines.length} voisine(s) en tête)`;
+                console.log(
+                  `[update-job-status] userId=${user.id} job=${jobId} — taille « ${valeurs.taille} » absente de la liste servie (${listeServie.length} options) malgré ${GRILLE_MAX_REPRISES} reprises : ` +
+                  `UNE question, voisines ${JSON.stringify(q.voisines)}`,
                 );
               } else {
                 const { needsUserField: _nuf, champs_a_completer: _cac, ...pfSans } = pfCourant;

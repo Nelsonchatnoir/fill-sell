@@ -21,8 +21,8 @@
 //      (« 12-18 mois » n'est pas « 18 mois ») ; « 11/12 yrs » est UNE tranche, jamais « 12 ans ».
 //   E2 LE PRÉFIXE DE PAYS QUE LA LISTE N'ÉCRIT PAS — liste FERMÉE seulement (en texte libre, « EU 39 » part tel
 //      quel : règle du 01/10, inchangée) : « EU 36,5 », « 38 EU », « EUR 38 », « Taille FR 38 » → le nombre NU de
-//      la liste (virgule ≡ point) ; « EU S », « FR M », « INT XL » → la lettre (tailles.js : XXL ≡ 2XL) ; sur
-//      « Pointure UK / US / AU », le préfixe de CE pays (« UK 6 » → « 6 »).
+//      la liste (virgule ≡ point) ; sur « Pointure UK / US / AU », le préfixe de CE pays (« UK 6 » → « 6 »).
+//      (12/11) « EU S », « FR M », « INT XL » → la lettre : désormais la règle COMMUNE (tailles.js), plus ici.
 //      ⛔ UK, US, IT ne se retirent que sur l'aspect de leur pays, et EU/FR jamais sur un aspect UK/US/AU ;
 //      aucune conversion entre pays (« UK 10 » n'est jamais « 38 »).
 //   E3 (08/11, point 3 de Nico) L'ÉTIQUETTE ENFANT DANS L'AUTRE ÉCRITURE QUE LA LISTE eBay PORTE — voir plus bas :
@@ -31,11 +31,20 @@
 //   Sinon : null — la question part, avec la liste (« FR 3 », « EU 2 » de The Kooples, « 0-3 months » face à une
 //   liste qui n'a que « 3 mois »…).
 // ⛔ La fiche n'est jamais réécrite : seule la valeur servie à eBay.
-// ⛔ Module PROPRE À eBay : tailles.js (copié à l'octet dans l'extension, Depop, Opla) n'est pas touché ; les autres
-//    plateformes gardent leur règle.
+// (12/11, décision de Nico — point 1a) CE N'EST PLUS UNE RÈGLE PROPRE À eBay. La même faute a refusé « EU M » et
+// « EU 140cm » chez Depop (compte c7c382b7, tâches baf800fe et fe3af982) : corriger eBay seul, c'était corriger le cas.
+// La lecture de l'âge anglais (ageEnFrancais, E1) et des lettres préfixées (« EU S », « FR M », « INT XL » ; « UK/US M »
+// de XS à XXL) vit désormais dans le vocabulaire commun, rangé par site (tailles.js, SYSTEMES_DE_TAILLE), que toutes
+// les plateformes et l'extension lisent ; tailleDeService (R0) l'applique AVANT ce complément. Restent ici, propres à
+// eBay parce qu'ils dépendent du NOM de l'aspect eBay : le nombre dont la liste fermée n'écrit pas le préfixe de SON
+// pays (E2 : « EU 38 » → « 38 » sur « Taille », « UK 6 » → « 6 » sur « Pointure UK »), et l'étiquette enfant dans
+// l'autre écriture de la liste (E3).
 //
 // ES module pur (Deno + Node + Vite), un seul import relatif lui-même sans import. Pas de lookbehind (WebView iOS).
-import { tailleDansGrille, AGE_PAR_STATURE_ENFANT } from "./tailles.js";
+import { tailleDansGrille, AGE_PAR_STATURE_ENFANT, ageEnFrancais } from "./tailles.js";
+
+// La lecture de l'âge anglais est celle du vocabulaire commun (une seule règle) — ré-exportée pour les appelants d'hier.
+export { ageEnFrancais };
 
 /** Les aspects de taille eBay (nom EXACT, comme estAspectDeTaille d'ebay-aspects-ia.ts). */
 const ASPECT_TAILLE_RE = /^(?:Taille|Pointure(?: EU| UK| US| AU)?)$/;
@@ -51,40 +60,7 @@ const options = (liste) => (Array.isArray(liste) ? liste : [])
   .map((o) => String(typeof o === "string" ? o : (o?.code ?? o?.title ?? "")).trim())
   .filter(Boolean);
 
-// ── E1 — L'ÂGE EN ANGLAIS ───────────────────────────────────────────────────
-const UNITE_MOIS = "(?:months?|mths?|mos?)";
-const UNITE_ANS = "(?:years?\\s*old|yrs?\\s*old|y\\.?\\s*o\\.?|yrs?|years?|y)";
-const MOIS_RE = new RegExp(`^${UNITE_MOIS}$`);
-// [1] « age(s) » ; [2] première borne ; [3] seconde borne ; [4] unité.
-const AGE_RE = new RegExp(
-  `^(ages?\\s*:?\\s*)?(\\d{1,2})(?:\\s*(?:-|\\/|to|a)\\s*(\\d{1,2}))?\\s*(${UNITE_ANS}|${UNITE_MOIS}|ans?|mois)?\\.?$`,
-);
-
-/**
- * L'écriture FRANÇAISE d'un âge écrit en anglais (« 11-12 yrs » → « 11-12 ans », « 18 months » → « 18 mois »,
- * « Age 11-12 » → « 11-12 ans », « Newborn » → « Naissance »), ou null. Jamais une conversion d'unité.
- * @param {unknown} brut
- * @returns {string|null}
- */
-export function ageEnFrancais(brut) {
-  const s = plier(brut);
-  if (/^(?:new ?born|nouveau ?-?nes?)$/.test(s)) return "Naissance";
-  const m = AGE_RE.exec(s);
-  if (!m) return null;
-  const prefixeAge = Boolean(m[1]);
-  const unite = m[4] ?? "";
-  // Sans unité, seul « Age 11-12 » (l'âge des étiquettes anglaises, toujours en années) est un âge.
-  if (!unite && !prefixeAge) return null;
-  const enMois = MOIS_RE.test(unite) || unite === "mois";
-  const de = Number(m[2]);
-  const a = m[3] === undefined ? null : Number(m[3]);
-  if (a !== null && a <= de) return null;
-  const max = enMois ? 36 : 18;
-  if (de > max || (a ?? de) > max) return null;
-  const borne = a !== null ? `${de}-${a}` : String(de);
-  return `${borne} ${enMois ? "mois" : ((a ?? de) > 1 ? "ans" : "an")}`;
-}
-
+// ── E1 — L'ÂGE EN ANGLAIS : la lecture commune (tailles.js, ageEnFrancais), essayée ici sur chaque morceau ──────
 // Les morceaux d'une écriture, dans l'ordre : elle-même, le dehors puis le dedans de ses parenthèses, puis ses
 // jetons (« / », « | », « · », tiret ENTOURÉ d'espaces). Une barre entre deux chiffres est une TRANCHE
 // (« 11/12 yrs ») : jamais coupée — sinon « 12 yrs » deviendrait « 12 ans », une autre taille.
@@ -127,8 +103,9 @@ function paysDeLAspect(nomAspect) {
   const m = /^Pointure (UK|US|AU)$/.exec(String(nomAspect ?? ""));
   return m ? [m[1].toLowerCase()] : ["eur", "eu", "fr"];
 }
-const LETTRE_RE = /^(?:[2-8]?x{0,5}[sl]|m)$/;
 
+// (12/11) Les LETTRES préfixées (« EU S », « FR M », « INT XL ») ne se lisent plus ici : le vocabulaire commun, par
+// site (tailles.js), les a déjà rendues à l'étape R0 — sur eBay comme partout.
 function prefixePays(nomAspect, valeur, opt) {
   const s = plier(valeur).replace(/^(?:taille|t)\s*[:.]?\s*/, "");
   const pays = paysDeLAspect(nomAspect).join("|");
@@ -140,12 +117,6 @@ function prefixePays(nomAspect, valeur, opt) {
       return { valeur: egales[0], motif: `« ${valeur} » : le préfixe de pays que la liste eBay n'écrit pas (« ${egales[0]} »)`, regle: "E2" };
     }
     return null;
-  }
-  if (String(nomAspect) !== "Taille") return null;
-  const l = /^(?:eur|eu|fr|int)\s*[:.]?\s*([a-z0-9]{1,6})$/.exec(s);
-  if (l && LETTRE_RE.test(l[1])) {
-    const r = tailleDansGrille(l[1].toUpperCase(), opt);
-    if (r) return { valeur: r.valeur, motif: `« ${valeur} » : une taille en lettres, le préfixe retiré (${r.motif})`, regle: "E2" };
   }
   return null;
 }

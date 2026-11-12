@@ -989,3 +989,8 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   `lbc_animal_vivant` : la déposer soi-même puis « Synchroniser » ; un objet → « Accessoires animaux ») ; handler-watch
   (règle 11 de `_shared/questions-tranchees.ts`) donne le même geste à une tâche déjà tombée en échec ; l'app ne pose
   aucun colis par défaut sur cette catégorie. Verrou `npm run selftest:lbc-animal-vivant`.
+
+## 12/11/2026 nuit (lot « zéro problème », étape 2, point 1d-iii) — Leboncoin : 🚗 et les jouets
+- 🚗 (autoradio, pièces auto) → Leboncoin « Véhicules › Équipement auto » (🏍️ et 🛵 restent sans rayon).
+- Catalogue Vinted « Enfants › Jeux et jouets » → Leboncoin « Jeux & Jouets », table PAR IDENTIFIANTS
+  (`src/utils/vintedVersLbc.js`, 45 feuilles ; Déguisements, Activités bébé et Loisirs créatifs exclus).

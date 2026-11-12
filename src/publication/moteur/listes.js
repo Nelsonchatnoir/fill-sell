@@ -52,8 +52,21 @@ import {
   optionDepuisTextes, champDeductibleDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
 } from "../../../supabase/functions/_shared/option-du-texte.js";
 import { alimentationBeebs, estChampAlimentationBeebs } from "../../../supabase/functions/_shared/alimentation-beebs.js";
+import { etatDansLaGrille, rayonSansEtiquette } from "../../../supabase/functions/_shared/etat-correspondance.js";
 
 export { estFourreTout, listeCandidatsDabord, textesDeLAnnonce };
+
+// ── (12/11, lot « zéro problème », 1d-i — Nico) LES CHAMPS D'ÉTAT : UN SEUL JUGE ─────────────────────────────────────
+// Compte cfdfda6f, 12/11 : « Neuf avec étiquette » rangé en Leboncoin Électronique (grille sans étiquette) — le serveur et
+// l'extension traduisaient « État neuf », l'écran jugeait la valeur hors liste et BLOQUAIT. Un champ d'état se juge par
+// _shared/etat-correspondance.js (le même juge que get-pending-jobs et l'extension), jamais par le rapprochement par mots
+// (qui posait « Neuf avec étiquette » pour un « Neuf » nu : une devinette).
+const CHAMP_ETAT_EXACT = { vinted: "condition", beebs: "État" };
+export function estChampEtat(platform, key) {
+  const k = String(key ?? "");
+  if (platform === "leboncoin") return k === "condition" || /_condition$/.test(k);
+  return CHAMP_ETAT_EXACT[platform] != null && k === CHAMP_ETAT_EXACT[platform];
+}
 
 /**
  * L'OPTION QUE L'ANNONCE NOMME DÉJÀ (2026-09-24, job fc5e4bff de Jocabroc).
@@ -378,8 +391,10 @@ const brancheFemmesOpla = (chemin) => Array.isArray(chemin)
  *                                    ou null : à compléter par la personne.
  * `valeurListe` est l'écriture EXACTE de la liste — c'est elle qu'un job peut
  * porter sans que l'extension ait à chercher.
+ * `rayonId` (12/11) : l'identifiant du rayon de la plateforme (Vinted : catalog_id), quand l'appelant le connaît — il
+ * dit si l'étiquette a un sens pour l'état (_shared/etat-correspondance.js, rayonSansEtiquette).
  */
-export function jugerValeurContreListe({ platform, key, value, allowedValues, cheminCategorie = null, textes = null }) {
+export function jugerValeurContreListe({ platform, key, value, allowedValues, cheminCategorie = null, textes = null, rayonId = null }) {
   const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(v => String(v).trim()).filter(Boolean);
   const v = valeurPourListe(platform, key, value);
   if (!v) return { dans: false, valeurListe: null, suggested: null };
@@ -387,6 +402,13 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
   const nv = normAspectVal(v);
   const exacte = vals.find(a => normAspectVal(a) === nv);
   if (exacte) return { dans: true, valeurListe: exacte, suggested: null };
+  // (12/11, 1d-i) L'ÉTAT : traduit par le juge unique (niveau commun → libellé EXACT de LA grille), sinon la question —
+  // jamais une suggestion par mots.
+  if (estChampEtat(platform, key)) {
+    const sansEtiquette = rayonSansEtiquette({ plateforme: platform, rayonId, chemin: cheminCategorie });
+    const t = etatDansLaGrille(v, vals, { plateforme: platform, sansEtiquette });
+    return t ? { dans: true, valeurListe: t, suggested: null } : { dans: false, valeurListe: null, suggested: null };
+  }
   if (estChampTaille(platform, key)) {
     // (18/10, lot 3) Une taille ENFANT écrite dans le vocabulaire d'une autre
     // plateforme (« 9-12 mois / 74 cm » lu sur Vinted, « 9 mois / 74 cm » sur
@@ -462,6 +484,24 @@ export function tailleDuJob({ platform, taille, lignes, cheminCategorie = null, 
   // écrite comme la grille (la même déduction que l'écran, ligne « missing »).
   if (!brut) return tailleDeduiteDuTexte({ platform, key: ligne.key, value: "", allowedValues: ligne.allowedValues, cheminCategorie, textes })?.valeur ?? null;
   const v = jugerValeurContreListe({ platform, key: ligne.key, value: brut, allowedValues: ligne.allowedValues, cheminCategorie, textes });
+  return v.dans && v.valeurListe && v.valeurListe !== brut ? v.valeurListe : null;
+}
+
+/**
+ * L'ÉTAT QUE LE JOB PORTE — l'écriture EXACTE de la grille (12/11, lot « zéro problème », 1d-i). Même doctrine que
+ * tailleDuJob : l'écran juge « Neuf avec étiquette » dans la grille Électronique de Leboncoin (« État neuf »),
+ * « Ouvert (jamais utilisé) » dans celle de Vinted (« Très bon état ») ; le JOB part avec le libellé de la grille —
+ * l'extension, même d'avant ce correctif, n'a rien à chercher. La copie à l'écran et la fiche gardent la valeur précise
+ * (un changement de rayon la rejuge dans la nouvelle grille).
+ * Rend la valeur à poser, ou null (rien à changer : déjà exacte, hors grille → la question, pas de grille relevée).
+ */
+export function etatDuJob({ platform, etat, lignes, cheminCategorie = null, rayonId = null }) {
+  const brut = String(etat ?? "").trim();
+  if (!brut) return null;
+  const ligne = (Array.isArray(lignes) ? lignes : [])
+    .find(a => estChampEtat(platform, a?.key) && Array.isArray(a.allowedValues) && a.allowedValues.length);
+  if (!ligne) return null;
+  const v = jugerValeurContreListe({ platform, key: ligne.key, value: brut, allowedValues: ligne.allowedValues, cheminCategorie, rayonId });
   return v.dans && v.valeurListe && v.valeurListe !== brut ? v.valeurListe : null;
 }
 

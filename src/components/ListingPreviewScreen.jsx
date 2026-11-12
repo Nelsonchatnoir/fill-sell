@@ -40,18 +40,24 @@ import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from ".
 import { lbcProduitsDependants, lbcListePlate, lbcFeuilleDependante, lbcPaireDepuisTextes } from "../utils/lbcMaisonJardin";
 import { universLbcDeLaFiche, champsLbcSecondePasse, reponseDansLaListe, paireDeLaReponse } from "../publication/moteur/champsLbcAuto";
 import { gardeFouCategorie } from "../utils/categorieGardeFou";
+import { iconeDesRayons, rayonsPourLIcone, iconeQuandLeTitreCede, passe2ContrediteParLeCatalogue, familleDuCatalogueVinted } from "../utils/iconeDeLaCategorie";
 import { sansPoidsDeColisLbc } from "../../supabase/functions/_shared/leboncoin-animal-vivant.js";
 // Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
 import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
-import { valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
+import { valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine, feuillesDe } from "../utils/categorieParMot";
+// (12/11, lot « zéro problème » — 1d-ii) Le chemin Vinted de la fiche, lu par son identifiant ; (1e) la machine d'un jeu ;
+// (1d-i) le juge d'état unique (moteur/listes.estChampEtat → _shared/etat-correspondance.js).
+import { cheminVintedDeLaFiche, chargerFeuillesVinted, idVintedDuChemin } from "../utils/cheminVintedFiche";
+import { plateformeDuJeuPourLaListe } from "../utils/jeuxVideo";
+import { estChampEtat, etatDuJob } from "../publication/moteur/listes";
 import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, familleJeuVideo, jeuVideoDeLArticle, cheminJeuVideo, plateformeEbayDuJeu, EBAY_ASPECT_PLATEFORME } from "../utils/jeuxVideo";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryId } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
-import { rayonsGenreValides, genreSur, phraseGenreAChoisir } from "../publication/moteur/genreAChoisir";
+import { rayonsGenreValides, genreSur, phraseGenreAChoisir, genreBloque } from "../publication/moteur/genreAChoisir";
 import { getPlatformSupport, depopInterdit } from "../utils/platformCompat";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que le filet serveur
 // (get-pending-jobs) — verdict sur source certaine, motif écrit sous la case.
@@ -92,7 +98,7 @@ import { poidsLbcManquantPour } from "../utils/choixPoidsLeboncoin";
 import { resoudrePublication, signatureResolution, resolutionARetenter, cheminFourreToutLbc, textesFrDeLaPublication } from "../utils/resolutionPublication";
 // Le rayon : le lire pour l'afficher, et REPOSER le choix de la personne
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
-import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi, questionsRayonOuvertes, copiesAuPublicChoisi, publicDuRayonVinted } from "../utils/rayonPublication";
+import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi, questionsRayonOuvertes, copiesAuPublicChoisi, publicDuRayonVinted, genreAligneSurSonRayon } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
 // (30/10, lot E) Sur la carte de chaque plateforme : ses photos (choix, ordre, limite) et, pour Leboncoin, la ville.
 import PhotosPlateforme from "../publication/PhotosPlateforme";
@@ -579,7 +585,11 @@ function resolveArticleIcon(args) {
 // rendue ? » sur le job c324b5ee : la catégorie était fausse et sa cause
 // invérifiable. Valeurs : famille_livres | mot_cle | ia | detection |
 // pointure | defaut.
-function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, aiObjet = null }) {
+// ── (12/11, Nico, points 1b et 1d-iii) DEUX ENTRÉES DE PLUS, DES IDENTIFIANTS ──────────────────────────────────
+// `rayons` : les rayons connus de l'article (choisis, catalogue Vinted, résolus — utils/iconeDeLaCategorie.js,
+// rayonsPourLIcone) ; `catalogueVinted` : { id, chemin } du catalogue Vinted de la fiche. Absents : la règle d'avant,
+// à l'identique.
+function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, aiObjet = null, rayons = null, catalogueVinted = null }) {
   // ── FAMILLE LENS SOUVERAINE — LIVRES (2026-09-02, cas Delavier) ───────────
   // « La Méthode Delavier de MUSCULATION » : le mot-clé « musculation »
   // accrochait l'icône sport → catégorie LBC « Loisirs > Sport & Plein air »
@@ -730,7 +740,14 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
   // 🍳 (Casseroles). Ce que la description énumère, la décoration le REPRÉSENTE :
   // la passe 2 se tait (utils/shared.js, titreNommeUneDecorationMurale).
   const motCle = detectObjectKeywordDetail(frTitle, `${frDesc} ${marque}`);
+  // ── (12/11, Nico, point 1d-iii) LE CATALOGUE VINTED DE LA FICHE PARLE, PAR SON IDENTIFIANT ──────────────────
+  // Sa famille (« Enfants › Jeux et jouets » = loisirs, « Électronique » = electronique…) : une source CERTAINE,
+  // la catégorie déclarée sur la plateforme qui héberge déjà l'annonce. Inconnue → rien ne change.
+  const familleCatalogue = familleDuCatalogueVinted(catalogueVinted);
   const passe2Ecartee = motCle?.passe === 2 && (
+    // VOIE 6 (12/11, « Jouets musicaux en bois », catalogue 3358) : le « sac » de rangement de la description
+    // (👜, mode) contredit le catalogue (jouets) — la passe 2 propose, le catalogue la contredit : elle se tait.
+    passe2ContrediteParLeCatalogue(motCle.icon, familleCatalogue) ||
     estAnglaisAvere(frDesc) ||
     (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon) ||
     titreNommeUneDecorationMurale(frTitle)
@@ -746,6 +763,16 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
   const motTheme = motCle?.passe === 1 && /^no[eë]l$/.test(String(motCle.mot ?? ""));
   const iconeIaValide = aiIcon && aiIcon !== "📦" && VALID_OBJECT_ICONS.has(aiIcon) ? aiIcon : null;
   const themeEcarte = motTheme && ((iconeDuMotIa ?? iconeIaValide) != null) && (iconeDuMotIa ?? iconeIaValide) !== motCle.icon;
+  // ── (12/11, Nico, point 1d-iii) LE MOT DU TITRE CÈDE QUAND LE CATALOGUE VINTED ET L'IA LE CONTREDISENT ──────
+  // « Road Top 12,3" Écran CarPlay pour BMW » (compte cfdfda6f) : « top » (une marque d'écrans auto) → 👕 → Leboncoin
+  // « Mode › Vêtements », contre le catalogue Vinted 3789 (Électronique › … › GPS) ET le mot de l'IA « autoradio »
+  // (🚗). « Cassette VHS Nikita … Jean Reno » (3048, IA « cassette vhs ») : « jean » → 👖. « Paire d'assiettes …
+  // Derby » (3829, IA « assiette ») : « derby » → 👟. DEUX sources contre un mot : le mot de l'IA prend la main.
+  // ⛔ Une seule contre le titre (l'IA seule, ou le catalogue seul) : le titre garde la main, comme le 19/09.
+  // ⛔ Familles inconnues ou compatibles (« Écran … » face à un catalogue Électronique) : rien ne change.
+  const iconeTitreCede = motCle?.passe === 1 && !themeEcarte
+    ? iconeQuandLeTitreCede({ iconeTitre: motCle.icon, iconeIa: iconeDuMotIa, familleCatalogue }) : null;
+  if (iconeTitreCede) return { icon: iconeTitreCede, source: "mot_objet_ia", iconeSansIa: iconeTitreCede, motTitreEcarte: motCle.mot ?? null };
   if (motCle && !passe2Ecartee && !themeEcarte) {
     // passe 1 = le titre, la source du vendeur : source « mot_cle », comme
     // avant, MOT POUR MOT — le garde-fou n'écarte jamais un mot du titre et ne
@@ -793,7 +820,21 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
     return { icon: aiIcon, source: "ia", iconeSansIa: sansIa };
 
   const icon = sansIa;
-  if (icon !== "📦") return { icon, source: "detection", iconeSansIa: sansIa }; // 📦 = CAT_DEFAULT_ICONS['Autre'] (shared.js)
+  // ── (12/11, Nico, point 1b) LE REPLI DU TYPE CÈDE DEVANT UN RAYON CONNU ──────────────────────────────────────
+  // Ici, aucun mot n'a nommé l'objet : `icon` n'est que le défaut du TYPE de la fiche (« Mode » → 👗). Compte
+  // c7c382b7, fiches Lens en anglais (« knitted wool jumper », « long herringbone coat ») : 👗 jugeait le genre
+  // (« Homme impossible ») et rangeait eBay en « Robes », alors que le rayon CHOISI (Vinted 267 « Hommes › … ›
+  // Pulls ») ou RÉSOLU (« Hommes › … › Pardessus ») disait l'objet. L'icône se lit alors sur l'IDENTIFIANT de ce
+  // rayon (table inverse des tables icône → catégorie, utils/iconeDeLaCategorie.js) — aucune langue n'y entre.
+  // ⛔ Seul le repli cède : un mot du titre, de la description, de l'IA, l'icône de l'IA ne sont jamais touchés.
+  // ⛔ Un rayon qui ne désigne pas UNE icône sans ambiguïté ne rend rien : le repli reste.
+  const parRayon = iconeDesRayons(rayons);
+  if (icon !== "📦") {
+    if (parRayon?.icone && parRayon.icone !== icon) {
+      return { icon: parRayon.icone, source: "rayon", iconeSansIa: sansIa, rayon: { plateforme: parRayon.plateforme, origine: parRayon.origine, id: parRayon.id } };
+    }
+    return { icon, source: "detection", iconeSansIa: sansIa }; // 📦 = CAT_DEFAULT_ICONS['Autre'] (shared.js)
+  }
 
   // Dernier recours UNIQUEMENT (l'icône est déjà le défaut « Autre », on ne peut
   // rien dégrader) : une POINTURE trahit une chaussure. Volontairement borné aux
@@ -801,6 +842,9 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
   // une veste peut être taille 44.
   if (/(?:pointure|\b(?:eu|uk|us)\s?(?:3[5-9]|4[0-9]|50)\b)/i.test(`${taille} ${frTitle}`)) {
     return { icon: "👟", source: "pointure", iconeSansIa: sansIa };
+  }
+  if (parRayon?.icone && parRayon.icone !== icon) {
+    return { icon: parRayon.icone, source: "rayon", iconeSansIa: sansIa, rayon: { plateforme: parRayon.plateforme, origine: parRayon.origine, id: parRayon.id } };
   }
   return { icon, source: "defaut", iconeSansIa: sansIa };
 }
@@ -4533,8 +4577,14 @@ const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 // (champs-requis-auto.js). Rien de sûr → null : la question reste, comme avant. Pur.
 // Sources tracées (option_du_texte) ; la valeur est posée sur la COPIE, jamais sur la fiche.
 const CHAMP_REQUIS_VERS_COPIE = new Set(["objet_sans_taille", "accessoire_sans_taille", "grille_taille_unique_seule", "pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
-function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "" }) {
+function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "", titresJeu = [], descriptionsJeu = [] }) {
   if (!Array.isArray(allowedValues) || !allowedValues.length) return null;
+  // (12/11, lot « zéro problème », 1e — Nico) La MACHINE d'un jeu vidéo, connue, ne se redemande pas : Beebs « Console »
+  // (Jeux vidéo, Consoles, Accessoires), Vinted video_game_platform — la machine que nomment les titres (puis la
+  // description), écrite comme LA liste du rayon ; rétro → « Retrogaming » ; absente de la liste et non rétro → la
+  // question (utils/jeuxVideo.js, plateformeDuJeuPourLaListe — la même règle qu'au clic).
+  const jeu = plateformeDuJeuPourLaListe({ plateforme: platform, cle: key, titres: titresJeu, descriptions: descriptionsJeu, allowedValues });
+  if (jeu) return jeu;
   const nom = `${key ?? ""} ${label ?? ""}`;
   const cheminListe = Array.isArray(chemin) ? chemin : (chemin ? [String(chemin)] : []);
   const estPointure = /pointure|shoe_size/i.test(nom) || (/^(taille|size|_size)$/i.test(String(label ?? key ?? "").trim()) && estChampChaussures("", cheminListe));
@@ -5019,6 +5069,26 @@ export default function ListingPreviewScreen({
       .catch(() => {});
     return () => { vivant = false; };
   }, [inventaireId, supabase]);
+  // ── (12/11, lot « zéro problème », 1d-ii) LE CHEMIN VINTED DE LA FICHE, PAR SON IDENTIFIANT ──────────────────────────
+  // Les écrivains (extension, texteDuVendeur) n'écrivent que l'identifiant : 0 fiche sur 313 portait
+  // attributs.categorie_vinted.chemin, et tout ce que l'écran en déduisait (Univers Leboncoin, seconde passe IA,
+  // pointure, longueur de robe eBay) se taisait. Le résolveur unique (utils/cheminVintedFiche.js) : l'identifiant de la
+  // fiche (colonne, sinon attributs) → l'arbre relevé ; le chemin écrit seulement à défaut. L'arbre est chargé une fois
+  // (import() dynamique) ; il sert aussi à lire l'identifiant du rayon Vinted d'une copie (juge d'état, 1d-i).
+  const [feuillesVinted, setFeuillesVinted] = useState(null);
+  useEffect(() => {
+    let vivant = true;
+    chargerFeuillesVinted().then((f) => { if (vivant) setFeuillesVinted(f); }).catch(() => {});
+    return () => { vivant = false; };
+  }, []);
+  const cheminVintedFiche = useMemo(() => cheminVintedDeLaFiche({
+    vinted_catalog_id: articleBase?.vinted_catalog_id ?? initialListing?.vinted_catalog_id ?? null,
+    attributs: (attributsBase && typeof attributsBase === "object") ? attributsBase
+      : (articleBase?.attributs ?? initialListing?.attributs ?? null),
+  }, feuillesVinted), [articleBase, initialListing?.vinted_catalog_id, initialListing?.attributs, attributsBase, feuillesVinted]);
+  // Lu dans les fonctions appelées après une attente (appliquerGeneration) : la valeur du dernier rendu, jamais une vieille.
+  const cheminVintedFicheRef = useRef(null);
+  cheminVintedFicheRef.current = cheminVintedFiche;
   // ── LA CATÉGORIE D'ORIGINE (2026-09-19) ───────────────────────────────────
   // Depuis le 17/09, le relevé écrit dans annonces_plateforme.capture la
   // catégorie de chaque annonce DÉJÀ EN LIGNE — celle que la personne a
@@ -6836,7 +6906,8 @@ export default function ListingPreviewScreen({
       {
         const attrsF = initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : {};
         const vAttr = (c) => { const x = attrsF?.[c]; return x && typeof x === "object" ? x.v : x; };
-        const cheminV = attrsF?.categorie_vinted?.chemin ?? attrsF?.categorie_vinted?.v?.chemin;
+        // (12/11, 1d-ii) Le chemin Vinted de la fiche, résolu par son identifiant (utils/cheminVintedFiche.js).
+        const cheminV = cheminVintedFicheRef.current;
         const chemins = [
           initialListing?.categorie, initialListing?.titre, ...(Array.isArray(cheminV) ? cheminV : []),
           ...platforms.flatMap((p) => Object.entries(initialEdited[p]?.platform_fields ?? {})
@@ -7194,6 +7265,31 @@ export default function ListingPreviewScreen({
     }
     return sortie;
   }, [resolutionAffichee, edited]);
+  // ── (12/11, Nico, points 1b et 1d-iii) LES RAYONS QUI DISENT L'ICÔNE, PAR IDENTIFIANT ─────────────────────────
+  // Le catalogue Vinted de la fiche (moteur/apprises.catalogueVintedDeLaFiche : `vinted_catalog_id`, sinon
+  // `attributs.categorie_vinted`) en chemin, lu dans l'arbre relevé (chargé à la demande, categorieParMot.feuillesDe —
+  // le même que la résolution) ; puis les rayons connus de l'article (choisis, catalogue, résolus par le pré-calcul :
+  // utils/iconeDeLaCategorie.js). Ils entrent dans CHAQUE calcul d'icône de l'écran, comme dans celui de la
+  // publication (resolutionPublication.js) : une seule règle des deux côtés.
+  // (Quand le résolveur identifiant → chemin Vinted commun existera, il remplace la lecture ci-dessous.)
+  const [catalogueVintedChemin, setCatalogueVintedChemin] = useState(null);
+  const idCatalogueVintedFiche = catalogueVintedDeLaFiche(initialListing);
+  useEffect(() => {
+    const id = idCatalogueVintedFiche;
+    if (!id) { setCatalogueVintedChemin(null); return; }
+    let vivant = true;
+    feuillesDe("vinted")
+      .then((feuilles) => {
+        if (!vivant) return;
+        const f = (feuilles ?? []).find((x) => x.id === String(id));
+        setCatalogueVintedChemin(f ? { id: String(id), chemin: f.chemin } : null);
+      })
+      .catch(() => { if (vivant) setCatalogueVintedChemin(null); });
+    return () => { vivant = false; };
+  }, [idCatalogueVintedFiche]);
+  const rayonsIcone = useMemo(
+    () => rayonsPourLIcone({ edited, pfParPlateforme: resolutionAffichee?.pfParPlateforme ?? null, catalogueVinted: catalogueVintedChemin }),
+    [edited, resolutionAffichee, catalogueVintedChemin]);
   // Les candidates que le calcul avait déjà ratissées pour CET objet : c'est
   // la liste où « Jeux » se trouve quand l'app a posé « Consoles ». Corriger
   // le cas de XEWER ne demande donc aucune frappe, juste un choix.
@@ -7221,8 +7317,10 @@ export default function ListingPreviewScreen({
   // au brouillon et à la fiche en base, et la résolution ne le voit jamais.
   // (06/11, Nico, point 4 a) Le rayon VINTED choisi par la personne porte son public : il prime sur le genre deviné des
   // autres copies (utils/rayonPublication.js, copiesAuPublicChoisi) — le geste, jamais une valeur par défaut.
+  // (12/11, Nico, point 1b-c) Et le genre de la copie elle-même s'aligne sur le rayon qu'elle vient de recevoir
+  // (genreAligneSurSonRayon : Vinted, Beebs) — plus jamais « genre Femme » sous un rayon « Hommes » choisi.
   const choisirRayon = (platform, choix) => setEdited(prev => {
-    const suivant = prev[platform] ? { ...prev, [platform]: { ...prev[platform], rayon_choisi: choix } } : prev;
+    const suivant = prev[platform] ? genreAligneSurSonRayon({ ...prev, [platform]: { ...prev[platform], rayon_choisi: choix } }, platform) : prev;
     return platform === "vinted" && suivant !== prev ? copiesAuPublicChoisi(suivant) : suivant;
   });
 
@@ -7538,8 +7636,10 @@ export default function ListingPreviewScreen({
       edited,
       pf: src?.platform_fields ?? {},
       aiIcon: activeAiIcon,
+      rayons: rayonsIcone,
+      catalogueVinted: catalogueVintedChemin,
     });
-  }, [edited, initialListing, activeAiIcon]);
+  }, [edited, initialListing, activeAiIcon, rayonsIcone, catalogueVintedChemin]);
 
   // ── Plafond photos Leboncoin : on le DIT avant de publier (2026-08-10) ─────
   // handlePublish plafonne le job à l'insert ; sans cet encart, l'utilisateur
@@ -8037,15 +8137,15 @@ export default function ListingPreviewScreen({
   // l'auto-résolution (choix explicite sacré) : il partira à l'échec à coup
   // sûr. On l'affiche donc AVANT, dans StepPublish. Vide/Mixte restent hors
   // du signal : l'auto-résolution du genre s'en charge au moment du publish.
+  // ── (12/11, Nico, point 1b) LE RAYON QUI PART JUGE, L'ICÔNE SEULEMENT SANS RAYON (moteur/genreAChoisir.genreBloque) ──
+  // Compte c7c382b7 : rayon résolu « Hommes › … › Pardessus », genre Homme, icône de repli 👗 → « Homme n'est pas un
+  // rayon Vinted pour cet article » et Publier grisé. Un genre cohérent avec le rayon qui part n'est jamais une question.
   const vintedGenreBlocked = useMemo(() => {
     if (!selected.has("vinted") || !edited.vinted) return false;
     const pf = edited.vinted.platform_fields ?? {};
-    const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
-    if (!vintedGenreRequired(icon)) return false;
-    const g = pf.genre;
-    if (!g || g === "Mixte") return false;
-    return !getVintedCategoryPath(icon, g);
-  }, [selected, edited, initialListing, activeAiIcon]);
+    const det = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, rayons: rayonsIcone, catalogueVinted: catalogueVintedChemin });
+    return genreBloque({ plateforme: "vinted", genre: pf.genre, rayon: rayonsParPf?.vinted ?? null, icone: det.icon, iconeRepli: det.source === "detection" || det.source === "defaut", requis: vintedGenreRequired, cheminDe: getVintedCategoryPath });
+  }, [selected, edited, initialListing, activeAiIcon, rayonsIcone, catalogueVintedChemin, rayonsParPf]);
 
   // ── Même garde pour Beebs (2026-08-13, item 4 du chantier LBC+Beebs) ──────
   // Cas réels en base : genre="Enfant" (26/07) — choix explicite respecté par
@@ -8060,12 +8160,9 @@ export default function ListingPreviewScreen({
   const beebsGenreBlocked = useMemo(() => {
     if (!selected.has("beebs") || !edited.beebs) return false;
     const pf = edited.beebs.platform_fields ?? {};
-    const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
-    if (!beebsGenreRequired(icon)) return false;
-    const g = pf.genre;
-    if (!g || g === "Mixte") return false;
-    return !getBeebsCategoryPath(icon, g);
-  }, [selected, edited, initialListing, activeAiIcon]);
+    const det = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, rayons: rayonsIcone, catalogueVinted: catalogueVintedChemin });
+    return genreBloque({ plateforme: "beebs", genre: pf.genre, rayon: rayonsParPf?.beebs ?? null, icone: det.icon, iconeRepli: det.source === "detection" || det.source === "defaut", requis: beebsGenreRequired, cheminDe: getBeebsCategoryPath });
+  }, [selected, edited, initialListing, activeAiIcon, rayonsIcone, catalogueVintedChemin, rayonsParPf]);
 
   // ── (22/10 soir, point 4 — Louis) LE RAYON À CHOISIR A SON CHAMP ─────────
   // « Lunettes enfants Stitch » : genre « Enfant » sur la copie Beebs, une
@@ -8081,12 +8178,12 @@ export default function ListingPreviewScreen({
     for (const [p, bloque, chemin] of [["vinted", vintedGenreBlocked, getVintedCategoryPath], ["beebs", beebsGenreBlocked, getBeebsCategoryPath]]) {
       if (!bloque) continue;
       const pf = edited[p]?.platform_fields ?? {};
-      const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+      const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon, rayons: rayonsIcone, catalogueVinted: catalogueVintedChemin });
       const valides = rayonsGenreValides(p, icon, chemin);
       out[p] = { actuel: pf.genre ?? "", valides, deduit: genreSur({ actuel: pf.genre ?? "", valides, texte: texteFiche }) };
     }
     return out;
-  }, [vintedGenreBlocked, beebsGenreBlocked, edited, initialListing, activeAiIcon]);
+  }, [vintedGenreBlocked, beebsGenreBlocked, edited, initialListing, activeAiIcon, rayonsIcone, catalogueVintedChemin]);
   const genresDeduitsPoses = useRef(new Set());
   const [genresDeduits, setGenresDeduits] = useState({});
   useEffect(() => {
@@ -8131,7 +8228,7 @@ export default function ListingPreviewScreen({
     // (jeuVideoDeLArticle, textesFrDeLaPublication) ; doute → comme avant.
     {
       const { titre, description } = textesFrDeLaPublication({ initialListing, edited });
-      const iconJv = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+      const iconJv = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon, rayons: rayonsIcone, catalogueVinted: catalogueVintedChemin });
       const feuilleJv = cheminJeuVideo("ebay", jeuVideoDeLArticle(iconJv, titre, description));
       if (feuilleJv?.id) return String(feuilleJv.id);
     }
@@ -8170,7 +8267,7 @@ export default function ListingPreviewScreen({
     // cheminée interrogés 22 s sur la « Batterie » d'une perceuse sans fil).
     if (!iconeEbayAdmise({ preCalculAttendu: Boolean(platformListings?.platforms), preCalculFini: resolutionFaitePour === platformListings,
       attenteEcoulee: attentePrecalculEbayPour === platformListings })) return null;
-    const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+    const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon, rayons: rayonsIcone, catalogueVinted: catalogueVintedChemin });
     const direct = getEbayCategoryId(icon, pf.genre);
     if (direct) return direct;
     // TROU PROUVÉ (job casquette 47917f97, cat. 52365) : genre de la copie
@@ -8184,7 +8281,7 @@ export default function ListingPreviewScreen({
     // aura réellement.
     const secours = ebayGenreFallback();
     return secours ? (getEbayCategoryId(icon, secours) ?? null) : null;
-  }, [selected, edited, initialListing, resolutionAffichee, ebayVoieApiReelle, platformListings, resolutionFaitePour, attentePrecalculEbayPour, activeAiIcon, ebayCategorieDuClic, rayonsParPf]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, edited, initialListing, rayonsIcone, catalogueVintedChemin, resolutionAffichee, ebayVoieApiReelle, platformListings, resolutionFaitePour, attentePrecalculEbayPour, activeAiIcon, ebayCategorieDuClic, rayonsParPf]); // eslint-disable-line react-hooks/exhaustive-deps
   // « Plateforme » d'un jeu vidéo, lue sur la machine nommée (02/10 soir,
   // point 6) — même texte et même icône que la catégorie ci-dessus ; posée
   // par défaut dans l'encart (modifiable), jamais envoyée à l'IA.
@@ -8192,9 +8289,9 @@ export default function ListingPreviewScreen({
     if (!edited.ebay) return null;
     const pf = edited.ebay.platform_fields ?? {};
     const { titre, description } = textesFrDeLaPublication({ initialListing, edited });
-    const iconJv = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+    const iconJv = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon, rayons: rayonsIcone, catalogueVinted: catalogueVintedChemin });
     return plateformeEbayDuJeu(jeuVideoDeLArticle(iconJv, titre, description), titre);
-  }, [edited, initialListing, activeAiIcon]);
+  }, [edited, initialListing, activeAiIcon, rayonsIcone, catalogueVintedChemin]);
   // (02/10, lot) La catégorie eBay dont les aspects exigés ont été LUS.
   const [ebayAspectsLusPour, setEbayAspectsLusPour] = useState(null);
   // ── LA LISTE EST-ELLE CELLE DE LA CATÉGORIE COURANTE ? (10/10, cas Manon) ──
@@ -8421,7 +8518,7 @@ export default function ListingPreviewScreen({
         // jamais « courte » (moteur/aspectsEbayAuto, longueurDeLaRobeDuTexte).
         if (name === EBAY_LONGUEUR_ROBE) {
           const fr = textesFrDeLaPublication({ initialListing, edited });
-          const cheminV = initialListing?.attributs?.categorie_vinted?.chemin;
+          const cheminV = cheminVintedFiche; // (12/11, 1d-ii) résolu par l'identifiant de la fiche
           const lr = longueurDeLaRobeDuTexte({ allowedValues, mode, textes: [
             { source: "titre", texte: fr.titre }, { source: "description", texte: fr.description },
             { source: "categorie_vinted", texte: Array.isArray(cheminV) && cheminV.length ? String(cheminV[cheminV.length - 1]) : "" },
@@ -8457,7 +8554,7 @@ export default function ListingPreviewScreen({
       if (connue) return { ...manquant, deduit: { valeur: connue, source: "ia_connue" } };
       return manquant;
     });
-  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf, plateformeJeuEbay, initialListing]);
+  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf, plateformeJeuEbay, initialListing, cheminVintedFiche]);
 
   // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
   // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
@@ -8814,7 +8911,7 @@ export default function ListingPreviewScreen({
     for (const platform of ["vinted", "leboncoin", "beebs"]) {
       if (!selected.has(platform) || !edited[platform]) continue;
       const pf = edited[platform].platform_fields ?? {};
-      const det = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
+      const det = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, aiObjet: activeAiObjet, rayons: rayonsIcone, catalogueVinted: catalogueVintedChemin });
       // MÊME garde-fou qu'à l'insert (2026-09-07) : les requis affichés à
       // l'écran doivent être ceux de la catégorie RÉELLEMENT publiée. Sans ça,
       // l'encart rouge réclamerait un « Produit » d'électroménager sur un
@@ -8861,7 +8958,7 @@ export default function ListingPreviewScreen({
     return keys;
     // rayonsParPf : ne change que quand la résolution ou `edited` bougent —
     // `edited` est déjà une dépendance ; l'ancien chemin ignore sa valeur.
-  }, [selected, edited, initialListing, activeAiIcon, activeAiObjet, rayonsParPf, variante]);
+  }, [selected, edited, initialListing, activeAiIcon, activeAiObjet, rayonsParPf, variante, rayonsIcone, catalogueVintedChemin]);
 
   // ⚠️ DÉPENDANCE PAR SIGNATURE, PAS PAR IDENTITÉ (fix boucle 2026-07-16) :
   // genericCategoryKeys est un OBJET recalculé à chaque rendu (useMemo sur
@@ -9278,6 +9375,9 @@ export default function ListingPreviewScreen({
     const cheminDe = (p) => p === "opla"
       ? (edited.opla?.platform_fields?.oplaCategoryPath ?? null)
       : (typeof genericCategoryKeys?.[p] === "string" ? genericCategoryKeys[p].split(" > ") : null);
+    // (12/11, 1d-i) L'IDENTIFIANT du rayon Vinted de la copie (l'arbre relevé, utils/cheminVintedFiche) : il dit au juge
+    // d'état si l'étiquette a un sens (beauté : parfums, maquillage, soins) — jamais un mot du chemin ou du titre.
+    const rayonIdDe = (p) => (p === "vinted" ? idVintedDuChemin(cheminDe(p), feuillesVinted) : null);
     for (const [platform, rows] of Object.entries(genericAspectsCatalog)) {
       // `plateformesPubliables` couvre déjà « sélectionnée ET générée », plus
       // l'adresse de remise et l'interdiction produit qui manquaient ici.
@@ -9415,7 +9515,7 @@ export default function ListingPreviewScreen({
             // (Marque, relevé tronqué à 200) : présence = ok, la plateforme
             // tranche au dépôt — le comportement d'hier. La carte
             // (champsDuRayon) applique exactement ce jugement.
-            const verdict = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform) });
+            const verdict = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform), rayonId: rayonIdDe(platform) });
             if (!verdict.dans && target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
               // (05/11 soir, demande de Nico — PMF Vito) Une POINTURE connue que la grille de CE rayon n'a pas (« 36,5 »
               // sur une grille d'entiers, « 37 » sur une grille homme qui commence à 38) : la question dit POURQUOI, lu dans
@@ -9433,7 +9533,19 @@ export default function ListingPreviewScreen({
                 ...(horsGrille ? { horsGrille } : {}),
               };
             }
-            return { key, label, state: "ok", value: src, allowedValues, inputType: r.input_type, dedicatedTarget: target };
+            // (12/11, 1d-i) Un ÉTAT traduit par le juge unique (« Neuf avec étiquette » → « État neuf » en Leboncoin
+            // Électronique, « Ouvert (jamais utilisé) » → « Très bon état ») : la ligne est remplie ; le libellé EXACT de la
+            // grille (etatTraduitDeLaGrille) part sur le JOB de CETTE plateforme au clic (etatDuJob) — jamais sur la fiche, et
+            // la copie garde la valeur précise (un changement de rayon la rejuge).
+            const etatTraduit = estChampEtat(platform, key) && verdict.dans && verdict.valeurListe && verdict.valeurListe !== src ? verdict.valeurListe : null;
+            return { key, label, state: "ok", value: src, allowedValues, inputType: r.input_type, dedicatedTarget: target, ...(etatTraduit ? { etatTraduitDeLaGrille: etatTraduit } : {}) };
+          }
+          // (12/11, 1d-i) L'ancien stepper aussi : l'état passe par le même juge (traduit, jamais deviné) ; rien n'y bloque,
+          // comme avant (aucune liste relevée n'y fait foi).
+          if (estChampEtat(platform, key) && target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
+            const ve = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform), rayonId: rayonIdDe(platform) });
+            if (!ve.dans) return { key, label, state: "invalid", value: src, dedicatedTarget: target, suggested: null, blocking: listeFaitFoi(platform, null), allowedValues };
+            return { key, label, state: "ok", value: src, allowedValues, dedicatedTarget: target, ...(ve.valeurListe !== src ? { etatTraduitDeLaGrille: ve.valeurListe } : {}) };
           }
           // (17/10, Nico) Une marque hors du relevé reste la sienne (estChampMarque) :
           // jamais « invalide », jamais rapprochée d'une autre.
@@ -9472,7 +9584,7 @@ export default function ListingPreviewScreen({
           if (variante === "nouvelle" && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
             // Même règle sur le canal générique (une valeur tapée en « Autre
             // valeur… », ou héritée d'un ancien job) : jugée contre la liste.
-            const verdict = jugerValeurContreListe({ platform, key, value: generic, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform) });
+            const verdict = jugerValeurContreListe({ platform, key, value: generic, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform), rayonId: rayonIdDe(platform) });
             if (!verdict.dans) {
               return {
                 key, label, state: "invalid", source: "generic", value: generic, dedicatedTarget: genericDedicatedTarget(platform, key),
@@ -9520,6 +9632,9 @@ export default function ListingPreviewScreen({
             // rien d'écrit, rien sur la fiche → la question, comme avant.
             classementFiche: String(edited?.vinted?.platform_fields?.vintedAspects?.[VINTED_CHAMP_CLASSEMENT]
               || edited?.ebay?.platform_fields?.ebayAspects?.[EBAY_ASPECT_CLASSEMENT] || vF("classement_age") || ""),
+            // (12/11, 1e) La machine d'un jeu : les titres (fiche, copie) d'abord, la description en dernier.
+            titresJeu: [initialListing?.titre ?? "", edited[platform]?.title ?? ""],
+            descriptionsJeu: [initialListing?.description ?? "", edited[platform]?.description ?? ""],
           });
           if (auto?.valeur) return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type, dedicatedTarget: genericDedicatedTarget(platform, key),
                                      suggested: auto.valeur, blocking: false, deduit: { valeur: auto.valeur, source: auto.source, motif: auto.motif } };
@@ -9631,7 +9746,8 @@ export default function ListingPreviewScreen({
         if (platform === "leboncoin" && a.dedicatedTarget === "univers" && a.state !== "ok") {
           const u = universLbcDeLaFiche({
             genres: [pf.genre, valeurFiche("genre"), edited.vinted?.platform_fields?.genre, edited.beebs?.platform_fields?.genre].filter(Boolean),
-            cheminVinted: ficheAttrs?.categorie_vinted?.chemin ?? edited.vinted?.platform_fields?.categoryPath ?? null,
+            // (12/11, 1d-ii) Le chemin Vinted de la FICHE, résolu par son identifiant (0 fiche sur 313 portait le chemin écrit).
+            cheminVinted: cheminVintedFiche ?? edited.vinted?.platform_fields?.categoryPath ?? null,
             taille: pf.taille || valeurFiche("taille") || "",
             titre: edited[platform]?.title || initialListing?.titre || "",
             allowedValues: a.allowedValues,
@@ -9677,7 +9793,7 @@ export default function ListingPreviewScreen({
     // premier rendu après une photo ajoutée ou retirée au step Photos.
     // attributsBase (24/09) : la taille Opla se juge sur la fiche quand la
     // copie n'en porte pas — la fiche arrive après le premier calcul.
-  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet, memoireCat, apprisesParPf]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet, memoireCat, apprisesParPf, cheminVintedFiche, feuillesVinted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── (18/10, lot 2) LES CORRESPONDANCES APPRISES : lecture, fantôme, trace ──
   // Une lecture par (plateforme, catégorie, catalogue Vinted de la fiche), partagée
@@ -10334,7 +10450,7 @@ export default function ListingPreviewScreen({
     const src = edited.leboncoin ?? {};
     const ficheAttrs = (attributsBase && typeof attributsBase === "object") ? attributsBase : (initialListing?.attributs ?? {});
     const v = (c) => { const x = ficheAttrs?.[c]; return x && typeof x === "object" ? x.v : x; };
-    const cheminVinted = ficheAttrs?.categorie_vinted?.chemin ?? edited.vinted?.platform_fields?.categoryPath ?? null;
+    const cheminVinted = cheminVintedFiche ?? edited.vinted?.platform_fields?.categoryPath ?? null; // (12/11, 1d-ii) par l'identifiant de la fiche
     const objet = activeAiObjet ?? src.platform_fields?.categorie_objet_ia ?? null;
     const aspects = [
       ...simples.map((a) => ({ name: a.label, allowedValues: a.allowedValues.slice(0, 200), key: a.key, cible: a.dedicatedTarget ?? null })),
@@ -11146,6 +11262,20 @@ export default function ListingPreviewScreen({
         const saisie = String(r.platform_fields?.taille ?? "").trim();
         console.log(`[publish] ${r.platform} — taille « ${saisie} » → « ${t} » (${saisie ? "écriture de la grille" : "dite par le texte du vendeur"})`);
         return { ...r, platform_fields: { ...r.platform_fields, taille: t, ...(saisie ? { taille_saisie: r.platform_fields.taille } : { taille_du_texte: true }) } };
+      });
+      // ── (12/11, lot « zéro problème », 1d-i) L'ÉTAT PART ÉCRIT COMME LA GRILLE L'ÉCRIT ─────────────────────────────
+      // Le juge unique (moteur/listes.etatDuJob → _shared/etat-correspondance.js) a jugé l'état de la copie dans la grille
+      // de SON rayon (« Neuf avec étiquette » → « État neuf » en Leboncoin Électronique ; « Ouvert (jamais utilisé) » →
+      // « Très bon état ») : le JOB porte le libellé exact, l'extension n'a rien à chercher. La valeur d'avant reste
+      // dans `etat_saisi` (et sur la fiche) ; une valeur hors grille ne change pas (c'est une question).
+      rows = rows.map(r => {
+        const cleRayon = genericCategoryKeys?.[r.platform];
+        const chemin = typeof cleRayon === "string" ? cleRayon.split(" > ") : null;
+        const e = etatDuJob({ platform: r.platform, etat: r.platform_fields?.etat, lignes: genericRequiredStatus?.[r.platform],
+          cheminCategorie: chemin, rayonId: r.platform === "vinted" ? idVintedDuChemin(chemin, feuillesVinted) : null });
+        if (!e) return r;
+        console.log(`[publish] ${r.platform} — état « ${r.platform_fields.etat} » → « ${e} » (écriture de la grille du rayon)`);
+        return { ...r, platform_fields: { ...r.platform_fields, etat: e, etat_saisi: r.platform_fields.etat } };
       });
       // (18/10, lot 3) L'âge Beebs que la fiche porte déjà (relevé de l'annonce
       // Beebs du même article) part sur la copie Beebs qui n'en a pas — la même

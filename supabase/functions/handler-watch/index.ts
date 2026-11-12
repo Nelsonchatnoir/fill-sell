@@ -5924,9 +5924,11 @@ serve(async (req) => {
   let relancesApresMaj = 0;
   try {
     for (const regle of RELANCES_APRES_MAJ) {
+      // (12/11, point 1c) handler_build : le build qui a écrit l'arrêt — une règle ne relance jamais un arrêt
+      // produit par un build qui avait déjà son correctif (regleDeRelance, arretApresLeCorrectif).
       const { data: arretees } = await supabase
         .from("cross_post_jobs")
-        .select("id, user_id, inventaire_id, status, action, platform, error, platform_fields")
+        .select("id, user_id, inventaire_id, status, action, platform, error, platform_fields, handler_build")
         .eq("status", "needs_user")
         .eq("platform", regle.platform)
         .eq("action", regle.action)

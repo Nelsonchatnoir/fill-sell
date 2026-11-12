@@ -69,7 +69,9 @@ export const CHILD_YEAR_SIZES = [
 ];
 
 // ── Chaussures : axe POINTURES EU (15 → 41, nombres NUS partout) ────────────
-// Bornes réelles : Vinted « 15 et moins » puis 16→40 ; Beebs 15→41 ; eBay
+// Bornes réelles : Vinted 15→40 (ancienne grille « 15 et moins » puis 16→40
+// nus, remplacée fin octobre par des onglets EU / UK / US — « EU 15 »,
+// « EU 15,5 »… ; cf. toPlatformChildSize) ; Beebs 15→41 ; eBay
 // « Pointure EU » 15→40 (+ demi-pointures et fractions « 27 1/3 », « 30 2/3 »
 // — propres à eBay, la cascade de ebay.js les matche en exact quand la
 // canonique les porte). eBay et Leboncoin ne passent PAS par un emitter :
@@ -212,9 +214,16 @@ export function toPlatformChildSize(value, platform, opts = {}) {
     const { eu, half } = parsed;
     if (eu < CHILD_SHOE_EU_MIN || eu > CHILD_SHOE_EU_MAX) return null;
     if (platform === "vinted") {
-      // Grille relevée : « 15 et moins », puis 16→40 nus. Pas de demi-pointures.
+      // Grille relevée en juillet : « 15 et moins », puis 16→40 nus, sans
+      // demi-pointure. (12/11, point 1c de Nico) Vinted l'a remplacée par des
+      // onglets EU / UK / US (« EU 15 », « EU 15,5 »… — vue dès le 27/10) :
+      // « 15 et moins » n'existe plus au formulaire et n'a jamais été la même
+      // taille qu'une pointure 15 (c'est « 15 ou plus petit »). La pointure EU
+      // part TELLE QUELLE : « EU 15 » (onglet EU du formulaire). 16→40 restent
+      // nus (« 16 » est posé « EU 16 » par le formulaire, comme avant) ; une
+      // demi-pointure rend null et la canonique « EU 30,5 » part telle quelle.
       if (half || eu > 40) return null;
-      return eu <= 15 ? "15 et moins" : String(eu);
+      return eu <= 15 ? `EU ${eu}` : String(eu);
     }
     if (platform === "beebs") {
       // Grille relevée : 15→41 nus, pas de demi-pointures.

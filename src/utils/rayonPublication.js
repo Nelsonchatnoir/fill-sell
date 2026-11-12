@@ -137,7 +137,51 @@ export function appliquerRayonChoisi(pf, platform, choix) {
   // personne EST la réponse — sans ce retrait, la plateforme resterait écartée
   // avant le débit (regles.plateformesSansChemin).
   delete suite.rayon_a_choisir;
-  return suite;
+  // (12/11, Nico, point 1b-c) Le genre de CETTE plateforme ne contredit jamais le rayon que la personne a choisi.
+  return genreAligneSurLeRayon(suite, platform, choix.chemin, choix.le ?? null);
+}
+
+/** ── (12/11, Nico, point 1b-c) LE GENRE S'ALIGNE SUR LE RAYON CHOISI ─────────────────────────────────────────────
+ *  Compte c7c382b7, tâche Vinted e446c2d0 : la question de genre (absurde, cf. genreAChoisir.genreBloque) lui avait
+ *  fait répondre « Femme » ; elle a ensuite choisi elle-même « Hommes › Vêtements › Sweats et pulls › Pulls et pulls
+ *  à capuche » — et la tâche est partie avec genre Femme ET rayon Hommes (Depop, lui, partait en Homme). Quand le rayon
+ *  CHOISI nomme un public (Vinted Femmes / Hommes / Enfants › filles / garçons, Beebs Mode › Femme / Homme / Fille /
+ *  Garçon / Bébé) et que le genre de la copie le contredit (ou manque), le genre devient celui du rayon, tracé
+ *  (`genre_aligne_sur_rayon`, avec le genre d'avant). Un genre compatible est gardé ; un rayon sans public ne change
+ *  rien. Le public se lit sur les nœuds de NOS arbres relevés (jamais sur un texte de la personne). Pur. */
+const PUBLIC_BEEBS = {
+  femme: { age: "adulte", sexe: "f", genre: "Femme" }, homme: { age: "adulte", sexe: "m", genre: "Homme" },
+  fille: { age: "enfant", sexe: "f", genre: "Fille" }, garcon: { age: "enfant", sexe: "m", genre: "Garçon" },
+  bebe: { age: "enfant", sexe: null, genre: "Bébé" },
+};
+/** Le public qu'un rayon nomme sur sa plateforme, ou null (rayon sans public, plateforme sans genre de rayon). */
+export function publicDuRayon(plateforme, chemin) {
+  if (!Array.isArray(chemin) || !chemin.length) return null;
+  if (plateforme === "vinted") return publicDuRayonVinted(chemin);
+  if (plateforme === "beebs") {
+    if (plierRayon(chemin[0]) !== "mode" || chemin.length < 2) return null;
+    return PUBLIC_BEEBS[plierRayon(chemin[1])] ?? null;
+  }
+  return null;
+}
+const PLATEFORMES_GENRE_DU_RAYON = new Set(["vinted", "beebs"]);
+/** Les champs d'une copie, le genre aligné sur `chemin` (rayon choisi) quand il le contredit. */
+export function genreAligneSurLeRayon(pf, platform, chemin, le = null) {
+  if (!pf || typeof pf !== "object" || !PLATEFORMES_GENRE_DU_RAYON.has(platform)) return pf;
+  const pub = publicDuRayon(platform, chemin);
+  if (!pub?.genre) return pf;
+  if (pf.genre === pub.genre || !genreContreditLePublic(pf.genre, pub)) return pf;
+  return { ...pf, genre: pub.genre,
+    genre_aligne_sur_rayon: { avant: pf.genre ?? null, genre: pub.genre, chemin: chemin.map(String), le: le ?? null } };
+}
+/** À l'écran : la copie dont la personne vient de choisir le rayon prend le public de ce rayon (même règle). */
+export function genreAligneSurSonRayon(edited, platform) {
+  const copie = edited?.[platform];
+  const chemin = copie?.rayon_choisi?.chemin;
+  if (!copie || !Array.isArray(chemin) || !chemin.length) return edited;
+  const pf = copie.platform_fields ?? {};
+  const aligne = genreAligneSurLeRayon(pf, platform, chemin, copie.rayon_choisi?.le ?? null);
+  return aligne === pf ? edited : { ...edited, [platform]: { ...copie, platform_fields: aligne } };
 }
 
 /** La surcouche complète : les champs résolus, plus les choix de la personne.

@@ -89,6 +89,7 @@ import { correctionTient } from "../_shared/correction-tracee.js";
 import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-service.js";
 import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
+import { etatDansLaGrille } from "../_shared/etat-correspondance.js";
 import { attenteSessionEncoreEspacee, attenteSessionServeur } from "../_shared/attente-session.js";
 import { arbreVintedDuCompte, cheminVintedPourArbre, cheminVintedTouche } from "../_shared/vinted-arbre-compte.js";
 import { decisionSerie, serieDuJob } from "../_shared/serie-un-par-un.js";
@@ -287,6 +288,9 @@ import { jobSansMarqueDeCompatibilite, CLE_MARQUE_RETIREE } from "../_shared/mar
 // (02/11, facture Supabase) coin_config relu seulement quand sa version (signal_poll) a changé.
 import { configUne, configPlusieurs, configPrefixe } from "../_shared/coin-config-cache.js";
 import { refusAuthentification } from "../_shared/auth-indisponible.js";
+// (12/11, point 1c) L'identifiant de taille d'origine gardé pour le poste qui le confronte au rayon ; la taille choisie
+// par la personne entre dans la capture.
+import { retirerIdsTaillePourCePoste, tailleChoisieVersCapture } from "../_shared/vinted-taille-hors-grille.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -10932,6 +10936,58 @@ serve(async (req) => {
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
 
+    // ══ (12/11, point 1c de Nico) LA TAILLE CHOISIE PAR LA PERSONNE ENTRE DANS LA CAPTURE ══════════════════════════
+    // update-job-status pose UNE question quand Vinted ne propose plus la taille capturée pour ce rayon (compte
+    // 2bde8576, « 15 et moins », onglets EU / UK / US) ; la réponse arrive dans republish_user_fields.taille. Or à
+    // l'étape 'captured' (et 'deleted'), l'extension relit la capture EN BASE (construireJobRecreation) et ne lit
+    // jamais republish_user_fields : sans ce passage, la réponse n'atteignait pas le formulaire et la question
+    // revenait. La réponse (needsUserResolved, jamais une valeur servie par le serveur) entre dans la capture du job ;
+    // l'identifiant d'origine — la taille que Vinted ne propose plus — quitte la copie et reste dans la trace
+    // payload.taille_choisie (réversible). Même geste que la couleur (plus bas) et le rayon choisi (_shared/
+    // rayon-refuse-moteur.js). Poll d'exécution seul ; best-effort : un échec laisse la capture telle quelle.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const avecTailleChoisie = out.filter((j) => {
+          if (j.action !== "republish" || j.platform !== "vinted") return false;
+          const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+          const uf = (pf["republish_user_fields"] as Record<string, unknown> | null) ?? {};
+          const res = (pf["needsUserResolved"] as Record<string, unknown> | null) ?? {};
+          // Déjà posée sur CETTE capture (trace renvoyée par l'extension) : aucune relecture.
+          const fait = (pf["republish_taille_choisie_capture"] as Record<string, unknown> | null) ?? null;
+          if (fait && String(fait["capture_id"]) === String(pf["capture_id"]) && String(fait["vers"] ?? "") === String(uf["taille"] ?? "").trim()) return false;
+          return String(uf["taille"] ?? "").trim() !== "" && String(res["republish_user_fields.taille"] ?? "").trim() !== ""
+            && ["captured", "deleted"].includes(String(pf["republish_step"] ?? "")) && Number.isFinite(Number(pf["capture_id"]));
+        });
+        if (avecTailleChoisie.length) {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          for (const j of avecTailleChoisie) {
+            const pf = (j.platform_fields as Record<string, unknown>) ?? {};
+            const capId = Number(pf["capture_id"]);
+            const { data: cap } = await admin
+              .from("vinted_republish_captures")
+              .select("id, libelles, payload")
+              .eq("id", capId)
+              .eq("user_id", user.id)
+              .maybeSingle();
+            if (!cap) continue;
+            const r = tailleChoisieVersCapture({ pf, capture: cap });
+            if (!r) continue; // déjà dans la capture, ou pas une réponse de la personne
+            const { error: tErr } = await admin
+              .from("vinted_republish_captures")
+              .update({ libelles: r.libelles, payload: r.payload })
+              .eq("id", capId)
+              .eq("user_id", user.id);
+            if (tErr) {
+              console.warn(`[get-pending-jobs] job ${j.id} : taille choisie NON posée sur la capture ${capId} — ${tErr.message}`);
+              continue;
+            }
+            j.platform_fields = { ...pf, republish_taille_choisie_capture: { capture_id: capId, de: r.trace.de, vers: r.trace.vers, le: r.trace.le } };
+            console.log(`[get-pending-jobs] job ${j.id} : taille choisie « ${r.trace.vers} » posée sur la capture ${capId} (à la place de « ${String(r.trace.de)} », identifiant d'origine gardé dans la trace)`);
+          }
+        }
+      } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
+    }
+
     // ══ DÉSARMER LA BOUCLE ONGLET-PAR-ONGLET DE LA 0.6.25 SANS PAQUET
     //    (2026-09-10 soir, GO Nico — 5 annonces hors ligne, refus 400 Couleur) ══
     // La 0.6.25 (selectTailleVinted) cherche d'abord la taille PAR ID : les ids
@@ -10956,6 +11012,18 @@ serve(async (req) => {
     // Périmètre : republish Vinted, étapes 'captured' (une-passe, capture relue
     // avant tout retrait) et 'deleted' (recréation) — 'a_capturer' n'a pas
     // encore de capture, elle sera traitée au poll suivant.
+    // ── (12/11, point 1c de Nico) ON NE RETIRE PLUS UN IDENTIFIANT QUI EST TOUJOURS DANS LE RAYON ─────────────────
+    // Ce retrait valait pour TOUTE capture portant un libellé (851 des 1 143 captures des 11-12/11) — y compris
+    // quand l'id est toujours dans le groupe de tailles du rayon : compte af37fa49, capture 23561, id 2258 =
+    // « UK 8 enfant » (onglet UK du formulaire), libellé capturé « UK 8 child » → l'id retiré, le libellé anglais
+    // ne trouvait rien, republication close. Le serveur ne connaît pas le groupe du rayon (ni size_groups ni
+    // item_upload/catalogs ne le portent) : c'est le FORMULAIRE qui le montre. Un poste qui déclare
+    // « taille_groupe_rayon_v1 » (extension 0.6.187) confronte lui-même l'id aux onglets du rayon — présent : posé
+    // tel quel ; retiré par Vinted : traduit par identifiant quand c'est certain (même pointure EU), sinon la
+    // question — on le lui laisse (_shared/vinted-taille-hors-grille.js, retirerIdsTaillePourCePoste). Un poste plus
+    // ancien garde la règle du 10/09, inchangée. Même interrupteur, une valeur de plus (aucune lecture de coin_config
+    // en plus) : 'republish_taille_ids_retires_taille_par_id' = 1 → postes plus anciens seulement (aujourd'hui) ;
+    // = 2 → TOUS les postes, 0.6.187 compris (retour arrière sans déploiement) ; 0 / absent → rien, comme avant.
     let idsRetires = 0;
     if (!includeProcessing && !includeNeedsUser && tailleParId) {
       try {
@@ -10967,7 +11035,8 @@ serve(async (req) => {
         });
         if (cibles.length) {
           const { data: cfgIds } = await configUne(userClient, "republish_taille_ids_retires_taille_par_id", versionCoinConfig);
-          if (Number((cfgIds as Record<string, unknown> | null)?.value) === 1) {
+          const valeurIds = Number((cfgIds as Record<string, unknown> | null)?.value);
+          if ((valeurIds === 1 || valeurIds === 2) && retirerIdsTaillePourCePoste({ capacites, forcerTousPostes: valeurIds === 2 })) {
             const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
             for (const j of cibles) {
               const pf = (j.platform_fields as Record<string, unknown>) ?? {};
@@ -12903,27 +12972,14 @@ serve(async (req) => {
       // ── Helpers ÉTAT (2026-09-17 soir) — voir le bloc « ÉTAT » plus bas ──
       const normEtatLbc = (v: unknown): string => String(v ?? "")
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-      const etatLeboncoinExact = (valeur: string, grille: string[]): string | null => {
-        const v = normEtatLbc(valeur);
-        if (!v || !grille.length) return null;
-        const parNorm = new Map(grille.map((g) => [normEtatLbc(g), g] as [string, string]));
-        const exact = parNorm.get(v);
-        if (exact) return exact;
-        const etatNeuf = parNorm.get("etat neuf") ?? null;
-        const avec = parNorm.get("neuf avec etiquette") ?? null;
-        const sans = parNorm.get("neuf sans etiquette") ?? null;
-        if (v === "neuf avec etiquette" || v === "neuf sans etiquette") {
-          return (!avec && !sans && etatNeuf) ? etatNeuf : null;
-        }
-        if (v === "neuf" || v === "etat neuf") return etatNeuf; // grille B → null : ne se devine pas
-        if (v === "satisfaisant" || v === "correct" || v === "etat correct" || v === "etat satisfaisant") {
-          // (15/10, P8 — Louis 150c7da9) La grille « Électronique » nomme le même
-          // niveau « État satisfaisant - fonctionnel » (même code Leboncoin,
-          // etatsatisfaisant) : c'est la même valeur, pas une devinette.
-          return parNorm.get("etat satisfaisant") ?? parNorm.get("etat satisfaisant - fonctionnel") ?? null;
-        }
-        return null;
-      };
+      // (12/11, lot « zéro problème », 1d-i — Nico) UN SEUL JUGE D'ÉTAT : _shared/etat-correspondance.js, le même que
+      // l'écran (moteur/listes.js) et l'extension (copie générée dans leboncoin.js). Ce qu'il faisait déjà ici reste :
+      // l'exact d'abord ; « Neuf avec/sans étiquette » → « État neuf » sur une grille sans étiquette ; « Neuf » nu sur la
+      // grille Mode → RIEN (avec/sans ne se devine pas) ; « Satisfaisant » → « État satisfaisant (- fonctionnel) » (15/10,
+      // P8 — même code Leboncoin). En plus, par le niveau commun : « Comme neuf », « Ouvert (jamais utilisé) » (décision de
+      // Nico : très bon état), « Used - Good »…
+      const etatLeboncoinExact = (valeur: string, grille: string[]): string | null =>
+        etatDansLaGrille(valeur, grille, { plateforme: "leboncoin" });
       const grillesEtatCache = new Map<string, { grille: string[]; source: string } | null>();
       const grilleEtatLeboncoin = async (
         pf: Record<string, unknown>, chemin: string,

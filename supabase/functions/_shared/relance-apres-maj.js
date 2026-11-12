@@ -213,6 +213,27 @@ export function msDuBuild(build) {
   return m ? Date.parse(m[1]) : NaN;
 }
 
+// ── (12/11, point 1c de Nico) UN ÉCHEC PRODUIT PAR UN BUILD QUI A DÉJÀ LE CORRECTIF N'EST PAS CE DÉFAUT ─────────────────
+// Compte 2bde8576, republication 479f51c0 : « 15 et moins » refusé (grille des chaussures bébé remplacée par Vinted),
+// arrêt écrit par une 0.6.186 (handler_build du job) — la règle « menus bloom » (0.6.150) l'a relancée « défaut corrigé
+// par l'extension 0.6.150 » : faux, le poste l'avait déjà, et la relance est retombée sur le même mur. Une règle ne
+// joue que si l'arrêt vient d'un build PLUS ANCIEN que son correctif : `handler_build` (colonne du job, dernier écrivain
+// = l'extension qui a écrit l'arrêt). Build illisible ou absent : la règle d'avant (on ne conclut rien sans preuve).
+// ⛔ Sauf pour un arrêt posé par le SERVEUR sans geste de l'extension (tâche jamais démarrée, pause « build_min_requis ») :
+//    là, handler_build est celui d'un essai antérieur, il ne dit rien de l'arrêt.
+const SOURCES_POSEES_PAR_LE_SERVEUR = new Set(["tache_sans_demarrage", "build_min_requis"]);
+/** Le build qui a écrit l'arrêt (préfixe horodaté), ou null quand on ne peut pas le lire. */
+export function buildDeLArret(job) {
+  const pf = job?.platform_fields ?? {};
+  if (SOURCES_POSEES_PAR_LE_SERVEUR.has(String(pf.needs_user_source ?? ""))) return null;
+  return Number.isFinite(msDuBuild(job?.handler_build)) ? String(job.handler_build) : null;
+}
+/** L'arrêt vient-il d'un build qui avait DÉJÀ le correctif de la règle ? (illisible : non) */
+export function arretApresLeCorrectif(job, regle) {
+  const b = buildDeLArret(job);
+  return b != null && msDuBuild(b) >= Date.parse(regle.buildMin);
+}
+
 // La règle qui couvre cette tâche arrêtée, ou null.
 export function regleDeRelance(job, regles = RELANCES_APRES_MAJ) {
   const pf = job?.platform_fields ?? {};
@@ -228,7 +249,9 @@ export function regleDeRelance(job, regles = RELANCES_APRES_MAJ) {
     && r.platform === job.platform && r.action === job.action && (r.source
     ? pf.needs_user_source === r.source
     : pf.needs_user_source === "relancer" && !!brut && brut.startsWith(r.brut))
-    && (typeof r.predicat !== "function" || r.predicat(job) === true)) ?? null;
+    && (typeof r.predicat !== "function" || r.predicat(job) === true)
+    // (12/11, point 1c) jamais quand l'arrêt a été écrit par un build qui portait déjà le correctif
+    && !arretApresLeCorrectif(job, r)) ?? null;
 }
 
 // La valeur de needs_user_source que vise une règle (la requête du balayage).

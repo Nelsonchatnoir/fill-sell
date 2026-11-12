@@ -14031,6 +14031,9 @@ async function capacitesDeclarees() {
   // (25/10, 0.6.142) « vinted_republier_v1 » : une vente Vinted ANNULÉE se remet en vente par le bouton
   // « Republier » de Vinted (processRepublierVintedJob) — le serveur ne sert ces remises qu'à un poste qui le dit.
   const caps = ["taille_par_id", "preuves_retraits_point1_v1", "champs_annonce_republication_v1", "prevol_recreation_v1", "vinted_republier_v1"];
+  // (12/11, point 1c) « taille_groupe_rayon_v1 » : ce poste confronte l'identifiant de taille de l'annonce aux onglets
+  // du rayon (vinted.js, selectTailleVinted) — le serveur ne le retire plus de la capture (get-pending-jobs).
+  caps.push("taille_groupe_rayon_v1");
   caps.push((await oplaAccesAccorde()) ? "opla_acces" : "sans_opla");
   // depop (09/10) : le serveur ne sert un job Depop qu'au poste qui déclare
   // « depop_acces » (une extension qui ne connaît pas Depop ne déclare rien).
@@ -27271,7 +27274,11 @@ function construireJobRecreation(job, pf, cap, prix) {
   const natifCap = cap?.payload?.natif ?? {};
   const attrTaille = (Array.isArray(natifCap.item_attributes) ? natifCap.item_attributes : [])
     .find((a) => String(a?.code ?? "").trim().toLowerCase() === "size");
-  const tailleIds = [...new Set([
+  // (12/11, point 1c) Une taille CHOISIE par la personne (champs_utilisateur.taille : sa réponse à « Vinted ne propose
+  // plus cette taille pour ce rayon ») part par son libellé, seule : l'identifiant de l'annonce désigne justement la
+  // taille que Vinted ne propose plus — jamais lui à la place de la réponse.
+  const tailleChoisie = String(cap?.payload?.champs_utilisateur?.taille ?? "").trim() !== "";
+  const tailleIds = tailleChoisie ? [] : [...new Set([
     ...(natifCap.size_id != null && Number.isFinite(Number(natifCap.size_id)) ? [Number(natifCap.size_id)] : []),
     ...(Array.isArray(attrTaille?.ids) ? attrTaille.ids.map(Number).filter(Number.isFinite) : []),
   ])];
@@ -27310,6 +27317,7 @@ function construireJobRecreation(job, pf, cap, prix) {
       // Ids TOUJOURS transmis avec le libellé (2026-09-10) : le formulaire les
       // résout en premier (selectTailleVinted, onglet par onglet) — c'est la
       // taille EXACTE de l'annonce d'origine ; le libellé n'est que le repli.
+      // (12/11) Sauf une taille choisie par la personne (tailleChoisie, plus haut).
       ...(tailleIds.length ? { taille_ids: tailleIds } : {}),
       // ── LA MARQUE DE L'ANNONCE EN LIGNE, TELLE QUELLE (17/10, Nico) ──────
       // Une republication reprend EXACTEMENT la marque de l'annonce : quand

@@ -11,6 +11,8 @@
 //   3. le genre choisi est « Enfant » et un seul rayon enfant existe pour cet article.
 // « Mixte » ou « unisexe » dans le texte, ou deux genres nommés : on demande.
 
+import { publicDuRayon, genreContreditLePublic } from "../../utils/rayonPublication.js";
+
 export const RAYONS_GENRE = Object.freeze({
   vinted: Object.freeze(["Femme", "Homme", "Fille", "Garçon"]),
   beebs: Object.freeze(["Femme", "Homme", "Fille", "Garçon", "Bébé"]),
@@ -36,6 +38,40 @@ export function rayonsGenreValides(plateforme, icon, cheminDe) {
   return tous.filter((g) => {
     try { return Boolean(cheminDe(icon, g)); } catch { return false; }
   });
+}
+
+/** ── (12/11, Nico, point 1b) LE GENRE SE JUGE SUR LE RAYON QUI PART, L'ICÔNE SEULEMENT SANS RAYON ──
+ *  Compte c7c382b7 (fiches Lens en anglais) : l'icône n'était qu'un repli de type (👗, robe) et la garde disait
+ *  « Homme n'est pas un rayon Vinted pour cet article » (rayons proposés : Femme, Fille) alors que le rayon RÉSOLU,
+ *  celui qui partait, était « Hommes › … › Pardessus et manteaux longs » (Beebs : « Mode › Homme › … »). Publier
+ *  restait gris ; répondre « Femme » rangeait un pull d'homme en « Robes ».
+ *  La garde regarde d'abord le rayon (`rayonsParPf[p]` : choisi par la personne, ou résolu) :
+ *    · un rayon sans public (maison, jouets…) : le genre ne décide rien → jamais une question ;
+ *    · un genre cohérent avec le public du rayon → jamais une question ;
+ *    · un rayon CHOISI que le genre contredit → pas de question : le genre s'aligne sur le rayon
+ *      (rayonPublication.genreAligneSurLeRayon) ;
+ *    · un rayon RÉSOLU que le genre contredit, ou pas de rayon → l'icône juge, exactement comme avant ;
+ *    · SAUF une icône de REPLI (`iconeRepli` : le simple défaut du type de la fiche, 👗 pour « Mode ») : elle ne sait
+ *      pas ce qu'est l'objet, elle ne peut pas déclarer « Homme impossible ». Sans rayon, c'est le RAYON qui se
+ *      demande (resolutionPublication, « aucun rayon trouvé : on demande » — rien ne part sans rayon), et le rayon
+ *      choisi aligne le genre. Mesuré sur les 11 questions de genre des deux comptes anglais (30 j) : 11 levées.
+ *  Le public se lit sur les nœuds de nos arbres relevés (identifiants de rayon), jamais sur un texte. Pur.
+ *  @returns {boolean} true = le genre actuel ne résout aucun rayon : la question s'ouvre. */
+export function genreBloque({ plateforme, genre, rayon = null, icone = null, iconeRepli = false, requis, cheminDe }) {
+  const g = String(genre ?? "").trim();
+  if (!g || g === "Mixte") return false;
+  const chemin = Array.isArray(rayon?.chemin) && rayon.chemin.length ? rayon.chemin : null;
+  if (chemin) {
+    const pub = publicDuRayon(plateforme, chemin);
+    if (!pub) return false;
+    if (!genreContreditLePublic(g, pub)) return false;
+    if (rayon.choisi) return false;
+  } else if (iconeRepli) {
+    return false;
+  }
+  if (typeof requis !== "function" || typeof cheminDe !== "function") return false;
+  if (!requis(icone)) return false;
+  try { return !cheminDe(icone, g); } catch { return false; }
 }
 
 /** Les genres que le texte nomme (dans l'ordre de MOTS_GENRE), et le mot qui le dit. */

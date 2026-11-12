@@ -31,7 +31,7 @@ import {
 } from "./depopAttributs.js";
 import { couperAuMot } from "./texteConforme.js";
 import { lireTourDeTaille } from "../../supabase/functions/_shared/taille-de-service.js";
-import { AGE_PAR_STATURE_ENFANT } from "../../supabase/functions/_shared/tailles.js";
+import { AGE_PAR_STATURE_ENFANT, statureEnfant } from "../../supabase/functions/_shared/tailles.js";
 // (11/10) Les libellés corrigés et la trace du moteur de rayon (module partagé avec le serveur).
 import { libellesRayonDepop, VERSION_RAYON_DEPOP, SOURCE_RAYON_DEPOP, CLE_QUESTION_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
 
@@ -107,8 +107,10 @@ export function tailleDepop(taille, chemin) {
       // la MÊME taille Depop (92 cm = « 24 mois » = « 2 ans » : deux tailles Depop, la question reste).
       const par = /^(.*?)\s*\(([^()]+)\)\s*$/.exec(t);
       if (par) k = DEPOP_TAILLE_ENFANT[par[1].trim()];
-      const st = k === undefined ? /^(?:t|taille)?\s*(\d{2,3})\s*(?:cm)?$/i.exec(t) : null;
-      const ages = st ? AGE_PAR_STATURE_ENFANT[st[1]] : null;
+      // (12/11, point 1a) La stature est lue par le vocabulaire COMMUN (statureEnfant de _shared/tailles.js) : « EU 140cm »
+      // (étiquette lue par Lens, compte c7c382b7, fe3af982) est 140 cm comme « 140 cm » — plus de regex locale.
+      const st = k === undefined ? statureEnfant(t) : null;
+      const ages = st ? AGE_PAR_STATURE_ENFANT[st] : null;
       const libs = ages ? [...new Set(ages.map((a) => DEPOP_TAILLE_ENFANT[a]?.libelle ?? null))] : [];
       if (libs.length === 1 && libs[0]) k = DEPOP_TAILLE_ENFANT[ages[0]];
     }

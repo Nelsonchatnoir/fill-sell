@@ -181,6 +181,12 @@ export function familleDeChemin(plateforme, chemin) {
     if (/^(femmes|hommes|enfants)$/i.test(racine)) {
       if (/v[êe]tements|chaussures|^sacs?$|accessoires|bijoux/i.test(niveau2)) return "mode";
       if (/beaut|soins/i.test(niveau2)) return "beaute";
+      // ── (12/11, Nico, point 1d-iii) « Enfants › Jeux et jouets » (nœud Vinted 1499) EST une famille : loisirs ──
+      // Il rendait null : le catalogue Vinted d'un jouet (« Jouets musicaux en bois », 3358) ne disait rien, et le
+      // « sac » de rangement de sa description l'envoyait en 👜. Les jouets sont « loisirs » dans tous les autres
+      // arbres (Leboncoin « Loisirs › Jeux & Jouets », Beebs « Jeux, jouets et loisirs », eBay « Jouets et jeux »,
+      // Opla « Jeux et jouets »). Vinted seulement : c'est son nœud relevé (docs/vinted-catalog-tree.txt).
+      if (plateforme === "vinted" && /^enfants$/i.test(racine) && /^jeux et jouets$/i.test(niveau2)) return "loisirs";
       return null;
     }
   }

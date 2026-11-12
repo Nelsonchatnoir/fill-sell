@@ -215,7 +215,10 @@ const MACHINES = [
   [/\bps\s?4\b/,                           { cle: "ps4",         ebay: "Sony PlayStation 4", vinted: "PlayStation 4",      beebs: "PS4",         lbc: "Sony",      opla: "playstation", salon: true }],
   [/\bps\s?5\b/,                           { cle: "ps5",         ebay: "Sony PlayStation 5", vinted: "PlayStation 5",      beebs: "PS5",         lbc: "Sony",      opla: "playstation", salon: true }],
   [/\bplaystation\b/,                      { cle: "playstation", ebay: null, vinted: "PlayStation 1",      beebs: "Retrogaming", lbc: "Sony",      opla: "playstation", salon: true }],
-  [/\bswitch\s?2\b/,                       { cle: "switch2",     ebay: null, vinted: "Nintendo Switch 2",  beebs: "Nintendo Switch", lbc: "Nintendo", opla: "nintendo" }],
+  // (12/11, lot « zéro problème », 1e — Nico) « Une machine absente de la liste et non rétro → question » : la liste
+  // « Console » de Beebs n'a ni la Switch 2 ni le Steam Deck ; « Nintendo Switch » et « PC » y étaient des VOISINES
+  // choisies par nous. Plus rien n'est posé pour elles chez Beebs : la question (Vinted les liste, elles y restent).
+  [/\bswitch\s?2\b/,                       { cle: "switch2",     ebay: null, vinted: "Nintendo Switch 2",  beebs: null, lbc: "Nintendo", opla: "nintendo" }],
   [/\bswitch\b/,                           { cle: "switch",      ebay: "Nintendo Switch", vinted: "Nintendo Switch",    beebs: "Nintendo Switch", lbc: "Nintendo", opla: "nintendo" }],
   [/\bwii\s?u\b/,                          { cle: "wiiu",        ebay: "Nintendo Wii U", vinted: "Nintendo Wii U",     beebs: "Nintendo Wii U", lbc: "Nintendo", opla: "nintendo", salon: true }],
   [/\bwii\b/,                              { cle: "wii",         ebay: "Nintendo Wii", vinted: "Nintendo Wii",       beebs: "Nintendo Wii", lbc: "Nintendo", opla: "nintendo", salon: true }],
@@ -231,7 +234,7 @@ const MACHINES = [
   [/\bdreamcast\b/,                        { cle: "dreamcast",   ebay: "Sega Dreamcast", vinted: "Sega Dreamcast",     beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
   [/\bmega\s?drive\b|\bmegadrive\b/,       { cle: "megadrive",   ebay: null, vinted: "Sega Mega Drive",    beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
   [/\bsaturn\b/,                           { cle: "saturn",      ebay: "Sega Saturn", vinted: "Sega Saturn",        beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
-  [/\bsteam\s?deck\b/,                     { cle: "steamdeck",   ebay: null, vinted: "Steam Deck",         beebs: "PC",          lbc: "Autre",    opla: "pc", portable: true }],
+  [/\bsteam\s?deck\b/,                     { cle: "steamdeck",   ebay: null, vinted: "Steam Deck",         beebs: null,          lbc: "Autre",    opla: "pc", portable: true }],
   [/\batari\b/,                            { cle: "atari",       ebay: "Atari", vinted: "Atari",              beebs: "Retrogaming", lbc: "Atari",    opla: "retro", salon: true }],
   [/\bnintendo\b/,                         { cle: "nintendo",    ebay: null, vinted: null,                 beebs: null,          lbc: "Nintendo", opla: "nintendo" }],
   [/\bsega\b/,                             { cle: "sega",        ebay: null, vinted: null,                 beebs: "Retrogaming", lbc: "Sega",     opla: "retro" }],
@@ -242,6 +245,51 @@ export function machineDuTexte(texte) {
   const t = norm(texte);
   for (const [re, m] of MACHINES) if (re.test(t)) return m;
   return null;
+}
+
+// ── (12/11, lot « zéro problème », 1e — Nico) LA MACHINE CONNUE NE SE REDEMANDE PAS ─────────────────────────────────
+// Mesure 14 j : Beebs « Jeux vidéo » × « Console » demandé sur 93 fiches de 3 comptes (229c7b07 : 91) — « PS1 PAL »,
+// N64, Megadrive, Dreamcast, GameCube dans le titre ; Vinted « Jeux » × video_game_platform demandé sur 12 fiches (posé
+// seulement au clic). LA RÈGLE, la même pour l'écran (champRequisAuto) et le clic (resolutionPublication) :
+//   · la machine que NOMME l'article — ses titres (fiche, copie) d'abord ; la description seulement si aucun titre n'en
+//     nomme ; deux titres, deux machines → rien (le doute) ;
+//   · écrite EXACTEMENT comme LA liste du rayon de la plateforme (valeur absente de la liste → rien) ; une machine
+//     rétro → « Retrogaming » chez Beebs (colonne `beebs` de MACHINES) ; une machine absente de la liste et non rétro
+//     (Steam Deck, Switch 2 chez Beebs) → rien : la question, jamais une voisine.
+// Les deux champs n'existent que dans les rayons de jeux vidéo (Beebs : Jeux vidéo, Consoles de jeux, Accessoires pour
+// consoles ; Vinted : Jeux, Consoles) : le champ dit le domaine. Leboncoin (marque de console) n'est pas touché ici.
+// Les listes de ces deux plateformes n'exposent que des libellés (aucun identifiant relevé) : le libellé EXACT de la liste.
+const champPlateformeDuJeu = (plateforme) => (plateforme === "beebs" ? "Console" : plateforme === "vinted" ? VINTED_CHAMP_PLATEFORME : null);
+
+/** La machine que nomme l'article : ses titres d'abord, puis ses descriptions ; null au moindre doute. */
+export function machineDeLArticle({ titres = [], descriptions = [] } = {}) {
+  const lire = (textes) => {
+    const trouvees = (Array.isArray(textes) ? textes : [textes]).map((t) => machineDuTexte(String(t ?? ""))).filter(Boolean);
+    const cles = new Set(trouvees.map((m) => m.cle));
+    if (cles.size > 1) return { doute: true };
+    return trouvees.length ? { machine: trouvees[0] } : null;
+  };
+  const parTitre = lire(titres);
+  if (parTitre) return parTitre.doute ? null : parTitre.machine;
+  const parDescription = lire(descriptions);
+  return parDescription && !parDescription.doute ? parDescription.machine : null;
+}
+
+/**
+ * La valeur du champ « plateforme » d'un rayon de jeux vidéo (Beebs « Console », Vinted video_game_platform), écrite
+ * comme LA liste du rayon, ou null (la question).
+ * @returns {{valeur: string, source: string, motif: string}|null}
+ */
+export function plateformeDuJeuPourLaListe({ plateforme, cle, titres = [], descriptions = [], allowedValues = [] } = {}) {
+  const champ = champPlateformeDuJeu(plateforme);
+  if (!champ || String(cle ?? "") !== champ) return null;
+  const liste = (Array.isArray(allowedValues) ? allowedValues : []).map((v) => String(v ?? "").trim()).filter(Boolean);
+  if (!liste.length) return null;
+  const machine = machineDeLArticle({ titres, descriptions });
+  const brut = machine ? (plateforme === "beebs" ? machine.beebs : machine.vinted) : null;
+  if (!brut) return null;
+  const exacte = liste.find((v) => norm(v).trim() === norm(brut).trim());
+  return exacte ? { valeur: exacte, source: "plateforme_du_jeu", motif: `machine nommée par l'article (${machine.cle})` } : null;
 }
 
 // ── LES FEUILLES, PAR PLATEFORME ET PAR FAMILLE ───────────────────────────

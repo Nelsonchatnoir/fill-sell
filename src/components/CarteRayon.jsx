@@ -205,7 +205,7 @@ export default function CarteRayon({
   const { questions, connus, defauts, limites } = useMemo(
     () => classerChamps(
       [...(catalogue ?? []), ...lignesDepuisConfigLocale(configLocale)],
-      champs ?? {}, platform, { regle, cheminCategorie: rayon?.chemin ?? null, textes: textesCle ? JSON.parse(textesCle) : null }
+      champs ?? {}, platform, { rayonId: rayon?.id ?? null, regle, cheminCategorie: rayon?.chemin ?? null, textes: textesCle ? JSON.parse(textesCle) : null }
     ),
     [catalogue, champs, platform, configLocale, regle, rayon, textesCle]
   );

@@ -1677,3 +1677,65 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   répond à temps. `redigerAnnoncesPlateformes` prend l'échéance en option (`signal`) : Lens, sans elle, comme avant.
 - ⛔ Une étape nouvelle de generate-listing qui attend un service (Storage, IA, réseau) prend son délai dans
   `delai-etape.js` — jamais une attente nue. Verrou `npm run selftest:redaction-jamais-coupee`.
+
+## ⛔ 12/11 (point 1c de Nico) — taille Vinted : l'identifiant du rayon d'abord, une vraie question sinon
+- Cas : compte 2bde8576, republication 479f51c0 (catalogue 1653, Chaussures bébé) — capture 28729 « 15 et moins », id 657.
+  Vinted a remplacé la grille 31 des chaussures enfant (657 « 15 et moins », 585…609 « 16 »…« 40 ») par des onglets
+  EU / UK / US (2190 « EU 15 »…, 2258 « UK 8 enfant »), vue dès le 27/10. Compte af37fa49 : id 2258 capturé « UK 8 child »
+  puis « UK 8 enfant » — la MÊME taille dans deux langues.
+- **L'id d'origine n'est plus retiré** pour un poste qui déclare `taille_groupe_rayon_v1` (0.6.187) : get-pending-jobs
+  (`_shared/vinted-taille-hors-grille.js`, `retirerIdsTaillePourCePoste`) ; un poste plus ancien garde la règle du 10/09.
+  Interrupteur existant `republish_taille_ids_retires_taille_par_id` : 1 = postes plus anciens (aujourd'hui),
+  2 = tous les postes (retour arrière sans déploiement).
+- **Le formulaire tranche par identifiants** (vinted.js `selectTailleVinted`) : l'id dans un onglet du rayon part tel quel ;
+  absent de tous les onglets (retiré par Vinted) → `tailleEquivalenteRetiree` : la même pointure EU (« N » ou « EU N »,
+  une seule option du rayon) posée par SON id ; rien d'autre n'est certain → cascade par libellé, puis la question.
+- **La question** (update-job-status, après les deux reprises, la taille seule, absente de la liste servie, liste connue,
+  pas une grille adulte sur une taille enfant) : liste fermée ENTIÈRE, voisines en tête (même système et même nombre, l'option
+  sans nombre qui ouvre un bloc quand la taille est au bas de la grille, puis les nombres proches), `champ_a_choisir`. Plus
+  jamais « relance / écris-nous ». La réponse entre dans la capture (get-pending-jobs, `tailleChoisieVersCapture` : à l'étape
+  `captured` l'extension relit la capture en base, jamais `republish_user_fields`) ; l'id d'origine quitte la copie (trace
+  `payload.taille_choisie`). Retenue pour CET article : l'annonce republiée porte le nouvel id. Jamais appliquée à un autre
+  article (« 15 et moins » couvre plusieurs pointures).
+- `childSizes.toPlatformChildSize` : une pointure enfant ≤ 15 part « EU 15 » sur Vinted (plus jamais « 15 et moins »).
+- Verrou `npm run selftest:vinted-grille-chaussures-enfant`.
+
+## ⛔ 12/11/2026 nuit (lot « zéro problème », étape 2 — points 1d-i, 1d-ii, 1e de Nico) — un seul juge d'état ; le chemin Vinted d'une fiche se lit par son identifiant ; une valeur connue ne se redemande pas
+- **État** (`_shared/etat-correspondance.js`, UN SEUL JUGE — écran `moteur/listes.js` `jugerValeurContreListe`,
+  get-pending-jobs, extension par copie générée `scripts/gen-etat-correspondance-extension.mjs` dans `leboncoin.js`) :
+  annonce capturée → fiche → autres plateformes, traduit dans la grille demandée par le NIVEAU commun (l'identifiant ;
+  Vinted : libellés des 15 langues par `status_id`) ; jamais deviné (« Neuf » nu ≠ « avec / sans étiquette », aucune
+  suggestion par mots) ; « Ouvert (jamais utilisé) » = très bon état ; rayon beauté (Vinted par identifiant, Beebs par
+  branche) : « Neuf » = le neuf de la grille, « sans étiquette » d'abord. Le job part avec le libellé exact (`etatDuJob`).
+  Cas : compte cfdfda6f, « Neuf avec étiquette » bloqué sur Leboncoin Électronique. Verrou `selftest:etat-grille-ecran`.
+- **Chemin Vinted d'une fiche** = `src/utils/cheminVintedFiche.js` (identifiant → arbre relevé), calculé à la lecture,
+  jamais `attributs.categorie_vinted.chemin` lu seul (écrit sur 0 fiche sur 313) : Univers Leboncoin, seconde passe IA,
+  pointure, longueur de robe eBay. Verrou `selftest:chemin-vinted-fiche`.
+- **Machine d'un jeu** (`src/utils/jeuxVideo.js`, `machineDeLArticle` / `plateformeDuJeuPourLaListe`) : lue dans les
+  titres puis la description, exactement dans la liste du rayon ; rétro → « Retrogaming » ; absente et non rétro, ou deux
+  machines → question. Beebs « Console » posée sur les 3 feuilles jeux. Âge Beebs (livres, DVD) et PEGI non écrits :
+  toujours la question. Verrou `selftest:console-du-jeu`.
+
+## ⛔ 12/11/2026 nuit (lot « zéro problème », étape 2 — points 1b et 1d-iii de Nico) — icône et genre sur le rayon qui part ; le mot du titre cède au catalogue Vinted ET à l'IA
+- Une icône qui n'est qu'un repli de type (👗 de la Mode) se lit sur l'IDENTIFIANT du rayon (choisi, catalogue Vinted,
+  rayon résolu) — `src/utils/iconeDeLaCategorie.js` ; aucun mot anglais ajouté, aucune copie française lue. La garde de
+  genre (`genreAChoisir.genreBloque`) juge le rayon qui PART ; un genre cohérent avec lui n'est jamais une question ; un
+  rayon choisi aligne le genre de sa plateforme (trace `genre_aligne_sur_rayon`). Cas : c7c382b7 (fiches Lens en
+  anglais). Verrou `selftest:icone-et-genre-fiche-anglaise`.
+- Le mot du titre cède quand le catalogue Vinted ET l'IA le contredisent (une seule source contre lui : il garde la
+  main, règle du 19/09) ; un mot venu de la description cède au catalogue seul ; Électronique et Véhicules ne se
+  contredisent pas (équipement auto). Rejeu de 60 jours (117 371 tâches) : 431 icônes changent, toutes visées ; 0
+  autoradio juste changé. Verrou `selftest:categorie-catalogue-vinted`.
+
+## ⛔ 12/11/2026 nuit (lot « zéro problème », étape 2 — point 1a de Nico) — tailles rangées PAR SITE, une seule règle ; une taille qui contredit la fiche ne part jamais
+- Vocabulaire commun `_shared/tailles.js` (app, serveur, extension Depop par le générateur) : `SYSTEMES_DE_TAILLE` —
+  EU/EUR/FR/IT/DE/ES/INT + lettre = la lettre ; UK/US + lettre = la lettre de XS à XXL seulement, jamais un chiffre ;
+  « EU 140cm » = 140 cm ; cm → âge par la table ; « months/mths/yrs/years » = mois/ans (jamais mois↔ans) ;
+  « Other »/« Autre »/« One size » ne cassent pas une grille d'âges. Nouveau site = une ligne de la table. eBay délègue
+  (`taille-ebay.js`). Cas : c7c382b7, Depop « EU M » (baf800fe) et « EU 140cm » (fe3af982).
+- Publication (`resolutionPublication.js` → `tailleAGarder`) : copie confrontée à la fiche et à l'étiquette lue
+  (`confronterTailles`) ; contredite → taille de la fiche (`taille_corrigee_par_la_fiche`), sinon question ; jamais une
+  référence venue d'un relevé ni un nombre nu d'étiquette ; fiche ≠ étiquette → question. Rejeu (5 333 publications) :
+  22 copies corrigées, 14 questions. Verrou `selftest:tailles-prefixe-et-anglais-partages`.
+- Base : migration `20261112213000_releve_jamais_depuis_notre_depot` (un relevé ne complète ni ne réécrit une fiche
+  depuis une annonce que FillSell a déposée depuis elle) — PRÉPARÉE, banc jetable 37/37, NON appliquée : feu vert de Nico.
