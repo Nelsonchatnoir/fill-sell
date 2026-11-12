@@ -63,7 +63,12 @@ const DOSSIERS = [DOSSIER_CLES, TELECHARGEMENTS].filter((d) => existsSync(d));
 // (25/10) La version des binaires est celle de package.json (2.9.62 jamais fabriquée) : le commit de version aligne
 // android/app/build.gradle (versionName) et codemagic.yaml (agvtool) ; l'étape A refuse tout écart.
 const VERSION = JSON.parse(readFileSync(path.join(RACINE, 'package.json'), 'utf8')).version;
-const VERSION_CODE = 37;
+// (12/11, vc38) Le versionCode se lit sur SA ligne de build.gradle, jamais écrit en dur ici : `VERSION_CODE = 37` restait
+// après la montée en vc38, et la vérification de l'étape A le trouvait dans un COMMENTAIRE de build.gradle (« versionCode
+// 37 / ») — « versions alignées » à tort, binaire vc38 rangé sous « vc37 ».
+const LIGNE_VERSION_CODE = /^\s*versionCode (\d+)\s*$/m;
+const LIGNE_VERSION_NAME = /^\s*versionName "([^"]+)"\s*$/m;
+const VERSION_CODE = Number(LIGNE_VERSION_CODE.exec(readFileSync(path.join(RACINE, 'android/app/build.gradle'), 'utf8'))?.[1] ?? NaN);
 const PAQUET = 'app.fillsell.app';
 const EQUIPE_APPLE = 'BQ379Y93X3';
 const DEPUIS = new Date('2026-10-06T00:00:00+02:00').getTime();
@@ -135,7 +140,7 @@ if (pkg?.version !== VERSION) stop(`package.json est en ${pkg?.version}, pas ${V
 // (06/11) Le lock monte AVEC package.json : sinon npm réécrit le lock au build, l'arbre devient sale et Vercel refuse.
 const lock = lireJson(path.join(RACINE, 'package-lock.json'));
 if (lock?.version !== VERSION || lock?.packages?.['']?.version !== VERSION) stop(`package-lock.json n'est pas en ${VERSION}.`, 'npm install --package-lock-only, puis committer le lock avec package.json.');
-if (!new RegExp(`versionCode ${VERSION_CODE}\\b`).test(gradle) || !gradle.includes(`versionName "${VERSION}"`)) stop(`android/app/build.gradle n'est pas en ${VERSION} / versionCode ${VERSION_CODE}.`);
+if (!Number.isInteger(VERSION_CODE) || LIGNE_VERSION_NAME.exec(gradle)?.[1] !== VERSION) stop(`android/app/build.gradle n'est pas en ${VERSION} (versionName lu : ${LIGNE_VERSION_NAME.exec(gradle)?.[1] ?? 'illisible'}, versionCode lu : ${VERSION_CODE}).`);
 // (08/11 soir) --aab-seul : aucun binaire iOS ne part (l'iPhone reste sur le sien, 2.9.164) — codemagic.yaml n'est pas lu.
 if (!aabSeul && !codemagic.includes(`agvtool new-marketing-version ${VERSION}`)) stop(`codemagic.yaml ne fige pas la version iOS ${VERSION}.`);
 if (!aabSeul && !codemagic.includes('<key>aps-environment</key>')) stop('codemagic.yaml ne pose pas aps-environment (pas de jeton iOS sans lui).');

@@ -97,5 +97,15 @@ const vName = /^\s*versionName "([^"]+)"/m.exec(gradle)?.[1] ?? "", vCode = Numb
 ok(num(pkg.version) >= num("2.9.175") && lock.version === pkg.version && lock.packages[""].version === pkg.version, `l'app en ${pkg.version} (≥ 2.9.175, l'OTA du correctif ; package.json et lock alignés)`);
 ok(vCode >= 37 && num(vName) <= num(pkg.version), `binaire Android ${vName} / vc${vCode} : jamais au-dessus de l'app (vc37 en production ; vc38 préparée à part)`);
 
+console.log("F. La fabrication du binaire lit les VRAIES lignes de version (12/11, vc38)");
+// Le 12/11 à 17:35, `npm run binaires -- --aab-seul` annonçait « versions alignées … vc37 » pour un build.gradle en vc38 :
+// VERSION_CODE = 37 écrit en dur, trouvé dans un commentaire (« versionCode 37 / »).
+const bin = lire("scripts/binaires.mjs");
+ok(!/const VERSION_CODE = \d+;/.test(bin) && /const VERSION_CODE = Number\(LIGNE_VERSION_CODE\.exec\(/.test(bin), "binaires.mjs : le versionCode est LU dans build.gradle, jamais écrit en dur");
+const LVC = /^\s*versionCode (\d+)\s*$/m, LVN = /^\s*versionName "([^"]+)"\s*$/m;
+ok(bin.includes(String(LVC)) && bin.includes(String(LVN)) && /LIGNE_VERSION_NAME\.exec\(gradle\)\?\.\[1\] !== VERSION/.test(bin), "binaires.mjs : versionCode et versionName lus sur leur ligne, un commentaire ne compte jamais");
+ok(Number(LVC.exec(gradle)?.[1]) === vCode && LVN.exec(gradle)?.[1] === vName && (gradle.match(/versionCode \d+/g) ?? []).length > 1,
+  `build.gradle : la vraie ligne (vc${vCode}) est trouvée parmi ${(gradle.match(/versionCode \d+/g) ?? []).length} mentions, commentaires compris`);
+
 console.log(`\n${n - ko}/${n} contrôles verts${ko ? ` — ${ko} ROUGE(S)` : ""}`);
 process.exit(ko ? 1 : 0);
