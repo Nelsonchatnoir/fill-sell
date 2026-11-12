@@ -550,17 +550,27 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   ok((await lireInterrupteurFormules(sb, { env: { VERCEL: '1', FILLSELL_SITE_FORMULES_CLOUD: 'ouvert' }, fetcher: rep([]) })).ouvert === false, 'sur Vercel, le forçage est IGNORÉ : seule la base décide');
   ok((await lireInterrupteurFormules({ url: '', cle: '' }, { env: {}, fetcher: rep([{ value: 1 }]) })).ouvert === false, 'clé publique illisible : fermé');
 
-  // Le contenu : plus jamais l'essai « sur n'importe quelle formule » (correction de Nico du 11/11 22:55).
+  // Le contenu : plus jamais l'essai « sur n'importe quelle formule » (correction de Nico du 11/11 22:55), et plus
+  // jamais le Cloud « en option » (décision de Nico du 12/11 : le Cloud se prend AVEC une formule).
   const fautifs = [];
+  const enOption = [];
+  const CLOUD_EN_OPTION = /\bCloud\b[^.!?\n]{0,160}\b(en option|an add-on|add-on)\b|\b(en option|an add-on)\b[^.!?\n]{0,160}\bCloud\b|l[’']option FillSell Cloud|the FillSell Cloud (option|add-on)|en option chez FillSell|plutôt qu[’']en option/i;
   const parcourir = (d) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
       if (e.isDirectory()) parcourir(p);
-      else if (/\.(md|ya?ml)$/.test(e.name) && /n[’']importe quelle formule avec Cloud|any plan with Cloud|formule de ton choix avec Cloud/i.test(readFileSync(p, 'utf8'))) fautifs.push(path.relative(racine, p));
+      else if (/\.(md|ya?ml)$/.test(e.name)) {
+        const t = readFileSync(p, 'utf8');
+        if (/n[’']importe quelle formule avec Cloud|any plan with Cloud|formule de ton choix avec Cloud/i.test(t)) fautifs.push(path.relative(racine, p));
+        if (CLOUD_EN_OPTION.test(t)) enOption.push(path.relative(racine, p));
+      }
     }
   };
   for (const d of ['site/contenu', 'src/blog', 'site/donnees']) parcourir(path.join(racine, d));
   ok(!fautifs.length, `contenu : jamais l'essai « sur n'importe quelle formule avec Cloud » / « any plan with Cloud » (${fautifs.join(', ') || 'aucun'})`);
+  ok(!enOption.length, `contenu : jamais le Cloud « en option » (${enOption.join(', ') || 'aucun'})`);
+  ok(CLOUD_EN_OPTION.test('## Ordinateur éteint : inclus chez StoFlow, en option chez FillSell') && CLOUD_EN_OPTION.test('quand FillSell le vend en option (FillSell Cloud)')
+    && !CLOUD_EN_OPTION.test('par l\'extension ou FillSell Cloud, republie sans option payante de Leboncoin'), 'le verrou « Cloud en option » reconnaît les anciennes phrases, pas l\'option payante d\'une plateforme');
 }
 
 // ── 24. Logos des plateformes : devant le nom, jamais à sa place (09/11) ──────

@@ -155,7 +155,7 @@ Compare sur ton usage réel. Chez Reposter, chaque publication consomme un créd
 
 Un comparatif qui ne dit que du bien de son auteur ne vaut rien. Au 9 octobre 2026, Reposter a de vrais atouts :
 
-- **Ordinateur éteint, sans option à ajouter** : ses tâches tournent sur ses serveurs, Leboncoin compris. Chez FillSell, un compte eBay relié publie aussi ordinateur éteint ; pour Vinted, Leboncoin, Beebs et Depop, c'est FillSell Cloud.
+- **Ordinateur éteint, d'office** : ses tâches tournent sur ses serveurs, Leboncoin compris. Chez FillSell, un compte eBay relié publie aussi ordinateur éteint ; pour Vinted, Leboncoin, Beebs et Depop, c'est une formule avec Cloud.
 - **La profondeur Leboncoin** : publication dans plusieurs villes, lots espacés, relance programmée, rotation de la photo de couverture, vignettes incrustées, suivi des indicateurs Leboncoin Pro.
 - **Un assistant qui répond à tes acheteurs** : des modèles de réponses, ou une IA qui s'appuie sur la conversation et sur ta fiche, peut proposer d'autres articles de ton catalogue et te prévient par Telegram ou par e-mail quand une question sort du cadre. FillSell ne répond pas à tes acheteurs.
 - **Des statistiques d'audience** qui survivent aux remontées.
