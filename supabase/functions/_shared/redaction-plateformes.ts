@@ -477,7 +477,12 @@ const directiveEtatImpose = (etat: string) =>
   `en particulier, n'applique PAS le repli « Très bon état » ci-dessus, il ne vaut que lorsque l'état est inconnu. ` +
   `Si tu ne mentionnes pas l'état du tout, c'est très bien aussi.`;
 
-export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni, langues, consignes }: {
+export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni, langues, consignes, signal }: {
+  /**
+   * (12/11/2026, point 8 de Nico — une rédaction n'est JAMAIS coupée) L'échéance de l'appelant : à l'abandon, la
+   * plateforme prend le texte de repli ci-dessous, la fiche part au lieu d'un 504. Absent (Lens) = comme avant.
+   */
+  signal?: AbortSignal;
   /**
    * (29/10, lot B 1.3 — promesse XEWER) Les consignes du vendeur (profiles.platform_settings.redaction.consignes) :
    * ajoutées au prompt de CHAQUE plateforme. Absentes = prompt d'avant, à l'octet près. Elles ne touchent jamais un
@@ -539,6 +544,7 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
         try {
           const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
+            signal,
             headers: {
               "Content-Type": "application/json",
               "x-api-key": apiKey,

@@ -59,6 +59,7 @@ import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
 import { palierDuProfil } from "../_shared/palier.js";
 import { champDuVendeur } from "../../../src/utils/sourceDuTexte.js";
 import { consignesDuCompte } from "../_shared/consignes-du-compte.ts";
+import { FIN_PHOTOS_EXTERNES_MS, FIN_RETOUCHE_MS, FIN_REDACTION_MS, RETOUCHE_MINIMUM_MS, DELAI_ENVOI_STORAGE_MS, DELAI_DEPASSE, resteAvant, delaiBorne, attendreAuPlus } from "../_shared/delai-etape.js";
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -212,8 +213,18 @@ function json(data: unknown, status = 200) {
   });
 }
 
+// ── (12/11, point 8 de Nico) UNE RÉDACTION N'EST JAMAIS COUPÉE ───────────────────────────────────────────────────────
+// Une fonction edge est coupée à 150 s (504) et le client perd tout, texte compris. Le 12/11 vers 15:25 et 15:28
+// (compte ebdf29f0), Storage répondait en ~60 s « Gateway Timeout » / « Too many connections issued to the database » :
+// l'envoi d'une photo re-hébergée n'avait AUCUN délai (REHOST_TIMEOUT_MS ne bornait que son téléchargement), 3 essais par
+// photo, photo après photo → 150 s dépassées avant même la rédaction. Même trou à l'envoi des photos retouchées.
+// LA RÈGLE : chaque étape photo a une ÉCHÉANCE comptée depuis le début de la requête ; une photo qui n'est pas prête à
+// temps part telle qu'elle est (la photo d'origine) — jamais un échec. Re-hébergement fini à +45 s, retouche finie à
+// +100 s (sautée s'il n'en reste pas 25), chaque envoi Storage abandonné après 12 s : la rédaction garde toujours ≥ 45 s.
+// Aucun appel en plus (pas de coût en plus), même qualité quand tout répond à temps. _shared/delai-etape.js.
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  const debutRequete = Date.now();
 
   // ── Mesure du coût API (2026-07-28) ──────────────────────────────────────
   // Cette fonction était le seul appel payant NI facturé NI tracé : elle part
@@ -933,11 +944,17 @@ serve(async (req) => {
       const REHOST_TENTATIVES = 3;
       const tsRehost = Date.now();
       const remplacements = new Map<string, string>();
-      for (let i = 0; i < externes.length; i++) {
+      rehost: for (let i = 0; i < externes.length; i++) {
         const src = externes[i];
         for (let tentative = 1; tentative <= REHOST_TENTATIVES; tentative++) {
+          // (12/11, point 8) L'échéance du re-hébergement : passée, les photos restantes gardent leur URL d'origine
+          // (le filet de handler-watch les re-héberge ensuite) — la rédaction n'attend jamais Storage.
+          if (resteAvant(debutRequete, FIN_PHOTOS_EXTERNES_MS) < 2_000) {
+            console.warn(`[generate-listing] rehost : échéance de ${FIN_PHOTOS_EXTERNES_MS / 1000} s atteinte — photo ${i} et suivantes gardent leur URL d'origine`);
+            break rehost;
+          }
           const ctl = new AbortController();
-          const timer = setTimeout(() => ctl.abort(), REHOST_TIMEOUT_MS);
+          const timer = setTimeout(() => ctl.abort(), delaiBorne(REHOST_TIMEOUT_MS, debutRequete, FIN_PHOTOS_EXTERNES_MS));
           let transitoire = false;
           try {
             const resp = await fetch(src, { signal: ctl.signal });
@@ -955,9 +972,13 @@ serve(async (req) => {
                 const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
                 // ts dans le chemin : une même URL re-tentée plus tard ne s'écrase pas.
                 const path = `${user.id}/rehosted/${inventaire_id ?? "adhoc"}/${tsRehost}_${i}.${ext}`;
-                const { error: upErr } = await adminClient.storage
+                // (12/11, point 8) L'envoi Storage est borné : 12 s, et jamais au-delà de l'échéance.
+                const envoi = await attendreAuPlus(adminClient.storage
                   .from(BUCKET)
-                  .upload(path, bytes, { contentType, upsert: true });
+                  .upload(path, bytes, { contentType, upsert: true }), delaiBorne(DELAI_ENVOI_STORAGE_MS, debutRequete, FIN_PHOTOS_EXTERNES_MS));
+                const upErr = envoi === DELAI_DEPASSE
+                  ? { message: `délai de ${DELAI_ENVOI_STORAGE_MS / 1000} s dépassé (Storage ne répond pas)` }
+                  : envoi.error;
                 if (upErr) {
                   transitoire = true; // le cas réel du 27/08 : 520 Cloudflare côté Storage
                   console.error(`[generate-listing] rehost photo ${i} (${tentative}/${REHOST_TENTATIVES}): upload — ${upErr.message}`);
@@ -968,7 +989,7 @@ serve(async (req) => {
             }
           } catch (e) {
             transitoire = true;
-            console.error(`[generate-listing] rehost photo ${i} (${tentative}/${REHOST_TENTATIVES}):`, (e as Error)?.name === "AbortError" ? `timeout ${REHOST_TIMEOUT_MS / 1000}s` : e);
+            console.error(`[generate-listing] rehost photo ${i} (${tentative}/${REHOST_TENTATIVES}):`, (e as Error)?.name === "AbortError" ? `délai dépassé (téléchargement)` : e);
           } finally {
             clearTimeout(timer);
           }
@@ -1162,7 +1183,12 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
       // sont conservées telles quelles dans l'annonce.
       const MAX_RETOUCHED = 5;
       let retouchBudget = MAX_RETOUCHED;
+      // (12/11, point 8) Plus assez de temps avant l'échéance de la retouche (Storage ou le re-hébergement ont traîné) :
+      // aucune retouche lancée — les photos d'origine partent, rien n'est facturé, la rédaction garde son temps.
+      const retoucheLancee = resteAvant(debutRequete, FIN_RETOUCHE_MS) >= RETOUCHE_MINIMUM_MS;
+      if (!retoucheLancee) console.warn(`[gpt-image] échéance trop proche (${Math.round(resteAvant(debutRequete, FIN_RETOUCHE_MS) / 1000)} s) : photos d'origine, aucune retouche lancée`);
       const shouldRetouch = photosToProcess.map((u) => {
+        if (!retoucheLancee) return false;
         if (lockedSet.has(u)) return false;
         if (retouchBudget <= 0) return false;
         retouchBudget--;
@@ -1179,10 +1205,15 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
           if (!shouldRetouch[idx]) {
             return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
-          const srcRes = await fetch(photoUrl);
+          // (12/11, point 8) Chaque étape de la retouche s'arrête à l'échéance : la photo d'origine part alors.
+          const origine = { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+          const ctlRetouche = new AbortController();
+          const minuteurRetouche = setTimeout(() => ctlRetouche.abort(), resteAvant(debutRequete, FIN_RETOUCHE_MS));
+          try {
+          const srcRes = await fetch(photoUrl, { signal: ctlRetouche.signal });
           if (!srcRes.ok) {
             console.error(`[gpt-image] fetch photo ${idx} failed: ${srcRes.status}`);
-            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+            return origine;
           }
           const srcBlob = await srcRes.blob();
 
@@ -1198,6 +1229,7 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
             method: "POST",
             headers: { "Authorization": `Bearer ${OPENAI_KEY}` },
             body: form,
+            signal: ctlRetouche.signal,
           });
 
           console.log(`[gpt-image] photo ${idx} (${photo_option}) status: ${res.status}`);
@@ -1249,18 +1281,29 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
           const outBlob = new Blob([bytes], { type: "image/png" });
           const path = `${user.id}/enhanced/${ts}_${idx}.png`;
 
-          const { error: upErr } = await adminClient.storage
+          // (12/11, point 8) L'envoi Storage est borné : 12 s, et jamais au-delà de l'échéance de la retouche.
+          const envoiRetouche = await attendreAuPlus(adminClient.storage
             .from(BUCKET)
-            .upload(path, outBlob, { contentType: "image/png", upsert: true });
+            .upload(path, outBlob, { contentType: "image/png", upsert: true }), delaiBorne(DELAI_ENVOI_STORAGE_MS, debutRequete, FIN_RETOUCHE_MS));
+          const upErr = envoiRetouche === DELAI_DEPASSE
+            ? { message: `délai de ${DELAI_ENVOI_STORAGE_MS / 1000} s dépassé (Storage ne répond pas)` }
+            : envoiRetouche.error;
 
           if (upErr) {
             console.error(`[gpt-image] upload photo ${idx}:`, upErr);
-            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
+            return origine;
           }
 
           const url = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
           console.log(`[gpt-image] photo ${idx} OK → ${url}`);
           return { type: idx === 0 ? "original" : `enhanced_${idx}`, url };
+          } catch (e) {
+            // Échéance atteinte (téléchargement ou retouche) ou réseau : la photo d'origine, jamais un échec.
+            console.error(`[gpt-image] photo ${idx} :`, (e as Error)?.name === "AbortError" ? `échéance de la retouche atteinte — photo d'origine` : e);
+            return origine;
+          } finally {
+            clearTimeout(minuteurRetouche);
+          }
         })
       );
 
@@ -1413,6 +1456,13 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
     const langueVinted = (platforms as string[]).includes("vinted")
       ? await langueRedactionVinted(adminClient, user.id).catch(() => null) : null;
     if (langueVinted) console.log(`[generate-listing] copie Vinted rédigée en « ${langueVinted.langue} » (${langueVinted.source})`);
+    // (12/11, point 8) La rédaction finit à +140 s : un appel qui traîne encore est abandonné, sa plateforme prend le
+    // texte de repli (le repli d'un appel en échec, déjà là) et la fiche est enregistrée — jamais le 504.
+    const ctlRedaction = new AbortController();
+    const minuteurRedaction = setTimeout(() => {
+      console.warn(`[generate-listing] rédaction encore en cours à +${Math.round(FIN_REDACTION_MS / 1000)} s — appels abandonnés, texte de repli`);
+      ctlRedaction.abort();
+    }, resteAvant(debutRequete, FIN_REDACTION_MS));
     const { platformListings, traceEtat, traceIsbn } = await redigerAnnoncesPlateformes({
       langues: langueVinted ? { vinted: langueVinted.langue } : null,
       apiKey: ANTHROPIC_KEY, platforms: platforms as string[],
@@ -1420,11 +1470,14 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
       descriptionFournie: descriptionVendeuse,
       titreFourni: titreVendeur,
       consignes: consignesVendeur,
-    });
+      signal: ctlRedaction.signal,
+    }).finally(() => clearTimeout(minuteurRedaction));
 
     // category_icon : attendu ICI seulement (il chevauchait la retouche photo
     // et la génération). null → champ OMIS → fallback client detectObjectIcon.
-    const classification = await categoryIconPromise;
+    // (12/11, point 8) Attendu au plus jusqu'à l'échéance de la rédaction : en retard → null, le même repli.
+    const classificationLue = await attendreAuPlus(categoryIconPromise, resteAvant(debutRequete, FIN_REDACTION_MS));
+    const classification = classificationLue === DELAI_DEPASSE ? { icon: null, objet: null } : classificationLue;
     const category_icon = classification.icon;
     const objet = classification.objet;
 

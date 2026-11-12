@@ -1663,3 +1663,17 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   de l'envoi) ; « Ta file » et le suivi (`situationJob`, motif `programmee` : « Programmée : partira ce soir à partir de
   19:00, une à la fois » / « elle part en ce moment, jusqu'à 22:00 » / « demain soir »), icône horloge.
 - Verrou `npm run selftest:programmees-verite` (rejeu des servies réelles de 229c7b07 : 39 par soir ; 4cfb7afe : aucun chiffre).
+
+## ⛔ 12/11 (point 8 de Nico, terminal « Problèmes ») — une rédaction n'est JAMAIS coupée : ce qui traîne part tel quel
+- Cas : 12/11 15:25 et 15:28 (ebdf29f0), 09/11 12:46 (229c7b07) — generate-listing coupé à 150 s (504), le client perdait le
+  texte ET la fiche (enregistrée par le serveur après la rédaction). Cause : l'envoi Storage d'une photo re-hébergée (et
+  d'une photo retouchée) n'avait aucun délai — « Gateway Timeout » à ~60 s, 3 essais par photo, photo après photo.
+- **La règle** : chaque étape a une ÉCHÉANCE comptée depuis le début de la requête (`_shared/delai-etape.js`, une seule
+  source) — re-hébergement des photos externes fini à +45 s ; retouche finie à +100 s, pas lancée s'il ne reste pas 25 s ;
+  chaque envoi Storage abandonné après 12 s ; rédaction (textes, icône) finie à +140 s ; 10 s pour enregistrer la fiche.
+- Ce qui n'est pas prêt à l'échéance part TEL QU'IL EST : la photo d'origine (URL d'origine, ou photo non retouchée — la
+  retouche abandonnée n'est pas comptée livrée) ; le texte de repli d'un appel en échec (titre et description de la fiche,
+  unité rendue si aucun texte n'a abouti). Jamais un échec, jamais un appel en plus (même coût), même qualité quand tout
+  répond à temps. `redigerAnnoncesPlateformes` prend l'échéance en option (`signal`) : Lens, sans elle, comme avant.
+- ⛔ Une étape nouvelle de generate-listing qui attend un service (Storage, IA, réseau) prend son délai dans
+  `delai-etape.js` — jamais une attente nue. Verrou `npm run selftest:redaction-jamais-coupee`.

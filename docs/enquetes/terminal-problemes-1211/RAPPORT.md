@@ -100,6 +100,10 @@ photos plus légères (103 ms par photo au lieu de 159) : la plateforme coupe pl
 « Synchroniser » attend un peu plus (443 attentes d'empreintes en 24 h, relues toutes les 12 s) ; ≈ 23 % des appels perdus.
 **Correctif possible (à décider par Nico, rien fait)** : borner la rafale dans `rapprochement_v3_empreinter` (par exemple 10
 appels à la fois au lieu de 100, et 5 photos par appel au lieu de 6) — migration SQL, hors de cette fonction.
+**Correctif (GO de Nico, 12/11)** : migration 20261112160000 (10 appels de 5 photos au plus) + fonction rapprochement
+(50 photos par passe relues après 4 s, 40 relances par chaîne de photos, tolérance de 72 s gardée) ; fusion_photo_tick
+inchangée. Référence avant (109 attentes de photos du rapprochement, du premier passage incomplet à la décision) : médiane
+29 s ; ≤ 50 photos 26 s (p90 52 s) ; 51–180 : 63 s ; > 180 : 145 s.
 
 ## 6. Compte cfdfda6f (Business), publication Leboncoin 298e4944 bloquée — ROUGE, corrigé
 **Le 5e essai** : passé le 12/11 à 14:01:31, même échec ; la tâche est tombée en « La publication n'a pas abouti après
@@ -113,7 +117,21 @@ animal de race, âge, date de naissance, portée, vacciné, race — des informa
 **Correctif** (règle `docs/regles/plateformes.md` du 12/11) : jamais tentée — au premier passage, le geste « dépose-la
 toi-même sur Leboncoin, puis Synchroniser » (ou « Accessoires animaux » pour un objet) ; la tâche existante reçoit le même
 geste par handler-watch ; aucun poids posé par l'app sur cette catégorie.
-**Correctif (GO de Nico, 12/11)** : migration 20261112160000 (10 appels de 5 photos au plus) + fonction rapprochement
-(50 photos par passe relues après 4 s, 40 relances par chaîne de photos, tolérance de 72 s gardée) ; fusion_photo_tick
-inchangée. Référence avant (109 attentes de photos du rapprochement, du premier passage incomplet à la décision) : médiane
-29 s ; ≤ 50 photos 26 s (p90 52 s) ; 51–180 : 63 s ; > 180 : 145 s.
+
+## 8. La rédaction d'annonce coupée à 150 s (504) — ROUGE, corrigé
+**Cause prouvée** (journaux) : le 12/11 à 15:25 et 15:28 (compte ebdf29f0, 4 réponses 504 à 150 s), generate-listing
+écrit « rehost photo N (1/3) : upload — Gateway Timeout » toutes les ~60 s, puis (2/3), puis la coupure : l'ENVOI Storage
+d'une photo re-hébergée n'avait aucun délai (seul son téléchargement en avait un), 3 essais par photo, photo après photo,
+AVANT la rédaction — 150 s passées sans une ligne de texte. Même trou à l'envoi des photos retouchées ; les appels de
+rédaction eux-mêmes (Claude) n'avaient pas de délai non plus.
+**Clients touchés (7 jours, 06/11 → 12/11)** : 2 comptes, 6 coupures — ebdf29f0 (4, le 12/11) et 229c7b07 (2, le 09/11 à
+12:46 et 12:47 : muettes jusqu'à la coupure, arrêtées avant la rédaction, aucune autre trace). En face, 1 783 rédactions
+abouties en 24 h (26 comptes). Le client perdait tout : le texte, et la fiche (le serveur l'enregistre APRÈS la rédaction).
+**Correctif** (règle `docs/regles/republication-et-publication.md` du 12/11) : des échéances comptées depuis le début de
+la requête (`_shared/delai-etape.js`) — re-hébergement fini à +45 s, retouche finie à +100 s (pas lancée s'il ne reste pas
+25 s), chaque envoi Storage abandonné après 12 s, rédaction finie à +140 s. Une photo en retard part TELLE QU'ELLE EST (la
+photo d'origine) ; un texte en retard prend le repli déjà prévu (titre et description de la fiche) ; la fiche est
+enregistrée et la réponse part avant 150 s. Aucun appel en plus (même coût), même qualité quand tout répond à temps :
+sur 30 jours, 309 retouches, médiane 15 s, p99 75 s, la plus longue 78 s — aucune n'aurait atteint l'échéance de +100 s ;
+rédaction mesurée de 3 à 26 s. Verrou `selftest:redaction-jamais-coupee` (14 rouges sur 2223f0b → 24/24, dont un essai
+du vrai module de rédaction face à une IA qui ne répond jamais).
