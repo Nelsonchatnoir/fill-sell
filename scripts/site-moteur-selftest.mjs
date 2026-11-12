@@ -554,6 +554,10 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   // jamais le Cloud « en option » (décision de Nico du 12/11 : le Cloud se prend AVEC une formule).
   const fautifs = [];
   const enOption = [];
+  // (12/11, décision 5a de Nico) « On te prévient la veille de la fin de l'essai » : sans preuve côté Stripe ET côté
+  // Apple, la phrase sort du mail ET du site ; elle ne revient que sur décision de Nico.
+  const veille = [];
+  const PROMESSE_VEILLE = /veille de la fin de l[’']essai|prévient la veille|the day before (it|the trial|your trial) ends|remind you the day before/i;
   const CLOUD_EN_OPTION = /\bCloud\b[^.!?\n]{0,160}\b(en option|an add-on|add-on)\b|\b(en option|an add-on)\b[^.!?\n]{0,160}\bCloud\b|l[’']option FillSell Cloud|the FillSell Cloud (option|add-on)|en option chez FillSell|plutôt qu[’']en option/i;
   const parcourir = (d) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
@@ -563,12 +567,16 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
         const t = readFileSync(p, 'utf8');
         if (/n[’']importe quelle formule avec Cloud|any plan with Cloud|formule de ton choix avec Cloud/i.test(t)) fautifs.push(path.relative(racine, p));
         if (CLOUD_EN_OPTION.test(t)) enOption.push(path.relative(racine, p));
+        if (PROMESSE_VEILLE.test(t)) veille.push(path.relative(racine, p));
       }
     }
   };
   for (const d of ['site/contenu', 'src/blog', 'site/donnees']) parcourir(path.join(racine, d));
   ok(!fautifs.length, `contenu : jamais l'essai « sur n'importe quelle formule avec Cloud » / « any plan with Cloud » (${fautifs.join(', ') || 'aucun'})`);
   ok(!enOption.length, `contenu : jamais le Cloud « en option » (${enOption.join(', ') || 'aucun'})`);
+  ok(!veille.length, `contenu : jamais « on te prévient la veille de la fin de l'essai » sans preuve (${veille.join(', ') || 'aucun'})`);
+  ok(PROMESSE_VEILLE.test("Tu arrêtes le Cloud en un geste, et on te prévient la veille de la fin de l'essai.") && PROMESSE_VEILLE.test('we remind you the day before it ends')
+    && !PROMESSE_VEILLE.test('Tu arrêtes le Cloud en un geste.'), 'le verrou « veille » reconnaît la promesse FR et EN, pas la phrase qui la remplace');
   ok(CLOUD_EN_OPTION.test('## Ordinateur éteint : inclus chez StoFlow, en option chez FillSell') && CLOUD_EN_OPTION.test('quand FillSell le vend en option (FillSell Cloud)')
     && !CLOUD_EN_OPTION.test('par l\'extension ou FillSell Cloud, republie sans option payante de Leboncoin'), 'le verrou « Cloud en option » reconnaît les anciennes phrases, pas l\'option payante d\'une plateforme');
 }

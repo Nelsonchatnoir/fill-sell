@@ -173,7 +173,7 @@ Not for the plans. The paid plans have neither a trial nor an annual price: they
 
 ### How much is FillSell Cloud?
 
-FillSell Cloud comes with your plan: Premium, Pro or Business, with Cloud. The price of each plan with Cloud is shown with the plans, on this page. No commitment, with a 7-day free trial on Premium or Pro with Cloud (card required, once per person); we remind you the day before it ends, and you stop the Cloud in one tap. What you pay extra for: no computer needed. FillSell Cloud posts, reposts and removes your Vinted, Leboncoin, Beebs and Depop listings from FillSell's servers, around the clock, and keeps track of your sales. Available in France, on iPhone and on the web.
+FillSell Cloud comes with your plan: Premium, Pro or Business, with Cloud. The price of each plan with Cloud is shown with the plans, on this page. No commitment, with a 7-day free trial on Premium or Pro with Cloud (card required, once per person); you stop the Cloud in one tap. What you pay extra for: no computer needed. FillSell Cloud posts, reposts and removes your Vinted, Leboncoin, Beebs and Depop listings from FillSell's servers, around the clock, and keeps track of your sales. Available in France, on iPhone and on the web.
 
 ### Do I pay per marketplace or per listing posted?
 
