@@ -111,3 +111,28 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
   témoins FillSell d6a9e726, 953c1ca6, f44b5917 ; compte Google testeur de licence jamais abonné.
 - Interrupteurs : `coin_config.cloud_formules_stripe` / `_google` / `_apple` ABSENTS (= fermés) au 12/11 ~17:40 ;
   `cloud_offre_ouverte` = 1. Ouverture : seulement sur « GO OUVERTURE » de Nico ; `cloud_formules_apple` reste fermé.
+- Décisions de Nico (12/11 soir) : point 5 arrêté là (on ne ralentit pas le client) ; éligibilité Google de l'essai
+  GARDÉE (« n'a jamais eu d'abonnement dans cette appli ») ; ce soir WEB SEUL, Android attend l'achat d'essai sur un vrai
+  téléphone (« fait » de Nico).
+- **WEB OUVERT : `cloud_formules_stripe` = 1 le 12/11 à 18:13:11** (upsert `coin_config`, GO OUVERTURE de Nico, web
+  seul) ; `_google` et `_apple` toujours ABSENTS. Terminal marketing prévenu dans la minute (web seul, Android fermé).
+  Vérifié : lecture anonyme (ce que lisent l'app et le site) = stripe 1, google/apple absents ; TÉMOIN (session de Nico
+  déjà ouverte, lecture seule, app 71f97fc) : « Choisis ta formule › Avec Cloud », Pro + Cloud 49,99 €, Business + Cloud
+  79,99 € ; COMPTE ORDINAIRE : le vrai code (app `cloudVendableDansLePays`, serveur `formulesOuvertesPour`,
+  `voieFormuleStripe`) avec les valeurs lues sans session = web vendable, Android et iPhone non ; checkout Stripe avec
+  essai pour Premium / Pro + Cloud, sans essai pour Business + Cloud. Écran d'un vrai compte ordinaire : pas vu (aucune
+  connexion à fillsell.app depuis l'automatisation).
+- **ANDROID OUVERT : `cloud_formules_google` = 1 le 12/11 à 18:19:02** (nouvelle décision de Nico : web ET Android ce
+  soir, sans achat d'essai préalable — impossible ici : se connecter à un compte Google et à un compte FillSell exige des
+  mots de passe que ce terminal ne tape pas). `cloud_formules_apple` ABSENT (fermé, accord d'Apple attendu). Terminal
+  marketing prévenu aussitôt (web + Android ; son push « web seul » 06ca876 était parti à 18:18). Vérifié avec les valeurs
+  lues sans session : app ordinaire web oui, Android vc37 oui (seuil 2.9.167), iPhone non ; serveur stripe et google
+  ouverts, apple fermé ; produits Google `app.fillsell.{premium,pro,business}.cloud` = ceux activés.
+- **SURVEILLANCE ANDROID** (ordre de Nico) : `scratchpad/verif9/veille.mjs`, lecture toutes les 60 s (~55 ms en base) ;
+  COUPE seule `cloud_formules_google` = 0 sur : un `checkout_issue` Google autre que « reussi » ou « annule » (sur la vc37,
+  abandon et refus de Google sont indiscernables : comptés comme échec) ; une formule Premium / Pro + Cloud prise chez
+  Google sans essai alors que la carte annonçait l'essai. S'arrête pour lecture sur `formule_cloud_issue` « erreur » ou
+  « refuse » (canal non écrit) et à chaque achat de formule (web ou Android). Le web reste ouvert dans tous les cas.
+- Binaire 2.9.176 / vc38 : fabrication arrêtée par le système (mémoire) pendant Gradle, avant tout AAB ; processus
+  restants arrêtés par PID ; défaut du script corrigé (71f97fc). À relancer sur le mot de Nico : `npm run binaires --
+  --aab-seul` depuis le dossier principal (le module patché y est déjà posé, `patch-package` ✔).
