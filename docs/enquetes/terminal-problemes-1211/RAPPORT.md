@@ -113,3 +113,7 @@ animal de race, âge, date de naissance, portée, vacciné, race — des informa
 **Correctif** (règle `docs/regles/plateformes.md` du 12/11) : jamais tentée — au premier passage, le geste « dépose-la
 toi-même sur Leboncoin, puis Synchroniser » (ou « Accessoires animaux » pour un objet) ; la tâche existante reçoit le même
 geste par handler-watch ; aucun poids posé par l'app sur cette catégorie.
+**Correctif (GO de Nico, 12/11)** : migration 20261112160000 (10 appels de 5 photos au plus) + fonction rapprochement
+(50 photos par passe relues après 4 s, 40 relances par chaîne de photos, tolérance de 72 s gardée) ; fusion_photo_tick
+inchangée. Référence avant (109 attentes de photos du rapprochement, du premier passage incomplet à la décision) : médiane
+29 s ; ≤ 50 photos 26 s (p90 52 s) ; 51–180 : 63 s ; > 180 : 145 s.

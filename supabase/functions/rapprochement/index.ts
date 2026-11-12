@@ -105,13 +105,20 @@ const BUDGET_MS = 110_000;
 // ferreirasab 139). Les photos restantes partent à la relance suivante ; le
 // compteur de passages sans progrès (PASSAGES_PHOTOS_MAX) ne bouge pas tant
 // que chaque passe en rapporte.
-const PHOTOS_PAR_PASSE = 180;       // 30 appels pg_net de 6 photos (empreintes-urls : 2 s de CPU par requête)
-const RELANCE_PHOTOS_MS = 12_000;   // le temps que les 100 appels aboutissent avant de relire
-const RELANCES_MAX = 12;            // 12 × 600 photos par chaîne ; au-delà, le filet rapprochement-1min reprend
+// (12/11, point 5, GO de Nico) PAS PLUS DE 10 APPELS D'EMPREINTES À LA FOIS : 30 appels simultanés faisaient échouer
+// empreintes-urls en rafale (25 à 28 % de 546 dans les minutes à 13 appels et plus, 0 % à 1–3 : les appels partagent un
+// worker qui dépasse son temps de calcul). rapprochement_v3_empreinter borne désormais à 10 appels de 5 photos (migration
+// 20261112160000) ; le débit du client est gardé ici : 50 photos par passe, relues après 4 s (10 appels finissent en
+// ~1,5 s), et 40 relances par chaîne pour les photos (40 × 50 = 2 000 photos, ~15 relances par minute, sous les 60).
+const PHOTOS_PAR_PASSE = 50;        // 10 appels pg_net de 5 photos (rapprochement_v3_empreinter, borné en base)
+const RELANCE_PHOTOS_MS = 4_000;    // le temps que les 10 appels aboutissent avant de relire
+const RELANCES_MAX = 12;            // une chaîne sans photos en route (décisions, comptes) ; au-delà, le filet rapprochement-1min reprend
+const RELANCES_MAX_PHOTOS = 40;     // (12/11) une chaîne qui attend ses photos : 40 × 50 = 2 000 photos
 const RELANCES_MAX_TRANCHES = 40;   // (v20) une chaîne de tranches : ~1 s chacune, sous la limite de 60 appels edge → edge par minute
 const COMPTES_PAR_APPEL = 4;
 const DECISIONS_PAR_LOT = 150;
-const PASSAGES_PHOTOS_MAX = 6;      // six relectures sans progrès (546, image morte) : on classe avec ce qu'on a
+// (12/11) 18 relectures à 4 s = les 72 s d'avant (6 à 12 s) : jamais classé sans ses photos plus tôt qu'avant.
+const PASSAGES_PHOTOS_MAX = 18;     // relectures sans progrès (546, image morte) : on classe avec ce qu'on a
 const PASSES_INACHEVEES_MAX = 3;    // passes de suite sans rien écrire : le compte s'arrête (ops-digest en rouge)
 const PASSES_INACHEVEES_MAX_GESTE = 6; // … un geste de la personne en rouvre trois de plus, pas davantage
 const GESTE_RECENT_MS = 30 * 60_000;
@@ -324,6 +331,7 @@ serve(async (req) => {
   const bilan: Record<string, unknown>[] = [];
   let inacheve = false;
   let relanceApres = 0; // ms avant la relance (le temps que les photos demandées arrivent)
+  let photosEnRoute = false; // (12/11) des photos ont été demandées : la chaîne a droit à RELANCES_MAX_PHOTOS
   let enTranches = false; // (v20) une passe s'est arrêtée au bout de son budget : la suite tout de suite
   // (v20) le filet (sans user_id) purge les chantiers abandonnés depuis un jour
   if (!(typeof body.user_id === "string" && body.user_id)) {
@@ -389,7 +397,7 @@ serve(async (req) => {
           // Les photos partent : ce n'est pas une passe (le compteur reprend sa valeur).
           await etat(user, { etat: "empreintes", photos_manquantes: manquantes.length, passages_photos: passages, passages: -inachevees });
           parCompte.etat = "empreintes"; parCompte.manquantes = manquantes.length;
-          if (envoyees > 0) { inacheve = true; relanceApres = Math.max(relanceApres, RELANCE_PHOTOS_MS); }
+          if (envoyees > 0) { inacheve = true; photosEnRoute = true; relanceApres = Math.max(relanceApres, RELANCE_PHOTOS_MS); }
           bilan.push(parCompte); continue;
         }
         parCompte.classe_sans_photos = manquantes.length; // six relectures sans progrès : on classe avec ce qu'on a
@@ -491,7 +499,7 @@ serve(async (req) => {
     bilan.push(parCompte);
   }
 
-  if (inacheve && rang < (enTranches ? RELANCES_MAX_TRANCHES : RELANCES_MAX) && !simuler) {
+  if (inacheve && rang < (enTranches ? RELANCES_MAX_TRANCHES : photosEnRoute ? RELANCES_MAX_PHOTOS : RELANCES_MAX) && !simuler) {
     // Un seul appel edge → edge par invocation (la limite du runtime est à 60
     // par minute) ; après RELANCE_PHOTOS_MS quand des photos sont en route.
     const suite = new Promise((r) => setTimeout(r, relanceApres)).then(() => fetch(`${supabaseUrl}/functions/v1/rapprochement`, {

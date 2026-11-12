@@ -75,7 +75,8 @@ ok(/if \(passager\) throw new EchecPassager\(passager\);\n  throw derniere \?\? 
 const iPass = f.indexOf("if (err instanceof EchecPassager) {");
 ok(iPass > 0 && iPass < f.indexOf("echecs.push({ url, motif });") && /if \(\/\^HTTP 429\\b\/\.test\(err\.message\)\) remise = true;/.test(f), "empreintes-urls : passager attrapé AVANT toute écriture d'échec ; sur un 429, l'appel s'arrête");
 const rap = lire("../supabase/functions/rapprochement/index.ts");
-ok(/const PHOTOS_PAR_PASSE = 180;/.test(rap), "rapprochement : 30 appels de 6 photos par passe (100 avant : rafale → 429)");
+// (12/11, point 5) 10 appels de 5 photos par passe, relus après 4 s : 30 à la fois faisaient échouer empreintes-urls en rafale (546).
+ok(/const PHOTOS_PAR_PASSE = 50;/.test(rap) && /const RELANCE_PHOTOS_MS = 4_000;/.test(rap), "rapprochement : 10 appels de 5 photos par passe, relus après 4 s (30 à la fois : 546 en rafale ; 100 avant : 429)");
 
 console.log("4. handler-watch : le filet des photos, une page par heure");
 const h = lire("../supabase/functions/handler-watch/index.ts");

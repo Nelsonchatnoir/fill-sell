@@ -562,3 +562,15 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - L'app (`lireDerniersRunsReleve`) tait un relevé raté sur la page de connexion quand le poste qui l'a pris est connu
   et qu'un AUTRE poste vivant est connecté (réussite ou sonde plus récente que son mur) ; sinon « Me reconnecter »
   comme avant. Vinted non concerné (boutiques). Selftest `poste-connecte`.
+
+## ⛔ 12/11 (point 5, GO de Nico) — pas plus de 10 appels d'empreintes à la fois ; le client ne va pas plus lentement
+- Cause (rapport `docs/enquetes/terminal-problemes-1211/RAPPORT.md` § 5) : empreintes-urls échouait en 546 pendant les rafales
+  (0 % à 1–3 appels par minute, 25 à 28 % à 13 et plus) ; 87 % des appels venaient de `rapprochement_v3_empreinter`
+  (30 appels de 6 photos d'un coup, la 6e toujours remise : la fonction n'en traite que 5).
+- Migration **20261112160000** : `rapprochement_v3_empreinter` envoie 10 appels de 5 photos au plus (défauts 5 et 10 ; une
+  demande plus grosse est bornée, jamais refusée). Fonction edge **rapprochement** : `PHOTOS_PAR_PASSE` 50, relue après
+  `RELANCE_PHOTOS_MS` 4 s (au lieu de 180 et 12 s), `RELANCES_MAX_PHOTOS` 40 pour une chaîne qui attend ses photos
+  (2 000 photos, ~15 relances par minute < 60), `PASSAGES_PHOTOS_MAX` 18 (18 × 4 s = les 72 s d'avant).
+- `fusion_photo_tick` inchangée : 6 appels de 4 au plus, une fois par minute. pg_net 0.20 sort une requête de sa file dès
+  l'envoi : aucun plafond commun aux deux appelants n'est lisible en base.
+- Verrou `npm run selftest:empreintes-rafales` ; banc `node scripts/essais/20261112160000_banc.mjs` (15/15).

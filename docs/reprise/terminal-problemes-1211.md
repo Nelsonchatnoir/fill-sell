@@ -74,3 +74,8 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
   après) ; web 2026-11-12T13:56:42Z+1746fae, entrée relue avec `Origin` : 200.
 - Retour : get-pending-jobs et handler-watch depuis l'archive de 5e88909 ; app : nouvelle OTA (numéro neuf) d'un commit
   qui revient sur 1746fae.
+
+## Soir — point 5 corrigé (GO de Nico) : rafales d'empreintes bornées à 10
+- Migration 20261112160000 + fonction rapprochement (cadence) ; fusion_photo_tick inchangée. Verrou
+  `selftest:empreintes-rafales` (6 rouges sur cfef7d7 → 11/11), banc 15/15.
+- Référence avant : empreintes-urls 23 % d'échecs (24 h) ; attentes de photos du rapprochement médiane 29 s, p90 85 s.
