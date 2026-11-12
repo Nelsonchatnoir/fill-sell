@@ -23,6 +23,8 @@
 //     alors la protection, et le message le dit (même règle que le
 //     disjoncteur, A4 : seul un échec du compte arrête le compte).
 // Module PUR, importé par handler-watch.
+// (11/11 soir) Une remise en file passe par remettreEnFile (_shared/remise-en-file.js) : budget d'essais entier.
+import { remettreEnFile } from "./remise-en-file.js";
 
 export const SOURCE_RECREATION_BLOQUEE = "recreation_bloquee";
 export const REPRISES_AVANT_SIGNAL = 2;
@@ -50,11 +52,14 @@ function retireeLe(pf) {
 }
 
 /** Le nombre d'essais de remise en ligne ratés, tel que les écrivains l'ont compté. */
+// (11/11 soir) Jamais négatif : une remise en file garde recreation_tentee avec n = 0 (la garde du dressing reste).
+// ⛔ Toute clé lue ici est remise à zéro par remettreEnFile (verrou selftest:remise-en-file).
 export function essaisRates(pf = {}) {
   return Math.max(
+    0,
     Number(pf.recreation_reprises) || 0,
     Number(pf.recreation_reprise?.n) || 0,
-    Number(pf.recreation_tentee?.n) - 1 || 0,
+    (Number(pf.recreation_tentee?.n) || 0) - 1,
   );
 }
 
@@ -350,17 +355,10 @@ export function causeLeveePourRelance(job, extensionBuild = undefined, { ignorer
  * @param {{ extensionBuild?: string | null }} [opts] le build du poste du compte (06/11 : trace « sous_build »)
  */
 export function champsRelanceCauseLevee(pf0 = {}, cause, maintenant = new Date().toISOString(), { extensionBuild = undefined } = {}) {
-  const pf = { ...pf0 };
-  pf.recreation_essais_avant_relance = {
-    le: maintenant,
-    recreation_reprises: pf.recreation_reprises ?? null,
-    recreation_reprise: pf.recreation_reprise ?? null,
-    recreation_tentee: pf.recreation_tentee ?? null,
-    recreation_bloquee: pf.recreation_bloquee ?? null,
-  };
-  delete pf.recreation_reprises; delete pf.recreation_reprise; delete pf.recreation_tentee;
-  delete pf.recreation_bloquee; delete pf.needs_user_source; delete pf.next_action_after; delete pf.processing_since;
-  delete pf.pas_de_rouge; delete pf.error_technique;
+  // (11/11 soir) TOUS les compteurs d'essais remis à zéro (recreation_retries compris, oublié ici jusqu'au 11/11) ;
+  // recreation_tentee garde son heure (la garde du dressing), son n repart de 0. Archive : recreation_essais_avant_relance.
+  const pf = remettreEnFile(pf0, { par: "handler-watch (cause levée)", motif: cause?.code ?? null, maintenant });
+  delete pf.needs_user_source; delete pf.pas_de_rouge; delete pf.error_technique;
   const deja = pf.recreation_relancee ? pf.recreation_relancee[cause.code] : null;
   pf.recreation_relancee = { ...(pf.recreation_relancee ?? {}), [cause.code]: deja
     // (06/11) La relance de plus, au build : tracée, jamais une troisième.

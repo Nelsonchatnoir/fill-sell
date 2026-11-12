@@ -25,10 +25,11 @@
 //     correctif (`build_min_requis`) : un autre profil Chrome resté en 0.6.63
 //     ne le brûle pas ;
 //   · le BUILD_ID fait foi (préfixe horodaté), jamais le numéro de version.
-// ES module, trois imports relatifs eux-mêmes sans import (Deno + Node).
+// ES module, quatre imports relatifs eux-mêmes sans import (Deno + Node).
 import { lectureRefusBeebs } from "./beebs-refus-formulaire.js";
 import { BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, marqueAIdentifiantCapturee } from "./vinted-marque-par-id.js";
 import { normalizeIsbn } from "./isbn.js";
+import { remettreEnFile } from "./remise-en-file.js";
 
 /** Le préfixe horodaté d'un BUILD_ID (« 2026-09-24T14:34:46Z+aa459a7 · v0.6.66 ») en ms, NaN sinon. */
 export function buildMsDe(build) {
@@ -450,4 +451,36 @@ export function correctifPourJob(job, correctifs = CORRECTIFS_EXTENSION) {
 export function posteAJour(buildDuPoste, correctif) {
   const b = buildMsDe(buildDuPoste);
   return Number.isFinite(b) && b >= buildMsDe(correctif.buildMin);
+}
+
+// ── (11/11 soir) LE RÉARMEMENT REMET TOUS LES COMPTEURS D'ESSAIS À ZÉRO ─────────────────────────────────────────────
+// Compte 64eab2f9, 11/11 12:50:49 : cinq republications Vinted réarmées par « vinted_etat_a_confirmer » repartaient
+// avec recreation_tentee {n: 3} (cette entrée ne le retirait pas : chaque entrée avait SA liste) → handler-watch les
+// ressortait de la file 16 s plus tard (« ratée 2 fois »), le réarmement unique était perdu. Désormais tout réarmement
+// passe par remettreEnFile (_shared/remise-en-file.js) : budget entier, traces anti-doublon gardées ; `clesARetirer`
+// ne porte plus que ce qui est propre au correctif (la question posée, une trace qu'il rend caduque).
+/** Les clés d'attente retirées à tout réarmement (celles que get-pending-jobs retirait déjà). */
+export const CLES_REARMEMENT = Object.freeze(["needs_user_source", "needsUserAttempts", "needsUserBoucle", "needsUserResolved",
+  "next_action_after", "needs_user_vu_le", "needs_user_vu_erreur", "needs_user_tick_le", "needs_user_actif_ms", "error_technique",
+  "processing_since", "pas_de_rouge", "pas_de_rouge_reprises"]);
+
+/**
+ * Le platform_fields d'un job réarmé par un correctif d'extension (pur). L'archive de l'erreur reste à l'appelant.
+ * @param {any} job @param {any} c le correctif (CORRECTIFS_EXTENSION)
+ * @param {{ buildDuPoll?: string | null, maintenant?: string }} [o]
+ */
+export function champsReamorcageCorrectif(job, c, { buildDuPoll = null, maintenant = new Date().toISOString() } = {}) {
+  const pf0 = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+  // D'abord la remise en file (elle archive les compteurs), puis les clés propres au correctif.
+  const pf = remettreEnFile(pf0, { par: `get-pending-jobs (correctif ${c?.version ?? "?"} : ${c?.cle ?? "?"})`, motif: c?.motif ?? null, maintenant });
+  for (const k of [...CLES_REARMEMENT, ...(Array.isArray(c?.clesARetirer) ? c.clesARetirer : [])]) delete pf[k];
+  // Comme relancer_republish : une annonce pas encore retirée est RE-VÉRIFIÉE (a_capturer) avant tout retrait ;
+  // 'deleted' reste là où il est.
+  if (job?.action === "republish" && pf.republish_step !== "deleted") {
+    pf.republish_step = "a_capturer";
+    delete pf.capture_id;
+  }
+  pf.correctif_leve = { cle: c?.cle, version: c?.version, le: maintenant, build_echec: job?.handler_build ?? null, build_poste: buildDuPoll, motif: c?.motif };
+  pf.build_min_requis = c?.buildMin;
+  return pf;
 }

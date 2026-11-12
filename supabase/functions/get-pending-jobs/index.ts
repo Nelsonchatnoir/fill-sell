@@ -62,7 +62,7 @@ import { relanceRefusBeebs, messageRefusBeebsMemeContenu, SOURCE_REFUS_BEEBS_MEM
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
-import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
+import { CORRECTIFS_EXTENSION, correctifPourJob, champsReamorcageCorrectif, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js";
 import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
@@ -1387,19 +1387,10 @@ serve(async (req) => {
         for (const j of (bloques ?? []) as Array<Record<string, unknown>>) {
           const c = correctifPourJob(j);
           if (!c || !(buildMsDe(buildDuPoll) >= buildMsDe(c.buildMin))) continue;
-          const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
-          for (const k of ["needs_user_source", "needsUserAttempts", "needsUserBoucle", "needsUserResolved", "next_action_after",
-            "needs_user_vu_le", "needs_user_vu_erreur", "needs_user_tick_le", "needs_user_actif_ms", "error_technique",
-            "processing_since", "pas_de_rouge", "pas_de_rouge_reprises", ...(Array.isArray(c.clesARetirer) ? c.clesARetirer : [])]) delete pf[k];
-          // Comme relancer_republish : une annonce pas encore retirée est
-          // RE-VÉRIFIÉE (a_capturer) avant tout retrait ; 'deleted' reste là où il est.
-          if (j.action === "republish" && pf.republish_step !== "deleted") {
-            pf.republish_step = "a_capturer";
-            delete pf.capture_id;
-          }
+          // (11/11 soir) Tous les compteurs d'essais remis à zéro (_shared/remise-en-file.js) — le réarmement de
+          // 12:50 le 11/11 gardait recreation_tentee et handler-watch ressortait la tâche 16 s plus tard.
+          const pf = champsReamorcageCorrectif(j, c, { buildDuPoll }) as Record<string, unknown>;
           pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", `get-pending-jobs (correctif ${c.version} : ${c.cle})`);
-          pf.correctif_leve = { cle: c.cle, version: c.version, le: new Date().toISOString(), build_echec: j.handler_build ?? null, build_poste: buildDuPoll, motif: c.motif };
-          pf.build_min_requis = c.buildMin;
           const { data: maj } = await admin.from("cross_post_jobs")
             .update({ status: "pending", error: null, platform_fields: pf })
             .eq("id", j.id as string).eq("status", "needs_user").select("id");

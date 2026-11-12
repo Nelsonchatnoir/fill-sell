@@ -1630,3 +1630,18 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   les marques d'une publication à la suivante, la fiche après publication (règle du serveur lue dans sa migration et
   rejouée), et le crochet et la vignette du lot MONTÉS — un React minimal, effets compris, la mémoire de la session
   remise à zéro avant chaque montage).
+
+## ⛔ 11/11 soir — « a » : remettre une tâche en file = remettre à zéro TOUS ses compteurs d'essais (décision de Nico)
+- Un seul chemin : `remettreEnFile` (`supabase/functions/_shared/remise-en-file.js`) côté serveur (réarmement d'un
+  correctif d'extension dans get-pending-jobs, relance d'une cause levée par handler-watch) et sa jumelle SQL
+  `public.republication_remise_en_file(pf, par, motif)` (migration 20261111210000 : bouton « Republier maintenant » via
+  `relancer_republish`, et TOUT script de réparation : `UPDATE … SET platform_fields = public.republication_remise_en_file(platform_fields, '<qui>', '<pourquoi>')`).
+- Remis à zéro (archivés dans `recreation_essais_avant_relance`) : recreation_retries, recreation_reprises,
+  recreation_reprise, recreation_bloquee, needsUserAttempts, needsUserBoucle, needs_user_tick_le, needs_user_actif_ms,
+  pas_de_rouge_reprises, stale_recoveries, deleted_hang_count ; `recreation_tentee.n` → 0, son HEURE gardée.
+- ⛔ GARDÉS (décision a.1 de Nico) : `recreation_envois` et l'heure de `recreation_tentee` — ce sont les preuves
+  anti-doublon (dressing relu avant toute recréation), jamais des compteurs : les effacer ouvre la porte à un doublon.
+- Cas : compte 64eab2f9, 5 republications Vinted remises en file le 11/11 (12:50 par un correctif, 18:57 à la main) et
+  ressorties par handler-watch dans la minute (essais 2), puis relancées en SQL direct à 20:16 (témoin :
+  `scripts/reparations/20261111_relances_manuelles_64eab2f9*.sql`). Verrou `npm run selftest:remise-en-file` (le cas
+  réel rejoué : remise en file → plus jamais ressortie par handler-watch avant un nouvel essai ; base jetable).
