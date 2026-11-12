@@ -49,7 +49,7 @@ import { texteBrut, texteComparable, contenuPrincipal, sansRegions, typographie 
 import { remplacerJetons, remplacerJetonsProfond, valeursJetons, lireTarifs } from './site/lib/donnees.mjs';
 import { validerFrontmatter } from './site/lib/contenu.mjs';
 import { lirePlateformes } from './site/lib/donnees.mjs';
-import { LEXIQUE_BANNI, REGLES_DECISION, CLOUD_ANDROID_OUVERT, REGLE_CLOUD_ANDROID, listeSansDepop, contrastePaire, couleurRgba, logosPlateformesFautifs } from './site/verify-site.mjs';
+import { LEXIQUE_BANNI, REGLES_DECISION, CLOUD_ANDROID_OUVERT, REGLE_CLOUD_ANDROID, CLOUD_IPHONE_OUVERT, REGLE_CLOUD_IPHONE, listeSansDepop, contrastePaire, couleurRgba, logosPlateformesFautifs } from './site/verify-site.mjs';
 import { lireGrilleEnBase, jaugesDeCarte } from './site/lib/grille.mjs';
 import { cartesTarifs, blocCloud } from '../site/gabarits/blocs.mjs';
 import { importer as importerConcurrents } from './site/importer-concurrents.mjs';
@@ -360,9 +360,14 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   ]) ok(!banni(t), `phrase permise : « ${t} »`);
   // (09/11, décision de Nico) « Aucun Cloud » levé : FillSell Cloud se nomme ; Opla reste interdit (PLATEFORME_SORTIE).
   ok(!banni('FillSell Cloud : plus besoin d’ordinateur, sur iPhone et sur le web.'), 'FillSell Cloud se nomme sur le site (règle « aucun Cloud » levée le 09/11)');
-  // Garde : le Cloud ne s'annonce pas sur Android tant que Google n'a pas validé la vc37.
-  ok(!CLOUD_ANDROID_OUVERT && REGLE_CLOUD_ANDROID.test('FillSell Cloud, sur iPhone, Android et le web.') && REGLE_CLOUD_ANDROID.test('Sur Android aussi, FillSell Cloud publie sans ordinateur.'),
-    'FillSell Cloud annoncé avec Android → refusé tant que le Cloud Android est fermé');
+  // Garde : le Cloud ne s'annonce pas sur Android tant que Google n'a pas validé la vc37 ; (12/11, décision 3a de Nico)
+  // ni sur l'iPhone tant que cloud_formules_apple n'est pas à 1. Les drapeaux disent ce qui est ouvert ; la règle reste
+  // écrite et appliquée tant que son drapeau est faux.
+  ok(REGLE_CLOUD_ANDROID.test('FillSell Cloud, sur iPhone, Android et le web.') && REGLE_CLOUD_ANDROID.test('Sur Android aussi, FillSell Cloud publie sans ordinateur.'),
+    'la règle reconnaît FillSell Cloud + Android (refusé tant que CLOUD_ANDROID_OUVERT est faux)');
+  ok(REGLE_CLOUD_IPHONE.test('Avec FillSell Cloud, sur iPhone et sur le web, plus besoin d’ordinateur.') && REGLE_CLOUD_IPHONE.test('Sur iPhone aussi, FillSell Cloud publie sans ordinateur.')
+    && !REGLE_CLOUD_IPHONE.test('FillSell Cloud, sur le web. L’app iPhone et Android pilote FillSell.'),
+    'la règle reconnaît FillSell Cloud + iPhone dans une phrase, pas l’app iPhone dans une autre (refusé tant que CLOUD_IPHONE_OUVERT est faux)');
   ok(!REGLE_CLOUD_ANDROID.test('FillSell Cloud, sur iPhone et sur le web. Les apps iPhone et Android pilotent FillSell.') && !REGLE_CLOUD_ANDROID.test('Apps iPhone et Android, et le web.'),
     'Android cité AILLEURS (apps, autre phrase) → permis');
 }
@@ -467,7 +472,9 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
     ok(logosPlateformesFautifs(avec, ['vinted', 'leboncoin', 'ebay', 'beebs', 'depop']).length === 0 && (avec.match(/class="logo-pf"/g) ?? []).length >= 6, `${lang} : logos devant leur nom (« dans tous les forfaits », exemples, option Cloud)`);
     const cloud = blocCloud(site, { lang });
     const texte = texteBrut(cloud);
-    ok(!REGLE_CLOUD_ANDROID.test(texte) && !/Android|Google Play/i.test(cloud), `${lang} : section FillSell Cloud sans Android ni Google Play`);
+    // (12/11, décision 3a de Nico) La section Cloud ne nomme que ce qui est ouvert ; jamais Google Play.
+    ok((CLOUD_ANDROID_OUVERT || !/Android/.test(texte)) && (CLOUD_IPHONE_OUVERT || !/iPhone/.test(texte)) && !/Google Play/i.test(cloud),
+      `${lang} : section FillSell Cloud — Android ${CLOUD_ANDROID_OUVERT ? 'permis' : 'absent'}, iPhone ${CLOUD_IPHONE_OUVERT ? 'permis' : 'absent'}, jamais Google Play`);
     // (11/11 au soir, verrou) Le Cloud SEUL n'est plus vendu : jamais « 24,99 » ni « option » ; prix AVEC Cloud lus dans
     // l'app, absents = aucun prix (jamais un chiffre recopié) ; l'essai et l'ancre restent.
     const prixAvec = lang === 'fr' ? ['34,99', '49,99', '79,99'] : ['34.99', '49.99', '79.99'];
@@ -556,6 +563,12 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   const enOption = [];
   // (12/11, décision 5a de Nico) « On te prévient la veille de la fin de l'essai » : sans preuve côté Stripe ET côté
   // Apple, la phrase sort du mail ET du site ; elle ne revient que sur décision de Nico.
+  // (12/11 ~16 h, décision 3a de Nico) Une PHRASE du Cloud ne nomme que les canaux ouverts : l'iPhone seulement quand
+  // CLOUD_IPHONE_OUVERT, Android seulement quand CLOUD_ANDROID_OUVERT (le site dit « sur le web » ce soir). Les
+  // phrases sur l'APP (« app iPhone et Android ») et la connexion Apple ne nomment pas le Cloud.
+  const canalFerme = [];
+  const phrasesCloud = (t) => t.split(/(?<=[.!?])\s+|\n/).filter((s) => /\bCloud\b/.test(s) && !/connexion Apple|Sign in with Apple|ou Apple sur|or Apple on/i.test(s));
+  const canalInterdit = (s) => (!CLOUD_IPHONE_OUVERT && /\biPhone\b/.test(s)) || (!CLOUD_ANDROID_OUVERT && /\bAndroid\b/.test(s));
   const veille = [];
   const PROMESSE_VEILLE = /veille de la fin de l[’']essai|prévient la veille|the day before (it|the trial|your trial) ends|remind you the day before/i;
   const CLOUD_EN_OPTION = /\bCloud\b[^.!?\n]{0,160}\b(en option|an add-on|add-on)\b|\b(en option|an add-on)\b[^.!?\n]{0,160}\bCloud\b|l[’']option FillSell Cloud|the FillSell Cloud (option|add-on)|en option chez FillSell|plutôt qu[’']en option/i;
@@ -568,12 +581,40 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
         if (/n[’']importe quelle formule avec Cloud|any plan with Cloud|formule de ton choix avec Cloud/i.test(t)) fautifs.push(path.relative(racine, p));
         if (CLOUD_EN_OPTION.test(t)) enOption.push(path.relative(racine, p));
         if (PROMESSE_VEILLE.test(t)) veille.push(path.relative(racine, p));
+        for (const s of phrasesCloud(t)) if (canalInterdit(s)) canalFerme.push(`${path.relative(racine, p)} « ${s.slice(0, 90)} »`);
       }
     }
   };
   for (const d of ['site/contenu', 'src/blog', 'site/donnees']) parcourir(path.join(racine, d));
   ok(!fautifs.length, `contenu : jamais l'essai « sur n'importe quelle formule avec Cloud » / « any plan with Cloud » (${fautifs.join(', ') || 'aucun'})`);
   ok(!enOption.length, `contenu : jamais le Cloud « en option » (${enOption.join(', ') || 'aucun'})`);
+  ok(!canalFerme.length, `contenu : une phrase du Cloud ne nomme que les canaux ouverts (${canalFerme.slice(0, 4).join(' ; ') || 'aucune faute'}${canalFerme.length > 4 ? ` … +${canalFerme.length - 4}` : ''})`);
+  const noteFr = TEXTES.fr.cloudFormules.note(7);
+  const noteEn = TEXTES.en.cloudFormules.note(7);
+  // Les canaux ouverts, dans l'ordre iPhone, Android, web : « sur iPhone, sur Android et sur le web » / « on iPhone,
+  // Android and the web » ; deux : « sur iPhone et sur le web » ; le web seul : « sur le web » / « on the web ».
+  const enListe = (l, et) => (l.length === 1 ? l[0] : `${l.slice(0, -1).join(', ')} ${et} ${l[l.length - 1]}`);
+  const canauxFr = enListe([CLOUD_IPHONE_OUVERT && 'sur iPhone', CLOUD_ANDROID_OUVERT && 'sur Android', 'sur le web'].filter(Boolean), 'et');
+  const canauxEn = `on ${enListe([CLOUD_IPHONE_OUVERT && 'iPhone', CLOUD_ANDROID_OUVERT && 'Android', 'the web'].filter(Boolean), 'and')}`;
+  ok(noteFr.includes(`En France, ${canauxFr}.`) && noteEn.includes(`In France, ${canauxEn}.`),
+    `gabarits : la note des formules avec Cloud dit « En France, ${canauxFr}. » / « In France, ${canauxEn}. »`);
+  const pastillesAttendues = [CLOUD_IPHONE_OUVERT && 'iPhone', CLOUD_ANDROID_OUVERT && 'Android', 'Web'].filter(Boolean).join(' · ');
+  ok(TEXTES.fr.cloud.ou.join(' · ') === pastillesAttendues && TEXTES.en.cloud.ou.join(' · ') === pastillesAttendues,
+    `gabarits : pastilles de la section Cloud = canaux ouverts (« ${pastillesAttendues} »)`);
+  ok(canalInterdit('Avec FillSell Cloud (formules avec Cloud, sur iPhone et sur le web), plus besoin d’ordinateur.') === !CLOUD_IPHONE_OUVERT
+    && canalInterdit('Avec FillSell Cloud (formules avec Cloud, sur Android et sur le web), plus besoin d’ordinateur.') === !CLOUD_ANDROID_OUVERT
+    && !canalInterdit('Avec FillSell Cloud, plus besoin d’ordinateur.'),
+    `le verrou des canaux refuse l’iPhone ${CLOUD_IPHONE_OUVERT ? '(ouvert : permis)' : '(fermé)'} et Android ${CLOUD_ANDROID_OUVERT ? '(ouvert : permis)' : '(fermé)'} dans une phrase du Cloud`);
+  // (12/11, décision 4 de Nico) Google ne donne l'essai qu'à qui n'a JAMAIS eu d'abonnement FillSell sur Google Play :
+  // UNE ligne, dans la FAQ des tarifs (FR et EN), et seulement quand Android est ouvert ; jamais dans les textes de
+  // présentation.
+  const LIGNE_GOOGLE = { fr: "Sur Android, l'essai gratuit est réservé à un premier abonnement FillSell sur Google Play.", en: 'On Android, the free trial is reserved for a first FillSell subscription on Google Play.' };
+  const occurrencesGoogle = (lang) => { let n = 0; const compter = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) compter(p); else if (/\.(md|ya?ml)$/.test(e.name)) n += readFileSync(p, 'utf8').split(LIGNE_GOOGLE[lang]).length - 1; } }; for (const d of ['site/contenu', 'src/blog', 'site/donnees']) compter(path.join(racine, d)); return n; };
+  const dansFaqTarifs = (f, lang) => { const t = readFileSync(path.join(racine, f), 'utf8'); const i = t.indexOf(LIGNE_GOOGLE[lang]); return i > 0 && /\n### (Combien coûte FillSell Cloud|How much is FillSell Cloud)\s*\?[^#]*$/.test(t.slice(0, i)); };
+  ok(CLOUD_ANDROID_OUVERT
+    ? occurrencesGoogle('fr') === 1 && occurrencesGoogle('en') === 1 && dansFaqTarifs('site/contenu/fr/tarifs.md', 'fr') && dansFaqTarifs('site/contenu/en/pricing.md', 'en')
+    : occurrencesGoogle('fr') === 0 && occurrencesGoogle('en') === 0,
+    `contenu : la règle de l'essai Google, ${CLOUD_ANDROID_OUVERT ? 'UNE ligne dans la FAQ des tarifs (FR et EN)' : 'absente (Android fermé)'}`);
   ok(!veille.length, `contenu : jamais « on te prévient la veille de la fin de l'essai » sans preuve (${veille.join(', ') || 'aucun'})`);
   ok(PROMESSE_VEILLE.test("Tu arrêtes le Cloud en un geste, et on te prévient la veille de la fin de l'essai.") && PROMESSE_VEILLE.test('we remind you the day before it ends')
     && !PROMESSE_VEILLE.test('Tu arrêtes le Cloud en un geste.'), 'le verrou « veille » reconnaît la promesse FR et EN, pas la phrase qui la remplace');

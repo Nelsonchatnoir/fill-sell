@@ -1,19 +1,19 @@
 {
   "pages": {
     "/": {
-      "empreinte": "07a3ff38cd40da74573c",
+      "empreinte": "18d8439cdeeb8f12fd9d",
       "maj": "2026-11-12"
     },
     "/alternative/crosslist": {
-      "empreinte": "3039f5e7dfcf05794050",
-      "maj": "2026-11-11"
+      "empreinte": "46450d83974ae594453c",
+      "maj": "2026-11-12"
     },
     "/alternative/list-perfectly": {
-      "empreinte": "7b391f64892642d14bab",
-      "maj": "2026-11-11"
+      "empreinte": "14e17ac2c0198eaf4283",
+      "maj": "2026-11-12"
     },
     "/alternative/vendoo": {
-      "empreinte": "8db66bb9ba1091732e82",
+      "empreinte": "8fc874eb7ba6050a7f46",
       "maj": "2026-11-12"
     },
     "/blog": {
@@ -21,7 +21,7 @@
       "maj": "2026-10-09"
     },
     "/blog/combien-de-plateformes-pour-vendre": {
-      "empreinte": "b603d26d125bbe694ecd",
+      "empreinte": "6df7b048b43d98fe8ba3",
       "maj": "2026-11-12"
     },
     "/blog/comment-calculer-profits-vinted": {
@@ -29,7 +29,7 @@
       "maj": "2026-11-11"
     },
     "/blog/cross-listing-vinted-leboncoin": {
-      "empreinte": "59c67590188b24d98d6b",
+      "empreinte": "7c05fb29951c605a3626",
       "maj": "2026-11-12"
     },
     "/blog/rediger-une-annonce-qui-vend": {
@@ -37,15 +37,15 @@
       "maj": "2026-11-11"
     },
     "/blog/republier-annonces-vinted": {
-      "empreinte": "bc279935cda38842691b",
+      "empreinte": "3d35f8708db1fbc8a375",
       "maj": "2026-11-12"
     },
     "/blog/sell-on-leboncoin-in-english": {
-      "empreinte": "83d4cfb265729f9e74f1",
+      "empreinte": "486b6e312be7ecec59bf",
       "maj": "2026-11-12"
     },
     "/blog/vendre-meme-article-vinted-leboncoin-ebay-beebs": {
-      "empreinte": "0e30c1b818c0f10f9c3c",
+      "empreinte": "37c518fabbb413c82123",
       "maj": "2026-11-12"
     },
     "/comment-ca-marche": {
@@ -53,59 +53,59 @@
       "maj": "2026-11-11"
     },
     "/comparatif/fillsell-vs-clemz": {
-      "empreinte": "14d8aeb7fdfa5d89f36d",
+      "empreinte": "93c461e9b7226f6f7638",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-crosslist": {
-      "empreinte": "2ce43d3a7ff300ef6102",
+      "empreinte": "22e8f0e794920dbe5cc4",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-dresskare": {
-      "empreinte": "63a82787fa01c9ee20b6",
+      "empreinte": "7b32722db8044e82e3e5",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-flowdino": {
-      "empreinte": "9869149e4e706e4edd07",
+      "empreinte": "2eaf21f0402b89306da9",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-fluf-connect": {
-      "empreinte": "9b489ab9502b7f577dcc",
+      "empreinte": "b3024ba699e36585b165",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-klork": {
-      "empreinte": "992c492ca5f1c6f38d06",
+      "empreinte": "233c5825ef242a78d1ab",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-list-perfectly": {
-      "empreinte": "68a2fa2392cb0f37c00a",
+      "empreinte": "c42b49ccf56e49c94c4f",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-margeo": {
-      "empreinte": "0bf34dd7bf0668d0fc4c",
+      "empreinte": "73705b147c7f9b43074c",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-redrip": {
-      "empreinte": "a9470b0c84e44ff54cf3",
+      "empreinte": "dae7d7399e7ab97418da",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-relistly": {
-      "empreinte": "75e8369836fca11fb328",
+      "empreinte": "f82ab9f01425bff27298",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-reposter": {
-      "empreinte": "09fe482aa980040490c0",
+      "empreinte": "6016f5467704dc531862",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-stoflow": {
-      "empreinte": "92653cc44679c3b2de94",
+      "empreinte": "cc99888bd69dacf35190",
       "maj": "2026-11-12"
     },
     "/comparatif/fillsell-vs-vendoo": {
-      "empreinte": "bab59803d5f6c5858ba5",
+      "empreinte": "298725d1653c26213fbf",
       "maj": "2026-11-12"
     },
     "/comparatif/meilleures-applications-crosslisting": {
-      "empreinte": "c4a49b0db3563d9fdf6e",
+      "empreinte": "81dc0e8d67dd32013c60",
       "maj": "2026-11-12"
     },
     "/crosslisting": {
@@ -113,31 +113,31 @@
       "maj": "2026-11-12"
     },
     "/crosslisting/depop-ebay": {
-      "empreinte": "f44b2babe04e5f725ddb",
+      "empreinte": "b89e4e5acc1d45a42afc",
       "maj": "2026-11-12"
     },
     "/crosslisting/leboncoin-beebs": {
-      "empreinte": "f75714d476bef7f9cff8",
+      "empreinte": "1b7e7fe84c89b26cd531",
       "maj": "2026-11-12"
     },
     "/crosslisting/leboncoin-ebay": {
-      "empreinte": "cb1fd5e51c2f3c88fcb9",
+      "empreinte": "5828552a995ac4cebf3f",
       "maj": "2026-11-12"
     },
     "/crosslisting/vinted-beebs": {
-      "empreinte": "b4e6d872d3b76785ecae",
+      "empreinte": "fb2d717e28d1446b89e4",
       "maj": "2026-11-12"
     },
     "/crosslisting/vinted-depop": {
-      "empreinte": "b051af2ae3df5353ad32",
+      "empreinte": "77c0e561241ed739c15a",
       "maj": "2026-11-12"
     },
     "/crosslisting/vinted-ebay": {
-      "empreinte": "e53ea6acc27743774fd6",
+      "empreinte": "69e71bf1312b1c407129",
       "maj": "2026-11-12"
     },
     "/en": {
-      "empreinte": "c1b942a1608eb16b1808",
+      "empreinte": "28ca897f6ad97539cc3f",
       "maj": "2026-11-12"
     },
     "/en/blog": {
@@ -145,15 +145,15 @@
       "maj": "2026-10-09"
     },
     "/en/crosslisting/vinted-beebs": {
-      "empreinte": "dd40924853859910ab4c",
+      "empreinte": "d1529b7852cf9553b506",
       "maj": "2026-11-12"
     },
     "/en/crosslisting/vinted-leboncoin": {
-      "empreinte": "1091ba6eac5fc170ac2e",
+      "empreinte": "1e8ec776c41a1176e937",
       "maj": "2026-11-12"
     },
     "/en/platforms/beebs": {
-      "empreinte": "5ddbd431057a73fc73b3",
+      "empreinte": "1bd0c1768c7a61ad485f",
       "maj": "2026-11-12"
     },
     "/en/platforms/ebay": {
@@ -161,15 +161,15 @@
       "maj": "2026-11-11"
     },
     "/en/platforms/vinted": {
-      "empreinte": "604c668af95fca2e5b13",
+      "empreinte": "b52c35d8253effaec68d",
       "maj": "2026-11-12"
     },
     "/en/pricing": {
-      "empreinte": "24628b44d808c835dc98",
+      "empreinte": "0851e3f5121187c83215",
       "maj": "2026-11-12"
     },
     "/faq": {
-      "empreinte": "b28f62e3cbd4601f15ca",
+      "empreinte": "2f42afc6fb51ad6a350f",
       "maj": "2026-11-12"
     },
     "/fonctions/lens": {
@@ -193,11 +193,11 @@
       "maj": "2026-11-11"
     },
     "/plateformes/beebs": {
-      "empreinte": "327a2e0a67bb42196318",
+      "empreinte": "bb360f4726936d4baa1b",
       "maj": "2026-11-12"
     },
     "/plateformes/depop": {
-      "empreinte": "375ffb46291160540e4c",
+      "empreinte": "22cb827a649b0836ca81",
       "maj": "2026-11-12"
     },
     "/plateformes/ebay": {
@@ -205,11 +205,11 @@
       "maj": "2026-11-11"
     },
     "/plateformes/leboncoin": {
-      "empreinte": "109de63fd6b2cb0b1fed",
+      "empreinte": "7cb8ccab265170c8f9b6",
       "maj": "2026-11-12"
     },
     "/plateformes/vinted": {
-      "empreinte": "188b9cd63501ac3d5e33",
+      "empreinte": "2af3894e9cae5a319b25",
       "maj": "2026-11-12"
     },
     "/securite-des-comptes": {
@@ -217,7 +217,7 @@
       "maj": "2026-11-11"
     },
     "/tarifs": {
-      "empreinte": "ae8c78280cfcff586092",
+      "empreinte": "218a39cdaab00f3b1e78",
       "maj": "2026-11-12"
     }
   }

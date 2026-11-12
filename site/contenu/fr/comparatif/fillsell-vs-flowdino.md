@@ -200,7 +200,7 @@ Oui, tous les deux, mais pas sur le même périmètre. FlowDino retire les annon
 
 ### Faut-il laisser son ordinateur allumé ?
 
-Oui, avec les deux, sur les sites où l'extension travaille : FlowDino demande un navigateur ouvert sur le site concerné, FillSell un ordinateur allumé avec Chrome ouvert. Ordinateur éteint, rien n'est perdu chez FillSell : tout part à la prochaine ouverture de Chrome. Mais FillSell a aussi FillSell Cloud, sur iPhone et sur le web (formules avec Cloud) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sur eBay France, un compte relié à FillSell publie par l'API officielle d'eBay, même ordinateur éteint.
+Oui, avec les deux, sur les sites où l'extension travaille : FlowDino demande un navigateur ouvert sur le site concerné, FillSell un ordinateur allumé avec Chrome ouvert. Ordinateur éteint, rien n'est perdu chez FillSell : tout part à la prochaine ouverture de Chrome. Mais FillSell a aussi FillSell Cloud, sur le web (formules avec Cloud) : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sur eBay France, un compte relié à FillSell publie par l'API officielle d'eBay, même ordinateur éteint.
 
 ### FillSell ou FlowDino me demandent-ils mes mots de passe ?
 

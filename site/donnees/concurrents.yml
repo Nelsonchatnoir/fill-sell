@@ -20,7 +20,7 @@ outils:
     nom: FillSell
     url: 'https://fillsell.app'
     pays: France
-    categorie: 'crosslisting piloté depuis le téléphone : apps iOS/Android + application web + extension Chrome qui exécute sur l''ordinateur. FillSell Cloud (sur iPhone et sur le web, formules avec Cloud) : exécution sur les serveurs de FillSell'
+    categorie: 'crosslisting piloté depuis le téléphone : apps iOS/Android + application web + extension Chrome qui exécute sur l''ordinateur. FillSell Cloud (sur le web, formules avec Cloud) : exécution sur les serveurs de FillSell'
     notre_produit: true
     classement: classe
     criteres:
@@ -104,7 +104,7 @@ outils:
         date: 2026-10-09
         niveau: fiche_de_verite
       ordinateur_eteint:
-        valeur: 'oui avec FillSell Cloud (formules avec Cloud ; sur iPhone et sur le web, en France) : Vinted, Leboncoin, Beebs et Depop publiés, republiés et retirés depuis les serveurs de FillSell ; sans le Cloud, les actions attendent en file et partent à la réouverture de Chrome ; eBay relié : publication par l''API même ordinateur éteint'
+        valeur: 'oui avec FillSell Cloud (formules avec Cloud ; sur le web, en France) : Vinted, Leboncoin, Beebs et Depop publiés, republiés et retirés depuis les serveurs de FillSell ; sans le Cloud, les actions attendent en file et partent à la réouverture de Chrome ; eBay relié : publication par l''API même ordinateur éteint'
         verdict: oui
         sources: []
         date: 2026-11-09
@@ -2961,7 +2961,7 @@ classement:
       avant_0911:
         C6b: 1
         total: 88
-      conditions: 'C1 23 si Depop est ouverte à tous à la mise en ligne (sinon 21, total 86) ; C5 9 tranché le 09/10 nuit : la republication automatique dépend de la formule ; C6b 5 depuis le 09/11 (décision de Nico : le Cloud se nomme sur le site) — toutes ses plateformes ordinateur éteint : Vinted, Leboncoin, Beebs et Depop avec FillSell Cloud (formules avec Cloud, iPhone et web, France), eBay relié par l''API'
+      conditions: 'C1 23 si Depop est ouverte à tous à la mise en ligne (sinon 21, total 86) ; C5 9 tranché le 09/10 nuit : la republication automatique dépend de la formule ; C6b 5 depuis le 09/11 (décision de Nico : le Cloud se nomme sur le site) — toutes ses plateformes ordinateur éteint : Vinted, Leboncoin, Beebs et Depop avec FillSell Cloud (formules avec Cloud, web, France), eBay relié par l''API'
     - slug: fluf-connect
       C1: 22
       C2: 16

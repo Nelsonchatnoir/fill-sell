@@ -194,7 +194,9 @@ export function blocCloud(site, page) {
     `<p class="cloud-formules-titre">${esc(c.formulesTitre)}</p>${formules}` +
     `<p class="cloud-essai">${esc(c.essai(jours))}</p><p class="cloud-detail">${esc(c.essaiDetail(jours))}</p>` +
     `<a class="bouton bouton-premier" href="/login?mode=signup" data-cta="signup_cloud">${esc(c.cta)}</a></div>` +
-    `<div class="cloud-infos"><ul class="cloud-ou"><li>${iconeApple(site, 'logo-store')}${esc(c.ou[0])}</li><li>${esc(c.ou[1])}</li></ul>` +
+    // (12/11, décisions de Nico) Les pastilles disent les canaux OUVERTS (textes.mjs `ou`, réglé par la variante du
+    // site : Web seul, Android + Web, iPhone + Web, ou les trois) ; l'icône Apple seulement devant « iPhone ».
+    `<div class="cloud-infos"><ul class="cloud-ou">${c.ou.map((canal) => `<li>${canal === 'iPhone' ? iconeApple(site, 'logo-store') : ''}${esc(canal)}</li>`).join('')}</ul>` +
     `<p>${avecLogos(site, c.ebay)}</p><p>${esc(c.extension)}</p></div></div>` +
     `</div></section>`;
 }

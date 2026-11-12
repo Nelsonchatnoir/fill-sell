@@ -160,7 +160,7 @@ Everything about Beebs on this page comes from its official texts, read on 9 Oct
 
 ### Does FillSell work with Beebs?
 
-Yes. Today, with FillSell, you publish, sync, repost and remove your Beebs listings from the same stock as your other marketplaces. The work on Beebs is done by the FillSell Chrome extension, in your session, on your computer, with Chrome open; you run it all from your phone or from fillsell.app. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. With FillSell Cloud (on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Beebs listings from FillSell's servers, around the clock, and keeps track of your sales.
+Yes. Today, with FillSell, you publish, sync, repost and remove your Beebs listings from the same stock as your other marketplaces. The work on Beebs is done by the FillSell Chrome extension, in your session, on your computer, with Chrome open; you run it all from your phone or from fillsell.app. Computer off? Nothing is lost: everything waits and goes out the next time Chrome opens. With FillSell Cloud (on the web), you no longer need a computer: it posts, reposts and removes your Beebs listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### Do I have to give FillSell my Beebs password?
 

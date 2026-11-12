@@ -160,7 +160,7 @@ Tick Leboncoin. The free FillSell extension for Chrome fills in the Leboncoin fo
 - Leboncoin reviews new listings: they can take a while to appear.
 - If anything's missing, the app asks you.
 
-Your phone gives the orders; your computer does the legwork. For your listings to go out through the extension, the computer must be on with Chrome open, and while listings are queued the extension keeps it from going to sleep. Computer off? Nothing is lost: your listings wait and go out the next time Chrome opens. With FillSell Cloud (on iPhone and on the web), you no longer need a computer: it posts, reposts and removes your Leboncoin listings from FillSell's servers, around the clock, and keeps track of your sales.
+Your phone gives the orders; your computer does the legwork. For your listings to go out through the extension, the computer must be on with Chrome open, and while listings are queued the extension keeps it from going to sleep. Computer off? Nothing is lost: your listings wait and go out the next time Chrome opens. With FillSell Cloud (on the web), you no longer need a computer: it posts, reposts and removes your Leboncoin listings from FillSell's servers, around the clock, and keeps track of your sales.
 
 ### Already on Leboncoin? One tap brings it all in
 

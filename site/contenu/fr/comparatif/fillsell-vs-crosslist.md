@@ -243,7 +243,7 @@ Non. Crosslist gère Depop aux États-Unis, au Royaume-Uni, au Canada et en Aust
 
 ### Faut-il laisser son ordinateur allumé avec FillSell ?
 
-Sans FillSell Cloud, oui pour Vinted, Leboncoin, Beebs et Depop : l'extension Chrome travaille sur ton ordinateur allumé, dans tes sessions, sans jamais te demander tes mots de passe. Ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint. Avec FillSell Cloud, sur iPhone et sur le web (formules avec Cloud), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Chez Crosslist, l'ordinateur doit rester allumé pour Vinted et les autres places de marché gérées par son extension.
+Sans FillSell Cloud, oui pour Vinted, Leboncoin, Beebs et Depop : l'extension Chrome travaille sur ton ordinateur allumé, dans tes sessions, sans jamais te demander tes mots de passe. Ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint. Avec FillSell Cloud, sur le web (formules avec Cloud), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Chez Crosslist, l'ordinateur doit rester allumé pour Vinted et les autres places de marché gérées par son extension.
 
 ### Que valent les avis sur Crosslist ?
 

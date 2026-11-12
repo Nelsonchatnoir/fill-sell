@@ -169,7 +169,7 @@ Pas pour les forfaits. Les forfaits payants n'ont ni essai ni prix annuel : ils 
 
 ### Combien coûte FillSell Cloud ?
 
-FillSell Cloud se prend avec ta formule : Premium, Pro ou Business, avec Cloud. Le prix de chaque formule avec Cloud s'affiche avec les formules, sur cette page. Sans engagement, avec 7 jours d'essai gratuit sur Premium ou Pro avec Cloud (carte demandée, une fois par personne) ; tu arrêtes le Cloud en un geste. Ce que tu paies en plus : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Disponible en France, sur iPhone et sur le web.
+FillSell Cloud se prend avec ta formule : Premium, Pro ou Business, avec Cloud. Le prix de chaque formule avec Cloud s'affiche avec les formules, sur cette page. Sans engagement, avec 7 jours d'essai gratuit sur Premium ou Pro avec Cloud (carte demandée, une fois par personne) ; tu arrêtes le Cloud en un geste. Ce que tu paies en plus : plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Disponible en France, sur le web.
 
 ### Est-ce que je paie par plateforme ou par annonce publiée ?
 

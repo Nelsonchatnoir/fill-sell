@@ -127,6 +127,11 @@ export const LEXIQUE_BANNI = [
 // web ») — le jour de l'ouverture Android : CLOUD_ANDROID_OUVERT = true, et Android s'écrit. Toutes les pages, blog compris.
 export const CLOUD_ANDROID_OUVERT = false;
 export const REGLE_CLOUD_ANDROID = /FillSell Cloud[^.!?]{0,240}\bAndroid\b|\bAndroid\b[^.!?]{0,240}FillSell Cloud/i;
+// (12/11 ~16 h, décision 3a de Nico) Même garde pour l'iPhone : les formules avec Cloud ne sont pas vendues sur iPhone
+// tant que cloud_formules_apple n'est pas à 1 (accord d'Apple) → le site ne parle que du web (et d'Android si ouvert).
+// Le jour de l'ouverture Apple : CLOUD_IPHONE_OUVERT = true, et l'iPhone revient dans les phrases du Cloud.
+export const CLOUD_IPHONE_OUVERT = false;
+export const REGLE_CLOUD_IPHONE = /FillSell Cloud[^.!?]{0,240}\biPhone\b|\biPhone\b[^.!?]{0,240}FillSell Cloud/i;
 
 export const REGLES_DECISION = [
   [/\b(republi|remont)\w*[^.!?]{0,160}(?:[.!?]\s*[^.!?]{0,40})?\b(paliers?|plans?|forfaits?|Pro|Premium|Business|Gratuit)\b|\b(paliers?|plans?|forfaits?|Pro|Premium|Business|Gratuit)\b[^.!?]{0,160}\b(republi|remont)\w*/i, 'palier à côté de la republication automatique'],
@@ -773,6 +778,10 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
     if (!CLOUD_ANDROID_OUVERT) {
       const mc = REGLE_CLOUD_ANDROID.exec(visible) ?? REGLE_CLOUD_ANDROID.exec(lignes);
       if (mc) err(`${o} : FillSell Cloud annoncé avec Android (« ${mc[0].slice(0, 120)} ») — fermé sur Android tant que Google n'a pas validé la vc37 (décision de Nico du 09/11 : « sur iPhone et sur le web »)`);
+    }
+    if (!CLOUD_IPHONE_OUVERT) {
+      const mi = REGLE_CLOUD_IPHONE.exec(visible) ?? REGLE_CLOUD_IPHONE.exec(lignes);
+      if (mi) err(`${o} : FillSell Cloud annoncé avec l'iPhone (« ${mi[0].slice(0, 120)} ») — formules avec Cloud fermées sur iPhone tant que cloud_formules_apple n'est pas à 1 (décision 3a de Nico du 12/11)`);
     }
     const sansDepop = listeSansDepop(visible);
     if (sansDepop) decisions.push(`liste de plateformes sans Depop (« ${sansDepop} ») — décision de Nico : Depop partout`);

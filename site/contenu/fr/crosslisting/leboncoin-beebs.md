@@ -162,7 +162,7 @@ Non, et c'est voulu. Sur ces deux sites, FillSell repère le signal (article aff
 
 ### Faut-il laisser mon ordinateur allumé ?
 
-Oui, sans FillSell Cloud, pour publier, republier et retirer sur Leboncoin et Beebs : l'extension travaille dans Chrome, sur ton ordinateur. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur iPhone et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Leboncoin et Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Ton téléphone, lui, reste la télécommande.
+Oui, sans FillSell Cloud, pour publier, republier et retirer sur Leboncoin et Beebs : l'extension travaille dans Chrome, sur ton ordinateur. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Leboncoin et Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Ton téléphone, lui, reste la télécommande.
 
 ### FillSell me demande-t-il mes mots de passe Leboncoin et Beebs ?
 
