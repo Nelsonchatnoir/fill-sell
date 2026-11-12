@@ -179,7 +179,7 @@ FillSell te demande « Vendue sur Leboncoin ? ». Un appui confirme la vente, et
 
 ### Mon ordinateur doit-il rester allumé pour Leboncoin ?
 
-Oui, sans FillSell Cloud : sur Leboncoin, la publication, la republication, le retrait et le repérage des ventes passent par l'extension, avec l'ordinateur allumé et Chrome ouvert. Tant qu'il reste du travail, elle empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Leboncoin depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Oui, sans FillSell Cloud : sur Leboncoin, la publication, la republication, le retrait et le repérage des ventes passent par l'extension, avec l'ordinateur allumé et Chrome ouvert. Tant qu'il reste du travail, elle empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur Android et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Leboncoin depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Pourquoi mon annonce Leboncoin n'apparaît-elle pas tout de suite ?
 

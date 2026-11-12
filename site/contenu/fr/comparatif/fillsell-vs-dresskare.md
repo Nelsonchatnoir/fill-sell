@@ -216,7 +216,7 @@ Non. FillSell gère ton stock, tes annonces sur plusieurs plateformes, tes vente
 
 ### Faut-il laisser son ordinateur allumé avec FillSell et avec DressKare ?
 
-Avec DressKare, oui ; avec FillSell, oui sans le Cloud, non avec FillSell Cloud. DressKare demande un ordinateur allumé avec un onglet Vinted ouvert dans Chrome. Avec FillSell sans le Cloud, Vinted, Leboncoin, Beebs et Depop passent par ton ordinateur allumé, Chrome ouvert ; ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud, sur le web (formules avec Cloud), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint, avec ou sans FillSell Cloud.
+Avec DressKare, oui ; avec FillSell, oui sans le Cloud, non avec FillSell Cloud. DressKare demande un ordinateur allumé avec un onglet Vinted ouvert dans Chrome. Avec FillSell sans le Cloud, Vinted, Leboncoin, Beebs et Depop passent par ton ordinateur allumé, Chrome ouvert ; ordinateur éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud, sur Android et sur le web (formules avec Cloud), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Un compte eBay relié publie par l'API officielle d'eBay, même ordinateur éteint, avec ou sans FillSell Cloud.
 
 ### Peut-on reprendre dans FillSell des annonces publiées avec DressKare ?
 

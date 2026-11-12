@@ -170,7 +170,7 @@ Non. eBay a finalisé le rachat de Depop le 30 juillet 2026, mais Depop garde sa
 
 ### Faut-il laisser son ordinateur allumé pour vendre sur Depop et eBay ?
 
-Pour Depop, oui, sans FillSell Cloud : la publication, les retraits et tout le travail sur Depop passent par l'extension Chrome, ordinateur allumé, Chrome ouvert et session Depop active. Pour eBay, non, une fois ton compte relié : l'annonce part par l'API officielle d'eBay, même ordinateur éteint. Éteint, rien n'est perdu : ce qui attend pour Depop part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur le web), plus besoin d'ordinateur pour Depop non plus : il publie, republie et retire tes annonces Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Pour Depop, oui, sans FillSell Cloud : la publication, les retraits et tout le travail sur Depop passent par l'extension Chrome, ordinateur allumé, Chrome ouvert et session Depop active. Pour eBay, non, une fois ton compte relié : l'annonce part par l'API officielle d'eBay, même ordinateur éteint. Éteint, rien n'est perdu : ce qui attend pour Depop part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur Android et sur le web), plus besoin d'ordinateur pour Depop non plus : il publie, republie et retire tes annonces Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Combien coûte la vente sur Depop et sur eBay depuis la France ?
 

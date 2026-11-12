@@ -125,7 +125,7 @@ export const LEXIQUE_BANNI = [
 // (09/11/2026, décision de Nico) La règle « aucun Cloud » est LEVÉE sur le site (« aucun Opla » reste). Garde à la
 // place : FillSell Cloud ne s'annonce PAS sur Android tant que Google n'a pas validé la vc37 (« sur iPhone et sur le
 // web ») — le jour de l'ouverture Android : CLOUD_ANDROID_OUVERT = true, et Android s'écrit. Toutes les pages, blog compris.
-export const CLOUD_ANDROID_OUVERT = false;
+export const CLOUD_ANDROID_OUVERT = true;
 export const REGLE_CLOUD_ANDROID = /FillSell Cloud[^.!?]{0,240}\bAndroid\b|\bAndroid\b[^.!?]{0,240}FillSell Cloud/i;
 // (12/11 ~16 h, décision 3a de Nico) Même garde pour l'iPhone : les formules avec Cloud ne sont pas vendues sur iPhone
 // tant que cloud_formules_apple n'est pas à 1 (accord d'Apple) → le site ne parle que du web (et d'Android si ouvert).

@@ -215,7 +215,7 @@ Pour relier un compte, la documentation de Reposter demande l'e-mail, le mot de 
 
 ### Lequel fonctionne ordinateur éteint ?
 
-Les deux. Reposter : ses tâches tournent sur ses serveurs, ordinateur éteint. FillSell : avec FillSell Cloud, sur le web (formules avec Cloud), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans FillSell Cloud, sur Vinted, Leboncoin, Beebs et Depop, l'extension agit depuis ton ordinateur allumé, Chrome ouvert ; éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Sur eBay France, une fois ton compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint.
+Les deux. Reposter : ses tâches tournent sur ses serveurs, ordinateur éteint. FillSell : avec FillSell Cloud, sur Android et sur le web (formules avec Cloud), plus besoin d'ordinateur. FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Sans FillSell Cloud, sur Vinted, Leboncoin, Beebs et Depop, l'extension agit depuis ton ordinateur allumé, Chrome ouvert ; éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Sur eBay France, une fois ton compte relié, la publication passe par l'API officielle d'eBay, même ordinateur éteint.
 
 ### Reposter a-t-il une application iPhone ou Android ?
 

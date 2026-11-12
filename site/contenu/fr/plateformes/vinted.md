@@ -148,7 +148,7 @@ Non, jamais. Tu te connectes à Vinted dans Chrome comme d'habitude, et l'extens
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Pour Vinted, oui, sans FillSell Cloud : publier, republier, retirer une annonce et repérer une vente demandent l'ordinateur allumé, Chrome ouvert et ta session Vinted active. Tant qu'il reste des annonces en file, l'extension empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Vinted depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Pour Vinted, oui, sans FillSell Cloud : publier, republier, retirer une annonce et repérer une vente demandent l'ordinateur allumé, Chrome ouvert et ta session Vinted active. Tant qu'il reste des annonces en file, l'extension empêche la mise en veille. Ordinateur éteint, rien n'est perdu : tout attend la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur Android et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Vinted depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Comment remonter une annonce Vinted avec FillSell ?
 

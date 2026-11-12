@@ -100,7 +100,7 @@ C'est la force de FillSell. Sur ton téléphone (iPhone ou Android) ou sur fills
 
 Elle agit dans ta propre session, celle où tu es déjà connecté(e). FillSell ne te demande jamais tes mots de passe Vinted, Leboncoin, Beebs ou Depop ; pour Depop, tu autorises l'accès d'un clic dans l'extension. Ordinateur éteint ? Rien n'est perdu : tes annonces attendent et partent à la prochaine ouverture de Chrome. Et sur eBay France, une fois ton compte relié sur la page officielle d'eBay, tes annonces passent par l'API officielle d'eBay, même ordinateur éteint.
 
-**Plus besoin d'ordinateur : prends FillSell Cloud.** FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes ; tu pilotes tout depuis ton téléphone ou le web. Tu connectes chaque plateforme une fois, sur sa propre page de connexion. FillSell Cloud se prend avec Premium, Pro ou Business ; 7 jours d'essai gratuit sur Premium ou Pro avec Cloud. Disponible en France, sur le web.
+**Plus besoin d'ordinateur : prends FillSell Cloud.** FillSell Cloud publie, republie et retire tes annonces Vinted, Leboncoin, Beebs et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes ; tu pilotes tout depuis ton téléphone ou le web. Tu connectes chaque plateforme une fois, sur sa propre page de connexion. FillSell Cloud se prend avec Premium, Pro ou Business ; 7 jours d'essai gratuit sur Premium ou Pro avec Cloud. Disponible en France, sur Android et sur le web.
 
 ## Ce que FillSell fait, plateforme par plateforme
 

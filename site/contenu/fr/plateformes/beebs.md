@@ -183,4 +183,4 @@ Appuie sur « Synchroniser » : tes annonces Vinted entrent dans ton stock FillS
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Tes annonces Beebs restent en vente quoi qu'il arrive. Sans FillSell Cloud, ce qui demande l'ordinateur allumé avec Chrome ouvert, c'est le travail de FillSell sur Beebs : dépôts, republications, retraits et repérage des ventes. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Tes annonces Beebs restent en vente quoi qu'il arrive. Sans FillSell Cloud, ce qui demande l'ordinateur allumé avec Chrome ouvert, c'est le travail de FillSell sur Beebs : dépôts, republications, retraits et repérage des ventes. Ordinateur éteint, rien n'est perdu : tout attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur Android et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Beebs depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.

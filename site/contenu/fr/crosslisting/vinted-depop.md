@@ -164,7 +164,7 @@ Dès que la vente est enregistrée dans FillSell (tu peux la noter toi-même ave
 
 ### Faut-il laisser l'ordinateur allumé ?
 
-Oui, sans FillSell Cloud, pour Vinted comme pour Depop : l'extension Chrome dépose, relit et retire tes annonces depuis ton ordinateur, Chrome ouvert. S'il est éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Vinted et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Tu pilotes le tout depuis ton téléphone.
+Oui, sans FillSell Cloud, pour Vinted comme pour Depop : l'extension Chrome dépose, relit et retire tes annonces depuis ton ordinateur, Chrome ouvert. S'il est éteint, tes annonces attendent et partent à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur Android et sur le web), plus besoin d'ordinateur : il publie, republie et retire tes annonces Vinted et Depop depuis les serveurs de FillSell, 24 h/24, et suit tes ventes. Tu pilotes le tout depuis ton téléphone.
 
 ### FillSell a-t-il besoin de mon mot de passe Depop ?
 

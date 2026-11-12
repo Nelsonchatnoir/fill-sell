@@ -149,7 +149,7 @@ Appuie sur « Synchroniser » : tes annonces Leboncoin arrivent dans ton stock F
 
 ### Mon ordinateur doit-il rester allumé ?
 
-Pour Leboncoin, oui, sans FillSell Cloud : l'extension Chrome dépose, surveille et retire tes annonces depuis ton ordinateur, Chrome ouvert. Pour eBay, non, une fois ton compte relié : publication et suivi des ventes passent par l'API officielle d'eBay. Ordinateur éteint, rien n'est perdu : ce qui concerne Leboncoin attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur le web), plus besoin d'ordinateur pour Leboncoin non plus : il publie et retire tes annonces Leboncoin depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
+Pour Leboncoin, oui, sans FillSell Cloud : l'extension Chrome dépose, surveille et retire tes annonces depuis ton ordinateur, Chrome ouvert. Pour eBay, non, une fois ton compte relié : publication et suivi des ventes passent par l'API officielle d'eBay. Ordinateur éteint, rien n'est perdu : ce qui concerne Leboncoin attend et part à la prochaine ouverture de Chrome. Avec FillSell Cloud (formules avec Cloud, sur Android et sur le web), plus besoin d'ordinateur pour Leboncoin non plus : il publie et retire tes annonces Leboncoin depuis les serveurs de FillSell, 24 h/24, et suit tes ventes.
 
 ### Vendre sur eBay est-il vraiment gratuit en 2026 ?
 
