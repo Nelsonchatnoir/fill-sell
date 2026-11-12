@@ -423,3 +423,10 @@ marge de 100 % sur du vent, indétectable ensuite.
 - Verrous : formules-cloud-business-sans-essai, -stripe, -boutiques, -comptage-mails, -contrat-app, -ferme, -offres ;
   cloud-executant (deux versions de conditions), paiements-non-regression (lignes nommées dans
   `scripts/fixtures/paiements-lignes-formules-1111.json`).
+- ⛔ 12/11/2026 (décision de Nico) — un mail MARKETING porte toujours un lien de désinscription VISIBLE et PERSONNEL :
+  envoi-ponctuel remplace `{{lien_desinscription}}` par `lienDesinscription(email, user_id)` (jeton ?t= exigé par
+  /desinscription) ; gabarit sans la variable → pied « Se désinscrire » ajouté ; lien incalculable → personne non servie ;
+  simulation sans jeton (`_shared/lien-desinscription-visible.js`, verrou `selftest:lien-desinscription-visible`).
+  L'en-tête List-Unsubscribe One-Click de la porte reste. Mail d'annonce des formules : type one-shot
+  `annonce_formules_cloud` entré dans `email_logs_one_shot_unique` (migration 20261112120000, forme CONCURRENTLY en prod,
+  banc `scripts/essais/20261112120000_banc.mjs` écrit par le terminal marketing).

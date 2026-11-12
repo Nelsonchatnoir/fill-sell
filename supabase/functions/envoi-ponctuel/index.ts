@@ -57,8 +57,10 @@
 // Version épinglée : cf. le bandeau de _shared/desinscription.ts (le `@2`
 // flottant a rendu tout déploiement impossible le 23/09).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { type CategorieEmail, envoyerEmail } from "../_shared/desinscription.ts";
+import { type CategorieEmail, envoyerEmail, lienDesinscription } from "../_shared/desinscription.ts";
 import { PLAFOND_24H, mailsQuiComptent } from "../_shared/plafond-mails.js";
+// (12/11/2026, décision de Nico) Un mail marketing porte toujours un lien de désinscription VISIBLE, personnel.
+import { avecLienDesinscription, LIEN_SIMULATION } from "../_shared/lien-desinscription-visible.js";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -319,7 +321,26 @@ Deno.serve(async (req) => {
     }
 
     const sujetFinal = appliquerVariables(sujet, d.variables);
-    const htmlFinal = appliquerVariables(html, d.variables);
+    let htmlFinal = appliquerVariables(html, d.variables);
+
+    // ── LIEN DE DÉSINSCRIPTION VISIBLE — marketing SEULEMENT (12/11/2026, décision de Nico) ──────────────────────
+    // {{lien_desinscription}} = le lien PERSONNEL (jeton ?t= exigé par /desinscription) ; gabarit sans la variable :
+    // un pied « Se désinscrire » est ajouté (_shared/lien-desinscription-visible.js). Lien incalculable → la personne
+    // n'est pas servie : jamais un mail marketing sans désinscription. Simulation : aucun jeton créé.
+    if (categorie === "marketing") {
+      if (simulation) {
+        htmlFinal = avecLienDesinscription(htmlFinal, LIEN_SIMULATION);
+      } else {
+        let lien = "";
+        try { lien = await lienDesinscription(email, d.user_id ?? null); } catch (_e) { lien = ""; }
+        if (!lien) {
+          refuses++;
+          resultats.push({ email, envoye: false, motif: "lien_desinscription_impossible" });
+          continue;
+        }
+        htmlFinal = avecLienDesinscription(htmlFinal, lien);
+      }
+    }
 
     if (simulation) {
       resultats.push({ email, envoye: false, motif: "simulation", sujet: sujetFinal, ...resumePieces });
