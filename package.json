@@ -586,6 +586,7 @@
     "selftest:formules-cloud-ferme": "node scripts/formules-cloud-ferme-selftest.mjs",
     "selftest:formules-cloud-offres": "node scripts/formules-cloud-offres-selftest.mjs",
     "selftest:remise-en-file": "node scripts/remise-en-file-selftest.mjs",
+    "selftest:costume-de-ville": "node --import ./scripts/loader-ext.mjs scripts/costume-de-ville-selftest.mjs",
     "selftest:lbc-machine-virtuelle-exception": "node scripts/lbc-machine-virtuelle-exception-selftest.mjs",
     "selftest:delegation-leboncoin": "node scripts/delegation-leboncoin-selftest.mjs",
     "selftest:descente-formule": "node scripts/descente-formule-selftest.mjs",

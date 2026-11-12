@@ -970,3 +970,9 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   page de connexion avec son contexte). Jamais un hôte d'authentification OAuth en lien direct, jamais un paramètre OAuth
   fabriqué par nous. Selftest `liens-connexion`. Rapport : `docs/enquetes/lbc-mot-de-passe-0911/RAPPORT.md`.
 - Relevés routés au poste connecté (décision de Nico, 09/11 soir) : `docs/regles/rapprochement-et-releves.md` (fin).
+- ⛔ 11/11 soir — « b » (décision de Nico) : un « costume » est une tenue de VILLE, sauf un déguisement NOMMÉ
+  (déguisement, carnaval, Halloween, cosplay, panoplie, costume de pirate ou de scène…). Garde serveur dans
+  resolve-categorie (`_shared/costume-de-ville.js`), Vinted et Beebs seulement (eBay : non tant qu'il n'y a pas de cas
+  réel, b.4) : rayon « déguisements » choisi pour un texte « ville » → la candidate de la bonne famille (veste → Blazers…),
+  sinon la feuille réelle du catalogue, sinon AUCUN choix. Cas : compte 238dc49b, « veste de costume » classée en
+  « Vêtements spécialisés et costumes » puis taille 50 refusée. Verrou `npm run selftest:costume-de-ville`.

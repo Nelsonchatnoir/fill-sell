@@ -39,6 +39,7 @@ import { budgetIaAutorise } from "../_shared/budget-ia.ts";
 // coin_config ia_cache_categorie = 1 ; le TEXTE rendu passe par les mêmes
 // contrôles ci-dessous (clés opaques relues). Éteint = le chemin d'avant.
 import { questionClaude } from "../_shared/claude-cache.ts";
+import { verdictCostume } from "../_shared/costume-de-ville.js";
 
 const ALLOWED_ORIGINS = [
   "https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173",
@@ -413,6 +414,22 @@ serve(async (req) => {
   if (refuses.length) {
     console.warn(`[resolve-categorie] réponse hors liste ignorée : ${refuses.join(", ")} — titre « ${titre} »`);
   }
+  // ── (11/11 soir) « COSTUME » = TENUE DE VILLE, JAMAIS UN DÉGUISEMENT (règle de Nico — _shared/costume-de-ville.js) ──
+  // « Veste de costume bleu » rangée en « Hommes > Vêtements > Vêtements spécialisés et costumes » (déguisements), la
+  // taille 50 refusée par Vinted. Le sens du texte (titre + objet) contre la famille du rayon choisi : contraires → la
+  // candidate de la bonne famille, sinon (Vinted) la feuille réelle du catalogue, sinon aucun choix. La question posée
+  // à l'IA ne change pas ; la descente « plus proche » ne reçoit jamais de feuille hors de ses entrées.
+  const gardesCostume: string[] = [];
+  const texteArticle = `${titre} ${String((corps.attributs ?? {} as Record<string, unknown>).objet ?? "")}`;
+  for (const pf of Object.keys(choix) as Plateforme[]) {
+    const v = verdictCostume({ plateforme: pf, texte: texteArticle, choix: choix[pf], candidats: candidats[pf] ?? [],
+      catalogue: corps.consigne !== "plus_proche" });
+    if (!v) continue;
+    gardesCostume.push(`${pf}:${v.remplacement ? "remplace" : "retire"}`);
+    console.warn(`[resolve-categorie] ${pf} — ${v.motif} → ${v.remplacement ? `« ${v.remplacement.chemin.join(" > ")} »` : "aucun choix"} — titre « ${titre} »`);
+    if (v.remplacement) choix[pf] = { chemin: v.remplacement.chemin, id: v.remplacement.id ?? null, source: v.remplacement.source };
+    else delete choix[pf];
+  }
   // ── JOURNAL (point 2, instrumentation PURE) ───────────────────────────────
   // Une ligne par décision et par plateforme. Rien ne le relit pour décider :
   // aucun comportement ne dépend de son contenu. Best-effort de bout en bout —
@@ -443,5 +460,6 @@ serve(async (req) => {
     choix,
     refuses,
     candidats_envoyes: parCle.size,
+    ...(gardesCostume.length ? { gardes: gardesCostume } : {}),
   });
 });
