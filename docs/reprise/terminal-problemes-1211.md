@@ -136,3 +136,14 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
 - Binaire 2.9.176 / vc38 : fabrication arrêtée par le système (mémoire) pendant Gradle, avant tout AAB ; processus
   restants arrêtés par PID ; défaut du script corrigé (71f97fc). À relancer sur le mot de Nico : `npm run binaires --
   --aab-seul` depuis le dossier principal (le module patché y est déjà posé, `patch-package` ✔).
+
+## Soir — urgence « Se connecter avec Apple » du web (rapport § 10)
+- 18:33 : nouvelle clé Sign in with Apple **TJY379J9P7** (Documents\FillSell-cles) ; secret posé (API de gestion,
+  `external_apple_secret` seul) ; 18:46:19 connexion Apple web de Nico réussie. L'ancienne clé U5R7347N3K reste active.
+- **EN SERVICE (f71279a)** : `expirations-secrets` v1 (19:22:40) ; migration **20261112190000** appliquée + `migration
+  repair` (~19:23) ; secrets `APPLE_SIWA_P8/KEY_ID/TEAM_ID/CLIENT_ID`, `GESTION_SUPABASE_JETON` (jeton
+  « renouvellement-secret-apple-v2 », projet seul, Project Settings + Auth Config) ; essai bout à bout 19:32:06 vert
+  (secret renouvelé, échéance 11/05/2027 20:32). Chaque jour 07:10 : renouvellement si le secret a > 30 jours, alerte à
+  support 30 jours avant toute échéance de `public.expirations_secrets`.
+- Inverse : `supabase/rollbacks/20261112190000_expirations_secrets_INVERSE.sql` + `migration repair --status reverted
+  20261112190000` ; supprimer la fonction ; le secret posé reste valable jusqu'à son échéance.

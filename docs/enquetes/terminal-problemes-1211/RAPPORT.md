@@ -175,3 +175,13 @@ jusqu'au 11/05/2027 ; connexion Apple web réussie à 18:46:19 (compte de Nico).
 table `public.expirations_secrets` (renouvellement mensuel, alerte à support 30 jours avant toute échéance) — verrou
 `selftest:expirations-secrets` (7 rouges sur 7709f6e → 26/26). Migration 20261112190000 et jeton de l'API de gestion :
 en attente du feu vert de Nico.
+**EN SERVICE (feux verts de Nico, 12/11 ~19:15)** : commit f71279a ; suite LF 682/684 sur ebd8ac3, les 2 rouges
+(`aucune-estimation`, `tables-droits-explicites`) corrigés dans f71279a et revérifiés ; fonction `expirations-secrets` v1
+(19:22:40, verify_jwt false, 401 sans secret du cron) ; migration 20261112190000 appliquée et enregistrée (~19:23 :
+8 échéances, cron `10 6 * * *`, aucun droit anon) ; secrets serveur `APPLE_SIWA_*` et `GESTION_SUPABASE_JETON` (le
+préfixe `SUPABASE_` est réservé). Jeton de gestion : « renouvellement-secret-apple-v2 », projet fill-and-sell seulement,
+« Project Settings » + « Auth Config » en lecture-écriture (minimum exigé par l'API pour écrire la configuration auth :
+`project_admin_write`), sans expiration ; le premier jeton (Auth Config seul, refusé en 403) a été supprimé. Essai bout à
+bout à 19:32:06 (déclenché comme le cron, `renouveler: true`) : sonde Apple acceptée, secret posé (empreinte changée,
+identifiants clients intacts), échéance 11/05/2027 20:32 ; l'essai raté de 19:31 (403) a envoyé l'alerte « renouvellement
+RATÉ » à support — le chemin d'alerte est prouvé.
