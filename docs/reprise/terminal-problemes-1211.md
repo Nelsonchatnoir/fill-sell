@@ -162,3 +162,6 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
   brouillons de fiche du terminal marketing n'y étaient pas) → « Envoyer 1 modification pour examen » (~19:50).
   ⚠ Publication GÉRÉE activée : une fois approuvée par Google, la release attend un clic « Publier » dans la vue
   d'ensemble de la publication.
+- Puis (choix de Nico : « envoyer maintenant ») le terminal marketing a envoyé ses deux fiches par défaut (fr-FR, en-US,
+  avec Cloud) : l'examen de la vc38 est REPARTI DE ZÉRO, avec la Production 2.9.176 et les deux fiches. Publication gérée
+  toujours activée : après l'accord de Google, cliquer « Publier » (vue d'ensemble de la publication).
