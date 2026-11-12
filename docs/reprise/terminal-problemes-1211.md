@@ -65,3 +65,12 @@ ce terminal sont donc écrites ICI, à reporter dans `docs/agents/etat-2026-10-0
 - ⚠ Faute d'outillage (rien perdu) : un `git stash` raté dans la copie a été suivi d'un `git stash pop` qui a tenté
   d'appliquer la remise du terminal Cloud (stash@{0}, « POINT 4 bandeau Cloud… ») — refusé par git, remise CONSERVÉE, copie
   intacte. La pile de stash est partagée entre toutes les copies : jamais `git stash` ici.
+- **EN SERVICE (commit 1746fae, poussé 5e88909..1746fae à 14:55)** : suite complète 680/680 sur une copie LF (14:32 → 14:54) ;
+  **get-pending-jobs v362** (14:55:45, avant v361, `verify_jwt` true avant et après, sans session → 401 ; 145 appels en 200,
+  médiane 1 166 ms contre 1 337 pour v361, aucune autre réponse) ; **handler-watch v193** (14:56:04, avant v192, `verify_jwt`
+  false, `--no-verify-jwt`, sans session → 401) ; tous deux depuis l'archive LF entière de 1746fae. **14:57:09 : 298e4944
+  reçoit le geste** (handler-watch, « questions tranchées … animal_lbc: 1 »). **OTA 2.9.174** publiée (canal production =
+  2.9.174, commit 1746fae, `--delta`, 162 fichiers) depuis le dossier principal avancé en avance rapide (propre avant et
+  après) ; web 2026-11-12T13:56:42Z+1746fae, entrée relue avec `Origin` : 200.
+- Retour : get-pending-jobs et handler-watch depuis l'archive de 5e88909 ; app : nouvelle OTA (numéro neuf) d'un commit
+  qui revient sur 1746fae.
