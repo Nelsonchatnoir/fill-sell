@@ -1,8 +1,64 @@
 diff --git a/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java b/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
-index 0855c02..f337d57 100644
+index 0855c02..7edeec1 100644
 --- a/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
 +++ b/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
-@@ -424,6 +424,12 @@ public class NativePurchasesPlugin extends Plugin {
+@@ -142,6 +142,34 @@ public class NativePurchasesPlugin extends Plugin {
+         lastBillingError = null;
+     }
+ 
++    // FillSell patch (2026-11-12, point 7): the app was blind. Every Google Play refusal was rejected as
++    // "Purchase is not purchased" with NO code (18 first purchases out of 20 from 16/10 to 12/11, no order at Google).
++    // Google's BillingResponseCode now travels as the rejection code ("GOOGLE_<NAME>") with its debug message.
++    static String nomCodeGoogle(int code) {
++        switch (code) {
++            case -3: return "GOOGLE_SERVICE_TIMEOUT";
++            case -2: return "GOOGLE_FEATURE_NOT_SUPPORTED";
++            case -1: return "GOOGLE_SERVICE_DISCONNECTED";
++            case 0: return "GOOGLE_OK";
++            case 1: return "GOOGLE_USER_CANCELED";
++            case 2: return "GOOGLE_SERVICE_UNAVAILABLE";
++            case 3: return "GOOGLE_BILLING_UNAVAILABLE";
++            case 4: return "GOOGLE_ITEM_UNAVAILABLE";
++            case 5: return "GOOGLE_DEVELOPER_ERROR";
++            case 6: return "GOOGLE_ERROR";
++            case 7: return "GOOGLE_ITEM_ALREADY_OWNED";
++            case 8: return "GOOGLE_ITEM_NOT_OWNED";
++            case 12: return "GOOGLE_NETWORK_ERROR";
++            default: return "GOOGLE_CODE_" + code;
++        }
++    }
++
++    static String messageGoogle(String debut, BillingResult r) {
++        String debug = r != null && r.getDebugMessage() != null ? r.getDebugMessage().trim() : "";
++        int code = r != null ? r.getResponseCode() : 6;
++        return debut + " (" + nomCodeGoogle(code).substring(7) + (debug.isEmpty() ? "" : ": " + debug) + ")";
++    }
++
+     private void handlePurchase(Purchase purchase, PluginCall purchaseCall) {
+         Log.d(TAG, "handlePurchase() called");
+         Log.d(TAG, "Purchase details: " + purchase.toString());
+@@ -235,7 +263,8 @@ public class NativePurchasesPlugin extends Plugin {
+             Log.d(TAG, "Purchase state is OTHER: " + purchase.getPurchaseState());
+             // Handle any other error codes.
+             if (purchaseCall != null) {
+-                purchaseCall.reject("Purchase is not purchased");
++                // FillSell patch (2026-11-12, point 7): the purchase state travels with the rejection.
++                purchaseCall.reject("Purchase is not purchased (state " + purchase.getPurchaseState() + ")", "GOOGLE_ETAT_" + purchase.getPurchaseState());
+             } else {
+                 Log.d(TAG, "purchaseCall is null for failed purchase");
+             }
+@@ -294,7 +323,9 @@ public class NativePurchasesPlugin extends Plugin {
+                             Log.d(TAG, "Purchase update failed or purchases is null");
+                             Log.i(NativePurchasesPlugin.TAG, "onPurchasesUpdated" + billingResult);
+                             if (purchaseCall != null) {
+-                                purchaseCall.reject("Purchase is not purchased");
++                                // FillSell patch (2026-11-12, point 7): Google's code and debug message travel with the rejection.
++                                int codeGoogle = billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK ? 6 : billingResult.getResponseCode();
++                                purchaseCall.reject(messageGoogle("Purchase is not purchased", billingResult), nomCodeGoogle(codeGoogle));
+                             }
+                         }
+                         closeBillingClient();
+@@ -424,6 +455,12 @@ public class NativePurchasesPlugin extends Plugin {
          final String accountIdentifier = appAccountToken != null && !appAccountToken.isEmpty() ? appAccountToken : null;
          boolean isConsumable = call.getBoolean("isConsumable", false);
          boolean autoAcknowledgePurchases = call.getBoolean("autoAcknowledgePurchases", true);
@@ -15,7 +71,7 @@ index 0855c02..f337d57 100644
  
          Log.d(TAG, "Product identifier: " + productIdentifier);
          Log.d(TAG, "Plan identifier: " + planIdentifier);
-@@ -544,6 +550,16 @@ public class NativePurchasesPlugin extends Plugin {
+@@ -544,6 +581,16 @@ public class NativePurchasesPlugin extends Plugin {
                          if (accountIdentifier != null && !accountIdentifier.isEmpty()) {
                              billingFlowBuilder.setObfuscatedAccountId(accountIdentifier);
                          }
@@ -32,6 +88,19 @@ index 0855c02..f337d57 100644
                          BillingFlowParams billingFlowParams = billingFlowBuilder.build();
                          // Launch the billing flow
                          Log.d(TAG, "Launching billing flow");
+@@ -553,6 +600,12 @@ public class NativePurchasesPlugin extends Plugin {
+                             "Billing flow launch result: " + billingResult2.getResponseCode() + " - " + billingResult2.getDebugMessage()
+                         );
+                         Log.i(NativePurchasesPlugin.TAG, "onProductDetailsResponse2" + billingResult2);
++                        // FillSell patch (2026-11-12, point 7): a sheet that never opens was only logged — the call
++                        // waited forever. It is now rejected with Google's code.
++                        if (billingResult2.getResponseCode() != BillingClient.BillingResponseCode.OK) {
++                            closeBillingClient();
++                            call.reject(messageGoogle("Billing flow not launched", billingResult2), nomCodeGoogle(billingResult2.getResponseCode()));
++                        }
+                     }
+                 }
+             );
 diff --git a/node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/NativePurchasesPlugin.swift b/node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/NativePurchasesPlugin.swift
 index 9ab52f2..8c66364 100644
 --- a/node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/NativePurchasesPlugin.swift

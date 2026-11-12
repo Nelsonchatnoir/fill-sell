@@ -9,7 +9,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { cacherSplashAuBonMoment } from './natif/splashDemarrage';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, findActivePlaySub, PRODUCT_IDS, gererAbonnementsBoutique } from './lib/iap';
-import { classerIssueAchat } from './lib/issueAchat';
+import { classerIssueAchat, messageIssueAchat } from './lib/issueAchat';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
 // (16/10, bêta messages + bordereaux) Drapeau et compteurs (une lecture hors
@@ -3328,7 +3328,12 @@ export default function App({ loginOnly = false }){
     // tentative = une ligne d'ouverture + une ligne d'issue.
     let etapeAchat='store';
     const passage=isPremium&&(isProPurchase||isBusinessPurchase)?'montee_de_palier':'achat';
-    const issueTunnel=(issue,extra={})=>logTunnel('checkout_issue',{canal,tier:tierLog,origine,passage,issue,etape:etapeAchat,...extra});
+    // (12/11, point 7) + la durée de la feuille du store (ouverture → issue) et le binaire natif : un abandon dure
+    // quelques secondes, un achat payé près d'une minute ; le binaire dit si le code de Google pouvait être lu (vc38+).
+    let debutFeuille=null;
+    const binaireAchat=await Promise.race([binaireCloudLu,new Promise((r)=>setTimeout(()=>r(null),300))]).catch(()=>null);
+    const issueTunnel=(issue,extra={})=>logTunnel('checkout_issue',{canal,tier:tierLog,origine,passage,issue,etape:etapeAchat,
+      duree_feuille_ms:debutFeuille?Date.now()-debutFeuille:null,binaire:binaireAchat??null,...extra});
     try{
       // ── checkout_open / checkout_abandon (2026-08-09) ──────────────────
       // On journalise juste AVANT de demander la feuille au store : c'est le
@@ -3339,6 +3344,7 @@ export default function App({ loginOnly = false }){
       // ferme la feuille ou touche « Annuler » : c'est l'abandon, le trou
       // exact entre le clic et l'achat qu'on ne voyait pas.
       logTunnel('checkout_open',{canal,tier:tierLog,origine});
+      debutFeuille=Date.now();
       const {cancelled,enAttente,issue:issueStore,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken});
       if(cancelled){
         logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:'annule'});
@@ -3404,10 +3410,14 @@ export default function App({ loginOnly = false }){
         issueTunnel(cl.issue==='erreur'?'erreur':cl.issue,{code:cl.code,message:cl.message});
         // (31/10, lot I point 7) La feuille Google Play revenue sans achat (abandon, ou paiement refusé dans la
         // feuille) : rien n'est débité. Un abandon se trace comme tel, et ne s'affiche jamais « ❌ Purchase is not purchased ».
-        if(cl.issue==='abandon_ou_refus'){
-          logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:'google_non_achete'});
-          setToast({visible:true,message:lang==='fr'?"Achat non finalisé : rien n'a été débité.":'Purchase not completed: nothing was charged.'});
-          setTimeout(()=>setToast({visible:false,message:''}),6000);
+        // (12/11, point 7 de Nico) Chaque réponse de Google a sa phrase : la cause et quoi faire (lib/issueAchat.js) —
+        // déjà abonné, indisponible sur ce téléphone, Google qui ne répond pas, refus avec son code ; binaire d'avant la
+        // vc38 (code jeté par le module) : « non finalisé » + vérifier le moyen de paiement.
+        const msgStore=messageIssueAchat(cl,lang);
+        if(msgStore){
+          if(cl.issue==='abandon_ou_refus') logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:'google_non_achete'});
+          setToast({visible:true,message:msgStore});
+          setTimeout(()=>setToast({visible:false,message:''}),9000);
           return;
         }
       }

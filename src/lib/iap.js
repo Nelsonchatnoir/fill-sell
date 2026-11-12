@@ -1,6 +1,6 @@
 import { NativePurchases } from '@capgo/native-purchases';
 import { Capacitor } from '@capacitor/core';
-import { classerIssueAchat } from './issueAchat.js';
+import { classerIssueAchat, forfaitDeBaseGoogle } from './issueAchat.js';
 import { lireRestauration } from './restauration.js';
 
 export const PRODUCT_IDS = {
@@ -86,8 +86,11 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     });
     if (!products || products.length === 0) throw new Error('Produit introuvable — product not found in Play Console');
     const product = products[0];
-    // Android Billing v5+ exige planIdentifier (basePlanId) pour les subs
-    const planId = product?.planIdentifier
+    // Android Billing v5+ exige planIdentifier (basePlanId) pour les subs.
+    // (12/11, point 7) Sur Android, le module rend `planIdentifier` = le PRODUIT et `identifier` = le forfait de base :
+    // le forfait d'abord (forfaitDeBaseGoogle), le repli d'avant sinon. iPhone : inchangé.
+    const planId = (Capacitor.getPlatform() === 'android' ? forfaitDeBaseGoogle(product, productId) : null)
+      ?? product?.planIdentifier
       ?? product?.basePlanId
       ?? product?.subscriptionOfferDetails?.[0]?.basePlanId
       ?? product?.offers?.[0]?.id

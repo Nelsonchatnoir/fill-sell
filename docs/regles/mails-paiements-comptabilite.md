@@ -430,3 +430,19 @@ marge de 100 % sur du vent, indétectable ensuite.
   L'en-tête List-Unsubscribe One-Click de la porte reste. Mail d'annonce des formules : type one-shot
   `annonce_formules_cloud` entré dans `email_logs_one_shot_unique` (migration 20261112120000, forme CONCURRENTLY en prod,
   banc `scripts/essais/20261112120000_banc.mjs` écrit par le terminal marketing).
+
+## ⛔ 12/11/2026 (point 7 de Nico, terminal « Problèmes ») — un achat Google Play qui échoue dit POURQUOI
+- Cas : 18 premiers achats Google sur 20 revenus « Purchase is not purchased » du 16/10 au 12/11 (8 comptes), feuille
+  ouverte, aucune commande chez Google : le module natif jetait la réponse de Google. Rapport
+  `docs/enquetes/terminal-problemes-1211/RAPPORT.md` § 7.
+- **Le module** (`patches/@capgo+native-purchases+8.3.3.patch`, binaire Android vc38 et suivants) rejette avec le code de
+  Google `GOOGLE_<NOM>` (BillingResponseCode : USER_CANCELED, ITEM_ALREADY_OWNED, ITEM_UNAVAILABLE, BILLING_UNAVAILABLE,
+  DEVELOPER_ERROR, ERROR, NETWORK_ERROR, SERVICE_*…) et son message de débogage ; une feuille que Google refuse d'ouvrir
+  est rejetée (jamais une promesse sans fin). ⛔ Une mise à jour du module refait ce patch, sinon l'app redevient aveugle.
+- **L'app** (`src/lib/issueAchat.js`, une source) : chaque code a son issue (annule, deja_abonne, indisponible, reseau,
+  erreur) et sa phrase au client (la cause, quoi faire, « rien n'a été débité ») ; un binaire sans code (vc37 et avant)
+  garde `abandon_ou_refus` / GOOGLE_NON_ACHETE. `checkout_issue` porte le code, le message de Google, la durée de la
+  feuille (`duree_feuille_ms`) et le binaire.
+- **Le forfait de base** demandé à Google est `identifier` du produit (le forfait), jamais `planIdentifier` (que le module
+  remplit avec l'identifiant du PRODUIT) — `forfaitDeBaseGoogle`.
+- Verrou `npm run selftest:achats-google-code`.

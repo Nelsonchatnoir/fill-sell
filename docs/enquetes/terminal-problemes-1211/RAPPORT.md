@@ -118,6 +118,33 @@ animal de race, âge, date de naissance, portée, vacciné, race — des informa
 toi-même sur Leboncoin, puis Synchroniser » (ou « Accessoires animaux » pour un objet) ; la tâche existante reçoit le même
 geste par handler-watch ; aucun poids posé par l'app sur cette catégorie.
 
+## 7. Achats Google Play qui échouent (GOOGLE_NON_ACHETE) — ROUGE, corrigé (OTA) + binaire préparé
+**Où l'achat casse (prouvé)** : dans la feuille Google Play, AVANT toute commande. La feuille s'ouvre (2,5 à 17 s entre
+l'ouverture et l'échec, contre 49 à 81 s pour un achat payé) ; la Play Console (gestion des commandes, lecture seule)
+n'a AUCUNE commande pour ces tentatives ; produits et forfaits de base actifs dans 175 pays (premium.standard
+`standard-monthly`, pro.sub `pro-monthly`, business.sub `business-monthly`), prix inchangés, les 3 « + Cloud » en
+brouillon ; production Android 2.9.167 / vc37, OTA 2.9.174. Le module natif (@capgo/native-purchases 8.3.3) reçoit la
+réponse de Google (BillingResponseCode et son message) et la JETTE : l'app ne reçoit que « Purchase is not purchased ».
+La raison exacte de ces 18 échecs n'a donc été écrite nulle part (ni chez nous, ni chez Google) : elle ne peut pas être
+relue après coup. Écartés par les données : montée de palier (aucun ancien jeton dans un seul échec : tous des premiers
+achats), produit introuvable (1 seul cas, 07/11, autre chemin), prix non affiché (garde du 08/11), coupe-circuit Android.
+Défaut latent trouvé : l'app demandait le PRODUIT comme forfait de base (`planIdentifier` du module = l'identifiant du
+produit) ; le module ne le trouvait jamais et prenait la première offre — sans effet aujourd'hui (un forfait par
+produit), corrigé.
+**Clients bloqués** : 8 comptes, 18 échecs, du 16/10 au 12/11 — 27399ff9 (16/10), dd636d1d (20/10), fd7bf936 (23/10),
+90ace0e4 (24/10, a payé ensuite par carte), 5e78a731 (27 et 28/10), a6bbc6c3 (04/11), cfb5af8b (10 fois les 08 et
+09/11, Premium, Pro et Business), 948cb329 (09/11). En face : 2 achats Google payés (26/10, 06/11).
+**Correctif** (règle `docs/regles/mails-paiements-comptabilite.md` du 12/11) :
+- binaire Android **2.9.176 / vc38** (patch du module ; un numéro à lui, au-dessus de l'OTA 2.9.175) : chaque refus part avec le code de Google (`GOOGLE_<NOM>`) et son
+  message ; une feuille qui ne s'ouvre pas est refusée avec son code (avant : écrite au seul journal Android, l'achat
+  attendait sans fin). Compilé (Gradle), PRÉPARÉ, jamais soumis sans le go de Nico.
+- OTA **2.9.175** : l'app classe chaque code (déjà abonné → « Restaurer mes achats » ; indisponible sur ce téléphone →
+  mettre à jour le Play Store, vérifier le compte Google ; Google qui ne répond pas → réessayer ; refus → son code à
+  l'écran), toujours « rien n'a été débité » ; le binaire d'avant garde son issue, avec « vérifie ton moyen de paiement
+  dans le Play Store » ; le bon forfait de base ; chaque issue tracée avec la durée de la feuille et le binaire.
+- Verrou `selftest:achats-google-code` (12 rouges sur 6ede137 → 28/28). Garde-fous tenus : aucun prix, aucun produit ni
+  forfait touché chez Google, « + Cloud » en brouillon, aucun client contacté.
+
 ## 8. La rédaction d'annonce coupée à 150 s (504) — ROUGE, corrigé
 **Cause prouvée** (journaux) : le 12/11 à 15:25 et 15:28 (compte ebdf29f0, 4 réponses 504 à 150 s), generate-listing
 écrit « rehost photo N (1/3) : upload — Gateway Timeout » toutes les ~60 s, puis (2/3), puis la coupure : l'ENVOI Storage

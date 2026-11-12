@@ -100,8 +100,11 @@ console.log("\n7. Google Play — l'issue nommée, l'abonnement confirmé");
 const g = classerIssueAchat(new Error("Purchase is not purchased"));
 ok(g.issue === "abandon_ou_refus" && g.code === "GOOGLE_NON_ACHETE", "« Purchase is not purchased » = abandon ou refus dans la feuille, jamais une erreur");
 ok(classerIssueAchat(new Error("Network down")).issue === "erreur", "une vraie erreur reste une erreur");
-ok(/if\(cl\.issue==='abandon_ou_refus'\)\{\n\s*logTunnel\('checkout_abandon',\{canal,tier:tierLog,origine,motif:'google_non_achete'\}\);/.test(app)
-  && /Achat non finalisé : rien n'a été débité\./.test(app), "app : tracé en abandon, message « Achat non finalisé : rien n'a été débité »");
+// (12/11, point 7) Le message vit désormais dans lib/issueAchat.js (messageIssueAchat, un message par réponse de Google) :
+// la règle du 31/10 tient — l'abandon est tracé comme tel, le message commence par « Achat non finalisé : rien n'a été débité. ».
+const issueAchatSrc = lire("src/lib/issueAchat.js");
+ok(/if\(cl\.issue==='abandon_ou_refus'\) logTunnel\('checkout_abandon',\{canal,tier:tierLog,origine,motif:'google_non_achete'\}\);/.test(app)
+  && /case 'abandon_ou_refus':[\s\S]{0,40}fr\s*\?\s*"Achat non finalisé : rien n'a été débité\./.test(issueAchatSrc), "app : tracé en abandon, message « Achat non finalisé : rien n'a été débité »");
 ok(G.abonnementAConfirmer({ acknowledgementState: "ACKNOWLEDGEMENT_STATE_PENDING" }) && !G.abonnementAConfirmer({ acknowledgementState: "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED" }),
   "seul un abonnement « en attente de confirmation » est confirmé");
 ok(G.urlAccuseAbonnement("app.fillsell.app", "app.fillsell.pro2.sub", "tok") === "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/app.fillsell.app/purchases/subscriptions/app.fillsell.pro2.sub/tokens/tok:acknowledge",
