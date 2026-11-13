@@ -207,15 +207,17 @@ console.log("\n6. Recréation après notre suppression : candidate unique rattac
 {
   const supprimeLe = "2026-09-28T19:57:31.000Z";
   const photo = Math.floor(Date.parse("2026-09-28T19:57:36Z") / 1000);
-  const sweat = { vinted_item_id: "10173856703", titre: "Sweat Tommy Jeans bleu marine – Taille M", photo_ts: photo };
-  const r1 = bg.reconnaitreAnnonceRecreee([sweat], { titre: "Sweat Tommy Jeans bleu marine – Taille M", deletedAt: supprimeLe, idsConnus: new Set(["10061791333"]) });
+  // (13/11, décision de Nico — jamais par le titre) La copie se reconnaît aux photos de NOTRE envoi, plus à son titre.
+  const nos = { ids: [101738567031], jetons: [] };
+  const sweat = { vinted_item_id: "10173856703", titre: "Sweat Tommy Jeans bleu marine – Taille M", photo_ts: photo, photo_ids: [101738567031] };
+  const r1 = bg.reconnaitreAnnonceRecreee([sweat], { photos: nos, deletedAt: supprimeLe, idsConnus: new Set(["10061791333"]) });
   ok("cas réel : 10173856703 rattachée (comme en 0.6.75)", r1.item?.vinted_item_id === "10173856703");
   const jumeau = { ...sweat, vinted_item_id: "10173856999" };
-  const r2 = bg.reconnaitreAnnonceRecreee([sweat, jumeau], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set() });
+  const r2 = bg.reconnaitreAnnonceRecreee([sweat, jumeau], { photos: nos, deletedAt: supprimeLe, idsConnus: new Set() });
   ok("deux candidates : rien rattaché (abstention, la pause le dit — règle 0.6.75)", r2.item === null && /2 annonces correspondent/.test(String(r2.raison ?? "")), JSON.stringify(r2));
   const avant = { ...sweat, photo_ts: photo - 3600 };
-  ok("photos antérieures à notre suppression : rien", bg.reconnaitreAnnonceRecreee([avant], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set() }).item === null);
-  ok("déjà connue de l'inventaire : rien", bg.reconnaitreAnnonceRecreee([sweat], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set(["10173856703"]) }).item === null);
+  ok("photos antérieures à notre suppression : rien", bg.reconnaitreAnnonceRecreee([avant], { photos: nos, deletedAt: supprimeLe, idsConnus: new Set() }).item === null);
+  ok("déjà connue de l'inventaire : rien", bg.reconnaitreAnnonceRecreee([sweat], { photos: nos, deletedAt: supprimeLe, idsConnus: new Set(["10173856703"]) }).item === null);
 
   const bgSrc = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
   ok("plusieurs candidates : on ne recrée SURTOUT PAS (pause nommée, rien de recréé)",

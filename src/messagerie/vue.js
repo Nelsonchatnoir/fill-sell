@@ -107,6 +107,37 @@ export function dateEtHeure(iso, lang = 'fr') {
   return lang === 'en' ? `${jour} at ${heure}` : `${jour} à ${heure}`;
 }
 
+// ── (13/11, étape 5 du lot « zéro problème » — compte faf5021a, bordereaux sur son relié 447d920c) LA DATE DU BORDEREAU ET « IMPRIMÉ » ──
+// « Bordereau du JJ/MM · Imprimé le JJ/MM » (décision de Nico). La date est celle de la COPIE (bordereaux_copies.cree_le),
+// le repère suit la copie (une copie régénérée repart « pas encore imprimée »). imprime_le : chaîne = imprimé ; null = pas
+// encore ; ABSENT (undefined : colonne pas encore posée par la migration 20261113153000, ou lecture ratée) = inconnu →
+// la date seule, rien d'affirmé. Jour de Paris, jamais l'heure. « Imprimé » = le geste d'impression, de partage ou de
+// téléchargement de l'aperçu ou de « Tout imprimer » a RÉUSSI (l'app ne voit pas l'imprimante).
+const jourParis = (iso, lang = 'fr') => {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' });
+};
+
+/** Le repère d'une copie : { texte, imprime: true | false | null (inconnu) } ; null si la date du bordereau est illisible. */
+export function repereBordereau(copie, lang = 'fr') {
+  const fr = lang !== 'en';
+  const du = jourParis(copie?.cree_le, lang);
+  if (!copie || !du) return null;
+  const tete = fr ? `Bordereau du ${du}` : `Label from ${du}`;
+  if (copie.imprime_le === undefined) return { texte: tete, imprime: null };
+  const le = jourParis(copie.imprime_le, lang);
+  if (!le) return { texte: `${tete} · ${fr ? 'Pas encore imprimé' : 'Not printed yet'}`, imprime: false };
+  return { texte: `${tete} · ${fr ? `Imprimé le ${le}` : `Printed on ${le}`}`, imprime: true };
+}
+
+/** « Tout imprimer » = les copies prêtes PAS ENCORE imprimées (inconnu compris : comme avant) ; « Tout réimprimer » = toutes. */
+export function copiesAImprimer(pretes) {
+  const toutes = Array.isArray(pretes) ? pretes.filter(Boolean) : [];
+  const aImprimer = toutes.filter((c) => !jourParis(c.imprime_le));
+  return { aImprimer, toutes, reimprimer: aImprimer.length < toutes.length };
+}
+
 // (07/11) En anglais, format anglais (« €1,268.00 ») ; le français inchangé (« 1 268,00 € »).
 export function montantTexte(v, devise = 'EUR', lang = 'fr') {
   const n = Number(v);

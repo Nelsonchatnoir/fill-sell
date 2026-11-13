@@ -106,7 +106,9 @@ ok(/import \{ miseEnLigneAffichee, indexerDatesRelevees, datesParPlateforme \} f
 ok(/const plateformeDatee = filtreDiffusion\?\.mode === 'en_ligne' \? filtreDiffusion\.platform : null;/.test(ST), "filtre « En ligne sur X » actif → la date de X");
 const blocPastille = ST.slice(ST.indexOf("(31/10, lot H — XEWER) La pastille dit"), ST.indexOf("return { ...pastilleCourte({ genre: d.disparuDeVinted ? 'hors_ligne'"));
 ok(/miseEnLigneArticle\(item, enLigneDatables\)/.test(blocPastille) && /onTap: \(\) => setDatesItem\(item\)/.test(blocPastille), "pastille « En ligne » : la date affichée, et un appui ouvre le détail");
-ok(/joursAncienne = ancienneteJours\(/.test(blocPastille) && /const jours = pastille\.joursAncienne \?\?/.test(ST), "l'action « Remonter » garde l'âge de la plus ancienne");
+// (13/11, décision de Nico — « Remonter » : eBay hors du seuil « ancienne ») L'action « Remonter » de la carte lit l'âge de la
+// plus ancienne annonce REPUBLIABLE (regles.ancienneteRemontable : jamais eBay) ; la pastille garde joursAncienne.
+ok(/joursAncienne = ancienneteJours\(/.test(blocPastille) && /ancienne: estAncienne\(ancienneteRemontable\(item, d\.jobsAll, d\.repubMaintenant/.test(ST), "l'action « Remonter » garde l'âge de la plus ancienne (parmi les annonces republiables)");
 ok(/trancheAnciennete\(infoFiltre\(i\)\.joursAffiches\)/.test(ST), "tranches d'ancienneté : la date que dit la carte");
 ok(/miseEnLigne: \(i\) => \{ const m = miseEnLigneArticle\(i, indexEtat\.get\(String\(i\.id\)\)\?\.enLigne \?\? \[\]\); return m \? Date\.parse\(m\.date\) : null; \}/.test(ST), "tri « Mise en ligne récente » : la même date");
 ok(/const SELECT_JOBS = "[^"]*platform_listing_id, handler_build"/.test(ST), "les jobs du Stock portent le numéro et la marque d'import");

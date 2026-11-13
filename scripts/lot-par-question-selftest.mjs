@@ -73,8 +73,10 @@ ok(sansCles.length === 1 && sansCles[0].type === "cta", "un motif « questions �
 ok(S.questionsDeLArticle({ clesQuestions: [] }, []).length === 1, "aucun motif lisible → « À vérifier »");
 ok(S.questionsDeLArticle({ clesQuestions: [] }, [{ cle: "aucune" }])[0]?.type === "cta", "« aucune plateforme » → « À vérifier »");
 ok(S.questionsDeLArticle({ clesQuestions: [] }, [{ cle: "texte" }]).length === 0, "le texte seul : aucune ligne (« Tout valider »)");
-const inconnue = S.questionsDeLArticle({ clesQuestions: ["etat"], plateformesPubliables: new Set(["vinted"]) }, []);
-ok(inconnue[0]?.cle === "etat" && inconnue[0]?.libelle === "etat", "une clé sans plateforme n'est jamais mal découpée", JSON.stringify(inconnue));
+// (13/11, décision de Nico) « etat » est désormais une VRAIE question (selftest:etat-inconnu-question) : l'exemple de
+// clé inconnue devient « cle_inconnue » — la règle vérifiée ici ne change pas.
+const inconnue = S.questionsDeLArticle({ clesQuestions: ["cle_inconnue"], plateformesPubliables: new Set(["vinted"]) }, []);
+ok(inconnue[0]?.cle === "cle_inconnue" && inconnue[0]?.libelle === "cle_inconnue", "une clé sans plateforme n'est jamais mal découpée", JSON.stringify(inconnue));
 ok(S.questionsDeLArticle(null, []).length === 0, "sans moteur : rien (l'article est rendu ailleurs)");
 
 console.log("\n5. Les sujets du lot : les plus nombreux d'abord, puis dans l'ordre d'apparition");

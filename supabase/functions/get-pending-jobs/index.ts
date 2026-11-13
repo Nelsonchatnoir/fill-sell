@@ -69,6 +69,7 @@ import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js"
 import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
 // (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
 import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";
+import { couleurDepopACompleter, couleurDepopDuJobServeur, besoinFicheCouleurDepop } from "../_shared/depop-couleur.js";
 import { verdictDepopInterdit, messageDepopInterdit } from "../_shared/depop-interdits.js";
 import { detectObjectIcon } from "../../../src/utils/shared.js";
 // (02/10) Sortie d'Opla : plus aucune publication ni republication Opla ; la
@@ -285,6 +286,10 @@ import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
 import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
 import { jobSansInvisibles } from "../_shared/caracteres-invisibles.js";
+// (13/11, point 5a de Nico) La description en blocs : phrase de test écrite au jour de l'envoi, fin du vendeur repérée.
+import { rendreDescriptionAuService, finDeDescription } from "../../../src/utils/blocsDescription.js";
+import { lireConsignes } from "../../../src/utils/consignesRedaction.js";
+import { aujourdhuiParis, motifsDePhraseDeTest } from "../../../src/utils/phraseDeTest.js";
 import { jobSansMarqueDeCompatibilite, CLE_MARQUE_RETIREE } from "../_shared/marque-compatible.js";
 // (02/11, facture Supabase) coin_config relu seulement quand sa version (signal_poll) a changé.
 import { configUne, configPlusieurs, configPrefixe } from "../_shared/coin-config-cache.js";
@@ -5715,11 +5720,15 @@ serve(async (req) => {
     // même numéro ou même produit Depop), puis l'annonce en ligne relevée, puis la fiche — jamais par-dessus une
     // valeur de la copie (une réponse de la personne reste la sienne). Le pré-vol de l'extension reste le filet :
     // ce qui reste inconnu l'arrête AVANT tout retrait. Trois lectures au plus, bornées aux jobs servis.
+    // (13/11, point 5c — compte 8ac5bbda) Aussi quand seule la COULEUR manque (jamais exigée par Depop, mais l'annonce
+    // recréée repartait sans elle) : l'annonce en ligne, le dépôt, puis la fiche (_shared/depop-couleur.js).
+    const copieDepopACompleter = (j: { platform_fields?: unknown }) => champsManquantsCopieDepop(j).length > 0
+      || couleurDepopACompleter(j.platform_fields ?? null);
     if (!includeProcessing && !includeNeedsUser
-        && out.some((j) => j.platform === "depop" && j.action === "republish" && !retraitEngage(j) && champsManquantsCopieDepop(j).length)) {
+        && out.some((j) => j.platform === "depop" && j.action === "republish" && !retraitEngage(j) && copieDepopACompleter(j))) {
       try {
         const aCompleter = out.filter((j) => j.platform === "depop" && j.action === "republish" && !retraitEngage(j)
-          && j.inventaire_id != null && champsManquantsCopieDepop(j).length);
+          && j.inventaire_id != null && copieDepopACompleter(j));
         const ids = [...new Set(aCompleter.map((j) => j.inventaire_id))].slice(0, 200);
         const slugs = [...new Set(aCompleter.map((j) => slugDepop((j as { platform_listing_id?: string | null }).platform_listing_id)
           || slugDepop((j as { listing_url?: string | null }).listing_url)).filter(Boolean))].slice(0, 200);
@@ -5740,7 +5749,8 @@ serve(async (req) => {
         const ficheDe = new Map<string, Record<string, unknown>>();
         for (const f of (fiches ?? []) as Record<string, unknown>[]) {
           const attr = (f.attributs && typeof f.attributs === "object" ? f.attributs : {}) as Record<string, unknown>;
-          ficheDe.set(String(f.id), { description: f.description ?? null, etat: attr.etat ?? null, taille: attr.taille ?? null });
+          ficheDe.set(String(f.id), { description: f.description ?? null, etat: attr.etat ?? null, taille: attr.taille ?? null,
+            couleur: attr.couleur ?? null, couleur2: attr.couleur2 ?? null });
         }
         const maintenant = new Date().toISOString();
         for (const j of aCompleter) {
@@ -5859,6 +5869,50 @@ serve(async (req) => {
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] taille Depop de la fiche : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+        }
+      }
+    }
+
+    // ── (13/11, point 5c — décision de Nico) LA COULEUR DEPOP DE LA FICHE, QUAND LA COPIE N'EN A PAS ──────────────────
+    // Compte 8ac5bbda : 30 publications Depop sur 49 (45 jours) parties sans couleur alors que la fiche en porte une
+    // (inventaire.attributs.couleur) — imports vinted_sync, 100 % depuis le 07/11 (096856f2 « Gris »…). L'app (OTA)
+    // pose désormais la couleur de la copie, sinon de la valeur commune, sinon de la fiche ; ce filet couvre tout ce qui
+    // part autrement (app d'avant, lot, tâche ancienne) : une PUBLICATION Depop servie sans identifiant de couleur reçoit
+    // celle de sa copie (libellé que l'app d'avant ne lisait pas : « Grigio ») ou, si la copie n'en dit rien, celle de la
+    // fiche — par identifiants (_shared/depop-couleur.js). Jamais par-dessus des identifiants posés, jamais une couleur
+    // retirée à la main (depop_couleur_source), jamais une teinte sans équivalent Depop. La fiche n'est lue que pour les
+    // tâches dont la copie ne dit rien (une lecture, bornée aux tâches servies) ; écriture seulement si quelque chose
+    // change, sur une tâche encore en attente. Une republication suit sa copie (bloc « copie d'une republication »).
+    if (!includeProcessing && !includeNeedsUser) {
+      const sansCouleurDepop = out.filter((j) => j.platform === "depop" && j.action === "publish"
+        && couleurDepopACompleter((j.platform_fields as Record<string, unknown> | null) ?? null));
+      if (sansCouleurDepop.length) {
+        try {
+          const aLire = sansCouleurDepop.filter((j) => j.inventaire_id != null
+            && besoinFicheCouleurDepop((j.platform_fields as Record<string, unknown> | null) ?? null));
+          const attrsDe = new Map<number, Record<string, unknown>>();
+          if (aLire.length) {
+            const { data: invsC } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs").in("id", lot),
+              [...new Set(aLire.map((j) => Number(j.inventaire_id)))]);
+            for (const i of (invsC ?? []) as Array<Record<string, unknown>>) {
+              if (i.attributs && typeof i.attributs === "object") attrsDe.set(Number(i.id), i.attributs as Record<string, unknown>);
+            }
+          }
+          for (const j of sansCouleurDepop) {
+            const pfC = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+            const r = couleurDepopDuJobServeur({ pf: pfC, ficheAttributs: attrsDe.get(Number(j.inventaire_id)) ?? null });
+            if (!r) continue;
+            pfC["depopCouleurs"] = r.depopCouleurs;
+            pfC["depop_couleur_source"] = r.source;
+            pfC["couleur_depop_serveur"] = { de: r.de, depop: r.depopCouleurs, source: r.source, le: new Date().toISOString(), pose_par: "get-pending-jobs (couleur Depop, _shared/depop-couleur.js)" };
+            const { data: ecritC, error: eC } = await userClient.from("cross_post_jobs").update({ platform_fields: pfC })
+              .eq("id", j.id as string).eq("status", "pending").select("id");
+            if (eC || !(ecritC ?? []).length) continue;
+            (j as Record<string, unknown>).platform_fields = pfC;
+            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (depop publish) : couleur « ${r.de} » (${r.source}) → ${r.depopCouleurs.join(", ")}`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] couleur Depop de la fiche : ${String((e as Error)?.message ?? e)} — rien de modifié`);
         }
       }
     }
@@ -12036,6 +12090,59 @@ serve(async (req) => {
       } catch (_e) { dejaEnLigne = null; /* informatif : jamais un point de panne */ }
     }
 
+    // ── (13/11, lot « zéro problème », point 5a de Nico) LA PHRASE DE TEST, ÉCRITE AU JOUR DE L'ENVOI ──────────
+    // Compte de63ca45 : « Jeu testé aujourd’hui, le <date> » était FIGÉ dans le texte de la fiche — 70 annonces Vinted
+    // en ligne et 80 republications Leboncoin en 12 jours le disaient avec 17 jours de retard médian ; Beebs a refusé
+    // les 4 dépôts du 02/11 qui la portaient. La date est une donnée (inventaire.attributs.teste_le), la phrase est
+    // écrite ICI, au service, selon le modèle du vendeur (ses consignes), et omise là où la plateforme la refuse
+    // (_shared/capacites-texte.js : Beebs). Un texte qui porte déjà une phrase du modèle (tapée à la main) donne sa date.
+    // Pour tous les comptes : sans modèle ni date, rien ne bouge. Le job en base n'est pas modifié (texte SERVI).
+    // Deux lectures légères, seulement quand un dépôt ou une republication avec texte part : les consignes du compte
+    // (une ligne) et la date de test des fiches servies. Best-effort : une exception laisse les textes tels quels.
+    // ⚠️ La recréation Vinted (republication) tape le texte de la CAPTURE de l'annonce, construit dans l'extension
+    //    (background.js construireJobRecreation) : `phrase_de_test` lui est servie pour qu'elle l'y applique
+    //    (extension 0.6.187, hors de ce correctif) — d'ici là, la republication Vinted garde le texte capturé.
+    let consignesLuesService: ReturnType<typeof lireConsignes> | null = null;
+    try {
+      const avecTexte = (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => (j.action === "publish" || j.action === "republish") && typeof j.description === "string" && (j.description as string).trim());
+      if (avecTexte.length) {
+        const { data: profT } = await userClient.from("profiles")
+          .select("consignes:platform_settings->redaction->consignes").eq("id", user.id).maybeSingle();
+        const consignesT = (profT as { consignes?: unknown } | null)?.consignes ?? null;
+        consignesLuesService = consignesT ? lireConsignes(consignesT) : null;
+        const ids = [...new Set(avecTexte.map((j) => j.inventaire_id).filter((x) => x != null).map(String))];
+        const testeLeParFiche = new Map<string, string>();
+        if (ids.length) {
+          const { data: fichesT } = await lireParLots((lot) => userClient.from("inventaire").select("id, teste:attributs->teste_le").in("id", lot), ids);
+          for (const f of (fichesT ?? []) as Array<{ id: unknown; teste?: { v?: unknown } | null }>) {
+            const v = f.teste && typeof f.teste === "object" ? f.teste.v : null;
+            if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) testeLeParFiche.set(String(f.id), v);
+          }
+        }
+        if (consignesLuesService?.modeleTest || testeLeParFiche.size) {
+          const aujourdhui = aujourdhuiParis();
+          const motifsDuCompte = motifsDePhraseDeTest(consignesLuesService?.modeleTest ?? null);
+          let rendues = 0;
+          for (const j of avecTexte) {
+            const r = rendreDescriptionAuService(j.description as string, {
+              plateforme: String(j.platform), lues: consignesLuesService, aujourdhui,
+              testeLe: j.inventaire_id != null ? testeLeParFiche.get(String(j.inventaire_id)) ?? null : null,
+            });
+            // Servi à la recréation Vinted (extension 0.6.187) : la phrase du jour (null = omise) et les motifs de son
+            // modèle, à appliquer au texte de la capture (construireJobRecreation).
+            if (r.date || r.omise) j.phrase_de_test = { phrase: r.phrase, date: r.date, omise: r.omise, motifs: motifsDuCompte };
+            if (!r.modifie) continue;
+            j.description = r.texte;
+            rendues++;
+          }
+          if (rendues) console.log(`[get-pending-jobs] user=${user.id} phrase de test écrite au ${aujourdhui} (ou omise) sur ${rendues} texte(s) servi(s)`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] phrase de test : ${String((e as Error)?.message ?? e)} — textes servis tels quels`);
+    }
+
     // ── DESCRIPTION LEBONCOIN SANS MENTION D'UN AUTRE SITE (2026-09-09) ──────
     // Leboncoin refuse en 403 (POST adsubmit/v2/classifieds, champ body) toute
     // description qui mentionne un autre site — un simple « #VintedStyle »
@@ -15924,6 +16031,19 @@ serve(async (req) => {
           if (eR) console.warn(`[get-pending-jobs] relevé servi non noté sur le poste : ${eR.message}`);
         }
       } catch (e) { console.warn("[get-pending-jobs] relevé servi non noté sur le poste :", (e as Error)?.message ?? e); }
+    }
+    // (13/11, point 5a de Nico) LES PHRASES FINALES DU VENDEUR RESTENT LES DERNIÈRES : quand le texte servi finit par
+    // elles (consignes « Finir EXACTEMENT … »), l'extension (≥ 0.6.187) pose « Marque : X » AVANT elles, jamais après
+    // (leboncoin.js / beebs.js, descriptionAvecMarque, comparaison ligne à ligne qui ignore espaces et caractères
+    // invisibles — le nettoyage juste en dessous ne la dérange pas). Sans phrases finales : clé absente, rien ne change.
+    if (consignesLuesService?.finales) {
+      const finales = consignesLuesService.finales;
+      out = out.map((j) => {
+        const r = j as unknown as Record<string, unknown>;
+        if ((r.action !== "publish" && r.action !== "republish") || typeof r.description !== "string") return j;
+        const fin = finDeDescription(r.description as string, finales);
+        return (fin ? { ...r, fin_de_description: fin } : j) as typeof j;
+      });
     }
     out = out.map((j) => jobSansInvisibles(j) as typeof j);
     // (01/11, Jocabroc) Vinted reçoit les 20 premières photos du job, jamais plus : au-delà, l'extension attendait des

@@ -985,6 +985,101 @@ async function deleteListing(job) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 8 bis. LA COULEUR D'UNE ANNONCE DÉJÀ EN LIGNE — MODIFICATION EN PLACE, PRÉPARÉE ET FERMÉE (13/11, point 5c)
+// ═══════════════════════════════════════════════════════════════════════════
+// Compte 8ac5bbda : 10 annonces Depop en ligne sans couleur alors que la fiche en porte une. Republier (supprimer puis
+// recréer) pour une couleur n'est pas une réponse. Depop a un formulaire « Edit listing » : la table des endpoints du
+// site nomme sa LECTURE (`products/by-slug/:slug/edit-listing/`) ; l'appel d'ÉCRITURE, son corps et sa réponse n'ont
+// jamais été relevés (docs/plateformes/depop/CARTOGRAPHIE.md § 7). Rien ne se devine : le contrat d'écriture reste à
+// null et l'interrupteur FERMÉ tant que la modification n'a pas été relevée sur le compte de Nico (annonce de test à
+// 999 € ou plus — plan : CARTOGRAPHIE.md § 9). Ce qui est prêt, et vaut quel que soit le contrat relevé :
+//   · la garde : annonce du compte connecté, en vente, SANS aucune couleur (jamais par-dessus une couleur posée à la
+//     main sur Depop), 1 ou 2 identifiants de la liste de Depop ;
+//   · le corps : la fiche relue par le formulaire de modification, la couleur SEULE changée, le reste tel que relu
+//     (hypothèse du corps de création : `colour` à la racine — à confirmer au relevé) ;
+//   · la preuve : la fiche publique relue porte les identifiants envoyés — sinon « non confirmée », et jamais un second
+//     envoi à l'aveugle (une écriture n'est jamais reprise ici).
+// Message DEPOP_MODIFIER_COULEUR : personne ne l'envoie encore (background.js n'a aucun geste « modifier »).
+const DEPOP_MODIFICATION_ACTIVE = false;
+const DEPOP_MODIFICATION = Object.freeze({
+  // Lecture du formulaire de modification (table des endpoints du bundle, relevé du 08/10) — authentifiée.
+  lecture: (slug) => `/presentation/api/v1/products/by-slug/${encodeURIComponent(slug)}/edit-listing/`,
+  // À REMPLIR APRÈS LE RELEVÉ (CARTOGRAPHIE.md § 9) — null : rien n'est jamais envoyé.
+  ecriture: null,
+  methode: null,
+});
+
+/** La garde (pure) : peut-on poser ces couleurs sur cette annonce ? { ok } ou { ok: false, motif }. */
+function depopModificationCouleurPermise({ produit = null, session = null, couleurs = [] } = {}) {
+  const ids = (Array.isArray(couleurs) ? couleurs : []).map(String);
+  if (!ids.length || ids.length > 2 || !ids.every((c) => Object.prototype.hasOwnProperty.call(DEPOP_COULEUR_LIBELLE, c))) return { ok: false, motif: "couleur_inconnue" };
+  if (!produit || produit.user_id == null || session?.id == null || Number(produit.user_id) !== Number(session.id)) return { ok: false, motif: "annonce_d_un_autre_compte" };
+  if (produit.status !== "STATUS_ONSALE") return { ok: false, motif: "pas_en_vente" };
+  const deja = Array.isArray(produit.attributes?.colour) ? produit.attributes.colour : [];
+  if (deja.length) return { ok: false, motif: "couleur_deja_posee" };
+  return { ok: true };
+}
+
+/** Le corps (pur) : la fiche relue par le formulaire de modification, la couleur seule changée. */
+function depopCorpsModificationCouleur(lu, couleurs) {
+  if (!lu || typeof lu !== "object") return null;
+  const corps = JSON.parse(JSON.stringify(lu));
+  corps.colour = (Array.isArray(couleurs) ? couleurs : []).map(String);
+  return corps;
+}
+
+async function modifierCouleurAnnonce(job) {
+  const t0 = Date.now();
+  if (!DEPOP_MODIFICATION_ACTIVE || typeof DEPOP_MODIFICATION.ecriture !== "function" || !DEPOP_MODIFICATION.methode) {
+    depopTracer("modification en place : interrupteur fermé (contrat d'écriture non relevé) — rien n'est envoyé");
+    return depopSortie({ success: false, inactif: true,
+      error: "La modification d'une annonce Depop déjà en ligne n'est pas encore ouverte : rien n'a été envoyé, ton annonce est intacte.", t0 });
+  }
+  const couleurs = (Array.isArray(job?.platform_fields?.depopCouleurs) ? job.platform_fields.depopCouleurs : []).map(String);
+  try {
+    depopEtape("cible");
+    const cible = await depopIdentifiants(job);
+    if (cible.absente) return depopSortie({ success: false, needsUser: true, error: "Cette annonce n'existe plus sur Depop : rien n'a été modifié.", t0 });
+    if (cible.illisible || !cible.id) return depopSortie({ success: false, reprise: true, error: `Annonce Depop illisible (${cible.illisible ?? "sans identifiant"}) : rien n'a été modifié.`, t0 });
+    const session = await depopSession();
+    if (session.connecte === false) return depopSortie({ success: false, needsUser: true, error: DEPOP_MSG_SESSION, sessionPage: "morte", t0 });
+    if (session.connecte !== true) return depopSortie({ success: false, reprise: true, error: `Session Depop illisible (${session.motif}) : rien n'a été modifié.`, t0 });
+    depopEtape("etat_avant");
+    const avant = await depopJson(DEPOP_ENDPOINTS.produit(cible.id), { authentifie: false });
+    if (!avant.ok || !avant.corps) return depopSortie({ success: false, reprise: true, error: `Annonce Depop illisible avant modification (HTTP ${avant.statut || avant.erreurReseau}) : rien n'a été modifié.`, t0 });
+    const garde = depopModificationCouleurPermise({ produit: avant.corps, session, couleurs });
+    if (!garde.ok) {
+      depopTracer(`garde : ${garde.motif} — rien n'est envoyé`);
+      return depopSortie({ success: false, refus: garde.motif, error: garde.motif === "couleur_deja_posee"
+        ? "Cette annonce Depop a déjà une couleur : on n'y touche pas."
+        : `Modification Depop refusée avant tout envoi (${garde.motif}) : rien n'a été modifié.`, t0 });
+    }
+    depopEtape("lecture_formulaire");
+    const lu = await depopJson(DEPOP_MODIFICATION.lecture(cible.slug || String(avant.corps.slug ?? "")));
+    if (lu.statut === 401) return depopSortie({ success: false, needsUser: true, error: DEPOP_MSG_SESSION, sessionPage: "morte", t0 });
+    if (!lu.ok || !lu.corps) return depopSortie({ success: false, reprise: true, error: `Formulaire de modification Depop illisible (HTTP ${lu.statut || lu.erreurReseau}) : rien n'a été modifié.`, t0 });
+    const corps = depopCorpsModificationCouleur(lu.corps, couleurs);
+    depopEtape("modification");
+    const m = await depopJson(DEPOP_MODIFICATION.ecriture(cible.id, cible.slug), { methode: DEPOP_MODIFICATION.methode, corps });
+    depopTracer(`${DEPOP_MODIFICATION.methode} modification : HTTP ${m.statut || m.erreurReseau}`);
+    if (m.statut === 401) return depopSortie({ success: false, needsUser: true, error: DEPOP_MSG_SESSION, sessionPage: "morte", t0 });
+    depopEtape("verification");
+    await depopAttendre(DEPOP_PAUSE_MS);
+    const apres = await depopJson(DEPOP_ENDPOINTS.produit(cible.id), { authentifie: false });
+    const enLigne = Array.isArray(apres.corps?.attributes?.colour) ? apres.corps.attributes.colour.map(String) : [];
+    if (couleurs.length === enLigne.length && couleurs.every((c) => enLigne.includes(c))) {
+      return depopSortie({ success: true, couleurs: enLigne, t0 });
+    }
+    return depopSortie({ success: false, modificationEnvoyee: m.ok === true,
+      error: `Modification Depop NON confirmée : après l'envoi (HTTP ${m.statut || m.erreurReseau}), l'annonce affiche ${enLigne.length ? enLigne.join(", ") : "aucune couleur"}. Rien n'est renvoyé.`,
+      reponse: JSON.stringify(m.corps ?? m.texte ?? "").slice(0, 300), t0 });
+  } catch (e) {
+    depopTracer(`exception : ${String(e?.message ?? e)}`);
+    return depopSortie({ success: false, error: `Depop : ${String(e?.message ?? e)}`, t0 });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 9. LE RELEVÉ DE LA BOUTIQUE, LA FICHE, L'ÉTAT, LES VENTES
 // ═══════════════════════════════════════════════════════════════════════════
 // (02/11, laurankoole) 120 CARACTÈRES, jamais 120 unités UTF-16 : `.slice` coupait un émoji en deux et le demi-
@@ -1051,6 +1146,9 @@ async function capturerArticle(slug) {
       taille: variante?.variant ?? null,
       etat: at.condition ? (DEPOP_LIBELLE_PAR_ETAT[at.condition] ?? null) : null,
       couleur: couleurs.length ? couleurs.join(", ") : null,
+      // (13/11, point 5c) Les IDENTIFIANTS de couleur que Depop donne (black, navy…), à côté du libellé : la copie d'une
+      // republication les reprend tels quels (_shared/depop-couleur.js) — jamais relus depuis un libellé. Inconnus écartés.
+      couleurs_ids: (Array.isArray(at.colour) ? at.colour : []).map(String).filter((c) => Object.prototype.hasOwnProperty.call(DEPOP_COULEUR_LIBELLE, c)).slice(0, 2),
       // La catégorie par IDENTIFIANTS, jamais par libellé (cf. RATTACHEMENT.md) :
       // « <groupe>/<type> », que le serveur et l'app rattachent par la table
       // DEPOP_TYPE_VERS_INTERNE.
@@ -1138,6 +1236,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
     if (msg?.type === "DEPOP_CAPTURE_ARTICLE") return repondre(capturerArticle(String(msg.listingId ?? "")), sendResponse);
     if (msg?.type === "DEPOP_ETAT_ANNONCE") return repondre(lireEtatAnnonceDepop(String(msg.slug ?? "")), sendResponse);
     if (msg?.type === "DEPOP_VENTES") return repondre(lireVentesDepop(), sendResponse);
+    // (13/11, point 5c) Préparé, fermé : rien n'est envoyé tant que DEPOP_MODIFICATION_ACTIVE est false.
+    if (msg?.type === "DEPOP_MODIFIER_COULEUR") {
+      depopEtapeCourante = null;
+      depopTrace.length = 0;
+      return repondre(modifierCouleurAnnonce(msg.job), sendResponse);
+    }
     if (msg?.type === "DELETE_LISTING" || msg?.type === "FILL_LISTING") {
       depopEtapeCourante = null;
       depopTrace.length = 0;

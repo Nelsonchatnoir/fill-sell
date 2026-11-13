@@ -57,6 +57,32 @@ export function avecDernierReussi({ phase, fini = null, tentative = null } = {},
   return { phase: plusRecent && phase !== 'hors_compte' ? 'fait' : phase, fini: Number.isFinite(f) ? Math.max(f, r) : r };
 }
 
+// ── (13/11, étape 5 du lot « zéro problème », bloc 6 ii — feu vert de Nico : « plateforme nommée dans « il y a X » ») ──
+// L'en-tête disait « Synchronisé il y a X » avec X = le relevé réussi le PLUS RÉCENT, toutes plateformes confondues :
+// 447d920c, 12/11 17:04:45 — « il y a 8 min » (Leboncoin) quand Vinted n'avait plus été relu depuis 20 h 36. L'en-tête
+// NOMME désormais la plateforme : la MOINS fraîche d'abord (c'est elle qu'il faut savoir ; la ligne peut être coupée sur
+// téléphone), puis la plus fraîche — « Vinted synchronisé il y a 21 h · Leboncoin il y a 8 min ». Même délai : « Vinted et
+// Leboncoin synchronisés il y a 3 min ». Le détail de chaque plateforme reste au toucher (etatBoutonSynchro.lignes).
+/**
+ * @param {{ reussis: Record<string, unknown> | null, plateformes: string[], noms?: Record<string, string>, maintenant?: number, fr?: boolean }} o
+ *   `reussis` : le dernier relevé réussi par plateforme (syncPlateformes.lireDerniersReussis) ; `plateformes` : celles du compte.
+ * @returns {string | null} null si rien n'est relu (l'appelant garde sa phrase).
+ */
+export function enTeteSynchro({ reussis = null, plateformes = [], noms = {}, maintenant = Date.now(), fr = true } = {}) {
+  if (!reussis || typeof reussis !== 'object') return null;
+  const lues = (Array.isArray(plateformes) ? plateformes : [])
+    .map((p) => ({ p, t: ms(reussis[p]) }))
+    .filter((x) => Number.isFinite(x.t))
+    .sort((a, b) => a.t - b.t);
+  if (!lues.length) return null;
+  const nom = (p) => String(noms?.[p] ?? p);
+  const vieille = lues[0], fraiche = lues[lues.length - 1];
+  const dV = depuisCourt(vieille.t, maintenant, fr), dF = depuisCourt(fraiche.t, maintenant, fr);
+  if (lues.length === 1) return fr ? `${nom(vieille.p)} synchronisé ${dV}` : `${nom(vieille.p)} synced ${dV}`;
+  if (dV === dF) return fr ? `${nom(vieille.p)} et ${nom(fraiche.p)} synchronisés ${dV}` : `${nom(vieille.p)} and ${nom(fraiche.p)} synced ${dV}`;
+  return fr ? `${nom(vieille.p)} synchronisé ${dV} · ${nom(fraiche.p)} ${dF}` : `${nom(vieille.p)} synced ${dV} · ${nom(fraiche.p)} ${dF}`;
+}
+
 /** La phrase courte de la carte, à la place du détail (replié). */
 export function texteAutomatique(fr = true) {
   return fr ? 'La synchro et la surveillance des ventes sont automatiques.' : 'Syncing and sales tracking are automatic.';

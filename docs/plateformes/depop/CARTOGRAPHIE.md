@@ -204,3 +204,29 @@ content-scripts/depop.js` (connecteur), contrats détaillés en tête du fichier
 - État du compte au 09/10 : l'annonce « Scotch » (945704866, 80 €) est **celle de Nico**,
   créée par lui — jamais touchée. Deux images orphelines (sans annonce) restent chez
   Depop, invisibles.
+
+## 9. Modification d'une annonce en ligne — PLAN DE RELEVÉ (13/11, point 5c ; à faire par Nico, rien d'appelé)
+But : poser la couleur de la fiche sur une annonce Depop DÉJÀ en ligne qui n'en a aucune (compte 8ac5bbda : 10 annonces),
+sans la republier. Le code d'extension est PRÉPARÉ et FERMÉ (`content-scripts/depop.js` § 8 bis :
+`DEPOP_MODIFICATION_ACTIVE = false`, `DEPOP_MODIFICATION.ecriture/methode = null`) : seul ce relevé peut les remplir.
+Cadre : compte de Nico, annonce de test à 999 € ou plus, une seule extension FillSell active, aucun client touché.
+1. Préparer : sur depop.com (« Sell »), une annonce de test SANS couleur, 999 €, t-shirt homme, 1 photo. Chrome : F12 →
+   Network, « Preserve log », filtre `webapi.depop.com`, type Fetch/XHR.
+2. Ouvrir l'annonce → « Edit listing ». Relever l'appel de LECTURE du formulaire (attendu :
+   `GET /presentation/api/v1/products/by-slug/<slug>/edit-listing/`) : méthode, chemin exact, statut, corps de la réponse
+   (« Copy response »). ⛔ Jamais le jeton `Authorization` dans une copie : noter seulement qu'il est présent.
+3. Choisir UNE couleur (Grey), ne rien toucher d'autre, « Save ». Relever l'appel d'ÉCRITURE : méthode (PUT, PATCH,
+   POST ?), chemin exact (`/presentation/api/v1/listing/products/<id>/` ? `/presentation/api/v1/products/<id>/` ?),
+   corps envoyé (« Copy payload ») et réponse (statut, corps). À lire dans le corps : la couleur (clé et forme :
+   `colour: ["grey"]` à la racine, ou `attributes.colour`), le corps est-il COMPLET (comme la création : description,
+   prix, `picture_ids`, `variant_set`/`variants`, port, `country`, `geo_position_*`) ou réduit au champ changé ;
+   `listing_lifecycle_id` / `persistent_id` repris ou neufs ; en-têtes propres à l'appel.
+4. Relire la fiche publique (`GET …/products/by-slug/<slug>/`) : `attributes.colour` = ["grey"], MÊME `id` et MÊME slug,
+   `status` STATUS_ONSALE, photos et prix inchangés, `updated_at` ; l'annonce est-elle remontée dans la boutique ?
+5. (Facultatif, pour le savoir) Deux couleurs (Grey + Black) : le corps ; puis retirer la couleur : clé vide ou absente.
+6. Retirer l'annonce de test (FillSell ou depop.com). Copies sans jeton dans `docs/plateformes/depop/brut/`
+   (`edit-listing-lecture.json`, `edit-listing-ecriture.json`), une ligne « Modification » au tableau du § 8.
+Ensuite (code, 0.6.188 au plus tôt) : remplir `DEPOP_MODIFICATION.ecriture` / `methode`, ajuster
+`depopCorpsModificationCouleur` à la forme relevée, ouvrir l'interrupteur après un essai réel de l'extension sur la même
+annonce de test ; le geste (background.js), le serveur (tâche « modifier la couleur » : annonce relevée par l'API SANS
+couleur + fiche avec couleur, jamais une annonce qui en a une) et l'écran viennent avec — décision de Nico.

@@ -21,12 +21,15 @@
 // ne se déduit de la capture que s'il désigne UNE feuille Depop existante ; l'état
 // suit la fiche (jamais embelli, jamais descendu : règle du 22/10). Ce qui reste
 // inconnu reste au contrôle avant retrait (pré-vol de l'extension), qui ne retire rien.
-// Pur, sans I/O : scripts/copie-republication-depop-selftest.mjs.
+// (13/11, point 5c) LA COULEUR fait exception à cet ordre : l'annonce EN LIGNE d'abord (une couleur posée sur Depop
+// reste la sienne), puis le dépôt, puis la fiche — et elle se complète même sur une copie par ailleurs complète.
+// Pur, sans I/O : scripts/copie-republication-depop-selftest.mjs, scripts/depop-couleur-fiche-selftest.mjs.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { FEUILLES_DEPOP } from "./depop-feuilles.js";
 import { tierEtat } from "./etat-plateformes.js";
 import { portDepopValide } from "./port-depop.js";
+import { couleurDepopACompleter, couleurDepopRepublication } from "./depop-couleur.js";
 
 // Le palier de chaque état Depop (sens retour : used_like_new = le plus BAS des deux).
 const PALIER_PAR_ETAT_DEPOP = Object.freeze({
@@ -206,7 +209,10 @@ export function tailleDepopPourLaCopie({ capture = null, fiche = null, titre = "
 export function completerCopieDepop({ job, depots = [], capture = null, fiche = null, le = null } = {}) {
   if (!job || job.platform !== "depop" || job.action !== "republish") return null;
   const avant = champsManquantsCopieDepop(job);
-  if (!avant.length) return null;
+  // (13/11, point 5c) La couleur se complète aussi sur une copie par ailleurs complète (elle n'est jamais exigée par
+  // Depop : sans elle, l'annonce recréée repartait sans couleur alors que la fiche en porte une).
+  const couleurAFaire = couleurDepopACompleter(job.platform_fields);
+  if (!avant.length && !couleurAFaire) return null;
   const pf = { ...(job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {}) };
   const sources = {};
   const depot = (Array.isArray(depots) ? depots : [])
@@ -216,18 +222,19 @@ export function completerCopieDepop({ job, depots = [], capture = null, fiche = 
 
   // 1. Description : l'annonce en ligne (ce qu'elle dit aujourd'hui), le dépôt, la fiche.
   let description = null;
-  if (vide(job.description)) {
+  if (avant.length && vide(job.description)) {
     const d = [[capture?.description, "annonce_en_ligne"], [depot?.description, "depot_fillsell"], [fiche?.description, "fiche"]]
       .find(([v]) => !vide(v));
     if (d) { description = String(d[0]).trim(); sources.description = d[1]; }
   }
   // 2. Ce que le dépôt FillSell portait, clé par clé, jamais par-dessus la copie.
-  if (depot) {
+  if (avant.length && depot) {
     for (const k of CLES_DU_DEPOT) {
       if (!vide(pf[k]) || vide(pfD[k])) continue;
       if (k === "depopCategoryPath" && !(Array.isArray(pfD[k]) && pfD[k].length === 3 && IDS_FEUILLES.has(pfD[k].join("/")))) continue;
       if (k === "depopPort" && portDepopValide(pfD[k]) == null) continue;
       if (k === "depopEtat") continue; // l'état se décide plus bas, sur toutes les sources
+      if (k === "depopCouleurs" || k === "couleur") continue; // (13/11) la couleur se décide plus bas, l'annonce en ligne d'abord
       pf[k] = Array.isArray(pfD[k]) ? [...pfD[k]] : pfD[k];
       sources[k] = "depot_fillsell";
     }
@@ -259,13 +266,24 @@ export function completerCopieDepop({ job, depots = [], capture = null, fiche = 
     if (e) { pf.depopEtat = e; sources.depopEtat = palierDe(fiche?.etat) ? "fiche" : (PALIER_PAR_ETAT_DEPOP[String(pfD.depopEtat ?? "")] ? "depot_fillsell" : "annonce_en_ligne"); }
   }
   // 5. Marque : l'annonce en ligne, quand ni la copie ni le dépôt ne la portent.
-  if (vide(pf.depopMarque) && !vide(capture?.marque)) { pf.depopMarque = String(capture.marque).trim(); sources.depopMarque = "annonce_en_ligne"; }
+  // (13/11) Les étapes 5 et 6 ne s'ajoutent qu'à une copie qu'on complète déjà (une copie complète reçoit seulement sa
+  // couleur, étape 7).
+  if (avant.length && vide(pf.depopMarque) && !vide(capture?.marque)) { pf.depopMarque = String(capture.marque).trim(); sources.depopMarque = "annonce_en_ligne"; }
   // 6. (07/11, famille 6c' — a3002ab6 1fbef555, jean Kaporal « 33 ») La TAILLE, quand ni la copie ni le dépôt FillSell ne
   // la portent (depopTaille / taille) : sans elle, le formulaire de recréation demandait « Taille (Depop) » alors que
   // l'annonce en ligne, la fiche et le titre disaient tous « 33 », dans la grille. Voir tailleDepopPourLaCopie.
-  if (vide(pf.depopTaille) && vide(pf.taille)) {
+  if (avant.length && vide(pf.depopTaille) && vide(pf.taille)) {
     const t = tailleDepopPourLaCopie({ capture, fiche, titre: job.title, grille: grilleDepopConnue(pf) });
     if (t) { pf.depopTaille = t.valeur; sources.depopTaille = t.source; }
+  }
+  // 7. (13/11, point 5c — compte 8ac5bbda) LA COULEUR, par identifiants (_shared/depop-couleur.js) : l'annonce EN LIGNE
+  // d'abord (relevé de l'API Depop : sa couleur posée sur Depop reste la sienne — 9ec3b807 « Bleu, Marine », fiche
+  // « Bleu ») ; en ligne sans couleur alors que le dépôt en avait envoyé une : retirée sur Depop, rien n'est remis ; sans
+  // relevé de l'API : le dépôt FillSell ; puis la fiche (096856f2 : dépôt et annonce sans couleur, fiche « Gris »).
+  // Jamais par-dessus une couleur de la copie.
+  if (couleurAFaire) {
+    const c = couleurDepopRepublication({ pf, depot, capture, ficheAttributs: fiche });
+    if (c?.ids?.length) { pf.depopCouleurs = [...c.ids]; sources.depopCouleurs = c.source; }
   }
 
   if (!Object.keys(sources).length) return null;

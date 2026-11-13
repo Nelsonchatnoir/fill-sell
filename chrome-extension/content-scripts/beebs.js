@@ -396,6 +396,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     }
 
     MARQUE_HORS_LISTE_BEEBS = null; // (18/10) la marque hors liste ne survit jamais à un job
+    FIN_DU_VENDEUR = typeof msg.job?.fin_de_description === "string" && msg.job.fin_de_description.trim() ? msg.job.fin_de_description : null; // (13/11) la fin du vendeur, servie par get-pending-jobs
     const borne = armerBorneParMessage(msg);
     const reponse = fillListingForm(msg.job)
       .then((result) => result)
@@ -3591,11 +3592,30 @@ function descriptionNommeLaMarque(description, marque) {
   const dc = cleMarqueExacte(description), mc = cleMarqueExacte(marque);
   return !!mc && mc.length >= 4 && /[^a-z0-9]/.test(m) && dc.includes(mc);
 }
-function descriptionAvecMarque(description, marque) {
+// (13/11, lot « zéro problème », point 5a de Nico — 0.6.187) LES PHRASES FINALES DU VENDEUR RESTENT LES
+// DERNIÈRES : get-pending-jobs sert « fin_de_description » quand le texte finit par elles (consignes « Finir
+// EXACTEMENT … »). La marque hors liste s'écrit AVANT elles, jamais après (compte de63ca45 : « Marque : X » tombait
+// après « 🚚 Expédition… »). Comparaison ligne à ligne, espaces et caractères invisibles ignorés ; la fin ne se
+// retrouve pas → comme avant, à la fin.
+let FIN_DU_VENDEUR = null;
+function debutFinDuVendeur(lignes, fin) {
+  const net = (l) => String(l ?? "").replace(/[\u200B-\u200F\u2060\uFEFF]/g, "").replace(/\s+/g, " ").trim();
+  const lignesFin = String(fin ?? "").split("\n").map(net).filter(Boolean);
+  if (!lignesFin.length) return -1;
+  const pleines = [];
+  lignes.forEach((l, i) => { if (net(l)) pleines.push(i); });
+  if (pleines.length <= lignesFin.length) return -1;
+  const dernieres = pleines.slice(-lignesFin.length);
+  return dernieres.every((i, k) => net(lignes[i]) === lignesFin[k]) ? dernieres[0] : -1;
+}
+function descriptionAvecMarque(description, marque, fin = FIN_DU_VENDEUR) {
   const d = String(description ?? "");
   const m = String(marque ?? "").trim();
   if (!m || descriptionNommeLaMarque(d, m)) return d;
-  return `${d.replace(/\s+$/, "")}\n\nMarque : ${m}`;
+  const lignes = d.split("\n");
+  const i = fin ? debutFinDuVendeur(lignes, fin) : -1;
+  if (i < 0) return `${d.replace(/\s+$/, "")}\n\nMarque : ${m}`;
+  return `${lignes.slice(0, i).join("\n").replace(/\s+$/, "")}\n\nMarque : ${m}\n\n${lignes.slice(i).join("\n")}`;
 }
 /** L'option dont le libellé EST la marque (tolérance : casse, espaces, ponctuation, accents), ou null. */
 function trouverOptionMarqueExacte(options, text) {

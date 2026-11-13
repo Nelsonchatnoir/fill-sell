@@ -49,7 +49,10 @@ const qteStock = (l) => (l ?? []).reduce((a, i) => a + (Number(i.quantite) >= 10
 ok(qteStock([{ quantite: 9999 }, { quantite: 2 }, { quantite: null }]) === 4, "9999 + 2 + 1 → 4 (et non 10 002)");
 const vs = lire("src/utils/vintedSync.js");
 ok(/export async function compterEnVenteDuReleve/.test(vs) && /\.eq\('status', 'active'\)/.test(vs), "le compteur de la boutique lit les annonces relevées « active » pendant le relevé");
-ok(/en vente\$\{vendues \?/.test(st) && /article\$\{vus > 1 \? 's' : ''\} lu/.test(st), "« N en vente · M vendues encore affichées » ; sans compte lisible : « N articles lus », jamais « annonces »");
+// (13/11, décision de Nico — bloc 6 iii : la ligne « N vendues encore affichées » rendue visible) Le texte a quitté StockTab
+// pour annonces/boutiqueVinted.js (une seule rédaction : la ligne Vinted cachée ET la carte visible du bloc) ; même règle.
+const bv = lire("src/annonces/boutiqueVinted.js");
+ok(/en vente\$\{vendues \?/.test(bv) && /article\$\{lus > 1 \? 's' : ''\} lu/.test(bv) && st.includes("compteBoutiqueVinted({ vus, enVente }, lang)"), "« N en vente · M vendues encore affichées » ; sans compte lisible : « N articles lus », jamais « annonces »");
 
 console.log(ko ? `\n✗ ${ko} échec(s) sur ${n}` : `\n✓ ${n}/${n} — ce que l'app appelle « en ligne »`);
 process.exit(ko ? 1 : 0);

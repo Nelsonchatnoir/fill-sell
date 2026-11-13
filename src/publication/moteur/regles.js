@@ -753,6 +753,8 @@ export function questionsParPlateforme({
   // (25/09) Les plateformes dont le rayon reste à choisir (rayon refusé, aucun
   // rayon sûr à sa place). Vide par défaut : sortie identique à avant.
   rayonsAChoisir = [], libelleRayon = "Rayon",
+  // (13/11) Les plateformes dont l'état reste à choisir (moteur/etatAChoisir.js). Vide par défaut : sortie identique.
+  etatAChoisir = [], libelleEtat = "État",
 }) {
   const out = {};
   const ajoute = (p, label) => {
@@ -776,6 +778,7 @@ export function questionsParPlateforme({
   if (descriptionVideVinted) ajoute("vinted", libelleDescription);
   if (beebsGenreBlocked) ajoute("beebs", libelleGenre);
   for (const p of rayonsAChoisir ?? []) ajoute(p, libelleRayon);
+  for (const p of etatAChoisir ?? []) ajoute(p, libelleEtat);
   return out;
 }
 

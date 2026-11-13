@@ -71,26 +71,30 @@ const PF_REGIS = () => ({
   deleted_at: "2026-10-18T13:18:45.791Z", deleted_at_serveur: "2026-10-18T13:18:45.791Z",
   deleted_at_client: "2026-10-18T13:11:38.000Z", suppression_verdict: { date_serveur: "2026-10-18T13:11:38.000Z", http: 200 },
   recreation_tentee: { n: 1, at: "2026-10-18T13:11:20.000Z", une_passe: true },
+  // (13/11, décision de Nico — jamais par le titre) L'empreinte des photos de notre envoi, gardée sur le job.
+  recreation_photos_envoyees: { ids: [700000077701], jetons: [] },
 });
 const TITRE = "Short jean Levi's levi Strauss 24x32 525 8501";
-const COPIE = { vinted_item_id: "7000000777", titre: TITRE, url: "https://www.vinted.fr/items/7000000777-short-jean", photo_ts: ts("2026-10-18T13:11:49Z") };
+// (13/11, décision de Nico — jamais par le titre) La copie se reconnaît aux photos de NOTRE envoi (photo_ids), plus à son titre.
+const COPIE = { vinted_item_id: "7000000777", titre: TITRE, url: "https://www.vinted.fr/items/7000000777-short-jean", photo_ts: ts("2026-10-18T13:11:49Z"), photo_ids: [700000077701] };
+const NOS_PHOTOS = PF_REGIS().recreation_photos_envoyees;
 
 console.log("\n1. Le seuil : la date de retrait la plus TÔT, horloge Vinted d'abord");
 ok(B.seuilRetraitRecreation(PF_REGIS()) === "2026-10-18T13:11:38.000Z", "Régis : min(date_serveur, client, deleted_at, serveur) = 13:11:38 (et non 13:18:45)");
 ok(B.seuilRetraitRecreation({ deleted_at: "2026-10-18T10:00:05Z", deleted_at_serveur: "2026-10-18T10:00:00Z" }) === iso("2026-10-18T10:00:00Z"), "sans verdict : le plus tôt de deleted_at / deleted_at_serveur");
 ok(B.seuilRetraitRecreation({ deleted_at: "pas une date" }) === null && B.seuilRetraitRecreation({}) === null && B.seuilRetraitRecreation(null) === null, "aucune date lisible → null (l'appelant garde son repli)");
 {
-  const avant = B.reconnaitreAnnonceRecreee([COPIE], { titre: TITRE, deletedAt: PF_REGIS().deleted_at, idsConnus: new Set() });
-  const apres = B.reconnaitreAnnonceRecreee([COPIE], { titre: TITRE, deletedAt: B.seuilRetraitRecreation(PF_REGIS()), idsConnus: new Set() });
+  const avant = B.reconnaitreAnnonceRecreee([COPIE], { photos: NOS_PHOTOS, deletedAt: PF_REGIS().deleted_at, idsConnus: new Set() });
+  const apres = B.reconnaitreAnnonceRecreee([COPIE], { photos: NOS_PHOTOS, deletedAt: B.seuilRetraitRecreation(PF_REGIS()), idsConnus: new Set() });
   ok(!avant.item, "AVANT (seuil deleted_at 13:18:45) : la copie de 13:11:49 n'est PAS reconnue — c'est la 2e copie de Régis");
   ok(apres.item?.vinted_item_id === COPIE.vinted_item_id, "APRÈS (seuil 13:11:38) : la copie est reconnue");
   const seuil = "2026-10-18T13:11:38.000Z";
   const a = (s) => ({ ...COPIE, photo_ts: ts(s) });
-  ok(B.reconnaitreAnnonceRecreee([a("2026-10-18T13:11:36Z")], { titre: TITRE, deletedAt: seuil, idsConnus: [] }).item, "tolérance : une photo 2 s avant le seuil est reconnue (toujours ≥ seuil − 2 s)");
-  ok(!B.reconnaitreAnnonceRecreee([a("2026-10-18T13:11:35Z")], { titre: TITRE, deletedAt: seuil, idsConnus: [] }).item, "…3 s avant : non");
-  ok(!B.reconnaitreAnnonceRecreee([{ ...COPIE, photo_ts: null }], { titre: TITRE, deletedAt: seuil, idsConnus: [] }).item, "photo_ts absent : jamais reconnue");
-  ok(!B.reconnaitreAnnonceRecreee([COPIE], { titre: TITRE, deletedAt: seuil, idsConnus: new Set([COPIE.vinted_item_id]) }).item, "id déjà suivi par l'inventaire : jamais reconnue");
-  const deux = B.reconnaitreAnnonceRecreee([COPIE, { ...COPIE, vinted_item_id: "7000000778" }], { titre: TITRE, deletedAt: seuil, idsConnus: [] });
+  ok(B.reconnaitreAnnonceRecreee([a("2026-10-18T13:11:36Z")], { photos: NOS_PHOTOS, deletedAt: seuil, idsConnus: [] }).item, "tolérance : une photo 2 s avant le seuil est reconnue (toujours ≥ seuil − 2 s)");
+  ok(!B.reconnaitreAnnonceRecreee([a("2026-10-18T13:11:35Z")], { photos: NOS_PHOTOS, deletedAt: seuil, idsConnus: [] }).item, "…3 s avant : non");
+  ok(!B.reconnaitreAnnonceRecreee([{ ...COPIE, photo_ts: null }], { photos: NOS_PHOTOS, deletedAt: seuil, idsConnus: [] }).item, "photo_ts absent : jamais reconnue");
+  ok(!B.reconnaitreAnnonceRecreee([COPIE], { photos: NOS_PHOTOS, deletedAt: seuil, idsConnus: new Set([COPIE.vinted_item_id]) }).item, "id déjà suivi par l'inventaire : jamais reconnue");
+  const deux = B.reconnaitreAnnonceRecreee([COPIE, { ...COPIE, vinted_item_id: "7000000778" }], { photos: NOS_PHOTOS, deletedAt: seuil, idsConnus: [] });
   ok(!deux.item && /2 annonces correspondent/.test(deux.raison), "deux candidates : abstention (inchangé)");
 }
 
@@ -125,7 +129,7 @@ ok(B.continuerLectureDressingCopie({ articles: [...recents(1).slice(0, 95), { vi
 ok(B.continuerLectureDressingCopie({ articles: recents(1), pagination: { total_pages: 1 } }, 1, SEUIL_MS) === false, "dernière page (pagination) → arrêt");
 ok(B.continuerLectureDressingCopie({ articles: [] }, 1, SEUIL_MS) === false, "page vide → arrêt");
 ok(B.continuerLectureDressingCopie({ articles: recents(1) }, 1, NaN) === false && B.continuerLectureDressingCopie({ articles: brouillons(1) }, 1, NaN) === true, "sans seuil : la première page d'annonces en ligne suffit (aucune reconnaissance possible au-delà)");
-ok(!B.reconnaitreAnnonceRecreee([{ ...COPIE, statut: "draft" }], { titre: TITRE, deletedAt: "2026-10-18T13:11:38Z", idsConnus: [] }).item, "reconnaitreAnnonceRecreee : un brouillon n'est jamais la copie");
+ok(!B.reconnaitreAnnonceRecreee([{ ...COPIE, statut: "draft" }], { photos: NOS_PHOTOS, deletedAt: "2026-10-18T13:11:38Z", idsConnus: [] }).item, "reconnaitreAnnonceRecreee : un brouillon n'est jamais la copie");
 
 // Le dressing simulé de Régis, tel que sa propriétaire le voit : 96 BROUILLONS
 // en page 1, la copie en page 2 parmi les annonces en ligne (de la plus récente
@@ -159,7 +163,7 @@ const dressingRegis = ({ avecCopie, copieEnBrouillon = false }) => (msg) => {
   ok(pagesDemandees.every((m) => m.order === "newest_first"), "chaque page est demandée avec order=newest_first");
   ok(lu.articles.some((a) => a.vinted_item_id === COPIE.vinted_item_id), "la copie, en page 2 derrière 96 brouillons, est lue (avant : page 1 seule — jamais vue chez Régis)");
   ok(lu.brouillons === 99 && lu.articles.every((a) => a.statut !== "draft"), `les brouillons sont écartés (${lu.brouillons} vus, aucun rendu)`);
-  ok(B.reconnaitreAnnonceRecreee(lu.articles, { titre: TITRE, deletedAt: B.seuilRetraitRecreation(PF_REGIS()), idsConnus: [] }).item?.vinted_item_id === COPIE.vinted_item_id,
+  ok(B.reconnaitreAnnonceRecreee(lu.articles, { photos: NOS_PHOTOS, deletedAt: B.seuilRetraitRecreation(PF_REGIS()), idsConnus: [] }).item?.vinted_item_id === COPIE.vinted_item_id,
     "…et reconnue (le brouillon au même titre, photo 13:11:50, ne fait pas une 2e candidate)");
   dressing = (msg) => ({ success: true, page: msg.page, articles: msg.page === 1 ? [COPIE_EN_LIGNE, ...recents(5, "2026-10-18T09:00:00Z").slice(0, 95)] : [] });
   const luSans = await B.lireDressingPourCopie(1, "31995881", B.seuilRetraitRecreation(PF_REGIS()));

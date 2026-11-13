@@ -142,7 +142,8 @@ const LANG_DIRECTIVE: Record<string, string> = {
 // contenu du prompt, il s'incrémente à chaque deploy même sans changement de
 // texte. À bumper à CHAQUE modification de PLATFORM_CFG.system, de
 // REDACTION_DIRECTIVE ou de PLATFORM_LIMITS.
-export const VERSION_PROMPT = "2026-09-25a"; // zone euro : directive de langue de sortie par plateforme (copie Vinted dans la langue du site Vinted du vendeur) — français inchangé
+export const VERSION_PROMPT = "2026-11-13a"; // (13/11, point 5a) consignes du vendeur EN TÊTE, blocs de forme génériques retirés quand il en a ; hashtags par la table des capacités (Beebs : aucun, comme à la publication depuis le 30/10) ; note du vendeur = source des faits, éléments nommés — sans consigne ni note, Vinted/Leboncoin/eBay inchangés à l'octet
+// (avant : "2026-09-25a" — zone euro : directive de langue de sortie par plateforme)
 
 // ── Limites de caractères par plateforme (2026-07-29) ───────────────────────
 // PROVENANCE de chaque chiffre — à mettre à jour avec la source, jamais « de
@@ -167,24 +168,24 @@ export const VERSION_PROMPT = "2026-09-25a"; // zone euro : directive de langue 
 // Ces plafonds ne sont PAS la cible de rédaction (cf. `cible` ci-dessous) :
 // ce sont des filets. Le tronquage serveur (clampToWord) ne doit jamais avoir
 // à agir si le modèle respecte sa cible.
-const PLATFORM_LIMITS: Record<string, { titre: number; desc: number; cible: [number, number]; hashtags: boolean }> = {
-  // `cible` = fourchette INDICATIVE de longueur pour la description.
-  // ABAISSÉE le 29/07 (arbitrage Nico) : les cibles hautes du premier jet
-  // (500-1000 sur Vinted, 450-900 ailleurs) poussaient le modèle à broder pour
-  // atteindre le compte — c'est exactement comme ça qu'on fabrique une
-  // provenance ou une garantie de fonctionnement inventées. Mieux vaut COURT
-  // et vrai : une cible qu'on n'atteint pas ne coûte rien, une phrase inventée
-  // coûte un litige acheteur. Le prompt dit maintenant explicitement qu'un
-  // texte de 200 caractères entièrement vrai est un bon texte.
-  // `hashtags` = arbitrage produit de Nico (29/07) : OUI sur les places de
-  // marché mode/communauté (Vinted, Beebs), NON sur les petites annonces
-  // généralistes et sur eBay, où ça fait spam.
-  vinted:    { titre: 100, desc: 2000, cible: [300, 650], hashtags: true },
-  beebs:     { titre: 100, desc: 1500, cible: [250, 500], hashtags: true },
-  leboncoin: { titre: 200, desc: 3000, cible: [300, 600], hashtags: false },
-  ebay:      { titre: 80,  desc: 2000, cible: [300, 600], hashtags: false },
-  vestiaire: { titre: 100, desc: 2000, cible: [300, 600], hashtags: false },
-};
+// (13/11, point 5a de Nico) LES CHIFFRES ET LES HASHTAGS VIENNENT DE LA TABLE DES CAPACITÉS DU TEXTE
+// (_shared/capacites-texte.js, par plateforme et par site — même provenance, recopiée là-bas). Valeurs inchangées,
+// sauf les hashtags de Beebs : la rédaction les rendait OBLIGATOIRES (29/07) alors que la publication les retire sur
+// Beebs depuis le 30/10 (règle 5 de Nico, descriptionFidele) — la table tranche : aucun, comme ce qui part.
+// `cible` = fourchette INDICATIVE de longueur pour la description.
+// ABAISSÉE le 29/07 (arbitrage Nico) : les cibles hautes du premier jet
+// (500-1000 sur Vinted, 450-900 ailleurs) poussaient le modèle à broder pour
+// atteindre le compte — c'est exactement comme ça qu'on fabrique une
+// provenance ou une garantie de fonctionnement inventées. Mieux vaut COURT
+// et vrai : une cible qu'on n'atteint pas ne coûte rien, une phrase inventée
+// coûte un litige acheteur. Le prompt dit maintenant explicitement qu'un
+// texte de 200 caractères entièrement vrai est un bon texte.
+const PLATFORM_LIMITS: Record<string, { titre: number; desc: number; cible: [number, number]; hashtags: boolean }> = Object.fromEntries(
+  ["vinted", "beebs", "leboncoin", "ebay", "vestiaire"].map((p) => {
+    const c = capacitesTexte(p) as { titre: { max: number }; description: { max: number; hashtags: number }; redaction: { cible: [number, number] } };
+    return [p, { titre: c.titre.max, desc: c.description.max, cible: [c.redaction.cible[0], c.redaction.cible[1]] as [number, number], hashtags: c.description.hashtags > 0 }];
+  }),
+);
 
 // ── Consigne de RÉDACTION, commune aux 5 plateformes (2026-07-29) ───────────
 // Avant : les prompts ne disaient RIEN de la structure ni de la longueur d'une
@@ -238,7 +239,7 @@ const PLATFORM_LIMITS: Record<string, { titre: number; desc: number; cible: [num
 //    — une destination sportive se lit précisément comme une « occasion
 //    concrète ». Correctif double : interdit NOMMÉ (pratique sportive, usage
 //    technique) + point 3 restreint aux associations de STYLE.
-function redactionDirective(platform: string, lang: string): string {
+function redactionDirectiveGabarit(platform: string, lang: string): string {
   const lim = PLATFORM_LIMITS[platform];
   if (!lim) return "";
   const [bas, haut] = lim.cible;
@@ -294,6 +295,27 @@ LONGUEUR — ${bas} à ${haut} caractères QUAND la matière le permet, pas dava
 ${hashtagBloc}`;
 }
 
+// ── (13/11, point 5a de Nico) AVEC DES CONSIGNES, LES BLOCS DE FORME GÉNÉRIQUES S'EFFACENT ─────────────────────
+// Compte de63ca45 : « STRUCTURE — phrases suivies, sans liste à puces », « 5. Une courte ligne de fin sur l'envoi »,
+// « LONGUEUR — 300 à 650 », « HASHTAGS — OBLIGATOIRES » et le ton du gabarit (« quelques emojis 🌟✨ ») passaient AVANT
+// ses consignes (« une ligne vide entre chaque information », ses émojis, ses phrases de fin) et les contredisaient.
+// Décision de Nico (12/11) : quand le compte a des consignes, elles passent EN PREMIER et ces blocs ne sont plus
+// envoyés. Restent : le garde-fou (ne rien inventer), le titre sans SKU, les plafonds durs, les hashtags que la
+// plateforme refuse, les listes fermées. Sans consigne : le gabarit d'avant, à l'octet près.
+function redactionDirective(platform: string, lang: string, avecConsignes = false): string {
+  const gabarit = redactionDirectiveGabarit(platform, lang);
+  const lim = PLATFORM_LIMITS[platform];
+  if (!avecConsignes || !gabarit || !lim) return gabarit;
+  const en = lang === "en";
+  return gabarit
+    .replace(/\nSTRUCTURE —[\s\S]*?\n(?=TITRE —|TITLE —)/, "\n")
+    .replace(/\nLONGUEUR —[^\n]*/, `\nLONGUEUR — plafond dur : ${lim.desc} caractères ; le titre ne dépasse JAMAIS ${lim.titre} caractères. La forme et la longueur viennent des consignes du vendeur, dans ce plafond ; un texte court et vrai vaut toujours mieux qu'une phrase inventée.`)
+    .replace(/\nLENGTH —[^\n]*/, `\nLENGTH — hard cap: ${lim.desc} characters; the title must never exceed ${lim.titre} characters. Form and length come from the seller's instructions, within this cap; a short true text always beats an invented sentence.`)
+    .replace(/\nHASHTAGS — (?:OBLIGATOIRES|MANDATORY)[^\n]*/, en
+      ? "\nHASHTAGS — allowed on this platform, NEVER mandatory: only if the seller's instructions ask for them, and never a hashtag asserting something the context does not say."
+      : "\nHASHTAGS — permis sur cette plateforme, JAMAIS obligatoires : seulement si les consignes du vendeur en demandent, et jamais un hashtag qui affirme ce que le contexte ne dit pas.");
+}
+
 // ── TROP DE MAJUSCULES DANS LE TITRE (2026-09-08, refus Vinted) ─────────────
 // Règle et code DÉPLACÉS au caractère près dans _shared/titre-majuscules.ts
 // (2026-09-11) : get-pending-jobs l'applique aussi au titre SERVI des publish
@@ -309,20 +331,68 @@ import { familleJeuVideo, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVide
 // même table, même classeur, mêmes libellés. Il en sort pour que l'écran de
 // publication puisse traduire l'« État général » sans en écrire une seconde.
 import {
-  ETAT_PAR_PLATEFORME, tierEtat, DEFAUT_ETAT, retirerEtatContredit,
+  ETAT_PAR_PLATEFORME, tierEtat, retirerEtatContredit,
 } from "./etat-plateformes.js";
 // Refus du fournisseur d'IA → journal lu par l'ops-digest (01/10).
 import { noterEchecFournisseur } from "./echecs-fournisseurs.ts";
 // (29/10, lot B 1.3) Les consignes du vendeur : la même règle que l'écran Réglages › Rédaction.
-import { directiveConsignes, consigneSansHashtag, consigneSansEmoji } from "../../../src/utils/consignesRedaction.js";
+// (13/11, point 5a) LUES négation comprise (lireConsignes), placées EN TÊTE du prompt.
+import { directiveConsignes, lireConsignes } from "../../../src/utils/consignesRedaction.js";
+// (13/11, point 5a de Nico) La table des capacités du texte (par plateforme et par site), la description en blocs
+// (corps → phrase de test → fin du vendeur, posée par le code), les faits sans source retirés, les éléments nommés.
+import { capacitesTexte } from "./capacites-texte.js";
+import { rendreDescriptionGeneree } from "../../../src/utils/blocsDescription.js";
+import { sourcesDesFaits } from "../../../src/utils/faitsSansSource.js";
+import { elementsNommes } from "./elements-article.js";
 
-/** (29/10, lot B 1.3) Le texte GÉNÉRÉ tient « pas de hashtags » / « pas d'émojis » des consignes, même si le modèle s'en écarte. */
-function respecterConsignes(texte: string, consignes?: Record<string, unknown> | null): string {
-  let t = String(texte ?? "");
-  if (!consignes) return t;
-  if (consigneSansHashtag(consignes)) t = t.replace(/(^|\s)#[\p{L}\p{N}_-]+/gu, "$1").replace(/[ \t]+\n/g, "\n");
-  if (consigneSansEmoji(consignes)) t = t.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "");
-  return t.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+// ── (13/11, point 5a de Nico) LE TON DU GABARIT, RETIRÉ QUAND LE VENDEUR A DES CONSIGNES ──────────────────────
+// Recopiés AU CARACTÈRE PRÈS des prompts de PLATFORM_CFG (selftest:consignes-en-tete vérifie qu'ils y sont) : c'est
+// la seule phrase de forme de chaque prompt (le reste dit les champs et les listes fermées, qui restent).
+const TON_DU_GABARIT: Record<string, string> = {
+  vinted: "Ton: conversationnel, chaleureux, quelques emojis 🌟✨, mentionne envoi rapide. ",
+  leboncoin: "Ton: direct, factuel, modes d'envoi ou remise en main propre. ",
+  beebs: "Ton: punchy et direct, phrases courtes, quelques emojis 🔥, style jeune. ",
+  ebay: "Ton : structuré, technique, précis. ",
+  vestiaire: "Ton: luxueux, précis, descriptif matières et état, style magazine, pas d'emojis. ",
+};
+
+/** La phrase qui ouvre la note du vendeur dans le contexte de l'article (lue aussi pour en faire la source des faits). */
+export const PREFIXE_NOTE_VENDEUR = "Ce que le vendeur dit de son article (fait foi sur l'état et les détails qu'il nomme) : ";
+
+const directiveElements = (elements: string[]) =>
+  `ÉLÉMENTS NOMMÉS PAR LE VENDEUR (sa note) : ${elements.join(", ")}. Nomme chaque élément avec SON mot — une notice, ` +
+  `un livret, un feuillet et un guide ne sont pas la même chose — et n'en nomme AUCUN autre : un document ou un contenant ` +
+  `que sa note ne nomme pas n'existe pas pour toi. Une édition (Collector, Steelbook, Artbook, fourreau…) ne se nomme que ` +
+  `si le titre ou la note la nomme.`;
+
+/**
+ * (13/11, point 5a de Nico) Le prompt système d'UNE plateforme. Sans consigne : celui d'avant, à l'octet près (plus la
+ * liste des éléments quand le vendeur a laissé une note). Avec consignes : elles EN TÊTE, le ton du gabarit et les
+ * blocs de forme génériques retirés, un rappel en dernier.
+ */
+export function systemeRedaction(platform: string, { langue = null, consignes = null, descVendeuse = false, titreVendeuse = false, etatImpose = null, elementsDuVendeur = null }: {
+  langue?: string | null; consignes?: Record<string, unknown> | null; descVendeuse?: boolean; titreVendeuse?: boolean;
+  etatImpose?: string | null; elementsDuVendeur?: string[] | null;
+} = {}): string {
+  const cfg = PLATFORM_CFG[platform];
+  if (!cfg) return "";
+  const consignesTexte = directiveConsignes(consignes);
+  const avec = Boolean(consignesTexte);
+  const persona = avec && TON_DU_GABARIT[platform] ? cfg.system.replace(TON_DU_GABARIT[platform], "") : cfg.system;
+  return (avec ? `${consignesTexte}\n` : "")
+    + `${persona}\n${(langue && LANG_DIRECTIVE[langue]) || LANG_DIRECTIVE[cfg.lang] || LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang, avec)}`
+    + (descVendeuse ? `\n${DIRECTIVE_DESCRIPTION_FOURNIE}` : "")
+    + (titreVendeuse ? `\n${DIRECTIVE_TITRE_FOURNI}` : "")
+    + (etatImpose ? `\n${directiveEtatImpose(etatImpose)}` + (avec ? " L'état propre à une partie de l'article (disque, boîtier, jaquette…) n'est pas l'état général : écris-le avec les mots de la note du vendeur, jamais mieux." : "") : "")
+    + (elementsDuVendeur?.length && !descVendeuse ? `\n${directiveElements(elementsDuVendeur)}` : "")
+    + (avec ? "\nRAPPEL : les CONSIGNES DU VENDEUR, en tête, font foi pour la forme ; seuls le garde-fou (ne rien inventer), les plafonds de la plateforme et les listes fermées passent avant elles." : "");
+}
+
+/** La note du vendeur, relue dans le contexte de l'article (null sans note). */
+function noteDuContexte(itemContext: string): string | null {
+  const ligne = String(itemContext ?? "").split("\n").find((l) => l.startsWith(PREFIXE_NOTE_VENDEUR));
+  const note = ligne ? ligne.slice(PREFIXE_NOTE_VENDEUR.length).trim() : "";
+  return note || null;
 }
 // Le module partagé est en .js — la seule forme que Deno ET Vite savent lire
 // sans transpilation. TypeScript en infère des types littéraux très étroits,
@@ -354,7 +424,8 @@ export function construireContexteArticle({ item, canonicalProvided, familleLivr
    */
   noteVendeur?: string | null;
 }): { itemContext: string; canonicalCtx: string[] } {
-    const note = String(noteVendeur ?? "").replace(/[<>]/g, "").trim().slice(0, 1200);
+    // (13/11) Sur une ligne : la note est relue dans le contexte pour devenir la source des faits (noteDuContexte).
+    const note = String(noteVendeur ?? "").replace(/[<>]/g, "").replace(/\s*\n+\s*/g, " ").trim().slice(0, 1200);
     // ── Step 3: Claude Haiku — title + description per platform ──────────────
     // Champs canoniques connus (client) : injectés comme CONTRAINTES — chaque
     // prompt plateforme doit les recopier tels quels au lieu de ré-inférer
@@ -378,9 +449,13 @@ export function construireContexteArticle({ item, canonicalProvided, familleLivr
       item.marque && `Marque: ${item.marque}`,
       item.titre && `Article: ${item.titre}`,
       item.type && `Type: ${item.type}`,
-      item.description && `Description: ${item.description}`,
+      // (13/11, point 5a de Nico) Quand le vendeur a laissé une note, la lecture des photos (qui ne suit pas ses
+      // consignes : « fermeture impeccable », « Notice » pour un feuillet) n'est plus donnée comme un fait.
+      item.description && (note
+        ? `Lecture des photos (indicative — la note du vendeur ci-dessous fait foi : n'en reprends ni un état, ni un élément, ni un détail qu'elle ne dit pas) : ${item.description}`
+        : `Description: ${item.description}`),
       // (29/10, lot B 1.3) La note du vendeur (dictée ou tapée) : elle fait foi sur l'état et les détails qu'elle dit.
-      note && `Ce que le vendeur dit de son article (fait foi sur l'état et les détails qu'il nomme) : ${note}`,
+      note && `${PREFIXE_NOTE_VENDEUR}${note}`,
       // ⚠️ `item.statut` VOLONTAIREMENT ABSENT du contexte (2026-07-28, lot 2).
       // Il était envoyé sous le libellé « État: stock » — or c'est le STATUT
       // D'INVENTAIRE (inventaire.statut : stock | vendu, ou le littéral "stock"
@@ -516,6 +591,21 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
       console.log(`[redaction] titre de la vendeuse VERROUILLÉ (${titreVendeuse.length} car.) — non généré, publié tel quel`);
     }
     console.log(`[redaction] rédaction prompt ${VERSION_PROMPT} — plateformes: ${(platforms as string[]).join(", ")}`);
+    // ── (13/11, point 5a de Nico) CE QUE LE CODE TIENT DES CONSIGNES, ET LA SOURCE DES FAITS ──────────────────
+    // Les consignes, LUES (émojis / hashtags refusés, négation comprise ; phrases finales ; modèle de phrase de test).
+    // La note du vendeur fait foi : quand il en a laissé une, elle est LA source des faits (la lecture des photos ne
+    // l'est plus) ; ses éléments nommés (boîte, feuillet, pochette…) sont donnés au modèle, mot pour mot.
+    const consignesLues = consignes ? lireConsignes(consignes) : null;
+    const noteVendeur = noteDuContexte(itemContext);
+    const elementsDuVendeur = noteVendeur
+      ? [...new Map(elementsNommes(noteVendeur).map((e: { groupe: number; mot: string }) => [e.groupe, e.mot.toLowerCase()])).values()]
+      : null;
+    const sourcesFaits = sourcesDesFaits({
+      note: noteVendeur, lecturePhotos: item?.description ?? null, titre: item?.titre ?? null,
+      marque: item?.marque ?? null, type: item?.type ?? null, champs: Object.values(canonicalProvided ?? {}),
+    });
+    // Les descriptions que le MODÈLE a écrites (brutes) : composées en blocs une fois l'état connu (plus bas).
+    const descriptionsRedigees = new Set<string>();
     // Marque UNE seule fois dans le titre de repli (2026-07-30, cas réel New
     // Balance 9060) : le titre Lens contient souvent déjà la marque
     // (« Chaussures … New Balance U9060CTN marron ») — la préfixer en plus
@@ -561,12 +651,13 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
               // paie que les tokens réellement produits, un plafond haut ne
               // coûte rien alors qu'un plafond juste casse la réponse.
               max_tokens: 1400,
-              system: `${cfg.system}\n${(langues?.[platform] && LANG_DIRECTIVE[langues[platform]]) || LANG_DIRECTIVE[cfg.lang] || LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang)}`
-                + (descVendeuse ? `\n${DIRECTIVE_DESCRIPTION_FOURNIE}` : "")
-                + (titreVendeuse ? `\n${DIRECTIVE_TITRE_FOURNI}` : "")
-                + (canonicalProvided.etat ? `\n${directiveEtatImpose(canonicalProvided.etat)}` : "")
-                // (29/10, lot B 1.3) Les consignes du vendeur, en dernier : elles portent sur la forme du texte généré.
-                + (directiveConsignes(consignes) ? `\n${directiveConsignes(consignes)}` : ""),
+              // (13/11, point 5a de Nico) Les consignes du vendeur EN TÊTE (elles étaient ajoutées en dernier, sous des
+              // blocs de forme qui les contredisaient) ; sans consigne, le prompt d'avant à l'octet près.
+              system: systemeRedaction(platform, {
+                langue: langues?.[platform] ?? null, consignes,
+                descVendeuse: Boolean(descVendeuse), titreVendeuse: Boolean(titreVendeuse),
+                etatImpose: canonicalProvided.etat ?? null, elementsDuVendeur,
+              }),
               messages: [{ role: "user", content: userMsg }],
             }),
           });
@@ -603,10 +694,12 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
                     : tempererMajuscules(lim ? clampToWord(brutTitle, lim.titre) : brutTitle, item?.marque),
                   // La description de la vendeuse passe INTACTE : ni tronquée,
                   // ni reformulée, quelle que soit la limite de la plateforme.
-                  // (29/10, lot B 1.3) « Pas de hashtags » / « pas d'émojis » des consignes : tenus sur le texte GÉNÉRÉ.
-                  description: descVendeuse ?? respecterConsignes(lim ? clampToWord(brutDesc, lim.desc) : brutDesc, consignes),
+                  // (13/11, point 5a) Le texte du MODÈLE reste brut ici : il est composé en blocs (faits sans source
+                  // retirés, consignes tenues, phrases finales posées par le code, plafond) une fois l'état connu.
+                  description: descVendeuse ?? brutDesc,
                   platform_fields: parsed.platform_fields ?? {},
                 };
+                if (!descVendeuse) descriptionsRedigees.add(platform);
               } catch (parseErr) {
                 console.error(`[redaction] JSON parse error ${platform}:`, parseErr);
               }
@@ -705,13 +798,19 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
       //  3. sinon le défaut « Très bon état », appliqué PARTOUT de la même
       //     façon. C'est exactement ce qui manquait : deux plateformes sur
       //     quatre l'appliquaient déjà, les deux autres inventaient du neuf.
+      //  ⛔ (13/11, décision de Nico — « état inconnu = question, plus de « Très bon état » par défaut ») Le point 3
+      //     n'existe plus : sans état canonique ni neuf unanime, l'état est INCONNU — le champ part vide sur toutes
+      //     les plateformes (la valeur que chaque modèle a mise par réflexe est retirée), l'écran pose la question,
+      //     et le texte rédigé n'affirme aucun état général (faitsSansSource, etatConnu = null).
       const unanimeNeuf = lus.length > 0 && new Set(lus).size === 1 &&
         (lus[0] === "neuf_etiquette" || lus[0] === "neuf_sans");
       const tierCanonique: string | null = tierEtat(canonicalProvided.etat);
-      const tier: string = tierCanonique ?? (unanimeNeuf ? lus[0] : DEFAUT_ETAT);
+      const tier: string | null = tierCanonique ?? (unanimeNeuf ? lus[0] : null);
       for (const [p, l] of Object.entries(platformListings)) {
+        if (!l) continue;
+        if (!tier) { l.platform_fields.etat = null; continue; }
         const v = ETAT_TABLE[tier]?.[p];
-        if (l && v) l.platform_fields.etat = v;
+        if (v) l.platform_fields.etat = v;
       }
       // ── ET LE TEXTE CESSE DE CONTREDIRE LE CHAMP (2026-09-21) ──────────────
       // 🚨 LE DÉFAUT DE LOUIS, mesuré sur son article 1789991601609 (21/09
@@ -731,23 +830,44 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
       //    autre chose que notre lecture. C'est SON texte, pas le nôtre — et
       //    c'est pour ça que chaque champ est gardé séparément (sa description
       //    peut être verrouillée pendant que le titre, lui, est de nous).
-      const etatServi = ETAT_TABLE[tier]?.vinted ?? null;
+      const etatServi = tier ? (ETAT_TABLE[tier]?.vinted ?? null) : null;
       const textesNettoyes: string[] = [];
-      if (etatServi) {
-        const ecritParNous: Record<"title" | "description", boolean> = {
-          title: !titreVendeuse,
-          description: !descVendeuse,
-        };
-        for (const [p, l] of Object.entries(platformListings)) {
-          if (!l) continue;
-          for (const champ of ["title", "description"] as const) {
-            if (!ecritParNous[champ]) continue;
-            const r = retirerEtatContredit(l[champ], etatServi);
-            if (!r.modifie) continue;
-            l[champ] = r.texte;
-            textesNettoyes.push(`${p}.${champ}`);
-            console.warn(`[redaction] ${p} ${champ} affirmait un état autre que « ${etatServi} » — segment retiré : ${r.retires.join(" | ")}`);
+      const faitsRetires: Record<string, string[]> = {};
+      const ecritParNous: Record<"title" | "description", boolean> = {
+        title: !titreVendeuse,
+        description: !descVendeuse,
+      };
+      for (const [p, l] of Object.entries(platformListings)) {
+        if (!l) continue;
+        // ── (13/11, point 5a de Nico) LA DESCRIPTION RÉDIGÉE, COMPOSÉE EN BLOCS ──────────────────────────────
+        // Le texte du modèle → ce que la source ne dit pas retiré (état embelli, absence de défaut, test, élément
+        // ou édition que la note ne nomme pas, éditeur, PEGI…) → l'état général qui contredit le champ retiré (Louis)
+        // → les consignes tenues (émojis / hashtags refusés, LUS négation comprise) → les capacités de la plateforme
+        // → ses phrases finales posées par le CODE, mot pour mot, en dernier → le plafond, sur le corps seulement.
+        if (descriptionsRedigees.has(p)) {
+          const lim = PLATFORM_LIMITS[p];
+          const r = rendreDescriptionGeneree(l.description, p, {
+            lues: consignesLues, sources: sourcesFaits, etatConnu: tier, etatServi, max: lim?.desc ?? null,
+          });
+          l.description = r.texte;
+          if (r.retires.length) {
+            faitsRetires[p] = r.retires.map((x: { motif: string }) => x.motif);
+            console.warn(`[redaction] ${p} description : ${r.retires.length} affirmation(s) sans source retirée(s) — ${r.retires.map((x: { motif: string; segment: string }) => `${x.motif} [${x.segment}]`).join(" | ")}`);
           }
+          if (r.etatRetires.length) {
+            textesNettoyes.push(`${p}.description`);
+            console.warn(`[redaction] ${p} description affirmait un état autre que « ${etatServi} » — segment retiré : ${r.etatRetires.join(" | ")}`);
+          }
+        }
+        if (!etatServi) continue;
+        for (const champ of ["title", "description"] as const) {
+          if (!ecritParNous[champ]) continue;
+          if (champ === "description" && descriptionsRedigees.has(p)) continue; // déjà fait, sur le corps seulement
+          const r = retirerEtatContredit(l[champ], etatServi);
+          if (!r.modifie) continue;
+          l[champ] = r.texte;
+          textesNettoyes.push(`${p}.${champ}`);
+          console.warn(`[redaction] ${p} ${champ} affirmait un état autre que « ${etatServi} » — segment retiré : ${r.retires.join(" | ")}`);
         }
       }
       // ── TRACE (2026-08-31) : QUELLE BRANCHE A DÉCIDÉ ────────────────────────
@@ -758,7 +878,8 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
       // persistées nulle part. Trois clés suffisent à trancher au cas suivant.
       // (Reste dans usage_logs, pas dans coin_ledger : c'est de la mesure.)
       traceEtat = {
-        etat_branche: tierCanonique ? "canonique" : (unanimeNeuf ? "neuf_unanime" : "defaut"),
+        // (13/11) « inconnu » remplace « defaut » : plus aucun « Très bon état » posé faute de mieux.
+        etat_branche: tierCanonique ? "canonique" : (unanimeNeuf ? "neuf_unanime" : "inconnu"),
         etat_tier: tier,
         // Ce que les modèles ont répondu AVANT la normalisation — c'est lui qui
         // dit si l'unanimité était réelle ou si un seul modèle a entraîné les
@@ -769,6 +890,8 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
         // la prose et le champ disaient la même chose. C'est cette clé qui
         // permettra de remesurer le défaut de Louis dans trente jours.
         etat_textes_nettoyes: textesNettoyes,
+        // 5e clé (13/11, point 5a) : ce que la source ne disait pas et qui est tombé, par plateforme (motifs).
+        faits_retires: faitsRetires,
       };
     }
 

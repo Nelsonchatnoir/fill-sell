@@ -19,24 +19,30 @@ import { fichier, imprimer, partager, telechargerFichier } from './partage';
 import { Bouton, Note, Segments } from './ui';
 import { ENCRE2, LIGNE, POLICE } from './style';
 import { libellesActions } from './actions';
+import { repereBordereau } from '../vue';
 
 const chargerMoteur = () => import('./moteur.js');
 const CLE_FORMAT = 'fillsell.bordereau.format';
 const formatRetenu = () => { try { return window.localStorage.getItem(CLE_FORMAT) === 'origine' ? 'origine' : '10x15'; } catch { return '10x15'; } };
 
-/** Le bouton (rien sous `minimum` copies prêtes) et sa feuille. */
-export function BoutonToutImprimer({ copies, supabase, lang = 'fr', minimum = 2 }) {
+/**
+ * Le bouton (rien sous `minimum` copies prêtes) et sa feuille.
+ * (13/11, étape 5 — décision de Nico) `reimprimer` : « Tout réimprimer » (toutes les copies, imprimées comprises), à côté de
+ * « Tout imprimer » (les copies pas encore imprimées). `onImprime(ids)` : appelé quand le geste RÉUSSIT.
+ */
+export function BoutonToutImprimer({ copies, supabase, lang = 'fr', minimum = 2, reimprimer = false, onImprime = null }) {
   const fr = lang !== 'en';
   const [ouvert, setOuvert] = useState(false);
   const n = (copies ?? []).length;
   if (n < minimum) return null;
   return (
     <>
-      <button type="button" onClick={() => setOuvert(true)} aria-label={fr ? `Tout imprimer, ${n} bordereaux` : `Print all, ${n} labels`}
+      <button type="button" onClick={() => setOuvert(true)} data-tout-imprimer-bouton={reimprimer ? 'reimprimer' : 'imprimer'}
+        aria-label={reimprimer ? (fr ? `Tout réimprimer, ${n} bordereau${n > 1 ? 'x' : ''}` : `Reprint all, ${n} label${n > 1 ? 's' : ''}`) : (fr ? `Tout imprimer, ${n} bordereau${n > 1 ? 'x' : ''}` : `Print all, ${n} label${n > 1 ? 's' : ''}`)}
         style={{ minHeight: 44, padding: '0 14px', borderRadius: 14, border: `1px solid ${UI.border}`, background: '#FFFFFF', color: UI.ink, fontFamily: POLICE, fontSize: 14, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-        <Icone nom="recu" taille={17} couleur={UI.tealDeep} epaisseur={2.2} />{fr ? `Tout imprimer · ${n}` : `Print all · ${n}`}
+        <Icone nom="recu" taille={17} couleur={UI.tealDeep} epaisseur={2.2} />{reimprimer ? (fr ? `Tout réimprimer · ${n}` : `Reprint all · ${n}`) : (fr ? `Tout imprimer · ${n}` : `Print all · ${n}`)}
       </button>
-      {ouvert && <ToutImprimer ouvert copies={copies} supabase={supabase} lang={lang} onFermer={() => setOuvert(false)} />}
+      {ouvert && <ToutImprimer ouvert copies={copies} supabase={supabase} lang={lang} reimprimer={reimprimer} onImprime={onImprime} onFermer={() => setOuvert(false)} />}
     </>
   );
 }
@@ -45,7 +51,7 @@ export function BoutonToutImprimer({ copies, supabase, lang = 'fr', minimum = 2 
  * Props : ouvert, copies [{chemin?|octets?|url?, platform, transporteur?,
  * commande_ref?}], supabase, lang, onFermer.
  */
-export default function ToutImprimer({ ouvert = true, copies, supabase, lang = 'fr', onFermer }) {
+export default function ToutImprimer({ ouvert = true, copies, supabase, lang = 'fr', onFermer, reimprimer = false, onImprime = null }) {
   const fr = lang !== 'en';
   const [format, setFormat] = useState(formatRetenu);
   const [sources, setSources] = useState(null);
@@ -110,9 +116,14 @@ export default function ToutImprimer({ ouvert = true, copies, supabase, lang = '
     setNote(null);
     const p = { octets: resultat.octets, nom, type: 'application/pdf', titre: fr ? 'Bordereaux' : 'Shipping labels', supabase };
     const r = quoi === 'imprimer' ? await imprimer(p) : quoi === 'telecharger' ? await telechargerFichier(p) : await partager(p);
+    // (13/11, étape 5) Le geste a réussi : chaque bordereau RÉUNI dans le fichier est marqué imprimé (jamais un illisible ni
+    // un sauté, jamais sur une annulation ou un échec).
+    if (r?.ok) onImprime?.(incluses);
     if (!r?.ok && !r?.annule) setNote({ ton: 'rouge', texte: r?.motif === 'session' ? (fr ? 'Ta session a expiré : reconnecte-toi, puis réessaie.' : 'Your session expired: sign in again, then retry.') : (fr ? 'Le fichier n’a pas pu être préparé pour l’ouverture : réessaie.' : 'The file could not be prepared for opening: try again.') });
   };
   const sautes = (resultat?.sautes ?? []).map((s) => sources?.[s.index]?.copie).filter(Boolean);
+  const indexSautes = new Set((resultat?.sautes ?? []).map((s) => s.index));
+  const incluses = (sources ?? []).filter((s, i) => !indexSautes.has(i)).map((s) => s.copie?.id).filter(Boolean);
   const aDire = [...illisibles, ...sautes];
 
   return (
@@ -125,7 +136,7 @@ export default function ToutImprimer({ ouvert = true, copies, supabase, lang = '
           <Icone nom="retour" taille={20} couleur={UI.ink} epaisseur={2.2} />
         </button>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>{fr ? 'Tout imprimer' : 'Print all'}</div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>{reimprimer ? (fr ? 'Tout réimprimer' : 'Reprint all') : (fr ? 'Tout imprimer' : 'Print all')}</div>
           <div style={{ fontSize: 12.5, color: ENCRE2 }}>{fr ? `${liste.length} bordereau${liste.length > 1 ? 'x' : ''} prêt${liste.length > 1 ? 's' : ''}` : `${liste.length} label${liste.length > 1 ? 's' : ''} ready`}</div>
         </div>
       </div>
@@ -152,8 +163,12 @@ export default function ToutImprimer({ ouvert = true, copies, supabase, lang = '
             {sources.map((s, i) => (
               <div key={`${s.copie.platform}-${s.copie.commande_ref ?? i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderTop: i ? `1px solid ${LIGNE}` : 'none' }}>
                 <PlatformLogo platform={s.copie.platform} size={22} />
-                <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {s.copie.commande_ref ? `${fr ? 'Commande' : 'Order'} ${s.copie.commande_ref}` : (fr ? 'Bordereau' : 'Label')}
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.copie.commande_ref ? `${fr ? 'Commande' : 'Order'} ${s.copie.commande_ref}` : (fr ? 'Bordereau' : 'Label')}
+                  </span>
+                  {/* (13/11, étape 5) « Bordereau du JJ/MM · Imprimé le JJ/MM » : on voit ce qui part une seconde fois. */}
+                  {repereBordereau(s.copie, lang) && <span data-repere-impression style={{ fontSize: 12, color: ENCRE2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repereBordereau(s.copie, lang).texte}</span>}
                 </span>
                 <span style={{ fontSize: 12, color: ENCRE2 }}>{s.source.genre === 'pdf' ? 'PDF' : (fr ? 'code' : 'code')}</span>
               </div>

@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts";
 import { questionTailleHorsGrille } from "../_shared/vinted-taille-hors-grille.js";
+import { issueGrilleIncoherente } from "../_shared/grille-incoherente-issue.js";
+import { regleDeRelance, messageAttenteMaj } from "../_shared/relance-apres-maj.js";
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // handler-watch — module JS sans import, chargé tel quel par Deno.
 import { archiverErreur, errorTechniqueAvecHistorique, brutSelonStatut } from "../_shared/erreurs-archivees.js";
@@ -3346,7 +3348,7 @@ serve(async (req) => {
               // exécutée par un selftest — elle sépare deux causes qui n'ont ni
               // le même message ni le même correctif, et elle ne conclut jamais
               // sans preuve (liste vide, valeur vide ⇒ on ne sait pas).
-              const { offerte: valeurOfferte, valeur: valeurDeLaListe } = valeurFigureDansListeServie({
+              const { offerte: valeurOfferte, valeur: valeurDeLaListe, champ: champDeLaListe } = valeurFigureDansListeServie({
                 champDemande: nuf?.field_key ?? nuf?.field_label ?? "",
                 valeurs, listeServie, libelles: GRILLE_LIBELLES,
               });
@@ -3428,37 +3430,75 @@ serve(async (req) => {
                   `UNE question, voisines ${JSON.stringify(q.voisines)}`,
                 );
               } else {
-                const { needsUserField: _nuf, champs_a_completer: _cac, ...pfSans } = pfCourant;
-                for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete (pfSans as Record<string, unknown>)[k];
-                pfGrilleRefus = {
-                  ...pfSans,
-                  needs_user_source: "grille_incoherente",
-                  taille_grille_reprise: deja,
-                  taille_grille_refus: {
-                    le: nowIso, champs: cles, valeurs, grille_adulte_taille_enfant: grilleAdulteEnfant, motif: motifBrut,
-                    valeur_offerte_par_vinted: valeurOfferte,
-                    pose_par: valeurOfferte
-                      ? "update-job-status (reprises épuisées : la valeur EST dans la liste servie — la saisie n'atteint pas le formulaire)"
-                      : "update-job-status (reprises épuisées : la grille lue ne correspond pas à l'annonce)",
-                  },
+                // ── (13/11, lot « zéro problème », étape 5 — question 3 de l'agent C) JAMAIS UNE IMPASSE ──────────────
+                // Cette branche RETIRAIT la liste servie et disait « Relance depuis l'app ; si ça se reproduit, écris-nous »
+                // (État, plusieurs champs, grille adulte sur une taille enfant) — ou, valeur pourtant DANS la liste, « on
+                // reprend au prochain passage » sans que rien ne reprenne (7d6e2c34 · 6afcb6e8 « Bon état », 0.6.169).
+                // Règle de Nico (12/11) : UNE vraie question avec la liste quand elle est connue ; sinon un message vrai
+                // qui dit quoi faire (_shared/grille-incoherente-issue.js, l'état par le juge unique etat-correspondance.js).
+                // Une relance après mise à jour qui couvre l'arrêt (build plus ancien que le correctif) garde la main :
+                // son message d'attente, la source « grille_incoherente » — handler-watch relance au build, comme avant.
+                let attenteMaj: string | null = null;
+                try {
+                  const jobArret = {
+                    status: "needs_user", platform: jrow.platform, action: jrow.action, error: null,
+                    handler_build: typeof body.handler_build === "string" ? body.handler_build : null,
+                    platform_fields: { ...pfBase, ...pfCourant, needs_user_source: "grille_incoherente" },
+                  };
+                  const regle = regleDeRelance(jobArret);
+                  attenteMaj = regle ? messageAttenteMaj(jobArret, regle) : null;
+                } catch (_e) { attenteMaj = null; }
+                const snapG = (pfBase.republish_snapshot && typeof pfBase.republish_snapshot === "object" ? pfBase.republish_snapshot : {}) as Record<string, unknown>;
+                const issue = issueGrilleIncoherente({
+                  cles, valeurs, nuf, listeServie, champQuestion: champDeLaListe, valeurOfferte, grilleAdulteEnfant,
+                  libelles: GRILLE_LIBELLES, attenteMaj,
+                  rayonId: (snapG.catalog_id as number | string | null | undefined) ?? null,
+                  categorie: Array.isArray(snapG.categoryPath) ? snapG.categoryPath as unknown[]
+                    : (Array.isArray(libelles?.categoryPath) ? libelles!.categoryPath as unknown[] : null),
+                });
+                const traceRefus = {
+                  le: nowIso, champs: cles, valeurs, grille_adulte_taille_enfant: grilleAdulteEnfant, motif: motifBrut,
+                  valeur_offerte_par_vinted: valeurOfferte, issue: issue.raison,
+                  build: typeof body.handler_build === "string" ? body.handler_build.slice(0, 80) : null,
                 };
-                messageEffectif = valeurOfferte
-                  ? "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted, " +
-                    "rien n'a été envoyé et rien n'a été supprimé. " +
-                    `Le formulaire Vinted proposait bien ${resume}, mais notre saisie n'est pas arrivée jusqu'à lui : ` +
-                    "le champ était encore vide au moment du contrôle. " +
-                    "Ça vient de chez nous, pas de ton annonce ni de sa catégorie — on reprend au prochain passage."
-                  : "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
-                    `Le formulaire Vinted n'a pas accepté ${resume}` +
-                    `${grilleAdulteEnfant ? " : la grille de tailles proposée était une grille adulte, alors que ton annonce est en catégorie enfant" : ""}. ` +
-                    "Ce n'est pas une information manquante, ton annonce la porte déjà. " +
-                    "Relance depuis l'app ; si ça se reproduit, écris-nous et on regarde la catégorie de l'annonce.";
-                raisonRequalif = valeurOfferte
-                  ? `pré-vol négatif alors que « ${valeurDeLaListe} » FIGURE dans la liste servie (${cles.join(", ")}) : saisie non commitée au formulaire, ce n'est pas la grille`
-                  : `pré-vol négatif sur valeur portée par la capture (${cles.join(", ")}) : ${GRILLE_MAX_REPRISES} reprises épuisées, needs_user avec le vrai motif`;
+                if (issue.type === "question") {
+                  const pfQ = { ...pfCourant } as Record<string, unknown>;
+                  for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfQ[k];
+                  pfGrilleRefus = {
+                    ...pfQ,
+                    needsUserField: issue.needsUserField,
+                    champs_a_completer: issue.champs_a_completer,
+                    needs_user_source: "champ_a_choisir",
+                    taille_grille_reprise: deja,
+                    taille_grille_refus: {
+                      ...traceRefus, question_posee: true, en_tete: issue.en_tete,
+                      pose_par: "update-job-status (reprises épuisées : UNE question, la liste servie entière, la valeur de l'annonce ou l'équivalent en tête)",
+                    },
+                  };
+                } else {
+                  const { needsUserField: _nuf, champs_a_completer: _cac, ...pfSans } = pfCourant;
+                  for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete (pfSans as Record<string, unknown>)[k];
+                  pfGrilleRefus = {
+                    ...pfSans,
+                    needs_user_source: "grille_incoherente",
+                    taille_grille_reprise: deja,
+                    taille_grille_refus: {
+                      ...traceRefus,
+                      pose_par: issue.raison === "relance_apres_maj"
+                        ? "update-job-status (reprises épuisées : une relance après mise à jour de l'extension couvre cet arrêt)"
+                        : issue.raison === "grille_adulte_taille_enfant"
+                        ? "update-job-status (reprises épuisées : grille adulte servie sur une taille enfant — aucune liste proposée)"
+                        : "update-job-status (reprises épuisées : aucune liste servie — « Relancer » fait un essai complet)",
+                    },
+                  };
+                }
+                messageEffectif = issue.message;
+                raisonRequalif = issue.type === "question"
+                  ? `pré-vol négatif sur valeur portée par la capture (${cles.join(", ")}) après ${GRILLE_MAX_REPRISES} reprises : question posée (${issue.raison}${valeurOfferte ? `, « ${valeurDeLaListe} » figure dans la liste servie` : ""})`
+                  : `pré-vol négatif sur valeur portée par la capture (${cles.join(", ")}) : ${GRILLE_MAX_REPRISES} reprises épuisées, needs_user avec le vrai motif (${issue.raison})`;
                 console.log(
                   `[update-job-status] userId=${user.id} job=${jobId} — pré-vol négatif (${cles.join(", ")}) malgré ${GRILLE_MAX_REPRISES} reprises : ` +
-                  `needs_user conservé, message « grille incohérente », plus aucun champ demandé`,
+                  (issue.type === "question" ? `UNE question sur « ${issue.champs_a_completer[0]} » (${issue.en_tete.length} en tête)` : `message vrai (${issue.raison})`),
                 );
               }
             }

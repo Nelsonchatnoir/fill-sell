@@ -1,0 +1,603 @@
+{
+ "compte": "de63ca45",
+ "lu_le": "2026-11-13",
+ "source": "fiches_annonce + inventaire + profiles.platform_settings.redaction (lecture seule)",
+ "consignes": {
+  "description": "FORMAT IMPÉRATIF : reproduire les emojis EXACTS ci-dessous. Une ligne vide entre chaque information. Aucun paragraphe compact.\n\n🎮 Je vends [jeu] sur [plateforme] (adapter aux autres objets).\n\n📦 Version boîte comprenant :\n\n✅ [élément présent nommé précisément] (une ligne par élément)\n\n✨ État :\n\n💿 [disque]\n\n📦 [boîtier]\n\n🖼️ [jaquette]\n\n📘 [notice]\n\n📄 [feuillet ou document]\n\n🔎 À noter : [si utile]\n\n⚠️ [défaut important confirmé]\n\nUne ligne d’état par élément ; supprimer les lignes inutiles, jamais les emojis.",
+  "etat": "Respecter exactement mes appréciations (« excellent état », « très bon état ») et vérifications physiques. Une ligne distincte par élément : disque/cartouche, boîtier, jaquette, notice, feuillet. Reprendre les quantités et emplacements donnés, sans extrapoler. Distinguer rayures et micro-rayures ; écrire « visibles à la lumière », jamais « uniquement à la lumière ». Ne pas ajouter « léger », « impeccable », « sans dommage », « sans casse » ou un état que je n’ai pas confirmé.",
+  "eviter": "Ne rien inventer : état, absence de défaut, contenu, complétude, test ou fonctionnement. Ne pas confondre notice, guide, livret et feuillet ; un code présent n’est pas forcément valide. Interdits sans confirmation : « fermeture impeccable », « micro-rayures légères », « jaquette propre », « très bon état », « sans rayure ». Éviter détails superflus (logos, face imprimée du disque), doublons contenu/état, rubriques vides, hashtags et paragraphes compacts. Ne jamais supprimer les emojis du modèle.",
+  "titre": "Commencer par un seul emoji adapté : 🎮 jeu, 🕹️ console ou accessoire, 🎬 film, 📚 livre, 🔑 porte-clés, 🧸 jouet, 💿 CD, 📦 autre objet. Ajouter le nom exact et la plateforme ou le modèle si utile. Titre court, clair et facile à rechercher. Préciser une édition, « disque seul », « boîte seule » ou « pour pièces » seulement si indispensable. Ne pas ajouter l’état, les notices, guides, feuillets, micro-rayures, test, date, PAL FR ordinaire ni mots promotionnels.",
+  "ton": "precis",
+  "toujours": "Jeux vidéo d’occasion : testés et fonctionnels à leur présentation, sauf indication contraire ; exclure les scellés. Même jour : « Jeu testé aujourd’hui, le [date], et fonctionnel. » ; plus tard : « Jeu testé le [date] et fonctionnel. » ; date inconnue : « Jeu testé et fonctionnel. » Autres objets : aucun test supposé. Finir EXACTEMENT, emojis et lignes vides :\n\nVendu comme sur les photos.\n\n📍 Remise en main propre possible.\n\n🚚 Expédition rapide et soignée, généralement sous 12 heures ouvrées."
+ },
+ "fiches": [
+  {
+   "inventaire_id": "1793613236541",
+   "source": "stepper",
+   "titre": "Jeu Xbox One Crash Team Racing Nitro-Fueled",
+   "marque": "Activision",
+   "type": "High-Tech",
+   "lecture_photos": "Jeu Xbox One Crash Team Racing Nitro-Fueled, version française intégrale, éditeur Activision. La boîte verte est intacte, sans casse, avec quelques micro-rayures légères sur le plastique transparent, et elle ferme bien. La jaquette est propre et ne présente aucun dommage. Le feuillet intérieur (contenu du jeu) présente de légères marques de pliure. Le disque ne montre aucune micro-rayure visible à la lumière.",
+   "etat_estime": "Très bon état",
+   "note": "La boîte est en très bon état, on a quelques micro rayures visibles sur le plastique transparent, très léger, la boîte n'est pas cassée, elle ferme bien, la jaquette est en très bon état, pas du tout abîmée, on a à l'intérieur un petit feuillet qui est en très bon état, il y a une pliure, il est en très bon état, il y a un petit feuillet à l'intérieur qui a des petites marques de pliure, un bien méchant, le disque est en excellent état, on n'a aucune micro rayure visible à la lumière, il est en excellent état le disque.",
+   "propositions": {
+    "beebs": {
+     "title": "🎮 Crash Team Racing Nitro-Fueled Xbox One",
+     "description": "Jeu de course Xbox One Crash Team Racing Nitro-Fueled, version française intégrale, édité par Activision.\n\n Contenu :\n Boîte verte\n Jaquette\n Feuillet intérieur\n Disque\n\n État :\nBoîte en très bon état, fermeture correcte, quelques micro-rayures légères visibles sur le plastique transparent. Jaquette en très bon état, sans dommage. Feuillet intérieur en très bon état avec légères marques de pliure. Disque en excellent état, aucune micro-rayure visible à la lumière.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "age": null,
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Activision",
+      "matiere": null,
+      "taille": null
+     }
+    },
+    "depop": {
+     "title": "🎮 Crash Team Racing Nitro-Fueled Xbox One",
+     "description": "Jeu de course Xbox One Crash Team Racing Nitro-Fueled, version française intégrale édité par Activision.\n\n Contenu :\n Boîte\n Jaquette\n Disque\n Feuillet intérieur\n\n État :\nBoîte en très bon état, fermeture impeccable. Plastique transparent avec micro-rayures légères visibles à la lumière. Jaquette propre, sans dommage. Feuillet intérieur en très bon état, présente des marques de pliure légères. Disque en excellent état, aucune micro-rayure visible à la lumière.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "categorie": "High-Tech",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Activision"
+     }
+    },
+    "ebay": {
+     "title": "🎮 Crash Team Racing Nitro-Fueled Xbox One",
+     "description": "Jeu Xbox One Crash Team Racing Nitro-Fueled, version française intégrale, éditeur Activision.\n\n Contenu :\n Boîte\n Jaquette\n Disque\n Feuillet intérieur\n\n État :\nBoîte en très bon état, intacte et bien fermée, avec quelques micro-rayures légères visibles sur le plastique transparent. Jaquette en très bon état, propre et sans dommage. Feuillet intérieur en très bon état, présentant des marques de pliure légères. Disque en excellent état, aucune micro-rayure visible à la lumière.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Activision",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    },
+    "leboncoin": {
+     "title": "🎮 Crash Team Racing Nitro-Fueled Xbox One",
+     "description": "Jeu Xbox One Crash Team Racing Nitro-Fueled, version française intégrale, éditeur Activision.\n\n Contenu :\n Boîte\n Jaquette\n Disque\n Feuillet intérieur\n\n État :\nBoîte en très bon état, intacte et qui ferme bien, quelques micro-rayures légères visibles sur le plastique transparent. Jaquette en très bon état, sans dommage. Feuillet intérieur en très bon état, avec légères marques de pliure. Disque en excellent état, aucune micro-rayure visible à la lumière.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "etat": "Très bon état",
+      "marque": "Activision",
+      "matiere": null,
+      "univers": null
+     }
+    },
+    "vinted": {
+     "title": "🎮 Crash Team Racing Nitro-Fueled Xbox One",
+     "description": "Jeu de course Xbox One Crash Team Racing Nitro-Fueled, version française intégrale édité par Activision.\n\n Contenu :\n Boîte\n Jaquette\n Disque\n Feuillet intérieur\n\n État :\nBoîte en très bon état, fermeture impeccable. Plastique transparent avec micro-rayures légères visibles à la lumière. Jaquette propre, sans dommage. Feuillet intérieur en très bon état, présente des marques de pliure légères. Disque en excellent état, aucune micro-rayure visible à la lumière.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Activision",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    }
+   },
+   "trace_etat": {
+    "etat_branche": "canonique",
+    "etat_lus": [
+     "tres_bon",
+     "tres_bon",
+     "tres_bon",
+     "tres_bon"
+    ],
+    "etat_textes_nettoyes": [],
+    "etat_tier": "tres_bon"
+   },
+   "texte_publie": "🎮 Je vends Crash Team Racing Nitro-Fueled sur Xbox One.\n\n📦 Version boîte comprenant :\n\n✅ Disque du jeu Xbox One.\n\n✅ Feuillet « Pack de skins Électron » avec code.\n\n✅ Document d'information Xbox.\n\n🇫🇷 Jaquette arrière en français.\n\n✨ État :\n\n💿 Disque en excellent état, aucune micro-rayure visible à la lumière.\n\n📦 Boîtier en très bon état, avec quelques micro-rayures visibles à la lumière sur le plastique transparent. Il n'est pas cassé et ferme correctement.\n\n🖼️ Jaquette en excellent état, non abîmée.\n\n📄 Feuillet « Pack de skins Électron » présentant de petits plis.\n\n🔎 À noter :\n\nLa validité du code présent sur le feuillet n'a pas été vérifiée.\n\nJeu testé aujourd’hui, le 2 novembre 2026, et fonctionnel.\n\nVendu comme sur les photos.\n\n📍 Remise en main propre possible.\n\n🚚 Expédition rapide et soignée, généralement sous 12 heures ouvrées."
+  },
+  {
+   "inventaire_id": "1793615322272",
+   "source": "lens_unifie",
+   "titre": "NBA 2K21 Xbox One",
+   "marque": "2K",
+   "type": "High-Tech",
+   "lecture_photos": "Jeu NBA 2K21 pour Xbox One avec boîtier transparent vert, jaquette en bon état et feuillet de contenu bonus. Quelques micro-rayures légères sont visibles sur le plastique du boîtier. Le disque présente une surface claire et sans rayure visible sur les photos. Le fonctionnement du disque n'a pas été vérifié.",
+   "etat_estime": "Très bon état",
+   "note": "",
+   "propositions": {
+    "beebs": {
+     "title": "🎮 Nba 2K21 Xbox One",
+     "description": "Je vends NBA 2K21 sur Xbox One.\n\n Version boîte comprenant :\n\n Boîtier transparent vert\n Disque\n Jaquette\n Feuillet de contenu bonus\n\n État :\n\n Disque : excellent état, surface claire sans rayure visible.\n\n Boîtier : très bon état, quelques micro-rayures très légères visibles sur le plastique transparent. Fermeture correcte, aucun dommage.\n\n Jaquette : excellent état.\n\n Feuillet : excellent état.\n\n Le fonctionnement du disque n'a pas été testé.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "age": null,
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "2K",
+      "matiere": null,
+      "taille": null
+     }
+    },
+    "ebay": {
+     "title": "🎮 Nba 2K21 Xbox One",
+     "description": "Je vends NBA 2K21 sur Xbox One.\n\n Version boîte comprenant :\n\n Boîtier transparent vert.\n Disque.\n Jaquette.\n Feuillet de contenu bonus.\n\n État :\n\n Boîtier : très bon état. Quelques micro-rayures très légères visibles sur le plastique transparent. Fermeture impeccable, aucune casse.\n\n Disque : excellent état, surface claire et sans rayure visible.\n\n Jaquette : excellent état.\n\n Feuillet : excellent état.\n\n Le fonctionnement du disque n'a pas été vérifié.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "2K",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    },
+    "leboncoin": {
+     "title": "🎮 Nba 2K21 Xbox One",
+     "description": "Je vends NBA 2K21 sur Xbox One.\n\n Version boîte comprenant :\n\n Boîtier transparent vert\n Jaquette\n Disque\n Feuillet de contenu bonus\n\n État :\n\n Boîtier : très bon état, quelques micro-rayures très légères visibles sur le plastique transparent.\n\n Jaquette : excellent état.\n\n Disque : excellent état, surface claire et sans rayure visible.\n\n Feuillet : excellent état.\n\n Le fonctionnement du disque n'a pas été vérifié.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "etat": "Très bon état",
+      "marque": "2K",
+      "matiere": null,
+      "univers": null
+     }
+    },
+    "vinted": {
+     "title": "🎮 Nba 2K21 Xbox One",
+     "description": "Je vends NBA 2K21 sur Xbox One.\n\n Version boîte comprenant :\n\n Boîtier transparent vert\n Jaquette\n Disque\n Feuillet de contenu bonus\n\n État :\n\n Boîtier : très bon état, quelques micro-rayures très légères visibles sur le plastique transparent. Fermeture impeccable, aucun souci.\n\n Jaquette : excellent état.\n\n Disque : excellent état, sans micro-rayures visibles.\n\n Feuillets : excellent état.\n\n Le fonctionnement du disque n'a pas été vérifié.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "2K",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    }
+   },
+   "trace_etat": {
+    "etat_branche": "canonique",
+    "etat_lus": [
+     "tres_bon",
+     "tres_bon",
+     "tres_bon",
+     "tres_bon"
+    ],
+    "etat_textes_nettoyes": [],
+    "etat_tier": "tres_bon"
+   },
+   "texte_publie": null
+  },
+  {
+   "inventaire_id": "1793616052050",
+   "source": "stepper",
+   "titre": "Grand Theft Auto V (GTA 5) disque seul Xbox One",
+   "marque": "Rockstar Games",
+   "type": "High-Tech",
+   "lecture_photos": "Disque seul du jeu Grand Theft Auto V pour Xbox One, édité par Rockstar Games. Sans boîtier, sans jaquette ni notice. Aucune rayure visible sur la face photographiée, surface brillante propre.",
+   "etat_estime": "Très bon état",
+   "note": "Le disque est en excellent état, il n'y a pas de micro-rayure visible sur le disque. Le disque est vendu seul, il n'y a pas de boîte, il n'y a pas de jaquette, il n'y a rien du tout. Le disque est vendu seul.",
+   "propositions": {
+    "beebs": {
+     "title": "🎮 Grand Theft Auto V Xbox One - disque seul",
+     "description": "Je vends le disque seul de Grand Theft Auto V sur Xbox One, édité par Rockstar Games.\n\n Version disque seul comprenant :\n\n Disque de jeu uniquement.\n\n État :\n\n Disque : excellent état, aucune rayure ni micro-rayure visible, surface brillante et propre.\n\n À noter : vendu sans boîtier, sans jaquette ni notice.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "age": null,
+      "couleur": "Gris",
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Rockstar Games",
+      "matiere": null,
+      "taille": null
+     }
+    },
+    "depop": {
+     "title": "🎮 Grand Theft Auto V Xbox One - Disque seul",
+     "description": "Je vends Grand Theft Auto V sur Xbox One. Disque seul Rockstar Games.\n\n Version disque seul comprenant :\n\n Disque de jeu.\n\n État :\n\n Disque : excellent état, aucune rayure ni micro-rayure visible, surface brillante et propre.\n\n À noter : disque vendu seul, sans boîtier, sans jaquette ni notice.\n\n Jeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "categorie": "High-Tech",
+      "couleur": "Gris",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Rockstar Games"
+     }
+    },
+    "ebay": {
+     "title": "🎮 Grand Theft Auto V Xbox One - Disque seul",
+     "description": "Je vends Grand Theft Auto V sur Xbox One. Disque seul, édité par Rockstar Games.\n\n Version disque seul comprenant :\n\n Un disque de jeu.\n\n État :\n\n Disque : excellent état, aucune rayure ni micro-rayure visible, surface brillante propre.\n\n À noter : disque vendu seul, sans boîtier, sans jaquette ni notice.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": "Gris",
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Rockstar Games",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    },
+    "leboncoin": {
+     "title": "🎮 Grand Theft Auto V Xbox One - Disque seul",
+     "description": "Je vends Grand Theft Auto V sur Xbox One. Disque seul.\n\n Contenu :\n\n Disque de jeu uniquement.\n\n État :\n\n Disque : excellent état, aucune rayure ni micro-rayure visible, surface brillante et propre.\n\n À noter : vendu sans boîtier, sans jaquette et sans notice.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "etat": "Très bon état",
+      "marque": "Rockstar Games",
+      "matiere": null,
+      "univers": null
+     }
+    },
+    "vinted": {
+     "title": "🎮 Grand Theft Auto V Xbox One - Disque seul",
+     "description": "Je vends Grand Theft Auto V sur Xbox One. Disque seul Rockstar Games.\n\n Version disque seul comprenant :\n\n Disque de jeu.\n\n État :\n\n Disque : excellent état, aucune rayure ni micro-rayure visible, surface brillante et propre.\n\n À noter : disque vendu seul, sans boîtier, sans jaquette ni notice.\n\n Jeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": "Gris",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Rockstar Games",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    }
+   },
+   "trace_etat": {
+    "etat_branche": "canonique",
+    "etat_lus": [
+     "tres_bon",
+     "tres_bon",
+     "tres_bon",
+     "tres_bon"
+    ],
+    "etat_textes_nettoyes": [],
+    "etat_tier": "tres_bon"
+   },
+   "texte_publie": "🎮 Je vends Grand Theft Auto V (GTA 5) sur Xbox One.\n\n📦 Contenu :\n\n✅ Disque du jeu uniquement.\n\n✅ Vendu sans boîte, sans jaquette et sans notice.\n\n✨ État :\n\n💿 Disque en excellent état.\n\nJeu testé aujourd’hui, le 2 novembre 2026, et fonctionnel.\n\nVendu comme sur les photos.\n\n📍 Remise en main propre possible.\n\n🚚 Expédition rapide et soignée, généralement sous 12 heures ouvrées."
+  },
+  {
+   "inventaire_id": "1793616560678",
+   "source": "stepper",
+   "titre": "Rise of the Tomb Raider 20ème anniversaire PS4",
+   "marque": "Square Enix",
+   "type": "High-Tech",
+   "lecture_photos": "Jeu PS4 édition 20ème anniversaire en boîte cartonnée à décor bleu (Lara Croft) avec fond brun façon cuir. Les photos montrent un livret illustré à l'intérieur. On voit de petites marques d'usure sur les angles et les extrémités de la boîte. Aucune trace visible sur le visuel de face, le dos et les pages du livret.",
+   "etat_estime": "Très bon état",
+   "note": "La pochette cartonnée présente des petites marques d'usure sur les extrémités, comme on peut le voir sur les photos. Par contre, le reste est en excellent état. Donc la pochette cartonnée, on a des petites marques d'usure sur les extrémités. Le livret est en excellent état. Les photos sont en excellent état aussi. Le disque est en excellent état. Il n'y a aucune micro-rayure visible. Je pense qu'on a tout vu.",
+   "propositions": {
+    "beebs": {
+     "title": "🎮 Rise of the Tomb Raider 20ème anniversaire PS4",
+     "description": "Je vends Rise of the Tomb Raider 20ème anniversaire sur PS4.\n\n Version boîte comprenant :\n\n Boîte cartonnée édition 20ème anniversaire\n Livret illustré\n Disque de jeu\n\n État :\n\n Boîtier : Excellent état, petites marques d'usure sur les extrémités\n\n Livret : Excellent état\n\n Disque : Excellent état, aucune micro-rayure visible\n\n Jaquette : Excellent état\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "age": null,
+      "couleur": "Bleu",
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Square Enix",
+      "matiere": null,
+      "taille": null
+     }
+    },
+    "depop": {
+     "title": "🎮 Rise of the Tomb Raider 20ème anniversaire PS4",
+     "description": "Je vends Rise of the Tomb Raider 20ème anniversaire sur PS4.\n\n Version boîte comprenant :\n\n Boîte cartonnée édition 20ème anniversaire\n Livret illustré\n Disque de jeu\n\n État :\n\n Boîtier : petites marques d'usure sur les extrémités et les angles, excellent état général\n\n Jaquette : excellent état, aucune trace visible\n\n Livret : excellent état\n\n Disque : excellent état, aucune micro-rayure visible\n\n À noter : Jeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "categorie": "High-Tech",
+      "couleur": "Bleu",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Square Enix"
+     }
+    },
+    "ebay": {
+     "title": "🎮 Rise of the Tomb Raider 20ème anniversaire PS4",
+     "description": "Je vends Rise of the Tomb Raider 20ème anniversaire sur PS4.\n\n Version boîte comprenant :\n\n Boîtier cartouché bleu et brun\n Livret illustré\n Disque de jeu\n\n État :\n\n Boîtier : petites marques d'usure sur les extrémités et angles, excellent état par ailleurs\n\n Livret : excellent état\n\n Disque : excellent état, aucune micro-rayure visible\n\n Jaquette : excellent état\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": "Bleu",
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Square Enix",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    },
+    "leboncoin": {
+     "title": "🎮 Rise of the Tomb Raider 20ème anniversaire PS4",
+     "description": "Je vends Rise of the Tomb Raider 20ème anniversaire sur PS4.\n\n Version boîte comprenant :\n\n Boîtier cartonnée édition 20ème anniversaire\n Livret illustré\n Disque de jeu\n\n État :\n\n Boîtier : excellent état, petites marques d'usure sur les extrémités et angles\n\n Livret : excellent état\n\n Disque : excellent état, aucune micro-rayure visible\n\n Jaquette : excellent état\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "etat": "Très bon état",
+      "marque": "Square Enix",
+      "matiere": null,
+      "univers": null
+     }
+    },
+    "vinted": {
+     "title": "🎮 Rise of the Tomb Raider 20ème anniversaire PS4",
+     "description": "Je vends Rise of the Tomb Raider 20ème anniversaire sur PS4.\n\n Version boîte comprenant :\n\n Boîte cartonnée édition 20ème anniversaire\n Livret illustré\n Disque de jeu\n\n État :\n\n Boîtier : petites marques d'usure sur les extrémités et les angles, excellent état général\n\n Jaquette : excellent état, aucune trace visible\n\n Livret : excellent état\n\n Disque : excellent état, aucune micro-rayure visible\n\n À noter : Jeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": "Bleu",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Square Enix",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    }
+   },
+   "trace_etat": {
+    "etat_branche": "canonique",
+    "etat_lus": [
+     "tres_bon",
+     "tres_bon",
+     "tres_bon",
+     "tres_bon"
+    ],
+    "etat_textes_nettoyes": [],
+    "etat_tier": "tres_bon"
+   },
+   "texte_publie": "🎮 Je vends Rise of the Tomb Raider – 20e anniversaire, édition Artbook, sur PS4.\n\n📦 Édition Artbook comprenant :\n\n✅ La pochette cartonnée extérieure.\n\n✅ Le livret Artbook illustré avec son support pour disque.\n\n✅ Le disque du jeu PS4.\n\n✨ État :\n\n💿 Disque en excellent état, sans micro-rayure visible à la lumière.\n\n📦 Pochette cartonnée présentant de petites marques d'usure aux extrémités. Le reste est en excellent état.\n\n📘 Livret Artbook en excellent état.\n\n🖼️ Illustrations intérieures en excellent état.\n\nJeu testé aujourd’hui, le 2 novembre 2026, et fonctionnel.\n\nVendu comme sur les photos.\n\n📍 Remise en main propre possible.\n\n🚚 Expédition rapide et soignée, généralement sous 12 heures ouvrées."
+  },
+  {
+   "inventaire_id": "1793628087107",
+   "source": "stepper",
+   "titre": "Immortals Fenyx Rising PS5 très bon état",
+   "marque": "Sony",
+   "type": "High-Tech",
+   "lecture_photos": "Jeu vidéo Immortals Fenyx Rising pour PlayStation 5, édité par Ubisoft, classé PEGI 12. Boîtier bleu avec jaquette et livret présents, sans déchirure visible. Le disque ne montre aucune rayure visible sur les photos. Le fonctionnement n'a pas été testé.",
+   "etat_estime": "Très bon état",
+   "note": "",
+   "propositions": {
+    "beebs": {
+     "title": "🎮 Immortals Fenyx Rising PS5",
+     "description": "Je vends Immortals Fenyx Rising sur PlayStation 5.\n\n Version boîte comprenant :\n\n Disque\n Boîtier\n Jaquette\n Livret\n\n État :\n\n Disque : aucune rayure visible.\n\n Boîtier : très bon état.\n\n Jaquette : sans déchirure visible.\n\n Livret : présent.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "age": "12 ans - 16 ans",
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Ubisoft",
+      "matiere": null,
+      "taille": null
+     }
+    },
+    "depop": {
+     "title": "",
+     "description": "",
+     "platform_fields": {
+      "categorie": "High-Tech",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Ubisoft"
+     }
+    },
+    "ebay": {
+     "title": "🎮 Immortals Fenyx Rising PS5",
+     "description": "Je vends Immortals Fenyx Rising sur PlayStation 5.\n\n Version boîte comprenant :\n\n Disque\n Boîtier\n Jaquette\n Livret\n\n État :\n\n Disque : aucune rayure visible\n\n Boîtier : très bon état\n\n Jaquette : sans déchirure visible\n\n Livret : très bon état\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Ubisoft",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    },
+    "leboncoin": {
+     "title": "🎮 Immortals Fenyx Rising PS5",
+     "description": "Je vends Immortals Fenyx Rising sur PlayStation 5.\n\n Version boîte comprenant :\n\n Disque\n Boîtier\n Jaquette\n Livret\n\n État :\n\n Disque : aucune rayure visible\n\n Boîtier : très bon état\n\n Jaquette : très bon état, sans déchirure\n\n Livret : très bon état\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "etat": "Très bon état",
+      "marque": "Ubisoft",
+      "matiere": null,
+      "univers": null
+     }
+    },
+    "vinted": {
+     "title": "🎮 Immortals Fenyx Rising PS5",
+     "description": "Je vends Immortals Fenyx Rising sur PlayStation 5.\n\n Version boîte comprenant :\n\n Disque\n Boîtier\n Jaquette\n Livret\n\n État :\n\n Disque : aucune rayure visible.\n\n Boîtier : très bon état.\n\n Jaquette : très bon état, sans déchirure.\n\n Livret : très bon état.\n\n À noter : fonctionnement non testé.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Ubisoft",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    }
+   },
+   "trace_etat": {
+    "etat_branche": "canonique",
+    "etat_lus": [
+     "tres_bon",
+     "tres_bon",
+     "tres_bon",
+     "tres_bon"
+    ],
+    "etat_textes_nettoyes": [],
+    "etat_tier": "tres_bon"
+   },
+   "texte_publie": "🎮 Je vends Immortals Fenyx Rising sur PlayStation 5 (PS5).\n\n📦 Version boîte comprenant :\n\n✅ Jeu sur disque PS5.\n\n✅ Boîtier avec jaquette.\n\n✅ Feuillet promotionnel présentant trois nouvelles aventures.\n\n✨ État :\n\n💿 Disque en excellent état, d'aspect comme neuf, sans micro-rayure visible à la lumière.\n\n📦 Boîtier en excellent état, sans cassure, sans fissure et sans micro-rayure visible à la lumière.\n\n🖼️ Jaquette en excellent état.\n\n📄 Feuillet promotionnel en excellent état.\n\nJeu testé aujourd’hui, le 2 novembre 2026, et fonctionnel.\n\nVendu comme sur les photos.\n\n📍 Remise en main propre possible.\n\n🚚 Expédition rapide et soignée, généralement sous 12 heures ouvrées."
+  },
+  {
+   "inventaire_id": "1793628394932",
+   "source": "stepper",
+   "titre": "Minecraft PlayStation 3 Edition PS3 (BLES-01976)",
+   "marque": "Sony",
+   "type": "High-Tech",
+   "lecture_photos": "Jeu PS3 Minecraft PlayStation 3 Edition, édité par Sony Computer Entertainment Europe et développé avec Mojang, vendu dans son boîtier transparent avec sa notice. Le disque est lisible et ne présente pas de rayure visible sur les photos ; le boîtier porte quelques micro-rayures d'usage. Le boîtier est présent avec sa notice et le disque en place.",
+   "etat_estime": "Très bon état",
+   "note": "",
+   "propositions": {
+    "beebs": {
+     "title": "🎮 Minecraft PlayStation 3 Edition PS3",
+     "description": "Je vends Minecraft PlayStation 3 Edition sur PS3.\n\n Version boîte comprenant :\n\n Disque de jeu\n Boîtier transparent\n Notice\n\n État :\n\n Disque : lisible, aucune rayure visible.\n\n Boîtier : quelques micro-rayures d'usage.\n\n Notice : présente.\n\n À noter : jeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "age": null,
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Sony",
+      "matiere": null,
+      "taille": null
+     }
+    },
+    "depop": {
+     "title": "",
+     "description": "",
+     "platform_fields": {
+      "categorie": "High-Tech",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Sony"
+     }
+    },
+    "ebay": {
+     "title": "🎮 Minecraft PlayStation 3 Edition PS3",
+     "description": "Je vends Minecraft PlayStation 3 Edition sur PS3.\n\n Version boîte comprenant :\n\n Disque\n Boîtier transparent\n Notice\n\n État :\n\n Disque lisible, sans rayure visible.\n\n Boîtier avec micro-rayures d'usage.\n\n Notice présente.\n\n À noter : Jeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Sony",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    },
+    "leboncoin": {
+     "title": "🎮 Minecraft PlayStation 3 Edition PS3",
+     "description": "Je vends Minecraft PlayStation 3 Edition sur PS3.\n\n Version boîte comprenant :\n\n Disque de jeu\n Boîtier transparent\n Notice\n\n État :\n\n Disque : lisible, sans rayure visible.\n\n Boîtier : micro-rayures d'usage.\n\n Notice : présente.\n\n À noter : Jeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "etat": "Très bon état",
+      "marque": "Sony",
+      "matiere": null,
+      "univers": null
+     }
+    },
+    "vinted": {
+     "title": "🎮 Minecraft PlayStation 3 Edition PS3",
+     "description": "Je vends Minecraft PlayStation 3 Edition sur PS3.\n\n Version boîte comprenant :\n\n Disque de jeu\n Boîtier transparent\n Notice\n\n État :\n\n Disque lisible, sans rayure visible.\n\n Boîtier avec micro-rayures d'usage.\n\n Notice présente.\n\n À noter : Référence BLES-01976.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": null,
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Sony",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    }
+   },
+   "trace_etat": {
+    "etat_branche": "canonique",
+    "etat_lus": [
+     "tres_bon",
+     "tres_bon",
+     "tres_bon",
+     "tres_bon"
+    ],
+    "etat_textes_nettoyes": [],
+    "etat_tier": "tres_bon"
+   },
+   "texte_publie": "🎮 Je vends Minecraft: PlayStation 3 Edition sur PlayStation 3.\n\n📦 Version boîte comprenant :\n\n✅ Le disque du jeu\n\n✅ Le boîtier avec sa jaquette\n\n✅ Le livret\n\n🇫🇷 Jaquette en français.\n\n✨ État :\n\n💿 Disque en excellent état, sans micro-rayure visible à la lumière.\n\n📦 Boîtier en très bon état. Le film transparent présente des micro-rayures visibles à la lumière. Le boîtier ferme correctement.\n\n🖼️ Jaquette en très bon état, non abîmée.\n\n📘 Livret en très bon état.\n\nJeu testé aujourd’hui, le 2 novembre 2026, et fonctionnel.\n\nVendu comme sur les photos.\n\n📍 Remise en main propre possible.\n\n🚚 Expédition rapide et soignée, généralement sous 12 heures ouvrées."
+  },
+  {
+   "inventaire_id": "1793628877250",
+   "source": "stepper",
+   "titre": "Detroit Become Human PS4 - , boîtier et disque",
+   "marque": "Sony Interactive Entertainment",
+   "type": "High-Tech",
+   "lecture_photos": "Jeu PS4 Detroit: Become Human dans son boîtier bleu d'origine, avec le disque et la notice. Le disque ne montre aucune rayure visible sur les photos et le boîtier est propre, sans usure marquée.",
+   "etat_estime": "Très bon état",
+   "note": "",
+   "propositions": {
+    "beebs": {
+     "title": "🎮 Detroit: Become Human PS4",
+     "description": "Je vends Detroit: Become Human sur PS4.\n\n Version boîte comprenant :\n\n Disque\n Boîtier\n Notice\n\n État :\n\n Disque : aucune rayure visible\n\n Boîtier : propre, sans usure marquée\n\n Notice : présente\n\n À noter : Jeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "age": null,
+      "couleur": "Bleu",
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Sony Interactive Entertainment",
+      "matiere": null,
+      "taille": null
+     }
+    },
+    "depop": {
+     "title": "",
+     "description": "",
+     "platform_fields": {
+      "categorie": "High-Tech",
+      "couleur": "Bleu",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Sony Interactive Entertainment"
+     }
+    },
+    "ebay": {
+     "title": "🎮 Detroit: Become Human PS4",
+     "description": "Je vends Detroit: Become Human sur PS4.\n\n Version boîte comprenant :\n\n Disque\n Boîtier\n Notice\n\n État :\n\n Disque : très bon état, aucune rayure visible.\n\n Boîtier : très bon état, propre, sans usure marquée.\n\n Notice : présente.\n\n À noter : article complet et d'origine.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": "Bleu",
+      "etat": "Très bon état",
+      "genre": null,
+      "marque": "Sony Interactive Entertainment",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    },
+    "leboncoin": {
+     "title": "🎮 Detroit: Become Human PS4",
+     "description": "Je vends Detroit: Become Human sur PS4.\n\n Version boîte comprenant :\n\n Disque\n Boîtier\n Notice\n\n État :\n\n Disque : aucune rayure visible\n\n Boîtier : propre, sans usure marquée\n\n Notice : présente\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "etat": "Très bon état",
+      "marque": "Sony Interactive Entertainment",
+      "matiere": null,
+      "univers": null
+     }
+    },
+    "vinted": {
+     "title": "🎮 Detroit: Become Human PS4",
+     "description": "Je vends Detroit: Become Human sur PS4 (Sony Interactive Entertainment).\n\n Version boîte comprenant :\n\n Disque\n Boîtier bleu d'origine\n Notice\n\n État :\n\n Disque sans rayure visible.\n\n Boîtier propre, sans usure marquée.\n\n Notice présente.\n\nJeu testé et fonctionnel.\n\nVendu comme sur les photos.\n\n Remise en main propre possible.\n\n Expédition rapide et soignée, généralement sous 12 heures ouvrées.",
+     "platform_fields": {
+      "couleur": "Bleu",
+      "etat": "Très bon état",
+      "genre": "Mixte",
+      "marque": "Sony Interactive Entertainment",
+      "matiere": null,
+      "modele": null,
+      "stockage": null,
+      "taille": null
+     }
+    }
+   },
+   "trace_etat": {
+    "etat_branche": "canonique",
+    "etat_lus": [
+     "tres_bon",
+     "tres_bon",
+     "tres_bon",
+     "tres_bon"
+    ],
+    "etat_textes_nettoyes": [],
+    "etat_tier": "tres_bon"
+   },
+   "texte_publie": "🎮 Je vends Detroit: Become Human sur PS4.\n\n📦 Version boîte comprenant :\n\n✅ Le disque du jeu\n\n✅ Le boîtier avec sa jaquette\n\n✅ Le feuillet publicitaire PlayStation Plus\n\n✨ État :\n\n💿 Disque en excellent état, sans aucune micro-rayure visible à la lumière.\n\n📦 Boîtier en très bon état, avec quelques micro-rayures visibles à la lumière sur le film transparent. Coque rigide en excellent état, sans cassure. Le boîtier ferme correctement.\n\n🖼️ Jaquette papier en très bon état.\n\n📄 Feuillet publicitaire PlayStation Plus en excellent état.\n\nJeu testé aujourd’hui, le 2 novembre 2026, et fonctionnel.\n\nVendu comme sur les photos.\n\n📍 Remise en main propre possible.\n\n🚚 Expédition rapide et soignée, généralement sous 12 heures ouvrées."
+  }
+ ]
+}

@@ -168,9 +168,12 @@ export async function estUnLivre({ initialListing = null, motCategorie = null, o
   return /^livres?$/i.test(String(motCategorie ?? "").trim());
 }
 
-export function signatureResolution({ plateformes, edited, initialListing, sharedFields, sharedOverrides, activeAiIcon, activeAiObjet, origineCat, ebayVoieApi = false }) {
+export function signatureResolution({ plateformes, edited, initialListing, sharedFields, sharedOverrides, activeAiIcon, activeAiObjet, origineCat, ebayVoieApi = false, ficheAttributs = null }) {
   const ordre = [...plateformes].sort();
+  // (13/11, point 5c) La couleur de la fiche nourrit la couleur Depop : lue après le pré-calcul, elle le fait refaire.
+  const attrsFiche = ficheAttributs ?? initialListing?.attributs ?? null;
   return JSON.stringify({
+    fc: ordre.includes("depop") ? [attrsFiche?.couleur?.v ?? attrsFiche?.couleur ?? null, attrsFiche?.couleur2?.v ?? attrsFiche?.couleur2 ?? null] : null,
     // (25/09) La voie d'eBay change ce que la résolution fait d'un rayon
     // refusé : un pré-calcul fait sous l'autre voie ne se reprend pas.
     ev: ordre.includes("ebay") ? ebayVoieApi === true : null,
@@ -317,9 +320,11 @@ export async function resoudrePublication({
   // (25/09) La voie RÉELLE d'eBay pour ce compte (App.jsx, ebayCompte) : par
   // l'API, le serveur applique lui-même « le rayon refusé ne part jamais ».
   ebayVoieApi = false,
+  // (13/11, point 5c) inventaire.attributs relus par l'écran (attributsBase) : la couleur de la fiche pour Depop.
+  ficheAttributs = null,
 }) {
   const {
-    platformFieldsConfig, isConditionKey, defaultConditionFor, GENERIC_ASPECTS_PF_KEY,
+    GENERIC_ASPECTS_PF_KEY,
     normAspectVal, resolveArticleIcon, resolveArticleIconDetail, OPLA_ETAT_PAR_LIBELLE,
   } = outils;
   // Le corps lit `plateformesAPublier` : le nom qu'il portait au clic. On le
@@ -950,13 +955,9 @@ export async function resoudrePublication({
   });
   for (const platform of plateformesAPublier) {
     const pf = { ...(edited[platform]?.platform_fields ?? {}) };
-    // Dernier filet avant l'insert du job : un état vidé à la main (ou un
-    // `edited` venant d'un chemin qui n'est pas passé par
-    // mergeFieldsWithLens) ne part JAMAIS vide vers l'extension.
-    for (const field of platformFieldsConfig[platform] ?? []) {
-      if (isConditionKey(field.key) && !String(pf[field.key] ?? "").trim())
-        pf[field.key] = defaultConditionFor(field);
-    }
+    // (13/11, décision de Nico — « état inconnu = question ») Plus de « Très bon état » posé ici au dernier moment :
+    // un état vide reste vide, et le clic le refuse (ListingPreviewScreen, refusEtatInconnu — la question « État » est
+    // posée avant, moteur/etatAChoisir.js). Un état vide ne part JAMAIS vers l'extension, et n'est jamais inventé.
     sanitizeJobFields(platform, pf);
     // ══ GARDE-FOU DE CATÉGORIE — LES QUATRE PLATEFORMES (2026-09-07 soir) ══
     // L'ICÔNE est le pivot unique dont dérivent les quatre catégories. Le
@@ -1509,7 +1510,12 @@ export async function resoudrePublication({
       // (30/10, lot E, B7) La matière : celle de la copie Depop, sinon la valeur commune des autres copies (lue sur
       // l'étiquette), sinon la fiche. La copie Depop n'en porte pas (la matière ne se propage pas à Depop).
       const matiereDepop = String(pf.matiere || sharedFields.matiere || initialListing?.matiere || "").trim();
-      const { champs } = champsDepop({ icon: iconeArticle, genre: genreDepop, pf: matiereDepop ? { ...pf, matiere: matiereDepop } : pf, rayonParMoteur: true, categorieId: rayonDepop?.id ?? null });
+      // (13/11, point 5c) La couleur, même règle : la copie Depop, sinon la valeur commune, sinon la fiche
+      // (inventaire.attributs.couleur — un import Vinted n'en porte que là) ; vidée à la main sur la copie Depop : jamais
+      // reposée. Le serveur (get-pending-jobs) tend le même filet pour tout ce qui part sans couleur.
+      const { champs } = champsDepop({ icon: iconeArticle, genre: genreDepop, pf: matiereDepop ? { ...pf, matiere: matiereDepop } : pf, rayonParMoteur: true, categorieId: rayonDepop?.id ?? null,
+        couleurCommune: sharedFields.couleur ?? null, ficheAttributs: ficheAttributs ?? initialListing?.attributs ?? null,
+        couleurRetireeALaMain: Boolean(sharedOverrides?.[platform]?.has?.("couleur")) && !String(pf.couleur ?? "").trim() });
       delete champs.depopTaille; // posée après la garde des tailles inventées
       delete pf.depopCategoryPath; delete pf.depopCategoryId; delete pf.depopCategoryLibelles;
       Object.assign(pf, champs);

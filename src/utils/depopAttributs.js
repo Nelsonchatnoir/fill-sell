@@ -26,6 +26,7 @@
 import { PALIERS_ETAT, tierEtat } from "../../supabase/functions/_shared/etat-plateformes.js";
 import { estSansMarque } from "../../supabase/functions/_shared/marque-absente.js";
 import { texteComparable } from "./texteComparable.js";
+import { depopCouleursDe } from "../../supabase/functions/_shared/depop-couleur.js";
 
 // ── ÉTAT ────────────────────────────────────────────────────────────────────
 // Les descriptions sont celles que Depop affiche (relevé, description_fr) :
@@ -117,17 +118,15 @@ export const DEPOP_COULEUR_PAR_LIBELLE = Object.freeze({
   "Transparence": null,  // aucune couleur Depop ne le dit
 });
 
-/** Les couleurs Depop d'une fiche (« Rouge et Blanc », « Rouge, Blanc »…), 2 au plus, sans doublon. */
+/**
+ * Les couleurs Depop d'une fiche (« Rouge et Blanc », « Rouge, Blanc »…), 2 au plus, sans doublon.
+ * (13/11, point 5c — principe de Nico du 12/11 : par IDENTIFIANTS) Le libellé est lu en identifiant de couleur Vinted
+ * (palettes relevées, toutes langues relevées), puis en identifiant Depop : _shared/depop-couleur.js, la même règle
+ * que le serveur. La table ci-dessus en est la lecture française (selftest:depop-couleur-fiche les compare) : rien ne
+ * change pour une fiche française ; « Grigio » (vinted.it), « Black », « Bleu marine » sont désormais lus.
+ */
 export function depopCouleurs(valeur) {
-  const parComparable = new Map(Object.entries(DEPOP_COULEUR_PAR_LIBELLE).map(([k, v]) => [texteComparable(k), v]));
-  const ids = [];
-  const ecartees = [];
-  for (const morceau of String(valeur ?? "").split(/\s+et\s+|[,/&+]/i).map((s) => s.trim()).filter(Boolean)) {
-    const id = parComparable.get(texteComparable(morceau));
-    if (id && !ids.includes(id)) ids.push(id);
-    else if (!id) ecartees.push(morceau);
-  }
-  return { ids: ids.slice(0, 2), ecartees, tronquees: ids.slice(2) };
+  return depopCouleursDe(valeur);
 }
 
 // ── MATIÈRES ────────────────────────────────────────────────────────────────

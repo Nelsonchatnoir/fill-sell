@@ -1,0 +1,62 @@
+diff --git a/supabase/functions/_shared/correctifs-extension.js b/supabase/functions/_shared/correctifs-extension.js
+index f53e390..2cdacbc 100644
+--- a/supabase/functions/_shared/correctifs-extension.js
++++ b/supabase/functions/_shared/correctifs-extension.js
+@@ -424,6 +424,26 @@ function textesDuJob(job) {
+   ].map((t) => String(t ?? "")).filter(Boolean);
+ }
+ 
++// ── (13/11, lot « zéro problème » 5e — compte 63ad8597, tâche 641fb37e) UN RÉARMEMENT « MANGÉ » NE COMPTE PAS ─────────
++// Le 11/11 à 21:39, le correctif 0.6.186 (vinted_etat_a_confirmer) a remis la tâche en file SANS remettre ses compteurs
++// d'essais (défaut corrigé le 12/11 par remettreEnFile) : handler-watch l'a ressortie 3 min plus tard (« 2 essais »), et
++// le poste 0.6.186, qui l'avait prise, a vu sa reprise refusée (« Ce job n'est plus à exécuter ») — AUCUN envoi depuis la
++// relance : la correction n'a jamais été essayée, l'annonce reste hors ligne. RÈGLE : une remise en ligne (étape
++// 'deleted') réarmée par un correctif, sans AUCUN envoi ni tentative datés après ce réarmement, se réarme UNE fois de
++// plus (marquée apres_rearmement_mange) — jamais une troisième. Un vrai essai (envoi postérieur) consomme le correctif.
++function rearmementMange(job) {
++  const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
++  const leve = pf.correctif_leve && typeof pf.correctif_leve === "object" ? pf.correctif_leve : null;
++  if (!leve || leve.apres_rearmement_mange) return false;
++  if (job?.action !== "republish" || pf.republish_step !== "deleted") return false;
++  const le = Date.parse(String(leve.le ?? ""));
++  if (!Number.isFinite(le)) return false;
++  const apres = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) && t >= le; };
++  if ((Array.isArray(pf.recreation_envois) ? pf.recreation_envois : []).some((e) => apres(typeof e === "string" ? e : e?.at))) return false;
++  if (apres(pf.recreation_tentee?.at)) return false;
++  return Number.isFinite(buildMsDe(leve.build_echec));
++}
++
+ /**
+  * Le correctif qui répare CE job, s'il existe : bonne plateforme, bonne
+  * action, signature lue dans ses textes, build de l'échec PLUS ANCIEN que le
+@@ -435,11 +455,16 @@ export function correctifPourJob(job, correctifs = CORRECTIFS_EXTENSION) {
+   const buildEchec = buildMsDe(job.handler_build);
+   if (!Number.isFinite(buildEchec)) return null; // build inconnu : on ne devine pas
+   const textes = textesDuJob(job);
++  const mange = rearmementMange(job);
+   for (const c of correctifs) {
+     if (job.platform !== c.platform) continue;
+     if (!c.actions.includes(String(job.action ?? "publish"))) continue;
+-    if (!(buildEchec < buildMsDe(c.buildMin))) continue;
+-    if (pf.correctif_leve && typeof pf.correctif_leve === "object" && pf.correctif_leve.cle === c.cle) continue;
++    // (13/11) Un réarmement MANGÉ se refait au build de l'échec d'ORIGINE (le build du job est celui du poste qui l'a
++    // pris sans rien envoyer).
++    const dejaLeve = pf.correctif_leve && typeof pf.correctif_leve === "object" && pf.correctif_leve.cle === c.cle;
++    const buildRef = dejaLeve && mange ? buildMsDe(pf.correctif_leve.build_echec) : buildEchec;
++    if (!(buildRef < buildMsDe(c.buildMin))) continue;
++    if (dejaLeve && !mange) continue;
+     if (!textes.some((t) => c.signature.test(t))) continue;
+     if (typeof c.condition === "function" && !c.condition(job)) continue;
+     return c;
+@@ -480,7 +505,10 @@ export function champsReamorcageCorrectif(job, c, { buildDuPoll = null, maintena
+     pf.republish_step = "a_capturer";
+     delete pf.capture_id;
+   }
+-  pf.correctif_leve = { cle: c?.cle, version: c?.version, le: maintenant, build_echec: job?.handler_build ?? null, build_poste: buildDuPoll, motif: c?.motif };
++  // (13/11) Second réarmement d'un réarmement « mangé » (rearmementMange) : marqué, le build de l'échec d'origine gardé.
++  const avant = pf0.correctif_leve && typeof pf0.correctif_leve === "object" && pf0.correctif_leve.cle === c?.cle ? pf0.correctif_leve : null;
++  pf.correctif_leve = { cle: c?.cle, version: c?.version, le: maintenant, build_echec: (avant ? avant.build_echec : job?.handler_build) ?? null, build_poste: buildDuPoll, motif: c?.motif,
++    ...(avant ? { apres_rearmement_mange: { precedent_le: avant.le ?? null, build_du_job: job?.handler_build ?? null } } : {}) };
+   pf.build_min_requis = c?.buildMin;
+   return pf;
+ }

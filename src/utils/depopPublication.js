@@ -15,7 +15,9 @@
 //                      (utils/depopCategories.js), jamais par un libellé ;
 //   depopGenre         male | female | unisex — en Enfants seulement ;
 //   depopEtat          brand_new… (utils/depopAttributs.js, jamais embelli) ;
-//   depopCouleurs      2 au plus ; depopTaille ; depopMarque (« Sans marque »
+//   depopCouleurs      2 au plus, par identifiants — la copie, sinon la valeur
+//                      commune, sinon la fiche (13/11, _shared/depop-couleur.js) ;
+//                      depopTaille ; depopMarque (« Sans marque »
 //                      → « Other » chez Depop) ; depopPort (la personne) ;
 //   depopMatieres      (30/10, lot E) 4 au plus, depuis la matière de la fiche
 //                      ou la composition de l'étiquette (depopMatieres) ;
@@ -27,8 +29,9 @@
 
 import { getDepopCategory, DEPOP_GENRE_ENFANT } from "./depopCategories.js";
 import {
-  depopEtat, depopCouleurs, depopMatieres, DEPOP_TAILLE_ENFANT, depopPointureEnfant, depopMarqueAbsente, DEPOP_ETAT_PAR_PALIER,
+  depopEtat, depopMatieres, DEPOP_TAILLE_ENFANT, depopPointureEnfant, depopMarqueAbsente, DEPOP_ETAT_PAR_PALIER,
 } from "./depopAttributs.js";
+import { couleurDepopPourLaCopie } from "../../supabase/functions/_shared/depop-couleur.js";
 import { couperAuMot } from "./texteConforme.js";
 import { lireTourDeTaille } from "../../supabase/functions/_shared/taille-de-service.js";
 import { AGE_PAR_STATURE_ENFANT, statureEnfant } from "../../supabase/functions/_shared/tailles.js";
@@ -140,11 +143,13 @@ export function tailleDepop(taille, chemin) {
  * Les champs Depop d'un job, depuis la fiche (pur).
  * @param {{ icon: string, genre: string, pf: object }} arg
  *   pf = les champs de la copie Depop (etat, taille, genre, marque, couleur, depopPort…).
+ *   (13/11, point 5c) couleurCommune = la couleur de l'encart partagé ; ficheAttributs = inventaire.attributs de la
+ *   fiche ; couleurRetireeALaMain = la personne a vidé la couleur de la copie Depop (jamais reposée).
  * @returns {{ champs: object, manques: string[] }} — `manques` = ce que la
  *   personne devra dire (« rayon » : la carte « rayon à choisir » ; le reste :
  *   les questions du connecteur).
  */
-export function champsDepop({ icon, genre, pf = {}, rayonParMoteur = false, categorieId = null }) {
+export function champsDepop({ icon, genre, pf = {}, rayonParMoteur = false, categorieId = null, couleurCommune = null, ficheAttributs = null, couleurRetireeALaMain = false }) {
   const champs = {};
   const manques = [];
   // (11/10) `rayonParMoteur` : le rayon vient du MOTEUR (_shared/depop-rayon.js :
@@ -165,8 +170,13 @@ export function champsDepop({ icon, genre, pf = {}, rayonParMoteur = false, cate
   // en le disant (Depop n'accepte que « Nouveau ») — jamais embelli ici.
   else if (etat.refus === "etat_neuf_seulement" && etat.palier) champs.depopEtat = DEPOP_ETAT_PAR_PALIER[etat.palier];
   else manques.push("etat");
-  const couleurs = depopCouleurs(pf.couleur);
-  if (couleurs.ids.length) champs.depopCouleurs = couleurs.ids;
+  // (13/11, point 5c — compte 8ac5bbda, 30 publications Depop sur 49 sans couleur alors que la fiche en a une) La
+  // couleur : celle de la copie Depop, sinon la valeur commune, sinon la FICHE — comme la matière. La première source
+  // qui porte une couleur décide (jamais la fiche par-dessus une couleur de la copie ; « Turquoise » : rien). Par
+  // identifiants (_shared/depop-couleur.js) ; la source est tracée (le filet du serveur respecte « retirée à la main »).
+  const couleur = couleurDepopPourLaCopie({ copie: pf.couleur, commune: couleurCommune, ficheAttributs, retireeALaMain: couleurRetireeALaMain });
+  if (couleur?.ids.length) champs.depopCouleurs = couleur.ids;
+  if (couleur) champs.depop_couleur_source = couleur.source;
   // (30/10, lot E, B7) La matière (« Coton biologique », ou la composition « 80% coton, 20% élasthanne ») : le
   // connecteur ne l'envoie que sur un type Depop qui l'accepte.
   const matieres = depopMatieres(pf.matiere);

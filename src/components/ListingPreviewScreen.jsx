@@ -52,6 +52,9 @@ import { valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine, feuillesD
 import { cheminVintedDeLaFiche, chargerFeuillesVinted, idVintedDuChemin } from "../utils/cheminVintedFiche";
 import { plateformeDuJeuPourLaListe } from "../utils/jeuxVideo";
 import { estChampEtat, etatDuJob } from "../publication/moteur/listes";
+// (13/11, décision de Nico — « état inconnu = question ») Un état que personne n'a dit devient UNE question.
+import { plateformesSansEtat, ecrituresDeLEtatChoisi, refusEtatInconnu, ETATS_AU_CHOIX } from "../publication/moteur/etatAChoisir";
+import { etatsDuJob as etatsDuJobPf } from "../../supabase/functions/_shared/etat-correspondance.js";
 import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, familleJeuVideo, jeuVideoDeLArticle, cheminJeuVideo, plateformeEbayDuJeu, EBAY_ASPECT_PLATEFORME } from "../utils/jeuxVideo";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
@@ -1287,19 +1290,12 @@ function visibleFields(fieldConfigs, icon, values, texteArticle = "") {
   );
 }
 
-// ── Défaut d'état ─────────────────────────────────────────────────────────────
-// Filet structurel (2026-07-14), pas un choix produit : l'état manquait parfois
-// de bout en bout (l'IA ne le renvoie pas, l'analyse Lens non plus, la ligne de
-// stock saisie à la main n'en a pas) et partait vide → champ obligatoire non
-// rempli sur les 4 plateformes.
-//
-// "Très bon état" est le SEUL libellé écrit à l'identique dans la liste fermée
-// des 4 plateformes (Beebs écrit ses états avec une virgule — "Neuf, avec
-// étiquette" — mais pas celui-ci). C'est aussi le milieu de gamme : il ne
-// survend jamais l'article (contrairement à Neuf) et ne le brade pas.
-// Il est TOUJOURS résolu dans les options de la plateforme visée : on n'envoie
-// jamais un libellé absent de sa propre liste.
-const DEFAULT_CONDITION = "Très bon état";
+// ── Plus de défaut d'état (13/11, lot « zéro problème », étape 5 — décision de Nico) ────────────────────────────
+// Du 14/07 au 13/11, un état que personne n'avait dit (ni l'IA, ni la lecture des photos, ni la ligne de stock) partait
+// en « Très bon état » (DEFAULT_CONDITION, posé ici et au dernier filet de resolutionPublication). « État jamais
+// embelli, état inconnu = question » : il reste VIDE, et devient UNE question posée pour toutes les plateformes qui
+// partent (moteur/etatAChoisir.js : etatAChoisir, choisirEtat) ; rien ne part sans réponse (requiredBlocking, et
+// refusEtatInconnu au clic). Mesuré le 13/11 : 848 publications en 30 jours seraient passées par la question.
 const isConditionKey = k => k === "etat" || k === "condition";
 
 // Défauts DÉTERMINISTES d'aspects obligatoires eBay (Phase 1, 2026-07-16).
@@ -1406,11 +1402,6 @@ function defautAspectEbay(aspect, ctx = {}) {
 // content script correspondant (codes serveur Vinted, attributs for= LBC,
 // libellés exacts Beebs).
 // GENERIC_ASPECTS_PF_KEY, GENERIC_PLATFORM_LABELS : src/publication/moteur/champsPartages.js.
-
-function defaultConditionFor(field) {
-  if (!field || field.type !== "select") return DEFAULT_CONDITION;
-  return findMatchingOption(DEFAULT_CONDITION, field.options ?? []) || DEFAULT_CONDITION;
-}
 
 // ── LES ATTRIBUTS DE LA FICHE, ET LA SOURCE NE DÉCIDE JAMAIS ───────────────
 // `inventaire.attributs` porte { v, at, source } — écrit par le relevé de
@@ -1522,11 +1513,9 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs, attributs
     result[field.key] = brut
       ? (field.type === "select" ? (adapter(brut) || "") : brut)
       : "";
-    // Aucune source n'a donné l'état (IA, Lens, ligne de stock) — ou en a donné
-    // un que la plateforme ne connaît pas : défaut. L'utilisateur voit la valeur
-    // dans le select et peut la changer avant de publier.
-    if (isConditionKey(field.key) && !result[field.key])
-      result[field.key] = defaultConditionFor(field);
+    // (13/11, décision de Nico — « état inconnu = question ») Aucune source n'a donné l'état (IA, fiche, Lens) : il
+    // reste VIDE — jamais « Très bon état » par défaut. La question « État » se pose pour toutes les plateformes
+    // (moteur/etatAChoisir.js), rien ne part sans réponse.
   }
   return result;
 }
@@ -3458,7 +3447,7 @@ function BoutonsRayon({ choix, onChoisir }) {
   );
 }
 
-function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, genreAChoisir = null, onChoisirGenre = null, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, onReponseQuestion = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null, douteEnLigne = {}, onRepondreDisparue = null }) {
+function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, genreAChoisir = null, onChoisirGenre = null, etatAChoisir = [], onChoisirEtat = null, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, onReponseQuestion = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null, douteEnLigne = {}, onRepondreDisparue = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3894,6 +3883,27 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
         <div style={{ padding:"12px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:14, marginBottom:12, fontSize:13, color:"#92400E" }}>
           {genreAChoisir?.beebs ? phraseGenreAChoisir({ ...genreAChoisir.beebs, nomPlateforme: "Beebs", lang }) : t("beebsGenreRequired")}
           <BoutonsRayon choix={genreAChoisir?.beebs} onChoisir={onChoisirGenre ? (v) => onChoisirGenre("beebs", v) : null} />
+        </div>
+      )}
+
+      {/* (13/11, décision de Nico) L'ÉTAT que personne n'a dit : UNE question, un geste, toutes les plateformes qui
+          l'attendent (chacune reçoit le libellé de SA liste). Jamais « Très bon état » par défaut. */}
+      {etatAChoisir.length > 0 && (
+        <div style={{ padding:"12px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:14, marginBottom:12, fontSize:13, color:"#92400E" }}>
+          <div style={{ fontWeight:700, marginBottom:4 }}>
+            {lang === "en" ? "Condition" : "État"} — {etatAChoisir.map(p => PLATFORM_LABELS[p] ?? p).join(", ")}
+          </div>
+          <div style={{ marginBottom:8 }}>
+            {lang === "en" ? "Nobody has said it yet: pick it, it goes to every platform in its own words." : "Personne ne l'a encore dit : choisis-le, il part sur chaque plateforme dans ses mots."}
+          </div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            {ETATS_AU_CHOIX.map(({ tier, libelle }) => (
+              <button key={tier} type="button" onClick={() => onChoisirEtat?.(libelle)}
+                style={{ padding:"7px 11px", borderRadius:999, border:"1px solid #C7A867", background:"#fff", color:"#7A4B00", fontSize:12.5, fontWeight:600, fontFamily:"inherit", cursor:"pointer" }}>
+                {libelle}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -7020,8 +7030,10 @@ export default function ListingPreviewScreen({
       activeAiIcon, activeAiObjet, origineCat, lang, supabase,
       // (25/09) Par l'API, le rayon eBay refusé est tranché par le serveur.
       ebayVoieApi: ebayVoieApiReelle,
+      // (13/11, point 5c) La fiche relue (couleur pour Depop) — l'empreinte change quand elle arrive.
+      ficheAttributs: attributsBase ?? articleBase?.attributs ?? null,
       outils: {
-        platformFieldsConfig, isConditionKey, defaultConditionFor, GENERIC_ASPECTS_PF_KEY,
+        platformFieldsConfig, isConditionKey, GENERIC_ASPECTS_PF_KEY,
         normAspectVal, resolveArticleIcon, resolveArticleIconDetail, OPLA_ETAT_PAR_LIBELLE,
       },
     };
@@ -7761,6 +7773,32 @@ export default function ListingPreviewScreen({
   const plateformesPubliables = useMemo(
     () => calculerPlateformesPubliables({ selected, platformListings, lbcAdresseManquante, platformSupport }),
     [selected, platformListings, lbcAdresseManquante, platformSupport]);
+
+  // ── (13/11, décision de Nico) L'ÉTAT INCONNU EST UNE QUESTION ─────────────────────────────────────────────────
+  // Les plateformes qui partent et dont la copie n'a AUCUN état (ni champ dédié, ni critère déjà posé) : la question
+  // « État » se pose UNE fois pour elles (moteur/etatAChoisir.js) — le bouton est gris tant qu'elle n'a pas de réponse.
+  // Un état connu (fiche, lecture des photos, copie, choix de la personne) reste exactement comme avant.
+  const etatAChoisir = useMemo(() => (platformListings
+    ? plateformesSansEtat({
+        plateformes: variante === "nouvelle" ? [...plateformesPubliables] : [...selected].filter(p => platformListings?.platforms?.[p]),
+        edited,
+      })
+    : []), [platformListings, plateformesPubliables, selected, edited, variante]);
+  // La réponse : écrite sur la copie de CHAQUE plateforme qui l'attendait, dans les mots de sa plateforme (jamais un
+  // niveau au-dessus) ; le juge unique la range ensuite dans la grille du rayon comme toute valeur.
+  const choisirEtat = (libelle) => {
+    const ecritures = ecrituresDeLEtatChoisi(libelle, etatAChoisir);
+    if (!ecritures.length) return;
+    setEdited(prev => {
+      const suivant = { ...prev };
+      for (const { plateforme, valeur } of ecritures) {
+        const c = suivant[plateforme];
+        if (!c) continue;
+        suivant[plateforme] = { ...c, platform_fields: { ...(c.platform_fields ?? {}), etat: valeur } };
+      }
+      return suivant;
+    });
+  };
 
   // ── DEPOP : LES FRAIS DE PORT, DITS AVANT L'ENVOI (09/10 soir, Nico) ──────
   // En France, Depop ne fournit aucune étiquette : le vendeur fixe le prix de
@@ -9639,6 +9677,13 @@ export default function ListingPreviewScreen({
           if (auto?.valeur) return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type, dedicatedTarget: genericDedicatedTarget(platform, key),
                                      suggested: auto.valeur, blocking: false, deduit: { valeur: auto.valeur, source: auto.source, motif: auto.motif } };
         }
+        // (13/11, décision de Nico) L'ÉTAT que personne n'a dit : c'est LA question « État » (etatAChoisir, une pour
+        // toutes les plateformes) — la ligne du rayon se tait le temps qu'elle ait sa réponse, jamais deux fois la même
+        // question. La réponse posée, la ligne se juge contre sa grille comme toute valeur (juge unique).
+        if (estChampEtat(platform, key) && !etatsDuJobPf(pf).length) {
+          return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type,
+                   dedicatedTarget: genericDedicatedTarget(platform, key), blocking: false, attendEtat: true };
+        }
         if (GENERIC_PREFILLED[platform]?.includes(key)) {
           return {
             key, label, state: "prefilled", allowedValues, inputType: r.input_type,
@@ -11050,7 +11095,7 @@ export default function ListingPreviewScreen({
       //    Une publication ne doit jamais échouer, ni partir avec moins de
       //    champs, parce qu'un pré-calcul a manqué : le doute coûte un calcul.
       const outilsResolution = {
-        platformFieldsConfig, isConditionKey, defaultConditionFor, GENERIC_ASPECTS_PF_KEY,
+        platformFieldsConfig, isConditionKey, GENERIC_ASPECTS_PF_KEY,
         normAspectVal, resolveArticleIcon, resolveArticleIconDetail, OPLA_ETAT_PAR_LIBELLE,
       };
       const contexteResolution = {
@@ -11059,6 +11104,8 @@ export default function ListingPreviewScreen({
         activeAiIcon, activeAiObjet, origineCat, lang, supabase,
         ebayVoieApi: ebayVoieApiReelle,
         outils: outilsResolution,
+        // (13/11, point 5c) La fiche relue : la couleur Depop retombe sur elle.
+        ficheAttributs: attributsBase ?? articleBase?.attributs ?? null,
       };
       const empreintePublication = signatureResolution(contexteResolution);
       const prevol = resolutionPrevolRef.current;
@@ -11111,6 +11158,12 @@ export default function ListingPreviewScreen({
         throw new Error(resolution.refus.message);
       }
       const { pfParPlateforme = {}, motCategorie } = resolution;
+      // (13/11, décision de Nico — « état inconnu = question ») LE DERNIER FILET : un job sans état ne part jamais
+      // (le bouton est déjà gris tant que la question « État » attend ; ceci tient même si on publie d'ailleurs).
+      {
+        const refusEtat = refusEtatInconnu({ plateformes: plateformesAPublier, pfParPlateforme, lang, nom: (p) => PLATFORM_LABELS[p] ?? p });
+        if (refusEtat) throw new Error(refusEtat);
+      }
       // ── LE CLASSEMENT PAR ÂGE SE RELIT ICI, PAS DANS LE PRÉ-CALCUL ────────
       // Ces deux valeurs servent, après publication, à ranger la réponse de
       // l'utilisateur sur l'ARTICLE. Les prendre au pré-calcul ferait ranger
@@ -12108,6 +12161,8 @@ export default function ListingPreviewScreen({
     && ![generales?.titre, ...Object.values(edited ?? {}).map((c) => c?.title)].some((d) => String(d ?? "").trim());
   const prixVideALaDemande = redaction.aLaDemande && step === 3 && !(parseFloat(String(price ?? "").replace(",", ".")) >= 1);
   const requiredBlocking =
+    // (13/11, décision de Nico) L'état que personne n'a dit : la question « État », jamais « Très bon état » par défaut.
+    etatAChoisir.length > 0 ||
     descriptionVideALaDemande ||
     titreVideALaDemande ||
     prixVideALaDemande ||
@@ -12211,6 +12266,10 @@ export default function ListingPreviewScreen({
       m.push(e.platforms.length ? `${e.label} (${e.platforms.join(", ")})` : e.label);
     }
     if (prixAchatManquant) m.push(lang === "en" ? "Purchase price to fill in" : "Prix d'achat à renseigner");
+    // (13/11) L'état que personne n'a dit : une question, pour toutes les plateformes qui l'attendent.
+    if (etatAChoisir.length) m.push(lang === "en"
+      ? `Condition to choose (${etatAChoisir.map(nomPlateforme).join(", ")})`
+      : `État à choisir (${etatAChoisir.map(nomPlateforme).join(", ")})`);
     if (vintedGenreBlocked) m.push(lang === "en" ? "Vinted section to choose" : "Rayon Vinted à choisir");
     if (beebsGenreBlocked) m.push(lang === "en" ? "Beebs section to choose" : "Rayon Beebs à choisir");
     for (const p of Object.keys(rayonsAChoisir)) {
@@ -12542,6 +12601,8 @@ export default function ListingPreviewScreen({
   // Les questions, comptées UNE fois par champ logique (même déduplication que
   // motifsCtaGris) — pour « Continuer · N questions ».
   const clesQuestions = new Set([
+    // (13/11) La question « État » : UNE clé, quelles que soient les plateformes qui l'attendent.
+    ...(etatAChoisir.length ? ["etat"] : []),
     ...missingSharedFieldsDetailed.map(f => f.key),
     // Un aspect ne fusionne avec le champ partagé que si ce champ MANQUE
     // (c'est alors la même question, posée une fois). Une valeur présente
@@ -12581,6 +12642,7 @@ export default function ListingPreviewScreen({
     if (vintedGenreBlocked || descriptionVideVinted) ajoute("vinted");
     if (beebsGenreBlocked) ajoute("beebs");
     for (const p of Object.keys(rayonsAChoisir)) ajoute(p);
+    for (const p of etatAChoisir) ajoute(p);
     if (portDepopManquant) ajoute("depop");
     if (poidsLbcManquant) ajoute("leboncoin");
     const out = {};
@@ -12627,6 +12689,7 @@ export default function ListingPreviewScreen({
     libelleGenre: t("fieldGenderLabel"), libelleDescription: t("fieldDescriptionLabel"),
     genericFieldToSharedKey,
     rayonsAChoisir: Object.keys(rayonsAChoisir), libelleRayon: lang === "en" ? "Category" : "Rayon",
+    etatAChoisir, libelleEtat: t("fieldConditionLabel"),
   });
   // (02/10, lot) Plus rien ne tourne en arrière-plan pour cet article : la
   // rédaction est là, la résolution a répondu, le catalogue des champs exigés
@@ -12702,6 +12765,8 @@ export default function ListingPreviewScreen({
     MIN_PHOTOS, MAX_PHOTOS, MAX_RETOUCHED,
     // L'article et ses photos
     initialListing, invId, titreArticle, etatArticle, price, generales, edited, selected, setSelected,
+    // (13/11, décision de Nico) L'état que personne n'a dit : la question « État » (BlocQuestions, lot).
+    etatAChoisir, choisirEtat, etatsAuChoix: ETATS_AU_CHOIX,
     photos, displayPreviews, pickedPreviews, photoCount, addFiles, removeFile, handleReorderPreviews,
     // (11/11, point T1) Les photos reconnues à l'identique comme images par défaut CONNUES d'une plateforme (la liste
     // fermée, lot/imagesParDefaut.js) : elles ne comptent pas et ne partent pas (utils/photos.js, vraiesPhotos).
@@ -13214,6 +13279,8 @@ export default function ListingPreviewScreen({
             beebsGenreBlocked={beebsGenreBlocked}
             genreAChoisir={genreAChoisir}
             onChoisirGenre={choisirGenre}
+            etatAChoisir={etatAChoisir}
+            onChoisirEtat={choisirEtat}
             ebayRequiredStatus={ebayRequiredStatus}
             onEbayAspectChange={setEbayAspect}
             onEbaySharedFieldChange={setEbaySharedField}

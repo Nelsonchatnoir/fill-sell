@@ -23,7 +23,7 @@ import { ORDRE_RECADRAGES, libelleRecadrage, nomFichier } from './geometrie';
 import { chargerCopieBordereau, recadrageRetenu, retenirRecadrage } from './copies';
 import { fichier, imprimer, partager, telechargerFichier } from './partage';
 import CodeDepot from './CodeDepot';
-import { libelleTransporteur } from '../vue';
+import { libelleTransporteur, repereBordereau } from '../vue';
 import { Bouton, Note, Segments } from './ui';
 import { ENCRE2, LIGNE, MENTHE, POLICE } from './style';
 import { libellesActions } from './actions';
@@ -34,6 +34,7 @@ const formatRetenu = () => { try { return window.localStorage.getItem(CLE_FORMAT
 const retenirFormat = (f) => { try { window.localStorage.setItem(CLE_FORMAT, f); } catch { /* sans conséquence */ } };
 const TYPES = Object.freeze({ pdf: 'application/pdf', png: 'image/png', jpeg: 'image/jpeg' });
 const EXT = Object.freeze({ pdf: 'pdf', png: 'png', jpeg: 'jpg' });
+const MENTHE_ENCRE = '#1B6E62';
 const NOMS = Object.freeze({ vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', depop: 'Depop', ebay: 'eBay' });
 
 function motifEnClair(motif, fr) {
@@ -43,10 +44,11 @@ function motifEnClair(motif, fr) {
 }
 
 /**
- * Props : ouvert, copie {chemin?|octets?|url?, platform, transporteur?,
- * commande_ref?}, supabase, lang, onFermer.
+ * Props : ouvert, copie {id?, chemin?|octets?|url?, platform, transporteur?,
+ * commande_ref?, cree_le?, imprime_le?}, supabase, lang, onFermer,
+ * onImprime(ids) — (13/11, étape 5) appelé quand le geste (partager / imprimer / télécharger) RÉUSSIT.
  */
-export default function ApercuBordereau({ ouvert = true, copie, supabase, lang = 'fr', onFermer }) {
+export default function ApercuBordereau({ ouvert = true, copie, supabase, lang = 'fr', onFermer, onImprime = null }) {
   const fr = lang !== 'en';
   const [phase, setPhase] = useState('chargement');
   const [source, setSource] = useState(null);
@@ -133,6 +135,8 @@ export default function ApercuBordereau({ ouvert = true, copie, supabase, lang =
     setNote(null);
     const p = { octets: courant.octets, nom, type: TYPES[courant.genre], titre: fr ? 'Bordereau' : 'Shipping label', supabase, chemin: courant.chemin ?? undefined };
     const r = quoi === 'imprimer' ? await imprimer(p) : quoi === 'telecharger' ? await telechargerFichier(p) : await partager(p);
+    // (13/11, étape 5 — compte 447d920c) Le geste a réussi : la copie est marquée imprimée (jamais sur une annulation ni un échec).
+    if (r?.ok) onImprime?.([copie?.id].filter(Boolean));
     if (!r?.ok && !r?.annule) setNote({ ton: 'rouge', texte: motifEnClair(r?.motif, fr) });
   };
 
@@ -140,6 +144,8 @@ export default function ApercuBordereau({ ouvert = true, copie, supabase, lang =
   const pf = NOMS[copie?.platform] ?? '';
   const transporteur = libelleTransporteur(copie?.transporteur);
   const sousTitre = [pf, copie?.commande_ref ? `${fr ? 'commande' : 'order'} ${copie.commande_ref}` : null, transporteur].filter(Boolean).join(' · ');
+  // (13/11, étape 5) « Bordereau du JJ/MM · Imprimé le JJ/MM » : un bordereau déjà imprimé se voit avant de repartir.
+  const repere = repereBordereau(copie, lang);
   const estPdf = source?.genre === 'pdf';
   const confianceFaible = format === '10x15' && sortie && recadrage === 'auto' && sortie.confiance !== 'haute';
   const retenuAilleurs = format === '10x15' && recadrage !== 'auto';
@@ -158,6 +164,7 @@ export default function ApercuBordereau({ ouvert = true, copie, supabase, lang =
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>{format === 'code' ? (fr ? 'Code de dépôt' : 'Drop-off code') : (fr ? 'Bordereau' : 'Shipping label')}</div>
           {sousTitre && <div style={{ fontSize: 12.5, color: ENCRE2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sousTitre}</div>}
+          {repere && <div data-repere-impression style={{ fontSize: 12, fontWeight: 700, color: repere.imprime ? MENTHE_ENCRE : ENCRE2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repere.texte}</div>}
         </div>
       </div>
 

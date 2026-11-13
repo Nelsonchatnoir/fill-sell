@@ -54,6 +54,16 @@ export function ancienneteJours(item, jobsAll, enLigne = [], maintenant = Date.n
 
 export const estAncienne = (jours) => jours != null && jours >= SEUIL_ANCIENNE_JOURS;
 
+// (13/11, étape 5 du lot « zéro problème », décision de Nico : « seuil et cases lus sur la plateforme choisie ») L'âge qui
+// compte pour REMONTER : la plus ancienne annonce parmi les plateformes REPUBLIABLES maintenant (utils/republication.
+// plateformesRepubliables) — jamais eBay, que FillSell ne republie pas (02/11). Avant, « Remonter » (tuile du Stock,
+// action de la carte) lisait ancienneteJours : l'annonce eBay de 54 j d'une fiche (de63ca45) republiée il y a 3 j sur
+// Vinted et Leboncoin la faisait « ancienne ». « Anciennes » (filtre) garde ancienneteJours : c'est l'âge des annonces.
+export function ancienneteRemontable(item, jobsAll, republiables = [], maintenant = Date.now(), datesRelevees = null) {
+  const cibles = [...new Set((republiables ?? []).filter((p) => p && p !== 'ebay'))];
+  return joursPlusAncienne({ item, jobs: jobsAll, enLigne: cibles, datesRelevees, maintenant });
+}
+
 // ── L'ACTION PRINCIPALE D'UNE CARTE — L'ORDRE DE NICO, ET RIEN D'AUTRE ─────
 //   1. quelque chose attend un geste       → « Régler »
 //   2. pas partout (ou hors ligne)         → « Publier partout »

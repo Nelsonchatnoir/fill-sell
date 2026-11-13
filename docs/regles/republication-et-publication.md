@@ -1739,3 +1739,61 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   22 copies corrigées, 14 questions. Verrou `selftest:tailles-prefixe-et-anglais-partages`.
 - Base : migration `20261112213000_releve_jamais_depuis_notre_depot` (un relevé ne complète ni ne réécrit une fiche
   depuis une annonce que FillSell a déposée depuis elle) — PRÉPARÉE, banc jetable 37/37, NON appliquée : feu vert de Nico.
+
+## ⛔ 13/11/2026 (lot « zéro problème », étape 5 — point 5a de Nico) — rédaction : les consignes du vendeur d'abord, une table de capacités, la description en blocs
+- **Consignes** (`src/utils/consignesRedaction.js`, `lireConsignes`) : lues phrase par phrase, NÉGATION COMPRISE (« ne jamais
+  supprimer les émojis » = les GARDER ; « pas d'émojis » = les retirer ; contradiction = on ne retire rien) — jamais une
+  case « sans émojis / sans hashtags », jamais la présence d'un mot. Lexiques PAR LANGUE (fr livré, en prêt). Le prompt
+  les met EN TÊTE ; avec des consignes, le ton du gabarit, la STRUCTURE, la longueur CIBLE, les hashtags OBLIGATOIRES et
+  la « ligne de fin » ne sont plus envoyés ; restent le garde-fou (ne rien inventer), le titre sans SKU, les plafonds,
+  les listes fermées. Sans consigne : prompt de main à l'octet (Beebs : hashtags « NON », comme à la publication).
+  `VERSION_PROMPT` 2026-11-13a. Verrous `selftest:consignes-en-tete`, `selftest:consignes-negation`.
+- **Capacités du texte** (`_shared/capacites-texte.js`, PAR PLATEFORME et PAR SITE) : plafonds, émojis (titre / texte),
+  sauts de ligne, hashtags (FillSell / plateforme), phrase de test. Seule source de PLATFORM_LIMITS, BORNES_TEXTE,
+  PLATEFORMES_A_HASHTAGS. Émoji de titre : FIGÉ (retiré par l'extension, gardé sur eBay) jusqu'à l'essai de Nico
+  (≥ 999 €) — verrou `selftest:titre-emoji-plateformes`.
+- **Description en blocs** (`src/utils/blocsDescription.js`) : corps → phrase de test → « Marque : X » (extension) →
+  phrases finales du vendeur, posées par le CODE mot pour mot, toujours dernières (get-pending-jobs sert
+  `fin_de_description`, l'extension ≥ 0.6.187 écrit la marque AVANT). Verrou `selftest:phrases-finales`.
+- **Phrase de test** (`src/utils/phraseDeTest.js`) : la date est une donnée (`inventaire.attributs.teste_le`), la phrase
+  est écrite AU SERVICE (get-pending-jobs) selon le modèle du vendeur (« aujourd'hui » le jour même, « le <date> »
+  ensuite), omise là où la plateforme la refuse (Beebs) ; une phrase du modèle tapée dans le texte donne sa date. Jamais
+  écrite par l'IA. Recréation Vinted : `phrase_de_test` servie, appliquée par l'extension (0.6.187, à faire). Réparation
+  du compte de63ca45 : `scripts/reparations/20261113_de63ca45_date_de_test*.sql` (92 fiches). Verrou
+  `selftest:phrase-test-datee`.
+- **Faits sans source** (`src/utils/faitsSansSource.js`, texte RÉDIGÉ seulement) : la note du vendeur est LA source quand
+  il en a laissé une (sinon la lecture des photos) ; un embellissement, une absence de défaut, un test réussi, un éditeur,
+  un PEGI, un document / contenant / édition que la source ne nomme pas (`_shared/elements-article.js` : notice ≠ livret ≠
+  feuillet ≠ guide) : la proposition tombe ; un DÉFAUT dit ne tombe jamais. Verrou `selftest:elements-nommes`.
+- **État jamais embelli** : `etatFidele` ne monte jamais un état ; l'état d'une PARTIE (« Boîtier en bon état ») n'est ni
+  remplacé ni retiré ; sans état canonique ni neuf unanime, la rédaction laisse le champ VIDE (plus de « Très bon état »
+  par défaut, trace `etat_branche = inconnu`). Verrou `selftest:etat-jamais-embelli`.
+- **État inconnu = UNE question** (`src/publication/moteur/etatAChoisir.js`) : l'écran ne remplit plus jamais l'état
+  (`DEFAULT_CONDITION` / `defaultConditionFor` retirés de ListingPreviewScreen et de resolutionPublication) ; les
+  plateformes qui partent sans état (`etatsDuJob`, juge unique) reçoivent UNE question « État » (les cinq niveaux ;
+  chaque copie reçoit le libellé de SA liste, `etatPourPlateforme`, puis le juge range dans la grille) — BlocQuestions,
+  lot (`sujetsDuLot`, clé `etat`), ancien écran Publier ; le bouton est gris tant qu'elle attend ; le clic refuse un job
+  sans état (`refusEtatInconnu`). La ligne « état » d'un rayon se tait le temps de la question (`attendEtat`). Un état
+  connu : comme avant. Mesuré : 848 publications en 30 jours seraient passées par elle. Verrou
+  `selftest:etat-inconnu-question`.
+- ⏸ **PRÉPARÉ, PAS EN SERVICE (13/11)** — part avec la migration `20261112213000` (relevé jamais depuis notre dépôt,
+  feu vert de Nico) : 227 des 342 copies tiennent l'état de leur fiche d'un relevé, qui peut avoir relu notre propre
+  dépôt. Code prêt : `docs/enquetes/zero-probleme-1211/en-attente/etat-copie-ramenee-a-la-fiche.patch` (git apply). La règle visée :
+- **Une copie ne dit jamais mieux que la fiche** (`_shared/etat-embelli.js`) : une copie au-dessus de l'état CONFIRMÉ
+  de la fiche (source ≠ `lens`) redescend à l'état de la fiche — `contenuAImposer` (get-pending-jobs, publications et
+  republications hors Vinted, avec ou sans texte du vendeur) et la recréation Vinted d'une fiche née ailleurs
+  (`capture-corrigee.js`, source de l'état noté avant capture). Niveaux du juge unique : « Neuf avec étiquette » sur
+  « État neuf » (grille Leboncoin) n'est jamais baissé. Jamais l'inverse : la remontée du 22/10 reste telle quelle.
+  Mesuré : 342 copies en 30 jours (182 parties). Verrou `selftest:etat-copie-jamais-au-dessus`.
+
+## ⛔ 13/11/2026 (lot « zéro problème », étape 5 — question 3 de l'agent C) — un arrêt « grille » n'est jamais une impasse
+- Republication Vinted arrêtée au pré-vol sur une valeur que l'annonce PORTE, deux reprises épuisées
+  (update-job-status → `_shared/grille-incoherente-issue.js`), dans l'ordre : une relance après mise à jour couvre l'arrêt
+  (build de l'arrêt plus ancien que le correctif) → son message d'attente ; grille ADULTE servie sur une taille enfant →
+  aucune liste, un message vrai (le rayon de l'annonce, « Relancer ») ; liste connue → UNE question (`champ_a_choisir`),
+  la liste entière, en tête la valeur de l'annonce telle que Vinted l'écrit, sinon l'équivalent du juge d'état
+  (`etat-correspondance.js`) ou les voisines de taille ; les autres champs refusés sont nommés (une question à la fois) ;
+  aucune liste → « Relancer » (essai complet avant toute suppression). Jamais « écris-nous », jamais « on reprend au
+  prochain passage » sans reprise. La taille hors grille garde sa question (point 1c). Cas : 7d6e2c34 · 6afcb6e8,
+  ae593eaf · 39201deb, cdf7007c · e8e1cd5a, 68e350f0 ×3, 48dd94f7 · ec5b7f25, f3407ada.
+  Verrou `selftest:grille-incoherente-jamais-impasse`.

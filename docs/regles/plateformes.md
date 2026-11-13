@@ -1006,3 +1006,18 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   postal d'aucune commune (CEDEX, 75000 — base `codes-postaux-fr.js`) → bloqué avant tout essai avec un message qui
   l'explique ; code postal différent → bloqué ; Réglages jamais réécrits. Extension 0.6.187 : la commune unique au même code
   postal acceptée au geste. Cas : a1e210f2 (Seynod → Annecy 74600). Verrou `selftest:lbc-commune-meme-cp`.
+
+## ⛔ 13/11/2026 (lot « zéro problème », étape 5 — point 5c de Nico) — Depop : la couleur, prise sur la fiche pour tous
+- La couleur Depop vient de la copie Depop, sinon de la valeur commune (encart), sinon de la FICHE
+  (`inventaire.attributs.couleur`/`couleur2`) ; la première source qui porte une couleur décide (jamais la fiche
+  par-dessus la copie ; « Turquoise » sans équivalent : rien) ; vidée à la main sur la copie Depop : jamais reposée
+  (`depop_couleur_source: "retiree_a_la_main"`). PAR IDENTIFIANTS : libellé de la fiche → identifiant Vinted (palettes
+  relevées) → identifiant Depop (`_shared/depop-couleur.js`, app + serveur). Cas : 8ac5bbda (30 publications sur 49 sans
+  couleur ; 096856f2 « Gris »).
+- Filet du serveur (get-pending-jobs, tous builds, unité et lot) : une publication Depop servie sans identifiant de
+  couleur reçoit celle de sa copie, sinon de la fiche. Copie d'une republication : l'annonce EN LIGNE d'abord (relevé
+  API : sa couleur posée sur Depop reste la sienne ; en ligne sans couleur alors que notre dépôt en avait une = retirée,
+  rien n'est remis), puis le dépôt, puis la fiche — même sur une copie par ailleurs complète.
+- Annonces déjà en ligne : AUCUNE modification en place tant que le relevé n'est pas fait (`docs/plateformes/depop/
+  CARTOGRAPHIE.md` § 9) ; code préparé et fermé dans `depop.js` (0.6.187). Le relevé garde désormais `couleurs_ids`.
+  Verrou `selftest:depop-couleur-fiche`.

@@ -27,28 +27,23 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { mentionsAutrePlateforme } from "./descriptionMentions.js";
+import { CAPACITES_TEXTE, capacitesTexte } from "../../supabase/functions/_shared/capacites-texte.js";
 
-// ── Les plafonds, recopiés de PLATFORM_LIMITS (_shared/redaction-plateformes)
-// La provenance de chaque chiffre est documentée là-bas, ligne à ligne :
-// Vinted 100/2000 vient de la doc Vinted Pro, eBay 80 est une limite dure
-// refusée à la saisie, Leboncoin 200 est un relevé DOM réel, Beebs est une
-// valeur PRUDENTE sans source.
-// `opla` n'existe pas côté serveur (sa copie dérive de celle de Vinted) : elle
-// hérite donc des bornes de Vinted, comme le reste de sa copie.
-export const BORNES_TEXTE = Object.freeze({
-  vinted:    { titre: 100, description: 2000 },
-  opla:      { titre: 100, description: 2000 },
-  beebs:     { titre: 100, description: 1500 },
-  leboncoin: { titre: 200, description: 3000 },
-  ebay:      { titre: 80,  description: 2000 },
-  vestiaire: { titre: 100, description: 2000 },
-  // depop (09/10) : PAS de titre chez Depop (il ne nomme que le job dans la
-  // file) ; description 1 000 caractères (MAX_CHAR_COUNT du formulaire).
-  depop:     { titre: 100, description: 1000 },
-});
+// ── Les plafonds : la table des capacités du texte (13/11, point 5a de Nico) ──
+// Une seule table, par plateforme et par site (supabase/functions/_shared/
+// capacites-texte.js), qui garde la provenance de chaque chiffre : Vinted
+// 100/2000 vient de la doc Vinted Pro, eBay 80 est une limite dure refusée à
+// la saisie, Leboncoin 200 est un relevé DOM réel, Beebs est une valeur
+// PRUDENTE sans source, Depop 1 000 (MAX_CHAR_COUNT du formulaire ; pas de
+// titre chez Depop, il ne nomme que le job dans la file). Les valeurs n'ont
+// pas bougé (selftest:valeurs-generales).
+export const BORNES_TEXTE = Object.freeze(Object.fromEntries(Object.keys(CAPACITES_TEXTE).map((p) => {
+  const c = capacitesTexte(p);
+  return [p, Object.freeze({ titre: c.titre.max, description: c.description.max })];
+})));
 
 /** Plafond Leboncoin, lu sur leur page de correction (cf. description-leboncoin.ts). */
-export const LBC_HASHTAGS_MAX = 5;
+export const LBC_HASHTAGS_MAX = capacitesTexte("leboncoin").description.hashtagsMaxPlateforme;
 
 // ── Coupe au dernier mot entier (même corps que clampToWord, serveur) ───────
 // Jamais au milieu d'un mot, jamais au milieu d'un hashtag : on coupe sur une

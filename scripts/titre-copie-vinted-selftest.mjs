@@ -102,13 +102,15 @@ await new Promise((r) => setTimeout(r, 30));
   ok(rec.title === "Champavert, le lycanthrope Par Pétrus Borel", "recréation (titre capturé à saut de ligne) : tapée sur une ligne", JSON.stringify(rec.title));
   const supprimeLe = "2026-10-24T16:52:54.000Z";
   const copie = { vinted_item_id: "10514173498", titre: TITRE_COLLE, photo_ts: Math.floor(Date.parse("2026-10-24T16:53:05Z") / 1000), statut: "active" };
-  const r = B.reconnaitreAnnonceRecreee([copie], { titre: TITRE_NL, deletedAt: supprimeLe, idsConnus: new Set() });
+  // (13/11, décision de Nico — jamais par le titre) La recréation reconnaît sa copie par son numéro ou ses photos ; la
+  // comparaison des titres (memeTitre) ne sert plus qu'à la RÉSERVE de la sync : reconnaitreRecreationEnAttenteParTitre.
+  const r = B.reconnaitreRecreationEnAttenteParTitre([copie], { titre: TITRE_NL, deletedAt: supprimeLe, idsConnus: new Set() });
   ok(r.item?.vinted_item_id === "10514173498", "la copie « …lycanthropePar… » est reconnue (c'est elle qui manquait avant le 2e envoi)", JSON.stringify(r));
-  const deux = B.reconnaitreAnnonceRecreee([copie, { ...copie, vinted_item_id: "10514978864" }], { titre: TITRE_NL, deletedAt: supprimeLe, idsConnus: [] });
+  const deux = B.reconnaitreRecreationEnAttenteParTitre([copie, { ...copie, vinted_item_id: "10514978864" }], { titre: TITRE_NL, deletedAt: supprimeLe, idsConnus: [] });
   ok(!deux.item && /2 annonces correspondent/.test(deux.raison), "deux copies : abstention (jamais une 3e)");
-  ok(!B.reconnaitreAnnonceRecreee([{ ...copie, titre: "Champavert tome 2" }], { titre: TITRE_NL, deletedAt: supprimeLe, idsConnus: [] }).item, "autre titre : rien");
-  ok(!B.reconnaitreAnnonceRecreee([copie], { titre: TITRE_NL, deletedAt: "2026-10-24T17:00:00Z", idsConnus: [] }).item, "photos antérieures au retrait : rien (le titre ne prouve jamais seul)");
-  ok(B.reconnaitreAnnonceRecreee([copie], { titre: "", deletedAt: supprimeLe, idsConnus: [] }).raison === "titre de référence vide", "titre de référence vide : rien");
+  ok(!B.reconnaitreRecreationEnAttenteParTitre([{ ...copie, titre: "Champavert tome 2" }], { titre: TITRE_NL, deletedAt: supprimeLe, idsConnus: [] }).item, "autre titre : rien");
+  ok(!B.reconnaitreRecreationEnAttenteParTitre([copie], { titre: TITRE_NL, deletedAt: "2026-10-24T17:00:00Z", idsConnus: [] }).item, "photos antérieures au retrait : rien (le titre ne prouve jamais seul)");
+  ok(B.reconnaitreRecreationEnAttenteParTitre([copie], { titre: "", deletedAt: supprimeLe, idsConnus: [] }).raison === "titre de référence vide", "titre de référence vide : rien");
 }
 {
   const f = extraireFonctionJs(BG, "vintedUploadSucceededForTitle");
@@ -145,8 +147,8 @@ console.log("\n5. Le titre relu dans le champ (titre_pose) et la copie comparée
   ok(/\.\.\.\(typeof titrePose === "string" \? \{ titre_pose: titrePose\.slice\(0, 200\) \} : \{\}\)/.test(VT), "titre_pose rendu dans le résultat (succès comme échec)");
   const conclure = extraireFonctionJs(BG, "conclureRecreationApresSoumission");
   ok(/const titreCopie = \(typeof result\?\.titre_pose === "string" && result\.titre_pose\.trim\(\)\) \? result\.titre_pose : jobRecreation\.title;/.test(conclure)
-    && /vintedUploadSucceededForTitle\(tabId, titreCopie\)/.test(conclure) && /titre: titreCopie, pf,/.test(conclure),
-    "après l'envoi, la sonde et la ceinture dressing comparent au titre relu (sinon au titre tapé)");
+    && !/vintedUploadSucceededForTitle\(/.test(conclure) && /chercherCopieRecreeeDansDressing\(accessToken, tabId, \{\s*userId: userIdDressing, pf,/.test(conclure),
+    "(13/11, décision de Nico) après l'envoi, le titre relu n'est plus qu'une trace : la copie se relit par son numéro ou ses photos");
 }
 
 console.log("\n6. Des messages vrais après un envoi d'issue inconnue");

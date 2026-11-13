@@ -78,7 +78,11 @@ console.log("3. Les parcours de tout le stock, mémorisés sur leurs entrées");
     && /const aPublierTout = useMemo\(/.test(ST) && /const aRemonterTout = useMemo\(/.test(ST)
     && /const retardHorloge = useMemo\(\(\) => detecterRetardHorloge\(tousLesJobs\), \[tousLesJobs, minuteCourante\]\)/.test(ST),
     "à publier, à remonter, republiables, horloge du poste : mémorisés");
-  ok(/\[republishActif, stock, idsBrouillons, jobsByInventaire, indexEtatTout, datesRelevees, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante\]/.test(ST),
+  // (13/11, décision de Nico — « Remonter » : seuil et cases lus sur la plateforme choisie) Le parcours est en deux mémos :
+  // les candidats (republiables maintenant) puis la porte « ancienne » par plateforme republiable — mêmes entrées, réparties.
+  ok(/const repubCandidatsTout = useMemo\(/.test(ST)
+    && /\[republishActif, stock, idsBrouillons, jobsByInventaire, indexEtatTout, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante\]/.test(ST)
+    && /\[repubCandidatsTout, jobsByInventaire, indexEtatTout, datesRelevees, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante\]/.test(ST),
     "« Remonter » : toutes ses entrées (jobs, dates relevées, plateformes, minute)");
   ok(/const \[minuteCourante, setMinuteCourante\] = useState\(/.test(ST) && /startTransition\(\(\) => setMinuteCourante\(m\)\)/.test(ST) && /}, 60000\);/.test(ST),
     "l'heure avance par une horloge locale d'une minute, en transition (aucune lecture de la base)");

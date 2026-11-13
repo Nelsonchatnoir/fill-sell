@@ -85,7 +85,11 @@ console.log("\n4. La description fidèle (règles 4 et 5)");
 const fiche = { titre: "Hoodie Nike kaki", marque: "Nike", couleur: "Kaki", etat: "Très bon état", genre: "" };
 const ia = "Hoodie Nike kaki en coton. Bon état général, porté quelques fois. Idéal pour femme.\n\n#nike #hoodie #kaki #femme #streetwear";
 const v = D.descriptionFidele(ia, "vinted", { fiche });
-ok(v.includes("Très bon état général") && !/(^|[^è])Bon état/.test(v.replace("Très bon état", "")), "« Bon état général » devient « Très bon état général » (l'état de la fiche)", v);
+// (13/11, décision de Nico — « etatFidele ne monte jamais un état ») Avant : « Bon état général » devenait « Très bon
+// état général » (l'état de la fiche). Un état moins bon que la fiche reste tel quel ; seul un état MEILLEUR est ramené
+// (selftest:etat-jamais-embelli).
+ok(v.includes("Bon état général") && !v.includes("Très bon état général"), "« Bon état général » reste tel quel : un état n'est jamais monté (13/11)", v);
+ok(D.descriptionFidele("Hoodie Nike kaki, neuf avec étiquette.", "vinted", { fiche }) === "Hoodie Nike kaki, très bon état.", "un état MEILLEUR que la fiche (« neuf avec étiquette ») est ramené à la fiche");
 ok(v.includes("#nike #hoodie #kaki") && !v.includes("#femme") && !v.includes("#streetwear"), "Vinted : seuls les hashtags que la fiche fonde restent (#femme, #streetwear tombent)", v);
 ok(!/pour femme/.test(v), "« pour femme » sans rien qui le fonde : tombe (aucun genre inventé)", v);
 const l = D.descriptionFidele(ia, "leboncoin", { fiche });

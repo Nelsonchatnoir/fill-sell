@@ -8,7 +8,10 @@ import {
 let ko = 0;
 const ok = (cond, nom) => { if (cond) console.log(`  ✓ ${nom}`); else { ko++; console.log(`  ✗ ${nom}`); } };
 
-// Le modèle de XEWER (mail du 27/10) : structure du titre, de la description, état, mentions.
+// Un modèle INVENTÉ d'après le mail du 27/10 (structure du titre, de la description, état, mentions).
+// (13/11, décision de Nico — « les consignes font foi, bien lues, négation comprise ») Ce n'est PAS le modèle réel du
+// compte de63ca45 : le sien dit « Ne jamais supprimer les emojis du modèle » (émojis GARDÉS) — il est verrouillé, avec
+// toutes les formes de négation, par selftest:consignes-negation. Ici « Pas de hashtags, pas d'émojis » reste un refus.
 const xewer = {
   ton: "precis",
   titre: "Nom du jeu + console + état + « PAL FR »",

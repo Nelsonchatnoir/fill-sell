@@ -19,6 +19,9 @@
 //    embelli, c'est un litige acheteur, pas une imprécision.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// (13/11) Les parties d'un article (disque, boîtier, jaquette…) : un état écrit après elles est le leur.
+import { etatDUnePartie } from "./elements-article.js";
+
 /** Les cinq paliers, du meilleur au moins bon. `rang` sert aux comparaisons. */
 export const RANG_ETAT = Object.freeze({
   neuf_etiquette: 5,
@@ -180,6 +183,16 @@ const FORMULES_ETAT = [
   { tier: "satisfaisant",   re: /état\s+satisfaisant|état\s+moyen|état\s+correct|pour\s+pièces/i },
 ];
 
+/** Où commence la première formule d'état d'un texte (-1 : aucune). */
+function debutFormuleEtat(texte) {
+  let debut = -1;
+  for (const { re } of FORMULES_ETAT) {
+    const m = re.exec(texte);
+    if (m && (debut < 0 || m.index < debut)) debut = m.index;
+  }
+  return debut;
+}
+
 /** Le palier le plus HAUT affirmé par un texte, ou null. */
 export function etatAffirmeParLeTexte(texte) {
   const t = String(texte ?? "");
@@ -217,7 +230,11 @@ export function retirerEtatContredit(texte, etatReel) {
       // segment qu'ils terminent et tombent avec lui.
       if (i % 2 === 1) { if (gardes.length && gardes[gardes.length - 1].index === i - 1) gardes.push({ index: i, texte: m }); continue; }
       const affirme = etatAffirmeParLeTexte(m);
-      if (affirme && affirme !== tierReel) { retires.push(m.trim()); continue; }
+      // (13/11, point 5a de Nico) L'état d'une PARTIE de l'article (« Boîtier en bon état », « Disque : excellent
+      // état ») n'est pas l'état général : il ne contredit pas le champ, il ne tombe pas. Le retirer cachait un état
+      // moins bon que le champ — un embellissement par omission (compte de63ca45, modèle « une ligne d'état par
+      // élément »).
+      if (affirme && affirme !== tierReel && !etatDUnePartie(m, debutFormuleEtat(m))) { retires.push(m.trim()); continue; }
       gardes.push({ index: i, texte: m });
     }
     if (!retires.length) return { texte: original, retires: [], modifie: false };

@@ -130,7 +130,7 @@ import { lireInterrupteurs, interrupteurOuvert } from '../config/interrupteurs';
 // (31/10, lot H — XEWER) Depuis quand l'annonce est en ligne, plateforme par plateforme : UNE règle de date, celle de
 // l'éligibilité à la republication automatique.
 import { miseEnLigneAffichee, indexerDatesRelevees, datesParPlateforme } from '../../supabase/functions/_shared/mise-en-ligne.js';
-import { listeRemonter, plateformesDuChoix } from '../stock/remonterParPlateforme';
+import { listeRemonter, plateformesDuChoix, aRemonter, nomPlateformeRemonter } from '../stock/remonterParPlateforme';
 import ChoixPlateformeRemonter from '../stock/ChoixPlateformeRemonter';
 import DatesEnLigne from '../stock/DatesEnLigne';
 import { ContenuPlusEnLigne } from '../stock/renduVivant';
@@ -181,9 +181,10 @@ import { etatEbayApi, plateformesUtilisees } from '../utils/alertesCompte';
 // écartées parce qu'un autre compte FillSell les suit — noms sans homonyme local.
 import { ligneNonSurveillee, libelleReconnexion, ecarteesAutreCompte } from '../utils/alertesCompte';
 import { estBoutiqueAutreCompte, texteBoutiqueAutreCompte, loginDuRun, texteEcarteesAutreCompte, titreEcarteesAutreCompte } from '../annonces/boutiqueAutreCompte.js';
+import { compteBoutiqueVinted } from '../annonces/boutiqueVinted.js';
 import EcranVendeurPlateforme from '../stock/EcranVendeurPlateforme';
 import {
-  actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
+  actionPrincipale, libelleAction, ancienneteJours, ancienneteRemontable, estAncienne, pastilleCourte, dateCourte, nombreFr,
   FILTRES_RAPIDES, libelleFiltreRapide, entreDansFiltreRapide, TRANCHES_ANCIENNETE, libelleTranche, trancheAnciennete,
   lirePrixSaisi, dansFourchettePrix, lireAffichage, ecrireAffichage, TRIS_PLANCHE, TRI_PAR_DEFAUT, libelleTriPlanche,
   SEUIL_ANCIENNE_JOURS,
@@ -4403,12 +4404,9 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       const login = typeof derniereReussie?.vinted_login === 'string' && derniereReussie.vinted_login.trim() ? derniereReussie.vinted_login.trim() : null;
       // (05/11, point 6 c) Seules les annonces EN VENTE (relevées « active ») ; les vendues que Vinted affiche encore, à part.
       // Sans le compte « en vente » (lecture illisible), on dit « articles lus », jamais « annonces ».
+      // (13/11, étape 5, bloc 6 iii) Le texte vit dans annonces/boutiqueVinted.js : la carte visible du bloc dit le même.
       const enVente = Number.isFinite(derniereReussie?.en_vente) ? derniereReussie.en_vente : null;
-      const vendues = enVente != null && vus > enVente ? vus - enVente : 0;
-      const compte = enVente != null
-        ? (fr ? `${enVente} en vente${vendues ? ` · ${vendues} vendue${vendues > 1 ? 's' : ''} encore affichée${vendues > 1 ? 's' : ''}` : ''}`
-              : `${enVente} for sale${vendues ? ` · ${vendues} sold still shown` : ''}`)
-        : (fr ? `${vus} article${vus > 1 ? 's' : ''} lu${vus > 1 ? 's' : ''}` : `${vus} item${vus > 1 ? 's' : ''} read`);
+      const compte = compteBoutiqueVinted({ vus, enVente }, lang);
       return fr
         ? `Synchronisé ${depuisTexte(fini)} · ${compte}${login ? ` · @${login}` : ''}`
         : `Synced ${depuisTexte(fini)} · ${compte}${login ? ` · @${login}` : ''}`;
@@ -9662,13 +9660,21 @@ const StockTab = memo(function StockTab({
   const aPublierTout = useMemo(() => stockSansBrouillons.filter((i) => articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok),
   // eslint-disable-next-line react-hooks/exhaustive-deps
     [stock, idsBrouillons, jobsByInventaire, plateformesLotCompte, lang, minuteCourante]);
-  const aRemonterTout = useMemo(() => (republishActif ? stockSansBrouillons.filter((i) => {
-    if (!repubSelectionnable(i)) return false;
-    const e = indexEtatTout.get(String(i.id));
-    return estAncienne(ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? [], Date.now(), datesRelevees));
-  }) : []),
+  // (13/11, étape 5, décision de Nico : « seuil et cases lus sur la plateforme choisie ») Les candidats = tout ce qui est
+  // republiable maintenant ; la porte « ancienne » (tuile, vue « Toutes ») se lit sur les plateformes REPUBLIABLES
+  // (ancienneteRemontable : jamais eBay) ; plateforme choisie : l'écran liste ses candidats, coche les anciens SUR ELLE.
+  const repubCandidatsTout = useMemo(() => (republishActif ? stockSansBrouillons.filter((i) => repubSelectionnable(i)) : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-    [republishActif, stock, idsBrouillons, jobsByInventaire, indexEtatTout, datesRelevees, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante]);
+    [republishActif, stock, idsBrouillons, jobsByInventaire, indexEtatTout, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante]);
+  const aRemonterTout = useMemo(() => repubCandidatsTout.filter((i) => {
+    const jobsI = jobsByInventaire[i.id] || [];
+    const enLigneI = indexEtatTout.get(String(i.id))?.enLigne ?? [];
+    // Les plateformes republiables ET en ligne (la même liste que l'écran : remonterParPlateforme.aRemonter).
+    const cibles = plateformesRepubliables(i, jobsI, { multiOuverte, plateformesOuvertes, plateformesFermees }).filter((p) => enLigneI.includes(p));
+    return estAncienne(ancienneteRemontable(i, jobsByInventaire[i.id], cibles, Date.now(), datesRelevees));
+  }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [repubCandidatsTout, jobsByInventaire, indexEtatTout, datesRelevees, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante]);
   const nbAttenteAction = attenteAction?.total ?? 0;
   // (05/10) Les retraits bloqués par une connexion COMPTENT : une annonce
   // vendue encore en ligne attend un geste (se reconnecter), comme le reste.
@@ -10617,11 +10623,12 @@ const StockTab = memo(function StockTab({
     const enRoute = new Set(d.jobs.filter((j) => j.status === 'pending' || j.status === 'processing' || j.status === 'needs_user').map((j) => j.platform));
     const aPublierUtile = d.toutEnLigne ? [] : d.aPublier.filter((p) => !enRoute.has(p));
     // (31/10, lot H) « Ancienne » (Remonter) lit l'annonce la plus ANCIENNE ; la pastille dit la plus récente.
-    const jours = pastille.joursAncienne ?? ancienneteJours(item, d.jobsAll, d.logosEnLigne, Date.now(), datesRelevees);
+    // (13/11, étape 5, décision de Nico) … parmi les plateformes REPUBLIABLES maintenant et en ligne (ancienneteRemontable :
+    // jamais eBay) — la même règle que la tuile et l'écran « Remonter mes annonces ».
     const aRegler = !!d.murDirect || repubAReprendre || pastille.aRegler === true
       || (pastille.ton === 'regler' && !d.repubOccupeSlot && !d.vintedMasquee)
       || (pastille.ton === 'echec' && !d.repubOccupeSlot);
-    const action = actionPrincipale({ vendu: false, aRegler, aPublier: aPublierUtile.length, ancienne: estAncienne(jours), remontable });
+    const action = actionPrincipale({ vendu: false, aRegler, aPublier: aPublierUtile.length, ancienne: estAncienne(ancienneteRemontable(item, d.jobsAll, d.repubMaintenant.filter((p) => d.logosEnLigne.includes(p)), Date.now(), datesRelevees)), remontable });
     const regler = () => {
       if (repubAReprendre) { reprendreRepub(); return; }
       if (pastille.onTap) { pastille.onTap(); return; }
@@ -12657,7 +12664,10 @@ const StockTab = memo(function StockTab({
       {gesteOuvert==='remonter'&&(()=>{
         // (03/11, demande d'un vendeur Pro) Plateforme par plateforme : la date du suivi du Stock (datesParPlateforme), le choix de la
         // plateforme et le tri par dernière publication ou republication (stock/remonterParPlateforme.js).
-        const base=aRemonterTout.map(i=>{
+        // (13/11, étape 5, décision de Nico : « seuil et cases lus sur la plateforme choisie ») La liste part de TOUT ce qui
+        // est republiable maintenant (repubCandidatsTout) : sous une plateforme, ses annonces sont toutes listées avec leur
+        // date, seules les anciennes (≥ 7 j) SUR ELLE sont cochées et comptées ; « Toutes » = la porte de la tuile.
+        const base=repubCandidatsTout.map(i=>{
           const e=indexEtatTout.get(String(i.id));
           const jobsI=jobsByInventaire[i.id]||[];
           const jours=ancienneteJours(i,jobsI,e?.enLigne??[],Date.now(),datesRelevees);
@@ -12666,17 +12676,19 @@ const StockTab = memo(function StockTab({
             republiables:plateformesRepubliables(i,jobsI,{multiOuverte,plateformesOuvertes,plateformesFermees})};
         });
         const choixPf=plateformesDuChoix(base);
-        const {plateforme:pfVue,lignes:articles}=listeRemonter(base,{plateforme:remonterPf,tri:remonterTri,lang});
-        const n=articles.length;
+        const nToutes=base.filter(aRemonter).length;
+        const {plateforme:pfVue,lignes:articles,aCocher,nAnciennes}=listeRemonter(base,{plateforme:remonterPf,tri:remonterTri,lang});
+        const n=nAnciennes;
+        const decochees=articles.length-nAnciennes;
         // (15/10, P17) Gratuit : les plus anciennes d'abord, jamais plus que le mois n'en offre encore.
         const offertsRep=offertGratuit.repub;
         const coupeRep=offertsRep!=null&&n>offertsRep;
         return(
           <EcranSelection lang={lang}
-            initiale={coupeRep?new Set(articles.slice(0,offertsRep).map(a=>a.id)):null}
+            initiale={new Set(aCocher.slice(0,coupeRep?offertsRep:aCocher.length))}
             cleSelection={`${pfVue??'toutes'}|${remonterTri}`}
-            enTete={base.length&&choixPf.length?(
-              <ChoixPlateformeRemonter lang={lang} choix={choixPf} total={base.length} plateforme={pfVue} onPlateforme={setRemonterPf} tri={remonterTri} onTri={setRemonterTri}/>
+            enTete={nToutes&&choixPf.length?(
+              <ChoixPlateformeRemonter lang={lang} choix={choixPf} total={nToutes} plateforme={pfVue} onPlateforme={setRemonterPf} tri={remonterTri} onTri={setRemonterTri}/>
             ):null}
             titre={lang==='fr'?'Remonter mes annonces':'Bump my listings'}
             grandTitre={n?(lang==='fr'?`${nombreFr(n,lang)} annonce${n>1?'s perdent':' perd'} en visibilité`:`${n} listing${n>1?'s':''} losing visibility`):(lang==='fr'?'Rien ne perd en visibilité':'Nothing is losing visibility')}
@@ -12688,7 +12700,11 @@ const StockTab = memo(function StockTab({
                 :(lang==='fr'
                   ?`Les republications gratuites du mois sont faites${offertGratuit.remise?` (remise à zéro le ${offertGratuit.remise})`:''} : coche celles que tu veux remonter.`
                   :`This month's free reposts are used${offertGratuit.remise?` (resets on ${offertGratuit.remise})`:''}: tick the ones you want to bump.`))
-              :(lang==='fr'?'Tout est déjà coché : décoche celles que tu veux garder.':'Everything is ticked: untick the ones you want to keep.')):(lang==='fr'?`Une annonce en ligne depuis ${SEUIL_ANCIENNE_JOURS} jours ou plus apparaîtra ici.`:`A listing live for ${SEUIL_ANCIENNE_JOURS} days or more will show up here.`)}
+              :(decochees>0&&pfVue
+                ?(lang==='fr'
+                  ?`${n>1?`Les ${nombreFr(n,lang)} annonces en ligne`:'L’annonce en ligne'} sur ${nomPlateformeRemonter(pfVue)} depuis ${SEUIL_ANCIENNE_JOURS} jours ou plus ${n>1?'sont cochées':'est cochée'} ; ${decochees>1?`les ${nombreFr(decochees,lang)} plus récentes restent décochées`:'la plus récente reste décochée'}.`
+                  :`${n>1?`The ${n} listings`:'The listing'} live on ${nomPlateformeRemonter(pfVue)} for ${SEUIL_ANCIENNE_JOURS} days or more ${n>1?'are':'is'} ticked; ${decochees>1?`the ${decochees} newer ones stay unticked`:'the newer one stays unticked'}.`)
+                :(lang==='fr'?'Tout est déjà coché : décoche celles que tu veux garder.':'Everything is ticked: untick the ones you want to keep.'))):(lang==='fr'?`Une annonce en ligne depuis ${SEUIL_ANCIENNE_JOURS} jours ou plus apparaîtra ici.`:`A listing live for ${SEUIL_ANCIENNE_JOURS} days or more will show up here.`)}
             articles={articles}
             bouton={{icone:ChevronsUp,libelle:(k)=>lang==='fr'?`Remonter ${nombreFr(k,lang)} annonce${k>1?'s':''}`:`Bump ${k} listing${k>1?'s':''}`}}
             note={repubEnPause?(lang==='fr'?'Remontée en maintenance : de retour très vite.':'Bumping under maintenance: back very soon.'):(lang==='fr'?'Ton ordinateur les republie une à une.':'Your computer reposts them one by one.')}
@@ -12708,7 +12724,7 @@ const StockTab = memo(function StockTab({
               // même porte qu'avant (modale de conversion, rien ne part).
               if(repubLotReserve){setGesteOuvert(null);ouvrirModaleLotReserve();return;}
               const set=new Set(ids.map(String));
-              const choisis=aRemonterTout.filter(i=>set.has(String(i.id)));
+              const choisis=repubCandidatsTout.filter(i=>set.has(String(i.id)));
               if(!choisis.length)return;
               setGesteOuvert(null);
               // LA feuille de republication existante : plateformes, prix,

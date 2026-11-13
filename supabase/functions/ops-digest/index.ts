@@ -10,6 +10,8 @@ import { sentinelleArrets } from "../_shared/cause-blocage.js";
 import { ATTENTE_ALERTE_MS, PLATEFORMES_EXTENSION, executantsDeclares, filesArretees, ligneFileArretee } from "../_shared/attente-extension-active.js";
 // (05/11, R3) Les retraits non terminés > 24 h jugés : rouge (double vente possible), orange (geste attendu), blanc.
 import { classerRetraitsEnRetard, jugerRetraitEnRetard, numeroAnnonce, sujetAvecDoubleVente } from "../_shared/retraits-en-retard.js";
+// (13/11, étape 5, bloc 6 P3) Les refus de cadence du relevé Vinted automatique : la règle de lecture partagée avec la base.
+import { resumerNotesPorteurs, resumerRefusCron, texteRefusCron } from "../_shared/cron-refus.js";
 // (05/11 soir, clôture, décision de Nico : « donne 5 rouges prouvés, ou coupe R3 ») COUPÉ : sur 5 rouges relus sur les
 // plateformes, 3 vrais (Beebs 34042975, Leboncoin 3297644264 et 3287013710 encore en vente) et 2 faux (Leboncoin 3299230866
 // « désactivée », eBay 176726068488 « introuvable ») : le juge croit en ligne une annonce que le relevé n'a pas revue depuis.
@@ -1144,6 +1146,38 @@ serve(async (req) => {
     actionsAppAlertes.push(`Relevé des actions app illisible (${String((e as Error)?.message ?? e)}) — arrêts nets non vérifiables aujourd'hui.`);
   }
 
+  // ── (13/11, étape 5 du lot « zéro problème », bloc 6 P3 — feu vert de Nico) LES REFUS DE CADENCE DU RELEVÉ VINTED ────
+  // L'extension refuse le relevé lancé par son alarme quotidienne (« cron ») quand le dernier relevé réussi a moins de 20 h
+  // (règle INCHANGÉE) ; toutes ses versions le notent sur le relevé porteur. Le déclencheur cron_refus_journaliser
+  // (migration 20261113154000) en fait une ligne usage_logs « cron_refuse » par refus : comptées ici sur 24 h, avec le
+  // délai depuis le dernier relevé réussi (12-20 h = un jour sans relevé automatique). Aucune ligne (migration pas encore
+  // appliquée) : repli sur les notes des relevés porteurs dont le dernier refus tombe dans les 24 h (compteur cumulé :
+  // borne haute ; 68 porteurs en 48 h mesurés le 13/11, 4 ms par l'index (user_id, started_at)).
+  // INFORMATIF : n'entre pas dans les anomalies qui font partir le digest ; la section l'accompagne quand il part.
+  let cronRefusTexte = "";
+  let cronRefus24h: { source: string; total: number; comptes: number; parTranche: Record<string, number> } | null = null;
+  try {
+    const lignesCron = await lirePagesUsage(["cron_refuse"], iso24h);
+    let resume = resumerRefusCron(lignesCron);
+    let source = "journal";
+    if (!lignesCron.length) {
+      const { data: porteurs, error: eP } = await supabase.from("vinted_sync_runs")
+        .select("user_id, erreur, finished_at")
+        .eq("kind", "dressing").eq("status", "done")
+        .gte("started_at", new Date(now - 48 * 3_600_000).toISOString())
+        .like("erreur", "%cadence cron :%")
+        .order("started_at", { ascending: false })
+        .limit(1000);
+      if (eP) throw new Error(eP.message);
+      resume = resumerNotesPorteurs(porteurs ?? [], iso24h);
+      source = "notes";
+    }
+    cronRefus24h = { source, total: resume.total, comptes: resume.comptes, parTranche: resume.parTranche };
+    cronRefusTexte = texteRefusCron(resume, { source });
+  } catch (e) {
+    cronRefusTexte = `Refus de cadence illisibles aujourd'hui (${String((e as Error)?.message ?? e)}).`;
+  }
+
   // ── CPU DE LA BASE (04/10, incident CPU 99 %) ───────────────────────────────
   // Échantillons de veille-cpu (toutes les 2 min). Une anomalie dès qu'un
   // relevé des 24 dernières heures a dépassé 70 % : la veille a déjà prévenu
@@ -1348,7 +1382,7 @@ serve(async (req) => {
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
   if (total === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, counts }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, counts, cron_refus_24h: cronRefus24h }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1547,6 +1581,15 @@ serve(async (req) => {
     <ul style="margin:0;padding:0 0 0 18px;">
       ${lectureFondResume ? `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(lectureFondResume)}</li>` : ""}
       ${lectureFondAlertes.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    !cronRefusTexte ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#374151;">
+      • Refus de cadence du relevé Vinted automatique (règle des 20 h, inchangée)
+    </h2>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      <li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(cronRefusTexte)}</li>
     </ul>`
   }
     ${
@@ -1799,7 +1842,7 @@ serve(async (req) => {
     );
   }
 
-  return new Response(JSON.stringify({ ok: true, sent: true, counts }), {
+  return new Response(JSON.stringify({ ok: true, sent: true, counts, cron_refus_24h: cronRefus24h }), {
     headers: { "Content-Type": "application/json" },
   });
 });

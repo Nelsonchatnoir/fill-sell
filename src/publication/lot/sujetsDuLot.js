@@ -68,6 +68,9 @@ export function questionsDeLArticle(m, motifs = [], { jumeaux = [], lang = "fr" 
     if (tailles.length >= 2 && tailles.includes(cle)) continue;
     if (SHARED_FIELD_KEYS.includes(cle)) {
       ajouter({ cle, type: "moteur", libelle: L[cle] ?? cle, plateformes: plateformesDuChampPartage(m, cle) });
+    } else if (cle === "etat") {
+      // (13/11, décision de Nico) L'état que personne n'a dit : UNE question, ses plateformes (jamais « Très bon état »).
+      ajouter({ cle, type: "moteur", libelle: en ? "Condition" : "État", plateformes: [...(m.etatAChoisir ?? [])] });
     } else if (cle === "ebay:Dimensions") {
       ajouter({ cle, type: "moteur", libelle: "Dimensions", plateformes: ["ebay"] });
     } else if (cle.startsWith("ebay:")) {

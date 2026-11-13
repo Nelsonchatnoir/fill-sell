@@ -34,9 +34,10 @@ ok(/canal_coupe_diag = \{/.test(bg), "la coupure laisse son diagnostic (adresse 
 console.log("\n3. LA RECRÉATION SE PROUVE PAR SON NUMÉRO AVANT TOUT TITRE");
 const iConc = bg.indexOf("async function conclureRecreationApresSoumission(");
 const iNum = bg.indexOf("recréation prouvée par son numéro (onglet redirigé par Vinted", iConc);
-// (25/10) La sonde compare au titre relu dans le champ (titreCopie : titre_pose, sinon le titre tapé).
-const iTitre = bg.indexOf("vintedUploadSucceededForTitle(tabId, titreCopie)", iConc);
-ok(iConc > 0 && iNum > iConc && iTitre > iNum, "numéro lu dans l'adresse de l'onglet AVANT la sonde par titre");
+// (13/11, décision de Nico — jamais par le titre) Après l'adresse : le numéro rendu par Vinted (gardé dans l'onglet,
+// ou relayé), jamais la sonde par titre.
+const iTitre = bg.indexOf("lireDepotGardeParLaSonde(tabId)", iConc);
+ok(iConc > 0 && iNum > iConc && iTitre > iNum, "numéro lu dans l'adresse de l'onglet AVANT le numéro rendu par Vinted");
 ok(/idNum !== String\(pf\.vinted_item_id \?\? ""\)/.test(bg), "jamais le numéro de l'annonce retirée");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }

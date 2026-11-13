@@ -167,12 +167,14 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
   // pouvait dire « Tout est complété » au-dessus d'un Publier grisé.
   const genresBloques = ["vinted", "beebs"].filter(p => m[`${p}GenreBlocked`]);
   const genresPoses = Object.entries(m.genresDeduits ?? {}).filter(([p]) => m.selected?.has?.(p) ?? true);
-  const total = q.redTotal + (demandePrixAchat ? 1 : 0) + (montrerDescription ? 1 : 0) + genresBloques.length;
+  // (13/11, décision de Nico) L'état que personne n'a dit : UNE question, pour toutes les plateformes qui l'attendent.
+  const etatAChoisir = Array.isArray(m.etatAChoisir) ? m.etatAChoisir : [];
+  const total = q.redTotal + (demandePrixAchat ? 1 : 0) + (montrerDescription ? 1 : 0) + (etatAChoisir.length ? 1 : 0) + genresBloques.length;
   // (18/10 nuit, point 1) Ce que la mémoire « compte × catégorie » a posé sur
   // cet article : visible, et modifiable — jamais une valeur posée en silence.
   const poses = posesMemoireVisibles(m);
   if (!total && !poses.length && !genresPoses.length) return null;
-  const restants = q.redRestants + (m.prixAchatManquant ? 1 : 0) + (descriptionVide ? 1 : 0) + genresBloques.length;
+  const restants = q.redRestants + (m.prixAchatManquant ? 1 : 0) + (descriptionVide ? 1 : 0) + (etatAChoisir.length ? 1 : 0) + genresBloques.length;
 
   const origine = (texte) => texte ? <span className="qui"> · {texte}</span> : null;
 
@@ -196,6 +198,23 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
               <button type="button" className={`fsn-choice${m.prixAchatInconnu ? " fsn-choice--on" : ""}`} onClick={() => m.setPrixAchatInconnu(!m.prixAchatInconnu)}>
                 {m.prixAchatInconnu ? "✓ " : ""}{en ? "I don't remember" : "Je ne sais plus"}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* (13/11, décision de Nico) L'ÉTAT que personne n'a dit (ni la fiche, ni les photos, ni une copie) : jamais
+            « Très bon état » par défaut — une question, un geste ; chaque plateforme reçoit le libellé de SA liste. */}
+        {etatAChoisir.length > 0 && voir("etat") && (
+          <div className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
+            <div className="fsn-row fsn-row--between">
+              <div className="fsn-q-t">{t("fieldConditionLabel")}</div>
+              <div className="fsn-row">{etatAChoisir.map((p) => <Puce key={p} ton="geste">{NOM(p)}</Puce>)}</div>
+            </div>
+            <div className="fsn-q-why">{en ? "Nobody has said it yet. Pick it: it goes to every platform, in its own words." : "Personne ne l'a encore dit. Choisis-le : il part sur chaque plateforme, dans ses mots."}</div>
+            <div className="fsn-choices">
+              {(m.etatsAuChoix ?? []).map(({ tier, libelle }) => (
+                <button key={tier} type="button" className="fsn-choice" onClick={() => m.choisirEtat(libelle)}>{libelle}</button>
+              ))}
             </div>
           </div>
         )}

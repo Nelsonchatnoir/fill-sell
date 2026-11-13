@@ -46,6 +46,9 @@ export type Poste = {
   vinted_source?: string;         // « depot » · « garde » · « poll »
   // (18/10) Ce que la sonde de CE poste voit connecté (« sessions_poste », ≥ 0.6.126).
   sessions?: Record<string, boolean | null | string>;
+  // (13/11, bloc 6 P4) L'heure du prochain relevé Vinted automatique de CE poste (son alarme, dite au poll, ≥ 0.6.187).
+  prochain_releve_vinted?: string;
+  prochain_releve_lu_le?: string;
   // (29/10, point 5 — Johan) LA PRÉSENCE PENDANT UN LONG TRAVAIL : battement_extension (RPC, toutes les 5 min tant
   // qu'un flux tient le verrou de l'extension) pose `le`, `battement_le` et `travail` (le flux, le job en cours, son
   // heure). `vivant_depuis` : posé par le poll quand le poste revient après plus de 10 min de silence — l'alerte
@@ -306,6 +309,17 @@ export function patchPosteDuPoll(body: unknown, maintenant = Date.now()): Partia
         sessions[pf] = v === true ? true : v === false ? false : null;
       }
       out.sessions = sessions;
+    }
+  }
+  // (13/11, lot « zéro problème », bloc 6 P4 — décision de Nico) L'extension dit l'heure de sa prochaine alarme de relevé
+  // Vinted (prochain_releve_auto.vinted) : l'écran la lit au lieu de la déduire des relevés passés (elle ne voyait pas les
+  // refus). Gardée seulement si plausible : de 10 min dans le passé (alarme en train de partir) à 48 h devant.
+  const pr = (b.prochain_releve_auto && typeof b.prochain_releve_auto === "object") ? b.prochain_releve_auto as Record<string, unknown> : null;
+  if (pr) {
+    const t = ms(pr.vinted);
+    if (Number.isFinite(t) && t >= maintenant - 10 * 60_000 && t <= maintenant + 48 * 3600_000) {
+      out.prochain_releve_vinted = new Date(t).toISOString();
+      out.prochain_releve_lu_le = new Date(maintenant).toISOString();
     }
   }
   return out;

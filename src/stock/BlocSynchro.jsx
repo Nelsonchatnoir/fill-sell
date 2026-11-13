@@ -42,7 +42,9 @@ import { paysVintedDeLAppareil, noteVintedEtranger, retenirPaysAppareil, paysVin
 import { noterGeste } from '../utils/dernierGeste';
 import { ABSENCES_AVANT_PAUSE } from '../annonces/absencesDeSuite.js';
 import { synchroSansRien } from './synchroSansRien.js';
-import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReussi, texteAutomatique, pastilleLbcDeleguee, texteDelegationLbc } from './boutonSynchro.js';
+import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReussi, texteAutomatique, pastilleLbcDeleguee, texteDelegationLbc, enTeteSynchro } from './boutonSynchro.js';
+// (13/11, étape 5, bloc 6 iii) « 245 en vente · 11 vendues encore affichées par Vinted », visible dans la carte.
+import { ligneVenduesAffichees } from '../annonces/boutiqueVinted.js';
 import { lireRelevesRecents, lireChoixEtSessions, lireDelegationLbc } from '../utils/syncPlateformes';
 import { etatSession } from '../utils/sessionsPlateformes.js';
 import { demarrerRelecture } from '../utils/relectureBornee';
@@ -539,6 +541,13 @@ export default function BlocSynchro({
   const finTete = Math.max(bilan.dernierFini ?? -Infinity,
     ...r.plateformes.map((p) => Date.parse(r.reussis?.[p] ?? '')).filter(Number.isFinite));
   const quand = Number.isFinite(finTete) ? ilYA(new Date(finTete).toISOString(), fr) : null;
+  // (13/11, étape 5 du lot « zéro problème », bloc 6 ii — feu vert de Nico) L'en-tête NOMME la plateforme : la moins fraîche
+  // d'abord, puis la plus fraîche (« Vinted synchronisé il y a 21 h · Leboncoin il y a 8 min ») — avant, « Synchronisé il y
+  // a 8 min » parlait de Leboncoin quand Vinted avait 20 h (447d920c, 12/11). Rien de lisible : la phrase d'avant.
+  const enTetePlateformes = enTeteSynchro({ reussis: r.reussis, plateformes: r.plateformes, noms: Object.fromEntries(tuiles.map((t) => [t.p, t.nom])), maintenant: Date.now(), fr });
+  // (13/11, bloc 6 iii — feu vert de Nico) Les vendues que Vinted affiche encore, dites dans la carte VISIBLE (elles
+  // n'étaient écrites que sur la ligne Vinted montée cachée) ; seulement si le compte « en vente » est fiable.
+  const venduesAffichees = r.plateformes.includes('vinted') ? ligneVenduesAffichees(r.runVinted, lang) : null;
   const ctaTexte = enCours ? T.ctaEnCours : r.toutBusy ? T.ctaEnvoi : extVue ? T.ctaTout : T.ctaExtension;
   const ctaInactif = enCours || occupe || !extVue || grise;
   const premiereAnnonce = synchroSansRien({ enCours, quand, total: bilan.total, nbArticles: items?.length });
@@ -626,7 +635,7 @@ export default function BlocSynchro({
               onClick={() => setDetailOuvert((o) => !o)} aria-expanded={detailOuvert}
               style={{ flex: 1, minWidth: 0, padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit' }}>
               <div className="sk-une-ligne" style={{ fontSize: 14, lineHeight: '20px', fontWeight: 700, color: S.ink }}>
-                {enCours ? T.titreEnCours : (etatVinted?.cadenceTexte && !quand ? etatVinted.cadenceTexte : (quand ? T.synchronise(quand) : T.sousJamais))}
+                {enCours ? T.titreEnCours : (etatVinted?.cadenceTexte && !quand ? etatVinted.cadenceTexte : (quand ? (enTetePlateformes ?? T.synchronise(quand)) : T.sousJamais))}
               </div>
               <div className="sk-une-ligne sk-chiffres" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
                 {/* (07/11 soir) Le compte vient de la liste affichée dessous (compteSynchroEnCours), jamais d'une autre. */}
@@ -668,6 +677,11 @@ export default function BlocSynchro({
             </div>
           )}
           {!enCours && pastilles(false)}
+          {!enCours && venduesAffichees && (
+            <p data-vendues-affichees style={{ display: 'flex', alignItems: 'flex-start', gap: 6, margin: '8px 0 0', fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ink2 }}>
+              <PlatformLogo platform="vinted" size={12} /> <span style={{ minWidth: 0 }}>{venduesAffichees}</span>
+            </p>
+          )}
           {!enCours && msgVintedInfo && (
             <p role="status" style={{ margin: '8px 0 0', fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ink2 }}>
               <PlatformLogo platform="vinted" size={12} /> {msgVintedInfo.texte}

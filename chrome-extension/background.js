@@ -1440,6 +1440,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     syncDressingVinted({ declencheur: "cron" }).catch((e) =>
       console.error("[sync-dressing][cron]", e?.message ?? e));
   }
+  // (13/11, bloc 6 P1) Le rattrapage unique armé par un refus de cadence : le MÊME relevé automatique, mêmes gardes.
+  if (alarm.name === SYNC_CRON_RATTRAPAGE_ALARM) {
+    syncDressingVinted({ declencheur: "cron" }).catch((e) =>
+      console.error("[sync-dressing][cron][rattrapage]", e?.message ?? e));
+  }
   if (alarm.name === SYNC_ANNONCES_ALARM) {
     withJobFlowLock("releve-annonces-cron", releverQuotidien).catch((e) =>
       console.error("[releve][cron]", e?.message ?? e));
@@ -4509,6 +4514,8 @@ async function pollAndProcessJobsUnlocked() {
       maj_en_attente: await lireMajEnAttente(),
       // (18/10, lot 6) La boutique Vinted et les sessions de CE poste (deux postes sur un compte).
       ...ceQueLePosteDitDeLui(),
+      // (13/11, bloc 6 P4) L'heure du prochain relevé Vinted automatique de CE poste (son alarme, pas une déduction).
+      prochain_releve_auto: await prochainReleveAuto().catch(() => null),
     });
     dernierSigneDeVieEnvoye = Date.now();   // (29/10) ce poll a stampé la présence : pas de battement avant 5 min
     // (31/10, lot F) Le dernier poll RÉUSSI, survivant aux redémarrages du worker : la veille du poll s'y règle.
@@ -11153,6 +11160,8 @@ async function installNetworkProbe(tabId, platform) {
           if (e.source !== window || !e.data?.__fillsellArmeCouleur) return;
           const ids = [...new Set((Array.isArray(e.data.ids) ? e.data.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2);
           window.__fsCouleurAPoser = ids.length ? { ids, armeeA: Date.now() } : null;
+          // (13/11, 5e — acae56d5) L'armement est ACCUSÉ : le remplissage attend cet accusé avant de cliquer « Ajouter ».
+          try { window.postMessage({ __fillsellArmeAccuse: true, quoi: "couleur", ids }, window.location.origin); } catch { /* relevé seulement */ }
         });
         let dernierePoseCouleur = null;
         const estEntreeCouleur = (x) => /^colou?r$/i.test(String(x?.code ?? "").trim());
@@ -11202,11 +11211,95 @@ async function installNetworkProbe(tabId, platform) {
             return Object.keys(vu).length ? vu : { aucune: "ni clé color*, ni entrée color" };
           } catch { return null; }
         };
+        // ══ (13/11, lot « zéro problème » 5e — compte 63ad8597, tâche 641fb37e) L'ÉTAT CONNU PAR SON IDENTIFIANT ══
+        // Annonce retirée, POST parti SANS état (400 « Le champ État doit être renseigné ») alors que la copie le
+        // portait. Même règle que la couleur : seulement sur la création (corps d'article, catalog_id), seulement si la
+        // page n'a posé AUCUN état (ni `status_id` > 0, ni entrée condition remplie dans item_attributes), jamais
+        // par-dessus. Forme RELEVÉE en réel le 10/11 (rayon 2942) : item_attributes { code: "condition", ids: [id] } ;
+        // la clé racine `status_id` n'est remplie que si le corps la porte déjà (vide). Armement borné à 15 min, ACCUSÉ.
+        window.__fsEtatAPoser = null;
+        const etatArme = () => {
+          const a = window.__fsEtatAPoser;
+          if (!(Number(a?.id) > 0)) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? a : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeEtat) return;
+          const id = Number(e.data.id);
+          window.__fsEtatAPoser = Number.isInteger(id) && id > 0 ? { id, armeeA: Date.now() } : null;
+          try { window.postMessage({ __fillsellArmeAccuse: true, quoi: "etat", id: window.__fsEtatAPoser?.id ?? null }, window.location.origin); } catch { /* relevé seulement */ }
+        });
+        let dernierePoseEtat = null;
+        const estEntreeEtat = (x) => /^condition$/i.test(String(x?.code ?? "").trim());
+        const corpsAvecEtat = (url, body) => {
+          dernierePoseEtat = null;
+          const a = etatArme();
+          if (!a) return null;
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          const cible = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+          if (!("catalog_id" in cible)) return null; // pas le corps d'un article
+          const presents = Array.isArray(cible.item_attributes) ? cible.item_attributes : [];
+          const enAttribut = presents.some((x) => estEntreeEtat(x) && Array.isArray(x?.ids) && x.ids.length);
+          if (enAttribut || Number(cible.status_id) > 0) return null; // la page a posé un état : on n'y touche pas
+          cible.item_attributes = [...presents.filter((x) => !estEntreeEtat(x)), { code: "condition", ids: [a.id] }];
+          const poses = [`item_attributes condition=${a.id}`];
+          if ("status_id" in cible) { cible.status_id = a.id; poses.push(`status_id=${a.id}`); }
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseEtat = poses.join(", ");
+            return corrige;
+          } catch { return null; }
+        };
+        // Relevé PASSIF : où le corps envoyé porte l'état (status_id, entrée condition). Valeurs bornées.
+        const etatEnvoyeOf = (url, body) => {
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url)) || typeof body !== "string" || body.charAt(0) !== "{") return null;
+          try {
+            const j = JSON.parse(body);
+            const c = (j?.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+            if (!c || typeof c !== "object" || !("catalog_id" in c)) return null;
+            const vu = {};
+            if ("status_id" in c) vu.status_id = String(c.status_id ?? "null").slice(0, 20);
+            const entree = (Array.isArray(c.item_attributes) ? c.item_attributes : []).find(estEntreeEtat);
+            if (entree) vu["item_attributes.condition"] = JSON.stringify(entree.ids ?? null).slice(0, 40);
+            return Object.keys(vu).length ? vu : { aucun: "ni status_id, ni entrée condition" };
+          } catch { return null; }
+        };
+        // ── (13/11, 5e — compte 2189c4d8, tâche 44169148) L'EMPREINTE DE NOTRE ENVOI : LES IDENTIFIANTS DE SES PHOTOS ──
+        // Relevés au DÉPART du POST (relayEnvoi), avant toute réponse : une redirection vers le profil ne les emporte pas.
+        // La copie se reconnaît au dressing par ces photos-là, jamais par son titre.
+        const photosEnvoyeesOf = (url, body) => {
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url)) || typeof body !== "string" || body.charAt(0) !== "{") return null;
+          try {
+            const j = JSON.parse(body);
+            const c = (j?.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+            const ids = (Array.isArray(c?.assigned_photos) ? c.assigned_photos : []).map((p) => Number(p?.id)).filter((n) => Number.isInteger(n) && n > 0);
+            return ids.length ? ids.slice(0, 30) : null;
+          } catch { return null; }
+        };
+        // ── (13/11, 5e) LE NUMÉRO RENVOYÉ PAR VINTED SURVIT À LA REDIRECTION ──────────────────────────────────────
+        // Vinted renvoie l'onglet vers /member/<boutique> dès sa réponse ; le relais vers l'arrière-plan meurt avec la page
+        // (6 600 recréations sur 14 jours n'étaient plus reconnues que par le dressing). La réponse de création réussie
+        // (succesVintedOf : "item":{"id"} et "code":0) est gardée AVANT d'être rendue à la page, dans le sessionStorage de
+        // l'onglet (même origine : il survit à la navigation) ; l'arrière-plan l'y relit (lireDepotGardeParLaSonde).
+        const garderDepotVinted = (url, txt) => {
+          try {
+            if (platform !== "vinted" || !/item_upload\/items(?:[?#]|$)/i.test(String(url))) return;
+            const s = succesVintedOf(txt);
+            if (s?.id) sessionStorage.setItem("__fillsell_depot_vinted", JSON.stringify({ id: String(s.id), at: Date.now() }));
+          } catch { /* relevé seulement */ }
+        };
         // (07/11) La couleur ferme la chaîne, APRÈS les attributs : rien à poser si l'un d'eux l'a déjà mise.
+        // (13/11, 5e) Puis l'état, par son identifiant, si la page n'en a posé aucun.
         const corpsPourDepotAvecCouleur = (url, body) => {
           const avant = corpsPourDepot(url, body);
           const avecCouleur = corpsAvecCouleur(url, avant ?? body);
-          return avecCouleur ?? avant;
+          const avantEtat = avecCouleur ?? avant;
+          const avecEtat = corpsAvecEtat(url, avantEtat ?? body);
+          return avecEtat ?? avantEtat;
         };
 
         const origFetch = window.fetch;
@@ -11220,6 +11313,7 @@ async function installNetworkProbe(tabId, platform) {
           let marquePosee = null;
           let attributsPoses = null;
           let couleurPosee = null;
+          let etatPose = null;
           try {
             // Corps lisible uniquement : un Request porteur d'un flux n'est pas
             // réécrit (angle mort assumé, jamais une publication cassée).
@@ -11232,6 +11326,7 @@ async function installNetworkProbe(tabId, platform) {
                 marquePosee = dernierePoseMarque;
                 attributsPoses = dernierePoseAttributs;
                 couleurPosee = dernierePoseCouleur;
+                etatPose = dernierePoseEtat;
                 corpsEnvoye = corrige;
                 args = [input, { ...init, body: corrige }];
               }
@@ -11239,12 +11334,14 @@ async function installNetworkProbe(tabId, platform) {
           } catch { /* la pose ne doit JAMAIS casser la publication */ }
           try {
             const methodeEnvoi = String(init?.method ?? input?.method ?? "GET").toUpperCase();
-            if (ENDPOINT.test(url) && methodeEnvoi !== "GET") relayEnvoi({ url, method: methodeEnvoi, at: Date.now() });
+            // (13/11, 5e) Les identifiants des photos de NOTRE envoi partent avec l'envoi : l'empreinte de la copie.
+            if (ENDPOINT.test(url) && methodeEnvoi !== "GET") relayEnvoi({ url, method: methodeEnvoi, at: Date.now(), photos: photosEnvoyeesOf(url, corpsEnvoye) });
           } catch { /* la sonde ne doit JAMAIS casser la publication */ }
           const res = await origFetch.apply(this, args);
           try {
             if (ENDPOINT.test(url) && String(init?.method ?? "GET").toUpperCase() !== "GET") {
               const txt = await res.clone().text().catch(() => "");
+              garderDepotVinted(url, txt); // (13/11, 5e) AVANT de rendre la réponse à la page (qui part vers le profil)
               relay({
                 url, status: res.status, method: String(init?.method ?? "").toUpperCase(), at: Date.now(),
                 prix: priceOf(corpsEnvoye),
@@ -11262,6 +11359,9 @@ async function installNetworkProbe(tabId, platform) {
                 // (07/11) La couleur posée par la sonde, et la forme où le corps envoyé la porte.
                 couleurPosee,
                 couleurEnvoyee: couleurEnvoyeeOf(url, corpsEnvoye),
+                // (13/11, 5e) L'état posé par la sonde, et la forme où le corps envoyé le porte.
+                etatPose,
+                etatEnvoye: etatEnvoyeOf(url, corpsEnvoye),
                 marqueEnvoyee: marqueEnvoyeeOf(url, corpsEnvoye),
                 marqueRelue: marquePosee ? marqueRelueOf(txt) : null,
                 annonceId: annonceIdOf(txt),
@@ -11284,10 +11384,11 @@ async function installNetworkProbe(tabId, platform) {
           let marquePosee = null;
           let attributsPoses = null;
           let couleurPosee = null;
+          let etatPose = null;
           try {
             if (String(this.__m).toUpperCase() !== "GET" && typeof body === "string") {
               const corrige = corpsPourDepotAvecCouleur(this.__u ?? "", body);
-              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; marquePosee = dernierePoseMarque; attributsPoses = dernierePoseAttributs; couleurPosee = dernierePoseCouleur; }
+              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; marquePosee = dernierePoseMarque; attributsPoses = dernierePoseAttributs; couleurPosee = dernierePoseCouleur; etatPose = dernierePoseEtat; }
             }
           } catch { /* idem */ }
           try {
@@ -11297,6 +11398,7 @@ async function installNetworkProbe(tabId, platform) {
                 // laisse pas la sonde planter pour un blob de tracking.
                 let corps = "";
                 try { corps = this.responseText ?? ""; } catch { corps = "(responseType non texte)"; }
+                garderDepotVinted(this.__u, corps); // (13/11, 5e) le numéro renvoyé survit à la redirection
                 relay({
                   url: this.__u, status: this.status, method: String(this.__m ?? "").toUpperCase(), at: Date.now(),
                   prix: priceOf(typeof corpsEnvoye === "string" ? corpsEnvoye : null),
@@ -11309,6 +11411,8 @@ async function installNetworkProbe(tabId, platform) {
                   attributsPoses,
                   couleurPosee,
                   couleurEnvoyee: couleurEnvoyeeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
+                  etatPose,
+                  etatEnvoye: etatEnvoyeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   marqueEnvoyee: marqueEnvoyeeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   marqueRelue: marquePosee ? marqueRelueOf(corps) : null,
                   annonceId: annonceIdOf(corps),
@@ -11321,7 +11425,7 @@ async function installNetworkProbe(tabId, platform) {
           } catch { /* idem */ }
           try {
             if (ENDPOINT.test(this.__u ?? "") && String(this.__m).toUpperCase() !== "GET") {
-              relayEnvoi({ url: this.__u, method: String(this.__m).toUpperCase(), at: Date.now() });
+              relayEnvoi({ url: this.__u, method: String(this.__m).toUpperCase(), at: Date.now(), photos: photosEnvoyeesOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null) });
             }
           } catch { /* idem */ }
           return oSend.call(this, corpsEnvoye);
@@ -12226,6 +12330,54 @@ async function readProbeEnvois(tabId) {
   return { envois };
 }
 
+// ── (13/11, lot « zéro problème » 5e — compte 2189c4d8, tâche 44169148) CE QUE NOTRE ENVOI A LAISSÉ DANS L'ONGLET ──
+// L'empreinte de nos photos : identifiants des photos du corps du POST (relevés au départ, relayEnvoi) et des réponses
+// de téléversement /api/v2/photos (relayées pendant le remplissage), plus le jeton de chaque image. Rend { ids, jetons }.
+async function photosDeNotreEnvoi(tabId) {
+  const ids = new Set();
+  const jetons = new Set();
+  try {
+    const { envois } = await readProbeEnvois(tabId);
+    for (const e of envois) {
+      if (!/item_upload\/items/i.test(String(e?.url ?? ""))) continue;
+      for (const n of Array.isArray(e?.photos) ? e.photos : []) if (Number.isInteger(Number(n)) && Number(n) > 0) ids.add(Number(n));
+    }
+    const { captures } = await readProbeCaptures(tabId);
+    for (const c of captures) {
+      if (!/\/api\/v2\/photos(?:[?#]|$)/i.test(String(c?.url ?? "")) || Number(c?.status) !== 200) continue;
+      const corps = String(c?.reponse ?? "");
+      const id = Number(corps.match(/^\s*\{\s*"id"\s*:\s*(\d+)/)?.[1]);
+      if (Number.isInteger(id) && id > 0) ids.add(id);
+      const j = jetonPhotoVinted(corps.match(/"url"\s*:\s*"([^"]+)"/)?.[1]?.replace(/\\\//g, "/"));
+      if (j) jetons.add(j);
+    }
+  } catch { /* relevé seulement */ }
+  return { ids: [...ids].slice(0, 60), jetons: [...jetons].slice(0, 60) };
+}
+// L'empreinte gardée sur le job, cumulée d'un essai à l'autre (un essai précédent a pu créer la copie).
+function cumulerPhotosEnvoyees(pf, nouvelles) {
+  const avant = pf?.recreation_photos_envoyees ?? {};
+  const ids = [...new Set([...(Array.isArray(avant.ids) ? avant.ids : []), ...(nouvelles?.ids ?? [])].map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(-60);
+  const jetons = [...new Set([...(Array.isArray(avant.jetons) ? avant.jetons : []), ...(nouvelles?.jetons ?? [])].map(String).filter(Boolean))].slice(-60);
+  if (ids.length || jetons.length) pf.recreation_photos_envoyees = { ids, jetons };
+  return pf.recreation_photos_envoyees ?? null;
+}
+// Le numéro que Vinted a rendu à notre création, gardé par la sonde dans le sessionStorage de l'onglet (il survit à la
+// redirection vers le profil). { id, at } ou null. Lecture seule ; l'entrée est effacée à chaque nouveau remplissage
+// (clearProbeCaptures) : elle ne peut venir que de CE remplissage.
+async function lireDepotGardeParLaSonde(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => { try { return sessionStorage.getItem("__fillsell_depot_vinted"); } catch { return null; } },
+    });
+    const j = JSON.parse(String(res?.result ?? "null"));
+    const id = String(j?.id ?? "");
+    return /^\d{6,}$/.test(id) ? { id, at: Number(j?.at) || null } : null;
+  } catch { return null; }
+}
+
 function recordProbeCapture(tabId, capture) {
   const list = probeCapturesByTab.get(tabId) ?? [];
   // Horodatage de réception (2026-09-08) : lbcDepotRequestSeen distingue les
@@ -12274,7 +12426,8 @@ function clearProbeCaptures(tabId) {
     .executeScript({
       target: { tabId },
       world: "MAIN",
-      func: () => { window.__fsCaptures = []; window.__fsEnvois = []; },
+      // (13/11, 5e) Le numéro gardé d'un dépôt précédent dans cet onglet est effacé : il ne parle que pour CE job.
+      func: () => { window.__fsCaptures = []; window.__fsEnvois = []; try { sessionStorage.removeItem("__fillsell_depot_vinted"); } catch { /* sans effet */ } },
     })
     .catch(() => {});
 }
@@ -16454,6 +16607,78 @@ async function rattraperRepriseAuto() {
 
 // Cadence CRON : 20 h et non 24 h — cf. la garde dans syncDressingVinted.
 const SYNC_CRON_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+
+// ── (13/11, lot « zéro problème », bloc 6 — décision de Nico) LE RELEVÉ AUTOMATIQUE NE PERD PLUS UN JOUR ───────────
+// Mesuré sur 7 jours (audit bloc 6) : ≈ 491 refus « cadence_cron » sur 127 comptes ; un relevé fait d'un GESTE le soir
+// faisait refuser le relevé automatique du lendemain matin (la fenêtre de 20 h comptait tous les relevés) et l'alarme
+// suivante ne venait que 24 h plus tard — compte 447d920c : geste le 11/11 à 20:29, relevé automatique refusé le 12/11 à
+// 10:34, ~38 h sans relevé automatique.
+//   P2 — seuls les relevés AUTOMATIQUES (declencheur « cron ») comptent dans les 20 h ; un geste ne repousse plus le
+//        relevé automatique (la première synchro reste un geste : cron_sans_premiere_sync, règle du 07/08). Miroir SQL :
+//        garde_cadence_sync_runs (migration 20261113170000, feu vert de Nico) ; tant qu'elle n'est pas appliquée, la base
+//        refuse encore (SYNC_CRON_CADENCE) et le rattrapage P1 s'arme sur ce refus aussi.
+//   P1 — après un refus, UNE alarme (sans période) à « fin du dernier relevé automatique + 20 h » (+ marge), au lieu
+//        d'attendre l'alarme quotidienne : jamais plus de ~20 h entre deux relevés automatiques. Elle lance le MÊME relevé
+//        (declencheur « cron », toutes les gardes). Recréée par nom (jamais deux).
+//   P4 — prochainReleveAuto : l'heure de la prochaine alarme, envoyée au poll (extension_postes.<poste>).
+// ⛔ Jamais un relevé posé par le serveur ; aucune synchro après la connexion d'une plateforme au Cloud (décisions de Nico).
+const SYNC_CRON_RATTRAPAGE_ALARM = "fillsell-sync-cron-rattrapage";
+const SYNC_CRON_RATTRAPAGE_MARGE_MS = 5 * 60 * 1000;
+// Pur : { ok: true } ou le refus. dernierDone = dernier relevé réussi (tout déclencheur) ; dernierCronDone = dernier
+// relevé AUTOMATIQUE réussi. prochaineMs = fin du dernier automatique + 20 h.
+function decisionCadenceCron({ dernierDone, dernierCronDone, maintenant = Date.now() } = {}) {
+  if (!dernierDone) return { ok: false, reason: "cron_sans_premiere_sync" };
+  const fini = Date.parse(dernierCronDone?.finished_at ?? "");
+  if (Number.isFinite(fini) && maintenant - fini < SYNC_CRON_COOLDOWN_MS) {
+    return { ok: false, reason: "cadence_cron", prochaineMs: fini + SYNC_CRON_COOLDOWN_MS };
+  }
+  return { ok: true };
+}
+// P1 : l'alarme unique de rattrapage (nom fixe : la recréer la remplace).
+async function armerRattrapageCron(prochaineMs) {
+  if (!Number.isFinite(Number(prochaineMs))) return null;
+  const when = Math.max(Date.now() + 60_000, Number(prochaineMs) + SYNC_CRON_RATTRAPAGE_MARGE_MS);
+  chrome.alarms.create(SYNC_CRON_RATTRAPAGE_ALARM, { when });
+  console.log(`[sync-dressing][cron] refus de cadence — relevé automatique de rattrapage armé pour ${new Date(when).toISOString()}`);
+  return when;
+}
+// P4 : l'heure du prochain relevé automatique (la plus proche des deux alarmes), pour le poll. null si aucune.
+async function prochainReleveAuto() {
+  const lire = async (nom) => { try { return await chrome.alarms.get(nom); } catch { return null; } };
+  const [q, r] = [await lire(SYNC_DRESSING_ALARM), await lire(SYNC_CRON_RATTRAPAGE_ALARM)];
+  const iso = (a) => (Number.isFinite(a?.scheduledTime) ? new Date(a.scheduledTime).toISOString() : null);
+  const t = [q?.scheduledTime, r?.scheduledTime].filter(Number.isFinite);
+  if (!t.length) return null;
+  return { vinted: new Date(Math.min(...t)).toISOString(), quotidienne: iso(q), rattrapage: iso(r), lu_le: new Date().toISOString() };
+}
+// Le refus « cron_sans_premiere_sync » n'a aucun relevé où écrire sa note (la migration P3 lit les notes) : une ligne
+// usage_logs « cron_refuse » (motif nommé), au plus une par 20 h et par poste (storage.local).
+async function journaliserRefusSansPremiere(token, userId) {
+  const CLE = "fillsell_cron_sans_premiere_journalise";
+  const avant = Number((await chrome.storage.local.get(CLE))?.[CLE]) || 0;
+  if (Date.now() - avant < SYNC_CRON_COOLDOWN_MS) return false;
+  await chrome.storage.local.set({ [CLE]: Date.now() });
+  const uid = userId ?? decodeJwtSub(token);
+  if (!uid) return false;
+  await restRequest("usage_logs", token, {
+    method: "POST",
+    body: JSON.stringify([{ user_id: uid, feature: "cron_refuse", metadata: {
+      motif: "cron_sans_premiere_sync", refus_le: new Date().toISOString(), extension_build: FILLSELL_BUILD_ID,
+    } }]),
+  });
+  return true;
+}
+// Le compte par statut des annonces lues par CE relevé (identifiants uniques), figé à la clôture : « [statuts] active
+// 245, sold 11 » — même forme que le relevé Leboncoin. L'écran le lit au lieu de recompter des instantanés qu'un relevé
+// plus tardif du même jour écrase (9 comptes au chiffre faux, audit bloc 6). null si rien n'a été lu.
+function noteStatutsReleve(statutsParId) {
+  const compte = new Map();
+  for (const st of statutsParId?.values?.() ?? []) compte.set(String(st ?? "inconnu"), (compte.get(String(st ?? "inconnu")) ?? 0) + 1);
+  if (!compte.size) return null;
+  const ordre = ["active", "sold", "reserved", "hidden", "closed", "draft"];
+  const cles = [...ordre.filter((k) => k === "active" || compte.has(k)), ...[...compte.keys()].filter((k) => !ordre.includes(k)).sort()];
+  return `[statuts] ${cles.map((k) => `${k} ${compte.get(k) ?? 0}`).join(", ")}`;
+}
 
 // Journalise un refus de sync 'cron' SUR LE RUN QUI LE CAUSE — sans créer de
 // ligne de run : une sync qui n'a pas eu lieu n'est pas un run, et en fabriquer
@@ -21730,10 +21955,16 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     if (declencheur === "cron") {
       try {
         const derniers = await restRequest(
-          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.done&select=id,finished_at,erreur&order=finished_at.desc&limit=1`,
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.done&select=id,finished_at,erreur,declencheur&order=finished_at.desc&limit=1`,
           token, { headers: { Prefer: "return=representation" } },
         );
         const dernier = derniers?.[0] ?? null;
+        // (13/11, bloc 6 P2) Le dernier relevé AUTOMATIQUE réussi : lui seul compte dans les 20 h, lui seul porte la note.
+        const dernierCron = !dernier || dernier.declencheur === "cron" ? dernier : (await restRequest(
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.done&declencheur=eq.cron&select=id,finished_at,erreur,declencheur&order=finished_at.desc&limit=1`,
+          token, { headers: { Prefer: "return=representation" } },
+        ))?.[0] ?? null;
+        const decision = decisionCadenceCron({ dernierDone: dernier, dernierCronDone: dernierCron });
         // ── Opt-in (2026-08-07) : le cron ENTRETIENT une sync existante, il
         // n'en INAUGURE jamais une. Sans cette garde, l'alarme (premier tir à
         // +10 min) lisait le dressing d'un compte qui n'a JAMAIS demandé de
@@ -21744,16 +21975,22 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
         // ci-dessous, qui laisse passer parce qu'il ne SAIT pas. Le trigger
         // garde_cadence_sync_cron (base) porte la même règle : une extension
         // figée ou trafiquée ne peut pas la contourner.
-        if (!dernier) {
+        if (decision.reason === "cron_sans_premiere_sync") {
           console.log("[sync-dressing][cron] refusée — aucune sync 'done' sur ce compte : la première sync est un geste explicite de l'utilisateur");
+          // (13/11, bloc 6) Aucun relevé où écrire une note : la trace part en usage_logs (au plus une par 20 h).
+          await journaliserRefusSansPremiere(token, userId).catch((e) =>
+            console.warn("[sync-dressing][cron] refus sans premier relevé non journalisé:", e?.message ?? e));
           return { ok: false, reason: "cron_sans_premiere_sync" };
         }
-        const dernierFini = Date.parse(dernier?.finished_at ?? "");
-        if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_CRON_COOLDOWN_MS) {
-          const dansMin = Math.max(1, Math.ceil((dernierFini + SYNC_CRON_COOLDOWN_MS - Date.now()) / 60000));
-          console.log(`[sync-dressing][cron] refusée par la cadence — prochaine possible dans ~${Math.round(dansMin / 60)} h`);
-          await journaliserRefusCron(dernier, token).catch((e) =>
+        if (decision.reason === "cadence_cron") {
+          const dansMin = Math.max(1, Math.ceil((decision.prochaineMs - Date.now()) / 60000));
+          console.log(`[sync-dressing][cron] refusée par la cadence (dernier relevé automatique) — prochaine possible dans ~${Math.round(dansMin / 60)} h`);
+          // La note (motifs inchangés, lus par la migration 20261113154000) va sur le relevé AUTOMATIQUE qui tient la fenêtre.
+          await journaliserRefusCron(dernierCron, token).catch((e) =>
             console.warn("[sync-dressing][cron] refus non journalisé:", e?.message ?? e));
+          // (13/11, bloc 6 P1) Le rattrapage à « fin + 20 h », jamais l'alarme du lendemain.
+          await armerRattrapageCron(decision.prochaineMs).catch((e) =>
+            console.warn("[sync-dressing][cron] rattrapage non armé:", e?.message ?? e));
           return { ok: false, reason: "cadence_cron", prochaine_dans_min: dansMin }; // estimation-ok: donnée interne, plus jamais affichée
         }
       } catch (e) {
@@ -21793,6 +22030,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
         return { ok: false, reason: "boutique_a_confirmer", boutique: refus.login ?? refus.user_id };
       }
     }
+    let refusBaseCron = false;
     const cree = await restRequest("vinted_sync_runs", token, {
       method: "POST",
       headers: { Prefer: "return=representation" },
@@ -21800,8 +22038,26 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
         user_id: userId, kind: "dressing", status: "running",
         declencheur, extension_build: FILLSELL_BUILD_ID,
       }),
-    }).catch((e) => { console.error("[sync-dressing] création du run:", e?.message ?? e); return null; });
+    }).catch((e) => {
+      console.error("[sync-dressing] création du run:", e?.message ?? e);
+      // (13/11, bloc 6 P1) La BASE refuse encore (SYNC_CRON_CADENCE) le relevé automatique dans les 20 h d'un relevé
+      // QUELCONQUE tant que la migration P2 (20261113170000) n'est pas appliquée. restRequest ne rend que « HTTP 400 » :
+      // la fenêtre de la base est donc recalculée ci-dessous (fin du dernier relevé réussi + 20 h) ; si elle court
+      // encore, le même rattrapage s'arme sur elle, jamais l'alarme du lendemain. Autre cause : rien de plus qu'avant.
+      if (declencheur === "cron") refusBaseCron = true;
+      return null;
+    });
     run = Array.isArray(cree) && cree.length ? cree[0] : null;
+    if (!run && refusBaseCron) {
+      const finiBase = Date.parse(String((await restRequest(
+        `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.done&select=finished_at&order=finished_at.desc&limit=1`,
+        token, { headers: { Prefer: "return=representation" } },
+      ).catch(() => null))?.[0]?.finished_at ?? ""));
+      if (Number.isFinite(finiBase) && finiBase + SYNC_CRON_COOLDOWN_MS > Date.now()) {
+        await armerRattrapageCron(finiBase + SYNC_CRON_COOLDOWN_MS).catch(() => null);
+        return { ok: false, reason: "cadence_cron_base" };
+      }
+    }
     if (!run) return { ok: false, reason: "run_non_cree" };
   }
 
@@ -22290,7 +22546,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       if (saisiR) titre = saisiR;
       const seuilR = seuilRetraitRecreation(j.platform_fields) ?? j.platform_fields?.deleted_at ?? null;
       if (titre && j.platform_fields?.deleted_at) {
-        reservesRepublish.push({ job_id: j.id, titre, deleted_at: seuilR });
+        reservesRepublish.push({ job_id: j.id, titre, deleted_at: seuilR, photos: j.platform_fields?.recreation_photos_envoyees ?? null });
       }
     }
     if (reservesRepublish.length) {
@@ -22301,6 +22557,9 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   }
 
   const vusCetteSync = new Set();
+  // (13/11, bloc 6) Le statut de chaque annonce lue par CE passage (identifiant unique) : le compte « en vente » figé à la
+  // clôture (noteStatutsReleve), au lieu d'un recompte d'instantanés qu'un relevé plus tardif du même jour écrase.
+  const statutsCetteSync = new Map();
   const echecsEcriture = []; // articles refusés par la base, rapportés à la clôture
   let page = run.page_suivante || 1;
   let items_vus = run.items_vus || 0;
@@ -22460,6 +22719,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       // `connus` (qui exige vinted_item_id), et un `undefined` dans le Set
       // fausserait la comparaison vu/annoncé de la garde (b).
       for (const a of tranche) if (a.vinted_item_id) vusCetteSync.add(a.vinted_item_id);
+      for (const a of tranche) if (a.vinted_item_id) statutsCetteSync.set(a.vinted_item_id, String(a.statut ?? "inconnu"));
       const bilan = await enregistrerArticlesDressing(tranche, {
         token, userId, reservesRepublish, importer: releveImporte,
         // Estampillage à l'OBSERVATION (multi-boutiques, 2026-09-03) : chaque
@@ -22713,6 +22973,9 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   // Idem pour la reprise des échecs techniques : c'est cette ligne qui dira, en
   // base, combien de reprises il a fallu pour que ce dressing soit lu en entier.
   if (noteRepriseAuto) notes.push(noteRepriseAuto);
+  // (13/11, bloc 6) La place de la note des statuts : juste après les marqueurs de reprise (ancrés en tête), avant tout
+  // le reste — la note est bornée à 500 caractères, elle ne doit jamais tomber au découpage.
+  const placeStatuts = notes.length;
   // Un run mocké doit se lire comme tel en base : personne ne doit prendre 289
   // articles fabriqués pour un dressing réel en analysant vinted_sync_runs.
   if (mock) notes.push(`${NOTE}HARNAIS MOCK pagination (unpacked) — ${mock.totalArticles} articles fabriqués, aucun appel Vinted`);
@@ -22778,6 +23041,14 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     notes.push(`${NOTE}relevé incomplet — ${items_vus} article(s) lu(s) sur ${totalEntries} annoncé(s) par Vinted` +
       (motifArretIncomplet ? ` ; arrêt : ${motifArretIncomplet}` : "") +
       ` ; reprise à la page ${page}`);
+  }
+  // (13/11, lot « zéro problème », bloc 6 — décision de Nico) LE COMPTE « EN VENTE » FIGÉ À LA CLÔTURE : seulement pour un
+  // relevé COMPLET lu depuis la page 1 par CE passage (un relevé repris ignore les pages d'avant la reprise ; un relevé
+  // incomplet n'a pas tout vu), jamais pour le harnais. Forme : « [note] [statuts] active 245, sold 11 » (comme le relevé
+  // Leboncoin) ; l'écran la lit, et ne recompte les instantanés qu'en repli (relevés d'avant la 0.6.187).
+  if (!runRepris && !releveIncomplet && !mock) {
+    const noteStatuts = noteStatutsReleve(statutsCetteSync);
+    if (noteStatuts) notes.splice(placeStatuts, 0, `${NOTE}${noteStatuts}`);
   }
   await clore({
     // 'incomplete' est un état TERMINAL, distinct de 'done' : la cadence de
@@ -22887,7 +23158,10 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   const connusIds = new Set(existants.map((r) => String(r.vinted_item_id)));
   const reserves = new Set();
   for (const r of reservesRepublish ?? []) {
-    const { item } = reconnaitreAnnonceRecreee(articles, {
+    // (13/11, 5e) L'empreinte des photos de ses envois d'abord ; sans elle, la réserve par le titre — une ATTENTE
+    // (l'article n'est pas importé tant que la recréation est en jeu), jamais un rattachement.
+    const parPhotos = r.photos ? reconnaitreAnnonceRecreee(articles, { photos: r.photos, deletedAt: r.deleted_at, idsConnus: connusIds }) : null;
+    const { item } = parPhotos?.item ? parPhotos : reconnaitreRecreationEnAttenteParTitre(articles, {
       titre: r.titre, deletedAt: r.deleted_at, idsConnus: connusIds,
     });
     if (item) {
@@ -27062,7 +27336,12 @@ function memeTitre(a, b) {
 // ⛔ PLUSIEURS CANDIDATS ⇒ ON N'ATTACHE RIEN. L'abstention est un résultat
 // légitime, pas un échec : mieux vaut laisser l'utilisateur trancher qu'un
 // rattachement au hasard, irréversible côté inventaire.
-function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
+// ⛔ (13/11, lot « zéro problème » 5e — décision de Nico) JAMAIS PAR LE TITRE. Ce critère (titre + photos postérieures)
+//    ne sert plus qu'à la RÉSERVE de la sync (ne pas importer en fiche neuve ce qu'une recréation est peut-être en
+//    train de mettre en ligne — une attente, jamais un rattachement) : reconnaitreRecreationEnAttenteParTitre.
+//    La recréation, elle, reconnaît sa copie par le numéro que Vinted a rendu, sinon par l'EMPREINTE de ses photos
+//    (reconnaitreAnnonceRecreee, ci-dessous).
+function reconnaitreRecreationEnAttenteParTitre(articles, { titre, deletedAt, idsConnus }) {
   // (25/10) Titre comparé par memeTitre (même règle que le serveur) : une copie
   // dont le saut de ligne a été supprimé par le champ de Vinted reste la copie.
   const cible = titreNormCopie(titre);
@@ -27088,6 +27367,55 @@ function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
   if (candidats.length === 1) return { item: candidats[0], raison: null, candidats };
   if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond", candidats };
   // (0.6.78, remis le 03/10) Les candidates sont rendues : la pause les garde.
+  return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire`, candidats };
+}
+
+// ── (13/11, lot « zéro problème » 5e — compte 2189c4d8, tâche 44169148) LA COPIE SE RECONNAÎT À SES PHOTOS ──────────
+// Décision de Nico : une recréation se relit par le NUMÉRO renvoyé par Vinted ou par l'EMPREINTE de ses photos, jamais
+// par son titre (deux articles d'un revendeur portent souvent le même titre ; Vinted réécrit un titre). L'empreinte de
+// NOTRE envoi = les identifiants Vinted des photos qu'il a téléversées (corps du POST, assigned_photos ; réponses de
+// /api/v2/photos) et le jeton de chaque image (…/t/<jeton>/…) ; celle d'une annonce du dressing = ses photos (photo_ids,
+// url). Une photo partagée = la même photo téléversée par nous : la copie. Conditions CUMULATIVES, comme avant :
+//   1. id INCONNU de l'inventaire ; 2. ni brouillon ; 3. photos postérieures au retrait (− 2 s) ; 4. une photo à NOUS.
+// ⛔ Empreinte de notre envoi INCONNUE (envoi d'un build d'avant, relais perdu) : rien n'est reconnu, et s'il existe une
+//    annonce candidate (1-2-3), le DOUTE est rendu — l'appelant ne recrée jamais à l'aveugle (la question, ou l'attente
+//    du relevé). ⛔ Plusieurs annonces portent nos photos : abstention, comme avant.
+// photos : { ids: number[], jetons: string[] } (pf.recreation_photos_envoyees).
+function jetonPhotoVinted(url) {
+  return String(url ?? "").match(/\/(?:t|tc)\/([A-Za-z0-9_-]{12,})\//)?.[1] ?? null;
+}
+function empreintePhotosArticle(a) {
+  const ids = new Set((Array.isArray(a?.photo_ids) ? a.photo_ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0));
+  const jetons = new Set();
+  for (const p of Array.isArray(a?.photos) ? a.photos : []) {
+    const n = Number(p?.id);
+    if (Number.isInteger(n) && n > 0) ids.add(n);
+    const j = jetonPhotoVinted(p?.url ?? p);
+    if (j) jetons.add(j);
+  }
+  return { ids, jetons };
+}
+function reconnaitreAnnonceRecreee(articles, { photos, deletedAt, idsConnus }) {
+  const seuil = Date.parse(deletedAt ?? "");
+  if (!Number.isFinite(seuil)) return { item: null, raison: "date de suppression illisible" };
+  const connus = idsConnus instanceof Set ? idsConnus : new Set(idsConnus ?? []);
+  const nosIds = new Set((Array.isArray(photos?.ids) ? photos.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0));
+  const nosJetons = new Set((Array.isArray(photos?.jetons) ? photos.jetons : []).map(String).filter(Boolean));
+  const apresRetrait = (articles ?? []).filter((a) => {
+    if (!a?.vinted_item_id || connus.has(String(a.vinted_item_id))) return false;
+    if (a.statut === "draft") return false;
+    const ts = Number(a.photo_ts);
+    return a.photo_ts != null && Number.isFinite(ts) && ts * 1000 >= Math.floor(seuil / 1000) * 1000 - RECREATION_SEUIL_TOLERANCE_MS;
+  });
+  if (!nosIds.size && !nosJetons.size) {
+    return { item: null, raison: "empreinte des photos de notre envoi inconnue — jamais par le titre", candidats: apresRetrait, doute: apresRetrait.length > 0 };
+  }
+  const candidats = apresRetrait.filter((a) => {
+    const e = empreintePhotosArticle(a);
+    return [...e.ids].some((id) => nosIds.has(id)) || [...e.jetons].some((j) => nosJetons.has(j));
+  });
+  if (candidats.length === 1) return { item: candidats[0], raison: null, candidats, preuve: "empreinte_photos" };
+  if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne porte nos photos", candidats };
   return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire`, candidats };
 }
 
@@ -27229,12 +27557,13 @@ async function idsInventaireConnus(accessToken, ids) {
 // La ceinture et la pré-vérification, une seule lecture : rend { lu, seuil,
 // idsConnus, item, raison, candidats }. `idsEnPlus` : ids à vérifier aussi
 // dans l'inventaire (liens de recreation_doublon).
-async function chercherCopieRecreeeDansDressing(accessToken, tabId, { userId, titre, pf, idsEnPlus = [] }) {
+// (13/11, 5e) Par l'EMPREINTE des photos de nos envois (pf.recreation_photos_envoyees), jamais par le titre.
+async function chercherCopieRecreeeDansDressing(accessToken, tabId, { userId, pf, idsEnPlus = [] }) {
   const seuil = seuilRetraitRecreation(pf) ?? pf?.deleted_at ?? null;
   const lu = await lireDressingPourCopie(tabId, userId, seuil);
   if (!lu.success) return { lu, seuil, idsConnus: new Set(), item: null, raison: lu.error ?? "dressing illisible", candidats: [] };
   const idsConnus = await idsInventaireConnus(accessToken, [...lu.articles.map((a) => a?.vinted_item_id), ...idsEnPlus]);
-  const r = reconnaitreAnnonceRecreee(lu.articles, { titre, deletedAt: seuil, idsConnus });
+  const r = reconnaitreAnnonceRecreee(lu.articles, { photos: pf?.recreation_photos_envoyees ?? null, deletedAt: seuil, idsConnus });
   return { lu, seuil, idsConnus, ...r };
 }
 // ── ONGLET AU PROFIL, ANNONCE PAS RETROUVÉE : ON ATTEND, ON NE RECRÉE PAS ───
@@ -27420,6 +27749,26 @@ function titreSaisiRecreation(pf) {
 }
 
 function construireJobRecreation(job, pf, cap, prix) {
+  // (13/11) Imbriquée : la fabrique reste AUTONOME (des selftests l'exécutent seule, cf. titreSaisi ci-dessous).
+  // ── (13/11, lot « zéro problème » 5a — agent H, compte de63ca45) LA PHRASE DE TEST DU JOUR DANS LE TEXTE CAPTURÉ ─────
+  // La recréation Vinted tape le texte de la CAPTURE : il porte la phrase de test figée le jour du test (« Jeu testé
+  // aujourd’hui, le 2 novembre 2026… », 17 jours de retard médian). get-pending-jobs sert job.phrase_de_test = { phrase
+  // (celle du jour, null si la plateforme la refuse), date, omise, motifs (sources de RegExp du modèle du vendeur, sans
+  // groupe nommé — src/utils/phraseDeTest.js, motifsDePhraseDeTest) }. Appliqué EN UNE PASSE (une seule expression, motifs
+  // en alternative) : la première phrase trouvée devient la phrase du jour, les autres tombent — jamais motif après motif
+  // (la phrase du jour serait reprise par le motif suivant). Sans service (ancien serveur) ni motif : texte intact.
+  function descriptionAvecPhraseDeTest(description, pt) {
+    const d = String(description ?? "");
+    if (!pt || !Array.isArray(pt.motifs) || !pt.motifs.length) return d;
+    let re;
+    try { re = new RegExp(pt.motifs.map((m) => `(?:${m})`).join("|"), "giu"); } catch { return d; }
+    let premier = true;
+    const remplace = d.replace(re, () => { const r = premier && pt.phrase ? String(pt.phrase) : ""; premier = false; return r; });
+    // Aucune phrase du modèle dans le texte : il part tel quel, à l'octet près (une republication remet ce qui était en ligne).
+    if (premier) return d;
+    return remplace.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
   // (15/10 soir, 0.6.114) La marque CHOISIE par la personne pour une
   // republication, quand elle diffère de la marque capturée : servie par le
   // serveur (marque_choisie, depuis sa réponse rangée sur l'article) ou posée sur
@@ -27469,7 +27818,8 @@ function construireJobRecreation(job, pf, cap, prix) {
     platform: "vinted",
     action: "publish",
     title: titreSaisi || (cap.payload?.titre ?? job.title ?? ""),
-    description: cap.payload?.description ?? "",
+    // (13/11, 5a) La phrase de test du jour servie remplace la phrase figée du texte capturé.
+    description: descriptionAvecPhraseDeTest(cap.payload?.description ?? "", job?.phrase_de_test ?? pf?.phrase_de_test),
     price: prix,
     photo_option: "original",
     photos: (cap.photos_urls ?? []).map((url, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url })),
@@ -27975,16 +28325,38 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
       pf.depot_parti_vers_profil = { at: new Date().toISOString(), url: versProfil.url };
       console.log(`[republish] job ${job.id} : onglet renvoyé sur /member/${versProfil.id} — aucune recréation ne sera relancée, l'annonce se cherche par son numéro`);
     }
-    const urlSonde = await vintedUploadSucceededForTitle(tabId, titreCopie).catch(() => null);
-    if (urlSonde) {
-      const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
-      if (idSonde) {
+    // ── (13/11, lot « zéro problème » 5e — compte 2189c4d8, tâche 44169148) LE NUMÉRO RENVOYÉ PAR VINTED, PUIS LES PHOTOS ──
+    // Décision de Nico : la copie se relit par le numéro que Vinted a rendu, ou par l'empreinte de ses photos — JAMAIS par
+    // le titre. 1. L'empreinte de NOTRE envoi (identifiants des photos téléversées) est gardée sur le job, cumulée d'un
+    // essai à l'autre. 2. Le numéro rendu par la réponse de création (« item.id », « code: 0 ») : gardé par la sonde dans
+    // l'onglet (il survit à la redirection vers le profil) ou relayé avant elle. Relu par son numéro (l'annonce de LA
+    // boutique) quand la page répond ; un « introuvable » relu n'est jamais une preuve. 3. À défaut, le dressing, par
+    // l'empreinte des photos.
+    cumulerPhotosEnvoyees(pf, await photosDeNotreEnvoi(tabId).catch(() => null));
+    const garde = await lireDepotGardeParLaSonde(tabId);
+    const debutEssai = Date.parse(String(pf.recreation_tentee?.at ?? ""));
+    const anciens = new Set([String(pf.vinted_item_id ?? ""), String(pf.old_vinted_item_id ?? "")]);
+    const idGarde = garde?.id && !anciens.has(garde.id) && (!Number.isFinite(debutEssai) || !garde.at || garde.at >= debutEssai - 60_000)
+      ? garde.id : null;
+    const urlSonde = idGarde ? null : await vintedUploadSucceeded(tabId).catch(() => null);
+    const idParVinted = idGarde ?? (urlSonde?.match(/\/items\/(\d+)/)?.[1] ?? null);
+    if (idParVinted && !anciens.has(idParVinted)) {
+      const relu = await sendMessageToTab(tabId, { type: "VINTED_ITEM_OWNER_CHECK", vintedItemId: idParVinted }, 20_000).catch(() => null);
+      const boutiques = identitesBoutiqueRecreation(pf, jobRecreation);
+      const autreBoutique = relu?.success && relu.vintedAccountId && boutiques.size && !boutiques.has(String(relu.vintedAccountId));
+      const introuvable = !relu?.success && Number(relu?.httpStatus) === 404;
+      pf.copie_par_numero = { at: new Date().toISOString(), id: idParVinted, source: idGarde ? "onglet" : "sonde",
+        relu: relu?.success === true, ...(autreBoutique ? { boutique_lue: String(relu.vintedAccountId) } : {}), ...(introuvable ? { introuvable: true } : {}) };
+      if (!autreBoutique && !introuvable) {
+        const url = `${VO.origineVinted()}/items/${idParVinted}`;
+        console.log(`[republish] job ${job.id} : recréation prouvée par le numéro renvoyé par Vinted (${idParVinted}, ${idGarde ? "gardé dans l'onglet" : "relayé"}${relu?.success ? ", relu" : ""})`);
         await cloreRepublishSurAnnonceExistante(
-          accessToken, job, pf, idSonde, urlSonde,
-          "canal coupé par la redirection de succès — création confirmée par la réponse serveur",
+          accessToken, job, pf, idParVinted, url,
+          `recréation prouvée par le numéro renvoyé par Vinted${relu?.success ? " (relu dans la boutique)" : ""}`,
         );
-        return { status: "published", listingUrl: urlSonde };
+        return { status: "published", listingUrl: url };
       }
+      console.warn(`[republish] job ${job.id} : numéro ${idParVinted} rendu par Vinted mais ${autreBoutique ? "lu dans une autre boutique" : "introuvable à la relecture"} — la copie se cherche par ses photos`);
     }
 
     // ── CEINTURE : le dressing, TOUT DE SUITE ─────────────────────────────
@@ -28006,15 +28378,15 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
         for (let essai = 0; essai < (versProfil ? 2 : 1); essai++) {
           if (essai) await sleep(8000);
           const r = await chercherCopieRecreeeDansDressing(accessToken, tabId, {
-            userId: userIdDressing, titre: titreCopie, pf,
+            userId: userIdDressing, pf,
           });
           if (r.item) {
             await cloreRepublishSurAnnonceExistante(
               accessToken, job, pf, r.item.vinted_item_id,
               r.item.url ?? `${VO.origineVinted()}/items/${r.item.vinted_item_id}`,
               versProfil
-                ? "recréation confirmée par son numéro, retrouvé au dressing (onglet renvoyé au profil par Vinted)"
-                : "recréation confirmée dans le dressing après coupure du canal",
+                ? "recréation confirmée par l'empreinte de ses photos, retrouvée au dressing (onglet renvoyé au profil par Vinted)"
+                : "recréation confirmée par l'empreinte de ses photos dans le dressing après coupure du canal",
             );
             return { status: "published", listingUrl: r.item.url ?? null };
           }
@@ -28024,6 +28396,9 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
           }
           console.log(`[republish] après coupure, rien de concluant dans le dressing (${r.raison}, ${r.lu.pages} page(s) lue(s), seuil ${r.seuil ?? "?"})${versProfil ? "" : " — échec assumé"}`);
           if (/annonces correspondent/.test(String(r.raison ?? ""))) break;
+          // (13/11, 5e) Une annonce candidate et l'empreinte de notre envoi inconnue : on ne sait pas — jamais une
+          // recréation à l'aveugle, le job attend la preuve (relevé de la personne, puis la question).
+          if (r.doute) return await retenirDepotIncertain(accessToken, job, pf, "copie_possible_empreinte_inconnue");
         }
       }
     } catch (e) {
@@ -31611,11 +31986,21 @@ async function processRepublishJob(job, accessToken) {
               await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
               return { status: "needsUser", error: msg };
             }
-            const { item, raison, candidats } = reconnaitreAnnonceRecreee(page.articles, {
-              titre: jobRecreation.title,
+            // (13/11, 5e) Par l'empreinte des photos de nos envois précédents, jamais par le titre.
+            const { item, raison, candidats, doute } = reconnaitreAnnonceRecreee(page.articles, {
+              photos: pf.recreation_photos_envoyees ?? null,
               deletedAt: seuilRecreation,
               idsConnus,
             });
+            // Un essai a déjà eu lieu, une annonce candidate existe, et l'empreinte de cet essai est inconnue (build
+            // d'avant) : on ne sait pas si c'est notre copie — jamais un second dépôt sur ce doute, la preuve d'abord.
+            if (doute && dejaTentee) {
+              tracerGarde(pf, "prevol_recreation", {
+                verdict: "doute", champs_verifies: [`dressing_recent_${page.pages}_page${page.pages > 1 ? "s" : ""}`, "empreinte_photos"],
+                deja_tentee: true, detail: String(raison ?? "").slice(0, 160),
+              });
+              return await retenirDepotIncertain(accessToken, job, pf, "copie_possible_empreinte_inconnue");
+            }
             // Recréation déjà tentée et lecture interrompue avant sa règle
             // d'arrêt (une page n'a pas répondu) : seule une copie trouvée, ou
             // une abstention, vaut lecture — sinon dressing NON lu (garde

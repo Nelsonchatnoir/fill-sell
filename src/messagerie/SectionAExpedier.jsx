@@ -28,7 +28,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
 import Icone from '../ecrans/Icone';
 import { demarrerRelecture } from '../utils/relectureBornee';
-import { sourcesVignette, suiviCommande, commandesEnRoute, etapeSuivi, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, extensionCommandeVinted, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
+import { sourcesVignette, suiviCommande, commandesEnRoute, etapeSuivi, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, extensionCommandeVinted, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau, repereBordereau, copiesAImprimer } from './vue';
 import { ouvrirLien } from './ouvrir';
 import { useReglagesMessagerie } from './useMessagerieBeta';
 import Couche from './Couche';
@@ -185,6 +185,8 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
   // (18/10) L'extension de ce compte sait-elle commander l'étiquette Vinted (0.6.126) ? null = inconnu.
   const [extensionVinted, setExtensionVinted] = useState(null);
   const vivant = useRef(true);
+  // (13/11) Colonne imprime_le absente (avant la migration 20261113153000) : on ne la relit plus jusqu'au prochain écran.
+  const imprimeAbsente = useRef(false);
 
   const charger = useCallback(async () => {
     const maintenant = new Date().toISOString();
@@ -193,7 +195,7 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
     let [c, d, k] = await Promise.all([
       lireCommandes(COLONNES),
       lireDemandes(COLS_DEMANDES),
-      supabase.from('bordereaux_copies').select('id,commande_id,chemin,expire_le').is('efface_le', null).gt('expire_le', maintenant).order('cree_le', { ascending: false }).limit(60),
+      supabase.from('bordereaux_copies').select('id,commande_id,chemin,expire_le,cree_le').is('efface_le', null).gt('expire_le', maintenant).order('cree_le', { ascending: false }).limit(60),
     ]);
     // (17/10) Les commandes expédiées : leur suivi reste visible ici (une étiquette eBay achetée passe la commande
     // « expédiée » aussitôt). (29/10, lot C partie 2) « En route » jusqu'à « reçu » : expédiée (tant que la plateforme
@@ -212,6 +214,23 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
     } catch { if (vivant.current) setExtensionVinted(null); }
     if (colonneAbsente(c.error)) c = await lireCommandes(COLONNES_BASE);
     if (colonneAbsente(d.error)) d = await lireDemandes(COLS_DEMANDES_BASE);
+    const cp = {};
+    for (const x of (k.error ? [] : k.data ?? [])) if (!cp[x.commande_id]) cp[x.commande_id] = x;
+    // (13/11, étape 5 — compte 447d920c) « Imprimé le JJ/MM » : imprime_le lu À PART. PostgREST est tout ou rien : avant la
+    // migration 20261113153000 la colonne n'existe pas, et la mettre dans la lecture du dessus viderait la liste. Ici, son
+    // échec laisse imprime_le absent (repère inconnu : la date du bordereau seule, « Tout imprimer » comme avant). Lue
+    // AVANT de poser la liste : jamais une commande affichée sans sa copie.
+    const idsCopies = Object.values(cp).map((x) => x.id).filter(Boolean);
+    if (idsCopies.length && !imprimeAbsente.current) {
+      try {
+        const im = await supabase.from('bordereaux_copies').select('id,imprime_le').in('id', idsCopies);
+        if (colonneAbsente(im.error)) imprimeAbsente.current = true; // pas de relecture vaine pendant une attente
+        if (!im.error) {
+          const quand = new Map((im.data ?? []).map((x) => [x.id, x.imprime_le ?? null]));
+          for (const x of Object.values(cp)) if (quand.has(x.id)) x.imprime_le = quand.get(x.id);
+        }
+      } catch { /* repère seulement : jamais un point de panne */ }
+    }
     if (!vivant.current) return undefined;
     if (c.error) { setErreur(true); setCommandes([]); return false; }
     setErreur(false);
@@ -223,8 +242,6 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       const deja = dm[x.commande_id];
       if (!deja || (x.action === 'generer' && deja.action !== 'generer')) dm[x.commande_id] = x;
     }
-    const cp = {};
-    for (const x of (k.error ? [] : k.data ?? [])) if (!cp[x.commande_id]) cp[x.commande_id] = x;
     setDemandes(dm);
     setCopies(cp);
     setEnAttente(Object.values(dm).some((x) => !cp[x.commande_id] && (x.statut === 'demandee' || x.statut === 'en_cours'
@@ -246,7 +263,29 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
     return () => { clearTimeout(fin); r.arreter(); };
   }, [enAttente, charger]);
 
-  const copiePour = (c, copie) => ({ chemin: copie.chemin, platform: c.platform, transporteur: c.transporteur ?? null, commande_ref: c.commande_ref });
+  // (13/11) La copie porte son identifiant, sa date et son repère « imprimé » (absent = inconnu) jusqu'à l'aperçu et « Tout imprimer ».
+  const copiePour = (c, copie) => ({ id: copie.id ?? null, chemin: copie.chemin, platform: c.platform, transporteur: c.transporteur ?? null, commande_ref: c.commande_ref,
+    cree_le: copie.cree_le ?? null, ...(copie.imprime_le !== undefined ? { imprime_le: copie.imprime_le } : {}) });
+
+  // (13/11, étape 5 — compte 447d920c) Le geste de l'aperçu ou de « Tout imprimer » a RÉUSSI : les copies sont marquées imprimées
+  // (RPC bordereau_marquer_imprime : propriétaire seul, idempotente — le premier horodatage est gardé). RPC absente (avant
+  // la migration) ou en échec : rien ne change à l'écran, jamais un message pour un repère.
+  const marquerImprime = useCallback(async (ids) => {
+    const liste = [...new Set((ids ?? []).filter(Boolean))];
+    if (!liste.length) return;
+    try {
+      const { data, error } = await supabase.rpc('bordereau_marquer_imprime', { p_copies: liste });
+      if (error || !vivant.current) return;
+      const quand = new Map((Array.isArray(data?.copies) ? data.copies : []).filter((x) => x?.id && x?.imprime_le).map((x) => [x.id, x.imprime_le]));
+      if (!quand.size) return;
+      setCopies((k) => {
+        const out = { ...k };
+        for (const [cid, x] of Object.entries(k)) if (x && quand.has(x.id)) out[cid] = { ...x, imprime_le: quand.get(x.id) };
+        return out;
+      });
+      setApercu((a) => (a && quand.has(a.id) ? { ...a, imprime_le: quand.get(a.id) } : a));
+    } catch { /* repère seulement : jamais un point de panne */ }
+  }, [supabase]);
 
   const demanderBordereau = async (c) => {
     if (copies[c.id]) { setApercu(copiePour(c, copies[c.id])); return; }
@@ -288,6 +327,8 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
   if (commandes === null) return null;
   const nb = commandes.length;
   const pretes = commandes.filter((c) => copies[c.id]).map((c) => copiePour(c, copies[c.id]));
+  // (13/11, étape 5 — décision de Nico) « Tout imprimer » = les bordereaux PAS ENCORE imprimés ; « Tout réimprimer » = tous.
+  const lot = copiesAImprimer(pretes);
   return (
     <section aria-label={fr ? 'À expédier' : 'To ship'}
       style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, overflow: 'hidden', fontFamily: "'Space Grotesk',sans-serif", color: UI.ink }}>
@@ -305,7 +346,12 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       )}
       {pretes.length >= 2 && (
         <div style={{ padding: dansPage ? '14px 16px 12px' : '0 16px 12px', display: 'flex' }}>
-          <Suspense fallback={null}><BoutonToutImprimer copies={pretes} supabase={supabase} lang={lang} /></Suspense>
+          <Suspense fallback={null}>
+            <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {lot.aImprimer.length > 0 && <BoutonToutImprimer copies={lot.aImprimer} minimum={1} supabase={supabase} lang={lang} onImprime={marquerImprime} />}
+              {lot.reimprimer && <BoutonToutImprimer copies={lot.toutes} minimum={1} reimprimer supabase={supabase} lang={lang} onImprime={marquerImprime} />}
+            </span>
+          </Suspense>
         </div>
       )}
 
@@ -380,6 +426,11 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
                 )}
               </div>
             )}
+            {copie && (() => {
+              // (13/11, étape 5 — compte 447d920c) « Bordereau du JJ/MM · Imprimé le JJ/MM » (ou « Pas encore imprimé »).
+              const r = repereBordereau(copie, lang);
+              return r ? <div data-repere-impression={r.imprime === true ? 'imprime' : r.imprime === false ? 'non' : 'inconnu'} style={{ fontSize: 12.5, fontWeight: 700, color: r.imprime === true ? TONS.ok.encre : UI.ink }}>{r.texte}</div> : null;
+            })()}
             {copie && <div style={{ fontSize: 12, color: ENCRE2 }}>{fr ? `Copie gardée jusqu’au ${dateCourte(copie.expire_le, lang)}, puis effacée.` : `Copy kept until ${dateCourte(copie.expire_le, lang)}, then erased.`}</div>}
             {etatD && <div role="status" style={{ fontSize: 12.5, fontWeight: 600, color: (TONS[etatD.ton] ?? TONS.neutre).encre, lineHeight: 1.45 }}>{etatD.texte}</div>}
             {notes[c.id] && <div role="status" style={{ fontSize: 12.5, fontWeight: 600, color: '#8A6100' }}>{notes[c.id]}</div>}
@@ -403,6 +454,9 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
                   <span style={{ fontSize: 12.5, color: ENCRE2, overflowWrap: 'anywhere' }}>
                     {suivi ? suivi.texte : [nomPlateforme(c.platform), libelleTransporteur(c.transporteur)].filter(Boolean).join(' · ')}
                   </span>
+                  {copieGardee && repereBordereau(copieGardee, lang) && (
+                    <span data-repere-impression style={{ fontSize: 12, fontWeight: 600, color: ENCRE2, overflowWrap: 'anywhere' }}>{repereBordereau(copieGardee, lang).texte}</span>
+                  )}
                 </div>
                 <span data-etape-suivi={etape.cle} style={{ flex: 'none', fontSize: 11.5, fontWeight: 700, padding: '4px 8px', borderRadius: 999, background: TONS[etape.ton].fond, color: TONS[etape.ton].encre }}>{etape.texte}</span>
                 {copieGardee && (
@@ -421,7 +475,7 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
           onAnnuler={() => setConfirmation(null)}
           onConfirmer={(choix, phrase) => confirmerGeneration(confirmation.commande, choix, phrase)} />
       )}
-      {apercu && <Suspense fallback={null}><ApercuBordereau ouvert copie={apercu} supabase={supabase} lang={lang} onFermer={() => setApercu(null)} /></Suspense>}
+      {apercu && <Suspense fallback={null}><ApercuBordereau ouvert copie={apercu} supabase={supabase} lang={lang} onImprime={marquerImprime} onFermer={() => setApercu(null)} /></Suspense>}
     </section>
   );
 }

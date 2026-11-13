@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 import { FILTRE_SANS_VEILLE } from './declencheursReleve.js';
 import { boutiqueConnecteeVinted } from '../../supabase/functions/_shared/boutique-connectee.js';
 import { estBoutiqueAutreCompte, texteBoutiqueAutreCompte } from '../annonces/boutiqueAutreCompte.js';
+import { enVenteFiable } from '../annonces/boutiqueVinted.js';
 
 // Délai avant de conclure « pas d'extension ». Le content script répond au ping
 // dans la foulée ; 1,5 s couvre une injection tardive sans faire clignoter le
@@ -740,13 +741,20 @@ export async function lireDerniereSyncReussie(userId) {
   return run;
 }
 
-/** Le nombre d'annonces Vinted relevées « active » pendant un relevé du dressing (null si illisible). */
+/** Le nombre d'annonces Vinted relevées « active » pendant un relevé du dressing (null si illisible ou pas fiable). */
 export async function compterEnVenteDuReleve(userId, run) {
   const debut = Date.parse(run?.started_at ?? ''), fin = Date.parse(run?.finished_at ?? '');
   if (!userId || !Number.isFinite(debut) || !Number.isFinite(fin)) return null;
-  const { count, error } = await supabase.from('vinted_listing_snapshots')
-    .select('vinted_item_id', { count: 'exact', head: true })
-    .eq('user_id', userId).eq('status', 'active')
+  const fenetre = (q) => q.eq('user_id', userId)
     .gte('captured_at', new Date(debut - 60_000).toISOString()).lte('captured_at', new Date(fin + 60_000).toISOString());
-  return error || !Number.isFinite(count) ? null : count;
+  // (13/11, étape 5, bloc 6 iii) GARDE : un relevé plus tardif du même jour réécrit l'instantané de l'article (un par article
+  // et par jour) et le sort de cette fenêtre — le compte « en vente » serait faux (447d920c, relevé du 11/11 13:15 : 9 pour
+  // 256 lus). Il n'est rendu que si la fenêtre porte EXACTEMENT les articles lus (annonces/boutiqueVinted.enVenteFiable) ;
+  // sinon null → « N articles lus », jamais un faux « en vente ». Deux comptes en tête (index du compte, ≈ 5 ms chacun).
+  const [actifs, tous] = await Promise.all([
+    fenetre(supabase.from('vinted_listing_snapshots').select('vinted_item_id', { count: 'exact', head: true }).eq('status', 'active')),
+    fenetre(supabase.from('vinted_listing_snapshots').select('vinted_item_id', { count: 'exact', head: true })),
+  ]);
+  if (actifs.error || tous.error) return null;
+  return enVenteFiable({ actifs: actifs.count, tous: tous.count, vus: run?.items_vus });
 }

@@ -14,21 +14,30 @@
 //    Les règles 4 et 5 ne touchent que ce que FillSell a rédigé. Rien n'est jamais AJOUTÉ à un texte.
 // Pur (Node + navigateur) : scripts/description-fidele-selftest.mjs.
 
-const PLATEFORMES_A_HASHTAGS = { vinted: Infinity, depop: 5 };
+// (13/11, point 5a de Nico) Combien de hashtags FillSell écrit, par plateforme : la table des capacités du texte
+// (supabase/functions/_shared/capacites-texte.js) — Vinted sans limite, Depop 5, aucun ailleurs, comme avant.
+import { CAPACITES_TEXTE, hashtagsDeFillSell } from "../../../supabase/functions/_shared/capacites-texte.js";
+import { etatDUnePartie } from "../../../supabase/functions/_shared/elements-article.js";
+
+const PLATEFORMES_A_HASHTAGS = Object.fromEntries(Object.keys(CAPACITES_TEXTE)
+  .map((p) => [p, hashtagsDeFillSell(p)]).filter(([, n]) => n > 0));
 const RE_HASHTAG = /(^|[\s(])#([\p{L}\p{N}][\p{L}\p{N}_'-]*)/gu;
 
 const comparable = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // Les formules d'état, de la plus longue à la plus courte (une formule courte ne coupe jamais une longue).
+// (13/11) « comme neuf » = très bon état (règle du 09/10, etat-plateformes.js COMME_NEUF) — jamais « neuf ».
 const FORMULES_ETAT = [
   { re: /neuf avec (?:son |l')?etiquette/, canon: "neuf avec etiquette" },
   { re: /neuf sans (?:son |l')?etiquette/, canon: "neuf sans etiquette" },
   { re: /tres bon etat/, canon: "tres bon etat" },
   { re: /excellent etat/, canon: "tres bon etat" },
-  { re: /etat neuf|comme neuf/, canon: "neuf" },
+  { re: /comme neuf/, canon: "tres bon etat" },
+  { re: /etat neuf/, canon: "neuf" },
   { re: /bon etat/, canon: "bon etat" },
   { re: /etat (?:correct|satisfaisant|moyen)/, canon: "satisfaisant" },
 ];
+const RANG_CANON = { "neuf avec etiquette": 5, "neuf sans etiquette": 4, neuf: 4, "tres bon etat": 3, "bon etat": 2, satisfaisant: 1 };
 function canonEtat(etat) {
   const t = comparable(etat);
   for (const f of FORMULES_ETAT) if (f.re.test(t)) return f.canon;
@@ -38,8 +47,11 @@ function canonEtat(etat) {
 }
 
 /**
- * L'état de la fiche, remis dans un texte rédigé : chaque formule d'état DIFFÉRENTE de celle de la fiche est
- * remplacée par l'état de la fiche (casse de la phrase gardée). Une fiche sans état connu : rien ne change.
+ * L'état de la fiche, remis dans un texte rédigé : une formule d'état MEILLEURE que celle de la fiche est remplacée
+ * par l'état de la fiche (casse de la phrase gardée). Une fiche sans état connu : rien ne change.
+ * ⛔ (13/11, décision de Nico — « etatFidele ne monte jamais un état ») Une formule MOINS bonne que la fiche reste
+ *    telle quelle (« Bon état général » n'est plus réécrit « Très bon état général ») ; et l'état d'une PARTIE de
+ *    l'article (« Boîtier en bon état », « Disque comme neuf ») n'est jamais touché : ce n'est pas l'état général.
  */
 export function etatFidele(texte, etatFiche) {
   const voulu = canonEtat(etatFiche);
@@ -53,7 +65,7 @@ export function etatFidele(texte, etatFiche) {
   let sortie = "", dernier = 0, m;
   while ((m = motifs.exec(plat))) {
     const canon = canonEtat(m[0]);
-    if (canon && canon !== voulu) {
+    if (canon && canon !== voulu && RANG_CANON[canon] > RANG_CANON[voulu] && !etatDUnePartie(t, m.index)) {
       const original = t.slice(m.index, m.index + m[0].length);
       const majuscule = /^\p{Lu}/u.test(original);
       const remplacement = majuscule ? motFiche.charAt(0).toUpperCase() + motFiche.slice(1) : motFiche.charAt(0).toLowerCase() + motFiche.slice(1);
