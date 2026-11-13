@@ -224,3 +224,110 @@ build:essai OK ; deno check : aucune erreur nouvelle.
 - Scripts de données : fiche c7c382b7 (après 20261112213000), dates de test de de63ca45 (92 fiches).
 - Extension 0.6.187 : l'essai réel n° 1 de la recréation Vinted (numéro gardé à travers la redirection) est la condition
   de livraison ; zip après lui.
+
+## Réponse de Nico au rapport de l'étape 5 (13/11 matin)
+
+### 1. Nuit du 13/11 — plateforme choisie jamais vue connectée (priorité absolue)
+Constat et correction : `docs/enquetes/zero-probleme-1211/nuit-1311-plateforme-jamais-vue.md`. En bref : ff1f879f
+n'était PAS connecté à vinted.fr dans son Chrome (preuve : la lecture de ses ventes, dans un onglet vinted.fr de son
+Chrome, a reçu 400 `user_login_required` — exactement la réponse mesurée pour un visiteur anonyme) ; AUCUN écran ne le
+lui a dit (pastille « jamais » grise, bouton « Tout est à jour », popup « Vérifié il y a N min ») ; aucune synchro Vinted
+ne pouvait partir (première synchro automatique : sessions vues seulement, une fois par compte ; relevé quotidien :
+jamais sans première synchro ; 0 appui). Mêmes faits pour 1f95f334 et 7d64bf87 ; ed4531e2 était connecté (lectures et
+publications réussies en onglet) mais la sonde ne le voyait pas. Depuis le 01/10 : 28 comptes ayant choisi Vinted avec
+l'extension n'ont jamais eu un seul relevé Vinted tenté. Verrou `selftest:connexion-choisie` (38 → 60).
+
+### 4. Feux verts appliqués (13/11, une à la fois, lecture avant / après)
+| Quoi | Heure (Paris) | Avant → après |
+|---|---|---|
+| F1 `20261112213000` | 07:05 | md5 041d7722/0f714c68 (= lus le 12/11) → 1cf04e26/4f6ec0f6 ; `annonce_vient_de_notre_depot` créée ; déclencheur actif |
+| Script c7c382b7 (fiche 1793630721658) | 07:12 | taille « Naissance » et marque « Autre » (source releve_beebs) retirées ; étiquette « EU 140cm », marque « River Island » gardées ; sauvegarde `_backup_1112_c7c382b7_fiche_legging` |
+| « Une copie ne dit jamais mieux que la fiche » | avec ce lot | code versé (get-pending-jobs), verrou `etat-copie-jamais-au-dessus` |
+| `20261113140000` ventes Beebs | ~08:00 | sauvegarde `_backup_1311_ventes_beebs_cinq_gardes` (9 fonctions) ; md5 aa1ff957 = lu ; 2 fonctions neuves ; interrupteur `ventes_beebs_commandes` = 0 avant et après |
+| `20261113153000` bordereaux | ~08:02 | colonne `imprime_le` + `bordereau_marquer_imprime` (anon : non) ; 502 lignes, 0 marquée |
+| `20261113154000` refus du relevé automatique | ~08:03 | déclencheur `cron_refus_journalise` ajouté ; les 23 autres intacts et actifs |
+| `20261113170500` P2 | ~08:05 | md5 prod 304ab0f8 = inverse ; → ccd33ccf ; déclencheur actif |
+| Script de63ca45 (92 + 67 fiches « Jeu testé le ») | 09:23 | APRÈS le correctif eBay (NEB, sinon ses fiches seraient parties sur eBay sans phrase) : avant 94/92/72/67 → après teste_le posé sur 159, phrase figée restante 2 (hors modèle), 5 « plus tard » laissées (sans année, « UMD », 2 phrases à ses mots) ; sauvegarde `_backup_1113_de63ca45_date_de_test` |
+Bancs sur Postgres jetable relancés avant : 37/37, 48/48, 30/30, 32/32, 29/29. Journal Postgres après : aucune erreur
+des fonctions touchées. Script de63ca45 : joué après le correctif eBay (ligne du tableau).
+
+### Livraison (13/11 matin)
+- Commits **0e8dd9b** (96 fichiers : point 1, F1 « copie jamais au-dessus », 6a préparé, 6b, K1 serveur, I3/I4/I5, H2,
+  formules Cloud, eBay phrase de test) + **acde971** (EXTENSION_LAST_COMMIT, app 2.9.181), poussés.
+- Suite complète sur la copie fusionnée (LF) : **728/728** ; puis NEB et les 34 selftests de ses fichiers : verts ;
+  donnees-clients, aucune-estimation, imports-jamais-masques ; build:essai OK.
+- Fonctions (archive de acde971, versions et verify_jwt lus avant / après, inchangés) : get-pending-jobs v370 (true),
+  ebay-api-worker v128, ops-digest v66, handler-watch v201, email-tunnel v93, push-ventes v29, abonnements-stores-audit
+  v16, apple-iap-webhook v57, google-play-webhook v50, stripe-webhook v79 (false) ; create-checkout-session v80,
+  cancel-subscription v62, changer-formule v7, send-extension-link v26, validate-apple-receipt v49,
+  validate-google-purchase v30 (true). Fermeture des imports relue fichier par fichier (`fonctions-touchees.mjs` n'en
+  voyait que 3 sur 16). Premiers passages : get-pending-jobs v370 1 223 appels en 200 (1,4 s ; v369 : 1,34 s).
+- Web acde971 (entrée 200) ; **OTA 2.9.181** (canal production, commit acde971) ; module natif restauré (cmp).
+- empreintes-urls : pic de 2 120 appels (546 : 546) entre 08:00 et 09:00, tous par pg_net (`fusion_photo_tick`,
+  rangement photo des relevés du matin) — même nature que les pics quotidiens (12/11 : 900/216, 869/247, 802/139),
+  retombé ; sans lien avec le déploiement.
+
+### 2. Formules « + Cloud » partout
+- Vérifié avant d'ouvrir : l'iPhone en vente (2.9.164) achète par le module natif générique ; le JS servi (2.9.181)
+  nomme `app.fillsell.{premium,pro,business}.cloud` ; prix identiques web / Apple / Google : 34,99 / 49,99 / 79,99 € par
+  mois. Aucun écart d'identifiant, de prix ni de période.
+- Écarts trouvés et corrigés : Android déjà ouvert sur la vc37 (formules désormais à partir du binaire 2.9.176) ; double
+  abonnement Apple possible pour un Cloud seul App Store (formules masquées pour ces comptes) ; essai jamais annoncé sur
+  iPhone (le module 8.3.3 ne rend pas l'offre) ; lien Google des mails vers le Cloud seul. Restent : un Apple ID déjà
+  abonné au groupe voit « 7 jours » alors qu'Apple facture tout de suite (la feuille d'Apple affiche les vraies
+  conditions ; seul un binaire le règle) ; pas d'essai proposé aux abonnés boutique ; offre d'essai Android jamais
+  vérifiée en vrai.
+- **iPhone ouvert le 13/11 à 08:49** (`coin_config.cloud_formules_apple` = 1 ; Stripe et Google l'étaient). Android :
+  la vc38 (2.9.176) est **approuvée** dans la Play Console, en « publication gérée » : elle attend le bouton « Publier 3
+  modifications » (avec les deux descriptions de fiche) — non cliqué ; les formules s'y ouvrent seules dès qu'elle est
+  installée. Achat de test Sandbox : impossible sans iPhone (TestFlight, compte Sandbox).
+- Verrou `selftest:formules-ouverture-partout` (19 → 33).
+
+### 6. Cas réels de l'étape 3
+- **bf85d176 (même objet importé deux fois)** : la passe du 12/11 15:40 avait bien vu le même objet ; la base
+  (`rapprochement_v3_fiche_intacte`) a refusé la fusion parce que l'article d'origine porte DEUX annonces, posé une
+  question restée dans Synchroniser, et « Publier en lot » a emporté la copie vers Leboncoin (garde « jumeau » retirée le
+  09/10). Correctif : migration `20261113180000_meme_objet_rattache_ou_retenu` PRÉPARÉE (banc jetable) — rattachement
+  quand toutes les annonces sont dans le groupe fort, sinon question avec la fiche Vinted hors du stock, et retenue de
+  toute publication liée par une question « même article » ouverte sur photo identique. Son cas : rattrapage PRÉPARÉ
+  (3 questions). 145 questions de ce motif depuis le 01/10 (102 ouvertes, 28 comptes). Verrou `meme-objet-import` (13 → 55).
+- **98b72757 (Cholet 49308)** : 49308 a été saisi dans Réglages › « Ville de tes annonces Leboncoin » le 11/11 à 11:27
+  (champ qui acceptait 5 chiffres quelconques ; aucun code FillSell ne produit 49308). Règle : un code d'aucune commune
+  retombe sur le code de l'adresse si c'est la même commune, sinon sur le code connu de Leboncoin ; doute = question ;
+  l'écran refuse un tel code. Ses 12 publications partent au prochain passage en « Cholet 49300 ». Verrou
+  `lbc-ville-cedex-repli` (28 → 36).
+
+### 3. Réponses de Nico appliquées
+641fb37e laissée arrêtée par sa garde. H1 : les 2 fiches hors modèle laissées. H2 : fait (script de63ca45, 67 « Jeu
+testé le » rangées ; 5 laissées). H4 : rien touché. I3 : « Marquer non imprimé » dans l'app (marche avant et après sa
+migration `20261113193000`, PRÉPARÉE, à valider). I4 : l'en-tête compte Vinted « en vente » (447d920c : 996 au lieu de
+1 007). I5 : digest rouge au-delà de 6 refus par compte ou 150 au total en 24 h (rejoué sur 14 jours : 4 rouges, tous
+f44b5917). K1 : rattachement serveur de la recréation Vinted sans titre (get-pending-jobs en service) ; la partie base,
+migration `20261113190000`, PRÉPARÉE (banc 32/32), à valider. J1, I1, I2 : rien à changer. H3, H5, J2, K2 : essais réels
+(point 5).
+
+### 5. Essais réels — non faits, et pourquoi
+- Republication Vinted avec la 0.6.187 dans le Chrome de Nico : le compte f44b5917 a le Cloud pour exécutant unique
+  (`cloud_voie` = vrai, poste `…-cloud`) ; une extension chargée dans son Chrome ne recevrait aucune tâche. Dans ce Chrome,
+  la copie non empaquetée (`FillSell-Extension-Nico`, 0.6.162) est désactivée et la version du Web Store n'est pas
+  installée. Rien n'a été basculé : décision de Nico (essai sur le poste Cloud, ou Cloud coupé le temps de l'essai).
+- Lecture des ventes Beebs d'Ornella (f8aa02a5, extension 0.6.186 sur son ordinateur) : ses lectures en mode fantôme
+  reçoivent 0 commande à chaque passage ; la lecture sans 403 est dans la 0.6.187 — l'essai demande la 0.6.187 chez elle.
+- Cartographie de la modification Depop, essai Beebs (H3), coupe Beebs à 1 500 (H5) : pas encore faits.
+- La 0.6.187 n'est donc pas empaquetée : sa condition de livraison (l'essai de recréation Vinted) n'est pas remplie.
+
+## Étape 4 — comptes hors France (décisions de Nico du 13/11 : `scratchpad/etape4/DECISIONS-NICO-1311.md`)
+### L0 — EN SERVICE (13/11 ~09:55)
+- Plus aucune tâche eBay close parce que le compte est hors France (D9) : ATTENTE `ebay_site_etranger` (« Ton site eBay
+  arrive bientôt, rien n'est perdu »), reprise seule à l'ouverture du site (code qui sait y publier ET
+  `coin_config.ebay_pays_<cc>` = 1 ; France seule aujourd'hui) ; handler-watch ne la solde plus à 72 h. D10 : un compte
+  eBay dont le site lu n'est pas la France n'est plus servi à l'extension (attente + « Relie ton eBay à FillSell ») ; un
+  compte de l'extension sans liaison reste sur ebay.fr (son site n'est pas lisible : 27 des 33 comptes eBay par
+  l'extension).
+- Commits **771605b** + **0de9048** (2.9.182) ; handler-watch v202, ebay-api-worker v129 (false), get-pending-jobs v371
+  (true) ; web 0de9048 ; **OTA 2.9.182**. Suite 730/730. Verrou `ebay-site-attente` (0/43 → 58/58).
+- Migration `20261113184500_ebay_site_attente_jamais_expiree` PRÉPARÉE (banc 30/30) : `expire_publish_reservations`
+  fermerait une attente à J+14 — à appliquer avant le 27/11 (feu vert de Nico).
+- Lecture unique des 54 comptes au site inconnu (13/11 ~10:00, pg_net, `site_compte`, 54 réponses 200) : 49 France, 4 US,
+  1 UK, 1 Italie. Parc actif : France 189, US 12, UK 6, Italie 3, Allemagne 2, Belgique 2, Autriche 1, inconnu 0.
+  Aucune tâche fermée ni mise en attente (les 6 comptes étrangers découverts n'en ont aucune d'ouverte).
