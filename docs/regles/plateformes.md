@@ -1006,6 +1006,18 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   postal d'aucune commune (CEDEX, 75000 — base `codes-postaux-fr.js`) → bloqué avant tout essai avec un message qui
   l'explique ; code postal différent → bloqué ; Réglages jamais réécrits. Extension 0.6.187 : la commune unique au même code
   postal acceptée au geste. Cas : a1e210f2 (Seynod → Annecy 74600). Verrou `selftest:lbc-commune-meme-cp`.
+- **13/11 (lot du 13/11, N6b) — une ville de publication ne porte JAMAIS un code d'aucune commune** (CEDEX, code général
+  comme 75000) : le repli retombe sur la commune et SON vrai code postal — celui de l'adresse du vendeur si c'est la même
+  commune (même nom comparable, même département), sinon celui que Leboncoin connaît pour elle (localisation des annonces
+  Leboncoin du compte, propositions de son autocomplétion, localisation d'origine) ; puis la règle 3d juge la commune
+  corrigée. Plusieurs codes ou aucun de sûr → la question (bloqué, le message pointe Réglages › Adresse de remise ›
+  « Ville de tes annonces Leboncoin », jamais « corrige ton adresse »). PAR SITE : `_shared/ville-publication-code-postal.js`
+  (`SITES_CODES_POSTAUX` : Leboncoin → base française, zone = département, « CEDEX » déclaré hors nom) ; un site sans table
+  n'a pas de règle. Serveur (get-pending-jobs, toutes versions d'extension, Réglages jamais écrits ; lecture bornée des
+  localisations Leboncoin seulement quand l'adresse ne suffit pas) + saisie de l'app (`controleVilleLbc` : refusé, code de
+  la commune de l'adresse proposé). L'ADRESSE de remise en CEDEX reste bloquée (3d). Cas : 98b72757 « Cholet 49308 »
+  (posé le 11/11 11:27:13 par Réglages, champ libre à cinq chiffres) → Cholet 49300, 12 publications. Verrou
+  `selftest:lbc-ville-cedex-repli`.
 
 ## ⛔ 13/11/2026 (lot « zéro problème », étape 5 — point 5c de Nico) — Depop : la couleur, prise sur la fiche pour tous
 - La couleur Depop vient de la copie Depop, sinon de la valeur commune (encart), sinon de la FICHE

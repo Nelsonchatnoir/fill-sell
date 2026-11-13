@@ -4,6 +4,9 @@
 -- Chaque fiche réparée retrouve son texte d'avant (description_avant de la sauvegarde) et perd attributs.teste_le —
 -- SEULEMENT si elle porte encore exactement ce que la réparation a écrit (texte et date) : une fiche retouchée depuis par
 -- la personne n'est jamais touchée (elle est listée en fin de script).
+-- (13/11, lot NU — décision de Nico, H2) Les DEUX familles de la sauvegarde (colonne `famille`) : « aujourdhui » (92 lues
+-- le 13/11) et « plus_tard » (67 « Jeu testé le <date>, fonctionne correctement. » : leur phrase revient à sa ligne, mot pour mot) —
+-- même règle, même garde, rendues ensemble ; le compte par famille est donné en fin de script.
 -- ⚠️ La fusion des attributs (inventaire_attributs_fusion_trg) n'enlève jamais une clé : la suppression passe SANS
 --    déclencheurs, pour cette transaction seulement (session_replication_role = replica, SET LOCAL), comme les inverses
 --    du 25/10 et du 12/11 — seules les colonnes description et attributs des fiches de la sauvegarde sont écrites.
@@ -46,6 +49,8 @@ END
 $verif$;
 
 SELECT (SELECT count(*) FROM _a_rendre) AS fiches_rendues,
+       (SELECT string_agg(famille || ' ' || n, ', ' ORDER BY famille) FROM (SELECT b.famille, count(*) n FROM public._backup_1113_de63ca45_date_de_test b
+         WHERE b.inventaire_id IN (SELECT inventaire_id FROM _a_rendre) GROUP BY b.famille) x) AS rendues_par_famille,
        (SELECT count(*) FROM public._backup_1113_de63ca45_date_de_test) AS fiches_reparees,
        (SELECT string_agg(b.inventaire_id::text, ', ') FROM public._backup_1113_de63ca45_date_de_test b
          WHERE b.inventaire_id NOT IN (SELECT inventaire_id FROM _a_rendre)) AS retouchees_depuis_non_rendues;

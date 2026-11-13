@@ -716,6 +716,19 @@ function etatPlateforme(p, sondeFraiche) {
       return { etat: "autoriser", sous: "Autorise FillSell sur Opla", vuLe };
     }
     if (verite.etat === "ecartee") return { etat: "ecartee", sous: "Tu ne vends pas ici", vuLe: null };
+    // ── (0.6.187, 13/11 — décision de Nico) UNE PLATEFORME CHOISIE JAMAIS VUE CONNECTÉE LE DIT ─────────────────
+    // ff1f879f : Vinted choisi, pas connecté à vinted.fr dans ce Chrome ; la ligne disait « Vérifié il y a 6 min » et
+    // « Vérifier » relançait la même sonde, sans verdict. Une plateforme CHOISIE (verite.declaree) à l'état serveur
+    // « inconnue » dit « Pas encore connecté à FillSell », avec « Me connecter ». Le motif de la sonde Vinted
+    // (sonde_motif, background.js classerRefus403Vinted) : session vue mais bloquée → l'AUTRE message, jamais
+    // « pas connecté ». Une plateforme PAS choisie garde sa ligne d'avant.
+    if (verite.etat === "inconnue" && verite.declaree === true) {
+      const motif = verite.sonde_motif ?? state.sessions?.sonde_motif?.[p.key] ?? null;
+      if (motif === "session_vue_bloquee") {
+        return { etat: "bloquee_vue", sous: `Ta connexion à ${p.name} est bien là, mais ${p.name} bloque la vérification de FillSell (protection anti-robot) : ouvre ${hostOf(p.key)} et passe la vérification si elle s'affiche.`, vuLe: null };
+      }
+      return { etat: "pas_vue", sous: "Pas encore connecté à FillSell", vuLe: null, action: "connexion" };
+    }
     const sondeMs = verite.sonde_le ? Date.parse(verite.sonde_le) : NaN;
     return { etat: null, sous: null, vuLe: Number.isFinite(sondeMs) ? sondeMs : null };
   }
@@ -1052,6 +1065,23 @@ function renderPlateformes() {
           ? "Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (ventes, retraits). Appuie sur « Autoriser Opla » : c'est une seule fois."
           : "Opla attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Opla » : c'est une seule fois."}</div>${lienEcarter}</div>` +
         `<button class="btn-outline" data-autoriser-opla type="button">Autoriser Opla</button></div>`,
+      );
+    } else if (etat === "pas_vue") {
+      // (0.6.187) Choisie, jamais vue connectée : la phrase, et le geste qui ouvre la connexion de la plateforme.
+      lignes.push(
+        `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
+        `<div class="plat-sous"><i class="dot gris"></i>${escapeHtml(sous)}</div>${lienEcarter}</div>` +
+        `<button class="btn-outline" data-connect="${p.key}" type="button">Me connecter</button></div>`,
+      );
+    } else if (etat === "bloquee_vue") {
+      // (0.6.187) Session vue, vérification bloquée par l'anti-robot : jamais « pas connecté », le geste est sur le site.
+      lignes.push(
+        `<div class="plat bloquee">${logoHtml(p.key)}<div class="plat-txt">` +
+        `<div class="plat-ligne"><span class="plat-nom">${nom}</span>` +
+        `<span class="etat ko"><i class="dot peach pulse"></i>Vérification bloquée</span></div>` +
+        `<div class="plat-sous">${escapeHtml(sous)}</div>` +
+        `<button class="lien" data-connect="${p.key}" type="button">Ouvrir ${escapeHtml(hostOf(p.key))} <span aria-hidden="true">→</span></button>` +
+        `</div></div>`,
       );
     } else if (etat === "ecartee") {
       lignes.push(

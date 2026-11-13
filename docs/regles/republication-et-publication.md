@@ -310,6 +310,8 @@
   brouillons (Régis : 99) a une page 1 sans aucune annonce active — la copie n'y est jamais vue.
 - **Règle** : un dépôt réussi se reconnaît par la PRÉSENCE de l'annonce (numéro inconnu, même titre, même boutique, mise en
   ligne pendant un de NOS envois [envoi − 2 min, envoi + 20 min], jamais avant le retrait), jamais par l'URL d'arrivée.
+  ⛔ (13/11, décision K1) « même titre » est remplacé par le numéro rendu par Vinted ou les photos de notre envoi — section
+  « 13/11 — la copie d'une remise en ligne Vinted : jamais par son titre » en fin de fichier.
   Sur un compte dont la page 1 du dressing est pleine de brouillons (≥ 90) et dont l'extension est d'avant la 0.6.128
   (sa relecture ne lit que la page 1), une republication Vinted retirée dont un essai a eu lieu n'est **plus resservie
   automatiquement** : un relevé AUTOMATIQUE n'importe aucun article neuf (règle du 05/10), il ne prouve donc rien — vu en
@@ -1776,9 +1778,10 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   sans état (`refusEtatInconnu`). La ligne « état » d'un rayon se tait le temps de la question (`attendEtat`). Un état
   connu : comme avant. Mesuré : 848 publications en 30 jours seraient passées par elle. Verrou
   `selftest:etat-inconnu-question`.
-- ⏸ **PRÉPARÉ, PAS EN SERVICE (13/11)** — part avec la migration `20261112213000` (relevé jamais depuis notre dépôt,
-  feu vert de Nico) : 227 des 342 copies tiennent l'état de leur fiche d'un relevé, qui peut avoir relu notre propre
-  dépôt. Code prêt : `docs/enquetes/zero-probleme-1211/en-attente/etat-copie-ramenee-a-la-fiche.patch` (git apply). La règle visée :
+- ✅ **EN SERVICE (13/11, feu vert de Nico)** — partie avec la migration `20261112213000` (relevé jamais depuis notre
+  dépôt, appliquée le 13/11 à 07:05) : 227 des 342 copies tenaient l'état de leur fiche d'un relevé, qui pouvait avoir
+  relu notre propre dépôt. (Le correctif préparé, `docs/enquetes/zero-probleme-1211/en-attente/etat-copie-ramenee-a-la-fiche.patch`,
+  est versé dans le code ; le fichier est retiré.) La règle :
 - **Une copie ne dit jamais mieux que la fiche** (`_shared/etat-embelli.js`) : une copie au-dessus de l'état CONFIRMÉ
   de la fiche (source ≠ `lens`) redescend à l'état de la fiche — `contenuAImposer` (get-pending-jobs, publications et
   republications hors Vinted, avec ou sans texte du vendeur) et la recréation Vinted d'une fiche née ailleurs
@@ -1797,3 +1800,24 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   prochain passage » sans reprise. La taille hors grille garde sa question (point 1c). Cas : 7d6e2c34 · 6afcb6e8,
   ae593eaf · 39201deb, cdf7007c · e8e1cd5a, 68e350f0 ×3, 48dd94f7 · ec5b7f25, f3407ada.
   Verrou `selftest:grille-incoherente-jamais-impasse`.
+
+## ⛔ 13/11/2026 (lot du 13/11, décision K1 de Nico) — la copie d'une remise en ligne Vinted : jamais par son titre
+- « Passe les deux rattachements serveur restants (recreation-vinted-verifiee et la base) à l'empreinte des photos. Plus
+  aucun rattachement par le titre. » L'extension 0.6.187 le fait déjà (numéro gardé par la sonde, puis photos de l'envoi).
+- **Base** (`inventaire_rattache_recreation_vinted`, migration `20261113190000_recreation_vinted_par_empreinte`) : la
+  copie apportée par le relevé est rattachée (ou, republication déjà remise en ligne, RETIRÉE comme copie de plus) si
+  le numéro que Vinted a rendu à notre envoi (`copie_par_numero.id`) ou un JETON de photo de notre envoi
+  (`recreation_photos_envoyees.jetons`, …/t/ ou …/tc/<jeton>/…) la désigne — plus le numéro plus grand que l'annonce
+  retirée, l'heure d'un de nos envois et la boutique. Sans preuve (envoi d'avant la 0.6.187) : rien n'est rattaché ni
+  retiré, l'import suit son cours. Preuve tracée (`rattachement_releve.preuve`, `arme_par.preuve`).
+- **get-pending-jobs** (`_shared/recreation-vinted-verifiee.js`) : une fiche est candidate sans titre (numéro inconnu et
+  plus grand, boutique, fenêtre de nos envois, pas créée par une tâche de dépôt de SA fiche) ; preuve = numéro rendu,
+  jeton, ou empreintes (`photo_empreintes`, seuils du moteur) contre NOTRE copie (`republish_snapshot.photos`) ou la
+  fiche. Copie prouvée → la question ; photos prouvées différentes → pas une copie ; sinon RETENUE (motif
+  `copie_possible_photos_a_comparer`), photos demandées à `empreintes-urls` (≤ 5, une fois par 10 min et par tâche, une
+  demande par passage, sans bloquer la réponse) ; 6 h → la question avec les liens. Jamais servie dans le doute.
+- Mesuré (30 jours, lecture seule) : 0 rattachement et 2 retraits « copie de plus » par la base au titre (2189c4d8
+  a4733d01 le 25/10, 02ca0f20 6b5f8dd1 le 27/10 — copies vues 14 et 12 s après le retrait, très probablement nos
+  doublons, mais sans preuve d'identité : elles n'auraient plus été retirées automatiquement) ; get-pending-jobs :
+  0 question au titre, 5 essais servis après relevé — mêmes décisions rejouées.
+  Verrou `selftest:recreation-vinted-par-empreinte` ; banc `scripts/recreation-vinted-par-empreinte-banc.mjs`.

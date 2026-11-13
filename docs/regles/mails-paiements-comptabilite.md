@@ -496,3 +496,26 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   et part) ; la phrase revient quand email_logs montre un `cloud_essai_veille` RÉEL Stripe ET Apple.
 - Verrous : `npm run selftest:formules-canal-ferme` (31), `selftest:formules-essai-changement` (24),
   `selftest:promesse-veille-app` (12 textes attrapés sur 881c2b9) — tous rouges sur 881c2b9, verts après.
+
+## ⛔ 13/11/2026 (Apple a validé les 3 abonnements « + Cloud », envoi 3e203db9 — « on ouvre partout ») — l'ouverture par canal, plus aucun « bientôt »
+- **Ouvrir un canal = son interrupteur seul** (`coin_config.cloud_formules_<stripe|apple|google>` = 1) : ni OTA, ni binaire.
+  iPhone : le binaire en vente (2.9.164) porte l'achat (le JS de l'OTA demande `app.fillsell.{premium,pro,business}.cloud`).
+- **Android : les FORMULES attendent la vc38** (`FORMULES_BINAIRE_MIN_ANDROID` = 2.9.176, `src/config/cloudOffer.js`) : l'app lit
+  son binaire au démarrage, les formules s'allument seules chez qui installe la vc38 publiée ; la vc37 rejette tout refus
+  Google sans code. Le Cloud seul garde `CLOUD_BINAIRE_MIN_ANDROID` (2.9.167).
+- **Plus aucun texte « Les formules avec Cloud y arrivent bientôt… »** (écran, Réglages, offres, serveur). Un canal qui facture
+  FERMÉ (retour arrière seulement) MASQUE les formules à ce compte (voie `boutique_fermee` : aucune carte, rien dans
+  Réglages, phrase neutre du serveur « Cette formule n'est pas disponible pour le moment. Rien n'a été débité. »).
+- **Jamais deux abonnements — le Cloud SEUL d'une boutique** : chez Apple, le Cloud seul (groupe « FillSell Cloud ») et les
+  formules (groupe « FillSell Plan ») sont deux groupes ; chez Google, le remplacement ne vise pas `app.fillsell.cloud.sub`.
+  Un compte dont le Cloud seul vivant est facturé par l'App Store / Google Play ne voit AUCUNE formule (voie
+  `cloud_seul_boutique`), sur tout appareil, tant que Nico n'a pas décidé le passage.
+- **iPhone, l'essai annoncé comme sur le web** : le module iOS (`@capgo/native-purchases` 8.3.3) ne rend pas
+  `introductoryPrice` ; une clé absente vaut « inconnu », et l'essai suit alors `PRODUITS_ESSAI_APPLE` (`cloud`,
+  `premium_cloud`, `pro_cloud` — jamais `business_cloud`) puis la décision du serveur (`src/lib/prixBoutique.js`).
+- **Google : le bouton des mails d'une formule** (veille comprise) ouvre l'abonnement de CETTE formule
+  (`lienAbonnementGoogle`, `_shared/cloud-rappel-veille.js`), jamais celui du Cloud seul.
+- Un abonné de la boutique du téléphone (même groupe) n'a jamais la semaine gratuite d'une formule : pas de question 4d
+  pour lui (`abonneBoutique`, `src/cloud/achatFormuleCloud.js`).
+- Verrou : `npm run selftest:formules-ouverture-partout` (19 rouges sur 5274cd4, 33 verts après) ;
+  `selftest:formules-canal-ferme` mis à jour (13/11).

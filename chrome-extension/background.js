@@ -15214,7 +15214,24 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
           return { etat: true, http: "jeton_expire_session_ouverte", identite: null };
         }
       }
-      return { etat: r.ok ? true : null, http: r.status, identite };
+      // ── (0.6.187, 13/11 — décision de Nico) UN 403 DIT POURQUOI, SANS CHANGER LE SENS DE `vinted` ─────────────
+      // ff1f879f : sonde 403 à chaque passage pendant trois heures, jamais un mot à l'écran ; il n'était pas connecté
+      // à vinted.fr dans ce Chrome. Mesuré le 13/11 (visiteur anonyme, Chromium neuf) : /api/v2/users/current → 403
+      // JSON {"code":106,"message_code":"access_denied"}, aucun cookie v_uid ; un compte connecté porte v_uid ; un
+      // 403 anti-robot (DataDome) est une page HTML. Le 403 reste `vinted: null`, `http.vinted: 403` — get-pending-jobs
+      // (pause anti-robot : http.vinted === 403), « session connue morte » (vinted === false), handler-watch,
+      // plateformes_verite, le popup : AUCUN lecteur ne change. Le MOTIF va dans une clé nouvelle, `sonde_motif`,
+      // lue par l'app et le popup pour dire la bonne phrase : « pas connecté » (refus « access_denied » ET aucun
+      // cookie de connexion) ou « session vue, bloquée » (cookie de connexion présent) — jamais l'un pour l'autre.
+      let motif = null;
+      if (r.status === 403) {
+        let corps = "";
+        try { corps = String(await r.text()).slice(0, 4000); } catch { /* corps illisible */ }
+        let typeContenu = "";
+        try { typeContenu = String(r.headers?.get?.("content-type") ?? ""); } catch { /* en-tête illisible */ }
+        motif = classerRefus403Vinted({ corps, typeContenu, cause403: await classifierCause403() });
+      }
+      return { etat: r.ok ? true : null, http: r.status, identite, motif };
     }),
     sonde("leboncoin", async () => {
       const r = await fetch("https://www.leboncoin.fr/deposer-une-annonce", {
@@ -15284,6 +15301,8 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     // sonde n'a pas pu la lire (401 ambigu compris). L'app l'affiche telle
     // quelle, jamais un repli sur une identité mémorisée.
     vinted_identite: vinted.identite ?? null,
+    // (0.6.187) Pourquoi la sonde Vinted n'a rien vu (classerRefus403Vinted) — seulement quand Vinted est sondée.
+    ...(plateformes.includes("vinted") ? { sonde_motif: { vinted: vinted.motif ?? null } } : {}),
     // Statut HTTP BRUT du relevé, par plateforme (traçabilité 2026-07-30) —
     // c'est lui qui dit si un null vient d'un 401 (token à rafraîchir), d'un
     // 403 (challenge) ou d'un échec réseau (null).
@@ -15300,6 +15319,35 @@ function sessionsSansHistorique(s) {
   if (!s || typeof s !== "object") return null;
   const { previous, ...rest } = s;
   return rest;
+}
+
+// ── (0.6.187, 13/11 — décision de Nico) POURQUOI LA SONDE VINTED N'A RIEN VU ─────────────────────────────────────
+// Pur. Un 403 sur /api/v2/users/current, lu avec son corps et le cookie de connexion (classifierCause403) :
+//   · cookie de connexion (v_uid) présent → « session_vue_bloquee » : la session est là, Vinted refuse la lecture
+//     (anti-robot ou autre) — JAMAIS « pas connecté » ;
+//   · aucun cookie de connexion (magasin lisible) ET refus JSON « access_denied » (code 106, la réponse mesurée d'un
+//     visiteur anonyme le 13/11) → « pas_connecte » ;
+//   · page HTML (DataDome) sans cookie de connexion lisible → « anti_robot » : rien d'affirmé sur la connexion ;
+//   · tout le reste (cookies illisibles, corps inconnu) → null : on ne conclut pas.
+function classerRefus403Vinted({ corps = "", typeContenu = "", cause403 = "indetermine" } = {}) {
+  const brut = String(corps ?? "").trim();
+  let j = null;
+  if (/json/i.test(String(typeContenu)) || brut.startsWith("{")) {
+    try { j = JSON.parse(brut); } catch { j = null; }
+  }
+  const refusAnonyme = Boolean(j && typeof j === "object" && (Number(j.code) === 106 || String(j.message_code ?? "") === "access_denied"));
+  const pageHtml = !j && (/html/i.test(String(typeContenu)) || brut.startsWith("<"));
+  if (cause403 === "session_presente") return "session_vue_bloquee";
+  if (cause403 === "session_absente" && refusAnonyme) return "pas_connecte";
+  if (pageHtml) return "anti_robot";
+  return null;
+}
+
+// La fusion du motif (pure) : les clés du relevé remplacent celles d'avant ; une valeur nulle efface ; rien → null.
+function motifsSondeFusionnes(avant, releve) {
+  const out = { ...(avant && typeof avant === "object" ? avant : {}), ...(releve && typeof releve === "object" ? releve : {}) };
+  for (const k of Object.keys(out)) if (out[k] == null) delete out[k];
+  return Object.keys(out).length ? out : null;
 }
 
 async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
@@ -15378,6 +15426,10 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
         [pf]: { le: releve.checked_at ?? new Date().toISOString(), http: releve.http?.[pf] ?? null } };
       // (vinted_identite n'est jamais reprise : l'identité de boutique ne se dit que lue — règle du 03/09.)
     }
+    // ── (C) LE MOTIF DE LA SONDE, PAR PLATEFORME (0.6.187, 13/11) ─────────────────────────────────────────────────
+    // Une plateforme SONDÉE écrit son motif (null efface) ; une plateforme non sondée garde le sien.
+    fusion.sonde_motif = motifsSondeFusionnes(prev.sonde_motif, releve.sonde_motif);
+    if (!fusion.sonde_motif) delete fusion.sonde_motif;
     final = fusion;
   }
   await restRequest(`profiles?id=eq.${sub}`, accessToken, {
@@ -15785,7 +15837,10 @@ async function noterSessionDeconnectee(accessToken, platform) {
     // Horodatage propre à l'observation (0.6.22, sonde de session) : le popup juge la fraîcheur
     // par plateforme, et cette déconnexion date de MAINTENANT.
     checked_at_par_plateforme: { ...(base?.checked_at_par_plateforme ?? {}), [platform]: observeLe },
+    // (0.6.187) La page a parlé : le motif de la sonde pour cette plateforme n'a plus cours.
+    sonde_motif: motifsSondeFusionnes(base?.sonde_motif, { [platform]: null }),
   };
+  if (!releve.sonde_motif) delete releve.sonde_motif;
   // Relevé COMPLET (recopie de base + observation) : écrit tel quel, sans
   // passer par la fusion des relevés partiels — `sondees` hérité de base
   // ferait effacer l'observation qu'on vient justement de poser.
@@ -15832,7 +15887,10 @@ async function noterCompteVuSurLaPage(platform) {
     checked_at: vuLe,
     http: { ...(base?.http ?? {}), [platform]: "compte_vu_sur_la_page" },
     checked_at_par_plateforme: { ...(base?.checked_at_par_plateforme ?? {}), [platform]: vuLe },
+    // (0.6.187) La page a parlé : le motif de la sonde pour cette plateforme n'a plus cours.
+    sonde_motif: motifsSondeFusionnes(base?.sonde_motif, { [platform]: null }),
   };
+  if (!releve.sonde_motif) delete releve.sonde_motif;
   delete releve.sondees;
   await ecrireExtensionSessions(accessToken, sub, releve, base);
   console.log(`[background] session ${platform} : COMPTE vu sur la page — attentes de session levées`);

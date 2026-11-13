@@ -221,19 +221,18 @@ export function messageVoieFormule(r, lang = 'fr') {
     : r?.canal === 'google' ? (en ? 'the FillSell app on your Android phone' : "l'app FillSell sur ton téléphone Android") : null;
   switch (r?.motif) {
     case 'abonnement_boutique':
-    case 'cloud_boutique':
-      // (12/11, point 4c de Nico) La boutique qui facture n'a pas encore les formules (interrupteur du canal fermé — Apple
-      // tant qu'il les valide) : jamais « change de formule dans l'app sur ton iPhone », où rien n'existe.
-      if (r.ferme === true) {
-        if (r.canal === 'google') {
-          return en ? 'Your subscription goes through Google Play. Plans with Cloud are coming there soon. As soon as they are in the FillSell app on your Android phone, you can add the Cloud there, with no second subscription. Nothing has changed, nothing was charged.'
-            : "Ton abonnement passe par Google Play. Les formules avec Cloud y arrivent bientôt. Dès qu'elles seront dans l'app FillSell sur ton téléphone Android, tu pourras y ajouter le Cloud, sans second abonnement. Rien n'a changé, rien n'a été débité.";
-        }
-        return en ? 'Your subscription goes through the App Store. Plans with Cloud are coming there soon: Apple is reviewing them. As soon as they are in the FillSell app on your iPhone, you can add the Cloud there, with no second subscription. Nothing has changed, nothing was charged.'
-          : "Ton abonnement passe par l'App Store. Les formules avec Cloud y arrivent bientôt : Apple est en train de les valider. Dès qu'elles seront dans l'app FillSell sur ton iPhone, tu pourras y ajouter le Cloud, sans second abonnement. Rien n'a changé, rien n'a été débité.";
-      }
+      // (12/11, point 4c de Nico) La boutique qui facture n'a pas les formules (interrupteur du canal fermé) : jamais
+      // « change de formule dans l'app sur ton iPhone », où rien n'existe. (13/11, décision de Nico : « on ouvre partout »)
+      // Les textes « … y arrivent bientôt : Apple est en train de les valider » sont RETIRÉS : un canal fermé (retour arrière
+      // seulement) reçoit la phrase neutre, sans promesse.
+      if (r.ferme === true) break;
       return en ? `Your subscription is managed by ${r.canal === 'apple' ? 'the App Store' : 'Google Play'}: change plans in ${app}. Nothing was charged.`
         : `Ton abonnement est géré par ${r.canal === 'apple' ? "l'App Store" : 'Google Play'} : change de formule dans ${app}. Rien n'a été débité.`;
+    case 'cloud_boutique':
+      // (13/11) Le Cloud SEUL de ce compte est facturé par l'App Store / Google Play : une formule avec Cloud (web ou app)
+      // serait un SECOND abonnement (Apple : deux groupes d'abonnements) — jamais « change de formule dans l'app », ni
+      // « bientôt ». La phrase neutre ; l'app ne montre plus les formules à ce compte (voieFormulesDuCompte).
+      break;
     case 'deux_abonnements':
       return en ? 'You have two subscriptions: write to us from Settings › Help and we will merge them. Nothing was charged.'
         : "Tu as deux abonnements : écris-nous depuis Réglages › Aide, on les réunit. Rien n'a été débité.";
@@ -247,8 +246,9 @@ export function messageVoieFormule(r, lang = 'fr') {
       return en ? 'Moving to a lower plan happens at the end of your period: choose it in Settings › Subscription › Other plans. Nothing was charged.'
         : "Passer à une formule inférieure se fait à la fin de ta période : choisis-la dans Réglages › Abonnement › Autres formules. Rien n'a été débité.";
     default:
-      return en ? 'This plan is not available right now. Nothing was charged.' : "Cette formule n'est pas disponible pour le moment. Rien n'a été débité.";
+      break;
   }
+  return en ? 'This plan is not available right now. Nothing was charged.' : "Cette formule n'est pas disponible pour le moment. Rien n'a été débité.";
 }
 
 // ── 6. LES PARAMÈTRES STRIPE ─────────────────────────────────────────────────────────────────────────────────────────

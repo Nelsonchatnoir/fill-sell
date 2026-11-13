@@ -196,7 +196,11 @@ console.log("C. JAMAIS AU-DESSUS D'UN CHOIX DE LA PERSONNE, NI D'UNE ADAPTATION"
   ok(contenuAImposer(adaptee, f, { ...temps, contenuLe: AVANT_LECTURE }).description === undefined, "copie qui reprend déjà le texte (adaptation) : description pas réimposée");
   const meilleur = { ...copieDuMoteur("leboncoin", "publish", "releve_beebs"), platform_fields: { etat: "Neuf avec étiquette" } };
   const im = contenuAImposer(meilleur, { ...f, attributs: { ...f.attributs, etat: { v: "Bon état", at: LECTURE } } }, { ...temps, contenuLe: AVANT_LECTURE });
-  ok(im.etat === undefined, "état de la copie déjà au-dessus : jamais redescendu par ce chemin", String(im.etat));
+  ok(im.etat === undefined, "état de la copie au-dessus d'un état de fiche SANS source (non confirmé) : pas touché", String(im.etat));
+  // (13/11, décision de Nico — « état jamais embelli ») Avant : « jamais redescendu par ce chemin ». Une copie au-dessus
+  // de l'état CONFIRMÉ de la fiche (ici relevé sur Beebs) redescend à l'état de la fiche (selftest:etat-copie-jamais-au-dessus).
+  const imC = contenuAImposer(meilleur, { ...f, attributs: { ...f.attributs, etat: { v: "Bon état", at: LECTURE, source: "releve_beebs" } } }, { ...temps, contenuLe: AVANT_LECTURE });
+  ok(imC.etat === "Bon état", "état de la copie au-dessus de l'état CONFIRMÉ de la fiche : ramené à la fiche (13/11)", String(imC.etat));
   const retouchee = { ...copieDuMoteur("leboncoin", "publish", "releve_beebs"), photo_option: "retouche" };
   ok(contenuAImposer(retouchee, f, { ...temps, contenuLe: AVANT_LECTURE }).photos === undefined, "photos retouchées (choix de la personne) : pas remplacées");
   const cdn = contenuAImposer(copieDuMoteur("leboncoin", "publish", "releve_beebs"), { ...f, photos: ["https://images.beebs.app/a.jpg", "https://images.beebs.app/b.jpg"] },

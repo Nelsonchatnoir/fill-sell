@@ -50,7 +50,14 @@ ok(/v_motif := 'publication_payante'/.test(tick) && /remise_en_vente_place\(r\.u
 
 console.log('2. L\'app');
 const etats = sansCommentairesJs(lire('src/utils/etatsPublication.js'));
-ok(!/même article|same item|Mes annonces en ligne|jumeau/i.test(etats), 'aucun refus de publication ne renvoie à « Est-ce le même article ? »');
+// (13/11, décision de Nico — « aucune publication sur une plateforme où le même objet est déjà en ligne » ; lot du 13/11,
+// N6a, cas bf85d176) Un refus peut désormais renvoyer à « Est-ce le même article ? », mais SEULEMENT pour une question
+// OUVERTE que le serveur nomme (meme_objet : photo identique, migration 20261113180000), avec l'endroit où elle est —
+// jamais l'ancien écran « Mes annonces en ligne », jamais un « jumeau » deviné : hors de ce bloc, la règle du 09/10 tient.
+const sansBlocMemeObjet = etats.replace(/const mo = memeObjet[\s\S]*?continue;\n {4}\}/, '');
+ok(sansBlocMemeObjet !== etats && !/même article|same item|Mes annonces en ligne|jumeau/i.test(sansBlocMemeObjet)
+  && /Stock › Synchroniser/.test(etats) && /À régler › Annonces à vérifier/.test(etats),
+  'aucun refus de publication ne renvoie à « Est-ce le même article ? » — sauf la question ouverte nommée par le serveur (meme_objet), avec son endroit');
 const lps = lire('src/components/ListingPreviewScreen.jsx');
 ok(!/jumeauxServeur|pubRes\.jumeaux/.test(lps), 'l\'écran de publication ne lit plus de « jumeaux » du serveur');
 const jel = sansCommentairesJs(lire('src/utils/jumeauxEnLigne.js'));

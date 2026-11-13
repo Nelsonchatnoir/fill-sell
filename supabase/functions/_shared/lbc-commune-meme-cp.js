@@ -32,10 +32,21 @@
 //   4. ⛔ Réglages jamais réécrits : seul ce qui est SERVI change (la tâche garde sa trace).
 // L'extension 0.6.187 applique la même règle au repli « code postal ville » (aucun essai perdu) ; les versions
 // d'avant la reçoivent par le serveur après un refus.
-// Pur (Deno + Node). Verrou : scripts/lbc-commune-meme-cp-selftest.mjs.
+//
+// ══ (13/11, lot du 13/11, N6b — décision de Nico) UNE VILLE DE L'ANNONCE NE PORTE JAMAIS UN CODE D'AUCUNE COMMUNE ══
+// « Le repli doit retomber sur la commune et son vrai code postal. » Le point 2 ci-dessus ne BLOQUE plus la ville de
+// l'annonce (source « ville_choisie ») : son code CEDEX ou général est remplacé par le VRAI code postal de la commune
+// (_shared/ville-publication-code-postal.js, par site) — celui de l'adresse du vendeur si c'est la même commune, sinon
+// celui que Leboncoin connaît pour elle (localisation des annonces Leboncoin du compte, propositions de son
+// autocomplétion) ; puis la règle du point 3 joue sur la commune corrigée. Plusieurs codes, ou aucun de sûr → la
+// question (bloqué, le message pointe « Ville de tes annonces Leboncoin », jamais l'adresse). Cas : 98b72757
+// « Cholet 49308 » → Cholet 49300 (12 publications). L'ADRESSE de remise en CEDEX reste bloquée comme au point 2.
+// Pur (Deno + Node). Verrous : scripts/lbc-commune-meme-cp-selftest.mjs, scripts/lbc-ville-cedex-repli-selftest.mjs.
 
-import { codesPostauxFrancais } from "./lbc-adresse-france.js";
 import { communeComparable, textesErreurJob } from "./lbc-voie-des-reglages.js";
+import { vraiCodePostalDeLaCommune, codeDeCommuneDuSite, codesProchesDuSite } from "./ville-publication-code-postal.js";
+
+const SITE = "leboncoin";
 
 export const CLE_COMMUNE_MEME_CP = "lbc_commune_meme_cp";
 export const SOURCE_BLOCAGE_COMMUNE = "lbc_commune_code_postal";
@@ -43,6 +54,8 @@ export const REGLE_COMMUNE_MEME_CP = "lbc_commune_meme_cp_1311";
 
 const propre = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
 const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+// « 75001 à 75020 » (codesProches) dans un message anglais.
+const enTo = (s) => String(s ?? "").replace(/ à /g, " to ");
 
 /** { code_postal, ville } valide (cinq chiffres, ville non vide), sinon null — même règle que src/publication/villeLbc.js. */
 function villeValide(v) {
@@ -144,28 +157,19 @@ export function jugerCommuneMemeCp({ cp, propositions }) {
   return { verdict: "aucune", cp };
 }
 
-/** Ce code postal est-il celui d'une commune (base officielle) ? */
+/** Ce code postal est-il celui d'une commune (table du site Leboncoin : base officielle française) ? */
 export function codePostalDeCommune(cp) {
-  return /^\d{5}$/.test(String(cp ?? "")) && codesPostauxFrancais().has(String(cp));
+  return codeDeCommuneDuSite(SITE, String(cp ?? "")) === true;
 }
 
 /** Les codes de commune officiels qui commencent comme `cp` (texte court pour le message), ou "". */
 export function codesProches(cp) {
-  const c = String(cp ?? "");
-  if (!/^\d{5}$/.test(c)) return "";
-  const tous = [...codesPostauxFrancais()].sort();
-  const p4 = tous.filter((x) => x.startsWith(c.slice(0, 4)) && x !== c);
-  if (p4.length >= 1 && p4.length <= 3) return p4.join(", ");
-  if (c.endsWith("000")) {
-    const arr = tous.filter((x) => x.startsWith(c.slice(0, 3)) && Number(x.slice(3)) >= 1 && Number(x.slice(3)) <= 20);
-    if (arr.length >= 2) return `${arr[0]} à ${arr[arr.length - 1]}`;
-  }
-  if (p4.length > 3) return `${p4[0]} à ${p4[p4.length - 1]}`;
-  return "";
+  return codesProchesDuSite(SITE, String(cp ?? ""));
 }
 
+// (13/11, N6b) Le chemin RÉEL de l'écran (src/reglages/VilleLeboncoinParDefaut.jsx, page « Adresse de remise »).
 const OU = {
-  ville_choisie: { fr: "Réglages › Leboncoin › « Ville de l'annonce »", en: "Settings › Leboncoin › “Listing town”" },
+  ville_choisie: { fr: "Réglages › Adresse de remise › « Ville de tes annonces Leboncoin »", en: "Settings › Pickup address › “Town of your Leboncoin listings”" },
   adresse: { fr: "Réglages › « Adresse de remise Leboncoin »", en: "Settings › “Leboncoin pickup address”" },
 };
 const ouDe = (source, lang) => (OU[source] ?? OU.adresse)[lang === "en" ? "en" : "fr"];
@@ -176,7 +180,7 @@ export function messageCodePostalNonCommune({ cp, ville, source }, lang = "fr") 
   if (lang === "en") {
     return `Leboncoin doesn't know the postcode ${cp} (“${ville}”): it isn't a town's postcode — it's a CEDEX code (business mail) `
       + `or a general code such as 75000. Leboncoin would place your listing in another town, so nothing was sent. `
-      + `Enter your town's postcode${proches ? ` (town postcodes starting like it: ${proches})` : ""} in ${ouDe(source, "en")}, then retry. Nothing was published.`;
+      + `Enter your town's postcode${proches ? ` (town postcodes starting like it: ${enTo(proches)})` : ""} in ${ouDe(source, "en")}, then retry. Nothing was published.`;
   }
   return `Leboncoin ne connaît pas le code postal ${cp} (« ${ville} ») : ce n'est pas le code d'une commune — c'est un code CEDEX `
     + `(courrier des entreprises) ou un code général comme 75000. Leboncoin placerait ton annonce dans une autre commune, alors rien n'est parti. `
@@ -211,6 +215,101 @@ export function phraseCommuneLeboncoin({ cp, ville, commune }, lang = "fr") {
   return `Leboncoin ne connaît pas « ${ville} » : pour le code postal ${cp}, il place tes annonces à ${commune} (${cp}). Tes Réglages ne changent pas.`;
 }
 
+// ── (13/11, N6b) LA VILLE DE L'ANNONCE AU CODE D'AUCUNE COMMUNE : LE REPLI, OU LA QUESTION ─────────────────────────
+
+/** La phrase dite une fois : le code CEDEX / général remplacé par le vrai code postal de la commune. */
+export function phraseCodePostalCommune({ cp, ville, cpServi, commune, villeCorrigee, source }, lang = "fr") {
+  const vc = villeCorrigee || commune;
+  if (lang === "en") {
+    const d = source === "adresse" ? `the postcode of ${vc} in your address` : `the postcode Leboncoin knows for ${vc}`;
+    return `“${ville} ${cp}”: ${cp} isn't a town's postcode (it's a CEDEX code or a general code such as 75000). Your Leboncoin listings go to ${commune} (${cpServi}), `
+      + `${d}. To stop seeing this, enter ${cpServi} in ${ouDe("ville_choisie", "en")}.`;
+  }
+  const d = source === "adresse" ? `le code postal de ${vc} dans ton adresse` : `le code postal que Leboncoin connaît pour ${vc}`;
+  return `« ${ville} ${cp} » : ${cp} n'est pas le code postal d'une commune (c'est un code CEDEX ou un code général comme 75000). Tes annonces Leboncoin partent à ${commune} (${cpServi}), `
+    + `${d}. Pour ne plus lire ce message, mets ${cpServi} dans ${ouDe("ville_choisie", "fr")}.`;
+}
+
+/** La phrase d'une trace lbc_commune_meme_cp (commune de Leboncoin, ou code postal remplacé). */
+export function phraseDeLaTrace(trace, lang = "fr") {
+  const t = obj(trace);
+  if (t.code_postal_servi && String(t.code_postal_servi) !== String(t.code_postal)) {
+    return phraseCodePostalCommune({ cp: String(t.code_postal), ville: String(t.ville_tapee ?? ""), cpServi: String(t.code_postal_servi),
+      commune: String(t.commune ?? t.ville_corrigee ?? ""), villeCorrigee: t.ville_corrigee ? String(t.ville_corrigee) : null, source: t.source_code_postal }, lang);
+  }
+  return phraseCommuneLeboncoin({ cp: String(t.code_postal ?? ""), ville: String(t.ville_tapee ?? ""), commune: String(t.commune ?? "") }, lang);
+}
+
+/** La question : la ville de l'annonce porte un code d'aucune commune, et son vrai code n'est pas sûr. */
+export function messageVilleNonCommune({ cp, ville, codes = null, codes_proches = "" }, lang = "fr") {
+  const plusieurs = Array.isArray(codes) && codes.length > 1;
+  if (lang === "en") {
+    return `“${ville} ${cp}”: ${cp} isn't a town's postcode — it's a CEDEX code (business mail) or a general code such as 75000; Leboncoin would place your listing elsewhere, so nothing was sent. `
+      + (plusieurs ? `FillSell knows several postcodes for ${ville} (${codes.join(", ")}) and doesn't choose for you. `
+        : `FillSell finds the postcode of ${ville} neither in your address nor on your Leboncoin listings. `)
+      + `Enter your town's postcode${codes_proches ? ` (town postcodes starting like it: ${enTo(codes_proches)})` : ""} in ${ouDe("ville_choisie", "en")}, then retry. Nothing was published.`;
+  }
+  return `« ${ville} ${cp} » : ${cp} n'est pas le code postal d'une commune — c'est un code CEDEX (courrier des entreprises) ou un code général comme 75000 ; Leboncoin placerait ton annonce ailleurs, alors rien n'est parti. `
+    + (plusieurs ? `FillSell connaît plusieurs codes postaux pour ${ville} (${codes.join(", ")}) et ne choisit pas à ta place. `
+      : `FillSell ne trouve le code postal de ${ville} ni dans ton adresse ni sur tes annonces Leboncoin. `)
+    + `Indique le code postal de ta commune${codes_proches ? ` (codes de commune qui commencent comme lui : ${codes_proches})` : ""} dans ${ouDe("ville_choisie", "fr")}, puis relance. Rien n'a été publié.`;
+}
+
+/**
+ * Les communes que LEBONCOIN connaît pour ce compte, avec leur code postal (jamais une commune devinée) :
+ *   · refusCompte : les propositions de son autocomplétion dans les refus de l'extension (« Cholet (49300) ») ;
+ *   · jobs        : la localisation d'origine d'une republication (lue chez Leboncoin) ;
+ *   · lignes      : la localisation des annonces Leboncoin relevées du compte (capture.localisation, liste_api).
+ * @param {{ refusCompte?: unknown[], jobs?: any[], lignes?: unknown[] }} [arg]
+ * @returns {Array<{ ville: string, code_postal: string, source: string }>}
+ */
+export function communesLbcConnues({ refusCompte = [], jobs = [], lignes = [] } = {}) {
+  const out = [];
+  const vus = new Set();
+  const ajouter = (ville, code_postal, source) => {
+    const v = propre(ville);
+    const cp = propre(code_postal);
+    if (!v || !/^\d{5}$/.test(cp)) return;
+    const k = `${communeComparable(v)}|${cp}|${source}`;
+    if (vus.has(k)) return;
+    vus.add(k);
+    out.push({ ville: v, code_postal: cp, source });
+  };
+  for (const x of Array.isArray(lignes) ? lignes : []) if (x && typeof x === "object") ajouter(x.ville, x.code_postal, "annonces_leboncoin");
+  for (const j of Array.isArray(jobs) ? jobs : []) {
+    const lo = obj(obj(j?.platform_fields).localisation_origine);
+    ajouter(lo.ville, lo.code_postal, "origine_leboncoin");
+  }
+  for (const texte of Array.isArray(refusCompte) ? refusCompte : []) {
+    const r = refusAdresseLbc(texte);
+    for (const p of r?.propositions ?? []) ajouter(communeDeProposition(p), codePostalDeProposition(p), "propositions_leboncoin");
+  }
+  return out;
+}
+
+/** L'adresse du vendeur, commune et code postal (champs structurés des Réglages, adresse en une ligne, adresse servie). */
+function adressesDuVendeur(reglagesLbc, pf) {
+  const r = obj(reglagesLbc);
+  const out = [];
+  if (propre(r.ville) && propre(r.code_postal)) out.push({ ville: propre(r.ville), code_postal: propre(r.code_postal), source: "reglages" });
+  for (const a of [r.adresse, obj(pf).adresse]) {
+    const x = cpVilleDeLAdresse(a);
+    if (x) out.push({ ville: x.ville, code_postal: x.cp, source: "adresse" });
+  }
+  return out;
+}
+
+/** Faut-il lire les communes que Leboncoin connaît (annonces du compte) pour ce job ? Seulement quand la ville de
+ * l'annonce porte un code d'aucune commune que l'adresse du vendeur ne résout pas. Pur.
+ * @param {{ job: any, reglagesLbc?: any }} arg */
+export function aBesoinDesCommunesLbc({ job, reglagesLbc = null }) {
+  if (String(job?.platform ?? "") !== "leboncoin") return false;
+  const t = communeTapeeLbc(job);
+  if (t.source !== "ville_choisie" || codePostalDeCommune(t.cp)) return false;
+  const v = vraiCodePostalDeLaCommune({ site: SITE, ville: t.ville, code_postal: t.cp, adresses: adressesDuVendeur(reglagesLbc, job?.platform_fields) });
+  return v.verdict === "question" && v.motif === "inconnu";
+}
+
 /** Le refus connu qui concerne CETTE commune tapée (même code postal dans l'adresse tapée, même ville). */
 function refusDeLaCommune(t, textes) {
   const cle = communeComparable(t.ville);
@@ -227,21 +326,25 @@ function refusDeLaCommune(t, textes) {
  * tâche (copie faite à sa création) cède à la ville de l'annonce ACTUELLE des Réglages quand elle est différente et
  * que son code postal est celui d'une commune — c'est le geste que le message demande (« corrige dans Réglages, puis
  * relance ») ; sans lui, la relance retaperait la copie bloquée. Les Réglages sont lus, jamais écrits. Pur.
- * @param {{ job: any, reglagesLbc?: any, refusCompte?: string[], maintenant?: string }} arg
+ * (13/11, N6b) Une copie dont le code postal n'est celui d'aucune commune (remplacé par le repli) cède elle aussi aux
+ * Réglages corrigés : c'est la correction de la personne.
+ * @param {{ job: any, reglagesLbc?: any, refusCompte?: string[], communesLbc?: Array<{ ville: string, code_postal: string, source?: string }>, maintenant?: string }} arg
+ *   communesLbc : les communes que Leboncoin connaît pour ce compte (communesLbcConnues : localisation de ses annonces…).
  * @returns {{ action: "tel_quel", motif?: string }
  *   | { action: "bloquer", motif: string, message: string, message_en: string, trace: Record<string, any> }
  *   | { action: "commune", platform_fields: Record<string, any>, trace: Record<string, any>, motif?: string }}
  */
-export function decisionCommuneLbc({ job, reglagesLbc = null, refusCompte = [], maintenant = new Date().toISOString() }) {
-  const d = decisionCommuneLbcSeule({ job, refusCompte, maintenant });
-  if (d.action !== "bloquer" || d.trace?.source !== "ville_choisie") return d;
+export function decisionCommuneLbc({ job, reglagesLbc = null, refusCompte = [], communesLbc = [], maintenant = new Date().toISOString() }) {
+  const d = decisionCommuneLbcSeule({ job, reglagesLbc, refusCompte, communesLbc, maintenant });
+  const copieFausse = d.action === "bloquer" || d.trace?.motif === "cp_non_commune_repli";
+  if (!copieFausse || d.trace?.source !== "ville_choisie") return d;
   const r = villeValide(obj(reglagesLbc).ville_publication);
   const pf = obj(job?.platform_fields);
   const tapee = villeValide(pf.ville_publication_lbc);
   if (!r || !tapee || !codePostalDeCommune(r.code_postal)) return d;
   if (r.code_postal === tapee.code_postal && communeComparable(r.ville) === communeComparable(tapee.ville)) return d;
   // La ville des Réglages a-t-elle elle-même été refusée par Leboncoin ? Alors on la juge comme l'autre.
-  const essai = decisionCommuneLbcSeule({ job: { ...job, platform_fields: { ...pf, ville_publication_lbc: r } }, refusCompte, maintenant });
+  const essai = decisionCommuneLbcSeule({ job: { ...job, platform_fields: { ...pf, ville_publication_lbc: r } }, reglagesLbc, refusCompte, communesLbc, maintenant });
   if (essai.action === "bloquer") return essai;
   const pfN = essai.action === "commune" ? essai.platform_fields : { ...pf, ville_publication_lbc: r };
   const trace = { le: maintenant, code_postal: r.code_postal, ville_tapee: tapee.ville, code_postal_tape: tapee.code_postal, source: "ville_choisie",
@@ -252,14 +355,14 @@ export function decisionCommuneLbc({ job, reglagesLbc = null, refusCompte = [], 
 
 /**
  * LA DÉCISION pour un job Leboncoin servi (sans les Réglages). Pur.
- * @param {{ job: any, refusCompte?: string[], maintenant?: string }} arg
+ * @param {{ job: any, reglagesLbc?: any, refusCompte?: string[], communesLbc?: any[], maintenant?: string }} arg
  *   refusCompte : les textes d'erreur des AUTRES jobs Leboncoin servis du compte (textesErreurJob) — un refus de la
  *   même commune sur l'un d'eux vaut pour tous.
  * @returns {{ action: "tel_quel", motif?: string }
  *   | { action: "bloquer", motif: string, message: string, message_en: string, trace: Record<string, any> }
  *   | { action: "commune", platform_fields: Record<string, any>, trace: Record<string, any>, motif?: string }}
  */
-export function decisionCommuneLbcSeule({ job, refusCompte = [], maintenant = new Date().toISOString() }) {
+export function decisionCommuneLbcSeule({ job, reglagesLbc = null, refusCompte = [], communesLbc = [], maintenant = new Date().toISOString() }) {
   if (String(job?.platform ?? "") !== "leboncoin") return { action: "tel_quel" };
   const action = String(job?.action ?? "publish") || "publish";
   if (action !== "publish" && action !== "republish") return { action: "tel_quel" };
@@ -267,6 +370,31 @@ export function decisionCommuneLbcSeule({ job, refusCompte = [], maintenant = ne
   const t = communeTapeeLbc(job);
   if (t.source !== "ville_choisie" && t.source !== "adresse") return { action: "tel_quel", motif: t.source === "origine" ? "localisation_origine" : "commune_illisible" };
   const base = { le: maintenant, code_postal: t.cp, ville_tapee: t.ville, source: t.source, regle: REGLE_COMMUNE_MEME_CP, pose_par: "get-pending-jobs" };
+  // 2 bis. (13/11, N6b — décision de Nico) LA VILLE DE L'ANNONCE au code d'aucune commune (CEDEX, code général) :
+  // le repli retombe sur la commune et SON vrai code postal (adresse du vendeur, sinon commune connue de Leboncoin),
+  // puis la règle 3 juge la commune corrigée ; le doute est une question (jamais « corrige ton adresse »).
+  if (t.source === "ville_choisie" && !codePostalDeCommune(t.cp)) {
+    const refus = [...textesErreurJob(job), ...(Array.isArray(refusCompte) ? refusCompte : [])];
+    const v = vraiCodePostalDeLaCommune({ site: SITE, ville: t.ville, code_postal: t.cp, adresses: adressesDuVendeur(reglagesLbc, pf),
+      communesSite: [...(Array.isArray(communesLbc) ? communesLbc : []), ...communesLbcConnues({ refusCompte: refus })] });
+    if (v.verdict === "repli") {
+      const corrigee = { code_postal: v.code_postal, ville: v.ville };
+      const repli = { motif: "cp_non_commune_repli", code_postal_servi: v.code_postal, ville_corrigee: v.ville, source_code_postal: v.source,
+        ...(v.source_detail ? { source_code_postal_detail: v.source_detail } : {}) };
+      // La commune corrigée passe ensuite par la règle 3 (une réponse de Leboncoin connue pour elle).
+      const suite = decisionCommuneLbcSeule({ job: { ...job, platform_fields: { ...pf, ville_publication_lbc: corrigee } }, reglagesLbc, refusCompte, communesLbc, maintenant });
+      if (suite.action === "bloquer") return { ...suite, trace: { ...suite.trace, ...repli, code_postal: t.cp, ville_tapee: t.ville } };
+      const pfN = suite.action === "commune" ? { ...suite.platform_fields } : { ...pf, ville_publication_lbc: corrigee };
+      const trace = { ...base, ...(suite.action === "commune" ? suite.trace : {}), ...repli, code_postal: t.cp, ville_tapee: t.ville,
+        commune: suite.action === "commune" ? (suite.trace?.commune ?? v.ville) : v.ville, servie: "ville_publication_lbc" };
+      pfN[CLE_COMMUNE_MEME_CP] = trace;
+      return { action: "commune", platform_fields: pfN, trace, motif: "cp_non_commune_repli" };
+    }
+    const q = { cp: t.cp, ville: t.ville, codes: v.codes ?? null, codes_proches: v.codes_proches ?? codesProches(t.cp) };
+    return { action: "bloquer", motif: "cp_non_commune", message: messageVilleNonCommune(q, "fr"), message_en: messageVilleNonCommune(q, "en"),
+      trace: { ...base, motif: v.motif === "plusieurs_codes" ? "plusieurs_codes" : "cp_non_commune", codes: v.codes ?? null,
+        codes_source: v.source ?? null, codes_proches: q.codes_proches || null } };
+  }
   // 2. Un code postal qui n'est celui d'aucune commune : jamais tapé (Leboncoin proposerait une autre commune).
   if (!codePostalDeCommune(t.cp)) {
     return { action: "bloquer", motif: "cp_non_commune", message: messageCodePostalNonCommune(t, "fr"), message_en: messageCodePostalNonCommune(t, "en"),

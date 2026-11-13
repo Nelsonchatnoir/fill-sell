@@ -16,6 +16,8 @@
 import { oeuvreDArt, rayonVintedOeuvre } from "../../../src/utils/oeuvreDArt.js";
 import { tierEtat, RANG_ETAT, etatPourPlateforme } from "./etat-plateformes.js";
 import { idEtatVinted } from "../../../src/utils/etatsVinted.js";
+// (13/11) Une copie au-dessus de l'état CONFIRMÉ de la fiche redescend (état jamais embelli).
+import { copieAuDessusDeLaFiche, etatDeFicheConfirme } from "./etat-embelli.js";
 import { photosEnUrls, photoChezNous } from "./contenu-fiche.js";
 import { grilleColisVinted } from "../../../src/utils/vintedColis.js";
 
@@ -28,11 +30,12 @@ const FEUILLES_OEUVRES = new Set([3847, 3849]);
  * @param {string | null} [etatAvantCapture]  l'état de la fiche relevé AVANT la capture (job.platform_fields.etat_fiche_avant_capture) :
  *                  la capture réécrit l'état de la fiche (capture_vers_inventaire_attributs) avec celui de l'annonce —
  *                  c'est celui d'avant qui fait foi
- * @param {{ grilleDuRayon?: (chemin: string[]) => Array<{id: number}> | null }} [o]  la grille de colis d'un rayon
+ * @param {{ grilleDuRayon?: (chemin: string[]) => Array<{id: number}> | null, sourceAvantCapture?: string | null }} [o]
+ *                  sourceAvantCapture (13/11) : la source de l'état noté avant la capture (« lens » ne fait rien baisser) ;
  *                  (par défaut grilleColisVinted ; injectée par les selftests pour un rayon à grille inconnue)
  * @returns null (rien à corriger) | {libelles, natif, raisons: string[], avant: object}
  */
-export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture = null, { grilleDuRayon = grilleColisVinted } = {}) {
+export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture = null, { grilleDuRayon = grilleColisVinted, sourceAvantCapture = null } = {}) {
   if (!fiche || String(fiche.origine ?? "") === "vinted_sync") return null;   // annonce née sur Vinted : celle du vendeur
   const lib = { ...(libelles && typeof libelles === "object" ? libelles : {}) };
   const nat = { ...(natif && typeof natif === "object" ? natif : {}) };
@@ -80,6 +83,24 @@ export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture
       lib.etat = e.valeur;
       nat.status_id = id;
       raisons.push("etat_de_la_fiche");
+    }
+  } else {
+    // (13/11, lot « zéro problème », étape 5 — décision de Nico : « état jamais embelli ») … ni EMBELLI : notre dépôt
+    // Vinted d'une fiche née ailleurs, au-dessus de l'état CONFIRMÉ de la fiche (annonce, relevé, choix de la personne —
+    // jamais l'estimation de la lecture des photos), est recréé à l'état de la fiche. Les niveaux du juge unique
+    // (_shared/etat-embelli.js) : « Neuf avec étiquette » sur « État neuf » (Leboncoin) reste. Avant la capture, la
+    // source de l'état noté (etat_fiche_avant_capture.source) fait foi ; sans elle, on ne baisse rien.
+    const confirme = etatAvantCapture != null
+      ? etatDeFicheConfirme({ v: etatAvantCapture, source: sourceAvantCapture })
+      : etatDeFicheConfirme(fiche?.attributs?.etat);
+    if (confirme && copieAuDessusDeLaFiche(lib.etat, etatFiche, { plateformeCopie: "vinted" })) {
+      const e = etatPourPlateforme(etatFiche, "vinted");
+      const id = e?.valeur ? idEtatVinted(e.valeur) : null;
+      if (e?.valeur && !e.meilleur && id) {
+        lib.etat = e.valeur;
+        nat.status_id = id;
+        raisons.push("etat_de_la_fiche");
+      }
     }
   }
   return raisons.length ? { libelles: lib, natif: nat, raisons, avant, ...(ecartees.length ? { ecartees } : {}) } : null;

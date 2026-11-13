@@ -63,7 +63,7 @@ import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
 import { rayonTraditionnelImpose } from "../_shared/ebay-rayon-traditionnel.js";
 import { CLES_QUESTION_PLUS_EN_LIGNE, drapeauAvantLaFin, lireQuantiteEbay as lireQuantiteEbayPur, verdictAnnonceEbay } from "../_shared/ebay-etat-annonce.js";
 import {
-  aspectsCategorie, assemblerAspects, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
+  aspectsCategorie, assemblerAspects, choisirCondition, conditionsCategorie, descripteursCondition, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
   lireErreurEbay, lireRefus25129, motifReelEbay, MARKETPLACE, refusRetoursObligatoires, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
   eanAEnvoyer, refusEanRequis, SOURCE_QUESTION_EAN, EAN_SANS_IDENTIFIANT_EBAY_FR, eanDejaEssayeOfficiel,
   type AspectCatalogue, type AttributsInventaire, type ErreurEbay, type PlatformFields,
@@ -77,6 +77,10 @@ import { jobSansMarqueDeCompatibilite } from "../_shared/marque-compatible.js";
 import { motifAnnonceDisparueEbay, raisonFinDepuisXml, relanceDepuisXml } from "../_shared/ebay-disparue-motif.js";
 import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, sourcesACloreApresRetraitTrading, clotureSourceRetiree,
   refusGetItemDefinitif, annonceSupprimeeParEbay } from "../_shared/ebay-retrait-trading.js";
+// (13/11, lot « zéro problème », point 5a de Nico) La description part écrite AU SERVICE, comme sur les autres plateformes :
+// phrase de test du jour de l'envoi (date de la fiche, modèle du vendeur), phrases finales du vendeur en dernier.
+import { descriptionEbayServie } from "../_shared/ebay-description-servie.ts";
+import { consignesDuCompte } from "../_shared/consignes-du-compte.ts";
 
 const HANDLER_BUILD = "ebay-api-worker 3-lens";
 const LOT_MAX = 10;
@@ -808,13 +812,18 @@ async function publier(
   // (18/10, lot 3) L'EAN, seulement après qu'eBay l'a exigé pour CE job : celui
   // de la fiche s'il est lisible, sinon « Ne s'applique pas » (_shared/ebay-publication.ts).
   const ean = eanAEnvoyer(pf as Record<string, unknown>);
+  // (13/11, point 5a de Nico) La description SERVIE (la même pour l'article et pour l'offre) : le texte de la tâche, sa
+  // phrase de test écrite au jour de l'envoi depuis attributs.teste_le de la fiche et le modèle du vendeur, ses phrases
+  // finales en dernier — la règle de get-pending-jobs (_shared/ebay-description-servie.ts). Sans modèle ni date : le
+  // HTML d'avant, à l'octet. La tâche en base garde son texte.
+  const descriptionServie = await descriptionEbayDuJob(admin, job, attributs);
   const item = {
     condition: condition.enumValue,
     ...(desc.descripteurs.length ? { conditionDescriptors: desc.descripteurs } : {}),
     availability: { shipToLocationAvailability: { quantity: 1 } },
     product: {
       title: titreEbay(job.title ?? ""),
-      description: descriptionEbay(job.description ?? "", job.title ?? ""),
+      description: descriptionServie.html,
       aspects,
       imageUrls: photosPublication,
       ...(ean ? { ean: [ean.valeur] } : {}),
@@ -845,7 +854,7 @@ async function publier(
     sku, marketplaceId: MARKETPLACE, format: "FIXED_PRICE", listingDuration: "GTC",
     availableQuantity: 1, categoryId, merchantLocationKey: empl.cle,
     pricingSummary: { price: { value: prix.toFixed(2), currency: "EUR" } },
-    listingDescription: descriptionEbay(job.description ?? "", job.title ?? ""),
+    listingDescription: descriptionServie.html,
     // ── LA POLITIQUE DE LIVRAISON PEUT ÊTRE CHOISIE PAR ARTICLE (2026-09-20,
     //    demande de Louis, compte Business) ────────────────────────────────
     // « Il faudrait pouvoir choisir différents modèles de transport en
@@ -1028,7 +1037,8 @@ async function publier(
   const publishedAt = new Date().toISOString();
   await marquer(admin, job,
     { status: "published", error: null, platform_listing_id: listingId, listing_url: urlAnnonce(listingId), published_at: publishedAt },
-    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin, suggestions: categorie.suggestions }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, ...diagAttributs },
+    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin, suggestions: categorie.suggestions }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, ...diagAttributs,
+      ...(descriptionServie.diagnostic ? { phrase_de_test: descriptionServie.diagnostic } : {}) },
     { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives });
   return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
 }
@@ -1107,6 +1117,24 @@ async function lireInventaire(admin: SupabaseClient, inventaireId: number | null
   const ligne = data as { titre?: string; attributs?: unknown } | null;
   const attributs = (ligne?.attributs && typeof ligne.attributs === "object" && !Array.isArray(ligne.attributs)) ? ligne.attributs as AttributsInventaire : null;
   return { titre: String(ligne?.titre ?? "").trim(), attributs };
+}
+
+// ── (13/11, lot « zéro problème », point 5a de Nico) LA DESCRIPTION SERVIE À eBAY ─────────────────────────────────────
+// Compte de63ca45 : la tâche 70c6910c, publiée le 03/11, disait « Jeu testé aujourd’hui, le 2 novembre 2026 » — le
+// texte de la fiche copié à la création de la tâche partait tel quel ; et ses fiches réparées (phrase sortie du texte,
+// date dans attributs.teste_le) seraient parties SANS phrase. Une lecture légère (les consignes du compte, une ligne)
+// seulement quand une publication atteint l'envoi ; la date vient des attributs déjà lus (lireInventaire / scan Lens).
+// Best-effort, comme get-pending-jobs : une exception laisse partir le texte de la tâche tel quel (HTML d'avant).
+async function descriptionEbayDuJob(admin: SupabaseClient, job: Job, attributs: AttributsInventaire | null): Promise<ReturnType<typeof descriptionEbayServie>> {
+  try {
+    const consignes = await consignesDuCompte(admin, job.user_id);
+    const r = descriptionEbayServie(job, { consignes, attributs });
+    if (r.rendu.modifie) console.log(`[ebay-api-worker] job ${job.id} : phrase de test écrite au jour de l'envoi (test du ${r.rendu.date ?? "∅"}${r.rendu.omise ? ", omise" : ""})`);
+    return r;
+  } catch (e) {
+    console.warn(`[ebay-api-worker] job ${job.id} : phrase de test : ${String((e as Error)?.message ?? e)} — texte de la tâche envoyé tel quel`);
+    return descriptionEbayServie(job, {});
+  }
 }
 
 // ── Lot 2 (07/09/2026) : Lens identify côté serveur, UNE fois par article ──

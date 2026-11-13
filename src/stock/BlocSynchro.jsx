@@ -53,6 +53,10 @@ import { useCompteCloud } from '../cloud/useCompteCloud';
 import { useConnexionsCloudPartage } from '../cloud/useConnexionsCloud';
 import { connexionCloudDe, textesConnexionsCloud, ouvrirConnexionCloud } from '../cloud/connexionsCloud';
 import { PLATEFORMES_CLOUD } from '../cloud/voieCloud';
+// (13/11, décision de Nico — N1) Les plateformes CHOISIES pas vues connectées : un point chacune, avec son geste.
+import { useConnexionsChoisies } from '../plateformes/useConnexionsChoisies';
+import { lignesNonDites } from '../plateformes/connexionChoisie';
+import GesteConnexion from '../plateformes/GesteConnexion';
 
 // Le point d'une pastille de plateforme : teal = à jour ; ambre = à reprendre
 // ou un geste attend ; gris = jamais synchronisée / pas de compte.
@@ -182,6 +186,9 @@ export default function BlocSynchro({
   const compteCloud = useCompteCloud(user?.id ?? null);
   // (08/11, urgent U4) Une plateforme du Cloud jamais connectée dit « pas encore connecté », jamais « à reconnecter ».
   const cxCloud = useConnexionsCloudPartage();
+  // (13/11, décision de Nico — N1, ff1f879f) La connexion de chaque plateforme CHOISIE, dite tout de suite — sans
+  // attendre un relevé raté (plateformes/connexionChoisie : la vérité serveur, lue sans boucle).
+  const cxChoisies = useConnexionsChoisies({ userId: r.userId, lang, actif: ouvert && Boolean(r.userId) });
 
   const vague = useMemo(
     () => lireVague({ plateformes: r.plateformes, runs: r.runs, runVinted: r.runVinted, etatVinted }),
@@ -320,14 +327,16 @@ export default function BlocSynchro({
       // dernier relevé réussi ; les autres, leur dernier relevé demandé.
       const tentative = t.p === 'vinted' ? (etatVinted?.fin?.le ?? run?.finished_at) : (run?.finished_at ?? run?.started_at ?? run?.queued_at);
       const vu = avecDernierReussi({ phase: t.e.phase, fini, tentative }, r.reussis?.[t.p]);
-      return { p: t.p, nom: t.nom, phase: vu.phase, fini: vu.fini, session: etatSession(sessionsBrutes, t.p), api: t.p === 'ebay' && ebayApi };
+      // (13/11, N1) Une plateforme CHOISIE jamais lue n'est jamais « à jour » : la ligne de détail la nomme, avec sa connexion.
+      return { p: t.p, nom: t.nom, phase: vu.phase, fini: vu.fini, session: etatSession(sessionsBrutes, t.p), api: t.p === 'ebay' && ebayApi,
+        choisie: cxChoisies.choisies.includes(t.p), connexion: cxChoisies.lignes.find((l) => l.p === t.p)?.court ?? null };
     }),
     maintenant: Date.now(),
     enCours: actifGlobal || !!r.busy || r.toutBusy,
     stockVideAvecAnnonces: (items?.length ?? 0) === 0 && (bilan.total ?? 0) > 0,
     fr,
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `rendus` : le recalcul à la fin des 15 min
-  }), [tuiles, r.runVinted, r.runs, r.reussis, etatVinted?.fin?.le, sessionsBrutes, ebayApi, actifGlobal, r.busy, r.toutBusy, items?.length, bilan.total, fr, rendus]);
+  }), [tuiles, r.runVinted, r.runs, r.reussis, etatVinted?.fin?.le, sessionsBrutes, ebayApi, actifGlobal, r.busy, r.toutBusy, items?.length, bilan.total, fr, rendus, cxChoisies.choisies, cxChoisies.lignes]);
   const grise = etatBouton.grise;
   useEffect(() => {
     if (!ouvert || !r.userId) return undefined;
@@ -528,10 +537,20 @@ export default function BlocSynchro({
   const msgVintedPoint = msgVinted && msgVinted.ton !== 'vert' ? msgVinted : null;
   const msgVintedInfo = msgVinted && msgVinted.ton === 'vert' ? msgVinted : null;
 
+  // ── (13/11, décision de Nico — N1, ff1f879f) UNE PLATEFORME CHOISIE PAS VUE CONNECTÉE A SON POINT, TOUT DE SUITE ──
+  // Avant, un point ne naissait que d'un relevé raté (absente / échec) : Vinted choisi, jamais relevé, jamais vu
+  // connecté, ne se disait nulle part. Chaque plateforme de la carte choisie et pas vue connectée a désormais son point
+  // (sa phrase, son geste) — sauf celle qui a DÉJÀ le sien (mur, relevé raté, demande expirée, refus Vinted) : ce
+  // message-là reste exactement celui d'avant.
+  const dejaDites = new Set([
+    ...murs.map((m) => m.platform), ...signaux.map((sg) => sg.platform).filter(Boolean), ...expirees.map((t) => t.p),
+    ...(msgVintedPoint || etatVinted?.murVinted ? ['vinted'] : []),
+  ]);
+  const pointsConnexion = lignesNonDites(cxChoisies.lignes.filter((l) => r.plateformes.includes(l.p)), dejaDites);
   // ── LES POINTS À RÉGLER, COMPTÉS UNE FOIS ─────────────────────────────────
   const alertesComptees = alertes.filter((a) => a.compte !== false);
   const nbPoints = murs.length + signaux.length + (r.message ? 1 : 0) + (msgVintedPoint ? 1 : 0) + (nbARattacher > 0 ? 1 : 0) + (nbArticlesAVerifier > 0 ? 1 : 0)
-    + (nbDoublons > 0 ? 1 : 0) + (!extVue ? 1 : 0) + alertesComptees.length;
+    + (nbDoublons > 0 ? 1 : 0) + (!extVue ? 1 : 0) + alertesComptees.length + pointsConnexion.length;
   const infoSansPoint = nbPoints === 0
     ? (nbRangement > 0 ? T.rangement(nbRangement, nomsRangement) : (alertes[0]?.titre ?? null))
     : null;
@@ -767,6 +786,12 @@ export default function BlocSynchro({
           ))}
           {signaux.map((sg) => (
             <CartePoint key={sg.cle} platform={sg.platform ?? null} icone={sg.icone ?? null} titre={sg.titre} texte={sg.texte} bouton={sg.bouton ?? null} />
+          ))}
+          {/* (13/11, N1) Une plateforme choisie pas vue connectée : sa phrase et son geste (plateformes/GesteConnexion). */}
+          {pointsConnexion.map((l) => (
+            <CartePoint key={`connexion-${l.p}`} platform={l.p} titre={l.titre} texte={l.texte}
+              enfant={<GesteConnexion ligne={l} userId={r.userId} lang={lang} origine="bloc_synchro"
+                onAvantCloud={() => setFeuille(false)} onOuverte={() => { cxChoisies.relire(); r.recharger(); }} />} />
           ))}
           {nbArticlesAVerifier > 0 && (
             <CartePoint titre={T.aVerifierTitre(nbArticlesAVerifier)} texte={T.aVerifierTexte}

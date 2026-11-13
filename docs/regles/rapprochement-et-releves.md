@@ -603,3 +603,25 @@ ouvert avec l'extension FillSell » — alors que son Vinted était relevé par 
   (b695d990 : 4 annonces eBay ; d607ba20, d0ac0538 : aucune) ; 0 tâche eBay ouverte. À traiter avec l'étape 4 (eBay par
   l'API, site de chaque compte) et l'étape 3 (retraits).
 - Verrou : `npm run selftest:cloud-releves-sans-ordinateur` (13 rouges sur 881c2b9 + 4a, 32 verts après).
+
+## ⛔ 13/11 (lot du 13/11, N6a — bf85d176) — le même objet : rattaché, ou la question HORS du stock ; jamais publié là où il est déjà en ligne
+Rapport du lot du 13/11 (point N6a). Cas : le dressing Vinted du 12/11 15:33 crée 1794494010078017 pour un clavier
+déjà au stock (1790174130756 : Leboncoin 3272015849 + eBay 407214160146, posés par le moteur, mêmes photos) ; la passe de 15:40
+décide « fusionner » × 2, la base saute (`fusionner_article_modifie` : un import « intact » ne porte qu'UNE annonce), pose la
+question 892d1bf0 et laisse la fiche du dressing au stock ; le lot de 15:53 la publie sur Leboncoin (refusée comme semblable).
+- **Rattachement** (`rapprochement_v3_appliquer`, « fusionner » vers une fiche du dressing nouvelle) : un import intact SAUF le
+  nombre de ses annonces la rejoint quand TOUTES ses annonces vivantes sont dans le groupe fort de la passe, qu'aucune n'a été
+  posée par la personne (ni par un dépôt) et qu'aucune plateforme n'est des deux côtés (`rapprochement_v3_import_rattachable`).
+- **Doute** (import vraiment touché) : la question, ET la fiche du dressing NÉE de ce relevé, que personne n'a touchée, sort du
+  stock le temps de la réponse (`rapprochement_v3_vinted_a_verifier`, circuit des articles à vérifier). Même sortie pour « fiche
+  à la main face à une fiche Vinted » (règle du 08/10) : `rapprochement_v3_marquer` la refusait TOUJOURS (la tâche Vinted du
+  dressing n'a pas de source « releve » — aucune fiche Vinted marquée par cette règle depuis le 15/10).
+- **Publication** (`spend_coins_and_publish`, avant tout débit) : retenue vers une plateforme où l'AUTRE fiche d'une question
+  « Est-ce le même article ? » OUVERTE, posée sur une photo identique, est en ligne ou en file (`publication_meme_objet_en_ligne`) —
+  jamais pour deux exemplaires (« Non » répondu, quantité > 1, ou les deux fiches déjà sur une même plateforme), jamais sur un
+  titre ni un doute à plusieurs candidats (la règle du 09/10, Louis, tient : sans question ouverte, l'annonce d'une autre fiche
+  n'est jamais un « déjà en ligne »). Réponse `already_published` + `meme_objet` : l'app nomme l'autre fiche, la question et
+  l'endroit où elle est (Stock › Synchroniser, ou À régler › Annonces à vérifier).
+- Migration `20261113180000` PRÉPARÉE (corps de prod du 13/11 + blocs ⟦13/11 N6a⟧, garde md5, inverse à l'octet, banc
+  jetable) ; rattrapage des questions déjà posées : `scripts/reparations/20261113_meme_objet_import_groupe*.sql` (3 au 13/11).
+  Verrou `selftest:meme-objet-import`.

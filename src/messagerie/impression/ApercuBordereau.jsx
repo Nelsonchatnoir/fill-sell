@@ -23,7 +23,7 @@ import { ORDRE_RECADRAGES, libelleRecadrage, nomFichier } from './geometrie';
 import { chargerCopieBordereau, recadrageRetenu, retenirRecadrage } from './copies';
 import { fichier, imprimer, partager, telechargerFichier } from './partage';
 import CodeDepot from './CodeDepot';
-import { libelleTransporteur, repereBordereau } from '../vue';
+import { gesteImpression, libelleTransporteur, repereBordereau } from '../vue';
 import { Bouton, Note, Segments } from './ui';
 import { ENCRE2, LIGNE, MENTHE, POLICE } from './style';
 import { libellesActions } from './actions';
@@ -47,9 +47,11 @@ function motifEnClair(motif, fr) {
  * Props : ouvert, copie {id?, chemin?|octets?|url?, platform, transporteur?,
  * commande_ref?, cree_le?, imprime_le?}, supabase, lang, onFermer,
  * onImprime(ids) — (13/11, étape 5) appelé quand le geste (partager / imprimer / télécharger) RÉUSSIT.
+ * (13/11, lot NU — I3) gesteDispo (la base sait « Marquer non imprimé »), annulable, onNonImprime(ids, retablir) → { ok }.
  */
-export default function ApercuBordereau({ ouvert = true, copie, supabase, lang = 'fr', onFermer, onImprime = null }) {
+export default function ApercuBordereau({ ouvert = true, copie, supabase, lang = 'fr', onFermer, onImprime = null, gesteDispo = false, annulable = false, onNonImprime = null }) {
   const fr = lang !== 'en';
+  const [gesteOccupe, setGesteOccupe] = useState(false);
   const [phase, setPhase] = useState('chargement');
   const [source, setSource] = useState(null);
   const [format, setFormat] = useState(formatRetenu);
@@ -146,6 +148,15 @@ export default function ApercuBordereau({ ouvert = true, copie, supabase, lang =
   const sousTitre = [pf, copie?.commande_ref ? `${fr ? 'commande' : 'order'} ${copie.commande_ref}` : null, transporteur].filter(Boolean).join(' · ');
   // (13/11, étape 5) « Bordereau du JJ/MM · Imprimé le JJ/MM » : un bordereau déjà imprimé se voit avant de repartir.
   const repere = repereBordereau(copie, lang);
+  // (13/11, lot NU — décision de Nico, I3) « Marquer non imprimé » (puis « Annuler ») sous le repère, comme sur la carte.
+  const geste = onNonImprime && copie?.id ? gesteImpression(copie, { disponible: gesteDispo, annulable }, lang) : null;
+  const basculer = async () => {
+    if (!geste || gesteOccupe) return;
+    setGesteOccupe(true); setNote(null);
+    const r = await onNonImprime?.([copie.id], geste.action === 'retablir');
+    setGesteOccupe(false);
+    if (r && !r.ok) setNote({ ton: 'rouge', texte: fr ? 'Pas enregistré : réessaie.' : 'Not saved: try again.' });
+  };
   const estPdf = source?.genre === 'pdf';
   const confianceFaible = format === '10x15' && sortie && recadrage === 'auto' && sortie.confiance !== 'haute';
   const retenuAilleurs = format === '10x15' && recadrage !== 'auto';
@@ -165,6 +176,12 @@ export default function ApercuBordereau({ ouvert = true, copie, supabase, lang =
           <div style={{ fontSize: 16, fontWeight: 700 }}>{format === 'code' ? (fr ? 'Code de dépôt' : 'Drop-off code') : (fr ? 'Bordereau' : 'Shipping label')}</div>
           {sousTitre && <div style={{ fontSize: 12.5, color: ENCRE2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sousTitre}</div>}
           {repere && <div data-repere-impression style={{ fontSize: 12, fontWeight: 700, color: repere.imprime ? MENTHE_ENCRE : ENCRE2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repere.texte}</div>}
+          {repere && geste && (
+            <button type="button" data-geste-impression={geste.action} disabled={gesteOccupe} onClick={basculer}
+              style={{ minHeight: 32, padding: '2px 0', border: 'none', background: 'none', color: ENCRE2, fontFamily: 'inherit', fontSize: 12, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 3, cursor: gesteOccupe ? 'default' : 'pointer', opacity: gesteOccupe ? 0.6 : 1 }}>
+              {geste.libelle}
+            </button>
+          )}
         </div>
       </div>
 

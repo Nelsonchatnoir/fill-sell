@@ -28,7 +28,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
 import Icone from '../ecrans/Icone';
 import { demarrerRelecture } from '../utils/relectureBornee';
-import { sourcesVignette, suiviCommande, commandesEnRoute, etapeSuivi, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, extensionCommandeVinted, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau, repereBordereau, copiesAImprimer } from './vue';
+import { sourcesVignette, suiviCommande, commandesEnRoute, etapeSuivi, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, extensionCommandeVinted, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau, repereBordereau, copiesAImprimer, gesteImpression } from './vue';
 import { ouvrirLien } from './ouvrir';
 import { useReglagesMessagerie } from './useMessagerieBeta';
 import Couche from './Couche';
@@ -185,8 +185,14 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
   // (18/10) L'extension de ce compte sait-elle commander l'étiquette Vinted (0.6.126) ? null = inconnu.
   const [extensionVinted, setExtensionVinted] = useState(null);
   const vivant = useRef(true);
-  // (13/11) Colonne imprime_le absente (avant la migration 20261113153000) : on ne la relit plus jusqu'au prochain écran.
-  const imprimeAbsente = useRef(false);
+  // (13/11) Ce que la base sait du repère « imprimé », lu une fois par écran puis retenu (jamais une lecture vaine pendant
+  // une attente) : 'complet' (imprime_le + le geste « Marquer non imprimé », migrations 20261113153000 et 20261113193000),
+  // 'imprime' (imprime_le seul), 'absent' (aucune des deux), null (pas encore lu).
+  const niveauImpression = useRef(null);
+  // (13/11, lot NU — décision de Nico, I3) Le geste « Marquer non imprimé » : montré seulement si la base sait le faire ;
+  // `annulables` = les copies marquées non imprimées sur cet écran (« Annuler » rend la date retirée).
+  const [gesteDispo, setGesteDispo] = useState(false);
+  const [annulables, setAnnulables] = useState(() => new Set());
 
   const charger = useCallback(async () => {
     const maintenant = new Date().toISOString();
@@ -220,11 +226,23 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
     // migration 20261113153000 la colonne n'existe pas, et la mettre dans la lecture du dessus viderait la liste. Ici, son
     // échec laisse imprime_le absent (repère inconnu : la date du bordereau seule, « Tout imprimer » comme avant). Lue
     // AVANT de poser la liste : jamais une commande affichée sans sa copie.
+    // (13/11, lot NU — I3) Par paliers, du plus complet au plus ancien : non_imprime_le lisible = le geste « Marquer non
+    // imprimé » existe (migration 20261113193000) ; sinon imprime_le seul (comme avant) ; sinon rien. Un échec qui n'est pas
+    // une colonne absente (réseau) ne tranche rien : le palier sera relu à la prochaine lecture.
     const idsCopies = Object.values(cp).map((x) => x.id).filter(Boolean);
-    if (idsCopies.length && !imprimeAbsente.current) {
+    if (idsCopies.length && niveauImpression.current !== 'absent') {
       try {
-        const im = await supabase.from('bordereaux_copies').select('id,imprime_le').in('id', idsCopies);
-        if (colonneAbsente(im.error)) imprimeAbsente.current = true; // pas de relecture vaine pendant une attente
+        let im = null;
+        if (niveauImpression.current !== 'imprime') {
+          im = await supabase.from('bordereaux_copies').select('id,imprime_le,non_imprime_le').in('id', idsCopies);
+          if (!im.error) niveauImpression.current = 'complet';
+          else if (colonneAbsente(im.error)) im = null; // le geste n'est pas encore en base : imprime_le seul
+        }
+        if (im === null) {
+          im = await supabase.from('bordereaux_copies').select('id,imprime_le').in('id', idsCopies);
+          if (colonneAbsente(im.error)) niveauImpression.current = 'absent'; // pas de relecture vaine pendant une attente
+          else if (!im.error) niveauImpression.current = 'imprime';
+        }
         if (!im.error) {
           const quand = new Map((im.data ?? []).map((x) => [x.id, x.imprime_le ?? null]));
           for (const x of Object.values(cp)) if (quand.has(x.id)) x.imprime_le = quand.get(x.id);
@@ -232,6 +250,7 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       } catch { /* repère seulement : jamais un point de panne */ }
     }
     if (!vivant.current) return undefined;
+    setGesteDispo(niveauImpression.current === 'complet');
     if (c.error) { setErreur(true); setCommandes([]); return false; }
     setErreur(false);
     setCommandes(commandesAExpedier(c.data ?? []));
@@ -286,6 +305,42 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       setApercu((a) => (a && quand.has(a.id) ? { ...a, imprime_le: quand.get(a.id) } : a));
     } catch { /* repère seulement : jamais un point de panne */ }
   }, [supabase]);
+
+  // (13/11, lot NU — décision de Nico, I3) « Marquer non imprimé » (retablir = false) et son « Annuler » (retablir = true) :
+  // RPC bordereau_marquer_non_imprime (propriétaire seul ; la date retirée est gardée par le serveur dans imprime_avant et
+  // rendue à l'identique par « Annuler »). La réponse du serveur (imprime_le de chaque copie) met l'écran à jour, sans
+  // relecture. Rend { ok } : un geste de la personne qui n'aboutit pas se DIT (à l'inverse du marquage automatique).
+  const marquerNonImprime = useCallback(async (ids, retablir = false) => {
+    const liste = [...new Set((ids ?? []).filter(Boolean))];
+    if (!liste.length) return { ok: false };
+    try {
+      const { data, error } = await supabase.rpc('bordereau_marquer_non_imprime', { p_copies: liste, p_retablir: retablir === true });
+      if (error) return { ok: false };
+      if (!vivant.current) return { ok: true };
+      const rendues = new Map((Array.isArray(data?.copies) ? data.copies : []).filter((x) => x?.id).map((x) => [x.id, x.imprime_le ?? null]));
+      setCopies((k) => {
+        const out = { ...k };
+        for (const [cid, x] of Object.entries(k)) if (x && rendues.has(x.id)) out[cid] = { ...x, imprime_le: rendues.get(x.id) };
+        return out;
+      });
+      setApercu((a) => (a && rendues.has(a.id) ? { ...a, imprime_le: rendues.get(a.id) } : a));
+      setAnnulables((s) => {
+        const n = new Set(s);
+        for (const id of liste) { if (retablir !== true && rendues.has(id) && rendues.get(id) == null) n.add(id); else n.delete(id); }
+        return n;
+      });
+      return { ok: true };
+    } catch { return { ok: false }; }
+  }, [supabase]);
+
+  const basculerImpression = async (c, copie, g) => {
+    if (!copie?.id || !g) return;
+    setOccupee(`impression:${copie.id}`);
+    setNotes((n) => ({ ...n, [c.id]: null }));
+    const r = await marquerNonImprime([copie.id], g.action === 'retablir');
+    setOccupee(null);
+    if (!r.ok) setNotes((n) => ({ ...n, [c.id]: fr ? 'Pas enregistré : réessaie.' : 'Not saved: try again.' }));
+  };
 
   const demanderBordereau = async (c) => {
     if (copies[c.id]) { setApercu(copiePour(c, copies[c.id])); return; }
@@ -429,7 +484,21 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
             {copie && (() => {
               // (13/11, étape 5 — compte 447d920c) « Bordereau du JJ/MM · Imprimé le JJ/MM » (ou « Pas encore imprimé »).
               const r = repereBordereau(copie, lang);
-              return r ? <div data-repere-impression={r.imprime === true ? 'imprime' : r.imprime === false ? 'non' : 'inconnu'} style={{ fontSize: 12.5, fontWeight: 700, color: r.imprime === true ? TONS.ok.encre : UI.ink }}>{r.texte}</div> : null;
+              if (!r) return null;
+              // (13/11, lot NU — I3) « Marquer non imprimé » (puis « Annuler »), seulement si la base sait le faire.
+              const g = gesteImpression(copie, { disponible: gesteDispo, annulable: annulables.has(copie.id) }, lang);
+              const occupe = occupee === `impression:${copie.id}`;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px 12px', flexWrap: 'wrap' }}>
+                  <div data-repere-impression={r.imprime === true ? 'imprime' : r.imprime === false ? 'non' : 'inconnu'} style={{ fontSize: 12.5, fontWeight: 700, color: r.imprime === true ? TONS.ok.encre : UI.ink }}>{r.texte}</div>
+                  {g && (
+                    <button type="button" data-geste-impression={g.action} disabled={occupe} onClick={() => basculerImpression(c, copie, g)}
+                      style={{ minHeight: 32, padding: '4px 0', border: 'none', background: 'none', color: ENCRE2, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 3, cursor: occupe ? 'default' : 'pointer', opacity: occupe ? 0.6 : 1 }}>
+                      {g.libelle}
+                    </button>
+                  )}
+                </div>
+              );
             })()}
             {copie && <div style={{ fontSize: 12, color: ENCRE2 }}>{fr ? `Copie gardée jusqu’au ${dateCourte(copie.expire_le, lang)}, puis effacée.` : `Copy kept until ${dateCourte(copie.expire_le, lang)}, then erased.`}</div>}
             {etatD && <div role="status" style={{ fontSize: 12.5, fontWeight: 600, color: (TONS[etatD.ton] ?? TONS.neutre).encre, lineHeight: 1.45 }}>{etatD.texte}</div>}
@@ -475,7 +544,8 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
           onAnnuler={() => setConfirmation(null)}
           onConfirmer={(choix, phrase) => confirmerGeneration(confirmation.commande, choix, phrase)} />
       )}
-      {apercu && <Suspense fallback={null}><ApercuBordereau ouvert copie={apercu} supabase={supabase} lang={lang} onImprime={marquerImprime} onFermer={() => setApercu(null)} /></Suspense>}
+      {apercu && <Suspense fallback={null}><ApercuBordereau ouvert copie={apercu} supabase={supabase} lang={lang} onImprime={marquerImprime}
+        gesteDispo={gesteDispo} annulable={annulables.has(apercu.id)} onNonImprime={marquerNonImprime} onFermer={() => setApercu(null)} /></Suspense>}
     </section>
   );
 }

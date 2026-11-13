@@ -58,7 +58,14 @@ ok(/from "\.\.\/_shared\/cron-refus\.js"/.test(od), 'ops-digest importe la règl
 ok(/lirePagesUsage\(\["cron_refuse"\], iso24h\)/.test(od), 'ops-digest lit usage_logs « cron_refuse » des 24 h (par pages)');
 ok(/\.like\("erreur", "%cadence cron :%"\)/.test(od), 'repli : les notes des relevés porteurs (avant la migration)');
 ok(/Refus de cadence du relevé Vinted automatique/.test(od) && /cron_refus_24h/.test(od), 'section du digest + compteur dans la réponse');
-ok(od.includes('cron_refus_24h') && !/cron_refus[a-z_]*:\s*cronRefus/.test(od.slice(od.indexOf('const counts = {'), od.indexOf('const total = Object.values(counts)'))), 'informatif : n\'entre PAS dans les anomalies qui font partir le digest');
+// (13/11, décision de Nico — question I5 : « rouge au-delà d'un seuil ») Sous le seuil, la section reste informative : le
+// NOMBRE de refus n'entre jamais dans les anomalies ; seul le seuil franchi y compte, pour une (selftest:cron-refus-seuil).
+{
+  const counts = od.slice(od.indexOf('const counts = {'), od.indexOf('const total = Object.values(counts)'));
+  const lignesCron = counts.match(/cron_refus[a-z_]*:[^\n]*/g) ?? [];
+  ok(od.includes('cron_refus_24h') && lignesCron.length === 1 && /^cron_refus_au_dela_du_seuil:\s*cronRefusRouge \? 1 : 0/.test(lignesCron[0]),
+    'informatif sous le seuil : le nombre de refus n\'entre PAS dans les anomalies (seul le seuil franchi compte, pour une)', lignesCron.join(' | '));
+}
 
 console.log('\nE. LA MIGRATION (préparée, NON appliquée), SON INVERSE, SON BANC');
 const mig = lire('supabase/migrations/20261113154000_cron_refus_journalise.sql');

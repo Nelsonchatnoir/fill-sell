@@ -375,10 +375,22 @@ export function releveIncomplet(run) {
   return run.status === 'incomplete' || (run.status === 'done' && String(run.erreur ?? '').startsWith('[incomplet]'));
 }
 
+// (13/11, lot NU — décision de Nico, question I4 de l'étape 5 : « oui, l'en-tête compte « en vente » ») Le relevé du
+// dressing Vinted lit TOUT ce que Vinted affiche, vendues comprises (447d920c, relevé du 11/11 20:29 : 256 lus = 245
+// « active » + 11 « sold ») : l'en-tête « N annonces » comptait 256 quand la pastille disait « 245 en vente ». Vinted
+// compte désormais son « en vente » (run.en_vente : posé par vintedSync.compterEnVenteDuReleve SEULEMENT s'il est fiable —
+// annonces/boutiqueVinted.enVenteFiable), comme la pastille (etatTuile) ; pas fiable, absent ou illisible → le compte
+// d'avant (items_vus), jamais une valeur inventée. Les autres plateformes : inchangées.
+export function compteVintedDuBilan(runVinted) {
+  const vus = Number(runVinted?.items_vus ?? 0);
+  const ev = runVinted?.en_vente;
+  return typeof ev === 'number' && Number.isFinite(ev) && ev >= 0 && Number.isFinite(vus) && ev <= vus ? ev : vus;
+}
+
 export function lireBilan({ plateformes, runs, runVinted }) {
   const reussis = [];
   if (runVinted?.finished_at && plateformes.includes('vinted')) {
-    reussis.push({ fini: Date.parse(runVinted.finished_at), vus: Number(runVinted.items_vus ?? 0) });
+    reussis.push({ fini: Date.parse(runVinted.finished_at), vus: compteVintedDuBilan(runVinted) });
   }
   for (const p of plateformes) {
     if (p === 'vinted') continue;

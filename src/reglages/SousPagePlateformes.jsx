@@ -36,6 +36,9 @@ import { Groupe, Carte, Pastille, Note } from './ReglagesUI';
 import { useConnexionsCloudPartage } from '../cloud/useConnexionsCloud';
 import { connexionCloudDe } from '../cloud/connexionsCloud';
 import { PLATEFORMES_CLOUD } from '../cloud/voieCloud';
+// (13/11, décision de Nico — N1) La MÊME phrase que le Tableau et le Stock pour une plateforme CHOISIE pas vue connectée.
+import { useConnexionsChoisies } from '../plateformes/useConnexionsChoisies';
+import GesteConnexion from '../plateformes/GesteConnexion';
 
 // Noms propres, pas du vocabulaire : ils ne se traduisent pas.
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
@@ -82,12 +85,16 @@ export default function SousPagePlateformes({ c, T }) {
   // session d'Opla — un refus connu → « à autoriser », un accès prouvé → jamais
   // « à autoriser » ; sans aucune preuve, le bouton reste (garde-fou).
   const { verdict: verdictOpla, relire: relireOpla } = useOplaAcces({ userId, actif: (liste ?? []).includes('opla') });
+  // (13/11, N1) Les plateformes choisies pas vues connectées : la règle commune (plateformes/connexionChoisie).
+  const cxChoisies = useConnexionsChoisies({ userId, lang: c.lang, actif: Boolean(userId) });
+  const relireChoisies = cxChoisies.relire;
 
   const relire = useCallback(() => {
     c.verite?.relire?.();
     c.sessions?.relire?.();
     relireOpla();
-  }, [c.verite, c.sessions, relireOpla]);
+    relireChoisies();
+  }, [c.verite, c.sessions, relireOpla, relireChoisies]);
 
   const ecarter = useCallback((pf, valeur) => {
     if (!c.verite?.ecarter) return;
@@ -117,13 +124,19 @@ export default function SousPagePlateformes({ c, T }) {
             // Opla sans AUCUNE preuve d'accès, et pas écartée : le bouton reste.
             const oplaSansPreuve = pf === 'opla' && verdictOpla === 'inconnu' && etat !== ETATS.ECARTEE && etat !== ETATS.A_AUTORISER;
             const quand = !cxEtat && v.depuis ? ilYA(v.depuis, fr) : null;
+            // (13/11, décision de Nico — N1) Plateforme CHOISIE pas vue connectée (hors Cloud, qui garde ses mots) : la
+            // phrase et le geste de la règle commune — « FillSell ne voit pas encore ta connexion à X », « session vue,
+            // vérification bloquée » (jamais « pas connecté »), Depop à autoriser.
+            const lc = !cxEtat ? (cxChoisies.lignes.find((l) => l.p === pf) ?? null) : null;
+            const lcInconnue = lc && etat === ETATS.INCONNUE;
             const ton = etat === ETATS.CONNECTEE ? 'ok'
-              : (etat === ETATS.A_CONNECTER || etat === ETATS.A_AUTORISER) ? 'ko' : 'inconnu';
+              : (etat === ETATS.A_CONNECTER || etat === ETATS.A_AUTORISER || lcInconnue) ? 'ko' : 'inconnu';
             const libelle = etat === ETATS.CONNECTEE ? T.veriteConnecte
               : etat === ETATS.A_CONNECTER ? T.pasConnecte
               : etat === ETATS.A_AUTORISER ? T.veriteAAutoriser
               : etat === ETATS.ECARTEE ? T.veriteEcartee
               : etat === ETATS.A_VERIFIER ? T.veriteAVerifier
+              : lcInconnue ? `${lc.court.charAt(0).toUpperCase()}${lc.court.slice(1)}`
               : T.veritePasVerifie;
             const grisee = etat === ETATS.ECARTEE;
 
@@ -147,8 +160,16 @@ export default function SousPagePlateformes({ c, T }) {
                 {/* ── UNE PHRASE, UN GESTE ─────────────────────────────────── */}
                 {etat === ETATS.A_CONNECTER && pf !== 'ebay' && (
                   <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <span style={{ fontSize: 14, color: R.ink }}>{cxEtat ? (fr ? `Connecte ${nom} à FillSell Cloud.` : `Connect ${nom} to FillSell Cloud.`) : T.veriteConnecteToi(nom)}</span>
+                    <span style={{ fontSize: 14, color: R.ink }}>{cxEtat ? (fr ? `Connecte ${nom} à FillSell Cloud.` : `Connect ${nom} to FillSell Cloud.`) : (lc?.texte ?? T.veriteConnecteToi(nom))}</span>
                     <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.CONNEXION} lang={c.lang} onOuverte={relire} />
+                  </div>
+                )}
+                {/* (13/11, N1) Choisie, jamais vue connectée (ou session vue mais vérification bloquée) : la même phrase
+                    que le Tableau et le Stock, et son geste. Depop à autoriser : sa phrase, « Autoriser Depop ». */}
+                {(lcInconnue || (lc && pf === 'depop' && etat === ETATS.A_AUTORISER)) && (
+                  <div data-connexion-choisie={pf} style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <span style={{ fontSize: 14, color: R.ink }}>{lc.texte}</span>
+                    <GesteConnexion ligne={lc} userId={userId} lang={c.lang} onOuverte={relire} origine="reglages_plateformes" />
                   </div>
                 )}
                 {etat === ETATS.A_CONNECTER && pf === 'ebay' && (
@@ -174,7 +195,7 @@ export default function SousPagePlateformes({ c, T }) {
                     />
                   </div>
                 )}
-                {etat === ETATS.A_AUTORISER && (
+                {etat === ETATS.A_AUTORISER && !(lc && pf === 'depop') && (
                   <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <span style={{ fontSize: 14, color: R.ink }}>{T.veriteAutoriseOpla}</span>
                     <span style={{ fontSize: 13, color: R.texteSecondaire }}>{c.oplaOuverte ? T.veriteAutoriseOplaComment : T.veriteAutoriseOplaCommentSortie}</span>

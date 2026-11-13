@@ -19,7 +19,7 @@ import { Groupe, Carte, Bouton, Note } from '../reglages/ReglagesUI';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { palierDesDrapeaux } from '../utils/palier';
 import { textesFormules, NOMS_FORMULES, NOMS_PALIERS_SEULS } from './textesFormules';
-import { cartesFormulesCloud, essaiPermisDuCompte, nomAbonnementsBoutique, canalDuCloudSeul, voieFormulesDuCompte, texteNoteCarte } from './formulesCloud';
+import { cartesFormulesCloud, essaiPermisDuCompte, nomAbonnementsBoutique, canalDuCloudSeul, voieFormulesDuCompte, texteNoteCarte, formulesMasqueesPourLaVoie } from './formulesCloud';
 import { BasculeCloud } from './OffresAvecCloud';
 import { dateLongue, finEssaiSiOnCommence } from './regles';
 import { canalDeVente, formulesCloudOuvertes, FORMULE_CLOUD_DU_PALIER, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES } from '../config/cloudOffer';
@@ -147,14 +147,14 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
 
   // ── Client du Cloud seul (hérité) : son bloc reste ; une ligne pour passer à une formule ───────────────────────────
   if (cloud && (cloud.etat === 'essai' || cloud.etat === 'paye')) {
-    // (12/11, 4c) Le Cloud seul facturé par une AUTRE voie que cette app (App Store / Google Play vus sur le web, carte vue
-    // sur mobile) : aucun bouton qui finirait sur un refus — on dit où, et « bientôt » si la boutique n'a pas encore les
-    // formules (Apple tant qu'il les valide).
+    // (12/11, 4c) Le Cloud seul payé par carte, vu sur iPhone / Android : le changement se fait sur le web.
+    // (13/11, décision de Nico) Plus de « … y arrivent bientôt » : le Cloud seul d'une BOUTIQUE (App Store / Google Play)
+    // ne se change pas en formule sans un second abonnement — rien ne s'affiche ici (son bloc Cloud reste, lui).
     const canalCloud = canalDuCloudSeul(lecture);
-    const voieCloud = voieFormulesDuCompte({ canalApp, canalFacture: canalCloud, canalOuvert: formulesCloudOuvertes });
+    const voieCloud = voieFormulesDuCompte({ canalApp, canalFacture: canalCloud, canalOuvert: formulesCloudOuvertes, canalCloud });
+    if (formulesMasqueesPourLaVoie(voieCloud)) return null;
     if (voieCloud !== 'ici') {
-      const texte = voieCloud === 'boutique_bientot' ? T.cloudBoutiqueBientot(canalCloud)
-        : voieCloud === 'boutique' ? T.cloudBoutique(canalCloud) : T.carteSurMobile;
+      const texte = T.carteSurMobile;
       return (
         <div data-formules-reglages="herite_autre_canal" data-voie={voieCloud} style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '-4px 0 8px' }}>
           <p style={pNote}>{texte}</p>
@@ -215,7 +215,7 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
               <p style={{ ...pTexte, fontWeight: 600 }}>{T.ajouterLigne(NOMS_PALIERS_SEULS[palier], nom, prix)}</p>
               {modele.founder && <p style={{ ...pNote, color: '#8A4B2C' }}>{T.founder}</p>}
               {sienne.achetable && typeof actions.formule === 'function' && (
-                <Bouton ton="plein" disabled={!prixPret(f) || sienne.enLecture} onClick={() => actions.formule(f, { essaiAffiche: sienne.essai === true })} style={{ width: '100%' }}>
+                <Bouton ton="plein" disabled={!prixPret(f) || sienne.enLecture} onClick={() => actions.formule(f, { essaiAffiche: sienne.essai === true, abonneBoutique: canalApp !== 'stripe' && profil.canalAbonnement === canalApp })} style={{ width: '100%' }}>
                   {sienne.enLecture ? '…' : libelle}
                 </Bouton>
               )}

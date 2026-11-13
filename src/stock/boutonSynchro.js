@@ -88,10 +88,16 @@ export function texteAutomatique(fr = true) {
   return fr ? 'La synchro et la surveillance des ventes sont automatiques.' : 'Syncing and sales tracking are automatic.';
 }
 
+// ── (13/11, décision de Nico — N1, ff1f879f) UNE PLATEFORME CHOISIE JAMAIS LUE N'EST JAMAIS « À JOUR » ──────────────
+// ff1f879f, 13/11 de 02:00 à 02:15 : Vinted choisi, jamais lu, sans session vue → exclu du compte ; le bouton disait,
+// grisé, « Tout est à jour, prochaine synchro automatique vers … ». Une plateforme CHOISIE (`choisie: true`) jamais lue
+// et pas connectée entre désormais dans le détail (« Vinted : connexion pas encore vue », `connexion` = le mot court de
+// plateformes/connexionChoisie) et empêche le grisé. Une plateforme pas choisie, jamais lue : comme avant (hors compte).
 /**
- * L'état du bouton. `plateformes` : [{ p, nom, phase, fini, session, api }] — `phase` celle de la pastille
- * (etatTuile : fait, en_cours, absente, jamais, echec, expire, incomplet, hors_compte), `fini` la fin du dernier relevé
- * réussi (ms ou ISO), `session` le verdict de la sonde ('ok' | 'ko' | null), `api` eBay relié par l'API.
+ * L'état du bouton. `plateformes` : [{ p, nom, phase, fini, session, api, choisie?, connexion? }] — `phase` celle de la
+ * pastille (etatTuile : fait, en_cours, absente, jamais, echec, expire, incomplet, hors_compte), `fini` la fin du dernier
+ * relevé réussi (ms ou ISO), `session` le verdict de la sonde ('ok' | 'ko' | null), `api` eBay relié par l'API,
+ * `choisie` la plateforme est choisie par le vendeur, `connexion` le mot court de sa connexion (ou null).
  * @returns {{ grise: boolean, finGriseA: number | null, lignes: Array<{ p: string, texte: string, aJour: boolean }>, connectees: string[] }}
  */
 export function etatBoutonSynchro({ plateformes = [], maintenant = Date.now(), enCours = false, stockVideAvecAnnonces = false, fr = true } = {}) {
@@ -105,7 +111,14 @@ export function etatBoutonSynchro({ plateformes = [], maintenant = Date.now(), e
     const fini = ms(x?.fini);
     const jamaisLue = phase === 'absente' || phase === 'jamais';
     const connectee = !jamaisLue || x?.session === 'ok' || x?.api === true;
-    if (!connectee) continue;
+    if (!connectee) {
+      if (x?.choisie === true) {
+        toutesAJour = false;
+        const mot = x?.connexion ? String(x.connexion) : (fr ? 'pas encore synchronisé' : 'not synced yet');
+        lignes.push({ p: String(x.p), texte: fr ? `${nom} : ${mot}` : `${nom}: ${mot}`, aJour: false });
+      }
+      continue;
+    }
     connectees.push(String(x.p));
     const aJour = phase === 'fait' && Number.isFinite(fini) && maintenant - fini < SYNCHRO_A_JOUR_MS;
     if (aJour) {

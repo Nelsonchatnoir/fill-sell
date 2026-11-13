@@ -11,7 +11,7 @@ import { ATTENTE_ALERTE_MS, PLATEFORMES_EXTENSION, executantsDeclares, filesArre
 // (05/11, R3) Les retraits non terminés > 24 h jugés : rouge (double vente possible), orange (geste attendu), blanc.
 import { classerRetraitsEnRetard, jugerRetraitEnRetard, numeroAnnonce, sujetAvecDoubleVente } from "../_shared/retraits-en-retard.js";
 // (13/11, étape 5, bloc 6 P3) Les refus de cadence du relevé Vinted automatique : la règle de lecture partagée avec la base.
-import { resumerNotesPorteurs, resumerRefusCron, texteRefusCron } from "../_shared/cron-refus.js";
+import { jugerRefusCron, resumerNotesPorteurs, resumerRefusCron, texteRefusCron, texteSeuilRefusCron } from "../_shared/cron-refus.js";
 // (05/11 soir, clôture, décision de Nico : « donne 5 rouges prouvés, ou coupe R3 ») COUPÉ : sur 5 rouges relus sur les
 // plateformes, 3 vrais (Beebs 34042975, Leboncoin 3297644264 et 3287013710 encore en vente) et 2 faux (Leboncoin 3299230866
 // « désactivée », eBay 176726068488 « introuvable ») : le juge croit en ligne une annonce que le relevé n'a pas revue depuis.
@@ -1153,9 +1153,14 @@ serve(async (req) => {
   // délai depuis le dernier relevé réussi (12-20 h = un jour sans relevé automatique). Aucune ligne (migration pas encore
   // appliquée) : repli sur les notes des relevés porteurs dont le dernier refus tombe dans les 24 h (compteur cumulé :
   // borne haute ; 68 porteurs en 48 h mesurés le 13/11, 4 ms par l'index (user_id, started_at)).
-  // INFORMATIF : n'entre pas dans les anomalies qui font partir le digest ; la section l'accompagne quand il part.
+  // INFORMATIF sous le seuil : n'entre pas dans les anomalies qui font partir le digest ; la section l'accompagne quand il
+  // part. (13/11, lot NU — décision de Nico, I5) ROUGE au-delà du seuil (_shared/cron-refus.js SEUILS_REFUS_CRON : un
+  // compte à plus de 6 refus en 24 h, ou plus de 150 en tout — chiffré sur les 14 derniers passages) : la section passe en
+  // rouge, nomme les comptes (id8) et compte UNE anomalie (cron_refus_au_dela_du_seuil), jamais le nombre brut de refus.
   let cronRefusTexte = "";
-  let cronRefus24h: { source: string; total: number; comptes: number; parTranche: Record<string, number> } | null = null;
+  let cronRefusSeuilTexte = "";
+  let cronRefusRouge = false;
+  let cronRefus24h: { source: string; total: number; comptes: number; parTranche: Record<string, number>; rouge: boolean } | null = null;
   try {
     const lignesCron = await lirePagesUsage(["cron_refuse"], iso24h);
     let resume = resumerRefusCron(lignesCron);
@@ -1172,7 +1177,10 @@ serve(async (req) => {
       resume = resumerNotesPorteurs(porteurs ?? [], iso24h);
       source = "notes";
     }
-    cronRefus24h = { source, total: resume.total, comptes: resume.comptes, parTranche: resume.parTranche };
+    const juge = jugerRefusCron(resume);
+    cronRefusRouge = juge.rouge;
+    cronRefusSeuilTexte = texteSeuilRefusCron(juge);
+    cronRefus24h = { source, total: resume.total, comptes: resume.comptes, parTranche: resume.parTranche, rouge: cronRefusRouge };
     cronRefusTexte = texteRefusCron(resume, { source });
   } catch (e) {
     cronRefusTexte = `Refus de cadence illisibles aujourd'hui (${String((e as Error)?.message ?? e)}).`;
@@ -1378,6 +1386,8 @@ serve(async (req) => {
     pending_bloques: pendingBloques.length,
     retenues_serveur: retenuesServeur.length,
     files_arretees: filesArreteesLignes.length,
+    // (13/11, lot NU — décision de Nico, I5) Une anomalie au-delà du seuil des refus du relevé automatique, jamais le nombre.
+    cron_refus_au_dela_du_seuil: cronRefusRouge ? 1 : 0,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -1585,10 +1595,11 @@ serve(async (req) => {
   }
     ${
     !cronRefusTexte ? "" : `
-    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#374151;">
-      • Refus de cadence du relevé Vinted automatique (règle des 20 h, inchangée)
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${cronRefusRouge ? "#B91C1C" : "#374151"};">
+      ${cronRefusRouge ? "🔴" : "•"} Refus de cadence du relevé Vinted automatique (règle des 20 h, inchangée)
     </h2>
     <ul style="margin:0;padding:0 0 0 18px;">
+      ${cronRefusSeuilTexte ? `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(cronRefusSeuilTexte)}</li>` : ""}
       <li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(cronRefusTexte)}</li>
     </ul>`
   }

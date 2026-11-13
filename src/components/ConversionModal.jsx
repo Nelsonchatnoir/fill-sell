@@ -39,7 +39,7 @@ import { usePrixBoutique } from '../lib/usePrixBoutique';
 // (scripts/formules-cloud-ferme-selftest.mjs).
 import { formulesCloudVendables, formulesCloudOuvertes, canalDeVente } from '../config/cloudOffer';
 import OffresAvecCloud, { BasculeCloud } from '../cloud/OffresAvecCloud';
-import { cartesFormulesCloud, vueOffresParDefaut, lireVueOffres, essaiPermisDuCompte, canalDuCloudSeul } from '../cloud/formulesCloud';
+import { cartesFormulesCloud, vueOffresParDefaut, lireVueOffres, essaiPermisDuCompte, canalDuCloudSeul, formulesMasqueesPourLaVoie } from '../cloud/formulesCloud';
 import { useProfilFormules } from '../cloud/useProfilFormules';
 import { useDisponibiliteCloud, venteFermee } from '../cloud/useDisponibiliteCloud';
 import { textesFormules } from '../cloud/textesFormules';
@@ -1209,12 +1209,21 @@ export default function ConversionModal({
   // ne demande ni ne rend quoi que ce soit.
   let plateformeIci = 'web';
   try { plateformeIci = Capacitor.isNativePlatform() ? Capacitor.getPlatform() : 'web'; } catch { /* web */ }
-  const formulesVisibles = typeof onFormuleCloud === 'function' && formulesCloudVendables(userId, { plateforme: plateformeIci });
-  const lectureCloud = useCloudProfil(userId, { actif: Boolean(isOpen && (cloudVisible || formulesVisibles)) });
+  const formulesCanal = typeof onFormuleCloud === 'function' && formulesCloudVendables(userId, { plateforme: plateformeIci });
+  const lectureCloud = useCloudProfil(userId, { actif: Boolean(isOpen && (cloudVisible || formulesCanal)) });
   const offreCloud = cloudVisible ? offreCloudPourModale(lectureCloud) : null;
-  const profilFormules = useProfilFormules(userId, { actif: Boolean(isOpen && formulesVisibles) });
-  const venteFormules = useDisponibiliteCloud({ actif: Boolean(isOpen && formulesVisibles) });
-  useEffect(() => { if (isOpen && formulesVisibles) demanderPrixFormules().catch(() => {}); }, [isOpen, formulesVisibles]);
+  const profilFormules = useProfilFormules(userId, { actif: Boolean(isOpen && formulesCanal) });
+  const venteFormules = useDisponibiliteCloud({ actif: Boolean(isOpen && formulesCanal) });
+  useEffect(() => { if (isOpen && formulesCanal) demanderPrixFormules().catch(() => {}); }, [isOpen, formulesCanal]);
+  // (13/11, décision de Nico : « on ouvre partout », plus aucun « … y arrivent bientôt ») Le canal de l'appareil est ouvert,
+  // mais CE compte peut ne pas pouvoir prendre une formule ici : sa boutique qui facture est fermée (retour arrière), ou son
+  // Cloud SEUL est facturé par l'App Store / Google Play (une formule serait un second abonnement). Les formules lui sont
+  // alors MASQUÉES — la feuille d'avant, sans « Avec Cloud » — jamais une carte sans bouton ni une promesse.
+  const formulesVisibles = formulesCanal && !formulesMasqueesPourLaVoie(cartesFormulesCloud({
+    palier: palierDesDrapeaux({ isPremium, isPro, isBusiness }), formuleActuelle: profilFormules.formuleActuelle,
+    canalApp: canalDeVente(plateformeIci), canalAbonnement: profilFormules.canalAbonnement,
+    canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lectureCloud),
+  }).voie);
   // La position choisie à la main ; null = la règle (le Cloud déjà pris, une porte Cloud, la voie du parcours d'entrée).
   const [vueChoisie, setVueChoisie] = useState(null);
   useEffect(() => { if (isOpen) setVueChoisie(null); }, [isOpen]);
@@ -1320,7 +1329,9 @@ export default function ConversionModal({
     palierCliqueRef.current = true;
     logModale('offers_modal_formule_cloud', { formule: carte.formule, cta: carte.cta, essai: carte.essai === true, origine: origine ?? 'non_precisee', trigger,
       ouverture: ouvertureRef.current.id, duree_ms: ouvertureRef.current.le ? Date.now() - ouvertureRef.current.le : null, ...contexteDeLogs() });
-    onFormuleCloud?.(carte.formule, { essaiAffiche: carte.essai === true, dejaCloud: lectureCloud.cloud?.actif === true });
+    // (13/11) abonneBoutique : déjà abonné par la boutique de CE téléphone → jamais sa semaine gratuite (même groupe).
+    onFormuleCloud?.(carte.formule, { essaiAffiche: carte.essai === true, dejaCloud: lectureCloud.cloud?.actif === true,
+      abonneBoutique: plateformeIci !== 'web' && profilFormules.canalAbonnement === canalDeVente(plateformeIci) });
   };
   // TOUTES les sorties (backdrop, Escape, « Non merci ») passent ici : une
   // fermeture sans checkout est un abandon — avec les paliers qui étaient

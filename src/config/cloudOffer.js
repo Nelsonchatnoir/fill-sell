@@ -172,9 +172,23 @@ export const canalDeVente = (plateforme) => (plateforme === 'ios' ? 'apple' : pl
 /** L'interrupteur serveur des formules avec Cloud d'UN canal (coin_config.cloud_formules_<canal>) : 1 = ouvert ;
  *  absent, illisible, pas encore lu ou ≠ 1 = FERMÉ. */
 export const formulesCloudOuvertes = (canal) => interrupteurOuvert(CLES_FORMULES[canal] ?? '');
+// (13/11/2026, ordre de Nico : « Android : si la vc38 est encore en examen, Android s'ouvre à sa publication, sans rien me
+// demander ») LES FORMULES AVEC CLOUD, SUR ANDROID, NE SE VENDENT QU'À PARTIR DE LA vc38 (2.9.176) : son module d'achat
+// (patch du 12/11, point 7) rend le code de Google à chaque refus, et rejette une feuille qui ne s'ouvre pas — la vc37
+// (2.9.167, en ligne sur Google Play le 13/11) rejette tout refus par « Purchase is not purchased », sans code (18 premiers
+// achats Google sur 20 du 16/10 au 12/11). L'app lit SON binaire au démarrage (Capacitor App.getInfo → noterBinaireCloud) :
+// le jour où Google publie la vc38 et que la personne l'installe, les formules s'allument seules — ni OTA, ni interrupteur
+// (cloud_formules_google vaut déjà 1, depuis le 12/11 18:19). ⛔ Seules les FORMULES attendent la vc38 : le Cloud seul garde
+// CLOUD_BINAIRE_MIN_ANDROID (vc37). iPhone et web : la règle du Cloud, inchangée (2.9.164 ; web sans objet).
+export const FORMULES_BINAIRE_MIN_ANDROID = '2.9.176';
+/** Le binaire porte-t-il les FORMULES avec Cloud ? (pur) Android → FORMULES_BINAIRE_MIN_ANDROID ; sinon binairePorteLeCloud. */
+export function binairePorteLesFormules(binaire, plateforme = null) {
+  if (plateforme === 'android' && binaire !== 'web') return comparerVersions(binaire, FORMULES_BINAIRE_MIN_ANDROID) >= 0;
+  return binairePorteLeCloud(binaire, plateforme);
+}
 /**
  * LE point de décision des formules avec Cloud (fenêtre d'offres, parcours d'entrée, Réglages, achat). Même règle que
- * la vente du Cloud (cloudVendableDansLePays : témoin partout ; sinon France + binaire qui porte le Cloud), mais
+ * la vente du Cloud (cloudVendableDansLePays : témoin partout ; sinon France + binaire qui porte les formules), mais
  * l'interrupteur est CELUI DU CANAL de l'app (stripe sur le web, apple sur iPhone, google sur Android). Fermé : l'app
  * reste EXACTEMENT celle d'avant pour un compte ordinaire (verrou scripts/formules-cloud-ferme-selftest.mjs).
  * `plateforme` absente : celle notée au démarrage (noterBinaireCloud), web sinon.
@@ -182,7 +196,7 @@ export const formulesCloudOuvertes = (canal) => interrupteurOuvert(CLES_FORMULES
 export const formulesCloudVendables = (userId, { plateforme = undefined, fuseau = undefined } = {}) =>
   cloudVendableDansLePays({
     temoin: estTemoin(userId), ouvert: formulesCloudOuvertes(canalDeVente(plateforme ?? plateformeCloud ?? 'web')),
-    pays: paysDuTelephoneCloud(fuseau), binaire: binairePorteLeCloud(binaireCloud, plateformeCloud),
+    pays: paysDuTelephoneCloud(fuseau), binaire: binairePorteLesFormules(binaireCloud, plateformeCloud),
   });
 
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────

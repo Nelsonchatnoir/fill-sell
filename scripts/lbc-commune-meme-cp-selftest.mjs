@@ -61,18 +61,27 @@ console.log("\n2. Adresse de remise « … 74600 Seynod » (rue) : la rue est ga
     "adresse servie « 3d Rue de l'Ancien Chef-Lieu 74600 Annecy » (ce que la personne a fini par écrire à la main le 12/11)", gel(d.platform_fields?.adresse));
 }
 
-console.log("\n3. 98b72757 — « Cholet 49308 » (CEDEX) : BLOQUÉ AVANT TOUT ESSAI, le message explique");
+// (13/11, décision de Nico — N6b : « le repli doit retomber sur la commune et son vrai code postal ») Ce bloc figeait
+// le BLOCAGE de « Cholet 49308 » ; la ville de l'annonce au code d'aucune commune retombe désormais sur la commune et
+// son vrai code postal (adresse du vendeur, sinon commune connue de Leboncoin) ; le blocage ne reste que pour le
+// DOUTE (aucun code sûr), avec un message qui pointe la ville des annonces. Verrou du repli :
+// scripts/lbc-ville-cedex-repli-selftest.mjs.
+console.log("\n3. 98b72757 — « Cholet 49308 » (CEDEX) : REPLI sur Cholet 49300 (adresse) ; sans code sûr, la question");
 {
   const reglages = { adresse: "1 rue Y 49300 Cholet", code_postal: "49300", ville: "Cholet", ville_publication: { code_postal: "49308", ville: "Cholet" } };
   const avantReglages = gel(reglages);
-  const d = decision({ job: job({ adresse: reglages.adresse, ville_publication_lbc: { code_postal: "49308", ville: "Cholet" } }), reglagesLbc: reglages });
-  ok(d.action === "bloquer" && d.motif === "cp_non_commune", "code postal d'aucune commune : bloqué sans essai (plus 5 essais « rien à faire »)", gel(d));
-  ok(/49308/.test(d.message ?? "") && /CEDEX/.test(d.message ?? "") && /75000/.test(d.message ?? "") && /49300/.test(d.message ?? "") && /Ville de l'annonce/.test(d.message ?? "") && !/rien à faire/i.test(d.message ?? ""),
+  const dr = decision({ job: job({ adresse: reglages.adresse, ville_publication_lbc: { code_postal: "49308", ville: "Cholet" } }), reglagesLbc: reglages });
+  ok(dr.action === "commune" && dr.platform_fields?.ville_publication_lbc?.code_postal === "49300", "code postal d'aucune commune, adresse à Cholet 49300 : servie Cholet 49300 (plus de blocage)", gel(dr));
+  // Sans adresse dans la commune et sans commune connue de Leboncoin : la question, avant tout essai.
+  const ailleurs = { adresse: "2 rue Z 49340 Trémentines", code_postal: "49340", ville: "Trémentines", ville_publication: { code_postal: "49308", ville: "Cholet" } };
+  const d = decision({ job: job({ adresse: ailleurs.adresse, ville_publication_lbc: { code_postal: "49308", ville: "Cholet" } }), reglagesLbc: ailleurs });
+  ok(d.action === "bloquer" && d.motif === "cp_non_commune", "aucun code sûr : bloqué sans essai (plus 5 essais « rien à faire »)", gel(d));
+  ok(/49308/.test(d.message ?? "") && /CEDEX/.test(d.message ?? "") && /75000/.test(d.message ?? "") && /49300/.test(d.message ?? "") && /Ville de tes annonces Leboncoin/.test(d.message ?? "") && !/rien à faire/i.test(d.message ?? ""),
     "le message nomme 49308, dit CEDEX / code général (75000), cite le code de commune 49300 et où corriger", d.message);
   ok(/49308/.test(d.message_en ?? "") && /CEDEX/.test(d.message_en ?? ""), "et en anglais");
   ok(gel(reglages) === avantReglages, "Réglages jamais réécrits");
-  const jb = job({ adresse: reglages.adresse, ville_publication_lbc: { code_postal: "49308", ville: "Cholet" } }, { error: REFUS_CHOLET });
-  ok(decision({ job: jb, reglagesLbc: reglages }).motif === "cp_non_commune", "même avec le refus de Leboncoin sur la tâche : le code postal parle d'abord");
+  const jb = job({ adresse: ailleurs.adresse, ville_publication_lbc: { code_postal: "49308", ville: "Cholet" } }, { error: REFUS_CHOLET });
+  ok(decision({ job: jb, reglagesLbc: ailleurs }).motif === "cp_non_commune", "même avec le refus de Leboncoin sur la tâche : le code postal parle d'abord (ses propositions sont d'autres communes)");
   ok(typeof M.patchBlocageCommune === "function" && M.patchBlocageCommune(jb, d).status === "needs_user" && M.patchBlocageCommune(jb, d).platform_fields.needs_user_source === "lbc_commune_code_postal",
     "patch : needs_user, source lbc_commune_code_postal (classée « utilisateur / réglage du compte »)");
   // La personne corrige la ville de l'annonce dans ses Réglages, puis relance : la copie bloquée de la tâche cède.
@@ -130,7 +139,8 @@ console.log("\n7. EXTENSION 0.6.187 — communeMemeCpLbc (leboncoin.js), exécut
 console.log("\n8. BRANCHEMENT : get-pending-jobs juge chaque publication Leboncoin servie, sans écrire les Réglages");
 {
   const gpj = readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
-  ok(/from "\.\.\/_shared\/lbc-commune-meme-cp\.js"/.test(gpj) && /decisionCommuneLbc\(\{ job: j, reglagesLbc, refusCompte \}\)/.test(gpj), "get-pending-jobs appelle decisionCommuneLbc (toutes versions d'extension)");
+  // (13/11, décision de Nico — N6b) l'appel passe aussi les communes connues de Leboncoin (communesLbc).
+  ok(/from "\.\.\/_shared\/lbc-commune-meme-cp\.js"/.test(gpj) && /decisionCommuneLbc\(\{ job: j, reglagesLbc, refusCompte(, communesLbc)? \}\)/.test(gpj), "get-pending-jobs appelle decisionCommuneLbc (toutes versions d'extension)");
   const i = gpj.indexOf("LEBONCOIN — MÊME CODE POSTAL : LA COMMUNE DE LEBONCOIN");
   const bloc = i >= 0 ? gpj.slice(i, gpj.indexOf("commune Leboncoin par code postal", i)) : "";
   ok(bloc.length > 0 && !/from\("profiles"\)/.test(bloc) && !/platform_settings_fusionner/.test(bloc), "le bloc ne lit ni n'écrit les Réglages (lus plus haut, une fois)");

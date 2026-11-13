@@ -13,7 +13,7 @@
 // Pur (aucun import natif) : testé en Node par scripts/prix-boutique-selftest.mjs. Le chargement natif vit ailleurs.
 
 import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from '../utils/palier.js';
-import { PALIER_DE_FORMULE, SUPPLEMENT_CLOUD_EUR } from '../../supabase/functions/_shared/formules-cloud.js';
+import { PALIER_DE_FORMULE, SUPPLEMENT_CLOUD_EUR, FORMULES_AVEC_ESSAI } from '../../supabase/functions/_shared/formules-cloud.js';
 
 // (11/11/2026) + les trois formules avec Cloud (contrat _shared/formules-cloud.js) : même règle que les autres.
 export const PRODUITS_PRIX = Object.freeze(['premium', 'pro', 'business', 'cloud', 'premium_cloud', 'pro_cloud', 'business_cloud']);
@@ -74,15 +74,29 @@ export const prixOuChargement = (produit, lang = 'fr', e = etat) => prixAffiche(
 /** « 0 € » sur le web ; « Gratuit » / « Free » sur mobile (aucune monnaie devinée). */
 export const prixGratuit = (lang = 'fr', e = etat) => (estCanalBoutique(e) ? (lang === 'en' ? 'Free' : 'Gratuit') : (lang === 'en' ? '€0' : '0 €'));
 
+// (13/11/2026, ordre de Nico : « l'essai doit marcher pareil sur les 3 canaux ») LES PRODUITS APPLE QUI PORTENT UNE SEMAINE
+// GRATUITE (offre d'introduction), d'après App Store Connect : app.fillsell.cloud.sub (« Gratuit la première semaine »,
+// créée le 05/11), app.fillsell.premium.cloud et app.fillsell.pro.cloud (FREE_TRIAL 1 semaine, relus le 12/11) — JAMAIS
+// app.fillsell.business.cloud (offre retirée le 11/11 à 22:09, décision de Nico). Le module d'achat iOS du binaire en vente
+// (@capgo/native-purchases 8.3.3, iPhone 2.9.164) ne rend PAS `introductoryPrice` (Product.dictionary : identifier,
+// description, title, price, priceString, currencyCode, isFamilyShareable) : sans cette table, l'essai n'était JAMAIS
+// annoncé sur iPhone (« Ta boutique d'applications ne propose pas d'essai gratuit à ce compte ») alors qu'Apple offrait la
+// semaine (8b457627, 7d22ae91, f0acd3af, c7c382b7 : SUBSCRIBED INITIAL_BUY, fin à J+7), et la question « Apple peut
+// t'afficher 1 semaine gratuite » (4d) ne se posait jamais. Une offre ABSENTE de la réponse (clé introductoryPrice non
+// rendue) n'est donc pas un « non » : l'essai suit la décision du serveur, comme sur le web et comme le repli du 09/11.
+export const PRODUITS_ESSAI_APPLE = Object.freeze(['cloud', ...FORMULES_AVEC_ESSAI]);
 /**
  * L'essai gratuit du Cloud peut-il être ANNONCÉ ? Web : oui (le serveur décide). Mobile : seulement si la boutique
- * propose une offre gratuite à ce compte — inconnu (pas encore lu) : non annoncé.
+ * propose une offre gratuite à ce compte — inconnu (pas encore lu) : non annoncé. iPhone dont le module ne dit rien de
+ * l'offre d'introduction (essai null) : la table PRODUITS_ESSAI_APPLE (le serveur décide ensuite, comme sur le web).
  */
 export function essaiBoutiqueOffert(produit = 'cloud', e = etat) {
   if (!estCanalBoutique(e)) return true;
   // (09/11) Repli de l'iPhone : Apple n'a rien dit — l'essai suit la décision du serveur (comme jusqu'à la 2.9.166).
   if (repliApple(produit, e)) return true;
-  return e.prix?.[produit]?.essai === true;
+  const v = e.prix?.[produit]?.essai;
+  if (e.canal === 'apple' && v == null && e.prix?.[produit]) return PRODUITS_ESSAI_APPLE.includes(produit);
+  return v === true;
 }
 
 // ── Les textes : le jeton remplacé à la lecture ──────────────────────────────────────────────────────────────────────
@@ -136,9 +150,10 @@ export function lireProduitsBoutique(products, { canal, ids }) {
       const p = liste.find((x) => x && x.identifier === id);
       if (!p?.priceString) continue;
       const intro = p.introductoryPrice;
+      // (13/11) Clé ABSENTE (module iOS 8.3.3 : il ne la rend pas) = inconnu (null), jamais « pas d'essai ».
       sortie[produit] = {
         texte: String(p.priceString), montant: Number(p.price), devise: p.currencyCode ?? null,
-        essai: Boolean(intro && (Number(intro.price) === 0 || intro.paymentMode === 2)),
+        essai: !('introductoryPrice' in p) ? null : Boolean(intro && (Number(intro.price) === 0 || intro.paymentMode === 2)),
       };
     }
   }

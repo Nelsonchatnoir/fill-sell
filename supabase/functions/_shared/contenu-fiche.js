@@ -31,6 +31,8 @@
 //    on n'y touche pas.
 // ═══════════════════════════════════════════════════════════════════════════
 import { tierEtat, RANG_ETAT, etatPourPlateforme } from "./etat-plateformes.js";
+// (13/11, décision de Nico — « état jamais embelli ») Une copie au-dessus de l'état CONFIRMÉ de la fiche redescend.
+import { copieAuDessusDeLaFiche, etatDeFicheConfirme } from "./etat-embelli.js";
 
 /** La règle « le texte du vendeur fait foi » (generate-listing, 21/09) : une copie rédigée avant n'est jamais un choix. */
 export const REGLE_TEXTE_VENDEUR_LE = "2026-09-22T00:00:00+02:00";
@@ -249,6 +251,28 @@ export function copieReprendLeTexte(copie, texte) {
  */
 export function contenuAImposer(job, fiche, temps = {}) {
   const out = { raisons: [] };
+  // ── (13/11, lot « zéro problème », étape 5 — décision de Nico) L'ÉTAT N'EST JAMAIS EMBELLI ──────────────────
+  // Une copie dont l'état DÉPASSE l'état CONFIRMÉ de la fiche (une annonce, un relevé, un choix de la personne —
+  // jamais l'estimation de la lecture des photos) est ramenée à l'état de la fiche, quelle que soit la date de la
+  // copie et qu'il y ait ou non un texte du vendeur : c'est un embellissement. Jamais l'inverse ici (cette règle ne
+  // monte rien ; la règle du 22/10 plus bas, inchangée, garde le sien). Les niveaux du juge unique : « Neuf avec
+  // étiquette » sur une fiche « État neuf » (grille Leboncoin) est compatible, jamais baissé (_shared/etat-embelli.js).
+  // Mesuré le 13/11 (30 jours) : 342 copies au-dessus de leur fiche, 182 parties.
+  if (job && fiche && etatDeFicheConfirme(fiche?.attributs?.etat)) {
+    const pfE = String(job?.platform ?? "");
+    const etatCopieE = pfE === "leboncoin"
+      ? (String(job?.platform_fields?.lbcAspects?.condition ?? "").trim() || job?.platform_fields?.etat)
+      : job?.platform_fields?.etat;
+    const etatFicheE = String(fiche.attributs.etat.v).trim();
+    if (copieAuDessusDeLaFiche(etatCopieE, etatFicheE, { plateformeCopie: pfE })) {
+      const e = etatPourPlateforme(etatFicheE, pfE === "depop" ? "vinted" : pfE);
+      if (e?.valeur && !e.meilleur) {
+        out.etat = e.valeur;
+        out.etat_ramene = { de: String(etatCopieE ?? ""), vers: e.valeur };
+        out.raisons.push("etat");
+      }
+    }
+  }
   if (!job || !fiche || !texteDuVendeurSurFiche(fiche)) return out;
   const t0 = Date.parse(String(temps.contenuLe ?? job.created_at ?? ""));
   if (!Number.isFinite(t0)) return out;

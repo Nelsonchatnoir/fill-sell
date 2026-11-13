@@ -8,6 +8,8 @@ import { useBureau } from '../hooks/useBureau';
 import { creerContexte } from '../utils/tableauStats';
 import TableauBureau from '../ecrans/bureau/TableauBureau';
 import TableauTelephone from '../ecrans/telephone/TableauTelephone';
+// (13/11, décision de Nico — N1) Chaque plateforme CHOISIE pas vue connectée le dit, dès que l'extension est vue.
+import CarteConnexionsChoisies from '../plateformes/CarteConnexionsChoisies';
 
 // ── Le Tableau ──────────────────────────────────────────────────────────────
 // (28/10) Ordinateur (web ≥ 1 024 px) : ecrans/bureau/TableauBureau.
@@ -35,6 +37,8 @@ const DashboardTab = memo(function DashboardTab({
   // (16/10) Identifiant du compte : « En ligne » lit ses annonces en ligne
   // (une lecture à l'ouverture de l'onglet, useStockEnLigne).
   userId = null,
+  // (13/11) Les plateformes fermées au compte (Leboncoin hors de France…) : jamais dites « à connecter ».
+  plateformesFermees = [],
 }) {
   const { t, tpl } = useTranslation(lang);
   // Stock en ligne par plateforme, et prix publiés : une lecture à l'ouverture (useStockEnLigne).
@@ -63,6 +67,9 @@ const DashboardTab = memo(function DashboardTab({
     <div className="fsx-ecran" style={{display:"flex",flexDirection:"column",gap:18,width:"100%",overflow:"hidden"}}>
       <style>{CSS_ECRANS}</style>
       {entete}
+      {/* (13/11, décision de Nico — N1) « Tes plateformes à connecter » : une ligne par plateforme choisie pas vue
+          connectée, sa phrase et son geste. Avant l'extension, la carte d'installation existante suffit ; tout connecté : rien. */}
+      {!loading&&userId&&<CarteConnexionsChoisies userId={userId} lang={lang} plateformesFermees={plateformesFermees}/>}
 
       {!isPremium&&!loading&&freeActive>0&&freeActive<FREE_STOCK_LIMIT_FALLBACK-2&&(
         <div style={{background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,padding:"12px 18px",textAlign:"center",overflow:"hidden"}}>

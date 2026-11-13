@@ -191,6 +191,7 @@ import {
 } from '../stock/regles';
 import EcranDoublons from '../annonces/EcranDoublons';
 import { lireDoublonsProposes, pairesAffichables, estQuestionDejaVendu } from '../utils/doublons';
+import { messageRefusPublication } from '../utils/etatsPublication';
 import { ouvrirDejaVenduAuLien } from '../utils/lienDejaVendu';
 import {
   Upload, ChevronsUp, BadgeEuro, Pencil, Copy, Trash2, Layers, ListChecks, Eye, Store, ExternalLink, Activity,
@@ -8937,6 +8938,12 @@ const StockTab = memo(function StockTab({
       return;
     }
     if (pubRes?.allowed === false) {
+      // (13/11, N6a — bf85d176) Le même objet y est peut-être déjà en ligne par une AUTRE fiche (question « Est-ce le même
+      // article ? » ouverte) : la copie attend la réponse — l'autre fiche, la question et l'endroit où elle est, nommés.
+      if (pubRes.meme_objet && typeof pubRes.meme_objet === 'object') {
+        setRelanceMsg(messageRefusPublication(Object.keys(pubRes.meme_objet), { memeObjet: pubRes.meme_objet, lang }));
+        return;
+      }
       const raisons = {
         // insufficient_coins : mort avec la bascule quotas (02/09, prix à 0) —
         // l'entrée reste, défensive, au cas où le serveur l'émettrait encore.

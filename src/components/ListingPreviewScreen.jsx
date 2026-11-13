@@ -11626,6 +11626,9 @@ export default function ListingPreviewScreen({
       let refuseesServeur = [];
       // (20/10, Louis) Celles que le serveur a refusées pour la fiche jumelle d'un compte relié (compte_relie).
       let compteRelieServeur = [...compteRelieSet];
+      // (13/11, N6a — bf85d176) Celles que le serveur retient : le même objet y est peut-être déjà en ligne par une autre
+      // fiche (question « Est-ce le même article ? » ouverte, meme_objet) — le message nomme l'autre fiche et la question.
+      let memeObjetServeur = {};
       let pubRes = null;
       let pubErr = null;
       for (let tentative = 0; ; tentative++) {
@@ -11637,6 +11640,7 @@ export default function ListingPreviewScreen({
         pubErr = reponse.error;
         if (pubErr) break;
         if (pubRes?.allowed === false && Array.isArray(pubRes.compte_relie)) compteRelieServeur = [...new Set([...compteRelieServeur, ...pubRes.compte_relie])];
+        if (pubRes?.allowed === false && pubRes.meme_objet && typeof pubRes.meme_objet === "object") memeObjetServeur = { ...memeObjetServeur, ...pubRes.meme_objet };
         if (variante === "nouvelle" && tentative === 0 && pubRes?.allowed === false && pubRes.reason === "already_published") {
           const refusees = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
           const restantes = rowsEnvoyees.filter(r => !refusees.includes(r.platform));
@@ -11703,7 +11707,7 @@ export default function ListingPreviewScreen({
           const refusees = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
           setSelected(prev => new Set([...prev].filter(p => !refusees.includes(p))));
           throw new Error(messageRefusPublication(refusees, {
-            publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, compteRelie: new Set(compteRelieServeur), lang,
+            publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, compteRelie: new Set(compteRelieServeur), memeObjet: memeObjetServeur, lang,
           }));
         }
         // (04/11, grille à 3 jauges) Les publications du mois faites : le MUR Publications (ce qui est plein, quand
@@ -11952,7 +11956,7 @@ export default function ListingPreviewScreen({
           ...exclusRun,
           ...refuseesServeur.map(p => ({
             platform: p, motif: "refusee_serveur",
-            texte: messageRefusPublication([p], { publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, compteRelie: new Set(compteRelieServeur), lang }),
+            texte: messageRefusPublication([p], { publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, compteRelie: new Set(compteRelieServeur), memeObjet: memeObjetServeur, lang }),
           })),
         ]);
         setFournee({ inventaireId: currentInvId ?? null, plateformes: rowsEnvoyees.map(r => r.platform), depuis: new Date().toISOString() });

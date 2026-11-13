@@ -4,18 +4,30 @@
 -- NON EXÉCUTÉE : feu vert de Nico requis, et APRÈS le déploiement de get-pending-jobs qui écrit la phrase au service
 -- (src/utils/blocsDescription.js, rendreDescriptionAuService) — sinon les fiches réparées partiraient SANS phrase de test
 -- jusqu'à ce déploiement (garde ci-dessous : elle ne voit pas le code déployé, c'est à l'opérateur de le vérifier :
--- `npx supabase functions list`, version de get-pending-jobs postérieure au lot).
+-- `npx supabase functions list`, version de get-pending-jobs postérieure au lot). (13/11, NEB) ET d'ebay-api-worker postérieure
+-- au 13/11 : eBay passe par l'API, qui écrit désormais la phrase au service (_shared/ebay-description-servie.ts) — avant,
+-- une fiche réparée partait sur eBay SANS phrase de test.
 -- Ce qui se passe (lecture seule du 13/11, heure de Paris) : ses consignes demandent « Jeu testé aujourd’hui, le [date], et
 -- fonctionnel. » le jour même, « Jeu testé le [date] et fonctionnel. » plus tard. La phrase du jour même était FIGÉE dans
 -- le texte de 94 fiches en stock et recopiée par chaque republication (70 annonces Vinted en ligne, 80 republications
 -- Leboncoin en 12 jours avec 17 jours de retard médian, 54 au plus).
 -- LA RÈGLE (pour tous les comptes, dans le code) : la date est une donnée — inventaire.attributs.teste_le
 -- ({v: 'AAAA-MM-JJ', source: 'manuel'}) — et la phrase est écrite à chaque envoi selon le modèle du vendeur, omise là où la
--- plateforme la refuse (Beebs). Ce script range les 94 fiches dans cette règle :
---   · 92 portent la phrase EXACTE de son modèle, seule sur sa ligne, une seule fois : la phrase sort du texte (avec la
---     ligne vide qui la précède), sa date entre dans attributs.teste_le. Le texte du vendeur ne change en rien d'autre.
---   · 2 ne suivent pas son modèle (« … et fonctionne parfaitement. », « ✅ Ensemble intégralement testé aujourd'hui… ») :
---     NON touchées — question posée à Nico (rapport de l'étape 5, agent H).
+-- plateforme la refuse (Beebs). Ce script range ses fiches dans cette règle, en DEUX familles (colonne `famille`) :
+--   · « aujourdhui » — 92 fiches portent la phrase EXACTE de son modèle « jour même », seule sur sa ligne, une seule fois :
+--     la phrase sort du texte (avec la ligne vide qui la précède), sa date entre dans attributs.teste_le. 2 ne suivent pas
+--     son modèle (« … et fonctionne parfaitement. », « ✅ Ensemble intégralement testé aujourd'hui… ») : NON touchées.
+--   · « plus_tard » — (13/11, lot NU — décision de Nico, question H2 : « oui, la date des 72 fiches « Jeu testé le » passe
+--     dans teste_le ») 72 fiches portent « … testé le <date>, … » — aucune dans les mots de son modèle (« et fonctionnel ») :
+--     67 RANGÉES, même traitement (la phrase sort, la date entre) : « Jeu testé le <jour> <mois> <année>, fonctionne
+--     correctement. », seule sur sa ligne, une seule phrase de test dans le texte (dates du 25/08 au 15/09/2026). À l'envoi,
+--     get-pending-jobs écrit la phrase de SON modèle (« Jeu testé le 15 septembre 2026 et fonctionnel. »), omise sur Beebs.
+--     5 NON TOUCHÉES : « UMD testé le 6 septembre 2026, … » (le mot n'est pas « Jeu ») ; « Jeu testé le 17 août, … » et
+--     « Jeu testé le 31 mai, … » (SANS ANNÉE : jamais une année inventée) ; « …, fonctionne parfaitement. » et « …, se lance
+--     et fonctionne correctement. » (13/11, tranché par prudence — règle « phrases du vendeur mot pour mot » : leurs mots
+--     ne deviennent pas ceux du modèle).
+--     Pourquoi la phrase SORT : la date posée, le service écrit la phrase du modèle ; l'ancienne, que rien ne reconnaît,
+--     resterait — DEUX phrases de test (scripts/date-test-forme-plus-tard-selftest.mjs).
 -- ⛔ AUCUNE ANNONCE NI AUCUNE TÂCHE N'EST TOUCHÉE : les annonces en ligne gardent leur texte jusqu'à leur prochaine
 --    republication, qui recevra la phrase du jour (get-pending-jobs ; recréation Vinted : extension 0.6.187).
 -- ⛔ Une fiche dont le texte a changé entre la sauvegarde et l'écriture n'est pas écrite (garde sur le texte exact).
@@ -36,22 +48,32 @@ BEGIN
 END
 $garde$;
 
--- Les fiches : en stock, la phrase EXACTE du modèle « jour même », seule sur sa ligne, une seule fois, date lisible.
+-- Les fiches : en stock, sans teste_le, UNE SEULE phrase de test dans le texte, seule sur sa ligne, date complète lisible.
 CREATE TABLE public._backup_1113_de63ca45_date_de_test AS
 WITH mois(nom, n) AS (
   VALUES ('janvier', 1), ('février', 2), ('mars', 3), ('avril', 4), ('mai', 5), ('juin', 6), ('juillet', 7), ('août', 8),
          ('septembre', 9), ('octobre', 10), ('novembre', 11), ('décembre', 12)
-), c AS (
-  SELECT i.id AS inventaire_id, i.user_id, i.description AS description_avant, i.attributs AS attributs_avant,
-         regexp_match(i.description,
-           '(?:^|\n)(Jeu testé aujourd[’'']hui, le (?:(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche) )?(\d{1,2})(?:er)? (janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre) (\d{4}), et fonctionnel\.)[ \t]*(?:\n|$)') AS m
+), motif_plus_tard(re) AS (VALUES ('(?:^|\n)(Jeu testé le (?:(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche) )?(\d{1,2})(?:er)? (janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre) (\d{4}), fonctionne correctement\.)[ \t]*(?:\n|$)'))
+, f AS (
+  SELECT i.id, i.user_id, i.description, i.attributs,
+         (SELECT count(*) FROM regexp_matches(i.description, 'testé (aujourd.hui|le )', 'g')) AS n_phrases
     FROM public.inventaire i
    WHERE i.user_id = 'de63ca45-63d9-4a3c-b65a-d1345acd8b2e' AND i.statut = 'stock'
-     AND i.description ~ 'testé aujourd.hui, le'
-     AND (SELECT count(*) FROM regexp_matches(i.description, 'testé aujourd.hui', 'g')) = 1
+     AND i.description ~ 'testé (aujourd.hui, le|le )'
      AND NOT (i.attributs ? 'teste_le')
+), c AS (
+  SELECT f.id AS inventaire_id, f.user_id, f.description AS description_avant, f.attributs AS attributs_avant, 'aujourdhui'::text AS famille,
+         regexp_match(f.description,
+           '(?:^|\n)(Jeu testé aujourd[’'']hui, le (?:(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche) )?(\d{1,2})(?:er)? (janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre) (\d{4}), et fonctionnel\.)[ \t]*(?:\n|$)') AS m
+    FROM f
+   WHERE f.n_phrases = 1 AND f.description ~ 'testé aujourd.hui, le'
+  UNION ALL
+  SELECT f.id, f.user_id, f.description, f.attributs, 'plus_tard'::text,
+         regexp_match(f.description, (SELECT re FROM motif_plus_tard))
+    FROM f
+   WHERE f.n_phrases = 1 AND f.description ~ 'testé le '
 )
-SELECT c.inventaire_id, c.user_id, c.description_avant, c.attributs_avant, c.m[1] AS phrase,
+SELECT c.inventaire_id, c.user_id, c.famille, c.description_avant, c.attributs_avant, c.m[1] AS phrase,
        make_date(c.m[4]::int, (SELECT n FROM mois WHERE nom = c.m[3]), c.m[2]::int) AS teste_le,
        -- La phrase sort avec les lignes vides qui la précèdent ; un texte qui commençait par elle perd ses sauts de ligne de tête.
        ltrim(regexp_replace(c.description_avant,
@@ -64,15 +86,21 @@ ALTER TABLE public._backup_1113_de63ca45_date_de_test ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public._backup_1113_de63ca45_date_de_test FROM PUBLIC, anon, authenticated;
 
 DO $verif_avant$
-DECLARE n int; k int;
+DECLARE na int; np int; k int; d int;
 BEGIN
-  SELECT count(*) INTO n FROM public._backup_1113_de63ca45_date_de_test;
-  -- 92 lues le 13/11 : une marge pour les fiches vendues ou retouchées entre-temps, jamais au-delà.
-  IF n < 80 OR n > 92 THEN RAISE EXCEPTION 'fiches retenues : % (92 attendues le 13/11) — rien n''est écrit', n; END IF;
+  SELECT count(*) FILTER (WHERE famille = 'aujourdhui'), count(*) FILTER (WHERE famille = 'plus_tard') INTO na, np
+    FROM public._backup_1113_de63ca45_date_de_test;
+  -- Lues le 13/11 : 92 « aujourd'hui » et 67 « plus tard » — une marge pour les fiches vendues ou retouchées entre-temps,
+  -- jamais au-delà.
+  IF na < 80 OR na > 92 THEN RAISE EXCEPTION 'fiches « aujourd''hui » retenues : % (92 attendues le 13/11) — rien n''est écrit', na; END IF;
+  IF np < 60 OR np > 67 THEN RAISE EXCEPTION 'fiches « plus tard » retenues : % (67 attendues le 13/11) — rien n''est écrit', np; END IF;
+  SELECT count(*) - count(DISTINCT inventaire_id) INTO d FROM public._backup_1113_de63ca45_date_de_test;
+  IF d > 0 THEN RAISE EXCEPTION '% fiche(s) retenue(s) deux fois : rien n''est écrit', d; END IF;
   SELECT count(*) INTO k FROM public._backup_1113_de63ca45_date_de_test
-   WHERE teste_le IS NULL OR description_apres ~ 'testé aujourd.hui' OR description_apres = description_avant
+   WHERE teste_le IS NULL OR teste_le > (now() AT TIME ZONE 'Europe/Paris')::date
+      OR description_apres ~ 'testé (aujourd.hui|le )' OR description_apres = description_avant
       OR length(description_avant) - length(description_apres) NOT BETWEEN length(phrase) AND length(phrase) + 4;
-  IF k > 0 THEN RAISE EXCEPTION '% fiche(s) dont la phrase ne sort pas proprement : rien n''est écrit', k; END IF;
+  IF k > 0 THEN RAISE EXCEPTION '% fiche(s) dont la phrase ne sort pas proprement (ou date impossible) : rien n''est écrit', k; END IF;
 END
 $verif_avant$;
 
@@ -99,7 +127,8 @@ BEGIN
 END
 $verif$;
 
-SELECT count(*) AS fiches_reparees, min(teste_le) AS premiere_date, max(teste_le) AS derniere_date,
+SELECT famille, count(*) AS fiches_reparees, min(teste_le) AS premiere_date, max(teste_le) AS derniere_date,
        min(sauvegarde_le AT TIME ZONE 'Europe/Paris') AS sauvegarde_paris
-  FROM public._backup_1113_de63ca45_date_de_test;
+  FROM public._backup_1113_de63ca45_date_de_test
+ GROUP BY famille ORDER BY famille;
 COMMIT;

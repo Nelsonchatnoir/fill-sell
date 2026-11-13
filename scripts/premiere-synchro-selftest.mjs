@@ -17,8 +17,12 @@ const azizak = { inscritLe: "2026-10-26T10:27:45Z", platformSettings: { platefor
 console.log("1. La décision");
 ok(P.premiereSynchroAPoser(azizak).join() === "vinted", "Compte-c2bd32ed : la première synchro Vinted part seule", P.premiereSynchroAPoser(azizak).join());
 ok(P.premiereSynchroAPoser({ ...azizak, sessions: { vinted: true, leboncoin: true, beebs: false } }).join() === "vinted,leboncoin", "chaque plateforme choisie ET connectée");
-ok(P.premiereSynchroAPoser({ ...azizak, runs: [{ declencheur: "bouton" }] }).length === 0, "une synchro déjà demandée (bouton) : rien — une fois par compte");
-ok(P.premiereSynchroAPoser({ ...azizak, runs: [{ declencheur: "app" }] }).length === 0 && P.premiereSynchroAPoser({ ...azizak, runs: [{ declencheur: "bouton_distant:redemande" }] }).length === 0, "… ni après une demande de l'app ou une redemande");
+// (13/11, décision de Nico — lot du 13/11, N1) « une fois par COMPTE » devient « une fois par PLATEFORME » : la demande
+// d'une plateforme ne retient plus la première synchro d'une AUTRE (ff1f879f, 1f95f334 : scripts/connexion-choisie-selftest.mjs).
+ok(P.premiereSynchroAPoser({ ...azizak, runs: [{ kind: "dressing", status: "done", declencheur: "bouton" }] }).length === 0, "Vinted déjà synchronisé (bouton) : rien pour Vinted — une fois par plateforme");
+ok(P.premiereSynchroAPoser({ ...azizak, runs: [{ kind: "dressing", status: "queued", declencheur: "app" }] }).length === 0 && P.premiereSynchroAPoser({ ...azizak, runs: [{ kind: "dressing", status: "running", declencheur: "bouton_distant:redemande" }] }).length === 0, "… ni pendant qu'une demande Vinted attend ou tourne");
+ok(P.premiereSynchroAPoser({ ...azizak, dejaPosees: ["vinted"] }).length === 0, "… ni si sa première synchro a déjà été posée (trace usage_logs)");
+ok(P.premiereSynchroAPoser({ ...azizak, sessions: { vinted: true, leboncoin: true }, runs: [{ kind: "annonces", platform: "leboncoin", status: "done", declencheur: "app" }] }).join() === "vinted", "Leboncoin déjà synchronisé : la première synchro de Vinted part quand même (13/11)");
 ok(P.premiereSynchroAPoser({ ...azizak, runs: [{ declencheur: "cron" }, { declencheur: "veille:vinted" }] }).join() === "vinted", "un relevé de VEILLE n'est pas une synchro : la première part quand même");
 ok(P.premiereSynchroAPoser({ ...azizak, sessions: {} }).length === 0, "aucune plateforme connectée : rien");
 ok(P.premiereSynchroAPoser({ ...azizak, inscritLe: "2026-10-01T10:00:00Z" }).length === 0, "inscrit il y a plus de 15 jours : rien (jamais un import surprise chez un ancien)");
@@ -27,7 +31,8 @@ ok(P.premiereSynchroAPoser({ ...azizak, platformSettings: {}, sessions: { vinted
 
 console.log("\n2. Le code livré");
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-const bloc = gpj.slice(gpj.indexOf("LA PREMIÈRE SYNCHRO PART SEULE"), gpj.indexOf("LA PREMIÈRE SYNCHRO PART SEULE") + 4000);
+// (13/11) Fenêtre portée à 7000 caractères : le bloc a grandi (lecture de la marque par plateforme).
+const bloc = gpj.slice(gpj.indexOf("LA PREMIÈRE SYNCHRO PART SEULE"), gpj.indexOf("LA PREMIÈRE SYNCHRO PART SEULE") + 7000);
 ok(/userClient\.rpc\("demander_sync_dressing"\)/.test(bloc) && /userClient\.rpc\("demander_sync_plateforme", \{ p_platform: pf \}\)/.test(bloc), "les MÊMES demandes que le bouton, au nom de la personne");
 ok(/feature: "premiere_synchro_auto"/.test(bloc), "tracé (usage_logs premiere_synchro_auto)");
 ok(gpj.indexOf("LA PREMIÈRE SYNCHRO PART SEULE") < gpj.indexOf("await userClient.rpc(\"purger_ma_sync_queue\")"), "posée AVANT la lecture des demandes : elle part dans ce même passage");

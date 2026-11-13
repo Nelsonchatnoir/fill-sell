@@ -155,15 +155,19 @@ export function creerAchatFormuleCloud({
     return ok ? { etat: 'actif', message: T.achatOk(NOMS_FORMULES[formule]) } : { etat: 'attente', message: T.achatAttente(NOMS_FORMULES[formule]) };
   }
 
-  /** Prendre une formule avec Cloud. essaiAffiche : la carte a annoncé l'essai ; dejaCloud / descente : voir plus haut. */
-  async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false } = {}) {
+  /** Prendre une formule avec Cloud. essaiAffiche : la carte a annoncé l'essai ; dejaCloud / descente : voir plus haut ;
+   *  abonneBoutique : (13/11) le compte est DÉJÀ abonné par la boutique de ce téléphone (même groupe d'abonnements). */
+  async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false, abonneBoutique = false } = {}) {
     if (!FORMULES_CLOUD.includes(formule)) return { etat: 'refuse', message: T.achatEchec };
     if (platform !== 'web' && !prixPret(formule)) return { etat: 'refuse', raison: 'prix_boutique_absent', message: TC.prixBoutiqueAbsent };
     // (12/11, 4d) La boutique offrira SA semaine gratuite (iPhone : le Cloud seul et les formules sont dans deux groupes
     // d'abonnements) alors que l'essai FillSell est déjà pris : le serveur n'ouvrira rien avant le premier paiement
     // (décision 8) — on le dit AVANT la feuille de la boutique, jamais 7 jours sans rien en silence.
+    // (13/11) Un abonné de CETTE boutique (Premium, Pro ou Business par l'App Store / Google Play) n'a jamais la semaine
+    // gratuite d'une formule du même groupe (Apple : une offre d'introduction par groupe ; Google : « n'ont jamais eu
+    // d'abonnement ») : pas de question pour lui.
     const nomF = NOMS_FORMULES[formule];
-    const boutiqueOffreEssai = platform !== 'web' && essaiPossiblePourFormule(formule) && essaiBoutiqueOffert(formule) === true;
+    const boutiqueOffreEssai = platform !== 'web' && abonneBoutique !== true && essaiPossiblePourFormule(formule) && essaiBoutiqueOffert(formule) === true;
     const texteEssaiPris = boutiqueOffreEssai ? T.essaiDejaPrisBoutique(nomF, nomBoutique(platform === 'ios' ? 'apple' : 'google')) : T.sansEssaiConfirmer(nomF);
     try {
       if (descente && platform === 'web') return await stripeDescente(formule);

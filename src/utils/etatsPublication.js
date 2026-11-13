@@ -152,11 +152,26 @@ export function phraseEtat(platform, etat, lang = "fr") {
  * avec le geste qui débloque — jamais « retire » ni « décoche » pour une
  * attente.
  */
-export function messageRefusPublication(platforms, { publiees = new Set(), enFile = new Set(), attentes = {}, compteRelie = new Set(), lang = "fr" } = {}) {
+export function messageRefusPublication(platforms, { publiees = new Set(), enFile = new Set(), attentes = {}, compteRelie = new Set(), memeObjet = {}, lang = "fr" } = {}) {
   const en = lang === "en";
   const lignes = [];
   for (const p of platforms) {
     const nom = NOMS[p] ?? p;
+    // (13/11, lot du 13/11 — N6a, cas bf85d176) Le MÊME OBJET y est peut-être déjà en ligne par une AUTRE fiche : une
+    // question « Est-ce le même article ? » (photo identique) est ouverte entre les deux (spend_coins_and_publish,
+    // meme_objet, migration 20261113180000). La publication attend la réponse : le message nomme l'autre fiche, la
+    // question et l'endroit où elle est (jamais une question introuvable) ; « deux exemplaires » la libère pour toujours.
+    const mo = memeObjet && typeof memeObjet === "object" ? memeObjet[p] : null;
+    if (mo && typeof mo === "object") {
+      const titre = String(mo.titre ?? "").trim();
+      const ou = mo.a_verifier === true
+        ? (en ? "To fix › Listings to check" : "À régler › Annonces à vérifier")
+        : (en ? "Stock › Sync" : "Stock › Synchroniser");
+      lignes.push(en
+        ? `${nom}: your item “${titre}” may already be online there (same photos). First answer “Is it the same item?” (${ou}): if it's the same, nothing is published twice; if they're two copies, publish this one afterwards.`
+        : `${nom} : ta fiche « ${titre} » y est peut-être déjà en ligne (mêmes photos). Réponds d'abord à « Est-ce le même article ? » (${ou}) : si c'est le même, rien n'est publié en double ; si ce sont deux exemplaires, publie ensuite celle-ci.`);
+      continue;
+    }
     const a = attentes[p];
     // (20/10, Louis) La fiche JUMELLE d'un compte relié y est déjà, dans la même boutique : republier ferait le
     // doublon (spend_coins_and_publish, compte_relie). Rien à retirer d'ici : l'annonce est au compte relié.

@@ -131,6 +131,22 @@ export function repereBordereau(copie, lang = 'fr') {
   return { texte: `${tete} · ${fr ? `Imprimé le ${le}` : `Printed on ${le}`}`, imprime: true };
 }
 
+// ── (13/11, lot NU — décision de Nico, question I3 : « oui, ajoute « Marquer non imprimé » ») ──
+// « Imprimé le » est posé quand le geste d'impression, de partage ou de téléchargement RÉUSSIT : un PDF partagé sans être
+// imprimé sortait de « Tout imprimer » sans retour possible. Le geste remet « Imprimé le » à vide (la copie revient dans
+// « Tout imprimer ») ; « Annuler » rend la date retirée, gardée par le serveur (RPC bordereau_marquer_non_imprime,
+// migration 20261113193000 : non_imprime_le = quand, imprime_avant = la date retirée). `disponible` : la base sait faire
+// ce geste (colonne non_imprime_le lisible) — sinon rien n'est montré, jamais un bouton qui échoue. `annulable` : la copie
+// vient d'être marquée non imprimée sur cet écran.
+/** Le geste sous le repère : { action: 'non_imprime' | 'retablir', libelle } ou null. */
+export function gesteImpression(copie, { disponible = false, annulable = false } = {}, lang = 'fr') {
+  const fr = lang !== 'en';
+  if (!copie || !disponible || copie.imprime_le === undefined) return null;
+  if (jourParis(copie.imprime_le)) return { action: 'non_imprime', libelle: fr ? 'Marquer non imprimé' : 'Mark as not printed' };
+  if (annulable) return { action: 'retablir', libelle: fr ? 'Annuler' : 'Undo' };
+  return null;
+}
+
 /** « Tout imprimer » = les copies prêtes PAS ENCORE imprimées (inconnu compris : comme avant) ; « Tout réimprimer » = toutes. */
 export function copiesAImprimer(pretes) {
   const toutes = Array.isArray(pretes) ? pretes.filter(Boolean) : [];

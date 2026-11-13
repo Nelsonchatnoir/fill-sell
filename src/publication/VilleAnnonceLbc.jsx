@@ -5,8 +5,9 @@
 // Expédition), sinon la ville de l'adresse de remise — changeable ici, pour
 // CETTE publication. Règle : utils/villeAnnonceLbc.js. Format mobile d'abord :
 // une ligne, un bouton ; le formulaire (code postal, ville) s'ouvre en dessous.
+// (13/11, N6b) Un code d'aucune commune (CEDEX, 75000) n'est jamais retenu : controleVilleLbc (publication/villeLbc.js).
 import { useEffect, useState } from 'react';
-import { lireVillesLbc, villeValide, libelleVille, CHOIX_ADRESSE } from '../utils/villeAnnonceLbc';
+import { lireVillesLbc, villeValide, libelleVille, CHOIX_ADRESSE, controleVilleLbc, messageVilleLbc } from '../utils/villeAnnonceLbc';
 
 const MOTS = {
   fr: {
@@ -28,6 +29,7 @@ export default function VilleAnnonceLbc({ userId, valeur, onChange, T, lang = 'f
   const [cp, setCp] = useState('');
   const [ville, setVille] = useState('');
   const [faux, setFaux] = useState(false);
+  const [avis, setAvis] = useState('');
   useEffect(() => {
     let vivant = true;
     lireVillesLbc(userId).then((r) => { if (vivant) setVilles(r); });
@@ -38,10 +40,13 @@ export default function VilleAnnonceLbc({ userId, valeur, onChange, T, lang = 'f
   const effective = valeur === CHOIX_ADRESSE ? villes.adresse : (choisie ?? villes.reglage ?? villes.adresse);
   const source = choisie ? M.deCarte : (valeur !== CHOIX_ADRESSE && villes.reglage) ? M.deReglage : M.deAdresse;
 
-  const ouvrir = () => { setCp(effective?.code_postal ?? ''); setVille(effective?.ville ?? ''); setFaux(false); setOuvert(true); };
+  const ouvrir = () => { setCp(effective?.code_postal ?? ''); setVille(effective?.ville ?? ''); setFaux(false); setAvis(''); setOuvert(true); };
   const valider = () => {
     const v = villeValide({ code_postal: cp, ville });
     if (!v) { setFaux(true); return; }
+    const c = controleVilleLbc(v, villes.adresse);
+    if (!c.ok) { setAvis(messageVilleLbc(c, lang)); if (c.suggestion) setCp(c.suggestion.code_postal); return; }
+    setAvis('');
     onChange(v);
     setOuvert(false);
   };
@@ -65,11 +70,12 @@ export default function VilleAnnonceLbc({ userId, valeur, onChange, T, lang = 'f
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 12, border: `1px solid ${T.border}` }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <input aria-label={M.cp} placeholder={M.cp} inputMode="numeric" autoComplete="postal-code" value={cp}
-              onChange={(e) => { setCp(e.target.value.replace(/\D/g, '').slice(0, 5)); setFaux(false); }} style={{ ...champ, width: 110, flexShrink: 0 }} />
+              onChange={(e) => { setCp(e.target.value.replace(/\D/g, '').slice(0, 5)); setFaux(false); setAvis(''); }} style={{ ...champ, width: 110, flexShrink: 0 }} />
             <input aria-label={M.ville} placeholder={M.ville} autoComplete="address-level2" value={ville}
-              onChange={(e) => { setVille(e.target.value.slice(0, 80)); setFaux(false); }} style={champ} />
+              onChange={(e) => { setVille(e.target.value.slice(0, 80)); setFaux(false); setAvis(''); }} style={champ} />
           </div>
           {faux ? <div role="alert" style={{ fontSize: 12, color: '#B42318', fontWeight: 600 }}>{M.faux}</div> : null}
+          {avis ? <div role="alert" style={{ fontSize: 12, color: '#B42318', fontWeight: 600, lineHeight: 1.4 }}>{avis}</div> : null}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={valider} style={bouton(true)}>{M.valider}</button>
             {(choisie || villes.reglage) && villes.adresse ? (

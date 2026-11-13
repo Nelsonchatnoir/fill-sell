@@ -9381,6 +9381,7 @@ export default function App({ loginOnly = false }){
             photosParInventaire={photosParInventaire}
             entete={enteteTableauDeBord}
             userId={user?.id??null}
+            plateformesFermees={plateformesFermees}
           />
         )}
 

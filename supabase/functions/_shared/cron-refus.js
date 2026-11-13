@@ -38,7 +38,9 @@ export function trancheRefus(ageMin) {
   return TRANCHES_REFUS.find(([, de, a2]) => a >= de && a < a2)?.[0] ?? 'inconnu';
 }
 
-const vide = () => ({ total: 0, comptes: 0, porteurs: 0, parTranche: Object.fromEntries([...TRANCHES_REFUS.map(([k]) => [k, 0]), ['inconnu', 0]]), top: [] });
+const vide = () => ({ total: 0, comptes: 0, porteurs: 0, parTranche: Object.fromEntries([...TRANCHES_REFUS.map(([k]) => [k, 0]), ['inconnu', 0]]), top: [], parCompte: [] });
+// Tous les comptes, du plus refusé au moins refusé ([id8, refus]) — `top` en garde les 6 premiers pour la ligne du digest.
+const classer = (parCompte) => [...parCompte].sort((a, b) => b[1] - a[1]).map(([u, k]) => [u.slice(0, 8), k]);
 
 /** Le compte des lignes usage_logs « cron_refuse » (une ligne = `nouveaux` refus, 1 d'ordinaire). */
 export function resumerRefusCron(lignes) {
@@ -52,7 +54,8 @@ export function resumerRefusCron(lignes) {
     parCompte.set(u, (parCompte.get(u) ?? 0) + k);
   }
   r.comptes = parCompte.size;
-  r.top = [...parCompte].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([u, k]) => [u.slice(0, 8), k]);
+  r.parCompte = classer(parCompte);
+  r.top = r.parCompte.slice(0, 6);
   return r;
 }
 
@@ -75,8 +78,40 @@ export function resumerNotesPorteurs(runs, depuisIso) {
     parCompte.set(u, (parCompte.get(u) ?? 0) + note.compteur);
   }
   r.comptes = parCompte.size;
-  r.top = [...parCompte].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([u, k]) => [u.slice(0, 8), k]);
+  r.parCompte = classer(parCompte);
+  r.top = r.parCompte.slice(0, 6);
   return r;
+}
+
+// ── (13/11, lot NU — décision de Nico, question I5 de l'étape 5 : « oui, rouge au-delà d'un seuil que tu proposes ») ──
+// LE SEUIL, chiffré sur la prod (lecture seule du 13/11 : le repli « notes » d'ops-digest rejoué à chacun de ses 14
+// passages, cron 08:50 UTC, du 31/10 au 13/11) : 27 à 121 refus par passage (médiane ≈ 59), 26 à 62 comptes ; par compte,
+// 1 à 5 d'ordinaire (centile 99 des comptes-jours : 5), un compte à 6 une fois ; au-delà, UN seul compte (f44b5917 : 8, 7,
+// 11, 14 refus — l'alarme relancée en boucle), plus rien depuis le 06/11.
+//   ROUGE = un compte à PLUS DE 6 refus en 24 h (signature d'une boucle sur un poste), OU PLUS DE 150 refus en 24 h en tout
+//   (vague générale, ex. une version de l'extension qui boucle : 1,25 × le plus haut des 14 jours, 121).
+// Rejoué sur les 14 passages : 4 rouges, tous f44b5917, aucun par le total. Les refus 12-20 h ne servent PAS de seuil : la
+// 0.6.187 les rattrape (alarme unique à « fin + 20 h », bloc 6 P1) — ils deviennent inoffensifs, pas un signal.
+// Repli « notes » (compteur cumulé du porteur) : borne haute, comme les données qui ont fixé le seuil.
+export const SEUILS_REFUS_CRON = Object.freeze({ parCompte24h: 6, total24h: 150 });
+
+/** { rouge, comptesAuDela: [[id8, refus]], totalAuDela, seuils } — jamais rouge sur un résumé vide ou illisible. */
+export function jugerRefusCron(r, seuils = SEUILS_REFUS_CRON) {
+  const total = Number(r?.total);
+  const liste = Array.isArray(r?.parCompte) && r.parCompte.length ? r.parCompte : (Array.isArray(r?.top) ? r.top : []);
+  const comptesAuDela = liste.filter(([, k]) => Number(k) > seuils.parCompte24h);
+  const totalAuDela = Number.isFinite(total) && total > seuils.total24h;
+  return { rouge: comptesAuDela.length > 0 || totalAuDela, comptesAuDela, totalAuDela, seuils };
+}
+
+/** La ligne rouge du digest (vide sous le seuil). */
+export function texteSeuilRefusCron(j) {
+  if (!j?.rouge) return '';
+  const s = j.seuils ?? SEUILS_REFUS_CRON;
+  const morceaux = [];
+  if (j.comptesAuDela?.length) morceaux.push(`${j.comptesAuDela.length} compte${j.comptesAuDela.length > 1 ? 's' : ''} à plus de ${s.parCompte24h} refus en 24 h (boucle de l'alarme sur un poste ?) : ${j.comptesAuDela.map(([u, k]) => `${u} ×${k}`).join(', ')}`);
+  if (j.totalAuDela) morceaux.push(`plus de ${s.total24h} refus en 24 h en tout (vague générale : une version de l'extension ?)`);
+  return `Au-delà du seuil — ${morceaux.join(' ; ')}.`;
 }
 
 /** La ligne du digest. source : 'journal' (usage_logs) | 'notes' (repli, borne haute). */

@@ -11,7 +11,7 @@ import { decisionDepotJamaisVu, messageDepotJamaisVuSansObjet, champsDepotJamais
 import { isbnAvantQuestion, messageRequisRepublication } from "../_shared/isbn-republication.js";
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
-import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
+import { premiereSynchroAPoser, plateformesDejaPosees, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
@@ -78,7 +78,7 @@ import { oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_
 import { titrePourJob, titreVide, titreRecevable, couperTitre, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob, decisionRueInconnueLbc, repliCommuneDesReglages, CODE_REPLI_COMMUNE, PUBLICATION_PREUVE_JOURS, communeComparable } from "../_shared/lbc-voie-des-reglages.js";
-import { decisionCommuneLbc, patchBlocageCommune, phraseDejaDite, phraseCommuneLeboncoin, CLE_COMMUNE_MEME_CP } from "../_shared/lbc-commune-meme-cp.js";
+import { decisionCommuneLbc, patchBlocageCommune, phraseDejaDite, phraseDeLaTrace, communesLbcConnues, aBesoinDesCommunesLbc, CLE_COMMUNE_MEME_CP } from "../_shared/lbc-commune-meme-cp.js";
 // (25/10, décision de Nico — Marta, Rapallo) Leboncoin réservé aux adresses en France ; (audit N10) rien d'une
 // plateforme écartée par la personne n'est servi.
 import { adresseLbcHorsFrance, lbcACloreHorsFrance, lbcServiMalgreHorsFrance, clotureLbcHorsFrance } from "../_shared/lbc-adresse-france.js";
@@ -104,7 +104,7 @@ import {
   champsRetenueForfait, champsPreparerDeNouveau,
 } from "../_shared/lbc-forfait.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
-import { recreationAVerifier, decisionVerificationRecreation, retraitLe, BROUILLONS_PAGE_UNE } from "../_shared/recreation-vinted-verifiee.js";
+import { recreationAVerifier, decisionVerificationRecreation, retraitLe, BROUILLONS_PAGE_UNE, candidatesCopie, numerosDeposes, urlsCopieRecreation, urlsDesPhotos } from "../_shared/recreation-vinted-verifiee.js";
 import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
 import { estRepublicationManuelle, lotsDepuisLignes, lotDansLesCreneaux, retenueLotManuel, messageRetenueLotCreneau } from "../_shared/lot-manuel-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
@@ -2135,8 +2135,10 @@ serve(async (req) => {
     // Un compte récent dont l'extension passe, avec au moins une plateforme choisie connectée, qui n'a JAMAIS eu de
     // synchro demandée : sa première synchro est demandée ICI, par les mêmes RPC que le bouton (client de la personne,
     // déclencheurs « bouton_distant » / « app », les seuls que l'extension installée importe), puis lue juste dessous
-    // dans ce même passage. Une fois par compte (la demande est la marque ; les gardes des RPC — cadence, déjà en
-    // attente, version — empêchent tout doublon entre postes). coin_config.premiere_synchro_auto = 0 coupe tout.
+    // dans ce même passage. (13/11, décision de Nico — N1) Une fois par PLATEFORME (avant : une fois par compte) : une
+    // plateforme choisie vue connectée, jamais relevée, reçoit la sienne même si une autre a déjà eu la sienne ; la trace
+    // usage_logs premiere_synchro_auto est la marque, et les gardes des RPC — cadence, déjà en attente, version — empêchent
+    // tout doublon entre postes. coin_config.premiere_synchro_auto = 0 coupe tout.
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing && !includeNeedsUser && !delegationLbc) {
       try {
         const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -2154,11 +2156,24 @@ serve(async (req) => {
           const inscritLe = (profP as { created_at?: string } | null)?.created_at ?? null;
           const jours = Number(reglageP.jours) > 0 ? Number(reglageP.jours) : PREMIERE_SYNCHRO_JOURS_DEFAUT;
           if (inscritLe && Date.now() - Date.parse(inscritLe) <= jours * 86_400_000) {
-            const { data: runsP } = await adminP.from("vinted_sync_runs").select("declencheur").eq("user_id", user.id).in("kind", ["dressing", "annonces"]).limit(200);
-            const aPoser = premiereSynchroAPoser({
+            // (13/11, décision de Nico — N1) PAR PLATEFORME : la plateforme et l'état de chaque relevé (fait, incomplet,
+            // en file, en cours = « déjà relevée ») ; plafond de lecture atteint → rien (jamais deux fois).
+            const { data: runsP, error: errRunsP } = await adminP.from("vinted_sync_runs").select("kind, platform, status, declencheur").eq("user_id", user.id)
+              .in("kind", ["dressing", "annonces"]).in("status", ["done", "incomplete", "queued", "running"]).limit(200);
+            const entreeP = {
               inscritLe, platformSettings: (profP as { platform_settings?: unknown } | null)?.platform_settings,
-              sessions: (profP as { extension_sessions?: unknown } | null)?.extension_sessions, runs: (runsP ?? []) as Array<{ declencheur?: string | null }>, reglage: reglageP,
-            });
+              sessions: (profP as { extension_sessions?: unknown } | null)?.extension_sessions,
+              runs: (runsP ?? []) as Array<{ kind?: string; platform?: string | null; status?: string; declencheur?: string | null }>,
+              runsComplets: !errRunsP && (runsP ?? []).length < 200, reglage: reglageP,
+            };
+            let aPoser = premiereSynchroAPoser(entreeP);
+            // Une fois par PLATEFORME : la marque est la trace de la première synchro déjà posée (usage_logs
+            // premiere_synchro_auto, ses `plateformes`), lue seulement quand une plateforme est candidate ; illisible → rien.
+            if (aPoser.length) {
+              const { data: tracesP, error: errTracesP } = await adminP.from("usage_logs").select("metadata")
+                .eq("user_id", user.id).eq("feature", "premiere_synchro_auto").limit(100);
+              aPoser = errTracesP ? [] : premiereSynchroAPoser({ ...entreeP, dejaPosees: plateformesDejaPosees((tracesP ?? []) as Array<{ metadata?: { plateformes?: unknown } | null }>) });
+            }
             if (aPoser.length) {
               const poses: Record<string, unknown> = {};
               for (const pf of aPoser) {
@@ -3267,7 +3282,9 @@ serve(async (req) => {
             const f = parId.get(String(j.inventaire_id));
             const v = String(((f?.attributs as Record<string, { v?: unknown }> | null)?.etat?.v) ?? "").trim();
             if (!f || String(f.origine ?? "") === "vinted_sync" || !v) continue;
-            const pfN = { ...((j.platform_fields ?? {}) as Record<string, unknown>), etat_fiche_avant_capture: { v, le: new Date().toISOString() } };
+            // (13/11) La SOURCE de cet état aussi : une estimation (lens) ne fait jamais baisser la recréation.
+            const sourceV = String(((f?.attributs as Record<string, { source?: unknown }> | null)?.etat?.source) ?? "").trim() || null;
+            const pfN = { ...((j.platform_fields ?? {}) as Record<string, unknown>), etat_fiche_avant_capture: { v, source: sourceV, le: new Date().toISOString() } };
             j.platform_fields = pfN;
             await adminN.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfN) }).eq("id", String(j.id)).eq("status", "pending");
           }
@@ -3296,7 +3313,9 @@ serve(async (req) => {
             const payloadC = ((cap as { payload?: unknown }).payload ?? {}) as Record<string, unknown>;
             const avantV = (pfC.etat_fiche_avant_capture as { v?: unknown } | undefined)?.v;
             const avantCapture: string | null = avantV == null ? null : String(avantV);
-            const corr = correctionCaptureVinted(fiche, (cap as { libelles?: unknown }).libelles, payloadC.natif, avantCapture) as
+            const avantSource = (pfC.etat_fiche_avant_capture as { source?: unknown } | undefined)?.source;
+            const corr = correctionCaptureVinted(fiche, (cap as { libelles?: unknown }).libelles, payloadC.natif, avantCapture,
+              { sourceAvantCapture: avantSource == null ? null : String(avantSource) }) as
               { libelles: Record<string, unknown>; natif: Record<string, unknown>; raisons: string[]; avant: Record<string, unknown> } | null;
             // (23/10) 3. Les photos d'origine que le dépôt n'a pas eues (_shared/capture-corrigee.js) : le dépôt Vinted de
             // CETTE annonce, et quand la fiche a reçu ses photos d'origine.
@@ -7161,12 +7180,17 @@ serve(async (req) => {
     // republication Vinted retirée dont un essai a eu lieu n'est resservie
     // qu'après un relevé COMPLET du dressing commencé ≥ 12 min après l'essai :
     // la base rattache la copie que le relevé apporte (migration
-    // 20261018170000), sinon l'essai suivant part, une fois. ⛔ Sert tous les
+    // 20261018170000 ; par le numéro ou un jeton de photo de notre envoi depuis
+    // 20261113190000), sinon l'essai suivant part, une fois. ⛔ Sert tous les
     // builds. ⛔ Fermé en cas de doute : une erreur retient les jobs ce cycle.
     // (25/10, Vincent A. 9138772c — deux annonces) Un `depot_incertain` posé après
     // le dernier envoi retient la republication sur TOUT compte, quelle que soit
     // l'extension : jamais un second envoi sans preuve d'absence (relevé complet de
     // la personne sans copie) ; 6 h sans preuve → la question recreation_deja_partie.
+    // (13/11, décision K1 de Nico) La copie déjà au stock se PROUVE par le numéro rendu par Vinted, un jeton de photo
+    // de notre envoi ou les empreintes de ses photos — jamais par son titre (recreation-vinted-verifiee.js). Une fiche
+    // qui PEUT être la copie sans que les photos tranchent : retenue, ses photos et celles de notre copie sont
+    // empreintées (empreintes-urls, une demande par passage, sans bloquer la réponse), 6 h → la question.
     {
       const aVerifierV = (out as unknown as Array<Record<string, unknown>>).filter((j) => recreationAVerifier(j));
       if (aVerifierV.length) {
@@ -7175,15 +7199,59 @@ serve(async (req) => {
           const adminV = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const retraits = aVerifierV.map((j) => retraitLe(j.platform_fields)).filter(Number.isFinite) as number[];
           const plusTot = retraits.length ? Math.min(...retraits) : Date.now() - 24 * 3600_000;
-          const [{ data: runsV }, { data: fichesV }] = await Promise.all([
+          const [{ data: runsV }, { data: fichesV, error: fichesErr }] = await Promise.all([
             adminV.from("vinted_sync_runs").select("id, kind, status, started_at, queued_at, items_vus, total_entries, declencheur")
               .eq("user_id", user.id).eq("platform", "vinted").eq("kind", "dressing")
               .order("started_at", { ascending: false, nullsFirst: true }).limit(15),
-            adminV.from("inventaire").select("id, titre, vinted_item_id, listed_at_guess, vinted_account_id")
+            adminV.from("inventaire").select("id, vinted_item_id, listed_at_guess, vinted_account_id")
               .eq("user_id", user.id).not("vinted_item_id", "is", null)
               .gte("listed_at_guess", new Date(plusTot - 5 * 60_000).toISOString())
               .limit(500),
           ]);
+          if (fichesErr) throw new Error(`fiches illisibles (${fichesErr.message})`);
+          const fichesL = (fichesV ?? []) as Array<Record<string, unknown>>;
+          // (13/11) Les fiches candidates (sans titre) de chaque remise en ligne : leurs photos, les tâches de dépôt du
+          // compte qui désignent leur numéro (une annonce créée par une AUTRE tâche n'est jamais notre copie), puis les
+          // empreintes — notre copie (republish_snapshot.photos), la fiche d'origine, les candidates. Lus seulement
+          // s'il y a une candidate (bornés : 100 fiches, 1 000 tâches, 400 photos).
+          const candidatesDe = new Map(aVerifierV.map((j) => [String(j.id), candidatesCopie(j, fichesL).candidates]));
+          const fichesCand = [...new Map([...candidatesDe.values()].flat().map((f) => [String(f.id), f])).values()].slice(0, 100);
+          const idsCand = fichesCand.map((f) => Number(f.id)).filter(Number.isFinite);
+          const numerosCand = [...new Set(fichesCand.map((f) => String(f.vinted_item_id ?? "").trim()).filter((n) => /^\d{6,}$/.test(n)))];
+          let deposes = new Map<string, Array<Record<string, unknown>>>();
+          const photosOrigine = new Map<string, unknown>();
+          const parUrlV = new Map<string, Record<string, unknown>>();
+          if (idsCand.length) {
+            const avecCand = aVerifierV.filter((j) => (candidatesDe.get(String(j.id)) ?? []).length);
+            const idsOrigine = [...new Set(avecCand.map((j) => Number(j.inventaire_id)).filter(Number.isFinite))].slice(0, 50);
+            const [{ data: depotsC, error: depotsErr }, { data: photosC, error: photosErr }] = await Promise.all([
+              numerosCand.length
+                ? adminV.from("cross_post_jobs")
+                  .select("id, inventaire_id, action, handler_build, platform_listing_id, listing_url, new_id:platform_fields->>new_vinted_item_id")
+                  .eq("user_id", user.id).eq("platform", "vinted").in("action", ["publish", "republish"])
+                  .or(`platform_listing_id.in.(${numerosCand.join(",")}),platform_fields->>new_vinted_item_id.in.(${numerosCand.join(",")})`)
+                  .limit(1000)
+                : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
+              lireParLots((lot) => adminV.from("inventaire").select("id, photos").eq("user_id", user.id).in("id", lot),
+                [...new Set([...idsCand, ...idsOrigine])]),
+            ]);
+            if (photosErr) throw new Error(`photos des fiches illisibles (${photosErr.message})`);
+            // Dépôts illisibles : aucune annonce écartée par ce motif (le doute retient, jamais il ne sert).
+            if (!depotsErr) deposes = numerosDeposes(depotsC ?? []);
+            const photosDe = new Map(((photosC ?? []) as Array<Record<string, unknown>>).map((o) => [String(o.id), o.photos]));
+            for (const f of fichesL) if (photosDe.has(String(f.id))) f.photos = photosDe.get(String(f.id));
+            for (const id of idsOrigine) if (photosDe.has(String(id))) photosOrigine.set(String(id), photosDe.get(String(id)));
+            const urlsV = [...new Set([
+              ...avecCand.flatMap((j) => urlsCopieRecreation(j)),
+              ...[...photosOrigine.values()].flatMap((p) => urlsDesPhotos(p, 8)),
+              ...[...candidatesDe.values()].flat().flatMap((f) => urlsDesPhotos(f.photos, 6)),
+            ])];
+            for (let i = 0; i < Math.min(urlsV.length, 400); i += 200) {
+              const { data: empV } = await adminV.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", urlsV.slice(i, i + 200));
+              for (const e of (empV ?? []) as Array<Record<string, unknown>>) parUrlV.set(String(e.url), e);
+            }
+          }
+          let appelsEmpreintesV = 0;
           const runs = (runsV ?? []) as Array<Record<string, unknown>>;
           // (18/10 soir) Page 1 du dressing pleine de brouillons et extension d'avant la 0.6.128 : sa
           // relecture (page 1 seule) ne peut pas voir la copie. Mesuré sur le dernier relevé (instantanés).
@@ -7202,7 +7270,11 @@ serve(async (req) => {
           for (const j of aVerifierV) {
             const idJ = String(j.id);
             const court = idJ.slice(0, 8);
-            const d = decisionVerificationRecreation(j, { releves: runs, fiches: (fichesV ?? []) as Array<Record<string, unknown>>, pageUneAveugle });
+            const d = decisionVerificationRecreation(j, {
+              releves: runs, fiches: fichesL, pageUneAveugle, deposes,
+              empreinte: (u: string) => parUrlV.get(u),
+              photosFiche: j.inventaire_id != null ? photosOrigine.get(String(j.inventaire_id)) as unknown[] | undefined ?? null : null,
+            });
             if (!d) { retenusV.delete(idJ); continue; }
             if (d.action === "servir") {
               const { data: maj } = await userClient.from("cross_post_jobs")
@@ -7220,15 +7292,39 @@ serve(async (req) => {
               await userClient.from("cross_post_jobs")
                 .update({ status: "needs_user", error: d.error, platform_fields: d.platform_fields })
                 .eq("id", idJ).eq("status", "pending");
-              console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : ${d.copies?.length ? `copie probable déjà en stock (${d.copies.map((c: Record<string, unknown>) => c.vinted_item_id).join(", ")})` : "aucun relevé depuis 6 h"} → question, aucun essai de plus`);
+              const preuvesQ = ((d.platform_fields as Record<string, unknown>).recreation_deja_partie as Record<string, unknown> | undefined)?.preuves;
+              console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : ${d.copies?.length ? `copie déjà en stock (${d.copies.map((c: Record<string, unknown>) => c.vinted_item_id).join(", ")} ; preuve ${JSON.stringify(preuvesQ ?? [])})` : d.douteuses?.length ? `annonce(s) apparue(s) pendant nos envois, photos non comparées depuis 6 h (${d.douteuses.map((x: Record<string, unknown>) => (x.fiche as Record<string, unknown>)?.vinted_item_id).join(", ")})` : "aucun relevé depuis 6 h"} → question, aucun essai de plus`);
               continue;
             }
             // (18/10 soir) Aucun relevé automatique n'est demandé : il n'importe aucun article neuf (règle de
             // Nico du 05/10), donc il ne peut pas voir la copie — vu au 1er essai réel chez Régis (18:56-18:58).
             const pfAvant = (j.platform_fields ?? {}) as Record<string, unknown>;
-            if (j.error !== d.error || !pfAvant.recreation_attente_releve) {
+            const pfApres = d.platform_fields as Record<string, unknown>;
+            // (13/11) Les photos à comparer : UNE demande à empreintes-urls par passage (5 photos au plus, une par
+            // tâche toutes les 10 min — recreation_empreintes_demandees), sans attendre sa réponse ; non envoyée →
+            // la trace d'avant reste (rien n'est écrit pour elle).
+            let empreintesEnvoyees = false;
+            const aEmpreinter = (d.empreintes_a_calculer ?? []) as string[];
+            const secretV = Deno.env.get("CRON_SECRET") ?? "";
+            if (aEmpreinter.length && appelsEmpreintesV < 1 && secretV) {
+              appelsEmpreintesV++;
+              empreintesEnvoyees = true;
+              const appel = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/empreintes-urls`, {
+                method: "POST", headers: { "content-type": "application/json", "x-cron-secret": secretV },
+                body: JSON.stringify({ urls: aEmpreinter }),
+              }).then((r) => console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : ${aEmpreinter.length} photo(s) à comparer envoyée(s) à empreintes-urls → ${r.status}`))
+                .catch((e) => console.warn(`[get-pending-jobs] remise en ligne Vinted ${court} : empreintes non demandées (${(e as Error)?.message ?? e})`));
+              // deno-lint-ignore no-explicit-any
+              (globalThis as any).EdgeRuntime?.waitUntil?.(appel);
+            } else if (pfApres.recreation_empreintes_demandees !== pfAvant.recreation_empreintes_demandees) {
+              if (pfAvant.recreation_empreintes_demandees === undefined) delete pfApres.recreation_empreintes_demandees;
+              else pfApres.recreation_empreintes_demandees = pfAvant.recreation_empreintes_demandees;
+            }
+            const motifAvant = (pfAvant.recreation_attente_releve as Record<string, unknown> | undefined)?.motif;
+            const motifApres = (pfApres.recreation_attente_releve as Record<string, unknown> | undefined)?.motif;
+            if (j.error !== d.error || !pfAvant.recreation_attente_releve || motifAvant !== motifApres || empreintesEnvoyees) {
               await userClient.from("cross_post_jobs")
-                .update({ error: d.error, platform_fields: d.platform_fields })
+                .update({ error: d.error, platform_fields: pfApres })
                 .eq("id", idJ).eq("status", "pending");
             }
           }
@@ -11586,6 +11682,11 @@ serve(async (req) => {
         //     (74600) », 22 refus le 12/11) ; la trace lbc_commune_meme_cp est sur la tâche, la phrase dite une fois
         //     par compte ; plusieurs communes, ou aucune au même code postal → bloquée, message qui explique ;
         //   · une ville de l'annonce bloquée cède à celle des Réglages quand la personne l'a corrigée (relance).
+        //   · (13/11, N6b — décision de Nico) une ville de l'annonce au code d'AUCUNE commune (CEDEX — 98b72757
+        //     « Cholet 49308 », 12 publications —, code général « 75000 ») n'est plus bloquée : le repli retombe sur la
+        //     commune et SON vrai code postal (adresse du vendeur, sinon la commune que Leboncoin connaît : localisation
+        //     des annonces Leboncoin du compte, lue ici seulement quand l'adresse ne suffit pas — une lecture indexée,
+        //     bornée) ; plusieurs codes ou aucun de sûr → la question (le message pointe la ville des annonces).
         // ⛔ Réglages LUS, jamais écrits. Un job bloqué l'est par compare-and-set sur « pending ».
         try {
           const lbcPubs = besoinAdresse.filter((j) => j.platform === "leboncoin" && j.status === "pending"
@@ -11594,15 +11695,26 @@ serve(async (req) => {
             // Les réponses de Leboncoin déjà connues du compte : les refus portés par ses tâches Leboncoin servies (en
             // attente ou à toi de jouer), sans lecture de plus.
             const refusCompte = besoinAdresse.filter((j) => j.platform === "leboncoin").flatMap((j) => textesErreurJob(j));
+            // (13/11, N6b) Les communes que Leboncoin connaît pour ce compte (localisation d'origine des tâches servies ;
+            // localisation des annonces relevées, lue seulement si une ville de l'annonce en a besoin).
+            let communesLbc = communesLbcConnues({ jobs: besoinAdresse.filter((j) => j.platform === "leboncoin") });
+            if (lbcPubs.some((j) => aBesoinDesCommunesLbc({ job: j, reglagesLbc }))) {
+              const { data: lignesLoc } = await userClient.from("annonces_plateforme").select("loc:capture->localisation")
+                .eq("user_id", user.id).eq("platform", "leboncoin").order("vu_le", { ascending: false }).limit(60);
+              communesLbc = [...communesLbc, ...communesLbcConnues({ lignes: ((lignesLoc ?? []) as Array<{ loc?: unknown }>).map((x) => x.loc) })];
+            }
             const bloquesCommune = new Set<string>();
             const ditesCeCycle: Array<Record<string, unknown>> = [];
             let communesServies = 0;
             for (const j of lbcPubs) {
-              const d = decisionCommuneLbc({ job: j, reglagesLbc, refusCompte });
+              const d = decisionCommuneLbc({ job: j, reglagesLbc, refusCompte, communesLbc });
               if (d.action === "commune") {
                 const pfN = { ...(d.platform_fields as Record<string, unknown>) };
                 const trace = { ...((pfN[CLE_COMMUNE_MEME_CP] ?? {}) as Record<string, unknown>) };
-                if (trace.commune && communeComparable(trace.commune) !== communeComparable(trace.ville_tapee)) {
+                // La phrase se dit quand Leboncoin place l'annonce dans une AUTRE commune, ou quand le code postal tapé
+                // (CEDEX, général) est remplacé par celui de la commune (code_postal_servi).
+                const cpRemplace = Boolean(trace.code_postal_servi) && String(trace.code_postal_servi) !== String(trace.code_postal);
+                if (trace.commune && (communeComparable(trace.commune) !== communeComparable(trace.ville_tapee) || cpRemplace)) {
                   // La phrase, une fois par compte : portée par CETTE tâche (gardée), ou déjà dite ailleurs → la trace seule.
                   const avant = ((j.platform_fields as Record<string, unknown> | null) ?? {})[CLE_COMMUNE_MEME_CP] as Record<string, unknown> | undefined;
                   if (avant && phraseDejaDite([avant], trace as never)) {
@@ -11619,7 +11731,7 @@ serve(async (req) => {
                     if (deja) trace.deja_dite = true;
                     else {
                       trace.dite = true;
-                      trace.phrase = phraseCommuneLeboncoin({ cp: String(trace.code_postal), ville: String(trace.ville_tapee), commune: String(trace.commune) });
+                      trace.phrase = phraseDeLaTrace(trace);
                       ditesCeCycle.push(trace);
                     }
                   }
@@ -11628,7 +11740,8 @@ serve(async (req) => {
                 j.platform_fields = pfN as typeof j.platform_fields;
                 communesServies++;
                 console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (leboncoin) : « ${String(trace.ville_tapee)} ${String(trace.code_postal)} » → `
-                  + `${trace.commune ? `commune de Leboncoin « ${String(trace.commune)} » (même code postal)` : `ville de l'annonce corrigée dans les Réglages`} — servie, Réglages inchangés`);
+                  + `${cpRemplace ? `code d'aucune commune remplacé : « ${String(trace.commune)} ${String(trace.code_postal_servi)} » (${String(trace.source_code_postal)})`
+                    : trace.commune ? `commune de Leboncoin « ${String(trace.commune)} » (même code postal)` : `ville de l'annonce corrigée dans les Réglages`} — servie, Réglages inchangés`);
               } else if (d.action === "bloquer") {
                 const patch = patchBlocageCommune(j, d);
                 const { data: maj } = await userClient.from("cross_post_jobs")
@@ -13099,7 +13212,8 @@ serve(async (req) => {
     // redéposé : DEUX annonces en ligne. 83 fiches Vinted en stock (11 comptes) ont un titre « mot\nmot ».
     // Règle, pour TOUTES les versions d'extension (_shared/titre-copie-vinted.js) : tout titre servi pour
     // un dépôt Vinted a ses sauts de ligne remplacés par une espace — le titre TAPÉ et le titre COMPARÉ à
-    // la copie deviennent le même, et la base (recreation_vinted_titre_norm : saut → espace) le reconnaît :
+    // la copie deviennent le même (13/11, décision K1 : la copie ne se RATTACHE plus par son titre — numéro ou
+    // photos, recreation-vinted-verifiee.js et migration 20261113190000 ; le titre servi reste sans saut de ligne) :
     //   · job.title : la publication le tape et le compare tel que servi ;
     //   · la recréation d'une republication (une-passe 'captured' et reprise 'deleted') : l'extension
     //     ≥ 0.6.128 tape ET compare titre_saisi d'abord (construireJobRecreation, titreSaisiRecreation),

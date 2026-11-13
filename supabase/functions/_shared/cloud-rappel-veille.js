@@ -57,7 +57,7 @@ import { PRODUIT_CLOUD_GOOGLE } from './cloud-option.js';
 import { PACKAGE_GOOGLE, formatPrix } from './cloud-prix.js';
 // (11/11/2026, offres Cloud) La veille d'une formule avec Cloud nomme la formule (texteRappelFormule, en fin de fichier).
 import { nomDeFormule, essaiPossiblePourFormule } from './formules-serveur.js';
-import { PALIER_DE_FORMULE } from './formules-cloud.js';
+import { PALIER_DE_FORMULE, PRODUITS_BOUTIQUES } from './formules-cloud.js';
 
 const HEURE_MS = 3_600_000;
 const instant = (v) => {
@@ -325,5 +325,11 @@ function texteRappelFormule({ en, quand, montant, carte, c, formule, abonne, off
   }
   return { ...commun, sujet: T.sujet(n, quand), preheader: T.preheader(n, montant), titre: T.titre,
     paragraphes: [salut, T.fin(n, quand), T.suite(n, montant, c, carte), ...(f && AUTRE_FORMULE_VEILLE[f] ? [T.autre(nomDeFormule(AUTRE_FORMULE_VEILLE[f]))] : []), B.arret[c]],
-    bouton: { texte: B.bouton[c], url: LIENS_BOUTON[c] }, raisonEnvoi: T.raison(n) };
+    bouton: { texte: B.bouton[c], url: c === 'google' && f ? lienAbonnementGoogle(f) : LIENS_BOUTON[c] }, raisonEnvoi: T.raison(n) };
 }
+/** (13/11, « la veille pareil sur les 3 canaux ») La page Google Play de l'abonnement de CETTE formule : le bouton de la
+ *  veille d'une formule ouvrait celle du Cloud SEUL (sku=app.fillsell.cloud.sub), un abonnement que la personne n'a pas. */
+export const lienAbonnementGoogle = (formule) => {
+  const sku = PRODUITS_BOUTIQUES[formule]?.google;
+  return sku ? `https://play.google.com/store/account/subscriptions?sku=${sku}&package=${PACKAGE_GOOGLE}` : LIEN_ABONNEMENTS_GOOGLE;
+};

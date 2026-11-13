@@ -5,8 +5,10 @@
 // ville de l'adresse de remise (comme avant). Chaque annonce se change à part,
 // sur la carte Leboncoin au moment de publier. Règle : publication/villeLbc.js ;
 // écriture : platform_settings_fusionner seulement (utils/villeAnnonceLbc.js).
+// (13/11, N6b) Un code d'aucune commune (CEDEX, 75000) n'est jamais enregistré : controleVilleLbc le refuse et met à sa
+// place le code de la commune quand l'adresse de remise est dans la même commune (98b72757, « Cholet 49308 »).
 import { useEffect, useState } from 'react';
-import { lireVillesLbc, enregistrerVilleLbc, villeValide, libelleVille } from '../utils/villeAnnonceLbc';
+import { lireVillesLbc, enregistrerVilleLbc, villeValide, libelleVille, controleVilleLbc, messageVilleLbc } from '../utils/villeAnnonceLbc';
 import { R } from './theme';
 import { Groupe, Carte, Champ, Bouton, Note } from './ReglagesUI';
 
@@ -35,6 +37,7 @@ export default function VilleLeboncoinParDefaut({ c }) {
   const [cp, setCp] = useState('');
   const [ville, setVille] = useState('');
   const [faux, setFaux] = useState(false);
+  const [avis, setAvis] = useState('');
   const [enCours, setEnCours] = useState(false);
   useEffect(() => {
     let vivant = true;
@@ -49,6 +52,11 @@ export default function VilleLeboncoinParDefaut({ c }) {
   const enregistrer = async (effacer) => {
     const v = effacer ? null : villeValide({ code_postal: cp, ville });
     if (!effacer && !v) { setFaux(true); return; }
+    if (!effacer) {
+      const c = controleVilleLbc(v, villes.adresse);
+      if (!c.ok) { setAvis(messageVilleLbc(c, lang)); if (c.suggestion) setCp(c.suggestion.code_postal); return; }
+    }
+    setAvis('');
     setEnCours(true);
     const { ok } = await enregistrerVilleLbc(userId, v);
     setEnCours(false);
@@ -67,11 +75,12 @@ export default function VilleLeboncoinParDefaut({ c }) {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <Champ label={T.cp} value={cp} inputMode="numeric" autoComplete="postal-code" erreur={faux && !/^\d{5}$/.test(cp)}
-            onChange={(e) => { setCp(e.target.value.replace(/\D/g, '').slice(0, 5)); setFaux(false); }} style={{ width: 130, flexShrink: 0 }} />
+            onChange={(e) => { setCp(e.target.value.replace(/\D/g, '').slice(0, 5)); setFaux(false); setAvis(''); }} style={{ width: 130, flexShrink: 0 }} />
           <Champ label={T.ville} value={ville} autoComplete="address-level2"
-            onChange={(e) => { setVille(e.target.value.slice(0, 80)); setFaux(false); }} style={{ flex: 1 }} />
+            onChange={(e) => { setVille(e.target.value.slice(0, 80)); setFaux(false); setAvis(''); }} style={{ flex: 1 }} />
         </div>
         {faux ? <div role="alert" style={{ fontSize: 12.5, color: R.negatifTexte, fontWeight: 600 }}>{T.faux}</div> : null}
+        {avis ? <div role="alert" style={{ fontSize: 12.5, color: R.negatifTexte, fontWeight: 600, lineHeight: 1.4 }}>{avis}</div> : null}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Bouton onClick={() => enregistrer(false)} enCours={enCours} disabled={!userId} style={{ flex: 1 }}>{T.enregistrer}</Bouton>
           {villes.reglage ? <Bouton ton="creux" onClick={() => enregistrer(true)} enCours={enCours}>{T.effacer}</Bouton> : null}

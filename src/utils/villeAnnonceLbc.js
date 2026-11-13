@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from './reglagesPlateformes';
 import { villeValide, villesDesReglages, CLE_VILLE_PUBLICATION_LBC } from '../publication/villeLbc';
 
-export { villeValide, libelleVille, villePourLeJob, CHOIX_ADRESSE, CLE_VILLE_PUBLICATION_LBC } from '../publication/villeLbc';
+export { villeValide, libelleVille, villePourLeJob, CHOIX_ADRESSE, CLE_VILLE_PUBLICATION_LBC, controleVilleLbc, messageVilleLbc } from '../publication/villeLbc';
 
 // Une lecture par compte et par session de l'app, aucune relecture en boucle.
 const memoire = new Map();

@@ -24,7 +24,7 @@
 
 import { essaiEnCoursDuProfil } from './cloud-option.js';
 import { formatPrix, prixValide } from './cloud-prix.js';
-import { dateFin, LIEN_APP, LIEN_ABONNEMENTS_APPLE, LIEN_ABONNEMENTS_GOOGLE, canalDuRappel } from './cloud-rappel-veille.js';
+import { dateFin, LIEN_APP, LIEN_ABONNEMENTS_APPLE, LIEN_ABONNEMENTS_GOOGLE, canalDuRappel, lienAbonnementGoogle } from './cloud-rappel-veille.js';
 // (11/11/2026, offres Cloud, § 8.5 validé par Nico) Les mails d'une FORMULE AVEC CLOUD nomment la formule (« Pro +
 // Cloud ») ; ⛔ Business + Cloud n'a AUCUN mail d'essai (il n'a pas d'essai). Les textes du Cloud seul ne changent pas.
 import { estFormuleCloud, nomDeFormule, essaiPossiblePourFormule } from './formules-serveur.js';
@@ -545,7 +545,8 @@ export function texteMailFormule({ evenement, lang = 'fr', canal = null, faits =
   const f = faits.formule;
   const n = nomDeFormule(f);
   const c = canalDuRappel(canal);
-  const bouton = { texte: T.bouton[c], url: LIENS[c] };
+  // (13/11) Google : la page de l'abonnement de CETTE formule, jamais celle du Cloud seul (app.fillsell.cloud.sub).
+  const bouton = { texte: T.bouton[c], url: c === 'google' ? lienAbonnementGoogle(f) : LIENS[c] };
   const base = { raisonEnvoi: F.raison(n), type: typeMail(evenement), categorie: CATEGORIE_MAILS_CLOUD, canal: c, lienDesinscription: null };
   if (evenement === 'essai_debut') {
     if (!essaiPossiblePourFormule(f)) return null;   // ⛔ Business + Cloud : pas d'essai, pas de mail d'essai

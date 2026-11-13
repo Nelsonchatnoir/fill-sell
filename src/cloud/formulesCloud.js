@@ -55,21 +55,29 @@ export function canalAbonnementDuProfil(p) {
 /**
  * (12/11/2026, lot « zéro problème », point 4c de Nico) LE CANAL QUI FACTURE, PAS L'APPAREIL. Ce que l'écran peut faire
  * pour un compte dont l'abonnement (ou le Cloud seul) est facturé par `canalFacture`, vu dans l'app de `canalApp` (pur) :
- *   'ici'               — même canal (ou aucun abonnement) : l'achat se fait ici ;
- *   'carte_sur_mobile'  — payé par carte, vu sur iPhone / Android : le changement se fait sur le web ;
- *   'boutique'          — facturé par l'App Store / Google Play, formules OUVERTES sur ce canal : dans l'app de ce téléphone ;
- *   'boutique_bientot'  — facturé par une boutique dont les formules sont FERMÉES (Apple tant qu'il valide) : on le dit,
- *                         sans aucun bouton (avant : un bouton qui finissait sur un refus 409, ou un renvoi vers l'iPhone
- *                         où rien n'existait).
+ *   'ici'                 — même canal (ou aucun abonnement) : l'achat se fait ici ;
+ *   'carte_sur_mobile'    — payé par carte, vu sur iPhone / Android : le changement se fait sur le web ;
+ *   'boutique'            — facturé par l'App Store / Google Play, formules OUVERTES sur ce canal : dans l'app de ce téléphone ;
+ *   'boutique_fermee'     — (13/11, décision de Nico : « on ouvre partout », les textes « … y arrivent bientôt » retirés)
+ *                           facturé par une boutique dont l'interrupteur est FERMÉ (retour arrière seulement) : les formules
+ *                           sont MASQUÉES pour ce compte, comme avant leur ouverture — ni carte, ni bouton, ni promesse ;
+ *   'cloud_seul_boutique' — (13/11) le Cloud SEUL de ce compte est facturé par l'App Store / Google Play : une formule avec
+ *                           Cloud serait un SECOND abonnement (Apple : deux groupes, « FillSell Cloud » et « FillSell Plan » ;
+ *                           Google : le remplacement ne vise pas app.fillsell.cloud.sub) — formules MASQUÉES, sur tout appareil,
+ *                           tant que Nico n'a pas décidé le passage (jamais deux abonnements).
  * `canalOuvert(canal)` : l'interrupteur serveur des formules de CE canal (formulesCloudOuvertes) ; absent = ouvert
- * (l'appel d'avant ne change pas).
+ * (l'appel d'avant ne change pas). `canalCloud` : canalDuCloudSeul(lecture) (le canal du Cloud SEUL vivant), ou null.
  */
-export function voieFormulesDuCompte({ canalApp = 'stripe', canalFacture = null, canalOuvert = () => true } = {}) {
+export function voieFormulesDuCompte({ canalApp = 'stripe', canalFacture = null, canalOuvert = () => true, canalCloud = null } = {}) {
+  if (canalCloud === 'apple' || canalCloud === 'google') return 'cloud_seul_boutique';
   if (!canalFacture || canalFacture === canalApp) return 'ici';
   if (canalFacture === 'stripe') return 'carte_sur_mobile';
-  if (canalFacture === 'apple' || canalFacture === 'google') return canalOuvert(canalFacture) === true ? 'boutique' : 'boutique_bientot';
+  if (canalFacture === 'apple' || canalFacture === 'google') return canalOuvert(canalFacture) === true ? 'boutique' : 'boutique_fermee';
   return 'ici';
 }
+/** (13/11) Les voies où les formules avec Cloud ne se montrent PAS à ce compte (aucune carte, aucun texte). */
+export const VOIES_FORMULES_MASQUEES = Object.freeze(['boutique_fermee', 'cloud_seul_boutique']);
+export const formulesMasqueesPourLaVoie = (voie) => VOIES_FORMULES_MASQUEES.includes(voie);
 
 /** Le canal qui facture le CLOUD SEUL d'un compte (pur) : profiles.cloud_canal tant que ce Cloud est vivant (essai en cours
  *  ou payé, d'après la lecture Cloud), sinon null. */
@@ -106,7 +114,6 @@ export function essaiPermisDuCompte(lecture) {
  *   { formule, palier, misEnAvant, maFormule, actuelle, essai, pastille, cta, note, lignePrix, achetable, enLecture, canalFacture }
  *   cta       : 'essai' | 'essai_abonne' | 'ajouter' | 'passer' | null (formule déjà prise)
  *   note      : 'prorata' | 'note_essai' | 'boutique' (son abonnement App Store / Google Play) | 'carte_sur_mobile'
- *               | 'boutique_bientot' (sa boutique n'a pas encore les formules : aucun bouton)
  *               | 'essai_continue' (web, pendant l'essai : l'essai continue, le 1er débit au prix choisi)
  *               | 'essai_arrete' (web, pendant l'essai, vers Business + Cloud : l'essai s'arrête, payé aujourd'hui)
  *               | 'essai_boutique' (iPhone / Android, pendant l'essai : la boutique peut l'arrêter, elle montre le montant)
@@ -125,7 +132,11 @@ export function cartesFormulesCloud({
   // Un compte vu sur un AUTRE canal que celui qui le facture (sa formule, ou son Cloud seul) : rien ne s'achète ici
   // (jamais deux abonnements). (12/11, 4c) La note suit le canal QUI FACTURE et son interrupteur, jamais l'appareil.
   const canalFacture = (abonne && canalAbonnement != null ? canalAbonnement : null) ?? canalCloud ?? null;
-  const voie = voieFormulesDuCompte({ canalApp, canalFacture, canalOuvert });
+  // Le Cloud d'une formule avec Cloud (formuleActuelle) n'est pas un Cloud SEUL : seul ce dernier masque les formules.
+  const voie = voieFormulesDuCompte({ canalApp, canalFacture, canalOuvert, canalCloud: actuelle ? null : canalCloud });
+  // (13/11, décision de Nico) Plus aucun « … y arrivent bientôt » : une voie masquée ne rend AUCUNE carte (l'hôte cache la
+  // position « Avec Cloud » : formulesMasqueesPourLaVoie).
+  if (formulesMasqueesPourLaVoie(voie)) return { cartes: [], founder: false, essaiAffiche: false, voie };
   const autreCanal = voie !== 'ici';
   const noteAutreCanal = autreCanal ? voie : null;
   const cartes = FORMULES_CLOUD
@@ -178,7 +189,6 @@ export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, fi
     case 'prorata': return T.prorata(echeance);
     case 'note_essai': return T.noteEssai(palierIci ?? '', nom, finEssai ?? '', echeance ?? '');
     case 'boutique': return T.boutique(nomBoutique(carte.achetable ? canalApp : carte.canalFacture) ?? 'App Store');
-    case 'boutique_bientot': return T.boutiqueBientot(carte.canalFacture);
     case 'carte_sur_mobile': return T.carteSurMobile;
     case 'essai_continue': return T.essaiContinue(essaiFin, nom, prix);
     case 'essai_arrete': return T.essaiArrete(nom, prix);
