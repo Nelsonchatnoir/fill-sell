@@ -135,3 +135,38 @@ chantiers (hors dépôt, ils citent des comptes) : scratchpad de la session, `et
   canal pour l'envoi, puis à l'état vc38 octet pour octet).
 - Extension 0.6.187 : `leboncoin.js`, `vinted.js`, `background.js`, `depop-tailles.js` — un seul zip à la fin du lot.
 - Retour : fonctions depuis une archive de f5a1920^^^ (9ad5320) ; app : nouvelle OTA d'un commit qui revient sur 44b3ada.
+
+## Étape 3 — retraits, ventes, adresse (EN SERVICE le 13/11 vers 02:50)
+Trois chantiers en parallèle, fusionnés (un conflit : deux entrées ajoutées au même endroit de `cause-blocage.js`, les
+deux gardées), suite complète sur la copie fusionnée en LF : **702/702** ; build:essai OK ; deno check : 0 erreur.
+- **N1** (82e64f14 / 67cd1c77, 8a2eba68 / 46569b9d) : la perte du « published » vient de la panne Supabase du 11/11
+  (13:24-13:27 : 546 puis 503/504, deux PATCH de la fiche en 520) — `retenirDepotIncertain` a remis la tâche « pending » à
+  l'étape recreated. Règle : numéro exact vu actif après le retrait → publié + fiche au nouveau numéro ; doute ou sans
+  preuve à 6 h → question ; jamais de second dépôt. **Après déploiement : 67cd1c77 « published », fiche passée au numéro
+  10761660236 ; 46569b9d → question `recreation_deja_partie`.** Verrou `recreated-vinted-numero-connu`.
+- **3a** : les 2 faux rouges du 05/11 et les 2 rouges de a5da17ee ont la MÊME forme (vus en ligne avant la vente, poste
+  muet) : la décision écrite de Nico (Q11 a) tranche — rouge = vu en ligne APRÈS la vente, sinon « 🟡 À relire ». Rejeu
+  des 38 retraits : 6 rouges → 1 rouge + 11 à relire. f3aec8cc (d8b07167, Beebs) reste ROUGE (relue active le 11/11, après
+  la vente) ; 7c6f4b35 et 450bdf41 (a5da17ee) → « à relire ». N2 : files arrêtées à tort retirées. Verrous
+  `retraits-en-retard`, `attente-extension-active`.
+- **N3** (b695d990, d607ba20, d0ac0538) : eBay d'un client Cloud non relié → « relie ton compte eBay », retrait = risque
+  de double vente visible ; jamais « ordinateur ». Verrou `ebay-a-relier-cloud`.
+- **3c** (14e536e0, ca9afe24, ebdf29f0) : un numéro confirmé par un autre dépôt n'est plus candidat ; le cas juste
+  (90d11dae) reste une question. Le retard de rattachement depuis le 10/11 vient des relevés concurrents (la passe attend
+  la fin de tout relevé du compte), pas des empreintes ; le correctif n'en dépend plus. Verrou
+  `depot-numero-d-un-autre-depot`.
+- **3d** (a1e210f2 ; 8ac5bbda, 98b72757) : même code postal → commune de Leboncoin servie ; CEDEX / 75000 → bloqué avant
+  tout essai, message qui explique. Verrou `lbc-commune-meme-cp`. Effet : ~11 publications de 98b72757 (49308) → « à toi
+  de jouer » avec l'explication.
+- **3b** : les 5 gardes des ventes Beebs construites ; migration `20261113140000_ventes_beebs_cinq_gardes` PRÉPARÉE (banc
+  jetable 48/48), NON appliquée ; interrupteur à 0 (relu, jamais touché) ; lecture sans 403 dans la 0.6.187 ; essai réel
+  en lecture seule à faire sur le compte d'Ornella avant le zip. Verrous `ventes-beebs-cinq-gardes`,
+  `ventes-beebs-lecture-due`.
+### Livraison
+- Commits **448ac74** (correctif) + **117c2ab** (`EXTENSION_LAST_COMMIT` recalé, 2.9.179).
+- Fonctions (archive de 117c2ab) : handler-watch v198 → **v199**, ops-digest v63 → **v64**, beebs-lien v28 → **v29**
+  (verify_jwt false, `--no-verify-jwt`) ; get-pending-jobs v367 → **v368** (true) ; sans session : 401. Écarts d'avant ce lot
+  emportés (vérifiés) : ops-digest prend les modules Cloud de main (déjà servis ailleurs) ; beebs-lien n'utilise de
+  `recreation-deja-partie.js` que `urlsPhotos`, identique (md5).
+- Web 2026-11-13T01:46:15Z+117c2ab (entrée lue avec `Origin` : 200) ; **OTA 2.9.179**.
+- Retour : fonctions depuis une archive de 3470227 ; app : nouvelle OTA qui revient sur 448ac74.
