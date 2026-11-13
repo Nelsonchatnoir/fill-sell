@@ -109,10 +109,12 @@ try {
   const AVANT = [
     [ctx(), 'plateformes › extension › releve › republication › fin'],
     [ctx({ choix: { plateformes: [] } }), 'plateformes › extension › debut › republication › fin'],
-    [ctx({ choix: { plateformes: ['ebay'] }, plan: { free: true }, demanderPseudo: true }), 'plateformes › ebay › extension › releve › republication › free › pseudo › fin'],
+    // (13/11/2026, bloc B2 de Nico, changement VOLONTAIRE — verrou selftest:entree-ordre) eBay se relie APRÈS le parcours
+    // (récap) et « Ton plan Free » est dans le récap : ni étape « ebay », ni étape « free », formules ouvertes ou fermées.
+    [ctx({ choix: { plateformes: ['ebay'] }, plan: { free: true }, demanderPseudo: true }), 'plateformes › extension › releve › republication › pseudo › fin'],
     [ctx({ cloud: { parcours: true, actif: false, ouvert: true } }), 'plateformes › voie › extension › releve › republication › fin'],
     [ctx({ cloud: { parcours: true, actif: false, ouvert: true }, voie: 'cloud' }), 'plateformes › voie › cloud › releve › republication › fin'],
-    [ctx({ cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud', plan: { free: true } }), 'plateformes › voie › cloud › cloud_connexion › releve › republication › free › fin'],
+    [ctx({ cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud', plan: { free: true } }), 'plateformes › voie › cloud › cloud_connexion › releve › republication › fin'],
     [ctx({ cloud: { parcours: true, actif: false, ouvert: true }, voie: 'extension' }), 'plateformes › voie › extension › releve › republication › fin'],
   ];
   for (const [cx, attendu] of AVANT) {

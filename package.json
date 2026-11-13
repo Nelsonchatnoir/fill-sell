@@ -123,6 +123,8 @@
     "selftest:cout-publication": "node --import ./scripts/loader-ext.mjs scripts/cout-publication-selftest.mjs",
     "selftest:ecarts-0411": "node --import ./scripts/loader-ext.mjs scripts/ecarts-0411-selftest.mjs",
     "selftest:onboarding-trois-jauges": "node scripts/onboarding-trois-jauges-selftest.mjs",
+    "selftest:entree-ordre": "node scripts/entree-ordre-selftest.mjs",
+    "selftest:detail-quota": "node scripts/detail-quota-selftest.mjs",
     "selftest:cloud-prix-nom": "node --import ./scripts/loader-ext.mjs scripts/cloud-prix-nom-selftest.mjs",
     "selftest:cloud-mails-canaux": "node scripts/cloud-mails-canaux-selftest.mjs",
     "selftest:cloud-resiliation-mails": "node --import ./scripts/loader-ext.mjs scripts/cloud-resiliation-mails-selftest.mjs",

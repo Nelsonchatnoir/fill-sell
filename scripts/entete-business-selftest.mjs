@@ -18,14 +18,18 @@ const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { cons
 const i = app.indexOf('<div className={quotas?.annonces?.plafond!=null?"topbar topbar--solde":"topbar"}>');
 const entete = app.slice(i, app.indexOf("</div>\n      </div>", i) + 20);
 ok(i > 0 && entete.length > 500, "l'en-tête est trouvé");
-ok(/onClick=\{isBusiness\?undefined:\(\)=>openUpgradeModal\(null,'entete_quota'\)\}/.test(entete) && /disabled=\{isBusiness\}/.test(entete),
-  "le compteur d'annonces n'ouvre plus les offres pour Business (il reste affiché : il informe)");
+// (13/11/2026, bloc B1 de Nico, changement VOLONTAIRE — verrou selftest:detail-quota) Le compteur n'ouvre plus les
+// offres pour PERSONNE : il ouvre le détail des quotas, et chez un Business la feuille ne montre aucun lien d'offres.
+ok(/onClick=\{\(\)=>ouvrirDetailQuota\('annonces'\)\}/.test(entete) && !/openUpgradeModal\(null,'entete_quota'/.test(app)
+  && /<FeuilleQuota[\s\S]{0,300}offres=\{!isBusiness\}/.test(app),
+  "le compteur d'annonces n'ouvre plus les offres (il ouvre le détail des quotas, sans aucune offre pour Business)");
 ok(/\{!isPremium&&!isBusiness&&!isNative\?\(\s+<PremiumBanner/.test(entete) && /\):!isPremium&&!isBusiness&&isNative\?\(/.test(entete),
   "« Voir les offres » (web et app) : jamais pour Business, même si ses autres drapeaux manquaient");
 ok(/\):\(isPremium\|\|isBusiness\)\?\(/.test(entete) && /<PlanBadge isPremium=\{isPremium\} isPro=\{isPro\} isBusiness=\{isBusiness\}/.test(entete),
   "Business voit sa pastille de formule à la place");
 const appels = entete.match(/openUpgradeModal\(/g) ?? [];
-ok(appels.length === 3, "trois portes vers les offres dans l'en-tête, toutes gardées", String(appels.length));
+// (13/11/2026) Deux portes (« Voir les offres », web et app) : le compteur ouvre désormais le détail des quotas.
+ok(appels.length === 2, "deux portes vers les offres dans l'en-tête, toutes gardées", String(appels.length));
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ en-tête : aucune offre montrée à un compte Business");

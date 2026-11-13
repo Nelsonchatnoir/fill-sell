@@ -205,6 +205,8 @@ import ExtensionPitchScreen from './components/ExtensionPitchScreen';
 import { extensionTraceeAilleurs } from './utils/extensionTrace';
 import { lireEtatEbay, ebayVoieApiDuCompte } from './utils/ebayCompte';
 import PlanDetailsModal from './components/PlanDetailsModal';
+// (13/11/2026, bloc B1) Le détail des quotas, ouvert par le compteur de l'en-tête.
+import FeuilleQuota from './components/FeuilleQuota';
 import { useIsMobile } from './hooks/useIsMobile';
 import BrandMark from './components/BrandMark';
 import { VoiceSheet, VoiceThinking, FloatingBubble } from './components/voice/VoiceKit';
@@ -4314,10 +4316,31 @@ export default function App({ loginOnly = false }){
     ?{...info,remise_le:remiseDuCompte(quotas)??remiseLueApp}
     :info);
   const pastilleGrille=grilleEntete?jaugeLaPlusProche(jaugesDuCompte(quotas)):null;
-  const appuiPastilleGrille=()=>{
-    const mur=pastilleGrille&&pastilleGrille.restantes===0?murDeLaJauge(pastilleGrille.cle,quotas):null;
-    if(mur)openUpgradeModal(null,'entete_quota','quota_geste',{quotaInfo:mur});
-    else openUpgradeModal(null,'entete_quota');
+  // ── (13/11/2026, bloc B1 de Nico — verrou selftest:detail-quota) LE COMPTEUR OUVRE LE DÉTAIL DES QUOTAS ─────────
+  // Mesuré du 06 au 13/11 (usage_logs) : la pastille ouvrait la fenêtre des offres — 148 ouvertures (77 comptes),
+  // 115 abandons au premier écran, 2 clics sur une formule. Le geste veut dire « combien il me reste ? » : il ouvre
+  // désormais « Tes quotas du mois » (components/FeuilleQuota.jsx : utilisé, reste, remise à zéro, ce qui compte), les
+  // offres en LIEN tout en bas. Le badge (« Ton plan », PlanDetailsModal) et « Voir les offres » mènent toujours aux
+  // formules. Business : la feuille, sans aucun lien d'offres. Source des chiffres inchangée : quotas_etat.
+  const [detailQuota,setDetailQuota]=useState(null);
+  const ouvrirDetailQuota=(cle)=>{
+    const j=cle?jaugesDuCompte(quotas)?.[cle]:null;
+    logTunnel('quota_detail_open',{origine:'entete_quota',jauge:cle??null,restantes:Number.isFinite(j?.restantes)?j.restantes:null,plafond:Number.isFinite(j?.plafond)?j.plafond:null,palier:quotas?.palier??null});
+    setDetailQuota({cle:cle??null,ouvertLe:Date.now()});
+  };
+  const appuiPastilleGrille=()=>ouvrirDetailQuota(pastilleGrille?.cle??null);
+  const fermerDetailQuota=(sortie)=>{
+    if(detailQuota)logTunnel('quota_detail_ferme',{sortie:sortie??null,duree_ms:Date.now()-detailQuota.ouvertLe});
+    setDetailQuota(null);
+  };
+  // Le lien du bas (detail_quota) ou celui d'une jauge vide (detail_quota_jauge) : la feuille se ferme, puis les offres —
+  // sur le mur de la jauge de la pastille quand elle est vide (comme l'appui d'avant), sinon la fenêtre d'offres.
+  const offresDepuisDetail=(origine,murJauge)=>{
+    const cle=detailQuota?.cle??null;
+    const mur=murJauge??(cle&&jaugesDuCompte(quotas)?.[cle]?.restantes===0?murDeLaJauge(cle,quotas):null);
+    fermerDetailQuota('offres');
+    if(mur)openUpgradeModal(null,origine,'quota_geste',{quotaInfo:quotaInfoAvecRemise(mur)});
+    else openUpgradeModal(null,origine);
   };
 
   function buildChartData(salesArr,range){
@@ -8977,8 +9000,9 @@ export default function App({ loginOnly = false }){
           <button
             onClick={appuiPastilleGrille}
             title={lang==='fr'
-              ?`${motJauge(pastilleGrille.cle,2,'fr').replace(/^./,(l)=>l.toUpperCase())} restantes ce mois-ci — voir les offres`
-              :`${motJauge(pastilleGrille.cle,2,'en').replace(/^./,(l)=>l.toUpperCase())} left this month — see plans`}
+              ?`${motJauge(pastilleGrille.cle,2,'fr').replace(/^./,(l)=>l.toUpperCase())} restantes ce mois-ci — voir le détail`
+              :`${motJauge(pastilleGrille.cle,2,'en').replace(/^./,(l)=>l.toUpperCase())} left this month — see details`}
+            aria-haspopup="dialog"
             className="tb-quota"
             data-pastille-jauge={pastilleGrille.cle}
             style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",fontFamily:"inherit",color:"inherit",opacity:1}}
@@ -8998,14 +9022,14 @@ export default function App({ loginOnly = false }){
           // d'offre à lui montrer. Le compteur reste (il informe), mais il
           // n'ouvre plus les offres — la pastille Business, juste à droite,
           // ouvre sa formule.
+          // (13/11/2026, bloc B1) Pour TOUT LE MONDE désormais : le compteur ouvre le détail des quotas, jamais les
+          // offres (Business compris : la feuille ne lui montre aucun lien d'offres).
           <button
-            onClick={isBusiness?undefined:()=>openUpgradeModal(null,'entete_quota')}
-            disabled={isBusiness}
-            title={isBusiness
-              ?(lang==='fr'?"Annonces restantes ce mois-ci":"Listings left this month")
-              :(lang==='fr'?"Annonces restantes ce mois-ci — voir les offres":"Listings left this month — see plans")}
+            onClick={()=>ouvrirDetailQuota('annonces')}
+            aria-haspopup="dialog"
+            title={lang==='fr'?"Annonces restantes ce mois-ci — voir le détail":"Listings left this month — see details"}
             className="tb-quota"
-            style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:isBusiness?"default":"pointer",fontFamily:"inherit",color:"inherit",opacity:1}}
+            style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",fontFamily:"inherit",color:"inherit",opacity:1}}
           >
             {/* « 5 annonces » ne disait pas s'il s'agit du restant ou du
                 total (relevé Nico 02/09 soir) : le mot « restantes » est
@@ -10404,6 +10428,21 @@ export default function App({ loginOnly = false }){
           userId={user?.id}
           onUpgradePro={()=>{setShowPremiumModal(false);startTierCheckout('pro');}}
           onUpgradeBusiness={()=>{setShowPremiumModal(false);startTierCheckout('business');}}
+        />
+      )}
+
+      {/* ── (13/11/2026, bloc B1) « TES QUOTAS DU MOIS » — le compteur de l'en-tête (ouvrirDetailQuota) ──
+          quotas_etat tel quel (une seule source), la remise que le serveur rend ou que l'app a lue, et aucun lien
+          d'offres chez un Business. */}
+      {detailQuota&&(
+        <FeuilleQuota
+          quotas={quotas}
+          lang={lang}
+          palier={palier}
+          remiseIso={remiseDuCompte(quotas)??remiseLueApp}
+          offres={!isBusiness}
+          onFermer={fermerDetailQuota}
+          onOffres={offresDepuisDetail}
         />
       )}
 

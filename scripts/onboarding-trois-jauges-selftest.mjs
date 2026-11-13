@@ -119,7 +119,9 @@ try {
       const parcours = R.parcoursCloud({ ouvert: tel && visible, lecture, voie, actif });
       return P.etapesVisibles({ choix, demanderPseudo: true, cloud: { parcours, actif }, voie, plan: R.planEntree(grille ? K1 : K0, palier) }).map((e) => e.id);
     };
-    const avec = (base, grille) => (grille ? [...base.slice(0, -2), 'free', ...base.slice(-2)] : base);
+    // (13/11/2026, bloc B2 de Nico, changement VOLONTAIRE — verrou selftest:entree-ordre) « Ton plan Free » n'est plus
+    // une étape : son contenu entier passe dans le récap. La grille ne change plus la liste des étapes.
+    const avec = (base) => base;
     for (const grille of [false, true]) {
       for (const tel of [true, false]) {
         for (const visible of [false, true]) {
@@ -141,13 +143,15 @@ try {
     }
     // À 0, Cloud fermé : la liste d'AVANT, dans l'ordre, pour chaque réponse à « Où tu vends ? ».
     const histo = (choix, pseudo) => P.etapesVisibles({ choix, demanderPseudo: pseudo, cloud: { parcours: false, actif: false }, voie: null, plan: null }).map((e) => e.id).join(',');
-    ok(histo({ plateformes: ['vinted', 'ebay'], debute: false }, true) === 'plateformes,ebay,extension,releve,republication,pseudo,fin', 'à 0 : eBay coché → plateformes, ebay, extension, releve, republication, pseudo, fin (comme avant)');
+    // (13/11/2026, bloc B2, changement VOLONTAIRE) eBay se relie APRÈS le parcours (récap) : plus d'étape eBay.
+    ok(histo({ plateformes: ['vinted', 'ebay'], debute: false }, true) === 'plateformes,extension,releve,republication,pseudo,fin', 'à 0 : eBay coché → plateformes, extension, releve, republication, pseudo, fin (eBay relié après, depuis le récap)');
     ok(histo({ plateformes: [], debute: true }, false) === 'plateformes,extension,debut,republication,fin', 'à 0 : rien en ligne, nom connu → plateformes, extension, debut, republication, fin (comme avant)');
     ok(histo({ plateformes: ['beebs'], debute: false }, false) === 'plateformes,extension,releve,republication,fin', 'à 0 : sans eBay ni pseudo → plateformes, extension, releve, republication, fin');
     // Un contexte À L'ANCIENNE (sans aucune clé neuve) voit aussi la liste d'avant.
     ok(P.etapesVisibles({ choix: { plateformes: ['vinted'], debute: false }, demanderPseudo: true }).map((e) => e.id).join(',') === 'plateformes,extension,releve,republication,pseudo,fin', 'un contexte sans les clés neuves : la liste d’avant');
-    ok(!liste({ tel: true, visible: true, grille: true, palier: 'premium' }).includes('free') && liste({ tel: false, visible: false, grille: true }).includes('free'),
-      '« Ton plan Free » : avec la grille et pour un compte Free seulement — aussi sur ordinateur, jamais pour un Premium');
+    // (13/11/2026, bloc B2, changement VOLONTAIRE) « Ton plan Free » se dit dans le récap (section 2), plus dans une étape.
+    ok(!liste({ tel: true, visible: true, grille: true, palier: 'premium' }).includes('free') && !liste({ tel: false, visible: false, grille: true }).includes('free'),
+      '« Ton plan Free » : plus jamais une étape (le récap le porte, pour un compte Free avec la grille)');
     ok(liste({ tel: true, visible: true, grille: false, voie: 'cloud', choix: { plateformes: [], debute: true } }).join(',') === 'plateformes,voie,cloud,debut,republication,pseudo,fin', 'voie Cloud et rien en ligne : « Je débute » après l’essai');
     // La règle de la voie Cloud, ses bords.
     const pc = (o) => R.parcoursCloud({ ouvert: true, voie: null, actif: false, ...o });
@@ -303,7 +307,10 @@ try {
   }
   {
     const fin = lu('EtapeFin', ctx({ grille: true }));
-    ok(/Ton plan Free : 5 annonces, 50 publications, 30 remontées Free/.test(fin) && !/Republication auto|Automatismes/.test(fin), 'récap (grille) : « Ton plan : Free : 5 annonces, 50 publications, 30 remontées », « Republication auto » sort', fin);
+    // (13/11/2026, bloc B2, changement VOLONTAIRE) Le récap d'un Free porte le plan EN ENTIER (l'écran « Ton plan Free »).
+    ok(/Ton plan Free Ce que tu as chaque mois, sans payer/.test(fin) && /5 annonces rédigées par l.IA ou scannées avec Lens 50 publications une mise en ligne sur une plateforme 30 remontées une annonce remise en haut sur une plateforme/.test(fin)
+      && /Besoin de plus un jour \? Les formules sont dans Réglages › Abonnement\./.test(fin) && !/Republication auto|Automatismes/.test(fin),
+      'récap (grille) : le plan Free en entier (3 chiffres, ce qu’ils comptent, « Besoin de plus un jour ? »), « Republication auto » sort', fin);
     ok(/Ton plan Premium : 40 annonces, 400 publications, 1 500 remontées Premium/.test(lu('EtapeFin', ctx({ grille: true, palier: 'premium' }))), 'récap (grille) : le plan d’un Premium se dit avec SES chiffres');
     ok(/Extension Chrome/.test(fin) && !/FillSell Cloud/.test(fin), 'récap, voie extension : la ligne « Extension Chrome » comme aujourd’hui');
     const L = [{ id: 'vinted', nom: 'Vinted', etat: 'connecte' }, { id: 'leboncoin', nom: 'Leboncoin', etat: 'a_connecter' }, { id: 'beebs', nom: 'Beebs', etat: 'a_connecter' }, { id: 'depop', nom: 'Depop', etat: 'a_connecter' }];
@@ -372,7 +379,8 @@ try {
     }
     delete globalThis.window;
     ok(neufs.length === 0, 'aucun mot neuf dans le parcours entier rendu à chaque étape (fr, en, téléphone, ordinateur), même avec palier et achat passés par l’hôte', neufs.slice(0, 6).join(' | '));
-    ok(vus.size >= 16, `les étapes d'avant sont bien atteintes (${vus.size} titres vus sur 16)`, [...vus].join(', '));
+    // (13/11/2026, bloc B2) L'étape eBay n'est plus dans le parcours : « Relie ton compte eBay » / « Link your eBay » ne s'y voient plus.
+    ok(vus.size >= 14 && !vus.has('Relie ton compte eBay') && !vus.has('Link your eBay'), `les étapes d'avant sont bien atteintes (${vus.size} titres vus sur 14, sans l'étape eBay retirée)`, [...vus].join(', '));
     const ctxSrc = sansCommentaires(lire('src/entree/useCloudEntree.js'));
     // (05/11 soir, phase 3 point 3) cloudOffreVendable : drapeau levé ET téléphone en France, ou témoin.
     ok(/const ouvert = Boolean\(surTelephone && userId && typeof essaiCloud === 'function' && cloudOffreVendable\(userId\)\);/.test(ctxSrc)

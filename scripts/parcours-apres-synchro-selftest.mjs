@@ -41,7 +41,10 @@ ok(/if \(o\.notee \|\| palierCliqueRef\.current\) return;/.test(m), 'UNE fermetu
 ok(/ouverture: o\.id, sortie, duree_ms:/.test(m) && /ecran: contexte\?\.ecran \?\? null, \.\.\.lireDernierGeste\(\), canal/.test(m), 'chaque fermeture : identifiant d\'ouverture, sortie, durée, écran, après quoi, canal');
 ok(/logModale\('offers_modal_open', \{ origine: origine \?\? 'non_precisee', trigger, ouverture:/.test(m), 'l\'ouverture porte le même identifiant et le même contexte');
 const app = lire('src/App.jsx');
-ok(/openUpgradeModal\(null,'entete_quota'\)/.test(app) && (app.match(/openUpgradeModal\(null,'entete_offres'\)/g) || []).length === 2 && !/openUpgradeModal\(null,'entete'\)/.test(app), 'en-tête : la pastille « N annonces restantes » et « Voir les offres » ne se confondent plus');
+// (13/11/2026, bloc B1 de Nico, changement VOLONTAIRE — verrou selftest:detail-quota) La pastille n'ouvre plus les offres
+// mais le détail des quotas, journalisé à part (quota_detail_open, origine entete_quota) : les deux gestes ne se
+// confondent toujours pas.
+ok(/logTunnel\('quota_detail_open',\{origine:'entete_quota'/.test(app) && !/openUpgradeModal\(null,'entete_quota'/.test(app) && (app.match(/openUpgradeModal\(null,'entete_offres'\)/g) || []).length === 2 && !/openUpgradeModal\(null,'entete'\)/.test(app), 'en-tête : la pastille « N annonces restantes » (le détail des quotas) et « Voir les offres » ne se confondent plus');
 ok(/contexte=\{\{ecran:showSettings\?'reglages':\(\['tableau','stock','lens','ventes','stats'\]\[tab\]\?\?'autre'\)\}\}/.test(app), 'l\'écran d\'où s\'ouvre l\'offre');
 const lps = lire('src/components/ListingPreviewScreen.jsx');
 ok(/origine="stepper_quota"/.test(lps) && /contexte=\{\{ ecran: "stepper" \}\}/.test(lps), 'stepper : « stepper_quota » au lieu de « non_precisee »');

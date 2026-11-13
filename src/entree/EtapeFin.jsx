@@ -7,19 +7,29 @@
 // fonction du Pro, pas une promesse au Free) et « Ton plan » entre, chiffres lus dans coin_config (c.plan). SUR LA
 // VOIE CLOUD, la ligne « FillSell Cloud » (et « Connexions » une fois l'option active) prend la place de celle de
 // l'extension. Grille éteinte et Cloud fermé : le récap d'avant, ligne pour ligne.
+//
+// (13/11/2026, bloc B2 de Nico — verrou scripts/entree-ordre-selftest.mjs) Deux choses de plus, et seulement celles-là :
+//   · « Ton plan Free » n'est plus un écran à part : pour un compte Free avec la grille, son contenu ENTIER (PlanFree,
+//     EtapeFree.jsx) est rendu ici, sous la prochaine étape, à la place de la ligne « Ton plan » ;
+//   · eBay coché et pas relié : la ligne « Compte eBay » porte « Relier eBay ». Le geste FINIT le parcours puis ouvre
+//     la page eBay (onTerminer({ ensuite: 'ebay' }) → entree/ebayApres.js) : au retour, la personne est dans l'app.
+//     eBay indisponible : on reste ici, la phrase le dit.
+import { useState } from 'react';
 import { Cloud, Gauge, Plug } from 'lucide-react';
 import { NOMS_FORMULES } from '../cloud/textesFormules';
 import { E, DEGRADE } from './theme';
-import { Scene, Titre, Texte, Carte, BoutonPrimaire } from './EntreeUI';
+import { Scene, Titre, Texte, Carte, BoutonPrimaire, Bande } from './EntreeUI';
 import { LIBELLE_PLATEFORME } from '../utils/stockFiltres';
 import BandesReleve from '../annonces/BandesReleve';
 import { textesAnnonces } from '../annonces/textes';
 import { listeJauges } from './regles';
+import { PlanFree } from './EtapeFree';
 
 // Une ligne : tuile + libellé + précision + pastille d'état. Les deux tons
 // passent 4,5:1 sur leur fond (menthe ou papier).
 // (04/11) `retour` : la précision passe à la ligne au lieu d'être coupée (« Ton plan », « Connexions »).
-function Ligne({ glyphe, libelle, valeur, fait, mot, delai, retour = false }) {
+// (13/11) `action` : un bouton à la place de la pastille d'état (« Relier eBay »).
+function Ligne({ glyphe, libelle, valeur, fait, mot, delai, retour = false, action = null }) {
   return (
     <div className="en-monte" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 0', borderBottom: `1px solid ${E.ligneDouce}`, animationDelay: delai }}>
       <span aria-hidden="true" style={{
@@ -30,17 +40,29 @@ function Ligne({ glyphe, libelle, valeur, fait, mot, delai, retour = false }) {
         <span style={{ fontSize: 13.5, fontWeight: 600, color: E.ink }}>{libelle}</span>
         <span style={{ fontSize: 12, fontWeight: 500, color: E.texteSecondaire, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: retour ? 'normal' : 'nowrap' }}>{valeur}</span>
       </span>
-      <span style={{
-        flexShrink: 0, padding: '5px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-        background: fait ? E.menthe : E.paper, border: `1px solid ${fait ? E.mentheBord : E.border}`,
-        color: fait ? E.tealDeep : E.texteSecondaire,
-      }}>{mot}</span>
+      {action ?? (
+        <span style={{
+          flexShrink: 0, padding: '5px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+          background: fait ? E.menthe : E.paper, border: `1px solid ${fait ? E.mentheBord : E.border}`,
+          color: fait ? E.tealDeep : E.texteSecondaire,
+        }}>{mot}</span>
+      )}
     </div>
   );
 }
 
 export default function EtapeFin({ c, T, pseudo, onTerminer }) {
+  const [ebay, setEbay] = useState({ etat: 'idle', erreur: null });
   const noms = c.choix.plateformes.map((p) => LIBELLE_PLATEFORME[p] ?? p);
+  // (13/11) Le plan Free se dit EN ENTIER ici (grille, compte Free) ; un plan payant garde sa ligne.
+  const planFree = c.plan?.free === true;
+  const ebayARelier = c.choix.plateformes.includes('ebay') && !c.ebayRelie;
+  const relierEbay = async () => {
+    setEbay({ etat: 'en_cours', erreur: null });
+    const r = await onTerminer({ ensuite: 'ebay' });
+    // Réussi : le parcours est fermé, la page eBay s'ouvre. Raté : on reste ici, et on le dit.
+    if (r && r.ok === false) setEbay({ etat: 'echec', erreur: r.erreur ?? null });
+  };
   const extFait = c.extensionVue || c.envoi.etat === 'envoye';
   // (04/11, lot 3) La voie Cloud et ses connexions (lues par le contexte, jamais ici).
   const cloudChoisi = c.cloudChoisi === true;
@@ -52,7 +74,7 @@ export default function EtapeFin({ c, T, pseudo, onTerminer }) {
     : c.envoi.etat === 'envoye' ? T.finSuiteLien : c.surTelephone ? T.finSuiteTel : T.finSuiteOrdi;
 
   return (
-    <Scene cle="fin" pied={<BoutonPrimaire onClick={onTerminer}>{T.finCta}</BoutonPrimaire>}>
+    <Scene cle="fin" pied={<BoutonPrimaire onClick={() => onTerminer()} disabled={ebay.etat === 'en_cours'}>{T.finCta}</BoutonPrimaire>}>
       {/* La coche et ses deux ondes — le seul moment du parcours qui se
           permet une célébration, et elle tient en deux anneaux. */}
       <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 18px' }}>
@@ -96,11 +118,23 @@ export default function EtapeFin({ c, T, pseudo, onTerminer }) {
         {c.choix.plateformes.includes('ebay') && (
           <Ligne
             glyphe="e" libelle={T.finEbay}
-            valeur={c.ebayRelie ? T.finEbayApi : T.finEbayOu}
-            fait={c.ebayRelie} mot={c.ebayRelie ? T.finRelie : T.finPlusTard} delai="140ms"
+            valeur={c.ebayRelie ? T.finEbayApi : T.finEbayAvant}
+            fait={c.ebayRelie} mot={c.ebayRelie ? T.finRelie : T.finPlusTard} delai="140ms" retour={ebayARelier}
+            action={ebayARelier ? (
+              <button
+                type="button" data-entree="fin-ebay" onClick={relierEbay} disabled={ebay.etat === 'en_cours'} className="en-cta en-focus"
+                style={{
+                  flexShrink: 0, minHeight: 44, padding: '0 14px', borderRadius: 999, border: `1.5px solid ${E.tealDeep}`,
+                  background: E.card, color: E.tealDeep, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700,
+                  cursor: ebay.etat === 'en_cours' ? 'default' : 'pointer', opacity: ebay.etat === 'en_cours' ? 0.7 : 1, whiteSpace: 'nowrap',
+                }}
+              >
+                {ebay.etat === 'en_cours' ? T.ebayEnCours : T.finEbayCta}
+              </button>
+            ) : null}
           />
         )}
-        {c.plan
+        {c.plan && !planFree
           ? (
             <Ligne
               glyphe={<Gauge size={14} strokeWidth={2.4} />} libelle={T.finPlan}
@@ -108,8 +142,14 @@ export default function EtapeFin({ c, T, pseudo, onTerminer }) {
               fait={false} mot={c.plan.nom} delai="210ms" retour
             />
           )
-          : <Ligne glyphe="↻" libelle={T.finRepub} valeur={T.finRepubOu} fait={false} mot={T.finARegler} delai="210ms" />}
+          : !c.plan && <Ligne glyphe="↻" libelle={T.finRepub} valeur={T.finRepubOu} fait={false} mot={T.finARegler} delai="210ms" />}
       </Carte>
+
+      {ebay.etat === 'echec' && (
+        <div style={{ marginTop: 12 }}>
+          <Bande ton="alerte">{T.finEbayEchec}{ebay.erreur ? ` (${ebay.erreur})` : ''}</Bande>
+        </div>
+      )}
 
       {/* ── LE MUR DE CONNEXION, DIT AVANT DE SORTIR (2026-09-22) ──────────
           Dernier écran du parcours : c'est la dernière occasion de donner le
@@ -129,6 +169,9 @@ export default function EtapeFin({ c, T, pseudo, onTerminer }) {
         <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 4, flexShrink: 0, background: E.teal, animation: 'enPouls 2s ease-in-out infinite' }} />
         <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.5, color: E.ink }}>{suite}</span>
       </div>
+
+      {/* (13/11) Le plan Free, en entier : ce qu'était l'écran « Ton plan Free », sans un écran de plus. */}
+      {planFree && <PlanFree c={c} T={T} recap />}
     </Scene>
   );
 }

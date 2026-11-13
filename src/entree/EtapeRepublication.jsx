@@ -45,7 +45,8 @@ export default function EtapeRepublication({ c, T, onSuivant }) {
   const grille = c?.grille === true;
   const cycle = grille ? T.remCycle : T.repCycle;
   return (
-    <Scene cle="republication" pied={<BoutonPrimaire onClick={onSuivant}>{T.repCta}</BoutonPrimaire>}>
+    // (13/11/2026, bloc B2) « Compris » laisse une trace : sans elle, qui passait cet écran ne se voyait nulle part.
+    <Scene cle="republication" pied={<BoutonPrimaire onClick={() => { c.journaliser('republication_comprise'); onSuivant(); }}>{T.repCta}</BoutonPrimaire>}>
       <Kicker>{T.repKicker}</Kicker>
       <Titre>{grille ? T.remTitre : T.repTitre}</Titre>
       <Texte style={{ marginBottom: 18 }}>{grille ? T.remTexte : T.repTexte}</Texte>

@@ -42,12 +42,18 @@ const voieFormuleChoisie = (c) => formules(c) && c.voie === 'cloud';
 const essaiFormuleChoisi = (c) => voieFormuleChoisie(c) && c.formules.choisieAvecEssai === true
   && (c.formules.choisie === 'premium_cloud' || c.formules.choisie === 'pro_cloud');
 
+// (13/11/2026, bloc B2 de Nico — verrou scripts/entree-ordre-selftest.mjs) LA VOIE DE PUBLICATION D'ABORD.
+// Mesuré sur les 119 inscrits du 08 au 13/11 : sans voie de publication (extension vue ou FillSell Cloud), AUCUN n'a
+// publié (0 sur 79) ; 23 ont ouvert le consentement eBay au milieu du parcours et 12 n'y sont jamais revenus (la page
+// eBay remplace l'app sur le web, le parcours se marque fini à la sortie) : ils n'ont vu ni le choix « Cloud ou
+// ordinateur », ni le relevé, ni le récap. Donc :
+//   · l'étape « ebay » SORT du parcours : eBay se relie APRÈS, depuis le récap (« Relier eBay » : le parcours est
+//     marqué fini, PUIS la page eBay s'ouvre — entree/ebayApres.js), la carte « Tes plateformes à connecter » du
+//     Tableau et Réglages › Mes plateformes. Le choix de la voie est la 2e étape pour tout le monde ;
+//   · l'étape « free » (« Ton plan Free ») est FUSIONNÉE dans le récap (EtapeFin), avec toute son information.
+// Un appareil arrêté sur une étape retirée reprend à l'étape qui la suivait (indexDeReprise, plus bas).
 export const ETAPES = [
   { id: 'plateformes' },
-  // eBay n'apparaît QUE là où l'utilisateur vient de cocher eBay : c'est tout
-  // le correctif du 20/09 — l'OAuth était planqué dans les Réglages et
-  // personne ne le trouvait.
-  { id: 'ebay', visible: (c) => c.choix.plateformes.includes('ebay') },
   // (11/11/2026) « As-tu un ordinateur ? » — formules avec Cloud ouvertes seulement.
   { id: 'ordinateur', visible: formules },
   // (04/11) « Comment tu veux publier ? » — Cloud ou extension, rien de pré-coché.
@@ -66,8 +72,8 @@ export const ETAPES = [
   { id: 'releve', visible: (c) => c.choix.plateformes.length > 0 },
   { id: 'debut', visible: (c) => c.choix.plateformes.length === 0 },
   { id: 'republication' },
-  // (04/11) « Ton plan Free » — avec la grille, pour un compte Free ; jamais de bouton d'achat.
-  { id: 'free', visible: (c) => c.plan?.free === true },
+  // (13/11/2026) « Ton plan Free » n'est plus une étape : le récap (EtapeFin) le dit en entier, pour un compte Free
+  // avec la grille ; jamais de bouton d'achat.
   // (11/11/2026) « Ta formule Pro + Cloud » — la formule prise sur cette voie, avec la grille (à la place de « Ton plan Free »).
   { id: 'formule', visible: (c) => voieFormuleChoisie(c) && c.formules.actif === true && c.plan != null && c.plan.free !== true && c.formules.choisie != null },
   // Dernière question, et seulement si personne ne nous a donné de nom.
@@ -77,4 +83,18 @@ export const ETAPES = [
 
 export function etapesVisibles(contexte) {
   return ETAPES.filter((e) => (typeof e.visible === 'function' ? e.visible(contexte) : true));
+}
+
+// (13/11/2026) Les étapes retirées du parcours, et celle APRÈS laquelle elles se trouvaient : un appareil dont la
+// position gardée (fs_entree_etape) est l'une d'elles reprend à l'étape qui suit, jamais au tout début.
+export const ETAPES_RETIREES = Object.freeze({ ebay: 'plateformes', free: 'republication' });
+
+/** L'index où reprendre `etapeId` dans `liste` : sa place, sinon (étape retirée) la suivante, sinon le début. */
+export function indexDeReprise(liste, etapeId) {
+  const l = Array.isArray(liste) ? liste : [];
+  const i = l.findIndex((e) => e.id === etapeId);
+  if (i >= 0) return i;
+  const avant = ETAPES_RETIREES[etapeId];
+  const j = avant ? l.findIndex((e) => e.id === avant) : -1;
+  return j >= 0 ? Math.min(l.length - 1, j + 1) : 0;
 }

@@ -471,6 +471,21 @@ export const translations = {
     lensFermer:"Fermer",
     lensArticle:"Article",
     lensLeAt:"{d} à {h}",
+    // (13/11/2026, bloc B1 de Nico) LE DÉTAIL DES QUOTAS — la feuille qu'ouvre le compteur de l'en-tête
+    // (components/FeuilleQuota.jsx, phrases assemblées par utils/detailQuota.js). Les chiffres viennent de
+    // quotas_etat (jaugesDuCompte), la date de la remise à zéro du serveur — jamais un chiffre ni une date ici.
+    quotaDetailTitre:"Tes quotas du mois",
+    quotaDetailSous:"Formule {palier}",
+    quotaDetailReste:"Il te reste {liste} jusqu'au {date}.",
+    quotaDetailResteMois:"Il te reste {liste} ce mois-ci.",
+    quotaDetailIllimitees:"{liste} : illimitées.",
+    quotaDetailRepart:"Tes compteurs repartent à zéro le {date}.",
+    quotaDetailRepartCeJour:"Tes compteurs repartent à zéro ce jour-là.",
+    quotaDetailRepartMois:"Tes compteurs repartent à zéro chaque mois.",
+    quotaDetailCeQuiCompte:"Ce qui compte, ce qui ne compte pas",
+    quotaDetailNeCompteJamais:"Ne compte jamais :",
+    quotaDetailOffres:"Besoin de plus ? Voir les offres",
+    quotaDetailFermer:"Fermer",
     // Tarif affiché en permanence sous le bouton d'analyse, tous tiers.
     // Payant-par-scan depuis le 2026-07-23 (plus de clés lensQuota*).
     // Valeur alignée sur coin_config.price_lens_overflow (= 6).
@@ -897,6 +912,19 @@ export const translations = {
     lensFermer:"Close",
     lensArticle:"Item",
     lensLeAt:"{d} at {h}",
+    // (13/11/2026, bloc B1) The quota detail sheet opened by the header counter (components/FeuilleQuota.jsx).
+    quotaDetailTitre:"Your monthly quotas",
+    quotaDetailSous:"{palier} plan",
+    quotaDetailReste:"You have {liste} left until {date}.",
+    quotaDetailResteMois:"You have {liste} left this month.",
+    quotaDetailIllimitees:"{liste}: unlimited.",
+    quotaDetailRepart:"Your counters reset on {date}.",
+    quotaDetailRepartCeJour:"Your counters reset on that day.",
+    quotaDetailRepartMois:"Your counters reset every month.",
+    quotaDetailCeQuiCompte:"What counts, what doesn't",
+    quotaDetailNeCompteJamais:"Never counts:",
+    quotaDetailOffres:"Need more? See plans",
+    quotaDetailFermer:"Close",
     // (lensPricePerScan removed with the 02/09 unités cleanup — dead key.)
   }
 };

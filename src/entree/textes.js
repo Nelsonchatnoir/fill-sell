@@ -300,6 +300,12 @@ const FR = {
   formuleKicker: 'Ta formule',
   formuleTexte: (jauges) => `${jauges} par mois · le Cloud publie sans ordinateur.`,
   finFormuleEssai: (nom, date) => `${nom} : essai gratuit jusqu'au ${date}`,
+
+  // (13/11/2026, bloc B2 de Nico) eBay se relie APRÈS le parcours, depuis le récap (entree/ebayApres.js) : le parcours
+  // est marqué fini, puis la page eBay s'ouvre. Les mots de « Ton plan Free » (free*) servent désormais au récap.
+  finEbayCta: 'Relier eBay',
+  finEbayAvant: "Tes ventes eBay vues par l'API, une autorisation une seule fois",
+  finEbayEchec: "eBay n'a pas pu ouvrir sa page de consentement. Rien n'est cassé : tu peux réessayer, ou le faire plus tard dans Réglages › Mes plateformes.",
 };
 
 const EN = {
@@ -540,6 +546,11 @@ const EN = {
   formuleKicker: 'Your plan',
   formuleTexte: (jauges) => `${jauges} a month · the Cloud posts without a computer.`,
   finFormuleEssai: (nom, date) => `${nom}: free trial until ${date}`,
+
+  // (13/11/2026, bloc B2) eBay is linked AFTER the onboarding, from the recap (entree/ebayApres.js).
+  finEbayCta: 'Link eBay',
+  finEbayAvant: 'Your eBay sales seen through the API, one authorisation, once',
+  finEbayEchec: "eBay couldn't open its consent page. Nothing is broken: try again, or do it later in Settings › My platforms.",
 };
 
 export function textesEntree(lang) {

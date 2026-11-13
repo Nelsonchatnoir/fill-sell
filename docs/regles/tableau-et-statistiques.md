@@ -86,3 +86,22 @@
 - **Marge et ventes gratuites** (29/10, Nico) : une vente à 0 € (gratuite) entre dans la marge comme tout prix connu ;
   les tuiles Marge (Tableau, Stats, détail d'une plateforme) ne disent « prix d'achat manquants » que s'il y a des
   ventes et qu'AUCUNE n'a de prix d'achat connu ; le détail dit « dont N gratuites ». Règle : `ventesStats.js` b).
+
+## 13/11/2026 — En-tête : le compteur ouvre le DÉTAIL des quotas ; le badge et « Voir les offres », les formules (bloc B1 de Nico)
+- Mesuré du 06 au 13/11 (usage_logs `offers_modal_open` / `_abandon` / `_tier_click`, origine de chaque ouverture) :
+  393 ouvertures de la fenêtre des offres, 297 abandons au premier écran, 29 clics sur une formule. 1re source : la
+  pastille de quota de l'en-tête (`entete_quota`, 148 ouvertures, 77 comptes, 115 abandons au premier écran, 2 clics).
+- **Règle** : la pastille (grille) et le compteur d'avant (grille à 0) ouvrent « Tes quotas du mois »
+  (`components/FeuilleQuota.jsx`), pour TOUS les paliers, jamais la fenêtre des offres. Le badge Premium / Pro /
+  Business ouvre « Ton plan » (`PlanDetailsModal`), « Voir les offres » la fenêtre des offres (`entete_offres`).
+- **La feuille** (téléphone d'abord) : la formule ; une phrase « Il te reste … jusqu'au {date}. » (jauges illimitées à
+  part, avec le mot) et « Tes compteurs repartent à zéro ce jour-là. » ; les jauges = `ConsommationGrille` (la même que
+  Réglages › Abonnement) ; « Ce qui compte, ce qui ne compte pas » (`utils/jaugesExplications.js`) ; tout en bas un LIEN
+  « Besoin de plus ? Voir les offres » (`detail_quota` ; le lien d'une jauge vide : `detail_quota_jauge`, sur son mur),
+  aucun chez un Business. Sorties : glisser, ✕ 44 px, fond, Échap, retour Android.
+- **Une seule source** : quotas_etat → `jaugesDuCompte` ; la date = `quotas_etat.remise_le`, sinon
+  `coin_wallets.next_grant_at` lue par l'app, à l'heure de Paris ; illisible → « ce mois-ci », jamais une date inventée.
+  Phrases : `utils/detailQuota.js`, textes `quotaDetail*` dans `i18n/translations.js` (fr + en).
+- Traces : `quota_detail_open` (jauge, restantes, plafond, palier), `quota_detail_ferme` (sortie, durée).
+- Verrou `npm run selftest:detail-quota` (39 rouges sur 3f17a8a, 43 verts après). Selftests mis à jour, changement
+  volontaire : entete-business (2 portes vers les offres), reglages-jauges § 5, parcours-apres-synchro.

@@ -157,23 +157,25 @@ try {
   const ctx = (o = {}) => ({ choix: { plateformes: ['vinted'] }, cloud: { parcours: false, actif: false, ouvert: true }, plan: { free: true }, demanderPseudo: false, voie: null, ...o });
   const ids = (cx) => PL.etapesVisibles(cx).map((e) => e.id).join(' › ');
   const formulesOuvertes = { parcours: true, actif: false, choisie: null, choisieAvecEssai: false };
-  egal(ids(ctx({ formules: formulesOuvertes })), 'plateformes › ordinateur › extension › releve › republication › free › fin', 'formules ouvertes, avant le choix : « As-tu un ordinateur ? » à la place de « Comment tu veux publier ? »');
-  egal(ids(ctx({ formules: formulesOuvertes, voie: 'extension' })), 'plateformes › ordinateur › extension › releve › republication › free › fin', 'cas 1 — avec ordinateur : 4a, l’extension, aucune étape Cloud');
+  // (13/11/2026, bloc B2 de Nico, changement VOLONTAIRE — verrou selftest:entree-ordre) « Ton plan Free » est dans le récap :
+  // plus d'étape « free » dans les listes ci-dessous (formules ouvertes ou fermées) ; le reste de l'ordre est inchangé.
+  egal(ids(ctx({ formules: formulesOuvertes })), 'plateformes › ordinateur › extension › releve › republication › fin', 'formules ouvertes, avant le choix : « As-tu un ordinateur ? » à la place de « Comment tu veux publier ? »');
+  egal(ids(ctx({ formules: formulesOuvertes, voie: 'extension' })), 'plateformes › ordinateur › extension › releve › republication › fin', 'cas 1 — avec ordinateur : 4a, l’extension, aucune étape Cloud');
   memoire.clear(); FC.noterVueOffres('sans');
   egal(FC.vueOffresParDefaut({ choixEntree: FC.lireVueOffres() }), 'sans', 'cas 1 : la fenêtre d’offres s’ouvre ensuite sur « Sans Cloud »');
-  egal(ids(ctx({ formules: formulesOuvertes, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › releve › republication › free › fin', 'cas 2 — sans ordinateur : 4b, présentation puis « Choisis ta formule »');
-  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'pro_cloud', choisieAvecEssai: true }, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › cloud › releve › republication › free › fin', 'cas 2 : Pro + Cloud à l’essai → « Rien à payer avant le … »');
-  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'business_cloud', choisieAvecEssai: false }, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › releve › republication › free › fin', '⛔ Business + Cloud choisi : JAMAIS l’écran d’essai');
+  egal(ids(ctx({ formules: formulesOuvertes, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › releve › republication › fin', 'cas 2 — sans ordinateur : 4b, présentation puis « Choisis ta formule »');
+  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'pro_cloud', choisieAvecEssai: true }, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › cloud › releve › republication › fin', 'cas 2 : Pro + Cloud à l’essai → « Rien à payer avant le … »');
+  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'business_cloud', choisieAvecEssai: false }, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › releve › republication › fin', '⛔ Business + Cloud choisi : JAMAIS l’écran d’essai');
   egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'pro_cloud', choisieAvecEssai: true, actif: true }, voie: 'cloud', cloud: { parcours: true, actif: true, ouvert: true }, plan: { free: false } })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › cloud › cloud_connexion › releve › republication › formule › fin', 'cas 2, essai pris : les connexions, puis « Ta formule Pro + Cloud » à la place de « Ton plan Free »');
   memoire.clear(); FC.noterVueOffres('avec');
   egal(FC.vueOffresParDefaut({ choixEntree: FC.lireVueOffres() }), 'avec', 'cas 2 : la fenêtre d’offres s’ouvre sur « Avec Cloud »');
   c = parF(free({ essaiPermis: true }));
   ok(c.pro_cloud.misEnAvant && !c.premium_cloud.misEnAvant && !c.business_cloud.misEnAvant, 'cas 2 : Pro + Cloud mis en avant (« Notre conseil »), lui seul');
   // Fermé : le parcours d'avant, étape pour étape (les mêmes listes que le plan d'avant le 11/11).
-  egal(ids(ctx()), 'plateformes › extension › releve › republication › free › fin', 'fermé : le parcours d’avant (Cloud fermé)');
-  egal(ids(ctx({ cloud: { parcours: true, actif: false, ouvert: true } })), 'plateformes › voie › extension › releve › republication › free › fin', 'fermé, Cloud seul ouvert : « Comment tu veux publier ? » comme avant');
-  egal(ids(ctx({ cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud' })), 'plateformes › voie › cloud › cloud_connexion › releve › republication › free › fin', 'fermé, voie Cloud seul : comme avant');
-  egal(ids(ctx({ formules: { parcours: false }, cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud' })), 'plateformes › voie › cloud › cloud_connexion › releve › republication › free › fin', 'formules.parcours faux : exactement le parcours d’avant');
+  egal(ids(ctx()), 'plateformes › extension › releve › republication › fin', 'fermé : le parcours d’avant (Cloud fermé)');
+  egal(ids(ctx({ cloud: { parcours: true, actif: false, ouvert: true } })), 'plateformes › voie › extension › releve › republication › fin', 'fermé, Cloud seul ouvert : « Comment tu veux publier ? » comme avant');
+  egal(ids(ctx({ cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud' })), 'plateformes › voie › cloud › cloud_connexion › releve › republication › fin', 'fermé, voie Cloud seul : comme avant');
+  egal(ids(ctx({ formules: { parcours: false }, cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud' })), 'plateformes › voie › cloud › cloud_connexion › releve › republication › fin', 'formules.parcours faux : exactement le parcours d’avant');
   egal(FC.vueOffresParDefaut({}), 'sans', 'sans rien : « Sans Cloud »');
   egal(FC.vueOffresParDefaut({ cloudActif: true }), 'avec', 'un compte qui a le Cloud : « Avec Cloud »');
   egal(FC.vueOffresParDefaut({ trigger: 'cloud', choixEntree: 'sans' }), 'avec', 'ouverte par une porte Cloud : « Avec Cloud »');

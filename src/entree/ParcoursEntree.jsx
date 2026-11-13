@@ -39,8 +39,11 @@ import {
   useContexteEntree, marquerEntreeFaite, marquerEntreeFaiteAuVol,
   ONBOARD_DONE_KEY, ONBOARD_STATE_KEY, ENTREE_ETAPE_KEY, ENTREE_RELEVE_KEY, ENTREE_VOIE_KEY,
 } from './useContexteEntree';
-import { etapesVisibles } from './plan';
+import { etapesVisibles, indexDeReprise } from './plan';
 import { textesEntree } from './textes';
+// (13/11/2026, bloc B2) eBay se relie APRÈS le parcours, par le chemin existant (utils/ebayCompte).
+import { demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
+import { relierEbayApresEntree } from './ebayApres';
 import { E, CSS_ENTREE } from './theme';
 import { Progression, LienDiscret } from './EntreeUI';
 import EtapePlateformes from './EtapePlateformes';
@@ -59,6 +62,8 @@ import { EtapeOrdinateur, EtapeCloudPresentation, EtapeCloudOffres, EtapeCloudOu
 import { ENTREE_FORMULE_KEY } from './useFormulesEntree';
 
 // Un id d'étape → un composant. C'est la SEULE table de correspondance.
+// (13/11/2026) `ebay` et `free` ne sont plus dans le plan (plan.js) : leurs écrans restent ici, montables, pour qu'un
+// retour arrière ne demande que la ligne du plan.
 const ECRANS = {
   plateformes: EtapePlateformes,
   ebay: EtapeEbay,
@@ -99,10 +104,23 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
   const finiRef = useRef(false);
 
   const liste = etapesVisibles(c);
-  const indexBrut = liste.findIndex((e) => e.id === etapeId);
-  const index = indexBrut < 0 ? 0 : indexBrut;
+  // (13/11) Une position gardée sur une étape retirée (ebay, free) reprend à l'étape qui la suivait.
+  const index = indexDeReprise(liste, etapeId);
   const etape = liste[index];
   const Ecran = ECRANS[etape.id];
+
+  // (13/11/2026, bloc B2) CHAQUE ÉCRAN VU laisse une trace, une fois par écran et par ouverture du parcours. Avant, les
+  // écrans sans choix (remontées, pseudo, récap) ne se voyaient nulle part : « arrivé au récap » se lisait « arrêté
+  // après le plan Free ». rang / total : la place de l'écran dans la liste de CE compte.
+  const vuesRef = useRef(new Set());
+  const journaliser = c.journaliser;
+  const rang = index + 1;
+  const total = liste.length;
+  useEffect(() => {
+    if (vuesRef.current.has(etape.id)) return;
+    vuesRef.current.add(etape.id);
+    journaliser('etape_vue', { etape: etape.id, rang, total });
+  }, [etape.id, rang, total, journaliser]);
 
   const poser = (id) => {
     setEtapeId(id);
@@ -153,7 +171,8 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
   // l'écran réapparaîtra au prochain chargement (fetchAll relit la base).
   // C'est le bon échec — bruyant et réparable — plutôt qu'un cache local qui
   // masque le problème en laissant la base fausse.
-  const terminer = async () => {
+  // (13/11/2026) `ensuite` : ce que la sortie enchaîne (null, ou 'ebay'), journalisé avec la destination.
+  const sortir = async (ensuite) => {
     if (finiRef.current) return;
     finiRef.current = true;
     const nom = pseudo.trim().slice(0, 30);
@@ -178,7 +197,26 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
     } catch { /* la base fait foi de toute façon */ }
     // Destination : le Stock quand il y a quelque chose à y voir, l'écran de
     // création sinon. Même arbitrage que l'ancien parcours.
-    onDone?.(c.choix.plateformes.length ? 'stock' : 'lens');
+    const destination = c.choix.plateformes.length ? 'stock' : 'lens';
+    c.journaliser('parcours_termine', { destination, ensuite });
+    onDone?.(destination);
+  };
+
+  // (13/11/2026, bloc B2) « Relier eBay » du récap : l'adresse d'eBay est demandée, le parcours est MARQUÉ FINI
+  // (attendu), puis la page eBay s'ouvre (entree/ebayApres.js) — sur le web elle remplace l'app : elle ne doit jamais
+  // emporter un parcours pas fini. Rend { ok, erreur } au récap (eBay indisponible : on y reste, la phrase le dit).
+  const terminer = async ({ ensuite = null } = {}) => {
+    if (ensuite === 'ebay') {
+      return relierEbayApresEntree({
+        lang,
+        demarrer: demarrerConnexionEbay,
+        ouvrir: ouvrirConsentementEbay,
+        terminer: () => sortir('ebay'),
+        journaliser: c.journaliser,
+      });
+    }
+    await sortir(null);
+    return { ok: true };
   };
 
   const passer = () => {

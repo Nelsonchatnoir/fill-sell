@@ -343,8 +343,11 @@ try {
     ok(/pastilleGrille\.basse\?"#FFF6E3"/.test(pastille) && /pastilleGrille\.basse\?"#8A6100"/.test(pastille), 'pastille : ambre sous 20 %');
     ok(!/openUpgradeModal\(/.test(pastille), 'pastille : aucune porte vers les offres écrite dans l’en-tête (le compte des portes de l’en-tête ne bouge pas)');
     ok(/const pastilleGrille=grilleEntete\?jaugeLaPlusProche\(jaugesDuCompte\(quotas\)\):null;/.test(app), 'pastille : jaugeLaPlusProche(jaugesDuCompte(quotas)) — rien chez le Business');
-    ok(/const mur=pastilleGrille&&pastilleGrille\.restantes===0\?murDeLaJauge\(pastilleGrille\.cle,quotas\):null;\s*if\(mur\)openUpgradeModal\(null,'entete_quota','quota_geste',\{quotaInfo:mur\}\);\s*else openUpgradeModal\(null,'entete_quota'\);/.test(app),
-      'pastille : le mur de la jauge si elle est pleine, sinon les offres comme aujourd’hui');
+    // (13/11/2026, bloc B1 de Nico, changement VOLONTAIRE — verrou selftest:detail-quota) La pastille ouvre le DÉTAIL des
+    // quotas ; le mur de sa jauge pleine s'ouvre depuis le lien du bas de ce détail (offresDepuisDetail).
+    ok(/const appuiPastilleGrille=\(\)=>ouvrirDetailQuota\(pastilleGrille\?\.cle\?\?null\);/.test(app)
+      && /const mur=murJauge\?\?\(cle&&jaugesDuCompte\(quotas\)\?\.\[cle\]\?\.restantes===0\?murDeLaJauge\(cle,quotas\):null\);/.test(app),
+      'pastille : le détail des quotas ; depuis lui, le mur de la jauge si elle est pleine, sinon les offres');
     ok(/setConversionModal\(\{open:true,trigger,origine:org,\.\.\.\(etat&&typeof etat==='object'&&etat\.quotaInfo\?\{quotaInfo:etat\.quotaInfo\}:\{\}\)\}\);/.test(app),
       'openUpgradeModal : 4e argument facultatif ({ quotaInfo }) ; absent, l’appel d’avant');
     // Lens (App).
