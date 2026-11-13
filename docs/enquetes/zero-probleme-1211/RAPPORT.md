@@ -437,3 +437,143 @@ validate-apple-receipt v50, validate-google-purchase v31, get-pending-jobs v373,
 push-ventes v30, abonnements-stores-audit v17, apple-iap-webhook v59, google-play-webhook v52, stripe-webhook v81
 (verify_jwt inchangés) ; signer-offre-boutique NON déployée (essai des abonnés boutique, prochain binaire). Web cd1d34a ;
 **OTA 2.9.184**.
+
+## Quatrième réponse de Nico (13/11 fin d'après-midi) — clôture du terminal
+
+### 1. Un abonné peut TOUJOURS ajouter le Cloud
+- **a) La règle** (`_shared/un-seul-abonnement.js`, `compterFormules` / `decisionAchat` / `decisionSurLectures`) : une
+  seule FORMULE à la fois (Premium, Pro ou Business, avec ou sans Cloud), tous canaux confondus ; le Cloud (pack ou Cloud
+  seul) ajouté à une formule est toujours permis, quel que soit le canal de la formule et celui du Cloud. Refus seulement
+  pour une 2e formule ou un 2e Cloud ; un compte qui a déjà le Cloud seul se voit proposer la formule SANS Cloud (« elle
+  s'ajoute à ton Cloud »). Même règle dans garde-abonnement (lit aussi `cloud_formule`), create-checkout-session
+  (`cloudSeulRefuse` : jamais à une formule vivante), le filet `_shared/deux-abonnements.ts` (alerte seulement pour un
+  vrai double : 785352fe oui ; c7c382b7, f0acd3af non) et l'app (`src/lib/gardeAchat.js`, Réglages › Abonnement montre
+  le bloc FillSell Cloud à un abonné payant sans Cloud).
+- **b) Personne n'a été empêché** : de 14:55 à 17:45, aucun appel à create-checkout-session, garde-abonnement,
+  validate-apple-receipt, validate-google-purchase ni changer-formule (journaux des fonctions) ; seul un compte gratuit
+  (b23f13b0) a ouvert puis fermé les offres. Mais depuis l'ouverture des formules, l'écran ne montrait plus le bloc
+  « Cloud seul » à un abonné (`cacherBlocCloud`) : corrigé dans l'OTA 2.9.185.
+- **c) Le tableau** (`selftest:abonne-ajoute-le-cloud`, 36 cas sur le vrai code ; formule payée jusqu'au 30/11, essai
+  commencé le 13/11) :
+
+| Formule payée sur | Pack sur le même canal | Cloud seul, même canal | Cloud seul, autre canal |
+|---|---|---|---|
+| Web (Stripe) | Premium / Pro : 7 jours sans rien de plus, puis la différence ajoutée à la facture du 30/11 ; Business : différence au prorata aujourd'hui, puis 79,99 €/mois. Accès : Cloud ouvert sur le même abonnement | « Carte demandée, rien n'est prélevé avant le 20 novembre. Puis 24,99 €/mois » ; 2e abonnement Stripe ; formule gardée | iPhone / Android : semaine offerte si la boutique la donne, sinon « 24,99 € prélevés aujourd'hui, puis chaque mois » ; 2e abonnement ; formule intacte |
+| App Store | « Pas d'essai : le changement se fait dans ton abonnement App Store, sans second abonnement. 49,99 € sont prélevés aujourd'hui » (Apple rend le prorata) | semaine si l'identifiant Apple ne l'a jamais eue dans « FillSell Cloud », sinon 24,99 € aujourd'hui ; 2e abonnement Apple | Web : essai 7 jours par carte, palier Apple gardé ; Android : comme ci-contre |
+| Google Play | « Pas d'essai : … la différence au prorata est prélevée aujourd'hui, puis 49,99 €/mois » (binaire vc38 requis pour les packs) | offre 7 jours si Google la rend, sinon 24,99 € aujourd'hui ; 2e abonnement | Web / iPhone : comme ci-dessus |
+
+  Pendant l'essai, le bloc dit « Gratuit jusqu'au 20 novembre à 18:18. Ensuite, 24,99 €/mois s'ajoutent à ta formule
+  Pro, sauf si tu l'arrêtes avant. » Sur 5c20c40 : 190 verts, 63 rouges ; après : 253 / 0.
+  **Essai réel : pas fait.** Le mode test de Stripe ne prouve rien ici (stripe-webhook ignore tout événement
+  `livemode: false`) ; un achat Sandbox demande TestFlight sur un iPhone ; se connecter à l'app de production depuis
+  l'automatisation est exclu. Observé à la place : le renouvellement Sandbox quotidien du compte de test 5322fa18 (Pro
+  App Store + Cloud seul App Store) à 18:50, passé par apple-iap-webhook v60 (voir § 5).
+- **d) Verrou** `selftest:cloud-en-plus-de-formule` : casse si la garde (serveur, app, garde-abonnement,
+  create-checkout-session) refuse un jour l'ajout du Cloud à une formule (3 formules × 3 canaux × pack / Cloud seul sur les
+  3 canaux, puis montée de formule, aucune alerte) ou si l'écran cache le bloc. Sur 5c20c40 : 22 verts, 131 rouges ;
+  après : 171 / 0.
+- **e) Textes** (version des conditions 2026-11-13 gardée : retour au fond déjà accepté, poussé le 13/11) :
+  conditions du Cloud art. 6 « C'est un abonnement distinct des forfaits : il se prend seul, avec le forfait gratuit, ou
+  en plus d'un forfait payant (Premium, Pro ou Business), sur le web, dans l'App Store ou dans Google Play, quel que soit
+  le canal où le forfait est payé ; résilier le forfait n'arrête pas le Cloud. » ; CGV art. 7 « L'option FillSell Cloud
+  est un abonnement distinct des forfaits : elle se souscrit seule (forfait gratuit compris, avec ses volumes) ou en plus
+  d'un forfait payant (Premium, Pro ou Business), sur le web, dans l'App Store ou dans Google Play, quel que soit le canal
+  où le forfait est payé. La résiliation d'un forfait n'arrête pas l'option FillSell Cloud. » ; formules et mentions
+  légales 3.4 : « une seule formule à la fois, tous canaux confondus ».
+- **f) 785352fe** : aucun mail. Premium App Store ACTIF, renouvellement automatique, échéance 30/11 à 18:32 (dernier
+  DID_RENEW le 30/10). À redire à Nico le 28/11 si c'est toujours le cas.
+
+### 2-3. Leboncoin et Stripe
+Seuil mesuré validé par Nico. Webhook Stripe `we_1TNHq1QZRA77vrWJHXw51Svb` : avant, 6 événements
+(checkout.session.completed, customer.subscription.deleted, customer.subscription.updated, invoice.paid,
+invoice.payment_action_required, invoice.payment_failed) ; après, les mêmes + `charge.refunded` ; URL et version d'API
+(2026-03-25.dahlia) inchangées ; aucun avertissement.
+
+### 4. Alertes Cloud vers support@
+Migration `20261113224500_alertes_cloud_service_role_support` (banc jetable 112/112) APPLIQUÉE : envoyer_mail_ponctuel
+réécrite depuis la prod (md5 2c347219… → 9de0aade…), droits `{postgres=X/postgres}` → `{postgres=X/postgres,service_role=X/postgres}` ;
+le service_role n'envoie que la catégorie « support », à support@ seulement. Inverse :
+`supabase/rollbacks/20261113224500_alertes_cloud_service_role_support_INVERSE.sql`. Preuve sur cloud-2 (vrai chemin de
+l'orchestrateur) : deux refus attendus (adresse hors support@, catégorie « marketing ») ; simulation ; puis la vraie
+alerte « [TEST] » à 17:34:28 → `email_logs` cloud_alerte support@ 17:34:28, reçue par support@ 17:34:29 (`support_mails`,
+transfert ok), 0 échec. Effet : support@ reçoit désormais les alertes de l'orchestrateur (~16 à 20 par jour ; 178 étaient
+perdues depuis le 01/11).
+
+### 5. Contrôles du jour
+- Veille de l'essai Cloud de d607ba20 (fin le 15/11 à 15:16) : `cloud_essai_veille` envoyé à 16:00:16, livré.
+- 18:50 : renouvellement Sandbox quotidien du compte de test 5322fa18 (Pro App Store + Cloud seul App Store) reçu à
+  18:50:30 par apple-iap-webhook v60 (rallumage neutralisé : référence close) ; seule l'alerte interne « [TEST] … Paiement
+  24,99 € » est partie à support@ ; aucun mail au compte (email_logs vide), aucune alerte « deux abonnements ».
+
+### Livraison (13/11 ~17:30)
+Commits 9fbf9e2 + 23ef826 (2.9.185) ; suite 747/747. Fonctions : garde-abonnement v2, create-checkout-session v83,
+stripe-webhook v82, apple-iap-webhook v60, google-play-webhook v53, abonnements-stores-audit v18, email-tunnel v96,
+push-ventes v31, validate-google-purchase v32, validate-apple-receipt v51, cancel-subscription v65, changer-formule v9,
+send-extension-link v28 (verify_jwt inchangés). Web 23ef826 ; **OTA 2.9.185**. Migration 20261113224500 marquée appliquée.
+
+## Cinquième demande de Nico (13/11 soir) — couper le renouvellement ne coupe plus rien
+
+### 1. La règle, à la racine
+- AVANT (règle du 08/11) : un essai Cloud dont le renouvellement était coupé s'arrêtait à la seconde. Cas réel cdf7007c :
+  essai Pro + Cloud par Apple le 13/11 à 13:13, renouvellement coupé sur l'iPhone à 13:54, Cloud coupé à 13:54:51
+  (cloud_essai_fin, cloud_essai_arrete, cloud_voie faux, navigateur et coffre purgés à 13:57) et mail « Pro + Cloud est
+  arrêtée » — alors qu'Apple maintient l'essai et le Pro jusqu'au 20/11 13:13.
+- APRÈS (`_shared/cloud-option.js`, `ecritureCloudStore`, sens « annulation ») : rien n'est arrêté ; la coupure est notée
+  (`cloud_arret_fin_periode = true`), la fin d'essai de la boutique est gardée, le Cloud s'arrête seul à cette date. Apple
+  (Cloud seul et formules), Google (CANCELED), et Stripe : stripe-webhook annulait tout de suite (`subscriptions.cancel`) un
+  essai résilié au portail ; il ne le fait plus (`coupureRenouvellementStripe`), Stripe le termine à la fin de l'essai sans
+  facture. Aucun mail client (nouvel événement `essai_renouvellement_coupe`, alerte interne support@ seulement) ; pas de
+  rappel de la veille ; une restauration Apple garde la coupure (validate-apple-receipt).
+- **Ce que faisait « Arrêter l'essai »** (avant ce lot) : sur le web (Stripe), un VRAI arrêt immédiat (cancel-subscription,
+  `subscriptions.cancel`) ; sur iPhone et Android, les boutons ouvraient la page des abonnements de la boutique : ils ne
+  faisaient que couper le renouvellement. **Décision de Nico (19:20) : plus aucun arrêt immédiat d'un essai, sur aucun
+  canal** — sur le web, « Arrêter l'essai », « Arrêter le Cloud » et « Se désabonner » d'une formule en essai coupent le
+  prélèvement (`couperEssaiStripe` : `cancel_at_period_end` ; le Cloud d'un abonné porté par un schedule : schedule rendu,
+  formule payée continue, Cloud jamais facturé) ; même fenêtre et même message que sur les boutiques. Restent immédiats :
+  remboursement, révocation, impayé, et le verrou de carte (second essai refusé).
+- Fenêtres : « Ton Cloud continue jusqu'au {date}, puis s'arrête seul, sans prélèvement. » (Apple : « Annulé au moins 24
+  heures avant la fin de l'essai, … » ; Google : « avant la fin de l'essai ») ; puis l'app : « Ton essai Cloud continue
+  jusqu'au {date}. Rien ne sera prélevé. » (dès qu'Apple a confirmé la coupure — décision de Nico) et plus de bouton d'arrêt.
+- Conditions du Cloud art. 7 et CGV art. 7 : « Sur le web, vous résiliez depuis l'app (Réglages › Abonnement › FillSell
+  Cloud) ; un abonnement pris dans l'App Store ou Google Play se résilie dans les réglages d'abonnement de la boutique. Sur
+  tous les canaux, la résiliation coupe le renouvellement et n'arrête rien tout de suite : le Cloud reste actif jusqu'à la
+  fin prévue de l'essai ou de la période payée, puis s'arrête seul, et rien n'est prélevé ensuite ; résilié avant la fin
+  de l'essai (chez Apple, au moins 24 heures avant), il ne coûte rien. » Version 2026-11-13 (jour du push), en faveur du
+  client : minimales inchangées, aucune nouvelle acceptation.
+- **Aucun rattrapage** (décision de Nico) : la règle vaut pour les coupures reçues après le déploiement (13/11 20:32). Les
+  essais arrêtés avant restent arrêtés — cdf7007c, 8b457627, 7d22ae91 et tout autre compte dans le même cas : aucun script,
+  aucune réouverture, aucun mail, IP au repos. Une reprise du renouvellement (AUTO_RENEW_ENABLED) sur un tel essai n'écrit
+  que `cloud_arret_fin_periode = false` : l'essai reste arrêté ; à la fin de la semaine d'Apple, Apple prélève et le Cloud
+  repart, payé.
+- Verrou `selftest:essai-renouvellement-coupe` : 91 rouges sur 119 sur 23ef826 → 131/131 (web compris, et « aucun rattrapage » :
+  aucune notification ultérieure ne rouvre un essai arrêté par l'ancienne règle ; aucune fonction ni script de réparation).
+
+### 2. Filet de capacité
+Capacité réelle de cloud-2 lue le 13/11 ~17:45 : 25 navigateurs (borne mémoire : 1 907 Mo par compte au p95, 56 196 Mo
+disponibles au minimum sur 24 h ; processeur loin), 15 vendus, 6 servis. Seuils : dès 80 % (20/25, le seuil de l'alerte
+support@) les essais au renouvellement coupé passent en dernier dans la file ; à 100 % et sans aucune place libre, ils sont
+arrêtés UN par tour, une place à la fois (décision de Nico ; fin d'essai la plus proche d'abord, jamais pendant une tâche
+ni un « Me connecter » ; l'orchestrateur écrit l'arrêt lui-même, sans migration), avec le message « Le Cloud est complet : ton essai, dont le renouvellement est coupé, s'est
+arrêté le {date} pour libérer sa place. Rien ne te sera prélevé tant que le renouvellement reste coupé. » Jamais un Cloud
+payé ni un compte offert ; les essais des packs sont concernés (le palier n'est jamais touché). Loin du seuil : décisions
+identiques à l'ancien code (20 000 états tirés au hasard). Verrou `selftest:cloud-filet-capacite` 9/9 ; serveur-cloud 211/211.
+
+### 3. Livraison (13/11 ~20:30-20:40)
+Commits 899307d (46 fichiers) + d33c7f9 (2.9.186), poussés. Suite complète sur la copie fusionnée en LF (base 23ef826 +
+les deux lots), passée en 8 morceaux (mémoire du poste basse, un autre terminal ouvert ; même liste, aucun test sauté) :
+749/749 ; build:essai OK. Fonctions (verify_jwt inchangés, lus avant et après) : apple-iap-webhook v61, google-play-webhook
+v54, stripe-webhook v83, email-tunnel v97, abonnements-stores-audit v19, push-ventes v32, ops-digest v68, update-job-status
+v200 (false) ; cancel-subscription v66, validate-apple-receipt v52, validate-google-purchase v33, create-checkout-session
+v84, changer-formule v10, garde-abonnement v3, send-extension-link v29 (true) ; signer-offre-boutique toujours non déployée.
+Web d33c7f9 ; **OTA 2.9.186**. Orchestrateur cloud-2 ed7095c3465c → **d33c7f97f4ee** (moment calme : 0 tâche en cours,
+0 relevé ; seules 2 tâches Beebs de c7c382b7 en attente depuis le 09 et le 12/11) de 20:39:18 à 20:39:39 ; image Chrome et
+CRX inchangés ; 6 navigateurs rouverts entre 20:39:46 et 20:39:54 ; le filet reste muet (6/25). Essai réel : aucun
+(Sandbox et mode test Stripe demandent un appareil ou une connexion à l'app de production, exclue depuis l'automatisation).
+
+### 4. IPRoyal — qui paie les IP (lecture seule du compte, 13/11 ~19:45, rien changé)
+Aucune IP n'est en renouvellement automatique : les 14 commandes ISP actives affichent « Subscription : Off » et « (Expires) ».
+Les factures (« All time ») ne contiennent que 4 DÉPÔTS par carte sur le solde (05/10 $20, 30/10 $15, 02/11 $15, 03/11 $30) et
+le premier achat d'IP (#IP-83578416, 26/09, $5.40, carte) ; aucune facture de renouvellement, aucune pour les 13 autres IP :
+elles sont payées sur le SOLDE (la prolongation de #83578416 le 25/10 aussi). Moyens enregistrés : visa ****9699, Apple Pay
+****2922, Apple Pay ****9699. Solde $5.15 : l'orchestrateur alerte (« moins que les dépenses prévues sur 14 jours : 16 $,
+recharger d'au moins 11 $ ») ; première expiration le 25/11 (#83578416), puis 3 le 29/11.
