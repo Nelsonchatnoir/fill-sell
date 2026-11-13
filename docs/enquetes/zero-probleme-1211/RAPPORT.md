@@ -385,3 +385,55 @@ ebay-api-worker v130, ebay-account v41, ebay-oauth-callback v25, ebay-oauth-star
 ebay-messagerie v19, ebay-notifications v18, ebay-releve-api v20, ebay-ventes-sync v22, releve-completer v17,
 remise-ordre-photos-ebay v8, ia-banc-deduction v21, cancel-subscription v63, create-checkout-session v81, email-tunnel v94,
 apple-iap-webhook v58, google-play-webhook v51, stripe-webhook v80. Web 3a32eab ; **OTA 2.9.183**.
+
+## Troisième réponse de Nico (13/11 après-midi)
+
+### 7. Vente « inconnue » de f0acd3af (10788214725) — c'est elle
+Lue sur Vinted (lecture seule) : 10788214725 est une « Ceinture Sézane cuir véritable camel – 89 cm » (38 €, vendue 33 €)
+de son propre compte, sans aucune tâche FillSell ; la veste (10788211328, 10 €) est en ligne, non vendue. Le numéro voisin
+n'est que la numérotation de tout Vinted. Rien à faire.
+
+### 2. Feux verts appliqués (13/11 ~13:15-13:40, lecture avant / après, bancs relancés 22/22, 30/30, 40/40)
+`20261113213000` (plateformes_verite : ab921e54 = lu → 6a48d15f ; témoins : ed4531e2 Vinted « à vérifier », ff1f879f
+« inconnue », f44b5917 « connectée ») ; `20261113203000` (58a5c7fa = lu → 9c82939f, message_refus_leboncoin) ; M1
+`20261113210000` (table comptes_plateformes, RLS, ni anon ni client en écriture) + remplissage : 226 comptes eBay (EBAY_FR
+195, US 16, GB 6, IT 3, BE 2, DE 2, AT 1, CA 1) et 234 Vinted.
+
+### 3-4. Les 7 doubles et « même objet »
+Rattrapage 2e passage (25caeedd, ebdf29f0 : questions 7ee10946 et 359a4f52 → fusionnées). Doubles : retrait par le geste
+« Retirer » de l'app (`scripts/essais/20261113_retraits_doubles_nico.sql`), règle de Nico (la copie au prix actuel de la
+fiche — le dernier prix posé —, sinon la plus ancienne) : retirées 3290542513, 407330996482 (fait : `deleted`),
+3305143401, 3305134349, 3305146607, 3305137965, 3305131119 (en file : l'extension du vendeur) ; gardées 3276946640,
+407321497159, 3305154715, 3305295555, 3305308288, 3305238099 (25 € : prix relevé le 08/11), 3305300248.
+
+### 1. Essai de la 0.6.187 sur le seul poste Cloud de Nico — RÉUSSI
+Moment calme (0 tâche, 0 relevé Cloud) : orchestrateur 90323d60f16d → ed7095c3465c de 14:03:27 à 14:04:33 ; les 6
+navigateurs rouverts entre 14:04:39 et 14:04:48 (20-30 s), 0 erreur, passages repris (14:22-14:23). Pilote 0.6.186.45582
+posé 14:05:22 pour f44b5917 seul ; republication 3d43fea4 (fiche de test 999 €) publiée 14:12:54 → 10790914500,
+`copie_par_numero.source` = onglet, 12 photos, copie confirmée par l'empreinte de ses photos (Vinted avait renvoyé
+l'onglet au profil) ; l'ancienne 10675129855 : « Page not found ». Retour : copie commune re-signée 0.6.186.45583
+(14:18:55, empreinte bc897c0f = la commune, build ba77b92-cloud), dossier pilote archivé ; CRX commun 2cd567724086
+inchangé ; les 5 clients non redémarrés une 2e fois. **Zip 0.6.187** : `build\CWS-0.6.187-A-TELEVERSER\fillsell-extension-0.6.187-cws.zip`
+(BUILD_ID 2026-11-13T13:27:42Z+9856e10, commits d6b0c85 + 9856e10). Défaut préexistant vu : les alertes de
+l'orchestrateur échouent (« permission denied for function envoyer_mail_ponctuel »).
+
+### 5. Leboncoin
+Mêmes photos : seuil MESURÉ — Leboncoin accepte la 2e copie (14 sur 15 en ligne) et refuse la 3e (0 sur 4) : retenue à 2
+jumelles en ligne, à 1 pour une paire « même article » ouverte ; la règle stricte de Nico (1) est une ligne, à son mot.
+Relance à l'identique d'un refus : bloquée tant que rien n'a changé. Veille des familles : `scripts/lbc-refus-familles.prod.sql`
+(13:00 : 2 inexpliqués, aucune nouvelle famille).
+
+### 6. Paiements, la fin
+Comptes à 2 abonnements actifs (lus le 13/11) : 785352fe (Premium App Store + Pro Stripe depuis le 10/11 : double
+prélèvement, remboursement partiel de 8,66 € le 10/11 ; Apple reprélève le 30/11) ; c7c382b7 (Pro Stripe + Cloud seul
+App Store, essai → 24,99 € le 19/11) ; f0acd3af (Pro App Store + Cloud seul App Store, → 24,99 € le 16/11) ; 5322fa18
+(test). Rien annulé ni remboursé. Correctifs et textes AVANT → APRÈS : `docs/enquetes/zero-probleme-1211/paiements-1311-suite.md`.
+⚠ Geste chez Stripe à faire par Nico : cocher `charge.refunded` sur le point de terminaison du webhook.
+
+### Livraison (13/11 ~15:00)
+Commits ca9308d (66 fichiers) + cd1d34a (2.9.184) ; suite 744/744. Fonctions : email-tunnel v95, garde-abonnement v1
+(NOUVELLE, true), create-checkout-session v82, cancel-subscription v64, changer-formule v8, send-extension-link v27,
+validate-apple-receipt v50, validate-google-purchase v31, get-pending-jobs v373, update-job-status v199, ops-digest v67,
+push-ventes v30, abonnements-stores-audit v17, apple-iap-webhook v59, google-play-webhook v52, stripe-webhook v81
+(verify_jwt inchangés) ; signer-offre-boutique NON déployée (essai des abonnés boutique, prochain binaire). Web cd1d34a ;
+**OTA 2.9.184**.
