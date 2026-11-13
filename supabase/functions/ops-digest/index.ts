@@ -14,7 +14,10 @@ import { classerRetraitsEnRetard, jugerRetraitEnRetard, numeroAnnonce, sujetAvec
 // plateformes, 3 vrais (Beebs 34042975, Leboncoin 3297644264 et 3287013710 encore en vente) et 2 faux (Leboncoin 3299230866
 // « désactivée », eBay 176726068488 « introuvable ») : le juge croit en ligne une annonce que le relevé n'a pas revue depuis.
 // Le digest repart sur la liste brute d'avant (aucun retrait perdu de vue). Rallumer = true, après correction.
-const CLASSER_RETRAITS_EN_RETARD = false;
+// (12/11, lot « zéro problème » 3a — Q11 (a) de Nico) RALLUMÉ : rouge = vue en ligne APRÈS la vente et pas démentie par
+// un relevé complet plus récent ; « à relire » = tout autre article vendu dont la dernière preuve est « en ligne » (les 2
+// faux rouges du 05/11 y tombent) — compté dans le mail, jamais dans l'objet (_shared/retraits-en-retard.js).
+const CLASSER_RETRAITS_EN_RETARD = true;
 
 // ops-digest — digest quotidien des anomalies cross_post_jobs, envoyé à
 // support@fillsell.app UNIQUEMENT s'il y a au moins une ligne (silence = sain).
@@ -152,7 +155,7 @@ async function classerRetraitsDuJour(
     for (const lotN of lots(numeros, 100)) {
       for (let page = 0; page < 5; page++) {
         const { data, error } = await supabase.from("annonces_plateforme")
-          .select("user_id, platform, listing_id, statut_plateforme, vu_le, disparu_le, retiree_le")
+          .select("user_id, platform, listing_id, statut_plateforme, vu_le, disparu_le, retiree_le, compte_plateforme")
           .in("user_id", lotU).in("listing_id", lotN).range(page * 1000, page * 1000 + 999);
         if (error) throw new Error(`annonces : ${error.message}`);
         for (const a of (data ?? []) as Array<Record<string, unknown>>) {
@@ -174,6 +177,22 @@ async function classerRetraitsDuJour(
         .eq("user_id", u).eq("vinted_item_id", item).order("captured_at", { ascending: false }).limit(1);
       if (error) throw new Error(`instantanés Vinted : ${error.message}`);
       if (data && data[0]) instantanes.set(k, data[0] as Record<string, unknown>);
+    }));
+  }
+  // (12/11, 3a) Les derniers relevés TERMINÉS de chaque compte sur la plateforme du retrait (« pas revue depuis ») : index
+  // (user_id, started_at desc), 12 au plus par paire, 150 paires au plus, par lots de 10 en parallèle. Le dressing Vinted
+  // porte platform = 'vinted'.
+  const releves = new Map<string, Array<Record<string, unknown>>>();
+  const paires = [...new Set(jobs.map((j) => `${j.user_id}|${j.platform}`))].slice(0, 150);
+  for (const lot of lots(paires, 10)) {
+    await Promise.all(lot.map(async (k) => {
+      const [u, p] = k.split("|");
+      const { data, error } = await supabase.from("vinted_sync_runs")
+        .select("id, kind, platform, status, started_at, finished_at, items_vus, total_entries, erreur, vinted_user_id, compte_plateforme")
+        .eq("user_id", u).eq("platform", p).eq("status", "done")
+        .order("started_at", { ascending: false }).limit(12);
+      if (error) throw new Error(`relevés : ${error.message}`);
+      releves.set(k, (data ?? []) as Array<Record<string, unknown>>);
     }));
   }
   // Les profils : propriétaires, puis exécutants des délégations Leboncoin.
@@ -202,6 +221,7 @@ async function classerRetraitsDuJour(
       source,
       annonces: numerosDe(job).flatMap((n) => annonces.get(`${job.user_id}|${job.platform}|${n}`) ?? []),
       snapshotVinted: job.platform === "vinted" ? instantanes.get(`${job.user_id}|${numeroAnnonce(job) ?? ""}`) ?? null : null,
+      releves: releves.get(`${job.user_id}|${job.platform}`) ?? [],
       profils,
       maintenant,
     });
@@ -740,14 +760,18 @@ serve(async (req) => {
         .select("id, user_id, platform, action, status, error, created_at, next_action_after:platform_fields->>next_action_after, "
           + "republish_source:platform_fields->>republish_source, republish_step:platform_fields->>republish_step, "
           + "deleted_at:platform_fields->>deleted_at, republish_suppression_envoyee:platform_fields->republish_suppression_envoyee, "
-          + "programmee:platform_fields->programmee, programmee_servie_le:platform_fields->>programmee_servie_le")
+          + "programmee:platform_fields->programmee, programmee_servie_le:platform_fields->>programmee_servie_le, "
+          // (12/11, N2) L'attente de la plateforme (remise retenue par son annonce vendue) et la dernière remise en file.
+          + "attente_annonce_vendue:platform_fields->attente_annonce_vendue, remis_en_file_le:platform_fields->>remis_en_file_le, "
+          + "derniere_relance_manuelle:platform_fields->>derniere_relance_manuelle, pending_muet_clos_le:platform_fields->>pending_muet_clos_le")
         .eq("status", "pending").in("platform", PLATEFORMES_EXTENSION).lt("created_at", borne)
         .order("created_at", { ascending: true }).range(page * 1000, page * 1000 + 999);
       if (error) throw new Error(error.message);
       // Le juge lit platform_fields : seules les clés utiles sont lues, recomposées ici.
       for (const j of (data ?? []) as unknown as Array<Record<string, unknown>>) {
-        const { republish_source, republish_step, deleted_at, republish_suppression_envoyee, programmee, programmee_servie_le, ...reste } = j;
-        enFile.push({ ...reste, platform_fields: { republish_source, republish_step, deleted_at, republish_suppression_envoyee, programmee, programmee_servie_le } });
+        const { republish_source, republish_step, deleted_at, republish_suppression_envoyee, programmee, programmee_servie_le,
+          attente_annonce_vendue, remis_en_file_le, derniere_relance_manuelle, pending_muet_clos_le, ...reste } = j;
+        enFile.push({ ...reste, platform_fields: { republish_source, republish_step, deleted_at, republish_suppression_envoyee, programmee, programmee_servie_le, attente_annonce_vendue, remis_en_file_le, derniere_relance_manuelle, pending_muet_clos_le } });
       }
       if (!data || data.length < 1000) break;
     }
@@ -791,7 +815,7 @@ serve(async (req) => {
     const r = filesArretees({ jobs: enFile, profils, derniersDeparts, maintenant: now });
     for (const a of r.arretees) filesArreteesLignes.push(ligneFileArretee(a));
     filesArreteesBilan = `${enFile.length} tâche(s) en file depuis plus de 6 h lues · non signalés ici : ${r.attentesVoulues} attente(s) `
-      + `voulue(s) (file en pause, créneau), ${r.filesQuiAvancent} file(s) qui avancent, ${r.extensionsFermees} compte(s) à l'ordinateur éteint.`;
+      + `voulue(s) (file en pause, créneau, remise retenue par son annonce vendue), ${r.filesQuiAvancent} file(s) qui avancent, ${r.extensionsFermees} compte(s) à l'ordinateur éteint.`;
   } catch (e) {
     filesArreteesLignes.push(`Relevé des files arrêtées illisible (${String((e as Error)?.message ?? e)}) — à revérifier.`);
   }
@@ -1303,7 +1327,8 @@ serve(async (req) => {
     failed_24h: (failed ?? []).length,
     stuck_processing: stuck.length,
     // (05/11, R3) Seuls le rouge et l'orange sont des anomalies ; le blanc (sans risque) ne fait jamais partir le digest.
-    delete_overdue: retraits ? retraits.rouges.length + retraits.oranges.length : (deletesOverdue ?? []).length,
+    // (12/11, Q11 a) « À relire » aussi : un article vendu peut-être encore en ligne n'est jamais tu.
+    delete_overdue: retraits ? retraits.rouges.length + retraits.oranges.length + retraits.relire.length : (deletesOverdue ?? []).length,
     boucles_techniques: (boucles ?? []).length,
     beebs_unavailable_7d: beebsWatch.length,
     iap_alerts: iapAlerts.length,
@@ -1353,6 +1378,18 @@ serve(async (req) => {
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${retraits.lignesRouges.map((a: string) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`}
+    ${retraits.relire.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#A16207;">
+      🟡 À relire sur la plateforme — articles vendus peut-être encore en ligne (${retraits.relire.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Fiche « vendu », dernière preuve « en ligne » mais pas un risque prouvé : vue AVANT la vente (quel que soit son âge), ou
+      pas revue par un relevé complet plus récent. Ouvrir l'annonce sur la plateforme : en ligne → prévenir la personne ;
+      absente → rien à faire. Jamais compté dans l'objet « Double vente possible ».
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${retraits.lignesRelire.map((a: string) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#A16207;">${esc(a)}</li>`).join("")}
     </ul>`}
     ${retraits.oranges.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#92400E;">

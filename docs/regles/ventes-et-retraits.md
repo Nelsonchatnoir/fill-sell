@@ -864,3 +864,34 @@ Décisions de Nico (complément du lot n° 2, séries de Louis, compte Amiral). 
   elles s'arrêtent sans attendre l'ordinateur. Une quantité 0 sans vente reste la question (garde de service).
 - Verrou `npm run selftest:vente-arrete-meme-plateforme` (rouge avant : 9 ; vert après : 28/28) ; banc sur base jetable
   `node scripts/essais/20261112140000_banc.mjs` (décor de prod du 12/11, 214 fonctions, 72 déclencheurs : 25/25).
+
+## ⛔ 13/11/2026 (lot « zéro problème », étape 3 — N1, 3a, N2, N3 de Nico)
+- **N1 — republication Vinted « recreated » sans numéro** (82e64f14, 8a2eba68 ; cause : panne Supabase du 11/11
+  13:24-13:27, l'écriture « published » perdue, la tâche retombée « pending » à l'étape recreated) :
+  `_shared/etape-recreated-sans-numero.js` (handler-watch, get-pending-jobs) — numéro EXACT vu « active » dans un
+  instantané APRÈS le retrait, jamais vu avant, plus grand que l'ancien → « published » et fiche passée au nouveau numéro
+  (compare-and-set sur l'ancien, AVANT la tâche) ; doute (fiche double, vendue, supprimée, 3e numéro) → question ; sans
+  preuve → question au bout de 6 h ; JAMAIS un second dépôt. Verrou `selftest:recreated-vinted-numero-connu`.
+- **3a — juge des retraits en retard rallumé** (temps 5 A-DIGEST, Q11 a) : ROUGE = annonce vue en ligne APRÈS la vente et
+  qu'aucun relevé complet plus récent n'a manquée ; « 🟡 À relire » = tout autre article vendu dont la dernière preuve est
+  « en ligne » ; l'objet du mail « Double vente possible » ne compte que les rouges (`_shared/retraits-en-retard.js`,
+  ops-digest). Rejeu du 13/11 : 6 rouges → 1 rouge et 11 à relire. Verrou `selftest:retraits-en-retard`.
+- **N2** — `attente_annonce_vendue` est une attente voulue ; l'attente se compte depuis la dernière remise en file
+  (`_shared/attente-extension-active.js`, ops-digest). Verrou `selftest:attente-extension-active`.
+- **N3 — eBay d'un client Cloud non relié à l'API** (`cloud_voie` vrai, `ebay_voie_api` faux) : une tâche eBay voie
+  extension (publication ou RETRAIT) passe « à toi de jouer » `ebay_a_relier_cloud` — « relie ton compte eBay à FillSell
+  (Réglages › Mes plateformes › eBay) », « risque de double vente » pour un retrait ; levée dès qu'eBay est relié ou que le
+  Cloud s'arrête ; jamais « ordinateur » ni « Chrome » (`_shared/cloud-voie.js`, handler-watch, `retraitsBloques.js`).
+  Verrou `selftest:ebay-a-relier-cloud`.
+
+## ⛔ 13/11/2026 (lot « zéro problème », étape 3 — point 3b de Nico) — ventes Beebs : les cinq gardes avant de rallumer
+Interrupteur `ventes_beebs_commandes` LAISSÉ À 0 (rallumé ensemble, après preuve). Migration
+`20261113140000_ventes_beebs_cinq_gardes` PRÉPARÉE (banc jetable 48/48, inverse à l'identique), NON appliquée :
+(1) garde d'âge — le suivi commence à la création de la tâche, commande plus ancienne = « avant_suivi », date illisible =
+« date_inconnue », rien écrit ; (2) une annulation défait la vente née de CETTE commande (jamais une vente saisie à la
+main) ; (3) prix de la commande et de chaque produit lus (jamais ce que paie l'acheteur), répartis au centime ; (4) une
+commande = un compte (numéro exact ; sinon le déposant ; sinon « doute », rien écrit). Extension 0.6.187 : (5) la page des
+ventes se lit comme une page (sans en-tête RSC), renvoi vers la connexion = « session_absente », un refus arrête tout,
+marque de disparition gardée jusqu'à une lecture réussie, une lecture d'entretien par 24 h, cadence Q19 inchangée.
+Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. Verrous `selftest:ventes-beebs-cinq-gardes`,
+`selftest:ventes-beebs-lecture-due`.

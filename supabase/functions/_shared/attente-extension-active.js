@@ -17,9 +17,19 @@
 // Rejoué sur la prod le 05/11 sans ces exclusions : 28 comptes signalés, dont des files en pause voulue (Johan) et des
 // comptes éteints depuis des semaines — du bruit qui aurait caché le vrai cas.
 // Pur (Deno + Node) : ops-digest lit la base, ce module juge. Selftest : scripts/attente-extension-active-selftest.mjs.
+// (12/11, lot « zéro problème », N2 — faux positifs du 12/11 09:50) Deux trous du juge :
+//   · une REMISE EN VENTE retenue parce que son annonce vendue est encore affichée (get-pending-jobs,
+//     _shared/remise-en-vente-attente.js, marqueur attente_annonce_vendue : « vente en cours », « vendue affichée »,
+//     « à relire ») est une attente de la PLATEFORME (décision de Nico du 08/11 : jamais pendant un achat en cours) —
+//     faf5021a, 3 remises signalées « AUCUNE raison écrite » ;
+//   · l'attente se compte depuis la DERNIÈRE REMISE EN FILE (création, relance de la personne, remise en file par la
+//     base ou par le balayage des dépôts muets — _shared/depot-muet.js), jamais depuis la seule création — 98b72757,
+//     relancée à 21:24, signalée 4 min après.
 import { delegationLbcValide, executantLbcDeclare, nomExecutantLbc, PLATEFORME_DELEGUEE } from "./delegation-leboncoin.js";
 import { estFileEnPause, jobRetenuParPause } from "./file-pause.js";
 import { retraitEngage } from "./retenue-creneau.js";
+import { CLE_ATTENTE_VENDUE, ETATS_RETENUS } from "./remise-en-vente-attente.js";
+import { depuisDerniereRemiseEnFile } from "./depot-muet.js";
 
 export const ATTENTE_ALERTE_MS = 6 * 3600_000;
 // (05/11, point 8 — faux positif c) « Ouverte » = un passage dans l'heure : une extension muette depuis 10 à 18 h n'est
@@ -30,10 +40,11 @@ export const ACTIONS_SUIVIES = ["publish", "republish", "delete"];
 
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : null; };
 
-/** Depuis quand la tâche DOIT partir : sa création, ou la reprise programmée si elle est passée. null = programmée
- * plus tard (rien à dire). */
+/** Depuis quand la tâche DOIT partir : sa dernière remise en file (création, relance, remise en file — 12/11), ou la
+ * reprise programmée si elle est passée et plus tardive. null = programmée plus tard (rien à dire). */
 export function echeanceMs(job, maintenant = Date.now()) {
-  const cree = ms(job?.created_at);
+  const remise = depuisDerniereRemiseEnFile(job);
+  const cree = Number.isFinite(remise) ? remise : null;
   const apres = ms(job?.next_action_after ?? job?.platform_fields?.next_action_after);
   if (apres != null && apres > maintenant) return null;
   if (cree == null) return apres;
@@ -51,6 +62,9 @@ export function attenteVoulue(job, profilProprietaire) {
   // (05/11, point 18 — faux positif : doriane) Une PUBLICATION PROGRAMMÉE pas encore servie attend sa plage horaire et
   // son espacement (publication-programmee.js) : c'est voulu, jamais une file arrêtée.
   if (pf.programmee === true && !pf.programmee_servie_le) return "programmee";
+  // (12/11, N2) Remise en vente retenue par son annonce vendue encore affichée : l'attente de la plateforme.
+  const av = pf[CLE_ATTENTE_VENDUE];
+  if (av && typeof av === "object" && ETATS_RETENUS.includes(String(av.etat ?? ""))) return "annonce_vendue";
   return null;
 }
 

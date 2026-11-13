@@ -21,15 +21,33 @@
 //              ou article encore en stock), annonce déjà indisponible. Un poste muet depuis plus de 30 jours tient en
 //              UNE ligne par compte, quel que soit le motif (le compte du rouge éventuel y est dit).
 // Pur (Deno + Node) : ops-digest lit la base, ce module juge. Selftest : scripts/retraits-en-retard-selftest.mjs.
+//
+// ── (12/11, lot « zéro problème », 3a — décision de Nico Q11 (a) et son texte du 12/11) LE JUGE RALLUMÉ ──────────────
+// Coupé le 05/11 soir : sur 5 rouges relus sur les plateformes, 2 faux (700d7aa3 — Leboncoin 3299230866, désactivée ;
+// 8bdf8095 — eBay 176726068488, introuvable). Relu le 13/11 : les deux étaient « vue en ligne quelques minutes AVANT la
+// vente, rien depuis, poste muet » — la forme exacte de 7c6f4b35 et 450bdf41 (a5da17ee) aujourd'hui ; aucune donnée ne
+// les distingue. Le seul rouge prouvé du 05/11 (Beebs 34042975, f3aec8cc) était relu en ligne APRÈS la vente.
+// LA RÈGLE (Q11 (a) : « rouge = vue en ligne après la vente ; à relire = tout article vendu dont la dernière preuve est
+// en ligne, quel que soit l'âge ») + (12/11) « une annonce qu'un relevé plus récent n'a pas revue ne compte plus en ligne » :
+//   🔴 ROUGE    : vendu, la dernière preuve est « en ligne », elle est POSTÉRIEURE à la vente, et aucun relevé COMPLET du
+//                 compte sur la plateforme (de la boutique, pour Vinted) commencé après elle ne l'a manquée ;
+//   🟡 À RELIRE : vendu, la dernière preuve est « en ligne » mais ce n'est pas un rouge prouvé — vue AVANT la vente (quel
+//                 que soit l'âge), ou PAS REVUE par un relevé complet plus récent. Jugé AVANT le poste muet, le mur et le
+//                 poste éteint : un article vendu vu en ligne n'est jamais caché dans une ligne blanche. Compté dans le
+//                 mail (il le fait partir), jamais dans l'objet « Double vente possible ».
+// Le reste (orange : mur, retrait qui n'avance pas ; blanc : sans vente, Beebs jamais en ligne, déjà indisponible, poste
+// éteint ou muet sans preuve en ligne) est inchangé.
 import {
   NOMS_PLATEFORME_RETRAIT, retraitBloqueParConnexion, retraitBloqueParCompteVinted, retraitBloqueParBoutique,
   retraitOplaQuittee, retraitBeebsEnVerification, retraitApresVente,
 } from "../../../src/utils/retraitsBloques.js";
 import { executantDe, pauseLeboncoinActive } from "./attente-extension-active.js";
 import { numeroAnnonceDuJob } from "./retrait-deja-absent.js";
+import { releveComplet } from "./introuvable-a-confirmer.js";
 
 export const RETARD_MS = 24 * 3600_000;
-/** Au plus 48 h entre la dernière vue en ligne et la vente : l'annonce était en vente quand l'article est parti. */
+/** Au plus 48 h entre la dernière vue en ligne et la vente : l'annonce était en vente quand l'article est parti.
+ * (12/11, Q11 a) Plus un critère du rouge (une vue AVANT la vente, quel que soit son âge, est « à relire ») ; gardée pour mémoire. */
 export const FENETRE_AVANT_VENTE_MS = 48 * 3600_000;
 /** Un poste qui ne s'est pas montré depuis 24 h ne fera pas le retrait de lui-même. */
 export const POSTE_ETEINT_MS = 24 * 3600_000;
@@ -154,6 +172,29 @@ export function preuvesAnnonce({ job, source = null, annonces = [], snapshotVint
   return { enLigne: plusRecente(enLigne), indispo: plusRecente(indispo), verification: plusRecente(verif) };
 }
 
+// ── (12/11) « PAS REVUE DEPUIS » : UN RELEVÉ COMPLET PLUS RÉCENT NE L'A PAS VUE ──────────────────────────────────────
+/** Marge entre le début d'un relevé et la vue d'une annonce (horloges, lecture par pages) — même marge que les remises. */
+export const MARGE_RELEVE_MS = 5 * 60_000;
+
+/**
+ * Le dernier relevé COMPLET du compte sur la plateforme qui a commencé après la dernière vue « en ligne » sans la revoir,
+ * ou null. Un relevé « complet » est celui de _shared/introuvable-a-confirmer.js (fini, tout lu, note utilisable, même
+ * compte de la plateforme ; Vinted : le dressing de LA boutique de l'annonce — boutique inconnue : aucun relevé ne dément).
+ * @param {{ le: number }|null} enLigne     la dernière preuve en ligne
+ * @param {object[]} releves                vinted_sync_runs du compte sur la plateforme
+ * @param {{ platform: string, boutique?: string|null, compte?: string|null }} o
+ * @returns {{ releve_le: string, releve: string|null }|null}
+ */
+export function pasRevueDepuis(enLigne, releves, { platform, boutique = null, compte = null }) {
+  if (!enLigne || enLigne.le == null) return null;
+  const complets = (Array.isArray(releves) ? releves : [])
+    .filter((r) => releveComplet(r, { platform, boutique, compte }))
+    .filter((r) => { const d = ms(r.started_at); return d != null && d - MARGE_RELEVE_MS > enLigne.le; })
+    .sort((a, b) => ms(b.started_at) - ms(a.started_at));
+  const r = complets[0];
+  return r ? { releve_le: String(r.started_at), releve: r.id != null ? String(r.id) : null } : null;
+}
+
 // ── LE MUR NOMMÉ (GESTE ATTENDU DE LA PERSONNE) ──────────────────────────────────────────────────────────────────
 /** @returns {{ mur: string, texte: string }|null} */
 export function murNomme(job, { proprietaire = null, executant = null, maintenant = Date.now() } = {}) {
@@ -199,9 +240,10 @@ export function dependDuPoste(job) {
  * @param {object[]} o.annonces   annonces_plateforme du même numéro
  * @param {object|null} o.snapshotVinted
  * @param {Map<string, object>} o.profils  id → { username, email, extension_last_seen_at, beta_flags, platform_settings }
+ * @param {object[]} [o.releves]  (12/11) vinted_sync_runs terminés du compte sur la plateforme (« pas revue depuis »)
  * @param {number} [o.maintenant]
  */
-export function jugerRetraitEnRetard({ job, fiche = null, ventes = [], source = null, annonces = [], snapshotVinted = null, profils = new Map(), maintenant = Date.now() }) {
+export function jugerRetraitEnRetard({ job, fiche = null, ventes = [], source = null, annonces = [], snapshotVinted = null, releves = [], profils = new Map(), maintenant = Date.now() }) {
   const ex = executantDe(job, profils);
   const proprietaire = profils.get(String(job?.user_id ?? "")) ?? null;
   const vuPoste = ms(ex.profil?.extension_last_seen_at);
@@ -214,15 +256,23 @@ export function jugerRetraitEnRetard({ job, fiche = null, ventes = [], source = 
   const { enLigne, indispo, verification } = preuves;
   const indispoGagne = indispo != null && (enLigne == null || indispo.le >= enLigne.le);
   const enVerification = job?.platform === "beebs" && verification != null && (enLigne == null || enLigne.le <= verification.le);
+  // (12/11) La dernière vue « en ligne » démentie par un relevé complet plus récent (même compte, même boutique Vinted).
+  const compte = (Array.isArray(annonces) ? annonces : []).map((a) => a?.compte_plateforme).find((c) => c != null) ?? null;
+  const pasRevue = vendu && enLigne != null ? pasRevueDepuis(enLigne, releves, {
+    platform: String(job?.platform ?? ""), boutique: String(pfDe(job).vinted_account_id ?? "").trim() || null, compte,
+  }) : null;
+  // (12/11, Q11 a) Le risque PROUVÉ : vue en ligne APRÈS la vente, et pas démentie depuis.
   const risque = vendu && !indispoGagne && !enVerification && enLigne != null && momentVente != null
-    && enLigne.le >= momentVente - FENETRE_AVANT_VENTE_MS;
-  const base = { job, fiche, vendu, momentVente, preuves, mur, risque, vuPoste, muetMs, delegue: ex.delegue, executantNom: ex.delegue ? (ex.nom ?? ex.profil?.username ?? ex.id) : null, proprietaire };
-  // L'ordre : le silence long (une ligne par compte), ce qui n'a aucun risque, le risque réel, le geste attendu, le poste éteint.
-  if (poste && muetMs > POSTE_MUET_LONG_MS) return { ...base, couleur: "blanc", motif: "poste_muet_long" };
-  if (!vendu) return { ...base, couleur: "blanc", motif: "sans_vente" };
+    && enLigne.le >= momentVente && !pasRevue;
+  const base = { job, fiche, vendu, momentVente, preuves, mur, risque, pasRevue, vuPoste, muetMs, delegue: ex.delegue, executantNom: ex.delegue ? (ex.nom ?? ex.profil?.username ?? ex.id) : null, proprietaire };
+  // L'ordre : ce qui n'a aucun risque, le risque prouvé, le doute (« à relire », jamais caché par le poste muet), le
+  // silence long (une ligne par compte), le geste attendu, le poste éteint.
+  if (!vendu) return { ...base, couleur: "blanc", motif: poste && muetMs > POSTE_MUET_LONG_MS ? "poste_muet_long" : "sans_vente" };
   if (enVerification) return { ...base, couleur: "blanc", motif: "beebs_jamais_en_ligne" };
   if (indispoGagne) return { ...base, couleur: "blanc", motif: "deja_indisponible" };
-  if (risque) return { ...base, couleur: "rouge", motif: enLigne.le >= momentVente ? "vue_apres_la_vente" : "vue_avant_la_vente" };
+  if (risque) return { ...base, couleur: "rouge", motif: "vue_apres_la_vente" };
+  if (enLigne != null) return { ...base, couleur: "relire", motif: pasRevue ? "pas_revue_depuis" : "vue_avant_la_vente" };
+  if (poste && muetMs > POSTE_MUET_LONG_MS) return { ...base, couleur: "blanc", motif: "poste_muet_long" };
   if (mur) return { ...base, couleur: "orange", motif: mur.mur };
   if (poste && muetMs > POSTE_ETEINT_MS) return { ...base, couleur: "blanc", motif: "poste_eteint" };
   return { ...base, couleur: "orange", motif: "sans_mur" };
@@ -249,7 +299,7 @@ export const LIBELLES_BLANCS = Object.freeze({
   poste_eteint: "poste éteint",
 });
 
-/** Une ligne rouge ou orange (un retrait). */
+/** Une ligne rouge, « à relire » ou orange (un retrait). */
 export function ligneRetrait(j, maintenant = Date.now()) {
   const { job, preuves, momentVente } = j;
   const ventes = j.vendu && momentVente != null ? `vendu le ${heureParis(momentVente)}` : (j.vendu ? "vendu" : "pas de vente");
@@ -261,6 +311,8 @@ export function ligneRetrait(j, maintenant = Date.now()) {
       : momentVente != null
         ? `vue en ligne le ${quand} (${preuves.enLigne.par}), ${duree(momentVente - preuves.enLigne.le)} avant la vente, jamais vue retirée depuis`
         : `vue en ligne le ${quand} (${preuves.enLigne.par})`;
+    // (12/11) Démentie par un relevé complet plus récent : dit, avec son heure.
+    if (j.pasRevue) preuve += ` — pas revue par le relevé complet du ${heureParis(ms(j.pasRevue.releve_le))}`;
   }
   const mur = j.mur ? ` · mur : ${j.mur.texte}` : (j.couleur === "orange" ? " · aucun mur nommé : le retrait n'avance pas" : "");
   return `[${nomPf(job.platform)}] « ${titreDe(j)} » — compte ${nomCompte(j)} — ${ventes} — ${preuve}`
@@ -307,21 +359,22 @@ export function lignesBlanches(blancs, maintenant = Date.now()) {
 
 /**
  * Le classement complet, prêt pour le digest.
- * @returns {{ rouges: object[], oranges: object[], blancs: object[], lignesRouges: string[], lignesOranges: string[], lignesBlanches: string[] }}
+ * @returns {{ rouges: object[], relire: object[], oranges: object[], blancs: object[], lignesRouges: string[], lignesRelire: string[], lignesOranges: string[], lignesBlanches: string[] }}
  */
 export function classerRetraitsEnRetard(jugements, maintenant = Date.now()) {
   const par = (c) => jugements.filter((j) => j.couleur === c)
     .sort((a, b) => (ms(a.job.created_at) ?? 0) - (ms(b.job.created_at) ?? 0));
-  const rouges = par("rouge"), oranges = par("orange"), blancs = par("blanc");
+  const rouges = par("rouge"), relire = par("relire"), oranges = par("orange"), blancs = par("blanc");
   return {
-    rouges, oranges, blancs,
+    rouges, relire, oranges, blancs,
     lignesRouges: rouges.map((j) => ligneRetrait(j, maintenant)),
+    lignesRelire: relire.map((j) => ligneRetrait(j, maintenant)),
     lignesOranges: oranges.map((j) => ligneRetrait(j, maintenant)),
     lignesBlanches: lignesBlanches(blancs, maintenant),
   };
 }
 
-/** L'objet du mail commence par le risque réel quand il existe. */
+/** L'objet du mail commence par le risque PROUVÉ quand il existe (les seuls rouges ; jamais « à relire »). */
 export function sujetAvecDoubleVente(sujet, nRouges) {
   return nRouges > 0 ? `🔴 Double vente possible : ${nRouges} — ${sujet}` : sujet;
 }

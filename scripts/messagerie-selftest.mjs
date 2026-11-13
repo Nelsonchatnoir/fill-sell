@@ -338,9 +338,16 @@ await cas("Beebs : lecteur des ventes — liens de la page « Ventes », objet c
   const liste = `5:${JSON.stringify(["$", "a", null, { href: "/fr/account/orders/list/buyer" }])}\n6:${JSON.stringify(["$", "a", null, { href: "/fr/account/orders/ord-9f3a2" }])}\n7:${JSON.stringify(["$", "a", null, { href: "/fr/account/orders/ord-77b1c" }])}`;
   const commande = `3:${JSON.stringify(["$", "$L9", null, { order: { id: "ord-9f3a2", status: "LABEL_PRINTED", status_updated_at: "2026-10-15T10:00:00.000Z", products: [{ id: 5, title: "Robe" }], buyer: { first_name: "Marie", last_name: "Durand", address: { street: "1 rue" } }, seller: { id: "u-moi" } } }])}`;
   const appels = [];
+  // (13/11, décision de Nico — 3b, extension 0.6.187) Le lecteur lit d'abord le DOCUMENT de la page (fetch simple) et
+  // contrôle son adresse finale (le navigateur fournit `location`). Ce site simulé ne sert que le flux (aucun document
+  // self.__next_f.push) : le lecteur passe par son filet RSC, une relecture par page — la forme document est verrouillée
+  // par selftest:beebs-commandes-flux-rsc et selftest:ventes-beebs-lecture-due.
+  globalThis.location = { href: "https://www.beebs.app/fr/account/orders/list/seller", origin: "https://www.beebs.app" };
   globalThis.fetch = async (url) => { appels.push(url); return { status: 200, text: async () => (url.endsWith("/list/seller") ? liste : url.endsWith("ord-9f3a2") ? commande : "0:[]") }; };
   const r = await M.LECTEURS.beebs.commandes([], 5);
+  delete globalThis.location;
   assert.equal(r.ok, true);
+  assert.equal(r.forme, "rsc", "flux seul : lu par le filet RSC");
   assert.equal(r.commandes.length, 1);
   assert.equal(r.illisibles, 1);
   assert.equal(r.commandes[0].order.status, "LABEL_PRINTED");

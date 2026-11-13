@@ -36,10 +36,15 @@ await cas("lot 4 : les lignes envoyées — référence, statut brut, date, num�
 
 await cas("lot 4 : la disparition d'une annonce Beebs déclenche SEULEMENT la lecture (30 min au plus) ; la vente est décidée par le serveur", () => {
   assert.ok(/if \(job\.platform === "beebs"\) ventesBeebsALire = true;/.test(BG));
-  assert.ok(/if \(ventesBeebsALire\) await lireVentesBeebsSiDue\(session\)/.test(BG));
-  assert.ok(/Date\.now\(\) - Number\(lu\[userId\] \?\? 0\) < 30 \* 60_000\) return;/.test(BG));
+  // (13/11, décision de Nico — 3b, extension 0.6.187) La disparition ne lit plus sur-le-champ, elle pose une MARQUE gardée
+  // jusqu'à une lecture réussie (jamais jetée) ; la lecture part à son créneau à chaque cycle, plancher de 30 min
+  // inchangé (heure notée après la lecture). Verrou : selftest:ventes-beebs-lecture-due.
+  assert.ok(/if \(ventesBeebsALire\) await demanderLectureVentesBeebs\(session, "disparition"\)/.test(BG));
+  assert.ok(/await lireVentesBeebsSiDue\(session, \{ beebsSuivie: /.test(BG));
+  assert.ok(/const JOUR = 24 \* 3600_000, PLANCHER = 30 \* 60_000;/.test(BG) && /maintenant - \(Number\(etat\.dernier_essai\) \|\| 0\) < PLANCHER\) return \{ lire: false, motif: "moins_de_30_min"/.test(BG));
   assert.ok(/rpcMessagerie\("commandes_beebs_noter", \{/.test(BG));
-  assert.ok(/if \(platform === "beebs"\) await noterVentesBeebs\(token, cmd\);/.test(BG), "le passage bêta envoie aussi");
+  // (13/11, 3b) Le passage bêta envoie aussi, dit sa voie (« messagerie ») et fait tomber la marque « lecture due ».
+  assert.ok(/if \(platform === "beebs"\) \{ await noterVentesBeebs\(token, cmd, "messagerie"\); await lectureVentesBeebsReussie\(token, cmd\)/.test(BG), "le passage bêta envoie aussi");
   // La 1re lecture « unavailable » ne pose toujours AUCUN bandeau (règle du 27/09).
   assert.ok(/console\.log\(`\[background\] \$\{job\.platform\} \$\{job\.id\} : plus en ligne \(1re lecture\) — AUCUN bandeau/.test(BG));
 });

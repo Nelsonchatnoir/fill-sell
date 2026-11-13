@@ -1385,7 +1385,7 @@
   // une référence « $7b » vers une autre ligne est suivie). Les liens restent lus
   // en second (si Beebs les rendait un jour côté serveur). Une commande dont les
   // produits n'ont pas de numéro est relue sur sa page (comme avant).
-  async function lecteurCommandesBeebs(suivies, detailsMax, priorite) {
+  async function lecteurCommandesBeebs(suivies, detailsMax, priorite, attendues = false) {
     // ⛔ (09/11 soir, vente Beebs de louis-seller non vue) CES TROIS FONCTIONS VIVENT DANS LE LECTEUR. Il est
     // envoyé dans l'onglet par chrome.scripting.executeScript, qui ne transmet que SON texte : posées à côté de lui
     // (23/10, f081a28 → 0.6.132), elles n'existaient pas dans la page — « commandesDuFluxRsc is not defined », aucun
@@ -1443,16 +1443,88 @@
       for (const v of lignes.values()) marcher(v, 0);
       return trouvees;
     }
+    // ── (13/11, 3b de Nico — 0.6.187) LA PAGE DES VENTES LUE SANS 403 ───────────────────────────────────────────────────
+    // Les refus 403 (34 sur 11 comptes du 10 au 12/11, tous sur CETTE liste) venaient de la FORME de notre requête, que
+    // l'anti-robot de Beebs (DataDome) refuse par moments : « RSC: 1 » seul (le routeur du site l'accompagne de ses autres
+    // en-têtes) et le cache coupé (Cache-Control/Pragma no-cache). La même famille de pages lue par un fetch SIMPLE du
+    // monde de la page (aucun en-tête ajouté, cache par défaut — fetchListingHtml) passait au même moment, 1 448 fois sur
+    // 1 448 (« Mes annonces », 30/10 → 11/11). La liste se lit donc comme une page : le DOCUMENT, dont le flux du site
+    // (self.__next_f.push) porte les mêmes objets commande que le flux RSC. Gardes : adresse finale ≠ la liste → session
+    // absente (renvoi vers la connexion) ou page inattendue, jamais « 0 commande » ; 403, 429 ou page de vérification →
+    // refus (bot), AUCUNE seconde requête ; document sans flux ni repère de la page des ventes → UNE relecture par le flux
+    // RSC, sans cache coupé (filet). Le résultat dit sa forme, son étape et ce qui a répondu (diag).
+    const LISTE = "/fr/account/orders/list/seller";
+    function fluxDeLaPage(html) {
+      let flux = "";
+      for (const m of String(html ?? "").matchAll(/self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)/g)) {
+        try { flux += JSON.parse(`"${m[1]}"`); } catch { /* morceau illisible : les autres suffisent */ }
+      }
+      return flux;
+    }
+    const repereDesVentes = (flux) => /"orders","list","seller"/.test(flux) || String(flux).includes("/account/orders/list/seller");
+    // Un numéro de commande porte au moins un chiffre (jamais « list », « history »…).
+    const liensDe = (texte) => [...String(texte ?? "").matchAll(/\/account\/orders\/(?!list\b|history\b|buyer\b|seller\b)((?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{6,80})/g)].map((m) => m[1]);
+    // La page lue EST la page des ventes : son repère (la route), ou des commandes (objets ou liens).
+    const pageDesVentes = (flux) => !!flux && (repereDesVentes(flux) || commandesDuFluxRsc(flux).size > 0 || liensDe(flux).length > 0);
+    const cheminDe = (rep, defaut) => { try { return new URL(rep?.url || defaut, location.href).pathname; } catch { return null; } };
+    function diagDe(rep, texte) {
+      const h = (n) => { try { return rep?.headers?.get?.(n) ?? null; } catch { return null; } };
+      const debut = String(texte ?? "").slice(0, 4000);
+      return {
+        datadome: h("x-datadome") != null || h("x-dd-b") != null || /captcha-delivery|geo\.captcha|datadome/i.test(debut),
+        type: String(h("content-type") ?? "").slice(0, 60) || null,
+        cache: String(h("cache-control") ?? "").slice(0, 60) || null,
+        taille: String(texte ?? "").length,
+      };
+    }
+    const pageDeVerification = (texte) => !String(texte ?? "").includes("self.__next_f")
+      && /captcha-delivery|geo\.captcha|Please enable JS and disable any ad blocker/i.test(String(texte ?? "").slice(0, 6000));
     let requetes = 1;
-    const r = await fetch("/fr/account/orders/list/seller", { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
-    if (!r) return { ok: false, motif: "reseau", requetes };
-    if (r.status === 403 || r.status === 429) return { ok: false, http: r.status, bot: true, motif: `http_${r.status}`, requetes };
-    if (r.status !== 200) return { ok: false, http: r.status, motif: `http_${r.status}`, requetes };
-    const t = await r.text().catch(() => "");
+    let forme = "document";
+    const r = await fetch(LISTE, { credentials: "include", redirect: "follow" }).catch(() => null);
+    if (!r) return { ok: false, motif: "reseau", requetes, forme, etape: "liste" };
+    const adresse = cheminDe(r, LISTE);
+    const html = r.status === 200 || r.status === 403 || r.status === 429 ? await r.text().catch(() => "") : "";
+    if (r.status === 403 || r.status === 429) return { ok: false, http: r.status, bot: true, motif: `http_${r.status}`, requetes, forme, etape: "liste", adresse_finale: adresse, diag: diagDe(r, html) };
+    if (r.status !== 200) return { ok: false, http: r.status, motif: `http_${r.status}`, requetes, forme, etape: "liste", adresse_finale: adresse };
+    if (pageDeVerification(html)) return { ok: false, http: 200, bot: true, motif: "verification", requetes, forme, etape: "liste", adresse_finale: adresse, diag: diagDe(r, html) };
+    if (adresse !== LISTE) {
+      return { ok: false, http: 200, motif: /\/(auth|login|connexion|signin|sign-in)(\/|$)/i.test(String(adresse ?? "")) ? "session_absente" : "page_inattendue",
+        requetes, forme, etape: "liste", adresse_finale: adresse };
+    }
+    let t = fluxDeLaPage(html);
+    if (!pageDesVentes(t)) {
+      // Le filet : une seule relecture par le flux RSC (la forme d'avant, cache non coupé).
+      requetes++;
+      forme = "rsc";
+      const r2 = await fetch(LISTE, { credentials: "include", headers: { RSC: "1", Accept: "*/*" } }).catch(() => null);
+      if (!r2) return { ok: false, motif: "reseau", requetes, forme, etape: "liste" };
+      const t2 = await r2.text().catch(() => "");
+      if (r2.status === 403 || r2.status === 429) return { ok: false, http: r2.status, bot: true, motif: `http_${r2.status}`, requetes, forme, etape: "liste", diag: diagDe(r2, t2) };
+      if (r2.status !== 200) return { ok: false, http: r2.status, motif: `http_${r2.status}`, requetes, forme, etape: "liste" };
+      const adresse2 = cheminDe(r2, LISTE);
+      if (adresse2 !== LISTE) {
+        return { ok: false, http: 200, motif: /\/(auth|login|connexion|signin|sign-in)(\/|$)/i.test(String(adresse2 ?? "")) ? "session_absente" : "page_inattendue",
+          requetes, forme, etape: "liste", adresse_finale: adresse2 };
+      }
+      if (!pageDesVentes(t2)) return { ok: false, http: 200, motif: "page_inattendue", requetes, forme, etape: "liste", adresse_finale: adresse2, diag: diagDe(r2, t2) };
+      t = t2;
+    }
+    // Le FILET D'ÉCART : la page porte son repère mais AUCUNE commande alors que des commandes sont attendues (la dernière
+    // lecture réussie du compte en portait — `attendues` — ou des commandes en cours sont suivies) : UNE relecture par
+    // le flux RSC, sans cache coupé ; si elle en porte, elle fait foi et l'écart est rendu (tracé par l'appelant). Jamais
+    // « 0 commande » sans bruit si le document venait à ne plus porter les objets commande.
+    let ecart = false;
+    if (forme === "document" && (attendues === true || (suivies ?? []).length > 0) && commandesDuFluxRsc(t).size === 0 && liensDe(t).length === 0) {
+      requetes++;
+      const r3 = await fetch(LISTE, { credentials: "include", headers: { RSC: "1", Accept: "*/*" } }).catch(() => null);
+      if (r3 && (r3.status === 403 || r3.status === 429)) return { ok: false, http: r3.status, bot: true, motif: `http_${r3.status}`, requetes, forme: "rsc", etape: "liste" };
+      const t3 = r3 && r3.status === 200 && cheminDe(r3, LISTE) === LISTE ? await r3.text().catch(() => "") : "";
+      if (commandesDuFluxRsc(t3).size > 0 || liensDe(t3).length > 0) { t = t3; forme = "rsc"; ecart = true; }
+    }
     const parListe = commandesDuFluxRsc(t);
     const ids = [...parListe.keys()];
-    // Un numéro de commande porte au moins un chiffre (jamais « list », « history »…).
-    for (const m of t.matchAll(/\/account\/orders\/(?!list\b|history\b|buyer\b|seller\b)((?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{6,80})/g)) if (!ids.includes(m[1])) ids.push(m[1]);
+    for (const lien of liensDe(t)) if (!ids.includes(lien)) ids.push(lien);
     for (const s of suivies ?? []) if (!ids.includes(String(s))) ids.push(String(s));
     const commandes = [];
     let illisibles = 0;
@@ -1472,6 +1544,9 @@
           id: o.id ?? id, status: o.status, status_updated_at: o.status_updated_at ?? o.updated_at ?? null,
           created_at: o.created_at ?? null, carrier_id: o.carrier_id ?? null, carrier_name: o.carrier?.name ?? o.carrier_name ?? null,
           total_price: o.total_price ?? o.totalPrice ?? o.total ?? o.price ?? o.amount ?? o.computed_buyer_payin ?? null,
+          // (13/11, 3b — prix lu) Le montant de la commande pour le VENDEUR (jamais computed_buyer_payin, ce que paie
+          // l'acheteur, frais compris) et sa monnaie si Beebs la donne.
+          amount: o.amount ?? null, currency: o.currency ?? o.currency_code ?? null,
           buyer: o.buyer ? { first_name: o.buyer.first_name ?? o.buyer.firstName ?? null, last_name: o.buyer.last_name ?? o.buyer.lastName ?? null } : null,
           shipping: o.shipping ? { tracking_number: o.shipping.tracking_number ?? null, parcel_id: o.shipping.parcel_id ?? null } : null,
           products: o.products.slice(0, 10).map((p) => ({ id: p?.id ?? p?.product_id ?? null, title: p?.title ?? p?.name ?? null,
@@ -1481,11 +1556,19 @@
       }
       await new Promise((ok) => setTimeout(ok, 1200 + Math.random() * 1400));
       requetes++;
-      const rd = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
+      // (13/11) La page d'une commande se lit comme la liste : le document (fetch simple), son flux ; sans flux, UNE
+      // relecture RSC sans cache coupé ; un refus arrête tout (bot), sans seconde requête.
+      const rd = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, { credentials: "include", redirect: "follow" }).catch(() => null);
       if (!rd) continue;
-      if (rd.status === 403 || rd.status === 429) return { ok: false, http: rd.status, bot: true, motif: `http_${rd.status}`, requetes };
+      if (rd.status === 403 || rd.status === 429) return { ok: false, http: rd.status, bot: true, motif: `http_${rd.status}`, requetes, forme: "document", etape: "detail" };
       if (rd.status !== 200) continue;
-      const td = await rd.text().catch(() => "");
+      let td = fluxDeLaPage(await rd.text().catch(() => ""));
+      if (!td) {
+        requetes++;
+        const rr = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, { credentials: "include", headers: { RSC: "1", Accept: "*/*" } }).catch(() => null);
+        if (rr && (rr.status === 403 || rr.status === 429)) return { ok: false, http: rr.status, bot: true, motif: `http_${rr.status}`, requetes, forme: "rsc", etape: "detail" };
+        td = rr && rr.status === 200 ? await rr.text().catch(() => "") : "";
+      }
       let trouve = null;
       // (24/10) Les références « $7b » du flux sont suivies (products, buyer…).
       const lignesD = lignesFluxRsc(td);
@@ -1505,13 +1588,14 @@
         id: o.id ?? id, status: o.status, status_updated_at: o.status_updated_at ?? o.updated_at ?? null,
         created_at: o.created_at ?? null, carrier_id: o.carrier_id ?? null, carrier_name: o.carrier?.name ?? o.carrier_name ?? null,
         total_price: o.total_price ?? o.totalPrice ?? o.total ?? o.price ?? null,
+        amount: o.amount ?? null, currency: o.currency ?? o.currency_code ?? null,
         buyer: o.buyer ? { first_name: o.buyer.first_name ?? o.buyer.firstName ?? null, last_name: o.buyer.last_name ?? o.buyer.lastName ?? null } : null,
         shipping: o.shipping ? { tracking_number: o.shipping.tracking_number ?? null, parcel_id: o.shipping.parcel_id ?? null } : null,
         products: (o.products ?? []).slice(0, 10).map((p) => ({ id: p?.id ?? p?.product_id ?? null, title: p?.title ?? p?.name ?? null,
           price: p?.price ?? null, image: p?.image ?? (Array.isArray(p?.images) ? p.images[0] : null) ?? p?.thumbnail ?? null })),
       } });
     }
-    return { ok: true, http: 200, commandes, requetes, illisibles, tentes: aLireBeebs.map(String) };
+    return { ok: true, http: 200, commandes, requetes, illisibles, tentes: aLireBeebs.map(String), forme, ...(ecart ? { ecart: true } : {}) };
   }
 
   const LECTEURS = Object.freeze({

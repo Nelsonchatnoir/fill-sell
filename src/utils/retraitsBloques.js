@@ -127,6 +127,19 @@ export function retraitBloqueParBoutique(job) {
   return null;
 }
 
+// ── (12/11, lot « zéro problème », N3) UN CLIENT FILLSELL CLOUD DONT L'eBay N'EST PAS RELIÉ ─────────────────────
+// eBay d'un client Cloud passe par l'API d'eBay — seulement si son eBay est relié à FillSell. Sinon, son retrait eBay
+// attendait un ordinateur qu'il n'a pas, et l'écran disait « FillSell Cloud la retirera dès qu'il reprend » (faux). Le
+// serveur (handler-watch, _shared/cloud-voie.js) pose le geste sur la tâche : needs_user_source « ebay_a_relier_cloud ».
+// L'écran le dit tel quel — relier eBay (Réglages › Mes plateformes › eBay) —, jamais l'ordinateur ni Chrome.
+export const SOURCE_EBAY_A_RELIER_CLOUD = 'ebay_a_relier_cloud';
+/** Ce retrait attend-il que la personne relie son compte eBay à FillSell (client Cloud) ? */
+export function retraitEbayARelier(job) {
+  if (!job || job.action !== 'delete' || job.platform !== 'ebay' || job.status !== 'needs_user') return false;
+  const pf = job.platform_fields && typeof job.platform_fields === 'object' ? job.platform_fields : {};
+  return pf.needs_user_source === SOURCE_EBAY_A_RELIER_CLOUD;
+}
+
 /** Ce retrait attend-il un ordinateur allumé (extension silencieuse) ? */
 export function retraitBloqueParOrdinateur(job, extensionVueLe, maintenant = Date.now()) {
   if (!job || job.action !== 'delete' || (job.status !== 'pending' && job.status !== 'processing')) return false;
@@ -247,6 +260,7 @@ export function retraitsBloquesParConnexion({ jobs = [], fiches = null, maintena
     const boutique = retraitBloqueParBoutique(j);
     const fiche = lireFiche(fiches, j.inventaire_id);
     const mur = retraitOplaQuittee(j) ? 'opla_sortie'
+      : retraitEbayARelier(j) ? 'relier_ebay'
       : retraitBloqueParCompteVinted(j) ? 'compte_bloque'
       : retraitBloqueParConnexion(j, maintenant) ? 'connexion'
         : boutique ? 'boutique'
@@ -321,6 +335,15 @@ function texteRetraitsBloquesBrut(groupe, lang = 'fr') {
       ? `${quoiO} : ouvre Chrome sur ton ordinateur, FillSell ${plus ? 'les' : 'la'} retirera aussitôt${risqueO}.`
       : `${quoiO}: open Chrome on your computer, FillSell will remove ${plus ? 'them' : 'it'} right away${risqueO}.`;
   }
+  // (12/11, N3) Client Cloud, eBay non relié : le seul geste possible.
+  if (groupe.mur === 'relier_ebay') {
+    const quoiE = nVendus === n
+      ? (fr ? `${n} article${plus ? 's' : ''} vendu${plus ? 's' : ''} encore en ligne sur ${nom}` : `${n} sold item${plus ? 's' : ''} still live on ${nom}`)
+      : (fr ? `${n} annonce${plus ? 's' : ''} à retirer encore en ligne sur ${nom}` : `${n} listing${plus ? 's' : ''} to remove still live on ${nom}`);
+    return fr
+      ? `${quoiE} : relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay) pour que FillSell Cloud ${plus ? 'les' : 'la'} retire — risque de double vente.`
+      : `${quoiE}: connect your eBay account to FillSell (Settings › My platforms › eBay) so FillSell Cloud can remove ${plus ? 'them' : 'it'} — risk of selling twice.`;
+  }
   if (groupe.mur === 'opla_sortie') {
     const quoiOp = nVendus === n
       ? (fr ? `${n} article${plus ? 's' : ''} vendu${plus ? 's' : ''} peut-être encore en ligne sur Opla` : `${n} sold item${plus ? 's' : ''} maybe still live on Opla`)
@@ -386,6 +409,11 @@ function ligneCarteRetraitBloqueBrut(platform, lang = 'fr', mur = 'connexion', b
       ? `Still live on ${nom} — open Chrome on your computer to remove it (risk of selling twice)`
       : `Encore en ligne sur ${nom} — ouvre Chrome sur ton ordinateur pour la retirer (risque de double vente)`;
   }
+  if (mur === 'relier_ebay') {
+    return lang === 'en'
+      ? `Still live on ${nom} — connect your eBay account to FillSell (Settings › My platforms › eBay) to remove it (risk of selling twice)`
+      : `Encore en ligne sur ${nom} — relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay) pour la retirer (risque de double vente)`;
+  }
   if (mur === 'opla_sortie') {
     return lang === 'en'
       ? 'Maybe still live on Opla — FillSell no longer handles Opla: remove it yourself on Opla (risk of selling twice)'
@@ -435,6 +463,15 @@ function ligneAReglerBrut(bloques, lang = 'fr') {
           : `Open ${boutiques.length === 1 ? `your shop ${boutiques[0]}` : (g0?.boutique ? `your shops ${boutiques.join(', ')}` : 'the Vinted shop that holds them')} in Chrome so FillSell can remove ${n > 1 ? 'them' : 'it'}.`),
     };
   }
+  // (12/11, N3) Rien que des retraits eBay d'un client Cloud à l'eBay non relié : le seul geste.
+  if (murs.size === 1 && murs.has('relier_ebay')) {
+    return {
+      titre: fr ? (n > 1 ? 'Annonces encore en ligne à retirer' : 'Annonce encore en ligne à retirer') : (n > 1 ? 'Listings still live to remove' : 'Listing still live to remove'),
+      detail: fr
+        ? `Relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay) pour que FillSell Cloud ${n > 1 ? 'les' : 'la'} retire — risque de double vente.`
+        : `Connect your eBay account to FillSell (Settings › My platforms › eBay) so FillSell Cloud can remove ${n > 1 ? 'them' : 'it'} — risk of selling twice.`,
+    };
+  }
   // (25/10) Rien que des annonces Beebs en vérification : ni « en ligne », ni « risque de double vente » — pas achetables.
   if (murs.size === 1 && murs.has('verification_beebs')) {
     return {
@@ -466,6 +503,8 @@ function ligneAReglerBrut(bloques, lang = 'fr') {
       : `open ${b.length === 1 ? `your shop ${b[0]}` : b.length ? `your shops ${lister(b)}` : 'the Vinted shop that holds them'} in Chrome`);
   }
   if (groupesDe('ordinateur').length) gestes.push(fr ? 'ouvre Chrome sur ton ordinateur' : 'open Chrome on your computer');
+  // (12/11, N3) Client Cloud, eBay non relié.
+  if (groupesDe('relier_ebay').length) gestes.push(fr ? 'relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay)' : 'connect your eBay account to FillSell (Settings › My platforms › eBay)');
   const cx = [...new Set(groupesDe('connexion').map((g) => g.nom))];
   if (cx.length) gestes.push(fr ? `reconnecte-toi à ${lister(cx)}` : `sign back in to ${lister(cx)}`);
   const cb = [...new Set(groupesDe('compte_bloque').map((g) => g.nom))];
@@ -536,6 +575,10 @@ function gesteVenduEnLigne(g, lang = 'fr') {
       return fr
         ? `${noms} affiche « compte bloqué » sur ton ordinateur : retire-${la} depuis l'appli ${noms} si tu peux, FillSell réessaie tout seul`
         : `${noms} shows "account blocked" on your computer: remove ${la} from the ${noms} app if you can, FillSell keeps retrying`;
+    case 'relier_ebay':
+      return fr
+        ? `relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay) : FillSell Cloud ${la} retirera ensuite`
+        : `connect your eBay account to FillSell (Settings › My platforms › eBay): FillSell Cloud will then remove ${la}`;
     case 'opla_sortie':
       return fr
         ? `FillSell ne gère plus Opla : retire-${la} toi-même sur Opla, puis touche « C'est fait » dans la fiche`

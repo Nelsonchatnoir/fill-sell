@@ -64,7 +64,8 @@ if (aV) {
 
 // ── 3. Le câblage serveur ───────────────────────────────────────────────────────────────────────────────────────────
 const hw = lire('supabase/functions/handler-watch/index.ts');
-ok(/import \{ texteDemandeExpireeCloud \} from "\.\.\/_shared\/cloud-voie\.js";/.test(hw), 'handler-watch importe la règle du Cloud');
+// (12/11, lot « zéro problème », N3) handler-watch importe aussi la règle « eBay à relier » du même module.
+ok(/import \{ texteDemandeExpireeCloud(, [A-Za-z_, ]+)? \} from "\.\.\/_shared\/cloud-voie\.js";/.test(hw), 'handler-watch importe la règle du Cloud');
 ok(/\.select\("id, ebay_voie_api"\)\.in\("id", comptes\.slice\(i, i \+ 100\)\)\.eq\("cloud_voie", true\)/.test(hw), 'handler-watch lit, par lots, les comptes au Cloud actif des demandes à expirer');
 ok(/const texte = c\n\s*\? texteDemandeExpireeCloud\(/.test(hw), 'handler-watch : compte au Cloud actif → texte du Cloud');
 ok(hw.includes("const TEXTE_ORDI_RELEVE = `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'avait pas Chrome ouvert avec ` +\n      \"l'extension FillSell. Elle repartira toute seule dès que Chrome se rouvrira avec l'extension : rien à faire.\";"),

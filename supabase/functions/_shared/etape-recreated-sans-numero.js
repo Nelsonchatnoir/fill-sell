@@ -26,9 +26,30 @@
 // Jamais un titre, une photo ou un prix : un numéro, une ligne de relevé désignée par le job, ou la fiche.
 // Module PUR (Deno + Node) : get-pending-jobs (tâches en file) et handler-watch (tâches déjà passées à la personne)
 // lisent la base et écrivent ; ici, on juge.
+//
+// ── (12/11, lot « zéro problème », N1 — 82e64f14 / 67cd1c77, 8a2eba68 / 46569b9d) VINTED : LE NUMÉRO CONNU TRANCHE ──
+// Le 11/11 à 13:26 (Paris), la relecture du dressing de l'extension a retrouvé les deux nouvelles annonces par leur
+// NUMÉRO (new_vinted_item_id, étape « recreated » posée) ; l'écriture « published » est tombée sur une panne de la
+// plateforme (update-job-status en 503/504 de 13:24:30 à 13:27) et l'extension a écrit à la place la retenue « dépôt
+// incertain » (pending) — étape « recreated » et numéro compris, sans platform_listing_id, fiche restée sur l'ancien
+// numéro supprimé. La branche Vinted ci-dessous rendait « rien — le dressing tranche » : or le dressing ne tranche qu'à
+// l'étape « deleted » ; la tâche n'était plus jamais servie, close ni dite, et la nouvelle annonce, vue « active » par
+// les relevés, n'avait pas de fiche (une vente sur Vinted ne l'aurait pas retrouvée).
+// LA RÈGLE (Vinted, tous les comptes, toutes versions d'extension — le numéro est celui de la plateforme, jamais un
+// libellé ni un titre) :
+//   · le numéro EXACT new_vinted_item_id (≠ l'ancien, plus grand que lui) vu « active » par un relevé du dressing
+//     (vinted_listing_snapshots) APRÈS le retrait de l'ancienne annonce, et jamais vu avant lui → « clore » : published
+//     sur ce numéro, la fiche passe de l'ancien numéro au nouveau (compare-and-set fait par l'appelant, AVANT la tâche) ;
+//   · une autre fiche porte déjà ce numéro, la fiche n'est plus à vendre, ou elle porte un 3e numéro → la question
+//     (le doute ne se tranche jamais seul) ;
+//   · sans preuve : rien (le prochain relevé tranche) ; au bout de ATTENTE_RELEVE_MAX_H (6 h, la même attente que la
+//     garde du dépôt incertain), comptées depuis la recréation ou la dernière relance → la question honnête, avec le lien
+//     du numéro connu ;
+//   · JAMAIS « reprendre » : aucun second dépôt.
 
 import { republicationFinie } from "./republication-finie.js";
 import { archiverErreur } from "./erreurs-archivees.js";
+import { ATTENTE_RELEVE_MAX_H } from "./recreation-vinted-verifiee.js";
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
@@ -75,28 +96,137 @@ export function vueAuDernierReleve(l, releveDebut) {
   return Number.isFinite(debut) && Number.isFinite(vu) && vu >= debut - MARGE_RELEVE_MS;
 }
 
+// ── (12/11, N1) VINTED : LA PREUVE PAR LE NUMÉRO EXACT ──────────────────────────────────────────────────────────────
+/** L'heure de Paris, « 11/11 à 13:26 ». */
+function heureParisN1(t) {
+  try {
+    const d = new Date(t);
+    const j = d.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" });
+    const h = d.toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
+    return `${j} à ${h}`;
+  } catch { return null; }
+}
+const plusGrand = (a, b) => { try { return BigInt(a) > BigInt(b); } catch { return false; } };
+
+/** Le plus tôt possible du retrait de l'ancienne annonce (horloge Vinted, poste, serveur), en ms, ou NaN. */
+function retraitAncienneMs(pf) {
+  const t = [objet(pf.suppression_verdict)?.date_serveur, pf.deleted_at_client, pf.deleted_at, pf.deleted_at_serveur].map(ms).filter(Number.isFinite);
+  return t.length ? Math.min(...t) : NaN;
+}
+
+/**
+ * La preuve qu'un numéro Vinted EXACT est en ligne après le retrait de l'ancienne annonce (pur) : un instantané du relevé
+ * du dressing « active », pris après le retrait (marge de 5 min), le numéro n'ayant JAMAIS été vu avant le retrait (sinon
+ * c'est une annonce qui existait déjà : pas notre remise en ligne).
+ * @param {string} numero
+ * @param {Array<{ vinted_item_id: string, status: string, captured_at: string }>} instantanes
+ * @param {{ depuisMs: number }} o
+ * @returns {null | { vuAvant: true } | { instantane: { vinted_item_id: string, status: string, captured_at: string } }}
+ */
+export function preuveInstantaneVinted(numero, instantanes, { depuisMs }) {
+  if (!Number.isFinite(depuisMs)) return null;
+  const lignes = (Array.isArray(instantanes) ? instantanes : []).filter((s) => String(s?.vinted_item_id ?? "") === String(numero));
+  if (lignes.some((s) => Number.isFinite(ms(s.captured_at)) && ms(s.captured_at) < depuisMs - MARGE_RELEVE_MS)) return { vuAvant: true };
+  const actives = lignes.filter((s) => String(s.status ?? "") === "active" && ms(s.captured_at) >= depuisMs - MARGE_RELEVE_MS)
+    .sort((a, b) => ms(a.captured_at) - ms(b.captured_at));
+  return actives.length ? { instantane: actives[0] } : null;
+}
+
+const lienVinted = (n) => `https://www.vinted.fr/items/${n}`;
+/** Les questions (texte dit à la personne : jamais un ordinateur, jamais Chrome). */
+export function messageQuestionRecreatedVinted(code, { numero, ancienFiche = null, recreeMs = NaN } = {}) {
+  const lien = lienVinted(numero);
+  if (code === "fiche_double") {
+    return `Ta nouvelle annonce Vinted est en ligne (${lien}), mais elle est entrée dans ton stock comme une fiche séparée. Rien n'a été ` +
+      "redéposé. Fusionne les deux fiches de cet article depuis l'app : sinon, une vente sur Vinted ne retirerait pas ses autres annonces.";
+  }
+  if (code === "fiche_finie") {
+    return `Cet article n'est plus à vendre dans ton stock, mais sa nouvelle annonce Vinted est en ligne (${lien}) : retire-la sur Vinted ` +
+      "pour ne pas le vendre deux fois. Rien n'a été redéposé.";
+  }
+  if (code === "fiche_autre_numero") {
+    return `Ta nouvelle annonce Vinted est en ligne (${lien}), mais ta fiche porte une autre annonce Vinted${ancienFiche ? ` (n° ${ancienFiche})` : ""}. ` +
+      "Rien n'a été changé ni redéposé : vérifie sur Vinted laquelle est la bonne.";
+  }
+  const quand = Number.isFinite(recreeMs) ? heureParisN1(recreeMs) : null;
+  return `Ta nouvelle annonce a été déposée sur Vinted${quand ? ` le ${quand}` : ""} (${lien}), mais FillSell ne l'a pas revue depuis dans ` +
+    "ton dressing. Pour ne jamais la mettre en ligne deux fois, rien n'est redéposé. Ouvre ce lien : si elle est en ligne, il n'y a " +
+    "rien à faire — elle sera rattachée à ta fiche dès la prochaine lecture de ton dressing ; si elle n'y est pas, préviens-nous : " +
+    "rien ne sera redéposé sans toi.";
+}
+
+/**
+ * La branche Vinted (pur). ctx : instantanes (vinted_listing_snapshots du compte pour le nouveau numéro), ficheExiste,
+ * ficheStatut, ficheVintedId, fichesAvecNouveau (ids des fiches du compte qui portent déjà le nouveau numéro),
+ * maintenant (ms).
+ */
+function decisionVintedNumeroConnu(job, pf, ancien, ctx) {
+  const { instantanes = [], ficheStatut = null, ficheVintedId = null, fichesAvecNouveau = [], maintenant = Date.now() } = ctx;
+  // ficheExiste : vrai, faux (fiche supprimée : la clé étrangère remet inventaire_id à NULL), ou null = fiche illisible.
+  const ficheExiste = ctx.ficheExiste === undefined ? (job.inventaire_id != null) : ctx.ficheExiste;
+  const nouveau = String(pf.new_vinted_item_id ?? "").trim();
+  const surFiche = String(ficheVintedId ?? "").trim();
+  if (!NUMERO_RE.test(nouveau) || nouveau === ancien) return { verdict: "rien", motif: "Vinted : aucun nouveau numéro connu — le dressing tranche (recreation-vinted-verifiee.js)" };
+  // Règle du 30/10 gardée : la fiche porte déjà le nouveau numéro (relevé du dressing ou rattachement) → close.
+  if (surFiche === nouveau) {
+    return { verdict: "clore", listing_id: nouveau, url: lienVinted(nouveau), motif: `nouvelle annonce ${nouveau} rattachée à la fiche par le relevé du dressing` };
+  }
+  const deja = objet(pf.recreated_sans_numero);
+  const memeQuestion = (code) => job.status === "needs_user" && deja?.verdict === "question" && deja?.code === code;
+  const question = (code, motif) => (memeQuestion(code)
+    ? { verdict: "rien", motif: `question « ${code} » déjà posée` }
+    : { verdict: "question", code, listing_id: nouveau, url: lienVinted(nouveau), motif,
+      message: messageQuestionRecreatedVinted(code, { numero: nouveau, ancienFiche: surFiche || null, recreeMs: ms(pf.recreated_at) }) });
+  const retrait = retraitAncienneMs(pf);
+  const depuisPreuve = Number.isFinite(retrait) ? retrait : ms(pf.recreated_at);
+  const numeroPlausible = !ancien || plusGrand(nouveau, ancien);
+  const p = numeroPlausible ? preuveInstantaneVinted(nouveau, instantanes, { depuisMs: depuisPreuve }) : null;
+  if (p?.instantane && ficheExiste === null) return { verdict: "rien", motif: `${nouveau} en ligne, mais la fiche n'a pas pu être relue — rejugé au passage suivant` };
+  if (p?.instantane) {
+    const autres = (Array.isArray(fichesAvecNouveau) ? fichesAvecNouveau : []).map(String).filter((id) => id !== String(job.inventaire_id ?? ""));
+    if (autres.length) return question("fiche_double", `${nouveau} en ligne, mais déjà porté par une autre fiche (${autres.slice(0, 3).join(", ")})`);
+    if (!ficheExiste || STATUTS_FICHE_FINIS.test(String(ficheStatut ?? "").trim())) {
+      return question("fiche_finie", `${nouveau} en ligne, fiche ${ficheExiste ? `« ${ficheStatut} »` : "supprimée"}`);
+    }
+    if (surFiche && surFiche !== String(ancien ?? "")) return question("fiche_autre_numero", `${nouveau} en ligne, fiche sur un autre numéro (${surFiche})`);
+    return {
+      verdict: "clore", listing_id: nouveau, url: lienVinted(nouveau), preuve: p.instantane,
+      fiche: job.inventaire_id != null ? { id: job.inventaire_id, de: surFiche || null, vers: nouveau } : null,
+      motif: `nouvelle annonce ${nouveau} vue « active » par le relevé du dressing du ${p.instantane.captured_at}, après le retrait de l'ancienne`,
+    };
+  }
+  // Sans preuve : le relevé tranche ; la question au bout de 6 h — jamais « reprendre » (aucun second dépôt).
+  const reperes = [ms(pf.recreated_at), ms(objet(pf.depot_incertain)?.at), ms(pf.derniere_relance_manuelle), ms(pf.remis_en_file_le)].filter(Number.isFinite);
+  const depuis = reperes.length ? Math.max(...reperes) : NaN;
+  if (job.status === "pending" && Number.isFinite(depuis) && maintenant - depuis >= ATTENTE_RELEVE_MAX_H * 3600_000) {
+    return question("sans_preuve", p?.vuAvant ? `${nouveau} vu avant le retrait de l'ancienne annonce : pas une preuve` : `${nouveau} jamais revu en ligne depuis la recréation`);
+  }
+  return { verdict: "rien", motif: p?.vuAvant ? `Vinted : ${nouveau} vu avant le retrait — pas une preuve, le relevé tranche` : `Vinted : ${nouveau} pas encore revu par un relevé du dressing — il tranche` };
+}
+
+/** Le déplacement de fiche que l'appelant fait AVANT d'écrire la tâche (compare-and-set sur `de`), ou null. */
+export function ficheARattacherVinted(d) {
+  return d?.verdict === "clore" && d.fiche && d.fiche.vers ? d.fiche : null;
+}
+
 /**
  * Le verdict pour une republication « recreated » sans numéro.
  * @param {any} job
- * @param {{ lignes?: any[], releveDebut?: string|null, ficheStatut?: string|null, ficheVintedId?: string|null }} [ctx]
+ * @param {{ lignes?: any[], releveDebut?: string|null, ficheStatut?: string|null, ficheVintedId?: string|null,
+ *   instantanes?: any[], fichesAvecNouveau?: Array<string|number>, ficheExiste?: boolean|null, maintenant?: number }} [ctx]
  *   lignes : annonces_plateforme du compte sur la plateforme (celles du job, de ses numéros, de sa fiche) ;
  *   releveDebut : début du dernier relevé COMPLET de la plateforme (null = aucun) ;
- *   ficheStatut / ficheVintedId : la fiche (inventaire.statut, inventaire.vinted_item_id).
- * @returns {{ verdict: "clore"|"close_ailleurs"|"close_fiche_finie"|"reprendre"|"rien", listing_id?: string, url?: string|null, motif: string }}
+ *   ficheStatut / ficheVintedId : la fiche (inventaire.statut, inventaire.vinted_item_id) ;
+ *   (12/11, Vinted) instantanes, fichesAvecNouveau, ficheExiste, maintenant : voir decisionVintedNumeroConnu.
+ * @returns {{ verdict: "clore"|"close_ailleurs"|"close_fiche_finie"|"reprendre"|"question"|"rien", listing_id?: string, url?: string|null, motif: string, code?: string, message?: string, fiche?: any, preuve?: any }}
  */
-export function decisionRecreatedSansNumero(job, { lignes = [], releveDebut = null, ficheStatut = null, ficheVintedId = null } = {}) {
+export function decisionRecreatedSansNumero(job, ctx = {}) {
+  const { lignes = [], releveDebut = null, ficheStatut = null } = ctx;
   if (!etapeRecreatedSansNumero(job)) return { verdict: "rien", motif: "pas une remise en ligne « recreated » sans numéro" };
   const pf = objet(job.platform_fields) ?? {};
   const plateforme = String(job.platform ?? "");
   const { ancien, numeros } = numerosDeLaRecreation(job);
-  if (plateforme === "vinted") {
-    const nouveau = String(pf.new_vinted_item_id ?? "").trim();
-    if (NUMERO_RE.test(nouveau) && nouveau !== ancien && String(ficheVintedId ?? "").trim() === nouveau) {
-      return { verdict: "clore", listing_id: nouveau, url: `https://www.vinted.fr/items/${nouveau}`,
-        motif: `nouvelle annonce ${nouveau} rattachée à la fiche par le relevé du dressing` };
-    }
-    return { verdict: "rien", motif: "Vinted : le dressing tranche (recreation-vinted-verifiee.js)" };
-  }
+  if (plateforme === "vinted") return decisionVintedNumeroConnu(job, pf, ancien, ctx);
   const liste = (Array.isArray(lignes) ? lignes : []).filter((l) => l && NUMERO_RE.test(String(l.listing_id ?? ""))
     && String(l.listing_id) !== String(ancien ?? ""));
   // 1. La nouvelle annonce de CE job, vue en ligne au dernier relevé complet.
@@ -148,15 +278,27 @@ export function patchRecreatedSansNumero(job, d, { par, maintenant = new Date().
   const pf0 = objet(job?.platform_fields) ?? {};
   const pf = { ...pf0 };
   const trace = { le: maintenant, verdict: d.verdict, motif: d.motif, par, statut_avant: job.status ?? null,
-    recreated_at_avant: pf0.recreated_at ?? null, ...(d.listing_id ? { annonce: d.listing_id } : {}) };
+    recreated_at_avant: pf0.recreated_at ?? null, ...(d.listing_id ? { annonce: d.listing_id } : {}),
+    ...(d.code ? { code: d.code } : {}), ...(d.preuve ? { preuve: d.preuve } : {}), ...(d.fiche ? { fiche: d.fiche } : {}) };
   for (const k of ["needsUserField", "needsUserFields", "champs_a_completer", "needs_user_source", "needs_user_sans_motif",
     "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "needsUserAttempts",
     "next_action_after", "processing_since", "boucle_technique"]) delete pf[k];
-  if (job.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, par);
+  if (job.error && !(d.verdict === "question" && job.error === d.message)) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, par);
   pf.recreated_sans_numero = trace;
+  // (12/11, N1) Vinted, numéro connu sans preuve (ou doute sur la fiche) : la question, l'étape et le numéro gardés —
+  // jamais un redépôt. Sa source est celle des remises en ligne « peut-être déjà parties ».
+  if (d.verdict === "question") {
+    pf.needs_user_source = "recreation_deja_partie";
+    pf.recreation_deja_partie = { le: maintenant, essai: pf0.recreated_at ?? null, copies: d.listing_id ? [String(d.listing_id)] : [], motif: d.code ?? null };
+    return { status: "needs_user", error: d.message ?? null, platform_fields: pf };
+  }
   if (d.verdict === "clore") {
     pf.new_listing_url = d.url ?? pf.new_listing_url ?? null;
-    if (job.platform === "vinted") pf.new_vinted_item_id = d.listing_id;
+    if (job.platform === "vinted") {
+      pf.new_vinted_item_id = d.listing_id;
+      // Les attentes de la retenue « dépôt incertain » n'ont plus d'objet : la nouvelle annonce est prouvée.
+      for (const k of ["depot_incertain", "recreation_attente_releve", "recreation_deja_partie"]) delete pf[k];
+    }
     return { status: "published", error: null, platform_listing_id: d.listing_id, listing_url: d.url ?? null,
       ...(job.published_at ? {} : { published_at: String(pf0.recreated_at ?? maintenant) }), platform_fields: pf };
   }

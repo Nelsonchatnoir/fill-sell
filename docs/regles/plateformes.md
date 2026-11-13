@@ -994,3 +994,15 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - 🚗 (autoradio, pièces auto) → Leboncoin « Véhicules › Équipement auto » (🏍️ et 🛵 restent sans rayon).
 - Catalogue Vinted « Enfants › Jeux et jouets » → Leboncoin « Jeux & Jouets », table PAR IDENTIFIANTS
   (`src/utils/vintedVersLbc.js`, 45 feuilles ; Déguisements, Activités bébé et Loisirs créatifs exclus).
+
+## ⛔ 13/11/2026 (lot « zéro problème », étape 3 — points 3c et 3d de Nico)
+- **3c — garde anti-doublon des dépôts sans numéro** (Beebs, Leboncoin) : un numéro obtenu par la CONFIRMATION d'un autre
+  dépôt du compte (`numeroConfirmeParDepot` : preuve d'identifiant acceptée, sonde, adsubmit) n'est jamais candidat ;
+  un numéro rattaché par photos ou par titre ne compte jamais ; le doute reste une question (`_shared/depot-sans-numero.js`,
+  get-pending-jobs, beebs-lien). Cas : 14e536e0 (poussette bloquée 3 h 41 par le sac à dos publié 12 min avant), ca9afe24,
+  ebdf29f0. Verrou `selftest:depot-numero-d-un-autre-depot`.
+- **3d — commune Leboncoin** (`_shared/lbc-commune-meme-cp.js`, get-pending-jobs, toutes versions d'extension) : même code
+  postal → la commune que Leboncoin propose est servie (une seule ; plusieurs → question), dite une fois par compte ; code
+  postal d'aucune commune (CEDEX, 75000 — base `codes-postaux-fr.js`) → bloqué avant tout essai avec un message qui
+  l'explique ; code postal différent → bloqué ; Réglages jamais réécrits. Extension 0.6.187 : la commune unique au même code
+  postal acceptée au geste. Cas : a1e210f2 (Seynod → Annecy 74600). Verrou `selftest:lbc-commune-meme-cp`.

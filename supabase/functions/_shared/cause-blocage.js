@@ -55,6 +55,13 @@ const PAR_SOURCE = Object.freeze({
   // (25/10, N6) eBay refuse le brouillon sans conditions de retour et le compte n'en a pas : la personne
   // choisit, une fois, pour le compte (_shared/ebay-brouillon-refus.js) — une politique de son compte.
   ebay_retours_a_choisir: [ORIGINE.UTILISATEUR, "reglage_du_compte"],
+  // (12/11, lot « zéro problème », N3) Client FillSell Cloud dont l'eBay n'est pas relié à FillSell : la personne relie son
+  // compte eBay (Réglages › Mes plateformes › eBay) — _shared/cloud-voie.js.
+  ebay_a_relier_cloud: [ORIGINE.UTILISATEUR, "reglage_du_compte"],
+  // (13/11, point 3d) Le code postal de la ville de l'annonce / de l'adresse n'est celui d'aucune commune (CEDEX,
+  // 75000), ou Leboncoin n'y propose aucune commune / plusieurs : la personne seule donne sa commune
+  // (_shared/lbc-commune-meme-cp.js, get-pending-jobs).
+  lbc_commune_code_postal: [ORIGINE.UTILISATEUR, "reglage_du_compte"],
   recreation_deja_partie: [ORIGINE.GARDE, "doublon_possible"],
   depot_deja_parti: [ORIGINE.GARDE, "doublon_possible"],
   article_vendu: [ORIGINE.GARDE, "vente_a_confirmer"],

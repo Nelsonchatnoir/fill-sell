@@ -76,7 +76,8 @@ import { detectObjectIcon } from "../../../src/utils/shared.js";
 import { oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { titrePourJob, titreVide, titreRecevable, couperTitre, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
-import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob, decisionRueInconnueLbc, repliCommuneDesReglages, CODE_REPLI_COMMUNE, PUBLICATION_PREUVE_JOURS } from "../_shared/lbc-voie-des-reglages.js";
+import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob, decisionRueInconnueLbc, repliCommuneDesReglages, CODE_REPLI_COMMUNE, PUBLICATION_PREUVE_JOURS, communeComparable } from "../_shared/lbc-voie-des-reglages.js";
+import { decisionCommuneLbc, patchBlocageCommune, phraseDejaDite, phraseCommuneLeboncoin, CLE_COMMUNE_MEME_CP } from "../_shared/lbc-commune-meme-cp.js";
 // (25/10, décision de Nico — Marta, Rapallo) Leboncoin réservé aux adresses en France ; (audit N10) rien d'une
 // plateforme écartée par la personne n'est servi.
 import { adresseLbcHorsFrance, lbcACloreHorsFrance, lbcServiMalgreHorsFrance, clotureLbcHorsFrance } from "../_shared/lbc-adresse-france.js";
@@ -224,7 +225,7 @@ import { retraitEnAttenteDeConnexion, preuvesConnexionVinted, preuveDuSeulPoste,
 import { lireParLots } from "../_shared/par-lots.ts";
 import { teteDeFile } from "../_shared/tete-de-file.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
-import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
+import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero, ficheARattacherVinted } from "../_shared/etape-recreated-sans-numero.js";
 import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree, verdictVisiteControleLbc } from "../_shared/blocage-leboncoin.js";
 // (07/11 soir, Goulvenk) Une session fermée passe par le circuit connexion ; une preuve lève la pause ; la synchro de la personne est la visite.
 import { blocageSessionFermee, contrePreuvePauseLbc, sessionLbcRevueLe } from "../_shared/blocage-leboncoin.js";
@@ -269,7 +270,7 @@ import { trierCandidatesDepuisRetrait, depotsAutresFiches, fichesDesJobs, numero
 // (07/11, Ciddjy 49342549) Nos propres dépôts en double : la plus ancienne rattachée, les autres retirées par le circuit.
 import { essaisSuspectsDepuisRetrait, retraitDoublonDeNosEssais, patchRattachementRecreation, releveCompletAvantRedepot, questionDoublonsARejuger, marqueDoublonsRejuge, MOTIF_DOUBLON_DE_NOS_ESSAIS, QUESTIONS_DOUBLONS_PAR_PASSAGE } from "../_shared/recreation-deja-partie.js";
 import { decisionReleveVerif, motifReleveNonPris, messageReleveNonPris, releveServiDevant } from "../_shared/releve-verif-non-pris.js";
-import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, urlsAnnonce, jugerCycleDepots } from "../_shared/depot-sans-numero.js";
+import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, urlsAnnonce, jugerCycleDepots, COLONNES_NUMEROS_CONFIRMES, numerosConfirmesParDepot } from "../_shared/depot-sans-numero.js";
 import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
 import { BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, envoiMarqueProuve, enPauseMarqueParId, marqueAIdentifiantCapturee } from "../_shared/vinted-marque-par-id.js";
@@ -3498,6 +3499,8 @@ serve(async (req) => {
       // finie → close sans rouge ; sinon (Leboncoin, Beebs) retour à l'étape « deleted » avec le marqueur de la garde
       // « annonce déjà partie », juste en dessous, qui relit les annonces avant tout redépôt. Lecture seulement quand
       // un tel job est en file (rare). ⛔ Sert tous les builds.
+      // (12/11, N1) Vinted : le nouveau numéro connu vu « active » par le relevé du dressing → published et fiche passée au
+      // nouveau numéro ; sans preuve, la question au bout de 6 h ; jamais un second dépôt.
       const sansNumero = out.filter((j) => j.status === "pending" && etapeRecreatedSansNumero(j));
       if (sansNumero.length) {
         const sortis = new Set<string>();
@@ -3526,17 +3529,46 @@ serve(async (req) => {
               if (err.startsWith("[incomplet]") || err.includes("n'a pas rendu sa liste")) return false;
               return Number(r.items_vus ?? 0) > 0 || err.startsWith("[vide]");
             });
+            // (12/11, N1 — 82e64f14 / 67cd1c77) Vinted : le nouveau numéro connu se prouve par les instantanés du relevé
+            // du dressing (numéro exact) ; les fiches qui le portent déjà sont lues. Même règle que handler-watch.
+            const nouveauV = plateforme === "vinted"
+              ? String(((j.platform_fields ?? {}) as Record<string, unknown>)["new_vinted_item_id"] ?? "").trim() : "";
+            const [{ data: instantanesV }, { data: fichesV }] = /^\d{6,}$/.test(nouveauV)
+              ? await Promise.all([
+                userClient.from("vinted_listing_snapshots").select("vinted_item_id, status, captured_at")
+                  .eq("user_id", user.id).eq("vinted_item_id", nouveauV).order("captured_at", { ascending: true }).limit(60),
+                userClient.from("inventaire").select("id").eq("user_id", user.id).eq("vinted_item_id", nouveauV).limit(5),
+              ])
+              : [{ data: [] }, { data: [] }];
             const d = decisionRecreatedSansNumero(j, {
               lignes: (lignes ?? []) as Array<Record<string, unknown>>,
               releveDebut: (complet?.started_at as string | undefined) ?? null,
               ficheStatut: ((fiche as Record<string, unknown> | null)?.statut as string | undefined) ?? null,
               ficheVintedId: ((fiche as Record<string, unknown> | null)?.vinted_item_id as string | undefined) ?? null,
-            }) as { verdict: string; listing_id?: string; url?: string | null; motif: string };
+              instantanes: (instantanesV ?? []) as Array<Record<string, unknown>>,
+              fichesAvecNouveau: ((fichesV ?? []) as Array<{ id: number }>).map((x) => x.id),
+              ficheExiste: j.inventaire_id == null ? false : (fiche ? true : null),
+            }) as { verdict: string; listing_id?: string; url?: string | null; motif: string; fiche?: { id: number; de: string | null; vers: string } | null };
             const patch = patchRecreatedSansNumero(j, d, { par: "get-pending-jobs (étape recreated sans numéro)" }) as Record<string, unknown> | null;
             if (!patch) {
-              // Rien de conclu (Vinted : le dressing tranche ; ailleurs : aucune garde) — jamais servi « recreated ».
+              // Rien de conclu (Vinted : le relevé du dressing tranche ; ailleurs : aucune garde) — jamais servi « recreated ».
               sortis.add(idJ);
               continue;
+            }
+            // La fiche passe au nouveau numéro AVANT la tâche, en compare-and-set sur l'ancien : échec → rien n'est écrit.
+            const aRattacher = ficheARattacherVinted(d) as { id: number; de: string | null; vers: string } | null;
+            if (aRattacher) {
+              let qF = userClient.from("inventaire")
+                .update({ vinted_item_id: aRattacher.vers, disparu_le: null,
+                  listed_at_guess: String(((j.platform_fields ?? {}) as Record<string, unknown>)["recreated_at"] ?? new Date().toISOString()) })
+                .eq("id", aRattacher.id).eq("user_id", user.id);
+              qF = aRattacher.de ? qF.eq("vinted_item_id", aRattacher.de) : qF.is("vinted_item_id", null);
+              const { data: deplacee, error: eFiche } = await qF.select("id");
+              if (!deplacee?.length) {
+                console.warn(`[get-pending-jobs] republication ${idJ.slice(0, 8)} (vinted) : fiche ${aRattacher.id} non passée sur ${aRattacher.vers}${eFiche ? ` (${eFiche.message})` : " (elle a changé entre-temps)"} — rien écrit, retenue ce cycle`);
+                sortis.add(idJ);
+                continue;
+              }
             }
             const { data: maj } = await userClient.from("cross_post_jobs").update(patch).eq("id", idJ).eq("status", "pending").select("id");
             console.log(`[get-pending-jobs] republication ${idJ.slice(0, 8)} (${plateforme}) : étape recreated sans numéro → ${d.verdict} (${d.motif})${(maj ?? []).length ? "" : " (déjà sortie de pending)"}`);
@@ -7317,18 +7349,22 @@ serve(async (req) => {
             lignesB.push(...((lot ?? []) as Array<Record<string, unknown>>));
             if ((lot ?? []).length < 1000) break;
           }
-          const { data: numerotes } = await adminD.from("cross_post_jobs").select("platform_listing_id, published_at")
+          // (13/11, 3c) Mêmes jobs, avec la preuve de leur numéro : un numéro donné par la CONFIRMATION d'un autre
+          // dépôt du compte n'est jamais candidat (_shared/depot-sans-numero.js, numerosConfirmesParDepot) — la ligne
+          // du relevé peut être encore « reliée à rien » (le rapprochement la rattache après la fin des relevés).
+          const { data: numerotes } = await adminD.from("cross_post_jobs").select(COLONNES_NUMEROS_CONFIRMES)
             .eq("user_id", user.id).eq("platform", "beebs").not("platform_listing_id", "is", null).not("published_at", "is", null)
             .order("published_at", { ascending: false }).limit(200);
-          for (const n of (numerotes ?? []) as Array<Record<string, unknown>>) {
+          for (const n of (numerotes ?? []) as unknown as Array<Record<string, unknown>>) {
             if (/^\d+$/.test(String(n.platform_listing_id ?? ""))) lignesB.push({ listing_id: String(n.platform_listing_id), created_at: n.published_at, job_id: "plancher", inventaire_id: -1 });
           }
+          const numerosConfirmes = numerosConfirmesParDepot((numerotes ?? []) as unknown as Array<Record<string, unknown>>);
           const lignes = lignesB;
           // Les empreintes de toutes les copies et de toutes les candidates du cycle (lots de 200, PostgREST).
           const urlsCycle = new Set<string>();
           for (const x of aJuger) {
             for (const u of urlsPhotos(x.j.photos)) urlsCycle.add(u);
-            for (const a of candidatesDuDepot(x.depot, lignes)) for (const u of urlsAnnonce(a)) urlsCycle.add(u);
+            for (const a of candidatesDuDepot(x.depot, lignes, "beebs", { numerosConfirmes })) for (const u of urlsAnnonce(a)) urlsCycle.add(u);
           }
           const toutesUrls = [...urlsCycle];
           const empParUrlB = new Map<string, Record<string, unknown>>();
@@ -7337,7 +7373,7 @@ serve(async (req) => {
             for (const e of (empB ?? []) as Array<Record<string, unknown>>) empParUrlB.set(String(e.url), e);
           }
           // 1) Les photos désignent, pour tout le cycle à la fois (mutuel).
-          const cycle = jugerCycleDepots({ depots: aJuger.map((x) => x.depot), lignes, empreinte: (u: string) => empParUrlB.get(u) });
+          const cycle = jugerCycleDepots({ depots: aJuger.map((x) => x.depot), lignes, empreinte: (u: string) => empParUrlB.get(u), numerosConfirmes });
           const choixCycle = cycle.rattaches;
           const prises = cycle.prises;
           // 2) Les rattachements d'abord ; la ligne suit en mémoire.
@@ -7366,9 +7402,11 @@ serve(async (req) => {
           for (const x of aJuger.filter((y) => !choixCycle.has(y.idJ))) {
             const { j, idJ, pf, susp, fait } = x;
             const cands = (cycle.question.get(idJ) ?? []) as Array<Record<string, unknown>>;
+            const ecarteesConfirmees = cycle.ecartees?.get(idJ) ?? [];
             if (!cands.length) {
               const pfN: Record<string, unknown> = { ...pf, depot_verifie: { apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: "aucune",
-                ...(prises.size ? { annonces_d_autres_depots: [...prises] } : {}) } };
+                ...(prises.size ? { annonces_d_autres_depots: [...prises] } : {}),
+                ...(ecarteesConfirmees.length ? { numeros_d_autres_depots: ecarteesConfirmees.slice(0, 10) } : {}) } };
               delete pfN["depot_attente_releve_depuis"];
               const { data: maj } = await userClient.from("cross_post_jobs").update({ platform_fields: pfN })
                 .eq("id", idJ).eq("status", "pending").select("id");
@@ -7380,7 +7418,8 @@ serve(async (req) => {
               continue;
             }
             const liens = cands.map((a) => String(a.url ?? "") || lienDepuisId("beebs", String(a.listing_id)) || String(a.listing_id)).slice(0, 3);
-            const pfN: Record<string, unknown> = { ...pf, needs_user_source: "depot_deja_parti", depot_deja_parti: { le: new Date().toISOString(), verdict: "incertaine", liens, releve: String(fait.id), essai: susp } };
+            const pfN: Record<string, unknown> = { ...pf, needs_user_source: "depot_deja_parti", depot_deja_parti: { le: new Date().toISOString(), verdict: "incertaine", liens, releve: String(fait.id), essai: susp,
+              ...(ecarteesConfirmees.length ? { numeros_d_autres_depots: ecarteesConfirmees.slice(0, 10) } : {}) } };
             delete pfN["depot_attente_releve_depuis"];
             await userClient.from("cross_post_jobs").update({
               status: "needs_user", platform_fields: pfN,
@@ -11482,6 +11521,75 @@ serve(async (req) => {
         // commune, sinon une republication pas encore commencée n'est pas
         // servie. Cf. _shared/lbc-voie-des-reglages.js.
         const reglagesLbc = ((prof?.platform_settings as Record<string, Record<string, unknown>> | null)?.leboncoin ?? null);
+        // ══ (13/11, point 3d de Nico) LEBONCOIN — MÊME CODE POSTAL : LA COMMUNE DE LEBONCOIN ; AUTRE : BLOQUÉ, EXPLIQUÉ ══
+        // (_shared/lbc-commune-meme-cp.js) Pour TOUTES les versions d'extension, la commune que l'extension va taper
+        // (ville de l'annonce, sinon adresse servie ; jamais la localisation d'origine d'une republication) est jugée
+        // par son CODE POSTAL :
+        //   · code postal d'aucune commune (CEDEX — 98b72757 « Cholet 49308 » —, code général — 8ac5bbda « PARIS
+        //     75000 ») → bloquée AVANT tout essai, avec le message qui explique (plus 5 essais « rien à faire ») ;
+        //   · Leboncoin a déjà répondu pour cette commune (un refus d'un job servi du compte) : ses propositions au
+        //     MÊME code postal désignent une commune → elle est servie (a1e210f2 : « seynod 74600 » → « Annecy
+        //     (74600) », 22 refus le 12/11) ; la trace lbc_commune_meme_cp est sur la tâche, la phrase dite une fois
+        //     par compte ; plusieurs communes, ou aucune au même code postal → bloquée, message qui explique ;
+        //   · une ville de l'annonce bloquée cède à celle des Réglages quand la personne l'a corrigée (relance).
+        // ⛔ Réglages LUS, jamais écrits. Un job bloqué l'est par compare-and-set sur « pending ».
+        try {
+          const lbcPubs = besoinAdresse.filter((j) => j.platform === "leboncoin" && j.status === "pending"
+            && ["publish", "republish"].includes(String(j.action ?? "publish") || "publish"));
+          if (lbcPubs.length) {
+            // Les réponses de Leboncoin déjà connues du compte : les refus portés par ses tâches Leboncoin servies (en
+            // attente ou à toi de jouer), sans lecture de plus.
+            const refusCompte = besoinAdresse.filter((j) => j.platform === "leboncoin").flatMap((j) => textesErreurJob(j));
+            const bloquesCommune = new Set<string>();
+            const ditesCeCycle: Array<Record<string, unknown>> = [];
+            let communesServies = 0;
+            for (const j of lbcPubs) {
+              const d = decisionCommuneLbc({ job: j, reglagesLbc, refusCompte });
+              if (d.action === "commune") {
+                const pfN = { ...(d.platform_fields as Record<string, unknown>) };
+                const trace = { ...((pfN[CLE_COMMUNE_MEME_CP] ?? {}) as Record<string, unknown>) };
+                if (trace.commune && communeComparable(trace.commune) !== communeComparable(trace.ville_tapee)) {
+                  // La phrase, une fois par compte : portée par CETTE tâche (gardée), ou déjà dite ailleurs → la trace seule.
+                  const avant = ((j.platform_fields as Record<string, unknown> | null) ?? {})[CLE_COMMUNE_MEME_CP] as Record<string, unknown> | undefined;
+                  if (avant && phraseDejaDite([avant], trace as never)) {
+                    trace.dite = true;
+                    trace.phrase = avant.phrase;
+                  } else {
+                    let deja = phraseDejaDite(ditesCeCycle, trace as never);
+                    if (!deja) {
+                      const { data: dites } = await userClient.from("cross_post_jobs").select("t:platform_fields->lbc_commune_meme_cp")
+                        .eq("platform", "leboncoin").contains("platform_fields", { lbc_commune_meme_cp: { dite: true, code_postal: String(trace.code_postal) } })
+                        .limit(5);
+                      deja = phraseDejaDite(((dites ?? []) as Array<{ t?: unknown }>).map((x) => x.t), trace as never);
+                    }
+                    if (deja) trace.deja_dite = true;
+                    else {
+                      trace.dite = true;
+                      trace.phrase = phraseCommuneLeboncoin({ cp: String(trace.code_postal), ville: String(trace.ville_tapee), commune: String(trace.commune) });
+                      ditesCeCycle.push(trace);
+                    }
+                  }
+                }
+                pfN[CLE_COMMUNE_MEME_CP] = trace;
+                j.platform_fields = pfN as typeof j.platform_fields;
+                communesServies++;
+                console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (leboncoin) : « ${String(trace.ville_tapee)} ${String(trace.code_postal)} » → `
+                  + `${trace.commune ? `commune de Leboncoin « ${String(trace.commune)} » (même code postal)` : `ville de l'annonce corrigée dans les Réglages`} — servie, Réglages inchangés`);
+              } else if (d.action === "bloquer") {
+                const patch = patchBlocageCommune(j, d);
+                const { data: maj } = await userClient.from("cross_post_jobs")
+                  .update({ status: patch.status, error: patch.error, platform_fields: pfAPersister(patch.platform_fields as Record<string, unknown>) })
+                  .eq("id", String(j.id)).eq("status", "pending").select("id");
+                bloquesCommune.add(String(j.id));
+                console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (leboncoin) : adresse bloquée (${d.motif}) — ${(maj ?? []).length ? "needs_user, message qui explique" : "déjà sortie de la file"}`);
+              }
+            }
+            if (bloquesCommune.size) out = out.filter((j) => !bloquesCommune.has(String(j.id)));
+            if (communesServies) console.log(`[get-pending-jobs] userId=${user.id} : ${communesServies} publication(s) Leboncoin servie(s) avec la commune jugée par son code postal`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] commune Leboncoin par code postal : ${String((e as Error)?.message ?? e)} — servi tel quel`);
+        }
         // ── (31/10, lot J 4) LA RUE DES RÉGLAGES QUE LEBONCOIN NE CONNAÎT PAS N'EST JAMAIS SERVIE ──
         // (_shared/lbc-voie-des-reglages.js, repliCommuneDesReglages) Une publication Leboncoin PASSÉE du compte
         // (14 jours) qui a dû se replier sur la commune avec l'adresse des Réglages : Leboncoin ne connaît pas cette

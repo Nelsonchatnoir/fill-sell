@@ -11,6 +11,11 @@
 //      programmée plus tard, en attente de la personne, eBay, file en pause voulue (un retrait, lui, reste suivi),
 //      republication automatique pas encore engagée (son créneau) — mais engagée, elle est suivie ;
 //   D. la ligne lisible ; E. ops-digest : section rouge, comptée, sujet, colonnes lues.
+// (12/11, lot « zéro problème », N2 — faux positifs du digest du 12/11 09:50) :
+//   F. une remise en vente retenue parce que l'annonce vendue est encore affichée (attente_annonce_vendue : « vente en
+//      cours », « vendue affichée », « à relire » — faf5021a, 9e3f4b0a / 6e6cd97d / b746cc09) = une attente VOULUE (de la
+//      plateforme), jamais une file arrêtée ; l'attente se compte depuis la DERNIÈRE REMISE EN FILE (98b72757, 7c1c664a
+//      relancée à 21:24 : signalée 4 min après, à tort) ; le cas d'origine (69f89a6d) reste signalé ; ops-digest lit les clés.
 // ═══════════════════════════════════════════════════════════════════════════
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -131,8 +136,54 @@ console.log("\n[E] ops-digest : la section rouge");
 ok(M.attenteVoulue({ action: "publish", platform_fields: { programmee: true } }, null) === "programmee", "publication programmée en attente de sa plage → attente voulue");
 ok(M.attenteVoulue({ action: "publish", platform_fields: { programmee: true, programmee_servie_le: "2026-11-05T13:00:00Z" } }, null) === null, "programmée DÉJÀ servie et toujours en file → plus une attente voulue");
 const od = readFileSync(join(ROOT, "supabase/functions/ops-digest/index.ts"), "utf8");
-ok(/programmee:platform_fields->programmee, programmee_servie_le:platform_fields->>programmee_servie_le/.test(od) && /platform_fields: \{ [^}]*programmee, programmee_servie_le \}/.test(od),
-  "ops-digest lit les deux clés de la publication programmée");
+ok(/programmee:platform_fields->programmee, programmee_servie_le:platform_fields->>programmee_servie_le/.test(od) && /platform_fields: \{ [^}]*programmee, programmee_servie_le[,}\s]/.test(od),
+  "ops-digest lit les deux clés de la publication programmée (12/11 : d'autres clés suivent, N2)");
+
+console.log("\n[F] (12/11, N2) attente de la plateforme et remise en file");
+{
+  // faf5021a (Leboncoin, 12/11 09:50) : 3 remises en vente retenues « vente en cours » (transaction Leboncoin « Achat en
+  // cours » lue le 08/11), extension ouverte, rien parti : le digest les disait « AUCUNE raison écrite ».
+  const maintenant = Date.parse("2026-11-12T08:50:00Z");
+  const av = (etat) => ({ annonce_vendue: "3295743872", etat, depuis: "2026-11-08T09:34:26.018Z", lu_le: "2026-11-08T09:27:22.99Z", transaction: "pending" });
+  const pAm = profils({ [AMIRAL]: { extension_last_seen_at: "2026-11-12T08:45:00Z", beta_flags: {} } });
+  const remises = [
+    job({ id: "9e3f4b0a", user_id: AMIRAL, action: "publish", created_at: "2026-11-06T06:20:00.479Z", platform_fields: { attente_annonce_vendue: av("vente_en_cours"), remis_en_file_le: "2026-11-07T16:15:10.318Z" } }),
+    job({ id: "6e6cd97d", user_id: AMIRAL, action: "publish", created_at: "2026-11-06T06:20:00.479Z", platform_fields: { attente_annonce_vendue: av("vente_en_cours") } }),
+    job({ id: "b746cc09", user_id: AMIRAL, action: "publish", created_at: "2026-11-08T11:20:00.683Z", platform_fields: { attente_annonce_vendue: { ...av("vente_en_cours"), annonce_vendue: "3304491516" } } }),
+  ];
+  const r = M.filesArretees({ jobs: remises, profils: pAm, derniersDeparts: new Map(), maintenant });
+  ok(r.arretees.length === 0 && r.attentesVoulues === 3, "faf5021a : 3 remises retenues « vente en cours » → attentes voulues (HEAD : file arrêtée)", JSON.stringify([r.arretees.length, r.attentesVoulues]));
+  ok(M.attenteVoulue(remises[0], pAm.get(AMIRAL)) === "annonce_vendue", "attenteVoulue nomme l'attente : annonce_vendue", String(M.attenteVoulue(remises[0], pAm.get(AMIRAL))));
+  for (const etat of ["vendue_affichee", "a_relire"]) {
+    ok(M.attenteVoulue({ ...remises[1], platform_fields: { attente_annonce_vendue: av(etat) } }, null) === "annonce_vendue", "état « " + etat + " » : attente voulue aussi");
+  }
+  ok(M.attenteVoulue({ ...remises[1], platform_fields: { attente_annonce_vendue: av("liberee") } }, null) === null, "un état qui ne retient plus (inconnu) : plus une attente voulue");
+  // 98b72757 (Leboncoin) : publication 7c1c664a créée le 11/11 11:27, relancée par la personne le 12/11 21:24 (Paris),
+  // repartie 4 min après : le juge comptait depuis la création → signalée à tort.
+  const P98 = "98b72757-0000-4000-8000-000000000001";
+  const p98 = new Map([[P98, { id: P98, username: "compte-98b72757", extension_last_seen_at: "2026-11-12T20:27:30Z", beta_flags: {}, platform_settings: {} }]]);
+  const j98 = job({ id: "7c1c664a", user_id: P98, action: "publish", created_at: "2026-11-11T10:27:43.402Z",
+    platform_fields: { remis_en_file_le: "2026-11-12T20:24:42.901Z", derniere_relance_manuelle: "2026-11-12T20:24:43.090Z" } });
+  const r98 = M.filesArretees({ jobs: [j98], profils: p98, derniersDeparts: new Map(), maintenant: Date.parse("2026-11-12T20:28:00Z") });
+  ok(r98.arretees.length === 0, "98b72757 : relancée il y a 4 min → pas signalée (HEAD : signalée, attente comptée depuis la création)", JSON.stringify(r98.arretees.map((a) => a.attenteH)));
+  ok(M.echeanceMs(j98, Date.parse("2026-11-12T20:28:00Z")) === Date.parse("2026-11-12T20:24:43.090Z"), "l'échéance part de la dernière remise en file (la relance)", String(M.echeanceMs(j98, Date.parse("2026-11-12T20:28:00Z"))));
+  const r98b = M.filesArretees({ jobs: [j98], profils: new Map([[P98, { ...p98.get(P98), extension_last_seen_at: "2026-11-13T03:00:00Z" }]]), derniersDeparts: new Map(), maintenant: Date.parse("2026-11-13T03:10:00Z") });
+  ok(r98b.arretees.length === 1 && r98b.arretees[0].attenteH === 6, "6 h après la relance, rien parti, extension ouverte : signalée (6 h)", JSON.stringify(r98b.arretees.map((a) => a.attenteH)));
+  ok(M.echeanceMs({ created_at: "2026-11-11T10:00:00Z", platform_fields: { pending_muet_clos_le: "2026-11-12T10:00:00Z" } }, Date.parse("2026-11-12T12:00:00Z")) === Date.parse("2026-11-12T10:00:00Z"),
+    "remise en file par le balayage des dépôts muets : comptée aussi");
+  ok(M.echeanceMs({ created_at: "2026-11-11T10:00:00Z", platform_fields: { remis_en_file_le: "2026-11-12T10:00:00Z", next_action_after: "2026-11-12T11:00:00Z" } }, Date.parse("2026-11-12T12:00:00Z")) === Date.parse("2026-11-12T11:00:00Z"),
+    "une reprise programmée plus tardive que la remise en file reste l'échéance");
+  // Le cas d'origine reste signalé (aucune remise en file, aucune attente de la plateforme).
+  const p69 = profils({ [AMIRAL]: { extension_last_seen_at: "2026-11-05T08:41:51Z" } });
+  const j69 = job({ id: "69f89a6d-0000", user_id: LOUIS, created_at: "2026-11-03T14:36:00Z", error: "Leboncoin passe par ton compte" });
+  ok(M.filesArretees({ jobs: [j69], profils: p69, derniersDeparts: new Map(), maintenant: Date.parse("2026-11-05T08:50:00Z") }).arretees.length === 1, "69f89a6d (cas d'origine) : toujours signalé");
+  // ops-digest lit les clés que le juge consulte.
+  const odF = lire("supabase/functions/ops-digest/index.ts");
+  ok(/attente_annonce_vendue:platform_fields->attente_annonce_vendue/.test(odF) && /remis_en_file_le:platform_fields->>remis_en_file_le/.test(odF)
+    && /derniere_relance_manuelle:platform_fields->>derniere_relance_manuelle/.test(odF) && /pending_muet_clos_le:platform_fields->>pending_muet_clos_le/.test(odF),
+    "ops-digest lit attente_annonce_vendue, remis_en_file_le, derniere_relance_manuelle, pending_muet_clos_le");
+  ok(/platform_fields: \{[^}]*attente_annonce_vendue, remis_en_file_le, derniere_relance_manuelle, pending_muet_clos_le \}/.test(odF), "… et les remet dans platform_fields pour le juge");
+}
 
 console.log(ko ? `\n✗ ${ko} échec(s) sur ${n}` : `\n✓ ${n}/${n} — une file arrêtée alors que l'extension est ouverte remonte en rouge`);
 process.exit(ko ? 1 : 0);

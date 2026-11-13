@@ -5721,6 +5721,11 @@ async function fillAddress(adresseBrute, warnings, { commune = null } = {}) {
   // ⛔ INVARIANT, VRAI SUR LES TROIS BARREAUX : jamais une suggestion à qui il
   // manque le code postal OU la ville des Réglages. On perd de la précision
   // dans la commune, jamais la commune.
+  // (13/11, décision de Nico, 0.6.187) UNE exception, au niveau de la COMMUNE
+  // seulement : même code postal, et toutes les propositions à ce code postal
+  // désignent une seule commune → la commune de Leboncoin est acceptée et dite
+  // (communeMemeCpLbc, warning adresse_commune_meme_cp). Le code postal, lui,
+  // ne manque jamais : un autre code postal reste refusé.
   // ⛔ QUAND ON CONNAÎT LA COMMUNE, ON NE LA DEVINE PAS DANS LA CHAÎNE (25/09).
   //    « Ville 16710 Lieu-dit » (city_label de Leboncoin) faisait lire le
   //    LIEU-DIT comme ville (« ce qui suit le code postal ») : le repli
@@ -5818,7 +5823,7 @@ async function fillAddress(adresseBrute, warnings, { commune = null } = {}) {
   // la sélection dans le champ. Appelée une fois avec l'adresse des Réglages
   // (barreaux 1 et 2), puis, en cas d'échec de CORRESPONDANCE, avec
   // « code postal ville » (barreau 3).
-  const poserAdresse = async (valeur, { toleranceNumero }) => {
+  const poserAdresse = async (valeur, { toleranceNumero, communeDuCp = false }) => {
     const jetons = jetonsDe(valeur);
     const manquants = (texte) => manquantsDe(texte, jetons);
     // L'invariant géographique. C'est le CODE POSTAL qui tranche : « Rue de
@@ -5845,9 +5850,22 @@ async function fillAddress(adresseBrute, warnings, { commune = null } = {}) {
     // On FILTRE avant de trier : sinon une proposition d'une autre commune, à
     // qui il manque moins de jetons que la bonne, gagnerait le tri et ferait
     // échouer la tentative alors qu'une suggestion acceptable était affichée.
-    const retenue = candidates
+    let retenue = candidates
       .filter((el) => accepte(el.textContent))
       .sort((a, b) => manquants(a.textContent).length - manquants(b.textContent).length)[0];
+    // (13/11, 0.6.187) Saisie au niveau de la COMMUNE (ville de l'annonce, repli « code postal ville ») : aucune
+    // proposition ne porte notre ville, mais celles à NOTRE code postal désignent une seule commune → c'est la
+    // commune de Leboncoin pour ce code postal, acceptée (communeMemeCpLbc). Jamais au niveau de la rue.
+    let communeLbc = null;
+    if (!retenue && communeDuCp && repli) {
+      communeLbc = communeMemeCpLbc(candidates.map((c) => c.textContent.trim()), repli.cp);
+      if (communeLbc) {
+        // La proposition de la COMMUNE elle-même d'abord (« Annecy (74600) », sans voie avant une virgule).
+        const deLaCommune = candidates.filter((c) => communeMemeCpLbc([c.textContent.trim()], repli.cp) === communeLbc);
+        retenue = deLaCommune.find((c) => !c.textContent.includes(",")) ?? deLaCommune[0] ?? null;
+        if (!retenue) communeLbc = null;
+      }
+    }
     if (!retenue) {
       // Des propositions existent mais aucune n'est acceptable : ne jamais
       // forcer la suite avec une adresse approximative. La liste sert de relevé
@@ -5887,8 +5905,12 @@ async function fillAddress(adresseBrute, warnings, { commune = null } = {}) {
     // Sur le barreau 2 la suggestion retenue ne porte pas le numéro de voie ;
     // un contrôle en couverture totale rejetterait la sélection qu'on vient
     // d'accepter, et le job repartirait en needs_user juste après avoir réussi.
+    // (13/11) Commune de Leboncoin retenue au même code postal : la sélection reportée doit porter CE code postal
+    // et cette commune (jamais une autre).
+    const communePrise = (texte) => Boolean(communeLbc) && adresseComparable(texte).includes(repli.cp)
+      && jetonsDe(communeLbc).every((t) => adresseComparable(texte).includes(t));
     const selectionTaken = () =>
-      (input.value.trim() && accepte(input.value) ? true : null);
+      (input.value.trim() && (accepte(input.value) || communePrise(input.value)) ? true : null);
 
     let taken = await waitFor(selectionTaken, 5000);
     if (!taken) {
@@ -5914,13 +5936,26 @@ async function fillAddress(adresseBrute, warnings, { commune = null } = {}) {
         visibleError: findVisibleFieldError(input),
       };
     }
-    return { ok: true, chosen, restants };
+    return { ok: true, chosen, restants, communeLbc };
   };
+  // (13/11, 0.6.187) La phrase dite une fois par dépôt (le serveur la garde une fois par compte, trace
+  // lbc_commune_meme_cp) : Leboncoin place l'annonce dans SA commune pour notre code postal.
+  const noterCommuneLbc = (r) => {
+    const note = `adresse: Leboncoin ne connaît pas « ${repli.ville} » : pour le code postal ${repli.cp}, il place l'annonce à `
+      + `${r.communeLbc} (« ${r.chosen} ») — Réglages inchangés`;
+    console.warn(`[leboncoin] ⚠️ ${note}`);
+    warnings.push({ code: "adresse_commune_meme_cp", message: note, code_postal: repli.cp, ville: repli.ville, commune: r.communeLbc });
+  };
+  // La saisie est-elle déjà celle de la commune (ville de l'annonce, localisation d'origine sans rue) ?
+  const saisieCommune = Boolean(commune && commune.cp && commune.ville)
+    && adresseComparable(adresse) === adresseComparable(`${commune.ville} ${commune.cp}`);
 
   // ── BARREAUX 1 et 2 : l'adresse des Réglages, tapée telle quelle ──────────
-  const essai = await poserAdresse(adresse, { toleranceNumero: Boolean(repli) });
+  const essai = await poserAdresse(adresse, { toleranceNumero: Boolean(repli), communeDuCp: saisieCommune });
   if (essai.ok) {
-    if (essai.restants.length) {
+    if (essai.communeLbc) {
+      noterCommuneLbc(essai);
+    } else if (essai.restants.length) {
       // Barreau 2 — la voie et la commune sont les bonnes, Leboncoin n'indexe
       // pas le numéro (cas eda_1967, « 30 Rue de Puebla 71200 Le Creusot »).
       const note = `adresse: Leboncoin n'indexe pas le numéro (« ${essai.restants.join(" ")} » absent de son libellé) `
@@ -5947,8 +5982,14 @@ async function fillAddress(adresseBrute, warnings, { commune = null } = {}) {
     && adresseComparable(repli.valeur) !== adresseComparable(adresse);
   if (repliUtile) {
     console.log(`[leboncoin] adresse: « ${adresse} » refusée (${essai.motif}) — repli sur « ${repli.valeur} »`);
-    const essaiRepli = await poserAdresse(repli.valeur, { toleranceNumero: false });
+    const essaiRepli = await poserAdresse(repli.valeur, { toleranceNumero: false, communeDuCp: true });
     if (essaiRepli.ok) {
+      if (essaiRepli.communeLbc) {
+        // La commune de Leboncoin (même code postal), pas la nôtre : jamais notée comme « commune acceptée » pour
+        // la nôtre (lbc-voie-des-reglages lit adresse_barreau3_repli_commune comme la preuve que NOTRE commune passe).
+        noterCommuneLbc(essaiRepli);
+        return { ok: true };
+      }
       const note = `adresse: Leboncoin ne connaît pas « ${adresse} » — annonce localisée à la commune `
         + `(« ${repli.valeur} » → suggestion « ${essaiRepli.chosen} »)`;
       console.warn(`[leboncoin] ⚠️ ${note}`);
@@ -7176,6 +7217,30 @@ function replierSurCpVille(adresse) {
   const ville = apres || (avant && !VOIE_RE.test(texteComparable(avant)) ? avant : "");
   if (!ville) return null;
   return { cp, ville, valeur: `${cp} ${ville}` };
+}
+
+// ── MÊME CODE POSTAL : LA COMMUNE DE LEBONCOIN EST ACCEPTÉE (13/11, 0.6.187, point 3d de Nico) ──────────────
+// « Même code postal → la commune de Leboncoin est acceptée et dite une fois ; code postal différent → bloqué. »
+// a1e210f2, ville de l'annonce « seynod 74600 » : Seynod est une commune déléguée d'Annecy, Leboncoin ne propose que
+// « Annecy (74600) » ; l'invariant (code postal ET ville des Réglages) refusait — 22 refus en 50 min. Par
+// IDENTIFIANT : le code postal entre parenthèses de la proposition (« (74600) ») est le nôtre, et toutes les
+// propositions à ce code postal désignent UNE commune → c'est elle. Plusieurs communes au même code postal : null
+// (FillSell ne choisit pas). Aucune à ce code postal (« Rue de Rennes, Paris (75006) » pour 35000) : null — bloqué
+// comme avant. Les noms ne sont comparés qu'entre propositions de Leboncoin, jamais avec le nôtre. Même règle côté
+// serveur (supabase/functions/_shared/lbc-commune-meme-cp.js) pour les versions d'avant.
+function communeMemeCpLbc(textes, cp) {
+  if (!/^\d{5}$/.test(String(cp ?? ""))) return null;
+  const plier = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[-'’\s]+/g, " ").trim();
+  const communes = new Map();
+  for (const t of Array.isArray(textes) ? textes : []) {
+    const s = String(t ?? "").replace(/\s+/g, " ").trim();
+    const cps = [...s.matchAll(/\((\d{5})\)/g)];
+    if (!cps.length || cps[cps.length - 1][1] !== String(cp)) continue;
+    const tete = s.slice(0, s.lastIndexOf("(")).trim();
+    const commune = tete.slice(tete.lastIndexOf(",") + 1).trim();
+    if (commune && !communes.has(plier(commune))) communes.set(plier(commune), commune);
+  }
+  return communes.size === 1 ? [...communes.values()][0] : null;
 }
 
 function containsAsWords(hay, needle) {

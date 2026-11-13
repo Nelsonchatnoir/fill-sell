@@ -4912,6 +4912,12 @@ async function pollAndProcessJobsUnlocked() {
   await checkPublishedListings(session).catch((e) =>
     console.error("[background] checkPublishedListings:", e)
   );
+  // (13/11, 3b de Nico — 0.6.187) La page des ventes Beebs : la lecture DUE (une disparition, gardée jusqu'à une
+  // réussite) ou d'ENTRETIEN (24 h, compte qui suit des annonces Beebs), à son créneau (30 min ; 6 h / 24 h après un
+  // refus anti-robot). Rien à lire : aucune requête.
+  await lireVentesBeebsSiDue(session, { beebsSuivie: Date.now() - beebsVueAuCycle < 48 * 3600_000 }).catch((e) =>
+    console.warn("[ventes][beebs] lecture de la page des ventes :", String(e?.message ?? e))
+  );
 
   // Republication AUTOMATIQUE (É6, Pro uniquement — 2026-08-05) : au plus UN
   // article par cycle, mêmes délais humains et mêmes gardes que le manuel.
@@ -24541,24 +24547,37 @@ function rpcMessagerie(nom, params, token) {
 // déclenche seulement cette lecture (au plus une fois par 30 min et par compte).
 // Lignes : la référence, le statut brut, la date, les numéros de produit —
 // aucun nom, aucune adresse.
+// (13/11, 3b de Nico — 0.6.187, prix lu) + le montant de la commande pour le vendeur (`amount` : jamais ce que paie
+// l'acheteur, frais compris), le prix de chaque produit, la monnaie si Beebs la donne — seulement quand ils sont lus.
+// Le serveur répartit (beebs_commande_prix) ; rien de lu → le prix de la tâche, comme avant.
 function lignesVentesBeebs(commandes) {
   const out = [];
+  const nombre = (v) => { const n = Number(String(v ?? "").replace(",", ".")); return v != null && v !== "" && Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null; };
   for (const c of Array.isArray(commandes) ? commandes : []) {
     const o = c?.order ?? null;
     const ref = String(o?.id ?? c?.id ?? "").trim();
     if (!ref || !o) continue;
-    const produits = (Array.isArray(o.products) ? o.products : []).map((p) => String(p?.id ?? "").trim()).filter(Boolean).slice(0, 10);
-    out.push({ ref, statut: String(o.status ?? "").slice(0, 60), date: o.created_at ?? null, produits });
+    const liste = (Array.isArray(o.products) ? o.products : []).filter((p) => String(p?.id ?? "").trim()).slice(0, 10);
+    const produits = liste.map((p) => String(p.id).trim());
+    const ligne = { ref, statut: String(o.status ?? "").slice(0, 60), date: o.created_at ?? null, produits };
+    const montant = nombre(o.amount);
+    if (montant != null) ligne.montant = montant;
+    const prix = Object.fromEntries(liste.map((p) => [String(p.id).trim(), nombre(p?.price)]).filter(([, v]) => v != null));
+    if (Object.keys(prix).length) ligne.prix_produits = prix;
+    const devise = String(o.currency ?? "").trim().toUpperCase();
+    if (/^[A-Z]{3}$/.test(devise)) ligne.devise = devise;
+    out.push(ligne);
     if (out.length >= 10) break;
   }
   return out;
 }
-async function noterVentesBeebs(token, cmd) {
+async function noterVentesBeebs(token, cmd, voie = null) {
   if (!cmd?.ok) return null;
   try {
     const bilan = await rpcMessagerie("commandes_beebs_noter", {
       p_rows: lignesVentesBeebs(cmd.commandes),
-      p_lecture: { illisibles: Number(cmd.illisibles) || 0, requetes: Number(cmd.requetes) || 0 },
+      p_lecture: { illisibles: Number(cmd.illisibles) || 0, requetes: Number(cmd.requetes) || 0,
+        ...(cmd.forme ? { forme: String(cmd.forme) } : {}), ...(voie ? { voie: String(voie) } : {}) },
     }, token);
     if (bilan && typeof bilan === "object") console.log(`[ventes][beebs] page des ventes : ${bilan.recues ?? 0} commande(s), ${bilan.prouvees_ou_auraient ?? 0} vente(s) prouvée(s) (${bilan.mode ?? "?"})`);
     return bilan;
@@ -24567,34 +24586,175 @@ async function noterVentesBeebs(token, cmd) {
     return null;
   }
 }
-const VENTES_BEEBS_LECTURE_KEY = "fillsell_ventes_beebs_lu_le";
-async function lireVentesBeebsSiDue(session) {
+
+// ── (13/11, 3b de Nico — 0.6.187) UNE LECTURE DEMANDÉE N'EST JAMAIS PERDUE ; UNE LECTURE D'ENTRETIEN PAR 24 H ─────────
+// Avant : la lecture ne partait qu'à la 1re lecture « plus en ligne » d'une annonce Beebs ; refusée (403) ou tombée
+// dans les 30 min d'une autre, elle était JETÉE (l'heure notée avant la lecture) — et une commande parue après la
+// disparition n'était jamais relue (a99e2876, 12/11 19:25). Désormais, par compte (chrome.storage.local) :
+//   · une disparition pose une MARQUE « lecture due », gardée jusqu'à une lecture réussie (l'une ou l'autre voie : cette
+//     lecture, ou la messagerie des comptes bêta), 24 h au plus (une vente de plus de 24 h n'envoie jamais de mail) ;
+//   · un compte qui suit des annonces Beebs a une lecture d'ENTRETIEN par 24 h (dernière réussite ou abandon), sans
+//     disparition : la commande parue plus tard est lue ;
+//   · cadence, strictement les règles existantes (décision Q19 de Nico) : 30 min au moins entre deux lectures (heure
+//     notée APRÈS la lecture) ; un refus anti-robot (403, 429, page de vérification) coupe 6 h, 24 h si récidive dans
+//     les 24 h (règle de la messagerie), rangé dans veille_commandes_etat.beebs.coupee — la seule sous-clé « beebs »,
+//     lue et écrite d'un trait — que l'orchestrateur Cloud lève après une vérification réussie ; aucune lecture pendant
+//     la pause Beebs de la messagerie bêta ;
+//   · une session Beebs absente ou une page inattendue : la marque tombe (tracée), aucune relance avant la prochaine
+//     disparition ou l'entretien suivant — jamais une boucle ;
+//   · l'onglet de travail Beebs déchargé ou ailleurs est réveillé sur l'ACCUEIL de Beebs, ici seulement (comme la
+//     lecture de fond) — workTabForFetch n'est pas changé (veille Beebs inchangée).
+const VENTES_BEEBS_ETAT_KEY = "fillsell_ventes_beebs_etat";
+// Dernière fois qu'un cycle du veilleur a vu une annonce Beebs publiée de ce compte (vie du service worker).
+let beebsVueAuCycle = 0;
+
+/** Pure. Une lecture demandée (disparition) : la marque est posée ou rafraîchie. */
+function demandeLectureVentesBeebs(e, raison, maintenant) {
+  const etat = { ...(e && typeof e === "object" ? e : {}) };
+  const essais = etat.due && typeof etat.due === "object" ? Number(etat.due.essais) || 0 : 0;
+  etat.due = { le: maintenant, raison: String(raison ?? "disparition").slice(0, 30), essais };
+  return etat;
+}
+
+/** Pure. Lire maintenant ? Rend { lire, motif, etat } (etat : la marque expirée tombe, l'entretien est posé). */
+function decisionLectureVentesBeebs(e, { maintenant, beebsSuivie = false, pauseJusqu = 0 } = {}) {
+  const JOUR = 24 * 3600_000, PLANCHER = 30 * 60_000;
+  const etat = { ...(e && typeof e === "object" ? e : {}) };
+  if (etat.due && !(maintenant - Number(etat.due.le) < JOUR)) { etat.due = null; etat.dernier_abandon = maintenant; }
+  const repere = Math.max(Number(etat.dernier_succes) || 0, Number(etat.dernier_abandon) || 0);
+  if (!etat.due && beebsSuivie && maintenant - repere >= JOUR) etat.due = { le: maintenant, raison: "entretien", essais: 0 };
+  if (!etat.due) return { lire: false, motif: "rien_a_lire", etat };
+  if (Number(pauseJusqu) > maintenant) return { lire: false, motif: "pause_anti_robot", etat };
+  if (maintenant - (Number(etat.dernier_essai) || 0) < PLANCHER) return { lire: false, motif: "moins_de_30_min", etat };
+  return { lire: true, motif: String(etat.due.raison ?? "disparition"), etat };
+}
+
+/** Pure. Après une lecture : rend { etat, coupee } (coupee : la pause anti-robot à poser, sinon null). */
+function issueLectureVentesBeebs(e, res, { maintenant, coupeeAvant = null } = {}) {
+  const JOUR = 24 * 3600_000, PAUSE = 6 * 3600_000;
+  const etat = { ...(e && typeof e === "object" ? e : {}), dernier_essai: maintenant };
+  if (res?.ok) {
+    etat.due = null; etat.dernier_succes = maintenant;
+    // Le nombre de commandes lues : la prochaine lecture en attend (filet d'écart du lecteur).
+    if (Array.isArray(res.commandes)) etat.commandes_vues = res.commandes.length;
+    return { etat, coupee: null };
+  }
+  const due = etat.due && typeof etat.due === "object" ? { ...etat.due, essais: (Number(etat.due.essais) || 0) + 1 } : null;
+  if (res?.bot === true || Number(res?.http) === 403 || Number(res?.http) === 429) {
+    const avant = Date.parse(String(coupeeAvant?.le ?? ""));
+    const recidive = Number.isFinite(avant) && maintenant - avant < JOUR;
+    etat.due = due;
+    return { etat, coupee: { le: new Date(maintenant).toISOString(), jusqu: maintenant + (recidive ? JOUR : PAUSE),
+      motif: `ventes_${String(res?.motif ?? "anti_robot").slice(0, 40)}`, recidive } };
+  }
+  if (res?.motif === "session_absente" || res?.motif === "page_inattendue") {
+    etat.due = null; etat.dernier_abandon = maintenant;
+    return { etat, coupee: null };
+  }
+  etat.due = due;
+  return { etat, coupee: null };
+}
+
+async function lireEtatVentesBeebs() {
+  try { return (await chrome.storage.local.get(VENTES_BEEBS_ETAT_KEY))?.[VENTES_BEEBS_ETAT_KEY] ?? {}; } catch { return {}; }
+}
+async function ecrireEtatVentesBeebs(userId, etat) {
+  try {
+    const tout = await lireEtatVentesBeebs();
+    await chrome.storage.local.set({ [VENTES_BEEBS_ETAT_KEY]: { ...tout, [userId]: etat } });
+  } catch { /* sans conséquence : la marque sera reposée */ }
+}
+/** Une disparition d'annonce Beebs : la lecture est DUE (marque gardée), servie à son créneau. */
+async function demanderLectureVentesBeebs(session, raison = "disparition") {
+  const userId = session?.access_token ? decodeJwtSub(session.access_token) : null;
+  if (!userId) return;
+  const tout = await lireEtatVentesBeebs();
+  await ecrireEtatVentesBeebs(userId, demandeLectureVentesBeebs(tout[userId], raison, Date.now()));
+}
+/** Une lecture réussie par la messagerie bêta vaut lecture : la marque tombe. */
+async function lectureVentesBeebsReussie(token, cmd = null) {
+  const userId = token ? decodeJwtSub(token) : null;
+  if (!userId) return;
+  const tout = await lireEtatVentesBeebs();
+  await ecrireEtatVentesBeebs(userId, issueLectureVentesBeebs(tout[userId], { ok: true, commandes: cmd?.commandes }, { maintenant: Date.now() }).etat);
+}
+/** Un refus de la page des ventes Beebs vu par la messagerie bêta : tracé comme celui de la lecture des ventes. */
+async function tracerRefusVentesBeebs(token, cmd, voie) {
+  const userId = token ? decodeJwtSub(token) : null;
+  if (!userId) return;
+  await restRequest("usage_logs", token, {
+    method: "POST",
+    body: JSON.stringify([{ user_id: userId, feature: "ventes_beebs_lecture_echec", metadata: {
+      motif: String(cmd?.motif ?? "sans_resultat").slice(0, 60), http: Number(cmd?.http) || null, build: FILLSELL_BUILD_ID,
+      at: new Date().toISOString(), voie: String(voie).slice(0, 20), etape: cmd?.etape ?? null, forme: cmd?.forme ?? null,
+      adresse_finale: cmd?.adresse_finale ? String(cmd.adresse_finale).slice(0, 80) : null, diag: cmd?.diag ?? null,
+    } }]),
+  }).catch(() => null);
+}
+/** La pause anti-robot de la lecture des ventes : la seule sous-clé « beebs » de la veille des commandes. */
+async function poserCoupureVentesBeebs(coupee) {
+  const veille = await lireEtatVeilleCommandes();
+  await ecrireEtatVeilleCommandes({ ...veille, beebs: { ...(veille?.beebs ?? {}), coupee } });
+}
+/** L'onglet de travail Beebs, réveillé sur l'accueil s'il est absent, déchargé ou ailleurs (lecture des ventes seule). */
+async function ongletBeebsEveille() {
+  let tabId = await workTabForFetch("beebs").catch(() => null);
+  const tab = tabId != null ? await chrome.tabs.get(tabId).catch(() => null) : null;
+  if (!tab || tab.discarded || !/^https:\/\/www\.beebs\.app\//.test(String(tab.url ?? ""))) {
+    tabId = await getOrCreateWorkTab("beebs", "https://www.beebs.app/").catch(() => null);
+  }
+  return tabId;
+}
+
+async function lireVentesBeebsSiDue(session, { beebsSuivie = false } = {}) {
   const token = session?.access_token;
   const userId = token ? decodeJwtSub(token) : null;
   const M = typeof FILLSELL_MESSAGERIE === "object" ? FILLSELL_MESSAGERIE : null;
   if (!userId || !M?.LECTEURS?.beebs?.commandes) return;
-  try {
-    const s = await chrome.storage.local.get(VENTES_BEEBS_LECTURE_KEY);
-    const lu = s?.[VENTES_BEEBS_LECTURE_KEY] ?? {};
-    if (Date.now() - Number(lu[userId] ?? 0) < 30 * 60_000) return;
-    await chrome.storage.local.set({ [VENTES_BEEBS_LECTURE_KEY]: { ...lu, [userId]: Date.now() } });
-  } catch { return; }
-  const cmd = await executerDansOngletPlateforme("beebs", M.LECTEURS.beebs.commandes, [[], M.COMMANDES_DETAILS_MAX]);
+  const coupee = (await lireEtatVeilleCommandes())?.beebs?.coupee ?? null;
+  const pauseMessagerie = (await lireEtatMessagerie())?.beebs?.coupee ?? null;
+  const tout = await lireEtatVentesBeebs();
+  const avant = tout[userId] ?? {};
+  const d = decisionLectureVentesBeebs(avant, { maintenant: Date.now(), beebsSuivie,
+    pauseJusqu: Math.max(Number(coupee?.jusqu) || 0, Number(pauseMessagerie?.jusqu) || 0) });
+  if (!d.lire) {
+    if (JSON.stringify(d.etat) !== JSON.stringify(avant)) await ecrireEtatVentesBeebs(userId, d.etat);
+    return;
+  }
+  const voie = d.motif === "entretien" ? "entretien" : "disparition";
+  const tabId = await ongletBeebsEveille();
+  const cmd = tabId == null ? { ok: false, motif: "onglet_indisponible" }
+    // `attendues` : la dernière lecture réussie portait des commandes — le filet d'écart du lecteur relit par le flux
+    // RSC une page qui n'en porterait plus aucune.
+    : await executerDansOngletPlateforme("beebs", M.LECTEURS.beebs.commandes, [[], M.COMMANDES_DETAILS_MAX, null, Number(d.etat.commandes_vues) > 0]);
+  const issue = issueLectureVentesBeebs(d.etat, cmd, { maintenant: Date.now(), coupeeAvant: coupee });
+  await ecrireEtatVentesBeebs(userId, issue.etat);
+  if (issue.coupee) await poserCoupureVentesBeebs(issue.coupee);
   if (!cmd?.ok) {
     console.warn(`[ventes][beebs] page des ventes illisible (${cmd?.motif ?? "?"}) — rien décidé`);
-    // (09/11 soir, louis-seller) Un échec de lecture se TRACE au serveur : du 24/10 au 09/11, le lecteur échouait dans
-    // chaque onglet (« commandesDuFluxRsc is not defined ») et seule cette console le savait — 15 jours sans aucune
-    // vente Beebs lue. Au plus une trace par lecture (30 min par compte, cadence ci-dessus). Rien n'est décidé.
+    // (09/11 soir) Un échec de lecture se TRACE au serveur : du 24/10 au 09/11, le lecteur échouait dans chaque onglet
+    // (« commandesDuFluxRsc is not defined ») et seule cette console le savait — 15 jours sans aucune vente Beebs lue.
+    // Au plus une trace par lecture (30 min par compte, 6 h / 24 h après un refus). Rien n'est décidé.
+    // (13/11) La trace dit qui a répondu (diag : DataDome, type, cache, taille), l'étape, la forme, l'adresse finale,
+    // la voie, l'essai et la pause posée.
     await restRequest("usage_logs", token, {
       method: "POST",
       body: JSON.stringify([{ user_id: userId, feature: "ventes_beebs_lecture_echec", metadata: {
         motif: String(cmd?.motif ?? "sans_resultat").slice(0, 60), detail: String(cmd?.detail ?? "").slice(0, 160),
         http: Number(cmd?.http) || null, build: FILLSELL_BUILD_ID, at: new Date().toISOString(),
+        voie, etape: cmd?.etape ?? null, forme: cmd?.forme ?? null, adresse_finale: cmd?.adresse_finale ? String(cmd.adresse_finale).slice(0, 80) : null,
+        diag: cmd?.diag ?? null, essai: Number(issue.etat?.due?.essais) || null,
+        pause_jusqu: issue.coupee ? new Date(issue.coupee.jusqu).toISOString() : null, marque: issue.etat?.due ? "gardee" : "tombee",
       } }]),
     }).catch(() => null);
     return;
   }
-  await noterVentesBeebs(token, cmd);
+  if (cmd.ecart) {
+    // Le document portait le repère de la page mais aucune commande, le flux RSC en portait : la forme « document » ne
+    // suffit plus pour ce compte — tracé (la lecture, elle, a abouti par le filet).
+    await tracerRefusVentesBeebs(token, { ...cmd, motif: "ecart_document_sans_commande" }, voie);
+  }
+  await noterVentesBeebs(token, cmd, voie);
 }
 
 /** Le drapeau bêta du compte, relu toutes les 30 min. Fail-closed. */
@@ -24750,7 +24910,12 @@ async function releverMessagerieUnePlateforme(platform, token, e, { commandesSeu
       platform === "vinted" ? [refsSuivies, M.COMMANDES_DETAILS_MAX, optionsConnues, priorite] : [refsSuivies, M.COMMANDES_DETAILS_MAX, priorite]);
     requetes += Number(cmd?.requetes) || 0;
     const bloc3 = M.signeBlocage(cmd);
-    if (bloc3) return { bloque: bloc3, requetes, bilan };
+    if (bloc3) {
+      // (13/11, 3b — 0.6.187) Un refus de la page des ventes Beebs par CETTE voie se trace aussi (avant : la pause seule,
+      // 4 refus invisibles du 10 au 11/11). Au plus un par blocage : la messagerie Beebs se met en pause (6 h / 24 h).
+      if (platform === "beebs") await tracerRefusVentesBeebs(token, cmd, "messagerie");
+      return { bloque: bloc3, requetes, bilan };
+    }
     if (platform === "vinted" && cmd?.ok) {
       const memo = Object.fromEntries(Object.entries(optionsLues).filter(([, le]) => Date.now() - Number(le) < 6 * 3600 * 1000));
       for (const c of cmd.commandes ?? []) if (c?.optionsLues && c.transaction_id != null) memo[String(c.transaction_id)] = Date.now();
@@ -24785,7 +24950,8 @@ async function releverMessagerieUnePlateforme(platform, token, e, { commandesSeu
         bilanCommandes = await rpcMessagerie("commandes_enregistrer", { p_platform: platform, p_commandes: lignes.slice(0, 40) }, token);
       }
       // (18/10, lot 4) Beebs : la même lecture prouve les ventes (commandes_beebs_noter).
-      if (platform === "beebs") await noterVentesBeebs(token, cmd);
+      // (13/11, 3b) Elle vaut lecture de la page des ventes : la marque « lecture due » du compte tombe.
+      if (platform === "beebs") { await noterVentesBeebs(token, cmd, "messagerie"); await lectureVentesBeebsReussie(token, cmd).catch(() => {}); }
       if (cmd.illisibles) console.warn(`[messagerie][${platform}] ${cmd.illisibles} commande(s) à la forme inconnue — rien écrit pour elles`);
     }
   }
@@ -25239,6 +25405,8 @@ async function checkPublishedListings(session, { plateforme = null } = {}) {
     console.error("[background] Lecture des jobs published:", String(e?.message ?? e));
     return;
   }
+  // (13/11, 3b — 0.6.187) Le compte suit des annonces Beebs : la lecture d'entretien de la page des ventes (24 h) lui est due.
+  if (!plateforme && (jobs ?? []).some((j) => j?.platform === "beebs")) beebsVueAuCycle = Date.now();
 
   const now = Date.now();
 
@@ -25643,7 +25811,9 @@ async function checkPublishedListings(session, { plateforme = null } = {}) {
     if (i < dueOuverts.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
   }
   // (18/10, lot 4) Une annonce Beebs a disparu pendant ce cycle : la page des ventes tranche.
-  if (ventesBeebsALire) await lireVentesBeebsSiDue(session).catch((e) => console.warn("[ventes][beebs] lecture de la page des ventes :", String(e?.message ?? e)));
+  // (13/11, 3b — 0.6.187) La disparition pose une MARQUE gardée jusqu'à une lecture réussie ; la lecture part à son
+  // créneau, à chaque cycle (pollAndProcess, juste après ce veilleur) — plus jamais jetée.
+  if (ventesBeebsALire) await demanderLectureVentesBeebs(session, "disparition").catch((e) => console.warn("[ventes][beebs] marque de lecture :", String(e?.message ?? e)));
 }
 
 // ── Re-capture différée des listing_url manquants (2026-07-12) ─────────────────

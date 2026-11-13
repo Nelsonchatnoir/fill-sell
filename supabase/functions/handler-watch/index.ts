@@ -98,7 +98,7 @@ import { EAN_SANS_IDENTIFIANT_EBAY_FR, eanDejaEssayeOfficiel } from "../_shared/
 import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
 import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
-import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
+import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero, ficheARattacherVinted } from "../_shared/etape-recreated-sans-numero.js";
 import { CHEMIN_BLOCAGE_LBC, blocageLbc, blocagePose, signeBlocageLbc, clesARetirerAuBlocage } from "../_shared/blocage-leboncoin.js";
 // (07/11 soir, Goulvenk) Un relevé arrêté sur la page de connexion n'est jamais une restriction par un simple 403.
 import { signeBlocageHorsConnexionLbc } from "../_shared/blocage-leboncoin.js";
@@ -114,7 +114,7 @@ import { BEEBS_ATTENTE_MAX_MS, POSE_PAR_SANS_NUMERO, jugerDepotBeebsSansNumero, 
 import { jugerDepotLbcJamaisEnLigne, patchDepotLbcJamaisEnLigne, estRemiseEnVente, POSE_PAR_JAMAIS_EN_LIGNE_LBC } from "../_shared/depot-lbc-jamais-en-ligne.js";
 import { FENETRE_DEPOT_RETROUVE_MS, MOTIF_QUESTION_DEPOT_RETROUVE, POSE_PAR_DEPOT_RETROUVE, estDepotAJuger as estDepotRetrouveAJuger, numeroLuAuDepot, jugerDepotRetrouve, patchDepotEnQuestion, patchDepotVendu, patchRecollage, patchJumeauClos, preuvesQuestion } from "../_shared/depot-retrouve-releve.js";
 import { attentePoseeParLeServeur } from "../_shared/attente-session.js";
-import { texteDemandeExpireeCloud } from "../_shared/cloud-voie.js";
+import { texteDemandeExpireeCloud, SOURCE_EBAY_A_RELIER_CLOUD, ebayARelierPourLeCloud, patchEbayARelierCloud, leveeEbayARelierCloud, patchLeveeEbayARelierCloud } from "../_shared/cloud-voie.js";
 import { cheminVintedPourArbre } from "../_shared/vinted-arbre-compte.js";
 import {
   SOURCE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE, attendVendeurEbay, attentesVendeurEbay, dernierMurVendeurEbay,
@@ -3687,6 +3687,8 @@ serve(async (req) => {
   // (« Étape de republication inconnue : recreated ») : vue en ligne au dernier relevé → published ; article en ligne
   // sous une autre annonce de sa fiche, ou fiche finie → close sans rouge ; sinon (Leboncoin, Beebs) reprise sans
   // doublon par la garde « annonce déjà partie » (relevé relu avant tout redépôt). Bornée (50), écrite si elle change.
+  // (12/11, N1) Vinted : le nouveau numéro connu vu « active » par le relevé du dressing → published et fiche passée au
+  // nouveau numéro ; sans preuve, la question au bout de 6 h ; jamais un second dépôt (_shared/etape-recreated-sans-numero.js).
   let recreatedSansNumero = 0;
   try {
     const { data: candidatsRsn } = await supabase
@@ -3723,10 +3725,37 @@ serve(async (req) => {
       });
       // deno-lint-ignore no-explicit-any
       const f = (fiche ?? null) as any;
+      // (12/11, N1 — 82e64f14 / 67cd1c77) Vinted : le NOUVEAU numéro connu (new_vinted_item_id) se prouve par les
+      // instantanés du relevé du dressing (numéro exact, index user_id + vinted_item_id) ; les fiches qui le portent déjà
+      // sont lues (une autre fiche → question, jamais un déplacement). Deux lectures, seulement pour une tâche Vinted.
+      const nouveauV = plateforme === "vinted" ? String((j.platform_fields ?? {}).new_vinted_item_id ?? "").trim() : "";
+      const [{ data: instantanesV }, { data: fichesV }] = /^\d{6,}$/.test(nouveauV)
+        ? await Promise.all([
+          supabase.from("vinted_listing_snapshots").select("vinted_item_id, status, captured_at")
+            .eq("user_id", j.user_id).eq("vinted_item_id", nouveauV).order("captured_at", { ascending: true }).limit(60),
+          supabase.from("inventaire").select("id").eq("user_id", j.user_id).eq("vinted_item_id", nouveauV).limit(5),
+        ])
+        : [{ data: [] }, { data: [] }];
       const d = decisionRecreatedSansNumero(j, { lignes: lignes ?? [], releveDebut: complet?.started_at ?? null,
-        ficheStatut: f?.statut ?? null, ficheVintedId: f?.vinted_item_id ?? null });
+        ficheStatut: f?.statut ?? null, ficheVintedId: f?.vinted_item_id ?? null,
+        instantanes: instantanesV ?? [], fichesAvecNouveau: ((fichesV ?? []) as Array<{ id: number }>).map((x) => x.id),
+        ficheExiste: j.inventaire_id == null ? false : (f ? true : null) });
       const patch = patchRecreatedSansNumero(j, d, { par: "handler-watch (étape recreated sans numéro)" });
       if (!patch) continue;
+      // La fiche passe au nouveau numéro AVANT la tâche (même ordre que l'extension), en compare-and-set sur l'ancien :
+      // une fiche qui a changé entre-temps ou un numéro déjà pris (index unique) → rien n'est écrit, la tâche est rejugée.
+      const aRattacher = ficheARattacherVinted(d);
+      if (aRattacher) {
+        let q = supabase.from("inventaire")
+          .update({ vinted_item_id: aRattacher.vers, disparu_le: null, listed_at_guess: String((j.platform_fields ?? {}).recreated_at ?? new Date().toISOString()) })
+          .eq("id", aRattacher.id).eq("user_id", j.user_id);
+        q = aRattacher.de ? q.eq("vinted_item_id", aRattacher.de) : q.is("vinted_item_id", null);
+        const { data: deplacee, error: eFiche } = await q.select("id");
+        if (!deplacee?.length) {
+          console.warn(`[handler-watch] republication ${String(j.id).slice(0, 8)} (vinted) : fiche ${aRattacher.id} non passée sur ${aRattacher.vers}${eFiche ? ` (${eFiche.message})` : " (elle a changé entre-temps)"} — rien écrit, rejugée au passage suivant`);
+          continue;
+        }
+      }
       const { data: maj } = await supabase.from("cross_post_jobs").update(patch)
         .eq("id", j.id).eq("status", j.status).select("id");
       if (maj?.length) {
@@ -3736,6 +3765,67 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] étape recreated sans numéro :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (12/11, lot « zéro problème », N3) UN CLIENT CLOUD À L'eBay NON RELIÉ : « RELIE TON COMPTE eBay », JAMAIS L'ORDINATEUR ══
+  // (_shared/cloud-voie.js) Une tâche eBay voie extension (publication, republication, retrait) d'un compte au Cloud actif
+  // dont l'eBay n'est pas relié à FillSell (drapeau ebay_voie_api ET liaison ebay_accounts non révoquée) attendait un
+  // ordinateur qu'il n'a pas, sans fin ni geste vrai : elle passe « à toi de jouer » avec le seul geste possible (relier
+  // eBay), écrit une fois ; elle repart en file dès qu'eBay est relié (la voie API la reprend : ebay-api-worker) ou que le
+  // Cloud n'est plus actif. Bornée : une fois par quart d'heure (minutes 6 à 8 du quart : un passage du cron de 3 min ;
+  // 12-14 reste libre), comptes au Cloud actif seulement (6 le 12/11), 100 tâches au plus ; écrite si elle change,
+  // compare-and-set sur le statut lu.
+  if (new Date().getUTCMinutes() % 15 >= 6 && new Date().getUTCMinutes() % 15 < 9) {
+    try {
+      const { data: profsCloudN3 } = await supabase.from("profiles").select("id, ebay_voie_api").eq("cloud_voie", true).limit(500);
+      const { data: posesN3 } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, platform, action, status, voie, error, platform_fields")
+        .eq("status", "needs_user").eq("platform", "ebay").eq("platform_fields->>needs_user_source", SOURCE_EBAY_A_RELIER_CLOUD).limit(100);
+      const idsCloudN3 = ((profsCloudN3 ?? []) as Array<{ id: string }>).map((p) => String(p.id));
+      const idsPosesN3 = [...new Set(((posesN3 ?? []) as Array<{ user_id: string }>).map((j) => String(j.user_id)))];
+      const { data: profsPosesN3 } = idsPosesN3.length
+        ? await supabase.from("profiles").select("id, cloud_voie, ebay_voie_api").in("id", idsPosesN3)
+        : { data: [] };
+      const tousN3 = [...new Set([...idsCloudN3, ...idsPosesN3])];
+      const { data: liesN3, error: eLiesN3 } = tousN3.length
+        ? await supabase.from("ebay_accounts").select("user_id").in("user_id", tousN3).is("revoked_at", null)
+        : { data: [], error: null };
+      if (eLiesN3) throw new Error(`ebay_accounts : ${eLiesN3.message}`);
+      const reliesN3 = new Set(((liesN3 ?? []) as Array<{ user_id: string }>).map((c) => String(c.user_id)));
+      const etatN3 = new Map<string, { cloudVoie: boolean | null; ebayRelie: boolean }>();
+      for (const p of (profsCloudN3 ?? []) as Array<{ id: string; ebay_voie_api?: boolean | null }>) {
+        etatN3.set(String(p.id), { cloudVoie: true, ebayRelie: p.ebay_voie_api === true && reliesN3.has(String(p.id)) });
+      }
+      for (const p of (profsPosesN3 ?? []) as Array<{ id: string; cloud_voie?: boolean | null; ebay_voie_api?: boolean | null }>) {
+        etatN3.set(String(p.id), { cloudVoie: p.cloud_voie === true ? true : p.cloud_voie === false ? false : null,
+          ebayRelie: p.ebay_voie_api === true && reliesN3.has(String(p.id)) });
+      }
+      let levesN3 = 0, posesEcritesN3 = 0;
+      // deno-lint-ignore no-explicit-any
+      for (const j of (posesN3 ?? []) as any[]) {
+        const e = etatN3.get(String(j.user_id));
+        if (!e || !leveeEbayARelierCloud(j, e)) continue;
+        const patch = patchLeveeEbayARelierCloud(j, { motif: e.ebayRelie ? "ebay_relie" : "cloud_arrete" });
+        const { data: maj } = await supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", j.status).select("id");
+        if (maj?.length) { levesN3++; console.log(`[handler-watch] tâche eBay ${String(j.id).slice(0, 8)} : ${e.ebayRelie ? "eBay relié" : "Cloud plus actif"} → en file`); }
+      }
+      const aRelierN3 = idsCloudN3.filter((id) => etatN3.get(id)?.ebayRelie === false).slice(0, 100);
+      if (aRelierN3.length) {
+        const { data: candidatsN3 } = await supabase.from("cross_post_jobs")
+          .select("id, user_id, platform, action, status, voie, error, platform_fields")
+          .in("user_id", aRelierN3).eq("platform", "ebay").in("status", ["pending", "needs_user"]).limit(100);
+        // deno-lint-ignore no-explicit-any
+        for (const j of (candidatsN3 ?? []) as any[]) {
+          if (!ebayARelierPourLeCloud(j, etatN3.get(String(j.user_id)) ?? { cloudVoie: null, ebayRelie: null })) continue;
+          const patch = patchEbayARelierCloud(j);
+          const { data: maj } = await supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", j.status).select("id");
+          if (maj?.length) { posesEcritesN3++; console.log(`[handler-watch] tâche eBay ${String(j.id).slice(0, 8)} (${j.action}) d'un client Cloud à l'eBay non relié → « relie ton compte eBay à FillSell »`); }
+        }
+      }
+      if (levesN3 || posesEcritesN3) console.log(`[handler-watch] clients Cloud, eBay à relier : ${posesEcritesN3} posée(s), ${levesN3} levée(s)`);
+    } catch (e) {
+      console.error("[handler-watch] clients Cloud, eBay à relier :", (e as Error)?.message ?? e);
+    }
   }
 
   // ══ (30/10, urgence Louis) LEBONCOIN RESTREINT L'ACCÈS : LES LECTURES AUSSI POSENT LE BLOCAGE DU COMPTE ══

@@ -29,15 +29,112 @@ import { urlsPhotos } from "./recreation-deja-partie.js";
 const MARGE_MS = 10 * 60_000;
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
 
-/** Les annonces qui peuvent être celles d'un dépôt (sans les photos). */
-export function candidatesDuDepot(depot, lignes, platform = "beebs") {
+// ═══════════════════════════════════════════════════════════════════════════
+// UN NUMÉRO DONNÉ PAR LA CONFIRMATION D'UN AUTRE DÉPÔT N'EST JAMAIS CANDIDAT
+// (13/11, lot « zéro problème », étape 3, point 3c — décision de Nico du 12/11)
+// ═══════════════════════════════════════════════════════════════════════════
+// « Garde anti-doublon : un numéro obtenu par la confirmation d'un autre dépôt du compte n'est jamais candidat ;
+// le doute reste une question. » Restriction de Nico : SEULEMENT un numéro venu de la CONFIRMATION d'un dépôt —
+// jamais un numéro rattaché par photos (lien_par_photos) ni par titre (listing_url_recovery).
+// LE CAS : 14e536e0, poussette Beebs 59a5cb96 bloquée 3 h 41 (11/11 11:16 → 14:57) par la question « une annonce
+// apparue pourrait être cet article : 34336996 » — l'annonce du sac à dos 26601f4c, publié 12 min avant avec ce
+// numéro par la preuve « Mes annonces » avant/après de SON dépôt (preuve_identifiant_beebs_acceptee). Même motif :
+// ca9afe24 (06741f92, 10/11, 3 pulls d'un même lot) et ebdf29f0 (8b4bca3b, 12/11, 2 jouets). La ligne du relevé
+// était encore « reliée à rien » : get-pending-jobs juge 3 à 6 s après la fin du relevé, le rattachement par
+// identifiant (rapprochement, « identifiant_avant_moteur ») arrive 15 s à 1 min 17 plus tard — il attend la fin de
+// tout relevé du compte (rapprochement_v3_releves_en_cours). Le numéro du job, lui, était connu depuis le dépôt.
+// LA PREUVE DE CONFIRMATION (posée par l'extension et update-job-status au moment du dépôt, jamais après) :
+//   · preuve_identifiant_beebs_acceptee.numero (lecture « Mes annonces » avant/après refaite et contrôlée en base
+//     par update-job-status : numéro porté par aucun autre dépôt, inconnu avant, aucun dépôt concurrent) ;
+//   · preuve_identifiant_beebs.ok + .id (même preuve, trace de l'extension) ;
+//   · preuve_identifiant_beebs.sonde (le numéro rendu par Beebs à LA requête de ce dépôt) ;
+//   · lbc_depot.adsubmit.id (Leboncoin : réponse de Leboncoin au dépôt) — même nature, toutes plateformes.
+// Un numéro sans l'une de ces preuves (rattaché par photos, par titre, par le relevé, à la main) n'exclut RIEN :
+// la candidate reste, le doute reste une question. Le dépôt jugé n'est jamais exclu par son propre numéro.
+// Pur (Deno + Node) : scripts/depot-numero-d-un-autre-depot-selftest.mjs.
+
+/** Colonnes (PostgREST, alias à plat) que lit numeroConfirmeParDepot. */
+export const COLONNES_NUMEROS_CONFIRMES = "id, platform_listing_id, published_at, "
+  + "preuve_id:platform_fields->preuve_identifiant_beebs->>id, "
+  + "preuve_ok:platform_fields->preuve_identifiant_beebs->>ok, "
+  + "preuve_sonde:platform_fields->preuve_identifiant_beebs->>sonde, "
+  + "preuve_acceptee:platform_fields->preuve_identifiant_beebs_acceptee->>numero, "
+  + "adsubmit_id:platform_fields->lbc_depot->adsubmit->>id, "
+  + "lien_photos:platform_fields->lien_par_photos->>listing_id, "
+  + "lien_titre:platform_fields->listing_url_recovery";
+
+const txt = (v) => String(v ?? "").trim();
+
+/**
+ * Le numéro que la CONFIRMATION de son propre dépôt a donné à ce job, avec sa preuve, ou null.
+ * `j` : ligne de cross_post_jobs (alias de COLONNES_NUMEROS_CONFIRMES, ou platform_fields complet).
+ * @returns {{ numero: string, preuve: string } | null}
+ */
+export function numeroConfirmeParDepot(j) {
+  const n = txt(j?.platform_listing_id);
+  if (!/^\d{6,}$/.test(n)) return null;
+  const pf = j?.platform_fields && typeof j.platform_fields === "object" ? j.platform_fields : {};
+  const p = pf.preuve_identifiant_beebs && typeof pf.preuve_identifiant_beebs === "object" ? pf.preuve_identifiant_beebs : {};
+  // Rattaché après coup (photos, titre) : ce n'est pas la confirmation du dépôt, même si une trace existe aussi.
+  if (txt(j?.lien_photos ?? pf.lien_par_photos?.listing_id) === n) return null;
+  if ((j?.lien_titre ?? pf.listing_url_recovery) != null) return null;
+  if (txt(j?.preuve_acceptee ?? pf.preuve_identifiant_beebs_acceptee?.numero) === n) return { numero: n, preuve: "preuve_identifiant_beebs_acceptee" };
+  const ok = String(j?.preuve_ok ?? p.ok ?? "") === "true";
+  if (ok && txt(j?.preuve_id ?? p.id) === n) return { numero: n, preuve: "preuve_identifiant_beebs" };
+  if (txt(j?.preuve_sonde ?? p.sonde) === n) return { numero: n, preuve: "sonde" };
+  if (txt(j?.adsubmit_id ?? pf.lbc_depot?.adsubmit?.id) === n) return { numero: n, preuve: "lbc_depot.adsubmit" };
+  return null;
+}
+
+/**
+ * Les numéros donnés par la confirmation de leur dépôt aux jobs du compte : Map(numéro → { job_id, preuve }).
+ * @param {any[]} jobs
+ * @returns {Map<string, { job_id: string, preuve: string }>}
+ */
+export function numerosConfirmesParDepot(jobs) {
+  const m = new Map();
+  for (const j of Array.isArray(jobs) ? jobs : []) {
+    const c = numeroConfirmeParDepot(j);
+    if (c && !m.has(c.numero)) m.set(c.numero, { job_id: txt(j?.id), preuve: c.preuve });
+  }
+  return m;
+}
+
+/** La candidate porte-t-elle le numéro de confirmation d'un AUTRE job que ce dépôt ? (motif, ou null) */
+export function numeroDUnAutreDepot(depot, a, numerosConfirmes) {
+  if (!(numerosConfirmes instanceof Map) || !numerosConfirmes.size) return null;
+  const o = numerosConfirmes.get(txt(a?.listing_id));
+  if (!o) return null;
+  const idD = txt(depot?.id);
+  if (idD && (o.job_id === idD || o.job_id.startsWith(idD) || idD.startsWith(o.job_id))) return null;
+  return `numéro donné à la confirmation du dépôt ${o.job_id.slice(0, 8)} (${o.preuve})`;
+}
+
+/**
+ * Les annonces qui peuvent être celles d'un dépôt (sans les photos).
+ * (13/11, 3c) `opts.numerosConfirmes` (numerosConfirmesParDepot) : une annonce dont le numéro a été donné par la
+ * confirmation d'un AUTRE dépôt du compte n'est jamais candidate. Sans lui : les candidates d'avant.
+ * @param {any} depot
+ * @param {any[]} lignes
+ * @param {string} [platform]
+ * @param {{ numerosConfirmes?: Map<string, { job_id: string, preuve: string }> | null }} [opts]
+ */
+export function candidatesDuDepot(depot, lignes, platform = "beebs", { numerosConfirmes = null } = {}) {
   const t = ms(depot?.published_at ?? depot?.created_at);
   if (!Number.isFinite(t)) return [];
   return (Array.isArray(lignes) ? lignes : []).filter((a) => a && !a.job_id && a.inventaire_id == null
     && !a.disparu_le && !a.retiree_le
     && /^(en_ligne|en_verification)$/.test(String(a.statut_plateforme ?? ""))
     && ms(a.created_at) >= t - MARGE_MS
-    && !numeroteeAvantLeDepot(platform, a, { lignes, depotLe: depot.published_at ?? depot.created_at }));
+    && !numeroteeAvantLeDepot(platform, a, { lignes, depotLe: depot.published_at ?? depot.created_at })
+    && !numeroDUnAutreDepot(depot, a, numerosConfirmes));
+}
+
+/** Les annonces écartées parce qu'un autre dépôt les a confirmées (pour la trace) : [{ listing_id, motif }]. */
+export function ecarteesParUnAutreDepot(depot, lignes, platform = "beebs", { numerosConfirmes = null } = {}) {
+  const avant = candidatesDuDepot(depot, lignes, platform);
+  return avant.map((a) => ({ listing_id: txt(a.listing_id), motif: numeroDUnAutreDepot(depot, a, numerosConfirmes) }))
+    .filter((x) => x.motif);
 }
 
 /** Les URL de photos d'une annonce relevée (capture d'abord, vignette ensuite). */
@@ -46,16 +143,17 @@ export function urlsAnnonce(a) {
 }
 
 /**
- * @param {{ depots: any[], lignes: any[], empreinte: (url: string) => any, platform?: string }} arg
+ * @param {{ depots: any[], lignes: any[], empreinte: (url: string) => any, platform?: string, numerosConfirmes?: Map<string, any> | null }} arg
  *   depots : jobs (id, user_id, photos, published_at, created_at) d'UN compte ;
  *   lignes : annonces_plateforme de CE compte et de la plateforme ;
- *   empreinte(url) : la ligne photo_empreintes de l'URL, ou undefined.
+ *   empreinte(url) : la ligne photo_empreintes de l'URL, ou undefined ;
+ *   numerosConfirmes : (13/11, 3c) numerosConfirmesParDepot des jobs du compte — facultatif.
  * @returns {Map<string, { listing_id: string, statut: string, preuve: string, photos: any }>}
  */
-export function rattacherParPhotos({ depots, lignes, empreinte, platform = "beebs" }) {
+export function rattacherParPhotos({ depots, lignes, empreinte, platform = "beebs", numerosConfirmes = null }) {
   const choix = new Map();
   for (const d of Array.isArray(depots) ? depots : []) {
-    const cands = candidatesDuDepot(d, lignes, platform);
+    const cands = candidatesDuDepot(d, lignes, platform, { numerosConfirmes });
     if (!cands.length) continue;
     const copie = urlsPhotos(d.photos).map((u) => empreinte(u)).filter(Boolean);
     if (!copie.length) continue;
@@ -87,29 +185,40 @@ export function rattacherParPhotos({ depots, lignes, empreinte, platform = "beeb
 // Rien d'autre ne change : aucune candidate → redépôt autorisé ; doute → la
 // question. Pur (Deno + Node).
 /**
- * @param {{ depots: any[], lignes: any[], empreinte: (url: string) => any, platform?: string }} arg
- * @returns {{ rattaches: Map<string, any>, aucune: string[], question: Map<string, any[]>, prises: Set<string> }}
+ * @param {{ depots: any[], lignes: any[], empreinte: (url: string) => any, platform?: string, numerosConfirmes?: Map<string, any> | null }} arg
+ *   numerosConfirmes : (13/11, 3c) numerosConfirmesParDepot des jobs du compte — facultatif ; `ecartees` dit, par
+ *   dépôt, les annonces qu'il a écartées (numéro d'un autre dépôt), pour la trace.
+ * @returns {{ rattaches: Map<string, any>, aucune: string[], question: Map<string, any[]>, prises: Set<string>, ecartees: Map<string, Array<{ listing_id: string, motif: string }>> }}
  */
-export function jugerCycleDepots({ depots, lignes, empreinte, platform = "beebs" }) {
+export function jugerCycleDepots({ depots, lignes, empreinte, platform = "beebs", numerosConfirmes = null }) {
   const liste = Array.isArray(depots) ? depots : [];
-  const rattaches = rattacherParPhotos({ depots: liste, lignes, empreinte, platform });
+  const rattaches = rattacherParPhotos({ depots: liste, lignes, empreinte, platform, numerosConfirmes });
   const prises = new Set([...rattaches.values()].map((c) => String(c.listing_id)));
   const aucune = [];
   const question = new Map();
+  const ecartees = new Map();
   for (const d of liste) {
     const id = String(d?.id ?? "");
     if (!id || rattaches.has(id)) continue;
-    const cands = candidatesDuDepot(d, lignes, platform).filter((a) => !prises.has(String(a.listing_id)));
+    const ec = ecarteesParUnAutreDepot(d, lignes, platform, { numerosConfirmes });
+    if (ec.length) ecartees.set(id, ec);
+    const cands = candidatesDuDepot(d, lignes, platform, { numerosConfirmes }).filter((a) => !prises.has(String(a.listing_id)));
     if (cands.length) question.set(id, cands);
     else aucune.push(id);
   }
-  return { rattaches, aucune, question, prises };
+  return { rattaches, aucune, question, prises, ecartees };
 }
 
-/** Toutes les annonces candidates d'un lot de dépôts (pour lire leurs empreintes en une fois). */
-export function candidatesDesDepots(depots, lignes, platform = "beebs") {
+/**
+ * Toutes les annonces candidates d'un lot de dépôts (pour lire leurs empreintes en une fois).
+ * @param {any[]} depots
+ * @param {any[]} lignes
+ * @param {string} [platform]
+ * @param {{ numerosConfirmes?: Map<string, { job_id: string, preuve: string }> | null }} [opts]
+ */
+export function candidatesDesDepots(depots, lignes, platform = "beebs", { numerosConfirmes = null } = {}) {
   const vues = new Map();
-  for (const d of Array.isArray(depots) ? depots : []) for (const a of candidatesDuDepot(d, lignes, platform)) vues.set(String(a.listing_id), a);
+  for (const d of Array.isArray(depots) ? depots : []) for (const a of candidatesDuDepot(d, lignes, platform, { numerosConfirmes })) vues.set(String(a.listing_id), a);
   return [...vues.values()];
 }
 

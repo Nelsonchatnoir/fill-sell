@@ -9,7 +9,7 @@ import {
   restaurerPublicationBeebsConfirmee,
   type ReleveBeebsExact,
 } from "../_shared/beebs-lien-exact.ts";
-import { rattacherParPhotos, urlsAnnonce, candidatesDesDepots } from "../_shared/depot-sans-numero.js";
+import { rattacherParPhotos, urlsAnnonce, candidatesDesDepots, COLONNES_NUMEROS_CONFIRMES, numerosConfirmesParDepot } from "../_shared/depot-sans-numero.js";
 import { urlsPhotos } from "../_shared/recreation-deja-partie.js";
 
 // beebs-lien — rattachement EXACT des dépôts Beebs sans identifiant.
@@ -295,9 +295,18 @@ serve(async (req) => {
         lignes.push(...((lot ?? []) as Array<Record<string, unknown>>));
         if ((lot ?? []).length < 1000) break;
       }
+      // (13/11, 3c) Un numéro donné par la CONFIRMATION d'un autre dépôt du compte n'est jamais candidat : sa ligne
+      // du relevé peut être encore « reliée à rien » (le rapprochement la rattache après la fin des relevés), et
+      // deux exemplaires d'une même fiche ont les mêmes photos — sans cette garde, le second dépôt prendrait le
+      // numéro du premier. Les 200 derniers dépôts numérotés du compte (un index par compte).
+      const { data: numerotes, error: nErr } = await supabase.from("cross_post_jobs").select(COLONNES_NUMEROS_CONFIRMES)
+        .eq("user_id", userId).eq("platform", "beebs").not("platform_listing_id", "is", null)
+        .order("published_at", { ascending: false, nullsFirst: false }).limit(200);
+      if (nErr) throw new Error(`numéros du compte ${userId} : ${nErr.message}`);
+      const numerosConfirmes = numerosConfirmesParDepot((numerotes ?? []) as unknown as Array<Record<string, unknown>>);
       const urls = new Set<string>();
       for (const d of depots) for (const u of urlsPhotos(d.photos)) urls.add(u);
-      for (const a of candidatesDesDepots(depots, lignes)) for (const u of urlsAnnonce(a)) urls.add(u);
+      for (const a of candidatesDesDepots(depots, lignes, "beebs", { numerosConfirmes })) for (const u of urlsAnnonce(a)) urls.add(u);
       if (!urls.size) continue;
       const toutes = [...urls];
       const empreintes = new Map<string, unknown>();
@@ -305,7 +314,7 @@ serve(async (req) => {
         const { data: emp } = await supabase.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutes.slice(i, i + 200));
         for (const e of (emp ?? []) as Array<Record<string, unknown>>) empreintes.set(String(e.url), e);
       }
-      const choix = rattacherParPhotos({ depots, lignes, empreinte: (u: string) => empreintes.get(u) });
+      const choix = rattacherParPhotos({ depots, lignes, empreinte: (u: string) => empreintes.get(u), numerosConfirmes });
       for (const [jobId, c] of choix) {
         const d = depots.find((x) => String(x.id) === jobId)!;
         const pf = { ...((d.platform_fields ?? {}) as Record<string, unknown>) };
