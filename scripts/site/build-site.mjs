@@ -27,6 +27,7 @@ import { article as gabaritArticle } from '../../site/gabarits/article.mjs';
 import { accueil as gabaritAccueil } from '../../site/gabarits/accueil.mjs';
 import { liste as gabaritListe } from '../../site/gabarits/liste.mjs';
 import { introuvable as gabaritIntrouvable } from '../../site/gabarits/introuvable.mjs';
+import { installer as gabaritInstaller, PAGE_INSTALLER } from '../../site/gabarits/installer.mjs';
 import { prix as formaterPrix } from '../../site/gabarits/composants.mjs';
 import { grapheJsonLd } from '../../site/gabarits/donnees-structurees.mjs';
 import { TEXTES } from '../../site/gabarits/textes.mjs';
@@ -935,6 +936,16 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   };
   await writeFile(path.join(dossier, '404.html'), layout({ site, page: page404, principal: gabaritIntrouvable({ site }) }));
 
+  // /installer (13/11) : destination des publicités Meta — iPhone → App Store, Android → Google Play, ordinateur →
+  // la page. noindex, hors sitemap et hors llms (verify-site : PAGES_HORS_INDEX).
+  const pageInstaller = {
+    ...PAGE_INSTALLER, lang: LANGUE_RACINE, type: 'installer', url: `${ORIGINE}${PAGE_INSTALLER.chemin}`, racine: false, robots: 'noindex, follow',
+    alternates: [], fil: [], ogImage: ogRepli(LANGUE_RACINE), ogType: 'website', jsonld: [],
+  };
+  const fichierInstaller = path.join(dossier, cheminVersFichier(PAGE_INSTALLER.chemin));
+  await mkdir(path.dirname(fichierInstaller), { recursive: true });
+  await writeFile(fichierInstaller, layout({ site, page: pageInstaller, principal: gabaritInstaller({ site }) }));
+
   const indexables = pages.filter((p) => p.robots.startsWith('index'));
   await writeFile(path.join(dossier, 'sitemap.xml'), sitemap(indexables, routesSitemap));
   await writeFile(path.join(dossier, 'robots.txt'), await robots(racine));
@@ -947,11 +958,11 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   await writeFile(path.join(dossier, 'apple-touch-icon-precomposed.png'), await readFile(path.join(racine, 'public', 'apple-touch-icon.png')));
 
   const duree = Math.round(performance.now() - t0);
-  const nb = pages.length + 1;
+  const nb = pages.length + 2;
   if (dater) {
     journal.log(`[site] empreintes calculées : ${pages.length} pages en ${duree} ms`);
   } else {
-    journal.log(`[site] site généré : ${nb} pages en ${duree} ms (dont 404.html ; site.js ${gzipSite} o gzip, CSS en ligne : socle ${Buffer.byteLength(feuille.socle)} o + modules)`);
+    journal.log(`[site] site généré : ${nb} pages en ${duree} ms (dont 404.html et installer ; site.js ${gzipSite} o gzip, CSS en ligne : socle ${Buffer.byteLength(feuille.socle)} o + modules)`);
     if (verifier) {
       const { verifierSite } = await import('./verify-site.mjs');
       const rapport = await verifierSite(dossier, { racine, datesStrictes, env });

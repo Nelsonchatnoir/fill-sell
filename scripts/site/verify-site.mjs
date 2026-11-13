@@ -58,6 +58,10 @@ const BUDGET_HTML = 136 * 1024;
 const BUDGET_CSS = 40 * 1024; // par page, feuille découpée en modules (scripts/site/lib/bundles.mjs) — 40 Ko depuis le 09/11 (section Cloud et carrés des formules)
 const BUDGET_DATA_URI = 1024;
 const BUDGET_SITE_JS_GZIP = 6 * 1024;
+// Pages servies mais jamais indexées, traitées comme la 404 : noindex, pas de canonical, hors sitemap et maillage.
+// /installer (13/11) : destination des publicités Meta (site/gabarits/installer.mjs).
+const PAGES_HORS_INDEX = new Set(['404.html', 'installer/index.html']);
+
 const MOTS_MIN = {
   accueil: 150, guide: 200, trajet: 200, plateforme: 150, fonction: 150, comparatif: 150, alternative: 120,
   classement: 120, tarifs: 100, glossaire: 150, faq: 200, article: 300, liste: 40, 404: 20,
@@ -492,7 +496,8 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
     const html = readFileSync(path.join(dossier, rel), 'utf8');
     const id = metaContenu(html, 'fillsell-page');
     if (!id) { err(`${rel} : page HTML sans marqueur fillsell-page (coquille, reste d'un autre build, ou fichier de public/ à nommer dans HTML_PUBLIC_PERMIS ?)`); continue; }
-    const est404 = rel === '404.html';
+    // 404.html et les pages techniques hors index (/installer, 13/11) : noindex, sans canonical, hors maillage et sitemap.
+    const est404 = PAGES_HORS_INDEX.has(rel);
     const chemin = est404 ? null : cheminDeFichier(rel);
     if (!est404 && !chemin) { err(`${rel} : page hors convention (<chemin>/index.html)`); continue; }
     const p = {
@@ -517,7 +522,7 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
     err("index.html : aucun lien vers /legal#confidentialite (exigé par Google OAuth sur la page d'accueil)");
   }
   if (!parChemin.get('/')) err('index.html n\'est pas l\'accueil statique : ce dossier n\'est pas un build du site (FILLSELL_SITE=1)');
-  if (!pages.some((p) => p.est404)) err('404.html absent : les URL inconnues ne répondraient pas 404 proprement');
+  if (!pages.some((p) => p.rel === '404.html')) err('404.html absent : les URL inconnues ne répondraient pas 404 proprement');
 
   const vercel = JSON.parse(readFileSync(path.join(racine, 'vercel.json'), 'utf8'));
   const redirections = (vercel.redirects ?? []).map((r) => ({ ...r, regex: sourceVersRegex(r.source) }));
