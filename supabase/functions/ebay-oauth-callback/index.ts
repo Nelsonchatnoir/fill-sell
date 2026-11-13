@@ -32,6 +32,8 @@ import {
   verifierState,
 } from "../_shared/ebay-oauth.ts";
 import { rouvrirPublicationsEbayHorsFrance } from "../_shared/ebay-reouverture.ts";
+import { ligneCompteEbay } from "../_shared/sites-plateformes.js";
+import { noterComptePlateforme } from "../_shared/comptes-plateformes.js";
 
 function retour(etat: "ok" | "refus" | "erreur", motif?: string): Response {
   const u = new URL(`${APP_ORIGIN}/ebay/retour`);
@@ -133,6 +135,13 @@ Deno.serve(async (req) => {
       return retour("erreur", "stockage");
     }
     console.log(`[ebay-oauth-callback] compte relié user=${userId} pseudo=${identite.username ? "oui" : "non"} eias=${identite.eiasToken ? "oui" : "non"}`);
+    // (13/11, étape 4 L1) Le site du compte, lu ici par GetUser, est noté UNE fois pour tous les lecteurs
+    // (public.comptes_plateformes : site, pays, langue, devise, domaine) — une écriture seulement s'il change ; table
+    // absente (migration M1 pas encore appliquée) → rien. Site ou identifiant illisible → aucune ligne. Jamais bloquant.
+    if (identite.site) {
+      const n = await noterComptePlateforme(admin, ligneCompteEbay({ userId, compte: identite.eiasToken, siteGetUser: identite.site }));
+      if (n.ecrit) console.log(`[ebay-oauth-callback] user=${userId} : site du compte noté (${n.motif}, GetUser « ${identite.site} »)`);
+    }
     // ── LA VOIE API S'OUVRE ICI, ET SEULEMENT ICI (2026-09-08, décision Nico) ──
     // Un compte passe en voie API quand sa connexion OAuth est ÉTABLIE (jeton
     // échangé, ligne écrite) ET PROUVÉE : GetUser (Trading) a répondu avec un

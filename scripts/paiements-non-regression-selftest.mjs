@@ -128,10 +128,16 @@ const LIGNES_F = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/pai
 // événement Stripe du mode test écarté), relues une à une : scripts/fixtures/paiements-lignes-test-1211.json. Aucune ne
 // touche un palier : elles ne passent qu'un drapeau aux mails et aux alertes (verrou : selftest:store-test-sans-mail).
 const LIGNES_T = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-test-1211.json'), 'utf8'));
+// (13/11/2026, 2e réponse de Nico — audit des paiements) Les lignes de cancel-subscription relues une à une :
+// scripts/fixtures/paiements-lignes-audit-1311.json. Sans client Stripe (ou sans palier vivant chez Stripe) : plus jamais
+// is_premium=false sur-le-champ ni « succès » — 409 rien_a_resilier et la phrase vraie (où ça s'arrête) ; une formule EN
+// ESSAI résiliée : arrêtée tout de suite, rien prélevé (la règle de l'arrêt d'essai) ; le mail de l'essai d'un abonné dit
+// que sa formule continue. Verrou : selftest:textes-paiement-verite § G.
+const LIGNES_A = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-audit-1311.json'), 'utf8'));
 const FICHIERS_LIGNES = [...new Set([...Object.keys(LIGNES_CLOUD), 'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'])];
 for (const f of FICHIERS_LIGNES) {
   const permisesCloud = LIGNES_CLOUD[f] ?? [];
-  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? [])];
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));

@@ -3375,13 +3375,13 @@ export default function App({ loginOnly = false }){
         const{data:vg,error:vgErr}=await supabase.functions.invoke('validate-google-purchase',{
           body:{productId,purchaseToken,userId:user.id},
         });
-        if(vgErr||!vg?.is_premium) throw new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server');
+        if(vgErr||!vg?.is_premium) throw Object.assign(new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server'),{code:'SERVEUR_NON_CONFIRME'});
         etapeAchat='confirmation_serveur';
       }
       // iOS : le droit vient d'apple-iap-webhook. Android : de la fonction
       // ci-dessus. Dans les deux cas on ne croit que le serveur.
       const confirme=await attendreConfirmationServeur(user.id,{pro:isProPurchase||isBusinessPurchase,business:isBusinessPurchase});
-      if(!confirme) throw new Error('Premium not confirmed by server');
+      if(!confirme) throw Object.assign(new Error('Premium not confirmed by server'),{code:'SERVEUR_NON_CONFIRME'});
       issueTunnel('reussi');
       monterPalier(isBusinessPurchase?'business':isProPurchase?'pro':'premium'); // cumulatif : Business ⊇ Pro ⊇ Premium
       setShowPremiumWelcome(true);
@@ -3459,10 +3459,10 @@ export default function App({ loginOnly = false }){
           const{data:vg,error:vgErr}=await supabase.functions.invoke('validate-google-purchase',{
             body:{productId,purchaseToken,userId:user.id},
           });
-          if(vgErr||!vg?.is_premium) throw new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server');
+          if(vgErr||!vg?.is_premium) throw Object.assign(new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server'),{code:'SERVEUR_NON_CONFIRME'});
         }
         const confirme=await attendreConfirmationServeur(user.id,{pro:estPro,business:estBusiness});
-        if(!confirme) throw new Error('Premium not confirmed by server');
+        if(!confirme) throw Object.assign(new Error('Premium not confirmed by server'),{code:'SERVEUR_NON_CONFIRME'});
         monterPalier(estBusiness?'business':estPro?'pro':'premium');
         setShowPremiumWelcome(true);
       }else if(!lu.cloud?.actif){
@@ -6599,7 +6599,20 @@ export default function App({ loginOnly = false }){
         }
       );
       const json=await res.json();
+      // (13/11/2026, audit des paiements de Nico) Rien à résilier chez Stripe (abonnement App Store / Google Play, compte
+      // offert) : la phrase du serveur, qui dit où ça s'arrête — jamais « Abonnement annulé ». Rien n'a changé.
+      if(json.error==='rien_a_resilier'){
+        setCancelMsg((lang==='fr'?json.message_fr:json.message_en)||(lang==='fr'?"Rien n'a été résilié ici.":'Nothing was cancelled here.'));
+        setCancelStep(0);
+        return;
+      }
       if(json.error) throw new Error(json.error);
+      // (13/11) Une formule EN ESSAI résiliée : arrêtée tout de suite, rien prélevé (cancel-subscription).
+      if(json.essai_arrete===true){
+        setCancelMsg(lang==='fr'?"Ton essai est arrêté tout de suite : rien n'a été prélevé.":'Your trial is stopped right away: nothing was charged.');
+        setCancelStep(0);
+        return;
+      }
       // is_premium reste true jusqu'à la fin de la période — le webhook customer.subscription.deleted le passera à false
       const msg=json.period_end
         ? (lang==='fr'

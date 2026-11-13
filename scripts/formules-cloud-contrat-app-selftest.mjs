@@ -42,7 +42,9 @@ ok(/update\.cloud_formule = plan\.cloud === "ecrire" \? f\.formule : null;/.test
 const gp = lire('supabase/functions/google-play-webhook/index.ts');
 ok(/update\.cloud_formule = plan\.cloud === "ecrire" \? f\.formule : null;/.test(gp) && /await ecrire\(\{ \.\.\.maj, cloud_formule: null \}\);/.test(gp), 'google-play-webhook : posée / remise à NULL');
 ok(/cloud_formule: formuleV!\.formule/.test(lire('supabase/functions/validate-google-purchase/index.ts')) && /cloud_formule: formuleA\.formule/.test(lire('supabase/functions/validate-apple-receipt/index.ts')), 'validate-google-purchase et validate-apple-receipt : posée');
-ok((lire('supabase/functions/cancel-subscription/index.ts').match(/cloud_formule: null/g) ?? []).length === 2, 'cancel-subscription : NULL à l\'arrêt d\'un essai (abonné, formule)');
+// (13/11, audit des paiements de Nico) + la résiliation d'une formule EN ESSAI par « Se désabonner » : arrêtée tout de suite,
+// cloud_formule remis à NULL comme à l'arrêt de l'essai (3 chemins).
+ok((lire('supabase/functions/cancel-subscription/index.ts').match(/cloud_formule: null/g) ?? []).length === 3, 'cancel-subscription : NULL à l\'arrêt d\'un essai (abonné, formule, résiliation pendant l\'essai)');
 console.log('2. create-checkout-session');
 const cc = lire('supabase/functions/create-checkout-session/index.ts');
 ok(/error: "abonnement_autre_canal", motif: r\.motif, canal: r\.canal \?\? null, formule,\s*message_fr: messageVoieFormule\(r, "fr"\), message_en: messageVoieFormule\(r, "en"\)/.test(cc), 'abonnement Apple / Google : « abonnement_autre_canal » + canal + message_fr / message_en');

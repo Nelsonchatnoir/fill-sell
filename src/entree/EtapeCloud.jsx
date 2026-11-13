@@ -24,7 +24,7 @@ import { listeNoms, listeJauges } from './regles';
 // (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité.
 import MentionsAbonnement from '../components/MentionsAbonnement';
 // (08/11, refus Google) Mobile : le bouton n'achète qu'une fois le prix de la boutique affiché.
-import { prixPret } from '../lib/prixBoutique';
+import { prixPret, zeroAffiche } from '../lib/prixBoutique';
 import { usePrixBoutique } from '../lib/usePrixBoutique';
 
 function Coche({ children, k, dernier }) {
@@ -160,7 +160,7 @@ export default function EtapeCloud({ c, T, onSuivant, onAller }) {
       <Titre>{T.cloudTitre(k.dates.fin)}</Titre>
       <Texte>{T.cloudTexte}</Texte>
 
-      <Frise etapes={T.cloudFrise(k.dates.jourVeille, k.dates.jourFin)} />
+      <Frise etapes={T.cloudFrise(k.dates.jourVeille, k.dates.jourFin, zeroAffiche('cloud', c.lang))} />
 
       <Carte style={{ padding: '14px 16px 4px', marginBottom: 12 }}>
         <TitreCarte>{T.cloudFait}</TitreCarte>

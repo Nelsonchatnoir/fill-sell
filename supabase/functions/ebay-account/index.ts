@@ -84,6 +84,7 @@ import {
 import { compteEbayApiUsableDepuisLigne, rearmerJobsEbayConnexionSiUtilisable } from "../_shared/ebay-voie.ts";
 import { plafondEbay } from "../_shared/ebay-etat-compte.js";
 import { domaineSiteEbay, messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
+import { lireComptePlateforme } from "../_shared/comptes-plateformes.js";
 // (30/10, lot E) Modifier une annonce eBay en ligne (voie API) depuis FillSell.
 import { demandePropre, lireAnnonceEbay, modifierAnnonceEbay } from "../_shared/ebay-modifier-annonce.ts";
 import { aspectsCategorie } from "../_shared/ebay-publication.ts";
@@ -471,7 +472,10 @@ Deno.serve(async (req) => {
       if (compteEbayApiUsableDepuisLigne(compte)) {
         await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
       }
-      return json({ etat: etatPublic(compte) });
+      // (13/11, étape 4 L1) Le site du compte, lu UNE fois (public.comptes_plateformes, par la clé) et servi à l'app
+      // (etat.site_compte). Table absente (migration M1 pas appliquée) ou ligne pas encore écrite → le site GetUser.
+      const siteCompte = await lireComptePlateforme(admin, { userId: user.id, plateforme: "ebay", compte: compte?.ebay_eias_token ?? null });
+      return json({ etat: etatPublic(compte, { siteCompte }) });
     }
 
     // ── LA DESCRIPTION D'UNE ANNONCE eBAY, PAR L'API (03/10/2026) ───────────

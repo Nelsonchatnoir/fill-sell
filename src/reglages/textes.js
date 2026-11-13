@@ -110,6 +110,9 @@ const FR = {
   appleLien: 'Ouvrir mes abonnements Apple',
   googleGere: 'Ton abonnement est géré par Google Play : la résiliation et le changement de formule se font depuis ton compte Google.',
   googleLien: 'Ouvrir mes abonnements Google Play',
+  // (13/11/2026, audit des paiements de Nico) La bande suit le canal QUI FACTURE, plus l'appareil : un abonné payé par
+  // carte qui ouvre l'app sur son téléphone lisait « géré par Apple ». ⚠ texte NEUF, à valider par Nico.
+  carteGere: "Ton abonnement est payé par carte : la résiliation et le changement de formule se font sur le web, sur fillsell.app, dans Réglages › Abonnement.",
 
   // ── Plateformes ─────────────────────────────────────────────────────────
   comptesConnectes: 'Comptes connectés',
@@ -360,6 +363,7 @@ const EN = {
   annuler: 'Cancel',
   appleGere: 'Your subscription is managed by Apple: cancelling and changing plans happen in your Apple account.',
   appleLien: 'Open my Apple subscriptions',
+  carteGere: 'Your subscription is paid by card: cancelling and changing plans happen on the web, at fillsell.app, in Settings › Subscription.',
   googleGere: 'Your subscription is managed by Google Play: cancelling and changing plans happen in your Google account.',
   googleLien: 'Open my Google Play subscriptions',
 

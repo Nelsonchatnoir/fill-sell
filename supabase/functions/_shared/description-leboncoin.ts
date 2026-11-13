@@ -76,6 +76,7 @@ export interface NettoyageLeboncoin {
   vide: boolean;     // le nettoyage aurait tout effacé → original rendu
   marques: string[]; // hashtags de marque TIERCE retirés (2026-09-10)
   plafonnes: number; // hashtags retirés par le plafond de 5 (2026-09-10)
+  repetes?: number;  // (13/11) répétitions d'un hashtag gardé retirées (plus de 5 hashtags dans le texte)
   // Minimum de 10 caractères de Leboncoin (2026-09-10) :
   complete?: string[];        // faits ajoutés pour atteindre le minimum
   videe_trop_courte?: boolean; // rien à ajouter → champ servi VIDE
@@ -149,6 +150,11 @@ const replier = (s: string) => String(s ?? "").normalize("NFD").replace(/[\u0300
 const motsDuHashtag = (h: string): string[] => String(h).replace(/^#/, "")
   .replace(/([a-z\u00e0-\u00ff0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
   .split(/[^\p{L}\p{N}]+/u).map((m) => replier(m)).filter(Boolean);
+
+// (13/11) Un HASHTAG pour les règles du 13/11 (répétitions, blocs étiquetés) : « #mot » — jamais une entité HTML
+// « &#232; » (textes importés d'eBay : « tr&#232;s soign&#233; », compte 53efea05) qu'une répétition retirée couperait
+// (« tr& »). Le plafond du 10/09 garde sa lecture d'avant (/#[^\s#]+/) : ses textes servis ne changent pas.
+const HASHTAG_RE = /(?<!&)#[^\s#]+/g;
 
 export interface ContexteLeboncoin {
   titre?: string;
@@ -458,24 +464,69 @@ function elementsMotsCles(ligne: string): number {
   return m[1].split(/[,;·|•\/]+/).map((x) => x.trim()).filter(Boolean).length;
 }
 
+// ── (13/11, lot du 13/11 — compte ca9afe24, job f18c726d) L'ÉTIQUETTE SEULE SUR SA LIGNE ──────────────────────────────
+// « Mots-clés : » seul sur sa ligne, puis « Game Boy, Nintendo, rétro gaming, … » (12 éléments) sur la suivante : la
+// règle du 15/10 ne lisait que la liste écrite SUR la ligne de l'étiquette → 12 mots-clés servis, refus de modération
+// (06/11). Le BLOC étiqueté = l'étiquette (deux-points obligatoire) + les lignes de LISTE qui la suivent (une ligne avec
+// un séparateur , ; · | • /, ou un mot-clé seul : 4 mots au plus, sans point final), jusqu'à la première ligne qui n'en
+// est pas une (ligne vide, phrase, ligne de hashtags seuls) ; ses éléments (hashtags non comptés ici : ils le sont avec
+// les hashtags) comptent dans les cinq, et le bloc part en entier au-delà. Étiquette sans liste derrière : rien ne bouge.
+const ETIQUETTE_SEULE_RE = /^\s*(?:mots?[\s-]*cl[ée]s?|keywords?|tags?)\s*:\s*$/i;
+const elementsDuTexte = (s: string): number =>
+  s.replace(HASHTAG_RE, " ").split(/[,;·|•\/\n]+/).map((x) => x.trim()).filter(Boolean).length;
+const estLigneDeListe = (l: string): boolean => {
+  const t = l.trim();
+  if (!t || elementsDuTexte(t) === 0 || ETIQUETTE_SEULE_RE.test(t) || elementsMotsCles(t) > 0) return false;
+  return /[,;·|•\/]/.test(t) || (t.split(/\s+/).length <= 4 && !/[.!?]$/.test(t));
+};
+/** Les lignes (index) des listes de mots-clés étiquetées et leur nombre d'éléments. */
+function blocsMotsCles(lignes: string[]): { lignes: Set<number>; elements: number } {
+  const dans = new Set<number>();
+  let elements = 0;
+  for (let i = 0; i < lignes.length; i++) {
+    if (dans.has(i)) continue;
+    const surLaLigne = elementsMotsCles(lignes[i]);
+    if (surLaLigne > 0) { dans.add(i); elements += surLaLigne; continue; }
+    if (!ETIQUETTE_SEULE_RE.test(lignes[i])) continue;
+    const suite: number[] = [];
+    for (let k = i + 1; k < lignes.length && estLigneDeListe(lignes[k]); k++) suite.push(k);
+    const n = elementsDuTexte(suite.map((k) => lignes[k]).join("\n"));
+    if (!suite.length || n === 0) continue;
+    dans.add(i); for (const k of suite) dans.add(k);
+    elements += n;
+  }
+  return { lignes: dans, elements };
+}
+
 export function nettoyerSeulement(description: string, contexte: ContexteLeboncoin = {}): NettoyageLeboncoin {
   const original = String(description ?? "");
   try {
     const aSites = termesDans(original).length > 0;
     const aModeration = termesModerationDans(original).length > 0;
     const { marques, plafonnes } = hashtagsARetirer(original, contexte);
-    const hashtagsRestants = new Set((original.match(/#[^\s#]+/g) ?? []).filter((h) => !marques.has(h) && !plafonnes.has(h))).size;
-    const motsClesLignes = original.split(/\r?\n/).reduce((n, l) => n + elementsMotsCles(l), 0);
+    // ── (13/11, lot du 13/11 — compte f0acd3af, job ae8d7ec6) CINQ HASHTAGS, COMPTÉS COMME LEBONCOIN LES LIT ──────────
+    // Le plafond du 10/09 gardait 5 hashtags DISTINCTS mais laissait leurs répétitions : 50 hashtags en cinq langues →
+    // 9 servis (#IKKSWomen cinq fois), refus de modération le 12/11. Au-delà de 5 occurrences gardées, chaque
+    // répétition d'un hashtag gardé part (la première occurrence reste) ; à 5 ou moins, rien ne bouge (un « #Zara
+    // #Zara » sous le plafond reste tel quel). Les hashtags de sites (retirés plus bas) ne comptent pas.
+    const gardes = (original.match(HASHTAG_RE) ?? []).filter((h) => !marques.has(h) && !plafonnes.has(h) && !termesDans(h).length);
+    const repetitionsEnTrop = gardes.length > 5;
+    const hashtagsRestants = repetitionsEnTrop ? new Set(gardes.map(replier)).size : gardes.length;
+    const lignesOrigine = original.split(/\r?\n/);
+    const blocs = blocsMotsCles(lignesOrigine);
+    const motsClesLignes = blocs.elements;
     const motsClesEnTrop = motsClesLignes > 0 && hashtagsRestants + motsClesLignes > 5;
-    if (!aSites && !aModeration && !marques.size && !plafonnes.size && !motsClesEnTrop) {
+    if (!aSites && !aModeration && !marques.size && !plafonnes.size && !motsClesEnTrop && !repetitionsEnTrop) {
       return { texte: original, modifiee: false, termes: [], retires: 0, vide: false, marques: [], plafonnes: 0 };
     }
     const termes = new Set<string>();
     let retires = 0;
+    let repetes = 0;
+    const vus = new Set<string>();
     const aRetirer = new Set<string>([...marques.keys(), ...plafonnes]);
-    const lignes = original.split(/\r?\n/).map((ligne) => {
-      // (15/10 soir) La ligne de mots-clés au-delà du plafond part en entier.
-      if (motsClesEnTrop && elementsMotsCles(ligne) > 0) { retires += elementsMotsCles(ligne); return null; }
+    const lignes = lignesOrigine.map((ligne, iLigne) => {
+      // (15/10 soir) La ligne de mots-clés au-delà du plafond part en entier ; (13/11) le bloc étiqueté aussi.
+      if (motsClesEnTrop && blocs.lignes.has(iLigne)) { retires += elementsMotsCles(ligne) || (ETIQUETTE_SEULE_RE.test(ligne) ? 0 : elementsDuTexte(ligne)); return null; }
       const r = aSites ? nettoyerLigne(ligne, termes) : { ligne, retires: 0 };
       // (26/10 nuit, point 5) La phrase qui porte un terme que la modération refuse part, même découpe.
       if (aModeration) {
@@ -486,6 +537,15 @@ export function nettoyerSeulement(description: string, contexte: ContexteLebonco
       // Hashtags de marque tierce et hashtags au-delà du plafond : le MOT
       // entier, rien d'autre (les hashtags de sites sont déjà partis plus haut).
       if (aRetirer.size) r.ligne = r.ligne.replace(/#[^\s#]+/g, (h) => (aRetirer.has(h) ? "" : h));
+      // (13/11) Plus de 5 hashtags gardés : la répétition d'un hashtag déjà servi part (casse et accents ignorés).
+      if (repetitionsEnTrop) {
+        r.ligne = r.ligne.replace(HASHTAG_RE, (h) => {
+          const cle = replier(h);
+          if (!cle) return h;
+          if (vus.has(cle)) { repetes++; return ""; }
+          vus.add(cle); return h;
+        });
+      }
       // On ne retouche que les DOUBLES espaces créés par un retrait — jamais
       // la typographie de la vendeuse (« Offres bienvenues ! » garde son espace).
       const nettoyee = r.ligne.replace(/[ \t]{2,}/g, " ").trim();
@@ -497,7 +557,8 @@ export function nettoyerSeulement(description: string, contexte: ContexteLebonco
     }).filter((l): l is string => l !== null);
     const texte = lignes.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     if (!texte) return { texte: original, modifiee: false, termes: [...termes], retires, vide: true, marques: [], plafonnes: 0 };
-    return { texte, modifiee: texte !== original, termes: [...termes], retires, vide: false, marques: [...marques.values()], plafonnes: plafonnes.size };
+    return { texte, modifiee: texte !== original, termes: [...termes], retires, vide: false, marques: [...marques.values()], plafonnes: plafonnes.size,
+      ...(repetes ? { repetes } : {}) };
   } catch {
     return { texte: original, modifiee: false, termes: [], retires: 0, vide: false, marques: [], plafonnes: 0 };
   }

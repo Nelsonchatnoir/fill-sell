@@ -8,6 +8,7 @@ import { nouveauProfilId, DOMAINES_VERROU, tailleEnMo } from './navigateur.js';
 import { lireComptesDuServeur } from './flotte.js';
 import { changementDePoste } from './pausesMessagerie.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims, evaluerDansExtension } from './sessionFillsell.js';
+import { listerPilotes, decisionPilote } from './extensionPilote.js';
 
 // (05/11) Lu dans le service worker de l'extension Cloud (verrou des plateformes, build-extension-cloud.mjs) : les
 // plateformes à reconnecter, déjà relues contre les cookies du moment. Une copie de l'extension sans ce verrou rend {}.
@@ -49,6 +50,7 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
   const dernieresFins = new Map();
   const dernieresSauvegardes = new Map();
   const redemarragesMemoire = new Map();   // (03/11) user → instant du dernier redémarrage pour la mémoire
+  const retoursImpossibles = new Map();    // (13/11) user → « installée→servie » déjà dite (une alerte par état)
   let idExtension = null;
 
   async function extensionId() {
@@ -334,6 +336,32 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       if (c && h.ipId != null && Number(c.ip_id) !== Number(h.ipId) && !(jobsParUser.get(u)?.enCours > 0)
           && !decision.fermer.some((f) => f.user === u)) {
         decision.fermer.push({ user: u, raison: 'ip_remplacee' });
+      }
+    }
+    // (13/11, décision de Nico : « seul mon poste est touché ») L'EXTENSION PILOTE (extensionPilote.js) : le navigateur du
+    // compte qui ENTRE dans son pilote, en SORT par le retour ou dont le pilote change est redémarré proprement (sauvegarde,
+    // fermeture ; rouvert au tour suivant sur sa copie) — comme une IP remplacée : jamais au milieu d'une tâche ni d'un
+    // « Me connecter ». Un compte sans pilote, avant comme maintenant, n'est ni relu ni redémarré.
+    if (navigateurs.sourceExtension) {
+      const pilotes = await listerPilotes(config).catch(() => []);
+      const connexionsVives = connexionsOuvertes();
+      for (const [u, h] of ouverts) {
+        if (!h?.extension?.pilote && !pilotes.includes(u)) continue;
+        if (jobsParUser.get(u)?.enCours > 0 || connexionsVives.has(u) || decision.fermer.some((f) => f.user === u)) continue;
+        const courante = await navigateurs.sourceExtension(u).catch(() => null);
+        const d = decisionPilote(h.extension, courante);
+        if (d.redemarrer) {
+          retoursImpossibles.delete(u);
+          journal.info('extension_pilote_redemarrage', { user: u, avant: h.extension?.version ?? null, apres: courante.version, pilote: courante.pilote });
+          decision.fermer.push({ user: u, raison: 'extension_pilote' });
+        } else if (d.raison === 'version_pas_au_dessus') {
+          const cle = `${h.extension?.version}→${courante.version}`;
+          if (retoursImpossibles.get(u) !== cle) {
+            retoursImpossibles.set(u, cle);
+            journal.alerte('extension_pilote_retour_impossible', { user: u, installee: h.extension?.version ?? null, servie: courante.version,
+              aide: 'Chrome ne descend jamais de version : servir la copie commune re-signée AU-DESSUS du pilote (plan du 13/11, retour)' });
+          }
+        }
       }
     }
     for (const f of decision.fermer) await fermer(f.user, f.raison).catch((e) => journal.erreur('fermeture_echec', { user: f.user, erreur: e.message }));

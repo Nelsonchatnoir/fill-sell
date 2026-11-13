@@ -12,8 +12,8 @@ function canalCourant() {
   } catch { return 'web'; }
 }
 
-export default function MentionsAbonnement({ lang = 'fr', cloud = false, essaiCloud = true, style = null }) {
-  const { texte, liens } = mentionsAbonnement({ canal: canalCourant(), lang, cloud, essaiCloud });
+export default function MentionsAbonnement({ lang = 'fr', cloud = false, essaiCloud = true, essaiAnnonce = false, style = null }) {
+  const { texte, liens } = mentionsAbonnement({ canal: canalCourant(), lang, cloud, essaiCloud, essaiAnnonce });
   return (
     <div data-mentions-abonnement="" style={{ margin: '14px 2px 4px', fontSize: 11, lineHeight: 1.5, color: '#6B7280', ...style }}>
       <p style={{ margin: 0 }}>{texte}</p>

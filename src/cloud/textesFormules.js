@@ -30,15 +30,26 @@ const FR = {
   // ne revient qu'après un rappel de la veille PROUVÉ sur un vrai client, Stripe et Apple (email_logs).
   lignePrixEssai: (p, zero) => `Puis ${p}/mois, sans engagement. Carte demandée, ${zero} aujourd'hui.`,
   lignePrix: (p) => `${p}/mois, sans engagement.`,
+  // (13/11, demande de Nico : « essai ou pas, date du premier prélèvement, AVANT de valider » ; point b : jamais « 7 jours »
+  // à qui la boutique fera payer tout de suite) ⚠ textes NEUFS, à valider par Nico.
+  lignePrixAujourdhui: (p) => `Pas d'essai : ${p} prélevés aujourd'hui, puis chaque mois. Sans engagement.`,
+  lignePrixSemaineSansDroits: (nom, p, b) => `Ton essai FillSell a déjà servi : ${b} t'affichera « 1 semaine gratuite », mais ${nom} ne démarre qu'au premier paiement de ${p}, 7 jours plus tard.`,
+  lignePrixEssaiIncertain: (p) => `${J} jours gratuits si ton identifiant Apple n'a jamais eu la semaine gratuite de FillSell ; sinon ${p} prélevés aujourd'hui. Apple t'affiche lequel avant que tu valides.`,
+  lignePrixSemaineIncertaine: (nom, p) => `Ton essai FillSell a déjà servi : ${p} prélevés aujourd'hui — ou, si Apple t'affiche « 1 semaine gratuite », ${nom} démarre au premier paiement, 7 jours plus tard.`,
   ligneCommune: 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, sans ordinateur.',
   // Un abonné : sa formule surlignée.
   taFormuleAvec: (palier, p) => `Ta formule : ${palier}. Avec Cloud : ${p}/mois.`,
   ctaEssaiAbonne: `Essayer le Cloud ${J} jours`,
   ctaAjouter: 'Ajouter le Cloud',
-  prorata: (date) => (date
-    ? `Tu paies la différence au prorata jusqu'à ta prochaine échéance du ${date}.`
-    : "Tu paies la différence au prorata jusqu'à ta prochaine échéance."),
+  // (13/11) Le serveur facture la différence TOUT DE SUITE (always_invoice) : le texte le dit (avant : « tu paies la
+  // différence au prorata… », sans dire quand).
+  prorata: (date, p) => `Pas d'essai : la différence au prorata jusqu'à ta prochaine échéance${date ? ` du ${date}` : ''} est prélevée aujourd'hui sur ta carte${p ? `, puis ${p}/mois` : ''}.`,
   boutique: (b) => `Le changement se fait dans ton abonnement ${b}, sans second abonnement.`,
+  // (13/11, point c de Nico) Abonné de la boutique de CE téléphone : aucun essai possible sans un binaire neuf ; le texte
+  // le dit, et quand part le prélèvement (Apple : montée immédiate ; Google : CHARGE_PRORATED_PRICE).
+  boutiqueMontee: (canal, p) => (canal === 'google'
+    ? `Pas d'essai : le changement se fait dans ton abonnement Google Play, sans second abonnement. La différence au prorata est prélevée aujourd'hui, puis ${p}/mois à ta date de renouvellement habituelle.`
+    : `Pas d'essai : le changement se fait dans ton abonnement App Store, sans second abonnement. ${p} sont prélevés aujourd'hui sur ton compte Apple, puis chaque mois.`),
   // (13/11, décision de Nico : « on ouvre partout ») Les textes « Les formules avec Cloud y arrivent bientôt… » (abonné
   // App Store / Google Play, client du Cloud seul d'une boutique) sont RETIRÉS, avec « … passe par l'App Store : le passage
   // à une formule se fait dans l'app » (faux : Cloud seul et formules sont deux groupes chez Apple, deux abonnements). Un
@@ -46,8 +57,14 @@ const FR = {
   // (12/11, point 4d de Nico) Pendant un essai, chaque texte dit ce qui se passe vraiment.
   essaiContinue: (fin, nom, p) => (fin ? `Ton essai continue jusqu'au ${fin}. Ensuite : ${nom}, ${p}/mois.` : `Ton essai continue jusqu'à sa fin. Ensuite : ${nom}, ${p}/mois.`),
   essaiArrete: (nom, p) => `${nom} n'a pas d'essai : ton essai s'arrête, ${p} sont prélevés aujourd'hui.`,
-  essaiBoutique: (b) => `Le changement se fait dans ton abonnement ${b} : pendant ton essai, il peut l'arrêter et faire payer la formule dès aujourd'hui. ${b} t'affiche le montant avant que tu valides.`,
-  essaiDejaPrisBoutique: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. ${b} peut t'afficher « 1 semaine gratuite » : cette semaine-là, ${nom} n'est pas encore activé ; il démarre au premier paiement, 7 jours plus tard. Continuer ?`,
+  // (13/11) Une montée pendant un essai de la boutique : Apple (« Upgrades … go into effect immediately ») arrête l'essai
+  // et prélève le prix entier ; Google (CHARGE_PRORATED_PRICE) arrête l'essai et prélève une somme au prorata.
+  essaiBoutique: (b, p, canal) => (canal === 'apple' && p
+    ? `Ton essai s'arrête : le changement se fait dans ton abonnement App Store et ${p} sont prélevés aujourd'hui sur ton compte Apple.`
+    : `Ton essai s'arrête : le changement se fait dans ton abonnement ${b}, qui prélève aujourd'hui une somme au prorata. ${b} t'affiche le montant avant que tu valides.`),
+  // (13/11, point b) Posée seulement quand la boutique OFFRIRA sa semaine (éligibilité lue) : « va », plus « peut ».
+  essaiDejaPrisBoutique: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. ${b} va t'afficher « 1 semaine gratuite » : cette semaine-là, ${nom} n'est pas encore activé ; il démarre au premier paiement, 7 jours plus tard. Continuer ?`,
+  essaiDejaPrisIncertain: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. Si ${b} t'affiche « 1 semaine gratuite », ${nom} n'est pas activé cette semaine-là : il démarre au premier paiement, 7 jours plus tard. Sinon, ${nom} est payé dès aujourd'hui. Continuer ?`,
   arreterEssai: "Arrêter l'essai",
   arreterEssaiTexte: "Ton essai s'arrête maintenant : rien n'est prélevé pour l'essai.",
   arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `C'est arrêté : ta formule ${palier} continue comme avant.` : "C'est arrêté. Rien n'a été prélevé."),
@@ -65,6 +82,9 @@ const FR = {
   sansEssaiConfirmer: (nom) => `Ton essai gratuit a déjà été utilisé : ${nom} sera payé dès aujourd'hui. Continuer ?`,
   achatOk: (nom) => `${nom} est activé.`,
   achatAttente: (nom) => `Paiement reçu : ${nom} s'active dès qu'il est confirmé.`,
+  // (13/11) Jamais « Paiement reçu » pour un essai (0 prélevé) ni pour un achat en attente d'approbation.
+  essaiAttente: (nom) => `C'est parti : l'essai de ${nom} démarre dès qu'il est confirmé.`,
+  achatApprobation: (nom) => `Achat en attente d'approbation : ${nom} démarre dès qu'il est validé. Rien n'est prélevé avant.`,
 
   // ── Réglages › Abonnement (texte 3) ──────────────────────────────────────────────────────────────────────────
   groupe: 'FillSell Cloud',
@@ -113,18 +133,26 @@ const EN = {
   ctaPasser: (nom) => `Switch to ${nom}`,
   lignePrixEssai: (p, zero) => `Then ${p}/mo, no commitment. Card required, ${zero} today.`,
   lignePrix: (p) => `${p}/mo, no commitment.`,
+  lignePrixAujourdhui: (p) => `No trial: ${p} charged today, then every month. No commitment.`,
+  lignePrixSemaineSansDroits: (nom, p, b) => `Your FillSell trial has already been used: ${b} will show "1 week free", but ${nom} only starts at the first payment of ${p}, 7 days later.`,
+  lignePrixEssaiIncertain: (p) => `${J} days free if your Apple Account has never had FillSell's free week; otherwise ${p} charged today. Apple shows you which before you confirm.`,
+  lignePrixSemaineIncertaine: (nom, p) => `Your FillSell trial has already been used: ${p} charged today — or, if Apple shows "1 week free", ${nom} starts at the first payment, 7 days later.`,
   ligneCommune: 'The Cloud posts, bumps and removes your listings from our servers, no computer needed.',
   taFormuleAvec: (palier, p) => `Your plan: ${palier}. With Cloud: ${p}/mo.`,
   ctaEssaiAbonne: `Try the Cloud for ${J} days`,
   ctaAjouter: 'Add the Cloud',
-  prorata: (date) => (date
-    ? `You pay the prorated difference until your next billing date, on ${date}.`
-    : 'You pay the prorated difference until your next billing date.'),
+  prorata: (date, p) => `No trial: the prorated difference until your next billing date${date ? `, on ${date},` : ''} is charged to your card today${p ? `, then ${p}/mo` : ''}.`,
   boutique: (b) => `The change is made in your ${b} subscription, with no second subscription.`,
+  boutiqueMontee: (canal, p) => (canal === 'google'
+    ? `No trial: the change is made in your Google Play subscription, with no second subscription. The prorated difference is charged today, then ${p}/mo on your usual renewal date.`
+    : `No trial: the change is made in your App Store subscription, with no second subscription. ${p} is charged to your Apple Account today, then every month.`),
   essaiContinue: (fin, nom, p) => (fin ? `Your trial continues until ${fin}. Then: ${nom}, ${p}/mo.` : `Your trial continues until it ends. Then: ${nom}, ${p}/mo.`),
   essaiArrete: (nom, p) => `${nom} has no trial: your trial stops, ${p} is charged today.`,
-  essaiBoutique: (b) => `The change is made in your ${b} subscription: during your trial, it may end the trial and charge the plan today. ${b} shows you the amount before you confirm.`,
-  essaiDejaPrisBoutique: (nom, b) => `Your FillSell free trial has already been used. ${b} may show you "1 week free": during that week, ${nom} is not turned on yet; it starts at the first payment, 7 days later. Continue?`,
+  essaiBoutique: (b, p, canal) => (canal === 'apple' && p
+    ? `Your trial stops: the change is made in your App Store subscription and ${p} is charged to your Apple Account today.`
+    : `Your trial stops: the change is made in your ${b} subscription, which charges a prorated amount today. ${b} shows you the amount before you confirm.`),
+  essaiDejaPrisBoutique: (nom, b) => `Your FillSell free trial has already been used. ${b} will show you "1 week free": during that week, ${nom} is not turned on yet; it starts at the first payment, 7 days later. Continue?`,
+  essaiDejaPrisIncertain: (nom, b) => `Your FillSell free trial has already been used. If ${b} shows you "1 week free", ${nom} is not turned on that week: it starts at the first payment, 7 days later. Otherwise, ${nom} is charged today. Continue?`,
   arreterEssai: 'Stop the trial',
   arreterEssaiTexte: 'Your trial stops now: nothing is charged for the trial.',
   arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `Stopped: your ${palier} plan carries on as before.` : 'Stopped. Nothing was charged.'),
@@ -139,6 +167,8 @@ const EN = {
   sansEssaiConfirmer: (nom) => `Your free trial has already been used: ${nom} will be charged from today. Continue?`,
   achatOk: (nom) => `${nom} is on.`,
   achatAttente: (nom) => `Payment received: ${nom} turns on as soon as it is confirmed.`,
+  essaiAttente: (nom) => `Done: the ${nom} trial starts as soon as it is confirmed.`,
+  achatApprobation: (nom) => `Purchase waiting for approval: ${nom} starts as soon as it is approved. Nothing is charged before.`,
 
   groupe: 'FillSell Cloud',
   ajouterLigne: (palier, nom, p) => `Add the Cloud to your ${palier} plan: ${nom}, ${p}/mo.`,

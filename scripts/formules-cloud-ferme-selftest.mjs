@@ -68,7 +68,10 @@ try {
               isOpen: true, onClose() {}, onUpgrade() {}, onCloudSeul() {}, onAjouterCloud() {}, onFormuleCloud() {}, lang, userId: 'u-ordinaire-0001',
               trigger, grille, ...DROITS[palier], ...(trigger === 'quota_geste' ? { quotaInfo: { geste: 'annonces', plafond: 40 } } : {}),
             }));
-            rendus[`modale/${nomEtat}/${palier}/${trigger}/${lang}/${grille ? 'grille' : 'sans'}`] = empreinte(html);
+            // (13/11, décision de Nico — « date du premier prélèvement, AVANT de valider ») La note de MONTÉE (CAS 4 / CAS 5 :
+            // ce qui est prélevé aujourd'hui, par canal) est ajoutée pour TOUS, formules ouvertes ou non : elle est retirée du rendu
+            // avant l'empreinte (verrou selftest:textes-paiement-verite) ; tout le reste reste comparé à l'octet au code d'avant.
+            rendus[`modale/${nomEtat}/${palier}/${trigger}/${lang}/${grille ? 'grille' : 'sans'}`] = empreinte(html.replace(/<p data-note-montee="[a-z]+"[^>]*>[^<]*<\/p>/g, ''));
           }
         }
       }
@@ -81,7 +84,11 @@ try {
               quotas: null, ouvrirOffres() {}, resiliation: { resilie: false, etape, setEtape() {}, lancer() {}, enCours: false },
               restauration: { enCours: false, lancer() {} }, actionsCloud: {},
             };
-            rendus[`abonnement/${nomEtat}/${palier}/${plateforme}/${lang}/${etape}`] = empreinte(renderToStaticMarkup(h(SPA.default, { c, T })));
+            // (13/11, audit des paiements de Nico) Le lien Google de la bande suit le PRODUIT du compte (google_product_id) ; pas
+            // encore lu (rendu serveur) : la liste des abonnements Google Play — ramené ici au lien d'avant (produit Founder pour
+            // tous) pour comparer tout le reste à l'octet.
+            rendus[`abonnement/${nomEtat}/${palier}/${plateforme}/${lang}/${etape}`] = empreinte(renderToStaticMarkup(h(SPA.default, { c, T }))
+              .split('href="https://play.google.com/store/account/subscriptions"').join('href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&amp;package=app.fillsell.app"'));
           }
         }
       }

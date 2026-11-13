@@ -51,6 +51,9 @@ export function lireConfig(env = process.env) {
     // place de celle notée dans le profil (navigateur.js, verdictEmpreinte) ; vide = aucun changement permis.
     empreinteAutorisee: env.EMPREINTE_AUTORISEE?.trim() || '',
     dossierExtension: env.DOSSIER_EXTENSION?.trim() || '/srv/fillsell-cloud/extension',
+    // (13/11, décision de Nico) Les copies PILOTES de l'extension, une par compte (<dossier>/<user_id>/{extension,crx}) :
+    // posées à la main sur le serveur, jamais par la base (extensionPilote.js). Absent = la copie commune pour tous.
+    dossierExtensionPilote: env.DOSSIER_EXTENSION_PILOTE?.trim() || '/srv/fillsell-cloud/extension-pilote',
     socketDocker: env.SOCKET_DOCKER?.trim() || '/var/run/docker.sock',
     // Capacité MESURÉE du serveur (navigateurs simultanés). Défaut prudent.
     navigateursMax: lireEntier(env.NAVIGATEURS_MAX, 8),

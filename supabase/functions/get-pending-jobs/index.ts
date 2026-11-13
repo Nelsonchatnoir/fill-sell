@@ -11,7 +11,8 @@ import { decisionDepotJamaisVu, messageDepotJamaisVuSansObjet, champsDepotJamais
 import { isbnAvantQuestion, messageRequisRepublication } from "../_shared/isbn-republication.js";
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
-import { premiereSynchroAPoser, plateformesDejaPosees, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
+import { premiereSynchroAPoser, plateformesDejaPosees, plateformesSansSessionVue, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
+import { lirePreuvesAction, completerVeriteLue, GARDE_ACTION_MS } from "../_shared/preuve-action.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
@@ -67,6 +68,8 @@ import { CORRECTIFS_EXTENSION, correctifPourJob, champsReamorcageCorrectif, buil
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // (13/11, décision D10 de Nico) Un compte eBay étranger ne passe jamais par ebay.fr, même par l'extension.
 import { decisionEbayEtrangerExtension, ecritureAttenteSiteEbay } from "../_shared/ebay-site-attente.js";
+// (13/11, étape 4 L1) Le site de chaque compte de plateforme, noté une fois par la porte unique (comptes_plateformes).
+import { noterComptesDesSessions, sessionsDejaNotees } from "../_shared/comptes-plateformes.js";
 import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js";
 import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
 // (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
@@ -607,6 +610,9 @@ async function oplaRelieDuCompte(admin: any, userId: string): Promise<boolean | 
 // (02/11, facture Supabase) beta_flags et palier du compte, gardés par instance tant que compte_signal.profil_version
 // ne change pas (le poll n'écrit jamais ces colonnes ; tout changement incrémente la version dans sa transaction).
 const CACHE_PROFIL = new Map<string, { v: number; beta_flags?: Record<string, unknown> | null; palier?: unknown }>();
+// (13/11, DET) Les actions réussies lues pour la première synchro d'une plateforme dont la sonde se tait : gardées 10 min
+// par instance (clé : compte + plateformes candidates) — jamais relues à chaque poll.
+const CACHE_PREUVES_PREMIERE = new Map<string, { at: number; preuves: Record<string, { le: number; source: string }> }>();
 
 // (05/11 17:25, décision de Nico) La reprise par paliers après une restriction Vinted est supprimée (rythme normal dès la levée).
 const REPRISE_PAR_PALIERS_VINTED = false;
@@ -2167,7 +2173,26 @@ serve(async (req) => {
               sessions: (profP as { extension_sessions?: unknown } | null)?.extension_sessions,
               runs: (runsP ?? []) as Array<{ kind?: string; platform?: string | null; status?: string; declencheur?: string | null }>,
               runsComplets: !errRunsP && (runsP ?? []).length < 200, reglage: reglageP,
+              preuves: null as Record<string, { le: number; source: string }> | null,
             };
+            // ── (13/11, 2e réponse de Nico — DET, ed4531e2) UNE ACTION RÉUSSIE COMPTE COMME SESSION VUE ─────────────
+            // Une plateforme choisie, jamais relevée, dont la sonde se tait (403) : ses actions réussies des dernières
+            // 24 h (vente lue, dépôt, retrait fait — _shared/preuve-action.js) sont lues, et seulement pour elle (aucune
+            // candidate → aucune requête). Gardées 10 min par instance : un compte dont la sonde se tait ne relit pas
+            // ses preuves à chaque poll. Illisible → rien de prouvé (comme avant).
+            const sansSessionP = plateformesSansSessionVue(entreeP);
+            if (sansSessionP.length) {
+              const cleP = `${user.id}|${sansSessionP.join(",")}`;
+              const enCache = CACHE_PREUVES_PREMIERE.get(cleP);
+              if (enCache && Date.now() - enCache.at < 10 * 60_000) {
+                entreeP.preuves = enCache.preuves;
+              } else {
+                const lu = await lirePreuvesAction(adminP, { userId: user.id, plateformes: sansSessionP, fenetreMs: GARDE_ACTION_MS });
+                entreeP.preuves = lu.preuves;
+                if (CACHE_PREUVES_PREMIERE.size > 500) CACHE_PREUVES_PREMIERE.clear();
+                CACHE_PREUVES_PREMIERE.set(cleP, { at: Date.now(), preuves: lu.preuves });
+              }
+            }
             let aPoser = premiereSynchroAPoser(entreeP);
             // Une fois par PLATEFORME : la marque est la trace de la première synchro déjà posée (usage_logs
             // premiere_synchro_auto, ses `plateformes`), lue seulement quand une plateforme est candidate ; illisible → rien.
@@ -10880,6 +10905,11 @@ serve(async (req) => {
         contexte.sessions = prof?.extension_sessions ?? null;
         paysAppareilCtx = paysAppareilDesReglages(prof?.platform_settings ?? null);
       } catch (_e) { /* idem */ }
+      // (13/11, étape 4 L1) Les sessions que le popup lit disent le compte Vinted / Depop : noté une fois
+      // (comptes_plateformes ; une écriture seulement si le site change ; table absente avant M1 → rien).
+      try {
+        if (contexte.sessions) await noterComptesDesSessions(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), user.id, contexte.sessions);
+      } catch (_e) { /* le contexte ne doit JAMAIS empêcher de publier */ }
       // (09/10, Marta) LE VENDEUR VINTED ÉTRANGER : le popup ≥ 0.6.106 lui
       // propose « Autoriser vinted.<cc> » (permission OPTIONNELLE) — jamais à un
       // Français, jamais à qui travaille déjà sur vinted.fr, jamais pour un pays
@@ -10912,7 +10942,15 @@ serve(async (req) => {
       // `sessions.ebay` — on leur retire le `true` sans preuve : la ligne
       // redevient « pas encore vérifié », plus jamais « Connectée » à tort.
       try {
-        const { data: verite } = await userClient.rpc("plateformes_verite");
+        const { data: veriteBrute } = await userClient.rpc("plateformes_verite");
+        // (13/11, 2e réponse de Nico — DET, ed4531e2) La vérité servie au popup est COMPLÉTÉE par les actions réussies
+        // (vente lue, dépôt, retrait fait, relevé — _shared/preuve-action.js) : jamais « Pas encore connecté à FillSell » à
+        // qui vient de réussir une action ; un compte sans plateforme choisie voit ses plateformes utilisées. Une vérité
+        // qui applique déjà la règle (migration 20261113213000) n'est pas relue. Illisible → la vérité telle quelle.
+        let verite: unknown = veriteBrute;
+        try {
+          verite = await completerVeriteLue(userClient, veriteBrute, { userId: user.id });
+        } catch (_e) { verite = veriteBrute; }
         const v = verite as { ok?: boolean; plateformes?: Record<string, { etat?: string }> } | null;
         if (v && v.ok === true) {
           contexte.verite = v;
@@ -14671,6 +14709,8 @@ serve(async (req) => {
     //      update coin_config set value = 0 where key = 'vinted_pays_it';
     //    Fermé → rien de tout cela n'est servi : le job part comme avant.
     // ⛔ Une réponse de l'utilisateur dans vintedAspects prime toujours.
+    // (13/11, étape 4 L1) Les sessions lues ici servent aussi à noter le compte Vinted (bloc suivant) : aucune lecture de plus.
+    let sessionsComptesLues: unknown = undefined;
     try {
       const jobsVinted = (out as unknown as Array<Record<string, unknown>>).filter((j) => j.platform === "vinted");
       if (jobsVinted.length) {
@@ -14689,6 +14729,7 @@ serve(async (req) => {
         const { data: profZe } = await userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
         const identZe = (((profZe?.extension_sessions ?? {}) as Record<string, unknown>).vinted_identite ?? null) as
           { pays?: unknown; langue?: unknown } | null;
+        sessionsComptesLues = profZe?.extension_sessions ?? null;
         const paysSonde = /^[A-Z]{2}$/.test(String(identZe?.pays ?? "")) ? String(identZe!.pays) : null;
         const { data: cfgPays } = await configPrefixe(userClient, "vinted_pays_", versionCoinConfig);
         const ouverts = new Set(((cfgPays ?? []) as Array<{ key: string; value: number }>)
@@ -14806,6 +14847,28 @@ serve(async (req) => {
       }
     } catch (e) {
       console.warn(`[get-pending-jobs] Vinted zone euro : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
+
+    // ══ (13/11, étape 4 « comptes hors France », L1) LE SITE DE CHAQUE COMPTE DE PLATEFORME, LU UNE FOIS ══════════════
+    // La sonde de l'extension dit le pays et la langue du compte Vinted (extension_sessions.vinted_identite, ≥ 0.6.69) et
+    // le pays du compte Depop (depop_identite, 0.6.187) : noté dans public.comptes_plateformes (VINTED_IT, DEPOP_GB…) par la
+    // porte unique (_shared/comptes-plateformes.js) — une écriture seulement si le site change, aucune requête au poll
+    // suivant (mémoire de l'isolat), table absente avant la migration M1 → rien. Sessions DÉJÀ lues par la zone euro quand
+    // des tâches Vinted partent ; seules des tâches Depop → une lecture du profil au plus par 30 min. Sonde muette : rien
+    // (jamais une ligne effacée). Jamais bloquant : la distribution part telle quelle.
+    if (out.some((j) => j.platform === "vinted" || j.platform === "depop")) {
+      try {
+        let sessionsC = sessionsComptesLues;
+        if (sessionsC === undefined && out.some((j) => j.platform === "depop") && !sessionsDejaNotees(user.id)) {
+          const { data: profC } = await userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          sessionsC = (profC as { extension_sessions?: unknown } | null)?.extension_sessions ?? null;
+        }
+        if (sessionsC) {
+          const notes = await noterComptesDesSessions(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), user.id, sessionsC);
+          const ecrits = notes.filter((r) => r.ecrit);
+          if (ecrits.length) console.log(`[get-pending-jobs] user=${user.id} : site du compte noté (${ecrits.map((r) => `${r.plateforme} ${r.motif}`).join(", ")})`);
+        }
+      } catch (_e) { /* jamais un point de panne */ }
     }
 
     // ── MAINTIEN EN ÉVEIL : COMPTER LA FILE RETENUE, PAS SEULEMENT SERVIE ───

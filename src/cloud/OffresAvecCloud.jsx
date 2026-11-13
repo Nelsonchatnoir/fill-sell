@@ -13,7 +13,7 @@
 import { Cloud } from 'lucide-react';
 import { C, MENTHE, BLANC, DEGRADE_TEAL } from './theme';
 import { textesFormules, NOMS_FORMULES, NOMS_PALIERS_SEULS } from './textesFormules';
-import { texteNoteCarte } from './formulesCloud';
+import { texteNoteCarte, texteLignePrix } from './formulesCloud';
 import { BlocCompletCloud } from './InterrupteurCloud';
 import { prixOuChargement, prixPret, supplementAffiche, zeroAffiche } from '../lib/prixBoutique';
 import { mentionFormuleCloud } from '../utils/mentionsAbonnement';
@@ -135,7 +135,7 @@ export function CarteFormuleCloud({ carte, lang = 'fr', palierIci = 'gratuit', e
             {carte.enLecture ? '…' : libelleCta}
           </button>
           <p data-formule-ligne-prix={carte.lignePrix} style={{ margin: 0, textAlign: 'center', fontSize: 12.5, fontWeight: 600, lineHeight: 1.45, color: sous }}>
-            {carte.lignePrix === 'essai' ? T.lignePrixEssai(prix, zeroAffiche(f, lang)) : T.lignePrix(prix)}
+            {texteLignePrix(carte, { T, nom, prix, zero: zeroAffiche(f, lang), canalApp })}
           </p>
         </>
       )}

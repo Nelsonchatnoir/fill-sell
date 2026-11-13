@@ -519,3 +519,28 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   pour lui (`abonneBoutique`, `src/cloud/achatFormuleCloud.js`).
 - Verrou : `npm run selftest:formules-ouverture-partout` (19 rouges sur 5274cd4, 33 verts après) ;
   `selftest:formules-canal-ferme` mis à jour (13/11).
+
+## ⛔ 13/11/2026 (2e réponse de Nico, « paiements : tout doit être parfait et clair ») — avant de valider, chaque écran dit la formule, le prix, l'essai ou pas, la date du 1er prélèvement ; jamais « 7 jours » non su
+- **La semaine d'Apple se LIT, sans binaire neuf** : `src/lib/eligibiliteApple.js` lit l'historique de l'identifiant Apple du
+  téléphone (`getPurchases()` du module 8.3.3 = `Transaction.all`, la transaction signée porte `offerType`) et applique la
+  règle d'Apple PAR GROUPE (« FillSell Plan » / « FillSell Cloud ») : abonnement en cours du groupe → non ; offre
+  d'introduction déjà utilisée dans le groupe → non ; sinon oui (un ex-abonné échu SANS offre utilisée y a droit). Lecture
+  échouée → « inconnu ». `etatEssaiBoutique(produit)` (`lib/prixBoutique.js`) : 'oui' | 'non' | 'inconnu' — web 'oui' (le
+  serveur décide), Google = l'offre rendue par Google (il ne rend que les offres auxquelles le compte a droit).
+- **La ligne de prix d'une carte suit la règle du canal** (`cartesFormulesCloud` → `lignePrix`, texte `texteLignePrix`) :
+  essai certain → « 7 jours gratuits … 0 aujourd'hui » ; pas d'essai → « Pas d'essai : {P} prélevés aujourd'hui » ; boutique
+  qui offre sa semaine à un compte dont l'essai FillSell a servi → la semaine SANS formule, démarrage au 1er paiement ;
+  inconnu (iPhone) → les deux issues dites. Abonné : Stripe « la différence au prorata … est prélevée aujourd'hui »
+  (always_invoice) ; App Store « {P} sont prélevés aujourd'hui » (montée immédiate) ; Google Play « la différence au prorata
+  aujourd'hui, puis {P} à ta date habituelle » (CHARGE_PRORATED_PRICE). Formules classiques (CAS 4 / 5) : `utils/texteMontee.js`.
+- **Résilier sur le web** : `cancel-subscription` n'écrit plus jamais `is_premium=false` faute de client Stripe ; rien de
+  vivant chez Stripe → 409 `rien_a_resilier` + la phrase (où ça s'arrête). Formule EN ESSAI résiliée → arrêtée tout de suite,
+  rien prélevé. « Se désabonner » caché à qui n'a pas de client Stripe ; la bande « géré par Apple / Google / payé par carte »
+  suit le canal QUI FACTURE (profil), plus l'appareil.
+- **Mails des formules** : plus de « On te prévient la veille » ; Apple / Google : l'arrêt chez eux ; arrêt programmé Stripe :
+  plus de « Garder le Cloud » (ne fait rien pour une formule) ; facture de prorata d'une montée = « Ta formule passe à … »,
+  plus « renouvelée » ; arrêt de l'essai d'un abonné : « ta formule {palier} continue » ; impayé boutique : toute la formule en pause.
+- Verrou : `npm run selftest:textes-paiement-verite` (l'oracle = la règle de chaque canal, écrite dans le test ; 55 rouges sur
+  d73cd9d, 69 verts après). Selftests mis à jour (13/11, décision de Nico) : prix-boutique, cloud-achat, formules-cloud-offres,
+  formules-cloud-ferme (note de montée hors empreinte, lien Google normalisé), formules-cloud-contrat-app,
+  formules-ouverture-partout, paiements-non-regression (`scripts/fixtures/paiements-lignes-audit-1311.json`).

@@ -143,7 +143,10 @@ export function evenementPaiementStripe(facture, sub = null) {
   const ligne = (facture.lines?.data ?? [])[0] ?? null;
   const finLigne = ligne?.period?.end ?? null;
   const essaiFini = typeof sub?.trial_end === 'number' && Math.abs((ligne?.period?.start ?? 0) - sub.trial_end) < 3600;
-  const contexte = facture.billing_reason === 'subscription_create' ? 'debut' : essaiFini ? 'fin_essai' : 'renouvellement';
+  // (13/11, audit de Nico) La facture de prorata d'une MONTÉE (create-checkout-session always_invoice → billing_reason
+  // subscription_update) n'est pas un renouvellement : 'changement' (formule) ; le Cloud seul n'en a pas (repli inchangé).
+  const contexte = facture.billing_reason === 'subscription_create' ? 'debut' : essaiFini ? 'fin_essai'
+    : facture.billing_reason === 'subscription_update' && formuleDeSub(sub).formule ? 'changement' : 'renouvellement';
   return [{ evenement: 'paiement', cle: String(facture.id), canal: 'stripe',
     faits: { contexte, montant, prochaineIso: secIso(finLigne ?? finPeriodeStripe(sub)), ...formuleDeSub(sub) } }];
 }
@@ -476,18 +479,30 @@ const FORMULE_FR = {
     fin: (q) => (q ? `Ton essai est gratuit jusqu'au ${q} (heure de Paris).` : "Ton essai est gratuit jusqu'à sa date de fin, affichée dans FillSell (Réglages → Abonnement)."),
     suite: (n, p, c) => `Ensuite, si tu ne fais rien, ${n} continue${p ? ` à ${p} par mois` : ' au prix mensuel affiché lors de ta souscription'}, ${c === 'apple' ? 'prélevés sur ton compte Apple' : c === 'google' ? 'prélevés sur ton compte Google Play' : 'prélevés sur la carte que tu as enregistrée'}.`,
     abonne: (n, palier, q) => `Pendant 7 jours, tu ne paies que ta formule ${palier}. ${q ? `Le ${q}` : "À la fin de l'essai"}, elle devient ${n} ; la différence jusqu'à ta prochaine échéance est ajoutée à ta prochaine facture.`,
-    changer: (autre) => `Tu peux passer à ${autre} ou arrêter à tout moment, dans Réglages → Abonnement. On te prévient la veille.`,
-    changerAbonne: (palier) => `Tu préfères rester en ${palier} sans Cloud ? Dis-le avant la fin de l'essai dans Réglages → Abonnement : rien ne change alors. On te prévient la veille.`,
+    // (13/11, audit des paiements de Nico) « On te prévient la veille » RETIRÉ (décision 5a / 4b du 12/11 : la phrase ne
+    // revient qu'après une veille réelle prouvée) ; Apple / Google : l'arrêt se fait chez eux (le paragraphe suivant le
+    // dit), « ou arrêter … dans Réglages → Abonnement » était faux pour eux.
+    changer: (autre, c) => (c === 'apple' || c === 'google'
+      ? `Tu peux passer à ${autre} dans l'app FillSell, Réglages → Abonnement.`
+      : `Tu peux passer à ${autre} ou arrêter à tout moment, dans Réglages → Abonnement.`),
+    changerAbonne: (palier) => `Tu préfères rester en ${palier} sans Cloud ? Dis-le avant la fin de l'essai dans Réglages → Abonnement : rien ne change alors.`,
   },
   paiement: {
-    sujet: { fin_essai: (n) => `Ton essai est fini : ${n} continue`, renouvellement: (n) => `${n} est renouvelée`, debut: (n) => `${n} a commencé` },
-    intro: { fin_essai: (n) => `Ton essai gratuit est terminé : ${n} continue.`, renouvellement: (n) => `Ta formule ${n} vient d'être renouvelée.`, debut: (n) => `Ta formule ${n} a commencé.` },
+    // (13/11) 'changement' : la facture de prorata d'une montée (Stripe billing_reason subscription_update) — avant, elle
+    // se disait « {n} est renouvelée ».
+    sujet: { fin_essai: (n) => `Ton essai est fini : ${n} continue`, renouvellement: (n) => `${n} est renouvelée`, debut: (n) => `${n} a commencé`, changement: (n) => `Ta formule passe à ${n}` },
+    intro: { fin_essai: (n) => `Ton essai gratuit est terminé : ${n} continue.`, renouvellement: (n) => `Ta formule ${n} vient d'être renouvelée.`, debut: (n) => `Ta formule ${n} a commencé.`,
+      changement: (n) => `Ta formule passe à ${n} dès maintenant. Ce paiement est la différence au prorata jusqu'à ta prochaine échéance.` },
   },
   arret_essai: {
     sujet: (n) => `${n} est arrêtée, sans aucun prélèvement`,
     intro: (n, q) => (q ? `C'est fait : ton essai de ${n} est arrêté depuis le ${q} (heure de Paris).` : `C'est fait : ton essai de ${n} est arrêté.`),
     aucun: 'Aucun prélèvement : rien ne sera débité pour cet essai.',
     revenir: "Tu changes d'avis ? Les formules avec Cloud restent disponibles dans l'app. L'essai gratuit, lui, ne se prend qu'une fois.",
+    // (13/11) L'essai du Cloud d'un ABONNÉ (cancel-subscription : schedule rendu) : rien n'est prélevé POUR LE CLOUD, et
+    // sa formule continue d'être facturée comme avant — le mail le dit (avant : « {n} est arrêtée, sans aucun prélèvement »).
+    sujetAbonne: 'Ton essai du Cloud est arrêté, sans prélèvement pour le Cloud',
+    aucunAbonne: (palier) => `Rien n'est prélevé pour le Cloud. Ta formule ${palier} continue comme avant, à son prix habituel.`,
   },
   arret_programme: {
     sujet: (n, j) => (j ? `${n} s'arrêtera le ${j}` : `${n} s'arrêtera à la fin de la période payée`),
@@ -499,7 +514,9 @@ const FORMULE_FR = {
   impaye: {
     sujet: (n) => `Ton paiement ${n} n'est pas passé`,
     intro: (n, c) => `${c === 'apple' ? 'Apple' : 'Google Play'} n'a pas réussi à prélever ${n}.`,
-    pause: 'En attendant, le Cloud est en pause. Dès que le paiement passe, tout repart tout seul.',
+    // (13/11) Impayé = gratuit (règle du 29/10) : la formule ENTIÈRE est en pause (planAchatBoutique « off » : les
+    // drapeaux du palier tombent aussi), pas seulement le Cloud.
+    pause: (n) => `En attendant, ${n} est en pause : le Cloud et les avantages de ta formule. Dès que le paiement passe, tout repart tout seul.`,
   },
 };
 const FORMULE_EN = {
@@ -510,18 +527,23 @@ const FORMULE_EN = {
     fin: (q) => (q ? `Your trial is free until ${q} (Paris time).` : 'Your trial is free until its end date, shown in FillSell (Settings → Subscription).'),
     suite: (n, p, c) => `After that, if you do nothing, ${n} continues${p ? ` at ${p} a month` : ' at the monthly price shown when you subscribed'}, ${c === 'apple' ? 'charged to your Apple Account' : c === 'google' ? 'charged to your Google Play account' : 'charged to the card you saved'}.`,
     abonne: (n, palier, q) => `For 7 days you only pay your ${palier} plan. ${q ? `On ${q}` : 'When the trial ends'}, it becomes ${n}; the difference until your next renewal is added to your next invoice.`,
-    changer: (autre) => `You can switch to ${autre} or stop at any time, in Settings → Subscription. We will remind you the day before.`,
-    changerAbonne: (palier) => `Prefer to stay on ${palier} without the Cloud? Say so before the trial ends in Settings → Subscription: nothing changes then. We will remind you the day before.`,
+    changer: (autre, c) => (c === 'apple' || c === 'google'
+      ? `You can switch to ${autre} in the FillSell app, Settings → Subscription.`
+      : `You can switch to ${autre} or stop at any time, in Settings → Subscription.`),
+    changerAbonne: (palier) => `Prefer to stay on ${palier} without the Cloud? Say so before the trial ends in Settings → Subscription: nothing changes then.`,
   },
   paiement: {
-    sujet: { fin_essai: (n) => `Your trial is over: ${n} continues`, renouvellement: (n) => `${n} has renewed`, debut: (n) => `${n} has started` },
-    intro: { fin_essai: (n) => `Your free trial is over: ${n} continues.`, renouvellement: (n) => `Your ${n} plan has just renewed.`, debut: (n) => `Your ${n} plan has started.` },
+    sujet: { fin_essai: (n) => `Your trial is over: ${n} continues`, renouvellement: (n) => `${n} has renewed`, debut: (n) => `${n} has started`, changement: (n) => `Your plan moves to ${n}` },
+    intro: { fin_essai: (n) => `Your free trial is over: ${n} continues.`, renouvellement: (n) => `Your ${n} plan has just renewed.`, debut: (n) => `Your ${n} plan has started.`,
+      changement: (n) => `Your plan moves to ${n} right now. This payment is the prorated difference until your next billing date.` },
   },
   arret_essai: {
     sujet: (n) => `${n} is stopped, with no charge`,
     intro: (n, q) => (q ? `Done: your ${n} trial was stopped on ${q} (Paris time).` : `Done: your ${n} trial is stopped.`),
     aucun: 'No charge: nothing will be charged for this trial.',
     revenir: 'Changed your mind? Plans with the Cloud stay available in the app. The free trial can only be taken once.',
+    sujetAbonne: 'Your Cloud trial is stopped, with no charge for the Cloud',
+    aucunAbonne: (palier) => `Nothing is charged for the Cloud. Your ${palier} plan carries on as before, at its usual price.`,
   },
   arret_programme: {
     sujet: (n, j) => (j ? `${n} will stop on ${j}` : `${n} will stop at the end of the paid period`),
@@ -533,7 +555,7 @@ const FORMULE_EN = {
   impaye: {
     sujet: (n) => `Your ${n} payment didn't go through`,
     intro: (n, c) => `${c === 'apple' ? 'Apple' : 'Google Play'} couldn't charge ${n}.`,
-    pause: 'Meanwhile, the Cloud is paused. As soon as the payment goes through, everything starts again on its own.',
+    pause: (n) => `Meanwhile, ${n} is paused: the Cloud and your plan's features. As soon as the payment goes through, everything starts again on its own.`,
   },
 };
 /** Le mail d'une formule avec Cloud (même forme que texteMailCloud) ; null pour un événement sans mail. */
@@ -556,11 +578,11 @@ export function texteMailFormule({ evenement, lang = 'fr', canal = null, faits =
     const palier = nomPalierSeul(f);
     const corps = faits.abonne === true
       ? [T.salut, E.intro(n), E.abonne(n, palier, q), E.changerAbonne(palier), T.essai_debut.connecter]
-      : [T.salut, E.intro(n), E.fin(q), E.suite(n, p, c), E.changer(nomDeFormule(AUTRE_FORMULE[f])), T.essai_debut.arret[c], T.essai_debut.connecter];
+      : [T.salut, E.intro(n), E.fin(q), E.suite(n, p, c), E.changer(nomDeFormule(AUTRE_FORMULE[f]), c), T.essai_debut.arret[c], T.essai_debut.connecter];
     return { ...base, sujet: E.sujet(n), titre: E.sujet(n), preheader: T.essai_debut.preheader(q), prixAffiche: p, bouton, paragraphes: corps };
   }
   if (evenement === 'paiement') {
-    const ctx = ['fin_essai', 'renouvellement', 'debut'].includes(faits.contexte) ? faits.contexte : 'renouvellement';
+    const ctx = ['fin_essai', 'renouvellement', 'debut', 'changement'].includes(faits.contexte) ? faits.contexte : 'renouvellement';
     const p = formatPrix(faits.montant, L);
     const j = jourParis(faits.prochaineIso, L);
     const E = T.paiement;
@@ -571,6 +593,11 @@ export function texteMailFormule({ evenement, lang = 'fr', canal = null, faits =
     if (faits.aucunPrelevement !== true) return null;
     const q = quandAvecHeure(faits.arreteIso, L);
     const E = F.arret_essai;
+    // (13/11) L'essai du Cloud d'un abonné : sa formule continue (formule_continue du serveur) — le mail le dit.
+    if (faits.abonne === true) {
+      return { ...base, sujet: E.sujetAbonne, titre: E.sujetAbonne, preheader: E.sujetAbonne, prixAffiche: null, bouton: { texte: T.bouton.stripe, url: LIEN_APP },
+        paragraphes: [T.salut, E.intro(n, q), E.aucunAbonne(nomPalierSeul(f)), E.revenir, ...(c === 'stripe' ? [T.accuse] : [])] };
+    }
     return { ...base, sujet: E.sujet(n), titre: E.sujet(n), preheader: T.arret_essai.preheader, prixAffiche: null, bouton: { texte: T.bouton.stripe, url: LIEN_APP },
       paragraphes: [T.salut, E.intro(n, q), E.aucun, E.revenir, ...(c === 'stripe' ? [T.accuse] : [])] };
   }
@@ -581,14 +608,17 @@ export function texteMailFormule({ evenement, lang = 'fr', canal = null, faits =
       return { ...base, sujet: E.sujetRetrait(j), titre: E.sujetRetrait(j), preheader: E.sujetRetrait(j), prixAffiche: null, bouton,
         paragraphes: [T.salut, E.retrait(nomPalierSeul(f), j), ...(c === 'stripe' ? [T.accuse] : [])] };
     }
+    // (13/11, audit de Nico) Stripe : « Réglages → Abonnement → Garder le Cloud » ne lève l'arrêt que d'un Cloud SEUL
+    // (cancel-subscription { option: 'cloud', reprendre }) — pour une formule, rien ne le fait : la phrase est retirée
+    // (Apple / Google : remettre le renouvellement chez eux, vrai pour une formule aussi).
     return { ...base, sujet: E.sujet(n, j), titre: E.sujet(n, j), preheader: T.arret_programme.preheader(j), prixAffiche: null, bouton,
-      paragraphes: [T.salut, E.intro(n), E.fin(j), T.arret_programme.garder[c](j), ...(c === 'stripe' ? [T.accuse] : [])] };
+      paragraphes: [T.salut, E.intro(n), E.fin(j), ...(c === 'stripe' ? [] : [T.arret_programme.garder[c](j)]), ...(c === 'stripe' ? [T.accuse] : [])] };
   }
   if (evenement === 'impaye') {
     if (c !== 'apple' && c !== 'google') return null;
     const E = F.impaye;
-    return { ...base, sujet: E.sujet(n), titre: E.sujet(n), preheader: E.pause, prixAffiche: null, bouton,
-      paragraphes: [T.salut, E.intro(n, c), E.pause, T.impaye.relancer[c]] };
+    return { ...base, sujet: E.sujet(n), titre: E.sujet(n), preheader: E.pause(n), prixAffiche: null, bouton,
+      paragraphes: [T.salut, E.intro(n, c), E.pause(n), T.impaye.relancer[c]] };
   }
   return null;
 }

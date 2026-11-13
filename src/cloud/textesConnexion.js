@@ -85,11 +85,23 @@ const FR = {
     ? "Tu as déjà profité de l'essai gratuit."
     : raison === 'boutique_sans_essai'
       ? "Ta boutique d'applications ne propose pas d'essai gratuit à ce compte."
-      : "L'essai gratuit a déjà servi sur cet appareil ou ce compte de plateforme."} Le Cloud démarre donc tout de suite, à ${PRIX}/mois, et tu l'arrêtes quand tu veux. Continuer ?`,
+      : "L'essai gratuit a déjà servi sur cet appareil ou ce compte de plateforme."} Le Cloud démarre donc tout de suite : ${PRIX} prélevés aujourd'hui, puis chaque mois, et tu l'arrêtes quand tu veux. Continuer ?`,
   sansEssaiStore: "Si ta boutique d'applications affiche une semaine offerte, le Cloud ne tournera qu'à partir du premier paiement.",
+  // (13/11, point b de Nico) La semaine de la boutique est LUE avant la feuille : chaque cas a sa phrase vraie.
+  // ⚠ textes NEUFS, à valider par Nico.
+  // (13/11) Réglages, bloc du Cloud seul : la boutique n'offre pas sa semaine, ou on ne sait pas (iPhone).
+  noteSansSemaine: `Pas d'essai : ${PRIX} prélevés aujourd'hui, puis chaque mois. Tu l'arrêtes quand tu veux.`,
+  noteSemaineIncertaine: `Apple te dit avant que tu valides si ta semaine gratuite t'est offerte ; sinon ${PRIX} prélevés aujourd'hui, puis chaque mois.`,
+  semaineSansDroits: (b) => `Tu as déjà profité de l'essai gratuit FillSell. ${b} va t'afficher « 1 semaine gratuite » : cette semaine-là, le Cloud ne tourne pas ; il démarre au premier paiement de ${PRIX}, 7 jours plus tard. Continuer ?`,
+  essaiIncertain: `Apple te dit dans sa fenêtre, avant que tu valides, si ta semaine gratuite t'est offerte. Sinon, le Cloud démarre tout de suite : ${PRIX} prélevés aujourd'hui, puis chaque mois, et tu l'arrêtes quand tu veux. Continuer ?`,
+  semaineIncertaine: `Tu as déjà profité de l'essai gratuit FillSell : ${PRIX} prélevés aujourd'hui — ou, si Apple t'affiche « 1 semaine gratuite », le Cloud ne tourne pas cette semaine-là et démarre au premier paiement, 7 jours plus tard. Continuer ?`,
   achatEchec: "Le paiement du Cloud n'a pas pu s'ouvrir. Rien n'a été prélevé : réessaie dans un instant.",
   prixBoutiqueAbsent: "Le prix de ta boutique d'applications n'est pas encore affiché : rien n'a été prélevé, réessaie dans un instant.",
   achatAttente: 'Paiement reçu : ton Cloud démarre dans un instant.',
+  // (13/11, audit des paiements) « Paiement reçu » était dit aussi d'un ESSAI (0 prélevé) et d'un achat en attente
+  // d'approbation (iPhone, « Demander l'achat ») : rien n'était payé.
+  essaiAttente: "C'est parti : ton essai gratuit démarre dans un instant.",
+  achatApprobation: "Achat en attente d'approbation : FillSell Cloud démarre dès qu'il est validé. Rien n'est prélevé avant.",
   achatOk: 'Cloud actif : connecte maintenant tes plateformes.',
   // (07/11, Nico) « Restaurer les achats » retrouve aussi l'option Cloud (prise seule ou avec une formule).
   restaureOk: 'FillSell Cloud restauré : il est actif.',
@@ -120,6 +132,10 @@ const FR = {
   arretRien: "Aucun abonnement FillSell Cloud en cours n'a été trouvé : il n'y avait rien à arrêter.",
   refusCarte: "Cette carte a déjà servi à un essai gratuit : l'essai s'est arrêté, rien n'a été prélevé. Tu peux prendre le Cloud sans essai.",
   refusComptePlateforme: "Ce compte de plateforme a déjà servi à un essai gratuit : l'essai s'est arrêté. Tu peux prendre le Cloud sans essai.",
+  // (13/11, audit des paiements de Nico) Pris dans une BOUTIQUE : le verrou arrête l'essai FillSell, PAS l'abonnement de la
+  // boutique (regles.js arretEssaiConfirme) — elle prélèvera à la fin de sa semaine, et le Cloud démarrera alors (décision 8).
+  // Avant : « Tu peux prendre le Cloud sans essai », sans un mot du prélèvement à venir. ⚠ texte NEUF, à valider par Nico.
+  refusComptePlateformeBoutique: (b, ou) => `Ce compte de plateforme a déjà servi à un essai gratuit : l'essai FillSell s'est arrêté, mais ton abonnement ${b} continue. Sans geste de ta part, ${b} prélèvera le prix du Cloud à la fin de sa semaine gratuite, et le Cloud démarrera alors. Pour ne rien payer, arrête-le ${ou}.`,
 };
 
 const EN = {
@@ -179,11 +195,18 @@ const EN = {
     ? 'You already used the free trial.'
     : raison === 'boutique_sans_essai'
       ? "Your app store doesn't offer a free trial to this account."
-      : 'The free trial was already used on this device or platform account.'} The Cloud therefore starts right away, at ${PRIX_EN}/mo, and you can stop it whenever you want. Continue?`,
+      : 'The free trial was already used on this device or platform account.'} The Cloud therefore starts right away: ${PRIX_EN} charged today, then every month, and you can stop it whenever you want. Continue?`,
   sansEssaiStore: 'If your app store shows a free week, the Cloud only runs from the first payment.',
+  noteSansSemaine: `No trial: ${PRIX_EN} charged today, then every month. Stop it whenever you want.`,
+  noteSemaineIncertaine: `Apple tells you before you confirm whether your free week is offered; otherwise ${PRIX_EN} charged today, then every month.`,
+  semaineSansDroits: (b) => `You already used the FillSell free trial. ${b} will show "1 week free": during that week, the Cloud does not run; it starts at the first payment of ${PRIX_EN}, 7 days later. Continue?`,
+  essaiIncertain: `Apple tells you in its sheet, before you confirm, whether your free week is offered. Otherwise, the Cloud starts right away: ${PRIX_EN} charged today, then every month, and you can stop it whenever you want. Continue?`,
+  semaineIncertaine: `You already used the FillSell free trial: ${PRIX_EN} charged today — or, if Apple shows "1 week free", the Cloud does not run that week and starts at the first payment, 7 days later. Continue?`,
   achatEchec: "The Cloud payment couldn't open. Nothing was charged: try again in a moment.",
   prixBoutiqueAbsent: "Your app store's price isn't shown yet: nothing was charged, try again in a moment.",
   achatAttente: 'Payment received: your Cloud starts in a moment.',
+  essaiAttente: 'Done: your free trial starts in a moment.',
+  achatApprobation: 'Purchase waiting for approval: FillSell Cloud starts as soon as it is approved. Nothing is charged before.',
   achatOk: 'Cloud active: now connect your platforms.',
   restaureOk: 'FillSell Cloud restored: it is active.',
   restaureAttente: 'Your FillSell Cloud subscription was found: it reactivates in a moment.',
@@ -208,6 +231,7 @@ const EN = {
   arretRien: 'No running FillSell Cloud subscription was found: there was nothing to stop.',
   refusCarte: 'This card was already used for a free trial: the trial stopped, nothing was charged. You can take the Cloud without a trial.',
   refusComptePlateforme: 'This platform account was already used for a free trial: the trial stopped. You can take the Cloud without a trial.',
+  refusComptePlateformeBoutique: (b, ou) => `This platform account was already used for a free trial: the FillSell trial stopped, but your ${b} subscription continues. If you do nothing, ${b} will charge the Cloud price at the end of its free week, and the Cloud will start then. To pay nothing, stop it ${ou}.`,
 };
 
 export function textesConnexion(lang) {

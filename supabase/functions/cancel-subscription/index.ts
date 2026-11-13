@@ -152,7 +152,7 @@ serve(async (req) => {
     // Récupère stripe_customer_id depuis profiles (admin = bypass RLS)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("stripe_customer_id, is_premium, is_pro, is_business, cloud_canal")
+      .select("stripe_customer_id, is_premium, is_pro, is_business, cloud_canal, google_purchase_token, apple_original_transaction_id")
       .eq("id", user.id)
       .single();
 
@@ -163,6 +163,23 @@ serve(async (req) => {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
+
+    // (13/11/2026, audit des paiements de Nico) Rien à résilier chez Stripe : aucune écriture, la phrase vraie (où ça
+    // s'arrête). Jamais « Abonnement annulé » pour un abonnement que FillSell n'a pas annulé.
+    const rienAResilier = () => {
+      const boutique = profile.google_purchase_token ? "google" : profile.apple_original_transaction_id ? "apple" : null;
+      const corps = boutique === "apple"
+        ? { message_fr: "Ton abonnement est géré par l'App Store : arrête-le dans tes abonnements Apple (sur l'iPhone : Réglages › ton nom › Abonnements). Rien n'a changé ici.",
+          message_en: "Your subscription is managed by the App Store: stop it in your Apple subscriptions (on iPhone: Settings › your name › Subscriptions). Nothing changed here." }
+        : boutique === "google"
+          ? { message_fr: "Ton abonnement est géré par Google Play : arrête-le dans tes abonnements Google Play (Play Store › Paiements et abonnements). Rien n'a changé ici.",
+            message_en: "Your subscription is managed by Google Play: stop it in your Google Play subscriptions (Play Store › Payments & subscriptions). Nothing changed here." }
+          : { message_fr: "Aucun abonnement payé par carte à résilier sur ce compte. Rien n'a changé. Une question ? Écris-nous depuis Réglages › Aide.",
+            message_en: "There is no card-paid subscription to cancel on this account. Nothing changed. A question? Write to us from Settings › Help." };
+      return new Response(JSON.stringify({ success: false, error: "rien_a_resilier", canal: boutique, ...corps }), {
+        status: 409, headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    };
 
     console.log("[cancel-subscription] Profile:", {
       stripe_customer_id: profile.stripe_customer_id,
@@ -180,16 +197,13 @@ serve(async (req) => {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
+    // (13/11/2026, audit des paiements de Nico) Sans client Stripe, il n'y a RIEN à résilier ici. Avant : is_premium passait à
+    // false tout de suite et l'app disait « Abonnement annulé. Tu gardes l'accès jusqu'à la fin de la période » — faux deux
+    // fois pour un abonné App Store / Google Play (rien annulé chez la boutique, accès coupé net) ou un compte offert.
+    // Désormais : aucune écriture, 409 et la phrase vraie (où ça s'arrête).
     if (!profile.stripe_customer_id) {
-      await supabaseAdmin
-        .from("profiles")
-        .update({ is_premium: false })
-        .eq("id", user.id);
-      console.log("[cancel-subscription] No Stripe customer — is_premium=false");
-      return new Response(
-        JSON.stringify({ success: true, period_end: null }),
-        { headers: { ...CORS, "Content-Type": "application/json" } }
-      );
+      console.log("[cancel-subscription] aucun client Stripe — rien à résilier ici (aucune écriture)");
+      return rienAResilier();
     }
 
     // Récupère les abonnements actifs Stripe
@@ -219,7 +233,7 @@ serve(async (req) => {
           formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null, cloud_formule: null }).eq("id", user.id);
         console.log(`[cancel-subscription] essai ${ea.formule} de l'abonné ${user.id} arrêté (schedule ${idSched ?? "?"} rendu, ${essaiAbonneSub.id} continue)`);
         await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", journal: "[cancel-subscription]",
-          evenements: [{ evenement: "arret_essai", cle: `${essaiAbonneSub.id}:essai`, canal: "stripe", faits: { arreteIso: maintenant, aucunPrelevement: true, formule: ea.formule } }] });
+          evenements: [{ evenement: "arret_essai", cle: `${essaiAbonneSub.id}:essai`, canal: "stripe", faits: { arreteIso: maintenant, aucunPrelevement: true, formule: ea.formule, abonne: true } }] });
         return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true, aucun_prelevement: true, formule_continue: true }), {
           headers: { ...CORS, "Content-Type": "application/json" },
         });
@@ -309,7 +323,33 @@ serve(async (req) => {
 
     let periodEnd: string | null = null;
 
-    if (paliersVivants.length > 0) {
+    // (13/11/2026, audit des paiements de Nico) Rien de vivant chez Stripe : la phrase vraie, aucune écriture.
+    if (paliersVivants.length === 0) {
+      console.log("[cancel-subscription] aucun palier vivant chez Stripe — rien à résilier (aucune écriture)");
+      return rienAResilier();
+    }
+    // (13/11/2026) Une formule EN ESSAI : arrêtée tout de suite, rien prélevé (la règle de l'arrêt d'essai) ; l'accusé
+    // « accès jusqu'au … » ne part pas (il serait faux) — le webhook envoie le mail d'arrêt d'essai, confirmé par Stripe.
+    if (paliersVivants[0].status === "trialing" && formuleDAbonnementStripe(paliersVivants[0], prixConnus())) {
+      const annule = await stripe.subscriptions.cancel(paliersVivants[0].id);
+      await supabaseAdmin.from("profiles").update({ is_cloud: false, cloud_essai_arrete: true, cloud_essai_fin: new Date().toISOString(),
+        cloud_arret_fin_periode: false, cloud_formule: null }).eq("id", user.id);
+      let evenements: ReturnType<typeof evenementArretStripe> = [];
+      try {
+        const factures = await stripe.invoices.list({ subscription: annule.id, limit: 20 });
+        evenements = evenementArretStripe(annule, factures.data);
+      } catch (e) {
+        console.error(`[cancel-subscription] factures de ${annule.id} illisibles : ${(e as Error)?.message ?? e}`);
+      }
+      console.log(`[cancel-subscription] palier en essai ${annule.id} arrêté tout de suite (résiliation pendant l'essai)`);
+      await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements, journal: "[cancel-subscription]" });
+      return new Response(JSON.stringify({ success: true, essai_arrete: true, period_end: null,
+        aucun_prelevement: evenements.some((e) => e.evenement === "arret_essai") }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    {
       // (09/11, C4) Une descente de formule programmée (subscription schedule) : Stripe REFUSE alors toute résiliation
       // directe (« managed by the subscription schedule », banc descente-formule E). La résiliation prime : l'abonnement
       // est rendu à lui-même d'abord (la descente disparaît), puis résilié. Sans schedule : rien ne change.

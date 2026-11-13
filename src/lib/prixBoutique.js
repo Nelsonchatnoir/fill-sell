@@ -8,12 +8,13 @@
 //   · iPHONE / ANDROID : le prix FORMATÉ PAR LA BOUTIQUE (App Store / Google Play Billing : `priceString`, monnaie et
 //     format du téléphone), lu par lib/chargerPrixBoutique.js. Tant qu'il n'est pas lu : null → l'écran montre
 //     TEXTE_CHARGEMENT et le bouton d'achat reste inactif (prixPret). JAMAIS un prix en euros écrit en dur sur mobile.
-//   · l'essai gratuit du Cloud n'est annoncé sur mobile que si la boutique propose une offre gratuite à ce compte
-//     (Android : une offre dont la première phase de prix est à 0 ; iPhone : un prix d'introduction à 0).
+//   · l'essai gratuit n'est annoncé sur mobile que si la boutique l'offre à ce compte (Android : une offre dont la
+//     première phase de prix est à 0 ; iPhone : 13/11, l'éligibilité lue dans l'historique Apple — etatEssaiBoutique).
 // Pur (aucun import natif) : testé en Node par scripts/prix-boutique-selftest.mjs. Le chargement natif vit ailleurs.
 
 import { CLOUD_PRIX_AFFICHE, CLOUD_PRIX_AFFICHE_EN } from '../utils/palier.js';
 import { PALIER_DE_FORMULE, SUPPLEMENT_CLOUD_EUR, FORMULES_AVEC_ESSAI } from '../../supabase/functions/_shared/formules-cloud.js';
+import { groupeAppleDuProduit } from './eligibiliteApple.js';
 
 // (11/11/2026) + les trois formules avec Cloud (contrat _shared/formules-cloud.js) : même règle que les autres.
 export const PRODUITS_PRIX = Object.freeze(['premium', 'pro', 'business', 'cloud', 'premium_cloud', 'pro_cloud', 'business_cloud']);
@@ -35,16 +36,25 @@ export const JETON_PRIX_CLOUD = '⟦prix_cloud⟧';
 export const TEXTE_CHARGEMENT = '…';
 const NBSP = ' ';
 
-const ETAT_WEB = Object.freeze({ canal: 'web', statut: 'web', prix: Object.freeze({}) });
+const ETAT_WEB = Object.freeze({ canal: 'web', statut: 'web', prix: Object.freeze({}), eligibilite: null });
 let etat = ETAT_WEB;
 let version = 0;
 const abonnes = new Set();
+const prevenir = () => { version += 1; for (const f of abonnes) { try { f(); } catch { /* un abonné ne casse pas les autres */ } } };
 
-/** Pose l'état (le chargeur natif seulement ; les selftests). canal : 'web' | 'apple' | 'google'. */
+/** Pose l'état (le chargeur natif seulement ; les selftests). canal : 'web' | 'apple' | 'google'.
+ *  (13/11) `eligibilite` (iPhone) : { plan, cloud } → true | false | null (lib/eligibiliteApple.js) ; absente = gardée si
+ *  le canal ne change pas (les prix et l'historique Apple se lisent séparément). */
 export function poserPrixBoutique(e) {
-  etat = e ? Object.freeze({ canal: e.canal ?? 'web', statut: e.statut ?? (e.canal === 'web' ? 'web' : 'chargement'), prix: Object.freeze({ ...(e.prix ?? {}) }) }) : ETAT_WEB;
-  version += 1;
-  for (const f of abonnes) { try { f(); } catch { /* un abonné ne casse pas les autres */ } }
+  const canal = e?.canal ?? 'web';
+  const eligibilite = e && 'eligibilite' in e ? (e.eligibilite ?? null) : (e && etat.canal === canal ? etat.eligibilite : null);
+  etat = e ? Object.freeze({ canal, statut: e.statut ?? (canal === 'web' ? 'web' : 'chargement'), prix: Object.freeze({ ...(e.prix ?? {}) }), eligibilite }) : ETAT_WEB;
+  prevenir();
+}
+/** (13/11, point b de Nico) Pose l'éligibilité Apple lue dans l'historique de l'identifiant Apple du téléphone. */
+export function poserEligibiliteApple(eligibilite) {
+  etat = Object.freeze({ ...etat, eligibilite: eligibilite ?? null });
+  prevenir();
 }
 export const lirePrixBoutique = () => etat;
 export function abonnerPrixBoutique(f) { abonnes.add(f); return () => { abonnes.delete(f); }; }
@@ -54,7 +64,8 @@ export const estCanalBoutique = (e = etat) => e.canal === 'apple' || e.canal ===
 // ÉCHOUE (erreur, réponse vide ou sans ce produit, plus de DELAI_LECTURE_MS — lib/chargerPrixBoutique.js), l'écran
 // d'achat reste UTILISABLE : le prix affiché redevient celui qu'affichait l'app jusqu'à la 2.9.166 (euros, validé par
 // Apple), le bouton d'achat agit, et l'essai suit la décision du serveur (comme avant le 08/11). La feuille de paiement
-// d'Apple montre, elle, le montant réel avant toute confirmation. ⛔ ANDROID JAMAIS : la règle de Google qui a refusé la
+// d'Apple montre, elle, le montant réel avant toute confirmation. (13/11, point b) L'essai, lui, ne suit plus le repli :
+// il suit l'éligibilité lue dans l'historique Apple (etatEssaiBoutique). ⛔ ANDROID JAMAIS : la règle de Google qui a refusé la
 // vc36 interdit un prix d'une autre monnaie que sa feuille — sur Android, « … » et achat inactif tant que rien n'est lu.
 export const repliApple = (produit, e = etat) => e.canal === 'apple'
   && (e.statut === 'echec' || (e.statut === 'pret' && !(typeof e.prix?.[produit]?.texte === 'string' && e.prix[produit].texte.trim())));
@@ -86,18 +97,31 @@ export const prixGratuit = (lang = 'fr', e = etat) => (estCanalBoutique(e) ? (la
 // rendue) n'est donc pas un « non » : l'essai suit la décision du serveur, comme sur le web et comme le repli du 09/11.
 export const PRODUITS_ESSAI_APPLE = Object.freeze(['cloud', ...FORMULES_AVEC_ESSAI]);
 /**
- * L'essai gratuit du Cloud peut-il être ANNONCÉ ? Web : oui (le serveur décide). Mobile : seulement si la boutique
- * propose une offre gratuite à ce compte — inconnu (pas encore lu) : non annoncé. iPhone dont le module ne dit rien de
- * l'offre d'introduction (essai null) : la table PRODUITS_ESSAI_APPLE (le serveur décide ensuite, comme sur le web).
+ * (13/11/2026, point b de Nico — remplace la règle du matin) LA SEMAINE GRATUITE DE LA BOUTIQUE, POUR CET IDENTIFIANT :
+ *   'oui'     — elle sera offerte (web : le serveur décide, la boutique n'y est pour rien) ;
+ *   'non'     — elle ne le sera pas : le texte dit le prix et « prélevé aujourd'hui », AVANT la feuille de la boutique ;
+ *   'inconnu' — iPhone seulement, l'historique Apple n'a pas pu être lu : un texte vrai dans les deux cas, jamais
+ *               « 7 jours gratuits » affirmé sans le savoir.
+ * Google : la boutique ne rend QUE les offres auxquelles le compte Google a droit (« user eligible offers »,
+ * developer.android.com/google/play/billing/integrate) — une offre à 0 rendue = 'oui', sinon 'non'.
+ * Apple : le module du binaire en vente ne rend pas l'offre d'introduction ; la table PRODUITS_ESSAI_APPLE (offres
+ * d'App Store Connect) PUIS l'éligibilité lue dans l'historique Apple du téléphone (lib/eligibiliteApple.js : un
+ * abonnement en cours du groupe, ou une offre d'introduction déjà utilisée dans le groupe → 'non'). Un binaire qui
+ * rendrait `introductoryPrice` (clé présente) l'emporte. Avant ce correctif, l'iPhone annonçait « 7 jours gratuits » à
+ * tout compte sans essai FillSell, même à un identifiant Apple qui avait déjà eu la semaine (Apple prélève alors tout de
+ * suite).
  */
-export function essaiBoutiqueOffert(produit = 'cloud', e = etat) {
-  if (!estCanalBoutique(e)) return true;
-  // (09/11) Repli de l'iPhone : Apple n'a rien dit — l'essai suit la décision du serveur (comme jusqu'à la 2.9.166).
-  if (repliApple(produit, e)) return true;
+export function etatEssaiBoutique(produit = 'cloud', e = etat) {
+  if (!estCanalBoutique(e)) return 'oui';
   const v = e.prix?.[produit]?.essai;
-  if (e.canal === 'apple' && v == null && e.prix?.[produit]) return PRODUITS_ESSAI_APPLE.includes(produit);
-  return v === true;
+  if (e.canal === 'google') return v === true ? 'oui' : 'non';
+  if (typeof v === 'boolean') return v ? 'oui' : 'non';
+  if (!PRODUITS_ESSAI_APPLE.includes(produit)) return 'non';
+  const el = e.eligibilite?.[groupeAppleDuProduit(produit)];
+  return el === true ? 'oui' : el === false ? 'non' : 'inconnu';
 }
+/** L'essai gratuit peut-il être ANNONCÉ comme certain ? (web : oui, le serveur décide ; mobile : 'oui' seulement). */
+export const essaiBoutiqueOffert = (produit = 'cloud', e = etat) => etatEssaiBoutique(produit, e) === 'oui';
 
 // ── Les textes : le jeton remplacé à la lecture ──────────────────────────────────────────────────────────────────────
 const memo = new WeakMap();

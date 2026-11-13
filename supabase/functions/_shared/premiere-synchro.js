@@ -19,6 +19,13 @@
 // Mêmes RPC, mêmes gardes (cadence, déjà en attente, version, plateforme écartée), même fenêtre de jours. Relevés lus
 // incomplets (plafond de lecture atteint) → rien : jamais deux fois.
 // Pur (Deno + Node) : scripts/premiere-synchro-selftest.mjs, scripts/connexion-choisie-selftest.mjs.
+//
+// ── (13/11, 2e réponse de Nico — DET, cas ed4531e2) UNE ACTION RÉUSSIE COMPTE COMME SESSION VUE ──────────────────────────
+// ed4531e2 : publications Vinted réussies le 18/10, ventes lues le 18/10 et le 22/10, sonde 403 (jamais `true`) → jamais
+// de première synchro. Désormais une plateforme est « vue » si la sonde dit `true` OU si une action y a réussi depuis
+// moins de 24 h (`preuves`, _shared/preuve-action.js : vente lue, dépôt, retrait fait — jamais contre une page de
+// connexion vue après l'action). Verrou : scripts/action-reussie-session-vue-selftest.mjs.
+import { sessionVueParAction } from "./preuve-action.js";
 
 export const DECLENCHEUR_GESTE_RE = /^(bouton|bouton_distant|app)(:redemande)?$/;
 export const PREMIERE_SYNCHRO_JOURS_DEFAUT = 15;
@@ -58,11 +65,13 @@ export function plateformesDejaPosees(lignes) {
  *        plateforme
  * @param {string[]|null} [p.dejaPosees]        plateformes dont la première synchro a déjà été posée (plateformesDejaPosees)
  * @param {boolean} [p.runsComplets]            false : la lecture des relevés a atteint son plafond → rien
+ * @param {Record<string, { le: number, source: string }>|null} [p.preuves]  (13/11, DET) la dernière action réussie de
+ *        chaque plateforme (preuvesActionReussie) : moins de 24 h = session vue, même quand la sonde se tait
  * @param {{ actif?: boolean, jours?: number }} [p.reglage]
  * @param {number} [p.maintenant]
  * @returns {string[]}
  */
-export function premiereSynchroAPoser({ inscritLe, platformSettings, sessions, runs = [], dejaPosees = [], runsComplets = true, reglage = {}, maintenant = Date.now() }) {
+export function premiereSynchroAPoser({ inscritLe, platformSettings, sessions, runs = [], dejaPosees = [], runsComplets = true, preuves = null, reglage = {}, maintenant = Date.now() }) {
   if (reglage.actif === false) return [];
   if (runsComplets === false) return [];
   const jours = Number(reglage.jours) > 0 ? Number(reglage.jours) : PREMIERE_SYNCHRO_JOURS_DEFAUT;
@@ -78,7 +87,23 @@ export function premiereSynchroAPoser({ inscritLe, platformSettings, sessions, r
     if (pf && STATUTS_RELEVEE.has(String(r?.status ?? ""))) relevees.add(pf);
   }
   const deja = new Set(Array.isArray(dejaPosees) ? dejaPosees.map(String) : []);
-  // Aucune plateforme choisie (étape passée) : celles où l'extension voit une session.
+  const p = preuves && typeof preuves === "object" ? preuves : {};
+  const vue = (pf) => s[pf] === true || sessionVueParAction(p[pf] ?? null, { pf, sessions: s, maintenant });
+  // Aucune plateforme choisie (étape passée) : celles où l'extension voit une session — ou une action réussie (13/11 :
+  // les plateformes qu'un compte sans choix UTILISE comptent comme choisies, décision de Nico).
   return PLATEFORMES_PREMIERE_SYNCHRO.filter((pf) => (choisies.length ? choisies.includes(pf) : true)
-    && !ecartees.has(pf) && s[pf] === true && !relevees.has(pf) && !deja.has(pf));
+    && !ecartees.has(pf) && vue(pf) && !relevees.has(pf) && !deja.has(pf));
+}
+
+/**
+ * (13/11, DET) Les plateformes qui n'attendent QUE la preuve d'une session pour recevoir leur première synchro : choisies
+ * (ou toutes sans choix), ni écartées, jamais relevées, pas déjà posées, sonde muette. get-pending-jobs ne lit les actions
+ * réussies que pour elles (rien à lire → aucune requête).
+ * @param {{ inscritLe: string|null, platformSettings: unknown, sessions: unknown, runs?: Array<{kind?: string, platform?: string|null, status?: string, declencheur?: string|null}>, dejaPosees?: string[]|null, runsComplets?: boolean, reglage?: { actif?: boolean, jours?: number }, maintenant?: number, preuves?: unknown }} p
+ * @returns {string[]}
+ */
+export function plateformesSansSessionVue({ inscritLe, platformSettings, sessions, runs = [], dejaPosees = [], runsComplets = true, reglage = {}, maintenant = Date.now() }) {
+  const toutes = premiereSynchroAPoser({ inscritLe, platformSettings, sessions: Object.fromEntries(PLATEFORMES_PREMIERE_SYNCHRO.map((pf) => [pf, true])), runs, dejaPosees, runsComplets, reglage, maintenant });
+  const s = sessions && typeof sessions === "object" ? sessions : {};
+  return toutes.filter((pf) => s[pf] !== true);
 }

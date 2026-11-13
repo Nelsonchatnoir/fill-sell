@@ -20,7 +20,18 @@
 //
 // ⛔ CE MODULE NE DÉCIDE RIEN : il lit, et il porte le geste « je ne vends pas
 //    sur X » (`plateforme_ecarter`, réversible, qui ne supprime rien).
+//
+// (13/11, 2e réponse de Nico — DET, cas ed4531e2) UNE ACTION RÉUSSIE PROUVE LA
+// CONNEXION : la vérité lue est COMPLÉTÉE par les actions réussies du compte
+// (vente lue, dépôt, retrait fait, relevé — supabase/functions/_shared/
+// preuve-action.js, la même règle que get-pending-jobs et que la migration
+// 20261113213000). Jamais « pas connecté » ni « pas encore vue » dans les 24 h
+// qui suivent une action réussie (sauf une action ratée plus récente) ; un
+// compte sans plateforme choisie voit ses plateformes UTILISÉES comme choisies.
+// Lecture bornée et seulement si une plateforme peut changer ; une vérité qui
+// applique déjà la règle (`preuves_action: true`) n'est pas relue.
 import { supabase } from '../lib/supabase';
+import { completerVeriteLue } from '../../supabase/functions/_shared/preuve-action.js';
 
 export const ETATS = Object.freeze({
   CONNECTEE: 'connectee',
@@ -53,7 +64,13 @@ export async function lireVeritePlateformes({ frais = false } = {}) {
     try {
       const { data, error } = await supabase.rpc('plateformes_verite');
       if (error) throw error;
-      const v = data?.ok === true ? data : null;
+      let v = data?.ok === true ? data : null;
+      if (v) {
+        try {
+          const { data: s } = await supabase.auth.getSession();
+          v = await completerVeriteLue(supabase, v, { userId: s?.session?.user?.id ?? null });
+        } catch { /* la vérité telle quelle : la règle ne bloque jamais un écran */ }
+      }
       cache = { le: Date.now(), valeur: v, enVol: null };
       return v;
     } catch (e) {

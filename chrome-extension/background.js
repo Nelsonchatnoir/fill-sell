@@ -14570,7 +14570,9 @@ async function sonderSessionDepop() {
     // publications qui attendent la configuration vendeur dès qu'il lit true
     // (_shared/vendeur-depop.js, sondeVendeurDepopOk).
     const vendeur = typeof r?.vendeur?.canSell === "boolean" ? r.vendeur.canSell : null;
-    if (r?.connecte === true) return { etat: true, http: 200, identite: r.id ? { user_id: String(r.id), login: r.username ?? null } : null, vendeur };
+    // (0.6.187, 13/11 — étape 4 L1) Le PAYS du compte Depop (users/me : country), lu dans la même réponse : le serveur
+    // note le site du compte (DEPOP_GB…, public.comptes_plateformes). Absent ou illisible → null, jamais deviné.
+    if (r?.connecte === true) return { etat: true, http: 200, identite: r.id ? { user_id: String(r.id), login: r.username ?? null, pays: /^[A-Z]{2}$/.test(String(r.pays ?? "")) ? String(r.pays) : null } : null, vendeur };
     if (r?.connecte === false) return { etat: false, http: r.motif ?? 401 };
   }
   return { etat: true, http: "jeton_present" };
@@ -15285,7 +15287,8 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat, opla: opla.etat,
     // Depop n'apparaît QUE chez un poste qui l'a sondée : les autres comptes
     // gardent extension_sessions exactement comme avant (aucune clé de plus).
-    ...(plateformes.includes("depop") ? { depop: depop.etat, depop_vendeur: depop.vendeur ?? null } : {}),
+    // (0.6.187) depop_identite : le compte Depop lu (numéro, pseudo, pays) — comme vinted_identite, null quand non lu.
+    ...(plateformes.includes("depop") ? { depop: depop.etat, depop_vendeur: depop.vendeur ?? null, depop_identite: depop.identite ?? null } : {}),
     // ── LA PORTE DU RELEVÉ eBAY, À PART (2026-09-22) ────────────────────────
     // `ebay` reste la session de VENTE : c'est elle qui arbitre la garde de
     // publication et la reprise des jobs, et on n'y touche pas. `ebay_hub` dit
@@ -15410,6 +15413,8 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
       if (pf === "vinted") fusion.vinted_identite = prev.vinted_identite ?? null;
       // (17/10) Le statut vendeur Depop suit la session Depop, avec la même date.
       if (pf === "depop") fusion.depop_vendeur = prev.depop_vendeur ?? null;
+      // (0.6.187) L'identité Depop suit la session Depop non sondée, comme vinted_identite.
+      if (pf === "depop") fusion.depop_identite = prev.depop_identite ?? null;
     }
     // ── (B) UNE SONDE MUETTE N'EFFACE PAS UN ÉTAT CONNU (26/10, B2 — Nico) ─────────────────────────────────────
     // La sonde de 10:44 a lu Leboncoin et Beebs en 403 (anti-robot) et les a remis à null, alors que le relevé

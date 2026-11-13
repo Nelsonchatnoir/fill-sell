@@ -23,6 +23,8 @@
 //    horodatages, on n'ordonne pas les sources par préférence.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { GARDE_ACTION_MS, HTTP_PAGE_CONNEXION } from "../../supabase/functions/_shared/preuve-action.js";
+
 export const PLATEFORMES_SESSION = ["vinted", "leboncoin", "ebay", "beebs"];
 
 // Fraîcheur exigée d'une SONDE, par plateforme — six fois sa cadence
@@ -66,6 +68,12 @@ export function etatSession(sessions, pf, publieLe = null) {
   const pubRecente = pub > 0 && maintenant - pub < PUBLICATION_PROUVE_MS;
 
   if (pubRecente && (!sondeDit || pub >= sondeVu)) return "ok";
+  // (13/11, 2e réponse de Nico — DET) « Jamais de « pas connecté » affiché à quelqu'un qui vient de réussir une
+  // action » : dans les 24 h qui suivent une action réussie (GARDE_ACTION_MS, supabase/functions/_shared/
+  // preuve-action.js — la même règle que la vérité serveur), une SONDE `false` ne dit pas « ko » ; seule une page de
+  // connexion vue pendant une tâche (http `login_redirect_observee`, une action ratée) le dit. Le miroir de
+  // l'extension (config.js SESSIONS) ne sert plus qu'au popup sans vérité serveur : non touché.
+  if (sondeDit && v === false && pub > 0 && maintenant - pub < GARDE_ACTION_MS && sessions?.http?.[pf] !== HTTP_PAGE_CONNEXION) return "ok";
   if (sondeDit) return v === true ? "ok" : "ko";
   return null;
 }

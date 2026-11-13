@@ -201,7 +201,10 @@ ok(lireJeton(stockage({ [cleJeton]: SESSION }), cleJeton) === true, 'lireJeton a
   }
   const offre = JSON.parse(f.ls.getItem('fs_offre_mail') ?? 'null');
   const acq = JSON.parse(f.ls.getItem('fs_acq') ?? 'null');
-  ok(offre?.code === 'FILLSELL50', `capterOffre a tourné (fs_offre_mail = ${JSON.stringify(offre)})`);
+  // (13/11, décision de Nico — audit des paiements P17) L'offre FILLSELL50 a pris fin le 01/11 (FIN_OFFRES,
+  // src/lib/offreMail.js) : capterOffre tourne toujours, mais ne retient plus une offre finie — plus de « -50 % »
+  // montré après sa date. Avant le 01/11, la même URL l'aurait retenue.
+  ok(offre === null, `capterOffre a tourné et n'a pas retenu une offre finie (fs_offre_mail = ${JSON.stringify(offre)})`);
   ok(acq?.source === 'google' && acq?.campaign === 'seo' && acq?.referrer === 'https://www.google.com', `capterSource a tourné (fs_acq = ${JSON.stringify(acq)})`);
 }
 
@@ -244,7 +247,7 @@ function jouerBundle({ search = '', hash = '', local = {}, racinePage = true }) 
 }
 {
   const f = jouerBundle({ search: '?offre=FILLSELL50' });
-  ok(JSON.parse(f.ls.getItem('fs_offre_mail') ?? 'null')?.code === 'FILLSELL50', 'bundle : capture de l\'offre');
+  ok(JSON.parse(f.ls.getItem('fs_offre_mail') ?? 'null') === null, 'bundle : une offre finie (FILLSELL50, fin le 01/11) n\'est plus captée');
   ok(!!f.ls.getItem('fs_acq'), 'bundle : capture de la source');
 }
 

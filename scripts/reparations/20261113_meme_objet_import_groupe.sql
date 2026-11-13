@@ -37,7 +37,9 @@ CREATE TABLE public._backup_1311_meme_objet_cibles AS
     FROM public.inventaire_doublons d
     JOIN public.inventaire g ON g.id = d.garde AND g.user_id = d.user_id
     JOIN public.inventaire i ON i.id = d.absorbe AND i.user_id = d.user_id
-   WHERE d.statut = 'proposee' AND d.motif = 'photo_identique' AND d.preuves ->> 'article_modifie' = 'true'
+   -- (13/11, feu vert de Nico : « rattrapage du CLAVIER ») : le seul compte bf85d176 ; 25caeedd et ebdf29f0 attendent sa décision.
+   WHERE d.user_id::text LIKE 'bf85d176%'
+     AND d.statut = 'proposee' AND d.motif = 'photo_identique' AND d.preuves ->> 'article_modifie' = 'true'
      AND d.preuves ? 'vinted_nouvelle' AND jsonb_typeof(d.preuves -> 'groupe') = 'array'
      AND g.origine = 'vinted_sync' AND g.statut = 'stock' AND g.fusionne_dans IS NULL
      AND NOT EXISTS (SELECT 1 FROM public.ventes v WHERE v.inventaire_id = g.id)

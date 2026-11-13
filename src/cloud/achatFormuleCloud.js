@@ -19,7 +19,7 @@ import { textesConnexion } from './textesConnexion';
 import { textesFormules, NOMS_FORMULES } from './textesFormules';
 import { identifiantAppareil, lirePreparation } from './achatCloud';
 import { nomBoutique, RANG_PRIX } from './formulesCloud';
-import { prixPret, essaiBoutiqueOffert } from '../lib/prixBoutique.js';
+import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique.js';
 import {
   FORMULES_CLOUD, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES, essaiPossiblePourFormule, formuleDuProduitBoutique,
 } from '../../supabase/functions/_shared/formules-cloud.js';
@@ -132,7 +132,7 @@ export function creerAchatFormuleCloud({
     return { etat: 'erreur', message: T.finChangeEchec };
   }
 
-  async function boutique(formule, { descente = false } = {}) {
+  async function boutique(formule, { descente = false, essai = false } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) return { etat: 'erreur', message: T.achatEchec };
     const productId = produitBoutiqueDe(formule, platform);
     if (!productId) return { etat: 'erreur', message: T.achatEchec };
@@ -144,7 +144,7 @@ export function creerAchatFormuleCloud({
     const r = await purchasePremium(productId, user.id, ancien
       ? { oldPurchaseToken: ancien.purchaseToken, replacementMode: modeRemplacement(ancien.productIdentifier, formule) } : {});
     if (r?.cancelled) return { etat: 'annule' };
-    if (r?.enAttente) return { etat: 'attente', message: T.achatAttente(NOMS_FORMULES[formule]) };
+    if (r?.enAttente) return { etat: 'attente', message: T.achatApprobation(NOMS_FORMULES[formule]) };
     if (platform === 'android') {
       if (!r?.purchaseToken) return { etat: 'erreur', message: T.achatEchec };
       const { error } = await supabase.functions.invoke('validate-google-purchase', { body: { productId, purchaseToken: r.purchaseToken, userId: user.id } });
@@ -152,7 +152,8 @@ export function creerAchatFormuleCloud({
     }
     if (descente) return { etat: 'programme' };
     const ok = await attendreServeur(formule);
-    return ok ? { etat: 'actif', message: T.achatOk(NOMS_FORMULES[formule]) } : { etat: 'attente', message: T.achatAttente(NOMS_FORMULES[formule]) };
+    return ok ? { etat: 'actif', message: T.achatOk(NOMS_FORMULES[formule]) }
+      : { etat: 'attente', message: essai ? T.essaiAttente(NOMS_FORMULES[formule]) : T.achatAttente(NOMS_FORMULES[formule]) };
   }
 
   /** Prendre une formule avec Cloud. essaiAffiche : la carte a annoncé l'essai ; dejaCloud / descente : voir plus haut ;
@@ -167,8 +168,15 @@ export function creerAchatFormuleCloud({
     // gratuite d'une formule du même groupe (Apple : une offre d'introduction par groupe ; Google : « n'ont jamais eu
     // d'abonnement ») : pas de question pour lui.
     const nomF = NOMS_FORMULES[formule];
-    const boutiqueOffreEssai = platform !== 'web' && abonneBoutique !== true && essaiPossiblePourFormule(formule) && essaiBoutiqueOffert(formule) === true;
-    const texteEssaiPris = boutiqueOffreEssai ? T.essaiDejaPrisBoutique(nomF, nomBoutique(platform === 'ios' ? 'apple' : 'google')) : T.sansEssaiConfirmer(nomF);
+    // (13/11, point b de Nico) La semaine de la boutique est LUE (iPhone : historique Apple du téléphone ; Android : offres
+    // rendues par Google) : 'oui' → la question du 4d (« … va t'afficher 1 semaine gratuite ») ; 'non' → « payé dès
+    // aujourd'hui » ; 'inconnu' (iPhone, historique illisible) → les deux issues dites, jamais une seule affirmée.
+    const etatSemaine = platform !== 'web' && abonneBoutique !== true && essaiPossiblePourFormule(formule) ? etatEssaiBoutique(formule) : 'non';
+    const boutiqueOffreEssai = etatSemaine === 'oui';
+    const nomB = nomBoutique(platform === 'ios' ? 'apple' : 'google');
+    const texteEssaiPris = boutiqueOffreEssai ? T.essaiDejaPrisBoutique(nomF, nomB)
+      : etatSemaine === 'inconnu' ? T.essaiDejaPrisIncertain(nomF, nomB) : T.sansEssaiConfirmer(nomF);
+    let essaiAttendu = essaiAffiche === true && etatSemaine === 'oui';
     try {
       if (descente && platform === 'web') return await stripeDescente(formule);
       if (!descente && !essaiAffiche && boutiqueOffreEssai && !(await confirmer?.(texteEssaiPris))) return { etat: 'annule' };
@@ -179,11 +187,14 @@ export function creerAchatFormuleCloud({
           const p = lirePreparation(await preparer(), lang);
           if (!p.continuer) return { etat: 'refuse', raison: p.raison, attente: p.attente === true, message: p.message };
           // L'essai annoncé, refusé par un verrou : la formule n'est payée tout de suite que si la personne le confirme.
-          if (essaiAffiche && essaiPossiblePourFormule(formule) && p.essai === false
+          // (13/11) iPhone, historique Apple illisible : la carte a dit les deux issues ; si le serveur refuse l'essai
+          // FillSell, la question les redit avant la feuille d'Apple (jamais une semaine sans droits en silence).
+          if ((essaiAffiche || etatSemaine === 'inconnu') && essaiPossiblePourFormule(formule) && p.essai === false
             && !(await confirmer?.(texteEssaiPris))) return { etat: 'annule' };
+          if (p.essai === false) essaiAttendu = false;
         }
       }
-      return platform === 'web' ? await stripe(formule, origine) : await boutique(formule, { descente });
+      return platform === 'web' ? await stripe(formule, origine) : await boutique(formule, { descente, essai: essaiAttendu });
     } catch (e) {
       console.warn('[formules cloud] achat :', e?.message ?? e);
       return { etat: 'erreur', message: T.achatEchec };

@@ -26,10 +26,16 @@ export const LBC_MODERATION_MS = 2 * 3600_000;
 export const PREMIER_RELEVE_MAX_MS = 24 * 3600_000;
 export const REGLE_JAMAIS_EN_LIGNE_LBC = "depot_lbc_jamais_en_ligne_0611";
 export const POSE_PAR_JAMAIS_EN_LIGNE_LBC = "handler-watch (dépôt Leboncoin jamais mis en ligne)";
+// (13/11, lot du 13/11 — 2e réponse de Nico, compte f0acd3af) Un refus se dit « Leboncoin a refusé cette annonce », jamais
+// « disparue » ni « doublon » : les trois preuves du juge (jamais vue, deux relevés complets, page fermée) sont celles d'un
+// refus — « Mes annonces » (dashboard/v1/search, include_inactive + include_draft) ne rend jamais une annonce refusée
+// (2 372 relevés de 108 comptes en 30 jours : active, paused, inactive seulement). Même texte que la base
+// (message_refus_leboncoin, migration 20261113203000), sans les dates des relevés.
 export const MESSAGE_JAMAIS_EN_LIGNE_LBC =
-  "Leboncoin n'a jamais mis cette annonce en ligne : elle n'apparaît pas dans tes annonces Leboncoin et sa page est " +
-  "fermée (refusée à la modération de Leboncoin, ou retirée avant de paraître). Rien n'est en vente sur Leboncoin pour " +
-  "cet article ; cette publication ne compte pas dans tes limites. Vérifie l'annonce (photos, titre, prix) et relance-la.";
+  "Leboncoin a refusé cette annonce : elle n'est jamais apparue dans tes annonces Leboncoin, où Leboncoin ne montre pas " +
+  "une annonce refusée, et sa page est fermée. Son motif est dans le mail « Votre annonce … a été refusée » qu'il t'a " +
+  "envoyé ; corrige ce qu'il dit avant de la relancer, sinon la même annonce serait refusée de même. Rien n'est en vente " +
+  "sur Leboncoin pour cet article ; cette publication ne compte pas dans tes limites.";
 
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
 const iso = (t) => new Date(t).toISOString();

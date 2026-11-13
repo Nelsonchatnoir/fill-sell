@@ -30,8 +30,9 @@ import TexteAvecLogos from './TexteAvecLogos';
 import { lireDernierGeste, canalDeLApp } from '../utils/dernierGeste';
 import { Capacitor } from '@capacitor/core';
 // (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité, au pied.
+import { texteMontee } from '../utils/texteMontee';
 import MentionsAbonnement from './MentionsAbonnement';
-import { prixOuChargement, prixPret, prixGratuit, essaiBoutiqueOffert, zeroAffiche } from '../lib/prixBoutique';
+import { prixOuChargement, prixPret, prixGratuit, etatEssaiBoutique, zeroAffiche } from '../lib/prixBoutique';
 import { usePrixBoutique } from '../lib/usePrixBoutique';
 // (11/11/2026, décisions de Nico) LES FORMULES AVEC CLOUD — l'interrupteur « Sans Cloud | Avec Cloud » et les trois cartes,
 // derrière formulesCloudVendables (interrupteur serveur du canal + témoins) ET un hôte qui sait les acheter
@@ -1103,6 +1104,11 @@ function MurDeJauge({ fr, geste, pastille, titre, fait, encore, encoreSous, ruba
 
 // ── Modale ───────────────────────────────────────────────────────────────────
 
+// (13/11/2026, audit des paiements de Nico) La montée d'un abonné : ce qui est prélevé et quand (utils/texteMontee.js).
+function NoteMontee({ fr, canal }) {
+  return <p data-note-montee={canal} style={{ margin: '10px 2px 0', fontSize: 12.5, fontWeight: 600, lineHeight: 1.45, color: C.mute2 }}>{texteMontee(canal, fr)}</p>;
+}
+
 export default function ConversionModal({
   isOpen,
   onClose,
@@ -1510,7 +1516,7 @@ export default function ConversionModal({
     const modele = cartesFormulesCloud({
       palier: palierCompte, formuleActuelle: profilFormules.formuleActuelle, canalApp: canalDeVente(plateformeIci),
       canalAbonnement: profilFormules.canalAbonnement, essaiPermis: essaiPermisDuCompte(lectureCloud),
-      essaiBoutique: (f) => essaiBoutiqueOffert(f), businessVisible: businessOfferVisible(userId), founder: profilFormules.founder,
+      essaiBoutique: (f) => etatEssaiBoutique(f), businessVisible: businessOfferVisible(userId), founder: profilFormules.founder,
       // (12/11, 4c et 4d) le canal QUI FACTURE (formule ou Cloud seul) et son interrupteur ; l'essai en cours.
       canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lectureCloud), essaiEnCours: lectureCloud.cloud?.etat === 'essai',
     });
@@ -1533,7 +1539,7 @@ export default function ConversionModal({
             ? <CorpsCarteGrille fr={fr} palier={palier} K={K} dark={sombre} margeBas={0} />
             : <LignesDiff fr={fr} palier={palier} dark={sombre} K={K} />)}
         />
-        <MentionsAbonnement lang={fr ? 'fr' : 'en'} />
+        <MentionsAbonnement lang={fr ? 'fr' : 'en'} essaiAnnonce={modele.essaiAffiche} />
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Non merci' : 'No thanks'} />
       </Sheet>
     );
@@ -1567,6 +1573,7 @@ export default function ConversionModal({
         {grille ? null : <ToutesOffresBlock fr={fr} />}
         {blocCloudAuDessus}
         <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} cloud={null} />
+        <NoteMontee fr={fr} canal={plateformeIci} />
         {carteAjoutCloudSous}
         {encartCloud}
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
@@ -1599,6 +1606,7 @@ export default function ConversionModal({
         {grille ? null : <ToutesOffresBlock fr={fr} />}
         {blocCloudAuDessus}
         <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
+        <NoteMontee fr={fr} canal={plateformeIci} />
         {carteAjoutCloudSous}
         {encartCloud}
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />

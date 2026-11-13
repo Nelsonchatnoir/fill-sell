@@ -25,6 +25,7 @@
 import { mkdir, rm, readdir, chown, readFile, writeFile, access } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { connecterCdp } from './cdp.js';
+import { lireSourceExtension, lireSourceCommune, listerPilotes, empreinteScript } from './extensionPilote.js';
 
 export const EXTENSION_NOM = 'fillsell';
 
@@ -321,10 +322,16 @@ function specGpu(config) {
   };
 }
 
-/** La spécification Docker du conteneur Chrome d'un compte (pure : testée). */
-export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs = null, proxySecours = null, permises = [], jetonControle }) {
+/**
+ * La spécification Docker du conteneur Chrome d'un compte (pure : testée). (13/11, décision de Nico) `dossierCrx` : le CRX
+ * servi à CE compte (extensionPilote.js) — absent ou celui de la copie commune = la spécification d'avant, octet pour octet ;
+ * celui d'un pilote = ce seul montage change, et l'étiquette fillsell.extension=pilote le dit.
+ */
+export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs = null, proxySecours = null, permises = [], jetonControle, dossierCrx = null }) {
   if (!proxyUrl || !/^https?:\/\/[^@\s]+@[^:\s]+:\d+$/.test(proxyUrl)) throw new Error('conteneur refusé : proxy du compte absent ou mal formé');
   if (!/^[0-9a-f]{32,}$/.test(String(jetonControle ?? ''))) throw new Error('conteneur refusé : jeton du contrôle du verrou absent');
+  const crx = dossierCrx || config.dossierExtensionCrx;
+  const pilote = crx !== config.dossierExtensionCrx;
   const gpu = specGpu(config);
   return {
     Image: config.imageChrome,
@@ -334,11 +341,12 @@ export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBee
       `PLATEFORMES_PERMISES=${(permises ?? []).join(',')}`, `JETON_CONTROLE=${jetonControle}`, `PORT_CONTROLE=${PORT_CONTROLE_RELAIS}`,
       // (04/11 soir, essai GPU) Le filtre anti-pubs du moteur steel, porté par le relais (parité : BLOQUER_PUBLICITE).
       ...(config.bloquerPublicite ? [`PUBLICITE=${DOMAINES_PUBLICITE.join(',')}`] : []), ...gpu.env],
-    Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId, 'fillsell.moteur': 'chrome' },
+    Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId, 'fillsell.moteur': 'chrome',
+      ...(pilote ? { 'fillsell.extension': 'pilote' } : {}) },
     HostConfig: {
       // Le profil Chrome vit dans un sous-dossier du profil du compte (neuf, à l'utilisateur du conteneur) : la purge
       // efface le profil entier, sous-dossier compris.
-      Binds: [`${config.dossierProfils}/${profilId}/chrome:/profil`, `${config.dossierExtensionCrx}:/extension-crx:ro`, ...gpu.binds],
+      Binds: [`${config.dossierProfils}/${profilId}/chrome:/profil`, `${crx}:/extension-crx:ro`, ...gpu.binds],
       ...(gpu.devices.length ? { Devices: gpu.devices, GroupAdd: gpu.groupes } : {}),
       Memory: octets(config.memoireNavigateur),
       NanoCpus: 1_500_000_000,
@@ -373,6 +381,45 @@ export function renduDepuisSystemInfo(info, { source = 'navigateur', le = new Da
 export async function lireRenduNavigateur(cdp, opts = {}) {
   const info = await Promise.resolve().then(() => cdp.send('SystemInfo.getInfo')).catch(() => null);
   return renduDepuisSystemInfo(info, opts);
+}
+
+/**
+ * (01/11) Le cache du script de fond de l'extension, effacé quand la copie a changé (cacheExtensionAEffacer).
+ * (04/11 soir, mesuré sur cloud-2) Le moteur Chrome aussi : son profil vit dans « <profil>/chrome » (`sous`) — une copie
+ * neuve installée gardait l'ANCIEN script de fond (cache des service workers) tant que ce cache n'était pas effacé.
+ * (13/11) `source` : la copie de CE compte (extensionPilote.js : dossier, empreinte) ; absente = la copie commune, lue comme
+ * avant. Rend { efface, empreinte }.
+ */
+export async function rafraichirExtensionProfil({ config, journal, user, profilId, sous = '', source = null }) {
+  let empreinte = source?.empreinte ?? null;
+  if (!empreinte) {
+    const copie = await readFile(`${source?.dossier ?? config.dossierExtension}/background.js`).catch(() => null);
+    if (!copie) return { efface: false, empreinte: null };
+    empreinte = empreinteScript(copie);
+  }
+  const racine = `${config.dossierProfils}/${profilId}${sous ? `/${sous}` : ''}`;
+  const marque = `${racine}/.extension-cloud`;
+  const notee = await readFile(marque, 'utf8').catch(() => '');
+  if (!cacheExtensionAEffacer(notee, empreinte)) return { efface: false, empreinte };
+  await rm(`${racine}/Default/Service Worker`, { recursive: true, force: true });
+  await mkdir(racine, { recursive: true });
+  await writeFile(marque, `${empreinte}
+`);
+  journal.info('extension_rafraichie', { user, empreinte, ...(sous ? { moteur: sous } : {}), ...(source?.pilote ? { pilote: source.version } : {}) });
+  return { efface: true, empreinte };
+}
+
+/**
+ * (13/11, décision de Nico) LA COPIE DE L'EXTENSION D'UN NAVIGATEUR CHROME, choisie compte par compte (extensionPilote.js) :
+ * la commune pour tous, la pilote pour le seul compte qui a son dossier pilote. Le cache du script de fond de son profil
+ * suit la copie (entrée ET sortie du pilote). Un pilote refusé se dit et n'est pas monté. Rend { extension, dossierCrx, source }
+ * — `extension` (pilote, empreinte, version servie) est gardé dans le handle : le planificateur le compare (postes.js).
+ */
+export async function preparerExtensionChrome({ config, journal, user, profilId }) {
+  const source = await lireSourceExtension({ config, user });
+  if (source.raison) journal.alerte('extension_pilote_refusee', { user, raison: source.raison });
+  await rafraichirExtensionProfil({ config, journal, user, profilId, sous: 'chrome', source });
+  return { extension: { pilote: source.pilote, empreinte: source.empreinte, version: source.version }, dossierCrx: source.dossierCrx, source };
 }
 
 export function creerNavigateurs({ config, docker, journal, cloisonnement = null }) {
@@ -453,23 +500,8 @@ export function creerNavigateurs({ config, docker, journal, cloisonnement = null
     return { verdict: v, empreinte: courante };
   }
 
-  /** (01/11) Le cache du script de fond de l'extension, effacé quand la copie a changé (cacheExtensionAEffacer). */
-  // (04/11 soir, mesuré sur cloud-2) Le moteur Chrome aussi : son profil vit dans « <profil>/chrome » (`sous`) — une copie
-  // neuve installée gardait l'ANCIEN script de fond (cache des service workers) tant que ce cache n'était pas effacé.
-  async function rafraichirExtensionDuProfil(user, profilId, sous = '') {
-    const copie = await readFile(`${config.dossierExtension}/background.js`).catch(() => null);
-    if (!copie) return false;
-    const empreinte = createHash('sha256').update(copie).digest('hex').slice(0, 16);
-    const racine = `${config.dossierProfils}/${profilId}${sous ? `/${sous}` : ''}`;
-    const marque = `${racine}/.extension-cloud`;
-    const notee = await readFile(marque, 'utf8').catch(() => '');
-    if (!cacheExtensionAEffacer(notee, empreinte)) return false;
-    await rm(`${racine}/Default/Service Worker`, { recursive: true, force: true });
-    await writeFile(marque, `${empreinte}
-`);
-    journal.info('extension_rafraichie', { user, empreinte, ...(sous ? { moteur: sous } : {}) });
-    return true;
-  }
+  /** (01/11) Le moteur steel : la copie commune seule (rafraichirExtensionProfil). */
+  const rafraichirExtensionDuProfil = (user, profilId, sous = '') => rafraichirExtensionProfil({ config, journal, user, profilId, sous });
 
   /** (30/10) Chrome : conteneur neuf sur le proxy de CETTE ouverture, profil gardé ; CDP par le relais 9223. */
   async function ouvrirChrome(user, { proxyUrl, proxyBeebs, proxySecours = null, profilId, permises, jetonControle }) {
@@ -478,8 +510,9 @@ export function creerNavigateurs({ config, docker, journal, cloisonnement = null
     const dossier = `${config.dossierProfils}/${profilId}/chrome`;
     await mkdir(dossier, { recursive: true });
     await chown(dossier, 1000, 1000).catch(() => {});   // l'utilisateur « navigateur » du conteneur
-    await rafraichirExtensionDuProfil(user, profilId, 'chrome');
-    await docker.creer(nom, specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs, proxySecours, permises, jetonControle }));
+    // (13/11) La copie de CE compte : la commune, ou son pilote (extensionPilote.js) — cache du script de fond compris.
+    const { extension, dossierCrx } = await preparerExtensionChrome({ config, journal, user, profilId });
+    await docker.creer(nom, specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs, proxySecours, permises, jetonControle, dossierCrx }));
     await docker.demarrer(nom);
     const ip = ipDe(await docker.inspecter(nom));
     if (!ip) throw new Error(`conteneur ${nom} sans adresse sur ${config.reseauDocker}`);
@@ -491,7 +524,7 @@ export function creerNavigateurs({ config, docker, journal, cloisonnement = null
     }
     if (!version?.webSocketDebuggerUrl) throw new Error('Chrome muet (port de pilotage)');
     const cdp = await connecterCdp(String(version.webSocketDebuggerUrl).replace(/^ws:\/\/[^/]+/, `ws://${ip}:9223`), { delaiAppelMs: 90_000 });
-    return { cdp, ip, nom, navigateur: version.Browser };
+    return { cdp, ip, nom, navigateur: version.Browser, extension };
   }
 
   /**
@@ -543,19 +576,22 @@ export function creerNavigateurs({ config, docker, journal, cloisonnement = null
       // Le jeton du contrôle du verrou : neuf à chaque ouverture, gardé dans le handle, JAMAIS journalisé.
       const jetonControle = randomBytes(24).toString('hex');
       const permisesVerrou = plateformesVerrou(permises);
-      const { cdp, ip, nom, navigateur } = await ouvrirChrome(user, { proxyUrl, proxyBeebs, proxySecours, profilId, permises: permisesVerrou, jetonControle });
-      const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'chrome', navigateur, permises: permisesVerrou };
+      const { cdp, ip, nom, navigateur, extension } = await ouvrirChrome(user, { proxyUrl, proxyBeebs, proxySecours, profilId, permises: permisesVerrou, jetonControle });
+      const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'chrome', navigateur, permises: permisesVerrou, extension };
       Object.defineProperty(h, 'jetonControle', { value: jetonControle, enumerable: false });
       cdp.on((m) => { if (m.method === '__ferme__' && ouverts.get(user) === h) ouverts.delete(user); });
       await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
       ouverts.set(user, h);
-      journal.info('navigateur_ouvert', { user, conteneur: nom, moteur: 'chrome', navigateur });
+      journal.info('navigateur_ouvert', { user, conteneur: nom, moteur: 'chrome', navigateur, ...(extension?.pilote ? { extension_pilote: extension.version } : {}) });
       lireRenduApresOuverture(user, h);
       return h;
     }
     // (02/11) L'empreinte FIGÉE : vérifiée AVANT toute recréation de conteneur (sinon l'ancien serait déjà détruit).
     await exigerEmpreinte(user, profilId, proxyUrl);
     const { nom, ip } = await assurerConteneur(user, profilId);
+    // (13/11) Le pilote n'existe que sur le moteur Chrome : sur steel, monter une autre copie changerait l'empreinte FIGÉE
+    // du lancement (Binds dans fillsell.lancement). Ignoré, et dit.
+    if ((await listerPilotes(config)).includes(user)) journal.alerte('extension_pilote_ignoree', { user, raison: 'moteur_steel' });
     await rafraichirExtensionDuProfil(user, profilId);
     await attendreApi(ip);
     const corps = corpsSession({ proxyUrl });
@@ -695,6 +731,9 @@ export function creerNavigateurs({ config, docker, journal, cloisonnement = null
 
   return { ouvrir, fermer, detruire, permettre, permettreCadre, retirerCadre, memoire, etatRelais, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()],
     dernierRendu: () => dernierRendu,
+    // (13/11) La copie de l'extension d'un compte aujourd'hui (extensionPilote.js), lue par le planificateur pour le SEUL
+    // compte qui entre dans un pilote ou en sort ; le moteur steel n'a que la copie commune.
+    sourceExtension: (user) => (chrome ? lireSourceExtension({ config, user }) : lireSourceCommune(config)),
     // (07/11 soir) Le verdict du cloisonnement (cloisonnement.js), lu par le planificateur avant d'ouvrir ; null sans garde.
     etatCloisonnement: async () => (cloisonnement ? cloisonnement.evaluer() : null) };
 }

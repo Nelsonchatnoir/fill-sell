@@ -11,10 +11,13 @@ export const EULA_APPLE = 'https://www.apple.com/legal/internet-services/itunes/
 const LEGAL = 'https://fillsell.app/legal';
 
 /**
- * @param {{ canal?: 'ios'|'android'|'web', lang?: 'fr'|'en', cloud?: boolean, essaiCloud?: boolean }} o
+ * @param {{ canal?: 'ios'|'android'|'web', lang?: 'fr'|'en', cloud?: boolean, essaiCloud?: boolean, essaiAnnonce?: boolean }} o
+ * (13/11, audit des paiements de Nico) essaiAnnonce : une carte de l'écran annonce un essai gratuit — « prélevé à la
+ * confirmation » serait faux pour elle : la phrase dit alors « … ou à la fin de l'essai gratuit annoncé … ». Absent : la
+ * phrase d'avant, mot pour mot.
  * @returns {{ texte: string, liens: Array<{ cle: string, libelle: string, url: string }> }}
  */
-export function mentionsAbonnement({ canal = 'web', lang = 'fr', cloud = false, essaiCloud = true } = {}) {
+export function mentionsAbonnement({ canal = 'web', lang = 'fr', cloud = false, essaiCloud = true, essaiAnnonce = false } = {}) {
   const en = lang === 'en';
   const suffixe = en ? '?lang=en' : '';
   const ou = canal === 'ios'
@@ -27,9 +30,12 @@ export function mentionsAbonnement({ canal = 'web', lang = 'fr', cloud = false, 
     : canal === 'android'
       ? (en ? 'Play Store › Payments & subscriptions' : 'Play Store › Paiements et abonnements')
       : (en ? 'Settings › Subscription in FillSell' : 'Réglages › Abonnement dans FillSell');
+  const quand = essaiAnnonce
+    ? (en ? 'when you confirm, or at the end of the free trial when one is shown,' : "à la confirmation, ou à la fin de l'essai gratuit quand il est annoncé,")
+    : (en ? 'when you confirm,' : 'à la confirmation,');
   let texte = en
-    ? `Auto-renewing subscriptions: the price shown is ${ou} when you confirm, then at each period, unless you cancel at least 24 hours before it ends (${arreter}).`
-    : `Abonnements à renouvellement automatique : le prix affiché est ${ou} à la confirmation, puis à chaque période, sauf résiliation au moins 24 h avant son terme (${arreter}).`;
+    ? `Auto-renewing subscriptions: the price shown is ${ou} ${quand} then at each period, unless you cancel at least 24 hours before it ends (${arreter}).`
+    : `Abonnements à renouvellement automatique : le prix affiché est ${ou} ${quand} puis à chaque période, sauf résiliation au moins 24 h avant son terme (${arreter}).`;
   if (cloud) {
     const prixCloudEn = prixOuChargement('cloud', 'en');
     const prixCloudFr = prixOuChargement('cloud', 'fr');

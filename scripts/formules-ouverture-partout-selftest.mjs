@@ -145,6 +145,10 @@ try {
   const ids = { premium: 'app.fillsell.premium.standard', pro: 'app.fillsell.pro2.sub', business: 'app.fillsell.business.sub', cloud: 'app.fillsell.cloud.sub',
     premium_cloud: 'app.fillsell.premium.cloud', pro_cloud: 'app.fillsell.pro.cloud', business_cloud: 'app.fillsell.business.cloud' };
   PB.poserPrixBoutique({ canal: 'apple', statut: 'pret', prix: PB.lireProduitsBoutique(reponseApple, { canal: 'apple', ids }) });
+  // (13/11, 2e réponse de Nico — point b) La semaine d'Apple n'est plus annoncée sans savoir : l'historique Apple du
+  // téléphone (Transaction.all, lib/eligibiliteApple.js) dit si elle sera offerte. Ici, un identifiant Apple VIERGE (8b457627
+  // le 08/11 avant son achat) : elle l'est. Le cas contraire (« prélevé aujourd'hui ») : selftest:textes-paiement-verite.
+  PB.poserEligibiliteApple({ plan: true, cloud: true });
   ok(PB.essaiBoutiqueOffert('premium_cloud') === true && PB.essaiBoutiqueOffert('pro_cloud') === true, 'Premium + Cloud et Pro + Cloud : la semaine gratuite peut être annoncée (le serveur décide, comme sur le web)');
   ok(PB.essaiBoutiqueOffert('business_cloud') === false, '⛔ Business + Cloud : jamais (aucune offre d’introduction chez Apple)');
   ok(PB.essaiBoutiqueOffert('cloud') === true, 'le Cloud seul : plus jamais « Ta boutique ne propose pas d’essai gratuit à ce compte » quand Apple l’offre');
@@ -157,7 +161,7 @@ try {
   const achatIos = ACH.creerAchatFormuleCloud({ supabase: supabaseFactice, supabaseUrl: 'https://x.supabase.co', supabaseAnonKey: 'anon', user: { id: 'u', email: 'u@exemple.fr' }, lang: 'fr', platform: 'ios',
     confirmer: async (q) => { questions.push(q); return false; }, notifier: () => {}, demanderConditions: async () => true, purchasePremium: async () => { achats++; return { cancelled: true }; } });
   const r = await achatIos.acheter('pro_cloud', { essaiAffiche: false, dejaCloud: true });
-  ok(questions.length === 1 && /App Store peut t'afficher « 1 semaine gratuite »/.test(questions[0]) && r?.etat === 'annule' && achats === 0,
+  ok(questions.length === 1 && /App Store va t'afficher « 1 semaine gratuite »/.test(questions[0]) && r?.etat === 'annule' && achats === 0,
     'essai FillSell déjà pris, sur iPhone : la question du 4d est POSÉE avant la feuille d’Apple (avant : jamais, le module ne disant rien)', questions[0]);
   questions.length = 0;
   await achatIos.acheter('pro_cloud', { essaiAffiche: false, dejaCloud: true, abonneBoutique: true });

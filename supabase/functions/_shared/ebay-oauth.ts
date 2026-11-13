@@ -27,6 +27,8 @@
 // l'app affiche « à reconnecter ». Jamais une erreur technique.
 // ═══════════════════════════════════════════════════════════════════════════
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+// (13/11, étape 4 L1) site_compte : le site du compte par identifiants (_shared/sites-plateformes.js).
+import { siteCompteEbayPublic } from "./sites-plateformes.js";
 
 export type EbayEnv = "production" | "sandbox";
 
@@ -229,6 +231,9 @@ export interface CompteEbay {
   return_policy_id: string | null;
   // (09/10) Site d'inscription du compte (GetUser <Site>), noté par _shared/ebay-site.ts ; null = jamais lu.
   ebay_site?: string | null;
+  ebay_site_lu_le?: string | null;
+  // L'identifiant IMMUABLE du vendeur (GetUser <EIASToken>) : la clé de sa ligne dans comptes_plateformes.
+  ebay_eias_token?: string | null;
 }
 
 export async function lireCompte(admin: SupabaseClient, userId: string): Promise<{ compte: CompteEbay | null; erreur: string | null }> {
@@ -238,11 +243,13 @@ export async function lireCompte(admin: SupabaseClient, userId: string): Promise
 }
 
 // Vue PUBLIQUE d'un compte : ce que l'app a le droit de voir. AUCUN jeton.
-export function etatPublic(compte: CompteEbay | null) {
+// (13/11, étape 4 L1) `siteCompte` : la ligne de public.comptes_plateformes lue par l'appelant (lireComptePlateforme) ;
+// absente (migration M1 pas appliquée, ligne pas encore écrite) → le site GetUser d'ebay_accounts, par la même règle.
+export function etatPublic(compte: CompteEbay | null, { siteCompte = null }: { siteCompte?: Record<string, unknown> | null } = {}) {
   if (!compte) {
     return {
       connecte: false, a_reconnecter: false, motif_reconnexion: null, ebay_user_id: null, connected_at: null,
-      scopes_manquants: [...SCOPES_DEMANDES], seller_state: null, seller_state_at: null, politiques: null, ebay_site: null,
+      scopes_manquants: [...SCOPES_DEMANDES], seller_state: null, seller_state_at: null, politiques: null, ebay_site: null, site_compte: null,
     };
   }
   const refreshMort = compte.refresh_token_expires_at ? Date.parse(compte.refresh_token_expires_at) < Date.now() : false;
@@ -265,6 +272,9 @@ export function etatPublic(compte: CompteEbay | null) {
     // (25/10, audit N10) Le site d'inscription (« UK », « Italy »…) : l'app grise eBay pour un compte inscrit hors
     // d'eBay France (_shared/ebay-hors-france.js). null = jamais lu → rien n'est grisé.
     ebay_site: compte.ebay_site ?? null,
+    // (13/11, étape 4 L1) Le site du compte PAR IDENTIFIANTS ({ site: "EBAY_GB", pays: "GB", langue: "en-GB", devise:
+    // "GBP", domaine: "ebay.co.uk", source, lu_le, pilote }) — jamais l'identifiant du compte ni le brut. null = jamais lu.
+    site_compte: siteCompteEbayPublic(compte, siteCompte),
   };
 }
 

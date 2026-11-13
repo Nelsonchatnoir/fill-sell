@@ -24,7 +24,7 @@ import { cartesFormulesCloud } from '../cloud/formulesCloud';
 import { textesFormules, NOMS_FORMULES } from '../cloud/textesFormules';
 import { CorpsCarteGrille } from '../components/ConversionModal';
 import MentionsAbonnement from '../components/MentionsAbonnement';
-import { prixOuChargement, prixPret, zeroAffiche, essaiBoutiqueOffert } from '../lib/prixBoutique';
+import { prixOuChargement, prixPret, zeroAffiche, etatEssaiBoutique } from '../lib/prixBoutique';
 import { usePrixBoutique } from '../lib/usePrixBoutique';
 import { mentionFormuleCloud } from '../utils/mentionsAbonnement';
 
@@ -132,7 +132,7 @@ export function EtapeCloudOffres({ c, onSuivant, onAller }) {
   const k = c.formules;
   const modele = cartesFormulesCloud({
     palier: c.palier === 'free' ? 'gratuit' : (c.palier ?? 'gratuit'), canalApp: canalDeVente(c.plateforme), canalAbonnement: null,
-    essaiPermis: k.essaiPermis, essaiBoutique: (f) => essaiBoutiqueOffert(f), businessVisible: businessOfferVisible(c.user?.id ?? null),
+    essaiPermis: k.essaiPermis, essaiBoutique: (f) => etatEssaiBoutique(f), businessVisible: businessOfferVisible(c.user?.id ?? null),
   });
   const choisir = async (carte) => {
     c.journaliser(`formule_${carte.formule}_${carte.cta}`);
@@ -153,7 +153,7 @@ export function EtapeCloudOffres({ c, onSuivant, onAller }) {
         corps={c.grille ? (palier, sombre) => <CorpsCarteGrille fr={c.lang !== 'en'} palier={palier} K={c.K} dark={sombre} margeBas={0} /> : null}
       />
       {k.achat.message && <div style={{ marginTop: 12 }}><Bande ton={k.achat.etat === 'erreur' || k.achat.etat === 'refuse' ? 'alerte' : 'menthe'}>{k.achat.message}</Bande></div>}
-      <MentionsAbonnement lang={c.lang === 'en' ? 'en' : 'fr'} />
+      <MentionsAbonnement lang={c.lang === 'en' ? 'en' : 'fr'} essaiAnnonce={modele.essaiAffiche} />
     </Scene>
   );
 }

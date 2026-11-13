@@ -34,8 +34,18 @@ import { patcherBackgroundLeboncoin, patcherMessagerieLeboncoin, patcherContentL
 import { etatJetonsConnexion, NOMS_JETONS_CONNEXION } from '../../serveur-cloud/src/jetonsConnexion.js';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const SORTIE = path.join(RACINE, 'build', 'extension-cloud');
-const TRAVAIL = path.join(RACINE, 'build', 'extension-cloud-src');
+// (13/11, décision de Nico — l'essai de la 0.6.187 sur le seul poste Cloud de Nico) --sortie=build/extension-cloud-pilote :
+// la copie PILOTE se construit à part, jamais à la place de build/extension-cloud (qu'un déploiement complet de deployer.sh
+// reprend tel quel s'il existe). Toujours sous build/ (le dossier est effacé avant d'être écrit).
+export function dossierDeSortie(argv = process.argv) {
+  const demande = argv.find((a) => a.startsWith('--sortie='))?.slice(9);
+  const sortie = path.resolve(RACINE, demande || path.join('build', 'extension-cloud'));
+  const build = path.join(RACINE, 'build') + path.sep;
+  if (!sortie.startsWith(build) || sortie.length <= build.length) throw new Error(`--sortie hors de build/ : ${demande}`);
+  return sortie;
+}
+const SORTIE = dossierDeSortie();
+const TRAVAIL = `${SORTIE}-src`;
 const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Clé PUBLIQUE de la copie Cloud (fixe l'identifiant ; rien de secret).
 const CLE_PUBLIQUE = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnz+xal/tm6qqr81BGvwBZtEVu295j+t0LAHLM4nAiJwbRL6E+uSRMBEBQ9n4cM8wg9YJuV0QyCuotpO6JkfZcCKmZzlN3RCRNdzWsyRqvf+jjw/7J3FpIPcHSDeqxJbMpLfN1smMBNIPPmZT1/laTAeHjmw9htncYuysvTeMOHpViDuJgUTSfG1+8NX5Fw6v6cF/FnvEMaYAWqguWpKFqt4HgWDTDAZL5/bMOOtx6a7wu7+rqnqXnMnrNtORR1B8SYhjuzsaDD3bUMXOg7s8o+pT65HJ/KXBDm96WDKThA9Bh4xZ/q+rlF5esJIVdutY0IAxy7hz8BdZOb1k8x+pYwIDAQAB';

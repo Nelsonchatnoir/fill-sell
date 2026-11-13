@@ -50,7 +50,7 @@ import { dateLongue, heureDe, jourDEssai, finEssaiSiOnCommence } from './regles'
 import { DEGRADE_TEAL } from './theme';
 import { voieArretCloud, voieBoutique } from './achatCloud';
 // (08/11, refus Google) Mobile : un bouton d'achat n'agit qu'une fois le prix de la boutique affiché.
-import { prixPret } from '../lib/prixBoutique';
+import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique';
 
 function Glyphe() {
   return (
@@ -125,7 +125,13 @@ export default function BlocCloudReglages({
   const T = textesCloud(lang);
   // (05/10) Essai refusé APRÈS coup (carte ou compte de plateforme déjà vus) : on le DIT.
   const Tc = textesConnexion(lang);
-  const phraseRefus = refus === 'carte_deja_vue' ? Tc.refusCarte : refus === 'compte_plateforme_deja_vu' ? Tc.refusComptePlateforme : null;
+  const phraseRefus = refus === 'carte_deja_vue' ? Tc.refusCarte
+    : refus === 'compte_plateforme_deja_vu' ? (canal === 'apple' || canal === 'google'
+      ? Tc.refusComptePlateformeBoutique(canal === 'apple' ? 'App Store' : 'Google Play', lang === 'en'
+        ? (canal === 'apple' ? 'in your Apple subscriptions' : 'in your Google Play subscriptions')
+        : (canal === 'apple' ? 'dans tes abonnements Apple' : 'dans tes abonnements Google Play'))
+      : Tc.refusComptePlateforme)
+    : null;
   const [confirmer, setConfirmer] = useState(false);
   const [horloge] = useState(() => Date.now());
   // (07/11 soir) Le geste en cours (un seul à la fois) ; la boutique ouverte, en attente de sa confirmation.
@@ -206,10 +212,17 @@ export default function BlocCloudReglages({
               <p data-cloud-accroche="1" style={{ ...pTexte, margin: 0, fontWeight: 700, color: R.ink }}>{T.accroche}</p>
               <p style={pTexte}>{T.ceQueCaFait}</p>
               {quotaLigne}
-              {!cloud.essaiPris ? (
+              {/* (13/11, point b de Nico) L'essai n'est promis que si la boutique offre sa semaine à CE compte (iPhone :
+                  historique Apple ; Android : offres de Google) ; sinon le prix et « prélevés aujourd'hui », ou les deux issues. */}
+              {!cloud.essaiPris && etatEssaiBoutique('cloud') === 'oui' ? (
                 <>
                   {actions.essayer && <Bouton ton="plein" onClick={actions.essayer} disabled={!prixPret('cloud')} style={PLEIN}>{T.aucunCtaEssai}</Bouton>}
                   <p style={pNote}>{T.aucunNoteEssai(dateAvantEssai)}</p>
+                </>
+              ) : !cloud.essaiPris ? (
+                <>
+                  {actions.essayer && <Bouton ton="plein" onClick={actions.essayer} disabled={!prixPret('cloud')} style={PLEIN}>{T.aucunCta}</Bouton>}
+                  <p style={pNote}>{etatEssaiBoutique('cloud') === 'inconnu' ? Tc.noteSemaineIncertaine : Tc.noteSansSemaine}</p>
                 </>
               ) : (
                 <>

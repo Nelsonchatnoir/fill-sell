@@ -23,6 +23,9 @@
 const CLE = 'fs_offre_mail';
 const CODES_AUTORISES = ['FILLSELL50'];
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// (13/11/2026, audit des paiements de Nico) La FIN de chaque offre, celle que le texte annonce (« jusqu'au 31 octobre ») :
+// passée, plus de bandeau ni de code envoyé (avant : « -50 % … jusqu'au 31 octobre » montré le 13/11, 7 jours après le clic).
+export const FIN_OFFRES = Object.freeze({ FILLSELL50: Date.parse('2026-11-01T00:00:00+01:00') });
 
 function lire() {
   try {
@@ -30,6 +33,10 @@ function lire() {
     if (!brut) return null;
     const v = JSON.parse(brut);
     if (!v || !CODES_AUTORISES.includes(v.code)) return null;
+    if (Number.isFinite(FIN_OFFRES[v.code]) && Date.now() >= FIN_OFFRES[v.code]) {
+      localStorage.removeItem(CLE);
+      return null;
+    }
     if (!Number.isFinite(v.ts) || Date.now() - v.ts > TTL_MS) {
       localStorage.removeItem(CLE);
       return null;
@@ -51,6 +58,7 @@ export function capterOffre() {
   try {
     const code = String(new URLSearchParams(window.location.search).get('offre') ?? '').trim().toUpperCase();
     if (!CODES_AUTORISES.includes(code)) return;
+    if (Number.isFinite(FIN_OFFRES[code]) && Date.now() >= FIN_OFFRES[code]) return;
     ecrire({ code, ts: Date.now(), ouverte: false });
   } catch { /* URL illisible : rien à relever */ }
 }

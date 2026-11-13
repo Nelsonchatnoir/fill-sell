@@ -21,7 +21,7 @@
 // `{ success: true }` sans rien arrêter ; l'app le prenait pour un succès et ne disait rien. Une app n'annule jamais
 // un abonnement Apple ou Google : notre état suit le retour de la boutique (apple-iap-webhook, google-play-webhook).
 import { textesConnexion } from './textesConnexion';
-import { prixPret, essaiBoutiqueOffert } from '../lib/prixBoutique.js';
+import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique.js';
 
 export const PRODUIT_CLOUD = 'app.fillsell.cloud.sub';   // même identifiant Apple et Google (cloud-option.js, PRODUIT_CLOUD_GOOGLE)
 export const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
@@ -165,13 +165,14 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     if (!essaiPermis && !boutiqueSansEssai) notifier?.(T.sansEssaiStore);
     const r = await purchasePremium(PRODUIT_CLOUD, user.id);
     if (r?.cancelled) return { etat: 'annule' };
+    if (r?.enAttente) return { etat: 'attente', message: T.achatApprobation };
     if (platform === 'android') {
       if (!r?.purchaseToken) return { etat: 'erreur', message: T.achatEchec };
       const { error } = await supabase.functions.invoke('validate-google-purchase', { body: { productId: PRODUIT_CLOUD, purchaseToken: r.purchaseToken, userId: user.id } });
       if (error) return { etat: 'erreur', message: T.achatEchec };
     }
     const ok = await attendreServeur();
-    return ok ? { etat: 'actif', message: T.achatOk } : { etat: 'attente', message: T.achatAttente };
+    return ok ? { etat: 'actif', message: T.achatOk } : { etat: 'attente', message: essaiPermis ? T.essaiAttente : T.achatAttente };
   }
 
   /** (03/11, point 5) L'inscription à la liste d'attente (« Être prévenu(e) »). Rend le message à montrer. */
@@ -211,7 +212,19 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     let essai = p.essai;
     let confirmation = p.confirmation;
     let boutiqueSansEssai = false;
-    if (platform !== 'web' && essai !== false && !essaiBoutiqueOffert('cloud')) { essai = false; boutiqueSansEssai = true; confirmation = T.sansEssai('boutique_sans_essai'); }
+    // (13/11, point b de Nico) La semaine de la boutique est LUE : 'non' → « prélevés aujourd'hui » ; 'inconnu' (iPhone,
+    // historique Apple illisible) → les deux issues ; essai FillSell refusé mais semaine offerte → la semaine sans Cloud
+    // (décision 8 : il démarre au premier paiement) dite AVANT la feuille, plus après (sansEssaiStore).
+    const semaine = platform !== 'web' ? etatEssaiBoutique('cloud') : 'oui';
+    if (platform !== 'web' && essai !== false && semaine !== 'oui') {
+      essai = false; boutiqueSansEssai = true;
+      confirmation = semaine === 'inconnu' ? T.essaiIncertain : T.sansEssai('boutique_sans_essai');
+    } else if (platform !== 'web' && essai === false && semaine !== 'non') {
+      boutiqueSansEssai = true;
+      confirmation = semaine === 'oui' ? T.semaineSansDroits(platform === 'ios' ? 'App Store' : 'Google Play') : T.semaineIncertaine;
+    } else if (platform !== 'web' && essai === false) {
+      boutiqueSansEssai = true;   // 'non' : la boutique ne montrera pas de semaine — le toast « si elle l'affiche » n'a plus lieu d'être
+    }
     if (essai === false && !(await confirmer(confirmation))) return { etat: 'annule' };
     try {
       return platform === 'web' ? await stripe(origine) : await boutique(essai, { boutiqueSansEssai });

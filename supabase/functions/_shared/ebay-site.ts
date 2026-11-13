@@ -16,19 +16,17 @@
 // envoyé sur ebay.fr. Site illisible → rien n'est décidé (comme avant).
 // deno-lint-ignore-file no-explicit-any
 import { lireIdentiteEbay, obtenirAccessToken, type EbayEnv } from "./ebay-oauth.ts";
+// (13/11, étape 4 L1) LA table des sites (_shared/sites-plateformes.js) : la recopie DOMAINES d'ici est retirée (les
+// 16 domaines à l'octet, verrou sites-plateformes) ; le site lu par GetUser est noté dans comptes_plateformes.
+import { domaineCompteEbay, ligneCompteEbay } from "./sites-plateformes.js";
+import { noterComptePlateforme } from "./comptes-plateformes.js";
 
 /** Le site eBay sur lequel FillSell publie aujourd'hui (EBAY_FR, SITEID 71). */
 export const SITE_EBAY_PUBLIE = "France";
 
-/** Nom affiché d'un site GetUser, avec son domaine. */
-const DOMAINES: Record<string, string> = {
-  France: "ebay.fr", Italy: "ebay.it", Spain: "ebay.es", Germany: "ebay.de", Austria: "ebay.at",
-  Belgium_French: "befr.ebay.be", Belgium_Dutch: "benl.ebay.be", Netherlands: "ebay.nl", Ireland: "ebay.ie",
-  UK: "ebay.co.uk", US: "ebay.com", Switzerland: "ebay.ch", Poland: "ebay.pl", Canada: "ebay.ca",
-  CanadaFrench: "cafr.ebay.ca", Australia: "ebay.com.au",
-};
+/** Le domaine où le compte est inscrit (« UK » → « ebay.co.uk ») ; null pour un site inconnu. */
 export function domaineSiteEbay(site: string | null | undefined): string | null {
-  return site ? (DOMAINES[site] ?? null) : null;
+  return site ? domaineCompteEbay(site) : null;
 }
 
 /** Un compte d'un AUTRE site qu'ebay.fr (site connu seulement). */
@@ -52,8 +50,8 @@ export function messageSiteEtranger(site: string, pseudo: string | null): string
 export async function siteDuCompteEbay(admin: any, env: EbayEnv, userId: string): Promise<{ site: string | null; pseudo: string | null }> {
   try {
     const { data } = await admin.from("ebay_accounts")
-      .select("ebay_user_id, ebay_site, ebay_site_lu_le, revoked_at").eq("user_id", userId).maybeSingle();
-    const ligne = data as { ebay_user_id?: string | null; ebay_site?: string | null; ebay_site_lu_le?: string | null; revoked_at?: string | null } | null;
+      .select("ebay_user_id, ebay_eias_token, ebay_site, ebay_site_lu_le, revoked_at").eq("user_id", userId).maybeSingle();
+    const ligne = data as { ebay_user_id?: string | null; ebay_eias_token?: string | null; ebay_site?: string | null; ebay_site_lu_le?: string | null; revoked_at?: string | null } | null;
     if (!ligne || ligne.revoked_at) return { site: null, pseudo: ligne?.ebay_user_id ?? null };
     if (ligne.ebay_site) return { site: ligne.ebay_site, pseudo: ligne.ebay_user_id ?? null };
     const essai = Date.parse(String(ligne.ebay_site_lu_le ?? ""));
@@ -64,6 +62,11 @@ export async function siteDuCompteEbay(admin: any, env: EbayEnv, userId: string)
     await admin.from("ebay_accounts")
       .update({ ebay_site: identite.site ?? null, ebay_site_lu_le: new Date().toISOString() })
       .eq("user_id", userId);
+    // (13/11, L1) Lu UNE fois, noté pour tous les lecteurs : la ligne du compte (une écriture seulement si elle change ;
+    // table absente avant la migration M1 → rien, jamais une panne). Site illisible → aucune ligne.
+    if (identite.site) {
+      await noterComptePlateforme(admin, ligneCompteEbay({ userId, compte: ligne.ebay_eias_token ?? identite.eiasToken, siteGetUser: identite.site }));
+    }
     return { site: identite.site ?? null, pseudo: ligne.ebay_user_id ?? identite.username ?? null };
   } catch {
     return { site: null, pseudo: null };

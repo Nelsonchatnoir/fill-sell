@@ -35,7 +35,7 @@ try {
   ok(/réessaie/.test(A.lirePreparation({ ok: false, raison: 'pool_vide' }).message) && /carte/.test(A.lirePreparation({ ok: false, raison: 'pool_vide' }).message), '…et on le dit (rien demandé à la carte)');
   ok(A.lirePreparation({ ok: false, raison: 'deja_client' }).continuer === false, 'déjà client → rien');
   const sans = A.lirePreparation({ ok: true, essai: false, raison: 'appareil_deja_vu' });
-  ok(sans.continuer && sans.essai === false && /tout de suite/.test(sans.confirmation) && /24,99.€\/mois/.test(sans.confirmation), 'essai refusé → on DEMANDE avant de payer (tout de suite, 24,99 €/mois)');
+  ok(sans.continuer && sans.essai === false && /tout de suite/.test(sans.confirmation) && /24,99.€ prélevés aujourd'hui/.test(sans.confirmation), 'essai refusé → on DEMANDE avant de payer (13/11, décision de Nico : « 24,99 € prélevés aujourd’hui », avant « à 24,99 €/mois »)');
   ok(A.lirePreparation({ ok: true, essai: true }).essai === true, 'essai permis → on continue avec l\'essai');
   ok(A.lirePreparation(null).continuer === false, 'réponse illisible → rien ne s\'ouvre');
   ok(A.PRODUIT_CLOUD === 'app.fillsell.cloud.sub', 'produit des stores : app.fillsell.cloud.sub (Apple et Google)');

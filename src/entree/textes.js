@@ -182,8 +182,10 @@ const FR = {
   cloudKicker: `FillSell Cloud · ${J7} offerts`,
   cloudTitre: (date) => `Rien à payer avant le ${String(date).replace(/ /g, NBSP)}`,
   cloudTexte: `Pendant ${J7}, tes annonces partent de nos serveurs, pilotées depuis ton téléphone. Tu ne paies que si tu continues.`,
-  cloudFrise: (veille, bascule) => [
-    { quand: "Aujourd'hui", quoi: `Carte demandée, 0${NBSP}€ prélevé.` },
+  // (13/11, audit des paiements) Le « 0 » dans la monnaie de la BOUTIQUE (zeroAffiche) : « 0 € » en dur était faux hors euro
+  // sur Android (règle de Google, refus de la vc36). Absent : « 0 € » (web), comme avant.
+  cloudFrise: (veille, bascule, zero = `0${NBSP}€`) => [
+    { quand: "Aujourd'hui", quoi: `Carte demandée, ${zero} prélevé.` },
     { quand: veille, quoi: 'Ton essai se termine demain.' },
     { quand: bascule, quoi: `${PRIX}/mois, sauf si tu arrêtes avant. Sans engagement.` },
   ],
@@ -435,8 +437,8 @@ const EN = {
   cloudKicker: `FillSell Cloud · ${D7} free`,
   cloudTitre: (date) => `Nothing to pay before ${String(date).replace(/ /g, NBSP)}`,
   cloudTexte: `For ${D7}, your listings go out from our servers, driven from your phone. You only pay if you keep going.`,
-  cloudFrise: (veille, bascule) => [
-    { quand: 'Today', quoi: 'Card required, €0 charged.' },
+  cloudFrise: (veille, bascule, zero = '€0') => [
+    { quand: 'Today', quoi: `Card required, ${zero} charged.` },
     { quand: veille, quoi: 'Your trial ends tomorrow.' },
     { quand: bascule, quoi: `${PRIX_EN}/mo, unless you stop before. No commitment.` },
   ],

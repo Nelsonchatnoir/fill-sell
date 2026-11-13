@@ -4,8 +4,20 @@
 import { Capacitor } from '@capacitor/core';
 import { NativePurchases } from '@capgo/native-purchases';
 import { PRODUCT_IDS } from './iap';
-import { poserPrixBoutique, lirePrixBoutique, lireProduitsBoutique, avecDelai } from './prixBoutique';
+import { poserPrixBoutique, lirePrixBoutique, lireProduitsBoutique, avecDelai, poserEligibiliteApple } from './prixBoutique';
 import { idsFormulesBoutique } from './idsFormulesBoutique';
+import { eligibiliteApple } from './eligibiliteApple';
+
+// (13/11/2026, point b de Nico) iPhone : l'historique Apple de l'identifiant du téléphone (Transaction.all de StoreKit, par
+// le getPurchases du module d'achat — déjà utilisé par « Restaurer les achats »), lu avec les prix, borné à
+// DELAI_LECTURE_MS ; il dit si la semaine gratuite d'Apple sera offerte (lib/eligibiliteApple.js). Échec ou délai : null
+// (« inconnu » : un texte vrai dans les deux cas, jamais « 7 jours gratuits » affirmé). Ne lève jamais.
+export function chargerEligibiliteApple() {
+  return avecDelai(() => NativePurchases.getPurchases(), DELAI_LECTURE_MS)
+    .then(({ purchases } = {}) => eligibiliteApple(purchases))
+    .catch((err) => { console.warn('[prix] historique Apple illisible :', err?.message ?? err); return null; })
+    .then((el) => { poserEligibiliteApple(el); return el; });
+}
 
 // Le Cloud : même identifiant Apple et Google (cloud/achatCloud.js, PRODUIT_CLOUD).
 export const ID_CLOUD_BOUTIQUE = 'app.fillsell.cloud.sub';
@@ -45,6 +57,8 @@ export function chargerPrixBoutique({ force = false } = {}) {
   // (09/11, repli de l'iPhone) Une lecture qui ne répond pas en DELAI_LECTURE_MS vaut un échec : sur iPhone, l'écran
   // d'achat passe au prix de repli (lib/prixBoutique.js repliApple) au lieu de rester sur « … » sans fin.
   // Un module natif absent ou qui lève d'un coup (vieux binaire) devient un échec, jamais une exception (avecDelai).
+  // (13/11) iPhone : l'historique Apple se relit à chaque lecture des prix (un achat fait entre-temps change la réponse).
+  if (canal === 'apple') chargerEligibiliteApple();
   enVol = avecDelai(() => NativePurchases.getProducts({ productIdentifiers: Object.values(ids), productType: 'subs' }), DELAI_LECTURE_MS)
     .then(({ products }) => {
       const prix = lireProduitsBoutique(products, { canal, ids });

@@ -128,7 +128,8 @@ try {
         const m = FC.cartesFormulesCloud({ palier, canalApp, canalAbonnement, essaiPermis, formuleActuelle, founder, essaiBoutique: () => true });
         const b = m.cartes.find((x) => x.formule === 'business_cloud');
         combinaisons++;
-        if (b && (b.essai || b.pastille || b.lignePrix !== 'simple' || (b.cta !== 'passer' && b.cta !== null) || b.enLecture)) fautes.push(JSON.stringify({ palier, canalApp, canalAbonnement, essaiPermis, formuleActuelle, b }));
+        // (13/11, décision de Nico — « essai ou pas, date du premier prélèvement, AVANT de valider ») la ligne d'une souscription neuve dit « prélevés aujourd'hui » ('aujourdhui') ; jamais une ligne d'essai.
+        if (b && (b.essai || b.pastille || !['simple', 'aujourdhui'].includes(b.lignePrix) || (b.cta !== 'passer' && b.cta !== null) || b.enLecture)) fautes.push(JSON.stringify({ palier, canalApp, canalAbonnement, essaiPermis, formuleActuelle, b }));
       }
   ok(fautes.length === 0 && combinaisons === 864, `${combinaisons} combinaisons : la carte Business + Cloud n’a jamais d’essai, son bouton est « Passer à »`, fautes[0]);
 
@@ -140,7 +141,8 @@ try {
   ok(c.premium_cloud.cta === 'essai' && c.premium_cloud.pastille && c.pro_cloud.cta === 'essai' && c.pro_cloud.pastille, 'Free, essai permis : Premium + Cloud et Pro + Cloud « Essayer », avec la pastille');
   ok(c.business_cloud.cta === 'passer' && !c.business_cloud.pastille, 'Free, essai permis : Business + Cloud « Passer à », sans pastille');
   c = parF(free({ essaiPermis: false }));
-  ok(Object.values(c).every((x) => x.cta === 'passer' && !x.pastille && x.lignePrix === 'simple'), 'essai déjà pris (ou verrou) : « Passer à » partout, aucune pastille');
+  // (13/11, décision de Nico — « essai ou pas, date du premier prélèvement, AVANT de valider ») : la ligne dit « Pas d'essai : {P} prélevés aujourd'hui » ('aujourdhui').
+  ok(Object.values(c).every((x) => x.cta === 'passer' && !x.pastille && x.lignePrix === 'aujourdhui'), 'essai déjà pris (ou verrou) : « Passer à » partout, aucune pastille, « prélevés aujourd’hui »');
   c = parF(free({ essaiPermis: null }));
   ok(c.pro_cloud.enLecture && c.premium_cloud.enLecture && !c.business_cloud.enLecture && !c.pro_cloud.pastille, 'état pas encore lu : bouton en attente (« … »), jamais un essai promis');
   c = parF(FC.cartesFormulesCloud({ palier: 'gratuit', canalApp: 'apple', essaiPermis: true, essaiBoutique: (f) => f === 'premium_cloud' }));
@@ -221,7 +223,9 @@ try {
     [F.ligneCommune, 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, sans ordinateur.'],
     [F.taFormuleAvec('Pro', '49,99 €'), 'Ta formule : Pro. Avec Cloud : 49,99 €/mois.'],
     [F.ctaEssaiAbonne, 'Essayer le Cloud 7 jours'], [F.ctaAjouter, 'Ajouter le Cloud'],
-    [F.prorata('12 décembre'), "Tu paies la différence au prorata jusqu'à ta prochaine échéance du 12 décembre."],
+    // (13/11, décision de Nico — « essai ou pas, date du premier prélèvement, AVANT de valider ») le serveur facture la différence TOUT DE SUITE (always_invoice) : le texte le dit.
+    [F.prorata('12 décembre', '49,99 €'), "Pas d'essai : la différence au prorata jusqu'à ta prochaine échéance du 12 décembre est prélevée aujourd'hui sur ta carte, puis 49,99 €/mois."],
+    [F.lignePrixAujourdhui('79,99 €'), "Pas d'essai : 79,99 € prélevés aujourd'hui, puis chaque mois. Sans engagement."],
     [F.boutique('App Store'), 'Le changement se fait dans ton abonnement App Store, sans second abonnement.'],
     [F.boutique('Google Play'), 'Le changement se fait dans ton abonnement Google Play, sans second abonnement.'],
     [F.titre, 'Choisis ta formule'], [F.sousTitreEssai('0 €'), "7 jours gratuits sur Premium ou Pro avec Cloud. Carte demandée, 0 € aujourd'hui."],
@@ -337,7 +341,7 @@ try {
   html = renderToStaticMarkup(h(OAC.default, { modele, lang: 'fr', onChoisir() {} }));
   const carteB = html.match(/<section data-formule-cloud="business_cloud"[\s\S]*?<\/section>/)?.[0] ?? '';
   const tB = texte(carteB);
-  ok(carteB && !/data-formule-pastille/.test(carteB) && !/Essayer|jours gratuits|0 € aujourd'hui|essai/i.test(tB) && tB.includes('Passer à Business + Cloud') && tB.includes('79,99 €/mois, sans engagement.') && tB.includes('payé dès la souscription'), '⛔ carte Business + Cloud RENDUE : « Passer à Business + Cloud », « 79,99 €/mois, sans engagement. », aucun texte d’essai', tB);
+  ok(carteB && !/data-formule-pastille/.test(carteB) && !/Essayer|jours gratuits|0 € aujourd'hui|essai/i.test(tB.replace("Pas d'essai", "")) && tB.includes('Passer à Business + Cloud') && tB.includes("Pas d'essai : 79,99 € prélevés aujourd'hui, puis chaque mois. Sans engagement.") && tB.includes('payé dès la souscription'), '⛔ carte Business + Cloud RENDUE : « Passer à Business + Cloud », « Pas d’essai : 79,99 € prélevés aujourd’hui… » (13/11, décision de Nico), aucun texte d’essai', tB);
   const carteP = texte(html.match(/<section data-formule-cloud="pro_cloud"[\s\S]*?<\/section>/)?.[0] ?? '');
   ok(carteP.includes('7 jours gratuits') && carteP.includes('Essayer 7 jours gratuits') && carteP.includes("Puis 49,99 €/mois, sans engagement. Carte demandée, 0 € aujourd'hui.") && !carteP.includes('prévient la veille'), 'carte Pro + Cloud rendue, essai permis : pastille, « Essayer 7 jours gratuits », la ligne de prix validée', carteP);
   const html0 = renderToStaticMarkup(h(OAC.default, { modele: FC.cartesFormulesCloud({ palier: 'gratuit', essaiPermis: false }), lang: 'fr', onChoisir() {} }));

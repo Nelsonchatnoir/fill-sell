@@ -23,7 +23,7 @@ import { cartesFormulesCloud, essaiPermisDuCompte, nomAbonnementsBoutique, canal
 import { BasculeCloud } from './OffresAvecCloud';
 import { dateLongue, finEssaiSiOnCommence } from './regles';
 import { canalDeVente, formulesCloudOuvertes, FORMULE_CLOUD_DU_PALIER, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES } from '../config/cloudOffer';
-import { prixOuChargement, prixPret, essaiBoutiqueOffert } from '../lib/prixBoutique';
+import { prixOuChargement, prixPret, etatEssaiBoutique } from '../lib/prixBoutique';
 import { ouvrirLien } from '../messagerie/ouvrir';
 
 const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
@@ -191,7 +191,7 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
   // ── Abonné sans Cloud : la ligne de sa formule + l'interrupteur « Avec Cloud » ─────────────────────────────────────
   const modele = cartesFormulesCloud({
     palier, canalApp, canalAbonnement: profil.canalAbonnement, essaiPermis: essaiPermisDuCompte(lecture),
-    essaiBoutique: (f) => essaiBoutiqueOffert(f), founder: profil.founder,
+    essaiBoutique: (f) => etatEssaiBoutique(f), founder: profil.founder,
     canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lecture), essaiEnCours: enEssai,   // (12/11, 4c et 4d)
   });
   const sienne = modele.cartes.find((x) => x.formule === FORMULE_CLOUD_DU_PALIER[palier]) ?? null;

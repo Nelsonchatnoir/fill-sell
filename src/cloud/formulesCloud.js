@@ -125,6 +125,9 @@ export function cartesFormulesCloud({
   essaiBoutique = () => true, businessVisible = true, founder = false,
   canalOuvert = () => true, canalCloud = null, essaiEnCours = false,
 } = {}) {
+  // (13/11, point b de Nico) La boutique dit 'oui' | 'non' | 'inconnu' (lib/prixBoutique.js etatEssaiBoutique) ; un
+  // booléen (appel d'avant) vaut 'oui' / 'non'. Jamais « 7 jours gratuits » sans un 'oui'.
+  const etatBoutique = (f) => { const v = essaiBoutique(f); return v === true || v === 'oui' ? 'oui' : v === 'inconnu' ? 'inconnu' : 'non'; };
   const rangIci = RANG_PALIER[palier] ?? 0;
   const actuelle = FORMULES_CLOUD.includes(formuleActuelle) ? formuleActuelle : null;
   const plancher = Math.max(rangIci, actuelle ? rangFormule(actuelle) : 0);
@@ -146,12 +149,27 @@ export function cartesFormulesCloud({
       const maFormule = abonne && !actuelle && PALIER_DE_FORMULE[f] === palier;
       // L'essai : la règle de la formule (contrat), le droit du compte (lu), la boutique (mobile). Un abonné ne
       // l'a que sur SA formule, et seulement sur le web (Stripe : il ne paie que sa formule pendant 7 jours).
-      const droitEssai = essaiPossiblePourFormule(f) && essaiPermis === true && essaiBoutique(f) === true && !estActuelle && !autreCanal;
+      const boutique = canalApp === 'stripe' ? 'oui' : etatBoutique(f);
+      const droitEssai = essaiPossiblePourFormule(f) && essaiPermis === true && boutique === 'oui' && !estActuelle && !autreCanal;
       const essai = droitEssai && (!abonne || (maFormule && canalApp === 'stripe'));
       const cta = estActuelle ? null
         : f === 'business_cloud' ? 'passer'
           : maFormule ? (essai ? 'essai_abonne' : 'ajouter')
             : essai ? 'essai' : 'passer';
+      // (13/11, demande de Nico : « quelle formule, quel prix, essai ou pas, date du premier prélèvement, AVANT de
+      // valider ») La ligne de prix d'une souscription NEUVE dit quand part le premier prélèvement, d'après la règle du
+      // canal : 'essai' (0 aujourd'hui, le prix à J+7) ; 'aujourdhui' (pas d'essai : le prix aujourd'hui) ;
+      // 'semaine_sans_droits' (boutique qui offre sa semaine à un compte dont l'essai FillSell a servi : rien prélevé 7
+      // jours, la formule démarre au 1er paiement — décision 8) ; 'essai_incertain' / 'semaine_incertaine' (iPhone,
+      // historique Apple illisible : les deux issues dites, Apple tranche dans sa feuille) ; 'simple' (lecture en cours,
+      // abonné, essai en cours : la note dit le reste).
+      let lignePrix = cta === 'essai' ? 'essai' : 'simple';
+      if (cta === 'passer' && !abonne && !autreCanal && !essaiEnCours && !(essaiPossiblePourFormule(f) && essaiPermis === null)) {
+        const F = essaiPossiblePourFormule(f);
+        if (canalApp !== 'stripe' && F && boutique === 'oui' && essaiPermis === false) lignePrix = 'semaine_sans_droits';
+        else if (canalApp !== 'stripe' && F && boutique === 'inconnu') lignePrix = essaiPermis === true ? 'essai_incertain' : 'semaine_incertaine';
+        else lignePrix = 'aujourdhui';
+      }
       let note = null;
       if (!estActuelle) {
         if (noteAutreCanal) note = noteAutreCanal;
@@ -163,7 +181,7 @@ export function cartesFormulesCloud({
       }
       return {
         formule: f, palier: PALIER_DE_FORMULE[f], misEnAvant: f === FORMULE_MISE_EN_AVANT, maFormule, actuelle: estActuelle,
-        essai, pastille: cta === 'essai', cta, note, lignePrix: cta === 'essai' ? 'essai' : 'simple',
+        essai, pastille: cta === 'essai', cta, note, lignePrix, boutique,
         achetable: cta != null && !autreCanal, enLecture: essaiPermis === null && f !== 'business_cloud' && cta != null,
         canalFacture: autreCanal ? canalFacture : null,
       };
@@ -186,14 +204,35 @@ export const nomBoutique = (canal) => (canal === 'apple' ? 'App Store' : canal =
  */
 export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, finEssai = null, essaiFin = null, canalApp = 'stripe', nom = '', prix = '' } = {}) {
   switch (carte?.note) {
-    case 'prorata': return T.prorata(echeance);
+    // (13/11) Stripe, montée hors essai : create-checkout-session `proration_behavior: "always_invoice"` — la différence
+    // est facturée et prélevée TOUT DE SUITE ; le texte le dit, avec le prix ensuite.
+    case 'prorata': return T.prorata(echeance, prix);
     case 'note_essai': return T.noteEssai(palierIci ?? '', nom, finEssai ?? '', echeance ?? '');
-    case 'boutique': return T.boutique(nomBoutique(carte.achetable ? canalApp : carte.canalFacture) ?? 'App Store');
+    // (13/11, point c de Nico) Un abonné de la boutique de CE téléphone : pas d'essai (Apple : « Existing subscribers are
+    // not eligible » ; Google : l'offre d'essai ne vaut que pour qui n'a jamais eu d'abonnement), et le texte dit quand le
+    // prélèvement part (Apple : montée immédiate, le prix entier aujourd'hui ; Google : CHARGE_PRORATED_PRICE, la
+    // différence au prorata aujourd'hui, le prix entier à l'échéance habituelle). Vu ailleurs (achat impossible ici) :
+    // la phrase d'avant, qui dit où.
+    case 'boutique': return carte.achetable && (canalApp === 'apple' || canalApp === 'google')
+      ? T.boutiqueMontee(canalApp, prix)
+      : T.boutique(nomBoutique(carte.achetable ? canalApp : carte.canalFacture) ?? 'App Store');
     case 'carte_sur_mobile': return T.carteSurMobile;
     case 'essai_continue': return T.essaiContinue(essaiFin, nom, prix);
     case 'essai_arrete': return T.essaiArrete(nom, prix);
-    case 'essai_boutique': return T.essaiBoutique(nomBoutique(canalApp) ?? 'App Store');
+    case 'essai_boutique': return T.essaiBoutique(nomBoutique(canalApp) ?? 'App Store', prix, canalApp);
     default: return null;
+  }
+}
+/** (13/11) La ligne de prix d'une carte (pur) : la fenêtre d'offres et le parcours d'entrée disent la même chose. */
+export function texteLignePrix(carte, { T, nom = '', prix = '', zero = '0 €', canalApp = 'stripe' } = {}) {
+  const b = nomBoutique(canalApp) ?? 'App Store';
+  switch (carte?.lignePrix) {
+    case 'essai': return T.lignePrixEssai(prix, zero);
+    case 'aujourdhui': return T.lignePrixAujourdhui(prix);
+    case 'semaine_sans_droits': return T.lignePrixSemaineSansDroits(nom, prix, b);
+    case 'essai_incertain': return T.lignePrixEssaiIncertain(prix);
+    case 'semaine_incertaine': return T.lignePrixSemaineIncertaine(nom, prix);
+    default: return T.lignePrix(prix);
   }
 }
 /** Les abonnements d'une boutique, pour « tes abonnements {Apple|Google Play} » (Réglages). */

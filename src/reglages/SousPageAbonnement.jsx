@@ -50,10 +50,13 @@ const ORIGINE = 'reglages_abonnement';
 
 const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
 const LIEN_APPLE_ACHATS = 'https://reportaproblem.apple.com/';
-// (07/11 soir) Ce lien est celui de la FORMULE (bande « Google gère ton abonnement ») ; le Cloud s'arrête par son
+// (13/11) Le lien Google de la FORMULE suit son produit (lienGoogleDuProduit, plus bas) ; le Cloud s'arrête par son
 // propre lien (produit app.fillsell.cloud.sub, cloud/achatCloud.js), ouvert par « Arrêter le Cloud ».
-const LIEN_GOOGLE = 'https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app';
 const LIEN_GOOGLE_ACHATS = 'https://play.google.com/store/account/orderhistory';
+/** (13/11) La page d'abonnement Google Play du produit de CE compte ; produit inconnu : la liste de ses abonnements. */
+const lienGoogleDuProduit = (produit) => (typeof produit === 'string' && /^app.fillsell.[a-z0-9.]+$/.test(produit)
+  ? `https://play.google.com/store/account/subscriptions?sku=${produit}&package=app.fillsell.app`
+  : 'https://play.google.com/store/account/subscriptions');
 
 // (05/10) Les gestes d'argent de l'option Sans ordinateur relisent l'état
 // Cloud APRÈS coup (un arrêt, une reprise) : le bloc dit ce que dit le serveur.
@@ -78,7 +81,8 @@ function avecRelecture(actions, relire) {
 export default function SousPageAbonnement({ c, T }) {
   // Client Stripe : sa présence dit qu'il y a des factures à montrer. Absent
   // (jamais payé par le web, ou payé par une boutique) → pas de ligne.
-  const [clientStripe, setClientStripe] = useState(null);
+  // (13/11) undefined = pas encore lu ; null = lu, aucun client Stripe (alors « Se désabonner » se cache : rien à résilier ici).
+  const [clientStripe, setClientStripe] = useState(undefined);
   const [facturesEnCours, setFacturesEnCours] = useState(false);
   const [facturesRepli, setFacturesRepli] = useState(false);
   // Option « Sans ordinateur » (04/10, conception) : UNE lecture, partagée par
@@ -88,9 +92,13 @@ export default function SousPageAbonnement({ c, T }) {
   // (11/11/2026) Ouvertes : le Cloud SEUL ne se vend plus — son bloc ne reste qu'à un client du Cloud seul en cours (essai ou
   // payé, sans formule avec Cloud), inchangé ; tout le reste passe par le bloc des formules.
   const formulesVisibles = formulesCloudVendables(c.user?.id, { plateforme: c.plateforme });
-  const profilFormules = useProfilFormules(c.user?.id, { actif: formulesVisibles });
+  // (13/11/2026) Lu aussi pour tout abonné : la bande « géré par … » suit le canal QUI FACTURE (canalAbonnementDuProfil),
+  // plus l'appareil.
+  const profilFormules = useProfilFormules(c.user?.id, { actif: formulesVisibles || c.isPremium === true });
   const cloudSeulEnCours = lectureCloud.cloud?.etat === 'essai' || lectureCloud.cloud?.etat === 'paye';
   const cacherBlocCloud = formulesVisibles && (profilFormules.formuleActuelle != null || !cloudSeulEnCours);
+  const canalFacture = profilFormules.etat === 'ok' ? profilFormules.canalAbonnement
+    : c.natif ? (c.plateforme === 'ios' ? 'apple' : c.plateforme === 'android' ? 'google' : null) : null;
 
   useEffect(() => {
     if (!c.user?.id || c.natif) return;
@@ -268,7 +276,10 @@ export default function SousPageAbonnement({ c, T }) {
       </Groupe>
 
       {/* ── Résiliation — web seulement : une boutique gère la sienne ── */}
-      {c.isPremium && !c.natif && (
+      {/* (13/11/2026) Seulement à qui a un client Stripe : sans lui, rien à résilier ici (le serveur le dit aussi, 409
+          rien_a_resilier ; pendant la lecture, le bouton reste et le serveur répond juste) — avant, un abonné App Store / Google Play voyait « Se désabonner », perdait son accès sur-le-champ
+          et lisait « Abonnement annulé. Tu gardes l'accès jusqu'à la fin de la période ». */}
+      {c.isPremium && !c.natif && (clientStripe !== null || c.resiliation.resilie) && (
         <Groupe>
           {c.resiliation.resilie ? (
             <BandeInfo>{c.resiliation.message || T.abonnementResilie(c.resiliation.finLe)}</BandeInfo>
@@ -299,11 +310,17 @@ export default function SousPageAbonnement({ c, T }) {
       )}
 
       {/* ── C'est la boutique qui facture : on le dit, et on y mène ──── */}
-      {c.isPremium && c.plateforme === 'ios' && (
+      {/* (13/11/2026, audit des paiements de Nico) Le canal QUI FACTURE (profil lu), plus l'appareil : un abonné Stripe sur
+          iPhone lisait « géré par Apple » (et n'avait aucune voie juste), un abonné App Store sur le web rien. Profil illisible :
+          l'appareil, comme avant. Google : la page de SON produit (google_product_id), plus celle du Founder pour tous. */}
+      {c.isPremium && canalFacture === 'apple' && (
         <BandeInfo lien={LIEN_APPLE} libelleLien={T.appleLien}>{T.appleGere}</BandeInfo>
       )}
-      {c.isPremium && c.plateforme === 'android' && (
-        <BandeInfo lien={LIEN_GOOGLE} libelleLien={T.googleLien}>{T.googleGere}</BandeInfo>
+      {c.isPremium && canalFacture === 'google' && (
+        <BandeInfo lien={lienGoogleDuProduit(profilFormules.profil?.google_product_id)} libelleLien={T.googleLien}>{T.googleGere}</BandeInfo>
+      )}
+      {c.isPremium && canalFacture === 'stripe' && c.natif && (
+        <BandeInfo>{T.carteGere}</BandeInfo>
       )}
     </>
   );

@@ -86,7 +86,12 @@ try {
   P.poserPrixBoutique({ canal: 'apple', statut: 'echec', prix: {} });
   ok(P.prixAffiche('pro', 'fr') === '29,99 €' && P.prixAffiche('cloud', 'en') === '€24.99' && P.prixPret('premium') && P.prixPret('business') && P.prixPret('cloud'),
     'iPHONE, lecture Apple en échec : prix de repli (ceux de la 2.9.166, validés par Apple), chaque achat possible');
-  ok(P.essaiBoutiqueOffert('cloud') === true && P.prixOuChargement('cloud') === '24,99 €', 'iPHONE en échec : l’essai suit le serveur (comme avant le 08/11), aucun « … » sans fin');
+  // (13/11, décision de Nico — point b : « jamais “7 jours” affirmé sans le savoir ») Le repli garde le PRIX d'avant ; l'essai,
+  // lui, suit l'historique Apple (lib/eligibiliteApple.js) : historique pas lu → « inconnu » (les deux issues dites), lu
+  // vierge → annoncé. Avant ce jour : « l'essai suit le serveur » sans rien savoir d'Apple.
+  ok(P.etatEssaiBoutique('cloud') === 'inconnu' && !P.essaiBoutiqueOffert('cloud') && P.prixOuChargement('cloud') === '24,99 €', 'iPHONE en échec, historique Apple pas lu : l’essai est « inconnu » (jamais affirmé), aucun « … » sans fin');
+  P.poserEligibiliteApple({ plan: true, cloud: true });
+  ok(P.essaiBoutiqueOffert('cloud') === true, 'iPHONE en échec, historique Apple lu (identifiant vierge) : la semaine est annoncée');
   const repli = modale('fr');
   ok(/data-prix-pret="1"/.test(repli) && !/data-prix-pret="0"/.test(repli) && /29,99/.test(texte(h(CM.default, { isOpen: true, onClose() {}, onUpgrade() {}, lang: 'fr', userId: 'u1' }))),
     'iPHONE en échec : la feuille des offres se rend sans erreur, prix de repli affichés, boutons d’achat ACTIFS');

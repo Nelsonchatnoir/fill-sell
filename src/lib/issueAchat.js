@@ -96,6 +96,14 @@ export function messageIssueAchat(cl, lang = 'fr') {
         ? "Google Play ne répond pas : rien n'a été débité. Vérifie ta connexion, puis réessaie dans un instant."
         : "Google Play isn't responding: nothing was charged. Check your connection, then try again in a moment.";
     case 'erreur':
+      // (13/11/2026, audit des paiements de Nico) La boutique a RENDU un achat, seul le serveur FillSell ne l'a pas (encore)
+      // confirmé : jamais « rien n'a été débité » (avant : « Google Play a refusé l'achat (PURCHASE_NOT_CONFIRMED_BY_SERVER) :
+      // rien n'a été débité », ou « ❌ Premium not confirmed by server »). ⚠ texte NEUF, à valider par Nico.
+      if (code === 'SERVEUR_NON_CONFIRME') {
+        return fr
+          ? "Ton paiement est passé chez la boutique, mais FillSell ne l'a pas encore confirmé. Ne rachète pas : dans un instant, touche « Restaurer mes achats » (Réglages › Abonnement). Si rien ne change, écris-nous depuis Réglages › Aide."
+          : "Your payment went through with the store, but FillSell hasn't confirmed it yet. Don't buy again: in a moment, tap \"Restore purchases\" (Settings › Subscription). If nothing changes, write to us from Settings › Help.";
+      }
       if (!code.startsWith('GOOGLE_')) return null;
       return fr
         ? `Google Play a refusé l'achat (${code.slice(7)}) : rien n'a été débité. Réessaie dans un instant.`

@@ -24,6 +24,10 @@
 // Site inconnu (jamais lu) : rien n'est décidé ici (comme avant).
 // Module PUR : Deno, Vite et Node le chargent tel quel. Preuve : scripts/ebay-site-attente-selftest.mjs.
 import { paysDuSiteEbay, SITE_EBAY_FRANCE } from "./ebay-hors-france.js";
+// (13/11, étape 4 L1) Le pays ISO d'un site GetUser vient de LA table des sites (_shared/sites-plateformes.js) : la
+// recopie ISO d'ici est retirée (mêmes 22 pays, verrou sites-plateformes).
+import { paysIsoDuSiteEbay } from "./sites-plateformes.js";
+export { paysIsoDuSiteEbay };
 
 /** La source d'attente : celle que l'app (« En pause : … ») et l'extension connaissent déjà (etat-job.js). */
 export const SOURCE_EBAY_SITE_ATTENTE = "ebay_site_etranger";
@@ -33,20 +37,7 @@ export const CLE_EBAY_SITE_ATTENTE = "ebay_site_attente";
 /** Les sites GetUser où le CODE sait publier (EBAY_FR seul : marketplace, arbre, emplacement, langue figés FR). */
 export const SITES_EBAY_PUBLIABLES = Object.freeze([SITE_EBAY_FRANCE]);
 
-// Le pays ISO d'un site GetUser (la clé de l'interrupteur).
-const ISO = Object.freeze({
-  France: "FR", UK: "GB", US: "US", eBayMotors: "US", Germany: "DE", Austria: "AT", Italy: "IT", Spain: "ES",
-  Belgium_French: "BE", Belgium_Dutch: "BE", Netherlands: "NL", Ireland: "IE", Switzerland: "CH", Poland: "PL",
-  Canada: "CA", CanadaFrench: "CA", Australia: "AU", HongKong: "HK", India: "IN", Malaysia: "MY", Philippines: "PH",
-  Singapore: "SG",
-});
-
 /** @typedef {{ ouvertes?: Iterable<string> }} OptionsOuverture */
-
-/** Le pays ISO d'un site eBay (« UK » → « GB ») ; null s'il est inconnu. */
-export function paysIsoDuSiteEbay(site) {
-  return ISO[String(site ?? "").trim()] ?? null;
-}
 
 /** La clé coin_config qui ouvre le site d'un pays (`ebay_pays_gb`) ; null pour un site inconnu. */
 export function cleOuvertureSiteEbay(site) {
