@@ -83,7 +83,11 @@ ok(/match\.el\.click\(\);\s*await humanPause\(\);[\s\S]{0,400}if \(\/condition\/
   "par libellé (et réponse de la personne, vintedAspects.condition) : confirmation juste après le clic, échec = champ non posé");
 const parId = extraireFonctionJs(src, "selectEtatParId");
 ok(/el\.click\(\);\s*await humanPause\(\);[\s\S]{0,300}confirmerEtatVinted\(titreId \|\| null, warnings\)/.test(parId), "par identifiant (page non française) : la même confirmation");
-ok(/"version": "0\.6\.186"/.test(fs.readFileSync(join(ROOT, "chrome-extension/manifest.json"), "utf8")), "manifest 0.6.186");
+// (13/11, 0.6.187) Durable : le correctif est dans la 0.6.186 et toute version suivante (comme badge-vendu-avant-suivi).
+{
+  const v = (/"version": "(\d+)\.(\d+)\.(\d+)"/.exec(fs.readFileSync(join(ROOT, "chrome-extension/manifest.json"), "utf8")) ?? []).slice(1).map(Number);
+  ok(v.length === 3 && (v[0] > 0 || v[1] > 6 || (v[1] === 6 && v[2] >= 186)), "manifest 0.6.186 ou plus");
+}
 
 console.log("C. Le serveur relance UNE fois vers un poste 0.6.186 (correctifs-extension)");
 const CE = await import("../supabase/functions/_shared/correctifs-extension.js");
