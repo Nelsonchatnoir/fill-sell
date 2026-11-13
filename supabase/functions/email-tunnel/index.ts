@@ -801,6 +801,9 @@ serve(async (req) => {
     const escR = (v: unknown) =>
       String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const nature = rb.nature === "retrait" ? "Retrait par Apple (partage familial)" : `Remboursement${rb.partiel === true ? " partiel" : ""}`;
+    // (13/11/2026, point b de Nico) Le remboursement Stripe passe aussi par ici : c'est FillSell (le tableau de bord Stripe)
+    // qui a rendu l'argent, pas une boutique — et l'abonnement reste actif chez Stripe tant qu'on ne l'annule pas.
+    const parQui = rb.canal === "stripe" ? "Stripe a rendu l'argent au client (remboursement fait dans le tableau de bord Stripe)" : "le store a rendu l'argent au client";
     const lignesR: Array<[string, unknown]> = [
       ["Canal", rb.canal],
       ["Nature", nature],
@@ -817,7 +820,7 @@ serve(async (req) => {
   <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;">
     <h1 style="margin:0 0 6px;font-size:18px;font-family:sans-serif;color:#111827;">↩️ ${escR(nature.toUpperCase())}</h1>
     <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
-      ${escR(new Date().toISOString())} — le store a rendu l'argent au client : rien à enregistrer. Si le palier ou des Pépites restent ouverts, décider à la main.
+      ${escR(new Date().toISOString())} — ${escR(parQui)} : rien à enregistrer. Si le palier ou des Pépites restent ouverts, décider à la main.
     </p>
     <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
       ${lignesR.map(([k, v]) => `<tr>
@@ -836,6 +839,43 @@ serve(async (req) => {
       dedup: "journal",
     });
     return new Response(JSON.stringify({ ok: true, mail_envoye: rR.envoye }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // ── (13/11/2026, 3e réponse de Nico, point a) DEUX ABONNEMENTS VIVANTS SUR UN COMPTE ─────────────────────────────
+  // Le filet de la règle « un seul abonnement actif par compte, tous canaux » (_shared/deux-abonnements.ts, appelé par
+  // les webhooks et validate-google-purchase quand un abonnement s'ouvre). Une alerte à support@ (type
+  // ops_deux_abonnements) ; ⛔ aucun mail client, aucune annulation, aucun remboursement : la décision est à Nico.
+  // Répond TOUJOURS 200, comme les autres alertes.
+  if (body?.deux_abonnements) {
+    const da = body.deux_abonnements as Record<string, unknown>;
+    const escD = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const lignesD = Array.isArray(da.lignes) ? (da.lignes as unknown[]).map((l) => String(l)) : [];
+    const htmlD = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:24px;background:#F2F2EE;">
+  <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;">
+    <h1 style="margin:0 0 6px;font-size:18px;font-family:sans-serif;color:#111827;">⚠️ DEUX ABONNEMENTS SUR UN COMPTE${da.test === true ? " [TEST]" : ""}</h1>
+    <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
+      ${escD(new Date().toISOString())} — règle « un seul abonnement actif par compte, tous canaux ». Rien n'a été annulé ni remboursé, aucun mail au client : à décider.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
+      <tr><td style="padding:6px 10px 6px 0;color:#6B7280;">Compte</td><td style="padding:6px 0;color:#111827;"><strong>${escD(da.user_id)}</strong></td></tr>
+      <tr><td style="padding:6px 10px 6px 0;color:#6B7280;">Email</td><td style="padding:6px 0;color:#111827;"><strong>${escD(da.email ?? "—")}</strong></td></tr>
+      <tr><td style="padding:6px 10px 6px 0;color:#6B7280;">Ouvert par</td><td style="padding:6px 0;color:#111827;"><strong>${escD(da.evenement)}</strong></td></tr>
+      ${lignesD.map((l, i) => `<tr><td style="padding:6px 10px 6px 0;color:#6B7280;">Abonnement ${i + 1}</td><td style="padding:6px 0;color:#111827;word-break:break-all;"><strong>${escD(l)}</strong></td></tr>`).join("")}
+    </table>
+  </div>
+</body></html>`;
+    const rD = await envoyer({
+      to: TO_OPS,
+      subject: `${da.test === true ? "[TEST] " : ""}⚠️ Deux abonnements — ${escD(da.evenement ?? "")}`.trim(),
+      html: htmlD,
+      type: "ops_deux_abonnements",
+      categorie: "support",
+      dedup: "journal",
+    });
+    return new Response(JSON.stringify({ ok: true, mail_envoye: rD.envoye }), {
       status: 200, headers: { "Content-Type": "application/json" },
     });
   }
@@ -882,6 +922,8 @@ serve(async (req) => {
         relanceLe: pf.relance_le ?? null,
         abonnementActif: pf.abonnement_actif === true,
         offre: pf.offre ?? null,
+        // (13/11/2026, point d de Nico) Le nom de la formule : le mail dit ce qui est en pause et comment reprendre.
+        plan: pf.plan ?? null,
       });
       const r = await envoyer({
         to: pf.email,

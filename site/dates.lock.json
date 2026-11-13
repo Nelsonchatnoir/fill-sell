@@ -1,8 +1,8 @@
 {
   "pages": {
     "/": {
-      "empreinte": "a656ec7cb2f1a1e12283",
-      "maj": "2026-11-12"
+      "empreinte": "39f1da0f980c96c1e12a",
+      "maj": "2026-11-13"
     },
     "/alternative/crosslist": {
       "empreinte": "bf194d5c3ee42db0424b",
@@ -137,8 +137,8 @@
       "maj": "2026-11-12"
     },
     "/en": {
-      "empreinte": "447cc9ac327ebe67c820",
-      "maj": "2026-11-12"
+      "empreinte": "90e1db7a140603271fc5",
+      "maj": "2026-11-13"
     },
     "/en/blog": {
       "empreinte": "4506d9b53f9fc713471d",
@@ -165,12 +165,12 @@
       "maj": "2026-11-12"
     },
     "/en/pricing": {
-      "empreinte": "df5bde5266f53b3bc3e8",
-      "maj": "2026-11-12"
+      "empreinte": "7ffba3d2b4a2c4405940",
+      "maj": "2026-11-13"
     },
     "/faq": {
-      "empreinte": "4ddd11c3b3b59cf80e05",
-      "maj": "2026-11-12"
+      "empreinte": "edbec57792e153e0520f",
+      "maj": "2026-11-13"
     },
     "/fonctions/lens": {
       "empreinte": "f5e1dae93659ca70a6fe",
@@ -217,8 +217,8 @@
       "maj": "2026-11-11"
     },
     "/tarifs": {
-      "empreinte": "ea273d7d8fcaaa4b87b8",
-      "maj": "2026-11-12"
+      "empreinte": "880929a736e3e055c870",
+      "maj": "2026-11-13"
     }
   }
 }

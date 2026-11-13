@@ -20,6 +20,8 @@ import { textesFormules, NOMS_FORMULES } from './textesFormules';
 import { identifiantAppareil, lirePreparation } from './achatCloud';
 import { nomBoutique, RANG_PRIX } from './formulesCloud';
 import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique.js';
+import { gardeAchatBoutique } from '../lib/gardeAchat.js';
+import { offreEssaiAbonne } from '../lib/essaiAbonneBoutique.js';
 import {
   FORMULES_CLOUD, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES, essaiPossiblePourFormule, formuleDuProduitBoutique,
 } from '../../supabase/functions/_shared/formules-cloud.js';
@@ -38,6 +40,8 @@ export function lireReponseFormule(d, formule, lang = 'fr') {
   // (12/11, 4c) Le serveur dit où se fait le changement — et « bientôt » quand la boutique qui facture n'a pas encore les
   // formules ; son texte d'abord, le nôtre en repli.
   if (d?.error === 'abonnement_autre_canal') return { etat: 'refuse', message: message ?? T.boutique(nomBoutique(d?.canal) ?? 'App Store') };
+  // (13/11/2026, point a de Nico) Un second abonnement refusé par le serveur : sa phrase (où faire le changement).
+  if (d?.error === 'un_seul_abonnement') return { etat: 'refuse', message: message ?? T.achatEchec };
   if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', message: message ?? T.achatEchec };
   if (d?.error) return { etat: 'erreur', message: message ?? T.achatEchec };
   // Un serveur qui ne connaît pas les formules ne renvoie pas `formule` : jamais une redirection sur sa réponse.
@@ -61,6 +65,8 @@ export function modeRemplacement(produitActuel, formuleCible) {
 export function creerAchatFormuleCloud({
   supabase, supabaseUrl, supabaseAnonKey, user, lang, platform, purchasePremium, trouverAbonnementPlay,
   confirmer, notifier, paiementsAndroidCoupes, demanderConditions, idsAbonnementsPlay = [],
+  // (13/11/2026, point f de Nico) La version du binaire natif (essai d'abonné de la boutique, INACTIF : lib/essaiAbonneBoutique.js).
+  binaireNatif = null,
 }) {
   const T = new Proxy({}, { get: (_, k) => textesFormules(lang)[k] });
   const TC = new Proxy({}, { get: (_, k) => textesConnexion(lang)[k] });
@@ -132,7 +138,7 @@ export function creerAchatFormuleCloud({
     return { etat: 'erreur', message: T.finChangeEchec };
   }
 
-  async function boutique(formule, { descente = false, essai = false } = {}) {
+  async function boutique(formule, { descente = false, essai = false, abonneBoutique = false } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) return { etat: 'erreur', message: T.achatEchec };
     const productId = produitBoutiqueDe(formule, platform);
     if (!productId) return { etat: 'erreur', message: T.achatEchec };
@@ -141,8 +147,13 @@ export function creerAchatFormuleCloud({
     if (platform === 'android' && typeof trouverAbonnementPlay === 'function') {
       try { ancien = await trouverAbonnementPlay(idsAbonnementsPlay.filter((id) => id !== productId)); } catch { ancien = null; }
     }
-    const r = await purchasePremium(productId, user.id, ancien
-      ? { oldPurchaseToken: ancien.purchaseToken, replacementMode: modeRemplacement(ancien.productIdentifier, formule) } : {});
+    // (13/11/2026, point f de Nico) L'essai du Cloud d'un ABONNÉ de cette boutique : fermé tant que le binaire qui sait passer
+    // l'offre n'existe pas (offreEssaiAbonne rend null) — l'achat part alors exactement comme avant.
+    const offreEssai = abonneBoutique && !descente ? await offreEssaiAbonne({ supabase, platform, binaire: typeof binaireNatif === 'function' ? await binaireNatif() : binaireNatif, formule }) : null;
+    const r = await purchasePremium(productId, user.id, {
+      ...(ancien ? { oldPurchaseToken: ancien.purchaseToken, replacementMode: modeRemplacement(ancien.productIdentifier, formule) } : {}),
+      ...(offreEssai ? { offreEssai } : {}),
+    });
     if (r?.cancelled) return { etat: 'annule' };
     if (r?.enAttente) return { etat: 'attente', message: T.achatApprobation(NOMS_FORMULES[formule]) };
     if (platform === 'android') {
@@ -179,6 +190,12 @@ export function creerAchatFormuleCloud({
     let essaiAttendu = essaiAffiche === true && etatSemaine === 'oui';
     try {
       if (descente && platform === 'web') return await stripeDescente(formule);
+      // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT PAR COMPTE, TOUS CANAUX — avant la feuille de la boutique :
+      // un abonné par carte, de l'autre boutique ou du Cloud seul de cette boutique lit OÙ changer. Le même groupe passe.
+      if (!descente && (platform === 'ios' || platform === 'android')) {
+        const garde = await gardeAchatBoutique({ supabase, userId: user.id, canal: platform === 'ios' ? 'apple' : 'google', achat: 'formule', lang });
+        if (!garde.permis) return { etat: 'refuse', raison: 'un_seul_abonnement', message: garde.message ?? T.achatEchec };
+      }
       if (!descente && !essaiAffiche && boutiqueOffreEssai && !(await confirmer?.(texteEssaiPris))) return { etat: 'annule' };
       if (!descente) {
         if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
@@ -194,7 +211,7 @@ export function creerAchatFormuleCloud({
           if (p.essai === false) essaiAttendu = false;
         }
       }
-      return platform === 'web' ? await stripe(formule, origine) : await boutique(formule, { descente, essai: essaiAttendu });
+      return platform === 'web' ? await stripe(formule, origine) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique });
     } catch (e) {
       console.warn('[formules cloud] achat :', e?.message ?? e);
       return { etat: 'erreur', message: T.achatEchec };

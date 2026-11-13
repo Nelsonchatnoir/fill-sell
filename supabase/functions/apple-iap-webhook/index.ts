@@ -18,6 +18,8 @@ import { formuleDuProduit, planAchatBoutique, grantDeFormule, formulePrevueEcriv
 import { lectureFormuleApple, verdictEssaiStore } from "../_shared/cloud-option.js";
 import { rangDesDrapeaux, rangGoogleVivant } from "../_shared/droits-canaux.js";
 import { rangStripeDuClient } from "../_shared/stripe-rang-vivant.ts";
+// (13/11/2026, 3e réponse de Nico, point a) Le filet « un seul abonnement actif par compte » : lire et prévenir support@.
+import { verifierDeuxAbonnements } from "../_shared/deux-abonnements.ts";
 
 // (25/10) Prise au registre npm, la bibliothèque ne trouve pas seule la cryptographie du runtime edge (pas de `self`) :
 // la v38 a refusé la notification de TEST d'Apple (« Cannot get Crypto by name 'default' », 08:51:33). On la lui donne.
@@ -275,6 +277,8 @@ async function planApple(p: { notificationType: string; sousType: string | null;
       await signalerRemboursementStore({ canal: "apple", nature: p.natureRemb as "remboursement" | "retrait", type: "abonnement", user_id: userId, produit: productId,
         ref: orig, palier: "gratuit (sauf autre canal)", droit: "retiré (le droit Apple tombe, les autres canaux restent)" });
     }
+    // (13/11, point a de Nico) Le filet « un seul abonnement » : un second abonnement vivant → alerte à support@, rien d'autre.
+    if (notificationType === "SUBSCRIBED") await verifierDeuxAbonnements(supabaseAdmin, userId, { evenement: `apple SUBSCRIBED ${productId}`, canal: "apple", test });
     if (plan.credit) {
       const montant = tx.price != null && tx.currency ? `${(Number(tx.price) / 1000).toFixed(2)} ${tx.currency}` : null;
       const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
@@ -651,6 +655,14 @@ serve(async (req) => {
         });
       }
       console.log(`[apple-iap-webhook] Cloud ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${appAccountToken} product=${productId}`, JSON.stringify(update));
+      // (13/11, 3e réponse de Nico, point b — R3) Le Cloud SEUL remboursé ou retiré par Apple : le Cloud vient de tomber
+      // (sens « off ») ; l'alerte « ↩️ Remboursement » part à support@ comme pour une formule (elle manquait), aucun mail client.
+      if (natureRemb && sens === "off") {
+        await signalerRemboursementStore({ canal: "apple", nature: natureRemb, type: "abonnement", user_id: appAccountToken, produit: productId,
+          ref: originalTransactionId ?? null, palier: "Cloud seul (le palier ne bouge pas)", droit: "FillSell Cloud coupé" });
+      }
+      // (13/11, point a) Le filet « un seul abonnement » (c7c382b7, f0acd3af : Cloud seul App Store à côté d'une formule).
+      if (notificationType === "SUBSCRIBED") await verifierDeuxAbonnements(supabaseAdmin, appAccountToken, { evenement: `apple SUBSCRIBED ${productId}`, canal: "apple", test: enTest });
       // (08/11) Le mail de l'événement, un seul (registre cloud_mails) : début d'essai, paiement, arrêt, impayé.
       const nature = notificationType === "SUBSCRIBED" ? "debut"
         : notificationType === "DID_RENEW" || notificationType === "RESUBSCRIBE" ? "paiement"
@@ -899,6 +911,8 @@ serve(async (req) => {
         ref: originalTransactionId ?? null, palier: "gratuit (sauf autre canal)", droit: "retiré (is_premium=false écrit)",
       });
     }
+    // (13/11, point a de Nico) Le filet « un seul abonnement » : un second abonnement vivant → alerte à support@, rien d'autre.
+    if (isPremium && notificationType === "SUBSCRIBED") await verifierDeuxAbonnements(supabaseAdmin, appAccountToken, { evenement: `apple SUBSCRIBED ${productId}`, canal: "apple", test: enTest });
 
     // Pièces incluses au 1er achat et à chaque renouvellement.
     // Cycle par utilisateur (2026-07-28) : expiresDate — déjà présent dans le

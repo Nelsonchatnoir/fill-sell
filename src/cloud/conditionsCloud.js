@@ -44,6 +44,15 @@ const NOTES_DE_VERSION = Object.freeze({
     fr: (min) => `elle reformule les articles 4 et 9 sans rien changer sur le fond : une acceptation de la version du ${min} reste valable.`,
     en: (min) => `it rewords articles 4 and 9 without changing their substance: an acceptance of the version of ${min} remains valid.`,
   }),
+  // (13/11/2026, 3e réponse de Nico, point e) Reformulation des deux textes, minimales inchangées.
+  reformulation_articles_6_7: Object.freeze({
+    fr: (min) => `elle reformule les articles 6 et 7 (paiement, essai et arrêt selon chaque canal ; un seul abonnement par compte) sans rien changer sur le fond : une acceptation de la version du ${min} reste valable.`,
+    en: (min) => `it rewords articles 6 and 7 (payment, trial and stopping on each channel; one subscription per account) without changing their substance: an acceptance of the version of ${min} remains valid.`,
+  }),
+  formules_reformulation_canaux: Object.freeze({
+    fr: () => `l'article 6 décrit les formules avec Cloud selon la règle de chaque canal (essai, prélèvement, changement de formule, un seul abonnement) sans rien changer sur le fond : une acceptation de la version du ${dateVersion(VERSION_FORMULES_MIN)} reste valable.`,
+    en: () => `article 6 describes the plans with Cloud according to each channel's rule (trial, charge, change of plan, one subscription) without changing its substance: an acceptance of the version of ${dateVersion(VERSION_FORMULES_MIN)} remains valid.`,
+  }),
   formules_cloud_article_6: Object.freeze({
     fr: (min) => `l'article 6 décrit les formules avec Cloud (Premium + Cloud, Pro + Cloud, Business + Cloud) ; pour l'option Cloud seule, une acceptation de la version du ${min} reste valable.`,
     en: (min) => `article 6 describes the plans with Cloud (Premium + Cloud, Pro + Cloud, Business + Cloud); for the Cloud option alone, an acceptance of the version of ${min} remains valid.`,
@@ -57,8 +66,13 @@ const NOTES_DE_VERSION = Object.freeze({
 //     neuf), montrée SEULEMENT dans l'achat d'une formule (App : demanderConditions de achatFormules → { formules: true }).
 // La version des formules en tête de CGU_CLOUD_HISTORIQUE (serveur) ne change donc rien pour qui ne voit pas les formules.
 const CLE_CHANGEMENT_FORMULES = 'formules_cloud_article_6';
-const ENTREE_FORMULES = CGU_CLOUD_HISTORIQUE.find((e) => e?.changement === CLE_CHANGEMENT_FORMULES) ?? null;
-const ENTREE_CLOUD_SEUL = CGU_CLOUD_HISTORIQUE.find((e) => e?.changement !== CLE_CHANGEMENT_FORMULES) ?? CGU_CLOUD_HISTORIQUE[0];
+// (13/11/2026, 3e réponse de Nico, point e) La FAMILLE des formules : la version de fond (12/11, la minimale des formules,
+// versionCguFormules côté serveur) et ses reformulations (13/11). Le texte montré = la plus récente de la famille.
+const CHANGEMENTS_FORMULES = Object.freeze(new Set([CLE_CHANGEMENT_FORMULES, 'formules_reformulation_canaux']));
+const ENTREE_FORMULES = CGU_CLOUD_HISTORIQUE.find((e) => CHANGEMENTS_FORMULES.has(e?.changement)) ?? null;
+const ENTREE_CLOUD_SEUL = CGU_CLOUD_HISTORIQUE.find((e) => !CHANGEMENTS_FORMULES.has(e?.changement)) ?? CGU_CLOUD_HISTORIQUE[0];
+// La version de FOND des formules (12/11) : la date des « abonnés au Cloud seul souscrit avant le … » et la minimale citée.
+const VERSION_FORMULES_MIN = CGU_CLOUD_HISTORIQUE.find((e) => e?.changement === CLE_CHANGEMENT_FORMULES)?.version ?? CGU_CLOUD_VERSION;
 export const CGU_CLOUD_VERSION_CLOUD_SEUL = ENTREE_CLOUD_SEUL.version;
 export const CGU_CLOUD_VERSION_FORMULES = (ENTREE_FORMULES ?? ENTREE_CLOUD_SEUL).version;
 /** La version des conditions MONTRÉES (et donc enregistrées) : celle des formules dans leur achat, sinon celle du Cloud seul. */
@@ -99,12 +113,12 @@ const FR = {
       "Le Cloud exécute des tâches. Il ne garantit ni la visibilité de vos annonces, ni un nombre de vues, ni une vente, ni un prix. Il dépend des plateformes, qui peuvent changer leurs pages ou refuser l'accès depuis les serveurs de FillSell : une tâche peut alors être retardée ou ne pas aboutir, et l'app vous le signale. FillSell met en œuvre des moyens raisonnables pour que le Cloud fonctionne en continu, sans garantie de résultat ni de disponibilité permanente.",
     ] },
     { t: '6. Prix et essai de 7 jours', ps: [
-      "Le Cloud coûte 24,99 € TTC par mois, sur le web (carte bancaire, paiement géré par Stripe), dans l'App Store et dans Google Play. C'est un abonnement distinct des forfaits : il se prend seul, avec le forfait gratuit, ou en plus d'un forfait payant ; résilier un forfait n'arrête pas le Cloud.",
-      "Les 7 premiers jours sont offerts. Un moyen de paiement est demandé pour commencer l'essai ; rien n'est prélevé pendant l'essai. La date de fin de l'essai et le montant prélevé ensuite sont affichés avant l'enregistrement du moyen de paiement. Sans résiliation avant la fin de l'essai, l'abonnement commence : 24,99 € sont prélevés, puis chaque mois à la même date. Au plus tard la veille de la fin de l'essai, un rappel vous est envoyé dans l'app et par e-mail.",
-      "Un seul essai par personne : un essai déjà pris avec le même compte, le même appareil, la même carte ou le même compte de plateforme n'en ouvre pas un second ; le Cloud reste alors disponible sans essai. Dans l'App Store et Google Play, l'essai est proposé par la boutique, aux conditions qu'elle affiche.",
+      "Le Cloud coûte 24,99 € TTC par mois, sur le web (carte bancaire, paiement géré par Stripe), dans l'App Store et dans Google Play. Il se prend seul, avec le forfait gratuit. Un compte n'a qu'un seul abonnement FillSell à la fois, tous canaux confondus : un abonné à un forfait payant ajoute le Cloud en passant à la formule avec Cloud de son forfait, sur le canal où il paie, et non par un second abonnement. Pour un Cloud pris à part avant les formules avec Cloud, résilier le forfait n'arrête pas le Cloud.",
+      "Les 7 premiers jours sont offerts. Un moyen de paiement est demandé pour commencer l'essai ; rien n'est prélevé pendant l'essai. La page de paiement (Stripe, App Store ou Google Play) affiche, avant que vous validiez, la date de fin de l'essai et le montant prélevé ensuite. Sans résiliation avant la fin de l'essai, l'abonnement commence : 24,99 € sont prélevés, puis chaque mois à la même date.",
+      "Un seul essai par personne : un essai déjà pris avec le même compte, le même appareil, la même carte ou le même compte de plateforme n'en ouvre pas un second ; le Cloud reste alors disponible sans essai, payé dès la souscription. Dans l'App Store et Google Play, l'essai est proposé par la boutique selon ses propres règles (chez Apple, une seule semaine gratuite par identifiant Apple pour ce groupe d'abonnements) ; la page de paiement de la boutique dit, avant que vous validiez, s'il y a un essai et ce qui est prélevé.",
     ] },
     { t: '7. Résiliation', ps: [
-      "Sur le web, vous résiliez depuis l'app (Réglages › Abonnement › FillSell Cloud). Pendant l'essai, l'arrêt est immédiat et rien n'est prélevé. Après l'essai, le Cloud reste actif jusqu'à la fin du mois payé, puis s'arrête ; rien n'est prélevé ensuite. Un abonnement pris dans l'App Store ou Google Play se résilie dans les réglages d'abonnement de la boutique. Le droit de rétractation prévu à l'article 6 des CGV s'applique.",
+      "Sur le web, vous résiliez depuis l'app (Réglages › Abonnement › FillSell Cloud). Pendant l'essai, l'arrêt est immédiat et rien n'est prélevé. Après l'essai, le Cloud reste actif jusqu'à la fin du mois payé, puis s'arrête ; rien n'est prélevé ensuite. Un abonnement pris dans l'App Store ou Google Play se résilie dans les réglages d'abonnement de la boutique : arrêté avant la fin de l'essai (chez Apple, au moins 24 heures avant), rien n'est prélevé ; après, il court jusqu'à la fin de la période payée. Le droit de rétractation prévu à l'article 6 des CGV s'applique ; pour un achat dans l'App Store ou Google Play, le remboursement se demande à la boutique.",
       "FillSell peut suspendre le Cloud d'un compte en cas d'usage contraire aux présentes conditions ou aux règles d'une plateforme ; il vous en informe.",
     ] },
     { t: '8. Vos données', ps: [
@@ -155,12 +169,12 @@ const EN = {
       'The Cloud carries out tasks. It guarantees neither the visibility of your listings, nor a number of views, nor a sale, nor a price. It depends on the marketplaces, which may change their pages or refuse access from FillSell\'s servers: a task may then be delayed or fail, and the app tells you. FillSell uses reasonable means to keep the Cloud running continuously, with no guarantee of result or of permanent availability.',
     ] },
     { t: '6. Price and 7-day trial', ps: [
-      'The Cloud costs €24.99 including VAT per month, on the web (bank card, payment handled by Stripe), in the App Store and in Google Play. It is a subscription separate from the plans: it can be taken alone, with the free plan, or on top of a paid plan; cancelling a plan does not stop the Cloud.',
-      'The first 7 days are free. A payment method is required to start the trial; nothing is charged during the trial. The end date of the trial and the amount charged afterwards are shown before the payment method is saved. Without cancellation before the end of the trial, the subscription starts: €24.99 is charged, then every month on the same date. At the latest the day before the trial ends, a reminder is sent to you in the app and by email.',
-      'One trial per person: a trial already taken with the same account, the same device, the same card or the same marketplace account does not open a second one; the Cloud then remains available without a trial. In the App Store and Google Play, the trial is offered by the store, on the terms it shows.',
+      'The Cloud costs €24.99 including VAT per month, on the web (bank card, payment handled by Stripe), in the App Store and in Google Play. It can be taken alone, with the free plan. An account has only one FillSell subscription at a time, across all channels: a subscriber to a paid plan adds the Cloud by switching to the version with Cloud of their plan, on the channel where they pay, not through a second subscription. For a Cloud taken separately before the plans with Cloud, cancelling the plan does not stop the Cloud.',
+      'The first 7 days are free. A payment method is required to start the trial; nothing is charged during the trial. The payment page (Stripe, App Store or Google Play) shows, before you confirm, the end date of the trial and the amount charged afterwards. Without cancellation before the end of the trial, the subscription starts: €24.99 is charged, then every month on the same date.',
+      'One trial per person: a trial already taken with the same account, the same device, the same card or the same marketplace account does not open a second one; the Cloud then remains available without a trial, charged when you subscribe. In the App Store and Google Play, the trial is offered by the store under its own rules (at Apple, a single free week per Apple Account for this subscription group); the store\'s payment page shows, before you confirm, whether there is a trial and what is charged.',
     ] },
     { t: '7. Cancellation', ps: [
-      'On the web, you cancel from the app (Settings › Subscription › FillSell Cloud). During the trial, the stop is immediate and nothing is charged. After the trial, the Cloud stays active until the end of the paid month, then stops; nothing is charged afterwards. A subscription taken in the App Store or Google Play is cancelled in the store\'s subscription settings. The right of withdrawal provided for in article 6 of the Terms of Sale applies.',
+      'On the web, you cancel from the app (Settings › Subscription › FillSell Cloud). During the trial, the stop is immediate and nothing is charged. After the trial, the Cloud stays active until the end of the paid month, then stops; nothing is charged afterwards. A subscription taken in the App Store or Google Play is cancelled in the store\'s subscription settings: stopped before the end of the trial (at Apple, at least 24 hours before), nothing is charged; afterwards, it runs until the end of the paid period. The right of withdrawal provided for in article 6 of the Terms of Sale applies; for a purchase in the App Store or Google Play, the refund is requested from the store.',
       'FillSell may suspend the Cloud of an account in case of use contrary to these terms or to a marketplace\'s rules; it informs you.',
     ] },
     { t: '8. Your data', ps: [
@@ -209,7 +223,8 @@ function auPrixDeLaBoutique(T, lang, e) {
 // = changer la version). Partout ailleurs, l'article 6 du Cloud seul, mot pour mot. Les prix : ceux du canal (web : Stripe ; iPhone /
 // Android : la boutique) ; ⛔ Business + Cloud payé dès la souscription (correction de Nico du 11/11, 21:45).
 export const CHANGEMENT_FORMULES = 'formules_cloud_article_6';
-const dateVersionFr = () => dateVersion(CGU_CLOUD_HISTORIQUE[0]?.version ?? CGU_CLOUD_VERSION);
+// (13/11) La date de l'ouverture des formules (version de fond du 12/11), plus la tête de l'historique (une reformulation).
+const dateVersionFr = () => dateVersion(VERSION_FORMULES_MIN);
 export function article6Formules(lang, e = lirePrixBoutique()) {
   const boutique = estCanalBoutique(e);
   const b = e.canal === 'apple' ? 'App Store' : 'Google Play';
@@ -219,8 +234,8 @@ export function article6Formules(lang, e = lirePrixBoutique()) {
       boutique
         ? `The Cloud is included in the plans with Cloud: Premium + Cloud ${p('premium_cloud')}, Pro + Cloud ${p('pro_cloud')}, Business + Cloud ${p('business_cloud')} per month, at the price shown by ${b} at the time of purchase. Each plan with Cloud is a single subscription.`
         : `The Cloud is included in the plans with Cloud: Premium + Cloud ${p('premium_cloud')}, Pro + Cloud ${p('pro_cloud')}, Business + Cloud ${p('business_cloud')} including VAT per month, on the web, in the App Store and in Google Play. Each plan with Cloud is a single subscription.`,
-      'A first 7-day trial is offered on Premium + Cloud or Pro + Cloud; Business + Cloud is paid from the day you subscribe. A payment method is required. Without cancellation or change of plan before the end of the trial, the chosen plan starts: its price is charged, then every month on the same date. At the latest the day before the trial ends, a reminder is sent to you in the app and by email.',
-      'A subscriber to a plan without Cloud can switch to its version with Cloud; the difference is charged on a prorated basis. Removing the Cloud takes you back to the plan without Cloud at the end of the paid period.',
+      'A first 7-day trial is offered on Premium + Cloud or Pro + Cloud; Business + Cloud is paid from the day you subscribe. A payment method is required. The payment page (Stripe, App Store or Google Play) shows, before you confirm, whether there is a trial, its end date and the amount charged afterwards; without a trial, the price is charged when you subscribe. Without cancellation or change of plan before the end of the trial, the chosen plan starts: its price is charged, then every month on the same date.',
+      'An account has only one FillSell subscription at a time, across all channels: a change of plan is made on the channel where you pay (web, App Store or Google Play), on the same subscription. A subscriber to a plan without Cloud who switches to its version with Cloud pays according to that channel\'s rule, shown before confirming: on the web and in Google Play, the prorated difference until the next billing date, charged straight away (on the web, a Premium or Pro subscriber who has never had a Cloud trial first tries it for 7 days while paying only their plan, then the prorated difference is added to their next invoice); in the App Store, the new price, straight away, Apple refunding on a prorated basis the unused part of the previous plan. Removing the Cloud takes you back to the plan without Cloud at the end of the paid period.',
       `Subscribers to the FillSell Cloud option alone, taken before ${dateVersionFr()}, keep it at ${p('cloud')}${boutique ? '' : ' including VAT'} per month for as long as they remain subscribed.`,
       EN.articles[5].ps[2],
     ] };
@@ -229,8 +244,8 @@ export function article6Formules(lang, e = lirePrixBoutique()) {
     boutique
       ? `Le Cloud est inclus dans les formules avec Cloud : Premium + Cloud ${p('premium_cloud')}, Pro + Cloud ${p('pro_cloud')}, Business + Cloud ${p('business_cloud')} par mois, au prix affiché par ${b} au moment de l'achat. Chaque formule avec Cloud est un seul abonnement.`
       : `Le Cloud est inclus dans les formules avec Cloud : Premium + Cloud ${p('premium_cloud')}, Pro + Cloud ${p('pro_cloud')}, Business + Cloud ${p('business_cloud')} TTC par mois, sur le web, dans l'App Store et dans Google Play. Chaque formule avec Cloud est un seul abonnement.`,
-    "Un premier essai de 7 jours est offert sur Premium + Cloud ou Pro + Cloud ; Business + Cloud est payé dès la souscription. Un moyen de paiement est demandé. Sans résiliation ni changement de formule avant la fin de l'essai, la formule choisie commence : son prix est prélevé, puis chaque mois à la même date. Au plus tard la veille de la fin de l'essai, un rappel est envoyé dans l'app et par e-mail.",
-    'Un abonné à une formule sans Cloud peut passer à sa version avec Cloud ; la différence est facturée au prorata. Retirer le Cloud ramène à la formule sans Cloud à la fin de la période payée.',
+    "Un premier essai de 7 jours est offert sur Premium + Cloud ou Pro + Cloud ; Business + Cloud est payé dès la souscription. Un moyen de paiement est demandé. La page de paiement (Stripe, App Store ou Google Play) affiche, avant que vous validiez, s'il y a un essai, sa date de fin et le montant prélevé ensuite ; sans essai, le prix est prélevé à la souscription. Sans résiliation ni changement de formule avant la fin de l'essai, la formule choisie commence : son prix est prélevé, puis chaque mois à la même date.",
+    "Un compte n'a qu'un seul abonnement FillSell à la fois, tous canaux confondus : un changement de formule se fait sur le canal où vous payez (web, App Store ou Google Play), sur le même abonnement. Un abonné à une formule sans Cloud qui passe à sa version avec Cloud paie selon la règle de ce canal, affichée avant validation : sur le web et dans Google Play, la différence au prorata jusqu'à la prochaine échéance, prélevée tout de suite (sur le web, un abonné Premium ou Pro qui n'a jamais eu d'essai du Cloud l'essaie d'abord 7 jours en ne payant que sa formule, puis la différence au prorata s'ajoute à sa facture suivante) ; dans l'App Store, le nouveau prix, tout de suite, Apple remboursant au prorata la part non utilisée de l'ancienne formule. Retirer le Cloud ramène à la formule sans Cloud à la fin de la période payée.",
     `Les abonnés à l'option FillSell Cloud seule, souscrite avant le ${dateVersionFr()}, la gardent à ${p('cloud')}${boutique ? '' : ' TTC'} par mois tant qu'ils restent abonnés.`,
     FR.articles[5].ps[2],
   ] };
@@ -242,7 +257,7 @@ export const conditionsCloud = (lang = 'fr', { formules = false } = {}) => {
   const l = lang === 'en' ? 'en' : 'fr';
   const e = lirePrixBoutique();
   const base = estCanalBoutique(e) ? auPrixDeLaBoutique(l === 'en' ? EN : FR, l, e) : (l === 'en' ? EN : FR);
-  if (formules !== true || !ENTREE_FORMULES || ENTREE_FORMULES.changement !== CHANGEMENT_FORMULES) return base;
+  if (formules !== true || !ENTREE_FORMULES || !CHANGEMENTS_FORMULES.has(ENTREE_FORMULES.changement)) return base;
   return { ...base, version: ligneDeVersion(l, ENTREE_FORMULES),
     articles: base.articles.map((a) => (a.t.startsWith('6.') ? article6Formules(l, e) : a)) };
 };

@@ -62,8 +62,10 @@ ok(/HMAC-SHA256/.test(fr) && /hmac\(|sha256/i.test(socle), 'empreintes : HMAC-SH
   ok(/Input\.insertText/.test(cx) && !journalSaisie && !/writeFile/.test(cx), 'saisie relayée, jamais journalisée ; image jamais écrite (connexion.js)');
   ok(/sans être enregistré ni journalisé : nous ne conservons jamais votre mot de passe/.test(fr), 'le texte dit que la saisie passe par nos serveurs (et rien de plus)');
 }
-ok(/Au plus tard la veille de la fin de l'essai, un rappel est adressé à l'utilisateur dans l'application et par e-mail/.test(fr)
-  && /ouvertureAvantFinH: 48, forcageAvantFinH: 24/.test(lire('supabase/functions/_shared/cloud-rappel-veille.js')), 'rappel « au plus tard la veille » = la fenêtre J-2 → J-1 du code');
+// (13/11/2026, décision de Nico — 3e réponse, point e : « rappel la veille SUPPRIMÉ ») La CGV ne PROMET plus le rappel de la
+// veille (promesse non prouvée sur un vrai client) ; le rappel reste codé (fenêtre J-2 → J-1) et part, sans être promis.
+ok(!/la veille de la fin de l'essai/.test(fr) && /page de paiement \(Stripe, App Store ou Google Play\) indique, avant validation, la date de fin de l'essai/.test(fr)
+  && /ouvertureAvantFinH: 48, forcageAvantFinH: 24/.test(lire('supabase/functions/_shared/cloud-rappel-veille.js')), 'rappel de la veille : plus promis (décision du 13/11), toujours codé ; la page de paiement dit la fin de l’essai');
 ok(/Le droit de rétractation de l'article 6 s'applique à l'option/.test(fr), 'rétractation : l’article 6 s’applique');
 
 console.log('\n2. La forme et le ton');

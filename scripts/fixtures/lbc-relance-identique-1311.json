@@ -1,0 +1,293 @@
+{
+ "cef15f28": {
+  "id": "cef15f28-c749-46ca-b6bb-65dc6d43266e",
+  "platform": "leboncoin",
+  "action": "publish",
+  "status": "failed",
+  "inventaire_id": "1793030096012",
+  "platform_listing_id": "3306058550",
+  "title": "Topps Disney100 Chrome Cruella De Vil #90 Carte à collectionner (2023) EN",
+  "description": "Topps Disney100 Chrome Cruella De Vil #90 Carte à collectionner (2023) EN",
+  "price": "12",
+  "photos": [
+   {
+    "type": "original",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/229c7b07/rapatrie-fiche/1793030096012/1793031481306_0.jpg"
+   },
+   {
+    "type": "photo_1",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/229c7b07/rapatrie-fiche/1793030096012/1793031481306_1.jpg"
+   }
+  ],
+  "published_at": "2026-11-10 05:42:30.609+00",
+  "vu_en_ligne_le": null,
+  "created_at": "2026-11-04 21:43:46.24821+00",
+  "platform_fields": {
+   "depot_jamais_en_ligne": {
+    "doublon_photo_de": null,
+    "identifiants": [
+     "3306058550"
+    ],
+    "issue": "refus_moderation_probable",
+    "le": "2026-11-11T06:04:59.889531+00:00",
+    "premier": "2ec0e2bf-dc5e-4c3d-b6fe-62eeb5a4377c",
+    "refund": {
+     "raison": "sans_reservation",
+     "rembourse": 0
+    },
+    "second": "6dd4315c-21f8-47af-9bf1-2b80bc603e0a"
+   },
+   "etat": "Très bon état",
+   "lbcAspects": {
+    "condition": "Très bon état",
+    "estimated_parcel_weight": "De 100 g à 250 g",
+    "leisure_collection_product": "Jeux de cartes"
+   },
+   "lbcCategoryPath": [
+    "Loisirs",
+    "Collection"
+   ],
+   "marque": "Topps",
+   "matiere": "",
+   "relance_apres_depot_mort": {
+    "identifiant": "3305478136",
+    "issue": "refus_moderation_probable",
+    "le": "2026-11-10T05:37:09.571Z",
+    "lien": null,
+    "traces_retirees": [
+     "lbc_depot",
+     "depot_jamais_en_ligne",
+     "moderation_probe"
+    ],
+    "constat": {
+     "issue": "refus_moderation_probable",
+     "le": "2026-11-09T23:36:34.775692+00:00"
+    }
+   },
+   "relances_manuelles": 3,
+   "taille": ""
+  }
+ },
+ "137ea70c": {
+  "id": "137ea70c-b238-433c-913a-97c7a8ef8bec",
+  "platform": "leboncoin",
+  "action": "publish",
+  "status": "failed",
+  "inventaire_id": "1793030096058",
+  "platform_listing_id": "3306058262",
+  "title": "Topps Disney100 Chrome Anna #9 Carte à collectionner non sportive (2023) EN",
+  "description": "Topps Disney100 Chrome Anna #9 Carte à collectionner non sportive (2023) EN",
+  "price": "29.96",
+  "photos": [
+   {
+    "type": "original",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/229c7b07/rapatrie-fiche/1793030096058/1793031661057_0.jpg"
+   },
+   {
+    "type": "photo_1",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/229c7b07/rapatrie-fiche/1793030096058/1793031661057_1.jpg"
+   }
+  ],
+  "published_at": "2026-11-10 05:40:38.348+00",
+  "vu_en_ligne_le": null,
+  "created_at": "2026-11-04 21:43:44.794561+00",
+  "platform_fields": {
+   "depot_jamais_en_ligne": {
+    "doublon_photo_de": null,
+    "identifiants": [
+     "3306058262"
+    ],
+    "issue": "refus_moderation_probable",
+    "le": "2026-11-11T06:04:59.889531+00:00",
+    "premier": "2ec0e2bf-dc5e-4c3d-b6fe-62eeb5a4377c",
+    "refund": {
+     "raison": "sans_reservation",
+     "rembourse": 0
+    },
+    "second": "6dd4315c-21f8-47af-9bf1-2b80bc603e0a"
+   },
+   "etat": "Très bon état",
+   "lbcAspects": {
+    "condition": "Très bon état",
+    "estimated_parcel_weight": "De 250 g à 500 g",
+    "leisure_collection_product": "Jeux de cartes"
+   },
+   "lbcCategoryPath": [
+    "Loisirs",
+    "Collection"
+   ],
+   "marque": "Topps",
+   "matiere": "Papier cartonné",
+   "relance_apres_depot_mort": {
+    "identifiant": "3305476808",
+    "issue": "refus_moderation_probable",
+    "le": "2026-11-10T05:37:28.128Z",
+    "lien": null,
+    "traces_retirees": [
+     "lbc_depot",
+     "depot_jamais_en_ligne",
+     "moderation_probe"
+    ],
+    "constat": {
+     "issue": "refus_moderation_probable",
+     "le": "2026-11-09T23:36:34.775692+00:00"
+    }
+   },
+   "relances_manuelles": 3,
+   "taille": ""
+  }
+ },
+ "ae8d7ec6": {
+  "id": "ae8d7ec6-7fb9-4466-9146-157c6a6fdd53",
+  "platform": "leboncoin",
+  "action": "publish",
+  "status": "failed",
+  "inventaire_id": "1792852026414000",
+  "platform_listing_id": "3308018636",
+  "title": "Haut IKKS Women gris anthracite – Taille S – Broderies et sequins dorés – Col V",
+  "description": "(fixture description-lbc-1311-f0acd3af-haut.txt)",
+  "price": "12",
+  "photos": [
+   {
+    "type": "original",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_0.jpg"
+   },
+   {
+    "type": "photo_1",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_1.jpg"
+   },
+   {
+    "type": "photo_2",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_2.jpg"
+   },
+   {
+    "type": "photo_3",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_3.jpg"
+   },
+   {
+    "type": "photo_4",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_4.jpg"
+   },
+   {
+    "type": "photo_5",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_5.jpg"
+   },
+   {
+    "type": "photo_6",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_6.jpg"
+   },
+   {
+    "type": "photo_7",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_7.jpg"
+   },
+   {
+    "type": "photo_8",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_8.jpg"
+   },
+   {
+    "type": "photo_9",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/f0acd3af/rehosted/1792852026414000/1794495358346_9.jpg"
+   }
+  ],
+  "published_at": "2026-11-12 16:24:55.508+00",
+  "vu_en_ligne_le": null,
+  "created_at": "2026-11-12 15:06:09.392233+00",
+  "platform_fields": {
+   "couleur": "Noir",
+   "depot_jamais_en_ligne": {
+    "doublon_photo_de": null,
+    "identifiants": [
+     "3308018636"
+    ],
+    "issue": "refus_moderation_probable",
+    "le": "2026-11-13T08:05:48.928334+00:00",
+    "premier": "cb84553f-278f-499a-8c6e-f502f15c066c",
+    "refund": {
+     "raison": "sans_reservation",
+     "rembourse": 0
+    },
+    "second": "993ceab6-89b7-4f0e-9c97-36e3e2888ef7"
+   },
+   "etat": "Très bon état",
+   "lbcAspects": {
+    "condition": "Très bon état"
+   },
+   "lbcCategoryPath": [
+    "Mode",
+    "Vêtements"
+   ],
+   "marque": "IKKS",
+   "matiere": "Viscose",
+   "taille": "S"
+  }
+ },
+ "5adbc272": {
+  "id": "5adbc272-5b67-46c5-852d-7c9d6c89cf44",
+  "platform": "leboncoin",
+  "action": "publish",
+  "status": "failed",
+  "inventaire_id": "1793030096058",
+  "platform_listing_id": "3306762703",
+  "title": "Topps Disney100 Chrome Anna #9 Carte à collectionner non sportive (2023) EN",
+  "description": "Topps Disney100 Chrome Anna #9 Carte à collectionner non sportive (2023) EN",
+  "price": "29.96",
+  "photos": [
+   {
+    "type": "original",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/229c7b07/rapatrie-fiche/1793030096058/1793031661057_0.jpg"
+   },
+   {
+    "type": "photo_1",
+    "url": "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/229c7b07/rapatrie-fiche/1793030096058/1793031661057_1.jpg"
+   }
+  ],
+  "published_at": "2026-11-11 08:56:38.734+00",
+  "vu_en_ligne_le": null,
+  "created_at": "2026-11-11 08:18:30.326152+00",
+  "platform_fields": {
+   "depot_jamais_en_ligne": {
+    "doublon_photo_de": null,
+    "identifiants": [
+     "3306762703"
+    ],
+    "issue": "refus_moderation_probable",
+    "le": "2026-11-11T23:38:59.93721+00:00",
+    "premier": "befb9429-6ce9-4fe2-b6d9-368b9d386d2b",
+    "refund": {
+     "raison": "sans_reservation",
+     "rembourse": 0
+    },
+    "second": "6f4c7f42-f1ed-4cd5-84e1-c89ff744ffca"
+   },
+   "etat": "Très bon état",
+   "lbcAspects": {
+    "condition": "Très bon état",
+    "estimated_parcel_weight": "De 250 g à 500 g",
+    "leisure_collection_product": "Jeux de cartes"
+   },
+   "lbcCategoryPath": [
+    "Loisirs",
+    "Collection"
+   ],
+   "marque": "Topps",
+   "matiere": "Papier cartonné",
+   "relance_apres_depot_mort": {
+    "identifiant": "3305476808",
+    "issue": "refus_moderation_probable",
+    "le": "2026-11-10T05:37:28.128Z",
+    "lien": null,
+    "traces_retirees": [
+     "lbc_depot",
+     "depot_jamais_en_ligne",
+     "moderation_probe"
+    ],
+    "constat": {
+     "issue": "refus_moderation_probable",
+     "le": "2026-11-09T23:36:34.775692+00:00"
+    }
+   },
+   "relance_copie_de": "137ea70c-b238-433c-913a-97c7a8ef8bec",
+   "taille": ""
+  }
+ }
+}

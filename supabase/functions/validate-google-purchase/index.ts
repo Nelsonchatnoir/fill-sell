@@ -14,7 +14,9 @@ import { accuserAbonnementGoogle } from "../_shared/google-accuse-abonnement.js"
 // (11/11/2026, offres Cloud) Les formules avec Cloud (un abonnement Google par formule) : mêmes règles que google-play-webhook.
 import { formuleDuProduit, planAchatBoutique, grantDeFormule } from "../_shared/formules-serveur.js";
 import { lectureFormuleGoogle, verdictEssaiStore } from "../_shared/cloud-option.js";
-import { rangDesDrapeaux, rangAppleVivant } from "../_shared/droits-canaux.js";
+import { rangDesDrapeaux, rangAppleVivant, abonnementGoogleActif } from "../_shared/droits-canaux.js";
+// (13/11/2026, 3e réponse de Nico, point a) Le filet « un seul abonnement actif par compte » : lire et prévenir support@.
+import { verifierDeuxAbonnements } from "../_shared/deux-abonnements.ts";
 
 // Validation serveur d'un achat Google Play — équivalent strict de
 // validate-apple-receipt, côté Android (2026-08-05).
@@ -80,7 +82,13 @@ const COIN_PRODUCTS: Record<string, number> = {
 // même chose ») décrivait un bug partagé : depuis google-play-webhook v21,
 // le type 3 pose seulement subscription_cancel_at_period_end — et ce fichier
 // fait pareil, sinon un simple lancement d'app rétrograderait l'annulé.
-const ETATS_ACTIFS = ["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD", "SUBSCRIPTION_STATE_CANCELED"];
+// ⛔ (13/11/2026, 3e réponse de Nico, point c — « Grâce Google rouverte à tort ») IN_GRACE_PERIOD n'en fait PLUS partie :
+// google-play-webhook coupe le droit à la notification 6 (grâce) et 5 (suspension) — règle de Nico du 29/10, « un impayé
+// repasse en gratuit », tous canaux —, mais cette validation (achat ET « Restaurer mes achats ») le ROUVRAIT : un impayé
+// Google qui ouvrait l'app retrouvait son palier et son Cloud. La règle est désormais UNE, celle du webhook et de la garde
+// des doubles abonnements : abonnementGoogleActif (droits-canaux.js) — ACTIVE, ou CANCELED payé jusqu'à une fin à venir.
+// (Google recommande de garder l'accès pendant la grâce, « During a grace period, the user should still have access » :
+// le choix inverse est celui de Nico, dit dans le rapport du 13/11.) Verrou : selftest:grace-google-jamais-rouverte.
 
 // Même mécanique de service account que google-play-webhook et
 // validate-coin-purchase (copiée à dessein : chaque edge function se déploie
@@ -258,7 +266,7 @@ serve(async (req) => {
     }
 
     const etat = purchase?.subscriptionState as string | undefined;
-    const actif = ETATS_ACTIFS.includes(etat ?? "");
+    const actif = abonnementGoogleActif(purchase);
 
     // ── L'OPTION CLOUD (04/10) : validation / restauration côté app ─────────
     // Même lecture que google-play-webhook, sans type de notification : l'essai
@@ -284,6 +292,8 @@ serve(async (req) => {
       }
       console.log(`[validate-google-purchase] option Cloud user=${userId} état=${etat} ${sens}${lecture.essai ? " (essai)" : ""}`);
       if (actif) await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
+      // (13/11, point a de Nico) Le filet « un seul abonnement » : un second abonnement vivant → alerte à support@, rien d'autre.
+      if (actif) await verifierDeuxAbonnements(supabaseAdmin, userId, { evenement: `google validation ${productId}`, canal: "google", test: deTest(purchase) });
       return json({ ok: true, type: "option_cloud", is_cloud: majCloud.is_cloud === true, essai: lecture.essai === true, state: etat ?? "unknown" });
     }
 
@@ -322,6 +332,7 @@ serve(async (req) => {
         return json({ error: "profile_update_failed" }, 500);
       }
       await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
+      await verifierDeuxAbonnements(supabaseAdmin, userId, { evenement: `google validation ${productId}`, canal: "google", test: deTest(purchase) });
       if (planV.credit) {
         const { data: grantV, error: grantErrV } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
           p_user_id: userId, p_tier: grantDeFormule(formuleV!.formule), p_period_end: ligne?.expiryTime ?? null, p_source: "payment",
@@ -398,6 +409,8 @@ serve(async (req) => {
     // (31/10, lot I point 7) Le droit est écrit : l'abonnement est confirmé à Google (jamais avant — un droit non écrit
     // laisse Google rembourser). Best-effort, journalisé.
     await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
+    // (13/11, point a de Nico) Le filet « un seul abonnement » : un second abonnement vivant → alerte à support@, rien d'autre.
+    await verifierDeuxAbonnements(supabaseAdmin, userId, { evenement: `google validation ${productId}`, canal: "google", test: deTest(purchase) });
 
     // Pépites incluses. Idempotent par cycle (next_grant_at + ref unique dans
     // coin_ledger) : le webhook peut rejouer le même événement, ou l'inverse,

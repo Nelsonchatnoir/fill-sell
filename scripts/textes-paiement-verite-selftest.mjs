@@ -349,6 +349,69 @@ try {
   'jamais « Paiement reçu » après un ESSAI (0 prélevé) ni un achat en attente d’approbation');
   ok(/zeroAffiche\('cloud', c\.lang\)/.test(lire('src/entree/EtapeCloud.jsx')), 'parcours d’entrée : « 0 » dans la monnaie de la boutique (plus « 0 € » en dur sur Android)');
   ok(existe('src/lib/eligibiliteApple.js'), 'la règle d’éligibilité Apple a sa source (lib/eligibiliteApple.js)');
+
+  // ── I. (13/11/2026, 3e réponse de Nico, point e) CONDITIONS DU CLOUD, PAGES LÉGALES, SITE — LA RÈGLE DE CHAQUE CANAL ──
+  // Oracle : rappel de la veille SUPPRIMÉ (promesse non prouvée, décision 5a puis 3e réponse) ; un seul abonnement par
+  // compte, tous canaux (point a) ; la page de paiement du canal (Stripe, App Store, Google Play) dit l'essai, sa fin et le
+  // montant AVANT validation ; Apple : arrêt au moins 24 h avant la fin de la période (règle d'Apple), montée = nouveau
+  // prix tout de suite, la part non utilisée remboursée au prorata par Apple ; Google et web : différence au prorata ;
+  // l'iPhone est ouvert (13/11) ; jamais « en un geste » sans dire OÙ ; la suppression du compte n'arrête PAS un
+  // abonnement App Store / Google Play (delete-account n'annule que Stripe).
+  console.log('\nI. Conditions du Cloud, pages légales et site : alignés sur la règle de chaque canal');
+  const CC = await charger('/src/cloud/conditionsCloud.js');
+  const SRVC = await charger('/supabase/functions/_shared/cloud-conditions.js');
+  const toutTexte = (c) => [c?.version ?? '', ...(c?.articles ?? []).flatMap((a) => [a.t, ...a.ps])].join(' ');
+  for (const lang of ['fr', 'en']) {
+    const seul = toutTexte(CC?.conditionsCloud?.(lang));
+    const form = toutTexte(CC?.conditionsCloud?.(lang, { formules: true }));
+    for (const [nom, t] of [['Cloud seul', seul], ['formules', form]]) {
+      ok(t && !/la veille|day before/.test(t), `conditions (${nom}, ${lang}) : plus de rappel promis la veille`, t.slice(0, 300));
+      ok(lang === 'en' ? /one FillSell subscription at a time/.test(t) : /un seul abonnement FillSell à la fois/.test(t), `conditions (${nom}, ${lang}) : un seul abonnement par compte, tous canaux`);
+      ok(lang === 'en' ? /payment page \(Stripe, App Store or Google Play\)/.test(t) : /page de paiement \(Stripe, App Store ou Google Play\)/.test(t), `conditions (${nom}, ${lang}) : la page de paiement du canal dit l’essai et le montant avant validation`);
+    }
+    ok(!(lang === 'en' ? /on top of a paid plan/ : /en plus d'un forfait payant/).test(seul), `conditions (Cloud seul, ${lang}) : plus « en plus d’un forfait payant » (un second abonnement)`);
+    ok(lang === 'en' ? /at least 24 hours before/.test(seul) : /au moins 24 heures avant/.test(seul), `conditions (Cloud seul, ${lang}) : l’arrêt d’un essai App Store suit la règle d’Apple (24 h avant)`);
+    ok(lang === 'en' ? /App Store, the new price/.test(form) && /prorated/.test(form) : /App Store, le nouveau prix/.test(form) && /prorata/.test(form), `conditions (formules, ${lang}) : passer à la version avec Cloud = la règle de chaque canal`);
+  }
+  ok(SRVC?.CGU_CLOUD_VERSION_MINIMALE === '2026-11-04' && FS.versionCguFormules?.() === '2026-11-12', 'reformulation : les minimales ne bougent pas (Cloud seul 04/11, formules 12/11) — les acceptations restent valables');
+  ok(SRVC?.CGU_CLOUD_HISTORIQUE?.[0]?.version > '2026-11-12' && CC?.versionConditionsMontree?.(true) === SRVC.CGU_CLOUD_HISTORIQUE[0].version
+    && CC?.versionConditionsMontree?.(false) === SRVC.CGU_CLOUD_HISTORIQUE[0].version, 'changer le texte = changer la VERSION : les deux textes montrés portent la version neuve');
+  ok(/reste valable/.test(CC?.ligneDeVersion?.('fr') ?? '') && /remains valid/.test(CC?.ligneDeVersion?.('en') ?? ''), 'la ligne de version dit que l’acceptation précédente reste valable', CC?.ligneDeVersion?.('fr'));
+  const TL = await charger('/src/cloud/textesLegaux.js');
+  for (const lang of ['fr', 'en']) {
+    const a7 = (TL?.textesLegauxCloud?.(lang)?.cgvArticle7?.ps ?? []).join(' ');
+    ok(a7 && !/la veille|day before/.test(a7) && !/en un geste|in one tap/.test(a7) && !(lang === 'en' ? /on top of a paid plan/ : /en plus d'un forfait payant/).test(a7),
+      `CGV article 7 (${lang}) : ni rappel de la veille, ni « en un geste », ni Cloud « en plus d’un forfait payant »`, a7.slice(0, 300));
+    ok(lang === 'en' ? /one FillSell subscription at a time/.test(a7) : /un seul abonnement FillSell à la fois/.test(a7), `CGV article 7 (${lang}) : un seul abonnement par compte`);
+  }
+  const lg = lire('src/pages/Legal.jsx');
+  ok(!/annulation automatique de votre abonnement Premium en cours \(Stripe ou Apple\/Google/.test(lg) && !/Automatic cancellation of your current Premium subscription \(Stripe or Apple\/Google/.test(lg),
+    'Legal 4.6 : plus « annulation automatique … Apple/Google » à la suppression du compte (delete-account n’annule que Stripe)');
+  ok(/n'arrête pas un abonnement pris dans l'App Store ou Google Play/.test(lg) && /does not stop a subscription taken in the App Store or Google Play/.test(lg), 'Legal 4.6 : la suppression du compte n’arrête pas un abonnement App Store / Google Play — dit, avec où l’arrêter');
+  ok(/un seul abonnement FillSell actif à la fois/.test(lg) && /one active FillSell subscription at a time/.test(lg), 'Legal 3.4 : un seul abonnement actif par compte, tous canaux');
+  ok(/Dernière mise à jour : 13 novembre 2026/.test(lg) && /Last updated: November 13, 2026/.test(lg), 'Legal : date de mise à jour du 13/11/2026');
+  const site = ['site/contenu/fr/accueil.md', 'site/contenu/en/accueil.md', 'site/contenu/fr/tarifs.md', 'site/contenu/en/pricing.md', 'site/contenu/fr/faq.md'].map((p) => [p, lire(p)]);
+  for (const [p, t] of site) {
+    ok(!/en France, sur Android et sur le web\.|in France, on Android and on the web\./.test(t) && /sur iPhone, sur Android et sur le web|on iPhone, on Android and on the web/.test(t), `${p} : l’iPhone est dit (ouvert le 13/11)`);
+    ok(!/(arrêtes le Cloud en un geste|stop the Cloud in one tap)/i.test(t), `${p} : plus « tu arrêtes le Cloud en un geste » sans dire où`);
+  }
+  const tarifs = lire('site/contenu/fr/tarifs.md'), pricing = lire('site/contenu/en/pricing.md');
+  ok(/une fois par identifiant Apple/.test(tarifs) && /once per Apple Account/.test(pricing), 'site (tarifs fr / en) : la règle d’Apple pour la semaine gratuite');
+  ok(/Tu l'arrêtes là où tu paies/.test(tarifs) && /You stop it where you pay/.test(pricing), 'site (tarifs fr / en) : où arrêter, par canal');
+
+  // ── J. (13/11/2026, points a et d) Les phrases neuves : refus d'un second abonnement, impayé ────────────────────────
+  console.log('\nJ. Les phrases neuves du lot : refus d’un second abonnement, mail d’impayé');
+  const USA = await charger('/supabase/functions/_shared/un-seul-abonnement.js');
+  for (const d of [{ permis: false, motif: 'autre_canal', canal: 'apple', type: 'palier' }, { permis: false, motif: 'autre_canal', canal: 'stripe', type: 'palier' },
+    { permis: false, motif: 'formule_en_cours', canal: 'apple' }, { permis: false, motif: 'cloud_seul_en_cours', canal: 'google' }, { permis: false, motif: 'impaye', canal: 'stripe' }]) {
+    for (const lang of ['fr', 'en']) {
+      const m = USA?.messageUnSeulAbonnement?.(d, lang) ?? '';
+      ok(m && (lang === 'en' ? /Nothing was charged\./ : /Rien n'a été débité\./).test(m) && !/ordinateur|computer|chrome/i.test(m), `refus « ${d.motif} / ${d.canal} » (${lang}) : rien débité, où changer, sans « ordinateur »`, m);
+    }
+  }
+  const PEX = await charger('/supabase/functions/_shared/paiement-echoue.js');
+  const impJ = PEX?.texteEchec?.({ lang: 'fr', cause: 'carte_refusee', contexte: 'renouvellement', lienFacture: 'https://invoice.stripe.com/i/x', offre: 'formule_cloud', plan: 'Pro + Cloud' });
+  ok(impJ && /Pro \+ Cloud est en pause/.test((impJ.suite ?? []).join(' ')) && /Mes factures/.test((impJ.suite ?? []).join(' ')), 'mail d’impayé Stripe d’une formule avec Cloud : en pause + comment reprendre', JSON.stringify(impJ?.suite));
 } finally {
   await vite.close();
 }

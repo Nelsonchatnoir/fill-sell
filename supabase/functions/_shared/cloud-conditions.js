@@ -22,7 +22,17 @@
 // NOTES_DE_VERSION de src/cloud/conditionsCloud.js — une version sans phrase n'affiche que sa date).
 // ⛔ La date de la version EN VIGUEUR ne s'écrit qu'ICI (première ligne) : le jour du push web, la date RÉELLE (heure de
 // Paris) — et VERSION_LIVREE de scripts/cloud-executant-selftest.mjs, qui l'épingle.
+// (13/11/2026) La date de la reformulation, écrite UNE fois (deux lignes de l'historique la portent).
+const REFORMULATION_1311 = "2026-11-13";
 export const CGU_CLOUD_HISTORIQUE = Object.freeze([
+  // (13/11/2026, 3e réponse de Nico, point e — ⚠ DATE À RECALER sur le jour réel du push web) REFORMULATION des deux
+  // textes, sans changement de fond (les minimales NE BOUGENT PAS : Cloud seul 2026-11-04, formules 2026-11-12) : le rappel
+  // de la veille retiré (promesse non prouvée), la page de paiement de chaque canal qui dit l'essai et le montant avant
+  // validation, un seul abonnement FillSell par compte (point a), l'arrêt et le changement de formule selon chaque canal.
+  // Deux lignes à la même date : les formules (« formules_reformulation_canaux », famille des formules — montrée seulement
+  // dans l'achat d'une formule) et le Cloud seul (« reformulation_articles_6_7 », montrée à tous).
+  Object.freeze({ version: REFORMULATION_1311, changement: "formules_reformulation_canaux" }),
+  Object.freeze({ version: REFORMULATION_1311, changement: "reformulation_articles_6_7" }),
   // (12/11/2026, offres Cloud, validé par Nico) L'article 6 décrit les FORMULES AVEC CLOUD (prix, essai seulement sur
   // Premium + Cloud et Pro + Cloud, Business + Cloud payé dès le premier jour, Cloud seul hérité gardé). Changement de FOND
   // pour les formules seulement : la minimale (Cloud seul) ne bouge PAS ; une formule avec Cloud exige une acceptation

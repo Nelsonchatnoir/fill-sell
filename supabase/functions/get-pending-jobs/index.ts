@@ -60,7 +60,11 @@ import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leb
 import { estAnnonceAnimalVivantLbc, messageAnimalVivantLbc, champsAnimalVivantLbc } from "../_shared/leboncoin-animal-vivant.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 // (29/10, lot B 4.6) Un refus Beebs prouvé ne repart jamais à l'identique (même fonction que l'app).
-import { relanceRefusBeebs, messageRefusBeebsMemeContenu, SOURCE_REFUS_BEEBS_MEME_CONTENU } from "../../../src/utils/empreinteContenu.js";
+import { relanceRefusBeebs, messageRefusBeebsMemeContenu, SOURCE_REFUS_BEEBS_MEME_CONTENU, empreinteEnvoiLbcDuJob } from "../../../src/utils/empreinteContenu.js";
+// (13/11, 3e réponse de Nico) Leboncoin : une annonce refusée ne repart jamais à l'identique ; une publication aux photos
+// d'une annonce déjà en ligne sur le compte est retenue.
+import { refusLbcIdentique, patchRetenueRefusLbc, envoisLbcApres, REGLES_TEXTE_LBC, CLE_ENVOIS_LBC } from "../../../src/utils/relanceRefusLbc.js";
+import { jugerMemesPhotosLbc, patchRetenueMemesPhotos, leverHorsQuotaMemesPhotos, urlsPhotosLbc, estPublicationLbcEnAttente, clePaire } from "../_shared/lbc-memes-photos.js";
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
@@ -2817,6 +2821,19 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+    // (13/11, 3e réponse de Nico — src/utils/relanceRefusLbc.js) Le contenu BRUT des publications Leboncoin en attente,
+    // tel qu'en base, avant toute retouche servie (titre et texte nettoyés, attributs déduits) : son empreinte « brute »
+    // se compare à celle d'un dépôt refusé d'avant la règle. Exécution seulement ; une copie illisible = pas d'empreinte.
+    const brutsLbc = new Map<string, Record<string, unknown>>();
+    if (!includeProcessing && !includeNeedsUser) {
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (!estPublicationLbcEnAttente(j)) continue;
+        try {
+          brutsLbc.set(String(j.id), structuredClone({ id: j.id, platform: j.platform, action: j.action, title: j.title, description: j.description,
+            price: j.price, photos: j.photos, platform_fields: j.platform_fields }));
+        } catch { /* sans copie : pas d'empreinte brute pour cette tâche */ }
+      }
+    }
     // ══ (01/11) DÉLÉGATION LEBONCOIN : CHAQUE POSTE NE VOIT QUE SA PART, DÈS LA LECTURE ══════════════════════════
     // Le compte de travail délégué (ordinateur de l'exécutant) : Leboncoin seulement. Les postes du propriétaire (sa
     // machine virtuelle) : tout sauf Leboncoin — ses tâches Leboncoin restent en file pour le compte de travail ; le
@@ -15671,6 +15688,201 @@ serve(async (req) => {
       }
     }
 
+    // ══ (13/11/2026, 3e réponse de Nico) LEBONCOIN : RIEN N'EST ENVOYÉ QUE LEBONCOIN REFUSE À COUP SÛR ══════════════
+    // (a) _shared/lbc-memes-photos.js — « Publication aux mêmes photos qu'une annonce déjà en ligne sur le compte : on la
+    //     retient, avec un message clair (« Une annonce avec ces photos est déjà en ligne sur Leboncoin »). Rien n'est
+    //     envoyé à Leboncoin. » (cfdfda6f ×6, f44b5917 ×2 refusés du 05/11 au 13/11). Mêmes FICHIERS que la fiche d'une
+    //     annonce Leboncoin en ligne du compte (ou d'un dépôt des 48 dernières heures pas encore relevé), ou mêmes
+    //     EMPREINTES quand le moteur a posé « Est-ce le même article ? » sur la paire ; jamais la même fiche, deux
+    //     exemplaires déclarés, une annonce prise par une vente, une republication au retrait engagé.
+    // (b) src/utils/relanceRefusLbc.js — « Relance à l'identique d'une annonce déjà refusée : bloquée tant que rien n'a
+    //     changé. » (229c7b07, Topps refusées cinq fois et plus). Une publication dont l'empreinte (ce qui part) est celle
+    //     d'un dépôt refusé de la même fiche est retenue.
+    // Juste avant la réservation (seules les tâches qui partiraient maintenant), exécution seulement. Lectures bornées :
+    // annonces Leboncoin en ligne du compte (3 pages de 1 000 au plus, avec la PREMIÈRE photo de leur fiche), dépôts
+    // Leboncoin des 48 dernières heures, puis les photos entières des seules fiches dont la première photo est dans la
+    // publication ; les tâches refusées des fiches publiées (par leur marque). Lecture ratée → rien de retenu (comme
+    // avant). Écritures : une par tâche retenue, pf relu, compare-and-set sur « pending » ; une ATTENTE (jumelle en cours
+    // ou servie avant dans ce passage) n'écrit rien. La retenue ne dépend d'aucune écriture.
+    let heldLbcMemesPhotos = 0, heldLbcRefusIdentique = 0, attenteLbcJumelle = 0;
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const candidatsL = (out as unknown as Array<Record<string, unknown>>).filter((j) => estPublicationLbcEnAttente(j));
+      if (candidatsL.length) {
+        const maintenantL = Date.now();
+        const sortisL = new Set<string>();
+        const aEcrireL: Array<{ j: Record<string, unknown>; quoi: string; fabriquer: (pf: Record<string, unknown>) => { status: string; error: string; platform_fields: Record<string, unknown> } }> = [];
+        const ficheDe = (x: unknown) => (x === null || x === undefined || x === "" ? "" : String(x));
+        const fichesC = [...new Set(candidatsL.map((j) => ficheDe(j.inventaire_id)).filter(Boolean))];
+        // ── (a) MÊMES PHOTOS ──
+        // Lectures, toutes bornées aux fiches qui COMPTENT (mesuré le 13/11 : lire toutes les annonces en ligne et la
+        // première photo de chaque fiche coûtait jusqu'à 345 Ko par passage chez 7a0b0d82, 570 annonces, ~300 dépôts par
+        // jour) : (1) les fiches du compte dont la PREMIÈRE photo est la première photo d'une publication en attente —
+        // filtrée par la base, lots de 15 adresses ; (2) les paires « Est-ce le même article ? » des fiches publiées ;
+        // (3) les annonces Leboncoin et les dépôts des 48 dernières heures de CES fiches seulement.
+        try {
+          const premieres = [...new Set(candidatsL.map((j) => urlsPhotosLbc(j.photos)[0]).filter((u): u is string => !!u))];
+          const fichesA = new Map<string, Record<string, unknown>>();
+          for (let i = 0; i < premieres.length; i += 15) {
+            const lot = premieres.slice(i, i + 15);
+            // Photo en objet ({ url }) puis en chaîne (fiches anciennes) : deux filtres simples, jamais un balayage côté app.
+            for (const chemin of ["photos->0->>url", "photos->>0"]) {
+              const { data, error } = await userClient.from("inventaire").select("id, quantite, statut, fusionne_dans, photos")
+                .eq("user_id", user.id).in(chemin, lot).limit(200);
+              if (error) throw new Error(`fiches aux mêmes premières photos : ${error.message}`);
+              for (const f of (data ?? []) as Array<Record<string, unknown>>) fichesA.set(ficheDe(f.id), f);
+            }
+          }
+          const pairesMoteur = new Set<string>(), pairesNon = new Set<string>();
+          if (fichesC.length) {
+            const { data: paires, error: eP } = await userClient.from("inventaire_doublons").select("garde, absorbe, statut, motif")
+              .eq("user_id", user.id).in("statut", ["proposee", "refusee"])
+              .or(`garde.in.(${fichesC.join(",")}),absorbe.in.(${fichesC.join(",")})`).limit(500);
+            if (eP) throw new Error(`questions « même article » : ${eP.message}`);
+            for (const p of (paires ?? []) as Array<Record<string, unknown>>) {
+              if (p.statut === "refusee") pairesNon.add(clePaire(p.garde, p.absorbe));
+              else if (p.motif === "photo_identique") pairesMoteur.add(clePaire(p.garde, p.absorbe));
+            }
+          }
+          const enCandidates = new Set(fichesC);
+          const autreDeLaPaire = (cle: string) => cle.split(":").filter((x) => !enCandidates.has(x));
+          const fichesMoteur = [...new Set([...pairesMoteur].flatMap(autreDeLaPaire))].filter((x) => x && !fichesA.has(x));
+          // Les fiches publiées (quantité) et celles des paires du moteur (photos), une lecture.
+          const aLire = [...new Set([...fichesC, ...fichesMoteur])].filter((x) => !fichesA.has(x));
+          if (aLire.length) {
+            const { data: fl, error: eFl } = await lireParLots((lot) => userClient.from("inventaire")
+              .select("id, quantite, statut, fusionne_dans, photos").in("id", lot), aLire, 200);
+            if (eFl) throw new Error(`fiches : ${(eFl as { message?: string }).message ?? eFl}`);
+            for (const f of (fl ?? []) as Array<Record<string, unknown>>) fichesA.set(ficheDe(f.id), f);
+          }
+          const quantites = new Map<string, number>();
+          for (const [id, f] of fichesA) quantites.set(id, f.quantite == null ? 1 : Number(f.quantite));
+          // Une fiche vendue (ou fusionnée ailleurs) : son annonce n'est plus « en ligne » pour cette règle.
+          const ficheVivante = (id: string) => { const f = fichesA.get(id); return !!f && f.statut !== "vendu" && f.fusionne_dans == null && !(f.quantite != null && Number(f.quantite) <= 0); };
+          // Les fiches publiées comptent aussi (une fiche en ligne peut être la jumelle d'une AUTRE publication du passage) ;
+          // le juge écarte, pour chaque publication, les annonces de sa propre fiche.
+          const autres = [...fichesA.keys()].filter((id) => ficheVivante(id));
+          const occupants: Array<Record<string, unknown>> = [];
+          const empreintes = new Map<string, { dhash?: string; phash?: string }>();
+          if (autres.length) {
+            const { data: annR, error: eA } = await lireParLots((lot) => userClient.from("annonces_plateforme")
+              .select("listing_id, inventaire_id, statut_plateforme, transaction_plateforme, disparu_le, retiree_le, ignoree_le, fiche_supprimee_le")
+              .eq("user_id", user.id).eq("platform", "leboncoin").in("inventaire_id", lot), autres, 200);
+            if (eA) throw new Error(`annonces : ${(eA as { message?: string }).message ?? eA}`);
+            const { data: depR, error: eD } = await lireParLots((lot) => userClient.from("cross_post_jobs")
+              .select("id, inventaire_id, status, platform_listing_id, photos")
+              .eq("user_id", user.id).eq("platform", "leboncoin").in("action", ["publish", "republish"]).in("status", ["processing", "published"])
+              .gte("created_at", new Date(maintenantL - 48 * 3600_000).toISOString()).in("inventaire_id", lot), autres, 200);
+            if (eD) throw new Error(`dépôts récents : ${(eD as { message?: string }).message ?? eD}`);
+            const annonces = (annR ?? []) as Array<Record<string, unknown>>;
+            const connus = new Set(annonces.map((a) => String(a.listing_id ?? "").trim()));
+            for (const a of annonces) {
+              const enLigneA = a.statut_plateforme === "en_ligne" && a.disparu_le == null && a.retiree_le == null && a.ignoree_le == null && a.fiche_supprimee_le == null;
+              if (!enLigneA) continue;
+              const fA = ficheDe(a.inventaire_id);
+              occupants.push({ cle: String(a.listing_id), numero: String(a.listing_id), fiche: fA, etat: "en_ligne", photos: fichesA.get(fA)?.photos ?? [],
+                priseParUneVente: ["pending", "sold"].includes(String(a.transaction_plateforme ?? "").trim().toLowerCase()) });
+            }
+            // Un dépôt publié déjà relevé est compté ci-dessus (en ligne) ou ne compte plus (parti) ; pas encore relevé :
+            // présumé en ligne (48 h au plus) ; en cours : il fait attendre.
+            for (const r of (depR ?? []) as Array<Record<string, unknown>>) {
+              const numero = String(r.platform_listing_id ?? "").trim();
+              if (r.status === "published" && (!numero || connus.has(numero))) continue;
+              occupants.push({ cle: String(r.id), numero: r.status === "published" ? numero : null, fiche: ficheDe(r.inventaire_id),
+                etat: r.status === "published" ? "publie" : "en_cours", photos: r.photos ?? [] });
+            }
+            // Les empreintes ne sont lues que pour une paire posée par le moteur (fichiers différents, même image).
+            const avecMoteur = occupants.filter((o) => fichesC.some((fC) => pairesMoteur.has(clePaire(fC, String(o.fiche)))));
+            if (avecMoteur.length) {
+              const urlsE = [...new Set([...avecMoteur.flatMap((o) => urlsPhotosLbc(o.photos)),
+                ...candidatsL.filter((j) => avecMoteur.some((o) => pairesMoteur.has(clePaire(ficheDe(j.inventaire_id), String(o.fiche))))).flatMap((j) => urlsPhotosLbc(j.photos))])];
+              const { data: empL, error: eE } = await lireParLots((lot) => userClient.from("photo_empreintes").select("url, dhash, phash").in("url", lot), urlsE, 200);
+              if (eE) throw new Error(`empreintes : ${(eE as { message?: string }).message ?? eE}`);
+              for (const e of (empL ?? []) as Array<Record<string, unknown>>) empreintes.set(String(e.url), { dhash: e.dhash as string, phash: e.phash as string });
+            }
+          }
+          // Le juge tourne toujours (en mémoire) : des copies servies dans le même passage s'ordonnent entre elles même
+          // quand aucune jumelle n'est encore en ligne.
+          const verdicts = jugerMemesPhotosLbc(candidatsL, { occupants, quantites, pairesNon, pairesMoteur, empreintes, retraitEngage: (j: Record<string, unknown>) => retraitEngage(j) });
+          for (const [id, v] of verdicts as Map<string, Record<string, unknown>>) {
+            const j = candidatsL.find((x) => String(x.id) === id)!;
+            sortisL.add(id);
+            if (v.silencieux) {
+              attenteLbcJumelle++;
+              console.log(`[get-pending-jobs] Leboncoin ${id.slice(0, 8)} : ${String(v.jumelles)} annonce(s) aux mêmes photos en ligne ou en cours de dépôt (fiche ${String(v.fiche)}) — attend le passage suivant, rien écrit`);
+              continue;
+            }
+            heldLbcMemesPhotos++;
+            aEcrireL.push({ j, quoi: `mêmes photos que ${String(v.jumelles)} annonce(s) en ligne (${(v.numeros as string[] | undefined)?.join(", ") ?? "?"} ; fiche ${String(v.fiche)}, ${String(v.preuve)} ${String(v.n)}/${String(v.k)})`,
+              fabriquer: (pf) => patchRetenueMemesPhotos({ ...j, platform_fields: pf }, v, { maintenant: maintenantL }) });
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] Leboncoin, mêmes photos : ${String((e as Error)?.message ?? e)} — rien de retenu`);
+        }
+        // ── (b) UNE ANNONCE REFUSÉE NE REPART PAS À L'IDENTIQUE ──
+        try {
+          const candidatsB = candidatsL.filter((j) => String(j.action ?? "publish") === "publish" && !sortisL.has(String(j.id)) && ficheDe(j.inventaire_id));
+          const fichesB = [...new Set(candidatsB.map((j) => ficheDe(j.inventaire_id)))];
+          if (fichesB.length) {
+            const { data: refusR, error: eRf } = await userClient.from("cross_post_jobs")
+              .select("id, inventaire_id, status, action, platform_listing_id, title, description, price, photos, vu_en_ligne_le, dje:platform_fields->depot_jamais_en_ligne, jel:platform_fields->jamais_en_ligne, rad:platform_fields->relance_apres_depot_mort, env:platform_fields->lbc_envois, remise:platform_fields->remise_en_vente, cat:platform_fields->lbcCategoryPath, asp:platform_fields->lbcAspects, marque:platform_fields->marque, etat:platform_fields->etat, taille:platform_fields->taille, couleur:platform_fields->couleur, matiere:platform_fields->matiere")
+              .eq("user_id", user.id).eq("platform", "leboncoin").eq("action", "publish").in("inventaire_id", fichesB)
+              .or("platform_fields->depot_jamais_en_ligne->>issue.eq.refus_moderation_probable,platform_fields->relance_apres_depot_mort->>issue.eq.refus_moderation_probable,platform_fields->jamais_en_ligne.not.is.null")
+              .limit(300);
+            if (eRf) throw new Error(eRf.message);
+            const lignes = ((refusR ?? []) as Array<Record<string, unknown>>).map((r) => {
+              const pfR: Record<string, unknown> = { depot_jamais_en_ligne: r.dje, jamais_en_ligne: r.jel, relance_apres_depot_mort: r.rad, [CLE_ENVOIS_LBC]: r.env,
+                remise_en_vente: r.remise, lbcCategoryPath: r.cat, lbcAspects: r.asp, marque: r.marque, etat: r.etat, taille: r.taille, couleur: r.couleur, matiere: r.matiere };
+              for (const k of Object.keys(pfR)) if (pfR[k] === null || pfR[k] === undefined) delete pfR[k];
+              const job = { id: r.id, platform: "leboncoin", action: "publish", status: r.status, inventaire_id: r.inventaire_id, platform_listing_id: r.platform_listing_id,
+                title: r.title, description: r.description, price: r.price, photos: r.photos, vu_en_ligne_le: r.vu_en_ligne_le, platform_fields: pfR };
+              let texteInchange = false;
+              try {
+                const t = nettoyerTitreLeboncoin(String(r.title ?? ""));
+                const d = nettoyerDescriptionLeboncoin(String(r.description ?? ""), { titre: String(r.title ?? ""), marque: typeof r.marque === "string" ? r.marque : "",
+                  etat: typeof r.etat === "string" ? r.etat : "", taille: typeof r.taille === "string" ? r.taille : "" });
+                texteInchange = !t.modifie && !d.modifiee;
+              } catch { /* illisible : on ne conclut rien de son contenu brut */ }
+              return { job, texteInchange };
+            });
+            for (const j of candidatsB) {
+              const brut = brutsLbc.get(String(j.id));
+              const servie = empreinteEnvoiLbcDuJob(j);
+              const brute = brut ? empreinteEnvoiLbcDuJob(brut) : null;
+              const texteInchange = !(j as Record<string, unknown>).title_nettoyage && !(j as Record<string, unknown>).description_nettoyage;
+              const v = refusLbcIdentique({ job: { ...j, platform_fields: (brut?.platform_fields ?? j.platform_fields) }, servie, brute, texteInchange }, lignes);
+              if (!v) continue;
+              sortisL.add(String(j.id));
+              heldLbcRefusIdentique++;
+              aEcrireL.push({ j, quoi: `même contenu que le dépôt refusé ${String(v.numero ?? v.refuse)} (${v.par === "envoi" ? "même envoi" : "même contenu brut, refus d'avant la règle"})`,
+                fabriquer: (pf) => patchRetenueRefusLbc({ ...j, platform_fields: pf }, v, { brute, servie, maintenant: maintenantL }) });
+            }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] Leboncoin, relance à l'identique d'un refus : ${String((e as Error)?.message ?? e)} — rien de retenu`);
+        }
+        // ── Écritures : pf relu (jamais la copie servie), compare-and-set sur « pending », une par tâche retenue ──
+        for (const { j, quoi, fabriquer } of aEcrireL) {
+          const court = String(j.id).slice(0, 8);
+          try {
+            const { data: frais } = await userClient.from("cross_post_jobs").select("platform_fields, error").eq("id", String(j.id)).eq("status", "pending").maybeSingle();
+            if (!frais) { console.log(`[get-pending-jobs] Leboncoin ${court} : ${quoi} — non servie, statut changé entre-temps (rien écrit)`); continue; }
+            const p = fabriquer({ ...(((frais as Record<string, unknown>).platform_fields ?? {}) as Record<string, unknown>) });
+            const errAvant = (frais as Record<string, unknown>).error;
+            if (typeof errAvant === "string" && errAvant.trim()) {
+              p.platform_fields.erreurs_archivees = archiverErreur(p.platform_fields.erreurs_archivees, errAvant, "pending", "get-pending-jobs (Leboncoin : retenue avant envoi)");
+            }
+            const { error: wErr } = await userClient.from("cross_post_jobs")
+              .update({ status: p.status, error: p.error, platform_fields: pfAPersister(p.platform_fields) })
+              .eq("id", String(j.id)).eq("status", "pending");
+            console.log(`[get-pending-jobs] Leboncoin ${court} (${String(j.action ?? "publish")}) : ${quoi} → RETENUE needs_user ${String(p.platform_fields.needs_user_source)}, rien envoyé${wErr ? ` (écriture refusée : ${wErr.message} — non servie quand même)` : ""}`);
+          } catch (e) {
+            console.warn(`[get-pending-jobs] Leboncoin ${court} : retenue non écrite (${String((e as Error)?.message ?? e)}) — non servie quand même`);
+          }
+        }
+        if (sortisL.size) out = out.filter((j) => !sortisL.has(String(j.id)));
+      }
+    }
+
     // ══ (07/11, point 10) LES PHOTOS D'UN JOB QUI PART AILLEURS SONT CHEZ NOUS AVANT DE PARTIR ══
     // (_shared/photos-hors-plateforme.js) 22 republications Leboncoin (5 comptes) aux photos sur images1.vinted.net
     // tournaient en « formulaire de recréation illisible » toutes les 30 min : la page leboncoin.fr ne peut pas lire
@@ -15785,6 +15997,41 @@ serve(async (req) => {
           if (deCote.size) out = out.filter((j) => !deCote.has(String(j.id)));
         } catch (e) {
           console.warn(`[get-pending-jobs] tâches sans démarrage : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+        }
+      }
+    }
+    // ══ (13/11, 3e réponse de Nico) CE QUI PART CHEZ LEBONCOIN EST NOTÉ (src/utils/relanceRefusLbc.js) ══
+    // Sur chaque publication Leboncoin RÉSERVÉE par ce poste : l'empreinte de ce qui part (titre et texte servis, photos,
+    // prix, catégorie, attributs) et celle de la tâche brute, avec les règles du texte (platform_fields.lbc_envois, 5 au
+    // plus) — un refus à venir sera comparé à CE dépôt-là. Écrite seulement quand elle change (le premier service, ou un
+    // contenu changé : jamais une ligne inchangée réécrite), pf relu, compare-and-set sur « pending » ; la copie servie la
+    // porte aussi (l'extension la renvoie avec le statut). Et le hors quota d'une retenue « mêmes photos » est levé : la
+    // tâche part, elle compte. Une écriture ratée ne retient rien.
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const maintenantE = new Date().toISOString();
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (!estPublicationLbcEnAttente(j)) continue;
+        try {
+          const servie = empreinteEnvoiLbcDuJob(j);
+          if (!servie) continue;
+          const brut = brutsLbc.get(String(j.id));
+          const entree = { le: maintenantE, servie, brute: brut ? empreinteEnvoiLbcDuJob(brut) : null, regles: REGLES_TEXTE_LBC };
+          const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+          if (!envoisLbcApres(pfJ, entree) && !leverHorsQuotaMemesPhotos(pfJ)) continue;
+          const { data: frais } = await userClient.from("cross_post_jobs").select("platform_fields").eq("id", String(j.id)).eq("status", "pending").maybeSingle();
+          if (!frais) continue;
+          let pfW: Record<string, unknown> = { ...(((frais as Record<string, unknown>).platform_fields ?? {}) as Record<string, unknown>) };
+          const envois = envoisLbcApres(pfW, entree);
+          if (envois) pfW[CLE_ENVOIS_LBC] = envois;
+          pfW = leverHorsQuotaMemesPhotos(pfW) ?? pfW;
+          const { error: wErr } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfW) })
+            .eq("id", String(j.id)).eq("status", "pending");
+          if (wErr) { console.warn(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} : envoi non noté (${wErr.message})`); continue; }
+          const pfServi: Record<string, unknown> = { ...pfJ, [CLE_ENVOIS_LBC]: pfW[CLE_ENVOIS_LBC] };
+          if (!("hors_quota" in pfW)) delete pfServi.hors_quota;
+          j.platform_fields = pfServi;
+        } catch (e) {
+          console.warn(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} : envoi non noté (${String((e as Error)?.message ?? e)})`);
         }
       }
     }
@@ -16293,6 +16540,11 @@ serve(async (req) => {
       // (07/11, point 10) Jobs retenus à ce poll le temps que leurs photos (CDN d'une autre plateforme) soient copiées
       // chez FillSell. Information seulement : aucune extension ne le lit.
       photos_hors_plateforme_retenus: heldPhotosHorsPlateforme,
+      // (13/11, 3e réponse de Nico) Leboncoin : retenues à ce poll (mêmes photos qu'une annonce en ligne du compte ;
+      // relance à l'identique d'un refus) et publications jumelles qui attendent le passage suivant. Information seulement.
+      lbc_memes_photos_retenus: heldLbcMemesPhotos,
+      lbc_refus_identique_retenus: heldLbcRefusIdentique,
+      lbc_jumelle_en_attente: attenteLbcJumelle,
       // depop_interdits (09/10 soir) : dépôts Depop d'une catégorie interdite par Depop.
       depop_interdits: heldDepopInterdit,
       beebs_sans_identifiant_retenus: heldBeebsSansIdentifiant,

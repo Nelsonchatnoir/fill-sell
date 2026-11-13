@@ -170,7 +170,11 @@ export function litAbonnementStripe(sub, prix = {}) {
   // le Cloud s'arrête TOUT DE SUITE (is_cloud faux → cloud_voie faux → tâches rendues à l'extension) ; la
   // facture réglée (past_due → active) le rouvre. Avant : past_due comptait comme vivant pendant toutes les
   // relances de Stripe (~2 semaines de navigateur et d'IP sans paiement).
-  const paye = status === "active" || status === "trialing";
+  // ⛔ (13/11/2026, 3e réponse de Nico, point b) UNE PÉRIODE REMBOURSÉE NE PAIE RIEN : la dernière facture de
+  // l'abonnement payée puis remboursée EN ENTIER (marque posée par stripe-webhook, recomputeStripeFlags →
+  // _shared/remboursement-stripe.js periodeRemboursee) → ni palier ni Cloud, comme Apple REFUND. Sans la marque : inchangé.
+  const rembourse = sub?.fillsell_periode_remboursee === true;
+  const paye = (status === "active" || status === "trialing") && !rembourse;
   const vivant = paye;
   const cloud = estAbonnementCloud(sub, prix);
   let palier = null;

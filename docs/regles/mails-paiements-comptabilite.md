@@ -544,3 +544,33 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   d73cd9d, 69 verts après). Selftests mis à jour (13/11, décision de Nico) : prix-boutique, cloud-achat, formules-cloud-offres,
   formules-cloud-ferme (note de montée hors empreinte, lien Google normalisé), formules-cloud-contrat-app,
   formules-ouverture-partout, paiements-non-regression (`scripts/fixtures/paiements-lignes-audit-1311.json`).
+
+## ⛔ 13/11/2026 (3e réponse de Nico) — UN SEUL abonnement actif par compte, tous canaux ; remboursement Stripe = Apple ; grâce Google coupée ; impayé = « en pause »
+- **(a) Un seul abonnement** (`_shared/un-seul-abonnement.js`, pur, serveur + app) : vivant = Stripe active | trialing | past_due,
+  boutique dont la période court, Cloud seul de boutique vivant (jamais l'offert ni is_comped). `decisionAchat({ canal, achat })` :
+  autre canal → refus « où faire le changement » (web : fillsell.app › Réglages › Abonnement ; iPhone / Android : l'app de ce
+  téléphone) ; même canal : palier ↔ formule passe (même abonnement), Cloud seul à côté d'une formule refusé (« prends sa version
+  avec Cloud »), forfait à côté d'un Cloud seul refusé, Stripe en impayé refusé, deux abonnements → support. Jamais « ordinateur ».
+  Web : create-checkout-session (409 `un_seul_abonnement`, forfait ET Cloud seul ; la montée « laissée passer » au-dessus d'une
+  boutique n'existe plus — 785352fe). iPhone / Android : `garde-abonnement` (lecture seule, verify_jwt true) AVANT la feuille,
+  repli local `src/lib/gardeAchat.js`. Filet : `_shared/deux-abonnements.ts` (webhooks + validate-google-purchase, à l'ouverture
+  d'un abonnement) → alerte « ⚠️ Deux abonnements » à support@ ; ⛔ aucune annulation, aucun remboursement, aucun mail client.
+- **(b) charge.refunded** (stripe-webhook, `_shared/remboursement-stripe.js`) : TOTAL sur la facture en cours d'un abonnement vivant
+  → palier et Cloud coupés, durablement (`fillsell_periode_remboursee`, relu à chaque recalcul) ; partiel, période passée, pack →
+  gardés ; « ↩️ Remboursement » à support@ dans tous les cas, aucun mail client, rien écrit chez Stripe (l'abonnement y reste actif :
+  l'alerte dit de l'annuler). ⚠ `charge.refunded` doit être coché sur le point de terminaison Stripe (réglage de Nico). Apple : le
+  Cloud SEUL remboursé alerte aussi.
+- **(c) Grâce Google** : validate-google-purchase suit `abonnementGoogleActif` (ACTIVE, ou CANCELED payé) — IN_GRACE_PERIOD ne rouvre
+  plus rien (même règle que le webhook, décision du 29/10 ; Google recommande l'inverse : question posée le 13/11).
+- **(d) Impayé** : Stripe (`paiement-echoue.js`) dit « {formule} est en pause » (+ « FillSell Cloud et les avantages » pour une
+  formule avec Cloud) et comment reprendre (régler la facture ; changer de carte : fillsell.app › Réglages › Abonnement › Mes
+  factures) ; Apple / Google : « Pour reprendre, mets à jour ton moyen de paiement chez … ».
+- ⛔ **Règle permanente** : un client Cloud ne lit JAMAIS « ordinateur » ni « Chrome » — remplace la phrase du 08/11 « … sur ton
+  ordinateur » dans les mails du Cloud (impayé, arrêts, début d'essai) et la ligne des cartes : « FillSell Cloud ne publie, ne republie et
+  ne retire plus tes annonces ; celles déjà en ligne y restent » / « … 24 h/24 depuis ses serveurs ». Verrou : impaye-formule-en-pause § D.
+- **(e)** Conditions (version 2026-11-13, reformulation, minimales inchangées), CGV art. 7, Legal 3.4 / 3.5 / 4.6, site : plus de rappel
+  promis la veille, un seul abonnement, la page de paiement du canal dit l'essai et le montant, arrêt par canal (Apple : 24 h avant).
+- **(f)** Essai des abonnés boutique : `_shared/offre-essai-abonne.js` (signature des offres promotionnelles Apple, éligibilité),
+  `signer-offre-boutique` (fermée : secret ESSAI_ABONNES_BOUTIQUE), `src/lib/essaiAbonneBoutique.js` (binaire minimal null) : INACTIF.
+- Verrous : selftest:un-seul-abonnement, remboursement-stripe, grace-google-jamais-rouverte, impaye-formule-en-pause,
+  essai-abonne-boutique, textes-paiement-verite § I-J ; lignes relues : `scripts/fixtures/paiements-lignes-pay2-1311.json`.

@@ -53,8 +53,12 @@ ok(/error: "preparation_requise", formule/.test(cc) && /error: "conditions_a_acc
 console.log('3. Les conditions');
 const CC = await charger('supabase/functions/_shared/cloud-conditions.js');
 if (CC && FS) {
-  ok(CC.CGU_CLOUD_HISTORIQUE[0].version === '2026-11-12' && CC.CGU_CLOUD_HISTORIQUE[0].changement === 'formules_cloud_article_6' && CC.CGU_CLOUD_VERSION_MINIMALE === '2026-11-04',
-    'en tête : { 2026-11-12, formules_cloud_article_6 } ; minimale inchangée (2026-11-04)');
+  // (13/11/2026, décision de Nico — 3e réponse, point e) Les deux textes sont REFORMULÉS (rappel de la veille retiré, un seul
+  // abonnement, règle de chaque canal) : la tête de l'historique est la reformulation des formules ; la version de FOND des
+  // formules (2026-11-12) reste dans l'historique et reste la minimale des formules ; la minimale du Cloud seul ne bouge pas.
+  ok(CC.CGU_CLOUD_HISTORIQUE[0].changement === 'formules_reformulation_canaux' && CC.CGU_CLOUD_HISTORIQUE[0].version > '2026-11-12'
+    && CC.CGU_CLOUD_HISTORIQUE.some((e) => e.version === '2026-11-12' && e.changement === 'formules_cloud_article_6') && CC.CGU_CLOUD_VERSION_MINIMALE === '2026-11-04',
+    'en tête : la reformulation du 13/11 ; { 2026-11-12, formules_cloud_article_6 } gardé ; minimale inchangée (2026-11-04)');
   ok(FS.CHANGEMENT_CGU_FORMULES === 'formules_cloud_article_6' && FS.versionCguFormules() === '2026-11-12', 'la version des formules = 2026-11-12');
   ok(FS.conditionsFormulesAcceptees({ cloud_cgu_version: '2026-11-12' }) && !FS.conditionsFormulesAcceptees({ cloud_cgu_version: '2026-11-11' }) && !FS.conditionsFormulesAcceptees({ cloud_cgu_version: '2026-11-04' })
     && CC.conditionsCloudAcceptees({ cloud_cgu_version: '2026-11-04' }), 'formule : ≥ 2026-11-12 exigé ; le Cloud seul accepte toujours 2026-11-04');

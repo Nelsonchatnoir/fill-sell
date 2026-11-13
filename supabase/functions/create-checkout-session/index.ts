@@ -17,6 +17,8 @@ import {
 import { prixStripe } from "../_shared/prix-stripe.ts";
 import { litAbonnementStripe, drapeauxDepuisStripe, miseAJourProfilDepuisStripe } from "../_shared/cloud-option.js";
 import { abonnementStoreVivant } from "../_shared/paiement-stripe.js";
+// (13/11/2026, 3e réponse de Nico, point a) Un seul abonnement actif par compte, tous canaux confondus.
+import { abonnementsVivants, vivantsBoutiques, vivantsStripe, decisionAchat, messageUnSeulAbonnement } from "../_shared/un-seul-abonnement.js";
 import { evenementDebutFormuleStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
 
@@ -699,6 +701,24 @@ serve(async (req) => {
           headers: { "Content-Type": "application/json", ...CORS },
         });
       }
+      // (13/11/2026, 3e réponse de Nico, point a) Le Cloud SEUL à côté d'une formule = un second abonnement (Stripe : deux
+      // abonnements ; boutique : autre canal). Refusé, rien créé chez Stripe : l'abonné prend la version avec Cloud de sa
+      // formule, sur le canal où il paie (même abonnement). Avant : un abonné Pro par carte pouvait ajouter le Cloud seul.
+      {
+        const { data: profilUn } = await supabase.from("profiles")
+          .select("google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end, cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_formule")
+          .eq("id", authUser.id).maybeSingle();
+        const googleActifUn = await googleActifRelu(profilUn?.google_purchase_token, authUser.id);
+        const lusUn = (tousLesAbos ?? []).map((s: Stripe.Subscription) => ({ ...litAbonnementStripe(s, prixConnus()), status: s.status }));
+        const d = decisionAchat({ canal: "stripe", achat: "cloud_seul", vivants: abonnementsVivants({ profil: profilUn, stripe: lusUn, googleActif: googleActifUn }) });
+        if (!d.permis && d.motif !== "deja") {
+          console.log(`[checkout] ${authUser.id} : Cloud seul refusé — un seul abonnement (${d.motif}, ${d.canal ?? "?"}), rien créé chez Stripe`);
+          return new Response(JSON.stringify({ error: "un_seul_abonnement", option: "cloud", motif: d.motif ?? null, canal: d.canal ?? null,
+            message_fr: messageUnSeulAbonnement(d, "fr"), message_en: messageUnSeulAbonnement(d, "en") }), {
+            status: 409, headers: { "Content-Type": "application/json", ...CORS },
+          });
+        }
+      }
       // (05/10) La PRÉPARATION d'abord (cloud_essai_preparer_moi, appelée par
       // l'app juste avant) : une IP réservée pour ce compte — jamais un essai
       // ni un paiement sans place — et les verrous appareil / compte de
@@ -782,10 +802,19 @@ serve(async (req) => {
         message_fr: messageDoubleAbonnement(r, "fr"), message_en: messageDoubleAbonnement(r, "en"),
       }), { status: 409, headers: { "Content-Type": "application/json", ...CORS } });
     };
+    // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT ACTIF PAR COMPTE, TOUS CANAUX : 409
+    // « un_seul_abonnement » + la phrase qui dit OÙ faire le changement (_shared/un-seul-abonnement.js). Rien créé chez Stripe.
+    const refuserUnSeul = (d: { motif?: string; canal?: string }) => {
+      console.log(`[checkout] ${authUser.id} : ${planType} refusé — un seul abonnement (${d.motif}, ${d.canal ?? "?"}), rien créé chez Stripe`);
+      return new Response(JSON.stringify({
+        error: "un_seul_abonnement", motif: d.motif ?? null, canal: d.canal ?? null, tier: planType,
+        message_fr: messageUnSeulAbonnement(d, "fr"), message_en: messageUnSeulAbonnement(d, "en"),
+      }), { status: 409, headers: { "Content-Type": "application/json", ...CORS } });
+    };
     {
       const { data: profilStore } = await supabase
         .from("profiles")
-        .select("google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end")
+        .select("google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end, cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_formule")
         .eq("id", authUser.id)
         .maybeSingle();
       // (30/10, lot D point 2 — BONCOIN) Un jeton Google sur le profil ne prouve RIEN : on relit l'abonnement chez
@@ -806,7 +835,11 @@ serve(async (req) => {
       }
       const r = refusDoubleAbonnement(profilStore, plan.rang, 0, Date.now(), { googleActif });
       if (r.refus) return refuserDouble(r as { motif: string; canal: string; fin: string | null });
-      if (r.store) console.log(`[checkout] ${authUser.id} : abonnement ${r.store.canal} de rang ${r.store.rang} vivant, montée web vers ${planType} (rang ${plan.rang}) laissée passer`);
+      // (13/11, point a — 785352fe : Premium App Store, puis Pro PAR CARTE le 10/11 à 18:03, deux prélèvements) Une montée
+      // au-dessus d'un abonnement de boutique est refusée (avant : acceptée et journalisée) : elle se fait dans la boutique. Un Cloud seul
+      // d'une boutique ferme aussi le forfait par carte (second abonnement).
+      const dBoutique = decisionAchat({ canal: "stripe", achat: "palier", vivants: vivantsBoutiques(profilStore, { googleActif }) });
+      if (!dBoutique.permis) return refuserUnSeul(dBoutique);
     }
 
     // Réutilise le customer Stripe existant (historique de facturation unifié —
@@ -825,6 +858,16 @@ serve(async (req) => {
       authUser.id,
       verifiedEmail ?? null,
     );
+
+    // (13/11, point a) Côté Stripe : un Cloud seul vivant (un forfait par carte serait un second abonnement Stripe), un
+    // forfait en impayé (deux prélèvements à la carte mise à jour) ou déjà deux abonnements → refusé, rien créé. Un forfait
+    // payé du même client passe : c'est la montée EN PLACE ci-dessous (le même abonnement change de prix).
+    if (existingCustomerId) {
+      const { data: abosUn } = await stripe.subscriptions.list({ customer: existingCustomerId, limit: 20 });
+      const lusUn = (abosUn ?? []).map((s: Stripe.Subscription) => ({ ...litAbonnementStripe(s, prixConnus()), status: s.status }));
+      const dStripe = decisionAchat({ canal: "stripe", achat: "palier", vivants: vivantsStripe(lusUn) });
+      if (!dStripe.permis) return refuserUnSeul(dStripe);
+    }
 
     // (29/10, lot C 5) Premium (rang 1) au-dessus d'un abonnement Stripe déjà vivant :
     // la garde de montée ci-dessous ne le voit pas (plan.rang > 1) — un second

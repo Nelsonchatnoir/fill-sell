@@ -59,7 +59,9 @@ ok(rates.length === 0, 'témoins : les 12 textes d’avant sont attrapés', rate
 // Ce qui reste permis : une phrase qui ne promet rien, et le rappel lui-même (conditions).
 ok(!PROMESSE.test("Tu l'arrêtes en un geste.") && !PROMESSE.test('Ton essai se termine demain : tu choisis ta formule.'), 'les phrases de remplacement ne promettent rien');
 const conditions = readFileSync(path.join(RACINE, 'src/cloud/conditionsCloud.js'), 'utf8');
-ok(/un rappel vous est envoyé dans l'app et par e-mail/.test(conditions), 'les conditions du Cloud sont inchangées (le rappel est codé et part)');
+// (13/11/2026, décision de Nico — 3e réponse, point e : « rappel la veille SUPPRIMÉ ») Les conditions ne le promettent plus non
+// plus ; le rappel reste codé et part (cloud-rappel-veille.js), sans être promis nulle part.
+ok(!/un rappel vous est envoyé dans l'app et par e-mail/.test(conditions) && !/un rappel est envoyé dans l'app et par e-mail/.test(conditions), 'les conditions du Cloud ne promettent plus le rappel de la veille (décision du 13/11)');
 
 console.log(`${echecs === 0 ? '✓' : '✗'} promesse-veille-app : ${passes} vert(s), ${echecs} rouge(s)`);
 process.exit(echecs === 0 ? 0 : 1);

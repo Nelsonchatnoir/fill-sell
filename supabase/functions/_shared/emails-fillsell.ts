@@ -540,8 +540,10 @@ export interface EchecPourMail {
   relanceLe?: string | null;
   /** Renouvellement : Stripe dit l'abonnement active ou past_due. */
   abonnementActif?: boolean;
-  /** 'cloud' : l'abonnement de l'option FillSell Cloud. */
+  /** 'cloud' : l'abonnement de l'option FillSell Cloud ; 'formule_cloud' : une formule avec Cloud (13/11). */
   offre?: string | null;
+  /** (13/11/2026, point d de Nico) Le nom de la formule (« Pro », « Pro + Cloud ») : le mail dit ce qui est EN PAUSE. */
+  plan?: string | null;
 }
 
 // (05/10/2026) Le texte vit dans _shared/paiement-echoue.js (règles pures,
@@ -557,6 +559,7 @@ export function mailPaiementEchoue(e: EchecPourMail): MailPret {
     relanceLe: e.relanceLe ?? null,
     abonnementActif: e.abonnementActif === true,
     offre: e.offre ?? null,
+    plan: e.plan ?? null,
   });
   const corps: Html[] = [
     paragraphe(t.salut),

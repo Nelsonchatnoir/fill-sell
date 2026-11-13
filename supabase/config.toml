@@ -254,6 +254,14 @@ verify_jwt = true
 [functions.cancel-subscription]
 verify_jwt = true
 
+# (13/11/2026, 3e réponse de Nico, point a) Lecture seule, avant la feuille d'une boutique : un seul abonnement par compte.
+[functions.garde-abonnement]
+verify_jwt = true
+
+# (13/11/2026, point f) Essai du Cloud des abonnés App Store / Google Play — INACTIF (secret ESSAI_ABONNES_BOUTIQUE), pas déployée.
+[functions.signer-offre-boutique]
+verify_jwt = true
+
 [functions.validate-coin-purchase]
 verify_jwt = true
 

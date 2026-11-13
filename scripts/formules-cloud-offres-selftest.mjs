@@ -220,7 +220,8 @@ try {
     // (12/11, point 4b de Nico) « On te prévient la veille. » retiré (comme du site et du mail) — verrou promesse-veille-app.
     [F.lignePrixEssai('49,99 €', '0 €'), "Puis 49,99 €/mois, sans engagement. Carte demandée, 0 € aujourd'hui."],
     [F.lignePrix('79,99 €'), '79,99 €/mois, sans engagement.'],
-    [F.ligneCommune, 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, sans ordinateur.'],
+    // (13/11/2026, décision de Nico — règle permanente : un client Cloud ne lit jamais « ordinateur ») « sans ordinateur » → « 24 h/24 ».
+    [F.ligneCommune, 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, 24 h/24.'],
     [F.taFormuleAvec('Pro', '49,99 €'), 'Ta formule : Pro. Avec Cloud : 49,99 €/mois.'],
     [F.ctaEssaiAbonne, 'Essayer le Cloud 7 jours'], [F.ctaAjouter, 'Ajouter le Cloud'],
     // (13/11, décision de Nico — « essai ou pas, date du premier prélèvement, AVANT de valider ») le serveur facture la différence TOUT DE SUITE (always_invoice) : le texte le dit.
@@ -330,7 +331,7 @@ try {
   ok(/aria-pressed="true" data-formules-vue="avec"/.test(html) && (html.match(/data-formule-cloud=/g) ?? []).length === 3, '« Avec Cloud » : trois cartes');
   ok(t.includes('Le Cloud pour 22 € de plus') && (t.match(/Le Cloud pour 20 € de plus/g) ?? []).length === 2, '« Le Cloud pour 22 € de plus » (Premium), « 20 € » (Pro, Business)');
   ok(/data-formule-conseil[^>]*>Notre conseil</.test(html) && /data-formule-cloud="pro_cloud"[^>]*>(?:(?!data-formule-cloud=)[\s\S])*Notre conseil/.test(html), '« Notre conseil » sur Pro + Cloud');
-  ok(t.includes('Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, sans ordinateur.'), 'la ligne commune');
+  ok(t.includes('Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, 24 h/24.'), 'la ligne commune (13/11 : sans « ordinateur »)');
   html = modale({ vueCloud: 'avec', ...DROITS.pro });
   ok((html.match(/data-formule-cloud=/g) ?? []).length === 2 && !/data-formule-cloud="premium_cloud"/.test(html), 'un Pro : Pro + Cloud et Business + Cloud, jamais une formule en dessous');
   INT._remettreAZero({ ...PROD });

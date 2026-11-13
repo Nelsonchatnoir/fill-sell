@@ -22,6 +22,7 @@
 // un abonnement Apple ou Google : notre état suit le retour de la boutique (apple-iap-webhook, google-play-webhook).
 import { textesConnexion } from './textesConnexion';
 import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique.js';
+import { gardeAchatBoutique } from '../lib/gardeAchat.js';
 
 export const PRODUIT_CLOUD = 'app.fillsell.cloud.sub';   // même identifiant Apple et Google (cloud-option.js, PRODUIT_CLOUD_GOOGLE)
 export const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
@@ -151,6 +152,9 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
       d = await appel();
     }
     if (d?.already_cloud) return { etat: 'deja', message: T.dejaClient };
+    // (13/11/2026, point a de Nico) Le Cloud seul à côté d'une formule serait un second abonnement : la phrase du serveur
+    // (où faire le changement), jamais « l'achat a échoué ».
+    if (d?.error === 'un_seul_abonnement') return { etat: 'refuse', raison: 'un_seul_abonnement', message: (lang === 'en' ? d.message_en : d.message_fr) || T.achatEchec };
     if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', message: T.achatEchec };
     if (!d?.url) return { etat: 'erreur', message: T.achatEchec };
     try { localStorage.setItem('fs_checkout_ctx', JSON.stringify({ canal: 'stripe', tier: 'cloud', origine, at: Date.now() })); } catch { /* mode privé */ }
@@ -197,6 +201,12 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     // (08/11, refus Google Play de la vc36) iPhone / Android : jamais d'achat tant que le prix de la BOUTIQUE n'est pas
     // affiché (lib/prixBoutique.js) — la monnaie de l'écran est celle de la feuille de paiement.
     if (platform !== 'web' && !prixPret('cloud')) return { etat: 'refuse', raison: 'prix_boutique_absent', message: T.prixBoutiqueAbsent };
+    // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT PAR COMPTE, TOUS CANAUX — avant les conditions et la feuille
+    // de la boutique : c7c382b7 (Pro par carte) et f0acd3af (Pro App Store) ont pris le Cloud seul en plus, sur iPhone.
+    if (platform === 'ios' || platform === 'android') {
+      const garde = await gardeAchatBoutique({ supabase, userId: user.id, canal: platform === 'ios' ? 'apple' : 'google', achat: 'cloud_seul', lang });
+      if (!garde.permis) return { etat: garde.motif === 'deja' ? 'deja' : 'refuse', raison: 'un_seul_abonnement', message: garde.message ?? T.achatEchec };
+    }
     // 0. Les conditions d'utilisation : acceptées (case cochée, enregistrée) AVANT la place, avant toute carte.
     if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
     notifier?.(T.preparation);

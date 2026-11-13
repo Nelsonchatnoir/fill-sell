@@ -1033,3 +1033,25 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - Annonces déjà en ligne : AUCUNE modification en place tant que le relevé n'est pas fait (`docs/plateformes/depop/
   CARTOGRAPHIE.md` § 9) ; code préparé et fermé dans `depop.js` (0.6.187). Le relevé garde désormais `couleurs_ids`.
   Verrou `selftest:depop-couleur-fiche`.
+
+## ⛔ 13/11/2026 (3e réponse de Nico) — Leboncoin : rien n'est envoyé que Leboncoin refuse à coup sûr
+- **Mêmes photos qu'annonces en ligne du compte** (`_shared/lbc-memes-photos.js`, get-pending-jobs juste avant la
+  réservation, extension et Cloud) : une publication/republication Leboncoin dont les photos sont celles d'annonces
+  Leboncoin EN LIGNE d'AUTRES fiches du compte (même fichier ; même empreinte seulement pour une paire « Est-ce le même
+  article ? » ouverte) est retenue : needs_user `lbc_memes_photos`, « Une annonce avec ces photos est déjà en ligne sur
+  Leboncoin (n° …) », hors quota (`hors_quota.motif`, levé quand la tâche part), rien envoyé. « Les mêmes photos » =
+  toutes celles du plus petit des deux ensembles (un bandeau commun ne compte pas) ; jamais sur un titre. SEUIL MESURÉ
+  (13/11) : Leboncoin accepte la 2e annonce aux mêmes fichiers (14 sur 15) et refuse la 3e (4 sur 4) → retenue à partir de
+  DEUX jumelles en ligne (`SEUIL_ANNONCES_MEMES_FICHIERS`), une seule pour une paire du moteur ; la décision au mot de Nico
+  = seuil 1 (question posée). Jamais : même fiche (republication, remise en vente), quantité > 1, « Non » répondu, annonce
+  prise par une vente, republication au retrait engagé. Jumelle en cours de dépôt ou servie avant : attente sans écriture.
+  Verrou `selftest:lbc-memes-photos`.
+- **Un refus ne repart jamais à l'identique** (`src/utils/relanceRefusLbc.js`, comme Beebs) : get-pending-jobs note sur
+  chaque publication Leboncoin servie l'empreinte de ce qui part (`platform_fields.lbc_envois` : titre et texte SERVIS,
+  photos, prix, catégorie, attributs ; règles du texte `REGLES_TEXTE_LBC` + md5 de `description-leboncoin.ts`) ; une
+  publication dont l'empreinte est celle d'un dépôt refusé de la même fiche (marques du juge) est retenue : needs_user
+  `refus_lbc_meme_contenu`, « Modifie d'abord l'annonce… ». Refus d'avant la règle : contenu brut, seulement si le
+  nettoyage d'aujourd'hui sert le texte tel quel (IKKS, corrigé par les cinq mots-clés, repart). Bouton « Relancer » :
+  le dit au lieu de relancer. Jamais : autre fiche, remise en vente, republication. Verrou `selftest:lbc-relance-identique`.
+- **Veille des familles de refus** : `scripts/lbc-refus-familles.prod.sql` (lecture seule) range chaque refus en
+  mots_cles / photos / relance / inexplique ; une nouvelle famille = des « inexplique » qui se ressemblent.

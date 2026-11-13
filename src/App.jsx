@@ -10,6 +10,7 @@ import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { cacherSplashAuBonMoment } from './natif/splashDemarrage';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, findActivePlaySub, PRODUCT_IDS, gererAbonnementsBoutique } from './lib/iap';
 import { classerIssueAchat, messageIssueAchat } from './lib/issueAchat';
+import { gardeAchatBoutique } from './lib/gardeAchat';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
 // (16/10, bêta messages + bordereaux) Drapeau et compteurs (une lecture hors
@@ -3278,6 +3279,20 @@ export default function App({ loginOnly = false }){
       setToast({visible:true,message:messagePaiementAndroidCoupe(lang)});
       setTimeout(()=>setToast({visible:false,message:''}),10000);
       return;
+    }
+    // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT ACTIF PAR COMPTE, TOUS CANAUX — AVANT la feuille de la
+    // boutique (après, l'argent est parti) : un abonné par carte (ou de l'autre boutique, ou du Cloud seul) lit OÙ changer
+    // (lib/gardeAchat.js : le serveur garde-abonnement, sinon la preuve locale). Le même canal passe (montée en place).
+    if(platform==='ios'||platform==='android'){
+      setIapLoading(true);
+      const garde=await gardeAchatBoutique({supabase,userId:user.id,canal,achat:'palier',lang});
+      if(!garde.permis){
+        setIapLoading(false);
+        logTunnel('checkout_refus',{canal,tier:tierLog,origine,motif:garde.motif,canal_abonnement:garde.canal,source:garde.source});
+        setToast({visible:true,message:garde.message});
+        setTimeout(()=>setToast({visible:false,message:''}),12000);
+        return;
+      }
     }
     // ── Upgrade Premium→Pro Android (2026-07-27, remplace la garde du 23/07) ──
     // L'ancienne garde bloquait TOUT Premium Android — y compris les comped/

@@ -61,11 +61,15 @@ console.log('3 bis. La case des conditions (C1, 11/11) : sans le risque, le fond
 // (CGU_CLOUD_HISTORIQUE[0].version) — seuls endroits où elle s'écrit.
 // (12/11/2026, offres Cloud — changement VOLONTAIRE, nommé dans le rapport OFFRES-SERVEUR) l'article 6 des formules avec
 // Cloud : version 2026-11-12 (validée par Nico) ; la minimale ne bouge pas.
-const VERSION_LIVREE = '2026-11-12';
+// (13/11/2026, décision de Nico — 3e réponse, point e : conditions alignées sur la règle de chaque canal, rappel de la veille
+// retiré, un seul abonnement par compte) REFORMULATION des deux textes, minimales inchangées : version 2026-11-13 (à recaler
+// sur le jour réel du push web, avec _shared/cloud-conditions.js REFORMULATION_1311).
+const VERSION_LIVREE = '2026-11-13';
 // (12/11/2026, offres Cloud) La version MONTRÉE à tous (case du Cloud seul, page publique fermée) reste celle du Cloud
 // seul : la dernière qui n'est pas celle des formules. Celle des formules (VERSION_LIVREE, en tête) ne se montre que dans
 // l'achat d'une formule (src/cloud/conditionsCloud.js, versionConditionsMontree).
-const VERSION_CLOUD_SEUL = '2026-11-11';
+// (13/11/2026, décision de Nico) Le Cloud seul est reformulé le même jour (articles 6 et 7) : même date.
+const VERSION_CLOUD_SEUL = '2026-11-13';
 const jma = (v) => v.split('-').reverse().join('/');
 const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
 {
@@ -144,13 +148,15 @@ const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
     }
     ok(ecrite.length === 1 && ecrite[0] === 'supabase/functions/_shared/cloud-conditions.js', `la date de la version en vigueur s’écrit à UN endroit du code (${ecrite.join(', ') || 'nulle part'})`);
   }
-  ok(T?.version ===`Version du ${jma(VERSION_CLOUD_SEUL)} — elle reformule les articles 4 et 9 sans rien changer sur le fond : une acceptation de la version du 04/11/2026 reste valable.`
-    && EN?.version === `Version of ${jma(VERSION_CLOUD_SEUL)} — it rewords articles 4 and 9 without changing their substance: an acceptance of the version of 04/11/2026 remains valid. English translation for information only; the French version prevails.`,
+  // (13/11/2026, décision de Nico) La ligne de la reformulation des articles 6 et 7 (avant : articles 4 et 9).
+  ok(T?.version ===`Version du ${jma(VERSION_CLOUD_SEUL)} — elle reformule les articles 6 et 7 (paiement, essai et arrêt selon chaque canal ; un seul abonnement par compte) sans rien changer sur le fond : une acceptation de la version du 04/11/2026 reste valable.`
+    && EN?.version === `Version of ${jma(VERSION_CLOUD_SEUL)} — it rewords articles 6 and 7 (payment, trial and stopping on each channel; one subscription per account) without changing their substance: an acceptance of the version of 04/11/2026 remains valid. English translation for information only; the French version prevails.`,
   'la ligne de version, mot pour mot : l’acceptation du 04/11/2026 reste valable (fr et en)');
   // (relecture D8) La phrase vient de la table « ce que change la version » : une autre version n'en hérite jamais.
   ok(typeof COND.ligneDeVersion === 'function' && COND.ligneDeVersion('fr', { version: '2026-12-01', changement: 'autre' }) === 'Version du 01/12/2026'
     && COND.ligneDeVersion('en', { version: '2026-12-01', changement: 'autre' }) === 'Version of 01/12/2026 — English translation for information only; the French version prevails.'
-    && COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.find((e) => e.changement !== 'formules_cloud_article_6')) === T?.version && SRV.CGU_CLOUD_HISTORIQUE?.[0]?.version === SRV.CGU_CLOUD_VERSION
+    // (13/11/2026, décision de Nico) La famille des formules compte aussi sa reformulation (formules_reformulation_canaux).
+    && COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.find((e) => !['formules_cloud_article_6', 'formules_reformulation_canaux'].includes(e.changement))) === T?.version && SRV.CGU_CLOUD_HISTORIQUE?.[0]?.version === SRV.CGU_CLOUD_VERSION
     && COND.conditionsCloud?.('fr', { formules: true })?.version === COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.[0])
     && COND.versionConditionsMontree?.(false) === VERSION_CLOUD_SEUL && COND.versionConditionsMontree?.(true) === VERSION_LIVREE,
   'la phrase de la ligne de version est choisie par la version (table), jamais écrite pour toutes : une version sans phrase n’affiche que sa date');

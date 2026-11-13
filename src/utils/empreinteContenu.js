@@ -103,6 +103,63 @@ export function relanceRefusBeebs(job) {
   return { verdict: e === String(refus.empreinte_contenu).trim() ? "meme_contenu" : "contenu_modifie", refus };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// (13/11/2026, lot du 13/11 — 3e réponse de Nico) L'EMPREINTE DE CE QUI PART CHEZ LEBONCOIN
+// ═══════════════════════════════════════════════════════════════════════════
+// « Relance à l'identique d'une annonce déjà refusée : bloquée tant que rien n'a changé. » Ce que Leboncoin examine :
+// titre, texte, photos (l'ordre compte), prix, catégorie (lbcCategoryPath) et attributs (lbcAspects, marque, état, taille,
+// couleur, matière). Même hachage que Beebs, préfixe à part (« l1 ») : une empreinte Beebs n'est jamais « la même ».
+// Utilisée par src/utils/relanceRefusLbc.js (app et get-pending-jobs).
+export const VERSION_EMPREINTE_LBC = "l1";
+export const ATTRIBUTS_LBC = Object.freeze(["marque", "etat", "taille", "couleur", "matiere"]);
+// « 29.96 », 29.96 et « 29,96 » sont le même prix.
+const prixCanon = (v) => {
+  if (v === null || v === undefined || String(v).trim() === "") return "";
+  const n = Number(String(v).trim().replace(",", "."));
+  return Number.isFinite(n) ? n.toFixed(2) : texte(v);
+};
+const trier = (v) => (Array.isArray(v) ? v.map(trier)
+  : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, trier(v[k])])) : v);
+const valeurCanon = (v) => (v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(trier(v)) : texte(v));
+
+/**
+ * L'empreinte de ce qu'une publication Leboncoin envoie.
+ * @param {{ titre?: unknown, description?: unknown, photos?: unknown, prix?: unknown, rayon?: unknown, aspects?: unknown, attributs?: unknown }} [c]
+ * @returns {string} « l1:<16 hex> »
+ */
+export function empreinteEnvoiLbc({ titre = "", description = "", photos = [], prix = null, rayon = [], aspects = {}, attributs = {} } = {}) {
+  const r = Array.isArray(rayon) ? rayon : (typeof rayon === "string" && rayon.trim() ? [rayon] : []);
+  const asp = objet(aspects);
+  const att = objet(attributs);
+  const canon = JSON.stringify([
+    texte(titre),
+    texte(description),
+    listePhotos(photos),
+    prixCanon(prix),
+    r.map(texte).filter(Boolean),
+    Object.keys(asp).sort().map((k) => [k, valeurCanon(asp[k])]).filter(([, x]) => x !== ""),
+    ATTRIBUTS_LBC.map((k) => [k, valeurCanon(att[k])]).filter(([, x]) => x !== ""),
+  ]);
+  return `${VERSION_EMPREINTE_LBC}:${hache(canon)}`;
+}
+
+/** Ce que ce job enverrait à Leboncoin, ou null quand il a été lu SANS son texte, ses photos ou son prix. */
+export function contenuEnvoiLbcDuJob(job) {
+  if (!job || typeof job !== "object") return null;
+  if (job.title === undefined || job.description === undefined || job.photos === undefined || job.price === undefined) return null;
+  const pf = objet(job.platform_fields);
+  return {
+    titre: job.title, description: job.description, photos: job.photos, prix: job.price,
+    rayon: pf.lbcCategoryPath, aspects: pf.lbcAspects, attributs: Object.fromEntries(ATTRIBUTS_LBC.map((k) => [k, pf[k]])),
+  };
+}
+
+/** L'empreinte de l'envoi Leboncoin d'un job, ou null (contenu pas en main). */
+export function empreinteEnvoiLbcDuJob(job) {
+  const c = contenuEnvoiLbcDuJob(job);
+  return c ? empreinteEnvoiLbc(c) : null;
+}
+
 /** Le motif du job retenu par le serveur (needs_user « refus_beebs_meme_contenu »). (05/11, phase 3 point 1) `lang` :
  *  le même motif en anglais ; défaut 'fr', le texte français ne change pas. */
 export function messageRefusBeebsMemeContenu(job, lang = "fr") {

@@ -19,6 +19,8 @@ import { accuserAbonnementGoogle } from "../_shared/google-accuse-abonnement.js"
 // (30/10, lot D point 2) Un canal qui s'arrête ne retire que SON droit ; Stripe relu en lecture seule.
 import { patchArretGoogle } from "../_shared/droits-canaux.js";
 import { rangStripeDuClient } from "../_shared/stripe-rang-vivant.ts";
+// (13/11/2026, 3e réponse de Nico, point a) Le filet « un seul abonnement actif par compte » : lire et prévenir support@.
+import { verifierDeuxAbonnements } from "../_shared/deux-abonnements.ts";
 // (11/11/2026, offres Cloud) Les formules avec Cloud : un abonnement Google par formule, le produit fait foi (planGoogle).
 import { formuleDuProduit, planAchatBoutique, grantDeFormule, formulePrevueEcrivable } from "../_shared/formules-serveur.js";
 import { lectureFormuleGoogle, verdictEssaiStore } from "../_shared/cloud-option.js";
@@ -275,6 +277,8 @@ async function planGoogle(p: { notificationType: number; purchaseToken: string; 
   }
   await mailsCloud(supabaseAdmin, { userId, email: profil.email ?? null, lang: profil.lang ?? null, canal: "google", journal: "[google-play-webhook]", test: deTest(purchase),
     evenements: evenements as never, lirePrix: async () => prixDepuisGoogle(purchase).prix });
+  // (13/11, point a de Nico) Le filet « un seul abonnement » : un second abonnement vivant → alerte à support@, rien d'autre.
+  if (notificationType === 4) await verifierDeuxAbonnements(supabaseAdmin, userId, { evenement: `google PURCHASED ${subscriptionId}`, canal: "google", test: deTest(purchase) });
   console.log(`[google-play-webhook] type=${notificationType} ${subscriptionId} (${f.formule}) → userId=${userId} : ${ctx.maj.effet_applique ?? "?"}`);
   return json(200, { ok: true, formule: f.formule });
 }
@@ -676,6 +680,8 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
         lirePrix: async () => prixDepuisGoogle(purchase).prix,
         journal: "[google-play-webhook]",
       });
+      // (13/11, point a) Le filet « un seul abonnement » : le Cloud seul Google Play à côté d'une formule → alerte support@.
+      if (notificationType === 4 && sens === "on") await verifierDeuxAbonnements(supabaseAdmin, userId, { evenement: `google PURCHASED ${subscriptionId}`, canal: "google", test: deTest(purchase) });
       return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -841,6 +847,8 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       }
     }
 
+    // (13/11, point a de Nico) Le filet « un seul abonnement » : un second abonnement vivant → alerte à support@, rien d'autre.
+    if (isPremium && notificationType === 4) await verifierDeuxAbonnements(supabaseAdmin, userId, { evenement: `google PURCHASED ${subscriptionId}`, canal: "google", test: deTest(purchase) });
     console.log(`[google-play-webhook] type=${notificationType} product=${subscriptionId} → userId=${userId} is_premium=${isPremium} is_founder=${update.is_founder ?? false}`);
     return new Response(JSON.stringify({ ok: true }), {
       status: 200, headers: { "Content-Type": "application/json" },

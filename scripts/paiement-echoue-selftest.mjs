@@ -166,13 +166,14 @@ titre('Le câblage : stripe-webhook → payment-notify → email-tunnel');
   const wh = lire('../supabase/functions/stripe-webhook/index.ts');
   ok(/import \{ faitsEchec[^}]*\} from "\.\.\/_shared\/paiement-echoue\.js"/.test(wh), 'stripe-webhook importe faitsEchec');
   ok(/stripe\.invoices\.retrieve\(invoice\.id\)/.test(wh) && /stripe\.subscriptions\.retrieve\(subEchec\)/.test(wh), 'stripe-webhook RELIT la facture et l\'abonnement chez Stripe');
-  ok(/faitsEchec\(\{ facture, abonnement, estCloud \}\)/.test(wh), 'faits établis sur la facture et l\'abonnement relus');
+  // (13/11/2026, décision de Nico — 3e réponse, point d) + la formule avec Cloud : le mail dit qu'elle ET le Cloud sont en pause.
+  ok(/faitsEchec\(\{ facture, abonnement, estCloud, formule: formuleEchec \}\)/.test(wh), 'faits établis sur la facture et l\'abonnement relus (et la formule avec Cloud, 13/11)');
   for (const champ of ['lien_facture: faits.lien_facture', 'relance_le: faits.relance_le', 'abonnement_actif: faits.abonnement_actif', 'offre: faits.offre', 'contexte: faits.contexte']) ok(wh.includes(champ), `stripe-webhook transmet ${champ.split(':')[0]}`);
   ok(/facture\?\.payment_intent \?\?/.test(wh), 'la cause fine se lit sur la facture relue (payment_intent absent du format dahlia)');
   const pn = lire('../supabase/functions/_shared/payment-notify.ts');
   ok(/contexte: "souscription" \| "renouvellement" \| "fin_essai"/.test(pn) && /lien_facture\?: string \| null/.test(pn), 'payment-notify porte fin_essai et les faits');
   const et = lire('../supabase/functions/email-tunnel/index.ts');
-  ok(/mailPaiementEchoue\(\{\s*lang,\s*cause: cause as CausePaiement,\s*contexte: contexte as ContextePaiement,\s*lienFacture: pf\.lien_facture \?\? null,\s*relanceLe: pf\.relance_le \?\? null,\s*abonnementActif: pf\.abonnement_actif === true,\s*offre: pf\.offre \?\? null,\s*\}\)/.test(et), 'email-tunnel rend le mail avec les faits reçus');
+  ok(/mailPaiementEchoue\(\{\s*lang,\s*cause: cause as CausePaiement,\s*contexte: contexte as ContextePaiement,\s*lienFacture: pf\.lien_facture \?\? null,\s*relanceLe: pf\.relance_le \?\? null,\s*abonnementActif: pf\.abonnement_actif === true,\s*offre: pf\.offre \?\? null,[\s\S]{0,200}?plan: pf\.plan \?\? null,\s*\}\)/.test(et), 'email-tunnel rend le mail avec les faits reçus (+ le nom de la formule, ce qui est en pause : 13/11, décision de Nico)');
   ok(/categorie: "support",\s*dedup: "reservation"/.test(et), 'toujours « support » + réservation par facture (une facture = un mail)');
 }
 

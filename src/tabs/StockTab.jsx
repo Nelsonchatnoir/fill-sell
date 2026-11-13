@@ -265,6 +265,9 @@ import { lirePrixAnnoncesVinted } from '../utils/prixAnnoncesVinted.js';
 import { parLots } from '../utils/parLots.js';
 import { relanceSansDepotMort, TRACES_DEPOT_MORT } from '../utils/relanceDepotMort.js';
 import { relanceRefusBeebs, MESSAGE_BOUTON_REFUS_BEEBS, SOURCE_REFUS_BEEBS_MEME_CONTENU } from '../utils/empreinteContenu.js';
+// (13/11, 3e réponse de Nico) Leboncoin : une annonce refusée ne repart pas à l'identique ; mêmes photos qu'une annonce en ligne.
+import { relanceRefusLbc, MESSAGE_BOUTON_REFUS_LBC, SOURCE_REFUS_LBC_MEME_CONTENU } from '../utils/relanceRefusLbc.js';
+import { SOURCE_LBC_MEMES_PHOTOS } from '../../supabase/functions/_shared/lbc-memes-photos.js';
 import { gesteMurCompteEbay, SOURCES_MUR_COMPTE_EBAY } from '../../supabase/functions/_shared/ebay-refus-compte.js';
 import { SEUIL_LOT_MANUEL_ARTICLES } from '../../supabase/functions/_shared/lot-manuel-creneau.js';
 import CeQueFillSellFait, { BandeauStockVide } from '../ecrans/vides/StockVide.jsx';
@@ -478,6 +481,9 @@ const MURS_LEVES_A_LA_RELANCE = [
   // (29/10, lot B 4.6) Refus Beebs relancé à l'identique : la relance n'a lieu que si le contenu a changé
   // (relancerJobEchoue le relit) ; le serveur repose le mur si l'empreinte est encore celle du refus.
   SOURCE_REFUS_BEEBS_MEME_CONTENU,
+  // (13/11, 3e réponse de Nico) Leboncoin : la relance d'une tâche retenue (refus relancé à l'identique, mêmes photos
+  // qu'une annonce en ligne) vaut « c'est changé » ; le serveur la retient de nouveau si rien n'a changé.
+  SOURCE_REFUS_LBC_MEME_CONTENU, SOURCE_LBC_MEMES_PHOTOS,
   // (03/10, point F) Mise de côté par le serveur (servie sans jamais
   // démarrer) : la relance la remet en file, le compteur repart de zéro.
   'tache_sans_demarrage',
@@ -606,6 +612,11 @@ function relanceManuelleInfo(job, jobsArticle) {
   const refus = relanceRefusBeebs(job);
   if (refus?.verdict === 'meme_contenu') return { ...info, memeContenuBeebs: true };
   if (refus?.verdict === 'a_verifier') return { ...info, refusBeebsAVerifier: true };
+  // (13/11, 3e réponse de Nico — utils/relanceRefusLbc.js) Leboncoin a refusé ce dépôt (ou le serveur a retenu sa relance)
+  // et la relance repartirait à l'identique : le bouton le dit et ne relance pas. Rien de connu : le serveur décide.
+  const refusL = relanceRefusLbc(job);
+  if (refusL?.verdict === 'meme_contenu') return { ...info, memeContenuLbc: true };
+  if (refusL?.verdict === 'a_verifier') return { ...info, refusLbcAVerifier: true };
   return info;
 }
 function relanceManuelleInfoDuJob(job, jobsArticle) {
@@ -8479,9 +8490,10 @@ const StockTab = memo(function StockTab({
   useEffect(() => {
     const j = failJobModal;
     setContenuFraisModal(null);
-    if (!j?.id || relanceRefusBeebs(j)?.verdict !== 'a_verifier') return undefined;
+    // (13/11) Leboncoin aussi : son empreinte compte le prix (relanceRefusLbc).
+    if (!j?.id || (relanceRefusBeebs(j)?.verdict !== 'a_verifier' && relanceRefusLbc(j)?.verdict !== 'a_verifier')) return undefined;
     let vivant = true;
-    supabase.from('cross_post_jobs').select('id, platform, action, status, title, description, photos, platform_fields').eq('id', j.id).maybeSingle()
+    supabase.from('cross_post_jobs').select('id, platform, action, status, title, description, price, photos, platform_fields').eq('id', j.id).maybeSingle()
       .then(({ data }) => { if (vivant && data) setContenuFraisModal(data); }, () => {});
     return () => { vivant = false; };
   }, [failJobModal]);
@@ -8749,6 +8761,23 @@ const StockTab = memo(function StockTab({
       setRetraitTacheBusy(false);
     }
   }
+  // (13/11, 3e réponse de Nico — utils/relanceRefusLbc.js) Leboncoin : un dépôt refusé (ou une relance retenue par le
+  // serveur) ne repart pas à l'identique, copie comprise — le job est RELU (texte, photos, prix) et comparé à ce qui est
+  // parti. Rend true quand la relance est retenue (le message est dit). Rien de connu : false, la relance part, et le
+  // serveur la retient au service si elle est identique.
+  async function relanceLbcRetenue(job) {
+    const { data: fraisL } = await supabase.from('cross_post_jobs')
+      .select('id, platform, action, status, title, description, price, photos, platform_fields').eq('id', job.id).maybeSingle();
+    const verdictL = relanceRefusLbc(fraisL ?? job)?.verdict;
+    if (verdictL === 'meme_contenu') {
+      setRelanceMsg(MESSAGE_BOUTON_REFUS_LBC[lang === 'en' ? 'en' : 'fr']);
+      setContenuFraisModal(fraisL);
+      setFailJobModal((m) => m ?? job);
+      return true;
+    }
+    if (!fraisL && verdictL) { setRelanceMsg(lang === 'en' ? 'Could not read the job — try again.' : 'Lecture du job impossible — réessaie.'); return true; }
+    return false;
+  }
   async function relancerJobEchoue(job, mode = 'repend') {
     if (relanceBusy) return;
     // (02/10, sortie d'Opla) Après la bascule (Opla plus « ouverte »), ni « relancer », ni « relancer par copie » : le
@@ -8773,6 +8802,8 @@ const StockTab = memo(function StockTab({
         }
         if (!fraisB && verdictB) { setRelanceMsg(lang === 'en' ? 'Could not read the job — try again.' : 'Lecture du job impossible — réessaie.'); return; }
       }
+      // (13/11, 3e réponse de Nico) Leboncoin : un refus ne repart pas à l'identique (relanceLbcRetenue, ci-dessus).
+      if (job?.platform === 'leboncoin' && await relanceLbcRetenue(job)) return;
       if (mode === 'copie') {
         await relancerParCopie(job);
         return;
@@ -13108,12 +13139,19 @@ const StockTab = memo(function StockTab({
             {(()=>{
               // (29/10, lot B 4.6) Le contenu relu à l'ouverture (contenuFraisModal) dit si un refus Beebs repartirait à l'identique.
               const cf=contenuFraisModal?.id===failJobModal.id?contenuFraisModal:null;
-              const r=relanceManuelleInfo(cf?{...failJobModal,title:cf.title,description:cf.description,photos:cf.photos,platform_fields:cf.platform_fields}:failJobModal,jobsByInventaire[failJobModal.inventaire_id]);
+              const r=relanceManuelleInfo(cf?{...failJobModal,title:cf.title,description:cf.description,price:cf.price,photos:cf.photos,platform_fields:cf.platform_fields}:failJobModal,jobsByInventaire[failJobModal.inventaire_id]);
               if(!r)return null;
               if(r.memeContenuBeebs)return(
                 <button disabled
                   style={{width:"100%",padding:"12px",borderRadius:999,border:"1px solid #E7E3D8",background:"#F4F2EC",color:"#8A5A52",fontSize:13.5,fontWeight:700,cursor:"default",fontFamily:"inherit",marginBottom:8,lineHeight:1.35}}>
                   {MESSAGE_BOUTON_REFUS_BEEBS[lang==="en"?"en":"fr"]}
+                </button>
+              );
+              // (13/11, 3e réponse de Nico) Leboncoin : même règle que Beebs — utils/relanceRefusLbc.js.
+              if(r.memeContenuLbc)return(
+                <button disabled
+                  style={{width:"100%",padding:"12px",borderRadius:999,border:"1px solid #E7E3D8",background:"#F4F2EC",color:"#8A5A52",fontSize:13.5,fontWeight:700,cursor:"default",fontFamily:"inherit",marginBottom:8,lineHeight:1.35}}>
+                  {MESSAGE_BOUTON_REFUS_LBC[lang==="en"?"en":"fr"]}
                 </button>
               );
               if(r.epuise)return(

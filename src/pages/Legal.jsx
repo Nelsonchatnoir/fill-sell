@@ -396,7 +396,7 @@ export default function Legal() {
                 (CGU 3.4 : 50 republications PAR MOIS en Free), puis le 16/10
                 (8.2 et 8.5 : messagerie, commandes et bordereaux, bêta), puis le
                 24/10 (CGV 3.4 : clause du maximum par jour de chaque plan retirée, décision de Nico). */}
-            {en ? 'Last updated: November 6, 2026' : 'Dernière mise à jour : 6 novembre 2026'}
+            {en ? 'Last updated: November 13, 2026' : 'Dernière mise à jour : 13 novembre 2026'}
           </p>
         </div>
 
@@ -478,7 +478,8 @@ export default function Legal() {
               Publishing listings to the supported platforms is included in all plans and not counted. Volumes reset at each <span className="legal-strong">subscription cycle</span> (the monthly anniversary of the subscription; on the Free plan, the monthly anniversary of sign-up), not on calendar months. Counters are visible in the app; volumes may change over time, and the applicable volumes are those displayed in the app at the time of use.<br /><br />
               <span className="legal-strong">Automatic reposting</span> (Pro and Business) runs one listing at a time, at a spaced-out pace, on the days and in the time slots chosen by the user. The spaced-out pace is a safety measure designed to protect users' accounts on the platforms against restrictions they may impose on high-frequency activity. Reposting effects are described in Article 4 of the Terms of Sale below.<br /><br />
               <span className="legal-strong">Prices:</span> the price in effect is the one displayed at the time of purchase, on the web (payment securely processed by <span className="legal-strong">Stripe</span>) or in the app stores. Web prices and app-store prices (Apple App Store, Google Play) may differ for the same plan.<br /><br />
-              <span className="legal-strong">On iOS/Android:</span> payment is managed by the relevant store (In-App Purchase). The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your store account settings.
+              <span className="legal-strong">On iOS/Android:</span> payment is managed by the relevant store (In-App Purchase). The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your store account settings.<br /><br />
+              <span className="legal-strong">One subscription per account:</span> an account has only one active FillSell subscription at a time, across all channels (web, App Store, Google Play). A change of plan is made on the channel where the subscription was taken, on the same subscription; the app refuses a purchase that would create a second subscription and says where to make the change.
             </p>
           ) : (
             <p className="legal-p"><span className="legal-strong">3.4 Abonnements Premium, Pro et Business</span><br />
@@ -490,15 +491,16 @@ export default function Legal() {
               La publication des annonces sur les plateformes prises en charge est incluse dans tous les plans et n'est pas décomptée. Les volumes se réarment à chaque <span className="legal-strong">cycle d'abonnement</span> (date anniversaire mensuelle de la souscription ; pour le plan Free, date anniversaire mensuelle de l'inscription), et non au mois calendaire. Les compteurs sont visibles dans l'application ; les volumes peuvent évoluer, et ceux applicables sont ceux affichés dans l'application au moment de l'utilisation.<br /><br />
               <span className="legal-strong">La republication automatique</span> (Pro et Business) part une annonce à la fois, à un rythme espacé, les jours et dans les créneaux choisis par l'utilisateur. Le rythme espacé est une mesure de sécurité destinée à protéger les comptes des utilisateurs sur les plateformes contre les restrictions qu'elles peuvent imposer en cas d'activité à haute fréquence. Les effets de la republication sont décrits à l'article 4 des CGV ci-dessous.<br /><br />
               <span className="legal-strong">Prix :</span> le prix applicable est celui affiché au moment de l'achat, sur le web (paiement traité de manière sécurisée par <span className="legal-strong">Stripe</span>) ou dans les boutiques d'applications. Les prix web et les prix des boutiques (App Store Apple, Google Play) peuvent différer pour un même plan.<br /><br />
-              <span className="legal-strong">Sur iOS/Android :</span> le paiement est géré par la boutique concernée (In-App Purchase). L'abonnement se renouvelle automatiquement sauf résiliation au moins 24h avant la fin de la période en cours. Vous pouvez gérer ou annuler votre abonnement dans les réglages de votre compte de la boutique.
+              <span className="legal-strong">Sur iOS/Android :</span> le paiement est géré par la boutique concernée (In-App Purchase). L'abonnement se renouvelle automatiquement sauf résiliation au moins 24h avant la fin de la période en cours. Vous pouvez gérer ou annuler votre abonnement dans les réglages de votre compte de la boutique.<br /><br />
+              <span className="legal-strong">Un seul abonnement par compte :</span> un compte n'a qu'un seul abonnement FillSell actif à la fois, tous canaux confondus (web, App Store, Google Play). Un changement de formule se fait sur le canal où l'abonnement a été pris, sur le même abonnement ; l'application refuse un achat qui créerait un second abonnement et indique où faire le changement.
             </p>
           )}
 
           <p className="legal-p">
             <span className="legal-strong">{en ? '3.5 Cancellation' : '3.5 Résiliation'}</span><br />
             {en
-              ? 'The user may cancel their subscription at any time from their account. Cancellation takes effect at the end of the current billing period. No pro-rata refund is made for the remaining days.'
-              : "L'utilisateur peut résilier son abonnement à tout moment depuis son espace client. La résiliation prend effet à la fin de la période de facturation en cours. Aucun remboursement au prorata n'est effectué pour les jours restants."}
+              ? 'The user may cancel their subscription at any time: a subscription paid by card on the web from their account (Settings › Subscription), a subscription taken in the App Store or Google Play in the store\'s subscription settings. Cancellation takes effect at the end of the current billing period. No pro-rata refund is made for the remaining days.'
+              : "L'utilisateur peut résilier son abonnement à tout moment : un abonnement payé par carte sur le web depuis son espace client (Réglages › Abonnement), un abonnement pris dans l'App Store ou Google Play dans les réglages d'abonnement de la boutique. La résiliation prend effet à la fin de la période de facturation en cours. Aucun remboursement au prorata n'est effectué pour les jours restants."}
           </p>
 
           <p className="legal-p">
@@ -632,8 +634,8 @@ export default function Legal() {
             <li>{en ? 'Deletion of your profile (email, username, preferences)' : 'La suppression de votre profil (email, pseudo, préférences)'}</li>
             <li>{en ? 'Deletion of all your inventory and sales history' : "La suppression de l'intégralité de votre inventaire et de votre historique de ventes"}</li>
             <li>{en
-              ? 'Automatic cancellation of your current Premium subscription (Stripe or Apple/Google depending on your payment method)'
-              : "L'annulation automatique de votre abonnement Premium en cours (Stripe ou Apple/Google selon votre méthode de paiement)"}
+              ? 'The cancellation of your subscription paid by card (Stripe), right away. Deleting the account does not stop a subscription taken in the App Store or Google Play: stop it beforehand in the store\'s subscription settings, otherwise the store keeps charging it'
+              : "L'arrêt immédiat de votre abonnement payé par carte (Stripe). La suppression du compte n'arrête pas un abonnement pris dans l'App Store ou Google Play : arrêtez-le d'abord dans les réglages d'abonnement de la boutique, sinon la boutique continue de le prélever"}
             </li>
           </ul>
           <p className="legal-p" style={{ marginTop: 10 }}>

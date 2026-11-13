@@ -2,7 +2,7 @@ import { drapeauxStripeAvecStores } from "../_shared/droits-canaux.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue } from "../_shared/payment-notify.ts";
+import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue, signalerRemboursementStore } from "../_shared/payment-notify.ts";
 import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud } from "../_shared/cloud-option.js";
 import { evenementArretStripe, evenementDebutStripe, evenementPaiementStripe, montantStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud, type EvenementCloud } from "../_shared/cloud-mails-envoi.ts";
@@ -15,6 +15,9 @@ import { palierDuProfil } from "../_shared/palier.js";
 // (11/11/2026, offres Cloud) Les formules avec Cloud : un abonnement qui porte un palier ET le Cloud (formules-serveur.js).
 import { formuleDeMetadonnees, formuleDAbonnementStripe, grantDeFormule, planTypeDeFormule, formuleDuProduit, nomDeFormule } from "../_shared/formules-serveur.js";
 import { prixStripe } from "../_shared/prix-stripe.ts";
+// (13/11/2026, 3e réponse de Nico) a : le filet « un seul abonnement » ; b : un remboursement Stripe coupe les droits.
+import { verifierDeuxAbonnements } from "../_shared/deux-abonnements.ts";
+import { decisionRemboursementStripe, periodeRemboursee, factureDeCharge, abonnementDeLaFacture } from "../_shared/remboursement-stripe.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -145,8 +148,36 @@ async function ecrireDescentePrevue(supabase: any, customerId: string, subs: Str
   }
 }
 
+// ── (13/11/2026, 3e réponse de Nico, point b) UNE PÉRIODE REMBOURSÉE NE ROUVRE JAMAIS LES DROITS ──────────────────────
+// Un abonnement dont la DERNIÈRE facture a été payée puis remboursée en entier (charge.refunded) ne porte plus rien tant
+// que la période suivante n'est pas payée : chaque recalcul relit cette facture avec sa charge (API 2023-10-16 du SDK :
+// invoice.charge) et pose la marque `fillsell_periode_remboursee` que litAbonnementStripe lit. Seuls les abonnements
+// active / past_due avec une facture payée sont relus (un essai n'a rien payé) ; une lecture qui échoue ne marque RIEN
+// (jamais un droit coupé sur une panne).
+// deno-lint-ignore no-explicit-any
+async function annoterRemboursements(subs: any[]): Promise<any[]> {
+  const out = [];
+  for (const s of subs ?? []) {
+    const fid = typeof s?.latest_invoice === "string" ? s.latest_invoice : s?.latest_invoice?.id ?? null;
+    if (!fid || !["active", "past_due"].includes(String(s?.status ?? ""))) { out.push(s); continue; }
+    try {
+      const facture = await stripe.invoices.retrieve(fid, { expand: ["charge"] });
+      if (periodeRemboursee(s, facture)) {
+        console.log(`[webhook] ${s.id} : dernière facture ${fid} remboursée en entier — l'abonnement ne porte plus de droits`);
+        out.push({ ...s, fillsell_periode_remboursee: true });
+        continue;
+      }
+    } catch (e) {
+      console.warn(`[webhook] facture ${fid} de ${s.id} illisible (remboursement non vérifié) : ${(e as Error)?.message ?? e}`);
+    }
+    out.push(s);
+  }
+  return out;
+}
+
 async function recomputeStripeFlags(supabase: any, customerId: string) {
-  const { data: subs } = await stripe.subscriptions.list({ customer: customerId, limit: 20 });
+  const { data: subsBruts } = await stripe.subscriptions.list({ customer: customerId, limit: 20 });
+  const subs = await annoterRemboursements(subsBruts ?? []);
   // ⚠️ is_business RECALCULÉ ICI, et pas seulement posé à l'achat (2026-08-09).
   // Sans cette ligne, la résiliation d'un Business Stripe faisait tomber
   // is_premium et is_pro mais laissait is_business à TRUE — pour toujours, et
@@ -315,7 +346,9 @@ async function signalerEchecAcquis(supabase: any, p: {
   // period.start === abonnement.trial_end ; bouton = hosted_invoice_url d'une
   // facture ouverte (jamais pour une souscription) ; relance =
   // next_payment_attempt ; « reste actif » = abonnement active | past_due.
-  const faits = faitsEchec({ facture, abonnement, estCloud });
+  // (13/11/2026, point d de Nico) La formule avec Cloud se dit (offre « formule_cloud ») : le mail dit qu'elle ET le Cloud
+  // sont en pause, et comment reprendre.
+  const faits = faitsEchec({ facture, abonnement, estCloud, formule: formuleEchec });
   console.log(
     `[webhook] échec ${invoice.id} : cause=${cause} contexte=${faits.contexte} ` +
     `bouton=${faits.contexte === "souscription" ? "app" : faits.lien_facture ? "facture" : "aucun"} ` +
@@ -472,6 +505,8 @@ async function formuleCloudSouscrite(supabase: any, session: Stripe.Checkout.Ses
         pepites: (grantRes as { amount?: number })?.amount ?? null, ref: `stripe:${session.id}`, rpc: grantRes });
     }
   }
+  // (13/11, point a de Nico) Le filet « un seul abonnement » : un second abonnement vivant → alerte à support@, rien d'autre.
+  if (!carteRefusee) await verifierDeuxAbonnements(supabase, qui.id, { evenement: `stripe checkout ${formule}`, canal: "stripe" });
   console.log(`[webhook] ${formule} souscrite → user=${qui.id} session=${session.id} statut=${sub?.status ?? "?"}${carteRefusee ? " (essai refusé : carte déjà vue)" : ""}`);
   return new Response(JSON.stringify({ received: true, formule }), { headers: { "Content-Type": "application/json" } });
 }
@@ -626,6 +661,9 @@ serve(async (req) => {
         await recomputeStripeFlags(supabase, customerId);
         if (carteRefusee) {
           await supabase.from("profiles").update({ cloud_essai_refus: "carte_deja_vue" }).eq("id", qui.id);
+        } else {
+          // (13/11, point a de Nico) Le filet « un seul abonnement » : le Cloud seul à côté d'une formule → alerte support@.
+          await verifierDeuxAbonnements(supabase, qui.id, { evenement: "stripe checkout cloud", canal: "stripe" });
         }
         console.log(`[webhook] abonnement Cloud créé → user=${qui.id} session=${session.id} essai=${session.metadata?.essai_cloud ?? "?"}${carteRefusee ? " (refusé : carte déjà vue)" : ""}`);
         // (08/11) Le mail de début d'essai (un seul : registre cloud_mails, clé = l'abonnement), au prix de la PREMIÈRE
@@ -724,6 +762,9 @@ serve(async (req) => {
         .from("profiles")
         .update(profileUpdate)
         .eq("id", users[0].id);
+      // (13/11, point a de Nico — 785352fe : Premium App Store puis Pro par carte) Le filet « un seul abonnement » :
+      // un second abonnement vivant → alerte à support@, rien d'autre (aucune annulation, aucun remboursement).
+      await verifierDeuxAbonnements(supabase, users[0].id, { evenement: `stripe checkout ${planType}`, canal: "stripe" });
 
       // Atomically increment founder slot counter
       if (planType === "founder") {
@@ -1159,6 +1200,61 @@ serve(async (req) => {
       });
     }
     await signalerEchecAcquis(supabase, { invoice, facture, abonnement, evenement: event.type });
+  }
+
+  // ── (13/11/2026, 3e réponse de Nico, point b) UN REMBOURSEMENT STRIPE, COMME CHEZ APPLE ─────────────────────────────
+  // « Droits coupés, alerte support » : remboursement TOTAL de la facture en cours d'un abonnement vivant → palier et
+  // Cloud de cet abonnement coupés (recalcul : la période remboursée ne porte plus rien, durablement) ; partiel, période
+  // passée, pack de Pépites → droits gardés. Dans tous les cas l'alerte « ↩️ Remboursement » part à support@ ; ⛔ aucun mail
+  // client, rien écrit chez Stripe (l'abonnement y reste actif : l'alerte dit de l'annuler si c'est voulu). Règle pure :
+  // _shared/remboursement-stripe.js. ⚠ L'événement charge.refunded doit être coché sur le point de terminaison (Nico).
+  if (event.type === "charge.refunded") {
+    const ch = event.data.object as Stripe.Charge;
+    const customerId = (typeof ch.customer === "string" ? ch.customer : (ch.customer as { id?: string } | null)?.id) ?? null;
+    // deno-lint-ignore no-explicit-any
+    let facture: any = null, abonnement: any = null;
+    try {
+      // La charge relue par le SDK (API 2023-10-16) porte sa facture ; l'événement (dahlia) ne la porte plus.
+      const lue = await stripe.charges.retrieve(ch.id);
+      const fid = factureDeCharge(lue);
+      if (fid) {
+        facture = await stripe.invoices.retrieve(fid);
+        const sid = abonnementDeLaFacture(facture);
+        if (sid) abonnement = await stripe.subscriptions.retrieve(sid);
+      }
+    } catch (e) {
+      console.error(`[webhook] remboursement ${ch.id} : facture / abonnement illisibles (${(e as Error)?.message ?? e}) — alerte seule`);
+    }
+    const dR = decisionRemboursementStripe({ charge: ch, facture, abonnement });
+    // deno-lint-ignore no-explicit-any
+    let compte: any = null;
+    if (customerId) {
+      const { data } = await supabase.from("profiles").select("id, email, is_premium, is_pro, is_business, is_comped").eq("stripe_customer_id", customerId).maybeSingle();
+      compte = data ?? null;
+    }
+    const indice = String(abonnement?.metadata?.fillsell_user_id ?? ch.metadata?.fillsell_user_id ?? "").trim();
+    if (!compte && indice) {
+      const { data } = await supabase.from("profiles").select("id, email, is_premium, is_pro, is_business, is_comped").eq("id", indice).maybeSingle();
+      compte = data ?? null;
+    }
+    if (dR.couper && customerId) await recomputeStripeFlags(supabase, customerId);
+    let palierApres: string | null = compte ? palierDuProfil(compte) : null;
+    if (dR.couper && compte?.id) {
+      const { data: apres } = await supabase.from("profiles").select("is_premium, is_pro, is_business, is_comped").eq("id", compte.id).maybeSingle();
+      if (apres) palierApres = palierDuProfil(apres);
+    }
+    const nomAbo = abonnement ? (formuleDAbonnementStripe(abonnement, prixConnus()) ? nomDeFormule(formuleDAbonnementStripe(abonnement, prixConnus())) : estAbonnementCloud(abonnement, prixConnus()) ? "FillSell Cloud" : (planDuPrix(abonnement) ?? abonnement?.metadata?.plan_type ?? null)) : null;
+    await signalerRemboursementStore({
+      canal: "stripe", nature: "remboursement", partiel: !dR.total, type: dR.type === "abonnement" ? "abonnement" : "pack",
+      user_id: compte?.id ?? null, email: compte?.email ?? null,
+      produit: nomAbo ?? (dR.type === "pack" ? "pack" : null),
+      ref: [ch.id, facture?.id ?? null, dR.abonnementId].filter(Boolean).join(" · "),
+      palier: palierApres, droit: dR.droit,
+    });
+    console.log(`[webhook] remboursement ${ch.id} (${(Number(ch.amount_refunded ?? 0) / 100).toFixed(2)} / ${(Number(ch.amount ?? 0) / 100).toFixed(2)} ${String(ch.currency ?? "").toUpperCase()}) → ${dR.raison}${dR.couper ? " : droits coupés" : " : droits gardés"} — compte ${compte?.id ?? "introuvable"}`);
+    return new Response(JSON.stringify({ received: true, remboursement: dR.raison, couper: dR.couper }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   return new Response(JSON.stringify({ received: true }), {

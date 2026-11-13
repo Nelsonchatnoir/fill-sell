@@ -76,6 +76,12 @@ const PAR_SOURCE = Object.freeze({
   // (29/10, lot B 4.6) Beebs a refusé l'annonce à sa vérification (sans motif) et la relance la redéposerait à
   // l'identique : FillSell la retient (get-pending-jobs) — le refus vient de la plateforme.
   refus_beebs_meme_contenu: [ORIGINE.PLATEFORME, "moderation"],
+  // (13/11, 3e réponse de Nico) Leboncoin a refusé l'annonce et la relance la redéposerait à l'identique
+  // (utils/relanceRefusLbc.js) : le refus vient de la plateforme, FillSell retient la relance.
+  refus_lbc_meme_contenu: [ORIGINE.PLATEFORME, "moderation"],
+  // (13/11) Une annonce aux mêmes photos est déjà en ligne sur le compte Leboncoin (_shared/lbc-memes-photos.js) :
+  // FillSell retient la publication avant tout envoi.
+  lbc_memes_photos: [ORIGINE.GARDE, "doublon_possible"],
 });
 
 // Le texte, dans l'ordre : la première règle qui reconnaît gagne. Les causes
@@ -101,7 +107,14 @@ const PAR_TEXTE = Object.freeze([
   // ── garde voulue (doute → question) ──
   [/pourrait (correspondre|[êe]tre cet article)|On ne red[ée]pose pas, pour ne jamais la mettre en double/i, ORIGINE.GARDE, "doublon_possible"],
   [/signal[ée] vendu|Vendue \?/i, ORIGINE.GARDE, "vente_a_confirmer"],
+  // (13/11, 3e réponse de Nico) Leboncoin : publication retenue avant envoi, une annonce aux mêmes photos est en ligne.
+  [/Une annonce avec ces photos est d[ée]j[àa] en ligne sur Leboncoin/i, ORIGINE.GARDE, "doublon_possible"],
   // ── la plateforme refuse sans motif ──
+  // (13/11) Les refus dont Leboncoin ne donne pas le motif : « … juste après son dépôt » (message_refus_leboncoin,
+  // migration 20261113203000), « … : elle n'est jamais apparue » (handler-watch), « …, et elle repartirait à
+  // l'identique » (la relance retenue, utils/relanceRefusLbc.js). Jamais « … à la modération (« mots de Leboncoin ») » :
+  // ce texte-là, FillSell l'adapte (lbc_moderation, de notre fait).
+  [/Leboncoin a refus[ée] cette annonce(?: juste apr[èe]s son d[ée]p[ôo]t| : elle n.est jamais apparue|, et elle repartirait [àa] l.identique)/i, ORIGINE.PLATEFORME, "moderation"],
   // (27/10) Le motif ne dit plus « refusée par sa modération » (une déduction) mais l'absence constatée : « absente de
   // tes annonces … aux relevés complets du … et du …, et Leboncoin n'a donné aucun motif ». Même classe.
   // (30/10, lot E, migration 20261030230000) Leboncoin : « … n'a rien affiché à FillSell … son motif est dans le mail ». Même classe.

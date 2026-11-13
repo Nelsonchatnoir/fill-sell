@@ -72,6 +72,18 @@ cas("4. la plateforme qui refuse sans motif (modération) est à part ; Opla (qu
   est(causeDuTexte({ texte: "Aucune catégorie Opla n'a été résolue pour cet article.", platform: "opla" }), ORIGINE.PLATEFORME, "plateforme_quittee");
   // (29/10, lot B 4.6) Refus Beebs prouvé, relance retenue parce qu'elle repartirait à l'identique.
   est(causeDuTexte({ texte: "Beebs a refusé cette annonce à sa vérification (Beebs ne dit pas pourquoi), et elle repartirait à l'identique", source: "refus_beebs_meme_contenu" }), ORIGINE.PLATEFORME, "moderation");
+  // (13/11, lot du 13/11) Les refus Leboncoin dits refus (message_refus_leboncoin, handler-watch) et, 3e réponse de Nico,
+  // la relance retenue parce qu'elle repartirait à l'identique ; avec sa source comme sans (erreur archivée).
+  est(causeDuTexte({ texte: "Leboncoin a refusé cette annonce juste après son dépôt du 12/11 à 17h24 : elle n'est jamais apparue dans tes annonces Leboncoin (relevés complets du 12/11 à 22h47 et du 13/11 à 09h05)" }), ORIGINE.PLATEFORME, "moderation");
+  est(causeDuTexte({ texte: "Leboncoin a refusé cette annonce : elle n'est jamais apparue dans tes annonces Leboncoin, où Leboncoin ne montre pas une annonce refusée, et sa page est fermée." }), ORIGINE.PLATEFORME, "moderation");
+  est(causeDuTexte({ texte: "Leboncoin a refusé cette annonce, et elle repartirait à l'identique : même titre, même texte, mêmes photos", source: "refus_lbc_meme_contenu" }), ORIGINE.PLATEFORME, "moderation");
+  est(causeDuTexte({ texte: "Leboncoin a refusé cette annonce, et elle repartirait à l'identique : même titre, même texte, mêmes photos" }), ORIGINE.PLATEFORME, "moderation");
+  // … mais le texte refusé à la modération (mots de Leboncoin), que FillSell adapte, reste de notre fait (lbc_moderation).
+  est(causeDuTexte({ texte: "Leboncoin a refusé cette annonce à la modération (« Nous refusons ce type de bien ou service sur leboncoin.fr »)", source: "lbc_moderation" }), ORIGINE.NOUS, "texte_refuse_moderation");
+});
+cas("4b. (13/11, 3e réponse de Nico) une publication Leboncoin retenue avant envoi (mêmes photos qu'annonces en ligne) est une garde", () => {
+  est(causeDuTexte({ texte: "Une annonce avec ces photos est déjà en ligne sur Leboncoin (n° 3304507326, n° 3307925904). Rien n'a été envoyé à Leboncoin, et cette publication ne compte pas dans tes limites.", source: "lbc_memes_photos" }), ORIGINE.GARDE, "doublon_possible");
+  est(causeDuTexte({ texte: "Une annonce avec ces photos est déjà en ligne sur Leboncoin (n° 3304507326). Rien n'a été envoyé à Leboncoin, et cette publication ne compte pas dans tes limites." }), ORIGINE.GARDE, "doublon_possible");
 });
 
 cas("5. un échec de notre fait puis abandonné par l'utilisateur reste un ÉCHEC (client-ac19c8c9, 34f17de2 et adf0454e, 24/10)", () => {

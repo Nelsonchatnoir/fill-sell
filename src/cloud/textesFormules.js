@@ -36,7 +36,8 @@ const FR = {
   lignePrixSemaineSansDroits: (nom, p, b) => `Ton essai FillSell a déjà servi : ${b} t'affichera « 1 semaine gratuite », mais ${nom} ne démarre qu'au premier paiement de ${p}, 7 jours plus tard.`,
   lignePrixEssaiIncertain: (p) => `${J} jours gratuits si ton identifiant Apple n'a jamais eu la semaine gratuite de FillSell ; sinon ${p} prélevés aujourd'hui. Apple t'affiche lequel avant que tu valides.`,
   lignePrixSemaineIncertaine: (nom, p) => `Ton essai FillSell a déjà servi : ${p} prélevés aujourd'hui — ou, si Apple t'affiche « 1 semaine gratuite », ${nom} démarre au premier paiement, 7 jours plus tard.`,
-  ligneCommune: 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, sans ordinateur.',
+  // (13/11/2026, règle permanente de Nico) Jamais « ordinateur » sous les cartes de paiement du Cloud.
+  ligneCommune: 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, 24 h/24.',
   // Un abonné : sa formule surlignée.
   taFormuleAvec: (palier, p) => `Ta formule : ${palier}. Avec Cloud : ${p}/mois.`,
   ctaEssaiAbonne: `Essayer le Cloud ${J} jours`,
@@ -137,7 +138,7 @@ const EN = {
   lignePrixSemaineSansDroits: (nom, p, b) => `Your FillSell trial has already been used: ${b} will show "1 week free", but ${nom} only starts at the first payment of ${p}, 7 days later.`,
   lignePrixEssaiIncertain: (p) => `${J} days free if your Apple Account has never had FillSell's free week; otherwise ${p} charged today. Apple shows you which before you confirm.`,
   lignePrixSemaineIncertaine: (nom, p) => `Your FillSell trial has already been used: ${p} charged today — or, if Apple shows "1 week free", ${nom} starts at the first payment, 7 days later.`,
-  ligneCommune: 'The Cloud posts, bumps and removes your listings from our servers, no computer needed.',
+  ligneCommune: 'The Cloud posts, bumps and removes your listings from our servers, 24/7.',
   taFormuleAvec: (palier, p) => `Your plan: ${palier}. With Cloud: ${p}/mo.`,
   ctaEssaiAbonne: `Try the Cloud for ${J} days`,
   ctaAjouter: 'Add the Cloud',

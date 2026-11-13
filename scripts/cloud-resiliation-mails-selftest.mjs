@@ -165,11 +165,13 @@ const textesMails = [...tous.map(({ t }) => [t.sujet, t.preheader, ...t.paragrap
 const fautifs = textesMails.filter((x) => ON_EXECUTE.test(x) || SUPPOSE_EXTENSION.test(x));
 ok(fautifs.length === 0 && textesMails.length === 38, `les ${textesMails.length} mails Cloud (6 événements × canaux × langues, veille, impayé Stripe) : jamais « on publie pour toi », jamais « repassent » / « comme avant »`, fautifs.map((x) => x.slice(0, 160)));
 // (09/11, point C1 de Nico) « plus besoin d'ordinateur » — jamais « ordinateur éteint », jamais « sans ordinateur ».
-ok(fr('essai_debut', 'stripe').paragraphes[1] === "Ton essai gratuit de FillSell Cloud a commencé : plus besoin d'ordinateur, FillSell Cloud publie, republie et retire tes annonces 24 h/24, et tes ventes sont suivies.",
-  'début d\'essai : « plus besoin d’ordinateur, FillSell Cloud publie, republie et retire tes annonces 24 h/24 »');
-ok(['arret_essai', 'arret_programme', 'impaye'].every((ev) => ['apple', 'google'].every((c) => fr(ev, c).paragraphes.some((p) => /[Ss]ans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur\./.test(p))))
-  && impayesStripe.filter((t) => !/^Hi/.test(t.salut)).every((t) => t.suite.some((p) => /Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur\./.test(p))),
-  'arrêts et impayés : « Sans FillSell Cloud, tes publications passent par l\'extension FillSell, sur ton ordinateur. » (vrai même sans ordinateur)');
+// (13/11/2026, décision de Nico — règle permanente : un client Cloud ne lit JAMAIS « ordinateur » ni « Chrome ») La phrase
+// vraie du CLOUD remplace celles de l'extension : ce que fait FillSell Cloud, ou ce qu'il ne fait plus.
+ok(fr('essai_debut', 'stripe').paragraphes[1] === "Ton essai gratuit de FillSell Cloud a commencé : FillSell Cloud publie, republie et retire tes annonces 24 h/24 depuis ses serveurs, et tes ventes sont suivies.",
+  'début d\'essai : « FillSell Cloud publie, republie et retire tes annonces 24 h/24 depuis ses serveurs » (13/11 : sans « ordinateur »)');
+ok(['arret_essai', 'arret_programme', 'impaye'].every((ev) => ['apple', 'google'].every((c) => fr(ev, c).paragraphes.some((p) => /ne publie, ne republie et ne retire plus tes annonces/.test(p)) && !fr(ev, c).paragraphes.some((p) => /ordinateur|Chrome/.test(p))))
+  && impayesStripe.filter((t) => !/^Hi/.test(t.salut)).every((t) => t.suite.some((p) => /ne publie, ne republie et ne retire plus tes annonces/.test(p)) && !t.suite.some((p) => /ordinateur|Chrome/.test(p))),
+  'arrêts et impayés : « FillSell Cloud … ne publie, ne republie et ne retire plus tes annonces ; celles déjà en ligne y restent » (13/11 : jamais « ordinateur »)');
 {
   const { textesCloud } = await import('../src/cloud/textes.js');
   const { textesConnexion } = await import('../src/cloud/textesConnexion.js');

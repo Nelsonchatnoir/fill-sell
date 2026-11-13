@@ -78,7 +78,7 @@ export const initIAP = async () => {
 // (11/11/2026, formules avec Cloud) `replacementMode` : 2 par défaut (CHARGE_PRORATED_PRICE, la montée d'avant, inchangée) ;
 // 6 = DEFERRED (Billing 8.3.0 ; l'énumération TypeScript du module dit 4, docs/enquetes/c4-descente-0911) pour une
 // descente qui prend effet au renouvellement (Pro + Cloud → Premium + Cloud à la fin de l'essai). Android uniquement.
-export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null, replacementMode = 2 } = {}) => {
+export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null, replacementMode = 2, offreEssai = null } = {}) => {
   try {
     const { products } = await NativePurchases.getProducts({
       productIdentifiers: [productId],
@@ -108,6 +108,11 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
       purchaseOptions.oldPurchaseToken = oldPurchaseToken;
       purchaseOptions.replacementMode = replacementMode;
     }
+    // (13/11/2026, point f de Nico — INACTIF tant que lib/essaiAbonneBoutique.js n'ouvre pas) L'essai du Cloud d'un abonné
+    // de la boutique : l'offre promotionnelle signée (iOS) ou l'offre « déterminée par le développeur » (Android), lues par
+    // le PROCHAIN binaire (module natif à étendre) ; le binaire en vente ne les lit pas.
+    if (offreEssai?.apple && Capacitor.getPlatform() === 'ios') purchaseOptions.promotionalOffer = offreEssai.apple;
+    if (offreEssai?.google && Capacitor.getPlatform() === 'android') purchaseOptions.offerIdentifier = offreEssai.google;
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
     const isPremium = result?.productIdentifier === productId;
     // receipt = iOS only ; purchaseToken = Android only (cf. @capgo/native-purchases types)

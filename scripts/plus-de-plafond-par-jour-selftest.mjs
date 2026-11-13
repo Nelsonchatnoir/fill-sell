@@ -98,6 +98,8 @@ ok(/const NOMBRE_JOUR_MAX = 1000;/.test(rp) && /plafond_jour: r \? nombreChoisi\
   && /appliquer\(\{ plafond_jour: null \}\)/.test(rp) && !/plafond_palier|restants_compte|PLAFOND_ILLIMITE/.test(rp),
   'module planifié : nombre par jour facultatif (« Sans limite »), aucun maximum de palier');
 // (06/11) La date a suivi la clause retirée (24/10), puis la publication des textes du Cloud (06/11) : jamais avant le 24/10.
-ok(/Dernière mise à jour : 6 novembre 2026/.test(legal) && /Last updated: November 6, 2026/.test(legal), 'CGV : la date suit la clause retirée (24/10) puis les textes du Cloud (06/11)');
+// (13/11/2026, décision de Nico — 3e réponse, point e : CGU / CGV alignées sur la règle de chaque canal) Elle suit les textes
+// de paiement du 13/11 (un seul abonnement, résiliation par canal, suppression du compte) : toujours après le 24/10.
+ok(/Dernière mise à jour : 13 novembre 2026/.test(legal) && /Last updated: November 13, 2026/.test(legal), 'CGV : la date suit la clause retirée (24/10), les textes du Cloud (06/11) puis les textes de paiement (13/11)');
 
 console.log(`\n✓ plus-de-plafond-par-jour : ${n} contrôles verts`);

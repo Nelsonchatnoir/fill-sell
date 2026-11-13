@@ -97,11 +97,11 @@ export function lienStripeSur(url) {
  * Les FAITS que stripe-webhook transmet à email-tunnel (payment-notify.ts).
  * facture, abonnement : objets Stripe relus par l'API ; estCloud : abonnement
  * de l'option Cloud (estAbonnementCloud, _shared/cloud-option.js).
- * @param {{ facture: any, abonnement?: any, estCloud?: boolean }} p
+ * @param {{ facture: any, abonnement?: any, estCloud?: boolean, formule?: string | null }} p
  * @returns {{ contexte: 'souscription' | 'renouvellement' | 'fin_essai', lien_facture: string | null,
  *             relance_le: string | null, abonnement_actif: boolean, offre: string | null }}
  */
-export function faitsEchec({ facture, abonnement = null, estCloud = false }) {
+export function faitsEchec({ facture, abonnement = null, estCloud = false, formule = null }) {
   const contexte = contexteEchec(facture, abonnement);
   const prochaine = entier(facture?.next_payment_attempt);
   return {
@@ -115,7 +115,8 @@ export function faitsEchec({ facture, abonnement = null, estCloud = false }) {
     // cloud-option.js litAbonnementStripe), un Cloud past_due s'ARRÊTE tout de suite — le mail ne peut plus lui
     // dire « ton abonnement reste actif » (il le disait encore : faux depuis le 03/11).
     abonnement_actif: contexte === 'renouvellement' && abonnement?.status === 'active',
-    offre: estCloud ? 'cloud' : null,
+    // (13/11/2026, point d de Nico) Une formule avec Cloud se dit : le mail met en pause la formule ET le Cloud.
+    offre: estCloud ? 'cloud' : formule ? 'formule_cloud' : null,
   };
 }
 
@@ -260,8 +261,16 @@ const TEXTES = {
     relance: (d) => `Sinon, Stripe retentera le paiement le ${d}.`,
     actif: "Ton abonnement reste actif pour l'instant.",
     // (08/11) FillSell Cloud impayé : il est en pause (règle du 03/11) et repart seul au paiement — même phrase qu'Apple / Google.
-    pauseCloud: "En attendant, FillSell Cloud est en pause. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur. Dès que le paiement passe, FillSell Cloud repart tout seul.",
+    // (13/11/2026, règle permanente de Nico) Un client FillSell Cloud ne lit JAMAIS « ordinateur » ni « Chrome » : la phrase vraie
+    // du Cloud (ce qu'il fait ou ne fait plus), plus celle de l'extension (verrou : selftest:impaye-formule-en-pause § D).
+    pauseCloud: "En attendant, FillSell Cloud est en pause : il ne publie, ne republie et ne retire plus tes annonces, et celles déjà en ligne y restent. Dès que le paiement passe, FillSell Cloud repart tout seul.",
     sansLien: 'Réponds à ce mail : on te renvoie le lien pour régler la facture.',
+    // (13/11/2026, 3e réponse de Nico, point d) Impayé = gratuit (règle du 29/10) : le mail dit CE QUI EST EN PAUSE (la formule,
+    // et le Cloud d'une formule avec Cloud) et COMMENT REPRENDRE (régler la facture ; changer de carte : le portail Stripe,
+    // « Mes factures » — payment_method_update activé, relu le 13/11). Tout repart seul au paiement (customer.subscription.updated).
+    pauseFormule: (n) => `En attendant, ${n ? `ta formule ${n}` : 'ta formule'} est en pause : ton compte fonctionne comme un compte gratuit. Dès que le paiement passe, elle repart toute seule.`,
+    pauseFormuleCloud: (n) => `En attendant, ${n ?? 'ta formule avec Cloud'} est en pause : FillSell Cloud et les avantages de ta formule. Dès que le paiement passe, tout repart tout seul.`,
+    changerCarte: 'Pour payer avec une autre carte, ou changer celle des prochains mois : sur fillsell.app, Réglages › Abonnement › Mes factures.',
     bouton: { app: 'Ouvrir FillSell', valider: 'Valider le paiement', regler: 'Régler la facture' },
     fin: 'Si ça bloque encore, réponds à ce mail.',
     raison: "Tu reçois ce message parce qu'un paiement de ton compte FillSell n'a pas abouti.",
@@ -305,8 +314,11 @@ const TEXTES = {
     reglerExpiree1: "Pay this invoice on Stripe's secure page, with another card.",
     relance: (d) => `Otherwise, Stripe will try the payment again on ${d}.`,
     actif: 'Your subscription stays active for now.',
-    pauseCloud: 'Meanwhile, FillSell Cloud is paused. Without FillSell Cloud, your listings go through the FillSell extension, on your computer. As soon as the payment goes through, FillSell Cloud starts again on its own.',
+    pauseCloud: 'Meanwhile, FillSell Cloud is paused: it no longer posts, reposts or removes your listings, and those already online stay online. As soon as the payment goes through, FillSell Cloud starts again on its own.',
     sansLien: "Just reply to this email and we'll send you the link to pay the invoice.",
+    pauseFormule: (n) => `Meanwhile, ${n ?? 'your plan'} is paused: your account works like a free account. As soon as the payment goes through, your plan starts again on its own.`,
+    pauseFormuleCloud: (n) => `Meanwhile, ${n ?? 'your plan with Cloud'} is paused: FillSell Cloud and your plan's features. As soon as the payment goes through, everything starts again on its own.`,
+    changerCarte: 'To pay with another card, or change the card for the coming months: on fillsell.app, Settings › Subscription › My invoices.',
     bouton: { app: 'Open FillSell', valider: 'Confirm the payment', regler: 'Pay the invoice' },
     fin: 'If it still fails, just reply to this email.',
     raison: "You're getting this message because a payment on your FillSell account didn't go through.",
@@ -317,11 +329,11 @@ const TEXTES = {
  * Le texte du mail, en données (sans HTML) : le gabarit le met en page.
  * { sujet, titre, preheader, salut, intro, encadre, suite[], bouton|null, fin|null, raisonEnvoi }
  * @param {{ lang?: string, cause?: string, contexte?: string, lienFacture?: string | null,
- *           relanceLe?: string | null, abonnementActif?: boolean, offre?: string | null }} [p]
+ *           relanceLe?: string | null, abonnementActif?: boolean, offre?: string | null, plan?: string | null }} [p]
  */
 export function texteEchec({
   lang = 'fr', cause = 'autre', contexte = 'souscription',
-  lienFacture: lien = null, relanceLe = null, abonnementActif = false, offre = null,
+  lienFacture: lien = null, relanceLe = null, abonnementActif = false, offre = null, plan = null,
 } = {}) {
   const T = TEXTES[lang === 'en' ? 'en' : 'fr'];
   const c = CAUSES.includes(cause) ? cause : 'autre';
@@ -363,6 +375,13 @@ export function texteEchec({
   // une version de stripe-webhook d'avant le 05/11 (faitsEchec : active | past_due) ne peut plus le faire écrire.
   if (ctx === 'renouvellement' && abonnementActif === true && !cloud) suite.push(T.actif);
   if (ctx !== 'souscription' && cloud) suite.push(T.pauseCloud);
+  // (13/11/2026, point d de Nico) La formule (et le Cloud d'une formule avec Cloud) est EN PAUSE — sauf un abonnement relu
+  // « active » (les droits sont encore ouverts : « reste actif », vrai). Une souscription jamais ouverte n'a rien en pause.
+  const nomPlan = typeof plan === 'string' && plan.trim() && plan !== 'Cloud' ? plan.trim() : null;
+  if (ctx !== 'souscription' && !cloud && abonnementActif !== true) {
+    suite.push(offre === 'formule_cloud' ? T.pauseFormuleCloud(nomPlan) : T.pauseFormule(nomPlan));
+  }
+  if (ctx !== 'souscription') suite.push(T.changerCarte);
 
   return {
     sujet, titre: sujet, preheader: T.preheader, salut: T.salut, intro,
