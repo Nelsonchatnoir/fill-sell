@@ -47,7 +47,8 @@ console.log("\n1. La tranche Vinted, tranchée par le texte du vendeur");
   // (24/10 nuit, décision 5 de Nico) Cinq : l'homonyme « Taille » de Beebs (tailleHomonymeBeebs) lit le même texte.
   // (25/10 soir, décisions de Nico) Six : les champs requis qui se remplissent seuls (champRequisAuto : pointure, matière,
   // âge, bijoux) lisent le même texte (selftest champs-requis-auto).
-  ok("l'écran passe le texte du vendeur (fiche d'abord) aux six jugements", (LPS.match(/textes: textesDuVendeurPour\(/g) ?? []).length === 6
+  // (14/11, A3) Sept : + la valeur probable, en dernier (publication/moteur/valeursProbables.js).
+  ok("l'écran passe le texte du vendeur (fiche d'abord) aux sept jugements", (LPS.match(/textes: textesDuVendeurPour\(/g) ?? []).length === 7
     && /const textesDuVendeurPour = \(p\) => \[initialListing\?\.titre \?\? "", initialListing\?\.description \?\? "", edited\[p\]\?\.title \?\? "", edited\[p\]\?\.description \?\? ""\];/.test(LPS));
 }
 console.log("\n2. Les dimensions eBay : UNE question");

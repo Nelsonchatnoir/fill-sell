@@ -76,6 +76,8 @@ import { genreDuTexte, genreAccordeAuTexte } from "../../supabase/functions/_sha
 import { invoquerResolveCategorie } from "./questionCategorie.js";
 import { oeuvreDArt, rayonVintedOeuvre } from "./oeuvreDArt.js";
 import { vetementTraditionnel } from "./vetementTraditionnel.js";
+// (14/11, lot « zéro friction », A1) Un livre adulte ne reste pas dans un rayon Beebs pour enfants.
+import { rayonBeebsDuLivre } from "../../supabase/functions/_shared/champs-requis-auto.js";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -2158,6 +2160,24 @@ export async function resoudrePublication({
     } else if (brancheSpecialiseeEcartee.ebay) {
       // Écartée à l'étape 2, le chemin final est sain : la trace reste sur le job.
       pf.categorie_branche_specialisee = { ...brancheSpecialiseeEcartee.ebay, source_avant: null, remplace_par: pf.ebayCategoryPath ?? null };
+    }
+  }
+
+  // ══ (14/11, lot « zéro friction », A1 — Nico) UN LIVRE ADULTE NE RESTE PAS DANS UN RAYON BEEBS POUR ENFANTS ══
+  // « Un objet adulte (roman…) ne doit plus tomber dans une catégorie Beebs pour enfants. » Beebs a « Romans pour
+  // adultes » et « Livres de recettes », sans « Âge » ; l'IA rangeait des romans d'adulte dans « Autres livres » (qui
+  // exige l'« Âge » : 205 questions et 80 abandons en 7 jours au 13/11) ou « Romans pour enfant ». Rangement
+  // déterministe APRÈS tous les choix (_shared/champs-requis-auto.js, rayonBeebsDuLivre) : un roman sans aucun signe
+  // jeunesse → « Romans pour adultes », un livre de recettes → « Livres de recettes ». Le moindre signe jeunesse garde le
+  // rayon choisi. Un rayon choisi par la PERSONNE n'arrive pas ici (surcouche de rayonPublication.js).
+  if (pfParPlateforme.beebs && Array.isArray(pfParPlateforme.beebs.beebsCategoryPath)) {
+    const pfB = pfParPlateforme.beebs;
+    const fr = textesFrDeLaPublication({ initialListing, edited });
+    const livre = rayonBeebsDuLivre({ chemin: pfB.beebsCategoryPath, textes: [fr.titre, fr.description, initialListing?.titre ?? "", initialListing?.description ?? ""] });
+    if (livre) {
+      pfB.categorie_livre_adulte = { avant: pfB.beebsCategoryPath, motif: livre.motif };
+      pfB.beebsCategoryPath = livre.chemin;
+      console.log(`[publish] beebs — « ${pfB.categorie_livre_adulte.avant.join(" > ")} » → « ${livre.chemin.join(" > ")} » (${livre.motif})`);
     }
   }
 

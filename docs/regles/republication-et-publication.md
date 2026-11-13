@@ -1821,3 +1821,35 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   doublons, mais sans preuve d'identité : elles n'auraient plus été retirées automatiquement) ; get-pending-jobs :
   0 question au titre, 5 essais servis après relevé — mêmes décisions rejouées.
   Verrou `selftest:recreation-vinted-par-empreinte` ; banc `scripts/recreation-vinted-par-empreinte-banc.mjs`.
+
+## ⛔ 14/11/2026 (lot « zéro friction », bloc A — Nico) — plus aucun abandon dû à un champ ; le dernier écran laisse partir ce qui est prêt
+- Règle de Nico : « jamais de valeur inventée au hasard. Certaine → posée sans rien demander. Seulement probable →
+  pré-remplie avec la meilleure valeur et un choix en 1 tap, jamais un champ vide qui bloque. Le dernier écran doit
+  toujours laisser partir ce qui est prêt. » Mesuré (7 jours au 13/11) : 116 fermetures sans publier (61 au 1er écran,
+  médiane 22 s ; 45 au dernier : 25 champ ou clic eBay, 5 mur de quota du palier gratuit — légitime, 2 lot quitté,
+  13 sans cause visible) ; « Âge » Beebs 324 questions / 99 abandons, dont 205 / 80 sur « Livres > Autres livres ».
+- **Valeur PROBABLE** (`src/publication/moteur/valeursProbables.js`, nouveau stepper seulement, APRÈS tout ce qui est
+  certain) : option neutre et vraie (« Non précisé » → certaine) ; seule option suggérée (eBay « Boucle de ceinture ») ;
+  « Autre(s) » quand le texte ne nomme aucune option (Leboncoin « Produit », instruments…). Jamais une taille, une
+  pointure, une marque, un modèle, un état, un colis, un identifiant, un public (genre, univers) ni la machine d'un jeu.
+  Chaque pose est MONTRÉE (carte « FillSell a choisi … », puces : un geste pour changer) et tracée
+  (`usage_logs.valeur_probable`, posee / modifiee : la mesure de sa justesse).
+- **Âge Beebs** (`_shared/champs-requis-auto.js`) : certain — âge écrit, PEGI, livre adulte, pointure enfant dans UNE
+  tranche ; probable (`ageBeebsProbable`) — livre / magazine / CD / DVD sans aucun signe jeunesse → « 16 ans et + »,
+  pointure à cheval → tranche du milieu, jeu de société pour adultes, puzzle ≥ 500 pièces → « 12 ans - 16 ans ».
+  Rangement (`rayonBeebsDuLivre`, fin de `resoudrePublication`) : roman sans signe jeunesse → « Romans pour adultes »,
+  recettes → « Livres de recettes » (aucun « Âge » demandé) ; le moindre signe jeunesse garde le rayon choisi.
+- **Le bouton ne grise plus pour UNE plateforme** (remplace la règle du 05/11 soir « Continuer sans X ») : la plateforme
+  dont un champ de son rayon, un champ partagé ou un aspect eBay attend est RETENUE à ce clic, nommée sous le bouton
+  (« Beebs (Âge) attend une réponse… »), dans « Partira sur … » et sur l'écran de suivi (« Pas parties cette fois ») ;
+  rien n'est débité pour elle ; les autres partent. Toutes retenues → bouton gris, comme avant.
+- **Clic eBay** : un champ resté vide se recalcule pour la catégorie du job (valeur probable de sa liste) ; ce que
+  l'écran n'a JAMAIS demandé part au dépôt (API : le serveur le remplit sous la liste d'eBay ; extension : sa garde),
+  trace `champ_requis_bloquant` issue `laisse_au_depot` ; une valeur refusée par la liste fermée retient eBay seul.
+  (66 clics refusés en 7 jours sur des champs jamais montrés.)
+- Rejeu sur les 7 jours (`scripts/rejeu-zero-friction-1411.mjs`, lecture seule) : 507 questions → 49 certaines,
+  121 probables, 103 déjà réglées par la règle du 13/11 (machine du jeu), 234 restent (taille, marque, état, genre :
+  jamais devinés — elles ne retiennent plus que leur plateforme) ; 139 abandons → 76 évités par une valeur, 3 par la
+  règle du 13/11, 13 où les autres plateformes seraient parties, 47 restent (un seul champ jamais deviné, une seule
+  plateforme) ; 66 clics eBay refusés → 0.
+  Verrou `selftest:valeurs-probables` ; aperçu `scripts/apercu/capture-zero-friction-1411.mjs` (stepper réel).

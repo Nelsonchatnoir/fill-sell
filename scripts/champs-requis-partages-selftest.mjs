@@ -184,7 +184,13 @@ const lps = lire("src/components/ListingPreviewScreen.jsx");
 const bq = lire("src/publication/BlocQuestions.jsx");
 const ec = lire("src/publication/EcranConfirmer.jsx");
 const garde = lps.slice(lps.indexOf("const requiredBlocking ="), lps.indexOf("refusSansQuestion;", lps.indexOf("const requiredBlocking =")));
-ok(/\(variante === "nouvelle" && plateformesBloqueesChamps\.length > 0\) \|\|/.test(garde), "un champ de rayon qui attend une réponse GRISE le bouton (nouveau stepper) — plus de départ sans la plateforme au clic");
+// (14/11, lot « zéro friction », A3 — Nico : « le dernier écran doit toujours laisser partir ce qui est prêt ») La règle
+// du 05/11 (« jamais de plateforme perdue en silence ») garde son but par un autre chemin : la plateforme qui attend est
+// RETENUE à ce clic et NOMMÉE (sous le bouton, puis sur l'écran de suivi) ; le bouton ne grise que si plus rien ne part.
+// Verrou : scripts/valeurs-probables-selftest.mjs.
+ok(/\(variante === "nouvelle" && publishChips\.length === 0 && plateformesRetenuesAuClic\.length > 0\) \|\|/.test(garde)
+  && /const publishChips = \[\.\.\.plateformesPubliables\]\.filter\(p => !plateformesRetenuesAuClic\.includes\(p\)\)/.test(lps),
+  "un champ de rayon qui attend RETIENT sa plateforme, nommément, sans griser les autres (nouveau stepper) ; plus rien de prêt → bouton gris");
 ok(/\.\.\.\(variante === "nouvelle" \? plateformesBloqueesChamps : \[\]\),/.test(lps), "… et « Continuer sans X » est offert : la plateforme ne part sans lui que par un geste de la personne");
 ok(/tailleUniqueAccessoire\(\{ chemin: cheminListe, textes, allowedValues, tailleFiche \}\)/.test(lps) && /"accessoire_sans_taille"/.test(lps), "la taille unique d'un accessoire passe par champRequisAuto et se pose sur la copie");
 ok(/tailleUniqueAccessoire\(\{\s*chemin: pf\.ebayCategoryPath/.test(lps), "… et chez eBay");

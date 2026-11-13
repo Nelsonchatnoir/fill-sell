@@ -210,6 +210,9 @@ import { sansListesEmpruntees, etatsVintedEnFrancais } from "../utils/catalogueL
 // par la personne à un champ du RAYON (Univers-public Leboncoin, Département
 // eBay) se repose seule sur le prochain article du même rayon.
 import { valeurDeMemoire, reponseARetenir, lignesAEcrire, COMPTE_PRINCIPAL } from "../publication/moteur/memoireCategorie.js";
+// (14/11, lot « zéro friction », A3 — Nico) La valeur PROBABLE d'une ligne encore vide : pré-remplie et montrée, jamais
+// un champ vide qui fait abandonner (publication/moteur/valeursProbables.js).
+import { valeurProbable } from "../publication/moteur/valeursProbables.js";
 import { EBAY_DEPARTMENT_BY_GENRE } from "../publication/moteur/departementEbay.js";
 import { chargerMemoire, memoireEnCache, abonnerMemoire, retenirReponses } from "../utils/memoireChamps.js";
 // (18/10, lot 2) Les correspondances APPRISES sur les annonces acceptées du parc :
@@ -9830,7 +9833,23 @@ export default function ListingPreviewScreen({
         }
         return avecMemoire(a);
       });
-      if (enrichi.length) out[platform] = enrichi;
+      // ── (14/11, lot « zéro friction », A3 — Nico) LA VALEUR PROBABLE, EN DERNIER ──────────────────────────────────
+      // Une ligne d'une liste fermée encore VIDE après tout ce qui est certain (fiche, texte, option nommée, mémoire,
+      // apprises, champs-requis-auto) : la meilleure valeur, pré-remplie (`deduit.probable`, posée par l'effet de l'option
+      // lue dans l'annonce) et MONTRÉE (« FillSell a choisi … — change-la d'un geste »), jamais un champ vide qui fait
+      // abandonner. Rien de sûr ni de probable (taille, marque, état, public…) : la question reste, et elle ne retient
+      // que sa plateforme (plateformesRetenuesAuClic). Nouveau stepper seulement — l'ancien ne change pas.
+      const final = variante !== "nouvelle" ? enrichi : enrichi.map((a) => {
+        if (a.state !== "missing" || a.deduit || a.attendEtat || a.attendUnivers || !a.allowedValues?.length) return a;
+        if (a.dedicatedTarget && SHARED_FIELD_KEYS.includes(a.dedicatedTarget)) return a;
+        if (a.key === "title" || a.key === "photos" || a.key === "description") return a;
+        const prob = valeurProbable({ platform, key: a.key, label: a.label, allowedValues: a.allowedValues,
+          chemin: cheminDe(platform), textes: textesDuVendeurPour(platform) });
+        if (!prob) return a;
+        return { ...a, suggested: prob.valeur, blocking: false,
+                 deduit: { valeur: prob.valeur, source: `probable:${prob.source}`, motif: prob.motif, probable: true, certitude: prob.certitude } };
+      });
+      if (final.length) out[platform] = final;
     }
     return Object.keys(out).length ? out : null;
     // processedPhotos.length : la neutralisation de `photos` ci-dessus affiche
@@ -9917,6 +9936,8 @@ export default function ListingPreviewScreen({
           ...(d.paire ? { paire: d.paire } : {}), ...(d.repondu_le ? { repondu_le: d.repondu_le } : {}), le: new Date().toISOString(),
         });
         if (d.source === "memoire") noterPoseMemoire(gp, a, d, genericCategoryKeys?.[gp] ?? null);
+        // (14/11, A3) La valeur PROBABLE : visible et modifiable d'un geste, comme une pose de la mémoire.
+        if (d.probable) noterPoseProbable(gp, a, d, genericCategoryKeys?.[gp] ?? null);
       }
     }
   }, [genericRequiredStatus]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -10755,6 +10776,27 @@ export default function ListingPreviewScreen({
     }));
     journalMemoire("appliquee", { platform: gp, champ, categorie, valeur: d.valeur, repondu_le: d.repondu_le ?? null });
   }
+  // (14/11, lot « zéro friction », A3 — Nico) Une valeur PROBABLE posée (publication/moteur/valeursProbables.js) : la
+  // même carte « change-la si besoin » que la mémoire (posesMemoire, sorte « probable »), et une trace par pose et par
+  // changement (usage_logs valeur_probable) — la mesure de sa justesse : une valeur souvent changée se corrige.
+  function journalProbable(issue, info) {
+    if (!userId) return;
+    supabase.from("usage_logs")
+      .insert({ user_id: userId, feature: "valeur_probable", metadata: { ...info, issue, inventaire_id: invId ?? null } })
+      .then(({ error }) => { if (error) console.warn("[valeur probable] trace non journalisée :", error.message); });
+  }
+  function noterPoseProbable(gp, a, d, categorie) {
+    const champ = a?.key ?? a?.name;
+    if (!champ || !d?.valeur) return;
+    const k = `${gp}|${champ}`;
+    setPosesMemoire(prev => (prev[k]?.valeur === d.valeur ? prev : {
+      ...prev,
+      [k]: { plateforme: gp, champ, label: a.label ?? a.name ?? champ, valeur: d.valeur, repondu_le: null,
+             categorie, allowedValues: a.allowedValues ?? [], dedicatedTarget: a.dedicatedTarget ?? null, modifiee: null,
+             sorte: "probable", motif: d.motif ?? "", certitude: d.certitude ?? "probable" },
+    }));
+    journalProbable("posee", { platform: gp, champ, categorie, valeur: d.valeur, source: d.source, certitude: d.certitude ?? "probable" });
+  }
   // Une réponse de la personne (bloc de questions, réponse commune du lot,
   // valeur de la mémoire qu'elle change) : retenue au clic Publier si c'est un
   // CHOIX dans la liste d'un champ du rayon (moteur/memoireCategorie).
@@ -10764,13 +10806,21 @@ export default function ListingPreviewScreen({
     noterGesteQuestion(`${gp}:${champ}`);
     const k = `${gp}|${champ}`;
     const categorie = gp === "ebay" ? (ebayPreviewCategoryId ?? null) : (genericCategoryKeys?.[gp] ?? null);
+    // (14/11, A3) Une valeur PROBABLE changée par la personne (un champ hors mémoire, l'Âge Beebs par exemple) : sa carte
+    // reste à l'écran avec SA réponse, et le changement se trace — avant la règle de la mémoire, qui ne retient que ses champs.
+    const poseP = posesMemoire[k];
+    const vP = String(v ?? "").trim();
+    if (poseP?.sorte === "probable" && vP && poseP.valeur !== vP && poseP.modifiee !== vP) {
+      setPosesMemoire(prev => (prev[k] ? { ...prev, [k]: { ...prev[k], modifiee: vP } } : prev));
+      journalProbable("modifiee", { platform: gp, champ, categorie: categorie == null ? null : String(categorie), avant: poseP.valeur, valeur: vP });
+    }
     const valeur = reponseARetenir({ plateforme: gp, champ, allowedValues: a.allowedValues, valeur: v });
     if (!valeur || categorie == null || categorie === "") { delete reponsesQuestionsRef.current[k]; return; }
     reponsesQuestionsRef.current[k] = { plateforme: gp, champ, categorie: String(categorie), compte: COMPTE_PRINCIPAL, valeur, cible: a.dedicatedTarget ?? null };
     const pose = posesMemoire[k];
     if (pose && pose.valeur !== valeur && pose.modifiee !== valeur) {
       setPosesMemoire(prev => (prev[k] ? { ...prev, [k]: { ...prev[k], modifiee: valeur } } : prev));
-      journalMemoire("modifiee", { platform: gp, champ, categorie: String(categorie), avant: pose.valeur, valeur });
+      if (pose.sorte !== "probable") journalMemoire("modifiee", { platform: gp, champ, categorie: String(categorie), avant: pose.valeur, valeur });
     }
   }
 
@@ -10888,13 +10938,16 @@ export default function ListingPreviewScreen({
       // ── Filet champs partagés (Sujet 4) : l'encart inline de StepPublish
       // est le chemin nominal, ce re-check attrape un état périmé ou une
       // course — même règle SHARED_GUARD, avant tout effet de bord.
-      if (missingSharedFields.length) {
-        const labels = {
-          taille:  t("fieldSizeLabel"),
-          couleur: t("fieldColorLabel"),
-          matiere: t("fieldMaterialLabel"),
-          marque:  t("fieldBrandLabel"),
-        };
+      const labelsPartages = {
+        taille:  t("fieldSizeLabel"),
+        couleur: t("fieldColorLabel"),
+        matiere: t("fieldMaterialLabel"),
+        marque:  t("fieldBrandLabel"),
+      };
+      // (14/11, lot « zéro friction », A3) Nouveau stepper : un champ partagé qui manque ne retient que SES plateformes
+      // (plus bas, avec les champs de leur rayon) — les autres partent. L'ancien stepper garde son refus d'ensemble.
+      if (missingSharedFields.length && variante !== "nouvelle") {
+        const labels = labelsPartages;
         throw new Error(tpl("stepPublishSharedFieldsMissing", {
           fields: missingSharedFields.map(k => labels[k]).join(", "),
         }));
@@ -10919,6 +10972,19 @@ export default function ListingPreviewScreen({
       //     Rien n'est publié incomplet : la plateforme exclue attend sa
       //     complétion dans l'encart rouge, nommément.
       const champsManquantsParPf = champsBloquantsParPlateforme(genericRequiredStatus);
+      // (14/11, lot « zéro friction », A3 — Nico) Nouveau stepper : ce que l'écran a montré comme une question encore sans
+      // réponse — champ partagé (taille, matière… de CETTE plateforme), aspect eBay — retient SA plateforme à ce clic,
+      // comme un champ de son rayon : exclue nommément (écran de suivi, trace publie_sans_plateforme), rien de débité pour
+      // elle, les autres partent. Plus aucune n'est prête : le refus d'avant (« X attend : … »), rien n'est décompté.
+      if (variante === "nouvelle") {
+        const ajouter = (p, libelle) => {
+          if (!selected.has(p) || !libelle) return;
+          const l = champsManquantsParPf[p] ?? (champsManquantsParPf[p] = []);
+          if (!l.includes(libelle)) l.push(libelle);
+        };
+        for (const f of missingSharedFieldsDetailed) for (const p of f.platforms ?? []) ajouter(p, labelsPartages[f.key] ?? f.key);
+        for (const a of (ebayRequiredStatus ?? []).filter(aspectBloquant)) ajouter("ebay", a.name);
+      }
       const plateformesChampManquant = Object.keys(champsManquantsParPf);
 
       // Article pas encore en stock : on crée sa ligne inventaire maintenant
@@ -11559,6 +11625,48 @@ export default function ListingPreviewScreen({
           guardMessages.push(tpl(relancable ? "stepPublishEbayRequiredMissing" : "stepPublishEbayRequiredMissingManuel", { fields: verdict.missingEmpty.map(n => (lang === "en" ? `“${n}”` : `« ${n} »`)).join(", ") }));
         }
         guardMessages.push(...invalidMessages);
+        // ── (14/11, lot « zéro friction », A3 — Nico) PLUS JAMAIS UN CLIC MORT SUR eBAY ───────────────────────────────
+        // Mesuré au 13/11 : 66 clics « bloqué au clic » eBay en 7 jours (12 comptes ; jusqu'à 11 clics d'affilée), sur des
+        // champs que l'écran n'avait JAMAIS montrés (« Type » de 86647, aucune question affichée) : la règle du 02/10 ne
+        // remontait l'encart que si sa catégorie différait de celle du job. Nouveau stepper :
+        //   1. un champ resté vide se recalcule pour la catégorie qui part (valeur certaine ou probable de sa liste :
+        //      « Boucle de ceinture », la seule que suggère eBay pour les boucles de ceinture) ;
+        //   2. ce qui reste vide SANS que l'écran l'ait demandé part au dépôt : par l'API, le serveur le remplit sous la
+        //      liste d'eBay (et ne pose une question, sur la fiche, qu'en dernier recours) ; par l'extension, sa garde au
+        //      dépôt — jamais un refus sur un champ invisible (ce que l'écran a demandé a déjà retenu eBay plus haut) ;
+        //   3. une valeur REFUSÉE par la liste fermée de la catégorie du job retient eBay SEUL quand d'autres plateformes
+        //      partent (nommé sur l'écran de suivi, rien de débité pour lui) ; eBay seul : le refus d'avant.
+        if (variante === "nouvelle" && guardMessages.length) {
+          const restants = [];
+          for (const nom of iconeDementie ? [] : verdict.missingEmpty) {
+            const a = (ebayRequiredFull ?? []).find(x => x?.name === nom);
+            const prob = a ? valeurProbable({ platform: "ebay", key: nom, label: nom, allowedValues: a.allowedValues ?? [] }) : null;
+            if (prob) {
+              pfE.ebayAspects = { ...(pfE.ebayAspects ?? {}), [nom]: prob.valeur };
+              console.log(`[publish] eBay ${nom} : « ${prob.valeur} » posé pour la catégorie du job (${prob.source})`);
+            } else restants.push(nom);
+          }
+          if (restants.length) {
+            logChampBloquant("laisse_au_depot", { platform: "ebay", champs: restants, categorie: String(pfE.ebayCategoryId ?? "") || null, voie: ebayVoieApiReelle ? "api" : "extension" });
+            console.warn(`[publish] eBay — ${restants.join(", ")} jamais demandés à l'écran : laissés au dépôt (${ebayVoieApiReelle ? "le serveur les remplit sous la liste d'eBay" : "garde de l'extension"})`);
+          }
+          setRelanceEbay(null);
+          guardMessages.length = 0;
+          if (verdict.invalides.length) {
+            const autres = rows.filter(r => r.platform !== "ebay");
+            if (autres.length) {
+              const noms = verdict.invalides.map(v => v.name);
+              champsManquantsParPf.ebay = [...new Set([...(champsManquantsParPf.ebay ?? []), ...noms])];
+              if (!plateformesChampManquant.includes("ebay")) plateformesChampManquant.push("ebay");
+              rows = autres;
+              const catJobI = String(pfE.ebayCategoryId ?? "");
+              if (catJobI && String(ebayPreviewCategoryId ?? "") !== catJobI) setEbayCategorieDuClic(catJobI);
+              console.warn(`[publish] eBay retenu à ce clic : ${noms.join(", ")} refusé(s) par la liste de la catégorie — les autres partent`);
+            } else {
+              guardMessages.push(...invalidMessages);
+            }
+          }
+        }
         if (guardMessages.length) {
           const catJob = String(pfE.ebayCategoryId ?? "");
           // Trace « bloque_au_clic », comme Leboncoin (02/10 soir, point 6).
@@ -12050,7 +12158,21 @@ export default function ListingPreviewScreen({
   // retirer éteindrait le statut qui la bloque (boucle). eBay garde son
   // comportement global (CTA gris), cf. requiredBlocking.
   const plateformesBloqueesChamps = calculerPlateformesBloqueesChamps(plateformesPubliables, genericRequiredStatus);
-  const publishChips = [...plateformesPubliables].filter(p => !plateformesBloqueesChamps.includes(p));
+  // ── (14/11, lot « zéro friction », A3 — Nico) LE DERNIER ÉCRAN LAISSE TOUJOURS PARTIR CE QUI EST PRÊT ──────────────
+  // « Le dernier écran doit toujours laisser partir ce qui est prêt. » Mesuré au 13/11 : 26 des 44 sorties du dernier écran
+  // juste après un champ obligatoire — le bouton était GRIS pour toutes les plateformes dès qu'UNE attendait une réponse
+  // (règle du 05/11 soir : « Continuer sans X » en second geste). Désormais, dans le nouveau stepper, une plateforme dont
+  // un champ de SON rayon, un champ partagé qui ne la concerne qu'elle (taille, matière…) ou un aspect eBay attend encore
+  // une réponse est RETENUE à ce clic, nommément (sous le bouton, puis sur l'écran de suivi : « Pas parties cette fois —
+  // Beebs attend : Âge »), et les autres partent. Jamais en silence : le bouton dit le nombre de plateformes qui partent, la
+  // carte au-dessus dit laquelle attend et pourquoi. Rien n'est débité pour elle. Toutes retenues : bouton gris, comme avant.
+  // L'ancien stepper ne change pas.
+  const plateformesRetenuesAuClic = variante !== "nouvelle" ? plateformesBloqueesChamps : [...new Set([
+    ...plateformesBloqueesChamps,
+    ...((ebayRequiredStatus ?? []).some(aspectBloquant) ? ["ebay"] : []),
+    ...missingSharedFieldsDetailed.flatMap(f => f.platforms ?? []),
+  ])].filter(p => plateformesPubliables.has(p));
+  const publishChips = [...plateformesPubliables].filter(p => !plateformesRetenuesAuClic.includes(p));
 
   // (11/11/2026, décision de Nico) L'ancienne peau : le bouton des étapes 0 et
   // 1 lit la règle des deux peaux (photosManquent, plus haut — et ctaDisabled,
@@ -12170,8 +12292,10 @@ export default function ListingPreviewScreen({
     descriptionVideALaDemande ||
     titreVideALaDemande ||
     prixVideALaDemande ||
-    (ebayRequiredStatus ?? []).some(aspectBloquant) ||
-    missingSharedFields.length > 0 ||
+    // (14/11, A3) Nouveau stepper : un aspect eBay ou un champ partagé qui attend ne retient QUE ses plateformes
+    // (plateformesRetenuesAuClic) — le bouton ne grise que si plus rien ne peut partir (publishChips vide).
+    (variante !== "nouvelle" && (ebayRequiredStatus ?? []).some(aspectBloquant)) ||
+    (variante !== "nouvelle" && missingSharedFields.length > 0) ||
     prixAchatManquant ||
     vintedGenreBlocked ||
     beebsGenreBlocked ||
@@ -12190,7 +12314,10 @@ export default function ListingPreviewScreen({
     // question est posée, une fois, et la plateforme ne part sans lui que par un geste de la personne (« Continuer
     // sans X », plateformesRetirables). Avant (règle 2 du 03/09), elle était retirée au clic et les autres partaient.
     // Nouveau stepper seulement (l'ancien garde son encart et sa règle).
-    (variante === "nouvelle" && plateformesBloqueesChamps.length > 0) ||
+    // (14/11, lot « zéro friction », A3 — Nico : « le dernier écran doit toujours laisser partir ce qui est prêt ») Le
+    // bouton ne grise plus pour UNE plateforme : elle est retenue à ce clic, NOMMÉE sous le bouton et sur l'écran de suivi
+    // (jamais en silence), les autres partent. Toutes retenues → publishChips vide → bouton gris (ctaBlockingActive).
+    (variante === "nouvelle" && publishChips.length === 0 && plateformesRetenuesAuClic.length > 0) ||
     // (25/09) Un rayon À CHOISIR (refusé, aucun rayon sûr à sa place) : la
     // plateforme attend la réponse, comme pour un champ obligatoire — on la
     // choisit, ou on décoche la plateforme. (05/10) Aussi quand AUCUN mot
@@ -12660,10 +12787,21 @@ export default function ListingPreviewScreen({
     return out;
   })();
   // Ce que le clic ferait MAINTENANT : les exclusions, dites avant le geste.
+  // (14/11, A3) Nouveau stepper : la carte « Partira sur … » dit la MÊME chose que le clic — un champ partagé ou un
+  // aspect eBay qui attend retient sa plateforme (« Vinted ne partira pas : attend une réponse (Marque) »).
+  const champsRetenusPrevus = (() => {
+    const out = { ...champsBloquantsParPlateforme(genericRequiredStatus) };
+    if (variante !== "nouvelle") return out;
+    const libelles = { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"), matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") };
+    const ajouter = (p, l) => { if (!selected.has(p) || !l) return; out[p] = [...new Set([...(out[p] ?? []), l])]; };
+    for (const f of missingSharedFieldsDetailed) for (const p of f.platforms ?? []) ajouter(p, libelles[f.key] ?? f.key);
+    for (const a of (ebayRequiredStatus ?? []).filter(aspectBloquant)) ajouter("ebay", a.name);
+    return out;
+  })();
   const exclusionsPrevues = calculerExclusions({
     selected, platformSupport, platformListings,
     plateformesSansAdresse: lbcAdresseManquante?.plateformes ?? [],
-    champsManquantsParPf: champsBloquantsParPlateforme(genericRequiredStatus),
+    champsManquantsParPf: champsRetenusPrevus,
   });
   // Ce qui n'est bloqué que par UNE plateforme se contourne en la décochant.
   const plateformesRetirables = [...new Set([
@@ -12854,6 +12992,8 @@ export default function ListingPreviewScreen({
     inventoryFull, stockCount, stockLimitCfg,
     lbcPhotoCap, lbcAdresseManquante, jumeaux, descriptionMentions, descriptionVideVinted,
     exclusionsPrevues, plateformesRetirables, questionsParPlateforme,
+    // (14/11, A3) Les plateformes retenues à ce clic (un champ attend) : nommées sous le bouton, les autres partent.
+    plateformesRetenuesAuClic,
     // (05/11 soir) Les plateformes retirées par le MOTEUR, et pourquoi (EcranConfirmer le dit sur leur ligne).
     decocheesParMoteur,
     // (23/10, point 4) Faux tant que le moteur n'est pas au repos : « Confirmer » ne montre encore aucune question.

@@ -155,6 +155,123 @@ export function ageBeebsAuto({ chemin = null, textes = [], classement = "", ageC
   // 4. Jouets : défaut prouvé par le rayon (table vide au 25/10 : aucun rayon ne le prouve).
   const def = Object.entries(AGE_PAR_RAYON_JOUETS).find(([r]) => c.includes(plier(r)));
   if (def && dansListe(def[1], liste)) return { valeur: dansListe(def[1], liste), source: "age_du_rayon", motif: `défaut du rayon ${def[0]}` };
+  // 5. (14/11, lot « zéro friction », A1 — Nico) La POINTURE d'un enfant écrite par le vendeur dit son âge (« rollers du
+  //    32 au 35 », « pointure 28 ») : certaine quand toute la plage tombe dans UNE tranche Beebs (sinon : probable, plus bas).
+  const p = ageDeLaPointure(textes);
+  if (p && !p.plusieurs && dansListe(p.tranche, liste)) return { valeur: dansListe(p.tranche, liste), source: "age_de_la_pointure", motif: `pointure enfant écrite (${p.ecrite})` };
+  return null;
+}
+
+// ── c bis) L'ÂGE PAR LA POINTURE D'UN ENFANT (14/11, A1 — « Rollers et protections du 32 au 35 ») ──────────────────
+// Table des pointures EU enfant (grilles de chaussures enfant usuelles : 19 ≈ 12 mois, 24 ≈ 2-3 ans, 28 ≈ 4-5 ans,
+// 31 ≈ 6-7 ans, 33 ≈ 8 ans, 35 ≈ 10 ans, 37 ≈ 12 ans) → la tranche Beebs. Seulement un nombre COLLÉ à un mot de
+// pointure (« pointure », « taille », « du 32 au 35 », « P32 », « 32/35 » près de chaussures, rollers, patins) : un
+// nombre nu n'est jamais une pointure. Au-delà de 37 : pas un enfant, rien.
+const TRANCHE_PAR_POINTURE = [
+  [16, 19, "6-12 mois"], [20, 23, "12-24 mois"], [24, 26, "2 ans - 3 ans"], [27, 27, "3 ans - 4 ans"],
+  [28, 30, "4 ans - 6 ans"], [31, 32, "6 ans - 8 ans"], [33, 36, "8 ans - 12 ans"], [37, 37, "12 ans - 16 ans"],
+];
+const trancheDeLaPointure = (n) => (TRANCHE_PAR_POINTURE.find(([a, b]) => n >= a && n <= b) ?? [])[2] ?? null;
+const RE_POINTURE_PLAGE = /\b(?:du|de|pointures?|tailles?|p)\s?(\d{2})\s?(?:au|a|à|-|\/)\s?(\d{2})\b/g;
+const RE_POINTURE_UNE = /\b(?:pointure|p)\s?:?\s?(\d{2})\b/g;
+const RE_OBJET_A_POINTURE = /\b(chaussures?|chaussons?|baskets?|bottes?|bottines?|sandales?|rollers?|patins?|chaussettes?|ballerines?|tennis|mocassins?|derbies|espadrilles?|crampons?|protections?)\b/;
+/** La pointure enfant ÉCRITE et sa tranche Beebs (pur) : { tranche, ecrite, plusieurs } | null. */
+export function ageDeLaPointure(textes) {
+  const t = plier((Array.isArray(textes) ? textes : [textes]).join(" \n "));
+  if (!t.trim()) return null;
+  const lus = [];
+  for (const m of t.matchAll(RE_POINTURE_PLAGE)) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    // « taille 51/54 cm » (un tour de tête), « de 10 à 12 » : une plage de pointure enfant seulement (16 → 37, a ≤ b).
+    if (a < 16 || b > 37 || a > b || /^\s?cm\b/.test(t.slice(m.index + m[0].length, m.index + m[0].length + 4))) continue;
+    if (!/pointure|^p/.test(m[0]) && !RE_OBJET_A_POINTURE.test(t)) continue;
+    lus.push({ a, b, ecrite: m[0].trim() });
+  }
+  for (const m of t.matchAll(RE_POINTURE_UNE)) {
+    const n = Number(m[1]);
+    if (n < 16 || n > 37) continue;
+    if (!/pointure/.test(m[0]) && !RE_OBJET_A_POINTURE.test(t)) continue;   // « P32 » seulement près d'une chaussure
+    lus.push({ a: n, b: n, ecrite: m[0].trim() });
+  }
+  if (!lus.length) return null;
+  const tranches = new Set(lus.flatMap(({ a, b }) => [trancheDeLaPointure(a), trancheDeLaPointure(b)]).filter(Boolean));
+  if (!tranches.size) return null;
+  // Une plage à cheval sur deux tranches (32 → 35) : la tranche du MILIEU de la plage (probable, jamais certaine).
+  const milieu = Math.round((Math.min(...lus.map((x) => x.a)) + Math.max(...lus.map((x) => x.b))) / 2);
+  const tranche = tranches.size === 1 ? [...tranches][0] : trancheDeLaPointure(milieu);
+  return tranche ? { tranche, ecrite: lus.map((x) => x.ecrite).join(", "), plusieurs: tranches.size > 1 } : null;
+}
+
+// ── c ter) L'ÂGE PROBABLE (14/11, lot « zéro friction », A1 + A3 — Nico) ─────────────────────────────────────────
+// Règle de Nico (14/11) : « jamais de valeur inventée au hasard. Si la valeur est certaine → posée sans rien demander.
+// Si elle est seulement probable → pré-remplie avec la meilleure valeur et un choix en 1 tap, jamais un champ vide qui
+// bloque. » ageBeebsAuto (plus haut) rend ce qui est CERTAIN ; ceci rend le PROBABLE — appelé seulement quand rien de
+// certain n'existe, et toujours montré à la personne (« FillSell a choisi … — change-la si besoin »).
+// Mesuré sur 7 jours au 13/11 : « Âge » Beebs 324 questions / 99 abandons, dont 205 / 80 sur « Livres > Autres livres »
+// (magazines, essais, romans, santé : des lectures d'adultes) et 37 sur CD / DVD.
+//   · un LIVRE (hors rayons jeunesse), un MAGAZINE, un CD, un DVD sans AUCUN signe jeunesse → « 16 ans et + » ;
+//   · une pointure enfant à cheval sur deux tranches → la tranche du milieu ;
+//   · un jeu de société / de cartes / un puzzle qui dit s'adresser aux adultes (« adultes », « soirée », « apéro »,
+//     « culture générale », « 18+ », un puzzle de 500 pièces et plus) → « 16 ans et + » (puzzle : « 12 ans - 16 ans ») ;
+//   · rien de tout ça (une figurine, un jouet sans indice) → null : la question reste (elle ne bloque plus les autres
+//     plateformes). ⛔ Jamais par-dessus un signe jeunesse, jamais sur un rayon jeunesse (« Romans pour enfant »…).
+const RAYONS_SANS_JEUNESSE_ECRITE = /(autres livres|\bcd\b|\bdvd\b|livres scolaires|magazines?)/;
+const RE_JEU_ADULTE = /\b(pour adultes?|adultes?|soirees?|aperos?|apéro|entre amis|culture generale|18\s?\+|\+\s?18|16\s?\+|\+\s?16|trivial pursuit|quiz|blind test|poker|tarot|belote|scrabble|times up|codenames|loup[- ]garou)\b/;
+const RE_PUZZLE_PIECES = /\b(\d{3,4})\s?(?:pieces|pcs|morceaux)\b/;
+/** @returns {{valeur:string, source:string, motif:string, probable:true} | null} */
+export function ageBeebsProbable({ chemin = null, textes = [], allowedValues = [] } = {}) {
+  const liste = Array.isArray(allowedValues) ? allowedValues : [];
+  if (!liste.length) return null;
+  const c = cheminTexte(chemin);
+  if (RAYONS_JEUNESSE.test(c) || /(livres pour bebe|imagiers|livres d'activites|livres sonores)/.test(c)) return null;
+  const t = plier((Array.isArray(textes) ? textes : [textes]).join(" \n "));
+  const jeune = RE_JEUNESSE.test(t);
+  const p = ageDeLaPointure(textes);
+  if (p && dansListe(p.tranche, liste)) return { valeur: dansListe(p.tranche, liste), source: "age_probable_pointure", motif: `pointure enfant écrite (${p.ecrite})`, probable: true };
+  if (jeune) return null;
+  const seize = dansListe("16 ans et +", liste);
+  if (seize && RAYONS_SANS_JEUNESSE_ECRITE.test(c)) {
+    return { valeur: seize, source: "age_probable_sans_jeunesse", motif: "lecture, musique ou film sans aucun signe jeunesse", probable: true };
+  }
+  if (/(jeux de societe|jeux de cartes)/.test(c) && RE_JEU_ADULTE.test(t) && seize) {
+    return { valeur: seize, source: "age_probable_jeu_adulte", motif: "jeu présenté pour les adultes", probable: true };
+  }
+  if (/\bpuzzles?\b/.test(c)) {
+    const m = RE_PUZZLE_PIECES.exec(t);
+    const ado = dansListe("12 ans - 16 ans", liste);
+    if (m && Number(m[1]) >= 500 && ado) return { valeur: ado, source: "age_probable_puzzle", motif: `puzzle de ${m[1]} pièces`, probable: true };
+  }
+  return null;
+}
+
+// ── c quater) UN LIVRE ADULTE NE RESTE PAS DANS UN RAYON BEEBS POUR ENFANTS (14/11, A1 — Nico) ─────────────────────
+// Beebs a « Romans pour adultes » et « Livres de recettes » (aucun « Âge » demandé) ; l'IA rangeait des romans d'adulte
+// dans « Autres livres » (qui exige l'« Âge ») ou « Romans pour enfant ». Rangement déterministe, APRÈS l'IA :
+//   · « Autres livres » + un roman / une romance (mot du TEXTE) sans aucun signe jeunesse → « Romans pour adultes » ;
+//   · « Romans pour enfant » + un signe ADULTE explicite (« new adult », « dark romance », « pour adultes », thriller,
+//     polar, érotique…) sans aucun signe jeunesse → « Romans pour adultes » ;
+//   · « Autres livres » + recettes / cuisine / pâtisserie sans signe jeunesse → « Livres de recettes ».
+// ⛔ Le moindre signe jeunesse garde le rayon de l'IA (« roman jeunesse », « 8 ans », « J'aime lire »…).
+const BEEBS_LIVRES = ["Jeux, jouets et loisirs", "Livres"];
+const RE_ROMAN = /\b(romans?|romance|new adult|dark romance|saga|thriller|polar|roman policier|roman noir|chick lit|feel good)\b/;
+const RE_ROMAN_ADULTE_EXPLICITE = /\b(new adult|dark romance|pour adultes?|adulte|thriller|polar|roman noir|erotique|seinen|chick lit)\b/;
+const RE_RECETTES = /\b(recettes?|cuisine|patisseries?|livre de cuisine|cookbook|thermomix|cookeo|robot cuiseur)\b/;
+/** @returns {{chemin: string[], motif: string} | null} */
+export function rayonBeebsDuLivre({ chemin = null, textes = [] } = {}) {
+  const ch = Array.isArray(chemin) ? chemin.map(String) : (chemin ? String(chemin).split(/\s*>\s*/) : []);
+  if (ch.length !== 3 || plier(ch[0]) !== plier(BEEBS_LIVRES[0]) || plier(ch[1]) !== plier(BEEBS_LIVRES[1])) return null;
+  const feuille = plier(ch[2]);
+  const t = plier((Array.isArray(textes) ? textes : [textes]).join(" \n "));
+  if (!t.trim() || RE_JEUNESSE.test(t)) return null;
+  if (feuille === "autres livres" && RE_RECETTES.test(t) && !RE_ROMAN.test(t)) {
+    return { chemin: [...BEEBS_LIVRES, "Livres de recettes"], motif: "livre de recettes (aucun signe jeunesse)" };
+  }
+  if (feuille === "autres livres" && RE_ROMAN.test(t)) {
+    return { chemin: [...BEEBS_LIVRES, "Romans pour adultes"], motif: "roman sans aucun signe jeunesse" };
+  }
+  if (feuille === "romans pour enfant" && RE_ROMAN_ADULTE_EXPLICITE.test(t)) {
+    return { chemin: [...BEEBS_LIVRES, "Romans pour adultes"], motif: "roman présenté pour les adultes" };
+  }
   return null;
 }
 

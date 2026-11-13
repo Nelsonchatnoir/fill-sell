@@ -478,6 +478,7 @@
     "selftest:creneau-remplace-les-sautes": "node scripts/creneau-remplace-les-sautes-selftest.mjs",
     "selftest:rythme-par-plateforme": "node scripts/rythme-par-plateforme-selftest.mjs",
     "selftest:champs-requis-auto": "node scripts/champs-requis-auto-selftest.mjs",
+    "selftest:valeurs-probables": "node scripts/valeurs-probables-selftest.mjs",
     "selftest:marque-italique-entiere": "node scripts/marque-italique-entiere-selftest.mjs",
     "selftest:depop-rayon": "node scripts/depop-rayon-selftest.mjs",
     "selftest:depop-file-jamais-silencieuse": "node scripts/depop-file-jamais-silencieuse-selftest.mjs",

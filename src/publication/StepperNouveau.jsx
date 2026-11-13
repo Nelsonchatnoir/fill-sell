@@ -238,10 +238,30 @@ export default function StepperNouveau({ m }) {
         </Carte>
       );
     }
+    // (14/11, lot « zéro friction », A3 — Nico) Une plateforme RETENUE à ce clic (un champ de son rayon attend) alors que
+    // d'autres partent : le bouton reste actif et l'écran le dit, nommément, avant le geste — jamais en silence.
+    const retenues = (m.plateformesRetenuesAuClic ?? []).filter(p => m.selected?.has?.(p));
+    if (!disabled && retenues.length && !avant) {
+      const qui = retenues.map(p => {
+        const champs = (m.questionsParPlateforme?.[p] ?? []).filter(Boolean);
+        return champs.length ? `${NOM(p)} (${champs.join(", ")})` : NOM(p);
+      }).join(", ");
+      avant = (
+        <Carte gravite="geste">
+          <div className="fsn-card-p" data-retenues={retenues.join(",")}>
+            {en
+              ? `${qui} ${retenues.length > 1 ? "are" : "is"} waiting for an answer above. Answer it and ${retenues.length > 1 ? "they go" : "it goes"} too; otherwise “Publish” sends the others now and you can publish ${retenues.length > 1 ? "them" : "it"} later from the item.`
+              : `${qui} ${retenues.length > 1 ? "attendent" : "attend"} une réponse ci-dessus. Réponds et ${retenues.length > 1 ? "elles partent" : "elle part"} aussi ; sinon « Publier » envoie les autres maintenant, et tu ${retenues.length > 1 ? "les" : "la"} publieras plus tard depuis la fiche. Rien n'est décompté pour ${retenues.length > 1 ? "elles" : "elle"}.`}
+          </div>
+        </Carte>
+      );
+    }
     // Ce qui n'est bloqué que par UNE plateforme se contourne d'un geste :
     // « Continuer sans eBay » décoche, les autres partent.
+    // (14/11, A3) Seulement quand le bouton est gris : sinon il envoie déjà ce qui est prêt (une plateforme retenue n'est
+    // jamais décochée sans geste — elle reste cochée, prête pour le prochain « Publier »).
     const retirables = m.plateformesRetirables ?? [];
-    if (retirables.length && m.selected.size > 1) {
+    if (retirables.length && m.selected.size > 1 && disabled) {
       secondaire = retirables.map(p => (
         <button key={p} type="button" className="fsn-btn fsn-btn--ghost" onClick={() => m.setSelected(prev => { const s = new Set(prev); s.delete(p); return s; })}>
           {en ? `Continue without ${NOM(p)}` : `Continuer sans ${NOM(p)}`}

@@ -22,6 +22,7 @@ import { VINTED_COLORS } from "../utils/vintedColors";
 import { Carte, Puce } from "./composants";
 import { NOM } from "./texte";
 import { posesMemoireVisibles } from "./moteur/memoireCategorie";
+import { phraseValeurProbable } from "./moteur/valeursProbables";
 import { phraseGenreAChoisir, phraseGenreDeduit } from "./moteur/genreAChoisir";
 // (29/10, lot B 1.3) La dictée sur la description Vinted à écrire.
 import BoutonDictee from "../components/BoutonDictee";
@@ -528,21 +529,35 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
           <div key={`mem:${k}`} className="fsn-q" data-memoire={k}>
             <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{pose.label}</div><Puce ton="ok">{NOM(pose.plateforme)}</Puce></div>
             <div className="fsn-q-why">
-              {pose.modifiee
+              {/* (14/11, lot « zéro friction », A3) Une valeur PROBABLE posée par FillSell : dite, et modifiable d'un geste. */}
+              {pose.sorte === "probable"
+                ? (pose.modifiee
+                  ? (en ? "Your answer." : "Ta réponse.")
+                  : phraseValeurProbable({ valeur: pose.valeur, motif: pose.motif, certitude: pose.certitude }, en))
+                : pose.modifiee
                 ? (en ? "Your answer — it will be remembered for this category." : "Ta réponse — elle sera retenue pour ce rayon.")
                 : (en ? `Taken from your last answer for “${pose.categorie}”. Change it if this item is different.` : `Repris de ta dernière réponse pour « ${pose.categorie} ». Change-la si cet article est différent.`)}
             </div>
-            <AspectValueInput
-              value={valeur}
-              allowedValues={pose.allowedValues}
-              strict
-              closedMax={m.EBAY_CLOSED_LIST_MAX}
-              onChange={v => changerPoseMemoire(m, pose, v)}
-              T={TN}
-              tailleTexte={16}
-              idBase={`fsn-mem-${slug(k)}`}
-              lang={m.lang}
-            />
+            {(() => {
+              const champ = (
+                <AspectValueInput
+                  value={valeur}
+                  allowedValues={pose.allowedValues}
+                  strict
+                  closedMax={m.EBAY_CLOSED_LIST_MAX}
+                  onChange={v => changerPoseMemoire(m, pose, v)}
+                  T={TN}
+                  tailleTexte={16}
+                  idBase={`fsn-mem-${slug(k)}`}
+                  lang={m.lang}
+                />
+              );
+              // (14/11, A3) La valeur probable se change en UN geste : les options en puces (la posée cochée), puis
+              // « Toute la liste » ouvre le sélecteur d'avant.
+              return pose.sorte === "probable" && (pose.allowedValues?.length ?? 0) >= 2
+                ? <ChoixEnPuces valeurs={pose.allowedValues} valeur={valeur} onChoisir={v => changerPoseMemoire(m, pose, v)} en={en}>{champ}</ChoixEnPuces>
+                : champ;
+            })()}
           </div>
         ))}
 

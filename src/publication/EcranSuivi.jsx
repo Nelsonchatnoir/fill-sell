@@ -296,6 +296,11 @@ export default function EcranSuivi({ m }) {
             {(m.exclusionsDuClic ?? []).map(e => (
               <li key={`x:${e.platform}`}><b>{NOM(e.platform)}</b> — {e.motif === "champ_manquant" ? (en ? `waiting for: ${(e.champs ?? []).join(", ")}` : `attend : ${(e.champs ?? []).join(", ")}`) : (e.texte || L[e.motif] || e.motif)}</li>
             ))}
+            {/* (14/11, lot « zéro friction », A3) Les plateformes RETENUES à ce clic par une question sans réponse : nommées,
+                avec ce qu'elles attendent (avant ce lot, la carte s'ouvrait sans les lister). */}
+            {(m.publieesSansPf ?? []).filter(e => !(m.exclusionsDuClic ?? []).some(x => x.platform === e.platform)).map(e => (
+              <li key={`r:${e.platform}`} data-retenue={e.platform}><b>{NOM(e.platform)}</b> — {en ? `waiting for: ${(e.champs ?? []).join(", ")}` : `attend : ${(e.champs ?? []).join(", ")}`}</li>
+            ))}
           </ul>
           <div className="fsn-small" style={{ color: "inherit" }}>
             {en ? "Reopen “Publish” on the item once it's fixed and it goes out too. Nothing was counted for these." : "Rouvre « Publier » sur l'article une fois réglé, et elle part aussi. Rien n'a été décompté pour celles-ci."}
