@@ -88,3 +88,50 @@ ventes : lues par les relevés (même chemin) ou par l'API eBay si relié ; retr
 - À relire : le mail « 24,99 € » de 5322fa18 ne doit plus partir le 13/11 vers 18:50 (le renouvellement TestFlight, s'il
   vient, doit écrire « mails Cloud RETENUS (achat de test) » et une alerte « [TEST] ») ; le premier `cloud_essai_veille`
   réel attendu pour d607ba20 (Stripe) le 13/11 vers 16:00 (email_logs).
+
+## Étape 2 — bloc 1 : tailles, genre, état, catégories (EN SERVICE le 13/11 vers 01:00)
+Quatre chantiers menés en parallèle dans des copies séparées, fusionnés (un seul conflit, une ligne d'import), suite
+complète sur la copie fusionnée en LF : **696/696** ; build:essai OK ; deno check : 0 erreur. Rapports détaillés des
+chantiers (hors dépôt, ils citent des comptes) : scratchpad de la session, `etape2/{A,B,C,D}.md`.
+- **1d-i** (cfdfda6f, « Neuf avec étiquette » bloqué sur Leboncoin Électronique) : l'écran ne traduisait pas l'état ; trois
+  copies de la règle. UN juge (`_shared/etat-correspondance.js`, niveau commun ; Vinted par `status_id`) pour l'écran, le
+  serveur et l'extension ; « Ouvert (jamais utilisé) » = très bon état ; beauté : « Neuf » = neuf sans étiquette ; un
+  « Neuf » nu n'est plus deviné. Verrou `etat-grille-ecran` (24 rouges → 34 verts).
+- **1d-ii** : le chemin du catalogue Vinted n'était écrit sur aucune fiche (0/313) ; lu désormais depuis l'identifiant
+  (`cheminVintedFiche.js`). Cas cca934e7 : catalogue 1813 → Univers « Homme » sans question. Verrou `chemin-vinted-fiche`.
+- **1e** : la machine d'un jeu (titre, puis description) se pose sur Beebs « Console » et Vinted « plateforme » ; âge et
+  PEGI non écrits : question. Verrou `console-du-jeu` (27 rouges → 31 verts).
+- **1c** (2bde8576 « 15 et moins », af37fa49 « UK 8 child ») : get-pending-jobs retirait l'identifiant de taille de toute
+  capture (851 sur 1 143 en 2 jours), même encore valable ; grille_incoherente supprimait la liste et disait « relance /
+  écris-nous » ; la relance après mise à jour ignorait le build en échec. Désormais : identifiant gardé s'il est dans le
+  groupe du rayon (capacité `taille_groupe_rayon_v1`, extension 0.6.187), id retiré → même pointure EU par identifiant,
+  sinon UNE question avec la liste (`champ_a_choisir`, voisines en tête), relance seulement sur vieux build ; childSizes :
+  « EU 15 ». Retour sans déploiement : `coin_config.republish_taille_ids_retires_taille_par_id` = 2. Verrou
+  `vinted-grille-chaussures-enfant` (19 rouges → 68 verts). ⚠ L'audit avait tort pour labouquinerie85 : c'était l'État.
+- **1a** (c7c382b7 : Depop « EU M », « EU 140cm » ; legging publié « 9 ans » et « Naissance ») : tailles PAR SITE dans
+  `_shared/tailles.js` (une table par système, eBay délègue), une copie contraire à la fiche est remplacée par la taille de
+  la fiche ou devient une question. Rejeu (5 333 publications) : 22 copies corrigées, 14 questions ; Depop : baf800fe → M,
+  fe3af982 → 10 years. Verrou `tailles-prefixe-et-anglais-partages` (62 rouges → 86 verts). ⚠ Correction de l'audit : la
+  fiche du legging a été réécrite par le relevé Beebs de l'EXTENSION (déclencheur `inventaire_attributs_avant_update`), pas
+  par `fiche_completer_depuis_annonce` — qui, elle aussi, complète depuis nos dépôts (3 025 compléments en 30 j). Migration
+  `20261112213000_releve_jamais_depuis_notre_depot` (les deux chemins) + script de la fiche de c7c382b7 : PRÉPARÉS, banc
+  jetable 37/37, **NON appliqués : feu vert de Nico**.
+- **1b** (c7c382b7, fiches Lens en anglais) : l'icône de repli 👗 jugeait le genre (« Femme/Fille ») alors que le rayon
+  résolu était « Hommes » ; l'icône se lit désormais sur l'identifiant du rayon, la garde de genre sur le rayon qui part,
+  un rayon choisi aligne le genre. Les 11 questions de genre des 2 comptes anglais (30 j) disparaissent ; 6 fiches ne
+  sont plus rangées en « Robes » sur eBay. Verrou `icone-et-genre-fiche-anglaise` (19 rouges → 37 verts).
+- **1d-iii** (cfdfda6f) : le mot du titre cède au catalogue Vinted ET à l'IA ; 🚗 → « Véhicules › Équipement auto » ;
+  « Jeux et jouets » Vinted → « Jeux & Jouets » Leboncoin par identifiants. Rejeu 60 j (117 371 tâches) : 431 icônes
+  changent, toutes visées ; 0 autoradio juste changé. Verrou `categorie-catalogue-vinted` (13 rouges → 27 verts).
+### Livraison
+- Commits **44b3ada** (correctif), **f4410ef** (2.9.178), **f5a1920** (`EXTENSION_LAST_COMMIT` recalé : la garde de build
+  refusait le site et l'OTA tant qu'il ne l'était pas ; aucun numéro d'extension, `EXTENSION_MIN_BUILD` non touché).
+- Fonctions (archive de f4410ef) : update-job-status v195 → **v196**, handler-watch v197 → **v198** (verify_jwt false),
+  get-pending-jobs v366 → **v367** (true) ; sans session : 401. get-pending-jobs v367 : 97 appels en 200, médiane 1 185 ms.
+  Non redéployées (elles importent `tailles.js` mais servent la même valeur, ou leur copie de prod diffère de main) :
+  generate-listing (garde l'ancienne lecture des tailles pour la rédaction), ebay-api-worker, ebay-account,
+  ia-banc-deduction, remise-ordre-photos-ebay.
+- Web 2026-11-13T00:00:14Z+f5a1920 (entrée lue avec `Origin` : 200) ; **OTA 2.9.178** (module natif remis à l'état du
+  canal pour l'envoi, puis à l'état vc38 octet pour octet).
+- Extension 0.6.187 : `leboncoin.js`, `vinted.js`, `background.js`, `depop-tailles.js` — un seul zip à la fin du lot.
+- Retour : fonctions depuis une archive de f5a1920^^^ (9ad5320) ; app : nouvelle OTA d'un commit qui revient sur 44b3ada.
