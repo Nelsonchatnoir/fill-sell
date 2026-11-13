@@ -331,3 +331,57 @@ migration `20261113190000`, PRÉPARÉE (banc 32/32), à valider. J1, I1, I2 : ri
 - Lecture unique des 54 comptes au site inconnu (13/11 ~10:00, pg_net, `site_compte`, 54 réponses 200) : 49 France, 4 US,
   1 UK, 1 Italie. Parc actif : France 189, US 12, UK 6, Italie 3, Allemagne 2, Belgique 2, Autriche 1, inconnu 0.
   Aucune tâche fermée ni mise en attente (les 6 comptes étrangers découverts n'en ont aucune d'ouverte).
+
+## Deuxième réponse de Nico (13/11 midi)
+
+### 1. Paiements et abonnements : tout vrai, avant de valider
+Tableau complet (situations × web / iPhone / Android, écran, texte, ce qui est prélevé et quand, mails, écart) :
+`docs/enquetes/zero-probleme-1211/paiements-1311.md` § 1. 19 écarts texte ≠ réalité corrigés (P1-P19), dont : « 7 jours
+gratuits » montré à un identifiant Apple qui avait déjà eu la semaine du groupe (Apple prélevait tout de suite) — lu sans
+nouveau binaire dans les transactions signées du module 8.3.3 (`src/lib/eligibiliteApple.js`) : « Pas d'essai : {prix}
+prélevés aujourd'hui » avant la fenêtre d'Apple ; « Se désabonner » d'un abonné boutique sur le web coupait l'accès et
+disait « annulé » (désormais 409, rien écrit, où arrêter) ; montées : ce qui part aujourd'hui est dit ; mails des formules
+corrigés. Restent (R1-R5) : offre d'essai Android choisie par le module (jamais prouvée) ; montée classique depuis un autre
+canal = 2e abonnement ; remboursement Stripe non traité ; grâce Google rouverte par validate-google-purchase ; textes des
+conditions du Cloud / Legal / site. Essai des abonnés boutique comme sur le web : impossible sans binaire (offres
+promotionnelles Apple, offres développeur Google) — le texte dit « Pas d'essai ». Essai Android en vrai : impossible sans
+appareil (aucune image Google Play sur ce PC). Verrou `selftest:textes-paiement-verite` (55 rouges → 69 verts).
+
+### 2. Décisions appliquées
+- Migrations (une à la fois, lecture avant / après, bancs relancés) : `20261113180000` (même objet ; md5 803a5227 /
+  f2b2a913 = lus → 23f59fbe / 5e5a9084, 3 fonctions neuves) + rattrapage restreint au clavier bf85d176 (10:32 : import
+  1790174130756 fusionné dans 1794494010078017 ; 25caeedd et ebdf29f0 laissés) ; `20261113190000` (01b1d478 = lu →
+  fa15ad33) ; `20261113193000` (colonnes non_imprime_le, imprime_avant + RPC ; 504 lignes) ; `20261113184500`
+  (6e03144a = lu → 2a396215). Journal Postgres : aucune erreur des fonctions touchées.
+- Play Console : « Publier 3 modifications » cliqué et confirmé (vc38 2.9.176 + 2 descriptions de fiche) le 13/11 ~11:00.
+- Les 7 doubles en ligne (53efea05 ×2, fc37c75e ×5) : liste rendue à Nico, rien retiré.
+- 52 comptes sans choix : les plateformes utilisées comptent comme choisies (point 3).
+- Essai 0.6.187 sur le seul poste Cloud de Nico : mécanisme « extension pilote par compte » prêt dans l'orchestrateur
+  (`serveur-cloud/src/extensionPilote.js`, verrou cloud-extension-pilote 5 → 5) ; NON déployé : redéployer l'orchestrateur
+  redémarre les 6 navigateurs Cloud (clients compris) — décision de Nico.
+
+### 3. Une action réussie prouve la connexion
+`_shared/preuve-action.js` : vente lue, dépôt publié ou vendu, retrait fait, relevé fait → session vue 7 jours ; jamais
+« pas connecté » dans les 24 h qui suivent. Parc : connectés sans être vus depuis le 01/10 = 3 comptes (ed4531e2 Vinted ;
+4dcf42bd, bafbd2de Leboncoin) ; chiffres refaits (3 jours) : 92 lectures réussies toutes vues ; 22 lectures en 400 dont 3
+vues par une autre action, 8 vraiment pas connectés. Migration `20261113213000` PRÉPARÉE (le code marche avant et après).
+Verrou `action-reussie-session-vue` (32 → 48).
+
+### 4. Refus Leboncoin sans motif (f0acd3af et 10 autres)
+Aucune trace dans « Mes annonces » (30 jours, 2 372 relevés : seulement active / paused / inactive). Quatre familles : plus
+de 5 mots-clés servis (notre défaut, corrigé : `_shared/description-leboncoin.ts`, 1 403 textes sur 1 419 identiques) ;
+mêmes photos qu'une annonce en ligne du compte ; relance à l'identique ; 2 inexpliqués. Message vrai « Leboncoin a refusé
+cette annonce… » : migration `20261113203000` PRÉPARÉE. Verrous `lbc-cinq-mots-cles` (9 → 23), `lbc-refus-message` (30/30).
+
+### Étape 4 — L1 (préparé)
+Site de chaque compte de plateforme : `_shared/sites-plateformes.js`, `_shared/comptes-plateformes.js` (écrivains sans
+effet tant que M1 n'existe pas) ; M1 `20261113210000_comptes_plateformes` PRÉPARÉE (banc 40/40), feu vert de Nico attendu.
+
+### Livraison (13/11 ~12:45)
+Commits **fe8209e** (79 fichiers) + **3a32eab** (EXTENSION_LAST_COMMIT, 2.9.183), poussés. Suite 735/736 (le rouge :
+site-aiguillage, figeait l'offre FILLSELL50 finie le 01/11 — mis à jour, 40/40) ; Cloud 211/211 et 5/5. 21 fonctions
+(archive 3a32eab, verify_jwt inchangés) : get-pending-jobs v372, update-job-status v198, handler-watch v203,
+ebay-api-worker v130, ebay-account v41, ebay-oauth-callback v25, ebay-oauth-start v19, ebay-account-deletion v21,
+ebay-messagerie v19, ebay-notifications v18, ebay-releve-api v20, ebay-ventes-sync v22, releve-completer v17,
+remise-ordre-photos-ebay v8, ia-banc-deduction v21, cancel-subscription v63, create-checkout-session v81, email-tunnel v94,
+apple-iap-webhook v58, google-play-webhook v51, stripe-webhook v80. Web 3a32eab ; **OTA 2.9.183**.
