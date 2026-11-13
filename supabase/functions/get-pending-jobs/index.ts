@@ -65,6 +65,8 @@ import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
 import { CORRECTIFS_EXTENSION, correctifPourJob, champsReamorcageCorrectif, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+// (13/11, décision D10 de Nico) Un compte eBay étranger ne passe jamais par ebay.fr, même par l'extension.
+import { decisionEbayEtrangerExtension, ecritureAttenteSiteEbay } from "../_shared/ebay-site-attente.js";
 import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js";
 import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
 // (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
@@ -4276,20 +4278,46 @@ serve(async (req) => {
     // ⛔ Retraits et republications gardent leur voie : le worker ne sait pas
     //    retirer une annonce créée par le formulaire web.
     // Filtre pur, aucune écriture. Lecture impossible → comportement d'avant.
+    // ══ (13/11, décision D10 de Nico — règle du 25/09) UN COMPTE eBAY ÉTRANGER NE PASSE JAMAIS PAR ebay.fr, MÊME PAR
+    // L'EXTENSION ══ L'extension ne publie que sur ebay.fr. Une publication ou republication eBay d'un compte dont le site
+    // LU (ebay_accounts.ebay_site, GetUser, liaison même révoquée) n'est pas eBay France n'est plus servie : elle passe EN
+    // ATTENTE de son site (needs_user « ebay_site_etranger », _shared/ebay-site-attente.js) — « relie ton eBay à FillSell »
+    // quand l'eBay n'est pas relié ; une publication d'un compte relié reste à l'API (ci-dessus). Écriture conditionnée au
+    // statut lu, une fois (une tâche déjà en attente n'est pas réécrite). Un compte eBay FRANÇAIS, ou sans liaison API
+    // (site impossible à lire : la sonde de l'extension ne lit aucune identité eBay), est servi comme avant — jamais
+    // retenu sur un doute. Un RETRAIT n'est jamais retenu.
     {
-      const ebayPublications = out.filter((j) => j.platform === "ebay" && String(j.action ?? "publish") === "publish");
-      if (ebayPublications.length) {
+      const ebayTaches = out.filter((j) => j.platform === "ebay" && ["publish", "republish"].includes(String(j.action ?? "publish")));
+      if (ebayTaches.length) {
         try {
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-          const [{ data: prof }, { data: compte }] = await Promise.all([
+          const [{ data: prof }, { data: compteLu, error: eCompte }] = await Promise.all([
             admin.from("profiles").select("ebay_voie_api").eq("id", user.id).maybeSingle(),
-            admin.from("ebay_accounts").select("user_id").eq("user_id", user.id).is("revoked_at", null).maybeSingle(),
+            admin.from("ebay_accounts").select("user_id, ebay_site, ebay_user_id, revoked_at").eq("user_id", user.id).maybeSingle(),
           ]);
-          if ((prof as { ebay_voie_api?: boolean } | null)?.ebay_voie_api === true && compte) {
-            const retenus = new Set(ebayPublications.map((j) => String(j.id)));
-            out = out.filter((j) => !retenus.has(String(j.id)));
-            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} publication(s) eBay en voie extension NON servie(s) — compte relié par l'API, c'est le worker qui publie`);
+          if (eCompte) throw new Error(`ebay_accounts : ${eCompte.message}`);
+          const compte = compteLu as { user_id: string; ebay_site: string | null; ebay_user_id: string | null; revoked_at: string | null } | null;
+          const drapeauApi = (prof as { ebay_voie_api?: boolean } | null)?.ebay_voie_api === true;
+          const retenus = new Set<string>();
+          if (drapeauApi && compte && !compte.revoked_at) {
+            for (const j of ebayTaches) if (String(j.action ?? "publish") === "publish") retenus.add(String(j.id));
+            if (retenus.size) console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} publication(s) eBay en voie extension NON servie(s) — compte relié par l'API, c'est le worker qui publie`);
           }
+          let attentes = 0, etrangeres = 0;
+          for (const j of ebayTaches) {
+            const d = decisionEbayEtrangerExtension(j, { compte, drapeauApi });
+            if (d.servir) continue;
+            if (!retenus.has(String(j.id))) etrangeres++;
+            retenus.add(String(j.id));
+            if (!d.ecrire) continue;
+            const w = ecritureAttenteSiteEbay({ ...j, voie: "extension" }, { par: "get-pending-jobs (compte eBay étranger : jamais ebay.fr)", site: d.site ?? null,
+              compte: compte?.ebay_user_id ?? null, geste: d.geste, archiver: archiverErreur });
+            const { data: maj } = await admin.from("cross_post_jobs").update({ status: w.status, error: w.error, platform_fields: w.platform_fields })
+              .eq("id", String(j.id)).eq("user_id", user.id).eq("status", String(j.status)).eq("voie", "extension").select("id");
+            if (maj?.length) attentes++;
+          }
+          if (etrangeres) console.log(`[get-pending-jobs] userId=${user.id} : ${etrangeres} tâche(s) eBay d'un compte inscrit hors d'eBay France (${compte?.ebay_site ?? "?"}) NON servie(s) — jamais ebay.fr ; ${attentes} mise(s) en attente de leur site`);
+          if (retenus.size) out = out.filter((j) => !retenus.has(String(j.id)));
         } catch (e) {
           console.warn(`[get-pending-jobs] voie eBay : ${String((e as Error)?.message ?? e)} — distribution normale`);
         }

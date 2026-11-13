@@ -224,9 +224,12 @@ console.log("\n[6] Le câblage serveur");
     gpj.indexOf("const heldBack = (jobs?.length ?? 0) - out.length;") < gpj.indexOf("LEBONCOIN, RÉSERVÉ AUX ADRESSES EN FRANCE")
     && gpj.indexOf("LEBONCOIN, RÉSERVÉ AUX ADRESSES EN FRANCE") < gpj.indexOf("« REPUBLIER » VINTED : SEULEMENT À UN POSTE"));
   const worker = lire("supabase/functions/ebay-api-worker/index.ts");
-  ok("ebay-api-worker CLÔT un compte étranger (plus jamais needs_user « ebay_site_etranger »)",
-    /clotureEbayHorsFrance\(job, \{ par: "ebay-api-worker", site: s\.site, (compte: s\.pseudo, )?archiver: archiverErreur \}\)/.test(worker)
-    && !/needs_user_source: SOURCE_EBAY_SITE_ETRANGER/.test(worker) && /issue: "cancelled", motif: "site_ebay_etranger"/.test(worker));
+  // (13/11, décision de Nico — D9 « AUCUNE tâche close ») La clôture du 25/10 est remplacée par une ATTENTE de son site
+  // qui repart seule (needs_user « ebay_site_etranger », _shared/ebay-site-attente.js) — le verrou est
+  // scripts/ebay-site-attente-selftest.mjs ; ici, la prise du job met en attente, jamais close.
+  ok("ebay-api-worker met en ATTENTE un compte étranger (13/11, D9 : jamais close)",
+    /ecritureAttenteSiteEbay\(\{ \.\.\.job, status: brut\.status/.test(worker)
+    && !/clotureEbayHorsFrance\(/.test(worker) && /issue: "needs_user", motif: "site_ebay_en_attente"/.test(worker));
   const oauth = lire("supabase/functions/_shared/ebay-oauth.ts");
   ok("ebay-account expose le site du compte à l'app (etatPublic.ebay_site)", /ebay_site: compte\.ebay_site \?\? null,/.test(oauth) && /politiques: null, ebay_site: null,/.test(oauth));
 }

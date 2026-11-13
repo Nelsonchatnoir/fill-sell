@@ -150,8 +150,10 @@ t((cl.platform_fields.erreurs_archivees ?? []).some((e) => /back\/forward cache/
 t(cl.platform_fields.hors_quota === true, "hors quota");
 t(ebaySiteHorsFrance("France").horsFrance === false, "eBay France ne bouge pas");
 const worker = readFileSync("supabase/functions/ebay-api-worker/index.ts", "utf8");
-t(/if \(s\?\.site && siteEbayEtranger\(s\.site\)\) \{[\s\S]{0,300}clotureEbayHorsFrance/.test(worker), "voie extension → api : un compte étranger est clos, jamais « à finir »");
-t(/fermerAttentesEbayHorsFrance\(admin\)/.test(worker) && /\.in\("status", \["needs_user", "pending"\]\)/.test(worker), "filet : les attentes d'un compte étranger sont closes (jamais processing)");
+// (13/11, décision de Nico — D9 « AUCUNE tâche close ») Plus de clôture : la tâche d'un compte étranger passe EN ATTENTE
+// de son site (jamais « à finir », jamais close) ; verrou scripts/ebay-site-attente-selftest.mjs.
+t(/if \(s\?\.site && siteEbayEnAttente\(s\.site, \{ ouvertes \}\)\) \{[\s\S]{0,300}ecritureAttenteSiteEbay/.test(worker), "voie extension → api : un compte étranger attend son site (13/11 : jamais clos), jamais « à finir »");
+t(/mettreEnAttenteEbayHorsFrance\(admin, ouvertes\)/.test(worker) && /\.in\("status", \["needs_user", "pending"\]\)/.test(worker), "filet : les attentes d'un compte étranger passent en attente de leur site (jamais processing, jamais closes)");
 const app = readFileSync("src/App.jsx", "utf8");
 t(/addEventListener\('visibilitychange',auRetour\)/.test(app) && /select\('ebay_voie_api'\)/.test(app), "app : l'état eBay relu au retour dans l'app");
 

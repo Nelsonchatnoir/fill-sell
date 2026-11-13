@@ -322,6 +322,12 @@ const TABLE = [
     (g) => `Beebs never put this listing online: FillSell no longer counts it as online. Nothing was removed. Beebs never gave us its number, and your Beebs listings, read in full on ${g.d1} at ${heureEn(g.h1)} then on ${g.d2} at ${heureEn(g.h2)}, show none that could be it.`],
   [m`FillSell publie seulement sur eBay France : ton compte eBay${brut('(?: « (?<compte>[^»]+?) »)?')} est sur eBay ${libre('pays')}. Rien n'a été publié.`,
     (g) => `FillSell only publishes on eBay France: your eBay account${g.compte ? ` “${g.compte}”` : ''} is on eBay ${PAYS_EBAY_EN[g.pays] ?? g.pays}. Nothing was published.`],
+  // (13/11, décisions D9 et D10 de Nico) L'attente du site eBay et « relie ton eBay » (_shared/ebay-site-attente.js) :
+  // les phrases anglaises du module, mot pour mot (scripts/ebay-site-attente-selftest.mjs).
+  [m`Ton compte eBay${brut('(?: « (?<compte>[^»]+?) »)?')} est sur eBay ${libre('pays')} : FillSell n'y publie pas encore, et ne publiera jamais sur ebay.fr à sa place. Ton site eBay arrive bientôt, rien n'est perdu : ${ou('quoi', 'cette publication partira toute seule', 'cette republication repartira toute seule')} dès son ouverture.`,
+    (g) => `Your eBay account${g.compte ? ` “${g.compte}”` : ''} is on eBay ${PAYS_EBAY_EN[g.pays] ?? g.pays}: FillSell doesn't list there yet, and will never list on ebay.fr in its place. Your eBay site is coming soon, nothing is lost: ${/republication/.test(g.quoi) ? 'this repost will start again on its own' : 'this listing will go out on its own'} as soon as it opens.`],
+  [m`Ton compte eBay${brut('(?: « (?<compte>[^»]+?) »)?')} est sur eBay ${libre('pays')} : FillSell ne le publie jamais sur ebay.fr. Relie ton eBay à FillSell (Réglages › Mes plateformes › eBay) : ${ou('quoi', 'cette publication', 'cette republication')} partira sur ton site eBay dès son ouverture. Rien n'est perdu.`,
+    (g) => `Your eBay account${g.compte ? ` “${g.compte}”` : ''} is on eBay ${PAYS_EBAY_EN[g.pays] ?? g.pays}: FillSell never lists it on ebay.fr. Connect your eBay to FillSell (Settings › My platforms › eBay): ${/republication/.test(g.quoi) ? 'this repost' : 'this listing'} will go out on your eBay site as soon as it opens. Nothing is lost.`],
 
   // ── Raisons des fonctions SQL renvoyées à l'exécutant (controler_job_extension, ecrire_statut_job_extension) ──
   [m`Session de ce poste indisponible. Reconnecte FillSell.`, "This computer's session is unavailable. Reconnect FillSell."],

@@ -13,6 +13,9 @@
 // d'eBay France est CLOSE (cancelled) avec un message vrai, ne compte dans
 // aucun quota, et l'app grise eBay pour ce compte. Jamais « relance-la ».
 // Site inconnu (jamais lu) : rien n'est décidé, comme avant.
+// ⛔ (13/11, décisions D9 et D10 de Nico — « AUCUNE tâche close ») clotureEbayHorsFrance n'est PLUS appelée par le
+//    serveur : la tâche passe en ATTENTE de son site et repart seule (_shared/ebay-site-attente.js). Ce module reste
+//    pour lire les clôtures d'avant (estClotureEbayHorsFrance, réouverture), les pays et la phrase de l'app.
 // Module PUR, sans import : Deno, Vite et Node le chargent tel quel.
 
 export const SITE_EBAY_FRANCE = "France";

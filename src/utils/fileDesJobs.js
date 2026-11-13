@@ -117,7 +117,8 @@ const TEXTE = {
     remise_en_ligne_depuis: (d) => `En cours : hors ligne depuis ${d}, remise en ligne dès que possible`,
     releve: (p) => `En pause, rien n'a été retiré : FillSell attend le prochain relevé de ${p} pour savoir si l'annonce est toujours en ligne`,
     technique: (p) => `En pause avant tout retrait, ton annonce est intacte : elle repart toute seule dès que ${p} répond à nouveau`,
-    ebay_etranger: "En pause : ton compte eBay est inscrit sur un autre site qu'ebay.fr, FillSell n'y publie pas — rien n'a été envoyé",
+    // (13/11, décision D9 de Nico) L'attente du site eBay repart seule à son ouverture (_shared/ebay-site-attente.js).
+    ebay_etranger: "En pause : ton site eBay arrive bientôt, rien n'est perdu — FillSell ne publie jamais sur ebay.fr à sa place, et la tâche repartira toute seule dès son ouverture",
     lbc_moderation: "En pause — FillSell s'en occupe : Leboncoin a refusé ce texte à la modération, l'équipe adapte la copie Leboncoin (ta fiche ne change pas)",
     // (09/11, point 3 de Nico) Aucun rayon eBay sûr : à notre charge, la publication repartira seule.
     ebay_rayon: "En pause — FillSell s'en occupe : aucun rayon eBay sûr pour cet article, l'équipe complète la correspondance et la publication repartira seule (ta fiche ne change pas)",
@@ -172,7 +173,7 @@ const TEXTE = {
     remise_en_ligne_depuis: (d) => `In progress: offline since ${d}, back online as soon as possible`,
     releve: (p) => `Paused, nothing removed: FillSell waits for the next ${p} reading to know whether the listing is still online`,
     technique: (p) => `Paused before any removal, your listing is untouched: it resumes on its own as soon as ${p} answers again`,
-    ebay_etranger: "Paused: your eBay account is registered on another site than ebay.fr, FillSell does not list there — nothing was sent",
+    ebay_etranger: "Paused: your eBay site is coming soon, nothing is lost — FillSell never lists on ebay.fr in its place, and the task will start again on its own as soon as it opens",
     lbc_moderation: "Paused — FillSell is on it: Leboncoin's moderation refused this text, the team adapts the Leboncoin copy (your item doesn't change)",
     ebay_rayon: "Paused — FillSell is on it: no safe eBay category for this item yet, the team completes the mapping and the listing will go out on its own (your item doesn't change)",
     ecartee: (p) => `Paused: you said you don't sell on ${p}, nothing is sent`,

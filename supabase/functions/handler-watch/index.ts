@@ -67,6 +67,8 @@ import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOp
 import { posteVivant, messageInterruption, posteTravailleSurLeJob } from "../_shared/interruption-poste.js";
 import { alerteOrphelineDue, envoiDepuisLeRetrait, presenceDuCompte } from "../_shared/alerte-orpheline.js";
 import { rouvrirPublicationsEbayHorsFrance } from "../_shared/ebay-reouverture.ts";
+// (13/11, décision D9 de Nico) L'attente du site eBay n'est jamais soldée par le veilleur des 72 h.
+import { SOURCE_EBAY_SITE_ATTENTE } from "../_shared/ebay-site-attente.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
@@ -2257,6 +2259,10 @@ serve(async (req) => {
       // Même geste sur le COMPTE (une carte dans l'app) : ces publications
       // repartent seules quand Depop accepte le vendeur (_shared/vendeur-depop.js).
       if (attendVendeurDepop({ ...j, status: "needs_user" }) && now - Date.parse(String(j.created_at ?? "")) < FENETRE_VENDEUR_DEPOP_MS) return false;
+      // ── (13/11, décision D9 de Nico — « AUCUNE tâche close ») UNE TÂCHE eBAY QUI ATTEND SON SITE N'EST JAMAIS SOLDÉE ──
+      // Elle n'attend pas la personne : elle repart seule à l'ouverture de son site eBay (ebay-api-worker,
+      // _shared/ebay-site-attente.js). La solder la fermerait (« Relance-la depuis la fiche », une relance sans issue).
+      if (j.platform === "ebay" && j.platform_fields?.needs_user_source === SOURCE_EBAY_SITE_ATTENTE) return false;
       return true;
     });
     const lastSeen = new Map<string, number>();

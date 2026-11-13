@@ -53,8 +53,11 @@ import { dejaAbsente, RETRAIT_PAR_HORS_LIGNE, RETRAIT_PAR_VENDUE } from "../_sha
 import { tailleDansGrille } from "../_shared/tailles.js";
 import { etatCompteEbayApi, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGATOIRES, SOURCE_EBAY_COMPTE_A_FINIR, type EtapeEbayAFinir } from "../_shared/ebay-voie.ts";
 import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
-// (25/10, audit N10) Un compte eBay inscrit hors d'eBay France : la publication est close, jamais en pause.
-import { clotureEbayHorsFrance } from "../_shared/ebay-hors-france.js";
+// (13/11, décisions D9 et D10 de Nico — remplace la clôture du 25/10) Un compte eBay inscrit sur un site eBay pas encore
+// ouvert : la tâche passe EN ATTENTE de son site (message vrai), repart seule à son ouverture — jamais close.
+import {
+  decisionAttenteSiteEbay, ecritureAttenteSiteEbay, ecritureRepriseAttenteSiteEbay, siteEbayEnAttente, SOURCE_EBAY_SITE_ATTENTE,
+} from "../_shared/ebay-site-attente.js";
 import { classerErreurEbay, decisionMurCompteEbay, marqueurRefusCompte, attendMurCompteEbay, murCompteEbay, compteEbayAPublieDepuis, CLE_REFUS_COMPTE, SOURCES_MUR_COMPTE_EBAY } from "../_shared/ebay-refus-compte.js";
 import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuveRetraitRepublicationEbayMemorisee, verifierOffreRetraitEbay, verifierSourceRetraitEbay, type SourceRetraitEbay } from "../_shared/ebay-retrait-identite.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
@@ -174,7 +177,7 @@ function json(body: unknown, status = 200): Response {
 // ⛔ PENDING SEULEMENT, écriture conditionnée (status pending ET voie
 //    extension) : un job en cours chez l'extension n'est jamais touché, et
 //    get-pending-jobs v140 ne les sert plus à Chrome. Bornée, idempotente.
-async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Record<string, unknown>> {
+async function rerouterPublicationsVersApi(admin: SupabaseClient, ouvertes: string[] = []): Promise<Record<string, unknown>> {
   const { data: comptes } = await admin.from("ebay_accounts").select("user_id, ebay_site, ebay_user_id").is("revoked_at", null).limit(1000);
   const relies = ((comptes ?? []) as Array<{ user_id: string }>).map((c) => c.user_id);
   // (31/10, lot J 3 — Rosa Metra) Le site du compte relié : un compte hors d'eBay France n'est jamais « à finir ».
@@ -188,19 +191,21 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Recor
     .select("id, user_id, error, platform_fields")
     .eq("platform", "ebay").eq("action", "publish").eq("voie", "extension").eq("status", "pending")
     .in("user_id", ids).limit(50);
-  let versApi = 0, parquees = 0, closesHorsFrance = 0;
+  let versApi = 0, parquees = 0, attentesHorsFrance = 0;
   const pretParCompte = new Map<string, boolean>();
   const aFinirParCompte = new Map<string, EtapeEbayAFinir | null>();
   for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
     // (31/10, lot J 3 — Rosa Metra, compte « reginat8117 » sur eBay États-Unis) Ses 4 publications d'avant la liaison
     // (19:16-19:54) passaient ici « compte à finir » (needs_user, lien ebay.fr) — un compte étranger ne se finit pas
-    // sur ebay.fr. Site connu hors d'eBay France → la clôture de la règle (_shared/ebay-hors-france.js), sa vraie raison.
+    // sur ebay.fr. Site connu hors d'eBay France → sa vraie raison.
+    // (13/11, décision D9 de Nico) Plus jamais close : elle passe à l'API EN ATTENTE de son site (needs_user
+    // « ebay_site_etranger », _shared/ebay-site-attente.js) et repart seule à son ouverture (reprendreAttentesSiteEbay).
     const s = siteDe.get(j.user_id);
-    if (s?.site && siteEbayEtranger(s.site)) {
-      const cl = clotureEbayHorsFrance({ ...j, status: "pending" }, { par: "ebay-api-worker (voie extension → api)", site: s.site, compte: s.pseudo, archiver: archiverErreur });
-      const { data: majC } = await admin.from("cross_post_jobs").update({ voie: "api", status: cl.status, error: cl.error, platform_fields: cl.platform_fields })
+    if (s?.site && siteEbayEnAttente(s.site, { ouvertes })) {
+      const at = ecritureAttenteSiteEbay({ ...j, status: "pending", voie: "extension" }, { par: "ebay-api-worker (voie extension → api)", site: s.site, compte: s.pseudo, archiver: archiverErreur });
+      const { data: majC } = await admin.from("cross_post_jobs").update({ voie: "api", status: at.status, error: at.error, platform_fields: at.platform_fields })
         .eq("id", j.id).eq("status", "pending").eq("voie", "extension").select("id");
-      if (majC?.length) closesHorsFrance++;
+      if (majC?.length) attentesHorsFrance++;
       continue;
     }
     if (!pretParCompte.has(j.user_id)) {
@@ -222,8 +227,8 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Recor
       .eq("id", j.id).eq("status", "pending").eq("voie", "extension").select("id");
     if (maj?.length) { if (pret) versApi++; else parquees++; }
   }
-  if (versApi || parquees || closesHorsFrance) console.log(`[ebay-api-worker] voie extension → api : ${versApi} publication(s) reprise(s) par l'API, ${parquees} parquée(s) « compte à finir », ${closesHorsFrance} close(s) « eBay France seulement »`);
-  return { vues: (jobs ?? []).length, vers_api: versApi, parquees, closes_hors_france: closesHorsFrance };
+  if (versApi || parquees || attentesHorsFrance) console.log(`[ebay-api-worker] voie extension → api : ${versApi} publication(s) reprise(s) par l'API, ${parquees} parquée(s) « compte à finir », ${attentesHorsFrance} en attente de leur site eBay`);
+  return { vues: (jobs ?? []).length, vers_api: versApi, parquees, en_attente_site: attentesHorsFrance };
 }
 
 // ══ (09/11, point 2 de Nico — nicolas.menar) LE MUR DE COMPTE eBAY : LES JOBS DU COMPTE QUI LE DISENT ══════════════
@@ -339,27 +344,90 @@ async function murCompteEbayEntretien(admin: SupabaseClient): Promise<Record<str
 // eBay France : jamais « compte à finir » ni un message technique — la clôture de la règle (_shared/ebay-hors-france.js,
 // « FillSell publie seulement sur eBay France… », hors quota, brut technique archivé). Ce qui est en cours (processing)
 // n'est jamais touché, ni un retrait. Bornée (50), écriture conditionnée au statut lu. 31/10 : 4 tâches sur tout le parc.
-async function fermerAttentesEbayHorsFrance(admin: SupabaseClient): Promise<Record<string, unknown>> {
+// (13/11, décision D9 de Nico — « AUCUNE tâche close ») La clôture fermait 33 tâches sur 3 comptes en 30 jours, dont 12 de
+// c7c382b7 d'un coup le 12/11 à 18:30 (lecture de son site) ; la lecture des 54 comptes au site inconnu en aurait fermé
+// autant. Désormais : EN ATTENTE de son site (needs_user « ebay_site_etranger », message vrai, hors quota), jamais close ;
+// une tâche déjà en attente n'est pas réécrite ; une publication de l'extension d'un compte relié (drapeau API) passe à
+// l'API (elle y attend). Le site OUVERT (_shared/ebay-site-attente.js : le code sait y publier ET l'interrupteur
+// coin_config) n'est pas touché ici — la tâche part.
+async function mettreEnAttenteEbayHorsFrance(admin: SupabaseClient, ouvertes: string[] = []): Promise<Record<string, unknown>> {
   const { data: comptes } = await admin.from("ebay_accounts").select("user_id, ebay_site, ebay_user_id")
     .is("revoked_at", null).not("ebay_site", "is", null).neq("ebay_site", "France").limit(1000);
   const etrangers = ((comptes ?? []) as Array<{ user_id: string; ebay_site: string; ebay_user_id: string | null }>)
-    .filter((c) => siteEbayEtranger(c.ebay_site));
+    .filter((c) => siteEbayEnAttente(c.ebay_site, { ouvertes }));
   if (!etrangers.length) return { vues: 0 };
   const parUser = new Map(etrangers.map((c) => [c.user_id, c]));
   const { data: jobs } = await admin.from("cross_post_jobs")
-    .select("id, user_id, status, error, platform_fields")
+    .select("id, user_id, action, status, voie, error, platform_fields")
     .eq("platform", "ebay").in("action", ["publish", "republish"]).in("status", ["needs_user", "pending"])
-    .in("user_id", [...parUser.keys()]).limit(50);
-  let closes = 0;
-  for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; status: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+    .in("user_id", [...parUser.keys()])
+    .or(`platform_fields->>needs_user_source.is.null,platform_fields->>needs_user_source.neq.${SOURCE_EBAY_SITE_ATTENTE}`)
+    .limit(50);
+  const liste = (jobs ?? []) as Array<{ id: string; user_id: string; action: string; status: string; voie: string; error: string | null; platform_fields: Record<string, unknown> | null }>;
+  if (!liste.length) return { vues: 0, en_attente: 0 };
+  const versApi = liste.filter((j) => j.voie === "extension" && j.action === "publish").map((j) => j.user_id);
+  const drapeauApi = new Set<string>();
+  if (versApi.length) {
+    const { data: profs } = await admin.from("profiles").select("id, ebay_voie_api").in("id", [...new Set(versApi)]);
+    for (const p of (profs ?? []) as Array<{ id: string; ebay_voie_api?: boolean | null }>) if (p.ebay_voie_api === true) drapeauApi.add(String(p.id));
+  }
+  let enAttente = 0;
+  for (const j of liste) {
     const c = parUser.get(j.user_id);
     if (!c) continue;
-    const cl = clotureEbayHorsFrance(j, { par: "ebay-api-worker (attente d'un compte hors d'eBay France)", site: c.ebay_site, compte: c.ebay_user_id, archiver: archiverErreur });
-    const { data: maj } = await admin.from("cross_post_jobs").update({ status: cl.status, error: cl.error, platform_fields: cl.platform_fields })
+    const at = ecritureAttenteSiteEbay(j, { par: "ebay-api-worker (attente d'un compte hors d'eBay France)", site: c.ebay_site, compte: c.ebay_user_id, archiver: archiverErreur });
+    const patch: Record<string, unknown> = { status: at.status, error: at.error, platform_fields: at.platform_fields };
+    if (j.voie === "extension" && j.action === "publish" && drapeauApi.has(j.user_id)) patch.voie = "api";
+    const { data: maj } = await admin.from("cross_post_jobs").update(patch)
       .eq("id", j.id).eq("status", j.status).select("id");
-    if (maj?.length) { closes++; console.log(`[ebay-api-worker] ${String(j.id).slice(0, 8)} (${j.status}) close : compte eBay « ${c.ebay_user_id ?? "?"} » sur eBay ${c.ebay_site}`); }
+    if (maj?.length) { enAttente++; console.log(`[ebay-api-worker] ${String(j.id).slice(0, 8)} (${j.status}) en attente de son site : compte eBay sur eBay ${c.ebay_site}`); }
   }
-  return { vues: (jobs ?? []).length, closes };
+  return { vues: liste.length, en_attente: enAttente };
+}
+
+// ══ (13/11, décision D9 de Nico) LES TÂCHES EN ATTENTE DE LEUR SITE eBAY REPARTENT SEULES ══════════════════════════
+// À chaque passage, les attentes « ebay_site_etranger » (100 au plus) : reprise (pending) quand le compte relié est sur
+// eBay France ou que son site est ouvert ; message réécrit quand le geste change (eBay relié ↔ pas relié) ; rien sinon.
+// La règle est pure (_shared/ebay-site-attente.js, decisionAttenteSiteEbay) ; écriture conditionnée au statut et à la
+// source lus ; aucune ligne inchangée réécrite. Lecture des comptes ou des drapeaux illisible : rien n'est décidé.
+async function reprendreAttentesSiteEbay(admin: SupabaseClient, ouvertes: string[] = []): Promise<Record<string, unknown>> {
+  const { data: attentes, error: eA } = await admin.from("cross_post_jobs")
+    .select("id, user_id, action, status, voie, error, platform_fields")
+    .eq("platform", "ebay").eq("status", "needs_user").in("action", ["publish", "republish"])
+    .eq("platform_fields->>needs_user_source", SOURCE_EBAY_SITE_ATTENTE).limit(100);
+  if (eA) throw new Error(eA.message);
+  const liste = (attentes ?? []) as Array<{ id: string; user_id: string; action: string; status: string; voie: string; error: string | null; platform_fields: Record<string, unknown> | null }>;
+  if (!liste.length) return { vues: 0 };
+  const users = [...new Set(liste.map((j) => String(j.user_id)))];
+  const [{ data: comptes, error: eC }, { data: profs, error: eP }] = await Promise.all([
+    admin.from("ebay_accounts").select("user_id, ebay_site, ebay_user_id, revoked_at").in("user_id", users),
+    admin.from("profiles").select("id, ebay_voie_api").in("id", users),
+  ]);
+  if (eC || eP) throw new Error((eC ?? eP)!.message);
+  const compteDe = new Map(((comptes ?? []) as Array<{ user_id: string; ebay_site: string | null; ebay_user_id: string | null; revoked_at: string | null }>).map((c) => [String(c.user_id), c]));
+  const drapeauDe = new Map(((profs ?? []) as Array<{ id: string; ebay_voie_api?: boolean | null }>).map((p) => [String(p.id), p.ebay_voie_api === true]));
+  let reprises = 0, remessages = 0;
+  for (const j of liste) {
+    const compte = compteDe.get(String(j.user_id)) ?? null;
+    const d = decisionAttenteSiteEbay(j, { compte, drapeauApi: drapeauDe.get(String(j.user_id)) === true, ouvertes });
+    if (d.action === "rien") continue;
+    let patch: Record<string, unknown>;
+    if (d.action === "reprendre") {
+      patch = ecritureRepriseAttenteSiteEbay(j, { motif: d.motif, voie: d.voie ?? null, archiver: archiverErreur, par: "ebay-api-worker" });
+    } else {
+      const marque = ((j.platform_fields ?? {}) as Record<string, unknown>).ebay_site_attente as Record<string, unknown> | undefined;
+      const at = ecritureAttenteSiteEbay(j, { par: "ebay-api-worker (attente du site eBay : geste)", site: compte?.ebay_site ?? (marque?.site as string | null) ?? null,
+        compte: compte?.ebay_user_id ?? (marque?.compte as string | null) ?? null, geste: d.geste, archiver: archiverErreur });
+      patch = { status: at.status, error: at.error, platform_fields: at.platform_fields };
+    }
+    const { data: maj } = await admin.from("cross_post_jobs").update(patch)
+      .eq("id", j.id).eq("status", "needs_user").eq("platform_fields->>needs_user_source", SOURCE_EBAY_SITE_ATTENTE).select("id");
+    if (maj?.length) {
+      if (d.action === "reprendre") reprises++; else remessages++;
+      console.log(`[ebay-api-worker] ${String(j.id).slice(0, 8)} (attente du site eBay) : ${d.action} — ${d.motif}`);
+    }
+  }
+  return { vues: liste.length, reprises, remessages };
 }
 
 async function marquer(admin: SupabaseClient, job: Job, patch: Record<string, unknown>, diagnostic: Record<string, unknown>, ebayApi?: Record<string, unknown>) {
@@ -4182,13 +4250,23 @@ Deno.serve(async (req) => {
   // Avant le 27/09, le trigger laissait 'extension' à un compte relié mais pas
   // prêt (philippaa, pironneau). Elles repartent ICI par l'API — jamais servies
   // à Chrome depuis get-pending-jobs v140. Avant tout geste chez eBay.
+  // (13/11, décision D9 de Nico) Les sites eBay ouverts (interrupteurs coin_config `ebay_pays_<cc>` à 1), lus une fois par
+  // passage ; un site n'est ouvert que si le code sait aussi y publier (_shared/ebay-site-attente.js). Illisible : aucun.
+  let ouvertes: string[] = [];
+  try {
+    const { data: cles } = await admin.from("coin_config").select("key, value").like("key", "ebay_pays_%");
+    ouvertes = ((cles ?? []) as Array<{ key: string; value: number }>).filter((r) => Number(r.value) === 1).map((r) => String(r.key));
+  } catch (_e) { ouvertes = []; }
   let reroutees: Record<string, unknown> = {};
-  try { reroutees = await rerouterPublicationsVersApi(admin); }
+  try { reroutees = await rerouterPublicationsVersApi(admin, ouvertes); }
   catch (e) { reroutees = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
-  // (31/10, lot J 3) Les attentes d'un compte hors d'eBay France : closes sous leur vraie raison, avant la sortie anticipée.
+  // (31/10, lot J 3) Les attentes d'un compte hors d'eBay France, sous leur vraie raison, avant la sortie anticipée.
+  // (13/11, D9) EN ATTENTE de leur site, plus jamais closes ; et les attentes dont le site s'ouvre repartent seules.
   let horsFrance: Record<string, unknown> = {};
-  try { horsFrance = await fermerAttentesEbayHorsFrance(admin); }
+  try { horsFrance = await mettreEnAttenteEbayHorsFrance(admin, ouvertes); }
   catch (e) { horsFrance = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  try { horsFrance = { ...horsFrance, reprise: await reprendreAttentesSiteEbay(admin, ouvertes) }; }
+  catch (e) { horsFrance = { ...horsFrance, reprise: { erreur: String((e as Error)?.message ?? e).slice(0, 200) } }; }
   // (09/11, point 2) Mur de compte eBay : refus d'avant la règle reclassés, retenues relâchées sur preuve. Jamais bloquant.
   let murCompte: Record<string, unknown> = {};
   try { murCompte = await murCompteEbayEntretien(admin); }
@@ -4272,13 +4350,19 @@ Deno.serve(async (req) => {
       // « Relance-la depuis la fiche », une relance qui ne pouvait pas aboutir). La publication est close (cancelled)
       // avec un message vrai, erreur archivée, hors quota (_shared/ebay-hors-france.js) ; l'app grise eBay pour ce
       // compte. Rien n'est envoyé à eBay.
+      // (13/11, décision D9 de Nico — remplace la clôture) « AUCUNE tâche close » : EN ATTENTE de son site (needs_user
+      // « ebay_site_etranger », « ton site eBay arrive bientôt, rien n'est perdu »), hors quota ; elle repart seule à
+      // l'ouverture du site (reprendreAttentesSiteEbay) ; relancée avant, elle revient ici en attente — jamais close.
+      // Rien n'est envoyé à eBay. Un site « ouvert » exige que ce code sache y publier (SITES_EBAY_PUBLIABLES) :
+      // aujourd'hui eBay France seul, donc tout autre site connu attend.
       if (job.action === "publish" || job.action === "republish") {
         const s = await siteDuCompteEbay(admin, env, job.user_id);
-        if (s.site && siteEbayEtranger(s.site)) {
-          const cl = clotureEbayHorsFrance(job, { par: "ebay-api-worker", site: s.site, compte: s.pseudo, archiver: archiverErreur });
-          job.platform_fields = cl.platform_fields;
-          await marquer(admin, job, { status: cl.status, error: cl.error }, { etape: "compte", quoi: "site_ebay_etranger", site: s.site });
-          resultats.push({ job: job.id, issue: "cancelled", motif: "site_ebay_etranger" });
+        if (s.site && siteEbayEnAttente(s.site, { ouvertes })) {
+          const at = ecritureAttenteSiteEbay({ ...job, status: brut.status, error: (brut as { error?: string | null }).error ?? null },
+            { par: "ebay-api-worker", site: s.site, compte: s.pseudo, archiver: archiverErreur });
+          job.platform_fields = at.platform_fields;
+          await marquer(admin, job, { status: at.status, error: at.error }, { etape: "compte", quoi: "site_ebay_en_attente", site: s.site });
+          resultats.push({ job: job.id, issue: "needs_user", motif: "site_ebay_en_attente" });
           continue;
         }
       }
