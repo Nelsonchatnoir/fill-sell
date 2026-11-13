@@ -18,6 +18,7 @@
 // republication vivante sur cette plateforme, aucune aboutie depuis 24 h.
 import { computeRemovalInfo, vintedMasqueeMalgreJobs, estGeleLivres, estArretUtilisateur } from './publicationState';
 import { plateformesEnVerification } from "./enVerification.js";
+import { republicationRefuseeParLesReleves } from "./absenteDesReleves.js";
 import { attenteAutomatique } from '../../supabase/functions/_shared/etat-job.js';
 import { republierArticleVinted } from './vintedSync';
 import { PLATEFORMES_STOCK, plateformesDuCompte } from './stockFiltres';
@@ -95,6 +96,9 @@ export function repubEtatPlateforme(item, jobsAll, platform) {
   const last = dernierRepublish(jobs, platform);
   if (estGeleLivres(last)) return 'gelee';
   if (last && (last.status === 'pending' || last.status === 'processing' || last.status === 'needs_user')) return 'vivant';
+  // (13/11, bloc C1) L'annonce que le serveur republierait est absente de deux relevés complets, jamais revue depuis :
+  // il refuserait (republication_annonce_partie, annonce_partie). Le bouton, la feuille et le lot ne la proposent plus.
+  if (platform !== 'vinted' && republicationRefuseeParLesReleves(jobs, platform)) return 'ineligible';
   if (last && last.status === 'published') {
     const repere = Date.parse(last.platform_fields?.recreated_at ?? last.published_at ?? '');
     if (Number.isFinite(repere) && Date.now() - repere < 24 * 3600 * 1000) return 'cadence';

@@ -637,7 +637,9 @@ const VentesTab = memo(function VentesTab({
   const majDraft=(id,champ,val)=>setImpDrafts(p=>({...p,[id]:{...(p[id]??{}),[champ]:val}}));
 
   // (25/10 nuit, audit N7) Les articles qui ont DÉJÀ une ligne de vente (Set d'inventaire_id) — null si illisible.
-  async function ventesExistantes(ids){
+  // (14/11, bloc C4) … ou dont le NUMÉRO Vinted porte déjà une vente Vinted (la vente relevée par la veille avant que le
+  // relevé crée la fiche : inventaire_id NULL, annonce_id = numéro). `numeros` : inventaire_id → vinted_item_id.
+  async function ventesExistantes(ids,numeros={}){
     if(!ids.length) return new Set();
     const vus=new Set();
     try{
@@ -646,10 +648,21 @@ const VentesTab = memo(function VentesTab({
         const lignes=await lireToutesPages(()=>supabase.from('ventes').select('id,inventaire_id')
           .eq('user_id',user?.id).in('inventaire_id',lot));
         for(const r of lignes) vus.add(String(r.inventaire_id));
+        const parNumero=new Map(lot.map(id=>[String(numeros?.[id]??'').trim(),String(id)]).filter(([n])=>n));
+        if(parNumero.size){
+          const parAnnonce=await lireToutesPages(()=>supabase.from('ventes').select('id,annonce_id,plateforme')
+            .eq('user_id',user?.id).in('annonce_id',[...parNumero.keys()]));
+          for(const r of parAnnonce){
+            if(!/vinted/i.test(String(r.plateforme??''))) continue;
+            const id=parNumero.get(String(r.annonce_id??'').trim());
+            if(id) vus.add(id);
+          }
+        }
       }
     }catch{ return null; }
     return vus;
   }
+  const numerosVinted=(articles)=>Object.fromEntries((articles??[]).filter(a=>a&&a.vinted_item_id).map(a=>[a.id,a.vinted_item_id]));
 
   // Écrit LA ligne ventes (le geste humain) + reporte le prix d'achat (ou la
   // décision « je ne sais plus ») sur l'article d'inventaire, comme partout.
@@ -669,7 +682,7 @@ const VentesTab = memo(function VentesTab({
       date:dateVente,plateforme:'vinted',marque:item.marque||null,type:item.type||null,
       description:item.description||null,quantite:item.quantite||1,inventaire_id:item.id,statut:'vendu'};
     // Un article à un seul exemplaire qui a déjà sa vente n'en reçoit jamais une deuxième (reprise, double appui).
-    const deja=(item.quantite||1)<=1?await ventesExistantes([item.id]):new Set();
+    const deja=(item.quantite||1)<=1?await ventesExistantes([item.id],numerosVinted([item])):new Set();
     if(deja===null){setImpErr({id:item.id,message:fr?"Relecture des ventes impossible — réessaie":"Could not re-read sales — try again"});return false;}
     if(!deja.has(String(item.id))){
       const {error}=await supabase.from('ventes').insert([ligne]);
@@ -800,7 +813,8 @@ const VentesTab = memo(function VentesTab({
       // (25/10 nuit, audit N7) Une reprise après un envoi au sort inconnu (délai, réseau) RÉÉCRIVAIT les ventes déjà
       // passées : af37fa49, 64 ventes en double le 28/09 sur 24 articles uniques. Avant d'écrire, on relit : un
       // article à un seul exemplaire qui a déjà sa vente n'en reçoit pas une deuxième (il est marqué fait).
-      const dejaVendus=await ventesExistantes(paquetBrut.filter(p=>(p.item.quantite||1)<=1).map(p=>p.item.id));
+      const unSeul=paquetBrut.filter(p=>(p.item.quantite||1)<=1).map(p=>p.item);
+      const dejaVendus=await ventesExistantes(unSeul.map(it=>it.id),numerosVinted(unSeul));
       if(dejaVendus===null){arret=fr?"relecture des ventes impossible":"could not re-read sales";break;}
       const paquet=paquetBrut.filter(p=>!dejaVendus.has(String(p.item.id)));
       const sautes=paquetBrut.filter(p=>dejaVendus.has(String(p.item.id)));

@@ -625,3 +625,40 @@ question 892d1bf0 et laisse la fiche du dressing au stock ; le lot de 15:53 la p
 - Migration `20261113180000` PRÉPARÉE (corps de prod du 13/11 + blocs ⟦13/11 N6a⟧, garde md5, inverse à l'octet, banc
   jetable) ; rattrapage des questions déjà posées : `scripts/reparations/20261113_meme_objet_import_groupe*.sql` (3 au 13/11).
   Verrou `selftest:meme-objet-import`.
+
+## ⛔ 14/11/2026 (bloc C2, demande de Nico) — la veille lit aussi la PREMIÈRE page des annonces récentes et importe tout numéro inconnu
+« Pendant chaque passage, lire aussi la première page des annonces les plus récentes et importer tout numéro inconnu. Une
+seule page par passage, rattachement par empreinte des photos, même mécanisme Cloud et extension, aucun quota, aucun
+doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'importe rien ») ; le reste de la veille est inchangé.
+- Mesuré le 13/11 (lecture seule) : vus par un relevé des 7 derniers jours, en ligne, sans fiche, sans tâche, jamais
+  écartés — Vinted 2 575 numéros (49 comptes ; 78 chez 12 comptes payants, les seuls que la veille sert), Leboncoin 1 196
+  annonces en ligne sans fiche (37 comptes ; 834 jamais décidées ; 81 chez des comptes payants).
+- **Une page** à chaque passage de la veille des commandes (10 min ± 90 s, Vinted et Leboncoin, comptes payants) : Vinted,
+  page 1 du dressing `newest_first` (SYNC_DRESSING_PAGE, la lecture du relevé ; identité relue au plus toutes les 30 min) ;
+  Leboncoin, `releverLeboncoinParApi({ pagesMax: 1 })`. Une page déjà vue par le poste = 0 appel à la base.
+- **Un numéro connu n'est jamais réimporté** : la base seule tranche (`veille_recentes_ouvrir` → `veille_recentes_trier`) —
+  fiche (Vinted), tâche (dépôt, copie rendue, `lbc_depot`, tâche de suivi d'un import dont la fiche a été supprimée :
+  `ON DELETE SET NULL`), écart (`sync_import_ecartes`), ou décision sur l'annonce (Leboncoin : rattachée, ignorée, fiche
+  supprimée, retirée, disparue, question, ligne de `rapprochements`). Une orpheline jamais décidée est inconnue.
+- **Le chemin d'import d'un relevé**, sous un relevé d'UNE page (`vinted_sync_runs.kind = 'recentes'`, déclencheur
+  `veille:recentes`, ouvert par la porte, clos par `veille_recentes_clore` en `incomplete` « [incomplet] [veille_recentes] »,
+  jamais `done`) : Vinted, `enregistrerArticlesDressing` (importer) ; Leboncoin, l'écriture du relevé + photos de liste. Sa
+  fin réveille le moteur (`trg_rapprochement_fin_recentes` → `rapprochement_fin_run`) : rattachement par les photos, la
+  question hors du stock, sinon création — `rapprochement_v3_fiche_de` n'ouvre QUE l'annonce d'un relevé `recentes` CLOS.
+  Jamais `rapprocher_releve` (il jugerait des absences sur une page). Le genre `recentes` n'entre dans aucune lecture des
+  relevés complets (cadence, preuve d'absence, relevés morts, écrans).
+- Gardes de la porte : interrupteur `coin_config.veille_recentes_ouverte` (posé à 0), palier payant, plateforme écartée,
+  pause des relevés, pause anti-robot Vinted, boutique Vinted CONFIRMÉE, compte Leboncoin lu = celui du dernier relevé complet (règle du 08/11), aucun relevé de la plateforme en cours, aucune
+  republication engagée, aucune tâche « processing ». Anti-robot (403/429) : la veille de la plateforme coupée 24 h.
+- Aucun quota. Mesures dans la ligne quotidienne `usage_logs.veille_commandes` (`recentes_*`).
+- Migration `20261114013000` PRÉPARÉE (corps de prod du 13/11, garde md5, inverse à l'octet) ; verrou
+  `selftest:veille-annonces-recentes` (vm du vrai background.js + banc Postgres jetable).
+
+## ⛔ 14/11/2026 (bloc C3) — un client Cloud a bien ses relevés Vinted automatiques : la même règle que l'ordinateur
+- Cas f0acd3af (essai Cloud) : 23 relevés Vinted en 7 jours, tous sur « Synchroniser », aucun automatique depuis le 03/11.
+  L'alarme quotidienne du navigateur Cloud tombe chaque jour (15:51, la minute des 4 autres comptes Cloud, qui ont les leurs)
+  et est refusée par la cadence : la copie Cloud servie (0.6.186, `ba77b92-cloud`) compte TOUS les relevés réussis dans ses
+  20 h, et ce compte synchronise chaque matin. Même cause sur ordinateur (7 jours : 28 comptes sans relevé automatique, refusés).
+- Rien de propre au Cloud : la règle corrigée est la 0.6.187 (`decisionCadenceCron`, seuls les relevés automatiques comptent ;
+  miroir SQL `20261113170500` APPLIQUÉ). Il faut la SERVIR à la copie Cloud commune. Verrou `selftest:cloud-cadence-cron-servie`
+  (`SELFTEST_BACKGROUND=<copie servie>` : rouge sur la copie de cloud-2 du 13/11, vert sur le dépôt).

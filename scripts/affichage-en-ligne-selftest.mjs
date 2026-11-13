@@ -40,7 +40,8 @@ ok(repubEtatPlateforme(item, [pub("opla")], "opla") === "ineligible", "jamais de
 
 console.log("\nc) Compteurs");
 const st = lire("src/tabs/StockTab.jsx");
-ok(st.includes("const enVerification=plateformesEnVerification(publishedActive,latestPubByPlatform);") &&/const pasAchetable=p=>enVerification\.includes\(p\)\|\|p==="opla";/.test(st)
+// (13/11, bloc C1) La ligne s'étend aux annonces absentes de deux relevés complets (verrou : selftest:absente-releves-complets).
+ok(st.includes("const enVerification=plateformesEnVerification(publishedActive,latestPubByPlatform);") &&/const pasAchetable=p=>enVerification\.includes\(p\)\|\|p==="opla"(\|\|!!absentesReleves\[p\])?;/.test(st)
   && /const enLigne=logosEnLigne\.some\(p=>!\(p==="vinted"&&vintedMasquee\)&&!pasAchetable\(p\)\);/.test(st)
   && /filter\(p=>plateformesCompte\.includes\(p\)&&!pasAchetable\(p\)\)\.length;/.test(st),
   "carte du Stock : la pastille verte et le compteur « En ligne (n/N) » sans les dépôts en vérification ni Opla");

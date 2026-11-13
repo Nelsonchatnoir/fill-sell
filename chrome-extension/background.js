@@ -20726,7 +20726,15 @@ async function renouvelerJetonLeboncoinPage() {
   }
 }
 
+// (14/11, C2) `releverLeboncoinParApi({ pagesMax: 1 })` : la veille des annonces récentes lit la PREMIÈRE page seulement ;
+// sans argument, le relevé lit tout comme avant (LBC_API_PAGES_MAX), à la requête près. La borne est une constante
+// LOCALE du même nom (pagesReleveLeboncoin) : la lecture dans la page et son appel restent identiques à l'octet.
+function pagesReleveLeboncoin(demande) {
+  const n = Math.floor(Number(demande));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, LBC_API_PAGES_MAX) : LBC_API_PAGES_MAX;
+}
 async function releverLeboncoinParApi() {
+  const LBC_API_PAGES_MAX = pagesReleveLeboncoin(arguments[0]?.pagesMax);
   return executerDansOngletPlateforme("leboncoin", async (perPage, pagesMax) => {
     const tok = localStorage.getItem("luat");
     const ck = Object.fromEntries(document.cookie.split(";").map((c) => {
@@ -24163,7 +24171,11 @@ async function droitsVeilleCommandes(etat, token, userId) {
       palier = typeof p === "string" ? p : null;
     }
   } catch { ouverte = false; } // fail-closed
-  etat.droits = { user: userId, le: Date.now(), ouverte, palier, payant: PALIERS_PAYANTS.has(palier) };
+  // (14/11, C2) La veille des annonces récentes : son interrupteur, lu avec les droits de la veille (30 min), seulement
+  // quand la veille est ouverte à un compte payant. RPC absente (migration 20261114013000 pas appliquée), illisible ou
+  // fermée = rien ne part (fail-closed) — la veille des commandes, elle, continue à l'identique.
+  const recentes = ouverte && PALIERS_PAYANTS.has(palier) ? await lireDroitsVeilleRecentes(token) : false;
+  etat.droits = { user: userId, le: Date.now(), ouverte, palier, payant: PALIERS_PAYANTS.has(palier), recentes };
   return etat.droits;
 }
 
@@ -24740,6 +24752,10 @@ async function veillerCommandes(session) {
         e.dernierMotif = lecture?.motif ?? null;
       }
       compterMesureVeille(etat, platform, "ms", Date.now() - debut);
+      // (14/11, C2) La liste des commandes illisible (compte Leboncoin pro, onglet…) n'empêche pas la page des annonces
+      // récentes ; une coupure anti-robot, si (veillerAnnoncesRecentes la lit dans e.coupee).
+      await veillerAnnoncesRecentes(platform, { token, userId, etat, droits })
+        .catch((err) => console.warn(`[veille-recentes][${platform}] passage sauté :`, String(err?.message ?? err)));
       continue;
     }
     e.coupee = null;
@@ -24776,6 +24792,9 @@ async function veillerCommandes(session) {
       }
     }
     compterMesureVeille(etat, platform, "ms", Date.now() - debut);
+    // (14/11, C2 — demande de Nico) Puis, dans le même passage : la première page des annonces les plus récentes.
+    await veillerAnnoncesRecentes(platform, { token, userId, etat, droits })
+      .catch((err) => console.warn(`[veille-recentes][${platform}] passage sauté :`, String(err?.message ?? err)));
   }
   await envoyerMesuresVeille(etat, token, userId);
   await ecrireEtatVeilleCommandes(etat);
@@ -24826,6 +24845,264 @@ async function jobsARelirePourCommandes(platform, commandes, token, etat) {
     }
   }
   return ids;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VEILLE DES ANNONCES RÉCENTES (14/11, bloc C2 — demande de Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// « Veille des ventes : pendant chaque passage, lire aussi la première page des annonces les plus récentes et importer
+// tout numéro inconnu. Une seule page par passage, rattachement par empreinte des photos, même mécanisme Cloud et
+// extension, aucun quota, aucun doublon créé. »
+// Constat du 13/11 (lecture seule) : la veille n'importait rien (règle du 05/10) ; vus par un relevé, en ligne, sans
+// fiche, sans tâche, jamais écartés : Vinted 2 575 numéros (49 comptes), Leboncoin 1 196 annonces (37 comptes) — ils
+// attendaient tous un « Synchroniser ».
+// LA RÈGLE (migration 20261114013000 ; la copie Cloud est construite depuis ce fichier : même code, même règle) :
+//   · UNE page par passage de la veille et par plateforme (10 min ± 90 s), depuis l'onglet de la plateforme :
+//       Vinted    : page 1 du dressing « les plus récentes d'abord » (SYNC_DRESSING_PAGE, la lecture même du relevé) ;
+//                   l'identité Vinted (VINTED_CURRENT_USER) relue au plus toutes les 30 min ;
+//       Leboncoin : page 1 de « Mes annonces » (releverLeboncoinParApi({ pagesMax: 1 }), triée par date) ;
+//   · seuls les numéros JAMAIS vus par ce poste partent à la base (veille_recentes_ouvrir) : une page déjà vue = 0
+//     lecture et 0 écriture de la base ; la base SEULE dit lesquels sont inconnus (une fiche, une tâche, un écart ou
+//     une décision les fait connaître) — un numéro connu n'est jamais réimporté ;
+//   · les inconnus suivent le chemin d'import d'un relevé, sous un relevé d'UNE page (genre « recentes ») :
+//       Vinted    : enregistrerArticlesDressing (importer) — la fiche du dressing, jugée ensuite par le moteur contre le
+//                   stock (même photo → rattachée ; doute → la question, hors du stock) ;
+//       Leboncoin : l'écriture du relevé (annonces_plateforme, run_id de ce relevé) et ses photos de liste — le moteur
+//                   rattache par les photos, pose la question ou crée (rapprocher_importer, seule porte d'une fiche) ;
+//     puis veille_recentes_clore : « incomplete » (une page : AUCUN verdict, jamais un relevé complet) — sa fin
+//     réveille le moteur. Jamais rapprocher_releve (il jugerait des absences sur une seule page) ;
+//   · aucun quota : ni pièce, ni compteur, ni publication ;
+//   · 403, 429, page anti-robot → la veille de CETTE plateforme est coupée 24 h sur ce poste (la règle de la veille) ;
+//   · rien pendant un relevé de la plateforme, une pause ou une délégation Leboncoin, une session Leboncoin partagée par
+//     plusieurs comptes (son budget de lectures est déjà compté), ni sans l'interrupteur (veille_recentes_droits).
+// Mesures : la ligne quotidienne de la veille (usage_logs « veille_commandes ») porte recentes_passages, _requetes,
+// _nouveaux, _inconnues, _importees, _refus, _ms par plateforme.
+const VEILLE_RECENTES_PLATEFORMES = ["vinted", "leboncoin"];
+const VEILLE_RECENTES_VUS_MAX = 600;                       // numéros gardés par plateforme et par poste (6 pages)
+const VEILLE_RECENTES_IDENTITE_MS = 30 * 60 * 1000;        // identité Vinted relue au plus toutes les 30 min
+const VEILLE_RECENTES_ECHECS_MAX = 3;                      // un import raté 3 fois n'est plus retenté par ce poste
+const VEILLE_RECENTES_PORTE_ABSENTE_MS = 6 * 3600 * 1000;  // porte absente (migration pas appliquée) : retentée 6 h après
+
+/** L'interrupteur de la veille des annonces récentes (RPC veille_recentes_droits) ; absente ou illisible = fermée. */
+async function lireDroitsVeilleRecentes(token) {
+  try {
+    const r = await restRequest("rpc/veille_recentes_droits", token, { method: "POST", body: "{}" });
+    return Boolean(r && typeof r === "object" && !Array.isArray(r) && r.ouverte === true);
+  } catch { return false; }
+}
+
+/** Pure. Les entrées importables d'une page lue, { id, a }, dans l'ordre de la page, sans doublon : Vinted, une annonce
+ *  en ligne (« active » — jamais un brouillon, une vendue, une fermée) ; Leboncoin, « en_ligne ». */
+function entreesPageRecentes(platform, lu) {
+  const liste = platform === "vinted" ? lu?.articles : lu?.annonces;
+  const out = [];
+  const vus = new Set();
+  for (const a of Array.isArray(liste) ? liste : []) {
+    const id = String((platform === "vinted" ? a?.vinted_item_id : a?.listing_id) ?? "").trim();
+    if (!/^\d{4,20}$/.test(id) || vus.has(id)) continue;
+    if (platform === "vinted" ? a?.statut !== "active" : a?.statut !== "en_ligne") continue;
+    vus.add(id);
+    out.push({ id, a });
+  }
+  return out;
+}
+
+/** Pure. Les numéros jamais vus par ce poste (au premier passage : tous ceux de la page). */
+function nouveauxNumerosRecentes(ids, r) {
+  const vus = new Set(Array.isArray(r?.vus) ? r.vus.map(String) : []);
+  return [...new Set((ids ?? []).map(String))].filter((id) => !vus.has(id));
+}
+
+/** Pure. Mémorise des numéros vus (les plus récents en dernier, bornés). */
+function memoriserNumerosRecentes(r, ids) {
+  const neufs = (ids ?? []).map(String);
+  const garde = (Array.isArray(r.vus) ? r.vus.map(String) : []).filter((x) => !neufs.includes(x));
+  r.vus = [...garde, ...neufs].slice(-VEILLE_RECENTES_VUS_MAX);
+}
+
+/** UNE page, la première, des annonces les plus récentes ; ne lève jamais. `r` garde l'identité Vinted (30 min). */
+async function lirePremierePageRecentes(platform, r) {
+  if (platform === "vinted") {
+    const tabId = await workTabForFetch("vinted").catch(() => null);
+    if (tabId == null) return { ok: false, motif: "onglet_indisponible", requetes: 0 };
+    let requetes = 0;
+    let moi = r.moi?.id && Date.now() - Number(r.moi.le) < VEILLE_RECENTES_IDENTITE_MS ? r.moi : null;
+    if (!moi) {
+      requetes++;
+      const ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }, 30_000).catch(() => null);
+      if (!ident?.success || !ident?.userId) {
+        const antiRobot = ident?.botShield === true || [403, 429].includes(Number(ident?.httpStatus));
+        return { ok: false, motif: antiRobot ? "anti_robot" : ident?.sessionExpiree ? "session" : "identite_illisible", antiRobot, requetes };
+      }
+      moi = r.moi = { id: String(ident.userId), login: ident.login ?? null, le: Date.now() };
+    }
+    requetes++;
+    const p = await sendMessageToTab(tabId, { type: "SYNC_DRESSING_PAGE", page: 1, userId: moi.id, order: "newest_first" }, 30_000)
+      .catch(() => null);
+    if (!p?.success) {
+      if (p?.sessionExpiree) r.moi = null;
+      const antiRobot = p?.botShield === true || p?.accesRefuse === true || Number(p?.httpStatus) === 429;
+      return { ok: false, motif: antiRobot ? "anti_robot" : p?.sessionExpiree ? "session" : "page_illisible", antiRobot, requetes };
+    }
+    return { ok: true, articles: Array.isArray(p.articles) ? p.articles : [], compte: moi.id, requetes };
+  }
+  await assurerJetonLeboncoin().catch(() => null);
+  const lu = await releverLeboncoinParApi({ pagesMax: 1 }).catch((e) => ({ ok: false, motif: String(e?.message ?? e) }));
+  // Les requêtes faites à Leboncoin : la page lue, ou celle qui a échoué (aucune sans jeton).
+  const requetes = Number(lu?.pages) || (/^(http_|reseau|forme_inattendue)/.test(String(lu?.motif ?? "")) ? 1 : 0);
+  if (!lu?.ok) {
+    const motif = String(lu?.motif ?? "liste_illisible").slice(0, 60);
+    return { ok: false, motif, antiRobot: /^http_(403|429)$/.test(motif), requetes };
+  }
+  return { ok: true, annonces: Array.isArray(lu.annonces) ? lu.annonces : [], compte: compteLeboncoinValide(lu.compte), requetes };
+}
+
+/** La porte (veille_recentes_ouvrir) : les inconnus parmi ces numéros, et le relevé d'une page qui les importera. */
+async function ouvrirVeilleRecentes(token, platform, ids, compte) {
+  try {
+    const r = await restRequest("rpc/veille_recentes_ouvrir", token, {
+      method: "POST",
+      body: JSON.stringify({ p_platform: platform, p_ids: ids.slice(0, 120), p_compte: compte ?? null, p_build: FILLSELL_BUILD_ID }),
+    });
+    return r && typeof r === "object" && !Array.isArray(r) ? r : { ok: false, motif: "reponse_illisible" };
+  } catch (e) {
+    const absente = /HTTP 404\b/.test(String(e?.message ?? e));
+    return { ok: false, motif: absente ? "porte_absente" : "porte_injoignable", absente };
+  }
+}
+
+/** La clôture (veille_recentes_clore) : « incomplete » ou « failed », jamais « done ». Une clôture perdue est close par
+ *  la porte au passage suivant (10 min) ou par le chien de garde. */
+async function cloreVeilleRecentes(token, runId, bilan) {
+  const corps = JSON.stringify({ p_run: runId, p_bilan: {
+    ok: bilan?.ok === true, crees: Math.max(0, Number(bilan?.crees) || 0), ecrites: Math.max(0, Number(bilan?.ecrites) || 0),
+    note: String(bilan?.note ?? "").slice(0, 400) } });
+  const envoyer = () => restRequest("rpc/veille_recentes_clore", token, { method: "POST", body: corps });
+  try { return await envoyer(); } catch {
+    await sleep(2000);
+    return envoyer().catch(() => null);
+  }
+}
+
+/** Vinted : les inconnus par le chemin d'import du dressing (fiche « vinted_sync », relevé du jour, tâche de suivi). La
+ *  porte a refusé tout passage pendant une republication engagée : aucune réserve à faire ici. */
+async function importerRecentesVinted(articles, { token, userId, compte }) {
+  if (!articles.length) return { ok: true, crees: 0, ecrites: 0, note: "rien à importer" };
+  const b = await enregistrerArticlesDressing(articles, { token, userId, reservesRepublish: [], compteObserve: compte, importer: true });
+  const echecs = Array.isArray(b?.echecs) ? b.echecs.length : 0;
+  const crees = Number(b?.crees) || 0;
+  const majs = Number(b?.majs) || 0;
+  return {
+    ok: echecs < articles.length, crees, ecrites: crees + majs,
+    note: `Vinted : ${articles.length} numéro(s) inconnu(s), ${crees} fiche(s) écrite(s)` +
+      `${majs ? `, ${majs} rattachée(s) par le numéro d'un dépôt` : ""}${echecs ? `, ${echecs} refusée(s) par la base` : ""}` +
+      " — jugées par le moteur contre le stock (photos)",
+  };
+}
+
+/** Leboncoin : les inconnus par l'écriture du relevé (mêmes colonnes, sondées de même), sous le relevé d'une page, puis
+ *  les photos de la liste (aucune page ouverte). Le moteur décide ensuite (photos, question ou création). */
+async function importerRecentesLeboncoin(annonces, { token, userId, runId, compte }) {
+  if (!annonces.length) return { ok: true, crees: 0, ecrites: 0, note: "rien à importer" };
+  const maintenant = new Date().toISOString();
+  const colonne = (c) => restRequest(`annonces_plateforme?select=${c}&limit=1`, token).then(() => true).catch(() => false);
+  const statsPossibles = await colonne("vues,favoris");
+  const datePossible = annonces.some((a) => a.publiee_le) && await colonne("publiee_le");
+  const transactionPossible = annonces.every((a) => typeof a.transaction === "string") && await colonne("transaction_plateforme");
+  const statutBrutPossible = annonces.some((a) => typeof a.statut_brut === "string") && await colonne("statut_brut");
+  const comptePossible = !!compte && await colonne("compte_plateforme");
+  const nombreOuNull = (v) => (v == null || v === "" ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+  const lignes = annonces.map((a) => ({
+    user_id: userId, platform: "leboncoin", listing_id: String(a.listing_id), url: a.url ?? null,
+    titre: a.titre ?? null, prix: nombreOuNull(a.prix),
+    photo_url: a.photo_url ?? null,
+    ...(statsPossibles ? { vues: nombreOuNull(a.vues), favoris: nombreOuNull(a.favoris) } : {}),
+    ...(datePossible ? { publiee_le: a.publiee_le ?? null } : {}),
+    ...(transactionPossible ? { transaction_plateforme: a.transaction, transaction_lue_le: maintenant } : {}),
+    ...(statutBrutPossible ? { statut_brut: typeof a.statut_brut === "string" ? a.statut_brut : null } : {}),
+    ...(comptePossible ? { compte_plateforme: compte } : {}),
+    statut_plateforme: "en_ligne",
+    run_id: runId, vu_le: maintenant, disparu_le: null, updated_at: maintenant,
+  }));
+  await restRequest("annonces_plateforme?on_conflict=user_id,platform,listing_id", token, {
+    method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(lignes),
+  });
+  const capture = await capturerAnnonces("leboncoin", annonces, { token, userId })
+    .catch((e) => ({ capturees: 0, motif: String(e?.message ?? e) }));
+  return {
+    ok: true, crees: 0, ecrites: lignes.length,
+    note: `Leboncoin : ${lignes.length} annonce(s) inconnue(s) écrite(s), ${Number(capture?.capturees) || 0} photo(s) de liste` +
+      " — le moteur les rattache par les photos, pose la question ou crée",
+  };
+}
+
+/**
+ * Un passage de la veille des annonces récentes pour UNE plateforme (appelé par veillerCommandes, à sa cadence).
+ * Rend un bilan (ou null quand rien n'est lu) ; ne lève jamais vers la veille (l'appelant attrape quand même).
+ */
+async function veillerAnnoncesRecentes(platform, { token, userId, etat, droits } = {}) {
+  if (!VEILLE_RECENTES_PLATEFORMES.includes(platform) || droits?.recentes !== true || !token || !userId || !etat) return null;
+  const e = (etat[platform] ??= {});
+  if (e.coupee && Date.now() < Number(e.coupee.jusqu)) return null;   // anti-robot : rien, comme la veille
+  const r = e.recentes && typeof e.recentes === "object" ? e.recentes : (e.recentes = {});
+  if (Number(r.porte_absente_jusqu) > Date.now()) return null;
+  if (platform === "vinted" && syncDressingEnCours) return null;       // le relevé du dressing lit tout : il importe
+  if (platform === "leboncoin" && (releveEnCours || await leboncoinEnPause() || await leboncoinDelegueAilleurs()
+      || await sessionLbcPartagee())) return null;
+  const debut = Date.now();
+  const fin = (res) => { compterMesureVeille(etat, platform, "recentes_ms", Date.now() - debut); return res; };
+  compterMesureVeille(etat, platform, "recentes_passages");
+  const lu = await lirePremierePageRecentes(platform, r)
+    .catch((err) => ({ ok: false, motif: String(err?.message ?? err).slice(0, 60), requetes: 0 }));
+  compterMesureVeille(etat, platform, "recentes_requetes", Number(lu?.requetes) || 0);
+  if (!lu?.ok) {
+    r.dernier_motif = lu?.motif ?? null;
+    if (lu?.antiRobot) {
+      e.coupee = { le: new Date().toISOString(), jusqu: Date.now() + VEILLE_COMMANDES_COUPURE_MS, motif: `recentes_${lu.motif ?? "anti_robot"}` };
+      compterMesureVeille(etat, platform, "coupures");
+      console.warn(`[veille-recentes][${platform}] signe anti-robot (${lu.motif}) — veille coupée 24 h sur ce poste`);
+      tracerEvenementVeille(token, userId, { evenement: "coupure", platform, motif: e.coupee.motif, source: "recentes" });
+    }
+    return fin({ ok: false, motif: lu?.motif ?? null });
+  }
+  const entrees = entreesPageRecentes(platform, lu);
+  const nouveaux = nouveauxNumerosRecentes(entrees.map((x) => x.id), r);
+  compterMesureVeille(etat, platform, "recentes_nouveaux", nouveaux.length);
+  if (!nouveaux.length) return fin({ ok: true, lues: entrees.length, nouveaux: 0, inconnus: 0 });
+  const rep = await ouvrirVeilleRecentes(token, platform, nouveaux, lu.compte);
+  if (!rep?.ok) {
+    // Refus de la porte (relevé en cours, republication engagée, boutique…) : rien n'est mémorisé, le passage
+    // suivant redemande — une porte absente se retente 6 h après.
+    r.dernier_motif = rep?.motif ?? null;
+    if (rep?.absente) r.porte_absente_jusqu = Date.now() + VEILLE_RECENTES_PORTE_ABSENTE_MS;
+    compterMesureVeille(etat, platform, "recentes_refus");
+    return fin({ ok: false, motif: rep?.motif ?? null });
+  }
+  const inconnus = new Set((Array.isArray(rep.inconnus) ? rep.inconnus : []).map(String).filter((id) => nouveaux.includes(id)));
+  memoriserNumerosRecentes(r, nouveaux.filter((id) => !inconnus.has(id)));   // les connus ne repartent jamais à la base
+  if (!inconnus.size || !rep.run_id) return fin({ ok: true, lues: entrees.length, nouveaux: nouveaux.length, inconnus: 0 });
+  compterMesureVeille(etat, platform, "recentes_inconnues", inconnus.size);
+  const aImporter = entrees.filter((x) => inconnus.has(x.id)).map((x) => x.a);
+  let bilan;
+  try {
+    bilan = platform === "vinted"
+      ? await importerRecentesVinted(aImporter, { token, userId, compte: lu.compte })
+      : await importerRecentesLeboncoin(aImporter, { token, userId, runId: rep.run_id, compte: lu.compte });
+  } catch (err) {
+    bilan = { ok: false, crees: 0, ecrites: 0, note: String(err?.message ?? err).slice(0, 200) };
+  }
+  await cloreVeilleRecentes(token, rep.run_id, bilan);
+  if (bilan.ok) {
+    memoriserNumerosRecentes(r, [...inconnus]);
+    r.echecs = 0;
+    compterMesureVeille(etat, platform, "recentes_importees", Number(bilan.ecrites) || 0);
+    console.log(`[veille-recentes][${platform}] ${inconnus.size} numéro(s) inconnu(s) en première page → relevé ${String(rep.run_id).slice(0, 8)} : ${bilan.note}`);
+  } else {
+    r.echecs = (Number(r.echecs) || 0) + 1;
+    if (r.echecs >= VEILLE_RECENTES_ECHECS_MAX) { memoriserNumerosRecentes(r, [...inconnus]); r.echecs = 0; }   // jamais une boucle
+    console.warn(`[veille-recentes][${platform}] import non fait (${bilan.note}) — essai ${r.echecs || VEILLE_RECENTES_ECHECS_MAX}/${VEILLE_RECENTES_ECHECS_MAX}`);
+  }
+  return fin({ ok: bilan.ok === true, lues: entrees.length, nouveaux: nouveaux.length, inconnus: inconnus.size, run_id: rep.run_id });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

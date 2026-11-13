@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useMemo, useRef, useCallback, startTransition } from 'react';
 import { plateformesEnVerification } from "../utils/enVerification.js";
+import { plateformesAbsentesDesReleves, phraseAbsenteDesReleves } from "../utils/absenteDesReleves.js";
 import { questionOplaFinale } from '../../supabase/functions/_shared/opla-questions.js';
 // (02/10) Sortie d'Opla : une publication/republication Opla ne se relance plus.
 import { estPublicationOpla, MESSAGE_OPLA_INDISPONIBLE, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
@@ -10301,6 +10302,9 @@ const StockTab = memo(function StockTab({
     // un seul calcul, jamais deux vérités carte/modal.
     const {removalState,publishedActive,latestPubByPlatform}=computeRemovalInfo(jobsAll);
     const enVerification=plateformesEnVerification(publishedActive,latestPubByPlatform);
+    // (13/11, bloc C1) Absente de deux relevés complets et concordants (utils/absenteDesReleves.js) : la plateforme reste
+    // occupée (logo, jamais un 2e dépôt, retrait après vente visé), mais n'est plus jamais « En ligne ».
+    const absentesReleves=plateformesAbsentesDesReleves(jobsAll);
     // ── Article DISPARU de Vinted (2026-08-05) ────────────────
     // `disparu_le` = la sync du dressing n'a pas retrouvé
     // l'annonce sur Vinted (vérifié en réel : l'id Vinted rend
@@ -10363,7 +10367,8 @@ const StockTab = memo(function StockTab({
     // (05/11, point 6 — règles de Nico) Un dépôt Beebs/Leboncoin EN VÉRIFICATION (« Beebs vérifie ton annonce ») n'est
     // jamais « En ligne » ; Opla est quittée : son logo ne rend jamais la pastille verte. Le logo reste (plateforme
     // occupée : jamais de 2e dépôt, retrait après vente toujours visé).
-    const pasAchetable=p=>enVerification.includes(p)||p==="opla";
+    // (13/11, bloc C1) … ni une annonce absente de deux relevés complets et concordants.
+    const pasAchetable=p=>enVerification.includes(p)||p==="opla"||!!absentesReleves[p];
     const enLigne=logosEnLigne.some(p=>!(p==="vinted"&&vintedMasquee)&&!pasAchetable(p));
     // Compteur de plateformes réellement en ligne PARMI celles du
     // compte (plateformesCompte, Opla comprise quand elle est
@@ -10392,7 +10397,7 @@ const StockTab = memo(function StockTab({
     const favsPf=statsPf.some(x=>x.favoris!=null)?statsPf.reduce((t,x)=>t+(x.favoris??0),0):null;
     const vues=(item.vinted_view_count==null&&vuesPf==null)?null:(item.vinted_view_count??0)+(vuesPf??0);
     const favs=(item.vinted_favourite_count==null&&favsPf==null)?null:(item.vinted_favourite_count??0)+(favsPf??0);
-    return { enVerification, invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, enPauseAutoJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, logosJumelles, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
+    return { enVerification, absentesReleves, invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, enPauseAutoJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, logosJumelles, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
   };
 
   // ── LA PASTILLE D'UN ARTICLE — COURTE, SANS ÉMOJI (03/10) ─────────────────
@@ -10501,11 +10506,22 @@ const StockTab = memo(function StockTab({
     if (d.vintedMasquee && !d.enLigne) {
       return { ...pastilleCourte({ genre: item.vinted_status === 'draft' ? 'brouillon' : 'masquee', date: dateCourte(item.last_synced_at, lang) }, lang), titre: fr ? "Statut relevé sur Vinted lors de la dernière synchronisation du dressing — resynchronise si ce n'est plus le cas." : "Status read from Vinted at the last wardrobe sync — sync again if this has changed.", onTap: null, horsLigne: false };
     }
+    // (13/11, bloc C1) Plus aucune plateforme en ligne et une annonce absente de deux relevés complets et concordants :
+    // « Hors ligne · date » (le mot de la pastille Vinted disparue), et un appui ouvre LA question « Annonce plus en
+    // ligne — Vendue ? » d'« À régler » (même porte que « Répondre » du stepper). Jamais « En ligne ».
+    const pfAbsentes = Object.keys(d.absentesReleves ?? {});
+    if (!d.enLigne && pfAbsentes.length) {
+      const a = d.absentesReleves[pfAbsentes[0]];
+      return { ...pastilleCourte({ genre: 'hors_ligne', date: dateCourte(a.depuis, lang) }, lang),
+        titre: pfAbsentes.map((p) => phraseAbsenteDesReleves(p, d.absentesReleves[p].depuis, lang)).join(' · '),
+        onTap: plusEnLigne?.ouvrirQuestion ? () => { plusEnLigne.ouvrirQuestion(a.job.id);setGesteOuvert('plus_en_ligne'); } : null, horsLigne: true };
+    }
     if (d.enLigne) {
       // (31/10, lot H — XEWER) La pastille dit la mise en ligne la PLUS RÉCENTE (ou celle de la plateforme filtrée,
       // « En ligne sur X ») ; un appui ouvre le détail plateforme par plateforme. L'âge de la plus ANCIENNE garde
       // son rôle (« Anciennes », « Remonter ») : joursAncienne. Une seule règle de date (_shared/mise-en-ligne.js).
-      const enLigneDatables = d.logosEnLigne.filter((p) => !(p === 'vinted' && d.vintedMasquee));
+      // (13/11, bloc C1) jamais datée « en ligne » : une plateforme absente de deux relevés complets.
+      const enLigneDatables = d.logosEnLigne.filter((p) => !(p === 'vinted' && d.vintedMasquee) && !d.absentesReleves?.[p]);
       const affichee = miseEnLigneArticle(item, enLigneDatables);
       const jours = affichee?.jours ?? null;
       const joursAncienne = ancienneteJours(item, d.jobsAll, enLigneDatables, Date.now(), datesRelevees);
@@ -10720,6 +10736,14 @@ const StockTab = memo(function StockTab({
         texte: fr ? `Plus en ligne sur Vinted${le ? ` · ${le}` : ''} : l'annonce n'a pas été retrouvée à la dernière synchronisation.` : `Gone from Vinted${le ? ` · ${le}` : ''}: the listing was not found at the last sync.`,
         titre: fr ? "L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing." : 'This Vinted listing was not found during the last wardrobe sync.' });
     }
+    // (13/11, bloc C1) Même chose pour une plateforme absente de deux relevés complets et concordants quand l'article reste
+    // en ligne ailleurs (sinon la pastille le dit déjà) : la ligne, et un appui ouvre la question « Vendue ? ».
+    if (d.enLigne) {
+      for (const [p, a] of Object.entries(d.absentesReleves ?? {})) {
+        infos.push({ cle: `absente-releves-${p}`, ton: 'regler', texte: phraseAbsenteDesReleves(p, a.depuis, lang),
+          onTap: plusEnLigne?.ouvrirQuestion ? () => { plusEnLigne.ouvrirQuestion(a.job.id);setGesteOuvert('plus_en_ligne'); } : null });
+      }
+    }
     // (31/10, lot H) Depuis quand l'article est en ligne, UNE LIGNE PAR PLATEFORME (retour de Nico : « En ligne depuis
     // 5 jours » ne disait pas depuis quand sur eBay, sur Leboncoin…) ; un appui ouvre le détail et l'historique.
     if (d.enLigne) {
@@ -10868,7 +10892,9 @@ const StockTab = memo(function StockTab({
       const retrait = d.removalState[p] === 'removing';
       const moderation = (p === 'beebs' || p === 'leboncoin') && enVerificationPlateforme(d.latestPubByPlatform?.[p]);
       // (05/11, point 6 a) en vérification au sens de la règle unique (marqueur pas_encore_visible) : jamais « en ligne ».
-      etats[p] = { attenue: gele || masque || retrait, desature: moderation, verif: (d.enVerification ?? []).includes(p) };
+      // (13/11, bloc C1) absente de deux relevés complets : atténuée et désaturée, dite « plus vue en ligne ».
+      const plusVue = !!d.absentesReleves?.[p];
+      etats[p] = { attenue: gele || masque || retrait || plusVue, desature: moderation || plusVue, verif: (d.enVerification ?? []).includes(p), plusVue: !!d.absentesReleves?.[p] };
     }
     // (20/10, Louis) Copie de la fiche jumelle (compte relié) : atténuée — elle existe, pas chez ce compte.
     for (const p of d.logosJumelles ?? []) etats[p] = { attenue: true, desature: false };

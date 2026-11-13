@@ -37,6 +37,7 @@
 
 import { computeRemovalInfo, vintedPresenceArticle } from './publicationState';
 import { plateformesEnVerification } from "./enVerification.js";
+import { plateformesAbsentesDesReleves } from "./absenteDesReleves.js";
 import { natureNeedsUser, republicationAnnonceDisparue } from './shared';
 import { libellesChampsDemandes } from './etatsPublication';
 import { plateformesJumelles } from './copiesJumelles';
@@ -240,7 +241,9 @@ export function etatPlateformes(jobs, lang = 'fr', item = null) {
   const actives = (Array.isArray(publishedActive) ? publishedActive : []).filter((p) => p !== 'opla');
   let occupees = actives.slice();
   // (05/11, point 6 a) En vérification chez la plateforme : occupée (jamais de doublon), jamais « en ligne ».
-  let enLigne = actives.filter((p) => !enVerification.includes(p));
+  // (13/11, bloc C1) Absente de deux relevés complets et concordants (absenteDesReleves.js) : occupée, jamais « en ligne ».
+  const absentes = plateformesAbsentesDesReleves(liste);
+  let enLigne = actives.filter((p) => !enVerification.includes(p) && !absentes[p]);
   if (item) {
     // Vinted sur l'ARTICLE (cf. bandeau de tête) — les trois autres
     // plateformes restent strictement computeRemovalInfo.
@@ -298,6 +301,8 @@ export function etatPlateformes(jobs, lang = 'fr', item = null) {
     occupees,
     // (05/11, point 6 a) les plateformes où l'annonce attend la vérification de la plateforme (occupées, pas en ligne).
     enVerification: enVerification.filter((p) => occupees.includes(p)),
+    // (13/11, bloc C1) les plateformes dont l'annonce n'est plus vue par deux relevés complets (occupées, pas en ligne).
+    absentesDesReleves: Object.keys(absentes).filter((p) => occupees.includes(p)),
     aCompleter: [...aCompleter.values()],
     enEchec: [...enEchec.values()],
     enConfirmation: [...enConfirmation.values()],

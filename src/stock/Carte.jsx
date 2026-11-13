@@ -28,11 +28,14 @@ export function PileLogos({ lang = 'fr', plateformes = [], etats = {}, taille = 
   const noms = plateformes.map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
   // (05/11, point 6 a) Une plateforme en vérification (etats[p].verif) n'est jamais dite « en ligne » : « X vérifie ton annonce ».
   const joindre = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} ${fr ? 'et' : 'and'} ${l[l.length - 1]}` : l[0]);
-  const nomsEnLigne = plateformes.filter((p) => !etats[p]?.verif).map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
+  // (13/11, bloc C1) Une plateforme absente de deux relevés complets (etats[p].plusVue) : « Plus vue en ligne sur X ».
+  const nomsEnLigne = plateformes.filter((p) => !etats[p]?.verif && !etats[p]?.plusVue).map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
   const nomsVerif = plateformes.filter((p) => etats[p]?.verif).map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
+  const nomsPlusVue = plateformes.filter((p) => !etats[p]?.verif && etats[p]?.plusVue).map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
   const etiquette = [
     nomsEnLigne.length ? `${fr ? 'En ligne sur' : 'Live on'} ${joindre(nomsEnLigne)}` : null,
     ...nomsVerif.map((n) => (fr ? `${n} vérifie ton annonce` : `${n} is reviewing your listing`)),
+    nomsPlusVue.length ? `${fr ? 'Plus vue en ligne sur' : 'No longer seen online on'} ${joindre(nomsPlusVue)}` : null,
   ].filter(Boolean).join(' · ');
   return (
     <span role="img" aria-label={etiquette || noms.join(', ')} style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>

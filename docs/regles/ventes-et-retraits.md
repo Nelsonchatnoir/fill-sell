@@ -895,3 +895,17 @@ ventes se lit comme une page (sans en-tête RSC), renvoi vers la connexion = « 
 marque de disparition gardée jusqu'à une lecture réussie, une lecture d'entretien par 24 h, cadence Q19 inchangée.
 Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. Verrous `selftest:ventes-beebs-cinq-gardes`,
 `selftest:ventes-beebs-lecture-due`.
+
+## ⛔ 14/11/2026 (lot « zéro friction », bloc C4) — une commande n'est jamais comptée deux fois
+- Constat (lecture seule, 13/11) : la veille enregistre une vente Vinted relevée SANS fiche (`ventes.inventaire_id`
+  NULL, `annonce_id` = N) ; le relevé du dressing crée ensuite la fiche du même numéro (`vinted_item_id` = N) directement
+  « vendu » ; la liste « vendus à enregistrer » ne lisait que `ventes.inventaire_id` → « Enregistrer » écrivait une
+  2e ligne. 66 paires sur 12 comptes (646,29 € comptés deux fois, du 11/10 au 12/11), 283 fiches exposées (33 comptes).
+  Aucune double VENTE : une commande, deux lignes. L'annonce 10699531774 (f0acd3af) : vendue le 07/11 16:43, pas un
+  doublon FillSell (le « lot » du 07/11 16:54 = 11 tâches de suivi d'un « Synchroniser ») ; risque de double vente nul.
+- Règle (app) : une fiche dont le NUMÉRO Vinted porte déjà une vente Vinted n'est plus « à enregistrer » (App.jsx,
+  `ventesVintedParAnnonce`) ; la garde d'écriture `ventesExistantes` (VentesTab) relit aussi le numéro. Jamais un titre.
+  Verrou `selftest:vente-une-seule-fois`.
+- Réparation PRÉPARÉE, NON jouée (règle du lot : aucun compte client touché hors de la voie normale de l'app) :
+  `scripts/reparations/20261114_ventes_vinted_rattachees.sql` (+ INVERSE) rattache les 283 ventes à leur fiche par le
+  numéro. Les 66 paires déjà doublées : quelle ligne garder = décision de Nico.

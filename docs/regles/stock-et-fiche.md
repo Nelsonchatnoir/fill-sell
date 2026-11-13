@@ -96,6 +96,22 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
   a_regler_retires` (RPC platform_settings_fusionner, 200 lignes, 90 jours). Rien n'est supprimé, annulé ni retiré.
   Module `src/utils/retraitARegler.js`, selftest `a-regler-retirer`.
 
+## 13/11 (bloc C1) — une annonce absente de deux relevés complets et concordants n'est plus « En ligne »
+- Cas (compte 7153db13) : annonce Leboncoin plus vue depuis le 05/11 ; le 09/11, `constater_absences_releve` (deux
+  relevés probants distincts du même compte) a posé `absence_releves` + `unavailable_since` sur le dépôt, resté
+  « published » (voulu : la question « Annonce plus en ligne — Vendue ? » attend la personne). La carte ne lisait que le
+  statut : « En ligne », « Republier » proposé puis refusé par le serveur (`annonce_introuvable:annonce_partie`).
+- Règle unique `src/utils/absenteDesReleves.js` (module de l'app seul) : une plateforme dont TOUTES les annonces publiées
+  portent ce constat sur leur numéro, alerte toujours debout (`unavailable_since`, effacé par le relevé qui la revoit ou
+  la veille qui relit la page), jamais revue depuis (`revue_en_ligne_par_releve`, `vu_en_ligne_le`), hors publication ou
+  republication en vol, hors vérification et preuve de vente → OCCUPÉE (logo atténué, jamais un 2e dépôt) mais jamais
+  « en ligne » : `etatPlateformes` (filtres, « Hors ligne », dates), pastille « Hors ligne · date », ligne « Plus vue en
+  ligne sur X depuis le … (absente de deux relevés complets) : vendue ou retirée ? », un appui ouvre LA question.
+- « Remonter » suit le refus du serveur (`republication_annonce_partie`, branche constat) : la source (dernier dépôt
+  publié avec lien) porte le constat de son numéro, non démenti par un relevé → `ineligible`. Vinted : sa règle (l'article,
+  `disparu_le`) ; Beebs : jamais de constat par relevé (modération). Tableau/Statistiques (`useStockEnLigne`, sans
+  `platform_fields`) : inchangés. Verrou `selftest:absente-releves-complets`.
+
 ## 07/11 soir — essai TestFlight de Nico : la carte « Synchronisation » en cours
 - « N plateformes sur M » vient de la MÊME liste que les lignes affichées dessous (relevés du serveur,
   `synchro_avancement.releves`) : `compteSynchroEnCours` (`src/annonces/etatReleve.js`) ; sans cette liste, la vague de

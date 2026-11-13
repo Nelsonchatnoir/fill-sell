@@ -1069,7 +1069,7 @@ const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
 // qui tirait vers le bas toutes les moyennes qui lisent marginPct (les quatre
 // agrégations de graphe plus bas le faisaient). `margin` était déjà correct
 // (null tel quel), c'est le pourcentage qui mentait. Corrigé le 11/08.
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,cree_le:v.created_at??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,plateforme_code:v.plateforme_code??null,quantite:v.quantite||null,vendu_le:v.vendu_le??null,source:v.source??null};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,cree_le:v.created_at??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,plateforme_code:v.plateforme_code??null,annonce_id:v.annonce_id??null,quantite:v.quantite||null,vendu_le:v.vendu_le??null,source:v.source??null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -4459,9 +4459,20 @@ export default function App({ loginOnly = false }){
   // écrite QUE quand l'utilisateur complète (VentesTab, mode dédié). Le lien
   // se fait par ventes.inventaire_id, posé par ce flux d'enregistrement.
   const ventesInvIds=useMemo(()=>new Set(sales.map(s=>s.inventaire_id).filter(v=>v!=null).map(String)),[sales]);
+  // (14/11, lot « zéro friction », bloc C4) UNE COMMANDE N'EST JAMAIS COMPTÉE DEUX FOIS. La veille enregistre une vente
+  // Vinted relevée SANS fiche (annonce_id = N, inventaire_id NULL) ; le relevé du dressing crée ensuite la fiche du même
+  // numéro (vinted_item_id = N) directement « vendu » — elle tombait dans cette liste (aucune vente liée par
+  // inventaire_id) et « Enregistrer » écrivait une 2e ligne : 66 paires sur 12 comptes au 13/11 (646,29 € comptés deux
+  // fois), 283 fiches encore exposées. Une fiche dont le numéro Vinted porte DÉJÀ une vente Vinted n'est plus à
+  // enregistrer (même règle que le rattachement des commandes « fiche_vinted » : le numéro, jamais un titre).
+  // Verrou : selftest:vente-une-seule-fois.
+  const ventesVintedParAnnonce=useMemo(()=>new Set(sales
+    .filter(s=>/vinted/i.test(String(s.plateforme??''))&&String(s.annonce_id??'').trim())
+    .map(s=>String(s.annonce_id).trim())),[sales]);
   const vendusAEnregistrer=useMemo(
-    ()=>sold.filter(i=>i.origine==='vinted_sync'&&!ventesInvIds.has(String(i.id))),
-    [sold,ventesInvIds]);
+    ()=>sold.filter(i=>i.origine==='vinted_sync'&&!ventesInvIds.has(String(i.id))
+      &&!(String(i.vinted_item_id??'').trim()&&ventesVintedParAnnonce.has(String(i.vinted_item_id).trim()))),
+    [sold,ventesInvIds,ventesVintedParAnnonce]);
   // Photos par ligne d'inventaire (2026-08-27, vignettes de l'onglet Ventes) :
   // la table `ventes` ne porte AUCUNE photo, mais chaque vente pointe son
   // article via ventes.inventaire_id — la vignette se lit donc ici, dans les
