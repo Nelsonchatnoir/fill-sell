@@ -138,7 +138,8 @@ chantiers (hors dépôt, ils citent des comptes) : scratchpad de la session, `et
 
 ## Étape 3 — retraits, ventes, adresse (EN SERVICE le 13/11 vers 02:50)
 Trois chantiers en parallèle, fusionnés (un conflit : deux entrées ajoutées au même endroit de `cause-blocage.js`, les
-deux gardées), suite complète sur la copie fusionnée en LF : **702/702** ; build:essai OK ; deno check : 0 erreur.
+deux gardées), suite complète sur la copie fusionnée en LF : **702/702** ; build:essai OK ; deno check : aucune erreur
+NOUVELLE (correction du 13/11 : « 0 erreur » était faux — get-pending-jobs en porte 2 et handler-watch 3, déjà sur main).
 - **N1** (82e64f14 / 67cd1c77, 8a2eba68 / 46569b9d) : la perte du « published » vient de la panne Supabase du 11/11
   (13:24-13:27 : 546 puis 503/504, deux PATCH de la fiche en 520) — `retenirDepotIncertain` a remis la tâche « pending » à
   l'étape recreated. Règle : numéro exact vu actif après le retrait → publié + fiche au nouveau numéro ; doute ou sans
@@ -170,3 +171,56 @@ deux gardées), suite complète sur la copie fusionnée en LF : **702/702** ; bu
   `recreation-deja-partie.js` que `urlsPhotos`, identique (md5).
 - Web 2026-11-13T01:46:15Z+117c2ab (entrée lue avec `Origin` : 200) ; **OTA 2.9.179**.
 - Retour : fonctions depuis une archive de 3470227 ; app : nouvelle OTA qui revient sur 448ac74.
+
+## Étape 5 — descriptions, couleurs, remontées, bordereaux, relevés (EN SERVICE le 13/11 vers 04:50)
+Quatre chantiers en parallèle (H, I, J, K), fusionnés (un conflit de doc, résolu ; `ListingPreviewScreen.jsx` et
+`resolutionPublication.js` fusionnés à trois voies), suite complète sur la copie fusionnée en LF : **718/718** ;
+build:essai OK ; deno check : aucune erreur nouvelle.
+- **5a (de63ca45)** : consignes en tête et lues avec la négation (`lireConsignes`) ; capacités par plateforme et par site
+  (`_shared/capacites-texte.js`) ; description en blocs, ses 3 phrases finales posées mot pour mot et en dernier ; faits
+  sans source retirés du texte rédigé (un défaut écrit ne tombe jamais) ; état jamais monté par la rédaction ; date de
+  test rangée dans `attributs.teste_le` et réécrite au jour de l'envoi (get-pending-jobs, omise sur Beebs). Rejeu sans IA
+  de ses 7 fiches : finit par ses 3 phrases 0/28 → 28/28 ; interdits sans source 32 → 12. Réparation de ses 92 fiches
+  (`scripts/reparations/20261113_de63ca45_date_de_test*`) PRÉPARÉE, NON exécutée. 7 verrous (137 rouges → 183 verts).
+- **5a, état inconnu** : l'écran ne remplit plus jamais « Très bon état » ; UNE question « État » (stepper, lot, ancien
+  écran), le clic refuse un job sans état. Mesuré : 848 publications en 30 jours seraient passées par elle. Verrou
+  `etat-inconnu-question` (0 → 19). **« Une copie ne dit jamais mieux que la fiche » PRÉPARÉE, PAS EN SERVICE** (342 copies
+  en 30 j, dont 227 tiennent l'état de la fiche d'un relevé) : part avec la migration 20261112213000
+  (`en-attente/etat-copie-ramenee-a-la-fiche.patch`).
+- **5a-2** : « Remonter » lit le seuil de 7 j et coche par plateforme republiable (eBay jamais) ; récentes visibles et
+  décochées ; tri à la milliseconde ; plafond gratuit = les plus anciennes. Cas de63ca45 / 1789717140683000. Verrou
+  `remonter-par-plateforme` (18 rouges → 35 verts).
+- **5b** : « Bordereau du JJ/MM · Imprimé le JJ/MM », « Tout imprimer » (non imprimés) / « Tout réimprimer » ; l'app part
+  avant la migration sans rien casser. Migration `20261113153000_bordereau_imprime_le` PRÉPARÉE (banc 30/30), NON appliquée.
+  Verrou `bordereau-imprime` (24 → 24).
+- **5c** : couleur Depop prise sur la copie, puis la valeur commune, puis la fiche, par identifiants
+  (`_shared/depop-couleur.js`) — app, filet get-pending-jobs, copie de republication. Rejeu 8ac5bbda : les 30 publications
+  parties sans couleur la reçoivent, les 19 autres inchangées. Modification d'une annonce Depop en ligne : préparée derrière
+  un interrupteur FERMÉ (depop.js) ; cartographie à faire (compte de Nico, 999 €, `docs/plateformes/depop/CARTOGRAPHIE.md`
+  § 9). Verrou `depop-couleur-fiche` (24 rouges → 57 verts).
+- **Question 3 (grille_incoherente)** : plus jamais « écris-nous » comme seule sortie (`_shared/grille-incoherente-issue.js`).
+  Verrou `grille-incoherente-jamais-impasse` (6 rouges → 29 verts).
+- **Bloc 6** : P3 (refus du relevé automatique comptés dans ops-digest ; migration `20261113154000_cron_refus_journalise`
+  PRÉPARÉE, banc 32/32, NON appliquée) ; « Vinted synchronisé il y a 21 h · Leboncoin il y a 8 min » ; ligne « 245 en vente ·
+  11 vendues encore affichées » visible, et cachée quand le compte est faux (23 relevés sur 60 en 24 h). Verrous
+  `cron-refus-journalise`, `synchro-entete-plateforme`, `vendues-encore-affichees`.
+- **5e + bloc 6 dans la 0.6.187** (code poussé, manifest non monté) : 641fb37e — Vinted n'a rien refusé le 11/11 (relance
+  sans remise des compteurs, sortie 3 min plus tard sans essai) ; acae56d5 — course entre l'armement de la couleur et l'envoi
+  (corrigée : armement accusé avant le clic) ; la sonde pose état et couleur par identifiant quand la page les laisse vides ;
+  la copie d'une recréation se retrouve par le numéro renvoyé par Vinted ou l'empreinte des photos, plus jamais par le titre
+  (6 600 des 6 809 recréations de 14 j n'étaient reconnues que par le titre) ; P1/P2/P4 ; compte « en vente » figé dans la
+  note du relevé. Migration P2 `20261113170500_cadence_cron_seule` PRÉPARÉE (banc 29/29), NON appliquée. Verrous
+  `vinted-envoi-sans-perte` (34), `releve-cron-cadence` (16). **Second réarmement de 641fb37e SUSPENDU** : il relancerait une
+  tâche arrêtée par la garde `recreation_bloquee` (`en-attente/rearmement-mange-641fb37e.patch`) — décision de Nico.
+### Livraison
+- Commits **d92d140** (correctif) + **ed7de34** (`EXTENSION_LAST_COMMIT` recalé, 2.9.180).
+- Fonctions (archive de ed7de34) : get-pending-jobs v368 → **v369**, generate-listing v143 → **v144**, lens-analysis v127 →
+  **v128** (verify_jwt true) ; update-job-status v196 → **v197**, handler-watch v199 → **v200**, ops-digest v64 → **v65**
+  (verify_jwt false, `--no-verify-jwt`).
+- Web 2026-11-13T03:45:15Z+ed7de34 (entrée lue avec `Origin` : 200) ; **OTA 2.9.180**.
+- Retour : fonctions depuis une archive de a7c071f ; app : nouvelle OTA qui revient sur a7c071f.
+### Reste (décisions de Nico)
+- Migrations PRÉPARÉES, NON appliquées : 20261112213000, 20261113140000, 20261113153000, 20261113154000, 20261113170500.
+- Scripts de données : fiche c7c382b7 (après 20261112213000), dates de test de de63ca45 (92 fiches).
+- Extension 0.6.187 : l'essai réel n° 1 de la recréation Vinted (numéro gardé à travers la redirection) est la condition
+  de livraison ; zip après lui.
