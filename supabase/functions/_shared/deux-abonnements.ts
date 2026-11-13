@@ -4,10 +4,13 @@
 // Appelé quand un abonnement S'OUVRE (Apple SUBSCRIBED, Google SUBSCRIPTION_PURCHASED / validate-google-purchase,
 // Stripe checkout.session.completed) : si le compte porte maintenant DEUX abonnements vivants (règle
 // _shared/un-seul-abonnement.js : Stripe relu, boutiques sur le profil), une alerte part à support@ avec la liste.
+// (13/11/2026, dernière réponse de Nico) L'alerte ne part plus que pour un VRAI double : DEUX FORMULES (785352fe : Premium
+// App Store + Pro par carte), ou deux fois le Cloud (Cloud seul + pack, deux Cloud seuls) — compterFormules. Une formule +
+// le Cloud seul (c7c382b7, f0acd3af), sur n'importe quel canal, est normale : aucune alerte.
 // LIRE ET PRÉVENIR, RIEN D'AUTRE : aucune écriture, aucun geste chez un canal — la décision est à Nico.
 // Jamais bloquant : tout est avalé et borné (lecture Stripe 5 s, alerte 2 s) ; le code HTTP rendu au canal ne dépend
 // jamais de ce filet.
-import { abonnementsVivants, lignesDeuxAbonnements } from "./un-seul-abonnement.js";
+import { abonnementsVivants, compterFormules, lignesDeuxAbonnements } from "./un-seul-abonnement.js";
 import { litAbonnementStripe } from "./cloud-option.js";
 import { prixStripe } from "./prix-stripe.ts";
 import { signalerDeuxAbonnements } from "./payment-notify.ts";
@@ -27,7 +30,7 @@ async function abonnementsStripeLus(customerId: string | null): Promise<unknown[
   return (Array.isArray(j?.data) ? j.data : []).map((s: { status?: string }) => ({ ...litAbonnementStripe(s, prix), status: s?.status ?? null }));
 }
 
-/** Deux abonnements vivants ? → alerte support@. Rend le nombre d'abonnements vivants lus (ou null si illisible). */
+/** Deux formules (ou deux fois le Cloud) vivantes ? → alerte support@. Rend le nombre d'abonnements vivants lus (ou null). */
 export async function verifierDeuxAbonnements(
   // deno-lint-ignore no-explicit-any
   admin: { from: (t: string) => any },
@@ -43,8 +46,9 @@ export async function verifierDeuxAbonnements(
       console.warn(`[deux-abonnements] ${userId} : Stripe illisible (${(e as Error)?.message ?? e}) — boutiques seules`);
     }
     const vivants = abonnementsVivants({ profil: p, stripe });
-    if (vivants.length >= 2) {
-      console.error(`[deux-abonnements] ${userId} : ${vivants.length} abonnements vivants après ${o.evenement} —`, JSON.stringify(vivants));
+    const { formules, clouds, double } = compterFormules(vivants);
+    if (double) {
+      console.error(`[deux-abonnements] ${userId} : ${formules.length} formule(s), ${clouds.length} Cloud vivants après ${o.evenement} —`, JSON.stringify(vivants));
       await signalerDeuxAbonnements({ user_id: userId, email: p.email ?? null, evenement: o.evenement, canal: o.canal, lignes: lignesDeuxAbonnements(vivants), test: o.test === true });
     }
     return vivants.length;

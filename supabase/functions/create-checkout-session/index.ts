@@ -18,7 +18,8 @@ import { prixStripe } from "../_shared/prix-stripe.ts";
 import { litAbonnementStripe, drapeauxDepuisStripe, miseAJourProfilDepuisStripe } from "../_shared/cloud-option.js";
 import { abonnementStoreVivant } from "../_shared/paiement-stripe.js";
 // (13/11/2026, 3e réponse de Nico, point a) Un seul abonnement actif par compte, tous canaux confondus.
-import { abonnementsVivants, vivantsBoutiques, vivantsStripe, decisionAchat, messageUnSeulAbonnement } from "../_shared/un-seul-abonnement.js";
+// (13/11/2026, dernière réponse de Nico) … devenue : une seule FORMULE à la fois, le Cloud en plus toujours permis.
+import { vivantsBoutiques, vivantsStripe, decisionAchat, decisionSurLectures, compterFormules, messageUnSeulAbonnement } from "../_shared/un-seul-abonnement.js";
 import { evenementDebutFormuleStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
 
@@ -348,7 +349,10 @@ async function acheterFormuleCloud(p: { formule: string; user: { id: string; ema
     // (12/11, point 4c de Nico) Le canal qui facture a-t-il les formules ? Fermé : jamais « change de formule dans l'app sur
     // ton iPhone » où rien n'existe. (13/11, décision de Nico) Plus de « bientôt » : la phrase neutre (messageVoieFormule).
     const canalR = r0.canal === "apple" || r0.canal === "google" ? r0.canal : null;
-    const r = canalR ? { ...r0, ferme: !(await interrupteurFormules(supabase, canalR, profil)) } : r0;
+    // (13/11/2026, décision de Nico) Formule de boutique, pas encore de Cloud : la phrase propose aussi le Cloud SEUL ici
+    // (il s'ajoute à la formule — permis sur tout canal), à côté du pack sur le canal de la formule.
+    const cloudSeulPossible = r0.motif === "abonnement_boutique" && !cloudBoutique && !cloudVivantDuProfil(profil);
+    const r = canalR ? { ...r0, cloudSeulPossible, ferme: !(await interrupteurFormules(supabase, canalR, profil)) } : r0;
     console.log(`[checkout] ${user.id} : ${formule} refusée (${r.motif}, ${r.canal ?? "?"}${"ferme" in r && r.ferme ? ", formules fermées sur ce canal" : ""}) — rien créé chez Stripe`);
     return rep({ error: "abonnement_autre_canal", motif: r.motif, canal: r.canal ?? null, formule,
       message_fr: messageVoieFormule(r, "fr"), message_en: messageVoieFormule(r, "en") }, 409);
@@ -675,12 +679,19 @@ serve(async (req) => {
       }
       // (11/11, offres Cloud) Le Cloud SEUL n'est plus vendu à un nouveau : refusé à un compte qui ne l'a jamais eu dès que
       // le canal web des formules est ouvert pour lui (les anciens paquets web / OTA le demandent encore).
-      {
-        const { data: profilSeul } = await supabase.from("profiles").select(COLONNES_FORMULE).eq("id", authUser.id).maybeSingle();
-        if (cloudSeulRefuse({ profil: profilSeul, formulesOuvertes: await interrupteurFormules(supabase, "stripe", profilSeul) })) {
-          console.log(`[checkout] ${authUser.id} : Cloud seul demandé, remplacé par les formules avec Cloud — rien créé chez Stripe`);
-          return rep({ error: "offre_remplacee", option: "cloud" }, 409);
-        }
+      // (13/11/2026, décision de Nico) … SAUF à un abonné : une formule vivante (tout canal) prend le Cloud seul en plus — la
+      // garde est jugée plus bas, une fois Stripe et le profil lus (cloudSeulRefuse + formuleVivante).
+      const { data: profilSeul } = await supabase.from("profiles").select(COLONNES_FORMULE).eq("id", authUser.id).maybeSingle();
+      const formulesOuvertesWeb = await interrupteurFormules(supabase, "stripe", profilSeul);
+      // Sans AUCUNE trace de formule (ni boutique vivante, ni client Stripe avec un palier payé) : refusé ici, avant toute
+      // lecture ou création chez Stripe (comme avant) ; une trace → jugé plus bas sur Stripe relu.
+      // deno-lint-ignore no-explicit-any
+      const ps = (profilSeul ?? {}) as Record<string, any>;
+      const traceDeFormule = vivantsBoutiques(ps).some((v) => v.type === "palier")
+        || Boolean(ps.stripe_customer_id && (ps.is_premium || ps.is_pro || ps.is_business));
+      if (!traceDeFormule && cloudSeulRefuse({ profil: profilSeul, formulesOuvertes: formulesOuvertesWeb, formuleVivante: false })) {
+        console.log(`[checkout] ${authUser.id} : Cloud seul demandé, remplacé par les formules avec Cloud — rien créé chez Stripe`);
+        return rep({ error: "offre_remplacee", option: "cloud" }, 409);
       }
       const { data: profilCloud } = await supabase
         .from("profiles").select("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", authUser.id).single();
@@ -701,23 +712,36 @@ serve(async (req) => {
           headers: { "Content-Type": "application/json", ...CORS },
         });
       }
-      // (13/11/2026, 3e réponse de Nico, point a) Le Cloud SEUL à côté d'une formule = un second abonnement (Stripe : deux
-      // abonnements ; boutique : autre canal). Refusé, rien créé chez Stripe : l'abonné prend la version avec Cloud de sa
-      // formule, sur le canal où il paie (même abonnement). Avant : un abonné Pro par carte pouvait ajouter le Cloud seul.
+      // (13/11/2026, dernière réponse de Nico) UNE SEULE FORMULE À LA FOIS — LE CLOUD EN PLUS TOUJOURS PERMIS : le Cloud seul
+      // à côté d'une formule (Stripe, App Store ou Google Play) passe ; refusé seulement s'il y a DÉJÀ le Cloud (Cloud seul,
+      // ou le Cloud d'une formule avec Cloud) — la phrase le dit (rien à ajouter). Avant (ca9308d) : refusé à tout abonné.
+      // Verrou : selftest:cloud-en-plus-de-formule.
       {
         const { data: profilUn } = await supabase.from("profiles")
           .select("google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end, cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_formule")
           .eq("id", authUser.id).maybeSingle();
         const googleActifUn = await googleActifRelu(profilUn?.google_purchase_token, authUser.id);
         const lusUn = (tousLesAbos ?? []).map((s: Stripe.Subscription) => ({ ...litAbonnementStripe(s, prixConnus()), status: s.status }));
-        const d = decisionAchat({ canal: "stripe", achat: "cloud_seul", vivants: abonnementsVivants({ profil: profilUn, stripe: lusUn, googleActif: googleActifUn }) });
-        if (!d.permis && d.motif !== "deja") {
-          console.log(`[checkout] ${authUser.id} : Cloud seul refusé — un seul abonnement (${d.motif}, ${d.canal ?? "?"}), rien créé chez Stripe`);
+        const d = decisionSurLectures({ canal: "stripe", achat: "cloud_seul", profil: profilUn, stripe: lusUn, googleActif: googleActifUn });
+        if (!d.permis && d.motif === "deja") {
+          return new Response(JSON.stringify({ already_cloud: true, canal: d.canal ?? "stripe" }), {
+            headers: { "Content-Type": "application/json", ...CORS },
+          });
+        }
+        if (!d.permis) {
+          console.log(`[checkout] ${authUser.id} : Cloud seul refusé — le Cloud est déjà là (${d.motif}, ${d.canal ?? "?"}), rien créé chez Stripe`);
           return new Response(JSON.stringify({ error: "un_seul_abonnement", option: "cloud", motif: d.motif ?? null, canal: d.canal ?? null,
             message_fr: messageUnSeulAbonnement(d, "fr"), message_en: messageUnSeulAbonnement(d, "en") }), {
             status: 409, headers: { "Content-Type": "application/json", ...CORS },
           });
         }
+        // (11/11) Un compte SANS formule qui n'a jamais eu le Cloud : les formules avec Cloud (inchangé) ; un abonné : jamais.
+        const formuleVivante = compterFormules(d.vivants).formules.length > 0;
+        if (cloudSeulRefuse({ profil: profilSeul, formulesOuvertes: formulesOuvertesWeb, formuleVivante })) {
+          console.log(`[checkout] ${authUser.id} : Cloud seul demandé, remplacé par les formules avec Cloud — rien créé chez Stripe`);
+          return rep({ error: "offre_remplacee", option: "cloud" }, 409);
+        }
+        if (formuleVivante) console.log(`[checkout] ${authUser.id} : Cloud seul EN PLUS d'une formule (${d.vivants.filter((v: { type: string }) => v.type === "palier").map((v: { canal: string }) => v.canal).join(", ")}) — permis`);
       }
       // (05/10) La PRÉPARATION d'abord (cloud_essai_preparer_moi, appelée par
       // l'app juste avant) : une IP réservée pour ce compte — jamais un essai
@@ -802,7 +826,7 @@ serve(async (req) => {
         message_fr: messageDoubleAbonnement(r, "fr"), message_en: messageDoubleAbonnement(r, "en"),
       }), { status: 409, headers: { "Content-Type": "application/json", ...CORS } });
     };
-    // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT ACTIF PAR COMPTE, TOUS CANAUX : 409
+    // (13/11/2026, 3e réponse de Nico, point a ; dernière réponse du 13/11) UNE SEULE FORMULE À LA FOIS, TOUS CANAUX : 409
     // « un_seul_abonnement » + la phrase qui dit OÙ faire le changement (_shared/un-seul-abonnement.js). Rien créé chez Stripe.
     const refuserUnSeul = (d: { motif?: string; canal?: string }) => {
       console.log(`[checkout] ${authUser.id} : ${planType} refusé — un seul abonnement (${d.motif}, ${d.canal ?? "?"}), rien créé chez Stripe`);
@@ -836,8 +860,8 @@ serve(async (req) => {
       const r = refusDoubleAbonnement(profilStore, plan.rang, 0, Date.now(), { googleActif });
       if (r.refus) return refuserDouble(r as { motif: string; canal: string; fin: string | null });
       // (13/11, point a — 785352fe : Premium App Store, puis Pro PAR CARTE le 10/11 à 18:03, deux prélèvements) Une montée
-      // au-dessus d'un abonnement de boutique est refusée (avant : acceptée et journalisée) : elle se fait dans la boutique. Un Cloud seul
-      // d'une boutique ferme aussi le forfait par carte (second abonnement).
+      // au-dessus d'un abonnement de boutique est refusée (avant : acceptée et journalisée) : elle se fait dans la boutique.
+      // (13/11, dernière réponse de Nico) Un Cloud seul d'une boutique ne ferme RIEN : une formule à côté du Cloud est normale.
       const dBoutique = decisionAchat({ canal: "stripe", achat: "palier", vivants: vivantsBoutiques(profilStore, { googleActif }) });
       if (!dBoutique.permis) return refuserUnSeul(dBoutique);
     }
@@ -859,9 +883,9 @@ serve(async (req) => {
       verifiedEmail ?? null,
     );
 
-    // (13/11, point a) Côté Stripe : un Cloud seul vivant (un forfait par carte serait un second abonnement Stripe), un
-    // forfait en impayé (deux prélèvements à la carte mise à jour) ou déjà deux abonnements → refusé, rien créé. Un forfait
-    // payé du même client passe : c'est la montée EN PLACE ci-dessous (le même abonnement change de prix).
+    // (13/11, point a ; dernière réponse de Nico) Côté Stripe : une formule en impayé (deux prélèvements à la carte mise à
+    // jour) ou déjà deux formules → refusé, rien créé. Un forfait payé du même client passe : c'est la montée EN PLACE
+    // ci-dessous (le même abonnement change de prix). Un Cloud seul Stripe ne ferme rien (formule + Cloud seul = normal).
     if (existingCustomerId) {
       const { data: abosUn } = await stripe.subscriptions.list({ customer: existingCustomerId, limit: 20 });
       const lusUn = (abosUn ?? []).map((s: Stripe.Subscription) => ({ ...litAbonnementStripe(s, prixConnus()), status: s.status }));

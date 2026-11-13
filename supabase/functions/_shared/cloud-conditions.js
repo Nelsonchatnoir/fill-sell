@@ -29,6 +29,10 @@ export const CGU_CLOUD_HISTORIQUE = Object.freeze([
   // textes, sans changement de fond (les minimales NE BOUGENT PAS : Cloud seul 2026-11-04, formules 2026-11-12) : le rappel
   // de la veille retiré (promesse non prouvée), la page de paiement de chaque canal qui dit l'essai et le montant avant
   // validation, un seul abonnement FillSell par compte (point a), l'arrêt et le changement de formule selon chaque canal.
+  // (13/11/2026, dernière réponse de Nico, point e) « un seul abonnement FillSell à la fois » est RETIRÉ des deux textes : le
+  // Cloud seul se prend « en plus d'un forfait payant », sur tout canal (le texte d'avant le 13/11) ; « une seule formule à la
+  // fois » pour les formules. Retour au fond déjà accepté : minimales inchangées. ⚠ Poussé APRÈS le 13/11 : une ligne neuve
+  // (date du push), pour que la version acceptée dise le texte lu.
   // Deux lignes à la même date : les formules (« formules_reformulation_canaux », famille des formules — montrée seulement
   // dans l'achat d'une formule) et le Cloud seul (« reformulation_articles_6_7 », montrée à tous).
   Object.freeze({ version: REFORMULATION_1311, changement: "formules_reformulation_canaux" }),

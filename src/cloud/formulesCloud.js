@@ -79,6 +79,25 @@ export function voieFormulesDuCompte({ canalApp = 'stripe', canalFacture = null,
 export const VOIES_FORMULES_MASQUEES = Object.freeze(['boutique_fermee', 'cloud_seul_boutique']);
 export const formulesMasqueesPourLaVoie = (voie) => VOIES_FORMULES_MASQUEES.includes(voie);
 
+/**
+ * (13/11/2026, dernière réponse de Nico — « une formule + le Cloud, c'est NORMAL et c'est ce qu'on veut vendre : par le pack
+ * ou par le Cloud seul en complément, sur n'importe quel canal ») Réglages › Abonnement CACHE-t-il le bloc du Cloud seul ? (pur)
+ *   formulesVisibles : formulesCloudVendables (les formules avec Cloud se montrent à ce compte) ;
+ *   formuleActuelle  : profiles.cloud_formule (le compte a déjà un pack) ;
+ *   cloudSeulEnCours : le Cloud seul est en essai ou payé (lecture Cloud) ;
+ *   canalAbonnement  : canalAbonnementDuProfil — le canal qui facture une formule PAYANTE (null : aucune, offerte).
+ * Formules fermées : le bloc d'avant (jamais caché ici). Ouvertes : caché à un compte qui a un pack (il a le Cloud), et à un
+ * compte SANS formule payante qui n'a pas le Cloud seul (11/11 : il prend une formule avec Cloud) ; MONTRÉ à un abonné
+ * payant (Stripe, App Store ou Google Play) sans Cloud — il ajoute le Cloud seul ici, sur le canal de cet appareil — et à
+ * un client du Cloud seul (inchangé). Verrou : selftest:cloud-en-plus-de-formule.
+ */
+export function blocCloudSeulCache({ formulesVisibles = false, formuleActuelle = null, cloudSeulEnCours = false, canalAbonnement = null } = {}) {
+  if (!formulesVisibles) return false;
+  if (formuleActuelle != null) return true;
+  if (cloudSeulEnCours) return false;
+  return !(canalAbonnement === 'stripe' || canalAbonnement === 'apple' || canalAbonnement === 'google');
+}
+
 /** Le canal qui facture le CLOUD SEUL d'un compte (pur) : profiles.cloud_canal tant que ce Cloud est vivant (essai en cours
  *  ou payé, d'après la lecture Cloud), sinon null. */
 export function canalDuCloudSeul(lecture) {

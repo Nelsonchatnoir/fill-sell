@@ -1,23 +1,28 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// UN SEUL ABONNEMENT ACTIF PAR COMPTE, TOUS CANAUX CONFONDUS (13/11/2026, 3e réponse de Nico, point a)
+// UNE SEULE FORMULE À LA FOIS, TOUS CANAUX CONFONDUS — LE CLOUD EN PLUS TOUJOURS PERMIS (13/11/2026, décision de Nico)
 // ═══════════════════════════════════════════════════════════════════════════
-// « Une montée depuis un autre canal crée un 2e abonnement, donc un double prélèvement. Règle : un seul abonnement actif
-// par compte, tous canaux confondus. Une montée qui ne peut pas se faire sur le même canal est empêchée, avec un message
-// clair qui dit où faire le changement. »
-// Cas RÉELS (prod lue le 13/11 en lecture seule — Stripe : 45 abonnements non résiliés ; journal des boutiques ; profils) :
-//   · 785352fe — Premium App Store (app.fillsell.premium.standard, renouvelé le 30/10, renouvellement auto actif, fin le
-//     30/11), puis Pro PAR CARTE sur le web le 10/11 à 18:03 (Réglages › Abonnement, 29,99 € payés) : create-checkout-session
-//     « montée web … laissée passer » (abonnement boutique de rang inférieur) → deux abonnements, deux prélèvements ;
-//   · c7c382b7 — Pro par carte (Stripe, depuis le 31/10), puis FillSell Cloud SEUL pris sur iPhone le 12/11 (App Store,
-//     semaine gratuite jusqu'au 19/11 18:18, puis 24,99 € chez Apple) : aucun garde côté iPhone ;
-//   · f0acd3af — Pro App Store (app.fillsell.pro2.sub), puis FillSell Cloud SEUL App Store le 09/11 (autre groupe
-//     d'abonnements Apple, semaine gratuite jusqu'au 16/11 19:27) : deux abonnements Apple.
-// Pur, sans réseau ni import : le serveur (create-checkout-session, garde-abonnement, alertes des webhooks) lui passe ce
-// qu'il a LU (Stripe relu, Google relu, profil) ; l'app lui passe le profil quand le serveur ne répond pas (repli).
-//
-// Un abonnement « vivant » = un abonnement qui existe chez son canal et peut encore prélever : Stripe active | trialing |
-// past_due (un impayé en relance prélèvera dès la carte mise à jour) ; Apple / Google : la période en cours n'est pas finie.
-// N'en sont PAS : un compte offert (is_comped), le Cloud « offert » (aucun prélèvement), un abonnement terminé.
+// Historique : la 3e réponse de Nico du 13/11 (point a) avait donné « un seul abonnement actif par compte, tous canaux
+// confondus » (ca9308d). Sa dernière réponse du 13/11 la remplace, mot pour mot :
+//   « Une formule (Premium, Pro ou Business) + le Cloud, c'est NORMAL et c'est ce qu'on veut vendre : par le pack
+//     (Premium + Cloud, Pro + Cloud, Business + Cloud) ou par le Cloud seul en complément, sur n'importe quel canal.
+//     f0acd3af et c7c382b7 sont des clients normaux. Le seul vrai double, ce sont DEUX FORMULES en même temps (785352fe :
+//     Premium App Store + Pro Stripe). La garde devient : « une seule FORMULE à la fois (Premium, Pro ou Business), tous
+//     canaux confondus ». Le Cloud ajouté à une formule (pack ou Cloud seul) est TOUJOURS autorisé, quel que soit le canal
+//     de la formule et celui du Cloud. »
+// La règle, telle qu'appliquée ici (pure, sans réseau ni import : serveur ET app) :
+//   · on compte les FORMULES vivantes (un palier Premium / Pro / Business, avec ou sans Cloud), tous canaux ;
+//   · DEUX formules = refus, avec où faire le changement : une montée / descente se fait sur le canal de SA formule (le même
+//     abonnement change) — 785352fe (Premium App Store, puis Pro par carte le 10/11) est le seul vrai double ;
+//   · le Cloud SEUL à côté d'une formule = TOUJOURS permis, sur tout canal (formule Apple + Cloud seul par carte, etc.) —
+//     c7c382b7 (Pro par carte + Cloud seul App Store) et f0acd3af (Pro App Store + Cloud seul App Store) sont normaux ;
+//   · une formule à côté d'un Cloud seul (le Cloud pris d'abord) = permis aussi : c'est la même paire ;
+//   · le PACK sur le canal de la formule = la même formule qui change (permis) ; sur un AUTRE canal = une 2e formule →
+//     refusé, avec la proposition juste (le Cloud seul sur ce canal, ou le pack sur le canal de la formule) ;
+//   · jamais DEUX FOIS le Cloud (Cloud seul + pack, ou deux Cloud seuls) : pas un refus sec — la phrase dit ce qui existe
+//     déjà et propose le geste juste (la formule SANS Cloud, qui s'ajoute au Cloud déjà là ; ou rien à ajouter).
+// Un abonnement « vivant » = qui existe chez son canal et peut encore prélever : Stripe active | trialing | past_due ;
+// Apple / Google : la période en cours n'est pas finie. N'en sont PAS : un compte offert (is_comped), le Cloud « offert »
+// (aucun prélèvement), un abonnement terminé.
 
 export const CANAUX_ABONNEMENT = Object.freeze(['stripe', 'apple', 'google']);
 export const ACHATS = Object.freeze(['palier', 'formule', 'cloud_seul']);
@@ -34,10 +39,13 @@ const rangProduitBoutique = (id) => {
   const m = /^app\.fillsell\.(premium|pro|business|founder)(?:\.|$)/.exec(String(id ?? ''));
   return m ? RANG_PRODUIT[m[1]] : 0;
 };
+// Le produit d'une formule AVEC Cloud chez une boutique (app.fillsell.premium.cloud, app.fillsell.pro.cloud, …).
+const produitAvecCloud = (id) => /^app\.fillsell\.(premium|pro|business)\.cloud$/.test(String(id ?? ''));
 
 /**
  * Les abonnements Stripe VIVANTS, depuis les lectures de litAbonnementStripe (cloud-option.js) ou des objets Stripe
- * bruts (status, metadata.option). Rend [{ canal: 'stripe', type: 'palier' | 'cloud_seul', rang, id, statut }].
+ * bruts (status, metadata.option). Rend [{ canal: 'stripe', type: 'palier' | 'cloud_seul', rang, avecCloud, id, statut }] :
+ * `type: 'palier'` = une FORMULE (avec ou sans Cloud) ; `avecCloud` = le pack (formuleCloud) ou l'essai du Cloud d'un abonné.
  * @param {Array<any>} [lus]
  * @returns {Array<any>}
  */
@@ -47,19 +55,23 @@ export function vivantsStripe(lus = []) {
     const statut = String(l?.status ?? '');
     if (!STATUTS_STRIPE_VIVANTS.includes(statut)) continue;
     const cloud = l?.cloud === true || l?.metadata?.option === 'cloud';
-    out.push({ canal: 'stripe', type: cloud ? 'cloud_seul' : 'palier', rang: cloud ? 0 : Math.max(1, Number(l?.rang) || 1), id: l?.id ?? null, statut });
+    if (cloud) { out.push({ canal: 'stripe', type: 'cloud_seul', rang: 0, avecCloud: true, id: l?.id ?? null, statut }); continue; }
+    const avecCloud = Boolean(l?.formuleCloud || l?.essaiCloudAbonne || l?.metadata?.formule);
+    out.push({ canal: 'stripe', type: 'palier', rang: Math.max(1, Number(l?.rang) || 1), avecCloud, id: l?.id ?? null, statut });
   }
   return out;
 }
 
 /**
  * Les abonnements des BOUTIQUES encore vivants, lus sur le profil (pur).
- *   · palier / formule Google : jeton + produit de palier + fin à venir ; l'état RELU chez Google (googleActif) tranche
- *     s'il est connu (faux = pas vivant) ; sans relecture, les drapeaux payants en plus (comme abonnementStoreVivant) ;
- *   · palier / formule Apple : transaction d'origine + drapeaux payants + fin à venir (Apple ne laisse pas son produit
- *     sur le profil) ; ignoré quand Google est déjà retenu (une seule colonne de fin pour les deux) ;
+ *   · formule Google : jeton + produit de palier + fin à venir ; l'état RELU chez Google (googleActif) tranche s'il est
+ *     connu (faux = pas vivant) ; sans relecture, les drapeaux payants en plus (comme abonnementStoreVivant) ;
+ *   · formule Apple : transaction d'origine + drapeaux payants + fin à venir (Apple ne laisse pas son produit sur le
+ *     profil) ; ignorée quand Google est déjà retenu (une seule colonne de fin pour les deux) ;
+ *   · `avecCloud` : le pack de CE canal (profiles.cloud_formule + cloud_canal de ce canal, ou produit Google « .cloud ») ;
  *   · Cloud SEUL d'une boutique : cloud_canal apple | google, Cloud vivant (payé, ou essai en cours non arrêté), sans
  *     formule avec Cloud (le Cloud d'une formule EST l'abonnement de la formule).
+ * ⛔ L'appelant lit `cloud_formule` : sans elle, le Cloud d'un pack de boutique se compterait comme un Cloud seul.
  * @param {any} p   colonnes : google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro,
  *                  is_business, subscription_period_end, cloud_canal, cloud_ref, is_cloud, cloud_essai_debut,
  *                  cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_formule
@@ -71,21 +83,22 @@ export function vivantsBoutiques(p, { googleActif = null, maintenant = Date.now(
   if (!p) return out;
   const fin = instant(p.subscription_period_end);
   const finAVenir = fin != null && fin > maintenant;
+  const packDe = (canal) => Boolean(p.cloud_formule) && p.cloud_canal === canal;
   let google = false;
   if (p.google_purchase_token && googleActif !== false) {
     const rang = rangProduitBoutique(p.google_product_id);
     if (rang && finAVenir && (googleActif === true || rangDrapeaux(p) > 0)) {
-      out.push({ canal: 'google', type: 'palier', rang, id: p.google_product_id ?? null });
+      out.push({ canal: 'google', type: 'palier', rang, avecCloud: packDe('google') || produitAvecCloud(p.google_product_id), id: p.google_product_id ?? null });
       google = true;
     }
   }
   if (!google && p.apple_original_transaction_id && rangDrapeaux(p) > 0 && finAVenir) {
-    out.push({ canal: 'apple', type: 'palier', rang: rangDrapeaux(p), id: p.apple_original_transaction_id ?? null });
+    out.push({ canal: 'apple', type: 'palier', rang: rangDrapeaux(p), avecCloud: packDe('apple'), id: p.apple_original_transaction_id ?? null });
   }
   if ((p.cloud_canal === 'apple' || p.cloud_canal === 'google') && !p.cloud_formule) {
     const finEssai = instant(p.cloud_essai_fin);
     const essaiEnCours = p.is_cloud !== true && p.cloud_essai_debut != null && finEssai != null && maintenant < finEssai && p.cloud_essai_arrete !== true;
-    if (p.is_cloud === true || essaiEnCours) out.push({ canal: p.cloud_canal, type: 'cloud_seul', rang: 0, id: p.cloud_ref ?? null, essai: essaiEnCours });
+    if (p.is_cloud === true || essaiEnCours) out.push({ canal: p.cloud_canal, type: 'cloud_seul', rang: 0, avecCloud: true, id: p.cloud_ref ?? null, essai: essaiEnCours });
   }
   return out;
 }
@@ -98,56 +111,96 @@ export function abonnementsVivants({ profil = null, stripe = [], googleActif = n
   return [...vivantsStripe(stripe), ...vivantsBoutiques(profil, { googleActif, maintenant })];
 }
 
+/** Les FORMULES vivantes (Premium, Pro, Business, avec ou sans Cloud) et les CLOUD vivants (Cloud seul, ou le Cloud d'un
+ *  pack) d'une liste d'abonnements vivants (pur). `double` : deux formules, ou deux fois le Cloud — le seul vrai double.
+ * @param {Array<any>} [vivants] @returns {{ formules: Array<any>, clouds: Array<any>, double: boolean }} */
+export function compterFormules(vivants = []) {
+  const liste = Array.isArray(vivants) ? vivants : [];
+  const formules = liste.filter((v) => v?.type === 'palier');
+  const clouds = liste.filter((v) => v?.type === 'cloud_seul' || (v?.type === 'palier' && v?.avecCloud === true));
+  return { formules, clouds, double: formules.length >= 2 || clouds.length >= 2 };
+}
+
 /**
- * Peut-on acheter CE produit sur CE canal sans créer un second abonnement ? (pur)
+ * Peut-on acheter CE produit sur CE canal sans créer une SECONDE FORMULE ni payer deux fois le Cloud ? (pur)
  *   canal : 'stripe' | 'apple' | 'google' — le canal de l'achat demandé ;
- *   achat : 'palier' (Premium, Pro, Business) | 'formule' (… + Cloud) | 'cloud_seul' ;
+ *   achat : 'palier' (Premium, Pro, Business) | 'formule' (… + Cloud, le pack) | 'cloud_seul' ;
  *   vivants : abonnementsVivants(…).
- * Rend { permis: true, voie: 'nouveau' | 'meme_abonnement' } ou { permis: false, motif, canal, type } avec
- *   motif 'autre_canal'         — l'abonnement vit sur un AUTRE canal : le changement se fait là-bas ;
- *         'formule_en_cours'    — une formule vit sur ce canal et le Cloud seul serait un second abonnement : prendre la
- *                                 formule avec Cloud (le même abonnement change) ;
- *         'cloud_seul_en_cours' — le Cloud seul vit sur ce canal et une formule serait un second abonnement (boutiques :
- *                                 deux groupes / deux produits ; Stripe : un forfait classique à côté du Cloud seul) ;
- *         'deja'                — le même Cloud seul existe déjà ;
- *         'deux_abonnements'    — le compte a DÉJÀ deux abonnements : rien de plus, le support les réunit.
- * Sur le même canal, palier ↔ formule passe (montée / descente du MÊME abonnement : Stripe change le prix, Apple change
- * de produit dans le groupe « FillSell Plan », Google remplace l'abonnement) ; Stripe : Cloud seul → formule aussi
- * (voieFormuleStripe change le prix de l'abonnement Cloud).
+ * Rend { permis: true, voie } — voie 'nouveau' | 'meme_abonnement' (la formule de ce canal change) | 'cloud_en_plus' (le
+ * Cloud seul s'ajoute à la formule) | 'formule_en_plus' (une formule s'ajoute au Cloud seul) —, ou { permis: false, motif,
+ * canal, type } avec motif :
+ *   'autre_canal'         — la formule vit sur un AUTRE canal : son changement se fait là-bas (une 2e formule sinon) ;
+ *   'formule_autre_canal' — le pack demandé ici serait une 2e formule ; le compte n'a pas encore le Cloud : la phrase
+ *                           propose le Cloud SEUL ici (il s'ajoute à la formule) ou le pack sur le canal de la formule ;
+ *   'deux_formules'       — le compte a DÉJÀ deux formules : rien de plus, le support les réunit ;
+ *   'impaye'              — la formule Stripe de ce canal est en impayé (past_due) : régler d'abord la facture ;
+ *   'cloud_deja'          — un pack demandé alors qu'un Cloud SEUL vit déjà (le Cloud payé deux fois) : la phrase propose
+ *                           la formule SANS Cloud, qui s'ajoute au Cloud déjà là ;
+ *   'cloud_dans_formule'  — un Cloud seul demandé alors que la formule le comprend déjà (pack) : rien à ajouter ;
+ *   'deja'                — un Cloud seul existe déjà : rien à ajouter.
+ * ⛔ Verrou selftest:cloud-en-plus-de-formule : le Cloud (pack sur le canal de la formule, ou Cloud seul sur TOUT canal)
+ * ajouté à une formule Premium, Pro ou Business payée par Stripe, Apple ou Google n'est JAMAIS refusé.
  * @param {{ canal: string, achat: string, vivants?: Array<any> }} p
  * @returns {{ permis: boolean, voie?: string, motif?: string, canal?: string, type?: string }}
  */
 export function decisionAchat({ canal, achat, vivants = [] }) {
-  const liste = Array.isArray(vivants) ? vivants : [];
-  if (!liste.length) return { permis: true, voie: 'nouveau' };
-  if (liste.length >= 2) return { permis: false, motif: 'deux_abonnements', canal: liste[0].canal, type: liste[0].type };
-  const v = liste[0];
-  if (v.canal !== canal) return { permis: false, motif: 'autre_canal', canal: v.canal, type: v.type };
-  // Un abonnement Stripe en impayé (past_due) : un second abonnement prélèverait deux fois dès la carte mise à jour.
-  if (v.statut === 'past_due') return { permis: false, motif: 'impaye', canal, type: v.type };
-  if (v.type === 'cloud_seul') {
-    if (achat === 'cloud_seul') return { permis: false, motif: 'deja', canal, type: v.type };
-    if (achat === 'formule' && canal === 'stripe') return { permis: true, voie: 'meme_abonnement' };
-    return { permis: false, motif: 'cloud_seul_en_cours', canal, type: v.type };
+  const { formules, clouds } = compterFormules(vivants);
+  const cloudsSeuls = clouds.filter((v) => v.type === 'cloud_seul');
+  // ── Le Cloud SEUL : jugé sur le Cloud seulement (il n'ajoute jamais de formule) ──
+  if (achat === 'cloud_seul') {
+    if (cloudsSeuls.length) return { permis: false, motif: 'deja', canal: cloudsSeuls[0].canal, type: 'cloud_seul' };
+    const pack = formules.find((v) => v.avecCloud === true);
+    if (pack) return { permis: false, motif: 'cloud_dans_formule', canal: pack.canal, type: 'palier' };
+    return { permis: true, voie: formules.length ? 'cloud_en_plus' : 'nouveau' };
   }
-  if (achat === 'cloud_seul') return { permis: false, motif: 'formule_en_cours', canal, type: v.type };
-  return { permis: true, voie: 'meme_abonnement' };
+  // ── Une FORMULE (palier, ou pack) : une seule à la fois, tous canaux ──
+  if (formules.length >= 2) return { permis: false, motif: 'deux_formules', canal: formules[0].canal, type: 'palier' };
+  const f = formules[0] ?? null;
+  if (f && f.canal !== canal) {
+    // Le pack ailleurs, et le compte n'a pas encore le Cloud : deux voies justes (le Cloud seul ici, le pack là-bas).
+    if (achat === 'formule' && clouds.length === 0) return { permis: false, motif: 'formule_autre_canal', canal: f.canal, type: 'palier' };
+    return { permis: false, motif: 'autre_canal', canal: f.canal, type: 'palier' };
+  }
+  if (f && f.statut === 'past_due') return { permis: false, motif: 'impaye', canal, type: 'palier' };
+  if (achat === 'formule') {
+    // Jamais deux fois le Cloud : un Cloud seul vit déjà (hors le cas Stripe où le Cloud seul DEVIENT le pack).
+    const seul = cloudsSeuls[0] ?? null;
+    if (seul) {
+      if (!f && seul.canal === 'stripe' && canal === 'stripe' && cloudsSeuls.length === 1) return { permis: true, voie: 'meme_abonnement' };
+      return { permis: false, motif: 'cloud_deja', canal: seul.canal, type: 'cloud_seul' };
+    }
+  }
+  if (f) return { permis: true, voie: 'meme_abonnement' };
+  return { permis: true, voie: cloudsSeuls.length ? 'formule_en_plus' : 'nouveau' };
+}
+
+/** La décision d'un achat sur ce qu'un serveur a LU (profil, Stripe relu, Google relu) — garde-abonnement et
+ *  create-checkout-session l'appellent tels quels (pur, testé par les verrous).
+ * @param {{ canal: string, achat: string, profil?: any, stripe?: Array<any>, googleActif?: boolean | null, maintenant?: number }} p
+ * @returns {{ permis: boolean, voie?: string, motif?: string, canal?: string, type?: string, vivants: Array<any> }} */
+export function decisionSurLectures({ canal, achat, profil = null, stripe = [], googleActif = null, maintenant = Date.now() }) {
+  const vivants = abonnementsVivants({ profil, stripe, googleActif, maintenant });
+  return { ...decisionAchat({ canal, achat, vivants }), vivants };
 }
 
 // ── LA PHRASE : où faire le changement (fr / en). ⛔ Jamais « ordinateur » ni « Chrome » : un client du Cloud la lit. ──
 const OU = {
   fr: {
-    stripe: "est payé par carte, sur le web : pour changer de formule ou ajouter le Cloud, va sur fillsell.app, Réglages › Abonnement",
-    apple: "passe par l'App Store : pour changer de formule ou ajouter le Cloud, ouvre l'app FillSell sur ton iPhone, Réglages › Abonnement",
-    google: "passe par Google Play : pour changer de formule ou ajouter le Cloud, ouvre l'app FillSell sur ton téléphone Android, Réglages › Abonnement",
+    stripe: 'est payée par carte, sur le web : pour en changer, va sur fillsell.app, Réglages › Abonnement',
+    apple: "passe par l'App Store : pour en changer, ouvre l'app FillSell sur ton iPhone, Réglages › Abonnement",
+    google: "passe par Google Play : pour en changer, ouvre l'app FillSell sur ton téléphone Android, Réglages › Abonnement",
   },
   en: {
-    stripe: 'is paid by card, on the web: to change plans or add the Cloud, go to fillsell.app, Settings › Subscription',
-    apple: 'goes through the App Store: to change plans or add the Cloud, open the FillSell app on your iPhone, Settings › Subscription',
-    google: 'goes through Google Play: to change plans or add the Cloud, open the FillSell app on your Android phone, Settings › Subscription',
+    stripe: 'is paid by card, on the web: to change it, go to fillsell.app, Settings › Subscription',
+    apple: 'goes through the App Store: to change it, open the FillSell app on your iPhone, Settings › Subscription',
+    google: 'goes through Google Play: to change it, open the FillSell app on your Android phone, Settings › Subscription',
   },
 };
-const BOUTIQUE = { fr: { apple: "l'App Store", google: 'Google Play', stripe: 'carte, sur le web' }, en: { apple: 'the App Store', google: 'Google Play', stripe: 'card, on the web' } };
+const LA_BAS = {
+  fr: { stripe: 'sur fillsell.app, Réglages › Abonnement', apple: "dans l'app FillSell sur ton iPhone, Réglages › Abonnement", google: "dans l'app FillSell sur ton téléphone Android, Réglages › Abonnement" },
+  en: { stripe: 'on fillsell.app, Settings › Subscription', apple: 'in the FillSell app on your iPhone, Settings › Subscription', google: 'in the FillSell app on your Android phone, Settings › Subscription' },
+};
+const PAR = { fr: { apple: "par l'App Store", google: 'par Google Play', stripe: 'par carte, sur le web' }, en: { apple: 'through the App Store', google: 'through Google Play', stripe: 'by card, on the web' } };
 
 /** La phrase dite à la personne (fr / en) pour un refus de decisionAchat ; null si l'achat est permis.
  * @param {any} d @param {string} [lang] @returns {string | null} */
@@ -156,41 +209,37 @@ export function messageUnSeulAbonnement(d, lang = 'fr') {
   const en = lang === 'en';
   const L = en ? 'en' : 'fr';
   const rien = en ? 'Nothing was charged.' : "Rien n'a été débité.";
-  const second = en ? 'A purchase here would be a second subscription.' : 'Un achat ici serait un second abonnement.';
-  const aide = en ? 'Write to us from Settings › Help: we help you switch without paying twice.' : "Écris-nous depuis Réglages › Aide : on t'aide à changer sans payer deux fois.";
   const c = CANAUX_ABONNEMENT.includes(d.canal) ? d.canal : null;
   switch (d.motif) {
     case 'autre_canal':
-      if (d.type === 'cloud_seul') {
-        return en ? `Your FillSell Cloud subscription goes through ${BOUTIQUE.en[c] ?? 'another channel'}. ${second} ${aide} ${rien}`
-          : `Ton abonnement FillSell Cloud passe par ${BOUTIQUE.fr[c] ?? 'un autre canal'}. ${second} ${aide} ${rien}`;
-      }
-      if (!c) return en ? `${second} ${aide} ${rien}` : `${second} ${aide} ${rien}`;
-      return en ? `Your FillSell subscription ${OU.en[c]}. ${second} ${rien}` : `Ton abonnement FillSell ${OU.fr[c]}. ${second} ${rien}`;
-    case 'formule_en_cours':
-      return en ? `You already have a FillSell plan: to add the Cloud, choose its version with Cloud in Settings › Subscription (your subscription changes, no second subscription). ${rien}`
-        : `Tu as déjà une formule FillSell : pour ajouter le Cloud, choisis sa version avec Cloud dans Réglages › Abonnement (ton abonnement change, sans second abonnement). ${rien}`;
-    case 'cloud_seul_en_cours':
-      if (c === 'stripe') {
-        return en ? `You already have FillSell Cloud: to add a plan, choose a plan with Cloud in Settings › Subscription (your subscription changes, no second subscription). ${rien}`
-          : `Tu as déjà FillSell Cloud : pour ajouter une formule, choisis une formule avec Cloud dans Réglages › Abonnement (ton abonnement change, sans second abonnement). ${rien}`;
-      }
-      return en ? `You already have FillSell Cloud through ${BOUTIQUE.en[c] ?? 'your store'}. ${second} ${aide} ${rien}`
-        : `Tu as déjà FillSell Cloud par ${BOUTIQUE.fr[c] ?? 'ta boutique'}. ${second} ${aide} ${rien}`;
+      if (!c) return en ? `A purchase here would be a second plan. Write to us from Settings › Help. ${rien}` : `Un achat ici ferait une seconde formule. Écris-nous depuis Réglages › Aide. ${rien}`;
+      return en ? `Your FillSell plan ${OU.en[c]}. A plan bought here would be a second plan. ${rien}`
+        : `Ta formule FillSell ${OU.fr[c]}. Une formule prise ici en ferait une seconde. ${rien}`;
+    case 'formule_autre_canal':
+      return en
+        ? `Your FillSell plan goes ${PAR.en[c] ?? 'through another channel'}: a plan with Cloud here would be a second plan. To add the Cloud, take FillSell Cloud on its own, here: it comes on top of your plan. Or switch to the Cloud version of your plan ${LA_BAS.en[c] ?? 'where you pay'}. ${rien}`
+        : `Ta formule FillSell passe ${PAR.fr[c] ?? 'par un autre canal'} : une formule avec Cloud prise ici en ferait une seconde. Pour ajouter le Cloud, prends FillSell Cloud seul, ici : il s'ajoute à ta formule. Ou passe à la version avec Cloud de ta formule ${LA_BAS.fr[c] ?? 'là où tu paies'}. ${rien}`;
+    case 'cloud_deja':
+      return en
+        ? `You already have FillSell Cloud (${PAR.en[c] ?? 'on another channel'}): a plan with Cloud would make you pay for the Cloud twice. Choose the plan without Cloud (Premium, Pro or Business): it comes on top of your Cloud. ${rien}`
+        : `Tu as déjà FillSell Cloud (${PAR.fr[c] ?? 'sur un autre canal'}) : une formule avec Cloud te le ferait payer deux fois. Choisis la formule sans Cloud (Premium, Pro ou Business) : elle s'ajoute à ton Cloud. ${rien}`;
+    case 'cloud_dans_formule':
+      return en ? `Your plan already includes FillSell Cloud: nothing to add. ${rien}` : `Ta formule comprend déjà FillSell Cloud : rien à ajouter. ${rien}`;
     case 'deja':
       return en ? 'You already have FillSell Cloud.' : 'Tu as déjà FillSell Cloud.';
     case 'impaye':
       return en ? `A payment of your subscription is still due: pay the invoice first (the link is in the email you received, or Settings › Subscription › My invoices on fillsell.app), then change plans. ${rien}`
         : `Un paiement de ton abonnement est encore dû : règle d'abord la facture (le lien est dans le mail reçu, ou sur fillsell.app, Réglages › Abonnement › Mes factures), puis change de formule. ${rien}`;
+    case 'deux_formules':
     case 'deux_abonnements':
     default:
-      return en ? `You already have two FillSell subscriptions: write to us from Settings › Help and we will merge them. ${rien}`
-        : `Tu as déjà deux abonnements FillSell : écris-nous depuis Réglages › Aide, on les réunit. ${rien}`;
+      return en ? `You already have two FillSell plans: write to us from Settings › Help and we will merge them. ${rien}`
+        : `Tu as déjà deux formules FillSell : écris-nous depuis Réglages › Aide, on les réunit. ${rien}`;
   }
 }
 
-/** Le résumé d'une alerte « deux abonnements » (support@) : une ligne par abonnement vivant.
+/** Le résumé d'une alerte « deux formules » (support@) : une ligne par abonnement vivant.
  * @param {Array<any>} [vivants] @returns {string[]} */
 export function lignesDeuxAbonnements(vivants = []) {
-  return (Array.isArray(vivants) ? vivants : []).map((v) => `${v.canal} · ${v.type === 'cloud_seul' ? 'Cloud seul' : `palier rang ${v.rang}`}${v.statut ? ` · ${v.statut}` : ''}${v.essai ? ' · essai' : ''}${v.id ? ` · ${String(v.id).slice(0, 40)}` : ''}`);
+  return (Array.isArray(vivants) ? vivants : []).map((v) => `${v.canal} · ${v.type === 'cloud_seul' ? 'Cloud seul' : `formule rang ${v.rang}${v.avecCloud ? ' + Cloud' : ''}`}${v.statut ? ` · ${v.statut}` : ''}${v.essai ? ' · essai' : ''}${v.id ? ` · ${String(v.id).slice(0, 40)}` : ''}`);
 }

@@ -149,8 +149,9 @@ const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
     ok(ecrite.length === 1 && ecrite[0] === 'supabase/functions/_shared/cloud-conditions.js', `la date de la version en vigueur s’écrit à UN endroit du code (${ecrite.join(', ') || 'nulle part'})`);
   }
   // (13/11/2026, décision de Nico) La ligne de la reformulation des articles 6 et 7 (avant : articles 4 et 9).
-  ok(T?.version ===`Version du ${jma(VERSION_CLOUD_SEUL)} — elle reformule les articles 6 et 7 (paiement, essai et arrêt selon chaque canal ; un seul abonnement par compte) sans rien changer sur le fond : une acceptation de la version du 04/11/2026 reste valable.`
-    && EN?.version === `Version of ${jma(VERSION_CLOUD_SEUL)} — it rewords articles 6 and 7 (payment, trial and stopping on each channel; one subscription per account) without changing their substance: an acceptance of the version of 04/11/2026 remains valid. English translation for information only; the French version prevails.`,
+  // (13/11/2026, dernière réponse de Nico, point e) « un seul abonnement par compte » → le Cloud seul en plus d'un forfait payant.
+  ok(T?.version ===`Version du ${jma(VERSION_CLOUD_SEUL)} — elle reformule les articles 6 et 7 (paiement, essai et arrêt selon chaque canal ; le Cloud seul, en plus d'un forfait payant sur tout canal) sans rien changer sur le fond : une acceptation de la version du 04/11/2026 reste valable.`
+    && EN?.version === `Version of ${jma(VERSION_CLOUD_SEUL)} — it rewords articles 6 and 7 (payment, trial and stopping on each channel; the Cloud on its own, on top of a paid plan on any channel) without changing their substance: an acceptance of the version of 04/11/2026 remains valid. English translation for information only; the French version prevails.`,
   'la ligne de version, mot pour mot : l’acceptation du 04/11/2026 reste valable (fr et en)');
   // (relecture D8) La phrase vient de la table « ce que change la version » : une autre version n'en hérite jamais.
   ok(typeof COND.ligneDeVersion === 'function' && COND.ligneDeVersion('fr', { version: '2026-12-01', changement: 'autre' }) === 'Version du 01/12/2026'

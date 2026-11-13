@@ -142,10 +142,14 @@ const LIGNES_A = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/pai
 // (c) validate-google-purchase : la grâce ne rouvre plus le droit (selftest:grace-google-jamais-rouverte) ; (d) le nom de la
 // formule passe au mail d'impayé (selftest:impaye-formule-en-pause). Aucun autre chemin de palier.
 const LIGNES_P = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-pay2-1311.json'), 'utf8'));
+// (13/11/2026, décision de Nico — dernière réponse : une seule FORMULE à la fois, le Cloud en plus toujours permis) Les lignes
+// du lot PAY3 dans create-checkout-session, relues une à une : scripts/fixtures/paiements-lignes-pay3-1311.json (le Cloud seul web
+// permis à côté d'une formule, offre_remplacee jamais pour un abonné). Verrou : selftest:cloud-en-plus-de-formule.
+const LIGNES_P3 = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-pay3-1311.json'), 'utf8'));
 const FICHIERS_LIGNES = [...new Set([...Object.keys(LIGNES_CLOUD), 'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'])];
 for (const f of FICHIERS_LIGNES) {
   const permisesCloud = LIGNES_CLOUD[f] ?? [];
-  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? [])];
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
@@ -162,7 +166,7 @@ const permises = [/^\/\//, /success_url:/, /cloudVivantDuProfil/, /^\.from\("pro
 // (11/11) + les lignes des formules avec Cloud (relues une à une).
 // (12/11) + les lignes du point 4c (le message « bientôt » quand le canal qui facture est fermé), relues une à une.
 // (13/11) + les lignes du lot PAY2 (un seul abonnement), relues une à une.
-const c4Checkout = [...(LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_F['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_T['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_P['supabase/functions/create-checkout-session/index.ts'] ?? [])].map((l) => l.slice(1));
+const c4Checkout = [...(LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_F['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_T['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_P['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_P3['supabase/functions/create-checkout-session/index.ts'] ?? [])].map((l) => l.slice(1));
 const restantC4 = [...c4Checkout];
 const autres = lignes.filter((l) => !permises.some((r) => r.test(l))).filter((l) => { const i = restantC4.indexOf(l); if (i < 0) return true; restantC4.splice(i, 1); return false; });
 ok(autres.length === 0, `create-checkout-session : ${lignes.length} lignes changées, toutes sur la page de retour, la garde du Cloud, le refus C4 (montée pendant une descente programmée) ou les formules avec Cloud relues le 11/11`, autres.join(' | '));

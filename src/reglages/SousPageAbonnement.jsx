@@ -36,6 +36,7 @@ import { RELECTURES_APRES_BOUTIQUE_MS } from '../cloud/regles';
 import BlocFormulesReglages from '../cloud/BlocFormulesReglages';
 import { useProfilFormules } from '../cloud/useProfilFormules';
 import { formulesCloudVendables } from '../config/cloudOffer';
+import { blocCloudSeulCache } from '../cloud/formulesCloud';
 
 // Point d'entrée tracé, dans le vocabulaire du tunnel (App.jsx) : sans lui,
 // `premium_cta_click` et `offers_modal_open` retombent sur 'non_precisee' et
@@ -96,7 +97,12 @@ export default function SousPageAbonnement({ c, T }) {
   // plus l'appareil.
   const profilFormules = useProfilFormules(c.user?.id, { actif: formulesVisibles || c.isPremium === true });
   const cloudSeulEnCours = lectureCloud.cloud?.etat === 'essai' || lectureCloud.cloud?.etat === 'paye';
-  const cacherBlocCloud = formulesVisibles && (profilFormules.formuleActuelle != null || !cloudSeulEnCours);
+  // (13/11/2026, dernière réponse de Nico) Un abonné payant sans Cloud voit AUSSI le Cloud seul (en plus de sa formule, sur
+  // tout canal) : formulesCloud.js blocCloudSeulCache. Profil pas encore lu : comme avant (caché tant que rien n'est sûr).
+  const cacherBlocCloud = blocCloudSeulCache({
+    formulesVisibles, formuleActuelle: profilFormules.formuleActuelle, cloudSeulEnCours,
+    canalAbonnement: profilFormules.etat === 'ok' ? profilFormules.canalAbonnement : null,
+  });
   const canalFacture = profilFormules.etat === 'ok' ? profilFormules.canalAbonnement
     : c.natif ? (c.plateforme === 'ios' ? 'apple' : c.plateforme === 'android' ? 'google' : null) : null;
 

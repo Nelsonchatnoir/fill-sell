@@ -226,16 +226,26 @@ export function messageVoieFormule(r, lang = 'fr') {
       // Les textes « … y arrivent bientôt : Apple est en train de les valider » sont RETIRÉS : un canal fermé (retour arrière
       // seulement) reçoit la phrase neutre, sans promesse.
       if (r.ferme === true) break;
+      // (13/11/2026, décision de Nico) Le Cloud se prend AUSSI seul, ici, en plus de la formule de la boutique : la phrase
+      // le propose quand le compte n'a pas encore le Cloud (`cloudSeulPossible`, posé par create-checkout-session).
+      if (r.cloudSeulPossible === true) {
+        return en ? `Your plan is managed by ${r.canal === 'apple' ? 'the App Store' : 'Google Play'}: a plan with Cloud here would be a second plan. To add the Cloud, take FillSell Cloud on its own, here: it comes on top of your plan. Or switch to the Cloud version of your plan in ${app}. Nothing was charged.`
+          : `Ta formule est gérée par ${r.canal === 'apple' ? "l'App Store" : 'Google Play'} : une formule avec Cloud prise ici en ferait une seconde. Pour ajouter le Cloud, prends FillSell Cloud seul, ici : il s'ajoute à ta formule. Ou passe à la version avec Cloud de ta formule dans ${app}. Rien n'a été débité.`;
+      }
       return en ? `Your subscription is managed by ${r.canal === 'apple' ? 'the App Store' : 'Google Play'}: change plans in ${app}. Nothing was charged.`
         : `Ton abonnement est géré par ${r.canal === 'apple' ? "l'App Store" : 'Google Play'} : change de formule dans ${app}. Rien n'a été débité.`;
     case 'cloud_boutique':
-      // (13/11) Le Cloud SEUL de ce compte est facturé par l'App Store / Google Play : une formule avec Cloud (web ou app)
-      // serait un SECOND abonnement (Apple : deux groupes d'abonnements) — jamais « change de formule dans l'app », ni
-      // « bientôt ». La phrase neutre ; l'app ne montre plus les formules à ce compte (voieFormulesDuCompte).
-      break;
-    case 'deux_abonnements':
-      return en ? 'You have two subscriptions: write to us from Settings › Help and we will merge them. Nothing was charged.'
-        : "Tu as deux abonnements : écris-nous depuis Réglages › Aide, on les réunit. Rien n'a été débité.";
+    case 'deux_abonnements': {
+      // (13/11/2026, décision de Nico — « jamais deux fois le Cloud : proposer le changement, pas un refus sec ») Le compte a
+      // DÉJÀ FillSell Cloud seul (App Store / Google Play : 'cloud_boutique' ; par carte, à côté d'une formule Stripe :
+      // 'deux_abonnements' — une formule + le Cloud seul, c'est normal) : une formule avec Cloud le ferait payer deux fois.
+      // La phrase dit ce qui existe et propose la formule SANS Cloud, qui s'ajoute au Cloud déjà là. Avant : la phrase
+      // neutre (« Cette formule n'est pas disponible ») ou « Tu as deux abonnements : écris-nous ».
+      const par = r?.motif === 'deux_abonnements' ? (en ? 'by card, on the web' : 'par carte, sur le web')
+        : r?.canal === 'apple' ? (en ? 'through the App Store' : "par l'App Store") : r?.canal === 'google' ? (en ? 'through Google Play' : 'par Google Play') : null;
+      return en ? `You already have FillSell Cloud${par ? ` (${par})` : ''}: a plan with Cloud would make you pay for the Cloud twice. Choose the plan without Cloud (Premium, Pro or Business): it comes on top of your Cloud. Nothing was charged.`
+        : `Tu as déjà FillSell Cloud${par ? ` (${par})` : ''} : une formule avec Cloud te le ferait payer deux fois. Choisis la formule sans Cloud (Premium, Pro ou Business) : elle s'ajoute à ton Cloud. Rien n'a été débité.`;
+    }
     case 'changement_prevu':
       return en ? 'A plan change is already scheduled: cancel it in Settings › Subscription, then try again. Nothing was charged.'
         : "Un changement de formule est déjà prévu : annule-le dans Réglages › Abonnement, puis recommence. Rien n'a été débité.";
@@ -352,8 +362,12 @@ export function aDejaEuLeCloudServeur(p) {
   return Boolean(p.is_cloud || p.cloud_essai_debut || p.cloud_essai_fin || p.cloud_essai_arrete || p.cloud_essai_refus
     || p.cloud_periode_fin || p.cloud_ref || p.cloud_canal);
 }
-/** product "cloud" (anciens paquets web / OTA) : refusé à un compte qui ne l'a jamais eu quand les formules sont ouvertes. */
-export function cloudSeulRefuse({ profil, formulesOuvertes }) {
+/** product "cloud" (anciens paquets web / OTA) : refusé à un compte qui ne l'a jamais eu quand les formules sont ouvertes.
+ *  (13/11/2026, décision de Nico — « le Cloud seul en complément, sur n'importe quel canal ») JAMAIS à un abonné : une
+ *  formule vivante (Premium, Pro ou Business, sur tout canal : `formuleVivante`, compterFormules de un-seul-abonnement.js)
+ *  prend le Cloud seul en plus. Seul un compte SANS formule reste orienté vers les formules avec Cloud (11/11, inchangé). */
+export function cloudSeulRefuse({ profil, formulesOuvertes, formuleVivante = false }) {
+  if (formuleVivante === true) return false;
   return formulesOuvertes === true && !aDejaEuLeCloudServeur(profil);
 }
 

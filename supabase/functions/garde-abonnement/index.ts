@@ -1,6 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// GARDE-ABONNEMENT — « UN SEUL ABONNEMENT ACTIF PAR COMPTE, TOUS CANAUX » AVANT LA FEUILLE D'UNE BOUTIQUE (13/11/2026)
+// GARDE-ABONNEMENT — « UNE SEULE FORMULE À LA FOIS, TOUS CANAUX » AVANT LA FEUILLE D'UNE BOUTIQUE (13/11/2026)
 // ═══════════════════════════════════════════════════════════════════════════
+// (13/11/2026, dernière réponse de Nico) La règle n'est plus « un seul abonnement » : une formule + le Cloud (pack, ou Cloud
+// seul sur n'importe quel canal) est NORMAL ; seules deux FORMULES (ou deux fois le Cloud) sont refusées
+// (_shared/un-seul-abonnement.js, decisionSurLectures). c7c382b7 et f0acd3af sont des clients normaux. ⛔ cloud_formule est
+// LUE : sans elle, le Cloud d'un pack App Store / Google Play (cdf7007c, Pro + Cloud App Store) se comptait comme un Cloud
+// seul et toute montée / descente du pack était refusée (« deux abonnements »). Verrou : selftest:cloud-en-plus-de-formule.
 // 3e réponse de Nico, point a. L'app iPhone / Android l'appelle AVANT d'ouvrir la feuille de l'App Store / Google Play
 // (achat d'un forfait, d'une formule avec Cloud ou du Cloud seul) : un achat de boutique ne se refuse plus après coup —
 // l'argent est parti. Cas réels : c7c382b7 (Pro par carte, puis Cloud seul pris sur iPhone le 12/11), f0acd3af (Pro App
@@ -15,11 +20,11 @@ import { jetonGooglePlay } from "../_shared/google-play-token.ts";
 import { abonnementGoogleActif } from "../_shared/droits-canaux.js";
 import { litAbonnementStripe } from "../_shared/cloud-option.js";
 import { prixStripe } from "../_shared/prix-stripe.ts";
-import { abonnementsVivants, decisionAchat, messageUnSeulAbonnement, ACHATS, CANAUX_ABONNEMENT } from "../_shared/un-seul-abonnement.js";
+import { decisionSurLectures, messageUnSeulAbonnement, ACHATS, CANAUX_ABONNEMENT } from "../_shared/un-seul-abonnement.js";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 const COLONNES = "stripe_customer_id, google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, "
-  + "subscription_period_end, cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin";
+  + "subscription_period_end, cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_formule";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -90,8 +95,7 @@ serve(async (req) => {
       return json({ permis: null, raison: "stripe_illisible" });
     }
     const googleActif = await googleActifRelu(p.google_purchase_token);
-    const vivants = abonnementsVivants({ profil: p, stripe: stripeLus, googleActif });
-    const d = decisionAchat({ canal, achat, vivants });
+    const { vivants, ...d } = decisionSurLectures({ canal, achat, profil: p, stripe: stripeLus, googleActif });
     console.log(`[garde-abonnement] ${user.id} : ${achat} sur ${canal} → ${d.permis ? `permis (${d.voie})` : `REFUSÉ (${d.motif}, ${d.canal})`} — vivants : ${vivants.map((v) => `${v.canal}/${v.type}`).join(", ") || "aucun"}`);
     return json({
       ...d,

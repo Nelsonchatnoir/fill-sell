@@ -154,11 +154,15 @@ try {
   // (13/11, décision de Nico) Canal fermé : la phrase neutre (« … pas disponible pour le moment »), plus « bientôt ».
   const NEUTRE = "Cette formule n'est pas disponible pour le moment. Rien n'a été débité.";
   ok(FS.messageVoieFormule({ motif: 'abonnement_boutique', canal: 'apple', ferme: true }, 'fr') === NEUTRE, 'messageVoieFormule : canal fermé → la phrase neutre (13/11)');
-  ok(FS.messageVoieFormule({ motif: 'cloud_boutique', canal: 'apple', ferme: true }, 'fr') === NEUTRE, 'messageVoieFormule : Cloud seul App Store → la phrase neutre (13/11)');
+  // (13/11/2026, décision de Nico — « jamais deux fois le Cloud : proposer le changement, pas un refus sec ») Cloud seul App
+  // Store → la formule SANS Cloud, qui s'ajoute au Cloud (avant : la phrase neutre).
+  { const m = FS.messageVoieFormule({ motif: 'cloud_boutique', canal: 'apple', ferme: true }, 'fr');
+    ok(/Tu as déjà FillSell Cloud \(par l'App Store\)/.test(m) && /Choisis la formule sans Cloud/.test(m) && /Rien n'a été débité\./.test(m), 'messageVoieFormule : Cloud seul App Store → propose la formule sans Cloud (13/11, décision de Nico)', m); }
   ok(/change de formule dans l'app FillSell sur ton iPhone/.test(FS.messageVoieFormule({ motif: 'abonnement_boutique', canal: 'apple' }, 'fr')), 'messageVoieFormule : canal ouvert → le message d’avant (dans l’app iPhone)');
   ok(!/Apple is reviewing them/.test(FS.messageVoieFormule({ motif: 'abonnement_boutique', canal: 'apple', ferme: true }, 'en')), 'messageVoieFormule : l’anglais aussi (plus « Apple is reviewing them »)');
   const ccs = fs.readFileSync(join(ROOT, 'supabase/functions/create-checkout-session/index.ts'), 'utf8').replace(/\r\n/g, '\n');
-  ok(/const r = canalR \? \{ \.\.\.r0, ferme: !\(await interrupteurFormules\(supabase, canalR, profil\)\) \} : r0;/.test(ccs), 'create-checkout-session : lit l’interrupteur du canal qui facture avant de répondre');
+  // (13/11/2026, décision de Nico) + cloudSeulPossible : la phrase propose aussi le Cloud seul ici.
+  ok(/const r = canalR \? \{ \.\.\.r0, (cloudSeulPossible, )?ferme: !\(await interrupteurFormules\(supabase, canalR, profil\)\) \} : r0;/.test(ccs), 'create-checkout-session : lit l’interrupteur du canal qui facture avant de répondre');
   const ach = fs.readFileSync(join(ROOT, 'src/cloud/achatFormuleCloud.js'), 'utf8').replace(/\r\n/g, '\n');
   ok(/if \(d\?\.error === 'abonnement_autre_canal'\) return \{ etat: 'refuse', message: message \?\? T\.boutique/.test(ach), 'l’app affiche le message du serveur (« bientôt ») plutôt que le sien');
 } finally {

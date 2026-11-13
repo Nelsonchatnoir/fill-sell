@@ -574,3 +574,31 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   `signer-offre-boutique` (fermée : secret ESSAI_ABONNES_BOUTIQUE), `src/lib/essaiAbonneBoutique.js` (binaire minimal null) : INACTIF.
 - Verrous : selftest:un-seul-abonnement, remboursement-stripe, grace-google-jamais-rouverte, impaye-formule-en-pause,
   essai-abonne-boutique, textes-paiement-verite § I-J ; lignes relues : `scripts/fixtures/paiements-lignes-pay2-1311.json`.
+- ⚠ Le point (a) ci-dessus est REMPLACÉ par la section suivante (dernière réponse de Nico du 13/11).
+
+## ⛔ 13/11/2026 (dernière réponse de Nico) — UNE SEULE FORMULE à la fois, tous canaux ; le Cloud EN PLUS toujours permis
+- Mot pour mot : « Une formule (Premium, Pro ou Business) + le Cloud, c'est NORMAL et c'est ce qu'on veut vendre : par le pack
+  (Premium + Cloud, Pro + Cloud, Business + Cloud) ou par le Cloud seul en complément, sur n'importe quel canal. f0acd3af et c7c382b7
+  sont des clients normaux. Le seul vrai double, ce sont DEUX FORMULES en même temps (785352fe : Premium App Store + Pro Stripe). »
+- **La règle** (`_shared/un-seul-abonnement.js`, `decisionAchat` / `decisionSurLectures` / `compterFormules`, pur, serveur + app) :
+  on compte les FORMULES vivantes (palier ou pack, tous canaux). Deux formules → refus « où faire le changement » (une montée /
+  descente se fait sur le canal de SA formule, le même abonnement). Le Cloud SEUL à côté d'une formule → TOUJOURS permis, sur tout
+  canal (formule Apple + Cloud seul par carte, etc.) ; une formule à côté d'un Cloud seul → permis (la même paire). Le pack sur le
+  canal de la formule → la même formule change (permis) ; sur un AUTRE canal → refus `formule_autre_canal`, la phrase propose le
+  Cloud seul ici OU le pack sur le canal de la formule. Jamais deux fois le Cloud : pack demandé avec un Cloud seul vivant →
+  `cloud_deja` « … choisis la formule sans Cloud : elle s'ajoute à ton Cloud » ; Cloud seul demandé avec un pack → « ta formule
+  comprend déjà FillSell Cloud ». Impayé Stripe de la formule de CE canal → `impaye`.
+- **Partout la même** : `garde-abonnement` (lit `cloud_formule` — sans elle, le Cloud d'un pack de boutique comptait pour un Cloud
+  seul et la montée du pack était refusée), `create-checkout-session` (Cloud seul web : `decisionSurLectures` ; `cloudSeulRefuse`
+  ne renvoie plus `offre_remplacee` à un abonné — seul un compte SANS formule reste orienté vers les formules avec Cloud),
+  `messageVoieFormule` (pack web : `cloud_boutique` / `deux_abonnements` → la proposition « formule sans Cloud », plus la phrase
+  neutre ni « écris-nous » ; `abonnement_boutique` + `cloudSeulPossible` → « prends FillSell Cloud seul, ici »), le filet
+  `_shared/deux-abonnements.ts` (alerte seulement pour deux formules ou deux Cloud).
+- **L'écran** : Réglages › Abonnement montre le bloc FillSell Cloud (Essayer 7 jours / Ajouter) à un abonné PAYANT sans Cloud, sur
+  tout appareil (`blocCloudSeulCache`, `src/cloud/formulesCloud.js`) ; les cartes « + Cloud » restent sur le canal de la formule.
+- **Textes** : conditions du Cloud art. 6 (Cloud seul) et CGV art. 7 : « en plus d'un forfait payant (Premium, Pro ou Business),
+  sur le web, dans l'App Store ou dans Google Play, quel que soit le canal où le forfait est payé » ; formules : « une seule formule
+  à la fois (Premium, Pro ou Business, avec ou sans Cloud) » ; Legal 3.4 « Une seule formule par compte ».
+- Verrous : `selftest:cloud-en-plus-de-formule` (casse si la garde refuse un jour un ajout du Cloud à une formule) ;
+  `selftest:abonne-ajoute-le-cloud` (le tableau : 36 cases, écran, texte, prélèvement, accès) ; un-seul-abonnement et
+  textes-paiement-verite mis à jour.

@@ -128,7 +128,9 @@ try {
   ok(c7.cartes.length === 0, 'c7c382b7 (Cloud seul App Store) sur iPhone : aucune carte achetable');
   const htmlC7web = rendu({ c: c({ isPremium: false, isPro: false }), visible: true, lecture: { ...lectureCloudApple, cloud: { ...lectureCloudApple.cloud, essaiFin: '2026-11-19T18:18:50Z' } }, profil: { etat: 'ok', formuleActuelle: null, canalAbonnement: null, founder: false, echeance: null }, actions });
   ok(htmlC7web === '', 'c7c382b7 sur le web : plus de « le passage se fait dans l’app, sans second abonnement » (faux chez Apple), ni bouton', texte(htmlC7web));
-  ok(FS.messageVoieFormule({ motif: 'cloud_boutique', canal: 'apple', ferme: false }, 'fr') === neutre, 'serveur (Cloud seul App Store) : la phrase neutre, jamais « change de formule dans l’app »');
+  // (13/11/2026, décision de Nico — proposer le changement, pas un refus sec) la formule sans Cloud, qui s'ajoute au Cloud.
+  { const m = FS.messageVoieFormule({ motif: 'cloud_boutique', canal: 'apple', ferme: false }, 'fr');
+    ok(/Choisis la formule sans Cloud/.test(m) && !/change de formule dans l'app/.test(m), 'serveur (Cloud seul App Store) : propose la formule sans Cloud, jamais « change de formule dans l’app »', m); }
   const titulaire = FC.cartesFormulesCloud({ palier: 'pro', formuleActuelle: 'pro_cloud', canalApp: 'apple', canalAbonnement: 'apple', essaiPermis: false, canalOuvert: CO.formulesCloudOuvertes, canalCloud: 'apple' });
   ok(titulaire.voie === 'ici' && titulaire.cartes.some((x) => x.formule === 'business_cloud' && x.achetable), 'témoin : un titulaire de Pro + Cloud par l’App Store (son Cloud n’est pas un Cloud seul) garde sa montée vers Business + Cloud');
   const cloudStripe = FC.cartesFormulesCloud({ palier: 'gratuit', canalApp: 'stripe', canalAbonnement: null, essaiPermis: false, canalOuvert: CO.formulesCloudOuvertes, canalCloud: 'stripe' });

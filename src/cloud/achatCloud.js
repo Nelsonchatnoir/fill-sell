@@ -201,8 +201,9 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     // (08/11, refus Google Play de la vc36) iPhone / Android : jamais d'achat tant que le prix de la BOUTIQUE n'est pas
     // affiché (lib/prixBoutique.js) — la monnaie de l'écran est celle de la feuille de paiement.
     if (platform !== 'web' && !prixPret('cloud')) return { etat: 'refuse', raison: 'prix_boutique_absent', message: T.prixBoutiqueAbsent };
-    // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT PAR COMPTE, TOUS CANAUX — avant les conditions et la feuille
-    // de la boutique : c7c382b7 (Pro par carte) et f0acd3af (Pro App Store) ont pris le Cloud seul en plus, sur iPhone.
+    // (13/11/2026) La garde AVANT les conditions et la feuille de la boutique. (Dernière réponse de Nico du 13/11) Elle ne
+    // refuse le Cloud seul que s'il y a DÉJÀ le Cloud (Cloud seul, ou une formule avec Cloud) : à côté d'une formule, sur tout
+    // canal, il passe (c7c382b7, f0acd3af : clients normaux). Verrou : selftest:cloud-en-plus-de-formule.
     if (platform === 'ios' || platform === 'android') {
       const garde = await gardeAchatBoutique({ supabase, userId: user.id, canal: platform === 'ios' ? 'apple' : 'google', achat: 'cloud_seul', lang });
       if (!garde.permis) return { etat: garde.motif === 'deja' ? 'deja' : 'refuse', raison: 'un_seul_abonnement', message: garde.message ?? T.achatEchec };

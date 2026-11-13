@@ -1,6 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// AVANT LA FEUILLE D'UNE BOUTIQUE : UN SEUL ABONNEMENT PAR COMPTE, TOUS CANAUX (13/11/2026, 3e réponse de Nico, point a)
+// AVANT LA FEUILLE D'UNE BOUTIQUE : UNE SEULE FORMULE À LA FOIS, TOUS CANAUX (13/11/2026, 3e puis dernière réponse de Nico)
 // ═══════════════════════════════════════════════════════════════════════════
+// (Dernière réponse de Nico du 13/11) La règle (_shared/un-seul-abonnement.js) ne refuse plus que DEUX FORMULES, ou deux fois
+// le Cloud : le Cloud ajouté à une formule (pack sur son canal, Cloud seul sur tout canal) passe — serveur ET preuve locale.
 // iPhone / Android : un achat de l'App Store / Google Play ne se refuse plus après coup — l'argent est parti. Avant
 // d'ouvrir la feuille (forfait, formule avec Cloud, Cloud seul), l'app demande au serveur (fonction garde-abonnement,
 // lecture seule : profil, Stripe relu, Google relu) si l'achat créerait un second abonnement. Cas réels : c7c382b7 (Pro

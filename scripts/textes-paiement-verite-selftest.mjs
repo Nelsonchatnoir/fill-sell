@@ -366,10 +366,14 @@ try {
     const form = toutTexte(CC?.conditionsCloud?.(lang, { formules: true }));
     for (const [nom, t] of [['Cloud seul', seul], ['formules', form]]) {
       ok(t && !/la veille|day before/.test(t), `conditions (${nom}, ${lang}) : plus de rappel promis la veille`, t.slice(0, 300));
-      ok(lang === 'en' ? /one FillSell subscription at a time/.test(t) : /un seul abonnement FillSell à la fois/.test(t), `conditions (${nom}, ${lang}) : un seul abonnement par compte, tous canaux`);
+      // (13/11/2026, décision de Nico — dernière réponse, point e) « un seul abonnement FillSell à la fois, tous canaux
+      // confondus » RETIRÉ : une formule + le Cloud seul (tout canal) est normal ; la règle est « une seule formule à la fois ».
+      ok(t && !(lang === 'en' ? /one FillSell subscription at a time/ : /un seul abonnement FillSell à la fois/).test(t), `conditions (${nom}, ${lang}) : plus « un seul abonnement FillSell à la fois » (13/11, décision de Nico)`);
       ok(lang === 'en' ? /payment page \(Stripe, App Store or Google Play\)/.test(t) : /page de paiement \(Stripe, App Store ou Google Play\)/.test(t), `conditions (${nom}, ${lang}) : la page de paiement du canal dit l’essai et le montant avant validation`);
     }
-    ok(!(lang === 'en' ? /on top of a paid plan/ : /en plus d'un forfait payant/).test(seul), `conditions (Cloud seul, ${lang}) : plus « en plus d’un forfait payant » (un second abonnement)`);
+    // (13/11/2026, décision de Nico, point e) « remets « en plus d'un forfait payant » » — sur tout canal, quel que soit celui du forfait.
+    ok((lang === 'en' ? /or on top of a paid plan \(Premium, Pro or Business\), on the web, in the App Store or in Google Play, whatever the channel where the plan is paid/ : /ou en plus d'un forfait payant \(Premium, Pro ou Business\), sur le web, dans l'App Store ou dans Google Play, quel que soit le canal où le forfait est payé/).test(seul), `conditions (Cloud seul, ${lang}) : le Cloud seul « en plus d’un forfait payant », sur tout canal (13/11, décision de Nico)`, seul.slice(0, 400));
+    ok((lang === 'en' ? /one plan at a time \(Premium, Pro or Business, with or without Cloud\)/ : /une seule formule à la fois \(Premium, Pro ou Business, avec ou sans Cloud\)/).test(form), `conditions (formules, ${lang}) : une seule formule à la fois, tous canaux`);
     ok(lang === 'en' ? /at least 24 hours before/.test(seul) : /au moins 24 heures avant/.test(seul), `conditions (Cloud seul, ${lang}) : l’arrêt d’un essai App Store suit la règle d’Apple (24 h avant)`);
     ok(lang === 'en' ? /App Store, the new price/.test(form) && /prorated/.test(form) : /App Store, le nouveau prix/.test(form) && /prorata/.test(form), `conditions (formules, ${lang}) : passer à la version avec Cloud = la règle de chaque canal`);
   }
@@ -380,15 +384,20 @@ try {
   const TL = await charger('/src/cloud/textesLegaux.js');
   for (const lang of ['fr', 'en']) {
     const a7 = (TL?.textesLegauxCloud?.(lang)?.cgvArticle7?.ps ?? []).join(' ');
-    ok(a7 && !/la veille|day before/.test(a7) && !/en un geste|in one tap/.test(a7) && !(lang === 'en' ? /on top of a paid plan/ : /en plus d'un forfait payant/).test(a7),
-      `CGV article 7 (${lang}) : ni rappel de la veille, ni « en un geste », ni Cloud « en plus d’un forfait payant »`, a7.slice(0, 300));
-    ok(lang === 'en' ? /one FillSell subscription at a time/.test(a7) : /un seul abonnement FillSell à la fois/.test(a7), `CGV article 7 (${lang}) : un seul abonnement par compte`);
+    ok(a7 && !/la veille|day before/.test(a7) && !/en un geste|in one tap/.test(a7),
+      `CGV article 7 (${lang}) : ni rappel de la veille, ni « en un geste »`, a7.slice(0, 300));
+    // (13/11/2026, décision de Nico, point e) CGV art. 7 : « en plus d'un forfait payant » remis, « un seul abonnement » retiré.
+    ok((lang === 'en' ? /or on top of a paid plan \(Premium, Pro or Business\)/ : /ou en plus d'un forfait payant \(Premium, Pro ou Business\)/).test(a7)
+      && !(lang === 'en' ? /one FillSell subscription at a time/ : /un seul abonnement FillSell à la fois/).test(a7), `CGV article 7 (${lang}) : le Cloud en plus d’un forfait payant, sur tout canal (13/11, décision de Nico)`, a7.slice(0, 400));
   }
   const lg = lire('src/pages/Legal.jsx');
   ok(!/annulation automatique de votre abonnement Premium en cours \(Stripe ou Apple\/Google/.test(lg) && !/Automatic cancellation of your current Premium subscription \(Stripe or Apple\/Google/.test(lg),
     'Legal 4.6 : plus « annulation automatique … Apple/Google » à la suppression du compte (delete-account n’annule que Stripe)');
   ok(/n'arrête pas un abonnement pris dans l'App Store ou Google Play/.test(lg) && /does not stop a subscription taken in the App Store or Google Play/.test(lg), 'Legal 4.6 : la suppression du compte n’arrête pas un abonnement App Store / Google Play — dit, avec où l’arrêter');
-  ok(/un seul abonnement FillSell actif à la fois/.test(lg) && /one active FillSell subscription at a time/.test(lg), 'Legal 3.4 : un seul abonnement actif par compte, tous canaux');
+  // (13/11/2026, décision de Nico) Legal 3.4 : « un seul abonnement actif » devenu faux (formule + Cloud seul) → une seule formule.
+  // (Le Cloud n'y est pas cité : /legal, Cloud fermé, n'en porte aucune trace — selftest:cloud-textes-legaux ; la CGV art. 7 le dit.)
+  ok(/une seule formule \(Premium, Pro ou Business\) à la fois/.test(lg) && /only one plan \(Premium, Pro or Business\) at a time/.test(lg)
+    && !/un seul abonnement FillSell actif à la fois/.test(lg) && !/one active FillSell subscription at a time/.test(lg), 'Legal 3.4 : une seule formule par compte (plus « un seul abonnement actif »)');
   ok(/Dernière mise à jour : 13 novembre 2026/.test(lg) && /Last updated: November 13, 2026/.test(lg), 'Legal : date de mise à jour du 13/11/2026');
   const site = ['site/contenu/fr/accueil.md', 'site/contenu/en/accueil.md', 'site/contenu/fr/tarifs.md', 'site/contenu/en/pricing.md', 'site/contenu/fr/faq.md'].map((p) => [p, lire(p)]);
   for (const [p, t] of site) {
@@ -402,8 +411,10 @@ try {
   // ── J. (13/11/2026, points a et d) Les phrases neuves : refus d'un second abonnement, impayé ────────────────────────
   console.log('\nJ. Les phrases neuves du lot : refus d’un second abonnement, mail d’impayé');
   const USA = await charger('/supabase/functions/_shared/un-seul-abonnement.js');
+  // (13/11/2026, décision de Nico) Les motifs de la règle « une seule formule » (formule_en_cours / cloud_seul_en_cours n'existent plus).
   for (const d of [{ permis: false, motif: 'autre_canal', canal: 'apple', type: 'palier' }, { permis: false, motif: 'autre_canal', canal: 'stripe', type: 'palier' },
-    { permis: false, motif: 'formule_en_cours', canal: 'apple' }, { permis: false, motif: 'cloud_seul_en_cours', canal: 'google' }, { permis: false, motif: 'impaye', canal: 'stripe' }]) {
+    { permis: false, motif: 'formule_autre_canal', canal: 'google' }, { permis: false, motif: 'cloud_deja', canal: 'apple' }, { permis: false, motif: 'cloud_dans_formule', canal: 'stripe' },
+    { permis: false, motif: 'deux_formules', canal: 'apple' }, { permis: false, motif: 'impaye', canal: 'stripe' }]) {
     for (const lang of ['fr', 'en']) {
       const m = USA?.messageUnSeulAbonnement?.(d, lang) ?? '';
       ok(m && (lang === 'en' ? /Nothing was charged\./ : /Rien n'a été débité\./).test(m) && !/ordinateur|computer|chrome/i.test(m), `refus « ${d.motif} / ${d.canal} » (${lang}) : rien débité, où changer, sans « ordinateur »`, m);

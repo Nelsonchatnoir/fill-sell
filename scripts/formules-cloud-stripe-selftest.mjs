@@ -106,7 +106,10 @@ if (FS) {
   const cc = lire('supabase/functions/create-checkout-session/index.ts');
   ok(/if \(typeof product === "string" && estFormuleCloud\(product\)\) \{\s*return await acheterFormuleCloud/.test(cc), 'create-checkout-session : premium_cloud | pro_cloud | business_cloud passent par acheterFormuleCloud');
   ok(/interrupteurFormules\(supabase, "stripe", profil\)/.test(cc) && /conditionsFormulesAcceptees\(profil\)/.test(cc) && /permis\?\.fraiche !== true/.test(cc), 'gardes : interrupteur du canal, conditions ≥ la version des formules, préparation fraîche');
-  ok(/cloudSeulRefuse\(\{ profil: profilSeul, formulesOuvertes: await interrupteurFormules\(supabase, "stripe", profilSeul\) \}\)/.test(cc) && /error: "offre_remplacee"/.test(cc), 'product « cloud » refusé à qui ne l\'a jamais eu quand les formules sont ouvertes');
+  // (13/11/2026, décision de Nico — « le Cloud seul en complément, sur n'importe quel canal ») … SAUF à un abonné (formuleVivante) :
+  // l'interrupteur est lu une fois (formulesOuvertesWeb), le refus garde sa forme.
+  ok(/const formulesOuvertesWeb = await interrupteurFormules\(supabase, "stripe", profilSeul\)/.test(cc)
+    && /cloudSeulRefuse\(\{ profil: profilSeul, formulesOuvertes: formulesOuvertesWeb, formuleVivante(: false)? \}\)/.test(cc) && /error: "offre_remplacee"/.test(cc), 'product « cloud » refusé à qui ne l\'a jamais eu quand les formules sont ouvertes (jamais à un abonné)');
   ok(/if \(!pendantEssai && maj\.status !== "trialing"\) \{\s*const \{ error: grantErr \} = await supabase\.rpc\("upgrade_monthly_grant"/.test(cc), 'changement de prix : aucun crédit pendant un essai');
   const wh = lire('supabase/functions/stripe-webhook/index.ts');
   ok(/if \(subFacture\?\.status === "trialing"\) \{\s*await recomputeStripeFlags\(supabase, customerId\);[\s\S]{0,400}?return new Response/.test(wh), 'stripe-webhook : une facture pendant un essai ne crédite rien (sortie avant le crédit)');
