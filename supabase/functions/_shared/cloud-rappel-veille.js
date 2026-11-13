@@ -15,8 +15,8 @@
 //   · qui prélève : la carte enregistrée chez FillSell (Stripe) SEULEMENT pour
 //     Stripe ; Apple ou Google Play prélèvent sur le moyen de paiement de leur
 //     compte ;
-//   · comment arrêter : Stripe → Réglages → Abonnement (vrai arrêt : l'abonnement
-//     est annulé chez Stripe avant la première échéance) ; Apple / Google → leur
+//   · comment arrêter : Stripe → Réglages → Abonnement (l'abonnement s'arrête chez
+//     Stripe avant la première échéance — 13/11 : à la fin de l'essai, plus tout de suite) ; Apple / Google → leur
 //     page d'abonnements (lien direct), car eux seuls arrêtent et confirment.
 //     ⛔ Jamais « rien n'est facturé » : FillSell ne peut pas le promettre pour
 //     une boutique.
@@ -108,7 +108,7 @@ export function fenetreRequete(maintenant = Date.now(), p = PARAMETRES_RAPPEL) {
 
 /**
  * Qui reçoit le rappel, et quand.
- *   profil     : { email, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete }
+ *   profil     : { email, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_arret_fin_periode }
  *   dejaEnvoye : une ligne email_logs `cloud_essai_veille` existe déjà pour ce compte
  *   mails24h   : lignes email_logs de la personne sur 24 h glissantes (tous types, comme envoi-ponctuel)
  *   heureParis : heure (0-23) à Paris ; illisible → on attend (échec fermé, comme le tunnel)
@@ -123,6 +123,10 @@ export function decisionRappel({ profil, dejaEnvoye = false, mails24h = 0, heure
   if (debut == null || fin == null) return rien('pas_d_essai');
   if (profil.cloud_essai_arrete === true) return rien('essai_arrete');        // arrêté : rien ne sera facturé
   if (profil.is_cloud === true) return rien('deja_payant');                   // déjà payée : pas de surprise à annoncer
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Renouvellement coupé pendant l'essai : le
+  // Cloud continue jusqu'à la fin, RIEN ne sera prélevé — « ensuite, … par mois » serait faux. Aucun mail (la source le
+  // dit aussi : renouvelle false ; ici, sans lecture, même quand la source se tait).
+  if (profil.cloud_arret_fin_periode === true) return rien('renouvellement_coupe');
   if (dejaEnvoye) return rien('deja_envoye');
   const now = instant(maintenant);
   if (now >= fin) return rien('essai_fini');
@@ -171,7 +175,8 @@ const TEXTES = {
       inconnu: () => 'Si tu ne fais rien, FillSell Cloud continue à partir de cette date, au prix mensuel indiqué lors de ton inscription.',
     },
     arret: {
-      stripe: 'Si tu ne veux pas continuer, arrête l\'essai avant cette date dans FillSell, Réglages → Abonnement : l\'abonnement est alors annulé tout de suite chez Stripe, avant la première échéance.',
+      // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Avant : « annulé tout de suite chez Stripe ».
+      stripe: 'Si tu ne veux pas continuer, arrête l\'essai avant cette date dans FillSell, Réglages → Abonnement : l\'essai continue jusqu\'à sa fin, puis l\'abonnement s\'arrête chez Stripe, avant la première échéance.',
       apple: 'Si tu ne veux pas continuer, résilie avant cette date dans tes abonnements Apple (le bouton ci-dessous les ouvre ; sur l\'iPhone : Réglages → ton nom → Abonnements). C\'est Apple qui gère cet abonnement : la résiliation se fait chez Apple, et c\'est Apple qui la confirme.',
       google: 'Si tu ne veux pas continuer, résilie avant cette date dans tes abonnements Google Play (le bouton ci-dessous les ouvre ; dans l\'application Play Store : ton profil → Paiements et abonnements → Abonnements). C\'est Google qui gère cet abonnement : la résiliation se fait chez Google Play, et c\'est Google qui la confirme.',
       inconnu: 'Si tu ne veux pas continuer, arrête-le avant cette date là où tu l\'as pris : dans FillSell (Réglages → Abonnement) pour un paiement par carte sur le site, ou dans tes abonnements Apple ou Google Play pour un achat dans l\'application.',
@@ -198,7 +203,7 @@ const TEXTES = {
       inconnu: () => 'If you do nothing, FillSell Cloud continues from that date at the monthly price shown when you signed up.',
     },
     arret: {
-      stripe: 'If you don\'t want to continue, stop the trial before then in FillSell, Settings → Subscription: the subscription is then cancelled at Stripe straight away, before the first payment is due.',
+      stripe: 'If you don\'t want to continue, stop the trial before then in FillSell, Settings → Subscription: the trial runs until its end, then the subscription stops at Stripe, before the first payment is due.',
       apple: 'If you don\'t want to continue, cancel before then in your Apple subscriptions (the button below opens them; on iPhone: Settings → your name → Subscriptions). Apple manages this subscription: you cancel it with Apple, and Apple confirms it.',
       google: 'If you don\'t want to continue, cancel before then in your Google Play subscriptions (the button below opens them; in the Play Store app: your profile → Payments & subscriptions → Subscriptions). Google manages this subscription: you cancel it with Google Play, and Google confirms it.',
       inconnu: 'If you don\'t want to continue, stop it before then where you took it: in FillSell (Settings → Subscription) for a card payment on the website, or in your Apple or Google Play subscriptions for a purchase in the app.',

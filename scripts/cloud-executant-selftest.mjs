@@ -64,11 +64,15 @@ console.log('3 bis. La case des conditions (C1, 11/11) : sans le risque, le fond
 // (13/11/2026, décision de Nico — 3e réponse, point e : conditions alignées sur la règle de chaque canal, rappel de la veille
 // retiré, un seul abonnement par compte) REFORMULATION des deux textes, minimales inchangées : version 2026-11-13 (à recaler
 // sur le jour réel du push web, avec _shared/cloud-conditions.js REFORMULATION_1311).
+// (13/11/2026 soir, décision de Nico — couper le renouvellement ne coupe plus rien) L'article 7 précisé (en faveur du client,
+// minimales inchangées) : poussé le 13/11 au soir, la date réelle du push est 2026-11-13 (_shared/cloud-conditions.js
+// ARRET_RENOUVELLEMENT).
 const VERSION_LIVREE = '2026-11-13';
 // (12/11/2026, offres Cloud) La version MONTRÉE à tous (case du Cloud seul, page publique fermée) reste celle du Cloud
 // seul : la dernière qui n'est pas celle des formules. Celle des formules (VERSION_LIVREE, en tête) ne se montre que dans
 // l'achat d'une formule (src/cloud/conditionsCloud.js, versionConditionsMontree).
 // (13/11/2026, décision de Nico) Le Cloud seul est reformulé le même jour (articles 6 et 7) : même date.
+// (13/11/2026 soir) Le Cloud seul a la même date (article 7 commun aux deux textes).
 const VERSION_CLOUD_SEUL = '2026-11-13';
 const jma = (v) => v.split('-').reverse().join('/');
 const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
@@ -150,14 +154,15 @@ const COND =await import('../src/cloud/conditionsCloud.js').catch(() => ({}));
   }
   // (13/11/2026, décision de Nico) La ligne de la reformulation des articles 6 et 7 (avant : articles 4 et 9).
   // (13/11/2026, dernière réponse de Nico, point e) « un seul abonnement par compte » → le Cloud seul en plus d'un forfait payant.
-  ok(T?.version ===`Version du ${jma(VERSION_CLOUD_SEUL)} — elle reformule les articles 6 et 7 (paiement, essai et arrêt selon chaque canal ; le Cloud seul, en plus d'un forfait payant sur tout canal) sans rien changer sur le fond : une acceptation de la version du 04/11/2026 reste valable.`
-    && EN?.version === `Version of ${jma(VERSION_CLOUD_SEUL)} — it rewords articles 6 and 7 (payment, trial and stopping on each channel; the Cloud on its own, on top of a paid plan on any channel) without changing their substance: an acceptance of the version of 04/11/2026 remains valid. English translation for information only; the French version prevails.`,
+  // (13/11/2026 soir, décision de Nico) La ligne de l'article 7 précisé (couper le renouvellement ne coupe plus rien).
+  ok(T?.version ===`Version du ${jma(VERSION_CLOUD_SEUL)} — elle précise l'article 7 : couper le renouvellement n'arrête plus rien tout de suite, le Cloud reste actif jusqu'à la fin prévue de l'essai ou de la période payée ; ce changement est en votre faveur : une acceptation de la version du 04/11/2026 reste valable.`
+    && EN?.version === `Version of ${jma(VERSION_CLOUD_SEUL)} — it clarifies article 7: turning off renewal no longer stops anything right away, the Cloud stays active until the planned end of the trial or of the paid period; this change is in your favour: an acceptance of the version of 04/11/2026 remains valid. English translation for information only; the French version prevails.`,
   'la ligne de version, mot pour mot : l’acceptation du 04/11/2026 reste valable (fr et en)');
   // (relecture D8) La phrase vient de la table « ce que change la version » : une autre version n'en hérite jamais.
   ok(typeof COND.ligneDeVersion === 'function' && COND.ligneDeVersion('fr', { version: '2026-12-01', changement: 'autre' }) === 'Version du 01/12/2026'
     && COND.ligneDeVersion('en', { version: '2026-12-01', changement: 'autre' }) === 'Version of 01/12/2026 — English translation for information only; the French version prevails.'
     // (13/11/2026, décision de Nico) La famille des formules compte aussi sa reformulation (formules_reformulation_canaux).
-    && COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.find((e) => !['formules_cloud_article_6', 'formules_reformulation_canaux'].includes(e.changement))) === T?.version && SRV.CGU_CLOUD_HISTORIQUE?.[0]?.version === SRV.CGU_CLOUD_VERSION
+    && COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.find((e) => !['formules_cloud_article_6', 'formules_reformulation_canaux', 'formules_arret_renouvellement'].includes(e.changement))) === T?.version && SRV.CGU_CLOUD_HISTORIQUE?.[0]?.version === SRV.CGU_CLOUD_VERSION
     && COND.conditionsCloud?.('fr', { formules: true })?.version === COND.ligneDeVersion('fr', SRV.CGU_CLOUD_HISTORIQUE?.[0])
     && COND.versionConditionsMontree?.(false) === VERSION_CLOUD_SEUL && COND.versionConditionsMontree?.(true) === VERSION_LIVREE,
   'la phrase de la ligne de version est choisie par la version (table), jamais écrite pour toutes : une version sans phrase n’affiche que sa date');
@@ -280,7 +285,7 @@ console.log('3 ter. La modale des conditions, exécutée (rendu serveur + croche
     const caseHtml = html.match(/<input type="checkbox"[^>]*>/)?.[0] ?? '';
     const boutonHtml = html.match(/<button type="button"[^>]*>(?:(?!<\/button>).)*J(?:&#x27;|')accepte et je continue<\/button>/)?.[0] ?? '';
     ok(caseHtml && !/checked/.test(caseHtml) && /\sdisabled=""/.test(boutonHtml), 'rendu : la case n’est PAS cochée au départ, « J’accepte et je continue » grisé');
-    ok(html.includes('j&#x27;accepte les conditions d&#x27;utilisation de FillSell Cloud.</span>') && html.includes(`Version du ${jma(VERSION_CLOUD_SEUL)} — elle reformule`),
+    ok(html.includes('j&#x27;accepte les conditions d&#x27;utilisation de FillSell Cloud.</span>') && html.includes(`Version du ${jma(VERSION_CLOUD_SEUL)} — elle précise l&#x27;article 7`),
       'rendu : le texte de la case et la ligne de version');
     // b. Joué avec des crochets simulés.
     const C = { slots: [], i: 0, effets: [] };

@@ -320,7 +320,11 @@ try {
   ok(!/renouvelée/.test(corps(mPay)) && /prorata/.test(corps(mPay)), 'facture de prorata d’une montée (subscription_update) : plus « {n} est renouvelée »', corps(mPay));
   const arrAb = CM.texteMailFormule({ evenement: 'arret_essai', lang: 'fr', canal: 'stripe', faits: { formule: 'premium_cloud', arreteIso: '2026-11-14T10:00:00Z', aucunPrelevement: true, abonne: true } });
   ok(/Premium continue/.test(corps(arrAb)) && !/Premium \+ Cloud est arrêtée, sans aucun prélèvement/.test(corps(arrAb)), 'arrêt de l’essai d’un abonné : « ta formule Premium continue », plus « Premium + Cloud est arrêtée, sans aucun prélèvement »', corps(arrAb));
-  ok(/abonne: true/.test(can.match(/faits: \{ arreteIso: maintenant, aucunPrelevement: true, formule: ea\.formule[^}]*\}/)?.[0] ?? ''), 'cancel-subscription dit au mail que c’est l’essai d’un abonné');
+  // (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) L'essai d'un abonné n'est plus arrêté sur-le-champ : plus de
+  // mail « arrêt d'essai » au client (l'app dit « Ton essai Cloud continue jusqu'au … ») ; l'alerte interne dit encore l'abonné.
+  ok(/abonne: true/.test(can.match(/faits: \{ finIso: ea\.fin, aucunPrelevement: true, formule: ea\.formule[^}]*\}/)?.[0] ?? '')
+    && /evenement: "essai_renouvellement_coupe"/.test(can) && !/evenement: "arret_essai"/.test(can),
+  'cancel-subscription : l’essai d’un abonné coupé, sans mail client — l’alerte interne dit que c’est l’essai d’un abonné');
   const imp = CM.texteMailFormule({ evenement: 'impaye', lang: 'fr', canal: 'apple', faits: { formule: 'pro_cloud' } });
   ok(/Pro \+ Cloud est en pause/.test(corps(imp)) && !/^.*le Cloud est en pause\. Dès/.test(corps(imp)), 'impayé d’une formule (Apple) : toute la formule est en pause (impayé = gratuit), plus « le Cloud est en pause » seul', corps(imp));
 

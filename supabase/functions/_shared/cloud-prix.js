@@ -103,7 +103,8 @@ export const muette = (canal, raison, extra = {}) => ({ canal: canal ?? null, pr
 export function prixDepuisStripe(sub) {
   if (!sub || typeof sub !== "object" || !sub.items) return muette("stripe", "abonnement_illisible");
   const ea = essaiCloudAbonneStripe(sub);
-  if (ea) return { ...muette("stripe", "essai_abonne"), renouvelle: sub.cancel_at_period_end === true ? false : true, formule: ea.formule, abonne: true };
+  // (13/11/2026, décision de Nico) L'essai d'un abonné arrêté depuis l'app (essai_cloud_sans_suite) : rien ne suit.
+  if (ea) return { ...muette("stripe", "essai_abonne"), renouvelle: sub.cancel_at_period_end === true || ea.sansSuite === true ? false : true, formule: ea.formule, abonne: true };
   const formule = estFormuleCloud(sub?.metadata?.formule) ? sub.metadata.formule : null;
   return formule ? { ...prixDepuisStripeBrut(sub), formule } : prixDepuisStripeBrut(sub);
 }

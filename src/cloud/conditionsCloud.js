@@ -49,6 +49,16 @@ const NOTES_DE_VERSION = Object.freeze({
     fr: (min) => `elle reformule les articles 6 et 7 (paiement, essai et arrêt selon chaque canal ; le Cloud seul, en plus d'un forfait payant sur tout canal) sans rien changer sur le fond : une acceptation de la version du ${min} reste valable.`,
     en: (min) => `it rewords articles 6 and 7 (payment, trial and stopping on each channel; the Cloud on its own, on top of a paid plan on any channel) without changing their substance: an acceptance of the version of ${min} remains valid.`,
   }),
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Un changement de fond EN FAVEUR du client
+  // (le Cloud reste actif jusqu'à la fin de l'essai ou de la période) : aucune nouvelle acceptation, minimales inchangées.
+  arret_renouvellement_coupe: Object.freeze({
+    fr: (min) => `elle précise l'article 7 : couper le renouvellement n'arrête plus rien tout de suite, le Cloud reste actif jusqu'à la fin prévue de l'essai ou de la période payée ; ce changement est en votre faveur : une acceptation de la version du ${min} reste valable.`,
+    en: (min) => `it clarifies article 7: turning off renewal no longer stops anything right away, the Cloud stays active until the planned end of the trial or of the paid period; this change is in your favour: an acceptance of the version of ${min} remains valid.`,
+  }),
+  formules_arret_renouvellement: Object.freeze({
+    fr: () => `l'article 7 précise que couper le renouvellement n'arrête plus rien tout de suite : le Cloud reste actif jusqu'à la fin prévue de l'essai ou de la période payée ; ce changement est en votre faveur : une acceptation de la version du ${dateVersion(VERSION_FORMULES_MIN)} reste valable.`,
+    en: () => `article 7 clarifies that turning off renewal no longer stops anything right away: the Cloud stays active until the planned end of the trial or of the paid period; this change is in your favour: an acceptance of the version of ${dateVersion(VERSION_FORMULES_MIN)} remains valid.`,
+  }),
   formules_reformulation_canaux: Object.freeze({
     fr: () => `l'article 6 décrit les formules avec Cloud selon la règle de chaque canal (essai, prélèvement, changement de formule, une seule formule à la fois) sans rien changer sur le fond : une acceptation de la version du ${dateVersion(VERSION_FORMULES_MIN)} reste valable.`,
     en: () => `article 6 describes the plans with Cloud according to each channel's rule (trial, charge, change of plan, one plan at a time) without changing its substance: an acceptance of the version of ${dateVersion(VERSION_FORMULES_MIN)} remains valid.`,
@@ -68,7 +78,8 @@ const NOTES_DE_VERSION = Object.freeze({
 const CLE_CHANGEMENT_FORMULES = 'formules_cloud_article_6';
 // (13/11/2026, 3e réponse de Nico, point e) La FAMILLE des formules : la version de fond (12/11, la minimale des formules,
 // versionCguFormules côté serveur) et ses reformulations (13/11). Le texte montré = la plus récente de la famille.
-const CHANGEMENTS_FORMULES = Object.freeze(new Set([CLE_CHANGEMENT_FORMULES, 'formules_reformulation_canaux']));
+// (13/11/2026, décision de Nico) + l'article 7 précisé (couper le renouvellement ne coupe plus rien).
+const CHANGEMENTS_FORMULES = Object.freeze(new Set([CLE_CHANGEMENT_FORMULES, 'formules_reformulation_canaux', 'formules_arret_renouvellement']));
 const ENTREE_FORMULES = CGU_CLOUD_HISTORIQUE.find((e) => CHANGEMENTS_FORMULES.has(e?.changement)) ?? null;
 const ENTREE_CLOUD_SEUL = CGU_CLOUD_HISTORIQUE.find((e) => !CHANGEMENTS_FORMULES.has(e?.changement)) ?? CGU_CLOUD_HISTORIQUE[0];
 // La version de FOND des formules (12/11) : la date des « abonnés au Cloud seul souscrit avant le … » et la minimale citée.
@@ -118,7 +129,7 @@ const FR = {
       "Un seul essai par personne : un essai déjà pris avec le même compte, le même appareil, la même carte ou le même compte de plateforme n'en ouvre pas un second ; le Cloud reste alors disponible sans essai, payé dès la souscription. Dans l'App Store et Google Play, l'essai est proposé par la boutique selon ses propres règles (chez Apple, une seule semaine gratuite par identifiant Apple pour ce groupe d'abonnements) ; la page de paiement de la boutique dit, avant que vous validiez, s'il y a un essai et ce qui est prélevé.",
     ] },
     { t: '7. Résiliation', ps: [
-      "Sur le web, vous résiliez depuis l'app (Réglages › Abonnement › FillSell Cloud). Pendant l'essai, l'arrêt est immédiat et rien n'est prélevé. Après l'essai, le Cloud reste actif jusqu'à la fin du mois payé, puis s'arrête ; rien n'est prélevé ensuite. Un abonnement pris dans l'App Store ou Google Play se résilie dans les réglages d'abonnement de la boutique : arrêté avant la fin de l'essai (chez Apple, au moins 24 heures avant), rien n'est prélevé ; après, il court jusqu'à la fin de la période payée. Le droit de rétractation prévu à l'article 6 des CGV s'applique ; pour un achat dans l'App Store ou Google Play, le remboursement se demande à la boutique.",
+      "Sur le web, vous résiliez depuis l'app (Réglages › Abonnement › FillSell Cloud) ; un abonnement pris dans l'App Store ou Google Play se résilie dans les réglages d'abonnement de la boutique. Sur tous les canaux, la résiliation coupe le renouvellement et n'arrête rien tout de suite : le Cloud reste actif jusqu'à la fin prévue de l'essai ou de la période payée, puis s'arrête seul, et rien n'est prélevé ensuite ; résilié avant la fin de l'essai (chez Apple, au moins 24 heures avant), il ne coûte rien. Le droit de rétractation prévu à l'article 6 des CGV s'applique ; pour un achat dans l'App Store ou Google Play, le remboursement se demande à la boutique.",
       "FillSell peut suspendre le Cloud d'un compte en cas d'usage contraire aux présentes conditions ou aux règles d'une plateforme ; il vous en informe.",
     ] },
     { t: '8. Vos données', ps: [
@@ -174,7 +185,7 @@ const EN = {
       'One trial per person: a trial already taken with the same account, the same device, the same card or the same marketplace account does not open a second one; the Cloud then remains available without a trial, charged when you subscribe. In the App Store and Google Play, the trial is offered by the store under its own rules (at Apple, a single free week per Apple Account for this subscription group); the store\'s payment page shows, before you confirm, whether there is a trial and what is charged.',
     ] },
     { t: '7. Cancellation', ps: [
-      'On the web, you cancel from the app (Settings › Subscription › FillSell Cloud). During the trial, the stop is immediate and nothing is charged. After the trial, the Cloud stays active until the end of the paid month, then stops; nothing is charged afterwards. A subscription taken in the App Store or Google Play is cancelled in the store\'s subscription settings: stopped before the end of the trial (at Apple, at least 24 hours before), nothing is charged; afterwards, it runs until the end of the paid period. The right of withdrawal provided for in article 6 of the Terms of Sale applies; for a purchase in the App Store or Google Play, the refund is requested from the store.',
+      "On the web, you cancel from the app (Settings › Subscription › FillSell Cloud); a subscription taken in the App Store or Google Play is cancelled in the store's subscription settings. On every channel, cancelling turns off renewal and stops nothing right away: the Cloud stays active until the planned end of the trial or of the paid period, then stops on its own, and nothing is charged afterwards; cancelled before the end of the trial (at Apple, at least 24 hours before), it costs nothing. The right of withdrawal provided for in article 6 of the Terms of Sale applies; for a purchase in the App Store or Google Play, the refund is requested from the store.",
       'FillSell may suspend the Cloud of an account in case of use contrary to these terms or to a marketplace\'s rules; it informs you.',
     ] },
     { t: '8. Your data', ps: [

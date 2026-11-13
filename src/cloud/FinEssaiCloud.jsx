@@ -143,8 +143,11 @@ export function RappelVeilleFinEssai({ lang = 'fr', cloud, quand = 'demain', nom
     return () => minuteries.forEach(clearTimeout);
   }, [etat, arretConfirme, relire]);
   const fini = etat === 'arretee' || etat === 'boutique' || etat === 'rien';
-  const issue = issueVeilleArret({ etat, arretConfirme, aucunPrelevement: reponse?.aucun_prelevement === true });
+  // (13/11/2026, décision de Nico) La boutique confirme une COUPURE DU RENOUVELLEMENT : l'essai continue jusqu'à sa fin.
+  const issue = issueVeilleArret({ etat, arretConfirme, aucunPrelevement: reponse?.aucun_prelevement === true,
+    sansSuite: cloud?.essaiSansSuite === true || reponse?.essai_sans_suite === true });
   const texteIssue = issue === 'boutique_ouverte' ? T.veilleBoutiqueOuverte(voie)
+    : issue === 'continue_sans_prelevement' ? T.essaiSansSuite(date)
     : issue === 'arrete_sans_prelevement' ? T.veilleArreteeConfirmee
       : issue === 'rien' ? (reponse?.message ?? T.veilleArretee)
         : T.veilleArretee;

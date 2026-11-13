@@ -44,7 +44,16 @@ ok(/update\.cloud_formule = plan\.cloud === "ecrire" \? f\.formule : null;/.test
 ok(/cloud_formule: formuleV!\.formule/.test(lire('supabase/functions/validate-google-purchase/index.ts')) && /cloud_formule: formuleA\.formule/.test(lire('supabase/functions/validate-apple-receipt/index.ts')), 'validate-google-purchase et validate-apple-receipt : posée');
 // (13/11, audit des paiements de Nico) + la résiliation d'une formule EN ESSAI par « Se désabonner » : arrêtée tout de suite,
 // cloud_formule remis à NULL comme à l'arrêt de l'essai (3 chemins).
-ok((lire('supabase/functions/cancel-subscription/index.ts').match(/cloud_formule: null/g) ?? []).length === 3, 'cancel-subscription : NULL à l\'arrêt d\'un essai (abonné, formule, résiliation pendant l\'essai)');
+// (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) Une formule EN ESSAI arrêtée (bouton ou « Se désabonner ») court
+// jusqu'à la fin de l'essai : cloud_formule reste (la formule EST Pro + Cloud jusque-là) ; stripe-webhook la remet à NULL quand
+// Stripe termine l'abonnement (contrôle ci-dessus). L'essai du Cloud d'un ABONNÉ : NULL tout de suite (la formule ne deviendra
+// jamais la formule avec Cloud ; drapeauxDepuisStripe ne la porte plus).
+{
+  const cs = lire('supabase/functions/cancel-subscription/index.ts');
+  const bAbonne = cs.slice(cs.indexOf('if (essaiAbonneSub) {'), cs.indexOf('if (formuleSub && formuleSub.status === "trialing") {'));
+  ok((cs.match(/cloud_formule: null/g) ?? []).length === 1 && /cloud_formule: null/.test(bAbonne),
+    'cancel-subscription : NULL à l\'arrêt de l\'essai d\'un abonné ; une formule en essai la garde jusqu\'à la fin (le webhook la remet à NULL)');
+}
 console.log('2. create-checkout-session');
 const cc = lire('supabase/functions/create-checkout-session/index.ts');
 ok(/error: "abonnement_autre_canal", motif: r\.motif, canal: r\.canal \?\? null, formule,\s*message_fr: messageVoieFormule\(r, "fr"\), message_en: messageVoieFormule\(r, "en"\)/.test(cc), 'abonnement Apple / Google : « abonnement_autre_canal » + canal + message_fr / message_en');
@@ -56,9 +65,12 @@ if (CC && FS) {
   // (13/11/2026, décision de Nico — 3e réponse, point e) Les deux textes sont REFORMULÉS (rappel de la veille retiré, un seul
   // abonnement, règle de chaque canal) : la tête de l'historique est la reformulation des formules ; la version de FOND des
   // formules (2026-11-12) reste dans l'historique et reste la minimale des formules ; la minimale du Cloud seul ne bouge pas.
-  ok(CC.CGU_CLOUD_HISTORIQUE[0].changement === 'formules_reformulation_canaux' && CC.CGU_CLOUD_HISTORIQUE[0].version > '2026-11-12'
+  // (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) En tête : l'article 7 précisé (famille des
+  // formules), après la reformulation du 13/11, gardée juste dessous ; minimales inchangées (changement en faveur du client).
+  ok(CC.CGU_CLOUD_HISTORIQUE[0].changement === 'formules_arret_renouvellement' && CC.CGU_CLOUD_HISTORIQUE[0].version === '2026-11-13'
+    && CC.CGU_CLOUD_HISTORIQUE.some((e) => e.version === '2026-11-13' && e.changement === 'formules_reformulation_canaux')
     && CC.CGU_CLOUD_HISTORIQUE.some((e) => e.version === '2026-11-12' && e.changement === 'formules_cloud_article_6') && CC.CGU_CLOUD_VERSION_MINIMALE === '2026-11-04',
-    'en tête : la reformulation du 13/11 ; { 2026-11-12, formules_cloud_article_6 } gardé ; minimale inchangée (2026-11-04)');
+    'en tête : l’article 7 précisé (renouvellement coupé) ; la reformulation du 13/11 et { 2026-11-12, formules_cloud_article_6 } gardées ; minimale inchangée (2026-11-04)');
   ok(FS.CHANGEMENT_CGU_FORMULES === 'formules_cloud_article_6' && FS.versionCguFormules() === '2026-11-12', 'la version des formules = 2026-11-12');
   ok(FS.conditionsFormulesAcceptees({ cloud_cgu_version: '2026-11-12' }) && !FS.conditionsFormulesAcceptees({ cloud_cgu_version: '2026-11-11' }) && !FS.conditionsFormulesAcceptees({ cloud_cgu_version: '2026-11-04' })
     && CC.conditionsCloudAcceptees({ cloud_cgu_version: '2026-11-04' }), 'formule : ≥ 2026-11-12 exigé ; le Cloud seul accepte toujours 2026-11-04');

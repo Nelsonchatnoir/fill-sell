@@ -117,7 +117,9 @@ try {
   ok(/Retirer le Cloud/.test(htmlPaye) && !/formule_essai/.test(htmlPaye), 'formule PAYÉE : « Retirer le Cloud » comme avant');
   const bfr = lire('src/cloud/BlocFormulesReglages.jsx');
   ok(/const r = await actions\.arreter\(\{ canal: 'stripe' \}\);/.test(bfr) && /formuleContinue: r\?\.formule_continue === true/.test(bfr), 'le geste = l’arrêt de l’essai (cancel-subscription option cloud), le serveur dit si une formule payée continue');
-  ok(T.arreterEssaiTexte === "Ton essai s'arrête maintenant : rien n'est prélevé pour l'essai.", 'le texte de confirmation dit la vérité (rien prélevé pour l’essai)');
+  // (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) Avant : « Ton essai s'arrête maintenant : rien n'est
+  // prélevé pour l'essai. » Le web coupe le renouvellement, comme les boutiques : l'essai continue jusqu'à sa fin.
+  ok(T.arreterEssaiTexte('19 novembre') === "Ton essai continue jusqu'au 19 novembre, puis s'arrête seul : rien n'est prélevé pour l'essai.", 'le texte de confirmation dit la vérité (l’essai continue jusqu’à sa fin, rien prélevé pour l’essai)');
 
   // ── D. C4 caché pendant un essai ──────────────────────────────────────────────────────────────────────────────────
   console.log('\nD. « Voir les autres formules » (C4) pendant un essai');

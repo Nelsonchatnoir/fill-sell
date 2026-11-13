@@ -141,7 +141,10 @@ export function essaiCloudAbonneStripe(sub, maintenant = Date.now()) {
   if (!formule || !essaiPossiblePourFormule(formule) || !(d > 0) || !(f > d)) return null;
   // Une métadonnée restée après la fin de l'essai (plus d'un jour) ne dit plus rien.
   if (f * 1000 < Number(maintenant) - 86_400_000) return null;
-  return { formule, debut: new Date(d * 1000).toISOString(), fin: new Date(f * 1000).toISOString() };
+  // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) `essai_cloud_sans_suite: "1"`, posé par
+  // cancel-subscription avec le schedule rendu : l'essai court jusqu'à sa fin, rien ne suit (jamais la formule avec Cloud).
+  return { formule, debut: new Date(d * 1000).toISOString(), fin: new Date(f * 1000).toISOString(),
+    ...(m.essai_cloud_sans_suite === '1' ? { sansSuite: true } : {}) };
 }
 
 // ── 4. ⛔ L'ESSAI ────────────────────────────────────────────────────────────────────────────────────────────────────

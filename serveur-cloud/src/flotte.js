@@ -14,7 +14,9 @@
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { Buffer } from 'node:buffer';
 import { socleAbsent } from './socle.js';
+import { reglagesFilet, FILET_FILE_PCT, FILET_ARRET_PCT } from './filetCapacite.js';
 
 // coin_config ne porte que des ENTIERS : le type et le lieu y sont des index de ces listes (0 = défaut).
 // cx43 (le serveur actuel) était en rupture le 01/11 : cpx42 (même taille, 8 vCPU, 16 Go) par défaut.
@@ -392,6 +394,18 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
   let capaciteCourante = Math.max(0, Number(config.navigateursMax) || 0);
   let etatCapacite = { capacite: capaciteCourante, atteignable: capaciteCourante, raison: auto ? 'depart' : 'fixe' };
   let derniereEvaluation = 0;
+  // (13/11) LE FILET DE CAPACITÉ (filetCapacite.js) : ses deux seuils, relus avec les autres réglages (tour(), 10 min).
+  let seuilsFilet = { filePct: FILET_FILE_PCT, arretPct: FILET_ARRET_PCT };
+
+  /**
+   * (13/11) Ce que lit le filet à chaque tour du planificateur (rien de la base : la mémoire de ce tour-ci) — la capacité
+   * RÉELLE (celle de l'alerte de capacité : atteignable mesurée en automatique, NAVIGATEURS_MAX sinon), les places libres
+   * de la flotte rendues par le dernier battement (null = inconnues : jamais d'arrêt), les deux seuils.
+   */
+  function etatFilet() {
+    return { capaciteReelle: auto ? etatCapacite.atteignable : capaciteCourante,
+      placesLibres: dernierBattement?.places_libres ?? null, ...seuilsFilet };
+  }
 
   /**
    * (07/11, décision 4) La capacité réévaluée sur les MESURES (cloud_capacite_mesures, 24 h) ; au démarrage (avant le
@@ -466,8 +480,10 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
 
   async function reglages() {
     const { data } = await base.from('coin_config').select('key, value')
-      .in('key', ['cloud_places_seuil', 'cloud_serveurs_auto', 'cloud_serveur_type', 'cloud_serveur_lieu', 'cloud_capacite_alerte_pct']);
+      .in('key', ['cloud_places_seuil', 'cloud_serveurs_auto', 'cloud_serveur_type', 'cloud_serveur_lieu', 'cloud_capacite_alerte_pct',
+        'cloud_filet_file_pct', 'cloud_filet_arret_pct']);
     const v = Object.fromEntries((data ?? []).map((l) => [l.key, Number(l.value)]));
+    seuilsFilet = reglagesFilet(v);
     return {
       seuil: Number.isFinite(v.cloud_places_seuil) ? v.cloud_places_seuil : 2,
       capaciteAlertePct: v.cloud_capacite_alerte_pct >= 10 && v.cloud_capacite_alerte_pct <= 100 ? v.cloud_capacite_alerte_pct : SEUIL_CAPACITE_PCT,
@@ -587,5 +603,5 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
   }
 
   return { battre, tour, preparer, evaluerCapacite, dernierBattement: () => dernierBattement,
-    capacite: () => capaciteCourante, etatCapacite: () => etatCapacite };
+    capacite: () => capaciteCourante, etatCapacite: () => etatCapacite, etatFilet };
 }

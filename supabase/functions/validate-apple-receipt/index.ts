@@ -182,6 +182,15 @@ serve(async (req) => {
     // l'offre d'introduction (essai 1 semaine). Une option portée par un autre
     // canal n'est pas touchée (ecritureCloudStore).
     let majCloudLue: Record<string, unknown> | null = null;
+    // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Le renouvellement auto du reçu
+    // (pending_renewal_info) suit la lecture : une restauration après une coupure GARDE « renouvellement coupé »
+    // (cloud_arret_fin_periode, ecritureCloudStore « on ») — avant, elle le remettait à faux (l'app redisait « Ensuite,
+    // … /mois » et le rappel de la veille revenait). Illisible → inconnu, comme avant.
+    const renouvDuRecu = (orig: unknown) => {
+      const infos = (appleData.pending_renewal_info ?? []) as Array<{ original_transaction_id?: unknown; auto_renew_status?: unknown }>;
+      const r = infos.find((x) => orig != null && x?.original_transaction_id === orig);
+      return r?.auto_renew_status === "0" ? { autoRenewStatus: 0 } : r?.auto_renew_status === "1" ? { autoRenewStatus: 1 } : null;
+    };
     const txCloud = inApp
       .filter((tx: any) => lectureCloudApple({ productId: tx.product_id }))
       .sort((a: any, b: any) => parseInt(b.expires_date_ms ?? "0") - parseInt(a.expires_date_ms ?? "0"))[0];
@@ -193,7 +202,7 @@ serve(async (req) => {
         purchaseDate: parseInt(txCloud.purchase_date_ms ?? "0") || undefined,
         expiresDate: expiresCloud || undefined,
         originalTransactionId: txCloud.original_transaction_id,
-      })!;
+      }, renouvDuRecu(txCloud.original_transaction_id))!;
       const profilCloud = await profilCloudPourStore(supabaseAdmin, userId);
       const { update: majCloud, motif } = ecritureCloudStore({
         canal: "apple", lecture, sens: expiresCloud > now ? "on" : "off",
@@ -209,7 +218,7 @@ serve(async (req) => {
         productId: "app.fillsell.cloud.sub", offerType: essaiA ? 1 : undefined,
         purchaseDate: parseInt(activeSub.purchase_date_ms ?? "0") || undefined, expiresDate: parseInt(activeSub.expires_date_ms ?? "0") || undefined,
         originalTransactionId: activeSub.original_transaction_id,
-      })!;
+      }, renouvDuRecu(activeSub.original_transaction_id))!;
       if (refusEssaiA) console.log(`[validate-apple-receipt] ${formuleA.formule} en semaine gratuite refusée : ni palier ni Cloud avant le premier paiement`);
       else {
         const { update: majF, motif: motifF } = ecritureCloudStore({ canal: "apple", lecture: lectureA, sens: "on", ref: activeSub.original_transaction_id ?? null, profil: profilCloudA ?? {} });

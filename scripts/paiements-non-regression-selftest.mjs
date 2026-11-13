@@ -146,10 +146,15 @@ const LIGNES_P = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/pai
 // du lot PAY3 dans create-checkout-session, relues une à une : scripts/fixtures/paiements-lignes-pay3-1311.json (le Cloud seul web
 // permis à côté d'une formule, offre_remplacee jamais pour un abonné). Verrou : selftest:cloud-en-plus-de-formule.
 const LIGNES_P3 = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-pay3-1311.json'), 'utf8'));
+// (13/11/2026 soir, décision de Nico — couper le renouvellement ne coupe plus rien) Les lignes du lot, relues une à une :
+// scripts/fixtures/paiements-lignes-renouv-1311.json — stripe-webhook n'annule plus un essai (Cloud seul, formule avec Cloud)
+// dont la résiliation est programmée au portail (renouvellement coupé : relu, alerte interne seule) ; validate-apple-receipt
+// passe le renouvellement auto du reçu à la lecture du Cloud. Aucun chemin de palier. Verrou : selftest:essai-renouvellement-coupe.
+const LIGNES_R = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-renouv-1311.json'), 'utf8'));
 const FICHIERS_LIGNES = [...new Set([...Object.keys(LIGNES_CLOUD), 'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'])];
 for (const f of FICHIERS_LIGNES) {
   const permisesCloud = LIGNES_CLOUD[f] ?? [];
-  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? [])];
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? []), ...(LIGNES_R[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
@@ -186,8 +191,9 @@ const permisesA = [/^\/\//, /^const \{ receipt, userId, option \} = await req\.j
   /^if \(majCloudLue\) await supabaseAdmin\.from\("profiles"\)\.update\(majCloudLue\)\.eq\("id", userId\);$/,
   /^console\.log\(`\[validate-apple-receipt\] option cloud seule userId=/];
 // (11/11) + les lignes des formules avec Cloud (paiements-lignes-formules-1111.json), ajoutées et retirées, une à une.
-const FA_PLUS = (LIGNES_F[FA] ?? []).filter((l) => l.startsWith('+')).map((l) => l.slice(1));
-const FA_MOINS = (LIGNES_F[FA] ?? []).filter((l) => l.startsWith('-')).map((l) => l.slice(1));
+// (13/11/2026 soir) + les lignes du lot « renouvellement coupé » (paiements-lignes-renouv-1311.json), une à une.
+const FA_PLUS = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? [])].filter((l) => l.startsWith('+')).map((l) => l.slice(1));
+const FA_MOINS = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? [])].filter((l) => l.startsWith('-')).map((l) => l.slice(1));
 const restePlus = [...FA_PLUS], resteMoins = [...FA_MOINS];
 const autresA = ajoutees.filter((l) => !permisesA.some((r) => r.test(l))).filter((l) => { const i = restePlus.indexOf(l); if (i < 0) return true; restePlus.splice(i, 1); return false; });
 const retireesHorsF = retirees.filter((l) => { const i = resteMoins.indexOf(l); if (i < 0) return true; resteMoins.splice(i, 1); return false; });
@@ -211,9 +217,9 @@ ok(baseA === v1111A, 'validate-apple-receipt : à 1f91bc3, sans le mode « cloud
 {
   const dF = git('diff', '--ignore-cr-at-eol', '-U0', '1f91bc3', '--', FA);
   const chF = dF.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
-  const resteF = [...(LIGNES_F[FA] ?? [])];
+  const resteF = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? [])];
   const horsF = chF.filter((l) => { const i = resteF.indexOf(l); if (i < 0) return true; resteF.splice(i, 1); return false; });
-  ok(horsF.length === 0, `validate-apple-receipt : depuis 1f91bc3, seules les ${(LIGNES_F[FA] ?? []).length} lignes des formules avec Cloud relues le 11/11 changent`, horsF.slice(0, 4).join(' | '));
+  ok(horsF.length === 0, `validate-apple-receipt : depuis 1f91bc3, seules les ${(LIGNES_F[FA] ?? []).length} lignes des formules avec Cloud relues le 11/11 et les ${(LIGNES_R[FA] ?? []).length} lignes « renouvellement coupé » relues le 13/11 changent`, horsF.slice(0, 4).join(' | '));
 }
 
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);

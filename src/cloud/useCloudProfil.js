@@ -24,7 +24,9 @@ import { cloudOfferVisible, cloudConnexionVisible } from '../config/cloudOffer';
 // arrêté, fin de période payée, arrêt demandé en fin de période) + la raison
 // d'un essai refusé après coup (20261005120000, carte ou compte de plateforme). (03/11) + le canal et la référence
 // de l'abonnement : un Cloud ARRÊTÉ après paiement se dit « arrêté », jamais « ton essai est terminé ».
-export const COLONNES_CLOUD = 'is_premium, is_pro, is_comped, is_business, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode, cloud_essai_refus, cloud_canal, cloud_ref';
+export const COLONNES_CLOUD = 'is_premium, is_pro, is_comped, is_business, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode, cloud_essai_refus, cloud_canal, cloud_ref'
+  // (13/11, filet de capacité) Le motif d'un essai arrêté par le Cloud complet (arretFiletCloud.js) : la seule clé lue.
+  + ', cloud_arret:platform_settings->cloud_arret';
 
 /**
  * @returns {{ etat: 'inactif'|'lecture'|'ok'|'echec', cloud: object|null, profil: object|null, luLe: number|null, relire: () => void }}

@@ -1,7 +1,8 @@
 // (08/11/2026, ordre de Nico : « Cloud — dernières finitions : mails + résiliation ») LA RÉSILIATION ET LES MAILS CLOUD,
 // sur les trois canaux, sans réseau ni base :
-//   A. les règles d'arrêt (ecritureCloudStore) : essai → coupé tout de suite ; payé → arrêt programmé ; arrêt REJOUÉ →
-//      rien d'écrit (un seul arrêt, une seule libération d'IP) ; coupure reçue après le prélèvement → période payée ;
+//   A. les règles d'arrêt (ecritureCloudStore) : essai → (13/11, décision de Nico — couper le renouvellement ne coupe plus
+//      rien) renouvellement coupé noté, le Cloud court jusqu'à la fin de l'essai (avant : coupé tout de suite) ; payé →
+//      arrêt programmé ; coupure REJOUÉE → rien d'écrit ; coupure reçue après le prélèvement → période payée ;
 //      paiement reçu après la coupure → l'arrêt reste programmé ; reprise → arrêt levé ; Google RESTARTED = reprise
 //      (jamais un second essai gratuit) ;
 //   B. les événements de mail d'une notification de boutique (evenementsBoutique) et d'un objet Stripe ;
@@ -31,11 +32,15 @@ const txEssai = { productId: PRODUIT_CLOUD_APPLE, offerType: 1, offerDiscountTyp
 const lAnnulEssai = lectureCloudApple(txEssai, { autoRenewStatus: 0 });
 ok(lAnnulEssai.renouvellementAuto === false && lAnnulEssai.phaseEssai === true && lAnnulEssai.montantPaye === null, 'Apple : renouvellement coupé lu (autoRenewStatus 0), période d\'essai lue sur la transaction, aucun montant payé (essai à 0)', lAnnulEssai);
 const a1 = ecritureCloudStore({ canal: 'apple', lecture: lAnnulEssai, sens: 'annulation', ref: 'A1', profil: enEssai, maintenant: T0 });
-ok(a1.update?.cloud_essai_arrete === true && a1.update?.cloud_essai_fin === iso(T0) && !('is_premium' in a1.update), 'essai : arrêt IMMÉDIAT (fin ramenée à maintenant), aucune colonne de formule', a1);
+// (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) Avant : « essai : arrêt IMMÉDIAT (fin ramenée à
+// maintenant) ». Le verrou complet, sur les trois canaux : selftest:essai-renouvellement-coupe.
+ok(a1.update?.cloud_arret_fin_periode === true && !('cloud_essai_arrete' in a1.update) && !('cloud_essai_fin' in a1.update) && !('is_premium' in a1.update),
+  'essai : renouvellement coupé noté, RIEN n\'est arrêté (fin d\'essai de la boutique gardée), aucune colonne de formule', a1);
 const apresA1 = appliquer(enEssai, a1.update);
-ok(etatCloud(apresA1, T0 + 1000).actif === false, 'après l\'arrêt : le Cloud n\'est plus actif (le déclencheur rend la place et l\'IP, le navigateur se ferme au tour suivant)');
+ok(etatCloud(apresA1, T0 + 1000).actif === true && etatCloud(apresA1, T0 + 5 * J).actif === false && etatCloud(apresA1, T0 + 5 * J).essaiArrete === false,
+  'après la coupure : le Cloud reste actif jusqu\'à la fin de l\'essai, puis s\'arrête seul (essai terminé, jamais « arrêté »)');
 const a1bis = ecritureCloudStore({ canal: 'apple', lecture: lAnnulEssai, sens: 'annulation', ref: 'A1', profil: apresA1, maintenant: T0 + 5000 });
-ok(a1bis.update === null && a1bis.motif === 'essai_deja_arrete', 'la MÊME notification rejouée : rien d\'écrit (un seul arrêt, une seule libération d\'IP)', a1bis);
+ok(a1bis.update === null && a1bis.motif === 'arret_deja_programme', 'la MÊME notification rejouée : rien d\'écrit', a1bis);
 const paye = { ...enEssai, is_cloud: true, cloud_essai_fin: iso(T0 - 20 * J), cloud_essai_debut: iso(T0 - 27 * J), cloud_periode_fin: iso(T0 + 10 * J) };
 const txPaye = { productId: PRODUIT_CLOUD_APPLE, purchaseDate: T0 - 20 * J, expiresDate: T0 + 10 * J, originalTransactionId: 'A1', transactionId: 'T-2', price: 24990, currency: 'EUR' };
 const lAnnulPaye = lectureCloudApple(txPaye, { autoRenewStatus: 0 });
@@ -55,9 +60,11 @@ const a3on = ecritureCloudStore({ canal: 'apple', lecture: lectureCloudApple(txC
 ok(a3on.update?.is_cloud === true && a3on.update?.cloud_arret_fin_periode === true, 'le paiement (DID_RENEW) reçu ENSUITE garde l\'arrêt programmé (avant : remis à faux, le Cloud aurait continué)', a3on);
 const a3on2 = ecritureCloudStore({ canal: 'apple', lecture: lectureCloudApple(txConverti, { autoRenewStatus: 1 }), sens: 'on', ref: 'A1', profil: graceEssai, maintenant: T0 });
 ok(a3on2.update?.cloud_arret_fin_periode === false, 'paiement avec renouvellement actif : aucun arrêt programmé');
-// L'essai FillSell est fini (grâce) mais la boutique est encore dans sa semaine : la coupure arrête tout, rien n'est prélevé.
+// L'essai FillSell est fini (grâce) mais la boutique est encore dans sa semaine : rien n'est prélevé. (13/11, décision de
+// Nico — couper le renouvellement ne coupe plus rien) Avant : la coupure arrêtait tout ; maintenant elle est notée.
 const a4 = ecritureCloudStore({ canal: 'apple', lecture: lectureCloudApple({ ...txEssai, expiresDate: T0 + H }, { autoRenewStatus: 0 }), sens: 'annulation', ref: 'A1', profil: graceEssai, maintenant: T0 });
-ok(a4.update?.cloud_essai_arrete === true && a4.update?.cloud_essai_fin === undefined, 'grâce de fin d\'essai, boutique encore en essai : arrêté (place et IP rendues), fin d\'essai gardée', a4);
+ok(a4.update?.cloud_arret_fin_periode === true && a4.update?.cloud_essai_arrete === undefined && a4.update?.cloud_essai_fin === undefined,
+  'grâce de fin d\'essai, boutique encore en essai : la coupure est notée, rien n\'est arrêté de force, fin d\'essai gardée', a4);
 const autreCanal = ecritureCloudStore({ canal: 'google', lecture: {}, sens: 'annulation', ref: 'G1', profil: enEssai, maintenant: T0 });
 ok(autreCanal.update === null, 'une coupure d\'un AUTRE canal ne touche jamais le Cloud porté par Apple');
 // Google
@@ -68,15 +75,22 @@ const lgPhase = lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, { ...achatGoogleEssai, 
 ok(lgPhase.phaseEssai === false, 'Google : la phase d\'offre, quand elle est donnée, fait foi (prix de base = période payée)');
 const pg = { ...enEssai, cloud_canal: 'google', cloud_ref: 'G1' };
 const g1 = ecritureCloudStore({ canal: 'google', lecture: lg, sens: 'annulation', ref: 'G1', profil: pg, maintenant: T0 });
-ok(g1.update?.cloud_essai_arrete === true, 'Google : coupure pendant l\'essai = arrêt immédiat');
-const g1restart = ecritureCloudStore({ canal: 'google', lecture: { ...lg, renouvellementAuto: true }, sens: 'reprise', ref: 'G1', profil: appliquer(pg, g1.update), maintenant: T0 + H });
-ok(g1restart.update && g1restart.update.is_cloud === undefined && g1restart.update.cloud_essai_arrete === undefined && etatCloud(appliquer(appliquer(pg, g1.update), g1restart.update), T0 + H).actif === false,
+// (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) Avant : « Google : coupure pendant l'essai = arrêt immédiat ».
+ok(g1.update?.cloud_arret_fin_periode === true && g1.update?.cloud_essai_arrete === undefined && etatCloud(appliquer(pg, g1.update), T0 + 1000).actif === true,
+  'Google : coupure pendant l\'essai = renouvellement coupé, le Cloud court jusqu\'à la fin de l\'essai');
+// (13/11) Un essai VRAIMENT arrêté (révocation : « off ») puis RESTARTED : toujours rien de rouvert.
+const pgArrete = appliquer(pg, ecritureCloudStore({ canal: 'google', lecture: lg, sens: 'off', ref: 'G1', profil: pg, maintenant: T0 }).update);
+const g1restart = ecritureCloudStore({ canal: 'google', lecture: { ...lg, renouvellementAuto: true }, sens: 'reprise', ref: 'G1', profil: pgArrete, maintenant: T0 + H });
+ok(g1restart.update && g1restart.update.is_cloud === undefined && g1restart.update.cloud_essai_arrete === undefined && etatCloud(appliquer(pgArrete, g1restart.update), T0 + H).actif === false,
   'Google RESTARTED (7) après un essai arrêté : une reprise seulement — le Cloud ne rouvre pas sans paiement (jamais un second essai gratuit)', g1restart);
 
 // ── B. Les événements ─────────────────────────────────────────────────────────
 console.log('\nB. Les événements de mail');
 const evA1 = evenementsBoutique({ canal: 'apple', nature: 'annulation', avant: enEssai, update: a1.update, lecture: lAnnulEssai, ref: 'A1', maintenant: T0 });
-ok(evA1.length === 1 && evA1[0].evenement === 'arret_essai' && evA1[0].cle === 'A1' && evA1[0].faits.aucunPrelevement === true, 'Apple, coupure pendant l\'essai : arrêt pendant l\'essai, « aucun prélèvement » confirmé par Apple', evA1);
+// (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) Avant : « arrêt pendant l'essai, aucun prélèvement »
+// (un mail au client). Maintenant : aucun mail, l'alerte interne seule.
+ok(evA1.length === 1 && evA1[0].evenement === 'essai_renouvellement_coupe' && !EVENEMENTS_MAIL.includes(evA1[0].evenement) && evA1[0].faits.aucunPrelevement === true && evA1[0].faits.finIso === iso(T0 + 5 * J),
+  'Apple, coupure pendant l\'essai : AUCUN mail au client (alerte interne seule, le Cloud continue jusqu\'à la fin de l\'essai)', evA1);
 ok(evenementsBoutique({ canal: 'apple', nature: 'annulation', avant: apresA1, update: a1bis.update, lecture: lAnnulEssai, ref: 'A1' }).length === 0, 'rejouée : aucun événement');
 const sansConfirmation = evenementsBoutique({ canal: 'apple', nature: 'annulation', avant: enEssai, update: a1.update, lecture: { ...lAnnulEssai, renouvellementAuto: null }, ref: 'A1' });
 ok(sansConfirmation.length === 0, 'sans la confirmation de la boutique (renouvellement non lu) : AUCUN mail « aucun prélèvement »');
@@ -249,13 +263,18 @@ function bancEnvoi({ registre = 'ok', envoi = 'ok' } = {}) {
 }
 {
   const b = bancEnvoi();
-  const p = { evenements: evA1, userId: 'u1', email: 'a@exemple.fr', lang: 'fr', canal: 'apple', deps: b.deps };
+  // (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) La coupure (evA1) n'envoie plus de mail : le
+  // dédoublonnage se prouve sur un VRAI arrêt pendant l'essai (Stripe : annulé avant la fin de l'essai, factures à 0).
+  const p = { evenements: evS, userId: 'u1', email: 'a@exemple.fr', lang: 'fr', canal: 'stripe', deps: b.deps };
   const r = await Promise.all([1, 2, 3, 4, 5].map(() => envoyerMailsCloud(p)));
   ok(b.envois.length === 1 && r.flat().filter((x) => x.resultat === 'envoye').length === 1 && r.flat().filter((x) => x.resultat === 'deja_envoye').length === 4,
     'la même coupure reçue 5 fois EN MÊME TEMPS : un seul mail', r.flat());
   await envoyerMailsCloud(p);
   ok(b.envois.length === 1, 'rejouée plus tard : toujours un seul mail');
   ok(b.envois[0].type === 'cloud_arret_essai' && /Aucun prélèvement|aucun prélèvement/i.test(b.envois[0].html), 'le mail parti : arrêt pendant l\'essai, « aucun prélèvement »');
+  const bC = bancEnvoi();
+  const rC = await envoyerMailsCloud({ evenements: evA1, userId: 'u1c', email: 'a@exemple.fr', lang: 'fr', canal: 'apple', deps: bC.deps });
+  ok(bC.envois.length === 0 && bC.lignes.size === 0 && rC[0]?.resultat === 'sans_mail_client', 'la coupure du renouvellement pendant l\'essai : aucun mail au client, rien réservé', rC);
 }
 {
   const b = bancEnvoi({ envoi: 'ko' });

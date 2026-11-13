@@ -92,9 +92,10 @@ export function voieCloud(lecture) {
   return o?.mode === 'interrupteur' ? { essai: o.essai } : null;
 }
 
-/** Le rappel de la veille : essai en cours ET fin aujourd'hui ou demain (Paris). */
+/** Le rappel de la veille : essai en cours ET fin aujourd'hui ou demain (Paris). (13/11/2026, décision de Nico) Jamais pour
+ *  un essai dont le renouvellement est coupé (essaiSansSuite) : « Demain, le Cloud passe à … » serait faux, rien ne sera prélevé. */
 export function rappelVeilleDu(cloud, maintenant = Date.now()) {
-  if (cloud?.etat !== 'essai') return null;
+  if (cloud?.etat !== 'essai' || cloud?.essaiSansSuite === true) return null;
   const q = quandFin(cloud.essaiFin, maintenant);
   return q === 'demain' || q === 'aujourdhui' ? q : null;
 }
@@ -118,19 +119,25 @@ export function ecranApresCloud(cloud, profil, maintenant = Date.now()) {
 // la fin de l'essai, factures à 0). Rend la clé du texte (textes.js) :
 //   'boutique_ouverte'        — les abonnements de la boutique ont été ouverts, sa confirmation est attendue ;
 //   'arrete_sans_prelevement' — arrêt CONFIRMÉ, rien ne sera prélevé ;
+//   'continue_sans_prelevement' — (13/11/2026, décision de Nico) la boutique a confirmé la COUPURE DU RENOUVELLEMENT : rien
+//                               n'est arrêté, l'essai continue jusqu'à sa fin (essaiSansSuite), rien ne sera prélevé ;
 //   'arrete'                  — Stripe a arrêté, mais ses factures n'ont pas été relues : on n'en dit pas plus ;
 //   'rien'                    — aucun abonnement en cours (le message du serveur) ;
 //   null                      — pas encore de geste abouti.
-export function issueVeilleArret({ etat, arretConfirme = false, aucunPrelevement = false } = {}) {
-  if (etat === 'boutique') return arretConfirme === true ? 'arrete_sans_prelevement' : 'boutique_ouverte';
-  if (etat === 'arretee') return aucunPrelevement === true || arretConfirme === true ? 'arrete_sans_prelevement' : 'arrete';
+export function issueVeilleArret({ etat, arretConfirme = false, aucunPrelevement = false, sansSuite = false } = {}) {
+  if (etat === 'boutique') return sansSuite === true ? 'continue_sans_prelevement' : arretConfirme === true ? 'arrete_sans_prelevement' : 'boutique_ouverte';
+  // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Stripe aussi coupe le renouvellement : sa réponse
+  // (essai_sans_suite) ou la base (essaiSansSuite) le disent → « ton essai continue … rien ne sera prélevé ».
+  if (etat === 'arretee') return sansSuite === true ? 'continue_sans_prelevement' : aucunPrelevement === true || arretConfirme === true ? 'arrete_sans_prelevement' : 'arrete';
   if (etat === 'rien') return 'rien';
   return null;
 }
 
 /** (08/11) L'arrêt d'un ESSAI est-il confirmé en base ? Essai arrêté, et pas par un verrou d'essai (carte, compte de
- *  plateforme) — un verrou arrête l'essai FillSell sans couper l'abonnement de la boutique. */
-export const arretEssaiConfirme = (cloud, profil) => cloud?.essaiArrete === true && !profil?.cloud_essai_refus;
+ *  plateforme) — un verrou arrête l'essai FillSell sans couper l'abonnement de la boutique. (13/11/2026, décision de Nico)
+ *  Depuis que couper le renouvellement ne coupe plus rien, la confirmation de la boutique est aussi l'essai qui continue
+ *  sans suite (essaiSansSuite : renouvellement coupé, écrit par son webhook). */
+export const arretEssaiConfirme = (cloud, profil) => (cloud?.essaiArrete === true || cloud?.essaiSansSuite === true) && !profil?.cloud_essai_refus;
 
 /** (08/11) Les relectures après l'ouverture des abonnements d'une boutique : quatre, puis plus rien (jamais une boucle). */
 export const RELECTURES_APRES_BOUTIQUE_MS = Object.freeze([3_000, 10_000, 30_000, 60_000]);

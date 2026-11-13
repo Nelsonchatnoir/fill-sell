@@ -25,12 +25,15 @@ import { montantAnglais } from "./montants.js";
 //                               comme is_premium (jamais par l'app) ;
 //   · cloud_essai_debut       — début de l'essai (null = jamais d'essai) ;
 //   · cloud_essai_fin         — fin de l'essai (début + 7 jours ; ramenée à
-//                               l'instant de l'arrêt si la personne l'arrête) ;
-//   · cloud_essai_arrete      — l'essai a été arrêté par la personne (effet
-//                               IMMÉDIAT, rien n'est facturé) ;
+//                               l'instant de l'arrêt si l'essai est coupé) ;
+//   · cloud_essai_arrete      — l'essai a été coupé tout de suite, rien n'est
+//                               facturé (13/11/2026 : plus jamais à la demande de la
+//                               personne — remboursement, révocation, impayé, verrou ;
+//                               et les essais arrêtés avant le 13/11, laissés tels quels) ;
 //   · cloud_periode_fin       — fin de la période payée en cours ;
-//   · cloud_arret_fin_periode — arrêt demandé une fois payée : l'option
-//                               tourne jusqu'à cloud_periode_fin, puis s'arrête.
+//   · cloud_arret_fin_periode — arrêt demandé : l'option tourne jusqu'à
+//                               cloud_periode_fin (ou, pendant un essai, jusqu'à
+//                               cloud_essai_fin : essaiSansSuite), puis s'arrête.
 // MÊME RÈGLE QUE LE SERVEUR : `cloud_etat(p_user)` (20261004233000). C'est
 // le serveur qui décide si un navigateur Cloud tourne ; ce calcul sert à
 // l'AFFICHAGE, et il ne doit jamais dire autre chose que le serveur.
@@ -70,7 +73,10 @@ const instant = (v) => {
  *   joursRestants : jours d'essai restants, arrondis au jour entamé (essai seul) ;
  *   avecFormule : un palier payant est-il pris en plus (sinon Free + option) ;
  *   periodeFin / arretPrevuLe : payée, la fin de période, et la date d'arrêt
- *   si l'arrêt a été demandé (elle tourne jusque-là).
+ *   si l'arrêt a été demandé (elle tourne jusque-là) ;
+ *   essaiSansSuite : (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) essai EN COURS dont le
+ *   renouvellement est coupé (boutique ou Stripe : cloud_arret_fin_periode) — il continue jusqu'à essaiFin, puis
+ *   s'arrête seul, rien n'est prélevé. AFFICHAGE seulement : l'état et `actif` ne changent pas (même règle que cloud_etat).
  */
 export function cloudDuProfil(p, maintenant = Date.now()) {
   const now = instant(maintenant) ?? Date.now();
@@ -92,6 +98,7 @@ export function cloudDuProfil(p, maintenant = Date.now()) {
     avecFormule,
     periodeFin: paye && periodeFin != null ? new Date(periodeFin).toISOString() : null,
     arretPrevuLe: paye && p?.cloud_arret_fin_periode === true && periodeFin != null ? new Date(periodeFin).toISOString() : null,
+    essaiSansSuite: !paye && essaiEnCours && p?.cloud_arret_fin_periode === true,
   };
   if ((paye || essaiEnCours) && !palierOk) return { ...base, etat: 'suspendu', actif: false };
   if (paye) return { ...base, etat: 'paye', actif: true };

@@ -24,7 +24,18 @@
 // Paris) — et VERSION_LIVREE de scripts/cloud-executant-selftest.mjs, qui l'épingle.
 // (13/11/2026) La date de la reformulation, écrite UNE fois (deux lignes de l'historique la portent).
 const REFORMULATION_1311 = "2026-11-13";
+// (13/11/2026 soir, décision de Nico — couper le renouvellement ne coupe plus rien) L'article 7 dit la règle neuve : sur
+// tous les canaux, couper le renouvellement n'arrête rien tout de suite, le Cloud reste actif jusqu'à la fin prévue de
+// l'essai ou de la période payée. Changement de fond EN FAVEUR du client : aucune nouvelle acceptation, les minimales NE
+// BOUGENT PAS. Date = le jour RÉEL du push web (règle de ce fichier) : poussé le 13/11 au soir, donc 2026-11-13, la même date
+// que la reformulation du jour (trois textes successifs le 13/11, tous en faveur du client ou de même fond ; l'heure de
+// l'acceptation, cloud_cgu_acceptee_le, et l'historique du dépôt disent quel texte a été lu) : la constante REFORMULATION_1311
+// (la date ne s'écrit qu'à UN endroit).
 export const CGU_CLOUD_HISTORIQUE = Object.freeze([
+  // Deux lignes à la même date, comme le 13/11 : la famille des formules (« formules_arret_renouvellement ») et le Cloud
+  // seul (« arret_renouvellement_coupe ») — l'article 7 est commun aux deux textes.
+  Object.freeze({ version: REFORMULATION_1311, changement: "formules_arret_renouvellement" }),
+  Object.freeze({ version: REFORMULATION_1311, changement: "arret_renouvellement_coupe" }),
   // (13/11/2026, 3e réponse de Nico, point e — ⚠ DATE À RECALER sur le jour réel du push web) REFORMULATION des deux
   // textes, sans changement de fond (les minimales NE BOUGENT PAS : Cloud seul 2026-11-04, formules 2026-11-12) : le rappel
   // de la veille retiré (promesse non prouvée), la page de paiement de chaque canal qui dit l'essai et le montant avant

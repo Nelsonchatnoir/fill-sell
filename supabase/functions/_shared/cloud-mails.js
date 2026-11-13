@@ -8,6 +8,12 @@
 //   4. arret_essai      — arrêt pendant l'essai : tout est coupé, AUCUN prélèvement — seulement quand la boutique a
 //                         confirmé la coupure (Stripe : annulation faite et factures à 0 ; Apple : autoRenewStatus 0
 //                         sur la période d'essai ; Google : renouvellement coupé pendant la phase d'essai) ;
+//                         (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) une COUPURE DU
+//                         RENOUVELLEMENT pendant l'essai (Apple, Google, Stripe) n'arrête plus rien et n'envoie AUCUN mail :
+//                         'essai_renouvellement_coupe', alerte interne seule (EVENEMENTS_SANS_MAIL_CLIENT). (13/11, décision de
+//                         Nico — plus aucun arrêt immédiat d'un essai) Le bouton « Arrêter » du web aussi (cancel-subscription :
+//                         cancel_at_period_end). arret_essai ne part plus que si Stripe MONTRE un abonnement annulé avant la fin
+//                         de son essai, factures à 0 (annulation faite hors de l'app, verrou de carte) ;
 //   5. arret_programme  — arrêt après l'essai : programmé, avec la date de fin ;
 //   6. impaye           — impayé : Stripe par paiement-echoue.js (inchangé), Apple et Google ici (DID_FAIL_TO_RENEW ;
 //                         SUBSCRIPTION_ON_HOLD / IN_GRACE_PERIOD).
@@ -31,6 +37,10 @@ import { estFormuleCloud, nomDeFormule, essaiPossiblePourFormule } from './formu
 import { PALIER_DE_FORMULE } from './formules-cloud.js';
 
 export const EVENEMENTS_MAIL = Object.freeze(['essai_debut', 'paiement', 'arret_essai', 'arret_programme', 'impaye']);
+// (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Le renouvellement coupé PENDANT l'essai
+// (boutique ou Stripe) : AUCUN mail au client — l'app dit « Ton essai Cloud continue jusqu'au … » ; seule l'alerte interne
+// à support@ part (cloud-alerte-nico.js). Avant : 'arret_essai' (« … est arrêtée, sans aucun prélèvement »).
+export const EVENEMENTS_SANS_MAIL_CLIENT = Object.freeze(['essai_renouvellement_coupe']);
 /** Le type écrit dans email_logs (catégorie 'support' : information de facturation). */
 export const typeMail = (evenement) => `cloud_${evenement}`;
 export const CATEGORIE_MAILS_CLOUD = 'support';
@@ -93,8 +103,19 @@ function evenementsBoutiqueCloud({ canal, nature, avant, update, lecture, r, mai
     out.push({ evenement: 'arret_programme', cle: `${r}:${fin ?? 'fin'}`, faits: { finIso: fin, demandeIso: new Date(instant(maintenant) ?? Date.now()).toISOString() } });
   }
   // L'arrêt PENDANT l'essai : seulement quand la boutique a confirmé que le renouvellement est coupé.
+  // (13/11/2026, décision de Nico) Plus jamais écrit par une coupure (ecritureCloudStore ne pose plus cloud_essai_arrete
+  // sur une annulation) : la branche reste pour un état d'avant, elle ne s'exécute plus.
   if (nature === 'annulation' && update.cloud_essai_arrete === true && lecture?.renouvellementAuto === false) {
     out.push({ evenement: 'arret_essai', cle: r, faits: { arreteIso: isoOuNull(update.cloud_essai_fin) ?? new Date(instant(maintenant) ?? Date.now()).toISOString(), aucunPrelevement: true } });
+  }
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Le renouvellement coupé PENDANT l'essai,
+  // confirmé par la boutique : le Cloud continue jusqu'à la fin de l'essai. AUCUN mail au client ; l'alerte interne
+  // seulement (EVENEMENTS_SANS_MAIL_CLIENT). Clé = la référence et la fin : une coupure rejouée, une alerte.
+  if (nature === 'annulation' && update.cloud_arret_fin_periode === true && update.cloud_essai_arrete !== true
+      && avant?.is_cloud !== true && update.is_cloud !== true && lecture?.renouvellementAuto === false
+      && essaiEnCoursDuProfil(avant, instant(maintenant) ?? Date.now())) {
+    const fin = isoOuNull(avant?.cloud_essai_fin);
+    out.push({ evenement: 'essai_renouvellement_coupe', cle: `${r}:renouvellement_coupe:${fin ?? 'fin'}`, faits: { finIso: fin, aucunPrelevement: true } });
   }
   if (nature === 'impaye' && (avant?.is_cloud === true || (avant?.cloud_essai_debut != null && avant?.cloud_essai_arrete !== true))) {
     const periode = isoOuNull(avant?.cloud_periode_fin ?? avant?.cloud_essai_fin ?? lecture?.fin);
@@ -166,6 +187,13 @@ export function evenementArretStripe(sub, factures = []) {
     return [{ evenement: 'arret_essai', cle: String(sub.id), canal: 'stripe', faits: { arreteIso: secIso(sub.ended_at), aucunPrelevement: true, ...formuleDeSub(sub) } }];
   }
   const programme = sub.cancel_at_period_end === true || (typeof sub.cancel_at === 'number' && sub.cancel_at > 0);
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) En ESSAI, une résiliation programmée
+  // (portail, dashboard) n'arrête rien : le Cloud court jusqu'à trial_end, Stripe ne prélève pas. AUCUN mail au client ;
+  // l'alerte interne seulement (EVENEMENTS_SANS_MAIL_CLIENT).
+  if (!fini && sub.status === 'trialing' && programme) {
+    const fin = secIso(typeof sub.trial_end === 'number' ? sub.trial_end : finPeriodeStripe(sub));
+    return [{ evenement: 'essai_renouvellement_coupe', cle: `${sub.id}:renouvellement_coupe:${fin ?? 'fin'}`, canal: 'stripe', faits: { finIso: fin, aucunPrelevement: true, ...formuleDeSub(sub) } }];
+  }
   if (!fini && sub.status === 'active' && programme) {
     const fin = secIso(typeof sub.cancel_at === 'number' && sub.cancel_at > 0 ? sub.cancel_at : finPeriodeStripe(sub));
     return [{ evenement: 'arret_programme', cle: `${sub.id}:${fin ?? 'fin'}`, canal: 'stripe', faits: { finIso: fin, ...formuleDeSub(sub) } }];
@@ -233,7 +261,8 @@ const FR = {
       inconnu: () => 'Ensuite, si tu ne fais rien, FillSell Cloud continue au prix mensuel affiché lors de ton inscription.',
     },
     arret: {
-      stripe: "Tu ne veux pas continuer ? Arrête-le avant la fin de l'essai dans FillSell, Réglages → Abonnement : on annule l'abonnement tout de suite, avant la première échéance.",
+      // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Avant : « on annule l'abonnement tout de suite ».
+      stripe: "Tu ne veux pas continuer ? Arrête-le avant la fin de l'essai dans FillSell, Réglages → Abonnement : l'essai continue jusqu'à sa fin, puis l'abonnement s'arrête, avant la première échéance.",
       apple: "Tu ne veux pas continuer ? Arrête-le avant la fin de l'essai dans tes abonnements Apple (sur l'iPhone : Réglages → ton nom → Abonnements). C'est Apple qui gère cet abonnement : c'est chez Apple qu'il s'arrête, et Apple nous le confirme.",
       google: "Tu ne veux pas continuer ? Arrête-le avant la fin de l'essai dans tes abonnements Google Play (Play Store → ton profil → Paiements et abonnements → Abonnements). C'est Google qui gère cet abonnement : c'est chez Google Play qu'il s'arrête, et Google nous le confirme.",
       inconnu: "Tu ne veux pas continuer ? Arrête-le avant la fin de l'essai là où tu l'as pris : dans FillSell (Réglages → Abonnement), ou dans tes abonnements Apple ou Google Play.",
@@ -337,7 +366,7 @@ const EN = {
       inconnu: () => 'After that, if you do nothing, FillSell Cloud continues at the monthly price shown when you signed up.',
     },
     arret: {
-      stripe: "Don't want to continue? Stop it before the trial ends in FillSell, Settings → Subscription: we cancel the subscription straight away, before the first payment is due.",
+      stripe: "Don't want to continue? Stop it before the trial ends in FillSell, Settings → Subscription: the trial runs until its end, then the subscription stops, before the first payment is due.",
       apple: "Don't want to continue? Stop it before the trial ends in your Apple subscriptions (on iPhone: Settings → your name → Subscriptions). Apple manages this subscription: you stop it with Apple, and Apple confirms it to us.",
       google: "Don't want to continue? Stop it before the trial ends in your Google Play subscriptions (Play Store → your profile → Payments & subscriptions → Subscriptions). Google manages this subscription: you stop it with Google Play, and Google confirms it to us.",
       inconnu: "Don't want to continue? Stop it before the trial ends where you took it: in FillSell (Settings → Subscription), or in your Apple or Google Play subscriptions.",
@@ -656,6 +685,8 @@ export async function envoyerMailsCloud({ evenements = [], userId, email, lang =
     const ligne = { evenement: e?.evenement, cle: e?.cle, resultat: 'rien' };
     bilan.push(ligne);
     try {
+      // (13/11/2026) Un événement d'ALERTE seule (renouvellement coupé pendant l'essai) : jamais un mail au client.
+      if (EVENEMENTS_SANS_MAIL_CLIENT.includes(e?.evenement)) { ligne.resultat = 'sans_mail_client'; continue; }
       if (!EVENEMENTS_MAIL.includes(e?.evenement) || !e?.cle || !userId) { ligne.resultat = 'evenement_invalide'; continue; }
       if (typeof email !== 'string' || !email.includes('@')) { ligne.resultat = 'sans_adresse'; continue; }
       const cn = e.canal ?? canal;

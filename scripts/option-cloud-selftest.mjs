@@ -186,7 +186,11 @@ console.log("6. Arrêt de l'essai : effet IMMÉDIAT (palier.js) ; payé : fin de
   ok(!("cloud_essai_arrete" in miseAJourProfilDepuisStripe(d2, "stripe")), "essai arrivé à son terme sans carte : pas un arrêt");
   const prof = { cloud_canal: "apple", cloud_ref: "A1", cloud_essai_debut: new Date(T0 - J).toISOString(), cloud_essai_fin: new Date(T0 + 6 * J).toISOString() };
   const a = ecritureCloudStore({ canal: "apple", lecture: { fin: new Date(T0 + 6 * J).toISOString() }, sens: "annulation", ref: "A1", profil: prof, maintenant: T0 });
-  ok(a.update.cloud_essai_arrete === true && a.update.cloud_essai_fin === new Date(T0).toISOString(), "Apple : renouvellement coupé pendant l'essai → arrêt immédiat");
+  // (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) Avant : arrêt immédiat (cloud_essai_arrete,
+  // fin ramenée à maintenant). Le verrou complet : selftest:essai-renouvellement-coupe.
+  ok(a.update.cloud_arret_fin_periode === true && !("cloud_essai_arrete" in a.update) && !("cloud_essai_fin" in a.update)
+    && etatCloud({ ...prof, ...a.update }, T0 + 1000).actif === true && etatCloud({ ...prof, ...a.update }, T0 + 6 * J).actif === false,
+    "Apple : renouvellement coupé pendant l'essai → rien n'est coupé, le Cloud court jusqu'à la fin de l'essai puis s'arrête seul");
   const b = ecritureCloudStore({ canal: "apple", lecture: { fin: "2026-11-05T10:00:00.000Z" }, sens: "annulation", ref: "A1", profil: { ...prof, is_cloud: true }, maintenant: T0 });
   ok(b.update.cloud_arret_fin_periode === true && !("cloud_essai_arrete" in b.update), "payé : arrêt à la fin de la période");
   const e2 = etatCloud({ is_cloud: true, cloud_periode_fin: "2026-11-05T10:00:00.000Z", cloud_arret_fin_periode: true }, T0);

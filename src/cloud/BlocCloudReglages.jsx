@@ -7,10 +7,11 @@
 // deviné, jamais un bouton qui ment).
 //
 // Décisions FINALES de Nico (04/10 soir) : l'option se prend seule sur un
-// compte Free (quotas Free gardés) ou en plus d'une formule ; arrêter pendant
-// l'essai = tout de suite, rien facturé ; une fois payée, elle tourne jusqu'à
-// la fin de la période (« s'arrête le [date] ») ; résilier la formule ne
-// l'arrête pas.
+// compte Free (quotas Free gardés) ou en plus d'une formule ; (13/11/2026, décision
+// de Nico — plus aucun arrêt immédiat d'un essai) arrêter pendant l'essai = il
+// continue jusqu'à sa fin, rien facturé (avant : tout de suite) ; une fois payée,
+// elle tourne jusqu'à la fin de la période (« s'arrête le [date] ») ; résilier la
+// formule ne l'arrête pas.
 //
 // Les états, et ce que chacun DIT :
 //   · aucun          — ce que fait l'option ; « Essayer 7 jours gratuits »,
@@ -51,6 +52,8 @@ import { DEGRADE_TEAL } from './theme';
 import { voieArretCloud, voieBoutique } from './achatCloud';
 // (08/11, refus Google) Mobile : un bouton d'achat n'agit qu'une fois le prix de la boutique affiché.
 import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique';
+// (13/11, filet de capacité) Un essai arrêté parce que le Cloud est complet : la phrase qui le dit (arretFiletCloud.js).
+import { phraseArretFilet } from './arretFiletCloud';
 
 function Glyphe() {
   return (
@@ -121,6 +124,7 @@ const PLEIN = { width: '100%', background: DEGRADE_TEAL };
 export default function BlocCloudReglages({
   lang = 'fr', cloud, lecture = 'ok', nomPalier = null, actions = {}, arretEnCours = false,
   quotaFree = null, maintenant, arretDemande = 0, refus = null, canal = null, plateforme = 'web',
+  arretFilet = null,   // (13/11) profiles.platform_settings.cloud_arret (arretFiletCloud.js)
 }) {
   const T = textesCloud(lang);
   // (05/10) Essai refusé APRÈS coup (carte ou compte de plateforme déjà vus) : on le DIT.
@@ -192,7 +196,13 @@ export default function BlocCloudReglages({
     aucun: T.etatAucun, essai: T.etatEssai, paye: T.etatPaye, suspendu: T.etatSuspendu,
     essai_termine: cloud.essaiArrete ? T.etatArrete : T.etatTermine,
   }[etat] ?? T.etatAucun;
-  const peutArreter = (etat === 'essai' || (etat === 'paye' && !arretPrevu) || etat === 'suspendu') && typeof actions.arreter === 'function';
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Essai dont le renouvellement est coupé
+  // (confirmé en base) : « Ton essai Cloud continue jusqu'au {date}. Rien ne sera prélevé. » — à la place de « Ensuite,
+  // … /mois ». Plus rien à arrêter : pas de bouton, sur aucun canal. (13/11, décision de Nico — plus aucun arrêt immédiat
+  // d'un essai) Par carte aussi, « Arrêter le Cloud » coupe le renouvellement (cancel-subscription : cancel_at_period_end).
+  const sansSuite = etat === 'essai' && cloud.essaiSansSuite === true;
+  const peutArreter = (etat === 'essai' || (etat === 'paye' && !arretPrevu) || etat === 'suspendu') && typeof actions.arreter === 'function'
+    && !sansSuite;
   const quotaLigne = free ? <p style={{ ...pTexte, fontWeight: 600 }}>{T.freeCloudQuota(quotaFree)}</p> : null;
 
   return (
@@ -237,7 +247,9 @@ export default function BlocCloudReglages({
             <>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span data-zone="reste" style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: R.ink }}>{T.essaiReste(cloud.joursRestants)}</span>
-                <p style={pTexte}>{T.essaiFin(date, heure, nomPalier)}</p>
+                {sansSuite
+                  ? <p data-zone="sans-suite" style={pTexte}>{T.essaiSansSuite(date)}</p>
+                  : <p style={pTexte}>{T.essaiFin(date, heure, nomPalier)}</p>}
               </div>
               <JaugeEssai jour={jourDEssai(cloud) ?? 1} T={T} />
               {/* Free en essai : UNE mention de Premium, ici et nulle part ailleurs. */}
@@ -272,7 +284,7 @@ export default function BlocCloudReglages({
 
           {etat === 'essai_termine' && (
             <>
-              <p style={pTexte}>{phraseRefus ?? (cloud.essaiArrete ? T.arreteTexte(date) : T.termineTexte(date))}</p>
+              <p style={pTexte}>{phraseRefus ?? phraseArretFilet({ cloud, arret: arretFilet, lang }) ?? (cloud.essaiArrete ? T.arreteTexte(date) : T.termineTexte(date))}</p>
               <p style={pNote}>{T.termineSuite}</p>
               {actions.ajouter && <Bouton ton="plein" onClick={actions.ajouter} disabled={!prixPret('cloud')} style={PLEIN}>{T.termineCta}</Bouton>}
             </>
@@ -303,7 +315,7 @@ export default function BlocCloudReglages({
       {/* La boutique ouverte : on attend SA confirmation (webhook) — rien n'a changé chez nous. */}
       {attenteBoutique && !echecBoutique && peutArreter && !confirmer && <Note>{T.arretBoutiqueAttente(attenteBoutique)}</Note>}
       {/* La note se tait pendant la confirmation, qui dit déjà la même chose. */}
-      {etat === 'essai' && !confirmer && <Note>{T.essaiNote(nomPalier)}</Note>}
+      {etat === 'essai' && !confirmer && !sansSuite && <Note>{T.essaiNote(nomPalier)}</Note>}
     </Groupe>
   );
 }
@@ -313,7 +325,9 @@ export default function BlocCloudReglages({
  * (scripts/cloud-ecrans-selftest.mjs, 7c ter). `voie` : voieArretCloud(canal, plateforme) (cloud/achatCloud.js).
  *   · boutique (Apple, Google) : où l'arrêter, et que FillSell le verra dès qu'elle l'aura confirmé ; le bouton ouvre ses
  *     abonnements (Apple vu ailleurs que sur iPhone / iPad : pas de bouton, la phrase dit où) ;
- *   · Stripe (ou canal inconnu) : la phrase d'avant, mot pour mot — c'est FillSell qui arrête, le serveur confirme.
+ *   · Stripe (ou canal inconnu) : c'est FillSell qui arrête, le serveur confirme. (13/11/2026, décision de Nico — plus
+ *     aucun arrêt immédiat d'un essai) Pendant l'essai, la même règle que les boutiques : le Cloud continue jusqu'à la fin
+ *     de l'essai, puis s'arrête seul, sans prélèvement (arreterEssai, avec la date).
  */
 export function ConfirmationArretCloud({ lang = 'fr', cloud, nomPalier = null, voie = 'serveur', enCours = false, onArreter, onAnnuler }) {
   const T = textesCloud(lang);
@@ -324,8 +338,9 @@ export function ConfirmationArretCloud({ lang = 'fr', cloud, nomPalier = null, v
       <div data-cloud="arret" data-voie={voie}>
         <div style={{ fontSize: 15, fontWeight: 700, color: R.ink }}>{T.arreterTitre}</div>
         <p style={{ ...pTexte, marginTop: 4 }}>
-          {boutique ? T.arreterBoutique(voie)
-            : etat === 'essai' ? T.arreterEssai(nomPalier) : T.arreterPaye(cloud?.periodeFin ? dateLongue(cloud.periodeFin, lang) : null)}
+          {/* (13/11/2026, décision de Nico) Boutique : la vraie règle de la coupure, au conditionnel (essai : jusqu'à sa fin). */}
+          {boutique ? T.arreterBoutique(voie, etat === 'essai' && cloud?.essaiFin ? dateLongue(cloud.essaiFin, lang) : null)
+            : etat === 'essai' ? T.arreterEssai(nomPalier, cloud?.essaiFin ? dateLongue(cloud.essaiFin, lang) : null) : T.arreterPaye(cloud?.periodeFin ? dateLongue(cloud.periodeFin, lang) : null)}
         </p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -360,6 +375,7 @@ export function BlocCloudReglagesLu({ c, lecture, actions, arretDemande = 0 }) {
       quotaFree={!nomPalier && Number.isFinite(plafond) ? plafond : null}
       maintenant={lecture.luLe ?? undefined}
       refus={lecture.profil?.cloud_essai_refus ?? null}
+      arretFilet={lecture.profil?.cloud_arret ?? null}
       arretDemande={arretDemande}
       canal={lecture.profil?.cloud_canal ?? null}
       plateforme={c?.plateforme ?? 'web'}

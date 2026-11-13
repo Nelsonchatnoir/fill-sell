@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue, signalerRemboursementStore } from "../_shared/payment-notify.ts";
-import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud } from "../_shared/cloud-option.js";
+import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud, coupureRenouvellementStripe } from "../_shared/cloud-option.js";
 import { evenementArretStripe, evenementDebutStripe, evenementPaiementStripe, montantStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud, type EvenementCloud } from "../_shared/cloud-mails-envoi.ts";
 import { notificationDeTest } from "../_shared/environnement-store.js";
@@ -1020,24 +1020,23 @@ serve(async (req) => {
     // mise à jour encore en attente — rien n'est payé.
     const precedent = ((event.data as { previous_attributes?: Record<string, unknown> }).previous_attributes) ?? {};
     const prixChange = "items" in precedent || "plan" in precedent;
+    // (13/11/2026) La résiliation programmée vient-elle d'être posée par CET événement (cancel_at_period_end, ou cancel_at
+    // des formats d'API récents) ? Une seule alerte par coupure.
+    const coupureNeuve = precedent.cancel_at_period_end === false || ("cancel_at" in precedent && precedent.cancel_at == null);
     // (04/10) Un abonnement Cloud se relit à chaque changement (fin d'essai,
     // résiliation programmée ou levée, impayé) et ne passe JAMAIS par le
     // réalignement de métadonnée de palier ci-dessous.
     if (estAbonnementCloud(subscription, prixConnus())) {
-      // Arrêt demandé PENDANT l’essai (portail Stripe, dashboard) : effet immédiat,
-      // comme le bouton de l’app (palier.js : rien facturé, l’essai s’arrête).
+      // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Résiliation programmée PENDANT
+      // l'essai (portail Stripe, dashboard) = renouvellement coupé : RIEN n'est arrêté. Avant : stripe.subscriptions.cancel
+      // tout de suite et le mail « arrêtée ». Maintenant le Cloud court jusqu'à trial_end (relecture ci-dessous :
+      // cloud_arret_fin_periode vrai), Stripe termine l'abonnement sans facture ; aucun mail au client, l'alerte interne
+      // seulement (evenementArretStripe → essai_renouvellement_coupe). (13/11, décision de Nico — plus aucun arrêt immédiat
+      // d'un essai) Le bouton « Arrêter » de l'app fait de même (cancel-subscription : cancel_at_period_end).
       let evenementsArret: EvenementCloud[] = [];
-      if (status === "trialing" && cancelAtPeriodEnd) {
-        try {
-          const annule = await stripe.subscriptions.cancel(subscription.id);
-          console.log(`[webhook] essai Cloud ${subscription.id} arrêté tout de suite (résiliation pendant l’essai)`);
-          // (08/11) « Aucun prélèvement » seulement si Stripe le MONTRE : abonnement annulé avant la fin de l'essai,
-          // toutes ses factures à 0.
-          const factures = await stripe.invoices.list({ subscription: subscription.id, limit: 20 });
-          evenementsArret = evenementArretStripe(annule, factures.data);
-        } catch (e) {
-          console.error(`[webhook] arrêt immédiat de l’essai Cloud ${subscription.id} impossible : ${(e as Error)?.message ?? e}`);
-        }
+      if (coupureRenouvellementStripe(subscription)) {
+        console.log(`[webhook] essai Cloud ${subscription.id} : renouvellement coupé — le Cloud continue jusqu'à la fin de l'essai, rien n'est arrêté`);
+        if (coupureNeuve) evenementsArret = evenementArretStripe(subscription);
       } else if (status === "active" && cancelAtPeriodEnd && precedent.cancel_at_period_end === false) {
         // Arrêt programmé posé hors de l'app (portail) : même mail que cancel-subscription, même clé (un seul).
         evenementsArret = evenementArretStripe(subscription);
@@ -1049,19 +1048,16 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    // (11/11) UNE FORMULE AVEC CLOUD : arrêt pendant l'essai = effet IMMÉDIAT, rien facturé (même règle que le Cloud
-    // seul) ; arrêt programmé posé hors de l'app (portail) = le mail d'arrêt de la formule.
+    // (11/11) UNE FORMULE AVEC CLOUD : arrêt programmé posé hors de l'app (portail) = le mail d'arrêt de la formule.
+    // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Pendant l'ESSAI, la résiliation
+    // programmée (portail, dashboard) n'arrête plus rien (avant : annulée tout de suite, mail « arrêtée ») : la formule et
+    // son Cloud courent jusqu'à trial_end, rien n'est prélevé ; relecture (cloud_arret_fin_periode vrai), aucun mail au
+    // client, l'alerte interne seulement. La reprise pendant l'essai (résiliation levée) se relit de même.
     const formuleSub = formuleDAbonnementStripe(subscription, prixConnus());
-    if (formuleSub && status === "trialing" && cancelAtPeriodEnd) {
-      let evenementsArretF: EvenementCloud[] = [];
-      try {
-        const annule = await stripe.subscriptions.cancel(subscription.id);
-        const factures = await stripe.invoices.list({ subscription: subscription.id, limit: 20 });
-        evenementsArretF = evenementArretStripe(annule, factures.data);
-        console.log(`[webhook] essai ${formuleSub} ${subscription.id} arrêté tout de suite (résiliation pendant l'essai)`);
-      } catch (e) {
-        console.error(`[webhook] arrêt immédiat de l'essai ${formuleSub} ${subscription.id} impossible : ${(e as Error)?.message ?? e}`);
-      }
+    if (formuleSub && status === "trialing" && (coupureRenouvellementStripe(subscription) || "cancel_at_period_end" in precedent || "cancel_at" in precedent)) {
+      const coupe = coupureRenouvellementStripe(subscription);
+      const evenementsArretF: EvenementCloud[] = coupe && coupureNeuve ? evenementArretStripe(subscription) : [];
+      console.log(`[webhook] essai ${formuleSub} ${subscription.id} : renouvellement ${coupe ? "coupé" : "remis"} — rien n'est arrêté, relecture`);
       await recomputeStripeFlags(supabase, customerId);
       await mailsCloudDuClient(supabase, customerId, evenementsArretF);
       return new Response(JSON.stringify({ received: true, formule: formuleSub }), {

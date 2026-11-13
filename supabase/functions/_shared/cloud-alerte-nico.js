@@ -27,7 +27,10 @@ import { formatPrix, prixValide } from './cloud-prix.js';
 import { nomDuPalier, palierDuProfil } from './palier.js';
 
 export const ALERTE_CLOUD_DESTINATAIRE = 'support@fillsell.app';
-export const EVENEMENTS_ALERTE = Object.freeze(['essai_debut', 'paiement', 'arret_essai', 'arret_programme']);
+// (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) + 'essai_renouvellement_coupe' : le
+// renouvellement coupé pendant l'essai (le Cloud continue jusqu'à la fin de l'essai) — alerte interne SEULE, aucun mail
+// au client (cloud-mails.js, EVENEMENTS_SANS_MAIL_CLIENT). Avant, la même coupure arrivait ici en 'arret_essai'.
+export const EVENEMENTS_ALERTE = Object.freeze(['essai_debut', 'paiement', 'arret_essai', 'arret_programme', 'essai_renouvellement_coupe']);
 export const PREFIXE_CLE_ALERTE = 'alerte:';
 /** La clé de l'alerte dans public.cloud_mails : à part de celle du mail client (même événement, autre ligne). */
 export const cleAlerte = (cle) => `${PREFIXE_CLE_ALERTE}${String(cle ?? '')}`.slice(0, 400);
@@ -74,6 +77,7 @@ const canalLu = (c) => (Object.prototype.hasOwnProperty.call(NOM_CANAL, c) ? c :
 export function texteAlerteCloud({ evenement, canal = null, faits = {}, prix = null, userId = null, profil = null, cle = null, maintenant = Date.now(), test = false }) {
   if (!EVENEMENTS_ALERTE.includes(evenement)) return null;
   if (evenement === 'arret_essai' && faits?.aucunPrelevement !== true) return null;   // seulement l'arrêt CONFIRMÉ
+  if (evenement === 'essai_renouvellement_coupe' && faits?.aucunPrelevement !== true) return null;   // seulement la coupure CONFIRMÉE
   const c = canalLu(canal);
   const email = typeof profil?.email === 'string' && profil.email.includes('@') ? profil.email : null;
   const palier = nomDuPalier(palierDuProfil(profil ?? {})) ?? 'Gratuit';
@@ -93,6 +97,10 @@ export function texteAlerteCloud({ evenement, canal = null, faits = {}, prix = n
   } else if (evenement === 'arret_essai') {
     quoi = 'Arrêt pendant l’essai — aucun prélèvement (confirmé par la boutique)';
     sujetQuoi = 'Arrêt pendant l’essai';
+  } else if (evenement === 'essai_renouvellement_coupe') {
+    const j = dateParis(faits?.finIso);
+    quoi = `Renouvellement coupé pendant l’essai — FillSell Cloud continue jusqu’${j ? `au ${j}` : 'à la fin de l’essai'}, puis s’arrête seul : aucun prélèvement (confirmé par ${SOURCE[c]}), aucun mail au client`;
+    sujetQuoi = 'Renouvellement coupé pendant l’essai';
   } else {
     const j = dateParis(faits?.finIso);
     quoi = `Arrêt programmé${j ? ` — FillSell Cloud continue jusqu’au ${j}` : ' — à la fin de la période payée'}`;
@@ -108,7 +116,7 @@ export function texteAlerteCloud({ evenement, canal = null, faits = {}, prix = n
       : `non communiqué par ${SOURCE[c]}`]);
   }
   lignes.push(['Date', `${dateParis(maintenant) ?? '?'} (heure de Paris)`]);
-  if (evenement === 'essai_debut' && dateParis(faits?.finIso)) lignes.push(['Fin de l’essai', `${dateParis(faits.finIso)} (heure de Paris)`]);
+  if ((evenement === 'essai_debut' || evenement === 'essai_renouvellement_coupe') && dateParis(faits?.finIso)) lignes.push(['Fin de l’essai', `${dateParis(faits.finIso)} (heure de Paris)`]);
   if (evenement === 'paiement' && dateParis(faits?.prochaineIso)) lignes.push(['Prochaine échéance', `${dateParis(faits.prochaineIso)} (heure de Paris)`]);
   if (evenement === 'arret_essai' && dateParis(faits?.arreteIso)) lignes.push(['Arrêté le', `${dateParis(faits.arreteIso)} (heure de Paris)`]);
   if (cle) lignes.push(['Référence', String(cle).length > 60 ? `${String(cle).slice(0, 57)}…` : String(cle)]);

@@ -114,9 +114,21 @@ if (FS) {
   const wh = lire('supabase/functions/stripe-webhook/index.ts');
   ok(/if \(subFacture\?\.status === "trialing"\) \{\s*await recomputeStripeFlags\(supabase, customerId\);[\s\S]{0,400}?return new Response/.test(wh), 'stripe-webhook : une facture pendant un essai ne crédite rien (sortie avant le crédit)');
   ok(/if \(formuleDeMetadonnees\(session\.metadata\)\) \{\s*return await formuleCloudSouscrite/.test(wh) && /\} else if \(sub && !carteRefusee && sub\.status === "active"\) \{[\s\S]{0,300}upgrade_monthly_grant/.test(wh), 'stripe-webhook : une formule souscrite ne crédite que payée (jamais en essai)');
-  ok(/if \(formuleSub && status === "trialing" && cancelAtPeriodEnd\) \{\s*let evenementsArretF[\s\S]{0,200}stripe\.subscriptions\.cancel/.test(wh), 'stripe-webhook : arrêt pendant l\'essai d\'une formule = effet immédiat');
+  // (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) Avant : « arrêt pendant l'essai d'une formule =
+  // effet immédiat » (stripe.subscriptions.cancel sur une résiliation programmée au portail). Maintenant la coupure est
+  // relue sans rien annuler ; le VRAI arrêt reste celui du bouton de l'app (cancel-subscription, contrôle suivant).
+  {
+    const i = wh.indexOf('if (formuleSub && status === "trialing" && (coupureRenouvellementStripe(subscription)');
+    const bloc = i > 0 ? wh.slice(i, wh.indexOf('return new Response', i)) : '';
+    ok(bloc.length > 0 && /await recomputeStripeFlags\(supabase, customerId\);/.test(bloc) && !/subscriptions\.cancel\(/.test(bloc),
+      'stripe-webhook : la résiliation programmée pendant l\'essai d\'une formule ne l\'annule plus (renouvellement coupé, relu)');
+  }
   const cs = lire('supabase/functions/cancel-subscription/index.ts');
-  ok(/if \(essaiAbonneSub\) \{[\s\S]{0,700}subscriptionSchedules\.release/.test(cs) && /formuleSub\.status === "trialing"/.test(cs) && /error: "retirer_par_changer_formule"/.test(cs), 'cancel-subscription : essai d\'abonné arrêté (schedule rendu), essai de formule arrêté tout de suite, retrait du Cloud payé → changer-formule');
+  // (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) Avant : « essai de formule arrêté tout de suite ». L'essai
+  // d'un abonné : schedule rendu (jamais la formule avec Cloud), essai sans suite ; l'essai d'une formule : renouvellement coupé.
+  ok(/if \(essaiAbonneSub\) \{[\s\S]{0,1500}subscriptionSchedules\.release/.test(cs) && /if \(formuleSub && formuleSub\.status === "trialing"\) \{[\s\S]{0,600}await couperEssaiStripe\(formuleSub\)/.test(cs)
+    && !/subscriptions\.cancel\(/.test(cs.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')) && /error: "retirer_par_changer_formule"/.test(cs),
+    'cancel-subscription : essai d\'abonné sans suite (schedule rendu), essai de formule au renouvellement coupé (jamais subscriptions.cancel), retrait du Cloud payé → changer-formule');
   const cf = lire('supabase/functions/changer-formule/index.ts');
   ok(/action === "retirer_cloud"/.test(cf) && /cible\.status === "trialing" && estFormuleCloud\(actuelle\)/.test(cf) && /error: "essai_cloud_en_cours"/.test(cf), 'changer-formule : retirer le Cloud, changer pendant l\'essai sans prorata, jamais par-dessus l\'essai d\'un abonné');
 }

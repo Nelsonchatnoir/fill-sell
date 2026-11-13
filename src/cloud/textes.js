@@ -10,8 +10,9 @@
 //     prix : CLOUD_PRIX_AFFICHE (utils/palier.js) — 24,99 € depuis le 03/11 ;
 //   · elle se prend SEULE sur un compte Free (qui garde ses quotas Free) ou
 //     EN PLUS de Premium, Pro ou Business ;
-//   · arrêter pendant l'essai : effet IMMÉDIAT, rien n'est facturé ; une fois
-//     payée, elle tourne jusqu'à la fin de la période ;
+//   · (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) arrêter pendant l'essai : il continue
+//     jusqu'à sa fin, puis s'arrête seul, rien n'est facturé (avant : effet IMMÉDIAT) ; une fois payée, elle tourne
+//     jusqu'à la fin de la période ;
 //   · résilier la formule n'arrête PAS l'option (le compte repasse en Free +
 //     FillSell Cloud) ;
 //   · la veille de la fin d'essai, on prévient dans l'app ET par e-mail. (12/11, point 4b de Nico : la PROMESSE est retirée
@@ -171,6 +172,10 @@ const FR = {
     ? `Gratuit jusqu'au ${date} à ${heure}. Ensuite, ${PRIX}/mois s'ajoutent à ta formule ${nom}, sauf si tu l'arrêtes avant.`
     : `Gratuit jusqu'au ${date} à ${heure}. Ensuite, le Cloud passe à ${PRIX}/mois, sauf si tu l'arrêtes avant.`),
   essaiJauge: (j, total) => `Jour ${j} sur ${total}`,
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) L'essai en cours dont le renouvellement est
+  // coupé (boutique ou Stripe, CONFIRMÉ en base : cloudDuProfil.essaiSansSuite) : il continue jusqu'à sa fin, puis s'arrête
+  // seul. Mot pour mot de Nico ; aucun mail.
+  essaiSansSuite: (date) => (date ? `Ton essai Cloud continue jusqu'au ${date}. Rien ne sera prélevé.` : "Ton essai Cloud continue jusqu'à sa date de fin. Rien ne sera prélevé."),
   essaiNote: (nom) => `Si tu l'arrêtes, ${taFormule(nom)} ne change pas, et l'extension comme eBay restent possibles.`,
   // UNE mention, ici seulement, pendant l'essai d'un compte Free (jamais une fenêtre).
   mentionPremium: (n) => (Number.isFinite(n) ? `Tu es en Free + FillSell Cloud : ${annoncesFree(n)} par mois. Pour en publier plus, Premium s'ajoute au Cloud.` : "Tu es en Free + FillSell Cloud, avec les quotas du plan Free. Pour publier plus, Premium s'ajoute au Cloud."),
@@ -193,8 +198,10 @@ const FR = {
   meConnecter: 'Connecter mes plateformes',
   arreter: 'Arrêter le Cloud',
   arreterTitre: 'Arrêter FillSell Cloud ?',
-  // Pendant l'essai : effet IMMÉDIAT, rien facturé. Payée : jusqu'à la fin de période.
-  arreterEssai: (nom) => `Il s'arrête tout de suite, et rien n'est facturé pour lui. Sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur. ${nom ? `Ta formule ${nom}` : 'Ton plan Free'} ne change pas.`,
+  // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Pendant l'essai, par carte : la même règle que les
+  // boutiques — le renouvellement est coupé, le Cloud continue jusqu'à la fin de l'essai, puis s'arrête seul (avant : « Il
+  // s'arrête tout de suite »). FillSell coupe lui-même, sans « 24 heures ». Payée : jusqu'à la fin de période.
+  arreterEssai: (nom, date = null) => `${date ? `Ton Cloud continue jusqu'au ${date}, puis s'arrête seul, sans prélèvement.` : "Ton Cloud continue jusqu'à la fin de l'essai, puis s'arrête seul, sans prélèvement."} Après, sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur. ${nom ? `Ta formule ${nom}` : 'Ton plan Free'} ne change pas.`,
   arreterPaye: (date) => (date
     ? `Il tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite. Après cette date, sans FillSell Cloud, tes publications passent par l'extension FillSell, sur ton ordinateur.`
     : "Il tourne jusqu'à la fin de la période payée, puis s'arrête : rien ne sera prélevé ensuite. Sans FillSell Cloud, tes publications passent alors par l'extension FillSell, sur ton ordinateur."),
@@ -203,11 +210,17 @@ const FR = {
   // (07/11 soir, essai TestFlight de Nico) Un Cloud pris sur l'App Store ou Google Play : c'est la BOUTIQUE qui
   // l'arrête, jamais l'app. Avant le geste, on dit où, et que FillSell le verra dès qu'elle l'aura confirmé — jamais
   // « tout de suite », jamais « rien n'est facturé » tant qu'elle ne l'a pas confirmé. `voie` : cloud/achatCloud.js.
-  arreterBoutique: (voie) => (voie === 'google'
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) La phrase dit aussi la VRAIE règle, au
+  // conditionnel (rien n'est encore confirmé) : `finEssai` (date longue) pendant un essai — annulé à temps (Apple : au moins
+  // 24 h avant la fin, CGU Cloud art. 7), le Cloud continue jusqu'à cette date puis s'arrête seul ; sans `finEssai` (payé),
+  // il continue jusqu'à la fin de la période payée.
+  arreterBoutique: (voie, finEssai = null) => `${voie === 'google'
     ? "Ton Cloud a été pris sur Google Play : c'est Google qui l'arrête, pas FillSell. Ouvre tes abonnements Google Play ci-dessous, choisis FillSell Cloud, puis résilie-le. FillSell le verra dès que Google aura confirmé l'arrêt."
     : voie === 'apple_ailleurs'
       ? "Ton Cloud a été pris sur l'App Store : c'est Apple qui l'arrête, pas FillSell. Sur ton iPhone ou ton iPad, ouvre Réglages › ton nom › Abonnements, choisis FillSell Cloud, puis annule-le. FillSell le verra dès qu'Apple aura confirmé l'arrêt."
-      : "Ton Cloud a été pris sur l'App Store : c'est Apple qui l'arrête, pas FillSell. Ouvre tes abonnements Apple ci-dessous, choisis FillSell Cloud, puis annule-le. FillSell le verra dès qu'Apple aura confirmé l'arrêt."),
+      : "Ton Cloud a été pris sur l'App Store : c'est Apple qui l'arrête, pas FillSell. Ouvre tes abonnements Apple ci-dessous, choisis FillSell Cloud, puis annule-le. FillSell le verra dès qu'Apple aura confirmé l'arrêt."} ${finEssai
+    ? `${voie === 'google' ? "Annulé avant la fin de l'essai" : "Annulé au moins 24 heures avant la fin de l'essai"}, ton Cloud continue jusqu'au ${finEssai}, puis s'arrête seul, sans prélèvement.`
+    : "Annulé, il continue jusqu'à la fin de la période payée, puis s'arrête."}`,
   arreterBoutiqueCta: (voie) => (voie === 'google' ? 'Ouvrir mes abonnements Google Play' : 'Ouvrir mes abonnements Apple'),
   arreterBoutiqueFermer: 'Fermer',
   // Après l'ouverture des abonnements : rien n'a encore changé chez nous, on attend la boutique.
@@ -365,6 +378,7 @@ const EN = {
     ? `Free until ${date} at ${heure}. Then ${PRIX_EN}/mo is added to your ${nom} plan, unless you stop it before.`
     : `Free until ${date} at ${heure}. Then the Cloud moves to ${PRIX_EN}/mo, unless you stop it before.`),
   essaiJauge: (j, total) => `Day ${j} of ${total}`,
+  essaiSansSuite: (date) => (date ? `Your Cloud trial continues until ${date}. Nothing will be charged.` : 'Your Cloud trial continues until its end date. Nothing will be charged.'),
   essaiNote: (nom) => `If you stop it, ${yourPlan(nom)} does not change, and the extension and eBay remain available.`,
   mentionPremium: (n) => (Number.isFinite(n) ? `You are on Free + FillSell Cloud: ${listingsFree(n)} a month. To post more, Premium adds to the Cloud.` : 'You are on Free + FillSell Cloud, with the Free plan quotas. To post more, Premium adds to the Cloud.'),
   voirPremium: 'See Premium',
@@ -381,17 +395,19 @@ const EN = {
   meConnecter: 'Connect my platforms',
   arreter: 'Stop the Cloud',
   arreterTitre: 'Stop FillSell Cloud?',
-  arreterEssai: (nom) => `It stops right away, and nothing is billed for it. Without FillSell Cloud, your listings go through the FillSell extension, on your computer. ${nom ? `Your ${nom} plan` : 'Your Free plan'} does not change.`,
+  arreterEssai: (nom, date = null) => `${date ? `Your Cloud keeps running until ${date}, then stops on its own, without being charged.` : 'Your Cloud keeps running until the end of the trial, then stops on its own, without being charged.'} After that, without FillSell Cloud, your listings go through the FillSell extension, on your computer. ${nom ? `Your ${nom} plan` : 'Your Free plan'} does not change.`,
   arreterPaye: (date) => (date
     ? `It runs until ${date}, then stops: nothing will be charged after that. After that, without FillSell Cloud, your listings go through the FillSell extension, on your computer.`
     : 'It runs until the end of the paid period, then stops: nothing will be charged after that. After that, without FillSell Cloud, your listings go through the FillSell extension, on your computer.'),
   arreterConfirmer: 'Stop',
   arreterAnnuler: 'Keep',
-  arreterBoutique: (voie) => (voie === 'google'
+  arreterBoutique: (voie, finEssai = null) => `${voie === 'google'
     ? 'Your Cloud was bought on Google Play: Google stops it, not FillSell. Open your Google Play subscriptions below, pick FillSell Cloud, then cancel it. FillSell will show it as soon as Google confirms it.'
     : voie === 'apple_ailleurs'
       ? 'Your Cloud was bought on the App Store: Apple stops it, not FillSell. On your iPhone or iPad, open Settings › your name › Subscriptions, pick FillSell Cloud, then cancel it. FillSell will show it as soon as Apple confirms it.'
-      : 'Your Cloud was bought on the App Store: Apple stops it, not FillSell. Open your Apple subscriptions below, pick FillSell Cloud, then cancel it. FillSell will show it as soon as Apple confirms it.'),
+      : 'Your Cloud was bought on the App Store: Apple stops it, not FillSell. Open your Apple subscriptions below, pick FillSell Cloud, then cancel it. FillSell will show it as soon as Apple confirms it.'} ${finEssai
+    ? `${voie === 'google' ? 'Cancelled before the end of the trial' : 'Cancelled at least 24 hours before the end of the trial'}, your Cloud keeps running until ${finEssai}, then stops on its own, without being charged.`
+    : 'Once cancelled, it keeps running until the end of the paid period, then stops.'}`,
   arreterBoutiqueCta: (voie) => (voie === 'google' ? 'Open my Google Play subscriptions' : 'Open my Apple subscriptions'),
   arreterBoutiqueFermer: 'Close',
   arretBoutiqueAttente: (voie) => (voie === 'google'

@@ -67,8 +67,12 @@ const FR = {
   essaiDejaPrisBoutique: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. ${b} va t'afficher « 1 semaine gratuite » : cette semaine-là, ${nom} n'est pas encore activé ; il démarre au premier paiement, 7 jours plus tard. Continuer ?`,
   essaiDejaPrisIncertain: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. Si ${b} t'affiche « 1 semaine gratuite », ${nom} n'est pas activé cette semaine-là : il démarre au premier paiement, 7 jours plus tard. Sinon, ${nom} est payé dès aujourd'hui. Continuer ?`,
   arreterEssai: "Arrêter l'essai",
-  arreterEssaiTexte: "Ton essai s'arrête maintenant : rien n'est prélevé pour l'essai.",
-  arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `C'est arrêté : ta formule ${palier} continue comme avant.` : "C'est arrêté. Rien n'a été prélevé."),
+  // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Sur le web aussi, arrêter l'essai coupe le
+  // renouvellement : il continue jusqu'à sa fin, puis s'arrête seul (avant : « Ton essai s'arrête maintenant », « C'est
+  // arrêté »). Après le geste, l'écran dit la phrase des boutiques (textes.js essaiSansSuite) et, pour l'essai du Cloud d'un
+  // abonné, que sa formule continue.
+  arreterEssaiTexte: (fin) => (fin ? `Ton essai continue jusqu'au ${fin}, puis s'arrête seul : rien n'est prélevé pour l'essai.` : "Ton essai continue jusqu'à sa fin, puis s'arrête seul : rien n'est prélevé pour l'essai."),
+  arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `Ta formule ${palier} continue comme avant.` : ''),
   arreterEssaiEchec: "L'essai n'a pas pu être arrêté. Rien n'a changé : réessaie dans un instant.",
   // ⚠ Texte NON validé (question à Nico) : un abonné payé par carte, vu dans l'app iPhone / Android.
   carteSurMobile: 'Ton abonnement est payé par carte : le changement se fait sur le web, dans Réglages › Abonnement, sans second abonnement.',
@@ -99,6 +103,9 @@ const FR = {
     ? `Ta formule redevient ${palier} le ${date}. Le Cloud tourne jusque-là ; rien n'est remboursé pour le mois en cours.`
     : `Ta formule redevient ${palier} à la fin de la période payée. Le Cloud tourne jusque-là ; rien n'est remboursé pour le mois en cours.`),
   retirerBoutique: (b) => `Le changement se fait dans tes abonnements ${b}.`,
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Pendant l'essai, la règle de l'annulation
+  // chez la boutique, au conditionnel (rien n'est encore confirmé ; Apple : au moins 24 h avant la fin, CGU Cloud art. 7).
+  annulerBoutiqueEssai: (canal, fin) => `${canal === 'google' ? "Si tu y annules ton abonnement avant la fin de l'essai" : "Si tu y annules ton abonnement au moins 24 heures avant la fin de l'essai"}, ta formule et le Cloud continuent ${fin ? `jusqu'au ${fin}` : "jusqu'à la fin de l'essai"}, puis s'arrêtent seuls, sans prélèvement.`,
   retirerFait: (palier, date) => (date ? `C'est noté : ta formule redevient ${palier} le ${date}.` : `C'est noté : ta formule redevient ${palier} à la fin de la période payée.`),
   retirerEchec: "Le Cloud n'a pas pu être retiré. Rien n'a changé : réessaie dans un instant.",
   heritePasser: (p1, p2) => `Passer à Pro + Cloud (${p1}/mois) ou Premium + Cloud (${p2}/mois).`,
@@ -155,8 +162,8 @@ const EN = {
   essaiDejaPrisBoutique: (nom, b) => `Your FillSell free trial has already been used. ${b} will show you "1 week free": during that week, ${nom} is not turned on yet; it starts at the first payment, 7 days later. Continue?`,
   essaiDejaPrisIncertain: (nom, b) => `Your FillSell free trial has already been used. If ${b} shows you "1 week free", ${nom} is not turned on that week: it starts at the first payment, 7 days later. Otherwise, ${nom} is charged today. Continue?`,
   arreterEssai: 'Stop the trial',
-  arreterEssaiTexte: 'Your trial stops now: nothing is charged for the trial.',
-  arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `Stopped: your ${palier} plan carries on as before.` : 'Stopped. Nothing was charged.'),
+  arreterEssaiTexte: (fin) => (fin ? `Your trial continues until ${fin}, then stops on its own: nothing is charged for the trial.` : 'Your trial continues until it ends, then stops on its own: nothing is charged for the trial.'),
+  arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `Your ${palier} plan carries on as before.` : ''),
   arreterEssaiEchec: 'The trial could not be stopped. Nothing changed: try again in a moment.',
   carteSurMobile: 'Your subscription is paid by card: the change is made on the web, in Settings › Subscription, with no second subscription.',
   founder: 'With the Cloud, your Founder price ends: you move to the price of the plan you choose.',
@@ -182,6 +189,7 @@ const EN = {
     ? `Your plan goes back to ${palier} on ${date}. The Cloud runs until then; nothing is refunded for the current month.`
     : `Your plan goes back to ${palier} at the end of the paid period. The Cloud runs until then; nothing is refunded for the current month.`),
   retirerBoutique: (b) => `The change is made in your ${b} subscriptions.`,
+  annulerBoutiqueEssai: (canal, fin) => `${canal === 'google' ? 'If you cancel your subscription there before the end of the trial' : 'If you cancel your subscription there at least 24 hours before the end of the trial'}, your plan and the Cloud keep running ${fin ? `until ${fin}` : 'until the end of the trial'}, then stop on their own, without being charged.`,
   retirerFait: (palier, date) => (date ? `Noted: your plan goes back to ${palier} on ${date}.` : `Noted: your plan goes back to ${palier} at the end of the paid period.`),
   retirerEchec: 'The Cloud could not be removed. Nothing changed: try again in a moment.',
   heritePasser: (p1, p2) => `Switch to Pro + Cloud (${p1}/mo) or Premium + Cloud (${p2}/mo).`,

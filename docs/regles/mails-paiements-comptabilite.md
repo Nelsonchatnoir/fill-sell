@@ -602,3 +602,30 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
 - Verrous : `selftest:cloud-en-plus-de-formule` (casse si la garde refuse un jour un ajout du Cloud à une formule) ;
   `selftest:abonne-ajoute-le-cloud` (le tableau : 36 cases, écran, texte, prélèvement, accès) ; un-seul-abonnement et
   textes-paiement-verite mis à jour.
+
+## Couper le renouvellement ne coupe plus rien (13/11/2026 soir, décision de Nico)
+- **Règle** (3 canaux) : un client en essai Cloud qui coupe son renouvellement (Apple AUTO_RENEW_DISABLED, Google
+  SUBSCRIPTION_CANCELED, Stripe `cancel_at_period_end` au portail) garde son Cloud jusqu'à la fin prévue de l'essai (ou de la
+  période payée), puis il s'arrête seul, sans prélèvement. En base : essai en cours ET `cloud_arret_fin_periode = true`
+  (`_shared/cloud-option.js`, `ecritureCloudStore`, sens « annulation » ; Stripe : `coupureRenouvellementStripe`, plus de
+  `subscriptions.cancel` sur un essai coupé). Remplace l'« arrêt immédiat à la coupure » du 08/11.
+- PLUS AUCUN ARRÊT IMMÉDIAT D'UN ESSAI, sur aucun canal (décision de Nico, 13/11 ~19:20) : sur le web, « Arrêter l'essai »,
+  « Arrêter le Cloud » et « Se désabonner » d'une formule en essai coupent le prélèvement (cancel-subscription,
+  `couperEssaiStripe` : `cancel_at_period_end`, jamais `subscriptions.cancel` ; le Cloud d'un abonné porté par un schedule :
+  schedule rendu, marque `essai_cloud_sans_suite`, la formule payée continue, le Cloud n'est jamais facturé) ; sur iPhone /
+  Android, les boutons ouvrent la boutique. Restent immédiats : remboursement, révocation, impayé (`off`) et le verrou de
+  carte (second essai refusé).
+- Aucun mail client pour une coupure ; l'app dit « Ton essai Cloud continue jusqu'au {date}. Rien ne sera prélevé. » (dès
+  qu'Apple a confirmé la coupure, même à moins de 24 h de la fin) ; alerte interne support@ seulement. Pas de rappel de la
+  veille pour un essai coupé.
+- AUCUN RATTRAPAGE : la règle vaut pour les coupures reçues après son déploiement (13/11 au soir). Un essai arrêté par
+  l'ancienne règle reste arrêté (aucun script, aucune réouverture, aucun mail ; son IP reste au repos) ; ni une annulation
+  rejouée, ni une reprise du renouvellement, ni une restauration ne le rouvrent ; seul un vrai paiement rouvre le Cloud, payé.
+- Filet de capacité (orchestrateur, `serveur-cloud/src/filetCapacite.js`) : à 80 % de la capacité réelle de cloud-2, les
+  essais au renouvellement coupé passent en dernier ; à 100 % sans aucune place libre, ils sont arrêtés UN par tour,
+  une place à la fois (fin d'essai la plus proche d'abord, jamais pendant une tâche ni un « Me connecter » ; l'orchestrateur
+  écrit l'arrêt lui-même, sans migration) avec le message « Le Cloud est complet… » (`platform_settings.cloud_arret`). Jamais un
+  Cloud payé ni un compte offert. Réglages : `coin_config.cloud_filet_file_pct` (80), `cloud_filet_arret_pct` (100 ; 0 = aucun arrêt).
+- Verrous : `selftest:essai-renouvellement-coupe` (casse si couper le renouvellement — ou arrêter un essai sur le web — coupe
+  de nouveau le Cloud avant la fin, ou si un rattrapage réapparaît) ;
+  `selftest:cloud-filet-capacite`.

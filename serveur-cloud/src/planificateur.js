@@ -18,9 +18,17 @@
 //     autre job en attente > relecture périodique ; l'alerte « serveur » part ;
 //   · garde CPU de la base (règle du 04/10) : au-dessus de cpuPause %, aucun
 //     démarrage nouveau, sauf une connexion que quelqu'un attend, les yeux sur
-//     son écran ; ce qui tourne finit ses jobs.
+//     son écran ; ce qui tourne finit ses jobs ;
+//   · (13/11, LE FILET DE CAPACITÉ — filetCapacite.js) `derniers` : les essais au
+//     renouvellement coupé, donnés SEULEMENT quand le serveur approche de sa
+//     capacité réelle. Ils passent APRÈS tous les autres comptes, et un compte
+//     refusé faute de place prend celle d'un essai coupé au repos (jamais au
+//     milieu d'un job ni d'un « Me connecter »). `derniers` vide ou absent :
+//     décision identique à celle d'avant le filet (verrou :
+//     scripts/cloud-filet-capacite-selftest.mjs).
 
 const PRIORITE = { connexion: 0, en_cours: 1, retrait: 2, job: 3, periodique: 4, continu: 5 };
+const RANG_DERNIERS = 100;   // au-delà de toute priorité : un essai coupé passe après tous les autres
 
 /**
  * @param {object} e
@@ -31,6 +39,7 @@ const PRIORITE = { connexion: 0, en_cours: 1, retrait: 2, job: 3, periodique: 4,
  *   dernieresFins: Map user → instant (ms) de la dernière fermeture
  *   delaiMin     : null (continu) | minutes entre deux sessions
  *   cpuPct, cpuPause, navigateursMax, sessionMinimaleMin, maintenant
+ *   derniers     : (13/11, filet de capacité) Set des essais au renouvellement coupé — absent hors du filet
  * @returns {{ ouvrir: Array<{user, motif}>, fermer: Array<{user, raison}>, refuses: Array<{user, raison}> }}
  */
 export function planifierPostes(e) {
@@ -43,6 +52,8 @@ export function planifierPostes(e) {
   const minimale = Math.max(1, Number(e.sessionMinimaleMin ?? 8)) * 60_000;
   const cpuHaut = Number.isFinite(e.cpuPct) && e.cpuPct > (e.cpuPause ?? 50);
   const max = Math.max(0, Number(e.navigateursMax ?? 0));
+  const derniers = e.derniers instanceof Set ? e.derniers : new Set();
+  const rang = (v) => PRIORITE[v.motif] + (derniers.has(v.user) ? RANG_DERNIERS : 0);
 
   const servis = new Map((e.comptes ?? []).map((c) => [c.user_id, c]));
   const fermer = [];
@@ -75,7 +86,7 @@ export function planifierPostes(e) {
   }
 
   // 3. Capacité et garde CPU : les ouverts voulus restent ; les nouveaux, par priorité.
-  voulus.sort((a, b) => PRIORITE[a.motif] - PRIORITE[b.motif]);
+  voulus.sort((a, b) => rang(a) - rang(b));
   const restants = new Set(voulus.filter((v) => v.ouvert).map((v) => v.user));
   let places = max - restants.size;
   const ouvrir = [];
@@ -88,14 +99,19 @@ export function planifierPostes(e) {
     places--;
   }
   // Une connexion demandée sans place : on libère la session périodique / continue la moins prioritaire.
+  // (13/11, filet de capacité) Et tout compte qui n'est pas un essai coupé, refusé faute de place, prend celle d'un essai
+  // coupé ouvert au repos (session continue ou périodique : jamais un job en cours ni un « Me connecter ») ; un essai
+  // coupé (même en « Me connecter ») ne prend que la place d'un autre essai coupé, jamais celle d'un autre compte.
   for (const r of refuses.filter((x) => x.raison === 'capacite')) {
     const v = voulus.find((x) => x.user === r.user);
-    if (v?.motif !== 'connexion') continue;
+    const connexion = v?.motif === 'connexion';
+    const coupe = derniers.has(r.user);
+    if (!v || (!connexion && (coupe || !derniers.size))) continue;
     const victime = [...voulus].reverse().find((x) => x.ouvert && (x.motif === 'continu' || x.motif === 'periodique')
-      && !fermer.some((f) => f.user === x.user));
+      && !fermer.some((f) => f.user === x.user) && (derniers.has(x.user) || (connexion && !coupe)));
     if (!victime) continue;
-    fermer.push({ user: victime.user, raison: 'place_pour_une_connexion' });
-    ouvrir.push({ user: r.user, motif: 'connexion' });
+    fermer.push({ user: victime.user, raison: connexion ? 'place_pour_une_connexion' : 'filet_capacite_file' });
+    ouvrir.push({ user: r.user, motif: v.motif });
     r.raison = null;
   }
   return { ouvrir, fermer, refuses: refuses.filter((r) => r.raison) };

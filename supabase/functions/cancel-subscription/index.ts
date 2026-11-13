@@ -3,11 +3,13 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { envoyerEmail } from "../_shared/desinscription.ts";
 import { dateSeuleParis, langue, mailResiliation } from "../_shared/emails-fillsell.ts";
-import { estAbonnementCloud } from "../_shared/cloud-option.js";
-import { evenementArretStripe } from "../_shared/cloud-mails.js";
+import { estAbonnementCloud, coupureRenouvellementStripe } from "../_shared/cloud-option.js";
+import { evenementArretStripe, finPeriodeStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
-// (11/11/2026, offres Cloud) Une formule avec Cloud : { option: "cloud" } arrête son ESSAI (tout de suite, rien prélevé) ;
-// l'essai du Cloud d'un abonné (schedule) s'arrête et sa formule continue ; une formule PAYÉE retire son Cloud à la fin
+// (11/11/2026, offres Cloud) Une formule avec Cloud : { option: "cloud" } arrête son ESSAI ; l'essai du Cloud d'un abonné
+// (schedule) s'arrête et sa formule continue. (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) « arrêter » un essai = couper son
+// renouvellement, sur tous les canaux : la résiliation est programmée à la fin de l'essai (aucune facture), le Cloud reste
+// actif jusque-là — jamais subscriptions.cancel pendant un essai (couperEssaiStripe) ; une formule PAYÉE retire son Cloud à la fin
 // de la période par changer-formule ({ action: "retirer_cloud" }). Prix lus à un seul endroit (_shared/prix-stripe.ts).
 import { prixStripe } from "../_shared/prix-stripe.ts";
 import { formuleDAbonnementStripe, essaiCloudAbonneStripe, nomDeFormule } from "../_shared/formules-serveur.js";
@@ -20,6 +22,26 @@ import { formuleDAbonnementStripe, essaiCloudAbonneStripe, nomDeFormule } from "
 function prixConnus() {
   return prixStripe();
 }
+
+// (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Arrêter un ESSAI depuis l'app = couper son
+// renouvellement, comme sur l'iPhone et Android : la résiliation est programmée à trial_end — Stripe termine alors
+// l'abonnement, AUCUNE facture — et le Cloud reste actif jusque-là, puis s'arrête seul (la relecture, drapeauxDepuisStripe,
+// pose cloud_arret_fin_periode). Avant : stripe.subscriptions.cancel, Cloud coupé sur-le-champ. Un schedule (changement de
+// formule programmé pendant l'essai) est rendu d'abord : Stripe refuse sinon la résiliation (« managed by the subscription
+// schedule »). Idempotent : une résiliation déjà programmée n'est pas réécrite. Rend l'abonnement relu, la fin de l'essai et
+// si un schedule a été rendu.
+async function couperEssaiStripe(sub: Stripe.Subscription): Promise<{ coupe: Stripe.Subscription; finIso: string | null; scheduleRendu: boolean }> {
+  let scheduleRendu = false;
+  let coupe = sub;
+  if (!coupureRenouvellementStripe(sub)) {
+    const idSched = typeof sub.schedule === "string" ? sub.schedule : (sub.schedule as { id?: string } | null)?.id ?? null;
+    if (idSched) { await stripe.subscriptionSchedules.release(idSched); scheduleRendu = true; }
+    coupe = await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+  }
+  const fin = typeof coupe.trial_end === "number" ? coupe.trial_end : finPeriodeStripe(coupe);
+  return { coupe, finIso: typeof fin === "number" ? new Date(fin * 1000).toISOString() : null, scheduleRendu };
+}
+const SANS_DESCENTE = { formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null };
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -181,6 +203,13 @@ serve(async (req) => {
       });
     };
 
+    // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) La réponse d'un essai coupé : l'app dit « Ton essai
+    // Cloud continue jusqu'au {date}. Rien ne sera prélevé. » ; period_end sert les apps d'avant (« continue jusqu'au … »).
+    const reponseEssaiSansSuite = (finIso: string | null, extra: Record<string, unknown> = {}) => new Response(JSON.stringify({
+      success: true, essai_sans_suite: true, aucun_prelevement: true, fin_essai: finIso,
+      period_end: finIso ? dateSeuleParis(new Date(finIso)) : null, ...extra,
+    }), { headers: { ...CORS, "Content-Type": "application/json" } });
+
     console.log("[cancel-subscription] Profile:", {
       stripe_customer_id: profile.stripe_customer_id,
       is_premium: profile.is_premium,
@@ -222,38 +251,36 @@ serve(async (req) => {
     if (option === "cloud" && !cloudVivant && !reprendre) {
       const essaiAbonneSub = paliersVivants.find((x: Stripe.Subscription) => essaiCloudAbonneStripe(x)) ?? null;
       const formuleSub = paliersVivants.find((x: Stripe.Subscription) => formuleDAbonnementStripe(x, prixConnus())) ?? null;
-      const maintenant = new Date().toISOString();
       if (essaiAbonneSub) {
-        // L'essai du Cloud d'un abonné : le schedule est rendu (la formule ne change pas), le Cloud s'arrête tout de suite.
+        // L'essai du Cloud d'un abonné. (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Le schedule est
+        // rendu — la phase « formule avec Cloud » ne viendra jamais : le Cloud n'est jamais facturé, la formule payée
+        // continue telle quelle — et la marque essai_cloud_sans_suite est posée (les métadonnées de l'essai restent) : le
+        // Cloud reste actif jusqu'à la fin de son essai, puis s'arrête seul. Avant : Cloud arrêté tout de suite.
         const ea = essaiCloudAbonneStripe(essaiAbonneSub)!;
         const idSched = typeof essaiAbonneSub.schedule === "string" ? essaiAbonneSub.schedule : (essaiAbonneSub.schedule as { id?: string } | null)?.id ?? null;
-        if (idSched) await stripe.subscriptionSchedules.release(idSched);
-        await stripe.subscriptions.update(essaiAbonneSub.id, { metadata: { essai_cloud_formule: "", essai_cloud_debut: "", essai_cloud_fin: "" } });
-        await supabaseAdmin.from("profiles").update({ is_cloud: false, cloud_essai_arrete: true, cloud_essai_fin: maintenant, cloud_arret_fin_periode: false,
-          formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null, cloud_formule: null }).eq("id", user.id);
-        console.log(`[cancel-subscription] essai ${ea.formule} de l'abonné ${user.id} arrêté (schedule ${idSched ?? "?"} rendu, ${essaiAbonneSub.id} continue)`);
+        if (!ea.sansSuite) {
+          if (idSched) await stripe.subscriptionSchedules.release(idSched);
+          await stripe.subscriptions.update(essaiAbonneSub.id, { metadata: { essai_cloud_sans_suite: "1" } });
+        }
+        // cloud_formule remis à NULL : la formule ne deviendra jamais la formule avec Cloud (drapeauxDepuisStripe : un essai
+        // d'abonné « sans suite » ne porte plus de formule) ; le bloc du Cloud dit l'essai qui continue.
+        await supabaseAdmin.from("profiles").update({ cloud_arret_fin_periode: true, cloud_formule: null, ...SANS_DESCENTE }).eq("id", user.id);
+        console.log(`[cancel-subscription] essai ${ea.formule} de l'abonné ${user.id} : renouvellement coupé, le Cloud continue jusqu'au ${ea.fin} (schedule ${idSched ?? "?"} rendu, ${essaiAbonneSub.id} continue)`);
+        // Aucun mail au client (l'app le dit) ; l'alerte interne seule.
         await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", journal: "[cancel-subscription]",
-          evenements: [{ evenement: "arret_essai", cle: `${essaiAbonneSub.id}:essai`, canal: "stripe", faits: { arreteIso: maintenant, aucunPrelevement: true, formule: ea.formule, abonne: true } }] });
-        return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true, aucun_prelevement: true, formule_continue: true }), {
-          headers: { ...CORS, "Content-Type": "application/json" },
-        });
+          evenements: [{ evenement: "essai_renouvellement_coupe", cle: `${essaiAbonneSub.id}:renouvellement_coupe:${ea.fin}`, canal: "stripe", faits: { finIso: ea.fin, aucunPrelevement: true, formule: ea.formule, abonne: true } }] });
+        return reponseEssaiSansSuite(ea.fin, { option: "cloud", formule_continue: true });
       }
       if (formuleSub && formuleSub.status === "trialing") {
-        // L'essai d'une formule avec Cloud : tout s'arrête tout de suite, rien n'est prélevé (même règle que le Cloud seul).
-        const annule = await stripe.subscriptions.cancel(formuleSub.id);
-        await supabaseAdmin.from("profiles").update({ is_cloud: false, cloud_essai_arrete: true, cloud_essai_fin: maintenant, cloud_arret_fin_periode: false, cloud_formule: null }).eq("id", user.id);
-        let evenements: ReturnType<typeof evenementArretStripe> = [];
-        try {
-          const factures = await stripe.invoices.list({ subscription: formuleSub.id, limit: 20 });
-          evenements = evenementArretStripe(annule, factures.data);
-        } catch (e) {
-          console.error(`[cancel-subscription] factures de ${formuleSub.id} illisibles : ${(e as Error)?.message ?? e}`);
-        }
-        console.log(`[cancel-subscription] essai ${formuleDAbonnementStripe(formuleSub, prixConnus())} ${formuleSub.id} arrêté tout de suite`);
-        await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements, journal: "[cancel-subscription]" });
-        return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true, aucun_prelevement: evenements.some((e) => e.evenement === "arret_essai") }), {
-          headers: { ...CORS, "Content-Type": "application/json" },
-        });
+        // L'essai d'une formule avec Cloud. (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) La résiliation
+        // est programmée à la fin de l'essai : la formule et le Cloud continuent jusque-là, puis Stripe termine l'abonnement,
+        // aucune facture. Avant : subscriptions.cancel, tout coupé sur-le-champ.
+        const { coupe, finIso, scheduleRendu } = await couperEssaiStripe(formuleSub);
+        await supabaseAdmin.from("profiles").update({ cloud_arret_fin_periode: true, subscription_cancel_at_period_end: true,
+          ...(finIso ? { cloud_periode_fin: finIso } : {}), ...(scheduleRendu ? SANS_DESCENTE : {}) }).eq("id", user.id);
+        console.log(`[cancel-subscription] essai ${formuleDAbonnementStripe(formuleSub, prixConnus())} ${formuleSub.id} : renouvellement coupé, continue jusqu'au ${finIso ?? "?"}`);
+        await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements: evenementArretStripe(coupe), journal: "[cancel-subscription]" });
+        return reponseEssaiSansSuite(finIso, { option: "cloud", formule_continue: false });
       }
       if (formuleSub) {
         // Une formule PAYÉE : retirer le Cloud = changer-formule, à la fin de la période (jamais un second abonnement).
@@ -278,34 +305,18 @@ serve(async (req) => {
           headers: { ...CORS, "Content-Type": "application/json" },
         });
       }
-      // Aligné sur palier.js : arrêtée PENDANT l'essai → effet IMMÉDIAT, rien
-      // facturé ; arrêtée une fois PAYÉE → tourne jusqu'à la fin de la période.
-      // (08/11, ordre de Nico) La FORMULE n'est jamais touchée ici : seul l'abonnement Cloud (cloudVivant) est annulé
-      // ou programmé ; is_premium / is_pro / is_business ne sont ni lus pour décider ni écrits.
+      // Arrêtée une fois PAYÉE → tourne jusqu'à la fin de la période. (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai)
+      // PENDANT l'essai, même règle : la résiliation est programmée à la fin de l'essai, le Cloud reste actif jusque-là,
+      // rien n'est facturé (avant : effet IMMÉDIAT, subscriptions.cancel).
+      // (08/11, ordre de Nico) La FORMULE n'est jamais touchée ici : seul l'abonnement Cloud (cloudVivant) est programmé ;
+      // is_premium / is_pro / is_business ne sont ni lus pour décider ni écrits.
       if (cloudVivant.status === "trialing") {
-        const annule = await stripe.subscriptions.cancel(cloudVivant.id);
-        const maintenant = new Date().toISOString();
-        await supabaseAdmin.from("profiles").update({
-          is_cloud: false,
-          cloud_essai_arrete: true,
-          cloud_essai_fin: maintenant,
-          cloud_arret_fin_periode: false,
-        }).eq("id", user.id);
-        // « Aucun prélèvement » : seulement ce que STRIPE montre — abonnement annulé avant la fin de l'essai, toutes ses
-        // factures à 0. Sinon l'app et le mail n'en disent rien.
-        let evenements: ReturnType<typeof evenementArretStripe> = [];
-        try {
-          const factures = await stripe.invoices.list({ subscription: cloudVivant.id, limit: 20 });
-          evenements = evenementArretStripe(annule, factures.data);
-        } catch (e) {
-          console.error(`[cancel-subscription] factures de ${cloudVivant.id} illisibles : ${(e as Error)?.message ?? e}`);
-        }
-        const aucunPrelevement = evenements.some((e) => e.evenement === "arret_essai");
-        console.log(`[cancel-subscription] essai Cloud ${cloudVivant.id} arrêté tout de suite (statut Stripe ${annule.status}, aucun prélèvement confirmé : ${aucunPrelevement})`);
-        await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements, journal: "[cancel-subscription]" });
-        return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true, aucun_prelevement: aucunPrelevement }), {
-          headers: { ...CORS, "Content-Type": "application/json" },
-        });
+        const { coupe, finIso } = await couperEssaiStripe(cloudVivant);
+        await supabaseAdmin.from("profiles").update({ cloud_arret_fin_periode: true, ...(finIso ? { cloud_periode_fin: finIso } : {}) }).eq("id", user.id);
+        console.log(`[cancel-subscription] essai Cloud ${cloudVivant.id} : renouvellement coupé, le Cloud continue jusqu'au ${finIso ?? "?"}`);
+        // Aucun mail au client (l'app le dit) ; l'alerte interne seule (evenementArretStripe → essai_renouvellement_coupe).
+        await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements: evenementArretStripe(coupe), journal: "[cancel-subscription]" });
+        return reponseEssaiSansSuite(finIso, { option: "cloud" });
       }
       const fini = await stripe.subscriptions.update(cloudVivant.id, { cancel_at_period_end: true });
       const finCloud = fini.current_period_end;
@@ -328,25 +339,17 @@ serve(async (req) => {
       console.log("[cancel-subscription] aucun palier vivant chez Stripe — rien à résilier (aucune écriture)");
       return rienAResilier();
     }
-    // (13/11/2026) Une formule EN ESSAI : arrêtée tout de suite, rien prélevé (la règle de l'arrêt d'essai) ; l'accusé
-    // « accès jusqu'au … » ne part pas (il serait faux) — le webhook envoie le mail d'arrêt d'essai, confirmé par Stripe.
+    // (13/11/2026) Une formule EN ESSAI résiliée. (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Plus
+    // jamais arrêtée tout de suite : la résiliation est programmée à la fin de l'essai (formule et Cloud continuent jusque-là,
+    // aucune facture), l'app dit « Ton essai Cloud continue jusqu'au … Rien ne sera prélevé. » ; aucun mail au client, l'alerte
+    // interne seule. Avant : subscriptions.cancel.
     if (paliersVivants[0].status === "trialing" && formuleDAbonnementStripe(paliersVivants[0], prixConnus())) {
-      const annule = await stripe.subscriptions.cancel(paliersVivants[0].id);
-      await supabaseAdmin.from("profiles").update({ is_cloud: false, cloud_essai_arrete: true, cloud_essai_fin: new Date().toISOString(),
-        cloud_arret_fin_periode: false, cloud_formule: null }).eq("id", user.id);
-      let evenements: ReturnType<typeof evenementArretStripe> = [];
-      try {
-        const factures = await stripe.invoices.list({ subscription: annule.id, limit: 20 });
-        evenements = evenementArretStripe(annule, factures.data);
-      } catch (e) {
-        console.error(`[cancel-subscription] factures de ${annule.id} illisibles : ${(e as Error)?.message ?? e}`);
-      }
-      console.log(`[cancel-subscription] palier en essai ${annule.id} arrêté tout de suite (résiliation pendant l'essai)`);
-      await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements, journal: "[cancel-subscription]" });
-      return new Response(JSON.stringify({ success: true, essai_arrete: true, period_end: null,
-        aucun_prelevement: evenements.some((e) => e.evenement === "arret_essai") }), {
-        headers: { ...CORS, "Content-Type": "application/json" },
-      });
+      const { coupe, finIso, scheduleRendu } = await couperEssaiStripe(paliersVivants[0]);
+      await supabaseAdmin.from("profiles").update({ cloud_arret_fin_periode: true, subscription_cancel_at_period_end: true,
+        ...(finIso ? { cloud_periode_fin: finIso } : {}), ...(scheduleRendu ? SANS_DESCENTE : {}) }).eq("id", user.id);
+      console.log(`[cancel-subscription] palier en essai ${coupe.id} : renouvellement coupé, continue jusqu'au ${finIso ?? "?"}`);
+      await mailsCloud(supabaseAdmin, { userId: user.id, email: user.email ?? null, canal: "stripe", evenements: evenementArretStripe(coupe), journal: "[cancel-subscription]" });
+      return reponseEssaiSansSuite(finIso);
     }
 
     {
@@ -362,9 +365,14 @@ serve(async (req) => {
           .update({ formule_prevue: null, formule_prevue_le: null, formule_prevue_canal: null }).eq("id", user.id);
         if (colErr) console.error(`[cancel-subscription] colonnes formule_prevue non effacées : ${colErr.message}`);
       }
+      // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Le palier porte l'essai du Cloud d'un abonné
+      // (schedule rendu ci-dessus : la formule avec Cloud ne viendra pas) : l'essai court jusqu'à sa fin, sans suite.
+      const eaPalier = essaiCloudAbonneStripe(paliersVivants[0]);
       const canceled = await stripe.subscriptions.update(paliersVivants[0].id, {
         cancel_at_period_end: true,
+        ...(eaPalier && !eaPalier.sansSuite ? { metadata: { essai_cloud_sans_suite: "1" } } : {}),
       });
+      if (eaPalier) await supabaseAdmin.from("profiles").update({ cloud_arret_fin_periode: true }).eq("id", user.id);
       // current_period_end = date réelle de fin de période payée.
       // ⚠️ HEURE DE PARIS, pas UTC : jusqu'au 19/09 cette ligne formatait en
       // UTC (getUTCDate/getUTCMonth/getUTCFullYear) pendant que l'accusé

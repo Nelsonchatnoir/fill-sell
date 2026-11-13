@@ -21,6 +21,8 @@
 // `{ success: true }` sans rien arrêter ; l'app le prenait pour un succès et ne disait rien. Une app n'annule jamais
 // un abonnement Apple ou Google : notre état suit le retour de la boutique (apple-iap-webhook, google-play-webhook).
 import { textesConnexion } from './textesConnexion';
+import { textesCloud } from './textes';
+import { dateLongue } from './regles';
 import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique.js';
 import { gardeAchatBoutique } from '../lib/gardeAchat.js';
 
@@ -61,6 +63,9 @@ export function lireReponseArret(d, { reprendre = false, platform = 'web' } = {}
   }
   if (d?.success === true && d?.option === 'cloud') {
     if (d.deja === true && !reprendre) return { etat: 'rien', message: T.arretRien };
+    // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) L'essai n'est plus arrêté : son renouvellement est
+    // coupé (cancel_at_period_end), il continue jusqu'à sa fin — la phrase des boutiques, mot pour mot.
+    if (!reprendre && d.essai_sans_suite === true) return { etat: 'ok', ...d, message: textesCloud(lang).essaiSansSuite(dateLongue(d.fin_essai, lang)) };
     // (08/11) Ce que Stripe a CONFIRMÉ, et rien de plus : « aucun prélèvement » seulement si la réponse le porte
     // (abonnement annulé avant la fin de l'essai, factures à 0, relu chez Stripe par cancel-subscription).
     if (!reprendre && d.essai_arrete === true) return { etat: 'ok', ...d, message: d.aucun_prelevement === true ? T.arretEssaiConfirme : T.arretEssaiFait };

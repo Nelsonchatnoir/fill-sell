@@ -9,6 +9,7 @@ import { lireComptesDuServeur } from './flotte.js';
 import { changementDePoste } from './pausesMessagerie.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims, evaluerDansExtension } from './sessionFillsell.js';
 import { listerPilotes, decisionPilote } from './extensionPilote.js';
+import { niveauFilet, lireEssaisCoupes, choisirArrets, arreterEssaiCoupe, texteAlerteFilet } from './filetCapacite.js';
 
 // (05/11) Lu dans le service worker de l'extension Cloud (verrou des plateformes, build-extension-cloud.mjs) : les
 // plateformes à reconnecter, déjà relues contre les cookies du moment. Une copie de l'extension sans ce verrou rend {}.
@@ -46,6 +47,9 @@ export function redemarrerPourMemoire({ mo, seuilMo, enCours = 0, connexion = fa
 export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null,
   // (07/11, décision 4) La capacité du moment : mesurée (flotte.capacite), sinon NAVIGATEURS_MAX.
   capacite = () => config.navigateursMax,
+  // (13/11, filet de capacité — filetCapacite.js) { capaciteReelle, placesLibres, filePct, arretPct } (flotte.etatFilet) ;
+  // absent = le filet ne joue jamais.
+  filet = null,
   enregistrementFond = null, pausesMessagerie = null }) {
   const dernieresFins = new Map();
   const dernieresSauvegardes = new Map();
@@ -322,10 +326,20 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     }
     const ouverts = new Map(navigateurs.ouverts().map((u) => [u, navigateurs.ouvert(u)]));
     const delaiMin = comptes[0]?.delai_sessions_min ?? null;
+    // (13/11, décision de Nico) LE FILET DE CAPACITÉ (filetCapacite.js). Loin du seuil : RIEN — aucune lecture de plus, la
+    // même décision qu'avant. Au seuil (80 % de la capacité réelle) : les essais au renouvellement coupé, relus dans
+    // profiles (UNE lecture bornée aux essais de ce serveur), passent après tous les autres comptes.
+    const niveau = niveauFilet({ comptes: (comptesBruts ?? []).length, ...(filet?.() ?? {}) });
+    let coupes = new Map();
+    if (niveau.niveau !== 'loin') {
+      coupes = await lireEssaisCoupes(base, comptes.filter((c) => c.etat_cloud === 'essai').map((c) => c.user_id))
+        .catch((e) => { journal.alerte('filet_lecture_echec', { erreur: e.message }); return new Map(); });
+    }
     const decision = planifierPostes({
       comptes, ouverts, jobs: resumerJobs(lignes), connexions: connexionsOuvertes(), dernieresFins,
       delaiMin, cpuPct: await lireCpu(), cpuPause: config.cpuPauseAuDessus,
       navigateursMax: capacite(), sessionMinimaleMin: config.sessionMinimaleMin,
+      ...(coupes.size ? { derniers: new Set(coupes.keys()) } : {}),
     });
     const parUser = new Map(comptes.map((c) => [c.user_id, c]));
     // Une IP remplacée (signalée → rebut, une autre attribuée) : le navigateur
@@ -362,6 +376,29 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
               aide: 'Chrome ne descend jamais de version : servir la copie commune re-signée AU-DESSUS du pilote (plan du 13/11, retour)' });
           }
         }
+      }
+    }
+    // (13/11) LE FILET, AU-DELÀ : plus aucune place réelle (100 % de la capacité réelle, aucune place libre dans la flotte)
+    // → autant d'essais coupés qu'il faut pour rouvrir UNE place sont ARRÊTÉS (filetCapacite.arreterEssaiCoupe : place et IP
+    // libérées par la base, message de l'app), fin d'essai la plus proche d'abord, un seul par tour (une place à la fois, décision de Nico du 13/11), jamais au milieu
+    // d'une tâche ni d'un « Me connecter ». Jamais un Cloud payé, un compte offert ni un essai au renouvellement actif (gardes
+    // du WHERE) ; seul le Cloud s'arrête, jamais le palier (un pack garde sa formule).
+    const filetArretes = [];
+    if (niveau.niveau === 'arret' && coupes.size) {
+      const enCours = new Set([...jobsParUser].filter(([, j]) => j.enCours > 0).map(([u]) => u));
+      for (const u of choisirArrets({ coupes, aLiberer: niveau.aLiberer, enCours, connexions: connexionsOuvertes() })) {
+        const essaiFinPrevue = coupes.get(u)?.cloud_essai_fin ?? null;
+        const r = await arreterEssaiCoupe({ base, user: u, essaiFinPrevue }).catch((e) => ({ arrete: false, raison: 'erreur', erreur: e.message }));
+        if (!r.arrete) { journal.alerte('filet_arret_non_fait', { user: u, raison: r.raison, erreur: r.erreur ?? null }); continue; }
+        if (!r.messageEcrit) journal.alerte('filet_message_echec', { user: u, erreur: r.erreurMessage });
+        filetArretes.push({ user: u, essaiFinPrevue, le: r.le });
+        journal.alerte('filet_capacite_arret', { user: u, essai_fin_prevue: essaiFinPrevue, comptes: niveau.comptes,
+          capacite_reelle: niveau.capaciteReelle, places_libres: niveau.placesLibres });
+        for (const liste of [decision.ouvrir, decision.refuses]) {
+          const i = liste.findIndex((x) => x.user === u);
+          if (i >= 0) liste.splice(i, 1);
+        }
+        if (navigateurs.ouvert(u) && !decision.fermer.some((f) => f.user === u)) decision.fermer.push({ user: u, raison: 'filet_capacite_arret' });
       }
     }
     for (const f of decision.fermer) await fermer(f.user, f.raison).catch((e) => journal.erreur('fermeture_echec', { user: f.user, erreur: e.message }));
@@ -408,7 +445,17 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     if (nonCloisonnes) {
       await alertes?.signaler('serveur', `Réseau des navigateurs non cloisonné : ${nonCloisonnes} compte(s) attendent, un seul compte à la fois (docs/cloud/ETANCHEITE-CLOUD2.md).`);
     }
-    return { comptes: comptes.length, ouverts: navigateurs.ouverts().length, ...decision };
+    // (13/11) Le filet qui JOUE se dit à support@ (rappel au plus par heure, alertes.js) ; un filet qui ne change rien, non.
+    if (niveau.niveau === 'loin') return { comptes: comptes.length, ouverts: navigateurs.ouverts().length, ...decision };
+    const enAttente = decision.refuses.filter((r) => r.raison === 'capacite' && coupes.has(r.user)).length
+      + decision.fermer.filter((f) => f.raison === 'filet_capacite_file').length;
+    if (filetArretes.length || enAttente) {
+      await alertes?.signaler('serveur', texteAlerteFilet({ serveur: config.serveurNom, niveau, arretes: filetArretes, coupesEnAttente: enAttente }),
+        { filet: { niveau: niveau.niveau, taux: niveau.taux, comptes: niveau.comptes, capacite_reelle: niveau.capaciteReelle,
+          places_libres: niveau.placesLibres, arretes: filetArretes.map((a) => String(a.user).slice(0, 8)) } });
+    }
+    return { comptes: comptes.length, ouverts: navigateurs.ouverts().length, ...decision,
+      filet: { niveau: niveau.niveau, taux: niveau.taux, coupes: coupes.size, arretes: filetArretes.map((a) => a.user) } };
   }
 
   return { tour, ouvrir, fermer, sauvegarder, purgerPlateforme, bloquerPlateforme, noter, extensionId, lirePoste, dernieresFins };

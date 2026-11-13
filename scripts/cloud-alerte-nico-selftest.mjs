@@ -22,7 +22,9 @@ const val = (t, k) => t.lignes.find(([x]) => x === k)?.[1] ?? null;
 
 // ── 1. Le texte ─────────────────────────────────────────────────────────────
 ok(ALERTE_CLOUD_DESTINATAIRE === 'support@fillsell.app', 'adresse des alertes : support@fillsell.app');
-ok(JSON.stringify(EVENEMENTS_ALERTE) === '["essai_debut","paiement","arret_essai","arret_programme"]', 'événements alertés : essai, paiement, arrêt pendant l’essai, arrêt programmé');
+// (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) + 'essai_renouvellement_coupe' : la coupure du
+// renouvellement pendant l'essai n'est plus un « arrêt pendant l'essai » ; l'alerte interne la dit (aucun mail au client).
+ok(JSON.stringify(EVENEMENTS_ALERTE) === '["essai_debut","paiement","arret_essai","arret_programme","essai_renouvellement_coupe"]', 'événements alertés : essai, paiement, arrêt pendant l’essai, arrêt programmé, renouvellement coupé pendant l’essai');
 ok(cleAlerte('sub_123') === 'alerte:sub_123' && cleAlerte('x'.repeat(500)).length === 400, 'clé du registre à part du mail client, bornée à 400');
 ok(typeAlerte('paiement') === 'cloud_alerte_paiement', 'type email_logs dédié');
 ok(dateParis('2026-11-08T12:05:00Z') === 'dimanche 8 novembre 2026 à 13:05', 'date en heure de Paris (hiver : UTC+1)');
@@ -52,6 +54,12 @@ ok(val(renouv, 'Compte') === '(adresse inconnue) — u2', 'profil illisible : l�
 const arretE = texteAlerteCloud({ evenement: 'arret_essai', canal: 'google', faits: { aucunPrelevement: true, arreteIso: '2026-11-09T08:00:00Z' }, userId: 'u3', profil: { email: 'r@s.fr' }, maintenant: M });
 ok(/Arrêt pendant l’essai/.test(arretE.sujet) && /aucun prélèvement/.test(val(arretE, 'Événement')) && val(arretE, 'Montant') === null, 'arrêt pendant l’essai : dit, sans montant');
 ok(texteAlerteCloud({ evenement: 'arret_essai', canal: 'apple', faits: {}, userId: 'u3', maintenant: M }) === null, 'arrêt d’essai NON confirmé par la boutique : aucune alerte (comme le mail client)');
+// (13/11, décision de Nico) Le renouvellement coupé pendant l'essai : l'alerte dit que le Cloud CONTINUE jusqu'à la fin.
+const coupe = texteAlerteCloud({ evenement: 'essai_renouvellement_coupe', canal: 'apple', faits: { aucunPrelevement: true, finIso: '2026-11-20T12:13:39Z' }, userId: 'u5', profil: { email: 'v@w.fr' }, maintenant: M });
+ok(/Renouvellement coupé pendant l’essai/.test(coupe?.sujet ?? '') && /continue jusqu’au vendredi 20 novembre 2026 à 13:13/.test(val(coupe, 'Événement') ?? '') && /aucun mail au client/.test(val(coupe, 'Événement') ?? '')
+  && val(coupe, 'Fin de l’essai') === 'vendredi 20 novembre 2026 à 13:13 (heure de Paris)' && !/Arrêt pendant/.test(coupe?.sujet ?? ''),
+  'renouvellement coupé pendant l’essai : « continue jusqu’au … », aucun mail au client, jamais « arrêt »');
+ok(texteAlerteCloud({ evenement: 'essai_renouvellement_coupe', canal: 'google', faits: {}, userId: 'u5', maintenant: M }) === null, 'coupure NON confirmée : aucune alerte');
 const arretP = texteAlerteCloud({ evenement: 'arret_programme', canal: 'apple', faits: { finIso: '2026-12-08T12:05:00Z' }, userId: 'u4', profil: { email: 't@u.fr' }, maintenant: M });
 ok(/Arrêt programmé/.test(arretP.sujet) && /jusqu’au mardi 8 décembre 2026 à 13:05/.test(val(arretP, 'Événement')), 'arrêt programmé : date de fin en heure de Paris');
 ok(texteAlerteCloud({ evenement: 'impaye', canal: 'apple', faits: {}, userId: 'u', maintenant: M }) === null && texteAlerteCloud({ evenement: 'veille', canal: 'stripe', userId: 'u', maintenant: M }) === null, 'impayé, veille : hors alerte (ce ne sont pas des événements demandés)');

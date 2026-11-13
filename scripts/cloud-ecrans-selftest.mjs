@@ -186,7 +186,8 @@ const toutes = (T) => Object.values(T).flatMap((v) => {
   verifier(/^Aujourd.hui — 0 €/.test(ff[0]) && /Pendant l.essai — Tes 5 annonces du plan Free/.test(ff[1]) && /^17 octobre — 24,99 €\/mois, sauf si tu l.arrêtes/.test(ff[2]), 'la frise Free (décision Nico) : 0 € / tes N annonces du plan Free / 24,99 €/mois sauf arrêt', ff.join(' | '));
   verifier(net(FR.freeCloudQuota(5)) === 'Avec Free + FillSell Cloud, tu restes à 5 annonces par mois.', '« Avec Free + FillSell Cloud, tu restes à N annonces par mois. »', FR.freeCloudQuota(5));
   verifier(!/\d/.test(net(FR.freeCloudQuota(null))), 'quota Free inconnu : aucun chiffre inventé', FR.freeCloudQuota(null));
-  verifier(/tout de suite/.test(FR.arreterEssai('Premium')) && /rien n.est facturé/.test(FR.arreterEssai('Premium')) && /Ta formule Premium ne change pas/.test(FR.arreterEssai('Premium')), 'arrêter pendant l’essai : tout de suite, rien facturé, formule inchangée — dit AVANT le geste');
+  // (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) Avant : « tout de suite, rien facturé ».
+  verifier(/continue jusqu.au 15 octobre, puis s.arrête seul, sans prélèvement/.test(FR.arreterEssai('Premium', '15 octobre')) && !/tout de suite/.test(FR.arreterEssai('Premium', '15 octobre')) && /Ta formule Premium ne change pas/.test(FR.arreterEssai('Premium', '15 octobre')), 'arrêter pendant l’essai : il continue jusqu’à sa fin, sans prélèvement, formule inchangée — dit AVANT le geste');
   verifier(/jusqu.au 31 octobre/.test(FR.arreterPaye('31 octobre')) && /fin de la période payée/.test(FR.arreterPaye(null)), 'arrêter une fois payée : elle tourne jusqu’à la fin de période (date quand elle est connue)');
   verifier(/^S.arrête le 31 octobre$/.test(FR.etatArretPrevu('31 octobre')), 'arrêt prévu : « S’arrête le [date] »');
   verifier(/continue/.test(FR.resiliationCloud) && /Free \+ FillSell Cloud/.test(FR.resiliationCloud) && /Arrêter aussi le Cloud/.test(FR.resiliationCloudLien), 'résilier la formule : l’option continue (Free + FillSell Cloud), lien pour l’arrêter aussi');
@@ -397,7 +398,8 @@ try {
   const cAilleurs = confirmation(essaiDe('2026-10-15T05:00:00Z'), 'apple', 'web');
   verifier(/Réglages › ton nom › Abonnements/.test(cAilleurs) && !/Ouvrir mes abonnements/.test(cAilleurs) && /Fermer/.test(cAilleurs) && !PROMESSES.test(cAilleurs), 'arrêt, Cloud Apple vu sur le web : la phrase dit où (iPhone / iPad), aucun bouton qui ne mène nulle part', cAilleurs);
   const cStripe = confirmation(essaiDe('2026-10-15T05:00:00Z'), 'stripe', 'web');
-  verifier(/Il s.arrête tout de suite, et rien n.est facturé pour lui/.test(cStripe) && /Arrêter/.test(cStripe) && !/abonnements Apple|Google Play/.test(cStripe), 'arrêt, Cloud Stripe : la confirmation d’avant, mot pour mot (c’est FillSell qui arrête, le serveur le confirme)', cStripe);
+  // (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) Avant : « la confirmation d'avant, mot pour mot » (tout de suite).
+  verifier(/Ton Cloud continue jusqu.au 15 octobre, puis s.arrête seul, sans prélèvement/.test(cStripe) && !/tout de suite|24 heures/.test(cStripe) && /Arrêter/.test(cStripe) && !/abonnements Apple|Google Play/.test(cStripe), 'arrêt, Cloud Stripe : la règle des boutiques, sans « 24 heures » (c’est FillSell qui coupe, le serveur le confirme)', cStripe);
   sansMotsInterdits([cApple, cApplePaye, cGoogle, cAilleurs, cStripe].join(' '), 'arrêt par canal');
   const veilleApple = texte(h(FE.RappelVeilleFinEssai, { lang: 'fr', cloud: essaiDe('2026-10-11T05:30:00Z'), quand: 'demain', nomPalier: 'Premium', canal: 'apple', plateforme: 'ios', actions: { arreter: async () => ({ ok: true, etat: 'boutique', voie: 'apple' }) }, onFermer() {} }));
   verifier(/pris sur l.App Store/.test(veilleApple) && /Ouvrir mes abonnements Apple/.test(veilleApple) && !/rien n.est facturé/.test(veilleApple), 'la veille, Cloud Apple : où l’arrêter, jamais « rien n’est facturé »', veilleApple);

@@ -1646,7 +1646,8 @@ serve(async (req) => {
       const { finApres, finAvant } = fenetreRequete(maintenant);
       const { data: profils, error: garde } = await supabase
         .from("profiles")
-        .select("id, email, lang, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_canal, cloud_ref")
+        // (13/11/2026, décision de Nico) + cloud_arret_fin_periode : un essai au renouvellement coupé n'a pas de rappel.
+        .select("id, email, lang, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_arret_fin_periode, cloud_canal, cloud_ref")
         .gt("cloud_essai_fin", finApres)
         .lte("cloud_essai_fin", finAvant)
         .not("cloud_essai_debut", "is", null)

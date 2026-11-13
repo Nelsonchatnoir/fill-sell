@@ -6622,7 +6622,19 @@ export default function App({ loginOnly = false }){
         return;
       }
       if(json.error) throw new Error(json.error);
-      // (13/11) Une formule EN ESSAI résiliée : arrêtée tout de suite, rien prélevé (cancel-subscription).
+      // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Une formule EN ESSAI résiliée : son
+      // renouvellement est coupé, l'essai continue jusqu'à sa fin (cancel-subscription) — la phrase des boutiques.
+      if(json.essai_sans_suite===true){
+        const finEssai=json.fin_essai?new Date(json.fin_essai).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB',{day:'numeric',month:'long',timeZone:'Europe/Paris'}):null;
+        setCancelMsg(lang==='fr'
+          ?(finEssai?`Ton essai Cloud continue jusqu'au ${finEssai}. Rien ne sera prélevé.`:"Ton essai Cloud continue jusqu'à sa date de fin. Rien ne sera prélevé.")
+          :(finEssai?`Your Cloud trial continues until ${finEssai}. Nothing will be charged.`:'Your Cloud trial continues until its end date. Nothing will be charged.'));
+        setCancelAtPeriodEnd(true);
+        setCancelPeriodEnd(json.period_end||null);
+        setCancelStep(0);
+        return;
+      }
+      // Réponse d'avant le 13/11 soir (fonction pas encore redéployée) : l'essai arrêté tout de suite.
       if(json.essai_arrete===true){
         setCancelMsg(lang==='fr'?"Ton essai est arrêté tout de suite : rien n'a été prélevé.":'Your trial is stopped right away: nothing was charged.');
         setCancelStep(0);

@@ -191,7 +191,7 @@ const rendus = await rendusMailsCloud({ montants: MONTANTS });
       }
       if (r.canal === 'stripe') {
         ok(CARTE_FILLSELL.test(tout) && !/Apple|Google/.test(tout), `${nom} : la carte enregistrée (Stripe), ni Apple ni Google`);
-        ok(/Réglages → Abonnement|Settings → Subscription/.test(tout) && /annulé tout de suite chez Stripe|cancelled at Stripe straight away/.test(tout) && hrefs.includes(LIEN_APP),
+        ok(/Réglages → Abonnement|Settings → Subscription/.test(tout) && /l'essai continue jusqu'à sa fin, puis l'abonnement s'arrête chez Stripe|the trial runs until its end, then the subscription stops at Stripe/.test(tout) && !/tout de suite|straight away/.test(tout) /* (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) */ && hrefs.includes(LIEN_APP),
           `${nom} : l’arrêt dans l’app (vrai arrêt : annulé chez Stripe avant la première échéance), bouton vers l’app`);
       }
     }
@@ -237,7 +237,9 @@ titre('4. email-tunnel : canal et référence lus, prix à la source avant l’e
   const t = lire('supabase/functions/email-tunnel/index.ts');
   const v = t.slice(t.indexOf('async function rappelsVeilleCloud'), t.indexOf('let veilleCloud'));
   ok(/import \{ lecteurPrixCloud \} from "\.\.\/_shared\/cloud-prix-source\.ts"/.test(t), 'email-tunnel importe le lecteur de prix (aucune règle recopiée)');
-  ok(/\.select\("id, email, lang, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_canal, cloud_ref"\)/.test(v), 'la lecture du passage prend cloud_canal et cloud_ref');
+  // (13/11, décision de Nico — couper le renouvellement ne coupe plus rien) + cloud_arret_fin_periode : un essai au
+  // renouvellement coupé n'a pas de rappel (decisionRappel), même quand la source se tait.
+  ok(/\.select\("id, email, lang, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_arret_fin_periode, cloud_canal, cloud_ref"\)/.test(v), 'la lecture du passage prend cloud_canal, cloud_ref et cloud_arret_fin_periode');
   const iDecision = v.indexOf('if (d.action !== "envoyer")'), iLu = v.indexOf('await lirePrix(p.cloud_canal, p.cloud_ref)'), iStop = v.indexOf('if (lu.renouvelle === false)'),
     iDry = v.indexOf('if (dry)'), iMail = v.indexOf('mailRappelVeilleCloud('), iEnvoi = v.indexOf('await envoyer(');
   ok(iDecision > 0 && iLu > iDecision && iStop > iLu && iDry > iStop && iMail > iDry && iEnvoi > iMail, 'ordre : décision → prix lu → « ne renouvelle pas » = aucun rappel → dry_run → rendu → envoi');

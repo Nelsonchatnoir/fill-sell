@@ -27,9 +27,18 @@
 //    « nouveaux clients de ce produit ») le garantissent eux-mêmes.
 //
 // ALIGNÉ sur src/utils/palier.js (branche conception/cloud-option, règles
-// validées 83/83) : mêmes colonnes, même état. Arrêter l'essai = effet
-// IMMÉDIAT, rien facturé (cloud_essai_arrete, fin ramenée à l'arrêt) ; arrêter
-// une fois payée = tourne jusqu'à cloud_periode_fin (cloud_arret_fin_periode).
+// validées 83/83) : mêmes colonnes, même état. Arrêter une fois payée = tourne
+// jusqu'à cloud_periode_fin (cloud_arret_fin_periode).
+// (13/11/2026, décision de Nico) COUPER LE RENOUVELLEMENT NE COUPE PLUS RIEN, sur
+// les trois canaux : pendant l'essai, le Cloud reste actif jusqu'à la fin d'essai
+// de la boutique (ou de Stripe), puis s'arrête seul, sans prélèvement —
+// cloud_arret_fin_periode vrai pendant un essai = « renouvellement coupé ».
+// (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) Le bouton
+// « Arrêter » du web fait de même (cancel-subscription : cancel_at_period_end,
+// jamais subscriptions.cancel). Seuls le remboursement, la révocation et l'impayé
+// (« off ») coupent encore un essai tout de suite (cloud_essai_arrete) — ce ne sont
+// pas des arrêts demandés. Un essai arrêté par l'ANCIENNE règle le reste (aucun
+// rattrapage) : rien ne le rouvre, sauf un vrai paiement.
 //
 // UN SEUL ESSAI PAR COMPTE FILLSELL, TOUS CANAUX CONFONDUS : Apple et Google
 // donnent leur propre semaine gratuite par compte de store, sans rien savoir
@@ -228,9 +237,12 @@ export function drapeauxDepuisStripe(subs, prix = {}) {
   const paliers = lus.filter((l) => l.paye && !l.cloud);
   // (11/11) Le Cloud vient du Cloud seul, d'une formule avec Cloud (payée : active ; essai : trialing), ou de l'essai
   // d'un abonné (schedule : son abonnement est payé, le Cloud est en essai jusqu'à essai_cloud_fin).
+  // (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) L'essai d'un abonné arrêté depuis l'app : le schedule
+  // est rendu (jamais la phase « formule + Cloud »), la marque essai_cloud_sans_suite posée — l'essai court jusqu'à sa fin,
+  // « renouvellement coupé » (cloud_arret_fin_periode vrai), puis s'arrête seul.
   const clouds = vivants.filter((l) => l.cloud || l.formuleCloud).concat(vivants
     .filter((l) => !l.cloud && !l.formuleCloud && l.essaiCloudAbonne)
-    .map((l) => ({ ...l, essai: true, trial_start: l.essaiCloudAbonne.debut, trial_end: l.essaiCloudAbonne.fin, cancel_at_period_end: false })));
+    .map((l) => ({ ...l, essai: true, trial_start: l.essaiCloudAbonne.debut, trial_end: l.essaiCloudAbonne.fin, cancel_at_period_end: l.essaiCloudAbonne.sansSuite === true })));
   const cloudPaye = clouds.find((l) => !l.essai) ?? null;
   const cloudEssai = clouds.find((l) => l.essai) ?? null;
   const porteur = cloudPaye ?? cloudEssai;
@@ -241,7 +253,9 @@ export function drapeauxDepuisStripe(subs, prix = {}) {
   const hasPro = paliers.some((l) => l.palier === "pro");
   // (11/11) La formule avec Cloud qui porte le Cloud (payée, en essai, ou essai d'abonné) — profiles.cloud_formule. Clé
   // absente sans formule : les sorties d'un palier ou du Cloud seul ne changent pas.
-  const formuleVivante = porteur ? (porteur.formuleCloud ?? porteur.essaiCloudAbonne?.formule ?? null) : null;
+  // (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai) L'essai d'un abonné « sans suite » ne porte plus de
+  // formule : elle ne deviendra jamais la formule avec Cloud (le schedule est rendu).
+  const formuleVivante = porteur ? (porteur.formuleCloud ?? (porteur.essaiCloudAbonne?.sansSuite ? null : porteur.essaiCloudAbonne?.formule) ?? null) : null;
   return {
     ...(formuleVivante ? { cloud_formule: formuleVivante } : {}),
     is_premium: paliers.length > 0,
@@ -298,6 +312,20 @@ export function miseAJourProfilDepuisStripe(d, canalActuel) {
   return update;
 }
 
+/**
+ * (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Un abonnement Stripe EN ESSAI dont la
+ * résiliation est programmée (portail de facturation, dashboard : cancel_at_period_end, ou cancel_at) est une COUPURE DU
+ * RENOUVELLEMENT, jamais un arrêt : stripe-webhook ne l'annule plus (avant : stripe.subscriptions.cancel tout de suite et
+ * le mail « arrêtée »). Le Cloud court jusqu'à trial_end (drapeauxDepuisStripe : porteur en essai, cloud_arret_fin_periode
+ * vrai), puis Stripe termine l'abonnement, sans facture. (13/11, décision de Nico — plus aucun arrêt immédiat d'un essai)
+ * Le bouton « Arrêter » de l'app fait la même chose (cancel-subscription → cancel_at_period_end, jamais subscriptions.cancel
+ * pendant un essai). (pure)
+ */
+export function coupureRenouvellementStripe(sub) {
+  return sub?.status === "trialing"
+    && (sub?.cancel_at_period_end === true || (typeof sub?.cancel_at === "number" && sub.cancel_at > 0));
+}
+
 /** Un seul essai Cloud par compte : la ligne profiles ET l'historique Stripe du client. */
 export function essaiCloudPermis(p, abonnementsStripe = [], prix = {}) {
   if (p?.cloud_essai_debut != null) return false;
@@ -348,6 +376,7 @@ export function sessionEstCloud(s) {
  * Le produit Cloud ? Rend { essai, debut, fin, original } ou null. L'essai =
  * offre d'introduction (offerType 1, gratuite) ; la conversion arrive en
  * DID_RENEW sans offerType.
+ * @param {any} tx @param {any} [renouvellement]
  */
 export function lectureCloudApple(tx, renouvellement = null) {
   if (tx?.productId !== PRODUIT_CLOUD_APPLE) return null;
@@ -503,16 +532,20 @@ export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintena
   } else if (sens === "annulation") {
     // (08/11, résiliation — ordre de Nico) Qui décide « essai » ou « période payée » : l'essai EN COURS chez FillSell
     // d'abord, puis la période en cours chez la BOUTIQUE (lecture.phaseEssai : transaction d'essai chez Apple, phase
-    // d'essai chez Google). Une coupure reçue après le prélèvement est une période payée. Un arrêt déjà écrit (même
-    // notification rejouée, ou deux notifications pour la même coupure) n'écrit RIEN : un seul arrêt, une seule
-    // libération d'IP, un seul mail.
-    const fin = instant(profil?.cloud_essai_fin);
+    // d'essai chez Google). Une coupure reçue après le prélèvement est une période payée. Une coupure déjà écrite (même
+    // notification rejouée, ou deux notifications pour la même coupure) n'écrit RIEN.
+    // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) AVANT : pendant l'essai, la coupure
+    // ARRÊTAIT le Cloud sur-le-champ (cloud_essai_arrete vrai, cloud_essai_fin ramenée à maintenant) et le mail « arrêtée,
+    // sans aucun prélèvement » partait — cdf7007c, 13/11 13:54, Cloud coupé alors qu'Apple maintenait l'essai jusqu'au
+    // 20/11. APRÈS : RIEN ne s'arrête. Le Cloud reste actif jusqu'à la fin d'essai de la boutique (cloud_essai_fin, posée à
+    // l'achat depuis l'échéance de la boutique, jamais réécrite ici), puis s'arrête seul (cloud_etat : maintenant ≥ fin) ;
+    // la boutique ne prélèvera pas. cloud_arret_fin_periode vrai = « essai au renouvellement coupé » (app : « Ton essai
+    // Cloud continue jusqu'au … », rappel de la veille retenu, filet de capacité). Aucun mail client (evenementsBoutique).
+    // La reprise (sens « reprise ») le remet à faux : la conversion de fin d'essai repart normalement.
     const enEssai = essaiEnCoursDuProfil(profil, now);
     if (enEssai) {
-      // Arrêt PENDANT l'essai : effet IMMÉDIAT (la personne vient de couper le renouvellement, la boutique ne
-      // prélèvera pas — elle le dit dans sa notification).
-      update.cloud_essai_arrete = true;
-      update.cloud_essai_fin = new Date(now).toISOString();
+      if (profil?.cloud_arret_fin_periode === true) return { update: null, motif: "arret_deja_programme" };
+      update.cloud_arret_fin_periode = true;
     } else if (profil?.is_cloud === true) {
       // Payée : tourne jusqu'à la fin de la période, puis s'arrête.
       const finPeriode = lecture?.fin ?? profil?.cloud_periode_fin ?? null;
@@ -525,10 +558,11 @@ export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintena
       return { update: null, motif: "essai_deja_arrete" };
     } else if (lecture?.phaseEssai === true) {
       // L'essai FillSell est fini (délai de grâce) mais la boutique est encore dans sa période d'essai : rien ne sera
-      // prélevé. On l'arrête (fin d'essai gardée si elle est déjà passée) : la place et l'IP partent tout de suite.
+      // prélevé. (13/11/2026, décision de Nico) Plus d'arrêt forcé (avant : cloud_essai_arrete vrai, la grâce coupée net et
+      // le mail d'arrêt) : la coupure est seulement notée, la fin d'essai et la grâce suivent leur cours.
       if (profil?.cloud_essai_debut == null) return { update: null, motif: "rien_a_arreter" };
-      update.cloud_essai_arrete = true;
-      if (fin == null || fin > now) update.cloud_essai_fin = new Date(now).toISOString();
+      if (profil?.cloud_arret_fin_periode === true) return { update: null, motif: "arret_deja_programme" };
+      update.cloud_arret_fin_periode = true;
     } else {
       // La boutique a déjà prélevé (période payée pas encore écrite chez nous) : l'arrêt est programmé, le paiement qui
       // arrive ensuite le garde (sens « on », renouvellementAuto faux).
@@ -540,3 +574,4 @@ export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintena
   }
   return { update, motif };
 }
+

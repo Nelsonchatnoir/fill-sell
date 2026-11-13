@@ -7,6 +7,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'node:url';
 import { totalmem } from 'node:os';
+import process from 'node:process';
 import { lireConfig } from './config.js';
 import * as journal from './journal.js';
 import { creerDocker } from './docker.js';
@@ -80,6 +81,8 @@ const pausesMessagerie = creerPausesMessagerie({ config, base, navigateurs, jour
 const flotte = creerFlotte({ config, base, navigateurs, journal, alertes });
 const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp, enregistrementFond, pausesMessagerie,
   capacite: () => flotte.capacite(),
+  // (13/11, décision de Nico) Le filet de capacité (filetCapacite.js) : capacité réelle, places libres, seuils — de la flotte.
+  filet: () => flotte.etatFilet(),
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), arretEndurance: () => endurance?.arretee() ?? null });
 // (02/11) Les vérifications anti-robot : une règle du PRODUIT, toujours active (verifications.js) — un blocage n'arrête
 // que sa plateforme ; « Résoudre la vérification » la rouvre ; l'essai de 48 h en garde seulement le journal.

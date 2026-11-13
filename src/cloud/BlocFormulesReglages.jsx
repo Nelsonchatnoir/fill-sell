@@ -19,12 +19,15 @@ import { Groupe, Carte, Bouton, Note } from '../reglages/ReglagesUI';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { palierDesDrapeaux } from '../utils/palier';
 import { textesFormules, NOMS_FORMULES, NOMS_PALIERS_SEULS } from './textesFormules';
+import { textesCloud } from './textes';
 import { cartesFormulesCloud, essaiPermisDuCompte, nomAbonnementsBoutique, canalDuCloudSeul, voieFormulesDuCompte, texteNoteCarte, formulesMasqueesPourLaVoie } from './formulesCloud';
 import { BasculeCloud } from './OffresAvecCloud';
 import { dateLongue, finEssaiSiOnCommence } from './regles';
 import { canalDeVente, formulesCloudOuvertes, FORMULE_CLOUD_DU_PALIER, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES } from '../config/cloudOffer';
 import { prixOuChargement, prixPret, etatEssaiBoutique } from '../lib/prixBoutique';
 import { ouvrirLien } from '../messagerie/ouvrir';
+// (13/11, filet de capacité) Un essai arrêté parce que le Cloud est complet : la phrase, sous la formule ou la carte Free.
+import { LigneArretFilet } from './arretFiletCloud';
 
 const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
 const lienGoogle = (formule) => `https://play.google.com/store/account/subscriptions?sku=${PRODUITS_BOUTIQUES[formule]?.google ?? ''}&package=app.fillsell.app`;
@@ -74,6 +77,10 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
   // (12/11, 4d) Un essai en cours (formule avec Cloud ou Cloud seul) : les textes disent ce que fait le serveur.
   const enEssai = cloud?.etat === 'essai';
   const essaiFin = enEssai && cloud?.essaiFin ? dateLongue(cloud.essaiFin, lang) : null;
+  // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Essai au renouvellement coupé (confirmé en
+  // base) : la phrase de Nico, la même que le bloc du Cloud seul (cloud/textes.js, une seule source).
+  const sansSuite = enEssai && cloud?.essaiSansSuite === true;
+  const ligneSansSuite = sansSuite ? <p data-formules-reglages="sans_suite" style={pTexte}>{textesCloud(lang).essaiSansSuite(essaiFin)}</p> : null;
 
   // ── Une formule avec Cloud est prise : « Ta formule : Pro + Cloud. » et « Retirer le Cloud » ──────────────────────
   if (formule) {
@@ -86,8 +93,9 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
     };
     // (12/11, 4d) PENDANT L'ESSAI, sur le web : « Retirer le Cloud » finissait sur un refus du serveur (409) après un texte
     // faux (« … rien n'est remboursé pour le mois en cours » alors que rien n'a été payé). Le vrai geste est d'ARRÊTER
-    // L'ESSAI (cancel-subscription { option: 'cloud' } : tout de suite, rien prélevé pour l'essai) — le serveur dit si une
-    // formule payée continue (formule_continue).
+    // L'ESSAI (cancel-subscription { option: 'cloud' }) — le serveur dit si une formule payée continue (formule_continue).
+    // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Il coupe le renouvellement : l'essai continue
+    // jusqu'à sa fin, rien n'est prélevé ; après le geste, la phrase des boutiques et plus de bouton d'arrêt.
     if (enEssai && !boutique && typeof actions.arreter === 'function') {
       const arreter = async () => {
         setArretEssai({ etat: 'en_cours', formuleContinue: false });
@@ -102,13 +110,16 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
             <div data-formules-reglages="formule_essai" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <Tete titre={NOMS_FORMULES[formule]} />
               <p style={{ ...pTexte, fontWeight: 600 }}>{T.taFormule(NOMS_FORMULES[formule])}</p>
-              {arretEssai.etat === 'fait' && <p style={pTexte}>{T.arreterEssaiFait(arretEssai.formuleContinue, palierSeul)}</p>}
+              {arretEssai.etat !== 'fait' && ligneSansSuite}
+              {arretEssai.etat === 'fait' && (
+                <p data-formules-reglages="sans_suite" style={pTexte}>{textesCloud(lang).essaiSansSuite(essaiFin)}{arretEssai.formuleContinue ? ` ${T.arreterEssaiFait(true, palierSeul)}` : ''}</p>
+              )}
               {arretEssai.etat === 'echec' && <Note>{T.arreterEssaiEchec}</Note>}
             </div>
           </Carte>
-          {arretEssai.etat !== 'fait' && (arretEssai.etat === 'confirmer' || arretEssai.etat === 'en_cours' ? (
+          {arretEssai.etat !== 'fait' && !sansSuite && (arretEssai.etat === 'confirmer' || arretEssai.etat === 'en_cours' ? (
             <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <p data-formules-reglages="arreter_essai" style={pTexte}>{T.arreterEssaiTexte}</p>
+              <p data-formules-reglages="arreter_essai" style={pTexte}>{T.arreterEssaiTexte(essaiFin)}</p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Bouton ton="danger-plein" onClick={arreter} enCours={arretEssai.etat === 'en_cours'}>{arretEssai.etat === 'en_cours' ? '…' : T.arreterEssai}</Bouton>
                 <Bouton ton="creux" onClick={() => setArretEssai({ etat: 'repos', formuleContinue: false })} disabled={arretEssai.etat === 'en_cours'}>{T.retirerAnnuler}</Bouton>
@@ -126,13 +137,17 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
           <div data-formules-reglages="formule" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Tete titre={NOMS_FORMULES[formule]} />
             <p style={{ ...pTexte, fontWeight: 600 }}>{T.taFormule(NOMS_FORMULES[formule])}</p>
+            {ligneSansSuite}
+            <LigneArretFilet cloud={cloud} arret={lecture?.profil?.cloud_arret} lang={lang} style={pTexte} />
             {retrait === 'fait' && <p style={pTexte}>{T.retirerFait(palierSeul, echeance)}</p>}
             {retrait === 'echec' && <Note>{T.retirerEchec}</Note>}
           </div>
         </Carte>
-        {retrait !== 'fait' && (retrait === 'confirmer' || retrait === 'en_cours' ? (
+        {/* (13/11/2026) Boutique, renouvellement déjà coupé pendant l'essai : plus rien à y retirer — pas de bouton. */}
+        {retrait !== 'fait' && !(sansSuite && boutique) && (retrait === 'confirmer' || retrait === 'en_cours' ? (
           <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p data-formules-reglages="retirer" style={pTexte}>{boutique ? T.retirerBoutique(nomAbonnementsBoutique(boutique)) : T.retirerTexte(palierSeul, echeance)}</p>
+            {/* (13/11/2026, décision de Nico) Boutique pendant l'essai : la règle de l'annulation, au conditionnel. */}
+            <p data-formules-reglages="retirer" style={pTexte}>{boutique ? `${T.retirerBoutique(nomAbonnementsBoutique(boutique))}${enEssai ? ` ${T.annulerBoutiqueEssai(boutique, essaiFin)}` : ''}` : T.retirerTexte(palierSeul, echeance)}</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Bouton ton="danger-plein" onClick={retirer} enCours={retrait === 'en_cours'}>{retrait === 'en_cours' ? '…' : T.retirerConfirmer}</Bouton>
               <Bouton ton="creux" onClick={() => setRetrait('repos')} disabled={retrait === 'en_cours'}>{T.retirerAnnuler}</Bouton>
@@ -179,6 +194,7 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
           <div data-formules-reglages="free" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Tete titre="FillSell Cloud" />
             <p style={pTexte}>{T.ligneCommune}</p>
+            <LigneArretFilet cloud={cloud} arret={lecture?.profil?.cloud_arret} lang={lang} style={pTexte} />
             {typeof actions.voirFormulesCloud === 'function' && (
               <Bouton ton="plein" onClick={() => actions.voirFormulesCloud()} style={{ width: '100%' }}>{T.voirFormules}</Bouton>
             )}
