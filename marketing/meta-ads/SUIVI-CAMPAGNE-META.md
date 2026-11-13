@@ -17,29 +17,30 @@ Compte publicitaire `967689532550296`, portefeuille business « FillSell », Pag
 
 ## Lien de destination
 
-`https://fillsell.app/installer?utm_source=meta&utm_medium=paid&utm_campaign=installer-continu&utm_content={{ad.name}}`
+`https://fillsell.app/installer?utm_source=meta&utm_medium=paid&utm_campaign=installer-continu&utm_content=<nom de la pub>`
 
-(`{{ad.name}}` est remplacé par Meta : nom de la pub, ex. `V1-podcast`.)
+(UTM écrits dans l'URL de chaque pub : `utm_content` = `V1-podcast`, `V2-maman`, `V3-revendeur`, `V4-cloud`.)
 
-## Réglages proposés (à valider par Nico avant « Publier »)
+## Réglages en ligne (OK de Nico le 13/11, publiés à 20 h 10)
 
 | Réglage | Valeur |
 |---|---|
-| Objectif | Trafic, optimisation « Clics sur un lien » (la vue de page de destination demande le pixel, soumis au consentement) |
-| Budget | 8 €/jour, quotidien, sans date de fin. ⚠ Meta peut dépenser jusqu'à 75 % de plus un jour donné (14 € au plus), jamais plus de 7 × 8 = 56 € par semaine |
+| Objectif | Trafic, lieu « Site Web », optimisation « Maximiser le nombre de clics sur un lien », enchère « volume le plus élevé » |
+| Budget | 8 €/jour, quotidien, au niveau de l'ensemble, sans date de fin, aucun budget à vie. ⚠ Meta peut dépenser jusqu'à 75 % de plus un jour donné (14 € au plus), jamais plus de 7 × 8 = 56 € par semaine |
 | Pays | France |
 | Âge | 18 ans et plus |
-| Audience | Advantage+ (Meta élargit), suggestions : seconde main, vêtements d'occasion, vide-grenier, revente |
-| Placements | Advantage+ (automatiques), appareils mobiles seulement (le lien mène aux stores) |
-| Pubs | V1 podcast, V2 maman, V3 revendeur, V4 Cloud — chacune en 9:16 (Stories, Reels) et 4:5 (fils) ; 1:1 en réserve |
-| Appel à l'action | « Installer » |
+| Audience | Advantage+ ; contrôles : France, 18 ans minimum ; suggestions : « produit d'occasion (achats et vente) », « Vide-greniers » |
+| Placements | automatiques sur Facebook, Instagram, Audience Network, Threads, aucune exclusion ; appareils : téléphone portable seulement (Meta affiche alors « Advantage+ désactivé ») |
+| Pubs | V1 podcast, V2 maman, V3 revendeur, V4 Cloud (mention « iPhone, Android et le web ») — 9:16 pour Stories/Reels, 4:5 pour fils et recherche ; logos des plateformes gardés. Fichiers envoyés : copies réencodées < 10 Mo (`marketing/livrables-20261111/meta-ads-envoi-1311/`, même image, limite de l'outil du navigateur) |
+| Appel à l'action | « Télécharger » (Meta ne propose pas « Installer » en campagne Trafic) |
+| Améliorations Meta AI | génération d'images IA : aucune ; améliorations du texte : désactivées ; retouches vidéo : désactivées |
 
 ## Textes (Meta teste les combinaisons)
 
 Textes principaux :
 1. Tu vends sur Vinted, Leboncoin, eBay, Beebs ou Depop ? Avec FillSell, tu crées ton annonce une fois sur ton
-   téléphone et tu la publies partout. Quand un article se vend, il est retiré des autres plateformes. Gratuit pour
-   commencer.
+   téléphone, et elle part partout depuis ton ordinateur, ou sans ordinateur avec FillSell Cloud. Quand un article se
+   vend, il est retiré des autres plateformes. Gratuit pour commencer. (version corrigée par Nico, 13/11)
 2. Une photo, et l'annonce s'écrit : titre, description et prix de marché. Tu relis, tu coches tes plateformes, c'est
    parti. Ton stock et ta marge te suivent partout. L'app est gratuite pour commencer.
 3. Pas d'ordinateur ? Avec FillSell Cloud, tes annonces Vinted, Leboncoin, Beebs et Depop sont publiées depuis nos
@@ -64,5 +65,23 @@ Description : « Gratuit pour commencer ».
 
 ## Journal
 
-- 13/11 : enquête, page /installer, textes, récapitulatif envoyé à Nico. Identifiants de l'ensemble et des pubs,
-  date et heure de lancement : à compléter après le « OK » de Nico et la publication.
+- 13/11 : enquête, page /installer (82df152), textes, récapitulatif ; OK de Nico (« publie ce soir », T1 corrigé,
+  brouillon « VISIBILITE FILLSELL » supprimé sur sa demande).
+- 13/11/2026 à 20 h 10 (Paris) : PUBLIÉ. Statut juste après : pubs « Traitement » (examen Meta), ensemble allumé
+  8,00 €/jour, « Pubs inactives » tant que l'examen n'est pas fini.
+
+## Identifiants
+
+| Objet | Nom | ID |
+|---|---|---|
+| Compte publicitaire | 967689532550296 | act=967689532550296 |
+| Campagne | FillSell - Installer l'app (continu) | 120250796277700690 |
+| Ensemble | Nouveau Trafic Ensemble de publicités avec les paramètres recommandés | 120250796277680690 |
+| Pub | V1-podcast | 120251824058560690 |
+| Pub | V2-maman | 120251824094730690 |
+| Pub | V3-revendeur | 120251824137370690 |
+| Pub | V4-cloud | 120251824165910690 |
+
+Lien de la campagne :
+https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=967689532550296&selected_campaign_ids=120250796277700690
+
