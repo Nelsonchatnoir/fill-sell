@@ -823,6 +823,7 @@
     "selftest:ebay-livraison-refusee": "node scripts/ebay-livraison-refusee-selftest.mjs",
     "selftest:ventes-poste-cloud-seul": "node scripts/cloud/pg-jetable.mjs scripts/cloud/preuve-ventes-poste-cloud-seul.mjs",
     "selftest:lecture-origine-gardee": "node --import ./scripts/loader-ext.mjs scripts/lecture-origine-gardee-selftest.mjs",
+    "selftest:description-prete-sans-ouverture": "node --import ./scripts/loader-ext.mjs scripts/description-prete-sans-ouverture-selftest.mjs",
     "selftest:ebay-mot-ambigu": "node --import ./scripts/loader-ext.mjs scripts/ebay-mot-ambigu-selftest.mjs"
   },
   "dependencies": {

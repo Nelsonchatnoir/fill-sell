@@ -148,3 +148,44 @@ désormais `cout_openai_usd` (jamais compté chez Anthropic) ; compteur réparé
 la qualité a dû être refaite, si bien que quatre réglages ont reçu 20 à 22 photos au lieu de 10 au plus (gpt-image-2
 low 22, 2.5-flare 20, 2.5-sunburst 20, 2.6-flare complexity low 20). Le total reste sous les 5 $. Images du banc
 effacées du Storage (dossier de Nico) après mesure.
+
+## Point 3 — description prête : plus aucune fenêtre qui s'ouvre seule (15/11, maquette validée par Nico)
+
+### Le problème
+Depuis le point A du 14/11 (« lecture-origine-gardee »), fermer l'écran d'attente pendant la lecture de la description
+d'origine gardait la publication… et le formulaire se rouvrait TOUT SEUL dès que la description arrivait en base, même
+si la personne faisait autre chose. En plus, cette reprise vivait dans l'onglet Stock : changer d'onglet la perdait.
+
+### Ce qui a changé (app : web et OTA ; tous les comptes, Cloud ou extension, toutes plateformes)
+- Resté sur l'écran d'attente : inchangé, la publication s'ouvre dès que la description arrive.
+- Écran fermé pendant la lecture : la fiche est SUIVIE par `src/publication/descriptionsSuivies.js` (un petit magasin
+  hors de React) et relue par `src/publication/SuiviDescriptions.jsx`, monté une fois par App (il survit au changement
+  d'onglet ; relecture bornée toutes les 3 s, 5 min au plus, même règle `decisionReprise` qu'hier). RIEN ne s'ouvre :
+  - la carte (et la ligne en vue Liste) dit « Lecture… » (point gris qui pulse) ;
+  - description en base → « Prêt à publier » (point teal) et un bandeau discret « Description prête · Publier »
+    au-dessus des onglets, qui part seul après 6 s, sans ✕ ; jamais par-dessus un stepper, un écran d'attente ou une
+    modale (il attend leur fermeture) ;
+  - plusieurs fiches prêtes : UN bandeau « N articles prêts · Voir » ; « Voir » ouvre le Stock filtré
+    « Prêts à publier · N » (un toucher sur le filtre rend tout le stock ; il se retire seul quand plus rien n'est prêt) ;
+  - rien au bout de 5 min, ou annonce lue sans texte : « Description introuvable » (ambre) et le bouton
+    « Écrire la description », qui ouvre l'écran d'attente directement sur le champ (`modeInitial`).
+- Un TOUCHER sur la carte prête, son bouton « Publier » ou le bandeau ouvre la publication, déjà remplie : la description
+  est relue en base au toucher (jamais de publication sans description) ; absente, c'est le chemin normal de « Publier ».
+- Inchangés : le cas normal (~2 s, écran ouvert), « sans lecteur », « en attente », les signaux `lecture_origine_*`
+  (« non aboutie » est toujours signalée, sans message à l'écran : c'est la carte qui le dit).
+
+### Preuves
+- Captures du code livré (vrai magasin, vrai bandeau, vraie carte, rendus dans WebKit format iPhone) :
+  `C:\Users\nicol\fill-and-sell\.tmp-terminal\captures-description-prete\` (1 lecture, 2 prête + bandeau, 3 bandeau
+  groupé, 4 introuvable, 5 « Voir »). Contrôlé dans WebKit : le bandeau part seul (présent à 1 s, absent à 7 s) et
+  attend la fermeture d'une modale (absent pendant, présent après).
+- Verrou neuf `selftest:description-prete-sans-ouverture` (35 vérifications) : 3/28 sur le code d'avant, 35/35 après.
+  `selftest:lecture-origine-gardee` 25/25 (ses contrôles du Stock suivent le code à sa nouvelle place) ;
+  `selftest:attente-sans-lecteur` 80/80 (accepte `modeInitial`, la règle d'avant à l'identique sans lui).
+- Suite complète (arbre partagé avec le terminal fill-and-sell-24, qui travaillait en même temps sur le Cloud et
+  Leboncoin) : 785 selftests, 782 verts ; les 3 rouges (`lbc-mur-paiement-perime`, `cloud-me-connecter`,
+  `lbc-forfait-pro`) viennent de SON travail en cours, non commité : rejoués verts sur HEAD + mes seuls changements.
+- `npm run build:essai` vert ; lint : aucun problème neuf (comptes par règle identiques à HEAD pour App, StockTab,
+  AttenteLectureOrigine ; 0 sur les deux fichiers neufs).
+- Aucun essai réel sur un compte : il faudrait une session ouverte dans l'app (connexion par navigateur isolé et
+  identifiants), que je n'ai pas.

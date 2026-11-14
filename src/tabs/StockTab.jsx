@@ -200,7 +200,7 @@ import {
   Upload, ChevronsUp, BadgeEuro, Pencil, Copy, Trash2, Layers, ListChecks, Eye, Store, ExternalLink, Activity,
   CircleAlert, Laptop, KeyRound, Wrench, PauseCircle, Clock, RotateCcw,
   PenLine, Mic, Hourglass, Sparkles, Plus, BarChart3, Package, Tag, Hash, ShoppingCart, ShoppingBag,
-  Banknote, Receipt, Archive, Camera, Info, CircleCheck, Undo2, Lightbulb, Heart, CalendarClock, Weight, CircleX,
+  Banknote, Receipt, Archive, Camera, Info, CircleCheck, Undo2, Lightbulb, Heart, CalendarClock, Weight, CircleX, X,
 } from 'lucide-react';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
@@ -239,10 +239,12 @@ import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/et
 import { searchMatch } from '../utils/recherche';
 import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
 // (22/10 soir, point 8 — Louis) Une fiche importée ne part pas avant la lecture de son annonce d'origine.
-import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine, lireLecteurVinted, tracerRecuperation } from '../publication/lectureOrigine';
+import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine, lireLecteurVinted } from '../publication/lectureOrigine';
 import AttenteLectureOrigine from '../publication/AttenteLectureOrigine';
 // (26/10 nuit, point 9 — patrick giry) Sans lecteur de la description Vinted, l'app le dit et propose d'écrire.
-import { libellesSansLecteur, lecturePasseDevant, decisionReprise, RELECTURE_REPRISE_MS } from '../publication/attenteLectureRegles';
+import { libellesSansLecteur, lecturePasseDevant } from '../publication/attenteLectureRegles';
+// (15/11/2026, point 3 de Nico) La description prête, sans jamais rien ouvrir : l'état des fiches suivies.
+import { useSuivis, suivre, oublier, suiviDe, pastilleSuivi, prendreDemande, signalerEcranPublication } from '../publication/descriptionsSuivies';
 import { signalerActionRatee } from '../utils/actionRatee';
 import { plateformeOrigine, texteSuffisant } from '../../supabase/functions/_shared/contenu-fiche.js';
 import { redactionHorsQuota } from '../utils/sourceDuTexte';
@@ -6414,56 +6416,17 @@ const StockTab = memo(function StockTab({
   // issues au lieu d'attendre ; null = pas une fiche Vinted, ou profil illisible (l'écran d'avant).
   const [lecteurAttente, setLecteurAttente] = useState(null);
   // ── (14/11/2026 soir, point A de Nico — 13e274de) FERMER N'EST PAS ABANDONNER ─────────────────────────────────────
-  // L'écran d'attente fermé PENDANT la lecture (« Fermer (la lecture continue) ») garde la publication : la fiche est
-  // relue (relecture bornée, 5 min au plus) et le stepper s'ouvre dès que sa description est RÉELLEMENT en base ; lue
-  // sans texte, l'écran revient avec ses choix ; rien au bout de 5 min, la personne le lit. Un stepper ou un écran
-  // d'attente déjà ouvert : la reprise attend qu'il se ferme (attenteLectureRegles.decisionReprise).
-  const [publicationGardee, setPublicationGardee] = useState(null); // { item, depuis }
-  const occupeRepriseRef = useRef(false);
-  const ouvrirStepperRef = useRef(null);
-  const montrerNoteRef = useRef(null);
-  useEffect(() => {
-    if (!publicationGardee || !user?.id || !supabase) return undefined;
-    const { item, depuis } = publicationGardee;
-    let finie = false;
-    const r = demarrerRelecture(async () => {
-      if (finie) return true;
-      let a;
-      try { a = await attenteLectureOrigine(supabase, user.id, item.id); } catch { return false; }
-      let relu = item;
-      let descriptionLue = false;
-      if (!a) {
-        const { data, error } = await supabase.from('inventaire').select('description').eq('id', item.id).eq('user_id', user.id).maybeSingle();
-        if (error) return false;
-        if (data && texteSuffisant(data.description)) { relu = { ...item, description: data.description }; descriptionLue = true; }
-      }
-      const d = decisionReprise({ attente: a, descriptionLue, ecouleMs: Date.now() - depuis, occupe: occupeRepriseRef.current });
-      if (d === 'attendre') return true;
-      finie = true;
-      r.arreter();
-      setPublicationGardee(null);
-      tracerRecuperation(supabase, user.id, { issue: `reprise_${d}`, fiche: item.id, plateforme: a?.plateforme ?? plateformeOrigine(item) ?? null,
-        duree_ms: Math.max(0, Date.now() - depuis), motif: a?.conclusion ?? null });
-      if (d === 'ouvrir') {
-        montrerNoteRef.current?.(lang === 'fr'
-          ? "La description de ton annonce d'origine est récupérée : ta publication reprend."
-          : 'Your original listing description is in: your listing picks up where you left it.');
-        ouvrirStepperRef.current?.(relu);
-      } else if (d === 'conclue') {
-        setLecteurAttente(null);
-        setAttenteStepper({ item, attente: a });
-      } else {
-        signalerActionRatee({ action: 'publier', motif: 'lecture_origine_non_aboutie', userId: user.id,
-          details: { fiche: item.id, attendu_s: Math.round((Date.now() - depuis) / 1000), manque: (a?.manque ?? []).join(','), occupe: occupeRepriseRef.current } });
-        montrerNoteRef.current?.(lang === 'fr'
-          ? "La description de ton annonce d'origine n'est pas encore arrivée : appuie de nouveau sur « Publier » pour l'écrire, la faire rédiger ou attendre encore."
-          : 'Your original listing description has not arrived yet: tap “Publish” again to write it, have it written or keep waiting.');
-      }
-      return true;
-    }, { intervalleMs: RELECTURE_REPRISE_MS, maxMs: 30_000, immediat: true });
-    return () => { finie = true; r.arreter(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- une reprise par publication gardée
-  }, [publicationGardee, user?.id]);
+  // ── (15/11/2026, point 3 de Nico — maquette validée) ET PLUS RIEN NE S'OUVRE TOUT SEUL ───────────────────────────
+  // L'écran d'attente fermé PENDANT la lecture garde la publication : la fiche est SUIVIE (publication/
+  // descriptionsSuivies.js) et relue par SuiviDescriptions (monté par App : il survit au changement d'onglet). Sa carte
+  // dit « Lecture… », puis « Prêt à publier » (un bandeau discret paraît, et part seul), ou « Description introuvable ·
+  // Écrire la description » au bout de 5 min. Avant (14/11) : le formulaire se rouvrait tout seul dès que la description
+  // arrivait, même si la personne faisait autre chose. Désormais la publication ne s'ouvre qu'au TOUCHER de la carte ou
+  // du bandeau, déjà remplie, et jamais sans description (relue au toucher).
+  const suiviDescriptions = useSuivis();
+  const suiviParId = useMemo(() => new Map(suiviDescriptions.suivis.map((s) => [s.id, s])), [suiviDescriptions.suivis]);
+  // « Voir » du bandeau groupé : le Stock filtré sur les fiches prêtes (le ✕ du filtre rend tout le stock).
+  const [filtrePrets, setFiltrePrets] = useState(false);
   const detailNoteTimer = useRef(null);
   // Cible du CTA « publie-les aussi… » de la carte de sync (2026-09-01) :
   // la grille d'articles, où vivent les boutons Publier. Navigation pure.
@@ -6483,14 +6446,56 @@ const StockTab = memo(function StockTab({
     if (detailNoteTimer.current) clearTimeout(detailNoteTimer.current);
     detailNoteTimer.current = setTimeout(() => setDetailNote(null), 7000);
   };
-  // (14/11/2026 soir, point A) Ce que la reprise d'une publication gardée lit à chaque tour (toujours la dernière valeur).
-  occupeRepriseRef.current = Boolean(publishItem || attenteStepper);
-  ouvrirStepperRef.current = ouvrirStepper;
-  montrerNoteRef.current = montrerNoteDetail;
+  // (15/11, point 3) Un stepper ou un écran d'attente ouvert : le bandeau « Description prête » attend qu'il se ferme.
+  useEffect(() => { signalerEcranPublication(Boolean(publishItem || attenteStepper)); }, [publishItem, attenteStepper]);
+  useEffect(() => () => signalerEcranPublication(false), []);
+  // (15/11, point 3) Le TOUCHER sur une carte « Prêt à publier » ou sur le bandeau : la description est RELUE en base,
+  // puis la publication s'ouvre avec elle ; absente (jamais sans description), le chemin normal de « Publier ».
+  const ouvrirDepuisSuivi = async (item) => {
+    if (!item || !user?.id) return;
+    let description = null;
+    try {
+      const { data } = await supabase.from('inventaire').select('description').eq('id', item.id).eq('user_id', user.id).maybeSingle();
+      if (data && texteSuffisant(data.description)) description = data.description;
+    } catch { description = null; }
+    oublier(item.id);
+    if (description) { ouvrirStepper({ ...item, description }); return; }
+    publierAvecDetail(item);
+  };
+  // (15/11, point 3) « Écrire la description » (carte « Description introuvable ») : arrivée entre-temps, la publication
+  // s'ouvre avec elle ; sinon l'écran d'attente s'ouvre DIRECTEMENT sur le champ « Écrire ma description ».
+  const ecrireDepuisSuivi = async (item) => {
+    if (!item || !user?.id) return;
+    let description = null;
+    try {
+      const { data } = await supabase.from('inventaire').select('description').eq('id', item.id).eq('user_id', user.id).maybeSingle();
+      if (data && texteSuffisant(data.description)) description = data.description;
+    } catch { description = null; }
+    oublier(item.id);
+    if (description) { ouvrirStepper({ ...item, description }); return; }
+    let a = null;
+    try { a = await attenteLectureOrigine(supabase, user.id, item.id); } catch { a = null; }
+    setLecteurAttente(null);
+    setAttenteStepper({ item, attente: a, modeInitial: 'ecrire' });
+  };
+  // (15/11, point 3) La demande posée par un toucher sur le bandeau (SuiviDescriptions) — prise ici, une fois.
+  useEffect(() => {
+    if (!suiviDescriptions.demande) return;
+    const dem = prendreDemande();
+    if (!dem) return;
+    if (dem.type === 'voir') { setFiltrePrets(true); return; }
+    const item = suiviDe(dem.id)?.item ?? (items || []).find((i) => String(i.id) === String(dem.id));
+    if (item) ouvrirDepuisSuivi(item);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- une demande, un toucher
+  }, [suiviDescriptions.demande]);
+  // Plus aucune fiche prête (publiées, ou ouvertes) : le filtre « Prêts à publier » se retire seul.
+  useEffect(() => {
+    if (filtrePrets && !suiviDescriptions.suivis.some((s) => s.etat === 'prete')) setFiltrePrets(false);
+  }, [filtrePrets, suiviDescriptions.suivis]);
   const publierAvecDetail = async (item) => {
-    // (14/11/2026 soir, point A) « Publier » de nouveau sur une fiche gardée : la personne reprend la main, la reprise
-    // automatique s'efface (jamais deux steppers pour la même fiche).
-    setPublicationGardee((g) => (g && g.item?.id === item?.id ? null : g));
+    // (14/11/2026 soir, point A ; 15/11, point 3) « Publier » de nouveau sur une fiche suivie : la personne reprend la
+    // main, le suivi s'efface (l'écran d'attente le reposera s'il est refermé pendant la lecture).
+    oublier(item?.id);
     // ── LE TEXTE DU VENDEUR, LÀ OÙ L'ARTICLE EST EN LIGNE (03/10, Nico) ────────
     // Le chemin du 03/08 (détail Vinted au clic, capture fraîche d'abord) vit
     // désormais dans publication/texteDuVendeur.js — le MÊME pour le stepper
@@ -8403,6 +8408,8 @@ const StockTab = memo(function StockTab({
   });
 
   const listeStock = useMemo(() => {
+    // (15/11, point 3) « Voir » du bandeau groupé : les fiches « Prêt à publier », seules (tout le stock, aucun autre filtre).
+    if (filtrePrets) return (items || []).filter((i) => i.statut === 'stock' && suiviParId.get(String(i.id))?.etat === 'prete');
     // Les nouveaux filtres passent AVANT le chemin repubFiltre : ce sont deux
     // portes vers la même liste, jamais deux filtres cumulés en silence.
     if (stockRetenu) {
@@ -8460,7 +8467,7 @@ const StockTab = memo(function StockTab({
     if (!enCours.length) return base;
     return [...enCours, ...base.filter(i => !setT.has(String(i.id)))];
   }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs, attenteServeur, attenteAction,
-      stockRetenu, showAllStock, triStock, vueStock]);
+      stockRetenu, showAllStock, triStock, vueStock, filtrePrets, suiviParId, items]);
 
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
@@ -10980,8 +10987,24 @@ const StockTab = memo(function StockTab({
   };
   const rendreArticle = (item, enListe) => {
     const d = deriverArticle(item);
-    const pastille = pastilleArticle(item, d);
-    const g = gestesArticle(item, d, pastille);
+    // (15/11, point 3) Une fiche suivie (fermée pendant la lecture de sa description) : son état d'abord.
+    const suivi = item.statut === 'stock' ? suiviParId.get(String(item.id)) : null;
+    const pastilleDuSuivi = suivi ? pastilleSuivi(suivi.etat, lang) : null;
+    const pastille = pastilleDuSuivi ? { ...pastilleDuSuivi, titre: null, onTap: null, horsLigne: false } : pastilleArticle(item, d);
+    const gestes = gestesArticle(item, d, pastille);
+    const g = suivi?.etat === 'prete'
+      ? { ...gestes, principale: { action: 'publier', libelle: libelleAction('publier', lang), onTap: () => ouvrirDepuisSuivi(item) }, element: null }
+      : suivi?.etat === 'introuvable'
+        ? { ...gestes, principale: null, element: (
+          <button type="button" className="sk-btn sk-presse" data-ecrire-description={item.id}
+            onClick={(e) => { e.stopPropagation(); ecrireDepuisSuivi(item); }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 40, padding: '0 8px', boxSizing: 'border-box',
+              borderRadius: 12, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', letterSpacing: '-0.01em',
+              background: SK.ambreFond, border: `1px solid ${SK.ambreBord}`, color: SK.ambreEncre, fontFamily: 'inherit' }}>
+            {lang === 'fr' ? 'Écrire la description' : 'Write the description'}
+          </button>
+        ) }
+        : gestes;
     const prix = prixAffiche(item, d);
     const commun = {
       id: item.id, lang, photo: d.photoUrl, titre: item.title, prix: prix.prix, prixDetail: prix.detail,
@@ -11013,7 +11036,7 @@ const StockTab = memo(function StockTab({
         marque={marqueLabel(item.marque, lang) || null} vues={d.vues} favoris={d.favs} quantite={item.quantite || 1}
         messages={messagerie ? (Number(messagerie.parArticle?.[item.id]) || 0) : null}
         onMessages={messagerie?.ouvrir ? () => messagerie.ouvrir(item.id) : undefined}
-        action={g.principale} actionElement={saisiePa ?? g.element} onOuvrir={d.openEdit} bas={g.bas} note={g.note} />
+        action={g.principale} actionElement={saisiePa ?? g.element} onOuvrir={suivi?.etat === 'prete' ? () => ouvrirDepuisSuivi(item) : d.openEdit} bas={g.bas} note={g.note} />
     );
   };
 
@@ -12589,6 +12612,18 @@ const StockTab = memo(function StockTab({
                 {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&!modeModif&&itemsAVerifier.length>0&&(
                   <SectionAVerifier lang={lang} items={itemsAVerifier} onOuvrir={aVerifier.ouvrir}/>
                 )}
+                {/* (15/11, point 3) « Voir » du bandeau groupé : le filtre des fiches prêtes, un toucher le retire. */}
+                {filtrePrets&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&!modeModif&&(
+                  <div style={{display:'flex',marginTop:8}}>
+                    <button type="button" className="sk-btn" data-filtre-prets="1" onClick={()=>setFiltrePrets(false)}
+                      aria-label={lang==='fr'?'Retirer le filtre « Prêts à publier »':'Remove the “Ready to publish” filter'}
+                      style={{display:'inline-flex',alignItems:'center',gap:8,height:32,padding:'0 6px 0 12px',borderRadius:999,background:SK.menthe,border:`1px solid ${SK.mentheBord}`,fontSize:13,fontWeight:700,color:SK.tealDeep,fontFamily:'inherit'}}>
+                      <span aria-hidden="true" style={{width:8,height:8,borderRadius:'50%',background:SK.teal}}/>
+                      {lang==='fr'?'Prêts à publier':'Ready to publish'} · {listeStock.length}
+                      <span aria-hidden="true" style={{width:22,height:22,borderRadius:'50%',background:'#FFFFFF',display:'inline-flex',alignItems:'center',justifyContent:'center',color:SK.ink2}}><X size={14} strokeWidth={2.4}/></span>
+                    </button>
+                  </div>
+                )}
                 {(()=>{
                   const listeVue=modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:modeLot?lotActionnablesVue:modeModif?modifAffiches:listeStock;
                   if(!listeVue.length)return null;
@@ -13098,6 +13133,8 @@ const StockTab = memo(function StockTab({
           delaiDetailMs={DELAI_DETAIL_VINTED_MS} attenteInitiale={attenteStepper.attente}
           // (26/10 nuit, point 9) Le lecteur lu au clic, et de quoi le relire pendant « Attendre mon ordinateur ».
           lecteurInitial={lecteurAttente}
+          // (15/11, point 3) « Écrire la description » depuis la carte : le champ, tout de suite.
+          modeInitial={attenteStepper.modeInitial ?? null}
           lireLecteur={() => lireLecteurVinted(supabase, user.id, { versionIci: extVersionIci })}
           onPret={(relu, info) => {
             setAttenteStepper(null);
@@ -13113,8 +13150,9 @@ const StockTab = memo(function StockTab({
           onFermer={(info) => {
             const gardee = info?.garder === true ? (info.item ?? attenteStepper.item) : null;
             setAttenteStepper(null);
-            // (14/11/2026 soir, point A) Fermée pendant la lecture : la publication est gardée, elle reprendra seule.
-            if (gardee) setPublicationGardee({ item: gardee, depuis: Date.now() });
+            // (14/11/2026 soir, point A ; 15/11, point 3) Fermée pendant la lecture : la publication est gardée — la fiche
+            // est suivie (« Lecture… » sur sa carte), rien ne s'ouvrira tout seul.
+            if (gardee) suivre(gardee, { titre: gardee.title ?? null, photo: premierePhoto(gardee.photos) ?? null });
           }} />
       )}
       {detailNote&&createPortal(

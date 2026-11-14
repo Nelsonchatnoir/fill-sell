@@ -7,9 +7,14 @@
 // 33 lectures réussies autour, 31 sans publication. Ce test prouve :
 //   1. la fermeture pendant une lecture en cours GARDE la publication ; sans lecteur, en saisie, après un échec ou une
 //      conclusion, c'est un abandon (comme avant) ;
-//   2. la reprise : stepper dès que la description est RÉELLEMENT en base (jamais sans), écran des choix si lue sans
+//   2. la reprise : « prête » dès que la description est RÉELLEMENT en base (jamais sans), « conclue » si lue sans
 //      texte, attente si un autre écran de publication est ouvert, fin bornée à 5 min (« non aboutie ») ;
-//   3. le câblage (écran, Stock) ; 4. le cas normal inchangé (lecture tout de suite, puis toutes les 6 s).
+//   3. le câblage (écran, Stock, suivi) ; 4. le cas normal inchangé (lecture tout de suite, puis toutes les 6 s).
+// (15/11/2026, point 3 de Nico — maquette validée) La reprise ne ROUVRE plus rien : la fiche fermée pendant la lecture est
+// suivie (publication/descriptionsSuivies.js, relue par SuiviDescriptions.jsx, monté par App) et seule sa carte change
+// (« Lecture… », « Prêt à publier » + bandeau, « Description introuvable ») ; la publication s'ouvre au TOUCHER. Les
+// garanties de ce verrou sont vérifiées à leur nouvelle place ; « jamais d'ouverture automatique » a son propre verrou
+// (selftest:description-prete-sans-ouverture).
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,7 +46,7 @@ ok(essai(() => reprise({ attente: { manque: ["description"] }, descriptionLue: f
 ok(essai(() => reprise({ attente: null, descriptionLue: false, ecouleMs: 9_000 })) === "attendre",
   "la règle ne retient plus mais AUCUNE description en base (lecture illisible) → on n'ouvre JAMAIS sans description");
 ok(essai(() => reprise({ attente: null, descriptionLue: true, ecouleMs: 12_000, occupe: true })) === "attendre", "un stepper déjà ouvert → la reprise attend qu'il se ferme");
-ok(essai(() => reprise({ attente: { manque: ["description"], conclusion: "sans_texte" }, ecouleMs: 20_000 })) === "conclue", "lue sans texte → l'écran revient avec ses choix");
+ok(essai(() => reprise({ attente: { manque: ["description"], conclusion: "sans_texte" }, ecouleMs: 20_000 })) === "conclue", "lue sans texte → « conclue » (15/11 : carte « Description introuvable », rien ne s'ouvre)");
 ok(essai(() => reprise({ attente: { manque: ["description"] }, ecouleMs: 5 * 60_000 + 1 })) === "expiree", "rien au bout de 5 min → « non aboutie », jamais une attente sans fin");
 ok(essai(() => reprise({ attente: null, descriptionLue: true, ecouleMs: 5 * 60_000 + 1, occupe: true })) === "expiree", "occupé au-delà de 5 min → fin dite, pas d'ouverture tardive");
 ok(R.REPRISE_PUBLICATION_MAX_MS === 5 * 60_000 && R.RELECTURE_REPRISE_MS === 3_000, "bornes : 5 min, une relecture toutes les 3 s (relecture bornée)");
@@ -54,15 +59,17 @@ ok(iG > 0 && iA > iG && /mesurer\("gardee"\);\s*fini\.current = true;\s*onFermer
   "écran : fermer pendant la lecture → trace « gardee » et onFermer({ garder }) AVANT tout signal d'abandon");
 ok(iA > 0, "écran : le vrai abandon reste signalé (lecture_origine_abandonnee)");
 const s = lire("src/tabs/StockTab.jsx");
-ok(/if \(gardee\) setPublicationGardee\(\{ item: gardee, depuis: Date\.now\(\) \}\);/.test(s), "Stock : une fermeture gardée pose la publication gardée");
-ok(/demarrerRelecture\(async \(\) => \{[\s\S]{0,200}attenteLectureOrigine\(supabase, user\.id, item\.id\)/.test(s) && /intervalleMs: RELECTURE_REPRISE_MS, maxMs: 30_000, immediat: true/.test(s),
-  "Stock : relecture BORNÉE (jamais setInterval), premier tour immédiat");
-ok(/if \(data && texteSuffisant\(data\.description\)\) \{ relu = \{ \.\.\.item, description: data\.description \}; descriptionLue = true; \}/.test(s),
-  "Stock : la description relue en base avant d'ouvrir le stepper");
-ok(/if \(d === 'ouvrir'\) \{[\s\S]{0,400}ouvrirStepperRef\.current\?\.\(relu\);/.test(s) && /setAttenteStepper\(\{ item, attente: a \}\);/.test(s) && /motif: 'lecture_origine_non_aboutie'/.test(s),
-  "Stock : ouvrir le stepper / rouvrir l'écran / dire « non aboutie »");
-ok(/occupeRepriseRef\.current = Boolean\(publishItem \|\| attenteStepper\);/.test(s), "Stock : « occupé » = un stepper ou un écran d'attente ouvert");
-ok(/setPublicationGardee\(\(g\) => \(g && g\.item\?\.id === item\?\.id \? null : g\)\);/.test(s), "Stock : « Publier » de nouveau sur la fiche → la reprise automatique s'efface");
+const sv = lire("src/publication/SuiviDescriptions.jsx");
+const ds = lire("src/publication/descriptionsSuivies.js");
+ok(/if \(gardee\) suivre\(gardee, \{ titre: gardee\.title \?\? null, photo: premierePhoto\(gardee\.photos\) \?\? null \}\);/.test(s), "Stock : une fermeture gardée pose la publication gardée (la fiche est suivie)");
+ok(/demarrerRelecture\(async \(\) => \{[\s\S]{0,400}attenteLectureOrigine\(supabase, userId, item\.id\)/.test(sv) && /intervalleMs: RELECTURE_REPRISE_MS, maxMs: 30_000, immediat: true/.test(sv),
+  "suivi : relecture BORNÉE (jamais setInterval), premier tour immédiat");
+ok(/if \(data && texteSuffisant\(data\.description\)\) \{ relu = \{ \.\.\.item, description: data\.description \}; descriptionLue = true; \}/.test(sv),
+  "suivi : la description relue en base avant de dire « prête »");
+ok(/marquer\(s\.id, etatApresDecision\(d\), \{ item: relu \}\);/.test(sv) && /motif: "lecture_origine_non_aboutie"/.test(sv) && /if \(decision === "ouvrir"\) return "prete";/.test(ds),
+  "suivi : « prête » / « introuvable » / « non aboutie » signalée — sans rien ouvrir (15/11)");
+ok(/signalerEcranPublication\(Boolean\(publishItem \|\| attenteStepper\)\)/.test(s), "Stock : « occupé » = un stepper ou un écran d'attente ouvert (le bandeau attend qu'il se ferme)");
+ok(/oublier\(item\?\.id\);/.test(s.slice(s.indexOf("const publierAvecDetail = async (item) => {"), s.indexOf("const publierAvecDetail = async (item) => {") + 600)), "Stock : « Publier » de nouveau sur la fiche → la reprise automatique s'efface");
 
 console.log("\n4. Le cas normal, inchangé");
 const r = lire("src/publication/attenteLectureRegles.js");

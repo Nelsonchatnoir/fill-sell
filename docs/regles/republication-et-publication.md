@@ -1872,3 +1872,21 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   le Stock (`publicationGardee`, relecture bornée 3 s, 5 min) ouvre le stepper dès que la description est EN BASE
   (`decisionReprise` : 'ouvrir' · 'conclue' → l'écran revient · 'expiree' → `lecture_origine_non_aboutie` et un message ·
   'attendre' si un stepper ou une attente est ouvert). Jamais sans description. Verrou `selftest:lecture-origine-gardee`.
+- ⛔ REMPLACÉ le 15/11 (section suivante) : plus rien ne s'ouvre tout seul ; « gardée » reste, la reprise ne fait plus que
+  changer l'état de la carte.
+
+## ⛔ 15/11/2026 (point 3 de Nico, maquette validée) — la description prête : JAMAIS une fenêtre qui s'ouvre seule
+- Règle : une fenêtre ne s'ouvre jamais pendant que la personne fait autre chose. Resté sur l'écran d'attente : la
+  publication s'ouvre dès que la description arrive (inchangé). Écran fermé ou autre écran : la fiche est SUIVIE
+  (`src/publication/descriptionsSuivies.js`, relue par `SuiviDescriptions.jsx`, monté par App : survit au changement
+  d'onglet ; relecture bornée 3 s, 5 min, `decisionReprise` inchangée) et seule sa carte change : « Lecture… » (point gris
+  qui pulse) → « Prêt à publier » (teal) + un bandeau discret « Description prête · Publier » au-dessus des onglets,
+  qui part seul (6 s, jamais par-dessus un stepper, un écran d'attente ou une modale : il attend) ; plusieurs prêtes =
+  UN bandeau « N articles prêts · Voir » (→ le Stock filtré « Prêts à publier · N », ✕ pour tout revoir) ; rien en 5 min
+  ou lue sans texte : « Description introuvable » (ambre) + « Écrire la description » (l'écran d'attente ouvert sur le
+  champ, `modeInitial`). Pastille aussi en vue Liste.
+- Un TOUCHER (carte prête, son bouton, le bandeau) ouvre la publication, déjà remplie : la description est RELUE en base
+  au toucher ; absente → le chemin normal de « Publier ». « Publier » de nouveau sur une fiche suivie efface le suivi.
+- Verrous : `selftest:description-prete-sans-ouverture` (jamais d'ouverture automatique ; 3/28 sur le code d'avant) et
+  `selftest:lecture-origine-gardee` (garanties du 14/11, vérifiées à leur nouvelle place). Rapport
+  `docs/enquetes/lot-1411-plafond-ia-retouche/RAPPORT.md` § point 3.

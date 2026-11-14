@@ -145,6 +145,8 @@ import { plateformesReserveesParRepublication, vintedRemplaceeParUneEnLigne } fr
 // pose la bonne question (« c'est la même ? ») au lieu de « vendue ? ».
 import { lirePropositionsParJob, deciderRapprochement } from './utils/syncPlateformes';
 import Toast from './components/Toast';
+// (15/11/2026, point 3 de Nico) La description prête : la fiche suivie change d'état, un bandeau discret, rien ne s'ouvre seul.
+import SuiviDescriptions from './publication/SuiviDescriptions';
 import ConversionModal, { COIN_CONFIG_FALLBACK, CorpsCarteGrille } from './components/ConversionModal';
 import ResultatCloudEnsuite from './cloud/ResultatCloudEnsuite';
 import { businessOfferVisible } from './config/businessOffer';
@@ -10981,6 +10983,9 @@ export default function App({ loginOnly = false }){
       )}
 
       <Toast message={toast.message} visible={toast.visible}/>
+      {/* (15/11/2026, point 3 de Nico) Monté ici, pas dans le Stock : le suivi survit au changement d'onglet. Un toucher sur
+          le bandeau amène au Stock, qui ouvre la publication (ou les articles prêts) — jamais sans ce toucher. */}
+      {user?.id&&<SuiviDescriptions supabase={supabase} userId={user.id} lang={lang} onOuvrirStock={()=>{setTab(1);try{localStorage.setItem('tab',1);}catch{/* stockage refusé : l'onglet change quand même */}}}/>}
 
       <div className="bnav" style={{ position:"fixed", bottom:0, left:0, right:0, justifyContent:"center", zIndex:50, paddingBottom:"calc(env(safe-area-inset-bottom,0px) + 14px)" }}>
         <div style={{ position:"relative", display:"flex", alignItems:"flex-end", gap:4, padding:"10px 10px 10px", borderRadius:26, background:"rgba(255,255,255,0.72)", backdropFilter:"blur(18px) saturate(1.6)", WebkitBackdropFilter:"blur(18px) saturate(1.6)", border:"1px solid #E7E3D8", boxShadow:"0 12px 32px rgba(16,32,27,0.10), 0 2px 8px rgba(16,32,27,0.05)" }}>

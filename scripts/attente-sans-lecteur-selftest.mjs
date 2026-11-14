@@ -259,7 +259,10 @@ console.log("\n6. Le câblage, et rien ne change quand le lecteur est là");
     "Stock : la version de l'extension de CET appareil (sa présence dans la page), passée au lot aussi");
 
   const e = lire("src/publication/AttenteLectureOrigine.jsx");
-  ok(/useState\(\(\) => \(issuesSansLecteur\(lecteurInitial\)\.length \? "choix" : "attente"\)\)/.test(e),
+  // (15/11/2026, point 3) « Écrire la description » touché sur une carte ouvre l'écran sur le champ (modeInitial) ;
+  // sans modeInitial, la règle d'avant à l'identique.
+  ok(/useState\(\(\) => \((?:modeInitial === "ecrire" \? "ecrire" : )?issuesSansLecteur\(lecteurInitial\)\.length \? "choix" : "attente"\)\)/.test(e)
+    && /modeInitial = null,/.test(e),
     "écran : les choix SEULEMENT sans lecteur ; avec lui (ou sans savoir), l'attente d'avant d'emblée");
   // (29/10, lot C 1 — Nico : « jamais d'attente sans issue », « choix immédiat ») La règle du 25/10 (« aucune issue
   // d'écriture pendant l'attente ») est remplacée : les issues de l'attente viennent d'UNE règle (issuesDeLEtat) —

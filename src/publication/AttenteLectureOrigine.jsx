@@ -65,6 +65,9 @@ export default function AttenteLectureOrigine({
   attenteInitiale = null, onPret, onFermer,
   // (26/10 nuit, point 9) Le lecteur lu au clic (null : on ne sait pas — l'écran d'avant) et de quoi le relire.
   lecteurInitial = null, lireLecteur = null,
+  // (15/11/2026, point 3 de Nico) « Écrire la description » touché sur une carte « Description introuvable » : l'écran
+  // s'ouvre directement sur le champ (rien ne se relit pendant la saisie) ; null = l'écran d'avant, à l'identique.
+  modeInitial = null,
 }) {
   const en = lang === "en";
   const L = libellesSansLecteur(lang);
@@ -74,7 +77,7 @@ export default function AttenteLectureOrigine({
   const [pontMort, setPontMort] = useState(false);
   const [lecteur, setLecteur] = useState(lecteurInitial);
   // « choix » : sans lecteur, les trois issues · « ecrire » : le champ description · « attente » : la lecture attendue.
-  const [mode, setMode] = useState(() => (issuesSansLecteur(lecteurInitial).length ? "choix" : "attente"));
+  const [mode, setMode] = useState(() => (modeInitial === "ecrire" ? "ecrire" : issuesSansLecteur(lecteurInitial).length ? "choix" : "attente"));
   const [debutAttente, setDebutAttente] = useState(() => Date.now());
   const [relectureFinie, setRelectureFinie] = useState(false);
   const [texte, setTexte] = useState("");
