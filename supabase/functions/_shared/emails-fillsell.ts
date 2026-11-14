@@ -607,6 +607,8 @@ export interface RappelVeilleCloud {
   formule?: string | null;
   abonne?: boolean;
   ref?: string | null;
+  /** (14/11, bloc F) Stripe : le type du moyen de paiement lu à la source (card, klarna…) — jamais « la carte » pour Klarna. */
+  moyenPaiement?: string | null;
 }
 
 export function mailRappelVeilleCloud(r: RappelVeilleCloud): MailPret {
@@ -619,6 +621,7 @@ export function mailRappelVeilleCloud(r: RappelVeilleCloud): MailPret {
     formule: r.formule ?? null,
     abonne: r.abonne === true,
     ref: r.ref ?? null,
+    moyenPaiement: r.moyenPaiement ?? null,
   });
   return {
     sujet: t.sujet,

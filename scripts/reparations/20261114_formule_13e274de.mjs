@@ -5,8 +5,8 @@
 // (sub_1UbU3yQZRA77vrWJPqIj6aN9, en essai jusqu'au 21/11/2026 00:39:22 Paris), sans second abonnement.
 //
 //   (b) Pro + Cloud 49,99 €      node scripts/reparations/20261114_formule_13e274de.mjs --formule=pro_cloud --jouer
-//   (a) Business + Cloud 79,99 € node scripts/reparations/20261114_formule_13e274de.mjs --formule=business_cloud --essai=garder --jouer
-//                                node scripts/reparations/20261114_formule_13e274de.mjs --formule=business_cloud --essai=finir  --jouer
+// (RETIRÉ le 14/11 — décision de Nico : aucune exception)   (a) Business + Cloud 79,99 € node scripts/reparations/20261114_formule_13e274de.mjs --formule=business_cloud --essai=garder --jouer
+// (RETIRÉ le 14/11 — décision de Nico : aucune exception)                                node scripts/reparations/20261114_formule_13e274de.mjs --formule=business_cloud --essai=finir  --jouer
 //   Inverse                      node scripts/reparations/20261114_formule_13e274de.mjs --inverse=scripts/reparations/20261114_formule_13e274de_SAUVEGARDE-….json --jouer
 //
 // SANS --jouer = SIMULATION : une seule lecture (GET) de l'abonnement, les gardes, la requête EXACTE qui partirait, et
@@ -159,6 +159,9 @@ async function principal() {
   // ── L'ACTION ────────────────────────────────────────────────────────────────────────────────────────────────────
   const formule = String(args.formule ?? '');
   if (!PLAN_TYPE[formule]) sortir('--formule=pro_cloud ou --formule=business_cloud.');
+  // (14/11/2026 13:00, décision de Nico) Business + Cloud : AUCUNE exception — si elle le veut, elle passe par la nouvelle
+  // fenêtre de l'app et paie 79,99 € tout de suite. Ce script ne remet que Pro + Cloud (son achat du 14/11 00:39).
+  if (formule !== 'pro_cloud') sortir('Business + Cloud : aucune exception (décision de Nico du 14/11) — elle passe par la fenêtre de l\x27app et paie 79,99 € tout de suite.');
   const essai = String(args.essai ?? (formule === 'pro_cloud' ? 'garder' : ''));
   if (!['garder', 'finir'].includes(essai)) sortir("Business + Cloud : dis --essai=garder (essai jusqu'au 21/11, exception à la règle « jamais d'essai ») ou --essai=finir (79,99 € prélevés maintenant).");
   if (formule === 'pro_cloud' && essai !== 'garder') sortir("Pro + Cloud : l'essai acheté est gardé (--essai=garder).");

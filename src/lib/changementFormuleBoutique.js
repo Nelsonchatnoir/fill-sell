@@ -25,7 +25,8 @@
 //     d'avance — la règle de Nico. Jamais WITHOUT_PRORATION (« Upgrading while in a free trial, keeping the trial ») ni
 //     CHARGE_PRORATED_PRICE pendant l'essai (« the remaining value of the free trial is carried over […] based on base plan
 //     pricing » : un montant que l'app ne connaît pas, et le 1er prix plein à l'ancienne date de fin d'essai). Hors essai :
-//     montée CHARGE_PRORATED_PRICE (2), descente DEFERRED (6) — les recommandations de Google, inchangées.
+//     (14/11/2026 13:00, décision 5 de Nico) montée CHARGE_FULL_PRICE (5) aussi — le prix entier, montant toujours exact
+//     (avant : CHARGE_PRORATED_PRICE, une différence calculée par Google) ; descente DEFERRED (6), rien prélevé aujourd'hui.
 // Les niveaux Apple (relus et ENREGISTRÉS dans App Store Connect le 11/11 à 22:22, docs/reprise/REPRISE-MEGA-LOT-1111.md) :
 //   1 Business + Cloud · 2 Business · 3 Pro + Cloud · 4 Premium + Cloud · 5 Pro, Pro 2, Founder · 6 Premium Standard.
 // ⛔ Aucun montant inventé : chaque prix vient de la boutique (lib/prixBoutique.js prixAffiche) ; une option dont le prix
@@ -113,7 +114,8 @@ export function effetBoutique({ canal, sens, essaiEnCours = false }) {
     return { quand: 'maintenant', debit: 'prix_plein', essaiArrete: essaiEnCours === true, modeGoogle: null };
   }
   if (essaiEnCours === true) return { quand: 'maintenant', debit: 'prix_plein', essaiArrete: true, modeGoogle: MODES_GOOGLE.CHARGE_FULL_PRICE };
-  if (sens === 'montee') return { quand: 'maintenant', debit: 'prorata', essaiArrete: false, modeGoogle: MODES_GOOGLE.CHARGE_PRORATED_PRICE };
+  // (14/11/2026 13:00, décision 5 de Nico) Hors essai aussi, une montée Android = le prix entier maintenant (montant exact).
+  if (sens === 'montee') return { quand: 'maintenant', debit: 'prix_plein', essaiArrete: false, modeGoogle: MODES_GOOGLE.CHARGE_FULL_PRICE };
   return { quand: 'renouvellement', debit: 'rien_maintenant', essaiArrete: false, modeGoogle: MODES_GOOGLE.DEFERRED };
 }
 

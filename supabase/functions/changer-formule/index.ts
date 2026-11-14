@@ -26,7 +26,7 @@ import { prixStripe } from "../_shared/prix-stripe.ts";
 import { estFormuleCloud, essaiCloudAbonneStripe, metadonneesFormule, planTypeDeFormule } from "../_shared/formules-serveur.js";
 import { PALIER_DE_FORMULE } from "../_shared/formules-cloud.js";
 // (14/11/2026, bloc F) Changer de formule pendant un essai : la fenêtre, le devis exact, payé d'abord.
-import { changementAConfirmer, parametresChangement, requeteDevis, reponseConfirmation } from "../_shared/changement-formule.js";
+import { changementAConfirmer, parametresChangement, requeteDevis, reponseConfirmation, changerSansKlarna, MOYENS_SANS_KLARNA } from "../_shared/changement-formule.js";
 
 function prixConnus() {
   return prixStripe();
@@ -170,7 +170,7 @@ serve(async (req) => {
       }
       let maj: Stripe.Subscription;
       try {
-        maj = await stripe.subscriptions.update(cible.id, parametresChangement({ itemId, prix: prixVers, essai: true }) as Stripe.SubscriptionUpdateParams);
+        maj = await changerSansKlarna(stripe, cible, parametresChangement({ itemId, prix: prixVers, essai: true }) as Stripe.SubscriptionUpdateParams) as Stripe.Subscription;
       } catch (e) {
         console.error(`[changer-formule] ${user.id} : ${actuelle} → ${versF} pendant l'essai refusé par Stripe : ${(e as Error)?.message ?? e}`);
         return repondre({ ...etat(), error: "stripe_refus" }, 502);
@@ -178,7 +178,7 @@ serve(async (req) => {
       const facture = (maj.latest_invoice && typeof maj.latest_invoice === "object") ? maj.latest_invoice as Stripe.Invoice : null;
       if (maj.pending_update) {
         if (facture?.id) {
-          try { await stripe.invoices.update(facture.id, { auto_advance: false, metadata: { fillsell_upgrade_vers: planTypeDeFormule(versF) ?? "", fillsell_formule: versF, fillsell_user_id: user.id } }); }
+          try { await stripe.invoices.update(facture.id, { auto_advance: false, payment_settings: { payment_method_types: [...MOYENS_SANS_KLARNA] }, metadata: { fillsell_upgrade_vers: planTypeDeFormule(versF) ?? "", fillsell_formule: versF, fillsell_user_id: user.id } }); }
           catch (e) { console.error(`[changer-formule] facture ${facture.id} : métadonnées non posées : ${(e as Error)?.message ?? e}`); }
         }
         console.log(`[changer-formule] ${user.id} : ${actuelle} → ${versF} EN ATTENTE du paiement (facture ${facture?.id ?? "?"}) — rien n'a changé`);

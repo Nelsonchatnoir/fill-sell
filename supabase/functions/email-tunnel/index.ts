@@ -1742,7 +1742,8 @@ serve(async (req) => {
         const lang = langue(p.lang);
         // (11/11, offres Cloud) La formule lue à la source (Stripe, Apple, Google), l'essai d'un abonné, les 7 jours offerts.
         const m = mailRappelVeilleCloud({ lang, finIso: String(p.cloud_essai_fin), canal: (p.cloud_canal as string | null) ?? null, prix: lu.prix,
-          formule: (lu as { formule?: string | null }).formule ?? null, abonne: (lu as { abonne?: boolean }).abonne === true, ref: (p.cloud_ref as string | null) ?? null });
+          formule: (lu as { formule?: string | null }).formule ?? null, abonne: (lu as { abonne?: boolean }).abonne === true, ref: (p.cloud_ref as string | null) ?? null,
+          moyenPaiement: (lu as { moyen?: string | null }).moyen ?? null });
         const r = await envoyer({
           to: String(p.email), subject: m.sujet, html: m.html, userId: uid,
           type: TYPE_RAPPEL, categorie: CATEGORIE_RAPPEL as "support", dedup: DEDUP_RAPPEL as "reservation",

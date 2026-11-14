@@ -3357,7 +3357,8 @@ export default function App({ loginOnly = false }){
     // jeton de l'abonnement Play du groupe (pack compris) et le mode de remplacement qui fait ce que la fenêtre a dit —
     // avant, un Pro + Cloud qui prenait Pro ou Premium ouvrait un SECOND abonnement Google, et Business remplaçait le pack
     // en CHARGE_PRORATED_PRICE sans un mot sur le Cloud ni sur l'essai.
-    let modeRemplacementGoogle=2;
+    // (14/11/2026 13:00, décision 5 de Nico) Android : prix entier (5 = CHARGE_FULL_PRICE), jamais le prorata de Google.
+    let modeRemplacementGoogle=5;
     let changementProgramme=null;
     if(platform==='ios'||platform==='android'){
       let ch=null;
@@ -3383,7 +3384,7 @@ export default function App({ loginOnly = false }){
         await lancerAchatFormule(ch.cle,{dejaCloud:true,abonneBoutique:true,changement:ch},origine);
         return;
       }
-      if(ch.oldPurchaseToken){upgradeOldToken=ch.oldPurchaseToken;modeRemplacementGoogle=ch.replacementMode??2;}
+      if(ch.oldPurchaseToken){upgradeOldToken=ch.oldPurchaseToken;modeRemplacementGoogle=ch.replacementMode??5;}
       // La boutique appliquera le changement à l'échéance (Apple : descente ; Google : DEFERRED hors essai) : après la feuille,
       // « C'est noté : … commence le … », jamais l'attente d'un palier qui ne vient pas maintenant (ni « non confirmé »).
       if(ch.programme)changementProgramme={cle:ch.cle,date:ch.date??null};

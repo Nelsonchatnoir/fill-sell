@@ -23,7 +23,7 @@ import { vivantsBoutiques, vivantsStripe, decisionAchat, decisionSurLectures, co
 import { evenementDebutFormuleStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
 // (14/11/2026, bloc F) Changer de formule pendant un essai ou en perdant le Cloud : la fenêtre, le devis exact, payé d'abord.
-import { changementAConfirmer, parametresChangement, requeteDevis, reponseConfirmation, metadonneesApresMontee } from "../_shared/changement-formule.js";
+import { changementAConfirmer, parametresChangement, requeteDevis, reponseConfirmation, metadonneesApresMontee, SANS_KLARNA, MOYENS_SANS_KLARNA, changerSansKlarna } from "../_shared/changement-formule.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -417,6 +417,7 @@ async function acheterFormuleCloud(p: { formule: string; user: { id: string; ema
     const base = parametresCheckoutFormule({ formule, prixFormule, essai, userId: user.id });
     const session = await stripe.checkout.sessions.create({
       ...base,
+      ...SANS_KLARNA,
       customer: client,
       success_url: `https://fillsell.app/success?produit=${encodeURIComponent(formule)}${essai ? "&essai=1" : ""}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: "https://fillsell.app/cancel?session_id={CHECKOUT_SESSION_ID}",
@@ -476,13 +477,14 @@ async function acheterFormuleCloud(p: { formule: string; user: { id: string; ema
     console.log(`[checkout] ${user.id} : ${actuelleCible ?? "?"} → ${formule} ${chg.essai ? "PENDANT L'ESSAI " : ""}— fenêtre de confirmation (devis ${devis?.montant ?? "?"}), rien changé`);
     return rep(reponseConfirmation({ formule, devis, essai: chg.essai, perdCloud: chg.perdCloud }));
   }
-  const maj = await stripe.subscriptions.update(cible.id,
-    parametresChangement({ itemId: item.id, prix: prixFormule, essai: chg.essai }) as Stripe.SubscriptionUpdateParams);
+  const maj = await changerSansKlarna(stripe, cible,
+    parametresChangement({ itemId: item.id, prix: prixFormule, essai: chg.essai }) as Stripe.SubscriptionUpdateParams) as Stripe.Subscription;
   const facture = (maj.latest_invoice && typeof maj.latest_invoice === "object") ? maj.latest_invoice as Stripe.Invoice : null;
   if (maj.pending_update) {
     if (facture?.id) {
       try {
-        await stripe.invoices.update(facture.id, { auto_advance: false, metadata: { fillsell_upgrade_vers: planTypeDeFormule(formule) ?? "", fillsell_formule: formule, fillsell_user_id: user.id } });
+        // (14/11, décision 8 de Nico) La page de la facture ne propose jamais Klarna.
+        await stripe.invoices.update(facture.id, { auto_advance: false, payment_settings: { payment_method_types: [...MOYENS_SANS_KLARNA] }, metadata: { fillsell_upgrade_vers: planTypeDeFormule(formule) ?? "", fillsell_formule: formule, fillsell_user_id: user.id } });
       } catch (e) {
         console.error(`[checkout] facture ${facture.id} de ${formule} : métadonnées non posées : ${(e as Error)?.message ?? e}`);
       }
@@ -651,6 +653,7 @@ serve(async (req) => {
         authUser.id
       );
       const packSession = await stripe.checkout.sessions.create({
+        ...SANS_KLARNA,
         mode: "payment",
         line_items: [{ price: packPriceId, quantity: 1 }],
         // Champ « code promo » au Checkout (2026-07-26) — geste commercial
@@ -797,6 +800,7 @@ serve(async (req) => {
       const base = parametresCheckoutCloud({ prixCloud: cloudPriceId, essai, userId: authUser.id });
       const sessionCloud = await stripe.checkout.sessions.create({
         ...base,
+        ...SANS_KLARNA,
         customer: clientCloud,
         // (05/11 soir, lot « Ouverture du Cloud », point 5) Le retour dit « ton Cloud démarre » (jamais « plan Premium »).
         success_url: `https://fillsell.app/success?produit=cloud${essai ? "&essai=1" : ""}&session_id={CHECKOUT_SESSION_ID}`,
@@ -1035,8 +1039,8 @@ serve(async (req) => {
           });
         }
         // (14/11/2026, bloc F) Confirmé pendant un essai : l'essai s'arrête (trial_end « now »), payé avant d'être appliqué.
-        const upgraded = await stripe.subscriptions.update(target.id,
-          parametresChangement({ itemId: item.id, prix: priceId, essai: chgPalier.essai }) as Stripe.SubscriptionUpdateParams);
+        const upgraded = await changerSansKlarna(stripe, target,
+          parametresChangement({ itemId: item.id, prix: priceId, essai: chgPalier.essai }) as Stripe.SubscriptionUpdateParams) as Stripe.Subscription;
         const factureMontee = (upgraded.latest_invoice && typeof upgraded.latest_invoice === "object")
           ? upgraded.latest_invoice as Stripe.Invoice : null;
         if (upgraded.pending_update) {
@@ -1046,6 +1050,8 @@ serve(async (req) => {
             try {
               await stripe.invoices.update(factureMontee.id, {
                 auto_advance: false,
+                // (14/11, décision 8 de Nico) La page de la facture ne propose jamais Klarna.
+                payment_settings: { payment_method_types: [...MOYENS_SANS_KLARNA] },
                 metadata: { fillsell_upgrade_vers: planType, fillsell_user_id: authUser.id },
               });
             } catch (e) {
@@ -1126,6 +1132,7 @@ serve(async (req) => {
 
     const carte3ds = carte_3ds === true;
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      ...SANS_KLARNA,
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       // Champ « code promo » au Checkout (2026-07-26). L'upgrade Premium→Pro

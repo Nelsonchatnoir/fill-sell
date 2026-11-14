@@ -90,5 +90,30 @@ const TF = await import("../src/cloud/textesFormules.js");
 ok(typeof TF.textesFormules("fr").essaiContinue === "undefined" && /^Ton essai gratuit s'arrête : tu seras débité maintenant de 49,99 € pour Pro \+ Cloud\.$/.test(TF.textesFormules("fr").essaiArreteFormule("Pro + Cloud", "49,99 €")),
   "cartes : « Ton essai gratuit s'arrête : tu seras débité maintenant de … » (essaiContinue retiré)");
 
+console.log("5. Klarna retiré de tous les paiements Stripe (14/11 13:00, décision 8 de Nico)");
+const CF = await import("../supabase/functions/_shared/changement-formule.js");
+ok(JSON.stringify(CF.SANS_KLARNA) === '{"excluded_payment_method_types":["klarna"]}' && String(CF.MOYENS_SANS_KLARNA) === "card,link", "SANS_KLARNA (Checkout) et carte / Link (factures)");
+const creations = ccs.split("stripe.checkout.sessions.create(").length - 1;
+const sansKlarna = (ccs.match(/\.\.\.SANS_KLARNA,/g) ?? []).length;
+ok(creations === 6 && sansKlarna === 4 && /const sessionParams: Stripe\.Checkout\.SessionCreateParams = \{\n\s*\.\.\.SANS_KLARNA,/.test(ccs),
+  `chaque session Checkout exclut Klarna (6 créations : formule, pack, Cloud seul, palier et ses 2 reprises sur sessionParams)`, { creations, sansKlarna });
+ok(!/await stripe\.subscriptions\.update\([^)]*parametresChangement/.test(ccs) && (ccs.match(/changerSansKlarna\(stripe, /g) ?? []).length === 2
+  && /changerSansKlarna\(stripe, cible, parametresChangement/.test(cf), "chaque changement de formule confirmé passe par changerSansKlarna (jamais prélevé par Klarna)");
+ok((ccs.match(/payment_settings: \{ payment_method_types: \[\.\.\.MOYENS_SANS_KLARNA\] \}/g) ?? []).length === 2 && /payment_settings: \{ payment_method_types: \[\.\.\.MOYENS_SANS_KLARNA\] \}/.test(cf),
+  "la page d'une facture de changement à régler ne propose jamais Klarna");
+
+console.log("6. Décisions du 14/11 13:00 : la veille dit vrai (Pro + Cloud, 49,99 €, le vrai moyen de paiement)");
+const RV = await import("../supabase/functions/_shared/cloud-rappel-veille.js");
+const veille = (moyen) => RV.texteRappel({ lang: "fr", finIso: "2026-11-20T23:39:22Z", canal: "stripe", prix: { montant: 49.99, devise: "eur" }, formule: "pro_cloud", moyenPaiement: moyen }).paragraphes.join(" ");
+ok(/Pro \+ Cloud continue à partir de cette date, à 49,99\s€ par mois, prélevés par Klarna, le moyen de paiement que tu as enregistré\./.test(veille("klarna")),
+  "mail de la veille, abonnement payé par Klarna : « … 49,99 € par mois, prélevés par Klarna … » (jamais « la carte »)", veille("klarna"));
+ok(/prélevés sur la carte que tu as enregistrée\./.test(veille("card")) && /prélevés sur la carte que tu as enregistrée\./.test(veille(null)) && /sur le moyen de paiement que tu as enregistré\./.test(veille("sepa_debit")),
+  "carte (ou inconnu) : « la carte » comme avant ; un autre moyen : « le moyen de paiement que tu as enregistré »");
+ok(/expand\[\]=default_payment_method/.test(lire("supabase/functions/_shared/cloud-prix.js")) && /moyenPaiement: \(lu as \{ moyen\?: string \| null \}\)\.moyen \?\? null/.test(lire("supabase/functions/email-tunnel/index.ts")),
+  "le moyen est lu à la source (Stripe) et passé au mail de la veille");
+const tfx = await import("../src/cloud/textesFormules.js");
+ok(tfx.textesFormules("fr").finCanal.stripe === "Le montant est prélevé sur le moyen de paiement que tu as enregistré.", "feuille de la veille dans l'app : vraie pour la carte comme pour Klarna");
+ok(/r\?\.etat === 'annule' \|\| r\?\.etat === 'confirmation' \? 'question'/.test(lire("src/cloud/FinEssaiFormule.jsx")), "feuille de la veille : « Passer à … » pendant l'essai ouvre la fenêtre, jamais « le changement n'a pas pu se faire »");
+
 console.log(ko ? `\n${ko} échec(s) sur ${n}` : `\nOK ${n}/${n}`);
 process.exit(ko ? 1 : 0);

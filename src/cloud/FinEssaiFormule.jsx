@@ -61,7 +61,10 @@ export default function RappelVeilleFormule({ lang = 'fr', cloud, formule, quand
     setEtat('en_cours');
     try {
       const r = await actions.formule(basse, { descente: true });
-      setEtat(r?.etat === 'change' || r?.etat === 'programme' || r?.etat === 'redirige' ? 'change' : r?.etat === 'annule' ? 'question' : 'echec');
+      // (14/11/2026, bloc F) Pendant l'essai, la descente passe d'abord par la fenêtre du montant exact (« confirmation ») :
+      // la feuille reste sur sa question (la fenêtre prend la main), jamais « le changement n'a pas pu se faire ».
+      setEtat(r?.etat === 'change' || r?.etat === 'programme' || r?.etat === 'redirige' ? 'change'
+        : r?.etat === 'annule' || r?.etat === 'confirmation' ? 'question' : 'echec');
     } catch { setEtat('echec'); }
   };
   const arreter = async () => {

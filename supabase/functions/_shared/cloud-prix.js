@@ -264,10 +264,13 @@ export async function lirePrixCloud({ canal, ref, deps }) {
     if (canal === "stripe") {
       if (!/^sub_[A-Za-z0-9]+$/.test(r)) return muette(canal, "reference_illisible");
       if (!deps.cleStripe) return muette(canal, "cle_absente");
-      const res = await lire(`${STRIPE_API}/subscriptions/${r}`, { headers: { Authorization: `Bearer ${deps.cleStripe}` } });
+      // (14/11/2026, bloc F) Le moyen de paiement par défaut avec : le mail de la veille le nomme (jamais « la carte » pour Klarna).
+      const res = await lire(`${STRIPE_API}/subscriptions/${r}?expand[]=default_payment_method`, { headers: { Authorization: `Bearer ${deps.cleStripe}` } });
       if (!res.ok) return muette(canal, `stripe_http_${res.status ?? "?"}`);
       // (12/11, point 4a) L'environnement de l'abonnement relu : un abonnement du mode test n'a jamais de mail client.
-      return { ...prixDepuisStripe(res.corps, deps.prixStripe ?? null), environnement: res.corps?.livemode === false ? "test" : "production" };
+      const pm = res.corps?.default_payment_method;
+      const moyen = pm && typeof pm === "object" && typeof pm.type === "string" ? pm.type : null;
+      return { ...prixDepuisStripe(res.corps, deps.prixStripe ?? null), moyen, environnement: res.corps?.livemode === false ? "test" : "production" };
     }
     if (canal === "apple") {
       if (!/^\d+$/.test(r)) return muette(canal, "reference_illisible");

@@ -280,7 +280,7 @@ try {
   egal(ACH.lireReponseFormule({ url: 'https://checkout.stripe.com/x', formule: 'pro_cloud' }, 'pro_cloud', 'fr').etat, 'redirige', 'réponse qui porte la formule : la page de paiement s’ouvre');
   egal(ACH.lireReponseFormule({ upgraded: true, formule: 'pro_cloud' }, 'pro_cloud', 'fr').etat, 'change', 'abonné Stripe : changement sur le même abonnement');
   egal(ACH.lireReponseFormule({ error: 'abonnement_autre_canal', canal: 'apple' }, 'pro_cloud', 'fr').message, 'Le changement se fait dans ton abonnement App Store, sans second abonnement.', 'abonné App Store sur le web : le serveur refuse, l’écran le dit');
-  egal(ACH.modeRemplacement('app.fillsell.premium.standard', 'premium_cloud'), 2, 'Android Premium → Premium + Cloud : montée, prorata');
+  egal(ACH.modeRemplacement('app.fillsell.premium.standard', 'premium_cloud'), 5, 'Android Premium → Premium + Cloud : montée, prix entier (CHARGE_FULL_PRICE, décision du 14/11)');
   egal(ACH.modeRemplacement('app.fillsell.pro.cloud', 'premium_cloud'), 6, 'Android Pro + Cloud → Premium + Cloud : descente au renouvellement');
   egal(ACH.produitBoutiqueDe('business_cloud', 'android'), 'app.fillsell.business.cloud', 'le produit Google de Business + Cloud vient du contrat');
   const appels = [];

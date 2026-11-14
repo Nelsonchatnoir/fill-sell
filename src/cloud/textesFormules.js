@@ -47,9 +47,9 @@ const FR = {
   prorata: (date, p) => `Pas d'essai : la différence au prorata jusqu'à ta prochaine échéance${date ? ` du ${date}` : ''} est prélevée aujourd'hui sur ta carte${p ? `, puis ${p}/mois` : ''}.`,
   boutique: (b) => `Le changement se fait dans ton abonnement ${b}, sans second abonnement.`,
   // (13/11, point c de Nico) Abonné de la boutique de CE téléphone : aucun essai possible sans un binaire neuf ; le texte
-  // le dit, et quand part le prélèvement (Apple : montée immédiate ; Google : CHARGE_PRORATED_PRICE).
+  // le dit, et quand part le prélèvement (Apple : montée immédiate ; Google : CHARGE_FULL_PRICE depuis le 14/11, décision 5 de Nico).
   boutiqueMontee: (canal, p) => (canal === 'google'
-    ? `Pas d'essai : le changement se fait dans ton abonnement Google Play, sans second abonnement. La différence au prorata est prélevée aujourd'hui, puis ${p}/mois à ta date de renouvellement habituelle.`
+    ? `Pas d'essai : le changement se fait dans ton abonnement Google Play, sans second abonnement. ${p} sont prélevés aujourd'hui sur ton compte Google Play, puis chaque mois.`
     : `Pas d'essai : le changement se fait dans ton abonnement App Store, sans second abonnement. ${p} sont prélevés aujourd'hui sur ton compte Apple, puis chaque mois.`),
   // (13/11, décision de Nico : « on ouvre partout ») Les textes « Les formules avec Cloud y arrivent bientôt… » (abonné
   // App Store / Google Play, client du Cloud seul d'une boutique) sont RETIRÉS, avec « … passe par l'App Store : le passage
@@ -126,7 +126,9 @@ const FR = {
   // 1 200 publications, remontées illimitées, republication automatique ».
   finContenu: (nom, jauges, auto) => (auto ? `${nom} : ${jauges}, republication automatique` : `${nom} : ${jauges} par mois`),
   finArreter: 'Arrêter',
-  finCanal: { stripe: 'Le montant est prélevé sur ta carte.', apple: 'Le montant est prélevé sur ton compte Apple.', google: 'Le montant est prélevé sur ton compte Google Play.' },
+  // (14/11/2026, bloc F) Stripe : l'app ne connaît pas le moyen enregistré (carte, ou Klarna pour un abonnement d'avant le 14/11) :
+  // la phrase vraie dans les deux cas.
+  finCanal: { stripe: 'Le montant est prélevé sur le moyen de paiement que tu as enregistré.', apple: 'Le montant est prélevé sur ton compte Apple.', google: 'Le montant est prélevé sur ton compte Google Play.' },
   finChangeFait: (nom, date) => `C'est noté : ${nom} commence le ${date}.`,
   finChangeEchec: "Le changement n'a pas pu se faire. Rien n'a changé : réessaie dans un instant.",
   fermer: 'Fermer',
@@ -155,7 +157,7 @@ const EN = {
   prorata: (date, p) => `No trial: the prorated difference until your next billing date${date ? `, on ${date},` : ''} is charged to your card today${p ? `, then ${p}/mo` : ''}.`,
   boutique: (b) => `The change is made in your ${b} subscription, with no second subscription.`,
   boutiqueMontee: (canal, p) => (canal === 'google'
-    ? `No trial: the change is made in your Google Play subscription, with no second subscription. The prorated difference is charged today, then ${p}/mo on your usual renewal date.`
+    ? `No trial: the change is made in your Google Play subscription, with no second subscription. ${p} is charged to your Google Play account today, then every month.`
     : `No trial: the change is made in your App Store subscription, with no second subscription. ${p} is charged to your Apple Account today, then every month.`),
   essaiArreteFormule: (nom, p) => `Your free trial stops: you'll be charged ${p} now for ${nom}.`,
   essaiArrete: (nom, p) => `${nom} has no trial: your trial stops, ${p} is charged today.`,
@@ -207,7 +209,7 @@ const EN = {
   finPasser: (nom, p) => `Switch to ${nom} · ${p}/mo`,
   finContenu: (nom, jauges, auto) => (auto ? `${nom}: ${jauges}, automatic reposting` : `${nom}: ${jauges} a month`),
   finArreter: 'Stop',
-  finCanal: { stripe: 'The amount is charged to your card.', apple: 'The amount is charged to your Apple Account.', google: 'The amount is charged to your Google Play account.' },
+  finCanal: { stripe: 'The amount is charged to the payment method you saved.', apple: 'The amount is charged to your Apple Account.', google: 'The amount is charged to your Google Play account.' },
   finChangeFait: (nom, date) => `Noted: ${nom} starts on ${date}.`,
   finChangeEchec: 'The change could not be made. Nothing changed: try again in a moment.',
   fermer: 'Close',

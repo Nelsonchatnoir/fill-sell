@@ -227,7 +227,8 @@ try {
   });
   for (const [nomCas, canal, palier, f, attendu] of [
     ['iPhone, abonné Pro App Store (785352fe) → Pro + Cloud', 'apple', 'pro', 'pro_cloud', /Pas d'essai.*49,99 € sont prélevés aujourd'hui sur ton compte Apple/],
-    ['Android, abonné Premium Google Play → Premium + Cloud', 'google', 'premium', 'premium_cloud', /Pas d'essai.*différence au prorata est prélevée aujourd'hui, puis 34,99 €\/mois/],
+    // (14/11/2026 13:00, décision 5 de Nico) Android hors essai : le prix entier aujourd'hui (CHARGE_FULL_PRICE), plus le prorata.
+    ['Android, abonné Premium Google Play → Premium + Cloud', 'google', 'premium', 'premium_cloud', /Pas d'essai.*34,99 € sont prélevés aujourd'hui sur ton compte Google Play, puis chaque mois/],
   ]) {
     sur(nomCas, () => {
       poser(canal, canal === 'google' ? { essaisGoogle: [] } : { historique: HISTORIQUES.pro_en_cours_785352fe });

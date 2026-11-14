@@ -157,15 +157,27 @@ export function dateFin(iso, lang = 'fr') {
 // ── Les textes, par langue et par canal (07/11 soir) ──────────────────────────
 // Chaque phrase nomme « FillSell Cloud » ; aucune ne promet « rien n'est facturé » ; le montant n'apparaît que
 // s'il a été LU à la source (prix ≠ null), sinon la phrase renvoie à l'endroit où le canal affiche son prix.
+/**
+ * (14/11/2026, bloc F) OÙ STRIPE PRÉLÈVE, lu à la source (default_payment_method.type de l'abonnement, cloud-prix.js) :
+ * jamais « la carte » pour un abonnement payé par Klarna (13e274de) ; un autre moyen → « le moyen de paiement que tu as
+ * enregistré ». Rend la fin de « prélevés … » / « charged … ».
+ */
+export function ouStripePreleve(en, carte, moyen = null) {
+  const m = String(moyen ?? '').toLowerCase();
+  if (m === 'klarna') return en ? 'through Klarna, the payment method you saved' : 'par Klarna, le moyen de paiement que tu as enregistré';
+  if (m && m !== 'card') return en ? 'to the payment method you saved' : 'sur le moyen de paiement que tu as enregistré';
+  return en ? `to the card you saved${carte ? ` (ending in ${carte})` : ''}` : `sur la carte que tu as enregistrée${carte ? ` (finissant par ${carte})` : ''}`;
+}
+
 const TEXTES = {
   fr: {
     sujet: (quand) => `Ton essai FillSell Cloud se termine le ${quand}`,
     titre: 'Ton essai gratuit se termine bientôt',
     fin: (quand) => `Ton essai gratuit de FillSell Cloud se termine le ${quand} (heure de Paris).`,
     suite: {
-      stripe: (prix, carte) => (prix
-        ? `Si tu ne fais rien, FillSell Cloud continue à partir de cette date, à ${prix} par mois, prélevés sur la carte que tu as enregistrée${carte ? ` (finissant par ${carte})` : ''}.`
-        : `Si tu ne fais rien, FillSell Cloud continue à partir de cette date, au prix mensuel indiqué lors de ta souscription, prélevé sur la carte que tu as enregistrée${carte ? ` (finissant par ${carte})` : ''}.`),
+      stripe: (prix, carte, moyen = null) => (prix
+        ? `Si tu ne fais rien, FillSell Cloud continue à partir de cette date, à ${prix} par mois, prélevés ${ouStripePreleve(false, carte, moyen)}.`
+        : `Si tu ne fais rien, FillSell Cloud continue à partir de cette date, au prix mensuel indiqué lors de ta souscription, prélevé ${ouStripePreleve(false, carte, moyen)}.`),
       apple: (prix) => (prix
         ? `Si tu ne fais rien, FillSell Cloud continue à partir de cette date, à ${prix} par mois. C'est Apple qui prélève, sur le moyen de paiement de ton compte Apple.`
         : 'Si tu ne fais rien, FillSell Cloud continue à partir de cette date, au prix mensuel indiqué dans tes abonnements Apple. C\'est Apple qui prélève, sur le moyen de paiement de ton compte Apple.'),
@@ -191,9 +203,9 @@ const TEXTES = {
     titre: 'Your free trial ends soon',
     fin: (quand) => `Your free trial of FillSell Cloud ends on ${quand} (Paris time).`,
     suite: {
-      stripe: (prix, carte) => (prix
-        ? `If you do nothing, FillSell Cloud continues from that date at ${prix} a month, charged to the card you saved${carte ? ` (ending in ${carte})` : ''}.`
-        : `If you do nothing, FillSell Cloud continues from that date at the monthly price shown when you subscribed, charged to the card you saved${carte ? ` (ending in ${carte})` : ''}.`),
+      stripe: (prix, carte, moyen = null) => (prix
+        ? `If you do nothing, FillSell Cloud continues from that date at ${prix} a month, charged ${ouStripePreleve(true, carte, moyen)}.`
+        : `If you do nothing, FillSell Cloud continues from that date at the monthly price shown when you subscribed, charged ${ouStripePreleve(true, carte, moyen)}.`),
       apple: (prix) => (prix
         ? `If you do nothing, FillSell Cloud continues from that date at ${prix} a month. Apple charges it, to the payment method of your Apple Account.`
         : 'If you do nothing, FillSell Cloud continues from that date at the monthly price shown in your Apple subscriptions. Apple charges it, to the payment method of your Apple Account.'),
@@ -229,9 +241,10 @@ const LIENS_BOUTON = { stripe: LIEN_APP, apple: LIEN_ABONNEMENTS_APPLE, google: 
  *              paiement (Stripe seulement) — jamais stockés par le pool.
  * @param {{ lang?: string, finIso: string, canal?: string | null,
  *           prix?: { montant: number, devise: string } | null, carteFin?: string | null,
- *           formule?: string | null, abonne?: boolean, ref?: string | null }} p
+ *           formule?: string | null, abonne?: boolean, ref?: string | null, moyenPaiement?: string | null }} p
+ *   moyenPaiement : (14/11, bloc F) le type du moyen de paiement Stripe lu à la source (card, klarna…), ou null.
  */
-export function texteRappel({ lang = 'fr', finIso, canal = null, prix = null, carteFin = null, formule = null, abonne = false, ref = null }) {
+export function texteRappel({ lang = 'fr', finIso, canal = null, prix = null, carteFin = null, formule = null, abonne = false, ref = null, moyenPaiement = null }) {
   const en = lang === 'en';
   const T = TEXTES[en ? 'en' : 'fr'];
   const c = canalDuRappel(canal);
@@ -241,14 +254,14 @@ export function texteRappel({ lang = 'fr', finIso, canal = null, prix = null, ca
   // (11/11/2026, offres Cloud) Une formule avec Cloud (lue à la source), l'essai d'un abonné, ou 7 jours offerts.
   const offert = String(canal ?? '') === 'offert';
   if (offert || formule) {
-    return texteRappelFormule({ en, quand, montant, carte, c, formule: offert ? formuleDeRefOffert(ref) : formule, abonne, offert, boutique: offert ? boutiqueDeRefOffert(ref) : null });
+    return texteRappelFormule({ en, quand, montant, carte, c, formule: offert ? formuleDeRefOffert(ref) : formule, abonne, offert, boutique: offert ? boutiqueDeRefOffert(ref) : null, moyen: moyenPaiement });
   }
   return {
     sujet: T.sujet(quand),
     preheader: T.preheader(montant),
     titre: T.titre,
     // (08/11) Aligné sur les autres mails Cloud (_shared/cloud-mails.js) : « Salut, » en tête, signé Nico / FillSell.
-    paragraphes: [en ? 'Hi,' : 'Salut,', T.fin(quand), T.suite[c](montant, carte), T.arret[c], T.forfait],
+    paragraphes: [en ? 'Hi,' : 'Salut,', T.fin(quand), T.suite[c](montant, carte, moyenPaiement), T.arret[c], T.forfait],
     bouton: { texte: T.bouton[c], url: LIENS_BOUTON[c] },
     raisonEnvoi: T.raison,
     lienDesinscription: null,
@@ -279,7 +292,7 @@ const TEXTES_FORMULE = {
     sujetOffert: (q) => `Tes 7 jours de Cloud offerts se terminent le ${q}`,
     titre: 'Ton essai gratuit se termine bientôt',
     fin: (n, q) => `Ton essai gratuit de ${n} se termine le ${q} (heure de Paris).`,
-    suite: (n, p, c, carte) => `Si tu ne fais rien, ${n} continue à partir de cette date${p ? `, à ${p} par mois` : ', au prix mensuel indiqué lors de ta souscription'}, ${c === 'apple' ? 'prélevés sur ton compte Apple' : c === 'google' ? 'prélevés sur ton compte Google Play' : `prélevés sur la carte que tu as enregistrée${carte ? ` (finissant par ${carte})` : ''}`}.`,
+    suite: (n, p, c, carte, moyen = null) => `Si tu ne fais rien, ${n} continue à partir de cette date${p ? `, à ${p} par mois` : ', au prix mensuel indiqué lors de ta souscription'}, ${c === 'apple' ? 'prélevés sur ton compte Apple' : c === 'google' ? 'prélevés sur ton compte Google Play' : `prélevés ${ouStripePreleve(false, carte, moyen)}`}.`,
     autre: (a) => `Tu préfères ${a} ? Change en un geste dans l'app, Réglages → Abonnement.`,
     abonne: (palier, n, q) => `Le ${q}, ta formule ${palier} devient ${n}. La différence pour les jours restants jusqu'à ta prochaine échéance sera ajoutée à ta prochaine facture.`,
     rester: (palier) => `Tu préfères rester en ${palier} sans Cloud ? Dis-le avant cette date dans FillSell, Réglages → Abonnement : rien ne change alors.`,
@@ -296,7 +309,7 @@ const TEXTES_FORMULE = {
     sujetOffert: (q) => `Your 7 free days of Cloud end on ${q}`,
     titre: 'Your free trial ends soon',
     fin: (n, q) => `Your free trial of ${n} ends on ${q} (Paris time).`,
-    suite: (n, p, c, carte) => `If you do nothing, ${n} continues from that date${p ? ` at ${p} a month` : ' at the monthly price shown when you subscribed'}, ${c === 'apple' ? 'charged to your Apple Account' : c === 'google' ? 'charged to your Google Play account' : `charged to the card you saved${carte ? ` (ending in ${carte})` : ''}`}.`,
+    suite: (n, p, c, carte, moyen = null) => `If you do nothing, ${n} continues from that date${p ? ` at ${p} a month` : ' at the monthly price shown when you subscribed'}, ${c === 'apple' ? 'charged to your Apple Account' : c === 'google' ? 'charged to your Google Play account' : `charged ${ouStripePreleve(true, carte, moyen)}`}.`,
     autre: (a) => `Prefer ${a}? Switch in one tap in the app, Settings → Subscription.`,
     abonne: (palier, n, q) => `On ${q}, your ${palier} plan becomes ${n}. The difference for the days left until your next renewal will be added to your next invoice.`,
     rester: (palier) => `Prefer to stay on ${palier} without the Cloud? Say so before then in FillSell, Settings → Subscription: nothing changes then.`,
@@ -309,7 +322,7 @@ const TEXTES_FORMULE = {
     raison: (n) => `You are getting this email because you started a ${n} trial. It is billing information, so it is sent even if you unsubscribed from FillSell news.`,
   },
 };
-function texteRappelFormule({ en, quand, montant, carte, c, formule, abonne, offert, boutique }) {
+function texteRappelFormule({ en, quand, montant, carte, c, formule, abonne, offert, boutique, moyen = null }) {
   const T = TEXTES_FORMULE[en ? 'en' : 'fr'];
   const B = TEXTES[en ? 'en' : 'fr'];
   const f = essaiPossiblePourFormule(formule) ? formule : null;
@@ -329,7 +342,7 @@ function texteRappelFormule({ en, quand, montant, carte, c, formule, abonne, off
       bouton: { texte: B.bouton.stripe, url: LIEN_APP }, raisonEnvoi: T.raison(n), prixAffiche: null };
   }
   return { ...commun, sujet: T.sujet(n, quand), preheader: T.preheader(n, montant), titre: T.titre,
-    paragraphes: [salut, T.fin(n, quand), T.suite(n, montant, c, carte), ...(f && AUTRE_FORMULE_VEILLE[f] ? [T.autre(nomDeFormule(AUTRE_FORMULE_VEILLE[f]))] : []), B.arret[c]],
+    paragraphes: [salut, T.fin(n, quand), T.suite(n, montant, c, carte, moyen), ...(f && AUTRE_FORMULE_VEILLE[f] ? [T.autre(nomDeFormule(AUTRE_FORMULE_VEILLE[f]))] : []), B.arret[c]],
     bouton: { texte: B.bouton[c], url: c === 'google' && f ? lienAbonnementGoogle(f) : LIENS_BOUTON[c] }, raisonEnvoi: T.raison(n) };
 }
 /** (13/11, « la veille pareil sur les 3 canaux ») La page Google Play de l'abonnement de CETTE formule : le bouton de la

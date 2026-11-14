@@ -78,7 +78,8 @@ export const initIAP = async () => {
 // (11/11/2026, formules avec Cloud) `replacementMode` : 2 par défaut (CHARGE_PRORATED_PRICE, la montée d'avant, inchangée) ;
 // 6 = DEFERRED (Billing 8.3.0 ; l'énumération TypeScript du module dit 4, docs/enquetes/c4-descente-0911) pour une
 // descente qui prend effet au renouvellement (Pro + Cloud → Premium + Cloud à la fin de l'essai). Android uniquement.
-export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null, replacementMode = 2, offreEssai = null } = {}) => {
+// (14/11/2026 13:00, décision 5 de Nico) Défaut 5 = CHARGE_FULL_PRICE : le prix entier, montant toujours exact (avant : 2).
+export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null, replacementMode = 5, offreEssai = null } = {}) => {
   try {
     const { products } = await NativePurchases.getProducts({
       productIdentifiers: [productId],

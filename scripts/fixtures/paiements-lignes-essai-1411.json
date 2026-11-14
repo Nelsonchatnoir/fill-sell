@@ -1,5 +1,5 @@
 {
-  "_lu": "14/11/2026, bloc F — décision de Nico : changer de formule pendant un essai, ou en perdant le Cloud. Lignes relues une à une : create-checkout-session — la FENÊTRE d'abord (changementAConfirmer : sans confirme_changement, rien ne change, la réponse porte le devis exact d'invoices.retrieveUpcoming, et la même formule « + Cloud » si le Cloud se perdait ; devis illisible → 503, rien changé) ; confirmé : parametresChangement (always_invoice + pending_if_incomplete comme avant, trial_end « now » si l'abonnement est en essai) ; hors essai et sans Cloud, une montée de palier « in situ » garde EXACTEMENT les mêmes paramètres Stripe et le même crédit ; métadonnées posées clé par clé (Stripe fusionne : `formule` effacée quand on quitte une formule avec Cloud) ; aucun crédit du mois sur un abonnement encore en essai. stripe-webhook — formule et plan_type réalignés en UN appel, seulement les clés qui changent (avant : deux appels qui recopiaient chacun l'instantané, le second remettait la `formule` effacée par le premier). Verrous : selftest:changement-formule-essai, parcours Stripe en mode test scripts/stripe-test/changement-formule-essai-test.mjs (8/8).",
+  "_lu": "14/11/2026, bloc F — décision de Nico : changer de formule pendant un essai, ou en perdant le Cloud. Lignes relues une à une : create-checkout-session — la FENÊTRE d'abord (changementAConfirmer : sans confirme_changement, rien ne change, la réponse porte le devis exact d'invoices.retrieveUpcoming, et la même formule « + Cloud » si le Cloud se perdait ; devis illisible → 503, rien changé) ; confirmé : parametresChangement (always_invoice + pending_if_incomplete comme avant, trial_end « now » si l'abonnement est en essai) ; hors essai et sans Cloud, une montée de palier « in situ » garde EXACTEMENT les mêmes paramètres Stripe et le même crédit ; métadonnées posées clé par clé (Stripe fusionne : `formule` effacée quand on quitte une formule avec Cloud) ; aucun crédit du mois sur un abonnement encore en essai. stripe-webhook — formule et plan_type réalignés en UN appel, seulement les clés qui changent (avant : deux appels qui recopiaient chacun l'instantané, le second remettait la `formule` effacée par le premier). Verrous : selftest:changement-formule-essai, parcours Stripe en mode test scripts/stripe-test/changement-formule-essai-test.mjs (8/8). (14/11 13:00, décision 8 de Nico) Klarna retiré : chaque session Checkout exclut Klarna (...SANS_KLARNA), un changement confirmé passe par changerSansKlarna (jamais prélevé par Klarna), la page d'une facture de changement à régler ne propose que carte et Link (payment_settings) — prouvé en mode test (12/12).",
   "supabase/functions/stripe-webhook/index.ts": [
     "+import { metadonneesARealigner } from \"../_shared/changement-formule.js\";",
     "-if (plan && subscription.metadata?.plan_type !== plan) {",
@@ -82,6 +82,17 @@
     "+? new Date(upgraded.current_period_end * 1000).toISOString()",
     "+: null,",
     "+p_source: \"payment\",",
-    "+});"
+    "+});",
+    "+import { changementAConfirmer, parametresChangement, requeteDevis, reponseConfirmation, metadonneesApresMontee, SANS_KLARNA, MOYENS_SANS_KLARNA, changerSansKlarna } from \"../_shared/changement-formule.js\";",
+    "+...SANS_KLARNA,",
+    "+const maj = await changerSansKlarna(stripe, cible,",
+    "+parametresChangement({ itemId: item.id, prix: prixFormule, essai: chg.essai }) as Stripe.SubscriptionUpdateParams) as Stripe.Subscription;",
+    "+await stripe.invoices.update(facture.id, { auto_advance: false, payment_settings: { payment_method_types: [...MOYENS_SANS_KLARNA] }, metadata: { fillsell_upgrade_vers: planTypeDeFormule(formule) ?? \"\", fillsell_formule: formule, fillsell_user_id: user.id } });",
+    "+...SANS_KLARNA,",
+    "+...SANS_KLARNA,",
+    "+const upgraded = await changerSansKlarna(stripe, target,",
+    "+parametresChangement({ itemId: item.id, prix: priceId, essai: chgPalier.essai }) as Stripe.SubscriptionUpdateParams) as Stripe.Subscription;",
+    "+payment_settings: { payment_method_types: [...MOYENS_SANS_KLARNA] },",
+    "+...SANS_KLARNA,"
   ]
 }

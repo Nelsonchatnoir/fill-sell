@@ -55,11 +55,12 @@ export function lireReponseFormule(d, formule, lang = 'fr') {
   return { etat: 'erreur', message: T.achatEchec };
 }
 
-/** Montée ou descente d'un abonnement Play vers une formule : 2 = prorata tout de suite, 6 = au renouvellement (pur). */
+/** Montée ou descente d'un abonnement Play vers une formule : 5 = prix entier tout de suite (CHARGE_FULL_PRICE, décision 5
+ *  de Nico du 14/11 : le montant affiché toujours exact — avant : 2, prorata), 6 = au renouvellement (pur). */
 export function modeRemplacement(produitActuel, formuleCible) {
   const actuel = formuleDuProduitBoutique(produitActuel)
     ?? (/\.business\./.test(String(produitActuel)) ? 'business' : /\.pro2?\./.test(String(produitActuel)) ? 'pro' : 'premium');
-  return (RANG_PRIX[formuleCible] ?? 0) > (RANG_PRIX[actuel] ?? 0) ? 2 : 6;
+  return (RANG_PRIX[formuleCible] ?? 0) > (RANG_PRIX[actuel] ?? 0) ? 5 : 6;
 }
 
 /**

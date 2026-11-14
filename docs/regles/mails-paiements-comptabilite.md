@@ -708,3 +708,26 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   maintenant (avant : « Premium not confirmed by server » après une descente Apple).
 - Verrou : `npm run selftest:changement-formule-boutique` (67 rouges sur 5b395f6, 68 verts après ; le seul vert d’avant : la fin d’essai inchangée). `formules-essai-changement` mis à
   jour (note des cartes Android pendant l'essai : prix entier, plus « une somme au prorata »).
+
+## ⛔ 14/11/2026 13:00 — décisions de Nico sur le bloc F : Klarna retiré, Android au prix entier, la veille dit le vrai moyen
+- **Klarna retiré de TOUS les paiements Stripe** (abonnements, essais, packs, changements de formule) : chaque session
+  Checkout porte `SANS_KLARNA` (`excluded_payment_method_types: ["klarna"]`, `_shared/changement-formule.js`) ; un
+  changement de formule confirmé passe par `changerSansKlarna` (moyen enregistré = Klarna : l'abonnement est restreint à
+  carte / Link le temps du changement — `pending_if_incomplete` refuse `payment_settings` —, la facture du changement ne
+  part donc jamais sur Klarna et reste à régler sur sa page, puis le réglage d'avant est rendu) ; la page d'une facture de
+  changement à régler ne propose que carte et Link. Les abonnements EXISTANTS payés par Klarna (13e274de compris) ne sont
+  pas touchés : leurs renouvellements restent prélevés normalement. Preuve : `scripts/stripe-test/changement-formule-essai-test.mjs`
+  (mode test, 12/12) ; verrou `selftest:changement-formule-essai` § 5.
+- **Android, hors essai aussi : le prix entier** (`CHARGE_FULL_PRICE`, 5) pour une montée, pour que le montant affiché soit
+  toujours exact (avant : `CHARGE_PRORATED_PRICE`, une différence calculée par Google) ; la descente hors essai reste à
+  l'échéance (`DEFERRED`, rien prélevé aujourd'hui). iPhone : la règle d'Apple, annoncée dans la fenêtre. Aucun essai en
+  bac à sable sur le compte de Nico.
+- **La veille dit vrai** : le mail lit le moyen de paiement Stripe à la source (`default_payment_method.type`) — « prélevés
+  par Klarna, le moyen de paiement que tu as enregistré », jamais « la carte » pour un Klarna ; la feuille de l'app dit
+  « Le montant est prélevé sur le moyen de paiement que tu as enregistré. » (vrai pour la carte comme pour Klarna). Pendant
+  un essai, « Passer à … » de la feuille ouvre la fenêtre du montant exact (plus jamais « le changement n'a pas pu se faire »).
+- Textes GARDÉS tels quels (Nico) : « Sans Cloud : tu ne pourras plus publier sans ordinateur. » (c'est vrai) ; l'encart
+  « version pour ordinateur » de Me connecter et « Ta connexion continue sur ton autre écran » validés.
+- Lecture des descriptions : le Cloud fonctionne comme l'extension sur PC — même réglage (`lecture_fond_mode`), même code ;
+  aucun mode à part pour le Cloud.
+- Business + Cloud : aucune exception d'essai — la fenêtre, 79,99 € tout de suite.

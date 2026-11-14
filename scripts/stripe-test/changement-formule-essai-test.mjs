@@ -9,7 +9,7 @@
 // ⛔ Jamais le mode réel : tout objet rendu avec livemode = true arrête le banc. Rien n'est écrit en base FillSell.
 // Ménage : horloges de test (clients, abonnements, factures avec elles) effacées, produit désactivé.
 import { spawnSync } from 'node:child_process';
-import { changementAConfirmer, parametresChangement, requeteDevis } from '../../supabase/functions/_shared/changement-formule.js';
+import { changementAConfirmer, parametresChangement, requeteDevis, SANS_KLARNA, MOYENS_SANS_KLARNA, changerSansKlarna } from '../../supabase/functions/_shared/changement-formule.js';
 
 const CLI = process.env.STRIPE_CLI || 'stripe';
 if (spawnSync(CLI, ['version'], { encoding: 'utf8' }).status !== 0) { console.error('Stripe CLI introuvable (stripe login).'); process.exit(2); }
@@ -79,6 +79,28 @@ try {
   const t = essaiProCloud('3ds', 'pm_card_authenticationRequired');
   const mt = changer(t.c, t.sub);
   ok(mt.status === 'trialing' && mt.items.data[0].price.id === proCloud.id && Boolean(mt.pending_update), 'toujours en essai, rien appliqué');
+
+  // ── (14/11/2026 13:00, décision 8 de Nico) KLARNA RETIRÉ DE TOUS LES PAIEMENTS STRIPE ──────────────────────────────
+  console.log('5. Klarna : jamais proposé, jamais prélevé pour un changement');
+  const ck = stripe('POST', 'checkout/sessions', { mode: 'subscription', line_items: [{ price: proCloud.id, quantity: 1 }], success_url: 'https://fillsell.app/ok', ...SANS_KLARNA });
+  ok(Array.isArray(ck.payment_method_types) && !ck.payment_method_types.includes('klarna') && ck.payment_method_types.includes('card'), 'Checkout : Klarna absent (SANS_KLARNA), la carte proposée', ck.payment_method_types);
+  try { stripe('POST', `checkout/sessions/${ck.id}/expire`); } catch { /* rien */ }
+  const fr = stripe('POST', `invoices/${mr.latest_invoice.id}`, { payment_settings: { payment_method_types: [...MOYENS_SANS_KLARNA] } });
+  ok(String(fr.payment_settings?.payment_method_types) === 'card,link', 'la page d’une facture de changement à régler : carte et Link seulement', fr.payment_settings);
+  // La voie « moyen enregistré = Klarna » (forcée sur une carte de test : un Klarna de test exige une redirection) : le
+  // changement passe restreint à carte / Link, puis l'abonnement retrouve son réglage d'avant (renouvellements inchangés).
+  const k = essaiProCloud('klarna', 'pm_card_visa');
+  const stripeSdk = { subscriptions: {
+    retrieve: async (id) => ({ ...stripe('GET', `subscriptions/${id}`), default_payment_method: { type: 'klarna' } }),
+    update: async (id, p) => stripe('POST', `subscriptions/${id}`, p) } };
+  const appels = [];
+  const espion = { subscriptions: { retrieve: stripeSdk.subscriptions.retrieve, update: async (id, p) => { appels.push(Object.keys(p)); return stripeSdk.subscriptions.update(id, p); } } };
+  const mk = await changerSansKlarna(espion, k.sub, parametresChangement({ itemId: k.sub.items.data[0].id, prix: business.id, essai: true }));
+  const reluK = stripe('GET', `subscriptions/${k.sub.id}`);
+  ok(appels.length === 3 && appels[0].includes('payment_settings') && appels[1].includes('items') && appels[2].includes('payment_settings'),
+    'Klarna enregistré : restreint à carte / Link, le changement, puis le réglage d’avant rendu', appels);
+  ok(mk.latest_invoice?.status === 'paid' && reluK.items.data[0].price.id === business.id && (reluK.payment_settings?.payment_method_types ?? null) === null,
+    'le changement payé par un moyen permis, l’abonnement rendu à son réglage d’avant (ses renouvellements comme avant)', { facture: mk.latest_invoice?.status, types: reluK.payment_settings?.payment_method_types });
 } catch (e) {
   ko++; console.error('✗ banc interrompu :', e.message);
 } finally {
