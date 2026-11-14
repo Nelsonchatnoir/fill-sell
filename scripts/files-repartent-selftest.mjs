@@ -110,7 +110,10 @@ const iP = gpj.indexOf("let heldPipeline = 0;");
 const blocP = gpj.slice(iP, gpj.indexOf("heldPipeline = avant - out.length;", iP));
 ok(iP > 0 && /const placeDansLaFile = \(j: \{ platform_fields: unknown; created_at\?: unknown \}\) => \{/.test(blocP)
   && /return Math\.max\(Number\.isFinite\(naa\) \? naa : 0, Number\.isFinite\(cree\) \? cree : 0\);/.test(blocP)
-  && /cands\.reduce\(\(a, b\) => \(placeDansLaFile\(b\) < placeDansLaFile\(a\) \? b : a\)\)/.test(blocP)
+  // (14/11/2026, urgence af37fa49) Le choix vit dans _shared/file-sans-blocage.js (candidatRepublication : la plus ancienne
+  // place, jamais une republication retenue) — selftest:file-sans-blocage.
+  && /candidatRepublication\(filePipeline\.filter\([\s\S]{0,160}\{ placeDansLaFile, enAttente: enAttenteProgrammee, pfOf \}\)/.test(blocP)
+  && /libres\.reduce\(\(a, b\) => \(placeDansLaFile\(b\) < placeDansLaFile\(a\) \? b : a\)\)/.test(fs.readFileSync(new URL("../supabase/functions/_shared/file-sans-blocage.js", import.meta.url), "utf8"))
   && !/filePipeline\.find\(/.test(blocP), "le candidat = la plus ancienne place dans la file (création, ou fin d'attente)");
 // La file de Rémi rejouée : une tâche en échec (404, attente échue à 12:46) et
 // cinq tâches jamais servies, créées le 07/10 après elle.

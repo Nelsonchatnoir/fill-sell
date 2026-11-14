@@ -314,7 +314,7 @@ test('(d, remplacé le 07/11 — décision 2 de Nico : « plus de plafond en dol
 
 // ── Point 8 : « Me connecter » — la page de connexion, ses fournisseurs (Google, Apple, Facebook, Kiabi) COMME
 // AUJOURD'HUI (ordre de Nico, 05/11 soir : « ne casse rien, la connexion doit passer par Google, Apple… »), rien d'autre ──
-import { navigationPermise } from '../src/plateformes.js';
+import { navigationPermise, retourDeclare } from '../src/plateformes.js';
 
 test('point 8 — Me connecter : connexion par Google, Apple, Facebook, Kiabi intacte ; aucune page hors connexion', () => {
   // Les fournisseurs de connexion : leurs pages de connexion passent, comme avant.
@@ -322,6 +322,11 @@ test('point 8 — Me connecter : connexion par Google, Apple, Facebook, Kiabi in
   assert.equal(navigationPermise('depop', 'https://appleid.apple.com/auth/authorize?client_id=x'), true, 'Apple');
   assert.equal(navigationPermise('vinted', 'https://www.facebook.com/v18.0/dialog/oauth?client_id=x'), true, 'Facebook');
   assert.equal(navigationPermise('beebs', 'https://auth.kiabi.com/connect/authorize?x=1'), true, 'Kiabi (Beebs)');
+  // (14/11/2026) Le vrai hôte de « Continuer avec Kiabi », relu sur cloud-2 (5 connexions Beebs perdues chez af37fa49), et
+  // son retour déclaré (le gestionnaire Firebase de Beebs) permis pour ce « Me connecter ».
+  const kiabi = 'https://identity.kiabi.com/oauth/authorize?client_id=x&redirect_uri=https%3A%2F%2Fbabytouch-782e4.firebaseapp.com%2F__%2Fauth%2Fhandler';
+  assert.equal(navigationPermise('beebs', kiabi), true, 'Kiabi (Beebs) — identity.kiabi.com');
+  assert.deepEqual(retourDeclare(kiabi), { hote: 'babytouch-782e4.firebaseapp.com', chemin: '/__/auth/handler' }, 'le retour vers Beebs après Kiabi');
   // Le retour déclaré par le fournisseur (redirect_uri) est permis à l'identique, quel que soit l'hôte de la plateforme.
   assert.equal(navigationPermise('depop', 'https://api.depop.com/api/v1/social/callback', [{ hote: 'api.depop.com', chemin: '/api/v1/social/callback' }]), true, 'retour déclaré');
   // Les pages de la plateforme hors connexion : jamais (pas de navigation libre).

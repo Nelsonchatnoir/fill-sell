@@ -31,7 +31,9 @@ const SSO = Object.freeze([
   [/^gds\.google\.com$/, [/^\/web\//]],
   [/^[a-z0-9-]+\.firebaseapp\.com$/, [/^\/__\/auth\//]], [/^[a-z0-9-]+\.web\.app$/, [/^\/__\/auth\//]],
   // (30/10) Kiabi : « Connexion avec Kiabi » sur la page de connexion de Beebs — ses hôtes d'authentification seulement.
-  [/^(auth|secure|connect|accounts|login|id)\.kiabi\.com$/, null], [/^www\.kiabi\.com$/, [/^\/(login|connexion|auth|oauth|account\/login)/i]],
+  // (14/11/2026, urgence af37fa49 : 5 connexions Beebs perdues) Le VRAI hôte, relu sur cloud-2 : identity.kiabi.com/oauth/
+  // authorize (les hôtes du 30/10 avaient été devinés) — refusé, la fenêtre Kiabi se fermait aussitôt (ERR_BLOCKED_BY_CLIENT).
+  [/^(auth|secure|connect|accounts|login|id|identity)\.kiabi\.com$/, null], [/^www\.kiabi\.com$/, [/^\/(login|connexion|auth|oauth|account\/login)/i]],
   [/^(www|m|web)\.facebook\.com$/, [/^\/login/, /^\/dialog\/oauth/, /^\/v\d+\.\d+\/dialog\/oauth/, /^\/checkpoint/, /^\/two_step_verification/, /^\/cookie\/consent/, /^\/privacy\/consent/, /^\/auth/]],
 ]);
 /** Une page d'un fournisseur de connexion, et SEULEMENT ses pages de connexion. */

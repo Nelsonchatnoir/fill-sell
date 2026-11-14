@@ -1,4 +1,6 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
+// (14/11/2026, urgence af37fa49) Une plateforme bloquée ne bloque jamais les autres : la place des republications, le tour des programmées.
+import { candidatRepublication, plateformesHorsDuPosteCloud } from "../_shared/file-sans-blocage.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
 import { pauseParPlateforme, pauseDEnsemble } from "../_shared/pause-respiration.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, MSG_LBC_IDENTITE_RETENUE, dernierMurIdentite, candidatRetenueIdentite, partagerCandidatsIdentite, champsRetenueIdentite } from "../_shared/lbc-identite.js";
@@ -3075,6 +3077,15 @@ serve(async (req) => {
           // (01/11 soir, gjehly) Une plateforme bloquée ne bloque jamais les autres : sa place passe à la suivante d'une
           // autre plateforme (_shared/publication-programmee.js, plateformesEnRepriseTechnique).
           const plateformesBloquees = plateformesEnRepriseTechnique(lignes);
+          // (14/11/2026, urgence af37fa49) Au POSTE CLOUD, une plateforme non connectée au Cloud ne prend jamais le tour : servie
+          // puis écartée par le routage (« laissé à l'ordinateur »), elle laissait la place vide jusqu'à la rotation.
+          if (posteCloud) {
+            try {
+              const adminTour = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+              const { data: coffreT, error: eCoffreT } = await adminTour.from("cloud_coffre").select("plateforme").eq("user_id", user.id).eq("connecte", true);
+              if (!eCoffreT) for (const p of plateformesHorsDuPosteCloud({ posteCloud, connectees: ((coffreT ?? []) as Array<{ plateforme: string }>).map((c) => c.plateforme) })) plateformesBloquees.add(p);
+            } catch (_e) { /* illisible : le tour comme avant */ }
+          }
           // (01/11 nuit, décision de Nico) Le tour strict par plateforme : la file du COMPTE, toutes plateformes (eBay par
           // l'API compris, servi par ebay-api-worker sur le même état) — même lecture des deux côtés, même tour.
           const { data: enFileProg, error: eFile } = await userClient.from("cross_post_jobs")
@@ -10332,9 +10343,11 @@ serve(async (req) => {
         const garder = new Set<string>();
         for (const pfm of new Set(filePipeline.map((j) => String(j.platform)))) {
           for (const etape of ["captured", "a_capturer"]) {
-            const cands = filePipeline.filter((j) => String(j.platform) === pfm && stepOf(j) === etape && !enAttenteProgrammee(j));
-            if (!cands.length) continue;
-            const cand = cands.reduce((a, b) => (placeDansLaFile(b) < placeDansLaFile(a) ? b : a));
+            // (14/11/2026, urgence af37fa49) Une republication RETENUE (annonce hors ligne d'un frère) ne prend jamais la
+            // place de sa plateforme : retenue plus bas, elle gardait la place sans partir, et aucune autre n'allait au bout.
+            const cand = candidatRepublication(filePipeline.filter((j) => String(j.platform) === pfm && stepOf(j) === etape),
+              { placeDansLaFile, enAttente: enAttenteProgrammee, pfOf });
+            if (!cand) continue;
             garder.add(String(cand.id));
           }
         }

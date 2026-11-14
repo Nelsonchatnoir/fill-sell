@@ -492,6 +492,7 @@
     "selftest:taille-unique-bijou": "node scripts/taille-unique-bijou-selftest.mjs",
     "selftest:lecture-devant": "node --import ./scripts/loader-ext.mjs scripts/lecture-devant-selftest.mjs",
     "selftest:ip-sante-sans-ebay": "node scripts/ip-sante-sans-ebay-selftest.mjs",
+    "selftest:file-sans-blocage": "node scripts/file-sans-blocage-selftest.mjs",
     "selftest:vente-une-seule-fois": "node scripts/vente-une-seule-fois-selftest.mjs",
     "selftest:marque-italique-entiere": "node scripts/marque-italique-entiere-selftest.mjs",
     "selftest:depop-rayon": "node scripts/depop-rayon-selftest.mjs",
