@@ -1,0 +1,138 @@
+diff --git a/android/app/build.gradle b/android/app/build.gradle
+index 2af3c27..7863f03 100644
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -154,6 +154,9 @@ dependencies {
+     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+     implementation project(':capacitor-android')
++    // (14/11/2026, bloc E1) Install Referrer API (developer.android.com/google/play/installreferrer/library) :
++    // InstallReferrerPlugin.java relit la campagne de l'installation. Fermé côté app (PLAY_REFERRER_BINAIRE_MIN null).
++    implementation "com.android.installreferrer:installreferrer:2.2"
+     testImplementation "junit:junit:$junitVersion"
+     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+diff --git a/android/app/src/main/java/app/fillsell/app/InstallReferrerPlugin.java b/android/app/src/main/java/app/fillsell/app/InstallReferrerPlugin.java
+new file mode 100644
+index 0000000..617f334
+--- /dev/null
++++ b/android/app/src/main/java/app/fillsell/app/InstallReferrerPlugin.java
+@@ -0,0 +1,97 @@
++package app.fillsell.app;
++
++import com.android.installreferrer.api.InstallReferrerClient;
++import com.android.installreferrer.api.InstallReferrerStateListener;
++import com.android.installreferrer.api.ReferrerDetails;
++import com.getcapacitor.JSObject;
++import com.getcapacitor.Plugin;
++import com.getcapacitor.PluginCall;
++import com.getcapacitor.PluginMethod;
++import com.getcapacitor.annotation.CapacitorPlugin;
++import java.util.concurrent.atomic.AtomicBoolean;
++
++/**
++ * La campagne de l'installation, rendue par Google Play (Install Referrer API) — 14/11/2026, bloc E1.
++ *
++ * La pub Meta envoie l'Android sur Google Play avec ses UTM dans `referrer` (site/gabarits/installer.mjs) ; ce module
++ * les relit, UNE fois, pour que l'inscription porte la campagne (src/utils/acquisition.js, enrichirSourceAndroid).
++ * Côté app, l'appel est fermé tant que PLAY_REFERRER_BINAIRE_MIN vaut null : ce module, présent dans le binaire, ne
++ * fait rien tant qu'on ne l'appelle pas.
++ *
++ * Rend TOUJOURS { etat } et ne rejette jamais (une mesure ne bloque rien) :
++ *   ok           → { etat: "ok", referrer, clic, installation } (secondes)
++ *   indisponible → l'API n'existe pas sur ce Play Store (FEATURE_NOT_SUPPORTED) ou le client ne se construit pas
++ *   reessayer    → service indisponible, déconnecté, ou toute autre erreur : l'app retente au lancement suivant
++ * Une seule réponse par appel (AtomicBoolean) ; la connexion est toujours fermée (endConnection).
++ * Rien d'autre n'est lu ni transmis. Verrou : scripts/acquisition-meta-selftest.mjs.
++ */
++@CapacitorPlugin(name = "InstallReferrer")
++public class InstallReferrerPlugin extends Plugin {
++
++    @PluginMethod
++    public void lire(final PluginCall call) {
++        final AtomicBoolean rendu = new AtomicBoolean(false);
++        final InstallReferrerClient client;
++        try {
++            client = InstallReferrerClient.newBuilder(getContext()).build();
++        } catch (Exception e) {
++            rendre(call, rendu, etat("indisponible"));
++            return;
++        }
++        try {
++            client.startConnection(
++                new InstallReferrerStateListener() {
++                    @Override
++                    public void onInstallReferrerSetupFinished(int code) {
++                        JSObject r;
++                        if (code == InstallReferrerClient.InstallReferrerResponse.OK) {
++                            try {
++                                ReferrerDetails d = client.getInstallReferrer();
++                                String referrer = d.getInstallReferrer();
++                                r = etat("ok");
++                                r.put("referrer", referrer == null ? "" : referrer);
++                                r.put("clic", d.getReferrerClickTimestampSeconds());
++                                r.put("installation", d.getInstallBeginTimestampSeconds());
++                            } catch (Exception e) {
++                                r = etat("reessayer");
++                            }
++                        } else if (code == InstallReferrerClient.InstallReferrerResponse.FEATURE_NOT_SUPPORTED) {
++                            r = etat("indisponible");
++                        } else {
++                            r = etat("reessayer");
++                        }
++                        fermer(client);
++                        rendre(call, rendu, r);
++                    }
++
++                    @Override
++                    public void onInstallReferrerServiceDisconnected() {
++                        fermer(client);
++                        rendre(call, rendu, etat("reessayer"));
++                    }
++                }
++            );
++        } catch (Exception e) {
++            fermer(client);
++            rendre(call, rendu, etat("reessayer"));
++        }
++    }
++
++    private static JSObject etat(String valeur) {
++        JSObject r = new JSObject();
++        r.put("etat", valeur);
++        return r;
++    }
++
++    private static void fermer(InstallReferrerClient client) {
++        try {
++            client.endConnection();
++        } catch (Exception ignore) {
++            // déjà fermée
++        }
++    }
++
++    private static void rendre(PluginCall call, AtomicBoolean rendu, JSObject r) {
++        if (rendu.compareAndSet(false, true)) call.resolve(r);
++    }
++}
+diff --git a/android/app/src/main/java/app/fillsell/app/MainActivity.java b/android/app/src/main/java/app/fillsell/app/MainActivity.java
+index b358013..cd3ce2a 100644
+--- a/android/app/src/main/java/app/fillsell/app/MainActivity.java
++++ b/android/app/src/main/java/app/fillsell/app/MainActivity.java
+@@ -1,5 +1,15 @@
+ package app.fillsell.app;
+ 
++import android.os.Bundle;
+ import com.getcapacitor.BridgeActivity;
+ 
+-public class MainActivity extends BridgeActivity {}
++public class MainActivity extends BridgeActivity {
++
++    @Override
++    public void onCreate(Bundle savedInstanceState) {
++        // (14/11/2026, bloc E1) Plugin maison : la campagne de l'installation (Google Play). Un plugin local s'enregistre
++        // AVANT super.onCreate (règle Capacitor). Fermé côté app tant que PLAY_REFERRER_BINAIRE_MIN vaut null.
++        registerPlugin(InstallReferrerPlugin.class);
++        super.onCreate(savedInstanceState);
++    }
++}

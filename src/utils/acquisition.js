@@ -64,6 +64,8 @@ export function capterSource({ plateforme = null } = {}) {
     // store. Il n'y a ni URL de campagne ni referrer à lire dans une WebView —
     // sans ceci, un inscrit depuis l'App Store tombait en « direct », ce qui
     // ne distingue rien. `app_ios` / `app_android`, medium « store ».
+    // (14/11) Android : Google Play peut ensuite préciser la campagne de
+    // l'installation, une fois (enrichirSourceAndroid, INACTIF). iPhone : non.
     if (plateforme === 'ios' || plateforme === 'android') {
       localStorage.setItem(CLE, JSON.stringify({
         source: `app_${plateforme}`, medium: 'store', referrer: null, at: new Date().toISOString(),
@@ -103,6 +105,122 @@ export function lireSource() {
   } catch {
     return null;
   }
+}
+
+// ── ANDROID : LA SOURCE RETROUVÉE PAR GOOGLE PLAY (14/11/2026, bloc E1) ─────
+// La pub Meta envoie l'Android sur Google Play avec ses UTM dans `referrer`
+// (site/gabarits/installer.mjs). Google Play les rend à l'app installée par
+// l'Install Referrer API — un module NATIF (android/…/InstallReferrerPlugin.java),
+// donc un binaire. ⛔ INACTIF : PLAY_REFERRER_BINAIRE_MIN vaut null → rien n'est
+// lu, aucun appel natif (pas même App.getInfo). S'ouvre en écrivant ici la
+// version du binaire qui porte le module, APRÈS l'avoir lue, et APRÈS la
+// migration 20261114100000 (colonne acquisition_plateforme) et la phrase de
+// Legal.jsx (verrou : scripts/acquisition-meta-selftest.mjs).
+//
+// RÈGLE (la première source gagne, ici comme en base) :
+//   · on ne touche QUE la source par défaut de l'app (« app_android / store »,
+//     posée par capterSource au premier lancement), jamais lue avant : une
+//     source relevée ailleurs (site, lien) n'est jamais remplacée. Ce n'est
+//     pas un second contact : Google Play décrit l'INSTALLATION elle-même,
+//     d'où la date de capture d'origine gardée (garde « capture avant le
+//     compte » du serveur inchangée) ;
+//   · une seule lecture réussie (Google : « invoke the API only once ») ; un
+//     service indisponible se retente au lancement suivant, 3 fois au plus ;
+//   · seuls utm_source / utm_medium / utm_campaign / utm_content sortent,
+//     nettoyés et bornés comme sur le site ; l'organique (google-play /
+//     organic) laisse « app_android / store » ;
+//   · la plateforme part à part (plateforme: 'android' → p_plateforme) : avec
+//     source = « meta », l'ancienne règle « source app_android = Android » la
+//     compterait « web ». referrer = https://play.google.com (vrai : c'est par
+//     là qu'elle est arrivée).
+// Le natif est passé en argument (src/lib/referrerPlay.js) : ce fichier reste
+// sans Capacitor, il est aussi dans le script en ligne du site.
+export const PLAY_REFERRER_BINAIRE_MIN = null;
+const PLAY_ESSAIS_MAX = 3;
+const PLAY_DELAI_MS = 3000;
+const PLAY_PARAMS = { utm_source: 'source', utm_medium: 'medium', utm_campaign: 'campaign', utm_content: 'content' };
+const PLAY_REFERRER = 'https://play.google.com';
+
+const versionAuMoins = (v, min) => {
+  const lireV = (x) => (/^\d+(\.\d+)*$/.test(String(x ?? '').trim()) ? String(x).trim().split('.').map(Number) : null);
+  const a = lireV(v), b = lireV(min);
+  if (!a || !b) return false;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return true;
+};
+
+/** Le binaire de ce téléphone lit-il le referrer Google Play ? (pur) — borne null (aujourd'hui) = non, partout. */
+export function referrerPlayOuvert({ plateforme, binaire, min = PLAY_REFERRER_BINAIRE_MIN } = {}) {
+  return plateforme === 'android' && Boolean(min) && versionAuMoins(binaire, min);
+}
+
+/**
+ * Le referrer rendu par Google Play (getInstallReferrer) → { source, medium, campaign, content }, ou null
+ * (organique, « (not set) », sans utm_source, illisible). Pur, ne lève jamais.
+ */
+export function lireReferrerPlay(brut) {
+  try {
+    let s = typeof brut === 'string' ? brut.trim().slice(0, 2000) : '';
+    if (!s) return null;
+    if (!s.includes('=') && /%3D/i.test(s)) s = decodeURIComponent(s);
+    const q = {};
+    for (const paire of s.split('&')) {
+      const i = paire.indexOf('=');
+      if (i <= 0) continue;
+      const champ = PLAY_PARAMS[paire.slice(0, i).trim()];
+      if (!champ || champ in q) continue;
+      let v;
+      try { v = decodeURIComponent(paire.slice(i + 1).replace(/\+/g, ' ')); } catch { v = ''; }
+      v = v.replace(/[^A-Za-z0-9 _.-]/g, '').trim().slice(0, 100);
+      if (v && v.toLowerCase() !== 'not set') q[champ] = v;
+    }
+    if (!q.source) return null;
+    if (q.source === 'google-play' && (!q.medium || q.medium === 'organic')) return null;
+    return { source: q.source, medium: q.medium ?? null, campaign: q.campaign ?? null, content: q.content ?? null };
+  } catch {
+    return null;
+  }
+}
+
+const ecrireSource = (v) => { try { localStorage.setItem(CLE, JSON.stringify(v)); } catch { /* stockage indisponible */ } };
+const delai = (p, ms) => Promise.race([Promise.resolve(p), new Promise((r) => setTimeout(() => r({ etat: 'reessayer' }), ms))]);
+let lecturePlayEnCours = null;
+
+/**
+ * Enrichit UNE fois la source par défaut de l'app Android avec la campagne rendue par Google Play.
+ * `binaire` : () => version du binaire ; `disponible` : () => module natif présent ; `lire` : () => { etat, referrer }.
+ * Rend une promesse ; jamais d'exception. INACTIF tant que PLAY_REFERRER_BINAIRE_MIN est null.
+ */
+export function enrichirSourceAndroid({ plateforme, binaire, disponible, lire, min = PLAY_REFERRER_BINAIRE_MIN, delaiMs = PLAY_DELAI_MS } = {}) {
+  if (plateforme !== 'android' || !min) return Promise.resolve(null);
+  if (lecturePlayEnCours) return lecturePlayEnCours;
+  const encore = (a) => a && a.source === 'app_android' && a.medium === 'store' && !a.play;
+  if (!encore(lireSource())) return Promise.resolve(null);
+  const lecture = (async () => {
+    const version = await binaire?.();
+    if (!referrerPlayOuvert({ plateforme, binaire: version, min }) || disponible?.() !== true) return null;
+    let r;
+    try { r = await delai(lire(), delaiMs); } catch { r = { etat: 'reessayer' }; }
+    const acq = lireSource();
+    if (!encore(acq)) return null;
+    if (r?.etat === 'ok') {
+      const utm = lireReferrerPlay(r.referrer);
+      const nouvelle = utm
+        ? { ...utm, referrer: PLAY_REFERRER, at: acq.at, plateforme: 'android', play: 'campagne' }
+        : { ...acq, play: 'organique' };
+      ecrireSource(nouvelle);
+      return nouvelle;
+    }
+    if (r?.etat === 'indisponible') { ecrireSource({ ...acq, play: 'indisponible' }); return null; }
+    const essais = (Number(acq.play_essais) || 0) + 1;
+    ecrireSource(essais >= PLAY_ESSAIS_MAX ? { ...acq, play: 'echec', play_essais: essais } : { ...acq, play_essais: essais });
+    return null;
+  })().catch(() => null);
+  lecturePlayEnCours = lecture;
+  lecture.then(() => { if (lecturePlayEnCours === lecture) lecturePlayEnCours = null; });
+  return lecture;
 }
 
 /** Un compte plus vieux que ça n'a plus de « premier contact » à mesurer. */
@@ -149,6 +267,9 @@ const MARGE_CAPTURE_MS = 6 * 3600 * 1000;
 export async function poserSourceSurProfil(supabase, userId, { createdAt = null } = {}) {
   try {
     if (!userId) return;
+    // (14/11) Une lecture Google Play en cours (bornée par son délai) passe d'abord : un compte créé dans la foulée
+    // de l'installation part avec la campagne, pas avec « app_android ». Aucune aujourd'hui (INACTIF).
+    if (lecturePlayEnCours) await lecturePlayEnCours;
     const acq = lireSource();
     if (!acq) return;
     const cree = Date.parse(String(createdAt ?? ''));
@@ -157,7 +278,7 @@ export async function poserSourceSurProfil(supabase, userId, { createdAt = null 
       const capte = Date.parse(String(acq.at ?? ''));
       if (Number.isFinite(capte) && capte > cree + MARGE_CAPTURE_MS) return;
     }
-    const { error } = await supabase.rpc('poser_origine_inscription', {
+    const args = {
       p_source: acq.source ?? null,
       p_medium: acq.medium ?? null,
       p_campaign: acq.campaign ?? null,
@@ -165,7 +286,13 @@ export async function poserSourceSurProfil(supabase, userId, { createdAt = null 
       p_fbclid: acq.fbclid ?? null,
       p_referrer: acq.referrer ?? null,
       p_captee_le: acq.at ?? null,
-    });
+    };
+    // (14/11) p_plateforme sur le SEUL chemin Google Play (acq.plateforme posée par enrichirSourceAndroid) : le web
+    // et l'iPhone gardent l'appel d'aujourd'hui, à 7 paramètres. Base sans la migration 20261114100000 → PostgREST
+    // ne trouve pas la fonction (PGRST202) → rejoué UNE fois sans : la source arrive quand même.
+    const avecPlateforme = ['ios', 'android', 'web'].includes(acq.plateforme);
+    let { error } = await supabase.rpc('poser_origine_inscription', avecPlateforme ? { ...args, p_plateforme: acq.plateforme } : args);
+    if (error && avecPlateforme && error.code === 'PGRST202') ({ error } = await supabase.rpc('poser_origine_inscription', args));
     if (error) console.warn('[acquisition] source non enregistrée :', error.message ?? error.code ?? error);
   } catch (e) {
     console.warn('[acquisition] source non enregistrée :', e?.message ?? e);

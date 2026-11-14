@@ -58,10 +58,27 @@ Description : « Gratuit pour commencer ».
   - iPhone : App Store Connect ne relie une installation à une campagne qu'avec le jeton fournisseur (`pt`). Tant
     qu'il n'est pas posé dans `site/gabarits/installer.mjs` (`APP_STORE_PT`), l'iPhone se lit en « Web Referrer ».
   - Coût par installation ≈ dépense Meta ÷ installations attribuées (Android sûr, iPhone approximatif).
-- Inscriptions (`profiles.acquisition_*`) : ⚠ les UTM n'y remontent PAS pour qui installe l'app. L'app native
-  inscrit « app_ios » / « app_android », medium « store » (`src/utils/acquisition.js`). Seuls les visiteurs sur
-  ordinateur qui s'inscrivent sur le web depuis /installer portent `source = meta`. Corriger ça demande du code dans
-  l'app (lecture du `referrer` Play) : hors du périmètre marketing, à décider par Nico.
+- Inscriptions (`profiles.acquisition_*`) — ce qui remonte, par canal (bloc E1, 14/11) :
+  - web (ordinateur, ou téléphone resté sur /installer) : `source = meta`, `medium = paid`, `campaign =
+    installer-continu`, `content = V1-podcast`… dès aujourd'hui (même code que tout le site : `capterSource`).
+  - Android : aujourd'hui « app_android / store ». Le prochain binaire Android peut lire la campagne que Google Play
+    rend (Install Referrer API : `InstallReferrerPlugin.java`, `src/lib/referrerPlay.js`), PRÉPARÉ et INACTIF
+    (`PLAY_REFERRER_BINAIRE_MIN = null`, `src/utils/acquisition.js`). Ouvert, l'inscrit Android venu de la pub porte
+    `meta / paid / installer-continu / V…`, `referrer = https://play.google.com`, plateforme android (migration
+    `20261114100000`, à appliquer avant). Seuls les inscrits APRÈS l'installation de ce binaire sont mesurés.
+  - iPhone : jamais par compte (aucun referrer App Store, ni SDK, ni empreinte). Lecture agrégée seulement : App Store
+    Connect → App Analytics → Acquisition → Campagnes, une fois `APP_STORE_PT` posé.
+  - Repère du volume (prod, 05/11 → 13/11, avant la pub) : ~3 inscrits iPhone et ~1 Android par jour ; un écart
+    après le 13/11 20:10 est un indice, pas une attribution.
+- Jeton fournisseur `pt` (iPhone) : il ne se fabrique pas. Nico génère UN lien de campagne dans App Store Connect (App
+  Analytics → Acquisition → Campagnes → générer un lien, campagne `installer-continu`) et lit `pt=` dans le lien
+  obtenu ; ce nombre se pose dans `site/gabarits/installer.mjs` (`APP_STORE_PT`), puis déploiement du site. Règle
+  d'Apple : `ct` = 30 caractères au plus (la page coupe et nettoie), données visibles 24 h après, à partir de 5
+  premiers téléchargements, « dernier lien cliqué gagne » ; `ct` = utm_campaign seul (un `ct` par pub diviserait
+  sous le seuil de 5).
+- Requête (lecture seule) des inscrits venus de la pub :
+  `SELECT (created_at AT TIME ZONE 'Europe/Paris')::date jour, acquisition_source, acquisition_content, count(*)
+  FROM profiles WHERE acquisition_campaign = 'installer-continu' GROUP BY 1, 2, 3 ORDER BY 1;`
 
 ## Journal
 

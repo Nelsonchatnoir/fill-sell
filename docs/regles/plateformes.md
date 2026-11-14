@@ -1055,3 +1055,18 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   le dit au lieu de relancer. Jamais : autre fiche, remise en vente, republication. Verrou `selftest:lbc-relance-identique`.
 - **Veille des familles de refus** : `scripts/lbc-refus-familles.prod.sql` (lecture seule) range chaque refus en
   mots_cles / photos / relance / inexplique ; une nouvelle famille = des « inexplique » qui se ressemblent.
+
+## 13/11/2026 soir (bloc E3) — Depop : une lecture publique ne dépend plus d'un users/me muet
+- **Constat** (base lue le 13/11, lecture seule) : 4d946500 (relevés 18:57, 19:27) et 8ac5bbda (20:04, 20:22) en
+  « [incomplet] session Depop illisible (reseau) », sur leur ORDINATEUR (ni Cloud ni IP du Cloud, 0.6.186 comme les comptes
+  sains), users/me réussi plus tôt le même jour ; 4d946500 relu normalement à 21:42, sonde users/me de 8ac5bbda en 200 à
+  21:52. Depuis le 25/10 : 65 échecs « reseau » sur ~900 relevés/ventes Depop (≈ 7 %), ZÉRO réponse HTTP lisible, UNE
+  seule lecture publique en échec, 40 des 65 avec un autre compte qui lisait Depop dans les 20 min : ce n'est ni une panne
+  de Depop ni notre version, c'est la pré-requête CORS de l'appel authentifié refusée par moments à CE navigateur (même
+  signe que les OPTIONS webapi.depop.com en 403 mesurés sur cloud-2 le 05/11, `docs/enquetes/ouverture-cloud-0511`).
+- ⛔ **Règle** (`content-scripts/depop.js` § 2 bis ; extension : la livraison qui l'embarque, base manifest 0.6.187) : l'identité prouvée par users/me est retenue pour
+  CE jeton (empreinte SHA-256 dans `chrome.storage.local`, jamais le jeton), 24 h ; users/me muet « réseau » + MÊME jeton
+  → le relevé et les ventes (pages PUBLIQUES seulement) lisent la boutique de cette identité et le disent (run :
+  « [défilement] users/me de Depop sans réponse (réseau) : boutique publique lue sous l'identité prouvée… » ; trace
+  `releve_ventes.session_reprise`). Jamais pour une écriture ni pour la sonde ; jamais sur 401, sans jeton, autre jeton,
+  réponse HTTP lisible, ni au-delà de 24 h. Verrou `selftest:depop-identite-lecture`.

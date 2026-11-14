@@ -12,9 +12,15 @@ import { avecLogos } from './blocs.mjs';
 // et transmis à Google Play dans `referrer` (rapport « acquisition » de la Play Console). Rien d'autre n'est lu
 // ni transmis. L'App Store n'a pas d'équivalent sans le jeton fournisseur (pt) d'App Store Connect : quand il est
 // connu, il se pose dans APP_STORE_PT et la campagne part dans `ct`.
-// La source d'acquisition du site (fs_acq) est relevée comme sur toute page par le script d'aiguillage ; elle ne
-// suit pas la personne dans l'app native (qui se déclare « app_ios » / « app_android ») : constat, pas de correctif
-// ici (code de l'app hors du périmètre du site).
+// (14/11, bloc E1) Règle d'Apple (developer.apple.com/help/app-store-connect-analytics/acquisition/campaign-links) :
+// lien `…/id<app>?pt=<jeton fournisseur>&ct=<campagne>&mt=8` ; ct = 30 caractères au plus, jamais une espace en
+// premier ou dernier caractère ; pt = un nombre, propre au compte développeur, qui NE SE FABRIQUE PAS : Nico le lit
+// en générant un lien de campagne dans App Store Connect (App Analytics → Acquisition → Campagnes). Le résultat est
+// AGRÉGÉ (premiers téléchargements par campagne, seuil de 5, 24 h après le lancement), jamais relié à un compte.
+// La source d'acquisition du site (fs_acq) est relevée comme sur toute page par le script d'aiguillage. Elle suit
+// la personne qui s'inscrit sur le web (ordinateur, ou téléphone resté sur la page) ; dans l'app native, Android la
+// retrouve par Google Play (src/utils/acquisition.js, enrichirSourceAndroid : prochain binaire, INACTIF), l'iPhone
+// jamais (aucun referrer App Store : « app_ios »).
 
 export const APP_STORE_PT = null;
 export const PARAMS_UTM = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
@@ -35,13 +41,15 @@ export function destinationInstallation(ua, recherche, liens, params, pt) {
     var cle = i < 0 ? paire : paire.slice(0, i);
     var brut = i < 0 ? '' : paire.slice(i + 1);
     var v;
-    try { v = decodeURIComponent(brut.replace(/\+/g, ' ')); } catch (e) { v = ''; }
-    v = v.replace(/[^A-Za-z0-9 _.\-]/g, '').trim().slice(0, 100);
+    try { v = decodeURIComponent(brut.replace(/\+/g, ' ')); } catch (_e) { v = ''; }
+    v = v.replace(/[^A-Za-z0-9 _.-]/g, '').trim().slice(0, 100);
     if (params.indexOf(cle) >= 0 && v && !(cle in q)) q[cle] = v;
   });
   if (iphone) {
-    if (!pt || !q.utm_campaign) return liens.appStore;
-    return liens.appStore + '?pt=' + encodeURIComponent(pt) + '&ct=' + encodeURIComponent(q.utm_campaign.slice(0, 40)) + '&mt=8';
+    var jeton = String(pt || '').replace(/[^0-9]/g, '');
+    var ct = q.utm_campaign ? q.utm_campaign.slice(0, 30).trim() : '';
+    if (!jeton || !ct) return liens.appStore;
+    return liens.appStore + '?pt=' + jeton + '&ct=' + encodeURIComponent(ct) + '&mt=8';
   }
   var ref = params.filter(function (c) { return q[c]; }).map(function (c) { return c + '=' + encodeURIComponent(q[c]); }).join('&');
   return ref ? liens.googlePlay + '&referrer=' + encodeURIComponent(ref) : liens.googlePlay;

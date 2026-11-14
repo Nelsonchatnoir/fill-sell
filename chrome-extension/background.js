@@ -18703,7 +18703,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     const r = await sendMessageToTab(tabId, { type: "DEPOP_LISTE_ARTICLES" }, 120_000).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
     if (!r?.success) return { annonces: [], complet: false, erreur: r?.error ?? "liste Depop illisible", ...(r?.needsUser ? { absente: true } : {}) };
     for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
-    return { annonces: [...annonces.values()], complet: r.complet !== false };
+    // (13/11, bloc E3) users/me muet (réseau) mais identité prouvée pour ce même jeton : la boutique publique a été lue,
+    // et le run le DIT (content-scripts/depop.js § 2 bis) — jamais un relevé « normal » qui tairait la reprise.
+    return { annonces: [...annonces.values()], complet: r.complet !== false, ...(r.session_reprise?.note ? { defilement: String(r.session_reprise.note).slice(0, 240) } : {}) };
   }
 
   // ── LEBONCOIN : L'ADRESSE D'ABORD, LE DÉFILEMENT EN REPLI (2026-09-19) ────
@@ -21406,7 +21408,8 @@ async function lireVentesDepopOnglet() {
   const { tabId, motif } = await ongletDepopPret();
   if (tabId == null) return { ok: false, rows: [], motif: motif === "acces_non_accorde" ? "acces_depop_non_accorde" : `onglet_${motif}` };
   const r = await sendMessageToTab(tabId, { type: "DEPOP_VENTES" }, 120_000).catch((e) => ({ ok: false, motif: String(e?.message ?? e).slice(0, 80) }));
-  return { ok: r?.ok === true, rows: Array.isArray(r?.rows) ? r.rows : [], pages: r?.pages ?? null, motif: r?.motif ?? null };
+  // (13/11, bloc E3) `session_reprise` : ventes lues sous l'identité prouvée pour ce jeton (users/me muet), dite dans la trace.
+  return { ok: r?.ok === true, rows: Array.isArray(r?.rows) ? r.rows : [], pages: r?.pages ?? null, motif: r?.motif ?? null, session_reprise: r?.session_reprise ?? null };
 }
 
 // (17/10, R2 b — point 12) Les bilans de TOUS les envois d'un passage, additionnés
@@ -21633,6 +21636,7 @@ async function lancerReleveVentes({ platform, declencheur = "cron", session: ses
       plateforme: platform, declencheur, lues: lecture.rows?.length ?? 0, pages: lecture?.pages ?? null,
       motif: lecture?.motif ?? null, bilan: cumulerBilansVentes([bilan, ...bilansDetail]), detail: detailTrace ?? detailLbcTrace,
       ...(platform === "vinted" ? { annulees_observees: lecture?.annuleesObservees ?? null } : {}),
+      ...(platform === "depop" && lecture?.session_reprise ? { session_reprise: lecture.session_reprise } : {}),
     });
     console.log(
       `[ventes][${platform}] (${declencheur}) ${lecture.rows?.length ?? 0} ligne(s) lue(s) — ` +

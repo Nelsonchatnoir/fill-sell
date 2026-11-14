@@ -23,7 +23,7 @@ cas('iPhone (navigateur Facebook) → App Store', () => {
 cas('iPad en mode bureau (Instagram) → App Store', () => {
   assert.equal(destinationInstallation(IPAD_BUREAU, RECH, liens, PARAMS_UTM, null), LIENS.appStore);
 });
-cas('iPhone avec jeton fournisseur → campagne dans ct (40 car. au plus)', () => {
+cas('iPhone avec jeton fournisseur → campagne dans ct (30 car. au plus, règle d\'Apple : selftest:acquisition-meta)', () => {
   const d = destinationInstallation(IPHONE, RECH, liens, PARAMS_UTM, '123456');
   assert.equal(d, `${LIENS.appStore}?pt=123456&ct=fillsell-installer&mt=8`);
 });

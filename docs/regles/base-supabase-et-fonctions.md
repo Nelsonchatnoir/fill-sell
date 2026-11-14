@@ -355,6 +355,12 @@ authenticated;` (le déclencheur le fait aussi). Inverse du régime : `supabase/
   origine, plateforme, fournisseur, palier, canal de paiement — ni e-mail, ni identifiant, ni horodatage précis),
   écrite par un déclencheur BEFORE DELETE qui ne bloque JAMAIS une suppression. Les statistiques d'acquisition se lisent
   dans la vue `origines_inscriptions` (vivants + partis), service_role seul.
+- (14/11, bloc E1, PRÉPARÉ) La plateforme d'inscription quitte `acquisition_source` : colonne `acquisition_plateforme`
+  (ios / android / web), 8e paramètre `p_plateforme DEFAULT NULL` de `poser_origine_inscription` (l'ancienne signature
+  RETIRÉE : deux versions côte à côte = PGRST203, toutes les poses tombent), vue et archive en
+  `coalesce(acquisition_plateforme, règle d'avant)`. Migration `20261114100000` NON appliquée (banc
+  `scripts/essais/20261114100000_banc.mjs`). L'app n'envoie `p_plateforme` que sur le chemin Google Play (Android venu
+  d'une campagne, prochain binaire) et rejoue à 7 paramètres sur PGRST202. Verrou `selftest:acquisition-meta`.
 - Une table « serveur seulement » le DIT : le déclencheur d'événement du 30/10 donne SELECT, INSERT, UPDATE, DELETE à
   service_role ; une archive écrite par un déclencheur ou des fonctions SECURITY DEFINER retire l'écriture à service_role
   (`REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER … FROM service_role`) et porte le marqueur

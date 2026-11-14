@@ -230,17 +230,94 @@ function depopSlugDepuisUrl(url) {
 // 2. LA SESSION, ET LE COMPTE VENDEUR
 // ═══════════════════════════════════════════════════════════════════════════
 async function depopSession() {
-  if (!depopJeton()) return { connecte: false, motif: "sans_jeton" };
+  const jeton = depopJeton();
+  if (!jeton) return { connecte: false, motif: "sans_jeton" };
   const moi = await depopJson(DEPOP_ENDPOINTS.moi);
   if (moi.statut === 401) return { connecte: false, motif: "http_401" };
   if (!moi.ok || !moi.corps?.id) return { connecte: null, motif: moi.erreurReseau ? "reseau" : `http_${moi.statut}` };
-  return { connecte: true, id: moi.corps.id, username: moi.corps.username ?? null, pays: String(moi.corps.country ?? "").toUpperCase() || null };
+  const session = { connecte: true, id: moi.corps.id, username: moi.corps.username ?? null, pays: String(moi.corps.country ?? "").toUpperCase() || null };
+  // (13/11, bloc E3) L'identité PROUVÉE est retenue pour CE jeton (§ 2 bis) — seulement si le cookie n'a pas changé
+  // pendant l'appel (jamais l'identité d'un jeton rattachée à un autre).
+  if (depopJeton() === jeton) await depopRetenirIdentite(jeton, session);
+  return session;
 }
 async function depopStatutVendeur() {
   const v = await depopJson(DEPOP_ENDPOINTS.vendeur);
   if (v.statut === 401) return { session: false };
   if (!v.ok || typeof v.corps?.canSell !== "boolean") return { canSell: null, motif: v.erreurReseau ? "reseau" : `http_${v.statut}` };
   return { canSell: v.corps.canSell, reonboarding: v.corps.needsReonboarding === true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2 bis. L'IDENTITÉ PROUVÉE SERT LES LECTURES PUBLIQUES (13/11, bloc E3)
+// ═══════════════════════════════════════════════════════════════════════════
+// Constat (lu en base le 13/11, lecture seule) : depuis le 25/10, 65 relevés ou lectures de ventes Depop sur ~900
+// (≈ 7 %) sont tombés sur « session Depop illisible (reseau) » : users/me, l'appel AUTHENTIFIÉ (Authorization, donc
+// une pré-requête CORS), en « Failed to fetch » trois fois de suite. Aucune réponse HTTP lisible en 19 jours (zéro
+// « http_NNN ») ; la lecture PUBLIQUE de la boutique (sans Authorization, sans pré-requête) n'a échoué qu'UNE fois ;
+// 40 de ces 65 échecs ont un autre compte qui lisait Depop dans les 20 minutes : pas une panne de Depop, mais la
+// pré-requête de CE navigateur refusée par moments (mesuré sur cloud-2 le 05/11 : OPTIONS webapi.depop.com en 403
+// « par moments », users/me compris, pages et API en 200). Le 13/11 au soir, 4d946500 (18:57, 19:27, Paris) et
+// 8ac5bbda (20:04, 20:22) ont perdu leurs relevés ainsi, sur leur ordinateur, users/me réussi plus tôt le même jour.
+// Or le relevé et les ventes ne lisent QUE des pages publiques (depopParcourir, `authentifie: false`) : users/me ne
+// leur sert qu'à connaître le numéro de la boutique.
+// LA RÈGLE : l'identité que users/me a PROUVÉE est retenue pour CE jeton — son empreinte SHA-256, jamais le jeton —
+// 24 h (la garde d'une action réussie, _shared/preuve-action.js GARDE_ACTION_MS). Quand users/me est illisible
+// « réseau » et que le cookie porte le MÊME jeton, le relevé et les ventes lisent la boutique publique de cette
+// identité, et le disent (session_reprise).
+// ⛔ Jamais pour une ÉCRITURE (publication, retrait, modification : depopSession seule) ni pour la sonde
+//    (DEPOP_SESSION) : une erreur réseau n'y devient jamais « connecté ».
+// ⛔ Jamais sur un 401 ou sans jeton (session fermée : « Connexion Depop requise », inchangé), jamais pour un autre
+//    jeton (reconnexion, autre compte), jamais au-delà de 24 h sans nouvelle preuve.
+// Verrou : scripts/depop-identite-lecture-selftest.mjs.
+const DEPOP_IDENTITE_CLE = "depop_identite_prouvee";
+const DEPOP_IDENTITE_DUREE_MS = 24 * 3600_000;
+async function depopEmpreinteJeton(jeton) {
+  try {
+    const octets = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`fillsell-depop:${jeton}`));
+    return Array.from(new Uint8Array(octets), (o) => o.toString(16).padStart(2, "0")).join("").slice(0, 32);
+  } catch { return null; }
+}
+async function depopRetenirIdentite(jeton, session) {
+  try {
+    if (!jeton || !/^\d+$/.test(String(session?.id ?? ""))) return;
+    const empreinte = await depopEmpreinteJeton(jeton);
+    if (!empreinte) return;
+    await chrome.storage.local.set({
+      [DEPOP_IDENTITE_CLE]: { empreinte, id: session.id, username: session.username ?? null, pays: session.pays ?? null, le: Date.now() },
+    });
+  } catch { /* stockage indisponible : rien n'est retenu, rien ne change */ }
+}
+async function depopIdentiteRetenue(jeton) {
+  try {
+    if (!jeton) return null;
+    const e = (await chrome.storage.local.get(DEPOP_IDENTITE_CLE))?.[DEPOP_IDENTITE_CLE];
+    if (!e || !/^\d+$/.test(String(e.id ?? "")) || !Number.isFinite(e.le)) return null;
+    const age = Date.now() - e.le;
+    if (!(age >= 0 && age < DEPOP_IDENTITE_DUREE_MS)) return null;
+    const empreinte = await depopEmpreinteJeton(jeton);
+    return empreinte && empreinte === e.empreinte ? e : null;
+  } catch { return null; }
+}
+const depopHeureParis = (ms) => {
+  try { return new Date(ms).toLocaleString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
+  catch { return new Date(ms).toISOString(); }
+};
+/** La session pour une LECTURE PUBLIQUE (relevé, ventes) — jamais pour une écriture ni pour la sonde. */
+async function depopSessionPourLecture() {
+  const jeton = depopJeton();
+  const session = await depopSession();
+  if (session.connecte !== null || session.motif !== "reseau") return session;
+  if (!jeton || depopJeton() !== jeton) return session;
+  const connue = await depopIdentiteRetenue(jeton);
+  if (!connue) return session;
+  return {
+    connecte: true, id: connue.id, username: connue.username ?? null, pays: connue.pays ?? null,
+    reprise: {
+      motif: "reseau", prouvee_le: new Date(connue.le).toISOString(),
+      note: `users/me de Depop sans réponse (réseau) : boutique publique lue sous l'identité prouvée pour ce même jeton le ${depopHeureParis(connue.le)} (heure de Paris)`,
+    },
+  };
 }
 
 // Région de grille (une feuille porte une grille PAR RÉGION : IT = système EUR
@@ -1112,7 +1189,8 @@ async function depopParcourir(fabriqueChemin, vendeur, statut) {
   return { objets: sortie, complet };
 }
 async function listerMesArticles() {
-  const session = await depopSession();
+  // (13/11, bloc E3) Une lecture PUBLIQUE : l'identité prouvée pour ce jeton la sert quand users/me est muet (§ 2 bis).
+  const session = await depopSessionPourLecture();
   if (session.connecte === false) return { success: false, needsUser: true, error: "Connexion Depop requise : connecte-toi à Depop sur ton ordinateur." };
   if (session.connecte !== true) return { success: false, error: `session Depop illisible (${session.motif})` };
   const enVente = await depopParcourir(DEPOP_ENDPOINTS.enVente, session.id, "en_ligne");
@@ -1126,7 +1204,10 @@ async function listerMesArticles() {
     quantite: Number.isFinite(Number(o.listed_quantity)) ? Number(o.listed_quantity) : null,
     depop_id: o.id,
   }));
-  return { success: true, articles, complet: enVente.complet, boutique: { id: session.id, login: session.username }, ...(enVente.erreur ? { erreur: enVente.erreur } : {}) };
+  return {
+    success: true, articles, complet: enVente.complet, boutique: { id: session.id, login: session.username },
+    ...(enVente.erreur ? { erreur: enVente.erreur } : {}), ...(session.reprise ? { session_reprise: session.reprise } : {}),
+  };
 }
 async function capturerArticle(slug) {
   // (18/10, 0.6.128) « _ » admis dans le pseudo (voir depopSlugDepuisUrl).
@@ -1182,7 +1263,8 @@ async function lireEtatAnnonceDepop(slug) {
 // est la date de dernière modification de l'annonce vendue (son passage en
 // STATUS_PURCHASED), approximation dite comme telle.
 async function lireVentesDepop() {
-  const session = await depopSession();
+  // (13/11, bloc E3) Une lecture PUBLIQUE (by-status/sold) : même règle que le relevé (§ 2 bis).
+  const session = await depopSessionPourLecture();
   if (session.connecte === false) return { ok: false, motif: "session" };
   if (session.connecte !== true) return { ok: false, motif: `session_illisible_${session.motif}` };
   const vendues = await depopParcourir(DEPOP_ENDPOINTS.vendues, session.id, "vendue");
@@ -1198,7 +1280,7 @@ async function lireVentesDepop() {
     frais: null,
     lot: false,
   }));
-  return { ok: vendues.complet, rows, pages: null, motif: vendues.erreur ?? null };
+  return { ok: vendues.complet, rows, pages: null, motif: vendues.erreur ?? null, ...(session.reprise ? { session_reprise: session.reprise } : {}) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

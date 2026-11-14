@@ -6,6 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import { supabase } from "../lib/supabase";
 import { rememberPostLoginTarget } from "../lib/postLoginRedirect";
 import { capterSource } from "../utils/acquisition";
+import { lancerLectureReferrerPlay } from "../lib/referrerPlay";
 import { capterOffre } from "../lib/offreMail";
 import BandeauConsentement from "../components/BandeauConsentement";
 import LandingPage from "../pages/LandingPage";
@@ -176,7 +177,10 @@ export default function AppRouter() {
   // navigation interne qui effacerait les paramètres d'URL. Idempotent — seul
   // le PREMIER contact est retenu, les visites suivantes ne l'écrasent pas.
   // Ne lève jamais : une capture impossible n'empêche rien.
-  useEffect(() => { capterSource({ plateforme: isNative ? Capacitor.getPlatform() : null }); }, []);
+  // (14/11) Android : Google Play précise ensuite, une fois, la campagne de
+  // l'installation (pub Meta → /installer → Google Play). INACTIF tant que
+  // PLAY_REFERRER_BINAIRE_MIN est null (src/utils/acquisition.js).
+  useEffect(() => { capterSource({ plateforme: isNative ? Capacitor.getPlatform() : null }); if (isNative) lancerLectureReferrerPlay(); }, []);
 
   return (
     <BrowserRouter>

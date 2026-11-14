@@ -198,6 +198,10 @@ content-scripts/depop.js` (connecteur), contrats détaillés en tête du fichier
   D'où `02f9f67` (dans main, PAS dans le zip 0.6.105) : une lecture GET « réseau » est relancée
   deux fois (1 s, 2,5 s), jamais une écriture — prouvé en page réelle : 15 lectures, 18 appels,
   3 échecs absorbés, 0 échec final. Durée de vie du jeton : **à vérifier** (aucune expiration constatée).
+- **En prod, 25/10 → 13/11** (base, lecture seule) : malgré ces reprises, `users/me` reste muet trois fois de suite dans
+  ≈ 7 % des relevés et lectures de ventes (65 sur ~900), sans aucune réponse HTTP lisible ; la lecture publique, une
+  seule fois. Le relevé et les ventes lisent donc la boutique publique sous l'identité déjà prouvée pour le même jeton
+  (24 h, `content-scripts/depop.js` § 2 bis, `docs/regles/plateformes.md` § 13/11 soir).
 - Vente réelle : **non prouvée de bout en bout** (on ne vend pas) ; la structure d'une
   annonce vendue (STATUS_PURCHASED, `variants_all[].status`) est lue sur une annonce
   publique vendue (936331996).
