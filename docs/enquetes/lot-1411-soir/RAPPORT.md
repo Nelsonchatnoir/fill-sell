@@ -83,7 +83,8 @@ rien enregistré ; relevé : non créé, l'extension passe à la suite). Inchang
 rôle service ; ventes déjà enregistrées non touchées. Banc jetable `selftest:ventes-poste-cloud-seul` (32/32 : vente
 refusée depuis le PC sur compte Cloud, acceptée depuis le poste Cloud, réponse identique sur un compte sans Cloud,
 inverse = corps de prod octet pour octet). **PRÉPARÉE, NON appliquée** : feu vert explicite de Nico sur CETTE migration
-requis (règle du 07/08).
+requis (règle du 07/08). **APPLIQUÉE le 14/11 à 20:28:50 sur feu vert de Nico** (md5 avant = banc ; repair fait).
+  Job 7b2c5d53 : laissé annulé (décision de Nico).
 
 ## Livraison
 - Commits 13221aa (code, docs) + dab79d9 (app 2.9.194), poussés 20:18:07. Suite 778/778 (par morceaux), lint identique à
