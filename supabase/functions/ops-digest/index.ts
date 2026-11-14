@@ -19,6 +19,8 @@ import { jugerRefusCron, resumerNotesPorteurs, resumerRefusCron, texteRefusCron,
 // extension est ouverte (ops_digest.file_arretee, résolue quand le relevé complet ne la voit plus).
 import { annulerMailNico, mailNico, payantOuEssai, resoudreAbsents, signalerNico } from "../_shared/alertes-nico.js";
 import { palierDesDroits } from "../_shared/palier.js";
+// (14/11/2026) Le filet de la dépense IA : une seule constante, celle des fonctions.
+import { FILET_JOUR_USD, signalDuJour } from "../_shared/budget-ia.ts";
 // (05/11 soir, clôture, décision de Nico : « donne 5 rouges prouvés, ou coupe R3 ») COUPÉ : sur 5 rouges relus sur les
 // plateformes, 3 vrais (Beebs 34042975, Leboncoin 3297644264 et 3287013710 encore en vente) et 2 faux (Leboncoin 3299230866
 // « désactivée », eBay 176726068488 « introuvable ») : le juge croit en ligne une annonce que le relevé n'a pas revue depuis.
@@ -415,40 +417,25 @@ serve(async (req) => {
     );
   }
 
-  // 7. Plafond GLOBAL du mode identify (2026-07-28). Identify est gratuit :
-  // il ouvre un chemin API sans contrepartie de revenu, et c'est la SEULE garde
-  // du produit qui regarde un total plutôt qu'un utilisateur. Le seuil est
-  // recopié ici depuis lens-analysis (PLAFOND_IDENTIFY_GLOBAL) — deux
-  // constantes à garder alignées, une seule décision. On alerte dès 80 % : à
-  // 100 %, l'identify est déjà court-circuité pour tout le monde.
-  const PLAFOND_IDENTIFY_GLOBAL = 3000;
+  // 7. (14/11/2026, règle de Nico — rien ne doit être bloqué) LE FILET DE LA DÉPENSE IA. Le plafond global de 3 000
+  // identify par jour (recopié ici depuis lens-analysis) est retiré ; le seul plafond global est le filet de 50 $ par
+  // jour de _shared/budget-ia.ts (même constante, importée). On alerte dès 80 % ; au-delà de 100 %, rien n'est bloqué :
+  // les fonctions continuent sans l'aide de l'IA. Le même signal est écrit dans usage_logs (ia_plafond_approche /
+  // ia_plafond_atteint) par les fonctions elles-mêmes, au moment où le seuil est franchi.
   const identifyRows: string[] = [];
   try {
-    // Journée en heure de PARIS, jamais d'UTC brut (cf. CLAUDE.md).
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-    }).formatToParts(new Date());
-    const nb = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
-    const debutJour = new Date(now - ((nb("hour") * 3600 + nb("minute") * 60 + nb("second")) * 1000)).toISOString();
-    const { count, error: e7 } = await supabase
-      .from("usage_logs")
-      .select("id", { count: "exact", head: true })
-      .eq("feature", "lens_identify")
-      .gte("created_at", debutJour);
+    const { data: etatIa, error: e7 } = await supabase.rpc("ia_depense_etat");
     if (e7) throw new Error(e7.message);
-    const n = count ?? 0;
-    if (n >= PLAFOND_IDENTIFY_GLOBAL) {
+    const etat = etatIa as { anthropic_jour?: number; openai_jour?: number } | null;
+    const signal = signalDuJour(etat ? { anthropic_jour: Number(etat.anthropic_jour) } : null);
+    if (signal) {
       identifyRows.push(
-        `PLAFOND ATTEINT : ${n}/${PLAFOND_IDENTIFY_GLOBAL} identifies aujourd'hui — le mode identify est COURT-CIRCUITÉ pour tout le monde (les parcours continuent sans analyse, champs vides).`,
-      );
-    } else if (n >= Math.floor(PLAFOND_IDENTIFY_GLOBAL * 0.8)) {
-      identifyRows.push(
-        `${n}/${PLAFOND_IDENTIFY_GLOBAL} identifies aujourd'hui (${Math.round((n / PLAFOND_IDENTIFY_GLOBAL) * 100)} %) — au-delà du plafond, identify se coupe.`,
+        `${signal.feature === "ia_plafond_atteint" ? "FILET ATTEINT" : "Filet à 80 %"} : ${Number(etat?.anthropic_jour ?? 0).toFixed(2)} $ dépensés aujourd'hui chez Anthropic sur ${FILET_JOUR_USD} $ (${Math.round(signal.pct * 100)} %) — OpenAI ${Number(etat?.openai_jour ?? 0).toFixed(2)} $. ${signal.feature === "ia_plafond_atteint" ? "Les fonctions continuent sans l'aide de l'IA jusqu'à minuit : chercher la boucle." : "Au-delà de 100 %, l'aide de l'IA s'arrête jusqu'à minuit (rien n'est bloqué)."}`,
       );
     }
   } catch (e) {
     identifyRows.push(
-      `Compteur identify indisponible (${String((e as Error)?.message ?? e)}) — plafond global non vérifiable aujourd'hui.`,
+      `Compteur de la dépense IA indisponible (${String((e as Error)?.message ?? e)}) — filet non vérifiable aujourd'hui.`,
     );
   }
 
@@ -1831,11 +1818,11 @@ serve(async (req) => {
     ${
     identifyRows.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
-      🔴 Lens identify — plafond global journalier (${identifyRows.length})
+      🔴 Dépense IA — filet de ${FILET_JOUR_USD} $ par jour (${identifyRows.length})
     </h2>
     <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
-      Le mode identify est gratuit pour l'utilisateur : c'est la seule garde du produit
-      qui regarde un TOTAL et non un utilisateur. ~0,010 € l'appel.
+      Le seul plafond global : un filet contre un bug en boucle, pas une limite d'usage (les quotas du palier
+      font la rentabilité). Au-delà, rien n'est bloqué : les fonctions continuent sans l'aide de l'IA.
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${identifyRows.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}

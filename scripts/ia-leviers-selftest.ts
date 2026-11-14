@@ -78,7 +78,7 @@ globalThis.fetch = (async (_url: string, init?: RequestInit) => {
   // Le compteur est gardé 60 s en mémoire (budget-ia.ts) : la règle se vérifie pure,
   // et le câblage dans la source (le plafond est lu AVANT tout appel).
   const { budgetOuvert } = await import("../supabase/functions/_shared/budget-ia.ts");
-  ok("plafond « moteur » du jour atteint (7 $ > 6 $) : fermé", budgetOuvert("moteur", { anthropic_jour: 7, anthropic_mois: 50 }).ouvert === false
+  ok("filet « moteur » du jour atteint (55 $ ≥ 50 $, 14/11) : fermé", budgetOuvert("moteur", { anthropic_jour: 55, anthropic_mois: 60 }).ouvert === false
     && budgetOuvert("moteur", null).ouvert === false);
   const src = await Deno.readTextFile(new URL("../supabase/functions/_shared/ia-leviers-bascule.ts", import.meta.url));
   ok("la cascade lit le plafond « moteur » avant tout appel, et s'arrête s'il est fermé",

@@ -56,6 +56,8 @@ import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
 import { langueRedactionVinted } from "../_shared/langue-vendeur.ts";
 import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
+// (14/11/2026, point 2 de Nico) La retouche OpenAI : prompts, modèle et repli, coût par modèle — source unique.
+import { retoucherPhoto, coutImageUsd, PROMPT_RETOUCHE_LEGERE, FONDS_RETOUCHE, CLAUSE_FOND_OBJET, CLAUSE_FOND_VETEMENT } from "../_shared/retouche-photo.ts";
 import { palierDuProfil } from "../_shared/palier.js";
 import { champDuVendeur } from "../../../src/utils/sourceDuTexte.js";
 import { consignesDuCompte } from "../_shared/consignes-du-compte.ts";
@@ -65,16 +67,8 @@ import { FIN_PHOTOS_EXTERNES_MS, FIN_RETOUCHE_MS, FIN_REDACTION_MS, RETOUCHE_MIN
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
 // uniquement — les codes photo par catégorie n'entrent pas en jeu à ce niveau).
 // Formulé "item" et non "garment" : il s'applique à toutes les catégories.
-const OPENAI_IMG_PROMPT_LIGHT = `Lightly enhance this product photo: adjust white balance and brightness slightly so the item reads clearly, and correct any obvious color cast. Keep everything else exactly as in the original photo — pose, framing, angle, background, and every detail of the item.
-
-Strict constraints — do NOT change:
-- The pose, framing, angle, or camera perspective
-- The background
-- The item's shape, size, color, pattern, material texture, or any detail (logos, stitching, prints, labels, signs of wear)
-- Do not smooth, iron, or flatten anything; do not remove wrinkles, creases, or defects
-- Do not add, remove, or invent any element
-
-This is a fast, subtle brightness/white-balance correction only — nothing else should visibly change.`;
+// (14/11/2026) Le texte vit dans _shared/retouche-photo.ts (déplacé à l’octet près ; verrou : selftest retouche-modele).
+const OPENAI_IMG_PROMPT_LIGHT = PROMPT_RETOUCHE_LEGERE;
 
 // Règle de réalisme commune à TOUTES les familles du niveau "ia_advanced".
 // La photo doit montrer le VRAI article : améliorer la présentation (lumière,
@@ -183,12 +177,8 @@ function retouchProfileFor(item: { titre?: string; description?: string; type?: 
 // produite (un seul appel GPT Image 2, qualité "medium" — jamais de multi-pass
 // ni de "high" qui timeout). "original" (défaut) = aucun remplacement de fond
 // (comportement historique conservé). Étendre = ajouter une entrée ici.
-const BACKGROUND_OPTIONS: Record<string, string> = {
-  white: `New background: a premium seamless white studio sweep (cyclorama), bright and clean, with a subtle soft gradient from pure white behind the product to a very light grey toward the edges, professional e-commerce lighting.`,
-  grey:  `New background: a polished microcement / smooth concrete surface in soft neutral grey, with subtle natural texture and gentle tonal variation, modern industrial-chic feel, soft directional studio light. Understated and premium, not busy.`,
-  beige: `New background: a warm natural linen fabric backdrop with a soft visible woven texture, warmly and evenly lit, refined and tactile.`,
-  wood:  `New background: a pale natural light-oak wood surface with clean visible grain (planks / parquet), warm daylight, calm lifestyle feel.`,
-};
+// (14/11/2026) Les textes vivent dans _shared/retouche-photo.ts (déplacés à l’octet près).
+const BACKGROUND_OPTIONS: Record<string, string> = FONDS_RETOUCHE;
 
 // Clause d'intégrité objet — préfixée à CHAQUE prompt de fond (remplace l'intro
 // famille dans cette passe). Approche prompt-only (pas de masque/segmentation) :
@@ -202,9 +192,9 @@ const BACKGROUND_OPTIONS: Record<string, string> = {
 //     de stockage/pliage (rendu "catalogue pro"), stricte sur tout le reste
 //     (couleurs, matière, motifs, logos, défauts, forme, cadrage).
 //   - toute autre famille → CLAUSE STRICTE : objet 100 % intact (inchangée).
-const BG_INTEGRITY_CLAUSE = `Replace ONLY the background of this product photo. The product itself must remain strictly identical to the original: do not redraw, reshape, resize, recolor, clean, repair or beautify it. Preserve exactly its shape, contours, proportions, colors, material and texture, patterns, logos, text, stitching, and every existing defect, stain, scratch, mark or sign of wear. Keep the product in its original position, angle, scale and framing. Add a soft, natural, physically plausible contact shadow beneath the product so it sits believably on the new surface, avoiding any cut-out, floating or pasted look. Do not add any object, prop, text or watermark.`;
+const BG_INTEGRITY_CLAUSE = CLAUSE_FOND_OBJET;
 
-const BG_INTEGRITY_CLAUSE_CLOTHING = `Replace the background of this clothing photo and present the garment as prepared for sale. You MAY lightly soften pronounced storage or folding creases (sharp crease lines from being stored folded or crumpled) so the garment looks cared-for and neatly arranged, but always preserve the fabric's natural drape and normal micro-folds: never press it perfectly flat, never make it look ironed or shrink-wrapped. Apart from softening those storage creases, the garment must remain strictly identical to the original: do not reshape, resize, recolor, repair or embellish it; preserve exactly its colors, material and texture, all patterns, prints, logos, text and stitching, and every existing defect, stain, hole or sign of wear. Keep the garment in its original position, angle, scale and framing. Add a soft, natural, physically plausible contact shadow so it sits believably on the new surface, with no cut-out, floating or pasted look. Do not add any object, prop, text or watermark.`;
+const BG_INTEGRITY_CLAUSE_CLOTHING = CLAUSE_FOND_VETEMENT;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -243,6 +233,8 @@ serve(async (req) => {
     // les réponses qui portaient le bloc : coût « mesuré » seulement quand
     // TOUTES l'ont porté, sinon repli estimé et marqué comme tel.
     img_usage_n: 0, img_text_in: 0, img_image_in: 0, img_out: 0,
+    // (14/11/2026) Le coût mesuré au tarif du modèle de CHAQUE image, les modèles servis, les photos passées au repli.
+    img_usd: 0, img_modeles: {} as Record<string, number>, img_replis: 0,
   };
   const trackClaude = (data: unknown) => {
     const u = (data as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage;
@@ -312,11 +304,14 @@ serve(async (req) => {
       if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null") canonicalProvided[k] = v.trim();
     }
 
-    // ── (18/10, lot 2) LE PLAFOND DE LA DÉPENSE IA, AVANT TOUT APPEL ET TOUT DÉBIT ──
-    // _shared/budget-ia.ts : micro-appels de secours = « confort » (au-delà, la
-    // réponse « rien » que l'app sait déjà traiter : son défaut, le texte, la
-    // question) ; rédaction complète = « essentiel » (au-delà, rien n'est débité,
-    // la fiche s'écrit à la main).
+    // ── (18/10, lot 2 ; 14/11, règle de Nico) LE FILET DE LA DÉPENSE IA, AVANT TOUT APPEL ──
+    // _shared/budget-ia.ts, 50 $ par jour : micro-appels de secours = « confort » (au-delà, la réponse « rien » que
+    // l'app sait déjà traiter : son défaut, le texte, la question) ; rédaction complète = « essentiel ».
+    // (14/11) Au-delà du filet, la rédaction n'est PLUS refusée (avant : 429 « generation_indisponible », que l'écran
+    // affichait « Le souci vient de nos serveurs ») : elle suit EXACTEMENT le chemin d'une panne de l'IA — aucun appel
+    // Claude, les textes de repli (titre et description de la fiche), l'unité rendue (no_llm_output), la fiche
+    // enregistrée ; la retouche photo (OpenAI, quota du palier) part comme d'habitude. Rien n'est bloqué.
+    let iaCoupee: string | null = null;
     {
       const microAppel = body.resolve_genre === true || body.resolve_couleur === true || body.resolve_isbn === true || body.resolve_aspects === true;
       const budgetIa = await budgetIaAutorise(adminClient, microAppel ? "confort" : "essentiel", "generate-listing");
@@ -325,8 +320,7 @@ serve(async (req) => {
         if (body.resolve_couleur === true) return json({ couleur: null, source: null, motif: "ia_indisponible" });
         if (body.resolve_isbn === true) return json({ isbn: null, source: null, motif: "ia_indisponible" });
         if (body.resolve_aspects === true) return json({ aspects: {} });
-        return json({ error: "generation_indisponible", budget: budgetIa.motif,
-          message: "La rédaction automatique est indisponible pour le moment : écris l'annonce à la main, rien n'a été débité." }, 429);
+        iaCoupee = budgetIa.motif ?? "plafond";
       }
     }
 
@@ -1063,6 +1057,8 @@ serve(async (req) => {
       })
       .join("\n");
     const classifyCategoryIcon = async (): Promise<{ icon: string | null; objet: string | null }> => {
+      // (14/11) Filet IA atteint : pas d'appel, le repli client (detectObjectIcon) — comme une IA en échec.
+      if (iaCoupee) return { icon: null, objet: null };
       const ctx = [
         item.marque && `Marque: ${item.marque}`,
         item.titre && `Article: ${item.titre}`,
@@ -1217,58 +1213,34 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
           }
           const srcBlob = await srcRes.blob();
 
-          const form = new FormData();
-          form.append("model", "gpt-image-2");
-          form.append("prompt", promptToUse);
-          form.append("n", "1");
-          form.append("size", "1024x1024");
-          form.append("quality", qualityToUse);
-          form.append("image[]", srcBlob, "product.jpg");
-
-          const res = await fetch("https://api.openai.com/v1/images/edits", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${OPENAI_KEY}` },
-            body: form,
+          // (14/11/2026, point 2 de Nico) LA RETOUCHE PASSE PAR _shared/retouche-photo.ts : même prompt, mêmes réglages
+          // (qualité, 1024×1024), le modèle de la chaîne CHAINE_RETOUCHE (gpt-image-2 d'abord) et, s'il échoue (modèle
+          // refusé, panne, limite), le modèle suivant encore en service ; si tous échouent, la photo d'origine, comme avant.
+          // Un modèle passé sa date d'arrêt OpenAI (gpt-image-2 : 10/02/2027) sort seul de la chaîne.
+          const r = await retoucherPhoto({
+            cle: OPENAI_KEY, blob: srcBlob, prompt: promptToUse, qualite: qualityToUse, taille: "1024x1024",
             signal: ctlRetouche.signal,
+            // (01/10) Noté pour l'ops-digest : le crédit épuisé du 28/09 n'est resté visible que dans ces journaux, trois jours.
+            surEchec: ({ modele, http, corps }) => {
+              console.error(`[gpt-image] photo ${idx} (${modele}) error ${http}:`, corps);
+              return noterEchecFournisseur({ fournisseur: "openai", fonction: "generate-listing:retouche", http, corps: `${modele} : ${corps}`, user_id: user.id });
+            },
           });
-
-          console.log(`[gpt-image] photo ${idx} (${photo_option}) status: ${res.status}`);
-
-          if (!res.ok) {
-            const corpsErreur = await res.text().catch(() => "");
-            console.error(`[gpt-image] photo ${idx} error:`, corpsErreur);
-            // (01/10) Noté pour l'ops-digest : le crédit épuisé du 28/09 n'est
-            // resté visible que dans ces journaux, trois jours.
-            await noterEchecFournisseur({ fournisseur: "openai", fonction: "generate-listing:retouche", http: res.status, corps: corpsErreur, user_id: user.id });
-            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
-          }
-
-          const resData = await res.json();
+          console.log(`[gpt-image] photo ${idx} (${photo_option}) : ${r.essais.map((e) => `${e.modele} ${e.http ?? e.erreur}`).join(" → ")}`);
+          if (r.essais.length > 1) cost.img_replis += 1;
+          if (!r.ok) return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           cost.images += 1;
           cost.image_quality = qualityToUse;
-          // Tokens exacts facturés par OpenAI pour CETTE image. Si le détail
-          // text/image manque, tout input_tokens part en "text" (tarif le
-          // plus bas : on sous-estime plutôt que d'inventer).
-          const imgUsage = (resData as {
-            usage?: {
-              input_tokens?: number; output_tokens?: number;
-              input_tokens_details?: { text_tokens?: number; image_tokens?: number };
-            };
-          }).usage;
-          if (imgUsage) {
-            const imageIn = imgUsage.input_tokens_details?.image_tokens ?? 0;
-            const textIn = imgUsage.input_tokens_details?.text_tokens
-              ?? Math.max(0, (imgUsage.input_tokens ?? 0) - imageIn);
+          cost.img_modeles[r.modele] = (cost.img_modeles[r.modele] ?? 0) + 1;
+          // Jetons exacts facturés par OpenAI pour CETTE image, au tarif de SON modèle (retouche-photo.ts).
+          if (r.usage) {
             cost.img_usage_n += 1;
-            cost.img_text_in += textIn;
-            cost.img_image_in += imageIn;
-            cost.img_out += imgUsage.output_tokens ?? 0;
+            cost.img_text_in += r.usage.texte;
+            cost.img_image_in += r.usage.image;
+            cost.img_out += r.usage.sortie;
+            cost.img_usd += coutImageUsd(r.modele, r.usage);
           }
-          const b64 = resData.data?.[0]?.b64_json;
-          if (!b64) {
-            console.error(`[gpt-image] photo ${idx}: no b64_json in response`);
-            return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
-          }
+          const b64 = r.b64;
 
           // (28/10, Juliette — « Le souci vient de nos serveurs ») Décodage en boucle simple : Uint8Array.from(chaîne,
           // fonction) itère la chaîne caractère par caractère avec un appel par octet — ~130 ms de CPU par image de
@@ -1327,18 +1299,16 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
       // pas. Insert best-effort, comme les autres télémétries.
       const retoucheLivrees = processedPhotos.filter(p => p.url.includes(`/enhanced/${ts}_`)).length;
       // ── Coût RÉEL depuis le bloc usage d'OpenAI (audit du 08/08) ──────────
-      // Tarifs gpt-image-2 standard, page pricing OpenAI relevée le 08/08 :
-      // text input 5 $/MTok · image input 8 $/MTok · image output 30 $/MTok.
+      // (14/11/2026) Tarif PAR MODÈLE (_shared/retouche-photo.ts, page pricing OpenAI relue le 14/11 : 5 $ texte,
+      // 8 $ image en entrée, 30 $ image en sortie par million de jetons pour gpt-image-2 et la famille 2.5).
       // cost_source distingue un coût MESURÉ (toutes les réponses portaient
       // le bloc usage) d'un coût SUPPOSÉ (repli sur les constantes maison
       // 0,01/0,04 $ par image, qui ignorent l'entrée).
-      const TARIF_GPT_IMAGE2 = { textInParMTok: 5, imageInParMTok: 8, outParMTok: 30 } as const;
       const usageComplet = cost.images > 0 && cost.img_usage_n === cost.images;
       const retoucheUsd = usageComplet
-        ? (cost.img_text_in * TARIF_GPT_IMAGE2.textInParMTok
-           + cost.img_image_in * TARIF_GPT_IMAGE2.imageInParMTok
-           + cost.img_out * TARIF_GPT_IMAGE2.outParMTok) / 1_000_000
+        ? cost.img_usd
         : cost.images * (qualityToUse === "low" ? 0.01 : 0.04);
+      const modelesServis = Object.keys(cost.img_modeles);
       adminClient.from("usage_logs").insert({
         user_id: user.id,
         feature: "photo_retouche",
@@ -1358,6 +1328,11 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
           openai_image_input_tokens: cost.img_image_in,
           openai_output_tokens: cost.img_out,
           openai_usage_manquants: cost.images - cost.img_usage_n,
+          // (14/11/2026, point 2.4 de Nico) Le modèle OpenAI de la retouche : un seul nom quand toutes les photos sont
+          // passées par le même (le cas normal), sinon les noms joints ; le détail par modèle et les photos passées au repli.
+          openai_model: modelesServis.length ? modelesServis.join(",") : null,
+          openai_modeles: cost.img_modeles,
+          repli_modele: cost.img_replis,
           cost_source: usageComplet ? "usage_api" : "estimation_constantes",
           cost_usd: Number(retoucheUsd.toFixed(4)),
         },
@@ -1470,6 +1445,7 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
       descriptionFournie: descriptionVendeuse,
       titreFourni: titreVendeur,
       consignes: consignesVendeur,
+      sansIa: iaCoupee !== null,
       signal: ctlRedaction.signal,
     }).finally(() => clearTimeout(minuteurRedaction));
 
@@ -1517,6 +1493,8 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
         // qui n'ont pas abouti à une publication.
         ...traceTexteVendeur,
         claude_calls: cost.claude_calls,
+        // (14/11) Filet IA atteint : la rédaction est partie sans IA (textes de repli, unité rendue).
+        ...(iaCoupee ? { ia_coupee: iaCoupee } : {}),
         claude_input_tokens: cost.claude_in,
         claude_output_tokens: cost.claude_out,
         images: cost.images,

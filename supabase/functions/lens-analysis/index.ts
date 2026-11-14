@@ -1601,11 +1601,9 @@ export function empreinteSortie(item: Record<string, unknown>): Record<string, u
 // boucle le peut.
 const PLAFOND_IDENTIFY_PAR_USER = 60;
 
-// Plafond GLOBAL journalier — garde NEUVE. Toutes les gardes existantes sont
-// par utilisateur : aucune ne regarde le total. Identify étant gratuit, il
-// ouvre un chemin API sans contrepartie de revenu, et c'est le seul risque neuf
-// introduit par ce mode. 3 000 appels/jour ≈ 30 € (0,0101 €/appel mesuré).
-const PLAFOND_IDENTIFY_GLOBAL = 3000;
+// (14/11/2026, règle de Nico — rien ne doit être bloqué) Le plafond GLOBAL de 3 000 identify par jour est RETIRÉ :
+// le seul plafond global est le filet de 50 $ par jour de _shared/budget-ia.ts (niveau « confort » pour identify),
+// qui couvre aussi les appels du worker eBay. Les gardes par utilisateur (ci-dessus) restent.
 
 // Plafond des remboursements « identification contredite » : 2 par utilisateur
 // et par 24 h GLISSANTES (2026-08-20). Le 20/08 à 00h09, un utilisateur en a
@@ -1695,43 +1693,6 @@ async function ecrireCache(admin: any, cle: string, userId: string, resultat: un
     if (error) console.error("[lens-analysis] cache identify:", error.message);
   } catch (e) {
     console.error("[lens-analysis] cache identify:", (e as Error)?.message);
-  }
-}
-
-/**
- * Instant UTC du dernier minuit de Paris — jamais d'UTC brut pour une mesure
- * journalière (cf. CLAUDE.md). Calculé depuis l'heure locale de Paris décomposée
- * par Intl, sans table de fuseaux embarquée.
- */
-function debutJourneeParisISO(): string {
-  const maintenant = new Date();
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Paris",
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-  }).formatToParts(maintenant);
-  const nb = (t: string) => Number(parts.find(p => p.type === t)?.value ?? 0);
-  const depuisMinuit = (nb("hour") * 3600 + nb("minute") * 60 + nb("second")) * 1000 + maintenant.getMilliseconds();
-  return new Date(maintenant.getTime() - depuisMinuit).toISOString();
-}
-
-/**
- * Nombre d'identifies RÉELLEMENT appelés aujourd'hui (heure de Paris), tous
- * utilisateurs confondus. Les hits de cache ne comptent pas : ils sont logués
- * sous 'lens_identify_cache' et ne coûtent rien.
- * null si le comptage est impossible ⇒ l'appelant laisse passer, comme les
- * gardes existantes : une panne de lecture ne devient jamais un refus.
- */
-async function appelsIdentifyDuJour(admin: any): Promise<number | null> {
-  try {
-    const { count, error } = await admin
-      .from("usage_logs")
-      .select("id", { count: "exact", head: true })
-      .eq("feature", "lens_identify")
-      .gte("created_at", debutJourneeParisISO());
-    if (error) return null;
-    return count ?? 0;
-  } catch {
-    return null;
   }
 }
 
@@ -2194,32 +2155,26 @@ serve(async (req) => {
       });
     }
 
-    // c) Plafond GLOBAL journalier — toutes les gardes existantes sont par
-    //    utilisateur, AUCUNE ne regarde le total. Identify étant gratuit, il
-    //    ouvre un chemin API sans contrepartie de revenu : c'est le seul risque
-    //    neuf introduit ici. Au-delà, identify est court-circuité et le parcours
-    //    continue SANS analyse (le client ne bloque jamais là-dessus).
-    const total = await appelsIdentifyDuJour(adminClient);
-    if (total !== null && total >= PLAFOND_IDENTIFY_GLOBAL) {
-      console.error(
-        `[lens-analysis][ALERTE] plafond global identify atteint : ${total}/${PLAFOND_IDENTIFY_GLOBAL} appels aujourd'hui (Europe/Paris) — identify court-circuité`
-      );
-      return new Response(JSON.stringify({ error: "identify_unavailable" }), {
-        status: 429, headers: { "Content-Type": "application/json", ...CORS },
-      });
-    }
+    // c) (14/11/2026) Plus de plafond global en NOMBRE d'appels : le filet de 50 $ par jour ci-dessous le remplace.
   }
 
-  // ── (18/10, lot 2) LE PLAFOND DE LA DÉPENSE IA, AVANT TOUT DÉBIT ─────────
-  // _shared/budget-ia.ts : identify = « confort », scan complet = « essentiel ».
-  // Au-delà : rien n'est débité ni appelé ; l'app retombe sur la saisie à la main
-  // (identify : même réponse que son plafond global, que le client sait traiter).
+  // ── (18/10, lot 2 ; 14/11, règle de Nico) LE FILET DE LA DÉPENSE IA, AVANT TOUT DÉBIT ─────────
+  // _shared/budget-ia.ts : identify = « confort », scan complet = « essentiel », 50 $ par jour. Au-delà : rien n'est
+  // débité ni appelé, et la réponse est EXACTEMENT celle d'une panne de l'IA — rien n'est bloqué :
+  //   · identify : « identify_unavailable », que l'app et le worker eBay traitent déjà (parcours continué sans analyse,
+  //     publication eBay continuée avec ses trous, garde-fou « catégorie à confirmer » inchangé) ;
+  //   · scan complet : 503 « ai_unavailable » (celle de la panne Anthropic) — l'app dit « IA indisponible » et propose
+  //     « Créer l'annonce sans analyse » (avant : 429 « analyse_indisponible », affiché comme un code brut).
   {
     const budget = await budgetIaAutorise(adminClient, estIdentify ? "confort" : "essentiel", "lens-analysis");
     if (!budget.ouvert) {
-      return new Response(JSON.stringify({ error: estIdentify ? "identify_unavailable" : "analyse_indisponible", budget: budget.motif,
-        message: "L'analyse automatique est indisponible pour le moment : remplis la fiche à la main, rien n'a été débité." }), {
-        status: 429, headers: { "Content-Type": "application/json", ...CORS },
+      if (estIdentify) {
+        return new Response(JSON.stringify({ error: "identify_unavailable", budget: budget.motif }), {
+          status: 429, headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      return new Response(JSON.stringify({ error: "ai_unavailable", retry_after: 30, budget: budget.motif }), {
+        status: 503, headers: { "Content-Type": "application/json", ...CORS },
       });
     }
   }

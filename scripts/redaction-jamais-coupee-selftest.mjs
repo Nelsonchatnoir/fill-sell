@@ -75,7 +75,11 @@ const blocRet = iRet > 0 ? gl.slice(iRet, gl.indexOf("processedPhotos = results.
 ok(/resteAvant\(debutRequete, FIN_RETOUCHE_MS\) >= RETOUCHE_MINIMUM_MS/.test(blocRet) && /if \(!retoucheLancee\) return false;/.test(blocRet), "retouche : pas lancée s'il ne reste pas 25 s (photos d'origine, rien facturé)");
 ok(/signal: ctlRetouche\.signal/.test(blocRet) && /fetch\(photoUrl, \{ signal: ctlRetouche\.signal \}\)/.test(blocRet), "retouche : téléchargement et appel OpenAI s'arrêtent à l'échéance");
 ok(/attendreAuPlus\(adminClient\.storage\s*\.from\(BUCKET\)\s*\.upload\(path, outBlob/.test(blocRet) && /return origine;/.test(blocRet), "retouche : l'envoi Storage est borné ; en retard, la photo d'origine part");
-ok((gl.match(/api\.openai\.com\/v1\/images\/edits/g) ?? []).length === 1 && /const MAX_RETOUCHED = 5;/.test(gl), "aucun appel en plus : une retouche par photo, 5 au plus (coût inchangé)");
+// (14/11/2026) L'appel OpenAI vit dans _shared/retouche-photo.ts (une fois) ; generate-listing l'appelle une fois par
+// photo ; le modèle de repli ne part qu'après un échec (non facturé) — selftest:retouche-modele.
+const rpm = lire("supabase/functions/_shared/retouche-photo.ts");
+ok((rpm.match(/api\.openai\.com\/v1\/images\/edits/g) ?? []).length === 1 && !/api\.openai\.com\/v1\/images\/edits/.test(gl)
+  && (gl.match(/await retoucherPhoto\(\{/g) ?? []).length === 1 && /const MAX_RETOUCHED = 5;/.test(gl), "aucun appel en plus : une retouche par photo, 5 au plus (coût inchangé)");
 
 console.log("D. La rédaction elle-même finit à +140 s : texte de repli, la fiche part");
 ok(D && D.FIN_REDACTION_MS === 140_000 && D.LIMITE_EDGE_MS - D.FIN_REDACTION_MS >= 10_000, "échéance de la rédaction à +140 s : 10 s pour enregistrer la fiche et répondre");

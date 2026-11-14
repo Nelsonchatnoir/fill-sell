@@ -552,7 +552,12 @@ const directiveEtatImpose = (etat: string) =>
   `en particulier, n'applique PAS le repli « Très bon état » ci-dessus, il ne vaut que lorsque l'état est inconnu. ` +
   `Si tu ne mentionnes pas l'état du tout, c'est très bien aussi.`;
 
-export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni, langues, consignes, signal }: {
+export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni, langues, consignes, signal, sansIa }: {
+  /**
+   * (14/11/2026, règle de Nico — rien ne doit être bloqué) Le filet de la dépense IA est atteint (_shared/budget-ia.ts) :
+   * AUCUN appel Claude, chaque plateforme prend le texte de repli d'un appel en échec. Absent = comme avant.
+   */
+  sansIa?: boolean;
   /**
    * (12/11/2026, point 8 de Nico — une rédaction n'est JAMAIS coupée) L'échéance de l'appelant : à l'abandon, la
    * plateforme prend le texte de repli ci-dessous, la fiche part au lieu d'un 504. Absent (Lens) = comme avant.
@@ -623,6 +628,12 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
       (platforms as string[]).map(async (platform) => {
         const cfg = PLATFORM_CFG[platform];
         if (!cfg) {
+          platformListings[platform] = { title: titreVendeuse ?? fallbackTitle, description: descVendeuse ?? item.description ?? "", platform_fields: {} };
+          return;
+        }
+
+        // (14/11) Filet IA atteint : aucun appel, le texte de repli — exactement celui d'un appel en échec (plus bas).
+        if (sansIa) {
           platformListings[platform] = { title: titreVendeuse ?? fallbackTitle, description: descVendeuse ?? item.description ?? "", platform_fields: {} };
           return;
         }

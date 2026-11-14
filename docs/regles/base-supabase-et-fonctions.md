@@ -320,10 +320,25 @@ authenticated;` (le déclencheur le fait aussi). Inverse du régime : `supabase/
   `docs/enquetes/session-nuit-1810-memoire-ia/point5-banc.md`.
 
 ## Règles (18/10 — dépense IA, déduction apprise)
-- **Plafond de la dépense IA codé en dur** (`_shared/budget-ia.ts`) : Anthropic, jour/mois, « moteur » 6/120 $,
-  « confort » 9/160 $, « essentiel » 14/185 $ ; au-delà, l'ancien chemin (question, arbre, saisie à la main), rien
-  débité. Compteur `ia_depense_jour` (déclencheur sur `usage_logs` quand `metadata.cost_usd`, et sur
+- ⛔ **(14/11, règle de Nico) RIEN NE DOIT ÊTRE BLOQUÉ par un plafond global de dépense IA.** La rentabilité d'un compte,
+  ce sont les QUOTAS DE SON PALIER (`quotas_etat`, clés `quota_*` de `coin_config`), jamais un plafond global. Le seul
+  plafond global est un **filet de 50 $ par jour** de dépense Anthropic (`_shared/budget-ia.ts`, `FILET_JOUR_USD`, le
+  même pour « moteur », « confort », « essentiel » ; plus AUCUN plafond par mois ; le plafond de 3 000 identify/jour de
+  lens-analysis est retiré). Signal dans `usage_logs` (user_id NULL, `ia_plafond_approche` dès 80 %,
+  `ia_plafond_atteint` à 100 %, une ligne par jour de Paris) + section du digest `ops-digest`. Au-delà du filet, la
+  fonction continue SANS l'IA, exactement comme une panne : rédaction = textes de repli + unité rendue ; scan Lens = 503
+  `ai_unavailable` (l'app propose « Créer l'annonce sans analyse ») ; identify = `identify_unavailable` (parcours et
+  worker eBay continuent) ; micro-appels = réponse « ia_indisponible ». Avant (18/10) : 6/120, 9/160, 14/185 $ — le
+  14/11 à 10,18 $, l'identify et le choix du rayon ont été coupés pour tout le monde jusqu'à minuit. Verrou
+  `selftest:filet-ia`. Compteur `ia_depense_jour` (déclencheur sur `usage_logs` quand `metadata.cost_usd`, et sur
   `rapprochement_ia_verdicts`), lu par `ia_depense_etat()` (service_role). Toute nouvelle fonction IA y passe.
+- **Retouche photo OpenAI** (`_shared/retouche-photo.ts`, source unique : prompts, chaîne de modèles, coût par modèle) :
+  `gpt-image-2`, qualité low (légère) / medium (avancée), 1024×1024, inchangés au 14/11 ; repli `gpt-image-2.5-flare`
+  (même prix mesuré) sur une erreur de modèle ou de disponibilité seulement (`repliPermis` : jamais sur une modération,
+  jamais un second appel facturé) ; un modèle passé sa date d'arrêt OpenAI sort seul (`ARRETS_MODELES` : gpt-image-2 le
+  10/02/2027 — successeur définitif à décider par Nico avant). `photo_retouche.metadata.openai_model` = le modèle servi.
+  Banc `retouche-banc` (service_role, photos des comptes de Nico et d'Ornella seulement, lignes `photo_retouche_banc`
+  avec leur coût). Verrou `selftest:retouche-modele`. Rapport `docs/enquetes/lot-1411-plafond-ia-retouche/RAPPORT.md`.
 - **Correspondances apprises** : `deduction_apprise` (reconstruite chaque nuit, cron `deduction-apprise-nuit`),
   `deduction_bascule` par (plateforme, champ) : fantôme → actif (≥ 48 h, ≥ 15 cas, 100 %) → coupe (< 97 % ou refus
   +15 points), cron `deduction-bascule-6h` ; l'app lit `deduction_apprise_pour` (session). Banc :

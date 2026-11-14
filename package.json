@@ -689,6 +689,8 @@
     "selftest:ventes-beebs-commandes": "node scripts/ventes-beebs-commandes-selftest.mjs",
     "selftest:postes-boutiques": "node scripts/postes-boutiques-selftest.mjs",
     "selftest:budget-ia": "deno run --allow-read scripts/budget-ia-selftest.ts",
+    "selftest:filet-ia": "deno run --allow-read --allow-env scripts/filet-ia-selftest.ts",
+    "selftest:retouche-modele": "deno run --allow-read scripts/retouche-modele-selftest.ts",
     "selftest:zero-orange-hors-ia": "node scripts/zero-orange-hors-ia-selftest.mjs",
     "selftest:ebay-ean-exige": "deno run --allow-read --allow-env --allow-net scripts/ebay-ean-exige-selftest.ts",
     "selftest:deduction-apprise": "node scripts/deduction-apprise-selftest.mjs",

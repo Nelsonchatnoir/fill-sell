@@ -1,6 +1,6 @@
-// Selftest — le plafond de la dépense IA, codé en dur, coupe-circuit automatique (18/10, lot 2).
+// Selftest — le plafond de la dépense IA, codé en dur (18/10, lot 2 ; filet de 50 $/jour depuis le 14/11).
 //   npm run selftest:budget-ia
-// Règle de Nico : Anthropic sous 200 $/mois avec de la marge ; au-delà d'un plafond, l'ancien chemin, sans rien casser.
+// (14/11/2026) Règle de Nico : rien ne doit être bloqué — un filet de 50 $/jour, au-delà le chemin sans IA.
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { PLAFONDS_ANTHROPIC_USD, budgetOuvert } from "../supabase/functions/_shared/budget-ia.ts";
 
@@ -9,25 +9,25 @@ const cas = (nom: string, f: () => void) => { f(); n++; console.log(`  ✓ ${nom
 console.log("budget-ia-selftest");
 const lire = (p: string) => Deno.readTextFileSync(new URL(`../${p}`, import.meta.url)).replace(/\r\n/g, "\n");
 
-cas("les plafonds sont codés en dur, sous 200 $ par mois avec de la marge, du moins utile au plus utile", () => {
-  assert(PLAFONDS_ANTHROPIC_USD.essentiel.mois <= 185 && PLAFONDS_ANTHROPIC_USD.essentiel.mois < 200);
-  assert(PLAFONDS_ANTHROPIC_USD.moteur.mois < PLAFONDS_ANTHROPIC_USD.confort.mois && PLAFONDS_ANTHROPIC_USD.confort.mois < PLAFONDS_ANTHROPIC_USD.essentiel.mois);
-  assert(PLAFONDS_ANTHROPIC_USD.moteur.jour < PLAFONDS_ANTHROPIC_USD.confort.jour && PLAFONDS_ANTHROPIC_USD.confort.jour < PLAFONDS_ANTHROPIC_USD.essentiel.jour);
+cas("le plafond est codé en dur : un FILET de 50 $ par jour, le même pour les trois niveaux, sans plafond par mois (14/11)", () => {
+  for (const niveau of ["moteur", "confort", "essentiel"] as const) {
+    assertEquals(PLAFONDS_ANTHROPIC_USD[niveau].jour, 50);
+    assert(!("mois" in PLAFONDS_ANTHROPIC_USD[niveau]));
+  }
   assert(Object.isFrozen(PLAFONDS_ANTHROPIC_USD));
 });
 
-cas("octobre réel (54,8 $ au 18, 3,1 $/jour) : tout passe", () => {
-  const etat = { anthropic_jour: 3.1, anthropic_mois: 54.8 };
-  for (const niveau of ["moteur", "confort", "essentiel"] as const) assertEquals(budgetOuvert(niveau, etat).ouvert, true);
+cas("octobre réel (54,8 $ au 18, 3,1 $/jour) et le 14/11 (10,18 $) : tout passe", () => {
+  for (const etat of [{ anthropic_jour: 3.1, anthropic_mois: 54.8 }, { anthropic_jour: 10.18, anthropic_mois: 77.3 }]) {
+    for (const niveau of ["moteur", "confort", "essentiel"] as const) assertEquals(budgetOuvert(niveau, etat).ouvert, true);
+  }
 });
 
-cas("au-delà d'un plafond, le niveau retombe sur l'ancien chemin ; l'essentiel tient plus longtemps", () => {
-  assertEquals(budgetOuvert("moteur", { anthropic_jour: 6.5, anthropic_mois: 60 }).motif, "plafond_jour_6");
-  assertEquals(budgetOuvert("confort", { anthropic_jour: 6.5, anthropic_mois: 60 }).ouvert, true);
-  assertEquals(budgetOuvert("confort", { anthropic_jour: 2, anthropic_mois: 161 }).motif, "plafond_mois_160");
-  assertEquals(budgetOuvert("essentiel", { anthropic_jour: 2, anthropic_mois: 161 }).ouvert, true);
-  assertEquals(budgetOuvert("essentiel", { anthropic_jour: 2, anthropic_mois: 185 }).ouvert, false);
-  assertEquals(budgetOuvert("essentiel", { anthropic_jour: 14, anthropic_mois: 90 }).ouvert, false);
+cas("au-delà du filet, chaque niveau retombe sur le chemin sans IA (rien n'est bloqué : voir filet-ia-selftest)", () => {
+  for (const niveau of ["moteur", "confort", "essentiel"] as const) {
+    assertEquals(budgetOuvert(niveau, { anthropic_jour: 50.5, anthropic_mois: 60 }).motif, "plafond_jour_50");
+    assertEquals(budgetOuvert(niveau, { anthropic_jour: 2, anthropic_mois: 400 }).ouvert, true);
+  }
 });
 
 cas("compteur illisible : l'essentiel et le confort passent (une panne n'est pas une dépense), le moteur non", () => {
